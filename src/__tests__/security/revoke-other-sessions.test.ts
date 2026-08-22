@@ -305,7 +305,7 @@ describe('Users hook-bekötés', () => {
     expect(mark).toBeDefined()
     const context: Record<string, unknown> = {}
     void mark?.({
-      data: { password: 'Teszt-Jelszo-Nem-Titok-1' },
+      data: { password: 'jelszo' },
       originalDoc: { id: 7, email: 'anna@example.test' },
       operation: 'update',
       req: { context },
