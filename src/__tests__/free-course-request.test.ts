@@ -168,6 +168,9 @@ function createMockPayload(options: MockOptions = {}) {
       const clauses = (where as { and?: Array<Record<string, Record<string, unknown>>> })?.and ?? []
       const docs = products.filter((product) =>
         clauses.every((clause) => {
+          if (clause.id?.equals !== undefined && product.id !== clause.id.equals) {
+            return false
+          }
           if (clause.status?.equals !== undefined && product.status !== clause.status.equals) {
             return false
           }
@@ -360,6 +363,9 @@ describe('igénylés ÚJ e-mail-címmel', () => {
     expect(mock.sent[0].html).toContain('https://pelda.kineticare.hu/jelszo-visszaallitas?token=')
     expect(mock.sent[0].subject).toContain('SOS KézRelax villámkurzus')
     expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(grantFreeCoursesToUser).mock.calls[0]?.[0]).toMatchObject({
+      productId: FREE_COURSE.id,
+    })
     expect(mock.forgotPasswordCalls[0].expiration).toBe(FREE_COURSE_TOKEN_TTL_MS)
   })
 
@@ -609,6 +615,9 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(result.userCreated).toBe(false)
     expect(result.emailDelivered).toBe(true)
     expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(grantFreeCoursesToUser).mock.calls[0]?.[0]).toMatchObject({
+      productId: FREE_COURSE.id,
+    })
     expect(mock.users[0].purchases).toContain(FREE_COURSE.id)
     expect(mock.forgotPasswordCalls).toEqual([
       { email: VARAKOZO_VEVO.email, expiration: FREE_COURSE_TOKEN_TTL_MS },
@@ -656,6 +665,9 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(result.status).toBe('ok')
     expect(result.userCreated).toBe(true)
     expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(grantFreeCoursesToUser).mock.calls[0]?.[0]).toMatchObject({
+      productId: FREE_COURSE.id,
+    })
     expect(mock.forgotPasswordCalls).toEqual([
       { email: 'piroska@pelda.hu', expiration: FREE_COURSE_TOKEN_TTL_MS },
     ])

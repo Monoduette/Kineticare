@@ -8,7 +8,6 @@ import {
 import { createLogger } from '../lib/logger'
 import { resolveClientIp } from '../lib/audit'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
-import { grantFreeCoursesToUser } from '../lib/free-course-grant'
 import {
   CREDENTIAL_CHANGE_REVOKE_KEY,
   isEmailChanged,
@@ -232,50 +231,6 @@ const logFailedLogin: CollectionAfterErrorHook = ({ error, req }) => {
   })
 }
 
-// M4: az ingyenes kurzusok AUTOMATIKUS hozzáférés-adása regisztrációkor és
-// bejelentkezéskor. A free CTA („Ingyenes — azonnal eléred", courses.ts
-// resolveCourseCta) a /kurzusaim oldalra visz, de a purchases-be korábban csak
-// a fizetési főlánc írt — az ingyenes kurzus így sosem jelent meg a vevőnél
-// (CTA-zsákutca). A tényleges logika az src/lib/free-course-grant.ts
-// szolgáltatásban él (idempotens, missing-only); a hookok csak vékony bekötés.
-//
-// BEST-EFFORT: a grant hibája SOSEM törheti a regisztrációt vagy a
-// bejelentkezést — hiba esetén csak naplózunk; a vevő a következő belépésnél
-// kapja meg a hozzáférést (a hívás idempotens, az újrafutás no-op).
-const grantFreeCoursesBestEffort = async (
-  req: PayloadRequest,
-  user: Pick<User, 'id' | 'purchases'>,
-): Promise<void> => {
-  try {
-    // A req TOVÁBBADÁSA KÖTELEZŐ: nélküle a beágyazott update új tranzakcióban
-    // futna — afterChange(create)-ből NotFound (a sor még nem commitolt),
-    // afterLogin-ből ön-blokkoló deadlock (a login-tranzakció már írta a sort).
-    await grantFreeCoursesToUser({ payload: req.payload, req, user })
-  } catch (error) {
-    logger.error('ingyenes kurzus-hozzáférés automatikus beírása sikertelen', {
-      userId: user.id,
-      error: error instanceof Error ? error.message : String(error),
-      // A drizzle a valódi PG-hibát a cause-ban hordozza — anélkül a naplóban
-      // csak a „Failed query" burkolat látszik (a pentest-es incidens tanulsága).
-      cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
-    })
-  }
-}
-
-const grantFreeCoursesAfterCreate: CollectionAfterChangeHook = async ({ doc, req, operation }) => {
-  // Csak a regisztráció (create) indítja — update-nél NEM fut le (így a grant
-  // saját purchases-beírása sem váltja ki újra: nincs hook-visszacsatolás).
-  if (operation === 'create') {
-    await grantFreeCoursesBestEffort(req, doc as Pick<User, 'id' | 'purchases'>)
-  }
-  return doc
-}
-
-const grantFreeCoursesAfterLogin: CollectionAfterLoginHook = async ({ req, user }) => {
-  await grantFreeCoursesBestEffort(req, user as Pick<User, 'id' | 'purchases'>)
-  return user
-}
-
 /**
  * A „jelszó-beállítás függőben" jelző TÖRLÉSE az első sikeres belépéskor.
  *
@@ -295,9 +250,8 @@ const grantFreeCoursesAfterLogin: CollectionAfterLoginHook = async ({ req, user 
  * levelében fölöslegesen szerepel a jelszó-beállító link (a link a saját
  * címére megy, tehát ez nem jogosultsági kockázat).
  *
- * A `req` TOVÁBBADÁSA KÖTELEZŐ (a grantFreeCoursesBestEffort tanulsága): enélkül
- * a beágyazott update új tranzakcióban futna, és a login-tranzakció által már
- * írt sorra ön-blokkoló deadlockot okozna.
+ * A `req` TOVÁBBADÁSA KÖTELEZŐ: enélkül a beágyazott update új tranzakcióban
+ * futna, és a login-tranzakció által már írt sorra ön-blokkoló deadlockot okozna.
  */
 /**
  * Jelszó- vagy e-mail-csere után a többi sessiont vissza kell vonni (J2).
@@ -506,42 +460,33 @@ export const Users: CollectionConfig = {
       hasMany: true,
       label: 'Megvásárolt kurzusok',
       /**
-       * ÍRÁS: kizárólag STAFF vagy OWNER — a vevő SOHA, a saját rekordján sem.
+       * ÍRÁS: kizárólag rendszerfolyamat (`overrideAccess: true`).
        *
-       * ═══ MI VÁLTOZOTT ÉS MIÉRT ═══
-       * A mező korábban `create: () => false` / `update: () => false` volt, azaz
-       * a hozzáférés-lista mezőszinten MINDENKI elől zárva állt; a vásárlásokat
-       * csak rendszerfolyamat írta (`overrideAccess: true`). Ennek az volt az
-       * ára, hogy a TULAJDONOS sem tudott az adminban hozzáférést adni vagy
-       * elvenni — pedig a visszatérítés, az elhibázott fizetés és a régi
-       * rendszerből átköltöztetett vevő javítása napi feladat. A tulajdonos
-       * kifejezett kérése (2026-08-16): az adminban mindennek látszania kell,
-       * és mindent szerkeszteni is tudnia kell.
+       * ═══ MI VÁLTOZOTT ÉS MIÉRT (2026-08-23) ═══
+       * 2026-08-16-án a mező staff/owner számára megnyílt, hogy az adminból
+       * pipálható legyen. A pipálás megkerülte a Kurzus ajándékozása panelt:
+       * a purchases-be bekerült a kurzus, az `accessGrants.grantedAt` viszont
+       * üresen maradt, és az időkorlátos kurzus fail-open korlátlan hozzáférés
+       * lett. A tulajdonos ezért a mezőt újra rendszer-írásúra zárta. Ajándék,
+       * jóváírás, visszatérítés utáni visszavonás: a grant-panel / CLI / a
+       * fizetésjóváhagyás ír, nem a nyers relationship-pipa.
        *
-       * ═══ AMI NEM VÁLTOZOTT (a védelem lényege) ═══
-       *  - a VEVŐ nem írhatja: `hasStaffOrOwnerRole` a `customer` szerepkörre
-       *    hamis, tehát az önkiszolgáló jogosultság-adás (fizetés nélküli
-       *    kurzus-hozzáférés) továbbra is lehetetlen — sem az admin felületen,
-       *    sem a REST/GraphQL API-n, sem a saját rekordján;
-       *  - a LÁTOGATÓ (nem bejelentkezett) nem írhatja: a nyilvános regisztráció
-       *    (`access.create: () => true`) így sem tud purchases-t beküldeni,
-       *    mert a mező írásához bejelentkezett staff/owner kell;
-       *  - a rendszerfolyamatok (fizetésjóváhagyás, ingyenes-kurzus grant,
-       *    vásárló-import, grant-purchase végpont) változatlanul
-       *    `overrideAccess: true`-val írnak, tehát a mezőszintű szabály nem
-       *    érinti őket.
+       * ═══ AMI NEM VÁLTOZOTT ═══
+       *  - a VEVŐ és a látogató továbbra sem írhatja;
+       *  - a rendszerfolyamatok (fizetésjóváhagyás, ingyenes-kurzus igénylés,
+       *    vásárló-import, grant-purchase) `overrideAccess: true`-val írnak.
        *
-       * Az őr-teszt mindkét irányt rögzíti: `src/__tests__/security/
-       * users-purchases-field-access.test.ts`.
+       * Az őr-teszt: `src/__tests__/security/users-purchases-field-access.test.ts`.
        */
       access: {
-        create: isStaffOrOwnerFieldAccess,
-        update: isStaffOrOwnerFieldAccess,
+        create: () => false,
+        update: () => false,
       },
       admin: {
         description:
-          'A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés után magától töltődik; ' +
-          'munkatárs és tulajdonos kézzel is hozzáadhat vagy elvehet. A vevő saját magának nem adhat hozzáférést. ' +
+          'A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés és ajándékozás után töltődik. ' +
+          'Kézi ajándék a Kurzus ajándékozása panellel vagy a grant-purchase scripttel adható — itt pipálni nem lehet, ' +
+          'mert a pipa megkerülné a hozzáférés hosszát. A vevő saját magának nem adhat hozzáférést. ' +
           'A listaoszlopban minden kurzus mellett a haladás is megjelenik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet. ' +
           'Szűrés a listában: Szűrők → Megvásárolt kurzusok.',
         components: {
@@ -559,9 +504,8 @@ export const Users: CollectionConfig = {
        * A purchases lista csak azt tudja, HOZZÁFÉR-e a vevő; a 365 napos óra
        * kezdőpontja paid rendelés nélkül itt él. Írás: kizárólag rendszerfolyamat
        * (`overrideAccess: true`) — a Kurzus ajándékozása panel a grant-végpontot
-       * hívja, nem ezt a mezőt. Emberi review: új mező, create/update zárt
-       * (a passwordSetupPending mintája); a purchases access-függvényei
-       * változatlanok.
+       * hívja, nem ezt a mezőt. A purchases mező írása is zárt (2026-08-23):
+       * a pipa megkerülné ezt az órát.
        */
       name: 'accessGrants',
       type: 'array',
@@ -610,7 +554,7 @@ export const Users: CollectionConfig = {
     {
       // Kézi kurzus-hozzáférés panel (UI-mező, NEM tárol adatot → nincs
       // séma-változás, migrációt nem igényel). A purchases mező field-access-e
-      // változatlanul rendszer-írású marad: a panel nem ír közvetlenül, hanem a
+      // rendszer-írású: a panel nem ír közvetlenül, hanem a
       // POST /api/admin/grant-purchase végpontot hívja (staff/owner, idempotens,
       // audit-naplózott) — ugyanaz a szolgáltatás, amit a CLI-script használ.
       name: 'grantPurchasePanel',
@@ -703,9 +647,8 @@ export const Users: CollectionConfig = {
     // NEM TÖRÖLHETŐ — GDPR-törlési kérésnél is. Helyben, valós adatbázis ellen
     // reprodukálva; részletes indoklás: src/lib/course-progress/cleanup.ts.
     beforeDelete: [deleteCourseProgressOnParentDelete('user')],
-    afterChange: [grantFreeCoursesAfterCreate, revokeOtherSessionsAfterCredentialChangeHook],
+    afterChange: [revokeOtherSessionsAfterCredentialChangeHook],
     afterLogin: [
-      grantFreeCoursesAfterLogin,
       clearPasswordSetupPendingAfterLogin,
       revokeOtherSessionsAfterPasswordResetHook,
     ],

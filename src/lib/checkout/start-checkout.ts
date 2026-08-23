@@ -816,7 +816,8 @@ async function resolveBuyer(
 
 /**
  * A checkout-start teljes folyamata. Hiba esetén CheckoutError-t dob
- * (a Barion-hibaágakban a rendelést `payment_failed`-re állítja).
+ * (Barion Start-hibánál a rendelés `payment_pending` marad: a Start
+ * nem fut újra a fizetési ablak végéig).
  */
 export async function startCheckout(options: CheckoutStartOptions): Promise<CheckoutStartResult> {
   const { payload } = options
@@ -1041,23 +1042,11 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     '',
   )
 
-  /** Barion Start-hiba esetén a rendelést payment_failed-re állítjuk (best-effort). */
-  const markPaymentFailed = async (): Promise<void> => {
-    await payload
-      .update({
-        collection: 'orders',
-        id: order.id,
-        data: { status: 'payment_failed' },
-        overrideAccess: true,
-      })
-      .catch((updateError) =>
-        log.warn('checkout-start: a rendelés payment_failed-re állítása sikertelen', {
-          orderId: order.id,
-          error: updateError instanceof Error ? updateError.message : String(updateError),
-        }),
-      )
-  }
-
+  /**
+   * Barion Start-hibánál a rendelés payment_pending marad. A fail-closed
+   * `wait-no-payment-id` ág (decidePendingCheckout) nem indít második Startot
+   * a fizetési ablak végéig. payment_failed-re állítás új Startot engedne.
+   */
   let gatewayUrl: string
   let barionPaymentId: string
   let barionPaymentRequestId: string
@@ -1105,7 +1094,6 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     barionPaymentId = startResponse.PaymentId
     barionPaymentRequestId = startResponse.PaymentRequestId ?? orderNumber
   } catch (error) {
-    await markPaymentFailed()
     log.error('checkout-start: Barion fizetésindítás sikertelen', {
       orderId: order.id,
       orderNumber,
@@ -1117,15 +1105,38 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     )
   }
 
-  await payload.update({
-    collection: 'orders',
-    id: order.id,
-    data: {
-      barionPaymentId,
-      barionPaymentRequestId,
-    },
-    overrideAccess: true,
-  })
+  const persistBarionIds = async (): Promise<boolean> => {
+    try {
+      await payload.update({
+        collection: 'orders',
+        id: order.id,
+        data: {
+          barionPaymentId,
+          barionPaymentRequestId,
+        },
+        overrideAccess: true,
+      })
+      return true
+    } catch (updateError) {
+      log.warn('checkout-start: a Barion-azonosító mentése sikertelen', {
+        orderId: order.id,
+        orderNumber,
+        error: updateError instanceof Error ? updateError.message : String(updateError),
+      })
+      return false
+    }
+  }
+
+  let persisted = await persistBarionIds()
+  if (!persisted) {
+    persisted = await persistBarionIds()
+  }
+  if (!persisted) {
+    log.error(
+      'checkout-start: a Barion-azonosító mentése kimerült — a fizetés elindult, a rendelés payment_pending marad',
+      { orderId: order.id, orderNumber },
+    )
+  }
 
   log.info('checkout-start: fizetés elindítva', {
     orderId: order.id,

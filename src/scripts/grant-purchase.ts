@@ -19,7 +19,7 @@
  * Kilépési kódok:
  *   0 — siker (ajándék beírva, megújítva, VAGY már megvolt és él)
  *   1 — hiba (hiányzó/hibás argumentum, ismeretlen felhasználó vagy termék,
- *       adatbázis-hiba)
+ *       hiányzó hozzáférés-hossz, adatbázis-hiba)
  *
  * A script NEM hoz létre felhasználót és NEM rendelést — kizárólag a
  * users.purchases mezőt egészíti ki (missing-only), overrideAccess-szel.
@@ -34,6 +34,7 @@
 import { getPayload } from 'payload'
 
 import {
+  GRANT_DURATION_REQUIRED_MESSAGE,
   grantPurchase as grantPurchaseService,
 } from '../lib/grant-purchase'
 import { createLogger } from '../lib/logger'
@@ -122,6 +123,9 @@ async function grantPurchase(args: CliArgs): Promise<void> {
         ? `Nincs ilyen termék (id: ${result.productRef}). Ellenőrizd az azonosítót az admin felületen.`
         : `Nincs ilyen termék (sku: ${result.productRef}). Ellenőrizd a sku-t az admin felületen.`,
     )
+  }
+  if (result.status === 'duration-required') {
+    throw new Error(GRANT_DURATION_REQUIRED_MESSAGE)
   }
   if (result.status === 'already-had') {
     console.log(

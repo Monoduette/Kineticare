@@ -2,17 +2,12 @@
  * ŐR-TESZT: a `users.purchases` (Megvásárolt kurzusok) mező ÍRÁSI joga.
  *
  * MIT VÉD. A mező a kurzus-hozzáférés maga: aki írhatja, az ingyen ad magának
- * fizetős tartalmat. A tulajdonos kifejezett kérésére (2026-08-16) a mező az
- * adminból szerkeszthetővé vált — de KIZÁRÓLAG munkatársnak és tulajdonosnak.
- * A teszt mindkét irányt rögzíti:
+ * fizetős tartalmat, és a pipa megkerüli az ajándék-órát (accessGrants).
+ * A tulajdonos 2026-08-23-i kérésére a mező újra rendszer-írású:
+ * create/update minden szerepkörre hamis. Írás csak `overrideAccess: true`
+ * (grant-panel, CLI, fizetésjóváhagyás).
  *
- *  - owner és staff ÍRHATJA (különben a kézi jóváírás/visszavonás lehetetlen),
- *  - customer SOHA — a SAJÁT rekordján sem, se admin felületen, se API-n,
- *  - látogató (nem bejelentkezett) SOHA — a nyilvános regisztráció így sem tud
- *    hozzáférést beküldeni.
- *
- * A teszt a VÉGLEGES payload.configon áll (nem a forrásfájl olvasásán), tehát
- * egy jövőbeli refaktor vagy plugin-override is fennakad rajta.
+ * A teszt a VÉGLEGES payload.configon áll (nem a forrásfájl olvasásán).
  *
  * MINDEN ADAT KITALÁLT.
  */
@@ -20,7 +15,6 @@
 import type { CollectionConfig, Field, FieldAccess } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { isStaffOrOwnerFieldAccess } from '../../access'
 import configPromise from '../../payload.config'
 
 type Role = 'owner' | 'staff' | 'customer'
@@ -44,12 +38,6 @@ const fieldArgs = (
     data: { purchases: [11] },
   }) as unknown as Parameters<FieldAccess>[0]
 
-/**
- * A mező-szintű `access` a Payload `Field` uniójában nem minden ágon létezik
- * (pl. `ui` mezőn nincs), ezért a teszt — az access.test.ts mintájára — szűkíti
- * a típust. A szűkítés csak a TESZT kényelme; a futásidejű ellenőrzés a valódi
- * configon fut.
- */
 type NamedTestField = Field & {
   name: string
   access?: {
@@ -75,16 +63,16 @@ async function purchasesField(): Promise<NamedTestField> {
 }
 
 describe('users.purchases mezőszintű írási jog', () => {
-  it('owner írhatja (create és update is)', async () => {
+  it('owner sem írhatja — a pipa megkerülné az ajándék-órát', async () => {
     const field = await purchasesField()
-    expect(field.access?.create?.(fieldArgs(owner))).toBe(true)
-    expect(field.access?.update?.(fieldArgs(owner))).toBe(true)
+    expect(field.access?.create?.(fieldArgs(owner))).toBe(false)
+    expect(field.access?.update?.(fieldArgs(owner))).toBe(false)
   })
 
-  it('staff írhatja (kézi jóváírás, visszatérítés utáni visszavonás)', async () => {
+  it('staff sem írhatja — ajándék a grant-panelen / CLI-n megy', async () => {
     const field = await purchasesField()
-    expect(field.access?.create?.(fieldArgs(staff))).toBe(true)
-    expect(field.access?.update?.(fieldArgs(staff))).toBe(true)
+    expect(field.access?.create?.(fieldArgs(staff))).toBe(false)
+    expect(field.access?.update?.(fieldArgs(staff))).toBe(false)
   })
 
   it('a VEVŐ nem írhatja — a saját rekordján sem', async () => {
@@ -97,12 +85,6 @@ describe('users.purchases mezőszintű írási jog', () => {
     const field = await purchasesField()
     expect(field.access?.create?.(fieldArgs(null))).toBe(false)
     expect(field.access?.update?.(fieldArgs(null))).toBe(false)
-  })
-
-  it('pontosan a közös staff/owner field-access szabályt használja', async () => {
-    const field = await purchasesField()
-    expect(field.access?.create).toBe(isStaffOrOwnerFieldAccess)
-    expect(field.access?.update).toBe(isStaffOrOwnerFieldAccess)
   })
 
   it('a lista oszlopai közt szerepel — a tulajdonos látja, ki mit vett meg', async () => {

@@ -19,10 +19,10 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  * Ugyanaz a users.purchases-beírás, amit a fizetésjóváhagyás végez (lásd
  * src/lib/order-status/apply-barion-state.ts grantPurchases): a Payload LOCAL
  * API-n, `overrideAccess: true`-val, `withUserPurchasesLock` alatt. A
- * fizetés/refund/grant írók ezt a zárat használják; a mezőt staff/owner a
- * Payload REST/admin felületén is írhatja (lásd Users.purchases access).
- * Az a REST-út NINCS zár alatt — ezért a grant-panel / ez a szolgáltatás az
- * éles író, nem a nyers PATCH. Az access-szabályt ez a modul NEM módosítja.
+ * fizetés/refund/grant írók ezt a zárat használják. A purchases mező írása
+ * field-access szinten zárt (2026-08-23): a nyers admin-pipa megkerülné az
+ * ajándék-órát. Az éles író a grant-panel / ez a szolgáltatás, nem a PATCH.
+ * Az access-szabályt ez a modul NEM módosítja.
  *
  * Hívói:
  *  - src/scripts/grant-purchase.ts (CLI, vékony wrapper — a viselkedése
@@ -35,9 +35,12 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  * termék a purchases-ben van, de a hozzáférés lejárt vagy a kezdőpont
  * ismeretlen (`accessDurationDays` + utolsó paid rendelés / accessGrants),
  * az `accessGrants.grantedAt` mezőt mostani időpontra állítja (a terméken
- * beállított napos óra újraindul), paid rendelés és számla nélkül. Csak a
- * hiányzó terméket fűzi a purchases-listához; időkorlátos terméknél az
- * ajándék-kezdőpontot is írja.
+ * beállított napos óra újraindul), paid rendelés és számla nélkül.
+ *
+ * ÚJ ajándéknál a terméken kötelező a pozitív `accessDurationDays`. Üres /
+ * 0 / negatív nap → `duration-required`, NINCS írás: a purchases-be írt,
+ * óra nélküli sor fail-open korlátlan hozzáférés lenne. A CMS-ben beállított
+ * napot használjuk, nem egy bekódolt 365-öt.
  *
  * A modul soha nem dob üzleti hibát: az ismeretlen felhasználó/termék is
  * strukturált eredmény (a hívó képezi HTTP-státuszra, illetve CLI-üzenetre).
@@ -45,7 +48,15 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  */
 
 export type GrantPurchaseStatus =
-  'granted' | 'already-had' | 'user-not-found' | 'product-not-found'
+  | 'granted'
+  | 'already-had'
+  | 'user-not-found'
+  | 'product-not-found'
+  | 'duration-required'
+
+/** Új ajándéknál nincs megadva, hány napig él a hozzáférés — CMS-zsargon nélkül. */
+export const GRANT_DURATION_REQUIRED_MESSAGE =
+  'Ehhez a kurzushoz nincs megadva, hány napig él az ajándék. Állítsd be a kurzusnál a hozzáférés hosszát napokban, aztán ajándékozd újra.'
 
 /** A termék-hivatkozás feloldásának módja — a hívó hibaüzenetéhez. */
 export type ProductRefKind = 'id' | 'sku'
@@ -180,6 +191,25 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
       const existingGrants = grantRowsFromUnknown(
         (fresh as User & { accessGrants?: unknown }).accessGrants,
       )
+
+      if (!alreadyOwned && durationDays === null) {
+        log.warn('manuális hozzáférés: a kurzusnál nincs megadva a hozzáférés hossza', {
+          ...audit,
+          userId: user.id,
+          productId: product.id,
+          sku: product.sku,
+          result: 'duration-required',
+        })
+        return {
+          status: 'duration-required' as const,
+          email,
+          productRef: productIdOrSku,
+          productRefKind,
+          userId: user.id,
+          productId: product.id,
+          productLabel,
+        }
+      }
 
       if (alreadyOwned && durationDays === null) {
         log.info('manuális hozzáférés: a termék már a vevőnél van — no-op', {

@@ -672,13 +672,16 @@ const ENABLED_CONFIG = getSzamlazzConfig({
 
 /**
  * A bizonylat-lekérdezés MINDEN folyamat-tesztben injektált: injektálás nélkül a
- * retry- és duplikátum-ág a VALÓDI Számlázz.hu-t hívná meg. Ez a mock azokra az
- * ágakra való, ahol lekérdezésnek egyáltalán nem szabad futnia — ha mégis fut,
- * hangosan bukik.
+ * retry- és duplikátum-ág a VALÓDI Számlázz.hu-t hívná meg. A noLookup azokra
+ * az ágakra való, ahol lekérdezésnek nem szabad futnia (nem-paid, already-issued,
+ * disabled, hiányos adat, kimerült plafon). Az első beküldés előtt a lookup
+ * mindig lefut — ott silentLookup kell.
  */
 const noLookup = async (): Promise<InvoiceLookupResult | null> => {
   throw new Error('TESZT-HIBA: ezen az ágon nem futhat bizonylat-lekérdezés')
 }
+
+const silentLookup = async (): Promise<InvoiceLookupResult | null> => null
 
 describe('buyerFromOrder / itemsFromOrder', () => {
   it('a customerSnapshot-ból építkezik (billingName elsőbbség, email-fallback)', () => {
@@ -744,7 +747,7 @@ describe('issueInvoiceForOrder', () => {
       orderId: 101,
       config: ENABLED_CONFIG,
       issueDate: '2026-08-04',
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async (xml) => {
         sentXml.push(xml)
         return { szamlaszam: 'KIN-2026-7', vevoifiokUrl: 'https://www.szamlazz.hu/vevoifiok/abc' }
@@ -806,7 +809,7 @@ describe('issueInvoiceForOrder', () => {
         orderId: 101,
         config: ENABLED_CONFIG,
         issueDate: '2026-08-04',
-        queryByKulsoAzon: noLookup,
+        queryByKulsoAzon: silentLookup,
         postXml: async () => ({
           szamlaszam: 'KIN-2026-8',
           vevoifiokUrl: 'https://szamlazz.hu.tamado.example/vevoifiok/abc',
@@ -905,7 +908,7 @@ describe('issueInvoiceForOrder', () => {
       payload,
       orderId: 101,
       config: ENABLED_CONFIG,
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async () => {
         throw new SzamlazzApiError({
           message: 'Számla Agent hiba: 57',
@@ -928,7 +931,7 @@ describe('issueInvoiceForOrder', () => {
         payload,
         orderId: 101,
         config: ENABLED_CONFIG,
-        queryByKulsoAzon: noLookup,
+        queryByKulsoAzon: silentLookup,
         postXml: async () => {
           throw new SzamlazzApiError({ message: 'timeout', kind: 'timeout', retryable: true })
         },
@@ -944,7 +947,7 @@ describe('issueInvoiceForOrder', () => {
       payload,
       orderId: 101,
       config: ENABLED_CONFIG,
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async () => {
         throw new SzamlazzApiError({
           message: 'Számla Agent elutasította: hibás tétel',
@@ -985,7 +988,9 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
       issueDate: '2026-08-04',
       queryByKulsoAzon: async (kulsoAzon) => {
         lookups.push(kulsoAzon)
-        return { szamlaszam: 'KIN-2026-7' }
+        // Az első (POST előtti) lookup üres — a 71 a POST után jön, a második
+        // lookup veszi át a meglévő bizonylatot.
+        return lookups.length === 1 ? null : { szamlaszam: 'KIN-2026-7' }
       },
       postXml: async () => {
         posts += 1
@@ -995,8 +1000,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
     expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-7' })
     expect(posts).toBe(1)
-    // A lekérdezés horgonya a rendelésszám (a számla szamlaKulsoAzon-ja).
-    expect(lookups).toEqual([ORDER_NUMBER])
+    expect(lookups).toEqual([ORDER_NUMBER, ORDER_NUMBER])
     expect(order?.invoiceStatus).toBe('issued')
     expect(order?.invoiceNumber).toBe('KIN-2026-7')
     expect(updates[1]).toEqual({
@@ -1024,6 +1028,25 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
     expect(order?.invoiceStatus).toBe('failed')
     expect(order?.invoiceLastError).toContain('kézi egyeztetés')
     expect(order?.invoiceNumber).toBeUndefined()
+  })
+
+  it('első kísérletnél (invoiceAttempts 0) is lefut a POST előtti lekérdezés', async () => {
+    const { payload } = createMockPayload(createOrder({ invoiceAttempts: 0 }))
+    const lookups: string[] = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: async (kulsoAzon) => {
+        lookups.push(kulsoAzon)
+        return null
+      },
+      postXml: async () => ({ szamlaszam: 'KIN-2026-7' }),
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-7' })
+    expect(lookups).toEqual([ORDER_NUMBER])
   })
 
   it('retry ELŐTTI lekérdezés: találatnál a beküldés elmarad (a bizonylat már létezik)', async () => {
@@ -1091,7 +1114,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
       orderId: 101,
       config: ENABLED_CONFIG,
       issueDate: '2026-07-15',
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async () => ({ szamlaszam: 'KIN-2026-7' }),
     })
 
@@ -1117,7 +1140,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
         payload,
         orderId: 101,
         config: ENABLED_CONFIG,
-        queryByKulsoAzon: noLookup,
+        queryByKulsoAzon: silentLookup,
         postXml: async (xml) => {
           sentXml.push(xml)
           return { szamlaszam: 'KIN-2026-9' }
@@ -1136,9 +1159,10 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
 /**
  * W7 — a kezdeti paid-ellenőrzés és a POST között a refund refunded-re
- * állíthatja a rendelést (üres invoiceNumber → stornó nem indul). Zárolás
- * NINCS a HTTP fölött: beküldés előtt újraolvasás, kiállítás után pedig
- * inline stornó, ha a rendelés közben refunded lett.
+ * állíthatja a rendelést (üres invoiceNumber → stornó nem indul). Az
+ * `invoice:<orderId>` zár a párhuzamos kiállítót sorosítja; beküldés előtt
+ * újraolvasás, kiállítás után pedig inline stornó, ha a rendelés közben
+ * refunded lett.
  */
 describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', () => {
   it('a beküldés előtti újraolvasás refunded: skipped, POST nincs', async () => {
@@ -1162,7 +1186,7 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
       orderId: 101,
       config: ENABLED_CONFIG,
       issueDate: '2026-08-04',
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async () => {
         posts += 1
         return { szamlaszam: 'KIN-2026-7' }
@@ -1203,7 +1227,7 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
       orderId: 101,
       config: ENABLED_CONFIG,
       issueDate: '2026-08-04',
-      queryByKulsoAzon: noLookup,
+      queryByKulsoAzon: silentLookup,
       postXml: async () => ({ szamlaszam: 'KIN-2026-7' }),
       issueStorno: async (ord) => {
         stornoOrders.push(ord)
