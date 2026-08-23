@@ -123,7 +123,10 @@ function createMockPayload(options: MockOptions = {}) {
 
 describe('grantPurchase — kimeneti ágak', () => {
   it('granted: a hiányzó terméket hozzáfűzi a purchases-listához', async () => {
-    const { payload, updates } = createMockPayload({ purchases: [11] })
+    const { payload, updates } = createMockPayload({
+      purchases: [11],
+      accessDurationDays: 365,
+    })
 
     const result = await grantPurchase({
       payload,
@@ -145,10 +148,15 @@ describe('grantPurchase — kimeneti ágak', () => {
       id: 7,
       data: { purchases: [11, 42] },
     })
+    const grants = (updates[0]?.data as { accessGrants: Array<{ product: number }> }).accessGrants
+    expect(grants).toEqual([expect.objectContaining({ product: 42 })])
   })
 
   it('granted: az audit-logs collectionbe is bekerül (action, actor, tétel)', async () => {
-    const { payload, creates } = createMockPayload({ purchases: [] })
+    const { payload, creates } = createMockPayload({
+      purchases: [],
+      accessDurationDays: 365,
+    })
 
     const result = await grantPurchase({
       payload,
@@ -288,6 +296,27 @@ describe('grantPurchase — kimeneti ágak', () => {
     expect(updates).toHaveLength(0)
   })
 
+  it('duration-required: új ajándéknál üres/0 napos óra — nem ír', async () => {
+    for (const accessDurationDays of [null, 0] as const) {
+      const { payload, updates } = createMockPayload({
+        purchases: [11],
+        accessDurationDays,
+      })
+
+      const result = await grantPurchase({
+        payload,
+        email: EMAIL,
+        productIdOrSku: SKU,
+        logger: silentLogger(),
+      })
+
+      expect(result.status, `accessDurationDays=${String(accessDurationDays)}`).toBe(
+        'duration-required',
+      )
+      expect(updates).toHaveLength(0)
+    }
+  })
+
   it('user-not-found: ismeretlen e-mail-cím', async () => {
     const { payload, updates } = createMockPayload({ userExists: false })
 
@@ -336,7 +365,10 @@ describe('grantPurchase — kimeneti ágak', () => {
 
 describe('grantPurchase — idempotencia', () => {
   it('kétszer hívva egyszer ír: a második hívás already-had', async () => {
-    const { payload, updates } = createMockPayload({ purchases: [] })
+    const { payload, updates } = createMockPayload({
+      purchases: [],
+      accessDurationDays: 365,
+    })
 
     const first = await grantPurchase({
       payload,
@@ -354,11 +386,16 @@ describe('grantPurchase — idempotencia', () => {
     expect(first.status).toBe('granted')
     expect(second.status).toBe('already-had')
     expect(updates).toHaveLength(1)
-    expect(updates[0].data).toEqual({ purchases: [42] })
+    expect(updates[0].data).toMatchObject({ purchases: [42] })
+    const grants = (updates[0].data as { accessGrants: Array<{ product: number }> }).accessGrants
+    expect(grants).toEqual([expect.objectContaining({ product: 42 })])
   })
 
   it('meglévő jogosultságot sosem vesz el (csak hozzáfűz)', async () => {
-    const { payload, updates } = createMockPayload({ purchases: [11, 12] })
+    const { payload, updates } = createMockPayload({
+      purchases: [11, 12],
+      accessDurationDays: 365,
+    })
 
     await grantPurchase({
       payload,
@@ -367,7 +404,9 @@ describe('grantPurchase — idempotencia', () => {
       logger: silentLogger(),
     })
 
-    expect(updates[0].data).toEqual({ purchases: [11, 12, 42] })
+    expect(updates[0].data).toMatchObject({ purchases: [11, 12, 42] })
+    const grants = (updates[0].data as { accessGrants: Array<{ product: number }> }).accessGrants
+    expect(grants).toEqual([expect.objectContaining({ product: 42 })])
   })
 })
 
@@ -375,7 +414,7 @@ describe('grantPurchase — W9 e-mail kis-nagybetű', () => {
   it('vegyes kis-nagybetűs címmel is megtalálja a vevőt (Payload lower-case tárolás)', async () => {
     const storedEmail = 'vevo@pelda.hu'
     const user = { id: 7, email: storedEmail, purchases: [] as number[] }
-    const product = { id: 42, sku: SKU }
+    const product = { id: 42, sku: SKU, accessDurationDays: 365 }
     const findCalls: Array<{ collection: string; where?: { email?: { equals?: string } } }> = []
     const payload = {
       find: vi.fn(async (args: { collection: string; where?: { email?: { equals?: string } } }) => {

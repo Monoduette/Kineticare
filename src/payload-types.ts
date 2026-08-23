@@ -1631,7 +1631,7 @@ export interface User {
    */
   role: 'owner' | 'staff' | 'customer';
   /**
-   * A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés után magától töltődik; munkatárs és tulajdonos kézzel is hozzáadhat vagy elvehet. A vevő saját magának nem adhat hozzáférést. A listaoszlopban minden kurzus mellett a haladás is megjelenik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet. Szűrés a listában: Szűrők → Megvásárolt kurzusok.
+   * A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés és ajándékozás után töltődik. Kézi ajándék a Kurzus ajándékozása panellel vagy a grant-purchase scripttel adható — itt pipálni nem lehet, mert a pipa megkerülné a hozzáférés hosszát. A vevő saját magának nem adhat hozzáférést. A listaoszlopban minden kurzus mellett a haladás is megjelenik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet. Szűrés a listában: Szűrők → Megvásárolt kurzusok.
    */
   purchases?: (number | Product)[] | null;
   /**

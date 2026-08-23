@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 import { hasStaffOrOwnerRole } from '../access/roles'
-import { grantPurchase } from './grant-purchase'
+import { GRANT_DURATION_REQUIRED_MESSAGE, grantPurchase } from './grant-purchase'
 import { logger } from './logger'
 import { generateRequestId, getRequestId } from './request-id'
 
@@ -23,7 +23,8 @@ import { generateRequestId, getRequestId } from './request-id'
  * Válasz-szerződés:
  * - 200: { status: 'granted' | 'already-had', message, email, userId?,
  *   productId?, productLabel? } — az already-had NEM hiba (idempotens no-op)
- * - 400: hiányzó/érvénytelen email, kurzus-azonosító vagy indok
+ * - 400: hiányzó/érvénytelen email, kurzus-azonosító, indok, vagy a
+ *   kurzusnál nincs megadva a hozzáférés hossza napokban
  * - 401/403: RBAC (fent)
  * - 404: ismeretlen felhasználó, illetve ismeretlen kurzus (külön üzenettel)
  * - 500: váratlan technikai hiba (naplózva requestId-vel)
@@ -140,6 +141,9 @@ export function createGrantPurchaseHandler(
           },
           { status: 404 },
         )
+      }
+      if (result.status === 'duration-required') {
+        return Response.json({ error: GRANT_DURATION_REQUIRED_MESSAGE }, { status: 400 })
       }
 
       return Response.json(

@@ -292,10 +292,10 @@ export function resolveCourseCta(
     }
   }
   if (product.status === 'published') {
-    // Ingyenes kurzus: regisztráció után azonnal elérhető, NEM a
-    // Barion-checkouton keresztül — a purchases-be a hozzáférés-adás flow írja
-    // (free-course-grant.ts). Az „ingyenes" fogalom EGYETLEN forrása az
-    // isFreeCourse: a beállítatlan ár-pipa NEM ingyenes (lásd az indoklását).
+    // Ingyenes kurzus: a kért SKU-t az igénylő űrlap írja a purchases-be
+    // (free-course-grant.ts), NEM a Barion-checkout és NEM a belépés.
+    // Az „ingyenes" fogalom EGYETLEN forrása az isFreeCourse: a beállítatlan
+    // ár-pipa NEM ingyenes (lásd az indoklását).
     if (isFreeCourse(product)) {
       return {
         kind: 'free',

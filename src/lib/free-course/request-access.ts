@@ -29,12 +29,13 @@ import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
  *     jön létre második), ismeretlen cím → új `customer` fiók a megadott
  *     névvel, eldobható véletlen jelszóval és `passwordSetupPending: true`
  *     jelzővel (a vendég-vásárlás és a vásárló-import ugyanezt teszi).
- *  3. Hozzáférés-adás a MEGLÉVŐ `grantFreeCoursesToUser` szolgáltatással —
- *     CSAK új fiókra, vagy meglévő `customer` + `passwordSetupPending === true`
- *     fiókra. Aktivált vevőnél és owner/staffnál a nyilvános űrlap NEM ír
- *     kurzust (tulajdonosi döntés, 2026-08-23): belépésre / jelszó-kérésre
- *     irányítjuk. Staff-ajándékozás marad a `/admin` „Kurzus ajándékozása”
- *     panel.
+ *  3. Hozzáférés-adás a MEGLÉVŐ `grantFreeCoursesToUser` szolgáltatással,
+ *     CSAK a kért `productId`-re. Új fiókra, vagy meglévő `customer` +
+ *     `passwordSetupPending === true` fiókra. Aktivált vevőnél és
+ *     owner/staffnál a nyilvános űrlap NEM ír kurzust (tulajdonosi döntés,
+ *     2026-08-23): belépésre / jelszó-kérésre irányítjuk. Staff-ajándékozás
+ *     marad a `/admin` „Kurzus ajándékozása” panel. Login/regisztráció nem
+ *     oszt ki ingyenes SKU-t.
  *  4. Belépő link: a Payload SAJÁT jelszó-visszaállító tokenje
  *     (`forgotPassword`, `disableEmail: true`) + a közös
  *     `buildPasswordResetUrl`. Külön, párhuzamos token-rendszer NINCS.
@@ -59,7 +60,7 @@ import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
  * ═══ IDEMPOTENCIA ═══
  * Kétszeri beküldés: (a) fiók — az advisory-zár + „előbb keress" miatt nem
  * keletkezik második; (b) hozzáférés — a `grantFreeCoursesToUser` csak a
- * hiányzót írja be, tehát nem duplázódik; (c) levél — jelszó-beállításra
+ * kért, hiányzó SKU-t írja be, tehát nem duplázódik; (c) levél — jelszó-beállításra
  * váró fióknál ÚJ tokennel ismét kimegy (a korábbi link érvénytelen), már
  * aktivált vevőnél és owner/staffnál tokent NEM írunk. A hívó oldali
  * kérés-korlát fogja a visszaélést.
@@ -417,9 +418,8 @@ export async function requestFreeCourseAccess(
   }
 
   // ── 2. Hozzáférés-adás (idempotens, missing-only) ─────────────────────────
-  // FRISS olvasás: új fióknál a Users afterChange(create) hookja már írhatott
-  // purchases-t (ugyanez a grant fut ott), a `create` visszatérési doc-ja
-  // viszont azt még nem tükrözi. Elavult listával a grant fölöslegesen írna.
+  // FRISS olvasás: a `create` visszatérési doc-ja a későbbi írást még nem
+  // tükrözi. Elavult listával a grant fölöslegesen írna.
   const fresh = ((await payload.findByID({
     collection: 'users',
     id: resolved.user.id,
@@ -476,12 +476,15 @@ export async function requestFreeCourseAccess(
     }
   }
 
-  const grant = await grantFreeCoursesToUser({ payload, user: fresh, logger: log })
+  const grant = await grantFreeCoursesToUser({
+    payload,
+    user: fresh,
+    productId: product.id,
+    logger: log,
+  })
 
-  // A kért termék TÉNYLEG bent van-e? A grant az ÖSSZES publikált ingyenes
-  // terméket kezeli, tehát ide csak akkor jutunk „nem"-mel, ha közben
-  // megváltozott a termék állapota. Csendben sikert jelenteni ilyenkor a
-  // legrosszabb: a látogató várná a kurzust, ami sosem jelenik meg nála.
+  // A kért termék TÉNYLEG bent van-e? A grant csak ezt az egy SKU-t írja.
+  // Ide csak akkor jutunk „nem"-mel, ha közben megváltozott a termék állapota.
   const owned = new Set([...purchaseIds(fresh), ...grant.grantedProductIds].map(String))
   if (!owned.has(String(product.id)) && !hasUserPurchased(fresh.purchases, product.id)) {
     log.error('RIASZTÁS: ingyenes kurzus igénylése — a hozzáférés nem került be a fiókba', {

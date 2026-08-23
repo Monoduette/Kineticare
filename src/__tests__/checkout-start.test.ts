@@ -71,6 +71,8 @@ interface MockPayloadOptions {
   findOrders?: (where: unknown) => { docs: unknown[]; totalDocs: number }
   orderDoc?: Order
   authUser?: User | null
+  /** A Barion-azonosító mentése dobjon (persist-hiba ág). */
+  persistBarionIdsFails?: boolean
 }
 
 function createMockPayload(options: MockPayloadOptions = {}) {
@@ -111,6 +113,9 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     update: vi.fn(
       async ({ id, data }: { id: number | string; data: Record<string, unknown> }) => {
         calls.update.push({ id, data })
+        if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
+          throw new Error('db write failed')
+        }
         return { id, ...data }
       },
     ),
@@ -869,7 +874,7 @@ describe('startCheckout — piszkozat-regresszió (átadás-doksi 3. szakasz 3. 
 })
 
 describe('startCheckout — Barion-hibaág', () => {
-  it('Barion Start-hiba esetén a rendelés payment_failed lesz és 502 jelzés megy vissza', async () => {
+  it('Barion Start-hiba esetén a rendelés payment_pending marad és 502 jelzés megy vissza', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -885,7 +890,22 @@ describe('startCheckout — Barion-hibaág', () => {
     await expect(promise).rejects.toMatchObject({ status: 502 })
     await expect(promise).rejects.toThrowError(/fizetés indítása most nem sikerült/)
 
-    expect(calls.update[0]).toMatchObject({ id: 101, data: { status: 'payment_failed' } })
+    expect(calls.update).toHaveLength(0)
+    expect(
+      calls.update.every((call) => (call.data as { status?: string }).status !== 'payment_failed'),
+    ).toBe(true)
+  })
+
+  it('Barion Start siker + persist-hiba: a rendelés pending marad, a gateway URL visszamegy', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls } = createMockPayload({ persistBarionIdsFails: true })
+
+    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+
+    expect(result).toEqual({ orderNumber: ORDER_NUMBER, gatewayUrl: GATEWAY_URL })
+    expect(
+      calls.update.every((call) => (call.data as { status?: string }).status !== 'payment_failed'),
+    ).toBe(true)
   })
 })
 

@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { withAdvisoryLock } from '../advisory-lock'
 import { logger as rootLogger, type Logger } from '../logger'
 import {
   getSzamlazzConfig,
@@ -445,9 +446,9 @@ export interface IssueInvoiceForOrderDeps {
   postXml?: (xml: string, config: SzamlazzClientConfig) => Promise<SzamlazzParsedSuccess>
   /**
    * Injektálható bizonylat-lekérdező (teszteléshez); alapból a valódi
-   * queryInvoiceByKulsoAzon. Két helyen fut: (1) újrapróbálás ELŐTT — a
-   * „kérés elment, válasz elveszett" eset feloldására; (2) 71/152-es
-   * duplikátum-jelzés után — a meglévő számla számának átvételére.
+   * queryInvoiceByKulsoAzon. Minden beküldés ELŐTT fut (első kísérlet is) —
+   * a paid job + poll resweep ne POST-oljon kétszer, ha a bizonylat már
+   * létezik. 71/152 után is lefut a meglévő számla számának átvételére.
    * A lekérdezés NEM fogyaszt beküldési kísérletet (F10).
    */
   queryByKulsoAzon?: (
@@ -478,6 +479,12 @@ export interface IssueInvoiceForOrderDeps {
  *   order-poll resweep csak a ['none','pending'] rendeléseket veszi fel újra
  *   (src/lib/order-poll/service.ts) — 'failed' esetén a job-retryk kimerülése
  *   után a számla ÖRÖKRE elveszne. A valódi fék a perzisztens 5-ös plafon (F4).
+ *
+ * A paid/issue szakasz `invoice:<orderId>` advisory-zár alatt fut (W7):
+ * a paid-átmenet jobja és a poll resweep ne POST-oljon egyszerre. A
+ * Számlázz.hu HTTP a záron belül van (a refund mintája). Barion-hívás NINCS
+ * ebben a zárban. Mockolt Payload (nincs drizzle) nem-productionben a zár
+ * nélkül futtatja a `fn`-t.
  */
 export async function issueInvoiceForOrder(
   deps: IssueInvoiceForOrderDeps,
@@ -493,6 +500,10 @@ export async function issueInvoiceForOrder(
     return { outcome: 'disabled' }
   }
 
+  return withAdvisoryLock(
+    deps.payload,
+    `invoice:${deps.orderId}`,
+    async () => {
   const order = (await deps.payload.findByID({
     collection: 'orders',
     id: deps.orderId,
@@ -606,9 +617,7 @@ export async function issueInvoiceForOrder(
    * W7: a számla kiállt (vagy átvettük), de a refund közben refunded-re
    * állíthatta a rendelést üres invoiceNumberrel — stornó nem indulna.
    * Itt, a számla számának rögzítése UTÁN újraolvasunk, és ha kell, inline
-   * stornózunk. A lockot NEM tartjuk HTTP fölött (CLAUDE.md: hosszú nyitott
-   * tranzakció fagyasztja az írásokat). A stornó hibája NEM billenti a
-   * számla-kimenetet failed-re.
+   * stornózunk. A stornó hibája NEM billenti a számla-kimenetet failed-re.
    */
   const stornoIfRefundedAfterIssue = async (invoiceNumber: string): Promise<void> => {
     const latest = await rereadOrder()
@@ -665,21 +674,22 @@ export async function issueInvoiceForOrder(
   }
 
   try {
-    // A12: újrapróbáláskor („kérés elment, válasz elveszett" gyanú) a beküldés
-    // MEGISMÉTLÉSE ELŐTT kötelező a szamlaKulsoAzon-alapú lekérdezés. A
-    // lekérdezés hibája szándékosan propagál (a státusz pending marad):
-    // bizonytalan állapotban nem szabad vakon újra beküldeni. A lekérdezés
-    // NEM fogyaszt kísérletet — a számláló csak a tényleges POST előtt nő (F10).
-    if (previousAttempts > 0) {
-      const found = await lookup(order.orderNumber, config)
-      if (found) {
-        return await adoptExisting(found.szamlaszam, 'retry-elotti lekerdezes')
-      }
+    // A12 + W7: MINDEN beküldés ELŐTT szamlaKulsoAzon-lekérdezés — első
+    // kísérletnél is. A paid job és a poll resweep így nem POST-ol kétszer,
+    // ha a bizonylat már létezik. A lekérdezés hibája szándékosan propagál
+    // (a státusz pending marad): bizonytalan állapotban nem szabad vakon
+    // újra beküldeni. A lekérdezés NEM fogyaszt kísérletet (F10).
+    const found = await lookup(order.orderNumber, config)
+    if (found) {
+      return await adoptExisting(
+        found.szamlaszam,
+        previousAttempts > 0 ? 'retry-elotti lekerdezes' : 'elso-kiserlet-elotti lekerdezes',
+      )
     }
 
     // W7: a kezdeti paid-ellenőrzés és a POST között a refund refunded-re
-    // állíthatja a rendelést. Zárolás NINCS a HTTP fölött — ehelyett
-    // közvetlenül a kísérlet-növelés / POST előtt újraolvasunk.
+    // állíthatja a rendelést. Közvetlenül a kísérlet-növelés / POST előtt
+    // újraolvasunk (az invoice-zár a párhuzamos kiállítót sorosítja).
     const latestBeforePost = await rereadOrder()
     if (!latestBeforePost || latestBeforePost.status !== 'paid') {
       orderLog.info('a rendelés státusza nem paid — számlakiállítás kihagyva', {
@@ -796,4 +806,7 @@ export async function issueInvoiceForOrder(
     orderLog.error('számlakiállítás váratlan hibával állt le', { attempts, error: message })
     throw error
   }
+    },
+    log,
+  )
 }
