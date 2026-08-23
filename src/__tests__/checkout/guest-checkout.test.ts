@@ -496,11 +496,12 @@ describe('startCheckout — vendég-vásárlás', () => {
 
   /**
    * NEGATÍV KONTROLL: a blokk nem lehet túlbuzgó. Egy LEJÁRT (a Barion-fizetési
-   * ablakon kívüli) payment_pending nem akadályozhatja meg az új próbálkozást —
-   * a szűrő `createdAt > cutoff` feltétele pont ezt zárja ki, és a lekérdezés
-   * ilyenkor üresen tér vissza.
+   * ablakon kívüli) payment_pending nem akadályozhatja meg az új próbálkozást.
+   * A fizetési ablak a `decidePendingCheckout` JS-ágán dől el, nem SQL-cutoffon;
+   * ez a teszt a „nincs pending" utat méri (üres find). A lejárt pending
+   * helyi cancelled + új Start útját a checkout-start teszt fedi.
    */
-  it('LEJÁRT fizetési ablak (a szűrő nem talál aktívat) → a vásárlás indulhat', async () => {
+  it('LEJÁRT fizetési ablak (nincs aktív pending) → a vásárlás indulhat', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
     const { payload, calls } = createMockPayload({
       existingUser: null,
@@ -517,11 +518,13 @@ describe('startCheckout — vendég-vásárlás', () => {
   })
 
   /**
-   * A LEKÉRDEZÉS ALAKJA is őrizve: az aktív-fizetés szűrő a Barion-fizetési
-   * ablakra vág (`createdAt > cutoff`). Enélkül egy régi, félbehagyott fizetés
-   * ÖRÖKRE blokkolná a vevőt.
+   * A LEKÉRDEZÉS ALAKJA: minden payment_pending a vevő+termékre, SQL-es
+   * createdAt-vágás NÉLKÜL. A fizetési ablak a `decidePendingCheckout`
+   * JS-ágán dől el, mert a lejárt pendinget is látni kell (helyi cancelled +
+   * új Start), és ha van PaymentId, GetPaymentState kell. SQL-cutoff mellett
+   * a lejárt sorok láthatatlanok maradnának.
    */
-  it('az aktív payment_pending szűrő a fizetési ablakra vág (createdAt-cutoff)', async () => {
+  it('a payment_pending lekérdezés nem vág createdAt-ra (az ablak JS-ben dől el)', async () => {
     const seenWhere: string[] = []
     const { payload } = createMockPayload({
       existingUser: null,
@@ -539,8 +542,9 @@ describe('startCheckout — vendég-vásárlás', () => {
 
     const pendingQuery = seenWhere.find((text) => text.includes('"payment_pending"'))
     expect(pendingQuery).toBeDefined()
-    expect(pendingQuery).toContain('"createdAt"')
-    expect(pendingQuery).toContain('greater_than')
+    expect(pendingQuery).toContain('"payment_pending"')
+    expect(pendingQuery).not.toContain('"createdAt"')
+    expect(pendingQuery).not.toContain('greater_than')
   })
 
   it('BEJELENTKEZVE a törzs `guest` mezője figyelmen kívül marad (nem lehet idegen címre rendelni)', async () => {
