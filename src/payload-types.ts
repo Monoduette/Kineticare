@@ -1634,6 +1634,16 @@ export interface User {
    * A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés után magától töltődik; munkatárs és tulajdonos kézzel is hozzáadhat vagy elvehet. A vevő saját magának nem adhat hozzáférést. A listaoszlopban minden kurzus mellett a haladás is megjelenik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet. Szűrés a listában: Szűrők → Megvásárolt kurzusok.
    */
   purchases?: (number | Product)[] | null;
+  /**
+   * Ajándék-hozzáférés kezdőpontja időkorlátos kurzusnál. Rendszer írja.
+   */
+  accessGrants?:
+    | {
+        product?: (number | null) | Product
+        grantedAt?: string | null
+        id?: string | null
+      }[]
+    | null
   billingName?: string | null;
   billingZip?: string | null;
   billingCity?: string | null;

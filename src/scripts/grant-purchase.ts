@@ -13,13 +13,13 @@
  *
  * IDEMPOTENS: ha a vevő már rendelkezik a termékkel és a hozzáférés él, a
  * script „már megvan" üzenettel, 0-s kilépési kóddal leáll (NEM hiba). Ha a
- * termék megvan, de a hozzáférés lejárt, őszinte hibaüzenet és kilépési kód 1:
- * a manuális grant önmagában nem hosszabbít.
+ * termék megvan, de a hozzáférés lejárt, a script ajándékként megújítja
+ * (accessGrants.grantedAt = most), 0-s kilépési kóddal — paid rendelés nélkül.
  *
  * Kilépési kódok:
- *   0 — siker (hozzáférés beírva VAGY már megvolt és él)
+ *   0 — siker (ajándék beírva, megújítva, VAGY már megvolt és él)
  *   1 — hiba (hiányzó/hibás argumentum, ismeretlen felhasználó vagy termék,
- *       lejárt hozzáférés, adatbázis-hiba)
+ *       adatbázis-hiba)
  *
  * A script NEM hoz létre felhasználót és NEM rendelést — kizárólag a
  * users.purchases mezőt egészíti ki (missing-only), overrideAccess-szel.
@@ -34,7 +34,6 @@
 import { getPayload } from 'payload'
 
 import {
-  ACCESS_EXPIRED_GRANT_MESSAGE,
   grantPurchase as grantPurchaseService,
 } from '../lib/grant-purchase'
 import { createLogger } from '../lib/logger'
@@ -124,9 +123,6 @@ async function grantPurchase(args: CliArgs): Promise<void> {
         : `Nincs ilyen termék (sku: ${result.productRef}). Ellenőrizd a sku-t az admin felületen.`,
     )
   }
-  if (result.status === 'access-expired') {
-    throw new Error(ACCESS_EXPIRED_GRANT_MESSAGE)
-  }
   if (result.status === 'already-had') {
     console.log(
       `Már megvan: ${args.email} már rendelkezik a(z) "${result.productLabel}" termékkel — nincs teendő.`,
@@ -135,7 +131,7 @@ async function grantPurchase(args: CliArgs): Promise<void> {
   }
 
   console.log(
-    `Kész: ${args.email} hozzáférést kapott a(z) "${result.productLabel}" termékhez (felhasználó #${result.userId}, termék #${result.productId}).`,
+    `Kész: ${args.email} megkapta a(z) "${result.productLabel}" kurzust ajándékba (felhasználó #${result.userId}, termék #${result.productId}).`,
   )
 }
 

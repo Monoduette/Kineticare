@@ -553,6 +553,48 @@ export const Users: CollectionConfig = {
       },
     },
     {
+      /**
+       * Ajándék-hozzáférés kezdőpontja időkorlátos kurzusnál (accessDurationDays).
+       *
+       * A purchases lista csak azt tudja, HOZZÁFÉR-e a vevő; a 365 napos óra
+       * kezdőpontja paid rendelés nélkül itt él. Írás: kizárólag rendszerfolyamat
+       * (`overrideAccess: true`) — a Kurzus ajándékozása panel a grant-végpontot
+       * hívja, nem ezt a mezőt. Emberi review: új mező, create/update zárt
+       * (a passwordSetupPending mintája); a purchases access-függvényei
+       * változatlanok.
+       */
+      name: 'accessGrants',
+      type: 'array',
+      label: 'Ajándék-hozzáférés (időpontok)',
+      access: {
+        create: () => false,
+        update: () => false,
+      },
+      admin: {
+        readOnly: true,
+        description:
+          'Időkorlátos ajándék-kurzus kezdőpontja. A staff a Kurzus ajándékozása panellel adja, nem itt.',
+      },
+      fields: [
+        {
+          name: 'product',
+          type: 'relationship',
+          relationTo: 'products',
+          required: true,
+          label: 'Kurzus',
+        },
+        {
+          name: 'grantedAt',
+          type: 'date',
+          required: true,
+          label: 'Ajándékozás időpontja',
+          admin: {
+            date: { pickerAppearance: 'dayAndTime' },
+          },
+        },
+      ],
+    },
+    {
       // Olvasható áttekintő a felhasználó LAPJÁN: melyik kurzust vette meg, a
       // kurzus címével. UI-mező (nem tárol adatot → nincs séma-változás), a
       // fenti relationship-mező marad a szerkesztés helye.
@@ -573,7 +615,7 @@ export const Users: CollectionConfig = {
       // audit-naplózott) — ugyanaz a szolgáltatás, amit a CLI-script használ.
       name: 'grantPurchasePanel',
       type: 'ui',
-      label: 'Kurzus-hozzáférés adása',
+      label: 'Kurzus ajándékozása',
       admin: {
         components: {
           Field: '/components/admin/GrantPurchasePanel#GrantPurchasePanel',

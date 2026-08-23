@@ -6,7 +6,7 @@ import { useCallback, useState, type CSSProperties } from 'react'
 import { hasStaffOrOwnerRole } from '../../access/roles'
 
 /**
- * „Kurzus-hozzáférés adása" panel a felhasználó szerkesztőnézetében
+ * „Kurzus ajándékozása" panel a felhasználó szerkesztőnézetében
  * (users `type: 'ui'` mező).
  *
  * KIZÁRÓLAG felület: a hozzáférés-adás logikája a POST
@@ -25,9 +25,7 @@ import { hasStaffOrOwnerRole } from '../../access/roles'
 const REQUEST_TIMEOUT_MS = 20_000
 
 /** §2.7 / A/9: „Kérjük" nélkül, a következő lépés kimondva (lásd RefundPanel). */
-const GENERIC_ERROR = 'A hozzáférés megadása most nem sikerült. Próbáld újra néhány perc múlva.'
-const ACCESS_EXPIRED_GRANT_MESSAGE =
-  'A hozzáférés lejárt. Új paid rendelés kell a megújításhoz. A manuális grant önmagában nem hosszabbít.'
+const GENERIC_ERROR = 'Az ajándékozás most nem sikerült. Próbáld újra néhány perc múlva.'
 const NETWORK_ERROR = 'Nem sikerült elérni a szervert. Ellenőrizd a kapcsolatot, és próbáld újra.'
 const PRODUCTS_ERROR =
   'A kurzusok listája nem tölthető be. Frissítsd az oldalt, és nyisd meg újra a panelt.'
@@ -58,10 +56,10 @@ function readServerError(body: unknown): string | null {
 /** A sikeres válasz magyar üzenete ({ status, message }). */
 function readGrantMessage(body: unknown): string {
   if (typeof body !== 'object' || body === null) {
-    return 'Hozzáférés megadva.'
+    return 'A kurzust ajándékoztam.'
   }
   const message = (body as Record<string, unknown>).message
-  return typeof message === 'string' && message.trim().length > 0 ? message : 'Hozzáférés megadva.'
+  return typeof message === 'string' && message.trim().length > 0 ? message : 'A kurzust ajándékoztam.'
 }
 
 /** A products REST-válasz szűkítése választható elemekre. */
@@ -145,7 +143,7 @@ export function GrantPurchasePanel() {
       const options = readProductOptions(body)
       setProducts(options)
       if (options.length === 0) {
-        setProductsError('Nincs közzétett kurzus, amihez hozzáférést lehetne adni.')
+        setProductsError('Nincs közzétett kurzus, amit ajándékozni lehetne.')
       }
     } catch {
       setProductsError(NETWORK_ERROR)
@@ -167,7 +165,7 @@ export function GrantPurchasePanel() {
     }
     if (selectedProduct.length === 0) {
       setSuccessMessage(null)
-      setErrorMessage('Válassz kurzust a hozzáférés megadásához.')
+      setErrorMessage('Válassz kurzust az ajándékozáshoz.')
       return
     }
     if (reason.trim().length === 0) {
@@ -178,7 +176,7 @@ export function GrantPurchasePanel() {
     const label = products.find((option) => option.value === selectedProduct)?.label ?? selectedProduct
     if (
       !window.confirm(
-        `Biztosan hozzáférést adsz a(z) "${label}" kurzushoz ennek a felhasználónak: ${email}?`,
+        `Biztosan ajándékozod a(z) "${label}" kurzust ennek a felhasználónak: ${email}?`,
       )
     ) {
       return
@@ -201,14 +199,6 @@ export function GrantPurchasePanel() {
       } catch {
         body = null
       }
-      const expiredStatus =
-        typeof body === 'object' &&
-        body !== null &&
-        (body as Record<string, unknown>).status === 'access-expired'
-      if (expiredStatus || response.status === 409) {
-        setErrorMessage(readServerError(body) ?? ACCESS_EXPIRED_GRANT_MESSAGE)
-        return
-      }
       if (!response.ok) {
         setErrorMessage(readServerError(body) ?? GENERIC_ERROR)
         return
@@ -228,7 +218,7 @@ export function GrantPurchasePanel() {
   if (isInitializing) {
     return (
       <div className="field-type" style={panelStyle}>
-        <h3 style={{ marginTop: 0 }}>Kurzus-hozzáférés adása</h3>
+        <h3 style={{ marginTop: 0 }}>Kurzus ajándékozása</h3>
         <p style={noteStyle}>Betöltés…</p>
       </div>
     )
@@ -237,9 +227,9 @@ export function GrantPurchasePanel() {
   if (!hasStaffOrOwnerRole(user)) {
     return (
       <div className="field-type" style={panelStyle}>
-        <h3 style={{ marginTop: 0 }}>Kurzus-hozzáférés adása</h3>
+        <h3 style={{ marginTop: 0 }}>Kurzus ajándékozása</h3>
         <p style={noteStyle}>
-          Kurzus-hozzáférést csak munkatárs vagy tulajdonos adhat.
+          Kurzust csak munkatárs vagy tulajdonos ajándékozhat.
         </p>
       </div>
     )
@@ -248,9 +238,9 @@ export function GrantPurchasePanel() {
   if (!email) {
     return (
       <div className="field-type" style={panelStyle}>
-        <h3 style={{ marginTop: 0 }}>Kurzus-hozzáférés adása</h3>
+        <h3 style={{ marginTop: 0 }}>Kurzus ajándékozása</h3>
         <p style={noteStyle}>
-          Előbb mentsd a felhasználót: a hozzáférés az e-mail-cím alapján adható.
+          Előbb mentsd a felhasználót: az ajándékozás az e-mail-cím alapján történik.
         </p>
       </div>
     )
@@ -258,9 +248,9 @@ export function GrantPurchasePanel() {
 
   return (
     <div className="field-type" style={panelStyle}>
-      <h3 style={{ marginTop: 0 }}>Kurzus-hozzáférés adása</h3>
+      <h3 style={{ marginTop: 0 }}>Kurzus ajándékozása</h3>
       <p style={noteStyle}>
-        Kézi jóváírás (elhibázott fizetés, ajándék kurzus). A művelet naplózásra kerül, és
+        Kézi ajándékozás (elhibázott fizetés, ajándék kurzus). A művelet naplózásra kerül, és
         ismételt megadás esetén sem duplázódik.
       </p>
 
@@ -314,7 +304,7 @@ export function GrantPurchasePanel() {
               }}
               size="medium"
             >
-              {pending ? 'Hozzáférés megadása folyamatban…' : 'Hozzáférés megadása'}
+              {pending ? 'Ajándékozás folyamatban…' : 'Ajándékozom a kurzust'}
             </Button>
           </div>
 
@@ -327,7 +317,7 @@ export function GrantPurchasePanel() {
       ) : (
         <div style={rowStyle}>
           <Button buttonStyle="secondary" onClick={openPanel} size="medium">
-            Hozzáférés adása
+            Kurzus ajándékozása
           </Button>
         </div>
       )}

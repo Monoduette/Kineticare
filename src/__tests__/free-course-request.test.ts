@@ -427,7 +427,7 @@ describe('igénylés ÚJ e-mail-címmel', () => {
 // ---------------------------------------------------------------------------
 
 describe('igénylés MEGLÉVŐ e-mail-címmel', () => {
-  it('nem hoz létre második fiókot, a hozzáférést viszont hozzáadja', async () => {
+  it('nem hoz létre második fiókot, és aktivált vevőnek NEM ír kurzust', async () => {
     const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
     const { log } = createLogger()
 
@@ -445,13 +445,16 @@ describe('igénylés MEGLÉVŐ e-mail-címmel', () => {
     expect(result.userCreated).toBe(false)
     expect(mock.created).toHaveLength(0)
     expect(mock.users).toHaveLength(1)
-    expect(mock.users[0].purchases).toContain(FREE_COURSE.id)
+    expect(mock.users[0].purchases ?? []).not.toContain(FREE_COURSE.id)
+    expect(mock.sent).toHaveLength(1)
+    expect(mock.sent[0]?.html).toContain('/belepes')
+    expect(mock.sent[0]?.html).toContain('/elfelejtett-jelszo')
     // A meglévő fiók NEVÉT nem írja felül az űrlapon megadott név.
     expect(mock.users[0].name).toBe('Anna')
-    // Aktivált vevő: grant IGEN, 7 napos reset-token NEM (K3).
-    expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
+    // Aktivált vevő: a nyilvános űrlap NEM írja rá a kurzust (staff-ajándék
+    // az admin panel). Belépés / jelszó-helyreállítás a levélben.
+    expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
     expect(mock.forgotPasswordCalls).toHaveLength(0)
-    expect(mock.sent).toHaveLength(0)
   })
 
   it('a HTTP-válasz BITRE azonos új és meglévő címnél (fiók-felderítés elleni védelem)', async () => {
@@ -510,6 +513,15 @@ describe('jelszó-token és grant kapu (K3)', () => {
         created: false,
         role: 'customer',
         passwordSetupPending: false,
+      }),
+    ).toEqual({ grant: false, issueSetPasswordToken: false })
+    expect(
+      resolveFreeCourseRequestActions({
+        created: false,
+        role: 'customer',
+        passwordSetupPending: false,
+        actorUserId: 101,
+        userId: 101,
       }),
     ).toEqual({ grant: true, issueSetPasswordToken: false })
     expect(
@@ -601,7 +613,7 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(mock.sent).toHaveLength(1)
   })
 
-  it('meglévő customer jelszóval: forgotPassword NEM, grant IGEN', async () => {
+  it('meglévő customer jelszóval: forgotPassword NEM, grant NEM, belépős levél IGEN', async () => {
     const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
     const { log } = createLogger()
 
@@ -617,10 +629,11 @@ describe('jelszó-token és grant kapu (K3)', () => {
 
     expect(result.status).toBe('ok')
     expect(result.userCreated).toBe(false)
-    expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
-    expect(mock.users[0].purchases).toContain(FREE_COURSE.id)
+    expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
+    expect(mock.users[0].purchases ?? []).not.toContain(FREE_COURSE.id)
     expect(mock.forgotPasswordCalls).toHaveLength(0)
-    expect(mock.sent).toHaveLength(0)
+    expect(mock.sent).toHaveLength(1)
+    expect(mock.sent[0]?.html).toContain('/belepes')
   })
 
   it('új fiók: forgotPassword + grant, a HTTP-válasz nem árulja el a szerepkört', async () => {

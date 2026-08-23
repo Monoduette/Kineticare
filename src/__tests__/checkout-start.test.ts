@@ -84,6 +84,13 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     auth: vi.fn(async () => ({ user: options.authUser === undefined ? mockUser : options.authUser })),
     findByID: vi.fn(async (args: Record<string, unknown>) => {
       calls.findByID.push(args)
+      if (args.collection === 'users') {
+        return {
+          id: mockUser.id,
+          purchases: (mockUser as { purchases?: number[] }).purchases ?? [],
+          accessGrants: [],
+        }
+      }
       if (options.product === null) {
         throw new Error('Not Found')
       }
@@ -550,26 +557,172 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(asText).toContain('"customer"')
   })
 
-  it('lejárt payment_pending NEM blokkol: a lekérdezés a fizetési ablakra szűkül', async () => {
+  it('lejárt payment_pending PaymentId nélkül: helyi cancelled, új Start mehet', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const staleCreatedAt = new Date(Date.now() - paymentWindowToMs() - 60_000).toISOString()
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? {
+              docs: [
+                {
+                  id: 77,
+                  status: 'payment_pending',
+                  createdAt: staleCreatedAt,
+                  barionPaymentId: null,
+                  orderNumber: 'KH-REGI',
+                },
+              ],
+              totalDocs: 1,
+            }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+
+    expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(true)
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+
+  it('nyitott Barion-fizetés: ugyanarra a Pay-URL-re visz, második Start nincs', async () => {
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? {
+              docs: [
+                {
+                  id: 88,
+                  status: 'payment_pending',
+                  createdAt: new Date().toISOString(),
+                  barionPaymentId: 'pay-open',
+                  orderNumber: 'KH-NYITOTT',
+                },
+              ],
+              totalDocs: 1,
+            }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const result = await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Started' }) as never,
+      barionEnvironment: 'test',
+    })
+
+    expect(result).toEqual({
+      orderNumber: 'KH-NYITOTT',
+      gatewayUrl: 'https://secure.test.barion.com/Pay?id=pay-open',
+    })
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('GetPaymentState hiba → 503, második Start tilos', async () => {
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? {
+              docs: [
+                {
+                  id: 89,
+                  status: 'payment_pending',
+                  createdAt: new Date().toISOString(),
+                  barionPaymentId: 'pay-err',
+                  orderNumber: 'KH-HIBA',
+                },
+              ],
+              totalDocs: 1,
+            }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => {
+        throw new Error('barion timeout')
+      },
+    })
+    await expect(promise).rejects.toMatchObject({ status: 503 })
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Succeeded függő rendelés: paid-átmenet, új Start 409', async () => {
+    const pendingOrder = {
+      id: 90,
+      status: 'payment_pending',
+      createdAt: new Date().toISOString(),
+      barionPaymentId: 'pay-ok',
+      orderNumber: 'KH-SIKER',
+    }
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? { docs: [pendingOrder], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+    const onOrderPaid = vi.fn()
+
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Succeeded' }) as never,
+      applyBarionStateTransition: async () => ({ action: 'paid', transitionedToPaid: true }),
+      onOrderPaid,
+      barionEnvironment: 'test',
+    })
+    await expect(promise).rejects.toMatchObject({ status: 409 })
+    expect(onOrderPaid).toHaveBeenCalledTimes(1)
+    expect(calls.create).toHaveLength(0)
+  })
+
+  it('lejárt időkorlátos hozzáférés: bejelentkezve újravásárolható', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls } = createMockPayload({
+      product: { ...publishedProduct, accessDurationDays: 365 } as Product,
+      findOrders: (where) =>
+        whereMentions(where, '"paid"')
+          ? { docs: [{ id: 55, status: 'paid' }], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const result = await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      resolveSingleCourseAccess: async () => ({
+        hasAccess: false,
+        expiresAt: new Date('2020-01-01T00:00:00.000Z'),
+        reason: 'expired',
+      }),
+    })
+
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+
+  it('korlátlan SKU tulajdonlás (purchases): 409, hasAccess fail-open nem számít', async () => {
+    const owner = { ...mockUser, purchases: [42] } as unknown as User
     const { payload, calls } = createMockPayload()
 
-    await startCheckout({ payload, user: mockUser, input: happyInput })
-
-    // A payment_pending lekérdezés createdAt-cutoffot tartalmaz (a lejártakat kizárja).
-    const pendingQuery = calls.find.find(
-      (where) => whereMentions(where, 'payment_pending'),
-    ) as { and?: Array<Record<string, unknown>> }
-    expect(pendingQuery).toBeDefined()
-    const createdAtClause = pendingQuery.and?.find((clause) => 'createdAt' in clause) as
-      | { createdAt: { greater_than: string } }
-      | undefined
-    expect(createdAtClause).toBeDefined()
-    // A Payload where-operátora a greater_than (a korábbi camelCase greaterThan
-    // a valódi lekérdezésben „path cannot be queried" 500-ast dobott élesben).
-    const cutoffMs = Date.parse(createdAtClause!.createdAt.greater_than)
-    expect(Date.now() - cutoffMs).toBeGreaterThanOrEqual(paymentWindowToMs() - 5000)
-    expect(Date.now() - cutoffMs).toBeLessThanOrEqual(paymentWindowToMs() + 5000)
+    const promise = startCheckout({
+      payload,
+      user: owner,
+      input: happyInput,
+      resolveSingleCourseAccess: async () => ({
+        hasAccess: true,
+        expiresAt: null,
+        reason: 'unlimited',
+      }),
+    })
+    await expect(promise).rejects.toMatchObject({ status: 409 })
+    expect(calls.create).toHaveLength(0)
   })
 })
 
