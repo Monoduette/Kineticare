@@ -25,6 +25,11 @@
  * A manifestet az index.ts-re és önmagára NEM számolja (az index.ts a G4-őr
  * tömb-egyezéses tesztje őrzi, a manifest integritását pedig a G3 git-alapú
  * append-only szabálya).
+ *
+ * GITLEAKS: a generic-api-key a manifest `"fájl": "<64 hex>"` mezőit kulcsnak
+ * nézheti. Ez nem titok (G3 checksum). Fájl-allowlist tilos; a két új hex-et
+ * indoklással a `.gitleaks.toml` regex-listájába kell felvenni, ha a kapu
+ * fennakad. A migrációs .ts/.json ettől még szkennelve marad.
  */
 
 import { createHash } from 'node:crypto'
