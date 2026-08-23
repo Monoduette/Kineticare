@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 import { hasStaffOrOwnerRole } from '../access/roles'
-import { ACCESS_EXPIRED_GRANT_MESSAGE, grantPurchase } from './grant-purchase'
+import { grantPurchase } from './grant-purchase'
 import { logger } from './logger'
 import { generateRequestId, getRequestId } from './request-id'
 
@@ -26,8 +26,6 @@ import { generateRequestId, getRequestId } from './request-id'
  * - 400: hiányzó/érvénytelen email, kurzus-azonosító vagy indok
  * - 401/403: RBAC (fent)
  * - 404: ismeretlen felhasználó, illetve ismeretlen kurzus (külön üzenettel)
- * - 409: a kurzus a purchases-ben van, de a hozzáférés lejárt — a manuális
- *   grant önmagában nem hosszabbít
  * - 500: váratlan technikai hiba (naplózva requestId-vel)
  */
 export interface GrantPurchaseHandlerDeps {
@@ -60,7 +58,7 @@ export function createGrantPurchaseHandler(
       const { user } = await payload.auth({ headers: request.headers })
       if (!user) {
         return Response.json(
-          { error: 'A kurzus-hozzáférés adásához bejelentkezés szükséges.' },
+          { error: 'A kurzus ajándékozásához bejelentkezés szükséges.' },
           { status: 401 },
         )
       }
@@ -70,7 +68,7 @@ export function createGrantPurchaseHandler(
           role: user.role ?? null,
         })
         return Response.json(
-          { error: 'A kurzus-hozzáférés adásához munkatársi vagy tulajdonosi jogosultság kell.' },
+          { error: 'A kurzus ajándékozásához munkatársi vagy tulajdonosi jogosultság kell.' },
           { status: 403 },
         )
       }
@@ -97,14 +95,14 @@ export function createGrantPurchaseHandler(
       const email = readRequiredString(body.email)
       if (!email) {
         return Response.json(
-          { error: 'Hiányzó e-mail-cím: add meg, kinek adsz hozzáférést.' },
+          { error: 'Hiányzó e-mail-cím: add meg, kinek ajándékozod a kurzust.' },
           { status: 400 },
         )
       }
       const productIdOrSku = readRequiredString(body.productIdOrSku)
       if (!productIdOrSku) {
         return Response.json(
-          { error: 'Válassz kurzust a hozzáférés megadásához.' },
+          { error: 'Válassz kurzust az ajándékozáshoz.' },
           { status: 400 },
         )
       }
@@ -143,12 +141,6 @@ export function createGrantPurchaseHandler(
           { status: 404 },
         )
       }
-      if (result.status === 'access-expired') {
-        return Response.json(
-          { error: ACCESS_EXPIRED_GRANT_MESSAGE, status: result.status },
-          { status: 409 },
-        )
-      }
 
       return Response.json(
         {
@@ -156,7 +148,7 @@ export function createGrantPurchaseHandler(
           message:
             result.status === 'already-had'
               ? 'Már hozzáfér ehhez a kurzushoz.'
-              : 'Hozzáférés megadva.',
+              : 'A kurzust ajándékoztam.',
           email: result.email,
           userId: result.userId,
           productId: result.productId,
@@ -170,7 +162,7 @@ export function createGrantPurchaseHandler(
       })
       return Response.json(
         {
-          error: 'A hozzáférés megadása most nem sikerült. Próbáld újra néhány perc múlva.',
+          error: 'A kurzus ajándékozása most nem sikerült. Próbáld újra néhány perc múlva.',
         },
         { status: 500 },
       )

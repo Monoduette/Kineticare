@@ -334,7 +334,8 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     }
     return { docs: options.orders ?? [] }
   })
-  return { payload: { find } as unknown as Payload, find }
+  const findByID = vi.fn(async () => ({ accessGrants: [] }))
+  return { payload: { find, findByID } as unknown as Payload, find }
 }
 
 function makeProduct(id: number, accessDurationDays?: number | null): Product {

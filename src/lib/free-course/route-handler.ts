@@ -265,6 +265,7 @@ export function createFreeCourseRequestHandler(
 
     try {
       const payload = await deps.getPayload()
+      const { user: actor } = await payload.auth({ headers: request.headers })
       const runRequest = deps.requestAccess ?? requestFreeCourseAccess
       const result = await runRequest({
         payload,
@@ -274,6 +275,7 @@ export function createFreeCourseRequestHandler(
         serverUrl: resolveServerUrlOrNull(env),
         logger: log,
         env,
+        actorUserId: typeof actor?.id === 'number' ? actor.id : null,
       })
 
       if (result.status === 'course-not-available') {

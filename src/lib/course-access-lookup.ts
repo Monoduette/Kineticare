@@ -1,6 +1,7 @@
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 
 import type { Order, Product } from '../payload-types'
+import { grantDatesFromRows, mergeAccessStartDates } from './access-grants'
 import { resolveCourseAccess, type CourseAccessState } from './course-access'
 import { logger as rootLogger, type Logger } from './logger'
 
@@ -80,8 +81,8 @@ export interface PurchaseDatesLookup {
 function paidOrdersWhere(
   userId: number,
   productIds: readonly number[] | undefined,
-): { and: Array<Record<string, unknown>> } {
-  const clauses: Array<Record<string, unknown>> = [
+): Where {
+  const clauses: Where[] = [
     { customer: { equals: userId } },
     { status: { equals: 'paid' } },
   ]
@@ -182,11 +183,41 @@ export async function resolveCourseAccessForUser(
       })
     : { dates: new Map<number, string>(), failed: false }
 
+  let grantDates = new Map<number, string>()
+  let grantFailed = false
+  if (hasAnyDurationLimit(input.products)) {
+    try {
+      const user = await input.payload.findByID({
+        collection: 'users',
+        id: input.userId,
+        depth: 0,
+        overrideAccess: true,
+      })
+      grantDates = grantDatesFromRows(
+        user && typeof user === 'object' ? (user as { accessGrants?: unknown }).accessGrants : null,
+      )
+    } catch (error) {
+      grantFailed = true
+      const log = input.logger ?? rootLogger
+      log.warn('kurzus-hozzáférés: az ajándék-időpontok lekérdezése sikertelen', {
+        userId: input.userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  const startDates = mergeAccessStartDates(lookup.dates, grantDates)
+
   for (const product of input.products) {
     const durationDays = product.accessDurationDays ?? null
     const isLimited =
       typeof durationDays === 'number' && Number.isFinite(durationDays) && durationDays > 0
-    if (lookup.failed && input.denyOnLookupFailure === true && isLimited) {
+    const grantMissingForProduct = grantFailed && !lookup.dates.has(product.id)
+    if (
+      (lookup.failed || grantMissingForProduct) &&
+      input.denyOnLookupFailure === true &&
+      isLimited
+    ) {
       states.set(product.id, {
         hasAccess: false,
         expiresAt: null,
@@ -197,7 +228,7 @@ export async function resolveCourseAccessForUser(
     states.set(
       product.id,
       resolveCourseAccess({
-        purchasedAt: lookup.dates.get(product.id) ?? null,
+        purchasedAt: startDates.get(product.id) ?? null,
         accessDurationDays: durationDays,
         now: input.now,
       }),

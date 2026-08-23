@@ -2,9 +2,28 @@ import type { Payload } from 'payload'
 
 import type { Order, Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
-import { BARION_DEFAULT_PAYMENT_WINDOW, BarionApiError, startPayment } from '../barion'
+import {
+  BARION_DEFAULT_PAYMENT_WINDOW,
+  BarionApiError,
+  fetchPaymentState,
+  getBarionConfig,
+  mapBarionPaymentStatus,
+  startPayment,
+  type BarionEnvironment,
+  type BarionPaymentStateResponse,
+} from '../barion'
 import { coursePriceHuf } from '../courses'
+import { durationDaysFromProduct } from '../access-grants'
+import { resolveSingleCourseAccess } from '../course-access-lookup'
 import { logger, type Logger } from '../logger'
+import { onOrderPaid } from '../order-paid'
+import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import {
+  CHECKOUT_PAYMENT_IN_PROGRESS,
+  CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
+  barionPayUrl,
+  decidePendingCheckout,
+} from './pending-payment'
 import {
   billingSummaryMessage,
   validateBilling,
@@ -163,6 +182,18 @@ export interface CheckoutStartOptions {
   /** Publikus szerver-URL a Barion Redirect/Callback URL-ekhez; alapból NEXT_PUBLIC_SERVER_URL. */
   serverUrl?: string
   logger?: Logger
+  /** Tesztben injektálható Barion-állapotlekérdezés. */
+  fetchPaymentState?: typeof fetchPaymentState
+  /** Tesztben injektálható paid-átmenet. */
+  applyBarionStateTransition?: typeof applyBarionStateTransition
+  /** Tesztben injektálható paid-mellékhatás. */
+  onOrderPaid?: typeof onOrderPaid
+  /** Tesztben injektálható hozzáférés-számítás. */
+  resolveSingleCourseAccess?: typeof resolveSingleCourseAccess
+  /** Tesztben injektálható „most". */
+  now?: Date
+  /** Tesztben injektálható Barion-környezet a Pay-URL-hez. */
+  barionEnvironment?: BarionEnvironment
 }
 
 export interface CheckoutStartResult {
@@ -406,48 +437,192 @@ function duplicateScopeWhere(scope: DuplicateScope, productId: number): Record<s
 }
 
 /** Duplavásárlás-blokk: paid rendelés vagy AKTÍV (nem lejárt) payment_pending → 409. */
-async function assertNoDuplicatePurchase(
-  payload: Payload,
-  scope: DuplicateScope,
-  productId: number,
-  paidMessage: string,
-): Promise<void> {
-  const baseWhere = duplicateScopeWhere(scope, productId)
+type DuplicateCheckResult =
+  | { kind: 'ok' }
+  | { kind: 'resume'; orderNumber: string; gatewayUrl: string }
+  | { kind: 'already-paid'; order: Order; transitionedToPaid: boolean }
 
-  const paidOrders = await payload.find({
+function purchaseIdsFromUser(user: User | null | undefined): Set<number> {
+  const ids = new Set<number>()
+  const purchases = user?.purchases
+  if (!Array.isArray(purchases)) {
+    return ids
+  }
+  for (const entry of purchases) {
+    if (typeof entry === 'number' && Number.isFinite(entry)) {
+      ids.add(entry)
+    } else if (entry && typeof entry === 'object' && typeof entry.id === 'number') {
+      ids.add(entry.id)
+    }
+  }
+  return ids
+}
+
+function resolveBarionEnvironment(
+  explicit: BarionEnvironment | undefined,
+): BarionEnvironment {
+  if (explicit === 'test' || explicit === 'prod') {
+    return explicit
+  }
+  try {
+    return getBarionConfig().environment
+  } catch {
+    throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+  }
+}
+
+interface DuplicateCheckContext {
+  payload: Payload
+  scope: DuplicateScope
+  product: Product
+  user: User | null
+  paidMessage: string
+  log: Logger
+  nowMs: number
+  fetchPaymentState: typeof fetchPaymentState
+  applyBarionStateTransition: typeof applyBarionStateTransition
+  resolveSingleCourseAccess: typeof resolveSingleCourseAccess
+  barionEnvironment: BarionEnvironment
+}
+
+/**
+ * Duplavásárlás + függő Barion-fizetés.
+ *
+ * Először a még nyitott payment_pending-et nézzük (Baymard: ne indíts
+ * második fizetést, folytasd a meglevőt). GetPaymentState a checkout-zárban
+ * fut: szándékos, a dupla Start-ot így sorosítjuk. A hívás jellemzően 1–2 mp,
+ * bőven a ~60 mp-es advisory-zár alatt. GetPaymentState hiba → 503,
+ * fail-closed. Succeeded → helyi paid-átmenet, új Start tilos. Failed /
+ * Expired / Canceled → helyi cancelled, új Start mehet.
+ *
+ * Paid / purchases: vendégnek mindig 409 (nem áruljuk el a vásárlást).
+ * Bejelentkezve a lejárt időkorlátos hozzáférés ÚJRA vásárolható; az
+ * unlimited SKU-nál a tulajdonlás (purchases vagy paid) számít, nem a
+ * hasAccess fail-open.
+ */
+async function resolveDuplicatePurchase(
+  ctx: DuplicateCheckContext,
+): Promise<DuplicateCheckResult> {
+  const baseWhere = duplicateScopeWhere(ctx.scope, ctx.product.id)
+
+  const pendingOrders = await ctx.payload.find({
+    collection: 'orders',
+    where: { and: [baseWhere, { status: { equals: 'payment_pending' } }] },
+    limit: 1,
+    depth: 0,
+    sort: '-createdAt',
+    overrideAccess: true,
+  } as unknown as Parameters<Payload['find']>[0])
+
+  const pending = pendingOrders.docs[0] as Order | undefined
+  if (pending) {
+    const paymentId =
+      typeof pending.barionPaymentId === 'string' && pending.barionPaymentId.trim().length > 0
+        ? pending.barionPaymentId.trim()
+        : null
+    let mappedState: 'paid' | 'cancelled' | 'payment_pending' | 'unavailable' | null = null
+    let rawState: BarionPaymentStateResponse | null = null
+    if (paymentId !== null) {
+      try {
+        rawState = await ctx.fetchPaymentState(paymentId)
+        mappedState = mapBarionPaymentStatus(rawState.Status)
+      } catch (error) {
+        ctx.log.warn('checkout-start: a Barion fizetésállapot nem kérdezhető le', {
+          orderId: pending.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        mappedState = 'unavailable'
+      }
+    }
+
+    const decision = decidePendingCheckout({
+      barionPaymentId: paymentId,
+      createdAt: typeof pending.createdAt === 'string' ? pending.createdAt : null,
+      mappedState,
+      nowMs: ctx.nowMs,
+      windowMs: paymentWindowToMs(),
+    })
+
+    if (decision.kind === 'barion-unavailable') {
+      throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    }
+    if (decision.kind === 'wait-no-payment-id') {
+      throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
+    }
+    if (decision.kind === 'resume') {
+      const orderNumber = pending.orderNumber
+      if (typeof orderNumber !== 'string' || orderNumber.length === 0) {
+        throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
+      }
+      return {
+        kind: 'resume',
+        orderNumber,
+        gatewayUrl: barionPayUrl(decision.paymentId, ctx.barionEnvironment),
+      }
+    }
+    if (decision.kind === 'already-paid') {
+      if (rawState === null) {
+        throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+      }
+      const transition = await ctx.applyBarionStateTransition({
+        payload: ctx.payload,
+        order: pending,
+        mapped: 'paid',
+        state: rawState,
+        log: ctx.log,
+      })
+      return {
+        kind: 'already-paid',
+        order: pending,
+        transitionedToPaid: transition.transitionedToPaid === true,
+      }
+    }
+    if (decision.kind === 'cancel-and-restart') {
+      await ctx.payload.update({
+        collection: 'orders',
+        id: pending.id,
+        data: { status: 'cancelled' },
+        overrideAccess: true,
+      })
+    }
+  }
+
+  const paidOrders = await ctx.payload.find({
     collection: 'orders',
     where: { and: [baseWhere, { status: { equals: 'paid' } }] },
     limit: 1,
     depth: 0,
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
-  if (paidOrders.totalDocs > 0) {
-    throw new CheckoutError(409, paidMessage)
+  const hasPaidOrder = paidOrders.totalDocs > 0
+  const ownsInPurchases = purchaseIdsFromUser(ctx.user).has(ctx.product.id)
+
+  if (!hasPaidOrder && !ownsInPurchases) {
+    return { kind: 'ok' }
   }
 
-  // Csak a Barion-fizetési ablakban (default 30 perc) lévő payment_pending
-  // számít aktívnak; a lejárt, befejezetlen fizetések nem blokkolják az új próbálkozást.
-  const windowCutoff = new Date(Date.now() - paymentWindowToMs()).toISOString()
-  const pendingOrders = await payload.find({
-    collection: 'orders',
-    where: {
-      and: [
-        baseWhere,
-        { status: { equals: 'payment_pending' } },
-        { createdAt: { greater_than: windowCutoff } },
-      ],
-    },
-    limit: 1,
-    depth: 0,
-    overrideAccess: true,
-  } as unknown as Parameters<Payload['find']>[0])
-  if (pendingOrders.totalDocs > 0) {
-    throw new CheckoutError(
-      409,
-      'Ehhez a termékhez már folyamatban van egy fizetés. Fejezd be azt, vagy várd meg a fizetési ablak lejártát.',
-    )
+  if (ctx.user === null) {
+    throw new CheckoutError(409, ctx.paidMessage)
   }
+
+  const durationDays = durationDaysFromProduct(ctx.product)
+  if (durationDays === null) {
+    throw new CheckoutError(409, ctx.paidMessage)
+  }
+
+  const access = await ctx.resolveSingleCourseAccess({
+    payload: ctx.payload,
+    userId: ctx.user.id,
+    product: ctx.product,
+    now: new Date(ctx.nowMs),
+    logger: ctx.log,
+  })
+  if (access.reason === 'expired') {
+    return { kind: 'ok' }
+  }
+  throw new CheckoutError(409, ctx.paidMessage)
 }
+
 
 /**
  * Rendelésszám-ütközés (23505) felismerése.
@@ -711,7 +886,15 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       ? `checkout:${buyer.existingUser.id}:${productId}`
       : `checkout:guest:${buyer.email}:${productId}`
 
-  const order = await withAdvisoryLock(
+  const fetchPaymentStateFn = options.fetchPaymentState ?? fetchPaymentState
+  const applyBarionStateTransitionFn =
+    options.applyBarionStateTransition ?? applyBarionStateTransition
+  const onOrderPaidFn = options.onOrderPaid ?? onOrderPaid
+  const resolveSingleCourseAccessFn =
+    options.resolveSingleCourseAccess ?? resolveSingleCourseAccess
+  const nowMs = (options.now ?? new Date()).getTime()
+
+  const lockResult = await withAdvisoryLock(
     payload,
     lockKey,
     async () => {
@@ -727,31 +910,46 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
 
       const paidMessage =
         user !== null ? CHECKOUT_ALREADY_PURCHASED : CHECKOUT_GUEST_FINISH_AFTER_LOGIN
+      const barionEnvironment = resolveBarionEnvironment(options.barionEnvironment)
+      const duplicateCtx = {
+        payload,
+        product,
+        user,
+        paidMessage,
+        log,
+        nowMs,
+        fetchPaymentState: fetchPaymentStateFn,
+        applyBarionStateTransition: applyBarionStateTransitionFn,
+        resolveSingleCourseAccess: resolveSingleCourseAccessFn,
+        barionEnvironment,
+      }
 
       if (buyer.existingUser !== null) {
-        await assertNoDuplicatePurchase(
-          payload,
-          { kind: 'customer', userId: buyer.existingUser.id },
-          productId,
-          paidMessage,
-        )
+        const customerResult = await resolveDuplicatePurchase({
+          ...duplicateCtx,
+          scope: { kind: 'customer', userId: buyer.existingUser.id },
+        })
+        if (customerResult.kind !== 'ok') {
+          return customerResult
+        }
       }
       // A fiókhoz még nem kötött (vendég) rendeléseket kizárólag az e-mail
       // azonosítja. Bejelentkezett vevőnél is le kell futtatni: a korábbi
       // vendég payment_pending (customer: null, customerEmail: ugyanaz)
       // egyébként láthatatlan maradna, és második Barion-terhelés indulna.
       // Vendég fiók nélkül: csak ez az e-mail-ág fut (existingUser null).
-      await assertNoDuplicatePurchase(
-        payload,
-        { kind: 'email', email: buyer.email },
-        productId,
-        paidMessage,
-      )
+      const emailResult = await resolveDuplicatePurchase({
+        ...duplicateCtx,
+        scope: { kind: 'email', email: buyer.email },
+      })
+      if (emailResult.kind !== 'ok') {
+        return emailResult
+      }
 
       let lastConflict: unknown
       for (let attempt = 1; attempt <= ORDER_NUMBER_CONFLICT_MAX_ATTEMPTS; attempt += 1) {
         try {
-          return await createOrderOnce()
+          return { kind: 'created' as const, order: await createOrderOnce() }
         } catch (error) {
           if (!isOrderNumberConflict(error)) {
             throw error
@@ -785,6 +983,35 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     log,
   )
 
+  if (lockResult.kind === 'resume') {
+    log.info('checkout-start: függő Barion-fizetés folytatása', {
+      orderNumber: lockResult.orderNumber,
+      productId,
+    })
+    return { orderNumber: lockResult.orderNumber, gatewayUrl: lockResult.gatewayUrl }
+  }
+  if (lockResult.kind === 'already-paid') {
+    if (lockResult.transitionedToPaid) {
+      await onOrderPaidFn({
+        payload,
+        order: lockResult.order,
+        logger: log,
+      })
+    }
+    throw new CheckoutError(
+      409,
+      user !== null ? CHECKOUT_ALREADY_PURCHASED : CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+    )
+  }
+
+  if (lockResult.kind !== 'created') {
+    throw new CheckoutError(
+      500,
+      'A rendelés létrehozása most nem sikerült. Próbáld újra néhány perc múlva.',
+    )
+  }
+
+  const order = lockResult.order
   const orderNumber = order.orderNumber
   if (!orderNumber) {
     log.error('checkout-start: a rendelés rendelésszám nélkül jött létre', { orderId: order.id })

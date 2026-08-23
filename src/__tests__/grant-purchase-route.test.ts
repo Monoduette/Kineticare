@@ -1,7 +1,6 @@
 import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
 
-import { ACCESS_EXPIRED_GRANT_MESSAGE } from '../lib/grant-purchase'
 import { createGrantPurchaseHandler } from '../lib/grant-purchase-route'
 
 /**
@@ -33,7 +32,12 @@ interface MockOptions {
 }
 
 function createMockPayload(options: MockOptions = {}) {
-  const user = { id: 7, email: EMAIL, purchases: options.purchases ?? [] }
+  const user = {
+    id: 7,
+    email: EMAIL,
+    purchases: options.purchases ?? [],
+    accessGrants: [] as Array<{ product: number; grantedAt: string }>,
+  }
   const product = {
     id: 42,
     sku: SKU,
@@ -72,7 +76,7 @@ function createMockPayload(options: MockOptions = {}) {
     }),
     findByID: vi.fn(async ({ collection, id }: { collection: string; id: number | string }) => {
       if (collection === 'users' && (options.userExists ?? true) && Number(id) === user.id) {
-        return { ...user, purchases: [...user.purchases] }
+        return { ...user, purchases: [...user.purchases], accessGrants: [...user.accessGrants] }
       }
       throw new Error('Not Found')
     }),
@@ -139,7 +143,7 @@ describe('grant-purchase route — jogosultság-mátrix', () => {
 
     expect(response.status).toBe(200)
     expect(body.status).toBe('granted')
-    expect(body.message).toBe('Hozzáférés megadva.')
+    expect(body.message).toBe('A kurzust ajándékoztam.')
     expect(updates).toHaveLength(1)
     expect(updates[0].data).toEqual({ purchases: [42] })
   })
@@ -167,7 +171,7 @@ describe('grant-purchase route — jogosultság-mátrix', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('409 access-expired: lejárt hozzáférés, magyar üzenet, nincs írás', async () => {
+  it('200 granted: lejárt hozzáférést az ajándékozás megújítja', async () => {
     const { handler, updates } = handlerFor({
       purchases: [42],
       accessDurationDays: 30,
@@ -175,12 +179,12 @@ describe('grant-purchase route — jogosultság-mátrix', () => {
     })
 
     const response = await handler(postRequest(VALID_BODY))
-    const body = (await response.json()) as { error: string; status?: string }
+    const body = (await response.json()) as { status: string; message: string }
 
-    expect(response.status).toBe(409)
-    expect(body.error).toBe(ACCESS_EXPIRED_GRANT_MESSAGE)
-    expect(body.error).toContain('lejárt')
-    expect(updates).toHaveLength(0)
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('granted')
+    expect(body.message).toBe('A kurzust ajándékoztam.')
+    expect(updates.length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -262,6 +266,6 @@ describe('grant-purchase route — validálás és 404-ágak', () => {
     const body = (await response.json()) as { error: string }
 
     expect(response.status).toBe(500)
-    expect(body.error).toContain('A hozzáférés megadása most nem sikerült')
+    expect(body.error).toContain('A kurzus ajándékozása most nem sikerült')
   })
 })
