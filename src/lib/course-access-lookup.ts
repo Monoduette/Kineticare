@@ -62,38 +62,69 @@ export interface PurchaseHistoryInput {
   payload: Payload
   /** A vevő azonosítója — a lekérdezés kizárólag az ő rendeléseit olvassa. */
   userId: number
+  /**
+   * Ha meg van adva, a lekérdezés csak ezekre a termékekre szűr.
+   * Így egy régi, de a kért SKU-ra vonatkozó paid rendelés nem esik ki a
+   * 250-es ablakból, ha a vevőnek közben sok más kurzusa is van.
+   */
+  productIds?: readonly number[]
   logger?: Logger
+}
+
+export interface PurchaseDatesLookup {
+  dates: Map<number, string>
+  /** true: a Payload-lekérdezés hibára futott (nem „nincs rendelés"). */
+  failed: boolean
+}
+
+function paidOrdersWhere(
+  userId: number,
+  productIds: readonly number[] | undefined,
+): { and: Array<Record<string, unknown>> } {
+  const clauses: Array<Record<string, unknown>> = [
+    { customer: { equals: userId } },
+    { status: { equals: 'paid' } },
+  ]
+  if (productIds !== undefined && productIds.length > 0) {
+    clauses.push({ 'items.product': { in: [...productIds] } })
+  }
+  return { and: clauses }
 }
 
 /**
  * A vevő paid rendeléseiből épített vásárlásidőpont-térkép.
  *
- * Lekérdezési hiba esetén ÜRES térképpel tér vissza (a hívó így „ismeretlen
- * vásárlási időpontot" lát, ami a szabály szerint korlátlan hozzáférés) — egy
- * adatbázis-akadás nem zárhatja ki a fizető vevőt a saját kurzusából. A hiba
- * strukturált naplóba kerül.
+ * Lekérdezési hiba esetén ÜRES térképpel és `failed: true` jelzővel tér vissza.
+ * A lista-nézet (fail-open) ettől még megmutatja a megvett kurzust; a
+ * stream-token (fail-closed) nem ad ki videót dátum nélkül, ha a lekérdezés
+ * elszállt. A hiba strukturált naplóba kerül.
  */
-export async function fetchPurchaseDates(input: PurchaseHistoryInput): Promise<Map<number, string>> {
+export async function lookupPurchaseDates(
+  input: PurchaseHistoryInput,
+): Promise<PurchaseDatesLookup> {
   const log = input.logger ?? rootLogger
   try {
     const result = await input.payload.find({
       collection: 'orders',
-      where: {
-        and: [{ customer: { equals: input.userId } }, { status: { equals: 'paid' } }],
-      },
+      where: paidOrdersWhere(input.userId, input.productIds),
       sort: '-createdAt',
       depth: 0,
       limit: PURCHASE_HISTORY_QUERY_LIMIT,
       overrideAccess: true,
     })
-    return purchaseDatesFromOrders(result.docs as Order[])
+    return { dates: purchaseDatesFromOrders(result.docs as Order[]), failed: false }
   } catch (error) {
     log.warn('kurzus-hozzáférés: a vásárlási időpontok lekérdezése sikertelen', {
       userId: input.userId,
       error: error instanceof Error ? error.message : String(error),
     })
-    return new Map()
+    return { dates: new Map(), failed: true }
   }
+}
+
+export async function fetchPurchaseDates(input: PurchaseHistoryInput): Promise<Map<number, string>> {
+  const { dates } = await lookupPurchaseDates(input)
+  return dates
 }
 
 /** A hozzáférés-számításhoz elegendő termék-alak (id + korlát). */
@@ -116,6 +147,12 @@ export interface CourseAccessForUserInput {
   /** „Most" — determinisztikus teszteléshez injektálható. */
   now?: Date
   logger?: Logger
+  /**
+   * true: lekérdezési hibánál a korlátos SKU-t NEM nyitjuk ki (stream-token).
+   * false/üres: a lista-nézet fail-open marad, hogy a vevő ne tűnjön el egy
+   * adatbázis-akadás alatt.
+   */
+  denyOnLookupFailure?: boolean
 }
 
 /**
@@ -132,20 +169,36 @@ export async function resolveCourseAccessForUser(
     return states
   }
 
-  const purchaseDates = hasAnyDurationLimit(input.products)
-    ? await fetchPurchaseDates({
+  const limitedProductIds = input.products
+    .filter((product) => hasAnyDurationLimit([product]))
+    .map((product) => product.id)
+
+  const lookup = hasAnyDurationLimit(input.products)
+    ? await lookupPurchaseDates({
         payload: input.payload,
         userId: input.userId,
+        productIds: limitedProductIds,
         logger: input.logger,
       })
-    : new Map<number, string>()
+    : { dates: new Map<number, string>(), failed: false }
 
   for (const product of input.products) {
+    const durationDays = product.accessDurationDays ?? null
+    const isLimited =
+      typeof durationDays === 'number' && Number.isFinite(durationDays) && durationDays > 0
+    if (lookup.failed && input.denyOnLookupFailure === true && isLimited) {
+      states.set(product.id, {
+        hasAccess: false,
+        expiresAt: null,
+        reason: 'unknown-purchase-date',
+      })
+      continue
+    }
     states.set(
       product.id,
       resolveCourseAccess({
-        purchasedAt: purchaseDates.get(product.id) ?? null,
-        accessDurationDays: product.accessDurationDays ?? null,
+        purchasedAt: lookup.dates.get(product.id) ?? null,
+        accessDurationDays: durationDays,
         now: input.now,
       }),
     )
@@ -171,6 +224,14 @@ export async function resolveSingleCourseAccess(
     products: [input.product],
     now: input.now,
     logger: input.logger,
+    denyOnLookupFailure: true,
   })
-  return states.get(input.product.id) ?? { hasAccess: true, expiresAt: null, reason: 'unlimited' }
+  return (
+    states.get(input.product.id) ??
+    resolveCourseAccess({
+      purchasedAt: null,
+      accessDurationDays: input.product.accessDurationDays ?? null,
+      now: input.now,
+    })
+  )
 }

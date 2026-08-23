@@ -221,13 +221,19 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
     )
   }
 
+  // Digitális kurzus: a quantity a Barion tételösszegbe és a számlára megy,
+  // a users.purchases viszont halmaz — 2–99× fizettetne egy hozzáférésért.
+  // A storefront mindig 1-et küld; ettől eltérő API-hívás 400.
   let quantity = 1
   if (input.quantity !== undefined) {
     const rawQuantity = typeof input.quantity === 'number' ? input.quantity : Number(input.quantity)
-    if (!Number.isInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 99) {
-      throw new CheckoutError(400, 'A mennyiség (quantity) 1 és 99 közötti egész szám lehet.')
+    if (!Number.isInteger(rawQuantity) || rawQuantity !== 1) {
+      throw new CheckoutError(
+        400,
+        'Ebből a kurzusanyagból egyszerre csak egy példány vásárolható.',
+      )
     }
-    quantity = rawQuantity
+    quantity = 1
   }
 
   let priceHuf: number | undefined

@@ -12,12 +12,11 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  *
  * Ugyanaz a users.purchases-beírás, amit a fizetésjóváhagyás végez (lásd
  * src/lib/order-status/apply-barion-state.ts grantPurchases): a Payload LOCAL
- * API-n, `overrideAccess: true`-val. Erre azért van szükség, mert a
- * users.purchases mező field-access szinten RENDSZER-ÍRÁSÚ
- * (create/update: () => false, src/collections/Users.ts) — a mezőt sem az
- * admin felület, sem a REST API nem írhatja közvetlenül. Az access-szabályt a
- * modul NEM módosítja, csak szerver-oldalon, ellenőrzött úton kerüli meg,
- * pontosan úgy, ahogy a CLI-script eddig is tette.
+ * API-n, `overrideAccess: true`-val, `withUserPurchasesLock` alatt. A
+ * fizetés/refund/grant írók ezt a zárat használják; a mezőt staff/owner a
+ * Payload REST/admin felületén is írhatja (lásd Users.purchases access).
+ * Az a REST-út NINCS zár alatt — ezért a grant-panel / ez a szolgáltatás az
+ * éles író, nem a nyers PATCH. Az access-szabályt ez a modul NEM módosítja.
  *
  * Hívói:
  *  - src/scripts/grant-purchase.ts (CLI, vékony wrapper — a viselkedése

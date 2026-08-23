@@ -682,6 +682,20 @@ describe('startCheckout — termék- és inputellenőrzés', () => {
     await expect(promise).rejects.toMatchObject({ status: 400 })
     await expect(promise).rejects.toThrowError(/kurzus azonosítója/)
   })
+
+  it('quantity 2 → 400: digitális kurzusból csak 1 példány vásárolható', async () => {
+    const { payload, calls } = createMockPayload()
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: { ...happyInput, quantity: 2 },
+    })
+    await expect(promise).rejects.toBeInstanceOf(CheckoutError)
+    await expect(promise).rejects.toMatchObject({ status: 400 })
+    await expect(promise).rejects.toThrowError(/egy példány/)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('startCheckout — piszkozat-regresszió (átadás-doksi 3. szakasz 3. sor)', () => {
