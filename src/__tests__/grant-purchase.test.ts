@@ -207,7 +207,7 @@ describe('grantPurchase — kimeneti ágak', () => {
   })
 
   it('lejárt hozzáférés: az ajándékozás új grantedAt-tel megújítja az órát', async () => {
-    const { payload, updates, creates, user } = createMockPayload({
+    const { payload, updates, creates } = createMockPayload({
       purchases: [42],
       accessDurationDays: 30,
       paidOrders: [{ createdAt: '2020-01-01T00:00:00.000Z' }],

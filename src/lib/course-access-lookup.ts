@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, Where } from 'payload'
 
 import type { Order, Product } from '../payload-types'
 import { grantDatesFromRows, mergeAccessStartDates } from './access-grants'
@@ -81,8 +81,8 @@ export interface PurchaseDatesLookup {
 function paidOrdersWhere(
   userId: number,
   productIds: readonly number[] | undefined,
-): { and: Array<Record<string, unknown>> } {
-  const clauses: Array<Record<string, unknown>> = [
+): Where {
+  const clauses: Where[] = [
     { customer: { equals: userId } },
     { status: { equals: 'paid' } },
   ]

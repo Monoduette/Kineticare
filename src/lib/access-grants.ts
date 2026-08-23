@@ -17,7 +17,8 @@ import type { Payload } from 'payload'
 
 export interface AccessGrantRow {
   product?: number | { id: number } | null
-  grantedAt?: string | Date | null
+  /** ISO-8601; Payload date mező stringként tárol. */
+  grantedAt?: string | null
 }
 
 export function productIdFromGrant(product: AccessGrantRow['product']): number | null {
