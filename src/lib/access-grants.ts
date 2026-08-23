@@ -115,6 +115,25 @@ export function withUpsertedAccessGrant(
   return next
 }
 
+/** Payload update-hez: kötelező product + grantedAt, null nélkül. */
+export type AccessGrantWriteRow = {
+  product: number
+  grantedAt: string
+}
+
+export function accessGrantsForWrite(rows: AccessGrantRow[]): AccessGrantWriteRow[] {
+  const next: AccessGrantWriteRow[] = []
+  for (const row of rows) {
+    const productId = productIdFromGrant(row.product)
+    const granted = toIso(row.grantedAt)
+    if (productId === null || granted === null) {
+      continue
+    }
+    next.push({ product: productId, grantedAt: granted.iso })
+  }
+  return next
+}
+
 export async function upsertAccessGrant(input: {
   payload: Payload
   userId: number
@@ -131,7 +150,7 @@ export async function upsertAccessGrant(input: {
   await input.payload.update({
     collection: 'users',
     id: input.userId,
-    data: { accessGrants: next },
+    data: { accessGrants: accessGrantsForWrite(next) },
     overrideAccess: true,
   })
   return next

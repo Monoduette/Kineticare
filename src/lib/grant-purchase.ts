@@ -2,6 +2,7 @@ import type { Payload } from 'payload'
 
 import type { User } from '../payload-types'
 import {
+  accessGrantsForWrite,
   durationDaysFromProduct,
   grantRowsFromUnknown,
   withUpsertedAccessGrant,
@@ -241,7 +242,7 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
         id: user.id,
         data: {
           purchases: nextPurchases,
-          ...(durationDays !== null ? { accessGrants: nextGrants } : {}),
+          ...(durationDays !== null ? { accessGrants: accessGrantsForWrite(nextGrants) } : {}),
         },
         overrideAccess: true,
       })

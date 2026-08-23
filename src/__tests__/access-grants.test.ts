@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  accessGrantsForWrite,
   durationDaysFromProduct,
   grantDatesFromRows,
   mergeAccessStartDates,
@@ -44,6 +45,18 @@ describe('withUpsertedAccessGrant', () => {
     const second = withUpsertedAccessGrant(first, 42, new Date('2026-08-01T00:00:00.000Z'))
     expect(second).toHaveLength(1)
     expect(second[0]?.grantedAt).toBe('2026-08-01T00:00:00.000Z')
+  })
+})
+
+describe('accessGrantsForWrite', () => {
+  it('csak érvényes product + grantedAt sort ír, a nullosat kihagyja', () => {
+    expect(
+      accessGrantsForWrite([
+        { product: 42, grantedAt: '2026-01-01T00:00:00.000Z' },
+        { product: null, grantedAt: '2026-01-02T00:00:00.000Z' },
+        { product: 7, grantedAt: null },
+      ]),
+    ).toEqual([{ product: 42, grantedAt: '2026-01-01T00:00:00.000Z' }])
   })
 })
 

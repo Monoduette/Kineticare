@@ -1635,15 +1635,15 @@ export interface User {
    */
   purchases?: (number | Product)[] | null;
   /**
-   * Ajándék-hozzáférés kezdőpontja időkorlátos kurzusnál. Rendszer írja.
+   * Időkorlátos ajándék-kurzus kezdőpontja. A staff a Kurzus ajándékozása panellel adja, nem itt.
    */
   accessGrants?:
     | {
-        product?: (number | null) | Product
-        grantedAt?: string | null
-        id?: string | null
+        product: number | Product;
+        grantedAt: string;
+        id?: string | null;
       }[]
-    | null
+    | null;
   billingName?: string | null;
   billingZip?: string | null;
   billingCity?: string | null;
@@ -3908,6 +3908,13 @@ export interface UsersSelect<T extends boolean = true> {
   portrait?: T;
   role?: T;
   purchases?: T;
+  accessGrants?:
+    | T
+    | {
+        product?: T;
+        grantedAt?: T;
+        id?: T;
+      };
   billingName?: T;
   billingZip?: T;
   billingCity?: T;
