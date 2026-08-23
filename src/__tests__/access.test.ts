@@ -344,13 +344,13 @@ describe('collection access bekötés a végleges configban', () => {
     expect(roleField?.access?.create).toBe(isOwnerFieldAccess)
     expect(roleField?.access?.update).toBe(isOwnerFieldAccess)
 
-    // A purchases mezőt staff és owner írhatja (kézi kurzus-jóváírás az
-    // adminban), a VEVŐ és a látogató SOHA — a részletes mátrix külön őrben:
+    // A purchases mező írása zárt (2026-08-23): a pipa megkerülné az
+    // ajándék-órát. Részletes mátrix:
     // src/__tests__/security/users-purchases-field-access.test.ts.
     const purchasesField = findField(users as CollectionConfig, 'purchases')
-    expect(purchasesField?.access?.create?.(fieldAccessArgs(owner))).toBe(true)
-    expect(purchasesField?.access?.update?.(fieldAccessArgs(owner))).toBe(true)
-    expect(purchasesField?.access?.update?.(fieldAccessArgs(staff))).toBe(true)
+    expect(purchasesField?.access?.create?.(fieldAccessArgs(owner))).toBe(false)
+    expect(purchasesField?.access?.update?.(fieldAccessArgs(owner))).toBe(false)
+    expect(purchasesField?.access?.update?.(fieldAccessArgs(staff))).toBe(false)
     expect(purchasesField?.access?.update?.(fieldAccessArgs(customer))).toBe(false)
     expect(purchasesField?.access?.update?.(fieldAccessArgs(null))).toBe(false)
 
