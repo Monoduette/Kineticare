@@ -1,7 +1,6 @@
 # Kineticare — teljes feladatlista
 
-**Utolsó frissítés:** 2026-08-22, a #142 huszonhat tételének visszavezetése
-a #148 squash (`713976e`) után.
+**Utolsó frissítés:** 2026-08-22, a 5. szakasz maradék döntései (J2 session).
 
 ## 2026-08-22 kritikus utak — a #148-ban lezárva
 
@@ -38,9 +37,12 @@ tábla itt a #148 utáni állapot.
 | W18 | WARNING | `/api/users/login` nincs kereten | kész | #148 |
 | W19 | WARNING | mark-watched `userId` törzs nincs tesztelve | kész | #148 |
 | W20 | WARNING | paid-not-allowed / cancel-not-allowed 0 teszt | kész | #148 |
+| J2 | session | jelszócsere után a többi session élve maradt | kész | más eszközök kijelentkeznek; a cserét végző sid megmarad |
 
-Hátra ebből a listából: **W3** (Railway mérés), és a teljes `auth.verify` csak
-akkor, ha a K2 szűk fék nem elég. Részletek: a jegyzőkönyv 9. szakasza.
+Hátra ebből a listából: **W3** (Railway `max_connections` × replika mérése).
+A 5. szakasz többi eldöntendője lezárva (jegyzőkönyv 9.5): J2 session-visszavonás
+igen; W5 job kézi újrasorbaállításra marad; K3 7 napos token csak új/pending
+customer; `auth.verify` nincs; Linear-szinkron nincs.
 
 ## Állapot most (archív, 2026-08-09)
 
@@ -93,7 +95,7 @@ A lista 4 blokkra bomlik: **(A) azonnali, rajtad múló**, **(B) integrációk
 | B7 | **Claude GitHub App + `ANTHROPIC_API_KEY`** | GitHub repo secret | github.com/apps/claude + anthropic.com | A `@claude` megemlítés issue/PR-kommentben. A `ci.yml` és `gitleaks.yml` enélkül is fut. |
 | B8 | **Google Search Console** bekötés | — (DNS TXT vagy HTML-meta) | search.google.com/search-console | Domain-tulajdon igazolás, **sitemap beküldés** (`/sitemap.xml` már él), indexelés-figyelés. |
 | B9 | **Google Analytics (GA4)** bekötés | `NEXT_PUBLIC_GA_MEASUREMENT_ID` | analytics.google.com | **A kódoldali fele KÉSZ** (C12, 2026-08-09): a GA a consent-állapotgépre kötve, csak `granted` után tölt be. Már csak a mérési azonosító beszerzése és Railway-beállítása kell — NEXT_PUBLIC, tehát beállítás után **újrabuild kötelező** (a CSP is ekkor nyílik meg). Részletek: `docs/ga4.md`. |
-| B10 | **Linear** bekötés | — | linear.app | Feladat- és hibakövetés. Eldöntendő: mennyire kösd a repóhoz (branch-név-konvenció `feat/<ticket-id>-…` már illeszkedik a Linear ticket-ID-khez), és kell-e GitHub↔Linear szinkron. |
+| B10 | **Linear** bekötés | — | linear.app | **Eldöntve (2026-08-22):** nincs GitHub↔Linear szinkron. A `feat/<ticket-id>-…` ágnév elég. Külön szinkron új üzemeltetési felület, a fizetéshez nem kell. |
 
 > **Titkok:** egyetlen kulcs sem kerülhet a repóba — sem kódba, sem konfigba, sem
 > kommentbe, sem tesztfixtúrába (CLAUDE.md TILOS ZÓNÁK 1.). A Railway

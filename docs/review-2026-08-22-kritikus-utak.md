@@ -180,7 +180,8 @@ a paid ágat.
 7. **K3:** a 7 napos TTL csak új lead-fiókra, vagy meglévő vevőnek is?
 8. **W10:** lejárt hozzáférés helyreállítása = új vásárlás, vagy külön
    hosszabbítás (séma)?
-9. **Jelszócsere session-visszavonás** (user J2) — auth-folyamat, emberi döntés.
+9. **Jelszócsere session-visszavonás** (user J2) — **eldöntve, 9.5:** a többi
+   session elesik, a cserét végző megmarad.
 
 A W3/W1/K1/K3/K6/W5/W6/W8/W9/W11/W12/W13/W14/W15/W16/W17/W18 **nem**
 igényel access- vagy migrációs zónát, ha a fenti döntésektől független
@@ -268,4 +269,22 @@ A #144 ág ezeket a commitokat magában foglalja.
 
 ### 9.4 Hátra
 
-Nincs nyitott tétel ebből a listából. A teljes `auth.verify` (K2 séma) későbbi, külön kör, ha a szűk fék nem elég.
+A 26 tételből kód nincs nyitva. A 5. szakasz 9. pontja (jelszócsere session)
+a 9.5-ben dőlt el.
+
+### 9.5 Maradék döntések (2026-08-22, „eldöntendő kérdést döntsd el”)
+
+A 5. szakaszban még nyitva hagyott, illetve a körben felmerült kérdések.
+Nem megy vissza a tulajdonoshoz.
+
+| # | Döntés | Miért |
+| --- | --- | --- |
+| **J2 session** | IGEN: a többi session elesik, a cserét végző megmarad | OWASP ASVS V3.3.1, Session Management Cheat Sheet, CWE-613. A Payload `resetPassword` és a PATCH eddig nem nyúlt a `users.sessions` tömbhöz. Séma nincs. |
+| **W5** | A `storno-issue` job MARAD, csak kézi / explicit újrasorbaállításra | Az inline timeout után a vak retry dupla stornó. Nincs új admin-UI és nincs owner-megerősítő képernyő: az ember a Számlázz.hu-fiókban nézi meg, hogy nincs stornó, aztán indítja a taskot. |
+| **K3 meglévő vevő** | A 7 napos token NEM jár aktivált fióknak | Már a #148-ban így van: csak új / `passwordSetupPending` + `customer`. Az aktivált vevő a sima, 1 órás forgot-passwordot kapja. |
+| **`auth.verify`** | NEM most | A K2 szűk kötés elég; migráció + konverzió-veszteség külön kör, ha a fék nem bírja. |
+| **B10 Linear** | Nincs GitHub↔Linear szinkron | A `feat/<ticket-id>-…` ágnév már illeszkedik. Külön szinkron új üzemeltetési felület, a fizetéshez nem kell. |
+| **LoginForm userId** | Marad a válasz-klón | Egy kérés, az auth-kliens szerződése érintetlen. |
+| **J16 termékszöveg** | Marad a Katáknak | A cikkek mellett ott a tájékozódás-mondat. A SOS Kézrelax terméklapja tartalmi tulajdon, nem auth-lyuk. |
+
+Kód: `src/lib/security/revoke-other-sessions.ts`, Users hookok, a reset siker-panel második mondata.

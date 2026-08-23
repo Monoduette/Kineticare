@@ -21,10 +21,11 @@ import { Users } from '../../collections/Users'
  * mintája).
  */
 
-/** A jelzőt törlő afterLogin hook (a free-grant hook UTÁN van bekötve). */
+/** A jelzőt törlő afterLogin hook — név szerint, a lánc bővülhet. */
 function clearHook() {
-  const hooks = Users.hooks?.afterLogin ?? []
-  const hook = hooks[hooks.length - 1]
+  const hook = (Users.hooks?.afterLogin ?? []).find(
+    (candidate) => candidate.name === 'clearPasswordSetupPendingAfterLogin',
+  )
   expect(hook, 'a jelző-törlő afterLogin hook nincs bekötve').toBeDefined()
   return hook!
 }

@@ -10,6 +10,14 @@ import { resolveClientIp } from '../lib/audit'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { grantFreeCoursesToUser } from '../lib/free-course-grant'
 import {
+  CREDENTIAL_CHANGE_REVOKE_KEY,
+  isEmailChanged,
+  isPasswordChanged,
+  revokeOtherSessionsAfterCredentialChange,
+  revokeOtherSessionsAfterPasswordReset,
+  shouldMarkCredentialChangeForSessionRevoke,
+} from '../lib/security/revoke-other-sessions'
+import {
   APIError,
   AuthenticationError,
   LockedAuth,
@@ -291,6 +299,55 @@ const grantFreeCoursesAfterLogin: CollectionAfterLoginHook = async ({ req, user 
  * a beágyazott update új tranzakcióban futna, és a login-tranzakció által már
  * írt sorra ön-blokkoló deadlockot okozna.
  */
+/**
+ * Jelszó- vagy e-mail-csere után a többi sessiont vissza kell vonni (J2).
+ * A zászlót ide tesszük, mert a reset-ág megkerüli a beforeChange-et:
+ * ott az afterLogin + útvonal dönt. Access-szabályt ez a hook nem nyit.
+ */
+const markCredentialChangeForSessionRevoke: CollectionBeforeChangeHook = ({
+  data,
+  originalDoc,
+  operation,
+  req,
+}) => {
+  const passwordChanged = isPasswordChanged(data)
+  const emailChanged = isEmailChanged({
+    currentEmail: normalizeEmail((originalDoc as { email?: unknown } | undefined)?.email),
+    nextEmail: normalizeEmail(data.email),
+  })
+  if (
+    shouldMarkCredentialChangeForSessionRevoke({ operation, passwordChanged, emailChanged }) &&
+    req.context
+  ) {
+    req.context[CREDENTIAL_CHANGE_REVOKE_KEY] = true
+  }
+  return data
+}
+
+const revokeOtherSessionsAfterCredentialChangeHook: CollectionAfterChangeHook = async ({
+  doc,
+  operation,
+  req,
+  context,
+}) => {
+  await revokeOtherSessionsAfterCredentialChange({
+    doc: doc as { id?: unknown },
+    operation,
+    req,
+    context: context as Record<string, unknown> | undefined,
+  })
+  return doc
+}
+
+const revokeOtherSessionsAfterPasswordResetHook: CollectionAfterLoginHook = async ({
+  req,
+  user,
+  token,
+}) => {
+  await revokeOtherSessionsAfterPasswordReset({ req, user, token })
+  return user
+}
+
 const clearPasswordSetupPendingAfterLogin: CollectionAfterLoginHook = async ({ req, user }) => {
   if ((user as Pick<User, 'passwordSetupPending'>).passwordSetupPending !== true) {
     return user
@@ -593,14 +650,23 @@ export const Users: CollectionConfig = {
   hooks: {
     // A hitelesítési-adat őr ELSŐKÉNT fut: idegen rekord jelszó-/e-mail-cseréje
     // már a jelszó-politika és a bootstrap-hook előtt elutasításra kerül.
-    beforeChange: [blockForeignCredentialChange, promoteFirstUserToOwner, enforcePasswordPolicy],
+    beforeChange: [
+      blockForeignCredentialChange,
+      promoteFirstUserToOwner,
+      enforcePasswordPolicy,
+      markCredentialChangeForSessionRevoke,
+    ],
     // A haladás-sorok takarítása a törlés ELŐTT. Enélkül a Postgres elhasal
     // (course_progress.user_id NOT NULL + ON DELETE SET NULL), és a felhasználó
     // NEM TÖRÖLHETŐ — GDPR-törlési kérésnél is. Helyben, valós adatbázis ellen
     // reprodukálva; részletes indoklás: src/lib/course-progress/cleanup.ts.
     beforeDelete: [deleteCourseProgressOnParentDelete('user')],
-    afterChange: [grantFreeCoursesAfterCreate],
-    afterLogin: [grantFreeCoursesAfterLogin, clearPasswordSetupPendingAfterLogin],
+    afterChange: [grantFreeCoursesAfterCreate, revokeOtherSessionsAfterCredentialChangeHook],
+    afterLogin: [
+      grantFreeCoursesAfterLogin,
+      clearPasswordSetupPendingAfterLogin,
+      revokeOtherSessionsAfterPasswordResetHook,
+    ],
     afterError: [logFailedLogin],
   },
 }

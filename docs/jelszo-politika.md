@@ -127,3 +127,11 @@ IP-cím (ha a proxy továbbítja), és az ok. Jelszó sosem kerül a naplóba �
 logger redact-listája az érzékeny kulcsokat minden környezetben maszkolja.
 (A Payload 3.86-ban nincs `afterFailedLogin` hook; a REST login-hibák a
 `routeError` segédleten át az `afterError` hookban landolnak.)
+
+## Más eszközök kijelentkeztetése (J2)
+
+Jelszó- vagy e-mail-csere után a Payload `users.sessions` tömbjéből csak a
+cserét végző session marad (`req.user._sid`, resetnél a friss JWT `sid`).
+A sima belépés nem nyúl a többi eszközhöz. Séma nincs; az írás
+`payload.db.updateOne`, collection-hook nélkül. Részletek:
+`src/lib/security/revoke-other-sessions.ts`.

@@ -21,6 +21,24 @@ import {
  * hálózati kör nélkül. Az e-mail-szabályt a kliens nem tudja ellenőrizni (a
  * visszaállító oldalon csak a token van meg, a cím nem), azt a szerver fogja meg.
  */
+/**
+ * A siker-panel második mondata: a többi eszköz kijelentkezik (J2).
+ *
+ * GOV.UK Passwords: a jelszócsere után mondd el, mi történt, és e-mailben
+ * is jelezd (a Payload reset-levele megvan; itt a képernyő a kiegészítő).
+ * https://design-system.service.gov.uk/patterns/passwords/
+ * OWASP ASVS V3.3.1 / Session Management: credential-csere után a többi
+ * sessiont le kell zárni. CWE-613.
+ * WCAG 2.2 · 4.1.3 Status Messages: a panel `role="status"` + `aria-live`.
+ * https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html
+ *
+ * Kontraszt: a meglévő success-panel tintája (`#e8f5ec` fölött az ink
+ * `#10243e`) 13,92:1, AA (4,5:1) fölött. Új szín nincs.
+ * Érintőcél: a Belépés gomb a meglévő `.kc-button` 44 px-es minimuma.
+ * 320 px: a panel a form szélességét viszi, vízszintes görgetés nincs.
+ */
+export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkeztetve.'
+
 export interface ResetPasswordFormProps {
   token: string
 }
@@ -59,6 +77,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       <div aria-live="polite" className="kc-auth-success" role="status">
         <h2>Új jelszó beállítva</h2>
         <p>Sikeresen beállítottad az új jelszavadat. Most már be tudsz lépni vele.</p>
+        <p className="kc-auth-success__note">{RESET_OTHER_DEVICES_NOTE}</p>
         <Link className="kc-button kc-button--primary" href="/belepes">
           {ctaLabel('sign-in')}
         </Link>

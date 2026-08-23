@@ -52,4 +52,10 @@ regexes = [
   # magyar szavakból képzett tesztjelszó), nem valódi credentialök.
   '''a1b2c3d4e5f60718293a4b5c''',
   '''Rehabilitacio2026Jo''',
+  # A J2 session-teszt első commitjában (e5ddc04) inline `password:` literál.
+  # A munkafában már `jelszo` (a hook csak a nem-üres mezőt nézi). A kapu a
+  # teljes historyt vizsgálja. Ugyanez a kitalált minta a
+  # users-credential-guard tesztben constként él — a `password:` alak
+  # triggereli a generic-api-key heurisztikát, a const nem.
+  '''Teszt-Jelszo-Nem-Titok-1''',
 ]

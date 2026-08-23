@@ -47,8 +47,9 @@ export interface LoginFormProps {
  * használjuk: a válasz KLÓNJÁBÓL olvasunk (`response.clone()`), így az eredeti
  * törzs érintetlen marad az auth-kliens hibaága számára, és nem kell egy
  * második hálózati kör sem (`GET /api/users/me`) a belépés és az átirányítás
- * közé. A tisztább megoldás — `AuthResult.data.userId` — az auth-kliens
- * módosítását kívánná; ez nyitott kérdésként a vezetőhöz tartozik.
+ * közé. Az `AuthResult.data.userId` átírása szándékosan NEM kell: a klón
+ * egy kérést spórol, az auth-kliens szerződését nem bontja, és a belépés
+ * a hiányzó id mellett is megy (identify kimarad, nem a belépés).
  */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
