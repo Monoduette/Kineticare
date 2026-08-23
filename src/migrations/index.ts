@@ -22,6 +22,7 @@ import * as migration_20260816_181452_szakerto_bejelentkezes_mezok from './20260
 import * as migration_20260816_192821_idopontkero_szekcio_blokk from './20260816_192821_idopontkero_szekcio_blokk';
 import * as migration_20260817_122044_idopontkero_urlap_kapcsolo from './20260817_122044_idopontkero_urlap_kapcsolo';
 import * as migration_20260821_204356_tudastar_gyik_lektor_mezok from './20260821_204356_tudastar_gyik_lektor_mezok';
+import * as migration_20260823_195638_access_grants from './20260823_195638_access_grants';
 
 export const migrations = [
   {
@@ -142,6 +143,11 @@ export const migrations = [
   {
     up: migration_20260821_204356_tudastar_gyik_lektor_mezok.up,
     down: migration_20260821_204356_tudastar_gyik_lektor_mezok.down,
-    name: '20260821_204356_tudastar_gyik_lektor_mezok'
+    name: '20260821_204356_tudastar_gyik_lektor_mezok',
+  },
+  {
+    up: migration_20260823_195638_access_grants.up,
+    down: migration_20260823_195638_access_grants.down,
+    name: '20260823_195638_access_grants'
   },
 ];

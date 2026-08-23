@@ -9,8 +9,7 @@ import type { Logger } from '../lib/logger'
  *
  * A Payload local API mockolva (a refund.test.ts / barion-callback.test.ts
  * mintája). A teszt a kimeneti ágakat és az idempotenciát fedi: a
- * szolgáltatás csak hiányzó terméknél ír, lejárt hozzáférést nem kever
- * already-had-del, és a második, azonos hívás már nem ír.
+ * szolgáltatás csak hiányzó terméknél ír, lejárt időkorlátos hozzáférést megújítja, és a második, azonos hívás már nem ír.
  */
 
 const EMAIL = 'vevo@example.test'
@@ -51,6 +50,7 @@ function createMockPayload(options: MockOptions = {}) {
     id: 7,
     email: EMAIL,
     purchases: options.purchases ?? [],
+    accessGrants: [] as Array<{ product: number; grantedAt: string }>,
   }
   const product = {
     id: 42,
@@ -99,7 +99,7 @@ function createMockPayload(options: MockOptions = {}) {
     ),
     findByID: vi.fn(async ({ collection, id }: { collection: string; id: number | string }) => {
       if (collection === 'users' && (options.userExists ?? true) && Number(id) === user.id) {
-        return { ...user, purchases: [...user.purchases] }
+        return { ...user, purchases: [...user.purchases], accessGrants: [...user.accessGrants] }
       }
       throw new Error('Not Found')
     }),
@@ -206,7 +206,7 @@ describe('grantPurchase — kimeneti ágak', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('access-expired: a purchases-ben megvan, de a hozzáférés lejárt — nem ír', async () => {
+  it('lejárt hozzáférés: az ajándékozás új grantedAt-tel megújítja az órát', async () => {
     const { payload, updates, creates } = createMockPayload({
       purchases: [42],
       accessDurationDays: 30,
@@ -220,10 +220,34 @@ describe('grantPurchase — kimeneti ágak', () => {
       logger: silentLogger(),
     })
 
-    expect(result.status).toBe('access-expired')
+    expect(result.status).toBe('granted')
     expect(result.productId).toBe(42)
-    expect(updates).toHaveLength(0)
-    expect(creates).toHaveLength(0)
+    expect(updates).toHaveLength(1)
+    const data = updates[0]?.data as { purchases?: number[]; accessGrants?: Array<{ product: number; grantedAt: string }> }
+    expect(data.purchases).toEqual([42])
+    expect(data.accessGrants).toHaveLength(1)
+    expect(data.accessGrants?.[0]?.product).toBe(42)
+    expect(typeof data.accessGrants?.[0]?.grantedAt).toBe('string')
+    expect(creates.filter((entry) => entry.collection === 'audit-logs')).toHaveLength(1)
+  })
+
+  it('időkorlátos új ajándék: purchases és accessGrants együtt íródik', async () => {
+    const { payload, updates } = createMockPayload({
+      purchases: [11],
+      accessDurationDays: 365,
+    })
+
+    const result = await grantPurchase({
+      payload,
+      email: EMAIL,
+      productIdOrSku: SKU,
+      logger: silentLogger(),
+    })
+
+    expect(result.status).toBe('granted')
+    expect(updates[0]?.data).toMatchObject({ purchases: [11, 42] })
+    const grants = (updates[0]?.data as { accessGrants: Array<{ product: number }> }).accessGrants
+    expect(grants).toEqual([expect.objectContaining({ product: 42 })])
   })
 
   it('already-had: korlátlan termék (null/0) a purchases-ben — nem expired', async () => {
@@ -367,7 +391,11 @@ describe('grantPurchase — W9 e-mail kis-nagybetű', () => {
         }
         return { docs: [], totalDocs: 0 }
       }),
-      findByID: vi.fn(async () => ({ ...user, purchases: [...user.purchases] })),
+      findByID: vi.fn(async () => ({
+      ...user,
+      purchases: [...user.purchases],
+      accessGrants: [...((user as { accessGrants?: Array<{ product: number; grantedAt: string }> }).accessGrants ?? [])],
+    })),
       update: vi.fn(async (args: { collection: string; data: Record<string, unknown> }) => {
         if (args.collection === 'users') {
           Object.assign(user, args.data)

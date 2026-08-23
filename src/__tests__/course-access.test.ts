@@ -334,7 +334,8 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     }
     return { docs: options.orders ?? [] }
   })
-  return { payload: { find } as unknown as Payload, find }
+  const findByID = vi.fn(async () => ({ accessGrants: [] }))
+  return { payload: { find, findByID } as unknown as Payload, find }
 }
 
 function makeProduct(id: number, accessDurationDays?: number | null): Product {
@@ -374,7 +375,13 @@ describe('resolveCourseAccessForUser — Payload-lekérdezéssel', () => {
     expect(find).toHaveBeenCalledWith(
       expect.objectContaining({
         collection: 'orders',
-        where: { and: [{ customer: { equals: 7 } }, { status: { equals: 'paid' } }] },
+        where: {
+          and: [
+            { customer: { equals: 7 } },
+            { status: { equals: 'paid' } },
+            { 'items.product': { in: [42] } },
+          ],
+        },
       }),
     )
   })
@@ -464,6 +471,29 @@ describe('resolveCourseAccessForUser — Payload-lekérdezéssel', () => {
     })
 
     expect(state).toMatchObject({ hasAccess: false, reason: 'expired' })
+  })
+
+  it('stream-token ág: lekérdezési hibánál a korlátos kurzus zárva marad (fail-closed)', async () => {
+    const { payload } = createMockPayload({ findError: true })
+    const warn = vi.fn()
+    const log = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn,
+      error: vi.fn(),
+      child: vi.fn(),
+    }
+
+    const state = await resolveSingleCourseAccess({
+      payload,
+      userId: 7,
+      product: makeProduct(42, 30),
+      now: new Date('2026-01-15T00:00:00.000Z'),
+      logger: log,
+    })
+
+    expect(state).toMatchObject({ hasAccess: false, reason: 'unknown-purchase-date' })
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -9,7 +9,7 @@ import { grantFreeCoursesToUser } from '../free-course-grant'
 import { logger as rootLogger, type Logger } from '../logger'
 import { buildPasswordResetUrl } from '../password-reset-url'
 import { generateInitialPassword } from '../security/initial-password'
-import { freeCourseEmail } from './email'
+import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
 
 /**
  * INGYENES KURZUS IGÉNYLÉSE — a transportfüggetlen szolgáltatás.
@@ -30,7 +30,11 @@ import { freeCourseEmail } from './email'
  *     névvel, eldobható véletlen jelszóval és `passwordSetupPending: true`
  *     jelzővel (a vendég-vásárlás és a vásárló-import ugyanezt teszi).
  *  3. Hozzáférés-adás a MEGLÉVŐ `grantFreeCoursesToUser` szolgáltatással —
- *     idempotens, missing-only, meglévő jogosultságot sosem vesz el.
+ *     CSAK új fiókra, vagy meglévő `customer` + `passwordSetupPending === true`
+ *     fiókra. Aktivált vevőnél és owner/staffnál a nyilvános űrlap NEM ír
+ *     kurzust (tulajdonosi döntés, 2026-08-23): belépésre / jelszó-kérésre
+ *     irányítjuk. Staff-ajándékozás marad a `/admin` „Kurzus ajándékozása”
+ *     panel.
  *  4. Belépő link: a Payload SAJÁT jelszó-visszaállító tokenje
  *     (`forgotPassword`, `disableEmail: true`) + a közös
  *     `buildPasswordResetUrl`. Külön, párhuzamos token-rendszer NINCS.
@@ -38,8 +42,9 @@ import { freeCourseEmail } from './email'
  *     `passwordSetupPending === true` fiókra írunk (K3): a 7 napos TTL
  *     különben egy valódi, 1 órás „elfelejtettem a jelszavam" tokent is
  *     kilőne, owner/staff fióknál pedig meglepetés-belépőt adna.
- *  5. Levél: a saját magyar sablon (`freeCourseEmail`) a Payload
- *     e-mail-adapterén át — szintén csak akkor, ha tokent is írtunk.
+ *  5. Levél: új / jelszó-beállításra váró fiókra a `freeCourseEmail` sablon,
+ *     aktivált vevőre és owner/staffra a `existingAccountFreeCourseEmail`
+ *     (belépés + elfelejtett jelszó, token nélkül).
  *
  * ═══ FIÓK-FELDERÍTÉS ELLENI VÉDELEM (tudatos tervezési döntés) ═══
  * A visszatérési érték `status`-a és a hívó HTTP-válasza SZÁNDÉKOSAN AZONOS
@@ -120,6 +125,11 @@ export interface RequestFreeCourseAccessInput {
   /** A látogató által megadott e-mail-cím (validált, trimmelt, kisbetűs). */
   email: string
   /**
+   * A bejelentkezett látogató id-je, ha van munkamenet. Az aktivált vevő
+   * csak akkor kapja meg az ingyenes kurzust, ha a cím a sajátja.
+   */
+  actorUserId?: number | null
+  /**
    * A levélbeli link abszolút alapcíme (NEXT_PUBLIC_SERVER_URL). `null` =
    * nincs feloldható cím, ilyenkor link sem építhető: a hozzáférés létrejön,
    * a levél viszont nem megy ki (ugyanaz az ág, mint a hiányzó e-mail-kulcs).
@@ -168,14 +178,23 @@ export function resolveFreeCourseRequestActions(input: {
   created: boolean
   role: User['role']
   passwordSetupPending?: boolean | null
+  actorUserId?: number | null
+  userId?: number
 }): FreeCourseRequestActions {
   if (input.role === 'owner' || input.role === 'staff') {
     return { grant: false, issueSetPasswordToken: false }
   }
-  return {
-    grant: true,
-    issueSetPasswordToken: input.created || input.passwordSetupPending === true,
+  if (input.created || input.passwordSetupPending === true) {
+    return { grant: true, issueSetPasswordToken: true }
   }
+  if (
+    input.actorUserId != null &&
+    input.userId != null &&
+    Number(input.actorUserId) === Number(input.userId)
+  ) {
+    return { grant: true, issueSetPasswordToken: false }
+  }
+  return { grant: false, issueSetPasswordToken: false }
 }
 
 /** Az advisory-zár kulcsa — cím szerint, hogy két párhuzamos igénylés soros legyen. */
@@ -245,6 +264,57 @@ async function resolveFreeProduct(payload: Payload, productId: number): Promise<
     return null
   }
   return product
+}
+
+
+async function sendExistingAccountGuidanceEmail(input: {
+  payload: Payload
+  env: EmailEnv
+  serverUrl: string | null
+  name: string
+  email: string
+  courseTitle: string
+  log: Logger
+  audit: { cimzett: string; productId: number }
+  userId: number
+}): Promise<boolean> {
+  if (!isEmailDeliverable(input.env, input.serverUrl) || input.serverUrl === null) {
+    return isEmailDeliverable(input.env, input.serverUrl)
+  }
+  const signInUrl = `${input.serverUrl}/belepes`
+  const passwordResetUrl = `${input.serverUrl}/elfelejtett-jelszo`
+  const template = existingAccountFreeCourseEmail({
+    name: input.name,
+    courseTitle: input.courseTitle,
+    signInUrl,
+    passwordResetUrl,
+    email: input.email,
+  })
+  let failure: string | null = null
+  try {
+    const result: unknown = await input.payload.sendEmail({
+      to: input.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+    })
+    failure = sendFailureReason(result)
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error)
+  }
+  if (failure !== null) {
+    input.log.error(
+      'RIASZTÁS: ingyenes kurzus igénylése — a meglévő-fiók útmutató levél nem ment ki.',
+      { ...input.audit, userId: input.userId, error: failure },
+    )
+    // Anti-enumeration: a HTTP-réteg a provider-állapotot tükrözi, nem a küldést.
+    return isEmailDeliverable(input.env, input.serverUrl)
+  }
+  input.log.info('ingyenes kurzus igénylése: meglévő-fiók útmutató levél elküldve', {
+    ...input.audit,
+    userId: input.userId,
+  })
+  return true
 }
 
 export async function requestFreeCourseAccess(
@@ -361,18 +431,46 @@ export async function requestFreeCourseAccess(
     created: resolved.created,
     role: fresh.role,
     passwordSetupPending: fresh.passwordSetupPending,
+    actorUserId: input.actorUserId ?? null,
+    userId: fresh.id,
   })
 
   // Owner/staff: se grant, se 7 napos reset-token. A válasz attól még
   // `{ ok: true }` — a szerepkör nem szivároghat a nyilvános végpontról.
   if (!actions.grant) {
-    log.warn('ingyenes kurzus igénylése: meglévő owner/staff fiók — token és grant kihagyva', {
+    const isStaffAccount = fresh.role === 'owner' || fresh.role === 'staff'
+    if (isStaffAccount) {
+      log.warn('ingyenes kurzus igénylése: meglévő owner/staff fiók — token és grant kihagyva', {
+        userId: fresh.id,
+        role: fresh.role,
+      })
+      return {
+        status: 'ok',
+        emailDelivered: isEmailDeliverable(env, input.serverUrl),
+        userCreated: resolved.created,
+        grantedProductIds: [],
+      }
+    }
+
+    // Aktivált vevő: NEM írjuk rá csendben a kurzust. Belépés / új jelszó.
+    log.info(
+      'ingyenes kurzus igénylése: meglévő aktivált vevő — grant kihagyva, belépési útmutató',
+      { userId: fresh.id },
+    )
+    const emailDelivered = await sendExistingAccountGuidanceEmail({
+      payload,
+      env,
+      serverUrl: input.serverUrl,
+      name: input.name,
+      email,
+      courseTitle: courseTitle(product),
+      log,
+      audit,
       userId: fresh.id,
-      role: fresh.role,
     })
     return {
       status: 'ok',
-      emailDelivered: isEmailDeliverable(env, input.serverUrl),
+      emailDelivered,
       userCreated: resolved.created,
       grantedProductIds: [],
     }

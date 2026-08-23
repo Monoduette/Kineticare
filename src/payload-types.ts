@@ -1634,6 +1634,16 @@ export interface User {
    * A felhasználó által megvásárolt kurzusok (hozzáférés). Fizetés után magától töltődik; munkatárs és tulajdonos kézzel is hozzáadhat vagy elvehet. A vevő saját magának nem adhat hozzáférést. A listaoszlopban minden kurzus mellett a haladás is megjelenik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet. Szűrés a listában: Szűrők → Megvásárolt kurzusok.
    */
   purchases?: (number | Product)[] | null;
+  /**
+   * Időkorlátos ajándék-kurzus kezdőpontja. A staff a Kurzus ajándékozása panellel adja, nem itt.
+   */
+  accessGrants?:
+    | {
+        product: number | Product;
+        grantedAt: string;
+        id?: string | null;
+      }[]
+    | null;
   billingName?: string | null;
   billingZip?: string | null;
   billingCity?: string | null;
@@ -3898,6 +3908,13 @@ export interface UsersSelect<T extends boolean = true> {
   portrait?: T;
   role?: T;
   purchases?: T;
+  accessGrants?:
+    | T
+    | {
+        product?: T;
+        grantedAt?: T;
+        id?: T;
+      };
   billingName?: T;
   billingZip?: T;
   billingCity?: T;

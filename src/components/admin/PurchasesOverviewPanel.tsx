@@ -56,7 +56,7 @@ export function PurchasesOverviewPanel() {
       {ids.length === 0 ? (
         <p style={noteStyle}>
           {'Ennek a felhasználónak még nincs kurzus-hozzáférése. Hozzáadni a fenti ' +
-            '„Megvásárolt kurzusok” mezőben vagy a „Kurzus-hozzáférés adása” panellel lehet.'}
+            '„Megvásárolt kurzusok” mezőben vagy a „Kurzus ajándékozása” panellel lehet.'}
         </p>
       ) : (
         <>

@@ -1,6 +1,12 @@
 import type { Payload } from 'payload'
 
 import type { User } from '../payload-types'
+import {
+  accessGrantsForWrite,
+  durationDaysFromProduct,
+  grantRowsFromUnknown,
+  withUpsertedAccessGrant,
+} from './access-grants'
 import { auditLogStore, writeAuditLog } from './audit'
 import { resolveSingleCourseAccess } from './course-access-lookup'
 import { maskEmail } from './email/mask'
@@ -12,12 +18,11 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  *
  * Ugyanaz a users.purchases-beírás, amit a fizetésjóváhagyás végez (lásd
  * src/lib/order-status/apply-barion-state.ts grantPurchases): a Payload LOCAL
- * API-n, `overrideAccess: true`-val. Erre azért van szükség, mert a
- * users.purchases mező field-access szinten RENDSZER-ÍRÁSÚ
- * (create/update: () => false, src/collections/Users.ts) — a mezőt sem az
- * admin felület, sem a REST API nem írhatja közvetlenül. Az access-szabályt a
- * modul NEM módosítja, csak szerver-oldalon, ellenőrzött úton kerüli meg,
- * pontosan úgy, ahogy a CLI-script eddig is tette.
+ * API-n, `overrideAccess: true`-val, `withUserPurchasesLock` alatt. A
+ * fizetés/refund/grant írók ezt a zárat használják; a mezőt staff/owner a
+ * Payload REST/admin felületén is írhatja (lásd Users.purchases access).
+ * Az a REST-út NINCS zár alatt — ezért a grant-panel / ez a szolgáltatás az
+ * éles író, nem a nyers PATCH. Az access-szabályt ez a modul NEM módosítja.
  *
  * Hívói:
  *  - src/scripts/grant-purchase.ts (CLI, vékony wrapper — a viselkedése
@@ -27,10 +32,12 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  *
  * IDEMPOTENS: ha a vevőnél már megvan a termék ÉS a hozzáférés él (vagy
  * korlátlan), a hívás `already-had` eredménnyel tér vissza és NEM ír. Ha a
- * termék a purchases-ben van, de a hozzáférés lejárt (`accessDurationDays` +
- * utolsó paid rendelés), `access-expired` jön vissza: sem purchases-írás, sem
- * ajándék paid rendelés (az nem hosszabbítana, számlát/Bariont viszont
- * kockáztatna). Csak a hiányzó terméket fűzi a listához.
+ * termék a purchases-ben van, de a hozzáférés lejárt vagy a kezdőpont
+ * ismeretlen (`accessDurationDays` + utolsó paid rendelés / accessGrants),
+ * az `accessGrants.grantedAt` mezőt mostani időpontra állítja (a terméken
+ * beállított napos óra újraindul), paid rendelés és számla nélkül. Csak a
+ * hiányzó terméket fűzi a purchases-listához; időkorlátos terméknél az
+ * ajándék-kezdőpontot is írja.
  *
  * A modul soha nem dob üzleti hibát: az ismeretlen felhasználó/termék is
  * strukturált eredmény (a hívó képezi HTTP-státuszra, illetve CLI-üzenetre).
@@ -38,11 +45,7 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  */
 
 export type GrantPurchaseStatus =
-  'granted' | 'already-had' | 'access-expired' | 'user-not-found' | 'product-not-found'
-
-/** A lejárt hozzáférés őszinte üzenete — route, CLI és admin panel. */
-export const ACCESS_EXPIRED_GRANT_MESSAGE =
-  'A hozzáférés lejárt. Új paid rendelés kell a megújításhoz. A manuális grant önmagában nem hosszabbít.'
+  'granted' | 'already-had' | 'user-not-found' | 'product-not-found'
 
 /** A termék-hivatkozás feloldásának módja — a hívó hibaüzenetéhez. */
 export type ProductRefKind = 'id' | 'sku'
@@ -171,38 +174,14 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
       })) as User
 
       const owned = new Set(userPurchaseIds(fresh).map(String))
-      if (owned.has(String(product.id))) {
-        const durationDays = product.accessDurationDays
-        const hasFiniteDuration =
-          typeof durationDays === 'number' && Number.isFinite(durationDays) && durationDays > 0
+      const alreadyOwned = owned.has(String(product.id))
+      const durationDays = durationDaysFromProduct(product)
+      const now = new Date()
+      const existingGrants = grantRowsFromUnknown(
+        (fresh as User & { accessGrants?: unknown }).accessGrants,
+      )
 
-        if (hasFiniteDuration) {
-          const access = await resolveSingleCourseAccess({
-            payload,
-            userId: user.id,
-            product,
-            logger: log,
-          })
-          if (access.reason === 'expired') {
-            log.info('manuális hozzáférés: a hozzáférés lejárt — nem hosszabbít', {
-              ...audit,
-              userId: user.id,
-              productId: product.id,
-              sku: product.sku,
-              result: 'access-expired',
-            })
-            return {
-              status: 'access-expired' as const,
-              email,
-              productRef: productIdOrSku,
-              productRefKind,
-              userId: user.id,
-              productId: product.id,
-              productLabel,
-            }
-          }
-        }
-
+      if (alreadyOwned && durationDays === null) {
         log.info('manuális hozzáférés: a termék már a vevőnél van — no-op', {
           ...audit,
           userId: user.id,
@@ -221,10 +200,50 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
         }
       }
 
+      if (alreadyOwned && durationDays !== null) {
+        const access = await resolveSingleCourseAccess({
+          payload,
+          userId: user.id,
+          product,
+          logger: log,
+        })
+        // Élő (active) vagy korlátlan: ne írjuk újra. Lejárt és ismeretlen
+        // kezdőpont: ajándék-óra indítása accessGrants.grantedAt = most.
+        if (access.reason === 'active' || access.reason === 'unlimited') {
+          log.info('manuális hozzáférés: a termék már a vevőnél van — no-op', {
+            ...audit,
+            userId: user.id,
+            productId: product.id,
+            sku: product.sku,
+            result: 'already-had',
+          })
+          return {
+            status: 'already-had' as const,
+            email,
+            productRef: productIdOrSku,
+            productRefKind,
+            userId: user.id,
+            productId: product.id,
+            productLabel,
+          }
+        }
+      }
+
+      const nextPurchases = alreadyOwned
+        ? userPurchaseIds(fresh)
+        : [...userPurchaseIds(fresh), product.id]
+      const nextGrants =
+        durationDays === null
+          ? existingGrants
+          : withUpsertedAccessGrant(existingGrants, product.id, now)
+
       await payload.update({
         collection: 'users',
         id: user.id,
-        data: { purchases: [...userPurchaseIds(fresh), product.id] },
+        data: {
+          purchases: nextPurchases,
+          ...(durationDays !== null ? { accessGrants: accessGrantsForWrite(nextGrants) } : {}),
+        },
         overrideAccess: true,
       })
 
@@ -234,6 +253,7 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
         productId: product.id,
         sku: product.sku,
         result: 'granted',
+        renewed: alreadyOwned,
       })
 
       return {

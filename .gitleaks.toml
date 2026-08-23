@@ -58,4 +58,13 @@ regexes = [
   # users-credential-guard tesztben constként él — a `password:` alak
   # triggereli a generic-api-key heurisztikát, a const nem.
   '''Teszt-Jelszo-Nem-Titok-1''',
+  # G3-manifest (src/migrations/.checksums.json): a Payload-generált
+  # `20260823_195638_access_grants` .ts/.json pár LF-normalizált sha256-a.
+  # Nem credential — a generic-api-key a `"fájl": "<64 hex>"` JSON-mezőt
+  # kulcsnak nézi. Fájl-allowlist nincs (az vakfolt lenne); csak ez a két
+  # ismert hash. Új migrációnál, ha a kapu megint fennakad, a két új hex-et
+  # ugyanígy, indoklással kell felvenni — a migrációs .ts/.json továbbra is
+  # szkennelve marad.
+  '''08e00965327b345762bd5ef191b3bca1c5649dd482378195450ba9ccedd04665''',
+  '''3d19cba34c263b1fc1ae8434f83b1187fab5a86d4a185bb2e316e970cab85901''',
 ]

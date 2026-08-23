@@ -553,19 +553,15 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
   while (page.length > 0) {
     const pageLength = page.length
-    const rejectedBefore = rejectedTransitions
     const decision = await processPendingPage(page)
     if (decision === 'abort') {
       break
     }
-    const pageHadRejects = rejectedTransitions > rejectedBefore
-    // Pótlap: csak rejected-et tartalmazó, teli ablak után, és csak egyszer —
-    // a már látott azonosítók ki vannak zárva, GetState nem ismétlődik.
-    if (
-      !pageHadRejects ||
-      pageLength < ORDER_POLL_BATCH_SIZE ||
-      extraPages >= ORDER_POLL_REFILL_PAGES
-    ) {
+    // Pótlap: teli ablak után egyszer, rejected ÉS still-pending sorfejre is —
+    // különben 25 élő Prepared kitölti az ablakot, és a 26. Succeeded
+    // (elveszett callback) erre a futásra nem kerül GetState-re.
+    // A már látott azonosítók ki vannak zárva, GetState nem ismétlődik.
+    if (pageLength < ORDER_POLL_BATCH_SIZE || extraPages >= ORDER_POLL_REFILL_PAGES) {
       break
     }
     extraPages += 1

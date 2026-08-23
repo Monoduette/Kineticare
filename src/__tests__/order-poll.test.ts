@@ -1042,6 +1042,58 @@ describe('order-poll — W1 rejected sorfej (updatedAt + touch + pótlap)', () =
     }
   })
 
+  it('25 still-pending Prepared + 1 Succeeded → egy futásban a 26. paid (pótlap still-pendingre is)', async () => {
+    const PAYABLE_ID = 499
+    const stuck = Array.from({ length: ORDER_POLL_BATCH_SIZE }, (_, index) =>
+      createPendingOrder({
+        id: 400 + index,
+        orderNumber: `KH-STUCK-${index}`,
+        barionPaymentId: `stuck-${String(index).padStart(2, '0')}`,
+        createdAt: isoHoursAgo(2),
+        updatedAt: isoHoursAgo(10),
+      }),
+    )
+    const payable = createPendingOrder({
+      id: PAYABLE_ID,
+      orderNumber: 'KH-PAYABLE',
+      barionPaymentId: 'payable-payment',
+      createdAt: isoHoursAgo(1),
+      updatedAt: isoHoursAgo(1),
+    })
+    const { payload, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [...stuck, payable],
+    })
+
+    const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      if (paymentId === 'payable-payment') {
+        return getStateResponse('Succeeded', { PaymentId: paymentId })
+      }
+      return getStateResponse('Prepared', { PaymentId: paymentId })
+    })
+
+    const applyTransition = vi.fn(async ({ order }: { order: Order }) => {
+      if (order.id === PAYABLE_ID) {
+        return { action: 'paid' as const, transitionedToPaid: true }
+      }
+      return { action: 'pending' as const }
+    }) as unknown as typeof applyBarionStateTransition
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      applyTransition,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.transitionedPaid).toBeGreaterThanOrEqual(1)
+    expect(paidCalls).toEqual([PAYABLE_ID])
+    expect(fetchState).toHaveBeenCalledTimes(ORDER_POLL_BATCH_SIZE + 1)
+    expect(fetchState).toHaveBeenCalledWith('payable-payment')
+  })
+
   it('a függő ablak updatedAt szerint nyílik (nem createdAt)', async () => {
     const { payload, fetchState, onPaid, queueInvoice, finds } = setup({
       pending: [createPendingOrder()],
