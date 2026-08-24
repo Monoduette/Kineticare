@@ -2,8 +2,9 @@
 > `/blog/inhuvelygyulladas`). A rekord `status` és `_status` mezője a betöltő
 > `OWNER_TUDASTAR_PUBLISH=igen` kapujával `published` lesz. A cikk törzse a
 > „Ínhüvelygyulladás: mi ez, hol fáj, és mit tehetsz” H1-től a „Fontos
-> tudnivaló” szakaszig tart. A H1 fölötti rész az integrátornak szól, **nem
-> kerül be** a `content` mezőbe. Forráslista a nyilvános lapon tilos.
+> tudnivaló” szakaszig tart. A H1 fölötti rész a lektorálónak
+> és az integrátornak szól, **nem kerül be** a `content` mezőbe. Forráslista
+> a nyilvános lapon tilos. Gyökér `/inhuvelygyulladas` pages iker tilos.
 
 ## Cikk-metaadatok (az integrátornak)
 

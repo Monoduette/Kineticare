@@ -2,10 +2,10 @@
 > `/blog/befagyott-vall`). A rekord `status` és `_status` mezője a betöltő
 > `OWNER_TUDASTAR_PUBLISH=igen` kapujával `published` lesz. A cikk törzse a
 > „Befagyott váll: mi ez, milyen szakaszai vannak, és mit tehetsz” H1-től a
-> „Fontos tudnivaló” szakaszig tart. A H1 fölötti rész az integrátornak szól,
-> **nem kerül be** a `content` mezőbe. Forráslista a nyilvános lapon tilos.
-> `ctaCourse` üres. CTA a törzsben csak `/szolgaltatasok`. Ads: HOLD.
-> Gyökér `/befagyott-vall` pages iker tilos.
+> „Fontos tudnivaló” szakaszig tart. A H1 fölötti rész a lektorálónak
+> és az integrátornak szól, **nem kerül be** a `content` mezőbe. Forráslista
+> a nyilvános lapon tilos. `ctaCourse` üres. CTA a törzsben csak `/szolgaltatasok`.
+> Ads: HOLD. Gyökér `/befagyott-vall` pages iker tilos.
 
 ## Cikk-metaadatok (az integrátornak)
 
@@ -15,9 +15,19 @@
 | `slug` | `befagyott-vall` |
 | `seoTitle` | Befagyott váll: szakaszok és teendők |
 | `seoDescription` | Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis. |
-| Kategória | `vall-es-konyok` |
+| `excerpt` | A törzs első bekezdéséből a betöltő képezi. |
+| Kategória | Váll és könyök (`vall-es-konyok`) |
 | `ctaCourse` | üres |
+| Szerző | Kiss Kata |
 | `relatedPosts` | üres |
+| `status` / `_status` | `published` / `published` (csak `OWNER_TUDASTAR_PUBLISH=igen` mellett) |
+| `heroImage`, `ogImage` | üresen marad |
+
+**Belső linkek a törzsben:** `/szolgaltatasok`. Egyik link sem áll magában bekezdésben.
+
+**Mért célzás:** elsődleges `befagyott váll`, Semrush HU vol 880, KD 12,
+run `01M0ST9XKE8HY4VC81DB7BWAAP`. Strukturált adat: `MedicalCondition`,
+Befagyott váll.
 
 ---
 
@@ -45,15 +55,15 @@ A magyar irányelv az adhesiv capsulitis megnevezést is használja. A kanonikus
 
 ## Milyen szakaszai vannak, és mennyi ideig tarthatnak?
 
-A magyar fizioterápiás irányelv három stádiumot ír le.
+A magyar fizioterápiás irányelv három stádiumot ír le. A betegtájékoztatók fagyási, merev és olvadó szakaszról beszélnek, más időablakokkal. A két rendszert nem átlagoljuk.
 
-Az I. stádium a 2–9. hónap. Éles fájdalom a mozgáspálya végén. Ritka a nyugalmi vagy éjszakai fájdalom. Nincs jelentős mozgáskorlátozottság. Gyulladásos synovitis.
+| Szakasz a magyar irányelvben | Időablak | Ami jellemző |
+|---|---|---|
+| I. stádium | 2–9. hónap | Éles fájdalom a mozgáspálya végén. Ritka a nyugalmi vagy éjszakai fájdalom. Nincs jelentős mozgáskorlátozottság. Gyulladásos synovitis. |
+| II. stádium | 4–12. hónap | Több irányban fokozatosan beszűkül a mozgás. A váll kifejezetten fáj. Synovitis és tokzsugorodás. |
+| III. stádium | 12–42. hónap | A mozgások jelentős elvesztése. Progresszív fibrosis. Minimális gyulladás. |
 
-A II. stádium a 4–12. hónap. Több irányban fokozatosan beszűkül a mozgás. A váll kifejezetten fáj. Synovitis és tokzsugorodás.
-
-A III. stádium a 12–42. hónap. A mozgások jelentős elvesztése. Progresszív fibrosis. Minimális gyulladás.
-
-A betegnyelvű felosztás más. Ott a fagyási szakaszban minden mozdulat fáj. A merev szakaszban a fájdalom enyhülhet, a merevség nő. Az olvadó szakaszban a mozgás lassan visszatér. Az időablakok forrásonként eltérnek, van ahol csak fájdalomdomináns és merevségdomináns szakaszt írnak. Nem átlagoljuk őket a magyar irányelv stádiumaival.
+A betegnyelvű felosztás más. Ott a fagyási szakaszban minden mozdulat fáj. A merev szakaszban a fájdalom enyhülhet, a merevség nő. Az olvadó szakaszban a mozgás lassan visszatér. Az időablakok forrásonként eltérnek, van ahol csak fájdalomdomináns és merevségdomináns szakaszt írnak. Nem átlagoljuk őket a magyar táblázattal.
 
 Ezek csoportos lefolyások. Nem a te naptárad. A szakaszt orvos vagy gyógytornász állapítja meg vizsgálattal. Ne sorold be magad.
 
@@ -174,13 +184,13 @@ A magyar irányelv vörös zászlói, amelyeknél a gyógytornász szakorvoshoz 
 
 Cukorbetegség mellett a vállpanaszt ne bagatellizáld. A lefolyás hosszabb és merevebb lehet.
 
-A hirtelen féloldali arclelógás, a karerőtlenség és az akadozó beszéd nem ennek a lapnak a témája. Arról a kézzsibbadásos cikkünk szól. Itt a vállra vonatkozó, aznapi orvosi jelek maradnak.
+A hirtelen féloldali arclelógás, a karerőtlenség és az akadó beszéd nem ennek a lapnak a témája. Arról a kézzsibbadásos cikkünk szól. Itt a vállra vonatkozó, aznapi orvosi jelek maradnak.
 
 ## Gyakori kérdések
 
 ### Milyen szakaszai vannak?
 
-A magyar irányelv I–III. stádiumot ír: 2–9, 4–12 és 12–42 hónap. A betegtájékoztatók fagyási, merev és olvadó felosztása más időablakú. A részletes leírás fent van. A szakaszt vizsgálattal állapítják meg. Ne sorold be magad.
+A magyar irányelv I–III. stádiumot ír: 2–9, 4–12 és 12–42 hónap. A betegtájékoztatók fagyási, merev és olvadó felosztása más időablakú. A három stádium fent van. A szakaszt vizsgálattal állapítják meg. Ne sorold be magad.
 
 ### Mennyi ideig tarthat?
 
