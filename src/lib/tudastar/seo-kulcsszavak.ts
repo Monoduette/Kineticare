@@ -155,6 +155,37 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
       'Pontosan a termék belépője: aki ezt keresi, most áll a rehabilitáció elején. A kifejezés nehézsége nulla.',
     targy: { tipus: 'MedicalCondition', nev: 'Csuklótörés' },
   },
+  {
+    slug: 'inhuvelygyulladas',
+    elsodleges: 'ínhüvelygyulladás',
+    volumen: 2200,
+    nehezseg: 18,
+    masodlagos: [
+      'ínhüvelygyulladás tünetei',
+      'ínhüvelygyulladás kezelése',
+      'csukló ínhüvelygyulladás',
+      'De Quervain',
+    ],
+    seoTitle: 'Ínhüvelygyulladás: tünetek és mit tehetsz',
+    seoDescription:
+      'Ínhüvelygyulladás: hol fáj a csuklón és a hüvelykujjon, mit tehetsz házilag, és mikor kell orvoshoz menni. Nem diagnózis.',
+    indok:
+      'Ahrefs HU 2200 keresés, KD 18, run 01M0SJQ0SBHS103YQ37Z6MTX1B. A De Quervain v1-ben nincs külön oldal.',
+    targy: { tipus: 'MedicalCondition', nev: 'Ínhüvelygyulladás' },
+  },
+  {
+    slug: 'befagyott-vall',
+    elsodleges: 'befagyott váll',
+    volumen: 880,
+    nehezseg: 12,
+    masodlagos: ['befagyott váll torna', 'befagyott váll szindróma', 'adhesive capsulitis'],
+    seoTitle: 'Befagyott váll: szakaszok és teendők',
+    seoDescription:
+      'Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis.',
+    indok:
+      'Semrush HU 880 keresés, KD 12, run 01M0ST9XKE8HY4VC81DB7BWAAP. A kanonikus név a Befagyott váll, nem a csonka alak.',
+    targy: { tipus: 'MedicalCondition', nev: 'Befagyott váll' },
+  },
 ]
 
 /** Egy cikk célzása slug szerint, vagy `undefined`, ha nincs hozzá mérés. */

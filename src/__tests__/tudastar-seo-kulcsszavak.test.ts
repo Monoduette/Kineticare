@@ -24,6 +24,8 @@ const CIKKEK = [
   'pattano-ujj',
   'csuklo-es-kezfajdalom',
   'csuklotores-utani-gyogytorna',
+  'inhuvelygyulladas',
+  'befagyott-vall',
 ] as const
 
 describe('S1 — mind a hat cikknek van mért célzása', () => {
@@ -68,6 +70,32 @@ describe('S4 — magyar mikroszöveg-szabályzat', () => {
     // A cím nem kezdhet márkanévvel: a mérés szerint a versenytárs kezdőlapja
     // is gyengébb, mint négy tünet-cikkük.
     expect(norm(k.seoTitle).startsWith('kineticare')).toBe(false)
+  })
+})
+
+describe('S4b — a két új cikk SEO-szövege a lektor-headerrel egyezik', () => {
+  it('inhuvelygyulladas', () => {
+    const k = kulcsszoFor('inhuvelygyulladas')
+    expect(k?.seoTitle).toBe('Ínhüvelygyulladás: tünetek és mit tehetsz')
+    expect(k?.seoDescription).toBe(
+      'Ínhüvelygyulladás: hol fáj a csuklón és a hüvelykujjon, mit tehetsz házilag, és mikor kell orvoshoz menni. Nem diagnózis.',
+    )
+    expect(k?.elsodleges).toBe('ínhüvelygyulladás')
+    expect(k?.volumen).toBe(2200)
+    expect(k?.nehezseg).toBe(18)
+    expect(k?.targy).toEqual({ tipus: 'MedicalCondition', nev: 'Ínhüvelygyulladás' })
+  })
+
+  it('befagyott-vall', () => {
+    const k = kulcsszoFor('befagyott-vall')
+    expect(k?.seoTitle).toBe('Befagyott váll: szakaszok és teendők')
+    expect(k?.seoDescription).toBe(
+      'Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis.',
+    )
+    expect(k?.elsodleges).toBe('befagyott váll')
+    expect(k?.volumen).toBe(880)
+    expect(k?.nehezseg).toBe(12)
+    expect(k?.targy).toEqual({ tipus: 'MedicalCondition', nev: 'Befagyott váll' })
   })
 })
 

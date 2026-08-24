@@ -17,16 +17,12 @@ import {
  * ═══ A LEGFONTOSABB SZABÁLY: NÉMÁN SEMMI NEM VESZHET EL ═══
  * A storefront szerializálója (`src/components/lexical/serialize.tsx`) VÉGES
  * csomópont-készletet ismer: `heading`, `paragraph`, `text`, `link`, `list`,
- * `listitem`, `quote`, `horizontalrule`, `linebreak`, `upload`. Ami nincs
- * benne — mindenekelőtt a TÁBLÁZAT —, azt nem rendereli ki. Egy táblázatot
- * tartalmazó cikk tehát hiánytalannak LÁTSZANA az adatbázisban, miközben a
- * látogató nem látja a felét.
+ * `listitem`, `quote`, `horizontalrule`, `linebreak`, `upload`, `table`,
+ * `tablerow`, `tablecell`. Ami nincs benne, azt nem rendereli ki.
  *
- * Ezért ez a modul minden fel nem ismert szerkezetre KIVÉTELT DOB, nem pedig
- * átugorja. Mérve a fordítás írásakor (2026-08-21): mind a hat cikk törzsében
- * nulla táblázat-sor van — az összes tábla a törzs UTÁNI, lektornak szóló
- * szakaszokban áll, amiket a `extractArticleBody` amúgy is levág. A dobás
- * tehát ma egyetlen cikket sem érint; az őr a JÖVŐ szerkesztéseinek szól.
+ * A GFM-táblázatot (`| … |`) a fordító `table` / `tablerow` / `tablecell`
+ * csomópontokra képezi. A szerializáló valódi `<table>`-t ír (GOV.UK Table,
+ * WCAG 1.3.1). Fel nem ismert szerkezetre (kódblokk, második H1) KIVÉTELT DOB.
  *
  * ═══ A TÖRZS HATÁRAI ═══
  * A cikkfájlok felépítése kötött (lásd bármelyik fájl fejlécét): a H1 fölött a
@@ -311,6 +307,68 @@ const idezet = (sorok: string[]): BlockNode => ({
 const FELSOROLAS = /^[-*] +(.*)$/
 const SZAMOZOTT = /^\d+\. +(.*)$/
 
+/** Lexical TableCellHeaderStates: ROW = oszlopfejléc, COLUMN = sorfejléc. */
+const TABLA_FEJLEC_SOR = 1
+const TABLA_FEJLEC_OSZLOP = 2
+
+function tablaCellaErtekek(sor: string): string[] {
+  const t = sor.trim()
+  const belso = t.startsWith('|') ? t.slice(1) : t
+  const vagott = belso.endsWith('|') ? belso.slice(0, -1) : belso
+  return vagott.split('|').map((cella) => cella.trim())
+}
+
+function tablaElvalaszto(cella: string[]): boolean {
+  return cella.length > 0 && cella.every((ertek) => ertek === '' || /^:?-+:?$/.test(ertek))
+}
+
+function tablaCella(szoveg: string, headerState: number): BlockNode {
+  return {
+    type: 'tablecell',
+    headerState,
+    colSpan: 1,
+    rowSpan: 1,
+    children: [bekezdes(szoveg)],
+    direction: null,
+    format: '',
+    indent: 0,
+    version: 1,
+  } as BlockNode
+}
+
+function tablaSor(cella: string[], headerRow: boolean): BlockNode {
+  return {
+    type: 'tablerow',
+    children: cella.map((ertek, index) =>
+      tablaCella(ertek, headerRow ? TABLA_FEJLEC_SOR : index === 0 ? TABLA_FEJLEC_OSZLOP : 0),
+    ),
+    direction: null,
+    format: '',
+    indent: 0,
+    version: 1,
+  } as BlockNode
+}
+
+function tabla(sorok: string[]): BlockNode {
+  const parsed = sorok.map(tablaCellaErtekek)
+  if (parsed.length < 2) {
+    throw new Error('A táblázatnak kell egy fejlécsor és legalább egy adatsor.')
+  }
+  const bodyStart = tablaElvalaszto(parsed[1]) ? 2 : 1
+  const adat = parsed.slice(bodyStart)
+  if (adat.length === 0) {
+    throw new Error('A táblázatnak kell legalább egy adatsora.')
+  }
+  return {
+    type: 'table',
+    children: [tablaSor(parsed[0], true), ...adat.map((row) => tablaSor(row, false))],
+    direction: null,
+    format: '',
+    indent: 0,
+    version: 1,
+  } as BlockNode
+}
+
 /**
  * A törzs sorait Lexical-dokumentummá fordítja.
  *
@@ -332,10 +390,13 @@ export function markdownToLexical(lines: readonly string[]): RichTextContent {
     }
 
     if (trimmelt.startsWith('|')) {
-      throw new Error(
-        `Táblázat a cikk törzsében (${i + 1}. sor): a storefront szerializálója nem rendereli, ` +
-          'ezért némán eltűnne. Írd át felsorolássá, vagy bővítsd a szerializálót.',
-      )
+      const tablaSorok: string[] = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tablaSorok.push(lines[i])
+        i += 1
+      }
+      csomopontok.push(tabla(tablaSorok))
+      continue
     }
     if (trimmelt.startsWith('```')) {
       throw new Error(

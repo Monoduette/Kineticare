@@ -196,6 +196,41 @@ describe('kép (upload-csomópont)', () => {
   })
 })
 
+describe('táblázat', () => {
+  const cell = (textValue: string, headerState: number): LexicalNode => ({
+    type: 'tablecell',
+    version: 1,
+    headerState,
+    children: [paragraph(text(textValue))],
+  })
+  const row = (...cells: LexicalNode[]): LexicalNode => ({
+    type: 'tablerow',
+    version: 1,
+    children: cells,
+  })
+
+  it('table → <table>, th scope=col a fejlécen, th scope=row az első oszlopon', () => {
+    const output = html(
+      root({
+        type: 'table',
+        version: 1,
+        children: [
+          row(cell('Út', 1), cell('Amit tudni lehet', 1)),
+          row(cell('Otthon', 2), cell('Fájdalomcsillapító', 0)),
+        ],
+      }),
+    )
+    expect(output).toContain('<table')
+    expect(output).toContain('kc-richtext__table-wrap')
+    expect(output).toContain('scope="col"')
+    expect(output).toContain('scope="row"')
+    expect(output).toContain('<th scope="col">')
+    expect(output).toContain('<th scope="row">')
+    expect(output).toContain('<td>')
+    expect(output).toContain('Otthon')
+  })
+})
+
 describe('egyéb blokkok és graceful fallback', () => {
   it('idézet → blockquote, horizontalrule → hr', () => {
     expect(html(root({ type: 'quote', version: 1, children: [text('Idézet')] }))).toBe(

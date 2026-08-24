@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { PostArticle } from '@/components/content/PostArticle'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { getPostBySlug, getRelatedPosts } from '@/lib/cms'
+import { ujTudastarPostNoindex } from '@/lib/tudastar/eeat-kapu'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
 
@@ -18,7 +19,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { isEnabled: isDraft } = await draftMode()
   const post = await getPostBySlug(slug, { draft: isDraft })
   if (!post) return withDraftRobots({}, isDraft)
-  return withDraftRobots(buildPageMetadata(post, `/blog/${slug}`), isDraft)
+  const meta = buildPageMetadata(post, `/blog/${slug}`)
+  if (ujTudastarPostNoindex(post)) {
+    return withDraftRobots({ ...meta, robots: { index: false, follow: true } }, isDraft)
+  }
+  return withDraftRobots(meta, isDraft)
 }
 
 export default async function BlogPostPage({ params }: Props) {

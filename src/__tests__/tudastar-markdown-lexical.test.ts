@@ -29,6 +29,8 @@ const CIKKEK = [
   '4-pattano-ujj',
   '5-csuklo-es-kezfajdalom',
   '6-csuklotores-utani-gyogytorna',
+  '7-inhuvelygyulladas',
+  '8-befagyott-vall',
 ] as const
 
 const cikkPath = (nev: string): string =>
@@ -79,6 +81,8 @@ function nyersSzoveg(sorok: readonly string[]): string {
         .replace(/^[-*] +/, '')
         .replace(/^\d+\. +/, ''),
     )
+    .filter((sor) => !/^[\s|:-]*$/.test(sor) || !sor.includes('-'))
+    .map((sor) => (sor.includes('|') ? sor.replace(/\|/g, ' ') : sor))
     .join(' ')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
@@ -171,8 +175,16 @@ describe('T2 — soron belüli formázás', () => {
 })
 
 describe('T3 — a fel nem ismert szerkezet HANGOSAN bukik', () => {
-  it('táblázatra kivételt dob, mert a szerializáló nem rendereli', () => {
-    expect(() => markdownToLexical(['| a | b |', '|---|---|'])).toThrowError(/Táblázat/)
+  it('GFM-táblázatot table/tablerow/tablecell csomópontokra képez', () => {
+    const doc = markdownToLexical(['| a | b |', '|---|---|', '| 1 | 2 |'])
+    const tipusok = tipusokOf((doc as unknown as { root: unknown }).root)
+    expect(tipusok.get('table')).toBe(1)
+    expect(tipusok.get('tablerow')).toBe(2)
+    expect(tipusok.get('tablecell')).toBe(4)
+  })
+
+  it('adatsor nélküli táblázatra kivételt dob', () => {
+    expect(() => markdownToLexical(['| a | b |', '|---|---|'])).toThrowError(/adatsora/)
   })
 
   it('kódblokkra kivételt dob', () => {
@@ -208,6 +220,9 @@ describe('T4 — MÉRT szövegveszteség: nulla', () => {
       'link',
       'horizontalrule',
       'linebreak',
+      'table',
+      'tablerow',
+      'tablecell',
     ])
     const { lines } = extractArticleBody(readFileSync(cikkPath(nev), 'utf8'))
     const doc = markdownToLexical(lines)

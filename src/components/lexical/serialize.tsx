@@ -23,6 +23,9 @@ import { TEXT_FORMAT, type LexicalContent, type LexicalNode, type VideoEmbed } f
  *   listitem (beágyazott listával) → <li>, checked-állapot jelöléssel
  *   quote                        → <blockquote>
  *   horizontalrule               → <hr>
+ *   table / tablerow / tablecell → <div.kc-richtext__table-wrap> + <table>
+ *                                  (GOV.UK Table; WCAG 1.3.1 scope, 1.4.10
+ *                                  2D-kivétel a wrap overflow-x-ére)
  *   link                         → belső next/link, külső <a target/rel>;
  *                                  YouTube/Vimeo-ra mutató önálló link
  *                                  videó-beágyazás (csak publikus előzetes!)
@@ -336,6 +339,52 @@ function renderUpload(node: LexicalNode, key: string): ReactNode {
   return createElement('figure', { key, className: 'kc-richtext__figure' }, image)
 }
 
+/** Lexical TableCellHeaderStates: 1 = sorfejléc (oszlop), 2 = oszlopfejléc (sor). */
+function tableCellScope(headerState: number): 'col' | 'row' | undefined {
+  if (headerState === 1 || headerState === 3) return 'col'
+  if (headerState === 2) return 'row'
+  return undefined
+}
+
+function renderTableCell(node: LexicalNode, key: string): ReactNode {
+  const headerState = typeof node.headerState === 'number' ? node.headerState : 0
+  const tag = headerState > 0 ? 'th' : 'td'
+  const scope = tableCellScope(headerState)
+  return createElement(tag, { key, ...(scope ? { scope } : {}) }, renderChildren(node, key))
+}
+
+function renderTable(node: LexicalNode, key: string): ReactNode {
+  const rows = childrenOf(node)
+  const firstCells = rows[0] ? childrenOf(rows[0]) : []
+  const headCount =
+    firstCells.length > 0 &&
+    firstCells.every((cell) => typeof cell.headerState === 'number' && cell.headerState > 0)
+      ? 1
+      : 0
+  const head = rows.slice(0, headCount)
+  const body = rows.slice(headCount)
+  return createElement(
+    'div',
+    { key, className: 'kc-richtext__table-wrap' },
+    createElement(
+      'table',
+      { className: 'kc-richtext__table' },
+      head.length > 0
+        ? createElement(
+            'thead',
+            { key: `${key}-thead` },
+            head.map((row, index) => renderNode(row, `${key}-h-${index}`)),
+          )
+        : null,
+      createElement(
+        'tbody',
+        { key: `${key}-tbody` },
+        body.map((row, index) => renderNode(row, `${key}-b-${index}`)),
+      ),
+    ),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Fő bejáró
 // ---------------------------------------------------------------------------
@@ -358,6 +407,12 @@ function renderNode(node: LexicalNode, key: string): ReactNode {
       return createElement('blockquote', { key }, renderChildren(node, key))
     case 'horizontalrule':
       return createElement('hr', { key })
+    case 'table':
+      return renderTable(node, key)
+    case 'tablerow':
+      return createElement('tr', { key }, renderChildren(node, key))
+    case 'tablecell':
+      return renderTableCell(node, key)
     case 'link':
       return renderLink(node, key)
     case 'upload':
