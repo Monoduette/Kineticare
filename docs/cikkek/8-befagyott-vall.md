@@ -59,7 +59,7 @@ A magyar fizioterápiás irányelv három stádiumot ír le. A betegtájékoztat
 | II. stádium | 4–12. hónap | Több irányban fokozatosan beszűkül a mozgás. A váll kifejezetten fáj. Synovitis és tokzsugorodás. |
 | III. stádium | 12–42. hónap | A mozgások jelentős elvesztése. Progresszív fibrosis. Minimális gyulladás. |
 
-A betegnyelvű felosztás más. Ott a fagyási szakaszban minden mozdulat fáj. A merev szakaszban a fájdalom enyhülhet, a merevség nő. Az olvadó szakaszban a mozgás lassan visszatér. Az időablakok forrásonként eltérnek, van ahol csak fájdalomdomináns és merevségdomináns szakaszt írnak. Nem átlagoljuk őket a magyar táblázattal.
+A betegnyelvű felosztás más. Ott a fagyási szakaszban minden mozdulat fáj. A merev szakaszban a fájdalom enyhülhet, a merevség nő. Az olvadó szakaszban a mozgás lassan visszatér. Az időablakok forrásonként eltérnek, van ahol csak fájdalomdomináns és merevségdomináns szakaszt írnak. Nem átlagoljuk őket a magyar irányelv stádiumaival.
 
 Ezek csoportos lefolyások. Nem a te naptárad. A szakaszt orvos vagy gyógytornász állapítja meg vizsgálattal. Ne sorold be magad.
 
