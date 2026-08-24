@@ -20,6 +20,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getPostBySlug(slug, { draft: isDraft })
   if (!post) return withDraftRobots({}, isDraft)
   const meta = buildPageMetadata(post, `/blog/${slug}`)
+  // GEO-LOCK: noindex CSAK a két új slugra, ha a Person author vagy a faq hiányzik.
+  // A hat élő Tudástár-poszt indexelhető marad (author/faq később, külön feladat).
   if (ujTudastarPostNoindex(post)) {
     return withDraftRobots({ ...meta, robots: { index: false, follow: true } }, isDraft)
   }

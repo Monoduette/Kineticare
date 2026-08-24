@@ -31,6 +31,13 @@ describe('ujTudastarPostNoindex', () => {
     for (const slug of ELO_SLUGOK) {
       expect(ujTudastarPostNoindex({ slug, author: null, faq: [] })).toBe(false)
       expect(ujTudastarPostNoindex({ slug })).toBe(false)
+      expect(
+        ujTudastarPostNoindex({
+          slug,
+          author: { type: 'Organization', name: 'Kineticare' },
+          faq: [],
+        }),
+      ).toBe(false)
     }
   })
 

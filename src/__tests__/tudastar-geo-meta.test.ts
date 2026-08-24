@@ -35,10 +35,19 @@ function alap(overrides: Record<string, unknown> = {}): Record<string, unknown> 
   }
 }
 
+const ELO_SLUGOK = [
+  'miert-zsibbad-a-kezem',
+  'keztoalagut-szindroma',
+  'teniszkonyok',
+  'pattano-ujj',
+  'csuklo-es-kezfajdalom',
+  'csuklotores-utani-gyogytorna',
+] as const
+
 describe('blog cikk generateMetadata — GEO noindex csak a két új slugra', () => {
-  it('élő slug author=null / faq=[] mellett is indexelhető', async () => {
-    post.current = alap({ slug: 'pattano-ujj', author: null, faq: [] })
-    const meta = await generateMetadata({ params: Promise.resolve({ slug: 'pattano-ujj' }) })
+  it.each(ELO_SLUGOK)('%s author=null / faq=[] mellett is indexelhető', async (slug) => {
+    post.current = alap({ slug, author: null, faq: [] })
+    const meta = await generateMetadata({ params: Promise.resolve({ slug }) })
     expect(meta.robots).toBeUndefined()
   })
 
