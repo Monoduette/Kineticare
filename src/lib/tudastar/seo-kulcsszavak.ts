@@ -31,6 +31,8 @@
  * (`CLAUDE.md`, „Felületi (UX/UI) munka”).
  */
 
+import { SEO_KEYWORDS_MAX_ROWS } from '../seo-keywords'
+
 export interface CikkKulcsszo {
   /** A bejegyzés slugja (a `posts.slug` mezővel egyezik). */
   slug: string
@@ -190,6 +192,32 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
 /** Egy cikk célzása slug szerint, vagy `undefined`, ha nincs hozzá mérés. */
 export function kulcsszoFor(slug: string): CikkKulcsszo | undefined {
   return CIKK_KULCSSZAVAK.find((k) => k.slug === slug)
+}
+
+/**
+ * A mért elsődleges + másodlagos kifejezések a CMS `seoKeywords` alakjában.
+ *
+ * Az importer ezt írja a nyolc ismert slugra. Az elsodleges elöl áll, utána
+ * a masodlagos lista; üres és ismétlődő tétel kimarad, a maxRows plafonnál
+ * megáll. Kitalált kifejezést ide tenni tilos.
+ */
+export function meresToSeoKeywords(
+  meres: Pick<CikkKulcsszo, 'elsodleges' | 'masodlagos'>,
+): { phrase: string }[] {
+  const rows: { phrase: string }[] = []
+  const seen = new Set<string>()
+  for (const raw of [meres.elsodleges, ...meres.masodlagos]) {
+    const phrase = raw.trim()
+    if (phrase.length === 0 || seen.has(phrase)) {
+      continue
+    }
+    seen.add(phrase)
+    rows.push({ phrase })
+    if (rows.length === SEO_KEYWORDS_MAX_ROWS) {
+      break
+    }
+  }
+  return rows
 }
 
 /**

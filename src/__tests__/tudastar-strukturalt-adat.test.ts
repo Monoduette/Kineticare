@@ -763,20 +763,28 @@ describe('A renderelt cikkoldal sémája', () => {
     expect(author.jobTitle).toBe('gyógytornász')
   })
 
-  it('a MÉRT kulcsszavak és a cikk tárgya KIKERÜL a lapra', () => {
-    // REGRESSZIÓS ŐR: ha valaki átállítja a séma-építőt és elveszti ezt a két
-    // mezőt, ez bukik. A várt értékek magából a mérésből jönnek, nem
-    // másolatból — így a mérés bővülése nem teszi hazuggá a tesztet.
+  it('a cikk tárgya a mért táblából jön, a keywords a CMS mezőből', () => {
+    // A `about` slug-mérés marad (betegség-entitás). A `keywords` innentől a
+    // szerkeszthető `seoKeywords` mező: üresen kimarad, H1-ből nem töltjük.
     const meres = kulcsszoFor('teniszkonyok')
     expect(meres, 'a teniszkönyök-cikkhez van mérés').toBeDefined()
 
-    const jsonLd = cikkSema(lapPost())
-    const keywords = String(jsonLd.keywords)
+    const ures = cikkSema(lapPost())
+    expect('keywords' in ures).toBe(false)
+    expect(ures.about).toEqual({ '@type': meres!.targy.tipus, name: meres!.targy.nev })
 
+    const kitoltott = cikkSema(
+      lapPost({
+        seoKeywords: [
+          { phrase: meres!.elsodleges },
+          ...meres!.masodlagos.map((phrase) => ({ phrase })),
+        ],
+      }),
+    )
+    const keywords = String(kitoltott.keywords)
     for (const kifejezes of [meres!.elsodleges, ...meres!.masodlagos]) {
       expect(keywords, `hiányzik a kulcsszó: ${kifejezes}`).toContain(kifejezes)
     }
-    expect(jsonLd.about).toEqual({ '@type': meres!.targy.tipus, name: meres!.targy.nev })
   })
 
   it('MÉRÉS NÉLKÜLI cikken nincs keywords és nincs about', () => {

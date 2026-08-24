@@ -315,10 +315,12 @@ function subjectNode(subject: ArticleSubject | undefined): Record<string, unknow
  * representation of the page content" — a téma-entitás igaz és a lapon
  * látható, a klinikai részletek kódolása viszont már nem lenne az.
  *
- * A két mező FORRÁSA a Monid-mérés (`src/lib/tudastar/seo-kulcsszavak.ts`), és
- * csak azoknál a cikkeknél áll rendelkezésre, amikhez van mérés. Mérés nélkül
- * mindkét kulcs egyszerűen kimarad: kulcsszót vagy tárgyat kitalálni ugyanaz a
- * hiba lenne, mint ellenőrzési dátumot ellenőrzés nélkül kiírni.
+ * A két mező FORRÁSA SZÉT VAN VÁLASZTVA. A `keywords` a CMS `seoKeywords`
+ * mezőjéből jön (a szerkesztő tölti, az importer a mért táblából tölti a
+ * nyolc ismert slughoz). Az `about` továbbra is a Monid-mérés
+ * (`src/lib/tudastar/seo-kulcsszavak.ts`) `targy` mezője, mert a
+ * betegség-entitás nem szerkesztői kulcsszó. Üres CMS-mezőnél a `keywords`
+ * kulcs kimarad: H1-ből vagy slug alapján kitalálni tilos.
  *
  * AMI TOVÁBBRA IS TUDATOSAN NINCS BENNE: `citation` (a Lexical-fából nem
  * azonosítható megbízhatóan a forrásjegyzék; a hibás kinyerés rosszabb, mint a
@@ -344,8 +346,8 @@ export function postArticleJsonLd(args: {
   /** A megosztási kép abszolút URL-je (`resolveOgImageUrl`). */
   imageUrl?: string
   /**
-   * A cikk MÉRT célkifejezései (`src/lib/tudastar/seo-kulcsszavak.ts`).
-   * Mérés nélküli cikknél nincs — kulcsszót kitalálni tilos.
+   * A cikk keresőszavai a CMS `seoKeywords` mezőjéből.
+   * Üres mezőnél nincs — H1-ből vagy slug-mérésből kitalálni tilos.
    */
   keywords?: readonly string[]
   /** A cikk tárgya entitásként; mérés nélküli cikknél nincs. */
@@ -388,8 +390,10 @@ export function postArticleJsonLd(args: {
  * A szerző-szabály azonos a cikkoldaléval: kitöltött user → Person; üres
  * mező → nincs author kulcs; az Organization csak a publisher.
  *
- * Keywords/about szándékosan nincs: azok a Tudástár mért kulcsszó-táblájából
- * jönnek, slug alapján — a CMS-oldalnak nincs ilyen mérése, kitalálni tilos.
+ * A `keywords` a CMS `seoKeywords` mezőjéből jön, ha a szerkesztő kitöltötte.
+ * Üres mezőnél a kulcs kimarad — slug alapján vagy a H1-ből kitalálni tilos.
+ * Az `about` szándékosan nincs: az a Tudástár mért táblájából jön, a
+ * CMS-oldalnak nincs ilyen mérése.
  */
 export function cmsPageJsonLd(args: {
   page: ArticleSeoPost
@@ -399,11 +403,16 @@ export function cmsPageJsonLd(args: {
   reviewer?: SchemaPerson
   lastReviewed?: string | null
   imageUrl?: string
+  /**
+   * A szerkesztő által felvett keresőszavak. Üresen a kulcs kimarad.
+   */
+  keywords?: readonly string[]
 }): Record<string, unknown> {
-  const { page, path, author, reviewer, lastReviewed, imageUrl } = args
+  const { page, path, author, reviewer, lastReviewed, imageUrl, keywords } = args
   const description = trimmedText(page.excerpt)
   const datePublished = trimmedText(page.publishedAt)
   const dateModified = trimmedText(page.updatedAt)
+  const keywordList = keywordsValue(keywords)
 
   return {
     '@context': 'https://schema.org',
@@ -416,6 +425,7 @@ export function cmsPageJsonLd(args: {
     ...(datePublished !== undefined ? { datePublished } : {}),
     ...(dateModified !== undefined ? { dateModified } : {}),
     ...(imageUrl !== undefined ? { image: [imageUrl] } : {}),
+    ...(keywordList !== undefined ? { keywords: keywordList } : {}),
     ...authorshipNodes({ author, reviewer, lastReviewed }),
     publisher: publisherNode(),
   }

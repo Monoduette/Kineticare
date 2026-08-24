@@ -21,11 +21,12 @@
  * Ezért alapból piszkozat.
  *
  * ═══ MI KERÜL BE A MARKDOWNON KÍVÜL ═══
- * A `seoTitle` és a `seoDescription` a MÉRT kulcsszó-célzásból jön
+ * A `seoTitle`, a `seoDescription` és a `seoKeywords` a MÉRT kulcsszó-célzásból jön
  * (`src/lib/tudastar/seo-kulcsszavak.ts`), a `faq` mező pedig a MÉRT keresési
  * kérdésekből (`src/lib/tudastar/faq.ts`). Egyik sem a cikkből számolódik, és
  * egyik sem találgatás: a GYIK-válaszok kizárólag azt mondják, amit a cikk
- * törzse már kimond.
+ * törzse már kimond. A `seoKeywords` az elsodleges kifejezéssel kezdődik, utána
+ * a masodlagosak következnek.
  *
  * ═══ ÚJRAFUTTATHATÓ ═══
  * A párosítás slug szerint történik: meglévő bejegyzést FRISSÍT, nem duplikál.
@@ -50,7 +51,7 @@ import {
   extractArticleBody,
   markdownToLexical,
 } from '../lib/tudastar/markdown-to-lexical'
-import { kulcsszoFor } from '../lib/tudastar/seo-kulcsszavak'
+import { kulcsszoFor, meresToSeoKeywords } from '../lib/tudastar/seo-kulcsszavak'
 import config from '../payload.config'
 
 /**
@@ -114,6 +115,11 @@ export interface ForditottCikk {
   /** A mért kulcsszó-célzásból jövő SEO-leírás. */
   seoDescription: string
   /**
+   * A CMS `seoKeywords` mezője: elsodleges elöl, utána a masodlagosak.
+   * A mért táblából jön, kitalálni tilos.
+   */
+  seoKeywords: { phrase: string }[]
+  /**
    * A cikk GYIK-tételei, vagy `undefined`, ha ehhez a slughoz nincs.
    *
    * Az `undefined` és az üres tömb NEM ugyanaz: az előbbi azt jelenti, hogy a
@@ -174,6 +180,7 @@ export function cikketFordit(cikkekDir: string, fajl: string, slug: string): For
     szoszam: lines.join(' ').split(/\s+/).filter(Boolean).length,
     seoTitle: kulcsszo.seoTitle,
     seoDescription: kulcsszo.seoDescription,
+    seoKeywords: meresToSeoKeywords(kulcsszo),
     faq,
   }
 }
@@ -349,6 +356,7 @@ async function main(): Promise<void> {
       content: cikk.content,
       seoTitle: cikk.seoTitle,
       seoDescription: cikk.seoDescription,
+      seoKeywords: cikk.seoKeywords,
       // Mindkét állapotmezőt kiírjuk, ahogy a `seed.ts` és a
       // `restore-legacy-content.ts` is teszi: a `_status` a Payload technikai
       // verzió-állapota, a `status` pedig a nyilvános szűrők (PUBLISHED_WHERE,
@@ -396,8 +404,7 @@ async function main(): Promise<void> {
 }
 
 const kozvetlenul =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (kozvetlenul) {
   main()

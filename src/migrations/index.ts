@@ -24,6 +24,7 @@ import * as migration_20260817_122044_idopontkero_urlap_kapcsolo from './2026081
 import * as migration_20260821_204356_tudastar_gyik_lektor_mezok from './20260821_204356_tudastar_gyik_lektor_mezok';
 import * as migration_20260823_195638_access_grants from './20260823_195638_access_grants';
 import * as migration_20260824_185329_pages_eeat_mezok from './20260824_185329_pages_eeat_mezok';
+import * as migration_20260824_204332_seo_kulcsszavak_mezok from './20260824_204332_seo_kulcsszavak_mezok';
 
 export const migrations = [
   {
@@ -154,6 +155,11 @@ export const migrations = [
   {
     up: migration_20260824_185329_pages_eeat_mezok.up,
     down: migration_20260824_185329_pages_eeat_mezok.down,
-    name: '20260824_185329_pages_eeat_mezok'
+    name: '20260824_185329_pages_eeat_mezok',
+  },
+  {
+    up: migration_20260824_204332_seo_kulcsszavak_mezok.up,
+    down: migration_20260824_204332_seo_kulcsszavak_mezok.down,
+    name: '20260824_204332_seo_kulcsszavak_mezok'
   },
 ];

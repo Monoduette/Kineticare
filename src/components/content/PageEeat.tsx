@@ -1,5 +1,5 @@
 import type { Page } from '../../payload-types'
-import { resolveOgImageUrl } from '../../lib/seo'
+import { resolveOgImageUrl, resolveSeoKeywords } from '../../lib/seo'
 import { cmsPageJsonLd } from '../../lib/seo-cikk'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
@@ -41,11 +41,13 @@ export function PageEeat({ page, path }: PageEeatProps) {
   const reviewer = reviewerPersonOf(page)
   const { reviewedAt, nextReviewAt } = reviewDatesOf(page)
   const faqItems = postFaqItems(page)
+  const keywords = resolveSeoKeywords(page.seoKeywords)
   const hasFaq = faqItems.length > 0
   const hasAuthorship = author !== null || reviewer !== null || reviewedAt !== null
-  const hasSchema = hasAuthorship
+  const hasKeywords = keywords !== undefined
+  const hasSchema = hasAuthorship || hasKeywords
 
-  if (!hasFaq && !hasAuthorship) {
+  if (!hasFaq && !hasAuthorship && !hasKeywords) {
     return null
   }
 
@@ -64,23 +66,26 @@ export function PageEeat({ page, path }: PageEeatProps) {
               : {}),
             lastReviewed: reviewedAt,
             imageUrl: resolveOgImageUrl(page),
+            ...(keywords !== undefined ? { keywords } : {}),
           })}
         />
       ) : null}
-      <Section>
-        <Container size="narrow">
-          <div className="kc-post-body">
-            <PostFaq items={faqItems} />
-            <PostAuthorBox
-              author={author}
-              nextReviewAt={nextReviewAt}
-              reviewedAt={reviewedAt}
-              reviewer={reviewer}
-              surface="page"
-            />
-          </div>
-        </Container>
-      </Section>
+      {hasFaq || hasAuthorship ? (
+        <Section>
+          <Container size="narrow">
+            <div className="kc-post-body">
+              <PostFaq items={faqItems} />
+              <PostAuthorBox
+                author={author}
+                nextReviewAt={nextReviewAt}
+                reviewedAt={reviewedAt}
+                reviewer={reviewer}
+                surface="page"
+              />
+            </div>
+          </Container>
+        </Section>
+      ) : null}
     </>
   )
 }

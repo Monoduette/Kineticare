@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
+import { seoKeywordsField } from '../fields/seo-keywords'
 import { slugField } from '../fields/slug'
 import {
   clearPublishedAtBeforeDuplicate,
@@ -29,7 +30,8 @@ export const Posts: CollectionConfig = {
     useAsTitle: 'title',
     group: 'Tartalom',
     defaultColumns: ['title', 'categories', '_status', 'publishedAt', 'updatedAt'],
-    description: 'A Tudástár (blog) cikkei. A közzétett bejegyzések azonnal megjelennek az oldalon.',
+    description:
+      'A Tudástár (blog) cikkei. A közzétett bejegyzések azonnal megjelennek az oldalon.',
     preview: (doc) => buildAdminPreviewUrl('posts', doc?.slug),
   },
   versions: {
@@ -95,13 +97,15 @@ export const Posts: CollectionConfig = {
         description: 'A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).',
       },
     },
+    seoKeywordsField,
     {
       name: 'ogImage',
       type: 'upload',
       relationTo: 'media',
       label: 'Megosztási kép',
       admin: {
-        description: 'Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a cikket.',
+        description:
+          'Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a cikket.',
       },
     },
     {

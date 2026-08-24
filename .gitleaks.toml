@@ -72,4 +72,9 @@ regexes = [
   # indoklást.
   '''def9c7682906850674c1c3452874772073abcb3fff2b96d7cddb2eededc9d86c''',
   '''632eef8b6f8a59a5528eb4806766915baf3ad0e472cc830129304d5af7cf23b7''',
+  # G3-manifest: a Payload-generált `20260824_204332_seo_kulcsszavak_mezok`
+  # .ts/.json pár LF-normalizált sha256-a. Nem credential — lásd a fenti
+  # access_grants indoklást.
+  '''fdaa0a31f67ea3c729c72b037d8e395bc1af5d04e657934b67adf833d3b4184a''',
+  '''33572ff187ee101696a3a75b034580acc9bef919cffe8e1aaee0387b412d0f0c''',
 ]

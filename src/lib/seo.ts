@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { courseTitle } from './courses'
 import { resolveServerUrl } from '../env'
 import type { Media, Post, Product } from '../payload-types'
+import { resolveSeoKeywords, type SeoKeywordRow } from './seo-keywords'
 
 /**
  * Storefront SEO-segédek — a pages/posts/products meta-fallbacklánca egy helyen.
@@ -33,6 +34,11 @@ export interface SeoDoc {
   excerpt?: string | null
   seoTitle?: string | null
   seoDescription?: string | null
+  /**
+   * Szerkesztő által felvett keresőszavak. Üresen nincs meta keywords és
+   * nincs JSON-LD keywords — H1-ből nem töltjük.
+   */
+  seoKeywords?: readonly SeoKeywordRow[] | null
   /** Megosztási kép — csak populate-olva (Media) használható, nyers id-ként nem. */
   ogImage?: (number | null) | Media
   /** Kép-tartalék az og:image-hez (pages/posts: `heroImage`; products: `coverImage`). */
@@ -70,6 +76,9 @@ export function resolveSeoDescription(doc: SeoDoc): string | undefined {
   const excerpt = typeof doc.excerpt === 'string' ? doc.excerpt.trim() : ''
   return excerpt.length > 0 ? excerpt : undefined
 }
+
+export { resolveSeoKeywords, SEO_KEYWORDS_MAX_ROWS } from './seo-keywords'
+export type { SeoKeywordRow } from './seo-keywords'
 
 function isMedia(value: unknown): value is Media {
   return typeof value === 'object' && value !== null && 'url' in value
@@ -142,10 +151,12 @@ export function buildStaticPageMetadata(input: {
  */
 export function buildDocMetadata(doc: SeoDoc, path: string): Metadata {
   const description = resolveSeoDescription(doc)
+  const keywords = resolveSeoKeywords(doc.seoKeywords)
   const ogImage = resolveOgImage(doc)
   return {
     title: resolveSeoTitle(doc),
     ...(description ? { description } : {}),
+    ...(keywords ? { keywords } : {}),
     alternates: { canonical: path },
     openGraph: {
       title: resolveSeoTitle(doc),
@@ -434,12 +445,12 @@ export function articleJsonLd(args: {
   authorName?: string
   imageUrl?: string
   /**
-   * A cikk MÉRT célkifejezései (`src/lib/tudastar/seo-kulcsszavak.ts`).
+   * A cikk CMS `seoKeywords` mezőjének kifejezései.
    *
    * A schema.org szerint (ellenőrizve 2026-08-21) a `keywords` a CreativeWork-ön
    * áll, tehát az Article-on is érvényes, és „multiple textual entries in a
-   * keywords list are typically delimited by commas”. Ez az egyetlen hely, ahol
-   * a Monid-mérés kifejezései gépi olvasásra is kikerülnek az oldalról.
+   * keywords list are typically delimited by commas”. Üres mezőnél a kulcs
+   * kimarad — H1-ből kitalálni tilos.
    */
   keywords?: readonly string[]
   /**
