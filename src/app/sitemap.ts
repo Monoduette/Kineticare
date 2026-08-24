@@ -10,6 +10,7 @@ import {
 import { courseHref } from '@/lib/course-url'
 import { absoluteUrl } from '@/lib/seo'
 import { categoriesWithPosts } from '@/lib/tudastar'
+import { ujTudastarSlug } from '@/lib/tudastar/eeat-kapu'
 
 /**
  * sitemap.xml — a Next.js metadata-API generálja (`/sitemap.xml`).
@@ -63,7 +64,11 @@ import { categoriesWithPosts } from '@/lib/tudastar'
 export const dynamic = 'force-dynamic'
 
 /** Statikus, mindig létező storefront-útvonalak. */
-const STATIC_ROUTES: ReadonlyArray<{ path: string; priority: number; changeFrequency: 'daily' | 'weekly' | 'monthly' }> = [
+const STATIC_ROUTES: ReadonlyArray<{
+  path: string
+  priority: number
+  changeFrequency: 'daily' | 'weekly' | 'monthly'
+}> = [
   { path: '/', priority: 1, changeFrequency: 'weekly' },
   { path: '/kurzusok', priority: 0.9, changeFrequency: 'weekly' },
   { path: '/blog', priority: 0.8, changeFrequency: 'daily' },
@@ -115,6 +120,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // enélkül `/undefined` alakú cím kerülne a sitemapbe.
   for (const page of pages) {
     if (page.slug === HOME_PAGE_SLUG || !hasSlug(page) || staticPaths.has(`/${page.slug}`)) {
+      continue
+    }
+    // URL-LOCK: a két új cikk kanonikus címe `/blog/<slug>`. Gyökér pages-URL
+    // a sitemapbe nem kerül, még ha a CMS-ben létezne is a rekord.
+    if (ujTudastarSlug(page.slug)) {
       continue
     }
     entries.push({

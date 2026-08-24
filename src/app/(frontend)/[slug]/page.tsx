@@ -14,6 +14,7 @@ import { getAppointmentSectionContext } from '@/lib/appointment/section'
 import { getLatestPosts, getPageBySlug, getPublishedProducts, getTestimonials } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
+import { ujTudastarSlug } from '@/lib/tudastar/eeat-kapu'
 import type { Post, Product, Testimonial } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,10 @@ type Props = { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
+  // URL-LOCK: a két új Tudástár-cikk csak `/blog/<slug>`. Gyökér pages 200 tilos;
+  // a hub később 308-cal viszi (külön PR). Pages collection, LEGACY_REDIRECTS
+  // és A-hub ebben a körben érintetlen.
+  if (ujTudastarSlug(slug)) notFound()
   // Draft mode-ban a piszkozat metaadata jön — és a válasz sosem indexelhető.
   const { isEnabled: isDraft } = await draftMode()
   const page = await getPageBySlug(slug, { draft: isDraft })
@@ -53,6 +58,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  */
 export default async function CmsPage({ params }: Props) {
   const { slug } = await params
+  // URL-LOCK: még egy tévesen felvett pages rekord sem adhat published 200-at
+  // `/inhuvelygyulladas` vagy `/befagyott-vall` címen. A kanonikus cím
+  // `/blog/<slug>`. A 308-as hub későbbi PR.
+  if (ujTudastarSlug(slug)) notFound()
   // Előnézet (draft mode): a publikálatlan verzió is látszik. A sütit kizárólag
   // a /next/preview route adhatja, oda pedig csak staff/owner jut be.
   const { isEnabled: isDraft } = await draftMode()
