@@ -4,6 +4,7 @@ import { courseTitle } from './courses'
 import { resolveServerUrl } from '../env'
 import type { Media, Post, Product } from '../payload-types'
 import { resolveSeoKeywords, type SeoKeywordRow } from './seo-keywords'
+import { KURZUSLISTA_KULCSSZAVAK } from './tudastar/seo-kulcsszavak'
 
 /**
  * Storefront SEO-segédek — a pages/posts/products meta-fallbacklánca egy helyen.
@@ -170,6 +171,85 @@ export function buildDocMetadata(doc: SeoDoc, path: string): Metadata {
   }
 }
 
+const HOME_FALLBACK_TITLE = 'Kineticare — Kézrehabilitációs online kurzusplatform'
+const HOME_FALLBACK_DESCRIPTION =
+  'Kineticare — kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.'
+
+/**
+ * A `/` metaadata: a `kezdolap` CMS-oldal `buildDocMetadata` útján
+ * (seoTitle / seoDescription / seoKeywords), nem a `/kezdolap` pathen.
+ * Üres `seoKeywords` → a keywords kulcs kimarad; H1-ből nem töltjük.
+ * Ha a CMS-oldal hiányzik, a statikus tartalék cím/leírás marad, keywords nélkül.
+ */
+export function buildHomeMetadata(home: SeoDoc | null | undefined): Metadata {
+  if (!home) {
+    return buildStaticPageMetadata({
+      title: HOME_FALLBACK_TITLE,
+      description: HOME_FALLBACK_DESCRIPTION,
+      path: '/',
+    })
+  }
+  return buildDocMetadata(
+    {
+      title: home.title.trim() ? home.title : HOME_FALLBACK_TITLE,
+      excerpt: home.excerpt ?? HOME_FALLBACK_DESCRIPTION,
+      seoTitle: home.seoTitle,
+      seoDescription: home.seoDescription,
+      seoKeywords: home.seoKeywords,
+      ogImage: home.ogImage,
+      heroImage: home.heroImage,
+    },
+    '/',
+  )
+}
+
+/** A `/kurzusok` lista címe — meta és JSON-LD közös forrás. */
+export const COURSE_LISTING_TITLE = 'Kurzusok'
+
+/** A `/kurzusok` lista leírása — meta és JSON-LD közös forrás. */
+export const COURSE_LISTING_DESCRIPTION =
+  'Kineticare online kézrehabilitációs kurzusok: otthoni gyakorlóprogramok és szakmai továbbképzések videós anyagokkal. Válaszd ki a hozzád illő kurzust, és kezdj el gyógyulni.'
+
+/**
+ * A `/` WebPage JSON-LD-je. A `keywords` csak a CMS `seoKeywords` mezőből
+ * jön (`resolveSeoKeywords`); üresen a kulcs kimarad, a H1-et nem másoljuk.
+ */
+export function homeWebPageJsonLd(home: SeoDoc | null | undefined): Record<string, unknown> {
+  if (!home) {
+    return webPageJsonLd({
+      name: SITE_NAME,
+      description: HOME_FALLBACK_DESCRIPTION,
+      path: '/',
+    })
+  }
+  const title = home.title.trim() ? home.title : HOME_FALLBACK_TITLE
+  return webPageJsonLd({
+    name: resolveSeoTitle({ title, seoTitle: home.seoTitle }),
+    description: resolveSeoDescription({
+      title,
+      excerpt: home.excerpt ?? HOME_FALLBACK_DESCRIPTION,
+      seoDescription: home.seoDescription,
+    }),
+    path: '/',
+    keywords: resolveSeoKeywords(home.seoKeywords),
+  })
+}
+
+/**
+ * A `/kurzusok` lista CollectionPage JSON-LD-je. Nincs pages-rekord — a
+ * Search-lock 3 kifejezés a `resolveSeoKeywords` úton megy a `keywords`
+ * kulcsba. SOS termékoldal ezt a segédet nem hívja.
+ */
+export function courseListingJsonLd(): Record<string, unknown> {
+  return webPageJsonLd({
+    name: COURSE_LISTING_TITLE,
+    description: COURSE_LISTING_DESCRIPTION,
+    path: '/kurzusok',
+    type: 'CollectionPage',
+    keywords: resolveSeoKeywords(KURZUSLISTA_KULCSSZAVAK.map((phrase) => ({ phrase }))),
+  })
+}
+
 /**
  * Oldal-szintű Metadata a CMS-oldalak/blogposztok generateMetadata-jához —
  * vékony wrapper a buildDocMetadata fölé (title/description/og fallbacklánc
@@ -254,6 +334,32 @@ export function organizationJsonLd(): Record<string, unknown> {
       'kéz- és csuklósérülés utáni rehabilitáció',
       'otthoni rehabilitációs gyakorlatok',
     ],
+  }
+}
+
+/**
+ * WebPage / CollectionPage JSON-LD. A `keywords` a `resolveSeoKeywords` kimenete:
+ * üresen a kulcs kimarad, H1-ből vagy listacímből nem töltjük.
+ */
+export function webPageJsonLd(args: {
+  name: string
+  description?: string
+  path: string
+  type?: 'WebPage' | 'CollectionPage'
+  keywords?: readonly string[]
+}): Record<string, unknown> {
+  const keywordText =
+    args.keywords !== undefined && args.keywords.length > 0
+      ? args.keywords.join(', ')
+      : undefined
+  return {
+    '@context': 'https://schema.org',
+    '@type': args.type ?? 'WebPage',
+    name: args.name,
+    url: absoluteUrl(args.path),
+    inLanguage: 'hu-HU',
+    ...(args.description ? { description: args.description } : {}),
+    ...(keywordText !== undefined ? { keywords: keywordText } : {}),
   }
 }
 

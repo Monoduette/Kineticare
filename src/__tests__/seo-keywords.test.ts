@@ -7,10 +7,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { Pages } from '../collections/Pages'
 import { Posts } from '../collections/Posts'
+import { HomeView } from '../components/content/HomeView'
 import { PageEeat } from '../components/content/PageEeat'
 import { PostArticle } from '../components/content/PostArticle'
 import { seoKeywordsField } from '../fields/seo-keywords'
-import { buildDocMetadata, buildStaticPageMetadata } from '../lib/seo'
+import {
+  buildDocMetadata,
+  buildHomeMetadata,
+  buildStaticPageMetadata,
+  courseListingJsonLd,
+  homeWebPageJsonLd,
+} from '../lib/seo'
 import { cmsPageJsonLd, postArticleJsonLd } from '../lib/seo-cikk'
 import {
   resolveSeoKeywords,
@@ -492,6 +499,7 @@ describe('Search lock 2026-08-24: kurzus seoKeywords', () => {
   it('/kurzusok listing metadata a lockolt három kifejezést viszi', () => {
     const src = readFileSync(`${process.cwd()}/src/app/(frontend)/kurzusok/page.tsx`, 'utf8')
     expect(src).toContain('keywords: KURZUSLISTA_KULCSSZAVAK')
+    expect(src).toContain('courseListingJsonLd')
     expect(src).not.toMatch(/LEGACY_REDIRECTS/)
     const meta = buildStaticPageMetadata({
       title: 'Kurzusok',
@@ -501,6 +509,107 @@ describe('Search lock 2026-08-24: kurzus seoKeywords', () => {
     })
     expect(meta.keywords).toEqual([...harom])
     expect(meta.alternates?.canonical).toBe('/kurzusok')
+  })
+
+  it('/kurzusok listing JSON-LD a lockolt 3 kifejezést viszi, primér otthoni gyógytorna', () => {
+    const jsonLd = courseListingJsonLd()
+    expect(jsonLd['@type']).toBe('CollectionPage')
+    expect(jsonLd.keywords).toBe('otthoni gyógytorna, kéztorna, kéztorna gyakorlatok')
+    expect(String(jsonLd.keywords).split(', ')[0]).toBe('otthoni gyógytorna')
+  })
+
+  it('SOS termékoldal nem kapja a listing kulcsszavait', () => {
+    const src = readFileSync(
+      `${process.cwd()}/src/app/(frontend)/kurzusok/[slug]/page.tsx`,
+      'utf8',
+    )
+    expect(src).not.toContain('KURZUSLISTA_KULCSSZAVAK')
+    expect(src).not.toContain('courseListingJsonLd')
+    expect(kurzusKulcsszavakFor('sos-kezrelax-villamkurzus')).toBeUndefined()
+  })
+})
+
+describe('kezdőlap / JSON-LD és meta keywords a CMS seoKeywords-ből', () => {
+  const negy = [
+    'Kineticare',
+    'kéztorna',
+    'kéztorna gyakorlatok',
+    'otthoni gyógytorna',
+  ] as const
+
+  it('kitöltött kezdolap seoKeywords → buildHomeMetadata a 4 kifejezés', () => {
+    const metadata = buildHomeMetadata({
+      title: 'Kezdőlap',
+      seoKeywords: negy.map((phrase) => ({ phrase })),
+    })
+    expect(metadata.keywords).toEqual([...negy])
+    expect(metadata.alternates?.canonical).toBe('/')
+  })
+
+  it('üres kezdolap seoKeywords → / metadata-ban nincs keywords kulcs', () => {
+    expect('keywords' in buildHomeMetadata({ title: 'Kezdőlap' })).toBe(false)
+    expect('keywords' in buildHomeMetadata({ title: 'Kezdőlap', seoKeywords: [] })).toBe(false)
+    expect('keywords' in buildHomeMetadata(null)).toBe(false)
+  })
+
+  it('H1-ből nem talál ki kulcsszót', () => {
+    const metadata = buildHomeMetadata({
+      title: 'Hatékony és biztonságos módszerek a kéz fájdalmaira',
+      seoKeywords: [],
+    })
+    expect('keywords' in metadata).toBe(false)
+    const jsonLd = homeWebPageJsonLd({
+      title: 'Hatékony és biztonságos módszerek a kéz fájdalmaira',
+      seoKeywords: [],
+    })
+    expect('keywords' in jsonLd).toBe(false)
+  })
+
+  it('kitöltött seoKeywords → WebPage JSON-LD a 4 kifejezés, látható HTML-ben nincs felhő', () => {
+    const nonce = 'xyzzy-kezdolap-kulcsszo-teszt-8c2b'
+    const html = renderToStaticMarkup(
+      createElement(HomeView, {
+        home: lapOldal({
+          slug: 'kezdolap',
+          title: 'Hatékony módszerek a kéz fájdalmaira',
+          seoKeywords: [...negy, nonce].map((phrase) => ({ phrase })),
+        }),
+        products: [],
+        posts: [],
+      }),
+    )
+    const visible = visibleHtml(html)
+    const pageSchema = jsonLdBlocks(html).find((block) => block['@type'] === 'WebPage')
+
+    expect(pageSchema, 'nincs WebPage JSON-LD a kezdőlapon').toBeDefined()
+    expect(pageSchema!.keywords).toBe([...negy, nonce].join(', '))
+    const org = jsonLdBlocks(html).find((block) => block['@type'] === 'Organization')
+    expect(org).toBeDefined()
+    expect('keywords' in org!).toBe(false)
+    expect(visible).not.toContain(nonce)
+    expect(visible).not.toMatch(/kc-seo-keywords|kulcsszó-felhő|seo-keywords/i)
+    expect(html).not.toMatch(/<meta\s+name="keywords"/i)
+  })
+
+  it('üres seoKeywords → a kezdőlap JSON-LD-jében nincs keywords kulcs', () => {
+    const html = renderToStaticMarkup(
+      createElement(HomeView, {
+        home: lapOldal({ slug: 'kezdolap', title: 'Kezdőlap', seoKeywords: [] }),
+        products: [],
+        posts: [],
+      }),
+    )
+    const pageSchema = jsonLdBlocks(html).find((block) => block['@type'] === 'WebPage')
+    expect(pageSchema, 'nincs WebPage JSON-LD').toBeDefined()
+    expect('keywords' in pageSchema!).toBe(false)
+    expect(jsonLdBlocks(html).some((block) => 'keywords' in block)).toBe(false)
+  })
+
+  it('a / generateMetadata a buildHomeMetadata úton viszi a seoKeywords-t', () => {
+    const src = readFileSync(`${process.cwd()}/src/app/(frontend)/page.tsx`, 'utf8')
+    expect(src).toContain('buildHomeMetadata')
+    expect(src).toContain('getHomePage')
+    expect(src).not.toContain('buildStaticPageMetadata')
   })
 })
 

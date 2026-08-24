@@ -1,6 +1,6 @@
 import type { Page, Post, Product, Testimonial } from '../../payload-types'
 import type { AppointmentSectionContext } from '../../lib/appointment/context'
-import { faqPageJsonLd, organizationJsonLd } from '../../lib/seo'
+import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
@@ -131,13 +131,15 @@ export function HomeView({
   // Szekció-rendszer: ha a kezdőlap CMS-oldalán VAN összeállított szekciósor
   // (Pages → Szekciók), azt rendereljük — a sorrend és a láthatóság teljes
   // egészében a szerkesztőé. A FAQPage JSON-LD-t ilyenkor a faq blokk adja a
-  // saját tételeiből (FaqBlock), ezért itt csak az Organization séma marad.
+  // saját tételeiből (FaqBlock). Az Organization mellett a WebPage séma viszi
+  // a CMS `seoKeywords` mezőt; üresen a `keywords` kulcs kimarad.
   // Üres layout → az alábbi rögzített, audit szerinti M1–M8 kezdőlap.
   const layout = home?.layout ?? []
   if (layout.length > 0) {
     return (
       <>
         <JsonLd data={organizationJsonLd()} />
+        <JsonLd data={homeWebPageJsonLd(home)} />
         <RenderBlocks
           appointment={appointment}
           layout={layout}
@@ -173,6 +175,7 @@ export function HomeView({
   return (
     <>
       <JsonLd data={organizationJsonLd()} />
+      <JsonLd data={homeWebPageJsonLd(home)} />
       <JsonLd data={faqPageJsonLd(FAQ_ITEMS)} />
       <HeroSection home={home} />
 
