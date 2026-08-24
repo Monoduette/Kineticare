@@ -137,9 +137,13 @@ Teljes runId lista: `docs/monid-negyedik-kor.md`. Ahrefs H-IH: `01M0SJQ0SBHS103Y
 
 ## 9) Lyukak zárva 2026-08-24
 
-Lásd `docs/monid-lyukak-2026-08-24.md` (összköltség $0.52376, 15 teljes runId).
+Lásd `docs/monid-lyukak-2026-08-24.md` (összköltség $0.52376, 15 teljes runId). **Spend Ads = 0.** Váll HOLD; AC tételes OK.
 
 - Ínhüvely: Strale SERP HU + Ahrefs volume-history (fő KW + házilag)
 - Váll/alkar: Semrush keyword_metrics (5 seed) — Ads HOLD Katákig
 - Backlinks_overview: gyogytornaszom / fajakezem / kineticare
 - Tételes Strale autocomplete: ínhüvely 50, befagyott váll 22, alkar 21, csukló ínhüvely 10
+
+**Házilag (két forrás, soha nem egy cella):** Semrush ~1300 vs Ahrefs volume-history ~38–158 — külön oszlop / külön sor, soha ne legyen egy közös „házilag volumen”. SERP HU: Kineticare nincs a topban (portál/klinika) → gyökér-hub indoklás áll.
+
+**Backlink overview (nem Ads-kapu):** kineticare score 2 / 9 ref domain vs gyogytornaszom 36 / 570, fajakezem 7 / 108 — erősíti az A7 off-site backlogot.
