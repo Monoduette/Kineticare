@@ -333,6 +333,32 @@ export interface Page {
    * A lista- és menürendezéshez használt sorszám (kisebb = előrébb).
    */
   order?: number | null;
+  /**
+   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.
+   */
+  author?: (number | null) | User;
+  /**
+   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.
+   */
+  reviewedBy?: (number | null) | User;
+  /**
+   * Az utolsó szakmai ellenőrzés napja. Csak akkor töltsd ki, ha az ellenőrzés tényleg megtörtént.
+   */
+  reviewedAt?: string | null;
+  /**
+   * A következő tervezett ellenőrzés napja (az NHS-minta szerint jellemzően 2 év).
+   */
+  nextReviewAt?: string | null;
+  /**
+   * Mások ezt is kérdezik: 2–6 rövid kérdés-válasz a cikk végére. A válasz önmagában is megálljon (2–4 mondat), mert a keresők és az AI-válaszok pontosan ezt idézik.
+   */
+  faq?:
+    | {
+        question: string;
+        answer: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1501,111 +1527,6 @@ export interface BlockCtaBanner {
   blockType: 'ctaBanner';
 }
 /**
- * A Tudástár (blog) cikkei. A közzétett bejegyzések azonnal megjelennek az oldalon.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "posts".
- */
-export interface Post {
-  id: number;
-  /**
-   * A bejegyzés címe — ez jelenik meg a listában és a Google találatai közt.
-   */
-  title: string;
-  /**
-   * A cím webcímes alakja, magától kitöltődik (ékezetek nélkül, kötőjelekkel). Csak akkor írd át, ha tudod, mit csinálsz — a régi webcím ilyenkor megszűnik működni.
-   */
-  slug: string;
-  /**
-   * Pár mondatos ajánló; a bloglista kártyáin és a Google-ban is ez látszik.
-   */
-  excerpt?: string | null;
-  /**
-   * A cikk szövege. A felső eszköztárral formázhatsz, listázhatsz, linkelhetsz.
-   */
-  content: {
-    root: {
-      type: string;
-      children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  };
-  /**
-   * A cikk fő képe — a bloglistán és a cikk tetején jelenik meg.
-   */
-  heroImage?: (number | null) | Media;
-  /**
-   * Ha üresen hagyod, a Google a fenti címet használja.
-   */
-  seoTitle?: string | null;
-  /**
-   * A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).
-   */
-  seoDescription?: string | null;
-  /**
-   * Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a cikket.
-   */
-  ogImage?: (number | null) | Media;
-  status: 'draft' | 'published';
-  /**
-   * Az első közzétételkor magától kitöltődik. A bloglista ez alapján rendez (a legfrissebb elöl).
-   */
-  publishedAt?: string | null;
-  /**
-   * A lista- és menürendezéshez használt sorszám (kisebb = előrébb).
-   */
-  order?: number | null;
-  /**
-   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.
-   */
-  author?: (number | null) | User;
-  /**
-   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.
-   */
-  reviewedBy?: (number | null) | User;
-  /**
-   * Az utolsó szakmai ellenőrzés napja. Csak akkor töltsd ki, ha az ellenőrzés tényleg megtörtént.
-   */
-  reviewedAt?: string | null;
-  /**
-   * A következő tervezett ellenőrzés napja (az NHS-minta szerint jellemzően 2 év).
-   */
-  nextReviewAt?: string | null;
-  /**
-   * Melyik témakörökbe tartozik a cikk. Több is választható.
-   */
-  categories?: (number | Category)[] | null;
-  /**
-   * Legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk az olvasónak.
-   */
-  relatedPosts?: (number | Post)[] | null;
-  /**
-   * Mások ezt is kérdezik: 2–6 rövid kérdés-válasz a cikk végére. A válasz önmagában is megálljon (2–4 mondat), mert a keresők és az AI-válaszok pontosan ezt idézik.
-   */
-  faq?:
-    | {
-        question: string;
-        answer: string;
-        id?: string | null;
-      }[]
-    | null;
-  /**
-   * A cikk végi ajánló erre a kurzusra mutat. Üresen hagyva az ajánló a kurzuslistára visz.
-   */
-  ctaCourse?: (number | null) | Product;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
-}
-/**
  * Szerkesztők és vásárlók. A szerepkört csak tulajdonos állíthatja át; a megvásárolt kurzusokat munkatárs és tulajdonos szerkesztheti. A „Megvásárolt kurzusok" oszlopban a kurzus mellett a haladás is látszik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1972,6 +1893,111 @@ export interface Category {
   parent?: (number | null) | Category;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * A Tudástár (blog) cikkei. A közzétett bejegyzések azonnal megjelennek az oldalon.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "posts".
+ */
+export interface Post {
+  id: number;
+  /**
+   * A bejegyzés címe — ez jelenik meg a listában és a Google találatai közt.
+   */
+  title: string;
+  /**
+   * A cím webcímes alakja, magától kitöltődik (ékezetek nélkül, kötőjelekkel). Csak akkor írd át, ha tudod, mit csinálsz — a régi webcím ilyenkor megszűnik működni.
+   */
+  slug: string;
+  /**
+   * Pár mondatos ajánló; a bloglista kártyáin és a Google-ban is ez látszik.
+   */
+  excerpt?: string | null;
+  /**
+   * A cikk szövege. A felső eszköztárral formázhatsz, listázhatsz, linkelhetsz.
+   */
+  content: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  };
+  /**
+   * A cikk fő képe — a bloglistán és a cikk tetején jelenik meg.
+   */
+  heroImage?: (number | null) | Media;
+  /**
+   * Ha üresen hagyod, a Google a fenti címet használja.
+   */
+  seoTitle?: string | null;
+  /**
+   * A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).
+   */
+  seoDescription?: string | null;
+  /**
+   * Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a cikket.
+   */
+  ogImage?: (number | null) | Media;
+  status: 'draft' | 'published';
+  /**
+   * Az első közzétételkor magától kitöltődik. A bloglista ez alapján rendez (a legfrissebb elöl).
+   */
+  publishedAt?: string | null;
+  /**
+   * A lista- és menürendezéshez használt sorszám (kisebb = előrébb).
+   */
+  order?: number | null;
+  /**
+   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.
+   */
+  author?: (number | null) | User;
+  /**
+   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.
+   */
+  reviewedBy?: (number | null) | User;
+  /**
+   * Az utolsó szakmai ellenőrzés napja. Csak akkor töltsd ki, ha az ellenőrzés tényleg megtörtént.
+   */
+  reviewedAt?: string | null;
+  /**
+   * A következő tervezett ellenőrzés napja (az NHS-minta szerint jellemzően 2 év).
+   */
+  nextReviewAt?: string | null;
+  /**
+   * Melyik témakörökbe tartozik a cikk. Több is választható.
+   */
+  categories?: (number | Category)[] | null;
+  /**
+   * Legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk az olvasónak.
+   */
+  relatedPosts?: (number | Post)[] | null;
+  /**
+   * Mások ezt is kérdezik: 2–6 rövid kérdés-válasz a cikk végére. A válasz önmagában is megálljon (2–4 mondat), mert a keresők és az AI-válaszok pontosan ezt idézik.
+   */
+  faq?:
+    | {
+        question: string;
+        answer: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * A cikk végi ajánló erre a kurzusra mutat. Üresen hagyva az ajánló a kurzuslistára visz.
+   */
+  ctaCourse?: (number | null) | Product;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
 }
 /**
  * Páciensek valódi visszajelzései. A kezdőlapon legfeljebb 3 kiemelt vélemény jelenik meg.
@@ -2900,6 +2926,17 @@ export interface PagesSelect<T extends boolean = true> {
   status?: T;
   publishedAt?: T;
   order?: T;
+  author?: T;
+  reviewedBy?: T;
+  reviewedAt?: T;
+  nextReviewAt?: T;
+  faq?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

@@ -685,7 +685,9 @@ describe('PostView (poszt-oldal-render)', () => {
     }) as Record<string, unknown>
     expect(jsonLd.headline).toBe('Cím')
     expect(jsonLd.datePublished).toBe('2026-03-04T08:00:00.000Z')
+    expect((jsonLd.author as Record<string, unknown>)['@type']).toBe('Person')
     expect((jsonLd.author as Record<string, unknown>).name).toBe('Szerző Neve')
+    expect((jsonLd.publisher as Record<string, unknown>)['@type']).toBe('Organization')
     expect((jsonLd.publisher as Record<string, unknown>).name).toBe('Kineticare')
   })
 })

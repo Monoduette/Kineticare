@@ -47,6 +47,15 @@ describe('robots.txt', () => {
   it('hivatkozik a sitemapre', () => {
     expect(String(result.sitemap)).toMatch(/\/sitemap\.xml$/)
   })
+
+  it('a Tudástár /blog útvonalát nem tiltja (a közzétett cikkek indexelendők)', () => {
+    for (const rule of rules) {
+      const disallow = rule.disallow
+      const list = Array.isArray(disallow) ? disallow : disallow ? [disallow] : []
+      expect(list).not.toContain('/blog')
+      expect(list).not.toContain('/blog/')
+    }
+  })
 })
 
 describe('FAQPage JSON-LD', () => {

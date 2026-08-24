@@ -53,13 +53,21 @@ export interface PostAuthorBoxProps {
   /** ISO dátum; csak akkor jelenik meg, ha tényleg megtörtént az ellenőrzés. */
   reviewedAt?: string | null
   nextReviewAt?: string | null
+  /**
+   * A címsor a tartalom típusához igazodik (WCAG 2.2 **3.2.4**: ugyanaz a
+   * blokk, a kijelentés pontos). A blog `cikk`, a gyökér CMS-oldal `oldal`
+   * — az NHS „Page last reviewed" mintája az utóbbi.
+   * (https://service-manual.nhs.uk/design-system/patterns/know-that-a-page-is-up-to-date)
+   */
+  surface?: 'post' | 'page'
 }
 
 /** A blokk címe pontosan azt állítja, ami megtörtént. */
-function headingFor(hasAuthor: boolean, hasReview: boolean): string {
-  if (hasAuthor && hasReview) return 'A cikket írta és ellenőrizte'
-  if (hasAuthor) return 'A cikket írta'
-  return 'A cikket ellenőrizte'
+function headingFor(hasAuthor: boolean, hasReview: boolean, surface: 'post' | 'page'): string {
+  const alany = surface === 'page' ? 'Az oldalt' : 'A cikket'
+  if (hasAuthor && hasReview) return `${alany} írta és ellenőrizte`
+  if (hasAuthor) return `${alany} írta`
+  return `${alany} ellenőrizte`
 }
 
 /** „Név, végzettség" — végzettség nélkül csak a név (titulust nem találunk ki). */
@@ -72,6 +80,7 @@ export function PostAuthorBox({
   reviewer,
   reviewedAt = null,
   nextReviewAt = null,
+  surface = 'post',
 }: PostAuthorBoxProps) {
   const reviewedDate = formatPostDate(reviewedAt)
   const nextReviewDate = formatPostDate(nextReviewAt)
@@ -81,14 +90,14 @@ export function PostAuthorBox({
   const hasReview = separateReviewer || reviewedDate !== null
 
   if (author === null && !hasReview) {
-    // Se szerző, se ellenőrzés: nincs mit állítani. A cikk ettől még él, a
-    // strukturált adat szerzője a kiadó (Organization).
+    // Se szerző, se ellenőrzés: nincs mit állítani. A strukturált adat
+    // kiadója a `publisher` Organization; author kulcs nincs.
     return null
   }
 
   return (
     <Card as="section" className="kc-post-author">
-      <h2 className="kc-post-author__title">{headingFor(author !== null, hasReview)}</h2>
+      <h2 className="kc-post-author__title">{headingFor(author !== null, hasReview, surface)}</h2>
       {author !== null ? (
         <div className="kc-post-author__head">
           {author.portrait !== null ? (

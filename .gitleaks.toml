@@ -67,4 +67,9 @@ regexes = [
   # szkennelve marad.
   '''08e00965327b345762bd5ef191b3bca1c5649dd482378195450ba9ccedd04665''',
   '''3d19cba34c263b1fc1ae8434f83b1187fab5a86d4a185bb2e316e970cab85901''',
+  # G3-manifest: a Payload-generált `20260824_185329_pages_eeat_mezok` .ts/.json
+  # pár LF-normalizált sha256-a. Nem credential — lásd a fenti access_grants
+  # indoklást.
+  '''def9c7682906850674c1c3452874772073abcb3fff2b96d7cddb2eededc9d86c''',
+  '''632eef8b6f8a59a5528eb4806766915baf3ad0e472cc830129304d5af7cf23b7''',
 ]

@@ -14,9 +14,11 @@ import { absoluteUrl, faqPageJsonLd, SITE_NAME } from './seo'
  * TÖBBET állít, mint amit a lap mutat: a kereső ilyenkor elveti az egészet,
  * és semmilyen hibaüzenet nem jelzi.
  *
- * A KÉT NYILVÁNOS BELÉPÉSI PONT:
+ * A NYILVÁNOS BELÉPÉSI PONTOK:
  * - `postArticleJsonLd` — a cikk EGY entitása, `['Article', 'MedicalWebPage']`
  *   kettős típussal;
+ * - `cmsPageJsonLd` — a gyökér CMS-oldal (A-hub) entitása, sima
+ *   `MedicalWebPage` (nem Article: a hub nem blogbejegyzés, nem `/blog/`);
  * - `postFaqItems` + `postFaqJsonLd` — a „Mások ezt is kérdezik" réteg, ahol a
  *   látható lista és a FAQPage séma UGYANABBÓL a tömbből készül.
  *
@@ -199,6 +201,27 @@ function personNode(person: SchemaPerson | undefined): Record<string, unknown> |
 }
 
 /**
+ * Szerző, lektor, ellenőrzési nap — csak a kitöltött mezők.
+ *
+ * Üres szerzőnél NINCS `author` kulcs (sem Organization, sem márkanevű
+ * Person). A kiadó a hívó `publisher` mezője marad.
+ */
+function authorshipNodes(args: {
+  author?: SchemaPerson
+  reviewer?: SchemaPerson
+  lastReviewed?: string | null
+}): Record<string, unknown> {
+  const authorNode = personNode(args.author)
+  const reviewedBy = personNode(args.reviewer)
+  const reviewedOn = schemaDateOnly(args.lastReviewed)
+  return {
+    ...(authorNode !== undefined ? { author: authorNode } : {}),
+    ...(reviewedBy !== undefined ? { reviewedBy } : {}),
+    ...(reviewedOn !== undefined ? { lastReviewed: reviewedOn } : {}),
+  }
+}
+
+/**
  * A `keywords` mező értéke: trimmelt, ismétlés nélküli, VESSZŐVEL elválasztott
  * lista — érvényes tétel híján `undefined`.
  *
@@ -267,10 +290,11 @@ function subjectNode(subject: ArticleSubject | undefined): Record<string, unknow
  * ellenőrzött cikken `lastReviewed` egyszerűen nincs — ellenőrzés-dátumot
  * ellenőrzés nélkül kiírni tilos.
  *
- * SZERZŐ-TARTALÉK. Szerző nélkül a séma NEM ír `Person`-t a márkanévvel (a
- * Kineticare nem személy — ez volt a korábbi `articleJsonLd` típushibája),
- * hanem `Organization`-re esik vissza; a schema.org `author`-ja mindkét
- * típust engedi.
+ * SZERZŐ. Kitöltött, névvel rendelkező user → `Person` (soha nem a kiadó
+ * Organization, soha nem `Person{name: SITE_NAME}`). Üres vagy populálatlan
+ * szerzőnél NINCS `author` kulcs: a kereső ne higgye, hogy a Kineticare
+ * szervezet írta a lapot, és ne kapjon kitalált személyt sem. Az
+ * Organization csak a `publisher` (a kiadó), soha nem szerző-tartalék.
  *
  * A CIKK TÁRGYA (`about`) ÉS A MÉRT KULCSSZAVAK (`keywords`) — FELÜLVIZSGÁLVA
  * 2026-08-21. Ez a modul korábban kihagyta az `about`-ot, azzal az indokkal,
@@ -307,7 +331,11 @@ export function postArticleJsonLd(args: {
   post: ArticleSeoPost
   /** A cikk relatív útvonala, pl. `/blog/gipsz-utan`. */
   path: string
-  /** A szerző a látható byline-ból; hiányában Organization-tartalék. */
+  /**
+   * A szerző a látható byline-ból. Kitöltött, névvel rendelkező user → Person.
+   * Üres vagy populálatlan mezőnél a kulcs KIMARAD — Organization / SITE_NAME
+   * soha nem áll szerző-tartalékként (a kiadó a `publisher`).
+   */
   author?: SchemaPerson
   /** A szakmai lektor (`posts.reviewedBy`) — csak ha tényleg van. */
   reviewer?: SchemaPerson
@@ -327,8 +355,6 @@ export function postArticleJsonLd(args: {
   const description = trimmedText(post.excerpt)
   const datePublished = trimmedText(post.publishedAt)
   const dateModified = trimmedText(post.updatedAt)
-  const reviewedBy = personNode(reviewer)
-  const reviewedOn = schemaDateOnly(lastReviewed)
   const keywordList = keywordsValue(keywords)
   const subject = subjectNode(about)
 
@@ -344,9 +370,53 @@ export function postArticleJsonLd(args: {
     ...(imageUrl !== undefined ? { image: [imageUrl] } : {}),
     ...(keywordList !== undefined ? { keywords: keywordList } : {}),
     ...(subject !== undefined ? { about: subject } : {}),
-    author: personNode(author) ?? publisherNode(),
-    ...(reviewedBy !== undefined ? { reviewedBy } : {}),
-    ...(reviewedOn !== undefined ? { lastReviewed: reviewedOn } : {}),
+    ...authorshipNodes({ author, reviewer, lastReviewed }),
+    publisher: publisherNode(),
+  }
+}
+
+/**
+ * CMS-oldal (A-hub, gyökér slug) strukturált adata: EGY `MedicalWebPage`.
+ *
+ * MIÉRT NEM ARTICLE. A hub a `pages` collectionben él (`/inhuvelygyulladas`),
+ * nem a Tudástár `/blog/` útvonalán. Az `Article` Google rich result
+ * blogbejegyzésre szól; a hubra kitéve a kereső kétféle dokumentumnak
+ * látná ugyanazt a tartalmat. A `MedicalWebPage` a `WebPage` altípusa, és
+ * érvényessé teszi a `reviewedBy` / `lastReviewed` tulajdonságot
+ * (https://schema.org/reviewedBy, https://schema.org/lastReviewed).
+ *
+ * A szerző-szabály azonos a cikkoldaléval: kitöltött user → Person; üres
+ * mező → nincs author kulcs; az Organization csak a publisher.
+ *
+ * Keywords/about szándékosan nincs: azok a Tudástár mért kulcsszó-táblájából
+ * jönnek, slug alapján — a CMS-oldalnak nincs ilyen mérése, kitalálni tilos.
+ */
+export function cmsPageJsonLd(args: {
+  page: ArticleSeoPost
+  /** Az oldal relatív útvonala, pl. `/rolunk`. */
+  path: string
+  author?: SchemaPerson
+  reviewer?: SchemaPerson
+  lastReviewed?: string | null
+  imageUrl?: string
+}): Record<string, unknown> {
+  const { page, path, author, reviewer, lastReviewed, imageUrl } = args
+  const description = trimmedText(page.excerpt)
+  const datePublished = trimmedText(page.publishedAt)
+  const dateModified = trimmedText(page.updatedAt)
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'MedicalWebPage',
+    name: page.title,
+    headline: page.title,
+    ...(description !== undefined ? { description } : {}),
+    inLanguage: ARTICLE_LANGUAGE,
+    mainEntityOfPage: absoluteUrl(path),
+    ...(datePublished !== undefined ? { datePublished } : {}),
+    ...(dateModified !== undefined ? { dateModified } : {}),
+    ...(imageUrl !== undefined ? { image: [imageUrl] } : {}),
+    ...authorshipNodes({ author, reviewer, lastReviewed }),
     publisher: publisherNode(),
   }
 }

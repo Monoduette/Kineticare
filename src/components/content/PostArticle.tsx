@@ -39,10 +39,15 @@ import '../../app/(frontend)/styles/blocks/post-view.css'
  *   HERO (tint sáv, szűk konténer): morzsamenü · kategória-címke · H1 ·
  *          lead · byline-sor
  *   BORÍTÓ (csak ha van, széles konténer)
- *   TÖRZS (szűk konténer): tartalomjegyzék · szöveg (a záró „Források" H2-vel)
- *          · Gyakori kérdések · szerző- és lektor-blokk
+ *   TÖRZS (szűk konténer): tartalomjegyzék · CMS-törzs · Gyakori kérdések ·
+ *          szerző- és lektor-blokk
  *   KURZUS-CTA (tint sáv, kompakt panel)
  *   KAPCSOLÓDÓ CIKKEK (a Tudástár rácsán, `compact` kártyákkal)
+ *
+ * A sablon NEM tesz látható Források-listát a lapra. Ha a CMS-törzsben van
+ * ilyen H2, az a Lexical-tartalom része; üres törzsnél a sablon nem talál ki
+ * forráslistát (a hat élő `/blog/*` cikk és a későbbi, ugyanerre a sablonra
+ * ülő posztok sem kapnak sablon-szintű forrásjegyzéket).
  *
  * A sorrend két, látszólag ütköző NN/g-ajánlást old fel. A *Related Content
  * Boosts Pageviews, When Done Right*
@@ -212,7 +217,9 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
           {post.excerpt ? <p className="kc-page-hero__lead">{post.excerpt}</p> : null}
           <p className="kc-post-meta">
             {author !== null ? (
-              <span className="kc-post-meta__author">{bylineOf(author.name, author.credentials)}</span>
+              <span className="kc-post-meta__author">
+                {bylineOf(author.name, author.credentials)}
+              </span>
             ) : null}
             {date !== null ? (
               <time dateTime={typeof post.publishedAt === 'string' ? post.publishedAt : undefined}>
