@@ -14,9 +14,9 @@
 # rendszer hitelesítő adatai.
 #
 # A MEGENGEDÉS SZŰK: nem fájlokat vagy mappákat engedünk el (az vakfolt lenne,
-# amiben egy valódi titok is elbújhatna), hanem PONTOSAN a három ismert,
-# kitalált mintát. Bármi más — beleértve az ugyanezekben a fájlokban megjelenő
-# új értéket — ugyanúgy fennakad a kapun.
+# amiben egy valódi titok is elbújhatna), hanem PONTOSAN a lent felsorolt,
+# kitalált mintákat. Bármi más — beleértve az ugyanezekben a fájlokban
+# megjelenő új értéket — ugyanúgy fennakad a kapun.
 #
 # ÚJ BEJEGYZÉST csak akkor vegyél fel ide, ha a találatot emberi/ügynöki
 # vizsgálat tévesnek minősítette, és az indoklás is idekerül. Valódi titkot
@@ -67,4 +67,18 @@ regexes = [
   # szkennelve marad.
   '''08e00965327b345762bd5ef191b3bca1c5649dd482378195450ba9ccedd04665''',
   '''3d19cba34c263b1fc1ae8434f83b1187fab5a86d4a185bb2e316e970cab85901''',
+  # Heti cron (2026-08-24, run 32687440340): generic-api-key a jelszó-politika
+  # teszt `password:` literáljaira. A push-scan csak az új commitokat nézi,
+  # a cron a TELJES historyt — ezért a 07f1405-ös commit zöld push után
+  # piros cronnal jött elő. Kitalált bemenetek (kisbetű / e-mail-local-part
+  # szabály), soha nem élő credential. A munkafa DUMMY-ra cserélte őket;
+  # a history-ban a régi alakok maradnak.
+  '''CSAKNAGYBETU123''',
+  '''KovacsBela99Jelszo''',
+  '''kovacs.belaA12345''',
+  '''KOVACS.BELAa12345''',
+  '''DUMMYNAGYBETU123''',
+  '''DummyTeszt99Jelszo''',
+  '''dummy.tesztA12345''',
+  '''DUMMY.TESZTa12345''',
 ]

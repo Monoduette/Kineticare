@@ -39,7 +39,7 @@ describe('validatePasswordStrength', () => {
   })
 
   it('visszautasítja a kisbetű nélküli jelszót', () => {
-    const errors = validatePasswordStrength({ password: 'CSAKNAGYBETU123' })
+    const errors = validatePasswordStrength({ password: 'DUMMYNAGYBETU123' })
     expect(errors.some((msg) => msg.includes('kisbetűt'))).toBe(true)
   })
 
@@ -50,23 +50,23 @@ describe('validatePasswordStrength', () => {
 
   it('visszautasítja, ha a jelszó tartalmazza az e-mail local-partját', () => {
     const errors = validatePasswordStrength({
-      password: 'KovacsBela99Jelszo',
-      email: 'kovacs.bela@example.hu',
+      password: 'DummyTeszt99Jelszo',
+      email: 'dummy.teszt@example.hu',
     })
-    // A local-part "kovacs.bela" — a pontos local-partot nem tartalmazza…
+    // A local-part "dummy.teszt" — a pontos local-partot nem tartalmazza…
     expect(errors).toEqual([])
 
     const hits = validatePasswordStrength({
-      password: 'kovacs.belaA12345',
-      email: 'kovacs.bela@example.hu',
+      password: 'dummy.tesztA12345',
+      email: 'dummy.teszt@example.hu',
     })
     expect(hits.some((msg) => msg.includes('e-mail-címedet'))).toBe(true)
   })
 
   it('az e-mail-egyezés kis-/nagybetű-érzéketlen', () => {
     const errors = validatePasswordStrength({
-      password: 'KOVACS.BELAa12345',
-      email: 'kovacs.bela@example.hu',
+      password: 'DUMMY.TESZTa12345',
+      email: 'dummy.teszt@example.hu',
     })
     expect(errors.some((msg) => msg.includes('e-mail-címedet'))).toBe(true)
   })
