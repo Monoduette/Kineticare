@@ -31,8 +31,8 @@
  * (`CLAUDE.md`, „Felületi (UX/UI) munka”).
  *
  * ═══ SEARCH-LOCK 2026-08-24 ═══
- * Az `elsodleges` és `masodlagos` listák a Search-lockolt kifejezések, pontos
- * ékezetes stringgel, primér elöl, max. 12 tétel. Rangsort, volument, KD-t a
+ * Az `elsodleges` és `masodlagos` listák a Search-lockolt, vágatlan kifejezések, pontos
+ * ékezetes stringgel, primér elöl, max. 48 tétel. Rangsort, volument, KD-t a
  * CMS `seoKeywords` mezőbe másolni tilos; a volumen/nehezseg mezők a mérés
  * dokumentációjához maradnak, a mezőbe nem mennek. H1-ből kifejezést kitalálni
  * tilos.
@@ -82,8 +82,46 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     masodlagos: [
       'jobb kéz zsibbadás',
       'bal kéz zsibbadás',
+      'bal kéz zsibbadás okai',
+      'kéz zsibbadás okai',
+      'jobb kéz zsibbadás okai',
       'kéz zsibbadás éjszaka',
+      'kéz zsibbadás éjszaka gyakori kérdések',
+      'kéz zsibbadás elleni gyógyszer',
+      'ujj zsibbadás',
       'ujjak zsibbadása',
+      'kéz zsibbadás kezelése',
+      'kéz zsibbadás elleni krém',
+      'kéz zsibbadásra krém',
+      'kéz zsibbadás ellen',
+      'kéz zsibbadásra vitamin',
+      'kéz zsibbadás reggel',
+      'kéz zsibbadás alvás közben',
+      'kéz zsibbadás alváskor',
+      'kéz zsibbadás alagút szindróma',
+      'kéz zsibbadás terhesség alatt',
+      'kéz zsibbadás terhesség alatt gyakori kérdések',
+      'kéz zsibbadás bizsergés',
+      'kéz zsibbadás b vitamin',
+      'kéz zsibbadás cukorbetegeknek',
+      'kéz zsibbadás csukló',
+      'hideg kéz zsibbadás',
+      'hirtelen kéz zsibbadás',
+      'bal kéz zsibbadás éjszaka',
+      'bal kéz zsibbadás fájdalom',
+      'bal kéz zsibbadás alvás közben',
+      'bal kéz hüvelykujj zsibbadás',
+      'ujj zsibbadás okai',
+      'ujj zsibbadás torna',
+      'ujj zsibbadásra gyógyszer',
+      'ujj zsibbadásra krém',
+      'ujj zsibbadás műtét után',
+      'ujj zsibbadás fájdalom',
+      'ujj zsibbadás ellen',
+      'ujj zsibbadás terhesség alatt',
+      'bal ujj zsibbadás',
+      'hirtelen ujj zsibbadás',
+      'hüvelykujj zsibbadás',
     ],
     seoTitle: 'Kéz zsibbadás: mi okozza, és mikor kell orvos?',
     seoDescription:
@@ -99,8 +137,26 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     nehezseg: 5,
     masodlagos: [
       'kéztő alagút szindróma kezelése házilag',
+      'kéztőalagút szindróma műtét',
+      'kéztőalagút szindróma krém',
+      'kéztőalagút szindróma kezelése',
       'kéztőalagút szindróma tünetei',
-      'kéztőalagút műtét',
+      'kéztőalagút szindróma torna',
+      'kéztőalagút szindróma csuklórögzítő',
+      'kéztőalagút szindróma műtét után',
+      'kéztőalagút szindróma hol fáj',
+      'kéztőalagút szindróma mitől alakul ki',
+      'kéztőalagút szindróma carpal tunnel syndrome',
+      'kéztőalagút szindróma gyógyszer',
+      'kéztőalagút szindróma vizsgálata',
+      'kéztőalagút szindróma terhesség alatt',
+      'kéztőalagút szindróma mi az',
+      'kéztőalagút szindróma borogatás',
+      'kéztőalagút szindróma akupunktúra',
+      'kéztőalagút szindróma b vitamin',
+      'kéztőalagút szindróma carpalis alagút szindróma',
+      'kéztőalagút szindróma műtét ára',
+      'kéztorna alagút szindróma',
     ],
     seoTitle: 'Kéztőalagút szindróma kezelése házilag',
     seoDescription:
@@ -115,9 +171,37 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     volumen: 3500,
     nehezseg: 13,
     masodlagos: [
+      'teniszkönyök kezelése',
+      'teniszkönyök kezelése otthon',
       'teniszkönyök kezelése házilag',
       'teniszkönyök gyakorlatok',
       'teniszkönyök házi gyógymód',
+      'teniszkönyök tünetei',
+      'teniszkönyök pánt',
+      'teniszkönyök gyógytorna',
+      'teniszkönyök hol fáj',
+      'teniszkönyök mitől alakul ki',
+      'könyökfájdalom',
+      'teniszkönyök krém',
+      'teniszkönyök műtét',
+      'teniszkönyök tape',
+      'teniszkönyök rögzítő',
+      'teniszkönyök masszírozása',
+      'teniszkönyök bandázs',
+      'teniszkönyök borogatás',
+      'teniszkönyök fájdalom csillapítása',
+      'teniszkönyök pánt használata',
+      'teniszkönyök szorító használata',
+      'teniszkönyök rögzítő használata',
+      'a teniszkönyök kialakulása',
+      'a teniszkönyök tünetei',
+      'teniszkönyök mi az',
+      'teniszkönyök betegség',
+      'belső teniszkönyök',
+      'golfkönyök vs teniszkönyök',
+      'teniszkönyök akupunktúra',
+      'teniszkönyök csontkovács',
+      'teniszkönyök homeopátia',
     ],
     seoTitle: 'Teniszkönyök kezelése házilag: mit tegyél?',
     seoDescription:
@@ -134,8 +218,12 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     masodlagos: [
       'pattanó ujj kezelése házilag',
       'pattanó ujj gyakorlatok',
-      'pattanó ujj műtét',
+      'pattanó ujj gyógytorna videó',
+      'pattanó ujj szindróma',
+      'pattanó ujj műtét utáni gyógyulási idő',
       'beakadó ujj',
+      'pattanó ujj műtét',
+      'kéztorna pattanó ujjra',
     ],
     seoTitle: 'Pattanó ujj: miért akad be, és mit tehetsz?',
     seoDescription:
@@ -146,14 +234,40 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
   },
   {
     slug: 'csuklo-es-kezfajdalom',
-    elsodleges: 'csuklófájdalom',
+    elsodleges: 'csukló fájdalom',
     volumen: 150,
     nehezseg: 0,
     masodlagos: [
-      'csukló fájdalom',
+      'csuklófájdalom',
       'kézfájdalom',
+      'kéz fájdalom',
       'alkar fájdalom',
       'csukló fájdalom kezelése házilag',
+      'kéz csukló fájdalom',
+      'kéz és csukló fájdalom',
+      'csuklófájdalom kezelése',
+      'csuklófájdalom okai',
+      'csuklófájdalom milyen orvos',
+      'kéz alkar fájdalom',
+      'kéz fájdalom zsibbadás',
+      'kéz fájdalom okai',
+      'kéz fájdalom kezelése',
+      'kéz fájdalomra kenőcs',
+      'kéz fájdalom milyen orvos',
+      'bal kéz fájdalom',
+      'bal kéz csukló fájdalom',
+      'jobb kéz csukló fájdalom',
+      'kéz hüvelykujj fájdalom',
+      'csuklófájdalom krém',
+      'csuklófájdalom kineziológiai tapasz',
+      'csuklófájdalom terhesség alatt',
+      'csuklófájdalom ellen',
+      'hirtelen csuklófájdalom',
+      'alkar fájdalom okai',
+      'alkar fájdalom kezelése',
+      'alkar fájdalom kezelése házilag',
+      'alkar fájdalom és zsibbadás',
+      'alkar csukló fájdalom',
     ],
     seoTitle: 'Csuklófájdalom és kézfájdalom: mi okozza?',
     seoDescription:
@@ -168,9 +282,21 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     volumen: 100,
     nehezseg: 0,
     masodlagos: [
+      'csuklótörés utáni gyógytorna gyakorlatok',
       'csuklótörés után mikor lehet dolgozni',
+      'csuklótörés gyógyulási ideje',
+      'csuklótörés gipsz',
       'gipsz levétele után',
+      'gipszlevétel után dagad a kéz',
+      'csukló orsócsont törés gyógyulási ideje',
+      'kéztorna csuklótörés után',
+      'kéztorna törés után',
       'csuklótörés rehabilitáció',
+      'csuklótörés',
+      'csuklótörés tünetei',
+      'csuklótörés műtét',
+      'csuklótörés gipsz helyett',
+      'gipsz levétele után torna',
     ],
     seoTitle: 'Csuklótörés utáni gyógytorna: mi jön most?',
     seoDescription:
@@ -185,14 +311,46 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     volumen: 2200,
     nehezseg: 18,
     masodlagos: [
-      'csukló ínhüvelygyulladás',
-      'ínhüvelygyulladás kezelése házilag',
-      'ínhüvelygyulladás torna',
-      'de quervain',
       'ínhüvelygyulladás tünetei',
       'hüvelykujj ínhüvelygyulladás',
       'ínhüvelygyulladás kezelése',
+      'csukló ínhüvelygyulladás',
+      'ínhüvelygyulladás krém',
+      'ínhüvelygyulladás gyógyszer vény nélkül',
+      'ínhüvelygyulladás rögzítő sín',
+      'ínhüvelygyulladás gyógyulási ideje',
+      'ínhüvelygyulladás hüvelykujj kezelése',
+      'ínhüvelygyulladás kezelése házilag',
+      'de quervain',
+      'ínhüvelygyulladás torna',
       'de quervain szindróma',
+      'ínhüvelygyulladás gyógyszer',
+      'ínhüvelygyulladás rögzítő',
+      'ínhüvelygyulladás tape',
+      'ínhüvelygyulladás az ujjakban',
+      'ínhüvelygyulladás alkar',
+      'ínhüvelygyulladás az alkarban',
+      'ínhüvelygyulladás borogatás',
+      'ínhüvelygyulladás bandázs',
+      'ínhüvelygyulladás csukló',
+      'ínhüvelygyulladás csukló tünetei',
+      'ínhüvelygyulladás csuklórögzítő',
+      'ínhüvelygyulladás csukló kezelése',
+      'ínhüvelygyulladás csuklószorító',
+      'csukló ínhüvelygyulladás gyógytorna',
+      'csukló ínhüvelygyulladás tape',
+      'csukló ínhüvelygyulladás krém',
+      'csukló ínhüvelygyulladás torna',
+      'ínhüvelygyulladás hüvelykujj',
+      'ínhüvelygyulladás hüvelykujj rögzítő',
+      'ínhüvelygyulladás hüvelykujj tape',
+      'ínhüvelygyulladás hol fáj',
+      'ínhüvelygyulladás házi gyógymód',
+      'ínhüvelygyulladás helye',
+      'ínhüvelygyulladás hova kell mennem',
+      'ínhüvelygyulladás hideg vagy meleg',
+      'ínhüvelygyulladás hideg',
+      'ínhüvelygyulladás csomó',
     ],
     seoTitle: 'Ínhüvelygyulladás: tünetek és mit tehetsz',
     seoDescription:
@@ -209,9 +367,24 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     masodlagos: [
       'befagyott váll torna',
       'befagyott váll szindróma',
-      'adhesive capsulitis',
       'befagyott váll kezelése',
+      'befagyott váll kezelése otthon',
       'befagyott váll gyógytorna',
+      'adhesive capsulitis',
+      'adhesiv capsulitis',
+      'adhezív kapszulitisz',
+      'befagyott váll torna gyakorlatok',
+      'befagyott váll tünetei',
+      'befagyott váll szindróma mitől alakul ki',
+      'befagyott vállra kenőcs',
+      'befagyott váll fájdalom csillapítása',
+      'befagyott váll kimozgatása altatásban',
+      'befagyott váll szindróma adhesiv capsulitis',
+      'befagyott váll adhezív kapszulitisz',
+      'befagyott váll fórum',
+      'befagyott váll akupunktúra',
+      'befagyott váll csontkovács',
+      'befagyott váll homeopátia',
     ],
     seoTitle: 'Befagyott váll: szakaszok és teendők',
     seoDescription:
@@ -230,7 +403,7 @@ export function kulcsszoFor(slug: string): CikkKulcsszo | undefined {
 /**
  * Pontos kifejezéslista a CMS `seoKeywords` alakjában.
  *
- * Trim, üres kihagyás, ismétlés-szűrés, max. 12 tétel. Rangsort, volument,
+ * Trim, üres kihagyás, ismétlés-szűrés, max. 48 tétel. Rangsort, volument,
  * KD-t ide tenni tilos.
  */
 export function kifejezesekToSeoKeywords(kifejezesek: readonly string[]): { phrase: string }[] {
@@ -275,7 +448,7 @@ export function meresToSeoKeywords(
  * status, author, faq nem változik. Új page TILOS.
  */
 export const OLDAL_KULCSSZAVAK: Readonly<Record<string, readonly string[] | undefined>> = {
-  kezdolap: ['Kineticare', 'kéztorna', 'otthoni gyógytorna'],
+  kezdolap: ['Kineticare', 'kéztorna', 'kéztorna gyakorlatok', 'otthoni gyógytorna'],
   szolgaltatasok: ['kéztorna', 'otthoni gyógytorna'],
   rolunk: ['Kiss Kata', 'Kocsis Kata', 'Kineticare'],
   kapcsolat: undefined,
@@ -296,6 +469,43 @@ export function oldalKulcsszavakFor(slug: string): readonly string[] | undefined
  */
 export function oldalSeoKeywordsFor(slug: string): { phrase: string }[] | undefined {
   const lock = oldalKulcsszavakFor(slug)
+  if (lock === undefined || lock.length === 0) {
+    return undefined
+  }
+  const rows = kifejezesekToSeoKeywords(lock)
+  return rows.length > 0 ? rows : undefined
+}
+
+/**
+ * Search-lock 2026-08-24: a `/kurzusok` lista meta- és JSON-LD-kulcsszavai.
+ *
+ * Nincs `kurzusok` pages-rekord — új page TILOS. A listing a lockolt listát
+ * olvassa. A `/kezrehab` és `/kezrelax` 308-as átirányításához tilos nyúlni.
+ * Primér: otthoni gyógytorna. Ugyanez a 3 kifejezés, ugyanebben a sorrendben
+ * megy az `otthoni-kezrehab-program` product mezőbe.
+ */
+export const KURZUSLISTA_KULCSSZAVAK = [
+  'otthoni gyógytorna',
+  'kéztorna',
+  'kéztorna gyakorlatok',
+] as const
+
+/**
+ * Search-lock 2026-08-24: a `products.seoKeywords` mező slug szerint.
+ *
+ * SOS szándékosan üres: ne írj, ne találj ki. Más slug primére tilos.
+ */
+export const KURZUS_KULCSSZAVAK: Readonly<Record<string, readonly string[] | undefined>> = {
+  'otthoni-kezrehab-program': KURZUSLISTA_KULCSSZAVAK,
+  'sos-kezrelax-villamkurzus': undefined,
+}
+
+export function kurzusKulcsszavakFor(slug: string): readonly string[] | undefined {
+  return KURZUS_KULCSSZAVAK[slug]
+}
+
+export function kurzusSeoKeywordsFor(slug: string): { phrase: string }[] | undefined {
+  const lock = kurzusKulcsszavakFor(slug)
   if (lock === undefined || lock.length === 0) {
     return undefined
   }

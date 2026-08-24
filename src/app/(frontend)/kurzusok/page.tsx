@@ -17,6 +17,7 @@ import {
   resolveCategoryFilter,
 } from '@/lib/courses'
 import { logger } from '@/lib/logger'
+import { KURZUSLISTA_KULCSSZAVAK } from '@/lib/tudastar/seo-kulcsszavak'
 import type { Product } from '@/payload-types'
 
 import config from '../../../payload.config'
@@ -46,6 +47,10 @@ export const metadata: Metadata = buildStaticPageMetadata({
   description:
     'Kineticare online kézrehabilitációs kurzusok: otthoni gyakorlóprogramok és szakmai továbbképzések videós anyagokkal. Válaszd ki a hozzád illő kurzust, és kezdj el gyógyulni.',
   path: '/kurzusok',
+  // Nincs `kurzusok` pages-rekord — új page TILOS. A Search-lockolt lista
+  // innen megy a meta keywordsbe; a `/kezrehab` és `/kezrelax` 308-asokhoz
+  // tilos nyúlni. Primér: otthoni gyógytorna.
+  keywords: KURZUSLISTA_KULCSSZAVAK,
 })
 
 interface KurzusokPageProps {
@@ -145,8 +150,8 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
           <div className="kc-course-empty" role="status">
             <h2>Jelenleg nincs megjeleníthető kurzus</h2>
             <p>
-              Dolgozunk az új anyagokon. Nézz vissza később, vagy iratkozz fel, hogy
-              értesítsünk az új kurzusokról.
+              Dolgozunk az új anyagokon. Nézz vissza később, vagy iratkozz fel, hogy értesítsünk az
+              új kurzusokról.
             </p>
           </div>
         )}
