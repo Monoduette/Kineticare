@@ -57,6 +57,10 @@ import config from '../payload.config'
  * A `CIKKEK` lista. A slug a fájlnév sorszám-előtag nélküli alakja — ezek a
  * webcímek. Eltérni tilos, különben a hirdetés 404-re visz.
  *
+ * URL-LOCK: `inhuvelygyulladas` és `befagyott-vall` CSAK `posts` rekord
+ * (`/blog/…`). Gyökér pages (`/inhuvelygyulladas`, `/befagyott-vall`),
+ * seedelt published 200 és LEGACY_REDIRECTS-sor tilos. A hub később 308.
+ *
  * A `categorySlug` / `ctaCourse` / `relatedSlugs` / `szerzok` CSAK az új
  * slugokra van kitöltve. A már élő hat posztnál a kulcsok HIÁNYOZNAK, hogy
  * az újrafuttatás ne írja felül az adminban beállított kategóriát, kurzust,
