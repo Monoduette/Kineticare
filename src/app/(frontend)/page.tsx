@@ -9,7 +9,7 @@ import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
 import { getHomePage, getLatestPosts, getPublishedProducts, getTestimonials } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
-import { buildStaticPageMetadata } from '@/lib/seo'
+import { buildHomeMetadata } from '@/lib/seo'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,16 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
   // Draft mode-ban a piszkozat metaadata jön — és a válasz sosem indexelhető.
   const { isEnabled: isDraft } = await draftMode()
   const home = await getHomePage({ draft: isDraft })
-  const title =
-    home?.seoTitle ?? home?.title ?? 'Kineticare — Kézrehabilitációs online kurzusplatform'
-  const description =
-    home?.seoDescription ??
-    home?.excerpt ??
-    'Kineticare — kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.'
-  // A kezdőlapnak a keret-layout OG-je adná a címet, de `og:url` nélkül. A
-  // közös segédlet a kanonikus címet is kiírja, és ugyanazt a szerkezetet adja,
-  // mint a többi nyilvános oldal.
-  return withDraftRobots(buildStaticPageMetadata({ title, description, path: '/' }), isDraft)
+  // A `/` a `kezdolap` CMS-oldal `buildDocMetadata` útján kapja a title /
+  // description / seoKeywords mezőket (nem a `/kezdolap` path). Üres
+  // seoKeywords → a keywords kulcs kimarad.
+  return withDraftRobots(buildHomeMetadata(home), isDraft)
 }
 
 export default async function HomePage() {

@@ -3,11 +3,17 @@ import Link from 'next/link'
 import { getPayload } from 'payload'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
+import { JsonLd } from '@/components/content/JsonLd'
 import { CourseAudienceBand } from '@/components/courses/CourseAudienceBand'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
-import { buildStaticPageMetadata } from '@/lib/seo'
+import {
+  buildStaticPageMetadata,
+  COURSE_LISTING_DESCRIPTION,
+  COURSE_LISTING_TITLE,
+  courseListingJsonLd,
+} from '@/lib/seo'
 import { AUDIENCE_BANDS, groupProductsByAudience } from '@/lib/course-audience'
 import {
   CATEGORY_QUERY_PARAM,
@@ -43,13 +49,12 @@ import config from '../../../payload.config'
  */
 
 export const metadata: Metadata = buildStaticPageMetadata({
-  title: 'Kurzusok',
-  description:
-    'Kineticare online kézrehabilitációs kurzusok: otthoni gyakorlóprogramok és szakmai továbbképzések videós anyagokkal. Válaszd ki a hozzád illő kurzust, és kezdj el gyógyulni.',
+  title: COURSE_LISTING_TITLE,
+  description: COURSE_LISTING_DESCRIPTION,
   path: '/kurzusok',
   // Nincs `kurzusok` pages-rekord — új page TILOS. A Search-lockolt lista
-  // innen megy a meta keywordsbe; a `/kezrehab` és `/kezrelax` 308-asokhoz
-  // tilos nyúlni. Primér: otthoni gyógytorna.
+  // a `resolveSeoKeywords` úton megy a meta keywordsbe; a `/kezrehab` és
+  // `/kezrelax` 308-asokhoz tilos nyúlni. Primér: otthoni gyógytorna.
   keywords: KURZUSLISTA_KULCSSZAVAK,
 })
 
@@ -95,6 +100,7 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
 
   return (
     <Section>
+      <JsonLd data={courseListingJsonLd()} />
       {/* Barion Pixel `contentView` (contentType: 'Page'). A KURZUS-OLDAL
           (/kurzusok/[slug]) ezt NEM kapja meg: ott a Product-ágú
           CourseBarionView fut, és két contentView némán duplázna. */}
