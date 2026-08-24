@@ -37,6 +37,24 @@ describe('buildStaticPageMetadata', () => {
     const url = meta.openGraph?.url
     expect(String(url)).toMatch(/^https?:\/\/.+\/kurzusok$/)
     expect(meta.alternates?.canonical).toBe('/kurzusok')
+    expect('keywords' in meta).toBe(false)
+  })
+
+  it('opcionális keywords csak akkor kerül a metadatokba, ha van kifejezés', () => {
+    const ures = buildStaticPageMetadata({
+      title: 'Kurzusok',
+      description: 'Leírás.',
+      path: '/kurzusok',
+      keywords: [],
+    })
+    expect('keywords' in ures).toBe(false)
+    const kitoltott = buildStaticPageMetadata({
+      title: 'Kurzusok',
+      description: 'Leírás.',
+      path: '/kurzusok',
+      keywords: ['otthoni gyógytorna', 'kéztorna', 'kéztorna gyakorlatok'],
+    })
+    expect(kitoltott.keywords).toEqual(['otthoni gyógytorna', 'kéztorna', 'kéztorna gyakorlatok'])
   })
 
   it('a lap címe SOSEM eshet vissza a kezdőlapéra', () => {

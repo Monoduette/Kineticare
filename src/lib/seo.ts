@@ -132,10 +132,13 @@ export function buildStaticPageMetadata(input: {
   title: string
   description: string
   path: string
+  keywords?: readonly string[]
 }): Metadata {
+  const keywords = resolveSeoKeywords(input.keywords?.map((phrase) => ({ phrase })))
   return {
     title: input.title,
     description: input.description,
+    ...(keywords ? { keywords } : {}),
     alternates: { canonical: input.path },
     openGraph: {
       title: input.title,
@@ -194,6 +197,7 @@ export function productSeoDoc(
     | 'shortDescription'
     | 'seoTitle'
     | 'seoDescription'
+    | 'seoKeywords'
     | 'ogImage'
     | 'coverImage'
   >,
@@ -210,6 +214,7 @@ export function productSeoDoc(
         : `${name} — online kézrehabilitációs kurzus a Kineticare kínálatából.`,
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
+    seoKeywords: product.seoKeywords,
     ogImage: product.ogImage,
     heroImage: product.coverImage,
   }
@@ -325,12 +330,15 @@ export function breadcrumbJsonLd(
  * értékelés-adat, kitalált értékelést pedig sem a fogyasztóvédelem, sem a
  * Google strukturált adat irányelve nem tűr.
  *
+ * `keywords` a CMS `seoKeywords` mezőből jön. Üres mezőnél a kulcs kimarad —
+ * H1-ből vagy a listing-szövegből kitalálni tilos.
+ *
  * FONTOS karbantartási szabály: minden ár- vagy csomagváltozásnál ez a séma is
  * frissül (a `priceInHUF` mezőből származik) — az elavult strukturált adat
  * gyorsan téves árat terjeszt az AI-válaszokban.
  */
 export function courseJsonLd(args: {
-  product: Pick<Product, 'shortDescription' | 'status' | 'sku'>
+  product: Pick<Product, 'shortDescription' | 'status' | 'sku' | 'seoKeywords'>
   name: string
   path: string
   priceHuf: number | null
@@ -346,6 +354,7 @@ export function courseJsonLd(args: {
     typeof product.sku === 'string' && product.sku.trim().length > 0
       ? product.sku.trim()
       : undefined
+  const keywords = resolveSeoKeywords(product.seoKeywords)
   const organization = {
     '@type': 'Organization',
     name: SITE_NAME,
@@ -360,6 +369,7 @@ export function courseJsonLd(args: {
     inLanguage: 'hu-HU',
     ...(imageUrl ? { image: [imageUrl] } : {}),
     ...(sku ? { sku } : {}),
+    ...(keywords !== undefined ? { keywords: keywords.join(', ') } : {}),
     brand: {
       '@type': 'Brand',
       name: SITE_NAME,

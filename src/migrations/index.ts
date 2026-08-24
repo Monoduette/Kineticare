@@ -25,6 +25,7 @@ import * as migration_20260821_204356_tudastar_gyik_lektor_mezok from './2026082
 import * as migration_20260823_195638_access_grants from './20260823_195638_access_grants';
 import * as migration_20260824_185329_pages_eeat_mezok from './20260824_185329_pages_eeat_mezok';
 import * as migration_20260824_204332_seo_kulcsszavak_mezok from './20260824_204332_seo_kulcsszavak_mezok';
+import * as migration_20260824_212628_products_seo_kulcsszavak from './20260824_212628_products_seo_kulcsszavak';
 
 export const migrations = [
   {
@@ -160,6 +161,11 @@ export const migrations = [
   {
     up: migration_20260824_204332_seo_kulcsszavak_mezok.up,
     down: migration_20260824_204332_seo_kulcsszavak_mezok.down,
-    name: '20260824_204332_seo_kulcsszavak_mezok'
+    name: '20260824_204332_seo_kulcsszavak_mezok',
+  },
+  {
+    up: migration_20260824_212628_products_seo_kulcsszavak.up,
+    down: migration_20260824_212628_products_seo_kulcsszavak.down,
+    name: '20260824_212628_products_seo_kulcsszavak'
   },
 ];

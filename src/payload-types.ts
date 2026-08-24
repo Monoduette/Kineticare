@@ -1742,6 +1742,15 @@ export interface Product {
    */
   seoDescription?: string | null;
   /**
+   * Keresőszavak és hosszabb kifejezések; később bővíthető. A forráskódba mennek, a lapon nem látszanak külön listaként.
+   */
+  seoKeywords?:
+    | {
+        phrase: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
    * Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a kurzust.
    */
   ogImage?: (number | null) | Media;
@@ -3642,6 +3651,12 @@ export interface ProductsSelect<T extends boolean = true> {
       };
   seoTitle?: T;
   seoDescription?: T;
+  seoKeywords?:
+    | T
+    | {
+        phrase?: T;
+        id?: T;
+      };
   ogImage?: T;
   category?: T;
   audience?: T;

@@ -1,9 +1,9 @@
 import type { ArrayField } from 'payload'
 
-import { SEO_KEYWORDS_MAX_ROWS } from '../lib/seo-keywords'
+import { SEO_KEYWORDS_MAX_LENGTH, SEO_KEYWORDS_MAX_ROWS } from '../lib/seo-keywords'
 
 /**
- * Szerkeszthető SEO-kulcsszómező a `posts` és a `pages` kollekcióhoz.
+ * Szerkeszthető SEO-kulcsszómező a `posts`, a `pages` és a `products` kollekcióhoz.
  *
  * Szándékosan gyökérszintű (nem `seo.` csoportba ágyazott): a meglévő
  * `seoTitle` / `seoDescription` útvonala ne változzon. A szerkesztő a
@@ -25,6 +25,7 @@ export const seoKeywordsField: ArrayField = {
       name: 'phrase',
       type: 'text',
       required: true,
+      maxLength: SEO_KEYWORDS_MAX_LENGTH,
       label: 'Kifejezés',
     },
   ],

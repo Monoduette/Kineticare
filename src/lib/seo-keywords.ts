@@ -1,15 +1,26 @@
 /**
  * CMS `seoKeywords` — szerkeszthető keresőszavak, amik a HTML-forrásba mennek.
  *
- * A mező a `posts` és a `pages` kollekción él (lásd `src/fields/seo-keywords.ts`).
+ * A mező a `posts`, a `pages` és a `products` kollekción él
+ * (lásd `src/fields/seo-keywords.ts`).
  * A nyilvános lapon NEM jelenik meg külön listaként: a kifejezések a
  * JSON-LD `keywords` kulcsába és a `<meta name="keywords">` tagbe kerülnek.
  * Üres mezőnél mindkettő kimarad — H1-ből vagy más látható szövegből
  * kulcsszót kitalálni tilos.
  */
 
-/** Egyezzen a Payload-mező `maxRows` értékével. */
-export const SEO_KEYWORDS_MAX_ROWS = 12
+/** Egyezzen a Payload-mező `maxRows` értékével. A Search-lock leghosszabb listája 43. */
+export const SEO_KEYWORDS_MAX_ROWS = 48
+
+/**
+ * Egy kifejezés felső hossza: egy sor, nem bekezdés.
+ *
+ * A Search-lock leghosszabb tétele 47 karakter
+ * (`kéztőalagút szindróma carpal tunnel syndrome`). A Payload `maxLength` ezt
+ * a CMS-mezőn érvényesíti; a `resolveSeoKeywords` és az importer nem vág
+ * csonkra.
+ */
+export const SEO_KEYWORDS_MAX_LENGTH = 80
 
 /** Egy CMS-sor a `seoKeywords` tömbből. */
 export interface SeoKeywordRow {
