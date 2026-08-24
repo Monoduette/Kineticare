@@ -42,7 +42,12 @@ const post = (overrides: Partial<Post> = {}): Post =>
 
 describe('Blog (lista) JSON-LD', () => {
   it('a Tudástárat írja le, magyar nyelvvel és kanonikus URL-lel', () => {
-    const jsonLd = blogJsonLd({ name: 'Tudástár', description: 'Cikkek.', path: '/blog', posts: [] })
+    const jsonLd = blogJsonLd({
+      name: 'Tudástár',
+      description: 'Cikkek.',
+      path: '/blog',
+      posts: [],
+    })
 
     expect(jsonLd['@type']).toBe('Blog')
     expect(jsonLd.name).toBe('Tudástár')
@@ -104,9 +109,11 @@ describe('Article JSON-LD (bejegyzés-oldal)', () => {
     expect(articleJsonLd({ post: post(), path: '/blog/gipsz-utan' }).inLanguage).toBe('hu-HU')
   })
 
-  it('szerző nélkül a kiadó neve áll a szerző helyén (nem üres mező)', () => {
+  it('szerző nélkül NINCS author kulcs (a kiadó a publisher Organization)', () => {
     const jsonLd = articleJsonLd({ post: post(), path: '/blog/gipsz-utan' })
-    expect((jsonLd.author as Record<string, unknown>).name).toBe('Kineticare')
+    expect('author' in jsonLd).toBe(false)
+    expect((jsonLd.publisher as Record<string, unknown>).name).toBe('Kineticare')
+    expect((jsonLd.publisher as Record<string, unknown>)['@type']).toBe('Organization')
   })
 
   it('hiányzó bevezetőnél nincs üres description', () => {
@@ -279,21 +286,38 @@ describe('Cikk-séma: szerző és lektor (E-E-A-T)', () => {
     expect(author.jobTitle).toBe('gyógytornász')
   })
 
-  it('SZERZŐ NÉLKÜL Organization-tartalék, nem márkanevű Person', () => {
-    // A Kineticare nem személy: a Person{name:'Kineticare'} típushiba volt.
-    const author = node(postArticleJsonLd({ post: cikk(), path: '/blog/x' }), 'author')
+  it('SZERZŐ NÉLKÜL nincs author kulcs, a kiadó a publisher Organization', () => {
+    // Sem Person{name:'Kineticare'}, sem Organization-szerző-tartalék:
+    // a kereső ne higgye, hogy a szervezet írta a lapot, ha nincs kitöltött user.
+    const jsonLd = postArticleJsonLd({ post: cikk(), path: '/blog/x' })
+    const publisher = node(jsonLd, 'publisher')
 
-    expect(author['@type']).toBe('Organization')
-    expect(author.name).toBe('Kineticare')
-    expect(author.url).toBe(absoluteUrl('/'))
+    expect('author' in jsonLd).toBe(false)
+    expect(publisher['@type']).toBe('Organization')
+    expect(publisher.name).toBe('Kineticare')
+    expect(publisher.url).toBe(absoluteUrl('/'))
   })
 
-  it('üres nevű szerzőnél is az Organization-tartalék lép be', () => {
-    const author = node(
-      postArticleJsonLd({ post: cikk(), path: '/blog/x', author: { name: '   ' } }),
-      'author',
-    )
-    expect(author['@type']).toBe('Organization')
+  it('üres nevű szerzőnél sincs author kulcs (nem Organization-tartalék)', () => {
+    const jsonLd = postArticleJsonLd({
+      post: cikk(),
+      path: '/blog/x',
+      author: { name: '   ' },
+    })
+    expect('author' in jsonLd).toBe(false)
+    expect(node(jsonLd, 'publisher')['@type']).toBe('Organization')
+  })
+
+  it('kitöltött user author SOHA nem Organization és SOHA nem SITE_NAME', () => {
+    const jsonLd = postArticleJsonLd({ post: cikk(), path: '/blog/x', author: KATA })
+    const author = node(jsonLd, 'author')
+    const publisher = node(jsonLd, 'publisher')
+
+    expect(author['@type']).toBe('Person')
+    expect(author.name).toBe('Kocsis Kata')
+    expect(author.name).not.toBe('Kineticare')
+    expect(publisher['@type']).toBe('Organization')
+    expect(publisher.name).toBe('Kineticare')
   })
 
   it('reviewedBy CSAK akkor, ha tényleg van lektor', () => {
@@ -673,9 +697,9 @@ const lapPost = (overrides: Record<string, unknown> = {}): Post =>
 /** A lap összes JSON-LD blokkja, feloldva. */
 function jsonLdBlocks(post: Post): Record<string, unknown>[] {
   const html = renderToStaticMarkup(createElement(PostArticle, { post }))
-  return [
-    ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
-  ].map((match) => JSON.parse(match[1]!.replace(/\\u003c/g, '<')) as Record<string, unknown>)
+  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
+    (match) => JSON.parse(match[1]!.replace(/\\u003c/g, '<')) as Record<string, unknown>,
+  )
 }
 
 /** A cikk-entitás node-ja a renderelt lapról (az egyetlen tömbös @type). */
@@ -695,12 +719,11 @@ describe('A renderelt cikkoldal sémája', () => {
     expect(cikkNodeok).toHaveLength(1)
   })
 
-  it('SZERZŐ NÉLKÜL az author Organization, nem márkanevű Person', () => {
-    // A Person{name:'Kineticare'} típushiba volt: a Kineticare nem személy.
-    const author = node(cikkSema(lapPost()), 'author')
-
-    expect(author['@type']).toBe('Organization')
-    expect(author.name).toBe('Kineticare')
+  it('SZERZŐ NÉLKÜL a renderelt lapon nincs author kulcs, a publisher Organization', () => {
+    const jsonLd = cikkSema(lapPost())
+    expect('author' in jsonLd).toBe(false)
+    expect(node(jsonLd, 'publisher')['@type']).toBe('Organization')
+    expect(node(jsonLd, 'publisher').name).toBe('Kineticare')
   })
 
   it('szerzővel Person megy ki, a titulus a jobTitle-ben', () => {

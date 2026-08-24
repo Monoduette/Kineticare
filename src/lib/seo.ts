@@ -450,6 +450,8 @@ export function articleJsonLd(args: {
   about?: { tipus: 'MedicalCondition' | 'MedicalSignOrSymptom'; nev: string }
 }): Record<string, unknown> {
   const { post, path, authorName, imageUrl, keywords, about } = args
+  const trimmedAuthor =
+    typeof authorName === 'string' && authorName.trim().length > 0 ? authorName.trim() : undefined
   return {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -463,14 +465,12 @@ export function articleJsonLd(args: {
     ...(typeof post.publishedAt === 'string' ? { datePublished: post.publishedAt } : {}),
     ...(typeof post.updatedAt === 'string' ? { dateModified: post.updatedAt } : {}),
     ...(imageUrl ? { image: [imageUrl] } : {}),
-    ...(keywords !== undefined && keywords.length > 0
-      ? { keywords: keywords.join(', ') }
-      : {}),
+    ...(keywords !== undefined && keywords.length > 0 ? { keywords: keywords.join(', ') } : {}),
     ...(about !== undefined ? { about: { '@type': about.tipus, name: about.nev } } : {}),
-    author: {
-      '@type': 'Person',
-      name: authorName ?? SITE_NAME,
-    },
+    // Kitöltött név → Person. Üres szerzőnél NINCS author kulcs: a SITE_NAME
+    // soha nem áll Person-ként (a Kineticare nem személy), és Organization
+    // sem szerző-tartalék — a kiadó a `publisher`.
+    ...(trimmedAuthor !== undefined ? { author: { '@type': 'Person', name: trimmedAuthor } } : {}),
     publisher: {
       '@type': 'Organization',
       name: SITE_NAME,

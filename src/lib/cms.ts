@@ -78,7 +78,15 @@ export async function getHomePage(options: CmsDocQueryOptions = {}): Promise<Pag
   )
 }
 
-/** CMS-oldal slug alapján (alapból csak published; előnézetben a piszkozat is). */
+/**
+ * CMS-oldal slug alapján (alapból csak published; előnézetben a piszkozat is).
+ *
+ * `depth: 2` — a szerző- és lektor-blokk a populált user `name` / `credentials`
+ * / `bioShort` / `portrait` mezőiből épül (ugyanaz a szerződés, mint a
+ * `getPostBySlug`-nál). Depth 1 a usert feloldja, a portré médiáját nem;
+ * nyers id-ként a Person JSON-LD és a látható blokk némán elmaradna, holott
+ * a kapcsolat ki van töltve.
+ */
 export async function getPageBySlug(
   slug: string,
   options: CmsDocQueryOptions = {},
@@ -92,7 +100,7 @@ export async function getPageBySlug(
         collection: 'pages',
         where: { slug: { equals: slug }, ...publishedWhere(draft) },
         limit: 1,
-        depth: 1,
+        depth: 2,
         draft,
         overrideAccess: true,
       })
@@ -131,7 +139,11 @@ export async function getPosts(
   let { categoryId } = options
   // Kategória-slug → id feloldás: ismeretlen slug esetén nincs találat (üres
   // lista), nem esünk vissza a szűretlen listára.
-  if (typeof categoryId !== 'number' && typeof categorySlug === 'string' && categorySlug.length > 0) {
+  if (
+    typeof categoryId !== 'number' &&
+    typeof categorySlug === 'string' &&
+    categorySlug.length > 0
+  ) {
     const category = await getCategoryBySlug(categorySlug)
     if (!category) {
       return []
@@ -217,7 +229,9 @@ export async function getPostBySlug(
  */
 export async function getRelatedPosts(post: Post, limit = 3): Promise<Post[]> {
   const categoryIds = Array.isArray(post.categories)
-    ? post.categories.map((category) => (typeof category === 'object' && category !== null ? category.id : category))
+    ? post.categories.map((category) =>
+        typeof category === 'object' && category !== null ? category.id : category,
+      )
     : []
   if (categoryIds.length === 0) {
     return []

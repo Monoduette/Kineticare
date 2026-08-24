@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { MediaImage } from '@/components/content/MediaImage'
+import { PageEeat } from '@/components/content/PageEeat'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { hasLexicalContent } from '@/components/lexical/serialize'
 import { RichText } from '@/components/lexical/RichText'
@@ -126,6 +127,10 @@ export default async function CmsPage({ params }: Props) {
             </Container>
           </Section>
         ) : null}
+        {/* E-E-A-T: szerző-blokk + GYIK + MedicalWebPage/FAQPage JSON-LD.
+            Üres mezőnél a komponens null — a lap a mai viselkedést adja.
+            A hub a `pages` collectionben marad, nem a `/blog/` útvonalon. */}
+        <PageEeat page={page} path={`/${slug}`} />
       </article>
     </>
   )

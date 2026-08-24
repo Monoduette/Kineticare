@@ -107,9 +107,7 @@ export function relatedHeading(
     return 'További cikkek a Tudástárból'
   }
   const sharedByAll = related.every((item) => categoryIdsOf(item).includes(primary.id))
-  return sharedByAll
-    ? `További cikkek a témában: ${primary.title}`
-    : 'További cikkek a Tudástárból'
+  return sharedByAll ? `További cikkek a témában: ${primary.title}` : 'További cikkek a Tudástárból'
 }
 
 /**
@@ -206,18 +204,18 @@ function personOf(value: unknown): ArticlePerson | null {
 }
 
 /** A cikk szerzője (populált `author`), vagy null. */
-export function authorPersonOf(post: Post): ArticlePerson | null {
-  return personOf(post.author)
+export function authorPersonOf(doc: unknown): ArticlePerson | null {
+  return personOf(readField(doc, 'author'))
 }
 
 /**
- * A cikk szakmai lektora (`reviewedBy`), vagy null.
+ * A cikk vagy CMS-oldal szakmai lektora (`reviewedBy`), vagy null.
  *
- * A mező az E-csomag séma-körében születik; addig mindig null, és a
- * szerző-blokk lektor-sora némán elmarad.
+ * Populálatlan (nyers id) vagy üres mezőnél mindig null, és a szerző-blokk
+ * lektor-sora némán elmarad.
  */
-export function reviewerPersonOf(post: Post): ArticlePerson | null {
-  return personOf(readField(post, 'reviewedBy'))
+export function reviewerPersonOf(doc: unknown): ArticlePerson | null {
+  return personOf(readField(doc, 'reviewedBy'))
 }
 
 /** Az ellenőrzés dátumai (ISO), ha ténylegesen ki vannak töltve. */
@@ -235,10 +233,10 @@ export interface ReviewDates {
  * ellenőrzés-dátum ellenőrzés nélkül hazugság, és pont azt a bizalmat rombolná,
  * amiért a blokk létezik (docs/tudastar-ux-terv.md 5.6, 8. fejezet).
  */
-export function reviewDatesOf(post: Post): ReviewDates {
+export function reviewDatesOf(doc: unknown): ReviewDates {
   return {
-    reviewedAt: readText(readField(post, 'reviewedAt')),
-    nextReviewAt: readText(readField(post, 'nextReviewAt')),
+    reviewedAt: readText(readField(doc, 'reviewedAt')),
+    nextReviewAt: readText(readField(doc, 'nextReviewAt')),
   }
 }
 
@@ -272,8 +270,8 @@ export type { PostFaqItem } from '../../lib/seo-cikk'
  * és ugyanez a szám áll a `posts.faq` `maxRows` értékében is (technikai terv
  * 2.2), tehát a felület és a szerkesztő ugyanazt a korlátot látja.
  */
-export function postFaqItems(post: Post): PostFaqItem[] {
-  const raw = readField(post, 'faq')
+export function postFaqItems(doc: unknown): PostFaqItem[] {
+  const raw = readField(doc, 'faq')
   if (!Array.isArray(raw)) return []
   const sources: PostFaqSource[] = raw.map((entry) => ({
     question: readRawText(readField(entry, 'question')),

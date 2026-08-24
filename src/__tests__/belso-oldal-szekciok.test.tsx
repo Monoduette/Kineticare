@@ -140,6 +140,69 @@ describe('CMS-oldal renderelése (P3)', () => {
   })
 })
 
+describe('CMS-oldal E-E-A-T (szerző-blokk, GYIK, JSON-LD)', () => {
+  const KISS_KATA = { id: 2, name: 'Kiss Kata', credentials: 'gyógytornász' }
+  const KOCSIS_KATA = { id: 3, name: 'Kocsis Kata', credentials: 'gyógytornász' }
+
+  function jsonLdBlocks(html: string): Record<string, unknown>[] {
+    return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
+      (match) => JSON.parse(match[1]!.replace(/\\u003c/g, '<')) as Record<string, unknown>,
+    )
+  }
+
+  it('üres author/faq mellett a lap a mai viselkedést adja (nincs blokk, nincs FAQPage)', async () => {
+    const markup = await renderCmsPage(page())
+    expect(markup).toContain(RICHTEXT_JELOLO)
+    expect(markup).not.toContain('kc-post-author')
+    expect(markup).not.toContain('kc-post-faq')
+    expect(markup).not.toContain('"@type":"FAQPage"')
+    expect(markup).not.toContain('"@type":"MedicalWebPage"')
+    expect(markup).not.toContain('"@type":"Person"')
+  })
+
+  it('kitöltött szerző, lektor és GYIK megjelenik, Person + FAQPage + MedicalWebPage kimegy', async () => {
+    const markup = await renderCmsPage(
+      page({
+        author: KISS_KATA,
+        reviewedBy: KOCSIS_KATA,
+        reviewedAt: '2026-08-18T00:00:00.000Z',
+        faq: [{ question: 'Tesztkérdés a sémához?', answer: 'Tesztválasz, nem klinikai állítás.' }],
+      } as unknown as Partial<Page>),
+    )
+
+    expect(markup).toContain('Az oldalt írta és ellenőrizte')
+    expect(markup).toContain('Kiss Kata')
+    expect(markup).toContain('Szakmailag ellenőrizte: Kocsis Kata, gyógytornász')
+    expect(markup).toContain('Gyakori kérdések')
+    expect(markup).toContain('Tesztkérdés a sémához?')
+    expect(markup).toContain('Tesztválasz, nem klinikai állítás.')
+
+    const blocks = jsonLdBlocks(markup)
+    const pageSchema = blocks.find((block) => block['@type'] === 'MedicalWebPage')
+    const faqSchema = blocks.find((block) => block['@type'] === 'FAQPage')
+    expect(pageSchema, 'nincs MedicalWebPage a lapon').toBeDefined()
+    expect(faqSchema, 'nincs FAQPage a lapon').toBeDefined()
+
+    const author = pageSchema!.author as Record<string, unknown>
+    const reviewer = pageSchema!.reviewedBy as Record<string, unknown>
+    const publisher = pageSchema!.publisher as Record<string, unknown>
+    expect(author['@type']).toBe('Person')
+    expect(author.name).toBe('Kiss Kata')
+    expect(reviewer['@type']).toBe('Person')
+    expect(reviewer.name).toBe('Kocsis Kata')
+    expect(publisher['@type']).toBe('Organization')
+    expect(publisher.name).toBe('Kineticare')
+    expect(author['@type']).not.toBe('Organization')
+  })
+
+  it('nyers author-id nem hamisít Person-t és nem rak Organization-t a szerző helyére', async () => {
+    const markup = await renderCmsPage(page({ author: 2 } as unknown as Partial<Page>))
+    expect(markup).not.toContain('kc-post-author')
+    expect(markup).not.toContain('"@type":"Person"')
+    expect(markup).not.toContain('"@type":"MedicalWebPage"')
+  })
+})
+
 describe('/rolunk alap-szekciósora', () => {
   const layout = buildRolunkLayout()
 
