@@ -25,6 +25,7 @@ import {
   relatedHeading,
   reviewDatesOf,
   reviewerPersonOf,
+  shouldShowPostCourseCta,
   shouldShowToc,
 } from './post-article'
 import { headingsOf, plainTextOf, wordCountOf } from './post-outline'
@@ -120,6 +121,7 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
   ]
   const showToc = shouldShowToc(wordCountOf(post.content), contentHeadings.length)
 
+  const showCourseCta = shouldShowPostCourseCta(post)
   const ctaClasses = ['kc-post-cta', related.length > 0 ? 'kc-post-cta--elotte-kapcsolodo' : '']
     .filter(Boolean)
     .join(' ')
@@ -265,11 +267,15 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
         </Container>
       </Section>
 
-      <Section className={ctaClasses} variant="tint">
-        <Container size="narrow">
-          <PostCourseCta course={courseCtaTargetOf(post)} />
-        </Container>
-      </Section>
+      {/* A kurzuslista-lábléc a `befagyott-vall` slugon elmarad. A fejléc
+          „Kurzusok" navigációja nem ide tartozik, az minden lapon marad. */}
+      {showCourseCta ? (
+        <Section className={ctaClasses} variant="tint">
+          <Container size="narrow">
+            <PostCourseCta course={courseCtaTargetOf(post)} />
+          </Container>
+        </Section>
+      ) : null}
 
       {related.length > 0 ? (
         <Section className="kc-post-related">

@@ -8,7 +8,12 @@ import { describe, expect, it } from 'vitest'
 import { PostArticle } from '../components/content/PostArticle'
 import { shouldShowCategoryFilter } from '../components/content/post-list'
 import { headingsOf, plainTextOf, RESERVED_ANCHOR_IDS, wordCountOf } from '../components/content/post-outline'
-import { authorPersonOf, relatedHeading, shouldShowToc } from '../components/content/post-article'
+import {
+  authorPersonOf,
+  relatedHeading,
+  shouldShowPostCourseCta,
+  shouldShowToc,
+} from '../components/content/post-article'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { betuMetrika, szoSzelessegPx } from './helpers/font-metrics'
 import {
@@ -364,6 +369,29 @@ describe('G3 + G4 — kurzus-ajánló: egy elsődleges cselekvés, szótári fel
     for (const szo of tiltott) {
       expect(html).not.toContain(szo)
     }
+  })
+
+  it('befagyott-vall: üres ctaCourse mellett nincs kurzuslista-lábléc', () => {
+    expect(shouldShowPostCourseCta({ slug: 'befagyott-vall' })).toBe(false)
+    const html = render(createElement(PostArticle, { post: post({ slug: 'befagyott-vall' }) }))
+    expect(html).not.toContain('kc-post-cta')
+    expect(text(html)).not.toContain(ctaLabel('course-list-open'))
+    expect(html).not.toContain('href="/kurzusok"')
+  })
+
+  it('a hat élő cikk és az ínhüvelygyulladás kurzus-CTA-ja megmarad', () => {
+    expect(shouldShowPostCourseCta({ slug: 'miert-zsibbad-a-kezem' })).toBe(true)
+    expect(shouldShowPostCourseCta({ slug: 'inhuvelygyulladas' })).toBe(true)
+    const elo = render(createElement(PostArticle, { post: post() }))
+    expect(text(elo)).toContain(ctaLabel('course-list-open'))
+    expect(elo).toContain('href="/kurzusok"')
+    const inhuvely = render(
+      createElement(PostArticle, {
+        post: post({ slug: 'inhuvelygyulladas', ctaCourse: KURZUS }),
+      }),
+    )
+    expect(text(inhuvely)).toContain(ctaLabel('course-sales-open'))
+    expect(inhuvely).toContain('href="/kurzusok/kezrehabilitacio-otthon"')
   })
 })
 
