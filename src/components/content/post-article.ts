@@ -322,3 +322,28 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
     priceInHUFEnabled: typeof raw.priceInHUFEnabled === 'boolean' ? raw.priceInHUFEnabled : null,
   }
 }
+
+/**
+ * A sablon `ctaCourse` nélkül a kurzuslistára visz (`PostCourseCta` üres ág:
+ * „Nézd meg a kurzusokat", `href="/kurzusok"`). A `befagyott-vall` cikknél ez
+ * tiltott: a mező üres, a törzs egyetlen továbbvezetése `/szolgaltatasok`.
+ * A hat élő cikk és az ínhüvelygyulladás kapcsolt kurzus-CTA-ja érintetlen.
+ *
+ * A fejléc „Kurzusok" navigációja (`Header.tsx`) NEM ide tartozik: az a
+ * WCAG 2.2 **3.2.3** (Consistent Navigation) szerint minden lapon marad.
+ *
+ * Forrás:
+ * - GOV.UK Design System, *Buttons*: „A page should have only one primary
+ *   button." https://design-system.service.gov.uk/components/button/
+ * - NN/g, *Informational Articles Must Ask For the Order*: a cikk végi
+ *   ajánlat a releváns következő lépés legyen; általános katalógus-CTA
+ *   hitelt visz, ha a törzs mást kínál.
+ *   https://www.nngroup.com/articles/product-links-on-informational-pages/
+ * - WCAG 2.2 **2.4.4** Link Purpose (In Context): a lábléc primary gombja
+ *   kurzuslistát ígérne, a cikk pedig rendelői időpontot.
+ */
+export const COURSE_LIST_CTA_HIDDEN_SLUG = 'befagyott-vall'
+
+export function shouldShowPostCourseCta(post: Pick<Post, 'slug'>): boolean {
+  return post.slug !== COURSE_LIST_CTA_HIDDEN_SLUG
+}
