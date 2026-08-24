@@ -21,11 +21,17 @@
  * Ezért alapból piszkozat.
  *
  * ═══ MI KERÜL BE A MARKDOWNON KÍVÜL ═══
- * A `seoTitle` és a `seoDescription` a MÉRT kulcsszó-célzásból jön
+ * A `seoTitle`, a `seoDescription` és a `seoKeywords` a MÉRT kulcsszó-célzásból jön
  * (`src/lib/tudastar/seo-kulcsszavak.ts`), a `faq` mező pedig a MÉRT keresési
  * kérdésekből (`src/lib/tudastar/faq.ts`). Egyik sem a cikkből számolódik, és
  * egyik sem találgatás: a GYIK-válaszok kizárólag azt mondják, amit a cikk
- * törzse már kimond.
+ * törzse már kimond. A `seoKeywords` az elsodleges kifejezéssel kezdődik, utána
+ * a masodlagosak következnek.
+ *
+ * A `pages.seoKeywords` a Search-lockolt `OLDAL_KULCSSZAVAK` táblából jön,
+ * ugyanazon `OWNER_TUDASTAR_CONFIRM` kapu mögött. Csak meglévő pages-rekordot
+ * frissít, csak a `seoKeywords` mezőt; új page TILOS. Szándékosan üres slugoknál
+ * (kapcsolat, impresszum, adatvedelem, aszf, kurzusok) nem ír kifejezést.
  *
  * ═══ ÚJRAFUTTATHATÓ ═══
  * A párosítás slug szerint történik: meglévő bejegyzést FRISSÍT, nem duplikál.
@@ -50,7 +56,12 @@ import {
   extractArticleBody,
   markdownToLexical,
 } from '../lib/tudastar/markdown-to-lexical'
-import { kulcsszoFor } from '../lib/tudastar/seo-kulcsszavak'
+import {
+  kulcsszoFor,
+  meresToSeoKeywords,
+  OLDAL_KULCSSZAVAK,
+  oldalSeoKeywordsFor,
+} from '../lib/tudastar/seo-kulcsszavak'
 import config from '../payload.config'
 
 /**
@@ -114,6 +125,11 @@ export interface ForditottCikk {
   /** A mért kulcsszó-célzásból jövő SEO-leírás. */
   seoDescription: string
   /**
+   * A CMS `seoKeywords` mezője: elsodleges elöl, utána a masodlagosak.
+   * A mért táblából jön, kitalálni tilos.
+   */
+  seoKeywords: { phrase: string }[]
+  /**
    * A cikk GYIK-tételei, vagy `undefined`, ha ehhez a slughoz nincs.
    *
    * Az `undefined` és az üres tömb NEM ugyanaz: az előbbi azt jelenti, hogy a
@@ -174,6 +190,7 @@ export function cikketFordit(cikkekDir: string, fajl: string, slug: string): For
     szoszam: lines.join(' ').split(/\s+/).filter(Boolean).length,
     seoTitle: kulcsszo.seoTitle,
     seoDescription: kulcsszo.seoDescription,
+    seoKeywords: meresToSeoKeywords(kulcsszo),
     faq,
   }
 }
@@ -288,6 +305,82 @@ async function cikkMezok(
   return mezok
 }
 
+/**
+ * A Search-lockolt `pages.seoKeywords` lista slug szerint.
+ *
+ * Csak meglévő rekordot frissít, és csak a `seoKeywords` mezőt. Új page-et
+ * nem hoz létre (A-gyökér / kurzusok pages TILOS). Szándékosan üres locknál
+ * nem ír kifejezést. Próbafutásnál (`dryRun`) nem ír.
+ */
+export async function oldalKulcsszavakatSzinkronizal(
+  payload: Payload,
+  options: { dryRun: boolean },
+): Promise<{ frissitve: number; kihagyva: number; hianyzik: number }> {
+  let frissitve = 0
+  let kihagyva = 0
+  let hianyzik = 0
+
+  for (const slug of Object.keys(OLDAL_KULCSSZAVAK)) {
+    const meglevo = await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+      draft: true,
+    })
+    const letezo = meglevo.docs[0]
+    if (!letezo) {
+      hianyzik += 1
+      logger.info('Tudástár-import: pages kulcsszó — nincs rekord, nem hozunk létre', { slug })
+      continue
+    }
+
+    const keywords = oldalSeoKeywordsFor(slug)
+    if (keywords === undefined) {
+      kihagyva += 1
+      logger.info('Tudástár-import: pages kulcsszó — szándékosan üres, nem írunk kifejezést', {
+        slug,
+        id: letezo.id,
+      })
+      continue
+    }
+
+    if (options.dryRun) {
+      logger.info('Tudástár-import: pages kulcsszó — PRÓBA, nem írunk', {
+        slug,
+        id: letezo.id,
+        seoKeywords: keywords.map((row) => row.phrase),
+      })
+      continue
+    }
+
+    await payload.update({
+      collection: 'pages',
+      id: letezo.id,
+      data: { seoKeywords: keywords },
+      overrideAccess: true,
+    })
+    frissitve += 1
+    logger.info('Tudástár-import: pages kulcsszó frissítve', { slug, id: letezo.id })
+  }
+
+  return { frissitve, kihagyva, hianyzik }
+}
+
+function oldalKulcsszoTervetNaploz(): void {
+  for (const [slug, kifejezesek] of Object.entries(OLDAL_KULCSSZAVAK)) {
+    logger.info('Tudástár-import: pages kulcsszó terv (próba)', {
+      slug,
+      seoKeywords: kifejezesek ?? [],
+      muvelet:
+        kifejezesek !== undefined && kifejezesek.length > 0
+          ? 'meglévő rekord seoKeywords frissítése; új page tilos'
+          : 'szándékosan üres; ha van rekord, nem írunk kifejezést; új page tilos',
+    })
+  }
+}
+
 async function main(): Promise<void> {
   const dryRun = !kapuNyitva('OWNER_TUDASTAR_CONFIRM')
   const publikal = kapuNyitva('OWNER_TUDASTAR_PUBLISH')
@@ -321,9 +414,10 @@ async function main(): Promise<void> {
   }
 
   if (dryRun) {
+    oldalKulcsszoTervetNaploz()
     logger.info(
       `Tudástár-import: a próbafutás rendben, ${forditott.length} cikk fordult le hibátlanul. ` +
-        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen.',
+        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen. Pages seoKeywords csak meglévő rekordon, új page tilos.',
     )
     return
   }
@@ -349,6 +443,7 @@ async function main(): Promise<void> {
       content: cikk.content,
       seoTitle: cikk.seoTitle,
       seoDescription: cikk.seoDescription,
+      seoKeywords: cikk.seoKeywords,
       // Mindkét állapotmezőt kiírjuk, ahogy a `seed.ts` és a
       // `restore-legacy-content.ts` is teszi: a `_status` a Payload technikai
       // verzió-állapota, a `status` pedig a nyilvános szűrők (PUBLISHED_WHERE,
@@ -387,17 +482,21 @@ async function main(): Promise<void> {
     }
   }
 
+  const oldal = await oldalKulcsszavakatSzinkronizal(payload, { dryRun: false })
+
   logger.info('Tudástár-import: kész.', {
     letrehozva,
     frissitve,
     allapot: publikal ? 'published' : 'draft',
     gyikTetelek: forditott.reduce((osszeg, cikk) => osszeg + (cikk.faq?.length ?? 0), 0),
+    oldalKulcsszoFrissitve: oldal.frissitve,
+    oldalKulcsszoKihagyva: oldal.kihagyva,
+    oldalKulcsszoHianyzik: oldal.hianyzik,
   })
 }
 
 const kozvetlenul =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (kozvetlenul) {
   main()

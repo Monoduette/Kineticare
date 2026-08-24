@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import type { Category, Post, User } from '../../payload-types'
 import { estimateReadingMinutes } from '../../lib/reading-time'
-import { absoluteUrl, breadcrumbJsonLd, resolveOgImageUrl } from '../../lib/seo'
+import { absoluteUrl, breadcrumbJsonLd, resolveOgImageUrl, resolveSeoKeywords } from '../../lib/seo'
 import { postArticleJsonLd } from '../../lib/seo-cikk'
 import { Badge } from '../ui/Badge'
 import { Container } from '../ui/Container'
@@ -45,7 +45,8 @@ function authorNameOf(post: Post): string | null {
 function postCategories(post: Post): Category[] {
   if (!Array.isArray(post.categories)) return []
   return post.categories.filter(
-    (cat): cat is Category => typeof cat === 'object' && cat !== null && typeof cat.slug === 'string',
+    (cat): cat is Category =>
+      typeof cat === 'object' && cat !== null && typeof cat.slug === 'string',
   )
 }
 
@@ -72,6 +73,7 @@ export function PostView({ post, related: relatedProp, showMeta = true }: PostVi
   const categories = postCategories(post)
   const related = relatedProp ? displayableRelated(relatedProp) : visibleRelatedPosts(post)
   const heroMedia = post.heroImage && typeof post.heroImage === 'object' ? post.heroImage : null
+  const keywords = resolveSeoKeywords(post.seoKeywords)
 
   return (
     <article>
@@ -89,6 +91,7 @@ export function PostView({ post, related: relatedProp, showMeta = true }: PostVi
           path: `/blog/${post.slug}`,
           ...(author ? { author: { name: author } } : {}),
           imageUrl: resolveOgImageUrl(post),
+          ...(keywords !== undefined ? { keywords } : {}),
         })}
       />
       <JsonLd
@@ -114,7 +117,9 @@ export function PostView({ post, related: relatedProp, showMeta = true }: PostVi
             <p className="kc-post-meta">
               {author ? <span className="kc-post-meta__author">{author}</span> : null}
               {date ? (
-                <time dateTime={typeof post.publishedAt === 'string' ? post.publishedAt : undefined}>
+                <time
+                  dateTime={typeof post.publishedAt === 'string' ? post.publishedAt : undefined}
+                >
                   {date}
                 </time>
               ) : null}
@@ -127,7 +132,12 @@ export function PostView({ post, related: relatedProp, showMeta = true }: PostVi
         <Section flush>
           <Container>
             <div className="kc-page-hero__media">
-              <MediaImage media={heroMedia} preferredSize="lg" priority sizes="(max-width: 1120px) 100vw, 1120px" />
+              <MediaImage
+                media={heroMedia}
+                preferredSize="lg"
+                priority
+                sizes="(max-width: 1120px) 100vw, 1120px"
+              />
             </div>
           </Container>
         </Section>

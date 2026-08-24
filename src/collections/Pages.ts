@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { pageBlocks } from '../blocks'
+import { seoKeywordsField } from '../fields/seo-keywords'
 import { slugField } from '../fields/slug'
 import {
   clearPublishedAtBeforeDuplicate,
@@ -129,6 +130,7 @@ export const Pages: CollectionConfig = {
         description: 'A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).',
       },
     },
+    seoKeywordsField,
     {
       name: 'ogImage',
       type: 'upload',

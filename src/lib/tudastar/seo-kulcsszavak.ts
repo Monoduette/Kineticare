@@ -29,7 +29,16 @@
  *
  * Gondolatjeles, töltelék-elválasztós írásmód nincs — a tulajdonos kikötése
  * (`CLAUDE.md`, „Felületi (UX/UI) munka”).
+ *
+ * ═══ SEARCH-LOCK 2026-08-24 ═══
+ * Az `elsodleges` és `masodlagos` listák a Search-lockolt kifejezések, pontos
+ * ékezetes stringgel, primér elöl, max. 12 tétel. Rangsort, volument, KD-t a
+ * CMS `seoKeywords` mezőbe másolni tilos; a volumen/nehezseg mezők a mérés
+ * dokumentációjához maradnak, a mezőbe nem mennek. H1-ből kifejezést kitalálni
+ * tilos.
  */
+
+import { SEO_KEYWORDS_MAX_ROWS } from '../seo-keywords'
 
 export interface CikkKulcsszo {
   /** A bejegyzés slugja (a `posts.slug` mezővel egyezik). */
@@ -70,7 +79,12 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     elsodleges: 'kéz zsibbadás',
     volumen: 450,
     nehezseg: 17,
-    masodlagos: ['bal kéz zsibbadás', 'kéz zsibbadás éjszaka', 'ujjak zsibbadása'],
+    masodlagos: [
+      'jobb kéz zsibbadás',
+      'bal kéz zsibbadás',
+      'kéz zsibbadás éjszaka',
+      'ujjak zsibbadása',
+    ],
     seoTitle: 'Kéz zsibbadás: mi okozza, és mikor kell orvos?',
     seoDescription:
       'Éjjel elzsibbad a kezed, és reggelre elmúlik? Végigvesszük, mi okozhatja a kéz zsibbadását, mit tehetsz otthon, és melyik jelnél kell azonnal orvoshoz fordulni.',
@@ -117,7 +131,12 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     elsodleges: 'pattanó ujj',
     volumen: 800,
     nehezseg: 0,
-    masodlagos: ['pattanó ujj gyakorlatok', 'pattanó ujj műtét', 'beakadó ujj'],
+    masodlagos: [
+      'pattanó ujj kezelése házilag',
+      'pattanó ujj gyakorlatok',
+      'pattanó ujj műtét',
+      'beakadó ujj',
+    ],
     seoTitle: 'Pattanó ujj: miért akad be, és mit tehetsz?',
     seoDescription:
       'Reggel nem jön vissza magától az ujjad, aztán pattanva kiugrik? Elmondjuk, mi áll a pattanó ujj hátterében, mit tehetsz otthon, és mikor kell orvoshoz menni.',
@@ -130,7 +149,12 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     elsodleges: 'csuklófájdalom',
     volumen: 150,
     nehezseg: 0,
-    masodlagos: ['kézfájdalom', 'alkar fájdalom', 'csukló fájdalom kezelése házilag'],
+    masodlagos: [
+      'csukló fájdalom',
+      'kézfájdalom',
+      'alkar fájdalom',
+      'csukló fájdalom kezelése házilag',
+    ],
     seoTitle: 'Csuklófájdalom és kézfájdalom: mi okozza?',
     seoDescription:
       'Fáj a csuklód, amikor kinyitod az üveget? Összeszedtük a csuklófájdalom és a kézfájdalom leggyakoribb okait, mit tehetsz otthon, és mikor kell kivizsgálás.',
@@ -164,6 +188,11 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
       'csukló ínhüvelygyulladás',
       'ínhüvelygyulladás kezelése házilag',
       'ínhüvelygyulladás torna',
+      'de quervain',
+      'ínhüvelygyulladás tünetei',
+      'hüvelykujj ínhüvelygyulladás',
+      'ínhüvelygyulladás kezelése',
+      'de quervain szindróma',
     ],
     seoTitle: 'Ínhüvelygyulladás: tünetek és mit tehetsz',
     seoDescription:
@@ -177,7 +206,13 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     elsodleges: 'befagyott váll',
     volumen: 880,
     nehezseg: 12,
-    masodlagos: ['befagyott váll torna', 'befagyott váll szindróma', 'adhesive capsulitis'],
+    masodlagos: [
+      'befagyott váll torna',
+      'befagyott váll szindróma',
+      'adhesive capsulitis',
+      'befagyott váll kezelése',
+      'befagyott váll gyógytorna',
+    ],
     seoTitle: 'Befagyott váll: szakaszok és teendők',
     seoDescription:
       'Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis.',
@@ -190,6 +225,82 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
 /** Egy cikk célzása slug szerint, vagy `undefined`, ha nincs hozzá mérés. */
 export function kulcsszoFor(slug: string): CikkKulcsszo | undefined {
   return CIKK_KULCSSZAVAK.find((k) => k.slug === slug)
+}
+
+/**
+ * Pontos kifejezéslista a CMS `seoKeywords` alakjában.
+ *
+ * Trim, üres kihagyás, ismétlés-szűrés, max. 12 tétel. Rangsort, volument,
+ * KD-t ide tenni tilos.
+ */
+export function kifejezesekToSeoKeywords(kifejezesek: readonly string[]): { phrase: string }[] {
+  const rows: { phrase: string }[] = []
+  const seen = new Set<string>()
+  for (const raw of kifejezesek) {
+    const phrase = raw.trim()
+    if (phrase.length === 0 || seen.has(phrase)) {
+      continue
+    }
+    seen.add(phrase)
+    rows.push({ phrase })
+    if (rows.length === SEO_KEYWORDS_MAX_ROWS) {
+      break
+    }
+  }
+  return rows
+}
+
+/**
+ * A mért elsődleges + másodlagos kifejezések a CMS `seoKeywords` alakjában.
+ *
+ * Az importer ezt írja a nyolc ismert slugra. Az elsodleges elöl áll, utána
+ * a masodlagos lista. Kitalált kifejezést ide tenni tilos.
+ */
+export function meresToSeoKeywords(
+  meres: Pick<CikkKulcsszo, 'elsodleges' | 'masodlagos'>,
+): { phrase: string }[] {
+  return kifejezesekToSeoKeywords([meres.elsodleges, ...meres.masodlagos])
+}
+
+/**
+ * Search-lock 2026-08-24: a `pages.seoKeywords` mező tartalma slug szerint.
+ *
+ * Élő published pages (Railway, 2026-08-24): kapcsolat, impresszum,
+ * adatvedelem, aszf, szolgaltatasok, rolunk, kezdolap. Nincs `kurzusok`
+ * pages-rekord. Nincs A-gyökér pages (inhuvelygyulladas / keztoalagut-szindroma
+ * / teniszkonyok 404) — ide felvenni és létrehozni tilos.
+ *
+ * `undefined` = szándékosan üres: ne írj kifejezést (állapot-KW tilos).
+ * Csak meglévő rekord `seoKeywords` mezőjét szabad frissíteni; törzs, cím,
+ * status, author, faq nem változik. Új page TILOS.
+ */
+export const OLDAL_KULCSSZAVAK: Readonly<Record<string, readonly string[] | undefined>> = {
+  kezdolap: ['Kineticare', 'kéztorna', 'otthoni gyógytorna'],
+  szolgaltatasok: ['kéztorna', 'otthoni gyógytorna'],
+  rolunk: ['Kiss Kata', 'Kocsis Kata', 'Kineticare'],
+  kapcsolat: undefined,
+  impresszum: undefined,
+  adatvedelem: undefined,
+  aszf: undefined,
+  kurzusok: undefined,
+}
+
+/** A Search-lockolt oldalkifejezések, vagy `undefined` ha szándékosan üres / nincs lock. */
+export function oldalKulcsszavakFor(slug: string): readonly string[] | undefined {
+  return OLDAL_KULCSSZAVAK[slug]
+}
+
+/**
+ * A pages-importer által írható CMS-sorok. Szándékosan üres locknál `undefined`:
+ * a hívó nem ír kifejezést, és nem hoz létre oldalt.
+ */
+export function oldalSeoKeywordsFor(slug: string): { phrase: string }[] | undefined {
+  const lock = oldalKulcsszavakFor(slug)
+  if (lock === undefined || lock.length === 0) {
+    return undefined
+  }
+  const rows = kifejezesekToSeoKeywords(lock)
+  return rows.length > 0 ? rows : undefined
 }
 
 /**

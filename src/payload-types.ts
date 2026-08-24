@@ -321,6 +321,15 @@ export interface Page {
    */
   seoDescription?: string | null;
   /**
+   * Keresőszavak és hosszabb kifejezések; később bővíthető. A forráskódba mennek, a lapon nem látszanak külön listaként.
+   */
+  seoKeywords?:
+    | {
+        phrase: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
    * Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja az oldalt.
    */
   ogImage?: (number | null) | Media;
@@ -1945,6 +1954,15 @@ export interface Post {
    */
   seoDescription?: string | null;
   /**
+   * Keresőszavak és hosszabb kifejezések; később bővíthető. A forráskódba mennek, a lapon nem látszanak külön listaként.
+   */
+  seoKeywords?:
+    | {
+        phrase: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
    * Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a cikket.
    */
   ogImage?: (number | null) | Media;
@@ -2922,6 +2940,12 @@ export interface PagesSelect<T extends boolean = true> {
   heroImage?: T;
   seoTitle?: T;
   seoDescription?: T;
+  seoKeywords?:
+    | T
+    | {
+        phrase?: T;
+        id?: T;
+      };
   ogImage?: T;
   status?: T;
   publishedAt?: T;
@@ -3474,6 +3498,12 @@ export interface PostsSelect<T extends boolean = true> {
   heroImage?: T;
   seoTitle?: T;
   seoDescription?: T;
+  seoKeywords?:
+    | T
+    | {
+        phrase?: T;
+        id?: T;
+      };
   ogImage?: T;
   status?: T;
   publishedAt?: T;

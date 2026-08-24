@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import type { Post } from '../../payload-types'
 import { estimateReadingMinutes } from '../../lib/reading-time'
-import { breadcrumbJsonLd, resolveOgImageUrl } from '../../lib/seo'
+import { breadcrumbJsonLd, resolveOgImageUrl, resolveSeoKeywords } from '../../lib/seo'
 import { postArticleJsonLd } from '../../lib/seo-cikk'
 import { kulcsszoFor } from '../../lib/tudastar/seo-kulcsszavak'
 import { Badge } from '../ui/Badge'
@@ -106,7 +106,9 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
   // számolná, csomópontonként 2–3 fantomszóval (technikai terv D5).
   const readingMinutes = estimateReadingMinutes(plainTextOf(post.content))
   const faqItems = postFaqItems(post)
-  // A cikk mért kulcsszó-célzása (ha van hozzá mérés).
+  // A keywords a CMS mezőből jön. Az `about` továbbra is a mért tábla
+  // `targy` mezője (betegség-entitás, nem szerkesztői kulcsszó).
+  const keywords = resolveSeoKeywords(post.seoKeywords)
   const kulcsszoOf = typeof post.slug === 'string' ? kulcsszoFor(post.slug) : undefined
   const related = displayableRelated(relatedProp ?? post.relatedPosts)
   const heroMedia = post.heroImage && typeof post.heroImage === 'object' ? post.heroImage : null
@@ -153,15 +155,10 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
           // szerző-blokk is elhagyja a sort.
           lastReviewed: reviewedAt,
           imageUrl: resolveOgImageUrl(post),
-          // A MÉRT célkifejezések és a cikk tárgya entitásként. Csak azoknál a
-          // cikkeknél áll rendelkezésre, amikhez van mérés — a többinél a
-          // mezők egyszerűen kimaradnak a sémából, nem üresen jelennek meg.
-          ...(kulcsszoOf === undefined
-            ? {}
-            : {
-                keywords: [kulcsszoOf.elsodleges, ...kulcsszoOf.masodlagos],
-                about: kulcsszoOf.targy,
-              }),
+          // Kulcsszó: CSAK a CMS mező. Üresen a séma-kulcs kimarad, a H1-et
+          // nem töltjük bele. Az `about` a mért tábla tárgya marad.
+          ...(keywords !== undefined ? { keywords } : {}),
+          ...(kulcsszoOf === undefined ? {} : { about: kulcsszoOf.targy }),
         })}
       />
       <JsonLd
