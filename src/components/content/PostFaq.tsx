@@ -18,7 +18,8 @@ import '../../app/(frontend)/styles/blocks/post-view.css'
  *
  * Miért nem a `FaqBlock` újrahívása: az egy teljes `Section`-t renderel
  * blokk-beállításokkal (háttér, horgony, saját szekció-ritmus). Itt a GYIK a
- * CIKK TÖRZSÉNEK része, a szűk konténerben, a források után.
+ * CIKK TÖRZSÉNEK része, a szűk konténerben, a Lexical-törzs után. A sablon
+ * nem injektál Források-szekciót a GYIK elé.
  *
  * ═══ A STRUKTURÁLT ADAT UGYANEBBŐL A LISTÁBÓL KÉSZÜL ═══
  * A `faqPageJsonLd` ugyanazt a tömböt kapja, amit a látható lista — így a

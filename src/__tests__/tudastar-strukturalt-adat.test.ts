@@ -741,6 +741,15 @@ describe('A renderelt cikkoldal sémája', () => {
     expect(html).not.toContain('"@type":"FAQPage"')
   })
 
+  it('a sablon nem tesz látható Források-listát a cikkre, ha a törzsben nincs', () => {
+    const html = renderToStaticMarkup(createElement(PostArticle, { post: lapPost() }))
+    expect(html).not.toMatch(/<h[1-6][^>]*>\s*Források\s*<\/h[1-6]>/)
+    expect(html).not.toContain('id="forrasok"')
+    expect(html).not.toContain('kc-post-sources')
+    const jsonLd = cikkSema(lapPost())
+    expect('citation' in jsonLd).toBe(false)
+  })
+
   it('szerzővel Person megy ki, a titulus a jobTitle-ben', () => {
     const author = node(
       cikkSema(lapPost({ author: { id: 2, name: 'Kocsis Kata', credentials: 'gyógytornász' } })),

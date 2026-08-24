@@ -28,6 +28,7 @@ import { authorPersonOf, postFaqItems, reviewDatesOf, reviewerPersonOf } from '.
  * Author nélkül nincs Person és nincs author kulcs (a kiadó a publisher
  * Organization). Üres faq[] mellett nincs FAQPage. reviewedBy nélkül nincs
  * reviewedBy a sémában. A kitöltetlen oldal úgy renderel, mint eddig.
+ * Forráslistát ez a blokk sem tesz a lapra.
  */
 export interface PageEeatProps {
   page: Page

@@ -187,6 +187,15 @@ describe('cmsPageJsonLd (MedicalWebPage, nem Article)', () => {
     expect('reviewedBy' in ures).toBe(false)
     expect('lastReviewed' in ures).toBe(false)
   })
+
+  it('nincs citation (a sablon nem hirdet forráslistát)', () => {
+    const jsonLd = cmsPageJsonLd({
+      page: oldal,
+      path: '/tesztoldal',
+      author: { name: 'Kiss Kata', credentials: 'gyógytornász' },
+    })
+    expect('citation' in jsonLd).toBe(false)
+  })
 })
 
 describe('authorPersonOf populálatlan kapcsolaton', () => {

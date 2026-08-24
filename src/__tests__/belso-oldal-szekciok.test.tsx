@@ -158,6 +158,8 @@ describe('CMS-oldal E-E-A-T (szerző-blokk, GYIK, JSON-LD)', () => {
     expect(markup).not.toContain('"@type":"FAQPage"')
     expect(markup).not.toContain('"@type":"MedicalWebPage"')
     expect(markup).not.toContain('"@type":"Person"')
+    expect(markup).not.toMatch(/<h[1-6][^>]*>\s*Források\s*<\/h[1-6]>/)
+    expect(markup).not.toContain('id="forrasok"')
   })
 
   it('kitöltött szerző, lektor és GYIK megjelenik, Person + FAQPage + MedicalWebPage kimegy', async () => {
@@ -193,6 +195,8 @@ describe('CMS-oldal E-E-A-T (szerző-blokk, GYIK, JSON-LD)', () => {
     expect(publisher['@type']).toBe('Organization')
     expect(publisher.name).toBe('Kineticare')
     expect(author['@type']).not.toBe('Organization')
+    expect(markup).not.toMatch(/<h[1-6][^>]*>\s*Források\s*<\/h[1-6]>/)
+    expect('citation' in pageSchema!).toBe(false)
   })
 
   it('nyers author-id nem hamisít Person-t és nem rak Organization-t a szerző helyére', async () => {
