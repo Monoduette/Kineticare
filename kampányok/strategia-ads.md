@@ -1,109 +1,124 @@
 # Kineticare — Ads stratégia-váz (költés 0)
 
-> Pillanatkép: 2026-08-22. Forrás: `docs/adwords-kampany.md`, `docs/piaci-strategia.md`, `docs/kampanyterv-mert-adatokbol.md`, `docs/vevohang-es-hirdetesszoveg.md`, szoba-lock. **Nem éles kampány.** Szám csak a doksiból; saját forgalom/CPA nincs.
+> Pillanatkép: **2026-08-24** (felülírva Search peer review + audit lock után; előző: 2026-08-22).  
+> Forrás: `docs/ADATOK-mert.md`, `docs/h-ih-kulcsszavak-draft.md`, `docs/monid-negyedik-kor.md`, `docs/adwords-kampany.md`, szoba-lock. **Nem éles kampány.**  
+> Szám csak mért doksiból; saját forgalom/CPA nincs. **Spend = 0**, amíg a hard kapuk zárva.
 
-## 0. Indítási kapuk (mind kötelező)
+## 0. Kapuk vs korlátok (lock 2026-08-24)
+
+### Hard kapuk (mind kötelező → különben spend 0)
 
 1. Domain-cutover: `www.kineticare.hu` = Railway Next (Systeme nem fogadhat fizetett kattintást).
-2. Cluster A gyökér **200**: `/keztoalagut-szindroma`, `/inhuvelygyulladas`, `/teniszkonyok` (ma: 404).
-3. Consent-split: `ad_storage` / `ad_user_data` / `ad_personalization` csak marketing-igen után (ma: soha nem nyílik, `ga4.ts` + `docs/ga4.md`).
-4. Importálható konverzió, ami tényleg kimegy: legalább `checkout_started` (vendégre is), ideálisan megbízható `purchase_confirmed` (vendég-lyuk dokumentálva).
-5. Céloldal-ígéret tisztítva: `/kezrehab` „megszüntetheted… akár hetek alatt” → Unreliable claims (`adwords-kampany.md` 0.3).
-6. Blog→gyökér 308/301 + canonical a gyökéren, mielőtt Ads a gyökeret hirdeti.
+2. Cluster A **gyökér hub 200** (nem `/blog/`): `/keztoalagut-szindroma`, `/inhuvelygyulladas`, `/teniszkonyok`.
+3. Importálható / saját stack konverzió, ami tényleg kimegy: legalább `checkout_started` (vendégre is); ideálisan megbízható `purchase_confirmed`.
+4. Céloldal-ígéret tisztítva: `/kezrehab` „megszüntetheted… akár hetek alatt” → Unreliable claims (`adwords-kampany.md` 0.3).
+5. Blog→gyökér 308/301 + canonical a gyökéren, mielőtt Ads a gyökeret hirdeti.
+6. Search hard gate (külön sáv): sitemap **200 mindkét úton** + GSC property — Ads nem helyettesíti.
 
-**Amíg bármelyik hiányzik: költés = 0.**
+### Korlátok (nem örök időzár)
+
+- **Consent / `ad_*`:** `ad_storage` / `ad_user_data` / `ad_personalization` csak marketing-igen után. Ez **Ads minőségi korlát**, nem „soha nem nyílik → ne tervezz” hard gate. Jogi/tulajdonosi döntés nélkül **ne** nyissuk ki. Enhanced conversions / first-party event addig is. Google modellezés (7 nap / ~700 katt) a 5k Ft/nap keretből hónapokig vak lehet — **ne várjunk modellezésre** kapuként.
+- Blog mint Ads-lander: **tilos** (mindig).
+
+**Amíg bármely hard kapu hiányzik: költés = 0.** Consent hiánya = korlátozott tanulás, nem automatikus „stratégia leáll”.
 
 ## 1. Lander-térkép (lock)
 
 | Cél | Végső URL | Tiltott |
 |---|---|---|
 | Kéztőalagút + „házilag” | `/keztoalagut-szindroma` | `/blog/keztoalagut-szindroma`, homepage, `/kezrelax` |
-| Ínhüvelygyulladás | `/inhuvelygyulladas` | nincs blog-pár (tiszta) |
+| Ínhüvelygyulladás | `/inhuvelygyulladas` | nincs blog-pár; **nem** blog-lander |
 | Teniszkönyök | `/teniszkonyok` | `/blog/teniszkonyok` |
 | Otthoni sitelink / másodlagos | `/kurzusok/otthoni-kezrehab-program` (kanonikus; ne a 308-as `/kezrehab`) | `/kosar`, `/penztar`, `/blog/*` mint fő lander |
 | SOS | csak sitelink, nem fő lander | fő RSA cél |
 | Pro / akkreditált | `/szakmai-kez-kurzus` (ma 404) — család nem indul | ProBody idegen domain Ads-ből |
 | Rendelő | `/szolgaltatasok` | `/rendeloi-kezelesek` |
 
-Sitelinkek (ha élnek): Otthoni kurzus · SOS · A-hub · /rolunk · /kapcsolat · /blog (csak tartalom, nem Ads-vég).
+**Hard lander = gyökér hub HTTP 200.** `/blog/` soha nem Ads-vég.
 
 ## 2. Fiókszerkezet (Search only)
 
-PMax / Display / partnerhálózat: **ki** (kis keret + nincs konverziós tanulás).
+PMax / Display / partnerhálózat: **ki**.
 
 | Kód | Kampány | Ad groupok | Lander |
 |---|---|---|---|
-| **K1** | Tünet / A-hub (laikus) | H-KA kéztőalagút · H-IH ínhüvely · H-TK teniszkönyök | a három gyökér |
+| **K1** | Tünet / A-hub (laikus) | H-TK · H-IH · H-KA (lásd szonda-sorrend) | a három gyökér |
 | **K2** | Otthoni (márka + termék, később) | M1a Kineticare · Otthoni KézRehab | `/kurzusok` / Otthoni kanonikus |
 | **K3** | Pro (vár) | akkreditált / kredit / workshop | csak ha `/szakmai-kez-kurzus` 200 |
 
-v1-ben **csak K1** indulhat a három A-oldal után. H1 zsibbadás / H3 pattanó / H4 csukló / H5 gipsz: **v1-ben nincs** külön gyökér → nem külön ad group (Search lock: CEP a hubon / blogon, nem Ads-lander).
+H1 zsibbadás / H3 pattanó / H4 csukló / H5 gipsz: **v1-ben nincs** külön gyökér → nem külön ad group.
 
-### 2.1 Kulcsszavak (exact + phrase; nincs broad induláskor)
+### 2.0 Szonda-sorrend (lock 2026-08-24) — K2→H-IH→K1 jelentése
 
-Forrás: `adwords-kampany.md` 3.2–3.6 mért Ahrefs HU. CPC = doksi súlyozott becslés, nem aukciós tény.
+A audit/Search sorrend a **tünet-AG-kre** értendő (nem a fenti K2 márka-kampányra):
+
+1. **H-TK (teniszkönyök)** először — legalacsonyabb mért CPC (~315 Ft), nagy volumen, blog-törzs átemelhető a gyökér hubra.  
+2. **H-IH (ínhüvely)** — paused struktúra + lista OK lander 200 előtt; **spend csak** `/inhuvelygyulladas` 200 után. Nem „vár a cikkre” blokk a *listára*.  
+3. **H-KA (kéztőalagút)** — drágább / nagyobb CPC-szórás; harmadik.
+
+Márka **K2** kampány és Pro **K3**: továbbra is később.
+
+### 2.1 Kulcsszavak (exact + phrase; nincs broad)
+
+Forrás: `docs/ADATOK-mert.md` + `docs/h-ih-kulcsszavak-draft.md`. CPC Ads-tervezéshez: **Ahrefs**; Semrush = szándékjelzés, nem forecast.
+
+**H-TK → `/teniszkonyok`** (első szonda)
+- `[teniszkönyök]`, `[teniszkönyök kezelése]`, `[teniszkönyök kezelése otthon]`, `"teniszkönyök gyakorlatok"`, `[könyökfájdalom]`
+- Súlyozott CPC doksi: ~315 Ft
+
+**H-IH → `/inhuvelygyulladas`** (paused OK; spend hub 200 után)
+- Teljes lista: `docs/h-ih-kulcsszavak-draft.md` (2026-08-24). Vezér: `[ínhüvelygyulladás]` Ahrefs vol 2200 CPC **$1**; `csukló ínhüvelygyulladás` CPC **$3**; De Quervain **nem** külön AG (H2 a hubon).
+- Licit sáv lock: **$1–4** Ahrefs. Semrush „házilag” 1300 vs Ahrefs 80 — nagyságrend-eltérés; licit ne Semrush vol-ra.
+- ~~„Indulás előtt a pontos listát még ki kell másolni / itt nem találok ki sort”~~ — **felülírva:** a lista megvan.
 
 **H-KA → `/keztoalagut-szindroma`**
 - `[kéztőalagút szindróma]`, `"kéztőalagút szindróma kezelése"`, `"kéztőalagút szindróma kezelése házilag"`, `[kéztőalagút szindróma torna]`, `"alagút szindróma gyógytorna"`
-- Súlyozott CPC doksi: ~979 Ft (3.2)
+- Súlyozott CPC doksi: ~979 Ft — harmadik szonda
 
-**H-IH → `/inhuvelygyulladas`** (legnagyobb lyuk, 7.3: 2200+1300)
-- Exact/phrase a Monid ínhüvely-fürtre, amint a hub + Kulcsszó-tábla a `kulcsszavak.md` / matching-terms alapján lezárul. **Indulás előtt a pontos listát a nyers Monid-sorból kell kimásolni** — itt nem találok ki sort.
-
-**H-TK → `/teniszkonyok`**
-- `[teniszkönyök]`, `[teniszkönyök kezelése]`, `[teniszkönyök kezelése otthon]`, `"teniszkönyök gyakorlatok"`, `[könyökfájdalom]`
-- Súlyozott CPC doksi: ~315 Ft (3.6) — legolcsóbb mért csoport
-
-Egyezés: csak `[pontos]` + `"kifejezés"`. Széles: tilos, amíg nincs konverziós jel (`adwords` 3.0).
+Egyezés: csak `[pontos]` + `"kifejezés"`. Széles: tilos, amíg nincs konverziós jel.
 
 ## 3. RSA váz (nem gyógyítunk)
 
-Tiltott: meggyógyítjuk, garantált, 93%, 5–8 alkalommal, klinikai arány (`vevohang` 4, `adwords` 1.3 / 5.1).
+Tiltott: meggyógyítjuk, garantált, 93%, 5–8 alkalommal, klinikai arány.
 
-Átvehető ék (mért negatívokból): nincs időpont · otthon / utazás nélkül · egyszer fizetsz, nincs bérlet · korlátlan visszanézés · 50+ videós gyakorlat · „hiábavaló otthoni kezelés után” → vezetett sorrend.
-
-Címsor-példa (max 30 kar., tegezés):
-- `Kéztőalagút: mit tehetsz`
-- `Kezelés házilag: torna`
-- `Nem kell időpontot kérned`
-- `Otthonról, utazás nélkül`
-- `Mikor fordulj orvoshoz?`
-
-Leírás-példa: „Kézrehabilitációs gyógytornászok otthoni programja. Nincs időpont, nincs utazás.” — eredmény-ígéret nélkül.
+Átvehető ék: nincs időpont · otthon / utazás nélkül · egyszer fizetsz · korlátlan visszanézés · 50+ videós gyakorlat · „hiábavaló otthoni kezelés után” → vezetett sorrend.
 
 ## 4. Negatívok (röviden)
 
 Teljes lista: `adwords-kampany.md` 4.2–4.4 (KIN-alap). Kötelező blokkok:
 - állás / képzés / továbbképzés
-- műtét ára / sebész / magánklinika (H5 kivétel: „műtét után” ott marad — v1-ben H5 nincs)
-- termék (krém, sín, pánt, webshop)
-- váll / befagyott váll (termék nem fedi)
-- stroke / hányinger / mellkasi a zsibbadás-csoporton (v1-ben ha nincs H1, a hub-cikk FAQ-ja kezeli)
-- `ingyen` **nem** fiók-negatív (SOS sitelink); SOS mégsem fő lander
+- műtét ára / sebész / magánklinika (H5 kivétel: v1-ben H5 nincs)
+- termék (krém, sín, pánt, webshop) — **Ads negatív**; SEO-ban megválaszolható (explicit döntés)
+- stroke / hányinger / mellkasi a zsibbadás-csoporton
+- `ingyen` **nem** fiók-negatív (SOS sitelink)
 
-Magyar ragozás: `műtét` ≠ `műtétet` — külön sorok.
+### Váll / nyak / gerinc (lock 2026-08-24)
+
+**Hold.** Nem kerülnek fiókszintű negatívba Katák döntése előtt. A hosszú tananyagleírás említi a váll / háti / nyaki gerincet; a rövid leírás nem.  
+Ha Katák: váll **benne** van a termékben → külön SEO hub-jelölt + későbbi AG (`befagyott váll` stb.).  
+Ha **nincs** → termékcopy igazítás, *azután* negatív. Addig: ne csendes kizárás.
 
 ## 5. Keret
 
-A doksi javaslat (`adwords` 8.3): napi 5 000 Ft / havi ~152 000 Ft (K1 3000 + K2 1500 + M1 500), Ahrefs CPC-vel. **Ez nem éles költés és nem előrejelzés** — Norbert döntése. Minimális értelmes: 8.5 szerinti 2 000 Ft/nap. Amíg a kapuk zárva: **0 Ft**.
-
-Nullszaldó küszöb a doksiban (8.4): 79 500 Ft bruttó / AAM vagy 27% áfa — **küszöb, nem prognózis**; saját vásárlási arány nincs.
+Doksi javaslat: napi 5 000 Ft / havi ~152 000 Ft — **nem éles költés**. Amíg a hard kapuk zárva: **0 Ft**.
 
 ## 6. Mérés (Ads nézet)
 
-- Google Ads: kattintás + költség + keresési kifejezés. Konverzió-import várhatóan vak (`ad_*` denied + <700 katt/7 nap).
-- Igazság: PostHog `utm_*` + `checkout_started`; CPA nevező = Payload rendeléslista, nem csak `purchase_confirmed` (vendég-lyuk).
-- AI-referral / GSC: Insights sáv; Ads nem helyettesíti.
+- Google Ads: kattintás + költség + keresési kifejezés. Konverzió-import consent nélkül korlátozott; modellezés vak lehet.
+- Igazság: PostHog `utm_*` + `checkout_started`; CPA nevező = Payload rendeléslista.
+- AI-referral / GSC: Insights / Search sáv; Ads nem helyettesíti.
 
-## 7. Sorrend
+## 7. Sorrend (felülírva)
 
-1. Kapuk (0.)
-2. K1 három ad group, egy RSA/csoport, exact+phrase, KIN-negatívok
-3. 7 nap: keresési kifejezések + tényleges CPC vs Ahrefs
-4. 30 nap: Payload CPA; csak ezután keret / Max. konverzió
-5. K2 márka / K3 pro később
-6. PMax soha az első hullámban
+1. Hard kapuk (0.) + Search ship-gate
+2. **H-TK** ad group + RSA, exact+phrase, KIN-negatívok (váll hold)
+3. **H-IH** paused struktúra; spend csak hub 200 után
+4. **H-KA** harmadik
+5. 7 nap: keresési kifejezések + tényleges CPC vs Ahrefs
+6. 30 nap: Payload CPA; csak ezután keret / Max. konverzió
+7. Márka K2 / Pro K3 később
+8. PMax soha az első hullámban
 
 ## 8. Mit NEM tartalmaz ez a váz
 
-Éles fióképítés, költés, orvosi szöveg, kitalált volumen/CPA, `/blog/` mint Ads-vég, Railway stagingre hirdetés.
+Éles fióképítés, költés a kapuk előtt, orvosi szöveg, kitalált volumen/CPA, `/blog/` mint Ads-vég, `ad_*` jogi nélkül „csak úgy” kinyitása, Railway stagingre hirdetés.

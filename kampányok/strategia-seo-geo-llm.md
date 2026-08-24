@@ -1,15 +1,29 @@
 # Kineticare — SEO / GEO / LLM stratégia
 
-> **Dátum:** 2026-08-22  
+> **Dátum:** 2026-08-24 (felülírva).  
 > **Állapot:** stratégia. Nincs kitalált pozíció, AI-share vagy forgalom-előrejelzés.  
 > **Forrás:** `docs/seo-geo-llm.md`, `docs/kulcsszavak.md`, `docs/piaci-strategia.md`, `docs/adwords-kampany.md`, `MIT-CSINALJ.md`.  
+> **Szám:** csak `docs/ADATOK-mert.md` — stratégia MD nem kever Ahrefs/Semrush cellát, nem talál ki volumen/CPA/rangsort.  
 > **Orvosi törzs:** Kiss Kata + Kocsis Kata. A csapat nem írja át a klinikai szöveget.
 
 Ez a fájl a `MIT-CSINALJ.md` „tökéletes” definícióját bontja oldalra és prompt-mintára. **Nem garancia.**
 
 ---
 
-## 0. Siker-definíció (a briefingből)
+## 0.1 Cutover előtti ship-gate (Search lock — hard)
+
+1. Sitemap **HTTP 200 mindkét úton** (curl + böngésző/GSC-kompatibilis út).
+2. JSON-LD **Person** szerző: Kiss Kata + Kocsis Kata végzettséggel — **szervezet-only author = blokk** indexre.
+3. FAQ mező kitöltve (ne üres `faq`); `og:image`, `seoTitle`, `seoDescription` a publikált A-hubokon.
+4. A-draft **ne legyen thin** (Katák törzs vagy noindex marad).
+5. Impresszum **indexelhető**.
+6. Off-site backlog (A7): ProBody csapatunk sameAs, foglaljorvost, Kiss Kata név-disambig, legacy `/munkatarsak/` 404 → redirect.
+
+**E-E-A-T / FAQ / chunk-önálló bekezdés / sameAs = cutover ELŐTTI fedezet**, nem utána checklist (A5/A6). Zsugorodó info-piac: blog-forgalom KPI leértékelve; idézhetőség felértékelve.
+
+## 0. Keret
+
+### Siker-definíció (a briefingből)
 
 - **November elejére** a 3 A-hub indexelve a nyilvános hoston (januári szezon — `docs/piaci-strategia.md` 3: kéztőalagút / csuklótörés / teniszkönyök csúcsa **január**).
 - **Eligibility (GSC):** indexelhető; egy állapot = egy URL; nincs blog+gyökér dupla.
@@ -23,7 +37,7 @@ A piac **nem nő**: `kéz zsibbadás` 2024→2026 átlag −37%, `kéztőalagút
 
 ## 1. Keyword map — csak mért sorok
 
-Két mérés van a repóban. **Nem vonjuk össze** őket egy „hivatalos” számmá.
+Két mérés van a repóban. **Nem vonjuk össze** őket egy „hivatalos” számmá. **Szám csak `docs/ADATOK-mert.md`.** Ahrefs és Semrush külön cella; ütközés = unresolved, nem átlag.
 
 ### 1.1 Ahrefs Keywords Explorer, `country=hu`, 2026-08-21 (`docs/kulcsszavak.md`)
 
@@ -55,7 +69,7 @@ Két mérés van a repóban. **Nem vonjuk össze** őket egy „hivatalos” sz�
 | mindkét kéz zsibbadása | 480 | 11. | CEP + 112-s figyelmeztetés a zsibbadás-magnál |
 | csukló fájdalom kezelése házilag | 210 | 11. | CEP H2 |
 
-A Semrush vs Ahrefs eltérést a piaci doksi 9. pontja rögzíti (példa: `kéztőalagút szindróma` 1 200 vs 3 600). **Döntést a nagyságrend és a sorrend visz, nem egyetlen szám.**
+A Semrush vs Ahrefs eltérést a piaci doksi 9. pontja és `docs/ADATOK-mert.md` (U1/U2) rögzíti. **Döntést a nagyságrend és a sorrend visz, nem egyetlen szám.** Szám csak `docs/ADATOK-mert.md`.
 
 ### 1.3 Kannibalizáció — amit ne másoljunk
 
@@ -92,9 +106,12 @@ Minden hubra a `docs/seo-geo-llm.md` 2. fejezet checklistje **kötelező**. Itt 
 ### 2.3 `/inhuvelygyulladas`
 
 - Nincs blog-forrás. Ez a Katák új törzse.
-- Mért alakok: klaszter 2 200+1 300 (ads); `csukló ínhüvelygyulladás` 480.
-- Ads T1 addig **nem indul**, amíg ez a hub 200 (`docs/adwords-kampany.md` 2.1 / 3.8).
+- Ads T1 addig **nem indul**, amíg ez a hub 200 (`docs/adwords-kampany.md` 2.1 / 3.8). Spend csak hub 200 után.
 - Ne keverjük a pattanó ujjal (az CEP marad, külön szándék).
+
+| Cél-URL | Kulcsszó / mért | Megjegyzés |
+|---|---|---|
+| `/inhuvelygyulladas` | Ahrefs 2200 / Semrush 2900; lista: docs/h-ih-kulcsszavak-draft.md + ADATOK-mert.md (A1: adat megvolt, nem „hiányzó”) | Nem adwords 7.3 „legnagyobb hiány”: az adat megvolt. Szám: `docs/ADATOK-mert.md`. |
 
 ### 2.4 `/teniszkonyok`
 

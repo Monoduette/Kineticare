@@ -1,5 +1,7 @@
 # Kineticare — MIT CSINÁLJ (Norbert)
 
+> **2026-08-24 lock (Search peer review):** Hard Ads lander = gyökér hub 200 (nem blog). Szonda: H-TK → H-IH → H-KA. Consent = korlát, nem örök kapu. Váll negatív = HOLD Katákig. Kanonikus számok: `docs/ADATOK-mert.md`. Ship-gate Search: sitemap×2, Person+FAQ, thin tilos, impresszum index.
+
 > **Dátum:** 2026-08-22  
 > **Állapot:** stratégia kész a csapattól; **éles Ads = 0**, cutover = te döntöd.  
 > **Szabály:** nincs kitalált rangsor / költés / konverzió. Orvosi törzs = Kiss Kata + Kocsis Kata.  
@@ -16,7 +18,7 @@
 | URL (cél) | Elsődleges kifejezés (mért) | Megjegyzés |
 |---|---|---|
 | `/keztoalagut-szindroma` | kéztőalagút szindróma (+ **kezelése házilag** H2-ként) | Blogon már van teljes törzs (`/blog/keztoalagut-szindroma`) — átültethető |
-| `/inhuvelygyulladas` | ínhüvelygyulladás | **Nincs blog-forrás** — ezt a Katáknak kell megírni (Ads: legnagyobb lyuk) |
+| `/inhuvelygyulladas` | ínhüvelygyulladás | **Nincs blog-forrás** — ezt a Katáknak kell megírni (lista: docs/h-ih-kulcsszavak-draft.md; spend csak hub 200 után) |
 | `/teniszkonyok` | teniszkönyök (+ otthon / házilag) | Blogon van (`/blog/teniszkonyok`) — átültethető |
 
 **Kötelező a törzsben (Craft/Search):**
