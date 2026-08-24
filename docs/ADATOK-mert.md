@@ -132,3 +132,14 @@ Teljes runId lista: `docs/monid-negyedik-kor.md`. Ahrefs H-IH: `01M0SJQ0SBHS103Y
 2. Teljes `runId`, tételes lista, költség.
 3. Ütközés → `unresolved`, ne átlagolj.
 4. Audit: szám / policy / koherencia.
+
+---
+
+## 9) Lyukak zárva 2026-08-24
+
+Lásd `docs/monid-lyukak-2026-08-24.md` (összköltség $0.52376, 15 teljes runId).
+
+- Ínhüvely: Strale SERP HU + Ahrefs volume-history (fő KW + házilag)
+- Váll/alkar: Semrush keyword_metrics (5 seed) — Ads HOLD Katákig
+- Backlinks_overview: gyogytornaszom / fajakezem / kineticare
+- Tételes Strale autocomplete: ínhüvely 50, befagyott váll 22, alkar 21, csukló ínhüvely 10
