@@ -331,7 +331,11 @@ export function postArticleJsonLd(args: {
   post: ArticleSeoPost
   /** A cikk relatív útvonala, pl. `/blog/gipsz-utan`. */
   path: string
-  /** A szerző a látható byline-ból; hiányában Organization-tartalék. */
+  /**
+   * A szerző a látható byline-ból. Kitöltött, névvel rendelkező user → Person.
+   * Üres vagy populálatlan mezőnél a kulcs KIMARAD — Organization / SITE_NAME
+   * soha nem áll szerző-tartalékként (a kiadó a `publisher`).
+   */
   author?: SchemaPerson
   /** A szakmai lektor (`posts.reviewedBy`) — csak ha tényleg van. */
   reviewer?: SchemaPerson

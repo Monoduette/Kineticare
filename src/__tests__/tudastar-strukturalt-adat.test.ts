@@ -726,6 +726,21 @@ describe('A renderelt cikkoldal sémája', () => {
     expect(node(jsonLd, 'publisher').name).toBe('Kineticare')
   })
 
+  it('nyers author-id nem hamisít Person-t és nem rak Organization-t a szerző helyére', () => {
+    // Az élő `/blog/*` cikkeken a Katák neve a törzsben áll, a CMS author
+    // mezője viszont üres vagy populálatlan: a séma ne találjon ki személyt,
+    // és ne állítsa a kiadót szerzőnek.
+    const jsonLd = cikkSema(lapPost({ author: 2 }))
+    expect('author' in jsonLd).toBe(false)
+    expect(node(jsonLd, 'publisher')['@type']).toBe('Organization')
+    expect(node(jsonLd, 'publisher').name).toBe('Kineticare')
+  })
+
+  it('üres faq mellett nincs FAQPage a renderelt lapon', () => {
+    const html = renderToStaticMarkup(createElement(PostArticle, { post: lapPost() }))
+    expect(html).not.toContain('"@type":"FAQPage"')
+  })
+
   it('szerzővel Person megy ki, a titulus a jobTitle-ben', () => {
     const author = node(
       cikkSema(lapPost({ author: { id: 2, name: 'Kocsis Kata', credentials: 'gyógytornász' } })),
@@ -733,7 +748,9 @@ describe('A renderelt cikkoldal sémája', () => {
     )
 
     expect(author['@type']).toBe('Person')
+    expect(author['@type']).not.toBe('Organization')
     expect(author.name).toBe('Kocsis Kata')
+    expect(author.name).not.toBe('Kineticare')
     expect(author.jobTitle).toBe('gyógytornász')
   })
 

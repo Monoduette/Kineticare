@@ -2,6 +2,7 @@ import type { Field } from 'payload'
 import { describe, expect, it } from 'vitest'
 
 import { Pages } from '../collections/Pages'
+import { Posts } from '../collections/Posts'
 import { authorPersonOf } from '../components/content/post-article'
 import { absoluteUrl } from '../lib/seo'
 import { cmsPageJsonLd } from '../lib/seo-cikk'
@@ -123,6 +124,11 @@ describe('pages E-E-A-T mezők', () => {
 
   it('nincs noindex mező (a piszkozat 404, a közzétett indexelhető)', () => {
     expect(pageFields.has('noindex')).toBe(false)
+  })
+
+  it('a posts collectionen sincs noindex (a hat élő /blog/* cikk indexelendő marad)', () => {
+    const postFields = rootFields(Posts.fields)
+    expect(postFields.has('noindex')).toBe(false)
   })
 })
 
