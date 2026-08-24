@@ -1,8 +1,8 @@
 /**
- * A Tudástár hat cikkének betöltése a `docs/cikkek/` markdown-fájljaiból.
+ * A Tudástár cikkeinek betöltése a `docs/cikkek/` markdown-fájljaiból.
  *
  * ═══ MIÉRT SCRIPT, ÉS NEM KÉZI BEMÁSOLÁS ═══
- * Hat cikk, egyenként 250–460 soros törzzsel. Kézzel bemásolva a szerkezet
+ * Nyolc cikk, egyenként 250–460 soros törzzsel. Kézzel bemásolva a szerkezet
  * (címsorok, felsorolások, linkek) elveszne vagy elcsúszna, és minden szakmai
  * javítás után újra kellene csinálni. Így a markdown marad az EGYETLEN igazság,
  * a betöltés pedig visszajátszható.
@@ -54,18 +54,52 @@ import { kulcsszoFor } from '../lib/tudastar/seo-kulcsszavak'
 import config from '../payload.config'
 
 /**
- * A hat cikk. A slug a fájlnév sorszám-előtag nélküli alakja — ezek a
+ * A cikkek. A slug a fájlnév sorszám-előtag nélküli alakja — ezek a
  * webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
  * (7.2), tehát nem szabad eltérni tőlük, különben a hirdetés 404-re visz.
+ *
+ * A 7. és 8. cikk CSAK `/blog/{slug}` poszt. Gyökér `/inhuvelygyulladas`
+ * pages-rekordot ez a script nem hoz létre.
  */
-const CIKKEK: readonly { fajl: string; slug: string }[] = [
+export const CIKKEK: readonly { fajl: string; slug: string }[] = [
   { fajl: '1-miert-zsibbad-a-kezem.md', slug: 'miert-zsibbad-a-kezem' },
   { fajl: '2-keztoalagut-szindroma.md', slug: 'keztoalagut-szindroma' },
   { fajl: '3-teniszkonyok.md', slug: 'teniszkonyok' },
   { fajl: '4-pattano-ujj.md', slug: 'pattano-ujj' },
   { fajl: '5-csuklo-es-kezfajdalom.md', slug: 'csuklo-es-kezfajdalom' },
   { fajl: '6-csuklotores-utani-gyogytorna.md', slug: 'csuklotores-utani-gyogytorna' },
+  { fajl: '7-inhuvelygyulladas.md', slug: 'inhuvelygyulladas' },
+  { fajl: '8-befagyott-vall.md', slug: 'befagyott-vall' },
 ]
+
+/**
+ * A 7. és 8. cikk Posts-mezői, amiket a markdown nem hordoz.
+ *
+ * Az eredeti hat cikket NEM írjuk itt: azok kategória/CTA/related mezőit
+ * ez a script szándékosan békén hagyja. A `de-quervain-szindroma` slug
+ * soha nem kerül `relatedPosts`-ba.
+ */
+interface CikkKiegeszito {
+  kategoriaSlugok: readonly string[]
+  kurzusSlug: string | null
+  kapcsolodoSlugok: readonly string[]
+  szerzoNevek: readonly string[]
+}
+
+const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
+  inhuvelygyulladas: {
+    kategoriaSlugok: ['kez-es-csuklo'],
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['keztoalagut-szindroma', 'pattano-ujj', 'csuklo-es-kezfajdalom'],
+    szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
+  },
+  'befagyott-vall': {
+    kategoriaSlugok: ['vall-es-konyok'],
+    kurzusSlug: null,
+    kapcsolodoSlugok: [],
+    szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
+  },
+}
 
 const kapuNyitva = (nev: string): boolean => process.env[nev]?.trim().toLowerCase() === 'igen'
 
@@ -144,6 +178,116 @@ export function cikketFordit(cikkekDir: string, fajl: string, slug: string): For
   }
 }
 
+async function slugId(
+  payload: Payload,
+  collection: 'categories' | 'products' | 'posts',
+  slug: string,
+): Promise<number | undefined> {
+  const talalat = await payload.find({
+    collection,
+    where: { slug: { equals: slug } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    ...(collection === 'posts' ? { draft: true } : {}),
+  })
+  const id = talalat.docs[0]?.id
+  return typeof id === 'number' ? id : undefined
+}
+
+async function userIdByName(payload: Payload, name: string): Promise<number | undefined> {
+  const talalat = await payload.find({
+    collection: 'users',
+    where: { name: { equals: name } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const id = talalat.docs[0]?.id
+  return typeof id === 'number' ? id : undefined
+}
+
+interface CikkMezok {
+  categories: number[]
+  relatedPosts: number[]
+  ctaCourse: number | null
+  author?: number
+  reviewedBy?: number
+}
+
+/**
+ * A 7. és 8. cikk kategória / CTA / related / szerző mezői.
+ *
+ * A Posts kollekciónak nincs `noindex` mezője, ezért hiányzó szerzőnél
+ * csak figyelmeztetünk: a meglévő hat cikket nem noindexeljük.
+ */
+async function cikkMezok(
+  payload: Payload,
+  slug: string,
+): Promise<CikkMezok | Record<string, never>> {
+  const meta = CIKK_KIEGESZITO[slug]
+  if (meta === undefined) return {}
+
+  const categories: number[] = []
+  for (const kat of meta.kategoriaSlugok) {
+    const id = await slugId(payload, 'categories', kat)
+    if (id === undefined) {
+      logger.warn('Tudástár-import: kategória nem található', { slug, kategoria: kat })
+      continue
+    }
+    categories.push(id)
+  }
+
+  let ctaCourse: number | null = null
+  if (meta.kurzusSlug !== null) {
+    const id = await slugId(payload, 'products', meta.kurzusSlug)
+    if (id === undefined) {
+      logger.warn('Tudástár-import: kurzus nem található', { slug, kurzus: meta.kurzusSlug })
+    } else {
+      ctaCourse = id
+    }
+  }
+
+  const relatedPosts: number[] = []
+  for (const kap of meta.kapcsolodoSlugok) {
+    if (kap === 'de-quervain-szindroma') {
+      throw new Error('A de-quervain-szindroma slug nem kerülhet relatedPosts-ba.')
+    }
+    const id = await slugId(payload, 'posts', kap)
+    if (id === undefined) {
+      logger.warn('Tudástár-import: kapcsolódó cikk nem található', { slug, kapcsolodo: kap })
+      continue
+    }
+    relatedPosts.push(id)
+  }
+
+  const szerzoIds: number[] = []
+  for (const nev of meta.szerzoNevek) {
+    const id = await userIdByName(payload, nev)
+    if (id === undefined) {
+      logger.warn('Tudástár-import: szerző nem található', { slug, szerzo: nev })
+      continue
+    }
+    szerzoIds.push(id)
+  }
+
+  const mezok: CikkMezok = {
+    categories,
+    relatedPosts,
+    ctaCourse,
+  }
+  if (szerzoIds[0] !== undefined) mezok.author = szerzoIds[0]
+  if (szerzoIds[1] !== undefined) mezok.reviewedBy = szerzoIds[1]
+  if (szerzoIds.length < meta.szerzoNevek.length) {
+    logger.warn(
+      'Tudástár-import: a cikk szerzői nem mind oldhatók fel. ' +
+        'A Posts kollekciónak nincs noindex mezője, a meglévő hat cikket nem noindexeljük.',
+      { slug, megvan: szerzoIds.length, kellett: meta.szerzoNevek.length },
+    )
+  }
+  return mezok
+}
+
 async function main(): Promise<void> {
   const dryRun = !kapuNyitva('OWNER_TUDASTAR_CONFIRM')
   const publikal = kapuNyitva('OWNER_TUDASTAR_PUBLISH')
@@ -155,7 +299,7 @@ async function main(): Promise<void> {
       : `Tudástár-import: ÉLES futás. Célállapot: ${publikal ? 'KÖZZÉTÉVE' : 'piszkozat'}.`,
   )
 
-  // Előbb MIND a hat cikket lefordítjuk, és csak utána írunk. Így egy hibás
+  // Előbb MIND a listán lévő cikket lefordítjuk, és csak utána írunk. Így egy hibás
   // fájl nem hagy félkész állapotot az adatbázisban.
   const forditott = CIKKEK.map(({ fajl, slug }) => cikketFordit(cikkekDir, fajl, slug))
   for (const cikk of forditott) {
@@ -219,6 +363,7 @@ async function main(): Promise<void> {
       // viszont van tétel, ott a faq.ts az igazság forrása, ugyanúgy, ahogy a
       // törzsnél a markdown: a script felülírja a kézi szerkesztést.
       ...(cikk.faq === undefined ? {} : { faq: cikk.faq }),
+      ...(await cikkMezok(payload, cikk.slug)),
     }
 
     const letezo = meglevo.docs[0]

@@ -23,10 +23,11 @@ import {
  * látogató nem látja a felét.
  *
  * Ezért ez a modul minden fel nem ismert szerkezetre KIVÉTELT DOB, nem pedig
- * átugorja. Mérve a fordítás írásakor (2026-08-21): mind a hat cikk törzsében
- * nulla táblázat-sor van — az összes tábla a törzs UTÁNI, lektornak szóló
- * szakaszokban áll, amiket a `extractArticleBody` amúgy is levág. A dobás
- * tehát ma egyetlen cikket sem érint; az őr a JÖVŐ szerkesztéseinek szól.
+ * átugorja. A markdown-táblázat kivétel: a 7. és 8. cikk törzse összehasonlító
+ * táblákat tartalmaz, a Payload alapszerkesztője és a storefront viszont nem
+ * ismer `table` csomópontot. A táblát ezért ismert csomópontokra (bekezdés +
+ * felsorolás) fordítjuk, hogy egyetlen cellaszó se tűnjön el, és az admin
+ * következő mentése se nyírja ki. Kódblokk és második H1 továbbra is dob.
  *
  * ═══ A TÖRZS HATÁRAI ═══
  * A cikkfájlok felépítése kötött (lásd bármelyik fájl fejlécét): a H1 fölött a
@@ -310,6 +311,59 @@ const idezet = (sorok: string[]): BlockNode => ({
 
 const FELSOROLAS = /^[-*] +(.*)$/
 const SZAMOZOTT = /^\d+\. +(.*)$/
+const TABLA_ELVALASZTO = /^:?-+:?$/
+
+/** Egy markdown-táblasor cellái, a szélső üres pipe-ok nélkül. */
+function tablaCellak(sor: string): string[] {
+  const trimmelt = sor.trim()
+  const belso = trimmelt.startsWith('|') ? trimmelt.slice(1) : trimmelt
+  const veg = belso.endsWith('|') ? belso.slice(0, -1) : belso
+  return veg.split('|').map((cella) => cella.trim())
+}
+
+function tablaElvalaszto(cellak: readonly string[]): boolean {
+  return (
+    cellak.length > 0 &&
+    cellak.every((cella) => cella.length === 0 || TABLA_ELVALASZTO.test(cella))
+  )
+}
+
+/**
+ * Markdown-tábla → bekezdés + felsorolás.
+ *
+ * A storefront szerializálója és a Payload alapszerkesztője nem ismer táblázat-
+ * csomópontot. A cellák szövegét ezért ismert csomópontokban tartjuk: minden
+ * adat-sor egy felsorolás, a fejléc szövege a tétel elején („Fejléc: érték”),
+ * hogy a T4 szószám-őr és a látogató is megkapja a teljes tartalmat.
+ */
+function tablaCsomopontok(sorok: readonly string[]): BlockNode[] {
+  const parsed = sorok
+    .map(tablaCellak)
+    .filter((cellak) => !tablaElvalaszto(cellak) && cellak.some((cella) => cella.length > 0))
+  if (parsed.length < 2) {
+    throw new Error(
+      'Táblázat a cikk törzsében fejléc vagy adatsor nélkül: a fordítás nem tudja, mit mutasson.',
+    )
+  }
+  const fejlec = parsed[0]
+  const csomopontok: BlockNode[] = []
+  for (const sor of parsed.slice(1)) {
+    const tetelek: string[] = []
+    const oszlopok = Math.max(fejlec.length, sor.length)
+    for (let i = 0; i < oszlopok; i += 1) {
+      const ertek = (sor[i] ?? '').trim()
+      if (ertek.length === 0) continue
+      const fej = (fejlec[i] ?? '').trim()
+      tetelek.push(fej.length > 0 ? `${fej}: ${ertek}` : ertek)
+    }
+    if (tetelek.length === 0) continue
+    csomopontok.push(lista(tetelek, false))
+  }
+  if (csomopontok.length === 0) {
+    throw new Error('Táblázat a cikk törzsében üres adatsorokkal.')
+  }
+  return csomopontok
+}
 
 /**
  * A törzs sorait Lexical-dokumentummá fordítja.
@@ -332,10 +386,13 @@ export function markdownToLexical(lines: readonly string[]): RichTextContent {
     }
 
     if (trimmelt.startsWith('|')) {
-      throw new Error(
-        `Táblázat a cikk törzsében (${i + 1}. sor): a storefront szerializálója nem rendereli, ` +
-          'ezért némán eltűnne. Írd át felsorolássá, vagy bővítsd a szerializálót.',
-      )
+      const tablaSorok: string[] = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tablaSorok.push(lines[i])
+        i += 1
+      }
+      csomopontok.push(...tablaCsomopontok(tablaSorok))
+      continue
     }
     if (trimmelt.startsWith('```')) {
       throw new Error(
