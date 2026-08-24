@@ -28,6 +28,11 @@
  * törzse már kimond. A `seoKeywords` az elsodleges kifejezéssel kezdődik, utána
  * a masodlagosak következnek.
  *
+ * A `pages.seoKeywords` a Search-lockolt `OLDAL_KULCSSZAVAK` táblából jön,
+ * ugyanazon `OWNER_TUDASTAR_CONFIRM` kapu mögött. Csak meglévő pages-rekordot
+ * frissít, csak a `seoKeywords` mezőt; új page TILOS. Szándékosan üres slugoknál
+ * (kapcsolat, impresszum, adatvedelem, aszf, kurzusok) nem ír kifejezést.
+ *
  * ═══ ÚJRAFUTTATHATÓ ═══
  * A párosítás slug szerint történik: meglévő bejegyzést FRISSÍT, nem duplikál.
  * A `publishedAt` az első publikáláskor áll be (a Posts collection
@@ -51,7 +56,12 @@ import {
   extractArticleBody,
   markdownToLexical,
 } from '../lib/tudastar/markdown-to-lexical'
-import { kulcsszoFor, meresToSeoKeywords } from '../lib/tudastar/seo-kulcsszavak'
+import {
+  kulcsszoFor,
+  meresToSeoKeywords,
+  OLDAL_KULCSSZAVAK,
+  oldalSeoKeywordsFor,
+} from '../lib/tudastar/seo-kulcsszavak'
 import config from '../payload.config'
 
 /**
@@ -295,6 +305,82 @@ async function cikkMezok(
   return mezok
 }
 
+/**
+ * A Search-lockolt `pages.seoKeywords` lista slug szerint.
+ *
+ * Csak meglévő rekordot frissít, és csak a `seoKeywords` mezőt. Új page-et
+ * nem hoz létre (A-gyökér / kurzusok pages TILOS). Szándékosan üres locknál
+ * nem ír kifejezést. Próbafutásnál (`dryRun`) nem ír.
+ */
+export async function oldalKulcsszavakatSzinkronizal(
+  payload: Payload,
+  options: { dryRun: boolean },
+): Promise<{ frissitve: number; kihagyva: number; hianyzik: number }> {
+  let frissitve = 0
+  let kihagyva = 0
+  let hianyzik = 0
+
+  for (const slug of Object.keys(OLDAL_KULCSSZAVAK)) {
+    const meglevo = await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+      draft: true,
+    })
+    const letezo = meglevo.docs[0]
+    if (!letezo) {
+      hianyzik += 1
+      logger.info('Tudástár-import: pages kulcsszó — nincs rekord, nem hozunk létre', { slug })
+      continue
+    }
+
+    const keywords = oldalSeoKeywordsFor(slug)
+    if (keywords === undefined) {
+      kihagyva += 1
+      logger.info('Tudástár-import: pages kulcsszó — szándékosan üres, nem írunk kifejezést', {
+        slug,
+        id: letezo.id,
+      })
+      continue
+    }
+
+    if (options.dryRun) {
+      logger.info('Tudástár-import: pages kulcsszó — PRÓBA, nem írunk', {
+        slug,
+        id: letezo.id,
+        seoKeywords: keywords.map((row) => row.phrase),
+      })
+      continue
+    }
+
+    await payload.update({
+      collection: 'pages',
+      id: letezo.id,
+      data: { seoKeywords: keywords },
+      overrideAccess: true,
+    })
+    frissitve += 1
+    logger.info('Tudástár-import: pages kulcsszó frissítve', { slug, id: letezo.id })
+  }
+
+  return { frissitve, kihagyva, hianyzik }
+}
+
+function oldalKulcsszoTervetNaploz(): void {
+  for (const [slug, kifejezesek] of Object.entries(OLDAL_KULCSSZAVAK)) {
+    logger.info('Tudástár-import: pages kulcsszó terv (próba)', {
+      slug,
+      seoKeywords: kifejezesek ?? [],
+      muvelet:
+        kifejezesek !== undefined && kifejezesek.length > 0
+          ? 'meglévő rekord seoKeywords frissítése; új page tilos'
+          : 'szándékosan üres; ha van rekord, nem írunk kifejezést; új page tilos',
+    })
+  }
+}
+
 async function main(): Promise<void> {
   const dryRun = !kapuNyitva('OWNER_TUDASTAR_CONFIRM')
   const publikal = kapuNyitva('OWNER_TUDASTAR_PUBLISH')
@@ -328,9 +414,10 @@ async function main(): Promise<void> {
   }
 
   if (dryRun) {
+    oldalKulcsszoTervetNaploz()
     logger.info(
       `Tudástár-import: a próbafutás rendben, ${forditott.length} cikk fordult le hibátlanul. ` +
-        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen.',
+        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen. Pages seoKeywords csak meglévő rekordon, új page tilos.',
     )
     return
   }
@@ -395,11 +482,16 @@ async function main(): Promise<void> {
     }
   }
 
+  const oldal = await oldalKulcsszavakatSzinkronizal(payload, { dryRun: false })
+
   logger.info('Tudástár-import: kész.', {
     letrehozva,
     frissitve,
     allapot: publikal ? 'published' : 'draft',
     gyikTetelek: forditott.reduce((osszeg, cikk) => osszeg + (cikk.faq?.length ?? 0), 0),
+    oldalKulcsszoFrissitve: oldal.frissitve,
+    oldalKulcsszoKihagyva: oldal.kihagyva,
+    oldalKulcsszoHianyzik: oldal.hianyzik,
   })
 }
 

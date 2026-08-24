@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
+
+import type { Field, Payload } from 'payload'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
-import type { Field } from 'payload'
+import { describe, expect, it, vi } from 'vitest'
 
 import { Pages } from '../collections/Pages'
 import { Posts } from '../collections/Posts'
@@ -11,9 +13,20 @@ import { seoKeywordsField } from '../fields/seo-keywords'
 import { buildDocMetadata } from '../lib/seo'
 import { cmsPageJsonLd, postArticleJsonLd } from '../lib/seo-cikk'
 import { resolveSeoKeywords, SEO_KEYWORDS_MAX_ROWS } from '../lib/seo-keywords'
-import { CIKK_KULCSSZAVAK, meresToSeoKeywords } from '../lib/tudastar/seo-kulcsszavak'
+import {
+  CIKK_KULCSSZAVAK,
+  kulcsszoFor,
+  meresToSeoKeywords,
+  OLDAL_KULCSSZAVAK,
+  oldalKulcsszavakFor,
+  oldalSeoKeywordsFor,
+} from '../lib/tudastar/seo-kulcsszavak'
 import type { Page, Post } from '../payload-types'
-import { CIKKEK, cikketFordit } from '../scripts/import-tudastar-cikkek'
+import {
+  CIKKEK,
+  cikketFordit,
+  oldalKulcsszavakatSzinkronizal,
+} from '../scripts/import-tudastar-cikkek'
 
 /**
  * CMS `seoKeywords`: szerkeszthető mező a posztokon és az oldalakon.
@@ -293,6 +306,220 @@ describe('tudástár-importer: a nyolc slug a mért táblából tölti a mezőt'
   )
 
   it('az importer nem noindexel és nem ír kitalált oldalkulcsszót', () => {
+    expect(rootFields(Posts.fields).has('noindex')).toBe(false)
+    expect(rootFields(Pages.fields).has('noindex')).toBe(false)
+  })
+})
+
+/** Search lock 2026-08-24. Rangsor, volumen, KD nem része a listának. */
+const SEARCH_LOCK_CIKK: Record<string, readonly string[]> = {
+  'miert-zsibbad-a-kezem': [
+    'kéz zsibbadás',
+    'jobb kéz zsibbadás',
+    'bal kéz zsibbadás',
+    'kéz zsibbadás éjszaka',
+    'ujjak zsibbadása',
+  ],
+  'keztoalagut-szindroma': [
+    'kéztőalagút szindróma',
+    'kéztő alagút szindróma kezelése házilag',
+    'kéztőalagút szindróma tünetei',
+    'kéztőalagút műtét',
+  ],
+  teniszkonyok: [
+    'teniszkönyök',
+    'teniszkönyök kezelése házilag',
+    'teniszkönyök gyakorlatok',
+    'teniszkönyök házi gyógymód',
+  ],
+  'csuklotores-utani-gyogytorna': [
+    'csuklótörés utáni gyógytorna',
+    'csuklótörés után mikor lehet dolgozni',
+    'gipsz levétele után',
+    'csuklótörés rehabilitáció',
+  ],
+  'pattano-ujj': [
+    'pattanó ujj',
+    'pattanó ujj kezelése házilag',
+    'pattanó ujj gyakorlatok',
+    'pattanó ujj műtét',
+    'beakadó ujj',
+  ],
+  'csuklo-es-kezfajdalom': [
+    'csuklófájdalom',
+    'csukló fájdalom',
+    'kézfájdalom',
+    'alkar fájdalom',
+    'csukló fájdalom kezelése házilag',
+  ],
+  inhuvelygyulladas: [
+    'ínhüvelygyulladás',
+    'csukló ínhüvelygyulladás',
+    'ínhüvelygyulladás kezelése házilag',
+    'ínhüvelygyulladás torna',
+    'de quervain',
+    'ínhüvelygyulladás tünetei',
+    'hüvelykujj ínhüvelygyulladás',
+    'ínhüvelygyulladás kezelése',
+    'de quervain szindróma',
+  ],
+  'befagyott-vall': [
+    'befagyott váll',
+    'befagyott váll torna',
+    'befagyott váll szindróma',
+    'adhesive capsulitis',
+    'befagyott váll kezelése',
+    'befagyott váll gyógytorna',
+  ],
+}
+
+describe('Search lock 2026-08-24: cikk seoKeywords', () => {
+  it.each(Object.entries(SEARCH_LOCK_CIKK))(
+    '%s: meresToSeoKeywords == a lockolt lista, ≤12',
+    (slug, lock) => {
+      const meres = kulcsszoFor(slug)
+      expect(meres, `nincs mérés: ${slug}`).toBeDefined()
+      const phrases = meresToSeoKeywords(meres!).map((row) => row.phrase)
+      expect(phrases).toEqual([...lock])
+      expect(phrases).toHaveLength(lock.length)
+      expect(phrases.length).toBeLessThanOrEqual(SEO_KEYWORDS_MAX_ROWS)
+      expect(phrases[0]).toBe(meres!.elsodleges)
+      expect(phrases.join(' ')).not.toMatch(/\b(KD|volumen|rangsor)\b/i)
+    },
+  )
+
+  it('ínhüvely: 9 tétel, nincs boka/láb/krém/váll/gyógyszer/BNO', () => {
+    const phrases = meresToSeoKeywords(kulcsszoFor('inhuvelygyulladas')!).map((row) => row.phrase)
+    expect(phrases).toHaveLength(9)
+    const egyben = phrases.join(' | ').toLowerCase()
+    for (const tilos of ['boka', 'láb', 'váll', 'krém', 'gyógyszer', 'bno']) {
+      expect(egyben, `tiltott tétel: ${tilos}`).not.toContain(tilos)
+    }
+  })
+
+  it('váll: 6 tétel, nincs fagyott váll és vállfájdalom mint kifejezés', () => {
+    const phrases = meresToSeoKeywords(kulcsszoFor('befagyott-vall')!).map((row) => row.phrase)
+    expect(phrases).toHaveLength(6)
+    expect(phrases).not.toContain('fagyott váll')
+    expect(phrases).not.toContain('vállfájdalom')
+  })
+
+  it('seoTitle, volumen, nehezseg, targy, indok a lock után is megmarad', () => {
+    const inh = kulcsszoFor('inhuvelygyulladas')!
+    expect(inh.volumen).toBe(2200)
+    expect(inh.nehezseg).toBe(18)
+    expect(inh.seoTitle).toBe('Ínhüvelygyulladás: tünetek és mit tehetsz')
+    expect(inh.targy).toEqual({ tipus: 'MedicalCondition', nev: 'Ínhüvelygyulladás' })
+    expect(inh.indok.length).toBeGreaterThan(40)
+
+    const vall = kulcsszoFor('befagyott-vall')!
+    expect(vall.volumen).toBe(880)
+    expect(vall.nehezseg).toBe(12)
+    expect(vall.seoTitle).toBe('Befagyott váll: szakaszok és teendők')
+  })
+})
+
+describe('Search lock 2026-08-24: pages seoKeywords', () => {
+  it('kezdolap / szolgaltatasok / rolunk a lockolt listát viszi', () => {
+    expect(oldalKulcsszavakFor('kezdolap')).toEqual([
+      'Kineticare',
+      'kéztorna',
+      'otthoni gyógytorna',
+    ])
+    expect(oldalKulcsszavakFor('szolgaltatasok')).toEqual(['kéztorna', 'otthoni gyógytorna'])
+    expect(oldalKulcsszavakFor('rolunk')).toEqual(['Kiss Kata', 'Kocsis Kata', 'Kineticare'])
+    expect(oldalSeoKeywordsFor('kezdolap')?.map((row) => row.phrase)).toEqual([
+      'Kineticare',
+      'kéztorna',
+      'otthoni gyógytorna',
+    ])
+  })
+
+  it('kapcsolat / impresszum / adatvedelem / aszf / kurzusok szándékosan üres', () => {
+    for (const slug of ['kapcsolat', 'impresszum', 'adatvedelem', 'aszf', 'kurzusok']) {
+      expect(oldalKulcsszavakFor(slug), slug).toBeUndefined()
+      expect(oldalSeoKeywordsFor(slug), slug).toBeUndefined()
+      expect(slug in OLDAL_KULCSSZAVAK, `${slug} legyen a lock-táblában`).toBe(true)
+    }
+  })
+
+  it('A-gyökér pages slugok nincsenek a lock-táblában', () => {
+    for (const slug of ['inhuvelygyulladas', 'keztoalagut-szindroma', 'teniszkonyok']) {
+      expect(slug in OLDAL_KULCSSZAVAK).toBe(false)
+      expect(oldalSeoKeywordsFor(slug)).toBeUndefined()
+    }
+  })
+})
+
+describe('oldalKulcsszavakatSzinkronizal: csak meglévő rekord, csak seoKeywords', () => {
+  function pagesPayload(docsBySlug: Record<string, { id: number } | undefined>) {
+    const find = vi.fn(
+      async (args: { collection: string; where: { slug: { equals: string } } }) => {
+        expect(args.collection).toBe('pages')
+        const doc = docsBySlug[args.where.slug.equals]
+        return { docs: doc ? [doc] : [] }
+      },
+    )
+    const update = vi.fn<(args: { id: number; data: Record<string, unknown> }) => Promise<object>>(
+      async () => ({}),
+    )
+    const create = vi.fn(async () => {
+      throw new Error('pages create tilos')
+    })
+    return { find, update, create, payload: { find, update, create } as unknown as Payload }
+  }
+
+  it('írja a három kitöltött oldalt, üreset kihagyja, hiányzót nem hozza létre', async () => {
+    const { find, update, create, payload } = pagesPayload({
+      kezdolap: { id: 1 },
+      szolgaltatasok: { id: 2 },
+      rolunk: { id: 3 },
+      kapcsolat: { id: 4 },
+      impresszum: { id: 5 },
+      adatvedelem: { id: 6 },
+      aszf: { id: 7 },
+    })
+
+    const eredmeny = await oldalKulcsszavakatSzinkronizal(payload, { dryRun: false })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).toHaveBeenCalledTimes(3)
+    expect(eredmeny).toEqual({ frissitve: 3, kihagyva: 4, hianyzik: 1 })
+    expect(find).toHaveBeenCalled()
+
+    const irt = update.mock.calls.map(([args]) => {
+      expect(Object.keys(args.data)).toEqual(['seoKeywords'])
+      expect(args.data).not.toHaveProperty('title')
+      expect(args.data).not.toHaveProperty('status')
+      expect(args.data).not.toHaveProperty('content')
+      expect(args.data).not.toHaveProperty('author')
+      expect(args.data).not.toHaveProperty('faq')
+      return {
+        id: args.id,
+        phrases: (args.data.seoKeywords as { phrase: string }[]).map((row) => row.phrase),
+      }
+    })
+    expect(irt).toEqual([
+      { id: 1, phrases: ['Kineticare', 'kéztorna', 'otthoni gyógytorna'] },
+      { id: 2, phrases: ['kéztorna', 'otthoni gyógytorna'] },
+      { id: 3, phrases: ['Kiss Kata', 'Kocsis Kata', 'Kineticare'] },
+    ])
+  })
+
+  it('dry-run mellett nem ír', async () => {
+    const { update, create, payload } = pagesPayload({ kezdolap: { id: 1 } })
+    const eredmeny = await oldalKulcsszavakatSzinkronizal(payload, { dryRun: true })
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(eredmeny.frissitve).toBe(0)
+  })
+
+  it('a script pages-re create-et nem hív, noindex mező nincs', () => {
+    const src = readFileSync(`${process.cwd()}/src/scripts/import-tudastar-cikkek.ts`, 'utf8')
+    expect(src).toMatch(/OWNER_TUDASTAR_CONFIRM/)
+    expect(src).toContain("collection: 'pages'")
+    expect(src).not.toMatch(/collection:\s*'pages'[\s\S]{0,200}payload\.create/)
+    expect(src).not.toMatch(/payload\.create\([\s\S]{0,200}collection:\s*'pages'/)
     expect(rootFields(Posts.fields).has('noindex')).toBe(false)
     expect(rootFields(Pages.fields).has('noindex')).toBe(false)
   })
