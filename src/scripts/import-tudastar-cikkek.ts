@@ -17,8 +17,11 @@
  * `docs/cikkek-javitas-naplo.md` szerint a négy tartalmi blokkolóból három
  * (B1 mentőhívási szint, B2 ellenjavallat, B4 irányelv-olvasat) LEZÁRVA, a B3
  * pedig úgy zárult, hogy a nem igazolt akkreditációs szám KIKERÜLT a
- * szövegekből. Ami nyitva maradt: a két gyógytornász szakmai átolvasása.
- * Ezért alapból piszkozat.
+ * szövegekből. Ami nyitva maradt a hat élő cikknél: a két gyógytornász
+ * szakmai átolvasása, ezért náluk a publikálás külön kapu. A két ÚJ slug
+ * (`inhuvelygyulladas`, `befagyott-vall`) klinikai aláírása NEM draft-kapu:
+ * a `OWNER_TUDASTAR_PUBLISH` dönt. Hiányzó Person usernél nem találunk ki
+ * usert, a rekord published maradhat, a storefront robots noindexet ad.
  *
  * ═══ MI KERÜL BE A MARKDOWNON KÍVÜL ═══
  * A `seoTitle` és a `seoDescription` a MÉRT kulcsszó-célzásból jön
@@ -46,6 +49,11 @@ import { getPayload, type Payload } from 'payload'
 import { logger } from '../lib/logger'
 import { faqMezore, GYIK_MAX, GYIK_MIN } from '../lib/tudastar/faq'
 import {
+  faqMezoAPayloadba,
+  hianzoSzerzoFigyelmeztetes,
+  szerzokExtraMezok,
+} from '../lib/tudastar/import-geo'
+import {
   excerptFrom,
   extractArticleBody,
   markdownToLexical,
@@ -64,9 +72,10 @@ import config from '../payload.config'
  * A `categorySlug` / `ctaCourse` / `relatedSlugs` / `szerzok` CSAK az új
  * slugokra van kitöltve. A már élő hat posztnál a kulcsok HIÁNYOZNAK, hogy
  * az újrafuttatás ne írja felül az adminban beállított kategóriát, kurzust,
- * kapcsolódó cikkeket és szerzőt.
+ * kapcsolódó cikkeket és szerzőt. A `faq` mezőt is csak a két új slugra
+ * írjuk: a hat élő poszt `faq=[]` mintáját nem backfill-eljük.
  */
-type CikkSpec = {
+export type CikkSpec = {
   fajl: string
   slug: string
   categorySlug?: 'kez-es-csuklo' | 'vall-es-konyok'
@@ -80,7 +89,7 @@ const KATEGORIA_CIM: Record<NonNullable<CikkSpec['categorySlug']>, string> = {
   'vall-es-konyok': 'Váll és könyök',
 }
 
-const CIKKEK: readonly CikkSpec[] = [
+export const CIKKEK: readonly CikkSpec[] = [
   { fajl: '1-miert-zsibbad-a-kezem.md', slug: 'miert-zsibbad-a-kezem' },
   { fajl: '2-keztoalagut-szindroma.md', slug: 'keztoalagut-szindroma' },
   { fajl: '3-teniszkonyok.md', slug: 'teniszkonyok' },
@@ -222,9 +231,7 @@ async function kurzusId(payload: Payload, sku: string, slug: string): Promise<nu
   })
   const slugId = slugTalalat.docs[0]?.id
   if (typeof slugId === 'number') return slugId
-  throw new Error(
-    `Nincs termék sku=„${sku}” vagy slug=„${slug}”. A ctaCourse-t nem találjuk ki.`,
-  )
+  throw new Error(`Nincs termék sku=„${sku}” vagy slug=„${slug}”. A ctaCourse-t nem találjuk ki.`)
 }
 
 async function posztIdSlugAlapjan(payload: Payload, slug: string): Promise<number> {
@@ -243,21 +250,7 @@ async function posztIdSlugAlapjan(payload: Payload, slug: string): Promise<numbe
   return id
 }
 
-async function felhasznaloIdNevAlapjan(payload: Payload, nev: string): Promise<number | null> {
-  const talalat = await payload.find({
-    collection: 'users',
-    where: { name: { equals: nev } },
-    limit: 1,
-    overrideAccess: true,
-  })
-  const id = talalat.docs[0]?.id
-  return typeof id === 'number' ? id : null
-}
-
-async function extraMezok(
-  payload: Payload,
-  spec: CikkSpec,
-): Promise<Record<string, unknown>> {
+async function extraMezok(payload: Payload, spec: CikkSpec): Promise<Record<string, unknown>> {
   const extra: Record<string, unknown> = {}
   if (spec.categorySlug !== undefined) {
     extra.categories = [await kategoriaId(payload, spec.categorySlug)]
@@ -273,20 +266,10 @@ async function extraMezok(
     )
   }
   if (spec.szerzok !== undefined && spec.szerzok.length > 0) {
-    // Person user név szerint (Kiss Kata → author, Kocsis Kata → reviewedBy).
-    // Organization rekordot nem keresünk és nem találunk ki: ha a név hiányzik, dobunk.
-    const ids = await Promise.all(spec.szerzok.map((nev) => felhasznaloIdNevAlapjan(payload, nev)))
-    const hianyzok = spec.szerzok.filter((_, index) => ids[index] === null)
-    if (hianyzok.length > 0) {
-      throw new Error(
-        `Tudástár-import: hiányzó Person user (${hianyzok.join(', ')}). ` +
-          'Nem találunk ki usert. A(z) ' +
-          spec.slug +
-          ' cikk author/reviewedBy mezője így nem tölthető.',
-      )
-    }
-    extra.author = ids[0]
-    if (ids[1] !== null && ids[1] !== undefined) extra.reviewedBy = ids[1]
+    const szerzo = await szerzokExtraMezok(payload, spec.szerzok)
+    hianzoSzerzoFigyelmeztetes(spec.slug, szerzo.hianyzok)
+    extra.author = szerzo.author
+    if (szerzo.reviewedBy !== undefined) extra.reviewedBy = szerzo.reviewedBy
   }
   return extra
 }
@@ -362,12 +345,9 @@ async function main(): Promise<void> {
       // és így nem kell literál `draft: true` paramétert adni.
       status: publikal ? ('published' as const) : ('draft' as const),
       _status: publikal ? ('published' as const) : ('draft' as const),
-      // A GYIK csak akkor kerül a payloadba, ha van mit írni. Ha a slughoz
-      // nincs tétel, a kulcs KIMARAD, így egy adminban kézzel felvett GYIK-et
-      // nem töröl le egy olyan modul, amelynek épp nincs mondanivalója. Ahol
-      // viszont van tétel, ott a faq.ts az igazság forrása, ugyanúgy, ahogy a
-      // törzsnél a markdown: a script felülírja a kézi szerkesztést.
-      ...(cikk.faq === undefined ? {} : { faq: cikk.faq }),
+      // A GYIK-et csak a két új slugra írjuk. A hat élő poszt faq mezőjét
+      // az újrafuttatás nem backfill-eli és nem törli.
+      ...faqMezoAPayloadba(cikk.slug, cikk.faq),
       ...(await extraMezok(payload, spec)),
     }
 
@@ -401,8 +381,7 @@ async function main(): Promise<void> {
 }
 
 const kozvetlenul =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (kozvetlenul) {
   main()

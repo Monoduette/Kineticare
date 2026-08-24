@@ -1,12 +1,18 @@
 /**
- * E-E-A-T kapu a két ÚJ Tudástár-posztra.
+ * E-E-A-T / Search GEO kapu a két ÚJ Tudástár-posztra.
  *
- * A hat élő cikk `author`/`faq` mintáját nem backfill-eljük, és nem noindexeljük.
- * Csak `inhuvelygyulladas` és `befagyott-vall` kap noindexet, ha a Person
- * author vagy a faq tömb üres. Collection-szintű noindex mező nincs.
+ * A hat élő cikk `author=null` / `faq=[]` mintáját nem másoljuk, nem
+ * backfill-eljük, és nem noindexeljük. Collection-szintű noindex mező nincs.
+ * Organization vagy SITE_NAME szerző = noindex (csak a két új slugra).
  */
 
+import { SITE_NAME } from '../seo'
+import { GYIK_MAX, GYIK_MIN } from './faq'
+
 export const UJ_TUDASTAR_SLUGOK = ['inhuvelygyulladas', 'befagyott-vall'] as const
+
+/** A két új cikk indexeléséhez elfogadott Person user-nevek. */
+export const UJ_TUDASTAR_SZERZO_NEVEK = ['Kiss Kata', 'Kocsis Kata'] as const
 
 export type UjTudastarSlug = (typeof UJ_TUDASTAR_SLUGOK)[number]
 
@@ -25,14 +31,18 @@ function vanSzerzo(author: unknown): boolean {
       type?: unknown
     }
     if (rec.collection === 'organizations' || rec.type === 'Organization') return false
-    if (typeof rec.name === 'string' && rec.name.trim().length > 0) return true
+    if (typeof rec.name === 'string') {
+      const nev = rec.name.trim()
+      if (nev.length === 0 || nev === SITE_NAME) return false
+      return (UJ_TUDASTAR_SZERZO_NEVEK as readonly string[]).includes(nev)
+    }
     if (typeof rec.id === 'number' && rec.id > 0) return true
   }
   return false
 }
 
 function vanGyik(faq: unknown): boolean {
-  return Array.isArray(faq) && faq.length >= 2
+  return Array.isArray(faq) && faq.length >= GYIK_MIN && faq.length <= GYIK_MAX
 }
 
 /**

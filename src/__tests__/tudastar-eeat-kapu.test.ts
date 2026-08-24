@@ -74,4 +74,45 @@ describe('ujTudastarPostNoindex', () => {
       }),
     ).toBe(false)
   })
+
+  it('Organization vagy SITE_NAME szerzőt noindexeli', () => {
+    expect(
+      ujTudastarPostNoindex({
+        slug: 'inhuvelygyulladas',
+        author: { collection: 'organizations', name: 'Kineticare' },
+        faq: gyik,
+      }),
+    ).toBe(true)
+    expect(
+      ujTudastarPostNoindex({
+        slug: 'befagyott-vall',
+        author: { name: 'Kineticare' },
+        faq: gyik,
+      }),
+    ).toBe(true)
+    expect(
+      ujTudastarPostNoindex({
+        slug: 'inhuvelygyulladas',
+        author: { id: 1, name: 'Kineticare Owner' },
+        faq: gyik,
+      }),
+    ).toBe(true)
+  })
+
+  it('1 vagy 7 faq-tételnél noindex, 2–6 tételnél indexelhető', () => {
+    const szerzo = { id: 3, name: 'Kiss Kata' }
+    expect(
+      ujTudastarPostNoindex({ slug: 'inhuvelygyulladas', author: szerzo, faq: gyik.slice(0, 1) }),
+    ).toBe(true)
+    expect(
+      ujTudastarPostNoindex({
+        slug: 'inhuvelygyulladas',
+        author: szerzo,
+        faq: Array.from({ length: 7 }, (_, i) => ({ question: `K${i}?`, answer: 'A.' })),
+      }),
+    ).toBe(true)
+    expect(ujTudastarPostNoindex({ slug: 'inhuvelygyulladas', author: szerzo, faq: gyik })).toBe(
+      false,
+    )
+  })
 })

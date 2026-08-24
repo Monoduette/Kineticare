@@ -169,6 +169,28 @@ describe('G6 — magyar tipográfia: nincs töltelék gondolatjel', () => {
   })
 })
 
+describe('G8 — a két új cikk GYIK-kérdései a törzs Gyakori kérdések H3-jai', () => {
+  const UJ = ['inhuvelygyulladas', 'befagyott-vall'] as const
+
+  it.each(UJ)('%s', (slug) => {
+    const nyers = readFileSync(path.join(process.cwd(), 'docs', 'cikkek', FAJL[slug]), 'utf8')
+    const { lines } = extractArticleBody(nyers)
+    const gyikH3: string[] = []
+    let gyikben = false
+    for (const sor of lines) {
+      if (sor.startsWith('## ')) {
+        gyikben = sor === '## Gyakori kérdések'
+        continue
+      }
+      if (gyikben && sor.startsWith('### ')) gyikH3.push(sor.slice(4).trim())
+    }
+    const kerdesek = faqFor(slug)?.tetelek.map((tetel) => tetel.kerdes) ?? []
+    expect(kerdesek.length).toBeGreaterThanOrEqual(GYIK_MIN)
+    expect(kerdesek.length).toBeLessThanOrEqual(GYIK_MAX)
+    expect(kerdesek).toEqual(gyikH3)
+  })
+})
+
 describe('G7 — faqFor és faqMezore', () => {
   it('minden felvett slugra visszaad', () => {
     for (const gyik of CIKK_GYIK) {
