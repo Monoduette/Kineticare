@@ -268,6 +268,25 @@ describe('a kurzus JSON-LD a LÁTHATÓ tartalommal egyezik', () => {
   })
 })
 
+describe('kurzus seoKeywords a meta-tagben és a JSON-LD-ben', () => {
+  it('kitöltött mező → keywords a metadatokban és a JSON-LD-ben', () => {
+    const doc = product({
+      seoKeywords: [{ phrase: 'otthoni gyógytorna' }, { phrase: 'kéztorna' }],
+    })
+    const metadata = buildProductMetadata(doc, COURSE_PATH)
+    expect(metadata.keywords).toEqual(['otthoni gyógytorna', 'kéztorna'])
+    expect(jsonLdFor(doc).keywords).toBe('otthoni gyógytorna, kéztorna')
+  })
+
+  it('üres mezőnél nincs keywords kulcs, a sku-t nem tölti bele', () => {
+    const doc = product({ sku: 'Kéztorna otthon — 8 hetes program', seoKeywords: [] })
+    const metadata = buildProductMetadata(doc, COURSE_PATH)
+    expect('keywords' in metadata).toBe(false)
+    expect('keywords' in jsonLdFor(doc)).toBe(false)
+    expect(metadata.title).toBe('Kéztorna otthon — 8 hetes program')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Slugos kurzus-URL (C3)
 // ---------------------------------------------------------------------------

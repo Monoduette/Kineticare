@@ -10,26 +10,36 @@ import { Posts } from '../collections/Posts'
 import { PageEeat } from '../components/content/PageEeat'
 import { PostArticle } from '../components/content/PostArticle'
 import { seoKeywordsField } from '../fields/seo-keywords'
-import { buildDocMetadata } from '../lib/seo'
+import { buildDocMetadata, buildStaticPageMetadata } from '../lib/seo'
 import { cmsPageJsonLd, postArticleJsonLd } from '../lib/seo-cikk'
-import { resolveSeoKeywords, SEO_KEYWORDS_MAX_ROWS } from '../lib/seo-keywords'
+import {
+  resolveSeoKeywords,
+  SEO_KEYWORDS_MAX_LENGTH,
+  SEO_KEYWORDS_MAX_ROWS,
+} from '../lib/seo-keywords'
 import {
   CIKK_KULCSSZAVAK,
   kulcsszoFor,
+  KURZUSLISTA_KULCSSZAVAK,
+  kurzusKulcsszavakFor,
+  kurzusSeoKeywordsFor,
   meresToSeoKeywords,
   OLDAL_KULCSSZAVAK,
   oldalKulcsszavakFor,
   oldalSeoKeywordsFor,
 } from '../lib/tudastar/seo-kulcsszavak'
 import type { Page, Post } from '../payload-types'
+import configPromise from '../payload.config'
 import {
   CIKKEK,
   cikketFordit,
+  kurzusKulcsszavakatSzinkronizal,
   oldalKulcsszavakatSzinkronizal,
 } from '../scripts/import-tudastar-cikkek'
 
 /**
- * CMS `seoKeywords`: szerkeszthető mező a posztokon és az oldalakon.
+ * CMS `seoKeywords`: szerkeszthető mező a posztokon, az oldalakon és a
+ * kurzusokon.
  *
  * A kifejezések a HTML-forrásba mennek (JSON-LD + meta keywords). A nyilvános
  * lapon NEM jelennek meg külön listaként. Üres mezőnél nincs meta-tag és
@@ -125,11 +135,11 @@ function rootFields(fields: Field[], acc = new Map<string, Field>()): Map<string
   return acc
 }
 
-describe('seoKeywords mező a posts és pages kollekción', () => {
+describe('seoKeywords mező a posts, pages és products kollekción', () => {
   it.each([
     ['posts', Posts],
     ['pages', Pages],
-  ] as const)('%s.seoKeywords array, 12-es plafon, nem kötelező', (_name, collection) => {
+  ] as const)('%s.seoKeywords array, 48-as plafon, nem kötelező', (_name, collection) => {
     const field = rootFields(collection.fields).get('seoKeywords')
     expect(field, `${collection.slug}.seoKeywords hiányzik`).toBeDefined()
     expect(field).toBe(seoKeywordsField)
@@ -138,7 +148,7 @@ describe('seoKeywords mező a posts és pages kollekción', () => {
     }
     expect(field.required).toBeUndefined()
     expect(field.maxRows).toBe(SEO_KEYWORDS_MAX_ROWS)
-    expect(field.maxRows).toBe(12)
+    expect(field.maxRows).toBe(48)
     expect(field.label).toBe('SEO kulcsszavak')
     const description = field.admin?.description
     expect(typeof description).toBe('string')
@@ -147,6 +157,26 @@ describe('seoKeywords mező a posts és pages kollekción', () => {
     const phrase = field.fields.find((row) => 'name' in row && row.name === 'phrase')
     expect(phrase?.type).toBe('text')
     expect(phrase && 'required' in phrase ? phrase.required : undefined).toBe(true)
+    expect(phrase && 'maxLength' in phrase ? phrase.maxLength : undefined).toBe(
+      SEO_KEYWORDS_MAX_LENGTH,
+    )
+    expect(phrase && 'maxLength' in phrase ? phrase.maxLength : undefined).toBe(80)
+    expect(field.type).toBe('array')
+  })
+
+  it('a products kollekción is a közös seoKeywordsField áll a seoDescription után', async () => {
+    const config = await configPromise
+    const products = (config.collections ?? []).find((collection) => collection.slug === 'products')
+    expect(products, 'products collection hiányzik').toBeDefined()
+    const fields = rootFields(products!.fields)
+    expect(fields.get('seoKeywords')).toBe(seoKeywordsField)
+    expect(fields.has('seoTitle')).toBe(true)
+    expect(fields.has('seoDescription')).toBe(true)
+    expect(fields.has('noindex')).toBe(false)
+    const names = products!.fields.flatMap((field) =>
+      'name' in field && typeof field.name === 'string' ? [field.name] : [],
+    )
+    expect(names.indexOf('seoKeywords')).toBe(names.indexOf('seoDescription') + 1)
   })
 
   it('a seoTitle és a seoDescription megmarad, nincs noindex mező', () => {
@@ -183,6 +213,12 @@ describe('resolveSeoKeywords', () => {
       phrase: `kifejezés-${index + 1}`,
     }))
     expect(resolveSeoKeywords(rows)).toHaveLength(SEO_KEYWORDS_MAX_ROWS)
+  })
+
+  it('a maxLength plafonig tartó kifejezést nem vágja csonkra', () => {
+    const phrase = 'k'.repeat(SEO_KEYWORDS_MAX_LENGTH)
+    expect(phrase).toHaveLength(80)
+    expect(resolveSeoKeywords([{ phrase }])).toEqual([phrase])
   })
 })
 
@@ -311,97 +347,76 @@ describe('tudástár-importer: a nyolc slug a mért táblából tölti a mezőt'
   })
 })
 
-/** Search lock 2026-08-24. Rangsor, volumen, KD nem része a listának. */
-const SEARCH_LOCK_CIKK: Record<string, readonly string[]> = {
-  'miert-zsibbad-a-kezem': [
-    'kéz zsibbadás',
-    'jobb kéz zsibbadás',
-    'bal kéz zsibbadás',
-    'kéz zsibbadás éjszaka',
-    'ujjak zsibbadása',
-  ],
-  'keztoalagut-szindroma': [
-    'kéztőalagút szindróma',
-    'kéztő alagút szindróma kezelése házilag',
-    'kéztőalagút szindróma tünetei',
-    'kéztőalagút műtét',
-  ],
-  teniszkonyok: [
-    'teniszkönyök',
-    'teniszkönyök kezelése házilag',
-    'teniszkönyök gyakorlatok',
-    'teniszkönyök házi gyógymód',
-  ],
-  'csuklotores-utani-gyogytorna': [
-    'csuklótörés utáni gyógytorna',
-    'csuklótörés után mikor lehet dolgozni',
-    'gipsz levétele után',
-    'csuklótörés rehabilitáció',
-  ],
-  'pattano-ujj': [
-    'pattanó ujj',
-    'pattanó ujj kezelése házilag',
-    'pattanó ujj gyakorlatok',
-    'pattanó ujj műtét',
-    'beakadó ujj',
-  ],
-  'csuklo-es-kezfajdalom': [
-    'csuklófájdalom',
-    'csukló fájdalom',
-    'kézfájdalom',
-    'alkar fájdalom',
-    'csukló fájdalom kezelése házilag',
-  ],
-  inhuvelygyulladas: [
-    'ínhüvelygyulladás',
-    'csukló ínhüvelygyulladás',
-    'ínhüvelygyulladás kezelése házilag',
-    'ínhüvelygyulladás torna',
-    'de quervain',
-    'ínhüvelygyulladás tünetei',
-    'hüvelykujj ínhüvelygyulladás',
-    'ínhüvelygyulladás kezelése',
-    'de quervain szindróma',
-  ],
-  'befagyott-vall': [
-    'befagyott váll',
-    'befagyott váll torna',
-    'befagyott váll szindróma',
-    'adhesive capsulitis',
-    'befagyott váll kezelése',
-    'befagyott váll gyógytorna',
-  ],
+/** Search lock 2026-08-24, vágatlan lista. Rangsor, volumen, KD nem része. */
+const SEARCH_LOCK_CIKK = JSON.parse(
+  readFileSync(`${process.cwd()}/src/lib/tudastar/search-lock-2026-08-24.json`, 'utf8'),
+) as Record<string, readonly string[]>
+
+const SEARCH_LOCK_COUNTS: Record<string, number> = {
+  'miert-zsibbad-a-kezem': 43,
+  'keztoalagut-szindroma': 22,
+  teniszkonyok: 32,
+  'pattano-ujj': 9,
+  'csuklo-es-kezfajdalom': 31,
+  'csuklotores-utani-gyogytorna': 16,
+  inhuvelygyulladas: 41,
+  'befagyott-vall': 21,
 }
 
 describe('Search lock 2026-08-24: cikk seoKeywords', () => {
   it.each(Object.entries(SEARCH_LOCK_CIKK))(
-    '%s: meresToSeoKeywords == a lockolt lista, ≤12',
+    '%s: meresToSeoKeywords == a vágatlan lockolt lista, ≤48',
     (slug, lock) => {
       const meres = kulcsszoFor(slug)
       expect(meres, `nincs mérés: ${slug}`).toBeDefined()
       const phrases = meresToSeoKeywords(meres!).map((row) => row.phrase)
       expect(phrases).toEqual([...lock])
+      expect(phrases).toHaveLength(SEARCH_LOCK_COUNTS[slug] ?? -1)
       expect(phrases).toHaveLength(lock.length)
       expect(phrases.length).toBeLessThanOrEqual(SEO_KEYWORDS_MAX_ROWS)
       expect(phrases[0]).toBe(meres!.elsodleges)
       expect(phrases.join(' ')).not.toMatch(/\b(KD|volumen|rangsor)\b/i)
+      for (const kifejezes of phrases) {
+        expect(
+          kifejezes.length,
+          `${slug}: „${kifejezes}” > ${SEO_KEYWORDS_MAX_LENGTH}`,
+        ).toBeLessThanOrEqual(SEO_KEYWORDS_MAX_LENGTH)
+      }
     },
   )
 
-  it('ínhüvely: 9 tétel, nincs boka/láb/krém/váll/gyógyszer/BNO', () => {
+  it('ínhüvely: 41 tétel, nincs boka/láb/BNO; krém és gyógyszer a lockban marad', () => {
     const phrases = meresToSeoKeywords(kulcsszoFor('inhuvelygyulladas')!).map((row) => row.phrase)
-    expect(phrases).toHaveLength(9)
+    expect(phrases).toHaveLength(41)
     const egyben = phrases.join(' | ').toLowerCase()
-    for (const tilos of ['boka', 'láb', 'váll', 'krém', 'gyógyszer', 'bno']) {
-      expect(egyben, `tiltott tétel: ${tilos}`).not.toContain(tilos)
-    }
+    expect(egyben).not.toMatch(/\bboka\b/)
+    expect(egyben).not.toMatch(/\bláb\b/)
+    expect(egyben).not.toContain('bno')
+    expect(egyben).toMatch(/krém/)
+    expect(egyben).toMatch(/gyógyszer/)
   })
 
-  it('váll: 6 tétel, nincs fagyott váll és vállfájdalom mint kifejezés', () => {
+  it('váll: 21 tétel, nincs pontosan fagyott váll és vállfájdalom', () => {
     const phrases = meresToSeoKeywords(kulcsszoFor('befagyott-vall')!).map((row) => row.phrase)
-    expect(phrases).toHaveLength(6)
+    expect(phrases).toHaveLength(21)
     expect(phrases).not.toContain('fagyott váll')
     expect(phrases).not.toContain('vállfájdalom')
+    expect(phrases).toContain('befagyott váll')
+  })
+
+  it('HOLD: lelki okai, dupuytren, más slug primére nincs a nyolc listában', () => {
+    const primaries = CIKK_KULCSSZAVAK.map((item) => item.elsodleges)
+    for (const meres of CIKK_KULCSSZAVAK) {
+      const phrases = meresToSeoKeywords(meres).map((row) => row.phrase)
+      expect(phrases).not.toContain('lelki okai')
+      expect(phrases).not.toContain('dupuytren')
+      expect(phrases.join(' | ').toLowerCase()).not.toContain('lelki okai')
+      expect(phrases.join(' | ').toLowerCase()).not.toContain('dupuytren')
+      const idegen = primaries.filter((phrase) => phrase !== meres.elsodleges)
+      for (const masik of idegen) {
+        expect(phrases.slice(1), `${meres.slug} tartalmazza ${masik} primért`).not.toContain(masik)
+      }
+    }
   })
 
   it('seoTitle, volumen, nehezseg, targy, indok a lock után is megmarad', () => {
@@ -416,6 +431,9 @@ describe('Search lock 2026-08-24: cikk seoKeywords', () => {
     expect(vall.volumen).toBe(880)
     expect(vall.nehezseg).toBe(12)
     expect(vall.seoTitle).toBe('Befagyott váll: szakaszok és teendők')
+
+    const csuklo = kulcsszoFor('csuklo-es-kezfajdalom')!
+    expect(csuklo.elsodleges).toBe('csukló fájdalom')
   })
 })
 
@@ -424,6 +442,7 @@ describe('Search lock 2026-08-24: pages seoKeywords', () => {
     expect(oldalKulcsszavakFor('kezdolap')).toEqual([
       'Kineticare',
       'kéztorna',
+      'kéztorna gyakorlatok',
       'otthoni gyógytorna',
     ])
     expect(oldalKulcsszavakFor('szolgaltatasok')).toEqual(['kéztorna', 'otthoni gyógytorna'])
@@ -431,6 +450,7 @@ describe('Search lock 2026-08-24: pages seoKeywords', () => {
     expect(oldalSeoKeywordsFor('kezdolap')?.map((row) => row.phrase)).toEqual([
       'Kineticare',
       'kéztorna',
+      'kéztorna gyakorlatok',
       'otthoni gyógytorna',
     ])
   })
@@ -448,6 +468,39 @@ describe('Search lock 2026-08-24: pages seoKeywords', () => {
       expect(slug in OLDAL_KULCSSZAVAK).toBe(false)
       expect(oldalSeoKeywordsFor(slug)).toBeUndefined()
     }
+  })
+})
+
+describe('Search lock 2026-08-24: kurzus seoKeywords', () => {
+  const harom = ['otthoni gyógytorna', 'kéztorna', 'kéztorna gyakorlatok'] as const
+
+  it('otthoni-kezrehab-program és /kurzusok listing ugyanaz a 3, primér otthoni gyógytorna', () => {
+    expect([...KURZUSLISTA_KULCSSZAVAK]).toEqual([...harom])
+    expect(KURZUSLISTA_KULCSSZAVAK[0]).toBe('otthoni gyógytorna')
+    expect(kurzusKulcsszavakFor('otthoni-kezrehab-program')).toEqual([...harom])
+    expect(kurzusSeoKeywordsFor('otthoni-kezrehab-program')?.map((row) => row.phrase)).toEqual([
+      ...harom,
+    ])
+    expect(harom[0]).not.toBe('kéztorna')
+  })
+
+  it('SOS szándékosan üres', () => {
+    expect(kurzusKulcsszavakFor('sos-kezrelax-villamkurzus')).toBeUndefined()
+    expect(kurzusSeoKeywordsFor('sos-kezrelax-villamkurzus')).toBeUndefined()
+  })
+
+  it('/kurzusok listing metadata a lockolt három kifejezést viszi', () => {
+    const src = readFileSync(`${process.cwd()}/src/app/(frontend)/kurzusok/page.tsx`, 'utf8')
+    expect(src).toContain('keywords: KURZUSLISTA_KULCSSZAVAK')
+    expect(src).not.toMatch(/LEGACY_REDIRECTS/)
+    const meta = buildStaticPageMetadata({
+      title: 'Kurzusok',
+      description: 'Leírás.',
+      path: '/kurzusok',
+      keywords: KURZUSLISTA_KULCSSZAVAK,
+    })
+    expect(meta.keywords).toEqual([...harom])
+    expect(meta.alternates?.canonical).toBe('/kurzusok')
   })
 })
 
@@ -500,7 +553,7 @@ describe('oldalKulcsszavakatSzinkronizal: csak meglévő rekord, csak seoKeyword
       }
     })
     expect(irt).toEqual([
-      { id: 1, phrases: ['Kineticare', 'kéztorna', 'otthoni gyógytorna'] },
+      { id: 1, phrases: ['Kineticare', 'kéztorna', 'kéztorna gyakorlatok', 'otthoni gyógytorna'] },
       { id: 2, phrases: ['kéztorna', 'otthoni gyógytorna'] },
       { id: 3, phrases: ['Kiss Kata', 'Kocsis Kata', 'Kineticare'] },
     ])
@@ -522,5 +575,75 @@ describe('oldalKulcsszavakatSzinkronizal: csak meglévő rekord, csak seoKeyword
     expect(src).not.toMatch(/payload\.create\([\s\S]{0,200}collection:\s*'pages'/)
     expect(rootFields(Posts.fields).has('noindex')).toBe(false)
     expect(rootFields(Pages.fields).has('noindex')).toBe(false)
+  })
+})
+
+describe('kurzusKulcsszavakatSzinkronizal: csak meglévő rekord, csak seoKeywords', () => {
+  function productsPayload(docsBySlug: Record<string, { id: number } | undefined>) {
+    const find = vi.fn(
+      async (args: { collection: string; where: { slug: { equals: string } } }) => {
+        expect(args.collection).toBe('products')
+        const doc = docsBySlug[args.where.slug.equals]
+        return { docs: doc ? [doc] : [] }
+      },
+    )
+    const update = vi.fn<(args: { id: number; data: Record<string, unknown> }) => Promise<object>>(
+      async () => ({}),
+    )
+    const create = vi.fn(async () => {
+      throw new Error('products create tilos')
+    })
+    return { find, update, create, payload: { find, update, create } as unknown as Payload }
+  }
+
+  it('írja az otthoni programot, az SOS-t kihagyja, hiányzót nem hozza létre', async () => {
+    const { find, update, create, payload } = productsPayload({
+      'otthoni-kezrehab-program': { id: 11 },
+      'sos-kezrelax-villamkurzus': { id: 12 },
+    })
+
+    const eredmeny = await kurzusKulcsszavakatSzinkronizal(payload, { dryRun: false })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(eredmeny).toEqual({ frissitve: 1, kihagyva: 1, hianyzik: 0 })
+    expect(find).toHaveBeenCalled()
+
+    const [args] = update.mock.calls[0]!
+    expect(args.id).toBe(11)
+    expect(Object.keys(args.data)).toEqual(['seoKeywords'])
+    expect(args.data).not.toHaveProperty('sku')
+    expect(args.data).not.toHaveProperty('status')
+    expect(args.data).not.toHaveProperty('priceInHUF')
+    expect((args.data.seoKeywords as { phrase: string }[]).map((row) => row.phrase)).toEqual([
+      'otthoni gyógytorna',
+      'kéztorna',
+      'kéztorna gyakorlatok',
+    ])
+  })
+
+  it('hiányzó kurzust nem hozza létre', async () => {
+    const { update, create, payload } = productsPayload({})
+    const eredmeny = await kurzusKulcsszavakatSzinkronizal(payload, { dryRun: false })
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(eredmeny).toEqual({ frissitve: 0, kihagyva: 0, hianyzik: 2 })
+  })
+
+  it('dry-run mellett nem ír', async () => {
+    const { update, create, payload } = productsPayload({
+      'otthoni-kezrehab-program': { id: 11 },
+    })
+    const eredmeny = await kurzusKulcsszavakatSzinkronizal(payload, { dryRun: true })
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(eredmeny.frissitve).toBe(0)
+  })
+
+  it('a script products-re create-et nem hív', () => {
+    const src = readFileSync(`${process.cwd()}/src/scripts/import-tudastar-cikkek.ts`, 'utf8')
+    expect(src).toContain("collection: 'products'")
+    expect(src).not.toMatch(/collection:\s*'products'[\s\S]{0,200}payload\.create/)
+    expect(src).not.toMatch(/payload\.create\([\s\S]{0,200}collection:\s*'products'/)
   })
 })

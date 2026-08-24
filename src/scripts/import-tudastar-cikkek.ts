@@ -33,6 +33,12 @@
  * frissít, csak a `seoKeywords` mezőt; új page TILOS. Szándékosan üres slugoknál
  * (kapcsolat, impresszum, adatvedelem, aszf, kurzusok) nem ír kifejezést.
  *
+ * A `products.seoKeywords` a Search-lockolt `KURZUS_KULCSSZAVAK` táblából jön,
+ * ugyanezen kapu mögött. Csak meglévő product-rekordot frissít, csak a
+ * `seoKeywords` mezőt; új product TILOS. Az SOS (`sos-kezrelax-villamkurzus`)
+ * szándékosan üres. A `/kurzusok` lista NEM pages-rekord: a lockolt három
+ * kifejezés a listing metadata-ból megy ki.
+ *
  * ═══ ÚJRAFUTTATHATÓ ═══
  * A párosítás slug szerint történik: meglévő bejegyzést FRISSÍT, nem duplikál.
  * A `publishedAt` az első publikáláskor áll be (a Posts collection
@@ -58,6 +64,8 @@ import {
 } from '../lib/tudastar/markdown-to-lexical'
 import {
   kulcsszoFor,
+  KURZUS_KULCSSZAVAK,
+  kurzusSeoKeywordsFor,
   meresToSeoKeywords,
   OLDAL_KULCSSZAVAK,
   oldalSeoKeywordsFor,
@@ -368,6 +376,69 @@ export async function oldalKulcsszavakatSzinkronizal(
   return { frissitve, kihagyva, hianyzik }
 }
 
+/**
+ * A Search-lockolt `products.seoKeywords` lista slug szerint.
+ *
+ * Csak meglévő rekordot frissít, és csak a `seoKeywords` mezőt. Új productot
+ * nem hoz létre. Szándékosan üres locknál (SOS) nem ír kifejezést.
+ * Próbafutásnál (`dryRun`) nem ír.
+ */
+export async function kurzusKulcsszavakatSzinkronizal(
+  payload: Payload,
+  options: { dryRun: boolean },
+): Promise<{ frissitve: number; kihagyva: number; hianyzik: number }> {
+  let frissitve = 0
+  let kihagyva = 0
+  let hianyzik = 0
+
+  for (const slug of Object.keys(KURZUS_KULCSSZAVAK)) {
+    const meglevo = await payload.find({
+      collection: 'products',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+      draft: true,
+    })
+    const letezo = meglevo.docs[0]
+    if (!letezo) {
+      hianyzik += 1
+      logger.info('Tudástár-import: kurzus kulcsszó — nincs rekord, nem hozunk létre', { slug })
+      continue
+    }
+
+    const keywords = kurzusSeoKeywordsFor(slug)
+    if (keywords === undefined) {
+      kihagyva += 1
+      logger.info('Tudástár-import: kurzus kulcsszó — szándékosan üres, nem írunk kifejezést', {
+        slug,
+        id: letezo.id,
+      })
+      continue
+    }
+
+    if (options.dryRun) {
+      logger.info('Tudástár-import: kurzus kulcsszó — PRÓBA, nem írunk', {
+        slug,
+        id: letezo.id,
+        seoKeywords: keywords.map((row) => row.phrase),
+      })
+      continue
+    }
+
+    await payload.update({
+      collection: 'products',
+      id: letezo.id,
+      data: { seoKeywords: keywords },
+      overrideAccess: true,
+    })
+    frissitve += 1
+    logger.info('Tudástár-import: kurzus kulcsszó frissítve', { slug, id: letezo.id })
+  }
+
+  return { frissitve, kihagyva, hianyzik }
+}
+
 function oldalKulcsszoTervetNaploz(): void {
   for (const [slug, kifejezesek] of Object.entries(OLDAL_KULCSSZAVAK)) {
     logger.info('Tudástár-import: pages kulcsszó terv (próba)', {
@@ -377,6 +448,19 @@ function oldalKulcsszoTervetNaploz(): void {
         kifejezesek !== undefined && kifejezesek.length > 0
           ? 'meglévő rekord seoKeywords frissítése; új page tilos'
           : 'szándékosan üres; ha van rekord, nem írunk kifejezést; új page tilos',
+    })
+  }
+}
+
+function kurzusKulcsszoTervetNaploz(): void {
+  for (const [slug, kifejezesek] of Object.entries(KURZUS_KULCSSZAVAK)) {
+    logger.info('Tudástár-import: kurzus kulcsszó terv (próba)', {
+      slug,
+      seoKeywords: kifejezesek ?? [],
+      muvelet:
+        kifejezesek !== undefined && kifejezesek.length > 0
+          ? 'meglévő rekord seoKeywords frissítése; új product tilos'
+          : 'szándékosan üres; ha van rekord, nem írunk kifejezést; új product tilos',
     })
   }
 }
@@ -415,9 +499,11 @@ async function main(): Promise<void> {
 
   if (dryRun) {
     oldalKulcsszoTervetNaploz()
+    kurzusKulcsszoTervetNaploz()
     logger.info(
       `Tudástár-import: a próbafutás rendben, ${forditott.length} cikk fordult le hibátlanul. ` +
-        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen. Pages seoKeywords csak meglévő rekordon, új page tilos.',
+        'Íráshoz: OWNER_TUDASTAR_CONFIRM=igen. Pages és products seoKeywords csak meglévő rekordon; ' +
+        'új page/product tilos.',
     )
     return
   }
@@ -483,6 +569,7 @@ async function main(): Promise<void> {
   }
 
   const oldal = await oldalKulcsszavakatSzinkronizal(payload, { dryRun: false })
+  const kurzus = await kurzusKulcsszavakatSzinkronizal(payload, { dryRun: false })
 
   logger.info('Tudástár-import: kész.', {
     letrehozva,
@@ -492,6 +579,9 @@ async function main(): Promise<void> {
     oldalKulcsszoFrissitve: oldal.frissitve,
     oldalKulcsszoKihagyva: oldal.kihagyva,
     oldalKulcsszoHianyzik: oldal.hianyzik,
+    kurzusKulcsszoFrissitve: kurzus.frissitve,
+    kurzusKulcsszoKihagyva: kurzus.kihagyva,
+    kurzusKulcsszoHianyzik: kurzus.hianyzik,
   })
 }
 

@@ -14,6 +14,7 @@ import {
   streamAssetReadAccess,
 } from '../access'
 import { courseModulesField } from '../fields/course-modules'
+import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
@@ -614,7 +615,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // label-ekkel és pozícióval (a borítókép UTÁN), hogy a szerkesztő minden
     // tartalomtípusnál ugyanazt lássa ugyanott. A kurzusoldal fallback-lánca
     // ezekre épül (src/lib/seo.ts: seoTitle → név, seoDescription → rövid
-    // leírás, ogImage → borítókép).
+    // leírás, seoKeywords → meta/JSON-LD, ogImage → borítókép).
     {
       name: 'seoTitle',
       type: 'text',
@@ -631,6 +632,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         description: 'A Google találati listáján megjelenő rövid leírás (kb. 150 karakter).',
       },
     },
+    seoKeywordsField,
     {
       name: 'ogImage',
       type: 'upload',
