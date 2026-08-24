@@ -1,14 +1,15 @@
 # A Tudástár cikkeinek betöltése
 
-> **Mi ez?** A `docs/cikkek/` alatti hat markdown-cikk betöltése a Payload
+> **Mi ez?** A `docs/cikkek/` alatti nyolc markdown-cikk betöltése a Payload
 > `posts` kollekciójába, hogy megjelenjenek a `/blog` listán és a saját
-> cikkoldalukon.
+> cikkoldalukon. A 7. és 8. cikk csak `/blog/{slug}` poszt: gyökér
+> `/inhuvelygyulladas` pages-hubot a script nem hoz létre.
 >
 > **Készült:** 2026-08-21.
 
 ## 1. Miért script, és miért nem kézi bemásolás
 
-Hat cikk, egyenként 2 300–3 000 szavas törzzsel, 14–18 alcímmel és
+Nyolc cikk, egyenként 2 000–3 000 szavas törzzsel, alcímekkel és
 felsorolásokkal. Kézzel a szerkezet elveszne, és minden szakmai javítás után
 újra kellene csinálni. Így a markdown marad az **egyetlen igazság**, a
 betöltés pedig visszajátszható és tesztelhető.
@@ -25,12 +26,11 @@ csomópont-készletet ismer: `heading`, `paragraph`, `text`, `link`, `list`,
 
 Ez alattomos hibaforrás: egy táblázatot tartalmazó cikk az adatbázisban
 hiánytalannak látszana, miközben a látogató nem látja a felét. Ezért a fordító
-minden fel nem ismert szerkezetre **kivételt dob**, nem ugorja át.
-
-**Mérve a betöltés írásakor:** mind a hat cikk törzsében **nulla** táblázat-sor
-van. Az összes tábla a törzs UTÁNI, lektornak szóló szakaszokban áll, amiket a
-kivágás amúgy is levág. A dobás tehát ma egyetlen cikket sem érint; az őr a
-jövő szerkesztéseinek szól.
+minden fel nem ismert szerkezetre **kivételt dob**, nem ugorja át. A 7. és 8.
+cikk törzsében összehasonlító táblák vannak: ezeket a fordító ismert
+csomópontokra (felsorolás, „Fejléc: érték”) alakítja, mert a storefront és a
+Payload alapszerkesztője nem ismer `table` csomópontot. Kódblokk és második H1
+továbbra is dob.
 
 ## 3. Mi kerül be a cikkből, és mi nem
 
@@ -58,6 +58,8 @@ vágva, legfeljebb 200 karakter.
 | `4-pattano-ujj.md` | `pattano-ujj` |
 | `5-csuklo-es-kezfajdalom.md` | `csuklo-es-kezfajdalom` |
 | `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna` |
+| `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (csak `/blog/…`; nincs gyökér pages-hub) |
+| `8-befagyott-vall.md` | `befagyott-vall` (csak `/blog/…`; kategória `vall-es-konyok`) |
 
 Ezek a webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
 (7.2). **Eltérni tilos** — a hirdetés különben 404-re vinne.

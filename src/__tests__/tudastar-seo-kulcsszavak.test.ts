@@ -24,9 +24,11 @@ const CIKKEK = [
   'pattano-ujj',
   'csuklo-es-kezfajdalom',
   'csuklotores-utani-gyogytorna',
+  'inhuvelygyulladas',
+  'befagyott-vall',
 ] as const
 
-describe('S1 — mind a hat cikknek van mért célzása', () => {
+describe('S1 — minden cikknek van mért célzása', () => {
   it.each(CIKKEK)('%s', (slug) => {
     const k = kulcsszoFor(slug)
     expect(k, `${slug}: nincs kulcsszó-célzás`).toBeDefined()
@@ -115,5 +117,34 @@ describe('S6 — a mért kulcsszavak kikerülnek a strukturált adatba', () => {
     })
     expect('keywords' in ld).toBe(false)
     expect('about' in ld).toBe(false)
+  })
+})
+
+describe('S7 — a 7. és 8. cikk zárolt célzása', () => {
+  it('ínhüvelygyulladás: elsodleges, volumen, KD, seo, MedicalCondition', () => {
+    const k = kulcsszoFor('inhuvelygyulladas')
+    expect(k).toBeDefined()
+    expect(k!.elsodleges).toBe('ínhüvelygyulladás')
+    expect(k!.volumen).toBe(2200)
+    expect(k!.nehezseg).toBe(18)
+    expect(k!.seoTitle).toBe('Ínhüvelygyulladás: tünetek és mit tehetsz')
+    expect(k!.seoDescription).toBe(
+      'Ínhüvelygyulladás: hol fáj a csuklón és a hüvelykujjon, mit tehetsz házilag, és mikor kell orvoshoz menni. Nem diagnózis.',
+    )
+    expect(k!.targy).toEqual({ tipus: 'MedicalCondition', nev: 'Ínhüvelygyulladás' })
+  })
+
+  it('befagyott váll: elsodleges, volumen, KD, seo; nem vállfájdalom', () => {
+    const k = kulcsszoFor('befagyott-vall')
+    expect(k).toBeDefined()
+    expect(k!.elsodleges).toBe('befagyott váll')
+    expect(k!.volumen).toBe(880)
+    expect(k!.nehezseg).toBe(12)
+    expect(k!.seoTitle).toBe('Befagyott váll: szakaszok és teendők')
+    expect(k!.seoDescription).toBe(
+      'Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis.',
+    )
+    expect(k!.elsodleges).not.toBe('vállfájdalom')
+    expect(k!.targy).toEqual({ tipus: 'MedicalCondition', nev: 'Befagyott váll' })
   })
 })

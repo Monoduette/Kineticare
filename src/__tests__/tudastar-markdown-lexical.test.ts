@@ -29,6 +29,8 @@ const CIKKEK = [
   '4-pattano-ujj',
   '5-csuklo-es-kezfajdalom',
   '6-csuklotores-utani-gyogytorna',
+  '7-inhuvelygyulladas',
+  '8-befagyott-vall',
 ] as const
 
 const cikkPath = (nev: string): string =>
@@ -77,7 +79,9 @@ function nyersSzoveg(sorok: readonly string[]): string {
         .replace(/^#+ +/, '')
         .replace(/^> ?/, '')
         .replace(/^[-*] +/, '')
-        .replace(/^\d+\. +/, ''),
+        .replace(/^\d+\. +/, '')
+        .replace(/^\|[-:| ]+\|$/, '')
+        .replace(/\|/g, ' '),
     )
     .join(' ')
     .replace(/\*\*/g, '')
@@ -171,8 +175,16 @@ describe('T2 — soron belüli formázás', () => {
 })
 
 describe('T3 — a fel nem ismert szerkezet HANGOSAN bukik', () => {
-  it('táblázatra kivételt dob, mert a szerializáló nem rendereli', () => {
-    expect(() => markdownToLexical(['| a | b |', '|---|---|'])).toThrowError(/Táblázat/)
+  it('a törzsbeli táblázatot ismert csomópontokra fordítja, szót nem veszt', () => {
+    const doc = markdownToLexical([
+      '| Fejléc A | Fejléc B |',
+      '|---|---|',
+      '| alma | körte |',
+    ])
+    const szoveg = szovegeOf((doc as unknown as { root: unknown }).root)
+    expect(szoveg).toContain('Fejléc A')
+    expect(szoveg).toContain('alma')
+    expect(szoveg).toContain('körte')
   })
 
   it('kódblokkra kivételt dob', () => {
@@ -225,5 +237,50 @@ describe('T5 — bevezető', () => {
     expect(excerpt.length).toBeGreaterThan(40)
     expect(excerpt.length).toBeLessThanOrEqual(201)
     expect(excerpt).not.toMatch(/[*#|]|\]\(/)
+  })
+})
+
+describe('T6 — a 7. és 8. cikk zárai', () => {
+  it('a befagyott váll törzse nem írja a „fagyott váll” alakot', () => {
+    const { lines } = extractArticleBody(readFileSync(cikkPath('8-befagyott-vall'), 'utf8'))
+    expect(lines.join('\n')).not.toMatch(/(?<![Bb]e)fagyott váll/)
+  })
+
+  it('az ínhüvelygyulladás törzse blog-útvonalra hivatkozik, nem gyökér hubra', () => {
+    const { lines } = extractArticleBody(readFileSync(cikkPath('7-inhuvelygyulladas'), 'utf8'))
+    const torzs = lines.join('\n')
+    expect(torzs).not.toMatch(/\]\(\/inhuvelygyulladas\)/)
+    expect(torzs).toContain('/blog/pattano-ujj')
+    expect(torzs).toContain('/blog/keztoalagut-szindroma')
+    expect(torzs).toContain('/blog/csuklo-es-kezfajdalom')
+    expect(torzs).toContain('/kurzusok/otthoni-kezrehab-program')
+    expect(torzs).not.toContain('de-quervain-szindroma')
+  })
+
+  it('a befagyott váll törzse a szolgáltatásokra visz, nem kurzus-CTA-ra', () => {
+    const { lines } = extractArticleBody(readFileSync(cikkPath('8-befagyott-vall'), 'utf8'))
+    const torzs = lines.join('\n')
+    expect(torzs).toContain('/szolgaltatasok')
+    expect(torzs).not.toContain('/kurzusok/otthoni-kezrehab-program')
+  })
+
+  it('az importer listája megtartja az eredeti hat slughot, és felveszi a kettőt', () => {
+    const src = readFileSync(
+      path.join(process.cwd(), 'src/scripts/import-tudastar-cikkek.ts'),
+      'utf8',
+    )
+    for (const slug of [
+      'miert-zsibbad-a-kezem',
+      'keztoalagut-szindroma',
+      'teniszkonyok',
+      'pattano-ujj',
+      'csuklo-es-kezfajdalom',
+      'csuklotores-utani-gyogytorna',
+      'inhuvelygyulladas',
+      'befagyott-vall',
+    ]) {
+      expect(src).toContain(`slug: '${slug}'`)
+    }
+    expect(src).not.toMatch(/kapcsolodoSlugok: \[[^\]]*de-quervain-szindroma/)
   })
 })

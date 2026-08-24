@@ -46,6 +46,8 @@ const FAJL: Readonly<Record<string, string>> = {
   'pattano-ujj': '4-pattano-ujj.md',
   'csuklo-es-kezfajdalom': '5-csuklo-es-kezfajdalom.md',
   'csuklotores-utani-gyogytorna': '6-csuklotores-utani-gyogytorna.md',
+  inhuvelygyulladas: '7-inhuvelygyulladas.md',
+  'befagyott-vall': '8-befagyott-vall.md',
 }
 
 /**

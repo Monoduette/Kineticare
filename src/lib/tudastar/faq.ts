@@ -1,5 +1,5 @@
 /**
- * A Tudástár hat cikkének GYIK-tételei (kérdés-válasz párok).
+ * A Tudástár cikkeinek GYIK-tételei (kérdés-válasz párok).
  *
  * ═══ HONNAN JÖNNEK A KÉRDÉSEK ═══
  * Egyetlen kérdést sem találtunk ki. Mindegyik a 2026-08-21-i Monid-mérésből
@@ -13,6 +13,8 @@
  *   pattanó ujj            01M0K0CX65HY4G2ZB7YRKBSFZF   (18)
  *   csuklófájdalom         01M0K0D5A6WZWPGF2TGHCJJP6W   (11)
  *   csuklótörés            01M0K0DKQKY8QQG37XN21H8MY9   (13)
+ *   ínhüvelygyulladás      01M0SJQ0SBHS103YQ37Z6MTX1B
+ *   befagyott váll         01M0ST9XKE8HY4VC81DB7BWAAP
  *   Trends: 01M0K0DQM4TGHVBN0971W1F21X, 01M0K0E2YMEHXJ9CFKC94QF1M0,
  *           01M0K0E8PB8RVH71AK85TW21H0, 01M0K0EE3ZJ0S5J52TCJWP0E2F
  *           (csuklófájdalom és csuklótörés: ÜRES, nincs elég trend-adat)
@@ -780,6 +782,169 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
           'túl szorossá vagy túl lazává válik',
           'elkékül vagy elfehéredik',
           'ne ázzon el',
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'inhuvelygyulladas',
+    tetelek: [
+      {
+        kerdes: 'Mennyi ideig tarthat?',
+        valasz:
+          'Nincs megígérhető időablak. A lefolyás egyéni. A De Quervain-kép magától is rendeződhet, ' +
+          'ebből nem következik, hogy nálad is így lesz.',
+        mert: ['ínhüvelygyulladás', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Mennyi ideig tarthat?',
+        horgony: ['Nincs megígérhető időablak', 'A lefolyás egyéni', 'magától is rendeződhet'],
+      },
+      {
+        kerdes: 'Mit tehetek házilag?',
+        valasz:
+          'Kíméld a rontó mozdulatot, jegelj textillel, kérj tanácsot a fájdalomcsillapítóról. ' +
+          'Ez az első lépés, nem a teljes kezelés. A sín, az injekció és a műtét orvosi döntés.',
+        mert: ['ínhüvelygyulladás kezelése házilag', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Mit tehetek házilag?',
+        horgony: [
+          'jegelj textillel',
+          'nem a teljes kezelés',
+          'A sín, az injekció és a műtét orvosi döntés',
+        ],
+      },
+      {
+        kerdes: 'Hideg vagy meleg?',
+        valasz:
+          'Hideg, textilben. Sérülés után 2–3 napig ne melegíts, és ne fürödj forrón.',
+        mert: ['ínhüvelygyulladás', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Hideg vagy meleg?',
+        horgony: ['Hideg, textilben', 'ne melegíts', 'ne fürödj forrón'],
+      },
+      {
+        kerdes: 'Kell-e sín vagy rögzítő?',
+        valasz:
+          'A sín, különösen éjjel, a nem műtéti sorban van. Hogy rád kell-e, szakember dönti el. ' +
+          'A sín önmagában vitatott. A tape / kinesio szalag ennél a képnél nem megnyitott evidencia: ' +
+          'nem állítjuk, hogy segít, és terméket sem ajánlunk.',
+        mert: ['ínhüvelygyulladás', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Kell-e sín vagy rögzítő?',
+        horgony: [
+          'különösen éjjel',
+          'A sín önmagában vitatott',
+          'nem állítjuk, hogy segít',
+        ],
+      },
+      {
+        kerdes: 'Ínhüvelygyulladás vagy kéztőalagút?',
+        valasz:
+          'A hüvelykoldali ínhüvely-panasz fogásra és csuklófordításra fáj. A kéztőalagút a ' +
+          'középideg nyomása: inkább éjszakai zsibbadás és ügyetlenség. A kettő előfordulhat együtt. ' +
+          'A szétválasztás vizsgálat.',
+        mert: ['ínhüvelygyulladás', 'kéztőalagút', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Ínhüvelygyulladás vagy kéztőalagút?',
+        horgony: [
+          'fogásra és csuklófordításra fáj',
+          'éjszakai zsibbadás',
+          'A szétválasztás vizsgálat',
+        ],
+      },
+      {
+        kerdes: 'Mikor kell orvoshoz menni?',
+        valasz:
+          'Ha a panasz akadályoz, romlik, visszatér, vagy két hét otthon után sem javul. ' +
+          'Bizsergésnél, érzéskiesésnél, cukorbetegségnél és lázas, meleg, duzzadt képnél is. ' +
+          'Négy Kanavel-jel együtt: azonnali sürgősségi osztály.',
+        mert: ['ínhüvelygyulladás', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
+        szakasz: 'Mikor kell orvoshoz menni?',
+        horgony: [
+          'két hét otthon után sem javul',
+          'Négy Kanavel-jel együtt',
+          'azonnali sürgősségi osztály',
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'befagyott-vall',
+    tetelek: [
+      {
+        kerdes: 'Milyen szakaszai vannak?',
+        valasz:
+          'A magyar irányelv három stádiumot ír le. A betegtájékoztatók fagyási, merev és olvadó ' +
+          'felosztása más időablakú. A szakaszt vizsgálattal állapítják meg. Ne sorold be magad.',
+        mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Milyen szakaszai vannak?',
+        horgony: [
+          'három stádiumot ír le',
+          'fagyási, merev és olvadó',
+          'Ne sorold be magad',
+        ],
+      },
+      {
+        kerdes: 'Mennyi ideig tarthat?',
+        valasz:
+          'A tünetek fellépésétől átlagosan 1–3 év. Más tájékoztatók is években számolnak, van ahol ' +
+          'több mint két évet írnak. Enyhe merevség visszamaradhat. Ez csoportos lefolyás, nem ígéret rád.',
+        mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Mennyi ideig tarthat?',
+        horgony: [
+          'átlagosan 1–3 év',
+          'Enyhe merevség visszamaradhat',
+          'nem ígéret rád',
+        ],
+      },
+      {
+        kerdes: 'Tornázhatok, ha fáj?',
+        valasz:
+          'Csak a vizsgáló által betanított, a fájdalomhatárig vitt gyakorlat. Magas irritációnál ' +
+          'fájdalommentes mozgás kell, nem áterőltetés. Ha a gyakorlat rontja a tüneted, hagyd abba, ' +
+          'és szólj a gyógytornászodnak vagy az orvosodnak.',
+        mert: ['befagyott váll torna', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Tornázhatok, ha fáj?',
+        horgony: [
+          'fájdalomhatárig vitt gyakorlat',
+          'nem áterőltetés',
+          'hagyd abba',
+        ],
+      },
+      {
+        kerdes: 'Magától elmúlik?',
+        valasz:
+          'A legtöbb esetben a fájdalom és a merevség idővel javul. Kezeletlenül is javulhat a ' +
+          'mozgás, csak lassabban. Nem minden tünet tűnik el teljesen. Enyhe merevség maradhat.',
+        mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Magától elmúlik?',
+        horgony: [
+          'idővel javul',
+          'Kezeletlenül is javulhat',
+          'Enyhe merevség maradhat',
+        ],
+      },
+      {
+        kerdes: 'Befagyott váll vagy rotátorköpeny?',
+        valasz:
+          'Otthonról nem dönthető el. Itt az aktív és a passzív mozgás is beszűkül. ' +
+          'Rotátorköpenynél a passzív mozgás gyakran megmarad, és a panasz terheléshez vagy ' +
+          'eséshez kötődhet. A diagnózist orvos mondja ki.',
+        mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Befagyott váll vagy rotátorköpeny?',
+        horgony: [
+          'Otthonról nem dönthető el',
+          'passzív mozgás is beszűkül',
+          'A diagnózist orvos mondja ki',
+        ],
+      },
+      {
+        kerdes: 'Mikor kell orvoshoz menni?',
+        valasz:
+          'Ha a fájdalom és a merevség nem múlik, vagy annyira erős, hogy alig mozdul a kar. ' +
+          'Aznap, ha hirtelen nagyon erős a fájdalom, ha nem mozdul a kar, ha megváltozott az ' +
+          'alakja, vagy ha lázad van. Cukorbetegség mellett ne várj sokáig.',
+        mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
+        szakasz: 'Mikor kell orvoshoz menni?',
+        horgony: [
+          'alig mozdul a kar',
+          'hirtelen nagyon erős a fájdalom',
+          'ne várj sokáig',
         ],
       },
     ],

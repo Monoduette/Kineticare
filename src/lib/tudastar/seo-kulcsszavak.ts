@@ -61,8 +61,8 @@ export interface CikkKulcsszo {
 }
 
 /**
- * A hat cikk célzása, a mért megtérülés sorrendjében
- * (`docs/kulcsszavak.md` 4. „Oldalterv”).
+ * A cikkek célzása, a mért megtérülés sorrendjében
+ * (`docs/kulcsszavak.md` 4. „Oldalterv”; a 7. és 8. cikk Ahrefs/Monid 2026-08-24).
  */
 export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
   {
@@ -154,6 +154,36 @@ export const CIKK_KULCSSZAVAK: readonly CikkKulcsszo[] = [
     indok:
       'Pontosan a termék belépője: aki ezt keresi, most áll a rehabilitáció elején. A kifejezés nehézsége nulla.',
     targy: { tipus: 'MedicalCondition', nev: 'Csuklótörés' },
+  },
+  {
+    slug: 'inhuvelygyulladas',
+    elsodleges: 'ínhüvelygyulladás',
+    volumen: 2200,
+    nehezseg: 18,
+    masodlagos: [
+      'csukló ínhüvelygyulladás',
+      'ínhüvelygyulladás kezelése házilag',
+      'ínhüvelygyulladás torna',
+    ],
+    seoTitle: 'Ínhüvelygyulladás: tünetek és mit tehetsz',
+    seoDescription:
+      'Ínhüvelygyulladás: hol fáj a csuklón és a hüvelykujjon, mit tehetsz házilag, és mikor kell orvoshoz menni. Nem diagnózis.',
+    indok:
+      'Ahrefs HU, Monid-futás 01M0SJQ0SBHS103YQ37Z6MTX1B: ínhüvelygyulladás 2200 keresés, KD 18. A De Quervain-kép H2, nem külön slug.',
+    targy: { tipus: 'MedicalCondition', nev: 'Ínhüvelygyulladás' },
+  },
+  {
+    slug: 'befagyott-vall',
+    elsodleges: 'befagyott váll',
+    volumen: 880,
+    nehezseg: 12,
+    masodlagos: ['befagyott váll torna', 'befagyott váll szindróma', 'adhesive capsulitis'],
+    seoTitle: 'Befagyott váll: szakaszok és teendők',
+    seoDescription:
+      'Befagyott váll (adhesive capsulitis): a három szakasz, mit tehetsz otthon, milyen a torna, és mikor kell orvos. Nem diagnózis.',
+    indok:
+      'Monid-futás 01M0ST9XKE8HY4VC81DB7BWAAP: befagyott váll 880 keresés, KD 12. A vállfájdalom nem elsődleges; a hirdetés HOLD.',
+    targy: { tipus: 'MedicalCondition', nev: 'Befagyott váll' },
   },
 ]
 
