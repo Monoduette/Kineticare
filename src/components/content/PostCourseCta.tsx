@@ -46,6 +46,10 @@ import '../../app/(frontend)/styles/blocks/post-view.css'
  *   /kapcsolat időpontkérő szekciójára). Kéz-kurzust váll-panaszra nem
  *   ajánlunk elsődlegesként: a felirat és a törzs ígérete együtt maradjon
  *   igaz (WCAG 2.2 2.4.4, Link Purpose in Context).
+ * - A `kurzus` változat MINDKÉT ága után külön időpontkérő doboz áll
+ *   (AppointmentBox) — tulajdonosi kérés, 2026-08-25: az írásos
+ *   időpontkérés minden cikk alól elérhető. A #24 súlya secondary, tehát
+ *   az egy-elsődleges-gomb szabály sértetlen.
  * Laponként legfeljebb EGY elsődleges gomb áll (GOV.UK Buttons, B6.5).
  * Új gomb-feliratot kitalálni tilos — minden gombszöveg a
  * `cta-vocabulary.ts`-ből jön.
@@ -85,14 +89,22 @@ const NO_COURSE_TEXT =
   'A cikkek a tájékozódáshoz szólnak. Ha vezetett, videós gyakorlást keresel otthonra, azt a kurzusainkban találod meg.'
 
 /**
- * Az időpontos (váll) ág mikroszövegei. Tényszerűek: a cikkek maguk is azt
- * mondják ki, hogy a váll panaszát vizsgálat tudja megítélni; a panel ugyanezt
- * a következő lépést adja meg, ígéret nélkül. Gondolatjel és felkiáltójel
- * nincs (§3.1.2, G-UI7).
+ * Az időpontos mikroszövegek. Tényszerűek: a cikkek maguk is azt mondják ki,
+ * hogy a panaszt vizsgálat tudja megítélni; a doboz ugyanezt a következő
+ * lépést adja meg, ígéret nélkül. Gondolatjel és felkiáltójel nincs
+ * (§3.1.2, G-UI7).
+ *
+ * Két változat van: a váll-cikk fő ajánlata maga az időpontkérés
+ * (`APPOINTMENT_TEXT`), a kéz-cikkek alatt pedig a kurzus-panel UTÁN álló
+ * külön doboz szövege általános (`APPOINTMENT_BOX_TEXT`) — tulajdonosi
+ * kérés, 2026-08-25: az időpontkérés minden cikk alól elérhető legyen.
  */
 export const APPOINTMENT_HEADING = 'Hogyan tovább?'
 export const APPOINTMENT_TEXT =
   'A cikkek a tájékozódáshoz szólnak. A váll panaszát személyes vizsgálat tudja megítélni, időpontot írásban kérhetsz a rendelőnkbe.'
+export const APPOINTMENT_BOX_HEADING = 'Időpontkérés a rendelőbe'
+export const APPOINTMENT_BOX_TEXT =
+  'A cikk nem helyettesíti a vizsgálatot. Ha a panaszod nem javul, vagy szeretnéd, hogy szakember nézze meg, időpontot írásban kérhetsz a rendelőnkbe.'
 /** A §3.2 #24 dokumentált célja: a /kapcsolat időpontkérő szekciója. */
 export const APPOINTMENT_HREF = '/kapcsolat#idopontkeres'
 
@@ -126,6 +138,27 @@ function FreeCourseLine({
   )
 }
 
+/**
+ * Külön időpontkérő doboz a kurzus-panel UTÁN (tulajdonosi kérés,
+ * 2026-08-25): az írásos időpontkérés minden cikk alól elérhető, a §3.2 #24
+ * feliratával, a /kapcsolat időpontkérő szekciójára. A váll-változat fő
+ * panelje maga az időpontkérés, ott ez a doboz nem ismétlődik (NN/g,
+ * The Same Link Twice on the Same Page: a duplikált linknek ára van).
+ */
+function AppointmentBox() {
+  return (
+    <Card as="section" className="kc-post-cta__panel">
+      <h2 className="kc-post-cta__title">{APPOINTMENT_BOX_HEADING}</h2>
+      <p className="kc-post-cta__text">{APPOINTMENT_BOX_TEXT}</p>
+      <p className="kc-post-cta__action">
+        <Link className="kc-button kc-button--secondary" href={APPOINTMENT_HREF}>
+          {ctaLabel('appointment-request-link')}
+        </Link>
+      </p>
+    </Card>
+  )
+}
+
 export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProps) {
   if (variant === 'idopont') {
     return (
@@ -144,16 +177,19 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
 
   if (course === null) {
     return (
-      <Card as="section" className="kc-post-cta__panel">
-        <h2 className="kc-post-cta__title">{NO_COURSE_HEADING}</h2>
-        <p className="kc-post-cta__text">{NO_COURSE_TEXT}</p>
-        <p className="kc-post-cta__action">
-          <Link className="kc-button kc-button--primary" href="/kurzusok">
-            {ctaLabel('course-list-open')}
-          </Link>
-        </p>
-        <FreeCourseLine freeCourse={freeCourse} variant={variant} />
-      </Card>
+      <>
+        <Card as="section" className="kc-post-cta__panel">
+          <h2 className="kc-post-cta__title">{NO_COURSE_HEADING}</h2>
+          <p className="kc-post-cta__text">{NO_COURSE_TEXT}</p>
+          <p className="kc-post-cta__action">
+            <Link className="kc-button kc-button--primary" href="/kurzusok">
+              {ctaLabel('course-list-open')}
+            </Link>
+          </p>
+          <FreeCourseLine freeCourse={freeCourse} variant={variant} />
+        </Card>
+        <AppointmentBox />
+      </>
     )
   }
 
@@ -161,28 +197,31 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
   const priceLabel = coursePriceLabel(course)
 
   return (
-    <Card as="section" className="kc-post-cta__panel">
-      <h2 className="kc-post-cta__title">{courseTitle(course)}</h2>
-      {course.shortDescription !== null ? (
-        <p className="kc-post-cta__text">{course.shortDescription}</p>
-      ) : null}
-      <p className="kc-post-cta__action">
-        {/* Az ÁR-TÉNY a gomb mellett áll. A 'none' állapot (bekapcsolt
-            ár-pipa, üres ár) SZÁNDÉKOSAN néma: az konfigurációs hiba, és az
-            „Ingyenes" felirat ott hazugság lenne (lib/courses.ts). */}
-        {priceKind === 'price' && priceLabel !== null ? (
-          <Badge tone="neutral">{priceLabel}</Badge>
+    <>
+      <Card as="section" className="kc-post-cta__panel">
+        <h2 className="kc-post-cta__title">{courseTitle(course)}</h2>
+        {course.shortDescription !== null ? (
+          <p className="kc-post-cta__text">{course.shortDescription}</p>
         ) : null}
-        {priceKind === 'free' ? <Badge tone="success">Ingyenes</Badge> : null}
-        <Link className="kc-button kc-button--secondary" href={courseHref(course)}>
-          {ctaLabel('course-sales-open')}
-        </Link>
-      </p>
-      {/* Ha a KAPCSOLT kurzus maga az ingyenes termék, a sor nem ismétli meg
-          ugyanazt a célt (NN/g, The Same Link Twice on the Same Page). */}
-      {freeCourse !== null && freeCourse.id !== course.id ? (
-        <FreeCourseLine freeCourse={freeCourse} variant={variant} />
-      ) : null}
-    </Card>
+        <p className="kc-post-cta__action">
+          {/* Az ÁR-TÉNY a gomb mellett áll. A 'none' állapot (bekapcsolt
+              ár-pipa, üres ár) SZÁNDÉKOSAN néma: az konfigurációs hiba, és az
+              „Ingyenes" felirat ott hazugság lenne (lib/courses.ts). */}
+          {priceKind === 'price' && priceLabel !== null ? (
+            <Badge tone="neutral">{priceLabel}</Badge>
+          ) : null}
+          {priceKind === 'free' ? <Badge tone="success">Ingyenes</Badge> : null}
+          <Link className="kc-button kc-button--secondary" href={courseHref(course)}>
+            {ctaLabel('course-sales-open')}
+          </Link>
+        </p>
+        {/* Ha a KAPCSOLT kurzus maga az ingyenes termék, a sor nem ismétli meg
+            ugyanazt a célt (NN/g, The Same Link Twice on the Same Page). */}
+        {freeCourse !== null && freeCourse.id !== course.id ? (
+          <FreeCourseLine freeCourse={freeCourse} variant={variant} />
+        ) : null}
+      </Card>
+      <AppointmentBox />
+    </>
   )
 }

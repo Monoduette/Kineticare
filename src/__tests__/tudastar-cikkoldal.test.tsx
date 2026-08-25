@@ -16,6 +16,7 @@ import {
   shouldShowToc,
 } from '../components/content/post-article'
 import {
+  APPOINTMENT_BOX_HEADING,
   APPOINTMENT_HREF,
   FREE_LINE_LEAD,
   FREE_LINE_LEAD_KEZ,
@@ -466,6 +467,25 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
       }),
     )
     expect(html).not.toContain('kc-post-cta__free')
+  })
+
+  it('az időpontkérő doboz minden kéz-cikk alatt áll, pontosan egyszer', () => {
+    // Tulajdonosi kérés (2026-08-25): az írásos időpontkérés minden cikk
+    // alól elérhető, a #24 felirattal, a dedikált kapcsolat-szekcióra.
+    for (const fixture of [post(), post({ ctaCourse: KURZUS })]) {
+      const html = render(createElement(PostArticle, { post: fixture }))
+      expect(text(html)).toContain(APPOINTMENT_BOX_HEADING)
+      expect(text(html)).toContain(ctaLabel('appointment-request-link'))
+      expect([...html.matchAll(new RegExp(`href="${APPOINTMENT_HREF}"`, 'g'))].length).toBe(1)
+    }
+  })
+
+  it('a váll-cikk alatt az időpontkérés nem duplikálódik', () => {
+    // Ott a fő panel maga az időpontkérés; a külön doboz nem ismétli meg
+    // (NN/g, The Same Link Twice on the Same Page).
+    const html = render(createElement(PostArticle, { post: post({ slug: 'befagyott-vall' }) }))
+    expect([...html.matchAll(new RegExp(`href="${APPOINTMENT_HREF}"`, 'g'))].length).toBe(1)
+    expect(text(html)).not.toContain(APPOINTMENT_BOX_HEADING)
   })
 
   it('a sor és az időpontos ág nem ígér gyógyulást, arányt és nem sürget', () => {

@@ -376,6 +376,14 @@
   color: var(--kc-color-link-hover);
 }
 
+/* Két egymásra következő panel (kurzus-ajánló + időpontkérő doboz) közti
+   függőleges ritmus: a kártyák közti táv a szekción belüli tartalom-köz
+   (--kc-space-5), hogy a két doboz összetartozó párnak olvasódjon, ne két
+   külön sávnak (a szekció-határ mért küszöbét lásd lentebb). */
+.kc-post-cta__panel + .kc-post-cta__panel {
+  margin-block-start: var(--kc-space-5);
+}
+
 /* ---- A CTA-sáv és a kapcsolódó blokk távolsága ----------------------------
    MÉRT KÜSZÖB (docs/tudastar-ux-terv.md 5.8): a panel alja és a kapcsolódó
    blokk címsora közt legfeljebb 72 px (--kc-space-8) üres függőleges táv
