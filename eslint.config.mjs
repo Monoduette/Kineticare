@@ -15,19 +15,12 @@ const eslintConfig = [
   {
     // A `.claude/**` az ügynök-worktree-ké: a repó teljes másolatát tartalmazza,
     // lintelve minden találat duplán jelenne meg.
-    //
-    // A `higgsfield-site/**` a Higgsfield-en futó landing tükre: külön stack
-    // (TanStack Start + Cloudflare Workers), saját eslint- és tsconfig-jával,
-    // saját bun-workspace-függőségekkel. A repó gyökér-tooljai nem tudják
-    // feloldani az importjait, ezért a lint és a typecheck alól is kivesszük
-    // (utóbbi a tsconfig.json `exclude` listáján). Lásd higgsfield-site/README.md.
     ignores: [
       'node_modules/**',
       '.next/**',
       'dist/**',
       'coverage/**',
       '.claude/**',
-      'higgsfield-site/**',
     ],
   },
   // A migrációs fájlokat a Payload migrációs eszköze generálja, és a 3. tilos

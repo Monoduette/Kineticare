@@ -10,7 +10,8 @@ import '../../app/(frontend)/styles/blocks/about.css'
  * A landing `kc-about` TÁBLÁJÁNAK portja: teljes képernyős, teljes szélességű
  * board három hasábban — balra a felirat/cím/bekezdések és az ikonos kiemelés,
  * középen az álló csapatfotó a tábla aljáig, jobbra a hajszálvonalas
- * szám-oszlop (higgsfield-site/app/src/kineticare.css 542–670.). Ezért nincs
+ * szám-oszlop. A tábla a régi koncepció-landing `kc-about` elrendezését
+ * követi (egyszeri tükör, már nincs a repóban). Ezért nincs
  * `kc-container`: a tábla szélességét a board-rendszer adja (styles/ui.css).
  *
  * A számokat a szerkesztő írja (VALÓS adatok — kitalált statisztika

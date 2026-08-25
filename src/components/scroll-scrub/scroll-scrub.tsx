@@ -8,10 +8,10 @@ import './scroll-scrub.css'
 /**
  * ScrollScrub — görgetéssel vezérelt filmsáv ('use client' sziget).
  *
- * A landing-tükörből (higgsfield-site/app/src/components/scroll-scrub/) átemelt
- * implementáció, a szekció-rendszer terv 3.3 pontja szerint. Csak natív
- * böngésző-API-kat használ (matchMedia, fetch, requestAnimationFrame,
- * HTMLVideoElement), így a TanStack-környezetből változtatás nélkül áthozható.
+ * A régi koncepció-landing scroll-scrub komponenséből átemelt implementáció
+ * (egyszeri tükör, már nincs a repóban), a szekció-rendszer terv 3.3 pontja
+ * szerint. Csak natív böngésző-API-kat használ (matchMedia, fetch,
+ * requestAnimationFrame, HTMLVideoElement).
  *
  * Működés: egyetlen, folytonos film `currentTime`-ját mozgatja a görgetés. A
  * jelenetekhez rendelt „sávok" (scroll: viewport-magasságban) adják a scrub

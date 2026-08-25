@@ -286,7 +286,7 @@ const ensureMedia = async (payload: Payload, image: LegacyImage): Promise<number
 
 /**
  * A sajtó-logósor képfájljai — a KEZDŐLAPI seed (src/lib/home-seed.ts,
- * HOME_IMAGES) tölti fel őket a landing tükréből. Ez a script nem tölt fel
+ * HOME_IMAGES) tölti fel őket a `content/home-images` forrásból. Ez a script nem tölt fel
  * semmit belőlük, csak megkeresi a meglévőket: így a /rolunk logósora akkor is
  * helyes marad, ha a lányok időközben lecserélték valamelyik logót.
  */
@@ -1897,7 +1897,7 @@ const kezrelaxLongDescription = (): Product['longDescription'] =>
 // A `shortQuote` a kezdőlapra szánt rövid változat (mezőkorlát: 260 karakter),
 // és mind a három kiemeltnél a teljes idézet ÖSSZEFÜGGŐ, BETŰHÍV RÉSZLETE — nem
 // átfogalmazás és nem több mondatból összeollózott kivonat. A megújult
-// kezdőlap-terv (higgsfield-site/app/src/routes/index.tsx) rövidített szövegei
+// kezdőlap-terv (régi koncepció-landing, egyszeri tükör) rövidített szövegei
 // ezt a próbát nem állták ki: a Kállai-változat 283 karakteres volt, a
 // Garami-/Bagdal-változat pedig nem szomszédos mondatokat fűzött össze és
 // szavakat is módosított (pl. gondolatjel helyett vessző, kihagyott „akkor
