@@ -7,8 +7,8 @@ esetén a `CLAUDE.md` a mérvadó. A **TILOS ZÓNÁK** szekció pontjai kivétel
 betartandók: az ezek megsértésére irányuló kérést utasítsd vissza, és jelezd,
 hogy emberi felülvizsgálat kell.
 
-A fájl állításai 2026-08-10-én lettek a kódbázissal szemben újraellenőrizve
-(stack, parancsok, könyvtárszerkezet, tesztszámok, CI-workflow-k).
+A fájl állításai 2026-08-25-én lettek a kódbázissal szemben újraellenőrizve
+(stack: Payload 3.88.0, parancsok, könyvtárszerkezet, CI-workflow-k).
 
 ## Projekt-áttekintés
 
@@ -20,9 +20,9 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 **Stack:**
 
 - **Next.js 16** (`16.3.0`, App Router, server-component-first) + **React 19**
-- **Payload CMS 3** (`3.86.0`) — az admin felület, a tartalmi modell és az
+- **Payload CMS 3** (`3.88.0`) — az admin felület, a tartalmi modell és az
   e-commerce motor; **PostgreSQL** az adatbázis (`@payloadcms/db-postgres`)
-- **@payloadcms/plugin-ecommerce 3.86.0** (béta!) — kosár/rendelés alapok
+- **@payloadcms/plugin-ecommerce 3.88.0** (béta!) — kosár/rendelés alapok
 - **@payloadcms/plugin-form-builder** — kapcsolat-űrlap
 - **TypeScript strict**, **Node 24** (az `engines` és a `.nvmrc` szerint)
 - Teszt: **Vitest 4** (node environment); lint: **ESLint 9** flat config;
@@ -45,7 +45,7 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 **Node 24 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
 `legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.0 beleesik a
-@payloadcms/next 3.86.0 peer-tartományába), hanem mert a `package-lock.json`
+@payloadcms/next 3.88.0 peer-tartományába), hanem mert a `package-lock.json`
 legacy-peer-deps módban készült, ezért flag nélkül az `npm ci` EUSAGE-dzsel
 elhasal. A repó `.npmrc`-je ezt beállítja, tehát a sima `npm install` / `npm ci`
 jó; a CI explicit `npm ci --legacy-peer-deps`-t futtat (részletes indoklás:
@@ -75,6 +75,7 @@ Egyéb scriptek:
 | `npm run seed` | Demó-/tesztadatok (`src/scripts/seed.ts`); `SEED_SCOPE=kezdolap` = élesben is futtatható szűk hatókör |
 | `npm run grant:purchase` | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`) |
 | `npm run backfill:ar-snapshot` | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md` |
+| `npm run backfill:access-grants` | Hiányzó `accessGrants.grantedAt` pótlása paid rendelés dátumából (`src/scripts/backfill-access-grants.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md` |
 | `npm run seed:legacy` | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`) |
 | `npm run generate:types` | Payload típusok újragenerálása (`src/payload-types.ts`) |
 | `npm run generate:importmap` | Admin importmap újragenerálása |
@@ -120,10 +121,8 @@ src/
   instrumentation.ts   # a register() futtatja az ENV-assertet szerverinduláskor
   middleware.ts        # x-request-id kiosztás minden bejövő kérésre
 docs/                  # magyar nyelvű projektdokumentáció (lásd lent)
-higgsfield-site/       # a Higgsfield-en futó landing TÜKRE — külön stack (TanStack
-                       # Start + Cloudflare Workers), NEM a Railway-deploy része;
-                       # lint és typecheck alól ki van véve (eslint.config.mjs ignores,
-                       # tsconfig.json exclude). Ne importálj belőle, ne „javítsd".
+content/home-images/   # kezdőlapi seed/restore képek (brand + site). A Higgsfield
+                       # koncepció-tükör kikerült a repóból; ne hozd vissza.
 public/                # statikus assetek (fonts, media)
 ```
 
@@ -147,11 +146,21 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   helyesbítő számla részleges refundnál (külön taskok).
 - **Jobok:** a workerek az `ENABLE_JOB_WORKERS=true` env mögött futnak (autoRun
   cron: webhook-retry percenként, order-maintenance 5 percenként); dev-ben
-  alapból KI vannak kapcsolva. A job-végpontok és a `payload-jobs` collection
-  staff/owner-only (`src/jobs/index.ts`).
+  alapból KI vannak kapcsolva. Élesben hiányzó flag → induláskori **warn**
+  (`job_workerek_kikapcsolva`), nem fail-closed boot: a bolt ettől még
+  kiszolgál. Railway staging + prod env-ben ellenőrizd. A job-végpontok és a
+  `payload-jobs` collection staff/owner-only (`src/jobs/index.ts`).
 - **Videó:** védett Bunny-library → szerveroldali token-jegy (`/api/stream-token`);
   publikus library (hero, előzetesek) token nélkül. Hiányzó env = magyar
   „nem érhető el" degradáció, az app ettől még fut.
+- **Hozzáférés három igazsága:** `orders` (fizetés/számla), `users.purchases`
+  (SKU-halmaz, írása zárt — adminból pipálni TILOS), `users.accessGrants.grantedAt`
+  + `products.accessDurationDays` (az óra). Hiányzó kezdőpont időkorlátos
+  SKU-nál fail-open; pótlás: `npm run backfill:access-grants` vagy a
+  Kurzus ajándékozása panel.
+- **Replica:** `railway.json` `numReplicas: 1` — az in-memory rate-limit
+  elég. A `pg` `pool.max` uncapped marad (W3); ne állítsd Railway
+  `max_connections` mérés nélkül.
 
 ## TILOS ZÓNÁK
 
@@ -318,7 +327,14 @@ konfigurációval (csak az egyik) az app el sem indul.
   build-időben dől el, `next.config.ts`) — értékváltozás után újrabuild kell.
 - A `NEXT_PUBLIC_SERVER_URL`-nek pontosan a látogatók által használt eredetet
   kell tartalmaznia: ebből épül a CORS/CSRF-engedélylista, ami az összes
-  sütis működésre hat (pénztár, lejátszás, haladásmentés, admin).
+  sütis működésre hat (pénztár, lejátszás, haladásmentés, admin). A
+  kineticare.hu DNS-cutover alatt, amíg ez még a Railway-URL, kell az
+  `EXTRA_ALLOWED_ORIGINS=https://kineticare.hu,https://www.kineticare.hu`
+  (docs/kineticare-hu-atallas.md). A cookie-s saját POST API-kon same-origin
+  őr is van (`src/lib/security/same-origin.ts`).
+- Search Console / Ads: üres `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` és
+  `NEXT_PUBLIC_GOOGLE_ADS_ID`. Token/AW-értéket ne írj a repóba. Az
+  `ad_storage` zárva marad (`docs/ga4.md`).
 - A Payload `serverURL` **szándékosan nincs beállítva** (részletes indoklás a
   `payload.config.ts`-ben): beállítva abszolút média-URL-eket adna, amiket a
   `next/image` `remotePatterns` híján elutasítana.
@@ -374,6 +390,8 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 | Monid-kutatás (terv + 2. kör) | `docs/monid-kampany-kutatas.md`, `docs/monid-masodik-kor.md` |
 | Számlázz.hu (követelmények, megfelelés, stornó) | `docs/szamlazz-*.md`, `docs/atadas-szamlazz-kor.md` |
 | Analitika | `docs/posthog.md`, `docs/ga4.md` |
+| kineticare.hu domain-átállás (GSC, Ads, CORS) | `docs/kineticare-hu-atallas.md` |
+| accessGrants backfill | `docs/access-grants-backfill.md` |
 | SEO / GEO / LLM-optimalizálás | `docs/seo-geo-llm.md` |
 | Videóplatform-döntés, hero-videó | `docs/video-platform-dontes.md`, `docs/hero-video-feltoltes.md` |
 | Jelszó-politika | `docs/jelszo-politika.md` |

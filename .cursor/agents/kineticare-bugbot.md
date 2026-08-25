@@ -19,8 +19,8 @@ esetén a `CLAUDE.md` nyer. A hívó **Grok 4.6 extra high**
    nem a aktuális feature-branch diffje — hacsak a hívó kifejezetten egy
    PR-diffet nem kér. „Teljes main” / „nézd át a maint” / „Bugbot a mainre”
    mindig a teljes production-fát jelenti.
-2. A `higgsfield-site/` **kívül van** a Railway-deployon. Csak azt ellenőrizd
-   rajta, hogy a `src/` nem importál belőle. Ne „javítsd” a Higgsfield-tükröt.
+2. A Higgsfield koncepció-tükör **kikerült** a repóból. A kezdőlapi képek
+   forrása `content/home-images/`. Ne hozd vissza a `higgsfield-site/` fát.
 3. `.env*` fájlt ne olvass, ne másolj, ne említs értéket. Új env-kulcs kell:
    jelezd, hogy az `.env.example`-t érték nélkül kell bővíteni, emberi
    maintainernek.

@@ -86,3 +86,11 @@ joker szabályos — a legbaloldalibb, TELJES címke helyén áll (a `vz-*` típ
 - Semmit hozzájárulás nélkül (a kulcs beállítása önmagában nem indít mérést).
 - Hirdetési/remarketing adatot (a Consent Mode `ad_*` jelzései sosem nyílnak meg).
 - Fizetési/kártyaadatot (a Barion-folyamat külön szigeten fut).
+
+## 7. Search Console és Google Ads (kineticare.hu)
+
+A domain-átállás, a Search Console tulajdon és az Ads-fiók (ügyfélazonosító
+822-497-2386, NEM `AW-…` címke) a `docs/kineticare-hu-atallas.md` runbookja.
+A `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` üresen nincs meta; értéket a
+GSC ad, a repóba nem írjuk. A `NEXT_PUBLIC_GOOGLE_ADS_ID` üresen marad,
+amíg az `ad_storage` tiltása él — a kód nem nyit reklám-sütit.

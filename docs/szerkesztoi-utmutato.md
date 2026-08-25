@@ -556,6 +556,9 @@ látogatóknak vagy a vásárlóknak fáj, ha elromlik.
   Vásárló). Ha új kollégának kell hozzáférés, kérd meg a tulajdonost.
 - Felhasználót **ne törölj** — vásárlói fiók törlésével a vásárlásai is
   értelmezhetetlenné válnak.
+- A **Megvásárolt kurzusok** listát ne pipáld kézzel (a mezőt a rendszer zárja).
+  Ajándékot a **Kurzus ajándékozása** panellel adj: az írja be a hozzáférés
+  hosszának kezdőpontját is. A pipa önmagában örök hozzáférést adna.
 
 **Rendszer csoport (Rendszeresemények, Műveletnapló)**
 

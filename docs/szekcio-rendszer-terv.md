@@ -6,7 +6,8 @@
 > felvétele és **sorrend-módosítás** — programozói segítség nélkül. A tervet a
 > megrendelői kérés hívta életre („minden szekció össze legyen kötve a
 > háttérrendszerrel… tudjuk a modul pozícióját változtatni"). A forrás-kinézet
-> teljes leltára a `higgsfield-site/` tükörből készült (2026-08-08).
+> teljes leltára a (azóta törölt) Higgsfield koncepció-tükörből készült
+> (2026-08-08). A tükör nincs a repóban; a képek forrása `content/home-images/`.
 
 ## 1. Architektúra-döntés
 
@@ -168,7 +169,7 @@ benne korai kurzuskártya-blokk!). A feloldás:
   a bizonyítottan működő helyi Postgresen; kézi migráció-írás tilos).
 - Seed (idempotens): Media-képek feltöltése fájlból → kezdőlap-oldal
   `layout`-jának felvétele a 4. pont szerinti alapsorrenddel, a landing VALÓS
-  szövegeivel (betűhíven a `higgsfield-site/app/src/routes/index.tsx`-ből);
+  szövegeivel (a 2026-08-08-i landing-szövegek, a koncepció-tükörből);
   csak akkor ír, ha a kezdőlapnak még nincs layoutja.
 
 ## 7. Tesztterv

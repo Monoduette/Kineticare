@@ -8,7 +8,7 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 ## Projekt és stack
 
 - **Kineticare** — kézrehabilitációs kurzusplatform (otthoni és szakmai tartalmak).
-- **Next.js 16** (App Router) + **Payload CMS 3** + **@payloadcms/plugin-ecommerce** + **PostgreSQL**.
+- **Next.js 16** (App Router) + **Payload CMS 3.88.0** + **@payloadcms/plugin-ecommerce 3.88.0** + **PostgreSQL**.
 - Élő integrációk: **Barion** (fizetés), **Számlázz.hu** (számlázás), **Bunny Stream** (videó), **Resend** (tranzakciós e-mail).
 - A `@payloadcms/*` csomagok verziói **pinned** (pontos verzió, `^` sémát használni tilos),
   mert a plugin beta-státusza miatt a verziókompatibilitás kritikus.
@@ -30,6 +30,7 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 | `npm run seed:legacy` | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`) |
 | `npm run content:owner` | Tulajdonos által jóváhagyott, egyszeri tartalom-javítások (`src/scripts/apply-owner-content.ts`); alapból próbafutás, íráshoz `OWNER_CONTENT_CONFIRM=igen` |
 | `npm run backfill:ar-snapshot` | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md` |
+| `npm run backfill:access-grants` | Hiányzó accessGrants-óra paid dátumából (`src/scripts/backfill-access-grants.ts`); próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md` |
 
 ## Kódolási konvenciók
 
