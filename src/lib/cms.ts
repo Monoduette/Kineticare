@@ -228,6 +228,24 @@ export async function getPostBySlug(
  * nincs értelmezhető „kapcsolódó" halmaz — üres lista.
  */
 export async function getRelatedPosts(post: Post, limit = 3): Promise<Post[]> {
+  // A szerkesztői `relatedPosts` mező az elsőbbség (kézzel válogatott
+  // cikk-háló, 2026-08-25-i tulajdonosi kérés); a kategória-alapú halmaz a
+  // tartalék. A mező populált objektumokat hordoz (getPostBySlug depth: 2);
+  // csak közzétett, sluggal rendelkező cikk mehet ki.
+  const kezi = Array.isArray(post.relatedPosts)
+    ? post.relatedPosts
+        .filter(
+          (item): item is Post =>
+            typeof item === 'object' &&
+            item !== null &&
+            item.status === 'published' &&
+            typeof item.slug === 'string',
+        )
+        .slice(0, limit)
+    : []
+  if (kezi.length > 0) {
+    return kezi
+  }
   const categoryIds = Array.isArray(post.categories)
     ? post.categories.map((category) =>
         typeof category === 'object' && category !== null ? category.id : category,
