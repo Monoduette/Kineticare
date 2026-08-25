@@ -115,8 +115,46 @@ const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
   'befagyott-vall': {
     kategoriaSlugok: ['vall-es-konyok'],
     kurzusSlug: null,
-    kapcsolodoSlugok: [],
+    // Kategória-társ (vall-es-konyok): a kapcsolódó blokk így itt sem üres
+    // (tulajdonosi kérés, 2026-08-25: cikk-háló minden cikk alatt).
+    kapcsolodoSlugok: ['teniszkonyok'],
     szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
+  },
+}
+
+/**
+ * A hat eredeti cikk kurzus-CTA-ja és kapcsolódó cikkei — KIZÁRÓLAG ÜRES
+ * mezőbe írva (tulajdonosi kérés, 2026-08-25: minden cikk alatt álljon
+ * ajánló és cikk-háló). A szerkesztő kézi beállítását NEM írjuk felül:
+ * ha a mezőben már van érték, a kitöltés kimarad. A kategória- és
+ * szerző-mezőkhöz itt nem nyúlunk (azok a hat cikknél a CMS-ben élnek).
+ */
+const CIKK_KITOLTES: Readonly<
+  Record<string, { kurzusSlug: string; kapcsolodoSlugok: readonly string[] }>
+> = {
+  'miert-zsibbad-a-kezem': {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['keztoalagut-szindroma', 'csuklo-es-kezfajdalom', 'inhuvelygyulladas'],
+  },
+  'keztoalagut-szindroma': {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['miert-zsibbad-a-kezem', 'inhuvelygyulladas', 'csuklo-es-kezfajdalom'],
+  },
+  teniszkonyok: {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['befagyott-vall', 'csuklo-es-kezfajdalom', 'inhuvelygyulladas'],
+  },
+  'pattano-ujj': {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['inhuvelygyulladas', 'keztoalagut-szindroma', 'csuklo-es-kezfajdalom'],
+  },
+  'csuklo-es-kezfajdalom': {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['keztoalagut-szindroma', 'csuklotores-utani-gyogytorna', 'inhuvelygyulladas'],
+  },
+  'csuklotores-utani-gyogytorna': {
+    kurzusSlug: 'otthoni-kezrehab-program',
+    kapcsolodoSlugok: ['csuklo-es-kezfajdalom', 'miert-zsibbad-a-kezem', 'inhuvelygyulladas'],
   },
 }
 
@@ -310,6 +348,60 @@ async function cikkMezok(
       { slug, megvan: szerzoIds.length, kellett: meta.szerzoNevek.length },
     )
   }
+  return mezok
+}
+
+/**
+ * A hat eredeti cikk `ctaCourse` és `relatedPosts` mezőjének KITÖLTÉSE —
+ * kizárólag akkor ír, ha a mező ÜRES (lásd a CIKK_KITOLTES kommentjét).
+ * A `de-quervain-szindroma` tiltása itt is érvényes.
+ */
+async function kitoltesMezok(
+  payload: Payload,
+  slug: string,
+  letezo: { ctaCourse?: unknown; relatedPosts?: unknown } | undefined,
+): Promise<Partial<Pick<CikkMezok, 'ctaCourse' | 'relatedPosts'>>> {
+  const meta = CIKK_KITOLTES[slug]
+  if (meta === undefined) return {}
+  const mezok: Partial<Pick<CikkMezok, 'ctaCourse' | 'relatedPosts'>> = {}
+
+  const nincsCta =
+    letezo === undefined || letezo.ctaCourse === null || letezo.ctaCourse === undefined
+  if (nincsCta) {
+    const id = await slugId(payload, 'products', meta.kurzusSlug)
+    if (id === undefined) {
+      logger.warn('Tudástár-import: kitöltő kurzus nem található', {
+        slug,
+        kurzus: meta.kurzusSlug,
+      })
+    } else {
+      mezok.ctaCourse = id
+    }
+  }
+
+  const nincsRelated =
+    letezo === undefined ||
+    !Array.isArray(letezo.relatedPosts) ||
+    letezo.relatedPosts.length === 0
+  if (nincsRelated) {
+    const relatedPosts: number[] = []
+    for (const kap of meta.kapcsolodoSlugok) {
+      if (kap === 'de-quervain-szindroma') {
+        throw new Error('A de-quervain-szindroma slug nem kerülhet relatedPosts-ba.')
+      }
+      const id = await slugId(payload, 'posts', kap)
+      if (id === undefined) {
+        logger.warn('Tudástár-import: kitöltő kapcsolódó cikk nem található', {
+          slug,
+          kapcsolodo: kap,
+        })
+        continue
+      }
+      relatedPosts.push(id)
+    }
+    if (relatedPosts.length > 0) mezok.relatedPosts = relatedPosts
+  }
+
   return mezok
 }
 
@@ -522,6 +614,8 @@ async function main(): Promise<void> {
       draft: true,
     })
 
+    const letezo = meglevo.docs[0]
+
     const adat = {
       title: cikk.title,
       slug: cikk.slug,
@@ -545,9 +639,11 @@ async function main(): Promise<void> {
       // törzsnél a markdown: a script felülírja a kézi szerkesztést.
       ...(cikk.faq === undefined ? {} : { faq: cikk.faq }),
       ...(await cikkMezok(payload, cikk.slug)),
+      // A hat eredeti cikk üres ctaCourse/relatedPosts mezőjének kitöltése —
+      // meglévő szerkesztői értéket sosem ír felül (CIKK_KITOLTES).
+      ...(await kitoltesMezok(payload, cikk.slug, letezo)),
     }
 
-    const letezo = meglevo.docs[0]
     if (letezo) {
       await payload.update({
         collection: 'posts',
