@@ -9,6 +9,7 @@ import {
   rateLimitHeaders,
   type CheckRequestRateLimitOptions,
 } from '../security/rate-limit'
+import { assertSameOrigin } from '../security/same-origin'
 import { CheckoutError, startCheckout, type CheckoutStartInput } from './start-checkout'
 
 /**
@@ -18,9 +19,11 @@ import { CheckoutError, startCheckout, type CheckoutStartInput } from './start-c
  * egységtesztelhető; a tényleges route az src/app/(frontend)/api/checkout/start/route.ts
  * köti be a valódi configgal.
  *
- * Folyamat: IP-alapú kérés-korlát (A2) → auth (payload.auth) → JSON-parse →
- * startCheckout szolgáltatás → { orderNumber, gatewayUrl }. Hibaágak: magyar
- * felhasználói üzenet + technikai hiba naplózva requestId-vel.
+ * Folyamat: same-origin őr → IP-alapú kérés-korlát (A2) → auth (payload.auth)
+ * → JSON-parse → startCheckout szolgáltatás → { orderNumber, gatewayUrl }.
+ * Hibaágak: magyar felhasználói üzenet + technikai hiba naplózva requestId-vel.
+ * A same-origin őr vendég-ágon is kell: a böngésző a sütit (kosár, későbbi
+ * session) CSRF-ként is elküldené.
  *
  * VENDÉG-VÁSÁRLÁS (tulajdonosi döntés, 2026-08-15): a végpont bejelentkezés
  * NÉLKÜL is hívható — ilyenkor a törzs `guest` blokkja (e-mail + név)
@@ -42,6 +45,12 @@ export function createCheckoutStartHandler(
   return async function POST(request: NextRequest): Promise<NextResponse> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'checkout-start' })
+
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('checkout-start: idegen eredet elutasítva')
+      return NextResponse.json({ error: originCheck.message }, { status: originCheck.status })
+    }
 
     // IP-alapú throttle (A2) — MINDEN drága lépés (Payload-betöltés, auth,
     // rendelés-létrehozás, Barion Start) ELŐTT. A végpont dokumentált
@@ -67,7 +76,10 @@ export function createCheckoutStartHandler(
         body = await request.json()
       } catch {
         return NextResponse.json(
-          { error: 'A fizetés nem indítható: a kérés adatai nem értelmezhetők. Frissítsd az oldalt, és próbáld újra.' },
+          {
+            error:
+              'A fizetés nem indítható: a kérés adatai nem értelmezhetők. Frissítsd az oldalt, és próbáld újra.',
+          },
           { status: 400 },
         )
       }

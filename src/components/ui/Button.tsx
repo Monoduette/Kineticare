@@ -6,7 +6,7 @@ import { sanitizeCmsUrl } from '../../lib/safe-url'
 /**
  * Button — a storefront elsődleges akcióeleme.
  *
- * A vizuális nyelv a kineticare.higgsfield.app landingé (a stílus az
+ * A vizuális nyelv a régi koncepció-landingé (a stílus az
  * `src/app/(frontend)/styles/ui.css`-ben él, minden szín szerep-tokenről):
  * - variant:
  *     'primary'   — akcent-mély kitöltés fehér szöveggel (5,45:1 — AA), alap

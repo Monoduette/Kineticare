@@ -6,8 +6,8 @@ import { Container } from '../ui/Container'
 import { NewsletterSignup } from './NewsletterSignup'
 
 /**
- * Lábléc — a landing `kc-footer` nyelvén (higgsfield-site/app/src/kineticare.css,
- * 880. sortól): felül egy óriás, aláhúzott serif „Kapcsolat" link, mellette a
+ * Lábléc — a régi koncepció-landing `kc-footer` nyelvén (egyszeri tükör, már
+ * nincs a repóban): felül egy óriás, aláhúzott serif „Kapcsolat" link, mellette a
  * ritkított betűs wordmark (`kc-footer-mark`), alatta a meta-sor a jogi
  * linkekkel és a copyrighttal (`kc-footer-meta`). A korábbi navy sáv helyett a
  * lap-háttér (szerep-token: `--kc-color-surface`) viszi a láblécet, felül

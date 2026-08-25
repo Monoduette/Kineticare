@@ -64,9 +64,10 @@ export const mediaBaseName = (fileName: string): string => fileName.replace(/\.[
 /**
  * Alapnév → abszolút forrásútvonal a repóban.
  *
- * Két forráskészlet: a landing tükrének képei (higgsfield-site) és a legacy
- * archívum képei. Névütközésnél az ELSŐ (landing) nyer — a landing képei a
- * kezdőlap-layout hivatkozásai, azok elvesztése látszik a legjobban.
+ * Két forráskészlet: a kezdőlapi seed képei (`content/home-images`,
+ * LANDING_ASSETS_DIR) és a legacy archívum képei. Névütközésnél az ELSŐ
+ * (kezdőlap) nyer — a kezdőlap-layout hivatkozásai, azok elvesztése látszik
+ * a legjobban.
  */
 export const buildMediaSourceIndex = (): ReadonlyMap<string, string> => {
   const index = new Map<string, string>()

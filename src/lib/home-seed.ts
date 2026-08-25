@@ -60,16 +60,18 @@ export const minimalRichText = (text: string): Page['content'] => ({
 // Kezdőlapi képek — a landing tartalmi képei a Média collectionbe
 // (docs/szekcio-rendszer-terv.md 3.4).
 //
-// A fájlok a repóban élő landing-tükörből (higgsfield-site/) jönnek. A Média
+// A fájlok a `content/home-images/{brand,site}` könyvtárban élnek. A Média
 // collectionbe azért kerülnek (nem statikus assetként), hogy a lányok az
-// adminban cserélhessék őket. A terv szerint a `.scratch/` nyersanyag és a két
-// árva fájl (`katak.jpg`, `sos-art.png` duplikátum) NEM jön át.
+// adminban cserélhessék őket. A Higgsfield-landing egyszeri koncepció-tükör
+// volt; a seed/restore képeit ide költöztettük, a tükör kikerült a repóból.
+// A `.scratch/` nyersanyag és a két árva fájl (`katak.jpg`, `sos-art.png`
+// duplikátum) szándékosan NEM jött át.
 // ---------------------------------------------------------------------------
 
 interface SeedImage {
-  /** A fájl neve a tükörben — egyben az idempotencia-kulcs alapja. */
+  /** A fájl neve a `content/home-images` almappában — egyben az idempotencia-kulcs alapja. */
   file: string
-  /** A tükör assets-almappája. */
+  /** A `content/home-images` almappája. */
   dir: 'brand' | 'site'
   /** Kötelező magyar képleírás (Media.alt) — képernyőolvasónak és a Google-nek. */
   alt: string
@@ -78,9 +80,9 @@ interface SeedImage {
 /**
  * A kezdőlap-layout által hivatkozott képek.
  *
- * Az `alt` szövegek forrása a landing (`higgsfield-site/app/src/routes/index.tsx`)
- * `imgAlt`/`alt` attribútuma. Két kivétel, ahol a landingen nincs használható
- * érték, ezért a képet megnézve írtuk le:
+ * Az `alt` szövegek a régi koncepció-landing `imgAlt`/`alt` attribútumaiból
+ * származnak (egyszeri tükör, már nincs a repóban). Két kivétel, ahol a
+ * landingen nem volt használható érték, ezért a képet megnézve írtuk le:
  *  - `sos-hands-board.jpg` — a landingen dekoratív (`alt=""`, `aria-hidden`),
  *  - `logo-kineticare.png` — a landing lábléce csak „KinetiCare logó"-t ír.
  */
@@ -152,13 +154,13 @@ export type SeedImageFile = (typeof HOME_IMAGES)[number]['file']
 
 /**
  * Fájlnév → Media id leképezés. Szándékosan `Partial`: ha egy képfájl hiányzik
- * (pl. a tükör nincs a munkamásolatban), a hozzá tartozó id kimarad, és a
- * layout egyszerűen kép nélkül épül fel — a seed nem áll meg.
+ * a munkamásolatból, a hozzá tartozó id kimarad, és a layout egyszerűen kép
+ * nélkül épül fel — a seed nem áll meg.
  */
 export type HomeMediaIds = Partial<Record<SeedImageFile, number>>
 
 /**
- * A landing képeinek gyökere a tükörben (repógyökér/higgsfield-site/app/public/assets).
+ * A kezdőlapi seed/restore képek gyökere (`content/home-images`).
  *
  * Exportált, mert az induláskori önjavítás (src/lib/media-restore.ts) is
  * innen tölti vissza a deploykor elveszett képfájlokat.
@@ -167,10 +169,8 @@ export const LANDING_ASSETS_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
   '..',
-  'higgsfield-site',
-  'app',
-  'public',
-  'assets',
+  'content',
+  'home-images',
 )
 
 /**
@@ -233,11 +233,11 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
 //   ctaBanner (záró CTA-sáv).
 // A lányok ettől szabadon eltérhetnek az adminban — ez a rendszer értelme.
 //
-// SZÖVEGEK: betűhíven a forrásokból. A landing-szekciók szövege a tükör
-// `higgsfield-site/app/src/routes/index.tsx` (és a film-heróé a
-// `scroll-scrub-scenes.ts`) fájljából jön; ahol a landingen nincs megfelelő
-// tartalom (hitel-csík, ingyenes SOS-sáv, „Így működik", GYIK), ott a mai fő-site
-// komponensek jelenlegi szövege a forrás (CredentialsStrip.tsx, FreeSos.tsx,
+// SZÖVEGEK: betűhíven a forrásokból. A landing-szekciók szövege a régi
+// koncepció-landingből jött (egyszeri tükör, már nincs a repóban; a
+// film-heróé a `scroll-scrub-scenes.ts` másolata); ahol a landingen nem volt
+// megfelelő tartalom (hitel-csík, ingyenes SOS-sáv, „Így működik", GYIK), ott
+// a mai fő-site komponensek szövege a forrás (CredentialsStrip.tsx, FreeSos.tsx,
 // HowItWorks.tsx, Faq.tsx `FAQ_ITEMS`). A szövegeket szándékosan MÁSOLJUK, nem
 // importáljuk: a seed adat, a komponensek pedig a fallback-megjelenítés — a
 // kettő a bevezetés után külön életet él (a szöveget innentől a CMS-ben írják).

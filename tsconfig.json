@@ -40,7 +40,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "higgsfield-site"
+    "node_modules"
   ]
 }

@@ -41,6 +41,12 @@ export const metadata: Metadata = {
     },
     description: DEFAULT_DESCRIPTION,
   },
+  // Search Console domain-ellenőrző meta. Üres env = nincs címke (a DNS
+  // átállás után kell, ha a régi Systeme.io-s ellenőrzés nem viszi át a
+  // tulajdont). A token nyilvános, nem titok; értéket ide SOSEM írunk.
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 }
 
 export const viewport: Viewport = {

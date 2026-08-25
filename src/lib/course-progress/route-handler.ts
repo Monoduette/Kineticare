@@ -8,6 +8,7 @@ import {
   rateLimitHeaders,
   type CheckRequestRateLimitOptions,
 } from '../security/rate-limit'
+import { assertSameOrigin } from '../security/same-origin'
 import { CourseProgressError, markVideoWatched } from './mark-watched'
 
 /**
@@ -18,7 +19,7 @@ import { CourseProgressError, markVideoWatched } from './mark-watched'
  * src/app/(frontend)/api/course-progress/mark-watched/route.ts köti be a valódi
  * configgal (a src/lib/refund/route-handler.ts és a stream-token mintája).
  *
- * Folyamat: auth (payload.auth) → JSON-törzs → üzleti logika
+ * Folyamat: same-origin őr → auth (payload.auth) → JSON-törzs → üzleti logika
  * (markVideoWatched) → { productId, videoRef, watchedAt, alreadyWatched }.
  *
  * Válasz-szerződés (a részletek: src/lib/course-progress/contract.ts):
@@ -100,6 +101,12 @@ export function createMarkWatchedHandler(
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'course-progress-mark-watched' })
 
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('kurzus-haladás: idegen eredet elutasítva')
+      return Response.json({ error: originCheck.message }, { status: originCheck.status })
+    }
+
     try {
       const payload = await deps.getPayload()
 
@@ -137,10 +144,7 @@ export function createMarkWatchedHandler(
       const rawBody = await readBodyWithCap(request, MAX_BODY_BYTES)
       if (rawBody === null) {
         log.warn('kurzus-haladás: túl nagy kérés-törzs', { userId: user.id })
-        return Response.json(
-          { error: 'A kérés törzse túl nagy.' },
-          { status: 413 },
-        )
+        return Response.json({ error: 'A kérés törzse túl nagy.' }, { status: 413 })
       }
       let body: unknown = {}
       if (rawBody.trim().length > 0) {

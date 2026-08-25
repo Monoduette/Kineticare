@@ -401,7 +401,9 @@ describe('resolveServerUrl / buildOriginAllowlist', () => {
     vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://kineticare.hu/')
 
     expect(resolveServerUrl()).toBe('https://kineticare.hu')
-    expect(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]).toBe('https://kineticare.hu')
+    expect(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]).toBe(
+      'https://kineticare.hu',
+    )
   })
 
   it('útvonal-előtagos gyökérnél az allowlist az EREDETET kapja', () => {
@@ -410,7 +412,9 @@ describe('resolveServerUrl / buildOriginAllowlist', () => {
     expect(resolveServerUrl()).toBe('https://kineticare.hu/app')
     // A böngésző Origin fejléce sosem tartalmaz útvonalat, tehát a teljes URL
     // allowlist-elemként sosem illeszkedne.
-    expect(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]).toBe('https://kineticare.hu')
+    expect(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]).toBe(
+      'https://kineticare.hu',
+    )
   })
 
   it('hiányzó vagy hibás env esetén a fejlesztői tartalék, dobás NÉLKÜL', () => {
@@ -422,7 +426,6 @@ describe('resolveServerUrl / buildOriginAllowlist', () => {
     expect(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]).toBe(DEFAULT_SERVER_URL)
   })
 })
-
 
 /**
  * `buildOriginAllowlist` — a Payload `cors`/`csrf` listájának TISZTA építője
@@ -472,6 +475,67 @@ describe('buildOriginAllowlist', () => {
 
     first.push('https://idegen.example')
     expect(second).toEqual(['https://pelda.hu'])
+  })
+
+  it('kineticare.hu primer mellett a www társ-eredet is a listán van', () => {
+    expect(buildOriginAllowlist('https://kineticare.hu')).toEqual([
+      'https://kineticare.hu',
+      'https://www.kineticare.hu',
+    ])
+  })
+
+  it('www.kineticare.hu primer mellett az apex is a listán van', () => {
+    expect(buildOriginAllowlist('https://www.kineticare.hu')).toEqual([
+      'https://www.kineticare.hu',
+      'https://kineticare.hu',
+    ])
+  })
+
+  it('nem-alapértelmezett port a társ-eredeten is megmarad', () => {
+    expect(buildOriginAllowlist('https://kineticare.hu:8443/app')).toEqual([
+      'https://kineticare.hu:8443',
+      'https://www.kineticare.hu:8443',
+    ])
+  })
+
+  it('extra eredetek a primer (és a társ) után, sorrendben, deduplikálva', () => {
+    expect(
+      buildOriginAllowlist(
+        'https://shop.example.test',
+        'https://kineticare.hu, https://www.kineticare.hu, https://kineticare.hu',
+      ),
+    ).toEqual(['https://shop.example.test', 'https://kineticare.hu', 'https://www.kineticare.hu'])
+  })
+
+  it('a társ-eredetet az extra lista nem ismétli', () => {
+    expect(buildOriginAllowlist('https://kineticare.hu', 'https://www.kineticare.hu')).toEqual([
+      'https://kineticare.hu',
+      'https://www.kineticare.hu',
+    ])
+  })
+
+  it('érvénytelen extra tokeneket kihagyja, nem dob', () => {
+    expect(
+      buildOriginAllowlist('https://pelda.hu', 'nem-url,ftp://x.hu,https://ok.example/app,'),
+    ).toEqual(['https://pelda.hu', 'https://ok.example'])
+  })
+
+  it('üres extraRaw nem bővíti a listát', () => {
+    expect(buildOriginAllowlist('https://pelda.hu', '')).toEqual(['https://pelda.hu'])
+    expect(buildOriginAllowlist('https://pelda.hu', '   ')).toEqual(['https://pelda.hu'])
+    expect(buildOriginAllowlist('https://pelda.hu', undefined)).toEqual(['https://pelda.hu'])
+  })
+
+  it('extraRaw mellett is minden hívás új tömb (nincs közös extra-referencia)', () => {
+    const extras = 'https://a.example,https://b.example'
+    const first = buildOriginAllowlist('https://pelda.hu', extras)
+    const second = buildOriginAllowlist('https://pelda.hu', extras)
+
+    expect(first).toEqual(second)
+    expect(first).not.toBe(second)
+
+    first.push('https://idegen.example')
+    expect(second).toEqual(['https://pelda.hu', 'https://a.example', 'https://b.example'])
   })
 })
 

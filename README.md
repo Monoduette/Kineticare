@@ -7,9 +7,7 @@ Bunny Stream (kurzusvideók, tokenes embed) + PostHog (termék-analitika).
 **Állapot.** A fizetési lánc (Barion-callback-vezérelt állapotgép + utánpollozó
 job), a számlázás (Számlázz.hu) és a videó-kiszolgálás (Bunny Stream, tokenes
 embed) implementálva és tesztelve. A kezdőlap CMS-ből szerkeszthető
-szekció-rendszeren fut, a Higgsfield-landing dizájnjával
-(`docs/szekcio-rendszer-terv.md`); a landing forrásának tükre a
-`higgsfield-site/` mappában él (külön stack, nem a Railway-deploy része).
+szekció-rendszeren fut (`docs/szekcio-rendszer-terv.md`).
 Ami hátra van: `docs/feladatlista.md`.
 
 ## Fejlesztői gyorsindítás

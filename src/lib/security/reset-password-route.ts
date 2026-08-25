@@ -68,6 +68,7 @@ import {
   payloadRestRateLimitResponse,
   type CheckRequestRateLimitOptions,
 } from './rate-limit'
+import { assertSameOrigin } from './same-origin'
 
 export interface ResetPasswordHandlerDeps {
   /** Payload-példány — a tokenhez tartozó e-mail feloldásához. */
@@ -190,6 +191,15 @@ export function createResetPasswordHandler(
   return async function POST(request: Request): Promise<Response> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'users-reset-password' })
+
+    // A sikeres reset session-sütit állíthat — idegen Originű POST CSRF.
+    // A válasz a handler Payload-alakját tartja ({ errors: [{ message }] }),
+    // mert azt olvassa az auth-kliens és az admin reset-űrlap.
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('reset-password: idegen eredet elutasítva')
+      return errorResponse(originCheck.message, originCheck.status)
+    }
 
     // IP-alapú throttle (A2) — a `password-reset` osztály kerete. A korlát
     // eddig a Payload REST catch-all burkolójában futott; mivel ezt az

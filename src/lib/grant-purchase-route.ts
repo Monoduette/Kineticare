@@ -4,6 +4,7 @@ import { hasStaffOrOwnerRole } from '../access/roles'
 import { GRANT_DURATION_REQUIRED_MESSAGE, grantPurchase } from './grant-purchase'
 import { logger } from './logger'
 import { generateRequestId, getRequestId } from './request-id'
+import { assertSameOrigin } from './security/same-origin'
 
 /**
  * POST /api/admin/grant-purchase route-handler factory.
@@ -51,6 +52,12 @@ export function createGrantPurchaseHandler(
   return async function POST(request: Request): Promise<Response> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'admin-grant-purchase' })
+
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('grant-purchase: idegen eredet elutasítva')
+      return Response.json({ error: originCheck.message }, { status: originCheck.status })
+    }
 
     try {
       const payload = await deps.getPayload()
@@ -102,10 +109,7 @@ export function createGrantPurchaseHandler(
       }
       const productIdOrSku = readRequiredString(body.productIdOrSku)
       if (!productIdOrSku) {
-        return Response.json(
-          { error: 'Válassz kurzust az ajándékozáshoz.' },
-          { status: 400 },
-        )
+        return Response.json({ error: 'Válassz kurzust az ajándékozáshoz.' }, { status: 400 })
       }
       const reason = readRequiredString(body.reason)
       if (!reason) {
