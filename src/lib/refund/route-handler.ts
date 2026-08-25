@@ -5,6 +5,7 @@ import { resolveClientIp } from '../audit'
 import { BarionApiError } from '../barion'
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
+import { assertSameOrigin } from '../security/same-origin'
 import { RefundError, refundOrder, type RefundOrderInput } from './refund-order'
 
 /**
@@ -63,6 +64,12 @@ export function createRefundHandler(
   return async function POST(request: Request, context: RefundRouteContext): Promise<Response> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'admin-order-refund' })
+
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('refund: idegen eredet elutasítva')
+      return Response.json({ error: originCheck.message }, { status: originCheck.status })
+    }
 
     try {
       const payload = await deps.getPayload()

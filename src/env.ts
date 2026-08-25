@@ -97,13 +97,29 @@ export function resolveServerUrl(): string {
  *
  * Azért önálló és nyers bemenetű, hogy a tényleges szűkítés tesztelhető legyen
  * olyan értékkel is, ami a teszt-környezetben sosem áll elő (pl.
- * útvonal-előtagos gyökér). A hívók a `process.env`-ből adják át az értéket.
+ * útvonal-előtagos gyökér). A hívók a `process.env`-ből adják át az értéket;
+ * a második argumentum (`extraRaw`) az `EXTRA_ALLOWED_ORIGINS` — a függvény
+ * MAGA NEM olvassa a `process.env`-et, hogy a extras-ág is tiszta maradjon.
  *
  * A lista az EREDETET tartalmazza (séma + hoszt + port), nem a teljes URL-t: a
  * böngésző az `Origin` fejlécben mindig csak az eredetet küldi, tehát egy
  * útvonal-előtaggal megadott `NEXT_PUBLIC_SERVER_URL` (pl.
  * `https://kineticare.hu/app`) esetén a teljes URL sosem illeszkedne — a
  * bejelentkezés és minden sütis API-hívás NÉMÁN elhasalna.
+ *
+ * Sorrend (stabil, deduplikált): (1) a primer gyökér eredete, (2) a
+ * kineticare.hu ↔ www.kineticare.hu társ-eredet, HA a primer hoszt a kettő
+ * egyike — mindig `https`, a nem-alapértelmezett portot megtartva, (3) az
+ * `extraRaw` vesszővel tagolt, érvényes http(s) URL-jeinek eredete.
+ * Érvénytelen extra token NEM dob: a config betöltése (teszt, szkript) nem
+ * hasalhat el egy elgépelt extra miatt.
+ *
+ * DNS-cutover: amíg a `NEXT_PUBLIC_SERVER_URL` még a Railway-URL, a
+ * böngészős Origin a végleges tartomány lesz. Ilyenkor az extra lista KELL:
+ * `EXTRA_ALLOWED_ORIGINS=https://kineticare.hu,https://www.kineticare.hu`.
+ * A társ-eredet automatizmusa CSAK akkor él, ha a primer hoszt már
+ * kineticare.hu / www.kineticare.hu — Railway-primer mellett NEM pótolja
+ * a két extra elemet.
  *
  * MINDEN hívás ÚJ tömböt ad vissza. Ez nem stílus: a Payload szanitálása a
  * `csrf` tömbbe BELEÍRHAT (`config.csrf.push(config.serverURL)`,
@@ -113,9 +129,58 @@ export function resolveServerUrl(): string {
  * `serverURL` valaha visszakerül: akkor sem oszthat közös tömb-referenciát a
  * `cors` és a `csrf`.
  */
-export function buildOriginAllowlist(rawValue: string | undefined | null): string[] {
+const LIVE_SITE_HOSTS = new Set(['kineticare.hu', 'www.kineticare.hu'])
+
+function companionLiveOrigin(primary: URL): string | null {
+  const host = primary.hostname
+  if (!LIVE_SITE_HOSTS.has(host)) {
+    return null
+  }
+  const companionHost = host === 'www.kineticare.hu' ? 'kineticare.hu' : 'www.kineticare.hu'
+  const companion = new URL(`https://${companionHost}`)
+  // A `URL.port` csak nem-alapértelmezett portnál nem üres — az éles :443
+  // így port nélkül marad, a staging-szerű :8443 átmegy a társra is.
+  if (primary.port !== '') {
+    companion.port = primary.port
+  }
+  return companion.origin
+}
+
+function parseExtraOrigins(extraRaw: string | undefined | null): string[] {
+  if (typeof extraRaw !== 'string') {
+    return []
+  }
+  const origins: string[] = []
+  for (const token of extraRaw.split(',')) {
+    const normalized = normalizeServerUrl(token)
+    if (normalized === null) {
+      continue
+    }
+    origins.push(new URL(normalized).origin)
+  }
+  return origins
+}
+
+export function buildOriginAllowlist(
+  rawValue: string | undefined | null,
+  extraRaw?: string | undefined | null,
+): string[] {
   const serverUrl = normalizeServerUrl(rawValue) ?? DEFAULT_SERVER_URL
-  return [new URL(serverUrl).origin]
+  const primaryUrl = new URL(serverUrl)
+  const list: string[] = [primaryUrl.origin]
+
+  const companion = companionLiveOrigin(primaryUrl)
+  if (companion !== null && !list.includes(companion)) {
+    list.push(companion)
+  }
+
+  for (const extra of parseExtraOrigins(extraRaw)) {
+    if (!list.includes(extra)) {
+      list.push(extra)
+    }
+  }
+
+  return list
 }
 
 /**
@@ -210,13 +275,28 @@ export const optionalBunnyStreamEnvVars = [
  * - `NEXT_PUBLIC_POSTHOG_KEY` — a PostHog nyilvános projekt-kulcsa (docs/posthog.md).
  * - `NEXT_PUBLIC_POSTHOG_HOST` — felülírható PostHog-host (alap: EU-cloud).
  * - `NEXT_PUBLIC_GA_MEASUREMENT_ID` — GA4 mérési azonosító (`G-…`, docs/ga4.md).
- *   Egyik sem titok: mindhárom nyilvános, kliensoldali azonosító.
+ * - `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` — Search Console domain-ellenőrző
+ *   meta (nyilvános, nem titok). Üres = nincs `verification.google` a layoutban.
+ * - `NEXT_PUBLIC_GOOGLE_ADS_ID` — Google Ads konverzió-azonosító (`AW-…`).
+ *   Csak a kulcsnév van regisztrálva; a kód NEM nyit `ad_storage` sütit, amíg
+ *   a docs/ga4.md tiltása él. Üresen kell hagyni.
+ *   Egyik sem titok: nyilvános, kliensoldali azonosítók.
  */
 export const optionalAnalyticsEnvVars = [
   'NEXT_PUBLIC_POSTHOG_KEY',
   'NEXT_PUBLIC_POSTHOG_HOST',
   'NEXT_PUBLIC_GA_MEASUREMENT_ID',
+  'NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION',
+  'NEXT_PUBLIC_GOOGLE_ADS_ID',
 ] as const
+
+/**
+ * Extra CORS/CSRF eredetek — OPCIONÁLIS, nem induláskori kötelező.
+ * A tiszta `buildOriginAllowlist` második argumentuma; érték nélkül a lista
+ * csak a primer gyökér (+ kineticare apex/www társ, ha a primer már az).
+ * DNS-cutover: docs/kineticare-hu-atallas.md.
+ */
+export const optionalOriginEnvVars = ['EXTRA_ALLOWED_ORIGINS'] as const
 
 /**
  * A Barion POSKey környezetfüggő: BARION_ENVIRONMENT=prod esetén az éles
@@ -357,7 +437,8 @@ export function assertRequiredEnv(
           'Az ENABLE_JOB_WORKERS nincs "true" értéken: élesben nem fut a webhook-retry, az ' +
           'order-poll és a számla-resweep. Elveszett Barion-callback esetén a rendelés ' +
           'payment_pending-ben ragadna, és a számlák sem állítódnának újra sorba. ' +
-          'Élesítés: ENABLE_JOB_WORKERS=true.',
+          'Nézd meg a Railway env-t (staging + prod). Élesítés: ENABLE_JOB_WORKERS=true. ' +
+          'Fail-closed boot szándékosan nincs: a hiányzó flag ne vigye el a boltot.',
       })
     }
 

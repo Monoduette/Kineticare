@@ -58,13 +58,21 @@ const dirname = path.dirname(filename)
  * A CORS/CSRF-engedélylista a publikus szerver-URL EREDETÉBŐL (src/env.ts —
  * ugyanaz a normalizálás hajtja a storefront `metadataBase`-ét és az
  * SEO-segédeket is, tehát a védett és a hirdetett cím nem csúszhat szét).
+ * A második argumentum az `EXTRA_ALLOWED_ORIGINS`: DNS-cutover alatt, amíg a
+ * primer URL még a Railway, ide kell a kineticare.hu + www pár.
  *
  * A `cors` és a `csrf` KÜLÖN hívást kap, mert a Payload szanitálása a `csrf`
  * tömbbe beleírhat (node_modules/payload/dist/config/sanitize.js:340-342) —
  * közös tömb-referencia mellett ez a `cors`-t is átírná.
  */
-const corsAllowlist = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
-const csrfAllowlist = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
+const corsAllowlist = buildOriginAllowlist(
+  process.env.NEXT_PUBLIC_SERVER_URL,
+  process.env.EXTRA_ALLOWED_ORIGINS,
+)
+const csrfAllowlist = buildOriginAllowlist(
+  process.env.NEXT_PUBLIC_SERVER_URL,
+  process.env.EXTRA_ALLOWED_ORIGINS,
+)
 
 // ---------------------------------------------------------------------------
 // T-016: kapcsolat űrlap — beküldés-kezelés (spam-védelem + staff-értesítő)

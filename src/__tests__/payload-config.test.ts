@@ -158,12 +158,16 @@ describe('payload.config', () => {
   it('a CORS/CSRF-engedélylista a publikus gyökér EREDETÉHEZ van kötve', async () => {
     const config = await configPromise
 
-    // Az allowlist az EREDETET tartalmazza: a böngésző Origin fejléce sem küld
-    // útvonalat és záró perjelet, tehát a teljes URL sosem illeszkedne.
-    expect(config.cors).toEqual([buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0]])
-    expect(config.csrf).toContain(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0])
-    for (const origin of config.csrf ?? []) {
-      expect(origin.startsWith(buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)[0])).toBe(true)
+    // Az allowlist az EREDETET tartalmazza (primer + kineticare társ + extra).
+    // A két hívás KÜLÖN tömb, mert a Payload a csrf-be beleírhat.
+    const expected = buildOriginAllowlist(
+      process.env.NEXT_PUBLIC_SERVER_URL,
+      process.env.EXTRA_ALLOWED_ORIGINS,
+    )
+    expect(config.cors).toEqual(expected)
+    expect(config.cors).not.toBe(config.csrf)
+    for (const origin of expected) {
+      expect(config.csrf).toContain(origin)
     }
 
     /*
@@ -379,7 +383,6 @@ describe('payload.config', () => {
     expect(on).toHaveBeenCalledWith('error', expect.any(Function))
   })
 })
-
 
 /**
  * ═══ A DEV-PUSH KIKAPCSOLÁSÁNAK ŐRE ═══
