@@ -33,8 +33,9 @@
 
 ## Felhasznált források (áttekintés)
 
-Mind a nyolc tétel a `docs/orvosi-forrasbazis.md`-ből való, a forrásbázis
-azonosítójával. A teljes, hozzáférési dátumos jegyzék a cikk végén áll.
+Az alábbi tizenkét tétel a `docs/orvosi-forrasbazis.md`-ből való, a forrásbázis
+azonosítójával. A 2026-08-25-i orvosi kutatási kör új forrásait a második tábla
+sorolja, linkkel és hozzáférési dátummal.
 
 | Azonosító | Forrás | Típus |
 |---|---|---|
@@ -48,8 +49,42 @@ azonosítójával. A teljes, hozzáférési dátumos jegyzék a cikk végén ál
 | CTS9 | AAOS OrthoInfo. Carpal Tunnel Syndrome. Szerző: Tyler Steven Pidgeon MD; lektor: Thomas Ward Throckmorton MD. | Szakmai szervezet |
 | CTS10 | Ballestero-Pérez R és mtsai. Effectiveness of Nerve Gliding Exercises on Carpal Tunnel Syndrome. J Manipulative Physiol Ther. 2017. PMID 27842937. | Szisztematikus áttekintés |
 | VZ1 | NHS. Stroke, Symptoms. Felülvizsgálva 2024-09-12. | Nemzeti egészségügyi szolgálat |
-| VZ2 | NHS. Wrist pain. Felülvizsgálva 2025-11-05. | Nemzeti egészségügyi szolgálat |
+| VZ2 (= CSF1) | NHS. Wrist pain. Felülvizsgálva 2025-11-05. | Nemzeti egészségügyi szolgálat |
 | VZ3 | NHS. Broken arm or wrist. Felülvizsgálva 2023-05-26. | Nemzeti egészségügyi szolgálat |
+
+### Új források a 2026-08-25-i orvosi kutatási körből
+
+Ezek a `build/kutatas/miert-zsibbad-a-kezem.md` forrásjelölései, változatlanul.
+Minden webes forrás lekérési dátuma **2026-08-25**.
+
+| Azonosító | Forrás | Link | Hozzáférés | Mire használtuk |
+|---|---|---|---|---|
+| ZS7 | NHS. Peripheral neuropathy (fő oldal, Causes, Symptoms aloldalak). | `https://www.nhs.uk/conditions/peripheral-neuropathy/` · `/causes/` · `/symptoms/` | felülvizsgálva 2022-10-10, következő 2025-10-10 (LEJÁRT); lekérés 2026-08-25 | „Mit jelent, ha mindkét kezed zsibbad?”: a perifériás idegkárosodás mintázata és kiváltó okai |
+| ZS8 | NHS. Peripheral neuropathy, Treatment. | `https://www.nhs.uk/conditions/peripheral-neuropathy/treatment/` | felülvizsgálva 2022-10-10; lekérés 2026-08-25 | „Segít a krém…?”: az idegi eredetű fájdalom nem javul a megszokott fájdalomcsillapítóktól |
+| ZS9 | NHS. Vitamin B12 or folate deficiency anaemia (Symptoms és Treatment aloldal). | `https://www.nhs.uk/conditions/vitamin-b12-or-folate-deficiency-anaemia/symptoms/` · `/treatment/` | felülvizsgálva 2023-02-20, következő 2026-02-20; lekérés 2026-08-25 | B12-hiány tünetei és a pótlás mint kezelés (mindkét új szakaszban) |
+| ZS10 | NHS. Vitamins and minerals: B vitamins and folic acid. | `https://www.nhs.uk/conditions/vitamins-and-minerals/vitamin-b/` | felülvizsgálva 2020-08-03, következő 2023-08-03 (LEJÁRT); lekérés 2026-08-25 | „Segít a krém…?”: a napi 200 mg-os B6-határ és a napi 10 mg-os ajánlás |
+| ZS11 | Singjam A, Charoentanyarak K, Saengsuwan J. Prevalence and predictive factors for bilateral carpal tunnel syndrome by electrodiagnosis. PLoS One. 2021;16(12):e0260578. PMID 34941881. | `https://doi.org/10.1371/journal.pone.0260578` · `https://pubmed.ncbi.nlm.nih.gov/34941881/` | 2021; lekérés 2026-08-25 | Kétoldali kéztőalagút-érintettség egyoldali panasz mellett is (szám nélkül, minőségi állításként) |
+| ZS12 | Tetreault L és mtsai. Degenerative Cervical Myelopathy: A Practical Approach to Diagnosis. Global Spine J. 2022;12(8):1881–1893. PMID 35043715. | `https://doi.org/10.1177/21925682211072847` · `https://pubmed.ncbi.nlm.nih.gov/35043715/` | 2022; lekérés 2026-08-25 | A degeneratív cervicalis myelopathia tünetegyüttese |
+| ZS13 | Cervellini M és mtsai. Understanding degenerative cervical myelopathy in musculoskeletal practice. J Man Manip Ther. 2025;33(3):207–223. PMID 40035695. | `https://doi.org/10.1080/10669817.2025.2465728` · `https://pubmed.ncbi.nlm.nih.gov/40035695/` | 2025; lekérés 2026-08-25 | A korai szakasz kétoldali kéztőalagútnak látszik, a késedelem visszafordíthatatlan lehet |
+| ZS14 | Gibson J és mtsai. Degenerative Cervical Myelopathy: A Clinical Review. Yale J Biol Med. 2018;91(1):43–48. PMID 29599656. | `https://pubmed.ncbi.nlm.nih.gov/29599656/` | 2018; lekérés 2026-08-25 | Háttérforrás a myelopathia-bekezdéshez (a szövegben külön állítást nem alapoz meg) |
+| ZS15 | AAOS OrthoInfo. Cervical Spondylotic Myelopathy (Spinal Cord Compression). | `https://www.orthoinfo.org/diseases--conditions/cervical-spondylotic-myelopathy-spinal-cord-compression` | lekérés 2026-08-25 | A myelopathia tünetei betegtájékoztató szinten |
+| CTS11 | NICE. Neuropathic pain in adults: pharmacological management in non-specialist settings. Clinical guideline CG173 (1.1.8 és 1.1.11). | `https://www.nice.org.uk/guidance/cg173/chapter/Recommendations` | megjelent 2013-11-20, frissítve 2020-09-22; lekérés 2026-08-25 | Kapszaicin krém körülírt idegi fájdalomnál; a négy kezdő hatóanyag |
+| CTS12 | Padua L és mtsai. Systematic review of pregnancy-related carpal tunnel syndrome. Muscle Nerve. 2010;42(5):697–702. PMID 20976778. | `https://doi.org/10.1002/mus.21910` · `https://pubmed.ncbi.nlm.nih.gov/20976778/` | 2010; lekérés 2026-08-25 | A gyakoriság szóródása; a tünetek a szülés után egy évvel is megmaradhatnak (T4 és a terhesség-szakasz) |
+| CTS13 | Cîmpeanu MC és mtsai. Management of „De Novo” Carpal Tunnel Syndrome in Pregnancy: A Narrative Review. J Pers Med. 2024;14(3):240. PMID 38540982. | `https://doi.org/10.3390/jpm14030240` · `https://pubmed.ncbi.nlm.nih.gov/38540982/` | 2024; lekérés 2026-08-25 | Terhesség alatt szűkebb eszköztár; gyakori alulértékelés és késői felismerés |
+| VZ4 | NHS. Medicines in pregnancy. | `https://www.nhs.uk/pregnancy/keeping-well/medicines/` | felülvizsgálva 2022-09-05, következő 2025-09-05 (LEJÁRT); lekérés 2026-08-25 | Terhesség alatt bármely készítmény előtt szakemberrel egyeztetés |
+| VZ5 | NHS. Swollen ankles, feet and fingers in pregnancy. | `https://www.nhs.uk/pregnancy/related-conditions/common-symptoms/swollen-ankles-feet-and-fingers/` | felülvizsgálva 2024-04-19, következő 2027-04-19; lekérés 2026-08-25 | Hirtelen duzzanat mint preeclampsia-jel, azonnali hívás |
+| VZ6 | NHS. Heart attack. | `https://www.nhs.uk/conditions/heart-attack/` | felülvizsgálva 2026-03-31, következő 2029-03-31; lekérés 2026-08-25 | A sürgősségi szakasz szív-blokkja: tünetlista és a 112 |
+| VZ7 | American Heart Association. Warning Signs of a Heart Attack. | `https://www.heart.org/en/health-topics/heart-attack/warning-signs-of-a-heart-attack` | felülvizsgálva 2024-12-12; lekérés 2026-08-25 | A kisugárzás és a felsőtesti kellemetlen érzés leírása |
+
+Három korábbi tétel új szerepet is kapott, azonosítójuk változatlan: **CTS1**
+(NHS Carpal tunnel syndrome, `https://www.nhs.uk/conditions/carpal-tunnel-syndrome/`,
+lekérés 2026-08-25) a terhesség mint kockázati tényező és a fájdalomcsillapítók
+korlátja; **CTS2** (AAOS CPG,
+`https://www.aaos.org/globalassets/quality-and-practice-resources/carpal-tunnel/carpal-tunnel-2024/cts-cpg.pdf`,
+elfogadva 2024-05-18, lekérés 2026-08-25) a krém, a szájon át adott szerek és a
+táplálékkiegészítés megítélése; **CTS9** (AAOS OrthoInfo Carpal Tunnel Syndrome,
+`https://orthoinfo.aaos.org/en/diseases--conditions/carpal-tunnel-syndrome/`,
+lekérés 2026-08-25) a kezeletlen kéztőalagút romlása és a tartós kézműködési zavar.
 
 ---
 
@@ -102,17 +137,27 @@ Ilyenkor azonnal hívj mentőt, Magyarországon a 112-t.
 Ezt külön ki kell emelni: ha a stroke jelei már el is múltak, de 24 órán belül
 megvoltak, akkor is azonnali segítség kell.
 
+**Ha a kartünet mellé mellkasi panasz társul.** Szorító vagy nyomó mellkasi
+fájdalom, légszomj, hányinger vagy hányás, hideg verejtékezés, gyomorégésszerű
+érzés, sápadt, kékes vagy szürkés bőr: ezek együtt szívinfarktus gyanúját
+jelentik, és ilyenkor azonnal a 112-t kell hívni. A mellkasi panasz kisugározhat
+a karba, a nyakba és az állkapocsba, és a felsőtesti kellemetlen érzés az egyik
+vagy mindkét karban, a hátban, a nyakban, az állkapocsban és a gyomorszájban is
+jelentkezhet, akár szokatlan fáradtsággal vagy szédüléssel együtt.
+
+Egy pontosítást ide is ki kell tenni, mert enélkül félrevezető lenne. A szakmai
+források a karra vonatkozóan **fájdalmat vagy kellemetlen érzést** írnak le, nem
+zsibbadást. Nem azt mondjuk tehát, hogy a zsibbadó bal kéz infarktust jelent.
+Azt mondjuk, hogy ha a kartünet mellé mellkasi nyomás, légszomj, hányinger vagy
+hideg verejték társul, akkor nem a kezet kell nézni, hanem hívni kell a 112-t.
+Ezt telefonon percek alatt eldöntik, egy cikkből nem lehet.
+
 **Sérülés után.** Négy jelnél kell mentőt hívni:
 
 - a sérült kar vagy csukló zsibbad, bizsereg,
 - erősen vérző seb van rajta,
 - a csont kiáll a bőrből,
 - a kar vagy a csukló alakja megváltozott.
-
-**Ha megijedtél.** Amikor a zsibbadás mellett olyan tünet is jelentkezik, ami
-megrémít, például mellkasi panasz vagy rosszullét, ne a keresőben keresd a
-választ. Hívd a 112-t. Ezt telefonon percek alatt eldöntik. Egy cikkből nem
-lehet.
 
 Ez a szakasz a sürgős eseteket sorolja. Amikor nem sürgős, de orvos kell, azt a
 „Mikor fordulj azonnal orvoshoz?” és a „Mikor kell kivizsgálás, ha nem sürgős?”
@@ -123,9 +168,9 @@ szakaszban szedtük össze.
 A zsibbadás tünet, nem diagnózis. Sokféle, egymástól nagyon távoli ok állhat
 mögötte, és ezek nem ugyanazt a kezelést igénylik.
 
-Lehetséges okként szóba jön a cukorbetegség, a Raynaud-jelenség, a
-hiperventillációt, az isiászt és a sclerosis multiplexet is felsorolja. A
-tartósan megmaradó zsibbadás okai között a nyakban vagy a hátban becsípődött
+A szakirodalom lehetséges okként sorolja fel a cukorbetegséget, a
+Raynaud-jelenséget, a hiperventillációt, az isiászt és a sclerosis multiplexet.
+A tartósan megmaradó zsibbadás okai között a nyakban vagy a hátban becsípődött
 ideget is nevesíti.
 
 Az okok egy részénél az ideg nyomás alá kerül. A kéztőalagút-szindróma például a
@@ -186,6 +231,44 @@ test egyik oldalán, és mellette lelóg az arc egyik fele, erőtlen a kar vagy
 akadozik a beszéd, az stroke gyanúja. Ilyenkor azonnal a 112-t kell hívni,
 ahogy a cikk elején is írjuk.
 
+## Mit jelent, ha mindkét kezed zsibbad?
+
+Ha mindkét kezed zsibbad, az inkább egy egész testre kiterjedő ok felé mutat,
+mint egyetlen becsípődött ideg felé, és emiatt mindig orvosi kivizsgálást
+igényel. Ez nem azt jelenti, hogy súlyos. Azt jelenti, hogy a kétoldali
+mintázatot otthon nem lehet lezárni.
+
+A perifériás idegkárosodás a végtagok idegeit érinti, tehát a kezet, a lábfejet
+és a kart. A leggyakoribb formája a leghosszabb idegeket támadja meg elsőként,
+ezért a tünetek jellemzően a lábfejen indulnak, majd felfelé terjedve később
+érik el a kezet. Az Egyesült Királyságban a leggyakoribb kiváltó ok a
+cukorbetegség, de a B12-vitamin hiánya, a pajzsmirigy alulműködése, a tartós
+túlzott alkoholfogyasztás és több gyógyszercsoport is okozhatja.
+
+A B12-hiány külön említést érdemel, mert pontosan ilyen panaszt csinál:
+zsibbadás, bizsergés, izomgyengeség, valamint egyensúly- és
+koordinációs zavar. Ez az egyetlen olyan ok a listán, amit egy
+vérvétel egyértelműen tisztáz, ezért érdemes róla a háziorvosnál szóba hozni.
+
+Kétoldali lehet maga a kéztőalagút-szindróma is. Egy visszatekintő
+elektrodiagnosztikai vizsgálat szerint azoknál is gyakran mindkét oldalon
+kimutatható, akik csak az egyik kezükre panaszkodnak. Vagyis a kétoldaliság
+önmagában nem zárja ki a csuklót, csak nem is bizonyít semmit.
+
+Van viszont egy mintázat, amit érdemes ismerni, mert a szakirodalom szerint
+gyakran késve ismerik fel. A nyaki gerincvelő fokozatos nyomás alá kerülésének
+(degeneratív cervicalis myelopathia) jellemző tünetegyüttese a **kétoldali
+kézzsibbadás és bizsergés**, az ügyetlenség a finom mozgásokban (gombolás,
+kézírás, evés), a járás és az egyensúly romlása, valamint súlyosabb esetben a
+hólyagműködés zavara. A szakirodalom kiemeli, hogy ez korai szakaszában
+**kétoldali kéztőalagút-szindrómának néz ki**, gyakran tévesen
+diagnosztizálják, és a késedelem visszafordíthatatlan idegi következményekkel
+járhat.
+
+Ezért a gyakorlati szabály egyszerű. Ha mindkét kezed zsibbad, az kivizsgálás.
+Ha mellette a járásod, az egyensúlyod vagy a finom kézmozgásod is romlik, akkor
+nem érdemes két hetet várni, azzal menj orvoshoz.
+
 ## Mi okozhat még zsibbadást?
 
 A zsibbadásnak sok oka lehet, és nem mind a kézben keresendő.
@@ -215,8 +298,8 @@ Az eddigi kutatás egyetlen olyan vizsgálatot
 talált, amely a sínt kontrollcsoporthoz hasonlította. Ez a vizsgálat magas
 torzítási kockázatú volt, és nem talált különbséget a csoportok között.
 
-Egy további randomizált és három egykarú vizsgálat azt jelezte, hogy az enyhe
-és közepes esetek többsége javul az éjszakai sín mellett. Ezek is magas, súlyos
+Egy további randomizált és három kontrollcsoport nélküli vizsgálat enyhe és
+közepes eseteknél javulást írt le az éjszakai sín mellett. Ezek is magas, súlyos
 vagy kritikus torzítási kockázatúak, és a szerzők kiírják: nem tudni, hogy a
 javulás a kezeléstől vagy pusztán az idő múlásától volt-e.
 
@@ -236,6 +319,41 @@ jelölik, az ajánlás pedig szakértői konszenzus.
 Ez fontos különbség. Nem azt jelenti, hogy bizonyítottan nincs kapcsolat. Azt
 jelenti, hogy megbízható vizsgálat egyik irányban sem áll rendelkezésre.
 
+## Zsibbad a kezed a terhesség alatt?
+
+A terhesség alatti kézzsibbadás leggyakoribb hátterében a kéztőalagút-szindróma
+áll, és az első lépés itt is az éjszakai csuklósín, nem a gyógyszer. A terhesség
+név szerint szerepel a kéztőalagút-szindróma kockázati tényezői között.
+
+Arról, hogy ez mennyire gyakori, egyetlen számot nem lehet felelősen kimondani.
+Egy szisztematikus áttekintés szerint a közölt gyakoriság rendkívül széles
+sávban szóródik, és a szóródás nagyrészt abból jön, hogy a vizsgálatok
+mennyire eltérő módon állapították meg a diagnózist. Ugyanez az áttekintés egy
+másik dolgot is kimond, és ez a fontosabb: a panasz a szülés után egy évvel is
+megmaradhat. Vagyis a „majd a szülés után elmúlik” nem megbízható terv.
+
+Terhesség alatt szűkebb az eszköztár, mint egyébként. A témát összefoglaló
+áttekintés szerint a kezelési lehetőségek körét egyszerre szűkíti a kismama
+élettani állapota és az, hogy a panasz a szülés utáni időszakban kezelés nélkül
+is rendeződhet. Ugyanez a munka viszont figyelmeztet arra is, hogy a
+kéztőalagút-szindrómát terhesség alatt gyakran alulértékelik és későn ismerik
+fel, mert a tüneteket a terhesség szokásos velejárójának veszik, a késedelmes
+vagy elmaradó ellátás pedig tartós idegkárosodáshoz vezethet.
+
+Ami a krémet, a fájdalomcsillapítót és a vitamint illeti, terhesség alatt
+kétszeresen igaz, amit erről a cikkben írunk. A szabály egyszerű: a terhesség
+alatt szedett gyógyszerek nagy része átjut a méhlepényen, ezért bármit veszel
+be, akár vény nélkülit is, előtte kérdezd meg a gyógyszerészt, a szülésznőt
+vagy az orvost. Ugyanez vonatkozik a gyógynövényes és a „természetes”
+készítményekre is.
+
+**És egy jel, ami nem várhat.** A terhesség alatti duzzadás a lábszáron, a
+bokán, a lábfejen és az ujjakon önmagában szokásos. Ha viszont az arcod, a
+kezed vagy a lábfejed duzzanata **hirtelen** megnő, az a preeclampsia jele
+lehet, és azonnal szólnod kell. Ilyenkor a szülésznő, a háziorvos vagy a
+szülészet azonnali hívása a teendő, különösen ha erős fejfájás, látászavar,
+bordák alatti fájdalom vagy nagyon rossz közérzet kíséri.
+
 ## Mit lehet tenni kézzsibbadás ellen otthon?
 
 Az első lépés a terhelés csökkentése és a csukló kímélő tartása. A
@@ -248,12 +366,10 @@ Első lépésként a csuklósín jön szóba, és érdemes tudni a valós időig
 akár 6 hetet is viselni kell, mire javulni kezd.
 
 Az eddigi vizsgálatok összesítéséből a következő rajzolódik ki.
-Az éjszakai sín viselése rövid távon nagyobb eséllyel hozott általános javulást,
-mint a kezelés nélküli állapot. A kockázati arány 3,86, a 95%-os megbízhatósági
-tartomány 2,29 és 6,51 között.
-
-Ez az eredmény egyetlen, 80 fős vizsgálatból származik, és a bizonyosság szintje
-alacsony.
+Az éjszakai sín viselése rövid távon gyakrabban járt együtt általános javulással,
+mint a kezelés nélküliség. Ez az eredmény viszont egyetlen, 80 fős vizsgálatból
+származik, és a bizonyosság szintje alacsony, tehát irányt mutat, nem eredményt
+ígér.
 
 A tünetskálán mért javulás viszont kicsi. A Boston-kérdőív tünetskáláján 0,37
 pont a sín javára, a megbízhatósági tartomány 0,82 ponttal jobb és 0,08 ponttal
@@ -284,9 +400,8 @@ eszköz, hanem egy megpróbálható lépés a döntés előtt.
 Az idegsiklató gyakorlatok kiegészítőként jönnek szóba, korlátozott
 bizonyítékkal.
 
-A nem műtéti lehetőségek közé tartoznak: egyes pácienseknek
-segíthetnek azok a gyakorlatok, amelyek a középideg szabadabb mozgását
-támogatják.
+A nem műtéti lehetőségek közé tartoznak azok a gyakorlatok, amelyek a középideg
+szabadabb mozgását támogatják; egyes pácienseknek ezek segíthetnek.
 
 Egy 13 klinikai vizsgálatot áttekintő munka óvatosabb. A szerzők szerint a
 fájdalom csökkentésére a szokásos konzervatív ellátás tűnik a legmegfelelőbbnek.
@@ -299,9 +414,9 @@ A 13 vizsgálatból 6 gyenge minőségűnek bizonyult.
 A gyakorlatozás a jelenlegi bizonyíték szerint nem javítja a
 kéztőalagút-szindróma hosszú távú, páciens által jelentett eredményét.
 
-Erős bizonyíték szól olyan
-nem műtéti módszereket, amelyek nem javítják a páciens által jelentett hosszú
-távú eredményt. Ezen a listán a gyakorlatozás, a masszázs és a manuálterápia is
+A 2024-es kéztőalagút-irányelv magas minőségű bizonyíték alapján sorol fel
+olyan nem műtéti módszereket, amelyek nem javítják a páciens által jelentett
+hosszú távú eredményt. Ezen a listán a gyakorlatozás, a masszázs és a manuálterápia is
 szerepel.
 
 Az érem másik oldalát is kiírjuk. Ez az ajánlás gyengébb lábakon áll, mert a
@@ -317,6 +432,65 @@ rövid, vezetett kezdéssel indulna, annak belépő az ingyenes
 [SOS Kézrelax villámkurzusunk](/kurzusok/sos-kezrelax-villamkurzus). A
 villámkurzusban látod, mit vizsgálunk mi az egyes kórképeknél. Ezek tájékozódásra
 valók: a diagnózist orvosi vizsgálat adja meg, nem egy otthon elvégzett teszt.
+
+## Segít a krém, a gyógyszer vagy a B-vitamin a kézzsibbadásra?
+
+> **Fontos keret, ezt a szakaszt így kell olvasni.** Nem árulunk gyógyszert,
+> krémet és étrend-kiegészítőt, és nem is ajánlunk konkrét készítményt. Az
+> alábbi rész arról szól, mit mond ezekről a szakirodalom, mikor van értelmük,
+> és mikor nincs.
+
+A ma elérhető bizonyíték szerint sem a külsőleges krém, sem a szokásos
+fájdalomcsillapító, sem a vitaminkészítmény nem hoz tartós javulást a
+kézzsibbadásban, a B6-vitamin pedig nagy adagban maga is okozhat zsibbadást.
+Ettől még nincs mindegyik pontban ugyanaz a helyzet, ezért végigvesszük őket
+külön.
+
+**A krém.** A 2024-es kéztőalagút-irányelv név szerint felsorolja a külsőleges
+készítményt azok között a nem műtéti módszerek között, amelyek magas minőségű
+bizonyíték szerint **nem javítják a beteg által jelentett hosszú távú
+eredményt**. Van egy szűk kivétel, de az nem a zsibbadásról szól: az idegi
+eredetű fájdalomra írt irányelv **körülírt idegi eredetű fájdalomnál**
+mérlegelhetőnek mondja a kapszaicin krémet annál, aki a szájon át szedett
+szereket kerülné vagy nem tolerálja. Ez tehát fájdalomra szóló, orvos által
+mérlegelt lehetőség, nem a zsibbadás elleni patikai vásárlás.
+
+**A fájdalomcsillapító.** A paracetamol vagy az ibuprofen a kéztőalagút
+okozta fájdalmon rövid távon segíthet, de a szakirodalom kiírja: kevés
+bizonyíték szól amellett, hogy a panasz **okát** kezelnék, ezért nem szabad
+rájuk támaszkodni. Ha a panasz idegi eredetű, ez még hangsúlyosabb: az idegi
+eredetű fájdalom általában nem javul a megszokott fájdalomcsillapítóktól, ezért
+ott más gyógyszercsoportokat használnak.
+
+**A vényköteles idegi fájdalomcsillapítók.** Ezekről érdemes tudni, hogy
+léteznek, és azt is, hogy nem otthoni döntések. Az idegi eredetű fájdalomra írt
+irányelv négy szert nevez meg kezdő kezelésként: amitriptilin, duloxetin,
+gabapentin vagy pregabalin. Mindegyik vényköteles, az adagolásuk és a
+mellékhatásaik miatt orvosi felügyelet kell hozzájuk, és a zsibbadás mint tünet
+önmagában nem is feltétlenül fájdalom. A kéztőalagút-irányelv ehhez hozzáteszi,
+hogy kéztőalagút-szindrómában a szájon át adott gyulladáscsökkentő, a görcsgátló
+és a vízhajtó **nem bizonyult jobbnak a kontrollnál vagy a placebónál**, a
+szájon át adott kortikoszteroid pedig nem javítja a hosszú távú eredményt.
+
+**A vitamin.** Ugyanez az irányelv a táplálékkiegészítést is azon a listán
+szerepelteti, amelynek elemei nem bizonyultak jobbnak a kontrollnál vagy a
+placebónál. Egyetlen helyzetben más a kép: ha tényleg **hiány** áll fenn. A
+B12-vitamin hiánya valóban okoz zsibbadást, bizsergést, izomgyengeséget és
+egyensúlyzavart, és ilyenkor a pótlás a kezelés, injekcióval vagy tablettával,
+a hiány okától függően. A különbség lényeges: ezt vérvétel dönti el, nem tipp.
+
+**És egy dolog, amit a legfontosabbnak tartunk ebben a szakaszban.** A
+B6-vitaminból napi 200 mg vagy annál több szedése **maga is okozhat**
+érzéskiesést a karban és a lábban, ezt hívják perifériás neuropátiának. Az
+általános ajánlás: étrend-kiegészítőből ne szedj napi 10 mg-nál több
+B6-vitamint, hacsak orvos nem mondja. Vagyis a zsibbadásra „vitamint bevenni”
+nemcsak hogy nem biztos, hogy használ, hanem rosszul adagolva pont azt a
+panaszt hozhatja létre, ami miatt keresed.
+
+Amit ebből haza lehet vinni: a kézzsibbadásnak nincs patikában levehető
+megoldása. Ami helyette van, az az ok tisztázása, a terhelés csökkentése,
+kéztőalagút-gyanúnál az éjszakai csuklósín, és ha a panasz két hét otthoni
+kezelés után sem javul, kivizsgálás.
 
 ### Amit a terhelésen változtathatsz
 
@@ -345,12 +519,12 @@ Ne gyakorolj, ha az alábbi jelek bármelyike fennáll. Ilyenkor a vizsgálat az
  ellenjavallati szabálya is.
 - **Műtéted volt.** Műtét után mindig a kezelőorvosod vagy gyógytornászod
  jóváhagyásával kezdj bele.
-- **Friss sérülés után vagy.** A sérülést követő első 2-3 napban kerülendő a
- melegítő pakolást és a forró fürdőt. Nehezet emelni és erősen szorítani sem
+- **Friss sérülés után vagy.** A sérülést követő első 2–3 napban kerülendő a
+ melegítő pakolás és a forró fürdő. Nehezet emelni és erősen szorítani sem
  szabad.
 
 A sín sem mindenkinél kellemetlenségmentes. Az összesített vizsgálatok egyik
-vizsgálatában a sínt viselő 40 résztvevőből 7 (18%) számolt be múló
+vizsgálatában a sínt viselő 40 résztvevőből 7 számolt be múló
 mellékhatásról, a kezelés nélküli csoportban egy sem. A bizonyosság szintje itt
 alacsony, és a megbízhatósági tartomány a hatás hiányát is magában foglalta.
 
@@ -402,11 +576,27 @@ Ezek a helyzetek jellemzőek.
 - Cukorbetegség mellett jelentkező kézpanasz, mert ilyenkor a kézproblémák
  komolyabbak lehetnek.
 
+Ezekhez jön még három jel, ami nem sürgős, de nem is halogatható: ha gyengül a
+szorításod, ha egyre gyakrabban ejtesz el tárgyakat, vagy ha a hüvelykujj tövén
+lévő párnás rész látványosan lelapult. Ilyenkor már nem a tünetről van szó,
+hanem a működésről.
+
+Ennek egyszerű oka van. A szakirodalom szerint a kéztőalagút-szindróma a
+legtöbb embernél idővel rosszabbodik, és ha túl sokáig marad kezeletlen, tartós
+kézműködési zavarhoz vezethet, beleértve az ujjak érzéskiesését és a
+gyengeséget. Ez nem ijesztgetés, hanem a „majd elmúlik” ellensúlya.
+
+Ha mindkét kezed zsibbad, arról fentebb külön írtunk, és az mindenképp
+kivizsgálás. Ha pedig várandós vagy, arra is van külön szakaszunk.
+
 Fontos tudni, hogy a kéztőalagút-szindróma tüneteivel orvoshoz kell
 fordulni, ha romlanak vagy nem múlnak.
 
-Jó hír is van. A kéztőalagút-szindróma néha magától rendeződik
-néhány hónap alatt, különösen akkor, ha terhesség miatt alakult ki.
+A szakirodalom szerint a kéztőalagút-szindróma néha magától rendeződik néhány
+hónap alatt, különösen akkor, ha terhesség miatt alakult ki. Ez viszont nem
+szabály. A terhességhez kötődő panaszt vizsgáló szisztematikus áttekintés
+szerint a tünetek a szülés után egy évvel is megmaradhatnak, ezért a „majd
+elmúlik” nem indok a kivizsgálás halasztására.
 
 Ha a fájdalom is társul a zsibbadáshoz, arról külön írtunk a
 [csukló- és kézfájdalomról szóló cikkünkben](/blog/csuklo-es-kezfajdalom). Ha
@@ -469,11 +659,11 @@ klinikai állítás egy sor. Forrás nélküli klinikai állítás: **0 darab**.
 | 15 | A sok billentyűzethasználat és a CTS összefüggése nem igazolt; munkacsoporti konszenzus, nagyon alacsony bizonyítékminőség | CTS2 | „Very Low”, „Consensus” egyezik |
 | 16 | A csuklósínt akár 6 hétig kell viselni, mire javulni kezd | CTS1 | 6 hét egyezik |
 | 17 | Cochrane: 29 vizsgálat, 1937 felnőtt | CTS3 | 29 és 1937 egyezik |
-| 18 | Éjszakai sín kontra semmi, általános javulás: RR 3,86 (95% CI 2,29 és 6,51 között), 1 vizsgálat, 80 fő, alacsony bizonyosság | CTS3 | mind egyezik |
+| 18 | Éjszakai sín kontra semmi: a sín rövid távon gyakrabban járt együtt általános javulással; 1 vizsgálat, 80 fő, alacsony bizonyosság, ezért irányt mutat, nem eredményt ígér | CTS3 | 1 vizsgálat és 80 fő egyezik; a hatásmérték (RR 3,86, 95% CI 2,29–6,51) a forrásban áll, a cikkszövegben már nem |
 | 19 | Boston tünetskála: 0,37 pont a sín javára (95% CI 0,82 jobb és 0,08 rosszabb között), az 1 pontos küszöb alatt, alacsony bizonyosság | CTS3 | mind egyezik |
 | 20 | A szerzők következtetése: olcsó, tartós ártalom nélküli beavatkozás, a kis hatás is indokolhatja, főleg annál, aki nem akar műtétet vagy injekciót | CTS3 | idézet, tartalmi fordítás |
 | 21 | Bizonytalan, hogy a sín csökkenti-e a műtétre küldést; nagyon alacsony bizonyosság | CTS3 | egyezik |
-| 22 | Sín-mellékhatás: 40-ből 7 (18%) múló panasz, a kontrollcsoportban 0; alacsony bizonyosság, a CI a hatás hiányát is tartalmazta | CTS3 | 40, 7, 18%, 0 egyezik |
+| 22 | Sín-mellékhatás: 40-ből 7 múló panasz, a kontrollcsoportban 0; alacsony bizonyosság, a CI a hatás hiányát is tartalmazta | CTS3 | 40, 7 és 0 egyezik; a százalékos alak (18%) a cikkszövegből kikerült |
 | 23 | Az AAOS OrthoInfo szerint egyes pácienseknek segíthetnek a középideg mozgását támogató gyakorlatok | CTS9 | nincs szám |
 | 24 | Idegsiklatás: 13 vizsgálat, ebből 6 gyenge minőségű; a szokásos konzervatív ellátás tűnik a legjobbnak a fájdalomra; az idegsiklatás kiegészítő | CTS10 | 13 és 6 egyezik |
 | 25 | Az AAOS 2024 magas minőségű bizonyítékra hivatkozva sorolja a gyakorlatozást, a masszázst és a manuálterápiát azok közé, amelyek nem javítják a hosszú távú, páciens által jelentett eredményt | CTS2 | „High” egyezik |
@@ -487,25 +677,58 @@ klinikai állítás egy sor. Forrás nélküli klinikai állítás: **0 darab**.
 | 33 | Két hét otthoni kezelés után sem javuló panasznál orvos kell | VZ2 | 2 hét egyezik |
 | 34 | Cukorbetegség mellett a kézpanasz komolyabb lehet | VZ2 | nincs szám |
 | 35 | A CTS tüneteivel orvoshoz kell fordulni, ha romlanak vagy nem múlnak | CTS1 | nincs szám |
-| 36 | A CTS néha magától rendeződik néhány hónap alatt, különösen terhesség esetén | CTS1 | „néhány hónap” egyezik |
+| 36 | A CTS néha magától rendeződik néhány hónap alatt, különösen terhesség esetén, de ez nem szabály: a terhességhez kötődő panasz a szülés után egy évvel is megmaradhat | CTS1 és CTS12 | „néhány hónap” és „egy év” egyezik; a korábbi „Jó hír is van” felütés kikerült |
 
 **Kiegészítés a 2026-08-21-i tényellenőrző kör után.** Négy sor változott vagy
 került be, ezek forrása is ellenőrizve:
 
 | # | Állítás a cikkben | Forrás | Szám szó szerint egyezik? |
 |---|---|---|---|
-| 14b | A Bateman-áttekintésben egy további RCT és három egykarú vizsgálat azt jelezte, hogy az enyhe és közepes esetek többsége javul, de nem tudni, a kezeléstől vagy az idő múlásától | ZS6 | „One additional RCT”, „three single-arm studies” egyezik |
+| 14b | A Bateman-áttekintésben egy további RCT és három kontrollcsoport nélküli vizsgálat javulást írt le enyhe és közepes eseteknél, de nem tudni, a kezeléstől vagy az idő múlásától | ZS6 | „One additional RCT”, „three single-arm studies” egyezik; az „esetek többsége javul” arány a cikkszövegből kikerült |
 | 25b | Az AAOS 2024 ugyanennél a pontnál „Limited (Downgraded)” ajánláserősséget ad, az indoklás a kezelések, a vizsgálatminőség, a kontrollcsoportok és az utánkövetési idők eltérése | CTS2 | „Limited (Downgraded)” egyezik |
 | 30b | A sérülés utáni mentőhívós lista NÉGY tételes, benne az erősen vérző seb | VZ3 | „a bad cut that is bleeding heavily” egyezik |
 | 31b | A csuklón lévő CSOMÓ (nem duzzanat) nagyon fájdalmas, forró vagy piros | VZ2 | „a lump on your wrist” egyezik |
 
+**Kiegészítés a 2026-08-25-i orvosi kutatási kör után.** A négy új, illetve
+bővített szakasz állításai. Egyik sem tartalmaz gyógyulási arányt vagy
+kimeneteli százalékot.
+
+| # | Állítás a cikkben | Forrás | Szám szó szerint egyezik? |
+|---|---|---|---|
+| 37 | Szívinfarktus-gyanú jelei a kartünet mellett: szorító vagy nyomó mellkasi fájdalom, légszomj, hányinger vagy hányás, hideg verejtékezés, gyomorégésszerű érzés, sápadt, kékes vagy szürkés bőr; azonnal 112 | VZ6 | nincs szám |
+| 38 | A mellkasi panasz kisugározhat a karba, a nyakba és az állkapocsba; a felsőtesti kellemetlen érzés egyik vagy mindkét karban, hátban, nyakban, állkapocsban és gyomorszájban is jelentkezhet, szokatlan fáradtsággal vagy szédüléssel | VZ7 | nincs szám |
+| 39 | A szakmai források a karra fájdalmat vagy kellemetlen érzést írnak le, nem zsibbadást (pontosítás, nem új klinikai állítás) | VZ6 és VZ7 | nincs szám |
+| 40 | A kétoldali kézzsibbadás inkább egész testre kiterjedő okra utal, ezért mindig kivizsgálást igényel | ZS7 | nincs szám |
+| 41 | A perifériás idegkárosodás a leghosszabb idegeket támadja elsőként, ezért a tünetek jellemzően a lábfejen indulnak; a leggyakoribb kiváltó ok a cukorbetegség, mellette B12-hiány, pajzsmirigy-alulműködés, tartós túlzott alkoholfogyasztás, több gyógyszercsoport | ZS7 | nincs szám |
+| 42 | A B12-hiány zsibbadást, bizsergést, izomgyengeséget, egyensúly- és koordinációs zavart okoz, és vérvétel tisztázza | ZS9 | nincs szám |
+| 43 | Kétoldali kéztőalagút-érintettség azoknál is gyakran kimutatható, akik csak az egyik kezükre panaszkodnak | ZS11 | szándékosan szám nélkül (a forrás 80,7%-os aránya egyetlen központ adata, nem került a szövegbe) |
+| 44 | A degeneratív cervicalis myelopathia tünetegyüttese: kétoldali kézzsibbadás és bizsergés, ügyetlenség a finom mozgásokban, járás- és egyensúlyromlás, súlyosabb esetben hólyagműködési zavar | ZS12 és ZS15 | nincs szám |
+| 45 | A korai szakasz kétoldali kéztőalagút-szindrómának néz ki, gyakran tévesen diagnosztizálják, a késedelem visszafordíthatatlan idegi következménnyel járhat | ZS13 | nincs szám |
+| 46 | A 2024-es kéztőalagút-irányelv a külsőleges készítményt magas minőségű bizonyíték alapján sorolja azok közé, amelyek nem javítják a beteg által jelentett hosszú távú eredményt | CTS2 | „High” egyezik |
+| 47 | Körülírt idegi eredetű fájdalomnál a kapszaicin krém mérlegelhető annál, aki a szájon át szedett szereket kerülné vagy nem tolerálja | CTS11 (1.1.11) | nincs szám |
+| 48 | A paracetamol és az ibuprofen rövid távon segíthet, de kevés bizonyíték szól amellett, hogy a panasz okát kezelnék | CTS1 | nincs szám |
+| 49 | Az idegi eredetű fájdalom általában nem javul a megszokott fájdalomcsillapítóktól, ezért más gyógyszercsoportokat használnak | ZS8 | nincs szám |
+| 50 | Idegi eredetű fájdalomra kezdő kezelésként négy szer jön szóba: amitriptilin, duloxetin, gabapentin, pregabalin; mind vényköteles | CTS11 (1.1.8) | „négy” egyezik |
+| 51 | Kéztőalagút-szindrómában a szájon át adott gyulladáscsökkentő, görcsgátló és vízhajtó nem bizonyult jobbnak a kontrollnál vagy a placebónál; a szájon át adott kortikoszteroid nem javítja a hosszú távú eredményt | CTS2 | nincs szám |
+| 52 | A táplálékkiegészítés sem bizonyult jobbnak a kontrollnál vagy a placebónál | CTS2 | nincs szám |
+| 53 | B12-hiánynál a pótlás a kezelés, injekcióval vagy tablettával, a hiány okától függően | ZS9 | nincs szám |
+| 54 | Napi 200 mg vagy több B6-vitamin perifériás neuropátiát okozhat; étrend-kiegészítőből napi 10 mg-nál több csak orvosi javaslatra | ZS10 | 200 mg és 10 mg egyezik — **a forrásoldal felülvizsgálati határideje 2023-08-03-án lejárt, kiadás előtt ellenőrizni kell** |
+| 55 | A terhesség a kéztőalagút-szindróma kockázati tényezői között szerepel | CTS1 | nincs szám |
+| 56 | A terhesség alatti kéztőalagút gyakoriságáról közölt adatok rendkívül széles sávban szóródnak, nagyrészt a diagnózisfelállítás eltérései miatt; a panasz a szülés után egy évvel is megmaradhat | CTS12 | „egy év” egyezik; a 7–43% és 31–62% sávot, valamint a lefolyási arányokat szándékosan nem írtuk a szövegbe |
+| 57 | Terhesség alatt szűkebb a kezelési eszköztár; a kéztőalagutat gyakran alulértékelik és későn ismerik fel, a késedelem tartós idegkárosodáshoz vezethet | CTS13 | nincs szám |
+| 58 | A terhesség alatt szedett gyógyszerek nagy része átjut a méhlepényen, ezért bármely készítmény előtt szakemberrel kell egyeztetni; ez a gyógynövényes és „természetes” készítményekre is vonatkozik | VZ4 | nincs szám |
+| 59 | A terhességi duzzadás önmagában szokásos, de a hirtelen megnövő arc-, kéz- vagy lábfejduzzanat preeclampsia jele lehet, és azonnali hívást igényel, különösen erős fejfájás, látászavar, bordák alatti fájdalom vagy nagyon rossz közérzet mellett | VZ5 | nincs szám |
+| 60 | Nem sürgős, de nem is halogatható jelek: gyengülő szorítás, gyakori tárgyelejtés, a hüvelykujj tövén lévő párnás rész lelapulása | CTS9 | nincs szám |
+| 61 | A kéztőalagút-szindróma a legtöbb embernél idővel rosszabbodik, és túl sokáig kezeletlenül tartós kézműködési zavarhoz vezethet, beleértve az ujjak érzéskiesését és a gyengeséget | CTS9 | nincs szám |
+
 **Nem klinikai állítások a szövegben** (a lektornak külön ellenőrizendők):
 a nyitás „könnyű halogatni a kivizsgálást” mondata helyzetleírás, nem forrásolt
 epidemiológiai adat (a korábbi, praxisra hivatkozó változatot a tényellenőrzés
-J11 pontja miatt cseréltük). A „Ha megijedtél” bekezdés útbaigazítás, nem
-klinikai állítás: nem mondja meg, mit jelent a mellkasi panasz, csak azt, hogy
-hova kell fordulni vele. **Ezt a bekezdést a két gyógytornásznak külön jóvá kell
-hagynia.** A kurzus leírása („csukló-, ujj-, alkar- és könyökpanaszokra”) és az
+J11 pontja miatt cseréltük). A korábbi „Ha megijedtél” bekezdés helyére
+2026-08-25-én a forrásolt szív-blokk került (37–39. sor), amely már megnevezi a
+tüneteket, és külön kimondja, hogy a karra a források fájdalmat vagy
+kellemetlen érzést írnak le, nem zsibbadást. **Ezt a blokkot a két
+gyógytornásznak külön jóvá kell hagynia.** A kurzus leírása („csukló-, ujj-, alkar- és könyökpanaszokra”) és az
 ellenjavallati felsorolás a meglévő termékleírásból való, betűhíven. Az „éles
 fájdalom esetén hagyd abba” és a „műtét után a kezelőorvos jóváhagyásával” a
 kurzusok saját ellenjavallati szövege.

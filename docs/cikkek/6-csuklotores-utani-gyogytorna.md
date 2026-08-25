@@ -37,22 +37,63 @@
 
 ## Felhasznált források (áttekintés)
 
-Mind a nyolc tétel a `docs/orvosi-forrasbazis.md`-ből való, a forrásbázis
-azonosítójával. A teljes, hozzáférési dátumos jegyzék a cikk végén áll.
+Az alábbi tábla tételei a `docs/orvosi-forrasbazis.md`-ből valók, a forrásbázis
+azonosítójával. A 2026-08-25-i orvosi kutatási körben bekerült új források külön
+táblában, e szakasz végén állnak, webcímmel és hozzáférési dátummal.
 
 | Azonosító | Forrás | Típus |
 |---|---|---|
-| CST1 = VZ3 | NHS. Broken arm or wrist. Felülvizsgálva 2023-05-26. | Nemzeti egészségügyi szolgálat |
-| CST2 | AAOS OrthoInfo. Distal Radius Fractures (Broken Wrist). Szerzők: Sophia Kocher MS, Erica Taylor MD MBA FAAOS; lektor: Julie E. Adams MD FAAOS. | Szakmai szervezet |
+| CST1 = VZ3 = F5 | NHS. Broken arm or wrist. Felülvizsgálva 2023-05-26. | Nemzeti egészségügyi szolgálat |
+| CST2 = F7 | AAOS OrthoInfo. Distal Radius Fractures (Broken Wrist). Szerzők: Sophia Kocher MS, Erica Taylor MD MBA FAAOS; lektor: Julie E. Adams MD FAAOS. | Szakmai szervezet |
 | CST3 | AAOS és ASSH. Management of Distal Radius Fractures. Evidence-Based Clinical Practice Guideline, 2020-12-05. | Hivatalos irányelv |
-| CST4 | Handoll HHG, Elliott J. Rehabilitation for distal radial fractures in adults. Cochrane Database Syst Rev. 2015. PMID 26403335. | Cochrane-áttekintés |
-| CST5 | NICE. Fractures (non-complex): assessment and management. NG38, Recommendations. | Hivatalos irányelv |
+| CST4 = F18 | Handoll HHG, Elliott J. Rehabilitation for distal radial fractures in adults. Cochrane Database Syst Rev. 2015. PMID 26403335. | Cochrane-áttekintés |
+| CST5 = F1 | NICE. Fractures (non-complex): assessment and management. NG38, Recommendations. | Hivatalos irányelv |
 | CST6 | Jellad A és mtsai. Complex regional pain syndrome type I: incidence and risk factors in patients with fracture of the distal radius. Arch Phys Med Rehabil. 2014. PMID 24080349. | Lektorált közlemény |
 | CST7 | Parkitny L és mtsai. Post-fracture serum cytokine levels are not associated with a later diagnosis of complex regional pain syndrome. BMC Neurol. 2022. PMID 36224537. | Lektorált közlemény |
-| CST8 | Serôdio IN és mtsai. Preventing Complex Regional Pain Syndrome After Distal Radius Fracture. J Funct Morphol Kinesiol. 2026. PMID 42029526. | Szisztematikus áttekintés |
+| CST8 = F19 | Serôdio IN és mtsai. Preventing Complex Regional Pain Syndrome After Distal Radius Fracture. J Funct Morphol Kinesiol. 2026. PMID 42029526. | Szisztematikus áttekintés |
 | CST9 | NHS. Complex regional pain syndrome. Felülvizsgálva 2022-10-27. | Nemzeti egészségügyi szolgálat |
 | VZ1 | NHS. Stroke, Symptoms. Felülvizsgálva 2024-09-12. | Nemzeti egészségügyi szolgálat |
 | VZ2 | NHS. Wrist pain (Hand pain sorozat). Felülvizsgálva 2025-11-05. | Nemzeti egészségügyi szolgálat |
+
+### Új források a 2026-08-25-i orvosi kutatási körből
+
+Ezek a tételek a `build/kutatas/csuklotores-utani-gyogytorna.md` 5. szakaszából
+valók, azonosítójuk a kutatási fájl F-számozását követi. **Minden tétel
+hozzáférési dátuma: 2026-08-25.** Ezek a források a törzsbe frissen bekerült öt
+szakaszt (sürgősségi blokk, duzzanat, kéztorna, készítmények, csuklórögzítő) és
+a felügyelt terápiáról szóló szakasz kiegészítését fedik.
+
+| Azonosító | Forrás | URL | Lekérve | Mire használtuk |
+|---|---|---|---|---|
+| F2 | NICE CG146. Osteoporosis: assessing the risk of fragility fracture. NCBI Bookshelf NBK554920 | https://www.ncbi.nlm.nih.gov/books/NBK554920/ | 2026-08-25 | Korábbi törékenységi törés esetén életkortól függetlenül mérlegelendő a törési kockázat felmérése (készítmény-szakasz záró bekezdése) |
+| F4 | Mehta SP és mtsai. Distal Radius Fracture Rehabilitation. Clinical Practice Guidelines, Academy of Orthopaedic Physical Therapy és Academy of Hand and Upper Extremity Physical Therapy, APTA. J Orthop Sports Phys Ther 2024;54(9):CPG1-CPG78 | https://www.orthopt.org/uploads/content_files/files/mehta_et_al_2024_distal_radius_fracture_rehabilitation.pdf | 2026-08-25 | Duzzanatcsökkentő technikák „C” ajánlása és 2–6 hetes sáv; gipszben a csukló mozgatásának tilalma; submaximális erősítés „B” ajánlása; passzív nyújtás és mobilizáció korlátai; dinamikus és statikus progresszív sínek szakértői szintű ajánlása; 60 év fölött felügyelt terápia „B” ajánlása; az otthoni program betanítása „A” ajánlásként; sürgős kézterápiás konzultáció jelei |
+| F6 | NHS. Compartment syndrome | https://www.nhs.uk/conditions/compartment-syndrome/ | 2026-08-25 | A szoros gipsz szövődménye: heves fájdalom az ujjak óvatos kinyújtásakor, feszülés, zsibbadás (sürgősségi blokk) |
+| F8 | AAOS OrthoInfo. Calcium, Nutrition, and Bone Health | https://www.orthoinfo.org/staying-healthy/calcium-nutrition-and-bone-health/ | 2026-08-25 | Kalcium- és D-vitamin-beviteli számok, és hogy a lap nem állít törésgyógyulás-gyorsítást |
+| F10 | NHS University Hospital Southampton. Wrist fracture advice: what to expect after your plaster is removed (PIL 626) | https://www.uhs.nhs.uk/Media/UHS-website-2019/Patientinformation/Medicinestherapiesandanaesthetics/Wrist-fracture-advice-what-to-expect-after-your-plaster-is-removed-626-PIL.pdf | 2026-08-25 | Gipszlevétel utáni merevség, gyengeség, száraz bőr; ékszerlevétel; óránkénti tíz ismétlés; illatmentes hidratáló krém és heg-masszírozás |
+| F11 | NHS Hull University Teaching Hospitals. Helping your wrist recover after cast or splint removal (HEY1259) | https://www.hey.nhs.uk/wp/wp-content/uploads/2021/10/HEY1259-2021-Wrist-Cast-Splint-Removal.pdf | 2026-08-25 | A gipszlevétel utáni két hétben csökkenő duzzanat és teljes ökölzárás; napi 3–4 alkalom, 10–15 ismétlés; magasra emelés; a rögzítő megterhelőbb feladatokhoz |
+| F12 | NHS United Lincolnshire Hospitals. Fractured wrist: advice and exercise following cast removal | https://www.ulh.nhs.uk/wp-content/uploads/2026/03/Fractured-wrist-advice-and-exercise-following-cast-removal.pdf | 2026-08-25 | A hét elemű gyakorlatsor; több hónapig maradó enyhe duzzanat és merevség; a fájdalomcsillapító szerepe a kéz használatában |
+| F13 | NHS East Sussex Healthcare. Wrist fracture: advice following removal of your cast (0476) | https://www.esht.nhs.uk/wp-content/uploads/2017/06/0476.pdf | 2026-08-25 | „A kéz nem használata növeli a duzzanatot”; kezdő adagolás és fokozatos emelés; a rögzítő használati logikája és a fokozatos leszokás |
+| F14 | NHS Chelsea and Westminster. Wrist and Hand Fracture: A guide to help you recover | https://plr.cht.nhs.uk/download/1196/Wrist%20and%20Hand%20Fracture%20A%20guide%20to%20help%20you%20recover%20A4 | 2026-08-25 | A duzzanat a támasz megszűnése miatt nő; magasra emelés az ellenoldali vállon; bőr-túlérzékenység és növekvő merevség mint kivizsgálandó jel |
+| F15 | NHS Wales, Swansea Bay UHB. Fractured Wrist: OUT OF CAST | https://sbuhb.nhs.wales/hospitals/a-z-services/physiotherapy/musculoskeletal-physiotherapy/hand-wrist-pain/fractured-wrist-out-of-cast/ | 2026-08-25 | „Your wrist is stiff, swollen and your skin is dry and flaky, this is normal.” |
+| F16 | Royal Osteoporosis Society. Symptoms of osteoporosis | https://theros.org.uk/information-and-support/about-osteoporosis-and-osteopenia/osteoporosis-symptoms/ | 2026-08-25 | Az erős csontnak el kell bírnia egy álló magasságból való esést; a csukló gyakori csontritkulásos töréshely |
+| F20 | Chuang PY, Yang TY, Tsai YH, Huang KC. Do NSAIDs affect bone healing rate, delay union, or cause non-union: an updated systematic review and meta-analysis. Front Endocrinol 2024;15:1428240. PMID 39319252 | https://pubmed.ncbi.nlm.nih.gov/39319252/ | 2026-08-25 | 20 vizsgálat, több mint félmillió beteg: nincs szignifikáns különbség a nem gyógyuló és késve gyógyuló törésekben; a szerzők óvatosságot kérnek |
+| F21 | Che Daud AZ és mtsai. Distal radius fracture rehabilitation: A bibliometric and scoping review. J Hand Ther 2026;39(1):120–132. PMID 40615307 | https://pubmed.ncbi.nlm.nih.gov/40615307/ | 2026-08-25 | A csuklótörés-rehabilitációban továbbra sincs szabványosított protokoll |
+| F22 | Országos Mentőszolgálat. Ki és mikor hívhat mentőt? | https://www.mentok.hu/en/in-emergency/when-to-call-for-an-ambulance/ | 2026-08-25 | A 112 és a 104 mentőhívó szám Magyarországon (sürgősségi blokk) |
+
+A korábbi CST/VZ tételek közül a sürgősségi blokk és az új szakaszok a CST1-et
+(NHS Broken arm or wrist), a CST2-t (AAOS OrthoInfo Distal Radius Fractures), a
+CST4-et (Cochrane 2015) és a CST8-at (Serôdio 2026) is használják, változatlan
+webcímmel. A kutatási fájl ezeket F5, F7, F18 és F19 néven sorolja.
+
+**A törzs forrásmegjelölés-mentessége.** A `markdown-to-lexical.ts`
+`FORRAS_JELOLESEK` őre a törzsben tiltja az `NHS`, `AAOS`, `OrthoInfo`,
+`Cochrane`, `PMID`, `StatPearls` és `Forrásjegyzék` szavakat (tulajdonosi
+döntés, 2026-08-21). A kutatási fájl szakaszszövegei ezeket a neveket kiírják,
+ezért a törzsbe leíró alakkal kerültek be („a kézterápiás tájékoztatók”, „a brit
+nemzeti egészségügyi szolgálat”, „az amerikai ortopéd sebész szakmai szervezet”,
+„a 2015-ös szisztematikus áttekintés”, „a 2024-es kézrehabilitációs irányelv”).
+Egyetlen klinikai állítás sem változott, csak a forrás neve. Mérve: a törzsben
+mind a hét tiltott jelölés 0 előfordulás.
 
 **A CST6 és a CST7 szerepe.** Ez a két közlemény a szövegben SZÁM nélkül
 szerepel. A cikk kimondja, hogy a komplex regionális fájdalom szindróma
@@ -106,6 +147,18 @@ Sokan ilyenkor ijednek meg igazán. A csont összeforrt, a csukló mégsem műk�
 
 Ez a cikk arról szól, mi jön most. Mikor indul a csuklótörés utáni gyógytorna, meddig tart a felépülés, és mit tehetsz otthon.
 
+## Mikor kell azonnal segítséget kérned?
+
+Hívj mentőt, Magyarországon a 112-t vagy a 104-et, ha a sérülés után a karod vagy a csuklód zsibbad, bizsereg, ha a csont kiáll a bőrből, ha a karod alakja megváltozott, vagy ha erősen vérzik. Ezek nem várnak reggelig.
+
+Ugyanígy azonnali ellátás kell, ha lelóg az arcod egyik fele, erőtlen vagy zsibbadt az egyik karod, és akadozik a beszéded. Ez nem a csuklóról szól, hanem a stroke-ról, és akkor is azonnali segítség kell, ha a jelek 24 órán belül már el is múltak.
+
+Amíg a gipsz rajtad van, aznap kérj orvosi tanácsot, ha a fájdalom erősödik, ha az ujjaid zsibbadnak, megduzzadnak, elkékülnek vagy elfehérednek, ha a gipsz eltörik, túl szorossá vagy túl lazává válik, ha rossz szagot vagy váladékot érzel alóla, vagy ha nagyon magas lázad, hidegrázásod van.
+
+Két jel külön figyelmet érdemel, mert ezek gyors romlást jelezhetnek. Az egyik: ha a fájdalom nem enyhül vagy erősödik annyira, hogy a fájdalomcsillapító sem fog rajta, és akkor is heves, amikor valaki óvatosan kinyújtja az ujjaidat. A másik: ha újonnan gyengül a hüvelykujjad vagy a mutatóujjad hajlítása. Mindkettővel ugyanaznap orvoshoz kell menni.
+
+A gipsz levétele utáni időszaknak is van egy figyelmeztető jele. Ha a fájdalom sokkal erősebb és tartósabb, mint amit a sérülés indokolna, ha a bőröd annyira érzékennyé válik, hogy már egy érintés vagy egy hőmérséklet-változás is fáj, vagy ha az ujjaid feltűnően bemerevednek, azt ki kell vizsgáltatni.
+
 ## Mikor veszik le a gipszet, és mi történik utána?
 
 Ha nem kellett műtét, a gipszet jellemzően 4–6 héttel a törés után veszik le, és ekkor indul a gyógytorna.
@@ -117,6 +170,20 @@ A gipsz levétele után szinte mindenkinél marad merevség a csuklóban.
 A csukló és a kar gyenge is lehet a gipsz levétele után. Ebben egy gyógytornász tud segíteni, de a merevség és a gyengeség néha több hónapig is elhúzódik.
 
 Ez tehát nem visszaesés, hanem a felépülés első szakasza.
+
+## Gipszlevétel után dagad a kéz: normális?
+
+Igen, a duzzanat a gipsz levétele után normális, sőt gyakran éppen ekkor lesz erősebb. A kézterápiás betegtájékoztatók ezt egyértelműen kimondják: a gipszlevétel után a csukló merev, dagadt, a bőr száraz és hámlik, és ez így szokott lenni.
+
+Az oka egyszerű. Hetekig egy merev burok tartotta a csuklódat, most ez a támasz eltűnt, és a kéz még nem szokta vissza a saját munkáját. Ha nem használod, a duzzanat nem csökken, hanem nő: a mozgás és az izompumpa az, ami a folyadékot elmozdítja.
+
+Az időzítésről ennyit lehet mondani. Az egyik kézterápiás tájékoztató szerint a gipszlevétel utáni két hétben már csökkenő duzzanatot és javuló mozgást kellene tapasztalnod, és ekkorra általában teljes ökölbe is lehet szorítani a kezet. Egy másik ugyanakkor hozzáteszi, hogy enyhe duzzanat és merevség még több hónapig maradhat, és ez is fokozatosan javul. Ezek irodalmi sávok, nem a te menetrended.
+
+Amit tehetsz ellene, az négy dolog, és mind a négy egyszerű. Tartsd a kezed magasan, amikor nem használod, például két párnán vagy az ellenoldali válladon. Nyisd és zárd gyakran az ujjaidat. Használd a kezed a hétköznapi apróságokra, például gombolásra, mosakodásra, evésre, lapozásra. És vedd le a gyűrűidet a sérült kézről, amíg dagad.
+
+A kézterápiás szakirodalom óvatosabban fogalmaz arról, mennyit érnek ezek. A 2024-es kézrehabilitációs irányelv gyenge, „C” erősségű ajánlásként mondja ki, hogy a duzzanatcsökkentő technikák kombinációja, benne a kézi nyirokterápia, a gyakorlatok, a magasra emelés, a kompressziós kesztyű és a rugalmas pólyázás, rövid távon, 2–6 hét alatt javíthat a duzzanaton, a mozgáson, a funkción és a fájdalmon. A 2015-ös szisztematikus áttekintés külön vizsgálta a kézi ödémakezelést és nem talált klinikailag jelentős különbséget a hagyományos kezeléshez képest, nagyon alacsony bizonyossággal. Vagyis érdemes csinálni, de nem ez a fő hatóerő.
+
+Két dolog viszont nem fér bele a normálisba. Ha a duzzanat mellé bőr-túlérzékenység jön, vagyis már egy érintés vagy egy hőmérséklet-változás is fáj, vagy ha az ujjaid a rendszeres gyakorlás ellenére egyre merevebbek lesznek, azt ki kell vizsgáltatni. Ugyanígy, ha a duzzanat nő, az ujjaid elkékülnek vagy elfehérednek, vagy lázad van.
 
 ## Meddig tart a gyógyulás csuklótörés után?
 
@@ -160,6 +227,30 @@ Tartsd a kezed lehetőleg a könyököd fölött, éjszaka párnával kitámaszt
 
 Az ujjak mozgatása és a kéz magasan tartása a legtöbb, amit a gipsz alatt magadért tehetsz.
 
+## Kéztorna törés után: mit és mennyit?
+
+A kéztorna törés után két külön szakaszra bomlik, és a kettőben nem ugyanaz a dolgod: amíg a gipsz rajtad van, csak az ujjaid, a könyököd és a vállad mozog, a gipsz levétele után pedig a csukló is. A csuklót gipszben mozgatni tilos, ezt a 2024-es kézrehabilitációs irányelv külön kimondja.
+
+Amíg gipszben vagy, a feladat a merevség megelőzése a szabadon maradt ízületeken. A gipsz felhelyezése vagy a műtét után azonnal mozgatni kell az ujjakat, és ha 24 órán belül a fájdalom vagy a duzzanat miatt nem tudod teljesen mozgatni őket, szólni kell az orvosnak, mert lehet, hogy lazítani kell a gipszen. Emellett a vállad és a könyököd is mozogjon, mert azok is bemerevednek, ha három hétig egy kendőben lógnak.
+
+A gipszlevétel utáni gyakorlatsor a kézterápiás tájékoztatókban nagyjából mindenhol ugyanaz a hét mozdulat: a csukló előre-hátra hajlítása, oldalra döntése, ökölbe zárás és kinyitás, a hüvelykujj körbeérintése a többi ujjhoz, az alkar befelé-kifelé forgatása, könyökhajlítás és nyújtás, végül vállmozgás.
+
+A „mennyit” kérdésre nincs egyetlen szám, és ezt jobb kimondani. A brit kórházak kézterápiás tájékoztatói jellemzően **napi 3–4 alkalmat** adnak meg, alkalmanként körülbelül **10–15 ismétléssel** gyakorlatonként, de van olyan is, amelyik óránként tíz ismétlést kér. A rövid, gyakori alkalom elve mindegyikben közös: inkább többször keveset, mint naponta egyszer sokat. Egy 2026-os áttekintés is azt állapította meg, hogy a csuklótörés-rehabilitációban továbbra sincs egységes, szabványosított protokoll.
+
+Az erősítésről külön kell szólni, mert itt a legkönnyebb elrontani a sorrendet. A 2024-es kézrehabilitációs irányelv „B”, vagyis közepes erősségű ajánlásként azt írja, hogy a submaximális, fokozatos erősítés, például törölköző- és gyurmaszorítás, könnyű markolásos gyakorlatok, szövődménymentes, stabil törésnél már korán elkezdhető. Ez viszont egy szakembereknek szóló irányelv, nem otthoni recept: az „egyszerű, stabil törés” megítélése röntgennel és vizsgálattal történik, nem otthon. Ezért a sorrend nálad így néz ki: előbb az orvosi engedély, aztán a mozgástartomány, és csak utána az erő.
+
+Egy dolgot pedig ne csinálj: ne feszítsd bele erővel a csuklódat a mozgásba. Az irányelv a passzív nyújtást és az ízületi mobilizációt is csak egyéni tűréshez és a törés stabilitásához igazítva engedi, és külön óvatosságot kér, ha a singcsont oldalán fájdalom van.
+
+## Kell csuklórögzítő a gipsz levétele után?
+
+A gipsz után a csuklórögzítő nem kötelező folytatás, hanem eszköz egy átmeneti időszakra, és arról, hogy neked kell-e, a kezelőorvosod vagy a gyógytornászod dönt. Ha kapsz ilyet, akkor sem egész nap hordod.
+
+A kézterápiás tájékoztatók ugyanazt a használati logikát írják le. A rögzítőt a megterhelőbb feladatokhoz, például házimunkához veszed fel, a könnyebb tevékenységekre és a pihenéshez leveszed, és a gyakorlatokat mindig rögzítő nélkül végzed. Az egyik tájékoztató hozzáteszi, hogy eleinte éjszakára is hasznos lehet, majd néhány hét alatt fokozatosan le lehet szokni róla.
+
+Az ok, amiért nem érdemes belefeküdni a rögzítőbe, egyszerű: a csuklód a gipsztől merevedett be, és nem attól fog javulni, ha újabb hetekre mozdulatlanná teszed. A duzzanat is nagyobb marad, ha nem használod a kezed.
+
+A tartós merevség kezelésére léteznek célzott, beállítható sínek is, de azok nem boltból vett csuklórögzítők. A 2024-es kézrehabilitációs irányelv ezeket a dinamikus és statikus progresszív síneket a leggyengébb, szakértői vélemény szintű ajánlásként említi, azoknál, akiknél a csukló merevsége miatt a mindennapi célok nem érhetők el. Ez tehát szakemberrel és mérés alapján történik.
+
 ## Otthoni gyakorlás vagy felügyelt gyógytorna?
 
 A bizonyíték nem következetes, és nem mutat különbséget az otthoni gyakorlatprogram és a felügyelt terápia eredményei között orsócsonttörés után.
@@ -183,6 +274,8 @@ A vizsgálatok többsége kicsi volt, és magas torzítási kockázatú.
 Ezt azért írjuk le, mert így őszinte. Nem az a kérdés, hogy otthon gyakorolsz vagy rendelőben.
 
 Az a kérdés, hogy rendszeresen, jó sorrendben és fokozatosan gyakorolsz-e. A rehabilitáció céljait a te aktív részvételed hozza meg.
+
+Egy dolgot érdemes hozzátenni, mert újabb, mint a fenti összegzés. Az amerikai fizioterápiás szakmai szövetség 2024-es, kifejezetten csuklótörés-rehabilitációra írt irányelve közepes erősségű ajánlásként azt mondja, hogy a 60 év fölötti, illetve a szövődménnyel vagy társbetegséggel élő betegeknek érdemes felügyelt terápiára járniuk, legalább heti egy alkalommal, az otthoni program mellett. A fiatalabb, szövődménymentes betegeknél ugyanez az irányelv nem foglal állást, mert ellentmondásos a bizonyíték. Ugyanez az irányelv erős ajánlásként mondja ki azt is, hogy az otthoni programot szakembernek kell betanítania.
 
 Otthon jellemzően nem a gyakorlat hiányzik. A sorrend és az adagolás az, ami nehéz egyedül.
 
@@ -229,6 +322,22 @@ A C-vitamin megítélése vegyes, és továbbra is vitatott.
 Ami ígéretesnek tűnik: a korai aktív rehabilitáció és a fokozatos mobilizáció. A szerzők ugyanakkor kimondják, hogy a bizonyíték korlátozott és heterogén.
 
 Vagyis a csontgyógyulás gyorsítására nem ajánlunk semmilyen készítményt. Nincs rá bizonyítékunk, és nem is a mi dolgunk.
+
+## Segít a krém, a gyógyszer vagy a vitamin csuklótörés után?
+
+Nincs olyan krém, tabletta vagy vitamin, amiről bizonyítottan tudni lehetne, hogy gyorsítja a csuklótörés gyógyulását. Ez nem óvatoskodás: a nagy szakmai irányelvek egyszerűen nem adnak ki ilyen ajánlást, és a rehabilitációs irányelvek sem.
+
+A fájdalomcsillapítóval más a helyzet, mert annak nem a csont a célpontja, hanem te. A brit nemzeti egészségügyi szolgálat a törött kar és csukló ellátásában a paracetamolt, illetve az ibuprofén gélt vagy szükség esetén tablettát nevezi meg. Az egyik kézterápiás tájékoztató ezt azzal egészíti ki, hogy a fájdalomcsillapító azért is hasznos lehet, mert nélküle sokan nem merik használni és gyakoroltatni a kezüket.
+
+A gyulladáscsillapítókról régóta él az a félelem, hogy lassítják a csontgyógyulást. Egy 2024-es szisztematikus áttekintés és metaanalízis, ami 20 vizsgálat és több mint félmillió beteg adatát vonta össze, nem talált szignifikáns különbséget a nem gyógyuló és a késve gyógyuló törések előfordulásában a gyulladáscsillapítót szedők és nem szedők között. A szerzők maguk is óvatosságot kérnek, mert a vizsgálatok száma korlátozott, és a készítménytípusokat meg az adagokat nem külön nézték. A gyógyszereidről tehát a kezelőorvosod dönt, de a régi automatikus tiltásnak ma nincs erős alapja.
+
+A C-vitamin a csuklótörésnél egy nagyon konkrét kérdés miatt kerül elő: felmerült, hogy megelőzheti a komplex regionális fájdalom szindrómát. A 2026-os szisztematikus áttekintés, ami kilenc vizsgálatot vont be, azt írja, hogy a C-vitamin eredményei vegyesek, és a kérdés továbbra is vitatott. Ugyanez az áttekintés azt is kimondja, hogy a probiotikum és az aszpirin nem csökkentette a szövődmény előfordulását, és hogy egyetlen egységes megelőzési protokoll sem támasztható alá. Ami ígéretesnek tűnt, az a korai aktív rehabilitáció és a fokozatos mobilizáció, de erre is korlátozott és vegyes a bizonyíték.
+
+A kalcium és a D-vitamin a csontok építőanyaga, de a bevitelük nem gyorsító szer. Az amerikai ortopéd sebész szakmai szervezet betegtájékoztatója napi 1000 mg kalciumot ajánl 19 és 50 év között, 51 év fölött a nőknek és 71 év fölött mindenkinek 1200 mg-ot, D-vitaminból pedig 600 NE-t, és megjegyzi, hogy újabb kutatások legalább napi 1000 NE-t támogatnak. Ugyanez az oldal sehol nem állítja, hogy ezek a már meglévő törés gyógyulását gyorsítanák.
+
+A krémekről érdemes kimondani, mi az, amire tényleg jók itt. A gipsz alatt a bőr kiszárad és hámlik, és a kézterápiás tájékoztatók pontosan erre javasolnak illatmentes hidratáló krémet, illetve később a heg finom masszírozását. Ez bőrápolás, nem csontgyógyítás, és ennél többet egy kenőcstől ne várj.
+
+Egy dolog viszont fontosabb minden készítménynél, és pont ezt szokták kihagyni. Ha elmúltál ötven, és a csuklód egy megbotlásból vagy egy álló helyzetből való esésből tört el, azt érdemes az orvosoddal átbeszélni a csontritkulás szempontjából. A brit csontritkulás-szervezet szerint az erős csontnak el kellene bírnia egy álló magasságból való esést, és a csukló az egyik leggyakoribb csontritkulás miatt törő csont. A brit szakmai irányelv szerint korábbi törékenységi törés esetén életkortól függetlenül mérlegelni kell a további törések kockázatának felmérését.
 
 ## Hogyan épül fel egy értelmes otthoni program?
 
@@ -362,6 +471,48 @@ felsorolja a forrásbázis gazdájának.
 | 49 | Stroke-jelek: lelógó arcfél, erőtlen vagy zsibbadt kar, akadozó beszéd, azonnal mentő; a 24 órán belül elmúlt tünet is azonnali segítséget igényel | VZ1 | igen (forrásbázis 1.1) | igen (24 óra) |
 | 50 | A gipsz alatti figyelmeztető jeleket az NHS a sürgős tanácsadás szintjére sorolja, nem a mentőhíváséra | CST1 | kiegészítés | nincs szám |
 
+**A 2026-08-25-i orvosi kutatási körben bekerült szakaszok állításai.** Ezek
+forrása a `build/kutatas/csuklotores-utani-gyogytorna.md` szakaszonkénti
+forrástáblája; az azonosítók a kutatási fájl F-számozását követik, a fenti új
+forrástáblával együtt olvasandók. Az „FB” oszlopban `kutatás` azt jelenti, hogy
+a tétel még nincs a `docs/orvosi-forrasbazis.md` kivonatában, és a
+forrásbázis gazdájának javasolt felvenni.
+
+| # | Állítás a cikkben | Forrás | FB | Szám szó szerint egyezik? |
+|---|---|---|---|---|
+| 51 | Mentőt kell hívni (112 vagy 104) zsibbadó, bizsergő karnál vagy csuklónál, kiálló csontnál, alakváltozásnál, erős vérzésnél | F22, F5 (= CST1) | kutatás (a 104-es szám) | nincs szám |
+| 52 | Stroke-jelek: lelógó arcfél, erőtlen vagy zsibbadt kar, akadozó beszéd; a 24 órán belül elmúlt tünet is azonnali segítséget igényel | VZ1 | igen | igen (24 óra) |
+| 53 | Gipsz alatt aznap orvosi tanács kell: erősödő fájdalom, zsibbadó, duzzadt, elkékülő vagy elfehéredő ujjak, eltört, túl szoros vagy túl laza gipsz, rossz szag vagy váladék, nagyon magas láz, hidegrázás | F5 (= CST1) | igen | nincs szám |
+| 54 | Fájdalomcsillapítóra sem enyhülő vagy erősödő fájdalom, és heves fájdalom az ujjak óvatos kinyújtásakor: ugyanaznap orvoshoz kell menni | F7 (= CST2), F6 | kutatás | nincs szám |
+| 55 | Újonnan gyengülő hüvelyk- vagy mutatóujj-hajlítás: ugyanaznap orvoshoz kell menni | F7 (= CST2) | kutatás | nincs szám |
+| 56 | A gipszlevétel után a sérülést meghaladó erős fájdalom, bőr-túlérzékenység vagy feltűnő ujjmerevség kivizsgálandó | CST9, F4 | igen (CST9), kutatás (F4) | nincs szám |
+| 57 | A duzzanat a gipszlevétel után normális, sőt gyakran ekkor lesz erősebb; a csukló merev, dagadt, a bőr száraz és hámlik | F15, F10 | kutatás | nincs szám |
+| 58 | A duzzanat azért nő, mert megszűnik a megszokott támasz; a kéz nem használata növeli a duzzanatot, a mozgás és az izompumpa mozdítja el a folyadékot | F14, F13 | kutatás | nincs szám |
+| 59 | A gipszlevétel utáni két hétben csökkenő duzzanat, javuló mozgás és általában teljes ökölzárás várható | F11 | kutatás | igen (2 hét) |
+| 60 | Enyhe duzzanat és merevség még több hónapig maradhat, és fokozatosan javul | F12 | kutatás | nincs szám |
+| 61 | Duzzanat ellen: magasra emelés (két párnán vagy az ellenoldali vállon), gyakori ujjnyitás-zárás, a kéz hétköznapi használata, a gyűrűk levétele | F11, F14, F10 | kutatás | nincs szám |
+| 62 | A duzzanatcsökkentő technikák kombinációja gyenge, „C” erősségű ajánlás, rövid távú, 2–6 hetes haszonnal | F4 | kutatás | igen („C”, 2–6 hét) |
+| 63 | A kézi ödémakezelés és a hagyományos kezelés között nem volt klinikailag jelentős különbség, nagyon alacsony bizonyossággal | F18 (= CST4) | kutatás | nincs szám |
+| 64 | Gipszben a csukló mozgatása tilos; a gipsz alatt az ujjak, a könyök és a váll a feladat | F4 | kutatás | nincs szám |
+| 65 | A gipszlevétel utáni gyakorlatsor hét eleme: csuklóhajlítás-nyújtás, oldalra döntés, ökölzárás, hüvelykujj-oppozíció, alkarforgatás, könyök, váll | F12 | kutatás | igen (7 elem) |
+| 66 | A kézterápiás tájékoztatók jellemzően napi 3–4 alkalmat, alkalmanként kb. 10–15 ismétlést adnak meg gyakorlatonként; van, amelyik óránként tíz ismétlést kér | F11, F13, F14, F10 | kutatás | igen (3–4 alkalom, 10–15, illetve 10 ismétlés óránként) |
+| 67 | A csuklótörés-rehabilitációban továbbra sincs egységes, szabványosított protokoll | F21 | kutatás | nincs szám |
+| 68 | A submaximális, fokozatos erősítés (törölköző- és gyurmaszorítás, könnyű markolás) közepes, „B” erősségű ajánlás, szövődménymentes, stabil törésnél | F4 | kutatás | igen („B”) |
+| 69 | Passzív nyújtás és ízületi mobilizáció csak egyéni tűréshez és a törés stabilitásához igazítva; külön óvatosság ulnaris oldali fájdalomnál | F4 | kutatás | nincs szám |
+| 70 | A csuklórögzítőt a megterhelőbb feladatokhoz kell felvenni, könnyebb tevékenységre, pihenéshez és a gyakorlatokhoz levenni; eleinte éjszakára is hasznos lehet, majd néhány hét alatt fokozatos a leszokás | F11, F13 | kutatás | nincs szám |
+| 71 | A dinamikus és statikus progresszív sínek tartós csuklómerevségnél a leggyengébb, szakértői vélemény szintű ajánlásként szerepelnek | F4 | kutatás | nincs szám |
+| 72 | A nagy szakmai irányelvek nem adnak ki ajánlást krémre, tablettára vagy vitaminra a csuklótörés gyógyulásának gyorsítására | F1 (= CST5), CST3, F4 | kutatás (tagadó állítás, három irányelv átnézéséből) | nincs szám |
+| 73 | A törött kar és csukló fájdalmára paracetamol, illetve ibuprofén gél vagy szükség esetén tabletta jön szóba | F5 (= CST1) | kutatás | nincs szám |
+| 74 | A fájdalomcsillapító azért is hasznos lehet, mert nélküle sokan nem merik használni és gyakoroltatni a kezüket | F12 | kutatás | nincs szám |
+| 75 | Egy 2024-es szisztematikus áttekintés és metaanalízis 20 vizsgálat és több mint félmillió beteg adatán nem talált szignifikáns különbséget a nem gyógyuló és késve gyógyuló törések előfordulásában gyulladáscsillapítót szedők és nem szedők között; a szerzők óvatosságot kérnek | F20 | kutatás | igen (20 vizsgálat, 523 240 beteg) |
+| 76 | A 2026-os áttekintés kilenc vizsgálatot vont be; a C-vitamin eredményei vegyesek és vitatottak; a probiotikum és az aszpirin nem csökkentette a szövődmény előfordulását; egységes megelőzési protokoll nem támasztható alá; a korai aktív rehabilitáció ígéretes, de korlátozott és vegyes bizonyítékkal | F19 (= CST8) | igen | igen (9 vizsgálat) |
+| 77 | Kalcium napi 1000 mg 19 és 50 év között, 1200 mg a nőknek 51 év fölött és mindenkinek 71 év fölött; D-vitamin 600 NE, újabb kutatások szerint legalább napi 1000 NE; a forrás nem állít törésgyógyulás-gyorsítást | F8 | kutatás | igen (1000 mg, 1200 mg, 600 NE, 1000 NE, 19–50, 51, 71 év) |
+| 78 | A gipsz alatt kiszáradó, hámló bőrre illatmentes hidratáló krém, később a heg finom masszírozása javasolt | F10 | kutatás | nincs szám |
+| 79 | Az erős csontnak el kellene bírnia egy álló magasságból való esést, és a csukló az egyik leggyakoribb csontritkulás miatt törő csont | F16 | kutatás | nincs szám |
+| 80 | Korábbi törékenységi törés esetén életkortól függetlenül mérlegelni kell a további törések kockázatának felmérését | F2 | kutatás | nincs szám |
+| 81 | A 2024-es rehabilitációs irányelv közepes erősségű ajánlásként a 60 év fölötti, illetve szövődménnyel vagy társbetegséggel élő betegeknek heti legalább egy felügyelt alkalmat javasol az otthoni program mellett; a fiatalabb, szövődménymentes betegeknél nem foglal állást, mert ellentmondásos a bizonyíték | F4 | kutatás | igen (60 év, heti 1 alkalom, „B”, illetve „D”) |
+| 82 | Ugyanez az irányelv erős ajánlásként mondja ki, hogy az otthoni programot szakembernek (gyógytornásznak vagy ergoterapeutának) kell betanítania | F4 | kutatás | igen („A”) |
+
 **Nem klinikai állítások a szövegben** (ezért nincs orvosi forrásuk, de mind
 ellenőrizhető a repóból): a program csukló-, ujj-, alkar- és könyökpanaszokra
 készült, a gyakorlatok 5 perces miniblokkokban vannak, és a programot nem
@@ -473,10 +624,29 @@ AAOS és ASSH irányelv-PDF-je, valamint a NICE NG38 HTTP 200-at; a négy
 PubMed-cím HTTP 203-at (ez is sikeres válasz, a proxy adja így). A két
 átirányítás a fenti fejlécben van dokumentálva.
 
-**8. Mért terjedelem és arányok.** A törzs a Források szakasz előtt 1 530 szó,
-a Forrásokkal és a záró tudnivalóval együtt 1 843 szó. Ez a tag-cikkekre adott
-1 100–1 800 szavas irányszámon belül van (`docs/tudastar-tartalmi-terv.md` 5.4).
-15 H2 van a törzsben, H3 nincs, így a cikk-lint L5 aránya 122,9 szó alcímenként
-(korlát 150). Az első H2 előtti szakasz 62 szó (L12 korlátja 120). Ha a vezető
-hosszabb cikket kér, a 3., 4. és 5. pont adja a bővítés útját: előbb a
-forrásbázis bővítése, utána a Cochrane-részlet és egy műtéti döntés szakasz.
+**8. Mért terjedelem és arányok (újramérve 2026-08-25-én, az orvosi kutatási kör
+beszúrásai után).** A törzs a szerzői szakasz előtt 3 229 szó, a szerzői
+szakasszal és a záró tudnivalóval együtt 3 338 szó. 19 H2 van a törzsben, H3
+nincs, így az arány 175,7 szó alcímenként. Az első H2 előtti szakasz változatlanul
+62 szó (az L12 korlátja 120, tehát rendben).
+
+**Két korlát átlépve, ez döntést kér.** A tag-cikkekre adott irányszám
+1 100–1 800 szó (`docs/tudastar-tartalmi-terv.md` 5.4), a cikk-lint L5 korlátja
+150 szó alcímenként. Az öt új szakasz (sürgősségi blokk, duzzanat, kéztorna,
+készítmények, csuklórögzítő) és a felügyelt terápia kiegészítése együtt 1 495
+szót tett hozzá, ezért mindkét szám átlépte a korlátot. A beszúrt szöveg
+szó szerint a `build/kutatas/csuklotores-utani-gyogytorna.md` 2.0–2.5 szakaszaiból
+való, ezért a szerkesztő nem húzott belőle önkényesen. **Döntés kell arról, hogy
+az irányszámot emeljük-e ennél a cikknél, vagy melyik szakasz kerüljön külön
+cikkbe.** A kutatási fájl 4. pontjának 1. sora maga is felveti, hogy a
+sürgősségi blokk öt bekezdése hosszú egy nyitó dobozhoz.
+
+**Két tartalmi átfedés, amit a kutatás nem rendezett el.** A kutatási fájl az új
+sürgősségi blokkot a cikk elejére írja elő, de nem rendelkezik a meglévő
+„Mikor fordulj azonnal orvoshoz?” szakaszról, ezért az érintetlenül maradt: a
+stroke-jelek, a gipsz alatti figyelmeztető jelek és a komplex regionális
+fájdalom szindróma leírása most két helyen szerepel. Ugyanígy a
+„Segít bármilyen készítmény a szövődmény megelőzésében?” és az új „Segít a krém,
+a gyógyszer vagy a vitamin csuklótörés után?” szakasz is átfed a C-vitamin, a
+probiotikum és az aszpirin kérdésében. **Az összevonás vagy a rövidítés szakmai
+döntés, ezért a szerkesztő nem végezte el.**

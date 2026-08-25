@@ -323,10 +323,10 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
         valasz:
           'A műtétről mindig orvos dönt, és akkor kerül szóba, ha a tünetek romlanak vagy nem ' +
           'múlnak. A legtöbb betegnél a kéztőalagút-szindróma idővel romlik, és ha túl sokáig marad ' +
-          'kezeletlenül, tartós kézfunkció-károsodáshoz vezethet. A műtét általában meggyógyítja a ' +
-          'kéztőalagút-szindrómát, a megszokott tevékenységekhez pedig utána körülbelül egy hónap ' +
-          'kell. A szorító- és a csippentőerő 2–3 hónap alatt tér vissza, a teljes felépülés akár ' +
-          'egy évig is eltarthat.',
+          'kezeletlenül, tartós kézfunkció-károsodáshoz vezethet. A műtét célja a középidegre ' +
+          'nehezedő nyomás csökkentése, a megszokott tevékenységekhez pedig utána körülbelül egy ' +
+          'hónap kell. A szorító- és a csippentőerő 2–3 hónap alatt tér vissza, a teljes felépülés ' +
+          'akár egy évig is eltarthat.',
         mert: ['kéztőalagút szindróma műtét', 'kéztőalagút szindróma műtét után'],
         szakasz: 'Mikor merül fel a műtét?',
         horgony: [
@@ -455,13 +455,16 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
       {
         kerdes: 'Mikor merül fel a műtét a teniszkönyöknél?',
         valasz:
-          'A műtét akkor merül fel, ha 6–12 hónap után is megvan a teniszkönyök, és a döntést mindig ' +
-          'orvos hozza meg. A betegek körülbelül 80–95%-a sikerrel jár a nem műtéti kezeléssel, a ' +
-          'teniszkönyök-műtét pedig a betegek 80–90%-ánál sikeres. Ehhez tartozik egy fenntartás is: ' +
-          'a műtét után nem ritka az erővesztés.',
+          'A műtét akkor merül fel, ha 6–12 hónap után is megvan a teniszkönyök. A döntést mindig ' +
+          'orvos hozza meg: mi nem beszélünk le róla, és azt sem ígérjük, hogy elkerülhető. Ehhez ' +
+          'tartozik egy fenntartás is: a műtét után nem ritka az erővesztés.',
         mert: ['teniszkönyök műtét', 'Trends top: műtét (24), emelkedő +50'],
         szakasz: 'Mikor menj gyógytornászhoz vagy orvoshoz?',
-        horgony: ['6–12 hónap után is megvan', '80–95%-a sikerrel jár', 'nem ritka az erővesztés'],
+        horgony: [
+          '6–12 hónap után is megvan',
+          'nem beszélünk le róla, és azt sem ígérjük',
+          'nem ritka az erővesztés',
+        ],
       },
     ],
   },
@@ -529,30 +532,30 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
       {
         kerdes: 'Mennyire segít a sín a pattanó ujjnál?',
         valasz:
-          'A sínezés az a kezelés, amiről a legtöbbet tudjuk: rövid távon, egy éven belül ' +
-          'következetesen csökkentette a fájdalmat, megszüntette az akadást, és javította a ' +
-          'kézfunkciót. A közölt sikerarány akár 97% volt, ez viszont a legjobb közölt érték, nem az ' +
-          'átlag, és ezek rövid távú eredmények. A sín akkor volt a leghatékonyabb, ha napi 24 órán ' +
-          'át viselték. Hogy melyik ízületet érdemes rögzíteni, abban nem egységes a kép, ezért a ' +
-          'sín kiválasztása szakember dolga.',
+          'A sínezés az a konzervatív kezelés, amiről a legtöbbet tudjuk: a szakirodalom szerint ' +
+          'rövid távon, egy éven belül csökkentette a fájdalmat, mérsékelte a beakadást és javította ' +
+          'a kézfunkciót. Ezek rövid távú eredmények, a hosszú távú vizsgálatokat a szerzők maguk ' +
+          'kérik. A viselési idő számít: a sín akkor volt a leghatékonyabb, ha napi 24 órán át ' +
+          'viselték. Hogy melyik ízületet érdemes rögzíteni, abban nem egységes a kép, ezért a sín ' +
+          'kiválasztása, mérete és beállítása szakember dolga.',
         mert: ['pattanó ujj rögzítő'],
         szakasz: 'Mit tehetsz otthon, és mit tud a sín?',
         horgony: [
           'amiről a legtöbbet tudjuk',
-          'a legjobb közölt érték, nem az átlag',
+          'mérsékelte a beakadást',
           'napi 24 órán át viselték',
         ],
       },
       {
-        // A Trends-lista első helye (100). A cikk számot is ad, de rögtön a
-        // hatókör-jelzéssel együtt: a fokozatot orvos állapítja meg.
+        // A Trends-lista első helye (100). A cikk a súlyosság szerepét mondja
+        // ki, de rögtön a hatókör-jelzéssel: a fokozatot orvos állapítja meg.
         kerdes: 'Mikor kerül sor műtétre pattanó ujjnál?',
         valasz:
           'A műtét akkor kerül szóba, ha a többi kezelés nem hozott eredményt, és a kezelés ' +
-          'kiválasztása orvosi döntés. A nem műtéti kezelés egy 2025-ös vizsgálatban az esetek ' +
-          '68,9%-ánál hozott megszűnést vagy javulást: az enyhébb, 1-es és 2-es fokozatú eseteknél ' +
-          'a siker körülbelül 75% volt, a 3-as fokozatnál 60%. A fokozatot orvos állapítja meg ' +
-          'vizsgálattal, ezt otthon nem lehet eldönteni.',
+          'kiválasztása orvosi döntés. Egy 2025-ös randomizált vizsgálat szerint a súlyosabb, 3-as ' +
+          'fokozatú eseteknél ritkábban elég a műtét nélküli kezelés, és ők gyakrabban jutnak el a ' +
+          'műtétig, mint az enyhébb fokozatúak. A fokozatot orvos állapítja meg vizsgálattal, ezt ' +
+          'otthon nem lehet eldönteni.',
         mert: ['pattanó ujj műtét', 'Trends top: műtét (100)'],
         szakasz: 'Sín, injekció vagy műtét: mi mennyire válik be?',
         horgony: [
@@ -563,15 +566,16 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
       {
         kerdes: 'Mennyi a pattanó ujj műtét utáni gyógyulási ideje?',
         valasz:
-          'A seb általában néhány hét alatt begyógyul, a duzzanat és a merevség viszont 4–6 hónap ' +
-          'alatt múlik el teljesen. A teljes felépülés érzete átlagosan a műtét után 6 hónappal ' +
-          'érkezik meg, vagyis a felépülés jóval tovább tart, mint a seb gyógyulása. Azt, hogy mikor ' +
-          'mit szabad, a műtétet végző orvos és a gyógytornászod mondja meg.',
+          'A seb általában néhány hét alatt begyógyul. A szakirodalom szerint jellemzően 4–6 ' +
+          'hónapot vesz igénybe, mire a duzzanat és a merevség elmúlik, a teljes felépülés érzete ' +
+          'pedig átlagosan a műtét után 6 hónappal érkezik meg. A műtét utáni felépülés tehát jóval ' +
+          'tovább tart, mint a seb gyógyulása. Azt, hogy mikor mit szabad, a műtétet végző orvos és ' +
+          'a gyógytornászod mondja meg.',
         mert: ['pattanó ujj műtét utáni gyógyulási idő'],
         szakasz: 'Mennyi a pattanó ujj műtét utáni gyógyulási idő?',
         horgony: [
           'néhány hét alatt begyógyul',
-          '4–6 hónap alatt múlik el teljesen',
+          '4–6 hónapot vesz igénybe',
           'a műtét után 6 hónappal',
         ],
       },
@@ -792,11 +796,17 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
       {
         kerdes: 'Mennyi ideig tarthat?',
         valasz:
-          'Nincs megígérhető időablak. A lefolyás egyéni. A De Quervain-kép magától is rendeződhet, ' +
-          'ebből nem következik, hogy nálad is így lesz.',
+          'Nincs megígérhető időablak. A lefolyás egyéni. A szakmai betegtájékoztató szerint egy ' +
+          'enyhe ínsérülés jellemzően 2–3 hét alatt szokott jobban lenni, de ez a szakirodalom ' +
+          'általános leírása, nem a te eseted, és nem határidő.',
         mert: ['ínhüvelygyulladás', 'Monid 01M0SJQ0SBHS103YQ37Z6MTX1B'],
         szakasz: 'Mennyi ideig tarthat?',
-        horgony: ['Nincs megígérhető időablak', 'A lefolyás egyéni', 'magától is rendeződhet'],
+        horgony: [
+          'Nincs megígérhető időablak',
+          'A lefolyás egyéni',
+          '2–3 hét alatt szokott jobban lenni',
+          'nem a te eseted',
+        ],
       },
       {
         kerdes: 'Mit tehetek házilag?',
@@ -909,14 +919,17 @@ export const CIKK_GYIK: readonly CikkGyik[] = [
       {
         kerdes: 'Magától elmúlik?',
         valasz:
-          'A legtöbb esetben a fájdalom és a merevség idővel javul. Kezeletlenül is javulhat a ' +
-          'mozgás, csak lassabban. Nem minden tünet tűnik el teljesen. Enyhe merevség maradhat.',
+          'A szakirodalom szerint a panasz jellemzően lassan javul, és a mozgás kezelés nélkül ' +
+          'is javulhat, csak lassabban. A szakmai betegtájékoztató szerint ez akár három évig is ' +
+          'eltarthat. Nem minden tünet tűnik el teljesen, enyhe merevség maradhat. Ez csoportos ' +
+          'lefolyás, nem ígéret rád.',
         mert: ['befagyott váll', 'Monid 01M0ST9XKE8HY4VC81DB7BWAAP'],
         szakasz: 'Magától elmúlik?',
         horgony: [
-          'idővel javul',
-          'Kezeletlenül is javulhat',
-          'Enyhe merevség maradhat',
+          'kezelés nélkül is javulhat',
+          'akár három évig is eltarthat',
+          'enyhe merevség maradhat',
+          'nem ígéret rád',
         ],
       },
       {

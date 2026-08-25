@@ -12,11 +12,22 @@
 | Azonosító | Forrás | Hol használtuk |
 |---|---|---|
 | PU1 | NHS. *Trigger finger.* https://www.nhs.uk/conditions/trigger-finger/ · felülvizsgálva 2025-11-17 · következő felülvizsgálat 2028-11-17 · hozzáférés 2026-08-21 | mi ez, tünetek, merevség és kézzel kiegyenesítés, magától is elmúlhat, kockázati csoportok, mikor menj háziorvoshoz, a kezelések listája, a műtét helye a sorban |
-| PU2 | AAOS OrthoInfo. *Trigger Finger.* https://www.orthoinfo.org/diseases--conditions/trigger-finger/ · hozzáférés 2026-08-21 | hajlítóín és A1-gyűrű, megvastagodás és csomó, 2%-os gyakoriság, gyűrűs- és hüvelykujj, 40–60 közötti nők, cukorbetegség, rheumatoid arthritis, amyloidosis, ismétlődő markolás és csippentés, tünetek, reggeli merevség, injekció cukorbetegeknél, vércukor 10–14 napig, műtét utáni idők |
+| PU2 | AAOS OrthoInfo. *Trigger Finger.* https://www.orthoinfo.org/diseases--conditions/trigger-finger · hozzáférés 2026-08-25 | hajlítóín és A1-gyűrű, megvastagodás és csomó, 2%-os gyakoriság, gyűrűs- és hüvelykujj, 40–60 közötti nők, cukorbetegség, rheumatoid arthritis, amyloidosis, ismétlődő markolás és csippentés, tünetek, reggeli merevség, injekció cukorbetegeknél, vércukor 10–14 napig, műtét utáni idők; ÚJ: kíméletes nyújtó gyakorlatok a merevségre és a mozgástartományra, legfeljebb három injekció, a szteroidinjekció kisebb esélye pattanó hüvelykujjnál |
 | PU3 | Lunsford D, Valdes K, Hengy S. *Conservative management of trigger finger: A systematic review.* J Hand Ther. 2019;32(2):212–221. PMID 29290504. | hatásméret 0,49 és 1,99 között a fájdalomcsökkenésre, egyetlen ízület rögzítése 6–10 hétre, a „stenosing tenosynovitis” megnevezés |
 | PU4 | Atthakomol P és mtsai. *Are There Differences in Pain Reduction and Functional Improvement Among Splint Alone, Steroid Alone, and Combination for the Treatment of Adults With Trigger Finger?* Clin Orthop Relat Res. 2023;481(11):2281–2294. PMID 37083487. | 120 résztvevő, három csoport, napi legalább 8 óra 6 héten át, semleges helyzetű rögzítés az ujj tövénél, 6/12/52 hetes utánkövetés, nincs klinikailag érdemi különbség, a sín önmagában ajánlott kezdő kezelésként, I-es bizonyítékszint |
-| PU5 | Minkhorst K, Munn A, MacDermid J, Grewal R. *Does Orthosis Improve Outcomes of Conservative Treatment in Trigger Fingers? A 3-Arm Prospective Randomized Controlled Trial.* Arch Phys Med Rehabil. 2025;106(12):1798–1806. PMID 40449569. | 104 résztvevő, 122 pattanó ujj, 29 hónapos átlagos utánkövetés, 68,9%-os konzervatív siker, 1–2. fokozat kb. 75%, 3. fokozat 60%, műtéti arány 39,1% szemben 22,4%-kal, az injekció mellé adott sín nem hozott többletet |
-| PU6 | McKenna ES és mtsai. *Efficacy of Splinting in Managing Adult Trigger Finger: A Systematic Review of Short-Term Outcomes.* J Hand Surg Glob Online. 2026;8(1):100881. PMID 41362294. | 13 vizsgálat, rövid táv egy éven belül, akár 97%-os sikerarány, az injekcióhoz hasonló mérték bőrsorvadás és fertőzés kockázata nélkül, napi 24 órás viselés, a középső ujjperc-ízületet rögzítő sín fölénye, a szerzői ajánlás, III-as terápiás bizonyítékszint |
+| PU5 | Minkhorst K, Munn A, MacDermid J, Grewal R. *Does Orthosis Improve Outcomes of Conservative Treatment in Trigger Fingers? A 3-Arm Prospective Randomized Controlled Trial.* Arch Phys Med Rehabil. 2025;106(12):1798–1806. PMID 40449569. https://pubmed.ncbi.nlm.nih.gov/40449569/ · hozzáférés 2026-08-25 | 104 résztvevő, 122 pattanó ujj, 29 hónapos átlagos utánkövetés, a műtét nélküli kezelés fokozat szerint eltérő eredménye (a szám nélkül, irányként), a 3-as fokozatúak szignifikánsan gyakrabban jutnak el a műtétig, az injekció mellé adott sín nem hozott többletet, a fokozat vizsgálattal állapítható meg, a pattanó hüvelykujj kizárása |
+| PU6 | McKenna ES és mtsai. *Efficacy of Splinting in Managing Adult Trigger Finger: A Systematic Review of Short-Term Outcomes.* J Hand Surg Glob Online. 2026;8(1):100881. PMID 41362294. | 13 vizsgálat, rövid táv egy éven belül, a fájdalom, a beakadás és a kézfunkció javulása, az injekcióhoz hasonló nagyságrend bőrsorvadás és fertőzés kockázata nélkül (sikerarány nélkül), napi 24 órás viselés, a középső ujjperc-ízületet rögzítő sín fölénye, a szerzői ajánlás, III-as terápiás bizonyítékszint |
+| PU7 | Smith GB, Young B, Titan AL, Kenney DE, Ladd AL. *Incidence and Risk Factors for Soft Tissue Hand and Wrist Conditions in Pregnancy and Postpartum.* J Hand Surg Glob Online. 2025;7(5):100778. PMID 40746749. DOI 10.1016/j.jhsg.2025.100778. https://pubmed.ncbi.nlm.nih.gov/40746749/ · https://pmc.ncbi.nlm.nih.gov/articles/PMC12312026/ · hozzáférés 2026-08-25 | ÚJ (terhesség-szakasz): több mint 700 000 nő, a szülés utáni első év kéz- és csuklópanaszai; a terhesség és a terhességi cukorbetegség nem kockázati tényezője a pattanó ujjnak; a terhesség a de Quervain esélyét többszörösére emeli; a terhességi cukorbetegség a kéztőalagút-szindróma és a de Quervain esélyét növeli |
+| PU8 | NHS. *Ibuprofen for adults: pregnancy, breastfeeding and fertility.* https://www.nhs.uk/medicines/ibuprofen-for-adults/pregnancy-breastfeeding-and-fertility-while-taking-ibuprofen/ · felülvizsgálva 2025-08-27 · hozzáférés 2026-08-25 | ÚJ (terhesség-szakasz): az ibuprofént terhesen kerülni kell, hacsak orvos vagy gyógyszerész másképp nem tanácsolja |
+| PU9 | NHS. *Paracetamol for adults: pregnancy, breastfeeding and fertility.* https://www.nhs.uk/medicines/paracetamol-for-adults/pregnancy-breastfeeding-and-fertility-while-taking-paracetamol-for-adults/ · felülvizsgálva 2026-03-24 · hozzáférés 2026-08-25 | ÚJ (terhesség-szakasz): terhesen általában a paracetamol az első választás a fájdalomcsillapításban |
+| PU10 | NHS Specialist Pharmacy Service. *Pain: treatment during pregnancy.* https://sps.nhs.uk/articles/pain-treatment-during-pregnancy/ · frissítve 2025-04-03 · hozzáférés 2026-08-25 | ÚJ (terhesség-szakasz): a szervezet egészére ható gyulladáscsökkentőket a 20. héttől kerülni kell, hacsak klinikailag nem szükségesek, a 28. héttől nem szabad szedni; helyi gyulladáscsökkentőknél a termék betegtájékoztatóját kell követni |
+| PU11 | Donati D, Ricci V, Boccolari P, Origlio F, Vita F, Naňka O, Catani F, Tarallo L. *From diagnosis to rehabilitation of trigger finger: a narrative review.* BMC Musculoskelet Disord. 2024;25:1061. DOI 10.1186/s12891-024-08192-5. https://link.springer.com/article/10.1186/s12891-024-08192-5 · hozzáférés 2026-08-25 | ÚJ (gyakorlatok- és gyógyszer-szakasz): a horgas ököl helyzet és a felületes–mély hajlítóín eltérő elcsúszása, az A1-gyűrű tehermentesítése; a nem szteroid gyulladáscsökkentők legfeljebb 2–4 hetes szedése a gyomor-bél és szív-érrendszeri kockázatok miatt |
+| PU12 | Nadar MS. *Orthosis vs. exercise for the treatment of adult idiopathic trigger fingers: A randomized clinical trial.* Prosthet Orthot Int. 2024;48(6):713–719. PMID 37870373. DOI 10.1097/PXR.0000000000000294. https://pubmed.ncbi.nlm.nih.gov/37870373/ · hozzáférés 2026-08-25 | ÚJ (gyakorlatok-, gyógyszer- és videó-szakasz): 55 résztvevő, hat hét, az ujj középső ízületét rögzítő sín kontra sín nélküli kézterápia; a sín nélküli kézterápia nem hozott érdemi javulást, a sínes csoportban javultak a fájdalom- és funkciópontszámok; éjjel-nappali viselés 6 héten át |
+| PU13 | Choi YK, Sit RW, Wang B, Cheuk C, Lee MK, Leung KWM. *Clinical effectiveness of Finger gliding Exercise for patients with trigger fingers receiving steroid injection: a Randomized Clinical Trial.* Sci Rep. 2025;15:5141. PMID 39934311. DOI 10.1038/s41598-025-89436-9. https://www.nature.com/articles/s41598-025-89436-9 · hozzáférés 2026-08-25 | ÚJ (gyakorlatok-szakasz): 76 résztvevő, ínsiklató gyakorlás szteroidinjekció után, 24 hét, egyik mért szempontban sem volt érdemi különbség a szokásos ellátáshoz képest |
+| PU14 | To CD, Vu TX, Do HP, Nguyen KA, Nguyen PD. *Effectiveness of Proximal Interphalangeal Joint Orthosis and Therapeutic Exercise in the Management of Trigger Finger: A Prospective Case Series.* J Hand Surg Glob Online. 2026;8(4):101038. PMID 42205299. DOI 10.1016/j.jhsg.2026.101038. https://pubmed.ncbi.nlm.nih.gov/42205299/ · hozzáférés 2026-08-25 | ÚJ (gyakorlatok- és hüvelykujj-szakasz): 79 beteg, 107 ujj, hat hét sín és strukturált gyakorlatprogram; a fájdalom és a kézfunkció javult, de kontrollcsoport hiányában nem mondható ki fölény más konzervatív kezeléssel szemben; a hüvelykujjak kizárása |
+| PU15 | Leow MQH, Zheng Q, Shi L, Tay SC, Chan ESY. *Non-steroidal anti-inflammatory drugs (NSAIDs) for trigger finger.* Cochrane Database Syst Rev. 2021;4:CD012789. PMID 33849080. DOI 10.1002/14651858.CD012789.pub2. https://pubmed.ncbi.nlm.nih.gov/33849080/ · hozzáférés 2026-08-25 | ÚJ (gyógyszer-szakasz): a szerzők a bőrre kenhető és a szájon át szedett készítmények randomizált vizsgálatait is keresték, egyet sem találtak; a két beválogatott vizsgálat injekciós formát hasonlított szteroidinjekcióhoz, előny nélkül |
+| PU16 | Derry S, Conaghan P, Da Silva JAP, Wiffen PJ, Moore RA. *Topical NSAIDs for chronic musculoskeletal pain in adults.* Cochrane Database Syst Rev. 2016;4:CD007400. PMID 27103611. DOI 10.1002/14651858.CD007400.pub3. https://pubmed.ncbi.nlm.nih.gov/27103611/ · hozzáférés 2026-08-25 | ÚJ (gyógyszer-szakasz): 39 vizsgálat, több mint tízezer résztvevő, mind kopásos ízületi betegség, az eredmények szinte teljes egészében térdből; más krónikus fájdalmas állapotokra nincs bizonyíték |
+| PU17 | PubMed (NCBI E-utilities, `esearch`, db=pubmed), a „trigger finger AND vitamin B6” keresés futtatva 2026-08-25-én. https://pubmed.ncbi.nlm.nih.gov/ · hozzáférés 2026-08-25 | ÚJ (gyógyszer-szakasz): a keresés nulla találatot adott; ez alapozza meg a „nincs mire hivatkozni” megfogalmazást a vitaminoknál |
 | VZ1 | NHS. *Stroke*, Symptoms aloldal. https://www.nhs.uk/conditions/stroke/symptoms/ · felülvizsgálva 2024-09-12 · hozzáférés 2026-08-21 | a stroke jelei, a 24 órán belül elmúlt tünet is azonnali segítséget igényel |
 | VZ2 | NHS. *Wrist pain* (Hand pain sorozat). https://www.nhs.uk/conditions/hand-pain/wrist-pain/ · felülvizsgálva 2025-11-05 · hozzáférés 2026-08-21 | megszűnt érzés, erős fájdalom és rosszullét, bizsergés és érzéskiesés, két hét otthoni kezelés, cukorbetegség, „ne diagnosztizáld magad” |
 | VZ5 | Hyatt BT, Bagg MR. *Flexor Tenosynovitis.* Orthop Clin North Am. 2017;48(2):217–227. PMID 28336044. | a Kanavel-féle négy jel mint a vizsgálat vezérfonala, cukorbetegség és érszűkület rosszabb kimenetele, merevség és amputáció |
@@ -30,9 +41,29 @@ E-utilities API absztraktjából. Minden szám szó szerint egyezik.
 **Karbantartási jelzés a lektorálóknak (ÚJ, a forrásbázisban még nem szerepel).**
 A PU2 forrásbázisbeli URL-je (`https://orthoinfo.aaos.org/…`) 2026-08-21-én
 **301-es átirányítást** ad a `https://www.orthoinfo.org/diseases--conditions/trigger-finger/`
-címre. A cikk forrásjegyzékébe a működő, átirányítás utáni cím került. A
-`docs/orvosi-forrasbazis.md` PU2 sorát (és a többi AAOS OrthoInfo hivatkozást)
+címre. A 2026-08-25-i orvosi kutatás ugyanezt **302-esként**, záró perjel nélküli
+(`…/trigger-finger`) céllal mérte; a fenti PU2 sor erre a mért alakra lett igazítva.
+A `docs/orvosi-forrasbazis.md` PU2 sorát (és a többi AAOS OrthoInfo hivatkozást)
 érdemes ehhez igazítani, de az nem ennek a cikknek a fájl-tulajdona.
+
+**BLOKKOLÓ jelzés az integrátornak (2026-08-25-i arány-tisztító kör).** A
+`build/kutatas/pattano-ujj.md` 2. szakaszának öt új, forrásolt H2-je szó szerint
+bekerült a törzsbe. Ezek a szövegek **néven nevezik a forrást** („az NHS szerint”,
+„Az AAOS OrthoInfo…”, „Cochrane-áttekintés”, „A PubMed orvosi adatbázisban”). A
+`src/lib/tudastar/markdown-to-lexical.ts` `FORRAS_JELOLESEK` őre viszont a
+tulajdonos 2026-08-21-i döntése alapján **kivételt dob**, ha a törzsben `NHS`,
+`AAOS`, `OrthoInfo`, `Cochrane`, `PMID`, `StatPearls` vagy `Forrásjegyzék` szerepel.
+A jelenlegi állapotban tehát az `npm run import:tudastar` **hangosan el fog bukni**
+ezen a cikken. Ez tudatos, nem elnézés: a kutatási fájl szövegét szó szerint kellett
+átvenni, a mondatok forrásmentesre írása viszont szakmai-tulajdonosi döntés, nem
+szerkesztői. Két lehetséges kimenet, döntést kérünk: (1) a tulajdonos feloldja az
+őrt ezekre az új, YMYL-szakaszokra, vagy (2) a Katák jóváhagynak egy forrásnév
+nélküli átfogalmazást, és az kerül a törzsbe.
+
+**Jelzés: GYIK.** A kutatási fájl 1.2 pontja két kötelező GYIK-cserét ír elő (G1,
+G2). Ez a markdown **nem tartalmaz GYIK-szakaszt** — a GYIK-sorok máshol
+(`build/cikkek/B.json`, illetve a CMS `faq` mezője) élnek, ezért a két csere ebben
+a fájlban nem volt végrehajtható, és más fájlhoz nem nyúltunk.
 
 **Nyitott forrás-kérdés a lektorálóknak.** A gennyes ínhüvelygyulladás négy jelének
 felsorolását (duzzadt ujj, félig behajlított tartás, nyújtásra erős fájdalom,
@@ -153,6 +184,20 @@ Külön kiemelendő a 40 év feletti életkor, a cukorbetegség és a rheumatoid
 
 Ezek kockázati tényezők, nem okok. Attól, hogy valamelyik igaz rád, még nem biztos, hogy ez a panaszod.
 
+## Pattanó ujj terhesség alatt: mi a teendő?
+
+**Ha a várandósságod alatt kezdett akadni az ujjad, azt a mai populációs adatok szerint nem a terhesség okozza.** Egy 2025-ös, több mint 700 000 nő adatait feldolgozó amerikai vizsgálat a szülés utáni első évben nézte meg a leggyakoribb kéz- és csuklópanaszokat. A pattanó ujj a szült nők között nem fordult elő gyakrabban, mint a nem terhes összehasonlító csoportban, és a szerzők ki is mondják, hogy a terhesség és a terhességi cukorbetegség nem kockázati tényezője a pattanó ujjnak.
+
+**Ami viszont tényleg a terhességhez kötődik, az egy másik panasz.** Ugyanez a vizsgálat azt találta, hogy a terhesség a de Quervain-féle ínhüvelygyulladás, vagyis az „anyacsukló” esélyét többszörösére emeli. Ha tehát a csuklód hüvelykujj felőli oldala fáj, és a babaemeléstől lesz rosszabb, az gyakrabban de Quervain, mint pattanó ujj. A kettő elkülönítése vizsgálat kérdése, nem otthoni találgatásé.
+
+**Terhességi cukorbetegség mellett érdemes figyelni a kezedre.** A vizsgálat szerint a terhességi cukorbetegség összességében növelte a kézpanaszok esélyét, azon belül külön a kéztőalagút-szindrómáét és a de Quervainét. A pattanó ujjra nézve ugyanez az összefüggés nem érte el a statisztikai jelentőség szintjét.
+
+**A kezelésben terhesen az a különbség, hogy a gyógyszeres út szűkül.** A tevékenység módosítása és a sín gyógyszer nélküli lehetőség, ezeket a terhesség nem érinti. A fájdalomcsillapításban viszont a szakmai betegtájékoztatók szerint terhesen általában a paracetamol az első választás, az ibuprofént pedig terhesen kerülni kell, hacsak orvos vagy gyógyszerész másképp nem tanácsolja. A gyógyszerészeti szakmai anyag ezt pontosítja: a szervezet egészére ható gyulladáscsökkentőket a terhesség 20. hetétől kerülni kell, hacsak klinikailag nem szükségesek, a 28. héttől pedig nem szabad szedni őket.
+
+**A bőrre kenhető gélek és krémek sem automatikusan rendben vannak.** Ugyanez a szakmai anyag azt írja, hogy a helyi, gyulladáscsökkentőt tartalmazó készítményeknél a termék saját betegtájékoztatójában szereplő terhességi figyelmeztetéseket kell követni. Ez a gyakorlatban annyit jelent, hogy terhesen egyetlen kézre kenhető készítményt se kezdj el magadtól, kérdezd meg a gyógyszerészedet vagy a kezelőorvosodat.
+
+**Egy dolgot pedig ne halassz.** Ha az ujjad duzzadt, félig behajlítva áll, nyújtásra nagyon fáj, és az ínhüvely mentén nyomásérzékeny, az terhesen ugyanúgy sürgős, mint bármikor máskor.
+
 ## Elmúlhat magától a pattanó ujj?
 
 Igen. A pattanó ujj néha kezelés nélkül is rendbe jön.
@@ -171,13 +216,11 @@ A sínezés ennél egy szinttel feljebb van: nem öngyógyító módszer, hanem 
 
 A sínezés az a kezelés, amiről a legtöbbet tudjuk.
 
-Az összegzés szerint a sínezés rövid távon, egy éven belül következetesen csökkentette a fájdalmat. Megszüntette az akadást, és javította a kézfunkciót.
+A szakirodalom szerint a sínviselés rövid távon, egy éven belül csökkentette a fájdalmat, mérsékelte a beakadást és javította a kézfunkciót.
 
-A közölt sikerarány akár 97% volt. Ez a kortikoszteroid injekcióhoz hasonló mérték, de a bőrsorvadás és a fertőzés kockázata nélkül.
+Az összefoglaló szerzői ezt a hatást a kortikoszteroid injekcióhoz hasonló nagyságrendűnek írják le, a bőrsorvadás és a fertőzés kockázata nélkül.
 
-Két korlátot ki kell mondanunk. Az egyik: ezek rövid távú eredmények, és a szerzők maguk kérik a hosszú távú vizsgálatokat.
-
-A másik: a 97% a legjobb közölt érték, nem az átlag.
+Egy korlátot ki kell mondanunk: ezek rövid távú eredmények, és a szerzők maguk kérik a hosszú távú vizsgálatokat. Azt, hogy nálad mit hoz a sín, ebből nem lehet megmondani.
 
 A viselési időről is van adat. A sín akkor volt a leghatékonyabb, ha napi 24 órán át viselték.
 
@@ -203,17 +246,17 @@ Ha egy rövid, vezetett kóstolóra van szükséged, ingyenesen elérhető [az S
 
 ## Sín, injekció vagy műtét: mi mennyire válik be?
 
-A nem műtéti kezelés egy 2025-ös vizsgálatban az esetek 68,9%-ánál hozott megszűnést vagy javulást.
+A pattanó ujj kezelése a szakirodalom szerint a műtét nélküli lehetőségekkel kezdődik, és a műtét az, ami akkor kerül szóba, ha ezek nem hoztak eredményt.
 
-A 68,9% egy háromkarú, randomizált vizsgálatból származik. 104 résztvevő szerepelt benne, 122 pattanó ujjal, átlagosan 29 hónapos utánkövetéssel.
+Erről egy 2025-ös, háromkarú, randomizált vizsgálat ad képet. 104 résztvevő szerepelt benne, 122 pattanó ujjal, átlagosan 29 hónapos utánkövetéssel.
 
 Egy hatókör-jelzés az ebben a szakaszban következő minden számhoz. Ebbe a vizsgálatba nem került be a pattanó hüvelykujj, a legsúlyosabb, 4-es fokozat, és az sem, akinél kettőnél több ujj volt érintett. A vizsgálat sínje éjszakai nyújtósín volt, nem napi 24 órás.
 
-Fokozat szerint bontva a kép árnyaltabb. Az enyhébb, 1-es és 2-es fokozatú eseteknél a siker körülbelül 75% volt, a 3-as fokozatnál 60%.
+Fokozat szerint bontva a kép árnyaltabb. A vizsgálat szerint az enyhébb, 1-es és 2-es fokozatú eseteknél a műtét nélküli kezelés gyakrabban vezetett eredményre, mint a súlyosabb, 3-as fokozatnál.
 
-A 3-as fokozatúak szignifikánsan gyakrabban jutottak műtétig: 39,1% szemben a 22,4%-kal.
+A 3-as fokozatúak szignifikánsan gyakrabban jutottak el a műtétig, mint az enyhébb fokozatúak.
 
-A fokozatot orvos állapítja meg vizsgálattal. Ez nem otthon eldönthető kérdés. A résztvevőket.
+A fokozatot orvos állapítja meg vizsgálattal. Ez nem otthon eldönthető kérdés.
 
 Ne próbáld tehát magad besorolni, mert a szám enélkül semmit nem mond rólad.
 
@@ -234,6 +277,48 @@ Inzulinnal kezelt cukorbetegeknél a szteroid tipikusan 10–14 napig megemeli a
 A kezelés kiválasztása orvosi döntés. Mi ezt a döntést nem vesszük át, és nem is beszélünk le a műtétről.
 
 A műtét akkor kerül szóba, ha a többi kezelés nem hozott eredményt.
+
+## Segít a krém, a gyógyszer vagy a vitamin a pattanó ujjra?
+
+**Egyetlen krémről, tablettáról vagy vitaminkészítményről sincs olyan bizonyíték, ami a pattanó ujj beakadását megszüntetné; a gyógyszereknek itt a fájdalom csillapítása a szerepük, nem az ok kezelése.** A beakadást az adja, hogy az ín és a szűk gyűrű mérete nem fér össze, és ezt kívülről bevitt hatóanyag nem tágítja ki.
+
+**Gyulladáscsökkentő tabletta.** A szakmai betegtájékoztató az otthoni teendők között említi a fájdalomcsillapítót, például az ibuprofént. Egy 2024-es szakmai áttekintés viszont időkorlátot is tesz mellé: a nem szteroid gyulladáscsökkentőket legfeljebb 2–4 hétig érdemes szedni, a jól ismert gyomor-bél és szív-érrendszeri kockázatok miatt. Ez tehát nem az a kezelés, amit hónapokig érdemes tolni magadtól.
+
+**Amit a szisztematikus áttekintés erről pontosan mond.** 2021-ben megjelent egy szisztematikus áttekintés kifejezetten a gyulladáscsökkentőkről pattanó ujjnál. A szerzők külön keresték a bőrre kenhető és a szájon át szedett készítmények randomizált vizsgálatait is, és **egyetlen ilyen vizsgálatot sem találtak.** A beválogatott két vizsgálat mindkettője injekciós formát hasonlított szteroidinjekcióhoz, és a következtetés az volt, hogy az injekciós gyulladáscsökkentő nem kínál előnyt a szteroidinjekcióval szemben. Vagyis a kérdésre, hogy „hat-e a tabletta vagy a krém a pattanó ujjra”, ma nincs randomizált válasz.
+
+**Krém és gél.** A helyileg alkalmazott gyulladáscsökkentőkről külön szisztematikus áttekintés szól, 39 vizsgálattal és több mint tízezer résztvevővel. Ebben minden egyes vizsgálat kopásos ízületi betegségről szólt, és az eredmények szinte teljes egészében térdből származnak. A szerzők zárómondata egyértelmű: más krónikus fájdalmas állapotokra nincs bizonyíték. A pattanó ujj ilyen más állapot.
+
+**Vitamin és étrend-kiegészítő.** Erre nem találtunk hiteles forrást. A PubMed orvosi adatbázisban 2026. augusztus 25-én a „trigger finger AND vitamin B6” keresés nulla találatot adott, és sem a nemzeti egészségügyi szolgálat, sem a szakorvosi társaság betegtájékoztatója, sem a 2024-es szakmai áttekintés nem sorolja fel a vitaminokat a kezelési lehetőségek között. Ez nem azt jelenti, hogy biztosan nem hat. Azt jelenti, hogy ma nincs mire hivatkozni, és aki mégis azt állítja, hogy hat, azt érdemes megkérdezni, mire alapozza.
+
+**Patikai vagy drogériás rögzítő.** A sín az a konzervatív kezelés, amiről a legtöbbet tudjuk, de a szakirodalom nem egységes abban, melyik ízületet és mennyi ideig kell rögzíteni. Egy 2019-es összefoglaló egyetlen ízület rögzítését ajánlja 6–10 hétre. Egy 2023-as randomizált vizsgálat az ujj tövénél lévő ízületet rögzítette, legalább napi 8 órán át, 6 héten keresztül, és arra jutott, hogy felnőtteknél kezdő kezelésként a sín önmagában is ésszerű választás. Egy 2024-es randomizált vizsgálat az ujj középső ízületét rögzítette, éjjel-nappal, 6 héten át.
+
+**Ebből egy gyakorlati következtetés adódik.** A polcról levett általános ujjrögzítő nem ugyanaz, mint egy megfelelő ízületre, megfelelő szögben beállított sín, és a vizsgálatokban pont ez a részlet változott. A sín kiválasztása, mérete és beállítása ezért szakember dolga. Mi nem árulunk sínt, és nem is javasolunk konkrét terméket.
+
+**Injekció.** Az injekció orvosi döntés, nem otthoni lehetőség. A szakmai betegtájékoztató szerint legfeljebb három injekció szokott szóba jönni, és kisebb eséllyel hat cukorbetegeknél, régóta fennálló akadásnál és pattanó hüvelykujjnál.
+
+## Miben más a pattanó hüvelykujj?
+
+**A pattanó hüvelykujjnál ugyanaz a mechanizmus, a kezelés megítélése viszont külön figyelmet kíván, mert a vizsgálatok jelentős része eleve kihagyja a hüvelykujjat.** Ez a gyakorlatban azt jelenti, hogy amit a pattanó ujjról tudunk, azt nem lehet automatikusan átvinni a hüvelykujjra.
+
+**Az injekcióról ezt kifejezetten ki is mondják.** A szakmai betegtájékoztató szerint a szteroidinjekció kisebb eséllyel hat cukorbetegeknél, régóta fennálló akadásnál és pattanó hüvelykujjnál. Ez nem azt jelenti, hogy nem jön szóba, hanem azt, hogy a döntés még inkább szakemberé.
+
+**A sínes vizsgálatokban is így van.** A 2025-ös háromkarú randomizált vizsgálatba nem kerültek be pattanó hüvelykujjas esetek, és egy 2026-os, sínt és gyakorlást együtt vizsgáló esetsorozat is kizárta a hüvelykujjakat. A hüvelykujjra tehát vékonyabb a bizonyítékalap, mint a többi ujjra.
+
+**Amit ebből tenni érdemes.** Ha a hüvelykujjad akad be, ugyanazok a küszöbök érvényesek: ha nem javul, vagy ha akadályoz a napi teendőkben, menj orvoshoz. A különbség annyi, hogy itt kevésbé indokolt a hosszú otthoni várakozás.
+
+## Milyen gyakorlatok és kéztorna segíthet pattanó ujjra?
+
+**A pattanó ujjra ma nincs olyan gyakorlatsor, amiről randomizált vizsgálat igazolta volna, hogy önmagában, sín nélkül megoldja a beakadást.** Ettől még a mozgatásnak van helye, csak nem ott, ahol az emberek keresik: a merevségre és a mozgástartományra hat, nem magára a szűkületre.
+
+**Amit a szakmai betegtájékoztató mond.** A szakorvosi társaság betegtájékoztatója a nem műtéti kezelések között felsorolja a kíméletes nyújtó gyakorlatokat, és ennyit állít róluk: csökkenthetik a merevséget és javíthatják a mozgástartományt. Ez szándékosan óvatos megfogalmazás, és mi sem mondunk többet nála.
+
+**Miért pont ínsiklató gyakorlatokat szoktak adni.** Egy 2024-es szakmai áttekintés szerint a horgas ököl helyzet azért kap szerepet, mert a felületes és a mély hajlítóín eltérő mértékben csúszik el egymáshoz képest, és így elkerülhető az A1-gyűrű túlterhelése. Vagyis a cél nem az erőltetés, hanem az, hogy az ín dolgozzon, a szűk szakasz pedig ne kapjon plusz terhelést.
+
+**Amit a randomizált vizsgálatok mutatnak.** Egy 2024-es randomizált vizsgálat 55 résztvevőt osztott két csoportba: az egyik hat héten át az ujj középső ízületét rögzítő sínt viselt, a másik sín nélküli kézterápiát kapott. A sín nélküli kézterápia a szerzők megfogalmazásában nem hozott érdemi javulást. Egy 2025-ös, hongkongi randomizált vizsgálat pedig 76 embernél nézte meg, ad-e többletet az ínsiklató gyakorlás a szteroidinjekció után: 24 hét után egyik mért szempontban sem talált érdemi különbséget a szokásos ellátáshoz képest.
+
+**Együtt viszont más a kép.** Egy 2026-os prospektív esetsorozat 79 beteg 107 ujját kezelte hat héten át az ujj középső ízületét rögzítő sínnel, mellette ínsiklató és nyújtó gyakorlatokból álló programmal. A fájdalom és a kézfunkció is javult, a szerzők viszont maguk írják le a korlátot: kontrollcsoport nélkül ebből nem lehet kimondani, hogy jobb lenne bármelyik másik konzervatív kezelésnél.
+
+**Amit ebből érdemes hazavinni.** A mai bizonyítékok szerint a konzervatív kezelés teherhordó eleme a szakember által kiválasztott és beállított sín, a gyakorlás pedig e mellett kap helyet, a merevség ellen. És egy dolgot semmiképp ne csinálj: ne próbáld erővel átnyomni vagy kipattintani a beakadt ujjat, és ne kérd meg erre mást sem.
 
 ## Mikor NE végezd a gyakorlatokat?
 
@@ -279,13 +364,23 @@ Egy kérés a végére: ne próbáld magad megállapítani a fájdalom okát.
 
 A seb általában néhány hét alatt begyógyul.
 
-A duzzanat és a merevség viszont 4–6 hónap alatt múlik el teljesen.
+A szakirodalom szerint jellemzően 4–6 hónapot vesz igénybe, mire a duzzanat és a merevség elmúlik.
 
-A teljes felépülés érzete átlagosan a műtét után 6 hónappal érkezik meg.
+A szakirodalom szerint a teljes felépülés érzete átlagosan a műtét után 6 hónappal érkezik meg.
 
 A műtét utáni felépülés tehát jóval tovább tart, mint a seb gyógyulása. Érdemes erre előre felkészülni.
 
 Azt, hogy mikor mit szabad, a műtétet végző orvos és a gyógytornászod mondja meg. A kéz fokozatos visszaterhelését mindig az ő jóváhagyásukkal kezdd el.
+
+## Van értelme gyógytorna videóból gyakorolni?
+
+**Videóból gyakorolni akkor van értelme, ha az ujjadat előbb megnézte orvos, és ha a videó nem lép annak a helyére, ami a mai bizonyítékok szerint a konzervatív kezelés teherhordó eleme: a szakember által kiválasztott és beállított sín.** Egy videó ugyanis pontosan azt a két dolgot nem tudja megtenni, ami a pattanó ujjnál számít.
+
+**Az első: nem tud megvizsgálni.** A pattanó ujj fokozatát vizsgálattal állapítja meg orvos, és a vizsgálatok szerint pont a fokozat az, ami befolyásolja, mennyire várható eredmény a műtét nélküli úttól. Ezt egy felvétel nem tudja rólad eldönteni.
+
+**A második: nem tud sínt beállítani.** Egy 2024-es randomizált vizsgálatban a sín nélküli kézterápia a szerzők megfogalmazásában nem hozott érdemi javulást, míg a rögzítő sínt viselő csoportban javultak a fájdalom- és funkciópontszámok. Ez nem a gyakorlás ellen szól, hanem arról, hogy mi mellé kerül.
+
+**Akkor mire jó mégis?** Arra, hogy legyen sorrend és rendszer, és hogy ne felejtsd el mozgatni a kezed a merevség ellen. Mi is ezt kínáljuk, és nem többet: rendszerezett, vezetett alkalmakat arra az időszakra, amíg a kezelésről dönt az orvosod. Gyógyulást, gyógyulási arányt és a műtét elkerülését nem ígérünk, és a program nem helyettesíti a szakorvosi vizsgálatot.
 
 ## Mit ad egy vezetett otthoni program a pattanó ujj mellé?
 
