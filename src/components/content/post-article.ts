@@ -324,26 +324,66 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
 }
 
 /**
- * A sablon `ctaCourse` nélkül a kurzuslistára visz (`PostCourseCta` üres ág:
- * „Nézd meg a kurzusokat", `href="/kurzusok"`). A `befagyott-vall` cikknél ez
- * tiltott: a mező üres, a törzs egyetlen továbbvezetése `/szolgaltatasok`.
- * A hat élő cikk és az ínhüvelygyulladás kapcsolt kurzus-CTA-ja érintetlen.
+ * A cikk végi ajánló VÁLTOZATA — témához igazítva (tulajdonosi döntés,
+ * 2026-08-25).
+ *
+ * A korábbi szabály (`COURSE_LIST_CTA_HIDDEN_SLUG`) a `befagyott-vall` cikk
+ * alól TELJESEN elhagyta a panelt, mert kéz-kurzust váll-panaszra ajánlani
+ * a hitelesség rovására menne. Az új tulajdonosi döntés: a panel MINDEN cikk
+ * alatt megjelenik, de a témához igazodó ajánlattal:
+ *
+ *  - `kurzus` (kéz, csukló, könyök): a kapcsolt fizetős kurzus (vagy a
+ *    kurzuslista), plusz halk ingyenes belépő.
+ *  - `idopont` (váll): a releváns következő lépés a SZEMÉLYES vizsgálat,
+ *    ezért a §3.2 #24 írásos időpontkérés a cél; az ingyenes belépő itt is
+ *    megjelenik, de kimondva, hogy kézre szól.
+ *
+ * Forrás:
+ * - NN/g, *Informational Articles Must Ask For the Order*: a cikk végi
+ *   ajánlat a RELEVÁNS következő lépés legyen; a hivatkozás nélküli cikk
+ *   „attracts tons of freeloaders, but no business".
+ *   https://www.nngroup.com/articles/product-links-on-informational-pages/
+ * - WCAG 2.2 **2.4.4** Link Purpose (In Context): kéz-kurzus gombja a
+ *   váll-cikk alatt mást ígérne, mint amire a törzs vezet.
  *
  * A fejléc „Kurzusok" navigációja (`Header.tsx`) NEM ide tartozik: az a
  * WCAG 2.2 **3.2.3** (Consistent Navigation) szerint minden lapon marad.
  *
- * Forrás:
- * - GOV.UK Design System, *Buttons*: „A page should have only one primary
- *   button." https://design-system.service.gov.uk/components/button/
- * - NN/g, *Informational Articles Must Ask For the Order*: a cikk végi
- *   ajánlat a releváns következő lépés legyen; általános katalógus-CTA
- *   hitelt visz, ha a törzs mást kínál.
- *   https://www.nngroup.com/articles/product-links-on-informational-pages/
- * - WCAG 2.2 **2.4.4** Link Purpose (In Context): a lábléc primary gombja
- *   kurzuslistát ígérne, a cikk pedig rendelői időpontot.
+ * A halmaz slug-alapú, nem kategória-alapú: a `vall-es-konyok` kategóriában
+ * a teniszkönyök is benne van, annak viszont a kapcsolt kéz-kurzusa a
+ * tulajdonos szerint marad. Új váll-cikk ide veendő fel.
  */
-export const COURSE_LIST_CTA_HIDDEN_SLUG = 'befagyott-vall'
+export type PostCtaVariant = 'kurzus' | 'idopont'
 
-export function shouldShowPostCourseCta(post: Pick<Post, 'slug'>): boolean {
-  return post.slug !== COURSE_LIST_CTA_HIDDEN_SLUG
+export const APPOINTMENT_CTA_SLUGS: readonly string[] = ['befagyott-vall']
+
+export function postCtaVariantOf(post: Pick<Post, 'slug'>): PostCtaVariant {
+  return typeof post.slug === 'string' && APPOINTMENT_CTA_SLUGS.includes(post.slug)
+    ? 'idopont'
+    : 'kurzus'
+}
+
+/**
+ * Az ingyenes belépő kurzus publikus adatai a cikk végi ajánlóhoz.
+ *
+ * Null-ra esik, ha nincs ilyen termék, ha nem `published`, vagy ha az
+ * ár-pipa nem KIKAPCSOLT: „ingyenes" KIZÁRÓLAG a
+ * `priceInHUFEnabled === false` (a beállítatlan NULL hiányos konfiguráció,
+ * nem ingyenes ajánlat — lib/courses.ts, free-course-grant.ts).
+ */
+export function freeCourseCtaTargetOf(product: unknown): CourseCtaTarget | null {
+  if (!isRecord(product)) return null
+  const id = readNumber(product.id)
+  if (id === null) return null
+  if (product.status !== 'published') return null
+  if (product.priceInHUFEnabled !== false) return null
+  return {
+    id,
+    slug: readText(product.slug),
+    sku: readText(product.sku),
+    displayTitle: readText(product.displayTitle),
+    shortDescription: readText(product.shortDescription),
+    priceInHUF: readNumber(product.priceInHUF),
+    priceInHUFEnabled: false,
+  }
 }

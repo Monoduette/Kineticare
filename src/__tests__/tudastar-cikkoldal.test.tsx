@@ -10,10 +10,17 @@ import { shouldShowCategoryFilter } from '../components/content/post-list'
 import { headingsOf, plainTextOf, RESERVED_ANCHOR_IDS, wordCountOf } from '../components/content/post-outline'
 import {
   authorPersonOf,
+  freeCourseCtaTargetOf,
+  postCtaVariantOf,
   relatedHeading,
-  shouldShowPostCourseCta,
   shouldShowToc,
 } from '../components/content/post-article'
+import {
+  APPOINTMENT_HREF,
+  FREE_LINE_LEAD,
+  FREE_LINE_LEAD_KEZ,
+  FREE_LINE_TAIL,
+} from '../components/content/PostCourseCta'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { betuMetrika, szoSzelessegPx } from './helpers/font-metrics'
 import {
@@ -371,17 +378,21 @@ describe('G3 + G4 — kurzus-ajánló: egy elsődleges cselekvés, szótári fel
     }
   })
 
-  it('befagyott-vall: üres ctaCourse mellett nincs kurzuslista-lábléc', () => {
-    expect(shouldShowPostCourseCta({ slug: 'befagyott-vall' })).toBe(false)
+  it('befagyott-vall: a panel MEGVAN, és időpontkérésre visz, nem kurzusra', () => {
+    // Tulajdonosi döntés (2026-08-25): a váll-cikk alatt is áll ajánló, de a
+    // releváns következő lépéssel (személyes vizsgálat), nem kéz-kurzussal.
+    expect(postCtaVariantOf({ slug: 'befagyott-vall' })).toBe('idopont')
     const html = render(createElement(PostArticle, { post: post({ slug: 'befagyott-vall' }) }))
-    expect(html).not.toContain('kc-post-cta')
+    expect(html).toContain('kc-post-cta')
+    expect(text(html)).toContain(ctaLabel('appointment-request-link'))
+    expect(html).toContain(`href="${APPOINTMENT_HREF}"`)
     expect(text(html)).not.toContain(ctaLabel('course-list-open'))
     expect(html).not.toContain('href="/kurzusok"')
   })
 
   it('a hat élő cikk és az ínhüvelygyulladás kurzus-CTA-ja megmarad', () => {
-    expect(shouldShowPostCourseCta({ slug: 'miert-zsibbad-a-kezem' })).toBe(true)
-    expect(shouldShowPostCourseCta({ slug: 'inhuvelygyulladas' })).toBe(true)
+    expect(postCtaVariantOf({ slug: 'miert-zsibbad-a-kezem' })).toBe('kurzus')
+    expect(postCtaVariantOf({ slug: 'inhuvelygyulladas' })).toBe('kurzus')
     const elo = render(createElement(PostArticle, { post: post() }))
     expect(text(elo)).toContain(ctaLabel('course-list-open'))
     expect(elo).toContain('href="/kurzusok"')
@@ -392,6 +403,84 @@ describe('G3 + G4 — kurzus-ajánló: egy elsődleges cselekvés, szótári fel
     )
     expect(text(inhuvely)).toContain(ctaLabel('course-sales-open'))
     expect(inhuvely).toContain('href="/kurzusok/kezrehabilitacio-otthon"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G3b — az ingyenes belépő halk sora (tulajdonosi döntés, 2026-08-25)
+// ---------------------------------------------------------------------------
+
+const INGYENES = {
+  id: 9,
+  status: 'published',
+  slug: 'sos-kezrelax',
+  sku: 'SOS-0',
+  displayTitle: 'SOS Kézrelax villámkurzus',
+  shortDescription: null,
+  priceInHUFEnabled: false,
+  priceInHUF: null,
+}
+
+describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
+  it('kéz-cikk alatt a sima felvezetéssel és a kurzus címére mutató linkkel áll', () => {
+    const html = render(
+      createElement(PostArticle, { post: post({ ctaCourse: KURZUS }), freeCourse: INGYENES }),
+    )
+    // A linkszöveg a cél oldal neve (GOV.UK linkszöveg-szabály), a mondat a
+    // rögzített darabokból áll össze. (A text() a címkehatárra szóközt tesz,
+    // ezért a lead+cím és a zárás külön ellenőrzés.)
+    expect(text(html)).toContain(`${FREE_LINE_LEAD}SOS Kézrelax villámkurzus`)
+    expect(text(html)).toContain(FREE_LINE_TAIL.slice(1).trim())
+    expect(html).toContain('href="/kurzusok/sos-kezrelax"')
+  })
+
+  it('a váll-cikk alatt kimondja, hogy a kurzus kézpanaszokra szól', () => {
+    const html = render(
+      createElement(PostArticle, {
+        post: post({ slug: 'befagyott-vall' }),
+        freeCourse: INGYENES,
+      }),
+    )
+    expect(text(html)).toContain(FREE_LINE_LEAD_KEZ)
+    expect(html).toContain('href="/kurzusok/sos-kezrelax"')
+  })
+
+  it('ingyenes termék nélkül a sor elmarad', () => {
+    const html = render(createElement(PostArticle, { post: post() }))
+    expect(html).not.toContain('kc-post-cta__free')
+  })
+
+  it('fizetős, beállítatlan árú vagy nem publikált termék sosem ad ingyenes sort', () => {
+    expect(freeCourseCtaTargetOf(KURZUS)).toBeNull()
+    expect(freeCourseCtaTargetOf({ ...INGYENES, priceInHUFEnabled: null })).toBeNull()
+    expect(freeCourseCtaTargetOf({ ...INGYENES, status: 'draft' })).toBeNull()
+    expect(freeCourseCtaTargetOf(null)).toBeNull()
+  })
+
+  it('ha a kapcsolt kurzus maga az ingyenes, a sor nem duplikálja a célt', () => {
+    // NN/g, The Same Link Twice on the Same Page: a duplikált linknek ára van.
+    const html = render(
+      createElement(PostArticle, {
+        post: post({ ctaCourse: { ...INGYENES } }),
+        freeCourse: INGYENES,
+      }),
+    )
+    expect(html).not.toContain('kc-post-cta__free')
+  })
+
+  it('a sor és az időpontos ág nem ígér gyógyulást, arányt és nem sürget', () => {
+    const tiltott = ['garant', 'gyógyul', '%', 'már csak', 'siess', 'utolsó']
+    for (const fixture of [
+      post({ ctaCourse: KURZUS }),
+      post({ slug: 'befagyott-vall' }),
+    ]) {
+      const html = text(
+        render(createElement(PostArticle, { post: fixture, freeCourse: INGYENES })),
+      ).toLowerCase()
+      for (const szo of tiltott) {
+        expect(html).not.toContain(szo)
+      }
+    }
   })
 })
 

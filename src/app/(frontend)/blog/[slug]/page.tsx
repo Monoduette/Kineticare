@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 
 import { PostArticle } from '@/components/content/PostArticle'
 import { PreviewBar } from '@/components/preview/PreviewBar'
-import { getPostBySlug, getRelatedPosts } from '@/lib/cms'
+import { getFreeProduct, getPostBySlug, getRelatedPosts } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
 
@@ -30,6 +30,9 @@ export default async function BlogPostPage({ params }: Props) {
   const post = await getPostBySlug(slug, { draft: isDraft })
   if (!post) notFound()
   const related = await getRelatedPosts(post)
+  // Az ingyenes belépő a cikk végi ajánló halk sora (PostCourseCta); hiba
+  // vagy hiányzó ingyenes termék esetén null, a sor egyszerűen elmarad.
+  const freeCourse = await getFreeProduct()
 
   // Az Article JSON-LD-t és a morzsa-sémát a PostArticle rendereli (szerző +
   // og:image feloldással), mert a séma mezőinek a LÁTHATÓ tartalomból kell
@@ -37,7 +40,7 @@ export default async function BlogPostPage({ params }: Props) {
   return (
     <>
       {isDraft ? <PreviewBar path={`/blog/${slug}`} /> : null}
-      <PostArticle post={post} related={related} />
+      <PostArticle post={post} related={related} freeCourse={freeCourse} />
     </>
   )
 }

@@ -363,6 +363,34 @@ export async function getPublishedProducts(limit = 12): Promise<Product[]> {
 }
 
 /**
+ * A tudatosan ingyenes belépő kurzus (a cikk végi ajánló ingyenes sorához).
+ *
+ * „Ingyenes" definíció: KIZÁRÓLAG `priceInHUFEnabled === false` — a
+ * beállítatlan (NULL) ár-pipa hiányos konfiguráció, nem ingyenes ajánlat
+ * (lib/courses.ts, free-course-grant.ts ugyanezt a szabályt követi).
+ * Hiba vagy találat hiánya esetén null: az ingyenes sor egyszerűen elmarad.
+ */
+export async function getFreeProduct(): Promise<Product | null> {
+  return safeQuery(
+    'ingyenes-termek',
+    async () => {
+      const payload = await getPayload({ config })
+      const { docs } = await payload.find({
+        collection: 'products',
+        where: { and: [PUBLISHED_WHERE, { priceInHUFEnabled: { equals: false } }] },
+        limit: 1,
+        sort: '-createdAt',
+        depth: 0,
+        draft: false,
+        overrideAccess: true,
+      })
+      return docs[0] ?? null
+    },
+    null,
+  )
+}
+
+/**
  * Kiemelt vélemények a kezdőlapra (M6): látható ÉS kiemelt rekordok, `order`
  * szerint növekvő sorrendben, legfeljebb 3.
  *

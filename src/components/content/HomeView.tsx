@@ -38,9 +38,12 @@ import { RichText } from '../lexical/RichText'
  *    után (CourseCards) — CSAK fizetős termék, üresen a szekció elmarad.
  * M4 Ingyenes SOS Kézrelax — lead-magnet VISSZAFOGOTT, másodlagos súllyal,
  *    közvetlenül a fizetős blokk után, tint háttérrel elválasztva (FreeSos).
- *    Az ingyenes ajánlat KIZÁRÓLAG itt jelenik meg (a hero másodlagos CTA-ja
- *    is ide, a #ingyenes horgonyra mutat): a kurzus-rácsban szereplő
- *    „másodlagos" kártyája 2026-08-15-én duplikációként kikerült.
+ *    A KEZDŐLAPON az ingyenes ajánlat kizárólag itt jelenik meg (a hero
+ *    másodlagos CTA-ja is ide, a #ingyenes horgonyra mutat): a kurzus-rácsban
+ *    szereplő „másodlagos" kártyája 2026-08-15-én duplikációként kikerült.
+ *    2026-08-25-től a cikkoldalak végi ajánlóban is áll egy halk, szöveges
+ *    ingyenes sor (PostCourseCta) — az tulajdonosi döntés, nem duplikáció:
+ *    másik lapon, más funkcióval (NN/g, Product Links on Informational Pages).
  * M5 „Így működik az online kurzus" — 3 lépés, statikus (HowItWorks).
  * M6 Vélemények — a CMS `testimonials` collectionjéből, a termékblokk UTÁN
  *    (TestimonialsSection): legfeljebb 3 kiemelt és látható vélemény, `order`

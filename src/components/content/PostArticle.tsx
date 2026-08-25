@@ -21,11 +21,12 @@ import {
   bylineOf,
   courseCtaTargetOf,
   firstCategoryOf,
+  freeCourseCtaTargetOf,
+  postCtaVariantOf,
   postFaqItems,
   relatedHeading,
   reviewDatesOf,
   reviewerPersonOf,
-  shouldShowPostCourseCta,
   shouldShowToc,
 } from './post-article'
 import { headingsOf, plainTextOf, wordCountOf } from './post-outline'
@@ -84,6 +85,11 @@ export interface PostArticleProps {
   post: Post
   /** Kívülről betöltött kapcsolódó cikkek (getRelatedPosts); alap: a poszt saját mezője. */
   related?: Post[]
+  /**
+   * A tudatosan ingyenes belépő kurzus (getFreeProduct) a cikk végi
+   * ajánlóhoz; kihagyva vagy null értékkel a panel ingyenes sora elmarad.
+   */
+  freeCourse?: unknown
 }
 
 /** Csak közzétett, sluggal rendelkező cikk jelenhet meg kapcsolódóként; max 3. */
@@ -95,7 +101,7 @@ function displayableRelated(posts: readonly (number | Post)[] | null | undefined
     .slice(0, 3)
 }
 
-export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
+export function PostArticle({ post, related: relatedProp, freeCourse }: PostArticleProps) {
   const author = authorPersonOf(post)
   const reviewer = reviewerPersonOf(post)
   const { reviewedAt, nextReviewAt } = reviewDatesOf(post)
@@ -123,7 +129,7 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
   ]
   const showToc = shouldShowToc(wordCountOf(post.content), contentHeadings.length)
 
-  const showCourseCta = shouldShowPostCourseCta(post)
+  const ctaVariant = postCtaVariantOf(post)
   const ctaClasses = ['kc-post-cta', related.length > 0 ? 'kc-post-cta--elotte-kapcsolodo' : '']
     .filter(Boolean)
     .join(' ')
@@ -264,15 +270,19 @@ export function PostArticle({ post, related: relatedProp }: PostArticleProps) {
         </Container>
       </Section>
 
-      {/* A kurzuslista-lábléc a `befagyott-vall` slugon elmarad. A fejléc
-          „Kurzusok" navigációja nem ide tartozik, az minden lapon marad. */}
-      {showCourseCta ? (
-        <Section className={ctaClasses} variant="tint">
-          <Container size="narrow">
-            <PostCourseCta course={courseCtaTargetOf(post)} />
-          </Container>
-        </Section>
-      ) : null}
+      {/* A cikk végi ajánló MINDEN cikk alatt áll (tulajdonosi döntés,
+          2026-08-25), a témához igazított változattal: a váll-cikk időpontot
+          ajánl, a többi kurzust. A fejléc „Kurzusok" navigációja nem ide
+          tartozik, az minden lapon marad. */}
+      <Section className={ctaClasses} variant="tint">
+        <Container size="narrow">
+          <PostCourseCta
+            course={courseCtaTargetOf(post)}
+            freeCourse={freeCourseCtaTargetOf(freeCourse)}
+            variant={ctaVariant}
+          />
+        </Container>
+      </Section>
 
       {related.length > 0 ? (
         <Section className="kc-post-related">

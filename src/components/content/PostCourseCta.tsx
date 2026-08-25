@@ -5,12 +5,12 @@ import { coursePriceBadgeKind, coursePriceLabel, courseTitle } from '../../lib/c
 import { ctaLabel } from '../../lib/cta-vocabulary'
 import { Badge } from '../ui/Badge'
 import { Card } from '../ui/Card'
-import type { CourseCtaTarget } from './post-article'
+import type { CourseCtaTarget, PostCtaVariant } from './post-article'
 
 import '../../app/(frontend)/styles/blocks/post-view.css'
 
 /**
- * PostCourseCta — a cikk végi, halk kurzus-ajánló panel.
+ * PostCourseCta — a cikk végi, halk ajánló panel.
  *
  * ═══ MIÉRT KELL ═══
  * NN/g, *Informational Articles Must Ask For the Order*
@@ -34,18 +34,42 @@ import '../../app/(frontend)/styles/blocks/post-view.css'
  * (docs/vevohang-es-hirdetesszoveg.md), és a feladatkiírás orvosi szabálya is
  * ezt tiltja.
  *
- * ═══ A KÉT ÁG ÉS A GOMBOK SÚLYA ═══
- * - Kapcsolt kurzus van → „Nyisd meg a kurzusoldalt" (CTA-szótár #28,
- *   SECONDARY). Az ár vagy az „Ingyenes" tény a gomb KÖZVETLEN közelében áll
- *   (Baymard: a döntéshez szükséges tény a cselekvés mellé való, B6.2).
- * - Nincs kapcsolt kurzus → „Nézd meg a kurzusokat" (#10, PRIMARY).
- * Laponként legfeljebb EGY elsődleges gomb áll (B6.5), ezért a kurzusos ág
- * másodlagos: a cikk elsődleges cselekvése ilyenkor is egyetlen marad.
- * Új feliratot kitalálni tilos — minden szöveg a `cta-vocabulary.ts`-ből jön.
+ * ═══ A HÁROM ÁG ÉS A GOMBOK SÚLYA (tulajdonosi döntés, 2026-08-25) ═══
+ * - `kurzus` változat, kapcsolt kurzussal → „Nyisd meg a kurzusoldalt"
+ *   (CTA-szótár #28, SECONDARY). Az ár vagy az „Ingyenes" tény a gomb
+ *   KÖZVETLEN közelében áll (Baymard: a döntéshez szükséges tény a cselekvés
+ *   mellé való, B6.2).
+ * - `kurzus` változat kapcsolt kurzus nélkül → „Nézd meg a kurzusokat"
+ *   (#10, PRIMARY).
+ * - `idopont` változat (váll-cikk) → a releváns következő lépés a személyes
+ *   vizsgálat, ezért „Kérj időpontot üzenetben" (#24, SECONDARY, a
+ *   /kapcsolat időpontkérő szekciójára). Kéz-kurzust váll-panaszra nem
+ *   ajánlunk elsődlegesként: a felirat és a törzs ígérete együtt maradjon
+ *   igaz (WCAG 2.2 2.4.4, Link Purpose in Context).
+ * Laponként legfeljebb EGY elsődleges gomb áll (GOV.UK Buttons, B6.5).
+ * Új gomb-feliratot kitalálni tilos — minden gombszöveg a
+ * `cta-vocabulary.ts`-ből jön.
+ *
+ * ═══ AZ INGYENES BELÉPŐ SOR ═══
+ * A tulajdonos 2026-08-25-i döntése: az ingyenes belépő MINDEN cikk alatt
+ * megjelenik (korábban kizárólag a kezdőlapon élt). A megjelenés tudatosan
+ * SZÖVEGES link, nem gomb: a panel hangerejét nem emeli (NN/g, „turn down
+ * the volume"), és a linkszöveg a cél OLDAL NEVE — a kurzus címe —, ahogy a
+ * GOV.UK linkszöveg-szabálya írja („use the name of the page the link goes
+ * to as your link text",
+ * https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/add-links/).
+ * A mondat vége a jóváhagyott igaz-állítás mintáját követi
+ * (`FreeCourseFormLink`): mit kell tenni érte, és hogy fizetni nem kell.
+ * A váll-cikk alatt a mondat kimondja, hogy a kurzus kézpanaszokra szól —
+ * enélkül az ajánlat mást ígérne, mint amit ad.
  */
 export interface PostCourseCtaProps {
   /** A cikkhez kapcsolt, közzétett kurzus; null, ha nincs (vagy nem publikált). */
   course: CourseCtaTarget | null
+  /** A tudatosan ingyenes belépő kurzus; null, ha nincs publikált ingyenes termék. */
+  freeCourse: CourseCtaTarget | null
+  /** A cikk témájához igazított változat (post-article.ts, postCtaVariantOf). */
+  variant: PostCtaVariant
 }
 
 /**
@@ -60,7 +84,64 @@ const NO_COURSE_HEADING = 'Hogyan tovább?'
 const NO_COURSE_TEXT =
   'A cikkek a tájékozódáshoz szólnak. Ha vezetett, videós gyakorlást keresel otthonra, azt a kurzusainkban találod meg.'
 
-export function PostCourseCta({ course }: PostCourseCtaProps) {
+/**
+ * Az időpontos (váll) ág mikroszövegei. Tényszerűek: a cikkek maguk is azt
+ * mondják ki, hogy a váll panaszát vizsgálat tudja megítélni; a panel ugyanezt
+ * a következő lépést adja meg, ígéret nélkül. Gondolatjel és felkiáltójel
+ * nincs (§3.1.2, G-UI7).
+ */
+export const APPOINTMENT_HEADING = 'Hogyan tovább?'
+export const APPOINTMENT_TEXT =
+  'A cikkek a tájékozódáshoz szólnak. A váll panaszát személyes vizsgálat tudja megítélni, időpontot írásban kérhetsz a rendelőnkbe.'
+/** A §3.2 #24 dokumentált célja: a /kapcsolat időpontkérő szekciója. */
+export const APPOINTMENT_HREF = '/kapcsolat#idopontkeres'
+
+/**
+ * Az ingyenes belépő mondat három rögzített darabja. A linkszöveg maga a
+ * kurzus címe (a két darab közé kerül), a zárás a `FreeCourseFormLink`
+ * jóváhagyott, igaz állítás-mintáját követi.
+ */
+export const FREE_LINE_LEAD = 'Ingyenes belépő kurzusunk is van: '
+export const FREE_LINE_LEAD_KEZ = 'Ingyenes belépő kurzusunk is van, kézpanaszokra: '
+export const FREE_LINE_TAIL = '. A hozzáférést a kurzus oldalán kérheted, fizetned nem kell érte.'
+
+function FreeCourseLine({
+  freeCourse,
+  variant,
+}: {
+  freeCourse: CourseCtaTarget | null
+  variant: PostCtaVariant
+}) {
+  if (freeCourse === null) return null
+  const title = courseTitle(freeCourse)
+  if (title === null) return null
+  return (
+    <p className="kc-post-cta__free">
+      {variant === 'idopont' ? FREE_LINE_LEAD_KEZ : FREE_LINE_LEAD}
+      <Link className="kc-post-cta__free-link" href={courseHref(freeCourse)}>
+        {title}
+      </Link>
+      {FREE_LINE_TAIL}
+    </p>
+  )
+}
+
+export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProps) {
+  if (variant === 'idopont') {
+    return (
+      <Card as="section" className="kc-post-cta__panel">
+        <h2 className="kc-post-cta__title">{APPOINTMENT_HEADING}</h2>
+        <p className="kc-post-cta__text">{APPOINTMENT_TEXT}</p>
+        <p className="kc-post-cta__action">
+          <Link className="kc-button kc-button--secondary" href={APPOINTMENT_HREF}>
+            {ctaLabel('appointment-request-link')}
+          </Link>
+        </p>
+        <FreeCourseLine freeCourse={freeCourse} variant={variant} />
+      </Card>
+    )
+  }
+
   if (course === null) {
     return (
       <Card as="section" className="kc-post-cta__panel">
@@ -71,6 +152,7 @@ export function PostCourseCta({ course }: PostCourseCtaProps) {
             {ctaLabel('course-list-open')}
           </Link>
         </p>
+        <FreeCourseLine freeCourse={freeCourse} variant={variant} />
       </Card>
     )
   }
@@ -96,6 +178,11 @@ export function PostCourseCta({ course }: PostCourseCtaProps) {
           {ctaLabel('course-sales-open')}
         </Link>
       </p>
+      {/* Ha a KAPCSOLT kurzus maga az ingyenes termék, a sor nem ismétli meg
+          ugyanazt a célt (NN/g, The Same Link Twice on the Same Page). */}
+      {freeCourse !== null && freeCourse.id !== course.id ? (
+        <FreeCourseLine freeCourse={freeCourse} variant={variant} />
+      ) : null}
     </Card>
   )
 }
