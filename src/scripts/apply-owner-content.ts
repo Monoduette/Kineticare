@@ -138,6 +138,13 @@ export const REGI_ALLAPOTOK_BEVEZETO =
   'A logónkat a kezed ismeri fel: zárt, nyíló, majd teljesen nyitott. A három kép a filmünk kulcskockái, pontosan abban a sorrendben, ahogyan a terápia halad.'
 
 /**
+ * A „Nyitott” kártya RÉGI, seedelt szövege. A „munkázhatsz” nem magyar ige.
+ * Kizárólag PONTOSAN ez a mondat cserélhető a seed „dolgozhatsz” alakjára.
+ */
+export const REGI_NYITOTT_KARTYA =
+  'Újra a saját kezed. Munkázhatsz, sportolhatsz, önfeledten élhetsz.'
+
+/**
  * A `/szolgaltatasok` fejléc-képének fájlnév-prefixe (rendelő-fotó).
  *
  * Prefix és futásidejű feloldás a 4. javítás mintájára: a Média collection
@@ -174,6 +181,7 @@ export type JavitasSzabaly =
   | 'rendeloi-horgony'
   | 'presslogos-fejlec'
   | 'allapotok-bevezeto'
+  | 'allapotok-nyitott-ige'
   | 'zaro-cta'
   | 'szolgaltatasok-hero-kep'
   | 'szolgaltatasok-bevezeto'
@@ -1536,6 +1544,14 @@ export const allapotokUjBevezeto = (): string | null => {
   return typeof lead === 'string' && lead.trim().length > 0 ? lead : null
 }
 
+/** A „Nyitott” kártya jóváhagyott ÚJ szövege (a seed-builderből). */
+export const allapotokUjNyitottSzoveg = (): string | null => {
+  const kartyak = kezdolapSeedBlokk('states')?.cards ?? []
+  const nyitott = kartyak.find((kartya) => kartya.title === 'Nyitott')
+  const szoveg = nyitott?.text
+  return typeof szoveg === 'string' && szoveg.trim().length > 0 ? szoveg : null
+}
+
 /** A záró CTA-sáv blokkja a seed-builderből (a 11. javítás ezt fűzi a lap végére). */
 export const zaroCtaSeedBlokk = (): SzekcioTipus<'ctaBanner'> | null =>
   kezdolapSeedBlokk('ctaBanner')
@@ -1727,6 +1743,91 @@ export const alkalmazAllapotokBevezeto = (input: {
       uzenet,
       indok:
         'a kezdőlap szekciósorában nincs „Három állapot” (states) szekció — a bevezetőt nincs hova írni',
+    })
+  }
+
+  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+}
+
+/**
+ * 10b. javítás — a „Nyitott” kártya hibás igéje (munkázhatsz → dolgozhatsz).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG a pontosan régi seedelt mondatra;
+ *  - ha már az új szöveg áll, nincs teendő;
+ *  - bármilyen MÁS kártyaszöveg a szerkesztőé — érintetlen.
+ */
+export const alkalmazAllapotokNyitottIge = (input: {
+  layout: Page['layout']
+  ujSzoveg: string | null
+}): SzekciosorCsere => {
+  const { layout, ujSzoveg } = input
+  const uzenet = 'A kezdőlap „Nyitott” kártyájának igéje'
+
+  const kihagyas = (indok: string, hangos = false): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly: 'allapotok-nyitott-ige', uzenet, indok, hangos }],
+  })
+
+  if (ujSzoveg === null) {
+    return kihagyas(
+      'a kezdőlap seed-buildere (buildHomeLayout) nem ad Nyitott kártyát szöveggel — a kód és a javítás szétcsúszott, kézi átnézés kell',
+      true,
+    )
+  }
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a kezdőlapnak nincs szekciósora — a kártyaszöveget nincs hol átírni')
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let voltAllapotSzekcio = false
+  let voltRegiIge = false
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (blokk.blockType !== 'states') {
+      return blokk
+    }
+    voltAllapotSzekcio = true
+    const helye = `${index + 1}. szekció`
+    const kartyak = blokk.cards ?? []
+    const ujKartyak = kartyak.map((kartya) => {
+      if (kartya.text === REGI_NYITOTT_KARTYA) {
+        voltRegiIge = true
+        modositasok.push({
+          szabaly: 'allapotok-nyitott-ige',
+          uzenet: `${uzenet} (${helye}, „${kartya.title}”): munkázhatsz → dolgozhatsz`,
+          indok: null,
+        })
+        return { ...kartya, text: ujSzoveg }
+      }
+      if (kartya.text === ujSzoveg) {
+        kihagyasok.push({
+          szabaly: 'allapotok-nyitott-ige',
+          uzenet: `${uzenet} (${helye}, „${kartya.title}”)`,
+          indok: 'a kártyaszöveg MÁR a jóváhagyott új ige — nincs teendő',
+        })
+        return kartya
+      }
+      return kartya
+    })
+    return { ...blokk, cards: ujKartyak }
+  })
+
+  if (!voltAllapotSzekcio) {
+    kihagyasok.push({
+      szabaly: 'allapotok-nyitott-ige',
+      uzenet,
+      indok:
+        'a kezdőlap szekciósorában nincs „Három állapot” (states) szekció — a kártyaszöveget nincs hol átírni',
+    })
+  } else if (!voltRegiIge && modositasok.length === 0 && kihagyasok.length === 0) {
+    kihagyasok.push({
+      szabaly: 'allapotok-nyitott-ige',
+      uzenet,
+      indok:
+        'egyetlen kártya sem a régi, hibás igés mondat — a szerkesztő időközben átírta, a script nem nyúl hozzá',
     })
   }
 
@@ -2472,6 +2573,13 @@ async function futtat(): Promise<void> {
     // --- 10. javítás: a „Három állapot” szekció bevezetője -------------------
     kezdolapLepes(
       alkalmazAllapotokBevezeto({ layout: kezdolapLayout, ujBevezeto: allapotokUjBevezeto() }),
+    )
+    // --- 10b. javítás: a „Nyitott” kártya hibás igéje -------------------------
+    kezdolapLepes(
+      alkalmazAllapotokNyitottIge({
+        layout: kezdolapLayout,
+        ujSzoveg: allapotokUjNyitottSzoveg(),
+      }),
     )
     // --- 11. javítás: a záró CTA-sáv -----------------------------------------
     kezdolapLepes(alkalmazZaroCta({ layout: kezdolapLayout, seedBlokk: zaroCtaSeedBlokk() }))
