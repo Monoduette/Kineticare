@@ -85,6 +85,8 @@ describe('pages E-E-A-T mezők', () => {
         throw new Error(`a pages.${name} nem relationship`)
       }
       expect(field.relationTo).toBe('users')
+      expect(typeof field.filterOptions, `pages.${name} filterOptions`).toBe('function')
+      expect(field.admin?.allowCreate, `pages.${name} allowCreate`).toBe(false)
     }
   })
 

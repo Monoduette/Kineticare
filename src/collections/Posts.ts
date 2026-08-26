@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { slugField } from '../fields/slug'
+import { relatedPostsFilter, staffOrOwnerUserFilter } from '../lib/admin/relationship-filters'
 import {
   clearPublishedAtBeforeDuplicate,
   draftStatusBeforeDuplicate,
@@ -152,10 +153,13 @@ export const Posts: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
       label: 'Szerző',
+      filterOptions: staffOrOwnerUserFilter,
       // Alapból a bejelentkezett szerkesztő — átállítható, ha más nevében írsz.
       defaultValue: ({ user }) => user?.id,
       admin: {
-        description: 'Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.',
+        allowCreate: false,
+        description:
+          'Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod. A listában csak munkatárs és tulajdonos van.',
       },
     },
     {
@@ -163,9 +167,11 @@ export const Posts: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
       label: 'Szakmai ellenőrzést végezte',
+      filterOptions: staffOrOwnerUserFilter,
       admin: {
+        allowCreate: false,
         description:
-          'A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.',
+          'A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte. A listában csak munkatárs és tulajdonos van.',
       },
     },
     {
@@ -211,8 +217,10 @@ export const Posts: CollectionConfig = {
       hasMany: true,
       maxRows: 3,
       label: 'Kapcsolódó bejegyzések',
+      filterOptions: relatedPostsFilter,
       admin: {
-        description: 'Legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk az olvasónak.',
+        allowCreate: false,
+        description: 'Legfeljebb 3 másik cikk, amit a bejegyzés alján ajánlunk az olvasónak.',
       },
     },
     {
@@ -246,6 +254,7 @@ export const Posts: CollectionConfig = {
       relationTo: 'products',
       label: 'Ajánlott kurzus',
       admin: {
+        allowCreate: false,
         description:
           'A cikk végi ajánló erre a kurzusra mutat. Üresen hagyva az ajánló a kurzuslistára visz.',
       },
