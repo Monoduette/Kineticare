@@ -4,6 +4,24 @@ import { LEGACY_GONE_HTML, isLegacyGonePath } from './lib/legacy-redirects'
 import { REQUEST_ID_HEADER, resolveRequestId } from './lib/request-id'
 
 /**
+ * Indexelés-kapu: amíg az oldal a Railway-hoston fut, minden válasz `noindex`.
+ *
+ * A staging-host (`kineticare-production.up.railway.app`) a jövőbeli
+ * www.kineticare.hu szó szerinti másolata, a `robots.txt` pedig mindenkit beenged.
+ * Ha a Google beindexeli, duplikált tartalom kerül az indexbe, a cutover után
+ * pedig railway-URL-ek maradnak benne. A crawlolás szándékosan engedve marad:
+ * egy `Disallow: /` megakadályozná, hogy a Google egyáltalán elolvassa ezt a
+ * headert, és a már beindexelt oldalak bent ragadnának.
+ *
+ * Kapcsoló: `NEXT_PUBLIC_ALLOW_INDEXING` (Railway-változó). Hiányzó vagy
+ * `'true'`-tól eltérő érték esetén a kapu zárva — ez a fail-safe alapértelmezés.
+ * A cutovernél `'true'`, a `NEXT_PUBLIC_SERVER_URL` pedig `https://www.kineticare.hu`.
+ */
+const ALLOW_INDEXING = process.env.NEXT_PUBLIC_ALLOW_INDEXING === 'true'
+const ROBOTS_TAG_HEADER = 'X-Robots-Tag'
+const NOINDEX_DIRECTIVES = 'noindex, nofollow, noarchive, nosnippet'
+
+/**
  * Request ID middleware: minden bejövő kéréshez egyedi azonosítót rendel.
  *
  * - A meglévő `x-request-id` headert tiszteletben tartja (ha formailag érvényes),
@@ -43,6 +61,11 @@ export function middleware(request: NextRequest): NextResponse {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   response.headers.set(REQUEST_ID_HEADER, requestId)
+
+  if (!ALLOW_INDEXING) {
+    response.headers.set(ROBOTS_TAG_HEADER, NOINDEX_DIRECTIVES)
+  }
+
   return response
 }
 
