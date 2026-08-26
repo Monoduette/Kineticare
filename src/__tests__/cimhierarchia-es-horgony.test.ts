@@ -103,29 +103,32 @@ describe('1. a két kezdőlapi szekciócím EGY lépcsőn és EGY sortávon áll
   })
 })
 
-describe('2. a számozott sorok címét a SÚLY emeli ki, nem a méret', () => {
-  const parok = [
+describe('2. a számozott sorok címét NEM a méret emeli ki', () => {
+  const meretParok = [
     ['services.css', servicesCss, '.kc-services__row-title', '.kc-services__text'],
     ['how-it-works.css', howCss, '.kc-how__step-title', '.kc-how__text'],
   ] as const
 
-  it.each(parok)('%s — a sor-cím 700-as, a sor-szövege 400-as súlyú', (_nev, css, cimSzelektor, szovegSzelektor) => {
-    const cim = szabalyTorzs(css, cimSzelektor)
+  it('a hogyan-működik sor-cím 700-as törzsbetű (GOV.UK heading-s)', () => {
+    const cim = szabalyTorzs(howCss, '.kc-how__step-title')
     expect(ertek(cim, 'font-weight')).toBe('var(--kc-font-weight-bold)')
-    // A szöveg-szabály súlyt nem deklarál: a body 400-as alapértékét viszi.
-    expect(szabalyTorzs(css, szovegSzelektor)).not.toContain('font-weight')
+    expect(ertek(cim, 'font-family')).toBe('var(--kc-font-body)')
+    expect(szabalyTorzs(howCss, '.kc-how__text')).not.toContain('font-weight')
   })
 
-  it.each(parok)('%s — cím és szöveg AZONOS méreten áll (a szintet nem a méret adja)', (_nev, css, cimSzelektor, szovegSzelektor) => {
+  it('a szolgáltatások sor-cím Tenor serif, normál súly (mockup type-contrast)', () => {
+    const cim = szabalyTorzs(servicesCss, '.kc-services__row-title')
+    expect(ertek(cim, 'font-family')).toBe('var(--kc-font-heading)')
+    expect(ertek(cim, 'font-weight')).toBe('var(--kc-font-weight-normal)')
+    expect(szabalyTorzs(servicesCss, '.kc-services__text')).not.toContain('font-weight')
+  })
+
+  it.each(meretParok)('%s — cím és szöveg AZONOS méreten áll (a szintet nem a méret adja)', (_nev, css, cimSzelektor, szovegSzelektor) => {
     expect(ertek(szabalyTorzs(css, cimSzelektor), 'font-size')).toBe('var(--kc-font-m)')
     expect(ertek(szabalyTorzs(css, szovegSzelektor), 'font-size')).toBe('var(--kc-font-m)')
   })
 
-  it.each(parok)('%s — a sor-cím a TÖRZS-betűt viszi (a címsor-betűnek nincs 700-as metszete)', (_nev, css, cimSzelektor) => {
-    expect(ertek(szabalyTorzs(css, cimSzelektor), 'font-family')).toBe('var(--kc-font-body)')
-  })
-
-  it.each(parok)('%s — a sor-cím a közös címsor-sortávot viszi (nincs elemre írt szám)', (_nev, css, cimSzelektor) => {
+  it.each(meretParok)('%s — a sor-cím a közös címsor-sortávot viszi (nincs elemre írt szám)', (_nev, css, cimSzelektor) => {
     expect(ertek(szabalyTorzs(css, cimSzelektor), 'line-height')).toBe('var(--kc-leading-heading)')
   })
 

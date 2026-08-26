@@ -37,6 +37,17 @@ export function testimonialQuoteText(testimonial: Testimonial): string {
   return short.length > 0 ? short : testimonial.quote.trim()
 }
 
+/**
+ * Dekoratív nyitó idézőjel a tükör-táblán (U+201C, „66-os" felső jel).
+ * Nem a magyar alsó-9 (U+201E, `„`): a Higgsfield-tükör és a tulajdonosi
+ * mockup a magas, szerif díszjelet viszi a szöveg FÖLÉ / BALJÁRA. A jel
+ * `aria-hidden`, a valódi idézet a `blockquote` — a képernyőolvasó nem
+ * hallja kétszer. WCAG 2.2 SC 1.4.3 Incidental: a tisztán dekoratív jel
+ * kontrasztja nem a szövegküszöb.
+ * https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+ */
+export const TESTIMONIAL_OPENING_MARK = '\u201C'
+
 export interface TestimonialsSectionProps {
   testimonials: Testimonial[]
   /** Kis felső felirat-felülírás a `testimonials` blokkból. */
@@ -101,14 +112,16 @@ export function TestimonialsSection({
                 <Card as="article" className="kc-testimonials__card" padded={false}>
                   <figure className="kc-testimonials__figure">
                     <span aria-hidden="true" className="kc-testimonials__mark">
-                      „
+                      {TESTIMONIAL_OPENING_MARK}
                     </span>
                     <blockquote className="kc-testimonials__quote">
                       <p className="kc-testimonials__text">{testimonialQuoteText(testimonial)}</p>
                     </blockquote>
                     <figcaption className="kc-testimonials__attribution">
                       <span className="kc-testimonials__cite">{testimonial.authorName.trim()}</span>
-                      {role.length > 0 ? <span className="kc-testimonials__role">{role}</span> : null}
+                      {role.length > 0 ? (
+                        <span className="kc-testimonials__role">{role}</span>
+                      ) : null}
                     </figcaption>
                   </figure>
                 </Card>

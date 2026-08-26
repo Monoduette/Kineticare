@@ -141,7 +141,7 @@ describe('services.css — a rácsúszás és a sorprés őrei', () => {
   it('a sor megtartja a saját belső margóját (nincs min-height: 0 kiskapu)', () => {
     const sor = szabalyTorzs(css, '.kc-services__row')
 
-    expect(sor).toContain('padding: var(--kc-space-5) 0')
+    expect(sor).toContain('padding: var(--kc-space-6) 0')
     expect(sor).not.toContain('min-height: 0')
   })
 

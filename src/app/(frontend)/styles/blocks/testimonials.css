@@ -57,10 +57,10 @@
 .kc-testimonials .kc-testimonials__title::after {
   content: '';
   display: block;
-  width: 4.5rem;
+  width: 5.5rem;
   height: 1px;
   margin: var(--kc-space-4) auto 0;
-  background-color: var(--kc-testimonials-accent);
+  background-color: var(--kc-testimonials-mark);
 }
 
 /* ---- Rács: nagy nyitó idézet + oldalsó kis idézetek ----------------------- */
@@ -132,17 +132,26 @@
 
 /* ---- Nagy nyitó idézet --------------------------------------------------- */
 
-/* Dekoratív idézőjel-jel (a markupban aria-hidden). A tükörben ez egy óriás,
-   halvány akcent-glif, amelynek a saját magassága rögzített, hogy az idézet
-   közvetlenül alá kerüljön. */
+/* Dekoratív idézőjel (aria-hidden). A tükörben ez egy ÓRIÁS, halvány
+   szerif-glif a szöveg FÖLÖTT — a mockupon a jel vizuálisan ~2× az L
+   lépcsőnek. A `font-size` marad a három-méretes skála L tokenje
+   (őr: tipografia-harom-meret.test.ts); a méretet `transform: scale`
+   viszi, mert a jel NEM szöveg, hanem grafika (NN/g Visual Hierarchy:
+   a kiemelt idézet a legnagyobb elem a blokkban;
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
+   A foglalt magasság a skálázott glif, hogy a szöveg ne lógjon bele. */
 .kc-testimonials .kc-testimonials__item--big .kc-testimonials__mark {
   display: block;
-  height: 6.8rem;
-  margin-top: -0.5rem;
+  width: max-content;
+  height: calc(var(--kc-font-l) * 1.55);
+  margin: 0 0 var(--kc-space-3);
+  overflow: visible;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
-  line-height: 0.95;
+  line-height: 0.72;
   color: var(--kc-testimonials-mark);
+  transform: scale(2.05);
+  transform-origin: left top;
 }
 
 .kc-testimonials .kc-testimonials__quote {
@@ -150,11 +159,11 @@
 }
 
 .kc-testimonials .kc-testimonials__item--big .kc-testimonials__text {
-  max-width: 17ch;
+  max-width: 18ch;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   letter-spacing: 0.005em;
-  line-height: 1.22;
+  line-height: 1.18;
   color: var(--kc-testimonials-ink);
   text-wrap: balance;
 }
@@ -172,17 +181,19 @@
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure {
   display: grid;
   width: 100%;
-  grid-template-columns: 2.2rem minmax(0, 1fr);
-  column-gap: 0.65rem;
+  grid-template-columns: 3.1rem minmax(0, 1fr);
+  column-gap: 0.55rem;
   align-content: center;
 }
 
+/* A kis idézőjel a mockupon a törzsszövegnél nagyobb, a sor tetejéhez
+   igazított függő díszjel. A méret az L token (dekoratív, nem címsor). */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark {
   grid-column: 1;
   grid-row: 1;
-  margin-top: 0.2rem;
+  margin-top: 0.05rem;
   font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-m);
+  font-size: var(--kc-font-l);
   line-height: 0.55;
   color: var(--kc-testimonials-mark);
 }
@@ -195,8 +206,8 @@
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__text {
   max-width: 40ch;
   font-size: var(--kc-font-m);
-  line-height: 1.8;
-  color: var(--kc-testimonials-muted);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-testimonials-ink);
 }
 
 @media (min-width: 900px) {
@@ -204,7 +215,7 @@
      a hasáb ELSŐ kis idézete (mindig a 2. lista-elem) fölött nincs elválasztó. */
   .kc-testimonials .kc-testimonials__item--small {
     margin-top: 0;
-    padding: var(--kc-space-5) clamp(1.5rem, 4vw, 3.75rem);
+    padding: var(--kc-space-6) clamp(1.75rem, 4vw, 3.75rem);
     border-left: 1px solid var(--kc-testimonials-rule);
   }
 
@@ -225,7 +236,12 @@
 
 .kc-testimonials .kc-testimonials__attribution {
   display: block;
+  width: max-content;
+  max-width: 100%;
   margin-top: var(--kc-space-4);
+  /* A content.css kártya-alapja padding-top + border-top — a tükörben a
+     név a hajszálvonalas előtaggal ül, nem egy teljes szélességű kerettel. */
+  padding-top: 0;
   border-top: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
@@ -235,22 +251,27 @@
   color: var(--kc-testimonials-ink);
 }
 
-/* Dekoratív vonal-előtag a név fölött (a tükörben ez váltja a keretet). */
+/* Dekoratív vonal-előtag a név fölött (a tükörben ez váltja a keretet).
+   A szélesség a névsoré: a mockup a vonalat a verzális névvel egy vonalban,
+   annak hosszan viszi, nem egy rögzített 2,6rem-es pálcát. */
 .kc-testimonials .kc-testimonials__attribution::before {
   content: '';
   display: block;
-  width: 2.6rem;
+  width: 100%;
   height: 1px;
   margin-bottom: var(--kc-space-3);
-  background-color: var(--kc-testimonials-accent);
+  background-color: var(--kc-testimonials-mark);
 }
 
 /* A név és a szerep EGY sorban, verzálisan — a tükör névsora egyetlen szöveg
-   („GARAMI GÁBOR, ZENÉSZ"), ezért a content.css blokkos alapját felülírjuk. */
+   („GARAMI GÁBOR, ZENÉSZ"), ezért a content.css blokkos alapját felülírjuk.
+   A `font-size` itt is S: a content.css `.kc-testimonials__cite` M méretet
+   adna (0,1,0), és a specifikusabb szabály font-size nélkül azt örökölné. */
 .kc-testimonials .kc-testimonials__cite,
 .kc-testimonials .kc-testimonials__role {
   display: inline;
   margin: 0;
+  font-size: var(--kc-font-s);
   font-weight: inherit;
   letter-spacing: inherit;
   color: inherit;
