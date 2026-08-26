@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest'
 import { visibleMenusOrAdmin } from '../access/menus-visibility'
 import {
   MAX_MENU_DEPTH,
+  clearMismatchedMenuRef,
   extractRelationshipId,
+  filterMenuRefOptions,
   validateMenuParentChain,
   validateMenuTypeConsistency,
 } from '../lib/menu-validation'
@@ -66,17 +68,59 @@ describe('validateMenuTypeConsistency', () => {
   })
 })
 
+describe('filterMenuRefOptions', () => {
+  it.each([
+    ['page', 'pages', true],
+    ['page', 'posts', false],
+    ['page', 'products', false],
+    ['post', 'posts', true],
+    ['post', 'pages', false],
+    ['post', 'products', false],
+    ['product', 'products', true],
+    ['product', 'pages', false],
+    ['product', 'posts', false],
+  ] as const)('type=%s, relationTo=%s → %s', (type, relationTo, expected) => {
+    expect(filterMenuRefOptions({ relationTo, siblingData: { type } })).toBe(expected)
+  })
+
+  it('url típusnál és hiányzó típusnál semelyik kollekció sem jelenik meg', () => {
+    expect(filterMenuRefOptions({ relationTo: 'pages', siblingData: { type: 'url' } })).toBe(false)
+    expect(filterMenuRefOptions({ relationTo: 'posts', siblingData: {} })).toBe(false)
+    expect(filterMenuRefOptions({ relationTo: 'products' })).toBe(false)
+  })
+})
+
+describe('clearMismatchedMenuRef', () => {
+  it('más kollekcióból maradt célt kiüríti típusváltásnál', () => {
+    expect(
+      clearMismatchedMenuRef({
+        type: 'product',
+        ref: { relationTo: 'posts', value: 7 },
+      }),
+    ).toEqual({ type: 'product', ref: null })
+  })
+
+  it('illeszkedő célt és az url típust békén hagyja', () => {
+    const matching = { type: 'post' as const, ref: { relationTo: 'posts', value: 3 } }
+    expect(clearMismatchedMenuRef(matching)).toBe(matching)
+    const external = { type: 'url' as const, ref: { relationTo: 'pages', value: 1 } }
+    expect(clearMismatchedMenuRef(external)).toBe(external)
+  })
+})
+
 describe('validateMenuParentChain', () => {
   /** Map-alapú mock fetcher: id → { id, parent } */
-  const fetcherFrom =
-    (rows: Record<number, number | null>) =>
-    async (id: number | string) => {
-      const key = Number(id)
-      return key in rows ? { id: key, parent: rows[key] } : null
-    }
+  const fetcherFrom = (rows: Record<number, number | null>) => async (id: number | string) => {
+    const key = Number(id)
+    return key in rows ? { id: key, parent: rows[key] } : null
+  }
 
   it('gyökér (parent nélkül) érvényes', async () => {
-    const issues = await validateMenuParentChain({ docId: 1, parent: null, fetchById: fetcherFrom({}) })
+    const issues = await validateMenuParentChain({
+      docId: 1,
+      parent: null,
+      fetchById: fetcherFrom({}),
+    })
     expect(issues).toEqual([])
   })
 

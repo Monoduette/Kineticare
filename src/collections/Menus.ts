@@ -1,7 +1,10 @@
 import { ValidationError, type CollectionBeforeValidateHook, type CollectionConfig } from 'payload'
 
 import { visibleMenusOrAdmin } from '../access/menus-visibility'
+import { rootMenuParentFilter } from '../lib/admin/relationship-filters'
 import {
+  clearMismatchedMenuRef,
+  filterMenuRefOptions,
   validateMenuParentChain,
   validateMenuTypeConsistency,
   type MenuValidationIssue,
@@ -17,8 +20,10 @@ import { validateCmsUrl } from '../lib/safe-url'
 const validateMenu: CollectionBeforeValidateHook = async ({ data, originalDoc, req }) => {
   if (!data) return data
 
+  const normalized = clearMismatchedMenuRef(data)
+
   const issues: MenuValidationIssue[] = [
-    ...validateMenuTypeConsistency(data),
+    ...validateMenuTypeConsistency(normalized),
     ...(await validateMenuParentChain({
       docId: originalDoc?.id ?? null,
       parent: data.parent,
@@ -45,7 +50,7 @@ const validateMenu: CollectionBeforeValidateHook = async ({ data, originalDoc, r
     })
   }
 
-  return data
+  return normalized
 }
 
 export const Menus: CollectionConfig = {
@@ -101,9 +106,12 @@ export const Menus: CollectionConfig = {
       type: 'relationship',
       relationTo: ['pages', 'posts', 'products'],
       label: 'Cél',
+      filterOptions: ({ relationTo, siblingData }) =>
+        filterMenuRefOptions({ relationTo, siblingData }),
       admin: {
+        allowCreate: false,
         condition: (_, siblingData) => siblingData?.type !== 'url',
-        description: 'A menüpont célja — a fent választott típusnak megfelelő listából.',
+        description: 'Csak a fent választott típus elemei: oldal, cikk vagy kurzus.',
       },
     },
     {
@@ -147,9 +155,11 @@ export const Menus: CollectionConfig = {
       type: 'relationship',
       relationTo: 'menus',
       label: 'Fölérendelt menüpont',
+      filterOptions: rootMenuParentFilter,
       admin: {
+        allowCreate: false,
         description:
-          'Csak akkor töltsd ki, ha ez almenüpont. Legfeljebb 2 szintű a menü: almenüpont alá már nem tehetsz továbbit.',
+          'Csak akkor töltsd ki, ha ez almenüpont. A listában csak főmenüpontok vannak: almenüpont alá már nem tehetsz továbbit.',
       },
     },
     {

@@ -41,12 +41,49 @@ export const extractRelationshipId = (value: unknown): number | string | null =>
 }
 
 /** Polimorf relationship ({ relationTo, value }) relationTo-része. */
-const extractRelationTo = (value: unknown): string | null => {
+export const extractRelationTo = (value: unknown): string | null => {
   if (value && typeof value === 'object' && 'relationTo' in value) {
     const relationTo = (value as { relationTo?: unknown }).relationTo
     if (typeof relationTo === 'string') return relationTo
   }
   return null
+}
+
+const readSiblingType = (siblingData: unknown): string | undefined => {
+  if (typeof siblingData !== 'object' || siblingData === null) return undefined
+  const type = (siblingData as { type?: unknown }).type
+  return typeof type === 'string' ? type : undefined
+}
+
+/**
+ * A menü Cél (`ref`) listája: csak a `Hová mutat` típusnak megfelelő kollekció.
+ * `false` = ez a kollekció ne jelenjen meg a lenyílóban.
+ */
+export const filterMenuRefOptions = (args: {
+  relationTo: string
+  siblingData?: unknown
+}): boolean => {
+  const type = readSiblingType(args.siblingData)
+  if (type === undefined || type === 'url') return false
+  if (!(type in MENU_TYPE_TO_COLLECTION)) return false
+  return args.relationTo === MENU_TYPE_TO_COLLECTION[type as Exclude<MenuType, 'url'>]
+}
+
+/**
+ * Típusváltásnál a másik kollekcióból maradt célt kiüríti, hogy a mentés
+ * ne a régi, most már rejtett értéken bukjon el.
+ */
+export const clearMismatchedMenuRef = <T extends { ref?: unknown; type?: unknown }>(data: T): T => {
+  const type = typeof data.type === 'string' ? data.type : undefined
+  if (type === undefined || type === 'url' || !(type in MENU_TYPE_TO_COLLECTION)) {
+    return data
+  }
+  const expected = MENU_TYPE_TO_COLLECTION[type as Exclude<MenuType, 'url'>]
+  const relationTo = extractRelationTo(data.ref)
+  if (relationTo === null || relationTo === expected) {
+    return data
+  }
+  return { ...data, ref: null }
 }
 
 /**
@@ -69,7 +106,12 @@ export const validateMenuTypeConsistency = (data: {
   }
 
   if (!type || !(MENU_TYPES as readonly string[]).includes(type)) {
-    return [{ message: 'A menüpont típusának megadása kötelező (page, post, product vagy url).', path: 'type' }]
+    return [
+      {
+        message: 'A menüpont típusának megadása kötelező (page, post, product vagy url).',
+        path: 'type',
+      },
+    ]
   }
 
   const relationTo = extractRelationTo(data.ref)
@@ -132,7 +174,9 @@ export const validateMenuParentChain = async ({
 
   while (currentId !== null) {
     if (visited.has(String(currentId))) {
-      return [{ message: 'A parent-lánc kört (ciklust) alkot — válassz másik szülőt.', path: 'parent' }]
+      return [
+        { message: 'A parent-lánc kört (ciklust) alkot — válassz másik szülőt.', path: 'parent' },
+      ]
     }
     visited.add(String(currentId))
 
