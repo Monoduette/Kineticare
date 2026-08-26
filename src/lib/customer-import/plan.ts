@@ -1,25 +1,7 @@
 /**
- * systeme.io → Kineticare vásárló-import: TERV-készítés.
- *
- * A terv a beolvasott CSV-sorokat veti össze az adatbázis JELENLEGI állapotával,
- * és soronként EGY döntést ad:
- *
- *  - `create-user`      — nincs ilyen e-mail a users kollekcióban,
- *  - `append-purchases` — van user, de hiányzik neki legalább egy termék,
- *  - `skip-complete`    — van user, és már mindene megvan (nincs teendő).
- *
- * A terv OLVASÁS-ONLY: egyetlen írást sem végez, ezért a `--dry-run` pontosan
- * ugyanezt a tervet mutatja meg, amit az éles futás végrehajtana.
- *
- * KURZUSNÉV → TERMÉK: kizárólag az explicit `--map "Kurzusnév=SKU"` párokból.
- * Nincs „okos" névegyeztetés: a kurzus rossz termékhez rendelése fizetős
- * tartalmat adna ingyen, ezért a leképezés emberi döntés marad. Amire nincs
- * pár, az NEM tűnik el csendben: bekerül az `unknownCourseNames` összesítőbe
- * (soronként és futás-szinten is), és a mérlegben külön sorként jelenik meg.
- *
- * DETERMINIZMUS: a bejegyzések e-mail szerint növekvő sorrendben állnak (a
- * beolvasási sorrendtől függetlenül), a termékek pedig a kurzusnév első
- * előfordulásának sorrendjében — ugyanaz a bemenet mindig ugyanazt a tervet adja.
+ * Import terv-készítés — olvasás-only. Soronként: create-user | append-purchases |
+ * skip-complete. Kurzusnév→SKU csak `--map` párokból; ismeretlen név → figyelmeztetés.
+ * Determinisztikus sorrend (e-mail, kurzusnév).
  */
 
 import type { Payload } from 'payload'

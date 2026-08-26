@@ -1,32 +1,7 @@
 /**
- * Seed-script — feltölti a demó/induló tartalmat, idempotens módon:
- * minden entitást egy egyedi kulcs (email / slug / sku / fájlnév) alapján keres
- * meg, és csak akkor hozza létre, ha még nem létezik. Így többször futtatva sem
- * duplikál.
- *
- * Futtatás: npm run seed (DATABASE_URI és PAYLOAD_SECRET környezeti változókkal).
- *
- * Az owner-jelszó NEM a repóban él, és NEM kerül a naplóba: a SEED_OWNER_PASSWORD
- * környezeti változó KÖTELEZŐ az owner létrehozásához — hiányában a script
- * hangos, magyar hibaüzenettel leáll (generált jelszót nem készít és nem ír ki).
- *
- * ÉLES-VÉDELEM: a TELJES seed nem futhat éles környezetben (seedGuardErrors +
- * assertNotLiveDatabase); a `SEED_SCOPE=kezdolap` hatókör élesben is használható.
- *
- * A script két nagy lépésből áll:
- *  1. demó-tartalom (owner, kategóriák, oldal, bejegyzés, termék, menüfa) — a
- *     menüfa végén a VALÓS navigációs struktúra is (src/lib/menu-seed.ts),
- *     amely élesben a `npm run seed:menu` scripttel futtatható önállóan,
- *  2. a KEZDŐLAP szekció-rendszere (docs/szekcio-rendszer-terv.md 6. pont):
- *     a landing tartalmi képei a Médiatárba, majd a `kezdolap` oldal `layout`
- *     mezőjébe a terv 4. pontja szerinti alap-szekciósor, a landing VALÓS
- *     szövegeivel. A layout csak akkor íródik, ha a kezdőlapnak még NINCS
- *     szekciósora — meglévőt a seed SOHA nem ír felül, mert az már a lányok
- *     szerkesztői munkája.
- *
- * A modul importálható mellékhatás nélkül (a `seed()` csak közvetlen
- * futtatáskor indul), így a `buildHomeLayout` alap-layout tesztből is
- * asszertálható — lásd a fájl végén az indítás-kaput.
+ * Seed — demó/induló tartalom, idempotens (email/slug/sku kulcs). npm run seed
+ * SEED_OWNER_PASSWORD kötelező ownerhez; teljes seed élesen tiltott (SEED_SCOPE=kezdolap kivétel).
+ * Kezdőlap layout csak üres szekciósornál íródik. Menü: menu-seed.ts
  */
 
 import { pathToFileURL } from 'node:url'
@@ -64,28 +39,7 @@ export const MISSING_OWNER_PASSWORD_MESSAGE =
   'és nem naplóz jelszót. Állítsd be a szolgáltatás Variables felületén (érték a ' +
   'repóba SOHA nem kerül), majd futtasd újra a seedet.'
 
-/**
- * Az owner-felhasználó jelszava — KIZÁRÓLAG a `SEED_OWNER_PASSWORD` környezeti
- * változóból.
- *
- * ═══ MIÉRT KÖTELEZŐ (2026-08-16-i átvizsgálás) ═══
- * Korábban a script generált egy jelszót, és azt a naplóüzenet SZÖVEGÉBE
- * illesztve kiírta (`Seed: az owner induló jelszava: …`). A logger redakciója
- * KULCSNÉV-alapú: az üzenetszövegbe ágyazott titkot nem szűri, tehát a
- * tulajdonosi fiók jelszava a deploy-naplóba került — onnan pedig a
- * log-aggregátorba és a mentésekbe is.
- *
- * A két lehetséges megoldás közül a KÖTELEZŐ környezeti változó az
- * üzemeltethetőbb: az owner az ELSŐ felhasználó, tehát a „jelszó-beállításra
- * váró" állapotból csak egy kiküldött aktiváló linkkel jutna ki — telepítéskor
- * viszont a levélküldő még jellemzően nincs beállítva (`EMAIL_FROM`/Resend
- * nélkül a provider no-op), így a rendszer bezárulna. A változó egyszeri,
- * emberi beállítást igényel, és a seed idempotens: meglévő owner mellett a
- * script hozzá sem nyúl a jelszóhoz.
- *
- * A politikai ellenőrzés ITT is lefut, hogy a hiba a create ELŐTT, magyar
- * mondattal derüljön ki (a Users hookja amúgy 400-zal utasítaná el).
- */
+/** Owner jelszó kizárólag SEED_OWNER_PASSWORD-ből — generált jelszó naplóba kerülne. */
 function resolveOwnerPassword(): string {
   const provided = process.env.SEED_OWNER_PASSWORD
   if (typeof provided !== 'string' || provided.trim().length === 0) {
@@ -110,24 +64,8 @@ export interface SeedGuardInput {
 }
 
 /**
- * ÉLES-VÉDELEM a TELJES seedhez (a `demo-seed.ts` `demoGuardErrors` mintájára).
- *
- * A teljes seed demó-tartalmat ír: owner-felhasználót, demó-kategóriákat,
- * demó-oldalt, demó-posztot, demó-terméket és menüfát. Éles adatbázison ez
- * bemutató-tartalmat keverne a valódi kínálat közé — a `railway.json`
- * start-parancsa ezért nem is hívja, de egy kézi futtatás vagy egy elgépelt
- * konfiguráció bármikor elindíthatja.
- *
- * A `SEED_SCOPE=kezdolap` hatókör VÁLTOZATLANUL futhat élesben: az kizárólag a
- * landing képeit, a kezdőlap alap-szekciósorát, a véleményeket és a hírlevél-űrlapot
- * biztosítja, mind idempotensen, meglévő tartalom felülírása nélkül.
- *
- * Felülbírálás: `SEED_CONFIRM_LIVE=igen` (a repó `OWNER_CONTENT_CONFIRM=igen`
- * mintája) — kifejezett, tudatos emberi döntés, pl. egy ÚJ éles környezet első
- * telepítésekor.
- *
- * A függvény tiszta (nem olvas `process.env`-et), hogy a kapu tesztből is
- * bizonyítható legyen. Üres tömb = a teljes seed futhat.
+ * Teljes seed éles-védelem — éles DB-n tiltott (`SEED_CONFIRM_LIVE=igen` felülírás).
+ * `SEED_SCOPE=kezdolap` továbbra is futhat élesben. Tiszta függvény, tesztelhető.
  */
 export function seedGuardErrors(input: SeedGuardInput): string[] {
   if (input.seedScope?.trim() === 'kezdolap') {

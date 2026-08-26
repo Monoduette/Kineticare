@@ -1,26 +1,7 @@
 /**
- * systeme.io → Kineticare vásárló-import: AKTIVÁLÁSI LINKEK előállítása.
- *
- * A migrációval áthozott vevőnek nincs jelszava (a kezdőjelszó véletlen és
- * eldobható), ezért a belépéshez egy jelszó-beállító linket kap. A linket a
- * Payload SAJÁT jelszó-visszaállító mechanizmusa adja
- * (`payload.forgotPassword`, `disableEmail: true`), tehát nincs külön,
- * párhuzamos token-rendszer — ugyanaz a token, ugyanaz a lejárat-kezelés,
- * ugyanaz a `/jelszo-visszaallitas` oldal, mint az „elfelejtett jelszó"
- * folyamatban.
- *
- * E-MAIL-KÜLDÉS ITT NINCS. A modul kizárólag LINKET állít elő és CSV-t rendereli
- * — a kiküldés (SMTP/szolgáltató) döntése nyitott, azt a lányok levelezőjéből
- * vagy egy külön, jóváhagyott lépésben kell megtenni.
- *
- * BIZTONSÁG. Az aktiválási link TITOK: aki megkapja, jelszót állíthat a fiókhoz.
- * Ezért a token és a link SOHA nem kerül naplóba (a logger csak darabszámot lát),
- * a kimeneti CSV pedig nem verziózható és nem maradhat a gépen a kiküldés után.
- *
- * ÚJRAGENERÁLÁS. Minden `forgotPassword`-hívás ÚJ tokent ír a felhasználóra, és
- * ezzel a korábbi linket érvényteleníti. Ha valakinek újra kell küldeni a
- * meghívót, a legutóbb generált linket használd, vagy generálj újat mindenkinek
- * — a kettőt keverni nem szabad.
+ * Aktiválási linkek előállítása — Payload `forgotPassword` (disableEmail), nincs
+ * párhuzamos token. E-mail küldés itt nincs; link titok, nem naplózódik. Új
+ * generálás érvényteleníti a korábbi linket.
  */
 
 import type { Payload } from 'payload'

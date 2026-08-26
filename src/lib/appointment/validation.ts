@@ -1,44 +1,9 @@
 /**
- * Időpontkérés (rendelői kezelés) — validáció, KÉT alakra ugyanazokkal a
- * szabályokkal.
+ * Időpontkérés validáció — kliens és szerver egy fájlban (DOM/Payload-független).
  *
- * A modul szándékosan tiszta (DOM-, Payload- és környezet-független), a
- * hírlevél `validation.ts`-ének mintájára: a KLIENS- és a SZERVER-oldali
- * szabály EGY fájlban él, mert a kettő csak együtt módosítható.
- *
- * MIÉRT PONT EZEK A MEZŐK (kutatás, nem ízlés):
- *
- *  - A GOV.UK Design System „question pages" mintája: „make sure you know why
- *    you're asking every question and only ask users for information you
- *    really need" (https://design-system.service.gov.uk/patterns/question-pages/).
- *  - A Baymard Institute mérése szerint a kötelezőként meg nem jelölt, de
- *    érzékeny mező (telefonszám, születési dátum) önmagában elhagyáshoz vezet,
- *    ezért a kötelező ÉS a nem kötelező mezőket egyaránt jelölni kell
- *    (https://baymard.com/blog/required-optional-form-fields).
- *
- * Ebből a mezőkészlet:
- *
- *  | mező            | kötelező | miért                                        |
- *  |-----------------|----------|----------------------------------------------|
- *  | `name`          | igen     | tudni kell, kit hívunk vissza                 |
- *  | `phone`         | igen     | EZ a visszahívás csatornája (naptár-integráció
- *  |                 |          | nincs, a pontos időpont telefonon dől el)     |
- *  | `email`         | nem      | tartalék csatorna; kötelezővé téve két
- *  |                 |          | elérhetőséget kérnénk ugyanarra a célra       |
- *  | `reason`        | nem      | EGÉSZSÉGÜGYI ADAT (GDPR 9. cikk (1)) — az
- *  |                 |          | adattakarékosság (5. cikk (1) c)) miatt sosem
- *  |                 |          | lehet kötelező                                |
- *  | `availability`  | nem      | „mikor érek rá" durva sáv; nem foglalás       |
- *  | `consentHealth` | igen     | GDPR 9. cikk (2) a): kifejezett hozzájárulás  |
- *
- * A `reason` mező miatt a beküldés egészségügyi adatot tartalmazhat, ezért a
- * hozzájárulás szövege külön nevesíti azt (lásd `consent-text.ts`), és a mező
- * felső hosszkorlátja szándékosan szűk: a részletek a telefonos egyeztetésre
- * valók, nem egy webűrlapra.
- *
- * Az `availability` értékeit a SZERKESZTŐ állítja be a blokkban (CMS), ezért a
- * szerver nem tud rögzített értékkészletet ellenőrizni. Helyette darabszám- és
- * hossz-korlát véd a szemétadattól — ez az, ami tartalomfüggetlenül igaz.
+ * Mezők: név + telefon kötelező (visszahívás); e-mail opcionális; `reason`
+ * egészségügyi adat lehet, ezért nem kötelező; `availability` CMS-sávok,
+ * szerveren csak darab-/hossz-limit; `consentHealth` kötelező (GDPR 9. cikk).
  */
 
 /** A beküldési sorok mezőnevei — a kliens és a szerver EGY forrásból veszi. */
@@ -92,11 +57,7 @@ export const APPOINTMENT_REASON_MAX_LENGTH = 1000
 export const APPOINTMENT_AVAILABILITY_MAX_ITEMS = 6
 export const APPOINTMENT_AVAILABILITY_MAX_ITEM_LENGTH = 60
 
-/**
- * Hibaüzenetek. Az NN/g „10 Design Guidelines for Reporting Errors in Forms"
- * szabálya szerint mindegyik megmondja, MIT tegyen a látogató, nem csak azt,
- * hogy mi a baj (https://www.nngroup.com/articles/errors-forms-design-guidelines/).
- */
+/** Hibaüzenetek — mindegyik megmondja, mit tegyen a látogató. */
 export const APPOINTMENT_NAME_REQUIRED_ERROR = 'Add meg a neved, hogy tudjuk, kit hívjunk vissza.'
 export const APPOINTMENT_NAME_TOO_LONG_ERROR = `A név legfeljebb ${APPOINTMENT_NAME_MAX_LENGTH} karakter lehet.`
 export const APPOINTMENT_PHONE_REQUIRED_ERROR =
@@ -114,24 +75,9 @@ export const APPOINTMENT_AVAILABILITY_INVALID_ERROR =
 export const APPOINTMENT_CONSENT_ERROR = 'Pipáld be az adatkezelési hozzájárulást.'
 
 /**
- * Az űrlap RÖGZÍTETT felületi szövegei (mezőfeliratok, segédszövegek,
- * gombállapotok, siker-nézet).
- *
- * MIÉRT ITT, EGY OBJEKTUMBAN: a szekció minden TARTALMI szövege az adminból
- * jön, de az űrlap-chrome nem lehet szerkeszthető (egy elrontott mezőfelirat
- * vagy eltűnt segédszöveg akadálymentességi hiba). Egyetlen exportált forrásba
- * gyűjtve viszont ŐRIZHETŐ: a teszt ellenőrizni tudja, hogy az űrlapban nincs
- * ezen kívüli, beégetett vevői szöveg.
- *
- * A „(nem kötelező)" jelölés a Baymard Institute méréséből következik: a csak
- * csillagos jelölés mellett a jelöletlen, érzékeny mezőt is kötelezőnek hiszik
- * a látogatók (https://baymard.com/blog/required-optional-form-fields). A
- * kötelező mezők csillagos jelölése a repó meglévő nyelve marad (NN/g,
- * https://www.nngroup.com/articles/required-fields/), így a két jelölés együtt
- * van jelen.
- *
- * Az „ez nem foglalás" mondat nem udvariaskodás: naptár-integráció nincs, és a
- * felirat csak akkor lehet igaz, ha ezt kimondja.
+ * Rögzített űrlap-chrome (feliratok, gombok, siker-nézet). A tartalom adminból
+ * jön; ezek a szövegek tesztelhetők és nem szerkeszthetők. „Nem kötelező" és
+ * „ez nem foglalás" szándékos.
  */
 export const APPOINTMENT_UI_TEXT = {
   nameLabel: 'Neved',

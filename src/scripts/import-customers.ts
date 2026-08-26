@@ -1,23 +1,9 @@
 /**
- * systeme.io → Kineticare vásárló-átköltöztetés — tömeges CSV-import (C8 / T-061).
+ * systeme.io → Kineticare tömeges CSV-import (C8).
  *
- * Mit csinál: a régi rendszerből exportált vásárlói listát beolvassa, a
- * kurzusneveket a megadott `--map` párokkal Kineticare-termékekre képezi, és
- *   - létrehozza a hiányzó felhasználókat (szerepkör: `customer`, véletlen,
- *     soha ki nem írt kezdőjelszóval), majd
- *   - hozzáfűzi a hiányzó kurzus-hozzáféréseket a `users.purchases` mezőhöz.
- *
- * Mit NEM csinál: nem hoz létre rendelést vagy számlát, nem módosít jelszót,
- * szerepkört vagy MEGLÉVŐ vásárlást, és nem töröl semmit. E-mailt is csak akkor
- * küld, ha a `--send-invites` kapcsolót KÜLÖN megadják.
- *
- * ÚJRAFUTTATHATÓ. A művelet idempotens: minden sor előtt újraolvassuk a
- * felhasználó jelenlegi állapotát, és csak a ténylegesen hiányzó termékeket
- * írjuk be. Egy megszakadt futás (hálózat, sorzár, Ctrl-C) tehát nyugodtan
- * újraindítható — a második kör a kész sorokat kihagyja.
- *
- * A tényleges logika a `src/lib/customer-import/` modulokban él (parse / plan /
- * execute / invite); ez a fájl az argumentum-feldolgozás és a kiírás.
+ * `--map` párokkal kurzusneveket termékekre képezi; hiányzó userek + purchases.
+ * Nem hoz rendelést/számlát; meglévő vásárlást nem módosít. `--send-invites` külön.
+ * Idempotens — megszakadt futás újraindítható. Logika: `src/lib/customer-import/`.
  */
 
 import { readFile, writeFile } from 'node:fs/promises'

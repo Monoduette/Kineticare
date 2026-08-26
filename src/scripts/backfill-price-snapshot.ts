@@ -1,98 +1,12 @@
 /**
- * Tulajdonos által jóváhagyott, EGYSZERI backfill: a rendelés-tételek hiányzó
- * `priceHufSnapshot` értékének pótlása a rendelés SAJÁT végösszegéből.
+ * Egyszeri backfill: hiányzó orders.items[].priceHufSnapshot pótlása a rendelés
+ * SAJÁT totalHufSnapshot értékéből — SOHA a termék mai árából (docs/ar-snapshot-backfill.md).
  *
- * ═══ MIÉRT KELL ═══
- * A T-017 item-szintű snapshot (`orders.items[].priceHufSnapshot`) backfill
- * NÉLKÜL került be, és az `orderIntegrityBeforeChange` hook KIZÁRÓLAG
- * create-kor tölt (src/lib/order-integrity.ts) — a korábbi rendeléseknél a
- * mező ezért NULL maradt.
- *
- * A bevétel-riport havi sorai emiatt már nem veszítenek pénzt: az F3-javítás
- * óta a tételekből számolt 0 Ft helyett a rendelés-szintű `totalHufSnapshot`
- * számít (src/lib/statistics/revenue.ts). A KURZUS-BONTÁS
- * (`aggregateCourseRevenue`) viszont hiányos marad ezeknél a soroknál: abból
- * a tartalékból nem gyártunk kurzus-sort, mert az kitalált adat lenne. Ez a
- * script pontosan ezt a hiányt zárja be — kitalálás nélkül.
- *
- * ═══ HONNAN JÖN AZ ÁR (vezetői döntés, KÖTELEZŐ) ═══
- * KIZÁRÓLAG a rendelés saját `totalHufSnapshot` mezőjéből. SOHA a termék MAI
- * árából: a `products.priceInHUF` azóta változhatott, és a mai árral
- * visszaírni a történelmet meghamisítaná a bevételt. Ha egy rendelésnél a
- * `totalHufSnapshot` hiányzik vagy nem pozitív, a rendelés KIMARAD, és a
- * jelentésben nevesítve szerepel — azt ember nézi meg.
- *
- * ═══ KAPU ═══
- * Alapértelmezésben PRÓBAFUTÁS (dry-run): a script mindent kiszámol és
- * naplóz, de EGYETLEN írás sem történik. A tényleges íráshoz:
- *
+ * Alapból próbafutás; íráshoz OWNER_BACKFILL_CONFIRM=igen. Éles futás előtt: npm run backup:db
  *   npm run backfill:ar-snapshot
- *     → próbafutás; kiírja, mit tenne, és MIÉRT hagy ki bármit.
- *   OWNER_BACKFILL_CONFIRM=igen npm run backfill:ar-snapshot
- *     → tényleges írás, a végén összesítés és egy `OWNER_BACKFILL_OK`
- *       naplósor (erre lehet rákeresni a futás naplójában).
- *
- * A kapu mintája a tartalom-javító scripté (src/scripts/apply-owner-content.ts
- * `kapuNyitva`, `OWNER_CONTENT_CONFIRM`): adatot módosító script sosem írhat
- * kifejezett kérés nélkül. ÉLES FUTÁS ELŐTT MENTÉS KÖTELEZŐ:
- * `npm run backup:db` (docs/adatbazis-mentes.md).
- *
- * ═══ IDEMPOTENCIA ═══
- * A script CSAK HIÁNYZÓ értéket tölt. Ha egy tételnek már van
- * `priceHufSnapshot` értéke — akár 0 (ingyenes kurzus) —, ahhoz hozzá sem ér.
- * Másodszor lefuttatva ezért nulla írást tervez; a kimenetben ugyanazok az
- * indokolt kihagyások maradnak.
- *
- * ═══ MIÉRT NEM TÖR INTEGRITÁST AZ ÍRÁS (mérve, 2026-08-21) ═══
- *  1. Az `orderIntegrityBeforeChange` hook `operation !== 'create'` esetén
- *     azonnal visszatér (src/lib/order-integrity.ts) — update-kor tehát SEM a
- *     rendelésszám, SEM a `totalHufSnapshot`, SEM az `amount`, SEM az
- *     item-snapshotok nem számolódnak újra. A rendelés végösszege érintetlen.
- *  2. A plugin gyári orders-collectionje NEM hoz saját hookot
- *     (node_modules/@payloadcms/plugin-ecommerce/dist/collections/orders/
- *     createOrdersCollection.js — nincs benne `hooks` kulcs), tehát a
- *     beforeChange-láncban csak a fenti, update-kor tétlen hook áll.
- *  3. Az audit-plugin `afterChange` hookja orders-update esetén CSAK a
- *     refund-mezők (`refundReason`, `refundedAt`) változására ír naplósort
- *     (src/plugins/audit.ts `auditActionsForChange`) — ez a backfill egyiket
- *     sem érinti, tehát audit-bejegyzés sem keletkezik.
- *  4. A `priceHufSnapshot` és a `titleSnapshot` mező `create`/`update`
- *     access-e zárt (src/plugins/ecommerce.ts). A Local API `overrideAccess:
- *     true` mellett a mezőszintű access nem fut — ezért tud a script írni,
- *     miközben a HTTP-felület felől a mező továbbra is zárt marad.
- *  5. A TELJES `items` tömböt írjuk vissza, MEGTARTOTT sor-azonosítókkal. Ez
- *     nem stílus kérdése: a drizzle-adapter update-kor TÖRLI a tömb összes
- *     sorát, majd újra beszúrja őket
- *     (node_modules/@payloadcms/drizzle/dist/upsertRow/
- *     deleteExistingArrayRows.js + insertArrays.js). Részleges tömb írása
- *     tehát tételsorokat VESZÍTENE el, hiányzó `id` mellett pedig a sorok új
- *     azonosítót kapnának. A script ezért minden sort változatlanul
- *     továbbad (`...item`), és csak a hiányzó mezőt tölti ki.
- *  6. Az érintett rendelések `updatedAt` mezője frissül — ez a Local API-n át
- *     nem kerülhető meg. Adatot nem érint, de a rendelés-lista rendezésében
- *     látszik.
- *
- * ═══ MENNYISÉG (`quantity`) ═══
- * A hiányzó mennyiség KÜLÖN, jelentett műveletként kap 1-es értéket — ugyanaz
- * a szabály, amivel maga a `totalHufSnapshot` képződött
- * (src/lib/order-integrity.ts: `quantity > 0 ? quantity : 1`). A gyakorlatban
- * ez védőháló: az `orders_items.quantity` oszlop
- * `numeric DEFAULT 1 NOT NULL` (20260729_231123_initial_schema), tehát tényleg
- * hiányzó érték nem fordulhat elő. JELEN LÉVŐ, de nem pozitív mennyiségnél a
- * script KIHAGY: a mező `min: 1` validációja miatt az ilyen sort tartalmazó
- * tömb visszaírása amúgy is elbukna, a 0 → 1 „javítás” pedig már kitalált adat
- * lenne.
- *
- * ═══ HASZNÁLAT ═══
- *   npm run backfill:ar-snapshot                       # próbafutás
- *   npm run backfill:ar-snapshot -- --max=50000        # magasabb felső korlát
  *   OWNER_BACKFILL_CONFIRM=igen npm run backfill:ar-snapshot
  *
- * Kilépési kódok:
- *   0 — a futás végigment (a kihagyások NEM hibák, azokat ember nézi meg)
- *   1 — írási hiba történt, vagy a beolvasás a felső korlátnál csonkolt
- *
- * Útmutató: docs/ar-snapshot-backfill.md
+ * Csak hiányzó árat tölt; csak paid rendelések. A teljes items tömb íródik vissza (drizzle).
  */
 
 import { pathToFileURL } from 'node:url'
@@ -132,26 +46,7 @@ const BACKFILL_SELECT = {
   items: true,
 } as const
 
-/**
- * KIZÁRÓLAG a fizetett rendelések.
- *
- * ═══ MIÉRT SZŰKÍTÜNK (vezetői döntés) ═══
- * A backfill célja EGY dolog: a bevétel-riport kurzus-bontása legyen teljes a
- * régi rendeléseknél is. Az a riport pedig kizárólag `paid` rendelést számol
- * (src/lib/statistics/revenue.ts), tehát a többi státusz megírása egyetlen
- * megjelenített számot sem javítana.
- *
- * A szűkítés nem kényelmi kérdés, hanem KOCKÁZAT-CSÖKKENTÉS. A Payload
- * tömb-írása az adatbázisban törlés + újraszúrás
- * (@payloadcms/drizzle: deleteExistingArrayRows → insertArrays), tehát MINDEN
- * megírt rendelés egy-egy alkalom arra, hogy valami félresikeredjen az éles
- * tételsorokon. Amelyik rendelést nem kell megírni, azt nem írjuk meg.
- *
- * Ez a mai adatban nem zár ki jövőbeli sort: a `priceHufSnapshot`-ot a
- * létrehozáskori hook tölti (src/lib/order-integrity.ts), tehát egy ma
- * keletkező rendelés már nem lesz hiányos, és egy régi, nem fizetett rendelés
- * sem fog utólag `paid`-dé válni.
- */
+/** Csak paid rendelések — a bevétel-riport is csak ezeket számolja. */
 const BACKFILL_WHERE = { status: { equals: 'paid' } } as const
 
 /** A rendelés `items` tömbjének egy sora (a generált Payload-típusból). */
@@ -257,38 +152,8 @@ function ertekLeirasa(ertek: unknown): string {
 }
 
 /**
- * A HIÁNYZÓ ÁR KIOSZTÁSA egy rendelésen — tiszta függvény, mellékhatás nélkül.
- *
- * ═══ A SZABÁLY ═══
- *  1. Ha egyetlen tételnél sem hiányzik sem az ár, sem a mennyiség: nincs
- *     teendő. (Meglévő érték — akár 0 — SOSEM íródik felül.)
- *  2. Ha nincs egyetlen tétel sem, de a rendelésnek pozitív végösszege van:
- *     kihagyás. Ilyenkor nincs mit kitölteni, viszont a kurzus-bontás
- *     hiányzik — ezt embernek kell megnéznie, ezért nevesítve jelentjük.
- *  3. PONTOSAN EGY tételnél hiányzik az ár:
- *       maradék = totalHufSnapshot − Σ(a többi tétel ára × mennyisége)
- *     Egytételes rendelésnél a szumma üres, tehát maradék = totalHufSnapshot,
- *     az ár pedig maradék / mennyiség. Ha a maradék pozitív ÉS a mennyiséggel
- *     egész forintra osztható, az lesz az ár; különben kihagyás.
- *  4. Ha több tételnél is hiányzik az ár: kihagyás. A végösszeg szétosztása
- *     tételek között kitalált adat lenne — pénzügyi kimutatásba ilyen nem
- *     kerülhet.
- *  5. Ha a `totalHufSnapshot` hiányzik, nem szám vagy nem pozitív: kihagyás.
- *     Nincs miből számolni; a termék MAI ára (products.priceInHUF) TILOS
- *     forrás, mert azóta változhatott, és a történelmet hamisítaná meg.
- *
- * ═══ MIÉRT NEM KEREKÍTÜNK ═══
- * A HUF deviza `decimals: 0` (src/plugins/ecommerce.ts), tehát a tétel ára
- * egész forint. Ha az osztás nem ad egészet, az a rendelés adatainak
- * ellentmondását jelenti (pl. kézi szerkesztés vagy import) — a kerekítés ezt
- * elfedné, és a kurzus-bontás összege eltérne a beszedett pénztől. Ilyenkor a
- * helyes válasz a kihagyás és az emberi ellenőrzés.
- *
- * ═══ MIÉRT VEZET A MENNYISÉG-ELLENŐRZÉS KIHAGYÁSHOZ ═══
- * Az írás a TELJES `items` tömböt küldi vissza (lásd a modul fejlécének 5.
- * pontját). A `quantity` mező `required` és `min: 1`, tehát egy jelen lévő,
- * nem pozitív mennyiség a Payload-validáción bukna — a rendelés így sem
- * íródna, csak hangos hiba helyett néma zavar lenne belőle.
+ * Hiányzó ár kiosztása totalHufSnapshot-ból. Egy hiányzó tételnél oszt; többnél kihagyás.
+ * Nem kerekít; mai termékár TILOS forrás.
  */
 export function kiosztHianyzoArakat(rendeles: BackfillRendeles): Kiosztas {
   const tetelek = Array.isArray(rendeles.items) ? rendeles.items : []

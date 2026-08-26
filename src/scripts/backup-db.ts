@@ -1,36 +1,7 @@
 /**
- * Adatbázis-mentés (logikai dump) — üzemeltetői script.
- *
- * Mikor kell: élesítés előtti/utáni biztonsági mentés, kockázatos művelet
- * (tömeges import, migráció, Postgres-újraindítás) előtti visszaállítási pont,
- * illetve a napi ütemezett mentés (.github/workflows/db-backup.yml).
- *
- * Futtatás:
- *   npm run backup:db                       # ./backups, 14 mentés megtartva
- *   npm run backup:db -- --cel=/mnt/mentes --megtart=30
- *
- * A kapcsolatot a DATABASE_URI környezeti változóból veszi. Az URI SEMMILYEN
- * kimenetben (konzol, napló, hibaüzenet) nem jelenhet meg — minden külső
- * eredetű szöveg a redactConnectionInfo() szűrőn megy át.
- *
- * A folyamatindítás execFile-lal történik, SOSEM shell-stringgel: így a
- * jelszóban lévő speciális karakter nem eshet át shell-értelmezésen, és nem
- * kerülhet parancs-history-ba.
- *
- * Lépések:
- *   1. pg_dump --format=custom  → kineticare-YYYYMMDD-HHmmss.dump (UTC)
- *   2. KÖTELEZŐ integritás-ellenőrzés: pg_restore --list a kész fájlon;
- *      hiba esetén a fájl törlődik (ne maradjon hamis biztonságot adó,
- *      visszaállíthatatlan mentés) és a script nem nullával lép ki.
- *   3. Retenció: a --megtart határon túli, legrégebbi mentések törlése.
- *
- * Kilépési kódok:
- *   0 — siker (a mentés elkészült ÉS az integritás-ellenőrzés átment)
- *   1 — hiba (hiányzó argumentum/DATABASE_URI, hiányzó pg_dump, dump- vagy
- *       ellenőrzési hiba)
- *
- * FONTOS: a mentés a DB tartalmát fedi, a feltöltött médiafájlokat NEM.
- * Részletek és visszaállítási eljárás: docs/adatbazis-mentes.md.
+ * Adatbázis-mentés (pg_dump custom + pg_restore --list integritás). DATABASE_URI kötelező.
+ *   npm run backup:db [-- --cel=<dir>] [-- --megtart=<n>]
+ * A médiafájlokat nem menti. Részletek: docs/adatbazis-mentes.md
  */
 
 import { execFile } from 'node:child_process'

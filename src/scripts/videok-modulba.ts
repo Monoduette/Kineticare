@@ -1,42 +1,8 @@
 /**
- * A régi, fejezet nélküli videólista átemelése MODULBA — a haladás elvesztése
- * nélkül.
+ * Régi products.videos lista átemelése modulba — megtartott lecke-id, haladás megmarad.
+ * A videos tömböt nem üríti (visszafordíthatóság). Alapból dry-run; --alkalmaz kell íráshoz.
  *
- * ═══ MIÉRT KELL EZ A SCRIPT ═══
- * Az új tananyag-szerkezet (`products.modules`) mellett a régi `products.videos`
- * lista érintetlenül működik tovább (src/fields/course-modules.ts), tehát a
- * meglévő kurzusokhoz NEM kötelező hozzányúlni. Amint viszont a szerkesztő
- * fejezetekre akarja bontani a kurzust, kézzel újra felvinné a leckéket — és
- * ITT van a csendes csapda: az újonnan felvett lecke-sor ÚJ, generált
- * azonosítót (BSON ObjectID) kap, a `course-progress` sorok viszont a RÉGI
- * azonosítókra mutatnak. A haladás-számítás az ilyen „orphan" refet szó nélkül
- * eldobja (src/lib/curriculum/progress.ts), tehát MINDEN vásárló haladása
- * némán nullázódna — hibaüzenet nélkül.
- *
- * Ez a script ezt előzi meg: a videó-sorokat MEGTARTOTT AZONOSÍTÓVAL emeli át
- * egy modulba. A Payload az explicit módon megadott array-sor `id`-t
- * megőrzi (a `baseIDField` hookja csak hiányzó értéknél generál újat:
- * node_modules/payload/dist/fields/baseFields/baseIDField.js:12 —
- * `({ value }) => value || new ObjectId().toHexString()`); élesben ellenőrizve.
- *
- * ═══ AMIT NEM CSINÁL ═══
- * A `videos` tömböt NEM üríti ki. Két okból: (1) a művelet így visszafordítható
- * (a modul törlésével a régi viselkedés azonnal visszaáll), (2) a `videos`
- * marad a biztonsági másolat. Duplikáció nem keletkezik: ha van legalább egy
- * modul, a tananyag-modell a `videos` tömböt teljesen figyelmen kívül hagyja.
- *
- * ═══ HASZNÁLAT ═══
- *   npm run kurzus:videok-modulba -- --sku=DEMO-KEZREHAB-001
- *   npm run kurzus:videok-modulba -- --id=3 --cim="1. ALAPOK" --alkalmaz
- *
- * Kapcsolók:
- *   --id=<szám>      a kurzus azonosítója (vagy --sku)
- *   --sku=<szöveg>   a kurzus azonosító-neve
- *   --cim=<szöveg>   a létrejövő modul címe (alapértelmezés: „A kurzus videói")
- *   --alkalmaz       ENÉLKÜL a script csak KIÍRJA a tervet, és nem ír semmit
- *
- * Alapértelmezésben SZÁRAZ FUTÁS (dry run): tartalmi adatot módosító script
- * sosem írhat kérés nélkül.
+ *   npm run kurzus:videok-modulba -- --sku=… [--cim=…] [--alkalmaz]
  */
 
 import { pathToFileURL } from 'node:url'

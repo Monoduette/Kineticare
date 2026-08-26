@@ -1,63 +1,11 @@
 import { hasControlCharacter } from './return-url'
 
 /**
- * CMS-ből érkező URL-ek allowlist-alapú tisztítása.
+ * CMS-ből érkező URL-ek allowlist-alapú tisztítása (CTA, menü, richText).
  *
- * A szerkesztői felületen szabadon gépelhető webcímek (CTA-gombok, szekció-sor
- * hivatkozások, sajtólogó-linkek, richText-linkek, „Külső link" típusú
- * menüpontok) ellenőrzés NÉLKÜL nem kerülhetnek `href` attribútumba. A CMS-
- * szerkesztő nem fejlesztő — a védelem nem az ő figyelmességén múlhat.
- *
- * MI A TÉNYLEGES FENYEGETÉS (és mi NEM az)
- *
- * 1. Open redirect / adathalászat. Egy elgépelt, félreértett vagy rosszhiszemű
- *    abszolút cím a látogatót tetszőleges IDEGEN hosztra viszi — a Kineticare
- *    oldaláról, a Kineticare gombjának kinézetében. Ez a legvalószínűbb valós
- *    kár: a látogató bizalma a mi felületünkhöz tapad, nem a célhoszthoz.
- * 2. Protokoll-relatív cím (`//idegen.example`). Ránézésre gyökér-relatív
- *    útvonal, valójában IDEGEN eredetre visz. A „belsőnek látszó, kívülre vivő"
- *    alak azért külön tétel, mert emberi szemrevételezéssel nem szűrhető ki
- *    megbízhatóan (ugyanez a `/\idegen.example` és a vezérlőkarakterrel
- *    álcázott `/<TAB>/idegen.example` alak).
- * 3. Nem navigációs sémák: `data:`, `blob:`, `file:`, `tel:`, `intent:` és
- *    társaik. Ezek nem weblapra visznek: dokumentumot injektálnak (`data:`),
- *    helyi fájlt nyitnak (`file:`), vagy alkalmazást indítanak a látogató
- *    készülékén (`tel:`, `intent:`). Egyik sem az, amit egy „gomb" ígér —
- *    az allowlist ezért zárt, nem tiltólista.
- * 4. Determinisztikus, tesztelhető viselkedés. A `null` egyértelmű szerződés:
- *    a hívó tudja, hogy nincs cél, és nem sodródik el ágakon.
- *
- * NEM fenyegetés ezen a stacken a `javascript:` séma XSS-ként. A React 19.2.8
- * a PRODUKCIÓS bundle-ben is szűri: `isJavaScriptProtocol` + `sanitizeURL`
- * (node_modules/react-dom/cjs/react-dom-server.node.production.js:282-288 és
- * ugyanez a kliens-runtime react-dom-client.production.js:1410-1414-ben), ami
- * a href-et `javascript:throw new Error('React has blocked a javascript:
- * URL…')`-re cseréli. Ez egy MÁSODIK, tőlünk FÜGGETLEN réteg, amire NEM
- * támaszkodunk — nem React-úton renderelő külső library vagy nyers DOM-írás
- * nincs alatta —, de a fenyegetés súlyát helyre teszi: a `javascript:` itt
- * ugyanolyan „nem működő, félrevezető link", mint a `data:`, nem kódfuttatás.
- *
- * Engedélyezett:
- *  - `https:` és `http:` abszolút URL,
- *  - `mailto:` cím (a kapcsolati linkek nyelve),
- *  - gyökér-relatív útvonal (`/kurzusok`) — a protokoll-relatív `//host` NEM,
- *  - lapon belüli horgony (`#ingyenes`) — a hero/CTA navigáció használja.
- *
- * Minden más — `javascript:`, `data:`, `tel:`, séma nélküli relatív útvonal,
- * üres/hibás alakú vagy nem szöveg bemenet — `null`. A `null`-t a hívó úgy
- * kezeli, hogy a link NEM renderelődik href-ként: a Button letiltott span-t ad,
- * a blokkok a képet/szöveget link nélkül renderelik, a menüpont pedig kimarad
- * a navigációból.
- *
- * SZERKESZTŐI VISSZAJELZÉS: a néma eltűnés önmagában rossz élmény, ezért a két
- * központi beviteli hely (src/blocks/link-fields.ts `url`, src/collections/
- * Menus.ts `url`) szerver-oldali `validate`-tel MENTÉSKOR, magyar üzenettel
- * elutasítja a tiltott alakot — a szerkesztő ott javítja, ahol elrontotta.
- *
- * A modul a `sanitizeReturnUrl` (src/lib/return-url.ts) testvére: ott a
- * FELHASZNÁLÓTÓL érkező visszatérési útvonal szűkül azonos eredetűre, itt a
- * SZERKESZTŐTŐL érkező webcím szűkül a rendereltethető sémákra. A közös
- * vezérlőkarakter-vizsgálat ezért onnan jön, nem másolatban.
+ * Engedélyezett: https/http/mailto, gyökér-relatív (/…), horgony (#…). Tiltott: //host,
+ * data:/tel:/javascript:, vezérlőkarakter, backslash. `null` = nincs href.
+ * Mentéskor validateCmsUrl magyar üzenettel elutasít; sanitizeCmsUrl rendereléskor is fut.
  */
 
 /** A href-ként rendereltethető abszolút sémák. */
@@ -91,16 +39,7 @@ export function sanitizeCmsUrl(value: unknown): string | null {
     return null
   }
 
-  /*
-   * Vezérlőkarakter bárhol → elutasítás.
-   *
-   * A `trim()` csak a SZÉLEKRŐL szedi le a tabot/soremelést, a böngésző
-   * URL-értelmezője viszont a szó BELSEJÉBŐL is kidobja őket. Emiatt a
-   * `/<TAB>/idegen.host` a mi szemünkben egyszerű gyökér-relatív útvonal, a
-   * böngészőben viszont protokoll-relatív cím — pontosan az, amit a `//`
-   * vizsgálat kizárna. Szűrés helyett elutasítás: így sosem térhet el az az
-   * érték, amit ELLENŐRIZTÜNK, attól, amit RENDERELÜNK.
-   */
+  // Vezérlőkarakter belül is tiltott — a böngésző másképp normalizálhatja.
   if (hasControlCharacter(trimmed)) {
     return null
   }
@@ -137,35 +76,7 @@ export function sanitizeCmsUrl(value: unknown): string | null {
     return null
   }
 
-  /*
-   * A NORMALIZÁLT alakot adjuk vissza, nem a nyerset.
-   *
-   * A hívók az „ez külső cím?" kérdést a /^https?:\/\//i mintával döntik el
-   * (Button, Services, PressLogos, LexicalContent, serialize) — attól függ, hogy
-   * `<a>` lesz-e belőle `next/link` helyett, és hogy megkapja-e az „új ablak +
-   * rel=noopener noreferrer" ágat. A nyers érték ezt elronthatja: a
-   * `https:evil.example` és a `http:\\evil.example` az URL-értelmező szerint
-   * IDEGEN hosztra mutató abszolút cím, a fenti mintára viszont NEM illeszkedik,
-   * tehát belsőként, next/link-kel renderelődne. A `parsed.href` az az alak,
-   * amit a böngésző ténylegesen felold — így nem térhet el az, amit
-   * ELLENŐRIZTÜNK, attól, amit RENDERELÜNK (ugyanaz az elv, mint a
-   * vezérlőkarakter-ágnál).
-   *
-   * A horgony- és a gyökér-relatív ág szándékosan NYERS marad: azoknak nincs
-   * bázis-URL nélkül értelmezhető abszolút alakjuk, és a `next/link` a relatív
-   * útvonalat pontosan így várja.
-   *
-   * A NORMALIZÁLÁS LÁTHATÓ MELLÉKHATÁSAI (mind funkcionálisan azonos célra
-   * mutat, tehát nem törés — de a renderelt `href` SZÖVEGE megváltozik, amin
-   * egy pontos egyezésre néző HTML-snapshot vagy e2e elbukhat):
-   *  - percent-kódolás: `/kézrehabilitáció` → `/k%C3%A9zrehabilit%C3%A1ci%C3%B3`,
-   *    és ugyanígy a query is (`?subject=Kérdés` → `?subject=K%C3%A9rd%C3%A9s`);
-   *  - punycode: `https://példa.hu/x` → `https://xn--plda-bpa.hu/x`;
-   *  - alapértelmezett port elhagyása: `https://pelda.hu:443/x` → `https://pelda.hu/x`;
-   *  - üres útvonal kiegészítése: `https://pelda.hu?q=1` → `https://pelda.hu/?q=1`;
-   *  - a hoszt kisbetűsítése.
-   * A látogató ebből semmit nem lát: a link FELIRATA külön mező.
-   */
+  // Abszolút URL: normalizált href — a külső/belső ág ezt várja.
   return parsed.href
 }
 
@@ -184,24 +95,9 @@ export const CMS_URL_VALIDATION_MESSAGE =
 export const CMS_URL_REQUIRED_MESSAGE = 'A webcím megadása kötelező.'
 
 /**
- * Payload szerver-oldali `validate` a CMS-es webcím-mezőkhöz.
- *
- * MIÉRT KELL a renderelés-oldali szűrés MELLETT: a `sanitizeCmsUrl` a tiltott
- * címet CSENDBEN ejti — a publikus oldalon egyszerűen nem lesz link. A
- * szerkesztő ebből semmit nem lát: elmenti, „sikeres" visszajelzést kap, és
- * csak jóval később derül ki, hogy a gomb nem működik. Ez a validate a
- * MENTÉSNÉL, a mező mellett szól — ott, ahol a hiba keletkezett.
- *
- * A validate NEM váltja ki a renderelés-oldali szűrést: a régi, már mentett
- * rekordokra sosem futott le, és a Payload local API / seed / import útvonalain
- * megkerülhető. A kettő együtt ad teljes fedést.
- *
- * FIGYELEM: a Payload a saját ALAPÉRTELMEZETT mező-validációját (benne a
- * `required` vizsgálattal) CSAK akkor teszi be, ha a mezőn nincs `validate`
- * (node_modules/payload/dist/fields/config/sanitize.js:153-167) — ezért kell a
- * kötelezőséget itt is kezelni.
- *
- * @param options.required kötelező-e a mező (a `required: true` mezőkhöz)
+ * Payload `validate` CMS webcím-mezőkhöz — mentéskor magyar hibaüzenet.
+ * A renderelés-oldali sanitizeCmsUrl régi rekordokra is kell; a kettő együtt fed.
+ * Payload: saját required csak validate nélkül fut — kötelezőséget itt is kezeljük.
  */
 export function validateCmsUrl(value: unknown, options: { required?: boolean } = {}): string | true {
   const isEmpty =

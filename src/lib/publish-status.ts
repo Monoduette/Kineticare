@@ -1,24 +1,8 @@
 import type { CollectionBeforeChangeHook } from 'payload'
 
 /**
- * Publikálási állapot — a kettős státusz feloldása (Pages + Posts).
- *
- * A collectionöknek KÉT publikáltsági jelzésük van:
- *  - a Payload natív drafts-verziózásának `_status` mezője (Piszkozat/Közzététel
- *    gombok az adminban),
- *  - és a saját `status` select, amelyre a nyilvános read-politika
- *    (src/access/publishedOrAdmin.ts), a storefront-lekérdezések
- *    (`PUBLISHED_WHERE` az src/lib/cms.ts-ben) és a sitemap szűr.
- *
- * A szerkesztőnek ebből csak EGY dolgot szabad látnia: a natív
- * Piszkozat/Közzététel gombokat. A saját `status` mező ezért az adminban rejtett
- * (`admin.hidden`), az értékét pedig a `syncStatusFromDraftStatus` hook tartja
- * szinkronban a `_status`-szal — így egyik szűrő sem törhet el, és nem fordulhat
- * elő, hogy a szerkesztő „közzétett" egy oldalt, ami mégsem látszik.
- *
- * FONTOS: ez a két hook KIZÁRÓLAG a pages/posts collectionökre van bekötve.
- * A products saját `status` enumja (draft/published/archived, src/plugins/
- * ecommerce.ts) érintetlen marad — arra ez a szinkron nem is lenne értelmes.
+ * Pages/Posts publikálás: rejtett `status` sync a `_status`-szal. Csak pages/posts;
+ * products status érintetlen.
  */
 
 /** A két collection publikáltsági értékkészlete (a `_status` és a `status` közös enumja). */

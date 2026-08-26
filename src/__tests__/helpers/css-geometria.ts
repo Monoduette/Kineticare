@@ -1,32 +1,6 @@
 /**
- * KICSI, CÉLZOTT CSS-FELOLDÓ — a repó VALÓDI stíluslapjaiból számol geometriát.
- *
- * MIÉRT. A `reflow-hasabmeres.test.ts` őr nem tulajdonságokat néz („szerepel-e
- * a fájlban az `overflow-wrap` szó"), hanem MÉRI a kimenetet: mekkora hasáb áll
- * rendelkezésre, és mekkora helyet kér a leghosszabb tördelhetetlen szó. Ehhez
- * a CSS-ből ki kell olvasni az érvényes értékeket — a tokeneket, a `clamp()`-et
- * és a kaszkádot —, nem beégetni őket a tesztbe. Beégetett szám mellett a
- * szabály elmozdulhatna a CSS-ben úgy, hogy az őr nem veszi észre; ez pontosan
- * az a hibaosztály, ami miatt ez a fájl készült.
- *
- * MIT MODELLEZ. Annyi CSS-t, amennyi a szöveg-hasáb geometriájához kell:
- *   - `:root` egyéni tulajdonságok és a `var()` feloldása (rekurzívan),
- *   - `clamp(min, alap, max)` kiértékelése adott nézetablak-szélességen,
- *     benne a `rem`/`px`/`em`/`ch`/`vw` és az összeadás,
- *   - kaszkád négy szelektor-alakra: puszta elemnév (`h2`), osztály
- *     (`.kc-richtext`), osztály + elemnév (`.kc-richtext h2`) és osztály +
- *     osztály (`.kc-product-card .kc-product-card__title`),
- *   - öröklődés: ha az elemre nincs deklaráció, a szülő értéke jön,
- *   - `@media` kiértékelése adott nézetablakra (`stilusLapNezetablakra`), hogy
- *     a média-blokkba zárt deklarációk ne legyenek feltétel nélkül érvényesek.
- *
- * MIT NEM MODELLEZ (és miért nem baj). Nincs `:hover`/`:focus`, nincs `calc()`
- * a `clamp()`-en kívül, nincs kombinátor a leszármazotton kívül, és — ami a
- * legfontosabb — NINCS rács- és flex-sáv méretezés: a min-content alapú
- * automatikus minimum méret (CSS Grid 1, 6.6) itt nem számolható. Ahol ez
- * számít, azt a hívó teszt böngészős méréssel nevesíti. A modell által
- * számolt geometriát egyébként is BÖNGÉSZŐS MÉRÉS hitelesíti (Chromium,
- * 320/390 px), tehát ha a modell eltérne a valóságtól, az a hitelesítésen bukna.
+ * CSS-geometria teszt-segéd: stíluslapok parse-olása, kaszkád, @media kiértékelés,
+ * `var(--kc-*)` feloldás. Komponens-tesztek layout/méret ellenőrzéséhez.
  */
 
 import { readFileSync } from 'node:fs'

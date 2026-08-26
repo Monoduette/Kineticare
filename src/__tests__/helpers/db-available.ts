@@ -1,11 +1,8 @@
 import net from 'node:net'
 
 /**
- * Elérhető-e TÉNYLEGESEN a teszt-adatbázis?
- * A DB-függő tesztfájlok korábban csak a DATABASE_URI + PAYLOAD_SECRET env
- * MEGLÉTÉT nézték — a CI-kapu viszont álértékű DATABASE_URI-t exportál (a
- * production-buildhez kell), amely 127.0.0.1:5432-re mutat, ahol nem fut
- * Postgres. Az env-alapú kapcsoló így hamis pozitívot adott: a tesztek
+ * Elérhető-e a teszt-adatbázis? Env + TCP-próba (a CI álértékű DATABASE_URI ellen).
+ * CI-ban elérhetetlen DB → dob; helyben → false (skip).
  */
 
 /** A CI-fail-closed hibaüzenet állandó előtagja — a teszt-őr erre illeszt. */

@@ -1,24 +1,7 @@
 /**
- * systeme.io → Kineticare vásárló-import: CÍMKE-ÉRTELMEZÉS.
- *
- * A régi rendszer nem kurzusnevet exportál, hanem MARKETING-CÍMKÉKET egyetlen
- * `Tag` cellában, vesszővel elválasztva. Egy sorban több címke is állhat, és a
- * címkék háromfélék:
- *
- *  - `purchase` — vásárlás: a hozzá tartozó kurzus hozzáférését adja,
- *  - `refund`   — VISSZATÉRÍTÉS: a megjelölt vásárlás-címkét KIÜTI (az adott
- *                 kurzushoz nem jár hozzáférés), a sor többi címkéje viszont él,
- *  - `ignore`   — nem vásárlás (pl. érdeklődő/előjelentkező): hozzáférést nem ad,
- *                 de nem is hiba.
- *
- * Ami egyik szabályba sem illik: ISMERETLEN címke. Ilyenkor a sor feldolgozása
- * FOLYTATÓDIK (a vevő fiókja és a többi hozzáférése nem vész el), a címke pedig
- * figyelmeztetésként megjelenik a futás végén — csendben soha nem tűnik el.
- *
- * A modul TISZTA: nem érint adatbázist, hálózatot, fájlrendszert. A címke →
- * termék (SKU) leképezés SZÁNDÉKOSAN nem itt dől el: az továbbra is a CLI
- * `--map "Címke=SKU"` párjaiból jön (emberi döntés), ez a modul csak azt mondja
- * meg, MELYIK címke számít megvásároltnak.
+ * systeme.io címke-értelmezés: purchase (hozzáférés), refund (kiüt vásárlás-címkét),
+ * ignore (nem vásárlás). Ismeretlen címke → figyelmeztetés, sor folytatódik.
+ * Címke→SKU a CLI `--map`-ből jön, nem itt.
  */
 
 import { normalizeKey } from './normalize'

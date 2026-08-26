@@ -4,29 +4,8 @@ import { buildPasswordResetUrl } from '../password-reset-url'
 import { resetPasswordEmail, verifyEmail } from './templates/auth'
 
 /**
- * Users auth e-mail sablonok config-szintű injekciója (T-018).
- *
- * A Users.ts collection-fájlhoz (más workerek scope-ja) nem nyúlunk — az
- * audit pluginéval azonos mintával a buildConfig plugins-láncából egészítjük
- * ki a users collection auth-konfigját:
- *
- * - forgot-password: mindig rákerül a reset sablon,
- * - verify: csak akkor, ha a megerősítő e-mail amúgy is engedélyezve van
- *   (különben az objektum-forma BEkapcsolná a kötelező verifikációt, ami noop
- *   provider mellett kizárná a felhasználókat). A verify sablon kész és
- *   exportált (verifyEmail) — a bekapcsolás a verify engedélyezésével együtt
- *   örökli a sablont.
- *
- * A RESET-LINK a NYILVÁNOS `/jelszo-visszaallitas` oldalra mutat (közös
- * link-építő: `src/lib/password-reset-url.ts`), NEM az admin `/admin/reset/…`
- * oldalára. A felhasználók túlnyomó része `customer` szerepkörű, akit a
- * Users.access.admin (staff+owner) nem enged az adminba — az admin-link tehát
- * pont annak nem használható, aki a leggyakrabban kéri. Ugyanez az oldal
- * fogadja a vásárló-migráció aktiváló linkjeit is, így a „kérj újat az
- * Elfelejtett jelszó gombbal" tanács ugyanoda vezet.
- *
- * A verify-link marad az admin útvonalon: nyilvános megerősítő oldal nincs, és
- * a verify jelenleg nincs is bekapcsolva.
+ * Users auth e-mail sablonok plugin-injekció (T-018). Reset link a nyilvános
+ * `/jelszo-visszaallitas` oldalra, nem adminra. Verify csak ha engedélyezett.
  */
 
 function userDisplayName(user: unknown): string | null {

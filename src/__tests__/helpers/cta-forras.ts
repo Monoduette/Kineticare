@@ -1,73 +1,9 @@
 /**
- * CTA-FORRÁSBEJÁRÓ — a `src/__tests__/cta-a-termekben.test.ts` (G-UI2) adatforrása.
- *
- * MIÉRT LÉTEZIK EZ A FÁJL
- * -----------------------
- * A G-UI1 őr (`cta-vocabulary-guard.test.ts`) három fájlt olvas: a szótárt és a
- * két doksit. **Egyetlen komponenst sem.** Vagyis azt bizonyítja, hogy a szótár
- * egyezik önmagával. Mutációs mérés (2026-08-17): a `CartView.tsx` és a
- * `ThankYouView.tsx` gombfeliratát elrontva a TELJES tesztkészlet zöld maradt.
- *
- * Ez a modul a hiányzó felet adja: a TERMÉKBŐL olvassa ki a vevőnek megjelenő
- * cselekvés-feliratokat, hogy az őr a valódi felületet mérhesse, ne a szótár
- * tükörképét.
- *
- * HOGYAN — ÉS MIÉRT ÍGY
- * ---------------------
- * A bejáró a TypeScript fordító saját elemzőjével (`ts.createSourceFile`) épít
- * szintaxisfát, nem reguláris kifejezéssel keres. Ok: a `<Button>` gyerekszövege
- * lehet több sorban, kommenttel megszakítva, beágyazott `<span>`-ben — regexszel
- * ez vagy hamis riasztást ad, vagy némán átsiklik felette. A `typescript` a repó
- * meglévő dev-függősége (`package.json`), új csomag NEM kerül be miatta.
- *
- * A feliratokat NÉGY helyről gyűjti:
- *
- *   1. `<Button …>SZÖVEG</Button>` és `<Link …>SZÖVEG</Link>` (valamint a natív
- *      `<a>` és `<button>`) gyerekszövege;
- *   2. `aria-label` a kattintható elemeken — ez a HOZZÁFÉRHETŐ NÉV, tehát a
- *      képernyőolvasós látogató ezt „látja" (WCAG 2.2 · 4.1.2);
- *   3. CTA-alakú objektumok `label:` mezője (pl. a `resolveCourseCta`
- *      állapotgépének visszatérési értékei a `src/lib/courses.ts`-ben) —
- *      enélkül a `Megveszem` felirat láthatatlan maradna a bejárónak, mert a
- *      komponensben csak `{cta.label}` áll;
- *   4. CTA-nevű konstansok (a nevükben `CTA` ÉS `LABEL`) — pl. a
- *      `course-list-order.ts` `CTA_LABELS` objektuma, amely öt élő kurzuskártya-
- *      feliratot tárol, de a hívóhelye `{card.ctaLabel}`, tehát a JSX felől
- *      láthatatlan.
- *
- * Mindegyikhez kiolvassa a `href`-et is, hogy az „egy cél = egy felirat"
- * (WCAG 2.2 · 3.2.4) ellenőrzés is mérhető legyen.
- *
- * ÁLLANDÓ-FELOLDÁS. A feliratok jó része nem literálként áll a JSX-ben, hanem
- * konstansban (`FREE_COURSE_SUBMIT_LABEL`), objektum-mezőben
- * (`NOT_FOUND_PRIMARY_ACTION.label`), elágazásban
- * (`{submitting ? 'Küldés…' : 'Belépés'}`) vagy a szótárból
- * (`ctaLabel('free-course-request-link')`). A bejáró ezeket VÉGIGKÖVETI —
- * fájlhatáron át is —, mert különben a mérés éppen ott vakulna meg, ahol a
- * kód a legrendezettebb.
- *
- * CMS-FELÜLÍRÁS. A `cmsErtek?.label ?? KODBELI_FELIRAT` alakot a bejáró
- * megjelöli (`cmsFelulirhato`). Ez azért fontos, mert ilyenkor a kódbeli
- * javítás ÉLESBEN HATÁSTALAN: a szerkesztő mezője nyer. A jelenség
- * felderítése ennek a modulnak a dolga, az eldöntése (kód nyerjen-e) tulajdonosi
- * kérdés — lásd a G-UI2 őr `cms-felulirhato` blokkját.
- *
- * AMIT A BEJÁRÓ NEM LÁT (tudatos, dokumentált korlát)
- * ---------------------------------------------------
- * Ami futásidőben dől el (adatbázisból jövő cím, `cta.felirat.trim()` egy
- * CMS-blokkban, `${}`-behelyettesítés), az statikusan nem oldható fel. Az ilyen
- * helyeket a bejáró NEM felejti el: `dinamikusHelyek` néven visszaadja, és az őr
- * kiírja őket. A néma átugrás rosszabb volna, mint a hiányzó ellenőrzés.
- *
- * NÉVSZERINT ISMERT VAK FOLT (2026-08-17): a kurzusoldal lapon belüli
- * ugró-szakaszai `{ id: 'garancia', label: 'Garancia' }` alakú objektumok
- * (`app/(frontend)/kurzusok/[slug]/page.tsx`), amelyekből a `CourseJumpNav` és a
- * vásárlódoboz másodlagos linkje kap feliratot. Az objektum NEM CTA-alakú
- * (nincs `href` a `label` mellett), ezért a bejáró nem olvassa ki — a hívóhely
- * viszont ott van a `dinamikusHelyek` listán. Hogy a SZAKASZNÉV cselekvés-
- * feliratnak számít-e, tervezői kérdés; amíg nincs eldöntve, a `label` + `id`
- * pár szándékosan NEM CTA-alak (különben minden azonosítós adatszerkezet
- * bekerülne).
+ * CTA-forrásbejáró — a G-UI2 őr adatforrása: a termékből gyűjti a vevői
+ * cselekvés-feliratokat (JSX gyerekszöveg, aria-label, CTA-objektumok,
+ * konstansok). TypeScript AST-tal dolgozik; konstansokat fájlhatáron át követ.
+ * CMS-felülírás (`cmsFelulirhato`) és statikusan nem oldható helyek külön
+ * jelölve. A kurzusoldal ugró-szakasz-objektumok szándékos vakfolt.
  */
 import { readFileSync, readdirSync, type Dirent } from 'node:fs'
 import { dirname, join } from 'node:path'

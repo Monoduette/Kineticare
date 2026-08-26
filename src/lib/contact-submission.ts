@@ -1,30 +1,8 @@
 /**
- * Kapcsolat-űrlap (T-016) — SZERVER-oldali validáció a form-submissions
- * beküldésekre.
- *
- * A nyilvános POST /api/form-submissions végpontot a form-builder plugin
- * szolgálja ki, és a plugin a `submissionData` sorokat ellenőrzés nélkül
- * tárolja (a mező-szintű validate-je mindig átenged —
- * node_modules/@payloadcms/plugin-form-builder/dist/collections/FormSubmissions/index.js).
- * A kliensoldali validáció (src/app/(frontend)/kapcsolat/_lib/validation.ts)
- * így önmagában nem védelem: közvetlen REST-hívással üres mezőjű vagy
- * adatkezelési hozzájárulás (consentPrivacy) NÉLKÜLI beküldés is mentődött.
- * Ez a modul a szerveroldali autoritás — ugyanazokat a szabályokat és
- * magyar hibaüzeneteket tartalmazza, mint a kliens, a beküldési
- * (`{ field, value }` sorok) alakra vetítve. A kliensoldali validáció
- * változatlanul marad a gyors visszajelzésért; a két réteg szabályait
- * egyszerre kell módosítani.
- *
- * A szerződés a „Kapcsolat" űrlapé: a rendszerben jelenleg ez az EGYETLEN
- * nyilvános űrlap (az onInit seedeli, src/payload.config.ts). Ha a jövőben
- * más sémájú nyilvános űrlap kerül be, ezt a szerződést űrlaponként kell
- * szétbontani.
- *
- * A függvény szándékosan tiszta (a password-policy.ts mintájára): nem függ
- * Payloadtól, adatbázistól vagy környezettől, így mock nélkül unit-tesztelhető.
+ * Kapcsolat-űrlap szerver-oldali validáció (T-016). A form-builder plugin nem
+ * ellenőriz — ez az autoritás, ugyanazok a szabályok mint a kliensen. Tiszta
+ * modul, Payload-független. Jelenleg egy nyilvános űrlap (Kapcsolat).
  */
-
-/** Üzenet-minimum — a kliensoldali validation.ts MESSAGE_MIN_LENGTH értékével azonos. */
 export const CONTACT_MESSAGE_MIN_LENGTH = 10
 
 /** A kliensoldali validation.ts EMAIL_PATTERN reguláris kifejezésével azonos. */

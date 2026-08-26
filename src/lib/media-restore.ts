@@ -1,38 +1,6 @@
 /**
- * Önjavító kép-helyreállítás — a deploykor elveszett képfájlok visszatöltése.
- *
- * A PROBLÉMA (élesben mérve). A Payload local-storage a konténer lemezére ír
- * (src/lib/media-dir.ts), a Railway pedig minden deploynál ÜRES lemezt ad, ha a
- * feltöltési könyvtár nem csatolt köteten (Volume) él. Ilyenkor a média-rekord
- * megmarad a DB-ben, a fájl viszont eltűnik, és a `/api/media/file/<fájl>`
- * HTTP 500-at ad. Súlyosbító körülmény, hogy a seed és az onInit FÁJLNÉV alapján
- * dedupál (src/lib/home-seed.ts `ensureHomeImages`): mivel a rekord megvan, azt
- * hiszi, a kép is megvan — a hiba tehát magától SOSEM gyógyul.
- *
- * A MEGOLDÁS KÉT LÁBON ÁLL:
- *  1. a feltöltési könyvtár a csatolt Volume-ra mutat (`PAYLOAD_MEDIA_DIR`),
- *     így új fájl nem is veszik el;
- *  2. ez a modul FÁJL-SZINTEN ellenőriz induláskor: minden média-rekordnál
- *     megnézi, hogy a fájlja (és a méret-variánsai) ott vannak-e a lemezen, és
- *     a hiányzókat a repóban élő forrásokból ÚJRATÖLTI.
- *
- * A HELYREÁLLÍTÁS MEGŐRZI AZ ID-T. A rekordot `payload.update`-tel frissítjük
- * (nem törlés + újralétrehozás), mert a rá mutató relációk — kezdőlap-szekciók,
- * oldalak, termékek — az id-re hivatkoznak: új id esetén elszakadnának. Az
- * `overwriteExistingFiles: true` azért kell, hogy a Payload NE keressen „szabad"
- * fájlnevet (getSafeFileName), hanem pontosan a régi nevet írja vissza — így a
- * kép URL-je is változatlan marad. A méret-variánsokat (xs/sm/md/lg/og) a
- * Payload a feltöltéskor újragenerálja.
- *
- * PÁROSÍTÁS A FORRÁSSAL: a Media collection webp-re konvertál
- * (src/collections/Media.ts `formatOptions`), ezért a DB-beli `filename`
- * (pl. `sos-hands-board.webp`) kiterjesztés nélküli ALAPNEVE egyezik a
- * forrásfájl alapnevével (`sos-hands-board.jpg`). Ugyanez a kulcs él a
- * `ensureHomeImages` és a legacy-visszaépítő dedup-logikájában is.
- *
- * AMIT NEM TUD: a lányok saját, adminból feltöltött képeihez nincs repó-forrás —
- * azokat nem lehet pótolni. Ezeket a modul megszámolja és figyelmeztetésként
- * naplózza, de nem nyúl hozzájuk (a rekord és a hivatkozás sértetlen marad).
+ * Hiányzó médiafájlok visszatöltése repó-forrásból induláskor (Volume + dedup landmine).
+ * Rekord-id megmarad; overwriteExistingFiles. Saját admin-feltöltés pótolhatatlan.
  */
 
 import { existsSync } from 'node:fs'

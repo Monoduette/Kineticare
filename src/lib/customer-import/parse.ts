@@ -1,41 +1,9 @@
 /**
- * systeme.io → Kineticare vásárló-import: CSV-beolvasás és sor-normalizálás.
+ * systeme.io → Kineticare: CSV-beolvasás és sor-normalizálás (tiszta modul).
  *
- * KÜLSŐ FÜGGŐSÉG NÉLKÜL. A modul tiszta (nem érint adatbázist, hálózatot,
- * fájlrendszert), ezért mock nélkül unit-tesztelhető — a fájl beolvasása a
- * hívó (CLI) dolga, ide már a nyers szöveg érkezik.
- *
- * Amit a parser kezel (mind valós systeme.io-export alak):
- *  - UTF-8 BOM a fájl elején (Excel így menti),
- *  - idézőjeles mező vesszővel ÉS sortöréssel a mező belsejében,
- *  - kettőzött idézőjel (`""`) mint escape-elt idézőjel,
- *  - CRLF / LF / CR sorvég vegyesen,
- *  - konfigurálható elválasztó (alap: `,`; a magyar Excel `;`-t ír).
- *
- * Oszlop-hozzárendelés NÉV szerint történik (a fejlécsor alapján), mert az
- * export oszlopsorrendje verziónként változik. A név egyeztetése kis-/nagybetű-
- * és szóköz-érzéketlen; a hívó felülírhatja (`emailColumn`, `nameColumn`,
- * `coursesColumn`).
- *
- * ÖSSZEFÉSÜLÉS: az exportok kétféle alakot használnak ugyanarra — egy cellában
- * több kurzus (`|` vagy `;` elválasztóval), VAGY ugyanaz az e-mail több sorban,
- * soronként egy kurzussal. Mindkettőt ugyanarra a normalizált alakra hozzuk:
- * e-mailenként EGY sor, uniózott kurzuslistával.
- *
- * HIBAKEZELÉS: a hibás sor (üres/rossz e-mail, hiányzó oszlop) nem állítja meg
- * a feldolgozást — kimarad, és bekerül az `issues` listába, hogy a futás végén
- * a mérlegben megjelenjen. Csendes kihagyás sehol nincs.
- *
- * KÉT BEMENETI ALAK (`format`):
- *  - `generic` — a korábbi, kurzusnév-oszlopos alak (`Email,Name,Courses`),
- *  - `systeme` — a systeme.io kontakt-export (`Email, First name, Last name,
- *    Tag, Date Registered`): KÉT név-oszlop, vesszővel felsorolt CÍMKÉK egy
- *    cellában, és regisztrációs dátum. A címkék jelentését (vásárlás /
- *    visszatérítés / érdeklődő / ismeretlen) a `tags.ts` szabálytáblája adja.
- *
- * Alapértelmezés: `auto` — a systeme.io-alakot a vezetéknév- ÉS a címke-oszlop
- * EGYÜTTES jelenléte azonosítja; minden más bemenet marad `generic`, tehát a
- * korábbi importok viselkedése változatlan.
+ * Kezeli: UTF-8 BOM, idézőjeles mezők, CRLF/LF, konfigurálható elválasztó.
+ * Oszlop-hozzárendelés név szerint; e-mailenként egy sor, uniózott kurzuslista.
+ * Hibás sor → `issues`, nem áll meg. `format`: generic | systeme | auto.
  */
 
 import { collapseWhitespace, normalizeKey, UTF8_BOM } from './normalize'
@@ -420,24 +388,7 @@ function containsWords(haystack: string, needle: string): boolean {
   return ` ${haystack} `.includes(` ${needle} `)
 }
 
-/**
- * A megjelenő név összeállítása a systeme.io KÉT név-oszlopából.
- *
- * A régi rendszerben a két oszlop össze-vissza van töltve: van, ahol a
- * keresztnév az elsőben és a vezetéknév a másodikban, van, ahol fordítva, és
- * van, ahol az egyik oszlop hordozza a TELJES nevet, a másik üres — vagy éppen
- * ugyanazt ismétli. A szabály ezért nem próbálja kitalálni, melyik a vezeték-
- * és melyik a keresztnév (magyar névből ez megbízhatóan nem következik):
- *
- *  1. üres oszlop → a másik érték megy tovább,
- *  2. azonos érték → egyszer szerepel,
- *  3. az egyik érték TARTALMAZZA a másikat (szó-szinten) → a bővebb marad,
- *  4. különben a kettő összefűzve, a FÁJL oszlopsorrendjében.
- *
- * Így egyetlen névtöredék sem vész el, és duplikátum sem keletkezik. A
- * kis-/nagybetűs írásmódot szándékosan NEM javítjuk: a „de Vries" típusú
- * neveket az automatikus nagybetűsítés elrontaná.
- */
+/** systeme.io két névoszlop → megjelenő név (üres/azonos/tartalmazás/összefűzés). */
 export function composeCustomerName(first: string, last: string): string {
   const firstName = collapseWhitespace(first)
   const lastName = collapseWhitespace(last)

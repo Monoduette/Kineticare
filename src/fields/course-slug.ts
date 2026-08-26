@@ -55,26 +55,9 @@ function autoSlugFrom(source: unknown, fallback: unknown): string | null {
 }
 
 /**
- * Slug-generálás és ütközés-feloldás.
- *
- * A szabályok sorrendje (a fenti a döntő):
- * 1. Változatlan slug → nincs teendő és nincs lekérdezés. A products collection
- *    AUTOSAVE-es piszkozatot használ, tehát a hook szerkesztés közben
- *    másodpercenként futhat.
- * 2. Kézzel átírt slug → az marad (slug-alakra normalizálva, ütközés esetén
- *    sorszámmal).
- * 3. Nincs még slug → a `displayTitle` → `sku` láncból generálódik.
- * 4. Van már slug, de a mentendő adatban nem érkezett (részleges API-frissítés)
- *    → marad. KÖZZÉTETT kurzus webcíme sosem változhat magától: az élő URL
- *    törne el alatta.
- * 5. KIZÁRÓLAG piszkozat (draft) állapotú kurzusnál KÖVETI a slug a címet,
- *    amíg automatikus (azaz a korábbi címből generált). Enélkül az autosave a
- *    félig begépelt címből fagyasztaná be a webcímet („ke" a
- *    „Kézrehabilitáció otthon" helyett) — kézzel írt slugot viszont sosem ír
- *    felül. Az ARCHIVÁLT kurzus slugja ugyanúgy fagyott, mint a publikálté:
- *    az archivált oldal nyilvánosan kiszolgált, élő URL (a lejárt
- *    hozzáférésű vevők linkjei is ide mutatnak), és a régi slugról nincs
- *    átirányítás — a cím-követés itt néma 404-et okozna.
+ * Slug hook: változatlan → skip; kézi slug marad; üres → displayTitle→sku;
+ * részleges update → meglévő marad (publikált/archivált URL fagyott). Draftnál
+ * automatikus slug követi a címet, kézi slugot nem ír felül.
  */
 const generateCourseSlug: FieldHook = async ({ data, originalDoc, req, value }) => {
   const typed = typeof value === 'string' ? value.trim() : ''

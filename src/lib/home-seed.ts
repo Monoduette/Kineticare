@@ -1,17 +1,6 @@
 /**
- * Kezdőlap-alapállapot (home-seed) — a landing tartalmi képei a Médiatárba és
- * a `kezdolap` oldal alap-szekciósora (docs/szekcio-rendszer-terv.md 6. pont).
- *
- * A modul KÉT helyről fut:
- *  - a seed-scriptből (npm run seed, SEED_SCOPE=kezdolap hatókörrel is),
- *  - a Payload `onInit`-jéből minden indulásnál (payload.config.ts) — az
- *    ensureContactForm mintájára, mert a kezdőlap alapállapota telepítési
- *    előfeltétel, nem kézi lépés.
- *
- * Minden művelet idempotens: meglévő képet és KITÖLTÖTT szekciósort SOHA nem
- * ír felül (az már szerkesztői munka) — ismételt futása üres no-op olvasás.
- * Ezért került ki a seed-scriptből ide: a payload.config nem importálhatja a
- * seed-scriptet (az importálja a configot — kör lenne).
+ * Kezdőlap seed: képek + `kezdolap` layout. Fut: `npm run seed` és Payload onInit.
+ * Idempotens — kitöltött layoutot és meglévő képet nem ír felül.
  */
 
 import { existsSync } from 'node:fs'

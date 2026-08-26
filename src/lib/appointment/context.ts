@@ -38,28 +38,8 @@ export interface AppointmentFormToggle {
 }
 
 /**
- * Látszik-e az ŰRLAP ebben az időpontkérő szekcióban?
- *
- * MIÉRT `!== false` ÉS NEM `=== true`: a mező nem kötelező (`boolean | null`),
- * tehát HIÁNYOZHAT. Aki hiányzó értékkel érkezik, az nem azt mondta, hogy
- * „ne legyen űrlap" — csak nem nyilatkozott. A `=== true` vizsgálat ezért néma
- * tartalomvesztés lenne: egy mezőt kihagyó seed, JSON-import vagy kézzel
- * összerakott blokk-objektum eltüntetné az űrlapot anélkül, hogy bárki kérte
- * volna. Így viszont az űrlap eltüntetése mindig SZÁNDÉKOS: kizárólag
- * kifejezett `false` kapcsolja ki.
- *
- * A már MENTETT sorokat ez nem érinti: a migráció `ADD COLUMN … boolean
- * DEFAULT true`, és a Postgres a nem-volatilis alapértéket visszatölti a
- * meglévő sorokba (helyben mérve: a művelet után a régi sor értéke `true`,
- * nem `NULL`). A kód-oldali szabály tehát a második védvonal, nem az első.
- *
- * A tulajdonos döntése (2026-08-17): a /kapcsolat lapon az időpontot telefonon
- * egyeztetik, nem üzenetben, ezért ott ez a kapcsoló `false`. A szekció ettől
- * nem tűnik el: a rendelők címe, a telefonszámok és az e-mail-cím marad, és a
- * telefon lesz az egyetlen út. Ez az NN/g kapcsolat-oldal irányelvének a
- * MEGENGEDETT iránya: „Offer a contact form only in addition to telephone
- * numbers, not as a replacement" — az űrlap a kiegészítő, a telefonszám a
- * kötelező elem (https://www.nngroup.com/articles/contact-us-pages/).
+ * Időpontkérő űrlap láthatósága: `urlapMutatasa !== false` (hiányzó = látszik).
+ * Kifejezett `false` kapcsolja ki; /kapcsolaton telefon az elsődleges út.
  */
 export function appointmentShowsForm(
   block: AppointmentFormToggle | null | undefined,

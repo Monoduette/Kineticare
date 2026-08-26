@@ -1,74 +1,13 @@
 /**
- * Legacy tartalom-visszaépítő script — a RÉGI kineticare.hu (systeme.io) archivált
- * tartalmát tölti be a Payload CMS-be, a seed.ts mintáját követve, TELJESEN
- * idempotens módon:
- *  - média: a `legacy-content/kepek/` mappába bemásolt archív képekből,
- *    fájlnév-alapú deduppal (a feltöltés webp-re konvertál, ezért a kiterjesztés
- *    nélküli alapnév szerint keresünk);
- *  - oldalak (pages): `kezdolap`, `rolunk`, `szolgaltatasok` — slug alapján UPSERT
- *    (létező oldal mezőit frissíti: a cél a visszaállítás, nem a kihagyás);
- *  - termékek (products): „Otthoni KézRehab Program" (fizetős, 79 500 Ft) és
- *    „SOS Kézrelax villámkurzus" (ingyenes lead-magnet) — sku alapján UPSERT;
- *  - menük: Szolgáltatások / Rólunk / Kapcsolat menüpontok a meglévő seed
- *    menüpontok mellé, label-alapú deduppal;
- *  - vélemények (testimonials): a régi oldalakon megjelent 14 VALÓS páciens-
- *    visszajelzés — név + a szöveg eleje alapján UPSERT; a kezdőlapra szánt
- *    3 kiemelt (featured) rövid változatot (shortQuote) is kap, ami mindig a
- *    teljes idézet betűhív, összefüggő RÉSZLETE (lásd a testimonials-blokk
- *    kommentjét).
+ * Legacy kineticare.hu tartalom visszaépítése Payload CMS-be (idempotens UPSERT).
+ * Média: legacy-content/kepek/; oldalak slug alapján; termékek sku alapján.
  *
- * Többször futtatva sem duplikál: minden entitást egyedi kulcs (fájlnév / slug /
- * sku / label / név+szövegkezdet) alapján keres meg, és csak a hiányzót hozza
- * létre, a létezőt (oldal/termék/vélemény esetén) — külön kapu mögött — az
- * archív tartalommal frissíti.
+ * FIGYELEM: sku = vevőnek megjelenő terméknév (nem gépi cikkszám), lásd courses.ts.
  *
- * FIGYELEM — az `sku` ebben a repóban a VEVŐNEK MEGJELENŐ TERMÉKNÉV, nem gépi
- * cikkszám. A plugin `useAsTitle: 'sku'` beállítással fut
- * (src/plugins/ecommerce.ts); a kurzuskártya és a kurzusoldal címe a
- * `displayTitle` → `sku` lánc (src/lib/courses.ts `courseTitle`), tehát üres
- * kurzuscím mellett az sku a megjelenő név, és az orders items `titleSnapshot`
- * mezője MINDIG az sku-t rögzíti — vagyis a megrendelésre és a számlára is ez
- * kerül. Ezért a termékek sku-ja ember-olvasható név („Otthoni KézRehab
- * Program", „SOS Kézrelax villámkurzus"); gépi azonosító (pl.
- * „KEZREHAB-ONLINE-001") a vevő számláján is így jelenne meg. Az sku egyben az
- * idempotencia-kulcs is (keresés + upsert), ezért a script mindenhol pontosan
- * ugyanezt az értéket használja.
- *
- * Futtatás (DATABASE_URI és PAYLOAD_SECRET környezeti változókkal — lokálisan
- * vagy Railway shellben):
- *   npm run seed:legacy
- *     → PRÓBAFUTÁS (dry-run, ez az ALAPÉRTELMEZÉS): a script semmit nem ír,
- *       csak kiírja entitásonként, mit tenne, és a végén összesít.
- *   LEGACY_RESTORE_CONFIRM=igen npm run seed:legacy
- *     → tényleges írás: a HIÁNYZÓ entitások létrejönnek.
- *   LEGACY_RESTORE_CONFIRM=igen LEGACY_OVERWRITE=igen npm run seed:legacy
- *     → a MEGLÉVŐ oldalak/termékek felülírása is megtörténik.
- *   LEGACY_RESTORE_CONFIRM=igen LEGACY_ARCHIVE_DEMO=igen npm run seed:legacy
- *     → a seed.ts demó-tartalmának depublikálása (archiválás/draft/rejtés,
- *       törlés SOHA — lásd lentebb).
- *
- * Miért kell megerősítés? A script slug/sku/név-egyezésnél FELÜLÍRJA a meglévő
- * dokumentumot (tartalom, cím, SEO, ár, státusz), az éles adatbázisról pedig
- * jelenleg NINCS mentés (CLAUDE.md „Üzemeltetési tanulságok", feladatlista C14) —
- * a felülírás tehát visszavonhatatlan. Ezért az alapértelmezés a dry-run, a
- * létező dokumentum felülírása pedig külön kapun (LEGACY_OVERWRITE) múlik.
- *
- * Demó-tartalom (LEGACY_ARCHIVE_DEMO): a seed.ts demó-tartalma a valódi mellett
- * maradna (a `DEMO-KEZREHAB-001` termék fizetős kurzuskártyaként, a
- * „bemutatkozas" oldal és a menüpontja a fejlécben), ezért a script kérésre
- * DEPUBLIKÁLJA: termék → archived, oldal → draft, menüpontok → visible=false.
- * Törlés soha nem történik, így a lépés egy admin-kattintással visszafordítható.
- *
- * Tudatosan KIMARAD (az archívumból nem épül vissza):
- *  - az 5 angol lorem-ipsum blogposzt (systeme.io sablon-töltelék) és a /search;
- *  - a funnel/checkout/köszönő oldalak (kezrehab-penztar, typ-*, hamarosan, oto-*)
- *    — az új oldalnak saját checkout-folyamata van (/penztar, Barion);
- *  - a kapcsolat oldal — az új oldalon dedikált /kapcsolat route űrlappal létezik;
- *  - a jogi oldalak (adatvedelem, aszf, impresszum): NEM az archívumból épülnek
- *    vissza, hanem az ügyvéd 2026-os, szó szerinti szövegéből — a tartalom a
- *    `src/lib/legal-content.ts` modulban (+ `legal-source/*.txt`) él, a három
- *    oldalt pedig a tulajdonosi tartalom-javító script hozza létre
- *    (src/scripts/apply-owner-content.ts, 6. javítás), CSAK ha még nem létezik.
+ *   npm run seed:legacy                                    # dry-run (alapértelmezés)
+ *   LEGACY_RESTORE_CONFIRM=igen npm run seed:legacy        # hiányzók létrehozása
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_OVERWRITE=igen …    # meglévő felülírás
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_ARCHIVE_DEMO=igen … # seed demó depublikálás
  */
 
 import path from 'node:path'
@@ -1563,34 +1502,9 @@ const buildSzolgaltatasokLayout = (media: OldalLayoutMedia = {}): NonNullable<Pa
 // ---------------------------------------------------------------------------
 
 /**
- * A /kapcsolat lap SZEKCIÓSORA.
- *
- * FIGYELEM, HOGY MŰKÖDIK: a /kapcsolat dedikált Next.js-route (nem CMS-oldal),
- * de a route beolvassa az ILYEN SLUGÚ CMS-oldal `layout` mezőjét, és azt a
- * szekció-rendszerrel rendereli (lásd src/app/(frontend)/kapcsolat/page.tsx).
- * Ennek az oldalnak tehát a SZEKCIÓSORA jelenik meg a lapon; a `content`
- * (rich text), a `title` és a `heroImage` NEM — azokat a route saját fejléce és
- * az üzenetküldő szekció adja. Ezért van az oldal a sitemapból is kihagyva
- * (az útvonalat a statikus lista már hirdeti).
- *
- * A tartalom a repóban dokumentált, VALÓS adatokból áll: a két rendelő címe és
- * az árlista a /szolgaltatasok lapról (arlistaNodes), a telefonszámok a /rolunk
- * szakember-blokkjából, az e-mail-cím a láblécből (FOOTER_CONTACT_EMAIL).
- *
- * Az időpont-sávok között SZÁNDÉKOSAN nincs hétvégi sáv: a repóban semmi nem
- * igazolja, hogy hétvégén is van rendelés, egy nem tartható sáv felkínálása
- * pedig ígéret lenne. Ha van hétvégi rendelés, a sávot az adminban egy sorral
- * lehet hozzáadni.
- */
-/**
- * A tulajdonos pontosítása (2026-08-17): a /kapcsolat lapon IGENIS lehet
- * üzenetben időpontot foglalni, tehát az időpontkérő ŰRLAP MARAD. Ami kikerül,
- * az a lap alján álló ÁLTALÁNOS „Írj nekünk üzenetet" űrlap — azt a route
- * rendereli, lásd src/app/(frontend)/kapcsolat/page.tsx.
- *
- * A blokk `urlapMutatasa` kapcsolója megmarad (az adminban ki lehet kapcsolni,
- * ha valaha mégis csak telefonos út kell), de itt BE van kapcsolva — ez az
- * alapértelmezés, ezért külön nem is írjuk ki.
+ * /kapcsolat CMS layout: időpontkérő szekció (route a `layout`-ot rendereli, nem
+ * a `content`-et). Valós címek/árak a repóból; hétvégi sáv szándékosan nincs.
+ * Időpontkérő űrlap marad; az általános üzenetűrlapot a route adja külön.
  */
 const KAPCSOLAT_IDOPONTKERES = {
   blockType: 'appointment' as const,
@@ -1629,57 +1543,7 @@ const KAPCSOLAT_IDOPONTKERES = {
 }
 
 /**
- * A /kapcsolat SZAKEMBER-szekciója (tulajdonosi kérés, 2026-08-16: „lányok
- * elérhetősége kell a kapcsolat menüpontba is").
- *
- * ═══ MIÉRT AZ IDŐPONTKÉRŐ UTÁN ÁLL ═══
- * A lap feladata, hogy a látogató ELÉRJEN VALAKIT. Az NN/g kapcsolat-oldal
- * irányelve szerint a telefonszám kötelező tartalom, és az űrlap csak MELLETTE
- * állhat, nem helyette („Offer a contact form only in addition to telephone
- * numbers, not as a replacement" —
- * https://www.nngroup.com/articles/contact-us-pages/). Ez a lapon MÁR
- * teljesül: az időpontkérő szekció bal hasábja kiírja mindkét rendelő címét,
- * mindkét telefonszámot (névvel, kattinthatóan) és az e-mail-címet — mobilon az
- * űrlap FÖLÖTT. A számok tehát nincsenek űrlap mögé rejtve.
- *
- * Amit viszont az a lista NEM mond meg: KI a két név, és melyikükhöz tartozik a
- * panaszom. Ez a szekció pontosan erre a kérdésre válaszol, ezért közvetlenül a
- * kérdést felvető lista UTÁN áll — ugyanaz a felállás, mint a /szolgaltatasok
- * lapon („Kihez jössz, ha időpontot kérsz?"), és így a lap elsődleges feladata
- * (az időpontkérés) sem csúszik lejjebb. Az arc és a rövid bemutatkozás nem
- * dísz: az NN/g fotó-kutatásában a valódi munkatársak portréját a felhasználók
- * hosszabban nézték, mint a mellette álló életrajzot
- * (https://www.nngroup.com/articles/photos-as-web-content/), a hitelesség-kutatás
- * 3. tényezője pedig kifejezetten azt kéri, hogy látszódjon, KI végzi a munkát
- * (https://www.nngroup.com/articles/trustworthy-design/).
- *
- * ═══ HÁROM ELTÉRÉS A MÁSIK KÉT LAPTÓL ═══
- *  1. A FELVEZETŐ kapcsolat-fókuszú, nem bemutatkozás: a /rolunk-on ez a szekció
- *     a csapatot mutatja be, itt viszont a látogató már elérni akar valakit,
- *     ezért a szöveg a VÁLASZIDŐK különbségét mondja ki (visszahívás két
- *     munkanapon belül vs. azonnali hívás).
- *  2. A „szakmai háttér" hivatkozás a /rolunk harmonikájára megy
- *     (SZAKMAI_HATTER_URL), mert ezen a lapon nincs önéletrajz — lapon belüli
- *     horgony törött linket adna.
- *  3. Az írásos időpontkérés LAPON BELÜLI horgony (`#idopontkeres`), nem
- *     `/kapcsolat`: az önmagára mutató link a látogatót sehova nem viszi, csak
- *     újratölti a lapot („A link to the document you are already looking at is
- *     redundant and confusing… the current document should never link to
- *     itself" — https://www.w3.org/wiki/Creating_multiple_pages_with_navigation_menus).
- *     Horgonyként viszont valódi dolga van: a szekció ALJÁRÓL visszaugrik az
- *     űrlapra, amit a látogató addigra már elgörgetett — az NN/g szerint a
- *     lapon belüli ugrás haszna pont a kis képernyőn nő
- *     (https://www.nngroup.com/articles/in-page-links-content-navigation/).
- *     A felirat változatlanul a §3.2 szótár #24 sora, mert a cselekvés
- *     ugyanaz, csak a cél kifejezése lapon belüli (WCAG 2.2 · 3.2.4).
- *
- * A rendelési idő és a helyszín szakemberenként továbbra sincs a repóban. Az
- * `availability` mező ezért NEM nyitvatartást ír (az kitalált adat lenne),
- * hanem a valódi folyamatot: „A hívás során megbeszélitek, melyik rendelőbe
- * érdemes jönnöd." A szöveget a közös `szakemberSzekcio` építő adja (lásd
- * ugyanebben a fájlban, az `availability` beállításánál), a tulajdonos
- * 2026-08-17-i válasza alapján — ez a komment 2026-08-20-ig még az azelőtti,
- * ÜRES állapotot írta le, ami a kód olvasóját félrevezette.
+ * /kapcsolat szakember-szekció: időpontkérő után, közvetlen elérhetőség fókusz.
  */
 const kapcsolatSzakemberSzekcio = (
   media: OldalLayoutMedia = {},
@@ -1698,15 +1562,7 @@ const kapcsolatSzakemberSzekcio = (
     },
   })
 
-/**
- * A /kapcsolat szekciósora: időpontkérő + szakember-elérhetőség.
- *
- * A sávritmus: a lapfej fehér, az időpontkérő világoskék (`tint`), a
- * szakember-szekció újra fehér — és az utána következő üzenetküldő szekció is
- * fehér. Ez SZÁNDÉKOS: a két fehér szakasz EGY régiót alkot („a másik két út:
- * hívj minket, vagy írj nekünk"), a sávváltás pedig a régióhatárt jelöli, nem a
- * szekcióhatárt (belső-oldali kutatás B2.2).
- */
+/** /kapcsolat layout: időpontkérő (tint) + szakember (fehér). */
 const buildKapcsolatLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layout']> => [
   KAPCSOLAT_IDOPONTKERES,
   kapcsolatSzakemberSzekcio(media),
@@ -2111,19 +1967,8 @@ const upsertPage = async (payload: Payload, input: PageInput): Promise<number | 
 }
 
 /**
- * Az oldal SZEKCIÓSORÁNAK (Pages.layout) idempotens feltöltése.
- *
- * A védő-minta a kezdőlapé (src/lib/home-seed.ts `ensureHomeLayout`), és itt
- * még szigorúbb: a script a MEGLÉVŐ szekciósort SOHA nem írja felül — sem a
- * LEGACY_OVERWRITE kapuval, sem anélkül. Ok: a szekciósor a szerkesztő munkája
- * (Pages → Szekciók), amit a lányok az adminban raktak össze; a tulajdonosi
- * elvárás szerint a feltöltés EGYSZERI, utána minden tartalom az adminé.
- *
- * Három eset:
- *  - nincs ilyen oldal → kihagyás (az oldalt az `upsertPage` hozza létre; a
- *    próbafutásban ez természetes, hiszen ott semmi nem íródik),
- *  - van, de ÜRES a szekciósora → megkapja az alap-szekciósort,
- *  - van szekciósora → ÉRINTETLEN marad.
+ * Oldal layout idempotens feltöltése — meglévő szekciósort SOHA nem ír felül
+ * (csak üres layoutot tölt ki).
  */
 const ensurePageLayout = async (
   payload: Payload,

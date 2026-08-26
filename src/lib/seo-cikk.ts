@@ -225,70 +225,9 @@ function subjectNode(subject: ArticleSubject | undefined): Record<string, unknow
 }
 
 /**
- * A cikkoldal strukturált adata: EGY entitás, `['Article', 'MedicalWebPage']`
- * kettős típussal.
- *
- * MIÉRT KETTŐS TÍPUS ÉS NEM KÉT NODE. A cikkoldal egyetlen dolgot ír le; két
- * külön ld+json blokk ugyanarról a lapról KÉT entitásnak látszana a gépi
- * olvasó szemében (ugyanaz a hiba, amit a kezdőlapon a duplikált
- * `Organization` okozott — a kurzusoldali `['Course', 'Product']` a repó
- * bevált precedense). A `MedicalWebPage` a `WebPage` altípusa, a `WebPage` és
- * az `Article` egyaránt `CreativeWork`-leszármazott, tehát a kettős típus
- * érvényes. Az `Article`-tag viszi a Google Article rich result jogosultságát,
- * a `MedicalWebPage`-tag pedig két dolgot ad:
- *
- * 1. kimondja a gépi olvasónak, hogy egészségügyi (YMYL) tartalom — E-E-A-T
- *    kontextus;
- * 2. ÉRVÉNYESSÉ TESZI a `lastReviewed` és a `reviewedBy` tulajdonságot, mert
- *    azok a schema.org szerint `WebPage`-tulajdonságok. Pusztán `Article`
- *    típuson mindkettő érvénytelen lenne.
- *
- * A KÉT DÁTUM JELENTÉSE KÜLÖN VAN VÁLASZTVA:
- * - `dateModified` = a dokumentum utolsó módosítása (CMS `updatedAt`),
- * - `lastReviewed` = az utolsó SZAKMAI ellenőrzés napja (`posts.reviewedAt`).
- *
- * A kettő nem keverhető: egy vessző-javítás nem szakmai ellenőrzés. Le nem
- * ellenőrzött cikken `lastReviewed` egyszerűen nincs — ellenőrzés-dátumot
- * ellenőrzés nélkül kiírni tilos.
- *
- * SZERZŐ. Kitöltött, névvel rendelkező user → `Person` (soha nem a kiadó
- * Organization, soha nem `Person{name: SITE_NAME}`). Üres vagy populálatlan
- * szerzőnél NINCS `author` kulcs: a kereső ne higgye, hogy a Kineticare
- * szervezet írta a lapot, és ne kapjon kitalált személyt sem. Az
- * Organization csak a `publisher` (a kiadó), soha nem szerző-tartalék.
- *
- * A CIKK TÁRGYA (`about`) ÉS A MÉRT KULCSSZAVAK (`keywords`) — FELÜLVIZSGÁLVA
- * 2026-08-21. Ez a modul korábban kihagyta az `about`-ot, azzal az indokkal,
- * hogy „gépi formában kódolt klinikai állítás lenne". A felülvizsgálat két
- * dolgot választ szét, amit az akkori indoklás egybemosott:
- *
- * - Klinikai ÁLLÍTÁS az volna, ha a `MedicalCondition` node a kezeléseket, a
- *   tüneteket vagy a vizsgálatokat is kódolná (`possibleTreatment`,
- *   `signOrSymptom`, `typicalTest`). Ilyen mező itt NINCS, és a `subjectNode`
- *   szerkezetileg nem is tud ilyet előállítani.
- * - Az `about` értéke a cikk TÁRGYA entitásként, `@type` + `name` alakban:
- *   pontosan az, amiről a látható H1 és a törzs szól. A schema.org szerint az
- *   `about` a `CreativeWork` tulajdonsága, várt értéke `Thing`, tehát a
- *   `MedicalCondition` és a `MedicalSignOrSymptom` egyaránt érvényes érték
- *   (ellenőrizve 2026-08-21, https://schema.org/about).
- *
- * A Google irányelve ugyanezt kéri: „Your structured data must be a true
- * representation of the page content" — a téma-entitás igaz és a lapon
- * látható, a klinikai részletek kódolása viszont már nem lenne az.
- *
- * A két mező FORRÁSA SZÉT VAN VÁLASZTVA. A `keywords` a CMS `seoKeywords`
- * mezőjéből jön (a szerkesztő tölti, az importer a mért táblából tölti a
- * nyolc ismert slughoz). Az `about` továbbra is a Monid-mérés
- * (`src/lib/tudastar/seo-kulcsszavak.ts`) `targy` mezője, mert a
- * betegség-entitás nem szerkesztői kulcsszó. Üres CMS-mezőnél a `keywords`
- * kulcs kimarad: H1-ből vagy slug alapján kitalálni tilos.
- *
- * AMI TOVÁBBRA IS TUDATOSAN NINCS BENNE: `citation` (a Lexical-fából nem
- * azonosítható megbízhatóan a forrásjegyzék; a hibás kinyerés rosszabb, mint a
- * hiány), `aggregateRating`/`review` (nincs értékelés-adat, kitalálni tilos),
- * `speakable`, `medicalAudience` és `medicalSpecialty` (nincs látható
- * megfelelőjük a lapon), valamint a `MedicalCondition` bármely klinikai
- * altulajdonsága.
+ * Cikkoldal JSON-LD: egy node `['Article', 'MedicalWebPage']` típussal.
+ * Csak látható tartalom; üres szerzőnél nincs author. dateModified ≠ lastReviewed.
+ * keywords: CMS seoKeywords; about: mért tárgy — kitalálni tilos.
  */
 export function postArticleJsonLd(args: {
   post: ArticleSeoPost
@@ -339,22 +278,8 @@ export function postArticleJsonLd(args: {
 }
 
 /**
- * CMS-oldal (A-hub, gyökér slug) strukturált adata: EGY `MedicalWebPage`.
- *
- * MIÉRT NEM ARTICLE. A hub a `pages` collectionben él (`/inhuvelygyulladas`),
- * nem a Tudástár `/blog/` útvonalán. Az `Article` Google rich result
- * blogbejegyzésre szól; a hubra kitéve a kereső kétféle dokumentumnak
- * látná ugyanazt a tartalmat. A `MedicalWebPage` a `WebPage` altípusa, és
- * érvényessé teszi a `reviewedBy` / `lastReviewed` tulajdonságot
- * (https://schema.org/reviewedBy, https://schema.org/lastReviewed).
- *
- * A szerző-szabály azonos a cikkoldaléval: kitöltött user → Person; üres
- * mező → nincs author kulcs; az Organization csak a publisher.
- *
- * A `keywords` a CMS `seoKeywords` mezőjéből jön, ha a szerkesztő kitöltötte.
- * Üres mezőnél a kulcs kimarad — slug alapján vagy a H1-ből kitalálni tilos.
- * Az `about` szándékosan nincs: az a Tudástár mért táblájából jön, a
- * CMS-oldalnak nincs ilyen mérése.
+ * CMS hub-oldal JSON-LD: egy `MedicalWebPage` (nem Article). keywords: CMS seoKeywords;
+ * about nincs — a hubnak nincs mért tárgya. Szerző-szabály mint a cikkoldalnál.
  */
 export function cmsPageJsonLd(args: {
   page: ArticleSeoPost
@@ -423,20 +348,7 @@ export function postFaqItems(faq: ReadonlyArray<PostFaqSource> | null | undefine
 }
 
 /**
- * FAQPage JSON-LD a cikk GYIK-jéhez — üres listánál `undefined`.
- *
- * Az `undefined` nem formalitás: nulla elemű GYIK meghirdetése pontosan az az
- * eltérés a látható tartalomtól, ami miatt a keresők elvetik a strukturált
- * adatot. A hívó komponens ilyenkor sem szekciót, sem sémát nem renderel.
- *
- * ELVÁRÁS-KEZELÉS, KIMONDVA: a Google a FAQ rich resultot 2023 augusztusa óta
- * csak „well-known, authoritative government and health websites" körben
- * jeleníti meg (ellenőrizve 2026-08-21). A Kineticare-nek tehát a találati
- * kártya NEM cél; a FAQPage haszna a GEO-oldal: a kérdés-válasz pár a
- * leggyakrabban kivonatolt egység az AI-válaszokban.
- *
- * A node előállítása a KÖZÖS `faqPageJsonLd`-re megy (kezdőlap, kurzusoldal,
- * FaqBlock): egy séma-alak, egy karbantartási pont.
+ * FAQPage JSON-LD — üres listánál `undefined`. A látható GYIK és a séma közös forrásból.
  */
 export function postFaqJsonLd(
   items: ReadonlyArray<PostFaqItem>,

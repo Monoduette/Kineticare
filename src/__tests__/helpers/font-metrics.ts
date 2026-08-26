@@ -1,33 +1,6 @@
 /**
- * BETŰ-METRIKA A REPÓ SAJÁT WOFF2 FÁJLJAIBÓL — mérés, nem becslés.
- *
- * MIÉRT LÉTEZIK. A `reflow-320.test.ts` őr azt méri, elfér-e a leghosszabb
- * tördelhetetlen szó a hasábjában 320 és 390 px-es nézetablakon. Ehhez a szó
- * TÉNYLEGES pixel-szélessége kell, nem átlagos karakterszélességből becsült
- * érték: a `tokens.css` „Mérték" szakaszának 0,4542em-es átlaga a SOROK
- * hosszára jó (n = 5 981 karakter), egyetlen konkrét szóra viszont nem — a
- * „Felelősségkorlátozás" 20 karaktere csupa keskeny (l, é, i) és csupa széles
- * (ö, g, k) glifát vegyít, az átlag ezen ±10%-ot téved.
- *
- * MIT CSINÁL. Kiolvassa a `public/fonts/*.woff2` metszetek `head`, `hhea`,
- * `hmtx` és `cmap` tábláját, és karakterenként adja vissza a valódi
- * glif-előretolást (advance width) em-ben. A woff2 egy brotli-tömörített
- * sfnt-konténer; a Node beépített `zlib.brotliDecompressSync`-je kicsomagolja,
- * külső függőség nélkül. A `glyf`/`loca` táblák woff2-transzformáltak, de
- * azokra NINCS szükség: a szélességet a `hmtx` hordozza, ami legfeljebb az
- * (opcionális) 1-es transzformációval érkezik — annak is a 0. bájt utáni
- * `advanceWidth` tömbje az első mező.
- *
- * FORRÁS: W3C WOFF File Format 2.0 (ajánlás, 2018-03-01),
- * https://www.w3.org/TR/WOFF2/ — 4. („WOFF2 Header"), 5. („Table Directory"),
- * 5.1 („Transformed hmtx table format") és 6. („Table Data") szakasz;
- * OpenType spec `cmap` (formátum 4 és 12), `head`, `hhea`, `hmtx` táblái,
- * https://learn.microsoft.com/typography/opentype/spec/
- *
- * MIT NEM MODELLEZ. Kerningpárokat (`kern`/`GPOS`) és `letter-spacing`-et nem
- * ad hozzá — a kerning a latin metszeteken tized-pixeles nagyságrend, és
- * NEGATÍV irányba visz, tehát az őr így a biztonságos (kissé bővebb) oldalon
- * téved. Ahol a CSS betűközt ír elő, azt a hívó adja hozzá.
+ * WOFF2 font-metrika olvasó teszt-segéd: brotli kicsomagolás, cmap/gvar/avar
+ * feldolgozás, előretolás számítás változó betűkhöz.
  */
 
 import { readFileSync } from 'node:fs'

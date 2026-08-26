@@ -12,27 +12,8 @@ import {
 } from './validation'
 
 /**
- * Időpontkérés — beküldés a form-builder végpontjára.
- *
- * API-szerződés — SZÁNDÉKOSAN AZONOS a kapcsolat- és a hírlevél-űrlapéval,
- * mert ugyanazt a plugin-végpontot hívja (párhuzamos beküldési út NINCS):
- * - Végpont: `POST /api/form-submissions` (a @payloadcms/plugin-form-builder
- *   nyilvános create-je).
- * - Törzs: `{ form: <formId>, submissionData: [{ field, value }…],
- *            turnstileToken?: string }`.
- * - Spam-védelem: beállított TURNSTILE_SECRET_KEY mellett a `turnstileToken`
- *   KÖTELEZŐ (a hook minden form-submission create-re fut); kulcs nélkül a
- *   widget a kliensen sem jelenik meg.
- * - Kérés-korlát: a `/api/form-submissions` a `form-submission` osztályba esik
- *   (5 kérés / 10 perc / IP, src/lib/security/rate-limit.ts) — a másik két
- *   űrlappal KÖZÖS vödörben.
- *
- * Az `availability` több bejelölt sávot hordozhat, a form-builder mező viszont
- * egyetlen szöveg: a feliratokat vesszővel fűzzük össze, és a szerver ugyanezen
- * az elválasztón bontja vissza (`APPOINTMENT_AVAILABILITY_SEPARATOR`).
- *
- * A fetch injektálható, így a modul jsdom nélkül, node-környezetben is
- * tesztelhető (CLAUDE.md 15. tanulság: tesztből valódi hálózati hívás nem mehet).
+ * Időpontkérés beküldés — POST /api/form-submissions. Turnstile ha be van állítva.
+ * `availability` több sáv → egy mező, vesszővel. `fetch` injektálható teszthez.
  */
 
 export interface AppointmentSubmissionEntry {

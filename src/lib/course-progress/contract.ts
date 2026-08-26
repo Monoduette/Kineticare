@@ -1,29 +1,7 @@
 /**
- * A POST /api/course-progress/mark-watched végpont KÖZÖS szerződése — a kliens
- * (lejátszó-komponens) és a szerver (route-handler + szolgáltatás) egyetlen
- * közös forrása.
- *
- * A src/lib/stream/contract.ts mintája: a kérés- és válasz-alak EGY helyen van
- * leírva, így a két oldal nem tudhat észrevétlenül eltérni egymástól (a
- * stream-token végponton ez korábban valós hibát okozott: a kliens
- * `videoIndex`-et küldött, a szerver `videoId`-t olvasott).
- *
- * A modul környezet-független (nincs benne node:, Payload vagy Next import),
- * ezért kliens-komponensből és szerverről is importálható.
- *
- * Szerződés:
- * - Kérés:  POST /api/course-progress/mark-watched
- *           törzs: { productId: string, videoRef: string }
- * - Válasz: 200 { productId: number, videoRef: string, watchedAt: string (ISO-8601),
- *           alreadyWatched: boolean }
- *   Az `alreadyWatched: true` NEM hiba: a végpont idempotens, az ismételt
- *   megjelölés ugyanazt a sort adja vissza.
- * - Hibák:  401 (nincs belépés) · 403 (nincs megvásárolva / lejárt hozzáférés)
- *           · 404 (nincs ilyen elérhető kurzus) · 400 (hibás törzs vagy a
- *           videoRef nem ehhez a kurzushoz tartozik) · 500.
+ * mark-watched API szerződés — kérés/válasz alakok, HTTP-státuszok. Kliens és
+ * szerver egy forrásból.
  */
-
-/** A végpont útvonala — a kliens EZZEL építi a kérést. */
 export const MARK_WATCHED_PATH = '/api/course-progress/mark-watched'
 
 /** A kérés törzse. A `productId` szövegként utazik (a szerver számot is elfogad). */
