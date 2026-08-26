@@ -8,58 +8,12 @@ import { withUserPurchasesLock } from '../user-purchases-lock'
 import { resolveOrderCustomer, type OrderCustomerResolution } from './resolve-order-customer'
 
 /**
- * Barion-állapot → rendelés-állapotgép KÖZÖS MAGJA (T-022/T-0xx-W4-02).
+ * Barion-állapot → rendelés-állapotgép. Callback és order-poll közös magja.
  *
- * Ezt a modult KÉT hívó osztja meg — a viselkedésük így definíció szerint
- * azonos:
- *  1. a Barion-callback processzor (src/lib/barion-callback/process-callback.ts)
- *  2. az order-poll job (src/lib/order-poll/service.ts — elveszett/késői
- *     callback-ek utánpollolása)
- *
- * Átmenet-szabályok (mind idempotens):
- * - paid: FIÓK-FELOLDÁS (vendég-vásárlásnál: az e-mail alapján megtalált vagy
- *   létrehozott fiók a rendeléshez kötve — resolve-order-customer.ts), majd
- *   purchases-beírás a users-re (már megvan → no-op), és CSAK EZUTÁN
- *   order payment_pending/created → paid (már paid → no-op, NEM hiba). A
- *   sorrend indoklása a paid-ágnál (K1). Más kiinduló státuszból
- *   (cancelled/refunded/payment_failed) TILOS — 'rejected' + naplózott riasztás.
- *   ELŐFELTÉTEL: az ÖSSZEG-ASSERT (lásd lentebb) is teljesül.
- * - cancelled: payment_pending → cancelled; paid felé TILOS visszaállítani
- *   (állapotgép-védelem, riasztás); más kiindulóból figyelmeztetés, marad.
- * - payment_pending: státusz marad (a poll-job ütemezzi az újrapollolást).
- *
- * PÁRHUZAMOSSÁG (M5 — paid-átmenet advisory-zár). Az átmenet „ellenőriz-majd-ír"
- * (check-then-act) alakú: zár nélkül két párhuzamos szál (Barion-callback ×
- * order-poll) MINDKETTŐ transitionedToPaid=true-t kaphatna, és az onOrderPaid-
- * lánc (jogosultság-grant, számla-queue, e-mail) KÉTSZER futna; a poll ráadásul
- * a futás elején beolvasott, esetleg ELAVULT rendelés-példányból indul. Ezért az
- * írást hordozó ágak (paid/cancelled) rendelés-szintű Postgres advisory-zár
- * alatt futnak (`order-transition:order:<id>`, src/lib/advisory-lock.ts — a
- * refund-order.ts `refund:order:<id>` mintáját követve), és a záron BELÜL a
- * rendelés FRISSEN ÚJRAOLVASOTT: minden döntés (állapotgép-ág + összeg-assert) a
- * friss példányból születik. Így a második szál már a végleges státuszt látja —
- * transitionedToPaid PONTOSAN EGYSZER igaz, a paid → cancelled visszaállítás
- * pedig a friss állapoton is elakad az állapotgép-védelemen. A `payment_pending`
- * ág nem ír, ezért zárfoglalás nélkül, azonnal visszatér.
- *
- * PÁRHUZAMOSSÁG (K1 — users.purchases user-szintű zár). A rendelés-zár CSAK
- * egy rendelést sorosít. Két KÜLÖNBÖZŐ rendelés paid-átmenete ugyanarra a
- * vevőre zár nélkül elveszítheti a másik termék jogosultságát (lost update).
- * A `grantPurchases` ezért a rendelés-záron BELÜL, rövid `purchases:user:<id>`
- * zárat vesz fel, és a user-t a záron belül ÚJRA olvassa. Zár-sorrend:
- * **order → email → user** (lásd src/lib/user-purchases-lock.ts).
- *
- * ZÁR-TARTOMANY (a advisory-lock.ts üzemeltetési korlátja miatt): a záron belül
- * KIZÁRÓLAG gyors DB-műveletek futnak (rendelés-újraolvasás, státusz-írás,
- * purchases-grant). A GetState (külső HTTP) a HÍVÓNÁL, a záron kívül történik;
- * az onOrderPaid mellékhatásai (számla-queue + e-mail, szintén külső hívás)
- * szintén a zár elengedése UTÁN futnak a hívónál — az egyszeri lefutást a
- * atomikusan dőlt transitionedToPaid jelző garantálja, nem az, hogy a zár alatt
- * futnának.
- *
- * A modul NEM végez esemény-lezárást (webhook-events) és NEM küld e-mailt/
- * számlázat — a mellékhatások (onOrderPaid) a HÍVÓ feladata, kizárólag
- * transitionedToPaid=true esetén.
+ * paid: fiók-feloldás → purchases → csak utána pending/created → paid.
+ * Más státuszból paid TILOS. cancelled: pending → cancelled; paid-ről nem.
+ * Író ágak `order-transition` zár + újraolvasás; purchases: order → email →
+ * user. GetState és onOrderPaid a záron kívül. confirmOrder tilos.
  */
 
 export interface BarionTransitionInput {
@@ -128,21 +82,7 @@ export interface PaymentAmountAssertResult {
   actualCurrency?: string | null
 }
 
-/**
- * ÖSSZEG-ASSERT: a Barion GetState-válasz Total/Currency mezője megegyezik-e a
- * rendelés SZERVER-OLDALI snapshotjával (totalHufSnapshot + currency).
- *
- * MIÉRT KELL: a leképezett `Succeeded` státusz csak azt mondja meg, hogy
- * „valamilyen fizetés sikerült" — azt nem, hogy MENNYI. A PaymentId-t a vevő
- * ismeri (a redirect URL-jében is ott van), a callback-payload pedig önmagában
- * nem bizonyíték: egy másik, kisebb összegű saját fizetés azonosítójával a
- * rendelést jóvá lehetne hagyatni. A Total/Currency összevetése köti a fizetést
- * a konkrét rendeléshez.
- *
- * KONZERVATÍV: minden hiányzó vagy nem értelmezhető érték BUKÁS. Inkább maradjon
- * függőben egy rendelés (riasztással, kézzel rendezhetően), mint hogy fedezet
- * nélkül aktiváljon hozzáférést.
- */
+/** Összeg-assert: GetState Total/Currency = rendelés snapshot; hiány/eltérés → bukás. */
 export function assertPaymentAmountMatches(
   order: Order,
   state: BarionPaymentStateResponse,
@@ -198,23 +138,7 @@ function userPurchaseIds(user: User): number[] {
   return purchases.map((entry) => (typeof entry === 'object' ? entry.id : entry))
 }
 
-/**
- * K5 — DUPLA-FIZETÉS felismerése: létezik-e ugyanannak a vevő+termék párnak
- * MÁS, már paid státuszú rendelése.
- *
- * MIÉRT KELL: a checkout-start duplavásárlás-blokkja (start-checkout.ts
- * assertNoDuplicatePurchase) csak SZŰK ABLAKBAN véd — a paid rendelést és az
- * AKTÍV (Barion-ablakon belüli) payment_pending-et látja. Elveszett callback +
- * lejárt fizetési ablak után a vevő MÁSODIK rendelést is indíthat, és ha
- * mindkét fizetés a Barionnál sikeres, a két rendelés egymástól függetlenül
- * mehetne paid-re (dupla terhelés). Ez a segéd a paid-ÁTMENET közös pontján
- * ad utolsó védelmi vonalat: a második paid-átmenet blokkolva + riasztva lesz
- * (manuális ellenőrzés/visszatérítés), a jogosultság-beírás nem fut le rá.
- *
- * Jól körülhatárolt, önállóan tesztelt segéd — a harvest-összefésülés miatt
- * SZÁNDÉKOSAN külön függvény (ebben a fájlban a D-csomag változása CSAK ez a
- * blokk: ez a segéd + a paid-ágban az őrt hívó pár sor).
- */
+/** Dupla-fizetés ellen: van-e más paid rendelés ugyanarra a vevő+termék párra. */
 export async function hasPaidOrderFor(
   payload: Payload,
   input: { customerId: number | string; productIds: number[]; excludeOrderId: number | string },
@@ -473,26 +397,7 @@ async function applyBarionStateTransitionLocked(
         }
       }
 
-      /**
-       * K1 — ÍRÁSI SORREND: a JOGOSULTSÁG ELŐBB, a `status: 'paid'` UTÁNA.
-       *
-       * ═══ A HIBA, AMIT BEZÁR ═══
-       * Fordított sorrendben egy megszakadás (grant-hiba, process-crash a két írás
-       * között) VÉGLEGESEN elnyelte a paid-átmenet mellékhatásait: a rendelés már
-       * `paid` volt, tehát az újrapróbáláskor `alreadyPaid === true` →
-       * `transitionedToPaid: false` → az onOrderPaid (számla + visszaigazoló/
-       * aktiváló e-mail) SOHA nem futott le. Vendég-vásárlónál ez azt jelentette:
-       * fizetett, van hozzáférése, de sosem kapott jelszó-beállító linket.
-       *
-       * Így viszont a megszakadás a rendelést `payment_pending`-ben hagyja, és az
-       * újrapróbálás (callback-retry vagy order-poll) FRISS paid-átmenetként
-       * pontosan egyszer küldi el a levelet. A jogosultság-beírás idempotens
-       * (grantPurchases: csak a hiányzó termékek), tehát az ismétlés ártalmatlan —
-       * a legrosszabb köztes állapot az, hogy a vevő hamarabb jut hozzáféréshez,
-       * mint ahogy a rendelés paid-re vált.
-       *
-       * Az ÖSSZEG-ASSERT és a K5 dupla-fizetés-őr továbbra is MINDEN írás ELŐTT fut.
-       */
+      /** Paid írási sorrend: purchases ELŐBB, `status: paid` UTÁNA — különben megszakadásnál elmarad az e-mail. */
       const grant = await grantPurchases(payload, orderWithCustomer, log)
 
       if (alreadyPaid) {

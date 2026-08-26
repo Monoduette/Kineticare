@@ -1,33 +1,8 @@
 import { createHash } from 'node:crypto'
 
 /**
- * Bunny Stream „Embed view token authentication" jegy — tiszta, nulla extra
- * függőségű implementáció.
- *
- * Aláírási mód (a Bunny Stream dokumentációja szerint):
- *
- *     token = SHA256_HEX( token_auth_key + video_guid + expires )
- *
- * - `token_auth_key` — a védett videó-library token-hitelesítési kulcsa
- *   (titok, kizárólag szerver-oldalon: BUNNY_STREAM_TOKEN_AUTH_KEY).
- * - `video_guid` — a Bunny videó GUID-ja (products.videos[].streamAssetId).
- * - `expires` — Unix epoch MÁSODPERC, sztringként fűzve a hashelendő szöveghez.
- *
- * A Cloudflare-hez képest a lényegi különbség: ott aláírt JWT volt, amelyben a
- * lejárat a tokenen BELÜL utazott; a Bunnynál a hash mellé az `expires`-t
- * KÜLÖN query-paraméterként is oda kell adni az embed-URL-nek, és a kettőnek
- * pontosan egyeznie kell (docs/video-platform-dontes.md 4.2). Ezért adja vissza
- * ez a függvény az `expires` értéket is — a hívó ugyanazt teszi az URL-be,
- * amivel a hash készült.
- *
- * A hash HEXADECIMÁLIS, KISBETŰS alak. Nincs `kid`, nincs header, nincs
- * base64url.
- *
- * Élettartam-szabály (VÁLTOZATLAN, szolgáltatótól független):
- * - expires = kiállítás + videóhossz (durationSec) + 10 perc türelem,
- *   de legfeljebb kiállítás + 24 óra. A 24 órás plafon eredetileg a Cloudflare
- *   korlátja volt; a MI szabályunkként megtartjuk (rövid életű jegy = kevésbé
- *   megosztható link).
+ * Bunny Stream embed token: SHA256_HEX(key + video_guid + expires). Az `expires`
+ * külön query-param is; max TTL 24 óra, videóhossz + 10 perc türelem.
  */
 
 /** A videó végéhez adott türelemidő (másodperc): 10 perc. */

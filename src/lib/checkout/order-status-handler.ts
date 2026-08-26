@@ -19,21 +19,7 @@ import { generateRequestId, getRequestId } from '../request-id'
  *   fiókja amúgy is megjelenít. Egyéb rendelésadat (customer, customerEmail,
  *   tételek, számlaadat, Barion-azonosítók) továbbra sem megy ki.
  *
- * ═══ MIÉRT MEHET KI A VÉGÖSSZEG (2026-08-21, bevétel-mérés) ═══
- * A `totalHufSnapshot` + `currency` a köszönőoldal `purchase_confirmed`
- * eseményéhez kell: összeg nélkül a PostHogban NEM készíthető bevétel-riport,
- * a tölcsér utolsó lépése értéktelen szám marad.
- *
- * NEM SZIVÁRGÁS, mert a fenti `payload.find` a `customer: { equals: user.id }`
- * feltételre szűkít: a végpont KIZÁRÓLAG a bejelentkezett vevő SAJÁT
- * rendelését adja vissza, idegen rendelésszámra 404 megy (nem összeg). A vevő
- * tehát a saját, ÉPP MOST kifizetett összegét látja — pontosan azt, amit a
- * banki fizetőoldal és a fiókja rendeléslistája (AccountView) is megmutat neki.
- *
- * A mérvadó mező a `totalHufSnapshot` („a rendelés végösszege a
- * megrendeléskor", src/payload-types.ts); a plugin `amount` mezője ezt tükrözi,
- * ezért az csak TARTALÉK. Ha egyik sem értelmezhető szám, `null` megy ki — a
- * köszönőoldal ilyenkor összeg NÉLKÜL küldi az eseményt, nem tippel.
+ * `totalHufSnapshot` a köszönőoldal bevétel-méréséhez; csak saját rendelés (customer=user.id).
  */
 
 /**

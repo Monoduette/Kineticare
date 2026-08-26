@@ -4,33 +4,9 @@ import type { Payload } from 'payload'
 import { logger as rootLogger, type Logger } from './logger'
 
 /**
- * Postgres advisory-zár (S2) — a „check-then-act" versenyhelyzetek KÖZÖS MAGJA.
- *
- * MIÉRT: több pénzügyi folyamatunk ellenőriz-majd-ír mintát követ (checkout:
- * duplavásárlás-vizsgálat → rendelés-létrehozás; refund: már visszatérített-e →
- * Barion-refund). Zár nélkül két párhuzamos kérés MINDKETTŐ ellenőrzése átmegy,
- * mielőtt bármelyik írna — ez TOCTOU-rés, aminek az ára dupla rendelés, illetve
- * dupla visszatérítés.
- *
- * HOGYAN: `pg_advisory_xact_lock(hashtextextended($1, 0))` a drizzle-példány egy
- * tranzakcióján. Az „xact" változat kulcsfontosságú: a zárat a Postgres a
- * tranzakció végén (commit VAGY rollback, sőt kapcsolatbontás esetén is)
- * automatikusan elengedi — kézi unlock nincs, tehát elszálló kód sem hagyhat
- * hátra örökre beragadt zárat. A kulcsot maga a Postgres hasheli bigintre
- * (`hashtextextended`), így a hívó tetszőleges, beszédes szöveges kulcsot adhat.
- *
- * FONTOS SZEMANTIKA: a `fn` NEM a zár tranzakciójában fut. A zár-tranzakció egy
- * külön pool-kapcsolatot tart nyitva, a `fn` belsejében futó Payload-műveletek
- * pedig a saját kapcsolataikon dolgoznak. Ez a kölcsönös kizáráshoz elég (egy
- * időben egy kulcs egy tulajdonos), de NEM ad atomi visszagörgetést: ha a `fn`
- * félúton hibázik, a már megtörtént írásai megmaradnak.
- *
- * ÜZEMELTETÉSI KORLÁT: a zár-tranzakció a `fn` teljes futása alatt TÉTLEN
- * („idle in transaction"). A pool `idle_in_transaction_session_timeout`-ja 60 mp
- * (src/payload.config.ts), ezért a védett szakasznak rövidnek kell lennie —
- * külső hálózati hívás (pl. Barion Payment/Start) SOSEM kerülhet a záron belülre.
- * A zárra várakozásra a `statement_timeout` (30 mp) vonatkozik, tehát a
- * beragadás nem végtelen: időtúllépéssel hibázik.
+ * Postgres `pg_advisory_xact_lock` a check-then-act pénzügyi utakhoz.
+ * A `fn` NEM a zár tranzakciójában fut (külön kapcsolat) — nincs közös
+ * rollback. A zár-tranzakció tétlen: külső HTTP ne menjen a záron belülre.
  */
 
 /** A zár-tranzakció minimális, szerkezeti felülete (a drizzle-példányból). */

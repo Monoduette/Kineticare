@@ -8,31 +8,7 @@ import { generateRequestId, getRequestId } from '../request-id'
 import { assertSameOrigin } from '../security/same-origin'
 import { RefundError, refundOrder, type RefundOrderInput } from './refund-order'
 
-/**
- * POST /api/admin/orders/[orderNumber]/refund route-handler factory.
- *
- * A függőségek (Payload-példány) injektálva vannak, így a handler maga is
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/admin/orders/[orderNumber]/refund/route.ts köti be a
- * valódi configgal (src/lib/stream/route-handler.ts és a checkout mintája).
- *
- * RBAC-szerződés (owner-only pénzügyi művelet):
- * - anon hívó → 401,
- * - staff (és minden nem-owner) → 403,
- * - kizárólag owner szerepkör hajthatja végre a visszatérítést. A meglévő
- *   hasOwnerRole predikátumot hívja (src/access/roles.ts) — RBAC-függvényt
- *   nem ír át.
- *
- * Válasz-szerződés:
- * - 200: { orderNumber, type: 'full' | 'partial', amountHuf, transactionId,
- *   refundedTransactionStatus, totalRefundedHuf, orderStatus }
- * - 400: érvénytelen összeg (0 < x ≤ visszatéríthető maradék szabály sérül)
- * - 401/403: RBAC (fent)
- * - 404: ismeretlen rendelésszám
- * - 409: nem paid státusz (magyar üzenettel) / dupla refund
- * - 502/504: Barion-hiba (kind szerint) — a rendelés ilyenkor érintetlen,
- *   a hiba naplózva requestId-vel.
- */
+/** POST /api/admin/orders/[orderNumber]/refund — owner-only, a refundOrder szolgáltatást hívja. */
 export interface RefundHandlerDeps {
   getPayload: () => Promise<Payload>
 }

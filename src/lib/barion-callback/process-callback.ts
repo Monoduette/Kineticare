@@ -17,40 +17,10 @@ import {
 } from '../order-status/apply-barion-state'
 
 /**
- * Barion-callback aszinkron feldolgozó (T-022, W4-02 refaktor).
- *
- * A Barion callback-POSTja gyakorlatilag csak a PaymentId-t hordozza — a
- * callback-payload ÖNMAGÁBAN NEM BIZONYÍTÉK. A jóváhagyás ezért KIZÁRÓLAG a
- * szerver-szerver fetchPaymentState (v4!) verifikációval történik; a státusz-
- * leképezés a tesztelt mapBarionPaymentStatus szerint.
- *
- * Az állapotgép-átmeneteket a KÖZÖS MAG (src/lib/order-status/apply-barion-state.ts)
- * végzi — ugyanazt használja az order-poll job is, így az elveszett callback
- * utánpollolása definíció szerint azonos szabályokkal zárul. A friss paid-
- * átmenet mellékhatásait (számla-job + visszaigazoló e-mail) az onOrderPaid
- * futtatja, szintén közös modulból.
- *
- * Hiba-szabály: a fetchPaymentState hibája (timeout/network/5xx) vagy a
- * hiányzó rendelés THROW a handlerből → a processWebhook failed-re állítja
- * (lastError + attempts), a processedAt NEM állítódik — az esemény a
- * webhook-retry jobbal újrapróbálható marad, kimerülésnél owner-riasztás.
- *
- * FÜGGŐ (NEM TERMINÁLIS) KIMENETEL (B4): a `Prepared`/`Started` státusz csak
- * annyit jelent, hogy a fizetés MÉG NEM DŐLT EL. A Barion ugyanarra a
- * PaymentId-re küld újabb callbacket a végleges státuszról, ezért az eseményt
- * ilyenkor NEM zárjuk le: a `result='pending_repoll'` beíródik, a `processedAt`
- * viszont NULL marad, és a `webhookNonTerminal` jelző hatására a processWebhook
- * a rekordot `received` státuszban hagyja — a következő kézbesítés (és a
- * webhook-retry job) így újra feldolgozza.
- *
- * TERMINÁLIS KIVÉTEL (M6): a „biztosan nincs ilyen fizetés" GetState-kimenetel
- * (HTTP 404, vagy ismert payment-not-found provider-hibakód) NEM dob — az
- * esemény result='rejected'-kel, processedAt-tel VÉGLEGESEN lezárul (a
- * processWebhook így processed-re állítja), tehát a webhook-retry SOSEM veszi
- * újra sorra. Egy hamis GUID így 1 kimenő Barion-hívást és 1 riasztást ad,
- * nem 5 újrapróbálást + riasztászajt. A valódi hálózati/5xx hibák és a
- * „fizetés létezik, de rendelés (még) nincs hozzá" eset változatlanul
- * újrapróbálhatók.
+ * Barion-callback aszinkron feldolgozó. A payload nem bizonyíték: csak v4
+ * GetState. Állapotgép: apply-barion-state (ugyanaz, mint az order-poll).
+ * Prepared/Started → pending_repoll, processedAt NULL. Ismeretlen fizetés
+ * (404) terminális rejected. GetState 5xx/timeout dob → retry.
  */
 
 export interface BarionCallbackProcessorDeps {

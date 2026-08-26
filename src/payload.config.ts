@@ -427,29 +427,9 @@ function registerPoolErrorHandler(payload: Payload): void {
 }
 
 /**
- * A Barion webhook-feldolgozó DETERMINISZTIKUS regisztrációja (M-15).
- *
- * A `registerWebhookProcessor` egy folyamaton belüli Map — a webhook-retry job
- * (src/jobs/tasks/webhook-retry.ts) csak REGISZTRÁLT feldolgozójú eseményeket
- * futtat újra, a többit `skipped`-ként átugorja. A regisztráció eddig kizárólag
- * a callback-route MODUL-BETÖLTÉSÉNEK mellékhatásaként futott le
- * (src/app/(frontend)/api/barion/callback/route.ts). A Next.js route-modulokat
- * viszont lustán, az első kéréskor tölti be: ha egy példány elindul, és a
- * webhook-retry cron előbb fut le, mint ahogy bármilyen Barion-callback
- * megérkezne arra a példányra, a feldolgozó nincs regisztrálva — az elhasalt
- * események némán kimaradnak a retryból. Ugyanez a rés az order-poll/retry
- * útvonalon: azok NEM töltik be a callback-route-ot.
- *
- * Az `onInit` viszont a Payload minden inicializálásakor lefut — ugyanabban a
- * folyamatban, amelyben a jobs autoRun (jobsConfig) is elindul —, ezért ez a
- * regisztráció determinisztikus horgonya. A `registerWebhookProcessor` egy
- * Map.set, tehát idempotens: a route-ban maradó hívás (ott a callback saját
- * útvonala szempontjából dokumentálja a bekötést) ártalmatlanul felülírja
- * ugyanezzel az értékkel.
- *
- * Tisztán memóriabeli művelet: nem hívhat adatbázist és nem dobhat, ezért — a
- * pool-error handlerhez hasonlóan — a seedelő lépések ELŐTT, azoktól függetlenül
- * fut le.
+ * A Barion webhook-feldolgozó onInit-ben: a retry csak regisztrált processzort
+ * futtat. A callback-route lazy, a cron előbb futhat — onInit nélkül némán
+ * kimaradnának. Map.set, idempotens.
  */
 function registerWebhookProcessors(payload: Payload): void {
   registerBarionWebhookProcessor(async () => payload)
@@ -623,96 +603,19 @@ export default buildConfig({
   email: kineticareEmailAdapter,
   // T-014: a webhook-retry task és az ENABLE_JOB_WORKERS env mögötti autoRun.
   jobs: jobsConfig,
-  // A GraphQL API teljesen kikapcsolva (C1/A2 biztonsági zárás). A frontend
-  // és az admin kizárólag a REST API-t és a local API-t használja — a /graphql
-  // végpont viszont hitelesítés nélkül kiszolgálta volna a Payload beépített
-  // resetPasswordUser/forgotPasswordUser mutációit, amelyek a
-  // resetPasswordOperation-ön át MEGKERÜLIK a Users beforeChange
-  // jelszó-politikát (lásd src/lib/security/reset-password-route.ts) és az
-  // IP-alapú kérés-korlátot is (a withPayloadRestRateLimit csak a REST
-  // catch-allon fut). Használatlan felület + megkerülő út = letiltás; a
-  // /graphql route-fájl is törölve. Ha valaha GraphQL kell, előbb a
-  // politika- és rate-limit-őrt kell rá felhúzni.
+  // GraphQL ki: a beépített reset/forgot mutációk megkerülnék a jelszó-politikát
+  // és a REST rate-limitet. Visszakapcsolás előtt őr kell mindkettőre.
   graphQL: {
     disable: true,
   },
   // A titok kötelező — az induláskori ENV-assert (src/env.ts + src/instrumentation.ts)
   // gondoskodik róla, hogy hiányában az app ne induljon el.
   secret: process.env.PAYLOAD_SECRET || '',
-  // -------------------------------------------------------------------------
-  // A `serverURL` SZÁNDÉKOSAN NINCS BEÁLLÍTVA (marad a Payload alapértelmezett
-  // üres stringje, node_modules/payload/dist/config/defaults.js:75 és :154).
-  //
-  // Nem feledékenység: beállítva ELTÖRNÉ AZ ÖSSZES CMS-KÉPET. A Media
-  // collection `url` és `sizes.*.url` mezőinek afterRead hookja
-  // (node_modules/payload/dist/uploads/getBaseFields.js:98-107 és :190-197) a
-  // `relative: false` + `serverURL: req.payload.config.serverURL` párossal hívja
-  // a `generateFilePathOrURL`-t, az pedig a `formatAdminURL`-en át
-  // (node_modules/payload/dist/utilities/formatAdminURL.js) így dönt:
-  // `if (relative || !serverURL) return pathname` — különben
-  // `new URL(pathnameWithBase, serverURLObj.origin).toString()`, tehát ABSZOLÚT
-  // URL. A storefront viszont a `next/image`-nek adja tovább ezt az értéket
-  // (src/components/content/MediaImage.tsx), a next.config.ts-ben pedig NINCS
-  // `images.remotePatterns` — abszolút, „távoli" forrásra a `/_next/image`
-  // élesben 400-at ad („url" parameter is not allowed). Üres `serverURL`
-  // mellett a hook GYÖKÉR-RELATÍV utat ad vissza, ami a saját eredetről
-  // szolgálódik ki. (Ha valaha mégis kell abszolút gyökér, előbb az
-  // `images.remotePatterns` bővítendő — együtt, egy változtatásban.)
-  //
-  // Amit a `serverURL` elhagyása NEM vesz el:
-  //  - a CSRF-védelmet: az `extractJWT` cookie-ága KIZÁRÓLAG a
-  //    `payload.config.csrf` listát nézi
-  //    (node_modules/payload/dist/auth/extractJWT.js:18-37);
-  //  - a CORS-fejléceket: a `headersWithCors` KIZÁRÓLAG a
-  //    `req.payload.config.cors`-t nézi
-  //    (node_modules/payload/dist/utilities/headersWithCors.js).
-  // Mellékhaszon: a `sanitize.js:340-342` csak nem üres `serverURL` esetén fűzi
-  // a `csrf` listához a teljes URL-t, tehát így duplikátum sem keletkezik.
-  //
-  // -------------------------------------------------------------------------
-  // CORS/CSRF-engedélylista — a deploy TÉNYLEGES eredetéhez szögezve.
-  //
-  // Beállítás nélkül a `csrf` üres, és az `extractJWT` üres listánál MINDEN
-  // eredetről elfogadja a süti-tokent (extractJWT.js:21 és :27). Az explicit
-  // lista ezt zárja le. Az éles eredet ma EGYETLEN érték:
-  // `https://kineticare-production.up.railway.app` — a Railway service-doménje,
-  // egyedi domén nincs (docs/atadas-szamlazz-kor.md).
-  //
-  // MIRE TERJED KI (a hatókör nagyobb, mint az admin-bejelentkezés): az
-  // `extractJWT` minden `payload.auth({ headers })` hívásnál lefut, tehát az
-  // eredet-eltérés nem csak az admin-loginra hat, hanem a PÉNZTÁRRA
-  // (src/lib/checkout/route-handler.ts:54), a VIDEÓLEJÁTSZÁSRA
-  // (src/lib/stream/route-handler.ts:49), a HALADÁS-MENTÉSRE
-  // (src/lib/course-progress/route-handler.ts:44), a rendelés-státuszra
-  // (src/lib/checkout/order-status-handler.ts:34), a visszatérítésre
-  // (src/lib/refund/route-handler.ts:70), a kézi hozzáférés-adásra
-  // (src/lib/grant-purchase-route.ts:58), az admin-előnézetre
-  // (src/lib/preview/route-handler.ts:61) és a bejelentkezést igénylő
-  // storefront-oldalak szerver-oldali renderére (/fiok, /kurzusaim, /penztar,
-  // /kosar, /fizetes/koszonom …) is. Rossz `NEXT_PUBLIC_SERVER_URL` mellett
-  // ezek MIND 401-et / kijelentkezett állapotot adnának.
-  //
-  // ORIGIN NÉLKÜLI KÉRÉS — tartalék szabály: ha nincs `Origin` fejléc (tipikusan
-  // GET-navigáció), az `extractJWT` a `Sec-Fetch-Site`-ra vált
-  // (extractJWT.js:30-37): `same-origin` / `same-site` / `none` elfogadva,
-  // `cross-site` ÉS A FEJLÉC HIÁNYA elutasítva. Következmény: egy KÜLSŐ oldalról
-  // (levélből, keresőből) érkező első oldalletöltés kijelentkezettnek látszhat,
-  // a helyben indított navigációk viszont `same-origin`-ok. Nem-böngészős,
-  // sütis kliensünk NINCS: a süti-hitelesítést használó végpontokat kivétel
-  // nélkül a saját frontendünk hívja, a szerver-szerver forgalom (Barion
-  // callback, Railway healthcheck, Számlázz.hu) pedig süti nélküli.
-  //
-  // A Railway healthcheckjét (`/admin`, railway.json) nem érinti: az egy
-  // Origin-fejléc és süti nélküli, szerver-szerver GET — a CORS-fejlécek csak
-  // Origin jelenlétében kerülnek a válaszba, a CSRF-lista pedig kizárólag a
-  // sütis hitelesítésre vonatkozik. A healthcheck akkor is 200-at kap, ha a
-  // belső cím eltér a publikus URL-től.
-  //
-  // ÜZEMELTETÉSI KÖVETKEZMÉNY: a `NEXT_PUBLIC_SERVER_URL`-nek pontosan azt az
-  // eredetet kell tartalmaznia, amit a látogatók és a szerkesztők a böngészőben
-  // megnyitnak. Ha az appot másik hoszton (pl. új egyedi doménen vagy `www.`
-  // előtaggal) is elérhetővé tesszük, azt az eredetet is ide kell venni,
-  // különben ott minden sütis művelet elhasal.
+  // `serverURL` szándékosan üres: beállítva a Media afterRead abszolút URL-t
+  // ad, a next/image pedig remotePatterns híján 400-at. CSRF/CORS a saját
+  // listájukat nézi, nem ezt. Üres csrf-listánál az extractJWT MINDEN eredetről
+  // elfogadná a sütit — a lista a látogatói originhez kell. Rossz
+  // NEXT_PUBLIC_SERVER_URL → pénztár, lejátszás, haladás, admin mind 401.
   cors: corsAllowlist,
   csrf: csrfAllowlist,
   typescript: {
@@ -737,72 +640,18 @@ export default buildConfig({
       // Egyetlen kérés se álljon percekig egy beragadt lekérdezésen.
       statement_timeout: 30_000,
       query_timeout: 30_000,
-      // C13 — a 2026-08-06-i sorzár-incidens ellenszere. Akkor egy nyitva
-      // maradt, TÉTLEN tranzakció („idle in transaction", a kliens EOF-ja után
-      // is nyitva ragadva) zárolta a `users` sort, és minden írás/bejelentkezés
-      // befagyott, miközben az olvasás gyors maradt. A statement_timeout ezen
-      // nem segít: az a futó LEKÉRDEZÉST öli meg, itt viszont éppen nem futott
-      // lekérdezés. A Postgres ezt a beállítást a kapcsolat startup-paramétereként
-      // kapja meg (a `pg` a pool-configból továbbadja), így nem kell DB-oldali
-      // ALTER SYSTEM: minden pool-kapcsolat magával viszi.
-      //
-      // A migrate/seed útvonalat nem töri el: a Postgres csak azt a session-t
-      // bontja, amelyik nyitott tranzakcióval TÉTLEN — a folyamatosan utasítást
-      // futtató (tehát `active` állapotú) hosszú migráció vagy seed nem esik
-      // bele, a mérce a két utasítás közti szünet, nem a tranzakció hossza.
-      // 60 mp bőven a statement_timeout fölött van, így normál működés közben
-      // nem tud beütni.
+      // Sorzár-incidens: tétlen nyitott tranzakció zárolta a users sort.
+      // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
+      // Aktív hosszú migrate/seed nem esik bele.
       idle_in_transaction_session_timeout: 60_000,
       // W3 (2026-08-22): `pool.max` SZÁNDÉKOSAN nincs beállítva. A default 10
       // a `pg` értéke. Railway `max_connections` × replikaszám nélkül a cap
       // vagy kimeríti a DB-t, vagy hamis biztonságot ad. A beágyazott zár
       // (rendelés → e-mail) a sorrenden múlik, nem a pool méretén.
     },
-    // A DEV-MÓDÚ DRIZZLE SÉMA-PUSH KIKAPCSOLVA.
-    //
-    // MIT VÉD. A Payload postgres-adaptere `push !== false` esetén minden
-    // NEM-production indulásnál drizzle-push-t futtat: lehúzza az adatbázis
-    // sémáját, összeveti a kódból épült drizzle-sémával, és a különbséget
-    // AZONNAL rákényszeríti a DB-re. Ha a különbség adatvesztéssel járna,
-    // a push interaktív megerősítést kér a folyamat stdin-jén:
-    //
-    //   · You're about to delete <tábla> table with N items
-    //   DATA LOSS WARNING: Possible data loss detected if schema is pushed.
-    //   Accept warnings and push schema to database? › (y/N)
-    //
-    // Ez a prompt két irányban ártalmas:
-    //   1. NEM-INTERAKTÍV FUTÁSNÁL ÖRÖK BEFAGYÁS. Scriptben, CI-ban vagy
-    //      ügynöki futtatásban nincs, aki válaszoljon: a folyamat stdin-re
-    //      várva `ep_poll`-ban áll, időkorlát nélkül. A Payload initje ilyenkor
-    //      soha nem fejeződik be, tehát MINDEN rá váró kérés is áll (nálunk a
-    //      dev szerver `GET /admin`-ja 90 mp után is válasz nélkül volt, és a
-    //      második kérés ugyanarra az init-ígéretre torlódott fel).
-    //   2. ROSSZ ENV MELLETT ADATVESZTÉS. Ha a DATABASE_URI éles-alakú
-    //      adatbázisra mutat, és a promptra bárki (vagy egy automatizmus) 'y'-t
-    //      ad, a push valóban ELDOBJA a kódsémából hiányzó táblákat/oszlopokat.
-    //
-    // MI AZ ELVÁRT MUNKAFOLYAMAT HELYETTE. A repó migráció-first (CLAUDE.md
-    // 3. tilos zóna, a G1–G4 őrökkel; a deploy start-parancsa
-    // `npx payload migrate && npm start`). Séma-változásnál — HELYBEN IS —
-    // a sorrend:
-    //
-    //   npx payload migrate:create <beszelo_nev>   # a Payload generálja
-    //   npx payload migrate                        # helyi DB felhúzása
-    //
-    // Kézzel migrációt írni vagy meglévőt szerkeszteni tilos; a push
-    // kikapcsolásával a séma egyetlen útja a verziózott migrációs lánc marad,
-    // vagyis a helyi és az éles adatbázis ugyanazon a gyártósoron áll.
-    //
-    // MIÉRT NEM TÖR EL SEMMIT. A `push` kizárólag a `db.connect()` ágban futó
-    // séma-ERŐLTETÉST kapcsolja; a drizzle-séma FELÉPÍTÉSE a `db.init()`-ben
-    // változatlanul megtörténik, ezért a config↔snapshot (G2) és a
-    // migrációs-lánc↔snapshot (G1) őrök ugyanúgy dolgoznak.
-    //
-    // A DÖNTÉS ALAPJA: két ügynök egymástól függetlenül mérte ki a fenti
-    // befagyást (6+ perc `ep_poll` nem-interaktív futtatásban), majd egy
-    // izolált adatbázison a negatív kontroll is reprodukálta — sémától idegen,
-    // adatot tartalmazó táblával a prompt kiírásra került, és a szerver nem
-    // állt fel; `push: false` mellett ugyanaz az indulás promptmentes.
+    // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
+    // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.
+    // Séma csak migrációs lánccal. A `push: false` őr-teszt védi.
     push: false,
   }),
   sharp,

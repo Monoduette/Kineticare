@@ -1,41 +1,6 @@
 /**
- * Más eszközök kijelentkeztetése jelszó- vagy e-mail-csere után (J2).
- *
- * ═══ DÖNTÉS (2026-08-22, „eldöntendő kérdést döntsd el”) ═══
- * IGEN: a saját session marad, a többi érvényét veszti. Nincs pipálható
- * „maradjanak bejelentkezve a többi eszközön” opció, és nincs séma
- * (`passwordChangedAt` + JWT iat). A Payload `users.sessions` tömbje már
- * él (`useSessions` alapból true), a JWT `sid` mezőjét a stratégia ehhez
- * köti (`node_modules/payload/dist/auth/strategies/jwt.js`).
- *
- * ═══ MIÉRT KÖTELEZŐ, NEM OPCIONÁLIS ═══
- * A jelszócsere gyakran gyanított kompromittálásra válasz. Ha a régi
- * sessionök megmaradnak, a csere csak jelszó-HOZZÁADÁS: a lopott süti
- * tovább él a `tokenExpiration` 2 órájáig. OWASP ASVS V3.3.1 és a
- * Session Management Cheat Sheet: credential-csere után a többi aktív
- * sessiont le kell zárni (CWE-613).
- * https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
- * https://owasp.org/www-project-application-security-verification-standard/
- *
- * ═══ KÉT ÚT, EGY SZABÁLY ═══
- * 1. PATCH / admin jelszó- vagy e-mail-csere: a Users `beforeChange` zászlót
- *    tesz a `req.context`-be, az `afterChange` vonja vissza a többit.
- *    A Payload `resetPasswordOperation` ezt az utat MEGKERÜLI
- *    (`payload.db.updateOne`, nincs beforeChange).
- * 2. Elfelejtett-jelszó / aktiváló link: az `afterLogin` hook látja a
- *    `/reset-password` útvonalat, a friss JWT `sid`-jét megtartja.
- *    Sima `/login` NEM von vissza semmit (telefon + laptop maradhat).
- *
- * ═══ KI MARAD BELÉPVE ═══
- * Csak az a session, amelyik a cserét végezte (a kérés `req.user._sid`-je,
- * resetnél a frissen kiállított JWT `sid`). Idegen rekord cseréjénél
- * (owner átírja a vevő jelszavát) a célfiók MINDEN sessionje elesik:
- * a vevőnek az új jelszóval kell belépnie.
- *
- * Az írás `payload.db.updateOne` (a Payload saját logout/addSession mintája),
- * `updatedAt: null`, collection-hook nélkül: különben az afterChange
- * újra belépne, és a jelszócsere tranzakcióját sem bontanánk szét.
- * BEST-EFFORT: a visszavonás hibája NEM görgeti vissza a jelszócserét.
+ * Más sessionök visszavonása jelszó-/e-mail-csere után (OWASP). Csak a saját
+ * `sid` marad; reset-útvonalon az afterLogin kezeli.
  */
 
 import type { Payload, PayloadRequest } from 'payload'

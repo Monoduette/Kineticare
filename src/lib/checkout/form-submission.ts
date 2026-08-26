@@ -88,40 +88,7 @@ export const CHECKOUT_ALREADY_PURCHASED_ERROR =
   'Ezt a kurzust már megvetted — a Kurzusaim oldalon éred el.'
 export const CHECKOUT_WAIVER_ERROR = 'A vásárláshoz mindkét hozzájárulást el kell fogadnod.'
 
-/**
- * ═══ ÁSZF-ELFOGADÁS A PÉNZTÁRBAN ═══
- *
- * MIÉRT LÉTEZIK. A saját ÁSZF-ünk 22. bekezdése (élő szöveg,
- * `src/lib/legal-source/aszf.txt`) SZÓ SZERINT így írja le a szerződéskötést:
- * a Vásárló „megadja személyes adatait, bejelöli az Általános Szerződési
- * feltételek elfogadására és az Adatvédelmi Tájékoztató megismerésére
- * vonatkozó jelölőnégyzetet, majd megnyomja a »VÁSÁRLÁS« gombot". Ilyen
- * jelölőnégyzet 2026-08-17-ig NEM létezett a felületen, tehát a szerződéskötés
- * leírt módja nem valósult meg. Egyben a Barion elfogadóhely-bírálat elvárása
- * is, hogy az ÁSZF elfogadása a vásárlás előfeltétele legyen.
- *
- * MIÉRT EGY NÉGYZET, KÉT HIVATKOZÁSSAL (és nem kettő). Az ÁSZF maga EGYETLEN
- * jelölőnégyzetről beszél, ami egyszerre fedi az ÁSZF ELFOGADÁSÁT és az
- * adatvédelmi tájékoztató MEGISMERÉSÉT — két külön négyzet ugyanúgy eltérne a
- * szerződés szövegétől, mint a mai nulla. A pénztári súrlódás ellen is ez
- * szól: Baymard szerint a pénztár bonyolultsága miatt a felhasználók 17%-a
- * hagyja ott a vásárlást, és a mezőszám számít, nem a lépésszám.
- * https://baymard.com/blog/checkout-flow-average-form-fields
- *
- * MIÉRT ÜRESEN INDUL. Előre bepipált elfogadás jogilag érvénytelen és sötét
- * minta. GOV.UK Design System, Checkboxes: „Do not pre-select checkbox options
- * as this makes it more likely that users will not realise they've missed a
- * question." https://design-system.service.gov.uk/components/checkboxes/
- * NN/g, Checkbox Design Guidelines: „ensure legal checkboxes are unchecked by
- * default to respect user consent."
- * https://www.nngroup.com/videos/checkbox-design-guidelines/
- *
- * MIÉRT INGYENES TERMÉKEN IS. A szerződés ingyenes hozzáférésnél is létrejön,
- * és az ÁSZF a felhasználási korlátot (lementés, másolás tilalma) kimondottan
- * az ismeretterjesztő videóra is kiterjeszti. Egységes viselkedés, elágazás
- * nélkül — WCAG 2.2 SC 3.2.4 (Consistent Identification).
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- */
+/** ÁSZF-elfogadás a pénztárban — egy jelölőnégyzet, két hivatkozás; alapból üres (ingyenes terméken is). */
 
 /** A jelölőnégyzet elem-azonosítója (a `label for` és a fókuszcél is ez). */
 export const TERMS_INPUT_ID = 'kc-checkout-terms'

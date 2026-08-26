@@ -93,41 +93,9 @@ export function resolveServerUrl(): string {
 }
 
 /**
- * A CORS/CSRF-engedélylista felépítése a NYERS env-értékből — TISZTA függvény.
- *
- * Azért önálló és nyers bemenetű, hogy a tényleges szűkítés tesztelhető legyen
- * olyan értékkel is, ami a teszt-környezetben sosem áll elő (pl.
- * útvonal-előtagos gyökér). A hívók a `process.env`-ből adják át az értéket;
- * a második argumentum (`extraRaw`) az `EXTRA_ALLOWED_ORIGINS` — a függvény
- * MAGA NEM olvassa a `process.env`-et, hogy a extras-ág is tiszta maradjon.
- *
- * A lista az EREDETET tartalmazza (séma + hoszt + port), nem a teljes URL-t: a
- * böngésző az `Origin` fejlécben mindig csak az eredetet küldi, tehát egy
- * útvonal-előtaggal megadott `NEXT_PUBLIC_SERVER_URL` (pl.
- * `https://kineticare.hu/app`) esetén a teljes URL sosem illeszkedne — a
- * bejelentkezés és minden sütis API-hívás NÉMÁN elhasalna.
- *
- * Sorrend (stabil, deduplikált): (1) a primer gyökér eredete, (2) a
- * kineticare.hu ↔ www.kineticare.hu társ-eredet, HA a primer hoszt a kettő
- * egyike — mindig `https`, a nem-alapértelmezett portot megtartva, (3) az
- * `extraRaw` vesszővel tagolt, érvényes http(s) URL-jeinek eredete.
- * Érvénytelen extra token NEM dob: a config betöltése (teszt, szkript) nem
- * hasalhat el egy elgépelt extra miatt.
- *
- * DNS-cutover: amíg a `NEXT_PUBLIC_SERVER_URL` még a Railway-URL, a
- * böngészős Origin a végleges tartomány lesz. Ilyenkor az extra lista KELL:
- * `EXTRA_ALLOWED_ORIGINS=https://kineticare.hu,https://www.kineticare.hu`.
- * A társ-eredet automatizmusa CSAK akkor él, ha a primer hoszt már
- * kineticare.hu / www.kineticare.hu — Railway-primer mellett NEM pótolja
- * a két extra elemet.
- *
- * MINDEN hívás ÚJ tömböt ad vissza. Ez nem stílus: a Payload szanitálása a
- * `csrf` tömbbe BELEÍRHAT (`config.csrf.push(config.serverURL)`,
- * node_modules/payload/dist/config/sanitize.js:340-342) — ma nem teszi, mert
- * az ott lévő feltétel `config.serverURL !== ''`, a mi configunkban pedig a
- * `serverURL` szándékosan üres. A védekezés tehát arra az esetre szól, ha a
- * `serverURL` valaha visszakerül: akkor sem oszthat közös tömb-referenciát a
- * `cors` és a `csrf`.
+ * CORS/CSRF-engedélylista a nyers env-ből. Origin (séma+hoszt+port), nem
+ * teljes URL. Minden hívás új tömb — a Payload a csrf listába beleírhat.
+ * Railway-primer mellett a kineticare.hu párt EXTRA_ALLOWED_ORIGINS kell.
  */
 const LIVE_SITE_HOSTS = new Set(['kineticare.hu', 'www.kineticare.hu'])
 
@@ -370,22 +338,7 @@ export function assertRequiredEnv(
     )
   }
 
-  /**
-   * EMAIL_FROM — akkor KÖTELEZŐ, ha van valódi levélküldő.
-   *
-   * ═══ A CSAPDA ═══
-   * A `parseFromAddress` (src/lib/email/mask.ts) hiányzó `EMAIL_FROM` esetén a
-   * `noreply@localhost` tartalékra esik. Ez fejlesztésben ártalmatlan, mert ott
-   * a `noop`-provider fut. Amint viszont valaki beállítja a `RESEND_API_KEY`-t,
-   * a provider átvált — és minden levél egy LÉTEZŐ küldő helyett a
-   * `noreply@localhost` címről indulna, amit a Resend elutasít. A `sendMail`
-   * pedig SOSEM dob: a hibát strukturált `SendResult`-ként adja vissza, tehát a
-   * jelszó-beállító és a rendelés-visszaigazoló levelek CSENDBEN nem érkeznének
-   * meg — pontosan az a hibakép, amit az audit az ingyenes kurzusnál mért.
-   *
-   * Ezért itt, induláskor bukik el, hangosan, minden környezetben. A levélküldő
-   * NÉLKÜLI állapot változatlanul rendben van: a kulcs hiánya ilyenkor nem hiba.
-   */
+  // EMAIL_FROM kötelező, ha van levélküldő — különben `noreply@localhost` és csendes küldési hiba.
   const emailFrom = process.env.EMAIL_FROM?.trim()
   const vanLevelkuldo = isEnvSet('RESEND_API_KEY') || isEnvSet('SMTP_HOST')
   if (vanLevelkuldo && (emailFrom === undefined || !emailFrom.includes('@'))) {
@@ -401,17 +354,7 @@ export function assertRequiredEnv(
   }
 
   if (isProductionRuntime()) {
-    /**
-     * BARION_ENVIRONMENT — ÉLESBEN KÖTELEZŐ.
-     *
-     * A Barion-kliens (src/lib/barion/client.ts) hiányzó változó esetén NÉMÁN a
-     * 'test' környezetre esik vissza, és a BARION_POSKEY_TEST kulcsot használja.
-     * Élesben ez azt jelentené, hogy a vásárló a Barion SANDBOXÁBAN fizet: a
-     * pénz sosem érkezik meg, a rendelés viszont — a teszt-rendszer „sikeres"
-     * válasza alapján — paid lenne, hozzáféréssel és számlával együtt. Ezt a
-     * hibát semmilyen későbbi ellenőrzés nem fogná meg, ezért az indulásnak
-     * ITT kell hangosan elakadnia.
-     */
+    // BARION_ENVIRONMENT élesben kötelező — hiányában a kliens némán test-re esik vissza.
     if (!isEnvSet('BARION_ENVIRONMENT')) {
       throw new Error(
         'Az alkalmazás nem indulhat el. Éles futásban (NODE_ENV=production) a BARION_ENVIRONMENT ' +
@@ -422,15 +365,7 @@ export function assertRequiredEnv(
       )
     }
 
-    /**
-     * ENABLE_JOB_WORKERS — élesben ez kapcsolja be a job-ütemezést (autoRun).
-     *
-     * Nélküle NEM fut a webhook-retry (elveszett/elhasalt Barion-callback
-     * újrapróbálása), az order-poll (a payment_pending rendelések mentőhálója)
-     * és a számla-resweep sem — a fizetés lezárása így kizárólag az első,
-     * sikeres callbackre lenne bízva. Ez nem indulás-megakasztó hiba (az app
-     * enélkül is kiszolgál), de némán sem maradhat.
-     */
+    // ENABLE_JOB_WORKERS nélkül nincs webhook-retry / order-poll — figyelmeztetés, nem boot-hiba.
     if (process.env.ENABLE_JOB_WORKERS !== 'true') {
       warn?.('job_workerek_kikapcsolva', {
         reszletek:

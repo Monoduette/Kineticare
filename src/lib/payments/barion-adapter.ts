@@ -7,36 +7,9 @@ import type { CheckoutBillingInput } from '../checkout/billing'
 import { startCheckout } from '../checkout/start-checkout'
 
 /**
- * T-063 — plugin-adapter-kontroll (Barion PaymentAdapter).
- *
- * A @payloadcms/plugin-ecommerce PaymentAdapter-felületére épülő saját
- * adapter, amely a TESZTELT src/lib/barion/startPayment kliensre épít (a
- * tényleges fizetésindítás a src/lib/checkout/start-checkout.ts
- * szolgáltatásban él — ugyanaz a kódút, mint a POST /api/checkout/start
- * végponté).
- *
- * Kritikus biztonsági szabályok:
- *
- * 1. `confirmOrder` SOHA NEM FUTHAT LE SIKERESEN. Ismert beta-hiba: a plugin
- *    confirmOrder-útvonala nem ellenőrzi a fizetés TÉNYLEGES státuszát a
- *    szolgáltatónál, így hamis jóváhagyást is elfogadna. A rendelés
- *    `paid`-re állítása KIZÁRÓLAG a saját Barion-callback-útvonal (T-022)
- *    joga — az a v4-es fizetésállapot-lekérdezéssel ellenőrzi a státuszt.
- *    Ezért az adapter confirmOrder-je szándékosan, mindig hibát dob
- *    (defense-in-depth), és a plugin által generált `/payments/*` végpontokat
- *    a withoutPluginPaymentEndpoints() szűrő is eltávolítja a configból.
- *
- * 2. Az adapter NINCS regisztrálva a plugin `paymentMethods` tömbjében (az
- *    üres marad, lásd src/plugins/ecommerce.ts), mert a plugin
- *    initiate/confirm végpontjai KOSÁR-szemantikát követelnek (cartID
- *    kötelező, tranzakció-létrehozás a plugin által), ami ütközik a
- *    kosármentes, egylépéses checkout-folyamatunkkal (POST
- *    /api/checkout/start: productId → rendelés snapshot-árakkal). Regisztráció
- *    nélkül a plugin egyáltalán nem hozza létre ezeket a végpontokat — a
- *    confirmOrder így nem is hívható HTTP-n keresztül. Ez a modul a
- *    plugin-felületen is használható, típusos adapter-implementáció marad,
- *    ha egy későbbi sprint mégis a plugin-útvonalakra kötne (a szűrő és a
- *    dobó confirmOrder ekkor is érvényben marad).
+ * Plugin PaymentAdapter-héj a saját checkout-start fölött.
+ * `confirmOrder` mindig dob (plugin beta-hiba). Nincs a paymentMethods-ben;
+ * a `/payments/*` végpontokat a szűrő is eltávolítja. confirmOrder tilos.
  */
 
 const BARION_ADMIN_GROUP: GroupField = {

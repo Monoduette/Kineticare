@@ -19,55 +19,11 @@ import {
 } from './types'
 
 /**
- * Stornó-számla kiállítás a Számlázz.hu Számla Agent DEDIKÁLT sztornó
- * interfészén (xmlszamlast / action-szamla_agent_st).
- *
- * Séma-tények (hivatalos XSD: https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd
- * és https://docs.szamlazz.hu/hu/agent/reversing_invoice/xml):
- * - A stornó NEM a sima számla-XML (xmlszamla) része — abban nincs stornó-tag
- *   (a helyesbitoszamla/helyesbitettSzamlaszam a helyesbítő, módosító okirat,
- *   az NEM stornó). A sztornózást külön XML-művelet szolgálja.
- * - A hivatkozás az eredeti számlára: <fejlec><szamlaszam> (KÖTELEZŐ) — ide
- *   az eredeti számla száma kerül (nálad: order.invoiceNumber).
- * - <fejlec><tipus>SS</tipus> (sztornó számla); <megjegyzes> a sztornózás oka.
- * - A stornó XML-ben NINCS tétel-/összegblokk: a Számlázz.hu az eredeti
- *   számlából generálja a negatív bizonylatot (ezért a computeLineAmounts
- *   itt nem kell — a tételmátrix az eredeti számlán rögzült).
- * - valaszVerzio=2: a válasz ugyanaz az xmlszamlavalasz, mint a számlakiállításnál
- *   (parseAgentResponse újrahasznosítható).
- *
- * MIÉRT NINCS szamlaKulsoAzon a stornó-kérésben (F3)? A hivatalos leírás (C3)
- * szerint az xmlszamlast beallitasok/szamlaKulsoAzon mezője a SZTORNÓZANDÓ
- * számlát hivatkozza — NEM ad azonosítót a létrejövő stornónak. Egy
- * `-STORNO` végződésű saját kulcsra épített visszakeresés ezért semmit nem
- * bizonyít: a „nincs találat" válaszból NEM következik, hogy stornó sem
- * készült, a rá épülő vak újraküldés pedig DUPLA stornót okozhat (amit a C5
- * szerint már nem lehet javítani). A hivatkozás egyértelmű és kötelező
- * formája a fejlec/szamlaszam.
- *
- * A duplikáció ellen ezért ITT az alkalmazás-szintű idempotencia véd
- * (stornoNumber / stornoStatus='storned' → no-op), és bizonytalan állapotban
- * (korábbi beküldés után) a szolgáltatás inkább 'failed' + RIASZTÁS irányba
- * dönt, mint hogy vakon újraküldjön.
- *
- * Stornó-állapot a rendelésen (C4): az orders collection a stornoStatus
- * (none|pending|storned|failed), stornoNumber, stornoAttempts és
- * stornoLastError mezőket hordozza — a számla-státusz (invoiceStatus /
- * invoiceNumber) mintájára. Az issueStornoForOrder Payload-példány mellett
- * ezeket írja is. A retryable hibák AUTOMATIKUS újrapróbálása TILOS: egy
- * inline POST után az állapot bizonytalan (F3), a vak retry dupla stornót
- * okozhat. A storno-issue job csak kézi / explicit újrasorbaállításra való,
- * miután ember megerősítette, hogy a Számlázz.hu-fiókban NINCS stornó
- * (src/jobs/tasks/storno-issue.ts).
+ * Stornó-számla (xmlszamlast). Automatikus retry tilos — bizonytalan állapotban
+ * vak újraküldés dupla stornót okozhat. Idempotencia: stornoNumber / stornoStatus.
  */
 
-/**
- * Egy rendelés maximális stornó-kísérletei (első + újrapróbálások). A job-retry
- * és az esetleges újrasorbaállítás együtt sem futhat végtelenszer: a limit
- * felett a stornó 'failed' marad, és error-szintű owner-jelzés kerül a naplóba.
- * (A gyakorlatban már az ELSŐ beküldés után kézi ellenőrzés következik — lásd
- * a bizonytalan-állapot ágat az issueStornoForOrder-ben.)
- */
+/** Max stornó-kísérlet; felett `failed` + owner-jelzés (kézi ellenőrzés után újrafuttatás). */
 export const MAX_STORNO_ATTEMPTS = 5
 
 export interface BuildStornoXmlInput {

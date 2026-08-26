@@ -1,24 +1,7 @@
 import type { OrderPaymentState } from '../barion'
 
 /**
- * Függő Barion-fizetés kezelése a pénztár újraindításakor.
- *
- * Iparági minta (Baymard: ne indíts második fizetést ugyanarra a kosárra;
- * a vevő a még nyitott átutalást folytassa): ha a Barion szerint a fizetés
- * még él, ugyanarra a Pay-URL-re küldjük vissza. Ha a Barion szerint már
- * Succeeded, helyi paid-átmenet, új Start tilos. Ha végállapot (Failed /
- * Expired / Canceled), a helyi pending lezárható, és új Start mehet.
- *
- * GetPaymentState hiba → fail-closed: új Start TILOS (ne legyen második
- * terhelés).
- *
- * Forrás:
- * - Baymard Institute, Checkout Usability: resume in-progress payment
- *   instead of creating a duplicate order.
- *   https://baymard.com/blog/checkout-usability
- * - WCAG 2.2 3.3.4 Error Prevention (Legal, Financial, Data): a pénzügyi
- *   lépés ne legyen megismételhető véletlenül.
- *   https://www.w3.org/TR/WCAG22/#error-prevention-legal-financial-data
+ * Függő Barion-fizetés: élő fizetés → resume; Succeeded → paid helyben; GetState hiba → fail-closed.
  */
 
 export const CHECKOUT_PAYMENT_STATE_UNAVAILABLE =

@@ -1,106 +1,15 @@
 /**
- * Csúszóablakos (sliding window) kérés-korlátozó a nyilvános, visszaélhető
- * végpontokra (A2).
+ * Csúszóablakos kérés-korlátozó a nyilvános, visszaélhető végpontokra.
  *
- * ## Mit véd
+ * Három független alany, külön névtérrel (`ip:` / `email:` / `user:`): az IP a
+ * kliens fejléceiből jön, előtag nélkül az e-mail-keret hamisítható lenne.
+ * A számláló folyamaton belüli `Map` (újraindításkor nullázódik; replikánként
+ * külön számol). A middleware edge-runtime-ja ezt a Map-et nem tartaná.
  *
- * A belépést a Payload `maxLoginAttempts` (5 → 10 perc zárolás) fiókonként
- * védi; emellett ez a modul IP- és e-mail-keretet ad a `/api/users/login`
- * végpontra, hogy elosztott spray ne zárja zárolásra az áldozat fiókját.
- * A kapcsolat-űrlapot a Turnstile védi. A regisztráció, a jelszó-emlékeztető,
- * a jelszó-visszaállítás, a fizetésindítás és az űrlap-beküldés kerete is itt él.
- *
- * ## Három keret-ALANY (subject)
- *
- * Egy kérés több, egymástól FÜGGETLEN keretet is fogyaszthat — a kulcstér
- * alanyonként külön névtérben él (`<osztály>:<alany>:<azonosító>`):
- *
- *  - `ip` — a történeti alap: kliens-IP-nként (lásd lentebb az IP-kinyerés
- *    korlátait);
- *  - `email` — a jelszó-emlékeztető CÍMZETTJE és a belépési kísérlet e-mailje.
- *    IP-rotációval a puszta IP-keret megkerülhető, és egy konkrét postaláda
- *    (vagy egy áldozat fiókja) korlátlanul bombázható; ez a keret a címhez köt,
- *    tehát az IP-k számától függetlenül fog;
- *  - `user` — a BEJELENTKEZETT felhasználó. A hitelesített végpontokon az IP
- *    nem alkalmas kulcs (egy user IP-t vált, több user oszthat IP-t) — ott a
- *    user-azonosító a helyes alany (`GET /api/stream-token`: Bunny-jegy-farmolás
- *    ellen).
- *
- * A névtér-előtag (`ip:` / `email:` / `user:`) nem díszítés: az IP a kliens
- * által küldött fejlécből jön, tehát nélküle egy `x-forwarded-for:
- * email:aldozat@example.com` fejléccel az áldozat e-mail-keretét lehetne
- * elfogyasztani.
- *
- * ÚTVONAL-alapon SOSEM korlátozott: a Barion-callback (`POST /api/barion/callback`
- * — egy valódi fizetési értesítés elvesztése pénzt jelent, ezért NINCS a
- * `ROUTE_CLASS_BY_PATH`-ban) és a healthcheck (`GET /admin`). Az ismeretlen
- * (nincs `orders.barionPaymentId`) GUID-ok IP-keretét a callback-handler
- * hívja explicit (`checkIpRateLimit`, `barion-callback-unknown`); a valódi
- * Barion-retry így nem esik globális vödörbe. Az ÚTVONAL-alapú (IP-s)
- * besorolás továbbra is csak POST-ra és PONTOS útvonal-egyezésre épül
- * (lásd `ROUTE_CLASS_BY_PATH`), így új végpont csak szándékos felvétellel
- * kerül a hatálya alá; a nem-POST és a handler-explicit keretek
- * (stream-token, ismeretlen Barion-GUID) a hívóban élnek.
- *
- * ## Vállalt korlát — folyamaton belüli számláló
- *
- * A számláló egy FOLYAMATON BELÜLI (in-memory) `Map`, nincs mögötte Redis vagy
- * bármilyen külső szolgáltatás. Ennek két következménye van, és mindkettőt
- * tudatosan vállaljuk:
- *
- *  1. **Újraindításkor nullázódik.** Deploy vagy process-restart után minden
- *     IP tiszta lappal indul.
- *  2. **Replikánként külön számol.** A Railway-en jelenleg EGY replika fut
- *     (`railway.json` → `numReplicas: 1`), ezért a folyamaton belüli számláló
- *     ma a teljes forgalmat látja. Több replikára skálázáskor a tényleges
- *     keret a replikaszámmal felszorzódik — ekkor kell megosztott tárra
- *     (pl. Postgres-tábla vagy Redis) váltani. A modul felülete
- *     (`checkRequestRateLimit`) ezt a cserét elbírja: csak a `limiter`
- *     implementációt kell kicserélni.
- *
- * Ez tudatos ELSŐ LÉPÉS: nulla új függőséggel és nulla új infrastruktúrával
- * megszünteti a korlátlan próbálkozást; a megosztott számláló külön, mérésre
- * alapozott lépés.
- *
- * ## Miért a route-rétegben, és nem a middleware-ben
- *
- * A limiter a route-handlerekbe van bekötve (Payload REST catch-all + a
- * checkout-start és a reset-password handler), a `src/middleware.ts`
- * változatlanul csak request ID-t ad. Indoklás:
- *
- *  - A Next middleware alapértelmezésben az edge-runtime homokozójában fut; a
- *    modul-szintű `Map` élettartamára és megosztására ott nincs garancia —
- *    márpedig az egész terv erre a memóriában tartott számlálóra épül. A
- *    route-handlerek ugyanabban a Node-folyamatban futnak, mint az app többi
- *    része, ott a modul-állapot megbízható.
- *  - A middleware matcher MINDEN oldalletöltésre (és RSC-kérésre) ráfut; a
- *    korlátozást ott végezve a hétköznapi böngészés is a limiter útjába
- *    kerülne. A route-rétegben csak a ténylegesen védett POST-ok érintettek.
- *  - A handler mellé kötött őr közvetlenül, mock nélkül unit-tesztelhető.
- *
- * Megjegyzés: ha a Next bundler mégis több példányban tölti be ezt a modult
- * (route-onként külön chunk), az sem ront el semmit — a kulcs tartalmazza az
- * útvonal-osztályt is, így a példányok kulcstere eleve diszjunkt.
- *
- * ## IP-kinyerés és annak korlátja
- *
- * Proxy mögött futunk, ezért a kliens IP-je a fejlécekből jön. A kinyerés a
- * `resolveClientIp`-pel közös (src/lib/audit.ts) — ott áll a részletes
- * indoklás. Röviden:
- *
- *  - a `cf-connecting-ip` CSAK a `TRUST_CF_CONNECTING_IP=true` kapcsoló mellett
- *    számít. Az éles kiszolgálás előtt mérés szerint NINCS Cloudflare, tehát
- *    kapcsoló nélkül ezt a fejlécet bármely kliens ráírhatná a kérésre, és
- *    kérésenként más értékkel korlátlanul kerülgetné a keretet — 2026-08-16-ig
- *    pontosan ez volt a helyzet;
- *  - egyébként az `x-forwarded-for` HÁTULRÓL vett, megbízható eleme
- *    (`TRUSTED_PROXY_HOP_COUNT`, alapértelmezés 1): a lánc VÉGÉT a saját
- *    edge-proxynk fűzi hozzá, az elejét a kliens küldi.
- *
- * Ismert korlát marad: több replika esetén a keret replikánként külön számol
- * (lásd fentebb), és egy valóban elosztott, sok különböző forrás-IP-ről érkező
- * támadást az IP-keret elvileg sem foghat meg — arra a szolgáltató-szintű
- * (WAF/rate limiting) védelem a helyes eszköz.
+ * A Barion-callback NINCS az útvonal-táblában — valódi fizetés értesítését
+ * nem szabad globális IP-vödörbe tenni. Ismeretlen GUID-ra a handler hívja
+ * a `barion-callback-unknown` keretet. IP-kinyerés: `resolveClientIp`
+ * (`cf-connecting-ip` csak `TRUST_CF_CONNECTING_IP=true` mellett).
  */
 
 import { resolveClientIp } from '../audit'
@@ -123,53 +32,10 @@ const ONE_MINUTE_MS = 60 * 1000
 const TEN_MINUTES_MS = 10 * 60 * 1000
 
 /**
- * Konzervatív alapértékek. A hangolás egyetlen helye ez a tábla — a keretek
- * szándékosan bőven a valós emberi használat FÖLÖTT, de a gépi visszaélés
- * ALATT vannak:
- *
- * - `registration` 5/10 perc: egy háztartás/iroda (megosztott NAT-IP) mögül is
- *   elfér néhány valódi regisztráció, gépi fióküzem viszont elakad.
- *   ÜZEMELTETÉSI KÖVETKEZMÉNY: az admin felület user-létrehozása UGYANEZT a
- *   REST-végpontot hívja, tehát 10 percen belül a 6. kézzel felvett felhasználó
- *   429-et kap. Ritka művelet, a hiba magától feloldódik — ha rendszeresen
- *   zavaró, itt kell megemelni a keretet. (A `npm run seed` a Payload local
- *   API-ját használja, azt a korlát NEM érinti.)
- * - `password-forgot` 3/10 perc: a legszűkebb keret. A végpont e-mailt küld ki,
- *   tehát idegen postaláda elárasztására (mail-bombing) és
- *   cím-létezés-szondázásra használható; valódi felhasználónak 1-2 próbálkozás
- *   bőven elég.
- * - `password-reset` 5/10 perc: a visszaállító token találgatása elleni fék.
- *   A `forgot`-nál engedékenyebb, mert a felhasználó elgépelheti az új jelszót,
- *   és a jelszó-politika (min. 12 karakter) hibái is ide futnak be.
- * - `checkout-start` 10/10 perc: minden hívás rendelést hoz létre és Barion
- *   Start-hívást indít, tehát drága. 10 próbálkozás alatt a legbizonytalanabb
- *   vásárló is végigér; sorozatos rendelés-gyártás viszont megáll.
- * - `form-submission` 5/10 perc: a Turnstile MELLETT futó második réteg —
- *   Turnstile-kulcs nélküli környezetben (a szerver ilyenkor nem ellenőriz)
- *   ez az egyetlen fék a kapcsolat-űrlapon.
- * - `password-forgot-email` 3/10 perc: UGYANAZ a keret, de a CÍMZETT
- *   e-mail-címére kulcsolva. Az IP-s keretet IP-rotációval meg lehet kerülni,
- *   és onnantól egy konkrét postaláda korlátlanul bombázható; ez a szabály azt
- *   mondja ki, hogy egy cím 10 percen belül legfeljebb ennyi emlékeztetőt
- *   kaphat — bárhonnan is kérték. Szándékosan azonos az IP-s kerettel: a valódi
- *   felhasználót (aki egy IP-ről 1-2-t kér) így nem szorítja jobban, mint eddig.
- * - `stream-token` 60/perc: a BEJELENTKEZETT felhasználóra kulcsolva
- *   (`GET /api/stream-token`). A lejátszó epizódváltáskor és a token lejárata
- *   előtt (exp−5 perc) kér jegyet — percenként néhányat; a 60-as keret ezt bőven
- *   elbírja, a szkriptelt jegy-farmolás (minden hívás Bunny-jegyet állít ki)
- *   viszont elakad rajta.
- * - `barion-callback-unknown` 20/10 perc: NEM útvonal-besorolt. A handler
- *   CSAK ismeretlen PaymentId-re fogyasztja (`checkIpRateLimit`). A valódi
- *   Barion-callback (checkout által kiírt barionPaymentId) korlátlan; a
- *   véletlen GUID-zápor elakad. A ritka verseny (callback a paymentId-írás
- *   előtt) egy helyet fogyaszt, de a keret alatt átmegy.
- * - `login` 10/10 perc: a `/api/users/login` IP-kerete. A Payload
- *   `maxLoginAttempts` fiókonként zár; elosztott spray (sok IP → egy áldozat)
- *   azt megkerüli. Az IP-keret a nyers próbálkozás-záport fogja.
- * - `login-email` 10/10 perc: UGYANAZ a keret, a belépési e-mail-címre
- *   kulcsolva. IP-rotációval a puszta IP-keret megkerülhető; a cím-keret
- *   az áldozat fiókját védi, bárhonnan is próbálkoznak. A `maxLoginAttempts`
- *   ettől függetlenül megmarad.
+ * A hangolás egyetlen helye. Emberi használat fölött, gépi visszaélés alatt.
+ * Az admin user-létrehozása a `registration` REST-keretet eszi (a seed local
+ * API-t használ, azt nem). A `*-email` szabályok IP-rotáció ellen védik a
+ * címzettet. A `barion-callback-unknown` csak ismeretlen PaymentId-re megy.
  */
 export const RATE_LIMIT_RULES = {
   registration: { limit: 5, windowMs: TEN_MINUTES_MS },

@@ -17,90 +17,14 @@ import {
 } from '../szamlazz'
 
 /**
- * Owner-only rendelés-visszatérítés (refund) szolgáltatás.
+ * Owner-only rendelés-visszatérítés. Check-then-act → advisory-zár
+ * (`refund:order:<id>`), záron belül újraolvasott rendelés. GetState és
+ * számla a záron kívül; a záron belül csak a Payment/Refund (timeout < 60s
+ * idle-in-transaction).
  *
- * A POST /api/admin/orders/[orderNumber]/refund végpont üzleti logikája,
- * transportfüggetlenül (a Payload-példány injektálva, mockolt fetch-csel
- * egységtesztelhető — barion.test.ts / checkout-start.test.ts minta).
- *
- * PÁRHUZAMOSSÁG (refund-zár). A folyamat „ellenőrzöm, majd írok" (check-then-act)
- * alakú: a maradvány-számítás a refunds-nyomból jön, a Barion-refund pénzt mozgat,
- * és csak UTÁNA íródik a nyom. Zár nélkül két párhuzamos owner-kérés (a #50 admin
- * RefundPanel óta valós út: dupla katt, két fül, két admin) MINDKETTŐ ellenőrzése
- * átmegy a régi állapoton — az eredmény DUPLA Barion-refund és ELVESZETT
- * refund-bejegyzés (a második írás a stale tömböt írja felül). Ezért a pénzt
- * mozgató szakasz Postgres advisory-zár alatt fut (`refund:order:<orderId>`,
- * src/lib/advisory-lock.ts), a záron belül ÚJRA olvasott rendeléssel — minden
- * döntés a friss példányból születik.
- *
- * ZÁR-TARTOMÁNY (tudatos döntés, CLAUDE.md 6–7. üzemeltetési tanulság).
- * A zár egy tétlen („idle in transaction") tranzakciót tart nyitva, amire a pool
- * `idle_in_transaction_session_timeout`-ja (60 000 ms, src/payload.config.ts)
- * vonatkozik. Ezért a záron BELÜL csak a feltétlenül szükséges szakasz fut:
- *  - a GetState (TransactionId-feloldás) a záron KÍVÜL történik: tiszta olvasás,
- *    nincs mellékhatása, tehát nem kell sorosítani — így a lassabbik HTTP-hívás
- *    nem terheli a zárat;
- *  - a záron belül egyetlen külső hívás van, a Payment/Refund, amit a Barion-
- *    kliens `AbortSignal.timeout`-ja keményen korlátoz (BARION_TIMEOUT_MS,
- *    alapértelmezés 15 000 ms — bőven a 60 mp-es tétlen-tranzakció-korlát alatt,
- *    a néhány DB-körrel együtt is);
- *  - a Számlázz.hu-bizonylat és az audit-írás a záron KÍVÜL fut (lassú, külső,
- *    és best-effort — a zárban semmi keresnivalója).
- * A zárra várakozást a `statement_timeout` (30 000 ms) korlátozza, tehát a
- * torlódás sem végtelen: időtúllépéssel, látható hibával zárul.
- *
- * MARADÉK KOCKÁZAT (dokumentálva). A védett szakasz írásai NEM a zár
- * tranzakciójában futnak (a zár külön kapcsolatot tart, lásd advisory-lock.ts),
- * ezért ha maga a zár-tranzakció bukik el MIUTÁN a refunds-nyom már beíródott, a
- * hívó hibát kap, miközben az adat helyesen rögzült. Ez a BIZTONSÁGOS irány: a
- * nyom pontos, tehát egy újrapróbálás már a maradékkal számol — dupla
- * visszatérítés így sem keletkezhet, legfeljebb egy fölösleges hibaüzenet.
- * Ha a BARION_TIMEOUT_MS-t valaha 55 000 ms fölé emelnénk, ezt a zár-tartományt
- * újra kell gondolni (akkor a Refund-hívás egymaga kimerítheti a tétlen-korlátot).
- *
- * Folyamat:
- *  1. rendelés-keresés orderNumber alapján (ismeretlen → 404),
- *  2. állapotgép-validáció: KIZÁRÓLAG paid státuszú rendelés téríthető;
- *     már refunded rendelésnél (dupla refund) → 409,
- *  3. összeg-validáció: a kérésben megadott részösszeg 0 < x ≤ (fizetett
- *     végösszeg − már visszatérített) kell legyen; megadás nélkül a maradék
- *     teljes összeg térül vissza,
- *  4. TransactionId-feloldás (REPÓ-TÉNY alapú döntés): az orders entitáson a
- *     T-021/T-022 folyamat NEM tárol Barion TransactionId-t — csak
- *     barionPaymentId-t és barionPaymentRequestId-t (lásd
- *     src/lib/checkout/start-checkout.ts és az ordersCollectionOverride
- *     mezőlistája). Ezért az első refund előtt a v4-es fetchPaymentState-tel
- *     újra lekérdezzük a fizetésállapotot, és a Transactions tömbből vesszük
- *     a tranzakció-szintű TransactionId-t. A refund-nyomba (orders.refunds)
- *     mentett transactionId-t az esetleges későbbi részrefundok már
- *     újrahasználják — a tárolt érték elsőbbséget élvez, nem kell újra
- *     GetState-et hívni.
- *  5. refundPayment (Payment/Refund v2) a teljes vagy a kért részösszeggel,
- *  6. a RefundedTransactions tranzakció-státuszának KIÉRTÉKELÉSE (M-11) és
- *     mentése a rendelésre (refunds-nyom bejegyzésében): `RefundFailed` esetén
- *     HIBAÁG (magyar üzenet, semmilyen írás, semmilyen bizonylat), ismeretlen
- *     státusznál dokumentált, konzervatív kezelés,
- *  7. teljes refund → a rendelés státusza `refunded` + refundedAt; részrefund
- *     esetén a státusz paid MARAD, és csak refund-nyom keletkezik,
- *  8. purchases-levétel IDEMPOTENSEN, kizárólag teljes refundnál; részrefundnál
- *     a vevő hozzáférése megmarad,
- *  9. audit-logs bejegyzés (a collection létezik, best-effort writeAuditLog).
- * 10. számlázási bizonylat a visszatérítéshez (best-effort, a refund
- *     eredményét nem befolyásolja): ELSŐ, teljes összegű refundnál STORNÓ
- *     (C4); RÉSZLEGES refundnál és a részrefundok utáni, maradékot LEZÁRÓ
- *     refundnál HELYESBÍTŐ (módosító) számla az eredeti számlára hivatkozva
- *     (C5) — a korábbi részrefundokhoz már helyesbítő készült, a teljes
- *     stornó a részösszeget másodszor is jóváírná. Újrapróbálható
- *     Számlázz.hu-hibánál a helyesbítő job kerül sorba; a stornó
- *     automatikus újrapróbálása TILOS (egy inline POST után az állapot
- *     bizonytalan, a vak retry dupla stornót okozhat — lásd
- *     issueStornoBestEffort). Bizonylat KIZÁRÓLAG igazoltan megtörtént
- *     visszatérítéshez készül (M-11): ismeretlen tranzakció-státusznál
- *     kimarad, riasztással.
- *
- * Hibaág-szabály: BarionApiError (kind szerint naplózva requestId-vel) esetén
- * a rendelés NEM változik — a DB-írás kizárólag a sikeres Barion-refund UTÁN
- * történik; a hiba magyar üzenettel propagálódik a route-handler felé.
+ * Csak paid téríthető. TransactionId a v4 GetState-ből jön (az orders nem
+ * tárolja). RefundFailed → semmi írás. Teljes refund: stornó, purchases le;
+ * részrefund és záró rész: helyesbítő. Stornó automatikus retry TILOS.
  */
 
 /** Üzleti hiba HTTP-státusszal — a route-handler ezt képezi válaszra. */
@@ -861,40 +785,9 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
     refundedTransactionStatus,
   })
 
-  // 7. Számlázási bizonylat a visszatérítéshez — BEST-EFFORT, a záron KÍVÜL
-  // (lassú, külső hívás; a zár tranzakcióját nem tarthatja nyitva).
-  //
-  // M-11 ELŐFELTÉTEL: bizonylat KIZÁRÓLAG igazoltan megtörtént visszatérítéshez
-  // készül. A `RefundFailed` ág fentebb, a záron belül hibával kiszállt (ide el
-  // sem jut); ismeretlen tranzakció-státusznál pedig szándékosan KIMARAD a
-  // kiállítás — stornó/helyesbítő számlát nem adunk ki olyan visszatérítésre,
-  // amelynek a megtörténtét a Barion nem erősítette meg. Az emberi pótlást a
-  // fenti error-szintű riasztás kéri.
-  //
-  // A bizonylat típusát NEM önmagában a refund összege, hanem a bizonylat-
-  // TÖRTÉNET dönti el:
-  //  - ELSŐ refundként TELJES összeg → STORNÓ: az eredeti számla teljes
-  //    érvénytelenítése (C4);
-  //  - RÉSZLEGES refund → HELYESBÍTŐ (módosító) számla: az eredetire hivatkozó
-  //    bizonylat, amely csak a visszatérített összeget hordozza negatív
-  //    korrekciós tételként (C5). Stornó itt NEM készülhet, mert az a teljes
-  //    számlát érvénytelenítené, miközben a vásárlás nagyobb része érvényben
-  //    marad (a vevő hozzáférése is megmarad);
-  //  - a MARADÉKOT LEZÁRÓ refund (type='full', de volt már korábbi részrefund)
-  //    → SZINTÉN HELYESBÍTŐ, a most visszatérített záró összegre. Stornó itt
-  //    TILOS: a korábbi részrefund(ok)hoz már helyesbítő számla készült, és a
-  //    teljes eredeti számla stornója a részösszeget MÁSODSZOR is jóváírná —
-  //    a bizonylatok a ténylegesen visszatérítettnél többet dokumentálnának.
-  //    A rendelés-státusz (refunded) és a purchases-levétel ettől független:
-  //    azt a fenti, összeg-alapú `type` vezérli.
-  //
-  // A bizonylat hibája (a retryable Számlázz.hu-hibákat is beleértve) NEM
-  // billentheti ki a már sikeres refundot: minden ág elkapva és strukturáltan
-  // naplózva. A refund szinkron route-handler, ezért a kiállítás itt, inline
-  // fut. ÚJRAPRÓBÁLHATÓ helyesbítő-hibánál a corrective-invoice-issue job
-  // kerül sorba. Stornónál az automatikus újrapróbálás TILOS: egy inline
-  // POST után az állapot bizonytalan, a job F3-on soha nem POSTolna újra,
-  // a vak retry pedig dupla stornót okozhatna.
+  // Bizonylat best-effort, záron kívül. Csak igazolt refundhoz.
+  // Első teljes → stornó; rész / záró rész → helyesbítő (stornó duplán írna).
+  // Stornó automatikus retry tilos. A bizonylat hibája a refundot nem billenti.
   if (statusOutcome !== 'succeeded') {
     orderLog.warn(
       'refund: a bizonylat automatikus kiállítása kimaradt, mert a Barion nem igazolta vissza a tranzakció sikerét — emberi pótlás szükséges',

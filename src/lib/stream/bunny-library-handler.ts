@@ -18,18 +18,7 @@ import {
  * GET /api/admin/bunny-videos?library=protected|public — Bunny Stream
  * library-lista a munkatársaknak.
  *
- * RBAC: anon → 401, customer → 403, staff/owner → 200 vagy 503 (ha a
- * library nincs bekötve). Access-szabályt NEM ír át.
- *
- * A library API-kulcs SOSEM megy ki a válaszban. Tesztből a fetch
- * injektált, valódi hálózat nincs.
- *
- * ═══ KÉRÉS-KORLÁT ÉS GYORSÍTÓTÁR ═══
- * A végpont a Payload REST catch-allon KÍVÜL él, tehát az útvonal-alapú
- * IP-limiter nem fedi. Egy hívás akár öt kimenő Bunny-kérést indít, ezért a
- * szerepkör-kapu UTÁN per-user keret fut (a stream-token és a
- * kurzus-haladás mintája). A válasz `no-store`: a lista védett tár GUID-jait
- * is tartalmazhatja, amit sem böngésző, sem köztes gyorsítótár nem őrizhet.
+ * RBAC: staff/owner. Per-user rate limit (több Bunny-hívás/hívás); válasz `no-store`.
  */
 
 export interface BunnyVideosHandlerDeps {

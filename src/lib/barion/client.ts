@@ -2,31 +2,8 @@ import { createLogger } from '../logger'
 import { BarionApiError, type BarionError } from './types'
 
 /**
- * Barion API-kliens mag: környezetfeloldás envből, induláskori assert,
- * timeoutos HTTP-hívások, strukturált hibakezelés és titokmentes naplózás.
- *
- * Környezetkapcsoló (tisztán envből):
- * - BARION_ENVIRONMENT: 'test' (alapértelmezés) | 'prod' — élesben
- *   (NODE_ENV=production) KÖTELEZŐ, lásd src/env.ts
- * - BARION_API_URL: az AKTÍV környezet API alap-URL-je
- *   (test: https://api.test.barion.com, prod: https://api.barion.com); a
- *   hosztnak a BARION_ENVIRONMENT-hez KELL illeszkednie (konzisztencia-assert)
- * - BARION_POSKEY_TEST / BARION_POSKEY_PROD: az aktív környezet POSKey-e
- * - BARION_PAYEE_EMAIL: a kereskedői (payee) e-mail-cím
- * - BARION_TIMEOUT_MS: HTTP-timeout felülírás (opcionális, default 15 000 ms)
- * - BARION_RECURRING_ENABLED: recurring-előkészítés feature-flag ('true')
- *
- * Induláskori assert: a getBarionConfig() hiányzó/hibás kötelező Barion-env
- * esetén azonnal, értelmes magyar hibaüzenettel dob — a modult betöltő
- * szerverfolyamat (route, hook) így induláskor el sem jut a forgalmazásig.
- * A kötelező Barion-envk az src/env.ts globális indulási assertjében is
- * szerepelnek, így az app ténylegesen nem indul el nélkülük.
- *
- * Titokvédelem: a POSKey POST-hívásoknál a JSON-bodyban, GET-hívásnál az
- * x-pos-key headerben utazik — sosem az URL-ben. A naplóba kizárólag
- * biztonságos mezők kerülnek (endpoint, státusz, durationMs, provider-hibakód);
- * kérés-/válasz-bodyt sosem naplózunk. A logger redact-listája a 'poskey'
- * kulcsot amúgy is maszkolja.
+ * Barion API-kliens: env-feloldás, timeoutos HTTP, titokmentes naplózás.
+ * Refund a rendelés-zár alatt fut — `BARION_TIMEOUT_MS` plafonja ezért 30 s.
  */
 
 export type BarionEnvironment = 'test' | 'prod'
@@ -44,16 +21,7 @@ export interface BarionClientConfig {
 
 export const BARION_DEFAULT_TIMEOUT_MS = 15_000
 
-/**
- * A BARION_TIMEOUT_MS felső korlátja.
- *
- * MIÉRT: a visszatérítés (src/lib/refund/refund-order.ts) a Barion-hívást
- * rendelés-szintű Postgres advisory-zár ALATT futtatja. Egy 60 mp fölötti
- * timeout mellett a zár-tranzakció olyan sokáig élne, hogy a Railway/Postgres
- * oldali kapcsolat-bontás (idle/statement timeout) elvághatná — a zár úgy
- * szabadulna fel, hogy a hívás sorsa ismeretlen. 30 mp bőven elég a Barion
- * válaszidejéhez, és a zár-tartományt biztonságos sávban tartja.
- */
+/** BARION_TIMEOUT_MS plafon — refund rendelés-zár alatt fut, hosszú timeout sorzár-t kockáztat. */
 export const BARION_MAX_TIMEOUT_MS = 30_000
 
 /** Az AKTÍV környezethez tartozó, elvárt Barion API-hoszt. */

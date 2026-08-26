@@ -20,58 +20,10 @@ import {
 import { createBarionCallbackProcessor } from './process-callback'
 
 /**
- * POST /api/barion/callback route-handler factory (T-022).
- *
- * A Barion 15 mp-en belül HTTP 200-at vár, különben a retry-lépcsője
- * (2s/6s/18s/54s/102s) újra és újra kézbesít — ezért a handler:
- *
- *  0. FELOLDJA a PaymentId-t: a Barion a QUERY STRINGBEN küldi
- *     (`CallbackUrl?paymentId=<guid>`), a POST-törzs ÜRES — ezért a query az
- *     elsődleges forrás, a JSON-törzs csak tartalék (üres/nem JSON törzs
- *     önmagában nem hiba).
- *  1. AZONNAL dedupol: a webhook-events-be (provider='barion',
- *     externalId=PaymentId) ír; a (provider, externalId) UNIQUE-ütközés =
- *     már feldolgozva/feldolgozás alatt → 200, no-op. Duplikátumot CSAK a
- *     VÉGLEGESEN lezárt eseményre mond: a függő (pending_repoll) kimenetel után
- *     a következő kézbesítés hozza a végleges státuszt, azt fel KELL dolgozni.
- *  2. AZONNAL 200-at válaszol — a verifikáció és az állapot-átmenet ASZINKRON
- *     (a handler SOSEM blokkol a GetState-híváson).
- *
- * Az aszinkron feldolgozás két, egymást kiegészítő csatornán fut:
- *  - next/server `after()`: a válasz elküldése UTÁN, ugyanabban a
- *    kérés-életciklusban azonnal lefuttatja a feldolgozást (a Barion a 200-at
- *    már megkapta);
- *  - a T-014 webhook-retry Payload-job (ENABLE_JOB_WORKERS, percenkénti cron):
- *    a 'received'-ben ragadt (pl. process-crash) és 'failed' (GetState-hiba)
- *    eseményeket exponenciális backoff-fal újrafuttatja, MAX_WEBHOOK_ATTEMPTS
- *    után owner-riasztással. A regisztráció a registerBarionWebhookProcessor.
- *
- * Biztonsági elv: a callback-payload önmagában NEM bizonyíték — a jóváhagyás
- * kizárólag a szerver-szerver fetchPaymentState (v4) verifikációval történik
- * (lásd process-callback.ts). A HAMIS/ismeretlen (de ALAKILAG ÉRVÉNYES)
- * PaymentId is 200-at kap: a Barion retry-ja nem pörög egy sosem sikerülő
- * híváson. Az ÚTVONAL-alapú kérés-korlát (`classifyRateLimitedRoute`) a
- * callbacket szándékosan KIHAGYJA — egy valódi fizetési értesítés elvesztése
- * pénzt jelent, a Barion retry-ját nem szabad globális IP-vödörbe tenni.
- *
- * ALAK-ELLENŐRZÉS a DB-írás ELŐTT: a PaymentId-nek GUID-alakúnak kell lennie
- * (ami nem az → 400). Az alakilag helyes azonosítót a handler KÉT ágra bontja:
- *  - ISMERT: van `orders` sor `barionPaymentId = PaymentId` (a checkout a
- *    redirect előtt kiírja) → korlátlan, a régi insert/ütemezés út.
- *  - ISMERETLEN: nincs ilyen rendelés → IP-keret (`barion-callback-unknown`,
- *    `checkIpRateLimit`) a `store.create` ELŐTT. Túllépéskor 200 no-op, NINCS
- *    insert, NINCS GetState. A ritka verseny (a callback a barionPaymentId-
- *    írás előtt érkezik) egy vödörhelyet fogyaszt, de a keret alatt átmegy;
- *    a mentőháló az order-poll.
- * Kimerült (`attempts >= MAX_WEBHOOK_ATTEMPTS`) ISMERETLEN esemény: 200 no-op,
- * nincs újraütemezés. ISMERT + kimerült: továbbra is ütemez (W13 — a későbbi
- * Succeeded callbacknak le kell futnia; a route-handler nem a retry-job
- * scan-szűrőjét használja).
- *
- * A nyers callback-bodyt szándékosan NEM tároljuk/naplózzuk — a Barion
- * callback-payloadja a PaymentId-n kívül nem hordoz releváns adatot; a
- * naplózás strukturált, redaktált mezőket használ (PaymentId, státusz,
- * orderNumber, requestId).
+ * POST /api/barion/callback. PaymentId a query-ben (a törzs üres). Dedup +
+ * azonnali 200; GetState aszinkron (`after` + webhook-retry). A payload nem
+ * bizonyíték. Útvonal-rate-limit nincs. Ismeretlen GUID: IP-keret a create
+ * előtt. confirmOrder tilos.
  */
 
 export interface BarionCallbackHandlerDeps {

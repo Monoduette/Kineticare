@@ -14,25 +14,8 @@ import type { StreamTokenResponseBody } from './contract'
 import { createStreamPlaybackToken } from './token'
 
 /**
- * GET /api/stream-token üzleti logikája (paywall API-szinten).
- *
- * Szabályok:
- * - Csak bejelentkezett felhasználó (az auth a route-handlerben történik).
- * - A felhasználó `purchases` listájának TARTALMAZNIA kell a terméket
- *   (a T-022 Barion-callback írja, idempotensen) — egyébként 403.
- * - A termék státusza: published → rendben; archived → a meglévő vevő
- *   tovább nézi; draft (vagy ismeretlen) → senkinek sem (403).
- * - A hozzáférés IDŐBELI érvényessége (A1): a termék `accessDurationDays`
- *   mezője szerint lejárt hozzáférés → 403, magyar üzenettel és strukturált
- *   naplóval. A szabály egyetlen forrása az src/lib/course-access.ts.
- * - Információminimalizálás: a nem-vevő 403-as válasza akkor is ugyanaz,
- *   ha a termék/videó nem létezik — a vásárlás-ellenőrzés a termék
- *   lekérdezése ELŐTT történik, így a 403 nem árulja el a létezést. A lejárt
- *   hozzáférés eltérő üzenete csak a bizonyítottan vásárló vevőhöz jut el.
- *
- * A BUNNY_STREAM_TOKEN_AUTH_KEY környezeti változó NEM induláskori kötelező ENV
- * (az app annélkül is elindul) — itt, kérés-idejű lazy ellenőrzéssel
- * hiányzik: 503 + naplózás.
+ * GET /api/stream-token üzleti logika: purchases paywall, lejárt hozzáférés 403,
+ * hiányzó BUNNY_STREAM_TOKEN_AUTH_KEY → 503 (lazy env).
  */
 
 /** Üzleti hiba HTTP-státusszal és magyar felhasználói üzenettel. */

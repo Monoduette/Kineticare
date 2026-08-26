@@ -5,25 +5,8 @@ import { getSzamlazzConfig, issueStornoForOrder } from '../../lib/szamlazz'
 import { logger } from '../../lib/logger'
 
 /**
- * storno-issue task (C4): egy rendelés stornó-számlájának kiállítása a
- * Számlázz.hu dedikált sztornó interfészén.
- *
- * NEM automatikus újrapróbálás. A refund-folyamat a stornót inline,
- * best-effort próbálja. Ha az inline POST már elindult, és timeout/hálózat
- * miatt elszakad, az állapot bizonytalan (F3): a vak retry dupla stornót
- * okozhat. Ezért a refund NEM állítja sorba ezt a taskot. A task csak
- * KÉZI / explicit újrasorbaállításra való — miután ember megerősítette a
- * Számlázz.hu-fiókban, hogy NINCS stornó (és a rendelés stornoAttempts-jét
- * szükség szerint visszaállította).
- *
- * Ha a taskot mégis egy már próbált rendelésre futtatják (stornoAttempts > 0,
- * nincs stornoNumber), az issueStornoForOrder F3-on RIASZTÁS-sal megáll, és
- * SOHA nem POSTol újra. Ez a biztonsági őr a dupla stornó ellen.
- *
- * Retry-szabály: a task 3× próbálkozhat (Payload job-retry), de ez csak a
- * kézi, tiszta állapotú újrafuttatásra vonatkozik. Üzleti hibánál (nincs
- * eredeti számlaszám, agent-elutasítás, kimerült kísérletszám, F3
- * bizonytalan állapot) 'failed' kimenetet ad, és a job lezárul.
+ * storno-issue: kézi/explicit újrafuttatásra. Automatikus retry tilos (F3 bizonytalan
+ * állapot → dupla stornó). `stornoAttempts > 0` és nincs szám → RIASZTÁS, nem POST.
  */
 
 interface StornoIssueJobIO {
