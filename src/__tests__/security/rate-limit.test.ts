@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER,
   checkForgotPasswordEmailRateLimit,
   checkIpRateLimit,
   checkUserRateLimit,
@@ -8,6 +9,7 @@ import {
   checkRequestRateLimit,
   payloadRestRateLimitResponse,
   rateLimitHeaders,
+  resolveEffectiveHttpMethod,
   resolveRateLimitIp,
   RATE_LIMIT_MESSAGE,
   RATE_LIMIT_RULES,
@@ -196,6 +198,18 @@ describe('classifyRateLimitedRoute — mit korlátozunk', () => {
     for (const method of ['GET', 'HEAD', 'OPTIONS']) {
       expect(classifyRateLimitedRoute(method, '/api/users')).toBeNull()
     }
+  })
+
+  it('a Payload admin listázó override-ja GET-nek számít, a hamis POST override nem', () => {
+    const overrideGet = new Headers({ [PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER]: 'GET' })
+    expect(resolveEffectiveHttpMethod('POST', overrideGet)).toBe('GET')
+    expect(
+      classifyRateLimitedRoute(resolveEffectiveHttpMethod('POST', overrideGet), '/api/users'),
+    ).toBeNull()
+
+    const overridePost = new Headers({ [PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER]: 'POST' })
+    expect(resolveEffectiveHttpMethod('POST', overridePost)).toBe('POST')
+    expect(classifyRateLimitedRoute('POST', '/api/users')).toBe('registration')
   })
 
   it('a belépés IP-kerete a login osztály — a maxLoginAttempts fiókonként megmarad', () => {
@@ -455,6 +469,25 @@ describe('checkRequestRateLimit — kérés-szintű döntés', () => {
       expect(rejection).toBeNull()
     }
     expect(limiter.trackedKeyCount).toBe(0)
+  })
+
+  it('az admin relationship-listázás (POST + Method-Override GET) nem eszi a regisztrációs keretet', () => {
+    const limiter = new SlidingWindowRateLimiter()
+    const adminList = () =>
+      makeRequest('https://kineticare.test/api/users', {
+        ip: '203.0.113.77',
+        headers: { [PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER]: 'GET' },
+      })
+
+    for (let index = 0; index < 40; index += 1) {
+      expect(checkRequestRateLimit(adminList(), { limiter })).toBeNull()
+    }
+
+    const register = () => makeRequest('https://kineticare.test/api/users', { ip: '203.0.113.77' })
+    for (let index = 0; index < RATE_LIMIT_RULES.registration.limit; index += 1) {
+      expect(checkRequestRateLimit(register(), { limiter })).toBeNull()
+    }
+    expect(checkRequestRateLimit(register(), { limiter })).not.toBeNull()
   })
 
   it('a GET-eket nem korlátozzuk (healthcheck, olvasás)', () => {

@@ -34,8 +34,12 @@ const TEN_MINUTES_MS = 10 * 60 * 1000
 /**
  * A hangolás egyetlen helye. Emberi használat fölött, gépi visszaélés alatt.
  * Az admin user-létrehozása a `registration` REST-keretet eszi (a seed local
- * API-t használ, azt nem). A `*-email` szabályok IP-rotáció ellen védik a
- * címzettet. A `barion-callback-unknown` csak ismeretlen PaymentId-re megy.
+ * API-t használ, azt nem). A Payload admin relationship-listázása viszont
+ * POST `/api/users` + `X-Payload-HTTP-Method-Override: GET` — ez NEM
+ * regisztráció, GET-ként kell kezelni, különben 5 megnyitás / 10 perc után
+ * a „Szakmai ellenőrzést végezte" mező „Hiba történt." pirosat mutat.
+ * A `*-email` szabályok IP-rotáció ellen védik a címzettet. A
+ * `barion-callback-unknown` csak ismeretlen PaymentId-re megy.
  */
 export const RATE_LIMIT_RULES = {
   registration: { limit: 5, windowMs: TEN_MINUTES_MS },
@@ -133,10 +137,38 @@ function normalizePathname(pathname: string): string {
 }
 
 /**
+ * A Payload admin a collection-listát POST-tal kéri, de ezzel a fejléccel
+ * GET-té minősíti (`@payloadcms/ui` Relationship Input). A valódi
+ * regisztráció (`POST /api/users` fejléc nélkül) ettől külön él.
+ */
+export const PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER = 'X-Payload-HTTP-Method-Override'
+
+const SAFE_METHOD_OVERRIDES = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
+ * A rate-limit számára érvényes HTTP-módszer.
+ *
+ * Csak a Payload által GET/HEAD/OPTIONS-re fordított override számít:
+ * egy `X-Payload-HTTP-Method-Override: POST` (vagy PUT) NEM minősíti át
+ * a kérést, tehát a regisztrációs keret nem kerülhető meg hamis fejléccel.
+ */
+export function resolveEffectiveHttpMethod(method: string, headers?: Headers): string {
+  const raw = headers?.get(PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER)
+  if (typeof raw === 'string') {
+    const override = raw.trim().toUpperCase()
+    if (SAFE_METHOD_OVERRIDES.has(override)) {
+      return override
+    }
+  }
+  return method.toUpperCase()
+}
+
+/**
  * Melyik korlátozott osztályba esik a kérés? `null` = nincs korlátozás.
  *
  * Csak a POST korlátozott: a GET/HEAD/OPTIONS olvasás és preflight (a Railway
- * healthcheckje is `GET /admin`), azokat sosem fékezzük.
+ * healthcheckje is `GET /admin`), azokat sosem fékezzük. A `method` már
+ * a `resolveEffectiveHttpMethod` kimenete legyen, ha a hívó kérésből jön.
  */
 export function classifyRateLimitedRoute(
   method: string,
@@ -398,7 +430,10 @@ export function checkRequestRateLimit(
   request: Request,
   options: CheckRequestRateLimitOptions = {},
 ): RateLimitRejection | null {
-  const routeClass = classifyRateLimitedRoute(request.method, safePathname(request.url))
+  const routeClass = classifyRateLimitedRoute(
+    resolveEffectiveHttpMethod(request.method, request.headers),
+    safePathname(request.url),
+  )
   if (!routeClass) {
     return null
   }
