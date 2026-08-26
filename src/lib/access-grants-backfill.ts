@@ -1,6 +1,7 @@
 /**
  * accessGrants backfill — hiányzó `grantedAt` időkorlátos purchases-sorokhoz.
- * Dátum forrása: a vevő saját paid rendelésének `createdAt` (legutolsó). Íráshoz:
+ * Dátum forrása: a vevő saját paid rendelésének `createdAt` (legutolsó).
+ * A termék mai `priceInHUF` árát SOHA nem olvassuk. Íráshoz:
  * `OWNER_BACKFILL_CONFIRM=igen`. Meglévő grantot nem ír felül.
  */
 
