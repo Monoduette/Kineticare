@@ -403,6 +403,14 @@ describe('buildHomeLayout — a záró CTA-sáv és a három állapot szövege',
     expect(lead.toLowerCase()).toContain('terápia')
   })
 
+  it('a nyitott állapot igéje dolgozhatsz, nem a nem létező munkázhatsz', () => {
+    const states = blockOf('states')
+    const nyitott = (states.cards ?? []).find((kartya) => kartya.title === 'Nyitott')
+    const szoveg = nyitott?.text ?? ''
+    expect(szoveg).toContain('Újra dolgozhatsz')
+    expect(szoveg.toLowerCase()).not.toContain('munkáz')
+  })
+
   it('a sajtó-logósor alapértéke a komponens beépített feliratával egyezik', () => {
     expect(blockOf('pressLogos').heading).toBe(PRESS_DEFAULT_HEADING)
   })

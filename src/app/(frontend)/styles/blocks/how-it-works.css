@@ -94,13 +94,11 @@
 }
 
 /* A LÉPÉSCÍM SÚLLYAL VÁLIK EL A LÉPÉSSZÖVEGTŐL (2026-08-17).
-   Ugyanaz a minta, mint a szolgáltatás-sorok címénél (services.css), ezért
-   ugyanaz a megoldás is — a hajszálvonalas, számozott sor a lapon EGY nyelvet
-   beszél: a cím 700-as törzsbetű, a szöveg 400-as, a méret mindkettőnél a
-   közös M lépcső. Mérve: a Tenor Sans-nak nincs 700-as metszete (a 400/600/700
-   előtolása azonos, a böngésző szintetikus félkövért rajzolna), a Nunito Sans
-   viszont variábilis 400–700 — a valódi metszet ezért a törzsbetűről jön.
-   Minta: GOV.UK `govuk-heading-s` (a törzzsel azonos méret, félkövér súly). */
+   A szolgáltatások táblája 2026-08-26-tól L szerif sor-címet visz (a
+   hierarchia következő lépcsője M után) + type-contrastot. Ez a blokk
+   NEM tábla: itt marad a GOV.UK `govuk-heading-s` minta — azonos M méret,
+   700-as törzsbetű. A Tenor Sans-nak nincs 700-as metszete; a Nunito Sans
+   variábilis 400–700, a valódi félkövér ezért a törzsbetűről jön. */
 .kc-how__step-title {
   margin: 0 0 var(--kc-space-2);
   font-family: var(--kc-font-body);

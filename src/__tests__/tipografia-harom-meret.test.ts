@@ -182,9 +182,15 @@ describe('három-méretes tipográfiai skála — inline (TSX) őr', () => {
 describe('globális tipográfiai finomságok', () => {
   const base = readFileSync(join(REPO, 'app/(frontend)/styles/base.css'), 'utf8')
 
-  it('a body mindkét motorra kér élsimítást', () => {
+  it('minden elemen mindkét motorra kér élsimítást (univerzális szelektor + body + űrlap)', () => {
+    const univerzal = base.slice(base.indexOf('*,'), base.indexOf('html {'))
+    expect(univerzal).toContain('-webkit-font-smoothing: antialiased')
+    expect(univerzal).toContain('-moz-osx-font-smoothing: grayscale')
     expect(base).toContain('-webkit-font-smoothing: antialiased')
     expect(base).toContain('-moz-osx-font-smoothing: grayscale')
+    const urlap = base.slice(base.indexOf('button,'), base.indexOf('/* Link-alapnyelv'))
+    expect(urlap).toContain('-webkit-font-smoothing: antialiased')
+    expect(urlap).toContain('-moz-osx-font-smoothing: grayscale')
   })
 
   it('a H1 és a H2 UGYANAZT az L lépcsőt viszi (a különbség nem méret)', () => {

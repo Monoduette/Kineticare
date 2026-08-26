@@ -438,7 +438,7 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
       {
         image: media['state-nyitott.png'],
         title: 'Nyitott',
-        text: 'Újra a saját kezed. Munkázhatsz, sportolhatsz, önfeledten élhetsz.',
+        text: 'Újra a saját kezed. Újra dolgozhatsz, sportolhatsz, önfeledten élhetsz.',
       },
     ],
     sectionSettings: { visible: true, hatter: 'feher' },

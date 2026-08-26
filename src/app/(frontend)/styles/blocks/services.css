@@ -10,6 +10,8 @@
   /* Csak dekoratív vonal — lásd az akcent-korlátot. */
   --kc-services-accent: var(--kc-color-accent);
   --kc-services-accent-text: var(--kc-color-primary);
+  /* A fotó felső fátyla a szekció hátterébe simul (mockup: high-key fade). */
+  --kc-services-fade: var(--kc-color-bg);
 }
 
 /* Sötét sáv: fehér 15,63:1, halvány akcent 8,49:1 az inken. */
@@ -19,6 +21,11 @@
   --kc-services-rule: color-mix(in srgb, var(--kc-color-on-dark) 35%, transparent);
   --kc-services-accent: color-mix(in srgb, var(--kc-color-on-dark) 55%, transparent);
   --kc-services-accent-text: var(--kc-color-on-dark-muted);
+  --kc-services-fade: var(--kc-color-surface-dark);
+}
+
+.kc-section--tint.kc-services {
+  --kc-services-fade: var(--kc-color-surface-tint);
 }
 
 /* A balra kifutó fotó a tábla vízszintes szegélyén túlnyúlik — a szekció
@@ -38,9 +45,9 @@
 
 @media (min-width: 900px) {
   .kc-services__grid {
-    grid-template-columns: minmax(0, 0.96fr) minmax(0, 1fr);
-    column-gap: clamp(3.5rem, 6.25vw, 5.625rem);
-    gap: 0 clamp(3.5rem, 6.25vw, 5.625rem);
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+    column-gap: clamp(2.5rem, 5vw, 4.5rem);
+    gap: 0 clamp(2.5rem, 5vw, 4.5rem);
   }
 }
 
@@ -90,10 +97,10 @@
 .kc-services__eyebrow::after {
   content: '';
   display: block;
-  width: 3.75rem;
-  height: 1.5px;
+  width: 4.25rem;
+  height: 1px;
   margin-top: var(--kc-space-3);
-  background-color: var(--kc-services-accent);
+  background-color: var(--kc-services-accent-text);
 }
 
 /* A TÁBLA-CÍM ÉS A TÖBBI SZEKCIÓ-CÍM AZONOS MÉRETŰ (2026-08-17, tulajdonosi
@@ -169,7 +176,33 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 48%;
+  object-position: 22% 72%;
+}
+
+/* A mockup a fotót a lap színébe mártja (felfelé + jobbra fátyol).
+   A kép MAGA nem fadel: a fátyol a szekció hátterének színe, tehát tint
+   és sötét sávon is a sávba simul, nem papír-foltot hagy.
+   Apple HIG Layout: overlapping content uses a gradient fade, not a hard crop.
+   https://developer.apple.com/design/human-interface-guidelines/layout */
+.kc-services__media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to top,
+      transparent 36%,
+      color-mix(in srgb, var(--kc-services-fade) 42%, transparent) 64%,
+      var(--kc-services-fade) 100%
+    ),
+    linear-gradient(
+      to right,
+      transparent 48%,
+      color-mix(in srgb, var(--kc-services-fade) 55%, transparent) 82%,
+      var(--kc-services-fade) 100%
+    );
 }
 
 /* Asztali gépen a fotó a bal hasáb CÍM ALATTI maradékát tölti ki (flex-növekedés
@@ -220,7 +253,7 @@
   grid-template-columns: 2.5rem minmax(0, 1fr);
   gap: var(--kc-space-4);
   align-content: center;
-  padding: var(--kc-space-5) 0;
+  padding: var(--kc-space-6) 0;
   border-top: 1px solid var(--kc-services-rule);
 }
 
@@ -235,57 +268,65 @@
   }
 }
 
-/* A látható sorszám dekoratív (a sorrendet a rendezett lista hordozza). */
+/* A látható sorszám dekoratív (a sorrendet a rendezett lista hordozza).
+   A mockup sans-serif, középkék számot visz a szerif sor-cím BALJÁRA —
+   a címsor-betű (Tenor) ezért NEM kell ide. NN/g type contrast: a szám
+   UI-jel, a cím display-szerif; a két szerep két betűcsalád.
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/ */
 .kc-services__num {
   margin: 0;
-  padding-top: 0.38rem;
-  font-family: var(--kc-font-heading);
+  /* A sor-cím L-re nőtt; a szám M marad. A 0,2rem a két M-es sor
+     sapka-vonalára volt hangolva. space-2 (8 px) a mért optikai
+     igazítás: 320-on L=32 px / szám=16 px, 1440-en L=46,4 px / szám=18 px.
+     NN/g Visual Hierarchy: a szám UI-jel, nem címsor. */
+  padding-top: var(--kc-space-2);
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-medium);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   color: var(--kc-services-accent-text);
 }
 
-/* SOR-CÍM: A SÚLY HORDOZZA A SZINTET (2026-08-17, tulajdonosi hibajelzés —
-   „a »Rendelői kezelések« meg az »Otthoni program« jobban olvashatónak
-   kellene hogy legyenek").
+/* A cím-oszlop a 2,5rem-es szám mellett minmax(0, 1fr) — min-width: 0
+   nélkül a hosszú CMS-cím (pl. „Rendelői kezelések – személyesen")
+   kitolja a rácsot. WCAG 2.2 SC 1.4.10 Reflow. */
+.kc-services__body {
+  min-width: 0;
+}
 
-   MÉRVE (Chromium, produkciós build, 1440 px): a sor CÍME 18 px / 400 súly,
-   a sor SZÖVEGE ugyanúgy 18 px / 400 súly — a kettő között tehát sem méret-,
-   sem súlykülönbség NEM volt, egyedül a szín tért el (ink 14,79:1 vs
-   text-muted 8,80:1). Ráadásul a cím a Tenor Sans-t vitte, aminek vékonyabb
-   a vonalvastagsága, mint a törzsszöveg Nunito Sans-áé: a címsor emiatt
-   HALVÁNYABBNAK látszott, mint az alatta futó bekezdés — pontosan fordítva,
-   mint ahogy egy címsornak kell.
+/* SOR-CÍM: A KÖVETKEZŐ HIERARCHIA-LÉPCSŐ (tulajdonosi kérés, 2026-08-26).
+   A három-méretes skálán M után a következő token az L — nincs köztes
+   méret (őr: tipografia-harom-meret). NN/g Visual Hierarchy
+   (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/):
+   „use no more than 3 font sizes"; a webes példa body 14–16, subheader
+   18–22, header ~32. Az M asztali 18 px a subheader ALJA; a rövid,
+   pillantásra olvasható sor-cím („Rendelői kezelések") a header-lépcsőt
+   kéri (NN/g Glanceable Fonts:
+   https://www.nngroup.com/articles/glanceable-fonts/).
 
-   A javítás a SÚLY, mert a méret nem mozdulhat (három-méretes skála):
-     - a betűcsalád a TÖRZS-betűre vált. Ez nem stílus-kérdés, hanem mérés:
-       a Tenor Sans-nak CSAK 400-as metszete van (styles/fonts.css), a 700
-       kérése ezért szintetikus („faux") félkövért ad — mérve a 400/600/700
-       előtolás bitre azonos (166,23 px), vagyis a böngésző a vonalakat
-       vastagítja, a betűközöket nem tágítja, így a belső formák bezáródnak.
-       A Nunito Sans ezzel szemben VARIÁBILIS 400–700 (mérve: 153,94 /
-       156,42 / 159,33 px), tehát valódi metszetet ad. Ugyanez az indok
-       szerepel a `.kc-how__num` mellett is (how-it-works.css).
-     - a súly 700. Ez a GOV.UK Design System mintája: a `govuk-heading-s`
-       PONTOSAN akkora, mint a `govuk-body` (19 px), és kizárólag a
-       félkövér súly (`$govuk-font-weight-bold: 700`) különbözteti meg.
-     - a sortáv a közös címsor-sortávra vált (1,08 → 1,2). Az 1,08 a
-       tábla-tükörből maradt itt; magyar ékezetes címnél (ő, ű) tördeléskor a
-       felső sor betűi a következő sorhoz értek.
-     - a betűköz visszaáll normálra: a 0,005em a Tenor Sans-hoz volt kalibrálva.
+   A szekció H2 is L. A projekt már elfogadja, hogy H1=H2=L, a szintet
+   ELHELYEZÉS viszi (tokens.css, base.css). Itt ugyanez: a H2 a bal
+   hasáb 12ch-s display-címe, a H3 a számozott lista jobbra. A családot
+   (Tenor) és a 400-as súlyt a mockup tartja. 700 tilos: a Tenor Sans-nak
+   csak 400-as metszete van.
 
-   A szín NEM változik (ink, 14,79:1 a paperen) — a kontraszt eddig is bőven
-   AA fölött volt, a hiba a hierarchiában volt, nem a kontrasztban. */
+   320 px: L alsó clamp = 32 px. A cím-oszlop ~216 px (320 − 2×space-5
+   − 2,5rem szám − space-4 rés). Tenor 32 px ≈ 16,9 px/karakter: a
+   „Rendelői" / „kezelések" két sorba fér; hosszabb CMS-cím
+   overflow-wrap-pel törik, nem nyit vízszintes görgetőt
+   (WCAG 2.2 SC 1.4.10). */
 .kc-services__row-title {
   margin: 0 0 var(--kc-space-4);
-  font-family: var(--kc-font-body);
-  font-size: var(--kc-font-m);
-  font-weight: var(--kc-font-weight-bold);
-  letter-spacing: normal;
+  min-width: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  letter-spacing: 0.005em;
   line-height: var(--kc-leading-heading);
   color: var(--kc-services-ink);
   text-wrap: balance;
+  overflow-wrap: break-word;
 }
 
 .kc-services__text {

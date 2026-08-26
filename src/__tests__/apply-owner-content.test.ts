@@ -6,6 +6,7 @@ import {
   KURZUSLISTA_JOVAHAGYOTT_FELIRAT,
   KURZUS_ELONYOK,
   REGI_ALLAPOTOK_BEVEZETO,
+  REGI_NYITOTT_KARTYA,
   REGI_KURZUS_SZEKCIO_CIM,
   REGI_PACIENS_ERTEK,
   REGI_PRESS_FEJLEC,
@@ -15,6 +16,7 @@ import {
   UJ_KURZUS_SZEKCIO_CIM,
   UJ_PACIENS_ERTEK,
   alkalmazAllapotokBevezeto,
+  alkalmazAllapotokNyitottIge,
   alkalmazAszfAdatvedelemLink,
   alkalmazJogiOldalak,
   alkalmazKapcsolatSzakemberek,
@@ -31,6 +33,7 @@ import {
   alkalmazSzolgaltatasokHeroKep,
   alkalmazZaroCta,
   allapotokUjBevezeto,
+  allapotokUjNyitottSzoveg,
   heroKepAzonosito,
   kapcsolatSeedBlokkok,
   pressLogosUjFejlec,
@@ -1258,6 +1261,73 @@ describe('alkalmazAllapotokBevezeto', () => {
 })
 
 // ===========================================================================
+// 10b. javítás — a „Nyitott” kártya hibás igéje.
+// ===========================================================================
+
+describe('alkalmazAllapotokNyitottIge', () => {
+  const allapotSzekcio = (nyitottSzoveg: string): Szekcio => ({
+    blockType: 'states',
+    id: 'st-ny',
+    title: 'Három állapot, egy folyamat',
+    lead: 'Bevezető.',
+    cards: [
+      { id: 'k1', title: 'Zárt', text: 'Fájdalom, bizonytalanság.' },
+      { id: 'k3', title: 'Nyitott', text: nyitottSzoveg },
+    ],
+    sectionSettings: { visible: true, hatter: 'feher' },
+  })
+
+  const ujSzoveg = allapotokUjNyitottSzoveg()
+  const csere = (layout: Page['layout']) => alkalmazAllapotokNyitottIge({ layout, ujSzoveg })
+
+  it('az ÚJ szöveg a seed-builderből jön, és dolgozhatsz, nem munkázhatsz', () => {
+    expect(ujSzoveg).not.toBeNull()
+    expect(ujSzoveg).toContain('Újra dolgozhatsz')
+    expect((ujSzoveg ?? '').toLowerCase()).not.toContain('munkáz')
+    expect(ujSzoveg).not.toBe(REGI_NYITOTT_KARTYA)
+  })
+
+  it('a régi, hibás igés mondatot lecseréli, a többi kártyát érintetlenül hagyja', () => {
+    const eredmeny = csere([allapotSzekcio(REGI_NYITOTT_KARTYA)])
+
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].szabaly).toBe('allapotok-nyitott-ige')
+    const blokk = eredmeny.layout?.[0]
+    const kartyak = blokk?.blockType === 'states' ? blokk.cards : null
+    expect(kartyak?.[0]?.text).toBe('Fájdalom, bizonytalanság.')
+    expect(kartyak?.[1]?.text).toBe(ujSzoveg)
+  })
+
+  it('a szerkesztő saját kártyaszövegéhez nem nyúl', () => {
+    const eredmeny = csere([allapotSzekcio('Saját, már átírt kártyaszöveg.')])
+
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0].indok).toContain('a szerkesztő időközben átírta')
+  })
+
+  it('idempotens: a már beírt új szöveget csendben kihagyja', () => {
+    const elso = csere([allapotSzekcio(REGI_NYITOTT_KARTYA)])
+    const masodik = csere(elso.layout)
+
+    expect(masodik.layout).toBeNull()
+    expect(masodik.modositasok).toHaveLength(0)
+    expect(masodik.kihagyasok[0].indok).toContain('MÁR')
+  })
+
+  it('hiányzó seed-érték: HANGOS kihagyás', () => {
+    const eredmeny = alkalmazAllapotokNyitottIge({
+      layout: [allapotSzekcio(REGI_NYITOTT_KARTYA)],
+      ujSzoveg: null,
+    })
+
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.kihagyasok[0].hangos).toBe(true)
+    expect(eredmeny.kihagyasok[0].indok).toContain('buildHomeLayout')
+  })
+})
+
+// ===========================================================================
 // 11. javítás — a kezdőlap záró CTA-sávja.
 // ===========================================================================
 
@@ -1627,7 +1697,13 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
           return { ...blokk, heading: REGI_PRESS_FEJLEC }
         }
         if (blokk.blockType === 'states') {
-          return { ...blokk, lead: REGI_ALLAPOTOK_BEVEZETO }
+          return {
+            ...blokk,
+            lead: REGI_ALLAPOTOK_BEVEZETO,
+            cards: (blokk.cards ?? []).map((kartya) =>
+              kartya.title === 'Nyitott' ? { ...kartya, text: REGI_NYITOTT_KARTYA } : kartya,
+            ),
+          }
         }
         return blokk
       })
@@ -1658,6 +1734,15 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     if (allapotok.layout !== null) {
       layout = allapotok.layout
     }
+    const nyitott = alkalmazAllapotokNyitottIge({
+      layout,
+      ujSzoveg: allapotokUjNyitottSzoveg(),
+    })
+    modositasok.push(...nyitott.modositasok)
+    kihagyasok.push(...nyitott.kihagyasok)
+    if (nyitott.layout !== null) {
+      layout = nyitott.layout
+    }
     const zaro = alkalmazZaroCta({ layout, seedBlokk: zaroCtaSeedBlokk() })
     modositasok.push(...zaro.modositasok)
     kihagyasok.push(...zaro.kihagyasok)
@@ -1668,11 +1753,12 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     return { layout, modositasok, kihagyasok }
   }
 
-  it('egy futásban mind az ÖT javítást elvégzi, egymást nem ejtve el', () => {
+  it('egy futásban mind a HAT javítást elvégzi, egymást nem ejtve el', () => {
     const elso = lanc(eloKezdolap())
 
     expect(elso.modositasok.map((lepes) => lepes.szabaly).sort()).toEqual([
       'allapotok-bevezeto',
+      'allapotok-nyitott-ige',
       'kurzus-szekcio-cim',
       'paciens-szam',
       'presslogos-fejlec',
@@ -1687,6 +1773,10 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     expect(sajto?.blockType === 'pressLogos' ? sajto.heading : null).toBe(pressLogosUjFejlec())
     const allapotok = elso.layout.find((blokk) => blokk.blockType === 'states')
     expect(allapotok?.blockType === 'states' ? allapotok.lead : null).toBe(allapotokUjBevezeto())
+    const nyitottKartya = allapotok?.blockType === 'states'
+      ? (allapotok.cards ?? []).find((kartya) => kartya.title === 'Nyitott')
+      : null
+    expect(nyitottKartya?.text).toBe(allapotokUjNyitottSzoveg())
     expect(elso.layout[elso.layout.length - 1].blockType).toBe('ctaBanner')
   })
 

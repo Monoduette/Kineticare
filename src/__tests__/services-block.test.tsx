@@ -141,12 +141,14 @@ describe('services.css — a rácsúszás és a sorprés őrei', () => {
   it('a sor megtartja a saját belső margóját (nincs min-height: 0 kiskapu)', () => {
     const sor = szabalyTorzs(css, '.kc-services__row')
 
-    expect(sor).toContain('padding: var(--kc-space-5) 0')
+    expect(sor).toContain('padding: var(--kc-space-6) 0')
     expect(sor).not.toContain('min-height: 0')
   })
 
   it('a hosszú szó megtörik, nem vágja le a szekció (WCAG 1.4.10 Reflow)', () => {
     expect(szabalyTorzs(css, '.kc-services__title')).toContain('overflow-wrap: break-word')
+    expect(szabalyTorzs(css, '.kc-services__row-title')).toContain('overflow-wrap: break-word')
+    expect(szabalyTorzs(css, '.kc-services__body')).toContain('min-width: 0')
   })
 })
 

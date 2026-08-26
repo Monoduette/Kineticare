@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { HomeView } from '../components/content/HomeView'
+import { TESTIMONIAL_OPENING_MARK } from '../components/content/home/TestimonialsSection'
 import { DEFAULT_HEADING, isPaidProduct } from '../components/content/home/CourseCards'
 import {
   accessDurationLabel,
@@ -452,6 +453,10 @@ describe('HomeView (kezdőlap-render)', () => {
     expect(html).not.toContain('Nem kiemelt')
     expect(html).not.toContain('Rejtett vélemény')
     expect(html.match(/<blockquote/g) ?? []).toHaveLength(3)
+    // Dekoratív nyitó jel: a mockup magas „66-os" idézőjele (U+201C), nem a
+    // magyar alsó-9 (U+201E). A jel aria-hidden, a blockquote a valódi idézet.
+    expect(html).toContain(`class="kc-testimonials__mark">${TESTIMONIAL_OPENING_MARK}`)
+    expect(html).not.toContain('class="kc-testimonials__mark">\u201E')
   })
 
   it('M6 vélemények: a rövid változat elsőbbséget élvez a teljes szöveg felett', () => {

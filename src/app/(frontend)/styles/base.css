@@ -7,6 +7,14 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  /* Élsimítás MINDEN elemen, nem csak a body-n. A tulajdonság öröklődik,
+     de a formavezérlők és a ::before/::after egyes motorokon saját
+     user-agent rajzolást kapnak — a univerzális szelektor ezért explicit.
+     NN/g Text Legibility (https://www.nngroup.com/articles/glanceable-fonts/)
+     + Apple HIG Typography: a márka vékony serif/sans metszetei
+     subpixel-simítással vastagabbnak látszanak. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html {
@@ -160,6 +168,11 @@ textarea {
   font: inherit;
   color: inherit;
   margin: 0;
+  /* WebKit/Blink a formavezérlőkön időnként nem viszi át a body
+     élsimítását — ugyanaz a két motor-tulajdonság, mint a univerzális
+     szelektoron. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Link-alapnyelv a landing `kc-footer-meta` mintájára: ink-színű szöveg, a
