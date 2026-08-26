@@ -60,7 +60,9 @@
   width: 5.5rem;
   height: 1px;
   margin: var(--kc-space-4) auto 0;
-  background-color: var(--kc-testimonials-mark);
+  /* A tükör a cím alatti pálcát navy-n viszi (nem a díszjel halvány kékjét):
+     accent-quiet a tint hátteren 1 px-en szinte eltűnik. */
+  background-color: var(--kc-testimonials-ink);
 }
 
 /* ---- Rács: nagy nyitó idézet + oldalsó kis idézetek ----------------------- */
@@ -260,7 +262,7 @@
   width: 100%;
   height: 1px;
   margin-bottom: var(--kc-space-3);
-  background-color: var(--kc-testimonials-mark);
+  background-color: var(--kc-testimonials-ink);
 }
 
 /* A név és a szerep EGY sorban, verzálisan — a tükör névsora egyetlen szöveg

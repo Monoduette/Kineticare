@@ -79,7 +79,7 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       '.kc-testimonials .kc-testimonials__attribution::before',
     )
     expect(vonal).toContain('width: 100%')
-    expect(vonal).toContain('background-color: var(--kc-testimonials-mark)')
+    expect(vonal).toContain('background-color: var(--kc-testimonials-ink)')
 
     expect(kommentNelkul(testimonialsCss)).toMatch(
       /\.kc-testimonials \.kc-testimonials__cite,[\s\S]*?font-size: var\(--kc-font-s\)/,
