@@ -348,16 +348,11 @@ describe('createWatchTracker — határesetek', () => {
 })
 
 /**
- * ═══ AZ ADAPTÍV KÜSZÖB — A NÉMA BUKÁS ELLEN ═══
- *
  * A fix, 2 másodperces küszöb egy FELTEVÉS volt a Bunny lejátszójáról: hogy a
  * `timeupdate` sűrűbben érkezik ennél. A Bunny dokumentációja az esemény
  * ALAKJÁT rögzíti, a gyakoriságát nem. Ha a lejátszó ritkábban tüzelne, a fix
  * küszöb mellett minden lépés „tekerésnek" minősülne, az arány tartósan 0
  * maradna, és a lecke SOHA nem jelölődne készre magától — hibaüzenet nélkül.
- *
- * Az itteni tesztek EZT a bukást reprodukálják, és azt őrzik, hogy a tanulás
- * megszünteti — anélkül, hogy a szkippelés elleni védelem kiürülne.
  */
 describe('createWatchTracker — adaptív folytonossági küszöb', () => {
   it('RITKA (5 mp-enkénti) timeupdate mellett is végigméri a videót', () => {
@@ -533,14 +528,11 @@ describe('createWatchTracker — a lejátszó valódi hívási mintája', () => 
 })
 
 /**
- * ═══ A FALIÓRA-SZABÁLY — A TANULÁS-KIJÁTSZÁS ELLEN ═══
- *
  * A code review bizonyította (reprodukcióval): a küszöb-tanulás pusztán a
  * média-időbélyegekből kijátszható volt — kitartó, egyenletes ugrásokkal a
  * medián felhúzható a 15 mp-es felső korlátig, onnantól a tekerés „folyamatos
  * lejátszásnak" számított, és a videó a tényleges megnézése nélkül is késznek
  * jelölődött. A falióra a becsületes döntő: valódi lejátszásnál a média-idő nem
- * haladhat gyorsabban, mint az eltelt valós idő × a lejátszási sebesség.
  */
 describe('createWatchTracker — falióra-szabály (a tanulás nem játszható ki)', () => {
   it('a GYORS tekerés-sorozat falióra mellett NEM kap lefedettséget', () => {

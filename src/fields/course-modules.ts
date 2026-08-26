@@ -3,44 +3,8 @@ import type { ArrayField, Field } from 'payload'
 import { streamAssetReadAccess } from '../access/streamAssetRead'
 
 /**
- * A kurzus TANANYAG-szerkezete: modulok (fejezetek) → leckék (`products.modules`).
- *
- * ═══ MIÉRT ÚJ MEZŐ, ÉS MIÉRT MARAD A RÉGI `videos` ═══
- * A kurzusok eddig EGY lapos videó-listát (`products.videos`) hordoztak. A
- * megrendelői elvárás viszont fejezetekre bontott tananyag („1. ALAPOK",
- * „2. MIÉRT FÁJ?", „BÓNUSZOK"…), és a leckék nem mind videók: van köztük
- * szöveges anyag, letölthető segédlet és külső link (pl. Facebook-csoport).
- *
- * A `videos` tömb ezért ÉRINTETLEN marad, és a `modules` MELLÉ kerül:
- * - a meglévő kurzusok egyetlen sor adatmozgatás nélkül tovább működnek,
- * - a migráció NEM destruktív (nincs DROP, nincs adatátírás),
- * - a már rögzített haladás-sorok (`course-progress.videoRef`) érvényben
- *   maradnak, mert a régi videó-sorok azonosítói változatlanok.
- * A felület a kettőt egyetlen tananyag-modellben egyesíti
- * (src/lib/curriculum/curriculum.ts): ha van `modules`, azt mutatja; ha nincs,
- * a `videos` tömbből képez egyetlen, implicit modult.
- *
- * ═══ AZONOSÍTÓ-NÉVTÉR: MIÉRT NEM ÜTKÖZHET A KÉT TÖMB ═══
- * A haladás a videó/lecke STABIL azonosítójára hivatkozik (`streamVideoRef`,
- * src/lib/stream/contract.ts) — elsődlegesen az array-SOR saját `id`-ja. A
- * Payload ezt az `id`-t BSON ObjectID hex-stringként generálja
- * (node_modules/payload/dist/fields/baseFields/baseIDField.js:9 —
- * `defaultValue: () => new ObjectId().toHexString()`), tehát NEM tábla-szintű
- * sorszám: egyetlen, globálisan egyedi generátorból jön minden array-tömbhöz.
- * (Élesben ellenőrizve: ugyanazon a mentésen a `products_gallery` sorai
- * …9972/…9973, a `products_videos` sorai …9974/…9975 azonosítót kaptak.)
- * Következmény: egy `products_modules_lessons` sor azonosítója SOSEM eshet
- * egybe egy `products_videos` sor azonosítójával — a `videoRef` névtér közös
- * használata biztonságos, és a haladás nem mutathat idegen leckére.
- *
- * ═══ BIZTONSÁG ═══
- * A lecke `streamAssetId` mezője UGYANAZT a mezőszintű olvasás-védelmet kapja,
- * mint a régi videó-soré (`streamAssetReadAccess`, src/access/streamAssetRead.ts) —
- * a szabály VÁLTOZATLANUL kerül újrafelhasználásra, nem módosul. Enélkül az új
- * szerkezet kinyitná azt a rést, amit az S2/b sec-review a régin bezárt: a
- * nyilvános `GET /api/products` kiadná a fizetős tartalom Bunny-GUID-jait.
- * Az access-függvény tetszőleges mélységű array-almezőn működik, mert a Payload
- * a TOP-LEVEL dokumentumot adja át (`doc`/`id`) — lásd a függvény fejlécét.
+ * products.modules: fejezetek → leckék; a régi videos tömb érintetlen (nem destruktív migráció).
+ * Lecke ref = globális BSON id; streamAssetId ugyanazt a streamAssetReadAccess-t kapja.
  */
 
 /** A lecke típusai — a felület ez alapján dönti el, mit és hogyan jelenít meg. */

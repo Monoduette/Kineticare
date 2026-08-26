@@ -2,27 +2,7 @@ import { FREE_COURSE_GENERIC_ERROR } from './ui-text'
 import type { FreeCourseFormValues } from './validation'
 
 /**
- * Ingyenes kurzus igénylése — a KLIENS-oldali beküldés.
- *
- * API-szerződés (saját végpont, NEM a form-builder plugin `form-submissions`
- * útja):
- *  - Végpont: `POST /api/free-course/request`.
- *  - Törzs: `{ productId, name, email, consentPrivacy, turnstileToken?, website? }`
- *    (a `website` a honeypot).
- *  - Válasz 200: `{ ok: true, emailSent: boolean }` — az `emailSent` mondja
- *    meg, hogy a belépő levél TÉNYLEGESEN kiment-e (kulcs nélküli környezetben
- *    `false`, és a látogató ehhez igazodó, IGAZ üzenetet kap).
- *  - Válasz 4xx/5xx: `{ error: '<magyar üzenet>' }`.
- *
- * ═══ MIÉRT NEM A FORM-BUILDER VÉGPONT ═══
- * A kapcsolat-, a hírlevél- és az időpontkérő űrlap a plugin
- * `POST /api/form-submissions` útját hívja, mert ott a beküldés CÉLJA egy
- * tárolt üzenet. Itt viszont a beküldés fiókot hoz létre, hozzáférést ad és
- * levelet küld — ez a plugin szerződésén kívül esik (a hook-lánc csak
- * validálni és értesíteni tud), ezért saját, dokumentált végpont felel érte.
- *
- * A fetch injektálható, így a modul jsdom nélkül, node-környezetben is
- * tesztelhető.
+ * Ingyenes kurzus kliens beküldés → POST /api/free-course/request (nem form-builder: fiók+hozzáférés+levél).
  */
 
 /** A saját igénylő-végpont útvonala. */

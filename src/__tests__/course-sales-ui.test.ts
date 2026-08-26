@@ -99,16 +99,12 @@ describe('CourseBuybox — a lap egyetlen elsődleges célja', () => {
   })
 
   /**
-   * ═══ HIÁNYOS ÁR-KONFIGURÁCIÓ: NINCS GOMB, VAN MAGYARÁZAT ═══
-   *
-   * `docs/ui-sztenderdek.md` **Á-3** és **§3.2 #16**: ha a cselekvés nem
-   * végezhető el, a gomb ELTŰNIK, és magyarázó mondat áll a helyén. A korábbi
-   * kód letiltott, „Megveszem" feliratú, magyarázat NÉLKÜLI gombot adott —
-   * fókuszálhatatlan és hamis ígéret (NN/g: „a link ígéret"),
-   * `docs/gomb-inventar.md` T2.
-   *
-   * A RÉGI kódon ez a teszt megbukna: a kimenetben ott állt a „Megveszem".
-   */
+ * `docs/ui-sztenderdek.md` **Á-3** és **§3.2 #16**: ha a cselekvés nem
+ * végezhető el, a gomb ELTŰNIK, és magyarázó mondat áll a helyén. A korábbi
+ * kód letiltott, „Megveszem" feliratú, magyarázat NÉLKÜLI gombot adott —
+ * fókuszálhatatlan és hamis ígéret (NN/g: „a link ígéret"),
+ * `docs/gomb-inventar.md` T2.
+ */
   it('nem vásárolható termék: NINCS gomb, helyette magyarázó mondat (Á-3, §3.2 #16)', () => {
     const broken = buybox({
       priceBadge: 'none',

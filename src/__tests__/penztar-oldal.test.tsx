@@ -12,16 +12,10 @@ import type { Product, User } from '../payload-types'
 
 /**
  * M8 REGRESSZIÓ-ŐR: a /penztar szerver-oldala NEM olvassa a kosarat.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A pénztár szerver-komponense a 'use client'-es `readCart()`-ot hívta
  * kosár-fallbackként: a localStorage-os kosárhoz a szerver sosem fér hozzá,
  * a hívás pedig garantált render-hiba volt. A fallback most letisztult: a
  * termék KIZÁRÓLAG a ?termek={id} query-ből jön (a /kosar oldal CartView-je
- * teszi a linkbe), hiányában a „nincs kiválasztott termék" nézet renderelődik.
- *
- * A koszonom-oldal.test.ts mintája: a VALÓDI oldal-komponens fut, a getPayload
- * és a request-headers mockolva (valódi DB és hálózat nélkül).
  */
 
 vi.mock('payload', async (importOriginal) => {
@@ -189,15 +183,10 @@ describe('/penztar — vendég-vásárlás (nincs bejelentkezés)', () => {
 
 /**
  * ÜRES PIROS HIBADOBOZ (tulajdonosi hibajelentés, 2026-08-16).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * Az élő hibarégió szándékosan MINDIG a DOM-ban van (a dinamikusan beszúrt
  * aria-live régiót több képernyőolvasó nem jelenti be) — a stíluslap viszont
  * üresen is piros keretet, piros hátteret és belső margót adott neki, így a
  * „Pénztár" cím alatt egy üres piros sáv ült.
- *
- * A javítás szerződése: a régió MARAD (nincs `display: none`, ami elnémítaná),
- * de üres állapotban `data-visible="false"`, és a CSS ilyenkor mindent lenulláz.
  */
 describe('/penztar — a hiba-élőrégió megjelenése', () => {
   function renderErrorRegion(error: string | null): string {

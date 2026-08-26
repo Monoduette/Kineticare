@@ -22,79 +22,9 @@ import {
 /**
  * GET /api/admin/user-progress?users=<id,id,…> route-handler factory.
  *
- * A függőségek (Payload-példány) injektálva vannak, így a handler
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/admin/user-progress/route.ts köti be a valódi
- * configgal — ugyanaz a felállás, mint a kurzus-haladás végpontjánál
- * (src/lib/admin/course-progress-handler.ts).
- *
- * ═══ MIÉRT VAN ═══
- * A Felhasználók-lista „Megvásárolt kurzusok" oszlopa eddig csak azt mutatta,
- * KI mihez fér hozzá. A munkatársnak viszont a következő kérdése mindig az,
- * hogy az illető HOL TART — eddig ehhez soronként át kellett kattintani a
- * kurzus szerkesztőlapjára. Ez a végpont a lista EGY oldalára kér haladást
- * egyetlen kérésben, hogy a cella `Otthoni KézRehab Program · 45% · folyamatban`
- * alakban tudjon írni.
- *
- * ═══ RBAC-SZERZŐDÉS ═══
- * Ugyanaz a szint, mint a kurzus-haladás panelen (a munkatársak nézik, nem
- * csak a tulajdonos):
- * - anon hívó → 401,
- * - customer (és minden más szerepkör) → 403,
- * - staff vagy owner → engedélyezett.
- * A meglévő `hasStaffOrOwnerRole` predikátumot hívja (src/access/roles.ts) —
- * access-control függvényt NEM ír át (CLAUDE.md 4. tilos zóna).
- *
- * ═══ MIÉRT SAJÁT VÉGPONT, ÉS MIÉRT NEM A REST-API ═══
- * Ugyanaz a két ok, mint a kurzus-panelnél: (1) a százalék a SZERVEREN dől el,
- * a vevői oldallal KÖZÖS `summarizeCurriculum`-mal, tehát a lista nem tud más
- * számot mutatni, mint a vevő saját felülete; (2) a `course-progress` nyers
- * sorhalmaza nem megy ki a böngészőbe. A REST-ből összerakva mindkettő
- * megfordulna.
- *
- * ═══ KÖTEGELT LEKÉRDEZÉS — SOSEM SORONKÉNT ═══
- * A lista egy oldala akár 100 sor is lehet. Felhasználónkénti lekérdezéssel ez
- * 100+ kör-utat jelentene (N+1), a Railway privát hálóján ez másodpercekben
- * mérhető. Ezért MINDHÁROM olvasás `in` kifejezéssel, kötegelve megy:
- *  - a kért felhasználók egyben (`id in [...]`),
- *  - a `purchases` listáikból összegyűjtött EGYEDI kurzusok egyben,
- *  - a haladás-sorok egyetlen, lapozott lekérdezésben (`user in [...]` ÉS
- *    `product in [...]`).
- * A kérésenkénti felső korlátot a szerződés `USER_PROGRESS_MAX_USERS`-e adja;
- * a kliens ennél nagyobb listát csomagokra bont.
- *
- * ═══ LAPOZÁS ÉS CSONKOLÁS ═══
- * A `payload.find` alapértelmezett limitje 10 — enélkül a végpont CSENDBEN
- * csonkolna, és „mindenki 0%-on áll" képet adna. Minden olvasás EXPLICIT
- * lapmérettel és felső korláttal megy (a `limit: 0` szándékosan tilos: egy
- * elrontott feltétel mellett korlátlan memóriát jelentene).
- *
- * Ha a haladás-lista mégis a plafonhoz ér, az utolsó — esetleg félbevágott —
- * felhasználó KIMARAD a válaszból, a nála nagyobb azonosítójúakkal együtt
- * (src/lib/admin/user-course-progress.ts). A cella ilyenkor „nincs adat"-ot
- * mutat, ami igaz; egy alulmért százalék viszont hazugság lenne, és a
- * munkatárs a végzett vevőt keresné meg lemaradóként.
- *
- * ═══ VÁLASZ-SZERZŐDÉS ═══
- * - 200: `UserProgressResponse` (src/lib/admin/user-progress-contract.ts)
- * - 400: üres vagy értelmezhetetlen azonosító-lista, illetve a korlát fölötti kérés
- * - 401/403: RBAC (fent)
- * - 500: váratlan technikai hiba (naplózva requestId-vel)
- * Minden hibaüzenet MAGYARUL, a felhasználónak szólóan.
- *
- * ═══ GYORSÍTÓTÁR: SEMMILYEN ÁGON ═══
- * Minden válasz `no-store` (a Videótár-végpont mintája,
- * src/lib/stream/bunny-library-handler.ts). A 200-as ág konkrét vevők
- * haladását hordozza — ez sem böngésző-, sem köztes gyorsítótárba nem való —,
- * a HIBAÁGAK pedig azért kapják meg, mert enélkül egy 401/403 válasz
- * megragadhatna, és a bejelentkezés UTÁN is a tiltó választ szolgálná ki
- * (illetve fordítva: egy másik munkatárs gépén a korábbi 200 jelenne meg).
- *
- * ═══ NAPLÓZÁS ═══
- * A naplóba KIZÁRÓLAG azonosító, darabszám, szerepkör és requestId kerül.
- * Név és e-mail SEMMILYEN ágon nem — az `email` ugyan a logger redact-listáján
- * van, a `name` viszont NINCS, tehát egy odaadott user-objektum a nevet
- * kiírná (src/lib/logger.ts).
+ * Staff/owner RBAC; haladás szerveren, közös `summarizeCurriculum`-mal. Kötegelt
+ * `in` lekérdezések (N+1 elkerülése); explicit lapozás; csonkolásnál inkább hiány,
+ * mint hamis százalék. Minden válasz `no-store`. Naplóban nincs név/e-mail.
  */
 
 export interface UserProgressHandlerDeps {

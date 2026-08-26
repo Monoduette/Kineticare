@@ -2,43 +2,10 @@ import net from 'node:net'
 
 /**
  * Elérhető-e TÉNYLEGESEN a teszt-adatbázis?
- *
  * A DB-függő tesztfájlok korábban csak a DATABASE_URI + PAYLOAD_SECRET env
  * MEGLÉTÉT nézték — a CI-kapu viszont álértékű DATABASE_URI-t exportál (a
  * production-buildhez kell), amely 127.0.0.1:5432-re mutat, ahol nem fut
  * Postgres. Az env-alapú kapcsoló így hamis pozitívot adott: a tesztek
- * elindultak, majd ECONNREFUSED-dal buktak.
- *
- * Ezért a kapcsoló egy gyors TCP-elérhetőségi próba: ha a host:port nem
- * fogad kapcsolatot (vagy 1,5 mp-en belül nem válaszol), a DB-tesztek
- * kihagyásra kerülnek — pontosan úgy, mint env nélkül. Elutasított kapcsolat
- * (ECONNREFUSED) azonnal visszatér, tehát a próba nem lassítja a futást.
- *
- * ═══ FAIL-CLOSED: CI-BAN A KIHAGYÁS TILOS (2026-08-18) ═══
- *
- * A csendes kihagyás HELYBEN kényelmi funkció, CI-ban viszont NÉMA
- * lefedettség-vesztés volt. Mérve: a `verify` job Postgres és DATABASE_URI
- * nélkül futott, ezért ez a segéd minden futásnál azonnal `false`-ot adott,
- * és a `describe.skipIf(!hasDb)` 3 tesztfájlt (order-snapshots,
- * products-status, webhook-audit-db) plusz az order-number fele-részét — 11
- * tesztet — kihagyott. Minden zöld volt. Az egyik így kiiktatott őr azt védi,
- * hogy a KLIENS által küldött ár sosem írja felül a szerver árát
- * (order-integrity.ts → totalHufSnapshot): ez az egyetlen szám, amiből a
- * Barion-fizetés összege épül, ÉS amihez az összeg-ellenőrzés hasonlít. A
- * védelmet mutációval kiiktatva a teljes tesztsor zöld maradt.
- *
- * Ezért: ha `CI` be van állítva, az adatbázis elérhetősége KÖVETELMÉNY, nem
- * lehetőség — hiányában ez a függvény DOB, tehát a tesztfájl betöltése
- * hangosan elhasal, ahelyett hogy a `skipIf` szépen kihagyná. A hiba a
- * KONKRÉT okot is megnevezi (hiányzó env / nem fogadó host:port), hogy a
- * CI-log magától diagnosztizálja magát.
- *
- * A hibaüzenetbe SOSEM kerül bele a nyers DATABASE_URI: a kapcsolati sztring
- * jelszót tartalmazhat (a logger redact-listájának ugyanez az elve). Csak a
- * host:port kerül bele — az nem titok, és pont az kell a diagnózishoz.
- *
- * Helyben (CI nélkül) minden változatlan: adatbázis híján a DB-tesztek
- * csendben kimaradnak, a fejlesztői futás nem igényel Postgres-t.
  */
 
 /** A CI-fail-closed hibaüzenet állandó előtagja — a teszt-őr erre illeszt. */

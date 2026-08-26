@@ -9,17 +9,10 @@ import {
 
 /**
  * A közös Budapest-dátum modul őrei (F4, 2026-08-21-i vizsgálat).
- *
- * ═══ MIÉRT KRITIKUS EZ A FÁJL ═══
  * Ugyanez a modul szolgálja ki a SZÁMLÁZÁST (a Számla Agent `keltDatum` és
  * `teljesitesDatum` mezője a `src/lib/szamlazz/xml.ts` re-exportján át) és a
  * bevétel-statisztikát. Az ÉRVÉNYES dátumok viselkedése ezért egy hajszálnyit
  * sem mozdulhat: az alábbi első két blokk pontosan ezt mondja ki, számokkal.
- * A naptári ellenőrzés SZIGORÍTÁS: a naptárilag nem létező nap (`2026-13-45`,
- * `2026-02-30`) mostantól elbukik a kapun — a statisztikában `createdAt`
- * tartalékra fut, a számlázásban végleges, emberi javítást kérő hibára.
- *
- * Hálózat nincs: tiszta függvények, valódi hívás nélkül.
  */
 
 describe('budapestDateString — az ÉRVÉNYES dátumok viselkedése változatlan', () => {

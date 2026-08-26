@@ -576,8 +576,6 @@ describe('summarizeCurriculum — folytatás', () => {
 })
 
 /**
- * ═══ A FIZETŐS TARTALOM MINDEN HORDOZÓJA HOZZÁFÉRÉS-FÜGGŐ ═══
- *
  * A code review mérte: korábban csak a Bunny-GUID volt kapuzva, a szöveges
  * lecke teljes tartalma, a külső link célcíme és a mellékletek letöltési
  * URL-jei hozzáférés NÉLKÜL is bekerültek a modellbe — vagyis kiszivárogtak

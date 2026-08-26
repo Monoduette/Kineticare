@@ -5,59 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * AZ ALKALMAZÁS-IKONOK ŐRE (favicon.ico, icon.svg, apple-icon.png).
- *
- * ═══ MI A VÉDENDŐ REGRESSZIÓ ═══
  * 2026-08-17-ig a `/favicon.ico`, `/icon.png`, `/apple-icon.png` és
  * `/favicon.svg` MIND 404-et adott — helyben és élesben is —, miközben a `/`
  * 200-at. A böngészőfülön és a könyvjelzőben üres lap-ikon látszott, és ez volt
  * az egyetlen konzol-hiba a lapokon.
- *
- * A hiba NÉMA fajtájú: az ikonok hiánya semmit nem tör el, a build zöld marad,
- * a tesztek zöldek maradnak. Éppen ezért kell rá őr. Három csendes halálmód
- * ellen fog ez a fájl:
- *
- *  1. FÁJL ELTŰNIK vagy KIÜRÜL. Egy „takarítás", egy rossz merge vagy egy
- *     félresikerült bináris újragenerálás nulla bájtos vagy csonka fájlt hagy
- *     hátra. A Next ilyenkor is legenerálja az útvonalat, tehát a
- *     route-manifest továbbra is rendben lesz — csak a kép lesz üres. Ezért
- *     nem elég a LÉTEZÉS: a tartalmat is meg kell nézni (ICO-fejléc,
- *     PNG-fejléc, tényleges KÉPPONTOK).
- *
- *  2. ROSSZ HELYRE KERÜL. A repóban a gyökér `src/app/` és a `(frontend)`
- *     útvonal-csoport NEM ugyanaz (lásd CLAUDE.md, 11. üzemeltetési tanulság:
- *     a `robots.ts` némán kimaradt a route-groupból). Az ikonoknál ez mérve a
- *     következő: a Next az útvonal-csoportban lévő metadata-fájlnak
- *     HASH-UTÓTAGOT ad (`getMetadataRouteSuffix` a
- *     next/dist/lib/metadata/get-metadata-route.js-ben: ha a szülő útvonal
- *     bármely szegmense csoport-szegmens, a fájlnév `djb2Hash`-utótagot kap),
- *     a `favicon.ico`-t pedig a hivatalos dokumentáció szerint egyáltalán nem
- *     is szabad máshova tenni: „The `favicon` image can only be located in the
- *     top level of `app/`"
- *     (https://nextjs.org/docs/app/api-reference/file-conventions/metadata/app-icons).
- *     Ezért az őr kiköti, hogy a három fájl a GYÖKÉR `src/app/`-ban legyen, és
- *     hogy az útvonal-csoportokban NE legyen ikon-fájl.
- *
- *  3. A KÉZI `icons` METADATA VISSZAJÖN. A `(frontend)/layout.tsx`-ben egy
- *     `icons:` mező FELÜLÍRNÁ a fájl-konvenciót (a Next a mélyebb szegmens
- *     explicit `icons` mezőjét részesíti előnyben — ezen az úton tartja meg a
- *     Payload-admin a saját ikonjait is). Egy elgépelt útvonal ott néma 404-et
- *     hozna vissza. A fájl-konvenció önmagában elég, ezért a kézi mező tiltott.
- *
- * ═══ A MÉRÉS, AMIRE AZ ŐR ÉPÜL ═══
- * `npm run build` után a route-manifestben (.next/app-path-routes-manifest.json)
- * megjelent mind a három útvonal, UTÓTAG NÉLKÜL — tehát a gyökér `src/app/`-ból
- * generálódtak:
- *     "/favicon.ico/route": "/favicon.ico"
- *     "/icon.svg/route": "/icon.svg"
- *     "/apple-icon.png/route": "/apple-icon.png"
- * A kiszolgált törzsek bájtra azonosak a forrásfájlokkal, a fejlécek 200-asak
- * (image/x-icon, image/svg+xml, image/png), és az előrenderelt HTML fejrésze
- * (.next/server/app/_not-found.html) tartalmazza a három hivatkozást:
- *     <link rel="icon" href="/favicon.ico?…" sizes="48x48" type="image/x-icon"/>
- *     <link rel="icon" href="/icon.svg?…" sizes="any" type="image/svg+xml"/>
- *     <link rel="apple-touch-icon" href="/apple-icon.png?…" sizes="180x180" type="image/png"/>
- *
- * Az ikonok forrása és a tervezési indoklás: src/scripts/generate-app-icons.ts.
  */
 
 const APP_DIR = fileURLToPath(new URL('../app/', import.meta.url))

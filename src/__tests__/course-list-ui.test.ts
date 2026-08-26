@@ -23,22 +23,10 @@ import type { Product } from '../payload-types'
 
 /**
  * A „Kurzusaim" lista — a TISZTA logika és a megjelenítés őrei.
- *
- * ═══ MIT ŐRIZ ═══
  * 1. Csoportosítás és sorrend: folyamatban → el nem kezdett → befejezett →
- *    lejárt. Ez a képernyő fő ígérete („hol folytassam?"), ezért a sorrend
- *    megfordulása néma, de súlyos regresszió lenne.
+ * lejárt. Ez a képernyő fő ígérete („hol folytassam?"), ezért a sorrend
+ * megfordulása néma, de súlyos regresszió lenne.
  * 2. A gombfelirat-állapotgép: a felirat a valós állapotot mondja. „Folytatás"
- *    lejárt hozzáférésnél hazugság lenne (a lejátszó 403-at ad), „Kezdés" egy
- *    félig megnézett kurzuson pedig elveszítené a vevő addigi munkáját.
- * 3. A hátralévő idő számítása és formázása — a becslés SOSEM mondhat
- *    „kb. 0 perc"-et, és adat hiányában inkább elmarad, mint hogy kitaláljon.
- * 4. A1-átvétel: a hozzáférés-lejárat sorai (`expiryLabel` / `expiredMessage`)
- *    a listán maradtak, és lejárt hozzáférésnél a link a NYILVÁNOS kurzusoldalra
- *    megy, nem a védett lejátszóra.
- * 5. Fókuszrend: kártyánként PONTOSAN egy fókuszálható elem, és a gomb
- *    akadálymentes neve tartalmazza a kurzus nevét (több kártya áll egymás
- *    mellett).
  */
 
 /** Három leckés, modulokra bontott kurzus — a „folyamatban" alapesethez. */

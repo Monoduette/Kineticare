@@ -16,27 +16,10 @@ import { extractArticleBody, FORRAS_JELOLESEK } from '../lib/tudastar/markdown-t
 
 /**
  * Őrök a Tudástár GYIK-tételeire.
- *
- * ═══ MIT MÉRÜNK, ÉS MIT NEM ═══
  * A legfontosabb állítás nem az, hogy „lefut”, hanem hogy a válaszok NEM
  * TALÁLT KI klinikai állítást: mindegyik a cikk törzsének kivonata. Ezt géppel
  * teljesen bizonyítani nem lehet, ezért két mérhető közelítést használunk:
- *
- *  - **G3:** minden tétel `szakasz` mezője (a cikk H2-je, amelyik a választ
- *    adja) tényleg ott van a cikk törzsében. Ez köti a tételt a szöveg egy
- *    konkrét pontjához.
- *  - **G4:** minden `horgony` (a válasz tartalmi kulcsszavai, a cikk saját
- *    szakkifejezéseivel) szó szerint megvan a VÁLASZBAN és a cikk TÖRZSÉBEN
- *    is. Ez azt méri, hogy a válasz kulcsállításai visszavezethetők a cikkre.
- *
- * **Amit ez NEM fed le:** a horgonyok között nem szereplő mondatrészeket. Egy
- * válasz elvben tartalmazhatna a horgonyok mellé csempészett, cikkből nem
- * következő állítást, és a teszt ezt nem venné észre. A horgonyok ezért a
- * válasz VÁZÁT adják (számadat, küszöb, fejmondat), nem a díszítést, és az
- * emberi felülvizsgálat ettől nem válik feleslegessé. Ugyanígy nem mérhető
- * géppel az sem, hogy egy mért keresési kérdésre azért NINCS tétel, mert a
- * cikk nem fedi le: azt a hiánylista rögzíti
- * (`docs/tudastar-cikkek-betoltese.md` 10.).
+ * - **G3:** minden tétel `szakasz` mezője (a cikk H2-je, amelyik a választ
  */
 
 const FAJL: Readonly<Record<string, string>> = {

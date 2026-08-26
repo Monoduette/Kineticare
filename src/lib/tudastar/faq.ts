@@ -1,58 +1,9 @@
 /**
  * A Tudástár cikkeinek GYIK-tételei (kérdés-válasz párok).
  *
- * ═══ HONNAN JÖNNEK A KÉRDÉSEK ═══
- * Egyetlen kérdést sem találtunk ki. Mindegyik a 2026-08-21-i Monid-mérésből
- * való: valódi Google-autocomplete kifejezések magyar keresésből
- * (api.strale.io /x402/keyword-suggest, hl=hu), kiegészítve a Google Trends
- * „top” és „emelkedő” listáival (x402atlas). A mérés futásazonosítói:
- *
- *   kéztőalagút szindróma  01M0K0796WSMMM4711CMDWR0JX   (24 kifejezés)
- *   kéz zsibbadás          01M0K0CNJFR1NWGC5YABHZ6557   (40)
- *   teniszkönyök           01M0K0CSA4V8A02M74PW30JGVW   (41)
- *   pattanó ujj            01M0K0CX65HY4G2ZB7YRKBSFZF   (18)
- *   csuklófájdalom         01M0K0D5A6WZWPGF2TGHCJJP6W   (11)
- *   csuklótörés            01M0K0DKQKY8QQG37XN21H8MY9   (13)
- *   ínhüvelygyulladás      01M0SJQ0SBHS103YQ37Z6MTX1B
- *   befagyott váll         01M0ST9XKE8HY4VC81DB7BWAAP
- *   Trends: 01M0K0DQM4TGHVBN0971W1F21X, 01M0K0E2YMEHXJ9CFKC94QF1M0,
- *           01M0K0E8PB8RVH71AK85TW21H0, 01M0K0EE3ZJ0S5J52TCJWP0E2F
- *           (csuklófájdalom és csuklótörés: ÜRES, nincs elég trend-adat)
- *
- * Minden tételnél a `mert` mező mondja meg, melyik MÉRT kifejezésből jön a
- * kérdés. Ahol a mérés több változatot adott ugyanarra (például „mitől alakul
- * ki” és „mi az”), ott a tágabb, ok-kereső változatot vittük tovább, mert a
- * puszta „mi az”-ra a cikk CÍME és nyitó mondata amúgy is válaszol.
- *
- * ═══ A LEGFONTOSABB SZABÁLY: A VÁLASZ A CIKK KIVONATA, NEM A BŐVÍTÉSE ═══
- * A válasz KIZÁRÓLAG azt mondhatja, amit a cikk törzse már kimond. Ez nem
- * stílus-kérdés: egészségügyi (YMYL) tartalomról van szó, ahol egy kitalált
- * klinikai állítás valódi kárt okoz. Ezért minden tétel viszi a `szakasz`
- * mezőt (a cikk melyik H2-je adja a választ) és a `horgony` listát (szó
- * szerinti kifejezések, amiknek a válaszban ÉS a cikk törzsében is ott kell
- * lenniük). A `src/__tests__/tudastar-faq.test.ts` mindkettőt méri.
- *
- * Amire a cikk nem válaszol, arra itt NINCS tétel, akkor sem, ha nagy a
- * keresési igény. A mérés több ilyet is hozott: a kéztőalagút-szindrómánál a
- * krém (Trends top 69!), a B-vitamin, az akupunktúra, a borogatás és a műtét
- * ára, négy cikknél pedig a „lelki okai”. Ezekre ma nem születhet válasz. A
- * hiánylista a `docs/tudastar-cikkek-betoltese.md` 10. szakaszában áll: az
- * mondja meg, mivel érdemes bővíteni a cikkeket.
- *
- * ═══ MIÉRT ÍGY FOGALMAZUNK ═══
- * A mező admin-leírása kimondja az elvárást: a válasz önmagában is álljon meg
- * (2–4 mondat), mert a keresők és az AI-válaszok pontosan ezt idézik, a cikk
- * többi mondata nélkül. Ezért minden válasz kiírja a saját tárgyát is („A
- * teniszkönyök otthoni kezelése…”), nem hivatkozik vissza a szövegre.
- *
- * Ahol a cikk mentőhívási vagy orvoshoz fordulási küszöböt mond ki, ott a
- * válasz PONTOSAN azt ismétli, nem lazít rajta. Forrás- vagy tanulmány-név a
- * válaszokban nincs (tulajdonosi döntés, 2026-08-21; az őrt lásd a
- * `markdown-to-lexical.ts` FORRAS_JELOLESEK listájánál).
- *
- * Gondolatjeles, töltelék-elválasztós írásmód nincs: a nagykötőjel csak
- * számtartományban áll, szóközök nélkül („4–6 hét”), ahogy a
- * `docs/ui-sztenderdek.md` §3.1 előírja.
+ * Kérdések a 2026-08-21-i Monid-mérésből (részletek: docs/kulcsszavak.md).
+ * Válasz csak a cikk törzséből — YMYL; ahol nincs forrás a cikkben, nincs tétel.
+ * A `tudastar-faq.test.ts` méri a `szakasz` és `horgony` mezőket.
  */
 
 /** Egy kérdés-válasz pár, a mérési és a cikkbeli eredetével együtt. */

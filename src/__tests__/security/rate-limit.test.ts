@@ -50,16 +50,11 @@ function makeRequest(
 }
 
 /**
- * ═══ IP-KINYERÉS — SZÁNDÉKOS VISELKEDÉSVÁLTOZÁS (2026-08-16) ═══
- *
  * Régen: a `cf-connecting-ip` feltétel nélkül nyert, utána az `x-forwarded-for`
  * ELSŐ eleme számított. Az éles kiszolgálás előtt viszont nincs Cloudflare —
  * mindkét érték a KLIENSTŐL jött, tehát kérésenként hamisítható volt, és az
  * IP-alapú keret nem ért célt.
- *
  * Most: a `cf-connecting-ip` csak `TRUST_CF_CONNECTING_IP=true` mellett
- * számít; egyébként az `x-forwarded-for` HÁTULRÓL vett, megbízható eleme
- * (a láncot a saját edge-proxynk a végére fűzi). Indoklás: src/lib/audit.ts.
  */
 describe('resolveRateLimitIp — IP-kinyerés proxy mögül', () => {
   afterEach(() => {

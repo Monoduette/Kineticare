@@ -115,37 +115,8 @@ export const FOREIGN_CREDENTIAL_CHANGE_MESSAGE =
   'A saját adataidat bármikor átírhatod; idegen fiókhoz kérj tulajdonosi segítséget.'
 
 /**
- * MÁSODIK VÉDVONAL: idegen rekord jelszó- vagy e-mail-cseréje kizárólag ownernek.
- *
- * ═══ MIÉRT KELL A COLLECTION-ACCESS MELLÉ ═══
- * A `canUpdateUser` where-kényszere ma már kizárja, hogy staff egy owner vagy
- * egy másik staff rekordját írja. Ez a hook viszont NEM a szerepkörre, hanem a
- * VÁLTOZTATÁS TERMÉSZETÉRE néz: bármely bejelentkezett felhasználó, aki nem
- * owner, csak a SAJÁT hitelesítési adatait (jelszó, e-mail) cserélheti. Ha egy
- * jövőbeli refaktor az access-szabályt kiszélesítené (vagy egy új admin-út
- * megkerülné), a fiókátvétel akkor is elbukik ezen — a védelem így túléli a
- * szabály-átszervezéseket. Ugyanezért nem a `canUpdateUser` logikáját ismétli:
- * két, egymástól FÜGGETLEN feltétel őrzi ugyanazt a kockázatot.
- *
- * ═══ MIT NEM ÉRINT (mind tesztelt) ═══
- *  - `create` — az első-felhasználó bootstrap (`promoteFirstUserToOwner`), a
- *    nyilvános regisztráció, a vendég-vásárlás fiók-feloldása
- *    (`resolve-order-customer.ts`) és a vásárló-import: mind create, a hook
- *    kizárólag `update`-re fut;
- *  - a SZERVER-OLDALI (local API, `overrideAccess: true`) hívások: ezeknél nincs
- *    bejelentkezett `req.user`. A REST-úton bejelentkezés nélkül eleve nem lehet
- *    usert módosítani (`canUpdateUser` látogatóra `false`), tehát a hiányzó
- *    `req.user` itt megbízhatóan szerver-oldali futást jelent;
- *  - a jelszó-visszaállítás („elfelejtett jelszó" → aktiváló link): a Payload
- *    `resetPasswordOperation`-je a jelszót a beforeChange lánc MEGKERÜLÉSÉVEL
- *    írja (csak az afterLogin hookok futnak, lásd a
- *    `clearPasswordSetupPendingAfterLogin` indoklását);
- *  - a felhasználó SAJÁT jelszó- és e-mail-cseréje: ilyenkor a rekord azonosítója
- *    megegyezik a kérést indító felhasználóéval.
- *
- * Az e-mail-összevetés a Payload tárolási alakján (trimmelt, kisbetűs) történik,
- * hogy a nagybetűs újraküldés (a Payload admin a teljes dokumentumot visszaküldi)
- * ne látsszon változtatásnak.
+ * Második védvonal: nem-owner csak saját jelszó/e-mail cseréje (beforeChange hook).
+ * Kiegészíti a canUpdateUser where-t; create/resetPassword/server-side update nem érintett.
  */
 const blockForeignCredentialChange: CollectionBeforeChangeHook = ({
   data,
@@ -386,15 +357,7 @@ export const Users: CollectionConfig = {
       name: 'credentials',
       type: 'text',
       label: 'Végzettség, titulus',
-      /**
-       * ═══ TILOS ZÓNA 4 — access-változás, emberi jóváhagyással (2026-08-22) ═══
-       * A biztonsági review találata: mezőszintű access nélkül a vevő a SAJÁT
-       * rekordján (canUpdateUser engedi) beírhatna magának szakmai titulust,
-       * amit a cikkek szerző- és lektor-blokkja meg a MedicalWebPage séma
-       * nyilvánosan megjelenít — YMYL-tartalomnál ez hamis szakmai hitelesítés
-       * lenne. Ezért a három szerző-mező (credentials, bioShort, portrait)
-       * írása kizárólag staff/owner — a `purchases` és a `role` mintájára.
-       */
+      /** Tilos zóna 4: credentials/bioShort/portrait írás csak staff/owner (YMYL hamis hitelesítés ellen). */
       access: {
         create: isStaffOrOwnerFieldAccess,
         update: isStaffOrOwnerFieldAccess,
@@ -459,25 +422,7 @@ export const Users: CollectionConfig = {
       relationTo: 'products',
       hasMany: true,
       label: 'Megvásárolt kurzusok',
-      /**
-       * ÍRÁS: kizárólag rendszerfolyamat (`overrideAccess: true`).
-       *
-       * ═══ MI VÁLTOZOTT ÉS MIÉRT (2026-08-23) ═══
-       * 2026-08-16-án a mező staff/owner számára megnyílt, hogy az adminból
-       * pipálható legyen. A pipálás megkerülte a Kurzus ajándékozása panelt:
-       * a purchases-be bekerült a kurzus, az `accessGrants.grantedAt` viszont
-       * üresen maradt, és az időkorlátos kurzus fail-open korlátlan hozzáférés
-       * lett. A tulajdonos ezért a mezőt újra rendszer-írásúra zárta. Ajándék,
-       * jóváírás, visszatérítés utáni visszavonás: a grant-panel / CLI / a
-       * fizetésjóváhagyás ír, nem a nyers relationship-pipa.
-       *
-       * ═══ AMI NEM VÁLTOZOTT ═══
-       *  - a VEVŐ és a látogató továbbra sem írhatja;
-       *  - a rendszerfolyamatok (fizetésjóváhagyás, ingyenes-kurzus igénylés,
-       *    vásárló-import, grant-purchase) `overrideAccess: true`-val írnak.
-       *
-       * Az őr-teszt: `src/__tests__/security/users-purchases-field-access.test.ts`.
-       */
+      /** purchases írás csak rendszerfolyamat — admin pipa megkerülte a grant-panelt (2026-08-23). */
       access: {
         create: () => false,
         update: () => false,

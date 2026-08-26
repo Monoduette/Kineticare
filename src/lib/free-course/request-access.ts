@@ -12,94 +12,14 @@ import { generateInitialPassword } from '../security/initial-password'
 import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
 
 /**
- * INGYENES KURZUS IGÉNYLÉSE — a transportfüggetlen szolgáltatás.
+ * Ingyenes kurzus igénylése — transportfüggetlen szolgáltatás (név + e-mail → hozzáférés + belépő link).
  *
- * A tulajdonos kérése (2026-08-17): „a lányoknak meg kell adjon egy nevet meg
- * kell adjon egy e-mail címet és akkor arra az e-mail címre kiküldik a linket…
- * nem kell regisztráljon az embernek… nem kell kifizesse a kurzust hiszen ez
- * egy ingyenes kurzus". Ez a modul pontosan ezt csinálja: NÉV + E-MAIL →
- * hozzáférés + belépő link e-mailben. Regisztrációs folyamat, jelszó-kitalálás
- * és fizetés NINCS.
- *
- * ═══ A LÉPÉSEK ═══
- *  1. A termék kapuja: published + `isFreeCourse` (a `src/lib/courses.ts`
- *     EGYETLEN igazságforrása). Bármi más → elutasítás, mert a felület sem
- *     kínálhatna igénylést rá.
- *  2. Fiók feloldása advisory-zár alatt: meglévő cím → a MEGLÉVŐ fiók (SOSEM
- *     jön létre második), ismeretlen cím → új `customer` fiók a megadott
- *     névvel, eldobható véletlen jelszóval és `passwordSetupPending: true`
- *     jelzővel (a vendég-vásárlás és a vásárló-import ugyanezt teszi).
- *  3. Hozzáférés-adás a MEGLÉVŐ `grantFreeCoursesToUser` szolgáltatással,
- *     CSAK a kért `productId`-re. Új fiókra, vagy meglévő `customer` +
- *     `passwordSetupPending === true` fiókra. Aktivált vevőnél és
- *     owner/staffnál a nyilvános űrlap NEM ír kurzust (tulajdonosi döntés,
- *     2026-08-23): belépésre / jelszó-kérésre irányítjuk. Staff-ajándékozás
- *     marad a `/admin` „Kurzus ajándékozása” panel. Login/regisztráció nem
- *     oszt ki ingyenes SKU-t.
- *  4. Belépő link: a Payload SAJÁT jelszó-visszaállító tokenje
- *     (`forgotPassword`, `disableEmail: true`) + a közös
- *     `buildPasswordResetUrl`. Külön, párhuzamos token-rendszer NINCS.
- *     Tokent CSAK új fiókra, vagy meglévő `customer` +
- *     `passwordSetupPending === true` fiókra írunk (K3): a 7 napos TTL
- *     különben egy valódi, 1 órás „elfelejtettem a jelszavam" tokent is
- *     kilőne, owner/staff fióknál pedig meglepetés-belépőt adna.
- *  5. Levél: új / jelszó-beállításra váró fiókra a `freeCourseEmail` sablon,
- *     aktivált vevőre és owner/staffra a `existingAccountFreeCourseEmail`
- *     (belépés + elfelejtett jelszó, token nélkül).
- *
- * ═══ FIÓK-FELDERÍTÉS ELLENI VÉDELEM (tudatos tervezési döntés) ═══
- * A visszatérési érték `status`-a és a hívó HTTP-válasza SZÁNDÉKOSAN AZONOS
- * akkor is, ha a címhez már tartozott fiók, és akkor is, ha most jött létre.
- * Enélkül a nyilvános végpont fiók-felderítő eszközzé válna: elég lenne egy
- * címlistát végigküldeni, és a válaszkülönbségből kiolvasni, ki a vevőnk.
- * Ez az OWASP „user enumeration" mintája, és a Payload maga is ezért ad
- * ismeretlen címre is sikeres választ a `forgotPassword`-ön.
- * A `userCreated` mező CSAK a naplónak és a teszteknek szól — a
- * route-handler NEM teheti be a HTTP-válaszba (őr-teszt rögzíti).
- *
- * ═══ IDEMPOTENCIA ═══
- * Kétszeri beküldés: (a) fiók — az advisory-zár + „előbb keress" miatt nem
- * keletkezik második; (b) hozzáférés — a `grantFreeCoursesToUser` csak a
- * kért, hiányzó SKU-t írja be, tehát nem duplázódik; (c) levél — jelszó-beállításra
- * váró fióknál ÚJ tokennel ismét kimegy (a korábbi link érvénytelen), már
- * aktivált vevőnél és owner/staffnál tokent NEM írunk. A hívó oldali
- * kérés-korlát fogja a visszaélést.
- *
- * ═══ LEVÉL NÉLKÜLI ÜZEM (élő korlát, 2026-08-17) ═══
- * A `RESEND_API_KEY` a Railway-en jelenleg NINCS beállítva, tehát a provider
- * `noop`, ami a küldést CSENDBEN elnyeli és sikeresnek mutatja. Ez a modul
- * ezért a küldés ELŐTT megnézi a providert, és noop esetén:
- *  - a hozzáférést AKKOR IS létrehozza (az adat a fontos),
- *  - tokent NEM generál (fölöslegesen érvénytelenítene egy korábbi, esetleg
- *    még élő linket),
- *  - `logger.error`-ral RIASZTÁST ír (a staff lássa, hogy kézzel kell küldeni),
- *  - és `emailDelivered: false`-szal tér vissza, hogy a látogató IGAZ üzenetet
- *    kapjon.
+ * Published + `isFreeCourse` kapu; advisory-zár alatt fiók; `grantFreeCoursesToUser`; Payload
+ * forgotPassword token. Aktivált vevőnél/owner-staffnál nem ír kurzust (belépés/jelszó út).
+ * 200-as válasz nem szivárogtat fiók-létrejöttet; idempotens hozzáférés-adás.
  */
 
-/**
- * A belépő link élettartama: 7 nap.
- *
- * VEZETŐI DÖNTÉS (2026-08-17, tulajdonosi jóváhagyással). A link
- * gyakorlatilag JELSZÓBEÁLLÍTÓ token: aki megkapja, a fiók gazdájává válik.
- * A vásárló-import 30 napos TTL-je ehhez túl hosszú kitettség, mert:
- *  - az igénylés NYILVÁNOS végpontról, önkiszolgálóan indul, tehát a lánc
- *    egyetlen bizalmi pontja a postafiók;
- *  - ha a postafiókhoz később bárki hozzáfér (megosztott gép, továbbított
- *    levél, elhagyott céges cím), a régi levél még hetekig élő belépő.
- * Az import 30 napja MÁS helyzet: ott a staff küld meghívót egy ismert
- * vevőnek, és az újraküldés KÉZI lépés, tehát a hosszú ablak indokolt.
- * Itt az újraküldés a látogatónak EGYETLEN űrlap-beküldés (a folyamat
- * idempotens: meglévő fióknál is új tokent ír és újra kiküldi a levelet),
- * ezért a rövidítés nem ront a használhatóságon.
- *
- * A Payload alapértelmezése (1 óra) viszont kevés lenne: a lead-magnet
- * levelét gyakran csak napokkal később nyitják meg.
- *
- * A `/jelszo-visszaallitas` oldal nem magyarázza a napok számát, tehát a két
- * eltérő élettartam ott nem ütközik; a levél a saját TTL-jét írja ki
- * (`FREE_COURSE_TOKEN_TTL_DAYS`).
- */
+/** Token TTL ms (7 nap) — a lead-magnet levél későbbi megnyitásához. */
 export const FREE_COURSE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 /** A TTL napokban — a levélszöveghez. */
@@ -108,13 +28,9 @@ export const FREE_COURSE_TOKEN_TTL_DAYS = Math.round(
 )
 
 export type FreeCourseRequestStatus =
-  /** Minden rendben: a hozzáférés megvan (a levél sorsát az `emailDelivered` mondja meg). */
   | 'ok'
-  /** A termék nem létezik, nem published, vagy nem ingyenes → nem igényelhető. */
   | 'course-not-available'
-  /** Üres users-kollekció: az első fiók owner lenne — fiókot itt sosem hozunk létre. */
   | 'refused-first-user'
-  /** A hozzáférés-adás nem sikerült (a termék a grant után sincs a purchases-ben). */
   | 'access-failed'
 
 export interface RequestFreeCourseAccessInput {

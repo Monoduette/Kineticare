@@ -1772,20 +1772,10 @@ describe('a /szolgaltatasok javításainak lánca (8., 12b.)', () => {
 
 /**
  * 16. javítás — a /kapcsolat lap HIÁNYZÓ szekciói.
- *
- * ═══ MIÉRT KELL EGYÁLTALÁN ═══
  * A /kapcsolat dedikált Next.js-route, de a szekciósorát az ilyen slugú
  * CMS-oldalról olvassa. A seed (`ensurePageLayout`) MEGLÉVŐ szekciósort sosem
  * ír felül, ezért az élő lapon ma egyetlen szekció sincs — a tulajdonos kérése
  * („lányok elérhetősége kell a kapcsolat menüpontba is") kód-szinten teljesül,
- * az ÉLŐ laphoz viszont ez a javítás kell.
- *
- * ═══ MIT MÉR EZ A TESZT ═══
- *  (a) üres szekciósorba beszúrja MINDKÉT hiányzó szekciót, a helyes sorrendben;
- *  (b) idempotens: másodszorra NULLA módosítás;
- *  (c) a szerkesztő SAJÁT szakember-szekcióját nem duplikálja (hangos kihagyás);
- *  (d) csak a szakember-szekció hiányzik → csak azt szúrja be, az időpontkérő
- *      UTÁN, a lap többi blokkját érintetlenül hagyva.
  */
 describe('alkalmazKapcsolatSzakemberek — a /kapcsolat hiányzó szekciói', () => {
   const seed = () => kapcsolatSeedBlokkok({ kocsisPortre: 31, kissPortre: 32 })

@@ -2,34 +2,8 @@ import { bp as barionPixelCall, getBarionPixelId } from './barion-pixel'
 import { CONSENT_DENIED, CONSENT_GRANTED, type ConsentState } from './consent'
 
 /**
- * Barion Pixel — HOZZÁJÁRULÁS-JELZÉS (consent), tiszta, tesztelhető réteg.
- *
- * ═══ MIT CSINÁL EZ A MODUL, ÉS MIT NEM ═══
- * NEM tölti be a pixelt, és NEM tesz semmit hozzájárulás-kapu mögé. Az ALAP
- * (Base) Barion Pixel a csalásmegelőzés jogos érdekén MINDIG betöltődik — azt
- * a barion-pixel.ts / BarionPixel.tsx intézi. Ez a modul kizárólag a
- * FELHASZNÁLÁSI (marketing célú) hozzájárulást jelzi a pixelnek:
- *
- *   bp('consent', 'grantConsent')   — a látogató elfogadta
- *   bp('consent', 'rejectConsent')  — a látogató elutasította
- *
- * (Barion Pixel API-referencia; a hívás szó szerint ebben az alakban áll.)
- * Az elutasítás NEM állítja le az adattovábbítást — az jogos érdeken megy
- * tovább —, csak a marketing célú felhasználást tiltja meg. Ezért az
- * elutasítás sem „nem-hívás": a rejectConsent-et EL KELL küldeni, különben a
- * Barion nem tud a tiltásról. Erre külön őr-teszt van.
- *
- * ═══ MIÉRT VAN ÚJRAPRÓBÁLÁS ═══
- * A `bp` globális függvényt (illetve a hívásokat sorba állító csonkját) a
- * pixel beszúró szkriptje telepíti; a mi consent-jelzésünk ettől függetlenül,
- * egy React-effektben indul. Ha a `bp` még nincs az ablakon, a hívás NÉMÁN
- * elveszne (a bp() ilyenkor no-op) — ezért a sendBarionConsent korlátozott
- * ideig újrapróbálkozik, majd feladja. Az időzítő injektálható, így a
- * viselkedés valós várakozás nélkül tesztelhető.
- *
- * A modul a consent állapotgépnek CSAK fogyasztója (a ./consent az egyetlen
- * igazságforrás), és semmit nem importál a ConsentBanner-ből — körmenti
- * import nincs.
+ * Barion marketing consent jelzés (grant/reject) — az alap pixel külön modulban, mindig betölt.
+ * sendBarionConsent újrapróbál, ha a bp még nincs az ablakon.
  */
 
 /** A Barion Pixel consent-parancsának témája (a hívás első argumentuma). */

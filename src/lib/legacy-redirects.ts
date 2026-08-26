@@ -1,75 +1,6 @@
 /**
- * Örökölt (régi kineticare.hu) URL-ek megőrzése a domain-átállításhoz.
- *
- * ═══ MIÉRT ═══
- *
- * A régi, systeme.io-n futó kineticare.hu sitemapjában **25 URL** van, és
- * 2026-08-16-án MIND A 25 élt, HTTP 200-zal (mérés: lásd a lenti
- * „Reprodukció" blokkot és `docs/regi-oldal-osszehasonlitas.md` 8.1). A domain
- * átállításának pillanatában ezek mind 404-re futnának, mert az új rendszerben
- * más a slug-szerkezet. Ez nem csak SEO-veszteség: a `/kezrelax` a NYOMTATOTT
- * SZÓRÓLAP QR-KÓDJÁNAK a célja, tehát ott az átirányítás ügyfélszolgálati
- * kérdés, nem keresőoptimalizálás.
- *
- * Google: „Keep the redirects for as long as possible, generally at least 1
- * year", és a régi URL-ekhez előre kell térképet készíteni
- * (https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes).
- * A `301` és a `308` egyenrangú: „The 301 and 308 status codes mean that a page
- * has permanently moved to a new location."
- * (https://developers.google.com/search/docs/crawling-indexing/301-redirects).
- * A Next.js `permanent: true` 308-at ad (RFC 9110 15.4.9), a repó a
- * kurzus-slugokra már ugyanezzel az indoklással használ 308-at.
- *
- * ═══ A HÁROM SORS ═══
- *
- * Minden örökölt URL PONTOSAN egy kategóriába esik, és a három halmaz uniója
- * kiadja a mért 25-öt (őr-teszt: `src/__tests__/orokolt-url-atiranyitasok.test.ts`):
- *
- * 1. `LEGACY_UNCHANGED_PATHS` — a slug változatlan, az új rendszer ugyanazon a
- *    címen szolgálja ki. Ezek NEM kaphatnak szabályt: a `redirects()` a
- *    fájlrendszer-útvonalak ELŐTT fut, tehát egy ilyen szabály elnyelné a
- *    valódi oldalt.
- * 2. `LEGACY_REDIRECTS` — tartós (308) átirányítás a mai kanonikus címre.
- * 3. `LEGACY_GONE_PATHS` — idegen spam-tartalom, amit nem irányítunk sehova:
- *    410 Gone, mert „the target resource is no longer available at the origin
- *    server and this condition is likely to be permanent" (RFC 9110 15.5.11).
- *    A 410-et a `redirects()` nem tudja kiadni (csak 301/302/303/307/308), ezért
- *    a `src/middleware.ts` ága szolgálja ki.
- *
- * ═══ AMIT A NEXT.JS INTÉZ HELYETTÜNK (mérve, nem feltételezve) ═══
- *
- * - **Záró perjel:** a repóban `skipTrailingSlashRedirect: true` van, tehát a
- *   Next NEM normalizálja a `/kezrelax/` alakot `/kezrelax`-ra. A saját
- *   szabályaink ettől függetlenül illeszkednek rá: a Next a custom route regexét
- *   `modifyRouteRegex`-szel zárja (`next/dist/lib/redirect-status.js`), ami a
- *   `$`-t `(?:\/)?$`-ra cseréli — az opcionális záró perjel tehát BENNE van a
- *   fordított regexben. Ezért nem kell (és nem is szabad) külön `/kezrelax/`
- *   forrást felvenni.
- * - **Nagybetűs alak:** az `experimental.caseSensitiveRoutes` alapértéke
- *   `false` (`next/dist/server/config-shared.js`), a route-fordítás
- *   `sensitive: false` — a `/KEZRELAX` ugyanerre a szabályra illeszkedik. A régi
- *   szerver ezt két lépésben oldotta meg (`/KezRelax` → 302 → `/kezrelax`); nálunk
- *   egy ugrás lesz, tehát láncot sem építünk.
- * - **Query string:** a bejövő URL query-paraméterei automatikusan átmennek a
- *   célra (`prepare-destination.js`: „Query merge order lowest priority to
- *   highest — 1. initial URL query values"). Az `utm_*`/`gclid` tehát nem vész el.
- * - **Horgony:** a `destination` `#`-es része megmarad (a `parsedDestination.hash`
- *   végigmegy), ezért adható meg a `/szolgaltatasok#rendeloi` cél.
- *
- * ═══ REPRODUKCIÓ (olvasó GET-ek) ═══
- *
- * ```bash
- * # A régi oldal 25 URL-je (4 rész-sitemap) — mind 200
- * curl -s https://www.kineticare.hu/sitemap.xml
- * # Az új célok — mind 200
- * B=https://kineticare-production.up.railway.app
- * curl -s -o /dev/null -w "%{http_code}\n" "$B/kurzusok/sos-kezrelax-villamkurzus"
- * # A kurzus-slugok kanonikus volta (az id-alapú cím ODA mutat)
- * curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" "$B/kurzusok/2"
- * # -> 308 .../kurzusok/sos-kezrelax-villamkurzus
- * # A #rendeloi horgony létezik a szolgáltatások oldalon
- * curl -s "$B/szolgaltatasok" | grep -o 'id="rendeloi"'
- * ```
+ * Örökölt kineticare.hu URL-ek — domain-átállításhoz. 25 URL; három sors: változatlan,
+ * 308 (`LEGACY_REDIRECTS`), 410 spam (middleware). Változatlan útvonalra szabály tilos.
  */
 
 /** Egy örökölt forrás → mai kanonikus cél párosítás. */
@@ -151,7 +82,7 @@ export const LEGACY_UNCHANGED_PATHS: readonly string[] = [
  */
 export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
   {
-    // ═══ A SZÓRÓLAP QR-KÓDJÁNAK CÉLJA — a térkép legfontosabb sora. ═══
+    // Szórólap QR célja — /idopontkero
     source: '/kezrelax',
     destination: COURSE_SOS_KEZRELAX,
     reason:

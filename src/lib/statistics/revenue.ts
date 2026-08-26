@@ -1,31 +1,6 @@
 /**
- * Havi bevétel-aggregátor — tiszta, DB- és React-mentes mag (T-013).
- *
- * ═══ MIÉRT TISZTA FÜGGVÉNY ═══
- * A hónap-kulcs, az ág-bontás és a nullás hónapok kitöltése egységtesztelhető
- * marad hálózat és adatbázis nélkül. A Payload-lekérdezés
- * (`src/lib/statistics/query.ts`) csak a bemenetet állítja elő; a nézet csak
- * megjeleníti a kimenetet.
- *
- * ═══ SZABÁLYOK ═══
- * 1. Csak `status === 'paid'` számít bele. A `refunded` / `payment_failed` /
- *    `cancelled` kimarad. A `refunds` mezőt ez a modul nem is ismeri
- *    (owner-only olvasás, CLAUDE.md 4. zóna).
- * 2. Hónap-kulcs: `invoiceCompletionDate` (YYYY-MM-DD) elsőbbséggel, egyébként
- *    `createdAt` Europe/Budapest szerint. Nincs `paidAt` mező.
- * 3. Az ág-bontás TÉTEL-szintű: `priceHuf × quantity`, audience a
- *    `normalizeAudience()` szerint. NULL / ismeretlen → laikus.
- * 4. Ha a tételekből 0 Ft jön ki, de a rendelés-szintű `totalHuf` pozitív, a
- *    rendelés-szintű összeg a bevétel (F3 — tétel nélküli ÉS hiányos
- *    item-snapshotú rendelésre egyaránt), különben a havi összesen és az ágak
- *    összege elcsúszna.
- * 5. A hiányzó hónapok nullás sorként jelennek meg (az oszlopdiagram ne
- *    ugorja át őket).
- * 6. A TÖLCSÉR bemenete kétféle alakban jöhet: státusz-LISTA (tiszta
- *    aggregátor-tesztek, kis halmaz) vagy KÉSZ DARABSZÁMOK
- *    (`OrderFunnelCounts` — a `payload.count`-os lekérdezésből, F8). A
- *    státusz→mező leképezést mindkét ág UGYANABBÓL a táblából veszi
- *    (`FUNNEL_FIELD_BY_STATUS`), tehát a két út nem tud elcsúszni egymástól.
+ * Havi bevétel-aggregátor — tiszta, DB- és React-mentes mag.
+ * Csak `paid`; hónap: invoiceCompletionDate vagy createdAt (Budapest); tétel-szintű ág-bontás.
  */
 
 import { hasStaffOrOwnerRole, type RoleUser } from '../../access/roles'
@@ -38,11 +13,7 @@ export interface RevenueOrderItemInput {
   quantity: number
   /** A tétel sku-snapshotja — a kurzusonkénti bontáshoz. */
   titleSnapshot?: string | null
-  /**
-   * A termék MAI marketingcíme (products.displayTitle), ha a lekérdezés
-   * populálta. A bevétel-tábla sorfejléce ez, nem a sku — lásd a
-   * `CourseRevenueRow.title` indoklását.
-   */
+  /** A termék marketingcíme (displayTitle), ha populálva van. */
   displayTitle?: string | null
 }
 
@@ -63,32 +34,9 @@ export interface MonthlyRevenueRow {
 }
 
 export interface CourseRevenueRow {
-  /**
-   * A kurzus EMBERI neve (products.displayTitle), ennek hiányában a sku.
-   *
-   * ═══ MIÉRT NEM A SKU A SORFEJLÉC (H7, 2026-08-21-i audit) ═══
-   * A bevétel-tábla sorfejléce korábban a sku volt (`kez-rehab-otthon-alap`),
-   * miközben UGYANAZ a kurzus a haladás-táblában a CÍMÉVEL szerepelt
-   * („Kézrehabilitáció otthon: az alapok"). Egy lapon két néven futott ugyanaz
-   * a termék, ami a WCAG 2.2 SC 3.2.4 Consistent Identification sérülése
-   * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
-   * és a két tábla összevetését is ellehetetlenítette.
-   *
-   * A CSOPORTOSÍTÁS továbbra is a sku-snapshot szerint megy (lásd `sku`): a
-   * cím változhat, a snapshot nem, tehát a bevétel akkor sem csúszik szét, ha
-   * a terméket időközben átnevezték.
-   */
+  /** Sorfejléc: displayTitle, nem sku (WCAG 3.2.4); csoportosítás továbbra is sku-snapshot. */
   title: string
-  /**
-   * A rendeléskor rögzített sku-snapshot (orders.items.titleSnapshot).
-   *
-   * Ez marad a csoportosítás kulcsa, és a felületen másodlagos oszlopként
-   * („Azonosító") jelenik meg. Nem hagyjuk el, mert a Számlázz.hu tételsora
-   * és a Barion-tételsor is EZT a sztringet viszi
-   * (src/lib/szamlazz/invoice.ts, src/lib/checkout/start-checkout.ts), tehát
-   * ez az egyetlen kapocs a kimutatás és a könyvelési export között. Törölt
-   * vagy átnevezett terméknél ez az egyetlen megmaradó azonosító is.
-   */
+  /** Rendeléskori sku-snapshot — csoportosítási kulcs és könyvelési kapocs. */
   sku: string
   audience: CourseAudience
   revenueHuf: number
@@ -122,18 +70,7 @@ export interface RevenueReport {
   totals: RevenueTotals
   courses: CourseRevenueRow[]
   funnel: OrderFunnelCounts
-  /**
-   * Igaz, ha a FIZETETT rendelések lapozott beolvasása ütközött a felső
-   * korlátba.
-   *
-   * ═══ SZERZŐDÉS-VÁLTOZÁS (F8, 2026-08-21) ═══
-   * Korábban a tölcsér lapozása is beleszámított: 20 000 rendelés fölött a
-   * jelentés akkor is „csonka" volt, ha a bevétel-rész hiánytalan. A tölcsért
-   * azóta `payload.count` adja (nincs lapozás, nincs plafon), ezért a
-   * `funnel` MINDIG teljes állományt tükröz, és ez a jelző KIZÁRÓLAG a
-   * havi/kurzus-bevételre vonatkozik. A `StatisticsReport` figyelmeztető
-   * mondatát is így kell olvasni.
-   */
+  /** Igaz, ha a fizetett rendelések lapozása elérte a plafont (a tölcsér count-tal teljes). */
   truncated: boolean
 }
 
@@ -279,8 +216,7 @@ export function aggregateMonthlyRevenue(
     const itemsTotal = itemsRevenue(items)
     const orderTotal = finiteNumber(order.totalHuf) ?? 0
 
-    // ═══ REND.-SZINTŰ TARTALÉK (F3, 2026-08-21-i vizsgálat) ═══
-    // Két, mérve azonos kimenetű eset kapott korábban ELTÉRŐ számot:
+    // Rend.-szintű tartalék: ha a tételsorok összege nem fed le mindent.
     //  a) `items: []` (régi rendelés) → a totalHufSnapshot számított,
     //  b) `items` megvan, de a `priceHufSnapshot` NULL (a mezőt a T-017 hook
     //     csak create-kor tölti, a régi sorok backfill nélkül maradtak)
@@ -482,20 +418,7 @@ function nonNegativeCount(value: number): number {
 }
 
 /**
- * Tölcsér KÉSZ darabszámokból — a `payload.count`-os lekérdezés bemenete (F8).
- *
- * A `total` a SZŰRÉS NÉLKÜLI darabszám, az `other` pedig a `total` és a
- * nevesített státuszok különbsége: így a nem nevesített státusz (régi enum-érték,
- * importból maradt sor) sem tűnik el a képből, holott egyetlen rendelés-sort sem
- * olvastunk be.
- *
- * ═══ MIÉRT NEM MEHET NEGATÍVBA ═══
- * A hét szám hét külön lekérdezésből jön, tehát nem egyetlen pillanatkép: ha a
- * `total` lekérdezése ELŐBB fut le, mint egy közben beérkező rendelés státusz-
- * számlálója, a nevesített összeg egy-két sorral meghaladhatja a `total`-t.
- * Ilyenkor az `other` matematikailag negatív lenne — a felületen viszont
- * „mínusz két egyéb rendelés" nem értelmezhető szám, ezért 0-ra vágjuk. A
- * `total` marad az, amit az adatbázis mondott: nem gyártunk rá becslést.
+ * Tölcsér count-okból; other = total − nevesített. other nem mehet negatívba (párhuzamos count lekérdezés).
  */
 export function buildOrderFunnelFromCounts(
   countByStatus: ReadonlyMap<string, number>,

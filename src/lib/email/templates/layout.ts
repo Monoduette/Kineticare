@@ -1,52 +1,8 @@
 import type { EmailTemplate } from '../types'
 
 /**
- * KINETICARE LEVÉLVÁZ — a weboldal design-nyelvén.
- *
- * ═══ MIÉRT ÍRÓDOTT ÚJRA (2026-08-17) ═══
- * A korábbi váz zöld (#1a7f5a) márkaszínt használt, miközben az oldal kék.
- * A vevő ugyanazt a márkát látja két helyen, két különböző arccal, és a levél
- * nem hitelesítette magát a weboldallal. A tokenek innentől EGY forrásból
- * származnak: a `src/app/(frontend)/styles/tokens.css` értékei.
- *
- * ═══ MIÉRT TÁBLÁZATOS, INLINE STÍLUSSAL ═══
- * A levélkliensek CSS-támogatása nem a böngészőké. A Campaign Monitor
- * kliens-mátrixa szerint a flexbox és a CSS grid NEM megbízható, a
- * media query támogatása egyenetlen, az Outlook 2007–2016 pedig továbbra is
- * célkörnyezet — ezért a táblázatos elrendezés + inline stílus a biztonságos
- * út. https://www.campaignmonitor.com/css/
- * Következmény: itt NINCS flex, NINCS grid, minden szélesség fix vagy 100%,
- * és minden stílus a elemen ül, nem osztályon.
- *
- * ═══ AKADÁLYMENTESSÉG (Litmus: Ultimate Guide to Accessible Emails) ═══
- * https://www.litmus.com/blog/ultimate-guide-accessible-emails
- *  - `lang="hu"` a gyökérelemen: a felolvasó így ejti helyesen a magyart;
- *  - `role="presentation"` MINDEN elrendezés-táblázaton, hogy a felolvasó ne
- *    cellánként darálja a szöveget (elég a <table>-re, a <td>-kre nem);
- *  - valódi címsor-hierarchia (<h1>), nem felnagyított bekezdés;
- *  - törzsszöveg legalább 16px (a Litmus minimuma asztalon 14, mobilon 16);
- *  - a szín sosem az EGYETLEN jelentéshordozó (a gomb szöveggel is elmondja,
- *    mi történik).
- *
- * ═══ MÉRT KONTRASZTOK (WCAG 2.2 · 1.4.3, AA) ═══
- * Számolt arányok, nem becslés:
- *   fehér szöveg az accent-deep (#2f6e9f) gombon .... 5,45:1  ✓ (AA: 4,5)
- *   ink (#10243e) fehéren ........................... 15,63:1 ✓
- *   ink-soft (#33495f) fehéren ...................... 9,30:1  ✓
- *   ink-soft a tint (#e6f0f8) panelen ............... 8,05:1  ✓
- *   accent-deep (#2f6e9f) hivatkozás fehéren ........ 5,45:1  ✓
- *
- * ═══ SÖTÉT MÓD ═══
- * A `color-scheme: light` deklaráció megkéri a klienst, hogy NE fordítsa át
- * automatikusan a színeket. Az automatikus inverzió a világos márkaarcot
- * kiszámíthatatlanul mangolja (a hajszálvonalak eltűnnek, a gomb elszürkül),
- * ezért itt a világos változat a szándékolt és egyetlen arc.
- *
- * ═══ BETŰK ═══
- * A webfontok a levélkliensek többségében nem töltődnek be. A stack ezért
- * úgy épül, hogy a TARTALÉK is a márka hangját hozza: a címsor szeriffes
- * (Tenor Sans → Georgia), a törzs groteszk (Nunito Sans → rendszerfont).
- * Ugyanaz a két stack, ami a `tokens.css`-ben áll.
+ * Kineticare levélváz — tokens.css színekkel. Táblázatos elrendezés + inline stílus
+ * (levélkliens-kompatibilitás). `lang="hu"`, presentation táblák, WCAG AA kontrasztok.
  */
 
 const BRAND_NAME = 'Kineticare'

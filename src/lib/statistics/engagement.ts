@@ -3,19 +3,7 @@ import { buildCourseProgressStats } from '../admin/course-progress-stats'
 import { normalizeAudience, type CourseAudience } from '../course-audience'
 import type { Curriculum } from '../curriculum/curriculum'
 
-/**
- * Kurzus-hatás aggregátor — eladás × haladás, kurzusonként (tiszta modul).
- *
- * ═══ MIÉRT NEM SZÁMOL SAJÁT SZÁMOKAT ═══
- * A kurzusonkénti sorok KIZÁRÓLAG a meglévő `buildCourseProgressStats`
- * `totals` blokkjából jönnek (src/lib/admin/course-progress-stats.ts) —
- * ugyanabból a számításból, amit a kurzus szerkesztőlapjának Kurzus-haladás
- * panelje mutat, és amelynek százaléka a vevő lejátszójával közös
- * (`summarizeCurriculum`). Ha itt saját képlet lenne, a statisztika és a
- * kurzuslap elcsúszhatna egymástól — ez a repo kőbe vésett elve, a
- * course-progress-stats fejkommentje mondja ki. Ez a modul csak leképez
- * és rendez.
- */
+/** Kurzus-hatás aggregátor — számok a közös `buildCourseProgressStats`-ból. */
 
 /** Egy kurzus hatás-sora a Statisztika nézet táblájában. */
 export interface CourseEngagementRow {
@@ -31,19 +19,7 @@ export interface CourseEngagementRow {
   completed: number
   /** Akik megvették (hozzáférnek), de egy leckét sem jelöltek késznek. */
   notStarted: number
-  /**
-   * A kurzus ELINDÍTHATÓ leckéinek száma — a százalékok nevezője.
-   *
-   * ═══ MIÉRT KELL A FELÜLETNEK ═══
-   * A lecke `status` mezőjének alapértelmezése `processing`, ezért egy frissen
-   * feltöltött kurzusnál ez 0. A közös összesítő ilyenkor — helyesen, nullával
-   * osztás nélkül — mindenkit `nem-kezdte` állapotba sorol, a tábla viszont
-   * ebből azt állította, hogy a hozzáférők egyike sem kezdte el, sőt NÉV
-   * SZERINT fel is sorolta őket. Ez hamis állítás konkrét emberekről (köztük
-   * olyanokról, akik a kurzust korábban végignézték), ezért a megjelenítés
-   * ezt a 0-t külön állapotként kezeli — a mag (`buildCourseProgressStats`)
-   * változatlan marad.
-   */
+  /** Elindítható leckék száma; 0-nál a felület külön állapot (nem hamis „nem kezdte el" lista). */
   totalLessons: number
   /** A hozzáférők százalékainak átlaga, egészre kerekítve (0–100). */
   averagePercent: number
@@ -51,14 +27,7 @@ export interface CourseEngagementRow {
   completionRateOfEnrolled: number
   /** Befejezők aránya az elkezdőkhöz mérve (0–100). */
   completionRateOfStarted: number
-  /* ═══ MIÉRT KÖTELEZŐ MIND A NÉGY ALÁBBI MEZŐ ═══
-     A `notStartedNames`, a `notStartedWithoutName`, az `omitted` és a
-     `truncated` KÖTELEZŐ, nem opcionális-alapértékes. Ez tudatos döntés:
-     a névsor kiírása csak akkor becsületes, ha a hiányát is kimondjuk, és
-     pontosan az „elfelejtettem átvezetni" hiba miatt tűnt el eddig az
-     `omitted`. Kötelező mezőnél a FORDÍTÓ áll a néma adatvesztés elé; ha
-     valaki egy későbbi körben „kényelmesebbre" venné őket, ugyanaz a hiba
-     jönne vissza, csak észrevétlenül. */
+  /* notStartedNames/omitted/truncated kötelező — néma adatvesztés ellen. */
   /**
    * A „nem kezdte el" hallgatók NEVE, magyar betűrendben, legfeljebb
    * `NOT_STARTED_NAME_LIMIT` darab. E-MAIL SOSEM KERÜL IDE (a statisztika
@@ -96,15 +65,7 @@ export interface CourseEngagementRow {
 }
 
 /**
- * Legfeljebb ennyi nevet írunk ki kurzusonként a Statisztika oldalon.
- *
- * A tíz a döntési dokumentum kikötése (1. pont): ennyi fér el egy
- * irányítópulton anélkül, hogy a lap névsorrá válna. A teljes lista a kurzus
- * lapján él, kereséssel, szűrővel és CSV-exporttal — egy adat egy helyen
- * (docs/informacios-architektura.md). Az irányítópult „gyors leolvasásra, nem
- * felfedezésre" való: NN/g, Dashboard Design
- * (https://www.nngroup.com/articles/dashboards-preattentive/, hozzáférés:
- * 2026-08-21).
+ * Legfeljebb ennyi név a Statisztika oldalon kurzusonként; teljes lista a kurzus szerkesztőlapján.
  */
 export const NOT_STARTED_NAME_LIMIT = 10
 

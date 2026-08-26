@@ -28,67 +28,10 @@ import type { Order, Product, User } from '../payload-types'
 
 /**
  * ŐR — ÁSZF-ELFOGADÁS A PÉNZTÁRBAN.
- *
- * ═══ MIÉRT LÉTEZIK ═══
  * A saját ÁSZF-ünk 22. bekezdése (élő szöveg, `src/lib/legal-source/aszf.txt`)
  * SZÓ SZERINT ezt állítja a szerződés létrejöttéről: a Vásárló „megadja
  * személyes adatait, bejelöli az Általános Szerződési feltételek elfogadására
  * és az Adatvédelmi Tájékoztató megismerésére vonatkozó jelölőnégyzetet, majd
- * megnyomja a »VÁSÁRLÁS« gombot".
- *
- * A MÉRT KIINDULÁS (2026-08-17): ilyen jelölőnégyzet a felületen NEM LÉTEZETT.
- * A szerződéskötés leírt módja tehát nem valósult meg, és a Barion
- * elfogadóhely-bírálat elvárása (az ÁSZF elfogadása a vásárlás előfeltétele)
- * sem teljesült. Egy ilyen tétel visszacsúszása NÉMA: a lap fut, a fizetés
- * megy, csak a szerződés alapja hiányzik. Ezért kap végrehajtható őrt.
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. A KIRENDERELT markupon ott a jelölőnégyzet, MINDKÉT ágon (fizetős ÉS
- *     ingyenes) — az ingyenesen is, mert a szerződés ott is létrejön.
- *  2. A négyzet ALAPBÓL ÜRES (a markupon nincs `checked`) — az előre bepipált
- *     elfogadás jogilag érvénytelen és sötét minta.
- *  3. EGY négyzet, KÉT hivatkozással (/aszf + /adatvedelem), mindkettő új
- *     lapon, és a képernyőolvasó ezt ELŐRE megtudja (WCAG 2.2 SC 3.2.5).
- *  4. A felirat szóhasználata az ÁSZF 22. bekezdését követi: az ÁSZF-et
- *     ELFOGADJUK, az adatkezelési tájékoztatót MEGISMERJÜK.
- *  5. A beküldési terv kipipálatlan négyzettel BLOKKOL, és a fókuszt a
- *     négyzetre viszi; kipipálva `consentTerms: true` megy ki a törzsben.
- *  6. A SZERVER is őrzi (`startCheckout`): elfogadás nélkül 400, magyar
- *     üzenettel, és rendelés NEM jön létre.
- *  7. A rendelés vevő-pillanatképére RÁKERÜL az elfogadás ténye ÉS az
- *     ISO-időbélyeg — ezt ígéri a súgó a vevőnek.
- *  8. A gomb NEM tiltódik le a kipipálatlan négyzettől (a repó 2026-08-16-i
- *     akadálymentességi köre: a hiányzó nyilatkozat validáció, nem tiltás).
- *  9. A felirat CSS-e NEM flex-konténer (a `.kc-appointment__consent-label`
- *     öt hasábra esett szét ettől; 320 px-en 107 px túlcsordulás, SC 1.4.10).
- * 10. MÉRT számok: kontraszt (SC 1.4.3), érintőcél (SC 2.5.8), sorhossz,
- *     320 px-es reflow — a tokens.css VALÓDI hexeiből és a CSS dobozaiból.
- *
- * ═══ KÜLSŐ FORRÁSOK ═══
- * - GOV.UK Design System, Checkboxes — „Do not pre-select checkbox options as
- *   this makes it more likely that users will not realise they've missed a
- *   question"; „Always position checkboxes to the left of their labels."
- *   https://design-system.service.gov.uk/components/checkboxes/
- * - Nielsen Norman Group, Checkbox Design Guidelines — „ensure legal
- *   checkboxes are unchecked by default to respect user consent"; kattintható
- *   feliratok. https://www.nngroup.com/videos/checkbox-design-guidelines/
- * - Baymard Institute — a pénztár bonyolultsága miatt a felhasználók 17%-a
- *   hagyja ott a vásárlást, és a MEZŐSZÁM számít, nem a lépésszám (ezért EGY
- *   négyzet, nem kettő).
- *   https://baymard.com/blog/checkout-flow-average-form-fields
- * - WCAG 2.2 SC 3.2.5 Change on Request + G201 („Giving users advanced warning
- *   when opening a new window").
- *   https://www.w3.org/WAI/WCAG22/Understanding/change-on-request.html
- * - WCAG 2.2 SC 1.4.3 Contrast (Minimum), SC 1.4.10 Reflow, SC 2.5.8 Target
- *   Size (Minimum), SC 3.2.4 Consistent Identification.
- *
- * ═══ MIÉRT ÍGY MÉR (a repó két megtörtént csapdája) ═══
- * a) A forrásból KISZŰRJÜK a kommenteket, mielőtt illesztünk: egyszer már
- *    előfordult, hogy a magyarázó komment tartalmazta azt a szöveget, amire a
- *    teszt illesztett — az őr így vak volt.
- * b) A fixtúrák LITERÁLKÉNT állnak, nem a kód saját konstansából; külön
- *    állítás méri, hogy a literál és a konstans egyezik. Enélkül a konstans
- *    átírása a tesztet is „átírná", és semmi nem bukna.
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))
@@ -265,9 +208,7 @@ function pixel(ertek: string): number {
   return px === null ? Number.NaN : Number.parseFloat(px[1])
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. A JELÖLŐNÉGYZET LÉTEZÉSE ÉS ALAPÁLLAPOTA
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A pénztár ÁSZF-jelölőnégyzete létezik és üresen indul', () => {
   for (const isFree of [false, true]) {
@@ -323,9 +264,7 @@ describe('A pénztár ÁSZF-jelölőnégyzete létezik és üresen indul', () =>
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. A FELIRAT: KÉT HIVATKOZÁS, ÚJ LAPON, KIMONDVA
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A felirat két jogi hivatkozást hordoz, új lapra, kimondottan', () => {
   const felirat = feliratMarkup(penztarMarkup({ isFree: false }))
@@ -411,9 +350,7 @@ describe('A felirat két jogi hivatkozást hordoz, új lapra, kimondottan', () =
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. A LITERÁLOK ÉS A KÓD KONSTANSAI EGYEZNEK (fejkomment b) pont)
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A fixtúra-literálok és a kód konstansai bitre egyeznek', () => {
   it('a felirat darabjai', () => {
@@ -453,9 +390,7 @@ describe('A fixtúra-literálok és a kód konstansai bitre egyeznek', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. A BEKÜLDÉSI TERV — kipipálatlanul BLOKKOL, kipipálva továbbenged
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('planCheckoutSubmission — az elfogadás a beküldés feltétele', () => {
   it('kipipálatlan négyzettel a beküldés meg sem indul, és a fókusz a négyzetre megy', () => {
@@ -507,9 +442,7 @@ describe('planCheckoutSubmission — az elfogadás a beküldés feltétele', () 
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. A SZERVEROLDALI ŐR — a kliens megkerülhető
-// ═══════════════════════════════════════════════════════════════════════════
 
 // DUMMY érték, egyértelműen jelölve — NEM valódi Barion POSKey.
 const DUMMY_POS_KEY = 'DUMMY-POSKEY-NEM-VALODI-TITOK'
@@ -687,9 +620,7 @@ describe('startCheckout — az ÁSZF-elfogadás a SZERVEREN is kötelező', () =
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. A GOMB NEM TILTÓDIK LE (validáció, nem tiltás)
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A beküldőgomb a kipipálatlan négyzettől NEM tiltódik le', () => {
   it('a gomb tabbal elérhető marad, és a magyarázat aria-describedby-jal kötődik hozzá', () => {
@@ -720,9 +651,7 @@ describe('A beküldőgomb a kipipálatlan négyzettől NEM tiltódik le', () => 
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 7. MÉRT ELRENDEZÉS — a hasáb-hiba nem térhet vissza
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('Mért elrendezés: a felirat FOLYÓSZÖVEG, nem elrendezés', () => {
   const css = olvas(CSS_UT)
@@ -894,9 +823,7 @@ describe('Mért sorhossz és 320 px-es reflow (SC 1.4.10)', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 8. A LÁNC ÉPSÉGE — a mag és a szerződés nem csúszhat szét
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A beküldési lánc épsége', () => {
   it('a döntési mag a `termsAccepted` állapotra ÁGAZIK (nem hagyja átfolyni)', () => {

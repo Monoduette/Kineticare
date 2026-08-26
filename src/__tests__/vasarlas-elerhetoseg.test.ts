@@ -13,36 +13,10 @@ import type { Product } from '../payload-types'
 
 /**
  * ŐR — a „Megveszem" gomb ELÉRHETŐSÉGE (2026-08-16, mért regresszió).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * Böngészős mérés (produkciós build, Chromium 141, `elementFromPoint`,
  * `behavior: 'instant'` görgetés, 40 mintapont a lap teljes görgetésén):
- *
- *  | méret     | süti-sávval kattintható | süti-sáv nélkül |
- *  | --------- | ----------------------- | --------------- |
- *  | 360×640   | 5 %                     | 98 %            |
- *  | 390×844   | 8 %                     | 95 %            |
- *  | 768×1024  | 8 %                     | 95 %            |
- *  | 1024×768  | 8 %                     | 10 %            |
- *  | 1280×720  | 5 %                     | 8 %             |
- *  | 1366×768  | 8 %                     | 10 %            |
- *  | 1600×900  | 8 %                     | 95 %            |
- *
- * Két különböző, egyszerre ható ok:
- *
- *  1. ASZTALI: a ragadós vásárlódoboz 905 pixel magas volt, a nézetablak
- *     768 — a doboz alsó része (benne a gombbal) sosem került képbe.
- *     Javítás: a doboz magassága legfeljebb a rendelkezésre álló
- *     nézetablak-magasság, a többi a dobozon BELÜL görgethető, az ár és a
- *     gomb pedig a doboz ELEJÉRE került.
- *  2. MOBIL: a süti-sáv (`position: fixed; bottom: 0; z-index: 1000`)
- *     eltakarta a vásárlósávot (`z-index: 40`). A hozzájárulás-kezelőt
- *     eltakarni nem szabad, ezért a vásárlósáv lép a süti-sáv TETEJÉRE, a
- *     `--kc-consent-offset` változó szerint.
- *
- * A böngészős méréseket a jelentés dokumentálja; itt a CSS-szabályok és a
- * DOM-sorrend jelenléte az őr — mindkettő olyan, amit egy későbbi
- * szerkesztés csendben visszavehetne.
+ * | méret     | süti-sávval kattintható | süti-sáv nélkül |
+ * | --------- | ----------------------- | --------------- |
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

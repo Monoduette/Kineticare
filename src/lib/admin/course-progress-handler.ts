@@ -16,73 +16,9 @@ import {
 /**
  * GET /api/admin/course-progress?productId=<szám> route-handler factory.
  *
- * A függőségek (Payload-példány) injektálva vannak, így a handler
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/admin/course-progress/route.ts köti be a valódi
- * configgal (a src/lib/grant-purchase-route.ts és a src/lib/refund/route-handler.ts
- * mintája).
- *
- * ═══ RBAC-SZERZŐDÉS ═══
- * A megrendelői igény szerint a MUNKATÁRSAK („a lányok") nézik ezt a nézetet,
- * nem csak a tulajdonos — ezért staff VAGY owner, ugyanaz a szint, mint a
- * kurzus-hozzáférés adásánál:
- * - anon hívó → 401,
- * - customer (és minden más szerepkör) → 403,
- * - staff vagy owner → engedélyezett.
- * A meglévő `hasStaffOrOwnerRole` predikátumot hívja (src/access/roles.ts) —
- * access-control függvényt NEM ír át (CLAUDE.md 4. tilos zóna).
- *
- * ═══ MIÉRT SAJÁT VÉGPONT, ÉS MIÉRT NEM A REST-API ═══
- * A panel elvileg összerakhatná az adatot a Payload REST-ből is (users +
- * course-progress lekérdezés, majd böngészőben számolás), de akkor
- *  - a haladás-százalék a KLIENSEN dőlne el (a vevői oldal viszont a szerveren
- *    számolja) — a két szám elcsúszásának kockázata elfogadhatatlan, és
- *  - a `course-progress` teljes sorhalmaza kimenne a böngészőbe.
- * Ezért a számítás szerveroldalon, a KÖZÖS `summarizeCurriculum` modullal
- * történik (src/lib/admin/course-progress-stats.ts), és csak a kész összesítés
- * megy ki.
- *
- * ═══ LAPOZÁS ÉS CSONKOLÁS (fontos) ═══
- * A `payload.find` alapértelmezett limitje 10 — nagy létszámnál ez CSENDBEN
- * csonkolna, és „mindenki 0%-on áll" típusú hamis képet adna. Ezért mindkét
- * lekérdezés EXPLICIT lapmérettel, ciklusban olvas, felső korláttal:
- * a `limit: 0` (= mind) a postgres-adapterrel ugyan működik, de korlátlan
- * memóriahasználatot jelentene egy pillanatnyi hibás lekérdezésnél, ezért
- * SZÁNDÉKOSAN nem használjuk. Ha a korlát tényleg fog, azt a válasz `meta`
- * mezője és a `notice` magyar szövege KIMONDJA — a csonkolást sosem hallgatjuk el.
- *
- * ═══ MIÉRT USER SZERINT RENDEZ A HALADÁS-OLVASÁS ═══
- * A két olvasás korábban EGYMÁSTÓL FÜGGETLENÜL vágódott el: a beiratkozottak a
- * saját korlátjuknál, a haladás-sorok (beszúrási sorrendben) a magukénál. Egy
- * LISTÁZOTT diák haladás-sorai így kieshettek a beolvasott ablakból, és a panel
- * nem kevesebb adatot mutatott, hanem HAMIS SZÁMOT: mérve, 2405 beiratkozott
- * mellett a 2000 listázott diákból 960-nak érdemben alacsonyabb százalék
- * jelent meg (egy konkrét vevőnek 25 elvégzett leckéből 10 látszott, 38%).
- * A rossz szám rosszabb, mint a hiányzó szám: a munkatárs eszerint keresi meg a
- * „lemaradó" vevőt, aki valójában végigcsinálta a kurzust.
- *
- * A javítás: a haladás-sorok `['user','id']` szerint rendezve olvasódnak be
- * (a rendezést valós Payload+Postgres ellen ellenőriztük), tehát a felső korlát
- * FELHASZNÁLÓ-HATÁRON vág. Az utolsó, esetleg félbevágott felhasználó sorait
- * eldobjuk, és a listából kimarad minden diák, akinek az adata a beolvasott
- * ablakon kívülre esne. Amit a panel MUTAT, az így mindig HIÁNYTALAN; ami
- * kimaradt, azt a `meta.enrollments.omitted` és a magyar `notice` kimondja.
- *
- * ═══ VÁLASZ-SZERZŐDÉS ═══
- * - 200: { product, totals, students, lessons, meta, notice }
- * - 400: hiányzó vagy érvénytelen productId
- * - 401/403: RBAC (fent)
- * - 404: nincs ilyen kurzus
- * - 500: váratlan technikai hiba (naplózva requestId-vel)
- * Minden hibaüzenet MAGYARUL, a felhasználónak szólóan.
- *
- * ═══ GYORSÍTÓTÁR: SEMMILYEN ÁGON ═══
- * Minden válasz `no-store` (a Videótár-végpont mintája,
- * src/lib/stream/bunny-library-handler.ts). A 200-as ág névvel és e-maillel
- * azonosított hallgatók haladását hordozza — ez sem böngésző-, sem köztes
- * gyorsítótárba nem való —, a HIBAÁGAK pedig azért kapják meg, mert enélkül
- * egy 401/403 válasz megragadhatna, és a bejelentkezés UTÁN is a tiltó
- * választ szolgálná ki.
+ * Staff/owner RBAC; haladás szerveren, közös `summarizeCurriculum`-mal. Explicit
+ * lapozás; haladás `['user','id']` szerint (felhasználó-határon vág, ne hamis
+ * százalék). Csonkolást a `meta` és `notice` kimondja. Minden válasz `no-store`.
  */
 
 export interface CourseProgressHandlerDeps {

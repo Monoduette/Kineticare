@@ -1,51 +1,12 @@
 import { absoluteUrl, faqPageJsonLd, SITE_NAME } from './seo'
 
 /**
- * Tudástár-cikkek strukturált adata (schema.org / GEO-réteg).
+ * Tudástár-cikkek strukturált adata (schema.org / YMYL).
  *
- * MIÉRT KÜLÖN MODUL. A `src/lib/seo.ts` az egész storefront közös
- * meta- és JSON-LD segédlete (oldalak, kurzusok, listák). A cikkoldal sémája
- * ennél szűkebb és szigorúbb: egészségügyi (YMYL) tartalomról beszél, ezért
- * szerzőt, lektort és ellenőrzési dátumot is közöl. Ez a modul csak azt tudja,
- * és tisztán — DOM, hálózat és adatbázis nélkül, egységtesztelhetően.
- *
- * ALAPSZABÁLY (docs/seo-geo-llm.md 1. fejezet): a séma minden mezője a LÁTHATÓ
- * tartalomból jön. A strukturált adat legdrágább hibája az, amikor a séma
- * TÖBBET állít, mint amit a lap mutat: a kereső ilyenkor elveti az egészet,
- * és semmilyen hibaüzenet nem jelzi.
- *
- * A NYILVÁNOS BELÉPÉSI PONTOK:
- * - `postArticleJsonLd` — a cikk EGY entitása, `['Article', 'MedicalWebPage']`
- *   kettős típussal;
- * - `cmsPageJsonLd` — a gyökér CMS-oldal (A-hub) entitása, sima
- *   `MedicalWebPage` (nem Article: a hub nem blogbejegyzés, nem `/blog/`);
- * - `postFaqItems` + `postFaqJsonLd` — a „Mások ezt is kérdezik" réteg, ahol a
- *   látható lista és a FAQPage séma UGYANABBÓL a tömbből készül.
- *
- * A modul SZÁNDÉKOSAN nem old fel Payload-kapcsolatokat (author, reviewedBy):
- * a hívó adja be a már leszűkített `{ name, credentials }` alakot. Ez nem
- * kényelmi kérdés, hanem a `docs/tudastar-technikai-terv.md` 2.4 biztonsági
- * jegyzete: a populált user-dokumentum a jelszó-hasht és a session-listát is
- * viszi, ezért a séma-rétegnek soha nem szabad a nyers objektumot látnia.
- *
- * Ellenőrzött források (2026-08-21):
- * - schema.org, MedicalWebPage: https://schema.org/MedicalWebPage
- * - schema.org, lastReviewed (domain: WebPage, érték: **Date**):
- *   https://schema.org/lastReviewed
- * - schema.org, reviewedBy (domain: WebPage, érték: Person vagy Organization):
- *   https://schema.org/reviewedBy
- * - schema.org, about (domain: CreativeWork, érték: **Thing**):
- *   https://schema.org/about
- * - schema.org, keywords (domain: CreativeWork, érték: Text; a tételeket
- *   „typically delimited by commas"): https://schema.org/keywords
- * - schema.org, MedicalSignOrSymptom (Thing > MedicalEntity > MedicalCondition
- *   > MedicalSignOrSymptom): https://schema.org/MedicalSignOrSymptom
- * - Google Search Central, Article structured data:
- *   https://developers.google.com/search/docs/appearance/structured-data/article
- * - Google Search Central, FAQPage:
- *   https://developers.google.com/search/docs/appearance/structured-data/faqpage
- * - Google Search Central, Structured data general policies:
- *   https://developers.google.com/search/docs/appearance/structured-data/sd-policies
+ * Külön a közös seo.ts-től: cikk-séma szerzővel, lektorral, ellenőrzési dátummal.
+ * A séma csak látható tartalmat írhat le; FAQ lista és FAQPage ugyanabból a tömbből.
+ * Payload-kapcsolatokat nem old fel — a hívó adja a leszűkített `{ name, credentials }`
+ * alakot (populált user jelszó-hasht és session-listát visz).
  */
 
 /** A cikk-séma nyelve — magyar tartalom, magyar közönségnek. */

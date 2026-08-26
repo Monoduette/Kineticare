@@ -9,14 +9,9 @@ import {
 /**
  * CoursePlayer token-frissítés — az iframe-src életciklusa (a lejátszó
  * időzítői DOM nélkül nem tesztelhetők, ezért a DÖNTÉSI MAG itt, tisztán).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * (a) A token-frissítés eddig az ÚJ jegyet az iframe `src`-be írta → az iframe
- *     újramountolt → a vevő elvesztette a lejátszási pozíciót (a „lejátszás
- *     nem szakad meg" frissítés maga szakította meg a lejátszást).
- * (b) A váltás életciklus-őre (generáció-számláló + timer-törlés) a
- *     komponensben él; azt a részt a kódszerkezet garantálja, itt a src-szabály
- *     az őrzött szerződés.
+ * újramountolt → a vevő elvesztette a lejátszási pozíciót (a „lejátszás
+ * nem szakad meg" frissítés maga szakította meg a lejátszást).
  */
 
 const SRC_A = 'https://iframe.mediadelivery.net/embed/1/guid-a?token=token-a1&expires=1000'

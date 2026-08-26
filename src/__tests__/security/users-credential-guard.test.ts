@@ -6,20 +6,9 @@ import { FOREIGN_CREDENTIAL_CHANGE_MESSAGE, Users } from '../../collections/User
 /**
  * IDEGEN FIÓK HITELESÍTÉSI ADATAINAK VÉDELME (belső biztonsági átvizsgálás,
  * 2026-08-16).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A `users` collection `update` szabálya a staffnak MINDEN rekordra írási jogot
  * adott, a Payload beépített `password` és `email` mezőin pedig nincs
  * mezőszintű `access`. Staff jogosultsággal így egy owner (vagy bármely vevő)
- * jelszava átírható lett volna — fiókátvétel, a vevői oldalon GDPR-kockázat.
- *
- * A védelem KÉT, egymástól független rétegű:
- *  1. `canUpdateUser` collection-access (mátrixa: src/__tests__/access.test.ts);
- *  2. ez a `beforeChange` hook, amely a VÁLTOZTATÁS TERMÉSZETÉRE néz — így egy
- *     jövőbeli access-refaktor sem nyithatja meg az utat.
- *
- * Ez a fájl a 2. réteget méri, és külön rögzíti azokat a rendszer-folyamatokat,
- * amelyeknek VÁLTOZATLANUL működniük kell.
  */
 
 /**

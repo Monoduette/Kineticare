@@ -1,42 +1,9 @@
 import { BUNNY_PLAYERJS_SOURCE } from '../security/csp'
 
 /**
- * A Bunny HIVATALOS player.js könyvtárának betöltése — rögzített verzióról,
- * integritás-ellenőrzéssel.
- *
- * ═══ MIÉRT EZ A HIVATALOS ÚT ═══
- * A Bunny dokumentációja a saját player.js buildjének betöltését írja elő a
- * lejátszó vezérléséhez és eseményeihez. A haladás automatikus jelölése (a
- * videó ~90%-ának tényleges megnézése) ezen az eseményfolyamon áll, ezért a
- * dokumentált utat követjük — a saját, függőség nélküli postMessage-hidunk
- * (./playerjs-client.ts) TARTALÉKKÁ lép vissza, nem tűnik el.
- *
- * ═══ MIÉRT RÖGZÍTETT VERZIÓ ÉS SRI ═══
- * A Bunny doksija a `playerjs-latest.min.js` címet ajánlja. Egy „latest" URL
- * viszont azt jelenti, hogy a CDN BÁRMIKOR kicserélheti alattunk a kódot —
- * abban a dokumentumban, ahol a fiók- és a pénztár-felület is fut. Ezért:
- *  - a betöltés a RÖGZÍTETT `player-0.1.0.min.js` címről megy (ellenőrizve:
- *    2026-08-15-én bájtra AZONOS tartalmat ad, mint a `-latest`),
- *  - és `integrity` + `crossorigin="anonymous"` párossal, tehát a böngésző a
- *    scriptet KIZÁRÓLAG akkor futtatja, ha bájtra az, amit ellenőriztünk.
- * A CDN `access-control-allow-origin: *` fejlécet küld, tehát az SRI-hez
- * szükséges CORS-feltétel teljesül.
- *
- * ═══ MI TÖRTÉNIK, HA A HASH ELAVUL ═══
- * Ha a Bunny valaha lecseréli a fájlt ezen a rögzített címen, az integritás-
- * ellenőrzés megbukik, és a script NEM fut le. Ez SZÁNDÉKOS: inkább essünk
- * vissza a saját hidunkra, mint hogy ellenőrizetlen kód fusson a fizetési
- * felülettel egy dokumentumban. A tünet ilyenkor NEM hibás működés, csak az,
- * hogy a hivatalos út kimarad.
- * A hash frissítése (emberi döntéssel, a változás átnézése után):
- *   curl -sS <PLAYERJS_URL> | openssl dgst -sha384 -binary | openssl base64 -A
- *
- * ═══ MIÉRT NEM next/script ═══
- * A `next/script` deklaratív, komponens-életciklushoz kötött. A betöltés itt
- * viszont IMPERATÍV és EGYSZERI: több lejátszó-példány (és a lecke-váltás)
- * ugyanazt a globális könyvtárat használja, ezért a betöltést egyetlen,
- * megosztott ígéret (promise) fogja össze — a script legfeljebb egyszer kerül
- * a DOM-ba, akárhányszor kérik.
+ * Bunny hivatalos player.js betöltése — rögzített verzió, SRI. Tartalék: playerjs-client.ts.
+ * Hash elavulásakor a script nem fut; frissítés emberi döntéssel. Megosztott promise:
+ * a DOM-ba legfeljebb egyszer kerül be.
  */
 
 /** A rögzített verziójú fájl teljes címe. */

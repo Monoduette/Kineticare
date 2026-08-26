@@ -4,17 +4,10 @@ import { buildStaticPageMetadata } from '../lib/seo'
 
 /**
  * Őr a nyilvános oldalak megosztási metaadatára.
- *
- * ═══ MI VOLT A HIBA (2026-08-21, élesben mérve) ═══
  * A `/blog` `generateMetadata`-ja csak `title`-t és `description`-t adott,
  * `openGraph` blokkot nem. A Next ilyenkor a keret-layout OG-jére esik vissza,
  * ezért a Tudástár megosztva SZÓ SZERINT a kezdőlap címét mutatta
  * („Kineticare — Kézrehabilitációs online kurzusplatform”), és `og:url` sem
- * tartozott hozzá. Ugyanez állt a `/kurzusok`, a kategória-oldal és a kezdőlap
- * esetén.
- *
- * A hiba néma: a lap tökéletesen renderel, a hiányzó OG csak megosztáskor
- * derül ki. Ezért kell rá őr.
  */
 describe('buildStaticPageMetadata', () => {
   it('a megosztási cím és leírás megegyezik a lap sajátjával', () => {

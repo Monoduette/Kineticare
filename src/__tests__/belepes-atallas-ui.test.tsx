@@ -19,33 +19,10 @@ import { EM_DASH, EN_DASH } from './helpers/cta-mikroszoveg'
 
 /**
  * ŐR — AZ ÁTKÖLTÖZTETETT VEVŐ ÚTJA (`/belepes-atallas`).
- *
- * ═══ MIT VÉD ═══
  * A systeme.io-ról áthozott, FIZETŐ vevő nem tud belépni a régi jelszavával.
  * Egyetlen levelet kap, és annak a levélnek EGY céllapja van. Ha ezen a lapon
  * bármelyik alábbi állítás elveszik, a vevő elakad, és a támogatás dolga lesz:
- *
- *   1. kimondja, hogy NEM Ő HIBÁZOTT, és megmondja az OKOT;
- *   2. kimondja SZÓ SZERINT, hogy a kurzus megvan, újra fizetni nem kell;
- *   3. EGY kért cselekvés van a lapon (egy beküldő gomb);
- *   4. van VISSZAÚT és SEGÍTSÉGKÉRÉS.
- *
- * Ezek a `docs/vasarlo-migracio-terv.md` 1. szakaszának alapelvei, és a
- * tulajdonos kifejezett elvárásai. Prózában eddig is ott álltak; itt válnak
- * végrehajthatóvá.
- *
- * ═══ AMIT MÉG MÉR ═══
- * - a gombfeliratok a §3.2 szótárból valók (WCAG 2.2 · 3.2.4);
- * - a vevői szövegben NINCS kvirtmínusz és nincs töltelék gondolatjel
- *   (`docs/ui-sztenderdek.md` §3.1.1–3.1.2, tulajdonosi kikötés);
- * - a lap H1-e MÁS, mint a `/elfelejtett-jelszo`-é (WCAG 2.2 · 2.4.6);
- * - a kérés-korlátról szóló mondat SZÁMAI egyeznek a valódi kerettel;
- * - a kiemelt doboz kontraszt-arányai a tokenekből ÚJRASZÁMOLVA is átmennek;
- * - a `robots.txt` tiltása előtag-egyezéssel lefedi az új útvonalat;
- * - a megosztott űrlap ALAPÉRTELMEZETT alakja változatlan (a `/elfelejtett-
- *   jelszo` lap nem kap véletlenül átállási szöveget).
- *
- * HÁLÓZAT: a globális fetch hangosan dobó mock (CLAUDE.md 15. tanulság).
+ * 1. kimondja, hogy NEM Ő HIBÁZOTT, és megmondja az OKOT;
  */
 
 vi.stubGlobal('fetch', () => {

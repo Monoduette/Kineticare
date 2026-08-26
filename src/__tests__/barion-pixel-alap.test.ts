@@ -18,32 +18,10 @@ import { buildContentSecurityPolicy } from '../lib/security/csp'
 
 /**
  * Az ALAP (Base) Barion Pixel őr-tesztje.
- *
- * ═══ MI A VÉDENDŐ REGRESSZIÓ ═══
  * Az alap Pixel NEM marketing-eszköz: a Barion Smart Gateway használatának
  * feltétele, és a hivatalos dokumentáció kifejezetten kiköti, hogy a
  * süti-hozzájárulás kezelője NE nyúljon hozzá:
- *
- *   „Marketing consent management software should not interact with this code,
- *    since it should also be present for fraud prevention purposes.”
- *   „…the Base Barion Pixel should be loaded irrespective of other marketing
- *    consent management software.”
- *   (docs.barion.com/Implementing_the_Base_Barion_Pixel)
- *
- * A legvalószínűbb, NÉMA visszaesés: valaki „rendet rak” az analitikában, és a
- * Pixelt is beteszi a consent-kapu mögé (a GA/PostHog mintájára). Ettől a
- * Smart Gateway feltétele bukik, méghozzá úgy, hogy semmi nem hibázik — csak a
- * Barion-oldali pontozás romlik el. Az alábbi őrök ezt kötik meg.
- *
- * ═══ A CSP-DÖNTÉS MÉRÉSSEL ═══
- * A `pixel.barion.com/bp.js` (0.4.0) letöltve és átolvasva:
- *  - rejtett iframe-eket szúr be ugyanerről a hostról (barion.html,
- *    barionbase.html, barionmarketing.html) → frame-src KELL,
- *  - `XMLHttpRequest` / `fetch(` / `sendBeacon` / `new Image` / `WebSocket`:
- *    egyik sem szerepel benne (0 találat) — az üzenetváltás postMessage →
- *    connect-src NEM kell,
- *  - az egyetlen `eval(` a beágyazott js-sha1 NODE-ágában van, böngészőben
- *    nem fut → 'unsafe-eval' NEM kell.
+ * „Marketing consent management software should not interact with this code,
  */
 
 /** Kitalált, szabályos alakú teszt-azonosító (valódi kulcs a repóba nem kerülhet). */

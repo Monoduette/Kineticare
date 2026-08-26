@@ -6,31 +6,10 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * GOMB- ÉS FÓKUSZ-KONTRASZT ŐR (G-K1…G-K6) — a WCAG 2.2 AA gépi párja.
- *
- * ═══ MIÉRT LÉTEZIK ═══
  * A repóban a kontraszt-protokoll eddig KOMMENTEKBEN élt (tokens.css, ui.css,
  * layout.css, progress.css, player.css fejléce). A 2026-08-16-i audit
  * (docs/gomb-kontraszt-audit.md) három olyan hibát talált, amit SEMMILYEN
  * komment nem tudott megakadályozni:
- *   - `--kc-color-info` / `--kc-color-info-surface` sehol nem volt definiálva,
- *     mégis hivatkozott rá a checkout.css → a fizetési állapotdoboz némán
- *     elvesztette a keretét és a hátterét (B9)  → **G-K1**;
- *   - a süti-sáv sötét felület, de nem `.kc-section--dark`, ezért lemaradt
- *     róla a fókusz-felülírás → 2,87:1-es fókuszgyűrű minden oldalon (B2)
- *     → **G-K3**;
- *   - a letiltott gomb `opacity: .5`-je a feliratot ÉS a kitöltést egyszerre
- *     mosta el → 2,06–2,16:1 (B8) → **G-K4**.
- * Ezekre végrehajtható szabály kell, nem prózai figyelmeztetés.
- *
- * ═══ MIT NEM TUD ═══
- * Ez a réteg STATIKUS: a rétegzett kompozitot (film + lejtő + fátyol), az
- * `opacity` szülő-láncot és a valós célfelület-méretet nem méri. Amit a film
- * kompozitjairól tud, az a repó saját, filmkockákból mért „legsötétebb blokk"
- * értékeire épül (layout.css / film-hero.css kontraszt-levezetése) — ezeket a
- * G-K2 mátrix rögzíti, hogy egy token-csere azonnal kibukjon. A böngészős
- * (Playwright) mérés külön, nem CI-blokkoló kör (audit 11.3).
- *
- * Hálózat nincs, DOM nincs: tiszta fájlolvasás + tiszta függvények.
  */
 
 const SRC = fileURLToPath(new URL('..', import.meta.url))

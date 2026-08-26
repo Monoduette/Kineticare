@@ -2,41 +2,7 @@ import type { Curriculum } from '../curriculum/curriculum'
 import { summarizeCurriculum } from '../curriculum/progress'
 
 /**
- * ADMIN kurzus-haladás ÖSSZESÍTŐ — tiszta, DB- és React-mentes modul.
- *
- * ═══ MIÉRT VAN ═══
- * A megrendelői igény szó szerint: „fontos, hogy a lányok láthassák, ki indította
- * el a kurzust, ki még nem, és milyen százalékban van elkészült". Ez a modul az
- * a MAG, ami ezt a három kérdést megválaszolja — a HTTP-végpont
- * (src/lib/admin/course-progress-handler.ts) csak az adatot szállítja hozzá, a
- * panel (src/components/admin/CourseProgressPanel.tsx) pedig csak megjeleníti.
- *
- * ═══ MIÉRT NEM SZÁMOL SAJÁT SZÁZALÉKOT ═══
- * A hallgatónkénti százalék KIZÁRÓLAG a közös `summarizeCurriculum`-ból jön
- * (src/lib/curriculum/progress.ts) — ugyanabból a függvényből, amit a vevő
- * lejátszója és a „Kurzusaim" lista is hív. Ha az admin máshogy számolna, egy
- * telefonhívásnyi bizalmatlanság keletkezne („nálam 60%-ot ír, ti 55%-ot
- * láttok"). Ezért itt SEMMILYEN önálló százalék-képlet nincs: a modul csak
- * CSOPORTOSÍT (usereként) és ÖSSZEGEZ (kurzus-szinten).
- *
- * Örökölt szabályok, amelyeket a közös modultól kapunk (nem másoljuk le őket):
- * - a nevező az ELINDÍTHATÓ (`playable`) leckék száma,
- * - az ORPHAN (időközben törölt leckére mutató) haladás-sor kiesik,
- * - a duplikált sor nem torzít (a refek halmazba kerülnek),
- * - 0 leckés kurzusnál nincs nullával osztás, a százalék 0.
- *
- * ═══ AMI VISZONT ITT DŐL EL ═══
- * - Ki számít „beiratkozottnak": KIZÁRÓLAG az `enrollments` listán szereplő
- *   felhasználó. Akinek van haladás-sora, de nincs (már) hozzáférése — pl.
- *   visszatérített rendelés után —, az sem a listában, sem a lemorzsolódásban
- *   nem jelenik meg. Enélkül a „12 beiratkozottból 13 kezdte el" abszurd
- *   állapot előállhatna.
- * - Az állapot-hármas (`nem-kezdte` / `folyamatban` / `befejezte`) definíciója,
- *   lásd lentebb az egyes mezőknél.
- * - A `lastActivityAt` a SZÁMÍTÓ leckék legutolsó megjelöléséből jön (az orphan
- *   sorok itt is kiesnek), hogy a sor önmagában konzisztens legyen: ne
- *   fordulhasson elő „0/18 kész — 3 napja aktív" típusú, magyarázhatatlan
- *   kombináció.
+ * Admin kurzus-haladás összesítő. Százalék: `summarizeCurriculum`; beiratkozott = enrollments lista.
  */
 
 /** A hallgató állapota a kurzuson — a panel chipje ezt mutatja. */

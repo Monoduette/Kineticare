@@ -37,23 +37,10 @@ import type { CheckoutSubmitInput, CheckoutSubmitResult } from '@/lib/checkout-s
 
 /**
  * A Barion Pixel FOLYAMAT-eseményeinek őr-tesztjei.
- *
- * ═══ MI A MÉRCE, ÉS HONNAN ═══
  * A szerződést nem memóriából, hanem a futtatott pixel-kódból vettük:
- * `curl -s https://pixel.barion.com/bp.js` (VERSION = "0.4.0", olvasható
  * forrás). A `handle_message_from_queue` minden követési ága
  * `if (msg.length !== 3)` ellenőrzéssel indul → a hívás pontosan
  * `bp('track', '<esemény>', { … })`. A törzseket a `validate(d, event_name,
- * mandatory_keys, type_conversion)` bírálja el, KÉT irányban szigorúan:
- *   - hiányzó KÖTELEZŐ kulcs → 10-es hiba, és az esemény EL SEM MEGY;
- *   - ISMERETLEN kulcs → 13-as hiba, és a pixel `delete d[k]`-val eldobja.
- * Ezért a tesztek nemcsak a kötelező kulcsok MEGLÉTÉT, hanem a törzs
- * kulcshalmazát is rögzítik.
- *
- * ═══ MIÉRT ÍGY ═══
- * Ezek a hibák NÉMÁK: rossz kulcsnál vagy rossz `step`-nél semmi nem szakad
- * el a felületen, csak a mérés lesz csendben hamis. Az alábbi állítások
- * mindegyike mutációval igazolt (rontás → bukás → visszaállítás).
  */
 
 /** Egy tipikus fizetős kurzus. */

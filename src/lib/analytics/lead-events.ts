@@ -1,56 +1,7 @@
 import { ANALYTICS_EVENTS, captureAnalyticsEvent } from './posthog'
 
 /**
- * A LEAD-funnel eseményei — típusos, egy helyen összefogott küldők.
- *
- * ═══ MIÉRT KÜLÖN MODUL ═══
- * A négy űrlap kliens-komponensének nem szabad tudnia, hogyan épül fel egy
- * PostHog-esemény: itt dől el az eseménynév, a tulajdonság-készlet és — ami a
- * legfontosabb — hogy MI NEM MEHET KI. A komponens csak annyit lát, hogy
- * „beküldés indul" / „a szerver visszaigazolta"; a szerződést ez a modul
- * őrzi, és ez tesztelhető is (src/__tests__/analytics/lead-esemenyek.test.tsx).
- * Ugyanaz a szerkezet és ugyanaz a no-op filozófia, mint a tanulási funnel
- * ./course-events.ts moduljában.
- *
- * ═══ MIÉRT KÉT ESEMÉNY, ÉS NEM EGY ═══
- * A `lead_submitted` a beküldés SZÁNDÉKA: a látogató elindította a beküldést,
- * a kérés kiment. A `lead_succeeded` a szerver VISSZAIGAZOLÁSA: a beküldés
- * megérkezett és elfogadásra került.
- *
- * A kettő KÜLÖNBSÉGE a néma beküldési hibák EGYETLEN külső jelzője. A
- * szerveroldali napló szerkezetéből adódóan csak azt látja, ami ODAÉRT: ha a
- * kérés a hálózaton, a kérés-korláton (5 kérés / 10 perc / IP), a
- * Turnstile-ellenőrzésen vagy egy 5xx-en bukik el, a szerver oldalán vagy
- * semmi, vagy egy nehezen a látogatóhoz kötött hibasor keletkezik. A
- * `lead_submitted` viszont a KLIENSTŐL indul, tehát akkor is megérkezik, ha a
- * beküldés maga sosem ért célba. Egyetlen esemény („sikeres feliratkozás")
- * mellett a hibás beküldések egyszerűen LÁTHATATLANOK lennének: a mérőszám
- * csendben csökkenne, és semmi nem mondaná meg, hogy ez kereslet-csökkenés
- * vagy meghibásodás.
- *
- * ═══ MIT SZÁMÍT BEKÜLDÉSNEK ═══
- * A `lead_submitted` a TÉNYLEGES beküldési kísérletre megy ki — vagyis a
- * kliensoldali validáció és a spam-kapuk (honeypot, Turnstile) UTÁN, közvetlenül
- * a hálózati hívás előtt. Ez szándékos:
- *  - a kitöltés közbeni mezőhibák nem beküldések, ezért a `submitted`/`succeeded`
- *    arányt nem szabad hígítaniuk (különben az arány a „hányan gépeltek el egy
- *    e-mail-címet" számmá válna, és pont a néma szerverhibát fedné el);
- *  - a honeypotba lépő BOT hálózati hívás nélkül, látszólagos sikerrel áll meg
- *    az űrlapban — ide el sem jut, tehát bot sosem fújja fel a tölcsért.
- *
- * ═══ ADATVÉDELEM ═══
- * A tulajdonságok KIZÁRÓLAG a forrás-címkét és — ahol értelmes — a kurzus
- * adatbázis-azonosítóját hordozzák. E-MAIL, NÉV, TELEFONSZÁM, ÜZENETSZÖVEG,
- * IP vagy bármely szabad szöveges bevitel SOHA: az esemény harmadik félhez
- * (PostHog) megy ki, a logger redact-listája pedig csak a NAPLÓRA véd. A modul
- * szűk típusai ezt szerkezetileg is kikényszerítik: a hívó nem tud tetszőleges
- * mezőt átadni, a forrás pedig zárt unió, nem szabad sztring.
- *
- * ═══ CONSENT ═══
- * A `captureAnalyticsEvent` no-op, amíg az analitika nincs bekapcsolva
- * (hozzájárulás + PostHog-kulcs), ezért ezek a hívók hozzájárulás nélkül
- * csendben nem csinálnak semmit. A hívó helyeken NEM kell külön consent-kaput
- * építeni.
+ * Lead funnel: submitted (kliens) vs succeeded (szerver). Csak forrás-címke + kurzus id, személyes adat nem.
  */
 
 /** A lead-források ZÁRT készlete — a riportok ezekre a címkékre bontanak. */

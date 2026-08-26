@@ -610,17 +610,11 @@ describe('createBunnyPlayerBridge — window nélküli környezet', () => {
 })
 
 /**
- * ═══ A LEGKRITIKUSABB VISELKEDÉS: A FELIRATKOZÁS CÉLBA ÉRÉSE ═══
- *
  * Az audit végpontól-végpontig, VALÓDI cross-origin `postMessage`-dzsel
  * bizonyította, hogy a híd LÉTREHOZÁSAKOR küldött feliratkozás SOHA nem ér
  * célba: a lecke betöltésekor az iframe még `about:blank`-en áll, és a pontos
  * célorigint megkövetelő üzenet némán elvész. A javítás előtt ezért az EGÉSZ
  * automatikus haladás-jelölés egyetlen, dokumentálatlan külső viselkedésen
- * függött: azon, hogy a Bunny lejátszója kéretlenül broadcastolja a `ready`-t.
- *
- * Az alábbi tesztek azt őrzik, hogy TÖBB, egymástól független út vezet a
- * feliratkozáshoz — mert egyik sem a mi kezünkben van.
  */
 describe('createBunnyPlayerBridge — a feliratkozás garantáltan célba ér', () => {
   it('az iframe `load` eseményére ÚJRA feliratkozik (a vaklövés elveszhet)', () => {

@@ -6,36 +6,11 @@ import {
 } from '../../scripts/restore-legacy-content'
 
 /**
- * Markdown → Lexical fordító a Tudástár cikkeihez.
+ * Markdown → Lexical fordító a Tudástár cikkeihez (`docs/cikkek/` → `posts.content`).
  *
- * ═══ MIÉRT VAN SZÜKSÉG RÁ ═══
- * A hat cikk a `docs/cikkek/` alatt markdownban áll, a Payload `posts.content`
- * mezője viszont Lexical-dokumentumot vár. Kézi bemásolás hat cikknél nem
- * járható út: a szerkesztőben elveszne a szerkezet, és a következő javításnál
- * újra kellene csinálni. A fordítás így visszajátszható és tesztelhető.
- *
- * ═══ A LEGFONTOSABB SZABÁLY: NÉMÁN SEMMI NEM VESZHET EL ═══
- * A storefront szerializálója (`src/components/lexical/serialize.tsx`) VÉGES
- * csomópont-készletet ismer: `heading`, `paragraph`, `text`, `link`, `list`,
- * `listitem`, `quote`, `horizontalrule`, `linebreak`, `upload`. Ami nincs
- * benne — mindenekelőtt a TÁBLÁZAT —, azt nem rendereli ki. Egy táblázatot
- * tartalmazó cikk tehát hiánytalannak LÁTSZANA az adatbázisban, miközben a
- * látogató nem látja a felét.
- *
- * Ezért ez a modul minden fel nem ismert szerkezetre KIVÉTELT DOB, nem pedig
- * átugorja. A markdown-táblázat kivétel: a 7. és 8. cikk törzse összehasonlító
- * táblákat tartalmaz, a Payload alapszerkesztője és a storefront viszont nem
- * ismer `table` csomópontot. A táblát ezért ismert csomópontokra (bekezdés +
- * felsorolás) fordítjuk, hogy egyetlen cellaszó se tűnjön el, és az admin
- * következő mentése se nyírja ki. Kódblokk és második H1 továbbra is dob.
- *
- * ═══ A TÖRZS HATÁRAI ═══
- * A cikkfájlok felépítése kötött (lásd bármelyik fájl fejlécét): a H1 fölött a
- * lektornak és az integrátornak szóló rész áll (forrástáblák, önteszt-jegyzet),
- * a H1-től indul a publikálandó szöveg. A törzs végét a vezetőnek/lektornak
- * szóló szakaszok zárják — ezek NEM mehetnek ki a nyilvános oldalra. A
- * „Forrásjegyzék”, a „Kik írták ezt a cikket?” és a „Fontos tudnivaló” ellenben
- * a cikk RÉSZE (E-E-A-T és felelősség), ezért bent marad.
+ * Fel nem ismert szerkezet kivételt dob (néma adatvesztés tilos). Táblázat → bekezdés
+ * + felsorolás (a storefront nem ismer `table` csomópontot). A törzs H1-től indul;
+ * belső/lektori szakaszok kizárva (`LEKTORI_JELOLESEK`, `FORRAS_JELOLESEK` őr).
  */
 
 /** A törzset lezáró, kizárólag belső használatú szakaszcímek. */
@@ -45,22 +20,7 @@ const BELSO_SZAKASZOK: readonly string[] = [
   'A cikkíró javaslata a vezetőnek',
 ]
 
-/**
- * Kifejezések, amelyek KIZÁRÓLAG a lektornak/vezetőnek szólnak, és sosem
- * kerülhetnek a nyilvános oldalra.
- *
- * ═══ MIÉRT VAN ERRE KÜLÖN ŐR (2026-08-21-i éles hiba) ═══
- * Az első változat a törzset az utolsó H1-től vágta, abból a feltevésből, hogy
- * a lektornak szóló rész a H1 FÖLÖTT áll. Mind a hat cikkben viszont a H1 ALATT,
- * a törzs első bekezdéseként is ott a figyelmeztetés: „Ez a szöveg lektorálandó
- * vázlat…”. Így az élesbe kikerült cikkek törzsében LÁTHATÓAN, az `og:description`
- * mezőjükben pedig a megosztásokon is ez a mondat állt. A hiba néma volt: a
- * szószám-őr rendben találta, mert a mondat SZÖVEG, csak épp nem a látogatónak
- * szól.
- *
- * Ezért ez a lista nem „szűrés”, hanem ŐR: a fordítás hangosan bukik, ha a
- * törzsben bárhol felbukkan valamelyik.
- */
+/** Lektori/vezetői jelölések — ha a törzsben felbukkannak, a fordítás bukik (2026-08-21-i éles hiba). */
 export const LEKTORI_JELOLESEK: readonly string[] = [
   'lektorálandó vázlat',
   'nem publikálható',
@@ -69,22 +29,7 @@ export const LEKTORI_JELOLESEK: readonly string[] = [
   'a cikkíró javaslata',
 ]
 
-/**
- * Forrás-hivatkozás jelölései, amelyek a tulajdonos 2026-08-21-i döntése óta
- * NEM kerülhetnek a nyilvános cikkszövegbe.
- *
- * ═══ MI EZ A DÖNTÉS ═══
- * A cikkek eredetileg forrásjegyzékkel és mondatba épített hivatkozásokkal
- * készültek („Az NHS szerint…”, „Az AAOS 2024-es irányelve…”). A tulajdonos
- * kérésére ezek mind kikerültek: a törzsből 1 684 szónyi forrásjegyzék, 380
- * zárójeles hivatkozás és 143 mondatba épített attribúció.
- *
- * FONTOS, HOGY EZ TUDATOS DÖNTÉS LEGYEN: a `docs/seo-geo-llm.md` 2.3 pontja a
- * hiteles forrás megjelölését E-E-A-T-követelménynek nevezi, és egészségügyi
- * (YMYL) tartalomnál ezt mérik a legszigorúbban. Az őr tehát nem azt mondja,
- * hogy így jobb, hanem azt, hogy a döntés ne csússzon vissza véletlenül egy
- * későbbi szerkesztéssel.
- */
+/** Forrás-jelölések — tulajdonosi döntés (2026-08-21) óta nem kerülhetnek a nyilvános törzsbe. */
 export const FORRAS_JELOLESEK: readonly string[] = [
   'NHS',
   'AAOS',

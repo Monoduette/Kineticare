@@ -12,25 +12,10 @@ import { MISSING_DEMO_PASSWORD_MESSAGE, demoGuardErrors } from '../../scripts/de
 
 /**
  * TITOK NEM KERÜLHET A NAPLÓBA (belső biztonsági átvizsgálás, 2026-08-16).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A `seed.ts` és a `demo-seed.ts` a GENERÁLT induló jelszót a naplóüzenet
  * SZÖVEGÉBE illesztve írta ki (`… induló jelszava: ${password}`). A logger
  * redakciója KULCSNÉV-alapú (src/lib/logger.ts `REDACTED_KEYS`), tehát az
  * üzenetszövegbe ágyazott titkot nem szűri. A demó-szolgáltatás minden
- * induláskor lefut, így a jelszó minden deploy-naplóba bekerült — onnan a
- * log-aggregátorba és a mentésekbe is.
- *
- * ═══ A MEGOLDÁS ═══
- * Mindkét script KÖTELEZŐVÉ teszi a jelszó-környezetváltozót, és hangos, magyar
- * hibaüzenettel áll le, ha hiányzik. Jelszót nem generál és nem naplóz.
- *
- * ═══ EZ AZ ŐR ═══
- * A G3/G4 grep-jellegű őrök mintájára a FORRÁSSZÖVEGET vizsgálja: naplóhívásba
- * (`logger.info` / `log.warn` / `payload.logger.*` …) nem interpolálható
- * jelszó-változó. A viselkedés-tesztek egy jövőbeli átírásnál csendben
- * kimaradhatnának; a szöveg-szintű tiltás a kommentekre is kiterjed, mert a
- * kommentben lévő minta egy későbbi szerkesztésnél élővé válhat.
  */
 
 /** A vizsgált scriptek — mindkettő hozott létre fiókot induló jelszóval. */

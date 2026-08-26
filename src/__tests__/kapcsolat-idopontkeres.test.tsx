@@ -19,25 +19,9 @@ import type { Page } from '../payload-types'
 /**
  * A /kapcsolat lap IDŐPONTKÉRŐ szekciójának alapállapota (a legacy-visszaépítő
  * script tölti fel egyszer, utána minden szöveg az adminé).
- *
- * ═══ MIT ŐRIZ ═══
- *  1. Az alap-szekciósor a VALÓS rendelői adatokat viszi (két budapesti cím,
- *     a két gyógytornász telefonszáma, az e-mail-cím). A blokkosítás nem
- *     veszíthet el kapcsolatfelvételi utat: aki nem tölt ki űrlapot, annak a
- *     telefonszám a második, teljes értékű csatorna.
- *  2. A szekció HORGONYT kap, és a /szolgaltatasok „Időpontot kérek"
- *     hivatkozása pontosan erre a horgonyra mutat. Enélkül a látogató a
- *     kapcsolat-lap tetejére érkezne, és neki kellene megtalálnia a szekciót.
- *  3. A magyarázó szöveg KIMONDJA, hogy ez nem foglalás. Naptár-integráció
- *     nincs a rendszerben, tehát foglalást ígérni hazugság lenne.
- *  4. A sávok között NINCS hétvégi lehetőség: a repóban semmi nem igazolja,
- *     hogy hétvégén van rendelés, egy nem tartható sáv felkínálása pedig
- *     ígéret. (Ha van, az adminban egy sorral pótolható.)
- *  5. A lap SZAKEMBER-ELÉRHETŐSÉGET is visz (tulajdonosi kérés, 2026-08-16:
- *     „lányok elérhetősége kell a kapcsolat menüpontba is"), az időpontkérő
- *     UTÁN, kapcsolat-fókuszú felvezetővel, önmagára mutató link nélkül.
- *
- * HÁLÓZAT: a globális fetch hangosan dobó mock (CLAUDE.md 15. tanulság).
+ * 1. Az alap-szekciósor a VALÓS rendelői adatokat viszi (két budapesti cím,
+ * a két gyógytornász telefonszáma, az e-mail-cím). A blokkosítás nem
+ * veszíthet el kapcsolatfelvételi utat: aki nem tölt ki űrlapot, annak a
  */
 
 vi.stubGlobal('fetch', () => {
@@ -119,22 +103,9 @@ describe('/kapcsolat alap-szekciósor', () => {
 /**
  * A /kapcsolat SZAKEMBER-ELÉRHETŐSÉGE (tulajdonosi kérés, 2026-08-16: „lányok
  * elérhetősége kell a kapcsolat menüpontba is").
- *
- * ═══ MIT ŐRIZ ═══
- *  1. SORREND. A szekció az időpontkérő UTÁN áll: az időpontkérő bal hasábja
- *     már kiírja mindkét telefonszámot (NN/g kapcsolat-oldal irányelve: az
- *     űrlap csak a telefonszám MELLETT állhat, nem helyette), ez a szekció
- *     pedig az általa felvetett kérdésre válaszol — melyik szám kihez tartozik.
- *  2. NINCS ÖNMAGÁRA MUTATÓ LINK. Az írásos időpontkérés a lapon belüli
- *     `#idopontkeres` horgonyra megy, nem a `/kapcsolat` címre: az önmagára
- *     mutató link csak újratölti a lapot („the current document should never
- *     link to itself" — W3C wiki).
- *  3. A SZAKMAI HÁTTÉR a /rolunk harmonikájára mutat, mert ezen a lapon nincs
- *     önéletrajz — lapon belüli horgony törött linket adna.
- *  4. NINCS KITALÁLT ADAT: az `availability` („Mikor és hol érhető el") ÜRES,
- *     mert a rendelési idő és a helyszín szakemberenként nincs a repóban.
- *  5. A FELVEZETŐ kapcsolat-fókuszú, és eltér a másik két lapétól (a /rolunk-on
- *     bemutatkozás, a /szolgaltatasok-on bejelentkezés).
+ * 1. SORREND. A szekció az időpontkérő UTÁN áll: az időpontkérő bal hasábja
+ * már kiírja mindkét telefonszámot (NN/g kapcsolat-oldal irányelve: az
+ * űrlap csak a telefonszám MELLETT állhat, nem helyette), ez a szekció
  */
 describe('/kapcsolat szakember-elérhetőség', () => {
   const kapcsolatSzakember = () => {
@@ -218,7 +189,6 @@ describe('/kapcsolat szakember-elérhetőség', () => {
   })
 
   it('NEM talál ki rendelési időt vagy címet', () => {
-    // ═══ MIT VÉD EZ AZ ŐR ═══
     // A szabály SOSEM az volt, hogy a mező maradjon üres, hanem hogy ne
     // találjunk ki adatot. A tulajdonos 2026-08-17-én megadta a valós
     // folyamatot (a helyszínt telefonon egyeztetik), ezért a mező már nem

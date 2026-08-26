@@ -13,27 +13,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A GENERÁLT `payload-jobs-stats` GLOBAL JOGOSULTSÁGA (S2/c).
- *
- * ═══ MIT VÉD ═══
  * A `jobs.scheduling` bekapcsolásával a Payload maga regisztrál egy
  * `payload-jobs-stats` globalt, ACCESS NÉLKÜL — a szanitizálás pedig hiányzó
  * szabálynál a `defaultAccess`-t teszi be READ-re ÉS UPDATE-re
  * (`({ req: { user } }) => Boolean(user)`). Zárás nélkül tehát a
- * `POST /api/globals/payload-jobs-stats` BÁRMELY regisztrált vevőnek nyitva
- * áll, és egy jövőbe állított `lastScheduledRun`-nal az ÖSSZES ütemezett job
- * (webhook-retry, order-poll) csendben, határidő nélkül leállítható.
- *
- * ═══ MIT BIZONYÍT EZ A FÁJL ═══
- * 1. a global TÉNYLEG ott van a VÉGLEGES, szanitált configban (tehát a
- *    támadási felület valós, nem elméleti);
- * 2. a szabály mind a négy szerepkör-esetre helyes, READ-re ÉS UPDATE-re:
- *    anonim/customer → false, staff/owner → true;
- * 3. a szigorítás NEM töri el a saját ütemezést: a VALÓDI `handleSchedules`
- *    USER NÉLKÜLI kéréssel is sorba állítja a jobot, mert a db-rétegen dolgozik;
- * 4. a zár FAIL-LOUD: ha a global eltűnne a config alól (slug-átnevezés egy
- *    Payload-frissítésnél), a patch dob, nem hallgat.
- *
- * Adatbázis és hálózat sehol: a persistence-réteg ál (CLAUDE.md 15.).
  */
 
 type Role = 'owner' | 'staff' | 'customer'
@@ -105,14 +88,11 @@ describe('restrictJobStatsGlobalAccess — határesetek', () => {
 })
 
 /**
- * ═══ A SZIGORÍTÁS NEM TÖRI EL A SAJÁT ÜTEMEZÉST ═══
- *
  * A `handleSchedules` a stats-globalt a db-rétegen olvassa és írja
  * (`req.payload.db.findGlobal` / `db.updateGlobal` / `db.createGlobal`), ami az
  * access-ellenőrzés ALATT van. Ezt itt a VALÓDI Payload-operáció futtatásával
  * bizonyítjuk, kifejezetten USER NÉLKÜLI kéréssel: ha az ütemező a
  * `globalConfig.access.*` szabályon menne át, ez a kérés most elhasalna
- * (`access.read(anonim) === false`), a job nem kerülne sorba.
  */
 describe('a zár után is fut az ütemezés (user nélküli, belső úton)', () => {
   afterEach(() => {

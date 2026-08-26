@@ -1,30 +1,9 @@
 /**
  * 19. tartalom-javítás — az ÁSZF megfeleltetése a Barion elfogadóhely-jóváhagyás
  * KÖTELEZŐ tartalmi listájának.
- *
- * ═══ A MÉRCE ═══
  * A Barion jóváhagyási listája szó szerint megköveteli, hogy az ÁSZF
  * tartalmazza „a webáruház üzemeltetőjének nevét, cégjegyzékszámát, címét,
  * adószámát, valamint e-mail címét és telefonszámát”, „a Barion fizetési
- * módról szóló leírást”, és „a rendelések teljesítésének (kiszállításának)
- * átlagos idejét”.
- *
- * ═══ MIT BIZONYÍT ═══
- * A tesztek CÁFOLÁSSAL dolgoznak: mindegyik állítás olyan, hogy a javítás
- * szándékos elrontása megbuktatja. A lefedett kockázatok:
- *   1. valamelyik cégadat (név, cégjegyzékszám, cím, adószám, e-mail, telefon)
- *      kiesik az ÁSZF-ből;
- *   2. a Barion fizetési módról nincs érdemi leírás (csak a szolgáltató neve),
- *      hiányzik az MNB-engedélyszám vagy a kártyaadatok útjáról szóló mondat;
- *   3. a teljesítés ideje nincs kimondva, vagy digitális terméknél
- *      félrevezetően „kiszállításról” beszél;
- *   4. az élő oldalra a kivitel nem jut el (a beszúrás nem fut le);
- *   5. az idempotencia elvész (kétszer futva kétszer szúr be);
- *   6. részlegesen meglévő szövegnél a script duplikálna;
- *   7. a beszúrás MÓDOSÍT egy meglévő bekezdést (pl. a 27%-os áfa-mondatot);
- *   8. hiányzó vagy többszörös horgonynál a script tippel;
- *   9. a kódbeli bekezdések elcsúsznak a `legal-source/aszf.txt` forrástól;
- *  10. a 18. és a 19. javítás lánca elromlik (rossz sorrend, ütköző horgony).
  */
 
 import { describe, expect, it } from 'vitest'

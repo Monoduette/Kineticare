@@ -6,30 +6,10 @@ import { STATISTICS_ACCESS_DENIED_MESSAGE } from '../lib/statistics/revenue'
 
 /**
  * ŐR — A NYILVÁNOS ADMIN-NÉZETEK KAPUJA A LEKÉRDEZÉSEK ELŐTT FUT.
- *
- * ═══ MIÉRT LÉTEZIK ═══
  * A Payload 3.86 a custom view-path-okat NYILVÁNOS admin-route-ként kezeli
  * (`isCustomAdminView`), ezért a Root view auth-átirányítása KIMARAD — ezt a
  * `StatisticsView.tsx` saját fejkommentje mondja ki. Be nem jelentkezett
  * látogató is eléri az URL-t; a komponensbe írt szerepkör-kapu az EGYETLEN
- * védelem. Mögötte hat `overrideAccess: true` lekérdezés fut az `orders`, a
- * `users`, a `products` és a `course-progress` collectionön
- * (src/lib/statistics/query.ts, src/lib/statistics/engagement-query.ts) —
- * vagyis a kapu adatvédelmi teherviselő, nem kényelmi elem.
- *
- * ═══ MIT NEM FEDETT EDDIG SEMMI (2026-08-20-i audit) ═══
- * A `canAccessStatistics` PREDIKÁTUMÁRA volt teszt (null/customer → false,
- * staff/owner → true), a KÖTÉSRE viszont egy sem: `grep -rn "StatisticsView"
- * src/__tests__/` nulla találatot adott. Ha valaki a lekérdezéseket a kapu
- * FÖLÉ mozgatja, minden meglévő teszt zöld marad, és a nézet bejelentkezés
- * nélkül kiadja a rendelés- és felhasználó-adatokat.
- *
- * Ez az őr ezért a SORRENDET méri: a tiltott ágon a lekérdezők HANGOSAN dobó
- * kémek (a 15. üzemeltetési tanulság mintája — ahol egy hívásnak nem szabad
- * futnia, oda dobó mock való), tehát a puszta meghívásuk elbuktatja a tesztet.
- *
- * A TILOS ZÓNA 4. pontja (access-szabályok emberi jóváhagyással) NEM sérül:
- * ez csak teszt, egyetlen `access` szabály és auth-hook sem változik.
  */
 
 const revenueKem = vi.fn()

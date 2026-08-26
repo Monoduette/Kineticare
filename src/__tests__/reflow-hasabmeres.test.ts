@@ -25,64 +25,10 @@ import {
 
 /**
  * ŐR — WCAG 2.2, 1.4.10 REFLOW (AA) ÉS A SORHOSSZ, MÉRVE.
- *
- * ═══ MIÉRT SZÜLETETT ═══
  * A `vizualis-regresszio-orok.test.ts` korábbi „1.4.10 Reflow" blokkja azt
  * nézte, hogy a `.kc-richtext blockquote` szabályban SZEREPEL-E az
  * `overflow-wrap` szó. Ez tulajdonság-ellenőrzés, nem mérés — és pontosan úgy
  * bukott el, ahogy az ilyen őrök szoktak: a szabály a bekezdéseken ott volt,
- * a CÍMSOROKON nem, az őr mégis zöld maradt egy bizonyítottan túlcsorduló
- * lapon. Mérve (Chromium 141, headless, `/aszf` a repó saját CSS-ével):
- * 320 px-es nézetablakban a dokumentum 348 px széles volt, mert a
- * „Felelősségkorlátozás" h2 324 px-t kért egy 272 px-es hasábban.
- * A hiba nem visszatért, hanem ÁTKÖLTÖZÖTT `<p>`-ből `<h2>`-be.
- *
- * ═══ MIT CSINÁL EZ AZ ŐR ═══
- * A KIMENETET méri, nem a forrásszöveget: a valódi lap-tartalomból
- * (`src/lib/legal-source/*.txt` → Lexical → `RichText`) és a valódi CSS-ből
- * (`tokens.css`, `base.css`, `ui.css`, `content.css`) zárt alakban kiszámolja
- *
- *   - mekkora hasáb áll rendelkezésre az egyes folyószöveg-elemeknek,
- *   - mekkora helyet kér a leghosszabb TÖRDELHETETLEN szó a saját, valódi
- *     betűjével (a `public/fonts/*.woff2` `hmtx`/`HVAR` tábláiból mérve),
- *   - és ebből mekkora lesz a DOKUMENTUM szélessége 320 és 390 px-en.
- *
- * Ha egy elemtípusra a CSS nem ad végszükség-tördelést (`overflow-wrap` /
- * `word-break`), a leghosszabb szó a teljes szélességét kéri — és az őr bukik.
- *
- * ═══ MIÉRT SZÁMOLÁS ÉS NEM BÖNGÉSZŐ ═══
- * A repónak nincs (és e munka keretében nem is kaphat) playwright-függősége,
- * a CI-ban pedig nincs böngésző. Egy böngészős teszt tehát vagy elbukna, vagy
- * — sokkal rosszabb — NÉMÁN KIMARADNA; épp az a hibaosztály, ami ellen ez a
- * fájl készült. A zárt alakú számítás determinisztikus, függőség nélküli, és
- * ellenőrizhető: a modellt egy TÉNYLEGES böngészős mérés hitelesíti (lásd a
- * „kalibráció" blokkot), amelynek számai forráskommentben állnak.
- *
- * ═══ MI KERÜLT BELE 2026-08-18-ÁN ═══
- * A fájl eredetileg csak a jogi lapok RICHTEXTJÉT mérte. A 4. szakasz a
- * folyószövegen KÍVÜLI címsor-osztályokra terjeszti ki (szekció-, oldal-,
- * hero-, kártya- és kosárcímek): ott az L lépcső 320 px-en 32 px, a hasáb
- * 272 px, és ebbe 16 magyar karakter fér — a CMS-ből jövő összetett szó ezt
- * rutinszerűen átlépi. A 4. szakasz a repó SAJÁT szövegkorpuszából veszi a
- * mérendő szavakat, és külön méri a legrosszabb elvi esetet is.
- *
- * ═══ PONTOSSÁG ═══
- * A szó-szélesség a glif-előretolások (advance width) összege, kerning nélkül.
- * A kerning NEGATÍV irányba visz, ezért a számolt érték FELSŐ becslés: a
- * böngészős méréshez képest 0,5–1,5%-kal szélesebb (mérve, lásd a kalibrációs
- * blokk tábláját). Az őr így a biztonságos oldalon téved — nem tud némán
- * átengedni egy valóban túlcsorduló lapot.
- *
- * ═══ FORRÁSOK ═══
- * - WCAG 2.2, 1.4.10 Reflow (AA), https://www.w3.org/TR/WCAG22/#reflow
- * - C33: Allowing for Reflow with Long URLs and Strings of Text,
- *   https://www.w3.org/WAI/WCAG22/Techniques/css/C33
- * - WCAG 2.2, 1.4.8 Visual Presentation (AAA) — 80 karakteres sorhossz-plafon,
- *   https://www.w3.org/TR/WCAG22/#visual-presentation
- * - CSS Text Module Level 3, 5.5 `overflow-wrap`,
- *   https://www.w3.org/TR/css-text-3/#overflow-wrap-property
- * - docs/ux-belso-oldalak-kutatas.md 0. és B1. fejezet (a mért betű-metrika és
- *   a mérték-token levezetése)
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))
@@ -584,45 +530,11 @@ describe('sorhossz — a mérték-korlát a folyószövegen, mérve', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * ═══ MIÉRT KELLETT KITERJESZTENI ═══
  * A fenti blokkok a `.kc-richtext` folyószövegét mérik. A CMS-ből szerkesztett
  * SZEKCIÓ- és OLDALCÍMEK viszont a richtexten KÍVÜL állnak, és ott a kockázat
  * mérve NAGYOBB: az L lépcső 320 px-en 32 px, a hasáb 272 px, ebbe a Tenor
  * Sans 400 metszetén, 0,01em betűközzel 16 magyar karakter fér (16,90 px/
  * karakter — a `public/fonts` metszet `hmtx` táblájából mérve, a repó saját
- * szókorpuszának betűgyakoriságával). A magyar összetett szó ezt rutinszerűen
- * átlépi: a repó SAJÁT szövegében a „tárhelyszolgáltatójának"
- * (src/lib/legal-content.ts) 357 px-t kér.
- *
- * ═══ MIT MÉR EZ A BLOKK ═══
- *   - a repó SAJÁT szövegkorpuszából (nem kitalált szavakból) veszi a
- *     leghosszabb magyar szót: `src/lib/**` string-literáljai, a seedek
- *     (`src/lib/home-seed.ts`, `src/scripts/*seed*.ts`) és a
- *     `src/lib/legal-source/*.txt`;
- *   - minden érintett címsor-osztályra a VALÓDI CSS-ből oldja fel a
- *     tipográfiát (betűméret, család, súly, betűköz) és a hasábot, a
- *     `@media`-kat az adott nézetablakra kiértékelve;
- *   - és megnézi, elfér-e a szó, illetve — ha nem fér — TÖRIK-E;
- *   - külön méri a legrosszabb ELVI esetet is, mert a CMS-ből bármi jöhet.
- *
- * ═══ AMIT NEM MODELLEZ ═══
- * A rács- és flex-sávok min-content alapú automatikus minimum méretét
- * (CSS Grid 1, 6.6). Ott nem a szöveg csordul túl, hanem a SÁV nyílik szét, és
- * ezt a `break-word` szándékosan nem orvosolja (CSS Text 3, 5.5) — a `mert`
- * oszlop böngészős mérései viszont EZT IS mutatják, mert a valódi dobozból
- * származnak. A repóban két ilyen hely van, és mindkettő a saját CSS-ében
- * kap kiutat: a hero rács-eleme (`.kc-hero__content { min-width: 0 }`,
- * content.css) és a lejátszó címsora (`min-inline-size: 0`, player.css);
- * a 4.4 blokk mindkettőt ellenőrzi, tehát ha valaki kiveszi, az őr megszólal.
- *
- * ═══ FORRÁSOK ═══
- * - WCAG 2.2, 1.4.10 Reflow (AA), https://www.w3.org/TR/WCAG22/#reflow
- * - C33 technika, https://www.w3.org/WAI/WCAG22/Techniques/css/C33
- * - CSS Text 3, 5.5 `overflow-wrap`,
- *   https://www.w3.org/TR/css-text-3/#overflow-wrap-property
- * - CSS Grid 1, 6.6 „Automatic Minimum Size of Grid Items",
- *   https://www.w3.org/TR/css-grid-1/#min-size-auto
- * - CSS Values 4, 5.1.1 `ch` egység, https://www.w3.org/TR/css-values-4/#ch
  */
 
 /** A blokk-stíluslapok komponensenként importálódnak, nem a styles.css-ből. */

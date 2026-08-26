@@ -1,87 +1,9 @@
 /**
- * MEGNÉZETT-ARÁNY SZÁMÍTÁS — tiszta, DOM- és hálózat-mentes modul.
+ * Megnézett-arány számítás — tiszta, DOM- és hálózat-mentes modul.
  *
- * ═══ MIÉRT KELL ═══
- * A haladás-jelölés ma KÉZI: a vevőnek meg kell nyomnia a „Megjelölöm
- * megnézettnek" gombot. A tisztán kézi jelölés viszont elfelejtődik — a haladás
- * ALULMÉR, az admin-analitika pedig használhatatlanná válik (a „hány százalék
- * készült el" szám a valóság alatt marad). A másik véglet, a tisztán automatikus
- * jelölés („megnyitotta a leckét = kész") FELFÚJJA a számokat: aki csak
- * belekattint egy videóba, késznek látszik.
- *
- * Ezért HIBRID a megoldás: a lecke automatikusan késznek jelölődik, ha a néző a
- * videó TÉNYLEGES tartalmának legalább 90%-át megnézte — és emellett a kézi
- * felülbírálás (jelölés/visszavonás) végig megmarad. Ez a modul a hibrid
- * automatikus felének a MÉRŐESZKÖZE.
- *
- * ═══ MIÉRT NEM ELÉG A LEGNAGYOBB `currentTime` ═══
- * A kézenfekvő megoldás — „tartsuk nyilván a legnagyobb elért időpontot, és
- * osszuk el a hosszal" — TRIVIÁLISAN kijátszható és félrevezető: elég a
- * lejátszó csúszkáját a végére húzni, és a lecke 100%-osnak látszik anélkül,
- * hogy egyetlen másodpercet is megnéztek volna belőle. Ugyanez történik
- * véletlenül is: aki a videó közepén keres valamit és a végére ugrik, tévesen
- * késznek számítana.
- *
- * Ezért MEGNÉZETT INTERVALLUMOKAT tartunk nyilván (mely szakaszok futottak le
- * ténylegesen), és az arány az EGYEDI megnézett másodpercek összege osztva a
- * videó hosszával.
- *
- * ═══ A SZKIPPELÉS-ELLENES SZABÁLY ═══
- * A lejátszó `timeupdate` eseménye sűrűn (nagyjából negyedmásodpercenként)
- * érkezik, tehát NORMÁL lejátszás közben két egymást követő időpont KÖZEL van
- * egymáshoz. Egy tekerés viszont NAGY ugrást okoz. Ebből következik a szabály:
- *
- *   - ha az új időpont az előzőhöz képest legfeljebb `maxContinuityGapSec`
- *     (alapértelmezésben 2 másodperc) távolságra van — BÁRMELYIK irányban —,
- *     akkor folyamatos lejátszásnak számít, és a nyitott intervallum bővül;
- *   - ha ennél nagyobbat ugrik, az TEKERÉS: a nyitott intervallum lezárul, és
- *     az új időponttól ÚJ intervallum kezdődik. Az ÁTUGROTT szakasz így SOSEM
- *     kerül a megnézett másodpercek közé.
- *
- * A visszafelé irányuló kis ugrást is folyamatosnak vesszük: a lejátszók
- * időbélyege néha „remeg" (ugyanaz vagy pár tizeddel korábbi érték jön
- * kétszer), és emiatt nem szabad fölöslegesen darabolni az intervallumokat.
- * A 2 másodperces küszöb mellett a visszafelé „megnyert" néhány tized
- * másodperc mérési hibán belül van.
- *
- * ═══ MIÉRT ADAPTÍV A KÜSZÖB ═══
- * A fenti 2 másodperc egy FELTEVÉS a lejátszóról: azt köti ki, hogy a
- * `timeupdate` sűrűbben érkezik ennél. A Bunny dokumentációja az esemény
- * ALAKJÁT rögzíti, a GYAKORISÁGÁT nem — és a lejátszó a mi kódunkon KÍVÜL van.
- * Ha valaha ritkábban tüzelne (throttle, HLS-lejátszó, energiatakarékos mód,
- * háttérfül), akkor a fix küszöb mellett MINDEN normál lejátszási lépés
- * „tekerésnek" minősülne, minden intervallum nulla hosszú pont lenne, az arány
- * tartósan 0 maradna — és a lecke SOHA nem jelölődne készre magától. Néma,
- * naplózatlan bukás, pontosan az a hiba, amit az automatika megszüntetni hivatott.
- *
- * Ezért a küszöb ALSÓ KORLÁT, nem fix érték: a követő menet közben megtanulja a
- * lejátszó TÉNYLEGES lépésközét (a pozitív különbségek MEDIÁNJA — ez akkor is
- * megbízható, ha a minták közé tekerés keveredik), és ennek a
- * `ADAPTIVE_GAP_FACTOR`-szorosát engedi, legfeljebb `MAX_ADAPTIVE_GAP_SEC`-ig.
- * A felső korlát fontos: enélkül egy sűrű tekerés-sorozat fölhúzhatná a küszöböt
- * odáig, hogy a szkippelés-ellenes védelem kiürül.
- *
- * A tanuláshoz minta kell, a mintavétel viszont nem kerülhet az első
- * másodpercek rovására, ezért az első `ADAPTIVE_WARMUP_SAMPLES` időpont egy
- * PUFFERBE megy, és csak a küszöb kiszámítása után, VISSZAMENŐLEG kerül
- * feldolgozásra — így a videó eleje nem esik ki a mérésből.
- *
- * ═══ ÖSSZEFÉSÜLÉS (merge) ═══
- * Az intervallumok minden lekérdezéskor összefésülődnek. Két oka van:
- *  1. az arány CSAK így pontos — az újranézett szakasz nem duplázhat
- *     (aki kétszer nézi meg ugyanazt a percet, nem lesz kétszer olyan kész);
- *  2. a halmaz nem nőhet korlátlanul: sok oda-vissza tekerés után az
- *     átfedő darabok egyetlen szakasszá olvadnak.
- *
- * ═══ HATÁRESETEK ═══
- * - Ismeretlen, nulla vagy értelmetlen hossz → az arány 0, és SOSEM jelez
- *   készet. Ismeretlen nevezővel egy százalék hazugság lenne.
- * - NaN / végtelen / negatív időpont → csendben eldobjuk (a lejátszóból jövő
- *   adatot sosem bízzuk meg).
- * - A hossznál nagyobb időpont → az intervallumok a hosszra vágódnak a
- *   számításkor, így az arány sosem lép 1 fölé.
- *
- * A modult a src/__tests__/watched-coverage.test.ts fedi.
+ * Hibrid haladás: automatikus kész ≥90% tényleges lejátszás; kézi jelölés megmarad.
+ * Megnézett intervallumok (nem max currentTime); adaptív folytonossági küszöb.
+ * Teszt: watched-coverage.test.ts
  */
 
 /** Egy megnézett szakasz másodpercben, a videó időtengelyén. */
@@ -133,22 +55,7 @@ export const MAX_ADAPTIVE_GAP_SEC = 15
 export const ADAPTIVE_SAMPLE_CAP_SEC = 30
 
 /**
- * A megengedett legnagyobb lejátszási sebesség a FALIÓRÁHOZ képest.
- *
- * ═══ MIÉRT EZ A KIJÁTSZÁS ELLENI FŐ VÉDELEM ═══
- * A code review bizonyította: a küszöb-tanulás pusztán a MÉDIA-időbélyegekből
- * kijátszható — kitartó, egyenletes (~14 mp-es) ugrásokkal a medián felhúzható
- * a felső korlátig, és onnantól a tekerés „folyamatos lejátszásnak" számít.
- * A média-idő önmagában nem tudja megkülönböztetni a ritkán jelentő lejátszót a
- * sűrűn tekerő nézőtől. A FALIÓRA igen: valódi lejátszásnál a média-idő nem
- * haladhat gyorsabban, mint az eltelt valós idő szorozva a lejátszási
- * sebességgel. A Bunny lejátszója legfeljebb 2×-est kínál; a 2,5 ráhagyás az
- * ütemezés-ingadozást fedi. Ami ennél gyorsabb, az tekerés — függetlenül attól,
- * mit tanult meg addig a küszöb —, és a tanulásba sem számít bele.
- *
- * Következmény: csalni legfeljebb a valós idő ~1/2,5-ed része alatt lehet
- * „végignézni" egy videót — vagyis a csalás nem gyorsabb, mint a videót 2×-es
- * sebességen ténylegesen lejátszani, amit amúgy is megengedünk.
+ * Max lejátszási sebesség a faliórához képest (2,5×) — gyorsabb ugrás tekerés, nem tanulás.
  */
 export const MAX_PLAYBACK_RATE = 2.5
 

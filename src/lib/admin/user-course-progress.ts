@@ -8,42 +8,7 @@ import {
 import type { UserCourseProgressEntry, UserProgressRow } from './user-progress-contract'
 
 /**
- * A Felhasználók-lista haladás-indikátorának MAGJA — tiszta, DB-, hálózat- és
- * React-mentes modul.
- *
- * ═══ MI A FELADATA ═══
- * A végpont (src/lib/admin/user-progress-handler.ts) három nyers listát olvas
- * be az adatbázisból (kért felhasználók a `purchases` listájukkal, a bennük
- * szereplő kurzusok tananyaga, és a hozzájuk tartozó haladás-sorok). Ez a modul
- * ebből a három listából állítja elő a szerződés szerinti választ:
- *  1. levágja a csonkolt haladás-listát (lásd lentebb),
- *  2. kurzusonként csoportosít, hogy a KÖZÖS összesítő hívható legyen,
- *  3. majd INVERTÁLJA az eredményt: kurzus × hallgató helyett felhasználó ×
- *     kurzus, ahogy a lista-cellának kell.
- *
- * ═══ MIÉRT NEM SZÁMOL SAJÁT SZÁZALÉKOT ═══
- * Egyetlen sornyi százalék-képlet sincs benne. A `percent` és a `status`
- * KIZÁRÓLAG a meglévő `buildCourseProgressStats`-ból jön
- * (src/lib/admin/course-progress-stats.ts), az pedig a vevői oldallal közös
- * `summarizeCurriculum`-ot hívja. Így a Felhasználók-lista, a Kurzus-haladás
- * panel és a vevő saját „Kurzusaim" oldala ugyanazt a számot mutatja — három
- * külön képlet három külön igazságot adna, és a munkatárs nem tudná, melyiknek
- * higgyen.
- *
- * Örökölt szabályok (a közös modulból, nem másoljuk le őket): a nevező az
- * ELINDÍTHATÓ leckék száma, az időközben törölt leckére mutató (orphan) sor
- * kiesik, a duplikált sor nem torzít, 0 leckés kurzusnál nincs nullával osztás.
- *
- * ═══ AMI VISZONT ITT DŐL EL ═══
- * - Egy kurzus akkor kerül a felhasználó válaszába, ha a `purchases` listáján
- *   RAJTA van ÉS a tananyagát be tudtuk olvasni. Aki egy kurzushoz már nem fér
- *   hozzá (visszatérítés után), annak a megmaradt haladás-sorai sem hoznak elő
- *   sort: a közös összesítő csak a beiratkozottak sorait veszi figyelembe.
- * - A `courses` tömb kurzus-azonosító szerint NÖVEKVŐ sorrendű. A lista-cella
- *   nem a válasz sorrendjében rajzol (a saját `purchases` listáját járja be),
- *   a determinisztikus sorrend viszont a tesztelhetőség és a diffelhetőség
- *   miatt kell — ugyanaz a bemenet ugyanazt a bájtsorozatot adja.
- * - A csonkolás-szabály (lásd a `trimTruncatedUserProgress` kommentjét).
+ * Felhasználók-lista haladás-magja. Százalék: `buildCourseProgressStats`; csonkolás: trimTruncatedUserProgress.
  */
 
 /** Egy kért felhasználó és a hozzáférhető kurzusainak azonosítói. */
@@ -79,32 +44,8 @@ export interface TrimUserProgressResult {
 }
 
 /**
- * A csonkolt haladás-lista biztonságos levágása — felhasználó-határon.
- *
- * ═══ MIÉRT A KÖZÖS `trimTruncatedProgress` VÉGZI ═══
- * A szabály szó szerint ugyanaz, mint a kurzus-haladás panelen és a
- * Statisztika Kurzus-hatás tábláján: a haladás-sorok `['user','id']` szerint
- * rendezve jönnek, tehát a felső korlát a LISTA VÉGÉN álló felhasználó sorait
- * vághatja félbe. Róla csak alulmért — vagyis HAMIS — százalékot tudnánk
- * mutatni, ezért az ő sorait eldobjuk, és őt magát (meg minden nála nagyobb
- * azonosítójút) kihagyjuk a válaszból.
- *
- * A közös modul (src/lib/statistics/progress-truncation.ts) fejkommentje
- * kurzusonkénti használatról beszél, a MŰVELETE viszont csak a `userId`-t
- * nézi (`UserScopedRow`), és pontosan ezt a levágást végzi. Itt a lista több
- * kurzus sorait hordozza, DE a rendezés elsődleges kulcsa ugyanúgy a
- * felhasználó: egy felhasználó összes kurzusának sorai összefüggő blokkban
- * állnak, tehát a csonkolás továbbra is felhasználó-határon vág. Ezért a
- * szabályt NEM írjuk le újra — az a hiba, amit a közös modul megelőz (két
- * felület kétféle levágása), pont az újraírásból keletkezne.
- *
- * ═══ EGY DOLGOT VISZONT HOZZÁTESZ ═══
- * Ha a lapozás csonkolt, de EGYETLEN értelmezhető sort sem kaptunk, nincs
- * mihez viszonyítani a határt: nem tudjuk, kinek hiányzik adata. A közös
- * modul ilyenkor mindent változatlanul enged tovább (a kurzus-panelen ez a
- * `meta`/`notice` miatt látható marad), a lista-cellának viszont NINCS hova
- * kiírnia a figyelmeztetést — egy néma 0% pedig kész vevőt mutatna
- * kezdőnek. Ezért itt ez az ág mindenkit kihagy: inkább nincs adat, mint rossz.
+ * Csonkolt haladás-lista levágása — a közös trimTruncatedProgress szabályt hívja.
+ * Üres progress + truncated esetén mindenkit kihagy (lista-cellán nincs hova figyelmeztetni).
  */
 export function trimTruncatedUserProgress(input: TrimUserProgressInput): TrimUserProgressResult {
   const users = [...input.users]

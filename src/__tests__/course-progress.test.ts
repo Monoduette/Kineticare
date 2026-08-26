@@ -754,8 +754,6 @@ describe('Kurzus-haladás a felületen', () => {
 })
 
 /**
- * ═══ A KÉRÉS-TÖRZS MÉRETKORLÁTJA ═══
- *
  * A code review mérte: a handler korábban korlát nélkül olvasta be a teljes
  * törzset (`request.text()`), még a vásárlás-ellenőrzés előtt. A jogos törzs
  * két rövid mező — minden, ami a 4 KiB fölé megy, visszaélés vagy hiba, és

@@ -259,8 +259,6 @@ describe('audit plugin injekciós hook', () => {
 })
 
 /**
- * ═══ KLIENS-IP: A HAMISÍTHATÓ FEJLÉC BEZÁRÁSA (2026-08-16) ═══
- *
  * Az `ipAddress` az audit-sor bizonyító ereje, és ugyanez a függvény adja a
  * kérés-korlát kulcsát is. A régi sorrend feltétel nélkül elfogadta a
  * `cf-connecting-ip` fejlécet, és az `x-forwarded-for` ELSŐ (kliens által

@@ -40,23 +40,10 @@ import { SlidingWindowRateLimiter } from '../lib/security/rate-limit'
 
 /**
  * INGYENES KURZUS IGÉNYLÉSE (név + e-mail → hozzáférés + belépő link).
- *
  * A tulajdonos kérése: a lead-magnet SOS villámkurzushoz regisztráció és
  * fizetés nélkül hozzá lehessen jutni. Ez a fájl a folyamat NÉGY kritikus
  * viselkedését rögzíti, plusz a védelmi réteget:
- *
- *  (a) ÚJ e-mail-cím → fiók + hozzáférés + kiküldött levél;
- *  (b) MEGLÉVŐ e-mail-cím → NINCS második fiók, és a válasz BITRE ugyanaz
- *      (fiók-felderítés elleni védelem);
- *  (c) KÉTSZERI beküldés idempotens: se második fiók, se duplázott hozzáférés;
- *  (d) HIÁNYZÓ RESEND_API_KEY → a hozzáférés AKKOR IS létrejön, a látogató IGAZ
- *      üzenetet kap (emailSent: false), és a napló HIBÁT rögzít.
- *
- * ═══ SEMMILYEN VALÓDI HÁLÓZATI HÍVÁS ═══
- * A globális `fetch` hangosan dobó mockra van cserélve (CLAUDE.md 15.
- * üzemeltetési tanulság: egy teszt egyszer már meghívta a VALÓDI szamlazz.hu-t).
- * A Turnstile-ellenőrző saját, injektált fetch-csel van tesztelve; a levélküldés
- * a mockolt `payload.sendEmail`-en megy.
+ * (a) ÚJ e-mail-cím → fiók + hozzáférés + kiküldött levél;
  */
 
 // ---------------------------------------------------------------------------

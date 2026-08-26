@@ -26,43 +26,10 @@ import {
 
 /**
  * G-UI1 – CTA-SZÓTÁR ŐR (`docs/ui-sztenderdek.md` §6.3).
- *
  * Két dolgot véd, és mindkettő valós, mért hibából nőtt ki:
- *
- *  1. A MIKROSZÖVEG-SZABÁLYOK (§3.1). A repóban a mérés 4688 db U+2014-et
- *     talált, köztük vevő által látott gombfeliratban is
- *     („Ingyenes — azonnal eléred"). A tulajdonos kifogása („AI-szagú,
- *     gondolatjel-halmozó írásmód") pontosan erre vonatkozott. A magyar
- *     tipográfiában a kvirtmínusz (U+2014) nem írásjel (ELTE, Szabadbölcsészet),
- *     a gondolatjel (U+2013) pedig gomb-, menü- és címkeszövegben tiltott
- *     (§3.1.2). Ez az őr a szótárban NULLA gondolatjelet enged.
- *
- *  2. AZ EGY CSELEKVÉS = EGY FELIRAT szabály (WCAG 2.2 SC 3.2.4 Consistent
- *     Identification). A mérés szerint ma a „menj a kurzuslistára" cselekvésre
- *     NYOLC, a „saját kurzusaidhoz"-ra NÉGY felirat él
- *     (`docs/gomb-inventar.md` §5). Ha a szótárba két felirat kerül ugyanarra a
- *     cselekvés-kulcsra, az itt kidől.
- *
- * Ezen felül a doksi és a kód SZINKRONJÁT is méri: a `docs/ui-sztenderdek.md`
- * §3.2 táblázatának „Jóváhagyott felirat" oszlopa, a `docs/gomb-inventar.md`
- * §5 leképezésének „Jóváhagyott" oszlopa és a `src/lib/cta-vocabulary.ts`
- * feliratkészlete **bitre egyezik**. Az Ü5-döntés ezt kifejezetten előírja
- * („a két doksi szótárának bitre egyeznie kell"), és emberi figyelemre bízva
- * ez néma módon csúszna szét.
- *
- * A tiltott karakterek és a puszta feliratok listája a
- * `src/__tests__/helpers/cta-mikroszoveg.ts`-ben él: TESZT-oldalon, nem a védett
- * modulban (különben a modul gyengítése az őrt is gyengítené), kódpontból
- * építve (hogy maga az őrfájl se bukjon meg a saját szabályán). Ugyanezt a
- * listát használja a termék-oldali őr is — a szabályból EGY példány van.
- *
- * ═══ AMIT EZ AZ ŐR NEM MÉR (2026-08-17) ═══
- * Ez a fájl HÁROM fájlt olvas: a szótárt és a két doksit. **Egyetlen
- * komponenst sem.** Vagyis a szótár és a doksik egyezését bizonyítja, nem azt,
- * hogy a felületen tényleg a jóváhagyott feliratok állnak. Mutációs mérés: a
- * `CartView.tsx` és a `ThankYouView.tsx` gombfeliratát elrontva a teljes
- * tesztkészlet zöld maradt. Ezt a rést a `src/__tests__/cta-a-termekben.test.ts`
- * (G-UI2) zárja be: az a termék forrásából olvassa ki az élő feliratokat.
+ * 1. A MIKROSZÖVEG-SZABÁLYOK (§3.1). A repóban a mérés 4688 db U+2014-et
+ * talált, köztük vevő által látott gombfeliratban is
+ * („Ingyenes — azonnal eléred"). A tulajdonos kifogása („AI-szagú,
  */
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))

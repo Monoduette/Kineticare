@@ -1,35 +1,6 @@
 /**
- * Barion Pixel — ALAP (Base) modul.
- *
- * ═══ MIÉRT NEM MARKETING-EXTRA, HANEM ÜZEMELTETÉSI FELTÉTEL ═══
- * A Barion Smart Gateway (a „gyorsított”, kevesebb lépéses fizetőoldal)
- * HASZNÁLATÁNAK FELTÉTELE az alap Pixel jelenléte: a Barion csalásmegelőző
- * pontozása ebből az adatfolyamból dolgozik. Pixel nélkül a Smart Gateway nem
- * kapcsolható be — vagyis ez nem hirdetési eszköz, hanem a fizetési folyamat
- * része.
- *
- * ═══ AZ ALAP PIXEL SOSEM KERÜL SÜTI-KAPU MÖGÉ ═══
- * A hivatalos dokumentáció (docs.barion.com/Implementing_the_Base_Barion_Pixel)
- * szó szerint: „Marketing consent management software should not interact with
- * this code, since it should also be present for fraud prevention purposes.”,
- * illetve „the Base Barion Pixel should be loaded irrespective of other
- * marketing consent management software”.
- *
- * Ezért az alap Pixel a KISZOLGÁLT HTML-be kerül (BarionPixel.tsx), nem
- * kliensoldali, hozzájárulás-függő betöltéssel — így szerkezetileg sem tud
- * senki consent-kaput tenni elé. A hozzájárulás nem a BETÖLTÉST szabályozza,
- * hanem a FELHASZNÁLÁST: azt a `bp('consent', …)` hívások intézik (külön modul).
- *
- * A jogalap a csalásmegelőzéshez fűződő jogos érdek (GDPR 6. cikk (1) f)),
- * nem a hozzájárulás — ezt a süti-tájékoztatóban is így kell szerepeltetni.
- *
- * ═══ MIÉRT VAN ITT ALAK-ELLENŐRZÉS ═══
- * Az azonosító a KISZOLGÁLT HTML-be, inline script belsejébe kerül. Egy
- * ellenőrizetlen env-érték így scriptet tudna becsempészni a saját oldalunkra
- * (XSS). A szigorú minta ezt zárja ki: az átengedett érték kizárólag
- * betű/szám/kötőjel, tehát sem idézőjelet, sem `<`-t nem tartalmazhat.
- * Ugyanaz a filozófia, mint a GA4-azonosítónál (./ga4.ts) és a Bunny
- * pull-zone hosztnevénél (../security/csp.ts).
+ * Barion alap (Base) pixel — Smart Gateway feltétel; nem kerül süti-kapu mögé (csalásmegelőzés).
+ * Pixel ID szigorú minta (XSS ellen).
  */
 
 /** A Barion Pixel origója (a script, az iframe-ek és a noscript-kép hostja). */

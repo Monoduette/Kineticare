@@ -1,24 +1,8 @@
 /**
- * Statisztika-lekérdezés — a Payload local API-ról a tiszta aggregátor bemenete.
+ * Statisztika-lekérdezés — Payload local API → tiszta aggregátor bemenet.
  *
- * ═══ SZABÁLYOK ═══
- * - Csak a szerepkör-kapu UTÁN hívható (`overrideAccess: true` különben
- *   adatszivárgás). A nézet a `canAccessStatistics` után hívja.
- * - A `refunds` mezőt NEM kérjük le és NEM olvassuk (owner-only, CLAUDE.md 4.).
- * - `depth: 1` kell az `items[].product.audience`-hez. Ha a product csak
- *   azonosító (szám vagy `{ id }` audience nélkül), a
- *   `hydrateProductFields` külön `products.find`-del pótolja (az ágat és a
- *   bevétel-tábla sorfejlécéhez kellő marketingcímet is). Explicit
- *   `audience: null` marad null → laikus.
- * - Lapozás felső korláttal: a `limit: 0` korlátlan memóriát jelentene. A
- *   kurzus-haladás panel mintájára explicit lapméret + max, és a csonkolást
- *   a nézet kimondja. EZ CSAK A FIZETETT rendelésekre vonatkozik: ott a
- *   tényleges sorokra (tételek, összegek, dátumok) szükség van.
- * - A TÖLCSÉR nem olvas sort: hét `payload.count` adja (hat státusz + a
- *   szűrés nélküli összes). Következmény a `RevenueReport` szerződésére: a
- *   `truncated` jelző ezután KIZÁRÓLAG a fizetett rendelések lapozásától
- *   függ — a tölcsér számai sosem csonkák, plafon sincs rajtuk (F8,
- *   2026-08-21-i vizsgálat).
+ * Csak szerepkör-kapu után (`overrideAccess: true`). `refunds` nem kérdezhető le.
+ * Lapozás felső korláttal; tölcsér `count`-ból; rendezés `['-createdAt','id']` (stabil lapozás).
  */
 
 import type { Payload } from 'payload'
@@ -77,48 +61,12 @@ const ORDER_SELECT = {
 } as const
 
 /**
- * Determinisztikus rendezés a LAPOZOTT rendelés-lekérdezésekhez (F2).
- *
- * ═══ MIÉRT KELL (2026-08-21-i vizsgálat) ═══
- * `sort` nélkül a Drizzle-adapter alapértelmezése `-createdAt`, TIEBREAKER
- * NÉLKÜL. Azonos időbélyegű rendeléseknél (tömeges import, egy másodpercen
- * belüli vásárlások) a lapok határán az adatbázis szabadon cserélheti a sorok
- * sorrendjét: ugyanaz a rendelés KÉTSZER jöhet be, vagy KIESHET — a riport
- * bevétele így a valóság fölé vagy alá csúszik, némán.
- *
- * ═══ MIÉRT `['-createdAt', 'id']` ÉS NEM `'id'` ═══
- * Az `id` önmagában is egyedi (elsődleges kulcs), tehát a lapozást stabilizálná
- * — DE növekvő sorrendben a felső korlát (STATISTICS_ORDER_MAX) a LEGRÉGEBBI
- * rendeléseket tartaná meg, és éppen a friss hónapokat vágná le a 12 havi
- * riportból. A `-createdAt` a friss sorokat hozza előre, az `id` pedig egyedi
- * tiebreakerként zárja a rendezést — csonkolás esetén a jelentés ablaka
- * marad ép, és a lapozás determinisztikus.
- *
- * A `createdAt` és az `id` nem korlátozott olvasású mező; a hívások amúgy is
- * `overrideAccess: true`-val mennek (Local API), ahol a Payload 3.88
- * `validateSortQuery` mezőszintű access-ellenőrzése nem fut.
+ * Lapozott rendelés-lekérdezés: ['-createdAt', 'id'] — stabil lapozás, friss sorok maradnak csonkolásnál.
  */
 const PAGED_ORDER_SORT: string[] = ['-createdAt', 'id']
 
 /**
- * Csonkolt-e a beolvasás, amikor a felső korlátig eljutottunk.
- *
- * ═══ MIÉRT KELL EZ A SORREND (mérve, 2026-08-21) ═══
- * A korábbi szabály a `hasNextPage` hiányában a `pageDocs.length === pageSize`
- * tartalék-ágra esett vissza — az viszont a PONTOSAN a korláttal egyező,
- * TELJES halmazt is csonkoltnak jelölte: ha az utolsó lap történetesen tele
- * volt, a felület „a valóságnál kisebb számok" figyelmeztetést írt ki hiánytalan
- * adatra. A hamis riasztás ugyanolyan kár, mint az elhallgatott csonkolás: a
- * munkatárs a jó számban sem bízik meg többé.
- *
- * A sorrend ezért:
- *  1. `totalDocs` — a Payload a TALÁLATOK teljes számát adja, tehát ebből
- *     egyértelműen eldől a kérdés: több van-e, mint amennyit beolvashattunk.
- *  2. `hasNextPage` — szintén a szervertől jön, csak közvetve válaszol.
- *  3. TARTALÉK: „az utolsó lap tele volt". EZ CSAK BECSLÉS, és szándékosan a
- *     hamis pozitív irányába téved (inkább jelezzen csonkolást, mint hogy
- *     elhallgassa) — de csak akkor fut, ha a szerver EGYIK számot sem adta meg,
- *     ami valós Payload-válasznál nem fordul elő, mockolt tesztben viszont igen.
+ * Csonkolt-e a beolvasás: először totalDocs, majd hasNextPage, végül tartalék (tele utolsó lap).
  */
 export function isReadTruncated(input: {
   /** A Payload `totalDocs` mezője az utolsó lapról (ha adta). */
@@ -209,23 +157,7 @@ function finiteOrZero(value: unknown): number {
 }
 
 /**
- * Tétel-mennyiség a bevétel-számításhoz. Hiányzó / értelmezhetetlen /
- * nem pozitív érték = **1 db** (F3).
- *
- * ═══ MIÉRT 1 ÉS NEM 0 ═══
- * A 0-s alapértelmezés miatt egy `quantity` nélküli tétel 0 Ft bevételt adott,
- * miközben a vevő fizetett. Az 1-es default nem választás kérdése: pontosan
- * ezzel a szabállyal készült maga a beszedett összeg is.
- *  - `src/lib/order-integrity.ts` (a `totalHufSnapshot` forrása):
- *    `typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1`
- *  - `src/lib/checkout/start-checkout.ts` (a Barionnak küldött tételsor):
- *    `(item.quantity ?? 1)`
- * Az explicit 0 és a negatív érték ezért szintén 1: a rendelés végösszege
- * ezekben az esetekben is 1 db-bal képződött (a hook nem számol újra
- * update-kor), tehát a 0 kevesebbet, a negatív pedig levonást mutatna a
- * ténylegesen beszedett bevételből. A pénztár input-validációja amúgy is
- * 1..99 egészre szűkít, tehát a nem pozitív érték csak kézi adatszerkesztésből
- * vagy importból kerülhet a sorba.
+ * Tétel-mennyiség bevételhez: hiányzó/nem pozitív = 1 (order-integrity és checkout szerint).
  */
 function quantityOf(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 1
@@ -361,30 +293,7 @@ export interface QueryRevenueReportDeps {
 }
 
 /**
- * A rendelés-tölcsér hat száma + a teljes darabszám — SOR-BEOLVASÁS NÉLKÜL
- * (F8, 2026-08-21-i vizsgálat).
- *
- * ═══ MI VOLT ═══
- * A tölcsér 500-asával olvasta be az ÖSSZES rendelést a 20 000-es plafonig:
- * 40 lekérdezés és 20 000 dokumentum a memóriában — hat szám kedvéért. A
- * plafon fölött ráadásul csonkolt is: 25 000 rendelésnél a tölcsér a valóság
- * 80%-át mutatta, és a jelentés „csonka" feliratot kapott, holott a
- * bevétel-rész hiánytalan volt.
- *
- * ═══ MI VAN ═══
- * Hét `payload.count`: hat nevesített státuszra egy-egy, plusz a szűrés
- * nélküli összes (ebből lesz az `other`, lásd `buildOrderFunnelFromCounts`).
- * A Postgres COUNT-ot futtat, sor nem jön át a dróton, és nincs felső korlát —
- * a szám egymillió rendelésnél is pontos.
- *
- * ═══ MIÉRT PÁRHUZAMOSAN ═══
- * Hét rövid, csak-olvasó lekérdezés; egyszerre legfeljebb ennyi kapcsolatot
- * kér, tehát a `pg` pool alapértelmezett 10-es kerete alatt marad (a nézet a
- * bevétel- és a kurzus-hatás lekérdezést egymás UTÁN futtatja, lásd
- * `StatisticsView`). Sorosan is működne, csak lassabban.
- *
- * `overrideAccess: true` — ugyanaz a szerződés, mint a `find`-eknél: a
- * szerepkör-kaput a hívó adja (lásd a modul fejkommentjét).
+ * Rendelés-tölcsér hat száma — hét `payload.count`, sor-beolvasás nélkül (F8).
  */
 async function countOrderFunnel(payload: Pick<Payload, 'count'>): Promise<OrderFunnelCounts> {
   const [totalResult, statusResults] = await Promise.all([

@@ -1,26 +1,8 @@
 import type { CourseStudentStatus } from './course-progress-stats'
 
 /**
- * A Felhasználók-lista haladás-indikátorának SZERZŐDÉSE — egyetlen forrás
- * a szervernek és a böngészőnek.
- *
- * ═══ MIÉRT KÜLÖN, TISZTA MODUL ═══
- * A végpont (src/lib/admin/user-progress-handler.ts) és a lista-cella
- * betöltője (src/components/admin/user-progress-client.ts) MÁS futási
- * környezetben él, mégis ugyanazt az útvonalat, ugyanazt a paraméter-nevet és
- * ugyanazt a válasz-alakot kell ismernie. Ha a kettő külön írná le, egy
- * átnevezés némán elrontaná a listát (a cella nem hibázna, csak sosem mutatna
- * haladást). Ezért a szerződés itt, egy React- és DB-mentes modulban él —
- * ugyanaz az elv, amivel a mély link szerződése is egy helyen van
- * (src/lib/statistics/course-links.ts).
- *
- * ═══ MI NEM MEGY KI A VÁLASZBAN, ÉS MIÉRT ═══
- * Sem e-mail, sem név. A lista sora AMÚGY IS kiírja a nevet és az e-mailt
- * (a `name` és `email` oszlop), tehát a haladás-válaszban való megismétlésük
- * NEM adna semmi újat, viszont ugyanazt a személyes adatot még egy csatornán
- * kiengedné. A válasz ezért kizárólag azonosítót, százalékot és állapotot
- * hordoz. (A tulajdonos kikötése a statisztikára: „csak név, e-mail soha" —
- * itt még a nevet sem kell átküldeni.)
+ * Felhasználók-lista haladás-szerződés — szerver és kliens közös forrása.
+ * A válaszban nincs név/e-mail (a lista oszlopai már mutatják).
  */
 
 /** A végpont útvonala. */
@@ -53,25 +35,7 @@ export interface UserCourseProgressEntry {
   /** Kerekített százalék, 0–100 — a közös `summarizeCurriculum`-ból. */
   percent: number
   status: CourseStudentStatus
-  /**
-   * A kurzus ELINDÍTHATÓ leckéinek száma — a százalék nevezője.
-   *
-   * ═══ MIÉRT KÖTELEZŐ, ÉS MIÉRT EGYÁLTALÁN ═══
-   * A lecke `status` mezőjének alapértelmezése `processing`, ezért egy FRISSEN
-   * feltöltött (vagy még feldolgozás alatt álló) kurzusnál a nevező 0. A közös
-   * összesítő ilyenkor — helyesen, nullával osztás nélkül — 0%-ot és
-   * `nem-kezdte` állapotot ad, a megjelenítés viszont ebből azt a HAMIS
-   * mondatot rakta össze, hogy „0% · nem kezdte el" — miközben a vevő akár
-   * végig is nézhette a kurzust, csak épp nincs mit számolni. A „nincs
-   * tananyag" tehát KÜLÖN megjelenési állapot, és a felület csak ebből a
-   * mezőből tudja megkülönböztetni a valódi 0%-tól.
-   *
-   * KÖTELEZŐ, nem opcionális-alapértékes: a repó elve szerint a néma
-   * adatvesztés elé a FORDÍTÓ áll. Ha a mező opcionális volna, egy új
-   * hívóhely úgy is létrejöhetne, hogy nem tölti ki — és a hamis „0% · nem
-   * kezdte el" észrevétlenül visszatérne (ugyanaz az indoklás, mint a
-   * `CourseEngagementRow.omitted` mezőjénél).
-   */
+  /** Elindítható leckék száma (nevező). 0 = „nincs tananyag", nem „0% · nem kezdte el". */
   lessonCount: number
 }
 

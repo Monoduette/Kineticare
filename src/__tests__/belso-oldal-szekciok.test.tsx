@@ -14,23 +14,10 @@ import type { Page } from '../payload-types'
 
 /**
  * BELSŐ OLDALAK SZEKCIÓSORA — a P3-hiba őre és a blokkosítás szerződése.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A `Pages.layout` (Szekciók) blokk-mező 16 blokktípussal létezik, az admin
  * súgója „az oldal építőkockás részének" nevezi — a `[slug]` route viszont
  * SOHA nem rendereltte (docs/ux-belso-oldalak-kutatas.md, P3). A staff
  * összerakhatott egy szekciósort, elmenthette, és semmi nem jelent meg belőle:
- * néma tartalomvesztés. Ez a teszt a javítás mindkét ágát rögzíti.
- *
- * ═══ A MÁSODIK SZERZŐDÉS ═══
- * A /rolunk és a /szolgaltatasok alap-szekciósorát a legacy-visszaépítő script
- * tölti fel EGYSZER (`buildRolunkLayout`, `buildSzolgaltatasokLayout`). Mivel a
- * route a szekciósort a rich-text HELYETT rendereli, a blokkosítás nem
- * veszíthet el tartalmat — a teszt a kritikus tényadatokat (telefonszámok,
- * árak, helyszínek, önéletrajzok) a RENDERELT kimeneten keresi.
- *
- * A tartalom egyébként a CMS-é: a feltöltés után minden szöveg, sorrend és
- * láthatóság az adminban szerkeszthető — a kód csak renderel.
  */
 
 vi.mock('next/headers', () => ({
@@ -355,18 +342,10 @@ describe('/rolunk alap-szekciósora', () => {
 
 /**
  * RÉSZLETES SZAKMAI HÁTTÉR — harmonikában (tulajdonosi kérés, 2026-08-16).
- *
- * ═══ MI VÁLTOZOTT ═══
  * A két teljes szakmai önéletrajz korábban EGY szabad szöveges blokkban, folyó
  * szövegként állt: több képernyőnyi görgetés a lap alsó felében. Most az új
  * `accordion` blokk viszi, tételenként (szakemberenként) csukható sorban.
- *
  * A SZERZŐDÉS, AMIT EZ A LEÍRÁS ŐRIZ:
- *  - a tartalom nem vész el (a CV-tételek a DOM-ban maradnak),
- *  - a fejléc DARABSZÁMA a TÉNYLEGES tartalomból számolódik (nem kézzel beírt
- *    szám, ami elcsúszhatna a listától — a teamMembers CV-harmonikájának
- *    mintája),
- *  - a rövid, kapcsolatfelvételi tartalom NEM kerül lenyitó mögé.
  */
 describe('/rolunk — a részletes szakmai háttér harmonikája', () => {
   const layout = buildRolunkLayout()

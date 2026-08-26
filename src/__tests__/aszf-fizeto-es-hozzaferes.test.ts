@@ -1,26 +1,9 @@
 /**
  * 18. tartalom-javítás — az ÉLŐ ÁSZF két ténybeli hibája.
- *
- * ═══ MIÉRT VAN KÜLÖN FÁJLBAN ═══
  * A javítás a Barion elfogadóhely-jóváhagyás miatt sürgős és önálló
  * kockázatú: az élő ÁSZF egy MÁSIK fizetési szolgáltatót (STRIPE) nevez meg,
  * miközben a fizetés a Barion Smart Gateway-en megy — a bíráló pedig az ÉLŐ
  * oldalt nézi át. A második csere a „három hónap időtartamra garantált"
- * kikötést és a lezárási jogot mondó mondatot váltja fel a végleges
- * hozzáférést kimondó egyetlen mondatra.
- *
- * ═══ MIT BIZONYÍT ═══
- * A tesztek CÁFOLÁSSAL dolgoznak: mindegyik állítás olyan, hogy a javítás
- * szándékos elrontása megbuktatja. A lefedett kockázatok:
- *   1. a STRIPE bennmarad az élő szövegben;
- *   2. a három hónapos kikötés bennmarad;
- *   3. a lezárási jogot kimondó mondat bennmarad;
- *   4. az idempotencia elvész (kétszer futva kétszer ír);
- *   5. a script felülírja a szerkesztő saját szövegét;
- *   6. a 27%-os áfáról szóló mondat sérül;
- *   7. a bekezdés maradéka (másolás tilalma) elveszik;
- *   8. az egyik bekezdés hibája blokkolja a másik javítását;
- *   9. a kódbeli konstansok elcsúsznak a `legal-source/aszf.txt` forrástól.
  */
 
 import { describe, expect, it } from 'vitest'

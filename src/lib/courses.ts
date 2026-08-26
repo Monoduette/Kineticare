@@ -34,46 +34,11 @@ export const CHECKOUT_PATH = '/penztar'
  */
 export const MY_COURSES_PATH = '/kurzusaim'
 
-/**
- * ARCHIVÁLT termék magyarázó mondata (a §3.2 #16 szerint gomb HELYETT áll).
- *
- * ═══ MIÉRT VÁLTOZOTT (2026-08-18) ═══
- * A korábbi szöveg egyetlen mondat volt, továbblépés nélkül: „Ez a kurzus
- * jelenleg nem vásárolható." A látogató megtudta, hogy nem kaphatja meg, de nem
- * tudta meg, mit tehet — és mivel a §3.2 #16 szerint GOMB SINCS az oldalon, ez
- * ZSÁKUTCA volt (a skill 5. pontja tiltja). NN/g, Error-Message Guidelines:
- * „Concisely and precisely describe the issue." és „Merely stating the problem
- * is also not enough; offer some potential remedies."
- * https://www.nngroup.com/articles/error-message-guidelines/
- *
- * Az ELSŐ MONDAT ezért szó szerint a §3.2 #16 jóváhagyott alakja (a korábbi
- * „nem vásárolható" a „meg" igekötő nélkül még a szótártól is eltért), a
- * MÁSODIK pedig a továbblépés — pontosan úgy, ahogy a párja, az
- * `UNAVAILABLE_COURSE_NOTE` már 2026-08-16 óta. A két állapot a látogató
- * szemszögéből ugyanaz („most nem tudom megvenni"), ezért ugyanazt is olvassa:
- * WCAG 2.2 · 3.2.4 Consistent Identification.
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- *
- * A KÉT KONSTANS mégis külön marad: két KÜLÖNBÖZŐ rendszerállapotot jelöl
- * (tudatosan visszavont termék ↔ hiányos szerkesztői konfiguráció, utóbbihoz
- * staff-riasztás is tartozik), és a hívóhelyek így maradnak olvashatók.
- */
+/** Archivált termék magyarázó mondata — gomb helyett (§3.2 #16); második mondat: továbblépés. */
 export const ARCHIVED_COURSE_NOTE =
   'Ez a kurzus jelenleg nem vásárolható meg. Nézd meg a többi kurzusunkat, vagy írj nekünk, ha kérdésed van.'
 
-/**
- * NEM VÁSÁROLHATÓ (de nem archivált) termék magyarázó mondata.
- *
- * Ide a hiányos ár-konfigurációjú (`priceInHUFEnabled` beállítatlan, vagy
- * bepipált ár üres értékkel) és a nem publikált termék esik. A `docs/ui-sztenderdek.md`
- * §3.2 #16 és Á-3 szabálya szerint ilyenkor NINCS gomb, helyette magyarázó
- * mondat áll: a letiltott „Megveszem" hamis ígéret (NN/g: „a link ígéret"), a
- * magyarázat nélküli disabled gomb pedig a 2.7 pontot is sérti.
- *
- * A második mondat a GOV.UK hibaüzenet-elvét követi („mondd meg, mi történt és
- * hogyan léphet tovább"), és a zsákutcát is feloldja (skill 5. pont). A szöveg
- * natív magyar, E/2, gondolatjel nélkül (skill 2. pont).
- */
+/** Nem vásárolható (hiányos ár-konfig vagy nem publikált) — gomb helyett magyarázó mondat. */
 export const UNAVAILABLE_COURSE_NOTE =
   'Ez a kurzus jelenleg nem vásárolható meg. Nézd meg a többi kurzusunkat, vagy írj nekünk, ha kérdésed van.'
 
@@ -106,25 +71,8 @@ export function hasUserPurchased(
 }
 
 /**
- * ═══ AZ „INGYENES KURZUS" EGYETLEN IGAZSÁGFORRÁSA ═══
- *
- * Ingyenes = `priceInHUFEnabled === false`, azaz a szerkesztő TUDATOSAN kivette
- * az ár-pipát. SZIGORÚ szabály: a beállítatlan (`null`/`undefined`) érték NEM
- * ingyenes, hanem HIÁNYOS KONFIGURÁCIÓ.
- *
- * MIÉRT SZIGORÚ (a 2026-08-16-i átvizsgálás gyökéroka): korábban három helyen,
- * háromféleképp dőlt el ugyanez a kérdés. A hozzáférés-adó lekérdezés
- * (`free-course-grant.ts`) `not_equals: true`-val kérdezett — annak a NULL is
- * ingyenes volt —, a gomb-felirat és az ár-címke viszont szigorú `=== false`-t
- * használt. Egy publikált, de még be nem árazott kurzus így a látogatónak
- * „Megveszem" gombbal FIZETŐSNEK látszott, miközben MINDEN belépő felhasználó
- * megkapta a hozzáférést — és az ár utólagos beállítása után is bent maradt.
- * Üzletileg bevételkiesés, a felhasználónak érthetetlen felület.
- *
- * Ezt a függvényt használja a gomb-logika (`resolveCourseCta`), az ár-címke
- * (`coursePriceBadgeKind`), a kezdőlapi fizetős/ingyenes szétválasztás
- * (`isPaidProduct`) és a hozzáférés-adó lekérdezés (`free-course-grant.ts`,
- * `equals: false`). Új fogyasztó is KIZÁRÓLAG innen kérdezze.
+ * Ingyenes kurzus egyetlen igazságforrása: `priceInHUFEnabled === false`.
+ * A `null`/`undefined` NEM ingyenes — hiányos konfig (korábban három helyen eltérő logika volt).
  */
 export function isFreeCourse(product: Pick<Product, 'priceInHUFEnabled'>): boolean {
   return product.priceInHUFEnabled === false
@@ -184,29 +132,7 @@ export function reportUnpricedPublishedCourses(
   return ids
 }
 
-/**
- * A CTA-állapotgép ágai.
- *
- * ═══ MIÉRT MARAD MEG A `free` ÁG (2026-08-18-i vezetői kérdés) ═══
- * A kérdés az volt, hogy a `free` ág ÁTIRÁNYÍTÁSA vagy TÖRLÉSE a tisztább.
- * A törlés a típust is szűkítené, de a `free` KIND nem csak feliratot ad: a
- * kurzusoldal (`app/(frontend)/kurzusok/[slug]/page.tsx`) EBBŐL dönti el, hogy
- * a vásárlódoboz CTA-helyére az igénylő űrlap kerüljön-e
- * (`showFreeRequestForm = cta.kind === 'free'`), és ebből tűnik el a ragadós
- * vásárlósáv is. Törlés esetén ugyanezt a döntést a lapon KELLENE újraszámolni
- * (`isFreeCourse` + státusz + `purchased`), vagyis az „ingyenes" fogalom
- * MÁSODIK definíciója keletkezne a kódban — pontosan az a gyökérok, amit ennek
- * a modulnak a `isFreeCourse` fejkommentje mért és felszámolt (három helyen,
- * háromféleképp dőlt el ugyanez a kérdés, és a látogató fizetős gombot látott
- * egy ingyenes kurzuson).
- *
- * Ezért az ÁTIRÁNYÍTÁS a helyes: az ág megmarad, de a `/kurzusaim` helyett a
- * kurzus saját oldalán álló igénylő űrlapra mutat (`courseCtaHref`). A régi cél
- * be nem jelentkezett látogatónak ZSÁKUTCA volt (a lista bejelentkezést kér, a
- * kurzushoz sosem jut hozzá) — a skill 5. pontja ezt tiltja. Így bármely ÚJ
- * fogyasztó (kártya, kezdőlapi sáv, kosár) is a működő útra kerül, nem a régi,
- * rossz viselkedést hozza elő.
- */
+/** CTA-állapotgép ágai. A `free` ág a kurzusoldal igénylő űrlapját kapcsolja be — nem törölhető. */
 export type CourseCtaKind = 'buy' | 'purchased' | 'archived' | 'unavailable' | 'free'
 
 export interface CourseCtaState {
@@ -230,44 +156,8 @@ export interface CourseCtaState {
 }
 
 /**
- * A kurzus-oldal CTA-állapotgépe.
- *
- * ═══ A VEZÉRELV ═══
- * `kind === 'buy'` AKKOR ÉS CSAK AKKOR, ha a checkout kapuja (`assertPurchasable`,
- * src/lib/checkout/start-checkout.ts) sem utasítaná el a terméket. A felület
- * sosem ígérhet olyan cselekvést, amit a szerver garantáltan visszautasít
- * (docs/ui-sztenderdek.md §3.2 #16; NN/g: „a link ígéret").
- *
- * ═══ A JAVÍTOTT HIBA (2026-08-16, gomb-inventár mérés) ═══
- * A published ág korábban MINDEN nem-ingyenes termékre `'buy'`-t adott, tehát
- * arra is, aminek nincs érvényes ára (`priceInHUFEnabled: true` + üres ár,
- * illetve beállítatlan pipa). A vevő végigment a pénztáron, kitöltötte a
- * számlázási adatait, elfogadta a jogszabályi nyilatkozatokat, és a beküldés
- * 400-zal elhasalt: „A termékhez nem tartozik érvényes ár, így nem vásárolható
- * meg." (`start-checkout.ts:260`). Ezért kérdezi a published ág az `isPaidCourse`-t
- * (ÉRVÉNYES ár), nem a `!isFreeCourse`-t.
- *
- * ═══ A FELIRATOK A SZÓTÁRBÓL JÖNNEK (2026-08-18) ═══
- * Egyetlen felirat sem literál: mind a `src/lib/cta-vocabulary.ts`-ből olvas
- * (`docs/ui-sztenderdek.md` §3.2). Korábban három szabad szöveg élt itt
- * („Megveszem", „Tovább a kurzusaimhoz", „Ingyenes — azonnal eléred"), és
- * mindhárom eltért a jóváhagyott alaktól – az utolsó ráadásul U+2014-et
- * használt elválasztóként (§3.1.1) és ígéretet tett a cselekvés helyett (M-8).
- *
- * ═══ AZ ÁGAK ═══
- * - bejelentkezett vevő (purchases tartalmazza) → §3.2 #9 link a kurzusaidhoz,
- *   archived terméknél is (a meglévő vevő tovább nézi);
- * - archived + nem vevő → NINCS gomb + ARCHIVED_COURSE_NOTE;
- * - published + nem vevő:
- *   - ingyenes (`isFreeCourse`) → §3.2 #3 („Elindítom ingyen") a KURZUS SAJÁT
- *     oldalán álló igénylő űrlaphoz (`courseCtaHref`), nem a Barion-checkouton
- *     keresztül; a purchases-be a free-course-grant ír;
- *   - érvényes árú (`isPaidCourse`) → §3.2 #1 („Megveszem a kurzust") → checkout;
- *   - se nem ingyenes, se nem érvényesen árazott (HIÁNYOS KONFIGURÁCIÓ) →
- *     NINCS gomb + UNAVAILABLE_COURSE_NOTE (a staffnak külön RIASZTÁS megy,
- *     lásd reportUnpricedPublishedCourses);
- * - minden más (draft/ismeretlen státusz) → NINCS gomb + UNAVAILABLE_COURSE_NOTE
- *   (a nyilvános oldal egyébként 404-et ad draft termékre; ez a védekező ág).
+ * Kurzus-oldal CTA-állapotgép. `buy` csak ha a checkout is engedné (`isPaidCourse`).
+ * Feliratok a cta-vocabulary.ts-ből.
  */
 export function resolveCourseCta(
   product: Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>,

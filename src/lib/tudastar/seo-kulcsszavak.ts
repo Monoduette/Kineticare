@@ -1,41 +1,9 @@
 /**
- * A Tudástár cikkeinek MÉRT kulcsszó-célzása és megosztási szövegei.
+ * Tudástár-cikkek mért kulcsszó-célzása és megosztási szövegei.
  *
- * ═══ HONNAN JÖNNEK A SZÁMOK ═══
- * Nem becslés és nem ötlet: minden érték a 2026-08-21-i Monid-mérésből való.
- * Forrásonként: `docs/kulcsszavak.md` (Ahrefs kulcsszó-metrikák, country=hu),
- * `docs/monid-masodik-kor.md` (hosszú farok, szezonalitás, versenytárs-pozíciók),
- * `docs/kampanyterv-mert-adatokbol.md` (SERP és fizetett táj).
- *
- * ═══ MIÉRT KELL EZ EGYÁLTALÁN ═══
- * A `posts.seoTitle` és `seoDescription` mezője üresen maradt a betöltéskor,
- * ezért a `buildDocMetadata` fallback-lánca a cikk CÍMÉT és a BEVEZETŐJÉT
- * használta. Az így kapott cím jó magyar mondat, de nem a keresett kifejezéssel
- * kezdődik — márpedig a mérés szerint az összes célkifejezés nehézsége 0–17
- * között van, vagyis a rés valóban nyitva áll, és a pontos célzás dönt.
- *
- * ═══ A HÁROM SZABÁLY, AMI A SZÖVEGEKET ALAKÍTOTTA ═══
- * 1. **A keresett kifejezés elöl.** A cím a felhasználó SAJÁT szavával kezd,
- *    nem márkanévvel. A versenytárs 30 legerősebb oldalát lekérdezve
- *    (`docs/monid-masodik-kor.md` 3.) minden top oldal tünet-cikk, ugyanezzel a
- *    címsablonnal; a kezdőlapjuk gyengébb, mint négy cikkük.
- * 2. **A „házilag” a mi szavunk.** A `kéztő alagút szindróma kezelése házilag`
- *    havi 1 600 keresés, és a legerősebb versenytárs is csak a **6. helyen**
- *    áll rá. Ez pontosan az Otthoni KézRehab Program ígérete, ezért ahol a cikk
- *    tényleg erről szól, ott a szó bekerül a címbe.
- * 3. **Helyzet, nem téma** (`docs/seo-geo-llm.md` 2.4, Category Entry Point):
- *    az AI-promptok élethelyzeteket írnak le. A leírás ezért a beteg
- *    helyzetének elismerésével kezd, és kérdésre válaszol.
- *
- * Gondolatjeles, töltelék-elválasztós írásmód nincs — a tulajdonos kikötése
- * (`CLAUDE.md`, „Felületi (UX/UI) munka”).
- *
- * ═══ SEARCH-LOCK 2026-08-24 ═══
- * Az `elsodleges` és `masodlagos` listák a Search-lockolt, vágatlan kifejezések, pontos
- * ékezetes stringgel, primér elöl, max. 48 tétel. Rangsort, volument, KD-t a
- * CMS `seoKeywords` mezőbe másolni tilos; a volumen/nehezseg mezők a mérés
- * dokumentációjához maradnak, a mezőbe nem mennek. H1-ből kifejezést kitalálni
- * tilos.
+ * Forrás: 2026-08-21-i Monid/Ahrefs mérés (docs/kulcsszavak.md). A cím a keresett
+ * kifejezéssel kezdődik; a `elsodleges`/`masodlagos` listák Search-lockoltak
+ * (2026-08-24) — volumen/KD nem másolódik a CMS-be.
  */
 
 import { SEO_KEYWORDS_MAX_ROWS } from '../seo-keywords'

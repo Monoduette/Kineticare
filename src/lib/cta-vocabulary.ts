@@ -1,55 +1,6 @@
 /**
- * CTA-szótár – a `docs/ui-sztenderdek.md` §3.2 táblázatának EGYETLEN kódbeli
- * igazságforrása.
- *
- * MIÉRT EZ A FÁJL LÉTEZIK
- * -----------------------
- * A tulajdonos két panasza (2026-08-16) mérhetően igazolódott: ugyanarra a
- * cselekvésre több felirat él a felületen (a „menj a kurzuslistára" cselekvésre
- * NYOLC, a „saját kurzusaidhoz"-ra NÉGY – mérés: `docs/gomb-inventar.md` §5),
- * és az ingyenes kurzuson „Megveszem" áll. Az első WCAG 2.2 **3.2.4 Consistent
- * Identification** sérülés, a második a „link is a promise" elv megszegése
- * (NN/g). Mindkettő ellen ugyanaz a gyógyszer: a feliratok EGY helyen élnek,
- * és őr-teszt (G-UI1) védi őket.
- *
- * A NYELVTANI SZEMÉLY (P-1) – vezetői döntés, 2026-08-16
- * ------------------------------------------------------
- * Normatív forrás: `.claude/skills/termektervezes/SKILL.md` 2. pont; kifejtés:
- * `docs/ui-sztenderdek.md` 1.4/Ü5 és 3.1.5.
- *
- *   - P-1a  a látogató SAJÁT, elkötelező cselekvése (pénz, adat, hozzáférés,
- *           fájl változik)                                    → E/1
- *   - P-1b  puszta navigáció (csak máshol leszek)             → E/2 (tegező)
- *   - P-1c  bevett, egyszavas felületi címke                  → főnévi
- *   - P-1d  folyamatban-felirat (RENDSZERÁLLAPOT, nem a látogató cselekvése,
- *           NN/g 1. heurisztika + WCAG 4.1.3)                 → semleges + „…"
- *
- * A határeset eldöntése egy kérdéssel: a kattintás után változik-e bármi a
- * látogató dolgaiban, vagy csak máshol lesz? Változik → E/1. Csak máshol
- * lesz → E/2. Az elem technikai típusa (gomb vagy link) ezt NEM dönti el.
- *
- * Az E/1 melletti MÉRÉS: a régi `www.kineticare.hu` – amit a meglévő vevők
- * megszoktak – 100%-ban E/1-es gombfeliratokat használt (`KÉREM A PROGRAMOT`,
- * `MEGRENDELEM`, `MEGNÉZEM`, `ELKÜLDÖM`; egyetlen felszólító alak sincs).
- * Mérés: `docs/regi-oldal-osszehasonlitas.md` 3.1 és 3.4. Jakob törvénye (NN/g).
- *
- * HASZNÁLAT
- * ---------
- * Új gombfelirat kitalálása TILOS: előbb a §3.2-t kell bővíteni (forrással),
- * és a bővítés ide is bekerül.
- *
- * A HÍVÓHELYEK ÁTÍRÁSA 2026-08-18-ÁN MEGTÖRTÉNT. A 2026-08-17-i audit 136 élő
- * gombfeliratot mért, ebből 67 tért el a jóváhagyott szótártól; a termék-oldali
- * őr (G-UI2) kivétel-listája 96 sorral indult. A javítás után 42 sor maradt, és
- * abból mindössze EGY szótár-eltérés (a `CartView` „Belépés a fizetéshez"
- * felirata, amelyet a körben másik ügynök birtokolt). A szótár azóta 27-ről 38
- * sorra bővült (#28–#38), a L-1 lista hatról hét elemre, és a mintázatos sorok
- * gépi alakot is kaptak (`pattern`).
- *
- * ŐRÖK: `src/__tests__/cta-vocabulary-guard.test.ts` (G-UI1 – a szótár és a két
- * doksi egyezése) és `src/__tests__/cta-a-termekben.test.ts` (G-UI2 – a TERMÉK
- * élő feliratai). A kettő EGYÜTT ér valamit: a G-UI1 egyetlen komponenst sem
- * olvas, a G-UI2 pedig a szótár tartalmáról nem mond semmit.
+ * CTA-szótár — docs/ui-sztenderdek.md §3.2 egyetlen kódbeli igazságforrása.
+ * Új felirat csak a szótár bővítésével; őrök: cta-vocabulary-guard.test.ts, cta-a-termekben.test.ts.
  */
 
 /** Melyik §3.2-beli cselekvésre vonatkozik a bejegyzés. Kulcsonként PONTOSAN egy felirat. */
@@ -135,30 +86,7 @@ export interface CtaEntry {
    * A §3.2 C-6 szabálya.
    */
   readonly patterned: boolean
-  /**
-   * A MINTÁZAT gépi alakja – anchorolt reguláris kifejezés FORRÁSA (`u` zászlóval
-   * fordul). `null`, ha a sor nem mintázatos; `patterned: true` mellett KÖTELEZŐ,
-   * és a sor saját `label`-jének is illeszkednie kell rá (G-UI1 méri).
-   *
-   * ═══ MIÉRT KELL EGYÁLTALÁN (2026-08-18) ═══
-   * A `patterned: true` eddig csak EMBERNEK szóló jelölés volt: a termék-oldali
-   * őr (G-UI2) nem tudta eldönteni, hogy a `Vissza a kezdőlapra` a #15 szabályos
-   * változata-e, ezért kilenc élő felirat kivétel-soron ült „mintázat-jelölt"
-   * címkével. A mintázat kimondásával ezek a sorok megszűnnek: az őr maga dönti
-   * el, mi illeszkedik.
-   *
-   * A szabály FORRÁSA a sikerkritérium saját magyarázata (W3C, Understanding
-   * SC 3.2.4 Consistent Identification): „Text alternatives that are
-   * 'consistent' are not always 'identical.'" – és a példái pontosan ezt az
-   * alakot írják le: egy nyomtató-ikon az egyik helyen „Print receipt", a
-   * másikon „Print invoice", a letöltésé pedig „Download [document name]".
-   * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
-   *
-   * A mintázat SZÁNDÉKOSAN szűk: kötött, jelentést hordozó előtag + kötelező,
-   * nem üres tárgy. A puszta „Vissza" így sem engedett (NN/g, Better Link
-   * Labels – „Substantial": a felirat a környező szöveg nélkül is álljon meg,
-   * https://www.nngroup.com/articles/better-link-labels/).
-   */
+  /** Mintázatos CTA regex forrása (G-UI1); patterned:true mellett kötelező. */
   readonly pattern: string | null
 }
 

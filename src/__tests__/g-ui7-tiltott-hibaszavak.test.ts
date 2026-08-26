@@ -6,63 +6,10 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * G-UI7 — TILTOTT HIBASZAVAK ŐRE (`docs/ui-sztenderdek.md` §2.7, §6.3, A/9).
- *
  * MIT VÉD. A §2.7 a GOV.UK hibaüzenet-szabályait ülteti át magyarra: a
  * hibaüzenet mondja meg, MI történt és HOGYAN javítható, és tiltja a
  * „please" (magyarul: „Kérjük"), a „sorry" („Sajnos"), a „valid/invalid"
  * („Érvénytelen") és a humoros („oops" → „Hopp") fordulatokat, valamint a
- * nyers hibakódot. Indoklás a doksiból, forrással:
- *  - GOV.UK Design System, Error messages: a „please" választást sugall ott,
- *    ahol nincs választás; a „sorry" nem segít; a „valid/invalid" nem mondja
- *    meg, mi a baj (§2.7, 428–431. sor).
- *  - Baymard Institute, adaptív hibaüzenet: a szöveg a KONKRÉT megsértett
- *    szabályt mondja meg („This email is invalid" helyett „…is missing part of
- *    the domain") — a §2.7 magyar minta-táblázata ezt fordítja le.
- *  - WCAG 2.2 SC 3.3.1 (Error Identification) és SC 3.3.3 (Error Suggestion).
- *
- * MIÉRT VÉGREHAJTHATÓ ŐR. A szabály 2026-08-16 óta le van írva, mégis 29
- * helyen élt a „Kérjük" és 11 helyen az „Érvénytelen" (A/9 megállapítás). Egy
- * doksi-sor nem tartja meg magát: egyetlen új hibaüzenet visszahozza a
- * mintát anélkül, hogy bárki észrevenné.
- *
- * ═══ HOGYAN DÖNTI EL, MI SZÁMÍT ÜZENETNEK ═══
- *
- * A szabály a FELHASZNÁLÓNAK SZÓLÓ szövegre vonatkozik, NEM a kódot magyarázó
- * kommentekre: egy komment jogosan IDÉZI a tiltott szót (pl. a
- * `cta-vocabulary.ts:434` épp azt köti ki, hogy az E/1-es „kérem" ige NEM a
- * tiltott „Kérjük"). Ezért az őr a forrást előbb MASZKOLJA: a soros (`//`), a
- * blokk- és a JSX-blokk-kommentek minden karaktere szóközre cserélődik, a
- * sortörések helyben maradnak (így a sorszám pontos).
- * A maszkolás karakterszintű állapotgéppel megy, amely a string- és
- * sablonliterálokat is követi — így egy szövegben álló `//` (pl. URL) nem
- * hallgattat el egy sort, egy több soros sablonliterál pedig nem téveszti meg.
- * Ami a maszkolás után marad, az KÓD: string-literál, sablonliterál és JSX-ben
- * álló nyers szöveg — a látogatói mondatok mindhárom alakban előfordulnak.
- *
- * ═══ A SZABÁLYOK ÉS A HATÁRAIK (szándékos, dokumentált döntések) ═══
- *
- *  - `kérjük` / `sajnos` / `hopp`: KISBETŰS ALAKBAN IS tiltott, kivétel
- *    nélkül. Ezeknek a szavaknak nincs jó felületi használatuk; az A/9 maga is
- *    nevesít kisbetűs találatot (`refund/route-handler.ts:49,55`). Az E/1-es
- *    „kérem" ige (a §3.2 #21 és a `FREE_COURSE_SUBMIT_LABEL` feliratában) MÁS
- *    SZÓ, ezért a minta nem fogja meg — a szóhatár miatt a „kérjük" toldalékolt
- *    alakja igen, a „kérem"/„kérhetsz" viszont nem.
- *  - `Érvénytelen`: az őr a NAGYBETŰS, CÍMKÉZŐ alakot tiltja — pontosan azt,
- *    ahogy a §2.7 tiltólistája írja („Érvénytelen"), és ahogy a hibás minta a
- *    gyakorlatban megjelenik: a mondat elején, az adatra ütött címkeként
- *    („Érvénytelen kérés…", „Érvénytelen ár…"). A kisbetűs, LEÍRÓ alakokat
- *    („a régi link érvénytelenné válik", „lejárt vagy érvénytelen. Kérj újat.")
- *    SZÁNDÉKOSAN nem bántja: azok nem címkéznek, hanem tényt közölnek, és a
- *    GOV.UK antimintája a címkézés, nem maga a szó. ISMERT HATÁR: egy jövőbeli
- *    „A cím érvénytelen." alakú üzenet így átcsúszna — ez tudatosan vállalt ár
- *    azért, hogy az őr ne termeljen hamis riasztást a helyes mondatokra.
- *  - `hibakód`: a §2.7 tiltja a nyers hibakódot a látogatói üzenetben. A
- *    hibaoldalak külön őre (`hibaoldal.test.ts`) a RENDERELT szöveget méri;
- *    ez itt a forrás-oldali párja.
- *
- * KIVÉTEL-LISTA NINCS, és nem is kell: a repó minden jogos előfordulása
- * kommentben áll, amit a maszkolás már kiszűr. Ha valaha kivétel kell, az
- * legyen egy NEVESÍTETT fájl+sor pár, indoklással — soha nem könyvtár-glob.
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

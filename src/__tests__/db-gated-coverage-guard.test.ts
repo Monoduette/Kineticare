@@ -12,40 +12,10 @@ import {
 
 /**
  * ŐR: a DB-kapus tesztek CI-ban NEM maradhatnak ki (2026-08-18-i incidens).
- *
- * ═══ MIT MÉRTÜNK ═══
  * A `.github/workflows/ci.yml` `verify` jobja Postgres és DATABASE_URI nélkül
  * futtatta a `npm test`-et. Az `isDatabaseAvailable()` ezért minden futásnál
  * azonnal `false`-ot adott, a `describe.skipIf(!hasDb)` pedig 3 tesztfájlt
  * (order-snapshots, products-status, webhook-audit-db) és az order-number
- * fele-részét — összesen 11 tesztet — NÉMÁN kihagyott. A sor mindvégig zöld
- * volt. A kiiktatott őrök egyike azt védi, hogy a kliens által küldött ár
- * SOSEM írja felül a szerver árát (`src/lib/order-integrity.ts` →
- * `totalHufSnapshot`); ez az egyetlen szám, amiből a Barion-fizetés összege
- * épül, ÉS amihez az összeg-ellenőrzés hasonlít. A védelmet mutációval
- * kiiktatva a TELJES tesztsor zöld maradt.
- *
- * ═══ MIÉRT KÉT HELYEN VAN AZ ŐR ═══
- * A fail-closed MECHANIZMUS a megosztott segédben (`helpers/db-available.ts`)
- * él: az a torok, amin MINDEN DB-kapus fájl átmegy, tehát a védelmet egy
- * jövőbeli, új DB-teszt is ingyen örökli. Ez a fájl a mechanizmus FÜGGETLEN
- * ellenőrzése, és három olyan rést zár be, amit a segéd önmagában nem tud:
- *
- *  1. Ha valaki KIVESZI a segédből a fail-closed ágat, a segéd némán
- *     visszaesne a régi, csendes kihagyásra — a (2)–(4) VISELKEDÉSI teszt
- *     ezt méri, nem a forrás szövegét nézi.
- *  2. Ha valaki kiveszi a Postgres service-konténert (vagy a DATABASE_URI /
- *     PAYLOAD_SECRET / `payload migrate` lépést) a CI `verify` jobjából, a
- *     segéd fail-closed ága ugyan bukna — de CSAK CI-ban, a hiba a PR
- *     megnyitásáig rejtve maradna. Az (5) őr a workflow-fájlt olvassa, tehát
- *     HELYBEN, azonnal bukik.
- *  3. Ha a DB-kapus tesztfájlokat törlik vagy átnevezik, a vitest-include
- *     (`src/**\/*.test.ts`) NÉMÁN elnézi — a lefedettség ismét csendben esik.
- *     A (6) leltár-őr ezt fogja meg. (Ugyanez a csendes halálmód, amit a
- *     `guard-files-integrity.test.ts` az őrfájlokra már véd.)
- *
- * Az őr NEM követeli meg, hogy helyben fusson adatbázis: CI-n kívül a csendes
- * kihagyás továbbra is szándékos kényelmi funkció.
  */
 
 const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))

@@ -7,15 +7,10 @@ import { ProfileSaveFeedback } from '../components/account/AccountView'
 
 /**
  * A profilmentés visszajelzése — a hibaág NEM NÉMA (AccountView-fix).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A profilmentés (PATCH /api/users/me) hibája korábban semmilyen felületi
  * visszajelzést nem adott: a felhasználó azt hitte, elmentette az adatait,
  * közben nem történt mentés. A hibaág most az account-client magyar üzenetét
  * mutatja (role="alert"), a sikerág a megszokott „Mentve."-t.
- *
- * A node-környezetű tesztkonvenció (renderToStaticMarkup) miatt a visszajelzés
- * külön, statikusan renderelhető szelet — az account-invoice-link.test.tsx mintája.
  */
 
 function render(node: ReactNode): string {

@@ -238,13 +238,10 @@ describe('assertRequiredEnv — környezetfüggő Barion POSKey (változatlan vi
 
 /**
  * B3 — a BARION_ENVIRONMENT ÉLESBEN KÖTELEZŐ.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A változó hiányában a Barion-kliens NÉMÁN a 'test' környezetre esik vissza,
  * és a BARION_POSKEY_TEST kulcsot használja. Élesben ez azt jelentené, hogy a
  * vásárló a Barion SANDBOXÁBAN fizet: a pénz sosem érkezik meg, a rendelés
  * viszont a „sikeres" teszt-válasz alapján paid lenne — hozzáféréssel és
- * számlával együtt. A RÉGI kódon az app ilyen konfigurációval csendben elindult.
  */
 describe('assertRequiredEnv — BARION_ENVIRONMENT élesben kötelező (B3)', () => {
   it('PRODUCTION + hiányzó BARION_ENVIRONMENT → nem indul, néven nevezett magyar hibával', () => {

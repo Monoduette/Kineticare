@@ -3,29 +3,9 @@ import { escapeHtml, renderLayout } from '../email/templates/layout'
 import type { EmailTemplate } from '../email/types'
 
 /**
- * Ingyenes kurzus igénylése — a BELÉPŐ LEVÉL magyar sablonja.
- *
- * A vásárló-import aktiváló leveléből (`src/lib/customer-import/send-invites.ts`
- * `inviteEmail`) nőtt ki, és ugyanazt a mechanikát használja: a link a Payload
- * SAJÁT jelszó-visszaállító tokenje (`disableEmail: true`), tehát nincs külön,
- * párhuzamos token-rendszer, és ugyanaz a `/jelszo-visszaallitas` oldal fogadja.
- *
- * ═══ MIÉRT NEM AZ inviteEmail-t HÍVJUK ═══
- * Az a levél a MIGRÁCIÓ szövege („Elkészült az új Kineticare-fiókod… a korábban
- * megvásárolt kurzusaid már benne vannak"), ami itt hazugság lenne: ez a
- * címzett most kért egy ingyenes kurzust, nem korábbi vásárló. A két levél
- * SZÖVEGE tehát külön él, a MECHANIKA közös.
- *
- * ═══ FIÓK-FELDERÍTÉS ELLENI VÉDELEM A LEVÉLBEN IS ═══
- * A levél nem mondja meg, hogy a fiók MOST jött létre vagy már létezett: a
- * „állíts be jelszót" mondat mindkét esetben igaz és elvégezhető (meglévő
- * fióknál a link új jelszót állít, pontosan úgy, mint az „Elfelejtett jelszó"
- * folyamat). Így a levél tartalma sem árulja el, ki regisztrált korábban.
- * (A levél amúgy is csak a cím tulajdonosához jut el, de a szabályt itt is
- * tartjuk: egyetlen helyen se szivárogjon ki a fiók léte.)
- *
- * MINDEN behelyettesített érték escape-elve (név, kurzuscím, e-mail-cím, link):
- * egy furcsa CMS-cím vagy hosszú e-mail-cím sem törheti szét a HTML-t.
+ * Ingyenes kurzus igénylés — belépő levél sablonja. Mechanika: Payload forgotPassword token
+ * (`disableEmail: true`), mint az import-invite. Szöveg külön (nem migrációs szöveg).
+ * A levél nem árulja el, új vagy meglévő-e a fiók.
  */
 
 export interface FreeCourseEmailInput {

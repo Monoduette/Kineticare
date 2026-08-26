@@ -25,63 +25,10 @@ import type { Product, User } from '../payload-types'
 
 /**
  * ŐR — A PÉNZTÁR INGYENES-KAPUJA.
- *
- * ═══ A HIBA, AMIT BEZÁR (mérve 2026-08-17) ═══
  * A `/penztar?termek=<ingyenes-id>` TELJES ÉRTÉKŰ pénztár-űrlapot rendelt
  * („Hozzáférés megnyitása" gombbal), a beküldés viszont a
  * `POST /api/checkout/start`-ra ment, ahol az ár-kapu garantáltan elutasítja:
  * `coursePriceHuf` az ingyenes terméken (`priceInHUFEnabled: false`) `null`,
- * tehát „A termékhez nem tartozik érvényes ár, így nem vásárolható meg."
- * (`src/lib/checkout/start-checkout.ts`).
- *
- * Vagyis a lap egy MŰKÖDŐNEK LÁTSZÓ űrlapot mutatott, ami sosem járhatott
- * sikerrel: a látogató kitöltötte a számlázási adatait, elfogadta a jogszabályi
- * nyilatkozatokat és az ÁSZF-et, hogy a végén magyarázat nélküli hibát kapjon.
- * A lap saját kommentje ezt a hibaosztályt már egyszer kimondta az ARCHIVÁLT
- * ágnál: „a díszlet-űrlap a néma hiba kínosabbik fajtája". Ez az őr azt
- * rögzíti, hogy az ingyenes ág is a helyes mintát követi.
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. Ingyenes terméknél a `/penztar` NEM rendereli a `CheckoutForm`-ot.
- *  2. Helyette tájékoztató állapot áll, ami kimondja az OKOT és EGY
- *     továbblépést kínál.
- *  3. A továbblépés a KURZUSOLDAL igénylő űrlapjára visz (kanonikus cím +
- *     `#kurzus-vasarlas-gomb`), nem a /kurzusaim-ra és nem a /kurzusok-ra.
- *  4. Aki a hozzáférést MÁR megkapta, a Kurzusaimra megy tovább.
- *  5. POZITÍV KONTROLL: a FIZETŐS termék felülete BITRE változatlan — a kapu
- *     nem foghatja el (ez a legveszélyesebb regresszió: nem lehetne vásárolni).
- *  6. Az ARCHIVÁLT ág változatlan, és ELŐBB dönt, mint az ingyenes kapu.
- *  7. A feliratok a §3.2 CTA-szótárból jönnek, a szótári SÚLYUKKAL együtt.
- *  8. A `COURSE_CTA_ANCHOR` BITRE egyezik a kurzusoldal `CTA_ID`-jével, és az
- *     az azonosító tényleg ki is kerül a kurzusoldal markupjába.
- *  9. A KOSÁR útja (`/kosar` → `checkoutHref`) ugyanebbe a kapuba fut, tehát a
- *     második út sem vezet néma zsákutcába.
- * 10. MÉRT számok: kontraszt (SC 1.4.3 és 1.4.11), érintőcél (SC 2.5.5),
- *     sorhossz és 320 px-es reflow (SC 1.4.10).
- *
- * ═══ KÜLSŐ FORRÁSOK ═══
- * - Nielsen Norman Group, Error-Message Guidelines — „Concisely and precisely
- *   describe the issue. Generic messages such as An error occurred lack
- *   context."; „Take a positive tone and don't blame the user."; „Offer
- *   constructive advice. Merely stating the problem is also not enough; offer
- *   some potential remedies."
- *   https://www.nngroup.com/articles/error-message-guidelines/
- * - GOV.UK Design System, Button — „Avoid using multiple default buttons on a
- *   single page. Having more than one main call to action reduces their impact,
- *   and makes it harder for users to know what to do next."; „Use secondary
- *   buttons for secondary calls to action on a page."
- *   https://design-system.service.gov.uk/components/button/
- * - WCAG 2.2 SC 1.4.3 Contrast (Minimum), SC 1.4.10 Reflow, SC 1.4.11
- *   Non-text Contrast, SC 2.5.5 Target Size (Enhanced), SC 3.2.4 Consistent
- *   Identification.
- *
- * ═══ MIÉRT ÍGY MÉR (a repó két megtörtént csapdája) ═══
- * a) A forrásból KISZŰRJÜK a kommenteket illesztés előtt: egyszer már
- *    előfordult, hogy a magyarázó komment tartalmazta a keresett szöveget, és
- *    az őr emiatt vak volt.
- * b) A fixtúrák LITERÁLKÉNT állnak; külön állítás méri, hogy a literál és a
- *    kód konstansa egyezik. A VALÓDI oldal-komponens fut (a `getPayload` és a
- *    `next/headers` mockolva), tehát a KIRENDERELT kimenetet mérjük.
  */
 
 vi.mock('payload', async (importOriginal) => {
@@ -199,9 +146,7 @@ function findElement(node: unknown, type: unknown): ReactElement | null {
 /** A `?termek=` query az adott termékre — ugyanaz, amit a kosár és a CTA épít. */
 const termekParam = (product: Product): Record<string, string> => ({ termek: String(product.id) })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. AZ INGYENES KAPU — nincs díszlet-űrlap
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — ingyenes termék: tájékoztató állapot, nem díszlet-űrlap', () => {
   it('a CheckoutForm EGYÁLTALÁN NEM renderelődik', async () => {
@@ -274,9 +219,7 @@ describe('/penztar — ingyenes termék: tájékoztató állapot, nem díszlet-�
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. AKI MÁR MEGKAPTA — a Kurzusaim a továbblépés
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — ingyenes termék, meglévő hozzáféréssel', () => {
   const vevo = { ...mockUser, purchases: [ingyenesTermek.id] } as unknown as User
@@ -303,9 +246,7 @@ describe('/penztar — ingyenes termék, meglévő hozzáféréssel', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. POZITÍV KONTROLL — a fizetős út SÉRTETLEN
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — a FIZETŐS termék felülete változatlan (a kapu nem foghatja el)', () => {
   it('fizetős terméknél a CheckoutForm a helyes proppal renderelődik', async () => {
@@ -343,9 +284,7 @@ describe('/penztar — a FIZETŐS termék felülete változatlan (a kapu nem fog
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. A MEGLÉVŐ VÉGÁLLAPOTOK VÉDVE MARADNAK
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — a korábbi végállapotok változatlanok', () => {
   it('ARCHIVÁLT termék: az archivált állapot marad', async () => {
@@ -372,9 +311,7 @@ describe('/penztar — a korábbi végállapotok változatlanok', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. A KOSÁR ÚTJA IS IDE FUT (D5)
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A kosár felől érkező út is a kapuba fut, nem zsákutcába', () => {
   it('a kosár pénztár-linkje a `?termek=<id>` alakot építi', () => {
@@ -393,9 +330,7 @@ describe('A kosár felől érkező út is a kapuba fut, nem zsákutcába', () =>
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. A HORGONY ÉS A FELIRATOK NEM CSÚSZHATNAK SZÉT
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A horgony a kurzusoldal VALÓDI cél-azonosítója', () => {
   const kurzusOldal = kommentNelkul(olvas('app/(frontend)/kurzusok/[slug]/page.tsx'))
@@ -476,9 +411,7 @@ describe('A feliratok a §3.2 CTA-szótárból jönnek', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 7. MÉRÉS — kontraszt, érintőcél, sorhossz, 320 px
-// ═══════════════════════════════════════════════════════════════════════════
 
 type RGB = readonly [number, number, number]
 

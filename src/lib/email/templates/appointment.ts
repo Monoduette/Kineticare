@@ -3,39 +3,8 @@ import type { EmailTemplate } from '../types'
 import { escapeHtml, renderLayout } from './layout'
 
 /**
- * Időpontkérés-értesítő a stábnak.
- *
- * MIÉRT KÜLÖN SABLON a `contactStaffEmail` helyett: annak a tárgya („Új
- * kapcsolatfelvétel") és fejléce („Új üzenet érkezett a kapcsolat űrlapról") a
- * general kapcsolat-üzenetre szól. Az időpontkérés más MUNKAFOLYAMAT: vissza
- * kell hívni valakit, tehát a levélben a TELEFONSZÁM az első adat, és a tárgyból
- * a postaláda-listán is látszania kell, hogy hívni kell.
- *
- * A panasz leírása egészségügyi adat lehet (GDPR 9. cikk (1)), ezért az
- * e-mailbe csak akkor kerül bele, ha a beküldő tényleg megadta; üresen a sor
- * kimarad, nem megy ki üres „Panasz:" fejléc.
- */
-/**
- * Időpontkérés-VISSZAIGAZOLÓ a BEKÜLDŐNEK.
- *
- * ═══ MIÉRT KELLETT MEGÍRNI (2026-08-17) ═══
- * Az időpontkérő űrlap e-mail-mezője alatt ez a súgószöveg áll: „Ide küldünk
- * visszaigazolást, ha telefonon nem érünk el." Ez eddig NEM volt igaz: a
- * beküldés után kizárólag a stáb kapott levelet, a beküldő semmit. Aki megadta
- * az e-mail-címét, az egy meg nem tartott ígéretet kapott.
- *
- * ═══ NINCS GOMB, ÉS EZ SZÁNDÉKOS ═══
- * Ebben a levélben a következő lépés MINÁLUNK van: mi hívjuk vissza. Egy
- * kiemelt gomb azt sugallná, hogy a címzettnek dolga van, holott nincs.
- * A hivatkozás ezért halk, folyószövegben áll, arra az EGY esetre, ha közben
- * változna valami.
- *
- * ═══ ADATTAKARÉKOSSÁG (GDPR 5. cikk (1) c) ═══
- * A visszaigazolás SZÁNDÉKOSAN nem írja vissza a „Mire kérsz időpontot?"
- * mezőt. Az ott megadott panasz egészségügyi adat lehet (GDPR 9. cikk (1)),
- * és a visszaigazoláshoz semmi szükség rá: a beküldő tudja, mit írt. Egy
- * postaláda-értesítő, egy megosztott képernyő vagy egy továbbküldött levél
- * viszont kiteheti mások szeme elé. Amit nem küldünk el, az nem szivároghat.
+ * Stáb értesítő + beküldő visszaigazoló sablonok. Külön a contactStaff-től (hívandó workflow).
+ * Visszaigazoló: korábban hiányzott; nincs CTA gomb; panasz csak ha megadta (GDPR).
  */
 export function appointmentCustomerEmail(input: {
   name: string
