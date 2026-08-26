@@ -1,32 +1,5 @@
 /**
  * Tudástár (KnowledgeSection) és posztkártya (PostCard) — szekció-stílus.
- *
- * Forrás: a landing szekció- és kártya-nyelve
- * (higgsfield-site/app/src/kineticare.css): `.kc-state-card` (381.) kép-kártyája
- * és `.kc-inline-link` (522.). Minden szín/méret/térköz szerep-tokenről
- * (tokens.css).
- *
- * A kártya-nyelv AZONOS a kurzuskártyáéval (styles/blocks/course-cards.css):
- * a közös `.kc-card` alap (fehér felület, 1px hairline, árnyék nélkül, hoverre
- * akcent-keret) fölé a borító-ív, a finom ráközelítés és a hajszálvonalas
- * kártya-láb jön. A két lap szándékosan önálló: mindkettőt a saját
- * kártya-komponense importálja, így a stílus a kezdőlaptól függetlenül, a /blog
- * listán és a kapcsolódó posztoknál is betöltődik.
- *
- * ÚJRAHASZNOSÍTÁS: a szekciócím a közös `.kc-section-title`, a záró link a
- * `.kc-text-link` (content.css) — itt csak a blokk-specifikus réteg van.
- *
- * MIÉRT SZŰKÍTETT SZELEKTOROK: ugyanezeknek az osztályoknak a globális
- * content.css-ben is van alap-szabálya. A felülírás a kártya
- * gyökér-osztályára szűkítéssel, SPECIFICITÁSBÓL történik — így a betöltési
- * sorrendtől függetlenül érvényes.
- *
- * KONTRASZT (tokens.css jegyzőkönyve): cím `text` (ink) fehéren 15,63:1,
- * kivonat és dátum `text-muted` fehéren 9,30:1, a záró link `primary` a
- * paperen 5,16:1 — mind AA felett. Az `accent` (keret, nyíl) DEKORÁCIÓ.
- *
- * Betöltés: src/components/content/home/KnowledgeSection.tsx és
- * src/components/content/PostCard.tsx.
  */
 
 /* A szekció-rendszer blokkjaival azonos címsor-lépcső. */

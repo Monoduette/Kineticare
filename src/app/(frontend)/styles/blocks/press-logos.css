@@ -1,20 +1,10 @@
 /**
  * Sajtó-logósor (PressLogos) — full-bleed SÁV (nem tábla).
- *
  * Forrás: a landing `kc-press` sávja (higgsfield-site/app/src/kineticare.css
  * 1096–1131.). A tükörben ez a szekció teljes szélességű, DE nem teljes
  * képernyős — ezért `kc-board--band`: full-bleed, természetes magasság,
  * `--kc-board-x` oldalszegéllyel és a tábla-sor fölötti hajszálvonallal.
  * A tokenek portolása változatlan (muted → text-muted, hairline → border,
- * inline méretek → token-skála).
- *
- * Kontraszt: a felirat `--kc-color-text-muted` (fehéren 7,6:1, tinten 7,0:1).
- * A logók WCAG 1.4.3 szerint logotípiák — rájuk nincs kontraszt-követelmény —,
- * de a landing 0,55-ös áttetszősége helyett 0,75 az alap, hogy a szürkeárnyalatos
- * változat is felismerhető maradjon; hover/fókusz esetén teljes erővel látszik.
- * Akcent-szín itt nem szerepel, így az akcent AA-korlátja (terv 3.1) nem érintett.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/PressLogos.tsx).
  */
 
 .kc-press {

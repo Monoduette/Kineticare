@@ -1,18 +1,10 @@
 /**
  * GYIK (FaqBlock) — szekció-stílus.
- *
  * A landingen nincs GYIK-szekció, ezért a stílus a szekció-rendszer többi
  * blokkjának ritmusát viszi (terv 3.1: minden méret tokenről, minden szín a
  * fő site szerep-tokenjeiről). A RÖGZÍTETT kezdőlap GYIK-je (home/Faq.tsx) is
  * EZT a lapot használja — korábban elemre írt inline stílusokból élt, ami egy
  * második, csendben szétcsúszó igazságforrás volt.
- *
- * A nyitó/záró jelet CSS rajzolja (`::after`), tehát nem hordoz információt:
- * az összecsukott/kinyitott állapotot a natív `details`/`summary` közli a
- * segédtechnológiával. Akcent-színt a blokk nem használ, így az akcent
- * AA-korlátja (terv 3.1) itt nem érintett.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/FaqBlock.tsx).
  */
 
 /* Kontraszt (tokens.css jegyzőkönyve): ink a paperen 14,79:1 / a tinten

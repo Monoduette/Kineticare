@@ -2,42 +2,7 @@ import { slugify } from '../../lib/slugify'
 
 /**
  * Cikk-vázlat (címsor-horgony, sima szöveg, szó-szám) a Lexical-dokumentumból.
- *
- * ═══ MIÉRT KELL ═══
- * A tartalomjegyzék („Ezen az oldalon") csak akkor működik, ha a törzs
- * címsorai HORGONYT (id-t) kapnak, és a jegyzék PONTOSAN ugyanabból a
- * bejárásból épül, amiből a horgonyok — különben a kettő némán szétcsúszik
- * (docs/tudastar-ux-terv.md 5.4, 4. pont). Ezért van egyetlen bejárás és
- * egyetlen id-kiosztó függvény: a `headingsOf` kimenete viszi mindkettőt
- * (a jegyzéket a `PostToc`, a horgonyokat a `PostBody`).
- *
- * ═══ MIÉRT KELL EGYÁLTALÁN TARTALOMJEGYZÉK ═══
- * NN/g, *In-Page Links for Content Navigation*
- * (https://www.nngroup.com/articles/in-page-links-content-navigation/): a
- * mintát 11 résztvevőből 9 ismerte és használta. Ugyanez a cikk mondja ki,
- * hogy „shorter pages make tables of contents unnecessary" — ezért a
- * megjelenítés küszöbhöz kötött (`shouldShowToc`, post-article.ts).
- *
- * ═══ AZ ID-KIOSZTÁS SZABÁLYAI ═══
- * 1. Alap: a MEGLÉVŐ `src/lib/slugify.ts` (az ő/ű betűket is helyesen kezeli,
- *    ezért nem írunk újat).
- * 2. Üres eredménynél (csak írásjel vagy emoji a címsorban): `szakasz-{n}`.
- * 3. Ütközésnél `-2`, `-3` utótag. A foglalt halmaz a lap SAJÁT horgonyaival
- *    indul (`RESERVED_ANCHOR_IDS`), így tartalmi címsor sosem veheti el a
- *    skip-link céljának (`tartalom`) vagy a GYIK-szekciónak az id-jét.
- * 4. A bejárás teljes mélységű, és a `h1`-et `h2`-nek látja — pontosan úgy,
- *    ahogy a szerializáló lágyítja (serialize.tsx `renderHeading`), hogy a
- *    jegyzék és a DOM ugyanazt mondja.
- *
- * ═══ FÁJL-TULAJDON (a vezetőnek) ═══
- * A `docs/tudastar-technikai-terv.md` 4.1 pontja ezt a modult az A-csomag
- * `src/lib/lexical-outline.ts` fájljába tervezi, a szerializáló opt-in
  * `headingIds` kapcsolójával. Az A-csomag ebben a körben NEM az én fájlom
- * (`src/components/lexical/serialize.tsx` közös lap), ezért a cikkoldal a
- * saját, azonos szerződésű bejáróját hozza: `headingsOf`, `plainTextOf`,
- * `wordCountOf`, `RESERVED_ANCHOR_IDS` — ugyanaz a négy export, ugyanazzal a
- * viselkedéssel. Ha az A-csomag megérkezik, a modul egy importcserével
- * kiváltható (a szerződés bitre egyezik).
  */
 
 /** A cikk törzsének egy címsora, kiosztott horgonnyal. */

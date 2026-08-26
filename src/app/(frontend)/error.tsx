@@ -11,30 +11,6 @@ import { logger } from '@/lib/logger'
 
 /**
  * A `(frontend)` route-group hibahatára: váratlan (szerver- vagy
- * kliensoldali) renderelési hiba után ez a lap áll a helyén. A fejlécet és a
- * láblécet a layout adja, a szekció-hierarchiát a `.kc-error-page` osztályok.
- *
- * SZÖVEG — GOV.UK „There is a problem with the service" minta:
- * https://design-system.service.gov.uk/patterns/problem-with-the-service-pages/
- * A minta címe „Sorry, there is a problem with the service", a törzs pedig
- * rövid „Try again later." mondat és kapcsolatfelvételi adat. Kimondottan
- * tiltja a technikai kódot („500", „bad request") és a
- * „technikai nehézségeink vannak" fordulatot. Ezért nincs a látható szövegben
- * hibakód, a nyitósor pedig bocsánatkérő, nem hibáztató
- * (NN/g, Error-Message Guidelines:
- * https://www.nngroup.com/articles/error-message-guidelines/).
- *
- * ÁLLAPOTOK — a `docs/ui-sztenderdek.md` gombállapot-táblája (és a
- * `docs/gomb-inventar.md` 500-as sora) szerint az újrapróbálás gombjának
- * KELL „folyamatban" állapot: enélkül a látogató a nem reagáló gombot
- * többször megnyomja. A `useTransition` addig tartja a jelzést, amíg a Next
- * `reset()` utáni újrarenderelése tart, a gomb pedig ilyenkor letiltott.
- * A felirat három ponttal jelez folyamatot, nem gondolatjellel
- * (magyar mikroszöveg-szabályzat, `docs/ui-sztenderdek.md` 3.1).
- *
- * NAPLÓZÁS: a strukturált loggeren át (CLAUDE.md kódolási konvenciók), nem
- * közvetlen konzol-hívással. A `digest` a Next szerver-oldali azonosítója; ezt
- * naplózzuk, hogy a felhasználói bejelentés a szerverlogban megtalálható
  * legyen. A hibaüzenetet magát NEM írjuk ki a felületre.
  */
 export default function ErrorPage({

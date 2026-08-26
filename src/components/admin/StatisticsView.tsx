@@ -10,20 +10,11 @@ import { StatisticsAccessDenied, StatisticsReport, StatisticsUnavailable } from 
 
 /**
  * Admin Statisztika nézet (`/admin/statisztika`) — T-013.
- *
- * ═══ VÉDELEM ═══
  * A Payload 3.86 a custom view-path-okat nyilvános admin-route-ként kezeli
  * (`isCustomAdminView`), ezért a Root view auth-átirányítása KIMARAD. A kapu
  * NEM opcionális: be nem jelentkezett látogató is eléri az URL-t. A
  * `canAccessStatistics` (staff/owner, `null` → false) az egyetlen védelem.
- *
- * ═══ ADAT ═══
  * A havi bevétel a fizetett rendelések tétel-szintű ág-bontása. A demó-seed
- * szándékosan szétosztott `paid` rendeléseket hoz létre, hogy ez a nézet
- * kitöltve jelenjen meg a demó-környezetben; élesben a valódi fizetések
- * ugyaninnen jönnek. A kurzus-hatás (eladás × haladás) a kurzus-haladás
- * KÖZÖS összesítőjéből számolódik (src/lib/statistics/engagement-query.ts),
- * hogy a statisztika és a kurzuslap ugyanazt a számot mutassa.
  */
 export async function StatisticsView(props: AdminViewServerProps) {
   const { req } = props.initPageResult

@@ -2,17 +2,11 @@ import type { InputHTMLAttributes } from 'react'
 
 /**
  * Field — label + input + segédszöveg/hiba egységes egységként.
- *
  * Props:
  * - label: a mező felirata (kötelező az akadálymentességhez)
  * - name/id: az input azonosítója (id nélkül a name-ből generálódik)
  * - hint: segédszöveg az input alatt
  * - error: hibaüzenet — megadva hibaállapot (piros keret + role="alert" szöveg);
- *   az aria-invalid és aria-describedby automatikusan beáll
- * - required: csillag-jelölés a labelen + HTML required
- * - a többi natív input-attribútum átadható (type, placeholder, autoComplete…)
- *
- * A komponens kontrollálatlan; űrlap-oldali state-kezelés a hívó feladata.
  */
 
 export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {

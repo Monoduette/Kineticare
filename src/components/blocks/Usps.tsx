@@ -5,16 +5,11 @@ import '../../app/(frontend)/styles/blocks/usps.css'
 
 /**
  * Usps — „Erre számíthatsz" kártyák (szekció-rendszer terv 2. katalógus, 3.4).
- *
  * A landing `kc-usps` szekciójának portja: 1–4 sorszámozott kártya, kártyánként
  * egy állítással és 1–2 bekezdéssel. A sorszámot a MEGJELENÍTÉS adja (a CMS-ben
  * nincs sorszám-mező), ezért a lista rendezett (`ol`): a sorrendet a
  * képernyőolvasó is megkapja, a látható korong pedig dekoratív.
- *
  * Kártya nélkül a szekció kimarad.
- *
- * TÁBLA (board): teljes képernyős, teljes szélességű szekció — `kc-container`
- * helyett `kc-board__inner` (lásd `.kc-board`, styles/ui.css).
  */
 export interface UspsProps {
   block: BlockUsps

@@ -10,18 +10,11 @@ import '../../../app/(frontend)/styles/blocks/knowledge.css'
 
 /**
  * KnowledgeSection — „Legfrissebb a tudástárból" (audit M7, SEO/hosszútáv).
- *
  * A HomeView-ból kiemelt szekció, hogy a rögzített kezdőlap és a
  * szekció-rendszer `knowledge` blokkja (RenderBlocks) ugyanazt a megjelenést
  * kapja. A posztok published-szűrése itt védőháló — a lekérdezés is szűr.
- *
  * A `limit` a MEGJELENŐ posztok száma (a blokk 1–6 között engedi); a
  * lekérdezésnek legalább ennyit kell hoznia — lásd KNOWLEDGE_POSTS_FETCH_LIMIT.
- *
- * Megjelenés: a landing kártya- és szekció-nyelve (serif cím, hajszálvonalas
- * kártyák, inline-link a záró hivatkozáson). A közös osztályok
- * (`kc-section-title`, `kc-section-more`, `kc-text-link`) a content.css-ből
- * jönnek, a blokk-specifikus réteg a styles/blocks/knowledge.css-ben él.
  */
 
 /**

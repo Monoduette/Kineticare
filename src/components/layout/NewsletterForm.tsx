@@ -28,26 +28,11 @@ import {
 
 /**
  * NewsletterForm — a lábléc hírlevél-feliratkozó űrlapja (C9).
- *
  * A kapcsolat-űrlap (T-016) mintáját követi, mert UGYANARRA a form-builder
  * végpontra küld:
  * - kliensoldali validáció magyar hibaüzenetekkel, hozzájárulás nélkül a
- *   beküldés blokkolva (a szerver is elutasítaná);
+ * beküldés blokkolva (a szerver is elutasítaná);
  * - honeypot rejtett mező a botok ellen;
- * - Turnstile CSAK beállított site key mellett (env nélkül a szerver sem
- *   ellenőriz, így a widget rejtve marad);
- * - hibaágon magyar üzenet, az űrlap állapota megmarad.
- *
- * Két eltérés, szándékosan:
- *  1. A Turnstile-widget nem az első renderkor kerül a DOM-ba, hanem az űrlap
- *     ELSŐ érintésekor (fókusz/gépelés). A lábléc MINDEN oldalon ott van; a
- *     Cloudflare-szkript minden oldalletöltéskori betöltése felesleges
- *     hálózati és adatvédelmi teher lenne olyan látogatóknak, akik sosem
- *     iratkoznak fel.
- *  2. Siker után az űrlap a helyén marad (letiltott mezőkkel), a visszajelzés
- *     pedig a VÉGIG kirenderelt élő régióba (role="status") kerül — a
- *     képernyőolvasó így megbízhatóan felolvassa (az utólag beszúrt élő régió
- *     tartalmát nem minden olvasó jelenti be).
  */
 
 export interface NewsletterFormProps {
@@ -67,33 +52,8 @@ export interface TrackedNewsletterDeps {
 
 /**
  * Hírlevél-beküldés + Barion `signUp` + PostHog lead-funnel.
- *
- * ═══ MIÉRT SIGNUP A FELIRATKOZÁS ═══
- * A hivatalos leírás a hírlevél-feliratkozást is `signUp`-eseménynek tekinti
- * („subscription”) — ugyanaz a szerződés, `contentType: 'Page'`, `step` nélkül.
- *
- * ═══ MIÉRT NEM FOGLAL MUNKAMENET-RETESZT ═══
  * A feliratkozás NEM beléptetés: a látogató továbbra is kijelentkezve marad.
  * A `trackAccountSignUp` (retesz-foglaló) változat itt hibás lenne — elnyelné
- * a később, ugyanabban a munkamenetben történő valódi belépés implicit
- * jelzését.
- *
- * ═══ MI MARAD KÍVÜL ═══
- * A honeypot-ág (bot-gyanú) az űrlapban ELŐBB tér vissza, hálózati hívás
- * nélkül — oda ez a függvény el sem jut, tehát botra sosem megy ki signUp.
- * Ugyanígy a hiányzó Turnstile-token ága.
- *
- * A `track` hívás saját `try/catch`-ben fut: a mérés hibája nem ronthatja el a
- * feliratkozást.
- *
- * ═══ A LEAD-FUNNEL (PostHog) ═══
- * A `withLeadTracking` a hívás ELŐTT `lead_submitted`-et, sikeres válasz után
- * `lead_succeeded`-et küld `hirlevel` forrás-címkével. A két esemény
- * KÜLÖNBSÉGE a néma beküldési hibák egyetlen külső jelzője (a részletes
- * indoklás: src/lib/analytics/lead-events.ts fejléce). A Barion `signUp` és a
- * PostHog lead-események EGYMÁSTÓL FÜGGETLENEK: két külön mérőrendszer,
- * két külön riport — az egyik hibája nem némíthatja el a másikat, ezért
- * mindkettő saját `try/catch`-ben fut.
  */
 export async function trackedSubmitNewsletter(
   payload: NewsletterSubmissionPayload,

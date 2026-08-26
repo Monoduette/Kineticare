@@ -9,36 +9,7 @@ import { NavAnchor } from './NavAnchor'
 
 /**
  * Mobil (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
- *
- * Az almenü a drawerben KIBONTVA jelenik meg (nincs második koppintás): a
- * fejléc-menü két szintje elfér egy listában, és így minden cél egyetlen
- * gesztussal elérhető. Az érintési célfelület minden soron 44×44px
- * (docs/ertekesitesi-ux-skill.md 3. pont), a mozgást a globális
- * `prefers-reduced-motion` szabály (styles/base.css) kapcsolja ki.
- *
- * Akadálymentesség:
- * - a toggle aria-expanded/aria-controls állapota tükrözi a drawert,
- * - Escape zárja, az overlay-kattintás zárja, navigációkor automatikusan záródik,
- * - nyitva tartás alatt a body görgetése tiltott,
- * - NYITÁSKOR a fókusz a drawer bezáró gombjára kerül, ZÁRÁSKOR (Escape,
- *   bezáró gomb, overlay-kattintás) visszatér a hamburgerre. Enélkül a
- *   billentyűzetes látogató fókusza a drawerbe lépés előtt a fejlécben maradt,
- *   Escape után pedig NYOM NÉLKÜL elveszett: a drawer zárt állapotban
- *   `visibility: hidden`, tehát a benne fókuszált elem megszűnik fókuszálható
- *   lenni, és a fókusz a `<body>`-ra esik vissza.
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
- *   oldalváltás veszi át, a fókusz-visszaadás elrabolná az új oldal
- *   kezdőpontját.
- *
- * A FIÓK-BLOKK A DRAWER ELSŐ ELEME (AccountNav). Mobilon a fejléc-sávban nincs
- * hely rá (wordmark + „Kurzusok" pirula + hamburger már kitölti a 320px-es
- * sávot, lásd a Header kommentjét és a 320px-es reflow-mérést), a mai menü
- * viszont KIZÁRÓLAG a CMS-menüpontokat sorolta — a belépés így mobilon
- * sehonnan nem volt elérhető (docs/informacios-architektura.md §4, TOP-10 #2).
- * A blokk azért az ELSŐ elem, mert a lista elejét olvassák el a legnagyobb
- * eséllyel (NN/g F-mintázat, `docs/ui-sztenderdek.md` N-3), és mert a
- * visszatérő vevőnek ez a legfontosabb célja; a CMS-menütől elválasztó
- * hajszálvonal jelzi, hogy más természetű (segéd-)navigáció.
  */
 export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signedIn?: boolean }) {
   const [open, setOpen] = useState(false)

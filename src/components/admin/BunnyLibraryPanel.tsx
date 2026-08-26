@@ -8,25 +8,11 @@ import type { BunnyLibraryKind, BunnyLibraryVideo } from '../../lib/stream/bunny
 
 /**
  * Bunny videótár panel a kurzus szerkesztőlapján (UI-mező, nem tárol adatot).
- *
  * A feltöltés a Bunny dashboardon történik. Itt a libraryből behúzott lista
  * látszik: cím, hossz, állapot, GUID — a GUID a vágólapra másolható, és a
  * lecke „Videó azonosítója” mezőjébe illesztendő. A lejátszás a meglévő
  * tokenes embeden megy, vásárlónak és ingyenes kurzus nézőjének egyaránt.
- *
- * ═══ MIÉRT REDUCER, ÉS MIÉRT VAN BENNE A TÁR AZONOSÍTÓJA (2026-08-21) ═══
  * A panel egyetlen célja, hogy a HELYES azonosító kerüljön a leckébe, ezért a
- * félrecímkézés itt a legsúlyosabb hiba. Két úton keletkezhetett:
- *  1. a videótár-váltás csak a legördülő értékét írta át, a táblázat viszont
- *     az ELŐZŐ tár videóit mutatta tovább, amíg a listát újra be nem töltötték;
- *  2. verseny a válaszok között: aki betöltötte a védett tárat, majd váltott a
- *     nyilvánosra, annak a beérkező régi válasz az új tár neve alatt jelent
- *     volna meg.
- * Ezért az állapotot egyetlen, tiszta reducer kezeli, és minden betöltési
- * művelet magával viszi, MELYIK tárnak indult: az oda nem illő választ a
- * reducer eldobja, a váltás pedig kiüríti a listát és a figyelmeztetéseket.
- * A reducer külön exportált és tesztelhető, mert a repó teszt-környezete
- * node (renderToStaticMarkup), nem böngésző.
  */
 
 const REQUEST_TIMEOUT_MS = 20_000
@@ -196,16 +182,11 @@ export function bunnyLibraryPanelReducer(
 
 /**
  * A panel címsorának szintje.
- *
- * ═══ MIÉRT PROP, ÉS MIÉRT `h3` AZ ALAP ═══
  * A panel két helyen jelenik meg, KÜLÖNBÖZŐ címsor-környezetben. A kurzus
  * szerkesztőlapján mezőként ül, a Payload saját címsorai alatt: ott a `h3` a
  * helyes szint, ezért az alapértelmezés ez marad. Az önálló Videótár nézetben
  * viszont közvetlenül a lap `h1`-e alatt áll, tehát a `h3` egy szintet
  * ÁTUGRANA (h1 → h3), amit a WCAG 2.2 SC 1.3.1 (Info and Relationships)
- * alatti bevett gyakorlat tilt: a képernyőolvasót használó munkatárs a
- * kihagyott szintből azt olvassa ki, hogy egy szakaszt nem talál. Ezért a
- * nézet `h2`-t kér (src/components/admin/BunnyLibraryView.tsx).
  */
 export type BunnyLibraryHeadingLevel = 'h2' | 'h3'
 

@@ -1,27 +1,6 @@
 /**
  * Self-hostolt betűtípusok — a kineticare.hu valós márkabetűi.
- *
- * A metszetek a landing-tükörből (higgsfield-site/app/public/fonts) érkeztek,
- * subsetelve és latin / latin-ext bontásban (szekció-rendszer terv 3.2):
- *   - 'Tenor Sans' 400        → címsorok (--kc-font-heading)
- *   - 'Nunito Sans' 400–700   → törzsszöveg (--kc-font-body); VARIÁBILIS
- *                               metszet, egyetlen fájl fedi a 400–700 sávot
  * A fájlok a public/fonts/ alatt élnek — hotlink (Google Fonts, CDN) TILOS.
- * A font-family nevek szándékosan egyeznek a tokens.css stackjeinek első
- * elemével, így a tokenek módosítása nélkül aktiválódnak.
- *
- * unicode-range: a magyar ő és ű a latin-ext fájlból jön, minden más ékezet
- * (á, é, í, ó, ö, ú, ü) a latin fájlból — a böngésző csak azt tölti le, amire
- * az adott lapon ténylegesen szükség van. A két latin metszetre a
- * (frontend)/layout.tsx preloadot ad (kritikus metszet).
- *
- * font-display: swap — a szöveg azonnal olvasható, a metszet megérkezésekor
- * cserélődik.
- *
- * Dőlt szöveghez a tükörben NINCS subsetelt metszet, ezért a dőlt Nunito Sans
- * marad a korábbi, teljes (nem subsetelt) fájlon: valódi dőlt metszet a
- * böngésző szintetikus döntése helyett. Licencek (SIL OFL 1.1):
- * public/assets/fonts/OFL-tenor-sans.txt, public/assets/fonts/OFL-nunito-sans.txt.
  */
 
 /* ---- Címsorok: Tenor Sans 400 -------------------------------------------- */

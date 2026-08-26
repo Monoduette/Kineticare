@@ -17,14 +17,6 @@ import { withPayloadRestRateLimit } from '@/lib/security/rate-limit'
  * (`/api/form-submissions`) — ezeknek nincs saját route-handlerük, így a korlát
  * ide kerül. A védett útvonalak és keretek listája az
  * `src/lib/security/rate-limit.ts`-ben él; minden más POST (és minden GET)
- * érintetlenül halad tovább a Payloadhoz.
- *
- * KIVÉTEL a jelszó-visszaállítás (`/api/users/reset-password`): azt a saját,
- * jelszó-politikát kikényszerítő handler szolgálja ki
- * (`src/app/(frontend)/api/users/reset-password/route.ts`, C1). A Next.js a
- * konkrét szegmenst statikus útvonalként veszi fel, a `[...slug]`-ot pedig
- * dinamikusként, ezért az a kérés ide EL SEM JUT — a kérés-korlát ott, a saját
- * handlerben fut le.
  */
 export const GET = REST_GET(config)
 export const POST = withPayloadRestRateLimit(REST_POST(config))

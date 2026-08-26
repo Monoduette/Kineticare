@@ -7,17 +7,11 @@ import { applyConsentToGoogleAnalytics, isGoogleAnalyticsConfigured } from '@/li
 
 /**
  * GoogleAnalytics — a gtag.js consent-kapuja (a PostHogProvider párja).
- *
  * - Mérési azonosító nélkül: teljes no-op (semmi nem töltődik be).
  * - CONSENT-FIRST: betöltéskor a TÁROLT döntés számít ('granted' → gtag.js
- *   betöltés, 'denied' → leállító kapcsoló, 'unknown' → semmi), utána a
- *   ConsentBanner 'kc:analytics-consent' eseménye kapcsol be/ki
- *   oldalfrissítés nélkül.
- * - SSR-biztos: minden böngésző-érintkezés useEffect-ben fut, a komponens
- *   maga semmit nem renderel (a `<script>`-et a ga4 modul szúrja be, ezért a
- *   szerver-HTML-be sosem kerül GA-hivatkozás hozzájárulás nélkül).
- * - Az oldalletöltést nem blokkolja: a gtag.js async, és csak a festés után,
- *   az effektben indul.
+ * betöltés, 'denied' → leállító kapcsoló, 'unknown' → semmi), utána a
+ * ConsentBanner 'kc:analytics-consent' eseménye kapcsol be/ki
+ * oldalfrissítés nélkül.
  */
 export function GoogleAnalytics(): null {
   useEffect(() => {

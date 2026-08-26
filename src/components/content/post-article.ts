@@ -8,31 +8,7 @@ import type { MediaLike, MediaSizeInfo } from './media-url'
 
 /**
  * Cikkoldal — tiszta (DB-független) segédfüggvények és MEZŐ-OLVASÓK.
- *
- * ═══ MIÉRT KÜLÖN MODUL ═══
- * A cikkoldal minden döntése (kell-e tartalomjegyzék, mi a kapcsolódó blokk
- * címe, ki a szerző, van-e GYIK) szabály, nem megjelenítés. Külön modulban a
- * szabályok fixture-ből tesztelhetők, adatbázis nélkül — ugyanaz a minta,
- * mint az `src/lib/tudastar.ts`-nél.
- *
- * ═══ MIÉRT `unknown`-BÓL OLVASUNK NÉHÁNY MEZŐT ═══
- * A `docs/tudastar-technikai-terv.md` D3 döntése szerint a `posts` collection
- * öt új mezőt kap (`faq`, `ctaCourse`, `reviewedBy`, `reviewedAt`,
- * `nextReviewAt`), a `users` hármat (`credentials`, `bioShort`, `portrait`) —
- * EGY generált migrációban, az E-csomagban. A séma-kör és a felület
  * SZÁNDÉKOSAN függetlenül élesíthető (technikai terv 2.1: „minden
- * frontend-elem eleve úgy épül, hogy üres mezőnél némán elmarad").
- *
- * Ezért az új mezőket típusszűkítéssel olvassuk, nem a generált típusból: a
- * cikkoldal a mai sémán is fut (ilyenkor a GYIK, a kurzus-CTA célja és a
- * lektorálási sor egyszerűen elmarad), a séma-kör után pedig KÓDVÁLTOZÁS
- * NÉLKÜL megjelenik. `any` sehol — `unknown` + szűkítés (CLAUDE.md).
- *
- * ═══ BIZTONSÁGI KORLÁT (technikai terv 2.4) ═══
- * A `getPostBySlug` `depth: 2` + `overrideAccess: true` hívása a szerzőt
- * TELJES user-dokumentumként populálja (e-mail, hash, salt, vásárlások). Az
- * olvasók ezért KIZÁRÓLAG a `name`, `credentials`, `bioShort`, `portrait`
- * mezőt adják tovább, és nyers user-objektum sosem kerül komponens-propba.
  */
 
 // ---------------------------------------------------------------------------
@@ -255,20 +231,11 @@ export type { PostFaqItem } from '../../lib/seo-cikk'
 
 /**
  * A cikk GYIK-tételei a dokumentumból, hiányos tétel nélkül, legfeljebb hatan.
- *
- * ═══ EZ A FÜGGVÉNY CSAK OLVAS ═══
  * A szűrés (hiányos tétel kihagyása), a trimmelés és a hatos plafon EGYETLEN
  * helyen él, a `src/lib/seo-cikk.ts` `postFaqItems` függvényében. Korábban
  * ugyanaz a szabály két példányban futott — itt és ott —, márpedig két külön
  * szűrő idővel szétcsúszik, és pont az a látható lista és a séma közti eltérés
  * keletkezik belőle, ami miatt a keresők elvetik a strukturált adatot (Google,
- * *Structured data general policies*). Itt tehát CSAK a mező kiolvasása és a
- * típus szűkítése történik; a tartalmi döntés a séma-rétegé.
- *
- * A plafon forrása változatlan: az NHS felsorolás-szabálya („Limit your list
- * to no more than 6 items", https://service-manual.nhs.uk/content/formatting),
- * és ugyanez a szám áll a `posts.faq` `maxRows` értékében is (technikai terv
- * 2.2), tehát a felület és a szerkesztő ugyanazt a korlátot látja.
  */
 export function postFaqItems(doc: unknown): PostFaqItem[] {
   const raw = readField(doc, 'faq')
@@ -325,33 +292,7 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
 
 /**
  * A cikk végi ajánló VÁLTOZATA — témához igazítva (tulajdonosi döntés,
- * 2026-08-25).
- *
- * A korábbi szabály (`COURSE_LIST_CTA_HIDDEN_SLUG`) a `befagyott-vall` cikk
- * alól TELJESEN elhagyta a panelt, mert kéz-kurzust váll-panaszra ajánlani
- * a hitelesség rovására menne. Az új tulajdonosi döntés: a panel MINDEN cikk
- * alatt megjelenik, de a témához igazodó ajánlattal:
- *
- *  - `kurzus` (kéz, csukló, könyök): a kapcsolt fizetős kurzus (vagy a
- *    kurzuslista), plusz halk ingyenes belépő.
- *  - `idopont` (váll): a releváns következő lépés a SZEMÉLYES vizsgálat,
- *    ezért a §3.2 #24 írásos időpontkérés a cél; az ingyenes belépő itt is
- *    megjelenik, de kimondva, hogy kézre szól.
- *
- * Forrás:
- * - NN/g, *Informational Articles Must Ask For the Order*: a cikk végi
- *   ajánlat a RELEVÁNS következő lépés legyen; a hivatkozás nélküli cikk
- *   „attracts tons of freeloaders, but no business".
- *   https://www.nngroup.com/articles/product-links-on-informational-pages/
- * - WCAG 2.2 **2.4.4** Link Purpose (In Context): kéz-kurzus gombja a
- *   váll-cikk alatt mást ígérne, mint amire a törzs vezet.
- *
  * A fejléc „Kurzusok" navigációja (`Header.tsx`) NEM ide tartozik: az a
- * WCAG 2.2 **3.2.3** (Consistent Navigation) szerint minden lapon marad.
- *
- * A halmaz slug-alapú, nem kategória-alapú: a `vall-es-konyok` kategóriában
- * a teniszkönyök is benne van, annak viszont a kapcsolt kéz-kurzusa a
- * tulajdonos szerint marad. Új váll-cikk ide veendő fel.
  */
 export type PostCtaVariant = 'kurzus' | 'idopont'
 

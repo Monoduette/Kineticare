@@ -5,79 +5,9 @@ import { Section } from '../ui/Section'
 import '../../app/(frontend)/styles/blocks/barion-fizetes.css'
 
 /**
- * BarionFizetesJelzes — a fizetési szolgáltató LÁTHATÓ megjelenítése.
- *
- * ═══ MIÉRT LÉTEZIK ═══
- *
- * 1. KÖTELEZETTSÉG. A Barion elfogadóhely-jóváhagyásának előfeltétele, hogy a
- *    logósor a webshop fő- ÉS fizetési oldalán szerepeljen. Szó szerint, a
- *    Barion ügyfélszolgálati oldaláról:
- *      „A Barion által elfogadott fizetési módok logói egyértelműen
- *       tájékoztatják a vásárlóidat a lehetőségeikről, ezért előfeltétele az
- *       elfogadóhely jóváhagyásának, hogy a logósort MÓDOSÍTÁS NÉLKÜL
- *       feltüntesd a webshopod fő- és fizetési oldalán."
- *      https://www.barion.com/hu/ugyfelszolgalat/elfogadohely/elfogadohely-letrehozasa-es-kezelese/miert-kell-az-elfogadott-fizetesi-modok-logoit-feltuntetnem-a-webshop-fooldalan-es-fizetesi-oldalain/
- *    A logósor a Barion hivatalos csomagjából jön, változtatás nélkül
- *    (public/assets/barion/README.md rögzíti a letöltés forrását és
- *    ellenőrzőösszegét). Saját rajz TILOS: idegen márka logóját közelítőleg
- *    újrarajzolni védjegysértés, és a jóváhagyást is megbuktatja.
- *
- * 2. VEVŐI HASZON, MÉRT KUTATÁSSAL.
- *    - Baymard Institute, „How Users Perceive Security During the Checkout
- *      Flow": a legutóbbi Checkout Usability vizsgálatban a válaszadók 19%-a
- *      hagyott ott egy pénztárat az elmúlt 3 hónapban, mert „didn't trust the
- *      site with their credit card information" (1026 fő, átlagos amerikai
- *      felnőtt internetező, 2025). Ugyanott: „Depending on the design, users
- *      perceive some parts of a page to be more secure than other parts of the
- *      same page", és az elhelyezésről: „placing 1-2 icons within the
- *      encapsulated area performs well to help the perceived reinforcement of
- *      the sensitive fields."
- *      https://baymard.com/blog/perceived-security-of-payment-form
- *      → Ezért van a jelzés a pénztárban a fizetőgomb KÖZVETLEN közelében,
- *        saját, elhatárolt kártyában, nem a lap tetején vagy a láblécben.
- *    - Nielsen Norman Group, „Trustworthiness in Web Design: 4 Credibility
- *      Factors" — Upfront Disclosure: „people appreciate when sites are upfront
- *      with all information that relates to the customer experience", és „When
- *      sites omitted basic information, they were almost immediately ruled out
- *      of consideration in favor of more upfront sites."
- *      https://www.nngroup.com/articles/trustworthy-design/
- *      → Ezért nem csak logó van itt, hanem az is le van írva, MI TÖRTÉNIK:
- *        elhagyod az oldalt, a kártyaadat a Barionhoz megy, utána visszatérsz.
- *
- * 3. A REPÓ SAJÁT SZTENDERDJE. `docs/ui-sztenderdek.md` §3.2, 2. sor: „A Barion
- *    megnevezése bizalmi elem, de nem a gombon: a szolgáltató neve és logója a
- *    gomb MELLÉ kerül (M-6 megengedi, nem kötelezi)." Ez a komponens pontosan
- *    ezt teszi: a gombfelirat érintetlen marad, a bizalmi jelzés a gomb mellé
- *    kerül. A szöveg ezért a gomb feliratát sem idézi (a felirat a §3.2
- *    szótárban `Megrendelem és fizetek`-re tart, a kódban ma még
- *    „Megrendelés és fizetés" — a jelzés egyik alaktól sem függhet).
- *
- * ═══ AKADÁLYMENTESSÉG ═══
- *  - WCAG 2.2 SC 1.1.1 (Non-text Content): a logósor INFORMATÍV (elfogadott
- *    fizetési módok), ezért beszédes `alt`-ot kap, nem üreset.
- *  - WCAG 2.2 SC 1.4.5 (Images of Text): „Logotypes (text that is part of a
- *    logo or brand name) are considered essential" — a márkajelek képként
- *    állhatnak. https://www.w3.org/TR/WCAG22/#images-of-text
- *  - WCAG 2.2 SC 1.4.11 (Non-text Contrast): „Logos are exempted from contrast
- *    requirements, under the assumption that they must comply with stricter
- *    color choices mandated by corporate identity or brand guidelines."
- *    https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
- *    A logósor nem interaktív (nem link, nem gomb), tehát az Understanding
- *    dokumentum „logos act as user interface components" fenntartása sem áll
- *    fenn. A KÖRÜLÖTTE lévő SZÖVEG viszont teljes 4.5:1-es mércével mérve van
- *    (a méréseket a styles/blocks/barion-fizetes.css fejléce sorolja).
- *  - WCAG 2.2 SC 2.5.8 (Target Size): a komponensben SZÁNDÉKOSAN nincs
- *    interaktív elem. A pénztárban a fizetés pillanatában egy kifelé mutató
- *    link elvinné a vevőt a vásárlásból (GOV.UK: egy oldal, egy elsődleges
- *    cselekvés), a kezdőlapon pedig fölösleges kilépőt nyitna. Így új
- *    érintőcél sem keletkezik, amit mérni kellene.
- *  - A `section` csak akkor kap landmark-nevet, ha van címsora, ezért a
- *    kezdőlapi változat `aria-labelledby`-jal a saját H2-jére mutat.
- *
- * ═══ IGAZMONDÁS ═══
- * Az INGYENES kurzus nem megy Barionon keresztül (a pénztár ilyenkor waiver
- * és fizetés nélkül nyitja a hozzáférést), ezért a hívó oldalon az ingyenes
- * ágon ezt a jelzést NEM szabad megjeleníteni. A CheckoutForm ezt betartja.
+ * Barion fizetési jelzés — hivatalos logósor a pénztárban (elfogadóhely-követelmény).
+ * A gomb felirata érintetlen; a bizalmi szöveg a gomb mellett, elhatárolt kártyában.
+ * Ingyenes ágon NEM jelenik meg (CheckoutForm dönt).
  */
 
 /** A hivatalos logósor a `public/` alatt (a README rögzíti a forrást). */

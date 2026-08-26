@@ -8,29 +8,7 @@ import '../../app/(frontend)/styles/blocks/accordion.css'
 
 /**
  * Accordion — nyitható-csukható szekció (harmonika).
- *
- * A blokk szerződése és a mezők indoklása: `src/blocks/accordion.ts`.
- *
- * SZERKEZET: natív `details`/`summary` — kliens-oldali JS nélkül nyílik, és az
- * összecsukott/kinyitott állapotot maga közli a segédtechnológiával. Ugyanaz a
- * minta, amit a TeamMembers CV-lenyitója és a FaqBlock már használ; a vizuális
- * nyelvet (hajszálvonalas elválasztók, saját +/− jel, akcent-korlát) a
- * TeamMembers harmonikájából viszi tovább, hogy a /rolunk két nyitható része ne
- * legyen kétféle.
- *
  * FAQPage JSON-LD-t szándékosan NEM ad ki: egy szakmai önéletrajz strukturált
- * GYIK-ként hibás lenne (ugyanaz az indok, mint a TeamMembers CV-listájánál).
- *
- * A `tartalom` richText, ezért a lenyitott rész a közös `RichText` renderelőn
- * megy át — a szerkesztő alcímet, felsorolást és linket is használhat. Az üres
- * (vagy csak üres bekezdéseket tartalmazó) tétel kimarad: a `hasLexicalContent`
- * ugyanazt a „van-e tényleges tartalom" kérdést dönti el, mint a richText
- * blokknál a RenderBlocks.
- *
- * TELJESEN CMS-VEZÉRELT: minden látható szöveg a blokk mezőiből jön (kis felső
- * felirat, cím, bevezető, sor-cím, kivonat, tartalom). Kódban nincs
- * marketingszöveg és nincs helykitöltő — a hiányzó mező egyszerűen kimarad. Az
- * egyetlen kódbeli jel a CSS-ből rajzolt, dekoratív +/− (nem DOM-tartalom).
  */
 export interface AccordionProps {
   block: BlockAccordion

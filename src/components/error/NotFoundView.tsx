@@ -17,50 +17,7 @@ import {
 
 /**
  * A „nem található" oldal TÖRZSE. Egy komponens, két beépítési hely:
- *
- *  1. `src/app/(frontend)/not-found.tsx` — ide fut minden SAJÁT route-unk
- *     `notFound()` hívása (`/[slug]`, `/kurzusok/[slug]`, `/blog/[slug]`,
- *     `/blog/kategoria/[slug]`). Itt a `(frontend)` layout adja a fejlécet és
- *     a láblécet, ezért a törzs csak a tartalmat hozza.
- *  2. `src/app/global-not-found.tsx` — ide fut minden NEM ILLESZKEDŐ URL
- *     (pl. `/egy/ket/harom`). Az a fájl a Next konvenciója szerint layout
- *     nélkül, saját `<html>`/`<body>`-val renderel, ezért ott egy egyszerűsített
- *     keretbe ágyazva jelenik meg ugyanez a törzs.
- *
- * Miért kell a kettő: a Next.js 16 App Routerében a gyökérszintű, nem
- * illeszkedő URL-eket a `not-found.js` csak akkor kapja el, ha az az `app/`
- * GYÖKERÉBEN áll, egyetlen gyökér-layout alatt. Ennek a projektnek KÉT
- * gyökér-layoutja van (`(frontend)` és `(payload)`), és a hivatalos
- * dokumentáció pontosan erre az esetre írja elő a `global-not-found`-ot:
- * „Your app has multiple root layouts …, so there's no single layout to compose
- * a global 404 from."
- * https://nextjs.org/docs/app/api-reference/file-conventions/not-found
- *
- * TARTALMI DÖNTÉSEK (forrásokkal, a szövegek a `not-found-content.ts`-ben):
- *
- * - Nincs zsákutca: a törzsben öt kattintható cél van (két gomb, két lista-elem,
- *   plusz az e-mail), és MIND KÜLÖNBÖZŐ helyre visz. Az NN/g szerint a hibaoldal legfontosabb
- *   dolga, hogy a látogató újratájékozódhasson, és „avoid making navigational
- *   dead ends":
- *   https://www.nngroup.com/articles/improving-dreaded-404-error-message/
- * - Egy elsődleges cselekvés, mellette másodlagos: a GOV.UK
- *   „one thing per page" logikája szerint a lap ne kínáljon több egyenrangú
- *   akciót; a többi cél nem gomb, hanem lista-link.
- *   https://design-system.service.gov.uk/patterns/page-not-found-pages/
- * - Ami navigál, az LINK, nem gomb (a `Button` `href`-fel `next/link`-et
- *   renderel), így a jobbklikk, az új lapon nyitás és a billentyűzet a
- *   megszokott módon működik.
- *
- * AKADÁLYMENTESSÉG
- * - A `nav` elem `aria-label`-t kap, mert a lapon a fejléc-navigáció mellett ez
- *   a második navigációs landmark (WCAG 2.2 · 1.3.1, 2.4.1).
- * - A célok szövege önmagában is érthető, nem „ide kattints"
- *   (WCAG 2.2 · 2.4.4 Link Purpose (In Context)):
- *   https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
- * - Az érintőcélokat a `.kc-error-page__dest-link` 44px-es minimum magassága
- *   tartja (WCAG 2.2 · 2.5.8 Target Size (Minimum) 24×24 CSS px a küszöb, a
- *   projekt célja 44×44):
- *   https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+ * 2. `src/app/global-not-found.tsx` — ide fut minden NEM ILLESZKEDŐ URL
  */
 export function NotFoundView() {
   return (

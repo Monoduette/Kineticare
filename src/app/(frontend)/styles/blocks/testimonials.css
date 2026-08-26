@@ -1,33 +1,6 @@
 /**
  * Vélemények (TestimonialsSection) — TÁBLA-szekció stílusa.
- *
- * Forrás: a landing idézet-táblája (higgsfield-site/app/src/kineticare.css
- * 672–793., tablet 957–959., mobil 1057–1062.). A tükör teljes képernyős
- * táblája MOST MÁR ÁTJÖTT (a korábbi port konténer-szélességbe szorította):
- * középre zárt fejléc (felirat + serif cím + akcent-vonal), balra az óriás
- * halvány idézőjel és a NAGY serif idézet vonal-előtagos, verzál attribúcióval,
- * jobbra két kis idézet függőleges hajszálvonallal elválasztva.
- *
- * A tábla-viselkedést (teljes szélesség, 100dvh 2K-ig, 80vw 2K felett) a közös
  * `.kc-board`/`.kc-board--edge` adja (styles/ui.css). Ez NEM sérti az UX-skill
- * M6-korlátját: a szekció továbbra is legfeljebb 3, RÖVID véleményt mutat,
- * egyetlen képernyőn (a K4-hiba a három képernyőnyi idézet volt).
- *
- * ÚJRAHASZNOSÍTÁS: a felvezető sort és a címsort a content.css közös szabályai
- * adják (`.kc-testimonials__eyebrow`, `.kc-section-title`); itt a tábla-rács,
- * a nagy/kis idézet aránya és a névsor vonal-előtagja jön hozzá.
- *
- * MIÉRT SZŰKÍTETT SZELEKTOROK: ugyanezeknek az osztályoknak a globális
- * content.css-ben is van alap-szabálya (kártyás, egyhasábos rács). A felülírás
- * a szekció gyökér-osztályára szűkítéssel, SPECIFICITÁSBÓL történik — így a
- * betöltési sorrendtől függetlenül érvényes.
- *
- * KONTRASZT (tokens.css jegyzőkönyve): a nagy idézet és a név `text` (ink) a
- * tint sávon 13,53:1, a kis idézetek `text-muted` a tinten 8,05:1 — AA/AAA
- * felett. Az idézőjel-jel és a névsor előtti vonal DEKORÁCIÓ (a jel a
- * markupban aria-hidden), rájuk kontraszt-küszöb nem hat.
- *
- * Betöltés: src/components/content/home/TestimonialsSection.tsx.
  */
 
 .kc-testimonials {

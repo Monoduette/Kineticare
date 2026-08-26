@@ -1,81 +1,17 @@
 /**
  * Layout-stílusok: fejléc, navigáció (desktop + mobil drawer), lábléc,
  * hibaoldalak. Töréspont: 900px (mobil < 900px) — lásd tokens.css.
- *
  * Vizuális nyelv: a kineticare.higgsfield.app landing minimál fejléce és
  * lábléce (higgsfield-site/app/src/kineticare.css — `.kc-nav` 144. sortól,
  * `.kc-footer` 880. sortól), a fő site SZEREP-tokenjeire portolva:
- *   landing bg  → var(--kc-color-surface)
- *   landing ink → var(--kc-color-text)   (a `primary` szerep az akcent-mély
- *                 kitöltésé — G1 paletta-átvétel, lásd tokens.css)
- *   accent-deep → var(--kc-color-primary) (CTA-kitöltés, .kc-button--primary)
- *   akcent-szöveg a sávban → var(--kc-color-accent-deeper) (a fátyol miatt,
- *                 lásd a fejléc kontraszt-jegyzetét)
- *   tint        → var(--kc-color-surface-tint)
- *   fehér („lap fölé emelt" réteg) → var(--kc-color-surface-raised)
- *   hairline    → var(--kc-color-border)
- * Nyers hexa érték itt NINCS; a méretek a --kc-font-* / --kc-space-* skáláról
- * jönnek (értékesítési UX-skill 4. pont).
- *
- * A menüSTRUKTÚRA (CMS-menüfa, „Kurzusok" CTA, mobil drawer viselkedése) NEM
- * változott — a fájl kizárólag a megjelenést írja le.
+ * landing bg  → var(--kc-color-surface)
  */
 
 /* ---- Fejléc -------------------------------------------------------------- */
 /**
  * Sticky sáv FOLYTONOS fátyollal (UX-skill 3. pont):
- *   LAP TETEJÉN (veil = 0)  — TELJESEN átlátszó: se háttér, se vonal, se blur;
- *   GÖRGETÉS KÖZBEN         — a lap-háttér a scroll-pozícióval ARÁNYOSAN úszik be;
- *   LEGÖRGETVE (veil = 1)   — szolid lap-háttér + alsó hajszálvonal.
- *
- * A vezérlő egyetlen szám: `--kc-header-veil` (0..1), amit a HeaderScrollFx ír
- * a <html>-re a görgetés-pozícióból. NINCS küszöb-alapú ugrás: a háttér, a
- * hajszálvonal, a homályosítás ÉS a szövegszínek mind ugyanabból az értékből
  * interpolálnak. Árnyékot a sáv NEM kap: a landing hairline-alapú nyelvében az
- * elválasztás 1px-es vonal, nem lebegtetés (lásd a tokens.css árnyék-szakaszát)
- * — árnyéka csak a tartalom fölé ÚSZÓ rétegnek (almenü, mobil drawer) van.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * KONTRASZT — a fátyol MINDEN állásában, a TÉNYLEGES filmkockák ellen
- * ─────────────────────────────────────────────────────────────────────────────
  * A sáv alatt a kezdőlapon a film-hero gördül el. A méretezés NEM becslésből,
- * hanem a scene-02.mp4 kockáiból + a poszterből származik (2 mp-enként kivett
- * kockák, 16x16 pixeles blokk-átlagok, WCAG 2.2 relatív luminancia). A fejléc
- * által takart felső 8% sávban a legsötétebb blokk: **rgb(34,49,62)** — ezen a
- * nyers filmen az ink szöveg 1,17:1 lenne, azaz olvashatatlan.
- *
- * Ezért a filmsáv TETEJE kap egy világosító lejtőt (film-hero.css, 1. réteg),
- * ami a fejléc teljes magasságában legalább 0,50 lap-háttér-fedést ad. A fejléc
- * saját fátyla erre MÉG RÁJÖN — vagyis a lenti értékek az alsó korlátok:
- *
- *   veil   effektív fedés a filmen   ink szöveg   wordmark-tag   CTA-pirula határa
- *   0,00 ........ 0,50 ............... 5,13:1 ...... 5,13:1 ......... 5,13:1
- *   0,25 ........ 0,63 ............... 6,90:1 ...... 6,90:1 ......... 6,90:1
- *   0,50 ........ 0,75 ............... 9,15:1 ...... 5,30:1 ......... 4,52:1
- *   1,00 ........ 1,00 (szolid) ..... 14,79:1 ...... 6,70:1 ......... 5,16:1
- *
- * A lap tetején, a film FÖLÖTT (a fejléc a lap-háttéren ül): ink 14,79:1.
- *
- * MIÉRT VÁLT SZÍNT KÉT ELEM A FÁTYOLLAL EGYÜTT (ez a kulcs, ne bontsd vissza):
- *  1. A wordmark akcent-tagja (`accent-deeper`, #275c87) és a CTA-pirula
- *     kitöltése (`primary`, #2f6e9f) KÖZÉPTÓNUSOK. Részleges fátyolnál a
- *     mögöttes kompozit pontosan az ő világosságuk közelébe kerül, és a
- *     kontraszt 1:1 közelébe ESIK BE (számolva: accent-deeper a 0,50-es fedésen
- *     csak 2,32:1, a primary-pirula határa 1,79:1 — mindkettő AA-bukás).
- *  2. Ezért mindkettő a fátyol erejével ARÁNYOSAN keveredik: veil = 0 mellett
- *     teljesen `ink` (a sötét filmen 5,13:1 fölött), veil = 1 mellett a saját
- *     akcent-színe (a paperen 6,70:1 ill. 5,16:1). A köztes állásokban a szín a
- *     két sötét végpont között marad, tehát végig a világosodó háttér ELLEN
- *     dolgozik. Ez egyben a landing-tükör viselkedése is: ott a nav-CTA
- *     kitöltése `var(--kc-ink)`, nem az akcent (kineticare.css `.kc-nav-cta`).
- *  3. A CTA-pirula FELIRATA végig fehér, és a kontrasztja a saját kitöltéséhez
- *     mérendő, nem a sávhoz: fehér az inken 15,63:1, a primaryn 5,45:1 — a
- *     köztes keverékeken e kettő között marad, tehát mindenütt AA.
- *
- * MÁS OLDALAK: a film-hero csak a kezdőlapon van. Máshol a fejléc a lap-háttéren
- * (paper) ül a lap tetején is → ink 14,79:1. Ha valaha SÖTÉT szekció kerül egy
- * oldal LEGTETEJÉRE, annak a szekciónak ugyanilyen felső világosító lejtőt kell
- * hoznia, vagy a fejléc nem lehet ott átlátszó.
  */
 .kc-site-header {
   /* Szerep-tokenek egy helyen; a fallback mindig meglévő token, sosem hexa. */
@@ -100,24 +36,10 @@
 /**
  * A FEJLÉC FÓKUSZGYŰRŰJE — a fátyollal ARÁNYOSAN, ugyanazon a logikán, mint a
  * wordmark-tag és a CTA-pirula (lásd a fenti kontraszt-levezetés 1–2. pontját).
- *
- * MIÉRT KELL: a globális gyűrű (base.css) fix `accent-deep` (#2f6e9f) —
  * középtónus, pontosan úgy, ahogy a másik két elem volt. A kezdőlap TETEJÉN
  * (veil = 0) a fejléc alatti kompozit `#8c959d`, amin a fix gyűrű mindössze
  * **1,79:1** — ez a lap ELSŐ Tab-lenyomása, és 1.4.11 + 2.4.7 bukás. A fix
  * gyűrű csak `veil ≥ 0,44` felett éri el a 3:1-et (bináris kereséssel mérve).
- *
- * MÉRT EREDMÉNY a fátyol teljes tartományán (a legsötétebb filmblokk + a
- * film-hero felső, 0,50-es világosító lejtője ellen számolva):
- *   veil 0,00 → 5,13:1 · 0,25 → 5,45:1 · 0,50 → 5,49:1 · 0,75 → 5,33:1 ·
- *   1,00 → 5,16:1 (a paperen; ez a többi oldal állandó értéke is).
- * Mindegyik a 3:1-es UI-küszöb felett. Elvetett alternatíva: fix FEHÉR gyűrű —
- * az a veil ≥ 0,25 állásokban 2,25:1-re esne.
- *
- * A `:focus-visible` a fejléc LESZÁRMAZOTTAIRA szól (wordmark-link, menülinkek,
- * lenyitó-gombok, hamburger, CTA-pirula); csak az `outline-color`-t írja felül,
- * a vastagság/offset/rádiusz a base.css-ből marad. Ne cseréld vissza fix
- * színre — ugyanaz a hiba térne vissza, amit a 2–3. pont a kitöltésnél leír.
  */
 .kc-site-header :focus-visible {
   outline-color: color-mix(
@@ -129,32 +51,19 @@
 
 /**
  * A sáv fátyla KÜLÖN rétegen (::before) él, nem magán a fejlécen.
- *
  * MIÉRT: a `backdrop-filter` — a `transform`-hoz és `filter`-hez hasonlóan —
  * tartalmazó blokkot csinál a `position: fixed` leszármazottaknak. A mobil
  * drawer és az overlay (MobileNav) fixed pozíciójú, ÉS a fejléc DOM-gyereke:
  * ha a blur a fejlécen ülne, a teljes képernyős drawer a fejléc-sávba
  * szorulna. A pszeudo-elemnek nincs leszármazottja, így a drawer a
- * viewporthoz marad kötve — a MobileNav viselkedése változatlan.
- * (Ez a korábbi kódban valós hiba volt: legörgetve, blur-támogatás mellett a
- * drawer a 4,5rem-es sávra csuklott össze.)
- *
- * A hajszálvonal is ide kerül (a pszeudo saját alsó kerete), így a tető
- * állapotban nincs kitakaratlan 1px-es rés a sáv alján.
  */
 /**
  * A sáv fátyla KÜLÖN rétegen (::before) él, nem magán a fejlécen.
- *
  * A teljes réteg átlátszatlanságát a `--kc-header-veil` adja: a lap tetején 0
  * (a réteg — háttér, hajszálvonal, blur — teljesen eltűnik), legörgetve 1
  * (szolid lap-háttér + vonal). Mivel az `opacity` a réteg MINDEN részére hat,
  * a fedés matematikája egyszerű és auditálható: a filmre jutó lap-háttér-fedés
  * pontosan `veil`, amivel a fenti kontraszt-táblázat számol.
- *
- * NINCS `transition` a fátylon: az érték maga a görgetés-pozíció folytonos
- * függvénye, ezért az átmenet a görgetésből jön. Egy CSS-átmenet itt csak
- * késleltetne (a sáv „utánaúszna" a görgetésnek) — és `prefers-reduced-motion`
- * mellett is helyes, mert nincs mit kikapcsolni.
  */
 .kc-site-header::before {
   content: '';
@@ -168,18 +77,11 @@
 
 /**
  * A `backdrop-filter` a fejléc PSZEUDO-elemén él, nem a fejlécen.
- *
  * MIÉRT: a `backdrop-filter` — a `transform`-hoz és `filter`-hez hasonlóan —
  * tartalmazó blokkot csinál a `position: fixed` leszármazottaknak. A mobil
  * drawer és az overlay (MobileNav) fixed pozíciójú, ÉS a fejléc DOM-gyereke:
  * ha a blur a fejlécen ülne, a teljes képernyős drawer a fejléc-sávba
  * szorulna. A pszeudo-elemnek nincs leszármazottja, így a drawer a
- * viewporthoz marad kötve — a MobileNav viselkedése változatlan.
- * (Ez a korábbi kódban valós hiba volt: legörgetve, blur-támogatás mellett a
- * drawer a 4,5rem-es sávra csuklott össze.)
- *
- * A blur ereje is a fátyollal arányos: a lap tetején 0px, azaz a teljesen
- * átlátszó fejléc a mögötte lévő filmet ÉLESEN hagyja.
  */
 @supports (backdrop-filter: blur(8px)) {
   .kc-site-header::before {
@@ -671,16 +573,11 @@
 
 /**
  * A HIDRATÁLÁS UTÁNI, JS-vezérelt állapot (DesktopNav `data-open`).
- *
  * A két szabály specifikussága (0,3,0) pontosan annyi, mint a fenti hover/
  * focus-within szabályé — ezért a FORRÁSSORREND dönt, és ezeknek KÖTELEZŐ
  * utánuk állniuk. Ez adja az Esc-re bezárást (WCAG 2.2 AA, 1.4.13
  * „dismissible"): a `data-open='false'` akkor is zárva tartja a lenyílót, ha
  * az egérmutató még mindig a menüpont fölött áll. `!important` nem kell, és
- * ne is kerüljön ide — az összefüggést a sorrend hordozza.
- *
- * A `data-open` a szerver-renderelt HTML-ben NINCS jelen, tehát JS nélkül
- * (és a hidratálás előtt) a fenti hover/focus-within réteg működik változatlanul.
  */
 .kc-nav-desktop__item[data-open='true'] > .kc-nav-desktop__submenu {
   opacity: 1;
@@ -908,15 +805,8 @@
  * mellette a ritkított wordmark, alatta a meta-sor (jogi linkek + copyright).
  * A korábbi navy sáv MEGSZŰNT — a lábléc a lap-hátteret viszi, felül
  * hajszálvonallal elválasztva.
- *
  * KONTRASZT a lap-háttéren (#f6f9fc; fehér háttéren minden érték magasabb):
- *   óriás link + meta-linkek — ink (#10243e) ....... 14,79:1
- *   link hover — akcent-mély (#2f6e9f) .............. 5,16:1
- *   wordmark akcent-tag — akcent-mély ............... 5,16:1
- *   meta-szöveg — text-muted (#33495f) .............. 8,80:1
- * Mind AA (4,5:1) felett. A világosabb `--kc-color-accent` itt SEHOL nem
- * szöveg-szín (a lap-háttéren 4,45:1 lenne — lásd tokens.css akcent-korlát).
- * A hajszálvonal (1,24:1) tudatosan dekoratív elválasztó, nem UI-határ.
+ * óriás link + meta-linkek — ink (#10243e) ....... 14,79:1
  */
 .kc-site-footer {
   --kc-footer-ink: var(--kc-color-text);

@@ -16,35 +16,6 @@ import {
 
 /**
  * CourseList — a „Kurzusaim" képernyő kártyalistája.
- *
- * ═══ MI EZ A KÉPERNYŐ ═══
- * A belépés utáni ELSŐ képernyő, és egyetlen kérdésre válaszol: „hol tartok, és
- * hol folytassam?". Ezért a kártya nem katalógus-kártya (kép + cím + ár), hanem
- * ÁLLAPOT-kártya: a haladás a bélyegképen (kör) és a cím alatt (sáv) is látszik,
- * a gomb pedig megnevezi a KÖVETKEZŐ leckét.
- *
- * ═══ SEMMIT NEM SZÁMOL ═══
- * A komponens kész `CourseCardView` objektumokat kap (./course-list-order.ts);
- * itt nincs se haladás-számítás, se felirat-összerakás. Így a viselkedés
- * React-renderelés nélkül tesztelhető, a JSX pedig olvasható marad.
- *
- * ═══ FÓKUSZREND — EGY KÁRTYA, EGY FÓKUSZPONT ═══
- * A teljes kártya kattintható, DE a kártyán belül PONTOSAN EGY fókuszálható elem
- * van: a CTA-gomb. A kattintható felületet a gomb `::after` kiterjesztése adja
- * (kurzusaim.css), nem a kártyára tett `onClick` — így
- *   - nem keletkezik duplikált tabstop (kép-link + cím-link + gomb),
- *   - a link valódi link marad (középső gomb, „megnyitás új lapon", státuszsor),
- *   - és nem kell kliens-komponenssé tenni a listát egyetlen kattintás miatt.
- * A gomb akadálymentes neve a kurzus nevét is tartalmazza (vizuálisan rejtett
- * kiegészítéssel), mert több kártya áll egymás mellett, és a „Folytatás: …"
- * önmagában nem mondja meg, MELYIK kurzusról van szó.
- *
- * ═══ CSOPORTOK ═══
- * Aktív rács (folyamatban → el nem kezdett) · összecsukott „Befejezett
- * kurzusok (n)" · legvégül a lejárt hozzáférésűek (A1) az empatikus üzenettel.
- * Az összecsukás natív `<details>`-szel történik: nulla JavaScript, működik
- * hidratálás előtt is, és a böngésző keresője (Ctrl+F) is megtalálja a
- * tartalmát.
  */
 
 export interface CourseListProps {

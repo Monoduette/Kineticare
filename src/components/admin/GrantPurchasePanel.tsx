@@ -8,18 +8,10 @@ import { hasStaffOrOwnerRole } from '../../access/roles'
 /**
  * „Kurzus ajándékozása" panel a felhasználó szerkesztőnézetében
  * (users `type: 'ui'` mező).
- *
  * KIZÁRÓLAG felület: a hozzáférés-adás logikája a POST
  * /api/admin/grant-purchase végponton fut (src/lib/grant-purchase-route.ts →
  * src/lib/grant-purchase.ts), staff/owner jogosultsággal, idempotensen és
  * strukturált audit-naplózással. A users.purchases mező field-access szinten
- * rendszer-írású marad — a panel SOHA nem írja közvetlenül, csak a végpontot
- * hívja, amely szerver-oldalon, overrideAccess-szel ír (pontosan úgy, ahogy a
- * CLI-script eddig).
- *
- * A kurzuslistát a panel megnyitásakor (felhasználói interakcióra) tölti be a
- * Payload REST API-ról, sütis munkamenettel (credentials: 'include') — így
- * nincs mount-effekt, és a szerkesztőnézet betöltése sem lassul.
  */
 
 const REQUEST_TIMEOUT_MS = 20_000

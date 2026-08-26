@@ -6,20 +6,11 @@ import '../../app/(frontend)/styles/blocks/about.css'
 
 /**
  * About — „Rólunk + statisztikák" (szekció-rendszer terv 2. katalógus, 3.4).
- *
  * A landing `kc-about` TÁBLÁJÁNAK portja: teljes képernyős, teljes szélességű
  * board három hasábban — balra a felirat/cím/bekezdések és az ikonos kiemelés,
  * középen az álló csapatfotó a tábla aljáig, jobbra a hajszálvonalas
  * szám-oszlop. A tábla a régi koncepció-landing `kc-about` elrendezését
  * követi (egyszeri tükör, már nincs a repóban). Ezért nincs
- * `kc-container`: a tábla szélességét a board-rendszer adja (styles/ui.css).
- *
- * A számokat a szerkesztő írja (VALÓS adatok — kitalált statisztika
- * fogyasztóvédelmi kockázat, lásd a blokk admin-leírását), ezért kódban sem
- * mintaérték, sem helykitöltő nincs: üres lista esetén a szám-oszlop elmarad.
- *
- * A `dl` szerkezete `dt` = mit jelent, `dd` = az érték; vizuálisan az érték van
- * fölül (CSS `column-reverse`), a forrás-sorrend viszont a szemantikát követi.
  */
 export interface AboutProps {
   block: BlockAbout

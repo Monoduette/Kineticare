@@ -24,55 +24,6 @@ import { RichText } from '../lexical/RichText'
 
 /**
  * HomeView — a kezdőlap prezentációs komponense (tiszta, fixture-ből tesztelhető).
- *
- * A docs/ux-hierarchia-audit.md 3. szakaszának cél-hierarchiája szerinti
- * sorrend (üzleti cél: kurzus-értékesítés → bizalom → kapcsolat; a lead-magnet
- * másodlagos), a szabályok a docs/ertekesitesi-ux-skill.md-ben:
- * M1 Hero + EGY elsődleges CTA a fizetős kurzusokra (→ /kurzusok) +
- *    visszafogott másodlagos link az ingyenes SOS-ra (HeroCta). A hero média:
- *    ha a HERO_VIDEO_STREAM_ID be van állítva (src/lib/hero-video.ts), a Stream
- *    hero-videó jelenik meg, egyébként a CMS heroImage — a videóblokk érintetlen.
- * M2 Szakmai hitel-csík a /rolunk linkkel (CredentialsStrip) — közvetlenül a
- *    hero alatt keretezi a vásárlási döntést.
- * M3 Fizetős kurzus-kártyák („mini-buybox": cím/előnyök/ÁR/CTA) a hitel-csík
- *    után (CourseCards) — CSAK fizetős termék, üresen a szekció elmarad.
- * M4 Ingyenes SOS Kézrelax — lead-magnet VISSZAFOGOTT, másodlagos súllyal,
- *    közvetlenül a fizetős blokk után, tint háttérrel elválasztva (FreeSos).
- *    A KEZDŐLAPON az ingyenes ajánlat kizárólag itt jelenik meg (a hero
- *    másodlagos CTA-ja is ide, a #ingyenes horgonyra mutat): a kurzus-rácsban
- *    szereplő „másodlagos" kártyája 2026-08-15-én duplikációként kikerült.
- *    2026-08-25-től a cikkoldalak végi ajánlóban is áll egy halk, szöveges
- *    ingyenes sor (PostCourseCta) — az tulajdonosi döntés, nem duplikáció:
- *    másik lapon, más funkcióval (NN/g, Product Links on Informational Pages).
- * M5 „Így működik az online kurzus" — 3 lépés, statikus (HowItWorks).
- * M6 Vélemények — a CMS `testimonials` collectionjéből, a termékblokk UTÁN
- *    (TestimonialsSection): legfeljebb 3 kiemelt és látható vélemény, `order`
- *    szerint, a rövid változat elsőbbségével. Kiemelt vélemény nélkül a szekció
- *    elmarad — fiktív idézet fogyasztóvédelmi okból nem kerülhet ki, ezért
- *    helykitöltő sincs.
- * M6+ A CMS-oldal richText-tartalma (ha van) — a staff által írt szabad
- *    szekciók, a vélemények után, a tudástár előtt.
- * M7 Legfrissebb posztok — tudástár (SEO, hosszútáv) + „Összes bejegyzés". A
- *    háttere a sávritmust követi: ha a (tint) vélemény-szekció után nincs
- *    fehér CMS-blokk, a tudástár fehér, hogy ne álljon össze két tint sáv.
- * M8 Gyakori kérdések — ellenérv-kezelés a lap alján (Faq; a FAQPage JSON-LD
- *    miatt a szekció főoldali jelenléte SEO-kötelezettség, lásd
- *    docs/seo-geo-llm.md).
- * M9 Fizetési bizalmi csík (BarionFizetesJelzes) — a hivatalos Barion logósor
- *    és a fizetés menete, a lábléc FÖLÖTT. Halk, hajszálvonalas csík: bizalmi
- *    jelzés, nem értékesítő szekció, ezért nem előzheti meg a kurzus-blokkot.
- *    A Barion elfogadóhely-jóváhagyásának kötelező tétele a FŐOLDALON, ezért
- *    MINDKÉT ágon (rögzített M1–M8 és CMS-szekciósor) renderelődik: a
- *    szerkesztő a szekciósorral nem tudja véletlenül kikapcsolni.
- * A kapcsolat/footer a layoutban él, itt érintetlen.
- *
- * MOZGÁS: a szekciók halk belépőt kapnak (SectionReveal + styles/motion.css) —
- * néhány pixeles emelkedés és áttűnés, egyszer, kizárólag a hajtás alatti
- * szekciókra. `prefers-reduced-motion: reduce` esetén és JS nélkül semmi nem
- * történik: a lap pontosan úgy néz ki, mint eddig.
- *
- * A draft tartalom ide el sem jut: a lekérdezések published-szűrtjei mellett a
- * kártyakomponensek is védőhálót tartanak.
  */
 export interface HomeViewProps {
   home: Page | null

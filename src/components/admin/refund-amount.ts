@@ -2,17 +2,11 @@ import { formatPriceHuf } from '../../lib/format-price'
 
 /**
  * A visszatérítés-panel TISZTA (mellékhatásmentes) segédfüggvényei.
- *
  * Külön modulban élnek a kliens-komponenstől, hogy egységtesztelhetők
  * legyenek (a RefundPanel.tsx a @payloadcms/ui hookjait importálja, ami
  * node-környezetű tesztben nem tölthető be).
- *
  * FONTOS: ez KIZÁRÓLAG kényelmi, kliensoldali előszűrés — a forrás-igazság a
  * szerver (src/lib/refund/refund-order.ts), amely ugyanezeket a szabályokat
- * (pozitív egész, a maradék összegen belül, csak paid rendelés) újra
- * kikényszeríti. A panel semmilyen visszatérítési logikát nem másol le: a
- * részrefund-maradék számítását sem — a kliens a rendelés végösszegét
- * használja felső korlátnak, a pontos maradékot a szerver dönti el.
  */
 
 /** Az összeg-mező kiértékelésének eredménye. */

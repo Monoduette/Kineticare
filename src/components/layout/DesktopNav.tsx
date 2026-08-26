@@ -17,45 +17,7 @@ import { NavAnchor } from './NavAnchor'
 
 /**
  * Desktop (>= 900px) vízszintes navigáció, egy szintű almenüvel.
- *
- * KÉT RÉTEG, hogy a menü JS nélkül is használható maradjon:
- *
- * 1. ALAPRÉTEG (CSS, szerver-renderelt HTML). Az almenü hover ÉS
- *    billentyűzet-fókusz (`:focus-within`) alatt nyílik — pontosan úgy, ahogy
- *    korábban. Ez az az állapot, amit a látogató JS nélkül (és a hidratálás
- *    ELŐTT) kap: a `data-open` attribútum ilyenkor NINCS a listaelemen, tehát
- *    a CSS-szabályok érintetlenül érvényesülnek.
- *
- * 2. BŐVÍTETT RÉTEG (hidratálás után). A nyitottságot innentől ez a komponens
- *    vezérli (`data-open`), és a lenyíló három, korábban HIÁNYZÓ dolgot kap:
- *
- *    a) LENYITÓ GOMB `aria-expanded`/`aria-controls` állapottal. Enélkül
- *       ÉRINTÉSSEL nem lehetett megnyitni az almenüt: 900px felett a mobil
- *       drawer el van rejtve, hover pedig nincs — táblagépen (pl. iPad) a
- *       főmenüpontra koppintva egyszerűen elnavigált az oldal, az almenü
- *       elemeihez semmilyen úton nem lehetett eljutni.
- *
- *    b) ESC-re bezárás (WCAG 2.2 AA, 1.4.13 „Content on Hover or Focus" —
- *       dismissible). A tisztán hover-vezérelt lenyíló nem volt elbocsátható
- *       az egérmutató elmozdítása nélkül; ez különösen nagyítót használó
- *       felhasználónál takarja el a mögötte lévő tartalmat. Az Esc a fókuszt a
- *       lenyitó gombra viszi, és a lenyílót akkor is zárva tartja, ha az
- *       egérmutató még mindig a menüpont fölött áll.
- *
- *    c) ŐSZINTE ARIA-ÁLLAPOT. A hover és a fókusz is a komponens állapotát
- *       állítja, ezért az `aria-expanded` sosem mond mást, mint amit a
- *       látogató lát.
- *
- * A billentyűzetes bejárás mindkét rétegben ugyanaz: a lenyíló zárt állapotban
  * `visibility: hidden`, tehát a benne lévő hivatkozások NEM fókuszálhatók — a
- * Tab a fókuszt a főmenüpontra, majd a lenyitó gombra, és csak a megnyílt
- * almenü elemeire viszi.
- *
- * Az érintési célfelületek 44×44px-esek, a színek pedig minden állapotban AA
- * felett vannak (a levezetés a layout.css nav-szekciójában áll) —
- * docs/ertekesitesi-ux-skill.md 3. pont. A `prefers-reduced-motion` a globális
- * szabályból jön (styles/base.css): a lenyíló átmenete ilyenkor elmarad, a
- * megjelenés/eltűnés azonnali.
  */
 
 function CaretIcon() {

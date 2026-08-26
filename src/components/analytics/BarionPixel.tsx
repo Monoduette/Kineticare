@@ -8,49 +8,16 @@ import {
 
 /**
  * Az ALAP (Base) Barion Pixel beillesztése.
- *
- * ═══ MIÉRT SZERVER-KOMPONENS, INLINE SCRIPTTEL ═══
- * A hivatalos dokumentáció az alap Pixelt a `<head>` ELEJÉRE kéri, és
  * kifejezetten kiköti, hogy a süti-hozzájárulás kezelője NE nyúljon hozzá:
- * a Pixel csalásmegelőzési célból akkor is jelen kell legyen, ha a látogató a
- * marketing-sütiket elutasította.
- *
- * Ezt a legerősebben úgy lehet garantálni, hogy a snippet a KISZOLGÁLT HTML-be
- * kerül, szerver-komponensként — így semmilyen kliensoldali állapot (consent,
- * effekt, provider) nem tud elé kapuzni. Ez a különbség a GoogleAnalytics.tsx-hez
- * és a PostHogProvider-hez képest TUDATOS: azok kliensoldalról, hozzájárulás
- * UTÁN töltenek; ez a modul soha nem várhat hozzájárulásra.
- *
- * (A `next/script` `beforeInteractive` ugyanide vezetne, de a tényleges
- * beszúrási helyet a keretrendszer választja meg — inline `<script>`-tel a
- * `<head>` legelső eleme lehetünk, ami pontosan a doksi elvárása. A repóban a
- * `next/script` ott van használatban, ahol a betöltés komponens-életciklushoz
- * kötött: TurnstileWidget.tsx.)
- *
- * ═══ AZONOSÍTÓ NÉLKÜL SEMMI NEM RENDERELŐDIK ═══
- * Fejlesztésben és CI-ben nincs Pixel-azonosító. Ilyenkor a komponens `null`-t
- * ad: se script, se noscript-kép — a lap úgy viselkedik, mintha a Pixel nem
- * létezne (ugyanaz a „kulcs nélkül néma no-op” elv, mint a GA4-nél).
  */
 
 /**
  * A hivatalos alap-snippet, a beépített azonosítóval.
- *
  * ELTÉRÉS A DOKSI SZÖVEGÉTŐL, KÉT PONTON — mindkettő a viselkedést nem
  * érinti, csak a mellékhatásokat szünteti meg:
- *  1. IIFE-be zárva, hogy a lokálisok ne szivárogjanak globálisba,
- *  2. a `scriptElement` és a `firstScript` `var`-ral DEKLARÁLVA (a doksi
- *     snippetje deklaráció nélkül használja őket, ami implicit globálist hoz
- *     létre — laza módban nem hiba, de két véletlen globális a mi oldalunkon).
+ * snippetje deklaráció nélkül használja őket, ami implicit globálist hoz
+ * létre — laza módban nem hiba, de két véletlen globális a mi oldalunkon).
  * A `window["bp"]` sorbaállító, a `window["barion_pixel_id"]` és a záró
- * `bp('init', 'addBarionPixelId', …)` hívás VÁLTOZATLAN — a bp.js ezekre épül.
- *
- * A `firstScript.parentNode.insertBefore(…)` biztosan talál `<script>`-et:
- * ez a snippet maga már a dokumentumban van, amikor lefut.
- *
- * Az azonosító beillesztése biztonságos: a `getBarionPixelId` kizárólag
- * `BP-` + betű/szám alakot enged át, tehát idézőjel vagy `</script>` nem
- * kerülhet a kódba (lásd a barion-pixel.ts alak-ellenőrzését).
  */
 function baseBarionPixelSnippet(pixelId: string): string {
   return `(function () {

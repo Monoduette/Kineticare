@@ -7,19 +7,10 @@ import { DownloadIcon } from './icons'
 /**
  * A LECKE TÖRZSE a színpadon: a szöveges tartalom, a külső link kártyája és a
  * letölthető mellékletek.
- *
- * ═══ MIÉRT KÜLÖN KOMPONENS ═══
  * Ez a rész SEMMIT nem tud a lejátszó-állapotról (jegy, iframe, időzítő) — tehát
  * nincs is szüksége rá. Külön tartva a `CoursePlayer` a lejátszási lánccal
  * foglalkozik, ez pedig a tartalommal; a szöveges és link-leckék így akkor is
  * hibátlanul megjelennek, ha a videó-ág éppen hibába fut.
- *
- * ═══ SZÖVEGES LECKE: NINCS JEGY, NINCS IFRAME ═══
- * A `kind === 'szoveg'` leckéhez SEMMILYEN Bunny-hívás nem tartozik. Ez nem
- * optimalizálás: a jegykiadás videó-azonosító nélkül hibát adna, és a felület
- * fölöslegesen mutatna „nem érhető el" üzenetet egy tökéletesen olvasható
- * leckén. A tartalmat a storefront meglévő Lexical-renderelője adja
- * (`RichText`), tehát a tipográfia ugyanaz, mint a kurzus- és blogoldalakon.
  */
 
 export interface LessonBodyProps {

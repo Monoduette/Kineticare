@@ -7,38 +7,6 @@ import { CourseCta } from './CourseCta'
 
 /**
  * CourseBuybox — a kurzusoldal vásárlódoboza (a lap egyetlen elsődleges célja).
- *
- * A tartalma és a SORRENDJE a kutatás szerint áll össze
- * (docs/ux-belso-oldalak-kutatas.md 5.1): meta-jelölők → H1 → egymondatos
- * lead → ÁR (B6.2) → elsődleges CTA → 3 pipás előny → másodlagos, nem
- * versengő szöveglink (B6.5) → garancia-sor (B6.3).
- *
- * ═══ MIÉRT ELÖL AZ ÁR ÉS A GOMB (2026-08-16-i sorrend-változás) ═══
- * Korábban a három pipás előnysor az ár és a gomb ELŐTT állt, így a doboz
- * döntési eleme ~200 pixellel lejjebb került. A doboz ragadós, és a
- * mérésünk szerint (produkciós build, Chromium 141) 905 pixel magas volt,
- * vagyis 1366×768-as nézetablakban a gomb a lap görgetésének csak 10%-án
- * látszott. A sorrend megfordítása a döntési pillanat elemét a doboz első
- * képernyőjébe hozza, tehát belső görgetés nélkül is látszik.
- *
- * A hivatkozott kutatás:
- *  - NN/g, Scrolling and Attention — a nézési idő 42%-a a lap felső 20%-ára,
- *    65%-a a felső 40%-ára esik, és „Keep major CTAs above the fold"
- *    (https://www.nngroup.com/articles/scrolling-and-attention/).
- *  - Baymard, ecommerce UX best practices #791 — az elsődleges „kosárba"
- *    gomb legyen egyedi és feltűnő, versengő CTA nélkül
- *    (https://baymard.com/learn/ecommerce-ux-best-practices).
- *  - Baymard termékoldal-benchmark: az ár és a teljes fizetendő a gomb
- *    KÖZVETLEN közelében látszik (B6.2 — a benchmarkolt oldalak 67%-a
- *    elrontja: https://baymard.com/blog/current-state-ecommerce-product-page-ux).
- * Az előnysorok nem tűnnek el, csak a gomb MÖGÉ kerülnek: a doboz így a
- * „mibe kerül és mit nyomjak meg" kérdésre válaszol előbb, a „miért érdemes"
- * pedig közvetlenül utána, ugyanabban a dobozban marad.
- *
- * A doboz és a CTA-blokk is `id`-t kap. A ragadós vásárlósáv (CourseBuyBar) a
- * CTA-blokkot figyeli IntersectionObserverrel — a sáv pontosan akkor jelenik
- * meg, amikor a GOMB nem látszik. (A doboz `id`-je erre nem elég: a doboz
- * teteje látszhat úgy is, hogy a gomb a belső görgetésen kívül van.)
  */
 export interface CourseBuyboxProps {
   id: string
@@ -68,18 +36,13 @@ export interface CourseBuyboxProps {
   product: Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>
   hasPurchased: boolean
   /**
-   * A CTA HELYÉRE kerülő egyedi tartalom. Megadva a `CourseCta` állapotgép
-   * helyett ez renderelődik, ugyanazon a helyen és ugyanabban a sorrendben
-   * (ár → cselekvés → előnyök), tehát a kutatás szerinti felépítés nem sérül.
-   *
-   * MA EGY HÍVÓJA VAN: az INGYENES kurzus igénylő űrlapja
-   * (`FreeCourseRequestForm`). Ott a cselekvés nem link, hanem beküldés (név +
-   * e-mail → hozzáférés + belépő link), amit egy `href`-alapú gomb nem tud
-   * kifejezni. A doboz többi eleme (cím, lead, „Ingyenes" címke, előnyök,
-   * garancia) változatlan marad — ezért slot, nem külön doboz.
-   *
-   * Ha nincs megadva, a viselkedés BITRE a korábbi: `CourseCta`.
-   */
+ * A CTA HELYÉRE kerülő egyedi tartalom. Megadva a `CourseCta` állapotgép
+ * helyett ez renderelődik, ugyanazon a helyen és ugyanabban a sorrendben
+ * (ár → cselekvés → előnyök), tehát a kutatás szerinti felépítés nem sérül.
+ * MA EGY HÍVÓJA VAN: az INGYENES kurzus igénylő űrlapja
+ * (`FreeCourseRequestForm`). Ott a cselekvés nem link, hanem beküldés (név +
+ * e-mail → hozzáférés + belépő link), amit egy `href`-alapú gomb nem tud
+ */
   ctaSlot?: ReactNode
 }
 

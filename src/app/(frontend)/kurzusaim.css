@@ -1,44 +1,7 @@
 /**
  * „Kurzusaim" — a belépés utáni első képernyő (lista).
- *
- * Ez a lap a kurzusaim-scope SAJÁT rétege: kizárólag a közös tokeneket
- * (var(--kc-*)) és a meglévő primitívek osztályait (kc-card, kc-button,
- * kc-progress-*) használja. Nyers hexa érték és elemre írt betűméret NINCS —
- * minden méret a tipográfiai skáláról, illetve a 4px-es térköz-rácsról jön
- * (UX-skill 4. pont).
- *
  * A `kc-course-card` / `kc-course-grid` osztályokat SZÁNDÉKOSAN nem használjuk:
- * azok a NYILVÁNOS katalógus kártyái (src/app/(frontend)/kurzusok/kurzusok.css),
- * és ott más az anatómia (ár + „Megveszem"). A vevői lista állapot-kártyája
- * saját névtérben (`kc-mycourse*`) él, hogy a két felület egymástól függetlenül
- * fejlődhessen.
- *
- * ═══ KONTRASZT-JEGYZŐKÖNYV (WCAG 2.2 AA) ═══
- * A kártya a FEHÉR, megemelt felületen ül (--kc-color-surface-raised), a lap
- * maga paper hátterű (--kc-color-bg, #f6f9fc). Számolt arányok (a forrásuk a
- * tokens.css, illetve a progress.css jegyzőkönyve):
- *
- *   kurzuscím · ink (#10243e)        a kártyán (fehér) ....... 15,63:1  AA/AAA ✓
- *   szekciócím · ink                 a lapon (#f6f9fc) ....... 14,79:1  AA/AAA ✓
- *   mikro-meta · ink-soft (#33495f)  a kártyán ...............  9,30:1  AA/AAA ✓
- *   lejárat-üzenet · warning         a kártyán ...............  5,93:1  AA ✓
- *     (#8a5a00 — ugyanaz a szerep és szín, mint az account.css A1-sorában)
- *   elsődleges gomb · fehér          accent-deep kitöltésen ...  5,45:1  AA ✓
- *   másodlagos gomb · ink            a kártyán (2px keret) ... 15,63:1  AA/AAA ✓
- *   haladás-kör kitöltése            a sínen (grafika) .......  3,60:1  1.4.11 ✓
- *   kör-tok kerete · hairline-strong a kártyán (UI-határ) ....  4,13:1  ✓
- *
- * A haladás-kör a BÉLYEGKÉPEN áll, ahol a mögöttes szín kiszámíthatatlan (a
  * borító tetszőleges fotó lehet). Ezért a kör NEM közvetlenül a képre kerül,
- * hanem egy tömör, fehér, 1px-es kerettel határolt tokba — így a fenti arányok
- * a képtől függetlenül érvényesek. Ez a WCAG „legrosszabb eset" szabályának
- * alkalmazása (UX-skill 3. pont, áttetsző háttér).
- *
- * ═══ ÉRINTÉSI CÉLPONTOK ═══
- * A kártya EGYETLEN interaktív eleme a CTA-gomb: a `.kc-button` közös
- * min-height-ja 2,75rem (44px), a gomb pedig teljes kártyaszélességű — a 44×44
- * px-es minimum tehát mindkét irányban teljesül. Az összecsukó `summary`
- * ugyanezt a 2,75rem-es minimumot kapja.
  */
 
 /* ---- Oldal-fejléc -------------------------------------------------------- */

@@ -9,24 +9,11 @@ import { refundBlockedReason, refundConfirmQuestion, validateRefundAmount } from
 
 /**
  * Visszatérítés-panel a rendelés szerkesztőnézetében (orders `type: 'ui'` mező).
- *
  * KIZÁRÓLAG felület: a visszatérítés teljes üzleti logikája a meglévő,
  * kész szolgáltatásban él (src/lib/refund/*), amelyet a panel a
  * POST /api/admin/orders/[orderNumber]/refund végponton hív. A komponens
  * semmilyen pénzügyi döntést nem hoz, és nem másol le szerver-oldali
  * szabályt — a kliensoldali ellenőrzések (paid státusz, pozitív egész összeg,
- * végösszeg-korlát) csak kényelmi előszűrés, a FORRÁS-IGAZSÁG a szerver:
- * a végpont owner-only, és minden szabályt újra kikényszerít.
- *
- * Viselkedés:
- * - nem owner → gomb helyett magyarázat (a végpont amúgy is 403-at adna),
- * - nem `paid` státusz → rövid magyar magyarázat, miért nem téríthető vissza,
- * - üres összeg → teljes visszatérítés; kitöltött összeg → részvisszatérítés,
- * - indítás előtt megerősítő kérdés (rendelésszám + összeg),
- * - folyamat közben a gomb letiltva (dupla kattintás ellen),
- * - siker → típus + tranzakció-azonosító + a nézet frissítése,
- * - hiba → a szerver magyar üzenete (ha nincs, generikus magyar üzenet),
- * - hálózati hiba/időtúllépés → „Nem sikerült elérni a szervert" + újrapróbálható.
  */
 
 const REQUEST_TIMEOUT_MS = 30_000

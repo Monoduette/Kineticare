@@ -1,26 +1,10 @@
 /**
  * Szakmai hitel-csík (CredentialsStrip) — szekció-stílus.
- *
  * Forrás: a landing hajszálvonalas csík-nyelve
  * (higgsfield-site/app/src/kineticare.css: a `.kc-usp` / `.kc-service-row`
  * hairline-jei és a `.kc-inline-link`, 522.). A szín, a méret és a térköz
  * KIZÁRÓLAG szerep-tokenről jön (tokens.css) — nyers hex és nyers legacy token
  * nélkül.
- *
- * A csík keskeny: felül-alul hajszálvonal, közte egy sor. A szekció `flush`
- * (nincs saját vertikális padding), a sávot ez a lap adja — így a hitel-csík
- * a hero és a kurzus-blokk közé szorosan illeszkedik (UX-skill M2: támogató
- * súly, nem önálló szekció-tömb).
- *
- * A link a közös `.kc-text-link` nyelvét viseli (content.css — a landing
- * `kc-inline-link`-je), itt CSAK a nyíl mozgása jön hozzá.
- *
- * KONTRASZT (tokens.css jegyzőkönyve): a tétel-szöveg `text-muted` a paperen
- * 8,80:1, a tinten 8,05:1; a link `primary` (accent-deep) a paperen 5,16:1 —
- * mind AA felett. A tétel-pont `accent`-je DEKORÁCIÓ (nem hordoz szöveget),
- * ezért rá az akcent-korlát nem vonatkozik.
- *
- * Betöltés: src/components/content/home/CredentialsStrip.tsx.
  */
 
 .kc-creds {

@@ -4,146 +4,21 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 
 /**
- * AnchorScroll — a HOSSZÚ horgony-ugrás ne animálódjon, és a fókusz kövesse a szemet.
- *
- * ═══ A MÉRT HIBA ═══
- * A `base.css` a gyökérre `scroll-behavior: smooth`-t tesz, ezért MINDEN
- * horgony-ugrás végiganimálódik, bármilyen messze van a cél. A fejléc-menü
- * „Rendelői kezelések" pontja (`/szolgaltatasok#rendeloi`) 1440×900-on
- * 2048 px-t (2,3 nézetablak), 390×844-en 3138 px-t (3,7 nézetablak) görget —
- * Chromiumban mérve 661–790 ms-ig tartó, a teljes lapot elhúzó mozgás, ami
- * terhelés alatt képkockákat is ejt (4× CPU-fékkel 3–6 kockát a 717 ms-ból).
- *
- * ═══ A KÜSZÖB LEVEZETÉSE (mérés, nem érzés) ═══
- * Chromium `scroll-behavior: smooth` animáció-hossza a távolság szerint
- * (900 px magas nézetablak): 0,22× → 217 ms · 0,5× → 333 ms · 0,75× → 417 ms ·
- * 1,0× → 483 ms · 1,5× → 600 ms · 2,0× és fölötte → 683 ms (itt befagy).
- * A NN/g mérése szerint 500 ms fölött az animáció „a real drag" a
- * felhasználónak, az ajánlott sáv 100–500 ms. PONTOSAN egy nézetablaknyi
- * ugrás az utolsó, amely még e küszöb alatt marad — ezért ez a határ.
- * A WCAG 2.2 SC 2.3.3 (Animation from Interactions) ugyanezt az elvet mondja
- * ki a görgetéshez társított, nem lényegi mozgásra.
- *
- * ═══ MIÉRT ÍGY, ÉS NEM A KATTINTÁS ELKAPÁSÁVAL ═══
- * A komponens NEM hívja meg a `preventDefault`-ot, és nem görget maga: csak
- * egy osztályt tesz a gyökérre a `styles/motion.css` `.kc-scroll-instant`
- * szabályához, mielőtt a böngésző (vagy a Next.js útválasztó) elindítaná a
- * görgetést. Így az útválasztó állapotkezelése és az előzmények érintetlenek
- * maradnak — csak a mozgás módja változik. Ha a JS nem fut le, a lap pontosan
- * a mai módon viselkedik. (A FÓKUSZT külön ág teszi a célra, lásd lent: azt a
- * böngésző az útválasztón át futó ugrásnál nem mozdítja.)
- *
- * `prefers-reduced-motion: reduce` esetén a MOZGÁS-ág marad ki (ott a base.css
- * már `scroll-behavior: auto`-t ad, tehát nincs mit visszavenni); a FÓKUSZ-ág
- * ilyenkor is fut, mert a mozgás-korlát és az akadálymentesség nem ugyanaz —
- * lásd lent.
- *
- * ═══ A FÓKUSZ IS KÖVESSE A SZEMET (2026-08-17) ═══
- *
- * MÉRT HIBA (Chromium 1194, /szolgaltatasok#rendeloi, 1440×900):
- *   - a fejléc menüpontjára EGÉRREL kattintva a lap a célhoz görget (y=2055),
- *     de a fókusz a menüponton marad, és a következő Tab a menü KÖVETKEZŐ
- *     pontjára visz („Szakmai képzés") — az a cél ELŐTT áll a dokumentumban
- *     (`compareDocumentPosition`: DOCUMENT_POSITION_PRECEDING);
- *   - BILLENTYŰZETTEL ugyanez, ráadásul a látható fókuszgyűrű is a lap tetején,
- *     a menüponton marad, miközben a szem a lap közepén jár;
- *   - HIDEG betöltésnél a `document.activeElement` a `body`.
- * Ez a WCAG 2.2 SC 2.4.3 (Focus Order, A) sérülése: a fókusz sorrendje nem
- * őrzi meg a működés értelmét, ha a szem a lap közepén, a fókusz a tetején van.
- * A repó saját szabálya (docs/ui-sztenderdek.md N-13) ugyanezt írja elő.
- *
- * MIÉRT NEM OLDJA MEG A BÖNGÉSZŐ MAGÁTÓL: a HTML-szabvány „scroll to the
- * fragment" lépése beállítja a *sequential focus navigation starting point*-ot
- * a célra, ezért NATÍV horgony-navigációnál a Tab már ma is a célnál folytatja
- * (mérve: hideg betöltés után a Tab a célon BELÜLI „időpontot kérek" gombra
- * visz). A Next.js útválasztója viszont nem natívan navigál: a
- * `layout-router` a hash-célra `instance.scrollIntoView()`-t hív, és a saját
- * megjegyzése szerint „This handler intentionally leaves focus untouched" —
- * a `scrollIntoView` pedig sem fókuszt, sem kiindulópontot nem állít. Ezért a
- * lapon belüli, útválasztón át futó ugrásnál a Tab a fejlécben marad.
- *
- * A MINTA: `tabindex="-1"` + `focus()` — a GOV.UK Design System „skip link"
- * komponensének `setFocus()` segédlete pontosan ezt teszi (a célra csak akkor
- * tesz `tabindex`-et, ha még nem fókuszálható, és `blur`-kor VISSZASZEDI, hogy
- * a DOM ne maradjon átírva). Két eltérés a mi esetünkben:
- *
- *   1. `focus({ preventScroll: true })`. A `focus()` alapból „scroll the
- *      element into view" — és mivel a lap `scroll-behavior: smooth`-t visz, ez
- *      egy MÁSODIK, animált görgetést indítana az imént beállított pozícióról.
- *      Mérve: `preventScroll` nélkül a fókuszálás 0-ról 2347 px-re görgetett,
- *      `preventScroll: true`-val 0 px volt az elmozdulás.
- *   2. A gyűrű: a repó minden fókusz-szabálya `:focus-visible`-re szól
- *      (base.css), amit a böngésző heurisztikája vezérel. Mérve: egérrel
- *      kattintva a célszekció `matches(':focus-visible')` értéke false, a
- *      számított `outline` `none 0px` — tehát nem villan fel gyűrű. Billentyűs
- *      úton (Enter a menüponton) a gyűrű megjelenik, és ott ez a KÍVÁNT
- *      viselkedés (WCAG 2.2 SC 2.4.7 Focus Visible).
- *
- * MIÉRT A RÖVID UGRÁSNÁL IS: a fókusz-hiba nem a távolságtól függ, hanem attól,
- * hogy az útválasztó nem mozdítja a fókuszt. Mérve: egy nézetablaknál rövidebb
- * ugrásnál (1295 → 2055 px) is a menüponton maradt a fókusz. A SC 2.4.3 nem
- * ismer távolság-küszöböt, ezért a fókusz-ág minden lapon belüli horgonyra fut,
- * a mozgás-ág pedig változatlanul csak az egy nézetablaknál hosszabbra.
- *
- * MIÉRT NEM A HIDEG BETÖLTÉSNÉL: ott natív horgony-navigáció fut, tehát a
- * böngésző már beállította a kiindulópontot — mérve: az első Tab a célon
- * BELÜLI gombra visz. Programozott fókusz ott csak ártana: felhasználói
- * esemény híján a böngésző `:focus-visible`-nek minősíti a fókuszt, és 3 px-es
- * gyűrűt rajzol a szekció köré (mérve: `outline: solid 3px`) — MINDEN
- * látogatónak, az egeresnek is. Márpedig az örökölt `/rendeloi-kezelesek` cím
- * 308-cal pont ide, hideg betöltésre érkezik (src/lib/legacy-redirects.ts).
- *
- * MIÉRT CSÖKKENTETT MOZGÁS MELLETT IS: a `prefers-reduced-motion` a MOZGÁSRÓL
- * szól (WCAG 2.2 SC 2.3.3), nem a fókuszról. Mérve: `reduce` mellett az érkezés
- * azonnali (0 ms), a fókusz viszont ugyanúgy a menüponton maradt — a hiba tehát
- * ott is fennáll. Ezért a komponens már nem lép ki korán: a mozgás-ág kap
- * őrszemet (`csokkentettMozgas()`), a fókusz-ág feltétel nélkül fut.
- *
- * WCAG 2.2 SC 2.4.11 (Focus Not Obscured, AA): a fókuszált cél nem kerülhet a
- * ragadós fejléc alá. Ezt a `scroll-padding-top` adja a gyökéren (base.css),
- * és mérve is tartja magát: a szekció teteje a fejléc alsó éle alatt áll.
+ * AnchorScroll — hosszú horgony-ugrás rövidítése; fókusz a célra lapon belüli útválasztónál.
+ * Nem hív preventDefault-ot: csak `.kc-scroll-instant` osztályt tesz a gyökérre (motion.css).
+ * Hideg betöltésnél NEM fókuszál — natív fragment navigáció már beállítja a Tab kiindulópontját.
+ * Lapon belül: tabindex="-1" + focus({ preventScroll: true }), különben második smooth görgetés.
+ * Csökkentett mozgásnál a fókusz-ág továbbra is fut (2.3.3 ≠ 2.4.3).
+ * Előkészítő ugrás: behavior 'instant' kell — 'auto' itt is smooth marad (base.css).
  */
 
 /** A gyökér-osztály, amely a görgetést azonnalivá teszi (motion.css). */
 const INSTANT_CLASS = 'kc-scroll-instant'
 
-/**
- * Ennyi nézetablak-magasságnál hosszabb ugrás számít HOSSZÚNAK.
- *
- * 1 = pontosan egy képernyőnyi. A mért Chromium-görbén ez 483 ms-os
- * animációt jelent, ami még a NN/g 500 ms-os küszöbe alatt van.
- */
+/** Egy nézetablaknál hosszabb ugrás számít hosszúnak. */
 const MAX_ANIMALT_NEZETABLAK = 1
 
-/**
- * ═══ A HOSSZÚ, LAPON BELÜLI UGRÁS RÖVIDÍTÉSE ═══
- *
- * Tulajdonosi döntés (2026-08-17): „elsimítás nagyon fontos" — a mozgás tehát
- * NEM tűnhet el, csak nem húzódhat el. A korábbi megoldás a hosszú ugrást
- * azonnalivá tette (0 ms); ez megszüntette az „ugrálást", de a simítást is.
- *
- * A mostani megoldás a TÁVOLSÁGOT rövidíti, nem a mozgást tünteti el: a
- * kattintás pillanatában azonnal a cél elé ugrunk fél képernyőnyire, és az
- * utolsó szakaszt a böngésző saját sima görgetése teszi meg. A néző így nem
- * lát elhúzódó, képkockát ejtő átsuhanást a lap közepén, viszont a célhoz
- * érkezés SIMA marad, és látja, hova ért.
- *
- * A 0,5 érték MÉRT: a Chromium `scroll-behavior: smooth` animáció-hossza a
- * távolság szerint (900 px-es nézetablak) 0,5× → 333 ms · 0,75× → 417 ms ·
- * 1,0× → 483 ms · 2,0× és fölötte → 683 ms (befagy). A 333 ms a NN/g által
- * ajánlott 100–500 ms-os sávban van, annak is a kényelmes közepén.
- *
- * MIÉRT NEM SAJÁT rAF-ANIMÁCIÓ: ahhoz el kellene nyelni a kattintást
- * (`preventDefault`), és magunknak kellene görgetni. Azzal az útválasztó
- * állapotkezelése és az előzmények is ránk szállnának. Így viszont a böngésző
- * végzi a görgetést, mi csak a kiindulópontot állítjuk át.
- *
- * FIGYELEM, MÉRT CSAPDA: a `behavior: 'auto'` NEM azonnalit jelent, hanem azt,
- * hogy a böngésző a CSS `scroll-behavior`-t használja — ami itt `smooth`.
- * Mérve: az `auto`-val kért előkészítő ugrás MAGA is végiganimálódott
- * (0 → 1685 px, 698 ms), és a rákövetkező görgetés így ismét a teljes utat
- * tette meg. A nem animált értéket kimondottan kérni kell: `'instant'`.
- */
+/** Hosszú ugrásnál a cél előtt fél képernyő — az utolsó szakasz sima marad. */
 const ELOKESZITO_NEZETABLAK = 0.5
 
 /**
@@ -215,17 +90,11 @@ function ideiglenesTabindexKell(elem: FokuszCel): boolean {
 
 /**
  * A horgony CÉLJÁRA teszi a fókuszt, GÖRGETÉS NÉLKÜL.
- *
  * A GOV.UK Design System `setFocus()` segédletének mintája: ha a cél még nem
  * fókuszálható, ideiglenes `tabindex="-1"`-et kap, és `blur`-kor visszaszedjük,
  * hogy a lap DOM-ja ne maradjon tartósan átírva. A `preventScroll` a mi
  * kiegészítésünk: enélkül a fókuszálás MÉG EGYSZER odagörgetne, mégpedig
  * animálva (a lap `scroll-behavior: smooth`), és elrontaná az imént beállított
- * pozíciót.
- *
- * @param elem a horgony célja
- * @param ideiglenesek az átmeneti `tabindex`-ek nyilvántartása (leszereléskor
- *   ebből takarítunk, ha a `blur` már nem futna le)
  */
 export function fokuszCelra(elem: FokuszCel, ideiglenesek: Set<FokuszCel>): void {
   if (ideiglenesTabindexKell(elem)) {
@@ -441,24 +310,13 @@ export function AnchorScroll() {
   }, [])
 
   /**
-   * LAPVÁLTÁS: a fókusz a hash céljára az ÚJ lapon.
-   *
-   * A kattintás-kezelő a lapon belüli ugrást fedi; lapváltásnál a cél a
-   * kattintás pillanatában még nincs a DOM-ban, ezért az új útvonal
-   * kirenderelése UTÁN kell fókuszálni. A Next.js a hash-célra
-   * `scrollIntoView()`-t hív egy elrendezés-hatásban, a fókuszt szándékosan nem
-   * mozdítja — ez a hatás fut utána, tehát a görgetés már megtörtént.
-   *
-   * A HIDEG BETÖLTÉS (első futás) KIMARAD. Ott natív horgony-navigáció történt,
-   * és a böngésző a szabvány szerint már beállította a *sequential focus
-   * navigation starting point*-ot a célra. Mérve is: hideg betöltés után az
-   * első Tab a célon BELÜLI „időpontot kérek" gombra visz, tehát nincs mit
-   * javítani. Fókuszálni viszont ott ÁRT: a lap még nem kapott felhasználói
-   * eseményt, ezért a böngésző heurisztikája `:focus-visible`-nek minősíti a
-   * programozott fókuszt, és 3 px-es gyűrűt rajzol a szekció köré (mérve:
-   * `outline: solid 3px`), MINDEN látogatónak, az egeresnek is. Márpedig az örökölt
-   * `/rendeloi-kezelesek` cím 308-cal pont ide, hideg betöltésre érkezik.
-   */
+ * LAPVÁLTÁS: a fókusz a hash céljára az ÚJ lapon.
+ * A kattintás-kezelő a lapon belüli ugrást fedi; lapváltásnál a cél a
+ * kattintás pillanatában még nincs a DOM-ban, ezért az új útvonal
+ * kirenderelése UTÁN kell fókuszálni. A Next.js a hash-célra
+ * `scrollIntoView()`-t hív egy elrendezés-hatásban, a fókuszt szándékosan nem
+ * mozdítja — ez a hatás fut utána, tehát a görgetés már megtörtént.
+ */
   const elsoFutas = useRef(true)
   useEffect(() => {
     if (elsoFutas.current) {

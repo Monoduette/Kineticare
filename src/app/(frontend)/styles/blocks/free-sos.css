@@ -1,30 +1,6 @@
 /**
  * Ingyenes SOS-sáv (FreeSos) — szekció-stílus.
- *
- * Forrás: a landing `.kc-sos` blokkja (higgsfield-site/app/src/kineticare.css
- * 802–880.): akcent-mély színsáv, fehér serif cím, jobb oldalt kép-art
- * gradiens-átmenettel a sáv színébe, 2px fehér keretes CTA nyíllal. A sáv
- * színe a `primary` szerep-token (= accent-deep), a szövegé az `on-primary`
- * (= fehér) — nyers hex nélkül.
- *
- * ELTÉRÉS A LANDINGTŐL (értékesítési UX-skill M4/K2): a landingen a sáv egy
  * teljes képernyős tábla volt. Itt NEM az: normál szekció-ritmusban él
- * (`.kc-section` padding + mérsékelt min-height), mert az INGYENES ajánlat
- * vizuálisan nem előzheti meg a fizetős kurzus-blokkot. A cím a KÖZÖS L
- * lépcsőn áll, mint minden szekciócím: a másodlagos súlyt nem a betűméret,
- * hanem a sáv elhelyezése és halkabb kerete adja.
- *
- * KONTRASZT — a fehér szöveg GARANCIÁJA (UX-skill 3. pont, „legrosszabb eset"):
- *  - fehér az accent-deep (#2f6e9f) sávon 5,45:1 — AA ✓ normál szövegre is;
- *    a sötét (ink) változaton 15,63:1.
- *  - a szöveg SOSEM ül a képen: 900px alatt a kép-art el sem indul
- *    (`display: none`), 900px felett a kép a jobb 44%-on áll, a szekcióra
- *    fektetett gradiens pedig a bal 58%-ig TÖMÖR sávszín — a szövegoszlop
- *    szélessége itt max. 56%, tehát végig a tömör sávon marad.
- *  - a fehér 2px keret és a fehér fókuszgyűrű a sávon 5,45:1 (UI-küszöb 3:1) ✓;
- *    a globális accent-deep fókuszgyűrű a saját sávján nem látszana.
- *
- * Betöltés: src/components/content/home/FreeSos.tsx.
  */
 
 .kc-free-sos {

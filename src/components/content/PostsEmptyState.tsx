@@ -7,57 +7,6 @@ import '../../app/(frontend)/styles/blocks/empty-state.css'
 
 /**
  * PostsEmptyState — a Tudástár ÉRTELMES üres állapota (bloglista és
- * kategória-oldal).
- *
- * ═══ MIÉRT KELL EGYÁLTALÁN ═══
- * A `/blog` ma zsákutca: az IA-audit mérése szerint a `<main>`-ben NULLA
- * link van, miközben a „Tudástár" a négy főmenüpont egyike — a menü 25%-a
- * visz egy semmire (docs/informacios-architektura.md, Z2 és a 7. fejezet 4.
- * sora). A zsákutca-tilalom a projekt-skill 5. pontja: „minden oldalról
- * legyen értelmes továbblépés és visszaút".
- *
- * ═══ MIT KELL EGY ÜRES ÁLLAPOTNAK TUDNIA (kutatás) ═══
- * 1. NN/g, Designing Empty States in Complex Applications: 3 Guidelines —
- *    https://www.nngroup.com/articles/empty-state-interface-design/
- *    Az üres felület három dolgot végez el: közli a rendszer állapotát,
- *    megtanítja, mi kerül ide, és közvetlen utat ad a következő feladathoz
- *    („provide direct pathways for getting started with key tasks").
- *    A teljesen üres nézet tilos: „Do not default to totally empty states.
- *    This approach creates confusion for users, who may be left wondering if
- *    the system is still loading information or if errors have occurred."
- * 2. IBM Carbon Design System, Empty states pattern —
- *    https://carbondesignsystem.com/patterns/empty-states-pattern/
- *    Anatómia: cím + törzs + elsődleges cselekvés (+ opcionális másodlagos
- *    út). A cím ÁLLÍTÁS legyen, ne a hiány panasza („Write this as a positive
- *    statement"), és ha van értelmes következő lépés, „include a direct link
- *    in your message copy or a primary action button".
- * 3. NN/g, Top 10 Information Architecture Mistakes —
- *    https://www.nngroup.com/articles/top-10-ia-mistakes/
- *    A „Missing Category Landing Pages" hibája pontosan ez: a kategória
- *    (itt: a Tudástár) létezik a navigációban, de nincs mögötte lap, ami
- *    továbbvinne.
- *
- * ═══ FELIRATOK (docs/ui-sztenderdek.md §3.2 CTA-szótár) ═══
- * - „Nézd meg a kurzusokat" — a szótár 10. sora, amely a felhasználási
- *   helyek közt KIFEJEZETTEN nevesíti az üres állapotokat. E/2, mert puszta
- *   navigáció (P-1b): a kattintás után csak máshol vagyunk.
- * - „Elindítom ingyen" — a szótár 3./4. sora. E/1 (P-1a), mert hozzáférés
- *   keletkezik. Csak akkor jelenik meg, ha van TUDATOSAN ingyenes termék
- *   (lásd lentebb): hamis ígéretet a felirat nem tehet.
- * - „Vissza a Tudástárba" — a szótár 15. sorának mintázatos alakja
- *   („Vissza a <hova>"), E/2.
- * - „Kapcsolat" — a fejléc- és lábléc-menü szava, változatlanul (WCAG 2.2
- *   **3.2.4** Consistent Identification: ugyanaz a cél mindenhol ugyanazzal
- *   a névvel). Ezért marad főnévi, egyszavas címke (P-1c).
- * Gondolatjel a feliratokban és a törzsszövegben SINCS (magyar mikroszöveg-
- * szabályzat, §3.1.2).
- *
- * ═══ AMIT NEM TESZÜNK ═══
- * Az „ingyenes kurzus" útja csak akkor jelenik meg, ha a hívó tényleg talált
- * `priceInHUFEnabled: false` állapotú, published terméket. A kezdőlapon élő
- * hiba (IA-audit T1) pont az ellenkezője volt: az „Elindítom az ingyenes
- * kurzust" gomb a kurzuslistára esett vissza, tehát ígért valamit, amit nem
- * teljesített. Itt a hiányzó ingyenes terméknél a gomb egyszerűen nincs.
  */
 
 export type PostsEmptyStateVariant = 'tudastar' | 'kategoria'

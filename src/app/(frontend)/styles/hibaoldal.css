@@ -1,31 +1,6 @@
 /**
  * Hibaoldalak (nem található / váratlan hiba) — a `layout.css` meglévő
- * `.kc-error-page` alapjára épülő KIEGÉSZÍTŐ réteg.
- *
- * Miért külön fájl: a `.kc-error-page`, `__code`, `__title`, `__text`,
- * `__actions` szabályok a `layout.css`-ben élnek és változatlanok maradnak;
- * ide csak az ÚJ elemek (ellenőrző-lista, cél-lista, kapcsolat-sor, a
- * layout nélküli global-not-found kerete) kerülnek.
- *
  * BETŰMÉRET: ebben a fájlban SZÁNDÉKOSAN nincs egyetlen `font-size`
- * deklaráció sem. A méretet a szemantikus elem (h1 / p / li) örökli a
- * base.css-től, így a lap automatikusan követi a tipográfiai skálát, és a
- * skála-őr tesztje sem sérülhet.
- *
- * MÉRT ÉRTÉKEK (Chromium, 2026-08-16, a mérés a jelentésben):
- *  - szövegkontraszt: ink (#10243e) a paper (#f6f9fc) fölött 14,79:1,
- *    ink-soft (#33495f) ugyanott 8,80:1 — WCAG 2.2 · 1.4.3 (≥ 4,5:1) ✓
- *    https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
- *  - cél-link keret: hairline-strong (#6b7f94) a paperen 3,91:1 —
- *    WCAG 2.2 · 1.4.11 Non-text Contrast (≥ 3:1) ✓
- *    https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
- *  - érintőcél: a cél-linkek min-height 44px — WCAG 2.2 · 2.5.8 küszöbe
- *    24×24 CSS px, a projekt célja 44×44
- *    https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
- *  - sorhossz: a szöveges blokkok `--kc-measure-comfort` (30rem) szélesek,
- *    magyar szöveggel mérve 45–85 karakter között
- *  - 320px-en nincs vízszintes görgetés (WCAG 2.2 · 1.4.10 Reflow)
- *    https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
  */
 
 /* MÉRT JAVÍTÁS: a `narrow` konténer (720px) egy sorba engedte a nyitómondatot,

@@ -2,18 +2,11 @@ import type { SalesGuarantee } from './sales-content'
 
 /**
  * CourseGuarantee — a garancia KIEMELT sávban, nem a lap alján folyószövegben.
- *
  * Miért: a Baymard termékoldal-benchmarkja szerint az oldalak 44%-a nem
  * jeleníti meg és nem is linkeli a visszaküldési feltételeket, a
  * kosárelhagyások 13%-a pedig épp ezen múlik
  * (docs/ux-belso-oldalak-kutatas.md B6.3, K13). A mi oldalunkon a garancia
  * eddig a 821 szavas leírás LEGALJÁN volt — a nézési idő maradék ~19%-ának
- * zónájában.
- *
- * A sáv 2026-08-16-ig egy megismételt vásárlási gombot is hordozott
- * (`children`). Az ismételt CTA-k tulajdonosi döntéssel kikerültek: a lap
- * egyetlen vásárlási célja a ragadós vásárlódoboz, mobilon a ragadós alsó
- * sáv. A garancia így tisztán érv marad, nem gomb-hordozó.
  */
 export interface CourseGuaranteeProps {
   guarantee: SalesGuarantee

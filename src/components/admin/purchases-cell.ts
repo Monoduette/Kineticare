@@ -7,33 +7,18 @@ import { statusLabel } from './course-progress-view'
  * A „Megvásárolt kurzusok" admin-megjelenítés TISZTA (mellékhatásmentes)
  * segédfüggvényei — a Felhasználók lista-oszlopához és a felhasználó lapján
  * lévő áttekintő panelhez.
- *
  * Külön modulban él a kliens-komponensektől, hogy egységtesztelhető legyen (a
  * @payloadcms/ui-s komponensek node-környezetű tesztben nem tölthetők be — az
  * order-items-cell.ts mintája).
- *
- * MIÉRT KELL EGYÁLTALÁN: a Payload gyári relationship-cellája a kapcsolt
- * collection `useAsTitle` mezőjével címkéz, ami a kurzusoknál szándékosan a
- * `sku` (technikai azonosító). A tulajdonosnak viszont a KURZUS CÍME mond
- * valamit — ezért a cella a `displayTitle` → `sku` → `Kurzus #id` láncot
- * használja, pontosan úgy, ahogy a storefront `courseTitle` (src/lib/courses.ts).
- * A két lánc egyezését teszt rögzíti (purchases-cell.test.ts), hogy ne
- * csússzanak szét.
  */
 
 /**
  * Üres/hiányzó hozzáférés-lista helyőrzője.
- *
- * MIÉRT SZÖVEG, ÉS MIÉRT NEM KVIRTMÍNUSZ: korábban egyetlen „—" (U+2014) állt
  * itt. Két baj volt vele. (1) A `docs/ui-sztenderdek.md` §3.1.1 szerint a
  * kvirtmínusz magyar szövegben nem írásjel. (2) A puszta jel a képernyőolvasóban
  * vagy néma, vagy „em dash"-ként hangzik el, tehát az információ elvész
  * (WCAG 2.2 SC 1.3.1). Ugyanezért váltotta ki a Kurzus-haladás panel is a
  * jelet szöveges `NO_DATA`-ra (src/components/admin/course-progress-view.ts).
- *
- * A szöveg SZÁNDÉKOSAN nem „Nincs adat": az adat megvan, és azt mondja, hogy
- * a felhasználó egyetlen kurzust sem vásárolt. A kettő nem ugyanaz, és a
- * munkatársnak épp ez a különbség számít.
  */
 export const PURCHASES_EMPTY_PLACEHOLDER = 'Nincs kurzusa'
 
@@ -59,19 +44,11 @@ export function formatCourseLabel(product: PurchaseProductLike): string {
 
 /**
  * A hozzáférés-lista azonosítói.
- *
  * A bemenet futásidőben többféle: a lista-nézet nyers azonosítókat ad
  * (`[11, 12]`), a szerkesztő-nézet feloldott dokumentumokat is adhat
  * (`[{ id: 11, … }]`), polimorf kapcsolatnál pedig `{ relationTo, value }`
  * alakot. Mindhármat elviseli, ismeretlen elemet némán kihagy — egy hibás
  * elem nem omlaszthatja el a listát.
- *
- * DUPLIKÁTUM NEM MEHET TOVÁBB, a beérkezési sorrend viszont marad. A
- * `purchases` mezőn nincs egyediség-kényszer, tehát egy kézi szerkesztés vagy
- * egy ismételt hozzáférés-adás ugyanazt a kurzust kétszer is felviheti — a
- * cella ilyenkor UGYANAZT a sort írta ki kétszer, ami hibának látszik.
- * (A szerver a `purchasedProductIds`-ben ugyanígy deduplikál, tehát a két
- * oldal így ugyanazt a kurzus-halmazt látja.)
  */
 export function readPurchaseIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -138,17 +115,11 @@ export function readProductTitles(body: unknown): Map<string, string> {
 
 /**
  * A megjelenítendő sorok CÍMEI (haladás nélkül).
- *
  * - üres lista → egyetlen „—",
  * - ismert azonosító → a kurzus címe,
  * - még be nem töltött (vagy törölt) kurzus → `Kurzus #<id>`, hogy a sor
- *   akkor is azonosítható maradjon, ha a cím nem érhető el.
- *
+ * akkor is azonosítható maradjon, ha a cím nem érhető el.
  * A `formatPurchaseRows` cím-oszlopát adja vissza, tehát a két függvény nem
- * tud szétcsúszni: a haladás-kiegészítés bevezetésekor ez volt a KOCKÁZAT
- * (két, egymástól független címképző lánc), ezért egyetlen forrásra vezettük
- * vissza. A felhasználó lapján lévő áttekintő panel változatlanul ezt hívja:
- * ott nincs haladás-adat, és nem is kell.
  */
 export function formatPurchaseLabels(
   value: unknown,
@@ -236,22 +207,11 @@ export function readRowUserId(rowData: unknown): number | null {
 
 /**
  * Egy haladás-bejegyzés ELLENŐRZÖTT alakja, vagy `null`.
- *
  * Ez az EGYETLEN hely, ahol a bejegyzés érvényessége eldől — a betöltő
  * (user-progress-client.ts) és a formázó is ezt hívja, tehát nem tud
  * kétféle „érvényes" fogalom kialakulni.
- *
  * Hiányzó vagy ismeretlen `status`, nem szám `percent`, hibás `productId`:
  * a bejegyzés kiesik, a kurzus sora pedig a haladás előtti alakját hozza
- * (csak a cím). Ez SZÁNDÉKOS: a `statusLabel` `default` ága „Nem kezdte el"-t
- * adna egy ismeretlen értékre is, vagyis a felület egy konkrét emberről
- * állítana valótlant. Inkább nem mondunk semmit, mint rosszat.
- *
- * A százalék szorítása (0–100) és egészre kerekítése MEGJELENÍTÉS, nem
- * számítás: a haladást a szerver adja készen, itt csak azt biztosítjuk, hogy
- * egy szerződésszegő érték se rajzolhasson „−4%"-ot vagy „45,6%"-ot a
- * listába. Ugyanezt a szorítást végzi a panel `ringGeometry`-je is
- * (course-progress-view.ts).
  */
 export function normalizeProgressEntry(value: unknown): UserCourseProgressEntry | null {
   if (typeof value !== 'object' || value === null) {
@@ -299,17 +259,11 @@ function inlineLabel(label: string): string {
 
 /**
  * Az állapot MONDATKÖZI, kisbetűs alakja („folyamatban", „nem kezdte el").
- *
  * A szótár NEM íródik újra: a felirat a Kurzus-haladás panel `statusLabel`
  * függvényéből jön, csak a kezdőbetűje lesz kicsi. Így a lista és a panel
  * ugyanazt a szót használja ugyanarra az állapotra (WCAG 2.2 SC 3.2.4,
  * Consistent Identification:
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
  * és egy jövőbeli átfogalmazás egyszerre viszi mindkét felületet.
- *
- * Miért kicsi a kezdőbetű: a felirat itt nem önálló címke, hanem egy sor
- * harmadik tagmondata („Otthoni KézRehab Program · 45% · folyamatban") — a
- * mondat közepén nagy kezdőbetű a magyar helyesírás szerint hibás volna.
  */
 export function inlineStatusLabel(status: CourseStudentStatus): string {
   return inlineLabel(statusLabel(status))
@@ -317,22 +271,11 @@ export function inlineStatusLabel(status: CourseStudentStatus): string {
 
 /**
  * Az üres tananyag felirata MONDATKÖZI, kisbetűs alakban („nincs tananyag").
- *
- * MIÉRT KÜLÖN ÁLLAPOT: a lecke `status` mezőjének alapértelmezése
  * `processing`, ezért egy frissen feltöltött (vagy még feldolgozás alatt álló)
  * kurzusnál NULLA az elindítható leckék száma. A közös összesítő ilyenkor
  * — helyesen — 0%-ot és `nem-kezdte` állapotot ad, a sor viszont ebből azt
  * állította, hogy „0% · nem kezdte el". Ez HAMIS: nem a vevőn múlt, hanem
  * azon, hogy nincs mit elkezdeni; a munkatárs pedig e szerint keresné meg
- * lemaradóként azt is, aki a kurzust korábban végignézte. Ilyenkor tehát sem
- * százalék, sem állapot-szó nem jelenik meg — csak ez a tényállítás.
- *
- * A SZÓ nem itt születik: a `NO_LESSONS_LABEL` a vevői felület (lejátszó,
- * „Kurzusaim" lista) felirata is (src/lib/curriculum/progress.ts). Egy
- * fogalomra egy szó — ugyanaz a szabály, ami miatt az állapot-szótár is a
- * panelből jön (WCAG 2.2 SC 3.2.4, Consistent Identification). Csak a
- * kezdőbetű lesz kicsi, mert a sor tagmondata („Kurzus címe · nincs
- * tananyag"). Színt nem kap: az információt a SZÓ hordozza (SC 1.4.1).
  */
 export const INLINE_NO_LESSONS_LABEL = inlineLabel(NO_LESSONS_LABEL)
 
@@ -370,22 +313,11 @@ function indexProgress(
 
 /**
  * A cella sorai, kurzusonként, a haladással kiegészítve.
- *
  * A haladást minden sor a SAJÁT `productId`-je alapján keresi meg. Ha arra a
  * kurzusra nincs (még be nem töltött, a szerver nem ismeri, vagy értelmezhetetlen)
  * bejegyzés, a sor a haladás előtti viselkedést hozza: csak a cím. Ezért nincs
  * betöltés-jelző és helyfoglaló sem — a cella a betöltés alatt pontosan úgy néz
  * ki, mint eddig, majd a szöveg kiegészül. Ugrálás (layout shift) így nem
- * keletkezik a lista sűrűjében.
- *
- * A haladás-bejegyzések között lehet olyan kurzus is, amit a felhasználó nem
- * vett meg (vagy már nem szerepel a hozzáférés-listáján): az ilyen bejegyzés
- * egyszerűen nem talál sort, tehát nem jelenik meg. A sorokat MINDIG a
- * hozzáférés-lista határozza meg, nem a haladás-válasz.
- *
- * @param value a `purchases` cellData (nyers azonosítók vagy feloldott dokumentumok)
- * @param titles azonosító → kurzuscím (`loadCourseTitles`)
- * @param progress a felhasználó kurzus-haladásai, vagy `null`, ha nincs (még) adat
  */
 export function formatPurchaseRows(
   value: unknown,

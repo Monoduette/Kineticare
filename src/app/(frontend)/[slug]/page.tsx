@@ -32,25 +32,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 /**
  * CMS-oldal (Pages) renderelése — hero + SZEKCIÓSOR vagy rich-text.
- *
  * SZEKCIÓ-RENDSZER (docs/ux-belso-oldalak-kutatas.md, P3): a `Pages.layout`
  * blokk-mező 16 blokktípussal régóta létezik, és az admin súgója is azt ígéri,
  * hogy az „az oldal építőkockás része" — ez a route viszont SOHA nem
  * rendereli. A staff összerakhatott egy szekciósort, elmenthette, és semmi
  * nem jelent meg belőle: néma tartalomvesztés, egyben a „minden egymás alatt
- * van" gyökéroka. A javítás a KEZDŐLAP bevált mintája (HomeView): ha van
- * szekciósor, azt a `RenderBlocks` rendereli, üres layoutnál marad a mai
- * rich-text ág. A `RenderBlocks` maga változatlan — itt csak hívjuk.
- *
- * Egyetlen H1: a lap címét a hero adja. A `filmHero` blokk viszont SAJÁT h1-et
- * renderel (ScrollScrub), ezért ha a szerkesztő filmsávot tett a lapra, a
- * szöveges hero (és a hozzá tartozó hero-kép) kimarad — a filmsáv AZ oldal
- * heroja. Így a dokumentumban minden esetben pontosan egy h1 marad.
- *
- * Lekérdezés-takarékosság: a blokkok adatvezérelt fajtái (courseCards, freeSos,
- * knowledge, testimonials) termék-, poszt- és vélemény-listát igényelnek. Ezt a
- * három lekérdezést CSAK akkor indítjuk, ha tényleg van szekciósor — rich-text
- * oldalon egy fölösleges kör sem fut.
  */
 export default async function CmsPage({ params }: Props) {
   const { slug } = await params

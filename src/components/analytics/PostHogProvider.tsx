@@ -13,17 +13,11 @@ import {
 
 /**
  * PostHogProvider — a PostHog kliensoldali inicializálásának kapuja.
- *
  * - Kulcs nélkül: tiszta pass-through (az analitika kikapcsolt, a felület
- *   ettől függetlenül működik).
+ * ettől függetlenül működik).
  * - CONSENT-FIRST: csak analytics-hozzájárulás esetén init; a ConsentBanner
- *   'kc:analytics-consent' eseményére oldalfrissítés nélkül bekapcsol
- *   ('granted' → init, vagy opt_in, ha már volt init), 'denied'-re pedig
- *   opt_out-tal kikapcsol — az újra-initet a consent-kapu tiltja.
- * - SSR-biztos: minden böngésző-érinkezés useEffect-ben fut (szerveren a
- *   provider tiszta pass-through).
- * - Az oldalletöltést nem blokkolja (a posthog-js a bundle része, az init
- *   useEffect-ben, a festés után fut).
+ * 'kc:analytics-consent' eseményére oldalfrissítés nélkül bekapcsol
+ * ('granted' → init, vagy opt_in, ha már volt init), 'denied'-re pedig
  */
 export function PostHogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {

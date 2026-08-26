@@ -2,22 +2,11 @@ import type { Field } from 'payload'
 
 /**
  * Közös szekció-beállítások MINDEN kezdőlapi blokkhoz (szekció-rendszer terv, 2. pont).
- *
  * Egyetlen forrásból (DRY) adja a három kapcsolót, amit a szerkesztő minden
  * szekciónál ugyanott, ugyanúgy talál meg:
- *  - `visible`  — elrejtés törlés helyett (a tartalom megmarad),
- *  - `anchorId` — lapon belüli hivatkozás (pl. /#kurzusok),
- *  - `hatter`   — a szekció háttérsávja, ott, ahol értelmezett.
- *
- * MEZŐNÉV-KONVENCIÓ: a repó egyébként angol mezőneveket használ (title, lead,
- * items…), a szekció-rendszer viszont három nevet magyarul rögzít — `hatter`,
- * illetve a link-mezőknél `felirat`/`ujAblakban` (lásd link-fields.ts). Ezeket
- * szándékosan NEM angolosítjuk: a terv és a frontend-munkacsomagok (F2/F3)
- * ezekre a nevekre épülnek.
- *
- * A `hatter` a film-hero kivételével minden blokkon szerepel: a film-hero
- * teljes szélességű, saját vizuális kezelésű filmsáv, ahol a háttérsáv-választás
- * értelmezhetetlen lenne.
+ * - `visible`  — elrejtés törlés helyett (a tartalom megmarad),
+ * - `anchorId` — lapon belüli hivatkozás (pl. /#kurzusok),
+ * - `hatter`   — a szekció háttérsávja, ott, ahol értelmezett.
  */
 
 /** A szekciók háttérsávjának lehetséges értékei. */

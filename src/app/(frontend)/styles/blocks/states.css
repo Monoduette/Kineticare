@@ -1,23 +1,10 @@
 /**
  * Három állapot (States) — TÁBLA-szekció stílusa.
- *
  * Forrás: a landing `kc-states` táblája (higgsfield-site/app/src/kineticare.css
  * 373–425., mobil 984., 1000.). A tükör teljes képernyős, függőlegesen középre
  * zárt `kc-vh` táblája MOST MÁR ÁTJÖTT (a korábbi port konténer-szélességbe
  * szorította); a tábla-viselkedést a közös `.kc-board` adja (styles/ui.css).
  * A képkártyák a tükör `.kc-states-grid` arányait viselik: három egyenlő hasáb,
- * 4/4,35 álló képaránnyal és LEKEREKÍTÉS NÉLKÜL (a tükör minimál nyelve).
- *
- * AKCENT-KORLÁT (terv 3.1): a sorszám-plakett háttere `accent-deep`, rajta
- * fehér szöveg = 5,45:1 (AA felett). A landing 80%-os áttetsző plakettje
- * TÖMÖRRE változott: áttetszően a kontraszt a mögötte lévő fényképtől függene,
- * ami nem garantálható (UX-skill: a legrosszabb esetre kell méretezni).
- * A nyers `accent` (tinten 4,07:1) itt nem hordoz szöveget.
- *
- * A kártya felirat-sávja mindig ink-színű, a szekció háttértől függetlenül:
- * fehér cím 15,63:1; a törzs a tükör fehér/78%-os keverékét viszi (≈ 10:1).
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/States.tsx).
  */
 
 .kc-states {

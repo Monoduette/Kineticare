@@ -1,24 +1,10 @@
 /**
  * A kurzus LÁTHATÓSÁGÁNAK üzenete a szerkesztőnek — tiszta, React-mentes logika.
- *
- * ═══ MIT OLD MEG (a legsúlyosabb admin UX-hiba) ═══
  * Az admin UX-audit végigjátszotta egy új kurzus felvitelét, és NÉMA
  * adatvesztéssel egyenértékű csapdát talált: a lapon KÉT különböző dolgot
  * hívnak „Állapot"-nak, és a feltűnőbbik hazudik.
- *  - A lap TETEJÉN a Payload dokumentum-státusza áll („Állapot: Közzétett",
- *    `_status`) — ezt írja ki a rendszer a „Módosítások közzététele" gomb után.
- *  - A bolt viszont KIZÁRÓLAG a `products.status` mezőt nézi (src/lib/courses.ts).
- * Mérve: a normál folyamattal felvitt kurzusnál `_status=published`, DE
- * `status=NULL`, és a kurzus NEM jelent meg a /kurzusok oldalon. Semmi nem
- * figyelmeztetett. Tetézi, hogy a `status` mezőt csak TULAJDONOS állíthatja,
- * tehát a munkatárs észre sem veszi a hibát, és javítani sem tudja.
- *
- * A javítás három rétegű: (1) a mező alapértéke `draft`, tehát nem marad
- * jelöletlen, (2) a mező neve egyértelmű („Megjelenés a weboldalon") és a
- * közzététel-gomb mellé, az oldalsávba került, (3) EZ a figyelmeztetés a lap
- * tetején, amely kimondja, ha a kurzus nem látszik — és azt is, mi a teendő.
- *
- * A modult a src/__tests__/course-visibility.test.ts fedi.
+ * - A lap TETEJÉN a Payload dokumentum-státusza áll („Állapot: Közzétett",
+ * `_status`) — ezt írja ki a rendszer a „Módosítások közzététele" gomb után.
  */
 
 /** A `products.status` értékei, ahogy a mező deklarálja. */

@@ -1,38 +1,6 @@
 /**
  * Szolgáltatás-sorok (Services) — TÁBLA-szekció stílusa.
- *
- * Forrás: a landing `kc-services` board-ja (higgsfield-site/app/src/kineticare.css
- * 427–540., tablet 942–945., mobil 1002–1028.). A tükör teljes képernyős,
- * kéthasábos táblája MOST MÁR ÁTJÖTT (a korábbi port konténer-szélességbe
- * szorította): balra a felirat, az óriás cím és a tábla aljáig futó, a
- * tábla-szegélyen BALRA KIFUTÓ fotó; jobbra a számozott sorok egyenlő
- * magasságú, hajszálvonallal elválasztott sávokban.
- *
- * A tábla-viselkedést (teljes szélesség, 100dvh 2K-ig, 80vw 2K felett) a közös
- * `.kc-board`/`.kc-board--edge` adja (styles/ui.css).
- *
- * ELTÉRÉS A TÜKÖRTŐL: ott a sor-rács fixen három sor (`repeat(3, …)`), mert a
- * landing tartalma statikus. A blokk 1–5 sort enged, ezért itt `1fr` sávok —
- * bármennyi sor egyenlően osztozik a HELYEN, de egyik sáv sem lehet kisebb a
- * saját tartalmánál (a `minmax(0, 1fr)` alakja épp ezt engedte meg: lásd a
- * sorprés-tilalmat a jobb hasáb szabályainál).
- *
- * ELTÉRÉS A TÜKÖRTŐL 2.: a bal hasáb fotója nem abszolút pozicionált, hanem a
- * cím alatt, a normál folyamban áll (átfedés-tilalom, lásd ott).
- *
- * MÉRETEK: minden betűméret a HÁROM-MÉRETES skáláról (`--kc-font-l/m/s`,
  * tokens.css) — elemre írt px/rem TILOS (UX-skill 4. pont). A tábla-cím az L
- * lépcsőn áll (ugyanazon a sortávon, mint minden más szekció-H2); a sorok
- * címe és szövege a törzsméreten (M), és a kettő között a SÚLY jelöli a
- * szintet: a sor-cím 700-as törzsbetű, a sorszöveg 400-as. Lásd a két
- * szabálynál álló mérési jegyzőkönyvet.
- *
- * AKCENT-KORLÁT (terv 3.1): a kis felső felirat, a sorszámok és a
- * sor-hivatkozás `accent-deep` (paperen 5,16:1, tinten 4,72:1 — AA felett);
- * a nyers `accent` (tinten 4,07:1) KIZÁRÓLAG dekoráció: a felirat alatti
- * vékony vonal.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/Services.tsx).
  */
 
 .kc-services {

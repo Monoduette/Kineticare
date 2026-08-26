@@ -4,22 +4,11 @@ import { useEffect } from 'react'
 
 /**
  * HeaderScrollFx — a sticky fejléc scroll-állapotának jelzője.
- *
  * A <html> elemre két jelzést tesz:
- *  - `--kc-header-veil`: 0..1 FOLYTONOS érték, a görgetés-pozícióval arányos.
- *    A lap tetején 0 (a fejléc teljesen átlátszó), `VEIL_RANGE` pixel után 1
- *    (szolid lap-háttér). A fejléc minden vizuális átmenete ebből az egy
- *    számból számolódik (layout.css), így a háttér, a hajszálvonal, a
- *    homályosítás és a szövegszínek EGYÜTT, ugrás nélkül úsznak be.
- *  - `data-kc-scrolled`: a korábbi bináris jelző megmarad (küszöb: 8px), mert
- *    nem-vizuális fogyasztói is lehetnek; a fejléc-fátyol viszont már nem
- *    ebből, hanem a folytonos értékből dolgozik.
- *
- * A scroll-esemény passzív, a frissítés requestAnimationFrame-be fogva — a
- * kezelő maga csak egy flaget billent, a DOM-írás a következő képkockán
- * történik. A kontraszt-követelményeket (a fátyol MINDEN állásában) a
- * docs/ertekesitesi-ux-skill.md 3. pontja rögzíti, a levezetés a layout.css
- * fejlécében van.
+ * - `--kc-header-veil`: 0..1 FOLYTONOS érték, a görgetés-pozícióval arányos.
+ * A lap tetején 0 (a fejléc teljesen átlátszó), `VEIL_RANGE` pixel után 1
+ * (szolid lap-háttér). A fejléc minden vizuális átmenete ebből az egy
+ * számból számolódik (layout.css), így a háttér, a hajszálvonal, a
  */
 
 /**

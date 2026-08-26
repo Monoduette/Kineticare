@@ -68,37 +68,8 @@ export const CHECKOUT_BLOCK_HINT_ID = 'kc-checkout-block-hint'
 
 /**
  * CheckoutForm — a /penztar űrlapja (a vásárlás befejezése).
- *
- * A jogszabály szerinti két waiver-checkbox (45/2014. (II. 26.) Korm. rend.
  * 29. § (1) m) SZÓ SZERINTI szövegekkel, NEM előre kipipálva — mindkettő
- * kötelező a submit-hoz (a fizetős termékekre; az ingyenes tétel nem igényli).
- * A fizetési gomb felirata KÖTÖTT: „Megrendelés és fizetés".
- *
- * A HARMADIK jelölőnégyzet az ÁSZF-ELFOGADÁS (egy négyzet, két hivatkozással),
- * ami az ÁSZF 22. bekezdése szerint MAGA A SZERZŐDÉSKÖTÉS mozzanata — ez
- * MINDEN terméken kötelező, az ingyenesen is. A szövegek, útvonalak és a
- * döntés indoklása a form-submission.ts CHECKOUT_TERMS_* konstansainál.
- *
- * SZÁMLÁZÁSI ADATOK — kontrollált mezők, szándékosan:
- * a `Field` alapból kontrollálatlan, de a natív input-attribútumokat átadja,
- * ezért `value` + `onChange` megadásával MAGÁNAK A KOMPONENSNEK a módosítása
- * nélkül válik kontrollálttá (a többi hívási helye — RegisterForm, LoginForm,
- * AccountView — érintetlen). A FormData-s kiolvasás helyett azért ez a
- * választás, mert (a) a mezőnkénti, magyar hibaüzenet megjelenítéséhez amúgy
- * is state kell, és (b) így a beírt érték egyetlen forrásból (a state-ből) megy
- * a beküldésbe — nem fordulhat elő újra, hogy az űrlap megjelenít egy mezőt, a
- * submit pedig nem olvassa ki.
- *
  * A DÖNTÉSI MAG NEM ITT VAN: a beküldési törzs összeállítása, a validáció, az
- * összefoglaló üzenet és a fókuszcél az `src/lib/checkout/form-submission.ts`
- * tiszta függvényeiben él — azok node-környezetben, DOM nélkül tesztelhetők
- * (jsdom nincs telepítve, a `renderToStaticMarkup` pedig nem tud különbséget
- * tenni kontrollált és kontrollálatlan mező között).
- *
- * A `noValidate` szándékosan marad: a böngésző natív (nem magyar, nem
- * testre szabható) buborékai helyett a validáció a közös
- * `src/lib/checkout/billing.ts` modulból jön — UGYANAZ a szabály fut a
- * szerveren is, mert a kliens megkerülhető.
  */
 export interface CheckoutFormProps {
   product: CheckoutProduct
@@ -139,24 +110,12 @@ export function checkoutBarionCourse(product: CheckoutProduct): BarionCourseInpu
 }
 
 /**
- * ═══ ÜZLETI HIBAKÖVETÉS A PÉNZTÁRBAN (checkout_failed) ═══════════════════
- *
  * MIÉRT KELL. A `checkout_started` → `purchase_confirmed` tölcsér csak azt
  * mutatja meg, HÁNYAN esnek ki — azt nem, hogy MIÉRT. A kiesés okai
  * gyökeresen különböző teendőt jelentenek: a hiányzó ÁSZF-pipa felület-hiba,
  * a mezőhiba szöveg- vagy validáció-hiba, a szerver-elutasítás pedig
  * üzemzavar. Ezek nélkül a pénztár néma: a szerveroldali napló CSAK azt látja,
  * ami odaért, a kliensoldali elakadás (pipa, mezőhiba, hálózat) ott nyomtalan.
- *
- * MI MEHET KI: a hiba GÉPI kategóriája és — ahol van — a fókuszált elem
- * AZONOSÍTÓJA. Mindkettő zárt, kódban rögzített készletből származik.
- *
- * MI NEM MEHET KI SOHA: a felhasználónak szóló MAGYAR hibaüzenet szövege. Két
- * okból. (1) A szöveg VÁLTOZIK — a riport ilyenkor némán kettéhasadna,
- * miközben ugyanarról a hibáról szól. (2) A szöveg BEVITT ADATOT is
- * tartalmazhat (a validáció összefoglalója a mezőkről beszél), márpedig az
- * esemény harmadik félhez (PostHog) megy ki. Ugyanaz a tilalom, amit a
- * ./../../lib/analytics/lead-events.ts és a course-events.ts is kimond.
  */
 
 /** A pénztári hibák ZÁRT kategória-készlete — a riportok ezekre bontanak. */
@@ -256,32 +215,6 @@ export interface TrackedSubmitDeps {
 
 /**
  * A beküldés Barion-követéssel BURKOLT változata.
- *
- * KÜLÖN, EXPORTÁLT GYÁR, szándékosan: a `form-submission.ts` fejkommentje
- * rögzíti a tanulságot — a MAG és a KOMPONENS KÖZTI huzalozás az a pont, amit
- * mutációval el lehet rontani úgy, hogy a teljes suite zöld marad. Ha ez a
- * burkoló a `deps`-objektumba beágyazott névtelen függvény lenne, a
- * „valóban kimegy-e az `addPaymentInfo` és az `initiatePurchase`" kérdésre
- * DOM nélkül nem lehetne állítást írni (jsdom nincs telepítve).
- *
- * A követés BURKOL, nem helyettesít: a `submitCheckout` eredménye
- * változatlanul megy tovább, és egyetlen Pixel-hívás sem dobhat (a
- * `barion-events` `sendBarionEvent`-je elnyeli a hibát) — a vásárlás így
- * akkor is végigmegy, ha a mérés elszáll. Az átirányítás útvonala
- * (`redirect`) érintetlen.
- *
- * MIÉRT ITT MEGY KI AZ `initiatePurchase`: a rendelésszám CSAK a szerver
- * válaszából derül ki, a `createCheckoutSubmitHandler` pedig az `ok`
- * eredményre feltétel nélkül, azonnal meghívja a `redirect`-et — ez tehát
- * pontosan az a pillanat, amikor a vevőt a Barion Smart Gateway-re küldjük.
- * (Refben átadni a rendelésszámot nem lehet: a `deps` objektum a
- * render-scope-ban készül, ref olvasása onnan a React-fordító szabályába
- * ütközik.)
- *
- * Ugyanitt tesszük el a kosár PILLANATKÉPÉT: a köszönőoldal a visszatérés
- * után már nem tudná, mit vettek (a státusz-végpont csak a státuszt és a
- * termék-id-t adja), a `purchase` eseménynek viszont KÖTELEZŐ a `contents`,
- * a `revenue` és a `currency`.
  */
 export function trackedSubmitCheckout(
   product: CheckoutProduct,
@@ -327,22 +260,11 @@ export function trackedSubmitCheckout(
 
 /**
  * A beküldési hiba élő régiója — az űrlap tetején.
- *
  * MINDIG renderelődik (üresen is), nem csak hibakor: a dinamikusan BESZÚRT
  * aria-live régiót több képernyőolvasó megbízhatatlanul jelenti be, a már
  * meglévő régió tartalomváltozását viszont igen.
- *
  * A `data-visible` ezért NEM a létezést kapcsolja, csak a MEGJELENÉST: üres
  * állapotban a checkout.css a `.kc-visually-hidden` technikájával tünteti el a
- * dobozt (keret, háttér, magasság és a flex-rés is elmarad), miközben az elem
- * és vele az élő régió a DOM-ban marad. `display: none` TILOS rá — az
- * elnémítaná a bejelentést. Az attribútum azért az `error !== null` állapotból
- * jön és nem a CSS `:empty` szelektorából, mert így determinisztikus és a
- * markupon tesztelhető.
- *
- * KÜLÖN KOMPONENS, szándékosan: a hiba a `CheckoutForm` belső state-je, amit
- * DOM nélkül (jsdom nincs telepítve) nem lehet beállítani — így viszont
- * mindkét állapot renderelhető és asszertálható.
  */
 export function CheckoutErrorRegion({ error }: { error: string | null }) {
   return (
@@ -385,14 +307,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
   const [guestErrors, setGuestErrors] = useState<GuestFieldErrors>({})
 
   /**
-   * ═══ BARION PIXEL — a tölcsér középső szakasza ═══
-   * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
-   * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
-   * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
-   * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
-   * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
-   * (`redirect`) érintetlen marad.
-   */
+ * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
+ * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
+ * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
+ * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
+ * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
+ * (`redirect`) érintetlen marad.
+ */
   useEffect(() => {
     trackInitiateCheckout(
       checkoutBarionCourse({
@@ -693,30 +614,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         </Card>
       )}
 
-      {/*
-        ═══ SZERZŐDÉSI FELTÉTELEK — EGY jelölőnégyzet, KÉT hivatkozással ═══
-
-        MIÉRT ITT ÁLL: az ÁSZF 22. bekezdése maga adja meg a sorrendet — a
-        Vásárló „megadja személyes adatait, bejelöli az … jelölőnégyzetet,
-        majd megnyomja a »VÁSÁRLÁS« gombot". A blokk ezért az adatmezők UTÁN,
-        a beküldőgomb ELŐTT áll; ez egyben az utolsó dolog, amit a vevő a
-        döntés előtt elolvas.
-
-        MIÉRT AZ INGYENES ÁGON IS: a szerződés ingyenes hozzáférésnél is
-        létrejön, és az ÁSZF felhasználási korlátja az ismeretterjesztő videóra
-        is vonatkozik. Elágazás nélkül, egységesen — WCAG 2.2 SC 3.2.4.
-
-        ÚJ LAPON NYÍLÓ LINKEK: a pénztár űrlapállapota kliens-oldali React-state,
-        a saját lapon való elnavigálás tehát elvesztené a beírt számlázási
-        adatokat. Az `új lapon nyílik` a link SZÖVEGÉNEK része (vizuálisan
-        rejtve), hogy a képernyőolvasó is előre jelezze — WCAG 2.2 SC 3.2.5,
-        G201 technika.
-
-        A jelölőnégyzet a felirat BAL oldalán áll (GOV.UK Design System,
-        Checkboxes: „Always position checkboxes to the left of their labels."),
-        és a `label for` miatt maga a felirat is kattintható (NN/g:
-        „clickable labels").
-      */}
+      {/* ÁSZF+adatvédelem: egy jelölőnégyzet, két link; adatmezők után, gomb előtt. */}
       <Card className="kc-checkout-terms">
         <h2>{CHECKOUT_TERMS_HEADING}</h2>
         <div className="kc-checkout-terms__row">
@@ -749,45 +647,12 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         </p>
       </Card>
 
-      {/*
-        FIZETÉSI SZOLGÁLTATÓ — a hivatalos Barion logósor és a folyamat
-        leírása, KÖZVETLENÜL a fizetőgomb fölött.
-
-        Miért itt: ez az utolsó dolog, amit a vevő a kattintás előtt elolvas, és
-        itt derül ki neki, hogy elhagyja az oldalt. Baymard („placing 1-2 icons
-        within the encapsulated area performs well…") és NN/g Upfront Disclosure
-        — a hivatkozások és az idézetek a BarionFizetesJelzes fejkommentjében.
-        Egyben a Barion elfogadóhely-jóváhagyás kötelező tétele a fizetési
-        oldalon.
-
-        INGYENES terméknél NEM jelenik meg: ott nincs fizetés, nem megy Barion
-        felé semmi, és a jelzés hazugság lenne (docs/ui-sztenderdek.md: „a
-        felirat legyen igaz").
-      */}
+      {/* Barion jelzés a fizetőgomb fölött; ingyenes ágon kimarad. */}
       {product.isFree ? null : <BarionFizetesJelzes hely="penztar" />}
 
       {/*
-        A FIZETŐGOMB LETILTÁSA — mit tiltunk le és mit nem (2026-08-16-i
-        akadálymentességi kör, docs/gomb-kontraszt-audit.md B8).
-
-        KORÁBBAN: `disabled={submitting || alreadyPurchased || !waiverComplete}`.
-        A natív `disabled` KIESIK A TAB-SORRENDBŐL, ezért a billentyűzetes vevő
-        addig, amíg nem pipálta ki a két elállási nyilatkozatot, a fizetőgombig
-        el sem jutott — és semmi nem mondta meg neki, miért nem működik. A
-        felirat ráadásul `opacity: .5` mellett 2,12:1 volt, tehát a „Megrendelés
-        és fizetés" gyakorlatilag olvashatatlan.
-
-        MOST: a gomb csak a BEKÜLDÉS IDEJÉRE tiltódik le (dupla küldés elleni
-        védelem — docs/ui-sztenderdek.md §2.6 L-1; a szerveroldali idempotencia
-        emellett is megvan, L-2). A kipipálatlan nyilatkozat és a már megvett
-        kurzus NEM tiltás, hanem VALIDÁCIÓ: a `planCheckoutSubmission`
-        `blocked` ága magyar hibaüzenetet ad az élő régióba (role="alert"), és a
-        fókuszt az első hiányzó jelölőnégyzetre viszi. Ez a GOV.UK gomb-
-        útmutatójának ajánlása (a letiltott gomb nem közli, mi a teendő):
-        https://design-system.service.gov.uk/components/button/
-        A hiányzó feltételt a gomb MELLETT álló magyarázat is kimondja, és az
-        `aria-describedby` a gombhoz köti (W3C ARIA APG, button-minta):
-        https://www.w3.org/WAI/ARIA/apg/patterns/button/
+        Fizetőgomb csak beküldés közben disabled (dupla küldés ellen).
+        Hiányzó nyilatkozat/már megvett: validáció + aria-describedby, nem disabled.
       */}
       <div className="kc-checkout-form__actions">
         <Button

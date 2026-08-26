@@ -10,17 +10,11 @@ import {
 
 /**
  * MediaImage — Media collectionbeli kép reszponzív renderelése.
- *
  * A Media xs/sm/md/lg méretei alapján srcSet-et és intrinsic méreteket ad,
  * a preferált méret hiányában az eredeti képre esik vissza. Alt kötelező a
  * sémában; hiányában dekoratívként (alt="") renderel, fejlesztői figyelmeztetéssel.
- *
  * `decorative`: a kép TUDATOSAN dekoráció — `alt=""`-t kap, és a hiányzó
  * alt-ra figyelmeztető fejlesztői üzenet is elmarad. Ott kell, ahol a kép a
- * környező szöveget ismételné meg (pl. a kurzuskártya borítója a cím alatt):
- * ilyenkor az alt-szöveg nem információ, hanem duplikáció, ami a képernyő-
- * olvasós nevet hízlalja (WCAG 1.1.1 — a tisztán dekoratív kép üres alttal
- * kihagyandó az akadálymentességi fából).
  */
 export interface MediaImageProps {
   media: MediaLike

@@ -2,26 +2,11 @@ import { LESSON_KIND_LINK, LESSON_KIND_TEXT, LESSON_KIND_VIDEO } from '../../fie
 
 /**
  * A TANANYAG összecsukott sorainak felirata — tiszta, React-mentes logika.
- *
- * ═══ MIT OLD MEG ═══
  * Az admin UX-audit mérte: a csukott sorok felirata a SORSZÁM volt („Modul 01"…
  * „Modul 08", bennük „Lecke 01"…„Lecke 06"), tehát a hét beszédes című modul
  * („1. ALAPOK — Így kezdj neki", „BÓNUSZOK", „Facebook csoport") nyolc
  * TELJESEN EGYFORMA szürke csíkként jelent meg. A szerkesztőnek egyesével kellett
  * kinyitogatnia a sorokat, hogy megtalálja, amelyikhez leckét akart adni — és
- * átrendezéskor vakon húzta a „Modul 05"-öt, mert nem tudta, mi van benne.
- *
- * Az összecsukott alapállapot (`initCollapsed`) SZÁNDÉKOS és helyes: 27 leckénél
- * a nyitott lista kezelhetetlen lenne. Beszédes felirat nélkül viszont épp az
- * összecsukás értelmét veszi el.
- *
- * ═══ MIÉRT KÜLÖN, TISZTA MODUL ═══
- * A repóban nincs DOM-alapú komponensteszt-készlet, a feliratképzés viszont
- * tele van határesettel (üres cím, hiányzó leckelista, nem kész videó). Ezért a
- * logika itt él, tisztán tesztelhetően; a React-komponens csak a `useRowLabel`
- * adatát adja át neki.
- *
- * A modult a src/__tests__/curriculum-row-label.test.ts fedi.
  */
 
 /** A névtelen sor JELZÉSE — a kitöltetlen kötelező cím így azonnal feltűnik. */

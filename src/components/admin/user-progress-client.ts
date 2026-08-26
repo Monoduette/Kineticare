@@ -9,30 +9,7 @@ import { normalizeProgressEntry, readEntityId } from './purchases-cell'
 
 /**
  * A Felhasználók-lista kurzus-haladásának BATCHELŐ betöltője (kliens-oldal).
- *
- * ═══ MIÉRT NEM SORONKÉNTI KÉRÉS ═══
- * A „Megvásárolt kurzusok" cella a lista MINDEN sorában külön mountol, és
- * egyik cella sem tud a többiről. Ha mindegyik magának kérdezne, egy 100 soros
- * oldal 100 párhuzamos kérést indítana, mindegyik a saját adatbázis-körével —
- * ez a klasszikus N+1 a felület felől. Ehelyett a betöltő a SZINKRON
- * mount-hullám alatt csak GYŰJTI az azonosítókat, és a következő
- * makrotaszkban (`setTimeout(…, 0)`) egyetlen kérésben küldi el őket. Egy
- * lista-oldal így egy hálózati kör, akárhány sora van.
- *
- * Miért makrotaszk és nem mikrotaszk (`queueMicrotask`, `Promise.resolve()`):
- * a React a mount-effekteket a commit után futtatja, és egy mikrotaszk már a
- * hullám KÖZEPÉN kiürülhet, tehát több, kisebb csomag menne ki. A
- * `setTimeout(…, 0)` a teljes commit-hullám után fut, tehát egyetlen csomag
- * marad. Ugyanez a döntés a `loadCourseTitles` modul-szintű ígérete mögött is
- * (course-titles-client.ts), csak ott nincs mit gyűjteni: az a kérés
- * paraméter nélküli.
- *
- * ═══ HIBATŰRÉS ═══
- * A lista SOSEM törhet el a haladás miatt: hálózati hiba, időtúllépés,
- * nem-ok státusz és értelmezhetetlen válasz esetén az érintett azonosítók
  * `null`-lal oldódnak fel, és NEM kerülnek a gyorsítótárba, tehát a következő
- * megnyitás újrapróbálja. A cella `null` mellett a haladás előtti alakját
- * mutatja (csak a kurzus címe).
  */
 
 /** A kérés felső időkorlátja; a `loadCourseTitles`-szel azonos. */
@@ -40,24 +17,11 @@ const REQUEST_TIMEOUT_MS = 20_000
 
 /**
  * A gyorsítótár-bejegyzések élettartama.
- *
- * ═══ MIÉRT KELL LEJÁRAT ═══
  * A gyorsítótár modul-szintű, tehát a Payload egyoldalas adminjában addig él,
  * amíg a fül nyitva van. Lejárat nélkül két baja volt. (1) A munkatárs
  * ÓRÁKIG a betöltéskori százalékot látta: a lista frissítése (rendezés,
  * szűrés, oldalváltás) nem indított új kérést, mert a bejegyzés megvolt.
  * (2) Ha a szerver a csonkolás-szabály miatt kihagyott egy felhasználót, arról
- * ÜRES tömb került a gyorsítótárba, és ott is ragadt ÖRÖKRE — az a sor a
- * munkamenet végéig haladás nélkül maradt, holott a következő kérés már
- * megkaphatta volna.
- *
- * ═══ MIÉRT PONT 60 MÁSODPERC ═══
- * Rövidebb, mint amennyit a munkatárs egy lista-munkamenetben eltölt (keresés,
- * rendezés, néhány sor megnyitása), tehát a haladás észszerű időn belül
- * frissül. Ugyanakkor hosszabb, mint egy oldal megnyitásának ideje, ezért az
- * EGY oldalon belüli ismételt renderelések (React StrictMode kettős mountja,
- * oszlop-átméretezés, sorrend-váltás) továbbra is EGY hálózati kört jelentenek
- * — a csomagoló logika értelme épp ez.
  */
 const CACHE_TTL_MS = 60_000
 
@@ -118,18 +82,11 @@ let flushScheduled = false
 
 /**
  * A `GET /api/admin/user-progress` válaszának ÉRTELMEZÉSE.
- *
  * Két, egymástól különböző eset válik szét szándékosan:
- *  - `null` = a válasz ALAKJA értelmezhetetlen (nem objektum, vagy a `users`
- *    nem tömb). Ilyenkor semmit sem tudunk egyik kért felhasználóról sem,
- *    tehát mind `null`-t kap, és nem kerül a gyorsítótárba.
- *  - térkép, amelyből egy kért azonosító HIÁNYZIK = a szerver érvényesen
- *    válaszolt, csak ennek a felhasználónak nincs haladása. Ez üres tömb,
- *    és gyorsítótárazható.
- *
- * Egy hibás ELEM (nem objektum sor, hiányzó `userId`, ismeretlen `status`)
- * némán kimarad, és nem viszi magával a többit — ugyanaz az elv, mint a
- * `readPurchaseIds`-ben.
+ * - `null` = a válasz ALAKJA értelmezhetetlen (nem objektum, vagy a `users`
+ * nem tömb). Ilyenkor semmit sem tudunk egyik kért felhasználóról sem,
+ * tehát mind `null`-t kap, és nem kerül a gyorsítótárba.
+ * - térkép, amelyből egy kért azonosító HIÁNYZIK = a szerver érvényesen
  */
 export function readUserProgressRows(body: unknown): Map<number, ProgressEntries> | null {
   if (typeof body !== 'object' || body === null) {

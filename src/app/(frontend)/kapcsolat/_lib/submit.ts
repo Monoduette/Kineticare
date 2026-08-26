@@ -2,21 +2,11 @@ import type { ContactFormValues } from './validation'
 
 /**
  * Kapcsolat-űrlap — beküldés a T-016 form-submissions végpontra.
- *
  * API-szerződés (a repóból felderítve, src/payload.config.ts T-016 szakasz):
  * - Végpont: POST /api/form-submissions (a @payloadcms/plugin-form-builder
- *   nyilvános create-je — külön /api/contact route szándékosan nincs).
+ * nyilvános create-je — külön /api/contact route szándékosan nincs).
  * - Törzs: { form: <formId>, submissionData: [{ field, value }…],
- *            turnstileToken?: string }
- * - Mezők: name, email, subject, message, consentPrivacy (mind KÖTELEZŐ a
- *   kliens szerint; a consentPrivacy értéke "true" stringként megy fel).
- * - Spam-védelem: ha a szerveren TURNSTILE_SECRET_KEY be van állítva, a
- *   turnstileToken KÖTELEZŐ (különben 400, magyar hibaüzenettel); ha nincs
- *   beállítva, a token elhagyható — a widget ilyenkor a kliensen rejtve
- *   marad (TURNSTILE_SITE_KEY nélkül).
- *
- * A fetch injektálható, így a modul jsdom nélkül, node-környezetben is
- * tesztelhető (lásd src/__tests__/contact.test.ts).
+ * turnstileToken?: string }
  */
 
 export interface SubmissionDataEntry {

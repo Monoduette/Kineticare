@@ -5,25 +5,11 @@ import '../../../app/(frontend)/styles/blocks/how-it-works.css'
 
 /**
  * HowItWorks — „Így működik az online kurzus" 3 lépésben (audit M5/K6).
- *
  * A mechanizmus (megveszem → azonnal nézem → otthon gyakorlok) a legfontosabb
  * ellenérv-csökkentő egy videókurzusnál. Statikus magyar szöveg — a Katák
  * hangneme: szakmai, meleg, bizalomépítő (nincs marketing-hype).
- *
  * Megjelenés: a landing számozott-sor nyelve (hajszálvonalas sorok, nagy
  * halvány serif sorszám) — a stílus a styles/blocks/how-it-works.css-ben él.
- *
- * ELRENDEZÉS (tulajdonosi visszajelzés, 2026-08-16): a szekció 900 px felett
- * ASZIMMETRIKUS KÉT HASÁBRA nyílik — balra a cím (a görgetés alatt a helyén
- * marad), jobbra a lépések hajszálvonalas sora. A korábbi, teljes szélességű
- * halomban a rövid lépésszövegek elvesztek a széles sávban, a cím pedig
- * magányos sorként ült felettük. A váltakozó (jobbra-balra ugráló) elrendezést
- * szándékosan KERÜLJÜK: a folyamat sorrendje egyetlen, felülről lefelé futó
- * olvasási tengelyen a legérthetőbb.
- *
- * A markup csak BURKOLÓKKAL bővült (`kc-how__grid`, `kc-how__head`), a
- * lista-szerkezet (`ol` > `li`, dekoratív sorszám, lépéscím, szöveg) és a
- * CMS-felülírás változatlan.
  */
 
 export interface HowItWorksStep {

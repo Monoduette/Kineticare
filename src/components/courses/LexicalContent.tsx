@@ -6,18 +6,11 @@ import type { Product } from '../../payload-types'
 
 /**
  * Minimális Lexical richText → React renderer a kurzus longDescription-höz.
- *
  * TODO(W2-értékelés): konszolidáció az 5B-hullám src/components/lexical/
  * rendererével (RichText komponens) — amint az véglegesen elérhető a mainen,
  * EZT a helyi renderert ki kell váltani rá (az 5B renderert módosítani tilos;
  * addig is ez a minimális, csak-olvasásos megvalósítás szolgálja a
  * kurzus-oldalt). A csere egyetlen import-hivatkozás a [slug]/page.tsx-ben.
- *
- * Támogatott csomópontok (a Payload alap Lexical-feature-jei): paragraph,
- * heading (h1–h4; a h1 dokumentumszintű okokból h2-ként renderelődik),
- * list/listitem (ul/ol), quote, link, linebreak és szöveg-formátumok
- * (bold/italic/underline/strikethrough/code). Ismeretlen csomópont esetén a
- * gyerekek renderelődnek (ha vannak) — a tartalom nem tűnik el csendben.
  */
 
 type LexicalDoc = NonNullable<Product['longDescription']>

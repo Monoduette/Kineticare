@@ -2,34 +2,6 @@ import type { CSSProperties } from 'react'
 
 /**
  * A kurzus-haladás panel KÖZÖS stílus-tokenjei.
- *
- * ═══ MIÉRT KÜLÖN FÁJL ═══
- * Ugyanaz az indok, mint a Statisztika nézetnél
- * (src/components/admin/statistics/styles.ts): a panel és a belőle kiemelt
- * tábla-komponensek egyetlen vizuális nyelvet beszéljenek, és a MÉRHETŐ
- * értékek (érintőcél-méret, görgetőkonténer, mérték) tesztből is olvashatók
- * legyenek. A modulnak nincs React-futásidejű függése (a `CSSProperties`
- * típus-import), ezért mérőszkriptből is betölthető.
- *
- * ═══ VIZUÁLIS NYELV ═══
- * A panel a Payload admin saját design-rendszerét viseli
- * (`docs/ui-sztenderdek.md` §1.2: „az adminban a Payload design az
- * elsődleges"). KIVÉTEL a két állapotszín: azok a `--kc-cp-*` márka-tokenről
- * jönnek, mert a Payload globális `--theme-error-500` / `--theme-warning-500`
- * MÉRVE megbukik a WCAG 2.2 SC 1.4.3-on. A tokenek, a színek eredete és a
- * teljes kontraszt-jegyzőkönyv: `course-progress-panel.css`.
- *
- * ═══ ÉRINTŐCÉL ═══
- * A rendezhető fejléc-gombok doboza korábban a SORMAGASSÁGRA esett vissza
- * (`padding: 0`, `background: none`, `border: none`), mérve ~19 px magasra:
- * a WCAG 2.2 SC 2.5.8 Target Size (Minimum) 24 × 24 CSS px-es küszöbe alatt
- * (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
- * A repó célértéke ennél szigorúbb, 44 × 44 CSS px
- * (`docs/ui-sztenderdek.md` §2.4; Apple HIG 44 × 44 pt, Material 48 dp).
- * A `max(44px, …)` alsó korlát azért kell, mert a Payload 1024 px alatt
- * 12 px-re viszi a gyökér-betűméretet, és a puszta rem-alak ott 40,6 px-et
- * adna; a cél-méret viszont CSS px-ben van kimondva. (Ugyanaz a minta, mint
- * a Statisztika nézet `rowLinkStyle`-jánál.)
  */
 
 /** A cél-érintőméret: a repó 44 px-es célja, a Payload kisebb gyökerén is. */
@@ -201,15 +173,6 @@ export const sortButtonStyle: CSSProperties = {
  * jelölni kell, és az aktuális rendezésnek látszania kell
  * (https://www.nngroup.com/articles/data-tables/). Ugyanezt írja elő a
  * GOV.UK Design System rendezhető táblája is
- * (https://design-system.service.gov.uk/components/table/).
- * A jel `aria-hidden`: a képernyőolvasónak az `aria-sort` mondja meg
- * ugyanezt, kétszer felolvasni zaj lenne.
- *
- * Az inaktív jel halványabb, de NEM alacsony kontrasztú: a szín a
- * `--theme-elevation-650` (világosban 7,23:1, sötétben 10,45:1 a lap
- * hátterén, SZÁMOLVA), tehát a nem-szöveges 3:1-es küszöb (WCAG 2.2 SC
- * 1.4.11) és a szöveges 4,5:1 is teljesül. Az információt a `.4` átlátszóság
- * NEM hordozza egyedül: a jel ALAKJA is más (kettős nyíl vs. egy nyíl).
  */
 export const sortGlyphStyle: CSSProperties = {
   fontSize: '0.85em',

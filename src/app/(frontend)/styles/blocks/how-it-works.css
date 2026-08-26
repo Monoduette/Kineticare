@@ -1,28 +1,5 @@
 /**
  * „Így működik az online kurzus" (HowItWorks) — szekció-stílus.
- *
- * Forrás: a landing számozott-sor nyelve — `.kc-usp` / `.kc-usp-num` (335.) és
- * `.kc-service-row` / `.kc-service-num` (482.) hibridje
- * (higgsfield-site/app/src/kineticare.css): hajszálvonallal elválasztott sorok,
- * nagy halvány serif sorszám, serif lépéscím, muted törzsszöveg. Minden
- * szín/méret/térköz szerep-tokenről (tokens.css).
- *
- * A korábbi tömör, sötét sorszám-korong helyett a landing halvány, nagy
- * sorszáma áll: a sorszám DEKORÁCIÓ (a sorrendet a rendezett lista hordozza, a
- * markupban aria-hidden), ezért viheti az `accent-quiet` halk árnyalatát —
- * kontraszt-küszöb nem vonatkozik rá, a jelentést a lépéscím hordozza.
- *
- * A szekciócím a közös `.kc-section-title` (content.css); itt csak a
- * szekció-rendszer többi blokkjával azonos lépcsőre (3xl) állítjuk.
- *
- * KONTRASZT (tokens.css jegyzőkönyve): lépéscím `text` (ink) a paperen
- * 14,79:1, törzs `text-muted` a paperen 8,80:1, a tinten 8,05:1 — AA felett.
- *
- * ELRENDEZÉS (2026-08-16): a szekció 900px felett aszimmetrikus két hasáb —
- * balra a (görgetés alatt helyben maradó) cím, jobbra a lépéssor. Lásd a
- * `.kc-how__grid` szabályt; a lépések belső szerkezete változatlan.
- *
- * Betöltés: src/components/content/home/HowItWorks.tsx.
  */
 
 .kc-how {

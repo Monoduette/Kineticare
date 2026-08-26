@@ -4,24 +4,11 @@ import { absoluteUrl } from '@/lib/seo'
 
 /**
  * robots.txt — a Next.js metadata-API generálja (`/robots.txt`).
- *
  * Két külön döntés van benne, és fontos, hogy ne keveredjenek:
- *
- * 1. **Mit NE indexeljen senki.** A privát és tranzakciós útvonalak (admin, API,
- *    fiók, kosár, pénztár, auth-oldalak) nem valók keresőbe: vagy bejelentkezést
- *    igényelnek, vagy egyszer használatos állapotot mutatnak. A `/kurzusaim` és
- *    a `/fiok` ráadásul felhasználóhoz kötött tartalom.
- *
- * 2. **AI-crawlerek kifejezett engedélyezése.** A GEO/AEO-láthatóság első
- *    feltétele, hogy az AI-botok egyáltalán elérjék a tartalmat. Ezek a botok
- *    külön user-agentek, és sok sablon-robots.txt vagy bot-védelem alapból
- *    kizárja őket — ezért soroljuk fel explicit ALLOW-val, hogy egy későbbi
- *    általános tiltás se zárja ki őket véletlenül.
- *
- * Ha valaha AI-tréninget korlátozni akarunk, azt a `Google-Extended` és `CCBot`
- * eltávolításával kell megtenni — a keresési/idézési botokat (`OAI-SearchBot`,
- * `Claude-SearchBot`, `PerplexityBot`) viszont érdemes engedni, mert ezek adják
- * az idézeteket és a hivatkozó forgalmat.
+ * fiók, kosár, pénztár, auth-oldalak) nem valók keresőbe: vagy bejelentkezést
+ * igényelnek, vagy egyszer használatos állapotot mutatnak. A `/kurzusaim` és
+ * a `/fiok` ráadásul felhasználóhoz kötött tartalom.
+ * feltétele, hogy az AI-botok egyáltalán elérjék a tartalmat. Ezek a botok
  */
 
 /** Bejelentkezés mögötti, tranzakciós vagy egyszer használatos útvonalak. */

@@ -1,57 +1,7 @@
 /**
  * Üres állapot (empty state) — a Tudástár listáinak paneles üres nézete.
- *
- * Betöltés: a szekció-komponens importálja
- * (src/components/content/PostsEmptyState.tsx), a blokk-stíluslapok bevett
- * módján.
- *
  * MIÉRT PANEL, ÉS MIÉRT NEM EGY SZÜRKE MONDAT. Az NN/g mérése szerint az
- * üres felület három dolgot végez el egyszerre: közli a rendszer állapotát,
- * megtanítja, mi kerül ide, és KÖZVETLEN utat ad a következő cselekvéshez.
- * A teljesen üres nézet ehelyett bizonytalanságot kelt: „Do not default to
- * totally empty states. This approach creates confusion for users, who may be
- * left wondering if the system is still loading information or if errors have
- * occurred."
- * → NN/g, Designing Empty States in Complex Applications: 3 Guidelines
- *   https://www.nngroup.com/articles/empty-state-interface-design/
- *
- * A doboz anatómiája (cím → törzs → elsődleges cselekvés → másodlagos út) az
- * IBM Carbon „empty states" mintájáé; a Carbon a cselekvésre is határozott:
- * „If there is an actionable next step, include a direct link in your message
- * copy or a primary action button."
- * → IBM Carbon Design System, Empty states pattern
- *   https://carbondesignsystem.com/patterns/empty-states-pattern/
- *
- * MÉRT ÉRTÉKEK (számolt, nem becsült)
- * - Sorhossz: a panel belső szövegmértéke pontosan `--kc-measure` (34rem =
- *   544px ≈ 75 karakter), a panel külső szélessége ennyi + a két oldali
- *   belső margó. Ez a 45–85 karakteres sávon belül van (skill 3. pont).
- *   Kis kijelzőn a HATÁRT a viewport szabja, nem a panel: 320px-en 240px
- *   (≈ 33 karakter), 390px-en 310px (≈ 43 karakter). 45 karakterhez 16px-es
- *   törzsméreten ~326px szövegsáv kellene, ami egy 320px-es nézetben
- *   fizikailag nem fér ki — ez a site-szintű konténer-margó tulajdonsága,
- *   nem ezé a panelé. Épp ezért visz a panel kis kijelzőn a lehető
- *   legkisebb (16px) belső margót.
- * - Kontraszt (WCAG 2.2 relatív luminancia, számolva a tokens.css hexeiből):
- *     cím és törzs: ink (#10243e) a fehér panelen ......... 15,63:1  (AA/AAA)
- *     halkabb sorok: ink-soft (#33495f) fehéren ...........  9,30:1  (AA/AAA)
- *     szöveglink: accent-deep (#2f6e9f) fehéren ...........  5,45:1  (AA)
- *     elsődleges gomb: fehér az accent-deep felületen .....  5,45:1  (AA)
- *   A panel FELÜLETE a `.kc-card` bevett receptjét viszi (ui.css): emelt
- *   fehér felület + 1px `--kc-color-border` + `--kc-radius-lg`, tehát a
- *   vizuális nyelve azonos a kártyákéval. A hairline keret a paper lapon
- *   1,24:1 — SZÁNDÉKOSAN dekoratív elválasztó, nem azonosító UI-határ és nem
- *   is információhordozó grafika, ezért nem esik a WCAG 1.4.11 3:1-es
- *   küszöbe alá (tokens.css „FELÜLET-RÉTEGEK" jegyzőkönyv). Az üres állapot
- *   tartalmát a CÍM azonosítja, nem a keret.
- * - Érintőcél: a gombok a közös `.kc-button` min-height 2,75rem = 44px
- *   magasságát viszik, a szöveglink a `.kc-text-link` ugyanilyen 44px-es
- *   célfelületét — mindkettő a WCAG 2.2 **2.5.8** (24×24 CSS px) fölött,
- *   a 44×44-es célon.
- * - 320px reflow (WCAG 2.2 **1.4.10**): a panelnek nincs fix szélessége
- *   (`max-width` + `width: 100%`), a gombsor `flex-wrap: wrap`, a gombfelirat
- *   tördelhető. Mért szövegsáv 320px-en: 320 − 2×24px konténer-margó
- *   − 2×16px panel-margó = 240px → vízszintes görgetés nincs.
+ * 1,24:1 — SZÁNDÉKOSAN dekoratív elválasztó, nem azonosító UI-határ és nem
  */
 
 .kc-empty-panel {

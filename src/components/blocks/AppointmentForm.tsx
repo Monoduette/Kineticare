@@ -32,66 +32,9 @@ import {
 import { ctaLabel } from '@/lib/cta-vocabulary'
 
 /**
- * AppointmentForm — az időpontkérő szekció űrlapja.
- *
- * A meglévő két űrlap (kapcsolat, hírlevél) mintáját követi, mert UGYANARRA a
- * form-builder végpontra küld: kliensoldali validáció magyar hibaüzenetekkel,
- * nem előpipált hozzájárulás, honeypot, Turnstile csak beállított site key
- * mellett, hibaágon magyar üzenet és megmaradó űrlap-állapot.
- *
- * Négy szándékos eltérés, mindegyik kutatásra vezethető vissza:
- *
- *  1. A NEM KÖTELEZŐ mezők feliratában ott a „(nem kötelező)". A Baymard
- *     Institute mérése szerint a csak-csillagos jelölés mellett a látogató a
- *     jelöletlen, érzékeny mezőt (telefon, panasz) is kötelezőnek hiszi, és
- *     inkább elhagyja az űrlapot; a két jelölés együtt kell
- *     (https://baymard.com/blog/required-optional-form-fields). A csillagos
- *     kötelező-jelölés a repó meglévő nyelve marad (WCAG 3.2.4: ugyanaz a
- *     jelölés mindenhol), az NN/g pedig ugyanezt ajánlja
- *     (https://www.nngroup.com/articles/required-fields/).
- *  2. Az „mikor alkalmas" kérdés jelölőnégyzet-CSOPORT `fieldset`/`legend`
- *     szerkezetben, „Jelöld be az összeset, ami megfelel" segédszöveggel — a
- *     GOV.UK checkbox-mintája szerint a többszörös választás lehetősége az
- *     alakból nem derül ki (https://design-system.service.gov.uk/components/checkboxes/).
- *     A sávok feliratát a szerkesztő adja meg; sáv nélkül a kérdés kimarad.
- *  3. Siker után az űrlap helyén ÖSSZEFOGLALÓ állapot marad, ami megmondja, mi
- *     történik most és mikor (GOV.UK „confirmation pages": a lap mondja el a
- *     következő lépést és annak idejét,
- *     https://design-system.service.gov.uk/patterns/confirmation-pages/).
- *  4. A „folyamatban" gombállapot nem díszítés: küldés közben a gomb letiltott
- *     és a felirata változik, így a dupla beküldés kizárt.
- *
- * A FELIRAT FORRÁSA — a KÓD nyer a szótári cselekvéseknél (2026-08-18)
- * ---------------------------------------------------------------------
- * A beküldő gomb felirata 2026-08-18-ig `gombFelirat?.trim() ||
- * APPOINTMENT_UI_TEXT.submitLabel` volt: a CMS-mező LEGYŐZTE a kódot, ezért a
- * §3.2 szótár betartatása a kódban élesben hatástalan maradt (mérés:
- * `src/__tests__/cta-a-termekben.test.ts`, „CMS-ből felülírható CTA-k").
- *
- * A tulajdonosi döntés: a SZÓTÁRI cselekvéseknél a kód nyer. Az időpontkérés
- * ilyen (§3.2 #25, `appointment-submit`), ezért a felirat innentől kizárólag a
- * `ctaLabel('appointment-submit')` hívásból jön.
- *
- * MIÉRT: WCAG 2.2 SC 3.2.4 Consistent Identification — „Components that have
- * the same functionality within a set of web pages are identified
- * consistently."
- * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
- * Ugyanez a szerkesztő oldaláról nézve: NN/g 4. heurisztika, Consistency and
- * Standards — „Users should not have to wonder whether different words,
- * situations, or actions mean the same thing."
- * (https://www.nngroup.com/articles/consistency-and-standards/). Egy szabadon
- * átírható CTA-mező pontosan ezt a kettőt nem tudja garantálni: az
- * időpontkérésre a felületen több felirat élhetne egyszerre.
- *
- * AMIT A SZERKESZTŐ TOVÁBBRA IS ÍR: a szekció címét, szövegét, az időpont-
- * sávokat, a siker-üzenetet és a telefonszámokat. A tiltás CSAK a szótári
- * CTA-feliratra vonatkozik, nem a tartalomra.
- *
- * FÓKUSZ-KEZELÉS (a kapcsolat-űrlappal AZONOS, WCAG 2.2 3.2.4): beküldés után a
- * siker-címsor, hibánál a hiba-összefoglaló kapja a fókuszt. Enélkül a lap ott
- * marad, ahol a látogató éppen görgetett, és a visszajelzés a képernyőn kívülre
- * eshet — a mérés szerint a siker-doboz alacsonyabb az űrlapnál, tehát ez nem
- * elméleti eset.
+ * AppointmentForm — időpontkérő szekció űrlapja (kapcsolat-űrlap mintájára).
+ * Beküldő felirat: kód nyer (§3.2 #25); CMS gombFelirat prop inaktív.
+ * Siker/hiba után a címsor/összefoglaló kapja a fókuszt.
  */
 
 export interface AppointmentFormProps {
@@ -129,22 +72,8 @@ export interface TrackedAppointmentDeps {
 }
 
 /**
- * Időpontkérés beküldése + PostHog lead-funnel (`idopontkeres` forrás-címke).
- *
- * A hívás ELŐTT `lead_submitted`, sikeres szerverválasz után `lead_succeeded`
- * megy ki. A kettő KÜLÖNBSÉGE a néma beküldési hibák egyetlen külső jelzője —
- * a részletes indoklás és az adatvédelmi szerződés a
- * `src/lib/analytics/lead-events.ts` fejlécében áll.
- *
- * ADATVÉDELMI HANGSÚLY: ez az űrlap GDPR 9. cikk (1) szerinti egészségügyi
- * adatot is fogadhat (a „panasz" mező). A mérésbe ebből SEMMI nem kerül —
- * kizárólag a forrás-címke megy ki, sem a panasz szövege, sem a név, sem a
- * telefonszám, sem az e-mail-cím.
- *
- * A mérés hibája nem ronthatja el a beküldést: a `withLeadTracking` mindkét
- * küldőt saját `try/catch`-ben futtatja. A honeypotba lépő bot, a hiányzó
- * Turnstile-token, a hiányzó űrlap-azonosító és a kliensoldali mezőhibák ide
- * EL SEM JUTNAK (az űrlap előbb visszatér, hálózati hívás nélkül).
+ * Időpontkérés beküldése + PostHog lead-funnel. Egészségügyi adat NEM megy a mérésbe.
+ * Részletek: lead-events.ts.
  */
 export async function trackedSubmitAppointment(
   payload: AppointmentSubmissionPayload,

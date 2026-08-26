@@ -26,56 +26,8 @@ import '../../app/(frontend)/styles/consent-banner.css'
 
 /**
  * ConsentBanner — GDPR-kompatibilis analytics-hozzájárulás sáv.
- *
- * - 'unknown' (még nem döntött) állapotban látható, ÉS a footer
- *   „Süti-beállítások" gombjára ÚJRANYÍTHATÓ döntés után is (a GDPR-hez a
- *   hozzájárulás visszavonása ugyanolyan könnyű kell legyen, mint a megadása —
- *   a 'kc:analytics-consent-open' eseményre nyílik vissza).
- * - „Elfogadom" → opt_in (PostHog init + capture), „Elutasítom" → opt_out
- *   (a PostHog sosem inicializálódik) — oldalfrissítés nélkül.
- * - SSR/hidrálás-biztos: az első kliens-renderig null, így a szerver- és
- *   kliens-HTML nem tér el (a consent csak böngészőben olvasható).
- * - Visszafogott, a design-tokenekre épülő sötét sáv; nincs animáció
- *   (a prefers-reduced-motion így triviálisan tiszteletben tartva),
- *   mobilon a gombok a szöveg alá tördelnek (flex-wrap).
- *
- * ═══ AKADÁLYMENTESSÉG (2026-08-16, docs/gomb-kontraszt-audit.md B2 + B4) ═══
  * A stílus INLINE `style`-ból STÍLUSLAPRA költözött (styles/consent-banner.css),
- * mert az inline stílus nem tud `:focus-visible`-t leírni — pontosan ezért
- * maradt le a sávról a sötét felületek fókusz-felülírása, és kapott a két gomb
- * 2,87:1-es fókuszgyűrűt (1.4.11 + 2.4.7 bukás minden oldalon). A sáv a
- * lap egyetlen olyan sötét felülete volt, ami nem `.kc-section--dark`.
- *
- * ═══ IDŐSZAKOS ÚJRAKÉRDEZÉS (2026-08-17) ═══
- * A tárolt döntés LEJÁR (consent.ts · CONSENT_MAX_AGE_DAYS = 365 nap, az
- * indoklás forrásokkal ott áll), és a sáv ilyenkor magától visszatér — a
- * Barion hozzájáruláskezelési követelménye szerint a kezelőnek „minimum minden
- * 13. hónapban … meg kell jelennie az előzőleg mentett beállításokkal".
  * Ezért NEM üresen jön vissza: a szöveg megmondja, mi a jelenlegi beállítás
- * (a GOV.UK Design System süti-sáv mintájának megerősítő mondata ugyanezt
- * teszi: „You've accepted analytics cookies. You can change your cookie
- * settings at any time." — design-system.service.gov.uk/components/cookie-banner/).
- * A régi döntés a lejárat után is ÉRVÉNYBEN marad, amíg a látogató nem dönt
- * újra; a lejárat csak kérdez, nem von vissza.
- *
- * A mondat a MEGLÉVŐ bekezdésbe kerül, új CSS és új betűméret nélkül (a
- * kontraszt- és érintőcél-mérések így érvényben maradnak); a sáv magasabb
- * lesz tőle, de a 2.4.11-es eltolás MÉRT érték, tehát magától követi.
- *
- * ═══ BARION PIXEL HOZZÁJÁRULÁS-JELZÉS ═══
- * A döntés a Barion Pixelnek is kimegy (`bp('consent','grantConsent'|
- * 'rejectConsent')`) — a GoogleAnalytics.tsx mintájára: betöltéskor a TÁROLT
- * döntés, utána a 'kc:analytics-consent' esemény. Az ALAP pixelt ez NEM
- * érinti: az a csalásmegelőzés jogos érdekén hozzájárulás nélkül is fut, itt
- * csak a marketing célú FELHASZNÁLÁS engedélye/tiltása utazik.
- *
- * A sáv `position: fixed` a lap alján, ezért eltakarhatta a fókuszált elemet
- * (WCAG 2.2 SC 2.4.11 Focus Not Obscured, AA). Amíg látszik, a
- * dokumentumgyökér `kc-has-consent-banner` osztályt kap, és a MÉRT magasság a
- * `--kc-consent-offset` változóba kerül — ebből jön a `scroll-padding-bottom`
- * és a lap alsó térköze. Ugyanaz a minta, mint a `MobileBuyBar`
- * `kc-has-buybar`-ja, de MÉRÉSSEL, mert a sáv magassága a nézetablaktól és a
- * tördeléstől függ (mobilon 2–3 sor + két gomb).
  */
 
 /** A dokumentumgyökér jelölése, amíg a sáv látszik (scroll-padding + térköz). */

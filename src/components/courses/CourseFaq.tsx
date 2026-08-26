@@ -2,18 +2,11 @@ import type { SalesFaqItem } from './sales-content'
 
 /**
  * CourseFaq — GYIK a kurzusoldal alján, natív `details`/`summary` harmonikában.
- *
  * Miért harmonika ÉPP itt: a látogatónak nem kell MINDEN válasz, csak a
  * sajátja, és a tételek önállóak — ez az NN/g és a GOV.UK szerint a
  * harmonika érvényes esete (docs/ux-belso-oldalak-kutatas.md B5.1). A natív
  * `details` JS nélkül is nyitható, és a képernyőolvasó is megkapja az
  * állapotot (B7.5) — ugyanaz a minta, mint a kezdőlapi FaqBlock.
- *
- * A fejlécben DARABSZÁM áll (B5.3): a rejtés önmagában eltüntetné, mennyi
- * kérdésre válaszolunk.
- *
- * FONTOS KORLÁT: harmonikába SOSEM kerül ár, garancia vagy a tananyag
- * szerkezete (B5.2) — azok a lapon nyitva állnak.
  */
 export interface CourseFaqProps {
   items: SalesFaqItem[]

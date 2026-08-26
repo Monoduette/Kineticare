@@ -6,18 +6,11 @@ import type { CurriculumProgress } from '../../../lib/curriculum/progress'
 
 /**
  * A tanulási funnel esemény-DÖNTÉSEI — tiszta, mellékhatás nélküli modul.
- *
- * ═══ MIÉRT KÜLÖN ═══
  * Az „elkezdte" és a „befejezte" eseményt kurzusonként PONTOSAN EGYSZER szabad
  * elküldeni. A gyakori hiba az, hogy a felület az ÁLLAPOTRA figyel („kész-e a
  * kurzus?") az ÁTMENET helyett („most lett kész?") — ilyenkor minden
  * oldalbetöltés újraküldi az eseményt, és a funnel használhatatlanná válik.
  * Ez a modul ezért két haladás-pillanatképet vet össze (a jelölés ELŐTT és
- * UTÁN), és csak a VÁLTOZÁSOKAT adja vissza. A szabály így DOM és PostHog
- * nélkül, kimerítően tesztelhető.
- *
- * A tényleges küldés az src/lib/analytics/course-events.ts hívóin megy, amelyek
- * hozzájárulás nélkül csendben no-opok.
  */
 export interface LessonCompletionEvents {
   /** Ez volt a kurzus ELSŐ kész leckéje. */
@@ -55,33 +48,7 @@ export function eventsForLessonCompletion(input: {
 }
 
 /**
- * ═══ VIDEÓ-MÉLYSÉG: A RETESZ ══════════════════════════════════════════════
- *
  * A `video_started` leckénként EGYSZER, a `video_milestone` pedig leckénként
- * ÉS mérföldkövenként EGYSZER küldhető. Enélkül a tölcsér HAMIS képet ad: a
- * lejátszó `timeupdate` eseménye másodpercenként többször érkezik, tehát a
- * „25% fölött vagyunk" feltétel MINDEN eseménynél igaz maradna, és egyetlen
- * néző több tucat mérföldkő-eseményt termelne. Ugyanez a baj a
- * VISSZATEKERÉSNÉL: aki visszaugrik a videó elejére és újra előrehalad, a
- * küszöböket ÚJRA átlépi — retesz nélkül minden átlépés új eseményt szórna.
- *
- * A megoldás ugyanaz a minta, amit ez a modul már az `eventsForLessonCompletion`
- * mellett követ: a döntés tiszta, mellékhatás nélküli JS-ben él (DOM, React és
- * PostHog nélkül kimerítően tesztelhető), és CSAK A VÁLTOZÁSOKAT adja vissza —
- * a már elküldött mérföldköveket a követő nyilvántartja, és többé nem adja ki.
- * A GOV.UK GA4 videó-követője szó szerint ugyanezt teszi: méréskor „rögzíti,
- * hogy ez az esemény többé nem tüzelhet"
- * (https://docs.publishing.service.gov.uk/repos/govuk_publishing_components/analytics-ga4/trackers/ga4-video-tracker.html).
- *
- * MIT MÉR: a lejátszófej MÉLYSÉGÉT (pozíció / hossz). A ténylegesen megnézett
- * másodperceket a szkippelés-ellenes lefedettség-számláló méri
- * (src/lib/stream/watched-coverage.ts) — az hajtja a készre jelölést. A két
- * mérőszám szándékosan különbözik; az indoklás a
- * src/lib/analytics/course-events.ts videó-szakaszában áll.
- *
- * ÉLETCIKLUS: egy követő EGY leckéhez tartozik. A lejátszó leckénként tart
- * belőle egyet (useWatchTracking), így az előző lecke reteszei nem
- * szivárognak át a következőre, és a leckére VISSZATÉRÉS sem küld újra.
  */
 
 /** Amit egy lejátszó-esemény KIVÁLTOTT — üres mezők = nincs teendő. */

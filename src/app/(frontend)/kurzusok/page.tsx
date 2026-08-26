@@ -30,22 +30,11 @@ import config from '../../../payload.config'
 
 /**
  * /kurzusok — kurzuslista (a kurzus-értékesítés belépőpontja).
- *
  * - Csak `status === 'published'` termékek (a saját status select szerint —
- *   draft sosem, archived NEM listázódik, de a meglévő vevő a közvetlen
- *   linken keresztül tovább éri el a kurzus-oldalát).
+ * draft sosem, archived NEM listázódik, de a meglévő vevő a közvetlen
+ * linken keresztül tovább éri el a kurzus-oldalát).
  * - Kategória-szűrés: ?kategoria=<slug> — a szűrő-chipek a listában
- *   ténylegesen előforduló kategóriák (üres szűrő nem kínálható fel);
- *   ismeretlen slug esetén a lista szűretlen marad (resolveCategoryFilter).
- * - Kétirányú kurzusstruktúra: a szűrt lista két sávra bomlik („Otthoni
- *   gyakorlóknak" elöl, „Szakembereknek" utána). A besorolást KIZÁRÓLAG a
- *   src/lib/course-audience.ts adja (audience nélküli termék → laikus sáv);
- *   üres sáv egyáltalán nem renderelődik, és ha MINDKETTŐ üres, a lenti
- *   üres-állapot marad.
- * - A szűrés/logika a src/lib/courses.ts tesztelt függvényeiben él.
- *
- * Hibatűrés: DB-hiba esetén (pl. build-időben nincs adatbázis) az oldal az
- * üres állapottal renderel — a getNavTree-mintát követve.
+ * ténylegesen előforduló kategóriák (üres szűrő nem kínálható fel);
  */
 
 export const metadata: Metadata = buildStaticPageMetadata({

@@ -10,62 +10,8 @@ import type { CourseCtaTarget, PostCtaVariant } from './post-article'
 import '../../app/(frontend)/styles/blocks/post-view.css'
 
 /**
- * PostCourseCta — a cikk végi, halk ajánló panel.
- *
- * ═══ MIÉRT KELL ═══
- * NN/g, *Informational Articles Must Ask For the Order*
- * (https://www.nngroup.com/articles/product-links-on-informational-pages/):
- * a keresőből érkező látogató a navigációt nem járja be, ezért a
- * termék-hivatkozás helye „the page's body area and at the end of the
- * article"; a P&G-esettanulmányban a látogatók „didn't notice that P&G sold a
- * product". A hivatkozás nélküli cikk „attracts tons of freeloaders, but no
- * business".
- *
- * ═══ MIÉRT HALKAN ═══
- * Ugyanez a cikk: „Turn down the volume on the sales message. If you push too
- * hard, you lose credibility." Ezért kompakt panel a lap saját tokenjeivel,
- * kép nélkül, új szín nélkül — a bannervakság ellen is ez a védelem (NN/g,
- * *Banner Blindness*), és ez a `docs/ux-belso-oldalak-kutatas.md` B4.2 pontja.
- *
- * ═══ AMI TILOS A PANELBEN ═══
- * Gyógyulási arány, gyógyulási idő, „garantált eredmény", visszaszámláló,
- * kamu-készlet. A mért vevőhang szerint a versenytárs „80-20%-os gyógyulási
- * információja" NEGATÍV véleményt hozott
- * (docs/vevohang-es-hirdetesszoveg.md), és a feladatkiírás orvosi szabálya is
- * ezt tiltja.
- *
- * ═══ A HÁROM ÁG ÉS A GOMBOK SÚLYA (tulajdonosi döntés, 2026-08-25) ═══
- * - `kurzus` változat, kapcsolt kurzussal → „Nyisd meg a kurzusoldalt"
- *   (CTA-szótár #28, SECONDARY). Az ár vagy az „Ingyenes" tény a gomb
- *   KÖZVETLEN közelében áll (Baymard: a döntéshez szükséges tény a cselekvés
- *   mellé való, B6.2).
- * - `kurzus` változat kapcsolt kurzus nélkül → „Nézd meg a kurzusokat"
- *   (#10, PRIMARY).
- * - `idopont` változat (váll-cikk) → a releváns következő lépés a személyes
- *   vizsgálat, ezért „Kérj időpontot üzenetben" (#24, SECONDARY, a
- *   /kapcsolat időpontkérő szekciójára). Kéz-kurzust váll-panaszra nem
- *   ajánlunk elsődlegesként: a felirat és a törzs ígérete együtt maradjon
- *   igaz (WCAG 2.2 2.4.4, Link Purpose in Context).
- * - A `kurzus` változat MINDKÉT ága után külön időpontkérő doboz áll
- *   (AppointmentBox) — tulajdonosi kérés, 2026-08-25: az írásos
- *   időpontkérés minden cikk alól elérhető. A #24 súlya secondary, tehát
- *   az egy-elsődleges-gomb szabály sértetlen.
- * Laponként legfeljebb EGY elsődleges gomb áll (GOV.UK Buttons, B6.5).
- * Új gomb-feliratot kitalálni tilos — minden gombszöveg a
- * `cta-vocabulary.ts`-ből jön.
- *
- * ═══ AZ INGYENES BELÉPŐ SOR ═══
- * A tulajdonos 2026-08-25-i döntése: az ingyenes belépő MINDEN cikk alatt
- * megjelenik (korábban kizárólag a kezdőlapon élt). A megjelenés tudatosan
- * SZÖVEGES link, nem gomb: a panel hangerejét nem emeli (NN/g, „turn down
- * the volume"), és a linkszöveg a cél OLDAL NEVE — a kurzus címe —, ahogy a
- * GOV.UK linkszöveg-szabálya írja („use the name of the page the link goes
- * to as your link text",
- * https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/add-links/).
- * A mondat vége a jóváhagyott igaz-állítás mintáját követi
- * (`FreeCourseFormLink`): mit kell tenni érte, és hogy fizetni nem kell.
- * A váll-cikk alatt a mondat kimondja, hogy a kurzus kézpanaszokra szól —
- * enélkül az ajánlat mást ígérne, mint amit ad.
+ * PostCourseCta — cikk végi halk ajánló panel (nem sürget, nem ígér eredményt).
+ * Kurzus-panel + opcionális időpontkérő doboz; FAQPage JSON-LD nélkül.
  */
 export interface PostCourseCtaProps {
   /** A cikkhez kapcsolt, közzétett kurzus; null, ha nincs (vagy nem publikált). */

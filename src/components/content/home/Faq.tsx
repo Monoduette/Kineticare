@@ -5,18 +5,11 @@ import '../../../app/(frontend)/styles/blocks/faq.css'
 
 /**
  * Faq — gyakori kérdések (audit M8/K7: ellenérv-kezelés a vásárlás előtt).
- *
  * Statikus magyar szöveg az audit által azonosított kérdésekkel. A natív
  * <details>/<summary> kliens-oldali JS nélkül is működik (SSR-barát).
  * A válaszok óvatosak: műtét utáni helyzetben mindig a kezelőorvos/gyógytornász
  * jóváhagyása az irányadó — orvosi ígéretet nem teszünk.
- *
  * STÍLUS: a szekció a KÖZÖS GYIK-stíluslapot viseli (styles/blocks/faq.css) —
- * ugyanazt, amit a CMS-vezérelt `faq` blokk. Korábban elemre írt inline
- * stílusokból élt: az egy második, csendben szétcsúszó igazságforrás volt (a
- * betűméret is így kerülhetett a közös skálán kívülre), és a nyitás-csukás
- * átmenetet sem kaphatta meg. A lenyíló tartalom finom magasság-átmenetét a
- * styles/motion.css adja, progresszív ráépítésként.
  */
 
 /**

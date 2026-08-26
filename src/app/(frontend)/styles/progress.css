@@ -1,17 +1,10 @@
 /**
  * Haladás-vizualizációk stílusa (src/components/ui/Progress.tsx).
- *
  * KONTRASZT-JEGYZŐKÖNYV (WCAG 1.4.11 — információt hordozó grafika ≥ 3:1;
  * a számok 2026-08-16-án ÚJRASZÁMOLVA a jelenlegi palettával — a korábbi
  * 3,60 / 1,28 / 5,78 értékek egy régebbi tokenkészletből maradtak itt):
- *   kitöltés accent-deep (#2f6e9f)  a sínen (#d8e2eb) ...... 4,15:1  ✓
- *   sín (#d8e2eb)                  a paper lapon (#f6f9fc)  1,24:1  → a sín
- *     ezért kap 1px-es, erősebb (hairline-strong) keretet, hogy a HATÁRA
- *     akkor is érzékelhető legyen, ha a kitöltés 0%;
- *   kész-állapot success (#166534) a sínen ................. 5,43:1  ✓
- *
- * A sáv magassága és a kör mérete a 4px-es térköz-rácsról, illetve a hívó által
- * megadott átmérőből származik; elemre írt betűméret nincs (UX-skill 4. pont).
+ * kitöltés accent-deep (#2f6e9f)  a sínen (#d8e2eb) ...... 4,15:1  ✓
+ * sín (#d8e2eb)                  a paper lapon (#f6f9fc)  1,24:1  → a sín
  */
 
 /* ---- Lineáris sáv -------------------------------------------------------- */

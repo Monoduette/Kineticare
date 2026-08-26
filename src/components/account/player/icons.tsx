@@ -2,20 +2,11 @@ import type { LessonKind } from '@/lib/curriculum/curriculum'
 
 /**
  * A lejátszó INLINE SVG-ikonjai.
- *
- * ═══ MIÉRT INLINE, ÉS MIÉRT NEM IKON-KÖNYVTÁR ═══
  * A tananyag-rail sorai ikonokat viselnek (típus, státusz, melléklet), ami egy
  * 40 leckés kurzuson 100+ ikon. Egy külső ikon-csomag ezért mérhető
  * JS-terhelést hozna a fizetős tartalom LEGFONTOSABB oldalára, ráadásul saját
  * verziófüggést és a repóban máshol nem használt stílusnyelvet. Az itt élő pár
  * path a teljes igényt lefedi, fut szerveroldalon is, és nem terhel semmit.
- *
- * ═══ AKADÁLYMENTESSÉG ═══
- * MINDEN ikon `aria-hidden="true"` és `focusable="false"`: dekoráció, sosem
- * információhordozó. Az információt a mellette álló (szükség esetén csak
- * képernyőolvasónak látható) szöveg viszi — a WCAG 1.4.1 szerint SEM a szín,
- * SEM az alak önmagában nem jelezhet állapotot. A `stroke="currentColor"` miatt
- * az ikon a szövegszínt örökli, így a kontraszt-szabály egy helyen dől el.
  */
 
 interface IconProps {

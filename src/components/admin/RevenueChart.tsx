@@ -9,94 +9,12 @@ import {
 
 /**
  * Havi bevétel oszlopdiagram — kézzel rajzolt SVG, nincs chart-könyvtár.
- *
- * ═══ AKADÁLYMENTESSÉG ═══
- * A számokat a táblázat hordozza (képernyőolvasó); az SVG `role="img"` +
- * `aria-label`. Minden szín CSS-változó — a márka-tokenek
- * (src/app/(payload)/custom.scss, `.kc-adminstat`) Payload-tartalékkal,
- * így a sötét téma is működik hardcode nélkül, és a márka-CSS nélkül a
- * diagram a Payload-kinézetre esik vissza.
- *
- * ═══ TERVEZÉSI DÖNTÉSEK ÉS FORRÁSAIK ═══
- * 1. JELMAGYARÁZAT SZÖVEGGEL ÉS MINTÁZATTAL. A két ágat nem csak szín
- *    különbözteti meg: a szakmai oszlop átlós csíkozást kap, a jelmagyarázat
- *    pedig szöveges („Otthoni", „Szakmai" — ugyanaz a szó, mint a táblázat
- *    fejlécében, WCAG 3.2.4 konzisztens azonosítás).
- *    - WCAG 2.2 SC 1.4.1 Use of Color (a szín nem lehet egyedüli hordozó):
- *      https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html
- *    - IBM Carbon, Legends („Texture can be used instead of, or in addition
- *      to, color to make your chart accessible"):
- *      https://carbondesignsystem.com/data-visualization/legends/
- * 2. Y-TENGELY HÁROM TICKKEL (0, közép, max) ÉS KÉT VÉKONY RÁCSVONALLAL.
- *    Tengelyfelirat nélkül az érték nem becsülhető; háromnál több tick és
- *    sűrű rács viszont már zaj („chartjunk").
- *    - NN/g, Clutter-Free charts: https://www.nngroup.com/articles/clutter-charts/
- *    - IBM Carbon, Chart anatomy („Axes, ticks, and the grid should help the
- *      reader understand the proportions and scale"):
- *      https://carbondesignsystem.com/data-visualization/chart-anatomy/
- *    Az oszlopdiagram Y-tengelye nullától indul (Carbon, Axes and labels:
- *    https://carbondesignsystem.com/data-visualization/axes-and-labels/),
- *    a felső határ „szép" kerek értékre kerekített, hogy a tick olvasható
- *    magyar rövidítés legyen (pl. „80 e Ft").
- * 3. RÖVID X-TICKEK, ÉVSZÁM CSAK ÉVVÁLTÁSNÁL. A korábbi 12 teljes címke
- *    („2025. szeptember", fontSize 10) 320 és 768 px-en átfedett. A rövid
- *    magyar hónapnév („szept.") 12px-szel elforgatás nélkül elfér a 720-as
- *    viewBox 53 px-es oszlopsávjában; az évszám félkövér „landmark" címke
- *    az első oszlopon és minden januárnál (Carbon, Axes and labels:
- *    „Whenever data crosses into a new time cycle … semibold the label").
- * 4. NEM-SZÖVEGES KONTRASZT (tulajdonosi márka-döntés, 2026-08-20: a
- *    diagram-színek a márkapalettából jönnek). Otthoni = accent #3d78aa —
- *    az accent dekorációként megengedett (tokens.css 107–111. sor), a
- *    fehér diagram-háttéren számolva 4,70:1; Szakmai = ink #10243e +
- *    mintázat, fehéren 15,63:1; a szomszédos oszlopok egymáshoz képest
- *    3,32:1. Sötét témában: accent-quiet #9ec4df az emelt (#1a3757)
- *    háttéren 6,61:1, a fehér mintázott oszlop 12,15:1 — a szomszédos
- *    oszlopok 1,84:1-es színkontrasztját ott az átlós mintázat + körvonal
- *    pótolja (nem a szín az egyedüli hordozó, WCAG 1.4.1). A csíkozás
- *    hézaga a diagram-háttér tokenje, tehát a minta mindkét témában
- *    kontrasztos. A teljes számolt jegyzőkönyv: custom.scss fejkomment.
- *    - WCAG 2.2 SC 1.4.11 Non-text Contrast:
- *      https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
- * 5. REFLOW. A LAP 320 px-en sem görget vízszintesen. A 12 hónapos
- *    oszlopdiagram kétirányú adatábrázolás: a WCAG 1.4.10 kivételként
- *    megengedi, hogy a diagram a saját konténerében görögjön, ahelyett,
- *    hogy a viewBox-szöveg 5 px-re zsugorodna. Az SVG ezért
- *    `min-width: max(720px, calc(720 * var(--kc-as-px, 1px)))`, a wrapper
- *    `overflow-x: auto`. A jelmagyarázat HTML-ben van a diagram alatt,
- *    így a szövege keskeny viewporton sem zsugorodik.
- *
- *    ═══ MIÉRT `max()` ÉS NEM CSAK A REM-EGYSÉG (2026-08-20, MÉRVE) ═══
- *    A `--kc-as-px` = `calc(1rem / 13)`, mert a Payload-admin gyökere 13 px
- *    (node_modules/@payloadcms/ui/dist/scss/type.scss: `%body { font-size:
- *    $baseline-body-size }`, vars.scss: `$baseline-body-size: 13px`).
- *    CSAKHOGY a Payload 1024 px alatt LEVISZI a gyökeret 12 px-re
- *    (app.scss: `html { @include mid-break { font-size: 12px } }`,
- *    vars.scss: `$breakpoint-m-width: 1024px`). Ott tehát
- *    `--kc-as-px` = 12/13 = 0,9231 px, a puszta rem-alak szerint a min-width
- *    664,6 px lenne — és mivel a viewBox 720 EGYSÉG széles, az SVG teljes
- *    rajzolata 0,9231-szeresére kicsinyedne, a 12-es tick MÉRT 11,08 px-re.
- *    Az a 11,27 px-nél is rosszabb, amit ez a bekezdés hibaként ír le.
- *    A `max()` a rem-skálát FÖLFELÉ meghagyja (nagyobb gyökéren nő, WCAG
- *    1.4.4 / C14), de a viewBox natív 720 px-e alá nem enged — a tick így
- *    minden gyökérméreten ≥ 12 px. Végrehajtható, SZÁMOLÓ őr védi:
- *    src/__tests__/statisztika-diagram-tick.test.ts.
- *    A `maxWidth`-nél ez a kérdés nem áll fenn: a felső korlát csökkenése
- *    nem kicsinyíti a rajzolatot, csak korábban engedi a görgetést.
- *    - WCAG 2.2 SC 1.4.10 Reflow (kivétel: 2D adatábra / G214):
- *      https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
- * 6. A GÖRGETŐ BILLENTYŰZETRŐL IS MŰKÖDIK: a wrapper role="region" +
- *    aria-label + tabindex="0" hármast visel (WCAG 2.1.1 Keyboard; axe:
- *    scrollable-region-focusable —
- *    https://dequeuniversity.com/rules/axe/4.12/scrollable-region-focusable;
- *    minta: Adrian Roselli, Under-Engineered Responsive Tables —
- *    https://adrianroselli.com/2020/11/under-engineered-responsive-tables.html).
- *    A fókuszgyűrűjét a custom.scss adja (WCAG 2.4.7).
+ * A számokat a táblázat hordozza; SVG role="img" + aria-label.
+ * Otthoni/szakmai ág: szín + csíkozás (WCAG 1.4.1); tokenek: custom.scss.
+ * min-width: max(720px, …) — Payload 1024 alatt 12px gyökér miatt kell.
  */
 
-/* A diagram + jelmagyarázat közös kártyája: emelt felület, a keret
-   hairline-strong, mert a görgethető adatterületet AZONOSÍTJA (tokens.css
-   118–121. sor; fehéren 4,13:1 ≥ 3:1, WCAG 1.4.11) — Payload-tartalékkal,
-   márka-CSS nélkül keret és háttér nélküli marad, mint eddig. */
+/* Diagram kártya: emelt felület, hairline-strong keret (WCAG 1.4.11). */
 const chartCardStyle: CSSProperties = {
   background: 'var(--kc-as-surface-raised, transparent)',
   border: '1px solid var(--kc-as-hairline-strong, transparent)',

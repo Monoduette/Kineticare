@@ -4,25 +4,10 @@ import type { PrimaryAction, SecondaryAction } from './navigation'
 /**
  * A LEJÁTSZÓ ALSÓ AKCIÓSÁVJA — a „mi a következő lépésem?" kérdés egyetlen,
  * mindig elérhető válasza.
- *
- * ═══ MIÉRT EGY PRIMER GOMB, ÉS MIÉRT MOND CÍMET ═══
  * A régi felület minden epizódnál külön „Megjelölöm megnézettnek" gombot
  * kínált, a továbblépés pedig a listából ment — két külön mozdulat ugyanarra a
  * szándékra. Itt EGY elsődleges gomb van, ami az állapot szerint jelöl ÉS lép
  * (`primaryAction`, navigation.ts). A felirata tartalmazza a CÉLT
- * („Kész, tovább: Csuklókörzés"), mert egy önmagában álló „Következő" a
- * képernyőolvasó gomb-listájában értelmezhetetlen (WCAG 2.4.6), a hangvezérlés
- * pedig a LÁTHATÓ feliratot keresi (2.5.3 Label in Name) — ezért a
- * `aria-label` a látható szöveggel kezdődik, nem helyettesíti azt.
- *
- * ═══ MIÉRT NINCS LETILTOTT „ELŐZŐ" ═══
- * Az első leckén az „Előző" gomb NEM jelenik meg letiltva, hanem egyáltalán nem
- * kerül ki. A letiltott vezérlő fókuszálhatatlan zaj a billentyűzeten és
- * hamis ígéret az egérrel: a hiánya őszintébb és nyugodtabb.
- *
- * A sáv `position: sticky; bottom: 0` (player.css): a hosszú szöveges leckéken
- * is végig kéznél van, anélkül hogy a tartalom fölé úszó, elnyomhatatlan
- * fixed réteg lenne.
  */
 
 export interface PlayerActionsProps {
