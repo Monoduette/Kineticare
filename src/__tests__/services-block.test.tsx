@@ -147,6 +147,8 @@ describe('services.css — a rácsúszás és a sorprés őrei', () => {
 
   it('a hosszú szó megtörik, nem vágja le a szekció (WCAG 1.4.10 Reflow)', () => {
     expect(szabalyTorzs(css, '.kc-services__title')).toContain('overflow-wrap: break-word')
+    expect(szabalyTorzs(css, '.kc-services__row-title')).toContain('overflow-wrap: break-word')
+    expect(szabalyTorzs(css, '.kc-services__body')).toContain('min-width: 0')
   })
 })
 

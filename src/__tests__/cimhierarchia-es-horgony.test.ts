@@ -103,12 +103,7 @@ describe('1. a két kezdőlapi szekciócím EGY lépcsőn és EGY sortávon áll
   })
 })
 
-describe('2. a számozott sorok címét NEM a méret emeli ki', () => {
-  const meretParok = [
-    ['services.css', servicesCss, '.kc-services__row-title', '.kc-services__text'],
-    ['how-it-works.css', howCss, '.kc-how__step-title', '.kc-how__text'],
-  ] as const
-
+describe('2. a számozott sorok hierarchiája', () => {
   it('a hogyan-működik sor-cím 700-as törzsbetű (GOV.UK heading-s)', () => {
     const cim = szabalyTorzs(howCss, '.kc-how__step-title')
     expect(ertek(cim, 'font-weight')).toBe('var(--kc-font-weight-bold)')
@@ -123,12 +118,24 @@ describe('2. a számozott sorok címét NEM a méret emeli ki', () => {
     expect(szabalyTorzs(servicesCss, '.kc-services__text')).not.toContain('font-weight')
   })
 
-  it.each(meretParok)('%s — cím és szöveg AZONOS méreten áll (a szintet nem a méret adja)', (_nev, css, cimSzelektor, szovegSzelektor) => {
-    expect(ertek(szabalyTorzs(css, cimSzelektor), 'font-size')).toBe('var(--kc-font-m)')
-    expect(ertek(szabalyTorzs(css, szovegSzelektor), 'font-size')).toBe('var(--kc-font-m)')
+  it('a szolgáltatások sor-cím a következő hierarchia-lépcsőn áll (L), a törzs M', () => {
+    expect(ertek(szabalyTorzs(servicesCss, '.kc-services__row-title'), 'font-size')).toBe(
+      'var(--kc-font-l)',
+    )
+    expect(ertek(szabalyTorzs(servicesCss, '.kc-services__text'), 'font-size')).toBe(
+      'var(--kc-font-m)',
+    )
   })
 
-  it.each(meretParok)('%s — a sor-cím a közös címsor-sortávot viszi (nincs elemre írt szám)', (_nev, css, cimSzelektor) => {
+  it('a hogyan-működik cím és szöveg azonos M méreten áll (a szintet a súly adja)', () => {
+    expect(ertek(szabalyTorzs(howCss, '.kc-how__step-title'), 'font-size')).toBe('var(--kc-font-m)')
+    expect(ertek(szabalyTorzs(howCss, '.kc-how__text'), 'font-size')).toBe('var(--kc-font-m)')
+  })
+
+  it.each([
+    ['services.css', servicesCss, '.kc-services__row-title'],
+    ['how-it-works.css', howCss, '.kc-how__step-title'],
+  ] as const)('%s — a sor-cím a közös címsor-sortávot viszi (nincs elemre írt szám)', (_nev, css, cimSzelektor) => {
     expect(ertek(szabalyTorzs(css, cimSzelektor), 'line-height')).toBe('var(--kc-leading-heading)')
   })
 

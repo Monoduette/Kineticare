@@ -275,7 +275,11 @@
    https://www.nngroup.com/articles/visual-hierarchy-ux-definition/ */
 .kc-services__num {
   margin: 0;
-  padding-top: 0.2rem;
+  /* A sor-cím L-re nőtt; a szám M marad. A 0,2rem a két M-es sor
+     sapka-vonalára volt hangolva. space-2 (8 px) a mért optikai
+     igazítás: 320-on L=32 px / szám=16 px, 1440-en L=46,4 px / szám=18 px.
+     NN/g Visual Hierarchy: a szám UI-jel, nem címsor. */
+  padding-top: var(--kc-space-2);
   font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
   font-weight: var(--kc-font-weight-medium);
@@ -284,30 +288,45 @@
   color: var(--kc-services-accent-text);
 }
 
-/* SOR-CÍM: A BETŰCSALÁD HORDOZZA A SZINTET (tulajdonosi mockup, 2026-08-26).
-   A tükör a „Rendelői kezelések" / „Otthoni program" címeket SZERIF
-   display-betűvel, 400 súllyal viszi — ugyanazzal a családdal, mint a
-   szekció H2. A törzs Nunito Sans. A hierarchia tehát NEM méret (mindkettő
-   M) és NEM félkövér: type contrast (NN/g Visual Hierarchy — „Designers
-   often also use type contrast to indicate hierarchy").
-   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+/* A cím-oszlop a 2,5rem-es szám mellett minmax(0, 1fr) — min-width: 0
+   nélkül a hosszú CMS-cím (pl. „Rendelői kezelések – személyesen")
+   kitolja a rácsot. WCAG 2.2 SC 1.4.10 Reflow. */
+.kc-services__body {
+  min-width: 0;
+}
 
-   A Tenor Sans-nak CSAK 400-as metszete van (fonts.css), ezért a súly
-   `normal`. 700-as kérés szintetikus félkövért adna (őr: cimhierarchia
-   teszt). A 2026-08-17-i Nunito-700 váltás a mockuptól tért el: a
-   tulajdonos a designt kéri vissza.
+/* SOR-CÍM: A KÖVETKEZŐ HIERARCHIA-LÉPCSŐ (tulajdonosi kérés, 2026-08-26).
+   A három-méretes skálán M után a következő token az L — nincs köztes
+   méret (őr: tipografia-harom-meret). NN/g Visual Hierarchy
+   (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/):
+   „use no more than 3 font sizes"; a webes példa body 14–16, subheader
+   18–22, header ~32. Az M asztali 18 px a subheader ALJA; a rövid,
+   pillantásra olvasható sor-cím („Rendelői kezelések") a header-lépcsőt
+   kéri (NN/g Glanceable Fonts:
+   https://www.nngroup.com/articles/glanceable-fonts/).
 
-   A sortáv a közös címsor-sortáv (1,2) — magyar ékezetes címnél (ő, ű)
-   az 1,08 a következő sorba ért. A szín ink (14,79:1 a paperen). */
+   A szekció H2 is L. A projekt már elfogadja, hogy H1=H2=L, a szintet
+   ELHELYEZÉS viszi (tokens.css, base.css). Itt ugyanez: a H2 a bal
+   hasáb 12ch-s display-címe, a H3 a számozott lista jobbra. A családot
+   (Tenor) és a 400-as súlyt a mockup tartja. 700 tilos: a Tenor Sans-nak
+   csak 400-as metszete van.
+
+   320 px: L alsó clamp = 32 px. A cím-oszlop ~216 px (320 − 2×space-5
+   − 2,5rem szám − space-4 rés). Tenor 32 px ≈ 16,9 px/karakter: a
+   „Rendelői" / „kezelések" két sorba fér; hosszabb CMS-cím
+   overflow-wrap-pel törik, nem nyit vízszintes görgetőt
+   (WCAG 2.2 SC 1.4.10). */
 .kc-services__row-title {
   margin: 0 0 var(--kc-space-4);
+  min-width: 0;
   font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-m);
+  font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
   letter-spacing: 0.005em;
   line-height: var(--kc-leading-heading);
   color: var(--kc-services-ink);
   text-wrap: balance;
+  overflow-wrap: break-word;
 }
 
 .kc-services__text {

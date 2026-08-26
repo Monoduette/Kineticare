@@ -96,6 +96,7 @@ describe('Így tudunk segíteni — tükör-szerződés', () => {
     const cim = szabalyTorzs(servicesCss, '.kc-services__row-title')
     expect(cim).toContain('font-family: var(--kc-font-heading)')
     expect(cim).toContain('font-weight: var(--kc-font-weight-normal)')
+    expect(cim).toContain('font-size: var(--kc-font-l)')
   })
 
   it('a fotó a szekció hátterébe simul (fátyol + alsó-bal vágás)', () => {
