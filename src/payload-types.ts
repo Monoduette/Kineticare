@@ -343,11 +343,11 @@ export interface Page {
    */
   order?: number | null;
   /**
-   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.
+   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod. A listában csak munkatárs és tulajdonos van.
    */
   author?: (number | null) | User;
   /**
-   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.
+   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte. A listában csak munkatárs és tulajdonos van.
    */
   reviewedBy?: (number | null) | User;
   /**
@@ -1985,11 +1985,11 @@ export interface Post {
    */
   order?: number | null;
   /**
-   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod.
+   * Alapból te vagy; ha más nevében írod a cikket, itt átállíthatod. A listában csak munkatárs és tulajdonos van.
    */
   author?: (number | null) | User;
   /**
-   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte.
+   * A gyógytornász, aki a cikk klinikai állításait a forrásokkal együtt ellenőrizte. A listában csak munkatárs és tulajdonos van.
    */
   reviewedBy?: (number | null) | User;
   /**
@@ -2005,7 +2005,7 @@ export interface Post {
    */
   categories?: (number | Category)[] | null;
   /**
-   * Legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk az olvasónak.
+   * Legfeljebb 3 másik cikk, amit a bejegyzés alján ajánlunk az olvasónak.
    */
   relatedPosts?: (number | Post)[] | null;
   /**
@@ -2082,7 +2082,7 @@ export interface Menu {
    */
   type: 'page' | 'post' | 'url' | 'product';
   /**
-   * A menüpont célja — a fent választott típusnak megfelelő listából.
+   * Csak a fent választott típus elemei: oldal, cikk vagy kurzus.
    */
   ref?:
     | ({
@@ -2102,7 +2102,7 @@ export interface Menu {
    */
   url?: string | null;
   /**
-   * Csak akkor töltsd ki, ha ez almenüpont. Legfeljebb 2 szintű a menü: almenüpont alá már nem tehetsz továbbit.
+   * Csak akkor töltsd ki, ha ez almenüpont. A listában csak főmenüpontok vannak: almenüpont alá már nem tehetsz továbbit.
    */
   parent?: (number | null) | Menu;
   /**
