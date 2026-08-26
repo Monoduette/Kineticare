@@ -22,31 +22,10 @@ import { FOOTER_CONTACT_EMAIL, FOOTER_LEGAL_LINKS } from '../components/layout/F
 
 /**
  * ŐR — HIBAOLDALAK (nem található + váratlan hiba).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * Az élő 404-lap teljesen üres volt: `<body>` = `<div hidden>` + scriptek,
  * 0 link, 0 szöveg, se fejléc, se lábléc (docs/informacios-architektura.md,
  * TOP-10 #1). Minden elgépelt vagy elavult URL végleges zsákutca volt.
- *
  * A GYÖKÉROK KÉT RÉTEGŰ, és mindkettőt külön teszt őrzi:
- *
- *  (1) NEM ILLESZKEDŐ URL (pl. `/egy/ket/harom`): a Next a gyökérszintű 404-et
- *      csak EGYETLEN gyökér-layout mellett tudja a `not-found.tsx`-ből
- *      összerakni. Ennek a projektnek kettő van — `(frontend)` és `(payload)` —,
- *      ezért a hivatalos megoldás a `global-not-found.tsx` + az
- *      `experimental.globalNotFound` kapcsoló. A kettő EGYÜTT él vagy sehogy:
- *      ha bármelyik kiesik, a Next némán visszaáll a beépített ANGOL lapjára.
- *      https://nextjs.org/docs/app/api-reference/file-conventions/not-found
- *
- *  (2) SAJÁT `notFound()` HÍVÁS (`/[slug]`, `/kurzusok/[slug]`, `/blog/[slug]`):
- *      a `(frontend)/not-found.tsx`-nek kell tartalmat és továbbvezető linkeket
- *      adnia. A státuszkód 404 marad, mert a route-ok továbbra is `notFound()`-ot
- *      hívnak (a 200-as „soft 404" SEO-hiba volna:
- *      https://developers.google.com/search/docs/crawling-indexing/http-network-errors).
- *
- * ═══ TARTALMI SZERZŐDÉS ═══
- * A szöveg CMS-FÜGGETLEN konstans, hogy adatbázis-hiba esetén is helytálljon,
- * és a két beépítési hely SZÓ SZERINT ugyanazt mondja (WCAG 2.2 · 3.2.4).
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

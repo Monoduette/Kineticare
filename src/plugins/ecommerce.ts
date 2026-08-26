@@ -445,22 +445,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       },
     },
     /**
-     * ═══ AZ ÉRTÉKESÍTŐ KURZUSOLDAL STRUKTURÁLT SZAKASZAI ═══
-     *
-     * A kurzusoldal (`/kurzusok/[slug]`) döntést támogató elemei — előny-pipák,
-     * „hogyan működik", „kinek való / kinek nem", garancia, GYIK — eddig CSAK a
-     * `longDescription` folyószövegében fértek el, ezért nem lehetett őket sem
-     * kiemelni (garancia-sáv), sem összehasonlítható rácsba tenni, sem
-     * harmonikába zárni (GYIK). A kutatás mindegyiket nevesítve kéri:
-     * docs/ux-belso-oldalak-kutatas.md — B6.1 (ismételt CTA), B6.3 (garancia a
-     * termékoldalon), B3.1 (párhuzamos tartalom rácsba), B5.1 (GYIK harmonikába),
-     * B5.2 (az ár/garancia/tanterv SOSEM harmonikába).
-     *
-     * MINDEN mező OPCIONÁLIS és a szerkesztő tölti — a felület egyetlen szöveget
-     * sem hardcode-ol: ha a mező üres, a tartalom a MEGLÉVŐ szövegből képződik
-     * (a `longDescription` megfelelő szakaszából, ennek hiányában a tananyagból).
-     * A fallback-lánc egyetlen, tesztelt helyen él:
-     * src/components/courses/sales-content.ts.
+     * Kurzusoldal strukturált szakaszai (előnyök, lépések, GYIK stb.) — mind opcionális;
+     * üres mezőnél fallback: `src/components/courses/sales-content.ts`.
      */
     {
       name: 'salesHighlights',

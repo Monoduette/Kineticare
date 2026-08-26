@@ -9,20 +9,10 @@ import { orderConfirmationEmail } from '../lib/email/templates/order'
 
 /**
  * LEVÉLSABLONOK — a weboldal design-nyelve és az akadálymentesség őrei.
- *
- * ═══ MIÉRT KELL ŐR ═══
  * A levelek nem látszanak sem a lapon, sem a böngészőben: senki nem veszi
  * észre, ha a márkaarcuk visszacsúszik vagy az akadálymentességük elromlik.
  * A korábbi váz például ZÖLD (#1a7f5a) volt, miközben az oldal kék — ez
  * hónapokig így ment ki, mert nincs képernyő, ahol szemet szúrna.
- *
- * ═══ A HIVATKOZOTT SZABÁLYOK ═══
- * Litmus, Ultimate Guide to Accessible Emails: `lang`, `role="presentation"` a
- * elrendezés-táblákon, valódi címsor, legalább 14px törzs.
- * https://www.litmus.com/blog/ultimate-guide-accessible-emails
- * Campaign Monitor CSS-mátrix: flexbox és grid NEM megbízható levélben, ezért
- * táblázatos elrendezés. https://www.campaignmonitor.com/css/
- * WCAG 2.2 · 1.4.3 (AA): fehér az accent-deep gombon 5,45:1 (számolt).
  */
 
 const MINTA = renderLayout({

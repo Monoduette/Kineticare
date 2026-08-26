@@ -8,54 +8,8 @@ import { ctaLabel } from '@/lib/cta-vocabulary'
 
 /**
  * /belepes-atallas — az ÁTKÖLTÖZTETETT vevő egyetlen belépő útja.
- *
- * ═══ MILYEN PROBLÉMÁT OLD MEG ═══
- * A systeme.io-ról áthozott, FIZETŐ vevő levelet kap arról, hogy a régi
- * jelszavával nem tud belépni. Ha ez a levél a `/elfelejtett-jelszo` lapra
- * viszi, a lap H1-e azt kérdezi tőle, hogy „Elfelejtetted a jelszavad?" —
  * amit ő NEM tett: az ő jelszava a régi rendszerben működött. A cím tehát nem
- * az ő helyzetét írja le.
- *
- * WCAG 2.2 · 2.4.6 (Headings and Labels): „Headings and labels describe topic
- * or purpose." A haszonélvezők között a megértés a szempont: „users with
- * cognitive or visual disabilities … benefit from orientation and scanning".
- * https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html
- *
- * NN/g, Information Scent: a kattintás értékének becslése „a mix of cues that
- * they get from the link label, the context in which the link is shown, and
- * their prior experiences" — ha a levél „költözésről" ír, a céllap címének is
- * arról kell szólnia, különben a vevő azt hiszi, rossz helyre jutott.
- * https://www.nngroup.com/articles/information-scent/
- *
- * ═══ MIÉRT KÜLÖN LAP, ÉS MIÉRT NEM SÁV A `/belepes` OLDALON ═══
- * GOV.UK Design System, Notification banner: „Using a notification banner is
- * unlikely to be the right approach in a linear service … For a linear
- * service, it will usually make sense to stick to the 'one thing per page'
- * approach, and avoid using a notification banner", és „There's evidence that
- * people often miss them" (banner-vakság).
- * https://design-system.service.gov.uk/components/notification-banner/
- * A `/belepes` ráadásul pont azt a cselekvést kínálja elsődlegesen (jelszavas
- * belépés), amely ennél a vevőnél BIZTOSAN elbukik.
- *
- * GOV.UK Service Manual, Form structure — „one thing per page": segít a
- * használónak „understand what you're asking them to do", „focus on the
- * specific question and its answer" és „use the service on a mobile device".
- * https://www.gov.uk/service-manual/design/form-structure
- *
- * ═══ MIÉRT UGYANAZ A VÉGPONT ÉS UGYANAZ A GOMBFELIRAT ═══
- * A kért cselekvés bitre azonos a `/elfelejtett-jelszo`-éval: e-mail-cím →
- * visszaállító link. Ezért ugyanaz az űrlap, ugyanaz a Payload-végpont,
- * ugyanaz az enumeráció-védelem és ugyanaz a kérés-korlát fut — és ugyanaz a
- * §3.2 #21 felirat áll a gombon (WCAG 2.2 · 3.2.4 Consistent Identification).
  * Auth-folyamat, access-szabály és kérés-korlát NEM módosult.
- *
- * ═══ INDEXELÉS ═══
- * Ez levél-céllap, nem keresőtalálat. Külön `robots` meta nem kell: a
- * `src/app/robots.ts` `DISALLOWED_PATHS` listáján ÁLL a `/belepes`, a
- * robots.txt tiltás pedig ELŐTAG-egyezés (Google, Robots.txt Specification:
- * „/fish … matches any path that starts with /fish"), tehát a
- * `/belepes-atallas` is tiltott. Ez a slug-választás egyik oka.
- * https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
  */
 
 export const metadata: Metadata = {
@@ -69,13 +23,8 @@ export const metadata: Metadata = {
  * írja le (`src/lib/security/rate-limit.ts`: 3 kérés / 10 perc, a CÍMZETT
  * e-mail-címére kulcsolva). A számokat őr-teszt köti a szabályhoz, hogy a
  * keret átállításakor ne maradjon itt hazug mondat.
- *
- * MIÉRT ÁLL EGYÁLTALÁN A LAPON: a „nem jött meg a levél, kérek még egyet"
  * ötödik próbálkozás után a felhasználó ELAKAD, és nem tudja, miért. NN/g,
- * 1. heurisztika (Visibility of system status): „The design should always keep
  * users informed about what is going on, through appropriate feedback within a
- * reasonable amount of time."
- * https://www.nngroup.com/articles/ten-usability-heuristics/
  */
 export const ATALLAS_KERES_KORLAT_MONDAT =
   'Ugyanarra a címre 10 percen belül legfeljebb 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány percet az újabb próbálkozással.'

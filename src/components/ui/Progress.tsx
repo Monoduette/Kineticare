@@ -1,20 +1,10 @@
 /**
  * Haladás-vizualizációk — lineáris sáv és kör (ring).
- *
  * MIKOR MELYIK (a kutatás alapján, docs-referencia a PR-leírásban):
  * - `ProgressBar` (lineáris): kurzus-fejléc, modul-lista, admin hallgatói tábla.
- *   Egymás alatt a HOSSZ-összehasonlítás pontosabb, mint a szögé, ezért
- *   listában és táblázatban mindig sáv van.
+ * Egymás alatt a HOSSZ-összehasonlítás pontosabb, mint a szögé, ezért
+ * listában és táblázatban mindig sáv van.
  * - `ProgressRing` (kör): kizárólag KOMPAKT, ismétlődő helyen — kurzuskártya
- *   sarka, admin táblasor. Fő kurzus-haladásra sosem.
- *
- * AKADÁLYMENTESSÉG
- * - A sáv `role="progressbar"`, és `aria-valuetext`-tel a HASZNOS szöveget
- *   mondja el („12 lecke kész a 18-ból”), nem a nyers százalékot.
- * - A ring dekoratív (`aria-hidden`): a mellette álló szöveg hordozza az
- *   információt. Így nem keletkezik kettős felolvasás.
- * - A kitöltés és a sín kontrasztja ≥ 3:1 (WCAG 1.4.11) — a színek a
- *   szerep-tokenekről jönnek, nyers hex nincs.
  */
 
 export interface ProgressBarProps {

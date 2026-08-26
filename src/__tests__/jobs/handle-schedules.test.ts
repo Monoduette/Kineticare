@@ -6,37 +6,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A VALÓDI `handleSchedules` az ÉLES configgal, ál-adatbázissal.
- *
- * ═══ MIÉRT KELL EZ A FÁJL ═══
  * A `scheduling.test.ts` a config ALAKJÁT ellenőrzi (van-e `schedule`, egyezik-e
  * a queue és a cron). Az viszont ott NEM derül ki, hogy a Payload ütemezője
  * ténylegesen SORBA ÁLLÍTJA-e a jobot, és milyen értékekkel. Ez a fájl ezért a
  * Payload SAJÁT `handleSchedules` operációját futtatja le (payload/dist/queues/
- * operations/handleSchedules) — nem a tükrét —, és a `jobs.queue` hívást méri.
- *
- * ═══ HOGYAN ═══
- * A `BasePayload` konstruktora önmagában nem nyúl adatbázishoz (a kapcsolódás a
- * `payload.init()`/`db.connect()` dolga), a `jobs` pedig egy sima objektum
- * (`getJobsLocalAPI(this)`), tehát a `queue` metódusa lecserélhető kémre. Így a
- * VALÓDI ütemező-kód fut, csak a persistence-réteg ál. Adatbázis nem kell.
- *
- * ═══ AMIT EZ BIZONYÍT ═══
- * 1. az order-poll PONTOSAN EGYSZER kerül sorba, `queue: order-maintenance` és
- *    `meta.scheduled: true` értékekkel (utóbbi az a mező, amiért a `payload_jobs`
- *    táblának `meta` oszlop kell — lásd a migrációs vonzatot a src/jobs/index.ts
- *    fejlécében);
- * 2. a `handleSchedules` a `payload-jobs-stats` globalt OLVASSA és ÍRJA, tehát a
- *    hozzá tartozó tábla nélkül a deploy elhasalna;
- * 3. egy BERAGADT (`processing: true`, régóta nem frissült) job NEM kapcsolja ki
- *    az ütemezést — miközben a Payload alapértelmezett hookjával kikapcsolná
- *    (negatív kontroll, ugyanezzel az ál-adatbázissal).
- *
- * ═══ K4 FELÜLÍRÁS ═══
- * A K4 versenyhelyzet-javítás óta a saját őr (src/jobs/schedule-guard.ts) a
- * sorba állítást MAGA végzi, advisory-zár alatt, és `shouldSchedule: false`-szal
- * tér vissza — különben a handleSchedules még egyszer sorba állítaná. Ezért a
- * `result.queued/skipped` listák a saját őrös futásoknál `skipped`-et mutatnak:
- * a BIZONYÍTÉK itt a `jobs.queue`-hívás (queueCalls), nem a visszatérési lista.
  */
 
 /** A stats-global slugja (payload/dist/queues/config/global.js). */

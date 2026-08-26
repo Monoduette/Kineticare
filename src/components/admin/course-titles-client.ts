@@ -4,17 +4,11 @@ import { readProductTitles } from './purchases-cell'
 
 /**
  * A kurzus-címek EGYSZERI betöltése az admin felületen (kliens-oldal).
- *
- * MIÉRT KELL: a „Megvásárolt kurzusok" cella a felhasználó-lista MINDEN
  * sorában megjelenik, és a hozzáférés-lista csak azonosítókat hordoz — a
  * kurzus címéhez a termékeket egyszer le kell kérni. A modul-szintű ígéret
  * miatt egy oldalbetöltésre PONTOSAN EGY kérés indul, akárhány cella
  * használja (ugyanaz az elv, amivel a Payload gyári relationship-cellája is
  * egyetlen körbe gyűjti a kapcsolt dokumentumokat).
- *
- * HIBATŰRÉS: ha a lekérdezés elhasal, a térkép üres marad — a cella ilyenkor
- * `Kurzus #<id>` alakot ír ki, tehát a lista sosem törik el. A gyorsítótár
- * hiba esetén ürül, így a következő megnyitás újrapróbálja.
  */
 
 const REQUEST_TIMEOUT_MS = 20_000

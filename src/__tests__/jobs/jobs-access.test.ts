@@ -15,38 +15,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A JOB-VÉGPONTOK JOGOSULTSÁGA (S2/a) — a VALÓDI Payload-kóddal bizonyítva.
- *
- * ═══ A HIBA, AMIT EZ A FÁJL ŐRIZ ═══
  * A `jobs.access` alapértelmezése a szanitizáláskor kerül be
  * (payload/dist/config/defaults.js, `addDefaultsToConfig`):
- *   access: { cancel: defaultAccess, queue: defaultAccess, run: defaultAccess,
- *             ...config.jobs?.access }
- * ahol `defaultAccess = ({ req: { user } }) => Boolean(user)`
- * (payload/dist/auth/defaultAccess.js) — vagyis BÁRMELY BEJELENTKEZETT
- * felhasználó, a `customer` szerepkör is. Ezt itt NEGATÍV KONTROLL bizonyítja:
- * a saját access-blokkot kivéve a customer kérése 200-at kap. (Anonim kérőt a
- * Payload alapértelmezése is elutasít — a rés a bejelentkezett vevőknél volt.)
- *
- * ═══ AMIT EZ A FÁJL BIZONYÍT ═══
- * 1. a jobs-SPECIFIKUS REST-végpontok a `/run` és a `/handle-schedules`
- *    (`/queue` és `/cancel` HTTP-n nem létezik);
- * 2. mindkettőt csak staff/owner hívhatja: anonim és customer 401-et kap;
- * 3. az access-blokk NÉLKÜL a bejelentkezett customer kérése átmegy (negatív
- *    kontroll — ez volt a rés a mai mainen);
- * 4. a jobs-collection SZOKÁSOS CRUD REST-felülete (amit nem a `jobs.access`,
- *    hanem a collection `access` blokkja véd) szintén staff/owner-re szűkült —
- *    enélkül bármely vevő `POST`-tal jobot INJEKTÁLHATNA, amit a cron lefuttat;
- * 5. a SAJÁT, szerver-oldali utak (autoRun-cron `jobs.run`, a számlázási lánc
- *    `jobs.queue` hívásai) VÁLTOZATLANUL működnek, mert `overrideAccess`
- *    alapértelmezés szerint true — beleértve az éles `queueInvoiceIssueJob`-ot;
- * 6. a `queue` access-ág mégis él, ha valaki `overrideAccess: false`-szal hívja
- *    (negatív kontroll: Forbidden).
- *
- * ═══ HOGYAN, ADATBÁZIS NÉLKÜL ═══
- * A `BasePayload` konstruktora nem nyúl adatbázishoz, a `jobs` pedig sima
- * objektum (`getJobsLocalAPI(this)`) — a handle-schedules.test.ts mintájára a
- * persistence-réteget ál-objektum adja. Így a VALÓDI végpont-handler és a
- * VALÓDI local API fut le. Hálózati hívás sehol (CLAUDE.md 15.).
+ * access: { cancel: defaultAccess, queue: defaultAccess, run: defaultAccess,
+ * ...config.jobs?.access }
  */
 
 const JOBS_COLLECTION_SLUG = 'payload-jobs'

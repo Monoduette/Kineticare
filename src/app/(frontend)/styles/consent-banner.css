@@ -1,43 +1,6 @@
 /**
  * Süti-hozzájárulás sáv (ConsentBanner) — a lap aljára rögzített, ink hátterű
- * réteg. MINDEN oldalon megjelenik az első látogatáskor, és a lábléc
- * „Süti-beállítások" gombjára újra is nyitható.
- *
  * MIÉRT NEM INLINE STÍLUS (ez volt eddig): az inline `style` nem tud
- * `:focus-visible`-t, `:hover`-t és médialekérdezést leírni, ezért a sávról
- * pontosan a FÓKUSZ-felülírás maradt le. Az audit mérése szerint a sáv az
- * EGYETLEN sötét felület a lapon, ahonnan hiányzott.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * KONTRASZT (számolt, WCAG 2.2)
- * ─────────────────────────────────────────────────────────────────────────────
- *   törzsszöveg fehér az ink sávon ............................ 15,63:1  T ✓
- *   „adatvédelmi tájékoztató" accent-quiet + aláhúzás az inken .  8,49:1  T ✓
- *   „Elfogadom mindet": ink felirat a fehér kitöltésen ........ 15,63:1  T ✓
- *   „Elfogadom mindet" kitöltése a sávhoz (a komponens határa)  15,63:1  N ✓
- *   „Csak a szükségeseket": fehér felirat + 2px keret az inken  15,63:1  T/N ✓
- *   FÓKUSZGYŰRŰ (javítva): fehér az ink sávon ................. 15,63:1  N ✓
- *     — a globális accent-deep gyűrű itt csak 2,87:1 volt (1.4.11 + 2.4.7
- *       bukás); a `--kc-color-focus-on-dark` ugyanaz a szerep-token, amit a
- *       `.kc-section--dark` és a lejátszó sötét felülete is használ.
- *     — a FEHÉR „Elfogadom mindet" gombon a gyűrű a 2px-es offset miatt a SÁVRA esik,
- *       nem a gomb lapjára: mindkét éle 15,63:1 (ink↔fehér).
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * 2.4.11 FOCUS NOT OBSCURED (Minimum) — WCAG 2.2, AA
- * ─────────────────────────────────────────────────────────────────────────────
- * A sáv `position: fixed; bottom: 0; z-index: 1000`, tehát a lap alján lévő
- * fókuszált vezérlőt (és a kurzusoldal mobil vásárlósávját) ELTAKARHATTA.
- * Amíg látszik, a komponens a dokumentumgyökérre teszi a
- * `kc-has-consent-banner` osztályt ÉS a `--kc-consent-offset` változóba írja a
- * sáv MÉRT magasságát (ResizeObserver) — ugyanaz a minta, mint a
- * `MobileBuyBar` `kc-has-buybar`-ja, csak fix magasság helyett méréssel, mert
- * a sáv 1–3 sorosra tördel a nézetablaktól és a betűmérettől függően.
- *
- * A KÉT SÁV EGYÜTT is előfordul (kurzusoldal, mobil): ilyenkor a két osztály
- * együtt van a gyökéren, és a KÉT-OSZTÁLYOS szabály (magasabb specifikusság)
- * az ÖSSZEGET adja — így a sorrend attól is független, hogy a Next melyik
- * stíluslapot fűzi előbb.
  */
 
 .kc-consent-banner {

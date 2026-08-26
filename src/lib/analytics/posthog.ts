@@ -236,25 +236,7 @@ export function captureAnalyticsEvent(
 }
 
 /**
- * ═══ AZONOSÍTÁS ═══════════════════════════════════════════════════════════
- *
- * MIÉRT KELL EGYÁLTALÁN. A `buildPostHogOptions` `person_profiles:
- * 'identified_only'` beállítást ad — vagyis person-profil KIZÁRÓLAG akkor
- * jön létre, ha valaha lefut egy `identify()`. 2026-08-21-ig a repóban
- * EGYETLEN `identify()` hívás sem volt, tehát a profilok száma tartósan
- * nulla lett volna: minden esemény anonim marad, és a „ki tért vissza",
- * „kik morzsolódtak le", „mekkora a megtartás" kérdések megválaszolhatatlanok.
- * A beállítás önmagában helyes (költség- és adatminimalizálás), csak épp
- * hiányzott mellőle a párja.
- *
- * MI AZ AZONOSÍTÓ. A Payload `users.id` — szám, a saját rendszerünkön kívül
- * semmit nem jelent. **E-mail-cím, név és IP SOHA nem mehet be**: az
- * azonosító önmagában ne legyen személyes adat, hogy a PostHog-oldali
- * tárolás a lehető legkevesebbet tudja a látogatóról. (A logger redact-
- * listája a NAPLÓRA véd, a PostHog-hívásra nem — itt kézzel kell fegyelem.)
- *
- * A `String(userId)` azért kell, mert a PostHog distinct_id-je sztring; a
- * szám-azonosító implicit konverziója verzióról verzióra változhat.
+ * identify: Payload users.id stringként; e-mail/név/IP nem mehet. person_profiles identified_only.
  */
 export function identifyUser(userId: number | string): boolean {
   if (!initialized || typeof window === 'undefined') {

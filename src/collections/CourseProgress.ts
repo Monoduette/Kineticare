@@ -3,26 +3,8 @@ import type { Access, CollectionConfig } from 'payload'
 import { isStaffOrOwner } from '../access/isStaffOrOwner'
 
 /**
- * Kurzus-haladás (E1) — „ki melyik kurzus melyik videóját nézte meg".
- *
- * Egy sor = EGY felhasználó + EGY kurzus + EGY videó „megnézve" jelölése. A
- * rekordokat kizárólag a szerveroldali végpont írja
- * (POST /api/course-progress/mark-watched, src/lib/course-progress/*),
- * `overrideAccess: true`-val — sem az admin felület, sem a REST/GraphQL API
- * nem hozhat létre és nem módosíthat haladás-sort. Így a haladás nem
- * hamisítható meg a kliensről.
- *
- * A videó azonosítása a `videoRef` mezőn keresztül STABIL: a
- * src/lib/stream/contract.ts `streamVideoRef()` konvenciója szerint elsődlegesen
- * a CMS-sor saját `id`-ja, másodlagosan a `streamAssetId`. SORSZÁM (index)
- * SOHA nem kerül ide: a lejátszható videók sorszáma a feldolgozási állapottól
- * függően elcsúszik, és a haladás idegen videóra mutatna.
- *
- * Idempotencia: a user + product + videoRef hármas UNIQUE compound indexet kap
- * (a Payload 3.86 `indexes` mezője támogatja) — így párhuzamos kérésekből sem
- * keletkezhet duplikált sor. A végpont emellett find-then-create-et végez, a
- * render-oldal pedig Set-tel dedupel: a védelem három rétegű, mert a unique
- * index csak a migráció lefutása UTÁN véd.
+ * Kurzus-haladás: user+product+videoRef sor, csak szerver írja (`mark-watched`).
+ * `videoRef` stabil (CMS id / streamAssetId), index SOHA. Unique index + find-then-create.
  */
 
 /**

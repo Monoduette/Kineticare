@@ -13,52 +13,8 @@ import { categoriesWithPosts } from '@/lib/tudastar'
 
 /**
  * sitemap.xml — a Next.js metadata-API generálja (`/sitemap.xml`).
- *
  * `force-dynamic`: a sitemap a CMS-ből épül, ezért NEM generálható build-időben.
- * A CI-ben (és bármely DB nélküli buildnél) a lekérdezés amúgy is üres listát
- * adna vissza — az a sitemap pedig hetekig kint ragadna. Kérésidőben generálva
- * mindig a valós, aktuális tartalom kerül bele.
- *
- * A `getAll*` lekérdezések a cms.ts `safeQuery` burkolójában futnak: DB-hiba
- * esetén üres listát adnak és naplóznak, tehát a sitemap sosem 500-azik —
- * legfeljebb a statikus útvonalakat tartalmazza.
- *
- * ═══ MI KERÜL BE, ÉS MI NEM (a döntés indoklása) ═══
- *
- * A vezérelv a Google saját megfogalmazása: „Include the URLs in your sitemap
- * that you want to see in Google's search results", és duplikáció esetén
- * „choose the URL you prefer and include that in the sitemap instead of all
- * URLs that lead to the same content"
- * (https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap).
- *
  * BENNE VAN
- *  - `/`, `/kurzusok`, `/blog`, `/kapcsolat` — a négy állandó, statikus lap.
- *  - MINDEN published CMS-oldal (`pages`): `/szolgaltatasok`, `/rolunk`, és a
- *    jogi lapok (`/aszf`, `/adatvedelem`, `/impresszum`) is. Ezek nem külön
- *    route-ok, hanem a `[slug]` útvonalon élő CMS-oldalak, ezért a
- *    `getAllPublishedPages` automatikusan hozza őket — új jogi vagy tájékoztató
- *    lap külön kódmódosítás nélkül bekerül.
- *  - MINDEN published blogposzt (`/blog/<slug>`).
- *  - Azok a tartalom-kategóriák, amelyekhez van legalább egy published poszt.
- *  - MINDEN published kurzus, a KANONIKUS (slugos) címén.
- *
- * NINCS BENNE, és miért
- *  - ÜRES kategória-oldal: tartalom nélküli, 200-zal válaszoló lap, amit a
- *    Google „soft 404"-ként kezel; a route maga is `noindex, follow` jelzést
- *    ad rá (blog/kategoria/[slug]/page.tsx). Amint az első cikk megjelenik a
- *    témában, a cím MAGÁTÓL bekerül — külön teendő nincs.
- *  - `/kurzusok?kategoria=<slug>` és `/blog?kategoria=<slug>`: ugyanaz a
- *    tartalom más címen; a kanonikus alak a szűretlen lista, illetve a
- *    dedikált `/blog/kategoria/<slug>` oldal.
- *  - Régi, id-alapú kurzus-URL (`/kurzusok/2`): tartós (308) átirányítást ad a
- *    beszédes címre, tehát átirányított cím lenne a sitemapben.
- *  - Tranzakciós és bejelentkezés mögötti útvonalak (`/kosar`, `/penztar`,
- *    `/fizetes/…`, `/sikertelen`, `/belepes`, `/regisztracio`,
- *    `/elfelejtett-jelszo`, `/jelszo-visszaallitas`, `/fiok`, `/kurzusaim`,
- *    `/admin`, `/api/…`, `/next/…`): a `robots.txt` mindet tiltja
- *    (src/app/robots.ts), és felhasználóhoz kötött vagy egyszer használatos
- *    állapotot mutatnak.
- *  - 404-oldal, előnézeti (draft) tartalom: nem nyilvános, indexelhető lap.
  */
 export const dynamic = 'force-dynamic'
 

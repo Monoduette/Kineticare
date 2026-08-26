@@ -9,47 +9,7 @@ import { loadUserProgress } from './user-progress-client'
 
 /**
  * A Felhasználók admin-lista „Megvásárolt kurzusok" oszlopának cellája.
- *
- * A tulajdonos első listakérdése: KI MIT VETT MEG. A gyári relationship-cella
- * a kurzusok `useAsTitle` mezőjével (`sku`) címkéz — ez technikai azonosító,
- * nem beszédes. Ez a cella a kurzus CÍMÉT írja ki (`displayTitle` → `sku` →
- * `Kurzus #id`), a címeket pedig a `loadCourseTitles` egyetlen, megosztott
- * kéréssel tölti be (oldalanként egy hálózati kör, akárhány sor van).
- *
- * A második kérdés: HOL TART. A vezetői döntés
  * (`docs/statisztika-audit-2026-08-21.md` §2) szerint ehhez NEM jön új oszlop,
- * hanem ez a sor bővül kurzusonként:
- *
- *   Otthoni KézRehab Program · 45% · folyamatban
- *
- * A haladást a `loadUserProgress` tölti be, szintén oldalanként egyetlen
- * kérésben (a cellák azonosítói egy csomagba gyűlnek). A sor SZÖVEGÉT teljes
- * egészében a `formatPurchaseRows` állítja elő — a „nincs tananyag" állapotot
- * is (`purchases-cell.ts`), hogy a megjelenítés egyetlen, tesztelhető helyen
- * dőljön el.
- *
- * ═══ HÁROM TERVEZÉSI DÖNTÉS, INDOKKAL ═══
- *
- * 1. AZ ÁLLAPOT SZÓVAL SZEREPEL, nem színnel vagy ikonnal. WCAG 2.2
- *    SC 1.4.1 (Use of Color): az információ nem múlhat kizárólag színen
- *    (https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html). A szót
- *    a Kurzus-haladás panel szótárából vesszük (`inlineStatusLabel` →
- *    `statusLabel`), hogy a két felület ugyanarra az állapotra ugyanazt a
- *    szót használja (WCAG 2.2 SC 3.2.4, Consistent Identification).
- *
- * 2. SEM SZÍN, SEM CHIP nem kerül a sorba: a szöveg a lista saját színét
- *    örökli. Így az admin világos és sötét témájában sincs kontraszt-
- *    kockázat (a MAI panelben épp ilyen bukás mérve: `--theme-error-500`
- *    fehéren 4,13:1, a küszöb 4,5:1 — `docs/statisztika-audit-2026-08-21.md`
- *    §0.4), és a lista sűrűjébe sem kerül új vizuális zaj. NN/g, Data Tables:
- *    a tábla akkor olvasható, ha a sorok „szkennelhetők" maradnak
- *    (https://www.nngroup.com/articles/data-tables/).
- *
- * 3. BETÖLTÉS KÖZBEN nincs pörgő és nincs helyfoglaló. A sor a haladás
- *    megérkezéséig pontosan a mai alakját mutatja (csak a cím), utána a
- *    szöveg kiegészül. Soronkénti pörgő 100 sornál 100 mozgó elemet
- *    jelentene, a helyfoglaló pedig elrendezés-ugrást okozna — mindkettő
- *    többet ártana, mint amennyit a néhány száz milliszekundum jelzése ér.
  */
 export function PurchasesCell({ cellData, rowData }: { cellData?: unknown; rowData?: unknown }) {
   const [titles, setTitles] = useState<ReadonlyMap<string, string>>(() => new Map())

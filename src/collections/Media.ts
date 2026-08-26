@@ -6,38 +6,9 @@ import { resolveMediaStaticDir } from '../lib/media-dir'
 const mediaStaticDir = resolveMediaStaticDir()
 
 /**
- * Médiafeltöltés (T-019):
- *  - imageSizes: 320/640/1280/1920 px szélességű webméretek — a height szabad,
- *    így arányosan skáláz; `withoutEnlargement: true` miatt kisebb forrásképnél
- *    az eredeti jön létre (nincs minőséget rontó felnagyítás).
- *  - og: 1200×630-as Open Graph méret — center-crop stratégia (fit: cover,
- *    position: centre), mert az og:image fix arányt vár; kis forrásnál itt sem
- *    nagyítunk (withoutEnlargement), ilyenkor a frontend az eredeti képet használja.
- *  - formatOptions: a tárolt fájl webp (quality 80) — a sharp a feltöltéskor
- *    átkonvertálja; az imageSizes-ek a konvertált fájlból készülnek.
- *  - mimeTypes: csak raszterképek (jpeg/png/webp/avif/gif). SVG kizárva: nem
- *    méretezhető sharp-pal és script-injekciós kockázatot hordoz.
- *  - Méretlimit: 10 MB. A limit a HTTP-rétegben él, és be van állítva: a
- *    payload.config `upload: { limits: { fileSize: 10 * 1024 * 1024 } }` —
- *    a túlméretes feltöltés elutasításra kerül (abortOnLimit), nem csonkolódik.
- *  - A focal point/crop szerkesztői felület és a kötelező alt megmarad.
- *
- * TÁROLÁS — a mai állapot (a korábbi „nyitott döntés" lezárva):
- *  - A fájlok a Payload local-storage adapterén mennek, a célkönyvtár a
- *    `PAYLOAD_MEDIA_DIR` környezeti változóból állítható (src/lib/media-dir.ts).
- *    Élesben ez a Railway-hez CSATOLT VOLUME mountpontja (`/app/media`), ami
- *    túléli a deployt. A változó nélkül minden marad a régiben: a Payload
- *    alapértelmezése (a collection slugja, azaz `<cwd>/media`).
- *  - Enélkül a konténer efemer lemezére írnánk, amit minden deploy üresen ad
- *    vissza: a DB-rekord megmarad, a fájl eltűnik, a `/api/media/file/...`
- *    HTTP 500-at ad — élesben pontosan ez történt.
- *  - Öv és nadrágtartó: az induláskori önjavítás (src/lib/media-restore.ts
- *    `ensureMediaFiles`) fájl-szinten ellenőriz, és a repóban meglévő
- *    forrásokból visszatölti a hiányzó képeket, a rekord id-jének megőrzésével.
- *  - KÉSŐBB (Cloudflare R2): a váltás egy storage-adapterrel történik — a
- *    `@payloadcms/storage-s3` (R2 S3-kompatibilis végponttal) a payload.config
- *    plugins-listájába kerül, `disableLocalStorage: true` mellett; ekkor a
- *    `staticDir` és az önjavítás okafogyottá válik.
+ * Médiafeltöltés: webméretek (320–1920), og 1200×630, webp q80, raszter only (SVG
+ * kizárva), max 10 MB. Tárolás: `PAYLOAD_MEDIA_DIR` (élesben Railway volume);
+ * hiányzó fájlok: `ensureMediaFiles`. Később: R2/S3 adapter.
  */
 export const Media: CollectionConfig = {
   slug: 'media',

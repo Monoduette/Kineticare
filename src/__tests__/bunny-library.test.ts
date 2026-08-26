@@ -162,21 +162,10 @@ describe('listBunnyLibraryVideos', () => {
 
 /**
  * ŐR — A LAPOZÁS A NYERS OLDALMÉRETEN DŐL EL, NEM A PARSE-OLT HOSSZON.
- *
- * ═══ A HIBA, AMIT BEZÁR (2026-08-21-i vizsgálat, F5) ═══
  * A ciklus korábban a `parsed.videos.length < itemsPerPage` feltételre állt
  * meg. A parser a GUID nélküli sort ELDOBJA, ezért egy tele, 100-as oldal
  * egyetlen ilyen tétellel 99 videót adott: a lapozás „ez már nem tele oldal”
  * alapon megállt, a 2–5. oldal SOSEM jött be, és csonka-figyelmeztetés sem
- * volt. GUID nélküli sort a gyakorlatban feltöltés alatti vagy hibás videónál
- * láttunk — pontosan akkor, amikor a munkatárs friss felvételt köt leckéhez.
- *
- * A hivatalos Bunny-séma (PaginationListOfVideoModel + VideoModel) szerint a
- * `guid` KÖTELEZŐ mező, tehát a hiánya szerződésszegés: a lapozás nem
- * támaszkodhat rá. Az oldal „tele van-e” kérdést a NYERS `items.length` és a
- * válasz `itemsPerPage` mezője dönti el.
- *
- * HÁLÓZAT: minden hívás injektált `fetchImpl`-en megy, valódi kérés nincs.
  */
 
 /** Egy szabályos videósor a Bunny válaszában. */

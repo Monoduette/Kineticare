@@ -21,51 +21,7 @@
 import { ctaLabel } from '../cta-vocabulary'
 
 /**
- * ═══ A BEKÜLDŐ GOMB FELIRATA ═══
- *
- * `Kérem a kurzust` — E/1, ige + tárgy, három szó, gondolatjel nélkül.
- *
- * MIÉRT NEM A §3.2 #3 SORA („Elindítom ingyen"): az a sor NAVIGÁCIÓS
- * cselekvésé — a kezdőlapi ingyenes sáv és a kurzuskártya gombjáé, amely az
- * ingyenes kurzus OLDALÁRA visz. Ez a gomb ellenben maga a VÁLLALÁS: a
- * beküldéssel fiók keletkezik, hozzáférés íródik be és levél indul. A §3.2
- * ugyanezt a kettősséget már kimondta a #24 (navigáció az időpontkérő
- * szekcióhoz) és a #25 (az űrlap beküldése) párral, vezetői pontosítással:
- * „aki egységesítené a kettőt, az a navigációt és a vállalást mosná össze".
- * Ez a felirat tehát a §3.2 ÚJ sorának javaslata, nem a #3 felülírása.
- *
- * MIÉRT PONTOSAN EZ A SZÓ (mérés, nem ízlés):
- *  - a régi `www.kineticare.hu` ingyenes útján a beküldő gomb `KÉREM`, az oda
- *    vezető gombok `KÉREM A VILLÁMKURZUST` (4×), `KÉREM A PROGRAMOT` (2×) és
- *    `KÉREM A HOZZÁFÉRÉST` (2×) voltak — mérve, nyers HTML-ből:
- *    `docs/regi-oldal-osszehasonlitas.md` §3.1. A meglévő ~274 vevő ezt a szót
- *    szokta meg (Jakob törvénye, NN/g);
- *  - a tulajdonos szó szerinti kérése ugyanez: „ide kellene egy olyan hogy
- *    kérem a kurzust";
- *  - a §3.2 #21 sora ugyanezt a szerkezetet használja („Kérem a visszaállító
- *    linket"), tehát a szótár nyelvébe illeszkedik. FIGYELEM: ez az E/1-es
- *    „kérem" ige, NEM a §2.7-ben tiltott udvariaskodó „Kérjük";
- *  - NN/g „4S": specifikus és önmagában is érthető, és SINCERE — nincs benne
- *    ár, fizetés vagy olyan ígéret, amit a kattintás nem tart be
- *    (`docs/regi-oldal-osszehasonlitas.md` §3.3/4. pont pontosan ezt méri a
- *    mai „Megveszem" hibájaként).
- *
- * MIÉRT NEM „Kérem a villámkurzust": a komponens MINDEN ingyenes kurzuson
- * megjelenhet, a „villámkurzus" viszont EGY termék neve. A tárgy általános
- * alakja tartja a feliratot igaznak akkor is, ha holnap egy másik ingyenes
- * anyag kerül ki. (A §3.2 C-6 mintázatos alakja — `Kérem a <mit>` — később
- * bevezethető, ha a szerkesztő terméknevet akar a gombra.)
- *
- * A gomb VIZUÁLIS SÚLYA `primary`: az ingyenes kurzus saját oldalán ez a lap
- * EGYETLEN elsődleges cselekvése (nincs mellette vásárlás), a §3.2 #3 sorának
- * kötelező `secondary` súlya pedig a KEZDŐLAPRA szól, ahol a fizetős hero-CTA
- * mellett állna (K-3).
- *
- * VEZETŐI DÖNTÉS (2026-08-17): a felirat felkerült a NORMATÍV CTA-szótárba
- * (`docs/ui-sztenderdek.md` §3.2 #26, kódbeli forrás:
- * `src/lib/cta-vocabulary.ts` `free-course-request`), ezért innentől NEM
- * literál, hanem onnan olvasott érték — így a G-UI1 őr-teszt is védi, és a
- * felirat nem tud két helyen szétcsúszni (WCAG 2.2 3.2.4).
+ * Beküldő gomb: „Kérem a kurzust" (E/1) — vállalás, nem navigáció (#3 vs #25); CTA szótárban.
  */
 export const FREE_COURSE_SUBMIT_LABEL = ctaLabel('free-course-request')
 
@@ -151,31 +107,7 @@ export const FREE_COURSE_TURNSTILE_PENDING_ERROR =
 /** Az űrlap fölött álló hiba-összefoglaló általános sora (mezőhibáknál). */
 export const FREE_COURSE_ERROR_SUMMARY = 'Nézd át a megjelölt mezőket, majd küldd el újra.'
 
-/**
- * ═══ A PÉNZTÁR INGYENES-KAPUJA (2026-08-17) ═══
- *
- * A `/penztar?termek=<ingyenes-id>` eddig teljes értékű, de SOSEM sikerülő
- * űrlapot rendelt: a beküldést a `POST /api/checkout/start` ár-kapuja
- * garantáltan elutasítja („A termékhez nem tartozik érvényes ár…"), mert az
- * ingyenes terméken a `coursePriceHuf` `null`. A lap most az űrlap helyett
- * tájékoztató állapotot mutat, egyetlen továbblépéssel.
- *
- * A SZÖVEG SZABÁLYAI (a modul fejlécében felsoroltakon túl):
- *  - NN/g, Error-Message Guidelines: „Concisely and precisely describe the
- *    issue"; „Take a positive tone and don't blame the user"; „Offer
- *    constructive advice. Merely stating the problem is also not enough; offer
- *    some potential remedies." A mondat ezért ELŐBB az okot mondja ki (ingyenes,
- *    tehát nincs mit fizetni), UTÁNA az utat.
- *    https://www.nngroup.com/articles/error-message-guidelines/
- *  - GOV.UK Design System, Button: „Avoid using multiple default buttons on a
- *    single page." Egyetlen továbblépés van, a §3.2 szótárból.
- *    https://design-system.service.gov.uk/components/button/
- *  - A MEZŐKET SZÁNDÉKOSAN NEM SOROLJA FEL. Ugyanaz a vezetői javítás, ami a
- *    `FREE_COURSE_FORM_LINK_TEXT`-et átírta: az űrlapnak HÁROM kötelező eleme
- *    van (név, e-mail, adatkezelési jelölőnégyzet), a kettőt említő mondat tehát
- *    ALULMONDANÁ a ráfordítást. Helyette az marad, ami minden mezőre igaz és
- *    ellenőrizhető: rövid, és fizetni nem kell.
- */
+/** Pénztár ingyenes-kapu: tájékoztató szöveg, mert checkout/start elutasítja a 0 Ft-ot. */
 export const FREE_COURSE_NOT_CHECKOUT_TEXT =
   'Ez a kurzus ingyenes, ezért nem a pénztáron át jár. A kurzus oldalán igényelheted: az űrlap rövid, és fizetned nem kell érte.'
 

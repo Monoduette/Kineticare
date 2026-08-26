@@ -13,66 +13,10 @@ import configPromise from '../../payload.config'
 
 /**
  * JOB-ÜTEMEZÉS REGRESSZIÓS KAPU.
- *
- * ═══ A HIBA, AMIT EZ A FÁJL ŐRIZ ═══
  * A `jobs.autoRun` ÖNMAGÁBAN nem állít sorba egyetlen jobot sem. A rendszer
  * hetekig „zölden" futott úgy, hogy az order-poll és a webhook-retry task
  * SOHA nem futott le: a kódban egyedül az invoice-issue / storno-issue /
  * corrective-invoice-issue került valaha sorba (src/lib/order-paid.ts,
- * src/lib/szamlazz/queue.ts), a két periodikus taskot pedig SENKI nem
- * enqueue-olta. Éles következmény: az elveszett Barion-callback sosem
- * pótlódott — a fizető vevő rendelése örökre `payment_pending` maradt (pénz
- * levonva, kurzus nincs).
- *
- * ═══ A BIZONYÍTÉK (a Payload SAJÁT típusdokumentációja és forrása) ═══
- * 1. `JobsConfig.autoRun`
- *    (node_modules/payload/dist/queues/config/types/index.d.ts):
- *      „Allows you to configure cron jobs that automatically run queued jobs
- *       at specified intervals. **Note that this does not _queue_ new jobs -
- *       only _runs_ jobs that are already in the specified queue.**"
- *    → autoRun = FUTTATÁS. A sorba állítás nem az ő dolga.
- *
- * 2. `SanitizedJobsConfig.scheduling` (ugyanott):
- *      „If set to `true`, at least one task or workflow has scheduling
- *       enabled. This property is automatically set during sanitization."
- *    A szanitizálás forrása (node_modules/payload/dist/config/sanitize.js):
- *      `const hasScheduleProperty = config?.jobs?.tasks?.some((task) => task.schedule) …`
- *      `if (hasScheduleProperty) { config.jobs.scheduling = true; … }`
- *    → `schedule` nélkül `config.jobs.scheduling` UNDEFINED marad.
- *
- * 3. `_initializeCrons` (node_modules/payload/dist/index.js):
- *      `if (… && !cronConfig.disableScheduling && this.config.jobs.scheduling) {`
- *      `  await this.jobs.handleSchedules({ allQueues: …, queue: cronConfig.queue })`
- *      `}`
- *    → a sorba állítást AZ AUTORUN-CRON TICKJE indítja, de csak akkor, ha
- *      `jobs.scheduling` igaz. A két beállítás PÁRBAN érvényes: schedule
- *      nélkül nincs mit ütemezni, autoRun nélkül nincs, ami elindítsa.
- *
- * 4. `AutorunCronConfig.disableScheduling` leírása (ugyanott):
- *      „By default, the autorun will attempt to schedule jobs for tasks and
- *       workflows that have a `schedule` property, **given the queue name is
- *       the same**."
- *    Ezt a `handleSchedules` implementációja is megerősíti
- *    (…/operations/handleSchedules/index.js): `if (!allQueues && queueName !== queue) continue`.
- *    → a task `schedule[].queue`-jának EGYEZNIE kell egy autoRun-entry
- *      queue-jával, különben a `handleSchedules` rá sosem fut le.
- *
- * 5. Duplikátum-védelem — `defaultBeforeSchedule`
- *    (…/operations/handleSchedules/defaultBeforeSchedule.js): a queue-ban
- *    ugyanarra a taskra futtatható vagy futó, `meta.scheduled = true` jelű job
- *    darabszámát nézi, és csak 0 esetén ad `shouldSchedule: true`-t. Tehát
- *    taskonként EGY kintlévő ütemezett job lehet — a percenkénti tick nem
- *    termel job-hegyet. Ezt az alapértelmezést a projekt SAJÁT, beragadás-tűrő
- *    hookra cseréli (src/jobs/schedule-guard.ts) — az indoklás ott, a
- *    viselkedés bizonyítása a handle-schedules.test.ts-ben.
- *
- * ═══ MI VAN EBBEN A FÁJLBAN, ÉS MI NINCS ═══
- * Ez a fájl a KONFIGURÁCIÓ ALAKJÁT őrzi (van-e schedule, fedi-e autoRun-entry,
- * nem sűrűbb-e a ritmusa a tickénél). Azt, hogy a Payload ütemezője ténylegesen
- * sorba állítja-e a jobot — és milyen task/queue/meta értékekkel —, a VALÓDI
- * `handleSchedules`-t meghajtó src/__tests__/jobs/handle-schedules.test.ts
- * bizonyítja. A kettő szándékosan külön: itt nincs Payload-viselkedés-tükör,
- * csak egyetlen, kifejezetten megjelölt szanitizálás-tükör a negatív kontrollhoz.
  */
 
 /** Ezeknek a taskoknak PERIODIKUSAN futniuk KELL — enélkül pénz veszik el. */

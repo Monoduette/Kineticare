@@ -29,36 +29,10 @@ import {
 
 /**
  * ŐR — CROSS-SELL AZ INGYENES KURZUS OLDALÁN (2026-08-17).
- *
- * ═══ MIT VÉD, ÉS MIÉRT ═══
  * A régi `www.kineticare.hu` ingyenes lánca nem ért véget az e-mail
  * megadásával: a beküldés után a látogató azonnal fizetős ajánlatra ment
  * (`urlRedirect: /oto-kezrehab-akcio` — „ez a lánc üzleti lényege”, mérve:
  * `docs/regi-oldal-osszehasonlitas.md` 5.1). Ugyanott az 5.2 mérése szerint ma
- * „Következő ajánlat (a régi OTO helye): NINCS." Ez a kör pótolja a lépést,
- * és az őr négy dolgot rögzít, mert mindegyik némán visszacsúszhatna:
- *
- *  1. A CROSS-SELL KERETEZÉS CSAK AZ INGYENES ÁGON van. A fizetős kurzusoldal
- *     sávja bitre a korábbi, semleges „Kapcsolódó kurzusok" marad.
- *  2. A MIKROSZÖVEG szabályos: nincs töltelék gondolatjel (U+2013/U+2014),
- *     nincs felkiáltójel, nincs „Kérjük", nincs SÜRGETÉS és nincs
- *     gyógyulás-ígéret. A sürgetés tilalma nem ízlés: a valótlan időkorlát a
- *     2008. évi XLVII. törvény (Fttv.) 6. §-a és melléklete szerint megtévesztő
- *     kereskedelmi gyakorlat, és NN/g is itt húzza meg a határt (a valós
- *     készlet-jelzés meggyőzés, a kitalált megtévesztés —
- *     https://www.nngroup.com/articles/deceptive-patterns/). A régi oldal
- *     3 napos, látogatónként újrainduló visszaszámlálóját ezért NEM hozzuk át.
- *  3. Az ISMÉTELT belépő LINK (navigál), a §3.2 #27 jóváhagyott feliratával, és
- *     KIZÁRÓLAG ott jelenik meg, ahol ragadós vásárlódoboz nincs (1024px alatt)
- *     — NN/g, The Same Link Twice on the Same Page: a duplikált hivatkozásnak
- *     ára van, hosszú lapon (kiváltképp mobilon) mégis időt spórol, és ahol van
- *     ragadós megoldás, ott az a jobb (https://www.nngroup.com/articles/duplicate-links/).
- *  4. A 17. tartalom-javítás IDEMPOTENS és HANGOSAN hagy ki: nem találgat
- *     azonosítót, nem ír önhivatkozást, és a szerkesztő beállítását sosem
- *     írja felül.
- *
- * A tiltott karaktereket ez a fájl SAJÁT MAGA építi kódpontból (a G-UI1 őr
- * mintájára), hogy a védett modul gyengítése az őrt ne gyengítse.
  */
 
 /** U+2014 – kvirtmínusz. Magyar szövegben nem írásjel (ui-sztenderdek §3.1.1). */

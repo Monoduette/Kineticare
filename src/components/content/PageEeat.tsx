@@ -10,25 +10,11 @@ import { authorPersonOf, postFaqItems, reviewDatesOf, reviewerPersonOf } from '.
 
 /**
  * PageEeat — szerző-blokk, GYIK és MedicalWebPage JSON-LD a gyökér CMS-oldalon.
- *
- * ═══ MIÉRT A CIKKOLDAL UGYANAZ A NYELVE ═══
  * A Search E-E-A-T kapu a `pages` collection hubjain (pl. `/inhuvelygyulladas`)
  * ugyanazt kéri, mint a Tudástár cikkeken: látható szerző/lektor, kitöltött
  * GYIK, és a sémában Person + FAQPage. A Google *Creating helpful, reliable,
  * people-first content* (YMYL) a „who authored" kérdést a LÁTHATÓ byline-ra
  * köti (https://developers.google.com/search/docs/fundamentals/creating-helpful-content);
- * az NN/g byline-kutatása ugyanezt a hitelesítő blokkot a lap ALJÁN kéri
- * (https://www.nngroup.com/articles/bylines/); az NHS „Page last reviewed"
- * mintája a fő tartalomhoz közel teszi a dátumot, nem a láblécbe
- * (https://service-manual.nhs.uk/design-system/patterns/know-that-a-page-is-up-to-date).
- * WCAG 2.2 **3.2.4** (Consistent Identification): ugyanaz a dolog ugyanúgy
- * nézzen ki — ezért a `PostFaq` és a `PostAuthorBox` jön ide, nem új blokk.
- *
- * ═══ ÜRES MEZŐ = NINCS BLOKK, NINCS SÉMA ═══
- * Author nélkül nincs Person és nincs author kulcs (a kiadó a publisher
- * Organization). Üres faq[] mellett nincs FAQPage. reviewedBy nélkül nincs
- * reviewedBy a sémában. A kitöltetlen oldal úgy renderel, mint eddig.
- * Forráslistát ez a blokk sem tesz a lapra.
  */
 export interface PageEeatProps {
   page: Page

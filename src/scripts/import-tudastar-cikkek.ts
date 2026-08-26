@@ -1,54 +1,12 @@
 /**
- * A Tudástár cikkeinek betöltése a `docs/cikkek/` markdown-fájljaiból.
+ * Tudástár cikkek betöltése docs/cikkek/ markdownból. Slug alapján frissít, nem duplikál.
  *
- * ═══ MIÉRT SCRIPT, ÉS NEM KÉZI BEMÁSOLÁS ═══
- * Nyolc cikk, egyenként 250–460 soros törzzsel. Kézzel bemásolva a szerkezet
- * (címsorok, felsorolások, linkek) elveszne vagy elcsúszna, és minden szakmai
- * javítás után újra kellene csinálni. Így a markdown marad az EGYETLEN igazság,
- * a betöltés pedig visszajátszható.
- *
- * ═══ KÉT KÜLÖN KAPU, SZÁNDÉKOSAN ═══
- *   OWNER_TUDASTAR_CONFIRM=igen   — enélkül PRÓBAFUTÁS: semmi nem íródik.
- *   OWNER_TUDASTAR_PUBLISH=igen   — enélkül a bejegyzés PISZKOZAT marad.
- *
- * A két kapu azért külön, mert a betöltés és a nyilvánossá tétel két külön
- * döntés. A betöltés visszavonható (a rekord piszkozat, senki nem látja), a
- * publikálás viszont egészségügyi tartalmat tesz ki a nyílt internetre. A
- * `docs/cikkek-javitas-naplo.md` szerint a négy tartalmi blokkolóból három
- * (B1 mentőhívási szint, B2 ellenjavallat, B4 irányelv-olvasat) LEZÁRVA, a B3
- * pedig úgy zárult, hogy a nem igazolt akkreditációs szám KIKERÜLT a
- * szövegekből. Ami nyitva maradt: a két gyógytornász szakmai átolvasása.
- * Ezért alapból piszkozat.
- *
- * ═══ MI KERÜL BE A MARKDOWNON KÍVÜL ═══
- * A `seoTitle`, a `seoDescription` és a `seoKeywords` a MÉRT kulcsszó-célzásból jön
- * (`src/lib/tudastar/seo-kulcsszavak.ts`), a `faq` mező pedig a MÉRT keresési
- * kérdésekből (`src/lib/tudastar/faq.ts`). Egyik sem a cikkből számolódik, és
- * egyik sem találgatás: a GYIK-válaszok kizárólag azt mondják, amit a cikk
- * törzse már kimond. A `seoKeywords` az elsodleges kifejezéssel kezdődik, utána
- * a masodlagosak következnek.
- *
- * A `pages.seoKeywords` a Search-lockolt `OLDAL_KULCSSZAVAK` táblából jön,
- * ugyanazon `OWNER_TUDASTAR_CONFIRM` kapu mögött. Csak meglévő pages-rekordot
- * frissít, csak a `seoKeywords` mezőt; új page TILOS. Szándékosan üres slugoknál
- * (kapcsolat, impresszum, adatvedelem, aszf, kurzusok) nem ír kifejezést.
- *
- * A `products.seoKeywords` a Search-lockolt `KURZUS_KULCSSZAVAK` táblából jön,
- * ugyanezen kapu mögött. Csak meglévő product-rekordot frissít, csak a
- * `seoKeywords` mezőt; új product TILOS. Az SOS (`sos-kezrelax-villamkurzus`)
- * szándékosan üres. A `/kurzusok` lista NEM pages-rekord: a lockolt három
- * kifejezés a listing metadata-ból megy ki.
- *
- * ═══ ÚJRAFUTTATHATÓ ═══
- * A párosítás slug szerint történik: meglévő bejegyzést FRISSÍT, nem duplikál.
- * A `publishedAt` az első publikáláskor áll be (a Posts collection
- * `setPublishedAtOnFirstPublish` hookja), ismételt futásnál nem csúszik el.
- *
- * Futtatás:
- *   npx tsx src/scripts/import-tudastar-cikkek.ts                    (próba)
- *   OWNER_TUDASTAR_CONFIRM=igen npx tsx src/scripts/import-tudastar-cikkek.ts
+ * Kapuk: OWNER_TUDASTAR_CONFIRM=igen (írás); OWNER_TUDASTAR_PUBLISH=igen (publikálás).
+ *   npx tsx src/scripts/import-tudastar-cikkek.ts
  *   OWNER_TUDASTAR_CONFIRM=igen OWNER_TUDASTAR_PUBLISH=igen npx tsx …
+ * SEO/GYIK: seo-kulcsszavak.ts, faq.ts. Útmutató: docs/tudastar-cikkek-betoltese.md
  */
+
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'

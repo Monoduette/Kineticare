@@ -151,7 +151,6 @@ describe('ingyenes kurzus (free kind)', () => {
     )
     expect(cta.kind).toBe('free')
     expect(cta.label).toBe(ctaLabel('free-course-claim'))
-    // ═══ A LAPPANGÓ ZSÁKUTCA BEZÁRVA (2026-08-18) ═══
     // Az ág korábban a `/kurzusaim`-ra vitt. Be nem jelentkezett látogatónak ez
     // zsákutca volt: fiókja nincs, a lista bejelentkezést kér, a kurzushoz sosem
     // jut hozzá. A kurzusoldal `ctaSlot`-tal megkerülte, de BÁRMELY új hívó
@@ -259,7 +258,6 @@ describe('coursePriceBadgeKind — a kurzusoldal ár-címkéje (Ingyenes/Megvesz
   })
 
   it('HIBÁS konfiguráció (ár-pipa BE, ár ÜRES) → none: NEM „Ingyenes" a Megveszem mellett', () => {
-    // ═══ A finding esete: korábban ez az ág mutatta az „Ingyenes" címkét. ═══
     expect(coursePriceBadgeKind({ priceInHUFEnabled: true, priceInHUF: null })).toBe('none')
     expect(coursePriceBadgeKind({ priceInHUFEnabled: true, priceInHUF: undefined })).toBe('none')
     // A pipa nélküli, ár nélküli (legacy/hiányzó mező) rekord sem „Ingyenes" —
@@ -269,8 +267,6 @@ describe('coursePriceBadgeKind — a kurzusoldal ár-címkéje (Ingyenes/Megvesz
 })
 
 /**
- * ═══ AZ „INGYENES KURZUS" EGYETLEN IGAZSÁGFORRÁSA (2026-08-16) ═══
- *
  * A hiba, amit bezár: ugyanez a kérdés három helyen, HÁROMFÉLEKÉPP dőlt el. A
  * hozzáférés-adó lekérdezés a beállítatlan (NULL) ár-pipát is ingyenesnek vette
  * és minden belépőnek kiosztotta a kurzust, a gomb-felirat és az ár-címke
@@ -331,24 +327,11 @@ describe('isFreeCourse — SZIGORÚ ingyenes-szabály', () => {
 })
 
 /**
- * ═══ A CTA ÉS A CHECKOUT-KAPU EGYEZÉSE (a legfontosabb szerkezeti fogás) ═══
- *
  * A tulajdonos által jelzett ÉLŐ hiba: a felület olyan vásárlást kínált, amit a
  * szerver garantáltan elutasít. A vevő végigment a pénztáron (számlázási adatok,
  * két jogszabályi nyilatkozat), és a beküldés 400-zal elhasalt:
  * „A termékhez nem tartozik érvényes ár, így nem vásárolható meg."
- *
  * A szabály, amit ez a teszt rögzít:
- *   `resolveCourseCta(...).kind === 'buy'` AKKOR ÉS CSAK AKKOR, ha az
- *   `assertPurchasable` (src/lib/checkout/start-checkout.ts:243) sem dobna.
- *
- * A kapu feltételét itt SZÁNDÉKOSAN újra kimondjuk (az `assertPurchasable` nem
- * exportált, és a fájl másik ügynök tulajdona): ha a kapu feltétele változik, a
- * `checkout-start.test.ts` bukik, ez a teszt pedig a felület oldaláról őrzi
- * ugyanazt. A 4×4-es mátrix mind a 16 kombinációt végigméri.
- *
- * A RÉGI kódon ez a teszt a `{true, null}`, `{true, undefined}`, `{null, *}` és
- * `{undefined, *}` sorokon MEGBUKNA (ott `'buy'` jött, a kapu viszont dobott).
  */
 describe('a CTA sosem kínál olyan vásárlást, amit a checkout elutasít', () => {
   /**

@@ -1,31 +1,8 @@
 /**
- * accessGrants backfill — időkorlátos purchases, hiányzó grantedAt.
- *
- * ═══ MIÉRT KELL ═══
- * A `users.purchases` csak azt tudja, HOZZÁFÉR-e a vevő. A lejárati óra
- * kezdőpontja a paid rendelés `createdAt`-je VAGY az `accessGrants.grantedAt`.
- * Ha a terméken van pozitív `accessDurationDays`, de sem paid dátum, sem
- * grant nincs, a `resolveCourseAccess` fail-open: korlátlan hozzáférés
- * (`unknown-purchase-date`). A 2026-08-16 és 2026-08-23 közötti admin-pipa
- * és a régi grant-ág ilyen sorokat hagyhatott.
- *
- * ═══ HONNAN JÖN A DÁTUM (vezetői döntés, KÖTELEZŐ) ═══
- * KIZÁRÓLAG a vevő SAJÁT, a termékre szóló paid rendelésének `createdAt`
- * értéke. Ismételt vásárlásnál a LEGUTOLSÓ paid. SOHA:
- *  - a mai dátum,
- *  - a `users.createdAt`,
- *  - a termék MAI ára (`priceInHUF`) — árnak itt semmi keresnivalója,
- *  - kitalált `accessDurationDays`.
- * Ha paid dátum nincs, a sor KIMARAD és a jelentésben nevesítve szerepel —
- * azt ember dönti el (ajándék-panel / CLI), a script nem találgat.
- *
- * ═══ KAPU ═══
- * Alapból próbafutás. Íráshoz: `OWNER_BACKFILL_CONFIRM=igen`.
- * Éles futás előtt: `npm run backup:db`. Útmutató: docs/access-grants-backfill.md
- *
- * ═══ IDEMPOTENCIA ═══
- * Ha a termékhez már van `grantedAt`, a script NEM nyúl hozzá — még akkor
- * sem, ha a paid dátum eltér. A meglévő ajándék-óra győz.
+ * accessGrants backfill — hiányzó `grantedAt` időkorlátos purchases-sorokhoz.
+ * Dátum forrása: a vevő saját paid rendelésének `createdAt` (legutolsó).
+ * A termék mai `priceInHUF` árát SOHA nem olvassuk. Íráshoz:
+ * `OWNER_BACKFILL_CONFIRM=igen`. Meglévő grantot nem ír felül.
  */
 
 import type { Payload } from 'payload'

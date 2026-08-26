@@ -3,20 +3,10 @@ import { formatPriceHuf } from '../../lib/format-price'
 /**
  * A Rendelések admin-lista „Tételek" oszlopának TISZTA (mellékhatásmentes)
  * formázó segédfüggvénye.
- *
  * Külön modulban él a kliens-komponenstől, hogy egységtesztelhető legyen
  * (az OrderItemsCell.tsx React-komponens; a @payloadcms/ui-s cellák
  * node-környezetű tesztben nem tölthetők be — a refund-amount.ts mintája).
- *
  * A bemenet a cella `cellData`-ja: az orders `items` array-mezőjének sorai.
- * A lista-nézetben a relationship nem feloldott (a `product` csak azonosító),
- * és a sorok szerkezete futásidőben nem garantált — ezért minden érték
- * `unknown`-ként érkezik, és típusszűkítéssel dolgozzuk fel. Egy hibás sor
- * NEM omlaszthatja el a teljes listát: soronként fallback kerül ki.
- *
- * Sorformátum (a megrendelő „ki mit vett" igényére):
- *   {titleSnapshot ?? '#<productId>'} × {quantity} — {formatPriceHuf(ár × db)}
- * Üres vagy hiányzó tömbre egyetlen „—" sor jön vissza.
  */
 
 /** Üres/hiányzó tétellista és hibás tétel-sor közös helyőrzője. */

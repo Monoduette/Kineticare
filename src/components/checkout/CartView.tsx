@@ -19,70 +19,10 @@ import { checkoutHref } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 
 /**
- * CartView — a kosár kliens-oldali megjelenítése (tételek, kivétel, végösszeg,
- * továbblépés).
- *
- * - A tételek a localStorage-cartból jönnek; a szerver-oldali initialItem a
- *   /kosar?termek={id} konvenciót fogadja (a kliens hozzáadja, duplikáció nélkül).
- * - A pénztár-link a termék-id-t is viszi (/penztar?termek={id}): a pénztár
- *   szerver-oldala a kosárhoz NEM fér hozzá (localStorage, M8), így a query az
- *   egyetlen csatorna.
- * - A végösszeg MEGJELENÍTÉSRE — a fizetendő összeg a checkout során a
- *   szerver (T-021) válaszából igazolódik vissza.
- * - Üres kosár: segítő szöveg + CTA a kurzusokra.
- *
- * ═══ TÉTELENKÉNTI CSELEKVÉS (2026-08-18) ═══
- * A felület KÉT SZINTEN beszél, és a kettő nem keveredik:
- *
- *  1. A TÉTEL SORA mindent elmond, ami csak arra a tételre igaz: az árát vagy
- *     az „Ingyenes" címkéjét, a magyarázatot, ha nem vásárolható, és a SAJÁT
- *     cselekvését. Az ingyenes tétel útja az igénylő űrlap (`courseCtaHref`),
- *     a nem vásárolhatóé a kivétel a kosárból. Minden sor kivehető.
- *  2. A SÁV a pénzről és a következő lépésről beszél: mennyit fizetsz most,
- *     miért annyit, és hova mész tovább.
- *
- * MIÉRT ÍGY: a 2026-08-17-i változatban egyetlen archivált tétel elvette az
- * EGÉSZ kosár fizetés-gombját. Baymard mérése szerint ha a látogatót csak
- * annyival intézik el, hogy a termék nem kapható, 30% azonnal máshol keresi
- * tovább (https://baymard.com/blog/handling-out-of-stock-products), és a
- * javaslat kifejezetten az, hogy a vásárlás maradjon nyitva. NN/g,
- * Error-Message Guidelines: „Display the error message close to the error's
- * source." és „Merely stating the problem is also not enough; offer some
- * potential remedies." (https://www.nngroup.com/articles/error-message-guidelines/)
- * — a magyarázat ezért a SORBAN áll, nem a sáv aljában.
- *
- * A sáv állapotai (`cartSummary`, src/lib/cart.ts):
- *  - `amount`  — van megvehető tétel → a pénztár útja (§3.2 #20). Ha a
- *                kosárban más is van, a sáv KIMONDJA, mire vonatkozik a
- *                fizetés (`cartScopeNote`);
- *  - `free`    — nincs megvehető, de van ingyenes tétel → a sávnak nincs
- *                gombja, mert az igénylés a tétel saját sorában áll;
- *  - `blocked` — EGYETLEN tétel sem vásárolható és nem is igényelhető → nincs
- *                végösszeg, és a sáv EGY alternatívát ad (kurzuslista).
- *
- * MIÉRT NEM LETILTOTT GOMB a blokkolt ág: GOV.UK Design System, Button —
- * „Disabled buttons have poor contrast and can confuse some users, so avoid
- * them if possible." és „Avoid using multiple default buttons on a single
- * page." (https://design-system.service.gov.uk/components/button/). Ugyanezt
- * mondja ki a kurzusoldal Á-3 szabálya, ahol a nem vásárolható terméknek
- * SZÁNDÉKOSAN nincs feliratú CTA-ja — a kosár nem mondhat mást ugyanarról a
- * termékről (WCAG 2.2 SC 3.2.4 Consistent Identification).
- *
- * EGY ELSŐDLEGES GOMB A LAPON: a sáv `primary` gombja (pénztár VAGY
- * kurzuslista, sosem mindkettő) mellett a sorok cselekvései `secondary` és
- * `ghost` súlyt kapnak — a §3.2 C-2 szabálya szerinti súlyokat, tehát a
- * súly-választás nem ízlés kérdése.
- *
- * ═══ A FELIRATOK ═══
- * Mind a §3.2 CTA-szótárból (`cta-vocabulary.ts`) olvasva, nem literálként —
- * így a G-UI1 őr védi őket. Ez zárja be a `docs/gomb-inventar.md`-ben
- * 2026-08-16 óta rögzített két hibát: a „Tovább a penztárhoz" ELGÉPELÉST (és a
- * §3.2-ben tiltott puszta „Tovább…" kezdést), valamint a „Törlés" feliratot
- * (Carbon: a *remove* ≠ *delete*, a kosárból kivett tétel nem semmisül meg).
- *
- * ═══ AZ ÁR FORMÁZÁSA ═══
- * A közös `formatPriceHuf` (a `cartSummary` hívja), nem `toLocaleString`: az
- * előbbi NEM TÖRHETŐ szóközzel tagol, tehát az ár nem eshet két sorba.
+ * CartView — kosár megjelenítés (localStorage + /kosar?termek= konvenció).
+ * Tételenkénti cselekvés a sorban; a sáv csak összeg + következő lépés.
+ * Blokkolt ág: nincs letiltott gomb (GOV.UK); egy primary a sávban.
+ * Feliratok: cta-vocabulary.ts (G-UI1 őr).
  */
 export interface CartViewProps {
   initialItem: CartItem | null

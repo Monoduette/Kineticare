@@ -1,36 +1,19 @@
 /**
  * Film-hero blokk — a KinetiCare-arculat a ScrollScrub filmsávon.
- *
  * A landing-tükör `.kc-root .scroll-scrub__*` felülírásainak portja
  * (higgsfield-site/app/src/kineticare.css), a szekció-rendszer terv 3.1/3.3
  * pontja szerint. A szerkezet és a mozgás a komponens saját lapjában él
  * (src/components/scroll-scrub/scroll-scrub.css) — itt CSAK a bőr: betűcsalád,
  * színsáv, gombok.
- *
- * SZABÁLYOK (docs/ertekesitesi-ux-skill.md):
- * - Fontméret elemre írt px/rem NÉLKÜL: minden méret a --kc-font-l/m/s skáláról
- *   jön (a címsor a scroll-scrub.css-ben a display-lépcsőt kapja, ennél
- *   nagyobb nem lehet). Ez a lap SEMMILYEN font-size-t nem ír felül.
- * - Szín kizárólag tokenről (tokens.css). A landing `ink #10243e` a fő site
- *   `navy-900`-ára, a landing `bg #f6f9fc` a `white`-ra képződik le.
- * - Akcent-korlát: az `accent` itt csak dekorációra (fátyol-gradiens) megy; a
- *   folyamatjelző és a fókuszgyűrű `accent-deep`/`focus` — lásd a tokens.css
- *   kontraszt-jegyzetét.
  */
 
 /**
  * A filmsáv a FEJLÉC ALÁ fut.
- *
  * A landing-tükör navja `position: fixed` és háttértelen (kineticare.css
  * `.kc-nav`), tehát ott a film a viewport legtetejétől látszik. A fő site-on a
  * fejléc sticky, vagyis a folyamban HELYET FOGLAL — enélkül a film a fejléc
  * ALATT kezdődne, és a „teljesen átlátszó fejléc" a lap tetején semmit nem
  * mutatna a filmből (csak a lap-hátteret), azaz a hatás elveszne.
- *
- * A negatív felső margó pontosan a fejléc magassága, ezért a lap görgetési
- * hossza NEM változik. A szabály szándékosan CSAK az oldal legelső szekciójára
- * érvényes (`:first-of-type` a <main> section-jei között): ha a szerkesztő a
- * blokkot lejjebb húzza, nem csúszik rá az előtte lévő szekcióra.
  */
 main > .kc-film-hero:first-of-type {
   margin-top: -3.5rem; /* mobil fejléc-sáv magassága */
@@ -55,53 +38,7 @@ main > .kc-film-hero:first-of-type {
 
 /**
  * A SZÍNPAD LEJTŐI — az olvashatóság EGYETLEN eszköze a filmsávon.
- *
- * A szöveg mögül a világító radiális folt eltűnt (lásd scroll-scrub.css): a
- * kontrasztot innentől a vászonra tett IRÁNYÍTOTT lejtők adják, ahogy a
- * landing-tükör is csinálja (kineticare.css `.kc-root .scroll-scrub__stage::after`).
- * A tükör két rétege (alsó összeolvadás + hűvös hangulat-fátyol) VÁLTOZATLANUL
- * benne van; fölé két új réteg került, mert a fő site-on a fejléc sticky, a
- * tükrön viszont nem volt az, és mert a tükör nem AA-auditált.
- *
- * MÉRÉS (a TÉNYLEGES filmkockákból, nem becslésből): a scene-02.mp4-ből 2
- * másodpercenként kivett kockák + a poszter, 16x16 pixeles blokkokra átlagolva,
- * WCAG 2.2 relatív luminanciával. A méretezés mindig a legrosszabb (legsötétebb)
- * blokk ellen történt, az adott szövegdoboz területén belül:
- *
- *   régió                        legsötétebb blokk   ink NYERSEN a filmen
- *   fejléc-sáv (felső 8%) ....... rgb(34,49,62) ..... 1,17:1   (olvashatatlan)
- *   hero-szöveg (bal, közép) .... rgb(1,0,0) ........ 1,34:1   (olvashatatlan)
- *   2. felirat (jobb, alsó sáv) . rgb(28,19,11) ..... 1,17:1   (olvashatatlan)
- *   3. felirat (közép, alsó sáv)  rgb(105,60,37) .... 1,70:1   (olvashatatlan)
- *
  * A film tehát NYERSEN egyik szövegdoboz alatt sem olvasható — a lejtők nem
- * dekorációk, hanem AA-feltételek. A lentiek a lap-hátteret (paper) keverik a
- * kockára; a kapott kontraszt ink (#10243e) szöveggel:
- *
- *   réteg                       fedés   régió                 ink kontraszt
- *   1. fejléc-sáv ............... 0,50   fejléc-sáv ........... 5,13:1  AA ✓
- *   2. bal lejtő ................ 0,64   hero cím + bevezető .. 6,00:1  AA ✓
- *
- * A számítás konzervatív: minden régiónál CSAK az ott biztosan jelen lévő
- * réteg(ek) fedését vettük — az átfedő lejtők (pl. a bal lejtő a fejléc-sávban)
- * tovább javítanak. A fejléc-sáv fölé jövő fejléc-fátyol (layout.css) szintén
- * csak hozzáad. RÉTEGSORREND: a CSS a legelöl felsorolt réteget rajzolja
- * legfelülre, ezért a tükör két rétege maradt a lista végén.
- *
- * ÚJRAMÉRÉS a 2. és 3. FELIRAT alatt (2026-08-17, miután a feliratok CÍM +
- * LEÍRÁS párra bővültek, tehát a szövegdoboz magasabb lett). A mérés a fenti
- * módszerrel, de a felirat MINDEN SORÁNAK dobozára külön, mind a 9 kockán, a
- * renderelt lapról vett képpontokból (Chromium, deviceScaleFactor 1):
- *
- *   nézetablak     legrosszabb sor          kontraszt
- *   1440x900 ..... 3. felirat, cím ........ 7,47:1  AA ✓
- *   1280x800 ..... 3. felirat, cím ........ 7,21:1  AA ✓
- *   390x844 ...... 2. felirat, cím ........ 7,48:1  AA ✓
- *   320x568 ...... 2. felirat, cím ........ 5,04:1  AA ✓
- *
- * A 320x568 a szűk keresztmetszet: ott a szövegdoboz a vászon 16,9%–36,1%-át
- * foglalja el. A százalékos 3. réteggel ugyanez a sor 3,18:1 volt (AA-bukás) —
- * ezért lett rem-mértékű, lásd a réteg saját jegyzetét.
  */
 .kc-film-hero .scroll-scrub__stage::after {
   position: absolute;

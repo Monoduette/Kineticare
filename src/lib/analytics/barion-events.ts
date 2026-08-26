@@ -1,65 +1,9 @@
 /**
- * Barion Pixel — a VÁSÁRLÁSI FOLYAMAT eseményei (Full Pixel).
- *
- * ═══ MIÉRT KÜLÖN, TISZTA MODUL ═══
- * A React-komponensnek nem szabad tudnia, hogyan néz ki egy Barion-esemény.
- * Itt dől el az esemény neve, a KÖTELEZŐ kulcsok készlete és a típusok — a
- * komponens csak annyit mond, hogy „a vevő a pénztárba lépett". A modul
- * DOM-mentes és függőségmentes (a `bp` küldő injektálható), ezért
- * node-környezetben, böngésző nélkül tesztelhető
- * (src/__tests__/barion-esemenyek.test.ts).
- *
- * ═══ A HÍVÁSI ALAK FORRÁSA (nem memóriából, MÉRVE) ═══
- * A docs.barion.com botvédelem mögött van, ezért a szerződést magából a
- * futtatott pixel-kódból olvastuk ki: `curl -s https://pixel.barion.com/bp.js`
- * (VERSION = "0.4.0", 73 518 bájt, olvasható — nem minifikált — forrás).
- * A `handle_message_from_queue(msg)` függvény szerint:
- *   msg[0] = metódus ('track'), msg[1] = eseménynév, msg[2] = adat-objektum,
- * és MINDEN követési ág első sora `if (msg.length !== 3) { hiba }` — vagyis a
- * hívás pontosan három paraméteres: `bp('track', '<esemény>', { … })`.
- *
- * A kulcs-készleteket a `validate(d, event_name, mandatory_keys,
- * type_conversion)` kényszeríti ki, és ez KÉT IRÁNYBAN szigorú:
- *  - hiányzó kötelező kulcs → 10-es hiba, és az esemény EL SEM MEGY
- *    (`return false`, tehát `send_message` nem fut le);
- *  - ISMERETLEN kulcs → 13-as hiba, és a kulcsot a pixel TÖRLI a törzsből
- *    (`delete d[k]`), kivéve az aláhúzással kezdődő saját mezőket.
- * Ezért itt a törzsek nem „bőségesek": pontosan a felismert kulcsokat
- * tartalmazzák. Ami a bp.js `type_conversion` táblájában nincs benne, azt
- * TILOS elküldeni.
- *
- * A bp.js-ből kiolvasott, eseményenkénti szerződés (ezt tükrözik a builderek):
- *  - contentView  — kötelező: id, contentType, name; `contentType: 'Product'`
- *    esetén ezen FELÜL: unitPrice, unit, currency, quantity.
- *    Felismert kulcsok: id, contentType, name, contents, ean, brand, category,
- *    variant, list, positioning, creative, unitPrice, imageUrl, unit, currency,
- *    quantity, step, customerValue.  → `totalItemPrice` és `revenue` NEM!
- *  - initiateCheckout — kötelező: contents, step, revenue, currency.
- *  - addPaymentInfo   — kötelező: contents, step, paymentMethod.
- *  - initiatePurchase / purchase — kötelező: contents, currency, step, revenue.
- *    Ezek felismert kulcsai közt NINCS `id` és NINCS `name` — a tétel-szintű
- *    azonosítás a `contents` tömbben van.
- *  - signUp — kötelező: id, contentType, name. `step`-et NEM ismer.
- *  - contents[] elemei — kötelező: id, contentType, name, unit, unitPrice,
- *    totalItemPrice, currency, quantity.
- *
- * Típus-ellenőrzés (bp.js `type_check`): a `to_str` mezők VALÓDI stringet
- * várnak (a szám-azonosítót tehát stringgé kell alakítani), a `to_float`
- * (unitPrice, totalItemPrice, quantity, revenue) és a `to_int` (step) mezők
- * pedig valódi számot. A `currency` háromkarakteres (format_check), és a
- * `contentType`/`list` értéke kötött listából való.
- *
- * ═══ A KÖVETÉS SOSEM RONTHATJA EL A VÁSÁRLÁST ═══
- * Minden kimenő hívás a `safeSend` burkolóban fut: ha a pixel bármit dob (nincs
- * iframe, blokkolt script, kivételt dobó bővítmény), a hiba itt elnyelődik, és
- * a vásárlási folyamat zavartalanul megy tovább. A builderek `null`-t adnak
- * vissza hiányos adatnál — ilyenkor NEM megy ki csonka esemény (az úgyis a
- * 10-es hibára futna a pixelben).
- *
- * ═══ SZEMÉLYES ADAT ═══
- * Ez a modul e-mailt, nevet, címet, telefonszámot SOHA nem küld. A vevő
- * azonosítása kizárólag a `bp('identity', 'setEncryptedEmail', …)` úton
- * történhet, ami NEM ennek a modulnak a dolga.
+ * Barion Pixel — vásárlási folyamat eseményei (Full Pixel).
+ * A builderek a bp.js validate() szerződését követik: pontosan 3 paraméteres
+ * `bp('track', …)`, csak felismert kulcsok, hiányzó kötelező mező → nem megy ki.
+ * DOM-mentes, injektálható `bp` — teszt: barion-esemenyek.test.ts.
+ * safeSend: a mérés sosem rontja el a vásárlást; PII (e-mail, név) nem ide tartozik.
  */
 
 import { bp } from './barion-pixel'
@@ -214,28 +158,7 @@ export interface BarionSignUpEvent {
   name: string
 }
 
-/**
- * A `signUp` eseményeink szótára.
- *
- * ═══ MIÉRT SIGNUP A BELÉPÉS IS ═══
- * A hivatalos leírás szerint a `signUp` eseményt nemcsak az első
- * regisztrációkor kell elküldeni, hanem a KÉSŐBBI belépéseknél is, és állandó
- * (megjegyzett) bejelentkezésnél munkamenetenként EGYSZER egy implicit
- * signUp-ot is — ez jelzi, hogy a munkamenetet bejelentkezett felhasználó
- * nyitotta. A dokumentáció külön kimondja, hogy „it is more important for all
- * signings up to send an event than for each signup to be sent only once”,
- * tehát az ismétlődés kisebb baj, mint a hiányzó esemény.
- *
- * ═══ AZ AZONOSÍTÓK ═══
- * Az `id` rövid, ÚTVONALTÓL FÜGGETLEN kulcs (nem URL): a Barion riportjában
- * ez a sorok azonosítója, és nem szabad elmozdulnia attól, hogy egy oldal
- * címe megváltozik. A `name` a magyar, emberi felirat.
- *
- * A `persistentLogin` neve szándékosan ugyanaz („Belépés”), mint a
- * kifejezetté: a felhasználó szempontjából mindkettő belépés. Az `id`
- * viszont különbözik, hogy a riportban elváljon a most beírt jelszóval
- * történt belépés a megjegyzett munkamenettől.
- */
+/** signUp szótár: belépésnél is signUp kell; `id` útvonaltól független riportkulcs. */
 export const BARION_SIGNUP = {
   registration: { id: 'regisztracio', name: 'Regisztráció' },
   login: { id: 'belepes', name: 'Belépés' },
@@ -579,25 +502,8 @@ export function trackPageView(
   return sendBarionEvent('contentView', buildPageViewPayload(input), send)
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   A KOSÁR ÁTMENTÉSE A BARION-ÁTIRÁNYÍTÁSON
-   ════════════════════════════════════════════════════════════════════════
-
-   A köszönőoldal (`/fizetes/koszonom`) a Barion felől, KERESZT-OLDALI
-   navigációval nyílik meg, és a rendelés-státusz végpontja csak a státuszt és
-   a termék-azonosítót adja vissza — kurzuscímet és árat NEM. A `purchase`
-   eseménynek viszont KÖTELEZŐ a `contents`, a `revenue` és a `currency`.
-
-   Ezért a pénztár az átirányítás előtt eltesz egy pillanatképet a kosárról,
-   rendelésszámmal kulcsolva, és a köszönőoldal ezt olvassa vissza. A tároló
-   `sessionStorage`: a Barion ugyanabba a fülbe irányít vissza, tehát az adat
-   ott van, viszont a fül bezárásával el is tűnik — a vevő gépén nem marad
-   hátra semmi. Személyes adat NEM kerül bele (csak termékazonosító, cím, ár).
-
-   Ha a pillanatkép hiányzik (más fülön/eszközön megnyitott köszönőoldal,
-   kikapcsolt tároló), a `purchase` esemény KIMARAD. Ez tudatos döntés: egy
-   kötelező kulcsok nélküli esemény a pixelben úgyis 10-es hibára futna, és
-   csonka bevételi adatot rögzítene. */
+/* Kosár-pillanatkép sessionStorage-ban: a köszönőoldal purchase-hez kell cím/ár
+   (a státusz API nem adja). Hiányzó pillanatkép → purchase kimarad, nem csonka esemény. */
 
 /** A pillanatkép `sessionStorage`-kulcsának előtagja. */
 export const BARION_CHECKOUT_SNAPSHOT_PREFIX = 'kc_barion_checkout:'
@@ -708,26 +614,7 @@ export function browserSnapshotStorage(): BarionSnapshotStorage | null {
   }
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   MUNKAMENETENKÉNT EGYSZER — AZ IMPLICIT (ÁLLANDÓ BEJELENTKEZÉSŰ) SIGNUP
-   ════════════════════════════════════════════════════════════════════════
-
-   Megjegyzett bejelentkezésnél a látogató belépési űrlap NÉLKÜL érkezik, tehát
-   a fejlécnek kell jeleznie, hogy a munkamenetet bejelentkezett felhasználó
-   nyitotta. Ez azonban MUNKAMENETENKÉNT EGY esemény, nem oldalletöltésenként
-   egy: az utóbbi a Barion riportjában néma zajjá tenné a belépés-számot.
-
-   A retesz KÉT rétegű, mert egyik réteg sem elég önmagában:
-    - `sessionStorage` — túléli a teljes oldalletöltéseket (a Next.js
-      szerver-renderelt navigációit), és a fül bezárásakor magától elmúlik.
-      Pontosan a „munkamenet” fogalmát fedi. Viszont hiányozhat: kikapcsolt
-      tároló, privát mód kvótahibája, SSR.
-    - modul-szintű memória — a tároló hiányában is megfogja az ugyanazon a
-      dokumentumon belüli ismétlést (kliensoldali útvonalváltás, React
-      StrictMode kettős effekt-futása fejlesztésben).
-
-   A retesz sosem dob: a `getItem`/`setItem` hibája a mérés ügye, nem a
-   látogatóé. */
+/* Implicit signUp retesz: munkamenetenként egyszer (sessionStorage + memória). */
 
 /**
  * A munkamenet-retesz `sessionStorage`-kulcsa. SAJÁT előtag: a kosár-pillanatkép

@@ -8,17 +8,11 @@ import '../../app/(frontend)/styles/blocks/faq.css'
 
 /**
  * FaqBlock — GYIK (szekció-rendszer terv 2. katalógus, M8; renderelés: 5. pont).
- *
  * A meglévő kezdőlapi `home/Faq.tsx` akadálymentes mintáját követi: natív
  * `details`/`summary`, tehát kliens-oldali JS nélkül is nyitható-csukható, és a
  * képernyőolvasó is kapja az összecsukott/kinyitott állapotot.
- *
  * A FAQPage JSON-LD UGYANEBBŐL a listából készül (terv 5. pont), ezért a
  * strukturált adat és a látható szöveg sosem tud szétcsúszni — az eltérés a
- * leggyakoribb ok, amiért a keresők elvetik a rich resultot.
- *
- * Üres vagy hiányos (kérdés vagy válasz nélküli) tétel kimarad mindkettőből;
- * érvényes tétel nélkül a szekció és a JSON-LD is elmarad.
  */
 export interface FaqBlockProps {
   block: BlockFaq

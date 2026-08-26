@@ -99,21 +99,11 @@ async function getWatchedRefs(userId: number, productId: number): Promise<string
 
 /**
  * /kurzusaim/[id] — a kurzus lejátszóoldala.
- *
- * ═══ MIÉRT ITT ÉPÜL A TANANYAG ═══
  * A lejátszó bemenete a TANANYAG-MODELL (`buildCurriculum`), nem a nyers
  * `videos`/`modules` mezőpár. A modell a szerveren áll össze, mert
  * - a `hasAccess: false` ág ITT szűri ki a Bunny-GUID-okat, tehát a fizetős
- *   tartalom azonosítói hozzáférés nélkül BE SEM KERÜLNEK az RSC-payloadba
- *   (S2/b) — ezt a kliensre bízni nem lehet, ott már késő;
- * - a mellékletek media-relációja `depth: 2`-vel populálva érkezik, a kliens
- *   pedig kész, letölthető URL-eket kap, nem nyers azonosítókat;
- * - így a szerkezet-értelmezés EGYETLEN helyen történik, és a lejátszó, a
- *   jegykiadás és a haladás-jelölés nem tudhatja máshogy, mi a kurzus tartalma.
- *
- * Az oldal SZÁNDÉKOSAN nem `Section`/`Container` közé kerül: a lejátszó
- * kétpaneles, a viewport magasságához igazodó elrendezés, aminek a saját
- * geometriája a player.css-ben él.
+ * tartalom azonosítói hozzáférés nélkül BE SEM KERÜLNEK az RSC-payloadba
+ * (S2/b) — ezt a kliensre bízni nem lehet, ott már késő;
  */
 export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPageProps) {
   const { id } = await params

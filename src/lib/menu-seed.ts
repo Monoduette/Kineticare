@@ -1,28 +1,10 @@
 import type { Payload } from 'payload'
 
 /**
- * A FEJLÉC-NAVIGÁCIÓ alapstruktúrája — idempotens seed.
+ * Fejléc-navigáció alapstruktúrája — idempotens seed (`menus` collection).
  *
- * Miért kell: a `menus` collection és a `buildNavTree` (src/lib/menu-tree.ts)
- * két szintet RÉGÓTA tud, de a TARTALOM hiányzott — a bővülő oldal aloldalai
- * (rendelői kezelések, szakmai képzés, ingyenes SOS anyag) sehonnan nem voltak
- * elérhetők, a Tudástár (/blog) pedig egyáltalán nem szerepelt a menüben
- * (UX-skill M7: a tudástár másodlagos, de LÉTEZNIE kell egy útnak odáig).
- *
- * SZERKESZTŐI ELSŐBBSÉG. A modul a repó seed-konvencióját követi
- * (src/scripts/seed.ts `ensureMenuItem`, src/lib/newsletter/form.ts
- * `ensureNewsletterForm`): a dedup-kulcs a `label` + a szülő, és meglévő sort
- * SOHA nem ír felül. Ha a szerkesztő átírta a feliratot, a sorrendet vagy a
- * célt, a seed újrafuttatása nem nyúl hozzá; ha kivette a „Látható" pipát, a
- * sor megmarad (`visible: false`) és a dedup megtalálja, tehát a seed nem
- * hozza vissza a menübe.
- *
- * A „Kurzusok" NEM ebben a fában van: az értékesítés fő útja kód-szintű
- * akciógomb a fejléc jobb szélén (src/components/layout/Header.tsx), hogy ne
- * függjön a CMS-menü tartalmától — lásd docs/ertekesitesi-ux-skill.md 3. pont.
- *
- * A modul TISZTA részét (`buildNavigationMenuPlan`) a menu-seed.test.ts
- * adatbázis nélkül ellenőrzi; a Payload-ot érintő rész csak írásra van.
+ * Dedup: `label` + szülő; meglévő sort sosem ír felül. A „Kurzusok" a Header.tsx
+ * akciógombja, nem CMS-menü. A tiszta rész (`buildNavigationMenuPlan`) DB nélkül tesztelhető.
  */
 
 /** A „Szolgáltatások" gyökér-menüpont céloldala (pages.slug). */
@@ -31,27 +13,10 @@ export const SERVICES_PAGE_SLUG = 'szolgaltatasok'
 /** A szolgáltatás-oldal útvonala — tartalék, ha a CMS-oldal nem található. */
 export const SERVICES_PAGE_PATH = `/${SERVICES_PAGE_SLUG}`
 
-/**
- * A rendelői kezelések szekciójának HORGONY-AZONOSÍTÓJA
- * (`sectionSettings.anchorId`) a `/szolgaltatasok` oldalon.
- *
- * EZ AZ IGAZSÁGFORRÁS: ugyanezt az értéket kapja a szekció a
- * seed-builderben (src/scripts/restore-legacy-content.ts
- * `buildSzolgaltatasokLayout`) és az élő layout javításakor
- * (src/scripts/apply-owner-content.ts). Korábban a menü `#rendeloi`-ra
- * mutatott, a szekció viszont `arlista` horgonyt viselt, így a menüpontra
- * kattintva semmi nem történt — a közös konstans ezt a szétcsúszást zárja ki.
- */
+/** Rendelői kezelések horgonya (`sectionSettings.anchorId` a /szolgaltatasok oldalon). */
 export const CLINIC_TREATMENTS_ANCHOR = 'rendeloi'
 
-/**
- * A rendelői kezelések lapon belüli horgonya.
- *
- * A rendelői kezeléseknek MA nincs önálló oldala: a tartalom a
- * `/szolgaltatasok` oldal egyik szakasza. A horgony ezért előremutató —
- * amint önálló oldal készül, elég ezt az egy konstanst átírni (és a
- * menüpontot a szerkesztő is átállíthatja az adminban).
- */
+/** Rendelői kezelések útvonala — a /szolgaltatasok oldal szekció-horgonya. */
 export const CLINIC_TREATMENTS_PATH = `${SERVICES_PAGE_PATH}#${CLINIC_TREATMENTS_ANCHOR}`
 
 /** A ProBody Stúdióval közös, akkreditált szakmai képzés (külső oldal). */
@@ -96,17 +61,7 @@ export interface MenuSeedContext {
   sosCourseId?: number
 }
 
-/**
- * A gyökér-menüpontok SORRENDJE.
- *
- * Az éles menü a legacy-visszatöltésből örökölte a számozást (Szolgáltatások 4,
- * Rólunk 5, Kapcsolat 6 — src/scripts/restore-legacy-content.ts). A Tudástár
- * ezért 5-öt kap: a `buildNavTree` azonos `order` esetén magyar szerint,
- * címke alapján rendez („Rólunk" < „Tudástár"), így a sáv sorrendje
- * Szolgáltatások → Rólunk → Tudástár → Kapcsolat lesz. A tudástár tehát a
- * kapcsolatfelvétel elé, de a szakmai/bemutatkozó pontok mögé kerül —
- * pontosan az UX-skill M7 súlyozása.
- */
+/** Gyökér-menüpont sorrend — legacy számozás; azonos order esetén magyar címke szerint. */
 export const SERVICES_MENU_ORDER = 4
 export const KNOWLEDGE_BASE_MENU_ORDER = 5
 

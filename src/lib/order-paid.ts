@@ -14,32 +14,8 @@ import { logger as rootLogger, type Logger } from './logger'
 import { buildPasswordResetUrl } from './password-reset-url'
 
 /**
- * Friss paid-átmenet MELLÉKHATÁSAI (T-024/W4-01, W4-03) — a Barion-állapotgép
- * KIZÁRÓLAG transitionedToPaid=true esetén hívja (a callback-processzor és az
- * order-poll job egyaránt). Így az e-mail/számlázás definíció szerint egyszer
- * fut le egy rendeléshez; a duplikált paid-jelzés no-op marad.
- *
- * 1. invoice-issue job sorba állítása (Számlázz.hu — a tényleges kiállítás a
- *    jobban történik, saját retry-val; kikapcsolt integrációnál a job 'disabled'
- *    kimenetet ad, ezért a queue-hívás akkor is biztonságos, ha nincs kulcs).
- * 2. Vásárlás-visszaigazoló e-mail a vevőnek (best-effort) — vendég-vásárlásnál
- *    AKTIVÁLÓ levélként, a jelszó-beállító linkkel (lásd lentebb).
- *
- * A függvény SOSEM dob: mindkét mellékhatás best-effort — a fizetési főlánc
- * (paid + hozzáférés + a fiók feloldása) ettől függetlenül is konzisztens marad,
- * a hibák naplózva (a számlázás az order-poll resweep-jéből is utolérhető).
- *
- * AKTIVÁLÓ LINK (vendég-vásárlás). Ha a fiókhoz a vevő még nem választott
- * jelszót (most létrehozott vagy korábban rendszer által létrehozott fiók), a
- * levél tartalmazza a jelszó-beállító linket. A tokent NEM egy párhuzamos
- * rendszer adja, hanem a Payload SAJÁT jelszó-visszaállítója
- * (`payload.forgotPassword`, `disableEmail: true`) — ugyanaz a mechanizmus
- * és ugyanaz a fogadó oldal, amit a vásárló-import aktiváló levele használ
- * (src/lib/customer-import/invite.ts). A vendég-vásárlás tokenje 7 napig él
- * (`GUEST_ACTIVATION_TOKEN_TTL_*`); az importé továbbra is 30 nap.
- *
- * A LINK TITOK: sem a token, sem a teljes link SOHA nem kerül naplóba (a
- * címzett is csak maszkolva) — az invite.ts szabálya itt is érvényes.
+ * Friss paid-átmenet mellékhatásai: invoice-issue job + visszaigazoló levél.
+ * Csak `transitionedToPaid=true` esetén; best-effort, sosem dob.
  */
 
 type JobsQueueLike = {
@@ -50,21 +26,7 @@ type JobsQueueLike = {
   }) => Promise<unknown>
 }
 
-/**
- * Az invoice-issue job sorba állítása. A payload-types a konsolidációs loopig
- * még nem ismeri az új taskot — a TypedJobs-generálás frissüléséig a hívás
- * strukturálisan castolt (a runtime jobs.queue létezik).
- *
- * A HIÁNYZÓ JOB-SOR NEM LEHET NÉMA (P2). A `payload.jobs.queue` megléte
- * strukturálisan (`as unknown as`) ellenőrzött, mert a generált típusok nem
- * ismerik a taskot — vagyis egy Payload-frissítés FORDÍTÁSI HIBA NÉLKÜL
- * kikapcsolhatja a számlázást. A visszatérési értéket ráadásul az onOrderPaid
- * hívási helye eldobja, tehát a `false` önmagában senkinek nem tűnne fel:
- * a vevő MEGKAPJA a visszaigazoló levelet (benne a számla ígéretével), számla
- * viszont sosem készül, és semmi nem jelzi. Ezért a kiesés `error`-szintű,
- * magyar RIASZTÁS-sort kap a rendelés azonosítójával — akkor is, ha a hívó nem
- * adott loggert (a napló a root loggerre esik vissza).
- */
+/** invoice-issue job sorba állítása; hiányzó `payload.jobs.queue` → RIASZTÁS (nem néma). */
 export async function queueInvoiceIssueJob(
   payload: Payload,
   orderId: number,
@@ -226,12 +188,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
     const serverUrl = (process.env.NEXT_PUBLIC_SERVER_URL ?? '').replace(/\/+$/, '')
 
     /**
-     * A LEVÉL VÁLTOZATA a fiók állapotából:
-     *  - nincs `account` (régi hívási hely) vagy bejelentkezett vásárlás
-     *    működő fiókkal → változatlan levél (Kurzusaim CTA);
-     *  - jelszó nélküli fiók → AKTIVÁLÓ levél a jelszó-beállító linkkel;
-     *  - vendégként vásárolt, de MÁR VAN fiókja → belépésre irányító levél
-     *    (jelszó-beállítót ilyenkor SZÁNDÉKOSAN nem küldünk).
+     * Levél változata: jelszó-beállító link (passwordSetupPending) vagy Kurzusaim/belépés.
      */
     const accountEmail = (deps.account?.email ?? '').trim() || recipient
     let account: OrderConfirmationAccount | undefined
@@ -260,11 +217,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       items,
       totalHuf,
       coursesUrl: `${serverUrl}/kurzusaim`,
-      // SZÁNDÉKOSAN a nem dobó változat: a levél sorsa nem függhet attól, hogy
-      // a SZÁMLÁZÁSI konfig hibátlan-e. A `getSzamlazzConfig()` dob például
-      // hiányzó SZAMLAZZ_AFAKULCS mellett, és a dobás ITT az alábbi
-      // best-effort catch-be esne — vagyis egy áfakulcs-beállítási hiba némán
-      // elvinné a vásárló EGYETLEN visszajelzését a sikeres fizetésről.
+      // `isSzamlazzEnabled()` — a levél sorsa ne függjön a számlázási konfig dobásától.
       invoiceNote: isSzamlazzEnabled(),
       ...(account ? { account } : {}),
     })

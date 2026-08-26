@@ -22,20 +22,11 @@ import { welcome } from './welcome'
 
 /**
  * A szekció-rendszer blokk-katalógusa (docs/szekcio-rendszer-terv.md 2. pont).
- *
  * A tömb SORRENDJE az admin „+ Blokk" választólistájának sorrendje. Szándékosan
  * a terv 4. pontja szerinti AJÁNLOTT kezdőlap-sorrendet követi (M1–M8 +
  * kinézet-blokkok), hogy a laikus szerkesztő fentről lefelé haladva építhessen
  * kezdőlapot. Az utolsó két blokk (szabad szöveg, CTA-sáv) nem kötődik
  * kezdőlapi pozícióhoz, ezért külön admin-csoportba kerül. Ugyanebbe a
- * csoportba tartozik a szakértő-kártya (teamMembers), a nyitható szekció
- * (accordion) és az időpontkérő szekció (appointment) is: mindegyik elsősorban
- * belső oldalak tartalmához való (a /rolunk páros bemutatkozása, a hosszú
- * szakmai életút, illetve a /kapcsolat időpontkérése), de egyik sem kötődik
- * kezdőlapi sorrendhez.
- *
- * FONTOS: a tényleges megjelenési sorrendet mindig a szerkesztő állítja be a
- * Pages → Szekciók mezőben (fogd-és-vidd) — ez a lista csak felkínálja őket.
  */
 export const pageBlocks: Block[] = [
   filmHero,

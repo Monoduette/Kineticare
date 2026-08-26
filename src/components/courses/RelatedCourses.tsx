@@ -6,46 +6,7 @@ import { CourseCard } from './CourseCard'
 
 /**
  * RelatedCourses — kapcsolódó kurzusok sáv a kurzus-oldal alján.
- *
- * Csak a published kapcsolódó termékek jelennek meg (draft/archived upsell nem
- * kerülhet a storefrontra); ha nincs ilyen, a sáv rejtve marad. A tartalom
- * forrása KIZÁRÓLAG a termék `relatedProducts` mezője (a szerkesztő állítja az
- * adminban) — terméket a kód sosem éget be.
- *
- * ═══ KÉT KERETEZÉS, EGY SÁV (2026-08-17) ═══
- * A sáv eddig minden kurzuson ugyanazt a semleges „Kapcsolódó kurzusok" címet
- * viselte. Az INGYENES kurzus oldalán ez kevés: ott a sáv az egyetlen hely,
- * ahol a látogató megtudja, mi a teljes program és mibe kerül — a régi
- * `www.kineticare.hu` ugyanezen a ponton (az ingyenes anyag igénylése után)
- * egy fizetős ajánlatra irányított át (`urlRedirect: /oto-kezrehab-akcio`,
- * mérve: `docs/regi-oldal-osszehasonlitas.md` 5.1), és ez a lépés ma HIÁNYZIK
- * (ugyanott 5.2: „Következő ajánlat: NINCS").
- *
- * Ezért a `crossSell` ág cím + felvezető keretezést kap, a fizetős kurzusok
- * oldala pedig BITRE a korábbi, semleges sávot. A kapcsoló a lap ár-állapota
- * (`coursePriceBadgeKind === 'free'`), nem az űrlap láthatósága: a már
- * igényelt ingyenes kurzus oldalán is ez a helyes keretezés.
- *
- * ═══ MIT MUTAT A KÁRTYA, ÉS MIÉRT ═══
- * Baymard mérése szerint a cross-sell akkor használható, ha a listaelem
- * MINDEN döntési adatot visel: kép, TELJES cím és ÁR. Az ár nélküli ajánlat
- * „impedes comparison, leading to fatigue and frustration", és a benchmarkolt
- * asztali oldalak 15%-áról hiányzik az ár, 55%-áról a teljes cím
- * (https://baymard.com/blog/product-page-suggestions-information). A
- * `CourseCard` mindhármat hozza, tehát külön ár-szöveget a sávba nem írunk.
- * A típusok szétválasztásáról (alternatíva ↔ kiegészítő, külön csoport, külön
- * felirat): https://baymard.com/blog/product-page-suggestions — itt EGY
- * csoport van, és a felirat megmondja, mire vonatkozik.
- *
- * ═══ AMI SZÁNDÉKOSAN NINCS BENNE ═══
- * Visszaszámláló, „csak ma", „utolsó X hely" és minden más sürgetés. A régi
- * oldal látogatónként újrainduló, 3 napos visszaszámlálót használt
  * (`docs/regi-oldal-valaszok.md` 21. ellentmondás) — ezt NEM hozzuk át. A
- * valótlan időkorlát a 2008. évi XLVII. törvény (Fttv.) 6. §-a és melléklete
- * szerint megtévesztő kereskedelmi gyakorlat; NN/g ugyanezt a határt húzza meg:
- * a valós készlet-jelzés meggyőzés, a kitalált megtévesztés
- * (https://www.nngroup.com/articles/deceptive-patterns/). Gyógyulás-ígéret és
- * eredmény-garancia sincs: a programot LEÍRJUK, az eredményt nem ígérjük.
  */
 
 /** A sáv címsorának horgonya — ettől kap a `section` hozzáférhető nevet. */

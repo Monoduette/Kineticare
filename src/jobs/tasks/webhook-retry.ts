@@ -12,47 +12,10 @@ import { WEBHOOK_RETRY_CRON, WEBHOOK_RETRY_QUEUE } from '../queues'
 import { createStaleAwareBeforeSchedule } from '../schedule-guard'
 
 /**
- * webhook-retry task (T-014): a feldolgozatlan (received) és elhasalt (failed)
- * webhook-events rekordok újrafuttatása.
- *
- * - Csak regisztrált feldolgozóval (registerWebhookProcessor) rendelkező
- *   providerek eseményei futnak újra — a többi (még nem bekötött provider)
- *   érintetlen marad.
- * - A `received` halmazba a FÜGGŐ (nem terminális, `result='pending_repoll'`)
- *   Barion-események is beletartoznak: azok szándékosan maradnak
- *   újrafeldolgozhatók, amíg a fizetés el nem dől (lásd
- *   NON_TERMINAL_WEBHOOK_RESULTS az idempotency.ts-ben). Az `attempts` ezeknél
- *   is nő, tehát a kimerülés-szűrő (K3) itt is fékez.
- * - Exponenciális backoff: a retryDelayMs szerinti várakozás letelte előtt az
- *   esemény kimarad (isRetryDue).
- * - KIMERÜLÉS (attempts >= MAX_WEBHOOK_ATTEMPTS):
- *   - failed-ág: az esemény `failed` marad, a riasztás A KIMERÜLÉS
- *     PILLANATÁBAN megy (retryable:false).
- *   - pending_repoll-ág (W13): a rekord `received` MARAD (egy későbbi
- *     Succeeded callback a route-handleren még feldolgozható), de a scan
- *     kihagyja. A riasztás az attemptProcessingben megy; a task `exhausted`
- *     számlálója nő, a `succeeded` NEM — ez nem terminális győzelem. A
- *     `failed` számlálót NEM növeljük: a handler nem dobott, a fizetés
- *     függőben maradt.
- *
- * ABLAK-VÉDELEM (K3): a scan-szűrő KIZÁRI a kimerült rekordokat
- * (`attempts < MAX`). Ez azért kell, mert a 25-ös, legrégebbit-előnyben-
- * részesítő (`updatedAt` növekvő) ablakot a kimerült sorok véglegesen
- * eltömhetnék — az updatedAt-jük befagy, mindig az ablak elején maradnának, és
- * az ÚJ failed események sosem kerülnének sorra. A kimerülés ettől még nem
- * néma: a riasztás a kimerülés pillanatában kimegy (fent), a rekord pedig
- * failed státusszal, attempts=MAX-szal lekérdezhető marad.
- *
- * ÜTEMEZÉS (schedule): ez az egyetlen dolog, ami ezt a jobot valaha SORBA
- * ÁLLÍTJA — a kódban semmi nem hívja rá a `payload.jobs.queue`-t, az `autoRun`
- * pedig a Payload saját dokumentációja szerint csak a MÁR SORBAN ÁLLÓ jobokat
- * futtatja. Enélkül az elhasalt webhook-események sosem próbálódnak újra. A
- * cron és a queue az autoRun-nal KÖZÖS konstansból jön (../queues), mert a
- * `handleSchedules` csak azonos queue-név mellett fut le rá.
- *
- * A `beforeSchedule` hook a Payload alapértelmezett duplikátum-védelmét váltja
- * ki: az alapértelmezés egyetlen beragadt (`processing: true`) sortól VÉGLEGESEN
- * és NÉMÁN kikapcsolna — lásd ../schedule-guard.ts.
+ * webhook-retry: received/failed események újrafuttatása, exponenciális backoff.
+ * A scan kizárja a kimerült rekordokat (különben eltömik a 25-ös ablakot).
+ * `pending_repoll` kimerüléskor received marad (későbbi Succeeded callback).
+ * Schedule nélkül soha nem kerül sorba. beforeSchedule: ../schedule-guard.ts.
  */
 const RETRY_BATCH_SIZE = 25
 

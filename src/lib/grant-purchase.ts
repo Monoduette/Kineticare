@@ -14,37 +14,9 @@ import { logger, type Logger } from './logger'
 import { withUserPurchasesLock } from './user-purchases-lock'
 
 /**
- * Manuális kurzus-hozzáférés adása (grant) — transportfüggetlen szolgáltatás.
- *
- * Ugyanaz a users.purchases-beírás, amit a fizetésjóváhagyás végez (lásd
- * src/lib/order-status/apply-barion-state.ts grantPurchases): a Payload LOCAL
- * API-n, `overrideAccess: true`-val, `withUserPurchasesLock` alatt. A
- * fizetés/refund/grant írók ezt a zárat használják. A purchases mező írása
- * field-access szinten zárt (2026-08-23): a nyers admin-pipa megkerülné az
- * ajándék-órát. Az éles író a grant-panel / ez a szolgáltatás, nem a PATCH.
- * Az access-szabályt ez a modul NEM módosítja.
- *
- * Hívói:
- *  - src/scripts/grant-purchase.ts (CLI, vékony wrapper — a viselkedése
- *    változatlan),
- *  - src/lib/grant-purchase-route.ts (POST /api/admin/grant-purchase, staff
- *    vagy owner jogosultsággal).
- *
- * IDEMPOTENS: ha a vevőnél már megvan a termék ÉS a hozzáférés él (vagy
- * korlátlan), a hívás `already-had` eredménnyel tér vissza és NEM ír. Ha a
- * termék a purchases-ben van, de a hozzáférés lejárt vagy a kezdőpont
- * ismeretlen (`accessDurationDays` + utolsó paid rendelés / accessGrants),
- * az `accessGrants.grantedAt` mezőt mostani időpontra állítja (a terméken
- * beállított napos óra újraindul), paid rendelés és számla nélkül.
- *
- * ÚJ ajándéknál a terméken kötelező a pozitív `accessDurationDays`. Üres /
- * 0 / negatív nap → `duration-required`, NINCS írás: a purchases-be írt,
- * óra nélküli sor fail-open korlátlan hozzáférés lenne. A CMS-ben beállított
- * napot használjuk, nem egy bekódolt 365-öt.
- *
- * A modul soha nem dob üzleti hibát: az ismeretlen felhasználó/termék is
- * strukturált eredmény (a hívó képezi HTTP-státuszra, illetve CLI-üzenetre).
- * Technikai hiba (DB) természetesen kibillen.
+ * Manuális kurzus-hozzáférés (grant) — transportfüggetlen szolgáltatás.
+ * Ugyanaz a purchases-RMW, mint fizetésnél (`withUserPurchasesLock`, field-access
+ * zárt). Idempotens; új ajándéknál kötelező pozitív `accessDurationDays`.
  */
 
 export type GrantPurchaseStatus =
@@ -107,13 +79,7 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
   const log = options.logger ?? logger
   const productRefKind = resolveProductRefKind(productIdOrSku)
 
-  // Audit-alap: KI (grantedBy id + maszkolt cím), KINEK (maszkolt cím), MIT
-  // (productRef), MIÉRT (reason) — az eredmény minden ágon rákerül.
-  //
-  // A címek MASZKOLVA (`maskEmail`) és `cimzett` néven kerülnek a naplóba: a
-  // teljes e-mail-cím személyes adat, a logger `email` kulcsú mezőt eleve
-  // redaktál (src/lib/logger.ts). A maszkolt alak a sor beazonosításához elég,
-  // a rendszer belső azonosítója (userId) pedig a naplóban külön is szerepel.
+  // Audit: maszkolt `cimzett` (a logger `email` kulcsot redaktál).
   const audit = {
     cimzett: maskEmail(email),
     productRef: productIdOrSku,

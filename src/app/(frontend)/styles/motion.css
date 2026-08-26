@@ -1,28 +1,5 @@
 /**
  * Mozgás-réteg — a storefront KÖZÖS, halk mikro-mozgásai.
- *
- * Két dolgot ad, mindkettőt progresszív ráépítésként (JS/böngésző-támogatás
- * nélkül a lap pontosan úgy működik, mint eddig), és mindkettőt a
- * `prefers-reduced-motion: reduce` mögé zárva:
- *
- *  1. SZEKCIÓ-BELÉPŐ (`.kc-reveal`) — a kezdőlap szekciói néhány pixeles
- *     emelkedéssel és áttűnéssel érkeznek, EGYSZER. Az infrastruktúra a
- *     kurzusoldal meglévő staggered mintája: ugyanaz a `kc-fade-up`
- *     kulcsképsor (8px + áttűnés) és ugyanaz a `--kc-*-stagger`
- *     késleltetés-logika — nem vezetünk be második mozgás-nyelvet.
- *     A kezdő (rejtett) állapotot KIZÁRÓLAG a kliens teszi rá
- *     (SectionReveal), és csak olyan szekcióra, amely a betöltéskor a hajtás
- *     ALATT van — így JS nélkül semmi nem tűnik el, és villanás sincs.
- *
- *  2. NYITHATÓ SZAKASZ (details/summary) ÁTMENETE — a GYIK és az accordion
- *     tartalma magasság-átmenettel nyílik/csukódik. A technika a natív
- *     `::details-content` + `interpolate-size: allow-keywords` (a `height:
- *     auto` így animálható); mindkettőt `@supports` őrzi, ezért ahol a
- *     böngésző nem ismeri, a szakasz a mai módon, azonnal nyílik. Wrapper-div
- *     nem kell, tehát a markup és a natív, JS nélküli működés érintetlen.
- *
- * Minden időzítés és görbe a tokens.css `--kc-motion-*` / `--kc-ease-out`
- * változóiról jön; elemre írt ms/cubic-bezier itt sincs.
  */
 
 /* ---- Közös belépő kulcsképsor ------------------------------------------- */

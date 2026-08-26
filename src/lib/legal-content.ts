@@ -1,40 +1,6 @@
 /**
- * Jogi oldalak tartalom-modulja — ÁSZF, Adatkezelési tájékoztató, Impresszum.
- *
- * ═══ MIÉRT VAN A SZÖVEG A REPÓBAN ═══
- * A három dokumentum a tulajdonos ügyvédjétől érkezett, és PUBLIKUS jogi
- * tartalom (a weboldal lábléce linkeli mindhármat) — nem titok, tehát a
- * CLAUDE.md 1. tilos zónája nem érinti. A szöveg forrásfájlokban él
- * (`src/lib/legal-source/*.txt`), nem TypeScript sztringliterálban: így
- * emberi szemmel is diffelhető a jogász docx-éhez, és nincs két másolata.
- *
- * ═══ SZÓ SZERINTISÉG ═══
- * A forrásfájlok a docx-ből kinyert szöveget SZÓ SZERINT tartalmazzák,
- * bekezdésenként egy sorban. Sem átfogalmazás, sem elírás-javítás nem
- * történt; a docx-kinyerés műtermékei közül KIZÁRÓLAG az üres sorok
- * halmozódása lett normalizálva (több üres sorból egy). A sorokon belüli
- * szóköz, tabulátor és írásjel érintetlen.
- *
- * A sorok elején álló EGYETLEN jelölő a docx bekezdés-stílusát őrzi meg
- * (címsor / felsorolás), mert a nyers szövegkinyerés ezt elveszítette:
- *
- *   `# `  → szakaszcím (h2)            — a docx 1. szintű, számozott listája
- *   `## ` → alcím (h3)                 — a docx kézzel számozott alpontjai
- *   `- `  → felsorolás-elem (ul > li)  — a docx mélyebb behúzású listaeleme
- *   (jelölő nélkül) → bekezdés (p)
- *   (üres sor) → elválasztó, nem kerül a tartalomba
- *
- * A jelölő tehát MEGJELENÍTÉSI metaadat, nem szöveg: a `jogiSzoveg()` és a
- * `richTextSzoveg()` párosa bizonyítja, hogy a jelölők leválasztása után a
- * generált Lexical tartalomból visszanyert szöveg karakterre azonos a
- * forrásfájléval (src/__tests__/legal-content.test.ts).
- *
- * ═══ LEXICAL ═══
- * A csomópont-építők a legacy-visszaépítő scriptből jönnek
- * (src/scripts/restore-legacy-content.ts `heading`/`para`/`bulletList`/
- * `richText`), hogy a Lexical csomópont-alak EGY helyen legyen karbantartva.
- * Az import mellékhatás-mentes: a legacy-script futtató része csak közvetlen
- * indításkor fut le.
+ * Jogi oldalak (ÁSZF, adatkezelés, impresszum) — forrás: src/lib/legal-source/*.txt, szó szerint.
+ * #/##/- jelölők megjelenítési meta; Lexical építők a legacy scriptből.
  */
 
 import { readFileSync } from 'node:fs'

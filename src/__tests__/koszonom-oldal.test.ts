@@ -7,27 +7,10 @@ import { ThankYouUnauthorized, ThankYouView } from '../components/checkout/Thank
 
 /**
  * REGRESSZIÓ-ŐR: a köszönőoldal NEM dönthet szerver-oldali hitelesítésből.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A `/fizetes/koszonom` a Barion `redirectUrl`-je
  * (src/lib/checkout/start-checkout.ts), tehát MINDEN fizetés kereszt-oldali,
  * top-level GET-navigációval érkezik ide a `secure.barion.com`-ról. Egy ilyen
  * kérés `Origin` fejlécet nem küld, `Sec-Fetch-Site: cross-site`-ot viszont
- * igen — és a nem üres `csrf`-engedélylista mellett a Payload `extractJWT`-je
- * pontosan ilyenkor dobja el a süti-tokent
- * (node_modules/payload/dist/auth/extractJWT.js, cookie-ág).
- *
- * Valódi Chromiummal kimérve: a `cross-site` jelölés a szerver-átirányítás
- * UTÁN IS megmarad, tehát a `/belepes`-re dobás sem menti meg.
- *
- * Következmény, ha az oldal szerveren hitelesít: a frissen fizető vásárló
- * MINDEN esetben a „jelentkezz be" nézetet kapja a „Köszönjük a vásárlást!"
- * helyett — 100%-ban, minden vásárlásnál. A hitelesítés ezért a kliens-oldali
- * poll dolga: az azonos eredetű `fetch`, ami KÜLD `Origin`-t, tehát átmegy a
- * csrf-szűrőn; a 401-ből `unauthorized` állapot lesz.
- *
- * A teszt a VALÓDI oldal-komponenst futtatja, és a `ThankYouView`-nak ténylegesen
- * átadott propokra állít — nem forrásszövegre.
  */
 
 /** A visszaadott elemfából kiszedi a ThankYouView elemet. */

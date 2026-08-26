@@ -11,44 +11,7 @@ import '../../app/(frontend)/styles/blocks/appointment.css'
 
 /**
  * Appointment — időpontkérő szekció a rendelői kezelésekhez.
- *
- * A blokk szerződése és a mezők indoklása: `src/blocks/appointment.ts`;
- * az űrlap viselkedéséé: `src/components/blocks/AppointmentForm.tsx`.
- *
- * SZERKEZET (két hasáb 900px felett, egymás alatt lentebb):
- *  - BAL: a szekció-fej (kis felirat, cím, bevezető), a folyamat magyarázata,
- *    és a rendelő ADATAI (cím, telefon, e-mail) definíciós listaként. A
- *    telefonszám és az e-mail kattintható: a türelmetlen látogatónak ez a
- *    leggyorsabb út, és a lap így nem zsákutca akkor sem, ha valaki nem akar
- *    űrlapot kitölteni.
- *  - JOBB: az űrlap, a lap fölé emelt fehér kártyán.
- *
- * MIÉRT VAN AZ ELÉRHETŐSÉG AZ ŰRLAP MELLETT: a Baymard/NN/g form-kutatás közös
- * tanulsága, hogy a hosszabb űrlapot sokan nem töltik ki; ha ilyenkor nincs
- * alternatív út, a lead elvész. A telefonszám tehát nem díszítés, hanem a
- * második, teljes értékű csatorna.
- *
- * ŰRLAP NÉLKÜLI VÁLTOZAT (`urlapMutatasa: false`, tulajdonosi döntés
- * 2026-08-17): ahol az időpontot telefonon egyeztetik, a jobb hasáb egyszerűen
  * NEM renderel, a rács egyhasábos lesz, és a telefonszám marad az egyetlen út.
- * Ez az NN/g irányelv megengedett iránya: az űrlap a KIEGÉSZÍTŐ csatorna, a
- * telefonszám a kötelező („Offer a contact form only in addition to telephone
- * numbers, not as a replacement" — https://www.nngroup.com/articles/contact-us-pages/).
- * Ilyenkor az elérhetőség-lista kapja a `--fo` módosítót: a hívás- és
- * levél-linkek 44 CSS px magas célfelületet kapnak, mert már nem folyószövegbe
- * ágyazott hivatkozások, hanem a szekció cselekvései. A WCAG 2.2 2.5.8
- * (AA, 24×24 px) „inline" kivétele enélkül is mentené őket, de cselekvésként a
- * 2.5.5 (AAA, 44×44 px) a helyes mérce
- * (https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html).
- *
- * TELJESEN CMS-VEZÉRELT: a szekció-fej és a rendelő-adatok MINDEN látható
- * szövege a blokk mezőiből jön (a `AppointmentIntro` őr-tesztje ezt rögzíti).
- * A kódban maradó rögzített szövegek kizárólag az űrlap-chrome részei, és
- * egyetlen exportált forrásból (`APPOINTMENT_UI_TEXT`) jönnek.
- *
- * A `sanitizeCmsUrl` a `mailto:`-t engedi, a `tel:`-t tudatosan tiltja (az a
- * séma szabadon gépelhető webcím-mezőben veszélyes) — ezért a hívás-linket a
- * `telHref` állítja össze számjegyekből, a szakértő-kártyával közös modulból.
  */
 
 export interface AppointmentProps {

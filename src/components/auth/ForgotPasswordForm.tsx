@@ -9,78 +9,26 @@ import { ctaLabel, ctaProgressLabel } from '../../lib/cta-vocabulary'
 
 /**
  * ForgotPasswordForm — jelszó-visszaállító link kérése.
- *
- * A Payload forgot-password végpontja mindig 200-at ad (ne szivárogjon,
- * létezik-e a cím) — a kliens ugyanazt a megerősítő üzenetet mutatja.
- * KIVÉTEL: az IP-alapú kérés-korlát (A2) 429-e, amikor e-mail sem ment ki —
- * ilyenkor hibaüzenet jár a megerősítő képernyő helyett.
- *
- * ═══ MIÉRT KAPOTT KÉT SZÖVEG-PROPOT (2026-08-21) ═══
- * Ugyanez az űrlap szolgálja ki a `/elfelejtett-jelszo` lapot ÉS a
- * `/belepes-atallas` lapot (a systeme.io-ról átköltöztetett vevők egyetlen
- * belépő útja). A két lapon a KÉRT CSELEKVÉS azonos — ezért ugyanaz a végpont,
- * ugyanaz a kérés-korlát és ugyanaz a §3.2 #21 gombfelirat (WCAG 2.2 · 3.2.4
- * Consistent Identification) —, a KÖRÜLÖTTE ÁLLÓ MAGYARÁZAT viszont nem: aki
- * levelet kapott arról, hogy a régi jelszava nem működik, nem „elfelejtette" a
- * jelszavát.
- *
  * A két prop SZÁNDÉKOSAN puszta szöveg, nem `variant` felsorolás:
- *  - az átállás KAMPÁNY-szöveg, aminek egy helyen (a lap fájljában) kell
- *    állnia, hogy a tulajdonos egy fájlban átnézhesse és később egy fájlból
- *    törölhesse;
- *  - az űrlap így tartalom-mentes marad: nem tud az átállásról, tehát egy
- *    későbbi harmadik hívóhely sem kényszerít újabb `variant`-ágat.
- *
  * Amit a propok NEM érintenek: a végpont, a kérés-korlát, az enumeráció-védő
- * feltételes mondat („Ha a … címhez tartozik fiók") és a hibaág. Ezek a
- * biztonsági szerződés részei, nem a hívó dolga.
  */
 /**
  * Üres mezővel való beküldés MAGYAR üzenete.
- *
- * ═══ MIÉRT NEM LETILTOTT GOMB (mérve, 2026-08-21) ═══
  * A gomb korábban `disabled` volt, amíg a mező üres. Chromium-mal, VALÓDI
  * Tab-billentyűvel bejárva a `/belepes-atallas` lap fókusz-lánca ez volt:
  * mező → „Írj nekünk" → „Vissza a belépéshez" — a BEKÜLDŐ GOMB KIMARADT.
  * A natív `disabled` kiesik a Tab-sorrendből, tehát a billentyűzetes és a
  * képernyőolvasós látogató a lap elsődleges cselekvését meg sem találta,
- * és arról sem kapott hírt, miért nem használható.
- *
- * A repó saját szabálya ugyanezt írja elő (`src/components/ui/Button.tsx`
- * fejléce): „Ahol a letiltás a felhasználó által ORVOSOLHATÓ hiányból fakad …
- * ott a gombot NEM tiltjuk le … a beküldést pedig validáció fogja meg, világos
- * magyar hibaüzenettel."
- * GOV.UK Design System, Button: „Disabled buttons have poor contrast and can
- * confuse some users, so avoid them if possible."
- * https://design-system.service.gov.uk/components/button/
- *
- * A `submitting` alatti letiltás MARAD: az nem orvosolható hiány, hanem
- * rendszerállapot (dupla küldés elleni védelem), és néhány másodpercig tart.
  */
 export const URES_EMAIL_HIBA = 'Add meg az e-mail-címed.'
 
 /**
- * ═══ MIÉRT KÉT KÜLÖN HIBA-ÁLLAPOT (2026-08-22) ═══
  * Az üres mező hibája MEZŐ-hiba, a szerveré ŰRLAP-hiba, és a kettőnek más a
  * gazdája. Korábban mindkettő ugyanabban a form-szintű dobozban állt, tehát a
  * mező maga jelöletlen maradt: nem volt rajta sem `aria-invalid`, sem
  * `aria-describedby`, sem hibakeret.
- *
  * WCAG 2.2 · 3.3.1 (Error Identification): „the item that is in error is
  * identified and the error is described to the user in text" — a hiba SZÖVEGE
- * megvolt, az AZONOSÍTÁSA hiányzott.
- * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
- *
- * GOV.UK Design System, Error message: „Put the error message … inside the
- * <label> or <legend>, after the question text", és a mező kap piros keretet —
- * a `Field` `error` propja pontosan ezt adja (ez a repó saját, már élő
- * mintája: `ContactForm`).
- * https://design-system.service.gov.uk/components/error-message/
- *
- * A fókusz a mérhető rész: üres mezőnél a MEZŐRE, szerverhibánál a hibadobozra
- * kerül, mert a szerverhibát nem egy mező javításával lehet orvosolni.
- * NN/g, Error-Message Guidelines: az üzenet legyen ott, ahol a javítás
- * történik. https://www.nngroup.com/articles/errors-forms-design-guidelines/
  */
 
 export interface ForgotPasswordFormProps {

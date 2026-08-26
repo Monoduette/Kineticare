@@ -4,20 +4,11 @@ import { validateCmsUrl } from '../lib/safe-url'
 
 /**
  * Közös link-mezők a szekció-blokkokhoz (szekció-rendszer terv, 2. pont).
- *
  * Minden gombnál/hivatkozásnál UGYANAZ a három mező jelenik meg, ugyanazokkal a
  * magyar feliratokkal — így a szerkesztőnek egyszer kell megtanulnia:
- *  - `felirat`     — mi legyen a gombra/linkre írva,
- *  - `url`         — hová vigyen,
- *  - `ujAblakban`  — új lapon nyíljon-e.
- *
- * A mezőnevek szándékosan magyarok (lásd a section-settings.ts konvenció-jegyzetét):
- * a terv és a frontend-munkacsomagok ezekre épülnek.
- *
- * Szándékosan NINCS „belső oldal vagy külső link" választó (mint a Menüpontoknál):
- * a szekciók CTA-i szinte mindig ugyanarra a néhány belső útvonalra mutatnak
- * (/kurzusok, /kurzusok/…, /kapcsolat), a kétlépcsős választó itt csak plusz
- * kattintás lenne. Egy szabad szövegmező kezeli mindkét esetet.
+ * - `felirat`     — mi legyen a gombra/linkre írva,
+ * - `url`         — hová vigyen,
+ * - `ujAblakban`  — új lapon nyíljon-e.
  */
 
 /** A `url` mező alapértelmezett magyarázata — laikusnak szól, példával. */

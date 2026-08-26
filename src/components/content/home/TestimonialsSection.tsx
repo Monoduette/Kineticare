@@ -6,32 +6,7 @@ import '../../../app/(frontend)/styles/blocks/testimonials.css'
 
 /**
  * TestimonialsSection — páciens-vélemények a kezdőlapon (audit M6/K4).
- *
- * A bizalmi blokk a TERMÉK UTÁN következik és tömör: legfeljebb 3 kiemelt
- * (`featured`) és látható (`visible`) vélemény, `order` szerint, és amelyiknél
- * a szerkesztő megadta, ott a RÖVID változat (`shortQuote`) jelenik meg — a
- * kezdőlap nem lehet három képernyőnyi idézet (K4-hiba).
- *
- * Tartalmi szabály: kizárólag valós, a CMS-ben rögzített visszajelzés kerülhet
  * ki. Ha nincs kiemelt vélemény, a szekció NEM renderelődik — üres állapotban
- * sincs helykitöltő vagy kitalált idézet.
- *
- * Nincs interaktív elem és nincs animáció: a fókuszkezelés és a
- * `prefers-reduced-motion` szempontjából a szekció semleges.
- *
- * Akadálymentesség: a szekció NEVÉT a saját címsora adja (`aria-labelledby` a
- * `section` elemen, nem a belső listán) — enélkül a landmark névtelen maradna.
- * A szerző nevét szándékosan `span` hordozza: a HTML `cite` eleme a MŰ címére
- * való, személynévre szabványsértő lenne.
- *
- * Megjelenés: a landing idézet-TÁBLÁJA — teljes képernyős, teljes szélességű
- * board (`kc-board--edge`, ezért `kc-container` helyett `kc-board__inner`),
- * középre zárt fejléccel; az ELSŐ vélemény nagy nyitó idézetként, a 2–3.
- * oldalt kis idézetként, függőleges hajszálvonallal elválasztva
- * (styles/blocks/testimonials.css). Ez kizárólag vizuális réteg: a sorrendet
- * továbbra is a `featuredTestimonials` adja, egyetlen véleménynél csak a nagy
- * idézet marad. A tábla-magasság az M6-korlátot nem sérti: a szekció továbbra
- * is legfeljebb 3 RÖVID véleményt mutat, egyetlen képernyőn.
  */
 
 /** A kezdőlapon megjelenő vélemények felső korlátja (UX-skill M6: max 2–3). */

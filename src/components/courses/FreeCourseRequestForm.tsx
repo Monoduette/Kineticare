@@ -41,79 +41,9 @@ import {
 } from '@/lib/free-course/validation'
 
 /**
- * FreeCourseRequestForm — az INGYENES kurzus igénylő űrlapja a kurzusoldalon.
- *
- * ═══ MIÉRT LÉTEZIK ═══
- * Az ingyenes SOS villámkurzus a teljes tölcsér teteje, de eddig nem lehetett
- * hozzájutni: a kurzusoldal CTA-ja bejelentkezést feltételező linkkel a
- * `/kurzusaim` oldalra vitt, ami a be nem jelentkezett látogatónak zsákutca
- * (a fiókja meg sem létezett). A régi `www.kineticare.hu` ugyanezt a lépést
- * EGY űrlappal oldotta meg: „KÉREM A VILLÁMKURZUST" → név + e-mail → a
- * hozzáférés linkje e-mailben, regisztráció és fizetés nélkül (mérve:
- * `docs/regi-oldal-osszehasonlitas.md` 3.1 és 3.4). Jakob törvénye (NN/g)
- * szerint a visszatérő látogató ezt a mintát várja, ezért állítjuk vissza.
- *
- * ═══ A GOMB FELIRATA ═══
- * `Kérem a kurzust` — a teljes indoklás és a forrásai a
- * `src/lib/free-course/ui-text.ts` `FREE_COURSE_SUBMIT_LABEL` kommentjében
- * állnak (röviden: a régi oldal mért, bevált szava, a tulajdonos szó szerinti
- * kérése, és a §3.2 #21 szerkezetének rokona). Ez a §3.2 ÚJ sorának
- * javaslata: a meglévő #3 („Elindítom ingyen") a NAVIGÁCIÓS gombé, ez pedig a
- * BEKÜLDÉSÉ — ugyanaz a szándékos kettősség, mint a #24 és a #25 között.
- * A folyamatban-felirat a ZÁRT L-1 készletből a `Küldés…`, nem kitalált szöveg.
- *
- * ═══ MIÉRT LAPON BELÜLI ŰRLAP, ÉS NEM POPUP ═══
- * A régi oldalon a gombok MODÁLIS popupot nyitottak (mérve:
- * `docs/regi-oldal-osszehasonlitas.md` §3.1). Ezt tudatosan NEM másoljuk, mert
- * a modális itt csak veszíteni tudna:
- *  1. A popup EGY LÉPÉST BESZÚR: a látogatónak előbb a gombot kell megnyomnia,
- *     hogy egyáltalán lássa, mit kérünk tőle. A lapon belüli űrlap már a
- *     vásárlódobozban ott van, tehát a lap tetején (a nézési idő 42%-a a felső
- *     20%-ra esik, NN/g: Scrolling and Attention).
- *  2. A modális szigorú akadálymentességi szerződéssel jár: fókuszcsapda,
- *     Esc-zárás, `aria-modal`, a fókusz visszaadása a nyitó gombra, a háttér
- *     görgetésének tiltása (W3C ARIA APG, Dialog (Modal) Pattern). Ebből egy
- *     hiányzó elem is billentyűzet-csapdát okoz (WCAG 2.1.2 No Keyboard Trap).
- *     Két mezőért ekkora felületet vállalni indokolatlan kockázat.
- *  3. Kis képernyőn az overlay a legrosszabb: NN/g mérése szerint a mobil
- *     felugró ablakok elrejtik a tartalmat és nehezen zárhatók
- *     (https://www.nngroup.com/articles/popups/), a GOV.UK pedig kifejezetten
- *     kerüli a modálisokat, mert nem működnek megbízhatóan segítő
- *     technológiákkal és kis képernyőn.
- *  4. A popup EREDETI oka a régi oldalon az volt, hogy ott az űrlapnak nem
- *     volt saját helye a landing sablonjában; nálunk van: a vásárlódoboz.
- * A régi oldal LÉNYEGE (név + e-mail, ár és pénztár nélkül) így hiánytalanul
- * megmarad, csak a felesleges kattintás tűnik el.
- *
- * ═══ ÁR ÉS PÉNZTÁR EZEN AZ ÚTON NINCS ═══
- * A doboz „Ingyenes" jelölést visel (`priceBadge === 'free'`), forintösszeg és
- * pénztár-hivatkozás sehol nem jelenik meg, és a ragadós vásárlósáv is kimarad
- * (`kurzusok/[slug]/page.tsx`). Ez a §3.2 #3 kikötése is: az ingyenesség
- * címkeként látszik, nem a gombban.
- *
- * ═══ AMIT A KUTATÁSBÓL KÖVETÜNK ═══
- *  - GOV.UK „Question pages": a lap mondja meg ELŐRE, mi történik a
- *    beküldés után; a hibaüzenet mondja meg, mi a baj és hogyan javítható
- *    (docs/ui-sztenderdek.md §2.7).
- *  - Baymard (required/optional jelölés): a kötelező mezők csillaggal
- *    jelöltek, ahogy a repó többi űrlapján; itt MINDEN mező kötelező, ezért
- *    „(nem kötelező)" jelölés nem kell.
- *  - NN/g (form design): a lehető legkevesebb mező. Kettő van, mert a fiókhoz
- *    név kell (`users.name` kötelező), a linkhez pedig cím.
- *  - A „folyamatban" gombállapot nem díszítés: küldés közben a gomb letiltott
- *    és a felirata változik, így a dupla beküldés kizárt (§2.6 L-1).
- *
- * ═══ SPAM-VÉDELEM (a kapcsolat-űrlappal AZONOS réteg) ═══
- * Honeypot (rejtett „website" mező) + Turnstile, ha a site key be van állítva
- * (kulcs nélkül a szerver sem ellenőriz, ezért a widget rejtve marad, hogy ne
- * keltsen hamis biztonságérzetet) + szerver-oldali kérés-korlát IP-re és a
- * megadott e-mail-címre.
- *
- * ═══ FÓKUSZ-KEZELÉS ═══
- * Beküldés után a siker-címsor, hibánál a hiba-összefoglaló kapja a fókuszt
- * (WCAG 2.2 3.3.1 + 4.1.3). A hibás kísérletek SZÁMLÁLÓJA azért kell, mert a
- * `setErrors` aszinkron: a kezelőben hívott `focus()` még `null` refre futna.
- * Ugyanez a minta él az időpontkérő űrlapon.
+ * Ingyenes kurzus igénylő űrlap a kurzusoldalon (lapon belül, nem popup).
+ * Név + e-mail; Barion/ár nélkül. Turnstile + honeypot, mint a kapcsolat-űrlap.
+ * Siker/hiba után a címsor/összefoglaló kapja a fókuszt.
  */
 
 export interface FreeCourseRequestFormProps {
@@ -145,26 +75,11 @@ export interface TrackedFreeCourseDeps {
 
 /**
  * Ingyenes kurzus igénylése + PostHog lead-funnel (`ingyenes-kurzus` címke).
- *
  * A hívás ELŐTT `lead_submitted`, sikeres szerverválasz után `lead_succeeded`
  * megy ki. A kettő KÜLÖNBSÉGE a néma beküldési hibák egyetlen külső jelzője —
  * a részletes indoklás és az adatvédelmi szerződés a
  * `src/lib/analytics/lead-events.ts` fejlécében áll.
- *
  * EZ AZ EGYETLEN LEAD-FORRÁS, AMI KURZUS-AZONOSÍTÓT IS KÜLD: az igénylés egy
- * KONKRÉT kurzusra szól (`productId`), és a tölcsér csak így bontható
- * kurzusonként. A szám a saját rendszerünkön kívül semmit nem jelent, tehát
- * nem személyes adat. A név és az e-mail-cím SOHA nem kerül az eseménybe.
- *
- * A `lead_succeeded` a `result.ok`-hoz kötött, NEM az `emailSent`-hez: a
- * hozzáférés ilyenkor létrejött (a szerver visszaigazolta a leadet), csak a
- * belépő levél nem tudott kimenni. Az e-mail-küldés meghibásodása külön
- * kérdés, és nem a lead-tölcsérben mérendő — a felhasználó ehhez igazodó, IGAZ
- * üzenetet kap a siker-nézet figyelmeztető ágán.
- *
- * A mérés hibája nem ronthatja el az igénylést: a `withLeadTracking` mindkét
- * küldőt saját `try/catch`-ben futtatja. A honeypotba lépő bot, a hiányzó
- * Turnstile-token és a kliensoldali mezőhibák ide EL SEM JUTNAK.
  */
 export async function trackedSubmitFreeCourseRequest(
   payload: FreeCourseRequestPayload,

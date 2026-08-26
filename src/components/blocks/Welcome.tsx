@@ -5,23 +5,11 @@ import '../../app/(frontend)/styles/blocks/welcome.css'
 
 /**
  * Welcome — üdvözlő / probléma-blokk (szekció-rendszer terv 2. katalógus, 3.4).
- *
  * A landing `kc-welcome` szekciójának portja: cím + felvezető sor, alatta bal
  * oldalon a pipás felsorolás („Tudjuk, milyen, amikor…"), jobb oldalon az
  * összefoglaló bekezdések. Minden szöveg a CMS-ből érkezik — kódban
  * hardcode-olt marketingszöveg nincs.
- *
  * Közös szekció-viselkedés (mind a nyolc blokk-komponensben ugyanígy):
- *  - a `visible` kapcsolót NEM itt kezeljük, az a renderelő (F3) dolga,
- *  - `sectionSettings.anchorId` → a `section` elem `id`-je (lapon belüli ugrás),
- *  - `sectionSettings.hatter` → a Section háttér-variánsa
- *    (`feher` → default, `tint` → tint, `sotet` → dark),
- *  - hiányzó KÖTELEZŐ tartalomnál (itt: cím) a szekció kimarad.
- *
- * TÁBLA (board): a szekció a landing teljes képernyős tábláját viseli, ezért
- * `kc-container` helyett `kc-board__inner` a belső burkoló — a tartalmat 2K-ig
- * semmi nem szorítja konténer-szélességbe, 2K felett a board-rendszer zárja
- * 80vw-re (lásd `.kc-board`, styles/ui.css).
  */
 export interface WelcomeProps {
   block: BlockWelcome

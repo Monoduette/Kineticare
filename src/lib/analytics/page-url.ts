@@ -1,23 +1,5 @@
 /**
- * Analytics felé KIMENŐ oldal-URL megtisztítása (M9).
- *
- * ═══ MIÉRT KELL ═══
- * A jelszó-visszaállító link a visszaállító JEGYET query-paraméterben hordozza
- * (/jelszo-visszaallitas?token=…, src/lib/password-reset-url.ts). A pageview-
- * capture korábban a TELJES URL-t továbbította — a jegy így harmadik fél
- * (PostHog/GA4) naplóiba került volna, ahol hozzáférhető és visszaélhető
- * (a jegy a fiók átvételére is elég). Egyetlen esemény sem küldheti ki.
- *
- * ═══ MIT ŐRIZ MEG ═══
- * SZELEKTÍVEN maszkol: csak a felsorolt, jegyet hordozó paraméterek kerülnek
- * ki — a kampány-paraméterek (utm_*) MARADNAK, mert a kampány-attribúció
- * üzleti követelmény (a kurzus-átirányítás is azért őrzi a query-t, lásd
- * course-url.ts). A hash-részlet mindig lemarad (mérési értéke nincs, jegyet
- * viszont hordozhatna).
- *
- * Relatív (`/kurzusok?x=1`) és abszolút URL-re egyaránt működik — szándékosan
- * NEM a URL/URLSearchParams API-t használja, hogy bázis-URL nélkül, relatív
- * alakra is biztonságos legyen.
+ * Analytics URL tisztítás: token query kivágása; utm_* marad. Relatív URL-re is működik.
  */
 
 /** A kimenő URL-ből MINDIG eltávolítandó query-paraméterek (kis-nagybetűtől függetlenül). */

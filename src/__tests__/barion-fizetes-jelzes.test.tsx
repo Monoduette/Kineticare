@@ -24,34 +24,10 @@ import type { Page, Product } from '../payload-types'
 
 /**
  * ŐR — BARION FIZETÉSI JELZÉS (kezdőlap + pénztár).
- *
- * ═══ MIÉRT LÉTEZIK ═══
  * A Barion elfogadóhely-jóváhagyásának KÖTELEZŐ tétele: „…előfeltétele az
  * elfogadóhely jóváhagyásának, hogy a logósort módosítás nélkül feltüntesd a
  * webshopod fő- és fizetési oldalán."
- * https://www.barion.com/hu/ugyfelszolgalat/elfogadohely/elfogadohely-letrehozasa-es-kezelese/miert-kell-az-elfogadott-fizetesi-modok-logoit-feltuntetnem-a-webshop-fooldalan-es-fizetesi-oldalain/
- *
  * A MÉRT KIINDULÁS (2026-08-17): a felületen SEHOL nem jelent meg a Barion mint
- * fizetési szolgáltató. Egy ilyen tétel visszacsúszása néma: a lap fut, minden
- * teszt zöld, csak a jóváhagyás bukik. Ezért kap végrehajtható őrt.
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. A kiszolgált SVG BITRE a Barion hivatalos csomagjából való (SHA-256), és
- *     nem tartalmaz scriptet vagy külső hivatkozást.
- *  2. A PÉNZTÁR fizetős ága rendereli, és a jelzés a beküldőgomb ELŐTT áll.
- *  3. Az INGYENES ág NEM rendereli (ott nincs Barion-fizetés — igazmondás).
- *  4. A KEZDŐLAP MINDKÉT ága rendereli (rögzített M1–M8 és CMS-szekciósor).
- *  5. A két helyen UGYANAZ a kép és UGYANAZ az `alt` (WCAG 2.2 SC 3.2.4), és
- *     az `alt` megnevezi a fizetési módokat (SC 1.1.1).
- *  6. A vevői szöveg megmondja, mi történik, és nincs benne gondolatjel.
- *  7. A szöveg-kontrasztok SZÁMOLVA ≥ 4,5:1 (SC 1.4.3) — a tokens.css valódi
- *     hexeiből, nem beírt számokból.
- *  8. 320 px-en nincs vízszintes túlcsordulás (SC 1.4.10 Reflow): a logósor
- *     arányosan méreteződik, fix szélesség nincs rajta.
- *  9. A komponens nem hoz be interaktív elemet, tehát új érintőcél sincs
- *     (SC 2.5.8 nem is aktiválódik).
- * 10. A kezdőlapi szekciónak van hozzáférhető NEVE (aria-labelledby → létező
- *     címsor-id), különben a `section` nem landmark.
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

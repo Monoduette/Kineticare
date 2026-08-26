@@ -1,39 +1,6 @@
 /**
  * Tudástár — CIKKOLDAL (PostArticle és a hozzá tartozó blokkok).
- *
- * Betöltés: a komponensek maguk importálják (PostToc, PostFaq, PostAuthorBox,
- * PostCourseCta, PostArticle) — ugyanaz a minta, mint a knowledge.css-nél: a
- * stílus akkor is jön, ha a lapot más útvonal állítja össze.
- *
- * ═══ AMI ITT NINCS ═══
- * Nulla új szín, nulla új betű, nulla új betűméret: minden érték `var(--kc-*)`
- * tokenről jön, a betűméret kizárólag a HÁROM token valamelyike
- * (`--kc-font-l/m/s`) — az őr a `src/__tests__/tipografia-harom-meret.test.ts`.
- *
- * ═══ MOZGÁS ═══
  * Ez a lap SZÁNDÉKOSAN nem tartalmaz `transition`-t, `animation`-t és
- * hover-`transform`-ot. A cikkoldal olvasásra való; a nem lényegi mozgás a
- * WCAG 2.2 **2.3.3** (Animation from Interactions) hatálya alá esne, és
- * kockázat nélkül elhagyható. Ami mozog rajta (a szerző-blokk szöveglinkje és
- * a kapcsolódó kártyák), az a közös `content.css` / `knowledge.css`
- * szabályaiból jön, ahol a `prefers-reduced-motion` ág már ott van; a
- * `base.css` globális kill-switche (225–237. sor) ezen felül minden
- * átmenetet levág csökkentett mozgásnál.
- *
- * ═══ CÍMSOR-MÉRETEK: MIÉRT M A PANELEKEN ═══
- * A cikk TARTALMI szakaszcímei (a törzs H2-i és a „Gyakori kérdések") az L
- * méreten állnak, a címsor-betűvel — ezek a lap olvasandó szakaszai. A
- * KÍSÉRŐ paneleké (tartalomjegyzék, szerző-blokk, kurzus-ajánló) M méret,
- * törzs-betűvel, 700-as súllyal: a szintet a súly, a betűcsalád és a pozíció
- * jelöli, nem a méret. Ez a repó bevett elve (content.css h3–h6 magyarázata),
- * és a kompakt panel épp azért kompakt, hogy ne adjon HAMIS LAPVÉGET a
- * cikk után (NN/g, *Related Content Boosts Pageviews, When Done Right*).
- *
- * ═══ KONTRASZT (a tokens.css jegyzőkönyvéből, számolt értékek) ═══
- * ink fehéren 15,63:1 · ink a tinten 13,53:1 · ink-soft fehéren 9,30:1 ·
- * ink-soft a tinten 8,05:1 · accent-deep fehéren 5,45:1 · fehér az
- * accent-deepen 5,45:1 — mind az AA 4,5:1 fölött. Az `accent` (#3d78aa)
- * SZÖVEGET nem hordoz ezen a lapon, csak a közös kártya-nyelv dekorációját.
  */
 
 /* ---- Morzsamenü a cikk fejlécében ----------------------------------------

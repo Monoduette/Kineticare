@@ -1,46 +1,6 @@
 /**
  * KURZUS-LEJÁTSZÓ — a fizetős tananyag felülete
- * (src/components/account/CoursePlayer.tsx + components/account/player/*).
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * GEOMETRIA — MIÉRT CSS-VÁLTOZÓKBÓL
- * ═══════════════════════════════════════════════════════════════════════════
- * A lapon KÉT sticky sáv ül egymás alatt: a globális fejléc
- * (`--kc-header-height`, layout.css) és a lejátszó saját kurzus-fejléce
- * (`--kc-player-header-h`). Ha ezek magassága szétszórtan, kézzel lenne
- * beírva, a rail sticky-topja és a fókusz görgetési margója óhatatlanul
- * elcsúszna tőlük — a WCAG 2.2 „Focus Not Obscured" (2.4.11) pedig pontosan
  * ezt tiltja: a sticky sáv NEM takarhatja el a fókuszált elemet. Ezért a
- * lejátszó fejlécének magassága EGY változó, és belőle SZÁRMAZIK
- *   - a rail `position: sticky` teteje,
- *   - a rail maximális magassága,
- *   - a `scroll-margin-top` a fókuszálható elemeken.
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * KONTRASZT-JEGYZŐKÖNYV (WCAG 2.2 AA — a tokens.css számolt értékeiből)
- * ═══════════════════════════════════════════════════════════════════════════
- *   ink (#10243e) a paper lapon (#f6f9fc) ....... 14,79:1  ✓
- *   ink a fehér railen (#ffffff) ................ 15,63:1  ✓
- *   ink az aktív sor tintjén (#e6f0f8) .......... 13,53:1  ✓
- *   ink-soft (#33495f) a fehéren ................  9,30:1  ✓  (meta, hossz)
- *   ink-soft a tinten ...........................  8,05:1  ✓
- *   accent-deep (#2f6e9f) a fehéren .............  5,45:1  ✓  (linkek)
- *   fehér az accent-deep primer gombon ..........  5,45:1  ✓
- *   danger (#b3261e) a danger-surface-en ........  AA      ✓  (hibaüzenet)
- *   success (#166534) a success-surface-en ......  AA      ✓  (befejezés-sáv)
- * Az `accent` (#3d78aa) a hűvös felületeken 4,5:1 ALATT van, ezért itt
- * KIZÁRÓLAG dekoráció (aktív sor csíkja, keret) — szöveget sosem visz.
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * SZABÁLYOK, AMIK ALÓL NINCS KIVÉTEL
- * ═══════════════════════════════════════════════════════════════════════════
- * - Nyers hex érték nincs: minden szín a tokens.css szerep-tokenjeiről jön.
- * - Elemre írt px/rem betűméret nincs: kizárólag a `--kc-font-l/m/s` lépcsők
- *   (docs/ertekesitesi-ux-skill.md, 4. pont).
- * - Érintési célfelület ≥ 44 px minden kattintható elemen (WCAG 2.2 2.5.8).
- * - `100dvh`, sosem `100vh`: a mobil böngésző-króm be-/kicsúszásakor a `vh`
- *   értéke nem követi a TÉNYLEGES viewportot, és a teljes képernyős panel
- *   alja a króm alá csúszna.
  */
 
 /* ══════════════════════════════════════════════════════════════════════════

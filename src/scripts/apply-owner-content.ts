@@ -1,209 +1,14 @@
 /**
- * Tulajdonos által jóváhagyott, EGYSZERI szerkesztői tartalom-javítások.
+ * Tulajdonos által jóváhagyott, egyszeri tartalom-javítások (19 pont).
+ * Minden lépés pontos egyezésre / üres mezőre / hiányzó blokkra szűr (idempotens).
+ * Oldalanként egy payload.update; a kezdőlap és a /szolgaltatasok javításai láncban futnak.
  *
- * ═══ MIT JAVÍT ═══
- * Tizenkilenc jóváhagyott tartalom-javítás (1–16.: 2026-08-16; 17–19.:
- * 2026-08-17).
- * Mind KIZÁRÓLAG pontos
- * egyezésnél (illetve üres mezőnél, hiányzó blokknál, hiányzó oldalnál) fut le,
- * tehát a lányok időközbeni szerkesztését egyik sem írja felül:
- *
- *  1. Kezdőlap → Kurzuskártyák szekció címe: „Így tudunk neked segíteni” →
- *     „Kurzusaink”. Ok: az eredeti cím ÜTKÖZÖTT a lentebbi Szolgáltatások
- *     szekció „Így tudunk segíteni” címével (kezdőlap-audit); a szekció a
- *     megvásárolható kínálatot nevezi meg. A javított cím a kód-szintű
- *     alapállapotban már így szerepel (src/lib/home-seed.ts `courseCards`
- *     blokk), az ÉLES adatbázisba viszont a régi érték került be.
- *  2. Kezdőlap → Rólunk + statisztikák szekció páciensszáma: „5000+” →
- *     „1000+”. Ok: a régi kineticare.hu MINDEN előfordulásban „1000+”-t
- *     állított (docs/regi-oldal-valaszok.md); az „5000+” sehonnan nem volt
- *     igazolható, kitalált statisztika pedig fogyasztóvédelmi kockázat (lásd a
- *     blokk admin-leírását, src/blocks/about.ts). A kód-szintű alapállapot itt
- *     is már a javított értéket hozza (src/lib/home-seed.ts, indokló
- *     kommenttel) — a javítás csak az élő adatbázisból hiányzik.
- *  3. Az „Otthoni KézRehab Program” kurzus kártya-előnysorai
- *     (`products.cardHighlights`, maxRows 3 — src/plugins/ecommerce.ts): a
- *     mező üresen maradt, ezért a kezdőlapi kurzuskártyáról hiányzik a
- *     „mini-buybox” pipás sorblokk. A három jóváhagyott, TÉNYSZERŰ sor:
- *     „4 modulnyi videóanyag”, „50+ videós gyakorlat”, „5 perces miniblokkok”.
- *     KIZÁRÓLAG akkor íródik be, ha a mező jelenleg üres — meglévő sorokhoz a
- *     script hozzá sem nyúl.
- *  4. A /rolunk oldal fejléc-képe (`pages.heroImage`): a szóló portré
- *     (`682a121babe80_IMG_7573…`) helyett a páros csapatfotó (`katak-team…`),
- *     amelyen MINDKÉT gyógytornász látszik. A két média-rekordot a script
- *     FUTÁSIDŐBEN, fájlnév-prefix alapján keresi meg — fix azonosító nincs
- *     benne, mert a Média collection webp-re konvertál (src/collections/
- *     Media.ts), így a kiterjesztés környezetenként eltér (.jpg/.jpeg/.webp).
- *     Csere KIZÁRÓLAG akkor, ha a mező tényleg a szóló portréra mutat.
- *  5. A /rolunk szakmai hátterének harmonikába szervezése: az örökölt,
- *     egyetlen óriás richText blokk (két teljes önéletrajz, több képernyőnyi
- *     görgetés) helyére a seed-builder ÚJ szerkezete kerül — rövid, mindig
- *     látható rész (elérhetőség + partnerek) + nyitható-csukható `accordion`
- *     blokk (tulajdonosi kérés, 2026-08-16). Csere KIZÁRÓLAG akkor, ha az élő
- *     blokk tartalma byte-ra a seedelt örökölt tartalom (kulcs-sorrendtől
- *     független összevetés a jsonb miatt) — szerkesztői módosítás esetén a
- *     blokk érintetlen marad.
- *  6. A HÁROM JOGI OLDAL létrehozása a jogász szó szerinti szövegéből:
- *     `/aszf`, `/adatvedelem`, `/impresszum` (a lábléc linkjeivel azonos
- *     webcímek — src/components/layout/Footer.tsx). A szöveg forrása a
- *     `src/lib/legal-content.ts` modul és a mellette élő, betűhív
- *     `legal-source/*.txt`. Ez a lépés CSAK LÉTREHOZ: ha a webcím már
- *     létezik, a script SEMMIT nem ír felül és nem is módosít — a jogi
- *     szöveget a tulajdonos/ügyvéd gondozza, egy script sosem írhatja át.
- *  7. Az „SOS Kézrelax villámkurzus” webcíme (`products.slug`): élesben ÜRES,
- *     ezért a kurzus a régi, id-alapú `/kurzusok/2` címen érhető el. A
- *     javítás beírja a beszédes `sos-kezrelax-villamkurzus` slugot —
- *     KIZÁRÓLAG akkor, ha a mező tényleg üres. A régi URL nem törik el: a
- *     `/kurzusok/[slug]` route a numerikus szegmenst tartósan a kanonikus
- *     címre irányítja (src/lib/course-url.ts), a menü SOS-pontja pedig
- *     termék-referencia, tehát magától követi a slugot (src/lib/menu-seed.ts).
- * 14. Az ÁSZF-ben BENNMARADT `[xxx]` HELYKITÖLTŐ: az ügyvédi szövegben az
- *     adatkezelési tájékoztatóra mutató hivatkozás CÍME üresen maradt, mert a
- *     végleges webcímet a fejlesztés adja meg. Élesben ma a látogató a
- *     „[xxx]” karaktersort látja a kötelező tájékoztatóra mutató link helyén.
- *     A javítás CSAK a hivatkozás címét írja be; a mondat állítása és a jogi
- *     szöveg minden más része változatlan, és a csere kizárólag BETŰRE egyező
- *     bekezdésen történik (szerkesztett szövegnél hangosan kihagy).
- * 13. Az „SOS Kézrelax villámkurzus” INGYENES jelölője (`priceInHUFEnabled`):
- *     élesben nincs kimondva, ezért a kurzusoldal NÉGY helyen „Megveszem"
- *     gombot mutat, ár nélkül, a pénztár viszont elutasítja („A termékhez nem
- *     tartozik érvényes ár…") — a tulajdonos 2026-08-16-i élő hibabejelentése.
- *     A javítás `false`-ra állítja, de KIZÁRÓLAG akkor, ha a terméknek nincs
- *     érvényes (pozitív) ára; beárazott terméket sosem tesz ingyenessé. A
- *     7. javítással egyetlen írásba fut össze (ugyanaz a rekord).
- *  8. A `/szolgaltatasok` oldal rendelői szekciójának HORGONYA: a fejléc-menü
- *     a `/szolgaltatasok#rendeloi` címre visz, az élő szekció viszont
- *     `arlista` horgonyt visel — a menüpontra kattintva ma SEMMI nem történik.
- *     A javítás a rendelői szekciót a TARTALMA alapján azonosítja (a benne
- *     álló „Rendelői kezelések…” címsor), és csak EGYÉRTELMŰ találatnál ír; a
- *     kód-szintű alapállapotban a seed-builder már a helyes horgonyt adja
- *     (src/scripts/restore-legacy-content.ts `buildSzolgaltatasokLayout`).
- *  9. A kezdőlapi sajtó-logósor FELIRATA: „Ismerhetsz minket innen” → „Itt
- *     találkozhattál velünk”. Ok: a sorban nemcsak sajtómegjelenések, hanem
- *     szakmai szervezet (MGYFT) logója is áll, és az új szöveg ezt a vegyes
- *     halmazt a látogató szemszögéből írja le. Az ÚJ feliratot a script a
- *     kezdőlap seed-builderéből veszi (src/lib/home-seed.ts), nem külön
- *     literálból. ÜRES feliratnál a script SEMMIT nem ír: a komponens beépített
- *     felirata (src/components/blocks/PressLogos.tsx `DEFAULT_HEADING`) már az
- *     új szöveget hozza, üres mező kitöltése tehát fölösleges írás lenne.
- * 10. A kezdőlapi „Három állapot” szekció BEVEZETŐJE: az élesben álló, régi
- *     seedelt szöveg (a logó-metaforáról szólt) helyére a terápia ívét
- *     elmondó, jóváhagyott mondatpár kerül — ez a szekció valódi állítása, és
- *     akkor is helyes marad, ha a szerkesztő a címet átírja. Az ÚJ szöveg
- *     igazságforrása szintén a seed-builder (`buildHomeLayout` `states`
- *     blokkjának `lead` mezője). Csere pontos egyezésnél VAGY üres mezőnél;
- *     bármilyen más szövegnél indokolt kihagyás.
- * 11. A kezdőlap ZÁRÓ CTA-SÁVJA: a lap ma a GYIK-kal ér véget, cselekvésre
- *     hívás nélkül. A seed-builder már tartalmaz egy záró `ctaBanner` blokkot
- *     („Kezdd el még ma”); a javítás EZT a blokkot fűzi a szekciósor végére, ha
- *     élesben egyáltalán nincs CTA-sáv. Ha van, de a szövege üres, csak a
- *     szöveg íródik be; ha van és van szövege, a script hozzá sem nyúl. Több
- *     CTA-sávnál nem dönt: hangosan kihagy (nem tudni, melyik a lezárás).
- * 12. A `/szolgaltatasok` oldal TETEJE (mért redesign, 2026-08-16), két rész:
- *     (a) a fejléc-kép (`heroImage`) ÜRÍTÉSE — a rendelő-fotó a lap tetején
- *         csak tolta lefelé a tartalmat, anélkül hogy bármit állítana. Ürítés
- *         KIZÁRÓLAG akkor, ha a mező tényleg a `67b3bd06f3936_Rendelo`
- *         fájlnév-prefixű média-rekordra mutat (futásidejű prefix-feloldás, a
- *         4. javítás mintájára); minden más képhez a script hozzá sem nyúl.
- *     (b) az 1. szekció cseréje: az örökölt, folyó szöveges richText blokk (két
- *         címsor + öt bekezdés szövegfala) helyére a seed-builder ÚJ üdvözlő
- *         (`welcome`) blokkja kerül — cím + felvezető, alatta pipás felsorolás
- *         és oldalsó összefoglaló. A SZÖVEG betűhíven a régi kineticare.hu
- *         bevezetője marad, csak a szerkezet változik. Csere KIZÁRÓLAG akkor,
- *         ha az élő blokk tartalma byte-ra a seedelt örökölt (kulcs-sorrendtől
- *         független összevetés — `szolgaltatasokRegiBevezetoTartalom`); ha az
- *         1. blokk már `welcome`, nincs teendő.
- * 15. A kurzuslistára vivő gombok EGYSÉGES felirata a kezdőlap élő
- *     szekciósorában: a `/kurzusok` címre mutató, ismert régi feliratú
- *     hivatkozások a §3.2 #10 jóváhagyott feliratára (`Nézd meg a kurzusokat`)
- *     állnak át. Egy cselekvés, egy szó (WCAG 2.2 · 3.2.4). A szerkesztő saját
- *     szövegeit a script sosem írja át; a lánc VÉGÉN fut, hogy a 11. javítás
- *     által beszúrt záró CTA-sávot is elérje.
- * 16. A `/kapcsolat` lap HIÁNYZÓ szekciói. A lapot dedikált route szolgálja ki,
- *     de a szekciósorát az ilyen slugú CMS-oldalról olvassa; a seed viszont
- *     meglévő szekciósort sosem ír felül, ezért az élő lapon ma EGYETLEN
- *     szekció sincs — se időpontkérő, se szakember-elérhetőség. A javítás a
- *     seed-builderből (`buildKapcsolatLayout`) pótolja a hiányzókat: az
- *     időpontkérőt a szekciósor végére, a szakember-elérhetőséget közvetlenül
- *     utána (tulajdonosi kérés, 2026-08-16: „lányok elérhetősége kell a
- *     kapcsolat menüpontba is"). Ami MÁR ott van, azt csendben kihagyja
- *     (idempotencia); ha a lapon MÁS nevekkel álló szakember-szekció van, a
- *     script HANGOSAN kihagy és nem duplikál.
- * 17. Az SOS villámkurzus KAPCSOLÓDÓ kurzusa (`products.relatedProducts`): a
- *     fizetős „Otthoni KézRehab Program”. Ok: a régi oldalon az ingyenes anyag
- *     igénylése után a látogató AZONNAL egy fizetős ajánlatra ment
- *     (`urlRedirect: /oto-kezrehab-akcio` — „ez a lánc üzleti lényege”,
- *     docs/regi-oldal-osszehasonlitas.md 5.1), ma viszont az ingyenes kurzus
- *     után SEMMILYEN továbblépés nincs (ugyanott 5.2). A kurzusoldal alján álló
- *     cross-sell sáv KIZÁRÓLAG ebből a mezőből dolgozik, tehát a hiányzó
- *     lépést ez a mező pótolja. A cél kurzust WEBCÍM alapján keressük (nem
- *     beégetett azonosítóval), és a script HANGOSAN kihagy, ha a cél nem
- *     található, ha önmagára mutatna, ha a kapcsolat MÁR be van állítva, vagy
- *     ha a szerkesztő már felvett másik kurzust. Sürgetés (visszaszámláló,
- *     „csak ma") SEHOL: a régi oldal visszaszámlálóját tudatosan nem hozzuk át.
- * 18. Az ÉLŐ ÁSZF KÉT TÉNYBELI HIBÁJA (tulajdonosi döntés, 2026-08-17; a
- *     forrásfájl `src/lib/legal-source/aszf.txt` már javítva, az élő oldal
- *     viszont az adatbázisból jön, amit a 6. javítás CSAK LÉTREHOZ):
- *     (a) a fizetési szolgáltató neve STRIPE, holott a fizetés Barionon megy.
- *         A Barion elfogadóhely-jóváhagyás bírálója az ÉLŐ ÁSZF-et nézi meg,
- *         tehát ez a legvalószínűbb elutasítási ok.
- *     (b) a „hozzáférés három hónap időtartamra garantált” kikötés és a
- *         lezárási jogot kimondó mondat helyére a végleges hozzáférést mondó
- *         egyetlen mondat kerül — ez oldja fel az ellentmondást az
- *         értékesítési oldal „Örökös hozzáférés” ígéretével is.
- *     A csere BEKEZDÉS-ELEJI (prefix) illesztéssel megy: a bekezdés maradéka
- *     (pl. a másolás tilalmáról szóló mondat) byte-ra változatlan marad. A
- *     27%-os áfa-mondathoz a script SZÁNDÉKOSAN nem nyúl (az AAM/27 kérdés
- *     tulajdonosi döntésre vár). A két bekezdés EGYMÁSTÓL FÜGGETLENÜL bírálódik
- *     el: az egyik kihagyása nem blokkolja a másikat. Szerkesztett szövegnél a
- *     script HANGOSAN kihagy, és kiírja, mit talált a helyén.
- * 19. A BARION ELFOGADÓHELY-JÓVÁHAGYÁS két HIÁNYZÓ ÁSZF-eleme (2026-08-17). A
- *     jóváhagyási lista megköveteli, hogy az ÁSZF tartalmazza „a Barion
- *     fizetési módról szóló leírást” és „a rendelések teljesítésének
- *     (kiszállításának) átlagos idejét”. Mérve: a javítás előtt a Barion neve
- *     EGYETLEN mondatban szerepelt (a fizetési felület megnevezéseként), a
- *     teljesítés idejéről pedig sehol nem esett szó — a „teljesítés” szó
- *     mindenütt jogi értelemben (hibás teljesítés, kellékszavatosság) állt.
- *     A javítás HÁROM bekezdést SZÚR BE a fizetési bekezdés után: a Barion
- *     sztenderd tájékoztatóját (MNB-engedélyszámmal), a fizetési mód
- *     gyakorlati leírását, és a teljesítés idejét — digitális terméknél
- *     kimondva, hogy postai kiszállítás nincs, a hozzáférés pedig a fizetés
- *     visszaigazolása után azonnal aktív a felhasználói fiókban. A lépés CSAK
- *     BESZÚR: meglévő csomópontot nem módosít és nem töröl (a 27%-os
- *     áfa-mondathoz így sem ér hozzá). Részleges állapotban (a háromból csak
- *     néhány van meg) HANGOSAN kihagy, hogy duplikált jogi bekezdés ne
- *     keletkezzen.
- *
- * ═══ KAPU ═══
- * Alapértelmezésben PRÓBAFUTÁS (dry-run): a script mindent kiszámol és
- * naplóz, de egyetlen írás sem történik. A tényleges íráshoz:
- *
+ * Alapból próbafutás (dry-run); íráshoz OWNER_CONTENT_CONFIRM=igen kell:
  *   npm run content:owner
- *     → próbafutás; kiírja, mit tenne, és MIÉRT hagy ki bármit.
  *   OWNER_CONTENT_CONFIRM=igen npm run content:owner
- *     → tényleges írás, a végén összesítés és egy `OWNER_CONTENT_OK` naplósor
- *       (erre keresünk rá a deploy-naplóban).
  *
- * A kapu mintája a legacy-visszaépítő scripté (src/scripts/
- * restore-legacy-content.ts `kapuNyitva`): tartalmi adatot módosító script
- * sosem írhat kifejezett kérés nélkül.
- *
- * ═══ IDEMPOTENCIA ═══
- * Mindegyik javítás pontos egyezésre (üres mezőre, hiányzó webcímre, hiányzó
- * blokkra) szűr, ezért másodszor lefuttatva már egyetlen módosítást sem talál:
- * a kimenet ugyanaz a tartalom, a naplóban pedig indokolt kihagyások állnak. A
- * záró CTA-sáv hozzáfűzése (11.) is így viselkedik: a második futás már talál
- * CTA-sávot, szöveggel — tehát nem duplázza. A kezdőlap szekciósorát a script
- * TELJES tömbként írja vissza (a Payload blokk-mező részlegesen nem
- * frissíthető), de a nem érintett blokkokat VÁLTOZATLAN objektum-referenciaként
- * adja tovább — így a többi szekció tartalma bitre azonos marad.
- *
- * ═══ EGY OLDAL, TÖBB JAVÍTÁS ═══
- * A kezdőlapra öt (1–2., 9., 10., 11., 15.), a /szolgaltatasok oldalra három
- * (8., 12a., 12b.) javítás vonatkozik. Ezek LÁNCBAN futnak — mindegyik az előző
- * eredményén dolgozik —, és oldalanként EGYETLEN `payload.update` megy ki, egy
- * piszkozat-ellenőrzéssel. A lánc konvergenciáját (második futásra nulla
- * módosítás) teszt méri, adatbázis nélkül.
+ * Értékek: home-seed.ts, restore-legacy-content.ts, legal-content.ts.
+ * Jogi oldal create-only; meglévő jogi szöveget a script nem ír felül.
  */
 
 import { pathToFileURL } from 'node:url'
@@ -1012,24 +817,7 @@ export interface AszfLinkAtalakitas {
 }
 
 /**
- * Az élő ÁSZF-oldalon bennmaradt `[xxx]` helykitöltő cseréje a valódi
- * adatkezelési tájékoztató címére.
- *
- * ═══ MIÉRT SZABAD EHHEZ HOZZÁNYÚLNI ═══
- * A 6. javítás szabálya, hogy jogi oldalt a script SOSEM ír felül — a szöveg
- * az ügyvédé. Ez a lépés NEM jogi tartalmat módosít: az ügyvéd a hivatkozás
- * CÍMÉT hagyta kitöltetlenül (`[xxx]`), mert a végleges webcímet a fejlesztés
- * adja meg. A mondat állítása („az adatkezelési tájékoztató ezen a linken
- * érhető el") változatlan; csak a link kerül a helyére. Amíg ez így áll, az
- * élő ÁSZF a kötelező adatkezelési tájékoztatóra NEM mutat használható
- * hivatkozást — a látogató a `[xxx]`-et látja.
- *
- * ═══ MIÉRT NEM TUD KÁRT OKOZNI ═══
- * KIZÁRÓLAG azt a bekezdést cseréli, amelynek a szövege BETŰRE azonos a
- * helykitöltős változattal, és csak akkor, ha PONTOSAN EGY ilyen bekezdés van.
- * Ha az ügyvéd vagy a tulajdonos bármit hozzáírt, a mondat már nem egyezik, és
- * a script hangosan kihagyja. A bekezdés-csomópont többi mezője (formátum,
- * irány, verzió) érintetlen marad: csak a szöveg-gyerek `text` értéke cserélődik.
+ * ÁSZF: [xxx] helykitöltő → adatvédelmi link címe. Csak betűre egyező bekezdés, egy találat.
  */
 export const alkalmazAszfAdatvedelemLink = (content: unknown): AszfLinkAtalakitas => {
   const uzenet = 'Az ÁSZF adatkezelési hivatkozása'
@@ -1221,29 +1009,8 @@ const roviditettIdezet = (szoveg: string, hossz = 160): string => {
 }
 
 /**
- * Az élő ÁSZF-oldal két ténybeli hibájának javítása bekezdés-eleji cserével.
- *
- * ═══ MIÉRT SZABAD EHHEZ HOZZÁNYÚLNI ═══
- * A 6. javítás szabálya (jogi oldalt a script sosem ír felül) a szöveg
- * ÖNKÉNYES átírását tiltja. Ez a lépés a TULAJDONOS KIFEJEZETT, tételes
- * utasítását hajtja végre: a forrásfájl (`src/lib/legal-source/aszf.txt`) már a
- * javított mondatokat tartalmazza, az élő oldal viszont az adatbázisból jön,
- * amit a 6. javítás create-only szabálya sosem frissít. Enélkül a repó és az
- * élő oldal tartósan szétcsúszik — és az élő ÁSZF egy olyan fizetési
- * szolgáltatót nevez meg, amelyik nem is fogadja a pénzt.
- *
- * ═══ MIÉRT NEM TUD KÁRT OKOZNI ═══
- *  - PREFIX-illesztés: csak az a bekezdés cserélődik, amelynek a szövege BETŰRE
- *    a régi kezdettel indul; a bekezdés MARADÉKA byte-ra változatlan marad
- *    (ezért marad meg pl. a másolás tilalmáról szóló mondat);
- *  - IDEMPOTENS: ha már az új alak áll, HALKAN kihagy (nincs teendő) — a
- *    második futás semmit nem ír;
- *  - a szerkesztő saját szövegét sosem írja felül: ha se a régi, se az új alak
- *    nincs meg, HANGOSAN kihagy, és a naplóba kiírja, mit talált a helyén;
- *  - több egyforma találatnál nem dönt: hangosan kihagy;
- *  - a két bekezdés FÜGGETLEN: az egyik kihagyása nem blokkolja a másikat;
- *  - a 27%-os áfáról szóló mondat egyik cserében sem szerepel, tehát a script
- *    hozzá sem ér.
+ * ÁSZF: Stripe→Barion és hozzáférési mondat prefix-csere. Forrás: legal-source/aszf.txt.
+ * Bekezdés-eleji illesztés; szerkesztett szövegnél hangos kihagyás.
  */
 export const alkalmazAszfBekezdesCserek = (
   content: unknown,
@@ -1362,40 +1129,7 @@ export const alkalmazAszfBekezdesCserek = (
  */
 export const ASZF_BARION_HORGONY_KEZDET = ASZF_FIZETO_UJ_KEZDET
 
-/**
- * A beszúrandó HÁROM bekezdés, EBBEN a sorrendben.
- *
- * ═══ MIÉRT PONTOSAN EZ A HÁROM ═══
- * A Barion elfogadóhely-jóváhagyás tartalmi listája megköveteli, hogy az ÁSZF
- * tartalmazza „a Barion fizetési módról szóló leírást” és „a rendelések
- * teljesítésének (kiszállításának) átlagos idejét”. A javítás előtti szöveg
- * egyiket sem tartalmazta: a Barion neve EGYETLEN mondatban szerepelt (a
- * fizetési felület megnevezéseként), a teljesítés idejéről pedig sehol nem
- * esett szó — a „teljesítés” szó a lapon végig jogi értelemben (hibás
- * teljesítés, kellékszavatosság) állt.
- *
- *  1. bekezdés: a Barion által közzétett, sztenderd tájékoztató mondatok
- *     (a rendszer, a kártyaadatok útja, az MNB-engedélyszám). Betűre az a
- *     szöveg, amit a Barion a kereskedőknek közzétételre ad.
- *  2. bekezdés: a fizetési mód GYAKORLATI leírása (mivel lehet fizetni, kell-e
- *     regisztráció, mit lát a kereskedő, van-e felár). A `FundingSources: ['All']`
- *     beállítás (src/lib/barion/start.ts) miatt a bankkártya MELLETT a
- *     Barion-egyenleg is fizetőeszköz — ezért mondja ki mindkettőt.
- *  3. bekezdés: a TELJESÍTÉS ideje. Digitális terméknél a „kiszállítás” fogalma
- *     félrevezető, ezért a szöveg kimondja, hogy postai kiszállítás nincs, és
- *     megnevezi a tényleges teljesítést: a hozzáférés megnyitását a
- *     felhasználói fiókban. Az időadat MÉRT: a hozzáférést a Barion
- *     szerver-szerver visszaigazolása (callback) nyitja meg másodpercek alatt,
- *     elmaradó callback esetén pedig az 5 percenként futó lekérdező job
- *     (src/lib/order-poll/service.ts) hozza be — innen a „legfeljebb néhány
- *     perc”. A 24 órás kézi tartalék a fogyasztónak ad kiutat, és NEM mond
- *     ellent a Vegyes rendelkezések pénzvisszafizetési kikötésének.
- *
- * A szövegek IGAZSÁGFORRÁSA a `src/lib/legal-source/aszf.txt`: ezek a
- * konstansok betűre az ottani sorok. Az összhangot teszt őrzi — ha a forrásfájl
- * és a konstans elcsúszik, a frissen létrehozott ÁSZF-en a javításnak lenne
- * teendője, és a teszt bukik.
- */
+/** Barion jóváhagyáshoz szükséges három bekezdés (forrás: legal-source/aszf.txt). */
 export const ASZF_BARION_UJ_BEKEZDESEK: readonly string[] = [
   'Az online bankkártyás fizetések a Barion rendszerén keresztül valósulnak meg. A bankkártya adatok a kereskedőhöz nem jutnak el. A szolgáltatást nyújtó Barion Payment Zrt. a Magyar Nemzeti Bank felügyelete alatt álló intézmény, engedélyének száma: H-EN-I-1064/2013.',
   'A Barion fizetési felületén bankkártyával és a Barion-egyenleg terhére is lehet fizetni. Bankkártyás fizetéshez nem kell Barion-fiókot létrehozni: elég megadni a kártya számát, a lejárati dátumot, a kártya hátoldalán található ellenőrző kódot és egy működő e-mail címet. A KINETICARE a fizetésről kizárólag a tranzakció eredményét kapja meg, a kártyaadatokat nem ismeri meg és nem tárolja. A bankkártyás fizetésnek a Vásárló felé nincs felára.',
@@ -1403,26 +1137,8 @@ export const ASZF_BARION_UJ_BEKEZDESEK: readonly string[] = [
 ]
 
 /**
- * A Barion-leírás és a teljesítési idő BESZÚRÁSA az élő ÁSZF-be.
- *
- * ═══ MIÉRT SZABAD EHHEZ HOZZÁNYÚLNI ═══
- * A 6. javítás create-only szabálya (jogi oldalt a script sosem ír felül) a
- * szöveg ÖNKÉNYES átírását tiltja. Ez a lépés a tulajdonos tételes
- * utasítására, a Barion elfogadóhely-jóváhagyás KÖTELEZŐ tartalmi listája
- * alapján PÓTOL hiányzó elemeket; a forrásfájl (`legal-source/aszf.txt`) már
- * tartalmazza őket, az élő oldal viszont az adatbázisból jön, amit a 6.
- * javítás sosem frissít.
- *
- * ═══ MIÉRT NEM TUD KÁRT OKOZNI ═══
- *  - CSAK BESZÚR: egyetlen meglévő csomópontot sem módosít és nem távolít el.
- *    A meglévő bekezdések VÁLTOZATLAN objektum-referenciaként kerülnek át,
- *    tehát a 27%-os áfáról szóló mondathoz (és minden máshoz) hozzá sem ér.
- *  - IDEMPOTENS: ha MINDHÁROM bekezdés már ott van, HALKAN kihagy.
- *  - RÉSZLEGES állapotban nem dönt: ha a háromból csak néhány van meg (valaki
- *    kézzel bemásolt egyet, vagy egy futás félbeszakadt), HANGOSAN kihagy —
- *    duplikált jogi bekezdést sosem gyárt.
- *  - a horgony csak akkor jó, ha PONTOSAN EGY bekezdés kezdődik vele; nulla
- *    vagy több találatnál hangosan kihagy, és nem tippel.
+ * ÁSZF: Barion-leírás + teljesítési idő beszúrása a fizetési bekezdés után (csak insert).
+ * Részleges állapotnál hangos kihagyás.
  */
 export const alkalmazAszfBarionKiegeszites = (
   content: unknown,
@@ -1526,24 +1242,7 @@ export interface IngyenesJeloloAtalakitas {
 }
 
 /**
- * Az SOS villámkurzus `priceInHUFEnabled` mezőjének `false`-ra állítása.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
- * A tulajdonos élő bejelentése: az ingyenes kurzusra megadta az adatait, és
- * „A termékhez nem tartozik érvényes ár, így nem vásárolható meg" üzenetet
- * kapott. A mérés (2026-08-16, GET a `/kurzusok/sos-kezrelax-villamkurzus`
- * címre) igazolta: az oldalon NÉGYSZER áll „Megveszem" felirat, ár SEHOL —
- * tehát a terméken az ár-pipa nincs `false`-ra állítva, a felület fizetősnek
- * mutatja, a checkout-kapu viszont elutasítja. A kód-oldali javítás (a CTA az
- * ÉRVÉNYES árat kérdezze) önmagában csak annyit érne el, hogy a gomb eltűnne;
- * ahhoz, hogy az ingyenes kurzus TÉNYLEG ingyenesként viselkedjen, az élő
- * rekordon is ki kell mondani a szándékot. A két javítás EGYÜTT teljes.
- *
- * ═══ MIÉRT BIZTONSÁGOS ═══
- * Csak akkor ír, ha a terméknek NINCS érvényes (pozitív) ára. Ha valaki
- * szándékosan beárazta, a script hozzá sem nyúl, és hangosan kihagyásként
- * naplózza — egy bevételt hozó termék ingyenessé tétele sosem lehet egy
- * automata script mellékhatása.
+ * SOS kurzus priceInHUFEnabled=false, ha nincs pozitív ár. Beárazott termékhez nem nyúl.
  */
 export const alkalmazSosIngyenesJelolo = (
   termek: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
@@ -1627,28 +1326,7 @@ export const kapcsolodoAzonositok = (ertek: Product['relatedProducts']): number[
 }
 
 /**
- * Az SOS villámkurzus `relatedProducts` mezőjének beállítása a fizetős
- * „Otthoni KézRehab Program”-ra.
- *
- * ═══ MIT PÓTOL ═══
- * A régi `www.kineticare.hu` ingyenes lánca NEM ért véget az e-mail
- * megadásával: a beküldés után a látogató azonnal egy fizetős ajánlatra ment
- * (`urlRedirect: /oto-kezrehab-akcio`) — „ez a lánc üzleti lényege"
- * (`docs/regi-oldal-osszehasonlitas.md` 5.1). Ma ez a lépés HIÁNYZIK: ugyanott
- * az 5.2 táblázat mérése szerint „Következő ajánlat (a régi OTO helye): NINCS.
- * Az ingyenes anyag után semmilyen továbblépés nincs beépítve."
- *
- * A pótlás a mai, tisztességes formája: a kurzusoldal alján álló cross-sell sáv
- * (`RelatedCourses`), ami KIZÁRÓLAG a `relatedProducts` mezőből dolgozik.
- * Visszaszámláló és ál-sürgetés nélkül — a régi oldal 3 napos, látogatónként
- * újrainduló visszaszámlálója (`docs/regi-oldal-valaszok.md` 21.) NEM jön át.
- *
- * ═══ MIÉRT BIZTONSÁGOS ═══
- * Négy ágon áll meg, mindegyik HANGOS naplósorral:
- *  1. a cél kurzus nem található webcím alapján → nem találgat azonosítót;
- *  2. a cél maga az SOS kurzus lenne → önhivatkozást nem írunk be;
- *  3. a mező MÁR tartalmazza a célt → idempotencia (második futás semmit nem tesz);
- *  4. a mezőben MÁS kurzus áll → a szerkesztő döntését a script sosem írja felül.
+ * SOS relatedProducts → fizetős Otthoni KézRehab (slug alapján). Meglévő kapcsolatnál kihagyás.
  */
 export const alkalmazSosKapcsolodoKurzus = (input: {
   jelenlegi: Product['relatedProducts']
@@ -1747,19 +1425,8 @@ const rendeloiSzekcioIndexek = (layout: Szekciosor): number[] => {
 }
 
 /**
- * A `/szolgaltatasok` oldal rendelői szekciójának horgony-javítása.
- *
- * A fejléc-menü „Rendelői kezelések” pontja a `/szolgaltatasok#rendeloi`
- * címre visz (src/lib/menu-seed.ts `CLINIC_TREATMENTS_PATH`), az élő szekció
- * viszont más horgonyt (`arlista`) visel — a kattintás ezért nem csinál semmit.
- *
- * VÉDŐFELTÉTELEK (kétes esetben HANGOS kihagyás, írás nélkül):
- *  - a szekciósornak léteznie kell;
- *  - a rendelői szekciónak EGYÉRTELMŰEN azonosíthatónak kell lennie (pontosan
- *    egy találat a tartalmi jegyre);
- *  - ha a horgonyt MÁR MÁS blokk viseli, nem írunk (két azonos id ütközne, és
- *    a böngésző az elsőre ugrana — kézi átnézés kell);
- *  - ha a szekció horgonya már a helyes, nincs teendő (idempotencia).
+ * `/szolgaltatasok` rendelői szekció horgony → `rendeloi` (menü egyezés).
+ * Pontosan egy tartalmi találat; ütköző horgony → kihagyás.
  */
 export const alkalmazRendeloiHorgony = (layout: Page['layout']): HorgonyAtalakitas => {
   const uzenet = 'A rendelői kezelések szekció horgonya (/szolgaltatasok)'
@@ -2079,28 +1746,7 @@ export const alkalmazAllapotokBevezeto = (input: {
  * Kétes esetben (több CTA-sáv, hiányzó seed-blokk, üres szekciósor) HANGOS
  * kihagyás, írás nélkül.
  */
-/**
- * A kurzuslistára vivő gombok EGYSÉGES felirata az élő szekciósorban.
- *
- * ═══ A MÉRT HIBA ═══
- * Az élő kezdőlapon (GET, 2026-08-16, a #87 deploy után) HÁROM különböző
- * felirat vitt ugyanarra a `/kurzusok` címre: „Kurzusok megtekintése" (hero),
- * „Nézd meg a kurzusokat" (szolgáltatás-sor) és „Megnézem a kurzusokat" (záró
- * sáv). A #87 a seed-buildert és a kódba égetett feliratokat javította, de az
- * élő lap szekciósora az ADATBÁZISBÓL jön, és a seed sosem ír felül meglévő
- * tartalmat — a felület tehát a javítás után is három nevet ad egy
- * cselekvésnek (WCAG 2.2 · 3.2.4 Consistent Identification).
- *
- * ═══ MIT CSERÉL, ÉS MIT NEM ═══
- * KIZÁRÓLAG olyan hivatkozás feliratát írja át, amelynek a címe pontosan
- * `/kurzusok`, ÉS a felirata BETŰRE egyezik az ismert régi változatok
- * egyikével. Bármi más — a szerkesztő saját szövege, más cím, más cselekvés —
- * érintetlen marad. A már jóváhagyott feliratot csendben kihagyja
- * (idempotencia), tehát a script kétszer futtatva sem ír.
- *
- * A fejléc „Kurzusok" gombja NEM ezen az úton él (nem a szekciósor része),
- * ezért nem érinti; az a navigáció rövid címkéje, nem szekció-CTA.
- */
+/** Kezdőlap: /kurzusok CTA-k egységes felirata — csak ismert régi szövegek, pontos url. */
 export const KURZUSLISTA_JOVAHAGYOTT_FELIRAT = 'Nézd meg a kurzusokat'
 
 /** A cserélendő, korábban élő feliratok — betűre egyező illesztéshez. */
@@ -2505,31 +2151,7 @@ const szakemberNevek = (blokk: SzekcioTipus<'teamMembers'>): string[] =>
     .sort()
 
 /**
- * A /kapcsolat szekciósorának kiegészítése a HIÁNYZÓ blokkokkal.
- *
- * ═══ A MÉRT HIBA ═══
- * A /kapcsolat dedikált route, de a szekciósorát az ilyen slugú CMS-oldalról
- * olvassa (src/app/(frontend)/kapcsolat/page.tsx). A seed (`ensurePageLayout`)
- * MEGLÉVŐ szekciósort sosem ír felül, ezért az élő lapon ma egyetlen szekció
- * sincs: se időpontkérő, se szakember-elérhetőség — csak a route saját
- * üzenetküldő űrlapja. A tulajdonos kérése („lányok elérhetősége kell a
- * kapcsolat menüpontba is") kód-szinten a seed-builderben teljesül, az ÉLŐ
- * laphoz viszont ez a javítás kell.
- *
- * ═══ MIT SZÚR BE, ÉS MIT NEM ═══
- *  - hiányzó időpontkérő → beszúrás a szekciósor végére (a lap elsődleges
- *    feladata, és a /szolgaltatasok `#idopontkeres` hivatkozásának célja);
- *  - hiányzó szakember-szekció → beszúrás KÖZVETLENÜL az időpontkérő UTÁN (a
- *    seed-builder sorrendje: az időpontkérő telefonlistája veti fel a „ki
- *    melyik szám?" kérdést, ez a szekció válaszol rá);
- *  - MÁR ott lévő szakember-szekció ugyanazokkal a nevekkel → csendes kihagyás
- *    (idempotencia: a második futás nem módosít semmit);
- *  - MÁS nevekkel álló szakember-szekció → HANGOS kihagyás, beszúrás NÉLKÜL: a
- *    szerkesztő saját szekcióját nem duplikáljuk, de az üzemeltetőnek látnia
- *    kell, hogy a lapon nem a seedelt tartalom áll.
- *
- * A blokkok a seed-builderből jönnek, nem külön literálból (lásd
- * `kapcsolatSeedBlokkok`).
+ * /kapcsolat: hiányzó időpontkérő + szakember-szekció a seed-builderből. Meglévőt nem duplikál.
  */
 export const alkalmazKapcsolatSzakemberek = (input: {
   layout: Page['layout']
@@ -2629,21 +2251,7 @@ export const KEZELES_FOTO_PREFIX = 'kezeles-kezen'
 export const KATAK_LABDAVAL_PREFIX = 'katak-labdaval'
 
 /**
- * Kép beállítása egy oldal EGYETLEN `services` szekciójára.
- *
- * ═══ MIÉRT ÉPP IDE ═══
- * A tulajdonos 25 fotót adott át; a mérés szerint az oldalak képhelyei egy
- * kivétellel ki vannak töltve (24/26). A `/rolunk` „Miben segíthetünk?"
- * szekciója az EGYETLEN valóban üres képhely — a `/szolgaltatasok` fejléc-képe
- * pedig SZÁNDÉKOSAN üres (12a. javítás: a lap tetején álló fotó csak lejjebb
- * tolta a tartalmat), azt tehát nem töltjük vissza.
- *
- * ═══ MIÉRT CSERÉLHETŐ AZ EGYIK ═══
- * A `/szolgaltatasok` szolgáltatás-szekciójában ma egy örökölt, 940×788-as
- * kép áll. A helyére a rendelői kezelést TÉNYLEGESEN mutató fotó kerül: az
- * NN/g fotó-kutatása szerint a valódi munkát mutató kép tartalom, a dekoratív
- * pedig átugorható zaj (https://www.nngroup.com/articles/photos-as-web-content/).
- * A régi kép a Médiatárban MARAD, tehát a csere egy kattintással visszavonható.
+ * services szekció kép cseréje prefix-feloldással. /rolunk üres hely; /szolgaltatasok örökölt kép.
  */
 export const alkalmazSzolgaltatasBlokkKep = (input: {
   layout: Page['layout']

@@ -11,35 +11,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A `videos[].streamAssetId` OLVASÁSI VÉDELME (S2/b).
- *
- * ═══ MIT VÉD ═══
  * A mező a védett Bunny-library videó-GUID-ja. A products olvasása nyilvános
  * (published termékek), tehát védelem nélkül a `GET /api/products` anonim
  * kérőnek is kiadja az összes kurzus összes videó-GUID-ját.
- *
- * ═══ MIT BIZONYÍT EZ A FÁJL ═══
  * 1. a szabály mind az ÖT esetre helyes: anonim / nem-vevő customer / vevő
- *    customer / staff / owner;
- * 2. a mező a VÉGLEGES, szanitált configban tényleg be van kötve, és a videó-sor
- *    többi almezője (cím, hossz, állapot) NEM kapott korlátozást;
- * 3. a BEKÖTÉS TÉNYLEG HAT: a Payload SAJÁT `afterRead` mező-hookja fut le a
- *    szanitált products-collectionnel, és ténylegesen TÖRLI a mezőt — ezt nem
- *    tükör méri (lásd alább a „miért nem tükör" megjegyzést);
- * 4. a LEJÁTSZÁS változatlanul működik: a stream-token szolgáltatás
- *    `overrideAccess: true`-val olvassa a terméket, amit a hook rövidre zár;
- * 5. NEGATÍV KONTROLL: ha ugyanez az olvasás access-ellenőrzés ALÁ kerülne
- *    (overrideAccess nélkül, nem-vevő kontextusban), a mező eltűnne és a
- *    lejátszás elhasalna — vagyis a 4. pont nem véletlen, hanem a szigorítás
- *    biztonsági feltétele.
- *
- * ═══ MIÉRT NEM TÜKÖR ═══
- * Korábban egy saját `applyFieldAccess` segédfüggvény képezte le a Payload
- * viselkedését. Az ilyen tükör akkor is zöld marad, ha a mező a configban NINCS
- * bekötve — csak a szabályfüggvényt méri, a bekötést nem. Ezért a fájl a
- * VALÓDI hookot futtatja: payload/dist/fields/hooks/afterRead/index.js.
- *
- * Adatbázis és hálózat sehol: a hook `depth: 0`-val fut (nincs
- * relációfeloldás), a local API-t ál-objektum adja (CLAUDE.md 15.).
  */
 
 const DUMMY_TOKEN_KEY = 'DUMMY-BUNNY-TOKEN-AUTH-KEY-NEM-VALODI-TITOK'

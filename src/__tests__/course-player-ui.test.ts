@@ -29,17 +29,10 @@ import type { Product } from '../payload-types'
 
 /**
  * A KURZUS-LEJÁTSZÓ TISZTA LOGIKÁJA — navigáció, gombfeliratok, akkordeon-állapot.
- *
- * ═══ MIÉRT ÍGY ═══
  * A lejátszó felülete DOM-, iframe- és időzítő-nehéz, a repó tesztkörnyezete
  * viszont node (vitest.config.ts). Ezért minden szabály, ami DOM nélkül
  * eldönthető, tiszta modulba került
  * (src/components/account/player/navigation.ts) — ez a teszt AZT méri.
- *
- * A tananyagot a VALÓDI `buildCurriculum`-mal építjük, nem kézzel gyártott
- * objektumokból: így a teszt akkor is fog, ha a modell szabályai (pl. mi
- * számít elindíthatónak) megváltoznak, és nem hitelesít el egy olyan alakot,
- * ami élesben elő sem fordul.
  */
 
 /** A GENERÁLT Payload-típusok — így a teszt akkor is szól, ha a mező alakja változik. */
@@ -527,19 +520,11 @@ describe('CoursePlayer — kapuzott állapotok', () => {
 })
 
 /**
- * ═══ A DUPLIKÁLT JELÖLÉS SZERKEZETI VÉDELME ═══
- *
  * A jelölés duplikáció-védelme korábban a `watched` és a `pending` ÁLLAPOTOT
  * olvasta, ami a callback lezárásából jön, és két renderelés között elavul.
  * Élesben mérve: gyors `timeupdate`-ütem mellett EGY leckére NÉGY
  * `mark-watched` kérés ment ki, és minden duplikátum újra lefuttatta a
  * funnel-blokkot — a „kurzusonként egyszer" mérföldkövek (course_started,
- * course_completed) többször is kimehettek.
- *
- * A repóban nincs DOM-alapú komponensteszt-készlet (a tesztek szándékosan
- * tiszta függvényeket fednek), ezért ezt a szerkezeti tulajdonságot
- * FORRÁSSZINTEN őrizzük. A teszt kifejezetten arra való, hogy egy jövőbeli
- * „egyszerűsítés" — a ref visszacserélése állapotra — ITT bukjon el.
  */
 describe('markWatched — a duplikáció-védelem szerkezeti', () => {
   const source = readFileSync(

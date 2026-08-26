@@ -4,79 +4,13 @@ import { withAdvisoryLock } from '../lib/advisory-lock'
 import { logger as rootLogger, type Logger } from '../lib/logger'
 
 /**
- * Beragadás-tűrő ÉS versenyhelyzet-biztos `beforeSchedule` őr a periodikus
- * taskokhoz.
+ * Periodikus task `beforeSchedule` őre: beragadt `processing` job ne némítsa
+ * az ütemezést, és két példány ne állítson sorba kétszer.
  *
- * ═══ A HIBA, AMIT MEGOLD ═══
- * A Payload alapértelmezett duplikátum-védelme (`defaultBeforeSchedule` →
- * `countRunnableOrActiveJobsForQueue`) azt számolja meg, hány olyan job van a
- * queue-ban ugyanarra a taskra, amelynek NINCS `completedAt`-je és NINCS
- * `error`-ja — azaz „fut vagy futtatható" —, és csak 0 esetén enged új jobot
- * sorba állítani. Ez a szabály elvágólagos: egy ELHALT futás (a folyamatot
- * deploy/OOM/SIGKILL vitte el a `processing: true` beállítása után, mielőtt a
- * `completedAt` vagy az `error` kiíródott volna) örökre benne marad ebben a
- * halmazban. Ettől kezdve a számláló SOHA nem esik vissza 0-ra, tehát az
- * ütemezés VÉGLEGESEN és NÉMÁN kikapcsol: a cron ugyanúgy tickel, a
- * `handleSchedules` ugyanúgy lefut, csak minden körben `skipped`-et ad —
- * naplósor nélkül. Élesben ez azt jelenti, hogy az elveszett Barion-callback
- * pótlása (order-poll) és a webhook-újrapróbálás (webhook-retry) csendben
- * megszűnik, és semmi nem jelzi.
- *
- * ═══ A MÁSODIK HIBA (K4 — versenyhelyzet) ═══
- * A számolás-then-sorbaállítás NEM atomi: két app-példány (rolling-deploy,
- * horizontális skálázás) ugyanazon a cron-ticken MINDKETTŐ 0-t számolhat,
- * mielőtt bármelyik sorba állítana → dupla job. A versenyablak ráadásul a HOOKON
- * TÚLNYÚLIK: a `handleSchedules` a beforeSchedule visszatérése UTÁN hívja a
- * `jobs.queue`-t (payload/dist/queues/operations/handleSchedules/index.js,
- * `scheduleQueueable`), tehát a zár nem érheti el a „csak a számolást zárom"
- * megoldással.
- *
- * ═══ AMIT EHELYETT CSINÁLUNK ═══
- * A hook a számolást ÉS a sorba állítást is MAGA végzi, rendelés-független,
- * queue+task szintű Postgres advisory-zár alatt
- * (`schedule:<queue>:<taskSlug>`, src/lib/advisory-lock.ts — ugyanaz a minta,
- * mint a checkout/refund/order-transition zárak). A zár processzek között is
- * sorosít: a második példány már az ELSŐ által beszúrt jobot látja a
- * számolásnál, ezért kiszáll. Mivel mi állítottuk sorba a jobot, a Payload felé
- * MINDIG `shouldSchedule: false` megy vissza — különben a `handleSchedules`
- * még egyszer sorba állítaná. Következmények:
- *  - a `handleSchedules` visszatérésében a kör `skipped`-ként jelenik meg
- *    (kozmetika; a cron-hívó nem használja a visszatérést, és a hook a
- *    sorba állítást info-naplósorral jelzi);
- *  - a `payload-jobs-stats` global (`lastScheduledRun`) ettől rendesen frissül:
- *    a `defaultAfterSchedule` a státusztól FÜGGETLENÜL írja;
- *  - a sorba állított job sor ugyanazzal a `queue` / `waitUntil` /
- *    `meta.scheduled: true` alakkal jön létre, mintha a Payload tette volna.
- *
- * ═══ A BERAGADÁS-LOGIKA (változatlan) ═══
- * Két számlálás fut a záron belül:
- * 1. `blocking` — a „fut vagy futtatható" jobok száma (a Payload alapértelmezett
- *    szabályának megfelelője);
- * 2. `stale` — ezekből azok, amelyek `processing: true` állapotban vannak, és az
- *    `updatedAt`-jük a küszöbnél (STALE_SCHEDULED_JOB_MS) régebbi.
- *
- * Döntés:
- * - `blocking === 0` → ütemezünk (normál eset);
- * - `stale === 0` → nem ütemezünk (van élő job — ez a helyes duplikátum-védelem);
- * - `0 < stale === blocking` → MINDEN akadály beragadt: **ütemezünk**, és
- *   error-szintű magyar RIASZTÁS megy a naplóba (a beragadt sort embernek kell
- *   rendeznie, de az ütemezés addig sem áll le);
- * - `0 < stale < blocking` → van élő job is, tehát nem ütemezünk, de a beragadt
- *   sorról warn-szintű jelzés megy ki.
- *
- * ═══ MIÉRT NEM SZŰRÜNK `meta.scheduled`-re ═══
- * A Payload alapértelmezése a `meta.scheduled: true` jelre szűkíti a számolást
- * (`onlyScheduled: true`), azaz egy kézzel sorba állított job nem blokkolná az
- * ütemezést. Mi szándékosan SZŰRÉS NÉLKÜL számolunk, két okból: (1) ezt a két
- * taskot a kódban semmi más nem állítja sorba, tehát a két halmaz gyakorlatilag
- * azonos; (2) a szűrés elhagyása a BIZTONSÁGOS irányba téved — ha egy jsonb-úton
- * futó lekérdezés bármikor 0-t adna vissza, a szűrt változat job-hegyet
- * termelne, a miénk legfeljebb kihagy egy kört. Egy adminból kézzel indított
- * futás így valóban visszatartja a következő ütemezettet, ami helyes.
- *
- * A hook NEM access-control és nem auth-hook: kizárólag azt dönti el, hogy a
- * Payload ütemezője sorba állítson-e egy jobot (CLAUDE.md 4. tilos zóna nem
- * érinti).
+ * A számolás + `jobs.queue` advisory-zár alatt fut; a Payload felé mindig
+ * `shouldSchedule: false` megy vissza (különben a handleSchedules még egyszer
+ * sorba állítana). Ha minden blocking job stale, ütemezünk + error riasztás;
+ * ha van élő job is, nem. `meta.scheduled` szűrés szándékosan nincs.
  */
 
 type ScheduleEntry = NonNullable<TaskConfig['schedule']>[number]

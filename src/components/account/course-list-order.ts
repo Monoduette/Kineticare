@@ -6,38 +6,6 @@ import { ctaLabel } from '../../lib/cta-vocabulary'
 
 /**
  * A „Kurzusaim" lista TISZTA logikája — állapotgép, sorrend, feliratok.
- *
- * ═══ MIÉRT KÜLÖN MODUL ═══
- * A belépés utáni első képernyő egyetlen kérdésre válaszol: „hol tartok, és hol
- * folytassam?". Az ehhez szükséges döntések (melyik kurzus melyik csoportba
- * esik, mi álljon a gombon, mennyi van hátra) MIND adat→adat leképezések. Ha
- * ezek a JSX-ben élnének, csak teljes React-rendereléssel lennének
- * ellenőrizhetők; itt viszont React, DB és Payload nélkül, kimerítően
- * egységtesztelhetők (src/__tests__/course-list-ui.test.ts). A `CourseList.tsx`
- * ezért SEMMIT nem számol: kész `CourseCardView` objektumokat rajzol ki.
- *
- * ═══ A HALADÁS FORRÁSA ═══
- * KIZÁRÓLAG a tananyag-modell (`buildCurriculum` + `summarizeCurriculum`). A
- * korábbi lista a nyers `products.videos` tömbből számolt „3/7 megnézve"-t; az
- * a szám a modulokra bontott kurzusoknál már nem egyezett volna a lejátszóéval.
- * Egy igazságforrás van, és az a `src/lib/curriculum/`.
- *
- * ═══ A CSOPORTOSÍTÁS INDOKA ═══
- * A vevő nem „kurzusokat" keres, hanem a FOLYTATÁST. Ezért:
- *   1. folyamatban lévő kurzusok elöl (itt a legnagyobb a visszatérési szándék),
- *   2. utána az el nem kezdettek (ezek a következő lépés),
- *   3. a befejezettek ÖSSZECSUKOTT szekcióban (értékesek — a teljesítmény
- *      látszik —, de nem tolják le a képernyőről a folyamatban lévőt),
- *   4. a lejárt hozzáférésűek legvégül, saját szekcióban (A1) — a hozzáférés
- *      lejárata nem hiba, nem is sürgetés: külön, empatikus üzenettel áll.
- * A csoportokon BELÜL a bejövő sorrend marad (a `users.purchases` sorrendje),
- * mert az stabil és kiszámítható; a rendezés SOSEM keveri össze a kártyákat két
- * oldalletöltés között.
- *
- * ═══ EGY KÁRTYA = EGY DÖNTÉS ═══
- * Minden kártyán PONTOSAN egy elsődleges gomb van, állapotfüggő felirattal.
- * Több, egyenrangú gomb (pl. „Folytatás" + „Áttekintés") a listában
- * döntéskényszert szülne; a kártya egésze ugyanoda visz, mint a gomb.
  */
 
 /** A kártya állapota — ez határozza meg a csoportot ÉS a gombfeliratot. */
@@ -69,24 +37,11 @@ export const EMPTY_CTA_HREF = '/kurzusok'
 
 /**
  * A gombfeliratok — MIND a §3.2 szótárból (`src/lib/cta-vocabulary.ts`).
- *
- * ═══ MI VÁLTOZOTT 2026-08-18-ÁN ═══
  * Az öt felirat korábban szabad szöveg volt („Kezdés", „Folytatás",
  * „Újranézés", „A kurzus megtekintése", „A kurzus megnyitása"), és mind az öt
  * eltért a jóváhagyott alaktól: deverbális főnév, tárgy nélkül (M-1, M-7). A
  * `docs/gomb-inventar.md` §5 ezt „Kurzus megkezdése: Kezdés" néven mérte is.
- *
  * A `resumePrefix` LECKE-CÍMES összefűzése is megszűnt. A lecke neve mostantól
- * a HOZZÁFÉRHETŐ NÉVBE kerül rejtett szöveggel (`ctaContext`), nem a látható
- * feliratba — pontosan úgy, ahogy a §3.2 #17 sora előírja a több
- * újrapróbálható elemet tartalmazó képernyőkre (WCAG 2.2 · 2.5.3 Label in Name
- * továbbra is teljesül: a hozzáférhető név a látható felirattal KEZDŐDIK).
- * Így a kártyák gombfelirata egységes hosszúságú, és a `Folytasd a kurzust`
- * a lejátszó és a lista között sem tud elcsúszni.
- *
- * A `start` és az `open` SZÁNDÉKOSAN ugyanaz a szótári sor (#8): a tananyag
- * nélküli kurzus megnyitása a látogató szemszögéből ugyanaz a cselekvés, mint
- * az el nem kezdett kurzusé — külön feliratot adni nekik a 3.2.4-et sértené.
  */
 export const CTA_LABELS = {
   start: ctaLabel('course-start'),

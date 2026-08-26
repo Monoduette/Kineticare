@@ -1,58 +1,5 @@
 /**
  * Barion fizetési jelzés (BarionFizetesJelzes) — kezdőlapi bizalmi csík és
- * pénztári, fizetőgomb melletti kártya.
- *
- * Betöltés: src/components/checkout/BarionFizetesJelzes.tsx (a komponens
- * importálja, a CredentialsStrip mintájára).
- *
- * A szín, a méret és a térköz KIZÁRÓLAG szerep-tokenről jön (tokens.css) —
- * nyers hex nincs. A betűméret a három-méretes skála M és S lépcsője
- * (őr: src/__tests__/tipografia-harom-meret.test.ts).
- *
- * ═══ KONTRASZT — SZÁMOLT ÉRTÉKEK ═══
- * (WCAG 2.2 relatív luminancia és kontraszt-arány definíciója szerint,
- *  https://www.w3.org/TR/WCAG22/#dfn-contrast-ratio; a számokat a
- *  barion-fizetes-jelzes.test.tsx őre újraszámolja minden futáskor)
- *
- *   KEZDŐLAPI CSÍK (lap-háttér, paper #f6f9fc)
- *     címsor    primary  #2f6e9f  a paperen ......  5,16:1   AA ✓ (S méret is átmegy)
- *     szöveg    muted    #33495f  a paperen ......  8,80:1   AA/AAA ✓
- *     hajszálvonal (border) #d8e2eb a paperen ....  1,24:1   DEKORÁCIÓ, nem UI-határ
- *
- *   PÉNZTÁRI KÁRTYA (fehér kártyafelület #ffffff)
- *     címsor    ink      #10243e  fehéren ........ 15,63:1   AA/AAA ✓
- *     szöveg    muted    #33495f  fehéren ........  9,30:1   AA/AAA ✓
- *
- * A LOGÓSOR maga mentes a kontraszt-követelmény alól: WCAG 2.2 SC 1.4.11
- * Understanding, „Logos are exempted from contrast requirements…" — és nem is
- * interaktív, tehát az ottani fenntartás („logos act as user interface
- * components") sem áll fenn. Tájékoztatásul mérve fehéren: VISA #1434cb
- * 8,81:1 · Google Pay szürke #3c4043 10,47:1 · Mastercard piros #e41b24
- * 4,69:1 · Apple Pay fekete #000000 a paperen 19,87:1.
- *
- * ═══ ELRENDEZÉS ÉS 320 PX ═══
- * A logósor `width: 100%` + `aspect-ratio` + `height: auto`, tehát ARÁNYOSAN
- * kicsinyedik és sosem lóg ki (a Barion „módosítás nélkül" kikötése az
- * arányos méretezést nem érinti, a torzítás viszont tilos lenne). Fix
- * `min-width` szándékosan NINCS: az lenne az egyetlen mód, ahogy 320 px-en
- * vízszintes görgetés keletkezhetne (WCAG 2.2 SC 1.4.10 Reflow).
- *
- * Számolt szélességek 320 px-es nézetablakon (kc-container oldal-margó
- * 2 × --kc-space-5 = 48 px):
- *   kezdőlap ..... 320 − 48 = 272 px → a logósor 272 × 51,8 px
- *   pénztár ...... 272 − 2 × 24 px kártya-belsőmargó − 2 × 1 px keret
- *                  = 222 px → a logósor 222 × 42,3 px
- * Felül `max-width: 22rem` (352 px) fékezi, hogy asztali szélességen se
- * nőjön szekció-méretűvé; 352 px-nél a magassága 67,0 px.
- *
- * ═══ SORHOSSZ — SZÁMOLT KARAKTERSZÁM ═══
- * A repó mért állandója: a Nunito Sans 400 átlagos karaktere 0,4542em
- * (tokens.css „Mérték" szakasza, n = 5981 karakter).
- *   kezdőlapi csík (S, 14px, 30rem = 480px) ... 480 / 6,36 = 75,5 karakter
- *   pénztári kártya (M, 18px, 34rem = 544px) .. 544 / 8,18 = 66,5 karakter
- * Mindkettő a 45–85-ös sávban, és a WCAG 2.2 SC 1.4.8 (AAA) 80-as plafonja
- * alatt. 320 px-en a nézetablak szab határt (46, illetve 31 karakter) — ez a
- * lap MINDEN bekezdésére igaz, nem ennek a blokknak a sajátja.
  */
 
 /* ---- Közös rész ---------------------------------------------------------- */

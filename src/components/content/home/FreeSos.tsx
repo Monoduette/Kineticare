@@ -11,70 +11,9 @@ import type { MediaLike } from '../media-url'
 import '../../../app/(frontend)/styles/blocks/free-sos.css'
 
 /**
- * FreeSos — az ingyenes SOS Kézrelax lead-magnet VISSZAFOGOTT megjelenése
- * (audit M4/K2: a tölcsér teteje, nem a csúcsa — másodlagos vizuális súllyal,
- * a fizetős kurzusok után).
- *
- * A GOMB IGAZMONDÁSA (2026-08-16, IA-audit T1 / gomb-inventár B7)
- * ---------------------------------------------------------------
- * Élesben a sáv gombja „Elindítom az ingyenes kurzust" felirattal a
- * KURZUSLISTÁRA vitt. A mérés szerint a gyökérok nem a komponens fallbackje
- * volt, hanem a CMS-adat: a `home-seed.ts` `freeSos` blokkja explicit
- * `url: '/kurzusok'`-ot írt a blokk `cta` mezőjébe, ami felülírta a komponens
- * helyes, termékből számolt célját.
- *
- * Ezért a cél innentől SZÁMÍTOTT, és a felirat a célhoz igazodik. Két érvényes
- * pár létezik, harmadik nincs (`resolveFreeSosCta`):
- *   1. van ingyenes termék → a gomb a kurzus oldalára visz, felirata
- *      „Elindítom ingyen" (docs/ui-sztenderdek.md §3.2 #4);
- *   2. nincs ingyenes termék → a gomb a kurzuslistára visz, felirata
- *      „Nézd meg a kurzusokat" (§3.2 #10) — ígéret nélkül, mert a listán
- *      nem indul el semmi.
- * A szerkesztő a CÉLT átteheti EGY MÁSIK KURZUS oldalára; a kurzuslistára
- * mutató felülírást viszont a komponens szándékosan figyelmen kívül hagyja,
- * mert pontosan az volt a mért hiba.
- *
- * A FELIRAT FORRÁSA — a KÓD nyer a szótári cselekvéseknél (2026-08-18)
- * ---------------------------------------------------------------------
- * A felirat 2026-08-18-ig `override?.label?.trim() ||
- * FREE_SOS_COURSE_CTA_LABEL` volt: a CMS-mező LEGYŐZTE a kódot, ezért élesben
- * a régi, adatbázisban őrzött „Elindítom az ingyenes kurzust" látszott,
- * miközben a §3.2 #3/#4 „Elindítom ingyen"-t ír elő. A kódbeli javítás így
- * hatástalan maradt (mérés: `src/__tests__/cta-a-termekben.test.ts`).
- *
- * A tulajdonosi döntés: a SZÓTÁRI cselekvéseknél a kód nyer. Mindkét ág
- * szótári cselekvés (`free-course-claim`, `course-list-open`), ezért a
- * felirat innentől kizárólag a szótárból jön.
- *
- * MIÉRT: WCAG 2.2 SC 3.2.4 Consistent Identification — „Components that have
- * the same functionality within a set of web pages are identified
- * consistently."
- * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html);
- * NN/g 4. heurisztika, Consistency and Standards — „Users should not have to
- * wonder whether different words, situations, or actions mean the same thing."
- * (https://www.nngroup.com/articles/consistency-and-standards/).
- *
- * AMIT A SZERKESZTŐ TOVÁBBRA IS ÍR: a sáv címét, szövegét, a gomb CÉLJÁT (másik
- * ingyenes kurzus oldalára) és az „új lapon nyíljon" kapcsolót. A tiltás CSAK a
- * szótári CTA-feliratra vonatkozik.
- *
- * Miért így: „A link is a promise" — a felirat azt ígérje, ami a kattintás
- * UTÁN azonnal történik, nem azt, ami több lépéssel később
- * (NN/g, Better Link Labels: „Sincere",
- * https://www.nngroup.com/articles/better-link-labels/). Ugyanezt írja elő a
- * WCAG 2.2 **2.4.4 Link Purpose (In Context)** („The purpose of each link can
- * be determined from the link text alone or from the link text together with
- * its programmatically determined link context",
- * https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html),
- * és a **3.2.4 Consistent Identification** („Components that have the same
- * functionality within a set of web pages are identified consistently",
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html)
- * miatt kell a két feliratnak a szótárból jönnie.
- *
- * Megjelenés: a landing `kc-sos` sávja (akcent-színű háttér, fehér serif cím,
- * jobb oldalt kép-art gradiens-átmenettel, 2px fehér keretes CTA) — MÉRSÉKELT
- * magassággal, mert az ingyenes ajánlat nem előzheti a fizetős blokkot. A
- * stílus és a fehér szöveg kontraszt-garanciája: styles/blocks/free-sos.css.
+ * FreeSos — ingyenes SOS lead-magnet, visszafogott súllyal (M4/K2).
+ * CTA cél/felirat számított: kurzusoldal vagy kurzuslista; CMS nem írhatja felül a szótárt.
+ * A /kurzusok felülírást szándékosan figyelmen kívül hagyjuk (mért CMS-hiba).
  */
 
 /** A kurzuslista útvonala — a hibatűrő tartalék célja. */

@@ -1,60 +1,6 @@
 /**
  * Kurzus-kiemelés (CourseCards) és kurzuskártya (ProductCard) — szekció-stílus.
- *
- * Forrás: a landing szekció- és kártya-nyelve
- * (higgsfield-site/app/src/kineticare.css): `.kc-eyebrow` (229.) felvezető
- * sora, `.kc-state-card` (381.) kép-kártyája, `.kc-inline-link` (522.) záró
- * hivatkozása. Minden szín/méret/térköz szerep-tokenről (tokens.css) — idegen
  * landingről színt vagy betűt NEM veszünk át, csak SZERKEZETI mintát.
- *
- * ÚJRAHASZNOSÍTÁS: a felvezető sor a közös `.kc-eyebrow`, a szekciócím a közös
- * `.kc-section-title`, a bevezető a `.kc-section-lead`, a záró link a
- * `.kc-text-link`, a kártya alapja a `.kc-card`, az ár a `.kc-price-tag`, a
- * címkék a `.kc-badge` (mind content.css / ui.css) — ez a lap CSAK azt teszi
- * hozzá, ami a blokk sajátja.
- *
- * A KÁRTYA MA „MINI-BUYBOX" (2026-08-15-i design-brief). A korábbi kártya
- * borító + cím + rövid leírás + ár + nyíl volt; a döntéshez szükséges
- * információ (mit kapok, meddig, kinek szól) hiányzott róla, a záró nyíl pedig
- * gyenge cselekvésre-hívás. Az új sorrend:
- *
- *   borító → célközönség-címke → cím → pipás előny-sorok (max 3, CMS) →
- *   rövid leírás → [hajszálvonal] → ár + hozzáférés → CTA-gomb
- *
- * A sorrend MINDEN kártyán azonos, és minden mező ugyanazon a magasságon áll
- * (a láb `margin-top: auto`-val a kártya aljára ül) — ez a feltétele annak,
- * hogy homogén tételeknél a kártya egyáltalán jó forma legyen
- * (docs/ux-belso-oldalak-kutatas.md B4.1, NN/g „Cards" szemmozgás-vizsgálat).
- *
- * RÁCS. A `.kc-card-grid--courses` szándékosan felülírja a közös rács fix
- * `repeat(3, 1fr)`-ét: két kurzusnál a fix hármas rács üres harmadik oszlopot
- * hagyna, egyetlen kurzusnál pedig egy 1120 px széles óriáskártyát adna
- * (B3.5). Az `auto-fit` + felső track-korlát elemszámhoz igazodik, a
- * `min(100%, …)` alsó korlát pedig 320 px-en is megakadályozza a vízszintes
- * túlcsordulást (B7.1 / WCAG 1.4.10 Reflow). EGYETLEN kurzusnál a rács helyett
- * a KIEMELT, VÍZSZINTES kártya áll (`.kc-course-cards__featured` +
- * `.kc-product-card--featured`, lásd lentebb): a középre zárt magányos hasáb
- * üresnek mutatta a lap értékesítési motorját.
- *
- * MIÉRT ITT VAN A KÁRTYA IS: a stíluslapot maga a ProductCard is importálja,
- * hogy a kártya bárhonnan renderelve ugyanígy nézzen ki. A szabályok a kártya
- * gyökér-osztályára szűkítve írják felül a globális content.css alapértékeit,
- * tehát a betöltési sorrendtől függetlenül, specificitásból érvényesek.
- *
- * KONTRASZT (tokens.css jegyzőkönyve, fehér kártyán): cím és előny-sor `text`
- * (ink) 15,63:1 · leírás és hozzáférés-sor `text-muted` 9,30:1 · ár `text`
- * 15,63:1 · CTA fehér az `accent-deep`-en 5,45:1 (hoveren `accent-deeper`,
- * 7,08:1) · a semleges címke ink a tint-en 13,53:1 — mind AA felett. Az
- * `accent` (keret, pipa-ikon) DEKORÁCIÓ: szöveget nem hordoz, így az
- * akcent-korlát nem érinti.
- *
- * MAGYAR TÖRDELÉS: a kártya keskeny hasáb, a szavaink 22 %-a legalább 10 betűs
- * (saját korpuszmérés), ezért a szöveges mezőkön `hyphens: auto` +
- * `overflow-wrap: anywhere` (B3.4). A `lang="hu"` a dokumentum gyökerén áll
- * (src/app/(frontend)/layout.tsx), tehát az elválasztás a magyar mintát követi.
- *
- * Betöltés: src/components/content/home/CourseCards.tsx és
- * src/components/content/ProductCard.tsx.
  */
 
 .kc-course-cards__head {

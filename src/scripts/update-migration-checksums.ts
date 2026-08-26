@@ -1,35 +1,8 @@
 /**
- * Migrációs checksum-manifest generátora (G3-őr eszköze).
- *
- * Mikor kell futtatni: MINDEN új migráció hozzáadása után, ugyanabban a
- * commitban (vagy közvetlenül mellette), amely a migrációt behozza:
- *
+ * Migrációs checksum-manifest (G3). Futtatás minden új migráció után, ugyanabban a commitban:
  *   npx tsx src/scripts/update-migration-checksums.ts
- *
- * Mit csinál: az src/migrations/ alatti összes datált migrációs fájlhoz
- * (`YYYYMMDD_HHMMSS_<név>.ts` és `.json` párja) LF-normalizált sha256-ot
- * számol (`\r\n` → `\n` utáni tartalomra, így platformfüggetlen), és a
- * `src/migrations/.checksums.json` manifestet 2-space JSON-ben, fájlnév
- * szerint rendezve újraírja.
- *
- * MIÉRT pont `.checksums.json` a neve: a `migrate:create` a legfrissebb
- * snapshotot `readdirSync(dir).filter(f => f.endsWith('.json')).sort()
- * .reverse()[0]` módon választja — a pont-prefix a rendezés ELEJÉRE kerül,
- * így a manifest sosem lehet „legutolsó" snapshot. Más néven NE hozd létre.
- *
- * BIZTONSÁGI MAGATARTÁS: csak TELjes .ts↔.json párok kerülnek a manifestbe.
- * Ha árva fájlt talál (pár nélküli .ts vagy .json), a script NEM írja felül
- * a manifestet, hanem hibaüzenettel, 1-es kilépési kóddal áll le — a hiányos
- * állapotot a G4-őr (migration-integrity.test.ts) amúgy is buktatná.
- *
- * A manifestet az index.ts-re és önmagára NEM számolja (az index.ts a G4-őr
- * tömb-egyezéses tesztje őrzi, a manifest integritását pedig a G3 git-alapú
- * append-only szabálya).
- *
- * GITLEAKS: a generic-api-key a manifest `"fájl": "<64 hex>"` mezőit kulcsnak
- * nézheti. Ez nem titok (G3 checksum). Fájl-allowlist tilos; a két új hex-et
- * indoklással a `.gitleaks.toml` regex-listájába kell felvenni, ha a kapu
- * fennakad. A migrációs .ts/.json ettől még szkennelve marad.
+ * LF-sha256 → `src/migrations/.checksums.json` (pont-prefix!). Csak teljes .ts↔.json pár;
+ * árva fájl → hiba, nem ír felül. index.ts és önmagára nem számol.
  */
 
 import { createHash } from 'node:crypto'

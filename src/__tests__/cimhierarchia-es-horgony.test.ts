@@ -14,50 +14,9 @@ import {
 /**
  * ŐR — a 2026-08-17-i tulajdonosi észrevételek. Mindhárom szabályt MÉRÉS
  * hozta, és mindhármat elronthatná egy későbbi, jó szándékú szerkesztés.
- *
- * ═══ 1. „UGYANAKKORA-E A KÉT SZEKCIÓCÍM?" ═══
  * Az „Így tudunk segíteni" (`.kc-services__title`) és az „Így működik az
  * online kurzus" (`.kc-section-title`) betűmérete MÁR AZELŐTT is azonos volt
  * (mérve: 46,4 px @1440, 32,55 px @390 — mindkettő a közös L lépcsőn). Amitől
- * mégis másnak látszottak, az a SORTÁV (1,06 vs 1,2) és a MÉRTÉK (7,2ch vs
- * korlátozatlan) volt. Az őr ezért nem csak a méretet, a sortávot is rögzíti:
- * két azonos szintű címsor ugyanazon a lapon nem futhat kétféle sortávval.
- *
- * ═══ 2. „A SOR-CÍMEK LEGYENEK OLVASHATÓBBAK" ═══
- * A szolgáltatás-sor címe (`Rendelői kezelések`) és a sor szövege AZONOS
- * méretű és AZONOS súlyú volt (18 px / 400), ráadásul a cím a vékonyabb
- * vonalú Tenor Sans-t vitte — a címsor halványabbnak látszott, mint a
- * bekezdés alatta. Mivel a méret nem mozdulhat (három-méretes skála), a
- * szintet a SÚLY hordozza. A 700-as súlyhoz a TÖRZS-betű kell: a Tenor
- * Sans-nak csak 400-as metszete van (styles/fonts.css), a 700 kérése ott
- * szintetikus félkövért adna.
- *
- * ═══ 3. „FURÁN ANIMÁLÓDIK AZ OLDAL A HORGONYRA UGRÁSKOR" ═══
- * A globális `scroll-behavior: smooth` minden horgony-ugrást végiganimál:
- * `/szolgaltatasok#rendeloi` 2048 px @1440×900 (2,3 nézetablak), 3138 px
- * @390×844 (3,7 nézetablak), 661–790 ms hosszan.
- *
- * TULAJDONOSI DÖNTÉS (2026-08-17): „elsimítás nagyon fontos" — a mozgás
- * tehát nem tűnhet el, csak nem húzódhat el. Az egy nézetablaknál hosszabb,
- * LAPON BELÜLI ugrás ezért RÖVIDÜL: a kattintáskor azonnal a cél elé ugrunk
- * fél képernyővel, az utolsó szakaszt a böngésző sima görgetése teszi meg
- * (mért 333 ms). LAPVÁLTÁSNÁL (más útvonal, vagy hideg betöltés horgonnyal)
- * az érkezés azonnali marad: ott a látogató az új lapot még sosem látta,
- * a mozgásnak nincs mit összekötnie a szemében (WCAG 2.2 SC 2.3.3).
- *
- * ═══ 4. „A FÓKUSZ IS KÖVESSE A SZEMET" ═══
- * Mérve (Chromium 1194, /szolgaltatasok#rendeloi, 1440×900): a menüpontra
- * kattintva a lap a célhoz görgetett (y=2055), de a fókusz a fejléc
- * menüpontján maradt, és a következő Tab a menü KÖVETKEZŐ pontjára vitt — az
- * a cél ELŐTT áll a dokumentumban. Hideg betöltésnél az `activeElement` a
- * `body` volt. Ez a WCAG 2.2 SC 2.4.3 (Focus Order) sérülése, és a repó saját
- * N-13 szabályáé (docs/ui-sztenderdek.md).
- *
- * A javítás a GOV.UK Design System „skip link" `setFocus()` mintája: a cél
- * ideiglenes `tabindex="-1"`-et kap (csak ha még nem fókuszálható), megkapja a
- * fókuszt, és `blur`-kor a `tabindex` lekerül róla. A `preventScroll` a mi
- * kiegészítésünk: enélkül a fókuszálás MÉG EGYSZER odagörgetne (mérve: 0 →
- * 2347 px), és elrontaná az imént beállított pozíciót.
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

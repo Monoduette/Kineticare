@@ -4,17 +4,11 @@ import { sectionSettings } from './section-settings'
 
 /**
  * Kurzuskártyák — a fizetős kurzusok kiemelése (terv 2. blokk-katalógus, M3).
- *
  * ADATVEZÉRELT blokk: a kártyák tartalmát NEM itt írod. A kurzusok igazságforrása
  * a Webshop → Kurzusok: amit ott létrehozol és közzéteszel, az automatikusan
  * megjelenik ebben a szekcióban (ár, borító, rövid leírás, kiemelt előnyök
  * onnan jönnek). Így a kezdőlap sosem tud „elszakadni" a valós kínálattól
  * (terv 2. pont zárása).
- *
- * Ezért itt CSAK megjelenítési mezők vannak: a szekció feliratai és a kártyák
- * gombfelirata. A tulajdonosi kikötés (2026-08-15) szerint a kártyán és a
- * szekcióban MINDEN szöveg adminból szerkeszthető — a kódban maradó szövegek
- * kizárólag fallbackek. Ha nincs közzétett fizetős kurzus, a szekció elmarad.
  */
 export const courseCards: Block = {
   slug: 'courseCards',

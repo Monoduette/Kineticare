@@ -36,35 +36,6 @@ import {
 
 /**
  * A kurzus-haladás panel KÉT TÁBLÁZATA, a Payload-függőségektől mentesen.
- *
- * ═══ MIÉRT KÜLÖN FÁJL ═══
- * A `CourseProgressPanel` a `@payloadcms/ui` provider-környezetét igényli
- * (`useDocumentInfo`, `useAuth`), ezért tesztből nem renderelhető. A táblák
- * viszont TISZTA megjelenítés: nincs bennük állapot, nincs adatlekérés, csak
- * a `course-progress-view` tiszta függvényei és a `course-progress-styles`
- * tokenjei. Így `renderToStaticMarkup`-pal mérhetők és őrizhetők, pontosan
- * úgy, ahogy a Statisztika nézet szekció-komponensei
- * (`src/components/admin/statistics/*.tsx`). A DOM-ra kötés a panelben marad.
- *
- * ═══ AKADÁLYMENTESSÉG (mind MÉRT hibából) ═══
- * 1. A görgethető doboz `role="region"` + `tabIndex={0}` + `aria-labelledby`:
- *    enélkül billentyűzetről nem görgethető (WCAG 2.2 SC 2.1.1 Keyboard;
- *    axe: scrollable-region-focusable —
- *    https://dequeuniversity.com/rules/axe/4.12/scrollable-region-focusable;
- *    minta: Adrian Roselli, Under-Engineered Responsive Tables —
- *    https://adrianroselli.com/2020/11/under-engineered-responsive-tables.html).
- * 2. Minden sornak van SORFEJLÉCE (`<th scope="row">`): a hallgató neve,
- *    illetve a lecke címe. Enélkül a képernyőolvasó a „12/18 · 67%" cellánál
- *    nem mondja meg, kiről van szó (WCAG 2.2 SC 1.3.1 Info and Relationships).
- * 3. A rendezhető fejléc-gomb LÁTHATÓ nyilat visel (`sortIndicator`), nem csak
- *    `aria-sort`-ot, és a doboza legalább 44 × 44 CSS px (SC 2.5.8; a repó
- *    célja 44, a szabvány minimuma 24).
- * 4. Üres cella helyett SZÓ áll (`NO_DATA`), nem kvirtmínusz.
- * 5. A táblát `<caption>` nevezi meg. A felirat képernyőolvasónak szól
- *    (`srOnly`), mert a panel látható címsora és a darabszám-sor a látó
- *    felhasználónak ugyanezt már elmondja; a `role="region"` viszont NEVET
- *    igényel, különben a régió névtelen (WAI, Tables tutorial —
- *    https://www.w3.org/WAI/tutorials/tables/caption-summary/).
  */
 
 /** Kis, DEKORATÍV kördiagram — az információt a mellette álló szám hordozza. */

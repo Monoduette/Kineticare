@@ -16,16 +16,11 @@ import {
 
 /**
  * Bevétel kurzusonként — a 12 hónapos ablakon belüli fizetett tételekből.
- *
- * ═══ A SORFEJLÉC A KURZUS CÍME, NEM A SKU (H7, 2026-08-21-i audit) ═══
  * Korábban a sorfejléc a sku volt (`kez-rehab-otthon-alap`), miközben UGYANAZ
  * a kurzus a haladás-táblában a címével szerepelt: egy lapon két néven futott
  * ugyanaz a termék. Ez a WCAG 2.2 SC 3.2.4 Consistent Identification sérülése
  * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
  * és a két tábla összevetését is ellehetetlenítette. A sku másodlagos,
- * „Azonosító" nevű oszlopba került: nem hagyjuk el, mert a Számlázz.hu
- * tételsora ezt a sztringet viszi, tehát ez az egyetlen kapocs a kimutatás és
- * a könyvelési export között.
  */
 
 /* A hatodik oszlop (Azonosító) miatt szélesebb minimum: a sku hosszú,

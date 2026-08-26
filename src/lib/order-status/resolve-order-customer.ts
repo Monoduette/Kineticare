@@ -8,36 +8,8 @@ import { generateInitialPassword } from '../security/initial-password'
 import { isGuestBindableAccount } from './guest-bindable-account'
 
 /**
- * FIÓK-FELOLDÁS a fizetés után (vendég-vásárlás, tulajdonosi döntés 2026-08-15).
- *
- * A vendég-vásárlásnál a rendelés `customer` NÉLKÜL, de kitöltött
- * `customerEmail`-lel jön létre (src/lib/checkout/start-checkout.ts). A fiók
- * ekkor még nem létezhet: a vevő csak e-mail-címet és nevet adott meg. Ez a
- * modul a paid-átmenet magjából fut le, és az e-mail alapján ELDÖNTI, melyik
- * fiók kapja a rendelést:
- *
- *  - ha az e-mailhez MÁR VAN aktiválatlan `customer` fiók (rendszer-létrehozott)
- *    → a rendelés ahhoz kötődik. A fiók nevét, jelszavát, szerepkörét SOSEM
- *    írjuk felül. Aktivált vevő / staff / owner: NEM kötünk (K2) — a paid
- *    átmenet hangosan elbukik, a hozzáférést kézi grant adja, nem az
- *    előregisztrált idegen fiók;
- *  - ha még NINCS fiók → `customer` szerepkörrel létrejön, véletlen és
- *    eldobható kezdőjelszóval (a Payload jelszó nélkül nem hoz létre
- *    auth-rekordot). A vevő a visszaigazoló levél jelszó-beállító linkjével
- *    állít be sajátot — GENERÁLT JELSZÓ SOHA NEM MEGY KI LEVÉLBEN.
- *
- * IDEMPOTENCIA ÉS VERSENYHELYZET. Két párhuzamos callback (vagy callback ×
- * order-poll) ugyanarra az e-mailre NEM hozhat létre két fiókot: a keresés és a
- * létrehozás e-mail-címre szóló Postgres advisory-zár alatt fut
- * (src/lib/advisory-lock.ts). A zár a rendelés-szintű `order-transition:order:<id>`
- * záron BELÜL kerül felvételre — a sorrend mindig ugyanaz (rendelés → e-mail),
- * tehát körkörös várakozás nem alakulhat ki. Másodlagos védelem: ha a create
- * mégis egyedi-kényszerbe ütközik (a zár nem-production környezetben kimarad),
- * a modul újraolvassa a felhasználót, és azt adja vissza.
- *
- * TITOKTARTÁS. A napló SOHA nem kap teljes e-mail-címet (a logger `email`
- * kulcsot eleve redaktál): a címzett maszkolva, `cimzett` kulcson megy — a
- * `src/lib/customer-import/execute.ts` mintája szerint.
+ * Fiók-feloldás vendég-vásárlásnál (paid előtt). E-mail-zár alatt keresés/létrehozás;
+ * aktivált vagy nem-customer fiókhoz nem köt. Generált jelszó nem megy levélben.
  */
 
 /** A rendeléshez feloldott fiók — a paid-átmenet és a visszaigazoló levél is ezt kapja. */

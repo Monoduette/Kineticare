@@ -12,16 +12,6 @@ import { NewsletterSignup } from './NewsletterSignup'
  * linkekkel és a copyrighttal (`kc-footer-meta`). A korábbi navy sáv helyett a
  * lap-háttér (szerep-token: `--kc-color-surface`) viszi a láblécet, felül
  * hajszálvonallal — lásd styles/layout.css.
- *
- * A TARTALOM változatlan: minden korábbi link (jogi oldalak, ÁSZF, impresszum,
- * kapcsolati e-mail), a márkasor, a tagline és a copyright megmaradt; csak a
- * vizuális nyelv és az elrendezés újult meg. Az óriás „Kapcsolat" link a
- * meglévő /kapcsolat oldalra mutat (új cél nem került be).
- *
- * A linkek a legacy láblécből származnak (/adatvedelem, /aszf, /impresszum —
- * CMS-oldalslugok, a következő hullám oldalai). A configban jelenleg NINCS
- * settings global; ha megérkezik, ezt a konstanst az felülírhatja — addig is
- * EGY helyen kezelt.
  */
 export const FOOTER_LEGAL_LINKS = [
   { href: '/adatvedelem', label: 'Adatkezelési és adatvédelmi szabályzat' },

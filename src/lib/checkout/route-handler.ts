@@ -12,27 +12,7 @@ import {
 import { assertSameOrigin } from '../security/same-origin'
 import { CheckoutError, startCheckout, type CheckoutStartInput } from './start-checkout'
 
-/**
- * POST /api/checkout/start route-handler factory (T-021).
- *
- * A függősségek (Payload-példány) injektálva vannak, így a handler maga is
- * egységtesztelhető; a tényleges route az src/app/(frontend)/api/checkout/start/route.ts
- * köti be a valódi configgal.
- *
- * Folyamat: same-origin őr → IP-alapú kérés-korlát (A2) → auth (payload.auth)
- * → JSON-parse → startCheckout szolgáltatás → { orderNumber, gatewayUrl }.
- * Hibaágak: magyar felhasználói üzenet + technikai hiba naplózva requestId-vel.
- * A same-origin őr vendég-ágon is kell: a böngésző a sütit (kosár, későbbi
- * session) CSRF-ként is elküldené.
- *
- * VENDÉG-VÁSÁRLÁS (tulajdonosi döntés, 2026-08-15): a végpont bejelentkezés
- * NÉLKÜL is hívható — ilyenkor a törzs `guest` blokkja (e-mail + név)
- * azonosítja a vevőt, és a hiánya 400-zal (nem 401-gyel) hasal el. A korábbi
- * feltétel nélküli 401 megszűnt; a végpont továbbra is IP-alapú
- * kérés-korlátozás mögött áll, a rendelés árait pedig végig a szerver adja.
- * Bejelentkezett munkamenetnél SEMMI nem változik: a rendelés a munkamenet
- * felhasználójához kötődik, a törzs `guest` mezője figyelmen kívül marad.
- */
+/** POST /api/checkout/start — same-origin, rate limit, auth (vendég is), startCheckout. */
 export interface CheckoutStartHandlerDeps {
   getPayload: () => Promise<Payload>
   /** Kérés-korlátozó felülírása (teszthez); alapból a közös, folyamaton belüli számláló. */

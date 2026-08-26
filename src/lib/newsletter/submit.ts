@@ -7,26 +7,9 @@ import {
 } from './validation'
 
 /**
- * Hírlevél-feliratkozás (C9) — beküldés a form-builder végpontjára.
- *
- * API-szerződés — SZÁNDÉKOSAN AZONOS a kapcsolat-űrlapéval
- * (src/app/(frontend)/kapcsolat/_lib/submit.ts), mert ugyanazt a plugin-
- * végpontot hívja:
- * - Végpont: `POST /api/form-submissions` (a @payloadcms/plugin-form-builder
- *   nyilvános create-je — saját route NINCS, és nem is kell).
- * - Törzs: `{ form: <formId>, submissionData: [{ field, value }…],
- *            turnstileToken?: string }`.
- * - Mezők: `email`, `consentNewsletter` (a hozzájárulás „true" stringként).
- * - Spam-védelem: ha a szerveren a TURNSTILE_SECRET_KEY be van állítva, a
- *   `turnstileToken` KÖTELEZŐ (a hook minden form-submission create-re fut,
- *   tehát a hírlevélre is); ha nincs beállítva, a token elhagyható — a widget
- *   ilyenkor a kliensen sem jelenik meg (TURNSTILE_SITE_KEY nélkül).
- * - Kérés-korlát: a `/api/form-submissions` útvonal a `form-submission`
- *   osztályba esik (5 kérés / 10 perc / IP, src/lib/security/rate-limit.ts) —
- *   a kapcsolat-űrlappal KÖZÖS vödörben.
- *
- * A fetch injektálható, így a modul jsdom nélkül, node-környezetben is
- * tesztelhető (lásd src/__tests__/newsletter.test.ts).
+ * Hírlevél-feliratkozás — POST /api/form-submissions (form-builder plugin).
+ * Mezők: email, consentNewsletter; Turnstile, ha TURNSTILE_SECRET_KEY be van állítva.
+ * A fetch injektálható teszthez.
  */
 
 export interface NewsletterSubmissionEntry {

@@ -46,21 +46,7 @@ import {
 export const CHECKOUT_ALREADY_PURCHASED =
   'Ezt a kurzust már megvásároltad. A fiókodban éred el.'
 
-/**
- * W4 + K2 vendégüzenet. Ugyanez megy, ha az e-mailhez aktivált fiók tartozik,
- * akár van kurzusuk, akár nincs: a válasz nem árulja el a vásárlást
- * (egészségügyi adat).
- *
- * Forrás:
- * - GOV.UK Design System, Passwords: ne áruld el, a felhasználónév vagy a
- *   jelszó volt-e hibás.
- *   https://design-system.service.gov.uk/patterns/passwords/
- * - OWASP Authentication Cheat Sheet: generic hiba, ne legyen
- *   user-enumeration eltérés.
- *   https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
- * - WCAG 2.2 3.3.3 Error Suggestion: mondd meg, hogyan javítható (belépés),
- *   ne extra állapotot.
- */
+/** W4 vendégüzenet — nem árulja el, van-e már vásárlás (user enumeration ellen). */
 export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
   'Ehhez az e-mail-címhez már van fiók. Jelentkezz be, és onnan tudod megvenni vagy megnyitni a kurzust.'
 
@@ -72,49 +58,11 @@ export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN =
   'Ezt a lépést bejelentkezés után tudod befejezni.'
 
 /**
- * Checkout-start szolgáltatás (T-021) — a POST /api/checkout/start végpont
- * üzleti logikája, transportfüggetlenül (a Payload-példány és a felhasználó
- * injektálva, így mockolt fetch-csel egységtesztelhető).
- *
- * A pénzügyi főlánc első láncszeme:
- *  1. input-validáció (productId, quantity, opcionális kliens-ár, waiver,
- *     SZÁMLÁZÁSI ADATOK + vendégnél az AZONOSÍTÓ ADATOK) — a számlázási mezők
- *     ellenőrzése itt is kötelező, mert a kliens megkerülhető, és hiányos
- *     vevőadattal a fizetés lemenne, a számla viszont soha nem állna ki,
- *  2. termék- és státuszellenőrzés (archived/draft nem megvásárolható),
- *  3. ADVISORY-ZÁR alatt (S2): duplavásárlás-blokk (paid vagy aktív
- *     payment_pending → 409) ÉS a rendelés létrehozása — a kettő együtt egy
- *     „check-then-act" pár, zár nélkül két párhuzamos kérés MINDKETTŐ
- *     ellenőrzése átmegy, és két aktív rendelés jön létre ugyanarra a kurzusra,
- *  4. a rendelés `payment_pending` státusszal jön létre — az árakat KIZÁRÓLAG
- *     szerver-oldalon olvassuk és az orders beforeChange-hookja SNAPSHOTOLJA
- *     (orderIntegrityBeforeChange); a kliens által küldött ár sosem forrás,
- *  5. Barion Payment/Start a tesztelt src/lib/barion klienssel
- *     (PaymentRequestId = orderNumber → Barion-oldali idempotencia) — ez a
- *     hálózati hívás SZÁNDÉKOSAN a záron KÍVÜL fut,
- *  6. barionPaymentId + barionPaymentRequestId mentése a rendelésre.
- *
- * A rendelés `paid`-re állítása NEM itt történik: az kizárólag a
- * Barion-callback-útvonal (T-022) joga (T-063).
- *
- * VENDÉG-VÁSÁRLÁS (tulajdonosi döntés, 2026-08-15). A pénztár bejelentkezés
- * NÉLKÜL is indítható: ilyenkor az `input.guest` (e-mail + név) azonosítja a
- * vevőt, a rendelés `customer` mező NÉLKÜL, de kitöltött `customerEmail`-lel
- * jön létre. A fiók a FIZETÉS UTÁN dől el (létrehozás vagy megtalálás az
- * e-mail alapján, idempotensen — src/lib/order-status/resolve-order-customer.ts).
- * Bejelentkezett munkamenetnél MINDEN a régi: az `input.guest` figyelmen kívül
- * marad (a kérés törzse megkerülhető, tehát idegen e-mailre szóló rendelést
- * sosem hozhat létre), a rendelés a munkamenet felhasználójához kötődik.
- *
- * SZÁMLÁZÁSI SZERZŐDÉS — EGYÁGÚ: a `billing` KÖTELEZŐ, profil-tartalék nincs.
- * Korábban a mező elhagyása a felhasználó tárolt profiljára esett vissza; ez
- * egyetlen hívót szolgált (a `barionPaymentAdapter.initiatePayment`), az pedig
- * élesben elérhetetlen (a plugin `paymentMethods` tömbje üres, a `/payments/*`
- * végpontokat a `withoutPluginPaymentEndpoints` szűrő eltávolítja). A tartalék
- * ára viszont valós volt: egy elfelejtett `billing` mező némán, egy AVULT
- * profilból állította volna elő a számlát. Az adapter azóta a hívó oldalán,
- * KIMONDVA építi a profilból a `billing`-et — ugyanazzal a kötelező
- * validációval, tehát hiányos profillal azon az úton sem jön létre rendelés.
+ * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
+ * forrás. Duplavásárlás-blokk + rendelés-létrehozás egy zárban; Barion Start
+ * a záron kívül. `paid` csak a callback/poll állapotgépen. Vendég: guest
+ * e-mail, fiók fizetés után. Bejelentkezett sessionnél az `input.guest`
+ * figyelmen kívül. `billing` kötelező, profil-tartalék nincs.
  */
 
 /** Üzleti hiba HTTP-státusszal — a route-handler ezt képezi válaszra. */
@@ -135,37 +83,11 @@ export interface CheckoutStartInput {
   priceHuf?: unknown
   /** Az elállási jogról való lemondás elfogadása — kötelező (true). */
   consentWithdrawalWaiver?: unknown
-  /**
-   * AZ ÁSZF ELFOGADÁSA + az adatkezelési tájékoztató megismerése, EGY
-   * jelölőnégyzetből (az ÁSZF 22. bekezdése így írja le a szerződéskötést) —
-   * kötelező (true).
-   *
-   * MIÉRT ITT IS, nem csak a kliensen: a pénztár űrlapja megkerülhető (a
-   * végpont közvetlenül POST-olható), a szerződés viszont pontosan ettől a
-   * jelöléstől jön létre. Elfogadás nélkül létrejövő rendelés az ÁSZF saját
-   * szövegét tenné hamissá.
-   *
-   * A waivertől ELTÉRŐEN az ingyenes terméken is kötelező: a szerződés ott is
-   * létrejön, és az ÁSZF felhasználási korlátja (lementés, másolás tilalma) az
-   * ingyenes ismeretterjesztő videóra is vonatkozik.
-   */
+  /** ÁSZF + adatvédelem egy jelölőből — kötelező (ingyenes terméken is); szerveroldali kapu. */
   consentTerms?: unknown
-  /**
-   * A számlázási adatok (név/irsz/település/cím + opcionális adószám) —
-   * KÖTELEZŐ. Ez a rendelésre rögzített IGAZSÁG: a `customerSnapshot` — és így
-   * a számla — ebből készül. Hiányzó, hiányos vagy hibás adat → 400, a
-   * rendelés létrejötte és a Barion-hívás ELŐTT.
-   *
-   * Nincs profil-tartalék: a hívónak KI KELL MONDANIA, mi kerüljön a számlára.
-   * (Az indoklás a fájl fejlécének „SZÁMLÁZÁSI SZERZŐDÉS" bekezdésében.)
-   */
+  /** Számlázási adatok — kötelező, nincs profil-tartalék; a snapshot/számla ebből készül. */
   billing?: unknown
-  /**
-   * VENDÉG-VÁSÁRLÓ azonosító adatai (`{ email, name }`) — kizárólag
-   * bejelentkezés NÉLKÜL van szerepe, és akkor KÖTELEZŐ. Bejelentkezett
-   * munkamenetnél a mezőt SZÁNDÉKOSAN figyelmen kívül hagyjuk: a kérés törzse
-   * megkerülhető, tehát belépve senki nem rendelhet idegen e-mail-címre.
-   */
+  /** Vendég: `{ email, name }` — bejelentkezve figyelmen kívül. */
   guest?: unknown
 }
 
@@ -299,29 +221,13 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
     )
   }
 
-  /**
-   * SZÁMLÁZÁSI ADATOK — a kérésben küldött érték az EGYETLEN forrás. A
-   * felhasználó profilja csak a pénztár űrlapjának ELŐKITÖLTÉSE (kliens-oldal);
-   * a szolgáltatás nem esik vissza rá, és részlegesen kitöltött `billing`-et
-   * sem egészít ki belőle — a kevert rekord később megmagyarázhatatlan számlát
-   * adna.
-   *
-   * A validáció itt is KÖTELEZŐEN lefut — a kliens megkerülhető, hiányos
-   * snapshottal pedig a fizetés lemenne, a számla viszont soha nem állna ki
-   * (issueInvoiceForOrder `failed`-del, dobás nélkül zár → nincs retry).
-   */
+  // Számlázási adatok: csak a kérésből, profil-tartalék nélkül (kliens megkerülhető).
   const billingResult = validateBilling(input.billing)
   if (!billingResult.ok) {
     throw new CheckoutError(400, billingErrorMessage(billingResult.errors))
   }
 
-  /**
-   * VENDÉG-AZONOSÍTÁS. Bejelentkezve a munkamenet az igazság — a törzsben
-   * küldött `guest` mezőt ilyenkor SEM olvassuk (különben egy belépett vevő
-   * idegen e-mail-címre szóló rendelést hozhatna létre). Bejelentkezés nélkül
-   * viszont az e-mail + név KÖTELEZŐ: ez az egyetlen kapocs a fizetés és a
-   * vevő között (a hozzáférés és a jelszó-beállító link is ide megy).
-   */
+  // Vendég: bejelentkezve a session az igazság; különben kötelező e-mail + név.
   const guest = hasSession ? null : validateGuest(input.guest)
   if (guest !== null && !guest.ok) {
     throw new CheckoutError(400, guestErrorMessage(guest.errors))
@@ -336,13 +242,7 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
   }
 }
 
-/**
- * A termék megvásárolhatóságának ellenőrzése (státusz + ár), magyar üzenetekkel.
- *
- * MINDEN elutasító ág naplóz (warn) — ezek eddig némán estek el, pedig a
- * piszkozat-incidens (átadás-doksi 3. szakasz 3. sor) épp azt mutatta, hogy a
- * néma 400-as a legrosszabb hibaforma. A felhasználói üzenetek változatlanok.
- */
+/** Termék megvásárolhatóság (státusz + pozitív ár); elutasító ágak naplózva. */
 function assertPurchasable(product: Product, log: Logger, priceHuf?: number): void {
   if (product.status === 'archived') {
     log.warn('checkout-start: vásárlás elutasítva — a termék archivált', {
@@ -360,35 +260,7 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
     })
     throw new CheckoutError(400, 'Ez a termék jelenleg nem megvásárolható.')
   }
-  /**
-   * ÁR-KAPU: az ár-pipa MELLETT a szám ÉRTÉKE is számít — csak a POZITÍV ár
-   * érvényes.
-   *
-   * ═══ A HIBA, AMIT BEZÁR ═══
-   * A `priceInHUFEnabled: true` + `priceInHUF: 0` páros korábban átment ezen a
-   * kapun, és VALÓDI Barion-fizetés indult volna 0 Ft-ról: a Barion vagy hibát
-   * ad (a vevő magyarázat nélküli 502-t kap), vagy — rosszabb — létrejön egy
-   * 0 forintos rendelés és számla, amit kézzel kell takarítani. A negatív ár
-   * ugyanígy értelmezhetetlen, a `NaN` pedig `typeof 'number'`, tehát a régi
-   * feltételen az is átcsúszott.
-   *
-   * ═══ MIÉRT NEM „INGYENES" A 0 Ft (a döntés, hogy egy refaktor se írja
-   * vissza) ═══
-   * Az ingyenességet EGY dolog fejezi ki: az ár-pipa `false` értéke
-   * (`priceInHUFEnabled: false`) — arra van külön, Barion nélküli út
-   * (/penztar ingyenes ága + free-course-grant). Ha a 0 Ft is „ingyenest"
-   * jelentene, két, egymással versengő igazságforrás lenne ugyanarra az
-   * állapotra, és a fizetési út némán szétágazna egy szerkesztői elgépeléstől.
-   * Ezért a 0 (és minden nem pozitív érték) itt HIÁNYZÓ/HIBÁS konfiguráció:
-   * ugyanaz az elutasító ág, mint a hiányzó áré.
-   */
-  //
-  // ═══ MIÉRT A coursePriceHuf DÖNT (és nem egy itteni feltétel) ═══
-  // Az „érvényes ár" fogalmának EGY implementációja van, a courses.ts-ben, és
-  // azt hívja a gomb-logika (resolveCourseCta → isPaidCourse), az ár-címke és
-  // ez a kapu is. Amíg a kapu saját másolatot tartott, a kettő elsodródott: a
-  // felület ajánlott egy vásárlást, amit a szerver elutasított. A másolat
-  // visszavezetése ezt a hibaosztályt szünteti meg, nem csak a mai példányát.
+  // Ár-kapu: csak pozitív ár (`coursePriceHuf`); 0 Ft = hiányzó konfig, nem ingyenes út.
   const price = product.priceInHUF
   if (coursePriceHuf(product) === null) {
     log.warn('checkout-start: vásárlás elutasítva — a termékhez nincs érvényes ár', {
@@ -688,28 +560,8 @@ interface CheckoutBuyer {
 }
 
 /**
- * Vevő-snapshot a rendelésre (számlázási/audit célokra).
- *
- * A számlázási mezők forrása a VALIDÁLT `billing` — vagyis az, amit a hívó
- * (élesben: a pénztár űrlapja) ténylegesen megadott. A snapshot a rendeléshez
- * rögzített igazság: a Számlázz.hu-számla ebből készül (`buyerFromOrder`), a
- * felhasználó későbbi profilmódosítása már nem hat rá.
- *
- * A mező típusa JSON (src/plugins/ecommerce.ts), tehát a tartalma
- * sémaváltozás és migráció nélkül alakítható.
- *
- * ═══ AZ ÁSZF-ELFOGADÁS RÖGZÍTÉSE ═══
- * A pénztár azt ígéri a vevőnek, hogy „az elfogadásodat a rendszer a
- * rendelésen időbélyeggel rögzíti" — az ígéretet ez a két mező váltja be:
- *   consentTerms ... az elfogadás TÉNYE (true),
- *   consentTermsAt . az elfogadás ISO-időbélyege.
- * SZÁNDÉKOSAN a JSON-snapshotba kerül, nem külön oszlopba: séma-változás és
- * migráció nélkül rögzíthető, a rendeléshez kötött igazság része marad, és a
- * számlázási snapshottal együtt, egyetlen íráson belül keletkezik.
- *
- * Az `acceptedAtIso` UGYANAZ az időbélyeg, mint a `consentWithdrawalWaiverAt`:
- * a két nyilatkozat egyetlen beküldéssel, ugyanabban a pillanatban születik,
- * és két, ezredmásodpercben eltérő időpont csak látszatpontosságot adna.
+ * Vevő-snapshot a rendelésre. Az ÁSZF-elfogadás: `consentTerms` + `consentTermsAt`
+ * ugyanabban a JSON-snapshotban, mint a számlázási mezők.
  */
 function buildCustomerSnapshot(
   buyer: CheckoutBuyer,

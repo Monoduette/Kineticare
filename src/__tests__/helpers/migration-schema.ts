@@ -1,41 +1,7 @@
 /**
- * MIGRÁCIÓS SÉMA-ŐR — MEGOSZTOTT SEGÉDMODUL (a G1/G2 őrök közös motorja).
- *
- * Két őr épül erre az egyetlen kanonizáló- és diff-motorra, így a két
- * összevetés sosem csúszhat szét egymástól:
- *
- *  - G1 (src/__tests__/schema-drift-guard.test.ts): a src/migrations alatti
- *    datált migrációs fájlok up() függvényeit ÁL-adapterrel, VALÓDI adatbázis
- *    nélkül lefuttatja, a kifogott SQL-statementeket egy memóriabeli
- *    sémamodellbe játssza vissza (a payload readMigrationFiles.js által
- *    használt könyvtár-lexikografikus sorrendben), és a végsémát a legutolsó
- *    drizzle-snapshot .json kanonizált alakjával veti össze.
- *  - G2 (src/__tests__/schema-config-sync.test.ts): a sanitize-ált
- *    payload.configból a Payload saját generateDrizzleJson generátorával
- *    készített friss sémát veti össze ugyanazzal a legutolsó kanonizált
- *    snapshot-tal.
- *
- * KANONIZÁLÁSI ELV. A snapshot .json a drizzle-kit generateDrizzleJson
- * kimenetének JSON.stringify(…, null, 2)-ja (@payloadcms/drizzle
- * buildCreateMigration.js). Tartalmi szempontból semleges mezői (top-level
- * `id` random UUID, `prevId`, `_meta`) generálásonként változnak, ezért a
- * kanonizálás SZEMLETIKUS kivonatot készít: táblák (oszlop-típus/notNull/
- * primaryKey/alapértelmezés, indexek, idegen kulcsok) és enumok
- * (SORRENDHŰ értéklista — az `enums.*.values` a config-deklaráció sorrendjét
- * tükrözi, NEM abc-t, tehát a sorrend TARTALMI). A modellbe nem beletartozó
- * vödröknek (sequences/roles/policies/views/schemas, tábla-szintű
- * compositePrimaryKeys/uniqueConstraints/checkConstraints/policies) üresnek
- * kell lenniük: ha a jövőben tartalom kerülne beléjük, a kanonizáló HANGOSAN
- * elhasal — a csendes átengedés itt is tiltott, mint a statement-parse-ban.
- * Ugyanez KULCSSZINTEN is: minden modellzett szinten (gyökér, enum, tábla,
- * oszlop, index, idegen kulcs) ZÁRT ismert-kulcslista dolgozik — a pinned
- * formátumtól eltérő (ismeretlen) kulcs hangos bukás, nem csendes vakfolt.
- *
- * HANGOS BUKÁS ELVE. Minden ellenőrzés, amely ismeretlen statement-alakot,
- * nem statikus SQL-t (interpolált sql template), vagy a modellbe nem
- * illeszthető snapshot-tartalmat talál, KIVÉTELT dob — sosem nyeli el, sosem
- * engedi át figyelmeztetéssel. A séma-drift pontosan az ilyen csendes
- * helyeken szokott becsúszni.
+ * Migrációs séma-őr közös motorja (G1/G2). Kanonizálja a drizzle snapshotot,
+ * replay-eli a datált migrációk SQL-jét memóriában, diff-et készít. Ismeretlen
+ * statement vagy snapshot-kulcs hangos bukás — csendes átengedés tilos.
  */
 
 import fs from 'node:fs'

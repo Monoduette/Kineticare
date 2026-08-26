@@ -23,39 +23,10 @@ import { trackedSubmitNewsletter } from '@/components/layout/NewsletterForm'
 
 /**
  * A Barion Pixel `signUp` és az OLDAL-SZINTŰ `contentView` őr-tesztjei.
- *
- * ═══ MI A MÉRCE, ÉS HONNAN ═══
  * A szerződést nem memóriából vettük: a futtatott pixel-kódból
- * (`curl -s https://pixel.barion.com/bp.js`, VERSION = "0.4.0", 73 518 bájt,
  * olvasható forrás). A mérvadó két részlet:
- *
- *  - `case 'signUp': mandatory_keys = ['id', 'contentType', 'name'];` — és a
- *    hozzá tartozó `type_conversion` tábla kulcsai: id, contentType, name,
- *    contents, customerValue, currency, ean, brand, category, variant, unit,
- *    unitPrice. `step` NINCS KÖZTE, tehát elküldve a pixel 13-as hibát adna és
- *    `delete d[k]`-val eldobná.
- *  - `case "contentView": mandatory_keys = ['id', 'contentType', 'name'];`, és
- *    a `validate`-ben: `if (content_type === 'Product') { … ['unitPrice',
- *    'unit', 'currency', 'quantity'] … }` — vagyis az ár-mezők KIZÁRÓLAG a
- *    termék-ágon kötelezők. A `'Page'` a megengedett contentType-ok
- *    (`['Page','Product','Article','Promotion','Banner','Misc']`) egyike.
- *
- * A viselkedési szabály forrása a hivatalos leírás: a `signUp` eseményt a
- * regisztráció MELLETT a belépéseknél is el kell küldeni, és állandó
- * (megjegyzett) bejelentkezésnél munkamenetenként EGYSZER egy implicit
- * signUp jelzi, hogy a munkamenetet bejelentkezett felhasználó nyitotta.
- *
- * ═══ MIÉRT ÍGY ═══
- * Ezek a hibák NÉMÁK. Egy mountkor küldött signUp a rossz jelszóval
- * próbálkozót is belépőnek számolná; egy layoutba tett oldal-contentView a
- * termékoldalon MÁSODIK megtekintést küldene a Product-ágú esemény mellé.
- * Semmi nem szakadna el a felületen, csak a mérés lenne csendben hamis.
- * Minden alábbi állítás mutációval igazolt (rontás → bukás → visszaállítás).
- *
- * ═══ HÁLÓZAT ═══
- * A globális `fetch` hangosan dobó mock: ebből a fájlból egyetlen ágon sem
- * mehet ki valódi hívás (CLAUDE.md 15. tanulság). A modulok küldő- és
- * beküldő-függvényei mind injektáltak, tehát a mocknak sosem kell megszólalnia.
+ * - `case 'signUp': mandatory_keys = ['id', 'contentType', 'name'];` — és a
+ * hozzá tartozó `type_conversion` tábla kulcsai: id, contentType, name,
  */
 
 vi.stubGlobal('fetch', () => {

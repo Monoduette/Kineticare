@@ -1,33 +1,7 @@
 /**
- * Job-queue nevek és a hozzájuk tartozó cron-ritmus EGY helyen, induláskori
- * asserttal.
- *
- * A queue-név a Payload jobs-táblákban is megjelenik — kisbetű, szám, kötőjel
- * engedélyezett; elgépelés ellen modul-szinten validáljuk.
- *
- * MIÉRT ITT VAN A CRON IS? A Payload jobrendszerében KÉT, egymástól független
- * cron-beállítás van, és a kettő CSAK akkor működik együtt, ha ugyanarra a
- * queue-ra és összehangolt ritmusra mutat:
- *
- * 1. `jobs.autoRun[].cron` + `queue` — a MÁR SORBAN ÁLLÓ jobokat FUTTATJA
- *    (payload/dist/queues/config/types/index.d.ts, JobsConfig.autoRun:
- *    „Note that this does not _queue_ new jobs - only _runs_ jobs that are
- *    already in the specified queue.").
- * 2. `TaskConfig.schedule[].cron` + `queue` — ez ÁLLÍTJA SORBA a jobot. A
- *    sorba állítást ugyanaz az autoRun-cron-tick indítja el
- *    (payload/dist/index.js `_initializeCrons` → `jobs.handleSchedules({
- *    queue: cronConfig.queue })`), és a `handleSchedules` KIZÁRÓLAG azokat a
- *    schedule-öket nézi, amelyek `queue`-ja megegyezik az autoRun-entry
- *    queue-jával (payload/dist/queues/operations/handleSchedules/
- *    getQueuesWithSchedules.js). Ugyanez áll az `AutorunCronConfig
- *    .disableScheduling` leírásában is: „the autorun will attempt to schedule
- *    jobs for tasks and workflows that have a `schedule` property, GIVEN THE
- *    QUEUE NAME IS THE SAME".
- *
- * Következmény: a schedule-cron ténylegesen nem tud sűrűbben tüzelni, mint az
- * ugyanarra a queue-ra beállított autoRun-cron (a sorba állítás csak annak a
- * tickjén történik meg). Ezért a két cron ugyanabból a konstansból származik —
- * így nem tudnak szétcsúszni egy későbbi szerkesztésnél.
+ * Queue-nevek és cron egy helyen: az autoRun csak futtat, a schedule sorba
+ * állít, és a handleSchedules csak azonos queue-névre fut. A két cron ezért
+ * ugyanabból a konstansból jön.
  */
 const QUEUE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/
 

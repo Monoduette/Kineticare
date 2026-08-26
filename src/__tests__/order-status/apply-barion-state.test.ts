@@ -282,13 +282,10 @@ describe('applyBarionStateTransition — paid-átmenet összeg-assert', () => {
 
 /**
  * K5 — DUPLA-FIZETÉS BLOKK a paid-átmenet közös pontján (hasPaidOrderFor).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A checkout duplavásárlás-blokkja csak szűk ablakban véd (paid VAGY aktív
  * payment_pending a Barion-ablakon belül). Elveszett callback + lejárt ablak
  * után a vevő második rendelést indíthat, és ha mindkét fizetés sikeres a
  * Barionnál, mindkét rendelés paid-re mehetett — dupla terhelés. A második
- * paid-átmenet most BLOKKOLT + RIASZTOTT (duplicate-paid-order).
  */
 describe('applyBarionStateTransition — K5 dupla-fizetés blokk', () => {
   it('MÁS paid rendelés ugyanarra a vevő+termékre → rejected/duplicate-paid-order (se státusz, se jogosultság)', async () => {
@@ -361,16 +358,10 @@ describe('applyBarionStateTransition — K5 dupla-fizetés blokk', () => {
 
 /**
  * K1 — ÍRÁSI SORREND a paid-átmenetben (jogosultság ELŐBB, státusz UTÁNA).
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * Fordított sorrendben a két írás közötti megszakadás (grant-hiba, crash)
  * VÉGLEGESEN elnyelte a paid-átmenet mellékhatásait: a rendelés már `paid`
  * volt, tehát az újrapróbáláskor `alreadyPaid === true` → `transitionedToPaid:
  * false` → az onOrderPaid (számla + visszaigazoló/aktiváló e-mail) SOHA nem
- * futott le. Vendég-vásárlónál: fizetett, hozzáférése van, de jelszó-beállító
- * linket sosem kap.
- *
- * Mindkét alábbi állítás MEGBUKNA a régi sorrenden.
  */
 describe('applyBarionStateTransition — K1 írási sorrend', () => {
   it('a jogosultság-beírás MEGELŐZI a paid státusz-írást', async () => {

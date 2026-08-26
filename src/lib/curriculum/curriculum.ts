@@ -2,45 +2,8 @@ import type { Product } from '../../payload-types'
 import { streamVideoRef } from '../stream/contract'
 
 /**
- * A kurzus TANANYAG-MODELLJE — a rendszer EGYETLEN igazságforrása arról, hogy
- * egy kurzus milyen fejezetekből és leckékből áll, melyik lecke indítható el, és
- * melyik számít bele a haladásba.
- *
- * ═══ MIÉRT KELL ═══
- * A kurzus tananyaga KÉT helyről jöhet:
- *  - `products.modules` — az ÚJ, fejezetekre bontott szerkezet (modulok →
- *    leckék; videó, szöveges lecke és külső link is lehet),
- *  - `products.videos` — a RÉGI, lapos videólista.
- * A felület, a lejátszási jegy kiadása és a haladás-jelölés MIND ezt a modult
- * hívja, így a három hely nem tudhatja máshogy, mi a kurzus tartalma. (Pontosan
- * ez a hibaosztály vitte el korábban a lejátszást: a kliens sorszámot küldött,
- * a szerver azonosítót olvasott — lásd src/lib/stream/contract.ts fejléc.)
- *
- * ═══ A VÁLASZTÁS SZABÁLYA ═══
- * Ha a terméknek van LEGALÁBB EGY modulja (`modules`), a tananyag AZ; egyébként
- * a `videos` tömbből képződik EGY implicit modul. A kettő SOSEM keveredik: egy
- * félig átmozgatott kurzus nem mutatna duplán leckét.
- *
- * ═══ AZONOSÍTÁS (`ref`) ═══
- * A lecke stabil azonosítója ugyanaz a konvenció, mint a régi videóké
- * (`streamVideoRef`): elsődlegesen az array-SOR `id`-ja, másodlagosan a
- * `streamAssetId`. A Payload az array-sor `id`-t globálisan egyedi BSON
- * ObjectID-ként generálja, ezért az új modul-leckék és a régi videó-sorok
- * azonosítói NEM ütközhetnek — a `course-progress.videoRef` névtér közös
- * használata biztonságos, és a MÁR RÖGZÍTETT haladás érvényben marad.
- * (Az indoklás és az élesben mért bizonyíték: src/fields/course-modules.ts.)
- *
- * ═══ LEJÁTSZHATÓ vs. SZÁMÍTÓ LECKE ═══
- * - `playable`: elindítható-e MOST. Videónál a régi, változatlan szabály
- *   (`status === 'ready'` ÉS van `streamAssetId`); szöveges leckénél és
- *   linknél mindig igaz.
- * - `countable`: beleszámít-e a haladás nevezőjébe. AZONOS a `playable`-lel —
- *   amit a vevő nem tud megnyitni, azt nem is várjuk el tőle. A feldolgozás
- *   alatti videó tehát sem a számlálóban, sem a nevezőben nem szerepel; ez a
- *   RÉGI viselkedés (src/lib/course-progress/progress.ts) megőrzése.
- *
- * A modul TISZTA: nincs DB-, Payload- vagy React-függése, ezért kimerítően
- * egységtesztelhető (src/__tests__/curriculum.test.ts).
+ * Kurzus tananyag egyetlen igazságforrása: modules ha van, különben videos → egy implicit modul.
+ * ref = streamVideoRef; playable/countable szabályok a régi viselkedést őrzik.
  */
 
 export const LESSON_KINDS = ['video', 'szoveg', 'link'] as const
@@ -331,21 +294,7 @@ export function buildCurriculum(
 
     const moduleLessons = modules.flatMap((entry) => entry.lessons)
 
-    /**
-     * ═══ MIÉRT NEM ELÉG A MODUL-SOROK LÉTEZÉSE ═══
-     * A modul-ág feltétele NEM „van modul-sor", hanem „a modulokból LETT
-     * legalább egy lecke". Enélkül egy FÉLKÉSZ modul kiütné a régi
-     * videólistát: a szerkesztő felveszi a „1. ALAPOK" modult, kitölti a
-     * címét és ment (a `lessons` mezőn nincs `required`/`minRows`, tehát ez
-     * menthető állapot) — és ettől a pillanattól MINDEN vevőnél üres a
-     * tananyag: a lejátszó a „még nincs tananyag" kapura fut, a jegykiadás
-     * 404-et ad, a haladás-jelölés 400-at, az admin pedig mindenkit 0%-on
-     * mutat. Hibaüzenet nélkül, a 27 meglévő videó mellett.
-     *
-     * A nem üres modul-szerkezet természetesen elnyeli a régi listát — az a
-     * szándékolt viselkedés (nincs duplázás); csak az ÜRES eredmény esik
-     * vissza a `videos` tömbre.
-     */
+    /** Modul-ág csak ha van legalább egy lecke — üres modul ne nyelje el a régi videos listát. */
     if (moduleLessons.length > 0) {
       return { modules, lessons: moduleLessons, legacy: false }
     }

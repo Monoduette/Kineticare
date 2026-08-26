@@ -2,18 +2,9 @@
  * PreviewVideo — a kurzus PUBLIKUS előzetes-videójának lejátszója
  * (previewVideoStreamId). Ha a termékhez nincs előzetes rendelve, a
  * szekció rejtve marad (a komponens null-t ad).
- *
  * A lejátszó a Bunny Stream publikus iframe-embedje — ez a platform
  * videó-szolgáltatója. A Bunnynál a token-hitelesítés LIBRARY-szintű, ezért az
  * előzetes (és a hero-videó) a PUBLIKUS libraryben él: itt nincs jegy, a
- * komponens NEM hív stream-token végpontot. A védett kurzusvideók külön,
- * tokenes libraryből jönnek (src/components/account/CoursePlayer.tsx).
- * A beágyazott videó a szolgáltató domainjéről töltődik; statikus
- * asset-hotlink (kép/font/CSS) továbbra is tilos.
- *
- * A publikus library azonosítója a NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID
- * környezeti változóból jön (lazy, nem induláskori kötelező ENV): hiányában az
- * előzetes-szekció rejtve marad, az oldal ettől még teljes értékű.
  */
 
 /** A trimmelt publikus library-azonosító, vagy üres string, ha nincs beállítva. */

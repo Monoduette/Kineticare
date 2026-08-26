@@ -1,28 +1,6 @@
 /**
  * Kineticare design-tokenek — EGYetlen igazságforrás a storefront vizuális
- * nyelvéhez. A komponensek és oldalak KIZÁRÓLAG ezeket a változókat
  * használhatják (var(--kc-*)), szétszórt hardcode-olt érték TILOS.
- *
- * PALETTA-FORRÁS (G1, 2026-08): a kineticare.higgsfield.app landing teljes
- * vizuális rendszere (higgsfield-site/app/src/kineticare.css, :root). A teljes
- * site — minden aloldal — ezt a palettát viseli; a korábbi legacy kinézet
- * (navy #0b243f + #ebf7ff tint-sáv) megszűnt.
- *
- *   háttér (paper) .... #f6f9fc · tint-sáv ...... #e6f0f8
- *   ink (szöveg) ...... #10243e · másodlagos .... #33495f
- *   akcent ............ #3d78aa · akcent-mély ... #2f6e9f
- *   halvány akcent .... #9ec4df · hairline ...... #d8e2eb
- *   címsor: "Tenor Sans" · szöveg: "Nunito Sans"
- *
- * A legacy nyers tokenek (--kc-color-navy-*, --kc-color-blue-*) DEFINIÁLVA
- * maradnak — még hivatkozik rájuk néhány, más ügynök tulajdonában lévő
- * szekció-stíluslap —, de SZEREPET (primary, text, border, surface…) egyik
- * sem kap többé. Új kódban nyers legacy tokent használni tilos.
- *
- * Betűkészlet-megjegyzés: a fontokat hotlink helyett self-hostoljuk; a
- * subsetelt woff2-k (latin / latin-ext) a public/fonts/ alatt élnek,
- * ugyanezekkel a családnevekkel — lásd fonts.css. Az itt definiált stackek
- * változtatás nélkül aktiválják őket.
  */
 
 :root {

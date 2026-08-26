@@ -10,66 +10,9 @@ import { Section } from '../ui/Section'
 import '../../app/(frontend)/styles/blocks/team-members.css'
 
 /**
- * TeamMembers — a két gyógytornász 50–50 arányú, egyenrangú bemutatása.
- *
- * A blokk szerződése és a mezők indoklása: `src/blocks/team-members.ts`.
- * Vizuális nyelv: a landing kártya-nyelve — Tenor Sans név, hajszálvonalas
- * elválasztók, lekerekítés nélküli képkeret, akcentus csak `accent-deep`
- * (`--kc-color-primary`) szövegszínként (a nyers `accent` a hűvös felületeken
- * 4,07:1, tehát AA alatt van — lásd tokens.css kontraszt-jegyzőkönyv).
- *
- * A rács `repeat(auto-fit, minmax(...))`: két taggal pontosan 50–50, egy taggal
- * teljes szélesség — a fix `repeat(2, 1fr)` egy tagnál üres hasábot hagyna
- * (belső-oldali kutatás B3.5). 900px alatt egymás alá tördel.
- *
- * A szakmai listák natív `details`/`summary`-vel csukódnak (a FaqBlock mintája):
- * kliens-oldali JS nélkül működnek, és a képernyőolvasó megkapja a nyitott/zárt
- * állapotot. FAQPage JSON-LD-t szándékosan NEM adnak ki — egy tanfolyam-lista
- * strukturált GYIK-ként hibás lenne (lásd a tartalom-leltár B5 megjegyzését).
- *
- * A darabszám a `summary`-ben a TÉNYLEGES sorokból számolódik, nem külön mezőből:
- * így sosem csúszhat el a listától, és a rejtés nem tünteti el a bizonyíték
- * mennyiségét (ux-belso-oldalak-kutatas.md 5.2).
- *
- * BEJELENTKEZÉS-RÉTEG (2026-08-16). A kártya alsó harmada a „hogyan jutok el
- * hozzá" kérdésé. Három, kutatásra visszavezetett döntés:
- *
- *  1. A TELEFONSZÁM SAJÁT FELÜLETET KAP, nem szöveglink-lábjegyzetet. Az NN/g
- *     hitelesség-kutatásának 2. tényezője (Upfront Disclosure) szerint a
- *     kapcsolati adatot ott kell kiírni, ahol a látogató dönt; a 3. tényező
- *     pedig kifejezetten azt kéri, hogy a szolgáltatásnál látszódjon, KI fogja
- *     a munkát végezni („who would be doing the cleaning").
- *     https://www.nngroup.com/articles/trustworthy-design/
- *  2. A PORTRÉ NEM DÍSZ. Az NN/g fotó-kutatásában a valódi munkatársak
- *     portréját a felhasználók 10%-kal HOSSZABBAN nézték, mint amennyit a
- *     mellette álló, sokkal nagyobb helyet elfoglaló életrajzot olvasták — az
- *     általános stock-fotót viszont figyelmen kívül hagyták („users ignore
- *     stock photos of generic people").
- *     https://www.nngroup.com/articles/photos-as-web-content/
- *  3. A HÍVÁS MELLETT ÍRÁSOS ÚT IS KELL. Az NN/g egészségügyi út-kutatásában a
- *     válaszadók többsége kerüli a telefonálást, mert az gyakran válasz nélkül
- *     marad („result in »phone tag«") — ezért a szekció alján a szerkesztő
- *     megadhat egy aszinkron időpontkérési utat (`bookingLink`).
- *     https://www.nngroup.com/articles/healthcare-customer-journeys/
- *
- * A hívás-felület LINK, nem gomb (projekt-skill 4. pont: ami navigál, az link)
- * — a `tel:` a rendszer tárcsázójára navigál, tehát jobbklikk/másolás/új lap
- * elvárt módon működik. Vizuálisan mégis felületet kap (2px keret, 3,5rem
- * magasság), mert a súlya cselekvés-szintű; a TÖMÖR elsődleges gomb-kitöltést
- * viszont szándékosan NEM viseli: az az oldal egyetlen elsődleges (vásárlási)
- * cselekvésének a nyelve, és két szakemberrel két elsődleges gomb keletkezne.
- *
- * TELJESEN CMS-VEZÉRELT (tulajdonosi elfogadási feltétel). Minden LÁTHATÓ szöveg
- * és minden kép a blokk mezőiből jön: név, titulus, portré, bio, telefon, a
- * hívás felirata, elérhetőségi sor, e-mail, szakmai listák, hivatkozás, az
- * írásos időpontkérés, sőt a megjelenési SORREND is (a tömb sorrendje =
- * a kártyák sorrendje, az adminban fogd-és-vidd módszerrel átrendezhető). Kódban
- * NINCS marketingszöveg, nincs helykitöltő és nincs beégetett kép — a hiányzó
- * mező egyszerűen kimarad a kimenetből (a szerkesztő azt látja, amit beírt).
- * Az egyetlen kódbeli szó a képernyőolvasónak szóló `aria-label` kötőszava és a
- * két dekoratív jel (nyíl, telefon-ikon — mindkettő `aria-hidden`), egyik sem
- * látható szöveges tartalom. A képleírás (alt) a Médiatárból jön, nem innen.
- * Ezt a szerződést teszt őrzi (src/__tests__/team-members-block.test.ts).
+ * TeamMembers — két gyógytornász 50–50 bemutatása (blokk: team-members.ts).
+ * auto-fit rács; szakmai listák natív details-ben. Teljesen CMS-vezérelt szöveg/kép.
+ * Telefon link (nem gomb); opcionális írásos időpontkérés.
  */
 export interface TeamMembersProps {
   block: BlockTeamMembers

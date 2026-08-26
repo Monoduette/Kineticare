@@ -2,19 +2,11 @@ import type { CurriculumModule } from '../../lib/curriculum/curriculum'
 
 /**
  * CourseCurriculum — a tananyag (modulok → leckék) VÁSÁRLÁS ELŐTTI nézete.
- *
- * ═══ MIÉRT NEM HARMONIKA ═══
  * Aki fizetős kurzust mérlegel, a TELJES tantervet akarja látni — ez a
  * GOV.UK „content that all users need to see" tilalma alá esik
  * (docs/ux-belso-oldalak-kutatas.md B5.2, 5.1). Ezért rács + horgony, nem
  * összecsukott lista.
- *
- * ═══ MIT NEM MUTAT ═══
  * KIZÁRÓLAG a szerkezetet: modulcím, összefoglaló, leckecímek, darabszám és
- * hossz. A fizetős tartalom hordozói (Bunny-GUID, lecke-szöveg, mellékletek,
- * külső link) NEM kerülnek ide — a hívó a `buildCurriculum(product, false)`
- * hozzáférés nélküli modelljét adja át, amelyből ezek a mezők már hiányoznak
- * (S2/b, src/lib/curriculum/curriculum.ts).
  */
 export interface CourseCurriculumProps {
   modules: CurriculumModule[]

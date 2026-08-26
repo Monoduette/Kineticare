@@ -1,22 +1,7 @@
 /**
- * systeme.io → Kineticare vásárló-import: az AKTIVÁLÓ LEVELEK kiküldése.
- *
- * A modul az `invite.ts` által generált linkekre épül (a token a Payload saját
- * jelszó-visszaállító tokenje, `disableEmail: true` — a levelet MI állítjuk
- * össze magyarul, nem a Payload gyári sablonja).
- *
- * BIZTONSÁG. Az aktiválási link TITOK: aki megkapja, jelszót állíthat a
- * fiókhoz. Ezért — az `invite.ts` szabályát a küldő-útra is kiterjesztve — a
- * token és a link SOHA nem kerül naplóba, és a címzett is csak maszkolva
- * (`maskEmail`). A napló csak darabszámot és maszkolt címet lát.
- *
- * HIBATŰRÉS. Egy bukott küldés NEM állítja meg a kört: a hiba a sor-szintű
- * hibalistába kerül, a következő címzett jön. A kilépési kódot a hívó (CLI)
- * dönti el a mérleg alapján.
- *
- * RATE LIMIT. A küldések közt kis szünet van (alapértelmezés
- * `INVITE_SEND_DELAY_MS`), hogy egy több százas kör ne fusson bele a
- * szolgáltató percenkénti/másodpercenkénti korlátjába.
+ * Aktiváló levelek kiküldése — `invite.ts` linkekre épül, magyar sablon.
+ * Link/token nem naplózódik; címzett maszkolva. Bukott küldés nem állítja meg a kört.
+ * Rate-limit szünet: `INVITE_SEND_DELAY_MS`.
  */
 
 import type { Payload } from 'payload'

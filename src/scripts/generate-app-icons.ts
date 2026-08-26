@@ -1,73 +1,7 @@
 /**
- * Kineticare alkalmazás-ikonok ELŐÁLLÍTÓJA (favicon.ico, icon.svg, apple-icon.png).
- *
- * Futtatás:  npx tsx src/scripts/generate-app-icons.ts
- *
- * ═══ MIÉRT LÉTEZIK EZ A SZKRIPT ═══
- * A három ikonfájl EGY forrásból, EGY geometriából épül, hogy a favicon, az
- * SVG-ikon és az iOS-ikon soha ne csússzon szét. A geometria itt, kódban él
- * (nem kézzel rajzolt path-ként), így a méret- és kontrasztdöntések
- * levezethetők és újraszámolhatók. A kimenet a repóba commitolt, statikus
- * fájl: futásidőben semmi nem generálódik.
- *
- * ═══ A JEL: „K" monogram fehérrel, márka-kék mezőn ═══
- * Kis méretben (16×16 = 256 képpont) a teljes „Kineticare" szó olvashatatlan,
- * ezért egyetlen jel kell. A választás a „K", a márka kezdőbetűje.
- *
- * A VONALVASTAGSÁG NEM a címsor-betűé (Tenor Sans). Ez tudatos, mért eltérés:
- * a Tenor Sans világos, vékony vonalú display-betű, és a favicon-kutatás
- * egybehangzó megállapítása szerint a 32×32-en 2 képpontnál vékonyabb vonás
- * elmosódott foltra esik szét („Strokes thinner than 2 pixels at 32×32 will
- * alias into a blurry mess" — Favicon Best Practices Guide,
- * https://faviconstudio.com/blog/favicon-best-practices-2026). Ezért a jel
- * VASTAGÍTOTT, geometrikus „K": a szár 3,6 egység, az átlók 3,2 egység a
- * 32-es rácson, azaz 32×32-en 3,6 és 3,2 képpont, 16×16-on 1,8 és 1,6.
- * A betűforma arányai (magas csatlakozás, a szárból kinyíló kar és láb)
- * követik a wordmark ritkított, verzál karakterét, de a vonásokat a
- * legkisebb méret diktálja.
- *
- * A KAR ÉS A LÁB a szár jobb élénél ÖSSZEÉR (a mért fedés y=15,53…16,47 a
- * 32-es rácson). Ez szándékos: a klasszikus, háromágú „K"-csomópont vékony
- * ékeket hagy, amelyek 16 képpontnál eltűnnek vagy bemosódnak. Az összeérő
- * változat egyetlen tömör ékként viselkedik, és minden méreten megmarad.
- *
- * ═══ SZÍN ÉS KONTRASZT (mérve, nem becsülve) ═══
- * Mező: --kc-color-accent-deep (#2f6e9f) — ugyanaz a kék, amit az elsődleges
- * gomb visel a lapon, tehát a fül-ikon és a lap fő cselekvése egy színt
- * beszél. Jel: fehér (#ffffff).
- *
- * A kutatás szerint kis méretben a kontraszt fontosabb a színhűségnél, és a
- * telített háttéren ülő fehér jel bírja a legjobban („a white mark on a vivid
- * background holds up better than a subtly coloured design on a light
- * background", ugyanaz a forrás), ezért kitöltött mező + fehér jel, nem pedig
- * színes jel átlátszó háttéren.
- *
- * Számított relatív fényességek (WCAG 2.2 definíció szerint) és arányok:
- *   fehér (L=1,0000) a mezőn (L=0,1426) .................... 5,45:1
- *   mező sötét böngésző-króm (#202124, L=0,0152) ellenében . 2,95:1
- *   mező világos böngésző-króm (#f1f3f4, L=0,8933) ellenében 4,90:1
- * A számolást a src/__tests__/favicon-ikonok.test.ts őr-teszt reprodukálja.
- *
- * A 4,5:1 (WCAG 2.2 1.4.3) és 3:1 (1.4.11) küszöböt az AZONOSÍTÁST HORDOZÓ
- * kontraszt — a fehér jel a saját mezőjén — 5,45:1-gyel teljesíti. A
- * mező↔böngészőkróm arány tájékoztató adat: a böngésző fülsávja nem
- * webtartalom, így a WCAG hatálya nem terjed ki rá; a jel felismerhetőségét
- * sötét krómon a fehér „K" viszi (16,10:1 a #202124-hez képest).
- *
- * ═══ MÉRETEK ÉS FÁJLKÉSZLET ═══
- * A hivatkozási kézikönyv az „How to Favicon in 2021" (Evil Martians,
- * https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs),
- * amelyre a Next.js hivatalos ikon-dokumentációja is hivatkozik:
- *  - favicon.ico: „a single 32×32 image" — sok olvasó (RSS, régi kliens) csak
- *    a /favicon.ico-t kéri le. Mi 16, 32 és 48 képet teszünk bele, hogy a
- *    Windows-parancsikon és a régi kliensek se skálázzanak.
- *  - SVG: vektoros, méretfüggetlen, ez a modern böngészők elsődleges forrása.
- *  - apple-icon: 180×180 — „Since iOS 8+, iPads have required an image with a
- *    180×180 resolution. Other devices will downscale it."
- * Az apple-icon ÁTLÁTSZÓSÁG NÉLKÜL, teljes felületű háttérrel készül, mert az
- * iOS maga rak rá árnyékot és lekerekítést; átlátszó ikon ott hibásan jelenne
- * meg (Apple, App icons — https://developer.apple.com/design/human-interface-guidelines/app-icons).
- * Ezért az apple-icon.png NEM lekerekített: a maszkot az iOS teszi rá.
+ * Kineticare alkalmazás-ikonok (favicon.ico, icon.svg, apple-icon.png) egy forrásból.
+ * Futtatás: npx tsx src/scripts/generate-app-icons.ts
+ * Kimenet commitolt statikus fájl; fehér „K" monogram #2f6e9f mezőn (tokens.css).
  */
 
 import { writeFileSync } from 'node:fs'

@@ -34,27 +34,9 @@ import {
 /**
  * ŐR-TESZT — Barion Pixel hozzájárulás-jelzés + a süti-sáv KÖTELEZŐ
  * időszakos visszatérése.
- *
- * ═══ MIT ŐRIZ (és miért pont ezt) ═══
- *
  * 1. A Barion hozzájáruláskezelési követelménye szerint az ELUTASÍTÁS is
- *    JELZÉS: `bp('consent','rejectConsent')`. A kézenfekvő hiba az, hogy
- *    elutasításnál egyszerűen „nem hívunk semmit" — az a Barion felé
- *    megkülönböztethetetlen a döntést még meg nem hozó látogatótól, tehát a
- *    marketing-tiltás sosem érkezik meg. Ezért a rejectConsent kimenetele
- *    KÜLÖN, pozitívan asszertált.
- * 2. Az ALAP pixel betöltése nem ennek a rétegnek a dolga, és nem is
- *    hozzájárulás-függő (csalásmegelőzési jogos érdek) — ez a modul kizárólag
- *    a FELHASZNÁLÁSI hozzájárulást jelzi.
- * 3. A süti-sáv eddig SOHA nem tért vissza: a tárolt döntésnek nem volt kora.
- *    A Barion előírása: „a hozzájárulás kezelő minimum minden 13. hónapban …
- *    megjelenjen az előzőleg mentett beállításokkal". A lejárat CSAK kérdez:
- *    a korábbi döntés érvényben marad, amíg a látogató nem hoz újat — ezt is
- *    őrizzük, mert a „lejárt = töröljük" reflex némán kikapcsolná az
- *    analitikát (vagy épp visszakapcsolná a letiltottat).
- *
- * A tesztek node-környezetben futnak: minden böngésző-érintkezés injektált
- * (Map-alapú tároló, mock `bp`, mock időzítő). Valódi hálózati hívás NINCS.
+ * JELZÉS: `bp('consent','rejectConsent')`. A kézenfekvő hiba az, hogy
+ * elutasításnál egyszerűen „nem hívunk semmit" — az a Barion felé
  */
 
 /** Map-alapú localStorage-mock (getItem/setItem/removeItem). */

@@ -556,20 +556,10 @@ describe('readStatisticsPages — csonkolás csak ha maradt sor', () => {
 
 /**
  * F8 ŐR (2026-08-21-i vizsgálat) — a tölcsér NEM olvas be rendelés-sorokat.
- *
- * ═══ MIT MÉR ═══
  * A régi kód 500-asával olvasta be az ÖSSZES rendelést a 20 000-es plafonig,
  * hogy a végén hat számot mutasson: 25 000 rendelésnél 40 `find`, 20 000
  * dokumentum a memóriában, ráadásul CSONKA tölcsér (a valóság 80%-a) és
  * „csonka jelentés" felirat.
- *
- * Ez a mock ezért két csapdát állít egyszerre:
- *  1. a `find` tölcsér-ága TELE lappal és `hasNextPage: true`-val válaszol —
- *     ha a lekérdezés mégis lapozna, a hívásszám és a csonkolás elárulja;
- *  2. a `count` a VALÓS eloszlást adja vissza, amit a beolvasott sorokból
- *     (csupa `paid`) sosem lehetne kihozni.
- * Így a teszt nem hiedelmet ellenőriz, hanem viselkedést: a javítás nélkül
- * bukik, a javítással zöld.
  */
 describe('F8 — a tölcsér darabszámokból jön, nem beolvasott sorokból', () => {
   const NOW = new Date('2026-08-20T12:00:00Z')
@@ -655,7 +645,6 @@ describe('F8 — a tölcsér darabszámokból jön, nem beolvasott sorokból', (
     // A tölcsérnek nincs plafonja: 25 000 rendelés SEM csonkolja a jelentést.
     expect(report.truncated).toBe(false)
 
-    // ═══ HÍVÁSSZÁM (mérve, nem becsülve) ═══
     // Javítás után: 1 `find` (a fizetett lap) + 7 `count` = 8 lekérdezés.
     // Javítás előtt ugyanezzel a mockkal: 1 + 40 = 41 `find`, 0 `count`.
     expect(

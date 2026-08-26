@@ -6,37 +6,10 @@ import { Users } from '../collections/Users'
 
 /**
  * ŐR: a Tudástár-cikkoldal MEZŐI léteznek a kollekció-konfigban.
- *
- * ═══ MIÉRT KELL ═══
  * A cikkoldal olvasó oldala (`src/components/content/post-article.ts`) az új
  * mezőket SZÁNDÉKOSAN `unknown`-ból, típusszűkítéssel olvassa, hogy a séma és
  * a felület egymástól függetlenül élesíthető legyen
  * (`docs/tudastar-technikai-terv.md` 2.1). Ennek az ára, hogy a hiányzó mező
- * NÉMA: nincs típushiba, nincs futásidejű kivétel, a GYIK-szekció, a
- * kurzus-CTA és a lektor-blokk egyszerűen elmarad minden cikkoldalról — pont
- * ez a hiba állt fenn a séma-kör előtt. A TypeScript ezt sosem fogja meg,
- * ezért kell végrehajtható őr.
- *
- * ═══ MIT ÁLLÍT ═══
- *  1. mind a nyolc mező LÉTEZIK, a `docs/tudastar-technikai-terv.md` 2.2/2.3
- *     táblázata szerinti típussal;
- *  2. a mezők a dokumentum GYÖKERÉN élnek (nem NEVES `group` alatt): az
- *     olvasók a `post.reviewedAt`, `post.faq`, `user.credentials` útvonalat
- *     nézik, egy neves csoport az adat-utat `csoport.mezo`-ra tolná, és a
- *     felület megint némán elnémulna. A `row`/`collapsible`/névtelen csoport
- *     ÁTLÁTSZÓ (nem mozdítja az adat-utat), ezért a bejáró átlép rajta — az
- *     admin-elrendezés szabadon átszervezhető, az adat-út nem;
- *  3. a `faq` korlátai: `maxRows: 6` (az NHS felsorolás-plafonja, ugyanaz a
- *     szám, amit a `postFaqItems` is vág), és mindkét almező kötelező —
- *     félig kitöltött kérdés-válaszból a GYIK-séma hiányos node-ot adna;
- *  4. a hivatkozás-célok: `ctaCourse` → `products`, `reviewedBy` → `users`,
- *     `portrait` → `media`;
- *  5. minden új mezőnek van nem üres, MAGYAR `admin.description`-je — a
- *     szerkesztő ebből tudja meg, mire való a mező és mikor NEM szabad
- *     kitölteni (az ellenőrzés-dátum ellenőrzés nélkül hazugság lenne).
- *
- * Az őr NEM rögzíti a leírások szó szerinti szövegét: a szerkesztői
- * mikroszöveg csiszolható, a mező LÉTE és ALAKJA nem.
  */
 
 // ---------------------------------------------------------------------------

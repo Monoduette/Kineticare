@@ -2,29 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * VIDEÓ-MÉLYSÉG ÉS PÉNZTÁRI HIBAKÖVETÉS — a két új mérés őre.
- *
- * ═══ MIT ŐRZÜNK, ÉS MIÉRT ÉPP EZT ═══
  * 1. A MÉRFÖLDKŐ-RETESZ. Ez a fájl legfontosabb állítása. A lejátszó
- *    `timeupdate` eseménye másodpercenként többször érkezik, a néző pedig
- *    VISSZATEKERHET — retesz nélkül ugyanaz az ember tucatszor átlépné a
- *    25/50/75%-ot, és a tölcsér HAMIS képet adna (egy néző sokszor számítana).
- *    A visszatekerés-teszt az egyetlen, ami ezt a duplázást kiszúrja: sima,
- *    előre haladó lejátszásnál a hibás és a helyes megvalósítás egyformán
- *    viselkedik.
- * 2. A PÉNZTÁRI HIBA KIMEGY, DE A MAGYAR ÜZENET SZÖVEGE SOHA. A szöveg
- *    változhat (kettéhasadó riport) és bevitt adatot is tartalmazhat, márpedig
- *    az esemény harmadik félhez (PostHog) megy ki.
- * 3. A MÉRÉS SOSEM RONTHATJA EL A PÉNZTÁRT: dobó PostHog-kliens mellett is
- *    végigmegy a beküldés, a valódi kivétel pedig VÁLTOZATLANUL továbbmegy.
- *
- * ═══ MIÉRT NINCS DOM ═══
- * A vitest `environment: 'node'`, jsdom nincs telepítve. Ezért a döntés
- * (`createVideoDepthTracker`, `checkoutFailureFromPlan`) és a huzalozás
- * (`trackedSubmitCheckout`) exportált, DOM nélkül futtatható egységekben él —
- * ugyanaz a minta, amit a `checkout-submit-handler.test.ts` követ.
- *
- * Valódi hálózati hívás itt nem futhat (CLAUDE.md 15. tanulság): a `submit`
- * mindig injektált mock, a globális `fetch` pedig hangosan dobó őr.
+ * `timeupdate` eseménye másodpercenként többször érkezik, a néző pedig
+ * VISSZATEKERHET — retesz nélkül ugyanaz az ember tucatszor átlépné a
+ * 25/50/75%-ot, és a tölcsér HAMIS képet adna (egy néző sokszor számítana).
  */
 
 /** Hangosan dobó őr — ha bármi mégis a globális fetch-hez nyúlna. */
@@ -95,9 +76,7 @@ function esemenyek(nev: string): Record<string, unknown>[] {
     .map(([, props]) => props)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // A) VIDEÓ-MÉLYSÉG — a döntés és a RETESZ
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Egy lejátszási sor lefuttatása; a kiadott mérföldkövek sorban. */
 function lejatszas(
@@ -231,9 +210,7 @@ describe('videó-mélység — A RETESZ (visszatekerés)', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // B) A VIDEÓ-ESEMÉNYEK SZERZŐDÉSE (eseménynév + tulajdonságok)
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('a videó-mélység eseményeinek szerződése', () => {
   it('az eseménynevek rögzítettek (a riportok ezekre a sztringekre épülnek)', () => {
@@ -280,9 +257,7 @@ describe('a videó-mélység eseményeinek szerződése', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // C) PÉNZTÁRI HIBAKÖVETÉS (checkout_failed)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const TERMEK = { id: 12, sku: 'Kézrehabilitáció otthon', priceHuf: 24900, isFree: false }
 

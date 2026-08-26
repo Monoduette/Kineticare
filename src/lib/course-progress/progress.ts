@@ -1,23 +1,8 @@
 import { playableStreamVideos, streamVideoRef, type StreamVideoLike } from '../stream/contract'
 
 /**
- * Kurzus-haladás SZÁMÍTÁSA — tiszta, DB- és Next-függés nélküli modul, hogy
- * kimerítően egységtesztelhető legyen (src/__tests__/course-progress.test.ts).
- * A lejátszó-oldal, a kurzusaim-lista és a lejátszó-komponens KIZÁRÓLAG ezt
- * használja, így a felületen mindenhol ugyanaz a szám jelenik meg.
- *
- * SZABÁLYOK (az élesben előforduló szélsőséges esetek miatt):
- * - A haladás mindig a JELENLEGI videólistához mérődik. Ha egy megnézett videót
- *   időközben töröltek a kurzusból (ORPHAN ref), az sem a megnézett, sem az
- *   összes darabszámba nem számít bele — és nem is hibázik. Enélkül „8/7 videó
- *   megnézve" típusú, hibásnak látszó állapotok keletkeznének.
- * - A számláló alapja a LEJÁTSZHATÓ videók listája (`playableStreamVideos`) —
- *   ugyanaz a szűrés, amit a lejátszó epizódlistája mutat. A feldolgozás alatti
- *   videó nem nézhető meg, tehát nem is várható el a vevőtől.
- * - 0 videós kurzus: nincs osztás nullával, a százalék 0, a felirat pedig a
- *   „Még nincs videó" állapot.
- * - Duplikált haladás-sor (ha a unique compound index még nem futott le a
- *   migrációval) nem torzíthat: a refek Set-be kerülnek.
+ * Kurzus-haladás számítás — tiszta modul. Jelenlegi lejátszható listához mér;
+ * orphan ref nem számít; 0 videó → 0%; duplikált ref Set-tel dedupel.
  */
 
 /** Üres/whitespace ref sosem azonosít videót — a Set-be sem kerül be. */

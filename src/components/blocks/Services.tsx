@@ -9,21 +9,11 @@ import '../../app/(frontend)/styles/blocks/services.css'
 
 /**
  * Services — szolgáltatás-sorok, „Így tudunk segíteni" (terv 2. katalógus, 3.4).
- *
  * A landing `kc-services` szekciójának portja: bal oldalon kis felirat, cím és
  * egy Media-kép, jobb oldalon 1–5 számozott sor (szám, cím, szöveg, opcionális
  * hivatkozás). Kép nélkül a sorok teljes szélességben állnak.
- *
  * A sor-hivatkozás a szabad `url` mezőből jön: belső útvonalra (/…) next/link,
  * külsőre sima `a` — a Button komponens mintája szerint. Új lapon nyíló linknél
- * a `rel="noopener noreferrer"` kötelező. A link akadálymentes neve a sor címét
- * is tartalmazza, mert az ismétlődő „Tovább…" feliratok önmagukban nem
- * megkülönböztethetők a linklistában.
- *
- * TÁBLA (board, `--edge`): a landing teljes képernyős szolgáltatás-táblája —
- * bal oldalon a felirat/cím és a tábla aljáig futó, balra kifutó fotó, jobb
- * oldalon a számozott sorok. `kc-container` helyett `kc-board__inner`, mert a
- * tábla a viewport teljes szélességét viseli (lásd `.kc-board`, styles/ui.css).
  */
 export interface ServicesProps {
   block: BlockServices
@@ -31,17 +21,11 @@ export interface ServicesProps {
 
 /**
  * A tábla-cím méret-fokozatának határa KARAKTERBEN.
- *
  * A tükör `--kc-text-board-6xl` lépcsője (89 px @1440) és a 7,2ch-s mérték egy
  * HÁROMSZAVAS landing-címre van kalibrálva („Így tudunk segíteni", 19 karakter).
  * A CMS viszont tetszőleges hosszú címet enged: a /szolgaltatasok 47 karakteres
  * címe ezen a lépcsőn 525 px magas, 6 soros blokká nőtt, és rácsúszott a tábla
  * fotójára (Chromiumban mérve, 1440×900 — az átfedés 328 px volt).
- *
- * A hosszú cím ezért egy lépcsővel kisebb tábla-méretet kap (a stíluslap
- * `--kc-text-board-4xl`-re váltja) — ÚJ méret nem keletkezik, a váltás a közös
- * skálán belül marad (UX-skill 4. pont). A határ szándékosan a landing címe
- * (19) fölött, de a tipikus mondat-címek (30+) alatt van.
  */
 const CIM_HOSSZ_HATAR = 24
 

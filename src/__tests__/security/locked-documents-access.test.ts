@@ -10,21 +10,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A GENERÁLT `payload-locked-documents` COLLECTION JOGOSULTSÁGA.
- *
- * ═══ MIT VÉD ═══
  * A dokumentum-zárakat tároló collectiont a Payload a szanitizálás közben
  * hozza létre `defaultAccess`-szel (payload/dist/locked-documents/config.js) —
  * vagyis a teljes CRUD BÁRMELY bejelentkezett felhasználónak (customer is)
  * nyitva állt a REST-felületen. Egy customer így dokumentum-zárat
- * hamisíthatott/törölhetett (szerkesztés-blokkoló zárhamisítás).
- *
- * ═══ MIT BIZONYÍT EZ A FÁJL ═══
- * 1. a collection TÉNYLEG ott van a VÉGLEGES, szanitált configban;
- * 2. a zár bekötve: mind a négy CRUD + readVersions az isStaffOrOwner;
- * 3. viselkedés-mátrix: anonim/customer → false, staff/owner → true;
- * 4. a zár FAIL-LOUD: hiányzó collectionnél a patch dob, nem hallgat.
- *
- * Adatbázis és hálózat sehol.
  */
 
 type Role = 'owner' | 'staff' | 'customer'

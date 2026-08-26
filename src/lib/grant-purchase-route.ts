@@ -6,30 +6,7 @@ import { logger } from './logger'
 import { generateRequestId, getRequestId } from './request-id'
 import { assertSameOrigin } from './security/same-origin'
 
-/**
- * POST /api/admin/grant-purchase route-handler factory.
- *
- * A függőségek (Payload-példány) injektálva vannak, így a handler
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/admin/grant-purchase/route.ts köti be a valódi configgal
- * (a src/lib/refund/route-handler.ts mintája).
- *
- * RBAC-szerződés (a refund route-handler auth-mintáját tükrözi, de ez NEM
- * pénzügyi művelet, ezért a staff is jogosult):
- * - anon hívó → 401,
- * - customer (és minden más szerepkör) → 403,
- * - staff VAGY owner → engedélyezett. A meglévő hasStaffOrOwnerRole
- *   predikátumot hívja (src/access/roles.ts) — RBAC-függvényt nem ír át.
- *
- * Válasz-szerződés:
- * - 200: { status: 'granted' | 'already-had', message, email, userId?,
- *   productId?, productLabel? } — az already-had NEM hiba (idempotens no-op)
- * - 400: hiányzó/érvénytelen email, kurzus-azonosító, indok, vagy a
- *   kurzusnál nincs megadva a hozzáférés hossza napokban
- * - 401/403: RBAC (fent)
- * - 404: ismeretlen felhasználó, illetve ismeretlen kurzus (külön üzenettel)
- * - 500: váratlan technikai hiba (naplózva requestId-vel)
- */
+/** POST /api/admin/grant-purchase — staff/owner RBAC, a grantPurchase szolgáltatást hívja. */
 export interface GrantPurchaseHandlerDeps {
   getPayload: () => Promise<Payload>
 }

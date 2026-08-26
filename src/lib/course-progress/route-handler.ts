@@ -12,26 +12,8 @@ import { assertSameOrigin } from '../security/same-origin'
 import { CourseProgressError, markVideoWatched } from './mark-watched'
 
 /**
- * POST /api/course-progress/mark-watched route-handler factory.
- *
- * A függőségek (Payload-példány) injektálva vannak, így a handler maga is
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/course-progress/mark-watched/route.ts köti be a valódi
- * configgal (a src/lib/refund/route-handler.ts és a stream-token mintája).
- *
- * Folyamat: same-origin őr → auth (payload.auth) → JSON-törzs → üzleti logika
- * (markVideoWatched) → { productId, videoRef, watchedAt, alreadyWatched }.
- *
- * Válasz-szerződés (a részletek: src/lib/course-progress/contract.ts):
- * - 200: sikeres jelölés VAGY idempotens ismétlés (`alreadyWatched: true`)
- * - 400: hibás törzs / a videoRef nem ehhez a kurzushoz tartozik
- * - 401: nincs bejelentkezve
- * - 403: nincs megvásárolva VAGY lejárt a hozzáférés
- * - 404: nincs ilyen elérhető kurzus
- * - 500: váratlan technikai hiba
- *
- * A felhasználónak MINDIG magyar üzenet megy; a technikai részlet kizárólag a
- * strukturált naplóba kerül, requestId-vel.
+ * POST /api/course-progress/mark-watched factory. Injektált függőségek; válaszok:
+ * 200/400/401/403/404/500 (részletek: contract.ts).
  */
 export interface CourseProgressHandlerDeps {
   getPayload: () => Promise<Payload>

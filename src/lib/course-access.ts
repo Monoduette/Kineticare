@@ -1,31 +1,11 @@
 /**
- * Kurzus-hozzáférés érvényessége — a rendszer EGYETLEN igazságforrása (A1).
+ * Kurzus-hozzáférés érvényessége — egyetlen igazságforrása (A1). Tiszta modul,
+ * nincs DB-függés.
  *
- * A products `accessDurationDays` mezője (src/plugins/ecommerce.ts) eddig csak
- * definiálva volt, de sehol nem érvényesült: aki egyszer megvette a kurzust,
- * örökre hozzáfért. Ez a modul adja a szabályt; a hozzáférési pontok
- * (kurzusaim-lista, lejátszó-oldal, stream-token kiadás) KIZÁRÓLAG ezt
- * használják.
- *
- * A modul szándékosan TISZTA: nincs DB-, Payload- vagy Next-függése, így
- * kimerítően egységtesztelhető (src/__tests__/course-access.test.ts). A
- * vásárlási időpont felderítése (paid rendelések) a course-access-lookup.ts
- * feladata.
- *
- * SZABÁLY (a lejárat számítása):
- * - `accessDurationDays` hiányzik / null / nem szám / 0 / negatív → KORLÁTLAN
- *   hozzáférés. Ez a MAI viselkedés, és ez a default: a mező üresen hagyása
- *   sosem szüntetheti meg egy meglévő vásárló hozzáférését.
- * - Ismeretlen vásárlási időpont (nincs paid rendelés a termékre — pl. kézzel
- *   adott vagy ingyenes hozzáférés, lásd src/scripts/grant-purchase.ts) →
- *   szintén KORLÁTLAN (fail-open). Lejáratot csak akkor számolunk, ha a
- *   kezdőpont bizonyítható; enélkül nem zárunk ki senkit.
- * - Egyébként: lejárat = vásárlás időpontja + `accessDurationDays` × 24 óra
- *   (fix 24 órás napok, nem naptári nap). A hozzáférés a lejárat pillanatáig
- *   él: `most < lejárat` → van hozzáférés, `most >= lejárat` → lejárt.
+ * `accessDurationDays` hiányzik/0/negatív → korlátlan. Ismeretlen vásárlási
+ * dátum → fail-open (korlátlan). Egyébként: lejárat = vásárlás + N×24 óra;
+ * `most >= lejárat` → lejárt.
  */
-
-/** Egy nap ezredmásodpercben — a lejárat fix 24 órás napokkal számol. */
 export const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 export type CourseAccessReason =

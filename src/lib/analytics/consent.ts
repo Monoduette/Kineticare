@@ -1,30 +1,10 @@
 /**
- * Analytics-hozzájárulás (consent) — tiszta, DOM-független állapotgép.
+ * Analytics consent állapotgép — DOM-független; posthog/ga4 innen importál.
  *
- * Ez az ALSÓ szint: a posthog.ts és a ConsentBanner is innen importál —
- * ez a modul viszont NEM importál a posthog.ts-ből (körmenti import TILOS),
- * így a tárolókulcs és az eseménynév EGYETLEN igazságforrása itt él.
- *
- * Állapotok:
- * - 'unknown'  — a látogató még nem döntött (a banner csak ekkor látszik,
- *               az analitika ilyenkor TILTOTT).
- * - 'granted'  — explicit hozzájárulás (opt-in; GDPR szerint csak ez
- *               engedélyezi a trackinget).
- * - 'denied'   — explicit elutasítás (a PostHog sosem inicializálódik).
- *
- * A döntés IDŐBÉLYEGET is kap (CONSENT_TIMESTAMP_KEY): a hozzájárulás nem
- * örök életű, a sávnak időnként vissza kell térnie az előző beállítással
- * (CONSENT_MAX_AGE_DAYS — az indoklás ott, forrásokkal). A lejárat CSAK a
- * sávot hozza vissza; a korábbi döntés addig érvényben marad, amíg a látogató
- * újat nem hoz.
- *
- * Minden függvény injektálható tárolóval/célral hívható → node-környezetben,
- * böngésző-API nélkül is egységtesztelhető. Tárolási hiba (pl. letiltott
- * sütik/tárhely) esetén a viselkedés konzervatív: olvasás 'unknown'-t ad,
- * írás false-szal tér viss — sosem engedélyezünk vakon.
+ * Állapotok: unknown (banner látszik), granted, denied. Időbélyeg külön kulcsban;
+ * lejárat csak a bannert hozza vissza. Injektálható tároló → unit-tesztelhető.
+ * Tárolási hiba → konzervatív (unknown / írás sikertelen).
  */
-
-/** Analytics-hozzájárulás tároló-ablakkulcs (localStorage). */
 export const CONSENT_STORAGE_KEY = 'kc_analytics_consent'
 
 /**
@@ -36,40 +16,7 @@ export const CONSENT_STORAGE_KEY = 'kc_analytics_consent'
  */
 export const CONSENT_TIMESTAMP_KEY = 'kc_analytics_consent_at'
 
-/**
- * ÚJRAKÉRDEZÉSI KÜSZÖB — 365 nap.
- *
- * MIÉRT PONT ENNYI (a döntés indoklása, forrásokkal):
- *
- * 1. KÖTELEZŐ PLAFON. A Barion „Cookie-kezelő követelményei a Barion Pixelhez"
- *    előírása: „a hozzájárulás kezelő minimum minden 13. hónapban - javasoltan
- *    30 naponként - megjelenjen az előzőleg mentett beállításokkal".
- *    (docs.barion.com/Barion-Pixel-hozzajarulaskezelesi_kovetelmenyek)
- *    A 13 hónap tehát FELSŐ korlát: ennél ritkábban tilos kérdezni.
- * 2. A 13 HÓNAP HELYETT 365 NAP, biztonsági ráhagyással. A hónapok hossza
- *    ingadozik, a látogató órája elállhat, és a látogató ritkán tér vissza
- *    pont a határnapon; 365 nappal a plafon alatt maradunk akkor is, ha a
- *    következő látogatás hetekkel a lejárat után van. Egybevág azzal, amiben
- *    a felügyeletek gyakorlata konvergál: az EDPB (WP29) „appropriate
- *    intervals" ajánlása mellett a nemzeti hatóságok 12 hónapot tekintenek
- *    külső határnak (IAB Europe: Mapping Regulator Consent Guidelines).
- * 3. MIÉRT NEM A 30 NAPOS AJÁNLÁS. A havi újrakérdezés hozzájárulás-fáradtságot
- *    (consent fatigue) okoz: a látogató a leggyorsabb gombot nyomja, hogy a
- *    sáv eltűnjön, ami éppen a hozzájárulás minőségét rontja le, nem javítja
- *    (NN/g — Cookie Permissions 101, nngroup.com/articles/cookie-permissions/;
- *    a sáv ugyanezért marad rövid szövegű és két egyenrangú gombos). Aki
- *    ELUTASÍTOTT, azt havonta újrakérdezni ráadásul zaklató minta.
- *    Megjegyzés: a CNIL 6 hónapot tart jó gyakorlatnak — ha a tulajdonos ezt
- *    kéri, ez az EGY konstans (183 nap) állítandó át, semmi más.
- * 4. A gyakorlatban a valódi újrakérdezés ennél sűrűbb: a Safari ITP a
- *    szkriptből írt localStorage-t 7 nap inaktivitás után törli, a törölt
- *    tárolt döntés pedig 'unknown' → a sáv magától visszatér.
- *
- * FONTOS: a lejárat CSAK a sávot hozza vissza. A korábbi döntés érvényben
- * marad (readConsent változatlanul azt adja vissza), amíg a látogató nem dönt
- * újra — a Barion követelménye is „az előzőleg mentett beállításokkal" való
- * megjelenítés, nem a döntés eldobása.
- */
+/** Újrakérdezés 365 nap után (Barion max 13 hó; lejárat csak a sávot hozza vissza). */
 export const CONSENT_MAX_AGE_DAYS = 365
 export const CONSENT_MAX_AGE_MS = CONSENT_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
 

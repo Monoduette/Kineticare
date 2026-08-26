@@ -40,87 +40,10 @@ import type { Product, User } from '../payload-types'
 
 /**
  * ŐR — A HÁROM ÁR-ÁLLAPOT A PÉNZTÁRON ÉS A KOSÁRBAN.
- *
- * ═══ A HIBAOSZTÁLY ═══
  * A `resolveCourseCta` (src/lib/courses.ts) 2026-08-16 óta HÁROM ár-állapotot
  * ismer: `isFreeCourse` (tudatosan ingyenes), `isPaidCourse` (ÉRVÉNYES ára van)
  * és a kettő közötti HIÁNYOS KONFIGURÁCIÓ. A kurzusoldal eszerint működik, a
  * pénztár és a kosár viszont csak KÉT állapotot ismert: „ingyenes" és „minden
- * más". Emiatt a hiányosan konfigurált termék
- *   - a `/penztar`-on TELJES beküldő űrlapot kapott (vendég- és számlázási
- *     mezők, jogszabályi nyilatkozatok, „Megrendelem és fizetek" gomb) ár
- *     nélkül, miközben a beküldést a checkout ár-kapuja GARANTÁLTAN elutasítja:
- *     „A termékhez nem tartozik érvényes ár, így nem vásárolható meg."
- *     (`src/lib/checkout/start-checkout.ts`);
- *   - a `/kosar`-ban „Végösszeg: 0 Ft"-ot mutatott (a `cartTotalHuf` a `null`
- *     árat 0-nak vette), és felkínálta a pénztár-gombot;
- *   - az ARCHIVÁLT termék ugyanígy bekerült a kosárba, kapott árat és
- *     pénztár-gombot, miközben ugyanaz a termék a kurzusoldalon SZÁNDÉKOSAN
- *     gomb nélküli.
- *
- * Ez ugyanaz a hibaosztály, amit a lap saját kommentje az archivált ágnál már
- * kimondott: „a díszlet-űrlap a néma hiba kínosabbik fajtája".
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. A `/penztar` a NÉGY hibás ár-fixtúrára (`priceInHUF: null`, `0`,
- *     negatív, illetve `priceInHUFEnabled: undefined` — mind PUBLIKÁLT) NEM
- *     rendereli a beküldő űrlapot, hanem magyarázó állapotot ad EGY
- *     továbblépéssel.
- *  2. POZITÍV KONTROLL: az ÉRVÉNYES árú termék űrlapja BITRE megmarad (ha a
- *     kapu ezt is elfogja, a webshopban SEMMIT nem lehet megvenni).
- *  3. A kosár ugyanezt a három állapotot ismeri: az archivált és a hibás
- *     konfigurációjú tétel NEM kap pénztár-gombot, hanem magyarázó mondatot.
- *  4. A „Végösszeg: 0 Ft" hazugság megszűnik: nem vásárolható tételnél nincs
- *     kimondott végösszeg.
- *  5. Az INGYENES tétel gombja a kurzusoldal igénylő űrlapjára visz
- *     (`courseCtaHref`), nem a pénztárba.
- *  6. A kosár feliratai a §3.2 CTA-szótárból jönnek (`ctaLabel`), nem
- *     literálként — az elgépelt „Tovább a penztárhoz" nem tud visszajönni.
- *  7. A végösszeg a közös `formatPriceHuf`-fal formázódik (nem-törhető
- *     szóközzel), nem `toLocaleString`-gel.
- *  8. A kosár-oldal az „ingyenes" kérdést az EGYETLEN igazságforrásból
- *     (`isFreeCourse`) kérdezi, nem inline másolattal.
- *  9. MÉRT számok: kontraszt (SC 1.4.3), érintőcél (SC 2.5.5), sorhossz és a
- *     320 px-es reflow (SC 1.4.10).
- *
- * ═══ KÜLSŐ FORRÁSOK ═══
- * - Nielsen Norman Group, „A Link is a Promise" — „The words in a link label
- *   make a strong suggestion about the page that is being linked to."; „Any
- *   broken promise, large or small, chips away at trust and credibility."
- *   https://www.nngroup.com/articles/link-promise/
- * - Nielsen Norman Group, „Error-Message Guidelines" — „Concisely and
- *   precisely describe the issue."; „Merely stating the problem is also not
- *   enough; offer some potential remedies."
- *   https://www.nngroup.com/articles/error-message-guidelines/
- * - GOV.UK Design System, Button — „Disabled buttons have poor contrast and
- *   can confuse some users, so avoid them if possible."; „Avoid using multiple
- *   default buttons on a single page."
- *   https://design-system.service.gov.uk/components/button/
- * - Baymard Institute, „Cart Abandonment Rate Statistics" — a nem böngésző
- *   elhagyók 12%-a azért lép ki, mert „I couldn't see / calculate total order
- *   cost up-front". Vagyis a végösszeg-sor nem lehet díszlet: ha nem igaz, az
- *   mérhető bevételkiesés. https://baymard.com/lists/cart-abandonment-rate
- * - Baymard Institute, „Let Users Purchase Temporarily 'Out of Stock'
- *   Products" — „If users are simply told a product or product variation is
- *   out of stock, some will look for alternative products on the site but 30%
- *   are likely to simply abandon to look for the product elsewhere." Ezért kap
- *   a nem vásárolható tétel ALTERNATÍVÁT (kurzuslista), nem puszta tiltást.
- *   https://baymard.com/blog/handling-out-of-stock-products
- * - WCAG 2.2: SC 1.4.3 Contrast (Minimum), SC 1.4.8 Visual Presentation
- *   (sorhossz), SC 1.4.10 Reflow, SC 2.4.4 Link Purpose (In Context),
- *   SC 2.5.5 Target Size (Enhanced), SC 3.2.4 Consistent Identification.
- *
- * ═══ MIÉRT ÍGY MÉR ═══
- * a) A forrásból KISZŰRJÜK a kommenteket illesztés előtt (a repó megtörtént
- *    csapdája: a magyarázó komment tartalmazta a keresett szöveget, és az őr
- *    emiatt vak volt).
- * b) A fixtúrák LITERÁLKÉNT állnak, külön állítás méri a literál és a kód
- *    konstansának egyezését.
- * c) A VALÓDI komponensek futnak (a `getPayload` és a `next/headers` mockolva),
- *    tehát a KIRENDERELT kimeneten mérünk. A `CartView` külső store-ja a
- *    szerver-pillanatképen keresztül kap tételeket (`renderToStaticMarkup`
- *    ezt hívja), így a kosár tartalma determinisztikus.
- * d) Hálózati hívás SEHOL nem indul: a Payload mockolt, a komponensek tiszták.
  */
 
 vi.mock('payload', async (importOriginal) => {
@@ -288,9 +211,7 @@ function findElement(node: unknown, type: unknown): ReactElement | null {
 
 const termekParam = (product: Product): Record<string, string> => ({ termek: String(product.id) })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. A PÉNZTÁR HARMADIK ÁR-ÁLLAPOTA — nincs díszlet-űrlap
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — hibás ár-konfiguráció: magyarázó állapot, nem beküldő űrlap', () => {
   for (const { nev, termek } of HIBAS_ARU_TERMEKEK) {
@@ -354,9 +275,7 @@ describe('/penztar — hibás ár-konfiguráció: magyarázó állapot, nem bek�
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. POZITÍV KONTROLL — az ÉRVÉNYES árú termék útja sértetlen
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — az érvényes árú termék űrlapja változatlan', () => {
   it('a CheckoutForm a helyes proppal renderelődik', async () => {
@@ -388,9 +307,7 @@ describe('/penztar — az érvényes árú termék űrlapja változatlan', () =>
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. A LAP FELIRATAI A SZÓTÁRBÓL JÖNNEK
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/penztar — a kurzuslista-felirat a §3.2 szótárból jön', () => {
   const oldal = kommentNelkul(olvas('app/(frontend)/penztar/page.tsx'))
@@ -414,9 +331,7 @@ describe('/penztar — a kurzuslista-felirat a §3.2 szótárból jön', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. A KOSÁR-OLDAL AZ EGYETLEN IGAZSÁGFORRÁSBÓL KÉRDEZ
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('/kosar — az „ingyenes" és a „vásárolható" kérdés forrása', () => {
   const oldal = kommentNelkul(olvas('app/(frontend)/kosar/page.tsx'))
@@ -435,9 +350,7 @@ describe('/kosar — az „ingyenes" és a „vásárolható" kérdés forrása'
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. A KOSÁR HÁROM ÁLLAPOTA — a KIRENDERELT kimeneten mérve
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * A `CartView` a `cartStore` SZERVER-pillanatképéből olvas, amikor a
@@ -572,9 +485,7 @@ describe('/kosar — FIZETŐS tétel: a pénztár útja sértetlen (pozitív kon
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. A KOSÁR FELIRATAI — szótárból, elgépelés nélkül
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('CartView — a feliratok a §3.2 CTA-szótárból jönnek', () => {
   const forras = kommentNelkul(olvas('components/checkout/CartView.tsx'))
@@ -654,9 +565,7 @@ describe('CartView — a feliratok a §3.2 CTA-szótárból jönnek', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 7. A KOSÁR ÁLLAPOTGÉPE — egységteszt (a régi kosarakkal együtt)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const tetel = (reszlet: Partial<CartItem>): CartItem => ({
   productId: 1,
@@ -807,9 +716,7 @@ describe('cartTotalHuf és cartSummary', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 8. MÉRÉS — kontraszt, érintőcél, sorhossz, 320 px
-// ═══════════════════════════════════════════════════════════════════════════
 
 type RGB = readonly [number, number, number]
 

@@ -1,21 +1,5 @@
 /**
- * Hírlevél-feliratkozás (C9) — validáció, KÉT alakra ugyanazokkal a
- * szabályokkal.
- *
- * A modul szándékosan tiszta (DOM-, Payload- és környezet-független), a
- * kapcsolat-űrlap `validation.ts` + `contact-submission.ts` párosának mintájára
- * — azzal a különbséggel, hogy itt a KLIENS- és a SZERVER-oldali szabály EGY
- * fájlban él. Indoklás: a két réteg szabályai csak együtt módosíthatók (a
- * kapcsolat-űrlapnál ezt kommentek kötik össze két fájlon át), és a
- * feliratkozás mindössze két mezős — a közös fájl így nem nő átláthatatlanra.
- *
- * Mezők (a „Hírlevél" form-builder űrlap sémája):
- *  - `email` — KÖTELEZŐ, formailag ellenőrzött;
- *  - `consentNewsletter` — KÖTELEZŐ, SOSEM előpipált GDPR-hozzájárulás.
- *
- * A hozzájárulás mezőneve szándékosan NEM a kapcsolat-űrlap `consentPrivacy`-je:
- * a GDPR célhoz kötöttsége miatt a hírlevél-küldés önálló adatkezelési cél, és
- * az adminban is külön kell látszania, melyik hozzájárulás melyik célra szólt.
+ * Hírlevél validáció — kliens és szerver egy fájlban. Mezők: email + consentNewsletter.
  */
 
 export interface NewsletterFormValues {

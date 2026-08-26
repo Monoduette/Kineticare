@@ -19,41 +19,13 @@ import { trimTruncatedProgress } from './progress-truncation'
 import { readStatisticsPages } from './query'
 
 /**
- * Kurzus-hatás lekérdezés — a Payload local API-ról a tiszta engagement-
- * aggregátor bemenete.
- *
- * ═══ SZABÁLYOK ═══
- * - `overrideAccess: true` — a hívó (StatisticsView) felelőssége, hogy ezt
- *   CSAK a szerepkör-kapu (`canAccessStatistics`) UTÁN hívja. Ugyanaz a
- *   szerződés, mint a `queryRevenueReport`-nál: a függvény magában nem
- *   ellenőriz szerepkört, hogy a unit-teszt Payload-mockkal, auth nélkül
- *   futhasson.
- * - A kurzusonkénti CIKLUS szándékos: a webshopban kevés kurzus van (a
- *   plafon is ezt tükrözi), és a soros lekérdezés kíméli az adatbázist —
- *   párhuzamosításra itt nincs szükség. MÉRVE (2026-08-21, injektált mockkal,
- *   a `payload.find` hívásait számolva): 12 kurzus / 200 diák → 25 hívás;
- *   50 kurzus / 500 diák → 201; a plafonon, 200 kurzus / 1000 diák → 1404.
- *   A mai kínálat néhány kurzus, tehát a valós hívásszám húsz körül van; a
- *   párhuzamosítás itt bonyolultságot venne a ma nem létező terhelésért.
- *   Ha a kínálat egyszer tucatnyi fölé nő, ez a szám a felülvizsgálat jele.
- * - Egy kurzus hibája NEM viheti el az egész szekciót: a ciklus kurzusonként
- *   fog hibát, naplózza, átugorja az adott kurzust, és a kimaradt darabszámot
- *   a jelentés `skipped` mezője viszi ki a felületre. Néma kihagyás nincs.
- * - A felső korlátok a kurzus-haladás handler plafonjainak FELE
- *   (src/lib/admin/course-progress-handler.ts): ez a nézet MINDEN kurzust
- *   egy kérésben aggregál, a handler egyet — a memória-költségvetés így
- *   marad összemérhető. Az importált konstansokból számolódnak, tehát a
- *   két hely nem tud szétcsúszni.
- * - Csonkolásnál a számok ALSÓ becslések, de SOSEM hamisak: a haladás-lista
- *   plafonján túli diákok kimaradnak a sorból (`trimTruncatedProgress`),
- *   nem pedig „nem kezdte el"-ként jelennek meg. Enélkül egy kész diák a
- *   „nem kezdte el" oszlopba esne, vagyis a torzítás iránya ELLENTÉTES
- *   lenne a `truncated` figyelmeztetés ígéretével. A `truncated` jelzést a
- *   nézet magyarul kimondja; a hallgatónkénti pontos adat a kurzus
- *   szerkesztőlapján él, ahol a handler UGYANEZT a közös szabályt hívja.
- * - A tananyaghoz `depth: 0` elég (a course-progress-handler mintája): az
- *   összesítés a mellékleteket nem használja, a lekérdezés így olcsóbb.
+ * Kurzus-hatás lekérdezés — Payload local API → engagement aggregátor.
+ * overrideAccess: true; a hívó biztosítsa a canAccessStatistics kaput.
+ * Kurzusonkénti ciklus + enrollment/progress plafon fele a handlerének.
+ * Csonkolásnál trimTruncatedProgress; egy kurzus hibája nem viszi el a szekciót.
  */
+
+/** Egy lapon */
 
 /** Egy lapon beolvasott kurzusok száma. */
 export const ENGAGEMENT_PRODUCT_PAGE_SIZE = 50
@@ -100,23 +72,7 @@ const PRODUCT_SELECT = {
   videos: true,
 } as const
 
-/*
- * A hozzáférő-lekérdezés KIZÁRÓLAG a nevet kéri ki (az `id`-t a Payload
- * select-módban mindig adja). A vevő e-mailje, számlázási adata és
- * purchases-listája így be sem kerül a memóriába.
- *
- * ═══ MIÉRT PONT A NÉV, ÉS MIÉRT NEM TÖBB ═══
- * A statisztika-oldal kurzusonként kiírja a „nem kezdte el" hallgatók nevét
- * (legfeljebb tízet), mert a tulajdonos ezt kérte, és mert ebből a csoportból
- * lesz aznap cselekvés. Az E-MAIL viszont a magasabb kockázatú mező, és nem is
- * kérte senki: a döntési dokumentum 6.7 pontja tiltja a lapra vitelét
- * (docs/statisztika-audit-2026-08-21.md). A hallgatónkénti teljes adat
- * (e-maillel, kereséssel, exporttal) a kurzus szerkesztőlapján él tovább.
- *
- * Ezt a szűkítést őr-teszt védi: a users-lekérdezés select-je pontosan
- * `{ name: true }`, és a renderelt lapon nem lehet e-mail
- * (src/__tests__/statistics-engagement.test.ts).
- */
+/* A hozzáférő-lekérdezés csak a nevet kéri (e-mail nem kerül a stat oldalra). */
 const ENROLLMENT_SELECT = { name: true } as const
 
 const PROGRESS_SELECT = { user: true, videoRef: true } as const

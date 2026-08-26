@@ -13,21 +13,8 @@ import {
 } from './validation'
 
 /**
- * Az „Időpontkérés" form-builder űrlap — ADAT, nem séma.
- *
- * A @payloadcms/plugin-form-builder űrlapjai a `forms` collection SORAI: az új
- * űrlap tehát adatbázis-TARTALOM, nincs hozzá séma-változás és nincs migráció
- * (CLAUDE.md 3. tilos zóna). Ugyanaz a minta, mint a „Kapcsolat"
- * (`ensureContactForm`) és a „Hírlevél" (`ensureNewsletterForm`) űrlapé.
- *
- * A mezőket a szerkesztő az adminban átszabhatja; a beküldést viszont a
- * frontend-kliens állítja össze (`src/lib/appointment/submit.ts`), ezért a
- * MEZŐNEVEK a szerződés része — átnevezésük a kliens- és a szerver-validációt
- * is érinti (`src/lib/appointment/validation.ts`).
- *
- * A `forms` collection a pluginből jön, és a `src/payload-types.ts` nem
- * tartalmazza, ezért a slug itt is castolt — ugyanaz a dokumentált minta, mint
- * a másik két űrlapnál.
+ * „Időpontkérés" form-builder űrlap adat — nincs migráció. Mezőnevek szerződés
+ * (`validation.ts`, `submit.ts`). Seed nem ír felül meglévőt.
  */
 
 export const APPOINTMENT_FORM_TITLE = 'Időpontkérés'

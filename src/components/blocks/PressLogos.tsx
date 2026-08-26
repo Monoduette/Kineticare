@@ -9,24 +9,11 @@ import '../../app/(frontend)/styles/blocks/press-logos.css'
 
 /**
  * PressLogos — sajtó-logósor (szekció-rendszer terv 2. katalógus, 3.4).
- *
  * A landing `kc-press` sávjának portja: rövid felirat + a médiamegjelenések és
  * szakmai szervezetek logói egy sorban, a Médiatárból.
- *
  * Képleírás: alapesetben a Media dokumentum `alt`-ja jelenik meg (egy helyen
  * karbantartva); ha a szerkesztő a blokkban felülírta, az élvez elsőbbséget —
  * ilyenkor a MediaImage-nek átadott média-objektum `alt`-ja cserélődik le, hogy
- * a felülírás a `srcSet`/méret-logikát ne kerülje meg.
- *
- * A szekció landmarkjának nevét a felirat adja. Kitöltetlen feliratnál a
- * beépített `DEFAULT_HEADING` áll be: a logósor felirat nélkül megfejtendő
- * képsorrá válna (a látogató nem tudja, MIÉRT látja őket), a szekció pedig
- * névtelen landmarkként a képernyőolvasóban is elveszne. A felirat így nem
- * „kitalált marketingszöveg", hanem a szekció megnevezése — a szerkesztő
- * bármikor felülírja a blokk `heading` mezőjével.
- *
- * SÁV (board `--band`): a tükörben a `kc-press` teljes szélességű, de NEM
- * teljes képernyős — ezért full-bleed sáv természetes magassággal, nem tábla.
  */
 
 /**

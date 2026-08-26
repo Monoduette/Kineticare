@@ -16,26 +16,11 @@ import {
 
 /**
  * CURRICULUM-RAIL — a kurzus tananyaga modul-akkordeonként.
- *
- * ═══ MIÉRT FÜGGETLEN DISCLOSURE-ÖK ═══
  * A rail NEM „egy nyitva" akkordeon: minden modul külön nyitható és csukható.
  * Egy tananyagban a vevő rendszeresen összehasonlít („hol tartok a 2.-ban, mi
  * jön a 3.-ban"), és az egymást bezáró panelek ezt ellehetetlenítik — a
  * kényszerű bezárás ráadásul elveszi a felhasználó által beállított nézetet.
  * A W3C APG ezért a független disclosure-t ajánlja alapesetnek.
- *
- * ═══ AZ APG-SZERZŐDÉS, AMIT BETARTUNK ═══
- *   <h3><button aria-expanded aria-controls="<panel>" id="<fejlec>">…</button></h3>
- *   <div id="<panel>" aria-labelledby="<fejlec>">…</div>
- * A gomb belsejében NINCS másik interaktív elem (a chevron dekoratív SVG), és a
- * panel NEM kap `role="region"`-t: 8+ modulnál a landmark-lista használhatatlanná
- * duzzadna, miközben a panelt a fejléc-gomb már megnevezi.
- *
- * ═══ SZÍNFÜGGETLENSÉG (WCAG 1.4.1) ═══
- * A státusz ALAKBAN különbözik (üres kör / tömör pipa), és MINDEN sor visel egy
- * csak képernyőolvasónak szánt állapotszöveget: „Befejezve" / „Nem kezdett" /
- * „Hamarosan elérhető". Az aktív leckét nem csak az akcentcsík jelöli, hanem
- * `aria-current="true"` is.
  */
 
 export interface CurriculumRailProps {

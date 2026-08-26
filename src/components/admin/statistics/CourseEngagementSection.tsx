@@ -24,55 +24,7 @@ import {
 
 /**
  * „Ki hol tart a kurzusokban" szekció — eladás × haladás kurzusonként: hányan
- * férnek hozzá, hányan kezdték el, fejezték be, és hányan vették meg úgy, hogy
- * el sem kezdték. A megrendelői igény: „arra is lehessen szűrni, hogy ki az,
- * mennyien kezdték el, fejezték be, aki megvette, de el sem kezdte".
- *
- * ═══ MIÉRT VAN ITT NÉVSOR, ÉS MIÉRT CSAK RÉSZBEN ═══
- * A tulajdonos 2026-08-21-i kérése szó szerint az volt, hogy „lehessen látni,
- * ki az, aki elkezdte a kurzust név szerint, és ki az, aki nem". A döntés
- * (docs/statisztika-audit-2026-08-21.md 1. pont) mindkét felületet kiszolgálja:
- *   - ITT, nyitható blokkban, a „nem kezdte el" nevek, legfeljebb tíz. Ez az
- *     EGYETLEN csoport, amiből aznap cselekvés lesz, és ennyi fér el egy
- *     irányítópulton („gyors leolvasásra, nem felfedezésre való" — NN/g,
- *     Dashboard Design:
- *     https://www.nngroup.com/articles/dashboards-preattentive/).
- *   - A TELJES névsor, kereséssel, szűrővel és CSV-exporttal, marad a kurzus
- *     szerkesztőlapján: egy adat egy helyen él
- *     (docs/informacios-architektura.md).
- * A blokkba KIZÁRÓLAG NÉV kerül, e-mail soha (döntési dokumentum 6.7): az
- * e-mail a magasabb kockázatú mező, és nem is kérte senki.
- *
- * ═══ MIÉRT MONDJA KI A KIHAGYÁST ═══
  * Darabszámnál a csonkolás elfogadható alsó becslés. NÉVSORNÁL NEM AZ: egy
- * hiányzó név nem becslés, hanem hamis állítás egy konkrét emberről („nincs a
- * listán" → „nem kezdte el"). Ezért a blokk kurzusonként kimondja, ha a
- * lekérdezés kihagyott valakit (`omitted`), vagy ha a kurzus listája a felső
- * korlátba ütközött (`truncated`). Őr-teszt védi
- * (src/__tests__/statistics-engagement.test.ts).
- *
- * ═══ SZÓHASZNÁLAT: „HOZZÁFÉR" (vezetői döntés, 2026-08-21) ═══
- * Az oszlop neve korábban „Beiratkozott" volt. A 2026-08-20-i audit nem azt
- * döntötte el, melyik szó a jobb, hanem azt, hogy a két felület UGYANAZT
- * mondja (WCAG 2.2 SC 3.2.4 Consistent Identification:
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
- * Az alapkérdés most dőlt el: „Hozzáfér", mert ez írja le, ami történt (a vevő
- * megvásárolta és hozzáférést kapott), mert a `users` mező is vásárlás-nyelvet
- * használ („Megvásárolt kurzusok"), és mert a hozzáférést ADÓ panel már ma is
- * így beszél („Hozzáférés adása"). Webshopban senki nem iratkozik be. A kurzus
- * lapjának haladás-panelje UGYANEBBEN a körben változik ugyanerre, tehát a
- * 3.2.4-konzisztencia egy pillanatra sem sérül.
- * Forrás a döntéshez: docs/statisztika-audit-2026-08-21.md 8.2.
- *
- * ═══ HANGSÚLY ═══
- * A „Nem kezdte el" érték nullánál nagyobb esetben vastag, és a márka danger
- * tokenjét kapja (--kc-as-danger = #b3261e, fehér felületen számolt 6,54:1
- * kontraszt — custom.scss jegyzőkönyv). A Payload `--theme-error-500`
- * tartalék KIKERÜLT: fehéren mérve 4,13:1, vagyis a 4,5:1 küszöb alatt van
- * (döntési dokumentum 8.3 — a saját komponenseinkben a márka-tokenre
- * cserélünk, a Payload globálisához nem nyúlunk). A jelentést az oszlopfejléc
- * szövege hordozza, a szín csak kiegészítő jelzés (WCAG 2.2 SC 1.4.1 Use of
- * Color: https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html).
  */
 
 /* A 8 oszlop + linkszöveg miatt szélesebb minimum, mint a bevétel-tábláké:
@@ -235,13 +187,10 @@ function vanNevsorBlokk(course: CourseEngagementRow): boolean {
 /**
  * A kurzus MÁSODIK táblasora: a nyitható névsor, vagy — ha névsor nincs — a
  * hiányosságot kimondó mondat.
- *
- * ═══ MIÉRT NEM CSAK A BLOKKON BELÜL ═══
  * A kihagyás-mondat eddig KIZÁRÓLAG a nyitható blokkban élt, az pedig csak
  * `notStarted > 0` esetén jelent meg. Vagyis pont akkor volt láthatatlan,
  * amikor a tábla azt állítja, hogy MINDENKI elkezdte — holott a kimaradt
  * hozzáférők között lehet olyan, aki nem. A figyelmeztetés ezért a névsortól
- * függetlenül is megjelenik.
  */
 function CourseNoteRow({ course }: { course: CourseEngagementRow }) {
   const nevsor = vanNevsorBlokk(course)

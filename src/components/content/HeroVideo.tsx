@@ -7,18 +7,10 @@ import { buildHeroStreamEmbedUrl, buildHeroStreamPosterUrl } from '@/lib/hero-vi
 /**
  * HeroVideo — a kezdőlap fejlécének animált, reszponzív háttérvideója
  * (Bunny Stream publikus library, PUBLIKUS marketing-tartalom).
- *
  * Viselkedés:
  * - A poszterkép azonnal megjelenik (a Bunny pull-zone thumbnailje), az
- *   iframe csak utána mountolódik — így nincs fehér vaku az oldalletöltéskor.
+ * iframe csak utána mountolódik — így nincs fehér vaku az oldalletöltéskor.
  * - autoplay + muted + loop (a mobil autoplay-szabályoknak megfelelően:
- *   autoplay csak muted mellett indul). A vezérlők elrejtése a Bunnynál
- *   library-szintű Player-beállítás, nem URL-paraméter — lásd
- *   docs/hero-video-feltoltes.md.
- * - prefers-reduced-motion: a videó NEM töltődik le egyáltalán (az iframe
- *   nem mountol), csak a poszterkép — akadálymentesítés + sávsáv-takarékosság.
- * - Dekoratív elem: aria-hidden, nem fókuszolható; a hero szövege hordozza
- *   a tartalmat (nincs szükség feliratra/átiratra).
  */
 export interface HeroVideoProps {
   streamId: string

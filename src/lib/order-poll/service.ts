@@ -13,42 +13,17 @@ import { applyBarionStateTransition } from '../order-status/apply-barion-state'
 import { getSzamlazzConfig } from '../szamlazz'
 
 /**
- * order-poll szolgáltatás (W4-02) — a payment_pending-ben ragadt rendelések
- * utánpollolása a Barion v4 GetState-tel. Ez a "második védővonal": ha egy
- * callback elveszik (hálózati hiba, deploy, Barion-késés), a fizetés akkor is
- * lezárul — a v4 válasz a végső igazság, a callback csak gyorsító.
+ * order-poll — payment_pending utánpollolás GetState v4-gyel (callback mentőháló).
+ * A callback nem bizonyíték; a v4 válasz a végső igazság.
  */
 
 export const ORDER_POLL_BATCH_SIZE = 25
-/**
- * W1 — rejected (mérgezett) sorfej után ennyi PÓTLAP kérhető ugyanabban a
- * futásban. 1 tartja a mennyezetet: egy poll nem járhatja be a teljes táblát,
- * de a 26. (ablakon kívüli) Succeeded rendelés mégis paid-re zárulhat.
- */
+/** Rejected sorfej után ennyi pótlap kérhető ugyanabban a futásban. */
 export const ORDER_POLL_REFILL_PAGES = 1
-/**
- * Ennyi EGYMÁST KÖVETŐ szállítási hiba (timeout / hálózat / 5xx) után szakítjuk
- * meg a futást. A számláló minden SIKERES GetState-re nullázódik, a rendelés-
- * szintű hibák (pl. 404) pedig se nem növelik, se nem nullázzák — így egyetlen
- * mérgezett rendelés (poison pill) nem tudja sorfejként befagyasztani a többit,
- * egy valódi szolgáltatói kimaradás viszont 3 kísérlet után megáll.
- */
+/** Egymást követő szállítási hibák után megszakítás; sikeres GetState nullázza. */
 export const MAX_CONSECUTIVE_TRANSPORT_FAILURES = 3
 
-/**
- * A futás ELEJÉN megengedett, csupa hibás hívás száma.
- *
- * MIÉRT KELL: az osztályozás `order`-t ad minden olyan hibára, amit nem ismer
- * fel hitelesítésinek vagy szállításinak — például egy hiányzó Barion
- * auth-hibakódra (lásd BARION_AUTH_ERROR_CODES). Ilyenkor a futás végigmenne
- * mind a 25 rendelésen, 25 hibás hívással és 25 naplósorral, holott az első
- * néhány hívásból már látszik, hogy semmi nem működik.
- *
- * MIÉRT PONT AZ ELEJÉN: így a „rossz kulcs / teljes kimaradás" eset elkapódik,
- * a „egy mérgezett rendelés a sor elején" viszont NEM tud sorfejként blokkolni,
- * mert ott a többi hívás sikeres — az első sikeres válasz kikapcsolja a
- * mennyezetet.
- */
+/** A futás elején ennyi hibás hívás után megállás (rossz kulcs / teljes kimaradás). */
 export const MAX_LEADING_FAILURES = 5
 // Az árva-rendelés lejárata 24 óra: a Barion PaymentWindow (30 perc) és a
 // banki késleltetések mellett a 2 órás türelem túl szűk volt — a 2 óra UTÁN
@@ -59,21 +34,7 @@ export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
 export const INVOICE_RESWEEP_BATCH_SIZE = 10
 export const INVOICE_PENDING_STALE_MS = 10 * 60 * 1000 // 10 perc
 
-/**
- * A számla-resweep kimenete — a job `output`-jában és a naplóban is látszik.
- * A „nem csináltunk semmit, mert nincs teendő" és a „nem is néztük meg" eset
- * így megkülönböztethető (korábban mindkettő `invoiceRequeued: 0` volt, a
- * kihagyás oka pedig csak debug-szinten látszott).
- *
- * - `done` — a resweep lefutott (a sorba állítások száma: invoiceRequeued)
- * - `skipped-disabled` — nincs SZAMLAZZ_AGENT_KEY, az integráció kikapcsolva
- * - `skipped-config-error` — a Számlázz.hu-konfiguráció hibás (RIASZTÁS a naplóban)
- * - `queue-unavailable` — volt mit sorba állítani, de EGYETLEN sorba állítás sem
- *   sikerült (jellemzően hiányzó `payload.jobs.queue`). Enélkül ez az eset
- *   `done` + `invoiceRequeued: 0` lenne, ami megkülönböztethetetlen a „nincs
- *   teendő" esettől — pedig a kettő között az a különbség, hogy itt a vevők
- *   számlája NEM készül el. RIASZTÁS is megy a naplóba.
- */
+/** Számla-resweep kimenet: `done` | `skipped-disabled` | `skipped-config-error` | `queue-unavailable`. */
 export type InvoiceResweepStatus =
   | 'done'
   | 'skipped-disabled'
@@ -125,51 +86,10 @@ export interface OrderPollDeps {
   now?: number
 }
 
-/**
- * Barion-hibakódok, amelyeket HITELESÍTÉSI hibaként kezelünk akkor is, ha a
- * válasz HTTP 200 volt (a Barion a hibát az `Errors` tömbben is jelezheti).
- *
- * BIZONYOSSÁG — pontosan ennyi: a repóban NINCS hivatalos Barion-hibakódlista.
- * Ez a lista a saját teszt-fixtúráinkban rögzített megfigyelésre épül
- * (`AuthenticationFailed`, lásd src/__tests__/barion.test.ts és
- * checkout-start.test.ts). Ezért **pontos** (kis-nagybetűt nem néző) egyezésre
- * szűrünk, nem `/auth/i` mintára: a mintaillesztés bármely „auth"-ot tartalmazó
- * ismeretlen kódra azonnali megszakítást csinálna, azaz épp a sorfej-blokkolást
- * (poison pill) hozná vissza, amit el akarunk kerülni.
- *
- * FIGYELEM, a tévedés két iránya NEM szimmetrikus:
- * - Ha ismeretlen kód kerülne ide tévedésből, egyetlen rendelés megállítaná az
- *   egész futást (sorfej-blokkolás).
- * - Ha viszont egy VALÓDI hitelesítési kód hiányzik a listáról, a hiba
- *   `order`-osztályba esik (a listán nem szereplő provider-hiba HTTP 200-zal
- *   vagy 4xx-szel jön, tehát a `transport`-ágon átesik) — vagyis a 3 egymást
- *   követő szállítási hibára figyelő megszakítás NEM kapja el. Erre való a
- *   `MAX_LEADING_FAILURES` mennyezet lentebb: ha a futás ELSŐ hívásai
- *   mind hibára futnak, megszakítunk akkor is, ha az osztályozás `order`-t
- *   mondott.
- *
- * Új kódot CSAK hivatkozott forrás alapján vegyél fel ide.
- */
+/** Ismert Barion auth-hibakódok (pontos egyezés — ne regex, poison pill ellen). */
 export const BARION_AUTH_ERROR_CODES: readonly string[] = ['AuthenticationFailed']
 
-/**
- * A GetState-hiba osztálya — ez dönti el, folytatható-e a futás.
- *
- * - `auth`: hitelesítési hiba (HTTP 401/403 vagy ismert auth-hibakód). Rossz
- *   POSKey / lejárt jogosultság: a maradék hívás GARANTÁLTAN ugyanígy elhasal,
- *   ezért AZONNAL megszakítunk.
- * - `transport`: az API nem érhető el vagy hibázik (timeout, hálózat, 5xx).
- *   Lehet szolgáltatói kimaradás, de lehet egyetlen szerencsétlen hívás is,
- *   ezért NEM szakítunk meg azonnal — csak N egymást követő ilyen hiba után.
- * - `order`: ehhez az EGY fizetéshez tartozó hiba (pl. 404 — nincs ilyen
- *   PaymentId, vagy értelmezhetetlen válasz). A többi rendelést tovább kell
- *   pollolni, különben egyetlen mérgezett rekord befagyasztaná a mentőhálót.
- *
- * ÉLES KOCKÁZAT, ami ezt kikényszerítette: ha a BARION_POSKEY_* ál-értékre van
- * állítva, az induláskori ENV-assert (src/env.ts) ÁTENGEDI (csak a kulcs
- * MEGLÉTÉT nézi, a helyességét nem) — a hiba először itt, az ütemezett
- * utánpollolásban jelentkezne, futásonként 25 hibás hívással és 25 error-sorral.
- */
+/** GetState-hiba osztálya: `auth` (azonnal megáll) | `transport` (N egymás után) | `order` (folytat). */
 export type BarionFailureClass = 'auth' | 'order' | 'transport'
 
 export function classifyBarionFailure(error: unknown): BarionFailureClass {

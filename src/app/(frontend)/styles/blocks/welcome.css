@@ -1,33 +1,6 @@
 /**
  * Üdvözlő / probléma-blokk (Welcome) — TÁBLA-szekció stílusa.
- *
- * Forrás: a landing `kc-welcome` táblája (higgsfield-site/app/src/kineticare.css
- * 249–330., mobil 983–995.). A tükör teljes képernyős, függőlegesen középre
- * zárt `kc-vh` táblája MOST MÁR ÁTJÖTT (a korábbi port konténer-szélességbe
- * szorította); a tábla-viselkedést a közös `.kc-board` adja (styles/ui.css).
- *
- * Portolási szabályok:
- *  - `ink` → `--kc-color-text`, `muted` → `--kc-color-text-muted`,
- *    `hairline` → `--kc-color-border`,
- *  - a tükör inline `clamp()` fontméretei → a három-méretes `--kc-font-l/m/s`
- *    lépcsők (értékesítési UX-skill 4. pont: fontméret KIZÁRÓLAG tokenről),
- *  - a `kc-rise` betöltés-animáció NEM jött át (terv 3.5).
- *
- * AKCENT-KORLÁT (terv 3.1, számolt kontrasztok):
- *  - `--kc-color-accent` (#3d78aa) a hűvös tinten csak 4,07:1 → normál szövegre
- *    AA ALATT. Itt ezért KIZÁRÓLAG dekorációként (vonal, keret) szerepel.
- *  - Szöveg és link `--kc-color-accent-deep` (#2f6e9f): fehéren 5,45:1, a
- *    tint-cool háttéren 4,72:1, a legacy tinten 5,00:1 — mind AA felett.
- * A `var()` tartalékai meglévő tokenek (navy-700 / blue-*), hogy a szekció akkor
- * is helyes kontraszttal jelenjen meg, ha az új akcent-tokenek még hiányoznak.
- *
- * KÉT HASÁB, AZONOS MAGASSÁGGAL (2026-08-16): a felsorolás és az összefoglaló
- * hasáb 900px felett közös magasságra nyúlik, a tételek arányosan osztják el a
- * helyet, az elválasztó vonal pedig végig fut. Lásd a `.kc-welcome__grid`,
- * `.kc-welcome__checklist` és `.kc-welcome__side` médialekérdezéseit.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/Welcome.tsx),
- * így a stílus csak azokon az oldalakon kerül a bundle-be, ahol a blokk szerepel.
+ * - a `kc-rise` betöltés-animáció NEM jött át (terv 3.5).
  */
 
 .kc-welcome {

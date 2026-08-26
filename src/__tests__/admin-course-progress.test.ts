@@ -35,17 +35,7 @@ import {
 } from '../lib/admin/course-progress-stats'
 import { buildCurriculum, type Curriculum } from '../lib/curriculum/curriculum'
 
-/**
- * ADMIN kurzus-haladás — az összesítő mag, a HTTP-végpont és a nézet-logika.
- *
- * A tesztek KIZÁRÓLAG tiszta függvényeket és injektált Payload-mockot hívnak:
- * valódi hálózati hívás sehonnan nem indulhat (a 15. üzemeltetési tanulság).
- *
- * A százalék-számítás maga a KÖZÖS `summarizeCurriculum` modulé — itt azt
- * ellenőrizzük, hogy az admin-összesítés helyesen csoportosít, és a
- * szélsőséges eseteket (0 beiratkozott, 0 leckés kurzus, orphan ref, nem
- * beiratkozott felhasználó sorai, duplikált sor) sem torzítja el.
- */
+/** Admin kurzus-haladás: tiszta függvények + injektált Payload-mock; nincs hálózat. */
 
 /** Videó-lecke a tananyaghoz — `ready` státusz nélkül nem lenne elindítható. */
 function lesson(id: string, title: string, status: 'ready' | 'processing' = 'ready') {
@@ -312,9 +302,7 @@ describe('buildCourseProgressStats — összesítés', () => {
   })
 })
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * A HTTP-végpont — injektált Payload-mockkal, valódi hálózat nélkül.
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* HTTP-végpont — injektált Payload-mock, nincs hálózat. */
 
 const URL_BASE = 'http://localhost:3000/api/admin/course-progress'
 
@@ -753,21 +741,7 @@ describe('GET /api/admin/course-progress — 200 válasz', () => {
   })
 })
 
-/**
- * ═══ A CSONKOLÁS NEM ADHAT HAMIS SZÁZALÉKOT ═══
- *
- * A bizonytalansági audit VALÓS adaton mérte: a két lapozott olvasás egymástól
- * függetlenül vágódott el, ezért egy LISTÁZOTT diák haladás-sorai kieshettek a
- * beolvasott ablakból. 2405 beiratkozott / 31035 haladás-sor mellett a
- * visszaadott 2000 diákból 960-nak érdemben alacsonyabb százalék jelent meg a
- * valóságnál (egy vevőnek 25 elvégzett leckéből 10 látszott: 38%). A `notice`
- * csak annyit mondott, hogy „a lista csonkolt" — a soronkénti számok
- * tényszerűnek látszottak.
- *
- * A javítás után a haladás-olvasás FELHASZNÁLÓ szerint rendez, tehát a korlát
- * user-határon vág; az esetleg félbevágott diák és a fölötte lévők KIMARADNAK a
- * listából. Amit a panel mutat, az hiánytalan.
- */
+/** Csonkolás után a listázott diákok százaléka hiánytalan adatra épül (user-határ vágás). */
 describe('GET /api/admin/course-progress — csonkolás és HELYES százalékok', () => {
   /** 20 leckés kurzus, `hallgatok` fővel, MINDENKI végigcsinálta. */
   function teljesenElvegezte(hallgatok: number, leckek: number) {
@@ -871,9 +845,7 @@ describe('GET /api/admin/course-progress — csonkolás és HELYES százalékok'
   })
 })
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * A panel tiszta nézet-logikája.
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* Panel tiszta nézet-logika. */
 
 function student(
   overrides: Partial<CourseStudentProgress> & Pick<CourseStudentProgress, 'userId'>,
@@ -990,9 +962,7 @@ describe('course-progress-view — relatív idő és ring-geometria', () => {
   })
 })
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * A PANEL UX-JAVÍTÁSAI — az admin UX-audit MÉRT megállapításaira.
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* Panel UX-javítások (szűrés-visszajelzés, következő lecke oszlop). */
 
 function diak(
   overrides: Partial<CourseStudentProgress> & { userId: number },
@@ -1012,11 +982,7 @@ function diak(
 }
 
 describe('visibleCountLabel — élő visszajelzés a szűrésről', () => {
-  /**
-   * A mért hiba: szűrés mellett SEMMILYEN darabszám nem jelent meg, tehát a
-   * „ki nem kezdte még el" kérdésre (a munkatársak legfontosabb kérdése)
-   * 305 sort kellett volna kézzel megszámolni.
-   */
+  // Szűrésnél látszódjon a találatok száma (korábban 305 sort kellett kézzel számolni).
   it('szűrés nélkül, korlát nélkül csak a létszámot mondja', () => {
     expect(visibleCountLabel(12, 12, 12)).toBe('12 hallgató')
   })
@@ -1041,10 +1007,7 @@ describe('visibleCountLabel — élő visszajelzés a szűrésről', () => {
 })
 
 describe('nextLessonLabel — „Következő lecke" oszlop', () => {
-  /**
-   * A mért ellentmondás: az „Aktuális lecke" fejléc mellett a „Nem kezdte el"
-   * állapotú soron is leckecím állt, mintha a hallgató ott tartana.
-   */
+  // „Nem kezdte el” soron ne álljon leckecím, mintha ott tartana.
   it('a NEM KEZDTE EL soron kimondja, hogy ez még csak a kezdőpont', () => {
     expect(
       nextLessonLabel({ status: 'nem-kezdte', currentLessonTitle: 'Fontos tudnivalók' }),
@@ -1063,11 +1026,7 @@ describe('nextLessonLabel — „Következő lecke" oszlop', () => {
     )
   })
 
-  /**
-   * A mag KÉT esetben ad null-t (course-progress-stats.ts): kész a kurzus,
-   * vagy nincs elindítható lecke. A kettő nem ugyanaz, ezért nem is ugyanaz
-   * a felirat. A korábbi „—" mindkettőre ugyanazt a néma jelet adta.
-   */
+  // Kész kurzus vs. nincs elindítható lecke: külön felirat kell (nem mindkettő „—”).
   it('lecke nélküli kurzusnál NEM azt mondja, hogy befejezte', () => {
     expect(nextLessonLabel({ status: 'nem-kezdte', currentLessonTitle: null })).toBe(NO_DATA)
     expect(nextLessonLabel({ status: 'folyamatban', currentLessonTitle: null })).toBe(NO_DATA)

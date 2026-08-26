@@ -13,36 +13,10 @@ import { pollOrderStatus } from '@/lib/order-status-poll'
 
 /**
  * ŐR-TESZT: PostHog AZONOSÍTÁS és BEVÉTEL-MÉRÉS.
- *
- * ═══ MIT ZÁR BE ═══
  * 1. AZONOSÍTÁS. A `src/lib/analytics/posthog.ts` `person_profiles:
- *    'identified_only'` beállítása miatt person-profil KIZÁRÓLAG `identify()`
- *    után jön létre. Enélkül a profilok száma tartósan nulla: minden esemény
- *    anonim marad, és a „ki tért vissza / mekkora a megtartás / kik
- *    morzsolódtak le" kérdések megválaszolhatatlanok.
- * 2. `reset()` KIJELENTKEZÉSKOR. Nélküle a kilépés utáni események az ELŐZŐ
- *    felhasználó profiljára mennének — közös gépen (rendelői tablet, családi
- *    laptop) két ember viselkedése olvadna egy profilba.
- * 3. BEVÉTEL. A `purchase_confirmed` korábban CSAK a rendelésszámot vitte:
- *    meg lehetett számolni, HÁNY vásárlás történt, de nem, hogy MENNYI bevétel
- *    keletkezett — bevétel-riport nem volt készíthető.
- *
- * ═══ ADATVÉDELMI ŐR ═══
- * Az azonosító KIZÁRÓLAG a Payload `users.id`. E-mail-cím, név és IP SOHA nem
- * mehet a PostHogba — erre külön, explicit állítás van (a jelszó pedig már a
- * kérés törzsében sem hagyhatja el a láncot mérési célra).
- *
- * ═══ HÁLÓZAT NINCS ═══
- * A repó 15. üzemeltetési tanulsága szerint tesztből valódi hívás sosem megy
- * ki: minden `fetch` injektált (`fetchImpl` / `deps.fetchImpl`), a globális
- * `fetch`-et pedig hangosan dobó `vi.stubGlobal` fedi le, hogy egy elfelejtett
- * injektálás azonnal buktassa a tesztet — ne csendben hálózatra menjen.
- *
- * A tesztek a modulok EXPORTÁLT, tiszta belépési pontjait futtatják: jsdom
- * nincs telepítve (a vitest környezete `node`), űrlap-eseményt tehát nem lehet
- * szimulálni — ezért mérünk a `trackedLogin` / `trackedRegister` /
- * `purchaseEventProperties` szinten, ugyanúgy, ahogy az `emitBarionPurchase`-t
- * is méri a repó.
+ * 'identified_only'` beállítása miatt person-profil KIZÁRÓLAG `identify()`
+ * után jön létre. Enélkül a profilok száma tartósan nulla: minden esemény
+ * anonim marad, és a „ki tért vissza / mekkora a megtartás / kik
  */
 
 /** A globális `fetch` sosem hívható innen — ha mégis, hangosan bukik. */

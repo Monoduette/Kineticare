@@ -5,36 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * A süti-sáv NEM takarhatja el a mobil menü alsó pontjait — WCAG 2.2 · 2.4.11.
- *
- * ═══ A MÉRT HIBA (folyamat-audit, 2026-08-17) ═══
  * A süti-sáv `z-index: 1000`, a mobil menü fiókja `z-index: 80`, tehát a sáv a
  * fiók FÖLÉ kerül. A `consent-banner.css` már véd a takarás ellen, DE a védelme
  * `body { padding-bottom }` és `scroll-padding-bottom` — a fiók viszont
  * `position: fixed`, ezért a body belső margója rá nem hat, a saját
- * görgetősávjára pedig a lap `scroll-padding`-je nem vonatkozik.
- *
- * Mérve: a body megkapta a 274 px-et, a fiók alja mégis a képernyő alján
- * maradt. 320 px-en 13 fókuszált menüelemből 7 TELJESEN takart volt, 360 px-en
- * 3; koppintással 4 menüpont volt elérhetetlen.
- *
- * ═══ A SZABÁLY ═══
- * WCAG 2.2 · 2.4.11 Focus Not Obscured (Minimum), Level AA: „When a user
- * interface component receives keyboard focus, the component is not entirely
- * hidden due to author-created content." Az Understanding kifejezetten
- * nevesíti ezt az esetet: „A notification implemented as sticky content, such
- * as a cookie banner, will fail this success criterion if it entirely obscures
- * a component receiving focus."
- * https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html
- *
- * (A korábbi jelentés a 2.5.8-ra hivatkozott — az TÉVES: a 2.5.8 Understanding
- * kifejezetten kiveszi a hatálya alól a lapbetöltés után megjelenő süti-sáv
- * okozta takarást. A cáfoló ellenőrzés javította a hivatkozást.)
- *
- * ═══ MIÉRT FÁJL-SZINTŰ ŐR ═══
- * Ez CSS-viselkedés: nincs olyan komponens-teszt, ami elkapná a visszaesést.
- * A szabály némán kieshet egy rendezés vagy egy „takarítás" során, és a hiba
- * csak élő, mobil böngészőben, süti-döntés ELŐTT látszik — vagyis pont akkor,
- * amikor senki nem méri.
  */
 
 const LAYOUT_CSS = readFileSync(

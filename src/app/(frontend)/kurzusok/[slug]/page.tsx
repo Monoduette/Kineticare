@@ -58,63 +58,7 @@ import config from '../../../../payload.config'
 
 /**
  * /kurzusok/[slug] — kurzus-oldal (az értékesítés motorja).
- *
- * ═══ ÚTVONAL-SZABÁLYOK (VÁLTOZATLAN) ═══
- * - A [slug] szegmens ELSŐDLEGESEN a kurzus emberi olvasású `slug`-ja (C3).
- *   A régi, numerikus id-s cím (és minden nem kanonikus alak, pl. nagybetűs
- *   változat) továbbra is kiszolgálandó, de TARTÓS átirányítást kap a
- *   kanonikus címre — így a régi linkek SEO-értéke átöröklődik. A szabályok
- *   (feloldás + körmentes átirányítás) az src/lib/course-url.ts-ben élnek.
- * - published → mindenki láthatja; archived → az oldal megtekinthető, de a
- *   CTA INAKTÍV + „Ez a kurzus jelenleg nem vásárolható" jelölés (nem
- *   listázódik, a meglévő vevő a „Tovább a kurzusaimhoz" linket kapja);
- *   draft/ismeretlen → 404.
- * - A „már megvetted" állapot a bejelentkezett user purchases-listájából
- *   (users.purchases, csak olvasás) dől el — LEJÁRT hozzáférésnél (A1,
- *   accessDurationDays) viszont újra a vásárlási CTA jelenik meg, különben a
- *   vevő zsákutcába futna („vásárold meg újra" ↔ „tovább a kurzusaimhoz").
- *
- * ═══ AZ OLDAL SZERKEZETE (értékesítő átalakítás) ═══
- * A kutatás (docs/ux-belso-oldalak-kutatas.md 4. és 5.1) négy P0-s hibát mért
- * a korábbi felépítésen, és ez a felépítés pontosan azokra válaszol:
- *
- *  1. KÉTHASÁBOS FEJ (GOV.UK „two-thirds and one-third", B3.2): balra a média
- *     és a teljes tartalom, jobbra a ragadós vásárlódoboz. A ragadás a TELJES
- *     lap mellett utazik, nem csak a fej magasságában — a rács sora a fő
- *     hasáb magasságát veszi fel, az oldalsó elem `align-self: start`-tal
- *     ebben a sorban csúszik (kurzusok.css).
- *  2. HORGONY-CHIPEK a fő szakaszokra (K11, B2.3) — csak a LÉTEZŐ szakaszokra.
- *  3. SZAKASZOK mértékre fogott (34rem ≈ 75 karakter) folyószöveggel (B1.1),
- *     párhuzamos tartalom rácsban (B3.1), GYIK harmonikában (B5.1) — de ár,
- *     garancia és tananyag SOSEM harmonikában (B5.2).
- *  4. EGYETLEN vásárlási cél a lapon: a RAGADÓS vásárlódoboz gombja
- *     (desktopon a lap aljáig együtt utazik az olvasóval), mobilon pedig — ahol
- *     a doboz kigörgött a képből — a ragadós alsó vásárlósáv. A tartalomban
- *     ISMÉTELT vásárló-gomb NINCS (2026-08-16, tulajdonosi döntés): a korábbi
- *     „minden 2. szakasz után egy sáv" + záró CTA felépítés a hosszú lapon
- *     négy-öt egyforma gombot szórt szét, ami zajjá vált — a ragadós doboz
- *     ugyanazt a szerepet tölti be, folyamatosan, egyetlen példányban. Ez a
- *     fizetős ÉS az ingyenes (SOS) kurzusoldalra egyaránt így áll.
- *     PONTOSÍTÁS (2026-08-17): a tilalom az ismételt ELSŐDLEGES vásárló-gombra
- *     szól. Az ingyenes ág a tartalom végén EGY darab, MÁSODLAGOS súlyú,
- *     NAVIGÁCIÓS linket kap az igénylő űrlaphoz (`FreeCourseFormLink`,
- *     §3.2 #27) — és azt is kizárólag 1024 px ALATT, ahol a doboz nem ragadós,
- *     és ahol a `free` ágon ragadós alsó sáv sincs. 1024 px felett tehát a lap
- *     BITRE a 2026-08-16-i felépítést hozza. Ez nem második vásárlási cél: a
- *     link nem küld be semmit, csak az űrlaphoz visz.
- *
- * ═══ TARTALOM-HATÁR ═══
- * Az oldal SEMMILYEN értékesítő szöveget nem hardcode-ol: minden megjelenő
- * mondat vagy termékmezőből jön (`salesHighlights`, `howItWorks`, `fitFor`,
- * `notFitFor`, `guaranteeTitle`/`guaranteeText`, `faq`, `longDescription`,
- * `modules`), vagy tényadatból képződik. A fallback-lánc egyetlen, tesztelt
- * helyen él: src/components/courses/sales-content.ts.
- *
- * ═══ MÉRÉS ═══
- * A PostHog értékesítési funnel VÁLTOZATLAN: a `course_viewed` továbbra is az
- * oldal megnyitásakor sül el (TrackEvent), a `checkout_started` a pénztáron —
- * az ismételt CTA-k ugyanarra a checkout-útvonalra visznek, ezért az
- * eseménylánc nem duplázódik (docs/ertekesitesi-ux-skill.md 5. pont).
+ * CTA INAKTÍV + „Ez a kurzus jelenleg nem vásárolható" jelölés (nem
  */
 
 interface CoursePageProps {
@@ -303,20 +247,13 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   const cta = resolveCourseCta(product, purchased)
 
   /**
-   * ═══ INGYENES KURZUS: IGÉNYLŐ ŰRLAP A CTA HELYÉN (2026-08-17) ═══
-   * A `free` ág (published + `isFreeCourse` + még nem a vevőé) eddig egy
-   * linket adott a `/kurzusaim` oldalra. Be nem jelentkezett látogatónak ez
-   * ZSÁKUTCA: fiókja nincs, a lista bejelentkezést kér, a kurzushoz sosem jut
-   * hozzá — pedig ez az ingyenes anyag a teljes értékesítési tölcsér teteje.
-   * A régi `www.kineticare.hu` ugyanitt űrlapot adott („KÉREM A
-   * VILLÁMKURZUST" → név + e-mail → a link e-mailben), tehát a visszatérő
-   * látogató ezt a mintát ismeri (Jakob törvénye, NN/g; mérés:
-   * `docs/regi-oldal-osszehasonlitas.md` 3.1 és 3.4).
-   *
-   * Az űrlap a vásárlódoboz CTA-helyére kerül (`ctaSlot`), tehát a doboz
-   * kutatás szerinti sorrendje (ár → cselekvés → előnyök) változatlan.
-   * A fizetős kurzus felülete BITRE ugyanaz marad, mint eddig.
-   */
+ * A `free` ág (published + `isFreeCourse` + még nem a vevőé) eddig egy
+ * linket adott a `/kurzusaim` oldalra. Be nem jelentkezett látogatónak ez
+ * ZSÁKUTCA: fiókja nincs, a lista bejelentkezést kér, a kurzushoz sosem jut
+ * hozzá — pedig ez az ingyenes anyag a teljes értékesítési tölcsér teteje.
+ * A régi `www.kineticare.hu` ugyanitt űrlapot adott („KÉREM A
+ * VILLÁMKURZUST" → név + e-mail → a link e-mailben), tehát a visszatérő
+ */
   const showFreeRequestForm = cta.kind === 'free'
   // A site key szerver-oldalon olvasott (nem NEXT_PUBLIC): a spam-ellenőrző
   // widget csak beállított kulcs mellett jelenik meg — kulcs nélkül a szerver

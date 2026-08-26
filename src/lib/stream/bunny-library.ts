@@ -1,29 +1,6 @@
 /**
- * Bunny Stream library-lista — tiszta parser + injektálható HTTP-kliens.
- *
- * ═══ MIÉRT NEM TUS FELTÖLTÉS ═══
- * A feltöltés a Bunny felületén marad (a lányok ott töltik a felvételeket).
- * Ez a modul CSAK listáz: a szerkesztő a GUID-ot kimásolja a kurzus leckéjébe,
- * a vevő pedig a meglévő tokenes lejátszón nézi. Új npm-függőség nincs.
- *
- * ═══ AUTH ═══
- * A Stream API library-szintű `AccessKey` fejlécet kér — ez NEM a lejátszási
- * token-kulcs (`BUNNY_STREAM_TOKEN_AUTH_KEY`). A library API-kulcs a Bunny
- * Stream → a library → API oldalon van. Két library (védett kurzusvideók +
- * publikus előzetesek) két kulcs.
- *
- * Hivatalos lista-végpont:
- * GET https://video.bunnycdn.com/library/{libraryId}/videos
- * (docs.bunny.net Stream API — List Videos)
- *
- * A válasz mezői a gyakorlatban PascalCase ÉS camelCase alakban is előfordulnak;
- * a parser mindkettőt elfogadja.
- *
- * A hivatalos séma (PaginationListOfVideoModel) négy felső szintű mezőt ad:
- * `totalItems`, `currentPage`, `itemsPerPage`, `items`. Az `itemsPerPage`
- * alapértéke 100. A VideoModel-ben a `guid` KÖTELEZŐ mező (minLength: 1) —
- * ezért a GUID nélküli sor szerződésszegés, nem normál eset; lásd a
- * BunnyLibraryListPage fejkommentjét.
+ * Bunny Stream library-lista — parser + injektálható HTTP-kliens. Csak listáz (feltöltés a Bunny UI-n).
+ * Library-szintű AccessKey (nem lejátszási token). Parser: PascalCase és camelCase mezők.
  */
 
 import { logger, type Logger } from '../logger'
@@ -148,24 +125,7 @@ export function parseBunnyLibraryVideo(value: unknown): BunnyLibraryVideo | null
 }
 
 /**
- * Egy listaoldal feldolgozott alakja: a lista ÉS a lapozáshoz kellő
- * nyers számok.
- *
- * ═══ MIÉRT A NYERS TÉTELSZÁM DÖNT (2026-08-21-i javítás) ═══
- * A lapozás megállási feltétele korábban a PARSE-OLT videók számát nézte
- * (`parsed.videos.length < itemsPerPage`). A parser viszont eldobja a GUID
- * nélküli sort, ezért egyetlen ilyen tétel egy tele, 100-as oldalon 99 videót
- * adott, a ciklus „ez már nem tele oldal” alapon megállt, és a 2–5. oldal
- * SOSEM jött be — ráadásul csonka-figyelmeztetés nélkül, mert az is ugyanezen
- * az ágon dőlt el. A munkatárs így hiánytalannak látott egy csonka listát, és
- * rossz azonosítót köthetett a fizetős leckéhez.
- *
- * A hivatalos sémában a `guid` kötelező, tehát a GUID nélküli sor a Bunny
- * szerződésszegése (feltöltés alatti vagy hibás felvételnél láttuk). Épp ezért
- * nem szabad rá építeni a lapozást: a döntés a NYERS `items.length`-en és a
- * válasz által jelentett `itemsPerPage`-en áll, a szűrés eredményétől
- * függetlenül. Az eldobott tételek száma nem vész el: számláljuk
- * (`droppedItemCount`) és naplózzuk.
+ * Lapozás a NYERS items.length alapján — a GUID nélküli eldobott sorok ne állítsák meg a lapozást.
  */
 export interface BunnyLibraryListPage {
   list: BunnyLibraryList

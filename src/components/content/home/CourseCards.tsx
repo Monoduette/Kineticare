@@ -8,52 +8,7 @@ import '../../../app/(frontend)/styles/blocks/course-cards.css'
 
 /**
  * CourseCards — a FIZETŐS kurzusok kiemelése a hitel-csík után
- * (audit M3/K1: az értékesítés motorja, kártyánként cím/előnyök/ÁR/CTA).
- *
- * CSAK FIZETŐS KÁRTYA KERÜL A RÁCSBA. 2026-08-15-ig az ingyenes lead-magnet is
- * itt állt egy „másodlagos" kártyán — a tulajdonossal közösen végzett
- * kezdőlap-audit viszont kimutatta, hogy ez DUPLIKÁCIÓ: ugyanaz az SOS-termék
- * jelent meg a rácsban ÉS közvetlenül alatta a saját, akcentes FreeSos sávban,
- * ráadásul a hero másodlagos CTA-ja (#ingyenes) is oda mutat. Az ingyenes
- * ajánlat így háromszor szerepelt az első négy szekcióban, ami pontosan a
- * K2-hiba (az UX-skill M4 pontja: „a lead-magnet nem uralhatja el az oldalt").
  * A lead-magnet helye a FreeSos szekció — a rács a fizetős ajánlaté.
- * Üres (fizetős) listánál a szekció elmarad, nincs törött üres blokk.
- *
- * NINCS „Összes kurzus megtekintése" hivatkozás (2026-08-16, IA-audit D1/#7).
- * Két mért ok:
- *  - a rács SOHA nincs csonkolva (a hívó minden fizetős kurzust átad), tehát az
- *    „összes" ígéret ugyanazt adta, ami már a képernyőn volt. „A link is a
- *    promise": a felirat azt ígérje, ami a kattintás után TÉNYLEGESEN történik
- *    (NN/g, Better Link Labels — „Sincere",
- *    https://www.nngroup.com/articles/better-link-labels/);
- *  - ez volt a HARMADIK, egymástól eltérő felirat ugyanarra a célra
- *    (`/kurzusok`) ugyanazon a lapon, ami WCAG 2.2 3.2.4 (Consistent
- *    Identification) sérülés,
- *    https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- * A szekció CTA-ja innentől maga a kurzuskártya (a kártya EGÉSZE link,
- * docs/ui-sztenderdek.md §3.2 #11), a kurzuslistára pedig a hero és a záró
- * CTA-sáv visz, egyetlen, azonos felirattal.
- *
- * Megjelenés: a landing szekció-nyelve (kis felső felirat + serif cím) és a
- * „mini-buybox" kurzuskártya (ProductCard). A közös osztályok (`kc-eyebrow`,
- * `kc-section-title`, `kc-section-lead`) a content.css-ből jönnek, a
- * blokk-specifikus réteg a styles/blocks/course-cards.css-ben él.
- *
- * EGYETLEN KURZUSNÁL VÍZSZINTES, KIEMELT KÁRTYA (tulajdonosi visszajelzés,
- * 2026-08-16). A rács `auto-fit`-je egy kártyánál egy 26rem-es oszlopot rajzol
- * a szekció közepére, a maradék ~2/3 szélesség üresen marad — a szekció
- * „félkésznek" hat, pedig ez a lap ÉRTÉKESÍTÉSI motorja (UX-skill 1. pont, M3).
- * Ilyenkor a kártya a teljes szekció-szélességet megkapja, vízszintes
- * elrendezésben (borító balra, tartalom jobbra). KETTŐ VAGY TÖBB kártyánál
- * marad a rács: ott az összehasonlíthatóság a fontosabb (azonos mezőrend,
- * egymás melletti hasábok — docs/ux-belso-oldalak-kutatas.md B4.1).
- * A döntés kizárólag a DARABSZÁMON múlik, tartalmi feltétele nincs, így a
- * szerkesztő bármikor visszakapja a rácsot egy második kurzus közzétételével.
- *
- * SZÖVEGEK: mind CMS-ből felülírható (`courseCards` blokk: eyebrow, heading,
- * lead, ctaLabel). Az alábbi konstansok kizárólag fallbackek — a szekció
- * akkor sem marad felirat nélkül, ha a szerkesztő üresen hagyja a mezőket.
  */
 
 /** Felvezető sor — a `courseCards` blokk `eyebrow` mezője írja felül. */

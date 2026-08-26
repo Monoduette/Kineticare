@@ -5,35 +5,8 @@ import { sanitizeCmsUrl } from '../../lib/safe-url'
 
 /**
  * Button — a storefront elsődleges akcióeleme.
- *
- * A vizuális nyelv a régi koncepció-landingé (a stílus az
- * `src/app/(frontend)/styles/ui.css`-ben él, minden szín szerep-tokenről):
- * - variant:
- *     'primary'   — akcent-mély kitöltés fehér szöveggel (5,45:1 — AA), alap
- *     'secondary' — 2px-es ink keret átlátszó háttéren, a hover invertál
- *                   (a landing `kc-sos-cta` nyelve); sötét sávon fehér keret
- *     'ghost'     — aláhúzott szöveglink-jelleg (a landing `kc-inline-link`)
- * - size: 'md' (alap) | 'sm' — az érintési célfelület mindkettőben ≥ 44px
- * - href: megadva linkként renderel (belső útvonalhoz next/link, külsőhöz <a>);
- *   nélküle <button>
- * - disabled: letiltott állapot (gombként valódi disabled; linkként aria-disabled
- *   + tabindex -1 + osztály, a href ilyenkor nem navigál)
- * - type: a <button> type-ja (alap 'button' — űrlapban 'submit'-re állítható)
- *
- * A fókusz-állapotot a globális :focus-visible szabály kezeli (lásd base.css);
- * sötét szekcióban a gyűrű fehérre vált (ui.css, .kc-section--dark).
- *
  * LETILTOTT ÁLLAPOT: a jelölés NEM áttetszőség, hanem szándékos token-pár
- * (ui.css `.kc-button:disabled`) — a felirat olvasható marad (7,08:1). A
- * letiltás OKÁT mindig ki kell mondani a gomb mellett, és a magyarázatot a
- * `describedBy`-jal a gombra kell kötni (W3C ARIA APG button-minta:
- * https://www.w3.org/WAI/ARIA/apg/patterns/button/). Ahol a letiltás a
- * felhasználó által ORVOSOLHATÓ hiányból fakad (pl. kipipálatlan nyilatkozat),
  * ott a gombot NEM tiltjuk le: a natív `disabled` kiesik a Tab-sorrendből,
- * tehát a billentyűzetes látogató meg sem találja, hogy elolvassa a
- * magyarázatot. Ilyenkor a gomb aktív marad, a beküldést pedig validáció fogja
- * meg, világos magyar hibaüzenettel — a GOV.UK gomb-útmutatója ugyanezt
- * ajánlja (https://design-system.service.gov.uk/components/button/).
  */
 
 export interface ButtonProps {

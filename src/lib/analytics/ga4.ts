@@ -2,29 +2,9 @@ import { CONSENT_DENIED, CONSENT_GRANTED, type ConsentState } from './consent'
 import { sanitizeAnalyticsUrl } from './page-url'
 
 /**
- * Google Analytics 4 (gtag.js) integráció — CONSENT-FIRST, a PostHog-modul
- * mintájára (src/lib/analytics/posthog.ts).
- *
- * Elvek:
- * - A gtag.js KIZÁRÓLAG 'granted' analytics-hozzájárulás UTÁN töltődik be.
- *   Amíg a látogató nem döntött ('unknown') vagy elutasított ('denied'),
- *   egyetlen kérés sem megy a Google felé, és `dataLayer` sem jön létre.
- * - Visszavonás (revoke): a bevett GA4-leállítás a `window['ga-disable-<ID>']`
- *   kapcsoló — a MÁR betöltött gtag.js ettől kezdve semmit nem küld. Mellé a
- *   Consent Mode `analytics_storage: 'denied'` frissítés is kimegy.
- * - Consent Mode: az ELSŐ parancs mindig a `consent default` (minden tároló
- *   'denied'), csak utána jön a `consent update` — így a Google feldolgozója
- *   sosem lát alapértelmezetten engedélyezett állapotot.
- * - Kulcs nélkül (NEXT_PUBLIC_GA_MEASUREMENT_ID hiánya) a teljes modul NÉMA
- *   no-op: se betöltés, se hiba — ugyanaz a filozófia, mint a PostHognál és a
- *   többi opcionális integrációnál.
- * - A consent állapotgép EGYETLEN igazságforrása a ./consent modul; ez a fájl
- *   csak fogyasztója (körmenti import nincs).
- *
- * SPA-oldalletöltések: a GA4 „Enhanced measurement" böngésző-előzmény
- * (history) alapján magától küld `page_view`-t a kliensoldali útvonalváltásra,
- * ezért a PostHoggal ellentétben itt NINCS kézi $pageview-küldés. (A PostHognál
- * azért kell, mert ott az automatikus pageview szándékosan kikapcsolt.)
+ * GA4 (gtag.js) — consent-first, PostHog-minta. Betöltés csak `granted` után;
+ * revoke: `ga-disable-<ID>`. Consent Mode: default denied, majd update. Kulcs
+ * nélkül no-op. SPA pageview: Enhanced measurement (nincs kézi küldés).
  */
 
 /** A gtag.js kiszolgálójának hostja (a CSP script-src forrása is ez). */

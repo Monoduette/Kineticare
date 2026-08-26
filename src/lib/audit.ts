@@ -139,37 +139,8 @@ export async function writeAuditLog(args: WriteAuditLogArgs): Promise<boolean> {
 }
 
 /**
- * ═══ KLIENS-IP KINYERÉSE PROXYZOTT KÖRNYEZETBŐL ═══
- *
- * Két fogyasztója van, és mindkettőnél a HAMISÍTHATÓSÁG a tét: az audit-sor
- * `ipAddress` mezője (src/lib/checkout|refund/route-handler.ts) és a kérés-korlát
- * kulcsa (src/lib/security/rate-limit.ts `resolveRateLimitIp`).
- *
- * ═══ A HIBA, AMIT BEZÁR (2026-08-16-i átvizsgálás) ═══
- * A korábbi sorrend FELTÉTEL NÉLKÜL elfogadta a `cf-connecting-ip` fejlécet, és
- * csak utána nézte az `x-forwarded-for`-t — abból is az ELSŐ elemet. Az éles
- * kiszolgálás előtt viszont mérés szerint NINCS Cloudflare, tehát:
- *  - a `cf-connecting-ip` fejlécet BÁRMELY kliens ráírhatta a kérésre, és
- *    kérésenként más értékkel korlátlanul kerülgette a kérés-korlátot;
- *  - az `x-forwarded-for` ELSŐ eleme szintén a kliensé: a lánc elejét ő küldi,
- *    a megbízható (edge) proxy a sajátját a VÉGÉRE fűzi.
- * Az IP-alapú keretek így nem értek célt, az audit-sorok IP-je pedig
- * bizonyítékként értéktelen volt.
- *
- * ═══ AZ ÚJ SZABÁLY ═══
- *  1. `cf-connecting-ip` KIZÁRÓLAG akkor, ha a `TRUST_CF_CONNECTING_IP=true`
- *     kapcsoló be van állítva — azaz üzemeltetői döntés igazolja, hogy a
- *     forgalom tényleg Cloudflare-en át érkezik (a CF minden kérésen felülírja
- *     ezt a fejlécet, ezért ott a kliens nem hamisíthatja).
- *  2. Egyébként az `x-forwarded-for` HÁTULRÓL számított, megbízható eleme: a
- *     lánc végét a saját infrastruktúránk (Railway edge) fűzi hozzá, tehát az a
- *     rész az, amit a kliens nem írhat felül. Hány elemet fűz hozzá, azt a
- *     `TRUSTED_PROXY_HOP_COUNT` mondja meg (alapértelmezés: 1 — egy edge-hop).
- *  3. Végső tartalék az `x-real-ip` (egyetlen IP-t hordoz, láncot nem).
- *
- * A kapcsolókat SZÁNDÉKOSAN minden híváskor olvassuk (nem modul-szintű
- * konstansba): a scriptek és a tesztek így env-átállítás után is a friss
- * értékkel dolgoznak, modul-újratöltés nélkül.
+ * Kliens-IP proxy mögött: cf-connecting-ip csak TRUST_CF_CONNECTING_IP=true mellett;
+ * egyébként x-forwarded-for jobbról TRUSTED_PROXY_HOP_COUNT eleme, tartalék x-real-ip.
  */
 
 /** A `cf-connecting-ip` elfogadásának kapcsolója (alapértelmezés: NEM bízunk benne). */

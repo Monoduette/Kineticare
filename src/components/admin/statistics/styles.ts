@@ -1,95 +1,12 @@
 import type { CSSProperties } from 'react'
 
 /**
- * A Statisztika nézet KÖZÖS stílus-tokenjei — minden szekció-komponens
- * innen importál, hogy a nézet egyetlen vizuális nyelvet beszéljen.
- *
- * ═══ VIZUÁLIS NYELV (tulajdonosi döntés, 2026-08-20) ═══
- * A nézet a vevői oldal prémium márka-designnyelvét viseli — a tulajdonos
- * 2026-08-20-i explicit kérése, ami erre az oldalra felülírja a
- * docs/ui-sztenderdek.md §1.2 „az adminban a Payload design az elsődleges"
- * szabályát. A korábbi CourseProgressPanel-mintás Payload-kinézetet ezért a
- * márka-réteg váltja; a magyar mikroszöveg-szabályzat (ui-sztenderdek §3.1)
- * változatlanul kötelező.
- *
- * A márka-tokenek EGYETLEN igazságforrása a storefront tokens.css
- * (src/app/(frontend)/styles/tokens.css); az admin-oldali, scope-olt másuk a
- * src/app/(payload)/custom.scss `.kc-adminstat` blokkja, a kontraszt-
- * jegyzőkönyvvel együtt. Minden érték itt `var(--kc-as-…, var(--theme-…))`
- * alakú: ha a custom.scss nem töltődik be, a nézet a Payload-kinézetre esik
- * vissza, nem törik el. A nyelv elemei:
- *   - felületek: paper-föld + fehér, 1px hairline-keretes, 8px-radiusú
- *     emelt felület, ÁRNYÉK NÉLKÜL (tokens.css 113–121. és 215–222. sor),
- *   - vonalak: tábla-sorelválasztó = dekoratív hairline; ahol a keret
- *     AZONOSÍT (görgetőkonténer határa), ott hairline-strong (tokens.css
- *     118–121. sor; WCAG 2.2 SC 1.4.11 Non-text Contrast:
- *     https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html),
- *   - térköz: 4px-rács (tokens.css 198–207. sor),
- *   - számok: Nunito Sans 700 + tabular-nums (az ár-kiemelés súllyal
- *     történik, mérettel nem — tokens.css 168–169. sor).
- *
- * ═══ MÉRET-EGYSÉG: REM a --kc-as-px egységgel (tulajdonosi döntés, 2026-08-20) ═══
- * A Payload admin gyökér-betűmérete 13px (--base-body-size: 13 —
- * node_modules/@payloadcms/ui/dist/scss/app.scss; mid-break alatt 12px),
- * ezért minden méret a custom.scss `--kc-as-px: calc(1rem / 13)` egységével
- * megy: `calc(N * var(--kc-as-px, 1px))`. Alapállapotban ez pixelre pontosan
- * N px (16 * 1rem/13 = 16px a 13px-es gyökéren), a gyökérrel együtt viszont
- * skálázódik — ahogy a Payload saját, rem-alapú `--base` tokenje is. A
- * fallback szándékosan `1px`: ha a custom.scss nem töltődik be, az érték
- * fix N px marad, a nézet nem törik. Az 1px hairline-keretek px-ben
- * maradnak (vonal-identitás, nem szövegméret). Források: NN/g, Let Users
- * Control Font Size (https://www.nngroup.com/articles/let-users-control-font-size/);
- * WCAG 2.2 SC 1.4.4 + C14 technika
- * (https://www.w3.org/WAI/WCAG22/Techniques/css/C14). Részletes indoklás:
- * custom.scss „Márka-tokenek" fejkomment.
- *
- * ═══ RESZPONZIVITÁS (változatlan) ═══
- * A kártyasor flex-wrap (flex: 1 1 128px), így 320 px-en 1-2 oszlopba törik
- * media query nélkül; a táblák saját görgetőkonténerben (width: 100%,
- * overflowX: auto) csúsznak, tehát maga a LAP sosem görget vízszintesen.
- * - WCAG 2.2 SC 1.4.10 Reflow (320 px, nincs kétirányú görgetés a lapon):
- *   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html — a G225
- *   technika kifejezetten megengedi, hogy egy szekció (itt: adattábla)
- *   a saját konténerében görögjön vízszintesen.
- * - C31 technika (flexbox reflow):
- *   https://www.w3.org/WAI/WCAG22/Techniques/css/C31
- *
- * ═══ SZÉLESSÉGI RENDSZER (tulajdonosi panasz, 2026-08-21: „nem oldalszéles") ═══
- * A nézet korábban EGYETLEN plafont vitt (`maxWidth: 1024px`), és így a
- * Payload tartalmi sávjának csak egy részét foglalta el. MÉRVE (Chromium,
- * a DefaultTemplate geometriájával, nyitott 275 px-es navigációval):
- *
- *   nézetablak   sáv      nézet    kitöltöttség
- *   1280 px      1005 px  1005 px  100,0%
- *   1440 px      1165 px  1024 px   87,9%
- *   1920 px      1645 px  1024 px   62,2%
- *   2560 px      2285 px  1024 px   44,8%
- *
- * A plafon törlése önmagában rossz válasz lenne: a magyarázó bekezdések
- * sorhossza elszaladna. Ezért a mérték ELEMENKÉNT dől el:
- *   - LAP: kitölti a sávot, a Payload saját nézet-margójával (`--gutter-h`,
- *     tehát a bal él egy vonalban a Vezérlőpultéval), ultraszéles kijelzőn a
- *     tartalom 1584 px-en (Carbon 2x rács max-töréspontja) középre zár;
- *   - TÁBLA és KÁRTYASOR: teljes szélesség — a sok oszlopos adatlistának ez
- *     jár (Shopify, Layout: https://shopify.dev/docs/apps/design/layout,
- *     hozzáférés: 2026-08-21);
- *   - FOLYÓSZÖVEG: `--kc-as-measure` (a storefront `--kc-measure-comfort`-ja,
- *     480 px), mérve 58–69 karakter/sor 768 px-től — a Baymard 50–75-ös optimumában
- *     (https://baymard.com/blog/line-length-readability, hozzáférés:
- *     2026-08-21);
- *   - DIAGRAM: a saját természetes szélességén marad (lásd chartFrameStyle).
- * A tokenek és a teljes forrásjegyzék: custom.scss, „SZÉLESSÉGI RENDSZER".
+ * Statisztika nézet közös stílus-tokenjei — minden szekció innen importál.
+ * Márka-tokenek: custom.scss `.kc-adminstat`, fallback Payload-theme-re.
+ * Méret: `--kc-as-px` (rem/13); táblák saját overflow-x konténerben.
  */
 
-/**
- * A lap-héj. Két dolgot csinál egyszerre, egyetlen `padding-inline`-nal:
- *   max(oldal-margó, (100% - tartalom-plafon) / 2)
- * A paper-föld így SZÉLTŐL SZÉLIG ér (ez a storefront lap-földje, tokens.css
- * `--kc-color-bg`), a TARTALOM viszont a plafonnál nem nő tovább, hanem
- * középre zár. Extra `div` nélkül, mert a `box-sizing: border-box` az egész
- * adminra érvényes (@payloadcms/ui app.scss `* { box-sizing: border-box }`).
- * A `100%` a szülő (a Payload `template-default__wrap`) szélessége.
- */
+/** Lap-héj: paper-föld széltől szélig, tartalom plafonnal középre zárva. */
 export const pageStyle: CSSProperties = {
   background: 'var(--kc-as-bg, transparent)',
   paddingBottom: 'var(--kc-as-space-7, calc(var(--base) * 2))',

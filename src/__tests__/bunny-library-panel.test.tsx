@@ -4,27 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * ŐR — A VIDEÓTÁR-VÁLTÁS NEM HAGYHAT A KÉPERNYŐN IDEGEN AZONOSÍTÓT.
- *
- * ═══ A HIBA, AMIT BEZÁR (2026-08-21-i vizsgálat, F6) ═══
  * A legördülő `onChange`-e korábban CSAK a kiválasztott tárat írta át, a
  * `videos`, a `truncated` és a `loaded` állapot érintetlen maradt. A táblázat
  * tehát az ELŐZŐ videótár listáját mutatta tovább, immár a másik tár neve
  * alatt, amíg a munkatárs újra rá nem nyomott a betöltésre. A panel egyetlen
- * célja a HELYES azonosító átmásolása a leckébe, ezért ez félrecímkézés: rossz
- * videó kerülhetett a fizetős leckébe. Ugyanezen az ágon a hibás válasz
- * (`!response.ok`) kiürítette a listát, de a „A lista csonka” figyelmeztetést
- * ottfelejtette egy hibaüzenet mellett.
- *
- * ═══ MIÉRT ÍGY MÉRJÜK ═══
- * A repó teszt-környezete `node` (vitest.config.ts), böngésző-DOM és
- * testing-library nincs — a bevált minta a `renderToStaticMarkup`
- * (admin-nezet-kapu-kotes.test.tsx, account-save-feedback.test.tsx). A panel
- * ezért két részre bomlik: tiszta reducer + állapotot KAPÓ megjelenítő. Az
- * itteni őr nem a reducert hívja közvetlenül a váltásnál, hanem a legördülő
- * VALÓDI `onChange` propját szedi ki a React-elemfából és azt hívja meg — így
- * a select → onLibraryChange → reducer kötés is mérve van, nem csak a reducer.
- *
- * HÁLÓZAT: a globális fetch hangosan dobó mock (CLAUDE.md 15. tanulság).
  */
 
 vi.mock('@payloadcms/ui', () => ({

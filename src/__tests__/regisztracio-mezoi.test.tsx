@@ -11,38 +11,10 @@ import { BILLING_INPUT_NAME } from '../lib/checkout/form-submission'
 
 /**
  * ŐR — A REGISZTRÁCIÓ HÁROM MEZŐJE.
- *
- * ═══ MIÉRT LÉTEZIK ═══
  * A tulajdonos 2026-08-17-i döntése: a regisztrációból kikerült az
  * összecsukható „Számlázási adatok (opcionális)" blokk, mert a számlázási
  * adatot ott kérjük, ahol számla készül belőle — a fizetés során.
- *
  * Egy ilyen tétel visszacsúszása NÉMA: a lap fut, minden más teszt zöld, csak a
- * regisztráció lesz megint hosszabb, mint amennyit kérni szabad. Ezért kap
- * végrehajtható őrt.
- *
- * ═══ A HIVATKOZOTT SZABÁLYOK ═══
- * GOV.UK Service Manual, „Ask users for information": „Only ask for information
- * you need… Every question you ask makes it harder for users to complete the
- * service."
- * https://www.gov.uk/service-manual/design/collecting-personal-information
- * NN/g, „Website Forms Usability: Top 10 Recommendations": „Keep it short.
- * Eliminate unnecessary fields."
- * https://www.nngroup.com/articles/web-form-design/
- * Baymard Institute, checkout-kutatás: az elhagyás vezető okai közt a „too long
- * / complicated" folyamat.
- * https://baymard.com/blog/checkout-flow-average-form-fields
- * WCAG 2.2 · 3.3.7 Redundant Entry — a mezők NEM tűntek el a rendszerből: a
- * fiók „Adataim" lapján elmenthetők, és onnan a pénztár előtölti őket.
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. A regisztrációs markup PONTOSAN három beviteli mezőt tartalmaz.
- *  2. Egyetlen számlázási mezőnév és „számlázás" szó sincs benne.
- *  3. Nincs benne összecsukható (`<details>`) blokk.
- *  4. A számlázási mezők a PÉNZTÁRBAN és a FIÓKBAN továbbra is ott vannak —
- *     tehát ez eltávolítás, nem elvesztés.
- *  5. Az `.kc-auth-form__billing` CSS-szabályok is elmentek (nem maradt holt
- *     stílus, és nem maradt elárvult célfelület-kivétel a gomb-kontraszt őrben).
  */
 
 const MARKUP = renderToStaticMarkup(createElement(RegisterForm, { returnUrl: '/fiok' }))

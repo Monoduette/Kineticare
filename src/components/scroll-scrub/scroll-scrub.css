@@ -1,18 +1,10 @@
 /**
  * ScrollScrub — a filmsáv szerkezeti stílusai (landing-tükör port, terv 3.3).
- *
  * A komponens ÖNHORDÓ: a színeket a --ss-* változók hozzák (a React-oldali
  * `theme` propból), a belső 860px-es töréspont pedig szándékosan itt marad.
  * A KinetiCare-arculat (betűcsalád, sáv-gradiens, gombok) NEM itt él, hanem a
  * blokk bőrében: src/app/(frontend)/styles/blocks/film-hero.css.
- *
  * ELTÉRÉS A TÜKÖRTŐL: a betűméretek NEM egyedi clamp()-ek, hanem a fő site
- * tipográfiai skálájának tokenjei (--kc-font-l/m/s) — az értékesítési UX-skill 4.
- * pontja szerint fontméret kizárólag a közös skáláról jöhet. A címsor a
- * L (cím) lépcsőt kapja, ami egyben a hero-címsor felső
- * korlátja; a sortáv a --kc-leading-tight (1.15), a skill 1,05–1,15-ös
- * display-sávjában. Emiatt a mobil címsor-felülírás is elmarad: a token
- * clamp()-je viewport-arányosan, folytonosan skálázódik.
  */
 
 .scroll-scrub {
@@ -139,16 +131,11 @@
 
 /**
  * A felirat LEÍRÁSA a cím alatt.
- *
  * A `max-width: 44ch` a sorhossz-korlát: a 3. állás doboza 42rem széles, ami
  * S-méreten 90+ karakteres sorokat adna — az NN/g olvashatósági ajánlása
  * (45–85 karakter) fölött. A `ch` az adott betű „0"-jának szélessége, magyar
  * kisbetűs szövegre kissé bőven mér, így a 44ch a gyakorlatban ~50 karakter.
- *
  * A szín a `--ss-muted`, ami ebben a témában SZÁNDÉKOSAN ugyanaz a teli erejű
- * `ink`, mint a címé (lásd FilmHero FILM_THEME): filmkockán a hierarchiát a
- * méret adja, nem a halványítás — halvány szürkével a mért 5,78:1 / 7,25:1
- * AA-tartalék azonnal elfogyna.
  */
 .scroll-scrub__caption-body {
   max-width: 44ch;

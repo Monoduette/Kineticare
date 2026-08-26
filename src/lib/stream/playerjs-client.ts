@@ -1,78 +1,8 @@
 import { BUNNY_STREAM_IFRAME_SOURCE } from '../security/csp'
 
 /**
- * MINIMÁLIS player.js KLIENS a Bunny Stream iframe-lejátszóhoz — külső
- * függőség nélkül, tiszta `postMessage`-dzsel.
- *
- * ═══ MIKOR FUT EZ, ÉS MIKOR A HIVATALOS SCRIPT ═══
- * Az ELSŐDLEGES út a Bunny HIVATALOS player.js könyvtára
- * (./playerjs-loader.ts): rögzített verzióról, integritás-hash-sel töltjük, a
- * `script-src` pedig — tulajdonosi döntéssel — engedi az
- * `assets.mediadelivery.net` hosztot (src/lib/security/csp.ts).
- * EZ A MODUL A TARTALÉK: akkor lép működésbe, ha a hivatalos könyvtár NEM
- * töltődik be (hálózati hiba, integritás-eltérés, blokkoló bővítmény).
- *
- * Nem vészmegoldás: a player.js protokoll NEM igényel letöltött kódot — ez egy
- * egyszerű, JSON-alapú `postMessage`-üzenetváltás a szülő oldal és az iframe
- * között, a `frame-src` pedig amúgy is engedi az `iframe.mediadelivery.net`-et.
- * A modul konstansait (`context`, `version`, a `listener`-visszhang szemantikája
- * és a `timeupdate` payload alakja) a Bunny által TÉNYLEGESEN kiszolgált
- * `player-0.1.0.min.js` fájllal soronként egyeztettük — bájtra egyeznek.
- *
- * ═══ A PROTOKOLL (forrás) ═══
- * Specifikáció: embedly/player.js — SPEC.rst
- *   https://github.com/embedly/player.js/blob/master/SPEC.rst
- * Bunny-oldali támogatás bejelentése és példakódja:
- *   https://bunny.net/blog/introducing-player-js-support-for-bunny-stream-advanced-player-control-and-monitoring-api/
- *
- * Minden üzenet JSON, és a `context` mező ÁLLANDÓAN `"player.js"` — pontosan
- * azért, hogy a más célú `postMessage`-forgalommal ne keveredjen.
- *
- * Metódus-üzenet (szülő → iframe):
- *   { "context": "player.js", "version": "0.0.11", "method": "addEventListener",
- *     "value": "timeupdate", "listener": "<azonosító>" }
- *
- * Esemény-üzenet (iframe → szülő):
- *   { "context": "player.js", "version": "0.0.11", "event": "timeupdate",
- *     "listener": "<azonosító>", "value": { "seconds": 10, "duration": 40 } }
- *
- * A `listener` NEM callback, hanem egy visszhangzott azonosító: minden
- * gyermek-iframe ugyanazon a csövön (a `window` `message` eseményén) küld, ezért
- * a szülőnek kell tudnia eldönteni, melyik üzenet szól NEKI. A `ready` esemény
- * a lejátszó betöltődésekor magától megérkezik; a spec szerint minden más
- * interakció ELŐTT meg kell várni.
- *
- * ═══ BIZTONSÁGI SZABÁLYOK ═══
- * 1. ORIGIN-SZŰRÉS: kizárólag a `BUNNY_STREAM_IFRAME_SOURCE` originről érkező
- *    üzenetet dolgozzuk fel. Az origin-konstanst a CSP-modulból IMPORTÁLJUK,
- *    nem írjuk le újra — így a beágyazás engedélye és a fogadás szűrője
- *    ugyanabból az EGY igazságforrásból jön, és nem tudnak elcsúszni.
- *    Kiegészítő ellenőrzés: az üzenet forrás-ablaka az iframe-é legyen.
- * 2. A TARTALOM NEM MEGBÍZHATÓ: minden mező típusszűkítéssel olvasódik ki;
- *    ismeretlen alaknál a kliens CSENDBEN visszatér.
- * 3. NEM DOBUNK a fogyasztó felé: egy hibás üzenet (vagy egy hibát dobó
- *    callback) nem akaszthatja meg a lejátszást. A hibák az opcionális
- *    `onError`-ra mennek — naplózni innen nem tudunk, mert a
- *    `src/lib/logger.ts` a szerver stdoutjára ír.
- * 4. TAKARÍTÁS: a `dispose()` leiratkozik a `message` eseményről. A komponens
- *    unmountjánál KÖTELEZŐ meghívni, különben a leiratkozatlan listener
- *    továbbra is fut (és a callbackjein át élve tartja a régi React-állapotot).
- *
- * A kimenő üzenetek célorigin-ként is a pontos Bunny-origint kapják (soha nem
- * `"*"`), így az üzenet nem szivárog ki egy közben átirányított iframe-be.
- *
- * ═══ REJTETT FÜGGÉS: A REFERRER ═══
- * A Bunny-oldali fogadó a SZÜLŐ origint a `document.referrer`-ből számolja, és
- * minden más originű üzenetet eldob. Ez azt jelenti, hogy a lejátszónak MEG KELL
- * KAPNIA a mi originünket referrerként — enélkül MINDEN feliratkozásunkat
- * visszautasítja, némán. Ma ez teljesül: a `next.config.ts`
- * `Referrer-Policy: strict-origin-when-cross-origin` fejlécet küld, és az
- * iframe-en NINCS szigorítóbb `referrerpolicy` attribútum.
- * EZÉRT: a fejléc `no-referrer`/`same-origin`-ra szigorítása — bármilyen jó
- * szándékú „biztonsági javítás" — KIKAPCSOLJA az automatikus haladás-jelölést.
- * A függést a src/__tests__/playerjs-client.test.ts regressziós tesztje őrzi.
- *
- * A modult a src/__tests__/playerjs-client.test.ts fedi.
+ * Minimális player.js kliens — tartalék, ha a hivatalos script nem töltődik be.
+ * Origin-szűrés; `dispose()` kötelező. Referrer-policy: `no-referrer` kikapcsolja a haladás-jelölést.
  */
 
 /** A protokoll névtere — minden üzenet ezzel azonosítja magát. */
@@ -267,27 +197,8 @@ function resolveHostWindow(explicit?: PlayerJsHostWindow): PlayerJsHostWindow | 
 }
 
 /**
- * player.js híd a Bunny-lejátszó iframe-hez.
- *
- * ═══ A FELIRATKOZÁS HÁROM ÚTJA (mind a három kell) ═══
- * A híd a létrehozáskor azonnal feliratkozik a `message` eseményre, és elküldi a
- * `addEventListener` kéréseket. Ez a legelső küldés azonban „vaklövés": a híd a
- * lecke betöltésével egyszerre épül, ilyenkor a keret még `about:blank`-en áll,
- * és a pontos célorigint megkövetelő `postMessage` NÉMÁN elvész. Ezért:
- *  1. az iframe `load` eseményére ÚJRA feliratkozunk (ekkor már a Bunny
- *     dokumentuma fut a keretben),
- *  2. a `ready` esemény megérkezésekor is újra (ez a spec szerinti út),
- *  3. és amíg a kerettől EGYETLEN érvényes player.js üzenetet sem kaptunk,
- *     `SUBSCRIBE_RETRY_INTERVAL_MS`-enként újrapróbáljuk, legfeljebb
- *     `SUBSCRIBE_MAX_ATTEMPTS`-szer.
- * A három út közül BÁRMELYIK elég; az első beérkező üzenet leállítja az
- * ismétlést. Erre a redundanciára azért van szükség, mert egyik út sem a mi
- * kezünkben van: mindegyik egy külső szolgáltató lejátszójának a viselkedésén
- * múlik. A többszörös feliratkozás ártalmatlan: a `timeupdate` a megnézett
- * intervallumok összefésülése miatt idempotens, az `ended` pedig egy már
- * késznek jelölt leckét jelöl készre újra.
- *
- * @returns `dispose()` — a komponens unmountjánál KÖTELEZŐ meghívni.
+ * player.js híd: message + iframe load + ready + retry — bármelyik elég a feliratkozáshoz.
+ * @returns dispose() unmountnál kötelező.
  */
 export function createBunnyPlayerBridge(options: BunnyPlayerBridgeOptions): BunnyPlayerBridge {
   const { iframe, onReady, onTimeUpdate, onEnded, onError } = options

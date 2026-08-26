@@ -4,14 +4,10 @@ import { sanitizeAnalyticsUrl } from '../../lib/analytics/page-url'
 
 /**
  * M9 — az analytics felé kimenő oldal-URL tisztítása.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A jelszó-visszaállító jegy query-paraméterben utazik
  * (/jelszo-visszaallitas?token=…), és a pageview-capture a TELJES URL-t küldte
  * a PostHog/GA4 felé — a jegy harmadik fél naplóiba került volna.
- *
  * A tisztítás SZELEKTÍV: a jegyet hordozó paraméter kivágódik, a kampány-
- * attribúcióhoz kellő utm_* paraméterek maradnak (üzleti követelmény).
  */
 
 const RESET_PATH = '/jelszo-visszaallitas'

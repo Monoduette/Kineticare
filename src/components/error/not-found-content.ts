@@ -1,42 +1,5 @@
 /**
  * A „nem található" oldal SZÖVEGE és CÉLLISTÁJA — egyetlen igazságforrás.
- *
- * Miért külön modul: ugyanez a tartalom KÉT különböző Next-konvención jelenik
- * meg (lásd `src/components/error/NotFoundView.tsx` fejlécét), és a két helyen
- * elcsúszó szöveg pontosan az a fajta néma inkonzisztencia, amit a WCAG 2.2
- * 3.2.4 (Consistent Identification) tilt: ugyanaz a funkció ugyanúgy nevezendő
- * meg a felület minden pontján.
- * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- *
- * A szöveg CMS-FÜGGETLEN. A hibaoldal akkor is helyt kell álljon, amikor épp
- * az adatbázis vagy a Payload-példány nem érhető el — ezért itt nincs
- * lekérdezés, csak konstans.
- *
- * MIKROSZÖVEG-FORRÁSOK
- *
- * 1. GOV.UK Design System, „Page not found pages":
- *    https://design-system.service.gov.uk/patterns/page-not-found-pages/
- *    A minta szó szerint három dolgot mondat el a látogatóval:
- *      - ha begépelte a címet, ellenőrizze, jól írta-e,
- *      - ha bemásolta, ellenőrizze, a TELJES cím bekerült-e,
- *      - ha a cím jó volt, vagy linkről érkezett, vegye fel velünk a kapcsolatot.
- *    És kimondottan TILTJA: a „404"/„bad request" szakzsargont, az „oops"-féle
- *    bratyizást, a piros riasztást, a morzsamenüt és minden olyan szöveget,
- *    amely a látogatót hibáztatja. Ezért nincs a látható szövegben „404".
- *
- * 2. Nielsen Norman Group, „Improving the Dreaded 404 Error Message":
- *    https://www.nngroup.com/articles/improving-dreaded-404-error-message/
- *    Kimondja, hogy a lap kezdődjön rövid, bocsánatkérő mondattal, kerülje a
- *    technikai zsargont és a felhasználó hibáztatását, és legyen KONSTRUKTÍV:
- *    adjon továbbvezető, kattintható célokat. (Keresőmezőt is kér; a
- *    Kineticare-nek jelenleg nincs oldalkeresője, ezért a helyét a legfontosabb
- *    célok listája veszi át (gombok + `NOT_FOUND_DESTINATIONS`).)
- *
- * 3. NN/g, „Error-Message Guidelines" (közérthető, pontos, konstruktív):
- *    https://www.nngroup.com/articles/error-message-guidelines/
- *
- * A magyar írásmód a `docs/ui-sztenderdek.md` 3.1 mikroszöveg-szabályzatát
- * követi: gondolatjel csak valódi közbevetésnél, itt egy sem kell.
  */
 
 /** A lap egyetlen h1-e. A GOV.UK mintacíme magyarul. */

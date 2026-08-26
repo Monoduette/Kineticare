@@ -1,65 +1,7 @@
 /**
  * A kurzus-haladás panel SAJÁT márka-rétege (`.kc-course-progress`).
- *
- * ═══ MIÉRT LÉTEZIK ═══
- * A panel két állapotszíne a Payload globális tokenjéről jött, és mindkettő
- * MEGBUKOTT a WCAG 2.2 SC 1.4.3-on (számolt relatív luminanciával, a panel
- * tényleges hátterén, ami a Payload `--theme-bg` = `--theme-elevation-0`):
- *
- *   --theme-error-500   rgb(218,75,72)  / fehér ........... 4,13:1  ✗ (kell 4,5)
- *   --theme-error-500                   / rgb(20,20,20) ... 4,46:1  ✗ (sötét téma)
- *   --theme-warning-500 rgb(185,108,13) / fehér ........... 4,03:1  ✗
- *   --theme-warning-500                 / rgb(20,20,20) ... 4,57:1  ✓ (csak sötéten)
- *
- * A javítás módja VEZETŐI DÖNTÉS (docs/statisztika-audit-2026-08-21.md 8.3):
- * a Payload GLOBÁLIS tokenjéhez nem nyúlunk, mert az az admin összes gyári
- * hibaüzenetét átszínezné; a saját komponensünkben cserélünk márka-tokenre.
- * A Statisztika nézet ugyanezt teszi, csak a `.kc-adminstat` scope alatt
  * (src/app/(payload)/custom.scss). Az a scope ezen a panelen NEM fut, ezért
- * kap a panel saját, ugyanilyen felépítésű, ugyanolyan szűk hatókörű réteget.
- *
- * ═══ HATÓKÖR ═══
- * Minden szabály a `.kc-course-progress` scope alatt él: az admin többi
- * része (lista-nézetek, szerkesztők, más panelek) VÁLTOZATLAN marad.
- * A fájlt maga a komponens importálja, tehát a stílus és a jelölés együtt
- * kerül a csomagba, nem tud szétcsúszni.
- *
- * ═══ KONTRASZT-JEGYZŐKÖNYV (WCAG 2.2 relatív luminanciával SZÁMOLT értékek;
- *     normál szöveg ≥ 4,5:1) ═══
- * VILÁGOS téma, háttér: `--theme-elevation-0` = rgb(255,255,255)
- *   danger  #b3261e / fehér ......... 6,54:1  AA ✓
- *   warning #8a5a00 / fehér ......... 5,93:1  AA ✓
- * SÖTÉT téma, háttér: `--theme-elevation-0` = `--color-base-900` = rgb(20,20,20)
- *   danger-dark  #ffb4ab / rgb(20,20,20) ... 10,85:1  AA/AAA ✓
- *   warning-dark #f3c8a2 / rgb(20,20,20) ... 11,93:1  AA/AAA ✓
- *
- * ═══ A SZÍNEK EREDETE (nem találunk ki újat) ═══
- * - `#b3261e` = a márka `--kc-color-danger`-e (src/app/(frontend)/styles/tokens.css
- *   44. sor); a custom.scss `--kc-as-danger`-e ugyanez az érték.
- * - `#8a5a00` = a márka `--kc-color-warning`-ja (tokens.css 48. sor).
- * - `#ffb4ab` = a sötét téma világosított hibaárnyalata, ugyanaz az érték,
- *   amit a custom.scss sötét blokkja visz (Material baseline error80):
- *   https://m3.material.io/styles/color/system/overview és
- *   https://m2.material.io/design/color/dark-theme.html
- * - `#f3c8a2` = a Payload SAJÁT borostyán-skálájának világos foka
- *   (`--color-warning-200`, @payloadcms/ui/dist/scss/colors.scss). A márkának
- *   nincs sötét figyelmeztető párja, ezért a keretrendszer meglévő skálájából
- *   veszünk fokot ahelyett, hogy új árnyalatot találnánk ki. Ugyanaz az elv,
- *   amit a Material és az Apple HIG is kimond: sötét témán a szemantikus szín
- *   VILÁGOSABB fokra vált, nem invertálódik
- *   (https://developer.apple.com/design/human-interface-guidelines/dark-mode).
- *
- * ═══ MIÉRT BIZTONSÁGOS A FALLBACK ═══
- * A komponens `var(--kc-cp-danger, var(--theme-text))` alakban hivatkozik.
- * Ha ez a fájl valamiért nem töltődne be, a szöveg a Payload SZÖVEGSZÍNÉT
- * kapja (világosban 13,39:1, sötétben 15,45:1 a lap hátterén), tehát a
  * hiányzó réteg NEM bukást okoz, csak elveszti a színkódolást. Az üzenet
- * jelentését amúgy is a SZÖVEG hordozza, a szín csak megerősíti
- * (WCAG 2.2 SC 1.4.1 Use of Color:
- * https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html).
- *
- * WCAG 2.2 SC 1.4.3 Contrast (Minimum):
- * https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
  */
 
 .kc-course-progress {

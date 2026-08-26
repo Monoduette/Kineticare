@@ -3,26 +3,8 @@ import { formatPriceHuf } from '../../format-price'
 import { escapeHtml, renderLayout } from './layout'
 
 /**
- * Vásárlás-visszaigazoló e-mail sablon (W4-03) — a paid átmenet után megy ki.
- *
- * Tartalma: rendelésszám, tétellista (bruttó), végösszeg, a kurzuselérés
- * linkje, és (ha a számlázás be van kapcsolva) a számla érkezéséről tájékoztatás.
- * Minden dinamikus érték escape-elve; az összegek a közös formatPriceHuf-fal.
- *
- * FIÓK-VÁLTOZATOK (vendég-vásárlás, 2026-08-15). A levélnek három alakja van,
- * az `account` mező szerint:
- *
- *  - `undefined` — bejelentkezett vásárlás: a vevő ismeri a fiókját, a levél
- *    változatlan (CTA: „Kurzusaim megnyitása");
- *  - `{ kind: 'password-setup' }` — a fiók MOST jött létre (vagy még nincs
- *    hozzá jelszó): a levél AKTIVÁLÓ levél is, a CTA a jelszó-beállító link.
- *    A link TITOK — aki megkapja, jelszót állíthat a fiókhoz —, ezért sem a
- *    token, sem a teljes link nem kerülhet naplóba (a hívó felel érte);
- *  - `{ kind: 'login' }` — vendégként vásárolt, de MÁR VAN működő fiókja: nem
- *    küldünk jelszó-beállítót, hanem a belépésre irányítunk.
- *
- * GENERÁLT JELSZÓ SOHA NEM SZEREPELHET a levélben — a vevő maga állít be
- * jelszót a linkkel.
+ * Vásárlás-visszaigazoló sablon (paid után). Fiók-változatok: bejelentkezett,
+ * password-setup (aktiváló link titok), login. Generált jelszó sosem a levélben.
  */
 export interface OrderConfirmationItem {
   title: string

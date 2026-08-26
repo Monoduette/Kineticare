@@ -46,49 +46,6 @@ import {
 
 /**
  * „Kurzus-haladás" panel a kurzus (products) szerkesztőnézetében
- * (`type: 'ui'` mező).
- *
- * ═══ MIT OLD MEG ═══
- * A megrendelői igény szó szerint: „fontos, hogy a lányok láthassák, ki
- * indította el a kurzust, ki még nem, és milyen százalékban van elkészült.
- * Ehhez egy apró indikátor, például egy kis kördiagram, vagy hasonló megoldás
- * elegendő." A panel ezt adja: összesítő kártyák, majd hallgatónkénti
- * táblázat kis kördiagrammal, szűrővel és keresővel.
- *
- * ═══ KIZÁRÓLAG FELÜLET ═══
- * Semmit nem számol: az összes szám a GET /api/admin/course-progress
- * végponttól jön, amely a KÖZÖS `summarizeCurriculum` modullal dolgozik,
- * ugyanazzal, amit a vevő lejátszója is használ. Így az admin és a vevő
- * garantáltan ugyanazt a százalékot látja. A tiszta nézet-logika (szűrés,
- * rendezés, relatív idő, ring-geometria, mély link) a `course-progress-view.ts`-ben
- * él és tesztelt; a két táblázat a `course-progress-tables.tsx`-ben, szintén
- * tesztelhető alakban; itt csak az állapotkezelés és a DOM-ra kötés marad.
- *
- * ═══ MIÉRT GOMBRA TÖLT, NEM MOUNTKOR ═══
- * Két ok: (1) a kurzus szerkesztőoldala ne lassuljon egy összesítő
- * lekérdezéssel, amit nem mindig néznek meg; (2) a repó `react-hooks`
- * beállítása a mountkori effektben történő állapotírást hibaként kezeli
- * (lásd eslint.config.mjs).
- *
- * ═══ EGYETLEN KIVÉTEL: A MÉLY LINK ═══
- * A Statisztika oldal
- * `/admin/collections/products/<id>?haladas=nem-kezdte#kurzus-haladas`
- * alakban linkel ide (a szerződés KÖTÖTT, `docs/statisztika-audit-2026-08-21.md`
- * 1. pont). Ha a link KIFEJEZETTEN kérte, a panel magától betölt, beállítja a
- * szűrőt és odagörget: a válaszig vezető út így háromról egy kattintásra
- * csökken. Paraméter nélkül minden marad a régi, gombra induló viselkedésnél,
- * tehát a fenti teljesítmény-indok sértetlen. Ismeretlen vagy hibás értéknél a
- * panel úgy viselkedik, mintha nem lenne paraméter (nem dob hibát). Az automata
- * betöltés a KLIENS-OLDALI szerepkör-kapu MÖGÖTT áll: aki nem munkatárs vagy
- * tulajdonos, annál el sem indul (a végpont saját szerver-oldali kapuja
- * változatlanul az igazi védelem, ez csak fölösleges 403-at spórol).
- *
- * ═══ AKADÁLYMENTESSÉG ═══
- * A kördiagram DEKORATÍV (`aria-hidden`): az információt a mellette álló
- * „12/18 · 67%" szöveg hordozza. A táblák akadálymentességi részletei (görgethető
- * régió, sorfejléc, látható rendezés-jelölés, érintőcél) a
- * `course-progress-tables.tsx` fejkommentjében; a két állapotszín kontraszt-
- * jegyzőkönyve a `course-progress-panel.css`-ben.
  */
 
 const REQUEST_TIMEOUT_MS = 30_000
@@ -290,20 +247,11 @@ function StatCard({ label, value }: { label: string; value: string }): JSX.Eleme
 
 /**
  * A panel címsora.
- *
- * ═══ MIÉRT h3 ═══
  * A címsor eddig `h4` volt. MÉRVE (a Payload 3.88 forrásából): a szerkesztő-
  * oldal dokumentumcíme `h1` (@payloadcms/ui RenderTitle alapértelmezett
  * eleme), a `type: 'array'` és `type: 'group'` mezők címkéje pedig `h3`
  * (@payloadcms/ui fields/Array és fields/Group). A termékoldalon a panel
  * ELŐTT hét tömb-mező áll, tehát a DOM-ban a h1 → h4 ugrás valójában nem
- * következik be. A `h4` mégis hibás: azt állítja, hogy a panel az ELŐTTE álló
- * tömb-mező ALSZAKASZA, holott a dokumentum önálló, azonos rangú szekciója
- * (WCAG 2.2 SC 1.3.1 Info and Relationships —
- * https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html;
- * W3C H42 technika: a címsor szintje a valós szerkezetet tükrözze).
- * A `h3` a testvér-mezőkkel AZONOS szint, és nem hoz be új ugrást.
- * (A meglévő h1 → h3 ugrás a Payload sajátja, nem ezé a panelé.)
  */
 function PanelHeading(): JSX.Element {
   return <h3 style={{ marginTop: 0 }}>Kurzus-haladás</h3>

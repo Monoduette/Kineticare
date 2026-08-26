@@ -3,25 +3,8 @@ import type { CollectionAfterChangeHook, CollectionAfterDeleteHook, Plugin } fro
 import { auditLogStore, resolveClientIp, writeAuditLog } from '../lib/audit'
 
 /**
- * Audit plugin (T-015) — config-szintű hook-injekció.
- *
- * Szándékosan NEM a collection-fájlok szerkesztésével köti be az
- * audit-hookokat (azok más workerek scope-ja), hanem az src/plugins/ecommerce.ts
- * mintájára: a buildConfig plugins-láncában lefut, végigmegy a (már
- * bővített) config.collections listán, és a pages/posts/products/orders/users
- * collectionökhöz afterChange/afterDelete hookot fűz — a meglévő hookokat
- * megtartva.
- *
- * Auditált események:
- * - create / delete mind az öt collectionön,
- * - pages/posts: publish-átmenet (saját `status` mező → published — ezek nem
- *   használnak draft-verziózást),
- * - products: publish-átmenet (drafts `_status` mező → published),
- * - orders: refund-mezők (refundReason, refundedAt) változása,
- * - users: role-változás, purchases-változás (`purchase-change`).
- *
- * Fontos: a plugins-láncban az ecommerce plugin UTÁN kell futnia, különben a
- * products/orders collectionök még nem léteznének az injekciókor.
+ * Audit plugin — hook-injekció pages/posts/products/orders/users collectionökre.
+ * Az ecommerce plugin UTÁN kell futnia. Publish/refund/purchases/role események.
  */
 
 const AUDITED_SLUGS: ReadonlySet<string> = new Set([

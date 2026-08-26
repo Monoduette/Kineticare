@@ -8,30 +8,7 @@ import { buildCurriculum, findLessonByRef } from '../curriculum/curriculum'
 import { logger as rootLogger, type Logger } from '../logger'
 import type { MarkWatchedResponseBody } from './contract'
 
-/**
- * POST /api/course-progress/mark-watched üzleti logikája — „megnéztem ezt a
- * videót" jelölés (E1).
- *
- * A hozzáférés-ellenőrzés NEM duplikálja a szabályokat: ugyanazt a modult
- * hívja, amit a lejátszási token kiadása (src/lib/stream/issue-stream-token.ts)
- * — a vásárlás-ellenőrzést az src/lib/courses.ts `hasUserPurchased`-e, az
- * időbeli érvényességet az src/lib/course-access.ts szabálya
- * (`resolveSingleCourseAccess`) adja. Ha a lejáratszabály változik, ez a
- * végpont automatikusan követi.
- *
- * Sorrend (információminimalizálás, a stream-token mintája): a vásárlás-
- * ellenőrzés a termék lekérdezése ELŐTT fut, így a nem-vevő 403-as válasza nem
- * árulja el, hogy a kurzus egyáltalán létezik-e.
- *
- * Státusz-szabály: `published` → rendben; `archived` → a MEGLÉVŐ vevő tovább
- * nézi (és így jelölhet is — ugyanaz a szabály, mint a lejátszásnál); minden
- * más (draft/ismeretlen) → 404.
- *
- * Idempotencia: find-then-create. Ha a videó már megnézettként szerepel, a
- * válasz 200 `{ alreadyWatched: true }` — nem hiba. Párhuzamos kérésnél a
- * collection unique compound indexe (user + product + videoRef) fog, a create
- * hibája után a szolgáltatás újraolvassa a meglévő sort.
- */
+
 
 /** Üzleti hiba HTTP-státusszal és magyar felhasználói üzenettel. */
 export class CourseProgressError extends Error {
@@ -104,21 +81,7 @@ function parseVideoRef(raw: unknown): string {
   return trimmed
 }
 
-/**
- * A videoRef csak akkor fogadható el, ha a termék TANANYAGÁBAN (modulok →
- * leckék, vagy a régi, lapos videólista) VAN olyan lecke, amelynek a stabil
- * refje pontosan ez. Így a haladás sosem mutathat idegen (vagy kitalált)
- * leckére.
- *
- * A keresés SZÁNDÉKOSAN kizárólag a `ref`-re illeszt (a Bunny-GUID-ra nem, még
- * akkor sem, ha a sornak van saját id-ja): a `course-progress.videoRef` névtér
- * egységes, és a két alak egyidejű elfogadása ugyanahhoz a leckéhez két
- * különböző haladás-sort engedne létrejönni.
- *
- * A NEM elindítható lecke (pl. feldolgozás alatti videó) jelölése továbbra is
- * megengedett — ez a korábbi viselkedés —, a haladás-számításba viszont nem
- * számít bele (src/lib/curriculum/progress.ts).
- */
+/** videoRef csak a tananyag `ref`-jére illeszkedhet (egységes névtér). */
 function lessonBelongsToProduct(product: Product, videoRef: string): boolean {
   return findLessonByRef(buildCurriculum(product, true), videoRef) !== null
 }

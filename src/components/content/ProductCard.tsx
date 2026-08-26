@@ -14,50 +14,6 @@ import '../../app/(frontend)/styles/blocks/course-cards.css'
 
 /**
  * ProductCard — a kezdőlapi kurzus-kiemelés kártyája („mini-buybox").
- *
- * SZERKEZET (a vezető 2026-08-15-i design-briefje szerint, egészségügyi
- * termék-landingek buybox-mintájára, DE a saját tokenjeinkkel — idegen színt
- * és betűt nem veszünk át):
- *
- *   borító → célközönség-címke → cím → rövid leírás →
- *   pipás előny-sorok (max 3, CMS) → hozzáférés-meta (a kurzus adataiból) →
- *   ár (PriceTag) → elsődleges CTA-gomb
- *
- * MINDEN SZÖVEG A CMS-BŐL JÖN. A cím a `displayTitle` → `sku` lánc, a leírás a
- * `shortDescription`, az előny-sorok a `cardHighlights` tömb, az ár a
- * `priceInHUF`, a hozzáférés-sor az `accessDurationDays`, a célközönség az
- * `audience`. A komponensben marketingszöveg nincs; a gombfelirat is kívülről
- * (blokk-mezőből) érkezik, a `DEFAULT_CTA_LABEL` csak fallback.
- *
- * A kártya a kurzus KANONIKUS címére mutat (courseHref: slug, ennek hiányában
- * a régi id-s út — ugyanaz a konvenció, mint a menüben, lásd
- * src/lib/menu-tree.ts). Csak published termék kerülhet a kártyára — a szűrés a
- * lekérdezésben (src/lib/cms.ts PUBLISHED_WHERE) történik, itt védőhálóként
- * újra ellenőrizzük.
- *
- * AKADÁLYMENTESSÉG: a kártya EGÉSZE egyetlen link, ezért benne beágyazott
- * gomb/link nem lehet — a CTA `aria-hidden` dekoráció (a korábbi nyíl-CTA
- * mintája), a pipa-ikonok szintén.
- *
- * A link NEVE explicit `aria-label` (2026-08-16). Enélkül a név a kártya
- * teljes szövegéből számítódott — borító-alt + célközönség + cím + három
- * előnysor + leírás + ár + hozzáférés-sor —, ami MÉRVE 348 karakter hosszú
- * volt (a borító alt-ja ráadásul megismételte a címet). Egy ilyen név
- * képernyőolvasóval végighallgathatatlan, és a link-listában sem
- * megkülönböztethető. A név most „{cím}: a kurzus részletei": tartalmazza a
- * látható címet, tehát a WCAG 2.2 SC 2.5.3 (Label in Name) is teljesül, és
- * megmondja, hova visz (SC 2.4.4). A borító `alt=""`-t kap (dekoratív).
- *
- * Kontraszt: minden szöveg `text`/`text-muted` fehér kártyán (15,63:1 ill.
- * 9,30:1), a CTA fehér az `accent-deep`-en (5,45:1) — lásd course-cards.css.
- *
- * KIEMELT (VÍZSZINTES) VÁLTOZAT — `featured` prop. A MEZŐK ÉS A SORRENDJÜK
- * VÁLTOZATLANOK, csak az elrendezés fordul el: 900 px felett a borító balra,
- * a tartalom (cím, előnysorok, ár, CTA) jobbra kerül, és a kártya a szekció
- * teljes szélességét kitölti. Ez az egyetlen fizetős kurzus esete (a rács
- * ilyenkor egyetlen, középen árválkodó kártyát mutatna — lásd CourseCards).
- * A változat kizárólag CSS-módosító osztály: se új szöveg, se elhagyott mező,
- * se másik akadálymentességi minta nem tartozik hozzá.
  */
 
 /**

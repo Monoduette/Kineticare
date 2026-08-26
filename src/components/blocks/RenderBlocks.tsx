@@ -30,30 +30,7 @@ import { Welcome } from './Welcome'
 
 /**
  * RenderBlocks — a szekció-rendszer renderelője (terv 5. pont, F3).
- *
- * A Pages `layout` mezőjének blokkjait rendereli a szerkesztő által beállított
- * sorrendben. Két blokkfajtát köt össze egyetlen listában:
- *  - az új, Higgsfield-kinézetű blokkok (FilmHero, Welcome, Usps, States,
- *    Services, About, PressLogos, TeamMembers, FaqBlock, Accordion,
- *    Appointment, CtaBanner) a teljes blokkot kapják és maguk kezelik a
- *    szekció-beállításaikat (az Appointment emellett a route-tól kapja az
- *    űrlap-azonosítót és a Turnstile site key-t — lásd `appointment` prop),
- *  - az adatvezérelt / örökölt szekciók (credsStrip, courseCards, freeSos,
- *    howItWorks, testimonials, knowledge, richText) a meglévő kezdőlapi
- *    komponensekre képződnek le — a blokk mezői opcionális felülírásként
- *    érkeznek, így a rögzített kezdőlap (üres layout) viselkedése változatlan.
- *
- * Közös szabályok:
- *  - `sectionSettings.visible === false` → a blokk kimarad (elrejtés törlés
- *    helyett — a szerkesztő bármikor visszakapcsolhatja),
- *  - `sectionSettings.anchorId` → a szekció `id`-je (lapon belüli ugrás),
- *  - `sectionSettings.hatter` → háttérsáv (feher → default, tint, sotet → dark),
- *  - ismeretlen blokktípus némán kimarad (előre-kompatibilitás: régebbi kód
- *    újabb tartalommal találkozva nem törhet el).
- *
  * A FAQPage JSON-LD-t a FaqBlock maga adja a saját tételeiből — itt nem
- * duplikáljuk (a látható szövegtől eltérő strukturált adatot a keresők
- * elvetik). Az Organization JSON-LD oldalszintű, a HomeView adja.
  */
 
 type LayoutBlock = NonNullable<Page['layout']>[number]

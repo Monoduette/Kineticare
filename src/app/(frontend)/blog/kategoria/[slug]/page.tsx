@@ -15,26 +15,11 @@ import '../../../styles/blocks/tudastar-lista.css'
 
 /**
  * /blog/kategoria/[slug] — a Tudástár egy témájának listája.
- *
- * ═══ ÜRES ÁLLAPOT ═══
  * Ugyanaz a panel, mint a bloglistán (PostsEmptyState). Ha a témában nincs
  * cikk, de máshol VAN, a panel visszavisz a teljes Tudástárba; ha sehol
  * nincs cikk, a magyarázó (hub) állapot jelenik meg — így a visszaút nem egy
  * ugyanilyen üres lapra mutat.
- *
- * ═══ INDEXELÉS ═══
  * Az ÜRES kategória-oldal `noindex, follow` jelzést kap. A Google a 200-zal
- * válaszoló, de tartalom nélküli lapot „soft 404"-ként kezeli, ha „the content
- * suggests an error for Google Search, an empty page or an error message"
- * (https://developers.google.com/search/docs/crawling-indexing/http-network-errors),
- * és a `noindex` a hivatalos módja annak, hogy egy ilyen lap ne kerüljön a
- * találatok közé
- * (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
- * A `follow` SZÁNDÉKOS: a lapon lévő linkek (Tudástár, kurzusok, kapcsolat)
- * továbbra is bejárhatók maradjanak. Amint az első cikk megjelenik a témában,
- * a jelzés magától visszavált indexelhetőre — külön teendő nincs.
- * A sitemap ugyanezt a szabályt követi (src/lib/tudastar.ts
- * `categoriesWithPosts`): átirányított és nem indexelendő cím nem kerül bele.
  */
 
 export const dynamic = 'force-dynamic'

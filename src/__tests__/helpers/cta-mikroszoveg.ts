@@ -1,25 +1,7 @@
 /**
- * MIKROSZÖVEG-SZABÁLYOK — a `docs/ui-sztenderdek.md` §3.1 kódbeli alakja.
- *
- * MIÉRT KÜLÖN FÁJLBAN, ÉS MIÉRT NEM A `src/lib/cta-vocabulary.ts`-BEN
- * ------------------------------------------------------------------
- * Két őr méri ugyanezeket a szabályokat:
- *
- *   - `cta-vocabulary-guard.test.ts` (G-UI1) — a SZÓTÁRON,
- *   - `cta-a-termekben.test.ts` (G-UI2) — a TERMÉK élő feliratain.
- *
- * A listát tehát meg kell osztani, de NEM a védett modulba: ha a tiltott szavak
- * a `cta-vocabulary.ts`-ben élnének, a modul gyengítése (egy sor törlése)
- * ugyanazzal a mozdulattal gyengítené mindkét őrt is. Ez a fájl TESZT-oldali,
- * a `src/__tests__/` fa alatt: a termékkód nem függ tőle, tehát a szabályt csak
- * az őrökkel együtt, láthatóan lehet lazítani.
- *
- * A tiltott karaktereket a modul KÓDPONTBÓL építi, nem beleírva — így maga a
- * fájl sem bukik meg a saját szabályán, és a szabály nem másolható el véletlenül
- * egy vizuálisan hasonló karakterrel.
+ * CTA mikroszöveg-ellenőrző segéd: tiltott írásjelek (em dash, en dash),
+ * folyamatban-felirat három pontja, felirat-normalizálás a szótár-őrhöz.
  */
-
-/** U+2014 — kvirtmínusz (em dash). Magyar szövegben nem írásjel (ELTE, Szabadbölcsészet). */
 export const EM_DASH = String.fromCharCode(0x2014)
 
 /** U+2013 — nagykötőjel / gondolatjel. Gomb-, menü- és címkeszövegben tiltott (§3.1.2). */

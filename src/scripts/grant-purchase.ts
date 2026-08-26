@@ -1,34 +1,7 @@
 /**
- * Manuális vásárlás-hozzáadás (kurzus-hozzáférés adása) — adminisztrátori script.
- *
- * Mikor kell: elhibázott fizetés utáni jóváírás, ajándék kurzus, migrációs
- * esetek — amikor a vevőnek a normál checkout-folyamaton kívül, kézzel kell
- * hozzáférést adni egy termékhez. Közvetlen adatbázis-írás helyett ez a
- * script a Payload LOCAL API-t használja (ugyanaz a users.purchases-beírás,
- * mint amit a fizetésjóváhagyás csinál — lásd
- * src/lib/order-status/apply-barion-state.ts grantPurchases).
- *
- * Futtatás (a config a .env-ből tölti a DATABASE_URI-t / PAYLOAD_SECRET-et):
- *   npx tsx src/scripts/grant-purchase.ts --email=<vevő-email> --product=<sku-vagy-id> [--reason=<indoklás>]
- *
- * IDEMPOTENS: ha a vevő már rendelkezik a termékkel és a hozzáférés él, a
- * script „már megvan" üzenettel, 0-s kilépési kóddal leáll (NEM hiba). Ha a
- * termék megvan, de a hozzáférés lejárt, a script ajándékként megújítja
- * (accessGrants.grantedAt = most), 0-s kilépési kóddal — paid rendelés nélkül.
- *
- * Kilépési kódok:
- *   0 — siker (ajándék beírva, megújítva, VAGY már megvolt és él)
- *   1 — hiba (hiányzó/hibás argumentum, ismeretlen felhasználó vagy termék,
- *       hiányzó hozzáférés-hossz, adatbázis-hiba)
- *
- * A script NEM hoz létre felhasználót és NEM rendelést — kizárólag a
- * users.purchases mezőt egészíti ki (missing-only), overrideAccess-szel.
- *
- * A tényleges logika az src/lib/grant-purchase.ts-ben él (ugyanazt hívja az
- * admin felület POST /api/admin/grant-purchase végpontja is) — ez a fájl
- * vékony CLI-burkolat: argumentum-feldolgozás, magyar konzol-üzenetek és
- * kilépési kódok. A CLI viselkedése (argumentumok, kimenet, exit-kódok,
- * idempotencia) változatlan.
+ * Manuális kurzus-hozzáférés (users.purchases) — CLI a grant-purchase.ts lib köré.
+ * Idempotens. Nem hoz létre usert/rendelést.
+ *   npx tsx src/scripts/grant-purchase.ts --email=… --product=<sku|id> [--reason=…]
  */
 
 import { getPayload } from 'payload'

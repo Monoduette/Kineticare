@@ -41,26 +41,12 @@ export interface BarionPurchaseDeps {
 }
 
 /**
- * ═══ BARION PIXEL — `purchase`, a folyamat ZÁRÓ eseménye ═══
- *
  * A `step` hordozza a kimenetelt: sikeres fizetésnél a lezáró lépés,
  * SIKERTELENNÉL `-1`. Enélkül a Barion a meghiúsult fizetést is bevételnek
  * látná — ez a fajta hiba néma, ezért van rá külön őr-teszt.
- *
  * A kosár-adat a pénztárban eltett PILLANATKÉPBŐL jön: a státusz-végpont csak
  * a státuszt és a termék-id-t adja vissza, a `purchase`-nek viszont kötelező a
  * `contents`, a `revenue` és a `currency`. Ha a pillanatkép hiányzik — más
- * fülön/eszközön nyitott köszönőoldal, kikapcsolt tároló —, az esemény
- * KIMARAD: csonka, kötelező kulcsok nélküli eseményt küldeni rosszabb, mint
- * nem küldeni semmit (a pixel úgyis eldobná, csak hibát naplózva).
- *
- * A pillanatképet a kiküldés után eldobjuk, hogy az oldal újratöltése ne
- * duplázza meg a konverziót.
- *
- * KÜLÖN, EXPORTÁLT FÜGGVÉNY: a köszönőoldal állapotgépe a poll-effekt
- * belsejében fut, amit DOM nélkül (jsdom nincs telepítve) nem lehet
- * lefuttatni — így viszont mindkét ág (siker / bukás) valódi állítással
- * ellenőrizhető.
  */
 export function emitBarionPurchase(
   orderNumber: string,
@@ -83,31 +69,7 @@ export function emitBarionPurchase(
 }
 
 /**
- * ═══ POSTHOG — `purchase_confirmed` BEVÉTELLEL ═══
- *
  * A MÉRT HIBA: az esemény korábban CSAK a rendelésszámot vitte. A PostHogban
- * így meg lehetett számolni, HÁNY vásárlás történt, de azt nem, hogy MENNYI
- * bevétel keletkezett — az értékesítési tölcsér utolsó lépése értékszám nélkül
- * maradt, tehát bevétel-riport (és bármilyen ROI-számítás) nem volt készíthető.
- *
- * A TULAJDONSÁGNEVEK. A PostHog Revenue analytics leírása szerint „the actual
- * event and property names don't matter since you configure them later in
- * PostHog" — vagyis a bevétel-mező NEVE a projekt-beállításban szabadon
- * megadható. Ezért a repóban máshol is használt, iparági `value` + `currency`
- * párost küldjük (GA4 és a Barion-pixel `revenue`/`currency` mezőjével is
- * egy tőről): https://posthog.com/docs/revenue-analytics/capture-revenue-events
- *
- * ÖSSZEG-EGYSÉG: a `value` EGÉSZ FORINT (a rendelés `totalHufSnapshot` mezője),
- * nem váltópénz. A forintnak ma nincs használatban lévő váltópénze, tehát a
- * „decimal amount" alak az egyetlen értelmes — a PostHog projekt-beállításában
- * is ezt kell választani, különben a riport 100-szoros hibát mutatna.
- *
- * SZEMÉLYES ADAT NINCS BENNE: rendelésszám, összeg, pénznem — se e-mail, se
- * név, se cím (a posthog.ts fejlécének tilalma).
- *
- * KÜLÖN, EXPORTÁLT TISZTA FÜGGVÉNY — ugyanaz az indok, mint az
- * `emitBarionPurchase`-nél: a poll-effekt belseje DOM nélkül nem futtatható,
- * így viszont a bevétel-mérés mindkét ága valódi állítással ellenőrizhető.
  */
 export function purchaseEventProperties(
   orderNumber: string,
@@ -128,16 +90,10 @@ export function purchaseEventProperties(
 /**
  * A `purchase_confirmed` CSAK akkor megy ki, ha a poll ténylegesen
  * visszaigazolta a `paid` státuszt.
- *
  * Vendég-visszatérésnél a státusz-végpont 401-et ad (`unauthorized`):
  * nincs munkamenet, a kliens NEM tudja, paid-e a rendelés. Ugyanez
  * igaz a `not-found`, az `error` és a poll-időtúllépés (`timeout`)
  * ágára. Hamis paid-eseményt küldeni (a Barion-visszatérés puszta
- * tényéből) rosszabb, mint a lyukat dokumentálni — a bevétel-riport
- * akkor fizetetlen kísérleteket is sikernek számolna.
- *
- * KÜLÖN, EXPORTÁLT TISZTA FÜGGVÉNY: a poll-effekt DOM nélkül nem
- * futtatható, a kapu viszont igen. Lásd docs/posthog.md 4a.
  */
 export function shouldEmitPurchaseConfirmed(
   result: PollResult | { kind: 'timeout' },
@@ -158,27 +114,12 @@ type ViewState =
   | { kind: 'not-found' }
 
 /**
- * ═══ MIÉRT NEM „Köszönjük a vásárlást!" ═══
  * A Barion EGYETLEN visszatérési címet ismer: a hivatalos leírás szerint a
  * `RedirectUrl` az a cím, ahova a fizető „after the payment is completed OR
  * CANCELED" kerül. Vagyis ide fut be a sikeres, a megszakított ÉS az
  * elutasított fizetés is. A vendég-vásárlónak pedig nincs munkamenete, tehát
  * az állapot-lekérdezés neki mindig 401 — ezen az ágon a lap SOSEM tudja,
  * mi történt.
- *
- * A folyamat-audit ezt négy állapoton mérte ki (valós fiókos és valós
- * VENDÉG `payment_failed`, valós `paid`, és egy KITALÁLT rendelésszám):
- * mind a négy ugyanazt a „Köszönjük a vásárlást! … Több teendőd nincs."
- * képernyőt kapta. Akinek a kártyáját elutasították, azt a rendszer
- * tájékoztatta, hogy vásárolt, és várjon egy e-mailt, ami sosem jön.
- *
- * Ez a szöveg ezért nem állít semmit a kimenetelről, csak azt mondja el, ami
- * IGAZ: belépés nélkül nem látjuk az állapotot, és mindkét lehetséges
- * kimenetelre megmondja a következő lépést. NN/g #1 (a rendszer állapotát
- * őszintén kell közölni) és a projekt „a felirat legyen igaz" szabálya.
- *
- * A fizetési állapotgéphez ez a javítás NEM nyúl (tilos zóna): kizárólag
- * ennek az ágnak a SZÖVEGE változik.
  */export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
   return (
     <div className="kc-thankyou" role="status">

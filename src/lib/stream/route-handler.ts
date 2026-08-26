@@ -19,22 +19,8 @@ import { issueStreamToken, StreamTokenError } from './issue-stream-token'
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const
 
 /**
- * GET /api/stream-token route-handler factory.
- *
- * A függőségek (Payload-példány) injektálva vannak, így a handler maga is
- * egységtesztelhető; a tényleges route az
- * src/app/(frontend)/api/stream-token/route.ts köti be a valódi configgal.
- *
- * Folyamat: auth (payload.auth) → PER-USER kérés-korlát → query-validáció +
- * paywall + token-kiállítás (issueStreamToken) → { token, expiresAt }.
- * Hibaágak: magyar felhasználói üzenet + technikai részlet csak a naplóba,
- * requestId-vel.
- *
- * A kérés-korlát alanya a BEJELENTKEZETT FELHASZNÁLÓ, nem az IP: a végpont
- * hitelesített (egy user IP-t vált, több user oszthat egy NAT-IP-t), és minden
- * hívása Bunny-lejátszási jegyet állít ki — korlát nélkül egy belépett fiók
- * korlátlanul farmolhatna jegyet. Ezért fut a korlát az AUTH UTÁN, de a
- * termék-lekérdezés és a jegy-kiállítás ELŐTT.
+ * GET /api/stream-token route-handler: auth → per-user rate limit → issueStreamToken.
+ * Válasz `no-store`.
  */
 export interface StreamTokenHandlerDeps {
   getPayload: () => Promise<Payload>

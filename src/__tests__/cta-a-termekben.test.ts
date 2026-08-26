@@ -18,59 +18,10 @@ import { BARE_FORBIDDEN_LABELS, EM_DASH, EN_DASH, pusztaAlak } from './helpers/c
 
 /**
  * G-UI2 — CTA-ŐR A TERMÉKEN (`docs/ui-sztenderdek.md` §3.2, §6.3).
- *
- * ═══ MIÉRT KELLETT MEGÍRNI ═══
  * A G-UI1 őr (`cta-vocabulary-guard.test.ts`) HÁROM fájlt olvas:
  * `src/lib/cta-vocabulary.ts`, `docs/ui-sztenderdek.md`, `docs/gomb-inventar.md`.
  * Egyetlen komponenst sem. Vagyis azt bizonyítja, hogy a szótár egyezik
  * önmagával — a felületről semmit nem mond.
- *
- * MUTÁCIÓS BIZONYÍTÉK (2026-08-17, futtatva): a `CartView.tsx` és a
- * `ThankYouView.tsx` gombfeliratát elrontva a TELJES tesztkészlet zöld maradt.
- * Következmény: a felületen 67 olyan felirat élt, amely nem a jóváhagyott
- * §3.2 szótárból való — köztük a `Tovább a penztárhoz` elgépelés, amelyet a
- * `docs/gomb-inventar.md` 2026-08-16 óta névvel rögzít, mégsem tört meg tőle
- * semmi.
- *
- * ═══ AZ ELSŐ TELJES JAVÍTÓ KÖR (2026-08-18) ═══
- * A kivétel-lista **96 → 42** sorra csökkent (a bontás a `FELIRAT_KIVETELEK`
- * fejkommentjében és a `docs/gomb-inventar.md` 5.4 szakaszában). A „Tovább…"
- * és a kvirtmínusz-kivételek KIÜRÜLTEK, a cél-ütközések 6-ról 4-re fogytak.
- * Ugyanez a kör mutációval is igazolva lett: hét szándékos rontás (javított
- * felirat visszaírása literálra, új „Tovább…" felirat, két felirat egy `href`-re,
- * egy új szótári sor törlése, a `resolveCourseCta` free-ágának visszaállítása,
- * a #15 mintázatának kiürítése, kvirtmínusz visszaírása) MIND megbuktatta az
- * őröket.
- *
- * Ez az őr a hiányzó felet adja: a TERMÉK forrásából olvassa ki a vevőnek
- * megjelenő cselekvés-feliratokat (a bejáró:
- * `src/__tests__/helpers/cta-forras.ts`), és négy dolgot állít:
- *
- *   1. minden élő felirat VAGY a §3.2 szótárból való, VAGY rajta van az
- *      indoklással ellátott kivétel-listán;
- *   2. egy cselekvés-célhoz (`href`) EGY felirat tartozik
- *      (WCAG 2.2 · 3.2.4 Consistent Identification);
- *   3. nincs puszta („Tovább…", „Küldés", „Bővebben"…) felirat — M-7;
- *   4. nincs kvirtmínusz/gondolatjel a vevői feliratokban — §3.1.1–3.1.2.
- *
- * ═══ MIÉRT VAN KIVÉTEL-LISTA, ÉS MIÉRT NEM SZŐNYEG ALÁ SÖPRÉS ═══
- * A 67 eltérés javítása VEVŐI SZÖVEG: tulajdonosi jóváhagyást kér, nem
- * mérnöki döntés. Az őr ezért a MAI állapotot rögzíti, soronként egy mondat
- * indoklással. Így ZÖLDEN indul, de ÚJ eltérést nem enged be — és a lista
- * három szabály miatt csak CSÖKKENHET:
- *
- *   - minden kivétel-sornak ÉLNIE kell (ha a felirat eltűnt vagy megjavult, a
- *     sor elavul, és az őr hangosan kéri a törlését);
- *   - a `szotartol-elter` sorok KÖTELEZŐEN megnevezik, melyik §3.2 sorra
- *     kellene vezetni őket — a lista tehát MUNKALISTA, nem mentesítés;
- *   - a lista mérete felső korláttal van rögzítve (`KIVETEL_LISTA_FELSO_KORLAT`),
- *     amelyet csak lefelé szabad átírni.
- *
- * ═══ MIT NEM CSINÁL EZ AZ ŐR ═══
- * Nem javít feliratot, és nem dönt el tervezési kérdést. A CMS-ből felülírható
- * CTA-kat (ahol a szerkesztő mezője legyőzi a kódot, tehát a kódbeli javítás
- * élesben hatástalan) felderíti és jelenti, de nem nyúl hozzájuk: hogy a kód
- * nyerjen-e a szótári cselekvéseknél, tulajdonosi döntés.
  */
 
 const { talalatok, dinamikusHelyek, bejartFajlok, kihagyottFajlok } = gyujtsCtaFeliratokat()
@@ -101,19 +52,9 @@ const jovahagyott = (felirat: string): boolean =>
 /**
  * A kivétel-sor kategóriája. A kategória nem dísz: eldönti, milyen további
  * bizonyítást kér az őr a sortól.
- *
- * ═══ AMI 2026-08-18-ÁN MEGSZŰNT ═══
  * A `mintazat-jelolt` kategória KIKERÜLT. Kilenc sor ült rajta („Vissza a
  * kezdőlapra", „Vissza a belépéshez", „Vissza a kurzusaimhoz", „Vissza a
  * Tudástárba"), és mind a kilenc azért, mert a §3.2 #15 MINTÁZATA csak
- * emberi szöveggel volt kimondva. A szótár azóta gépi alakot is tárol
- * (`CtaEntry.pattern`), tehát ezeket az őr MAGA ismeri fel — kivétel nem kell
- * hozzájuk. Egy üresen hagyott kategória csak látszatot mérne.
- *
- * A `nincs-szotari-sor` kategória MEGMARAD (a típus része), de ma NULLA sora
- * van: a 2026-08-18-i kör mind a húsz ilyen feliratot szótári sorra vezette
- * (§3.2 #28–#38). A kategória azért marad, mert a következő új cselekvésnek
- * lesz hova kerülnie, amíg a vezető el nem dönti a feliratát.
  */
 type KivetelKategoria =
   /** Van rá §3.2 sor, a felirat mégis más. KÖTELEZŐ megnevezni a célzott sort. */
@@ -137,22 +78,10 @@ interface FeliratKivetel {
 
 /**
  * A MAI ÁLLAPOT, soronként indokolva (2026-08-18-i mérés).
- *
- * ═══ MI TÖRTÉNT A 2026-08-18-I KÖRBEN ═══
  * A lista 96 sorról 42-re csökkent, kategóriánként:
- *
- *   szotartol-elter ... 27 → 1   (a 26 javított felirat a §3.2 szótárból olvas)
- *   mintazat-jelolt ...  9 → 0   (a kategória megszűnt: `CtaEntry.pattern`)
- *   nincs-szotari-sor . 20 → 0   (a §3.2 tizenegy új sorral bővült: #28–#38)
- *   nem-cta .......... 40 → 41   (a „Kurzusaim" folyószöveges hivatkozása a
- *                                 ThankYouView-ban ide sorolódott át; egyetlen
- *                                 nem-CTA felirat sem szűnt meg, mert ezek nem
- *                                 cselekvésgombok)
- *
- * A sorrend: előbb a szótártól eltérő valódi CTA-k (ez a munkalista), utána a
- * szótári sor nélküli cselekvések, végül a nem-CTA feliratok. A `fajl` mező a
- * `src/`-hez képest relatív, sorszám NÉLKÜL: egy fölötte beszúrt sor ne
- * buktassa a listát.
+ * szotartol-elter ... 27 → 1   (a 26 javított felirat a §3.2 szótárból olvas)
+ * mintazat-jelolt ...  9 → 0   (a kategória megszűnt: `CtaEntry.pattern`)
+ * nincs-szotari-sor . 20 → 0   (a §3.2 tizenegy új sorral bővült: #28–#38)
  */
 const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
   // ── 1. SZÓTÁRTÓL ELTÉRŐ CTA-k — a javítandók listája ───────────────────────

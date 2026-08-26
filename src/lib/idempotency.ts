@@ -3,16 +3,7 @@ import type { Payload, Where } from 'payload'
 import { logger } from './logger'
 
 /**
- * Webhook-idempotencia (T-014) — a fizetési/ügyfél-események sosem
- * dolgozódnak fel kétszer.
- *
- * A deduplikáció adatbázis-szintű: a webhook-events collection (provider,
- * externalId) összetett egyedi kulcsán ütközik a párhuzamos duplikátum.
- * Ez a modul a versenyhelyzet-biztos "létrehozás-vagy-meglévő" mintát és a
- * státuszgépet (received → processed / failed, attempts-számlálóval)
- * valósítja meg; a tényleges, provider-specifikus feldolgozást a hívó adja
- * át handlerként (Barion/Számlázz.hu sprintek), illetve a retry-job számára
- * a registerWebhookProcessor regisztráció szolgálja.
+ * Webhook-idempotencia: (provider, externalId) unique + státuszgép (received/processed/failed).
  */
 
 export type WebhookProvider = 'barion' | 'stream' | 'szamlazz'
@@ -20,26 +11,8 @@ export type WebhookProvider = 'barion' | 'stream' | 'szamlazz'
 export type WebhookEventStatus = 'received' | 'processed' | 'failed'
 
 /**
- * NEM TERMINÁLIS üzleti kimenetelek — ezek NEM zárják le véglegesen az eseményt.
- *
- * ═══ A HIBA, AMIT BEZÁR (B4) ═══
- * A Barion MINDEN státuszváltásra UGYANAZZAL a PaymentId-vel küld callbacket
- * (`Prepared`/`Started` → `Succeeded`). A dedup viszont a (provider, externalId)
- * páron dolgozik, tehát a MÁSODIK kézbesítés ugyanahhoz a rekordhoz érkezik.
- * Amíg a függő (`pending_repoll`) kimenetel `processed`-re zárta a rekordot, a
- * későbbi — és épp a LÉNYEGES — `Succeeded` callback duplikátumként némán
- * eldobódott: a rendelés sosem lett paid a callback-úton.
- *
- * Ezért a függő kimenetel ÚJRAFELDOLGOZHATÓ állapotban hagyja az eseményt
- * (`status='received'`, `processedAt` NULL), a TERMINÁLIS kimeneteleket
- * (`paid`, `cancelled`, `rejected`) pedig változatlanul véglegesnek tekintjük —
- * rájuk a duplikátum-elnyelés teljes erővel érvényes.
- *
- * Az `attempts` a függő futásoknál is NŐ. Ez szándékos: a webhook-retry job így
- * nem pörög korlátlanul egy soha el nem dőlő fizetésen (a kimerült rekordokat a
- * scan-szűrő kizárja). A VÉGLEGES callback feldolgozását ez nem gátolja — a
- * route-handler útja nem nézi az attempts-ot —, a hosszan függő rendelések
- * mentőhálója pedig amúgy is az order-poll job.
+ * NEM terminális webhook-kimenetelek (`pending_repoll`): a rekord `received` marad,
+ * hogy a későbbi Succeeded callback ne essen el duplikátumként.
  */
 export const NON_TERMINAL_WEBHOOK_RESULTS: readonly string[] = ['pending_repoll']
 

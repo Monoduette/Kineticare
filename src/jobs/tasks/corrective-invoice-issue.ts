@@ -5,18 +5,7 @@ import { readRefundEntries } from '../../lib/refund/refund-order'
 import { getSzamlazzConfig, issueCorrectiveInvoiceForOrder } from '../../lib/szamlazz'
 import { logger } from '../../lib/logger'
 
-/**
- * corrective-invoice-issue task (C5): helyesbítő (módosító) számla kiállítása
- * egy RÉSZLEGES visszatérítéshez. A refund-folyamat inline, best-effort
- * próbálkozik; újrapróbálható hibánál (timeout/hálózat/5xx/szlahu_down) ez a
- * task kerül sorba (order-maintenance queue), a storno-issue mintájára.
- *
- * Az input a rendelés azonosítója és a refunds-nyom 1-alapú SORSZÁMA — az
- * összeget és az indokot a task a nyomból olvassa vissza, így a job-payload
- * nem hordoz pénzügyi adatot, és az újrafuttatás mindig a rögzített
- * visszatérítéssel dolgozik. Ugyanez a sorszám az idempotencia kulcsa
- * (szamlaKulsoAzon = `${orderNumber}-HELYESBITO-<sorszám>`).
- */
+/** corrective-invoice-issue: részleges refund helyesbítő számlája; `refundSeq` = idempotencia-kulcs. */
 
 interface CorrectiveInvoiceJobIO {
   input: { orderId: number; refundSeq: number }

@@ -1,32 +1,6 @@
 /**
  * Szakértő-kártyák (TeamMembers) — szekció-stílus.
- *
- * A landing kártya-nyelvét viszi a belső oldalakra: Tenor Sans név, hajszálvonalas
- * elválasztók, lekerekítés nélküli képkeret, visszafogott hover. A szekció NEM
- * tábla (`kc-board`): a /rolunk oldal olvasható hasábritmusába illeszkedik, ezért
- * `kc-container` szélességet visel.
- *
- * MÉRETEK: minden betűméret a közös skáláról jön (UX-skill 4. pont — elemre írt
  * px/rem TILOS). A név a törzsméreten (M) áll, a szintjét a súly és a szín adja;
- * a szekció-cím az L lépcsőn. A megszűnt tábla-skálát nem pótolja, mert az a
- * teljes képernyős
- * táblákhoz kalibrált, ez a szekció viszont konténer-széles.
- *
- * AKCENT-KORLÁT (tokens.css kontraszt-jegyzőkönyv): a titulus, a kapcsolati
- * linkek, a darabszám-plakett és a „bővebben" link mind `--kc-color-primary`
- * (= accent-deep #2f6e9f: paperen 5,16:1, fehéren 5,45:1, tinten 4,72:1 — AA
- * felett). A nyers `--kc-color-accent` (tinten 4,07:1) itt KIZÁRÓLAG hajszálvonal
- * és keret, sosem szöveg.
- *
- * RÁCS: `repeat(auto-fit, minmax(...))` — két taggal pontosan 50–50, egy taggal
- * teljes szélesség (a fix két hasáb egy tagnál lyukat hagyna: belső-oldali
- * kutatás B3.5). 900px alatt egymás alá tördel.
- *
- * MAGYAR TÖRDELÉS (B3.4): a keskeny hasábokban `hyphens: auto` +
- * `overflow-wrap: anywhere` — a hosszú intézménynevek (pl.
- * „sportrehabilitációs") 320 CSS px-en sem csordulhatnak túl.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/TeamMembers.tsx).
  */
 
 .kc-team {

@@ -5,16 +5,11 @@ import type {
 
 /**
  * A kurzus-haladás admin panel TISZTA nézet-logikája.
- *
- * MIÉRT KÜLÖN FÁJL: a panel maga `'use client'` React-komponens, amelyet a
  * repóban nincs mivel renderelni tesztből (nincs React-testing-library, és a
  * Payload `useDocumentInfo` provider-környezetet igényel). A megjeleníthető
  * viselkedés — szűrés, keresés, rendezés, relatív idő, a kördiagram geometriája
  * — viszont mind tiszta függvény, így ide kiemelve KIMERÍTŐEN tesztelhető
  * (src/__tests__/admin-course-progress.test.ts), a komponens pedig csak
- * összeköti őket a DOM-mal.
- *
- * A modul semmilyen React- vagy DOM-függést nem használ.
  */
 
 /** A szűrő értékkészlete: a három állapot + „mind". */
@@ -51,17 +46,11 @@ export const PROGRESS_PANEL_ANCHOR = 'kurzus-haladas'
 
 /**
  * A mély link állapot-paraméterének kiolvasása egy query-stringből.
- *
- * MIÉRT NEM DOB: ismeretlen vagy hibás értéknél `null`-t ad, és a panel úgy
  * viselkedik, mintha nem lenne paraméter. Egy elgépelt vagy elavult link
  * SOSEM okozhat hibaképernyőt egy belső munkalapon (NN/g, 5. heurisztika,
  * Error Prevention: https://www.nngroup.com/articles/ten-usability-heuristics/).
- *
  * A „mind" SZÁNDÉKOSAN nincs az elfogadott értékek között: a szerződés a
  * három állapotot sorolja fel, és a „mind" nem szűkít semmire, tehát az
- * automata betöltést sem indokolja.
- *
- * @param search a query-string, `?`-kal vagy anélkül (`location.search` alak)
  */
 export function readProgressDeepLink(
   search: string | null | undefined,
@@ -286,18 +275,11 @@ export function ariaSortValue(
 
 /**
  * A LÁTHATÓ rendezés-jelölés az oszlopfejlécen.
- *
  * Eddig csak `aria-sort` volt: a képernyőolvasó tudta, hogy az oszlop
  * rendezhető és melyik szerint áll a lista, a LÁTÓ felhasználó nem. NN/g,
  * Data Tables: „Indicate which column the table is sorted by"
  * (https://www.nngroup.com/articles/data-tables/); ugyanezt kéri a GOV.UK
  * Design System rendezhető táblája
- * (https://design-system.service.gov.uk/components/table/).
- *
- * A három jel ALAKBAN is különbözik, nem csak árnyalatban, tehát a
- * megkülönböztetés nem szín-függő (WCAG 2.2 SC 1.4.1 Use of Color):
- *   ⇅ = rendezhető, de nem e szerint áll a lista
- *   ↑ = növekvő   ↓ = csökkenő
  */
 export function sortIndicator(
   column: StudentSortKey,
@@ -359,20 +341,11 @@ export const STUDENT_PAGE_STEP = 50
 
 /**
  * A szűrő/kereső melletti élő visszajelzés szövege.
- *
  * SOSEM hallgat: ha a lista korlátozott, azt is kimondja, hány sor van összesen.
- *
  * A korábbi „… felel meg a szűrésnek — ebből 25 látszik" alak kvirtmínuszt
  * (U+2014) használt töltelék-elválasztóként, ami a magyar mikroszöveg-
  * szabályzat szerint hiba (`docs/ui-sztenderdek.md` §3.1.1–3.1.3: két állítás
  * közé vessző, kettőspont vagy pont való). Vessző áll a helyén.
- *
- * A négy ág SZÁNDÉKOSAN pont nélkül zárul: ez felirat, nem mondat. GOV.UK,
- * Style guide („Do not use full stops at the end of… short pieces of text
- * that are not sentences" — https://www.gov.uk/guidance/style-guide/a-to-z),
- * és Shopify Polaris, Punctuation
- * (https://polaris.shopify.com/content/grammar-and-mechanics). Egyetlen ágra
- * tett pont a másik hármat is elrontaná („305 hallgató.").
  */
 export function visibleCountLabel(shown: number, matching: number, total: number): string {
   if (matching === total) {
@@ -441,23 +414,11 @@ export interface ModuleCell {
 
 /**
  * A „Fejezet" oszlop cellája.
- *
  * A modulcím vizuálisan CSAK a modul első során jelenik meg: enélkül egy
  * hatleckés modulnál hatszor egymás alatt állt ugyanaz a hosszú cím, és a
  * szem nem talált fogódzót a leckék között.
- *
  * A korábbi változat viszont ÜRES STRINGET adott az ismétlődő soroknál, tehát
  * a cella tényleg üres maradt: a képernyőolvasó a 2., 3., 4. lecke sorában
- * nem tudta megmondani, melyik fejezetről van szó, pedig az oszlopfejléc azt
- * ígéri (WCAG 2.2 SC 1.3.1 Info and Relationships —
- * https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html).
- * Ezért a szöveg MINDIG a teljes cím, és az ismétlődést a megjelenítés rejti
- * el (a hívó `srOnly`-ba teszi), nem az adat. Ugyanezt a szétválasztást
- * javasolja a WAI táblázat-útmutatója is: a vizuális tömörítés nem veheti el
- * a cella programozott tartalmát
- * (https://www.w3.org/WAI/tutorials/tables/).
- *
- * Üres fejezetcímnél `NO_DATA` áll, nem üres cella.
  */
 export function moduleColumnCell(
   moduleTitle: string,
@@ -521,16 +482,10 @@ export function studentsCsv(
 /**
  * A letöltött fájl neve: a kurzus nevével és a dátummal, hogy több export
  * között is el lehessen igazodni.
- *
- * ═══ MIÉRT ÉKEZET NÉLKÜL ═══
  * A fájlnév SZÁNDÉKOSAN ékezetmentes. Böngészőben MÉRVE (Chromium): ha egy
  * blob-letöltés `download` attribútuma nem ASCII karaktert tartalmaz, a böngésző
  * NÉMÁN eldobja az egész nevet, és „download" néven menti a fájlt — a
  * „Kéztorna-otthon-haladas-2026-08-15.csv" helyett. A fájl tartalma ettől
- * helyes marad, tehát a hiba egységteszttel nem is látszik.
- * Az ékezetek ezért ASCII-párjukra íródnak át (é→e, ő→o…), a fájlrendszereken
- * problémás karakterek pedig kiesnek. A CSV TARTALMÁBAN természetesen
- * változatlanul maradnak az ékezetek (az UTF-8 BOM gondoskodik róla).
  */
 export function csvFileName(courseTitle: string, isoDate: string): string {
   const tiszta = courseTitle

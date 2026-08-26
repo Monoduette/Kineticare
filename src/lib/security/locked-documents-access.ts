@@ -3,33 +3,9 @@ import type { SanitizedConfig } from 'payload'
 import { isStaffOrOwner } from '../../access/isStaffOrOwner'
 
 /**
- * A Payload által GENERÁLT `payload-locked-documents` collection lezárása.
- *
- * ═══ A HIBA, AMIT BEZÁR (forrásból ellenőrizve) ═══
- * A dokumentum-zárakat (szerkesztés alatt álló rekordok) a Payload egy belső
- * collectionben tartja, amit a szanitizálás hoz létre:
- *   payload/dist/config/sanitize.js → getLockedDocumentsCollection(config)
- *   payload/dist/locked-documents/config.js
- * A generátor a collectionhöz a `defaultAccess`-t rendeli
- * (`({ req: { user } }) => Boolean(user)`) — vagyis a collection TELJES CRUD-ja
- * (read/create/update/delete) BÁRMELY bejelentkezett felhasználónak — a
- * `customer` szerepkörnek is — nyitva állt a REST-felületen. Egy customer így
- * tetszőleges dokumentum-zárat hamisíthatott/frissíthetett/törölhetett: egy
- * szerkesztőnek megjelenő „a dokumentumot szerkeszti" zár elhitethető vagy
- * elvehető — szerkesztés-blokkoló zárhamisítás.
- *
- * ═══ MIÉRT NEM TÖRI EL A SAJÁT ZÁRKEZELÉST ═══
- * A Payload saját zár-olvasása/törlése a db-rétegen megy (ami az
- * access-ellenőrzés ALATT van):
- *   payload/dist/utilities/checkDocumentLockStatus.js → payload.db.find /
- *   payload.db.deleteMany
- * tehát a staff/owner szerkesztői élmény (zárjelzés, átvétel) változatlanul
- * működik; a zár csak a REST CRUD-felületet szűkíti.
- *
- * ═══ MIÉRT DOB, HA A COLLECTION NINCS MEG ═══
- * Ugyanaz az elv, mint a `payload-jobs-stats` zárnál (src/jobs/jobs-stats-access.ts):
- * egy Payload-frissítés slug-átnevezése némán hatástalanítaná a zárat — a
- * visszanyíló lyuk rosszabb, mint egy meg nem induló deploy.
+ * A generált `payload-locked-documents` collection REST CRUD-jának lezárása
+ * (customer ne írhassa). A Payload saját zár-olvasása db-rétegen marad.
+ * Hiányzó collection → dob (ne nyíljon vissza némán).
  */
 export const LOCKED_DOCUMENTS_COLLECTION_SLUG = 'payload-locked-documents'
 

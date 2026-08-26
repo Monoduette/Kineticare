@@ -5,41 +5,10 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Az időpontkérő űrlap hozzájárulás-felirata FOLYÓSZÖVEG — nem elrendezés.
- *
- * ═══ A MÉRT HIBA (tulajdonosi bejelentés + mérés, 2026-08-17) ═══
  * A `.kc-appointment__consent-label` `display: flex` volt. A felirat viszont
  * nem elrendezés, hanem egyetlen mondat, benne egy beágyazott hivatkozással:
- *
- *   „Hozzájárulok, hogy a Kineticare … kezelje az
- *    <a>Adatkezelési és adatvédelmi szabályzat</a> szerint. A hozzájárulás
- *    bármikor visszavonható. *"
- *
- * Flex-konténerben MINDEN gyerek külön flex-elem lesz, a névtelen
- * szövegdobozok is. A `flex-wrap` alapértéke `nowrap`, tehát a három
- * szövegrész, a hivatkozás és a csillag EGYMÁS MELLÉ került, mindegyik a saját
- * min-content szélességére zsugorodva: a mondat ÖT HASÁBRA esett szét, és
- * kilógott a lapból.
- *
- * Mérve (Chromium, az ÉLES markupon és az ÉLES CSS-en, javítás előtt → után):
- *   320 px: 107 px vízszintes túlcsordulás → 0
- *   360 px:  67 px → 0
- *   390 px:  38 px → 0
- *   768 px: a lap nem csordult túl, de a szöveg ott is 5 hasáb volt
- *
- * ═══ A SZABÁLY ═══
- * WCAG 2.2 · 1.4.10 Reflow, Level AA: a tartalom 320 CSS px szélességen nem
- * kívánhat kétirányú görgetést.
- * https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
- *
- * A 44 px-es célfelületet továbbra is a `min-height` adja (2.5.5 Target Size
- * (Enhanced), AAA):
- * https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html
- *
- * ═══ MIÉRT FÁJL-SZINTŰ ŐR ═══
- * Ez tisztán CSS-viselkedés: a jsdom nem végez elrendezést, tehát komponens-
- * teszt nem kapná el. A visszaesés némán megtörténhet egy „igazítsuk
- * függőlegesen" szándékú módosítással, és a hiba csak valódi böngészőben,
- * szűk képernyőn látszik.
+ * „Hozzájárulok, hogy a Kineticare … kezelje az
+ * <a>Adatkezelési és adatvédelmi szabályzat</a> szerint. A hozzájárulás
  */
 
 const APPOINTMENT_CSS = readFileSync(

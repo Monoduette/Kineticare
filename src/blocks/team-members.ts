@@ -5,52 +5,7 @@ import { sectionSettings } from './section-settings'
 
 /**
  * Szakértő-kártyák — a két gyógytornász 50–50 arányú bemutatása.
- *
- * Forrás: `docs/tartalom-leltar-regi-oldal.md` B4 (`teamMembers` mezőlista) és
- * `docs/grafikai-leltar-regi-oldal.md` 3.3 (mi kell egy 50–50-es bemutatkozó
- * szekcióhoz). A régi `/rolunk` a két alapítót már ma is egymás mellett hozza,
  * nálunk viszont eddig NEM volt olyan blokk, ami két személyt EGYENRANGÚAN
- * mutatna: az `about` egyetlen `photo`-t, a `services` egyetlen `image`-et ismer.
- *
- * MIÉRT MAX 2 TAG (a leltár B4-e 4-et írt)? A szekció szerződése a 50–50-es,
- * egyenrangú páros — a rács fix két hasáb. Három taggal a rács vagy lyukat
- * hagyna, vagy a párost hármas kártyasorrá fokozná le (a belső-oldali kutatás
- * B3.5 szabálya: a rács ne hagyjon lyukat). Egy taggal a szekció teljes
- * szélességben, egy hasábban áll — az a szabályos degenerált eset. Ha valaha
- * 3–4 szakember kell, az külön blokk (kártyarács), nem ennek a tágítása.
- *
- * MIÉRT VAN CV-SZEKCIÓ A KÁRTYÁN? A `docs/ux-belso-oldalak-kutatas.md` 5.2
- * negyedik rétege: a két önéletrajz alszekciónként, HARMONIKÁBAN, a fejlécben
- * DARABSZÁMMAL — a rejtés önmagában eltüntetné a bizonyíték mennyiségét, ami
- * maga a bizalmi jelzés. A darabszámot ezért nem a szerkesztő írja külön mezőbe
- * (az elcsúszna a listától), hanem a renderelő számolja a sorokból.
- *
- * A tételek SORONKÉNT egy szövegdobozban élnek, nem beágyazott tömbben: a régi
- * oldal 38 tanfolyamos listáját így be lehet MÁSOLNI, míg 38 külön tömb-sor
- * felvétele a laikus szerkesztőnek használhatatlan lenne.
- *
- * BEJELENTKEZÉS-RÉTEG (2026-08-16, tulajdonosi kérés: „a bejelentkezés a
- * lányokhoz meg róluk a kép"). A blokk eddig is ismerte a telefonszámot, de
- * apró szöveglinkként — az a lábjegyzet, nem cselekvés. A három új mező ezt
- * teszi valódi kapcsolatfelvételi úttá, és mind a három OPCIONÁLIS, tehát a
- * meglévő /rolunk-használatot nem érinti:
- *
- *  - `callLabel`   — a szám fölé kerülő, cselekvő felirat („Hívd Katát"). A
- *                    projekt-skill 2. pontja szerint a CTA ige + tárgy; a
- *                    magyar névragozást kód nem tudja helyesen előállítani,
- *                    ezért a felirat MEZŐ, nem generált szöveg.
- *  - `availability`— egy sor arról, mikor és hol érhető el a szakember. Az
- *                    NN/g hitelesség-kutatásának 2. tényezője az „Upfront
- *                    Disclosure": a kapcsolati és elérhetőségi adat ott
- *                    legyen kiírva, ahol a látogató dönt, ne űrlap mögött.
- *                    https://www.nngroup.com/articles/trustworthy-design/
- *  - `bookingLink` — szekció-szintű, ÍRÁSOS időpontkérési út (pl. a
- *                    /kapcsolat űrlapja). Az NN/g egészségügyi
- *                    út-kutatásában a válaszadók többsége kifejezetten
- *                    KERÜLI a telefonálást („these often go unanswered and
- *                    result in »phone tag«"), ezért a hívás mellé aszinkron
- *                    alternatíva is kell.
- *                    https://www.nngroup.com/articles/healthcare-customer-journeys/
  */
 export const teamMembers: Block = {
   slug: 'teamMembers',

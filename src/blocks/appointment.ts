@@ -18,42 +18,8 @@ const urlapLatszik = (_data: unknown, siblingData: { urlapMutatasa?: boolean | n
 
 /**
  * Időpontkérő szekció — a RENDELŐI kezelések (gyógytorna, manuálterápia)
- * jelentkezési útja.
- *
- * MIÉRT LÉTEZIK: a /szolgaltatasok lapon az „Időpontot kérek" hivatkozás a
- * /kapcsolat oldalra visz, ahol csak egy ÁLTALÁNOS üzenetküldő űrlap várja a
- * látogatót (név, e-mail, tárgy, üzenet). A rendelői kezelés a szolgáltatás
- * egyik fő bevételi lába, mégsem volt hozzá saját, végigvezetett út: a
- * látogatónak magának kellett kitalálnia, mit írjon a „Tárgy" mezőbe, és semmi
- * nem mondta meg, mi történik a beküldés után.
- *
  * MIÉRT NEM ÚJ BEKÜLDÉSI ÚT: a beküldés a MEGLÉVŐ form-builder végpontra megy
- * (`POST /api/form-submissions`), a kapcsolat- és a hírlevél-űrlappal azonos
- * szerződéssel, ugyanazzal a Turnstile-ellenőrzéssel, kérés-korláttal és
- * honeypottal. Így egyetlen helyen kell karbantartani a spam- és
- * jogosultság-védelmet (lásd src/lib/appointment/submit.ts).
- *
- * MIÉRT NINCS NAPTÁR: naptár-integráció nincs a rendszerben, tehát foglalást
- * ÍGÉRNI hazugság lenne (a projekt szabálya: „a felirat legyen igaz"). A „mikor
- * érek rá" kérdést ezért durva SÁVOKKAL kérdezzük (a sávok feliratát a
- * szerkesztő adja meg), és a szekció szövege kimondja, hogy a pontos időpontot
- * telefonon egyeztetjük. A GOV.UK Design System checkbox-mintája szerint a
- * többszörös választásnál a „Jelöld be az összeset, ami megfelel" segédszöveg
- * kötelező, mert a jelölőnégyzet alakjából egyedül nem derül ki
- * (https://design-system.service.gov.uk/components/checkboxes/).
- *
- * EGÉSZSÉGÜGYI ADAT: a „mire kérsz időpontot" mező panaszleírást hordozhat, ami
  * a GDPR 9. cikk (1) szerinti különleges adat. Ezért a mező NEM kötelező
- * (adattakarékosság, 5. cikk (1) c)), és a hozzájárulás szövege külön nevesíti
- * az egészségügyi adatot (9. cikk (2) a) kifejezett hozzájárulás,
- * https://gdpr-info.eu/art-9-gdpr/). A mezőnkénti indoklás a
- * src/lib/appointment/validation.ts fejlécében áll.
- *
- * MEZŐNÉV-KONVENCIÓ: a szekció-fej mezői a többi blokkal AZONOS angol neveket
- * viselik (`eyebrow`, `title`, `lead`), hogy a renderelő közös szekció-fej
- * kezelése ne ágazzon el blokktípusonként; a szekció saját tételei magyarul
- * (`helyszinek`, `telefonszamok`, `idopontSavok`) — ugyanaz a kivétel, amit a
- * section-settings.ts és az accordion.ts már rögzít.
  */
 export const appointment: Block = {
   slug: 'appointment',

@@ -7,40 +7,7 @@ import './scroll-scrub.css'
 
 /**
  * ScrollScrub — görgetéssel vezérelt filmsáv ('use client' sziget).
- *
- * A régi koncepció-landing scroll-scrub komponenséből átemelt implementáció
- * (egyszeri tükör, már nincs a repóban), a szekció-rendszer terv 3.3 pontja
- * szerint. Csak natív böngésző-API-kat használ (matchMedia, fetch,
- * requestAnimationFrame, HTMLVideoElement).
- *
- * Működés: egyetlen, folytonos film `currentTime`-ját mozgatja a görgetés. A
- * jelenetekhez rendelt „sávok" (scroll: viewport-magasságban) adják a scrub
- * hosszát, a `linger` pedig a film közepét lassítja anélkül, hogy az első vagy
- * az utolsó kockát elmozdítaná.
- *
- * AKADÁLYMENTESÍTÉS ÉS TARTALÉK-ÚT (a portban VÁLTOZATLAN):
- * - `prefers-reduced-motion: reduce` esetén a videó BE SEM TÖLTŐDIK
- *   (`loadClip` azonnal kilép), a poszterkép áll — a szöveg normál DOM, tehát
- *   billentyűzettel és képernyőolvasóval ugyanúgy elérhető.
- * - Sikertelen videó-letöltés (hálózati hiba, nem 2xx válasz, dekódolási hiba)
- *   → a réteg `data-video-failed` jelölést kap, és a poszter marad látható.
- *   Csendes degradáció: a látogató nem kap hibaüzenetet, csak állóképet.
- *
- * ELTÉRÉSEK A TÜKÖRTŐL (szándékos, dokumentált):
- * 1. `'use client'` direktíva (a fő site szerver-komponens alapú).
- * 2. Új, opcionális `id` prop — a szekció-blokkok „Horgony azonosító" mezője
- *    (sectionSettings.anchorId) így tud a szekció gyökerére kerülni.
- * 3. A fejezet-navigáció csak EGYNÉL TÖBB jelenetnél jelenik meg (egyetlen
- *    jelenetnél egy magára mutató ugrógomb lenne), és magyar aria-label-t kap.
- * 4. A CSS-ben a betűméretek a fő site skálájáról jönnek (lásd scroll-scrub.css).
- * 5. Üres `body` esetén nem renderelünk üres bekezdést (a blokk „lead" mezője
- *    nem kötelező).
- * 6. Új, opcionális `captions` prop — a scrub-pozícióhoz kötött, ÚSZÓ feliratok
- *    (a filmsáv 2. és 3. „állása"). A tükrön nincs megfelelője; a megjelenésük
- *    tisztán a görgetés-arányból (`--ss-progress`) számolódik, ugyanabban a
- *    rAF-ciklusban, ahol a videó `currentTime`-ja is mozog — külön figyelő
- *    (IntersectionObserver, scroll-listener) NEM indul miattuk.
- * A film-vezérlés, a reduced-motion-ág és a poszter-tartalék logikája érintetlen.
+ * (IntersectionObserver, scroll-listener) NEM indul miattuk.
  */
 
 export interface ScrollScrubScene {
@@ -97,19 +64,13 @@ export interface ScrollScrubCaption {
   /** A felirat CÍME: egy tömör mondat, amit a néző egy pillantásra elolvas. */
   text: string
   /**
-   * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
-   * bevezetése előtti viselkedés).
-   *
-   * MIÉRT KELL (tulajdonosi kérés, 2026-08-17): a cím önmagában „üres" — a
-   * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
-   * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
-   * törzsszöveget olvassa el, amint egy cím érdekli
-   * („The Layer-Cake Pattern of Scanning Content on the Web",
-   * https://www.nngroup.com/articles/layer-cake-pattern-scanning/ — „fixations
-   * made mostly on the page's headings and subheadings, with deliberate
-   * occasional fixations on the (body) text in between"). Cím alatti szöveg
-   * nélkül ez a lépés nem tud megtörténni.
-   */
+ * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
+ * bevezetése előtti viselkedés).
+ * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
+ * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
+ * törzsszöveget olvassa el, amint egy cím érdekli
+ * („The Layer-Cake Pattern of Scanning Content on the Web",
+ */
   body?: string
   /** Vízszintes elhelyezés a filmvásznon. */
   align: 'center' | 'right'

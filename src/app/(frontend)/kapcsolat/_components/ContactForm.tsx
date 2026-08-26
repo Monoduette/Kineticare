@@ -28,23 +28,11 @@ import { TurnstileWidget } from './TurnstileWidget'
 
 /**
  * ContactForm — a /kapcsolat oldal űrlapja (T-016 form-submissions beküldés).
- *
  * Viselkedés:
  * - Kliensoldali validáció magyar hibaüzenetekkel; az adatkezelési
- *   hozzájárulás (consentPrivacy) KÖTELEZŐ és NEM előpipált — enélkül a
- *   submit blokkolva van.
+ * hozzájárulás (consentPrivacy) KÖTELEZŐ és NEM előpipált — enélkül a
+ * submit blokkolva van.
  * - Sikeres beküldésnél az űrlap helyett köszönő-nézet jelenik meg.
- * - Szerverhiba (4xx/5xx/hálózati hiba) esetén magyar hibaüzenet + az űrlap
- *   állapota megmarad (az üzenet nem vész el).
- * - Turnstile-widget CSAK akkor, ha a site key be van állítva (környezet-
- *   függően rejtve); token nélkül ilyenkor a submit szintén blokkolva van.
- * - Honeypot („website" rejtett mező): ha egy bot kitölti, a beküldés
- *   hálózati hívás nélkül, látszólagos sikerrel elszáll.
- *
- * Spam-védelmi döntés (dokumentálva): a backend T-016 beforeValidate hookja a
- * TURNSTILE_SECRET_KEY jelenlétéhez köti a kötelező Turnstile-ellenőrzést.
- * Mivel kulcs nélkül a szerver is szabadon enged, a kliens ilyenkor honeypot-
- * védelmet ad, és a widgetet elrejti — így nincs hamis biztonságérzet.
  */
 
 export interface ContactFormProps {
@@ -63,18 +51,11 @@ export interface TrackedContactDeps {
 
 /**
  * Kapcsolat-beküldés + PostHog lead-funnel (`kapcsolat` forrás-címke).
- *
  * A hívás ELŐTT `lead_submitted`, sikeres szerverválasz után `lead_succeeded`
  * megy ki. A kettő KÜLÖNBSÉGE a néma beküldési hibák egyetlen külső jelzője —
  * a részletes indoklás és az adatvédelmi szerződés a
  * `src/lib/analytics/lead-events.ts` fejlécében áll.
- *
  * A mérés hibája nem ronthatja el a beküldést: a `withLeadTracking` mindkét
- * küldőt saját `try/catch`-ben futtatja.
- *
- * A honeypotba lépő bot, a hiányzó Turnstile-token és a kliensoldali
- * mezőhibák ide EL SEM JUTNAK (az űrlap előbb visszatér, hálózati hívás
- * nélkül) — tehát sem bot, sem elgépelés nem torzítja a tölcsért.
  */
 export async function trackedSubmitContact(
   payload: FormSubmissionPayload,

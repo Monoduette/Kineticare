@@ -12,27 +12,9 @@ import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
 import { setPublishedAtOnFirstPublish, syncStatusFromDraftStatus } from '../lib/publish-status'
 
 /**
- * Versions × status viszony (T-012 + a laikusbarát tartalomkezelés):
- *  - `versions.drafts` a Payload natív verziózása: a `_status` mező a technikai
- *    publikálási állapot (draft/published), piszkozat-mentésekkel + autosave-vel.
- *  - A custom `status` select ugyanazokat az értékeket használja (draft/published),
- *    így a két mező közös DB-enumja ütközésmentes. A szerkesztő EZT MÁR NEM LÁTJA
- *    (`admin.hidden`): a `syncStatusFromDraftStatus` hook tartja szinkronban a
- *    `_status`-szal, hogy a Piszkozat/Közzététel gomb legyen az egyetlen kapcsoló.
- *  - A nyilvános read-politika (src/access/publishedOrAdmin.ts), a storefront
- *    lekérdezései (`PUBLISHED_WHERE`, src/lib/cms.ts) és a sitemap továbbra is a
- *    custom `status` mezőre szűrnek — a szinkron miatt ez egyenértékű a `_status`-szal.
- *  - Duplikáláskor (beépített duplicate-folyamat) a slug a slugField
- *    beforeDuplicate hookjával '<eredeti>-masodpeldany' lesz, a status/publishedAt
- *    mezőhookok draftot + üres publishedAt-et, a forceDraftVersionOnDuplicate
- *    pedig a `_status`-t is draftra állítja (lásd src/lib/duplicate.ts).
- *
- * Szekció-rendszer (docs/szekcio-rendszer-terv.md): az opcionális `layout`
- * blokk-mező az oldal szerkeszthető szekció-listája (src/blocks). Szándékosan
- * OPCIONÁLIS — layout nélkül a kezdőlap a mai kód-szintű kompozíciót
- * (HomeView) rendereli, így a bevezetés semmit nem tör el, és a layout
- * kiürítése sem hagy üres oldalt. A verziózás/autosave a layoutra is érvényes:
- * a szerkesztő piszkozatban rendezhet át, és csak a Közzététellel élesít.
+ * CMS oldalak: `versions.drafts` + rejtett `status` (sync hook). Nyilvános read a
+ * `status=published`-re szűr. Duplikálás: slug `-masodpeldany`, draft állapot.
+ * Opcionális `layout` szekció-rendszer (docs/szekcio-rendszer-terv.md).
  */
 export const Pages: CollectionConfig = {
   slug: 'pages',

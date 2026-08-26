@@ -5,32 +5,10 @@ import configPromise from '../../payload.config'
 
 /**
  * A VERZIÓ-VÉGPONTOK (`/api/<collection>/versions…`) JOGOSULTSÁGA (S2/d).
- *
- * ═══ MIT VÉD ═══
  * A drafts-szal működő collectionök két külön REST-végpontot kapnak:
- *   GET /api/<slug>/versions           (findVersions)
- *   GET /api/<slug>/versions/:id       (findVersionByID; a :id a VERZIÓ azonosítója)
+ * GET /api/<slug>/versions           (findVersions)
+ * GET /api/<slug>/versions/:id       (findVersionByID; a :id a VERZIÓ azonosítója)
  * Ezek NEM az `access.read`-en, hanem az `access.readVersions`-ön múlnak
- * (payload/dist/collections/operations/findVersions.js:35 és
- * findVersionByID.js:35). Ha a szabály HIÁNYZIK, a Payload `executeAccess`-e
- * (payload/dist/auth/executeAccess.js) nem tiltásra, hanem ENGEDÉSRE esik
- * vissza minden bejelentkezett felhasználónál:
- *     if (access) { … }
- *     if (req.user) { return true }
- * Ez megkerülte a `read` szabályt: a products `adminOrPublishedStatus`-a és a
- * pages/posts `publishedOrAdmin`-ja szándékosan csak a PUBLIKÁLT sorokat adja
- * ki a nem-adminoknak, a verzió-végpont viszont a NEM PUBLIKÁLT (piszkozat)
- * állapotok teljes tartalmát is visszaadta — bármely regisztrált vevőnek.
- *
- * ═══ MIT BIZONYÍT EZ A FÁJL ═══
- * 1. NEGATÍV KONTROLL a Payload SAJÁT `executeAccess`-ével: hiányzó szabály
- *    mellett a customer TÉNYLEG bejut — vagyis a hiba nem elméleti;
- * 2. a VÉGLEGES, szanitált configban mindhárom drafts-os collectionnek VAN
- *    `readVersions` szabálya, és az anonim/customer → false, staff/owner → true;
- * 3. a repóban nincs olyan drafts-os collection, amelyről lemaradt volna
- *    (a lista magából a configból jön, nem kézzel felsorolva).
- *
- * Adatbázis és hálózat sehol: csak a szanitált config szabályfüggvényei futnak.
  */
 
 type Role = 'owner' | 'staff' | 'customer'

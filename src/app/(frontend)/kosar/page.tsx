@@ -50,17 +50,11 @@ async function getProductById(id: number): Promise<Product | null> {
 
 /**
  * A tétel VÁSÁROLHATÓSÁGA — a kurzusoldal CTA-állapotgépével AZONOS sorrendben.
- *
  * A sorrend nem közömbös: az archivált termék akkor sem igényelhető és nem
  * vehető meg, ha egyébként ingyenesnek van jelölve, ezért az archivált ág dönt
  * először (ugyanaz a sorrend, mint a `resolveCourseCta`-ban és a /penztar
  * kapuiban). A „fizetős" feltétel az `isPaidCourse` (ÉRVÉNYES ár), NEM a
  * `!isFreeCourse`: a `priceInHUFEnabled: true` + üres/0/negatív ár, illetve a
- * beállítatlan ár-pipa HIÁNYOS KONFIGURÁCIÓ, amit a checkout ár-kapuja
- * (`coursePriceHuf`, src/lib/checkout/start-checkout.ts) garantáltan elutasít.
- *
- * Új fogalmat SZÁNDÉKOSAN nem vezet be: mindhárom kérdést a `courses.ts`
- * egyetlen igazságforrásaitól kérdezi.
  */
 function resolveCartAvailability(
   product: Pick<Product, 'status' | 'priceInHUF' | 'priceInHUFEnabled'>,
@@ -76,17 +70,11 @@ function resolveCartAvailability(
 
 /**
  * /kosar — a kosár megjelenítése.
- *
  * A tényleges tételek a kliens-oldali cart-state-ből jönnek (egy termék =
  * egy vásárlás), de a kosár-oldal a /penztar?termek={id} konvenciót is
  * fogadja: ha a query-ben termék van, azt a listához adjuk (a kliens-state
  * is kezeli a duplikációt). A végösszeg MINDIG a szerver (T-021) válaszából
  * igazolódik vissza a checkout során.
- *
- * A tétel a HÁROM ÁR-ÁLLAPOTOT is magával viszi (`availability`): a
- * `CartView` ebből dönti el, kap-e a tétel pénztár-gombot, igénylő-linket vagy
- * magyarázó mondatot. Az ARCHIVÁLT termék SZÁNDÉKOSAN bekerülhet a kosárba (a
- * néma eldobás elrejtené, hogy mi történt), de nem vásárolhatóként.
  */
 export default async function KosarPage({ searchParams }: KosarPageProps) {
   const params = await searchParams

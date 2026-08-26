@@ -9,19 +9,11 @@ import '../../../app/(frontend)/styles/blocks/creds-strip.css'
 
 /**
  * CredentialsStrip — kondenzált szakmai hitel-csík (audit M2/K5).
- *
  * A legerősebb bizalmi érvek (gyógytornász–manuálterapeuta háttér, sportolói/
  * olimpikoni bizalom, szakmai egyesületi tagság) egyetlen visszafogott csíkban,
  * a Rólunk oldalra mutató linkkel.
- *
  * Két hívási mód:
- *  - prop nélkül (rögzített kezdőlap): az audit által rögzített statikus tények,
- *  - a szekció-rendszer `credsStrip` blokkjából (RenderBlocks): a tételek és a
- *    link a CMS-ből jönnek; `link: null` = a szerkesztő nem kért linket.
- *
- * Megjelenés: a landing hajszálvonalas csík-nyelve — a stílus a
- * styles/blocks/creds-strip.css-ben él (elemre írt inline stílus nincs). A
- * link a közös `kc-text-link` nyelvét viseli, a nyíl-span dekoratív.
+ * - prop nélkül (rögzített kezdőlap): az audit által rögzített statikus tények,
  */
 
 const CREDENTIALS: string[] = [

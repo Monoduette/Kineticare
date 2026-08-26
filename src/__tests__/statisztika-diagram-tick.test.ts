@@ -10,31 +10,10 @@ import { aggregateMonthlyRevenue } from '../lib/statistics/revenue'
 
 /**
  * ŐR — A BEVÉTEL-DIAGRAM TICKJE EGYETLEN GYÖKÉRMÉRETEN SEM ESIK 12 px ALÁ.
- *
- * ═══ MIÉRT LÉTEZIK (mért regresszió, 2026-08-20) ═══
  * A #126 (px→rem) a diagram `min-width`-ét `'720px'`-ről
  * `calc(720 * var(--kc-as-px, 1px))`-re cserélte. A `--kc-as-px` a
  * `calc(1rem / 13)` — a Payload-admin 13 px-es gyökeréhez igazítva. CSAKHOGY a
  * Payload 1024 px alatt 12 px-re viszi a gyökeret, ott tehát az egység
- * 12/13 = 0,9231 px, a min-width 664,6 px, és mivel a viewBox 720 EGYSÉG
- * széles, az SVG teljes rajzolata — a tickek szövegével együtt — 0,9231-
- * szeresére kicsinyedik: a 12-es tick 11,08 px lesz. Ez rosszabb, mint az a
- * 11,27 px, amit a #125 kifejezetten HIBAKÉNT javított ki.
- *
- * ═══ MIÉRT NEM STRING-ŐR ═══
- * A korábbi állítás (`statistics-revenue.test.ts`) a min-width SZÖVEGÉT
- * rögzítette. Egy szöveg-egyezés nem tud különbséget tenni 12,00 px és
- * 11,08 px között — a regressziót át is engedte. Ez az őr SZÁMOL: a
- * gyökérméreteket a Payload saját scss-éből, az egység osztóját a
- * custom.scss-ből, a viewBox szélességét és a tick betűméretét a komponens
- * forrásából, a min-width kifejezést pedig a KIRENDERELT markupból olvassa —
- * egyik szám sincs a tesztbe kézzel beírva, tehát nem tautologikus.
- *
- * ═══ FORRÁSOK ═══
- * WCAG 2.2 · 1.4.4 Resize text — https://www.w3.org/WAI/WCAG22/Understanding/resize-text.html
- * WCAG C14 (rem-alapú méret) — https://www.w3.org/WAI/WCAG22/Techniques/css/C14
- * WCAG 2.2 · 1.4.10 Reflow (a diagram a saját konténerében görög) —
- * https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
  */
 
 const REPO = process.cwd()

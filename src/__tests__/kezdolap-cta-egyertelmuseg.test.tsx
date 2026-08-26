@@ -16,48 +16,10 @@ import type { Page, Product } from '../payload-types'
 
 /**
  * KEZDŐLAPI CTA-ŐR — a „hat felirat, egy cél" hiba és a hazug gomb ellen.
- *
- * ═══ A MÉRT HIBA, AMIT BEZÁR (2026-08-16) ═══
  * Az élő kezdőlap `<main>`-jében HAT hivatkozás vitt a `/kurzusok` listára, öt
  * különböző felirattal („Kurzusok megtekintése", „Összes kurzus megtekintése",
  * „Elindítom az ingyenes kurzust", „Tovább a programra", „Megnézem a
  * kurzusokat"), plusz a fejléc „Kurzusok" gombja. A harmadik ráadásul az
- * ingyenes kurzus INDÍTÁSÁT ígérte, és a listára dobott
- * (docs/informacios-architektura.md 6.3/T1, 6.4/D1 és 7./#7;
- * docs/gomb-inventar.md B7).
- *
- * ═══ MIÉRT HIBA (külső források) ═══
- *  - WCAG 2.2 **3.2.4 Consistent Identification**: „Components that have the
- *    same functionality within a set of web pages are identified
- *    consistently." Az F31 kifejezetten megbukik két különböző feliraton
- *    ugyanarra a funkcióra.
- *    https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- *  - WCAG 2.2 **2.4.4 Link Purpose (In Context)**: a link céljának a
- *    szövegéből (vagy a szövegkörnyezetéből) kiderülhetőnek kell lennie, hogy
- *    a látogató el tudja dönteni, akarja-e követni.
- *    https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
- *  - NN/g, *Better Link Labels: 4 S's*: a link ÍGÉRET („Sincere"), és arról
- *    kell szólnia, ami közvetlenül a kattintás után történik, nem arról, ami
- *    több lépéssel később. https://www.nngroup.com/articles/better-link-labels/
- *  - NN/g, *Top 10 IA Mistakes* — „Extreme Polyhierarchy": ha ugyanaz több
- *    helyen, több néven bukkan fel, a látogató azon gondolkodik, ugyanaz-e.
- *    https://www.nngroup.com/articles/top-10-ia-mistakes/
- *  - GOV.UK Design System, *Button*: „Avoid using multiple default buttons on
- *    a single page. Having more than one main call to action reduces their
- *    impact, and makes it harder for users to know what to do next."
- *    https://design-system.service.gov.uk/components/button/
- *  - Baymard, *Button Design*: „Clearly communicate what will happen when a
- *    user clicks on or taps on a button, so the intent is clear."
- *    https://baymard.com/learn/button-design
- *
- * ═══ AMIT EZ AZ ŐR RÖGZÍT ═══
- *  1. A kezdőlapon EGY cél = EGY felirat (mindkét ágon: rögzített kezdőlap és
- *     CMS-szekciósor).
- *  2. Az ingyenes ajánlat gombja az ingyenes KURZUS oldalára visz, ha van ilyen
- *     termék — akkor is, ha a CMS-blokk a listát írja bele (ez volt a B7).
- *  3. Ha nincs ingyenes termék, a gomb NEM ígér indítást: a listára visz, a
- *     listához tartozó felirattal.
- *  4. A szekciónkénti szövegek és feliratok CMS-ből továbbra is felülírhatók.
  */
 
 function render(node: ReactNode): string {

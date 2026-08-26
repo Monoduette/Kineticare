@@ -6,21 +6,8 @@ import { NEWSLETTER_CONSENT_LABEL } from './consent-text'
 import { NEWSLETTER_CONSENT_FIELD, NEWSLETTER_EMAIL_FIELD } from './validation'
 
 /**
- * A „Hírlevél" form-builder űrlap — ADAT, nem séma (C9).
- *
- * A @payloadcms/plugin-form-builder űrlapjai a `forms` collection SORAI: az
- * új űrlap tehát adatbázis-TARTALOM, nincs hozzá séma-változás és nincs
- * migráció (CLAUDE.md 3. tilos zóna). Ugyanez a minta, mint a „Kapcsolat"
- * űrlapé (src/payload.config.ts `ensureContactForm`).
- *
- * A mezőket a szerkesztő az adminban átszabhatja; a beküldést viszont a
- * frontend-kliens állítja össze (`src/lib/newsletter/submit.ts`), ezért a
- * `email` / `consentNewsletter` MEZŐNEVEK a szerződés része — átnevezésük a
- * kliens- és a szerver-validációt is érinti.
- *
- * A `forms` collection a pluginből jön, és a `src/payload-types.ts` nem
- * tartalmazza, ezért a slug itt is castolt — ugyanaz a dokumentált minta, mint
- * az `ensureContactForm`-ban és a /kapcsolat oldalon.
+ * A „Hírlevél" form-builder űrlap — adat, nem séma (C9). Mezőnevek: email, consentNewsletter.
+ * Idempotens: meglévő „Hírlevél" című űrlapot nem ír felül.
  */
 
 export const NEWSLETTER_FORM_TITLE = 'Hírlevél'

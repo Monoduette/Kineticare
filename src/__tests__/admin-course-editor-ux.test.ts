@@ -113,14 +113,11 @@ describe('lessonRowLabel — a csukott lecke-sor felirata', () => {
 })
 
 /**
- * ═══ A LEGSÚLYOSABB ADMIN UX-HIBA: A NÉMA KÖZZÉTÉTELI CSAPDA ═══
- *
  * Az audit végigjátszotta egy új kurzus felvitelét: a rendszer „Állapot:
  * Közzétett"-et írt (a Payload `_status`-a), a mentés sikeres volt, DE az
  * adatbázisban `status=NULL` maradt, és a kurzus NEM jelent meg a /kurzusok
  * oldalon. A bolt kizárólag a `products.status` mezőt nézi. A munkatárs
  * ráadásul nem is tudja átállítani (owner-only mező), tehát sem észrevenni, sem
- * javítani nem tudja a hibát.
  */
 describe('courseVisibilityNotice — látszik-e a kurzus a weboldalon', () => {
   it('a KITÖLTETLEN mezőnél figyelmeztet, és megnevezi a félrevezető felső sávot', () => {

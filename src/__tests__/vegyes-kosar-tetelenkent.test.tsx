@@ -23,75 +23,10 @@ import { formatPriceHuf } from '../lib/format-price'
 
 /**
  * ŐR — VEGYES KOSÁR: TÉTELENKÉNTI CSELEKVÉS.
- *
- * ═══ A HIBAOSZTÁLY ═══
  * 2026-08-17-én a kosár helyesen ismerte fel a négy tétel-állapotot
  * (`paid` / `free` / `archived` / `unavailable`), de a következtetése túl
  * szigorú volt: EGYETLEN nem vásárolható tétel elvette az EGÉSZ kosár
  * fizetés-gombját. Három megvehető kurzus mellett egy archivált tétel
- * megállította a vásárlást — a hamis ígéret elleni védelemből a vevő büntetése
- * lett.
- *
- * A tulajdonos által jóváhagyott irány (2026-08-18): a jó tétel megvehető
- * marad, a rossz tétel a SAJÁT SORÁBAN kapja a magyarázatát és a saját
- * cselekvését, a fizetés-gomb pedig megmondja, MIRE vonatkozik.
- *
- * ═══ MIT RÖGZÍT (cáfolható állítások) ═══
- *  1. VEGYES KOSÁR (1 megvehető + 1 archivált + 1 ingyenes): a megvehető tétel
- *     fizetés-útja ÉL — a pénztár-link a megvehető termék id-jét viszi.
- *  2. Az ARCHIVÁLT tétel a saját sorában kapja a magyarázatát, és NEM kap sem
- *     árat, sem fizetés-utat.
- *  3. Az INGYENES tétel a saját sorában kapja a SAJÁT, MŰKÖDŐ útját (a
- *     kurzusoldal igénylő űrlapja, `courseCtaHref`) — nem olvad össze a „nem
- *     vásárolható" állapottal.
- *  4. A VÉGÖSSZEG NEM HAZUDIK: pontosan annyi, amennyit a következő lépés
- *     levon, és a sáv KIMONDJA, mire vonatkozik (`cartScopeNote`).
- *  5. Ha EGYETLEN tétel sem vásárolható és nem is igényelhető, marad a mai,
- *     blokkolt állapot: nincs végösszeg, nincs fizetés-gomb, van alternatíva.
- *  6. EGY elsődleges gomb a lapon (GOV.UK): a sorok cselekvései másodlagos és
- *     ghost súlyt kapnak.
- *  7. MÉRT számok: kontraszt (SC 1.4.3), sorhossz (SC 1.4.8), 320 px-es reflow
- *     (SC 1.4.10) az ÚJ felületi elemeken.
- *
- * ═══ KÜLSŐ FORRÁSOK ═══
- * - Baymard Institute, „Let Users Purchase Temporarily 'Out of Stock'
- *   Products" — a mérés szerint ha a látogatót csak annyival intézik el, hogy a
- *   termék nem kapható, 30% azonnal máshol keresi tovább, és a webshopok 68%-a
- *   szükségtelenül tiltja a vásárlást. Ezért nem a tiltást finomítjuk, hanem
- *   minden sor megmondja a következő lépést.
- *   https://baymard.com/blog/handling-out-of-stock-products
- * - Nielsen Norman Group, „Error-Message Guidelines" — „Display the error
- *   message close to the error's source."; „Merely stating the problem is also
- *   not enough; offer some potential remedies."
- *   https://www.nngroup.com/articles/error-message-guidelines/
- * - Nielsen Norman Group, 1. heurisztika, „Visibility of System Status" —
- *   „systems should always keep users informed about what is going on, through
- *   appropriate feedback within reasonable time."; „A lack of information often
- *   equates to a lack of control."
- *   https://www.nngroup.com/articles/visibility-system-status/
- * - GOV.UK Design System, Error summary — „you must show both an error summary
- *   and an Error message component next to each answer that contains an error"
- *   (az összefoglaló és a tétel melletti üzenet EGYÜTT kell).
- *   https://design-system.service.gov.uk/components/error-summary/
- * - GOV.UK Design System, Button — „Avoid using multiple default buttons on a
- *   single page."; „Disabled buttons have poor contrast and can confuse some
- *   users, so avoid them if possible."
- *   https://design-system.service.gov.uk/components/button/
- * - Baymard Institute, „Cart Abandonment Rate Statistics" — a nem böngésző
- *   elhagyók 12%-a azért lép ki, mert nem látja vagy nem tudja kiszámolni a
- *   végösszeget. https://baymard.com/lists/cart-abandonment-rate
- * - WCAG 2.2: SC 1.4.3 Contrast (Minimum), SC 1.4.8 Visual Presentation,
- *   SC 1.4.10 Reflow, SC 2.4.4 Link Purpose (In Context), SC 3.2.4 Consistent
- *   Identification.
- *
- * ═══ MIÉRT ÍGY MÉR ═══
- * a) A VALÓDI `CartView` fut, a kirenderelt HTML-en mérünk (a külső store
- *    szerver-pillanatképe adja a tételeket, ezt hívja a `renderToStaticMarkup`).
- * b) A fixtúrák ÁRAI SZÁNDÉKOSAN különböznek: így a „nem szállt-e be a rossz
- *    tétel ára a végösszegbe" kérdés eldönthető, nem csak valószínűsíthető.
- * c) A CSS-állítások a forrásból, KOMMENTEK NÉLKÜL olvasnak (a repó megtörtént
- *    csapdája: a magyarázó komment tartalmazta a keresett szöveget).
- * d) Hálózati hívás SEHOL nem indul: a komponensek tiszták, adatbázis nincs.
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))
@@ -177,9 +112,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. A DÖNTŐ BIZONYÍTÉK — a vegyes kosár kirenderelve
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('VEGYES KOSÁR (1 megvehető + 1 archivált + 1 ingyenes)', () => {
   it('mindhárom tétel a kosárban marad (a néma eldobás elrejtené, mi történt)', () => {
@@ -302,9 +235,7 @@ describe('VEGYES KOSÁR (1 megvehető + 1 archivált + 1 ingyenes)', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. AZ ÁLLAPOTGÉP — a `cartSummary` a vegyes kosáron
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('cartSummary — a vegyes kosár állapotgépe', () => {
   it('a POZITÍV oldal dönt: van megvehető tétel, tehát `amount`', () => {
@@ -394,9 +325,7 @@ describe('cartSummary — a vegyes kosár állapotgépe', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. A MIKROSZÖVEG — natív magyar, töltelék gondolatjel nélkül
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A hatókör-mondat magyar mikroszöveg-szabály szerinti', () => {
   const hatokor = cartScopeNote(cartSummary({ items: VEGYES })) as string
@@ -422,9 +351,7 @@ describe('A hatókör-mondat magyar mikroszöveg-szabály szerinti', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. A FELIRATOK — mind a §3.2 szótárból, literál nélkül
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('CartView — a tételenkénti cselekvések feliratai is a szótárból jönnek', () => {
   const forras = kommentNelkul(olvas('components/checkout/CartView.tsx'))
@@ -448,9 +375,7 @@ describe('CartView — a tételenkénti cselekvések feliratai is a szótárból
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. MÉRÉS — kontraszt, sorhossz, 320 px-es reflow az ÚJ elemeken
-// ═══════════════════════════════════════════════════════════════════════════
 
 type RGB = readonly [number, number, number]
 
@@ -626,9 +551,7 @@ describe('Mért kontraszt, sorhossz és reflow az ÚJ kosár-elemeken', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. A KIRENDERELT SOROK SZERKEZETE — a cselekvés-csoport tényleg ott van
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A sor szerkezete a kirenderelt HTML-ben', () => {
   it('minden sor kap cselekvés-csoportot', () => {

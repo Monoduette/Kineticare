@@ -7,26 +7,7 @@ import { resolveSeoKeywords, type SeoKeywordRow } from './seo-keywords'
 import { KURZUSLISTA_KULCSSZAVAK } from './tudastar/seo-kulcsszavak'
 
 /**
- * Storefront SEO-segédek — a pages/posts/products meta-fallbacklánca egy helyen.
- *
- * Fallback-szabályok (a hullám-követelmény szerint):
- * - title:        seoTitle → title
- * - description:  seoDescription → excerpt → (a keret-layout alap-leírása)
- * - og:image:     ogImage (og-méret) → ogImage (eredeti) → heroImage (og-méret)
- *                 → heroImage (eredeti) → nincs og:image
- *
- * A canonical/relativ URL-ek a NEXT_PUBLIC_SERVER_URL-ből abszolutálódnak
- * (a keret-layout metadataBase-e ezt a gyökeret használja).
- */
-
-/**
- * Egy dokumentum SEO-szempontból lényeges mezői.
- *
- * Szándékosan STRUKTURÁLIS típus (nem `Pick<Page, …>`): a pages/posts mellett a
- * products collection is beleillik, csak más mezőnevekkel — a cím a `sku`-ból
- * számolt kurzusnév, a kivonat a `shortDescription`, a képtartalék a
- * `coverImage`. A terméket a `productSeoDoc` adapter fordítja erre az alakra,
- * így a fallback-lánc EGY helyen él; párhuzamos meta-logika nincs.
+ * Storefront SEO — title/description/og fallback. SeoDoc: pages/posts/products közös alak.
  */
 export interface SeoDoc {
   /** Megjelenített cím (pages/posts: `title`; products: a `sku`-ból számolt név). */
@@ -115,19 +96,7 @@ export function resolveOgImageUrl(doc: SeoDoc): string | undefined {
 }
 
 /**
- * Metadata egy STATIKUS (nem CMS-ből jövő) oldalhoz, megosztási mezőkkel.
- *
- * ═══ MIÉRT KELL (2026-08-21-i mérés) ═══
- * A `/blog`, a `/kurzusok`, a kezdőlap és a kategória-oldal `generateMetadata`-ja
- * eddig CSAK `title`-t és `description`-t adott, `openGraph` blokkot nem. A Next
- * ilyenkor a keret-layout OG-jére esik vissza, ezért a Tudástár megosztva
- * „Kineticare — Kézrehabilitációs online kurzusplatform” néven jelent meg, és
- * `og:url` sem tartozott hozzá. Élesben mérve: a `/blog` `og:title`-je szó
- * szerint azonos volt a kezdőlapéval.
- *
- * A CMS-dokumentumok (`buildDocMetadata`) ezt már helyesen csinálták; ez a
- * segédlet ugyanazt a szerkezetet adja a kézzel írt oldalaknak, hogy ne
- * keletkezzen két párhuzamos meta-logika.
+ * Metadata statikus (nem CMS) oldalhoz. openGraph blokk, hogy ne a layout OG-jére essen vissza.
  */
 export function buildStaticPageMetadata(input: {
   title: string
@@ -412,36 +381,9 @@ export function breadcrumbJsonLd(
 }
 
 /**
- * Kurzusoldal strukturált adata: EGY entitás, kettős típussal —
- * `["Course", "Product"]` + `Offer`.
- *
- * Miért kettős típus és nem két külön blokk: a kurzusoldal egyetlen dolgot ír le,
- * ami egyszerre online videókurzus (`Course` — Google Course rich result) és
- * megvásárolható termék (`Product` — ár, elérhetőség, márka). Két külön JSON-LD
- * node ugyanarról az oldalról KÉT entitásnak látszana a gépi olvasó szemében
- * (ugyanaz a hiba, amit a kezdőlapon a duplikált Organization okozott), ezért a
- * schema.org által megengedett többszörös `@type`-ot használjuk.
- *
- * A LÁTHATÓ tartalommal való egyezés kötelező (különben a Google elveti):
- * - `name`      ← a H1 szövege (courseTitle → `displayTitle` → `sku`),
- * - `description` ← a hero lead bekezdése (`shortDescription`) — SZÁNDÉKOSAN nem
- *   a `seoDescription`, mert az csak a meta-tagben látszik, az oldalon nem,
- * - `image`     ← a buyboxban megjelenített borítókép,
- * - `offers.price` ← a kiírt ár (`coursePriceHuf` → PriceTag).
- *
- * Ár nélkül (`priceInHUFEnabled` kikapcsolva) az `offers` kimarad, mert a
- * 0 Ft-os vagy hiányzó ár félrevezető strukturált adat lenne.
- *
- * `aggregateRating` / `review` SZÁNDÉKOSAN nincs: a products collectionben nincs
- * értékelés-adat, kitalált értékelést pedig sem a fogyasztóvédelem, sem a
- * Google strukturált adat irányelve nem tűr.
- *
- * `keywords` a CMS `seoKeywords` mezőből jön. Üres mezőnél a kulcs kimarad —
- * H1-ből vagy a listing-szövegből kitalálni tilos.
- *
- * FONTOS karbantartási szabály: minden ár- vagy csomagváltozásnál ez a séma is
- * frissül (a `priceInHUF` mezőből származik) — az elavult strukturált adat
- * gyorsan téves árat terjeszt az AI-válaszokban.
+ * Kurzusoldal JSON-LD: egy entitás `["Course","Product"]` + `Offer`. Látható
+ * tartalommal egyezik (H1, shortDescription, borító, ár). Ár nélkül nincs offers;
+ * rating/review nincs. `keywords` csak CMS-ből — kitalálni tilos.
  */
 export function courseJsonLd(args: {
   product: Pick<Product, 'shortDescription' | 'status' | 'sku' | 'seoKeywords'>

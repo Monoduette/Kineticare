@@ -11,33 +11,7 @@ import '../../app/(frontend)/styles/blocks/film-hero.css'
 
 /**
  * FilmHero — a kezdőlap nyitó filmsávja (szekció-rendszer terv 2. és 3.3, M1).
- *
- * A `filmHero` blokk CMS-tartalmát (cím, bevezető, címkék, 0–2 gomb) a
- * görgetéssel vezérelt kéznyitás-film fölé rendereli. A film maga STATIKUS
- * asset (public/media/film/), nem Media-collection elem: a cseréje fejlesztői
- * feladat, ezért az útvonalak itt, egy helyen élnek — a ScrollScrub maga
- * általános, minden asset-útvonalat propból kap.
- *
- * A komponens SZERVER-kompatibilis: a böngésző-API-kat használó rész a
- * ScrollScrub 'use client' szigetében fut, ide csak adat és kész JSX kerül
- * (a gombokat szerveroldalon rendereljük, és `actions` propként adjuk át).
- *
- * UX-korlátok (docs/ertekesitesi-ux-skill.md):
- * - A cím az oldal EGYETLEN H1-e (a ScrollScrub az első jelenet címét h1-ként
- *   rendereli), mérete a három-méretes skála L (cím) lépcsője — annál nagyobb nem
- *   lehet (4. pont).
- * - M1: legfeljebb 2 gomb; az ELSŐ a hangsúlyos, fizetős irányba mutató CTA,
- *   a második visszafogott. A sorrendet a szerkesztő adja a blokkban.
- * - A gombok érintési célfelülete ≥ 44×44 px, fókuszgyűrűvel — a méreteket a
- *   styles/blocks/film-hero.css rögzíti.
- *
  * A `sectionSettings.visible` szűrése NEM itt történik: a blokk-renderelő
- * (RenderBlocks, F3) hagyja ki a rejtett szekciókat.
- *
- * ISMERT KORLÁT: a ScrollScrub a sáv geometriáját mountkor és resize-ra méri.
- * A blokk a lap ELEJÉRE való (a seed és az admin-sorrend is így ajánlja); ha a
- * szerkesztő mélyebbre húzza, a felette lévő, később betöltő képek eltolhatják
- * a mért görgetési sávot az első resize-ig.
  */
 
 /** A statikus film négy assetje (terv 3.3 — desktop + mobil klip és poszter). */
@@ -97,54 +71,7 @@ const CAPTION_END = { from: 0.84 * PINNED, to: 1 } as const
 
 /**
  * A 2. és 3. állás SZÖVEGE — kódban rögzített érték.
- *
- * Mindkét állás CÍMBŐL és a cím alatti LEÍRÁSBÓL áll, ugyanúgy, ahogy az 1.
- * állás szekciója (cím + bevezető). Gomb nincs alattuk: a filmsáv ott már a
- * lap többi szekciója felé ad át, a két hero-CTA pedig az 1. állásban áll.
- *
  * A filmsáv feliratai szándékosan NEM CMS-mezők: a blokk sémája nem bővült,
- * migráció sem kell hozzá. Az 1. állás szövege ezzel szemben CMS-tartalom: a
- * blokk `title` / `lead` / `tags` / `ctas` mezőiből jön.
- *
- * Tartsd rövidnek: a cím egy tömör mondat, a leírás legfeljebb két rövid
- * mondat (~120 karakter) — a néző görgetés közben olvassa. Üres címnél az
- * adott állás egyszerűen nem jelenik meg; üres leírásnál csak a cím látszik.
- *
- * ═══ MIÉRT VAN LEÍRÁS IS (2026-08-17, tulajdonosi kérés) ═══
- * A puszta cím „üres": a néző megáll rajta, és nincs mit olvasnia tovább. Az
- * NN/g eyetracking-kutatásának rétegtorta-mintája szerint a tekintet a
- * címeken ugrál, és a törzsszöveget akkor olvassa el, amikor egy cím érdekli
- * („The Layer-Cake Pattern of Scanning Content on the Web",
- * https://www.nngroup.com/articles/layer-cake-pattern-scanning/). Cím alatti
- * szöveg nélkül ez a lépés nem tud megtörténni.
- *
- * ═══ MIÉRT EZ A KÉT CÍM (2026-08-16, tulajdonosi kérésre írva) ═══
- * A filmsáv a logó és a terápia közös ívét rajzolja ki: ZÁRT → NYÍLÓ →
- * NYITOTT (lásd a kezdőlap „Három állapot" szekcióját). A három felirat ezt az
- * ívet követi: az 1. állás a problémát mondja ki (CMS-ből), a 2. a
- * változás folyamatát, a 3. a látogatóra bízza a döntést.
- *
- * A 2. állás szövege szándékosan a „Három állapot" NYÍLÓ kártyájának nyelvét
- * ismétli („Minden alkalommal egy mozdulattal több lesz") — ugyanaz a gondolat
- * ugyanazokkal a szavakkal, két helyen.
- *
- * A korábbi, ideiglenes „A terápia működik" felirat helyett azért nem
- * hatásosságot állítunk, mert ez egészségügyi kontextus: egy fenntartás nélküli
- * eredmény-ígéret a vásárlási döntés mellett megtévesztő benyomást kelt, és
- * ugyanaz a kifogás állna rá, ami miatt a kurzusoldali vélemény-szekciót is
- * megállítottuk. A haladás LEÍRÁSA igaz állítás; a gyógyulás ÍGÉRETE nem
- * lenne az. Ezért írja le a 2. leírás a GYAKORLÁST (mit csinálsz), nem az
- * eredményt (mi lesz tőle).
- *
- * A leírások állításai a lap saját, már jóváhagyott szövegeiből jönnek, nem
- * újak: „naponta néhány perc is elég a haladáshoz" és „a gyakorlatok lépésről
- * lépésre vezetnek" (howItWorks szekció), „Ha előbb kipróbálnád" (freeSos
- * szekció), a 3. leírásban felsorolt két irány pedig a lentebbi Szolgáltatások
- * szekció 01. és 02. sora („Rendelői kezelések", „Otthoni program").
- *
- * Mikroszöveg-szabályok (docs/ui-sztenderdek.md §3.1): natív magyar, töltelék
- * gondolatjel nélkül, felkiáltójel nélkül, a záró felirat tegez — a §3.2 P-1b
- * szerint ez nem CTA, hanem a néző felé forduló mondat.
  */
 const CAPTION_MID_TEXT = 'Minden alkalommal egy mozdulattal több'
 const CAPTION_MID_BODY =

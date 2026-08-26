@@ -1,46 +1,10 @@
 /**
- * A CSONKOLT progress-lista biztonságos levágása.
- *
- * ═══ MIÉRT LÉTEZIK EZ A MODUL ═══
- *
- * A haladás-riportok két listát olvasnak külön lapozással: KI fér hozzá a
- * kurzushoz (enrollments), és MELYIK leckét nézte meg (progress). Mindkettőnek
- * saját felső korlátja van, hogy egy nagy kurzus ne olvasson be korlátlan sort.
- *
- * A csapda: ha a PROGRESS-lista éri el a plafont, az azon túli diákok sorai
- * hiányoznak — de a diák maga BENNE MARAD az enrollment-listában. Az
- * összesítő ilyenkor azt látja, hogy nincs egyetlen megnézett leckéje sem,
- * és „nem kezdte el”-nek számolja. Vagyis egy KÉSZ diák úgy jelenik meg,
- * mintha hozzá sem kezdett volna.
- *
- * Ez nem kozmetikai hiba: a „nem kezdte el” oszlop a utánkövetés célja. Rossz
- * érték mellett a staff olyan diákokat keresne meg, akik régen végeztek.
- * A torzítás iránya ráadásul ELLENTÉTES a csonkolás-figyelmeztetés
- * ígéretével: a `truncated` alsó becslést sugall, itt viszont a „nem kezdte
- * el” FÖLFELÉ, az átlagszázalék LEFELÉ torzul.
- *
- * ═══ A MEGOLDÁS ═══
- *
- * Mindkét lekérdezés `['user', 'id']` szerint rendez, tehát a csonkolt lista
- * VÉGÉN álló felhasználó az, akinek a sorai félbevágódtak. Róla csak alulmért
- * — vagyis hamis — százalékot tudnánk mutatni, ezért:
- *
- *   1. eldobjuk az utolsó felhasználó ÖSSZES sorát (nem tudjuk, hány hiányzik),
- *   2. és kihagyjuk az enrollment-listából mindenkit, akinek az azonosítója
- *      ettől nagyobb vagy egyenlő — róluk semmilyen adatunk nincs.
- *
- * Így a riport KEVESEBB diákot mutat, de amit mutat, az IGAZ.
- * „Inkább hiányozzon egy sor, mint hogy rossz szám kerüljön elé.”
- *
- * Ez a szabály korábban csak a kurzuslap kezelőjében élt
- * (`src/lib/admin/course-progress-handler.ts`); a Statisztika oldal
- * Kurzus-hatás táblája kimaradt belőle. A 2026-08-21-i kódvizsgálat F1 (HIGH)
- * találata pontosan ez volt, mért reprodukcióval: 800 beiratkozott diák, mind
- * a 20 leckével készen, 16 000 progress-sor a 10 000-es plafon ellen →
- * a riport 300 diákot „nem kezdte el”-nek, az átlagot 63%-nak mutatta.
- * A modul azért közös, hogy a szabály egyetlen helyen éljen, és a két felület
- * ne tudjon szétcsúszni.
+ * Csonkolt progress-lista biztonságos levágása: enrollment és progress külön plafon.
+ * Ha a progress plafon vág, az utolsó user sorai + nagyobb userId-k kiesnek — inkább kevesebb, de igaz adat.
+ * Közös szabály a kurzus-panel és a Statisztika Kurzus-hatás táblája között.
  */
+
+/** Bármi */
 
 /** Bármi, amit egy felhasználóhoz kötünk (a levágás csak az azonosítót nézi). */
 export interface UserScopedRow {

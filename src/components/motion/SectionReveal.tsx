@@ -4,29 +4,6 @@ import { useEffect } from 'react'
 
 /**
  * SectionReveal — a kezdőlap szekcióinak halk belépője.
- *
- * ═══ MIT CSINÁL ═══
- * A `<main>` KÖZVETLEN szekció-gyermekeit figyeli, és amelyik a hajtás alatt
- * van, azt néhány pixeles emelkedéssel + áttűnéssel hozza be, amikor a
- * nézetbe ér. EGYSZER: a megjelenés után a megfigyelő leválik a szekcióról,
- * tehát visszafelé görgetve nincs villogás.
- *
- * ═══ MIÉRT ÍGY ═══
- *  - A rejtett kezdőállapotot KIZÁRÓLAG ez a kliens-effekt teszi rá. Ha a CSS
- *    írná ki alapból, akkor JS nélkül (vagy hibás hidratálásnál) a tartalom
- *    végleg láthatatlan maradna — a belépő animációk klasszikus, tartalmat
- *    elnyelő hibája.
- *  - Csak a HAJTÁS ALATTI szekciók kapják meg. A már látható (hero, hitel-csík)
- *    szekció bántatlan marad, különben a betöltés után villanna egyet.
- *  - `prefers-reduced-motion: reduce` esetén az effekt AZONNAL kilép: nem tesz
- *    ki osztályt, nem indít megfigyelőt. (A CSS-oldali biztosíték a
- *    styles/motion.css-ben is megvan.)
- *  - `IntersectionObserver` hiányában szintén nem történik semmi.
- *
- * A mozgás-nyelv a kurzusoldal meglévő staggered mintája: ugyanaz a
- * `kc-fade-up` kulcsképsor (8px emelkedés + áttűnés) és ugyanaz a
- * lépcsőzött késleltetés — a késleltetést a `--kc-reveal-stagger` egyedi
- * tulajdonság viszi, ahogy a kurzusoldalon a `--kc-course-stagger`.
  */
 
 /** A belépő-osztály (kezdőállapot) — a stílusát a styles/motion.css adja. */

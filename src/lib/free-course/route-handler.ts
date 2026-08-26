@@ -19,40 +19,8 @@ import { FREE_COURSE_GENERIC_ERROR } from './ui-text'
 import { parseFreeCourseRequestBody } from './validation'
 
 /**
- * POST /api/free-course/request — az ingyenes kurzus igénylésének route-handlere.
- *
- * A függőségek injektálva vannak (Payload-példány, kérés-korlátozó, Turnstile-
- * ellenőrző, maga a szolgáltatás), így a handler egységtesztelhető; a tényleges
- * route (`src/app/(frontend)/api/free-course/request/route.ts`) csak a valódi
- * configot köti be. Ugyanaz a minta, mint a `checkout/route-handler.ts`-nél.
- *
- * ═══ A SORREND, ÉS MIÉRT ═══
- *  1. JSON-parse és VALIDÁCIÓ — olcsó, helyi; a formailag hibás beküldésre
- *     felesleges bármit is indítani.
- *  2. HONEYPOT — hálózati és adatbázis-hívás nélkül, látszólagos sikerrel
- *     elszáll (a kapcsolat-űrlap ugyanezt teszi kliens-oldalon).
- *  3. IP-KERET — csak fejlécekből dolgozik, tehát a következő, drágább
- *     lépések előtt kell lefutnia.
- *  4. CÍM-KERET — a beküldött e-mail-címre kulcsolva. Enélkül IP-rotációval
- *     egy konkrét postaláda korlátlanul bombázható lenne, hiszen a végpont
- *     minden sikeres hívása levelet küld ki.
- *  5. TURNSTILE — külső HTTP-hívás, tehát a legutolsó kapu a szolgáltatás előtt.
- *  6. A szolgáltatás (fiók, hozzáférés, levél).
- *
- * ═══ MIÉRT SAJÁT SZÁMLÁLÓ ═══
- * A `checkRequestRateLimit` ÚTVONAL-térképből (`ROUTE_CLASS_BY_PATH`) osztályoz,
- * és abba a táblába új sort felvenni a megosztott biztonsági modul módosítása.
- * Ehelyett a modul EXPORTÁLT primitívjét (`SlidingWindowRateLimiter`) használjuk
- * a saját, itt kimondott szabályokkal: a csúszóablak-logika így NEM duplikálódik,
- * és a kulcstér is diszjunkt marad (`free-course-request:<alany>:<azonosító>`).
- *
- * ═══ FIÓK-FELDERÍTÉS ELLENI VÉDELEM ═══
- * A 200-as válasz `{ ok: true, emailSent }` — és PONTOSAN UGYANEZ megy ki
- * akkor is, ha a címhez már volt fiók, és akkor is, ha most jött létre. A
- * szolgáltatás `userCreated` mezője SZÁNDÉKOSAN nem kerül a válaszba; ha
- * bekerülne, egy címlista végigküldésével kiderülne, kik a vevőink (OWASP
- * user enumeration). Az `emailSent` NEM szivárogtat: az kizárólag a szerver
- * levelező-konfigurációjától függ, a címtől nem.
+ * POST /api/free-course/request — validáció → honeypot → IP/cím-keret → Turnstile → szolgáltatás.
+ * 200-as válasz nem szivárogtat fiók-létrejöttet.
  */
 
 /** Két külön keret-szabály. Az értékek a `RATE_LIMIT_RULES` táblájának logikáját követik. */

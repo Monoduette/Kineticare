@@ -6,16 +6,11 @@ import '../../app/(frontend)/styles/blocks/states.css'
 
 /**
  * States — „Három állapot" (szekció-rendszer terv 2. katalógus, 3.4).
- *
  * A landing `kc-states` szekciójának portja: bevezető + 1–3 kártya, kártyánként
  * Media-képpel, sorszámmal, címmel és rövid szöveggel (zárt → nyíló → nyitott).
- *
  * A képek a Media collectionből jönnek (terv 3.4), így a szerkesztők
  * cserélhetik őket. A képleírás (alt) a Media dokumentumon él — a MediaImage
  * onnan veszi. Kép nélkül a kártya szöveges marad, a szekció nem törik el.
- *
- * TÁBLA (board): teljes képernyős, teljes szélességű szekció — `kc-container`
- * helyett `kc-board__inner` (lásd `.kc-board`, styles/ui.css).
  */
 export interface StatesProps {
   block: BlockStates

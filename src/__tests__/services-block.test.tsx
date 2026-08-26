@@ -12,26 +12,9 @@ import type { BlockServices } from '../payload-types'
 /**
  * SZOLGÁLTATÁS-TÁBLA (Services) — a 2026-08-16-i tulajdonosi hibajelzés két
  * regressziós őre, plusz a tábla stíluslap-szerződései.
- *
- * ═══ 1. „A SZÖVEG RÁCSÚSZIK A KÉPRE" ═══
  * A tábla bal hasábjában a fotó ABSZOLÚT pozicionálva ült a hasáb alsó 70%-án,
  * a cím pedig `z-index: 2`-vel fölé rajzolódott, 7,2ch-s mértékkel és a
  * `--kc-text-board-6xl` lépcsővel — mindkettő a tükör HÁROM SZAVAS címére
- * („Így tudunk segíteni") kalibrálva. A /szolgaltatasok 47 karakteres
- * CMS-címénél a cím 525 px magas lett, és Chromiumban mérve 328 px-en
- * rácsúszott a fotóra (1440×900; 1920×1080-on 324 px), a szavak pedig 122
- * px-szel kilógtak a saját dobozukból.
- *
- * A javítás két rétegű: a komponens hosszú címnél méret-fokozatot vált (a
- * KÖZÖS skálán belül), a stíluslap pedig a fotót visszateszi a normál
- * folyamba (flex-oszlop) — így az átfedés geometriailag lehetetlen.
- *
- * ═══ 2. „A SOROK ÖSSZECSÚSZNAK" ═══
- * A sorlista kötött magasságot (`height: min(82%, 42rem)`) kapott, a sávok
- * `minmax(0, 1fr)`-t, a sorok `min-height: 0`-t: a sáv a TARTALOMNÁL kisebbre
- * is összenyomódott. A hosszabb /szolgaltatasok sorszövegeknél a tartalom 238
- * px lett a 224 px-es sávban, és a sor-hivatkozás rácsúszott a következő sor
- * hajszálvonalára (mérve: 7 px @1440×900, 10–11 px @1920×1080).
  */
 
 const cssFajl = (nev: string): string =>

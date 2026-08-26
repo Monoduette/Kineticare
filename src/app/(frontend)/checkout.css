@@ -295,16 +295,11 @@
 
 /**
  * ÜRES ÁLLAPOT — a piros doboz eltüntetése hiba nélkül.
- *
  * A hibarégió MINDIG a DOM-ban van (lásd a CheckoutForm kommentjét: a
  * dinamikusan beszúrt aria-live régiót több képernyőolvasó nem jelenti be),
  * ezért üresen is renderelődött — és a fenti szabály miatt egy üres PIROS sáv
  * ült a „Pénztár" cím alatt.
- *
  * A megoldás a `.kc-visually-hidden` (base.css) technikája: `display: none`
- * TILOS lenne, mert az elnémítja az élő régiót, a `position: absolute` viszont
- * kiveszi az elemet a flex-folyamból is — így a `.kc-checkout-form` gap-je sem
- * hagy utána üres rést. Keret, háttér és belső margó nélkül semmi nem látszik.
  */
 .kc-checkout-form__error[data-visible='false'] {
   position: absolute;
@@ -321,16 +316,11 @@
 
 /**
  * ÜRES ÁLLAPOT — a piros doboz eltüntetése hiba nélkül.
- *
  * A hibarégió MINDIG a DOM-ban van (lásd a CheckoutForm kommentjét: a
  * dinamikusan beszúrt aria-live régiót több képernyőolvasó nem jelenti be),
  * ezért üresen is renderelődött — és a fenti szabály miatt egy üres PIROS sáv
  * ült a „Pénztár" cím alatt.
- *
  * A megoldás a `.kc-visually-hidden` (base.css) technikája: `display: none`
- * TILOS lenne, mert az elnémítja az élő régiót, a `position: absolute` viszont
- * kiveszi az elemet a flex-folyamból is — így a `.kc-checkout-form` gap-je sem
- * hagy utána üres rést. Keret, háttér és belső margó nélkül semmi nem látszik.
  */
 .kc-checkout-form__error[data-visible='false'] {
   position: absolute;

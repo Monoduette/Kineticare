@@ -5,26 +5,9 @@ import { extractRelationshipId } from './menu-validation'
 import { sanitizeCmsUrl } from './safe-url'
 
 /**
- * Menüfa → navigációs fa (NavItem) építése — tiszta, DB nélkül
- * unit-tesztelhető logika. A fejléc (Header) az src/lib/menus.ts
- * getNavTree()-jén keresztül használja.
- *
- * Szabályok:
- * - Csak visible=true menüpontok (a backend-access ezt anonim olvasóra már
- *   kikényszerítené; itt explicit, hogy a lekérdezés overrideAccess-szel is
- *   determinisztikus maradjon).
- * - A menüpont célja CSAK published célú tartalom lehet: page/post esetén a
- *   szerkesztői `status === 'published'` (a pages/posts publikus
- *   read-politikája is erre szűr), product esetén a saját `status ===
- *   'published'` select. Nem-publikált vagy feloldhatatlan cél → a menüpont
- *   kimarad.
- * - Maximum 2 szint: a validált adat (menus beforeValidate) legfeljebb
- *   gyökér→gyermek; a UI mégis ROBUSZTUS: ha mégis mélyebb lánc érkezne,
- *   az elem a legközelebbi renderelhető gyökér-ős alá kerül, nem töri el
- *   a renderelést.
- * - A szülője kiesett (nem látható / nem published / hiányzó) gyermek
- *   gyökér-szintre emelődik.
- * - Rendezés: order (hiányzó = 0) szerint, azonos order esetén label (hu).
+ * Menüfa → NavItem fa (tiszta logika). Csak visible + published cél; max 2 szint
+ * (mélyebb lánc → legközelebbi gyökér). Kiesett szülő → gyerek gyökérré emelődik.
+ * Rendezés: order, majd label (hu). Külső URL: safe-url allowlist.
  */
 
 export interface NavItem {

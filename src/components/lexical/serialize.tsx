@@ -9,30 +9,7 @@ import { TEXT_FORMAT, type LexicalContent, type LexicalNode, type VideoEmbed } f
 
 /**
  * Lexical → React renderer (storefront).
- *
- * A szerkesztői tartalom (pages/posts content) a payload.config alap
- * lexicalEditor()-jával készül; a renderer az alapértelmezett csomópontokat
- * márkahű elemekre képezi:
- *
- *   paragraph                    → <p>; ha a bekezdés EGYETLEN linket tartalmaz,
- *                                  az CTA-gombként (kc-button) renderel
- *   heading (h1–h6)              → címsor; a h1 SEO-higiéniai okból h2-re
- *                                  lágyul (oldalanként egy h1 — a cím)
- *   list (bullet/number/check)   → <ul>/<ol>; a check-lista a gyakorlatlista
- *                                  (kc-richtext__exercise-list)
- *   listitem (beágyazott listával) → <li>, checked-állapot jelöléssel
- *   quote                        → <blockquote>
- *   horizontalrule               → <hr>
- *   link                         → belső next/link, külső <a target/rel>;
- *                                  YouTube/Vimeo-ra mutató önálló link
- *                                  videó-beágyazás (csak publikus előzetes!)
- *   upload (relationTo: media)   → <figure> + next/image (Media-méretek,
- *                                  alt KÖTELEZŐ — hiányában dekoratív + dev warn)
- *   text (formázás-bitmaszk)     → strong/em/s/u/code/sub/sup rétegek
- *
  * Ismeretlen csomópont-típus (pl. jövőbeli custom block): NEM hasal el —
- * fejlesztői módban console.warn, a renderelés a gyermek-csomópontokkal
- * folytatódik (ha vannak), egyébként a blokk kimarad.
  */
 
 // ---------------------------------------------------------------------------

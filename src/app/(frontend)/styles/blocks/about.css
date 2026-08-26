@@ -1,27 +1,6 @@
 /**
  * Rólunk + statisztikák (About) — TÁBLA-szekció stílusa.
- *
- * Forrás: a landing `kc-about` board-ja (higgsfield-site/app/src/kineticare.css
- * 542–670., tablet-kalibráció 947–956., mobil 1030–1055.). A tükör HÁROMPÁLYÁS,
- * teljes képernyős táblája MOST MÁR ÁTJÖTT (a korábbi port konténer-szélességbe
- * szorította): balra a felirat/cím/bekezdések + ikonos kiemelés, középen az álló
- * csapatfotó a tábla aljáig, jobbra a hajszálvonalas szám-oszlop.
- *
- * A tábla-viselkedést (teljes szélesség, 100dvh 2K-ig, 80vw 2K felett) a közös
- * `.kc-board`/`.kc-board--edge` adja (styles/ui.css); itt csak a szekció saját
- * rács-geometriája és tipográfiája él.
- *
- * MÉRETEK: minden betűméret a HÁROM-MÉRETES skáláról jön (`--kc-font-l/m/s`,
  * tokens.css; UX-skill 4. pont: elemre írt px/rem TILOS). A tábla-cím az L
- * lépcsőn áll, a bemutatkozó bekezdés viszont a TÖRZSMÉRETEN (M) — ez utóbbi
- * 2026-08-16-i tulajdonosi javítás: a bemutatkozás a korábbi tábla-lépcsőn
- * (~14px) olvashatatlanul apró volt a szekció léptékéhez képest.
- *
- * AKCENT-KORLÁT (terv 3.1): a kis felső felirat, a kiemelt blokk felirata és a
- * nagy számok `accent-deep` (paperen 5,16:1, tinten 4,72:1 — AA felett);
- * a nyers `accent` (tinten 4,07:1) csak dekoratív vonal/keret.
- *
- * Betöltés: a szekció-komponens importálja (src/components/blocks/About.tsx).
  */
 
 .kc-about {

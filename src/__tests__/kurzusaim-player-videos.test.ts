@@ -5,20 +5,10 @@ import type { Product } from '../payload-types'
 
 /**
  * A /kurzusaim/[id] RSC-SZIGORÍTÁS regresszió-őre (S2/b).
- *
- * ═══ MIÉRT KELL ═══
  * A lejátszóoldal a terméket `overrideAccess: true`-val olvassa, tehát a
  * mezőszintű access (streamAssetReadAccess) NEM fut le rajta — a Bunny-GUID-ot
  * a leképezésnek KELL elhagynia. Amíg ez a szerver-komponens törzsében élt,
  * nem volt rá teszt: a szigorítást visszaállítva a main szerinti alakra a
- * teljes csomag zöld maradt (91 fájl / 1514 teszt), vagyis NULLA őr védte.
- *
- * ═══ MIT MÉR ═══
- * 1. hasAccess = true  → a GUID benne van;
- * 2. hasAccess = false → a GUID HIÁNYZIK, de a title/durationSec/status/id
- *    megmarad (a paywall-kártya és az epizódlista ezekből épül);
- * 3. a `videos` hiánya/nem-tömb volta üres listát ad (a lejátszó nem robban);
- * 4. a null-értékű almezők `undefined`-dá válnak (a kliens-prop alakja).
  */
 
 const GUID_1 = 'bunny-guid-elso'

@@ -3,32 +3,7 @@ import type { Curriculum, CurriculumLesson } from '@/lib/curriculum/curriculum'
 
 /**
  * A kurzus-lejátszó TISZTA logikája — navigáció, gombfeliratok, modul-nyitottság,
- * hossz-formázás és az automatikus „megnézett" küszöb.
- *
- * ═══ MIÉRT KÜLÖN MODUL ═══
- * A lejátszó React-komponens (CoursePlayer.tsx) DOM-ot, iframe-et, időzítőt és
- * hálózatot kezel — abban a környezetben ezek a szabályok nem tesztelhetők
- * kényelmesen. A repó tesztkonvenciója node-környezetű vitest
- * (vitest.config.ts: `environment: 'node'`), tehát ami DOM nélkül eldönthető,
- * azt DOM nélkül KELL eldönteni. Ez a modul ezért nem importál Reactet és nem
- * nyúl `window`-hoz: a `localStorage`-műveletek is INJEKTÁLT tárolóval
- * dolgoznak (lásd `ModuleStateStorage`).
- *
- * ═══ AMIT ITT ELDÖNTÜNK ═══
  * 1. Előző/következő lecke — a NEM elindítható (feldolgozás alatti) leckéket
- *    ÁTLÉPVE, modulhatáron át is. A lapos `curriculum.lessons` sorrend a
- *    megjelenítési sorrend, ezért a szomszédság ebből számol; a `flatIndex`-re
- *    itt szándékosan nem hagyatkozunk, mert az a TELJES listára vonatkozik, a
- *    navigáció viszont a SZŰRT (elindítható) listán halad.
- * 2. Az elsődleges akció állapotgépe. A gomb egyszerre JELÖL és LÉP, ezért a
- *    felirata nem lehet általános „Következő": a felhasználónak a kattintás
- *    ELŐTT látnia kell, mi fog történni és hová jut (WCAG 2.4.6 / 2.5.3 — a
- *    látható felirat a hozzáférhető név része).
- * 3. A modul-akkordeon kezdőállapota és a `localStorage`-ban megőrzött állapot
- *    ÖSSZEFÉSÜLÉSE a jelenlegi tananyaggal (a tananyag közben átszerkeszthető).
- * 4. A magyar `-ból/-ből` toldalék a képernyőolvasónak szánt mondathoz.
- * 5. Az automatikus megnézett-jelölés küszöbe (a Bunny player.js kliens majd
- *    ezt hívja — lásd `shouldAutoMarkWatched`).
  */
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -474,18 +449,11 @@ export const AUTO_WATCHED_RATIO = 0.9
 
 /**
  * Kell-e automatikusan késznek jelölni a leckét a lejátszott arány alapján?
- *
- * ═══ EZ A BEKÖTÉSI PONT ═══
  * Az automatikus jelölést a Bunny player.js kliens
  * (`src/lib/stream/playerjs-client.ts`) fogja hajtani: az onprogress/ontimeupdate
  * eseményből számolt arányt ADJA ÁT ennek a függvénynek, és igaz válasz esetén
  * a `CoursePlayer` `handleLessonProgress` bekötési pontján keresztül ugyanaz a
  * `markWatched` fut le, amit a gomb hív. A küszöb és a döntés SZÁNDÉKOSAN itt,
- * tiszta függvényben él, hogy a kliens megírásakor ne kelljen újra kitalálni —
- * és hogy tesztelhető legyen a lejátszó nélkül is.
- *
- * @param watchedRatio a lejátszott hányad (0–1); érvénytelen érték → false
- * @param alreadyWatched már késznek van jelölve (ilyenkor nincs teendő)
  */
 export function shouldAutoMarkWatched(watchedRatio: number, alreadyWatched: boolean): boolean {
   if (alreadyWatched || !Number.isFinite(watchedRatio)) {

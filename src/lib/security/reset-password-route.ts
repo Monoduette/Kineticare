@@ -1,61 +1,10 @@
 /**
- * POST /api/users/reset-password — saját végpont a jelszó-politika
- * SZERVEROLDALI kikényszerítéséhez a jelszó-visszaállítás útvonalán (OWASP A07).
+ * POST /api/users/reset-password — a jelszó-politika a reset-ágon is fusson.
  *
- * ## Miért kell külön végpont
- *
- * A jelszó-politikát (`validatePasswordStrength`) eddig KIZÁRÓLAG a Users
- * collection `beforeChange` hookja futtatta. A Payload 3.86
- * `resetPasswordOperation`-je viszont NEM megy át ezen a hookon: maga hívja a
- * `generatePasswordSaltHash`-t, és a már hash-elt rekordot írja ki
- * `payload.db.updateOne`-nal (a `beforeChange` lánc kimarad, csak a
- * `beforeValidate` fut — az pedig már a hash-t látja, nem a nyers jelszót).
- * Vagyis a `POST /api/users/reset-password` közvetlen hívásával tetszőlegesen
- * gyenge jelszó volt beállítható: a regisztrációnál kikényszerített 12
- * karakteres, vegyes szabály a reset-ágon megkerülhető volt.
- *
- * ## Hogyan zárja be a rést
- *
- * Ez a route-handler UGYANAZT az útvonalat foglalja el, amit eddig a Payload
- * REST catch-all (`src/app/(payload)/api/[...slug]/route.ts`) szolgált ki. A
- * Next.js útvonal-feloldása a konkrét szegmenst előbbre sorolja a catch-all
- * mintánál, ezért `/api/users/reset-password`-re MINDEN kérés ide érkezik —
- * beleértve az admin felület saját reset-űrlapját és a végpont közvetlen,
- * kliens megkerülésével indított hívását is. Nincs olyan út, amelyik a
- * politika mellett elmenne: a GraphQL API (amelynek beépített
- * `resetPasswordUser` mutációja szintén a `resetPasswordOperation`-t hívná,
- * a politika ÉS a REST-oldali rate-limit megkerülésével) a configban
- * teljesen le van tiltva — `graphQL.disable`, src/payload.config.ts. Ha a
- * GraphQL valaha visszakapcsolásra kerül, ELŐBB ide is őrt kell építeni.
- *
- * A tényleges jelszócserét NEM írjuk újra: sikeres politika-ellenőrzés után a
- * kérést változatlanul továbbadjuk a Payload beépített végpontjának
- * (`forwardToPayload`). A token ellenőrzése, a hash-elés, a session-süti
- * kiállítása és a válaszformátum így végig a Payload dolga marad — nincs mit
- * szinkronban tartani egy verziófrissítéskor.
- *
- * A kérés törzsét ezért csak OLVASSUK (a kérés klónjából), és két formátumot
- * értünk: a nyilvános űrlap JSON-ját és az admin reset-oldalának multipart
- * FormData-ját (lásd `readRequestData`).
- *
- * ## Miért Next route-handler, és nem Payload custom endpoint
- *
- * A collection `endpoints` tömbje a Users kollekció konfigurációját módosítaná
- * (annak access-szabályai és auth-hookjai mellett), és a beépített
- * auth-végponttal való ütközés feloldása a Payload belső regisztrációs
- * sorrendjén múlna. A route-réteg ezzel szemben a repóban már bevált minta
- * (`src/lib/checkout/route-handler.ts`, `src/lib/grant-purchase-route.ts`):
- * függőség-injekcióval egységtesztelhető, és a Users kollekcióhoz hozzá sem
- * nyúl.
- *
- * ## Hibaválaszok és szivárgás
- *
- * A válasz a Payload REST hibaformátumát (`{ errors: [{ message }] }`) követi,
- * mert ezt olvassa ki a repó auth-kliense (`src/lib/auth-client.ts`) ÉS a
- * Payload admin reset-űrlapja is. A tokent sosem naplózzuk (a logger
- * redact-listája is védi), és a hibaüzenetek nem árulnak el többet a
- * szükségesnél: a token érvényességéről továbbra is csak annyi derül ki,
- * amennyit a Payload maga is elárul (siker vagy 403).
+ * A Payload `resetPasswordOperation` megkerüli a Users `beforeChange` hookot
+ * (hash után ír `db.updateOne`-nal). Ez a konkrét Next-route a catch-all elé
+ * kerül, ellenőriz, majd `forwardToPayload`. A GraphQL `resetPasswordUser`
+ * ugyanitt menne el — `graphQL.disable` tartja zárva. Token soha nem naplózandó.
  */
 
 import type { Payload } from 'payload'

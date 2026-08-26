@@ -26,30 +26,11 @@ export interface LoginFormProps {
 }
 
 /**
- * ═══ A FELHASZNÁLÓ AZONOSÍTÓJA A LOGIN-VÁLASZBÓL ═══
- *
  * A `posthog.ts` `person_profiles: 'identified_only'` beállítása miatt
- * person-profil KIZÁRÓLAG `identify()` után jön létre — enélkül a „ki tért
- * vissza / mekkora a megtartás" kérdés megválaszolhatatlan. Az azonosítóhoz a
- * belépett felhasználó Payload `id`-je kell.
- *
  * MÉRT TÉNY, NEM FELTÉTELEZÉS: a Payload REST login-végpontja
- * `{ message, user, token, exp }` alakú törzset ad vissza — a telepített
- * csomagban ellenőrizve
- * (node_modules/payload/dist/auth/endpoints/login.js `Response.json({ message,
- * ...result })`, ahol a `result` a `loginOperation` `{ exp, token, user }`
- * hármasa: node_modules/payload/dist/auth/operations/login.js).
- *
  * MIÉRT ÍGY, ÉS NEM AZ `AuthResult`-BÓL: a `src/lib/auth-client.ts`
  * `loginUser`-je a sikeres válasz törzsét SZÁNDÉKOSAN nem olvassa el, és az
- * `AuthResult` nem hordoz felhasználó-azonosítót. Az auth-kliens
- * ÁTÍRÁSA HELYETT annak MEGLÉVŐ, publikus injektálási pontját (`fetchImpl`)
- * használjuk: a válasz KLÓNJÁBÓL olvasunk (`response.clone()`), így az eredeti
- * törzs érintetlen marad az auth-kliens hibaága számára, és nem kell egy
- * második hálózati kör sem (`GET /api/users/me`) a belépés és az átirányítás
  * közé. Az `AuthResult.data.userId` átírása szándékosan NEM kell: a klón
- * egy kérést spórol, az auth-kliens szerződését nem bontja, és a belépés
- * a hiányzó id mellett is megy (identify kimarad, nem a belépés).
  */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -94,22 +75,11 @@ export interface TrackedLoginDeps {
 
 /**
  * Belépés + Barion `signUp`.
- *
- * ═══ MIÉRT A SIKERES VÁLASZ UTÁN, ÉS NEM MOUNTKOR ═══
  * A belépés a hivatalos leírás szerint is `signUp`-esemény, DE csak akkor, ha
  * meg is történt. A mountkor (vagy a beküldés pillanatában) küldött esemény a
  * rossz jelszóval próbálkozót is belépőnek számolná — a Barion felé némán
  * felnagyítva a belépés-számot.
- *
- * ═══ A KÖVETÉS NEM RONTHATJA EL A BELÉPÉST ═══
  * A `track` és az `identify` hívás saját `try/catch`-ben fut. A gyártásban
- * használt `trackAccountSignUp` maga sem dob (a `sendBarionEvent` elnyeli a
- * pixel hibáit), az `identifyUser` pedig consent/kulcs nélkül no-op — de a
- * burkoló így akkor is tartja a garanciát, ha a követő láncba később bármi
- * bekerül: a visszaadott `AuthResult` és vele az átirányítás változatlan marad.
- *
- * SZEMÉLYES ADAT NEM MEGY KI: kizárólag a Payload `id`. E-mail-cím, név és IP
- * SOHA (a posthog.ts fejlécének tilalma).
  */
 export async function trackedLogin(
   input: { email: string; password: string },

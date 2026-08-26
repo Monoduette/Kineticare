@@ -28,61 +28,10 @@ import type {
 
 /**
  * ŐR — CMS KONTRA KÓD: A SZÓTÁRI CSELEKVÉSEKNÉL A KÓD NYER.
- *
- * ═══ A MÉRT HIBAOSZTÁLY ═══
  * A `src/__tests__/cta-a-termekben.test.ts` 2026-08-17-i mérése szerint hat
  * helyen a CMS-mező LEGYŐZTE a kódot (`cmsErtek?.trim() || KODBELI_FELIRAT`).
  * Következmény: a §3.2 CTA-szótár betartatása a kódban ÉLESBEN HATÁSTALAN
  * maradt. Konkrétan: a kezdőlap ingyenes sávján az adatbázisban őrzött
- * „Elindítom az ingyenes kurzust" látszott, miközben a §3.2 #3 „Elindítom
- * ingyen"-t ír elő.
- *
- * ═══ A TULAJDONOSI DÖNTÉS (2026-08-18) ═══
- * A SZÓTÁRI cselekvéseknél a KÓD nyer. A CMS csak olyan feliratot írhat felül,
- * amelyre a §3.2-ben NINCS sor.
- *
- * Hogyan dől el, hogy egy hely „szótári cselekvés"-e? A HÍVÓHELY tudja, melyik
- * `CtaAction`-ról van szó — ez a legtisztább, mert nem szövegre illeszt, hanem
- * a cselekvés azonosságára. Két ilyen hely van, mindkettőnek volt kódbeli
- * tartaléka:
- *   - `components/blocks/AppointmentForm.tsx`   → §3.2 #25 `appointment-submit`
- *   - `components/content/home/FreeSos.tsx`     → §3.2 #3/#4 `free-course-claim`
- *                                                 és §3.2 #10 `course-list-open`
- *
- * ═══ AMIT EZ AZ ŐR NEM VÁLLAL ═══
- * A másik négy helyen (`CtaBanner`, `FilmHero`, `RenderBlocks.linkFrom`,
- * `TeamMembers`) NINCS kódbeli tartalék: a felirat kizárólag a szerkesztőé, és
- * a hívóhely nem tud `CtaAction`-t, mert a link bárhova mutathat. Ott a „kód
- * nyer" szabály nem alkalmazható — a szerkesztő elnémítása HIBA lenne, mert a
- * gomb felirat nélkül maradna. Ezt az őr KIMONDJA és MÉRI (5. szakasz), hogy a
- * megállapítás ne romolhasson el csendben; a rendezésük külön kör, admin-oldali
- * döntéssel (mezősúgó vagy validáció).
- *
- * ═══ KÜLSŐ FORRÁSOK ═══
- * - WCAG 2.2 SC 3.2.4 Consistent Identification — „Components that have the
- *   same functionality within a set of web pages are identified consistently.";
- *   „If identical functions have different labels (or, more generally, a
- *   different accessible name) on different web pages, the site will be
- *   considerably more difficult to use."
- *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
- * - Nielsen Norman Group, 4. heurisztika, „Consistency and Standards" — „Users
- *   should not have to wonder whether different words, situations, or actions
- *   mean the same thing. Follow platform and industry conventions."
- *   https://www.nngroup.com/articles/consistency-and-standards/
- * - Nielsen Norman Group, „A Link is a Promise" — „Any broken promise, large or
- *   small, chips away at trust and credibility."
- *   https://www.nngroup.com/articles/link-promise/
- * - GOV.UK Design System, Button — „Write button text in sentence case,
- *   describing the action it performs."
- *   https://design-system.service.gov.uk/components/button/
- *
- * ═══ MIÉRT ÍGY MÉR ═══
- * a) VALÓDI komponensek renderelnek, valódi CMS-alakú bemenettel: a döntő
- *    bizonyíték a kirenderelt HTML, nem a forráskód mintázata.
- * b) A forrás-illesztések KOMMENTEK NÉLKÜL futnak (a repó megtörtént csapdája:
- *    a magyarázó komment tartalmazta a keresett szöveget).
- * c) A globális `fetch` hangosan dobó mock: a render semmilyen ágon nem
- *    indíthat hálózati hívást (CLAUDE.md 15. tanulság).
  */
 
 vi.stubGlobal('fetch', () => {
@@ -107,9 +56,7 @@ const SZERKESZTOI_FELIRAT = 'Kérek egy időpontot most'
 /** Az ÉLESBEN mért, adatbázisban őrzött, szótártól eltérő felirat. */
 const ELES_ELTERO_FELIRAT = 'Elindítom az ingyenes kurzust'
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. A DÖNTŐ BIZONYÍTÉK — időpontkérés: a CMS-mező nem győzi le a szótárt
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('AppointmentForm — a szótári felirat nyer a CMS-mező ellenében', () => {
   const kirendereltCmsFelulirassal = (): string =>
@@ -166,9 +113,7 @@ describe('AppointmentForm — a szótári felirat nyer a CMS-mező ellenében', 
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. A DÖNTŐ BIZONYÍTÉK — ingyenes SOS-sáv: a CMS-mező nem győzi le a szótárt
-// ═══════════════════════════════════════════════════════════════════════════
 
 const ingyenesTermek = {
   id: 2,
@@ -238,9 +183,7 @@ describe('FreeSos — a szótári felirat nyer a CMS-mező ellenében', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. A SZABÁLY HATÁRA — a szerkesztőt NEM némítjuk el ott, ahol joga van írni
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('CtaBanner — a szerkesztő felirata ÉL (nincs rá §3.2 sor)', () => {
   it('a megadott felirat és cél kimegy a HTML-be', () => {
@@ -341,9 +284,7 @@ describe('TeamMembers — a szerkesztő hívás-felirata ÉL', () => {
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. A SZABÁLY KÉT OLDALA EGY ÁLLÍTÁSBAN
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A szabály kimondva: szótári cselekvés → kód, minden más → szerkesztő', () => {
   it('a két szótári hely feliratát a kód adja, a négy szabad helyét a szerkesztő', () => {
@@ -375,9 +316,7 @@ describe('A szabály kimondva: szótári cselekvés → kód, minden más → sz
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. A MEGÁLLAPÍTÁS, AMI KÜLÖN KÖRT KÉR — mérve, hogy ne romolhasson el csendben
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * A négy hely, ahol a felirat KIZÁRÓLAG a CMS-ből jön (nincs kódbeli tartalék),
@@ -421,9 +360,7 @@ describe('A négy CSAK-CMS hely: kódbeli tartalék nélkül (külön kör)', ()
   })
 })
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. A MEGLÉVŐ ADAT — a szerkesztő szövegét NEM töröljük, csak nem jelenítjük meg
-// ═══════════════════════════════════════════════════════════════════════════
 
 describe('A meglévő, adatbázisban élő felülíró értékek sorsa', () => {
   it('a prop/mező a típusban MARAD (a néma adat-eldobás rosszabb lenne)', () => {

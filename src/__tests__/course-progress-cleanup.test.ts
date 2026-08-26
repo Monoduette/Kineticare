@@ -5,20 +5,10 @@ import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/clean
 
 /**
  * A HALADÁS-SOROK takarítása a szülő (felhasználó / kurzus) törlésekor.
- *
- * ═══ MIÉRT LÉTEZIK EZ A HOOK ═══
  * A `course-progress.user` és `.product` mezője `required: true` (NOT NULL
  * oszlop), a Payload postgres-adaptere viszont `ON DELETE SET NULL` idegen
  * kulcsot generál hozzá. A kettő kizárja egymást. Helyben, VALÓS
  * Payload+Postgres ellen reprodukálva: egy haladással rendelkező felhasználó
- * törlése „Failed query: delete from users…" hibával állt le, és a felhasználó
- * a törlés után is létezett — GDPR-törlési kérésnél blokkoló hiba.
- * A hook bekötése után ugyanez a próba sikeres volt, és a haladás-sorok is
- * eltűntek (50 → 48); a kurzus törlése ugyanígy.
- *
- * Az itteni tesztek a hook SZERZŐDÉSÉT őrzik: a helyes szűrőfeltételt, a
- * kérés-kontextus továbbadását, és azt, hogy a takarítás hibája SOSEM
- * akaszthatja meg a törlést.
  */
 
 interface DeleteHivas {

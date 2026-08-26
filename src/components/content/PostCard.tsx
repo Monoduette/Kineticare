@@ -9,51 +9,7 @@ import '../../app/(frontend)/styles/blocks/knowledge.css'
 
 /**
  * PostCard — blogposzt-kártya (borító / kategória / cím / kivonat / dátum).
- * A /blog/<slug> útvonalra mutat; csak published poszttal renderel.
- *
- * Megjelenés: a landing kártya-nyelve (hajszálvonalas keret, serif cím, a
- * lábban hajszálvonal fölött a dátum). A stílust maga a kártya importálja, mert
- * a kezdőlapon KÍVÜL a /blog listán, a kategória-oldalon és a kapcsolódó
- * posztoknál is megjelenik — lásd styles/blocks/knowledge.css.
- *
- * ═══ MIÉRT CSAK A CÍM A LINK (2026-08-21-i átépítés) ═══
- * Korábban a TELJES kártya egyetlen `<a>` volt. Mérve
- * (docs/tudastar-a11y-meres.md 3.2) a link hozzáférhető neve három valódi
- * kapcsolódó kártyán 206 / 227 / 212 karakter lett, mert a név a
- * kategória-címke + cím + kivonat + dátum összeragadása; ráadásul mindhárom
- * név UGYANAZZAL a szóval kezdődött (a kategória nevével), tehát a
- * képernyőolvasó link-listájában megkülönböztethetetlenek voltak.
- *
- * A minta, amit most viszünk (Heydon Pickering, *Inclusive Components —
- * Cards*, https://inclusive-components.design/cards/, hozzáférés: 2026-08-21):
- * „the title/heading is the name of the article for which the card acts as a
- * teaser. It makes sense, then, to use its text as the primary link", és
- * „Each card has a heading of the same level … because they belong to a flat
- * list hierarchy". A teljes kártya kattinthatóságát a cím-link `::after`
- * pszeudoeleme adja vissza (`position: absolute; inset: 0`) — a szabály a
- * knowledge.css-ben áll, az indoklásával és a mellékhatásaival együtt.
- * A nagy célfelület haszna Fitts törvényéből jön: NN/g, *Cards:
- * UI-Component Definition* (2016-11-06,
- * https://www.nngroup.com/articles/cards-component/, hozzáférés: 2026-08-21):
- * a kártya „a linked, short representation of a conceptual unit", amelynél
- * „clicking or tapping *anywhere* on the card link to a details page".
- *
- * ═══ MIÉRT KONFIGURÁLHATÓ A CÍMSOR SZINTJE ═══
- * A kártya NÉGY felületen jelenik meg, és a fölötte álló címsor nem ugyanaz:
- * a kezdőlapi szekció és a cikkoldal kapcsolódó blokkja fölött h2 áll (ott a
- * kártya h3), a `/blog` lista és a kategória-oldal fölött viszont csak a lap
- * h1-e (ott a kártya h2). Fix h3 mellett a két lista-oldal h1 → h3 ugrást
- * kapna, ami a WCAG 2.2 1.3.1 (Info and Relationships) szerinti szerkezetet
- * rontja. Alapértelmezés: h3 — ez a gyakoribb eset, és ez felel meg a
- * `docs/tudastar-a11y-meres.md` 3.2 pontjának javaslatának.
- *
- * ═══ MIÉRT NINCS KIVONAT A `compact` VÁLTOZATON ═══
- * A hármas rácsban a kivonat mért sorhossza 24–38 karakter/sor
- * (docs/tudastar-a11y-meres.md 3.1), a repó Ü6 szabályának 45-ös alsó
- * tűréshatára alatt (docs/ui-sztenderdek.md). A kivonatot ezért nem elrejteni
- * kell — úgy a DOM-ban maradna, és a képernyőolvasó, illetve a keresőrobot
  * továbbra is végigolvasná —, hanem NEM ODATENNI. A kártya-definíció
- * (NN/g, fent) szerint a teaser-sávban a cím önmagában elég információ-szag.
  */
 export interface PostCardProps {
   post: Pick<

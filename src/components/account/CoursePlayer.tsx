@@ -43,57 +43,8 @@ import {
 
 /**
  * COURSEPLAYER — a Kineticare kurzus-lejátszója.
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * A FELÜLET
- * ═══════════════════════════════════════════════════════════════════════════
- * Kétpaneles LMS-elrendezés: balra a tananyag-rail (modul-akkordeon), jobbra a
- * színpad (videó / szöveges lecke / külső link) egy mindig elérhető, állapotfüggő
- * elsődleges akcióval. Mobilon a rail teljes képernyős, modális panelre vált —
- * a DOM-sorrend ott a fontossági sorrendet követi (fejléc → videó → cím →
- * akciósáv → tartalom), tehát a képernyőolvasó és a billentyűzet is a lényeggel
- * találkozik először.
- *
- * A bemenet a TANANYAG-MODELL (`src/lib/curriculum/curriculum.ts`), nem a nyers
- * videólista: a modulokra bontott és a régi, lapos kurzus ugyanazon a
- * felületen jelenik meg, mert a modell a különbséget már feloldotta.
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * AMI ÉLESBEN DRÁGÁN MEGTANULT, ÉS EZÉRT VÁLTOZATLAN
- * ═══════════════════════════════════════════════════════════════════════════
  * 1. A TOKEN-FRISSÍTÉS NEM MOUNTOLJA ÚJRA AZ IFRAME-ET. A lejárat előtt 5
- *    perccel új jegy készül, de az iframe által TÉNYLEGESEN betöltött `src`
- *    (`loadedSrc`) csak explicit lecke-betöltéskor változik. A szabály tiszta,
- *    tesztelt függvényben él: `mergePlayingSession`
- *    (src/lib/course-player-refresh.ts). Enélkül a „lejátszás nem szakad meg"
- *    frissítés maga szakította meg a lejátszást (pozícióvesztés).
- * 2. GENERÁCIÓ-SZÁMLÁLÓ. Minden FELHASZNÁLÓI lecke-váltás növeli; a repülőben
- *    lévő token-kérés a saját generációját őrzi, és kései válasza eldobásra
- *    kerül. Így egy régi lecke nem tud visszakapcsolni az új fölé.
- * 3. A TOKEN-KÉRÉS A LECKE STABIL REFJÉT KÜLDI, SOSEM SORSZÁMOT. A sorszám a
- *    feldolgozás alatti videók kiszűrése miatt elcsúszik a szerver listájához
- *    képest — abból idegen (vagy hibás) videóra kiadott jegy lett.
- * 4. OPTIMISTA „MEGNÉZETT" JELÖLÉS, hibánál visszagördüléssel és magyar
- *    üzenettel. A visszavonás továbbra sincs hatókörben.
- * 5. `loadLessonRef` — a frissítő-időzítő MINDIG a legfrissebb betöltő-függvényt
- *    hívja. (A korábbi változat a saját deklarációja előtti konstanst zárta be,
- *    és örökre az elavult példányt tartotta.)
- * 6. A HOZZÁFÉRÉS-HIÁNY és a LEJÁRAT külön, kész magyar üzenettel
- *    (`expiredMessage`) jelenik meg.
- *
- * ═══════════════════════════════════════════════════════════════════════════
  * ÉLŐ BEJELENTÉS ÉS FÓKUSZ — MIÉRT NEM EGYSZERRE
- * ═══════════════════════════════════════════════════════════════════════════
- * Egyetlen, MINDIG a DOM-ban lévő `role="status"` régió létezik (a feltételesen
- * renderelt élő régiót a képernyőolvasó nem figyeli, mert a beillesztés
- * pillanatában még nincs mit figyelnie).
- *
- * Ugyanarra az eseményre viszont SOSEM megy egyszerre bejelentés ÉS fókuszmozgás:
- * a kettő egymásra beszélne, és a felhasználó egyiket sem hallaná végig. Ezért
- * - lecke-VÁLTÁSKOR csak a fókusz mozog (a lecke `<h1>`-ére) — a cím felolvasása
- *   maga a visszajelzés,
- * - jelölés NAVIGÁCIÓ NÉLKÜL (utolsó lecke) esetén csak bejelentés van,
- * - hibánál külön, látható `role="alert"` üzenet jelenik meg.
  */
 
 export interface CoursePlayerProduct {
@@ -127,18 +78,13 @@ export interface CoursePlayerProps {
    */
   watchedRefs?: readonly string[]
   /**
-   * ═══ BEKÖTÉSI PONT AZ AUTOMATIKUS „MEGNÉZETT" JELÖLÉSHEZ ═══
-   * A nézettség-alapú, automatikus jelölést a Bunny player.js kliens
-   * (`src/lib/stream/playerjs-client.ts`, külön körben készül) fogja hajtani.
-   * A lejátszó mountkor MEGHÍVJA ezt a feliratkozót, és átadja neki a saját
-   * jelentés-visszahívását; a feliratkozó a leiratkozó függvényt adhatja vissza.
-   *
-   * Így a jövőbeli kliens EGYETLEN vékony burkolóval bekapcsolható, és a
-   * jelölés útvonala UGYANAZ marad, mint a kézi gombé — a kettő nem tud
-   * eltérni. A küszöb tiszta függvényben él: `shouldAutoMarkWatched`
-   * (player/navigation.ts). A lejátszó SEMMIT nem importál a még el nem
-   * készült kliensből.
-   */
+ * A nézettség-alapú, automatikus jelölést a Bunny player.js kliens
+ * (`src/lib/stream/playerjs-client.ts`, külön körben készül) fogja hajtani.
+ * A lejátszó mountkor MEGHÍVJA ezt a feliratkozót, és átadja neki a saját
+ * jelentés-visszahívását; a feliratkozó a leiratkozó függvényt adhatja vissza.
+ * Így a jövőbeli kliens EGYETLEN vékony burkolóval bekapcsolható, és a
+ * jelölés útvonala UGYANAZ marad, mint a kézi gombé — a kettő nem tud
+ */
   bindLessonProgress?: (report: LessonProgressReporter) => (() => void) | void
 }
 
@@ -295,36 +241,8 @@ export function CoursePlayer({
   }, [])
 
   /**
-   * Optimista jelölés: a pipa azonnal látszik, a szerverhívás hibája esetén
-   * visszagördül, és látható, magyar `role="alert"` üzenet jelenik meg.
-   *
-   * ═══ MIÉRT REF A DUPLIKÁCIÓ-VÉDELEM, ÉS NEM ÁLLAPOT ═══
-   * A védelem korábban a `watched` és a `pending` ÁLLAPOTOT olvasta. Az
-   * állapot viszont a callback LEZÁRÁSÁBÓL jön, ami két renderelés között
-   * elavul: a `timeupdate` sűrűn érkezik, és a küszöböt átlépő két esemény
-   * ugyanazzal az elavult lezárással futhat le. Élesben MÉRVE: gyors
-   * eseményütem mellett EGY leckére NÉGY `mark-watched` kérés ment ki. Minden
-   * duplikátum újra lefuttatta az analitika-blokkot is, tehát a
-   * „kurzusonként egyszer" mérföldkövek (course_started, course_completed)
-   * többször is kimehettek — pont az a funnel torzult, amiért készült.
-   *
-   * A ref SZINKRON, renderelés nélkül frissül, ezért az azonos körben induló
-   * második hívás már látja az elsőt.
-   *
-   * ═══ A MÉRFÖLDKŐ-PILLANATKÉP A SIKER PILLANATÁBAN KÉSZÜL ═══
-   * A `before`/`after` pillanatkép korábban a hálózati hívás ELŐTT, az
-   * OPTIMISTA zárból készült. A code review mérte a rést: két párhuzamos
-   * jelölésnél az egyik megbukhat és visszagördülhet, a másik pillanatképében
-   * viszont a bukott lecke benne ragadt — a bejelentés és a funnel hamis
-   * számot vitt. Ezért külön könyvelés van: az `analitikaRef` KIZÁRÓLAG
-   * sikeres mentés után lép előre, és a pillanatkép a siker-ágban, ebből a
-   * refből készül. A siker-folytatások a JS-szálon egymás után futnak, tehát
-   * mindegyik látja az előzőek eredményét — a sorrend nem csúszhat el.
-   *
-   * @param announce mondja-e el az élő régió a sikert. NAVIGÁCIÓVAL járó
-   *   jelölésnél `false`: ott a fókusz az új lecke címére ugrik, és a kettő
-   *   egymásra beszélne.
-   */
+ * Optimista jelölés: a pipa azonnal látszik, a szerverhívás hibája esetén
+ */
   const markWatched = useCallback(
     async (lessonRef: string, announce: boolean) => {
       // SZERKEZETI zár: a ref már tartalmazza a késznek jelölt és az épp
@@ -690,18 +608,13 @@ export function CoursePlayer({
   const handleSelectLesson = useCallback(
     (lessonRef: string) => {
       /**
-       * Mobilon a választás zárja a panelt. A fókusz ilyenkor NEM a megnyitó
-       * gombra tér vissza, hanem a lecke címére — azt a lecke-váltás effektje
-       * intézi.
-       *
-       * KIVÉTEL: ha a MÁR AKTÍV leckére kattint a felhasználó (tájékozódott a
-       * panelen, és ott hagyta a kijelölést az `aria-current` során), nincs
-       * lecke-váltás, tehát a váltás-effekt korán kilép, és a cím sem
-       * fókuszálódik — miközben a bezáródó panel `display: none` lesz, és a
-       * fókuszált gomb kiesik alóla. Ilyenkor a fókusz a `document.body`-ra
-       * zuhanna. Erre az ágra a szabályos zárás jár, ami visszaadja a fókuszt
-       * a megnyitó gombra.
-       */
+ * Mobilon a választás zárja a panelt. A fókusz ilyenkor NEM a megnyitó
+ * gombra tér vissza, hanem a lecke címére — azt a lecke-váltás effektje
+ * intézi.
+ * KIVÉTEL: ha a MÁR AKTÍV leckére kattint a felhasználó (tájékozódott a
+ * panelen, és ott hagyta a kijelölést az `aria-current` során), nincs
+ * lecke-váltás, tehát a váltás-effekt korán kilép, és a cím sem
+ */
       if (lessonRef === activeRef) {
         closeRail()
         return
@@ -745,20 +658,13 @@ export function CoursePlayer({
         return
       }
       /**
-       * ═══ CSAK A LÁTHATÓ ELEMEK SZÁMÍTANAK ═══
-       * A csukott modulok panelje `hidden` (→ `display: none`), a bennük lévő
-       * lecke-gombokat viszont a szelektor visszaadná: az csak a `disabled`-re
-       * szűr, a láthatóságra nem. A csapda így egy `display: none` elemet
-       * tartana „utolsónak", és a fókusz előre KISZIVÁROGNA a dialogból,
-       * visszafelé pedig beragadna. Mivel az `initialOpenModuleIds` csak az
-       * aktív lecke modulját nyitja ki, ez a TÖBBMODULOS kurzus
-       * ALAPÁLLAPOTA — nem ritka szélsőség.
-       *
-       * A láthatóság mércéje a `getClientRects()`: a `display: none` elem
-       * (és minden `display: none` ősű elem) nulla téglalapot ad. Ez a
-       * `offsetParent`-nél megbízhatóbb, mert a `position: fixed` elemeknél
-       * az utóbbi null is lehet láthatóan is.
-       */
+ * A csukott modulok panelje `hidden` (→ `display: none`), a bennük lévő
+ * lecke-gombokat viszont a szelektor visszaadná: az csak a `disabled`-re
+ * szűr, a láthatóságra nem. A csapda így egy `display: none` elemet
+ * tartana „utolsónak", és a fókusz előre KISZIVÁROGNA a dialogból,
+ * visszafelé pedig beragadna. Mivel az `initialOpenModuleIds` csak az
+ * aktív lecke modulját nyitja ki, ez a TÖBBMODULOS kurzus
+ */
       const focusable = [
         ...panel.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',

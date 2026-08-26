@@ -1,87 +1,13 @@
 /**
- * DEMO-KÖRNYEZET feltöltése kitalált adattal — vásárlók, vásárlások, haladás.
+ * DEMO-környezet feltöltése kitalált adattal (vásárlók, paid rendelések, haladás).
+ * Idempotens; meglévő adatot nem ír felül. Élesen NEM futhat.
  *
- * ═══ MIRE VALÓ ═══
- * A rendszert be kell tudni mutatni „élesben": vásárlói szemmel (belépés,
- * Kurzusaim, lejátszó, haladás) és admin szemmel (vásárlók, rendelések,
- * bevétel-alakulás, kurzus-haladás panel). Ehhez OLYAN adat kell, ami valósnak
- * LÁTSZIK, de egyetlen valódi személyhez sem köthető: minden név kitalált,
- * minden e-mail-cím a szabványosan bemutató célra fenntartott `example.com`
- * domainre mutat (RFC 2606), és egyetlen levél sem megy ki róluk.
+ * Kapuk: DEMO_MODE=1 kötelező; kineticare.hu URL tiltott; valódi @example.com-n kívüli
+ * vevő vagy rendelés → leállás. Fizetés: applyBarionStateTransition (SOSEM confirmOrder).
  *
- * A script IDEMPOTENS: minden entitást egyedi kulcs alapján keres meg
- * (felhasználó → e-mail, rendelés → vevő e-mail + kurzus, haladás-sor →
- * felhasználó + kurzus + lecke-ref), és csak a hiányzót hozza létre. Többször
- * futtatva sem duplikál, és MEGLÉVŐ adatot sosem ír felül — a demó közben
- * kézzel átállított állapotokat (pl. a lányok által megnyitott leckéket) a
- * következő futás nem törli.
- *
- * ═══ ÉLES ADATBÁZISON NEM FUTHAT (a legfontosabb szabály) ═══
- * A script vásárlókat és PAID rendeléseket ír. Éles adatbázison ez hamis
- * bevételt, hamis vevőket és hamis hozzáféréseket jelentene, ezért NÉGY,
- * egymástól független kapu védi (`demoGuardErrors` + `assertDemoDatabase`):
- *
- *  1. `DEMO_MODE=1` KÖTELEZŐ — enélkül a script azonnal, írás nélkül leáll.
- *     Ezt a változót az ÉLES Railway-környezetben soha nem szabad beállítani.
- *  2. Az éles publikus domain TILTOTT: ha a `NEXT_PUBLIC_SERVER_URL` a
- *     kineticare.hu (vagy www.kineticare.hu) címre mutat, a script leáll.
- *  3. VALÓDI VEVŐ az adatbázisban → leállás: ha van olyan `customer`
- *     szerepkörű felhasználó, akinek a címe NEM `@example.com`, az adatbázis
- *     valódi vevőket hordoz, tehát nem demó-adatbázis.
- *  4. VALÓDI RENDELÉS az adatbázisban → leállás: ha van olyan rendelés,
- *     amelynek a `customerEmail`-je nem `@example.com`.
- *
- * A 3. és 4. kapu azért fontos, mert a `DEMO_MODE` egy elgépelt vagy rossz
- * környezetbe másolt változó is lehet — az adatbázis TARTALMA ilyenkor is
- * megvédi az éles adatot.
- *
- * ═══ A FIZETÉS ÚTJA: A SAJÁT ÁLLAPOTGÉP, SOSEM A confirmOrder ═══
- * A rendelés `paid`-re állítása kizárólag a repó saját állapotgépén keresztül
- * történik (`applyBarionStateTransition`, src/lib/order-status/apply-barion-state.ts)
- * — ugyanaz a kód fut, mint éles fizetésnél a Barion-callback után: összeg- és
- * deviza-assert, dupla-fizetés-őr, fiók-feloldás, majd az idempotens
- * `purchases`-beírás. A plugin `confirmOrder` függvényét a script NEM hívja
- * (CLAUDE.md 2. tilos zóna).
- *
- * Barion felé HÁLÓZATI HÍVÁS NEM MEGY: az állapotgépnek átadott
- * `BarionPaymentStateResponse` a demó-rendelés SAJÁT, szerver-oldali
- * snapshotjából (`totalHufSnapshot` + `currency`) épül fel, `DEMO-` előtagú
- * fizetésazonosítóval — így az adminban ránézésre látszik, hogy nem valódi
- * Barion-tranzakció. A fizetés utáni MELLÉKHATÁSOK (számlázás, visszaigazoló
- * e-mail) szándékosan NEM futnak: azok a hívó (callback/poll) feladatai, és
- * demóban sem számlát, sem levelet nem akarunk kiküldeni.
- *
- * ═══ MIT HOZ LÉTRE ═══
- *  - 9 kitalált fiók: 8 vásárló + 1 „elakadt fizetés" (regisztrált, de nem
- *    fizetett) — az utóbbi mutatja meg az adminban, hogy sikertelen fizetésre
- *    NEM jár hozzáférés;
- *  - 8 kifizetett rendelés a 79 500 Ft-os kurzusra, az aktuális naptári évre
- *    egyenletesen szétosztott dátumokkal (bevétel-alakulás), + 1 sikertelen
- *    fizetésű rendelés;
- *  - vegyes kurzus-haladás: 2 vevő el sem kezdte, 2 vevő ~30%, 2 vevő ~70%,
- *    2 vevő végigment;
- *  - ha a kurzusnak MÉG NINCS tananyaga, egy 10 leckés, szöveges demó-tananyag
- *    (meglévő tananyagot SOHA nem ír felül — akkor a valódi leckékre rögzül a
- *    haladás).
- *
- * ═══ FUTTATÁS ═══
  *   DEMO_MODE=1 npm run seed:demo
- *
- * Előfeltétel: lefuttatott migráció (`npx payload migrate`) és `npm run seed`
- * (az owner-felhasználó miatt: üres users-kollekcióban az ELSŐ létrehozott
- * felhasználó owner szerepkört kapna — vásárlóból sosem lehet tulajdonos).
- *
- * Környezeti változók (értékek nélkül, a doksiban részletezve —
- * docs/demo-kornyezet.md):
- *   DEMO_MODE=1                 KÖTELEZŐ kapu (bármely más érték = leállás)
- *   DEMO_CUSTOMER_PASSWORD      KÖTELEZŐ: a bemutató demo-fiókjának jelszava.
- *                               Hiányában a script HANGOSAN, írás előtt leáll —
- *                               generált jelszót nem készít és NAPLÓBA SEM ÍR
- *                               (a logger redakciója kulcsnév-alapú, tehát az
- *                               üzenetszövegbe ágyazott titkot nem szűrné)
- *   DEMO_COURSE_SKU             opcionális: melyik kurzusra szóljanak a
- *                               vásárlások (alapértelmezés: „Otthoni KézRehab
- *                               Program", a 79 500 Ft-os kurzus)
+ * Előfeltétel: migrate + npm run seed. DEMO_CUSTOMER_PASSWORD kötelező (RFC 2606 @example.com).
+ * Részletek: docs/demo-kornyezet.md
  */
 
 import { pathToFileURL } from 'node:url'
@@ -946,28 +872,7 @@ export const MISSING_DEMO_PASSWORD_MESSAGE =
   'jelszót. Állítsd be a demó-szolgáltatás Variables felületén (érték a repóba ' +
   'SOHA nem kerül), majd indítsd újra a feltöltést — részletek: docs/demo-kornyezet.md.'
 
-/**
- * A bemutató demo-fiókjának jelszava — KIZÁRÓLAG a `DEMO_CUSTOMER_PASSWORD`
- * környezeti változóból.
- *
- * ═══ MIÉRT KÖTELEZŐ (2026-08-16-i átvizsgálás) ═══
- * Korábban a script generált egy jelszót, és azt a naplóüzenet SZÖVEGÉBE
- * illesztve kiírta. A logger redakciója KULCSNÉV-alapú, tehát az üzenetszövegbe
- * ágyazott titkot nem szűri — a demó-szolgáltatás pedig minden induláskor
- * lefut, így a jelszó minden deploy-naplóba bekerült.
- *
- * A két lehetséges megoldás közül a KÖTELEZŐ környezeti változó az
- * üzemeltethetőbb: a bemutató fiókjába a prezentálónak BE KELL tudnia lépni,
- * márpedig a „jelszó-beállításra váró" (passwordSetupPending) állapotból csak
- * e-mailben kiküldött aktiváló linkkel lehet kijönni — a demó-környezetben
- * viszont sem valódi postafiók (`@example.com`), sem garantáltan beállított
- * levélküldő nincs. Így a fiók használhatatlan lenne. A változó egyszeri,
- * emberi beállítást igényel, utána a jelszó stabil és ISMERT — érték sehol nem
- * kerül a repóba vagy a naplóba.
- *
- * Hiányzó változó esetén a script HANGOSAN, írás előtt leáll (a hívó a
- * `demoSeed()` elején, minden adatbázis-művelet előtt hívja).
- */
+/** Demo jelszó kizárólag DEMO_CUSTOMER_PASSWORD-ből — generált jelszó naplóba kerülne. */
 function resolveDemoAccountPassword(): string {
   const provided = process.env.DEMO_CUSTOMER_PASSWORD
   if (typeof provided !== 'string' || provided.trim().length === 0) {

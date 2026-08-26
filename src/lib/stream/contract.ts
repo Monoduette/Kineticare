@@ -1,23 +1,6 @@
 /**
- * A GET /api/stream-token végpont KÖZÖS szerződése — a kliens (böngésző) és a
- * szerver (route-handler + token-kiállítás) egyetlen közös forrása.
- *
- * Miért külön modul: a szerződés két oldala korábban külön-külön volt leírva,
- * és el is tért egymástól (a kliens `videoIndex`-et küldött, a szerver
- * `videoId`-t olvasott; a szerver ISO-8601 szöveget adott vissza, a kliens
- * számot várt). Mindkét eltérés a fizető vásárló lejátszását törte, és a
- * tesztek sem fogták meg, mert mindkét oldal a SAJÁT feltevését mockolta.
- * Ez a fájl környezet-független (nincs benne node: import, sem Payload),
- * ezért a kliens-komponensek és a szerver-oldali kód is importálhatja.
- *
- * Szerződés:
- * - Kérés:  GET /api/stream-token?productId=<szám>[&videoId=<stabil azonosító>]
- * - Válasz: 200 { token: string, expiresAt: string }  — `expiresAt` ISO-8601
- *   (UTC) időbélyeg. Szándékosan NEM szám: az ISO-alak önleíró, nem keverhető
- *   össze a másodperc/ezredmásodperc alakokkal, és a repó többi API-válaszával
- *   is egyezik. A kliens-oldali időaritmetikához a
- *   `parseStreamTokenResponseBody` egyszer, a határon váltja epoch
- *   másodpercre — a mértékegység a mező NEVÉBEN szerepel.
+ * GET /api/stream-token közös szerződés (kliens + szerver). Wire: `{ token, expiresAt }`
+ * — `expiresAt` ISO-8601 UTC.
  */
 
 /** A végpont útvonala. */

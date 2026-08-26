@@ -1,17 +1,4 @@
-/**
- * A Felhasználók admin-lista „Megvásárolt kurzusok" oszlopának és a
- * felhasználó lapján lévő áttekintő panelnek a TISZTA formázó segédei
- * (src/components/admin/purchases-cell.ts).
- *
- * Amit a tesztek védenek:
- *  - a hozzáférés a kurzus CÍMÉVEL jelenik meg, nem a puszta azonosítóval,
- *  - a cím-lánc (displayTitle → sku → „Kurzus #id") EGYEZIK a storefront
- *    `courseTitle` láncával — a két hely nem csúszhat szét,
- *  - hibás/hiányos adat esetén sem omlik el a lista (a cella minden során
- *    valami értelmes marad).
- *
- * MINDEN ADAT KITALÁLT.
- */
+/** purchases-cell formázók: cím-lánc egyezik a storefrontdal; hiányos adat nem omlik össze. */
 
 import { describe, expect, it } from 'vitest'
 
@@ -138,15 +125,7 @@ describe('cella-sorok', () => {
   })
 })
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * HALADÁS A KURZUS MELLETT
- *
- * A vezetői döntés (`docs/statisztika-audit-2026-08-21.md` §2): a meglévő
- * oszlop bővül, kurzusonkénti sorral, NEM átlaggal, és az állapot SZÓVAL is
- * megjelenik (WCAG 2.2 SC 1.4.1). A tesztek ezt a szerződést rögzítik.
- *
- * MINDEN ADAT KITALÁLT.
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* Haladás a kurzus mellett: kurzusonkénti sor, állapot szóval (WCAG 1.4.1). */
 
 /**
  * Egy érvényes haladás-bejegyzés, a szerződés alakjában.

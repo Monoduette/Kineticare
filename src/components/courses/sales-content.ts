@@ -2,30 +2,6 @@ import type { Product } from '../../payload-types'
 
 /**
  * A kurzus ÉRTÉKESÍTŐ TARTALMÁNAK egyetlen igazságforrása.
- *
- * ═══ MIÉRT VAN SZÜKSÉG RÁ ═══
- * A kurzusoldal döntést támogató elemei (előny-pipák, „hogyan működik",
- * „kinek való / kinek nem", garancia, GYIK) MOST már strukturált termékmezők
- * (src/plugins/ecommerce.ts) — de a meglévő, élő kurzusok tartalma a
- * `longDescription` folyószövegében él, és onnan sem veszhet el. Ez a modul
- * ezért egyetlen, tesztelt fallback-láncot ad:
- *
- *   1. a szerkesztő által kitöltött STRUKTURÁLT mező, ha van;
- *   2. különben a `longDescription` MEGFELELŐ SZAKASZA (címsor-felismerés);
- *   3. csak az előny-pipáknál és a lépéseknél: tényadatokból képzett tartalék
- *      (modul-/leckeszám, hozzáférés hossza, a vásárlási folyamat lépései).
- *
- * A modul TISZTA: nincs React-, Payload- vagy DB-függése, ezért kimerítően
- * egységtesztelhető (src/__tests__/course-sales-content.test.ts).
- *
- * ═══ MIÉRT VÁGJA KI A SZAKASZOKAT A TÖRZSBŐL ═══
- * Amit kiemelt szakaszként megjelenítünk (garancia-sáv, „kinek való" két
- * hasáb, GYIK-harmonika), az a hosszú leírásban MÉGEGYSZER nem jelenhet meg —
- * a duplázás a lap kétszeresére nyújtja és elbizonytalanítja az olvasót. A
- * partícionálás ezért visszaad egy `body` dokumentumot is: ugyanaz a
- * `longDescription`, a felhasznált szakaszok NÉLKÜL. Ha egy szakaszból nem
- * lett használható tartalom (pl. csak címsor volt), a szakasz VÁLTOZATLANUL a
- * törzsben marad — néma tartalomvesztés nincs.
  */
 
 type LexicalDoc = NonNullable<Product['longDescription']>
@@ -282,19 +258,11 @@ function faqPairsOf(segment: Segment): SalesFaqItem[] {
 
 /**
  * Hosszú felsorolás-elem pipás sorrá rövidítése.
- *
  * A hosszú, vesszős magyar mondat a szűk vásárlódobozban 5-6 sort venne el —
  * a pipás sor viszont csak akkor működik, ha EGY pillantással olvasható.
- *
  * A vágás sorrendje szándékos:
- *  1. az ELSŐ „fejezet-határ" (gondolatjel vagy kettőspont) — a mi
- *     szövegeinkben pontosan itt ér véget a lényeg, és utána jön a
- *     kifejtés („50+ videós gyakorlat – rövid, lépésről lépésre…");
- *  2. ha nincs ilyen, az utolsó vessző a korláton belül;
- *  3. végül szóhatáron vágunk, és „…"-tal jelezzük a rövidítést (a
- *     tagmondat-határon levágott sor viszont teljes gondolat, oda nem kell).
- * A `MIN_CUT` küszöb azt zárja ki, hogy egy korai írásjel értelmetlenül
- * rövid csonkot adjon.
+ * szövegeinkben pontosan itt ér véget a lényeg, és utána jön a
+ * kifejtés („50+ videós gyakorlat – rövid, lépésről lépésre…");
  */
 const MIN_CUT = 16
 

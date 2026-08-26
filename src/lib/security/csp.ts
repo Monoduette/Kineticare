@@ -144,46 +144,9 @@ export function buildContentSecurityPolicy(
     // felsorolt direktívák (manifest-src, prefetch-src…) is ezt öröklik.
     "default-src 'self'",
 
-    // 'unsafe-inline' KÉNYSZER, nem kényelem:
-    //  - a Next.js App Router minden oldalra inline bootstrap-scriptet ír
-    //    (`self.__next_f.push(...)` — a szerver-komponensek adatfolyama),
-    //  - a Payload admin szintén inline scripttel adja át a kezdőállapotot.
-    // Kiváltani csak kérésenkénti nonce + 'strict-dynamic' párossal lehet,
-    // amit a middleware-nek kellene generálnia ÉS a Payload adminnak is át
-    // kellene vennie — külön, mért lépés (docs/video-stream-keszenlet.md).
-    // 'unsafe-eval' NINCS, és nem is kell: sem a Turnstile, sem a videó-
-    // beágyazás nem használ eval-t — ezt szándékosan nem lazítjuk fel.
-    // A Turnstile valódi <script src> a challenges.cloudflare.com-ról
-    // (next/script). A gtag.js (www.googletagmanager.com) szintén valódi
-    // <script src>, ezért ide kell — de CSAK beállított GA4-azonosító mellett.
-    //
-    // ═══ assets.mediadelivery.net — TUDATOS, EMBERI DÖNTÉSSEL FELVETT HOST ═══
-    // Ez a Bunny player.js könyvtárának CDN-hosztja. A haladás automatikus
-    // jelöléséhez (a videó ~90%-ának tényleges megnézése) a hivatalos, Bunny
-    // által dokumentált utat követjük.
-    //
-    // MI A KOCKÁZAT, ŐSZINTÉN: egy külső host scriptje ugyanabban a
-    // dokumentumban futna, mint a fiók- és a pénztár-felület. Ha a Bunny CDN-je
-    // valaha kompromittálódna, a rosszindulatú kód a mi oldalunk jogaival
-    // futna. Korábban ezért maradt ki innen ez a host.
-    //
-    // MI CSÖKKENTI: a betöltés RÖGZÍTETT VERZIÓJÚ URL-ről, SUBRESOURCE
-    // INTEGRITY (SRI) hash-sel történik (src/lib/stream/playerjs-loader.ts).
-    // A böngésző a scriptet KIZÁRÓLAG akkor futtatja, ha bájtra az a fájl,
-    // amit ellenőriztünk — a „CDN alattunk kicseréli a kódot" forgatókönyvet
-    // ez zárja ki. Ha a fájl valaha megváltozik, a script NEM fut le, és a
-    // lejátszó a saját, függőség nélküli postMessage-hidunkra esik vissza
-    // (a haladás-jelölés így sem áll le, csak a hivatalos út marad ki).
-    //
-    // A host KIZÁRÓLAG a script-src-be kerül: az `iframe.mediadelivery.net`
-    // (a lejátszó kerete) továbbra is külön, a frame-src-ben él, és az
-    // iframe-en belüli scriptekre a beágyazott dokumentum saját CSP-je
-    // vonatkozik — arra innen továbbra sem adunk engedélyt.
-    //
-    // pixel.barion.com → az ALAP Barion Pixel (bp.js). Nem marketing-extra:
-    // a Barion Smart Gateway használatának feltétele, ezért a fizetés
-    // működéséhez tartozik. A részletes forrás-indoklás fent, a
-    // `barionPixelSource` melletti mérési jegyzetben.
+    // 'unsafe-inline' kényszer: Next bootstrap + Payload admin inline script.
+    // 'unsafe-eval' nincs. Bunny player.js: rögzített URL + SRI
+    // (playerjs-loader.ts). pixel.barion.com: Barion Pixel, fizetési feltétel.
     `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com ${BUNNY_PLAYERJS_SOURCE}${gaScriptSource}${barionPixelSource}`,
 
     // Beágyazott keretek:

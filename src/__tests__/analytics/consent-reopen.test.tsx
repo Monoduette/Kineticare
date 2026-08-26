@@ -12,17 +12,9 @@ import { ConsentSettingsButton } from '../../components/analytics/ConsentSetting
 /**
  * A süti-hozzájárulás VISSZAVONÁSI útja (GDPR) — a footer „Süti-beállítások"
  * gombja újranyitja a ConsentBanner-t döntés után is.
- *
- * ═══ A HIBA, AMIT BEZÁR ═══
  * A banner korábban döntés után VÉGLEG eltűnt: a hozzájárulás visszavonására
  * (vagy módosítására) nem volt felület — a GDPR azt kéri, hogy a visszavonás
  * ugyanolyan könnyű legyen, mint a megadás.
- *
- * A komponens-interakció (kattintás → esemény → banner megnyílik) a
- * node-környezetű tesztkonvencióban nem futtatható (nincs DOM-runner a
- * package.json-ben) — ezért a szerződés két végén, tisztán van őrizve: a gomb
- * a helyes eseményt szórja, és a banner láthatósági szabálya az eseményre
- * nyitott állapotot is mutatja.
  */
 
 function render(node: ReactNode): string {

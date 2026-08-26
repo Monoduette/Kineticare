@@ -14,67 +14,9 @@ import {
 } from './analytics'
 
 /**
- * AUTOMATIKUS „megnézett" jelölés a Bunny-lejátszó tényleges nézettsége alapján.
- *
- * ═══ MIÉRT KELL ═══
- * A kézi „megjelölöm megnézettnek" gomb elfelejtődik: a haladás alulmér, és az
- * admin haladás-nézet (és a leckénkénti lemorzsolódás) használhatatlanná válik.
- * A tisztán automatikus, MEGNYITÁS-alapú jelölés viszont felfújja a számokat.
- * Ezért HIBRID a megoldás: a lecke akkor jelölődik késznek magától, ha a videó
- * legalább 90%-a TÉNYLEGESEN lement — a kézi gomb mellette végig megmarad.
- *
- * ═══ KÉT ÚT, HÁROM RÉTEG ═══
- * 1. ELSŐDLEGES: a Bunny HIVATALOS player.js könyvtára (./playerjs-loader.ts),
- *    rögzített verzióról, integritás-hash-sel. Ez a Bunny által dokumentált út.
- * 2. TARTALÉK: a saját, függőség nélküli postMessage-hidunk
- *    (./playerjs-client.ts). A protokoll-konstansaink bájtra egyeznek a Bunny
- *    által szállított fájléval (`VERSION: "0.0.11"`, `CONTEXT: "player.js"`),
- *    tehát ez egyenértékű út, nem vészmegoldás.
- * 3. VÉGSŐ TARTALÉK (kódot nem igényel): ha EGYIK sem szólal meg, a vevő a
- *    lejátszó elsődleges gombjával („Kész, tovább") jelöli késznek a leckét —
- *    pontosan úgy, ahogy a mai platformon. Élesben lemérve: a haladás így is
- *    rögzül, a kurzus végigvihető.
- *
- * ═══ MIÉRT A TARTALÉK INDUL ELŐSZÖR ═══
- * A tartalék híd AZONNAL, a hivatalos könyvtár betöltése KÖZBEN felépül. A code
- * review mérte a rést: ha a híd csak a betöltés lezárása után épülne, a
- * betöltés (legfeljebb 8 mp-es időkorlát) alatt SENKI nem hallgatná a
- * lejátszót, és a videó első másodpercei kimaradnának a mérésből — rövid
- * leckénél ez a 90%-os küszöböt is elviheti. A hivatalos könyvtár megérkezése
- * után a tartalék LEBOMLIK, és a hivatalos veszi át; a rövid váltásból nem
- * veszik esemény, mert a követő intervallum-alapú és idempotens. A két út így
- * sem fut tartósan együtt: mindig pontosan egy hallgat.
- *
- * ═══ MIÉRT NEM SZÁMÍT A SZKIPPELÉS ═══
- * A követő MEGNÉZETT INTERVALLUMOKAT tart nyilván, nem a legnagyobb elért
- * időpontot: aki a videó végére teker, néhány másodpercnyi nézettséget kap, nem
- * 100%-ot (src/lib/stream/watched-coverage.ts).
- *
- * ═══ ÉLETCIKLUS ═══
- * Az `iframeSrc` minden EXPLICIT lecke-betöltésnél változik (a token-frissítés
- * SZÁNDÉKOSAN nem cseréli — az újramount pozícióvesztéssel járna), ezért a
- * követő ehhez a kulcshoz kötődik: lecke-váltáskor a régi feliratkozás
- * megszűnik, és ÚJ, nullázott követő indul. Így az előző lecke nézettsége nem
- * szivároghat át a következőre.
- *
- * A DÖNTÉST és a szerverhívást nem ez a modul hozza: a `report` visszahíváson
- * jelentünk a lejátszónak, ott dől el a küszöb (`shouldAutoMarkWatched`) és ott
- * fut a jelölés — UGYANAZ az út, amit a kézi gomb hív.
- *
- * ═══ VIDEÓ-MÉLYSÉG (video_started / video_milestone) ═══
- * UGYANEZEKRE a lejátszó-eseményekre épül a tölcsér mélység-mérése is —
- * szándékosan nem külön, párhuzamos követővel: egy második figyelő külön
- * feliratkozást, külön életciklust és eltérő igazságot jelentene ugyanarról a
- * videóról. A DÖNTÉS (mi az új esemény, mi ment már ki) tiszta modulban él
- * (./analytics.ts — `createVideoDepthTracker`), itt csak a huzalozás van.
- *
- * A RETESZ LECKÉNKÉNT él és a KOMPONENS ÉLETTARTAMÁIG kitart (lentebb:
- * `melysegRef`), nem az effekt lefutásáig. Így a leckére VISSZATÉRÉS
- * (A → B → A) sem küldi újra sem az indulást, sem a már elért mérföldköveket.
- *
- * A mérés SOSEM ronthatja el a lejátszást: minden küldés `try/catch`-ben fut.
- * Naplózni innen nem tudunk (a `src/lib/logger.ts` a szerver stdoutjára ír) —
- * ugyanaz a csendes elv, mint a player.js-híd `onError`-jánál.
+ * Automatikus „megnézett" jelölés a Bunny-lejátszó tényleges nézettsége alapján (90%).
+ * Tartalék híd indul azonnal; hivatalos player.js megérkezése után lebomlik.
+ * iframeSrc kulcs: lecke-váltáskor új követő; token-frissítés nem cseréli (pozícióvesztés).
  */
 export interface WatchTrackingInput {
   /**

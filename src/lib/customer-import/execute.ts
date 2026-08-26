@@ -1,25 +1,9 @@
 /**
- * systeme.io → Kineticare vásárló-import: a terv VÉGREHAJTÁSA.
+ * Vásárló-import végrehajtás — idempotens, missing-only.
  *
- * IDEMPOTENS. Ez a modul minden művelet előtt ÚJRAOLVASSA a felhasználó
- * jelenlegi állapotát, és csak a ténylegesen hiányzó termékeket fűzi hozzá:
- *
- *  - meglévő felhasználónál a jelszót, a szerepkört és a meglévő purchases-
- *    bejegyzéseket SOHA nem érinti — kizárólag hozzáfűz (missing-only),
- *  - új felhasználónál a `role` marad az alapértelmezett (`customer`), a jelszó
- *    pedig kriptográfiailag véletlen és SOSEM kerül kiírásra vagy naplóba: a
- *    vevő az aktiválási linkkel (jelszó-visszaállítás) állít be sajátot.
- *
- * Ezért a megszakadt futás újraindítása biztonságos: a második kör a már
- * elvégzett sorokat `skip-complete`-ként hagyja ki.
- *
- * A purchases mező field-access-e `create: false` / `update: false` — a
- * vásárlás RENDSZER-írású mező. Ezért itt is `overrideAccess: true` megy,
- * pontosan úgy, ahogy a fizetésjóváhagyás (`grantPurchases`) és a
- * `src/scripts/grant-purchase.ts` teszi. A hozzáférés-szabályokhoz nem nyúlunk.
- *
- * A hibás sor NEM állítja meg a futást: bekerül a hibalistába, és a feldolgozás
- * a következő sorral folytatódik. A kilépési kódot a hívó (CLI) dönti el.
+ * Meglévő user: csak hiányzó purchases; jelszó/szerepkör érintetlen. Új user:
+ * véletlen jelszó, aktiválási linkkel cserélhető. `overrideAccess: true` a
+ * purchases mező miatt (mint grant-purchase). Hibás sor nem állítja meg a futást.
  */
 
 import type { Payload } from 'payload'

@@ -18,39 +18,6 @@ import { TotalsCards } from './statistics/TotalsCards'
 
 /**
  * A Statisztika nézet KOMPOZÍCIÓS GYÖKERE — a lekérdezés és a jogosultság a
- * StatisticsView-ban marad, hogy a teszt DefaultTemplate nélkül futhasson.
- *
- * A gyökér-div a `kc-adminstat` márka-scope-ot viseli (tulajdonosi döntés,
- * 2026-08-20): a src/app/(payload)/custom.scss ezen a classon keresztül adja
- * a vevői oldal designnyelvét (Tenor Sans címsor, paper-föld, hairline-
- * felületek, sötét téma) — kizárólag erre a nézetre, az admin többi része
- * változatlan. A h1 fölötti eyebrow-sor a landing felvezető-nyelve
- * (tokens.css 195–196. sor).
- *
- * A szekciók önálló komponensek a ./statistics mappában (styles.ts a közös
- * stílus-tokenekkel), így egy-egy szekció külön karbantartható és külön
- * tesztelhető; ez a fájl csak a sorrendet és az oldalszintű szövegeket adja.
- * A vizuális nyelv és a reszponzivitás indoklása (forrás-URL-ekkel):
- * ./statistics/styles.ts és a custom.scss fejkommentje.
- *
- * ═══ A SZEKCIÓK SORRENDJE (vezetői döntés, 2026-08-21) ═══
- * A cselekvésre késztető szekció megy felülre. A lap korábban eredményjelző
- * tábla volt, nem teendőlista: a tetején a legkevésbé cselekvésre késztető
- * szám állt (12 havi kumulált bevétel), a legcselekvőbb (sikertelen fizetés)
- * a negyedik helyen, hajtás alatt. Egyszemélyes vállalkozásnál ez fordítva
- * hasznos. A mai sorrend:
- *   1. összesítő kártyák (saját `h2`-vel),
- *   2. Rendelések állapota (a tölcsér: mi vár befejezésre),
- *   3. Ki hol tart a kurzusokban (a „nem kezdte el" nevekkel),
- *   4. Havi bevétel,
- *   5. Bevétel kurzusonként.
- * Ez nem mond ellent a docs/ertekesitesi-ux-skill.md üzleti sorrendjének: az
- * a VEVŐI felület cél-hierarchiája, nem egy belső irányítópulté. Az elv
- * forrása: NN/g, Dashboard Design — a dashboard gyors leolvasásra való, és a
- * legfontosabb, cselekvést kérő adat kerül a bal felső sarokba
- * (https://www.nngroup.com/articles/dashboards-preattentive/, hozzáférés:
- * 2026-08-21). A döntés teljes indoklása:
- * docs/statisztika-audit-2026-08-21.md 3. pont.
  */
 
 export function StatisticsAccessDenied() {

@@ -4,23 +4,11 @@ import { cardRowStyle, leadInSectionStyle, noticeStyle, sectionStyle } from './s
 
 /**
  * A visszatérítés és a bevétel viszonya — PONTOSAN, ahogy a kód működik.
- *
  * Korábban ez a mondat állt itt: „A visszatérített rendelések nem számítanak
  * bevételnek." Ez a RÉSZLEGES visszatérítésre NEM igaz. A
  * `src/lib/refund/refund-order.ts` csak a TELJES refundnál írja át a rendelést
  * `refunded` státuszra; részlegesnél a státusz `paid` MARAD (és a vevő
  * hozzáférése is megmarad, mert a részrefund tipikusan kártérítés, nem a
- * vásárlás felbontása). A bevétel-összesítő a `paid` rendeléseket számolja,
- * tehát a részlegesen visszatérített rendelés a TELJES összegével szerepel.
- *
- * Miért a szöveget javítjuk, és miért nem a számot: a részösszeg az
- * `orders.refunds` mezőben él, ami OWNER-ONLY. Levonni csak úgy lehetne, hogy
- * a staffnak szóló riport owner-only adatot olvas — ez emberi jóváhagyást
- * igénylő zóna (CLAUDE.md 4.). Amíg a tulajdonos nem dönt róla, az őszinte
- * megoldás az, hogy a felület KIMONDJA, mit tartalmaz a szám.
- *
- * A megjegyzés akkor is látszik, ha nincs nyitott rendelés: a bevétel
- * értelmezéséhez kell, nem a teendőkhöz.
  */
 const VISSZATERITES_MEGJEGYZES =
   'A teljesen visszatérített rendelés nem számít bevételnek. A részlegesen visszatérített viszont fizetettnek marad, ezért a bevételben a teljes összegével szerepel.'
@@ -29,14 +17,9 @@ const VISSZATERITES_MEGJEGYZES =
  * „Rendelések állapota" szekció: a rendelés-tölcsér operatív oldala.
  * A tölcsér a TELJES állományt számolja (nem a 12 hónapos ablakot), mert a
  * nyitott vagy sikertelen fizetés akkor is teendő, ha régi.
- *
- * ═══ MIÉRT NEM „AMI BEAVATKOZÁST KÉRHET" A CÍM (2026-08-21) ═══
  * A régi cím félrevezető volt: olyan kártyákat is takart, amik NEM kérnek
  * beavatkozást (fizetve, megszakítva). A címsor mondja meg, mit tartalmaz a
  * szekció (WCAG 2.2 SC 2.4.6 Headings and Labels:
- * https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html), a
- * teendőt pedig a cím ALATTI mondat mondja ki — így a cím leíró, a lead
- * cselekvésre késztető.
  */
 export function FunnelSection({ funnel }: { funnel: OrderFunnelCounts }) {
   const needsAttention = funnel.created + funnel.paymentPending + funnel.paymentFailed
