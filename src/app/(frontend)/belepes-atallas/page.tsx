@@ -77,7 +77,7 @@ export default function BelepesAtallasPage() {
           <ol className="kc-atallas__steps">
             <li>Küldünk egy levelet a megadott címre.</li>
             <li>A levélben lévő linken beállítod a saját jelszavad.</li>
-            <li>Belépés után a Kurzusaim oldalon megtalálod az anyagaidat.</li>
+            <li>A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.</li>
           </ol>
 
           <h2>Nem érkezett meg a levél?</h2>

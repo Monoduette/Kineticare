@@ -31,7 +31,10 @@ import {
   type NormalizedBilling,
 } from './billing'
 import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
-import { CHECKOUT_GUEST_EXISTING_ACCOUNT } from './form-submission'
+import {
+  CHECKOUT_ALREADY_PURCHASED_ERROR,
+  CHECKOUT_GUEST_EXISTING_ACCOUNT,
+} from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
   guestSummaryMessage,
@@ -44,9 +47,10 @@ export { CHECKOUT_GUEST_EXISTING_ACCOUNT }
 
 /**
  * Bejelentkezett duplavásárlás. A munkamenet a saját fiók, ez nem orákulum.
- * `docs/gomb-inventar.md` §7 jóváhagyott mondat.
+ * Ugyanaz a mondat, mint a pénztár kliens-blokkolója: a lejátszó a következő
+ * lépés, nem egy meg nem nevezett „fiók”.
  */
-export const CHECKOUT_ALREADY_PURCHASED = 'Ezt a kurzust már megvásároltad. A fiókodban éred el.'
+export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
 
 /**
  * Vendég, nincs aktivált fiók, de van paid rendelés az e-mailre: ne mondjuk,

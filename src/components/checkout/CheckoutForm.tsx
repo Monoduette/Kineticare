@@ -42,6 +42,7 @@ import {
   WAIVER_START_INPUT_ID,
   createCheckoutSubmitHandler,
   planCheckoutSubmission,
+  CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_ERROR_REGION_ID,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
   emptyGuestForm,
@@ -442,6 +443,12 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         <p className="kc-checkout-form__block-hint">
           <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
             {ctaLabel('sign-in')}
+          </Button>
+        </p>
+      ) : error === CHECKOUT_ALREADY_PURCHASED_ERROR && !alreadyPurchased ? (
+        <p className="kc-checkout-form__block-hint">
+          <Button href={myCoursePlayerHref(product.id)} size="sm" variant="secondary">
+            {ctaLabel('course-start')}
           </Button>
         </p>
       ) : null}

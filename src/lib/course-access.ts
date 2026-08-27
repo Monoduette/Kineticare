@@ -138,6 +138,22 @@ export const ACCESS_LOOKUP_FAILED_MESSAGE =
 export const ACCESS_GRANT_PENDING_MESSAGE =
   'A vásárlásod megvan, a hozzáférés még feldolgozás alatt. Próbáld újra egy perc múlva, vagy írj nekünk, ha várakozás után sem nyílik meg.'
 
+/**
+ * A lejátszó `/kurzusaim/[id]` belépés után nyílik, ezért a „jelentkezz be”
+ * mondat hazugság volt: a vevő már bent van, a `/belepes` pedig visszadobná
+ * ide ugyanazzal a fiókkal. A gomb a kurzusoldal (megvétel / ingyenes igénylés);
+ * a másik fiók útja a kijelentkezés, a fejlécben.
+ *
+ * Forrás: NN/g, Error Message Guidelines (mondd meg a következő lépést)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 3.3.1 Error Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ */
+export const ACCESS_NOT_PURCHASED_MESSAGE =
+  'Ehhez a fiókhoz nincs hozzáférésed. A kurzus oldalán megveheted. Ha másik e-mail-címmel vásároltad, jelentkezz ki, majd azzal a címmel lépj be.'
+
 export function resolvePlayerGate(input: {
   purchased: boolean
   access: CourseAccessState | null

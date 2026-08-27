@@ -10,7 +10,10 @@ import BelepesAtallasPage, {
   ATALLAS_KERES_KORLAT_MONDAT,
   metadata as atallasMetadata,
 } from '../app/(frontend)/belepes-atallas/page'
-import ElfelejtettJelszoPage from '../app/(frontend)/elfelejtett-jelszo/page'
+import ElfelejtettJelszoPage, {
+  FORGOT_PASSWORD_SUCCESS_NOTE,
+  FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER,
+} from '../app/(frontend)/elfelejtett-jelszo/page'
 import { ForgotPasswordForm, URES_EMAIL_HIBA } from '../components/auth/ForgotPasswordForm'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { RATE_LIMIT_RULES } from '../lib/security/rate-limit'
@@ -131,6 +134,11 @@ describe('/belepes-atallas — cím és tájékozódás', () => {
   it('a szakaszcímek megválaszolják a „mi lesz ezután" és a „mi van, ha nem jön" kérdést', () => {
     const h2k = [...atallasHtml.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gu)].map((m) => szoveg(m[1]))
     expect(h2k).toEqual(['Mi történik, miután elküldted?', 'Nem érkezett meg a levél?'])
+  })
+
+  it('a harmadik lépés NEM kér újabb belépést (a jelszó után a kurzusok megnyílnak)', () => {
+    expect(atallasSzoveg).toContain('A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.')
+    expect(atallasSzoveg).not.toContain('Belépés után a Kurzusaim oldalon')
   })
 })
 
@@ -408,6 +416,18 @@ describe('/elfelejtett-jelszo — a régi vevő biztonsági hálója', () => {
       }),
     )
     expect(html).toContain('/belepes?returnUrl=%2Fpenztar%3Ftermek%3D12')
+  })
+
+  it('a beküldés utáni panel megmondja, hogy a jelszó után nem kell újra belépni', () => {
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE).toContain('külön belépés nem kell')
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE).not.toMatch(/[–—]/)
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER).toContain('kurzusod megnyílik')
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER).not.toMatch(/[–—]/)
+    const kuldott = renderToStaticMarkup(
+      createElement(ForgotPasswordForm, { successNote: FORGOT_PASSWORD_SUCCESS_NOTE }),
+    )
+    expect(kuldott).toContain('kc-auth-form')
+    expect(elfelejtettHtml).toContain('kc-auth-form')
   })
 })
 

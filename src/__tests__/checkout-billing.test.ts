@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -617,5 +619,14 @@ describe('CheckoutForm — már megvett kurzus', () => {
     expect(html).toContain('Kezdd el a kurzust')
     expect(html).not.toContain('type="submit"')
     expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('a szerver már-megvett 409-ére a lejátszó gombot is kiteszi, ha a lap még nem tudta', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('error === CHECKOUT_ALREADY_PURCHASED_ERROR && !alreadyPurchased')
+    expect(source).toContain('myCoursePlayerHref(product.id)')
   })
 })

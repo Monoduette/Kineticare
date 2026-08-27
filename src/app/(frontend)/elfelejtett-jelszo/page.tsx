@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
+import { isMyCoursePlayerHref } from '@/lib/courses'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl, signInHref } from '@/lib/return-url'
 
 export const metadata: Metadata = {
@@ -14,6 +15,21 @@ export const metadata: Metadata = {
 interface ElfelejtettJelszoPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
+
+/**
+ * Beküldés utáni második mondat. A Payload reset süti-munkamenetet állíthat,
+ * ezért a jelszó után NEM kell újra belépni.
+ *
+ * Forrás: GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 3.3.3 Error Suggestion
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ */
+export const FORGOT_PASSWORD_SUCCESS_NOTE =
+  'A linkkel jelszót állítasz. Utána a kurzusaid megnyílnak, külön belépés nem kell.'
+
+export const FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER =
+  'A linkkel jelszót állítasz. Utána a kurzusod megnyílik, külön belépés nem kell.'
 
 /**
  * A MÁSODIK bekezdés az ÁTKÖLTÖZTETETT vevő biztonsági hálója.
@@ -43,7 +59,14 @@ export default async function ElfelejtettJelszoPage({ searchParams }: Elfelejtet
           másik rendszer volt. Add meg ugyanazt az e-mail-címet, amellyel vásároltál, és itt
           állíthatsz be újat. A megvásárolt kurzusaid megvannak, újra fizetned nem kell.
         </p>
-        <ForgotPasswordForm returnUrl={returnUrl} />
+        <ForgotPasswordForm
+          returnUrl={returnUrl}
+          successNote={
+            isMyCoursePlayerHref(returnUrl)
+              ? FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER
+              : FORGOT_PASSWORD_SUCCESS_NOTE
+          }
+        />
         {/* Önállóan álló link: a `.kc-auth-actions` sor adja a 44 px-es
             célfelületet. A korábbi `.kc-auth-alt` MONDATBA ágyazott linkeknek
             való, és itt 117,1 × 18 CSS px-es célt adott (mérve) — a WCAG 2.2 ·

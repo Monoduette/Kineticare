@@ -17,7 +17,7 @@ import { mergePlayingSession } from '@/lib/course-player-refresh'
 import { courseHref } from '@/lib/course-url'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { myCoursePlayerHref } from '@/lib/courses'
-import type { PlayerGateKind } from '@/lib/course-access'
+import { ACCESS_NOT_PURCHASED_MESSAGE, type PlayerGateKind } from '@/lib/course-access'
 import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
 import { streamIframeSrc } from '@/lib/stream/contract'
@@ -707,10 +707,7 @@ export function CoursePlayer({
           ? 'A kurzus most nem nyitható meg'
           : 'Nincs hozzáférésed ehhez a kurzushoz'
     const body =
-      expiredMessage ??
-      (resolvedGate === 'not-purchased'
-        ? 'A videók megtekintéséhez a kurzus megvásárlása szükséges. Ha már megvetted, jelentkezz be azzal a fiókkal, amellyel vásároltad.'
-        : null)
+      expiredMessage ?? (resolvedGate === 'not-purchased' ? ACCESS_NOT_PURCHASED_MESSAGE : null)
     return (
       <Card className="kc-player-gate">
         <h1 className="kc-player-gate__title">{title}</h1>

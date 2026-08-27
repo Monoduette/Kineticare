@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import ResetPasswordPage from '../app/(frontend)/jelszo-visszaallitas/page'
 import {
   RESET_OTHER_DEVICES_NOTE,
   RESET_SUCCESS_NEXT_STEP,
@@ -40,5 +41,17 @@ describe('ResetPasswordForm — más eszközök kijelentkezése (J2)', () => {
     )
     expect(html).not.toContain(RESET_OTHER_DEVICES_NOTE)
     expect(html).toContain('Új jelszó')
+  })
+})
+
+describe('/jelszo-visszaallitas — hiányzó token', () => {
+  it('a visszaállító kérés viszi a returnUrl-t, nem csupasz /elfelejtett-jelszo', async () => {
+    const html = renderToStaticMarkup(
+      await ResetPasswordPage({
+        searchParams: Promise.resolve({ returnUrl: '/kurzusaim/12' }),
+      }),
+    )
+    expect(html).toContain('Hiányzik a visszaállító token')
+    expect(html).toContain('href="/elfelejtett-jelszo?returnUrl=%2Fkurzusaim%2F12"')
   })
 })
