@@ -10,6 +10,7 @@ import {
   resolveRateLimitIp,
   type RateLimitRule,
 } from '../security/rate-limit'
+import { assertSameOrigin } from '../security/same-origin'
 import {
   requestFreeCourseAccess,
   type RequestFreeCourseAccessInput,
@@ -159,6 +160,12 @@ export function createFreeCourseRequestHandler(
     const log = (deps.logger ?? logger).child({ requestId, route: 'free-course-request' })
     const env = deps.env ?? process.env
     const limiter = deps.limiter ?? defaultLimiter
+
+    const originCheck = assertSameOrigin(request)
+    if (!originCheck.ok) {
+      log.warn('ingyenes kurzus igénylése: idegen eredet elutasítva')
+      return NextResponse.json({ error: originCheck.message }, { status: originCheck.status })
+    }
 
     let raw: unknown
     try {

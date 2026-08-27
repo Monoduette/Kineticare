@@ -38,6 +38,7 @@ import {
 } from '../lib/free-course/validation'
 import type { Logger } from '../lib/logger'
 import { SlidingWindowRateLimiter } from '../lib/security/rate-limit'
+import { SAME_ORIGIN_REJECTED_MESSAGE } from '../lib/security/same-origin'
 
 /**
  * INGYENES KURZUS IGÉNYLÉSE (név + e-mail → hozzáférés + belépő link).
@@ -1103,6 +1104,53 @@ describe('spam- és visszaélés-védelem', () => {
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({ error: FREE_COURSE_GENERIC_ERROR })
   })
+
+  describe('same-origin / CSRF-őr', () => {
+    const PRIMARY = 'https://pelda.kineticare.hu'
+
+    beforeEach(() => {
+      vi.stubEnv('NEXT_PUBLIC_SERVER_URL', PRIMARY)
+      vi.stubEnv('EXTRA_ALLOWED_ORIGINS', undefined)
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('idegen Origin → 403, a szolgáltatás nem fut', async () => {
+      const requestAccess = vi.fn(async () => {
+        throw new Error('a szolgáltatás nem futhat idegen eredetről')
+      })
+      const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+      const handler = createFreeCourseRequestHandler({
+        getPayload: async () => mock.payload,
+        env: ENV_WITH_EMAIL,
+        limiter: new SlidingWindowRateLimiter(),
+        requestAccess,
+      })
+
+      const response = await handler(
+        requestFor({ email: 'a@pelda.hu', origin: 'https://evil.example' }),
+      )
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: SAME_ORIGIN_REJECTED_MESSAGE })
+      expect(requestAccess).not.toHaveBeenCalled()
+      expect(mock.created).toHaveLength(0)
+    })
+
+    it('engedélyezett Origin → a mai sikerút', async () => {
+      const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+      const handler = createFreeCourseRequestHandler({
+        getPayload: async () => mock.payload,
+        env: ENV_WITH_EMAIL,
+        limiter: new SlidingWindowRateLimiter(),
+      })
+
+      const response = await handler(requestFor({ email: 'piroska@pelda.hu', origin: PRIMARY }))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ ok: true, emailSent: true })
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1226,6 +1274,7 @@ interface RequestOptions {
   website?: string
   turnstileToken?: string
   ip?: string
+  origin?: string
 }
 
 /** Egy érvényes beküldés `NextRequest`-alakban (a handler ezt kapja). */
@@ -1245,6 +1294,9 @@ function requestFor(options: RequestOptions) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (options.ip !== undefined) {
     headers['x-forwarded-for'] = options.ip
+  }
+  if (options.origin !== undefined) {
+    headers.origin = options.origin
   }
   return new Request('https://pelda.kineticare.hu/api/free-course/request', {
     method: 'POST',
