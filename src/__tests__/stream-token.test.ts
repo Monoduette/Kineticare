@@ -5,7 +5,8 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { Order, Product, User } from '../payload-types'
-import { ACCESS_EXPIRED_TITLE } from '../lib/course-access'
+import { ACCESS_EXPIRED_TITLE, ACCESS_LOOKUP_FAILED_MESSAGE } from '../lib/course-access'
+import type { Logger } from '../lib/logger'
 import { optionalBunnyStreamEnvVars, requiredEnvVars } from '../env'
 import {
   issueStreamToken,
@@ -141,6 +142,8 @@ interface MockPayloadOptions {
   product?: Product | null
   /** A vevő paid rendelései (A1 — a hozzáférés kezdőpontjának forrása). */
   orders?: Order[]
+  /** A rendelés-lekérdezés dob — lookup-hiba, nem lejárat. */
+  ordersFindError?: boolean
 }
 
 function createMockPayload(options: MockPayloadOptions = {}) {
@@ -154,7 +157,12 @@ function createMockPayload(options: MockPayloadOptions = {}) {
       }
       return options.product ?? makeProduct()
     }),
-    find: vi.fn(async () => ({ docs: options.orders ?? [] })),
+    find: vi.fn(async () => {
+      if (options.ordersFindError === true) {
+        throw new Error('orders find failed')
+      }
+      return { docs: options.orders ?? [] }
+    }),
   }
   return { payload: payload as unknown as Payload }
 }
@@ -373,6 +381,42 @@ describe('issueStreamToken — paywall és token-kiállítás', () => {
     await expect(promise).rejects.toThrowError(new RegExp(ACCESS_EXPIRED_TITLE))
     // 2020-01-01 + 30 nap — a vevő megtudja, mikor járt le a hozzáférése.
     await expect(promise).rejects.toThrowError(/2020\. 01\. 31\./)
+  })
+
+  it('A1 — időkorlátos termék, rendelés-lekérdezés hibája → 403 lookup-üzenet, NEM lejárat', async () => {
+    const warns: string[] = []
+    const testLogger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: (message: string) => {
+        warns.push(message)
+      },
+      error: vi.fn(),
+      child: () => testLogger,
+    }
+    const { payload } = createMockPayload({
+      product: makeProduct({ accessDurationDays: 30 }),
+      ordersFindError: true,
+    })
+
+    try {
+      await issueStreamToken({
+        payload,
+        user: buyerUser,
+        productId: 42,
+        logger: testLogger,
+      })
+      expect.fail('StreamTokenError-t vártunk')
+    } catch (error) {
+      expect(error).toBeInstanceOf(StreamTokenError)
+      expect(error).toMatchObject({ status: 403 })
+      if (error instanceof StreamTokenError) {
+        expect(error.message).toBe(ACCESS_LOOKUP_FAILED_MESSAGE)
+        expect(error.message).not.toContain(ACCESS_EXPIRED_TITLE)
+      }
+    }
+    expect(warns.some((message) => message.includes('ellenőrzés sikertelen'))).toBe(true)
+    expect(warns.some((message) => message.includes('lejárt hozzáférés'))).toBe(false)
   })
 
   it('A1 — időkorlátos termék paid rendelés nélkül (kézzel adott hozzáférés) → nem esik ki', async () => {
