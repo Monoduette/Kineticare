@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 
 import { courseHref } from '../../lib/course-url'
 import { coursePriceBadgeKind, coursePriceLabel, courseTitle } from '../../lib/courses'
@@ -106,15 +105,6 @@ function AppointmentBox() {
   )
 }
 
-/**
- * A két fehér panel (kurzus-ajánló + időpontkérő) közös rácsa. Mobilon egy
- * hasáb marad, asztali gépen (900 px, a repó közös töréspontja) két egyenlő
- * hasáb. A váll-cikk egyetlen panelje NEM kerül ide: ott nincs pár.
- */
-function CtaPair({ children }: { children: ReactNode }) {
-  return <div className="kc-post-cta__pair">{children}</div>
-}
-
 export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProps) {
   if (variant === 'idopont') {
     return (
@@ -133,7 +123,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
 
   if (course === null) {
     return (
-      <CtaPair>
+      <>
         <Card as="section" className="kc-post-cta__panel">
           <h2 className="kc-post-cta__title">{NO_COURSE_HEADING}</h2>
           <p className="kc-post-cta__text">{NO_COURSE_TEXT}</p>
@@ -145,7 +135,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
           <FreeCourseLine freeCourse={freeCourse} variant={variant} />
         </Card>
         <AppointmentBox />
-      </CtaPair>
+      </>
     )
   }
 
@@ -153,7 +143,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
   const priceLabel = coursePriceLabel(course)
 
   return (
-    <CtaPair>
+    <>
       <Card as="section" className="kc-post-cta__panel">
         <h2 className="kc-post-cta__title">{courseTitle(course)}</h2>
         {course.shortDescription !== null ? (
@@ -178,6 +168,6 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
         ) : null}
       </Card>
       <AppointmentBox />
-    </CtaPair>
+    </>
   )
 }

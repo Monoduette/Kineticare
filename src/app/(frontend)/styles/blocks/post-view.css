@@ -293,6 +293,10 @@
   max-width: var(--kc-measure);
 }
 
+.kc-post-cta__panel + .kc-post-cta__panel {
+  margin-block-start: var(--kc-space-5);
+}
+
 .kc-post-cta__title {
   margin: 0 0 var(--kc-space-3);
   font-family: var(--kc-font-body);
@@ -343,15 +347,30 @@
   color: var(--kc-color-link-hover);
 }
 
-/* ---- Kurzus + időpont pár rácsa -----------------------------------------
-   A két fehér panel (`.kc-post-cta__panel`) korábban blokk-szomszédként
-   egymás ALÁ került minden nézetablakon, mert a `PostCourseCta` töredéket
-   adott vissza, és a második kártya `margin-block-start`-ot kapott.
+/* ---- Kurzus + időpont pár, asztali két hasáb -----------------------------
+   Élő HTTP, 2026-08-27: a két fehér kártya (kurzus a rendelő fölött) csak
+   ezeken a 7 cikken van, azonos markup: `.kc-post-cta` + két
+   `.kc-post-cta__panel` testvér a keskeny konténerben. Más cikk
+   (`/blog/befagyott-vall`) egy panelt kap; `/szolgaltatasok`, `/`,
+   `/kurzusok` és a termékoldalak más mintát használnak, ezt a szabályt
+   nem látják.
 
-   Asztali gépen a pár EGY SOR: két egyenlő hasáb. Mobilon a sor marad
-   egyhasábos. A töréspont a repó közös 900 px-e (`layout.css`), nem a
-   `.kc-card-grid` 640 px-es tablet-váltása — 900 alatt a lap mobilos
-   (tulajdonosi kérés: a mobil rakás érintetlen).
+     /blog/inhuvelygyulladas
+     /blog/keztoalagut-szindroma
+     /blog/teniszkonyok
+     /blog/miert-zsibbad-a-kezem
+     /blog/csuklotores-utani-gyogytorna
+     /blog/csuklo-es-kezfajdalom
+     /blog/pattano-ujj
+
+   Mobil: a `+` szabály `margin-block-start`-tal rakja őket egymás alá
+   (a live markup, a DOM nem változik). Asztal: a keskeny konténer
+   kétoszlopos rács, CSAK ha két testvér-panel van (`:has`). Az egy
+   paneles vállcikk nem kap üres második oszlopot.
+
+   A töréspont a repó közös 900 px-e (`layout.css`), nem a `.kc-card-grid`
+   640 px-es tablet-váltása: 900 alatt a lap mobilos (tulajdonosi kérés:
+   a mobil rakás érintetlen).
 
    Forrás:
    - NN/g, Using Grids in Interface Designs: a hasábszám a képernyővel nő,
@@ -374,29 +393,34 @@
      alap `min-width: auto` túlcsordulását zárja ki.
      https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
 
-   A köz `--kc-space-5` (24 px): ugyanaz a ritmus, mint a korábbi
+   A köz `--kc-space-5` (24 px): ugyanaz a ritmus, mint a mobil
    egymás-alá táv. Carbon: kapcsolódó dobozoknál a gutter indokolt.
 
-   A szűk konténer (720 px) MARAD. 900 px-en a két hasáb (672 − 24) / 2 =
+   A szűk konténer (720 px) MARAD. 900 px-en a két hasáb (672 - 24) / 2 =
    324 px, ami tágabb a 320 px-es mobil panel 272 px-es tartalom-hasábjánál,
    tehát a gombfelirat nem szorul jobban, mint mobilon (a szó-beférést a
    meglévő 320 px-es őr méri). */
 
-.kc-post-cta__pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--kc-space-5);
-  align-items: stretch;
-}
-
-.kc-post-cta__pair .kc-post-cta__panel {
-  min-width: 0;
-  width: 100%;
-}
-
 @media (min-width: 900px) {
-  .kc-post-cta__pair {
+  .kc-post-cta .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel) {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--kc-space-5);
+    align-items: stretch;
+  }
+
+  .kc-post-cta
+    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    > .kc-post-cta__panel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .kc-post-cta
+    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    > .kc-post-cta__panel
+    + .kc-post-cta__panel {
+    margin-block-start: 0;
   }
 }
 

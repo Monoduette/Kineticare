@@ -480,24 +480,38 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
     }
   })
 
-  it('a kurzus + időpont pár közös rács-csomagolóban áll', () => {
-    for (const fixture of [post(), post({ ctaCourse: KURZUS })]) {
-      const html = render(createElement(PostArticle, { post: fixture }))
-      expect(html).toContain('kc-post-cta__pair')
-      expect([...html.matchAll(/kc-post-cta__panel/g)].length).toBe(2)
-      const parKezdete = html.indexOf('kc-post-cta__pair')
-      const elsoPanel = html.indexOf('kc-post-cta__panel')
-      const masodikPanel = html.indexOf('kc-post-cta__panel', elsoPanel + 1)
-      expect(parKezdete).toBeGreaterThan(-1)
-      expect(elsoPanel).toBeGreaterThan(parKezdete)
-      expect(masodikPanel).toBeGreaterThan(elsoPanel)
+  /**
+   * Élő HTTP, 2026-08-27: a két fehér panel csak ezeken a 7 cikken áll,
+   * testvérként a keskeny konténerben, csomagoló nélkül.
+   */
+  const KEZ_CIKK_PAR_SLUGOK = [
+    'inhuvelygyulladas',
+    'keztoalagut-szindroma',
+    'teniszkonyok',
+    'miert-zsibbad-a-kezem',
+    'csuklotores-utani-gyogytorna',
+    'csuklo-es-kezfajdalom',
+    'pattano-ujj',
+  ] as const
+
+  it('a 7 kéz-cikk két testvér-panelt ad, csomagoló nélkül', () => {
+    const testver = /kc-container--narrow">\s*<section class="kc-card kc-card--padded kc-post-cta__panel"[\s\S]*?<\/section>\s*<section class="kc-card kc-card--padded kc-post-cta__panel"/
+    for (const slug of KEZ_CIKK_PAR_SLUGOK) {
+      const html = render(
+        createElement(PostArticle, { post: post({ slug, ctaCourse: KURZUS }) }),
+      )
+      expect(html, slug).not.toContain('kc-post-cta__pair')
+      expect([...html.matchAll(/kc-post-cta__panel/g)].length, slug).toBe(2)
+      expect(html, slug).toMatch(testver)
+      expect(text(html), slug).toContain(APPOINTMENT_BOX_HEADING)
     }
   })
 
-  it('a váll-cikk egyetlen panelje NEM kerül a pár-rácsba', () => {
+  it('a váll-cikk egyetlen panelt kap, második doboz nélkül', () => {
     const html = render(createElement(PostArticle, { post: post({ slug: 'befagyott-vall' }) }))
     expect(html).not.toContain('kc-post-cta__pair')
     expect([...html.matchAll(/kc-post-cta__panel/g)].length).toBe(1)
+    expect(text(html)).not.toContain(APPOINTMENT_BOX_HEADING)
   })
 
   it('a váll-cikk alatt az időpontkérés nem duplikálódik', () => {
@@ -815,18 +829,19 @@ describe('G8 — a mért CSS-küszöbök nem csúszhatnak vissza', () => {
     )
   })
 
-  it('a kurzus + időpont pár mobilon egy hasáb, 900 px-től kettő', () => {
-    const szabaly = kodCsak(cikkCss)
+  it('a kurzus + időpont pár mobilon egymás alatt, 900 px-től két hasáb', () => {
+    const szabaly = kodCsak(cikkCss).replace(/\s+/g, ' ')
     expect(szabaly).toMatch(
-      /\.kc-post-cta__pair\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+      /\.kc-post-cta__panel \+ \.kc-post-cta__panel \{ margin-block-start: var\(--kc-space-5\); \}/,
+    )
+    expect(szabaly).toContain(
+      '.kc-post-cta .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)',
     )
     expect(szabaly).toMatch(
-      /@media \(min-width: 900px\)\s*\{\s*\.kc-post-cta__pair\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\);/,
+      /@media \(min-width: 900px\) \{ [^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/,
     )
-    expect(szabaly).toMatch(/\.kc-post-cta__pair\s*\{[^}]*gap:\s*var\(--kc-space-5\);/)
-    expect(szabaly).toMatch(/\.kc-post-cta__pair \.kc-post-cta__panel\s*\{[^}]*min-width:\s*0;/)
-    const parMedia = /@media \(min-width: 640px\)[\s\S]*?\.kc-post-cta__pair/.exec(szabaly)
-    expect(parMedia).toBeNull()
+    expect(szabaly).not.toContain('kc-post-cta__pair')
+    expect(szabaly).not.toContain('@media (min-width: 640px)')
   })
 
   it('a tartalomjegyzék linkjei 44 px-es érintőcélt kapnak', () => {
@@ -1087,21 +1102,22 @@ describe('MÉRÉS — érintőcél, térköz, rács és sorhossz', () => {
     expect(hasabSzam(lap, 2560, tartalomHasab(lap, 2560))).toBe(2)
   })
 
-  const parHasabszam = (nezetablak: number): number => {
+  const PAR_KONTENER =
+    '.kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)'
+
+  const parHasabok = (nezetablak: number): string | null => {
     const lap = lapNezetablakra(nezetablak)
-    const sav = sajatErtek(lap, osztalyElem('.kc-post-cta__pair'), 'grid-template-columns')
-    expect(sav, `${nezetablak} px: a pár rácsa hiányzik`).not.toBeNull()
-    return sav!.match(/1fr/g)?.length ?? 0
+    return sajatErtek(lap, osztalyElem(PAR_KONTENER, '.kc-post-cta'), 'grid-template-columns')
   }
 
-  it('a kurzus + időpont pár 320 és 899 px-en egy hasáb (mobil rakás)', () => {
-    expect(parHasabszam(320)).toBe(1)
-    expect(parHasabszam(899)).toBe(1)
+  it('a kurzus + időpont pár 320 és 899 px-en nem rács (mobil rakás)', () => {
+    expect(parHasabok(320)).toBeNull()
+    expect(parHasabok(899)).toBeNull()
   })
 
   it('a kurzus + időpont pár 900 és 1440 px-en két hasáb (asztali sor)', () => {
-    expect(parHasabszam(900)).toBe(2)
-    expect(parHasabszam(1440)).toBe(2)
+    expect(parHasabok(900)?.match(/1fr/g)?.length).toBe(2)
+    expect(parHasabok(1440)?.match(/1fr/g)?.length).toBe(2)
   })
 
   it('a cikkoldal panel-szövegeinek sorhossza a WCAG 1.4.8 (AAA) 80 karakteres plafonja alatt marad', () => {
