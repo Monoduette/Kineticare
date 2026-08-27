@@ -350,6 +350,7 @@ describe('igénylés ÚJ e-mail-címmel', () => {
     expect(mock.sent).toHaveLength(1)
     expect(mock.sent[0].to).toBe('piroska@pelda.hu')
     expect(mock.sent[0].html).toContain('https://pelda.kineticare.hu/jelszo-visszaallitas?token=')
+    expect(mock.sent[0].html).toContain('returnUrl=%2Fkurzusaim%2F2')
     expect(mock.sent[0].subject).toContain('SOS KézRelax villámkurzus')
     expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(grantFreeCoursesToUser).mock.calls[0]?.[0]).toMatchObject({
@@ -446,8 +447,8 @@ describe('igénylés MEGLÉVŐ e-mail-címmel', () => {
     expect(mock.users[0].purchases ?? []).not.toContain(FREE_COURSE.id)
     expect(mock.sent).toHaveLength(1)
     expect(mock.sent[0]?.html).toContain('/belepes?returnUrl=')
+    expect(mock.sent[0]?.html).toContain('/elfelejtett-jelszo?returnUrl=')
     expect(mock.sent[0]?.html).toContain('%2Fkurzusok%2F2')
-    expect(mock.sent[0]?.html).toContain('/elfelejtett-jelszo')
     // A meglévő fiók NEVÉT nem írja felül az űrlapon megadott név.
     expect(mock.users[0].name).toBe('Anna')
     // Aktivált vevő: a nyilvános űrlap NEM írja rá a kurzust (staff-ajándék

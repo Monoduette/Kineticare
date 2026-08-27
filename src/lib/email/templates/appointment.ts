@@ -32,7 +32,7 @@ export function appointmentCustomerEmail(input: {
   ].filter((row): row is [string, string] => row[1].trim().length > 0)
 
   return {
-    subject: 'Megkaptuk az időpontkérésed — Kineticare',
+    subject: 'Megkaptuk az időpontkérésed: Kineticare',
     ...renderLayout({
       preheader: 'Két munkanapon belül telefonon keresünk a pontos időpontért.',
       eyebrow: 'Időpontkérés',
@@ -89,7 +89,9 @@ export function appointmentStaffEmail(input: {
       paragraphsHtml: [
         ...rows.map(([label, value]) => `<strong>${label}:</strong> ${escapeHtml(value)}`),
         ...(reason.length > 0
-          ? [`<strong>Mire kér időpontot:</strong><br />${escapeHtml(reason).replace(/\n/g, '<br />')}`]
+          ? [
+              `<strong>Mire kér időpontot:</strong><br />${escapeHtml(reason).replace(/\n/g, '<br />')}`,
+            ]
           : []),
       ],
       paragraphsText: [

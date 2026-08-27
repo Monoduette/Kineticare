@@ -22,6 +22,10 @@ import {
   resolveCourseCta,
   unpricedPublishedCourseIds,
   myCoursePlayerHref,
+  isMyCoursePlayerHref,
+  isMyCoursePlayerUrl,
+  postAuthLibraryOrPlayerHref,
+  productIdsFromOrderItems,
   purchaseIdsFrom,
 } from '../lib/courses'
 import { COURSE_CTA_ANCHOR, courseCtaHref } from '../lib/course-url'
@@ -541,5 +545,34 @@ describe('kurzus URL- és címkezelés', () => {
     // Üres cím esetén a régi viselkedés marad — a sku a megjelenő név.
     expect(courseTitle({ id: 1, sku: 'KURZUS-1', displayTitle: '  ' })).toBe('KURZUS-1')
     expect(courseTitle({ id: 1, sku: 'KURZUS-1', displayTitle: null })).toBe('KURZUS-1')
+  })
+})
+
+describe('lejátszó-útvonal és jelszó utáni cél', () => {
+  it('isMyCoursePlayerHref csak a numerikus lejátszó-útra igaz', () => {
+    expect(isMyCoursePlayerHref('/kurzusaim/12')).toBe(true)
+    expect(isMyCoursePlayerHref('/kurzusaim')).toBe(false)
+    expect(isMyCoursePlayerHref('/kurzusaim/12/extra')).toBe(false)
+    expect(isMyCoursePlayerHref('/kurzusok/12')).toBe(false)
+  })
+
+  it('isMyCoursePlayerUrl relatív és abszolút címet is felismer', () => {
+    expect(isMyCoursePlayerUrl('https://kineticare.test/kurzusaim/12')).toBe(true)
+    expect(isMyCoursePlayerUrl('https://kineticare.test/kurzusaim/12?x=1')).toBe(true)
+    expect(isMyCoursePlayerUrl('https://kineticare.test/kurzusaim')).toBe(false)
+  })
+
+  it('egy SKU a lejátszóra visz, több vagy nulla a listára', () => {
+    expect(postAuthLibraryOrPlayerHref([7])).toBe('/kurzusaim/7')
+    expect(postAuthLibraryOrPlayerHref([7, 8])).toBe(MY_COURSES_PATH)
+    expect(postAuthLibraryOrPlayerHref([])).toBe(MY_COURSES_PATH)
+  })
+
+  it('productIdsFromOrderItems id-t és populate-olt docot is vesz', () => {
+    expect(
+      productIdsFromOrderItems([{ product: 3 }, { product: { id: 3 } }, { product: 9 }]),
+    ).toEqual([3, 9])
+    expect(productIdsFromOrderItems(null)).toEqual([])
+    expect(productIdsFromOrderItems([{ product: null }])).toEqual([])
   })
 })

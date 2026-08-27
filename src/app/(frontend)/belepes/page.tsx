@@ -8,7 +8,7 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { ctaLabel } from '@/lib/cta-vocabulary'
-import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from '@/lib/return-url'
+import { DEFAULT_AUTH_RETURN_URL, forgotPasswordHref, sanitizeReturnUrl } from '@/lib/return-url'
 import type { User } from '@/payload-types'
 
 import config from '../../../payload.config'
@@ -72,7 +72,7 @@ export default async function BelepesPage({ searchParams }: BelepesPageProps) {
             {ctaLabel('sign-up')}
           </Link>
           {' · '}
-          <Link href="/elfelejtett-jelszo">{ctaLabel('password-reset-start')}</Link>
+          <Link href={forgotPasswordHref(returnUrl)}>{ctaLabel('password-reset-start')}</Link>
         </p>
       </Container>
     </Section>

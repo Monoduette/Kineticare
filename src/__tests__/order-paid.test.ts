@@ -204,7 +204,7 @@ describe('onOrderPaid — a levél változata a fiók állapotából', () => {
 
     expect(sent).toHaveLength(1)
     expect(sent[0].text).toContain(ACTIVATION_URL)
-    expect(sent[0].text).toContain('Jelszó beállítása')
+    expect(sent[0].text).toContain('Beállítom az új jelszót')
     expect(sent[0].text).toContain('fiókot készítettünk')
     // Generált jelszó SOHA nem mehet ki levélben — csak a link.
     expect(sent[0].text).not.toMatch(/jelszavad:|ideiglenes jelszó/i)
@@ -247,7 +247,8 @@ describe('onOrderPaid — a levél változata a fiók állapotából', () => {
       },
     })
 
-    expect(sent[0].text).toContain('Kurzusaim megnyitása')
+    expect(sent[0].text).toContain('Kezdd el a kurzust')
+    expect(sent[0].text).toContain('/kurzusaim/42')
     expect(sent[0].text).not.toContain('/belepes')
     expect(sent[0].text).not.toContain('jelszo-visszaallitas')
   })

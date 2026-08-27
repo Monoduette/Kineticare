@@ -85,7 +85,14 @@ export function guestInputId(field: GuestFieldName): string {
 }
 
 export const CHECKOUT_ALREADY_PURCHASED_ERROR =
-  'Ezt a kurzust már megvetted — a Kurzusaim oldalon éred el.'
+  'Ezt a kurzust már megvetted. A lejátszóban éred el.'
+
+/**
+ * Vendég, aktivált fiók: a szerver 409-cel ezt adja. Itt is él, hogy a
+ * pénztár-űrlap a Belépés gombot ehhez a szöveghez kösse (kliens-biztos modul).
+ */
+export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
+  'Ehhez az e-mail-címhez már van fiók. Jelentkezz be, és onnan tudod megvenni vagy megnyitni a kurzust.'
 export const CHECKOUT_WAIVER_ERROR = 'A vásárláshoz mindkét hozzájárulást el kell fogadnod.'
 
 /** ÁSZF-elfogadás a pénztárban — egy jelölőnégyzet, két hivatkozás; alapból üres (ingyenes terméken is). */
@@ -153,8 +160,7 @@ export const TERMS_NEW_TAB_HINT = ' (új lapon nyílik)'
  * ígéretet a szerver `buildCustomerSnapshot`-ja váltja be: a rendelés
  * vevő-pillanatképére `consentTerms` + `consentTermsAt` kerül.
  */
-export const CHECKOUT_TERMS_HINT =
-  'Az elfogadásodat a rendszer a rendelésen időbélyeggel rögzíti.'
+export const CHECKOUT_TERMS_HINT = 'Az elfogadásodat a rendszer a rendelésen időbélyeggel rögzíti.'
 
 /** A blokk címsora (a kártya h2-je). */
 export const CHECKOUT_TERMS_HEADING = 'Szerződési feltételek'
@@ -299,9 +305,7 @@ export type CheckoutSubmissionPlan =
  * állapotából épül (normalizálva) — a profil-előkitöltésnek itt már nyoma
  * sincs, tehát a felülírt érték kerül a rendelésre és a számlára.
  */
-export function planCheckoutSubmission(
-  context: CheckoutSubmissionContext,
-): CheckoutSubmissionPlan {
+export function planCheckoutSubmission(context: CheckoutSubmissionContext): CheckoutSubmissionPlan {
   if (context.alreadyPurchased) {
     return {
       kind: 'blocked',
@@ -336,7 +340,8 @@ export function planCheckoutSubmission(
    * tényleg hibás mezőre kerül, nem a lejjebb lévő számlázási blokkra.
    */
   const guestResult = context.guest === undefined ? null : validateGuest(context.guest)
-  const guestErrors = guestResult !== null && !guestResult.ok ? guestErrorMap(guestResult.errors) : {}
+  const guestErrors =
+    guestResult !== null && !guestResult.ok ? guestErrorMap(guestResult.errors) : {}
 
   const result = validateBilling(context.billing)
   const fieldErrors = result.ok ? {} : billingErrorMap(result.errors)
@@ -414,9 +419,7 @@ export interface CheckoutSubmitHandlerDeps {
   redirect: (gatewayUrl: string) => void
 }
 
-export function createCheckoutSubmitHandler(
-  deps: CheckoutSubmitHandlerDeps,
-): () => Promise<void> {
+export function createCheckoutSubmitHandler(deps: CheckoutSubmitHandlerDeps): () => Promise<void> {
   return async () => {
     deps.setError(null)
 

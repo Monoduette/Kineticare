@@ -16,6 +16,8 @@ import { markVideoWatched } from '@/lib/course-progress/client'
 import { mergePlayingSession } from '@/lib/course-player-refresh'
 import { courseHref } from '@/lib/course-url'
 import { ctaLabel } from '@/lib/cta-vocabulary'
+import { myCoursePlayerHref } from '@/lib/courses'
+import type { PlayerGateKind } from '@/lib/course-access'
 import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
 import { streamIframeSrc } from '@/lib/stream/contract'
@@ -71,6 +73,11 @@ export interface CoursePlayerProps {
    * hozzáférés (pl. sosem vette meg).
    */
   expiredMessage?: string | null
+  /**
+   * Miért zár a kapu. Alap: lejárat, ha van `expiredMessage`, különben
+   * „nem vásárolta meg". A lookup-hiba és a hiányzó purchases NEM lejárat.
+   */
+  gateKind?: PlayerGateKind
   /**
    * A már késznek jelölt leckék STABIL refjei — a szerver-komponens tölti be a
    * course-progress collectionből. Az orphan ref (időközben törölt lecke) itt is
@@ -144,6 +151,7 @@ export function CoursePlayer({
   bindLessonProgress,
   curriculum,
   expiredMessage = null,
+  gateKind,
   hasAccess,
   product,
   watchedRefs,
@@ -689,21 +697,34 @@ export function CoursePlayer({
   )
 
   if (!hasAccess) {
+    const resolvedGate: PlayerGateKind =
+      gateKind ?? (expiredMessage === null ? 'not-purchased' : 'expired')
+    const isRecovery = resolvedGate === 'lookup-failed' || resolvedGate === 'grant-pending'
+    const title =
+      resolvedGate === 'expired'
+        ? 'Lejárt a hozzáférésed'
+        : isRecovery
+          ? 'A kurzus most nem nyitható meg'
+          : 'Nincs hozzáférésed ehhez a kurzushoz'
+    const body =
+      expiredMessage ??
+      (resolvedGate === 'not-purchased'
+        ? 'A videók megtekintéséhez a kurzus megvásárlása szükséges. Ha már megvetted, jelentkezz be azzal a fiókkal, amellyel vásároltad.'
+        : null)
     return (
       <Card className="kc-player-gate">
-        <h1 className="kc-player-gate__title">
-          {expiredMessage === null
-            ? 'Nincs hozzáférésed ehhez a kurzushoz'
-            : 'Lejárt a hozzáférésed'}
-        </h1>
-        <p>
-          {expiredMessage ??
-            'A videók megtekintéséhez a kurzus megvásárlása szükséges. Ha már megvetted, jelentkezz be azzal a fiókkal, amellyel vásároltad.'}
-        </p>
-        {/* §3.2 #28: a kurzus SAJÁT oldalára vivő felirat mindenhol ugyanaz —
-            itt, a /kurzusaim lejárt kártyáján és a kurzuskártyán is
-            (WCAG 2.2 · 3.2.4). */}
-        <Button href={courseHref(product)}>{ctaLabel('course-sales-open')}</Button>
+        <h1 className="kc-player-gate__title">{title}</h1>
+        {body === null ? null : <p>{body}</p>}
+        {isRecovery ? (
+          <>
+            <Button href={myCoursePlayerHref(product.id)}>{ctaLabel('retry')}</Button>
+            <Button href="/kapcsolat" variant="secondary">
+              {ctaLabel('contact-open')}
+            </Button>
+          </>
+        ) : (
+          <Button href={courseHref(product)}>{ctaLabel('course-sales-open')}</Button>
+        )}
       </Card>
     )
   }
@@ -811,6 +832,18 @@ export function CoursePlayer({
               {state.kind === 'forbidden' ? (
                 <p className="kc-player__media-error" role="alert">
                   Nincs hozzáférésed ehhez a videóhoz.
+                  {activeRef === null ? null : (
+                    <Button
+                      onClick={() => void loadLesson(activeRef)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      {ctaLabel('retry')}
+                    </Button>
+                  )}
+                  <Button href="/kapcsolat" size="sm" variant="secondary">
+                    {ctaLabel('contact-open')}
+                  </Button>
                 </p>
               ) : null}
               {/* A hiányzó library-id (playingSrc === null) ugyanide fut be:
@@ -819,6 +852,15 @@ export function CoursePlayer({
               (state.kind === 'playing' && state.loadedSrc === null) ? (
                 <p className="kc-player__media-error" role="alert">
                   A videólejátszás ideiglenesen nem érhető el. Próbáld később.
+                  {activeRef === null ? null : (
+                    <Button
+                      onClick={() => void loadLesson(activeRef)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      {ctaLabel('retry')}
+                    </Button>
+                  )}
                 </p>
               ) : null}
               {state.kind === 'error' ? (
@@ -830,7 +872,7 @@ export function CoursePlayer({
                       size="sm"
                       variant="secondary"
                     >
-                      Újrapróbálom
+                      {ctaLabel('retry')}
                     </Button>
                   )}
                 </p>

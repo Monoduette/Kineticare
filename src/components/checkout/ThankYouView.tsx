@@ -13,7 +13,7 @@ import {
   type BarionSnapshotStorage,
 } from '@/lib/analytics/barion-events'
 import { captureAnalyticsEvent } from '@/lib/analytics/posthog'
-import { checkoutHref } from '../../lib/courses'
+import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 import { pollOrderStatus, type PollResult } from '../../lib/order-status-poll'
 import { signInHref } from '../../lib/return-url'
@@ -105,7 +105,7 @@ const POLL_TIMEOUT_MS = 120000 // 2 perc
 
 type ViewState =
   | { kind: 'polling'; attempts: number }
-  | { kind: 'paid' }
+  | { kind: 'paid'; productId: number | null }
   | { kind: 'timeout' }
   /** productId: az „Újrapróbálom" link célához (a státuszválasz hozza). */
   | { kind: 'failed'; status: string; productId: number | null }
@@ -141,16 +141,58 @@ export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
         jelszó-beállító link is lesz, azzal nyílik meg a fiókod a kurzussal.
       </p>
       <p>
-        Ha a fizetést megszakítottad vagy a bank elutasította, semmi sem került levonásra. Újra is
-        próbálhatod a kurzusok oldaláról.
+        Ha a fizetést megszakítottad vagy a bank elutasította, semmi sem került levonásra. Újra
+        próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
       </p>
       <p className="kc-thankyou__order">
         Rendelésszám: <strong>{orderNumber}</strong>
       </p>
       <div className="kc-thankyou__actions">
-        <Button href="/kurzusok">{ctaLabel('course-list-open')}</Button>
         <Button href={signInHref('/kurzusaim')} variant="secondary">
           {ctaLabel('sign-in')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Sikeres, bejelentkezett vásárlás. Ha a státusz-poll ad termék-id-t (a
+ * rendelés első tétele), a gomb a lejátszóra visz: a lista közbeiktatása
+ * zsákutca volt. Ugyanaz a két gomb, ugyanazok az osztályok.
+ *
+ * Forrás: GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * Baymard, post-purchase confirmation should lead to the purchased item
+ * https://baymard.com/blog/order-confirmation-design ;
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+ */
+export function ThankYouPaid({
+  orderNumber,
+  productId,
+}: {
+  orderNumber: string
+  productId: number | null
+}) {
+  const playerHref = productId !== null ? myCoursePlayerHref(productId) : null
+  return (
+    <div aria-live="polite" className="kc-thankyou kc-thankyou--paid" role="status">
+      <h1>Köszönjük a vásárlást!</h1>
+      <p>
+        {playerHref === null
+          ? 'A fizetésed sikeresen megérkezett. A kurzust a kurzusaid között éred el.'
+          : 'A fizetésed sikeresen megérkezett. A kurzusod most megnyitható.'}
+      </p>
+      <p className="kc-thankyou__order">
+        Rendelésszám: <strong>{orderNumber}</strong>
+      </p>
+      <div className="kc-thankyou__actions">
+        <Button href={playerHref ?? '/kurzusaim'}>
+          {ctaLabel(playerHref === null ? 'my-courses-open' : 'course-start')}
+        </Button>
+        <Button href="/" variant="secondary">
+          Vissza a kezdőlapra
         </Button>
       </div>
     </div>
@@ -199,7 +241,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
       // A purchase_confirmed kapuja explicit: vendég 401 / 404 / timeout
       // SOHA nem paid-esemény. A UI `paid` ága ugyanerre a feltételre épül.
       if (shouldEmitPurchaseConfirmed(result) && result.kind === 'status') {
-        setState({ kind: 'paid' })
+        setState({ kind: 'paid', productId: result.productId })
         // PostHog funnel-záró esemény, a rendelés végösszegével (no-op
         // consent nélkül) — a tulajdonságokat lásd a purchaseEventProperties
         // fejlécében.
@@ -252,29 +294,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }
 
   if (state.kind === 'paid') {
-    return (
-      <div aria-live="polite" className="kc-thankyou kc-thankyou--paid" role="status">
-        <h1>Köszönjük a vásárlást!</h1>
-        <p>
-          A fizetésed sikeresen megérkezett. A kurzust a <Link href="/kurzusaim">Kurzusaim</Link>{' '}
-          oldalon éred el.
-        </p>
-        <p className="kc-thankyou__order">
-          Rendelésszám: <strong>{orderNumber}</strong>
-        </p>
-        {/* §3.2 #9: a köszönőoldal HÁROM ága ugyanazzal a szóval visz a saját
-            kurzusokhoz. Korábban itt „Tovább a kurzusaimhoz" (M-7), a timeout
-            ágon „Nézd meg a kurzusaimat", a hiba-ágakon pedig „Kurzusaim" állt
-            — három felirat EGY cselekvésre, ugyanabban a komponensben
-            (WCAG 2.2 · 3.2.4 sértés). */}
-        <div className="kc-thankyou__actions">
-          <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
-          <Button href="/" variant="secondary">
-            Vissza a kezdőlapra
-          </Button>
-        </div>
-      </div>
-    )
+    return <ThankYouPaid orderNumber={orderNumber} productId={state.productId} />
   }
 
   if (state.kind === 'timeout') {

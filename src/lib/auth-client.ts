@@ -16,6 +16,8 @@
  * A kliens a fetch injektálhatóságával tesztelhető (lásd a teszteket).
  */
 
+import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from './return-url'
+
 export interface AuthResult<T = undefined> {
   ok: boolean
   message?: string
@@ -27,7 +29,10 @@ export const GENERIC_AUTH_ERROR =
 
 async function parseErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
-    const body = (await response.json()) as { errors?: Array<{ message?: string }>; message?: string }
+    const body = (await response.json()) as {
+      errors?: Array<{ message?: string }>
+      message?: string
+    }
     const first = body.errors?.find((entry) => typeof entry.message === 'string')
     if (first?.message) {
       return first.message
@@ -53,9 +58,10 @@ export async function loginUser(
       credentials: 'include',
     })
     if (!response.ok) {
-      const message = response.status === 401
-        ? 'Hibás e-mail-cím vagy jelszó.'
-        : await parseErrorMessage(response, GENERIC_AUTH_ERROR)
+      const message =
+        response.status === 401
+          ? 'Hibás e-mail-cím vagy jelszó.'
+          : await parseErrorMessage(response, GENERIC_AUTH_ERROR)
       return { ok: false, message }
     }
     return { ok: true }
@@ -87,9 +93,10 @@ export async function registerUser(
       credentials: 'include',
     })
     if (!response.ok) {
-      const message = response.status === 409 || response.status === 400
-        ? 'Ez az e-mail-cím már foglalt, vagy a jelszó nem felel meg a követelményeknek (min. 12 karakter).'
-        : await parseErrorMessage(response, GENERIC_AUTH_ERROR)
+      const message =
+        response.status === 409 || response.status === 400
+          ? 'Ez az e-mail-cím már foglalt, vagy a jelszó nem felel meg a követelményeknek (min. 12 karakter).'
+          : await parseErrorMessage(response, GENERIC_AUTH_ERROR)
       return { ok: false, message }
     }
     return { ok: true }
@@ -101,12 +108,17 @@ export async function registerUser(
 export async function forgotPassword(
   email: string,
   fetchImpl: typeof fetch = fetch,
+  returnUrl?: string,
 ): Promise<AuthResult> {
   try {
+    const body: { email: string; returnUrl?: string } = { email }
+    if (returnUrl !== undefined) {
+      body.returnUrl = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+    }
     const response = await fetchImpl('/api/users/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(body),
       credentials: 'include',
     })
     // Az IP-alapú kérés-korlát (A2) 429-e KIVÉTEL a „mindig ok" szabály alól:

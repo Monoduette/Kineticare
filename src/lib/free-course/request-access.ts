@@ -3,13 +3,13 @@ import type { Payload } from 'payload'
 import type { Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { courseCtaHref } from '../course-url'
-import { isFreeCourse, courseTitle, hasUserPurchased } from '../courses'
+import { isFreeCourse, courseTitle, hasUserPurchased, myCoursePlayerHref } from '../courses'
 import { maskEmail } from '../email/mask'
 import { resolveEmailProvider, type EmailEnv } from '../email/provider'
 import { grantFreeCoursesToUser } from '../free-course-grant'
 import { logger as rootLogger, type Logger } from '../logger'
 import { buildPasswordResetUrl } from '../password-reset-url'
-import { signInHref } from '../return-url'
+import { forgotPasswordHref, signInHref } from '../return-url'
 import { generateInitialPassword } from '../security/initial-password'
 import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
 import type { FreeCourseUiNext } from './ui-text'
@@ -228,7 +228,7 @@ async function sendExistingAccountGuidanceEmail(input: {
     return isEmailDeliverable(input.env, input.serverUrl)
   }
   const signInUrl = `${input.serverUrl}${signInHref(input.returnUrl)}`
-  const passwordResetUrl = `${input.serverUrl}/elfelejtett-jelszo`
+  const passwordResetUrl = `${input.serverUrl}${forgotPasswordHref(input.returnUrl)}`
   const template = existingAccountFreeCourseEmail({
     name: input.name,
     courseTitle: input.courseTitle,
@@ -519,7 +519,7 @@ export async function requestFreeCourseAccess(
       expiration: ttlMs,
     })
     if (typeof token === 'string' && token.length > 0) {
-      activationUrl = buildPasswordResetUrl(input.serverUrl, token)
+      activationUrl = buildPasswordResetUrl(input.serverUrl, token, myCoursePlayerHref(product.id))
     }
   } catch (error) {
     log.error('ingyenes kurzus igénylése: a belépő link előállítása sikertelen', {

@@ -141,9 +141,9 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
             </p>
             <Button
               href={alreadyPurchased ? myCoursePlayerHref(product.id) : courseCtaHref(product)}
-              variant="secondary"
+              variant={alreadyPurchased ? 'primary' : 'secondary'}
             >
-              {ctaLabel(alreadyPurchased ? 'my-courses-open' : 'free-course-claim')}
+              {ctaLabel(alreadyPurchased ? 'course-start' : 'free-course-claim')}
             </Button>
           </div>
         </Container>
@@ -182,10 +182,7 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
         <h1>Pénztár</h1>
         {alreadyPurchased ? (
           <div className="kc-cart-notice" role="status">
-            <p>
-              Ezt a kurzust már megvetted. A{' '}
-              <Link href={myCoursePlayerHref(product.id)}>Kurzusaim</Link> oldalon éred el.
-            </p>
+            <p>Ezt a kurzust már megvetted. A lejátszóban éred el, új rendelés nem kell.</p>
           </div>
         ) : null}
         <CheckoutForm

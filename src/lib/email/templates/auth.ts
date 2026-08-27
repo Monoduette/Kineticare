@@ -1,3 +1,4 @@
+import { ctaLabel } from '../../cta-vocabulary'
 import type { EmailTemplate } from '../types'
 import { escapeHtml, renderLayout } from './layout'
 
@@ -10,13 +11,13 @@ export function welcomeEmail(input: { name: string; loginUrl: string }): EmailTe
       heading: 'Sikeres regisztráció',
       paragraphsHtml: [
         `Kedves ${escapeHtml(name)}!`,
-        'Köszönjük a regisztrációt a Kineticare oldalán. A fiókod elkészült, a kurzusokat a bejelentkezés után éred el.',
+        'Köszönjük a regisztrációt a Kineticare oldalán. A fiókod elkészült, a kurzusokat belépés után éred el.',
       ],
       paragraphsText: [
         `Kedves ${name}!`,
-        'Köszönjük a regisztrációt a Kineticare oldalán. A fiókod elkészült, a kurzusokat a bejelentkezés után éred el.',
+        'Köszönjük a regisztrációt a Kineticare oldalán. A fiókod elkészült, a kurzusokat belépés után éred el.',
       ],
-      cta: { label: 'Bejelentkezés', url: input.loginUrl },
+      cta: { label: ctaLabel('sign-in'), url: input.loginUrl },
     }),
   }
 }
@@ -34,14 +35,14 @@ export function resetPasswordEmail(input: {
       paragraphsHtml: [
         escapeHtml(greeting),
         'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi gombbal állíthatsz be új jelszót. A link korlátozott ideig érvényes.',
-        'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet — a jelszavad nem változik.',
+        'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],
       paragraphsText: [
         greeting,
         'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi linken állíthatsz be új jelszót. A link korlátozott ideig érvényes.',
-        'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet — a jelszavad nem változik.',
+        'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],
-      cta: { label: 'Új jelszó beállítása', url: input.resetUrl },
+      cta: { label: ctaLabel('password-reset-set'), url: input.resetUrl },
     }),
   }
 }

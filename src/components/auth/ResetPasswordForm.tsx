@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { resetPassword } from '../../lib/auth-client'
 import { ctaLabel, ctaProgressLabel } from '../../lib/cta-vocabulary'
+import { isMyCoursePlayerHref } from '../../lib/courses'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from '../../lib/return-url'
 import {
   formatPasswordPolicyErrors,
@@ -32,8 +33,10 @@ import {
 export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkeztetve.'
 
 /**
- * A siker-panel következő lépése. A jelszó-beállítás NEM léptet be magától:
- * a Kurzusaim oldal belépést kér, és utána a kurzusoknál landolsz.
+ * A siker-panel következő lépése. A Payload reset-password süti-munkamenetet
+ * állíthat (credentials: include), ezért a gomb NEM a belépő oldalra visz
+ * (az kiléptetné a már belépett vevőt). A cél a `returnUrl` (alapból Kurzusaim,
+ * aktiválásnál a megvett kurzus lejátszója).
  *
  * Forrás: GOV.UK, Don’t drop people off a journey
  * https://www.gov.uk/service-manual/design/user-centred-design ;
@@ -41,7 +44,7 @@ export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkez
  * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  */
 export const RESET_SUCCESS_NEXT_STEP =
-  'Sikeresen beállítottad az új jelszavadat. A Kurzusaim oldalon megtalálod a kurzusaidat.'
+  'Sikeresen beállítottad az új jelszavadat. A következő gombbal a kurzusaidhoz kerülsz.'
 
 export interface ResetPasswordFormProps {
   token: string
@@ -85,7 +88,9 @@ export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) 
         <h2>Új jelszó beállítva</h2>
         <p>{RESET_SUCCESS_NEXT_STEP}</p>
         <p className="kc-auth-success__note">{RESET_OTHER_DEVICES_NOTE}</p>
-        <Button href={safeReturn}>{ctaLabel('my-courses-open')}</Button>
+        <Button href={safeReturn}>
+          {ctaLabel(isMyCoursePlayerHref(safeReturn) ? 'course-start' : 'my-courses-open')}
+        </Button>
       </div>
     )
   }

@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { sanitizeReturnPath } from '../lib/preview/exit-preview'
 import {
   DEFAULT_AUTH_RETURN_URL,
+  forgotPasswordHref,
   hasControlCharacter,
+  returnUrlFromForgotPasswordRequest,
   sanitizeReturnUrl,
   signInHref,
 } from '../lib/return-url'
@@ -200,5 +202,43 @@ describe('signInHref', () => {
 
   it('idegen eredetű célnál a Kurzusaimra esik', () => {
     expect(signInHref(`//${HOSTILE_HOST}`)).toBe('/belepes?returnUrl=%2Fkurzusaim')
+  })
+})
+
+describe('forgotPasswordHref', () => {
+  it('alapból a Kurzusaimra visz vissza', () => {
+    expect(forgotPasswordHref()).toBe('/elfelejtett-jelszo?returnUrl=%2Fkurzusaim')
+  })
+
+  it('a pénztár termék-paraméterét megtartja', () => {
+    expect(forgotPasswordHref('/penztar?termek=12')).toBe(
+      '/elfelejtett-jelszo?returnUrl=%2Fpenztar%3Ftermek%3D12',
+    )
+  })
+
+  it('idegen eredetű célnál a Kurzusaimra esik', () => {
+    expect(forgotPasswordHref(`//${HOSTILE_HOST}`)).toBe(
+      '/elfelejtett-jelszo?returnUrl=%2Fkurzusaim',
+    )
+  })
+})
+
+describe('returnUrlFromForgotPasswordRequest', () => {
+  it('a req.data.returnUrl-t szűri', () => {
+    expect(returnUrlFromForgotPasswordRequest({ data: { returnUrl: '/kurzusaim/12' } })).toBe(
+      '/kurzusaim/12',
+    )
+    expect(returnUrlFromForgotPasswordRequest({ data: { returnUrl: '/penztar?termek=12' } })).toBe(
+      '/penztar?termek=12',
+    )
+  })
+
+  it('hiányzó vagy idegen érték a Kurzusaimra esik', () => {
+    expect(returnUrlFromForgotPasswordRequest(null)).toBe(DEFAULT_AUTH_RETURN_URL)
+    expect(returnUrlFromForgotPasswordRequest({})).toBe(DEFAULT_AUTH_RETURN_URL)
+    expect(returnUrlFromForgotPasswordRequest({ data: {} })).toBe(DEFAULT_AUTH_RETURN_URL)
+    expect(returnUrlFromForgotPasswordRequest({ data: { returnUrl: `//${HOSTILE_HOST}` } })).toBe(
+      DEFAULT_AUTH_RETURN_URL,
+    )
   })
 })

@@ -603,3 +603,19 @@ describe('CheckoutForm — vendég, meglévő fiók (409-szabály)', () => {
     expect(html).not.toMatch(/[–—]/)
   })
 })
+
+describe('CheckoutForm — már megvett kurzus', () => {
+  it('a gomb a lejátszóra visz, nem indít új rendelést', () => {
+    const html = renderToStaticMarkup(
+      createElement(CheckoutForm, {
+        product: { id: 42, sku: 'Kézrehab alapkurzus', priceHuf: 24900, isFree: false },
+        user: { name: 'Minta Mari', email: 'vevo@example.test' },
+        alreadyPurchased: true,
+      }),
+    )
+    expect(html).toContain('href="/kurzusaim/42"')
+    expect(html).toContain('Kezdd el a kurzust')
+    expect(html).not.toContain('type="submit"')
+    expect(html).not.toMatch(/[–—]/)
+  })
+})

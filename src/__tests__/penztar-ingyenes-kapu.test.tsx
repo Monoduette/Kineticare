@@ -51,9 +51,9 @@ const VART = {
   horgony: 'kurzus-vasarlas-gomb',
   ingyenesSzoveg:
     'Ez a kurzus ingyenes, ezért nem a pénztáron át jár. A kurzus oldalán igényelheted: az űrlap rövid, és fizetned nem kell érte.',
-  mergvanSzoveg: 'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A Kurzusaim oldalon éred el.',
+  mergvanSzoveg: 'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A lejátszóban éred el.',
   igenylesFelirat: 'Elindítom ingyen',
-  kurzusaimFelirat: 'Nyisd meg a kurzusaidat',
+  kurzusaimFelirat: 'Kezdd el a kurzust',
   kurzusaimUt: '/kurzusaim',
   archivaltSzoveg: 'Ez a kurzus jelenleg nem vásárolható meg.',
   nincsTermekSzoveg: 'Nincs kiválasztott termék a fizetéshez.',
@@ -212,12 +212,12 @@ describe('/penztar — ingyenes termék: tájékoztató állapot, nem díszlet-�
   })
 })
 
-// 2. AKI MÁR MEGKAPTA — a Kurzusaim a továbblépés
+// 2. AKI MÁR MEGKAPTA — a lejátszó a továbblépés
 
 describe('/penztar — ingyenes termék, meglévő hozzáféréssel', () => {
   const vevo = { ...mockUser, purchases: [ingyenesTermek.id] } as unknown as User
 
-  it('a Kurzusaimra visz, és a szöveg megmondja, hol találja meg', async () => {
+  it('a lejátszóra visz, és a szöveg megmondja, hol találja meg', async () => {
     mockPayloadBehavior(ingyenesTermek, vevo)
     const html = renderMarkup(await renderPenztar(termekParam(ingyenesTermek)))
     expect(html).toContain(VART.mergvanSzoveg)
@@ -352,17 +352,16 @@ describe('A horgony a kurzusoldal VALÓDI cél-azonosítója', () => {
 describe('A feliratok a §3.2 CTA-szótárból jönnek', () => {
   it('a két felirat literálja és a szótár bejegyzése egyezik', () => {
     expect(ctaLabel('free-course-claim')).toBe(VART.igenylesFelirat)
-    expect(ctaLabel('my-courses-open')).toBe(VART.kurzusaimFelirat)
+    expect(ctaLabel('course-start')).toBe(VART.kurzusaimFelirat)
   })
 
-  it('mindkét sor SÚLYA `secondary` a szótárban (C-2), ahogy a lap rendereli', () => {
-    // A lap `variant="secondary"`-t ad. Ha a szótár súlya megváltozik, ez az
-    // állítás kidől, és a lapot vele együtt kell igazítani (C-2: ugyanaz a
-    // cselekvés = ugyanaz a súly).
+  it('a megvett kurzus gombja primary, az igénylőé secondary (C-2)', () => {
+    // A megvett ág a §3.2 #8 (`course-start`, primary). Az igénylő ág a
+    // `free-course-claim`, secondary. A lap `variant`-ja ezt követi.
     expect(ctaEntry('free-course-claim').weight).toBe('secondary')
-    expect(ctaEntry('my-courses-open').weight).toBe('secondary')
+    expect(ctaEntry('course-start').weight).toBe('primary')
     const oldal = kommentNelkul(olvas('app/(frontend)/penztar/page.tsx'))
-    expect(oldal).toContain('variant="secondary"')
+    expect(oldal).toContain("variant={alreadyPurchased ? 'primary' : 'secondary'}")
   })
 
   it('a lap a szótárból OLVASSA a feliratot, nem literálként írja ki', () => {
@@ -383,7 +382,7 @@ describe('A feliratok a §3.2 CTA-szótárból jönnek', () => {
       FREE_COURSE_NOT_CHECKOUT_TEXT,
       FREE_COURSE_ALREADY_GRANTED_TEXT,
       ctaLabel('free-course-claim'),
-      ctaLabel('my-courses-open'),
+      ctaLabel('course-start'),
     ]) {
       expect(szoveg).not.toContain(kvirt)
       expect(szoveg).not.toContain(gondolatjel)
@@ -400,7 +399,7 @@ describe('A feliratok a §3.2 CTA-szótárból jönnek', () => {
   it('a szöveg megmondja az OKOT ÉS a következő lépést (NN/g)', () => {
     expect(FREE_COURSE_NOT_CHECKOUT_TEXT).toContain('ingyenes')
     expect(FREE_COURSE_NOT_CHECKOUT_TEXT).toContain('A kurzus oldalán')
-    expect(FREE_COURSE_ALREADY_GRANTED_TEXT).toContain('Kurzusaim')
+    expect(FREE_COURSE_ALREADY_GRANTED_TEXT).toContain('lejátszóban')
   })
 })
 

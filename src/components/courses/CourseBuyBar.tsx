@@ -74,7 +74,7 @@ export function CourseBuyBar({
 
   return (
     <div
-      aria-label={`${courseTitle} — vásárlás`}
+      aria-label={`${courseTitle}: vásárlás`}
       className="kc-course-buybar"
       data-visible="false"
       ref={barRef}

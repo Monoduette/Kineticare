@@ -31,6 +31,7 @@ import {
   type NormalizedBilling,
 } from './billing'
 import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
+import { CHECKOUT_GUEST_EXISTING_ACCOUNT } from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
   guestSummaryMessage,
@@ -39,23 +40,19 @@ import {
   type NormalizedGuest,
 } from './guest'
 
+export { CHECKOUT_GUEST_EXISTING_ACCOUNT }
+
 /**
  * Bejelentkezett duplavásárlás. A munkamenet a saját fiók, ez nem orákulum.
  * `docs/gomb-inventar.md` §7 jóváhagyott mondat.
  */
-export const CHECKOUT_ALREADY_PURCHASED =
-  'Ezt a kurzust már megvásároltad. A fiókodban éred el.'
-
-/** W4 vendégüzenet — nem árulja el, van-e már vásárlás (user enumeration ellen). */
-export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
-  'Ehhez az e-mail-címhez már van fiók. Jelentkezz be, és onnan tudod megvenni vagy megnyitni a kurzust.'
+export const CHECKOUT_ALREADY_PURCHASED = 'Ezt a kurzust már megvásároltad. A fiókodban éred el.'
 
 /**
  * Vendég, nincs aktivált fiók, de van paid rendelés az e-mailre: ne mondjuk,
  * hogy „már megvásároltad” (W4). A következő lépés a belépés / aktiválás.
  */
-export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN =
-  'Ezt a lépést bejelentkezés után tudod befejezni.'
+export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN = 'Ezt a lépést bejelentkezés után tudod befejezni.'
 
 /**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
@@ -181,10 +178,7 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
   if (input.quantity !== undefined) {
     const rawQuantity = typeof input.quantity === 'number' ? input.quantity : Number(input.quantity)
     if (!Number.isInteger(rawQuantity) || rawQuantity !== 1) {
-      throw new CheckoutError(
-        400,
-        'Ebből a kurzusanyagból egyszerre csak egy példány vásárolható.',
-      )
+      throw new CheckoutError(400, 'Ebből a kurzusanyagból egyszerre csak egy példány vásárolható.')
     }
     quantity = 1
   }
@@ -295,9 +289,7 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
  * A duplavásárlás-blokk SZŰRŐJE: a vevőt vagy a fiókja (bejelentkezve), vagy az
  * e-mail-címe (vendégként) azonosítja a rendeléseken.
  */
-type DuplicateScope =
-  | { kind: 'customer'; userId: number }
-  | { kind: 'email'; email: string }
+type DuplicateScope = { kind: 'customer'; userId: number } | { kind: 'email'; email: string }
 
 function duplicateScopeWhere(scope: DuplicateScope, productId: number): Record<string, unknown> {
   return {
@@ -330,9 +322,7 @@ function purchaseIdsFromUser(user: User | null | undefined): Set<number> {
   return ids
 }
 
-function resolveBarionEnvironment(
-  explicit: BarionEnvironment | undefined,
-): BarionEnvironment {
+function resolveBarionEnvironment(explicit: BarionEnvironment | undefined): BarionEnvironment {
   if (explicit === 'test' || explicit === 'prod') {
     return explicit
   }
@@ -372,9 +362,7 @@ interface DuplicateCheckContext {
  * unlimited SKU-nál a tulajdonlás (purchases vagy paid) számít, nem a
  * hasAccess fail-open.
  */
-async function resolveDuplicatePurchase(
-  ctx: DuplicateCheckContext,
-): Promise<DuplicateCheckResult> {
+async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<DuplicateCheckResult> {
   const baseWhere = duplicateScopeWhere(ctx.scope, ctx.product.id)
 
   const pendingOrders = await ctx.payload.find({
@@ -494,7 +482,6 @@ async function resolveDuplicatePurchase(
   }
   throw new CheckoutError(409, ctx.paidMessage)
 }
-
 
 /**
  * Rendelésszám-ütközés (23505) felismerése.
@@ -622,9 +609,12 @@ async function findExistingUserByEmail(
         typeof found.passwordSetupPending === 'boolean' ? found.passwordSetupPending : null,
     }
   } catch (error) {
-    log.warn('checkout-start: a vendég e-mailhez tartozó fiók keresése sikertelen (a checkout folytatódik)', {
-      error: error instanceof Error ? error.message : String(error),
-    })
+    log.warn(
+      'checkout-start: a vendég e-mailhez tartozó fiók keresése sikertelen (a checkout folytatódik)',
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    )
     return null
   }
 }
@@ -743,8 +733,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
   const applyBarionStateTransitionFn =
     options.applyBarionStateTransition ?? applyBarionStateTransition
   const onOrderPaidFn = options.onOrderPaid ?? onOrderPaid
-  const resolveSingleCourseAccessFn =
-    options.resolveSingleCourseAccess ?? resolveSingleCourseAccess
+  const resolveSingleCourseAccessFn = options.resolveSingleCourseAccess ?? resolveSingleCourseAccess
   const nowMs = (options.now ?? new Date()).getTime()
 
   const lockResult = await withAdvisoryLock(

@@ -43,8 +43,8 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
 
   const intro = `A(z) ${input.courseTitle} mostantól a tiéd. Ingyenes, fizetned nem kell érte.`
   const howTo =
-    'Nyisd meg az alábbi gombot, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
-    'és számmal), majd a belépés után a Kurzusaim oldalon indíthatod a kurzust.'
+    'Nyisd meg az alábbi gombot, és adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
+    'és számmal). A jelszó után a kurzusod megnyílik, külön belépés nem kell.'
 
   const bodyHtml = [
     escapeHtml(greeting),
@@ -77,7 +77,7 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
       // A levél EGYETLEN cselekvése. A felirat a `/jelszo-visszaallitas`
       // oldal tényleges műveletét nevezi meg (a CTA-szótár §3.2 #22 sorának
       // igéjével), nem ígér mást, mint ami a link túloldalán történik.
-      cta: { label: 'Beállítom az új jelszót', url: input.activationUrl },
+      cta: { label: ctaLabel('password-reset-set'), url: input.activationUrl },
     }),
   }
 }

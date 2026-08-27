@@ -119,6 +119,55 @@ export function accessExpiryLabel(expiresAt: Date | null): string | null {
 }
 
 /**
+ * A lejátszó kapuja: miért nincs videó. A lookup-hiba NEM lejárat
+ * (NN/g Error Message Guidelines: ne mondj hamis okot;
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.3.1 Error Identification).
+ */
+export type PlayerGateKind = 'expired' | 'lookup-failed' | 'grant-pending' | 'not-purchased'
+
+export interface PlayerGate {
+  kind: PlayerGateKind
+  /** A kapu magyarázó mondata; null = a komponens alapüzenete. */
+  message: string | null
+}
+
+export const ACCESS_LOOKUP_FAILED_MESSAGE =
+  'A hozzáférésed ellenőrzése most nem sikerült. Ez nem azt jelenti, hogy lejárt. Próbáld újra, vagy írj nekünk.'
+
+export const ACCESS_GRANT_PENDING_MESSAGE =
+  'A vásárlásod megvan, a hozzáférés még feldolgozás alatt. Próbáld újra egy perc múlva, vagy írj nekünk, ha várakozás után sem nyílik meg.'
+
+export function resolvePlayerGate(input: {
+  purchased: boolean
+  access: CourseAccessState | null
+  hasPaidOrder: boolean
+}): { hasAccess: true; gate: null } | { hasAccess: false; gate: PlayerGate } {
+  if (input.purchased) {
+    if (input.access === null || input.access.hasAccess) {
+      return { hasAccess: true, gate: null }
+    }
+    if (input.access.reason === 'unknown-purchase-date') {
+      return {
+        hasAccess: false,
+        gate: { kind: 'lookup-failed', message: ACCESS_LOOKUP_FAILED_MESSAGE },
+      }
+    }
+    return {
+      hasAccess: false,
+      gate: { kind: 'expired', message: accessExpiredMessage(input.access.expiresAt) },
+    }
+  }
+  if (input.hasPaidOrder) {
+    return {
+      hasAccess: false,
+      gate: { kind: 'grant-pending', message: ACCESS_GRANT_PENDING_MESSAGE },
+    }
+  }
+  return { hasAccess: false, gate: { kind: 'not-purchased', message: null } }
+}
+
+/**
  * A hozzáférés-állapot kliens-komponensbe átadható (szerializálható) alakja:
  * Date helyett kész, magyar szövegek — így a kliens nem formáz dátumot, és a
  * szerver/kliens kimenet definíció szerint azonos.

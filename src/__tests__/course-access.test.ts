@@ -3,11 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   ACCESS_EXPIRED_TITLE,
+  ACCESS_GRANT_PENDING_MESSAGE,
+  ACCESS_LOOKUP_FAILED_MESSAGE,
   accessExpiredMessage,
   accessExpiryLabel,
   formatAccessDate,
   MS_PER_DAY,
   resolveCourseAccess,
+  resolvePlayerGate,
   toCourseAccessView,
 } from '../lib/course-access'
 import {
@@ -42,9 +45,11 @@ describe('resolveCourseAccess — a korlátlan hozzáférés esetei (mai viselke
   })
 
   it('üres accessDurationDays (null) → korlátlan', () => {
-    expect(
-      resolveCourseAccess({ purchasedAt: PURCHASE, accessDurationDays: null }),
-    ).toMatchObject({ hasAccess: true, expiresAt: null, reason: 'unlimited' })
+    expect(resolveCourseAccess({ purchasedAt: PURCHASE, accessDurationDays: null })).toMatchObject({
+      hasAccess: true,
+      expiresAt: null,
+      reason: 'unlimited',
+    })
   })
 
   it('0 nap → korlátlan (NEM azonnali lejárat)', () => {
@@ -497,3 +502,58 @@ describe('resolveCourseAccessForUser — Payload-lekérdezéssel', () => {
   })
 })
 
+describe('resolvePlayerGate', () => {
+  const expired = resolveCourseAccess({
+    purchasedAt: PURCHASE,
+    accessDurationDays: 30,
+    now: new Date('2026-03-01T00:00:00.000Z'),
+  })
+  const lookupFailed = {
+    hasAccess: false,
+    expiresAt: null,
+    reason: 'unknown-purchase-date' as const,
+  }
+
+  it('megvett + élő hozzáférés → játszható', () => {
+    expect(
+      resolvePlayerGate({
+        purchased: true,
+        access: resolveCourseAccess({ purchasedAt: PURCHASE }),
+        hasPaidOrder: false,
+      }),
+    ).toEqual({ hasAccess: true, gate: null })
+  })
+
+  it('lookup-hiba nem lejárat', () => {
+    expect(
+      resolvePlayerGate({ purchased: true, access: lookupFailed, hasPaidOrder: false }),
+    ).toEqual({
+      hasAccess: false,
+      gate: { kind: 'lookup-failed', message: ACCESS_LOOKUP_FAILED_MESSAGE },
+    })
+    expect(ACCESS_LOOKUP_FAILED_MESSAGE).not.toContain(ACCESS_EXPIRED_TITLE)
+  })
+
+  it('lejárt hozzáférés → expired kapu', () => {
+    expect(
+      resolvePlayerGate({ purchased: true, access: expired, hasPaidOrder: false }),
+    ).toMatchObject({
+      hasAccess: false,
+      gate: { kind: 'expired' },
+    })
+  })
+
+  it('paid rendelés purchases nélkül → grant-pending, nem vásárlási kapu', () => {
+    expect(resolvePlayerGate({ purchased: false, access: null, hasPaidOrder: true })).toEqual({
+      hasAccess: false,
+      gate: { kind: 'grant-pending', message: ACCESS_GRANT_PENDING_MESSAGE },
+    })
+  })
+
+  it('nincs vásárlás → not-purchased', () => {
+    expect(resolvePlayerGate({ purchased: false, access: null, hasPaidOrder: false })).toEqual({
+      hasAccess: false,
+      gate: { kind: 'not-purchased', message: null },
+    })
+  })
+})

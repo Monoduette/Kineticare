@@ -1,6 +1,7 @@
 import type { Plugin } from 'payload'
 
 import { buildPasswordResetUrl } from '../password-reset-url'
+import { returnUrlFromForgotPasswordRequest } from '../return-url'
 import { resetPasswordEmail, verifyEmail } from './templates/auth'
 
 /**
@@ -38,8 +39,12 @@ export const usersAuthEmails: Plugin = (config) => {
           forgotPassword: {
             ...existingForgotPassword,
             generateEmailSubject: () => resetPasswordEmail({ resetUrl: '' }).subject,
-            generateEmailHTML: (args?: { token?: string; user?: unknown }) => {
-              const resetUrl = buildPasswordResetUrl(serverURL, args?.token ?? '')
+            generateEmailHTML: (args?: { token?: string; user?: unknown; req?: unknown }) => {
+              const resetUrl = buildPasswordResetUrl(
+                serverURL,
+                args?.token ?? '',
+                returnUrlFromForgotPasswordRequest(args?.req),
+              )
               return resetPasswordEmail({ name: userDisplayName(args?.user), resetUrl }).html
             },
           },

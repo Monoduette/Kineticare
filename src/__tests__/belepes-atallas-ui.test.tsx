@@ -42,7 +42,9 @@ const URLAP_FORRAS = readFileSync(
 )
 
 const atallasHtml = renderToStaticMarkup(createElement(BelepesAtallasPage))
-const elfelejtettHtml = renderToStaticMarkup(createElement(ElfelejtettJelszoPage))
+const elfelejtettHtml = renderToStaticMarkup(
+  await ElfelejtettJelszoPage({ searchParams: Promise.resolve({}) }),
+)
 
 /** A jelölők nélküli, látható szöveg — ezt olvassa a vevő. */
 function szoveg(html: string): string {
@@ -277,7 +279,8 @@ describe('sorhossz-mérték', () => {
   })
 
   it('az átállás-lap törzsszövege a törzs-mértékre szorul', () => {
-    const szabaly = /\.kc-atallas > p,\s*\n\.kc-atallas > ol\s*\{([\s\S]*?)\}/u.exec(AUTH_CSS)?.[1] ?? ''
+    const szabaly =
+      /\.kc-atallas > p,\s*\n\.kc-atallas > ol\s*\{([\s\S]*?)\}/u.exec(AUTH_CSS)?.[1] ?? ''
     expect(szabaly).toContain('max-width: var(--kc-measure)')
   })
 })
@@ -395,6 +398,16 @@ describe('/elfelejtett-jelszo — a régi vevő biztonsági hálója', () => {
   it('a lapon továbbra is EGY beküldő gomb és a visszaút áll', () => {
     expect((elfelejtettHtml.match(/<button\b/gu) ?? []).length).toBe(1)
     expect(elfelejtettSzoveg).toContain('Vissza a belépéshez')
+    expect(elfelejtettHtml).toContain('/belepes?returnUrl=%2Fkurzusaim')
+  })
+
+  it('a returnUrl a belépő visszaúton megmarad', async () => {
+    const html = renderToStaticMarkup(
+      await ElfelejtettJelszoPage({
+        searchParams: Promise.resolve({ returnUrl: '/penztar?termek=12' }),
+      }),
+    )
+    expect(html).toContain('/belepes?returnUrl=%2Fpenztar%3Ftermek%3D12')
   })
 })
 
@@ -413,10 +426,7 @@ describe('4.5. levél — a levél és a céllap ugyanazt mondja', () => {
     fileURLToPath(new URL('../../docs/vasarlo-migracio-terv.md', import.meta.url)),
     'utf8',
   )
-  const level = TERV.slice(
-    TERV.indexOf('### 4.5.'),
-    TERV.indexOf('**A behelyettesítendő mezők**'),
-  )
+  const level = TERV.slice(TERV.indexOf('### 4.5.'), TERV.indexOf('**A behelyettesítendő mezők**'))
   /** A levél SORTÖRÉS NÉLKÜL: a markdown idézet-jelölők a mondatokat elvágják. */
   const folyo = level.replace(/\n>\s*/gu, ' ').replace(/\s+/gu, ' ')
 

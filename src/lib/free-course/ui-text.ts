@@ -99,7 +99,7 @@ export function resolveFreeCourseSuccessKind(input: {
 }
 
 /** Siker, bejelentkezett vevő: a grant megvan, levél nincs. */
-export const FREE_COURSE_LIBRARY_TITLE = 'A kurzus a Kurzusaimban van'
+export const FREE_COURSE_LIBRARY_TITLE = 'A kurzusod megvan'
 export const FREE_COURSE_LIBRARY_BODY =
   'A hozzáférésed elkészült. Nyisd meg a kurzust, és azonnal indulhat.'
 
@@ -114,7 +114,7 @@ export const FREE_COURSE_BLOCKED_BODY =
  */
 export const FREE_COURSE_SUCCESS_TITLE = 'Nézd meg a postaládád'
 export const FREE_COURSE_SUCCESS_BODY =
-  'Ha ez a cím új, belépő linket küldtünk: azzal jelszót állítasz, utána a Kurzusaim oldalon indul a kurzus. Ha már van fiókod, a levélben leírtuk, hogyan kérheted a kurzust belépés után. Ha pár percen belül nem érkezik meg, nézd meg a levélszemét mappát is.'
+  'Ha ez a cím új, belépő linket küldtünk: azzal jelszót állítasz, utána a kurzusod megnyílik. Ha már van fiókod, a levélben leírtuk, hogyan kérheted a kurzust belépés után. Ha pár percen belül nem érkezik meg, nézd meg a levélszemét mappát is.'
 
 /**
  * Siker-szerű, de a levél NEM ment ki. Vendégnél nem állítjuk, hogy a
@@ -151,9 +151,14 @@ export const FREE_COURSE_NOT_CHECKOUT_TEXT =
 
 /**
  * Ugyanaz az állapot annak, aki a hozzáférést MÁR megkapta. Igényelnie nincs
- * mit, tehát a továbblépés a Kurzusaim (§3.2 #9) — a mondat pedig megmondja,
- * hol találja meg. Vendégként ez az ág nem fut: fiók nélkül nincs mihez
- * hasonlítani (a lap `alreadyPurchased`-e bejelentkezés nélkül mindig hamis).
+ * mit: a gomb a lejátszóra visz (§3.2 #8). Vendégként ez az ág nem fut: fiók
+ * nélkül nincs mihez hasonlítani (a lap `alreadyPurchased`-e bejelentkezés
+ * nélkül mindig hamis).
+ *
+ * Forrás: NN/g, Error Message Guidelines (mondd meg a következő lépést)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  */
 export const FREE_COURSE_ALREADY_GRANTED_TEXT =
-  'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A Kurzusaim oldalon éred el.'
+  'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A lejátszóban éred el.'

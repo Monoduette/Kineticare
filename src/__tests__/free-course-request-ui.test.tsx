@@ -316,7 +316,7 @@ describe('a sikeres beküldés után megjelenő szöveg', () => {
       createElement(FreeCourseSuccessView, { emailSent: false, productId: 2 }),
     )
     expect(html).toContain(FREE_COURSE_NO_EMAIL_TITLE)
-    expect(html).not.toContain('A kurzus a Kurzusaimban van')
+    expect(html).not.toContain(FREE_COURSE_LIBRARY_TITLE)
     expect(html).toContain(CONTACT_PATH)
   })
 })

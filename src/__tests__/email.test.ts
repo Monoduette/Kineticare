@@ -113,6 +113,7 @@ describe('e-mail sablonok (magyar, HTML + plain-text)', () => {
     expect(email.subject).toBe('Üdvözöl a Kineticare!')
     expect(email.html).toContain('Kedves Kiss Anna!')
     expect(email.html).toContain('https://pelda.hu/belepes')
+    expect(email.html).toContain('Belépés')
     expect(email.text).toContain('Kedves Kiss Anna!')
     expect(email.text).toContain('https://pelda.hu/belepes')
   })
@@ -125,6 +126,8 @@ describe('e-mail sablonok (magyar, HTML + plain-text)', () => {
     expect(email.subject).toBe('Jelszó visszaállítása')
     expect(email.html).toContain('https://pelda.hu/admin/reset/tok123')
     expect(email.html).toContain('Ha nem te kérted')
+    expect(email.html).not.toMatch(/[–—]/)
+    expect(email.html).toContain('Beállítom az új jelszót')
     expect(email.text).toContain('tok123')
   })
 
@@ -186,7 +189,7 @@ describe('usersAuthEmails plugin', () => {
   /** A beinjektált forgot-password sablon kiszedése típusszűkítéssel (`any` nélkül). */
   const forgotPasswordHtml = async (
     config: Config,
-    args: { token?: string; user?: unknown },
+    args: { token?: string; user?: unknown; req?: unknown },
   ): Promise<string> => {
     const users = (config.collections ?? []).find((collection) => collection.slug === 'users')
     const auth = typeof users?.auth === 'object' ? users.auth : undefined
@@ -196,7 +199,7 @@ describe('usersAuthEmails plugin', () => {
     if (typeof generate !== 'function') {
       throw new Error('Nincs beinjektálva forgot-password HTML-sablon.')
     }
-    return String(await generate(args))
+    return String(await generate(args as never))
   }
 
   const withServerUrl = async <T>(url: string, run: () => Promise<T>): Promise<T> => {
@@ -223,6 +226,18 @@ describe('usersAuthEmails plugin', () => {
       expect(html).toContain(`https://kineticare.example.com${PASSWORD_RESET_PATH}?token=tok123`)
       expect(html).not.toContain('/admin/reset/')
       expect(html).toContain('Kedves Kiss Anna!')
+    })
+  })
+
+  it('a req.data.returnUrl a reset-linkbe kerül', async () => {
+    await withServerUrl('https://kineticare.example.com', async () => {
+      const config = (await usersAuthEmails(baseConfig())) as Config
+      const html = await forgotPasswordHtml(config, {
+        token: 'tok123',
+        user: { name: 'Kiss Anna' },
+        req: { data: { returnUrl: '/kurzusaim/12' } },
+      })
+      expect(html).toContain('returnUrl=%2Fkurzusaim%2F12')
     })
   })
 

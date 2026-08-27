@@ -25,7 +25,7 @@ import { PriceTag } from '@/components/ui/PriceTag'
 import type { BillingFieldName } from '../../lib/checkout/billing'
 import type { GuestFieldName } from '../../lib/checkout/guest'
 import { CTA_PROGRESS_LABELS, ctaLabel } from '../../lib/cta-vocabulary'
-import { checkoutHref } from '../../lib/courses'
+import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
 import { signInHref } from '../../lib/return-url'
 import {
   BILLING_INPUT_NAME,
@@ -43,6 +43,7 @@ import {
   createCheckoutSubmitHandler,
   planCheckoutSubmission,
   CHECKOUT_ERROR_REGION_ID,
+  CHECKOUT_GUEST_EXISTING_ACCOUNT,
   emptyGuestForm,
   prefillBillingForm,
   withBillingValue,
@@ -341,7 +342,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
    * látogató a gombra érve azonnal megtudja, mi az akadály.
    */
   const blockReason: string | null = alreadyPurchased
-    ? 'Ezt a kurzust már megvetted, ezért új rendelés nem indítható. A kurzusaid között éred el.'
+    ? 'Ezt a kurzust már megvetted, ezért új rendelés nem indítható. A lejátszóban éred el.'
     : !waiverComplete
       ? 'A fizetéshez pipáld ki mindkét nyilatkozatot az „Elállási jog” résznél.'
       : // Az akadályok sorrendje az ŰRLAP sorrendjét követi (waiver, majd
@@ -437,6 +438,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         a CheckoutErrorRegion fejkommentje írja le.
       */}
       <CheckoutErrorRegion error={error} />
+      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ? (
+        <p className="kc-checkout-form__block-hint">
+          <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
+            {ctaLabel('sign-in')}
+          </Button>
+        </p>
+      ) : null}
 
       <Card className="kc-checkout-summary">
         <div className="kc-checkout-summary__row">
@@ -670,12 +678,15 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         Hiányzó nyilatkozat/már megvett: validáció + aria-describedby, nem disabled.
       */}
       <div className="kc-checkout-form__actions">
-        <Button
-          describedBy={blockReason === null ? undefined : CHECKOUT_BLOCK_HINT_ID}
-          disabled={submitting}
-          type="submit"
-        >
-          {/* A FELIRATOK A SZÓTÁRBÓL (2026-08-18). A fizetős ág a §3.2 #2
+        {alreadyPurchased ? (
+          <Button href={myCoursePlayerHref(product.id)}>{ctaLabel('course-start')}</Button>
+        ) : (
+          <Button
+            describedBy={blockReason === null ? undefined : CHECKOUT_BLOCK_HINT_ID}
+            disabled={submitting}
+            type="submit"
+          >
+            {/* A FELIRATOK A SZÓTÁRBÓL (2026-08-18). A fizetős ág a §3.2 #2
               („Megrendelem és fizetek") — a korábbi „Megrendelés és fizetés"
               deverbális főnévi alak volt (M-1), pedig ez a visszavonhatatlan
               lépés (P-1a → E/1).
@@ -687,13 +698,14 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
               a funkcióra a WCAG 2.2 · 3.2.4-et sértené, ráadásul deverbális
               főnévi alak volt. (Ez az ág egyébként VÉDEKEZŐ: a lap-szintű kapu
               ingyenes terméken az űrlap helyett tájékoztató állapotot rendel.) */}
-          {submitting
-            ? CTA_PROGRESS_LABELS.processing
-            : product.isFree
-              ? ctaLabel('free-course-request')
-              : ctaLabel('checkout-submit')}
-        </Button>
-        {blockReason === null ? null : (
+            {submitting
+              ? CTA_PROGRESS_LABELS.processing
+              : product.isFree
+                ? ctaLabel('free-course-request')
+                : ctaLabel('checkout-submit')}
+          </Button>
+        )}
+        {alreadyPurchased || blockReason === null ? null : (
           <p className="kc-checkout-form__block-hint" id={CHECKOUT_BLOCK_HINT_ID}>
             {blockReason}
           </p>

@@ -55,6 +55,46 @@ export function myCoursePlayerHref(productId: number): string {
   return `${MY_COURSES_PATH}/${productId}`
 }
 
+/** Igaz, ha a belső útvonal egy kurzus lejátszója (`/kurzusaim/12`). */
+export function isMyCoursePlayerHref(path: string): boolean {
+  return /^\/kurzusaim\/\d+$/.test(path)
+}
+
+/** Relatív vagy abszolút URL a lejátszóra mutat-e. */
+export function isMyCoursePlayerUrl(url: string): boolean {
+  const withoutOrigin = url.replace(/^https?:\/\/[^/?#]+/i, '')
+  const path = withoutOrigin.split(/[?#]/)[0] ?? withoutOrigin
+  return isMyCoursePlayerHref(path)
+}
+
+/**
+ * Jelszó-beállítás / belépés után: egy ismert SKU → a lejátszó, több vagy
+ * nulla → a Kurzusaim lista. A vendég-aktiváló levél így nem a üres listán
+ * landol, ha a rendelés egy kurzus.
+ */
+export function postAuthLibraryOrPlayerHref(productIds: readonly number[]): string {
+  const only = productIds.length === 1 ? productIds[0] : undefined
+  return typeof only === 'number' ? myCoursePlayerHref(only) : MY_COURSES_PATH
+}
+
+/** Rendelés-tételek termék-azonosítói (id vagy populate-olt doc). */
+export function productIdsFromOrderItems(
+  items: ReadonlyArray<{ product?: number | { id?: number } | null }> | null | undefined,
+): number[] {
+  const ids: number[] = []
+  for (const item of items ?? []) {
+    const product = item.product
+    if (product === null || product === undefined) {
+      continue
+    }
+    const id = typeof product === 'object' ? product.id : product
+    if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0 && !ids.includes(id)) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
 /**
  * A `users.purchases` nyers id-i, populate-olt doc és kevert lista esetén is.
  * A Kurzusaim lista korábban eldobta a nem-objektum bejegyzéseket, ezért

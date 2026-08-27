@@ -13,6 +13,7 @@ import { orderConfirmationEmail, type OrderConfirmationAccount } from './email/t
 import { logger as rootLogger, type Logger } from './logger'
 import { buildPasswordResetUrl } from './password-reset-url'
 import { signInHref } from './return-url'
+import { postAuthLibraryOrPlayerHref, productIdsFromOrderItems } from './courses'
 
 /**
  * Friss paid-átmenet mellékhatásai: invoice-issue job + visszaigazoló levél.
@@ -100,7 +101,11 @@ export interface OnOrderPaidDeps {
    * `forgotPassword` tokenjéből épült jelszó-beállító link. `null` = a link nem
    * készíthető el (ilyenkor a levél a belépésre irányít).
    */
-  createActivationUrl?: (input: { email: string; serverUrl: string }) => Promise<string | null>
+  createActivationUrl?: (input: {
+    email: string
+    serverUrl: string
+    returnUrl: string
+  }) => Promise<string | null>
 }
 
 /**
@@ -112,7 +117,7 @@ export interface OnOrderPaidDeps {
  */
 async function defaultActivationUrl(
   payload: Payload,
-  input: { email: string; serverUrl: string },
+  input: { email: string; serverUrl: string; returnUrl: string },
   log: Logger,
 ): Promise<string | null> {
   try {
@@ -131,7 +136,7 @@ async function defaultActivationUrl(
       })
       return null
     }
-    return buildPasswordResetUrl(input.serverUrl, token)
+    return buildPasswordResetUrl(input.serverUrl, token, input.returnUrl)
   } catch (error) {
     log.warn('aktiváló link készítése sikertelen (best-effort — a levél belépés-linkkel megy)', {
       cimzett: maskEmail(input.email),
@@ -187,6 +192,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
         : items.reduce((sum, item) => sum + item.totalHuf, 0)
 
     const serverUrl = (process.env.NEXT_PUBLIC_SERVER_URL ?? '').replace(/\/+$/, '')
+    const returnPath = postAuthLibraryOrPlayerHref(productIdsFromOrderItems(deps.order.items))
 
     /**
      * Levél változata: jelszó-beállító link (passwordSetupPending) vagy Kurzusaim/belépés.
@@ -196,14 +202,18 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
     if (deps.account?.passwordSetupPending === true) {
       const createActivationUrl =
         deps.createActivationUrl ??
-        ((activationInput: { email: string; serverUrl: string }) =>
+        ((activationInput: { email: string; serverUrl: string; returnUrl: string }) =>
           defaultActivationUrl(deps.payload, activationInput, log))
-      const activationUrl = await createActivationUrl({ email: accountEmail, serverUrl })
+      const activationUrl = await createActivationUrl({
+        email: accountEmail,
+        serverUrl,
+        returnUrl: returnPath,
+      })
       account =
         activationUrl === null
           ? {
               kind: 'login',
-              loginUrl: `${serverUrl}${signInHref('/kurzusaim')}`,
+              loginUrl: `${serverUrl}${signInHref(returnPath)}`,
               email: accountEmail,
             }
           : {
@@ -215,7 +225,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
     } else if (deps.account && !deps.account.alreadyLinked) {
       account = {
         kind: 'login',
-        loginUrl: `${serverUrl}${signInHref('/kurzusaim')}`,
+        loginUrl: `${serverUrl}${signInHref(returnPath)}`,
         email: accountEmail,
       }
     }
@@ -225,7 +235,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       buyerName: snapshotString(snapshot, 'name') || null,
       items,
       totalHuf,
-      coursesUrl: `${serverUrl}/kurzusaim`,
+      coursesUrl: `${serverUrl}${returnPath}`,
       // `isSzamlazzEnabled()` — a levél sorsa ne függjön a számlázási konfig dobásától.
       invoiceNote: isSzamlazzEnabled(),
       ...(account ? { account } : {}),

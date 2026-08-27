@@ -8,6 +8,7 @@ import { Section } from '@/components/ui/Section'
 import { CartView } from '@/components/checkout/CartView'
 import type { CartItem, CartItemAvailability } from '@/lib/cart'
 import { logger } from '@/lib/logger'
+import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
   coursePriceHuf,
   courseTitle,
@@ -123,9 +124,10 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
         {alreadyPurchased && termekItem !== null ? (
           <div className="kc-cart-notice" role="status">
             <p>
-              Ezt a kurzust már megvetted. A{' '}
-              <Link href={myCoursePlayerHref(termekItem.productId)}>Kurzusaim</Link> oldalon éred
-              el.
+              Ezt a kurzust már megvetted.{' '}
+              <Link href={myCoursePlayerHref(termekItem.productId)}>
+                {ctaLabel('course-start')}
+              </Link>
             </p>
           </div>
         ) : null}

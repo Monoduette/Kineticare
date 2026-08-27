@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { CoursePlayer } from '../components/account/CoursePlayer'
-import { accessExpiredMessage } from '../lib/course-access'
+import {
+  ACCESS_GRANT_PENDING_MESSAGE,
+  ACCESS_LOOKUP_FAILED_MESSAGE,
+  accessExpiredMessage,
+} from '../lib/course-access'
 import { buildCurriculum } from '../lib/curriculum/curriculum'
 
 /**
@@ -55,5 +59,41 @@ describe('CoursePlayer — lejárt hozzáférés', () => {
     )
     expect(html).toContain('Nincs hozzáférésed ehhez a kurzushoz')
     expect(html).toContain('megvásárlása szükséges')
+  })
+})
+
+describe('CoursePlayer — lookup-hiba és grant-pending (nem lejárat)', () => {
+  it('lookup-failed: nincs Lejárt, nincs értékesítési CTA', () => {
+    const html = renderToStaticMarkup(
+      createElement(CoursePlayer, {
+        product: { id: 42, title: 'Kézrehab alapkurzus' },
+        curriculum: EMPTY_CURRICULUM,
+        hasAccess: false,
+        expiredMessage: ACCESS_LOOKUP_FAILED_MESSAGE,
+        gateKind: 'lookup-failed',
+      }),
+    )
+    expect(html).toContain('A kurzus most nem nyitható meg')
+    expect(html).toContain(ACCESS_LOOKUP_FAILED_MESSAGE)
+    expect(html).not.toContain('Lejárt a hozzáférésed')
+    expect(html).not.toContain('megvásárlása szükséges')
+    expect(html).toContain('/kurzusaim/42')
+    expect(html).toContain('/kapcsolat')
+    expect(html).not.toContain('/kurzusok/42')
+  })
+
+  it('grant-pending: nincs értékesítési CTA', () => {
+    const html = renderToStaticMarkup(
+      createElement(CoursePlayer, {
+        product: { id: 42, title: 'Kézrehab alapkurzus' },
+        curriculum: EMPTY_CURRICULUM,
+        hasAccess: false,
+        expiredMessage: ACCESS_GRANT_PENDING_MESSAGE,
+        gateKind: 'grant-pending',
+      }),
+    )
+    expect(html).toContain('A kurzus most nem nyitható meg')
+    expect(html).toContain(ACCESS_GRANT_PENDING_MESSAGE)
+    expect(html).not.toContain('Lejárt a hozzáférésed')
   })
 })
