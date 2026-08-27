@@ -373,7 +373,7 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 | Terület | Fájl |
 | --- | --- |
 | **Feladatlista (mi van hátra)** | **`docs/feladatlista.md`** |
-| **Ügynök-térkép (cikk-CTA zárak, tilos találgatás)** | **`docs/agent-feature-map.md`** |
+| **Ügynök-térkép (cikk-CTA és Craft-sáv tartalmi zárak)** | **`docs/agent-feature-map.md`** |
 | Kezdőlap szekció-rendszer | `docs/szekcio-rendszer-terv.md` |
 | Értékesítési UX-skill (UI-munka előtt kötelező) | `docs/ertekesitesi-ux-skill.md` |
 | Szerkesztői útmutató (admin) | `docs/szerkesztoi-utmutato.md` |
