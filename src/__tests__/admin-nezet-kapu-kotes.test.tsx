@@ -47,6 +47,9 @@ vi.mock('../components/admin/BunnyLibraryPanel', () => ({
 
 const { StatisticsView } = await import('../components/admin/StatisticsView')
 const { BunnyLibraryView } = await import('../components/admin/BunnyLibraryView')
+const { WebAnalyticsView, WEB_ANALYTICS_ACCESS_DENIED_MESSAGE } = await import(
+  '../components/admin/WebAnalyticsView'
+)
 
 interface Szerep {
   role: string
@@ -123,5 +126,51 @@ describe('Videótár nézet: ugyanaz a kapu-kötés', () => {
     expect(bunnyPanelKem).toHaveBeenCalledWith(
       expect.objectContaining({ headingLevel: 'h2' }),
     )
+  })
+})
+
+describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
+  // Ez a nézet adatbázist nem kérdez, de a beágyazott PostHog-iframe és a
+  // külső linkek is BELSŐ felület — a tiltott ágon egyik sem jelenhet meg.
+  for (const [nev, user] of TILTOTT) {
+    it(`${nev} sem iframe, sem külső link nem renderel`, () => {
+      const html = renderToStaticMarkup(WebAnalyticsView(props(user)))
+      expect(html).toContain('data-keret="frame"')
+      expect(html).toContain(WEB_ANALYTICS_ACCESS_DENIED_MESSAGE)
+      expect(html).not.toContain('<iframe')
+      expect(html).not.toContain('Külső elemző-felületek')
+    })
+  }
+
+  it('staff szerepkörrel a külső linkek megjelennek; env nélkül a beüzemelési útmutató', () => {
+    const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'staff' })))
+    expect(html).toContain('Külső elemző-felületek')
+    expect(html).toContain('https://analytics.google.com/')
+    // POSTHOG_SHARED_DASHBOARD_URL nincs beállítva a tesztben → nincs iframe,
+    // helyette a beüzemelés lépései.
+    expect(html).not.toContain('<iframe')
+    expect(html).toContain('POSTHOG_SHARED_DASHBOARD_URL')
+  })
+
+  it('érvényes megosztási linkkel az iframe az embedded alakra normalizálva jelenik meg', () => {
+    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://eu.posthog.com/shared/AbCd1234xyz')
+    try {
+      const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'owner' })))
+      expect(html).toContain('<iframe')
+      expect(html).toContain('https://eu.posthog.com/embedded/AbCd1234xyz')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('idegen hostra mutató env-vel NINCS iframe (a nézet nem ágyaz be idegen oldalt)', () => {
+    vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://evil.example/shared/AbCd1234xyz')
+    try {
+      const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'owner' })))
+      expect(html).not.toContain('<iframe')
+      expect(html).not.toContain('evil.example')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

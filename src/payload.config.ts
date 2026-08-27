@@ -566,10 +566,20 @@ export default buildConfig({
           exact: true,
           meta: { title: 'Videótár' },
         },
+        // A látogatói viselkedés (PostHog beágyazott dashboard) és a külső
+        // elemző-felületek linkjei egy helyen — a kapu itt is a nézetben van
+        // (hasStaffOrOwnerRole), mert a route nyilvános.
+        webanalitika: {
+          Component: '/components/admin/WebAnalyticsView#WebAnalyticsView',
+          path: '/webanalitika',
+          exact: true,
+          meta: { title: 'Webanalitika' },
+        },
       },
       afterNavLinks: [
         '/components/admin/StatisticsNavLink#StatisticsNavLink',
         '/components/admin/BunnyLibraryNavLink#BunnyLibraryNavLink',
+        '/components/admin/WebAnalyticsNavLink#WebAnalyticsNavLink',
       ],
     },
   },
