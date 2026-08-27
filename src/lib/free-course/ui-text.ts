@@ -37,7 +37,7 @@ export const CONTACT_PATH = '/kapcsolat'
  * el előre a következő lépést, ne a beküldés után derüljön ki.
  */
 export const FREE_COURSE_INTRO =
-  'A kurzus ingyenes, fizetned nem kell érte. Add meg a neved és az e-mail-címed, a belépő linket pedig e-mailben küldjük.'
+  'A kurzus ingyenes, fizetned nem kell érte. Add meg a neved és az e-mail-címed. Új címre belépő linket küldünk; ha már van fiókod, a levélben leírjuk a következő lépést.'
 
 /** Mezőfeliratok — a kapcsolat-űrlap szóhasználatával azonos (WCAG 3.2.4). */
 export const FREE_COURSE_NAME_LABEL = 'Név'
@@ -47,7 +47,8 @@ export const FREE_COURSE_EMAIL_LABEL = 'E-mail-cím'
  * Az e-mail-mező súgója. Baymard: mondd meg, MIRE használod a mezőt; ez a
  * bizalmi kifogást („mit fogtok küldeni?") a mező mellett oldja fel.
  */
-export const FREE_COURSE_EMAIL_HINT = 'Erre a címre küldjük a belépő linket.'
+export const FREE_COURSE_EMAIL_HINT =
+  'Erre a címre küldjük a belépő vagy a belépési útmutató levelet.'
 
 /**
  * Az adatkezelési hozzájárulás szövege, linkkel a tájékoztatóra. A GDPR
@@ -69,22 +70,59 @@ export const FREE_COURSE_CONSENT_TEXT = {
  */
 export const FREE_COURSE_CONSENT_HINT = 'Egészségi állapotra vonatkozó adatot nem kérünk.'
 
-/** Siker, KIKÜLDÖTT levéllel. */
-export const FREE_COURSE_SUCCESS_TITLE = 'Elküldtük a belépő linket'
-export const FREE_COURSE_SUCCESS_BODY =
-  'Nyisd meg a postaládád: a levélben találsz egy linket, azzal állíthatsz be jelszót, utána pedig a Kurzusaim oldalon indul a kurzus. Ha pár percen belül nem érkezik meg, nézd meg a levélszemét mappát is.'
+/**
+ * A siker-nézet ága. A nyilvános HTTP-válasz vendégnél csak `{ ok, emailSent }`:
+ * a `next` CSAK bejelentkezett hívónak megy (fiók-felderítés ellen).
+ *
+ * Forrás: GOV.UK, Confirm a user exists (a nyilvános válasz maradjon semleges)
+ * https://design-system.service.gov.uk/patterns/confirm-a-user-exists/ ;
+ * NN/g, Error-message guidelines (mondd meg, mi történt)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.3.1 Error Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ */
+export type FreeCourseUiNext = 'library' | 'email' | 'blocked'
+
+export type FreeCourseSuccessKind = 'library' | 'email' | 'no-email' | 'blocked'
+
+export function resolveFreeCourseSuccessKind(input: {
+  next?: FreeCourseUiNext | null
+  emailSent: boolean
+}): FreeCourseSuccessKind {
+  if (input.next === 'library') {
+    return 'library'
+  }
+  if (input.next === 'blocked') {
+    return 'blocked'
+  }
+  return input.emailSent ? 'email' : 'no-email'
+}
+
+/** Siker, bejelentkezett vevő: a grant megvan, levél nincs. */
+export const FREE_COURSE_LIBRARY_TITLE = 'A kurzus a Kurzusaimban van'
+export const FREE_COURSE_LIBRARY_BODY =
+  'A hozzáférésed elkészült. Nyisd meg a kurzust, és azonnal indulhat.'
+
+/** Siker-szerű, de owner/staff fiók: nem írunk hozzáférést. */
+export const FREE_COURSE_BLOCKED_TITLE = 'Ezzel a fiókkal nem adható hozzá a kurzus'
+export const FREE_COURSE_BLOCKED_BODY =
+  'Munkatársi vagy tulajdonosi fiókkal az ingyenes kurzust nem tudjuk ide írni. Lépj be a vevői fiókoddal, vagy írj nekünk.'
 
 /**
- * Siker, de a levél NEM ment ki (nincs beállított levelező-szolgáltató, vagy a
- * szolgáltató elutasította a küldést).
- *
- * MIÉRT SAJÁT ÁLLAPOT: a hozzáférés ilyenkor is létrejön, tehát „hiba" üzenetet
- * írni hazugság lenne; a „elküldtük a linket" viszont ugyanúgy hazugság. A
- * látogatónak azt kell megtudnia, MI történt és MI a következő lépése (§2.7).
+ * Siker, levél kiment. Vendégnél SZÁNDÉKOSAN fedi az új címet és a meglévő
+ * fiókot: a nyilvános válasz nem árulhatja el, van-e már fiók.
  */
-export const FREE_COURSE_NO_EMAIL_TITLE = 'A hozzáférésed elkészült'
+export const FREE_COURSE_SUCCESS_TITLE = 'Nézd meg a postaládád'
+export const FREE_COURSE_SUCCESS_BODY =
+  'Ha ez a cím új, belépő linket küldtünk: azzal jelszót állítasz, utána a Kurzusaim oldalon indul a kurzus. Ha már van fiókod, a levélben leírtuk, hogyan kérheted a kurzust belépés után. Ha pár percen belül nem érkezik meg, nézd meg a levélszemét mappát is.'
+
+/**
+ * Siker-szerű, de a levél NEM ment ki. Vendégnél nem állítjuk, hogy a
+ * hozzáférés létrejött: aktivált fióknál nem is írtunk kurzust.
+ */
+export const FREE_COURSE_NO_EMAIL_TITLE = 'A kérésedet megkaptuk'
 export const FREE_COURSE_NO_EMAIL_BODY =
-  'A belépő linket viszont most nem tudjuk kiküldeni, mert a levélküldésünk éppen nem működik. Írj nekünk ugyanerről az e-mail-címről, és kézzel elküldjük a linket.'
+  'A belépő levelet most nem tudjuk kiküldeni, mert a levélküldésünk éppen nem működik. Írj nekünk ugyanerről az e-mail-címről, és kézzel elküldjük a belépőt.'
 /**
  * A „nem ment ki a levél" ág kisegítő hivatkozásának felirata.
  *

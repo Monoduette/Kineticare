@@ -11,6 +11,31 @@ export const STREAM_TOKEN_GRACE_SECONDS = 600
 /** A token maximális élettartama (másodperc): 24 óra. */
 export const STREAM_TOKEN_MAX_TTL_SECONDS = 24 * 60 * 60
 
+/**
+ * A jegy minimális élettartama (másodperc): 2 óra.
+ *
+ * A nyers videóhossz + 10 perc türelem rövid leckénél (5–20 perc) a szüneteltetés
+ * után lejár, miközben a lejátszó a régi embed-URL-t tartja. Alsó küszöb nélkül
+ * a „lejátszás ne szakadjon meg" frissítés üresjárat marad. WCAG 2.2 · 2.2.1
+ * Timing Adjustable: a munkamenet ne járjon le a feladat közben.
+ * https://www.w3.org/WAI/WCAG22/Understanding/timing-adjustable.html
+ */
+export const STREAM_TOKEN_MIN_TTL_SECONDS = 2 * 60 * 60
+
+/**
+ * A `createStreamPlaybackToken` durationSec bemenete a jegy TTL-jéhez.
+ *
+ * Hiányzó hossz: a 24 órás plafon (a lejátszás ne 503-ozzon szerkesztői
+ * kihagyás miatt). Ismert hossz: legalább a 2 órás alsó küszöb.
+ */
+export function durationSecForPlaybackToken(durationSec: number | null): number {
+  if (durationSec === null) {
+    return STREAM_TOKEN_MAX_TTL_SECONDS - STREAM_TOKEN_GRACE_SECONDS
+  }
+  const minDuration = STREAM_TOKEN_MIN_TTL_SECONDS - STREAM_TOKEN_GRACE_SECONDS
+  return Math.max(durationSec, minDuration)
+}
+
 export interface StreamPlaybackTokenInput {
   /** A Bunny Stream videó GUID-ja (a hashelendő szöveg 2. tagja). */
   videoId: string

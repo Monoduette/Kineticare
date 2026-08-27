@@ -12,6 +12,7 @@ import { maskEmail } from './email/mask'
 import { orderConfirmationEmail, type OrderConfirmationAccount } from './email/templates/order'
 import { logger as rootLogger, type Logger } from './logger'
 import { buildPasswordResetUrl } from './password-reset-url'
+import { signInHref } from './return-url'
 
 /**
  * Friss paid-átmenet mellékhatásai: invoice-issue job + visszaigazoló levél.
@@ -200,7 +201,11 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       const activationUrl = await createActivationUrl({ email: accountEmail, serverUrl })
       account =
         activationUrl === null
-          ? { kind: 'login', loginUrl: `${serverUrl}/belepes`, email: accountEmail }
+          ? {
+              kind: 'login',
+              loginUrl: `${serverUrl}${signInHref('/kurzusaim')}`,
+              email: accountEmail,
+            }
           : {
               kind: 'password-setup',
               activationUrl,
@@ -208,7 +213,11 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
               email: accountEmail,
             }
     } else if (deps.account && !deps.account.alreadyLinked) {
-      account = { kind: 'login', loginUrl: `${serverUrl}/belepes`, email: accountEmail }
+      account = {
+        kind: 'login',
+        loginUrl: `${serverUrl}${signInHref('/kurzusaim')}`,
+        email: accountEmail,
+      }
     }
 
     const template = orderConfirmationEmail({

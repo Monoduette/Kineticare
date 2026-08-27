@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { sanitizeReturnPath } from '../lib/preview/exit-preview'
-import { DEFAULT_AUTH_RETURN_URL, hasControlCharacter, sanitizeReturnUrl } from '../lib/return-url'
+import {
+  DEFAULT_AUTH_RETURN_URL,
+  hasControlCharacter,
+  sanitizeReturnUrl,
+  signInHref,
+} from '../lib/return-url'
 
 /**
  * Visszatérési útvonal (returnUrl) — open-redirect védelem.
@@ -180,5 +185,20 @@ describe('sanitizeReturnPath (előnézet) — visszafelé kompatibilis', () => {
     expect(sanitizeReturnPath(`//${HOSTILE_HOST}`)).toBe('/')
     expect(sanitizeReturnPath(`/\\${HOSTILE_HOST}`)).toBe('/')
     expect(sanitizeReturnPath(null)).toBe('/')
+  })
+})
+
+describe('signInHref', () => {
+  it('alapból a Kurzusaimra visz vissza', () => {
+    expect(signInHref()).toBe('/belepes?returnUrl=%2Fkurzusaim')
+    expect(signInHref('/kurzusaim')).toBe('/belepes?returnUrl=%2Fkurzusaim')
+  })
+
+  it('a pénztár termék-paraméterét megtartja', () => {
+    expect(signInHref('/penztar?termek=12')).toBe('/belepes?returnUrl=%2Fpenztar%3Ftermek%3D12')
+  })
+
+  it('idegen eredetű célnál a Kurzusaimra esik', () => {
+    expect(signInHref(`//${HOSTILE_HOST}`)).toBe('/belepes?returnUrl=%2Fkurzusaim')
   })
 })

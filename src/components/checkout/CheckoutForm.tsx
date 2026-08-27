@@ -25,6 +25,8 @@ import { PriceTag } from '@/components/ui/PriceTag'
 import type { BillingFieldName } from '../../lib/checkout/billing'
 import type { GuestFieldName } from '../../lib/checkout/guest'
 import { CTA_PROGRESS_LABELS, ctaLabel } from '../../lib/cta-vocabulary'
+import { checkoutHref } from '../../lib/courses'
+import { signInHref } from '../../lib/return-url'
 import {
   BILLING_INPUT_NAME,
   CHECKOUT_TERMS_HEADING,
@@ -156,7 +158,12 @@ export interface CheckoutFailureInput {
  * `withLeadTracking` és a Barion-pixel burkolók követnek. Naplózni innen nem
  * tudunk: a `src/lib/logger.ts` a szerver stdoutjára ír.
  */
-export function reportCheckoutFailure({ error, field, productId, reason }: CheckoutFailureInput): void {
+export function reportCheckoutFailure({
+  error,
+  field,
+  productId,
+  reason,
+}: CheckoutFailureInput): void {
   try {
     captureAnalyticsEvent(ANALYTICS_EVENTS.checkoutFailed, {
       productId,
@@ -307,13 +314,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
   const [guestErrors, setGuestErrors] = useState<GuestFieldErrors>({})
 
   /**
- * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
- * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
- * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
- * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
- * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
- * (`redirect`) érintetlen marad.
- */
+   * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
+   * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
+   * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
+   * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
+   * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
+   * (`redirect`) érintetlen marad.
+   */
   useEffect(() => {
     trackInitiateCheckout(
       checkoutBarionCourse({
@@ -445,11 +452,19 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
       {isGuest ? (
         <Card className="kc-checkout-guest">
           <h2>Elérhetőséged</h2>
+          {/*
+            A szerver aktivált fiókra 409-et ad (`CHECKOUT_GUEST_EXISTING_ACCOUNT`),
+            a kurzus NEM kerül csendben a meglévő fiókba. Baymard: a vendég-pénztár
+            mondja el a visszatérő vevőnek, hogy lépjen be
+            (https://baymard.com/blog/guest-and-account-checkout);
+            WCAG 2.2 · 3.3.1: a következő lépés legyen igaz.
+          */}
           <p className="kc-field__hint">
-            A vásárláshoz nem kell regisztrálni. A fizetés után erre a címre küldjük a
-            hozzáférést és egy linket, amivel jelszót állítasz be a fiókodhoz. Ha már van
-            fiókod ezzel a címmel, a kurzus abban jelenik meg —{' '}
-            <Link href="/belepes">be is jelentkezhetsz</Link>.
+            A vásárláshoz nem kell regisztrálni. A fizetés után erre a címre küldjük a hozzáférést
+            és egy linket, amivel jelszót állítasz be a fiókodhoz. Ha ezzel a címmel már van belépős
+            fiókod, előbb{' '}
+            <Link href={signInHref(checkoutHref(product.id))}>be is jelentkezhetsz</Link>:
+            vendégként a vásárlás nem kerül abba a fiókba.
           </p>
           <Field
             autoComplete="email"
@@ -608,8 +623,8 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         */
         <Card className="kc-checkout-waiver kc-checkout-waiver--free">
           <p>
-            Ez a kurzus ingyenes — a hozzáférés a regisztrációd után azonnal megnyílik, fizetés
-            és elállási nyilatkozat nélkül.
+            Ez a kurzus ingyenes — a hozzáférés a regisztrációd után azonnal megnyílik, fizetés és
+            elállási nyilatkozat nélkül.
           </p>
         </Card>
       )}

@@ -157,13 +157,13 @@ describe('e-mail sablonok (magyar, HTML + plain-text)', () => {
 describe('jelszó-beállító link', () => {
   it('a nyilvános oldalra mutat, URL-kódolt tokennel', () => {
     expect(buildPasswordResetUrl('https://kineticare.example.com', 'abc+def')).toBe(
-      `https://kineticare.example.com${PASSWORD_RESET_PATH}?token=abc%2Bdef`,
+      `https://kineticare.example.com${PASSWORD_RESET_PATH}?token=abc%2Bdef&returnUrl=%2Fkurzusaim`,
     )
   })
 
   it('a záró perjel nem duplázza az útvonalat', () => {
     expect(buildPasswordResetUrl('https://kineticare.example.com//', 'abc')).toBe(
-      `https://kineticare.example.com${PASSWORD_RESET_PATH}?token=abc`,
+      `https://kineticare.example.com${PASSWORD_RESET_PATH}?token=abc&returnUrl=%2Fkurzusaim`,
     )
   })
 })
@@ -199,7 +199,7 @@ describe('usersAuthEmails plugin', () => {
     return String(await generate(args))
   }
 
-  const withServerUrl = async <T,>(url: string, run: () => Promise<T>): Promise<T> => {
+  const withServerUrl = async <T>(url: string, run: () => Promise<T>): Promise<T> => {
     const previous = process.env.NEXT_PUBLIC_SERVER_URL
     process.env.NEXT_PUBLIC_SERVER_URL = url
     try {
@@ -216,10 +216,11 @@ describe('usersAuthEmails plugin', () => {
   it('a reset-link a NYILVÁNOS oldalra mutat, nem az adminra', async () => {
     await withServerUrl('https://kineticare.example.com', async () => {
       const config = (await usersAuthEmails(baseConfig())) as Config
-      const html = await forgotPasswordHtml(config, { token: 'tok123', user: { name: 'Kiss Anna' } })
-      expect(html).toContain(
-        `https://kineticare.example.com${PASSWORD_RESET_PATH}?token=tok123`,
-      )
+      const html = await forgotPasswordHtml(config, {
+        token: 'tok123',
+        user: { name: 'Kiss Anna' },
+      })
+      expect(html).toContain(`https://kineticare.example.com${PASSWORD_RESET_PATH}?token=tok123`)
       expect(html).not.toContain('/admin/reset/')
       expect(html).toContain('Kedves Kiss Anna!')
     })

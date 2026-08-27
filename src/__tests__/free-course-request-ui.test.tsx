@@ -3,12 +3,22 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CourseBuybox } from '../components/courses/CourseBuybox'
-import { FreeCourseRequestForm } from '../components/courses/FreeCourseRequestForm'
-import { CTA_PROGRESS_LABELS, CTA_VOCABULARY } from '../lib/cta-vocabulary'
+import {
+  FreeCourseRequestForm,
+  FreeCourseSuccessView,
+} from '../components/courses/FreeCourseRequestForm'
+import { CTA_PROGRESS_LABELS, CTA_VOCABULARY, ctaLabel } from '../lib/cta-vocabulary'
+import { myCoursePlayerHref } from '../lib/courses'
 import {
   CONTACT_PATH,
+  FREE_COURSE_BLOCKED_TITLE,
+  FREE_COURSE_INTRO,
+  FREE_COURSE_LIBRARY_TITLE,
+  FREE_COURSE_NO_EMAIL_TITLE,
   FREE_COURSE_SUBMIT_LABEL,
+  FREE_COURSE_SUCCESS_TITLE,
   PRIVACY_POLICY_PATH,
+  resolveFreeCourseSuccessKind,
 } from '../lib/free-course/ui-text'
 import type { Product } from '../payload-types'
 
@@ -126,7 +136,8 @@ describe('FreeCourseRequestForm — az igénylő űrlap kezdő állapota', () =>
 
   it('a bevezető megmondja ELŐRE, mi történik a beküldés után', () => {
     expect(html).toContain('A kurzus ingyenes, fizetned nem kell érte.')
-    expect(html).toContain('a belépő linket pedig e-mailben küldjük')
+    expect(html).toContain(FREE_COURSE_INTRO)
+    expect(html).not.toContain('a belépő linket pedig e-mailben küldjük')
   })
 
   it('a látható szövegben nincs töltelék gondolatjel', () => {
@@ -262,9 +273,50 @@ describe('CourseBuybox — a CTA-terület az ingyenes és a fizetős ágon', () 
 
 describe('a sikeres beküldés után megjelenő szöveg', () => {
   it('a kapcsolati út a levél nélküli ágon él (a látogató nem marad zsákutcában)', () => {
-    // A siker-nézet kliens-állapottól függ, ezért itt a szerződését a
-    // szövegmodulon keresztül rögzítjük: a levél nélküli ág kapcsolati linket
-    // kínál, a levél-ág nem.
     expect(CONTACT_PATH).toBe('/kapcsolat')
+  })
+
+  it('resolveFreeCourseSuccessKind: a next felülírja az emailSent-et', () => {
+    expect(resolveFreeCourseSuccessKind({ next: 'library', emailSent: false })).toBe('library')
+    expect(resolveFreeCourseSuccessKind({ next: 'blocked', emailSent: true })).toBe('blocked')
+    expect(resolveFreeCourseSuccessKind({ emailSent: true })).toBe('email')
+    expect(resolveFreeCourseSuccessKind({ emailSent: false })).toBe('no-email')
+  })
+
+  it('library: a kurzus lejátszójára visz, nem hazudik belépő linket', () => {
+    const html = renderToStaticMarkup(
+      createElement(FreeCourseSuccessView, { emailSent: false, next: 'library', productId: 2 }),
+    )
+    expect(html).toContain(FREE_COURSE_LIBRARY_TITLE)
+    expect(html).toContain(myCoursePlayerHref(2))
+    expect(html).toContain(ctaLabel('course-start'))
+    expect(html).not.toContain(FREE_COURSE_SUCCESS_TITLE)
+  })
+
+  it('blocked: figyelmeztet, és a kapcsolatra visz', () => {
+    const html = renderToStaticMarkup(
+      createElement(FreeCourseSuccessView, { emailSent: false, next: 'blocked', productId: 2 }),
+    )
+    expect(html).toContain(FREE_COURSE_BLOCKED_TITLE)
+    expect(html).toContain(CONTACT_PATH)
+    expect(html).toContain('kc-free-course__success--figyelem')
+  })
+
+  it('email: postaláda, vendégnél szándékosan fedi az új és a meglévő címet', () => {
+    const html = renderToStaticMarkup(
+      createElement(FreeCourseSuccessView, { emailSent: true, productId: 2 }),
+    )
+    expect(html).toContain(FREE_COURSE_SUCCESS_TITLE)
+    expect(html).toContain('Ha ez a cím új')
+    expect(html).not.toContain(CONTACT_PATH)
+  })
+
+  it('no-email: nem állítja, hogy a hozzáférés megvan', () => {
+    const html = renderToStaticMarkup(
+      createElement(FreeCourseSuccessView, { emailSent: false, productId: 2 }),
+    )
+    expect(html).toContain(FREE_COURSE_NO_EMAIL_TITLE)
+    expect(html).not.toContain('A kurzus a Kurzusaimban van')
+    expect(html).toContain(CONTACT_PATH)
   })
 })

@@ -78,13 +78,13 @@ export interface CoursePlayerProps {
    */
   watchedRefs?: readonly string[]
   /**
- * A nézettség-alapú, automatikus jelölést a Bunny player.js kliens
- * (`src/lib/stream/playerjs-client.ts`, külön körben készül) fogja hajtani.
- * A lejátszó mountkor MEGHÍVJA ezt a feliratkozót, és átadja neki a saját
- * jelentés-visszahívását; a feliratkozó a leiratkozó függvényt adhatja vissza.
- * Így a jövőbeli kliens EGYETLEN vékony burkolóval bekapcsolható, és a
- * jelölés útvonala UGYANAZ marad, mint a kézi gombé — a kettő nem tud
- */
+   * A nézettség-alapú, automatikus jelölést a Bunny player.js kliens
+   * (`src/lib/stream/playerjs-client.ts`, külön körben készül) fogja hajtani.
+   * A lejátszó mountkor MEGHÍVJA ezt a feliratkozót, és átadja neki a saját
+   * jelentés-visszahívását; a feliratkozó a leiratkozó függvényt adhatja vissza.
+   * Így a jövőbeli kliens EGYETLEN vékony burkolóval bekapcsolható, és a
+   * jelölés útvonala UGYANAZ marad, mint a kézi gombé — a kettő nem tud
+   */
   bindLessonProgress?: (report: LessonProgressReporter) => (() => void) | void
 }
 
@@ -108,6 +108,8 @@ type PlayerState =
       expiresAtEpochSec: number
       /** Az iframe által TÉNYLEGESEN betöltött embed-URL — token-frissítéskor NEM változik. */
       loadedSrc: string | null
+      /** A `loadedSrc`-be égetett jegy lejárata; ettől függ a csere. */
+      loadedExpiresAtEpochSec: number | null
     }
   | { kind: 'forbidden' }
   | { kind: 'unavailable' }
@@ -219,10 +221,7 @@ export function CoursePlayer({
   const idPrefix = useMemo(() => `kc-player-${product.id}`, [product.id])
   const railTitleId = `${idPrefix}-tananyag-cim`
 
-  const progress = useMemo(
-    () => summarizeCurriculum(curriculum, watched),
-    [curriculum, watched],
-  )
+  const progress = useMemo(() => summarizeCurriculum(curriculum, watched), [curriculum, watched])
   const activeLesson = useMemo(
     () => (activeRef === null ? null : findLessonByRef(curriculum, activeRef)),
     [curriculum, activeRef],
@@ -241,8 +240,8 @@ export function CoursePlayer({
   }, [])
 
   /**
- * Optimista jelölés: a pipa azonnal látszik, a szerverhívás hibája esetén
- */
+   * Optimista jelölés: a pipa azonnal látszik, a szerverhívás hibája esetén
+   */
   const markWatched = useCallback(
     async (lessonRef: string, announce: boolean) => {
       // SZERKEZETI zár: a ref már tartalmazza a késznek jelölt és az épp
@@ -501,6 +500,7 @@ export function CoursePlayer({
             src: nextSrc,
           },
           isRefresh,
+          nowSec,
         ),
       }))
     },
@@ -608,13 +608,13 @@ export function CoursePlayer({
   const handleSelectLesson = useCallback(
     (lessonRef: string) => {
       /**
- * Mobilon a választás zárja a panelt. A fókusz ilyenkor NEM a megnyitó
- * gombra tér vissza, hanem a lecke címére — azt a lecke-váltás effektje
- * intézi.
- * KIVÉTEL: ha a MÁR AKTÍV leckére kattint a felhasználó (tájékozódott a
- * panelen, és ott hagyta a kijelölést az `aria-current` során), nincs
- * lecke-váltás, tehát a váltás-effekt korán kilép, és a cím sem
- */
+       * Mobilon a választás zárja a panelt. A fókusz ilyenkor NEM a megnyitó
+       * gombra tér vissza, hanem a lecke címére — azt a lecke-váltás effektje
+       * intézi.
+       * KIVÉTEL: ha a MÁR AKTÍV leckére kattint a felhasználó (tájékozódott a
+       * panelen, és ott hagyta a kijelölést az `aria-current` során), nincs
+       * lecke-váltás, tehát a váltás-effekt korán kilép, és a cím sem
+       */
       if (lessonRef === activeRef) {
         closeRail()
         return
@@ -658,13 +658,13 @@ export function CoursePlayer({
         return
       }
       /**
- * A csukott modulok panelje `hidden` (→ `display: none`), a bennük lévő
- * lecke-gombokat viszont a szelektor visszaadná: az csak a `disabled`-re
- * szűr, a láthatóságra nem. A csapda így egy `display: none` elemet
- * tartana „utolsónak", és a fókusz előre KISZIVÁROGNA a dialogból,
- * visszafelé pedig beragadna. Mivel az `initialOpenModuleIds` csak az
- * aktív lecke modulját nyitja ki, ez a TÖBBMODULOS kurzus
- */
+       * A csukott modulok panelje `hidden` (→ `display: none`), a bennük lévő
+       * lecke-gombokat viszont a szelektor visszaadná: az csak a `disabled`-re
+       * szűr, a láthatóságra nem. A csapda így egy `display: none` elemet
+       * tartana „utolsónak", és a fókusz előre KISZIVÁROGNA a dialogból,
+       * visszafelé pedig beragadna. Mivel az `initialOpenModuleIds` csak az
+       * aktív lecke modulját nyitja ki, ez a TÖBBMODULOS kurzus
+       */
       const focusable = [
         ...panel.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -712,7 +712,7 @@ export function CoursePlayer({
     return (
       <Card className="kc-player-gate">
         <h1 className="kc-player-gate__title">{product.title}</h1>
-        <p>A tananyag feltöltése és feldolgozása folyamatban van — nézz vissza hamarosan.</p>
+        <p>A tananyag feltöltése és feldolgozása folyamatban van. Nézz vissza hamarosan.</p>
         <Button href="/kurzusaim" variant="secondary">
           Vissza a kurzusaimhoz
         </Button>
@@ -721,9 +721,9 @@ export function CoursePlayer({
   }
 
   const progressValueText = `${progress.completed} lecke kész a ${progress.total}-${elativeSuffix(progress.total)}`
-  // Az iframe src-je a BETÖLTÉSKORI embed-URL (`loadedSrc`): a token-frissítés a
-  // tárolt jegyet újítja, de az src-t NEM — így a lejátszó nem mountol újra, a
-  // pozíció megmarad.
+  // Az iframe src-je a BETÖLTÉSKORI embed-URL (`loadedSrc`): a token-frissítés
+  // a jegyet megújítja, az src-t csak akkor cseréli, ha a betöltött jegy a
+  // küszöb alá esik (lásd mergePlayingSession).
   const playingSrc =
     state.kind === 'playing' && state.lessonRef === activeRef ? state.loadedSrc : null
   const isVideoLesson = activeLesson?.kind === 'video'
@@ -753,7 +753,10 @@ export function CoursePlayer({
             type="button"
           >
             Tananyag
-            <span aria-hidden="true"> · {progress.completed}/{progress.total}</span>
+            <span aria-hidden="true">
+              {' '}
+              · {progress.completed}/{progress.total}
+            </span>
             <span className="kc-sr-only">, {progressValueText}</span>
           </button>
           <p className="kc-player__progress-text">
@@ -782,8 +785,8 @@ export function CoursePlayer({
           {progress.complete ? (
             <p className="kc-player__done-banner">
               <span>
-                Elvégezted a kurzust — {progress.total} lecke kész. Bármikor visszatérhetsz
-                bármelyik leckéhez.
+                Elvégezted a kurzust. {progress.total} lecke kész. Bármikor visszatérhetsz bármelyik
+                leckéhez.
               </span>
               <Link href="/kurzusaim">Vissza a kurzusaimhoz</Link>
             </p>
@@ -802,7 +805,7 @@ export function CoursePlayer({
                   key={playingSrc}
                   ref={iframeRef}
                   src={playingSrc}
-                  title={`${product.title} — ${activeLesson.title}`}
+                  title={`${product.title}: ${activeLesson.title}`}
                 />
               ) : null}
               {state.kind === 'forbidden' ? (
@@ -822,7 +825,11 @@ export function CoursePlayer({
                 <p className="kc-player__media-error" role="alert">
                   {state.message}
                   {activeRef === null ? null : (
-                    <Button onClick={() => void loadLesson(activeRef)} size="sm" variant="secondary">
+                    <Button
+                      onClick={() => void loadLesson(activeRef)}
+                      size="sm"
+                      variant="secondary"
+                    >
                       Újrapróbálom
                     </Button>
                   )}
@@ -872,10 +879,7 @@ export function CoursePlayer({
           <div aria-hidden="true" className="kc-player__scrim" onClick={closeRail} />
         ) : null}
         <div
-          className={[
-            'kc-player__rail-panel',
-            railOpen ? 'kc-player__rail-panel--open' : null,
-          ]
+          className={['kc-player__rail-panel', railOpen ? 'kc-player__rail-panel--open' : null]
             .filter(Boolean)
             .join(' ')}
           onKeyDown={handleRailKeyDown}

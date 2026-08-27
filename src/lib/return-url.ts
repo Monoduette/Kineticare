@@ -21,6 +21,27 @@
 /** A belépés/regisztráció alapértelmezett célja, ha nincs érvényes returnUrl. */
 export const DEFAULT_AUTH_RETURN_URL = '/kurzusaim'
 
+/** A nyilvános belépő oldal útvonala. */
+export const SIGN_IN_PATH = '/belepes'
+
+/**
+ * Belépő hivatkozás ellenőrzött `returnUrl`-lel.
+ *
+ * A kosár már így viszi vissza a vevőt a pénztárra; a pénztár vendég-sora, a
+ * köszönőoldal és a jelszó-levelek korábban csupasz `/belepes`-t adtak, és a
+ * belépés után a Kurzusaim/pénztár szándék elveszett. A szűrés ugyanaz, mint
+ * a belépő oldalé: idegen eredetű cél a `DEFAULT_AUTH_RETURN_URL`-re esik.
+ *
+ * Forrás: GOV.UK Design System, Begin with the user need / don’t drop people
+ * off a journey (https://design-system.service.gov.uk/patterns/task-list-pages/);
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
+ */
+export function signInHref(returnUrl: string = DEFAULT_AUTH_RETURN_URL): string {
+  const safe = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+  return `${SIGN_IN_PATH}?returnUrl=${encodeURIComponent(safe)}`
+}
+
 /**
  * Vezérlőkarakter (pl. soremelés) az útvonalban a `Location` fejlécben
  * fejléc-injekciót jelentene, ezért az ilyen érték sehol nem engedhető át.

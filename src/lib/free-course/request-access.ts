@@ -2,14 +2,17 @@ import type { Payload } from 'payload'
 
 import type { Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
+import { courseCtaHref } from '../course-url'
 import { isFreeCourse, courseTitle, hasUserPurchased } from '../courses'
 import { maskEmail } from '../email/mask'
 import { resolveEmailProvider, type EmailEnv } from '../email/provider'
 import { grantFreeCoursesToUser } from '../free-course-grant'
 import { logger as rootLogger, type Logger } from '../logger'
 import { buildPasswordResetUrl } from '../password-reset-url'
+import { signInHref } from '../return-url'
 import { generateInitialPassword } from '../security/initial-password'
 import { existingAccountFreeCourseEmail, freeCourseEmail } from './email'
+import type { FreeCourseUiNext } from './ui-text'
 
 /**
  * Ingyenes kurzus igénylése — transportfüggetlen szolgáltatás (név + e-mail → hozzáférés + belépő link).
@@ -28,10 +31,7 @@ export const FREE_COURSE_TOKEN_TTL_DAYS = Math.round(
 )
 
 export type FreeCourseRequestStatus =
-  | 'ok'
-  | 'course-not-available'
-  | 'refused-first-user'
-  | 'access-failed'
+  'ok' | 'course-not-available' | 'refused-first-user' | 'access-failed'
 
 export interface RequestFreeCourseAccessInput {
   payload: Payload
@@ -70,6 +70,11 @@ export interface RequestFreeCourseAccessResult {
   userCreated: boolean
   /** A ténylegesen beírt termék-id-k (üres, ha minden hozzáférés megvolt). */
   grantedProductIds: number[]
+  /**
+   * A felület következő lépése. A HTTP-réteg CSAK bejelentkezett hívónak
+   * tükrözi (vendégnél anti-enumeration: mindig `{ ok, emailSent }`).
+   */
+  next: FreeCourseUiNext
 }
 
 /**
@@ -112,6 +117,29 @@ export function resolveFreeCourseRequestActions(input: {
     return { grant: true, issueSetPasswordToken: false }
   }
   return { grant: false, issueSetPasswordToken: false }
+}
+
+/** A felületi `next` a kapu-döntésből: vendég HTTP-re ez NEM megy ki. */
+export function resolveFreeCourseUiNext(input: {
+  actions: FreeCourseRequestActions
+  role: User['role']
+  actorUserId?: number | null
+  userId?: number
+}): FreeCourseUiNext {
+  if (input.role === 'owner' || input.role === 'staff') {
+    if (
+      input.actorUserId != null &&
+      input.userId != null &&
+      Number(input.actorUserId) === Number(input.userId)
+    ) {
+      return 'blocked'
+    }
+    return 'email'
+  }
+  if (input.actions.grant && !input.actions.issueSetPasswordToken) {
+    return 'library'
+  }
+  return 'email'
 }
 
 /** Az advisory-zár kulcsa — cím szerint, hogy két párhuzamos igénylés soros legyen. */
@@ -183,7 +211,6 @@ async function resolveFreeProduct(payload: Payload, productId: number): Promise<
   return product
 }
 
-
 async function sendExistingAccountGuidanceEmail(input: {
   payload: Payload
   env: EmailEnv
@@ -191,6 +218,8 @@ async function sendExistingAccountGuidanceEmail(input: {
   name: string
   email: string
   courseTitle: string
+  /** Belépés után a kurzus igénylő űrlapja, nem az üres Kurzusaim. */
+  returnUrl: string
   log: Logger
   audit: { cimzett: string; productId: number }
   userId: number
@@ -198,7 +227,7 @@ async function sendExistingAccountGuidanceEmail(input: {
   if (!isEmailDeliverable(input.env, input.serverUrl) || input.serverUrl === null) {
     return isEmailDeliverable(input.env, input.serverUrl)
   }
-  const signInUrl = `${input.serverUrl}/belepes`
+  const signInUrl = `${input.serverUrl}${signInHref(input.returnUrl)}`
   const passwordResetUrl = `${input.serverUrl}/elfelejtett-jelszo`
   const template = existingAccountFreeCourseEmail({
     name: input.name,
@@ -255,6 +284,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: false,
       grantedProductIds: [],
+      next: 'email',
     }
   }
 
@@ -330,6 +360,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: false,
       grantedProductIds: [],
+      next: 'email',
     }
   }
 
@@ -350,6 +381,12 @@ export async function requestFreeCourseAccess(
     actorUserId: input.actorUserId ?? null,
     userId: fresh.id,
   })
+  const uiNext = resolveFreeCourseUiNext({
+    actions,
+    role: fresh.role,
+    actorUserId: input.actorUserId ?? null,
+    userId: fresh.id,
+  })
 
   // Owner/staff: se grant, se 7 napos reset-token. A válasz attól még
   // `{ ok: true }` — a szerepkör nem szivároghat a nyilvános végpontról.
@@ -362,9 +399,10 @@ export async function requestFreeCourseAccess(
       })
       return {
         status: 'ok',
-        emailDelivered: isEmailDeliverable(env, input.serverUrl),
+        emailDelivered: uiNext === 'blocked' ? false : isEmailDeliverable(env, input.serverUrl),
         userCreated: resolved.created,
         grantedProductIds: [],
+        next: uiNext,
       }
     }
 
@@ -380,6 +418,7 @@ export async function requestFreeCourseAccess(
       name: input.name,
       email,
       courseTitle: courseTitle(product),
+      returnUrl: courseCtaHref(product),
       log,
       audit,
       userId: fresh.id,
@@ -389,6 +428,7 @@ export async function requestFreeCourseAccess(
       emailDelivered,
       userCreated: resolved.created,
       grantedProductIds: [],
+      next: uiNext,
     }
   }
 
@@ -413,6 +453,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: resolved.created,
       grantedProductIds: grant.grantedProductIds,
+      next: 'email',
     }
   }
 
@@ -423,10 +464,10 @@ export async function requestFreeCourseAccess(
     grantedProductIds: grant.grantedProductIds,
   })
 
-  // Meglévő, már jelszavas vevő: a grant megvan, tokent NEM írunk. A
-  // `emailDelivered` a HTTP anti-enumeration miatt a provider-állapottal
-  // egyezik (a route-handler ezt tükrözi `emailSent`-ként), nem a tényleges
-  // küldéssel — különben a mező elárulná, hogy a címhez már van aktivált fiók.
+  // Bejelentkezett, saját címére kérő vevő: a grant megvan, levél nincs.
+  // Az `emailDelivered: false` itt IGAZ (nem anti-enum): ez az ág csak
+  // `actorUserId === userId` mellett fut, a HTTP-réteg a `next: library`
+  // értéket is kiteszi. Vendég aktivált fiókra a `!actions.grant` ág megy.
   if (!actions.issueSetPasswordToken) {
     log.info(
       'ingyenes kurzus igénylése: meglévő vevő, jelszó már beállítva — jelszó-token kihagyva',
@@ -434,9 +475,10 @@ export async function requestFreeCourseAccess(
     )
     return {
       status: 'ok',
-      emailDelivered: isEmailDeliverable(env, input.serverUrl),
+      emailDelivered: false,
       userCreated: resolved.created,
       grantedProductIds: grant.grantedProductIds,
+      next: uiNext,
     }
   }
 
@@ -461,6 +503,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: resolved.created,
       grantedProductIds: grant.grantedProductIds,
+      next: uiNext,
     }
   }
 
@@ -497,6 +540,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: resolved.created,
       grantedProductIds: grant.grantedProductIds,
+      next: uiNext,
     }
   }
 
@@ -534,6 +578,7 @@ export async function requestFreeCourseAccess(
       emailDelivered: false,
       userCreated: resolved.created,
       grantedProductIds: grant.grantedProductIds,
+      next: uiNext,
     }
   }
 
@@ -548,5 +593,6 @@ export async function requestFreeCourseAccess(
     emailDelivered: true,
     userCreated: resolved.created,
     grantedProductIds: grant.grantedProductIds,
+    next: uiNext,
   }
 }

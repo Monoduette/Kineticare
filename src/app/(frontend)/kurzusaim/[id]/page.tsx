@@ -11,6 +11,7 @@ import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseTitle, hasUserPurchased, parseCourseIdParam } from '@/lib/courses'
+import { signInHref } from '@/lib/return-url'
 import type { Product, User } from '@/payload-types'
 
 import config from '@payload-config'
@@ -29,7 +30,10 @@ const getCourseById = cache(async (id: number): Promise<Product | null> => {
     const payload = await getPayload({ config })
     return await payload.findByID({ collection: 'products', id, depth: 2, overrideAccess: true })
   } catch (error) {
-    logger.warn('lejátszó: kurzus-lekérdezés sikertelen', { productId: id, error: error instanceof Error ? error.message : String(error) })
+    logger.warn('lejátszó: kurzus-lekérdezés sikertelen', {
+      productId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 })
@@ -114,7 +118,7 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
 
   const user = await getCurrentUser()
   if (user === null) {
-    redirect(`/belepes?returnUrl=/kurzusaim/${courseId}`)
+    redirect(signInHref(`/kurzusaim/${courseId}`))
   }
 
   const product = await getCourseById(courseId)

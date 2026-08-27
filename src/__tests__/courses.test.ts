@@ -21,6 +21,8 @@ import {
   resolveCategoryFilter,
   resolveCourseCta,
   unpricedPublishedCourseIds,
+  myCoursePlayerHref,
+  purchaseIdsFrom,
 } from '../lib/courses'
 import { COURSE_CTA_ANCHOR, courseCtaHref } from '../lib/course-url'
 import { ctaLabel } from '../lib/cta-vocabulary'
@@ -126,8 +128,8 @@ describe('archived kurzus CTA-ja', () => {
     )
     expect(cta.kind).toBe('purchased')
     expect(cta.disabled).toBe(false)
-    expect(cta.href).toBe(MY_COURSES_PATH)
-    expect(cta.label).toBe(ctaLabel('my-courses-open'))
+    expect(cta.href).toBe(myCoursePlayerHref(7))
+    expect(cta.label).toBe(ctaLabel('course-start'))
   })
 
   it('draft + nem vevő: inaktív védekező ág (a nyilvános route amúgy 404)', () => {
@@ -146,7 +148,13 @@ describe('archived kurzus CTA-ja', () => {
 describe('ingyenes kurzus (free kind)', () => {
   it('published + ingyenes + nem vevő: §3.2 #3 felirat, a KURZUS igénylő űrlapjához', () => {
     const cta = resolveCourseCta(
-      { id: 10, slug: 'sos-kezrelax', status: 'published', priceInHUF: null, priceInHUFEnabled: false },
+      {
+        id: 10,
+        slug: 'sos-kezrelax',
+        status: 'published',
+        priceInHUF: null,
+        priceInHUFEnabled: false,
+      },
       false,
     )
     expect(cta.kind).toBe('free')
@@ -199,6 +207,13 @@ describe('„már megvetted" ág', () => {
     expect(hasUserPurchased(undefined, 1)).toBe(false)
   })
 
+  it('a nyers id-ket és a populate-olt relációkat egyaránt kinyeri', () => {
+    expect(purchaseIdsFrom([1, 2, { id: 3 }])).toEqual([1, 2, 3])
+    expect(purchaseIdsFrom(null)).toEqual([])
+    expect(purchaseIdsFrom(undefined)).toEqual([])
+    expect(purchaseIdsFrom([])).toEqual([])
+  })
+
   it('vevőnél a CTA a kurzusaimra mutat (checkout helyett), bármilyen státusznál', () => {
     for (const status of ['published', 'archived', 'draft'] as const) {
       const cta = resolveCourseCta(
@@ -206,7 +221,7 @@ describe('„már megvetted" ág', () => {
         true,
       )
       expect(cta.kind).toBe('purchased')
-      expect(cta.href).toBe(MY_COURSES_PATH)
+      expect(cta.href).toBe(myCoursePlayerHref(3))
       expect(cta.disabled).toBe(false)
     }
   })
@@ -289,15 +304,17 @@ describe('isFreeCourse — SZIGORÚ ingyenes-szabály', () => {
   })
 
   it('a gomb-logika, az ár-címke és a fizetős-szűrő UGYANAZT mondja minden bemenetre', () => {
-    const inputs: Array<{ priceInHUFEnabled: boolean | null | undefined; priceInHUF: number | null }> =
-      [
-        { priceInHUFEnabled: false, priceInHUF: null },
-        { priceInHUFEnabled: false, priceInHUF: 19990 },
-        { priceInHUFEnabled: true, priceInHUF: 19990 },
-        { priceInHUFEnabled: true, priceInHUF: null },
-        { priceInHUFEnabled: null, priceInHUF: null },
-        { priceInHUFEnabled: undefined, priceInHUF: null },
-      ]
+    const inputs: Array<{
+      priceInHUFEnabled: boolean | null | undefined
+      priceInHUF: number | null
+    }> = [
+      { priceInHUFEnabled: false, priceInHUF: null },
+      { priceInHUFEnabled: false, priceInHUF: 19990 },
+      { priceInHUFEnabled: true, priceInHUF: 19990 },
+      { priceInHUFEnabled: true, priceInHUF: null },
+      { priceInHUFEnabled: null, priceInHUF: null },
+      { priceInHUFEnabled: undefined, priceInHUF: null },
+    ]
     for (const input of inputs) {
       const free = isFreeCourse(input)
       const cta = resolveCourseCta({ id: 1, status: 'published', ...input }, false)
@@ -414,7 +431,7 @@ describe('a CTA sosem kínál olyan vásárlást, amit a checkout elutasít', ()
       true,
     )
     expect(cta.kind).toBe('purchased')
-    expect(cta.href).toBe(MY_COURSES_PATH)
+    expect(cta.href).toBe(myCoursePlayerHref(5))
   })
 })
 

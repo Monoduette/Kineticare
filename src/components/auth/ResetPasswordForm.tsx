@@ -1,12 +1,12 @@
 'use client'
 
-import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { resetPassword } from '../../lib/auth-client'
 import { ctaLabel, ctaProgressLabel } from '../../lib/cta-vocabulary'
+import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from '../../lib/return-url'
 import {
   formatPasswordPolicyErrors,
   validatePasswordStrength,
@@ -31,16 +31,31 @@ import {
  */
 export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkeztetve.'
 
+/**
+ * A siker-panel következő lépése. A jelszó-beállítás NEM léptet be magától:
+ * a Kurzusaim oldal belépést kér, és utána a kurzusoknál landolsz.
+ *
+ * Forrás: GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+ */
+export const RESET_SUCCESS_NEXT_STEP =
+  'Sikeresen beállítottad az új jelszavadat. A Kurzusaim oldalon megtalálod a kurzusaidat.'
+
 export interface ResetPasswordFormProps {
   token: string
+  /** A jelszó-beállítás utáni cél. Alapból `/kurzusaim`. */
+  returnUrl?: string
 }
 
-export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) {
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const safeReturn = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -68,11 +83,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     return (
       <div aria-live="polite" className="kc-auth-success" role="status">
         <h2>Új jelszó beállítva</h2>
-        <p>Sikeresen beállítottad az új jelszavadat. Most már be tudsz lépni vele.</p>
+        <p>{RESET_SUCCESS_NEXT_STEP}</p>
         <p className="kc-auth-success__note">{RESET_OTHER_DEVICES_NOTE}</p>
-        <Link className="kc-button kc-button--primary" href="/belepes">
-          {ctaLabel('sign-in')}
-        </Link>
+        <Button href={safeReturn}>{ctaLabel('my-courses-open')}</Button>
       </div>
     )
   }

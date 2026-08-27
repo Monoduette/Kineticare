@@ -3,13 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { getPayload } from 'payload'
-import {
-  createElement,
-  Fragment,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-} from 'react'
+import { createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -57,8 +51,7 @@ const VART = {
   horgony: 'kurzus-vasarlas-gomb',
   ingyenesSzoveg:
     'Ez a kurzus ingyenes, ezért nem a pénztáron át jár. A kurzus oldalán igényelheted: az űrlap rövid, és fizetned nem kell érte.',
-  mergvanSzoveg:
-    'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A Kurzusaim oldalon éred el.',
+  mergvanSzoveg: 'Ez a kurzus ingyenes, és a hozzáférésed már megvan. A Kurzusaim oldalon éred el.',
   igenylesFelirat: 'Elindítom ingyen',
   kurzusaimFelirat: 'Nyisd meg a kurzusaidat',
   kurzusaimUt: '/kurzusaim',
@@ -228,7 +221,7 @@ describe('/penztar — ingyenes termék, meglévő hozzáféréssel', () => {
     mockPayloadBehavior(ingyenesTermek, vevo)
     const html = renderMarkup(await renderPenztar(termekParam(ingyenesTermek)))
     expect(html).toContain(VART.mergvanSzoveg)
-    expect(html).toContain(`href="${VART.kurzusaimUt}"`)
+    expect(html).toContain(`href="/kurzusaim/${ingyenesTermek.id}"`)
     expect(html).toContain(VART.kurzusaimFelirat)
   })
 

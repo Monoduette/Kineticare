@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 
 import { TurnstileWidget } from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { withLeadTracking, type LeadTrackers } from '@/lib/analytics/lead-events'
-import { CTA_PROGRESS_LABELS } from '@/lib/cta-vocabulary'
+import { CTA_PROGRESS_LABELS, ctaLabel } from '@/lib/cta-vocabulary'
+import { myCoursePlayerHref } from '@/lib/courses'
 import {
   buildFreeCourseRequestPayload,
   submitFreeCourseRequest,
@@ -16,12 +17,16 @@ import {
 } from '@/lib/free-course/submit'
 import {
   CONTACT_PATH,
+  FREE_COURSE_BLOCKED_BODY,
+  FREE_COURSE_BLOCKED_TITLE,
   FREE_COURSE_CONSENT_HINT,
   FREE_COURSE_CONSENT_TEXT,
   FREE_COURSE_EMAIL_HINT,
   FREE_COURSE_EMAIL_LABEL,
   FREE_COURSE_ERROR_SUMMARY,
   FREE_COURSE_INTRO,
+  FREE_COURSE_LIBRARY_BODY,
+  FREE_COURSE_LIBRARY_TITLE,
   FREE_COURSE_NAME_LABEL,
   FREE_COURSE_NO_EMAIL_BODY,
   FREE_COURSE_NO_EMAIL_LINK_LABEL,
@@ -31,6 +36,8 @@ import {
   FREE_COURSE_SUCCESS_TITLE,
   FREE_COURSE_TURNSTILE_PENDING_ERROR,
   PRIVACY_POLICY_PATH,
+  resolveFreeCourseSuccessKind,
+  type FreeCourseUiNext,
 } from '@/lib/free-course/ui-text'
 import {
   EMPTY_FREE_COURSE_VALUES,
@@ -91,6 +98,75 @@ export async function trackedSubmitFreeCourseRequest(
   })
 }
 
+/**
+ * A beküldés utáni nézet. A `next` CSAK bejelentkezett válaszból jön;
+ * vendégnél a két út (új cím / meglévő fiók) szándékosan egy e-mail-szöveg.
+ *
+ * Forrás: GOV.UK, Confirm a user exists
+ * https://design-system.service.gov.uk/patterns/confirm-a-user-exists/ ;
+ * NN/g, Error Message Guidelines (mondd meg, mi történt)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.3.1 Error Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ */
+export function FreeCourseSuccessView(input: {
+  emailSent: boolean
+  next?: FreeCourseUiNext | null
+  productId: number
+  id?: string
+  headingRef?: RefObject<HTMLParagraphElement | null>
+}): JSX.Element {
+  const kind = resolveFreeCourseSuccessKind({
+    next: input.next,
+    emailSent: input.emailSent,
+  })
+  const figyelem = kind === 'no-email' || kind === 'blocked'
+  const title =
+    kind === 'library'
+      ? FREE_COURSE_LIBRARY_TITLE
+      : kind === 'blocked'
+        ? FREE_COURSE_BLOCKED_TITLE
+        : kind === 'email'
+          ? FREE_COURSE_SUCCESS_TITLE
+          : FREE_COURSE_NO_EMAIL_TITLE
+  const body =
+    kind === 'library'
+      ? FREE_COURSE_LIBRARY_BODY
+      : kind === 'blocked'
+        ? FREE_COURSE_BLOCKED_BODY
+        : kind === 'email'
+          ? FREE_COURSE_SUCCESS_BODY
+          : FREE_COURSE_NO_EMAIL_BODY
+
+  return (
+    <div
+      aria-live="polite"
+      className={`kc-free-course__success${figyelem ? ' kc-free-course__success--figyelem' : ''}`}
+      id={input.id}
+      role="status"
+    >
+      <p className="kc-free-course__success-title" ref={input.headingRef} tabIndex={-1}>
+        {title}
+      </p>
+      <p className="kc-free-course__success-body">{body}</p>
+      {kind === 'library' ? (
+        <p className="kc-free-course__success-body">
+          <Button href={myCoursePlayerHref(input.productId)} variant="primary">
+            {ctaLabel('course-start')}
+          </Button>
+        </p>
+      ) : null}
+      {kind === 'blocked' || kind === 'no-email' ? (
+        <p className="kc-free-course__success-body">
+          <Link className="kc-course-textlink" href={CONTACT_PATH}>
+            {FREE_COURSE_NO_EMAIL_LINK_LABEL}
+          </Link>
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 export function FreeCourseRequestForm({
   productId,
   courseTitle,
@@ -106,8 +182,11 @@ export function FreeCourseRequestForm({
   })
   const [errors, setErrors] = useState<FreeCourseFormErrors>({})
   const [submitting, setSubmitting] = useState(false)
-  /** `null` = még nem küldtük be; egyébként: kiment-e a belépő levél. */
-  const [succeededEmailSent, setSucceededEmailSent] = useState<boolean | null>(null)
+  /** `null` = még nem küldtük be; egyébként a szerver őszinte sikerága. */
+  const [success, setSuccess] = useState<{
+    emailSent: boolean
+    next?: FreeCourseUiNext
+  } | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [honeypot, setHoneypot] = useState('')
@@ -117,7 +196,7 @@ export function FreeCourseRequestForm({
   const successHeadingRef = useRef<HTMLParagraphElement>(null)
 
   const turnstileEnabled = isTurnstileEnabled(turnstileSiteKey)
-  const succeeded = succeededEmailSent !== null
+  const succeeded = success !== null
 
   useEffect(() => {
     if (succeeded) {
@@ -158,7 +237,7 @@ export function FreeCourseRequestForm({
 
     // Honeypot: bot gyanú esetén hálózati hívás nélkül „sikerül" a beküldés.
     if (honeypot.length > 0) {
-      setSucceededEmailSent(true)
+      setSuccess({ emailSent: true })
       return
     }
 
@@ -175,49 +254,22 @@ export function FreeCourseRequestForm({
     setSubmitting(false)
 
     if (result.ok) {
-      setSucceededEmailSent(result.emailSent)
+      setSuccess({ emailSent: result.emailSent, next: result.next })
       return
     }
     setSubmitError(result.message)
     setFailedAttempts((previous) => previous + 1)
   }
 
-  if (succeeded) {
-    // A siker-nézet KÉT változata. Ha a belépő levél nem tudott kimenni, a
-    // látogató IGAZ üzenetet kap arról, mi történt és mi a következő lépése —
-    // a hozzáférése ilyenkor is létrejött (§2.7: mondd meg, mi történt és
-    // hogyan léphet tovább).
-    const emailSent = succeededEmailSent === true
+  if (succeeded && success !== null) {
     return (
-      <div
-        aria-live="polite"
-        // A SZÍN is mondjon igazat: a levél nélküli ág nem tiszta siker (a
-        // hozzáférés megvan, a link viszont nem ment ki), ezért a figyelem-
-        // (warning) tokenpárt viseli, nem a sikerzöldet. NN/g 1. heurisztika:
-        // a rendszerállapot legyen látható és pontos. A `role="status"` marad:
-        // ez állapot, nem hiba.
-        className={`kc-free-course__success${emailSent ? '' : ' kc-free-course__success--figyelem'}`}
+      <FreeCourseSuccessView
+        emailSent={success.emailSent}
+        headingRef={successHeadingRef}
         id={id}
-        role="status"
-      >
-        <p
-          className="kc-free-course__success-title"
-          ref={successHeadingRef}
-          tabIndex={-1}
-        >
-          {emailSent ? FREE_COURSE_SUCCESS_TITLE : FREE_COURSE_NO_EMAIL_TITLE}
-        </p>
-        <p className="kc-free-course__success-body">
-          {emailSent ? FREE_COURSE_SUCCESS_BODY : FREE_COURSE_NO_EMAIL_BODY}
-        </p>
-        {emailSent ? null : (
-          <p className="kc-free-course__success-body">
-            <Link className="kc-course-textlink" href={CONTACT_PATH}>
-              {FREE_COURSE_NO_EMAIL_LINK_LABEL}
-            </Link>
-          </p>
-        )}
-      </div>
+        next={success.next}
+        productId={productId}
+      />
     )
   }
 

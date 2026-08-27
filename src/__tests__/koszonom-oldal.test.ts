@@ -110,9 +110,7 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
    * ezen az ágon SEMMILYEN kimenetelt nem állítunk.
    */
   const markup = () =>
-    renderToStaticMarkup(
-      createElement(ThankYouUnauthorized, { orderNumber: 'KH-2026-000009' }),
-    )
+    renderToStaticMarkup(createElement(ThankYouUnauthorized, { orderNumber: 'KH-2026-000009' }))
 
   it('nem mondja, hogy megtörtént a vásárlás', () => {
     const html = markup()
@@ -122,23 +120,27 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
     expect(html).not.toContain('A fizetésed feldolgozzuk')
   })
 
-  it('kimondja, hogy belépés nélkül nem látjuk az állapotot', () => {
+  it('kimondja, hogy a visszaigazolás e-mailben jön, belépés nélkül nem látjuk az állapotot', () => {
     const html = markup()
-    expect(html).toContain('Nem látjuk, mi történt a fizetéssel')
-    expect(html).toContain('be kell lépned')
+    expect(html).toContain('A visszaigazolás e-mailben érkezik')
+    expect(html).toContain('nincs belépésed')
+    expect(html).not.toContain('Nem látjuk, mi történt a fizetéssel')
   })
 
   it('MINDKÉT lehetséges kimenetelre megmondja a következő lépést', () => {
     const html = markup()
-    expect(html).toContain('Ha sikerült')
-    expect(html).toContain('Ha megszakítottad vagy elutasították')
-    expect(html).toContain('újrapróbálhatod')
+    expect(html).toContain('ha a fizetés sikerült')
+    expect(html).toContain('megszakítottad')
+    expect(html).toContain('elutasította')
+    expect(html).toContain('próbálhatod')
   })
 
-  it('a rendelésszám és a két kiút megmarad (nem lesz zsákutca)', () => {
+  it('a rendelésszám és a két kiút megmarad, a belépés NEM a köszönőoldalra visz vissza', () => {
     const html = markup()
     expect(html).toContain('KH-2026-000009')
     expect(html).toContain('/belepes?returnUrl=')
+    expect(html).toContain('%2Fkurzusaim')
+    expect(html).not.toContain('/fizetes/koszonom')
     expect(html).toContain('/kurzusok')
   })
 })

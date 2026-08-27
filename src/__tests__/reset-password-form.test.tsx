@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   RESET_OTHER_DEVICES_NOTE,
+  RESET_SUCCESS_NEXT_STEP,
   ResetPasswordForm,
 } from '../components/auth/ResetPasswordForm'
 
@@ -21,10 +22,16 @@ describe('ResetPasswordForm — más eszközök kijelentkezése (J2)', () => {
     expect(source).toContain('{RESET_OTHER_DEVICES_NOTE}')
     expect(RESET_OTHER_DEVICES_NOTE).toBe('A többi eszközön ki leszel jelentkeztetve.')
     expect(RESET_OTHER_DEVICES_NOTE).not.toMatch(/[–—]/)
+    expect(RESET_SUCCESS_NEXT_STEP).toContain('Kurzusaim')
+    expect(RESET_SUCCESS_NEXT_STEP).not.toMatch(/[–—]/)
+    expect(source).toContain("ctaLabel('my-courses-open')")
+    expect(source).not.toContain('href="/belepes"')
   })
 
   it('az űrlap alapállapota NEM mutatja a siker-mondatot', () => {
-    const html = renderToStaticMarkup(createElement(ResetPasswordForm, { token: 'DUMMY-RESET-TOKEN' }))
+    const html = renderToStaticMarkup(
+      createElement(ResetPasswordForm, { token: 'DUMMY-RESET-TOKEN' }),
+    )
     expect(html).not.toContain(RESET_OTHER_DEVICES_NOTE)
     expect(html).toContain('Új jelszó')
   })

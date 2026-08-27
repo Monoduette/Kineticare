@@ -213,7 +213,9 @@ describe('primaryAction — a gombfeliratok állapotgépe', () => {
           continue
         }
         const teszValamit =
-          action.disabled || action.targetRef !== null || (action.marksWatched && !watched.has(current))
+          action.disabled ||
+          action.targetRef !== null ||
+          (action.marksWatched && !watched.has(current))
         expect(teszValamit, `${current} / ${[...watched].join(',')} → ${action.kind}`).toBe(true)
       }
     }
@@ -258,7 +260,9 @@ describe('modul-nyitottság — kezdőállapot és megőrzés', () => {
 })
 
 describe('readModuleState / writeModuleState — a privát mód nem törhet el semmit', () => {
-  function storage(initial: Record<string, string>): ModuleStateStorage & { store: Record<string, string> } {
+  function storage(
+    initial: Record<string, string>,
+  ): ModuleStateStorage & { store: Record<string, string> } {
     const store = { ...initial }
     return {
       store,
@@ -432,7 +436,9 @@ describe('CoursePlayer — a felület szerződése a szerveroldali kimeneten', (
     // A folytatás az első nem kész lecke: 'l3' az 1. modulban → m1 nyitva, m2 zárva.
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('aria-expanded="false"')
-    expect(html).toMatch(/id="kc-player-5-modul-1-panel"[^>]*hidden|hidden[^>]*id="kc-player-5-modul-1-panel"/)
+    expect(html).toMatch(
+      /id="kc-player-5-modul-1-panel"[^>]*hidden|hidden[^>]*id="kc-player-5-modul-1-panel"/,
+    )
   })
 
   it('az állapot SOSEM csak színnel jelölt: minden sor visel szöveges állapotot', () => {
@@ -498,7 +504,7 @@ describe('CoursePlayer — kapuzott állapotok', () => {
         watchedRefs: ['l1', 'l3', 'l4', 'l5'],
       }),
     )
-    expect(html).toContain('Elvégezted a kurzust — 4 lecke kész')
+    expect(html).toContain('Elvégezted a kurzust. 4 lecke kész')
     expect(html).toContain('4/4 lecke kész')
     // A sáv NEM elutasítható (nincs „×", nincs „később"): nincs mit elhárítani,
     // és a dark pattern-tilalom szerint nem is kell rá válaszolni.

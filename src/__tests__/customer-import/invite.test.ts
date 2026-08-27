@@ -36,13 +36,13 @@ describe('szerver-URL feloldása', () => {
 describe('link-építés', () => {
   it('a vásárlói jelszó-beállító oldalra mutat, URL-kódolt tokennel', () => {
     expect(buildInviteUrl('https://kineticare.example.com', 'abc+def')).toBe(
-      `https://kineticare.example.com${INVITE_RESET_PATH}?token=abc%2Bdef`,
+      `https://kineticare.example.com${INVITE_RESET_PATH}?token=abc%2Bdef&returnUrl=%2Fkurzusaim`,
     )
   })
 
   it('a záró perjel nem duplázza az útvonalat', () => {
     expect(buildInviteUrl('https://kineticare.example.com//', 'abc')).toBe(
-      `https://kineticare.example.com${INVITE_RESET_PATH}?token=abc`,
+      `https://kineticare.example.com${INVITE_RESET_PATH}?token=abc&returnUrl=%2Fkurzusaim`,
     )
   })
 })
@@ -94,11 +94,9 @@ describe('link-generálás', () => {
   })
 
   it('ismeretlen e-mailnél NEM hallgat: hibalistába kerül', async () => {
-    const result = await generateInviteLinks(
-      createFakePayload(db()),
-      ['nincs.ilyen@example.com'],
-      { serverUrl: 'https://kineticare.example.com' },
-    )
+    const result = await generateInviteLinks(createFakePayload(db()), ['nincs.ilyen@example.com'], {
+      serverUrl: 'https://kineticare.example.com',
+    })
     expect(result.links).toEqual([])
     expect(result.issues[0]).toMatchObject({
       email: 'nincs.ilyen@example.com',

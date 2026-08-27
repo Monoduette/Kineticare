@@ -583,8 +583,23 @@ describe('CheckoutForm — a kiszolgált HTML (előkitöltés és autofill)', ()
   })
 
   it('induláskor egyetlen mező sem érvénytelen (aria-invalid csak hiba után jelenik meg)', () => {
-    expect(render({ name: 'Minta Mari', email: 'vevo@example.test' })).not.toContain(
-      'aria-invalid',
+    expect(render({ name: 'Minta Mari', email: 'vevo@example.test' })).not.toContain('aria-invalid')
+  })
+})
+
+describe('CheckoutForm — vendég, meglévő fiók (409-szabály)', () => {
+  it('előre elmondja, hogy vendégvásárlás nem kerül a meglévő fiókba, és belépés után a pénztárra visz', () => {
+    const html = renderToStaticMarkup(
+      createElement(CheckoutForm, {
+        product: { id: 42, sku: 'Kézrehab alapkurzus', priceHuf: 24900, isFree: false },
+        user: null,
+        alreadyPurchased: false,
+      }),
     )
+    expect(html).toContain('be is jelentkezhetsz')
+    expect(html).toContain('vendégként a vásárlás nem kerül abba a fiókba')
+    expect(html).toContain('/belepes?returnUrl=')
+    expect(html).toContain('%2Fpenztar%3Ftermek%3D42')
+    expect(html).not.toMatch(/[–—]/)
   })
 })

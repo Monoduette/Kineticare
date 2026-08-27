@@ -16,13 +16,13 @@ import {
 } from '@/lib/free-course/ui-text'
 import { logger } from '@/lib/logger'
 import {
-  MY_COURSES_PATH,
   UNAVAILABLE_COURSE_NOTE,
   coursePriceHuf,
   courseTitle,
   hasUserPurchased,
   isFreeCourse,
   isPaidCourse,
+  myCoursePlayerHref,
 } from '@/lib/courses'
 import type { Product, User } from '@/payload-types'
 
@@ -52,7 +52,10 @@ async function getProductById(id: number): Promise<Product | null> {
     const payload = await getPayload({ config })
     return await payload.findByID({ collection: 'products', id, depth: 1, overrideAccess: true })
   } catch (error) {
-    logger.warn('penztár: termék-lekérdezés sikertelen', { productId: id, error: error instanceof Error ? error.message : String(error) })
+    logger.warn('penztár: termék-lekérdezés sikertelen', {
+      productId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }
@@ -124,9 +127,9 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
   const isFree = isFreeCourse(product)
 
   /**
- * A HIBA, AMIT BEZÁR. A `/penztar?termek=<ingyenes-id>` eddig teljes értékű
- * MIÉRT ÁLLAPOT ÉS NEM ÁTIRÁNYÍTÁS. Ugyanaz az érv, amit a fenti archivált ág
- */
+   * A HIBA, AMIT BEZÁR. A `/penztar?termek=<ingyenes-id>` eddig teljes értékű
+   * MIÉRT ÁLLAPOT ÉS NEM ÁTIRÁNYÍTÁS. Ugyanaz az érv, amit a fenti archivált ág
+   */
   if (isFree) {
     return (
       <Section>
@@ -134,12 +137,10 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
           <h1>Pénztár</h1>
           <div className="kc-cart-empty" role="status">
             <p>
-              {alreadyPurchased
-                ? FREE_COURSE_ALREADY_GRANTED_TEXT
-                : FREE_COURSE_NOT_CHECKOUT_TEXT}
+              {alreadyPurchased ? FREE_COURSE_ALREADY_GRANTED_TEXT : FREE_COURSE_NOT_CHECKOUT_TEXT}
             </p>
             <Button
-              href={alreadyPurchased ? MY_COURSES_PATH : courseCtaHref(product)}
+              href={alreadyPurchased ? myCoursePlayerHref(product.id) : courseCtaHref(product)}
               variant="secondary"
             >
               {ctaLabel(alreadyPurchased ? 'my-courses-open' : 'free-course-claim')}
@@ -151,9 +152,9 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
   }
 
   /**
- * A HIBA, AMIT BEZÁR. A fenti ingyenes-kapu feltétele az `isFreeCourse`,
- * `courses.ts` fejkommentje szerint a „fizetős" és az „ingyenes" NEM egymás
- */
+   * A HIBA, AMIT BEZÁR. A fenti ingyenes-kapu feltétele az `isFreeCourse`,
+   * `courses.ts` fejkommentje szerint a „fizetős" és az „ingyenes" NEM egymás
+   */
   if (!isPaidCourse(product)) {
     return (
       <Section>
@@ -174,13 +175,16 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
     <Section>
       <Container size="narrow">
         {/* PostHog funnel-lépés: a pénztár megnyitása (no-op consent nélkül). */}
-        <TrackEvent event="checkout_started" properties={{ courseId: product.id, courseSku: product.sku ?? undefined }} />
+        <TrackEvent
+          event="checkout_started"
+          properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
+        />
         <h1>Pénztár</h1>
         {alreadyPurchased ? (
           <div className="kc-cart-notice" role="status">
             <p>
-              Ezt a kurzust már megvetted — a{' '}
-              <Link href="/kurzusaim">Kurzusaim</Link> oldalon éred el.
+              Ezt a kurzust már megvetted. A{' '}
+              <Link href={myCoursePlayerHref(product.id)}>Kurzusaim</Link> oldalon éred el.
             </p>
           </div>
         ) : null}

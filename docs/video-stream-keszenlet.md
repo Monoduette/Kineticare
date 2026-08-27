@@ -19,15 +19,15 @@
 
 ## 1. Egy percben: hol tartunk
 
-| Terület | Állapot |
-|---|---|
-| Jogosultság-ellenőrzés (ki nézheti a videót) | ✅ Kész, tesztelt |
-| Lejátszási jegy (token) kiállítása — Bunny-séma | ✅ Kész, tesztelt |
-| Lejátszó felület (kezdőlap, előzetes, kurzus) | ✅ Kész |
-| Biztonsági fejléc (CSP) a Bunnyhoz | ✅ Kész |
-| A lejátszási lánc korábbi két kódhibája | ✅ Javítva (4.3) |
-| Bunny-kulcsok és library-azonosítók beállítása | ❌ Hiányzik (ez az utolsó lépés) |
-| Videó feltöltése a rendszeren keresztül | ❌ Nincs — kézi másolás az adminba |
+| Terület                                         | Állapot                            |
+| ----------------------------------------------- | ---------------------------------- |
+| Jogosultság-ellenőrzés (ki nézheti a videót)    | ✅ Kész, tesztelt                  |
+| Lejátszási jegy (token) kiállítása — Bunny-séma | ✅ Kész, tesztelt                  |
+| Lejátszó felület (kezdőlap, előzetes, kurzus)   | ✅ Kész                            |
+| Biztonsági fejléc (CSP) a Bunnyhoz              | ✅ Kész                            |
+| A lejátszási lánc korábbi két kódhibája         | ✅ Javítva (4.3)                   |
+| Bunny-kulcsok és library-azonosítók beállítása  | ❌ Hiányzik (ez az utolsó lépés)   |
+| Videó feltöltése a rendszeren keresztül         | ❌ Nincs — kézi másolás az adminba |
 
 Magyarul: a **nehéz része kész** (ki férhet hozzá, hogyan lesz belőle
 biztonságos, lejáró link, mit lát a vevő hiba esetén), és a kód a Bunnyra van
@@ -58,10 +58,10 @@ Amikor egy vásárló megnyitja a kurzust:
 **Két videó-tár (library).** A Bunnynál a jegy-kötelezettség nem videónként,
 hanem **library-szinten** kapcsolható be. Ezért a videók két tárban élnek:
 
-| Tár | Mi van benne | Kell-e jegy |
-|---|---|---|
-| **Védett** | a megvásárolható kurzus-epizódok | igen |
-| **Publikus** | kezdőlapi hero-videó, kurzus-előzetesek | nem |
+| Tár          | Mi van benne                            | Kell-e jegy |
+| ------------ | --------------------------------------- | ----------- |
+| **Védett**   | a megvásárolható kurzus-epizódok        | igen        |
+| **Publikus** | kezdőlapi hero-videó, kurzus-előzetesek | nem         |
 
 ---
 
@@ -96,11 +96,11 @@ egyeznie kell a hashelt értékkel.
 
 ### 3.2 Lejátszó felületek
 
-| Hol | Komponens | Videó típusa |
-|---|---|---|
-| Kezdőlap hero | `src/components/content/HeroVideo.tsx` | publikus marketing-videó |
-| Kurzus adatlap | `src/components/courses/PreviewVideo.tsx` | publikus előzetes |
-| „Kurzusaim" lejátszó | `src/components/account/CoursePlayer.tsx` | **védett**, jegyes |
+| Hol                  | Komponens                                 | Videó típusa             |
+| -------------------- | ----------------------------------------- | ------------------------ |
+| Kezdőlap hero        | `src/components/content/HeroVideo.tsx`    | publikus marketing-videó |
+| Kurzus adatlap       | `src/components/courses/PreviewVideo.tsx` | publikus előzetes        |
+| „Kurzusaim" lejátszó | `src/components/account/CoursePlayer.tsx` | **védett**, jegyes       |
 
 A `CoursePlayer` epizódlistát is ad, és a jegy lejárta előtt 5 perccel magától
 új jegyet kér, hogy a lejátszás ne szakadjon meg hosszú videó közben.
@@ -114,12 +114,12 @@ A `CoursePlayer` epizódlistát is ad, és a jegy lejárta előtt 5 perccel mag�
 
 A kurzus (termék) szerkesztőjében:
 
-| Mező az adminban | Mire való |
-|---|---|
-| **Bemutató videó azonosítója** | az ingyenes előzetes GUID-ja a **publikus** libraryből |
-| **Videók → Videó azonosítója** | egy megvásárolható epizód GUID-ja a **védett** libraryből |
-| **Videók → Hossz (másodperc)** | a jegy lejáratának számításához **kötelező** |
-| **Videók → Videó állapota** | csak a **Kész** állapotú videó játszható le (kézzel állítandó) |
+| Mező az adminban                                 | Mire való                                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| **Bemutató videó azonosítója**                   | az ingyenes előzetes GUID-ja a **publikus** libraryből                         |
+| **Tananyag → modul → lecke → Videó azonosítója** | egy megvásárolható epizód GUID-ja a **védett** libraryből                      |
+| **Tananyag → Hossz (másodperc)**                 | a hátralévő idő és a jegy alsó küszöbe; **ajánlott**, hiányában a jegy 24 órás |
+| **Tananyag → Videó állapota**                    | csak a **Kész** állapotú videó játszható le (kézzel állítandó)                 |
 
 ### 3.4 Biztonsági fejléc (CSP)
 
@@ -144,12 +144,12 @@ A Bunny-előfizetés megvan, a videók egy része már ott van. Ami kell:
 3. A következő környezeti változók beállítása (Railway → a szolgáltatás
    **Variables** fülén, lokálisan a `.env` fájlban):
 
-| Változó | Mire kell | Titok? |
-|---|---|---|
-| `BUNNY_STREAM_TOKEN_AUTH_KEY` | a védett library token-kulcsa — ezzel készül a jegy | **IGEN** |
-| `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID` | a védett library numerikus id-ja (embed-URL) | nem |
-| `NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID` | a publikus library id-ja (hero, előzetes) | nem |
-| `NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST` | `vz-….b-cdn.net` — CSP + poszterképek | nem |
+| Változó                                      | Mire kell                                           | Titok?   |
+| -------------------------------------------- | --------------------------------------------------- | -------- |
+| `BUNNY_STREAM_TOKEN_AUTH_KEY`                | a védett library token-kulcsa — ezzel készül a jegy | **IGEN** |
+| `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`        | a védett library numerikus id-ja (embed-URL)        | nem      |
+| `NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID` | a publikus library id-ja (hero, előzetes)           | nem      |
+| `NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST`    | `vz-….b-cdn.net` — CSP + poszterképek               | nem      |
 
 Mind a négy **opcionális** a kód szempontjából: hiányukban az app elindul és
 működik, csak a videó nem játszható (magyar üzenettel, nem fekete lejátszóval).
@@ -235,12 +235,12 @@ szerverrel futtatja.
    bárkinek működne.
 3. Másold ki a **GUID**-ot és jegyezd fel a videó **hosszát másodpercben**
    (pl. 12:30 → 750).
-4. Adminban a kurzusnál: **Videók** → **Add Videó**:
-   - **Videó címe**: amit a vevő lát az epizódlistában (pl. „1. rész — Bemelegítés")
+4. Adminban a kurzusnál: **Tananyag (modulok)** → modul → lecke:
+   - **Lecke címe**: amit a vevő lát az epizódlistában (pl. „1. rész, Bemelegítés")
    - **Videó azonosítója**: a GUID
-   - **Hossz (másodperc)**: a kiszámolt szám — **enélkül nem indul a lejátszás**
+   - **Hossz (másodperc)**: a kiszámolt szám. Ajánlott: ebből számoljuk a hátralévő időt. Üresen hagyva a lejátszás ettől még elindul (a jegy 24 órás).
    - **Videó állapota**: **Kész**
-5. Mentés. A sorrend az epizódlistában a mezők sorrendje — húzással átrendezhető.
+5. Mentés. A sorrend az epizódlistában a leckék sorrendje.
 
 ### 5.3 Amit NE csinálj
 
@@ -248,7 +248,7 @@ szerverrel futtatja.
   hozzájárulás nélkül.
 - **Ne írd át** a Videó azonosítóját meglévő, már vásárolt kurzusnál — a régi
   vevők lejátszása áll meg tőle.
-- **Ne hagyd üresen** a hosszt: a jegy lejáratát abból számoljuk.
+- **Ne hagyd üresen** a hosszt, ha tudod: a hátralévő idő és a rövid lecke jegye ebből pontosabb. Üresen a lejátszás ettől még elindul.
 - **Ne tedd** a kurzusvideót a publikus libraryba — azzal a fizetőfal
   megkerülhetővé válik.
 
@@ -295,12 +295,12 @@ készült, de a vizsgált szabály maga a joker-elhelyezés, ami hosztnév-függ
 A böngésző `securitypolicyviolation` eseménye a döntő jel: ha a forrás nem
 került a listára, az esemény elsül.
 
-| Eset | Eredmény |
-|---|---|
-| A) címke-belseji joker (`customer-*` / `vz-*`) | **mindhárom direktíva megsértve**, egyetlen kérés sem indult el |
-| B) szabályos, egy címkés joker (`*.`) + `media-src blob:` | **nulla megsértés**, mindhárom erőforrás betöltött |
-| C) pontos host | **nulla megsértés**, mindhárom erőforrás betöltött |
-| D) szabályos joker, de `blob:` nélkül | a videó átmegy, de a **filmsáv blob-videója blokkolva** |
+| Eset                                                      | Eredmény                                                        |
+| --------------------------------------------------------- | --------------------------------------------------------------- |
+| A) címke-belseji joker (`customer-*` / `vz-*`)            | **mindhárom direktíva megsértve**, egyetlen kérés sem indult el |
+| B) szabályos, egy címkés joker (`*.`) + `media-src blob:` | **nulla megsértés**, mindhárom erőforrás betöltött              |
+| C) pontos host                                            | **nulla megsértés**, mindhárom erőforrás betöltött              |
+| D) szabályos joker, de `blob:` nélkül                     | a videó átmegy, de a **filmsáv blob-videója blokkolva**         |
 
 A regressziót a `src/__tests__/security/csp.test.ts` őrzi a CI-ban: külön teszt
 tiltja a címke-belseji joker (`vz-*`, `customer-*`) visszatérését, ellenőrzi,
@@ -367,8 +367,8 @@ Miért van benne `'unsafe-inline'` (és miért nincs `'unsafe-eval'`):
     hálózat, blokkoló bővítmény), a lejátszó a saját, függőség nélküli
     postMessage-hidunkra esik vissza (`src/lib/stream/playerjs-client.ts`), és
     ha az sem szólal meg, a kézi „Kész, tovább" gomb rögzíti a haladást.
-  A hash frissítése (emberi átnézéssel) az
-  `src/lib/stream/playerjs-loader.ts` fejlécében leírt paranccsal.
+    A hash frissítése (emberi átnézéssel) az
+    `src/lib/stream/playerjs-loader.ts` fejlécében leírt paranccsal.
 
 ---
 
@@ -389,14 +389,14 @@ Reális alternatíva, ha a költség vagy a szolgáltatófüggés zavaró. Amit 
 
 **Mit kellene újraírni**
 
-| Terület | Teendő |
-|---|---|
-| Jegy-kiállítás | A `src/lib/stream/token.ts` a Bunny hash-sémáját gyártja. Saját tárolónál jellemzően aláírt URL-t vagy rövid életű süti-jegyet adnánk. |
-| Lejátszó | Az iframe-beágyazás helyett saját `<video>` elem kellene HLS-sel (pl. `hls.js`) — plusz függőség, plusz karbantartás. |
-| Átkódolás | A szolgáltató ma automatikusan több minőségben kódol. Saját megoldásnál ezt nekünk kellene futtatni (ffmpeg), különben mobilon akadna a lejátszás. |
-| Kiszolgálás | CDN nélkül a videó a saját szerverünk sávszélességét eszi. Railway-en ez gyorsan drága és lassú lesz — reálisan objektumtároló + CDN kell. |
-| CSP | A `frame-src`/`img-src`/`media-src` hostjai helyére az új tároló hoszt kerülne (`src/lib/security/csp.ts`). A `media-src blob:` maradna, mert a filmsávnak amúgy is kell. |
-| Meglévő videók | A már feltöltött videókat le kell tölteni és átköltöztetni; a régi GUID-ok az adminban érvénytelenné válnak. |
+| Terület        | Teendő                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jegy-kiállítás | A `src/lib/stream/token.ts` a Bunny hash-sémáját gyártja. Saját tárolónál jellemzően aláírt URL-t vagy rövid életű süti-jegyet adnánk.                                    |
+| Lejátszó       | Az iframe-beágyazás helyett saját `<video>` elem kellene HLS-sel (pl. `hls.js`) — plusz függőség, plusz karbantartás.                                                     |
+| Átkódolás      | A szolgáltató ma automatikusan több minőségben kódol. Saját megoldásnál ezt nekünk kellene futtatni (ffmpeg), különben mobilon akadna a lejátszás.                        |
+| Kiszolgálás    | CDN nélkül a videó a saját szerverünk sávszélességét eszi. Railway-en ez gyorsan drága és lassú lesz — reálisan objektumtároló + CDN kell.                                |
+| CSP            | A `frame-src`/`img-src`/`media-src` hostjai helyére az új tároló hoszt kerülne (`src/lib/security/csp.ts`). A `media-src blob:` maradna, mert a filmsávnak amúgy is kell. |
+| Meglévő videók | A már feltöltött videókat le kell tölteni és átköltöztetni; a régi GUID-ok az adminban érvénytelenné válnak.                                                              |
 
 **Rövid ajánlás:** a költség-összevetés a
 [döntési dokumentum](video-platform-dontes.md) 3. pontjában él — a Bunny a

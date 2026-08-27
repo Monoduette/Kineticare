@@ -221,8 +221,7 @@ export function createFreeCourseRequestHandler(
     const secret = env.TURNSTILE_SECRET_KEY
     if (typeof secret === 'string' && secret.length > 0) {
       const verify =
-        deps.verifyTurnstile ??
-        ((token: string | null) => verifyTurnstileToken({ secret, token }))
+        deps.verifyTurnstile ?? ((token: string | null) => verifyTurnstileToken({ secret, token }))
       if (!(await verify(body.turnstileToken))) {
         log.warn('ingyenes kurzus igénylése: a spam-ellenőrzés elutasította a beküldést', {
           cimzett: maskEmail(body.email),
@@ -254,8 +253,16 @@ export function createFreeCourseRequestHandler(
         return NextResponse.json({ error: FREE_COURSE_GENERIC_ERROR }, { status: 500 })
       }
 
-      // A válasz MINDEN sikeres ágon azonos alakú és tartalmú (a `userCreated`
-      // szándékosan kimarad) — lásd a fájl fejlécében a fiók-felderítést.
+      // Vendégnél a válasz CSAK `{ ok, emailSent }` (fiók-felderítés ellen:
+      // a `next` és a `userCreated` elárulná, van-e már fiók). Bejelentkezett
+      // hívónak a `next` kimehet: a felület a Kurzusaim / postaláda / blocked
+      // ágat ebből választja, nem találgatásból.
+      if (typeof actor?.id === 'number') {
+        return NextResponse.json(
+          { ok: true, emailSent: result.emailDelivered, next: result.next },
+          { status: 200 },
+        )
+      }
       return NextResponse.json({ ok: true, emailSent: result.emailDelivered }, { status: 200 })
     } catch (error) {
       log.error('ingyenes kurzus igénylése: váratlan technikai hiba', {

@@ -50,6 +50,35 @@ export function checkoutHref(productId: number): string {
   return `${CHECKOUT_PATH}?termek=${productId}`
 }
 
+/** A megvett kurzus lejátszója (azonosító alapján, nem a lista). */
+export function myCoursePlayerHref(productId: number): string {
+  return `${MY_COURSES_PATH}/${productId}`
+}
+
+/**
+ * A `users.purchases` nyers id-i, populate-olt doc és kevert lista esetén is.
+ * A Kurzusaim lista korábban eldobta a nem-objektum bejegyzéseket, ezért
+ * üresnek látszott a fiók, miközben a paywall a nyers id-t elfogadta.
+ */
+export function purchaseIdsFrom(
+  purchases: { id: number }[] | (number | { id: number })[] | null | undefined,
+): number[] {
+  if (!Array.isArray(purchases)) {
+    return []
+  }
+  const ids: number[] = []
+  for (const entry of purchases) {
+    if (typeof entry === 'number' && Number.isInteger(entry) && entry > 0) {
+      ids.push(entry)
+      continue
+    }
+    if (typeof entry === 'object' && entry !== null && typeof entry.id === 'number') {
+      ids.push(entry.id)
+    }
+  }
+  return ids
+}
+
 /**
  * „Már megvetted" ellenőrzés: a users.purchases relationship eleme lehet
  * nyers id (number) vagy populate-olt Product-dokumentum (a lekérdezés
@@ -166,8 +195,8 @@ export function resolveCourseCta(
   if (purchased) {
     return {
       kind: 'purchased',
-      label: ctaLabel('my-courses-open'),
-      href: MY_COURSES_PATH,
+      label: ctaLabel('course-start'),
+      href: myCoursePlayerHref(product.id),
       disabled: false,
       note: null,
     }
@@ -316,9 +345,7 @@ export function coursePriceBadgeKind(
  * kezelné (pontosan ez tette a rosszul konfigurált terméket a kezdőlap
  * lead-magnet sávjába).
  */
-export function isPaidCourse(
-  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
-): boolean {
+export function isPaidCourse(product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>): boolean {
   return coursePriceHuf(product) !== null
 }
 
