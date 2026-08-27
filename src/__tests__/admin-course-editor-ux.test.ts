@@ -1,23 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  courseVisibilityNotice,
-  normalizeVisibility,
-} from '../components/admin/course-visibility'
+import { courseVisibilityNotice, normalizeVisibility } from '../components/admin/course-visibility'
 import {
   lessonRowLabel,
   moduleRowLabel,
   NEM_JATSZHATO,
   NEVTELEN_LECKE,
   NEVTELEN_MODUL,
+  isEditorVideoPlayable,
 } from '../components/admin/curriculum-row-label'
+import {
+  COURSE_MODULES_ADMIN_DESCRIPTION,
+  LESSON_DURATION_ADMIN_DESCRIPTION,
+} from '../fields/course-modules'
 
 /**
  * A KURZUS-SZERKESZTŐLAP két UX-javításának tiszta logikája.
  *
  * Mindkettőt egy valódi böngészővel végzett admin UX-audit hívta életre, amely
  * végigjátszotta egy új kurzus felvitelét owner és staff jogosultsággal is.
- * A tesztek TISZTA függvényeket hívnak: nincs DOM, nincs hálózat, nincs Payload.
+ * A tesztek TISZTA függvényeket hívnak: nincs DOM, nincs hálózat. A mezőleírás
+ * konstansok a `course-modules` modulból jönnek (Payload-mező objektum nélkül
+ * is olvashatók).
  */
 
 describe('moduleRowLabel — a csukott modul-sor felirata', () => {
@@ -26,9 +30,9 @@ describe('moduleRowLabel — a csukott modul-sor felirata', () => {
    * feliratú szürke csíkként jelent meg, mert a felirat a sorszám volt, nem a cím.
    */
   it('a CÍM jelenik meg, a leckék számával — nem a sorszám', () => {
-    expect(
-      moduleRowLabel({ title: '1. ALAPOK — Így kezdj neki', lessons: [{}, {}, {}] }, 1),
-    ).toBe('1. ALAPOK — Így kezdj neki (3 lecke)')
+    expect(moduleRowLabel({ title: '1. ALAPOK — Így kezdj neki', lessons: [{}, {}, {}] }, 1)).toBe(
+      '1. ALAPOK — Így kezdj neki (3 lecke)',
+    )
   })
 
   it('egyetlen leckénél is ugyanaz az alak (magyarul nincs többes szám szám után)', () => {
@@ -43,7 +47,9 @@ describe('moduleRowLabel — a csukott modul-sor felirata', () => {
   })
 
   it('a kitöltetlen KÖTELEZŐ cím azonnal feltűnik a csukott soron', () => {
-    expect(moduleRowLabel({ title: '', lessons: [{}] }, 9)).toBe(`9. modul — ${NEVTELEN_MODUL} (1 lecke)`)
+    expect(moduleRowLabel({ title: '', lessons: [{}] }, 9)).toBe(
+      `9. modul — ${NEVTELEN_MODUL} (1 lecke)`,
+    )
     expect(moduleRowLabel({ title: '   ' }, 3)).toBe(`3. modul — ${NEVTELEN_MODUL} (nincs lecke)`)
     expect(moduleRowLabel(null, 4)).toBe(`4. modul — ${NEVTELEN_MODUL} (nincs lecke)`)
   })
@@ -61,9 +67,12 @@ describe('moduleRowLabel — a csukott modul-sor felirata', () => {
 
 describe('lessonRowLabel — a csukott lecke-sor felirata', () => {
   it('a CÍM és a TÍPUS jelenik meg', () => {
-    expect(lessonRowLabel({ title: 'Bemelegítés', kind: 'video', status: 'ready' }, 1)).toBe(
-      'Bemelegítés · Videó',
-    )
+    expect(
+      lessonRowLabel(
+        { title: 'Bemelegítés', kind: 'video', status: 'ready', streamAssetId: 'guid-1' },
+        1,
+      ),
+    ).toBe('Bemelegítés · Videó')
     expect(lessonRowLabel({ title: 'Étrend', kind: 'szoveg' }, 2)).toBe('Étrend · Szöveges')
     expect(lessonRowLabel({ title: 'Csoport', kind: 'link' }, 3)).toBe('Csoport · Külső link')
   })
@@ -83,6 +92,25 @@ describe('lessonRowLabel — a csukott lecke-sor felirata', () => {
     expect(lessonRowLabel({ title: 'Nyújtás', kind: 'video' }, 1)).toContain(NEM_JATSZHATO)
   })
 
+  it('Kész állapot GUID nélkül is még nem játszható (a vevőnél sem indul)', () => {
+    expect(lessonRowLabel({ title: 'Nyújtás', kind: 'video', status: 'ready' }, 1)).toContain(
+      NEM_JATSZHATO,
+    )
+    expect(
+      lessonRowLabel({ title: 'Nyújtás', kind: 'video', status: 'ready', streamAssetId: '   ' }, 1),
+    ).toContain(NEM_JATSZHATO)
+    expect(
+      isEditorVideoPlayable({
+        title: 'Nyújtás',
+        kind: 'video',
+        status: 'ready',
+        streamAssetId: 'guid-1',
+      }),
+    ).toBe(true)
+    expect(isEditorVideoPlayable({ kind: 'video', status: 'ready' })).toBe(false)
+    expect(isEditorVideoPlayable({ kind: 'szoveg', status: 'ready' })).toBe(false)
+  })
+
   it('a NEM videós leckéken nincs lejátszhatóság-jelzés (nincs is értelme)', () => {
     expect(lessonRowLabel({ title: 'Étrend', kind: 'szoveg', status: 'processing' }, 1)).toBe(
       'Étrend · Szöveges',
@@ -93,22 +121,45 @@ describe('lessonRowLabel — a csukott lecke-sor felirata', () => {
   })
 
   it('a hiányzó típus VIDEÓNAK számít — egyezően a tananyag-modellel', () => {
-    expect(lessonRowLabel({ title: 'Régi lecke', status: 'ready' }, 1)).toBe('Régi lecke · Videó')
-    expect(lessonRowLabel({ title: 'Régi lecke', kind: null, status: 'ready' }, 1)).toBe(
-      'Régi lecke · Videó',
-    )
+    expect(
+      lessonRowLabel({ title: 'Régi lecke', status: 'ready', streamAssetId: 'guid-regi' }, 1),
+    ).toBe('Régi lecke · Videó')
+    expect(
+      lessonRowLabel(
+        { title: 'Régi lecke', kind: null, status: 'ready', streamAssetId: 'guid-regi' },
+        1,
+      ),
+    ).toBe('Régi lecke · Videó')
   })
 
   it('az ismeretlen típus sem töri el a feliratot', () => {
-    expect(lessonRowLabel({ title: 'Valami', kind: 'ismeretlen', status: 'ready' }, 1)).toBe(
-      'Valami · Videó',
-    )
+    expect(
+      lessonRowLabel(
+        { title: 'Valami', kind: 'ismeretlen', status: 'ready', streamAssetId: 'guid-x' },
+        1,
+      ),
+    ).toBe('Valami · Videó')
   })
 
   it('a kitöltetlen cím a csukott soron is látszik', () => {
     expect(lessonRowLabel({ title: '', kind: 'szoveg' }, 4)).toBe(
       `4. lecke — ${NEVTELEN_LECKE} · Szöveges`,
     )
+  })
+})
+
+describe('szerkesztői mezőleírások — ne hazudjanak a lejátszásról', () => {
+  it('a Hossz mező nem mondja, hogy nélküle a videó nem indul', () => {
+    expect(LESSON_DURATION_ADMIN_DESCRIPTION).toContain('Ajánlott')
+    expect(LESSON_DURATION_ADMIN_DESCRIPTION).toContain('24 órás')
+    expect(LESSON_DURATION_ADMIN_DESCRIPTION).not.toMatch(/KÖTELEZŐ/)
+    expect(LESSON_DURATION_ADMIN_DESCRIPTION).not.toMatch(/[–—]/)
+  })
+
+  it('a Tananyag mező kimondja, hogy egy új lecke elrejti a régi Videók listát', () => {
+    expect(COURSE_MODULES_ADMIN_DESCRIPTION).toContain('elrejtődik')
+    expect(COURSE_MODULES_ADMIN_DESCRIPTION).toContain('kurzus:videok-modulba')
+    expect(COURSE_MODULES_ADMIN_DESCRIPTION).not.toMatch(/[–—]/)
   })
 })
 

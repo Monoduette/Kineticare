@@ -443,10 +443,11 @@ lejátszóban lát: bal oldalon a fejezetek, bennük a leckék, mellette a vide�
   őket.
 - Az összecsukott soron **a cím látszik**, nem sorszám: a modulnál a cím és a
   leckék száma („1. ALAPOK — Így kezdj neki (3 lecke)"), a leckénél a cím és a
-  típus („Bemelegítés · Videó"). Ha egy videó még nincs „Kész" állapotban, a
-  soron ott áll: **„· még nem játszható"** — így a csukott listán is azonnal
-  látod, mi nem indulna el a vásárlónál. A cím nélküli sor
-  **„(névtelen modul)"** / **„(névtelen lecke)"** jelzést kap.
+  típus („Bemelegítés · Videó"). Ha egy videó még nincs „Kész" állapotban, **vagy
+  hiányzik belőle a Video ID**, a soron ott áll: **„· még nem játszható"** — így
+  a csukott listán is azonnal látod, mi nem indulna el a vásárlónál. A cím nélküli
+  sor **„(névtelen modul)"** / **„(névtelen lecke)"** jelzést kap. A hossz
+  (másodperc) üresen hagyható: a lejátszás ettől még elindul.
 
 ### Háromféle lecke
 
