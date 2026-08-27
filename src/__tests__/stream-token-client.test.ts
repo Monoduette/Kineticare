@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { fetchStreamToken, GENERIC_STREAM_ERROR } from '../lib/stream-token-client'
+import {
+  fetchStreamToken,
+  GENERIC_STREAM_ERROR,
+  STREAM_PROCESSING_MESSAGE,
+} from '../lib/stream-token-client'
 
 /**
  * A kliens egységtesztje. A válasz-fixtúrák a VALÓDI szerver-szerződést
@@ -69,5 +73,12 @@ describe('fetchStreamToken', () => {
     const mockFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 500 }))
     const result = await fetchStreamToken({ productId: 1 }, mockFetch as never)
     expect(result).toEqual({ kind: 'error', message: GENERIC_STREAM_ERROR })
+  })
+
+  it('409 → error a feldolgozás üzenetével, nem az általános hibával', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 409 }))
+    const result = await fetchStreamToken({ productId: 1 }, mockFetch as never)
+    expect(result).toEqual({ kind: 'error', message: STREAM_PROCESSING_MESSAGE })
+    expect(STREAM_PROCESSING_MESSAGE).not.toBe(GENERIC_STREAM_ERROR)
   })
 })

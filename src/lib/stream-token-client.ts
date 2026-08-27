@@ -7,7 +7,8 @@
  * oldalon, és el is tértek — a fizető vevő sem tudott lejátszani.
  *
  * Státuszok: 200 { token, expiresAt } | 401/403 (nincs belépés / nem vevő /
- * lejárt hozzáférés) | 404, 409 | 503 (hiányzó CF-kulcs) | 500.
+ * lejárt hozzáférés / lookup-hiba) | 404 | 409 (feldolgozás alatt) |
+ * 503 (hiányzó CF-kulcs) | 500.
  */
 
 import { buildStreamTokenRequestUrl, parseStreamTokenResponseBody } from './stream/contract'
@@ -20,6 +21,10 @@ export type StreamTokenResult =
 
 export const GENERIC_STREAM_ERROR =
   'A videó lejátszási joga most nem ellenőrizhető. Próbáld újra néhány perc múlva.'
+
+/** A szerver 409-es szövege (`issueStreamToken`) — a kliens ugyanazt mutatja. */
+export const STREAM_PROCESSING_MESSAGE =
+  'A videó feldolgozása még folyamatban van. Nézz vissza néhány perc múlva.'
 
 export async function fetchStreamToken(
   input: { productId: number; videoId?: string | null },
@@ -35,6 +40,9 @@ export async function fetchStreamToken(
     }
     if (response.status === 503) {
       return { kind: 'unavailable' }
+    }
+    if (response.status === 409) {
+      return { kind: 'error', message: STREAM_PROCESSING_MESSAGE }
     }
     if (!response.ok) {
       return { kind: 'error', message: GENERIC_STREAM_ERROR }
