@@ -15,7 +15,7 @@ import {
   type CartItem,
 } from '../../lib/cart'
 import { COURSE_BASE_PATH, courseCtaHref, courseHref } from '../../lib/course-url'
-import { checkoutHref } from '../../lib/courses'
+import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 
 /**
@@ -26,7 +26,13 @@ import { ctaLabel } from '../../lib/cta-vocabulary'
  */
 export interface CartViewProps {
   initialItem: CartItem | null
-  isLoggedIn: boolean
+  /**
+   * A belépett vevő már megvette ezt a termék-id-t. A sáv ekkor a lejátszóra
+   * visz, nem a pénztárba: új rendelés 409 lenne. Csak a sáv CÉLTÉTELÉRE
+   * vonatkozik (az első megvehető tétel), nehogy más kosártétel fizetését
+   * elvegyük.
+   */
+  alreadyPurchasedProductId?: number | null
 }
 
 /**
@@ -93,7 +99,7 @@ function CartRow({ item, onRemove }: { item: CartItem; onRemove: () => void }) {
   )
 }
 
-export function CartView({ initialItem, isLoggedIn }: CartViewProps) {
+export function CartView({ initialItem, alreadyPurchasedProductId = null }: CartViewProps) {
   const { state, add, remove, summary, isEmpty } = useCart()
 
   useEffect(() => {
@@ -153,16 +159,26 @@ export function CartView({ initialItem, isLoggedIn }: CartViewProps) {
         ) : null}
 
         {summary.kind === 'amount' && target !== null ? (
-          isLoggedIn ? (
-            <Button href={checkoutHref(target.productId)}>{ctaLabel('cart-to-checkout')}</Button>
+          alreadyPurchasedProductId === target.productId ? (
+            /*
+              Már megvett céltétel: a pénztár 409-et adna. A következő lépés
+              a lejátszó (NN/g Error Message Guidelines: a hiba mellé jár a
+              megoldás, https://www.nngroup.com/articles/error-message-guidelines/;
+              WCAG 2.2 · 3.3.1).
+            */
+            <Button href={myCoursePlayerHref(target.productId)}>{ctaLabel('course-start')}</Button>
           ) : (
-            // B6 (docs/gomb-inventar.md): a kosár bejelentkezésre kényszerít,
-            // miközben a /penztar 2026-08-15 óta vendég-vásárlást is enged. A
-            // feloldás az informacios-architektura.md 8. fejezetének javítási
-            // terve szerint halad, NEM innen — ez az ág addig változatlan.
-            <Button href={`/belepes?returnUrl=${encodeURIComponent(checkoutHref(target.productId))}`}>
-              Belépés a fizetéshez
-            </Button>
+            /*
+              Vendég és belépett ugyanazt a gombot kapja: a /penztar vendég-
+              vásárlást is fogad. A korábbi belépőfal (B6) ellentmondott a
+              pénztárnak, és a Baymard vendég-pénztár kutatása szerint a
+              kényszerített fiók a fizetés előtt kiesést okoz
+              (https://baymard.com/blog/guest-and-account-checkout). GOV.UK
+              Button: egy oldalon egy elsődleges cselekvés
+              (https://design-system.service.gov.uk/components/button/).
+              WCAG 2.2 · 3.2.4: ugyanaz a cselekvés, ugyanaz a felirat.
+            */
+            <Button href={checkoutHref(target.productId)}>{ctaLabel('cart-to-checkout')}</Button>
           )
         ) : null}
       </div>

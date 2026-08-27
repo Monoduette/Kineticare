@@ -9,6 +9,7 @@ import { AccountView } from '@/components/account/AccountView'
 import { logger } from '@/lib/logger'
 import { toCourseAccessView, type CourseAccessView } from '@/lib/course-access'
 import { resolveCourseAccessForUser } from '@/lib/course-access-lookup'
+import { signInHref } from '@/lib/return-url'
 import type { Order, Product, User } from '@/payload-types'
 
 import config from '../../../payload.config'
@@ -41,7 +42,10 @@ async function getUserOrders(userId: number): Promise<Order[]> {
     })
     return docs
   } catch (error) {
-    logger.warn('fiók: rendelés-lekérdezés sikertelen', { userId, error: error instanceof Error ? error.message : String(error) })
+    logger.warn('fiók: rendelés-lekérdezés sikertelen', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return []
   }
 }
@@ -85,7 +89,7 @@ async function getAccessViews(user: User): Promise<Record<number, CourseAccessVi
 export default async function FiokPage() {
   const user = await getCurrentUser()
   if (user === null) {
-    redirect('/belepes?returnUrl=/fiok')
+    redirect(signInHref('/fiok'))
   }
 
   const orders = await getUserOrders(user.id)

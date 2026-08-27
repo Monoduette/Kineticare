@@ -50,6 +50,75 @@ export function checkoutHref(productId: number): string {
   return `${CHECKOUT_PATH}?termek=${productId}`
 }
 
+/** A megvett kurzus lejátszója (azonosító alapján, nem a lista). */
+export function myCoursePlayerHref(productId: number): string {
+  return `${MY_COURSES_PATH}/${productId}`
+}
+
+/** Igaz, ha a belső útvonal egy kurzus lejátszója (`/kurzusaim/12`). */
+export function isMyCoursePlayerHref(path: string): boolean {
+  return /^\/kurzusaim\/\d+$/.test(path)
+}
+
+/** Relatív vagy abszolút URL a lejátszóra mutat-e. */
+export function isMyCoursePlayerUrl(url: string): boolean {
+  const withoutOrigin = url.replace(/^https?:\/\/[^/?#]+/i, '')
+  const path = withoutOrigin.split(/[?#]/)[0] ?? withoutOrigin
+  return isMyCoursePlayerHref(path)
+}
+
+/**
+ * Jelszó-beállítás / belépés után: egy ismert SKU → a lejátszó, több vagy
+ * nulla → a Kurzusaim lista. A vendég-aktiváló levél így nem a üres listán
+ * landol, ha a rendelés egy kurzus.
+ */
+export function postAuthLibraryOrPlayerHref(productIds: readonly number[]): string {
+  const only = productIds.length === 1 ? productIds[0] : undefined
+  return typeof only === 'number' ? myCoursePlayerHref(only) : MY_COURSES_PATH
+}
+
+/** Rendelés-tételek termék-azonosítói (id vagy populate-olt doc). */
+export function productIdsFromOrderItems(
+  items: ReadonlyArray<{ product?: number | { id?: number } | null }> | null | undefined,
+): number[] {
+  const ids: number[] = []
+  for (const item of items ?? []) {
+    const product = item.product
+    if (product === null || product === undefined) {
+      continue
+    }
+    const id = typeof product === 'object' ? product.id : product
+    if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0 && !ids.includes(id)) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
+/**
+ * A `users.purchases` nyers id-i, populate-olt doc és kevert lista esetén is.
+ * A Kurzusaim lista korábban eldobta a nem-objektum bejegyzéseket, ezért
+ * üresnek látszott a fiók, miközben a paywall a nyers id-t elfogadta.
+ */
+export function purchaseIdsFrom(
+  purchases: { id: number }[] | (number | { id: number })[] | null | undefined,
+): number[] {
+  if (!Array.isArray(purchases)) {
+    return []
+  }
+  const ids: number[] = []
+  for (const entry of purchases) {
+    if (typeof entry === 'number' && Number.isInteger(entry) && entry > 0) {
+      ids.push(entry)
+      continue
+    }
+    if (typeof entry === 'object' && entry !== null && typeof entry.id === 'number') {
+      ids.push(entry.id)
+    }
+  }
+  return ids
+}
+
 /**
  * „Már megvetted" ellenőrzés: a users.purchases relationship eleme lehet
  * nyers id (number) vagy populate-olt Product-dokumentum (a lekérdezés
@@ -166,8 +235,8 @@ export function resolveCourseCta(
   if (purchased) {
     return {
       kind: 'purchased',
-      label: ctaLabel('my-courses-open'),
-      href: MY_COURSES_PATH,
+      label: ctaLabel('course-start'),
+      href: myCoursePlayerHref(product.id),
       disabled: false,
       note: null,
     }
@@ -316,9 +385,7 @@ export function coursePriceBadgeKind(
  * kezelné (pontosan ez tette a rosszul konfigurált terméket a kezdőlap
  * lead-magnet sávjába).
  */
-export function isPaidCourse(
-  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
-): boolean {
+export function isPaidCourse(product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>): boolean {
   return coursePriceHuf(product) !== null
 }
 

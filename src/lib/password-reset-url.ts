@@ -19,14 +19,23 @@
 /** A nyilvános (vásárlói) jelszó-beállító oldal útvonala. */
 export const PASSWORD_RESET_PATH = '/jelszo-visszaallitas'
 
+import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from './return-url'
+
 /**
  * Abszolút jelszó-beállító link a tokenből.
  *
  * A link e-mailben megy ki, ezért abszolút URL kell; a záró perjelek levágva,
  * a token URL-kódolva (a Payload tokenje hexadecimális, de a kódolás
- * elhagyása néma hibaforrás lenne, ha ez valaha változik).
+ * elhagyása néma hibaforrás lenne, ha ez valaha változik). A `returnUrl` a
+ * jelszó-beállítás utáni cél (alapból Kurzusaim), ugyanazzal a szűrővel, mint
+ * a belépő oldal.
  */
-export function buildPasswordResetUrl(serverUrl: string, token: string): string {
+export function buildPasswordResetUrl(
+  serverUrl: string,
+  token: string,
+  returnUrl: string = DEFAULT_AUTH_RETURN_URL,
+): string {
   const base = serverUrl.replace(/\/+$/, '')
-  return `${base}${PASSWORD_RESET_PATH}?token=${encodeURIComponent(token)}`
+  const safeReturn = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+  return `${base}${PASSWORD_RESET_PATH}?token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(safeReturn)}`
 }

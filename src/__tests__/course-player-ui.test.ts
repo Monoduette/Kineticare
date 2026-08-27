@@ -213,7 +213,9 @@ describe('primaryAction — a gombfeliratok állapotgépe', () => {
           continue
         }
         const teszValamit =
-          action.disabled || action.targetRef !== null || (action.marksWatched && !watched.has(current))
+          action.disabled ||
+          action.targetRef !== null ||
+          (action.marksWatched && !watched.has(current))
         expect(teszValamit, `${current} / ${[...watched].join(',')} → ${action.kind}`).toBe(true)
       }
     }
@@ -258,7 +260,9 @@ describe('modul-nyitottság — kezdőállapot és megőrzés', () => {
 })
 
 describe('readModuleState / writeModuleState — a privát mód nem törhet el semmit', () => {
-  function storage(initial: Record<string, string>): ModuleStateStorage & { store: Record<string, string> } {
+  function storage(
+    initial: Record<string, string>,
+  ): ModuleStateStorage & { store: Record<string, string> } {
     const store = { ...initial }
     return {
       store,
@@ -432,7 +436,9 @@ describe('CoursePlayer — a felület szerződése a szerveroldali kimeneten', (
     // A folytatás az első nem kész lecke: 'l3' az 1. modulban → m1 nyitva, m2 zárva.
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('aria-expanded="false"')
-    expect(html).toMatch(/id="kc-player-5-modul-1-panel"[^>]*hidden|hidden[^>]*id="kc-player-5-modul-1-panel"/)
+    expect(html).toMatch(
+      /id="kc-player-5-modul-1-panel"[^>]*hidden|hidden[^>]*id="kc-player-5-modul-1-panel"/,
+    )
   })
 
   it('az állapot SOSEM csak színnel jelölt: minden sor visel szöveges állapotot', () => {
@@ -486,6 +492,9 @@ describe('CoursePlayer — kapuzott állapotok', () => {
       }),
     )
     expect(html).toContain('feldolgozása folyamatban van')
+    expect(html).toContain('Írj nekünk')
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).toContain('href="/kurzusaim"')
     expect(html).not.toContain('<iframe')
   })
 
@@ -498,7 +507,7 @@ describe('CoursePlayer — kapuzott állapotok', () => {
         watchedRefs: ['l1', 'l3', 'l4', 'l5'],
       }),
     )
-    expect(html).toContain('Elvégezted a kurzust — 4 lecke kész')
+    expect(html).toContain('Elvégezted a kurzust. 4 lecke kész')
     expect(html).toContain('4/4 lecke kész')
     // A sáv NEM elutasítható (nincs „×", nincs „később"): nincs mit elhárítani,
     // és a dark pattern-tilalom szerint nem is kell rá válaszolni.
@@ -516,6 +525,28 @@ describe('CoursePlayer — kapuzott állapotok', () => {
     expect(action?.disabled).toBe(true)
     // …miközben az első leckén továbbra is van értelmes következő lépés.
     expect(primaryAction(curriculum, 'l1', done)?.kind).toBe('advance')
+  })
+
+  it('a token-hiba és a hiányzó lejátszás mellé belép a kapcsolat is (nem csak újrapróbálás)', () => {
+    const source = readFileSync(
+      new URL('../components/account/CoursePlayer.tsx', import.meta.url),
+      'utf8',
+    )
+    const unavailableJsx = source.indexOf("{state.kind === 'unavailable' ||")
+    const errorJsx = source.indexOf("{state.kind === 'error' ?")
+    const forbiddenJsx = source.indexOf("{state.kind === 'forbidden' ?")
+    expect(unavailableJsx).toBeGreaterThan(-1)
+    expect(errorJsx).toBeGreaterThan(-1)
+    expect(forbiddenJsx).toBeGreaterThan(-1)
+
+    const unavailableBlock = source.slice(unavailableJsx, errorJsx)
+    const errorBlock = source.slice(errorJsx, errorJsx + 700)
+    const forbiddenBlock = source.slice(forbiddenJsx, unavailableJsx)
+    expect(unavailableBlock).toContain("ctaLabel('contact-open')")
+    expect(errorBlock).toContain("ctaLabel('contact-open')")
+    expect(forbiddenBlock).toContain("ctaLabel('contact-open')")
+    expect(unavailableBlock).toContain('href="/kapcsolat"')
+    expect(errorBlock).toContain('href="/kapcsolat"')
   })
 })
 

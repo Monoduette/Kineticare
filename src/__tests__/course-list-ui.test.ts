@@ -145,7 +145,14 @@ describe('remainingSeconds — mennyi van még hátra', () => {
             id: 'm',
             title: 'M',
             lessons: [
-              { id: 'a', title: 'Kész', kind: 'video', streamAssetId: 'x', status: 'ready', durationSec: 120 },
+              {
+                id: 'a',
+                title: 'Kész',
+                kind: 'video',
+                streamAssetId: 'x',
+                status: 'ready',
+                durationSec: 120,
+              },
               {
                 id: 'b',
                 title: 'Még készül',
@@ -235,7 +242,11 @@ describe('courseCtaContext — a lecke neve a HOZZÁFÉRHETŐ névbe kerül (WCA
 
   it('ismeretlen lecke-címnél csak a kurzus neve marad (kitalált címet nem írunk)', () => {
     expect(
-      courseCtaContext({ status: 'in-progress', title: 'Kéztorna otthon', resumeLessonTitle: null }),
+      courseCtaContext({
+        status: 'in-progress',
+        title: 'Kéztorna otthon',
+        resumeLessonTitle: null,
+      }),
     ).toBe('Kéztorna otthon')
   })
 
@@ -280,13 +291,23 @@ describe('courseMetaLine — a mikro-meta sor', () => {
 
   it('lejárt hozzáférésnél a haladás nem releváns, csak a kurzus mérete', () => {
     expect(
-      courseMetaLine({ status: 'expired', completedLessons: 2, totalLessons: 18, remainingSec: null }),
+      courseMetaLine({
+        status: 'expired',
+        completedLessons: 2,
+        totalLessons: 18,
+        remainingSec: null,
+      }),
     ).toBe('18 lecke')
   })
 
   it('tananyag nélkül nem írunk „0/0 lecké"-t', () => {
     expect(
-      courseMetaLine({ status: 'not-started', completedLessons: 0, totalLessons: 0, remainingSec: null }),
+      courseMetaLine({
+        status: 'not-started',
+        completedLessons: 0,
+        totalLessons: 0,
+        remainingSec: null,
+      }),
     ).toBe(NO_LESSONS_LABEL)
   })
 })
@@ -427,6 +448,8 @@ describe('CourseList — megjelenítés', () => {
 
     expect(html).toContain('1/3 lecke · kb. 42 perc van hátra')
     expect(html).toContain('aria-valuetext="1/3 lecke kész"')
+    expect(html).toContain('Otthoni KézRehab: haladás')
+    expect(html).not.toMatch(/[–—]/)
   })
 
   it('A1: látszik a lejárati dátum, ha van', () => {

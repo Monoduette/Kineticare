@@ -15,8 +15,10 @@ import {
 import { createStreamTokenHandler } from '../lib/stream/route-handler'
 import {
   createStreamPlaybackToken,
+  durationSecForPlaybackToken,
   STREAM_TOKEN_GRACE_SECONDS,
   STREAM_TOKEN_MAX_TTL_SECONDS,
+  STREAM_TOKEN_MIN_TTL_SECONDS,
 } from '../lib/stream/token'
 import {
   RATE_LIMIT_MESSAGE,
@@ -70,11 +72,12 @@ function expectedToken(videoId: string, expires: number): string {
 function expectTokenFor(
   result: StreamTokenServiceResult,
   videoId: string,
-  durationSec: number,
+  durationSec: number | null,
 ): void {
   const expires = Math.floor(Date.parse(result.expiresAt) / 1000)
   expect(result.token).toBe(expectedToken(videoId, expires))
-  const ttl = Math.min(durationSec + STREAM_TOKEN_GRACE_SECONDS, STREAM_TOKEN_MAX_TTL_SECONDS)
+  const effective = durationSecForPlaybackToken(durationSec)
+  const ttl = Math.min(effective + STREAM_TOKEN_GRACE_SECONDS, STREAM_TOKEN_MAX_TTL_SECONDS)
   const remaining = expires - Math.floor(Date.now() / 1000)
   expect(remaining).toBeLessThanOrEqual(ttl)
   expect(remaining).toBeGreaterThan(ttl - 5)
@@ -297,6 +300,21 @@ describe('createStreamPlaybackToken — Bunny hash-séma és élettartam', () =>
   })
 })
 
+describe('durationSecForPlaybackToken — hiányzó vagy rövid videóhossz', () => {
+  it('hiányzó hossz → 24 órás plafon (grace levonva, hogy a TTL a max legyen)', () => {
+    expect(durationSecForPlaybackToken(null)).toBe(
+      STREAM_TOKEN_MAX_TTL_SECONDS - STREAM_TOKEN_GRACE_SECONDS,
+    )
+  })
+
+  it('rövid lecke → legalább a 2 órás alsó küszöb', () => {
+    expect(durationSecForPlaybackToken(60)).toBe(
+      STREAM_TOKEN_MIN_TTL_SECONDS - STREAM_TOKEN_GRACE_SECONDS,
+    )
+    expect(durationSecForPlaybackToken(10_000)).toBe(10_000)
+  })
+})
+
 describe('issueStreamToken — paywall és token-kiállítás', () => {
   it('vevő + published termék → érvényes jegy (a videóra és a lejáratra kötve)', async () => {
     const { payload } = createMockPayload()
@@ -477,6 +495,23 @@ describe('issueStreamToken — paywall és token-kiállítás', () => {
     const promise = issueStreamToken({ payload, user: buyerUser, productId: 42 })
     await expect(promise).rejects.toMatchObject({ status: 503 })
     await expect(promise).rejects.toThrowError(/ideiglenesen nem érhető el/)
+  })
+
+  it('hiányzó durationSec → jegy a max TTL-lel, nem 503', async () => {
+    const product = makeProduct({
+      videos: [
+        {
+          id: 'sor-1',
+          title: '1. lecke',
+          streamAssetId: DUMMY_ASSET_ID,
+          durationSec: null,
+          status: 'ready',
+        },
+      ],
+    })
+    const { payload } = createMockPayload({ product })
+    const result = await issueStreamToken({ payload, user: buyerUser, productId: 42 })
+    expectTokenFor(result, DUMMY_ASSET_ID, null)
   })
 
   it('érvénytelen productId → 400', async () => {

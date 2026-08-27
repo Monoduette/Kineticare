@@ -59,7 +59,7 @@ A `ui-sztenderdek.md` §A (A/1 … A/10) és az `informacios-architektura.md` TO
 | **B3** | Ugyanez a `/kurzusok` listán: az SOS-kártyán se ár, se „Ingyenes" | - | **Új.** A lista `CourseCard`-ja csak `coursePriceHuf`-ot néz (`CourseCard.tsx:52`), tehát a `'free'` badge-et meg sem tudja jeleníteni. A fizetős kártyán ott az „Ár: 79 500 Ft" |
 | **B4** | Nincs kijelentkezés | IA TOP-10 #6 | - |
 | **B5** | Nincs belépés/fiók a fejlécben | IA TOP-10 #2 | - |
-| **B6** | A kosár bejelentkezésre kényszerít, a pénztár nem | IA TOP-10 #5 (árvaság) | **Új szempont.** Nem csak árva: `CartView.tsx:105` anonim vevőnek „Belépés a fizetéshez" gombot ad, miközben a `/penztar` 2026-08-15 óta vendég-vásárlást támogat. Ha a `/kosar`-t újraélesztik, ez ellentmondás lesz |
+| **B6** | ~~A kosár bejelentkezésre kényszerít, a pénztár nem~~ **lezárva 2026-08-27** | IA TOP-10 #5 (árvaság) | A `CartView` fizetős sávja vendégként is `ctaLabel('cart-to-checkout')` → `/penztar?termek=`. A pénztár vendég-vásárlást 2026-08-15 óta fogad. |
 | **B7** | A kezdőlapi „Elindítom az ingyenes kurzust" a listára visz, nem a kurzusra | IA TOP-10 #7 | **A gyökérok:** nem (csak) a `FreeSos.tsx:70-73` fallback, hanem a **seed-adat**: `src/lib/home-seed.ts:305` explicit `url: '/kurzusok'`-ot ír a blokk `cta` mezőjébe, ami felülírja a kód helyes alapértékét |
 
 ### 2.2 Komoly (csak az újak)
@@ -285,8 +285,8 @@ Ezek a `ui-sztenderdek.md` §6.3 **G-UI1** őrének kiegészítései, nem helyet
 | --- | --- | --- | --- | --- | --- |
 | `/kosar` tétel | *kurzus címe* | L | kurzusoldal | hover | rendben |
 | `/kosar` | Törlés | G | törlés | nincs folyamatban, nincs visszavonás | **K1** |
-| `/kosar` | Tovább a penztárhoz | P | `/penztar?termek=` | - | elgépelés (IA kiegészítő megfigyelés) |
-| `/kosar` | Belépés a fizetéshez | P | `/belepes?returnUrl=` | - | **B6** |
+| `/kosar` | Menj a pénztárhoz | P | `/penztar?termek=` | vendég és belépett ugyanaz | §3.2 #21; B6 lezárva |
+| `/kosar` | Kezdd el a kurzust | P | `/kurzusaim/{id}` | `alreadyPurchasedProductId` egyezik a céltétellel | a notice mellett a sáv is a lejátszóra visz |
 | `/kosar` üres | Nézd meg a kurzusainkat | P | `/kurzusok` | `role="status"` | A/6 |
 | `/penztar` | be is jelentkezhetsz | L | `/belepes` | - | **K9** (nincs `returnUrl`) |
 | `/penztar` | Általános szerződési feltételek | L `_blank` | `/aszf` | - | új lap nem jelölt |
@@ -462,7 +462,7 @@ gombfeliratot** talált, ebből **67 tért el** a jóváhagyott §3.2 szótárt�
 
 | Kategória | Előtte | Utána | Mi történt |
 | --- | --- | --- | --- |
-| `szotartol-elter` | 27 | **1** | 26 hívóhely a §3.2 szótárból olvas (`ctaLabel(...)`). A maradék EGY a `CartView` „Belépés a fizetéshez" felirata: a fájlt ugyanabban a körben másik ügynök birtokolta, ezért csak jelentve van. |
+| `szotartol-elter` | 27 | **0** | 2026-08-27: a maradék EGY (`CartView` „Belépés a fizetéshez") a §3.2 #21 (`Menj a pénztárhoz`) alakra javult. Vendég kosár = pénztár. |
 | `mintazat-jelolt` | 9 | **0** | A kategória MEGSZŰNT: a §3.2 C-6 mintázatai gépi alakot kaptak (`CtaEntry.pattern`), így az őr maga ismeri fel a `Vissza a <hova>` változatokat. |
 | `nincs-szotari-sor` | 20 | **0** | Mind a húsz feliratra szótári sor lett: **#28–#38** (tizenegy új sor), a L-1 lista `Kijelentkezés…` eleme, és a pénztár ingyenes ága a meglévő **#26**-ra. |
 | `nem-cta` | 40 | **41** | Nem csökkenhet: ezek menücímkék, morzsák, folyószöveges hivatkozások, logók, jogi dokumentumnevek. Az egy sor növekedés a `ThankYouView` „Kurzusaim" folyószöveges hivatkozása, amely a `szotartol-elter` kategóriából ide sorolódott át (a komponens három CTA-gombja viszont a #9 alakjára javult). |

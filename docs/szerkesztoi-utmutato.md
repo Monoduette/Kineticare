@@ -38,14 +38,14 @@ Kilépni jobbra fent, a fiókodnál található **Kijelentkezés** ponttal tudsz
 Belépés után bal oldalon látod a menüt. A tételek csoportokba vannak rendezve,
 felül a leggyakrabban használt, alul a legritkábban kellő dolgokkal:
 
-| Csoport | Mi van benne | Kell-e neked? |
-| --- | --- | --- |
-| **Tartalom** | Képek, Oldalak, Blogbejegyzések, Kategóriák, Vélemények | Igen — ez a napi munkád. |
-| **Navigáció** | Menüpontok | Igen — az oldal tetején látszó menü. |
-| **Webshop** | Kurzusok, Rendelések, Kosarak, Tranzakciók | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (13. pont). |
-| **Űrlapok** | Űrlapok, Űrlapbeküldések | A kapcsolati űrlap és a beérkezett üzenetek. |
-| **Felhasználók** | Felhasználók | Csak óvatosan. Lásd a 13. pontot. |
-| **Rendszer** | Rendszeresemények, Műveletnapló | Nem a tiéd — csak technikai napló. |
+| Csoport          | Mi van benne                                            | Kell-e neked?                                                                          |
+| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Tartalom**     | Képek, Oldalak, Blogbejegyzések, Kategóriák, Vélemények | Igen — ez a napi munkád.                                                               |
+| **Navigáció**    | Menüpontok                                              | Igen — az oldal tetején látszó menü.                                                   |
+| **Webshop**      | Kurzusok, Rendelések, Kosarak, Tranzakciók              | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (13. pont). |
+| **Űrlapok**      | Űrlapok, Űrlapbeküldések                                | A kapcsolati űrlap és a beérkezett üzenetek.                                           |
+| **Felhasználók** | Felhasználók                                            | Csak óvatosan. Lásd a 13. pontot.                                                      |
+| **Rendszer**     | Rendszeresemények, Műveletnapló                         | Nem a tiéd — csak technikai napló.                                                     |
 
 Egy csoportra kattintva megkapod a listát (pl. az összes blogbejegyzést). A lista
 jobb felső sarkában van az **Új létrehozása** gomb, a listaelemre kattintva pedig
@@ -160,8 +160,8 @@ A kategória a cikkek témakörökbe rendezésére való.
 2. **Név** — ahogy az olvasó látja, pl. „Kézrehabilitáció".
 3. **Webcím (slug)** — magától kitöltődik, ékezet nélkül (`kezrehabilitacio`).
 4. **Mihez tartozik**:
-   - *Blogbejegyzésekhez* — ez a blog témaköre; a blog csak ezeket mutatja,
-   - *Kurzusokhoz* — a webshop termékeinek besorolása.
+   - _Blogbejegyzésekhez_ — ez a blog témaköre; a blog csak ezeket mutatja,
+   - _Kurzusokhoz_ — a webshop termékeinek besorolása.
 5. **Fölérendelt kategória** — csak akkor töltsd ki, ha ez egy nagyobb témakör
    alkategóriája. Ha bizonytalan vagy, hagyd üresen.
 6. **Mentés**. A kategória azonnal él, saját oldala: `/blog/kategoria/<webcím>`.
@@ -256,17 +256,17 @@ pedig hagyd ki — ha elrontod, a mentés magyar hibaüzenettel figyelmeztet.
 A kezdőlap alap-sorrendje nem véletlen: azt a sorrendet követi, amiben a
 látogató dönteni szokott. Fentről lefelé:
 
-| Sorrend | Szekció | Mit csinál |
-| --- | --- | --- |
-| 1. | Film-hero | Megmondja, kinek és miben segítünk, és egyetlen hangsúlyos gombbal a kurzusokra visz. |
-| 2. | Hitel-csík | Egy sorban a szakmai háttér — ez keretezi az egész lapot. |
-| 3. | Kurzuskártyák | A fizetős kurzusok árral és gombbal. Ez az oldal legfontosabb blokkja. |
-| 4. | Ingyenes SOS-sáv | Aki még nem venne kurzust, itt kap ingyenes anyagot — a fizetős ajánlat UTÁN, visszafogottabban. |
-| 5–10. | Sajtólogók, Üdvözlő blokk, „Erre számíthatsz", Három állapot, Szolgáltatások, Rólunk | A bizalomépítő, bemutatkozó rész. |
-| 11. | Így működik | Eloszlatja a „vajon menni fog otthon?" kételyt. |
-| 12. | Vélemények | Páciens-visszajelzések — a kurzusok után, legfeljebb három. |
-| 13. | Tudástár | A legfrissebb blogcikkek (ez hozza a Google-ből az olvasókat). |
-| 14. | GYIK | A vásárlás előtti utolsó kérdések a lap alján. |
+| Sorrend | Szekció                                                                              | Mit csinál                                                                                       |
+| ------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| 1.      | Film-hero                                                                            | Megmondja, kinek és miben segítünk, és egyetlen hangsúlyos gombbal a kurzusokra visz.            |
+| 2.      | Hitel-csík                                                                           | Egy sorban a szakmai háttér — ez keretezi az egész lapot.                                        |
+| 3.      | Kurzuskártyák                                                                        | A fizetős kurzusok árral és gombbal. Ez az oldal legfontosabb blokkja.                           |
+| 4.      | Ingyenes SOS-sáv                                                                     | Aki még nem venne kurzust, itt kap ingyenes anyagot — a fizetős ajánlat UTÁN, visszafogottabban. |
+| 5–10.   | Sajtólogók, Üdvözlő blokk, „Erre számíthatsz", Három állapot, Szolgáltatások, Rólunk | A bizalomépítő, bemutatkozó rész.                                                                |
+| 11.     | Így működik                                                                          | Eloszlatja a „vajon menni fog otthon?" kételyt.                                                  |
+| 12.     | Vélemények                                                                           | Páciens-visszajelzések — a kurzusok után, legfeljebb három.                                      |
+| 13.     | Tudástár                                                                             | A legfrissebb blogcikkek (ez hozza a Google-ből az olvasókat).                                   |
+| 14.     | GYIK                                                                                 | A vásárlás előtti utolsó kérdések a lap alján.                                                   |
 
 Két szabály, amit érdemes megtartani, ha átrendezel:
 
@@ -315,11 +315,11 @@ A menü az oldal tetején látszó navigáció. Legfeljebb **2 szintű**: főmen
 2. **Felirat** — ez a szöveg jelenik meg a menüben (pl. „Kurzusok").
 3. **Hová mutat** — ettől függ a következő mező:
 
-   | Típus | Mit válassz utána |
-   | --- | --- |
-   | **Oldal** | a **Cél** mezőben az oldalak közül választasz (pl. Rólunk) |
-   | **Bejegyzés** | a **Cél** mezőben egy blogbejegyzést |
-   | **Kurzus** | a **Cél** mezőben egy terméket a webshopból |
+   | Típus          | Mit válassz utána                                                  |
+   | -------------- | ------------------------------------------------------------------ |
+   | **Oldal**      | a **Cél** mezőben az oldalak közül választasz (pl. Rólunk)         |
+   | **Bejegyzés**  | a **Cél** mezőben egy blogbejegyzést                               |
+   | **Kurzus**     | a **Cél** mezőben egy terméket a webshopból                        |
    | **Külső link** | a **Külső webcím** mezőbe teljes címet írsz, `https://`-sel kezdve |
 
 4. **Fölérendelt menüpont** — csak akkor töltsd ki, ha ez almenüpont. Almenüpont
@@ -450,11 +450,11 @@ lejátszóban lát: bal oldalon a fejezetek, bennük a leckék, mellette a vide�
 
 ### Háromféle lecke
 
-| Típus | Mikor használd | Mit kell kitölteni |
-| --- | --- | --- |
-| **Videó** | Bunny Stream felvétel | Videó azonosítója, Hossz (másodperc), Videó állapota |
-| **Szöveges lecke** | Csak írott anyag és/vagy letölthető fájl | Lecke szövege és/vagy Letölthető anyagok |
-| **Külső link** | Máshová vezet (pl. Facebook-csoport) | Külső webcím |
+| Típus              | Mikor használd                           | Mit kell kitölteni                                   |
+| ------------------ | ---------------------------------------- | ---------------------------------------------------- |
+| **Videó**          | Bunny Stream felvétel                    | Videó azonosítója, Hossz (másodperc), Videó állapota |
+| **Szöveges lecke** | Csak írott anyag és/vagy letölthető fájl | Lecke szövege és/vagy Letölthető anyagok             |
+| **Külső link**     | Máshová vezet (pl. Facebook-csoport)     | Külső webcím                                         |
 
 Mindhárom típushoz adhatsz **rövid összefoglalót**, **lecke szöveget** és
 **letölthető anyagokat** (PDF, kép, segédlet).
@@ -475,8 +475,7 @@ leggyakoribb hiba a kurzusfeltöltésnél.
 
 ### Videós leckénél erre figyelj
 
-- A **Hossz (másodperc)** kitöltése **kötelező**. Enélkül a videó nem indul el a
-  vásárlónál — a lejátszási jegy nem állítható ki nélküle.
+- A **Hossz (másodperc)** kitöltése **ajánlott**: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). A GUID és a **Kész** állapot nélkül viszont nem.
 - A **Videó állapota** alapból „Feldolgozás alatt”. Amíg nem állítod
   **„Kész”**-re, a lecke a lejátszóban „Hamarosan” jelzéssel, letiltva jelenik
   meg, és **nem számít bele a haladásba** sem. Ez szándékos: nem várjuk el a
@@ -568,7 +567,7 @@ látogatóknak vagy a vásárlóknak fáj, ha elromlik.
 **Általános óvatosság**
 
 - **Törlés helyett rejts el.** Menüpontnál, véleménynél és szekciónál vedd ki a
-  *Látható* pipát, oldalnál/bejegyzésnél vond vissza a közzétételt. A törlés
+  _Látható_ pipát, oldalnál/bejegyzésnél vond vissza a közzétételt. A törlés
   végleges — a szekcióval együtt a beleírt szöveg is elvész.
 - **Élő tartalom webcímét (slug) ne írd át** — a régi linkek elhalnak.
 - Ha egy mentés hibaüzenettel áll meg, olvasd el az üzenetet: magyarul mondja meg,

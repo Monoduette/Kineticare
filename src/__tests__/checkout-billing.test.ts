@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -583,8 +585,69 @@ describe('CheckoutForm — a kiszolgált HTML (előkitöltés és autofill)', ()
   })
 
   it('induláskor egyetlen mező sem érvénytelen (aria-invalid csak hiba után jelenik meg)', () => {
-    expect(render({ name: 'Minta Mari', email: 'vevo@example.test' })).not.toContain(
-      'aria-invalid',
+    expect(render({ name: 'Minta Mari', email: 'vevo@example.test' })).not.toContain('aria-invalid')
+  })
+})
+
+describe('CheckoutForm — vendég, meglévő fiók (409-szabály)', () => {
+  it('előre elmondja, hogy vendégvásárlás nem kerül a meglévő fiókba, és belépés után a pénztárra visz', () => {
+    const html = renderToStaticMarkup(
+      createElement(CheckoutForm, {
+        product: { id: 42, sku: 'Kézrehab alapkurzus', priceHuf: 24900, isFree: false },
+        user: null,
+        alreadyPurchased: false,
+      }),
     )
+    expect(html).toContain('be is jelentkezhetsz')
+    expect(html).toContain('vendégként a vásárlás nem kerül abba a fiókba')
+    expect(html).toContain('/belepes?returnUrl=')
+    expect(html).toContain('%2Fpenztar%3Ftermek%3D42')
+    expect(html).not.toMatch(/[–—]/)
+  })
+})
+
+describe('CheckoutForm — már megvett kurzus', () => {
+  it('a gomb a lejátszóra visz, nem indít új rendelést', () => {
+    const html = renderToStaticMarkup(
+      createElement(CheckoutForm, {
+        product: { id: 42, sku: 'Kézrehab alapkurzus', priceHuf: 24900, isFree: false },
+        user: { name: 'Minta Mari', email: 'vevo@example.test' },
+        alreadyPurchased: true,
+      }),
+    )
+    expect(html).toContain('href="/kurzusaim/42"')
+    expect(html).toContain('Kezdd el a kurzust')
+    expect(html).not.toContain('type="submit"')
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('a szerver már-megvett 409-ére a lejátszó gombot is kiteszi, ha a lap még nem tudta', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('error === CHECKOUT_ALREADY_PURCHASED_ERROR && !alreadyPurchased')
+    expect(source).toContain('myCoursePlayerHref(product.id)')
+  })
+})
+
+describe('CheckoutForm — vendég, már fizetett rendelés (409, W4)', () => {
+  it('a befejezés-belépés után 409-re Belépés gombot tesz a lejátszóra, nem a pénztárra', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('error === CHECKOUT_GUEST_FINISH_AFTER_LOGIN')
+    expect(source).toContain('signInHref(myCoursePlayerHref(product.id))')
+    expect(source).toContain('signInHref(checkoutHref(product.id))')
+  })
+
+  it('a védekező ingyenes ág sem használ töltelék gondolatjelet', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('Ez a kurzus ingyenes. A hozzáférés a regisztrációd után')
+    expect(source).not.toMatch(/Ez a kurzus ingyenes [–—]/)
   })
 })

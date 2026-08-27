@@ -17,7 +17,9 @@ import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseHref } from '@/lib/course-url'
 import { courseCover, courseTitle } from '@/lib/courses'
+import { signInHref } from '@/lib/return-url'
 import { logger } from '@/lib/logger'
+import { loadPurchasedProducts } from '@/lib/purchased-products'
 import type { Product, User } from '@/payload-types'
 
 import config from '../../../payload.config'
@@ -138,13 +140,11 @@ function buildCards(
 export default async function KurzusaimPage() {
   const user = await getCurrentUser()
   if (user === null) {
-    redirect('/belepes?returnUrl=/kurzusaim')
+    redirect(signInHref('/kurzusaim'))
   }
 
-  const purchases = Array.isArray(user.purchases) ? user.purchases : []
-  const products = purchases
-    .map((entry) => (typeof entry === 'object' && entry !== null ? (entry as Product) : null))
-    .filter((entry): entry is Product => entry !== null)
+  const payload = await getPayload({ config })
+  const products = await loadPurchasedProducts({ payload, purchases: user.purchases })
 
   const accessByProductId = await getAccessViews(user.id, products)
   const watchedByProduct = await getWatchedRefs(user.id, products)

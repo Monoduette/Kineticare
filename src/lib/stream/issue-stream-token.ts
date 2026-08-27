@@ -11,7 +11,7 @@ import {
 import type { Product, User } from '../../payload-types'
 import { logger as rootLogger, type Logger } from '../logger'
 import type { StreamTokenResponseBody } from './contract'
-import { createStreamPlaybackToken } from './token'
+import { createStreamPlaybackToken, durationSecForPlaybackToken } from './token'
 
 /**
  * GET /api/stream-token üzleti logika: purchases paywall, lejárt hozzáférés 403,
@@ -223,14 +223,11 @@ export async function issueStreamToken(
       'A videó feldolgozása még folyamatban van. Nézz vissza néhány perc múlva.',
     )
   }
-  // A tananyag-modell a nem pozitív hosszt már null-ra normalizálta; a jegy
-  // élettartama enélkül nem számolható ki.
   if (lesson.durationSec === null) {
-    log.error('stream-token: a videó durationSec mezője hiányzik vagy érvénytelen', {
+    log.warn('stream-token: a videó durationSec mezője hiányzik, a jegy a max TTL-lel készül', {
       userId: input.user.id,
       productId,
     })
-    throw new StreamTokenError(503, UNAVAILABLE_MESSAGE)
   }
 
   // 5) Token kiállítása — a library token-kulcsa kérés-idejű lazy ellenőrzéssel.
@@ -240,7 +237,7 @@ export async function issueStreamToken(
   const signingKey = requireTokenAuthKey(log)
   const issued = createStreamPlaybackToken({
     videoId: streamAssetId,
-    durationSec: lesson.durationSec,
+    durationSec: durationSecForPlaybackToken(lesson.durationSec),
     signingKey,
   })
   const expiresAt = new Date(issued.expires * 1000).toISOString()

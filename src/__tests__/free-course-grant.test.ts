@@ -29,9 +29,16 @@ interface FixtureProduct {
   status: string
   priceInHUFEnabled?: boolean | null
   priceInHUF?: number | null
+  accessDurationDays?: number | null
 }
 
 const FREE_PUBLISHED: FixtureProduct = { id: 11, status: 'published', priceInHUFEnabled: false }
+const FREE_TIMED: FixtureProduct = {
+  id: 15,
+  status: 'published',
+  priceInHUFEnabled: false,
+  accessDurationDays: 365,
+}
 const FREE_PUBLISHED_OTHER: FixtureProduct = {
   id: 14,
   status: 'published',
@@ -59,6 +66,7 @@ const MISCONFIGURED: FixtureProduct = {
 const ALL_PRODUCTS = [
   FREE_PUBLISHED,
   FREE_PUBLISHED_OTHER,
+  FREE_TIMED,
   UNSET_PRICE_FLAG,
   PAID_PUBLISHED,
   FREE_ARCHIVED,
@@ -92,11 +100,16 @@ function matchesWhere(product: FixtureProduct, where: unknown): boolean {
 
 function createMockPayload(
   products: FixtureProduct[] = ALL_PRODUCTS,
-  userSeed: { id?: number; purchases?: number[] } = {},
+  userSeed: {
+    id?: number
+    purchases?: number[]
+    accessGrants?: Array<{ product: number; grantedAt: string }>
+  } = {},
 ) {
   const userDoc = {
     id: userSeed.id ?? 7,
     purchases: [...(userSeed.purchases ?? [])],
+    accessGrants: [...(userSeed.accessGrants ?? [])],
   }
   const updates: Array<{ collection: string; id: number | string; data: Record<string, unknown> }> =
     []
@@ -110,7 +123,11 @@ function createMockPayload(
     }),
     findByID: vi.fn(async ({ collection, id }: { collection: string; id: number | string }) => {
       if (collection === 'users' && Number(id) === userDoc.id) {
-        return { id: userDoc.id, purchases: [...userDoc.purchases] }
+        return {
+          id: userDoc.id,
+          purchases: [...userDoc.purchases],
+          accessGrants: [...userDoc.accessGrants],
+        }
       }
       throw new Error('Not Found')
     }),
@@ -119,6 +136,12 @@ function createMockPayload(
         updates.push(args)
         if (args.collection === 'users' && Array.isArray(args.data.purchases)) {
           userDoc.purchases = args.data.purchases as number[]
+        }
+        if (args.collection === 'users' && Array.isArray(args.data.accessGrants)) {
+          userDoc.accessGrants = args.data.accessGrants as Array<{
+            product: number
+            grantedAt: string
+          }>
         }
         return args.data
       },
@@ -146,6 +169,7 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
       id: 7,
       data: { purchases: [FREE_PUBLISHED.id] },
     })
+    expect(updates[0].data).not.toHaveProperty('accessGrants')
   })
 
   it('második ingyenes SKU-t NEM írja be, ha azt nem kérték', async () => {
@@ -238,6 +262,62 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
     })
 
     expect(updates[0].data.purchases).toEqual([PAID_PUBLISHED.id, FREE_PUBLISHED.id])
+  })
+
+  it('időkorlátos ingyenes SKU: purchases + accessGrants kezdőpont', async () => {
+    const { payload, updates } = createMockPayload([FREE_TIMED])
+
+    const result = await grantFreeCoursesToUser({
+      payload,
+      user: { id: 7, purchases: [] },
+      productId: FREE_TIMED.id,
+      logger: silentLogger(),
+    })
+
+    expect(result.grantedProductIds).toEqual([FREE_TIMED.id])
+    expect(updates).toHaveLength(1)
+    expect(updates[0].data.purchases).toEqual([FREE_TIMED.id])
+    const grants = updates[0].data.accessGrants as Array<{ product: number; grantedAt: string }>
+    expect(grants).toHaveLength(1)
+    expect(grants[0].product).toBe(FREE_TIMED.id)
+    expect(typeof grants[0].grantedAt).toBe('string')
+    expect(Number.isNaN(Date.parse(grants[0].grantedAt))).toBe(false)
+  })
+
+  it('már birtokolt időkorlátos SKU hiányzó órával: csak az accessGrants íródik', async () => {
+    const { payload, updates } = createMockPayload([FREE_TIMED], {
+      purchases: [FREE_TIMED.id],
+    })
+
+    const result = await grantFreeCoursesToUser({
+      payload,
+      user: { id: 7, purchases: [FREE_TIMED.id] },
+      productId: FREE_TIMED.id,
+      logger: silentLogger(),
+    })
+
+    expect(result.grantedProductIds).toEqual([])
+    expect(updates).toHaveLength(1)
+    expect(updates[0].data).not.toHaveProperty('purchases')
+    const grants = updates[0].data.accessGrants as Array<{ product: number; grantedAt: string }>
+    expect(grants[0].product).toBe(FREE_TIMED.id)
+  })
+
+  it('már birtokolt időkorlátos SKU meglévő órával: nincs írás (az órát nem nullázzuk)', async () => {
+    const { payload, updates } = createMockPayload([FREE_TIMED], {
+      purchases: [FREE_TIMED.id],
+      accessGrants: [{ product: FREE_TIMED.id, grantedAt: '2026-01-15T00:00:00.000Z' }],
+    })
+
+    const result = await grantFreeCoursesToUser({
+      payload,
+      user: { id: 7, purchases: [FREE_TIMED.id] },
+      productId: FREE_TIMED.id,
+      logger: silentLogger(),
+    })
+
+    expect(result.grantedProductIds).toEqual([])
+    expect(updates).toHaveLength(0)
   })
 })
 

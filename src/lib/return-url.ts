@@ -21,6 +21,64 @@
 /** A belépés/regisztráció alapértelmezett célja, ha nincs érvényes returnUrl. */
 export const DEFAULT_AUTH_RETURN_URL = '/kurzusaim'
 
+/** A nyilvános belépő oldal útvonala. */
+export const SIGN_IN_PATH = '/belepes'
+
+/** A nyilvános jelszó-visszaállító kérés útvonala. */
+export const FORGOT_PASSWORD_PATH = '/elfelejtett-jelszo'
+
+/**
+ * Belépő hivatkozás ellenőrzött `returnUrl`-lel.
+ *
+ * A pénztár vendég-sora, a köszönőoldal és a jelszó-levelek korábban csupasz
+ * `/belepes`-t adtak, és a belépés után a Kurzusaim/pénztár szándék elveszett.
+ * A kosár fizetős sávja vendégként is a pénztárra visz (nincs belépőfal). A
+ * szűrés ugyanaz, mint a belépő oldalé: idegen eredetű cél a
+ * `DEFAULT_AUTH_RETURN_URL`-re esik.
+ *
+ * Forrás: GOV.UK Design System, Begin with the user need / don’t drop people
+ * off a journey (https://design-system.service.gov.uk/patterns/task-list-pages/);
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
+ */
+export function signInHref(returnUrl: string = DEFAULT_AUTH_RETURN_URL): string {
+  const safe = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+  return `${SIGN_IN_PATH}?returnUrl=${encodeURIComponent(safe)}`
+}
+
+/**
+ * Elfelejtett-jelszó oldal ellenőrzött `returnUrl`-lel.
+ *
+ * A belépő oldalról és a meglévő-fiók levelekből ide lép a vevő. A korábbi
+ * csupasz `/elfelejtett-jelszo` eldobta a pénztár/kurzus célt, és a reset-levél
+ * mindig a Kurzusaimra esett. A szűrés ugyanaz, mint a belépőé.
+ *
+ * Forrás: GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+ */
+export function forgotPasswordHref(returnUrl: string = DEFAULT_AUTH_RETURN_URL): string {
+  const safe = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
+  return `${FORGOT_PASSWORD_PATH}?returnUrl=${encodeURIComponent(safe)}`
+}
+
+/**
+ * A Payload forgot-password kérés `req.data.returnUrl` értéke, szűrve.
+ * Ismeretlen vagy idegen érték → Kurzusaim. A REST handler a teljes JSON-t
+ * `req.data`-ba teszi, a műveletnek csak az e-mailt adja tovább.
+ */
+export function returnUrlFromForgotPasswordRequest(req: unknown): string {
+  if (typeof req !== 'object' || req === null) {
+    return DEFAULT_AUTH_RETURN_URL
+  }
+  const data = (req as { data?: unknown }).data
+  if (typeof data !== 'object' || data === null) {
+    return DEFAULT_AUTH_RETURN_URL
+  }
+  return sanitizeReturnUrl((data as { returnUrl?: unknown }).returnUrl, DEFAULT_AUTH_RETURN_URL)
+}
+
 /**
  * Vezérlőkarakter (pl. soremelés) az útvonalban a `Location` fejlécben
  * fejléc-injekciót jelentene, ezért az ilyen érték sehol nem engedhető át.

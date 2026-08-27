@@ -8,12 +8,14 @@ import { Section } from '@/components/ui/Section'
 import { CartView } from '@/components/checkout/CartView'
 import type { CartItem, CartItemAvailability } from '@/lib/cart'
 import { logger } from '@/lib/logger'
+import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
   coursePriceHuf,
   courseTitle,
   hasUserPurchased,
   isFreeCourse,
   isPaidCourse,
+  myCoursePlayerHref,
 } from '@/lib/courses'
 import type { Product, User } from '@/payload-types'
 
@@ -43,7 +45,10 @@ async function getProductById(id: number): Promise<Product | null> {
     const payload = await getPayload({ config })
     return await payload.findByID({ collection: 'products', id, depth: 1, overrideAccess: true })
   } catch (error) {
-    logger.warn('kosár: termék-lekérdezés sikertelen', { productId: id, error: error instanceof Error ? error.message : String(error) })
+    logger.warn('kosár: termék-lekérdezés sikertelen', {
+      productId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }
@@ -116,12 +121,22 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
     <Section>
       <Container size="narrow">
         <h1>Kosár</h1>
-        {alreadyPurchased ? (
+        {alreadyPurchased && termekItem !== null ? (
           <div className="kc-cart-notice" role="status">
-            <p>Ezt a kurzust már megvetted, a <Link href="/kurzusaim">Kurzusaim</Link> oldalon éred el.</p>
+            <p>
+              Ezt a kurzust már megvetted.{' '}
+              <Link href={myCoursePlayerHref(termekItem.productId)}>
+                {ctaLabel('course-start')}
+              </Link>
+            </p>
           </div>
         ) : null}
-        <CartView initialItem={termekItem} isLoggedIn={user !== null} />
+        <CartView
+          alreadyPurchasedProductId={
+            alreadyPurchased && termekItem !== null ? termekItem.productId : null
+          }
+          initialItem={termekItem}
+        />
       </Container>
     </Section>
   )

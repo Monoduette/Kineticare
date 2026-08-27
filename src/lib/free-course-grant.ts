@@ -1,6 +1,13 @@
 import type { Payload, PayloadRequest } from 'payload'
 
 import type { User } from '../payload-types'
+import {
+  accessGrantsForWrite,
+  durationDaysFromProduct,
+  grantDatesFromRows,
+  grantRowsFromUnknown,
+  withUpsertedAccessGrant,
+} from './access-grants'
 import { logger as rootLogger, type Logger } from './logger'
 import { withUserPurchasesLock } from './user-purchases-lock'
 
@@ -14,8 +21,10 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  * igazságforrás az `isFreeCourse` (src/lib/courses.ts). A beállítatlan
  * (NULL) ár-pipa nem ingyenes ajánlat.
  *
- * IDEMPOTENS: ha a kért termék már a purchases-ben van, nincs írás. Más
- * ingyenes SKU-t a függvény nem ír be.
+ * IDEMPOTENS: ha a kért termék már a purchases-ben van, és az óra (ha van)
+ * is be van írva, nincs írás. Időkorlátos SKU-nál hiányzó `accessGrants`
+ * sor fail-open órát jelentene, ezért azt pótoljuk. Más ingyenes SKU-t a
+ * függvény nem ír be.
  *
  * A users.purchases mező field-access szinten RENDSZER-ÍRÁSÚ — az írás itt is
  * `overrideAccess: true`-val, kizárólag szerver-oldalon történik. Az
@@ -81,8 +90,11 @@ export async function grantFreeCoursesToUser(
     return { grantedProductIds: [], freeProductCount: 0 }
   }
 
+  const durationDays = durationDaysFromProduct(requested as { accessDurationDays?: number | null })
   const staleOwned = new Set(userPurchaseIds(user).map(String))
-  if (staleOwned.has(String(requested.id))) {
+  // Korlátlan SKU, már a fiókban: nincs mit írni. Időkorlátosnál a lockban
+  // dől el, van-e már accessGrants sor (hiányzó kezdőpont = fail-open).
+  if (staleOwned.has(String(requested.id)) && durationDays === null) {
     return { grantedProductIds: [], freeProductCount: 1 }
   }
 
@@ -98,25 +110,45 @@ export async function grantFreeCoursesToUser(
         ...(input.req ? { req: input.req } : {}),
       })) as User
 
-      const owned = new Set(userPurchaseIds(fresh).map(String))
-      if (owned.has(String(requested.id))) {
+      const owned = new Set(userPurchaseIds(fresh).map(String)).has(String(requested.id))
+      const existingGrants = grantRowsFromUnknown(fresh.accessGrants)
+      const hasGrant = grantDatesFromRows(existingGrants).has(requested.id)
+      if (owned && (durationDays === null || hasGrant)) {
         return { grantedProductIds: [], freeProductCount: 1 }
+      }
+
+      const shouldWriteGrant = durationDays !== null && !hasGrant
+      const data: {
+        purchases?: number[]
+        accessGrants?: ReturnType<typeof accessGrantsForWrite>
+      } = {}
+      if (!owned) {
+        data.purchases = [...userPurchaseIds(fresh), requested.id]
+      }
+      if (shouldWriteGrant) {
+        data.accessGrants = accessGrantsForWrite(
+          withUpsertedAccessGrant(existingGrants, requested.id, new Date()),
+        )
       }
 
       await payload.update({
         collection: 'users',
         id: user.id,
-        data: { purchases: [...userPurchaseIds(fresh), requested.id] },
+        data,
         overrideAccess: true,
         ...(input.req ? { req: input.req } : {}),
       })
 
       log.info('ingyenes kurzus-hozzáférés beírva', {
         userId: user.id,
-        grantedProductIds: [requested.id],
+        grantedProductIds: owned ? [] : [requested.id],
+        accessGrantWritten: shouldWriteGrant,
       })
 
-      return { grantedProductIds: [requested.id], freeProductCount: 1 }
+      return {
+        grantedProductIds: owned ? [] : [requested.id],
+        freeProductCount: 1,
+      }
     },
     log,
   )

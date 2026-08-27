@@ -4,11 +4,32 @@ import Link from 'next/link'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
+import { isMyCoursePlayerHref } from '@/lib/courses'
+import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl, signInHref } from '@/lib/return-url'
 
 export const metadata: Metadata = {
   title: 'Elfelejtett jelszó',
   description: 'Kérj jelszó-visszaállító linket az e-mail-címedre.',
 }
+
+interface ElfelejtettJelszoPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+/**
+ * Beküldés utáni második mondat. A Payload reset süti-munkamenetet állíthat,
+ * ezért a jelszó után NEM kell újra belépni.
+ *
+ * Forrás: GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 3.3.3 Error Suggestion
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ */
+export const FORGOT_PASSWORD_SUCCESS_NOTE =
+  'A linkkel jelszót állítasz. Utána a kurzusaid megnyílnak, külön belépés nem kell.'
+
+export const FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER =
+  'A linkkel jelszót állítasz. Utána a kurzusod megnyílik, külön belépés nem kell.'
 
 /**
  * A MÁSODIK bekezdés az ÁTKÖLTÖZTETETT vevő biztonsági hálója.
@@ -17,28 +38,41 @@ export const metadata: Metadata = {
  * a MEGSZOKOTT úton érkezik: fejléc → Belépés → régi jelszó → „Hibás e-mail-cím
  * vagy jelszó." → „Elfelejtetted a jelszavad?". Erre a lapra tehát olyan ember
  * is beesik, aki NEM felejtette el a jelszavát.
+ *
+ * A `returnUrl` a belépő oldalról és a meglévő-fiók levelekből jön: a reset-levél
+ * és a „Vissza a belépéshez" ugyanoda visz vissza (pénztár, kurzus, Kurzusaim).
  */
-export default function ElfelejtettJelszoPage() {
+export default async function ElfelejtettJelszoPage({ searchParams }: ElfelejtettJelszoPageProps) {
+  const params = await searchParams
+  const returnUrl = sanitizeReturnUrl(params.returnUrl, DEFAULT_AUTH_RETURN_URL)
+
   return (
     <Section>
       <Container size="narrow">
         <h1>Elfelejtetted a jelszavad?</h1>
         <p className="kc-auth-lead">
-          Add meg az e-mail-címedet, és küldünk egy jelszó-visszaállító linket. Ha a cím létezik
-          a rendszerünkben, a link néhány percen belül megérkezik.
+          Add meg az e-mail-címedet, és küldünk egy jelszó-visszaállító linket. Ha a cím létezik a
+          rendszerünkben, a link néhány percen belül megérkezik.
         </p>
         <p className="kc-auth-lead">
-          Ha korábban a régi Kineticare-oldalon vásároltál, az ottani jelszavad itt nem működik:
-          az másik rendszer volt. Add meg ugyanazt az e-mail-címet, amellyel vásároltál, és itt
+          Ha korábban a régi Kineticare-oldalon vásároltál, az ottani jelszavad itt nem működik: az
+          másik rendszer volt. Add meg ugyanazt az e-mail-címet, amellyel vásároltál, és itt
           állíthatsz be újat. A megvásárolt kurzusaid megvannak, újra fizetned nem kell.
         </p>
-        <ForgotPasswordForm />
+        <ForgotPasswordForm
+          returnUrl={returnUrl}
+          successNote={
+            isMyCoursePlayerHref(returnUrl)
+              ? FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER
+              : FORGOT_PASSWORD_SUCCESS_NOTE
+          }
+        />
         {/* Önállóan álló link: a `.kc-auth-actions` sor adja a 44 px-es
             célfelületet. A korábbi `.kc-auth-alt` MONDATBA ágyazott linkeknek
             való, és itt 117,1 × 18 CSS px-es célt adott (mérve) — a WCAG 2.2 ·
             2.5.8 24 × 24-es küszöbe alatt, „Inline" kivétel nélkül. */}
         <div className="kc-auth-actions">
-          <Link href="/belepes">Vissza a belépéshez</Link>
+          <Link href={signInHref(returnUrl)}>Vissza a belépéshez</Link>
         </div>
       </Container>
     </Section>

@@ -3,7 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import KoszonjukPage from '../app/(frontend)/fizetes/koszonom/page'
-import { ThankYouUnauthorized, ThankYouView } from '../components/checkout/ThankYouView'
+import {
+  ThankYouMissingOrder,
+  ThankYouNotFound,
+  ThankYouPaid,
+  ThankYouTimeout,
+  ThankYouUnauthorized,
+  ThankYouView,
+} from '../components/checkout/ThankYouView'
 
 /**
  * REGRESSZIÓ-ŐR: a köszönőoldal NEM dönthet szerver-oldali hitelesítésből.
@@ -110,9 +117,7 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
    * ezen az ágon SEMMILYEN kimenetelt nem állítunk.
    */
   const markup = () =>
-    renderToStaticMarkup(
-      createElement(ThankYouUnauthorized, { orderNumber: 'KH-2026-000009' }),
-    )
+    renderToStaticMarkup(createElement(ThankYouUnauthorized, { orderNumber: 'KH-2026-000009' }))
 
   it('nem mondja, hogy megtörtént a vásárlás', () => {
     const html = markup()
@@ -122,23 +127,96 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
     expect(html).not.toContain('A fizetésed feldolgozzuk')
   })
 
-  it('kimondja, hogy belépés nélkül nem látjuk az állapotot', () => {
+  it('kimondja, hogy a visszaigazolás e-mailben jön, belépés nélkül nem látjuk az állapotot', () => {
     const html = markup()
-    expect(html).toContain('Nem látjuk, mi történt a fizetéssel')
-    expect(html).toContain('be kell lépned')
+    expect(html).toContain('A visszaigazolás e-mailben érkezik')
+    expect(html).toContain('nincs belépésed')
+    expect(html).not.toContain('Nem látjuk, mi történt a fizetéssel')
   })
 
   it('MINDKÉT lehetséges kimenetelre megmondja a következő lépést', () => {
     const html = markup()
-    expect(html).toContain('Ha sikerült')
-    expect(html).toContain('Ha megszakítottad vagy elutasították')
-    expect(html).toContain('újrapróbálhatod')
+    expect(html).toContain('ha a fizetés sikerült')
+    expect(html).toContain('megszakítottad')
+    expect(html).toContain('elutasította')
+    expect(html).toContain('próbálhatod')
   })
 
-  it('a rendelésszám és a két kiút megmarad (nem lesz zsákutca)', () => {
+  it('a rendelésszám és a két kiút megmarad, a belépés NEM a köszönőoldalra visz vissza', () => {
     const html = markup()
     expect(html).toContain('KH-2026-000009')
     expect(html).toContain('/belepes?returnUrl=')
+    expect(html).toContain('%2Fkurzusaim')
+    expect(html).not.toContain('/fizetes/koszonom')
     expect(html).toContain('/kurzusok')
+    expect(html).not.toMatch(/kc-button[^>]*href="\/kurzusok"/)
+  })
+})
+
+describe('bejelentkezett, sikeres fizetés — a lejátszó a következő lépés', () => {
+  it('ismert termék-id-nél a gomb a lejátszóra visz, nem a listára', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouPaid, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain('Köszönjük a vásárlást')
+    expect(html).toContain('most megnyitható')
+    expect(html).toContain('href="/kurzusaim/42"')
+    expect(html).toContain('Kezdd el a kurzust')
+    expect(html).not.toMatch(/kc-button[^>]*href="\/kurzusaim"/)
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('hiányzó termék-id-nél a Kurzusaim lista a tartalék', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouPaid, { orderNumber: 'KH-2026-000123', productId: null }),
+    )
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('Nyisd meg a kurzusaidat')
+    expect(html).not.toContain('/kurzusaim/42')
+  })
+})
+
+describe('bejelentkezett, függő fizetés — a poll után is a kurzus a következő lépés', () => {
+  it('ismert termék-id-nél a gomb a lejátszóra visz', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouTimeout, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain('feldolgozása folyamatban')
+    expect(html).toContain('href="/kurzusaim/42"')
+    expect(html).toContain('Kezdd el a kurzust')
+    expect(html).not.toMatch(/kc-button[^>]*href="\/kurzusaim"/)
+    expect(html).not.toContain('Kurzusaim oldalon')
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('hiányzó termék-id-nél a lista a tartalék', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouTimeout, { orderNumber: 'KH-2026-000123', productId: null }),
+    )
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('Nyisd meg a kurzusaidat')
+    expect(html).not.toContain('Kurzusaim oldalon')
+  })
+})
+
+describe('köszönőoldal — hiányzó vagy idegen rendelés', () => {
+  it('rendelésszám nélkül a gomb a kurzusaidhoz visz, nem oldalnévre küld', () => {
+    const html = renderToStaticMarkup(createElement(ThankYouMissingOrder))
+    expect(html).toContain('Hiányzik a rendelésszám')
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('Nyisd meg a kurzusaidat')
+    expect(html).not.toContain('Kurzusaim oldalon')
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('ismeretlen rendelésnél a lista és a kapcsolat a kiút', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouNotFound, { orderNumber: 'KH-2026-000999' }),
+    )
+    expect(html).toContain('KH-2026-000999')
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).not.toContain('Kurzusaim oldalra')
+    expect(html).not.toMatch(/[–—]/)
   })
 })

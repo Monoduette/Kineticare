@@ -6,11 +6,12 @@ import { cache } from 'react'
 
 import { CoursePlayer } from '@/components/account/CoursePlayer'
 import { logger } from '@/lib/logger'
-import { accessExpiredMessage } from '@/lib/course-access'
-import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
+import { resolvePlayerGate } from '@/lib/course-access'
+import { lookupPurchaseDates, resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseTitle, hasUserPurchased, parseCourseIdParam } from '@/lib/courses'
+import { signInHref } from '@/lib/return-url'
 import type { Product, User } from '@/payload-types'
 
 import config from '@payload-config'
@@ -29,7 +30,10 @@ const getCourseById = cache(async (id: number): Promise<Product | null> => {
     const payload = await getPayload({ config })
     return await payload.findByID({ collection: 'products', id, depth: 2, overrideAccess: true })
   } catch (error) {
-    logger.warn('lejátszó: kurzus-lekérdezés sikertelen', { productId: id, error: error instanceof Error ? error.message : String(error) })
+    logger.warn('lejátszó: kurzus-lekérdezés sikertelen', {
+      productId: id,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 })
@@ -45,31 +49,83 @@ async function getCurrentUser(): Promise<User | null> {
 }
 
 /**
- * A megvett kurzus időbeli érvényessége (A1). Lekérdezési hiba esetén a mai,
- * korlátlan viselkedés marad — a stream-token végpont ettől függetlenül újra
- * ellenőrzi a lejáratot, tehát a felület engedékenysége nem nyit lyukat.
+ * /kurzusaim/[id] — a kurzus lejátszóoldala.
+ * A lejátszó bemenete a TANANYAG-MODELL (`buildCurriculum`), nem a nyers
+ * `videos`/`modules` mezőpár. A modell a szerveren áll össze, mert
+ * - a `hasAccess: false` ág ITT szűri ki a Bunny-GUID-okat, tehát a fizetős
+ * tartalom azonosítói hozzáférés nélkül BE SEM KERÜLNEK az RSC-payloadba
+ * (S2/b) — ezt a kliensre bízni nem lehet, ott már késő;
  */
-async function getAccessExpiredMessage(userId: number, product: Product): Promise<string | null> {
-  try {
-    const payload = await getPayload({ config })
-    const access = await resolveSingleCourseAccess({ payload, userId, product, logger })
-    if (access.hasAccess) {
-      return null
-    }
-    logger.info('lejátszó: lejárt hozzáférés — a videók nem indíthatók', {
-      userId,
-      productId: product.id,
-      expiresAt: access.expiresAt?.toISOString() ?? null,
-    })
-    return accessExpiredMessage(access.expiresAt)
-  } catch (error) {
-    logger.warn('lejátszó: hozzáférés-állapot számítása sikertelen', {
-      userId,
-      productId: product.id,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return null
+export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPageProps) {
+  const { id } = await params
+  const courseId = parseCourseIdParam(id)
+  if (courseId === null) {
+    notFound()
   }
+
+  const user = await getCurrentUser()
+  if (user === null) {
+    redirect(signInHref(`/kurzusaim/${courseId}`))
+  }
+
+  const product = await getCourseById(courseId)
+  if (!product || (product.status !== 'published' && product.status !== 'archived')) {
+    notFound()
+  }
+
+  const payload = await getPayload({ config })
+  const purchased = hasUserPurchased(user.purchases, product.id)
+  let access = null
+  if (purchased) {
+    try {
+      access = await resolveSingleCourseAccess({ payload, userId: user.id, product, logger })
+    } catch (error) {
+      logger.warn('lejátszó: hozzáférés-állapot számítása sikertelen', {
+        userId: user.id,
+        productId: product.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  let hasPaidOrder = false
+  if (!purchased) {
+    const lookup = await lookupPurchaseDates({
+      payload,
+      userId: user.id,
+      productIds: [product.id],
+      logger,
+    })
+    hasPaidOrder = !lookup.failed && lookup.dates.has(product.id)
+  }
+
+  const resolved = resolvePlayerGate({ purchased, access, hasPaidOrder })
+  if (resolved.hasAccess === false && resolved.gate.kind === 'expired') {
+    logger.info('lejátszó: lejárt hozzáférés, a videók nem indíthatók', {
+      userId: user.id,
+      productId: product.id,
+      expiresAt: access?.expiresAt?.toISOString() ?? null,
+    })
+  }
+
+  const hasAccess = resolved.hasAccess
+  const watchedRefs = hasAccess ? await getWatchedRefs(user.id, product.id) : []
+  const curriculum = buildCurriculum(product, hasAccess)
+
+  return (
+    <CoursePlayer
+      curriculum={curriculum}
+      expiredMessage={resolved.gate?.message ?? null}
+      gateKind={resolved.gate?.kind}
+      hasAccess={hasAccess}
+      product={{
+        id: product.id,
+        slug: product.slug ?? null,
+        title: courseTitle(product),
+      }}
+      watchedRefs={watchedRefs}
+    />
+  )
 }
 
 /**
@@ -95,51 +151,4 @@ async function getWatchedRefs(userId: number, productId: number): Promise<string
     })
     return []
   }
-}
-
-/**
- * /kurzusaim/[id] — a kurzus lejátszóoldala.
- * A lejátszó bemenete a TANANYAG-MODELL (`buildCurriculum`), nem a nyers
- * `videos`/`modules` mezőpár. A modell a szerveren áll össze, mert
- * - a `hasAccess: false` ág ITT szűri ki a Bunny-GUID-okat, tehát a fizetős
- * tartalom azonosítói hozzáférés nélkül BE SEM KERÜLNEK az RSC-payloadba
- * (S2/b) — ezt a kliensre bízni nem lehet, ott már késő;
- */
-export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPageProps) {
-  const { id } = await params
-  const courseId = parseCourseIdParam(id)
-  if (courseId === null) {
-    notFound()
-  }
-
-  const user = await getCurrentUser()
-  if (user === null) {
-    redirect(`/belepes?returnUrl=/kurzusaim/${courseId}`)
-  }
-
-  const product = await getCourseById(courseId)
-  if (!product || (product.status !== 'published' && product.status !== 'archived')) {
-    notFound()
-  }
-
-  const purchased = hasUserPurchased(user.purchases, product.id)
-  const expiredMessage = purchased ? await getAccessExpiredMessage(user.id, product) : null
-  const hasAccess = purchased && expiredMessage === null
-  // Haladás csak akkor kell, ha a vevő ténylegesen nézheti a kurzust.
-  const watchedRefs = hasAccess ? await getWatchedRefs(user.id, product.id) : []
-  const curriculum = buildCurriculum(product, hasAccess)
-
-  return (
-    <CoursePlayer
-      curriculum={curriculum}
-      expiredMessage={expiredMessage}
-      hasAccess={hasAccess}
-      product={{
-        id: product.id,
-        slug: product.slug ?? null,
-        title: courseTitle(product),
-      }}
-      watchedRefs={watchedRefs}
-    />
-  )
 }

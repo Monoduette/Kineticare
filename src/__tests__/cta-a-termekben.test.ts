@@ -79,20 +79,15 @@ interface FeliratKivetel {
 /**
  * A MAI ÁLLAPOT, soronként indokolva (2026-08-18-i mérés).
  * A lista 96 sorról 42-re csökkent, kategóriánként:
- * szotartol-elter ... 27 → 1   (a 26 javított felirat a §3.2 szótárból olvas)
+ * szotartol-elter ... 27 → 0   (mind a 27 javított felirat a §3.2 szótárból olvas)
  * mintazat-jelolt ...  9 → 0   (a kategória megszűnt: `CtaEntry.pattern`)
  * nincs-szotari-sor . 20 → 0   (a §3.2 tizenegy új sorral bővült: #28–#38)
  */
 const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
   // ── 1. SZÓTÁRTÓL ELTÉRŐ CTA-k — a javítandók listája ───────────────────────
-  {
-    felirat: 'Belépés a fizetéshez',
-    fajl: 'components/checkout/CartView.tsx',
-    kategoria: 'szotartol-elter',
-    celzottAkcio: 'sign-in',
-    indok:
-      'A §3.2 #5 szerint a belépés felirata mindenütt „Belépés"; a cél megnevezése („a fizetéshez") a környező szövegbe vagy a hozzáférhető névbe való (WCAG 2.2 · 2.5.3). A fájlt a 2026-08-18-i körben MÁSIK ügynök zárta le, ezért ez az egyetlen meg nem javított szótár-eltérés — a vezetőnek jelentve.',
-  },
+  // ÜRES (2026-08-27). A maradék „Belépés a fizetéshez" a kosár vendég-sávján
+  // a §3.2 #21 (`cart-to-checkout`, „Menj a pénztárhoz") alakra javult: a
+  // /penztar vendég-vásárlást is fogad, belépőfal nincs.
 
   // ── 2. NINCS §3.2 SOR — a szótár bővítése tervezési kérdés ────────────────
   // ÜRES, és ez a szakasz ÉRTELME. A 2026-08-17-i mérés húsz ilyen feliratot
@@ -138,25 +133,6 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     fajl: 'components/account/CoursePlayer.tsx',
     kategoria: 'nem-cta',
     indok: 'A lejátszó fejlécének morzsa-szerepű vissza-linkje (nyíl + cím), nem cselekvésgomb.',
-  },
-  {
-    felirat: 'Kurzusaim',
-    fajl: 'app/(frontend)/kosar/page.tsx',
-    kategoria: 'nem-cta',
-    indok: 'Folyószövegbe ágyazott hivatkozás („a Kurzusaim oldalon éred el"), nem gomb.',
-  },
-  {
-    felirat: 'Kurzusaim',
-    fajl: 'app/(frontend)/penztar/page.tsx',
-    kategoria: 'nem-cta',
-    indok: 'Folyószövegbe ágyazott hivatkozás („a Kurzusaim oldalon éred el"), nem gomb.',
-  },
-  {
-    felirat: 'Kurzusaim',
-    fajl: 'components/checkout/ThankYouView.tsx',
-    kategoria: 'nem-cta',
-    indok:
-      'A `paid` ág magyarázó mondatába ágyazott hivatkozás („A kurzust a Kurzusaim oldalon éred el"), nem gomb — ugyanaz az elbírálás, mint a /kosar és a /penztar azonos mondatánál. A komponens HÁROM cselekvésgombja 2026-08-18 óta a §3.2 #9 szótári alakját viseli.',
   },
   {
     felirat: 'Kapcsolat',
@@ -244,13 +220,15 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     felirat: 'Tananyag bezárása',
     fajl: 'components/account/CoursePlayer.tsx',
     kategoria: 'nem-cta',
-    indok: 'A lejátszó tananyag-paneljének bezáró gombja (rejtett szöveg az ikon mellett), felületi kapcsoló.',
+    indok:
+      'A lejátszó tananyag-paneljének bezáró gombja (rejtett szöveg az ikon mellett), felületi kapcsoló.',
   },
   {
     felirat: 'Minden lecke kész',
     fajl: 'components/account/player/navigation.ts',
     kategoria: 'nem-cta',
-    indok: 'A lejátszó LETILTOTT gombjának állapotszövege, nem cselekvés (`disabled: true` a mezői közt).',
+    indok:
+      'A lejátszó LETILTOTT gombjának állapotszövege, nem cselekvés (`disabled: true` a mezői közt).',
   },
   {
     felirat: 'Adatkezelési és adatvédelmi szabályzat',
@@ -417,8 +395,11 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * Google Ads, PostHog) — pontosan az N-3 menücímke-szerep: megnevez, nem
  * cselekszik. Ráadásul admin-belső felület, nem vevői. Új CTA-felirat itt sem
  * keletkezett; a vezetői jóváhagyás e kör kiírásának része.
+ *
+ * 2026-08-27 (kurzus-flow): a `CartView` „Belépés a fizetéshez" szótár-eltérés
+ * kikerült. A webanalitika négy sorával együtt a lista 43, a korlát 47 → 43.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 47
+const KIVETEL_LISTA_FELSO_KORLAT = 43
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -602,7 +583,9 @@ describe('G-UI2 — hatókör: a bejáró tényleg végigméri a felületet', ()
   it('a kiolvasott feliratok száma nem esett a küszöb alá', () => {
     // 2026-08-17-i mérés: 136 találat. Ha az elemző elromlik (pl. egy
     // kifejezés-ág némán dinamikussá válik), ez a szám zuhan.
-    expect(talalatok.length, `kiolvasott feliratok: ${talalatok.length}`).toBeGreaterThanOrEqual(115)
+    expect(talalatok.length, `kiolvasott feliratok: ${talalatok.length}`).toBeGreaterThanOrEqual(
+      115,
+    )
   })
 })
 
@@ -640,9 +623,9 @@ describe('G-UI2 — minden élő felirat a §3.2 szótárból való vagy indokol
   })
 
   it('nincs kivétel olyan feliratra, amely már a szótárban van (halott sor)', () => {
-    const feleslegesek = FELIRAT_KIVETELEK.filter((kivetel) =>
-      jovahagyott(kivetel.felirat),
-    ).map((kivetel) => `${kivetel.fajl} — „${kivetel.felirat}"`)
+    const feleslegesek = FELIRAT_KIVETELEK.filter((kivetel) => jovahagyott(kivetel.felirat)).map(
+      (kivetel) => `${kivetel.fajl} — „${kivetel.felirat}"`,
+    )
     expect(
       feleslegesek,
       'a §3.2-ben szereplő (vagy MINTÁZATÁNAK megfelelő) feliratra nem kell kivétel',
@@ -677,17 +660,17 @@ describe('G-UI2 — a kivétel-lista higiéniája', () => {
   })
 
   it('a „szotartol-elter" sorok megnevezik a §3.2 célsort, és az létezik', () => {
-    const hibasak = FELIRAT_KIVETELEK.filter(
-      (kivetel) => kivetel.kategoria === 'szotartol-elter',
-    ).filter((kivetel) => {
-      if (kivetel.celzottAkcio === undefined) return true
-      try {
-        ctaEntry(kivetel.celzottAkcio)
-        return false
-      } catch {
-        return true
-      }
-    }).map((kivetel) => `${kivetel.fajl} — „${kivetel.felirat}"`)
+    const hibasak = FELIRAT_KIVETELEK.filter((kivetel) => kivetel.kategoria === 'szotartol-elter')
+      .filter((kivetel) => {
+        if (kivetel.celzottAkcio === undefined) return true
+        try {
+          ctaEntry(kivetel.celzottAkcio)
+          return false
+        } catch {
+          return true
+        }
+      })
+      .map((kivetel) => `${kivetel.fajl} — „${kivetel.felirat}"`)
     expect(
       hibasak,
       'a szótártól eltérő sornak meg KELL neveznie, melyik §3.2 cselekvésre kell vezetni',
@@ -802,9 +785,7 @@ describe('G-UI2 — §3.1: nincs kvirtmínusz/gondolatjel a vevői feliratokban'
       GONDOLATJEL_KIVETELEK.map((kivetel) => kivetelKulcs(kivetel.felirat, kivetel.fajl)),
     )
     const vetok = talalatok
-      .filter(
-        (talalat) => talalat.felirat.includes(EM_DASH) || talalat.felirat.includes(EN_DASH),
-      )
+      .filter((talalat) => talalat.felirat.includes(EM_DASH) || talalat.felirat.includes(EN_DASH))
       .filter((talalat) => !engedett.has(kivetelKulcs(talalat.felirat, talalat.fajl)))
       .map(hely)
     expect(
@@ -896,9 +877,15 @@ describe('G-UI2 — CMS-ből felülírható CTA-feliratok (jelentés)', () => {
   const felulirhatoak = talalatok.filter((talalat) => talalat.cmsFelulirhato)
 
   it(`ma ${new Set(felulirhatoak.map((talalat) => talalat.fajl)).size} komponensben ${felulirhatoak.length} felirat írható felül CMS-ből`, () => {
-    const mai = [...new Set(felulirhatoak.map((talalat) => `${talalat.fajl}${KULCS_ELVALASZTO}${talalat.felirat}`))].sort()
+    const mai = [
+      ...new Set(
+        felulirhatoak.map((talalat) => `${talalat.fajl}${KULCS_ELVALASZTO}${talalat.felirat}`),
+      ),
+    ].sort()
     const rogzitett = [
-      ...new Set(CMS_FELULIRHATO_HELYEK.map((hely) => `${hely.fajl}${KULCS_ELVALASZTO}${hely.felirat}`)),
+      ...new Set(
+        CMS_FELULIRHATO_HELYEK.map((hely) => `${hely.fajl}${KULCS_ELVALASZTO}${hely.felirat}`),
+      ),
     ].sort()
     expect(
       mai.map((sor) => sor.replace(KULCS_ELVALASZTO, ' — ')),
@@ -910,9 +897,7 @@ describe('G-UI2 — CMS-ből felülírható CTA-feliratok (jelentés)', () => {
   })
 
   it('a felülírható helyek feliratai ma a szótárból valók (a tartalék ág rendben van)', () => {
-    const rosszTartalek = felulirhatoak
-      .filter((talalat) => !jovahagyott(talalat.felirat))
-      .map(hely)
+    const rosszTartalek = felulirhatoak.filter((talalat) => !jovahagyott(talalat.felirat)).map(hely)
     expect(
       [...new Set(rosszTartalek)],
       'a CMS-felülírás TARTALÉK feliratának legalább a kódban a jóváhagyott ' +

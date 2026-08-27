@@ -25,6 +25,8 @@ import { PriceTag } from '@/components/ui/PriceTag'
 import type { BillingFieldName } from '../../lib/checkout/billing'
 import type { GuestFieldName } from '../../lib/checkout/guest'
 import { CTA_PROGRESS_LABELS, ctaLabel } from '../../lib/cta-vocabulary'
+import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
+import { signInHref } from '../../lib/return-url'
 import {
   BILLING_INPUT_NAME,
   CHECKOUT_TERMS_HEADING,
@@ -40,7 +42,10 @@ import {
   WAIVER_START_INPUT_ID,
   createCheckoutSubmitHandler,
   planCheckoutSubmission,
+  CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_ERROR_REGION_ID,
+  CHECKOUT_GUEST_EXISTING_ACCOUNT,
+  CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
   emptyGuestForm,
   prefillBillingForm,
   withBillingValue,
@@ -156,7 +161,12 @@ export interface CheckoutFailureInput {
  * `withLeadTracking` és a Barion-pixel burkolók követnek. Naplózni innen nem
  * tudunk: a `src/lib/logger.ts` a szerver stdoutjára ír.
  */
-export function reportCheckoutFailure({ error, field, productId, reason }: CheckoutFailureInput): void {
+export function reportCheckoutFailure({
+  error,
+  field,
+  productId,
+  reason,
+}: CheckoutFailureInput): void {
   try {
     captureAnalyticsEvent(ANALYTICS_EVENTS.checkoutFailed, {
       productId,
@@ -307,13 +317,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
   const [guestErrors, setGuestErrors] = useState<GuestFieldErrors>({})
 
   /**
- * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
- * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
- * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
- * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
- * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
- * (`redirect`) érintetlen marad.
- */
+   * A pénztár MEGNYITÁSA az `initiateCheckout` (1. lépés). A `contentView` a
+   * kurzusoldalon, a `purchase` a köszönőoldalon megy ki; a köztes két lépés
+   * (`addPaymentInfo`, `initiatePurchase`) itt, a beküldési láncba fűzve — a
+   * `createCheckoutSubmitHandler` viselkedésének módosítása NÉLKÜL: a követés
+   * a `submit` függvényt BURKOLJA, nem írja át, és az átirányítás útvonala
+   * (`redirect`) érintetlen marad.
+   */
   useEffect(() => {
     trackInitiateCheckout(
       checkoutBarionCourse({
@@ -334,7 +344,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
    * látogató a gombra érve azonnal megtudja, mi az akadály.
    */
   const blockReason: string | null = alreadyPurchased
-    ? 'Ezt a kurzust már megvetted, ezért új rendelés nem indítható. A kurzusaid között éred el.'
+    ? 'Ezt a kurzust már megvetted, ezért új rendelés nem indítható. A lejátszóban éred el.'
     : !waiverComplete
       ? 'A fizetéshez pipáld ki mindkét nyilatkozatot az „Elállási jog” résznél.'
       : // Az akadályok sorrendje az ŰRLAP sorrendjét követi (waiver, majd
@@ -430,6 +440,32 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         a CheckoutErrorRegion fejkommentje írja le.
       */}
       <CheckoutErrorRegion error={error} />
+      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ? (
+        <p className="kc-checkout-form__block-hint">
+          <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
+            {ctaLabel('sign-in')}
+          </Button>
+        </p>
+      ) : error === CHECKOUT_GUEST_FINISH_AFTER_LOGIN ? (
+        <p className="kc-checkout-form__block-hint">
+          {/*
+            Paid rendelés van az e-mailre, aktivált fiók nincs (W4: ne mondjuk,
+            hogy megvette). A pénztár újra 409 lenne; a lejátszó a következő
+            lépés. WCAG 2.2 · 3.3.1: a hiba mellé jár a következő cselekvés.
+            GOV.UK Error message: tell users what happened and how to fix it
+            (https://design-system.service.gov.uk/components/error-message/).
+          */}
+          <Button href={signInHref(myCoursePlayerHref(product.id))} size="sm" variant="secondary">
+            {ctaLabel('sign-in')}
+          </Button>
+        </p>
+      ) : error === CHECKOUT_ALREADY_PURCHASED_ERROR && !alreadyPurchased ? (
+        <p className="kc-checkout-form__block-hint">
+          <Button href={myCoursePlayerHref(product.id)} size="sm" variant="secondary">
+            {ctaLabel('course-start')}
+          </Button>
+        </p>
+      ) : null}
 
       <Card className="kc-checkout-summary">
         <div className="kc-checkout-summary__row">
@@ -445,11 +481,19 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
       {isGuest ? (
         <Card className="kc-checkout-guest">
           <h2>Elérhetőséged</h2>
+          {/*
+            A szerver aktivált fiókra 409-et ad (`CHECKOUT_GUEST_EXISTING_ACCOUNT`),
+            a kurzus NEM kerül csendben a meglévő fiókba. Baymard: a vendég-pénztár
+            mondja el a visszatérő vevőnek, hogy lépjen be
+            (https://baymard.com/blog/guest-and-account-checkout);
+            WCAG 2.2 · 3.3.1: a következő lépés legyen igaz.
+          */}
           <p className="kc-field__hint">
-            A vásárláshoz nem kell regisztrálni. A fizetés után erre a címre küldjük a
-            hozzáférést és egy linket, amivel jelszót állítasz be a fiókodhoz. Ha már van
-            fiókod ezzel a címmel, a kurzus abban jelenik meg —{' '}
-            <Link href="/belepes">be is jelentkezhetsz</Link>.
+            A vásárláshoz nem kell regisztrálni. A fizetés után erre a címre küldjük a hozzáférést
+            és egy linket, amivel jelszót állítasz be a fiókodhoz. Ha ezzel a címmel már van belépős
+            fiókod, előbb{' '}
+            <Link href={signInHref(checkoutHref(product.id))}>be is jelentkezhetsz</Link>:
+            vendégként a vásárlás nem kerül abba a fiókba.
           </p>
           <Field
             autoComplete="email"
@@ -608,8 +652,8 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         */
         <Card className="kc-checkout-waiver kc-checkout-waiver--free">
           <p>
-            Ez a kurzus ingyenes — a hozzáférés a regisztrációd után azonnal megnyílik, fizetés
-            és elállási nyilatkozat nélkül.
+            Ez a kurzus ingyenes. A hozzáférés a regisztrációd után azonnal megnyílik, fizetés és
+            elállási nyilatkozat nélkül.
           </p>
         </Card>
       )}
@@ -655,12 +699,15 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         Hiányzó nyilatkozat/már megvett: validáció + aria-describedby, nem disabled.
       */}
       <div className="kc-checkout-form__actions">
-        <Button
-          describedBy={blockReason === null ? undefined : CHECKOUT_BLOCK_HINT_ID}
-          disabled={submitting}
-          type="submit"
-        >
-          {/* A FELIRATOK A SZÓTÁRBÓL (2026-08-18). A fizetős ág a §3.2 #2
+        {alreadyPurchased ? (
+          <Button href={myCoursePlayerHref(product.id)}>{ctaLabel('course-start')}</Button>
+        ) : (
+          <Button
+            describedBy={blockReason === null ? undefined : CHECKOUT_BLOCK_HINT_ID}
+            disabled={submitting}
+            type="submit"
+          >
+            {/* A FELIRATOK A SZÓTÁRBÓL (2026-08-18). A fizetős ág a §3.2 #2
               („Megrendelem és fizetek") — a korábbi „Megrendelés és fizetés"
               deverbális főnévi alak volt (M-1), pedig ez a visszavonhatatlan
               lépés (P-1a → E/1).
@@ -672,13 +719,14 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
               a funkcióra a WCAG 2.2 · 3.2.4-et sértené, ráadásul deverbális
               főnévi alak volt. (Ez az ág egyébként VÉDEKEZŐ: a lap-szintű kapu
               ingyenes terméken az űrlap helyett tájékoztató állapotot rendel.) */}
-          {submitting
-            ? CTA_PROGRESS_LABELS.processing
-            : product.isFree
-              ? ctaLabel('free-course-request')
-              : ctaLabel('checkout-submit')}
-        </Button>
-        {blockReason === null ? null : (
+            {submitting
+              ? CTA_PROGRESS_LABELS.processing
+              : product.isFree
+                ? ctaLabel('free-course-request')
+                : ctaLabel('checkout-submit')}
+          </Button>
+        )}
+        {alreadyPurchased || blockReason === null ? null : (
           <p className="kc-checkout-form__block-hint" id={CHECKOUT_BLOCK_HINT_ID}>
             {blockReason}
           </p>

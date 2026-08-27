@@ -45,9 +45,11 @@ export default async function SikertelenPage({ searchParams }: SikertelenPagePro
                 {ctaLabel('retry')}
               </Button>
             ) : (
-              <Button href="/kurzusok">Vissza a kurzusokhoz</Button>
+              <Button href="/kurzusok">{ctaLabel('back-to-courses')}</Button>
             )}
-            <Button href="/kapcsolat" variant="secondary">{ctaLabel('contact-open')}</Button>
+            <Button href="/kapcsolat" variant="secondary">
+              {ctaLabel('contact-open')}
+            </Button>
           </div>
         </div>
       </Container>

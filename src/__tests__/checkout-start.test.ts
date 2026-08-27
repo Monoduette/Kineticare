@@ -5,14 +5,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Order, Product, User } from '../payload-types'
 import { createCheckoutStartHandler } from '../lib/checkout/route-handler'
 import {
+  CHECKOUT_ALREADY_PURCHASED,
   CheckoutError,
   paymentWindowToMs,
   startCheckout,
 } from '../lib/checkout/start-checkout'
-import {
-  barionPaymentAdapter,
-  withoutPluginPaymentEndpoints,
-} from '../lib/payments/barion-adapter'
+import { barionPaymentAdapter, withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buyerFromOrder } from '../lib/szamlazz/invoice'
 import { RATE_LIMIT_RULES, SlidingWindowRateLimiter } from '../lib/security/rate-limit'
 import configPromise from '../payload.config'
@@ -83,7 +81,9 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     findByID: [] as Array<Record<string, unknown>>,
   }
   const payload = {
-    auth: vi.fn(async () => ({ user: options.authUser === undefined ? mockUser : options.authUser })),
+    auth: vi.fn(async () => ({
+      user: options.authUser === undefined ? mockUser : options.authUser,
+    })),
     findByID: vi.fn(async (args: Record<string, unknown>) => {
       calls.findByID.push(args)
       if (args.collection === 'users') {
@@ -100,9 +100,7 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     }),
     find: vi.fn(async (args: { where?: unknown }) => {
       calls.find.push(args.where)
-      return options.findOrders
-        ? options.findOrders(args.where)
-        : { docs: [], totalDocs: 0 }
+      return options.findOrders ? options.findOrders(args.where) : { docs: [], totalDocs: 0 }
     }),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       calls.create.push(data)
@@ -110,15 +108,13 @@ function createMockPayload(options: MockPayloadOptions = {}) {
       // (snapshot, orderNumber) — a mock a hook-OUTPUTOT adja vissza.
       return { ...data, ...(options.orderDoc ?? createdOrderDoc), id: 101 }
     }),
-    update: vi.fn(
-      async ({ id, data }: { id: number | string; data: Record<string, unknown> }) => {
-        calls.update.push({ id, data })
-        if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
-          throw new Error('db write failed')
-        }
-        return { id, ...data }
-      },
-    ),
+    update: vi.fn(async ({ id, data }: { id: number | string; data: Record<string, unknown> }) => {
+      calls.update.push({ id, data })
+      if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
+        throw new Error('db write failed')
+      }
+      return { id, ...data }
+    }),
   }
   return { payload: payload as unknown as Payload, calls }
 }
@@ -272,9 +268,9 @@ describe('startCheckout — boldog út', () => {
       data: { barionPaymentId: DUMMY_PAYMENT_ID, barionPaymentRequestId: ORDER_NUMBER },
     })
     // A rendelés státusza NEM változik paid-re (az a callback-útvonal joga).
-    expect(
-      calls.update.every((call) => (call.data as { status?: string }).status !== 'paid'),
-    ).toBe(true)
+    expect(calls.update.every((call) => (call.data as { status?: string }).status !== 'paid')).toBe(
+      true,
+    )
   })
 
   /**
@@ -508,7 +504,7 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const promise = startCheckout({ payload, user: mockUser, input: happyInput })
     await expect(promise).rejects.toMatchObject({ status: 409 })
-    await expect(promise).rejects.toThrowError(/már megvásároltad/)
+    await expect(promise).rejects.toThrowError(CHECKOUT_ALREADY_PURCHASED)
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -769,22 +765,25 @@ describe('startCheckout — termék- és inputellenőrzés', () => {
     ['0 Ft', 0],
     ['negatív ár', -1],
     ['NaN ár (typeof number, de értelmezhetetlen)', Number.NaN],
-  ])('érvénytelen ár (%s) → 400, rendelés NEM jön létre, Barion NEM hívódik', async (_label, price) => {
-    fetchMock.mockImplementation(() => {
-      throw new Error('TESZT: érvénytelen árú terméknél NEM indulhat Barion-hívás')
-    })
-    const { payload, calls } = createMockPayload({
-      product: { ...publishedProduct, priceInHUFEnabled: true, priceInHUF: price } as Product,
-    })
+  ])(
+    'érvénytelen ár (%s) → 400, rendelés NEM jön létre, Barion NEM hívódik',
+    async (_label, price) => {
+      fetchMock.mockImplementation(() => {
+        throw new Error('TESZT: érvénytelen árú terméknél NEM indulhat Barion-hívás')
+      })
+      const { payload, calls } = createMockPayload({
+        product: { ...publishedProduct, priceInHUFEnabled: true, priceInHUF: price } as Product,
+      })
 
-    const promise = startCheckout({ payload, user: mockUser, input: happyInput })
+      const promise = startCheckout({ payload, user: mockUser, input: happyInput })
 
-    await expect(promise).rejects.toBeInstanceOf(CheckoutError)
-    await expect(promise).rejects.toMatchObject({ status: 400 })
-    await expect(promise).rejects.toThrowError(/nem tartozik érvényes ár/)
-    expect(calls.create).toHaveLength(0)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
+      await expect(promise).rejects.toBeInstanceOf(CheckoutError)
+      await expect(promise).rejects.toMatchObject({ status: 400 })
+      await expect(promise).rejects.toThrowError(/nem tartozik érvényes ár/)
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
 
   it('hiányzó ár (priceInHUF: null) → változatlanul 400, ugyanazzal az üzenettel', async () => {
     const { payload, calls } = createMockPayload({
@@ -987,7 +986,7 @@ describe('POST /api/checkout/start route-handler', () => {
 
     expect(response.status).toBe(409)
     const body = (await response.json()) as { error: string }
-    expect(body.error).toContain('már megvásároltad')
+    expect(body.error).toBe(CHECKOUT_ALREADY_PURCHASED)
   })
 
   it('a KLIENS MEGKERÜLHETŐ: hiányos számlázási adattal küldött kérés → 400, magyar üzenettel', async () => {

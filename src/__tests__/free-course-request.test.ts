@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { freeCourseEmail } from '../lib/free-course/email'
+import { existingAccountFreeCourseEmail, freeCourseEmail } from '../lib/free-course/email'
 import {
   createFreeCourseRequestHandler,
   verifyTurnstileToken,
@@ -15,6 +15,7 @@ import { grantFreeCoursesToUser } from '../lib/free-course-grant'
 import {
   requestFreeCourseAccess,
   resolveFreeCourseRequestActions,
+  resolveFreeCourseUiNext,
   FREE_COURSE_TOKEN_TTL_DAYS,
   FREE_COURSE_TOKEN_TTL_MS,
 } from '../lib/free-course/request-access'
@@ -218,7 +219,7 @@ function createMockPayload(options: MockOptions = {}) {
     ),
     // A route-handler a sessiont `payload.auth({ headers })`-szel olvassa
     // (bejelentkezett, egyező e-mail → saját magának grant). Alapból vendég.
-    auth: vi.fn(async () => ({ user: null })),
+    auth: vi.fn(async (): Promise<{ user: { id: number } | null }> => ({ user: null })),
   }
 
   return {
@@ -326,6 +327,7 @@ describe('igénylés ÚJ e-mail-címmel', () => {
     expect(result.status).toBe('ok')
     expect(result.emailDelivered).toBe(true)
     expect(result.userCreated).toBe(true)
+    expect(result.next).toBe('email')
 
     // Fiók: pontosan egy új, `customer` szerepkörrel és jelszó-beállítás
     // jelzővel (a látogató SOHA nem talál ki jelszót).
@@ -348,6 +350,7 @@ describe('igénylés ÚJ e-mail-címmel', () => {
     expect(mock.sent).toHaveLength(1)
     expect(mock.sent[0].to).toBe('piroska@pelda.hu')
     expect(mock.sent[0].html).toContain('https://pelda.kineticare.hu/jelszo-visszaallitas?token=')
+    expect(mock.sent[0].html).toContain('returnUrl=%2Fkurzusaim%2F2')
     expect(mock.sent[0].subject).toContain('SOS KézRelax villámkurzus')
     expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(grantFreeCoursesToUser).mock.calls[0]?.[0]).toMatchObject({
@@ -443,8 +446,9 @@ describe('igénylés MEGLÉVŐ e-mail-címmel', () => {
     expect(mock.users).toHaveLength(1)
     expect(mock.users[0].purchases ?? []).not.toContain(FREE_COURSE.id)
     expect(mock.sent).toHaveLength(1)
-    expect(mock.sent[0]?.html).toContain('/belepes')
-    expect(mock.sent[0]?.html).toContain('/elfelejtett-jelszo')
+    expect(mock.sent[0]?.html).toContain('/belepes?returnUrl=')
+    expect(mock.sent[0]?.html).toContain('/elfelejtett-jelszo?returnUrl=')
+    expect(mock.sent[0]?.html).toContain('%2Fkurzusok%2F2')
     // A meglévő fiók NEVÉT nem írja felül az űrlapon megadott név.
     expect(mock.users[0].name).toBe('Anna')
     // Aktivált vevő: a nyilvános űrlap NEM írja rá a kurzust (staff-ajándék
@@ -534,6 +538,41 @@ describe('jelszó-token és grant kapu (K3)', () => {
         passwordSetupPending: false,
       }),
     ).toEqual({ grant: false, issueSetPasswordToken: false })
+  })
+
+  it('a felületi next: vendég sosem library, saját magának kérő vevő library, staff blocked', () => {
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: true, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: 101,
+        userId: 101,
+      }),
+    ).toBe('library')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: null,
+        userId: 101,
+      }),
+    ).toBe('email')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
+        role: 'staff',
+        actorUserId: 7,
+        userId: 7,
+      }),
+    ).toBe('blocked')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
+        role: 'staff',
+        actorUserId: null,
+        userId: 7,
+      }),
+    ).toBe('email')
   })
 
   it('meglévő owner: forgotPassword NEM hívódik, grant NEM hívódik, a válasz { ok: true }', async () => {
@@ -628,6 +667,7 @@ describe('jelszó-token és grant kapu (K3)', () => {
 
     expect(result.status).toBe('ok')
     expect(result.userCreated).toBe(false)
+    expect(result.next).toBe('email')
     expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
     expect(mock.users[0].purchases ?? []).not.toContain(FREE_COURSE.id)
     expect(mock.forgotPasswordCalls).toHaveLength(0)
@@ -686,6 +726,65 @@ describe('jelszó-token és grant kapu (K3)', () => {
       bodies.push(body)
     }
     expect(new Set(bodies.map((body) => JSON.stringify(body))).size).toBe(1)
+  })
+
+  it('bejelentkezett vevő a saját címére: next=library, levél nincs, a HTTP kiteszi a next-et', async () => {
+    const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+    mock.mocks.auth.mockResolvedValue({ user: { id: MEGLEVO_VEVO.id } })
+    const { log } = createLogger()
+
+    const result = await requestFreeCourseAccess({
+      payload: mock.payload,
+      productId: FREE_COURSE.id,
+      name: 'Anna',
+      email: MEGLEVO_VEVO.email,
+      serverUrl: 'https://pelda.kineticare.hu',
+      env: ENV_WITH_EMAIL,
+      logger: log,
+      actorUserId: MEGLEVO_VEVO.id,
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.next).toBe('library')
+    expect(result.emailDelivered).toBe(false)
+    expect(vi.mocked(grantFreeCoursesToUser)).toHaveBeenCalledTimes(1)
+    expect(mock.sent).toHaveLength(0)
+
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const response = await handler(requestFor({ email: MEGLEVO_VEVO.email, name: 'Anna' }))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'library' })
+  })
+
+  it('bejelentkezett staff a saját címére: next=blocked, a HTTP kiteszi, grant nincs', async () => {
+    const mock = createMockPayload({ users: [MEGLEVO_STAFF] })
+    mock.mocks.auth.mockResolvedValue({ user: { id: MEGLEVO_STAFF.id } })
+
+    const result = await requestFreeCourseAccess({
+      payload: mock.payload,
+      productId: FREE_COURSE.id,
+      name: 'Munkatárs',
+      email: MEGLEVO_STAFF.email,
+      serverUrl: 'https://pelda.kineticare.hu',
+      env: ENV_WITH_EMAIL,
+      logger: createLogger().log,
+      actorUserId: MEGLEVO_STAFF.id,
+    })
+    expect(result.next).toBe('blocked')
+    expect(result.emailDelivered).toBe(false)
+    expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
+
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const response = await handler(requestFor({ email: MEGLEVO_STAFF.email, name: 'Munkatárs' }))
+    expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'blocked' })
   })
 })
 
@@ -1087,6 +1186,32 @@ describe('belépő levél', () => {
     expect(veszelyes.html).not.toContain('<script>')
     expect(veszelyes.html).toContain('&lt;script&gt;')
     expect(veszelyes.html).toContain('&amp;')
+  })
+})
+
+describe('meglévő-fiók útmutató levél', () => {
+  const template = existingAccountFreeCourseEmail({
+    name: 'Anna',
+    courseTitle: 'SOS KézRelax villámkurzus',
+    signInUrl:
+      'https://pelda.kineticare.hu/belepes?returnUrl=%2Fkurzusok%2F2%23kurzus-vasarlas-gomb',
+    passwordResetUrl: 'https://pelda.kineticare.hu/elfelejtett-jelszo',
+    email: 'anna@pelda.hu',
+  })
+
+  it('belépés után a kurzus igénylő űrlapjára visz, nem az üres Kurzusaimra', () => {
+    expect(template.text).toContain('kurzus oldala nyílik meg')
+    expect(template.html).toContain('returnUrl=%2Fkurzusok%2F2')
+    expect(template.html).not.toContain('returnUrl=%2Fkurzusaim')
+  })
+
+  it('nem használ töltelék gondolatjelet', () => {
+    const sajatSorok = template.text
+      .split('\n')
+      .filter((line) => !line.startsWith('Kineticare '))
+      .join('\n')
+    expect(template.subject).not.toMatch(/[–—]/u)
+    expect(sajatSorok).not.toMatch(/[–—]/u)
   })
 })
 

@@ -1,4 +1,4 @@
-import { FREE_COURSE_GENERIC_ERROR } from './ui-text'
+import { FREE_COURSE_GENERIC_ERROR, type FreeCourseUiNext } from './ui-text'
 import type { FreeCourseFormValues } from './validation'
 
 /**
@@ -18,8 +18,7 @@ export interface FreeCourseRequestPayload {
 }
 
 export type FreeCourseSubmitResult =
-  | { ok: true; emailSent: boolean }
-  | { ok: false; message: string }
+  { ok: true; emailSent: boolean; next?: FreeCourseUiNext } | { ok: false; message: string }
 
 export function buildFreeCourseRequestPayload(
   values: FreeCourseFormValues,
@@ -81,7 +80,11 @@ export async function submitFreeCourseRequest(
       typeof body === 'object' &&
       body !== null &&
       (body as Record<string, unknown>).emailSent === true
-    return { ok: true, emailSent }
+    const nextRaw =
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>).next : undefined
+    const next: FreeCourseUiNext | undefined =
+      nextRaw === 'library' || nextRaw === 'email' || nextRaw === 'blocked' ? nextRaw : undefined
+    return next === undefined ? { ok: true, emailSent } : { ok: true, emailSent, next }
   } catch {
     return { ok: false, message: FREE_COURSE_GENERIC_ERROR }
   }

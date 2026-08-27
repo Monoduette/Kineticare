@@ -3,13 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { getPayload } from 'payload'
-import {
-  createElement,
-  Fragment,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-} from 'react'
+import { createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -149,7 +143,12 @@ const ingyenesTermek = {
   priceInHUFEnabled: false,
 } as unknown as Product
 
-const archivaltTermek = { ...alapTermek, id: 71, slug: 'regi-kurzus', status: 'archived' } as Product
+const archivaltTermek = {
+  ...alapTermek,
+  id: 71,
+  slug: 'regi-kurzus',
+  status: 'archived',
+} as Product
 
 const mockUser = {
   id: 7,
@@ -348,6 +347,11 @@ describe('/kosar — az „ingyenes" és a „vásárolható" kérdés forrása'
     expect(oldal).toContain('isPaidCourse(')
     expect(oldal).toContain('availability')
   })
+
+  it('már megvett tételnél a nézet megkapja a termék-id-t, nem csak egy zászlót', () => {
+    expect(oldal).toContain('alreadyPurchasedProductId')
+    expect(oldal).toContain('myCoursePlayerHref')
+  })
 })
 
 // 5. A KOSÁR HÁROM ÁLLAPOTA — a KIRENDERELT kimeneten mérve
@@ -358,11 +362,19 @@ describe('/kosar — az „ingyenes" és a „vásárolható" kérdés forrása'
  * pillanatképet cseréljük ki: így a kosár tartalma determinisztikus, és nem
  * kell böngésző-környezetet emulálni.
  */
-function kosarralRenderel(items: CartItem[], isLoggedIn = true): string {
+function kosarralRenderel(
+  items: CartItem[],
+  options: { alreadyPurchasedProductId?: number | null } = {},
+): string {
   const pillanatkep: CartState = { items }
   const spy = vi.spyOn(cartStore, 'getServerSnapshot').mockReturnValue(pillanatkep)
   try {
-    return renderMarkup(createElement(CartView, { initialItem: items[0] ?? null, isLoggedIn }))
+    return renderMarkup(
+      createElement(CartView, {
+        alreadyPurchasedProductId: options.alreadyPurchasedProductId ?? null,
+        initialItem: items[0] ?? null,
+      }),
+    )
   } finally {
     spy.mockRestore()
   }
@@ -373,7 +385,7 @@ async function kosarTetel(product: Product): Promise<CartItem | null> {
   mockPayloadBehavior(product)
   const tree = await renderKosarOldal(termekParam(product))
   const view = findElement(tree, CartView)
-  return view === null ? null : ((view.props as { initialItem: CartItem | null }).initialItem)
+  return view === null ? null : (view.props as { initialItem: CartItem | null }).initialItem
 }
 
 afterEach(() => {
@@ -445,8 +457,10 @@ describe('/kosar — INGYENES tétel: az igénylő űrlapra visz, nem a pénztá
 
   it('BEJELENTKEZÉS NÉLKÜL is az igénylő űrlapra visz (az űrlap vendégnek is jár)', async () => {
     const item = (await kosarTetel(ingyenesTermek)) as CartItem
-    const html = kosarralRenderel([item], false)
-    expect(html).toContain(`href="${courseCtaHref({ id: ingyenesTermek.id, slug: ingyenesTermek.slug })}"`)
+    const html = kosarralRenderel([item])
+    expect(html).toContain(
+      `href="${courseCtaHref({ id: ingyenesTermek.id, slug: ingyenesTermek.slug })}"`,
+    )
     expect(html).not.toContain('/belepes?returnUrl=')
   })
 
@@ -478,10 +492,22 @@ describe('/kosar — FIZETŐS tétel: a pénztár útja sértetlen (pozitív kon
     ).not.toContain('19 990 Ft')
   })
 
-  it('BEJELENTKEZÉS NÉLKÜL a belépő ág marad (a B6 megállapítás külön ügy)', async () => {
+  it('BEJELENTKEZÉS NÉLKÜL is a pénztárra visz, nem belépésre kényszerít', async () => {
     const item = (await kosarTetel(alapTermek)) as CartItem
-    const html = kosarralRenderel([item], false)
-    expect(html).toContain('/belepes?returnUrl=')
+    const html = kosarralRenderel([item])
+    expect(html).toContain(`href="${checkoutHref(alapTermek.id)}"`)
+    expect(html).toContain(VART.penztarFelirat)
+    expect(html).not.toContain('Belépés a fizetéshez')
+    expect(html).not.toContain('/belepes?returnUrl=')
+  })
+
+  it('már megvett céltételnél a sáv a lejátszóra visz', async () => {
+    const item = (await kosarTetel(alapTermek)) as CartItem
+    const html = kosarralRenderel([item], { alreadyPurchasedProductId: alapTermek.id })
+    expect(html).toContain(`href="/kurzusaim/${alapTermek.id}"`)
+    expect(html).toContain(ctaLabel('course-start'))
+    expect(html).not.toContain(VART.penztarFelirat)
+    expect(html).not.toContain(`href="${checkoutHref(alapTermek.id)}"`)
   })
 })
 
@@ -503,6 +529,7 @@ describe('CartView — a feliratok a §3.2 CTA-szótárból jönnek', () => {
       VART.kivetelFelirat,
       VART.ingyenesIgenylesFelirat,
       VART.kurzuslistaFelirat,
+      ctaLabel('course-start'),
     ]) {
       expect(forras, `literál felirat a komponensben: ${felirat}`).not.toContain(felirat)
     }
@@ -581,9 +608,9 @@ const tetel = (reszlet: Partial<CartItem>): CartItem => ({
 describe('cartItemAvailability — a négy állapot', () => {
   it('a szerver verdiktjét veszi át', () => {
     expect(cartItemAvailability(tetel({ availability: 'paid' }))).toBe('paid')
-    expect(cartItemAvailability(tetel({ availability: 'free', priceHuf: null, isFree: true }))).toBe(
-      'free',
-    )
+    expect(
+      cartItemAvailability(tetel({ availability: 'free', priceHuf: null, isFree: true })),
+    ).toBe('free')
     expect(cartItemAvailability(tetel({ availability: 'archived' }))).toBe('archived')
     expect(cartItemAvailability(tetel({ availability: 'unavailable', priceHuf: null }))).toBe(
       'unavailable',
@@ -592,7 +619,9 @@ describe('cartItemAvailability — a négy állapot', () => {
 
   it('a „fizetős" verdikt ÉRVÉNYES árat is követel (a kettő nem mondhat mást)', () => {
     for (const ar of [null, 0, -1, Number.NaN]) {
-      expect(cartItemAvailability(tetel({ availability: 'paid', priceHuf: ar }))).toBe('unavailable')
+      expect(cartItemAvailability(tetel({ availability: 'paid', priceHuf: ar }))).toBe(
+        'unavailable',
+      )
     }
   })
 
@@ -635,7 +664,9 @@ describe('cartTotalHuf és cartSummary', () => {
       }),
       'Az archivált tétel ára nem fizetendő: a checkout el sem indul rá.',
     ).toBe(1000)
-    expect(cartTotalHuf({ items: [tetel({ availability: 'unavailable', priceHuf: null })] })).toBe(0)
+    expect(cartTotalHuf({ items: [tetel({ availability: 'unavailable', priceHuf: null })] })).toBe(
+      0,
+    )
   })
 
   it('ÜRES kosár: nincs kimondott végösszeg és nincs cél', () => {
@@ -651,10 +682,7 @@ describe('cartTotalHuf és cartSummary', () => {
         items: [tetel({ availability: allapot, priceHuf: allapot === 'archived' ? 19990 : null })],
       })
       expect(osszegzes.kind).toBe('blocked')
-      expect(
-        osszegzes.totalLabel,
-        'A „Végösszeg: 0 Ft" pontosan itt keletkezett.',
-      ).toBeNull()
+      expect(osszegzes.totalLabel, 'A „Végösszeg: 0 Ft" pontosan itt keletkezett.').toBeNull()
       expect(osszegzes.target).toBeNull()
       expect(osszegzes.blocked).toHaveLength(1)
     }

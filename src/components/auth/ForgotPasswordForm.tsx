@@ -42,6 +42,11 @@ export interface ForgotPasswordFormProps {
    * mondat UTÁN. Az elsőt sosem írja felül.
    */
   successNote?: string
+  /**
+   * A jelszó-beállítás utáni cél. A Payload forgot-password levél a POST
+   * `returnUrl` mezőjéből építi a linket.
+   */
+  returnUrl?: string
 }
 
 /**
@@ -50,7 +55,7 @@ export interface ForgotPasswordFormProps {
  * a komponens típusa `(props?: …) => …` lenne, amit a `React.createElement`
  * túlterhelései nem fogadnak el propokkal (mérve: TS2769 a felületi őr-tesztben).
  */
-export function ForgotPasswordForm({ emailHint, successNote }: ForgotPasswordFormProps) {
+export function ForgotPasswordForm({ emailHint, successNote, returnUrl }: ForgotPasswordFormProps) {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
@@ -78,7 +83,7 @@ export function ForgotPasswordForm({ emailHint, successNote }: ForgotPasswordFor
     }
     setFieldError(null)
     setSubmitting(true)
-    const result = await forgotPassword(email.trim())
+    const result = await forgotPassword(email.trim(), fetch, returnUrl)
     setSubmitting(false)
     if (!result.ok) {
       setFormError(result.message ?? GENERIC_AUTH_ERROR)
@@ -130,7 +135,9 @@ export function ForgotPasswordForm({ emailHint, successNote }: ForgotPasswordFor
       {/* §3.2 #21: e-mail indul a látogatónak, tehát elkötelezés (P-1a → E/1).
           A korábbi „Visszaállító link küldése" deverbális főnévi alak volt. */}
       <Button disabled={submitting} type="submit">
-        {submitting ? ctaProgressLabel('password-reset-request') : ctaLabel('password-reset-request')}
+        {submitting
+          ? ctaProgressLabel('password-reset-request')
+          : ctaLabel('password-reset-request')}
       </Button>
     </form>
   )

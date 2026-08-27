@@ -27,7 +27,12 @@ export function CourseCard({ product, headingLevel = 'h2' }: CourseCardProps) {
 
   return (
     <Card as="article" className="kc-course-card" interactive padded={false}>
-      <Link aria-label={`${title} — kurzus részletei`} className="kc-course-card__media" href={href} tabIndex={-1}>
+      <Link
+        aria-label={`${title}: a kurzus részletei`}
+        className="kc-course-card__media"
+        href={href}
+        tabIndex={-1}
+      >
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element -- a Payload media méretei kézileg vannak bekötve (width/height a CMS-ből)
           <img

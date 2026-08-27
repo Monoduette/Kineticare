@@ -41,11 +41,10 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
     `Ezt a levelet a(z) ${input.email} címre küldtük, mert ezzel a címmel kérték a kurzust. ` +
     'Ha nem te kérted, ne használd a linket, és nyugodtan töröld ezt a levelet.'
 
-  const intro =
-    `A(z) ${input.courseTitle} mostantól a tiéd. Ingyenes, fizetned nem kell érte.`
+  const intro = `A(z) ${input.courseTitle} mostantól a tiéd. Ingyenes, fizetned nem kell érte.`
   const howTo =
-    'Nyisd meg az alábbi gombot, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
-    'és számmal), majd a belépés után a Kurzusaim oldalon indíthatod a kurzust.'
+    'Nyisd meg az alábbi gombot, és adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
+    'és számmal). A jelszó után a kurzusod megnyílik, külön belépés nem kell.'
 
   const bodyHtml = [
     escapeHtml(greeting),
@@ -78,7 +77,7 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
       // A levél EGYETLEN cselekvése. A felirat a `/jelszo-visszaallitas`
       // oldal tényleges műveletét nevezi meg (a CTA-szótár §3.2 #22 sorának
       // igéjével), nem ígér mást, mint ami a link túloldalán történik.
-      cta: { label: 'Beállítom az új jelszót', url: input.activationUrl },
+      cta: { label: ctaLabel('password-reset-set'), url: input.activationUrl },
     }),
   }
 }
@@ -112,7 +111,7 @@ export function existingAccountFreeCourseEmail(
     `Ehhez az e-mail-címhez (${input.email}) már van Kineticare-fiók. ` +
     `Az ingyenes „${input.courseTitle}” kurzust ezért nem írtuk rá automatikusan.`
   const howTo =
-    'A Belépés gomb a belépő oldalra visz. Ha beléptél, a kurzus oldalán kérd újra az ingyenes hozzáférést: akkor a fiókodhoz rendeljük.'
+    'A Belépés gomb a belépő oldalra visz, utána a kurzus oldala nyílik meg. Ott kérd újra az ingyenes hozzáférést: akkor a fiókodhoz rendeljük.'
   const resetHtml =
     `Ha nem emlékszel a jelszavadra, <a href="${escapeHtml(input.passwordResetUrl)}">kérj új jelszót</a> ` +
     'ugyanerre a címre.'

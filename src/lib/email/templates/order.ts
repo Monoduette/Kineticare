@@ -1,3 +1,5 @@
+import { ctaLabel } from '../../cta-vocabulary'
+import { isMyCoursePlayerUrl } from '../../courses'
 import type { EmailTemplate } from '../types'
 import { formatPriceHuf } from '../../format-price'
 import { escapeHtml, renderLayout } from './layout'
@@ -87,31 +89,37 @@ export function orderConfirmationEmail(input: {
     ? 'A számlát a Számlázz.hu rendszeréből külön e-mailben küldjük el.'
     : undefined
 
-  let cta = { label: 'Kurzusaim megnyitása', url: input.coursesUrl }
+  let cta = {
+    label: isMyCoursePlayerUrl(input.coursesUrl)
+      ? ctaLabel('course-start')
+      : ctaLabel('my-courses-open'),
+    url: input.coursesUrl,
+  }
 
   if (input.account?.kind === 'password-setup') {
     const account = input.account
     const created =
       `A vásárláshoz fiókot készítettünk a(z) ${account.email} címmel. ` +
-      'Már csak egy jelszót kell beállítanod, utána a Kurzusaim oldalon éred el az anyagot.'
-    const validity =
-      `A jelszó-beállító link ${account.expiresInDays} napig érvényes, és személyre szól, ne add tovább senkinek.`
+      'Már csak egy jelszót kell beállítanod, utána a kurzusod megnyílik.'
+    const validity = `A jelszó-beállító link ${account.expiresInDays} napig érvényes, és személyre szól, ne add tovább senkinek.`
     const notWorking =
       'Ha a link lejárt vagy nem működik, a belépési oldal „Elfelejtett jelszó" gombjával bármikor ' +
       'kérhetsz újat, ugyanezzel az e-mail-címmel.'
-    paragraphsHtml.push(escapeHtml(created), `<strong>${escapeHtml(validity)}</strong>`, escapeHtml(notWorking))
+    paragraphsHtml.push(
+      escapeHtml(created),
+      `<strong>${escapeHtml(validity)}</strong>`,
+      escapeHtml(notWorking),
+    )
     paragraphsText.push(created, validity, notWorking)
-    cta = { label: 'Jelszó beállítása', url: account.activationUrl }
+    cta = { label: ctaLabel('password-reset-set'), url: account.activationUrl }
   } else if (input.account?.kind === 'login') {
     const account = input.account
-    const existing =
-      `A kurzus már elérhető a meglévő fiókodban: jelentkezz be a(z) ${account.email} címmel, ` +
-      'és a Kurzusaim oldalon megtalálod.'
+    const existing = `A kurzus már elérhető a meglévő fiókodban: jelentkezz be a(z) ${account.email} címmel.`
     const noPassword =
       'Ha nem emlékszel a jelszavadra, a belépési oldal „Elfelejtett jelszó" gombjával állíthatsz be újat.'
     paragraphsHtml.push(escapeHtml(existing), escapeHtml(noPassword))
     paragraphsText.push(existing, noPassword)
-    cta = { label: 'Belépés', url: account.loginUrl }
+    cta = { label: ctaLabel('sign-in'), url: account.loginUrl }
   }
 
   return {
