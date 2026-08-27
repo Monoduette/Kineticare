@@ -65,13 +65,22 @@ export default async function BelepesPage({ searchParams }: BelepesPageProps) {
             #37 („Elfelejtetted a jelszavad?" — a cél oldal H1 címe, GOV.UK:
             „Consider using the title of the page the link goes to as your
             link text"). A korábbi „Regisztrálj" harmadik alak volt ugyanarra a
-            cselekvésre. */}
+            cselekvésre.
+
+            A „Regisztráció" MONDATBA ágyazott link (kc-auth-alt, a 2.5.8
+            inline-kivétele áll rá); az „Elfelejtetted a jelszavad?" viszont
+            önálló cselekvés, ezért a kc-auth-actions 44 px-es célfelületű
+            sorát kapja (auth.css, mérési jegyzőkönyv ott). Mérve (Chromium,
+            320/390 px, 2026-08-27): a korábbi, egyetlen sorba zsúfolt két
+            link 18 px magas volt, egymás MELLETT — a 2.5.8 épp az egymáshoz
+            közeli célok véletlen aktiválása ellen szól. */}
         <p className="kc-auth-alt">
           Még nincs fiókod?{' '}
           <Link href={`/regisztracio?returnUrl=${encodeURIComponent(returnUrl)}`}>
             {ctaLabel('sign-up')}
           </Link>
-          {' · '}
+        </p>
+        <p className="kc-auth-actions">
           <Link href={forgotPasswordHref(returnUrl)}>{ctaLabel('password-reset-start')}</Link>
         </p>
       </Container>

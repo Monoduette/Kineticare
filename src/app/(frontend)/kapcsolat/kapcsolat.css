@@ -64,10 +64,14 @@
   gap: var(--kc-space-3);
 }
 
+/* ÉRINTŐCÉL: 1,5rem = 24 CSS px — a WCAG 2.2 SC 2.5.8 (Target Size, Minimum)
+   küszöbe kivétel nélkül, a pénztári ÁSZF-checkbox mintája (checkout.css).
+   Mérve (Chromium, 320 px, 2026-08-27): a korábbi 1,25rem = 20 px kevés volt.
+   https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html */
 .kc-contact-form__checkbox {
   flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
   margin-block-start: 0.15rem;
   accent-color: var(--kc-color-primary);
 }

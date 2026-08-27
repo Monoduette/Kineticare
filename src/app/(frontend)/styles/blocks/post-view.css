@@ -293,6 +293,10 @@
   max-width: var(--kc-measure);
 }
 
+.kc-post-cta__panel + .kc-post-cta__panel {
+  margin-block-start: var(--kc-space-5);
+}
+
 .kc-post-cta__title {
   margin: 0 0 var(--kc-space-3);
   font-family: var(--kc-font-body);
@@ -343,12 +347,81 @@
   color: var(--kc-color-link-hover);
 }
 
-/* Két egymásra következő panel (kurzus-ajánló + időpontkérő doboz) közti
-   függőleges ritmus: a kártyák közti táv a szekción belüli tartalom-köz
-   (--kc-space-5), hogy a két doboz összetartozó párnak olvasódjon, ne két
-   külön sávnak (a szekció-határ mért küszöbét lásd lentebb). */
-.kc-post-cta__panel + .kc-post-cta__panel {
-  margin-block-start: var(--kc-space-5);
+/* ---- Kurzus + időpont pár, asztali két hasáb -----------------------------
+   Élő HTTP, 2026-08-27: a két fehér kártya (kurzus a rendelő fölött) csak
+   ezeken a 7 cikken van, azonos markup: `.kc-post-cta` + két
+   `.kc-post-cta__panel` testvér a keskeny konténerben. Más cikk
+   (`/blog/befagyott-vall`) egy panelt kap; `/szolgaltatasok`, `/`,
+   `/kurzusok` és a termékoldalak más mintát használnak, ezt a szabályt
+   nem látják.
+
+     /blog/inhuvelygyulladas
+     /blog/keztoalagut-szindroma
+     /blog/teniszkonyok
+     /blog/miert-zsibbad-a-kezem
+     /blog/csuklotores-utani-gyogytorna
+     /blog/csuklo-es-kezfajdalom
+     /blog/pattano-ujj
+
+   Mobil: a `+` szabály `margin-block-start`-tal rakja őket egymás alá
+   (a live markup, a DOM nem változik). Asztal: a keskeny konténer
+   kétoszlopos rács, CSAK ha két testvér-panel van (`:has`). Az egy
+   paneles vállcikk nem kap üres második oszlopot.
+
+   A töréspont a repó közös 900 px-e (`layout.css`), nem a `.kc-card-grid`
+   640 px-es tablet-váltása: 900 alatt a lap mobilos (tulajdonosi kérés:
+   a mobil rakás érintetlen).
+
+   Forrás:
+   - NN/g, Using Grids in Interface Designs: a hasábszám a képernyővel nő,
+     mobilon kevesebb hasáb, asztalon több.
+     https://www.nngroup.com/articles/using-grids-in-interface-designs/
+   - NN/g, Breakpoints in Responsive Design: a hasábok összecsukása a
+     töréspont viselkedése; a CTA a rakott sorrendben is elérhető marad.
+     https://www.nngroup.com/articles/breakpoints-in-responsive-design/
+   - NN/g, The Negative Impact of Mobile-First Web Design on Desktop:
+     asztalon a két kapcsolódó ajánlat egy nézetben hasonlítható, nem
+     egymás alá szórva.
+     https://www.nngroup.com/articles/content-dispersion/
+   - GOV.UK Design System, Layout: mobilon egy hasáb, nagyobb képernyőn
+     `one-half` + `one-half`.
+     https://design-system.service.gov.uk/styles/layout/
+   - IBM Carbon, 2x Grid: a fluid rács kettővel oszt (két egyenlő hasáb).
+     https://carbondesignsystem.com/elements/2x-grid/overview/
+   - WCAG 2.2 1.4.10 Reflow (AA): 320 CSS px-en a tartalom egy hasábban
+     marad, vízszintes görgetés nélkül. A `minmax(0, 1fr)` a rács-elem
+     alap `min-width: auto` túlcsordulását zárja ki.
+     https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+
+   A köz `--kc-space-5` (24 px): ugyanaz a ritmus, mint a mobil
+   egymás-alá táv. Carbon: kapcsolódó dobozoknál a gutter indokolt.
+
+   A szűk konténer (720 px) MARAD. 900 px-en a két hasáb (672 - 24) / 2 =
+   324 px, ami tágabb a 320 px-es mobil panel 272 px-es tartalom-hasábjánál,
+   tehát a gombfelirat nem szorul jobban, mint mobilon (a szó-beférést a
+   meglévő 320 px-es őr méri). */
+
+@media (min-width: 900px) {
+  .kc-post-cta .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--kc-space-5);
+    align-items: stretch;
+  }
+
+  .kc-post-cta
+    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    > .kc-post-cta__panel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .kc-post-cta
+    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    > .kc-post-cta__panel
+    + .kc-post-cta__panel {
+    margin-block-start: 0;
+  }
 }
 
 /* ---- A CTA-sáv és a kapcsolódó blokk távolsága ----------------------------
