@@ -99,12 +99,12 @@ describe('CourseBuybox — a lap egyetlen elsődleges célja', () => {
   })
 
   /**
- * `docs/ui-sztenderdek.md` **Á-3** és **§3.2 #16**: ha a cselekvés nem
- * végezhető el, a gomb ELTŰNIK, és magyarázó mondat áll a helyén. A korábbi
- * kód letiltott, „Megveszem" feliratú, magyarázat NÉLKÜLI gombot adott —
- * fókuszálhatatlan és hamis ígéret (NN/g: „a link ígéret"),
- * `docs/gomb-inventar.md` T2.
- */
+   * `docs/ui-sztenderdek.md` **Á-3** és **§3.2 #16**: ha a cselekvés nem
+   * végezhető el, a gomb ELTŰNIK, és magyarázó mondat áll a helyén. A korábbi
+   * kód letiltott, „Megveszem" feliratú, magyarázat NÉLKÜLI gombot adott —
+   * fókuszálhatatlan és hamis ígéret (NN/g: „a link ígéret"),
+   * `docs/gomb-inventar.md` T2.
+   */
   it('nem vásárolható termék: NINCS gomb, helyette magyarázó mondat (Á-3, §3.2 #16)', () => {
     const broken = buybox({
       priceBadge: 'none',
@@ -145,6 +145,15 @@ describe('CourseBuybox — a lap egyetlen elsődleges célja', () => {
     // potential remedies") — 2026-08-18 óta az archivált ág sem zsákutca.
     expect(archived).toContain('Ez a kurzus jelenleg nem vásárolható meg.')
     expect(archived).toContain('Nézd meg a többi kurzusunkat')
+  })
+
+  it('már megvett kurzus: a gomb a lejátszóra visz, a mondat is oda mutat', () => {
+    const owned = buybox({ hasPurchased: true })
+    expect(owned).toContain('href="/kurzusaim/42"')
+    expect(owned).toContain('Kezdd el a kurzust')
+    expect(owned).toContain('A lejátszóban éred el.')
+    expect(owned).not.toContain('/penztar?termek=42')
+    expect(owned).not.toMatch(/[–—]/)
   })
 
   it('a VÁSÁROLHATÓ termék gombja változatlanul megjelenik (nincs túlfogás)', () => {
@@ -327,9 +336,7 @@ describe('CourseFaq — natív harmonika, darabszámmal', () => {
 
   it('üres listánál a szakasz elmarad', () => {
     expect(
-      renderToStaticMarkup(
-        createElement(CourseFaq, { heading: 'a', headingId: 'b', items: [] }),
-      ),
+      renderToStaticMarkup(createElement(CourseFaq, { heading: 'a', headingId: 'b', items: [] })),
     ).toBe('')
   })
 })

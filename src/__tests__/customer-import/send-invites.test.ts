@@ -58,6 +58,10 @@ describe('aktiváló levél sablonja', () => {
     expect(INVITE_TOKEN_TTL_DAYS).toBe(30)
     expect(email.text).toContain('újra fizetned nem kell')
     expect(email.text).toContain('A link 30 napig érvényes.')
+    expect(email.text).toContain('A jelszó után a kurzusaid megnyílnak')
+    expect(email.text).not.toContain('belépés után a Kurzusaim')
+    expect(email.html).toContain('Beállítom az új jelszót')
+    expect(email.html).not.toContain('Jelszó beállítása')
     // Mit tegyen, ha nem működik / nem ő a címzett.
     expect(email.text).toContain('Elfelejtett jelszó')
     expect(email.text).toContain('ne használd a linket')

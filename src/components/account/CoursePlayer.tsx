@@ -730,12 +730,22 @@ export function CoursePlayer({
   }
 
   if (progress.total === 0) {
+    // Nincs elindítható lecke (üres tananyag vagy még feldolgozás alatt).
+    // A visszaút a listára visz (#15 mintázat); a kapcsolat a zsákutca ellen
+    // (NN/g: mondd meg a következő lépést; GOV.UK: don’t drop people off;
+    // WCAG 2.2 · 3.3.3 Error Suggestion).
     return (
       <Card className="kc-player-gate">
         <h1 className="kc-player-gate__title">{product.title}</h1>
-        <p>A tananyag feltöltése és feldolgozása folyamatban van. Nézz vissza hamarosan.</p>
+        <p>
+          A tananyag feltöltése és feldolgozása folyamatban van. Nézz vissza hamarosan. Ha már
+          régóta így van, írj nekünk.
+        </p>
         <Button href="/kurzusaim" variant="secondary">
           Vissza a kurzusaimhoz
+        </Button>
+        <Button href="/kapcsolat" variant="secondary">
+          {ctaLabel('contact-open')}
         </Button>
       </Card>
     )

@@ -492,6 +492,9 @@ describe('CoursePlayer — kapuzott állapotok', () => {
       }),
     )
     expect(html).toContain('feldolgozása folyamatban van')
+    expect(html).toContain('Írj nekünk')
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).toContain('href="/kurzusaim"')
     expect(html).not.toContain('<iframe')
   })
 

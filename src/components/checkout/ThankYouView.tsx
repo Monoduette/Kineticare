@@ -106,11 +106,26 @@ const POLL_TIMEOUT_MS = 120000 // 2 perc
 type ViewState =
   | { kind: 'polling'; attempts: number }
   | { kind: 'paid'; productId: number | null }
-  | { kind: 'timeout' }
+  /** productId: a poll utolsó ismert tétele, ha a 2 perc alatt megjött. */
+  | { kind: 'timeout'; productId: number | null }
   /** productId: az „Újrapróbálom" link célához (a státuszválasz hozza). */
   | { kind: 'failed'; status: string; productId: number | null }
   | { kind: 'unauthorized' }
   | { kind: 'not-found' }
+
+/**
+ * A köszönőoldal következő lépése: ismert tételnél a lejátszó, egyébként a lista.
+ * Ugyanaz a két gombosúly, ugyanaz a szótári felirat, mint a paid ágon.
+ */
+function thankYouCourseCta(productId: number | null): {
+  href: string
+  action: 'course-start' | 'my-courses-open'
+} {
+  if (productId !== null) {
+    return { href: myCoursePlayerHref(productId), action: 'course-start' }
+  }
+  return { href: '/kurzusaim', action: 'my-courses-open' }
+}
 
 /**
  * A Barion EGYETLEN visszatérési címet ismer: a hivatalos leírás szerint a
@@ -175,24 +190,115 @@ export function ThankYouPaid({
   orderNumber: string
   productId: number | null
 }) {
-  const playerHref = productId !== null ? myCoursePlayerHref(productId) : null
+  const next = thankYouCourseCta(productId)
   return (
     <div aria-live="polite" className="kc-thankyou kc-thankyou--paid" role="status">
       <h1>Köszönjük a vásárlást!</h1>
       <p>
-        {playerHref === null
-          ? 'A fizetésed sikeresen megérkezett. A kurzust a kurzusaid között éred el.'
-          : 'A fizetésed sikeresen megérkezett. A kurzusod most megnyitható.'}
+        {next.action === 'course-start'
+          ? 'A fizetésed sikeresen megérkezett. A kurzusod most megnyitható.'
+          : 'A fizetésed sikeresen megérkezett. A kurzust a kurzusaid között éred el.'}
       </p>
       <p className="kc-thankyou__order">
         Rendelésszám: <strong>{orderNumber}</strong>
       </p>
       <div className="kc-thankyou__actions">
-        <Button href={playerHref ?? '/kurzusaim'}>
-          {ctaLabel(playerHref === null ? 'my-courses-open' : 'course-start')}
-        </Button>
+        <Button href={next.href}>{ctaLabel(next.action)}</Button>
         <Button href="/" variant="secondary">
           Vissza a kezdőlapra
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A poll 2 perc után sem kapott paid/failed választ. Bejelentkezett vevő:
+ * a státusz-válasz tétel-id-jét megőrizzük, hogy a gomb a lejátszóra vihessen,
+ * ne a lista közbeiktatására. A hozzáférés még készülhet: a szöveg ezt
+ * kimondja, a gomb ettől a kurzushoz visz.
+ *
+ * Forrás: NN/g, Error Message Guidelines (mondd meg a következő lépést)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * GOV.UK, Don’t drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * Baymard, order confirmation should lead to the purchased item
+ * https://baymard.com/blog/order-confirmation-design ;
+ * WCAG 2.2 · 3.2.4 Consistent Identification
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+ */
+export function ThankYouTimeout({
+  orderNumber,
+  productId,
+}: {
+  orderNumber: string
+  productId: number | null
+}) {
+  const next = thankYouCourseCta(productId)
+  return (
+    <div aria-live="polite" className="kc-thankyou kc-thankyou--timeout" role="status">
+      <h1>A fizetésed feldolgozása folyamatban</h1>
+      <p>
+        A bank még dolgozik a fizetésed jóváhagyásán. Ez általában néhány percet vesz igénybe. Amint
+        megérkezik a visszaigazolás, <strong>e-mailben értesítünk</strong>.
+        {next.action === 'course-start'
+          ? ' A következő gombbal a kurzusodhoz lépsz: ha a hozzáférés még nem jelent meg, frissítsd az oldalt pár perc múlva.'
+          : ' A kurzusod a kurzusaid között jelenik meg.'}
+      </p>
+      <p className="kc-thankyou__order">
+        Rendelésszám: <strong>{orderNumber}</strong>
+      </p>
+      <div className="kc-thankyou__actions">
+        <Button href={next.href}>{ctaLabel(next.action)}</Button>
+        <Button href="/" variant="secondary">
+          Vissza a kezdőlapra
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Hiányzó rendelésszám a Barion-visszatérésben. Nincs tétel-id, a lista a
+ * biztonságos cél. A gomb megmondja a következő lépést, a mondat nem küld
+ * oldalnévre vadászni.
+ *
+ * Forrás: NN/g, Error Message Guidelines
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.3.3 Error Suggestion
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ */
+export function ThankYouMissingOrder() {
+  return (
+    <div className="kc-thankyou" role="status">
+      <h1>Köszönjük!</h1>
+      <p>Hiányzik a rendelésszám a hivatkozásból. A kurzusaidat a következő gombbal éred el.</p>
+      <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
+    </div>
+  )
+}
+
+/**
+ * A státusz-végpont 404: a bejelentkezett fiókban nincs ilyen rendelés.
+ *
+ * Forrás: NN/g, Error Message Guidelines (mondd meg, mi a következő lépés)
+ * https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * WCAG 2.2 · 3.3.3 Error Suggestion
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ */
+export function ThankYouNotFound({ orderNumber }: { orderNumber: string }) {
+  return (
+    <div className="kc-thankyou" role="status">
+      <h1>A rendelés nem található</h1>
+      <p>
+        A megadott rendelésszámmal ({orderNumber}) nem találunk rendelést a fiókodban. Ha a
+        fizetésedet elindítottad, a banki visszaigazolás még úton lehet. Nézz vissza pár perc múlva,
+        vagy írj nekünk.
+      </p>
+      <div className="kc-thankyou__actions">
+        <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
+        <Button href="/kapcsolat" variant="secondary">
+          {ctaLabel('contact-open')}
         </Button>
       </div>
     </div>
@@ -219,6 +325,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
 
     let cancelled = false
     let attempts = 0
+    let lastProductId: number | null = null
     const startedAt = Date.now()
 
     // A Barion `purchase` a kimenetel ELDŐLTEKOR megy ki (a szerződést és az
@@ -254,6 +361,9 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
       }
 
       if (result.kind === 'status') {
+        if (result.productId !== null) {
+          lastProductId = result.productId
+        }
         const status = result.status
         if (status === 'cancelled' || status === 'payment_failed') {
           setState({ kind: 'failed', status, productId: result.productId })
@@ -269,7 +379,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
       }
 
       if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
-        setState({ kind: 'timeout' })
+        setState({ kind: 'timeout', productId: lastProductId })
         return
       }
       setState({ kind: 'polling', attempts })
@@ -284,13 +394,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
 
   // Propokból közvetlenül következő nézetek (állapot nélkül).
   if (!orderNumber) {
-    return (
-      <div className="kc-thankyou" role="status">
-        <h1>Köszönjük!</h1>
-        <p>Hiányzik a rendelésszám a hivatkozásból. A rendelésedet a Kurzusaim oldalon találod.</p>
-        <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
-      </div>
-    )
+    return <ThankYouMissingOrder />
   }
 
   if (state.kind === 'paid') {
@@ -298,25 +402,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }
 
   if (state.kind === 'timeout') {
-    return (
-      <div aria-live="polite" className="kc-thankyou kc-thankyou--timeout" role="status">
-        <h1>A fizetésed feldolgozása folyamatban</h1>
-        <p>
-          A bank még dolgozik a fizetésed jóváhagyásán. Ez általában néhány percet vesz igénybe.
-          Amint megérkezik a visszaigazolás, <strong>e-mailben értesítünk</strong>, és a kurzus
-          megjelenik a Kurzusaim oldalon.
-        </p>
-        <p className="kc-thankyou__order">
-          Rendelésszám: <strong>{orderNumber}</strong>
-        </p>
-        <div className="kc-thankyou__actions">
-          <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
-          <Button href="/" variant="secondary">
-            Vissza a kezdőlapra
-          </Button>
-        </div>
-      </div>
-    )
+    return <ThankYouTimeout orderNumber={orderNumber} productId={state.productId} />
   }
 
   if (state.kind === 'failed') {
@@ -354,22 +440,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }
 
   if (state.kind === 'not-found') {
-    return (
-      <div className="kc-thankyou" role="status">
-        <h1>A rendelés nem található</h1>
-        <p>
-          A megadott rendelésszámmal ({orderNumber}) nem találunk rendelést a fiókodban. Ha a
-          fizetésedet elindítottad, a banki visszaigazolás még úton lehet. Nézz vissza pár perc
-          múlva a Kurzusaim oldalra, vagy írj nekünk.
-        </p>
-        <div className="kc-thankyou__actions">
-          <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
-          <Button href="/kapcsolat" variant="secondary">
-            {ctaLabel('contact-open')}
-          </Button>
-        </div>
-      </div>
-    )
+    return <ThankYouNotFound orderNumber={orderNumber} />
   }
 
   return (

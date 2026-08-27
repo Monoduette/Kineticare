@@ -6,6 +6,7 @@
 
 import type { Payload } from 'payload'
 
+import { ctaLabel } from '../cta-vocabulary'
 import { maskEmail } from '../email/mask'
 import { resolveEmailProvider } from '../email/provider'
 import { escapeHtml, renderLayout } from '../email/templates/layout'
@@ -63,8 +64,8 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
     escapeHtml(greeting),
     'Elkészült az új Kineticare-fiókod. A korábban megvásárolt kurzusaid már benne vannak: ' +
       '<strong>újra fizetned nem kell</strong>, csak egy jelszót kell beállítanod.',
-    'Kattints az alábbi gombra, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
-      'és számmal), majd a belépés után a <strong>Kurzusaim</strong> oldalon találod az anyagaidat.',
+    'Nyisd meg az alábbi gombot, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
+      'és számmal). A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.',
     `<strong>${escapeHtml(validity)}</strong> A link személyre szól, ne add tovább senkinek.`,
     escapeHtml(notWorking),
     escapeHtml(wrongPerson),
@@ -74,7 +75,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
     'Elkészült az új Kineticare-fiókod. A korábban megvásárolt kurzusaid már benne vannak: ' +
       'újra fizetned nem kell, csak egy jelszót kell beállítanod.',
     'Nyisd meg az alábbi linket, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
-      'és számmal), majd a belépés után a Kurzusaim oldalon találod az anyagaidat.',
+      'és számmal). A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.',
     `${validity} A link személyre szól, ne add tovább senkinek.`,
     notWorking,
     wrongPerson,
@@ -86,7 +87,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
       heading: 'Állítsd be a jelszavad',
       paragraphsHtml: bodyHtml,
       paragraphsText: bodyText,
-      cta: { label: 'Jelszó beállítása', url: input.activationUrl },
+      cta: { label: ctaLabel('password-reset-set'), url: input.activationUrl },
     }),
   }
 }

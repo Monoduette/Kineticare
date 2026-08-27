@@ -46,6 +46,18 @@ export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkez
 export const RESET_SUCCESS_NEXT_STEP =
   'Sikeresen beállítottad az új jelszavadat. A következő gombbal a kurzusaidhoz kerülsz.'
 
+/**
+ * Ugyanaz a siker-panel, ha a `returnUrl` egy konkrét kurzus lejátszója.
+ * A gomb felirata ilyenkor `course-start`; a mondat ugyanazt a célt nevezi meg.
+ *
+ * Forrás: GOV.UK, Help users to recover from errors / don’t drop people off
+ * https://www.gov.uk/service-manual/design/user-centred-design ;
+ * WCAG 2.2 · 2.5.3 Label in Name (a látható ígéret egyezzen a céllal)
+ * https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html
+ */
+export const RESET_SUCCESS_NEXT_STEP_PLAYER =
+  'Sikeresen beállítottad az új jelszavadat. A következő gombbal a kurzusod nyílik meg.'
+
 export interface ResetPasswordFormProps {
   token: string
   /** A jelszó-beállítás utáni cél. Alapból `/kurzusaim`. */
@@ -86,7 +98,11 @@ export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) 
     return (
       <div aria-live="polite" className="kc-auth-success" role="status">
         <h2>Új jelszó beállítva</h2>
-        <p>{RESET_SUCCESS_NEXT_STEP}</p>
+        <p>
+          {isMyCoursePlayerHref(safeReturn)
+            ? RESET_SUCCESS_NEXT_STEP_PLAYER
+            : RESET_SUCCESS_NEXT_STEP}
+        </p>
         <p className="kc-auth-success__note">{RESET_OTHER_DEVICES_NOTE}</p>
         <Button href={safeReturn}>
           {ctaLabel(isMyCoursePlayerHref(safeReturn) ? 'course-start' : 'my-courses-open')}

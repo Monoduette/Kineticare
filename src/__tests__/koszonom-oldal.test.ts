@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 
 import KoszonjukPage from '../app/(frontend)/fizetes/koszonom/page'
 import {
+  ThankYouMissingOrder,
+  ThankYouNotFound,
   ThankYouPaid,
+  ThankYouTimeout,
   ThankYouUnauthorized,
   ThankYouView,
 } from '../components/checkout/ThankYouView'
@@ -170,5 +173,50 @@ describe('bejelentkezett, sikeres fizetés — a lejátszó a következő lépé
     expect(html).toContain('href="/kurzusaim"')
     expect(html).toContain('Nyisd meg a kurzusaidat')
     expect(html).not.toContain('/kurzusaim/42')
+  })
+})
+
+describe('bejelentkezett, függő fizetés — a poll után is a kurzus a következő lépés', () => {
+  it('ismert termék-id-nél a gomb a lejátszóra visz', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouTimeout, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain('feldolgozása folyamatban')
+    expect(html).toContain('href="/kurzusaim/42"')
+    expect(html).toContain('Kezdd el a kurzust')
+    expect(html).not.toMatch(/kc-button[^>]*href="\/kurzusaim"/)
+    expect(html).not.toContain('Kurzusaim oldalon')
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('hiányzó termék-id-nél a lista a tartalék', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouTimeout, { orderNumber: 'KH-2026-000123', productId: null }),
+    )
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('Nyisd meg a kurzusaidat')
+    expect(html).not.toContain('Kurzusaim oldalon')
+  })
+})
+
+describe('köszönőoldal — hiányzó vagy idegen rendelés', () => {
+  it('rendelésszám nélkül a gomb a kurzusaidhoz visz, nem oldalnévre küld', () => {
+    const html = renderToStaticMarkup(createElement(ThankYouMissingOrder))
+    expect(html).toContain('Hiányzik a rendelésszám')
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('Nyisd meg a kurzusaidat')
+    expect(html).not.toContain('Kurzusaim oldalon')
+    expect(html).not.toMatch(/[–—]/)
+  })
+
+  it('ismeretlen rendelésnél a lista és a kapcsolat a kiút', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouNotFound, { orderNumber: 'KH-2026-000999' }),
+    )
+    expect(html).toContain('KH-2026-000999')
+    expect(html).toContain('href="/kurzusaim"')
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).not.toContain('Kurzusaim oldalra')
+    expect(html).not.toMatch(/[–—]/)
   })
 })

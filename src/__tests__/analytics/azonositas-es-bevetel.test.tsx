@@ -134,12 +134,7 @@ describe('azonosítás — sikeres BELÉPÉS', () => {
 
     expect(identified).toHaveLength(1)
     const payload = JSON.stringify(identified)
-    for (const secret of [
-      LOGIN_INPUT.email,
-      LOGIN_INPUT.password,
-      'Teszt Elek',
-      '203.0.113.7',
-    ]) {
+    for (const secret of [LOGIN_INPUT.email, LOGIN_INPUT.password, 'Teszt Elek', '203.0.113.7']) {
       expect(payload).not.toContain(secret)
     }
     expect(identified[0]).toBe(4242)
@@ -235,7 +230,9 @@ describe('azonosítás — sikeres REGISZTRÁCIÓ', () => {
 
 describe('reset() — KIJELENTKEZÉS', () => {
   it('sikeres kijelentkezés után elengedi az analitikai azonosságot', async () => {
-    const { fetchImpl, calls } = fetchReturning(() => jsonResponse(200, { message: 'Kijelentkezve' }))
+    const { fetchImpl, calls } = fetchReturning(() =>
+      jsonResponse(200, { message: 'Kijelentkezve' }),
+    )
     let resets = 0
 
     const result = await logoutUser(fetchImpl, () => {
@@ -348,7 +345,12 @@ describe('bevétel — a státusz-végpont kiadja a végösszeget', () => {
     for (const total of [Number.NaN, -1, '19990', undefined, null]) {
       const handler = createOrderStatusHandler({
         getPayload: async () =>
-          payloadWithOrder({ status: 'paid', items: [], totalHufSnapshot: total, currency: 'HUF' }) as never,
+          payloadWithOrder({
+            status: 'paid',
+            items: [],
+            totalHufSnapshot: total,
+            currency: 'HUF',
+          }) as never,
       })
       const [req, ctx] = statusRequest()
       const response = await handler(req as never, ctx)
@@ -360,7 +362,12 @@ describe('bevétel — a státusz-végpont kiadja a végösszeget', () => {
   it('a 0 Ft ÉRVÉNYES összeg (ingyenes rendelés), nem hiányzó adat', async () => {
     const handler = createOrderStatusHandler({
       getPayload: async () =>
-        payloadWithOrder({ status: 'paid', items: [], totalHufSnapshot: 0, currency: 'HUF' }) as never,
+        payloadWithOrder({
+          status: 'paid',
+          items: [],
+          totalHufSnapshot: 0,
+          currency: 'HUF',
+        }) as never,
     })
     const [req, ctx] = statusRequest()
     expect((await (await handler(req as never, ctx)).json()).totalHufSnapshot).toBe(0)
@@ -486,7 +493,13 @@ describe('bevétel — purchase_confirmed CSAK paid státuszra megy ki', () => {
   })
 
   it('nem-paid státusz (elutasított, függő, törölt) → NEM megy', () => {
-    for (const status of ['created', 'payment_pending', 'payment_failed', 'cancelled', 'refunded'] as const) {
+    for (const status of [
+      'created',
+      'payment_pending',
+      'payment_failed',
+      'cancelled',
+      'refunded',
+    ] as const) {
       expect(
         shouldEmitPurchaseConfirmed({
           kind: 'status',
@@ -517,6 +530,6 @@ describe('bevétel — purchase_confirmed CSAK paid státuszra megy ki', () => {
 
     agCaptureNelkul("result.kind === 'unauthorized'")
     agCaptureNelkul("result.kind === 'not-found'")
-    agCaptureNelkul("setState({ kind: 'timeout' })")
+    agCaptureNelkul("setState({ kind: 'timeout'")
   })
 })

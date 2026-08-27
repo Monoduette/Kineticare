@@ -45,9 +45,15 @@ export function CourseCta({ product, hasPurchased, id }: CourseCtaProps) {
         </Button>
       ) : null}
       {cta.note !== null ? <p className="kc-course-cta__note">{cta.note}</p> : null}
+      {/* A gomb a lejátszóra visz (§3.2 #8). A mondat kimondja a következő
+          lépést, nehogy a vevő újra a pénztárat keresse.
+          Forrás: NN/g, Error Message Guidelines
+          https://www.nngroup.com/articles/error-message-guidelines/ ;
+          WCAG 2.2 · 3.2.4 Consistent Identification
+          https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html */}
       {cta.kind === 'purchased' ? (
         <p className="kc-course-cta__note kc-course-cta__note--owned">
-          Már megvetted ezt a kurzust.
+          Már megvetted ezt a kurzust. A lejátszóban éred el.
         </p>
       ) : null}
     </div>
