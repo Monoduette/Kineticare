@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createElement } from 'react'
@@ -72,6 +73,29 @@ import type { Post } from '../payload-types'
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))
+
+/**
+ * Vevői forrásfájlok, amelyek tartalmazzák a mintát. A bejárás a `components`,
+ * `app` és `blocks` fákon megy: egy új hívó ne maradjon ki egy kézi listából.
+ */
+function fajlokAhol(minta: string | RegExp, gyokerek: readonly string[]): string[] {
+  const talalatok: string[] = []
+  const illeszkedik = (forras: string): boolean =>
+    typeof minta === 'string' ? forras.includes(minta) : minta.test(forras)
+  const bejar = (relativDir: string): void => {
+    for (const bejegyzes of readdirSync(join(REPO, relativDir), { withFileTypes: true })) {
+      const ut = `${relativDir}/${bejegyzes.name}`
+      if (bejegyzes.isDirectory()) {
+        bejar(ut)
+        continue
+      }
+      if (!/\.(tsx?|css)$/.test(bejegyzes.name)) continue
+      if (illeszkedik(readFileSync(join(REPO, ut), 'utf8'))) talalatok.push(ut)
+    }
+  }
+  for (const gyoker of gyokerek) bejar(gyoker)
+  return talalatok.sort()
+}
 
 /** A cikkoldal stíluslapjának nyers forrása (a G8–G12 őrök ebből mérnek). */
 const cikkCssForras = readFileSync(`${REPO}app/(frontend)/styles/blocks/post-view.css`, 'utf8')
@@ -512,6 +536,20 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
     expect(html).not.toContain('kc-post-cta__pair')
     expect([...html.matchAll(/kc-post-cta__panel/g)].length).toBe(1)
     expect(text(html)).not.toContain(APPOINTMENT_BOX_HEADING)
+  })
+
+  it('a kc-post-cta csak a cikkoldalon él (/szolgaltatasok, kezdőlap, kurzusok nem kapják)', () => {
+    // A `/szolgaltatasok`, a `/` és a `/kurzusok` más mintát használnak.
+    // Osztály-szivárgás vagy PostCourseCta-import oda: a következő ügynök
+    // második panelt „javítana" oda, ahova a minta nem való.
+    expect(fajlokAhol('kc-post-cta', ['components', 'app', 'blocks'])).toEqual([
+      'app/(frontend)/styles/blocks/post-view.css',
+      'components/content/PostArticle.tsx',
+      'components/content/PostCourseCta.tsx',
+    ])
+    expect(fajlokAhol(/from ['"][^'"]*PostCourseCta['"]/, ['components', 'app', 'blocks'])).toEqual([
+      'components/content/PostArticle.tsx',
+    ])
   })
 
   it('a váll-cikk alatt az időpontkérés nem duplikálódik', () => {
