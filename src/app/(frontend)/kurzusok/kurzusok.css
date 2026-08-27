@@ -125,6 +125,8 @@
 /* ---- Kurzuskártya -------------------------------------------------------- */
 
 .kc-course-card {
+  /* Az overlay (cím-link ::after) pozicionálási kerete — lásd lentebb. */
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -172,6 +174,37 @@
 
 .kc-course-card__title a:hover {
   text-decoration: underline;
+}
+
+/* ═══ A TELJES KÁRTYA A CÉLFELÜLET (a Tudástár-kártya bevált mintája) ═══
+   Mérve (Chromium, 320 px, 2026-08-27): a cím-link saját doboza 215×19 CSS px
+   volt — a WCAG 2.2 · 2.5.8 Target Size (Minimum) 24 px-es küszöbe alatt, és
+   önálló címsor-linkként az „inline" kivétel sem áll rá
+   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
+   A ::after overlay a kártya egészére nyújtja a linket — ugyanaz a megoldás,
+   mint a .kc-post-card__link overlayé (knowledge.css), tehát a két
+   kártyatípus egyformán viselkedik (WCAG 2.2 · 3.2.4 Consistent
+   Identification; NN/g, „Cards: UI-Component Definition": a kártya egésze
+   legyen kattintható, https://www.nngroup.com/articles/cards-component/).
+   A borító-link (tabindex="-1") a cél szempontjából ezzel redundánssá válik,
+   de marad: a DOM-sorrend és a képernyőolvasó-név nem változik. */
+.kc-course-card__title a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--kc-radius-lg);
+}
+
+/* A fókuszgyűrű a TELJES kártyát rajzolja körbe — a knowledge.css azonos
+   mintájának értékeivel (3 px tömör, 2 px eltartás; WCAG 2.2 · 1.4.11 és
+   2.4.13, a mérési jegyzőkönyv ott). */
+.kc-course-card__title a:focus-visible {
+  outline: none;
+}
+
+.kc-course-card__title a:focus-visible::after {
+  outline: 3px solid var(--kc-color-focus);
+  outline-offset: 2px;
 }
 
 .kc-course-card__excerpt {

@@ -14,6 +14,7 @@
 
 import { BARION_PIXEL_ORIGIN, getBarionPixelId } from '../analytics/barion-pixel'
 import { GA_TAG_MANAGER_ORIGIN, normalizeGaMeasurementId } from '../analytics/ga4'
+import { POSTHOG_EMBED_ORIGIN, normalizePosthogEmbedUrl } from '../admin/web-analytics-config'
 
 /** A Bunny Stream lejátszó (iframe-embed) hostja — fix, nem env-függő. */
 export const BUNNY_STREAM_IFRAME_SOURCE = 'https://iframe.mediadelivery.net'
@@ -95,11 +96,18 @@ export function bunnyPullZoneSource(rawHost: string | undefined): string {
  *   A `pixel.barion.com` KIZÁRÓLAG ekkor nyílik meg — pontosan ugyanaz az
  *   ellenőrzés dönt, mint ami a snippetet kirakja (BarionPixel.tsx), így a
  *   fejléc és a lap tartalma nem tud szétcsúszni.
+ * @param posthogSharedDashboardUrl a PostHog megosztott dashboard linkje
+ *   (env), ha be van állítva. Az `eu.posthog.com` frame-src-be vétele
+ *   KIZÁRÓLAG ekkor történik meg — ugyanaz a normalizáló dönt, mint amelyik
+ *   a Webanalitika-nézet iframe-jét kirakja (web-analytics-config.ts), így a
+ *   fejléc és az admin-oldal nem tud szétcsúszni. A host maga FIX (nem az
+ *   env-értékből jön), tehát rossz env sem tud idegen hostot nyitni.
  */
 export function buildContentSecurityPolicy(
   bunnyPullZoneHost?: string,
   googleAnalyticsMeasurementId?: string,
   barionPixelId?: string,
+  posthogSharedDashboardUrl?: string,
 ): string {
   const pullZone = bunnyPullZoneSource(bunnyPullZoneHost)
 
@@ -139,6 +147,15 @@ export function buildContentSecurityPolicy(
     ? ` ${GA_COLLECT_SOURCES.join(' ')} ${GA_TAG_MANAGER_ORIGIN}`
     : ''
 
+  // A PostHog beágyazott dashboard (admin Webanalitika-nézet) iframe-je csak
+  // akkor létezik, ha a megosztási link formailag érvényes — a frame-src is
+  // pontosan ekkor nyílik, és mindig a FIX EU-cloud hostra, sosem az env-beli
+  // értékre.
+  const posthogEmbedSource =
+    normalizePosthogEmbedUrl(posthogSharedDashboardUrl) === null
+      ? ''
+      : ` ${POSTHOG_EMBED_ORIGIN}`
+
   return [
     // Alapértelmezés: minden erőforrás csak saját originről. A külön nem
     // felsorolt direktívák (manifest-src, prefetch-src…) is ezt öröklik.
@@ -160,8 +177,10 @@ export function buildContentSecurityPolicy(
     //  - challenges.cloudflare.com → Turnstile-widget,
     //  - pixel.barion.com → a bp.js REJTETT, 0×0-s iframe-jei (barion.html,
     //    barionbase.html / barionmarketing.html). Ezek a Pixel tényleges
-    //    adatcsatornái: nélkülük a Pixel betöltődik, de semmit nem mér.
-    `frame-src 'self' ${BUNNY_STREAM_IFRAME_SOURCE} https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com${barionPixelSource}`,
+    //    adatcsatornái: nélkülük a Pixel betöltődik, de semmit nem mér,
+    //  - eu.posthog.com → az admin Webanalitika-nézet beágyazott dashboardja,
+    //    KIZÁRÓLAG beállított és formailag érvényes megosztási link mellett.
+    `frame-src 'self' ${BUNNY_STREAM_IFRAME_SOURCE} https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com${barionPixelSource}${posthogEmbedSource}`,
 
     // data: a beágyazott SVG-/base64-ikonokhoz. A videó-poszterképek a Bunny
     // pull-zone hosztjáról jönnek (vz-….b-cdn.net). A GA4 tartalék-útja

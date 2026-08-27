@@ -123,36 +123,40 @@
   color: var(--kc-appointment-muted);
 }
 
-/* ---- Elérhetőség ŰRLAP NÉLKÜL (`urlapMutatasa: false`) --------------------
-   Ilyenkor a hívás- és a levél-link nem folyószövegbe ágyazott hivatkozás,
-   hanem A szekció cselekvése, ezért nagyobb célfelületet kap. Az `inline-flex`
-   + `min-height` a link SAJÁT dobozát növeli (nem a sorét), tehát a mért
-   érintőcél tényleg 44 CSS px magas.
+/* ---- A hívás- és levél-link célfelülete MINDKÉT változatban ---------------
+   Eredetileg csak az űrlap nélküli (`--fo`) változat kapta, mondván az
+   űrlapos oldalon a link „szövegsorban áll" (2.5.8 inline-kivétel). Mérve
+   (Chromium, 320 px, 2026-08-27): az űrlapos /kapcsolat oldalon a tel- és
+   mailto-linkek 128×22, ill. 132×22 px-esek voltak — a dd-ben azonban csak a
+   link és a név-jegyzet áll, mondat nincs, a kivételre hivatkozás tehát
+   gyenge lábon állt. Mobilon a koppintásos hívás a Kapcsolat oldal ELSŐDLEGES
+   cselekvése, ezért mindkét változatban a nagyobb célfelület jár. Az
+   `inline-flex` + `min-height` a link SAJÁT dobozát növeli (nem a sorét),
+   tehát a mért érintőcél tényleg 44 CSS px magas.
 
-   MÉRCE: a WCAG 2.2 2.5.8 (AA) 24×24 px minimuma alól az „inline" kivétel
-   enélkül is mentené a linket, mert szövegsorban áll
-   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) —
-   cselekvésként viszont a 2.5.5 (AAA) 44×44 px a helyes mérce
+   MÉRCE: WCAG 2.2 2.5.8 (AA) 24×24 px minimum
+   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html);
+   cselekvésként a 2.5.5 (AAA) 44×44 px a helyes mérce
    (https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html),
-   és a projekt saját célja is 44.
+   és a projekt saját célja is 44 (docs/ui-sztenderdek.md §3).
 
    A SZÍN, a BETŰMÉRET és az ALÁHÚZÁS változatlan: a kontraszt-jegyzőkönyv
    (fájlfej) érvényben marad, új méret-token pedig nem keletkezik. */
-.kc-appointment__contact--fo dd {
+.kc-appointment__contact dd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--kc-space-2);
 }
 
-.kc-appointment__contact--fo dd a {
+.kc-appointment__contact dd a {
   display: inline-flex;
   align-items: center;
   min-height: 2.75rem;
 }
 
 /* A térközt a `dd` `gap`-je adja, a saját margó duplázna. */
-.kc-appointment__contact--fo .kc-appointment__contact-note {
+.kc-appointment__contact .kc-appointment__contact-note {
   margin-inline-start: 0;
 }
 

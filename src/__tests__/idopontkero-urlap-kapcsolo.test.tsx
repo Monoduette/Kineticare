@@ -269,12 +269,18 @@ describe('appointment.css — az űrlap nélküli változat szabályai', () => {
     expect(racsSzabalyok.filter((szabaly) => szabaly.includes('--egyhasabos'))).toHaveLength(1)
   })
 
-  it('a hívás- és levél-link 44 px magas célfelületet kap űrlap nélkül', () => {
-    const blokk = css.slice(css.indexOf('.kc-appointment__contact--fo dd a'))
+  it('a hívás- és levél-link 44 px magas célfelületet kap MINDKÉT változatban', () => {
+    // 2026-08-27: a szabály a `--fo`-ról az alap `.kc-appointment__contact`-ra
+    // bővült (a --fo örökli), mert mérve az űrlapos /kapcsolat oldalon a tel-
+    // és mailto-link 22 px magas volt — az indoklás az appointment.css-ben.
+    const blokk = css.slice(css.indexOf('.kc-appointment__contact dd a'))
     expect(blokk).toContain('min-height: 2.75rem')
     // A célfelület a LINK saját dobozán van, nem a soron: `inline-flex` nélkül
     // a `min-height` egy inline elemen nem hatna.
     expect(blokk.slice(0, 200)).toContain('display: inline-flex')
+    // A szűkítő változat-szabály nem térhet vissza: ha valaki újra `--fo`-ra
+    // szűkíti, az űrlapos oldal linkjei némán visszazsugorodnak.
+    expect(css).not.toContain('.kc-appointment__contact--fo dd a')
   })
 
   it('320 px-en nem bomlik hasábokra (nem keletkezhet vízszintes görgetés)', () => {

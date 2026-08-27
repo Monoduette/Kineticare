@@ -216,10 +216,60 @@ describe('buildContentSecurityPolicy — direktívák', () => {
     expect(withGa).not.toMatch(/[a-z0-9-]\*/)
   })
 
+  it('PostHog-dashboard env nélkül az eu.posthog.com NINCS a fejlécben', () => {
+    for (const withoutEmbed of [
+      buildContentSecurityPolicy(),
+      // Formailag hibás vagy idegen hostra mutató link sem nyithatja meg.
+      buildContentSecurityPolicy(undefined, undefined, undefined, 'nem-url'),
+      buildContentSecurityPolicy(
+        undefined,
+        undefined,
+        undefined,
+        'https://evil.example/shared/AbCd1234xyz',
+      ),
+      buildContentSecurityPolicy(
+        undefined,
+        undefined,
+        undefined,
+        'https://eu.posthog.com/project/253152',
+      ),
+    ]) {
+      expect(withoutEmbed).not.toContain('eu.posthog.com')
+    }
+  })
+
+  it('érvényes megosztási linkkel az eu.posthog.com KIZÁRÓLAG a frame-src-be kerül', () => {
+    const withEmbed = buildContentSecurityPolicy(
+      undefined,
+      undefined,
+      undefined,
+      'https://eu.posthog.com/shared/AbCd1234xyz',
+    )
+    expect(directive(withEmbed, 'frame-src')).toContain('https://eu.posthog.com')
+    // Más direktívát nem lazít: script/connect/img változatlan.
+    for (const name of ['script-src', 'connect-src', 'img-src', 'default-src']) {
+      expect(
+        directive(withEmbed, name).some((source) => source.includes('posthog')),
+        name,
+      ).toBe(false)
+    }
+    // A frame-src eddigi forrásai nem tűnhetnek el mellőle.
+    expect(directive(withEmbed, 'frame-src')).toContain(BUNNY_STREAM_IFRAME_SOURCE)
+  })
+
   it('a fejléc szintaktikailag ép: nincs üres vagy duplikált direktíva', () => {
     // A GA-forrásokkal bővített változat is: dupla szóköz vagy üres forrás
     // csendben elrontaná a fejlécet.
-    for (const value of [csp, buildContentSecurityPolicy('vz-a.b-cdn.net', 'G-TESTONLY00')]) {
+    for (const value of [
+      csp,
+      buildContentSecurityPolicy('vz-a.b-cdn.net', 'G-TESTONLY00'),
+      buildContentSecurityPolicy(
+        'vz-a.b-cdn.net',
+        'G-TESTONLY00',
+        undefined,
+        'https://eu.posthog.com/shared/AbCd1234xyz',
+      ),
+    ]) {
       const names = value.split('; ').map((entry) => entry.split(' ')[0])
       expect(names.every((name) => name.length > 0)).toBe(true)
       expect(new Set(names).size).toBe(names.length)
