@@ -69,6 +69,28 @@ export interface LessonRowData {
   title?: unknown
   kind?: unknown
   status?: unknown
+  /** A Bunny Video ID. Üresen a lecke a vevőnél sem indul, még Kész állapotban sem. */
+  streamAssetId?: unknown
+}
+
+/**
+ * Videós-e a lecke a tananyag-modell szerint: hiányzó/ismeretlen típus = videó.
+ * Szöveges és külső link nem kap lejátszhatóság-jelzést.
+ */
+function isVideoLessonKind(kind: unknown): boolean {
+  return kind !== LESSON_KIND_TEXT && kind !== LESSON_KIND_LINK
+}
+
+/**
+ * A csukott soron a vevőnél is elindulna-e a videó: Kész állapot ÉS van GUID.
+ * A hossz (durationSec) szándékosan nem kell ide: hiányában a jegy 24 órás,
+ * a lejátszás ettől még megy.
+ */
+export function isEditorVideoPlayable(data: LessonRowData | null | undefined): boolean {
+  if (data == null || !isVideoLessonKind(data.kind)) {
+    return false
+  }
+  return data.status === 'ready' && trimmedOrNull(data.streamAssetId) !== null
 }
 
 /**
@@ -77,15 +99,15 @@ export interface LessonRowData {
  *
  * A „még nem játszható" jelzés azért van itt, mert az audit szerint ez a
  * kurzusfeltöltés egyik leggyakoribb NÉMA hibája: a videó feltöltődik, de az
- * állapota „Feldolgozás alatt" marad, és a vevőnél egyszerűen nem indul el.
- * Csukott soron látva azonnal szembetűnik.
+ * állapota „Feldolgozás alatt" marad, VAGY a Video ID üresen marad Kész
+ * állapot mellett, és a vevőnél egyszerűen nem indul el. Csukott soron
+ * látva azonnal szembetűnik.
  */
 export function lessonRowLabel(data: LessonRowData | null | undefined, rowNumber?: number): string {
   const szam = sorszam(rowNumber)
   const cim = trimmedOrNull(data?.title) ?? `${String(szam)}. lecke — ${NEVTELEN_LECKE}`
   const tipus = lecketipusNeve(data?.kind)
-  const videos = data?.kind === undefined || data.kind === null || data.kind === LESSON_KIND_VIDEO
-  if (videos && data?.status !== 'ready') {
+  if (isVideoLessonKind(data?.kind) && !isEditorVideoPlayable(data)) {
     return `${cim} · ${tipus} · ${NEM_JATSZHATO}`
   }
   return `${cim} · ${tipus}`

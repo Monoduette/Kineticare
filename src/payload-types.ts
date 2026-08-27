@@ -1767,7 +1767,7 @@ export interface Product {
    */
   previewVideoStreamId?: string | null;
   /**
-   * A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként.
+   * A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként. Ha felveszel legalább egy leckét egy új modulba, a régi lista elrejtődik. Régi videók átemelése csak a kurzus:videok-modulba paranccsal, különben a vevők haladása nullázódik.
    */
   modules?:
     | {
@@ -1798,7 +1798,7 @@ export interface Product {
                */
               streamAssetId?: string | null;
               /**
-               * A videó hossza másodpercben. A lejátszási jegy kiállításához KÖTELEZŐ — nélküle a videó nem indul el.
+               * A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.
                */
               durationSec?: number | null;
               /**

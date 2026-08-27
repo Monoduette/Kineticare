@@ -13,6 +13,21 @@ export const LESSON_KIND_TEXT = 'szoveg'
 export const LESSON_KIND_LINK = 'link'
 
 /**
+ * A Hossz mező admin-leírása. A jegykiadás hiányzó hossznál 24 órás TTL-lel
+ * megy (nem 503): a szerkesztőnek ez a mondat mondja el, ne a régi „KÖTELEZŐ,
+ * nélküle nem indul" szöveg. Forrás: docs/szerkesztoi-utmutato.md 12. pont.
+ */
+export const LESSON_DURATION_ADMIN_DESCRIPTION =
+  'A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.'
+
+/**
+ * A Tananyag (modulok) mező admin-leírása. A második mondat a néma elnyelést
+ * nevezi meg: egyetlen új lecke (GUID nélkül is) elrejti a régi Videók listát.
+ */
+export const COURSE_MODULES_ADMIN_DESCRIPTION =
+  'A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként. Ha felveszel legalább egy leckét egy új modulba, a régi lista elrejtődik. Régi videók átemelése csak a kurzus:videok-modulba paranccsal, különben a vevők haladása nullázódik.'
+
+/**
  * A videó-állapot opciói — SZÓ SZERINT a `products.videos.status` mezőé
  * (src/plugins/ecommerce.ts), hogy a szerkesztő ugyanazt a három állapotot
  * lássa mindkét helyen, és a lejátszhatóság szabálya se térhessen el.
@@ -108,8 +123,7 @@ const lessonFields: Field[] = [
     label: 'Hossz (másodperc)',
     admin: {
       condition: showForVideo,
-      description:
-        'A videó hossza másodpercben. A lejátszási jegy kiállításához KÖTELEZŐ — nélküle a videó nem indul el.',
+      description: LESSON_DURATION_ADMIN_DESCRIPTION,
     },
   },
   {
@@ -213,8 +227,7 @@ export const courseModulesField: ArrayField = {
     components: {
       RowLabel: '/components/admin/CurriculumRowLabels#ModuleRowLabel',
     },
-    description:
-      'A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként.',
+    description: COURSE_MODULES_ADMIN_DESCRIPTION,
   },
   fields: [
     {
