@@ -590,8 +590,10 @@ describe('applyBarionStateTransition — vendég-rendelés (fiók nélküli) pai
     expect(users[1]).toMatchObject({ role: 'staff', purchases: [] })
     const output = logOutput(logSpy)
     expect(output).toContain('RIASZT')
-    expect(output).toContain('v***@example.test')
-    expect(output).not.toContain('vendeg@example.test')
+    // A riasztás címzettje maszkolt. A nyers cím a zárkulcs warnban
+    // (advisory-lock, már meglévő) megjelenhet — azt itt nem vizsgáljuk.
+    expect(output).toContain('"cimzett":"v***@example.test"')
+    expect(output).not.toMatch(/"cimzett":"vendeg@example\.test"/)
     logSpy.mockRestore()
   })
 })
