@@ -480,6 +480,26 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
     }
   })
 
+  it('a kurzus + időpont pár közös rács-csomagolóban áll', () => {
+    for (const fixture of [post(), post({ ctaCourse: KURZUS })]) {
+      const html = render(createElement(PostArticle, { post: fixture }))
+      expect(html).toContain('kc-post-cta__pair')
+      expect([...html.matchAll(/kc-post-cta__panel/g)].length).toBe(2)
+      const parKezdete = html.indexOf('kc-post-cta__pair')
+      const elsoPanel = html.indexOf('kc-post-cta__panel')
+      const masodikPanel = html.indexOf('kc-post-cta__panel', elsoPanel + 1)
+      expect(parKezdete).toBeGreaterThan(-1)
+      expect(elsoPanel).toBeGreaterThan(parKezdete)
+      expect(masodikPanel).toBeGreaterThan(elsoPanel)
+    }
+  })
+
+  it('a váll-cikk egyetlen panelje NEM kerül a pár-rácsba', () => {
+    const html = render(createElement(PostArticle, { post: post({ slug: 'befagyott-vall' }) }))
+    expect(html).not.toContain('kc-post-cta__pair')
+    expect([...html.matchAll(/kc-post-cta__panel/g)].length).toBe(1)
+  })
+
   it('a váll-cikk alatt az időpontkérés nem duplikálódik', () => {
     // Ott a fő panel maga az időpontkérés; a külön doboz nem ismétli meg
     // (NN/g, The Same Link Twice on the Same Page).
@@ -795,6 +815,20 @@ describe('G8 — a mért CSS-küszöbök nem csúszhatnak vissza', () => {
     )
   })
 
+  it('a kurzus + időpont pár mobilon egy hasáb, 900 px-től kettő', () => {
+    const szabaly = kodCsak(cikkCss)
+    expect(szabaly).toMatch(
+      /\.kc-post-cta__pair\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+    )
+    expect(szabaly).toMatch(
+      /@media \(min-width: 900px\)\s*\{\s*\.kc-post-cta__pair\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\);/,
+    )
+    expect(szabaly).toMatch(/\.kc-post-cta__pair\s*\{[^}]*gap:\s*var\(--kc-space-5\);/)
+    expect(szabaly).toMatch(/\.kc-post-cta__pair \.kc-post-cta__panel\s*\{[^}]*min-width:\s*0;/)
+    const parMedia = /@media \(min-width: 640px\)[\s\S]*?\.kc-post-cta__pair/.exec(szabaly)
+    expect(parMedia).toBeNull()
+  })
+
   it('a tartalomjegyzék linkjei 44 px-es érintőcélt kapnak', () => {
     expect(kodCsak(cikkCss)).toMatch(/\.kc-post-toc__list a\s*\{[^}]*min-height:\s*2\.75rem;/)
   })
@@ -1051,6 +1085,23 @@ describe('MÉRÉS — érintőcél, térköz, rács és sorhossz', () => {
   it('a poszt-rács 2560 px-en sem ad harmadik hasábot', () => {
     const lap = lapNezetablakra(2560)
     expect(hasabSzam(lap, 2560, tartalomHasab(lap, 2560))).toBe(2)
+  })
+
+  const parHasabszam = (nezetablak: number): number => {
+    const lap = lapNezetablakra(nezetablak)
+    const sav = sajatErtek(lap, osztalyElem('.kc-post-cta__pair'), 'grid-template-columns')
+    expect(sav, `${nezetablak} px: a pár rácsa hiányzik`).not.toBeNull()
+    return sav!.match(/1fr/g)?.length ?? 0
+  }
+
+  it('a kurzus + időpont pár 320 és 899 px-en egy hasáb (mobil rakás)', () => {
+    expect(parHasabszam(320)).toBe(1)
+    expect(parHasabszam(899)).toBe(1)
+  })
+
+  it('a kurzus + időpont pár 900 és 1440 px-en két hasáb (asztali sor)', () => {
+    expect(parHasabszam(900)).toBe(2)
+    expect(parHasabszam(1440)).toBe(2)
   })
 
   it('a cikkoldal panel-szövegeinek sorhossza a WCAG 1.4.8 (AAA) 80 karakteres plafonja alatt marad', () => {
