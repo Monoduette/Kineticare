@@ -47,9 +47,11 @@ vi.mock('../components/admin/BunnyLibraryPanel', () => ({
 
 const { StatisticsView } = await import('../components/admin/StatisticsView')
 const { BunnyLibraryView } = await import('../components/admin/BunnyLibraryView')
-const { WebAnalyticsView, WEB_ANALYTICS_ACCESS_DENIED_MESSAGE } = await import(
-  '../components/admin/WebAnalyticsView'
-)
+const {
+  WebAnalyticsView,
+  WEB_ANALYTICS_ACCESS_DENIED_MESSAGE,
+  WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE,
+} = await import('../components/admin/WebAnalyticsView')
 
 interface Szerep {
   role: string
@@ -130,11 +132,19 @@ describe('Videótár nézet: ugyanaz a kapu-kötés', () => {
 })
 
 describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
-  // Ez a nézet adatbázist nem kérdez, de a beágyazott PostHog-iframe és a
-  // külső linkek is BELSŐ felület — a tiltott ágon egyik sem jelenhet meg.
+  beforeEach(() => {
+    revenueKem.mockClear()
+    engagementKem.mockClear()
+  })
+
+  // 2026-08-27 óta a nézet a Statisztika lekérdezőit is hívja (eladás- és
+  // haladás-összefoglaló) — a tiltott ágon ezek SEM indulhatnak el, ahogy a
+  // PostHog-iframe és a külső linkek sem jelenhetnek meg.
   for (const [nev, user] of TILTOTT) {
-    it(`${nev} sem iframe, sem külső link nem renderel`, () => {
-      const html = renderToStaticMarkup(WebAnalyticsView(props(user)))
+    it(`${nev} se lekérdezés, se iframe, se külső link`, async () => {
+      const html = renderToStaticMarkup(await WebAnalyticsView(props(user)))
+      expect(revenueKem, 'a bevétel-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
+      expect(engagementKem, 'a kurzus-hatás lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
       expect(html).toContain('data-keret="frame"')
       expect(html).toContain(WEB_ANALYTICS_ACCESS_DENIED_MESSAGE)
       expect(html).not.toContain('<iframe')
@@ -142,8 +152,13 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     })
   }
 
-  it('staff szerepkörrel a külső linkek megjelennek; env nélkül a beüzemelési útmutató', () => {
-    const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'staff' })))
+  it('staff szerepkörrel a lekérdezés ELINDUL, és a hibája nem dönti el az oldalt', async () => {
+    // A dobó kém itt is dob — épp ez bizonyítja, hogy a hívás megtörtént; a
+    // nézet a saját try/catch-ében kezeli, és a szekció helyén a magyar
+    // magyarázat áll, miközben a viselkedés-rész (linkek) változatlanul él.
+    const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'staff' })))
+    expect(revenueKem, 'staffnál sem indult el a bevétel-lekérdezés').toHaveBeenCalledTimes(1)
+    expect(html).toContain(WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE)
     expect(html).toContain('Külső elemző-felületek')
     expect(html).toContain('https://analytics.google.com/')
     // POSTHOG_SHARED_DASHBOARD_URL nincs beállítva a tesztben → nincs iframe,
@@ -152,10 +167,10 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     expect(html).toContain('POSTHOG_SHARED_DASHBOARD_URL')
   })
 
-  it('érvényes megosztási linkkel az iframe az embedded alakra normalizálva jelenik meg', () => {
+  it('érvényes megosztási linkkel az iframe az embedded alakra normalizálva jelenik meg', async () => {
     vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://eu.posthog.com/shared/AbCd1234xyz')
     try {
-      const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'owner' })))
+      const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'owner' })))
       expect(html).toContain('<iframe')
       expect(html).toContain('https://eu.posthog.com/embedded/AbCd1234xyz')
     } finally {
@@ -163,10 +178,10 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     }
   })
 
-  it('idegen hostra mutató env-vel NINCS iframe (a nézet nem ágyaz be idegen oldalt)', () => {
+  it('idegen hostra mutató env-vel NINCS iframe (a nézet nem ágyaz be idegen oldalt)', async () => {
     vi.stubEnv('POSTHOG_SHARED_DASHBOARD_URL', 'https://evil.example/shared/AbCd1234xyz')
     try {
-      const html = renderToStaticMarkup(WebAnalyticsView(props({ role: 'owner' })))
+      const html = renderToStaticMarkup(await WebAnalyticsView(props({ role: 'owner' })))
       expect(html).not.toContain('<iframe')
       expect(html).not.toContain('evil.example')
     } finally {
