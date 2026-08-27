@@ -674,12 +674,31 @@ describe('startCheckout — duplavásárlás-blokk', () => {
       user: mockUser,
       input: happyInput,
       fetchPaymentState: async () => ({ Status: 'Succeeded' }) as never,
-      applyBarionStateTransition: async () => ({ action: 'paid', transitionedToPaid: true }),
+      applyBarionStateTransition: async () => ({
+        action: 'paid',
+        transitionedToPaid: true,
+        customer: {
+          userId: 7,
+          created: false,
+          alreadyLinked: false,
+          passwordSetupPending: true,
+          email: 'vevo@example.test',
+          name: 'Minta Mari',
+        },
+      }),
       onOrderPaid,
       barionEnvironment: 'test',
     })
     await expect(promise).rejects.toMatchObject({ status: 409 })
     expect(onOrderPaid).toHaveBeenCalledTimes(1)
+    expect(onOrderPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: expect.objectContaining({
+          passwordSetupPending: true,
+          email: 'vevo@example.test',
+        }),
+      }),
+    )
     expect(calls.create).toHaveLength(0)
   })
 

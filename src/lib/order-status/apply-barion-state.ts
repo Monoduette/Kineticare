@@ -3,9 +3,14 @@ import type { Payload } from 'payload'
 import type { Order, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import type { BarionPaymentStateResponse, OrderPaymentState } from '../barion'
+import { maskEmail } from '../email/mask'
 import type { Logger } from '../logger'
 import { withUserPurchasesLock } from '../user-purchases-lock'
-import { resolveOrderCustomer, type OrderCustomerResolution } from './resolve-order-customer'
+import {
+  GuestBindPrivilegedAccountError,
+  resolveOrderCustomer,
+  type OrderCustomerResolution,
+} from './resolve-order-customer'
 
 /**
  * Barion-állapot → rendelés-állapotgép. Callback és order-poll közös magja.
@@ -36,7 +41,8 @@ export interface BarionTransitionResult {
   action: BarionTransitionAction
   /**
    * rejected akciónál az ok (paid-cancel-rejected / cancel-not-allowed /
-   * paid-not-allowed / total-mismatch / duplicate-paid-order).
+   * paid-not-allowed / total-mismatch / duplicate-paid-order /
+   * guest-bind-privileged-account).
    */
   reason?: string
   /** true, ha a rendelés már a célállapotban volt (no-op átmenet). */
@@ -363,7 +369,21 @@ async function applyBarionStateTransitionLocked(
        * hamis fizetésre fiók sem jön létre. A K5 dupla-fizetés-őr viszont már a
        * feloldott fiókkal dolgozik — vendég-rendelésre is érvényes marad.
        */
-      const customer = await resolveOrderCustomer({ payload, order, log })
+      let customer: OrderCustomerResolution
+      try {
+        customer = await resolveOrderCustomer({ payload, order, log })
+      } catch (error) {
+        // Staff/owner e-mail: a kötés tilos, de generic Error örök retryt
+        // okozna (pénz már levonva). Terminális reject — closeEvent rejected.
+        if (error instanceof GuestBindPrivilegedAccountError) {
+          log.error(
+            'RIASZTÁS: vendég-fizetés staff/owner fiók e-mailjére érkezett — kötés elutasítva, manuális ellenőrzés szükséges',
+            { cimzett: maskEmail(error.email), role: error.role },
+          )
+          return { action: 'rejected', reason: 'guest-bind-privileged-account' }
+        }
+        throw error
+      }
       // A helyi példány elavult (a customer mezőt épp most írtuk ki), a
       // jogosultság-beírás viszont ebből olvassa a vevőt.
       const orderWithCustomer: Order = { ...order, customer: customer.userId }

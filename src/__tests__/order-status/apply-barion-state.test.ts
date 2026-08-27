@@ -523,6 +523,77 @@ describe('applyBarionStateTransition — vendég-rendelés (fiók nélküli) pai
     const userUpdate = updates.find((update) => update.collection === 'users')
     expect(userUpdate).toMatchObject({ id: users[1].id, data: { purchases: [PRODUCT_ID] } })
   })
+
+  it('aktivált customer e-mail: KÖT, paid, nincs új fiók', async () => {
+    const { payload, order, users, updates } = createGuestMockPayload()
+    users.push({
+      id: 8,
+      email: 'vendeg@example.test',
+      name: 'Meglévő Vevő',
+      role: 'customer',
+      passwordSetupPending: false,
+      purchases: [],
+    })
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger({ module: 'teszt' }),
+    })
+
+    expect(result).toMatchObject({
+      action: 'paid',
+      transitionedToPaid: true,
+      purchasesGranted: 1,
+      customer: {
+        userId: 8,
+        created: false,
+        alreadyLinked: false,
+        passwordSetupPending: false,
+        email: 'vendeg@example.test',
+      },
+    })
+    expect(users.filter((user) => user.email === 'vendeg@example.test')).toHaveLength(1)
+    expect(order.customer).toBe(8)
+    expect(order.status).toBe('paid')
+    const userUpdate = updates.find((update) => update.collection === 'users')
+    expect(userUpdate).toMatchObject({ id: 8, data: { purchases: [PRODUCT_ID] } })
+  })
+
+  it('staff e-mail: rejected guest-bind-privileged-account, nincs kötés, nincs paid', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { payload, order, users, updates } = createGuestMockPayload()
+    users.push({
+      id: 3,
+      email: 'vendeg@example.test',
+      name: 'Munkatárs',
+      role: 'staff',
+      passwordSetupPending: false,
+      purchases: [],
+    })
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger({ module: 'teszt' }),
+    })
+
+    expect(result).toEqual({ action: 'rejected', reason: 'guest-bind-privileged-account' })
+    expect(result.transitionedToPaid).toBeUndefined()
+    expect(order.status).toBe('payment_pending')
+    expect(order.customer).toBeNull()
+    expect(updates).toHaveLength(0)
+    expect(users[1]).toMatchObject({ role: 'staff', purchases: [] })
+    const output = logOutput(logSpy)
+    expect(output).toContain('RIASZT')
+    expect(output).toContain('v***@example.test')
+    expect(output).not.toContain('vendeg@example.test')
+    logSpy.mockRestore()
+  })
 })
 
 /**

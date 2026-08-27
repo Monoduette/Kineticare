@@ -2,7 +2,10 @@ import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { createLogger } from '../../lib/logger'
-import { resolveOrderCustomer } from '../../lib/order-status/resolve-order-customer'
+import {
+  GuestBindPrivilegedAccountError,
+  resolveOrderCustomer,
+} from '../../lib/order-status/resolve-order-customer'
 import type { Order, User } from '../../payload-types'
 
 /**
@@ -11,7 +14,7 @@ import type { Order, User } from '../../payload-types'
  * Amit ez a fájl bizonyít:
  *  1. ÚJ e-mail → `customer` szerepkörű fiók jön létre, jelszó-beállítás
  *     függőben jelzővel, és a rendelés hozzá kötődik;
- *  2. LÉTEZŐ aktivált e-mail → NEM köt (K2); aktiválatlan customer köt;
+ *  2. LÉTEZŐ aktivált customer → KÖT (teljesítés-első); staff/owner reject;
  *  3. PÁRHUZAMOS callback ugyanarra az e-mailre → PONTOSAN EGY fiók
  *     (idempotencia, e-mail-szintű advisory-zár alatt);
  *  4. bejelentkezett vásárlásnál csak beolvasás történik (alreadyLinked);
@@ -190,7 +193,7 @@ describe('resolveOrderCustomer — vendég-vásárlás fiók-feloldása', () => 
     expect(lockState.keys).toEqual([`order-customer:${EMAIL}`])
   })
 
-  it('LÉTEZŐ aktivált fiók (staff/customer): NEM köt, nincs új fiók (K2)', async () => {
+  it('LÉTEZŐ staff fiók: NEM köt, GuestBindPrivilegedAccountError (terminális reject)', async () => {
     const { payload, state } = createFakePayload([
       {
         id: 7,
@@ -202,9 +205,14 @@ describe('resolveOrderCustomer — vendég-vásárlás fiók-feloldása', () => 
       },
     ])
 
-    await expect(resolveOrderCustomer({ payload, order: guestOrder(), log })).rejects.toThrow(
-      /aktivált vagy nem-customer/,
+    const error = await resolveOrderCustomer({ payload, order: guestOrder(), log }).catch(
+      (caught: unknown) => caught,
     )
+    expect(error).toBeInstanceOf(GuestBindPrivilegedAccountError)
+    expect(error).toMatchObject({
+      reason: 'guest-bind-privileged-account',
+      name: 'GuestBindPrivilegedAccountError',
+    })
     expect(state.creates).toHaveLength(0)
     expect(state.orderUpdates).toHaveLength(0)
     expect(state.users[1]).toMatchObject({
@@ -214,7 +222,7 @@ describe('resolveOrderCustomer — vendég-vásárlás fiók-feloldása', () => 
     })
   })
 
-  it('LÉTEZŐ aktivált customer: NEM köt (K2)', async () => {
+  it('LÉTEZŐ aktivált customer: KÖT, nincs új fiók, passwordSetupPending false', async () => {
     const { payload, state } = createFakePayload([
       {
         id: 8,
@@ -225,11 +233,18 @@ describe('resolveOrderCustomer — vendég-vásárlás fiók-feloldása', () => 
       },
     ])
 
-    await expect(resolveOrderCustomer({ payload, order: guestOrder(), log })).rejects.toThrow(
-      /aktivált vagy nem-customer/,
-    )
+    const result = await resolveOrderCustomer({ payload, order: guestOrder(), log })
+
+    expect(result).toMatchObject({
+      userId: 8,
+      created: false,
+      alreadyLinked: false,
+      passwordSetupPending: false,
+      email: EMAIL,
+    })
     expect(state.creates).toHaveLength(0)
-    expect(state.orderUpdates).toHaveLength(0)
+    expect(state.orderUpdates).toEqual([{ id: 101, data: { customer: 8 } }])
+    expect(state.users.filter((user) => user.email === EMAIL)).toHaveLength(1)
   })
 
   it('LÉTEZŐ, de még AKTIVÁLATLAN fiók (import/korábbi vendég-vásárlás) → továbbra is jár a jelszó-beállító link', async () => {
