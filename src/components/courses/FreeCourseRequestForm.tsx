@@ -1,7 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 
 import { TurnstileWidget } from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
 import { Button } from '@/components/ui/Button'
@@ -109,7 +117,13 @@ export async function trackedSubmitFreeCourseRequest(
  * WCAG 2.2 · 3.3.1 Error Identification
  * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
  */
-export function FreeCourseSuccessView(input: {
+export function FreeCourseSuccessView({
+  emailSent,
+  next,
+  productId,
+  id,
+  headingRef,
+}: {
   emailSent: boolean
   next?: FreeCourseUiNext | null
   productId: number
@@ -117,8 +131,8 @@ export function FreeCourseSuccessView(input: {
   headingRef?: RefObject<HTMLParagraphElement | null>
 }): JSX.Element {
   const kind = resolveFreeCourseSuccessKind({
-    next: input.next,
-    emailSent: input.emailSent,
+    next,
+    emailSent,
   })
   const figyelem = kind === 'no-email' || kind === 'blocked'
   const title =
@@ -142,16 +156,16 @@ export function FreeCourseSuccessView(input: {
     <div
       aria-live="polite"
       className={`kc-free-course__success${figyelem ? ' kc-free-course__success--figyelem' : ''}`}
-      id={input.id}
+      id={id}
       role="status"
     >
-      <p className="kc-free-course__success-title" ref={input.headingRef} tabIndex={-1}>
+      <p className="kc-free-course__success-title" ref={headingRef} tabIndex={-1}>
         {title}
       </p>
       <p className="kc-free-course__success-body">{body}</p>
       {kind === 'library' ? (
         <p className="kc-free-course__success-body">
-          <Button href={myCoursePlayerHref(input.productId)} variant="primary">
+          <Button href={myCoursePlayerHref(productId)} variant="primary">
             {ctaLabel('course-start')}
           </Button>
         </p>

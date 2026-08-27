@@ -219,7 +219,7 @@ function createMockPayload(options: MockOptions = {}) {
     ),
     // A route-handler a sessiont `payload.auth({ headers })`-szel olvassa
     // (bejelentkezett, egyező e-mail → saját magának grant). Alapból vendég.
-    auth: vi.fn(async () => ({ user: null })),
+    auth: vi.fn(async (): Promise<{ user: { id: number } | null }> => ({ user: null })),
   }
 
   return {
