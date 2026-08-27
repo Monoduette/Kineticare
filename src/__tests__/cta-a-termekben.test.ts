@@ -79,20 +79,15 @@ interface FeliratKivetel {
 /**
  * A MAI ÁLLAPOT, soronként indokolva (2026-08-18-i mérés).
  * A lista 96 sorról 42-re csökkent, kategóriánként:
- * szotartol-elter ... 27 → 1   (a 26 javított felirat a §3.2 szótárból olvas)
+ * szotartol-elter ... 27 → 0   (mind a 27 javított felirat a §3.2 szótárból olvas)
  * mintazat-jelolt ...  9 → 0   (a kategória megszűnt: `CtaEntry.pattern`)
  * nincs-szotari-sor . 20 → 0   (a §3.2 tizenegy új sorral bővült: #28–#38)
  */
 const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
   // ── 1. SZÓTÁRTÓL ELTÉRŐ CTA-k — a javítandók listája ───────────────────────
-  {
-    felirat: 'Belépés a fizetéshez',
-    fajl: 'components/checkout/CartView.tsx',
-    kategoria: 'szotartol-elter',
-    celzottAkcio: 'sign-in',
-    indok:
-      'A §3.2 #5 szerint a belépés felirata mindenütt „Belépés"; a cél megnevezése („a fizetéshez") a környező szövegbe vagy a hozzáférhető névbe való (WCAG 2.2 · 2.5.3). A fájlt a 2026-08-18-i körben MÁSIK ügynök zárta le, ezért ez az egyetlen meg nem javított szótár-eltérés — a vezetőnek jelentve.',
-  },
+  // ÜRES (2026-08-27). A maradék „Belépés a fizetéshez" a kosár vendég-sávján
+  // a §3.2 #21 (`cart-to-checkout`, „Menj a pénztárhoz") alakra javult: a
+  // /penztar vendég-vásárlást is fogad, belépőfal nincs.
 
   // ── 2. NINCS §3.2 SOR — a szótár bővítése tervezési kérdés ────────────────
   // ÜRES, és ez a szakasz ÉRTELME. A 2026-08-17-i mérés húsz ilyen feliratot
@@ -365,8 +360,11 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * szerep, mint a kurzusoldal morzsájának „Kurzusok" eleme, ami a 184–187.
  * soron már ott áll — helyjelölő, nem cselekvés (§3.2 N-3). Új CTA-felirat
  * NEM keletkezett. A növelést a vezetőnek jóvá kell hagynia.
+ *
+ * 2026-08-27: a maradék `szotartol-elter` sor (`CartView` „Belépés a
+ * fizetéshez") kikerült, a korlát 40 → 39.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 40
+const KIVETEL_LISTA_FELSO_KORLAT = 39
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy

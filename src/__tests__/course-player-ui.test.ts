@@ -526,6 +526,28 @@ describe('CoursePlayer — kapuzott állapotok', () => {
     // …miközben az első leckén továbbra is van értelmes következő lépés.
     expect(primaryAction(curriculum, 'l1', done)?.kind).toBe('advance')
   })
+
+  it('a token-hiba és a hiányzó lejátszás mellé belép a kapcsolat is (nem csak újrapróbálás)', () => {
+    const source = readFileSync(
+      new URL('../components/account/CoursePlayer.tsx', import.meta.url),
+      'utf8',
+    )
+    const unavailableJsx = source.indexOf("{state.kind === 'unavailable' ||")
+    const errorJsx = source.indexOf("{state.kind === 'error' ?")
+    const forbiddenJsx = source.indexOf("{state.kind === 'forbidden' ?")
+    expect(unavailableJsx).toBeGreaterThan(-1)
+    expect(errorJsx).toBeGreaterThan(-1)
+    expect(forbiddenJsx).toBeGreaterThan(-1)
+
+    const unavailableBlock = source.slice(unavailableJsx, errorJsx)
+    const errorBlock = source.slice(errorJsx, errorJsx + 700)
+    const forbiddenBlock = source.slice(forbiddenJsx, unavailableJsx)
+    expect(unavailableBlock).toContain("ctaLabel('contact-open')")
+    expect(errorBlock).toContain("ctaLabel('contact-open')")
+    expect(forbiddenBlock).toContain("ctaLabel('contact-open')")
+    expect(unavailableBlock).toContain('href="/kapcsolat"')
+    expect(errorBlock).toContain('href="/kapcsolat"')
+  })
 })
 
 /**

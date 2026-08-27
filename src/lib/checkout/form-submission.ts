@@ -93,6 +93,13 @@ export const CHECKOUT_ALREADY_PURCHASED_ERROR =
  */
 export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
   'Ehhez az e-mail-címhez már van fiók. Jelentkezz be, és onnan tudod megvenni vagy megnyitni a kurzust.'
+
+/**
+ * Vendég, nincs aktivált fiók, de van paid rendelés az e-mailre. W4: ne
+ * mondjuk, hogy „már megvásároltad”. A pénztár-űrlap a Belépés gombot ehhez
+ * a szöveghez köti; a cél a lejátszó (új pénztár 409 lenne), nem a checkout.
+ */
+export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN = 'Ezt a lépést bejelentkezés után tudod befejezni.'
 export const CHECKOUT_WAIVER_ERROR = 'A vásárláshoz mindkét hozzájárulást el kell fogadnod.'
 
 /** ÁSZF-elfogadás a pénztárban — egy jelölőnégyzet, két hivatkozás; alapból üres (ingyenes terméken is). */

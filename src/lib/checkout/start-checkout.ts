@@ -34,6 +34,7 @@ import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
 import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
+  CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
 } from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
@@ -43,7 +44,7 @@ import {
   type NormalizedGuest,
 } from './guest'
 
-export { CHECKOUT_GUEST_EXISTING_ACCOUNT }
+export { CHECKOUT_GUEST_EXISTING_ACCOUNT, CHECKOUT_GUEST_FINISH_AFTER_LOGIN }
 
 /**
  * Bejelentkezett duplavásárlás. A munkamenet a saját fiók, ez nem orákulum.
@@ -51,12 +52,6 @@ export { CHECKOUT_GUEST_EXISTING_ACCOUNT }
  * lépés, nem egy meg nem nevezett „fiók”.
  */
 export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
-
-/**
- * Vendég, nincs aktivált fiók, de van paid rendelés az e-mailre: ne mondjuk,
- * hogy „már megvásároltad” (W4). A következő lépés a belépés / aktiválás.
- */
-export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN = 'Ezt a lépést bejelentkezés után tudod befejezni.'
 
 /**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem

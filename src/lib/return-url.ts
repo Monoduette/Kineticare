@@ -30,10 +30,11 @@ export const FORGOT_PASSWORD_PATH = '/elfelejtett-jelszo'
 /**
  * Belépő hivatkozás ellenőrzött `returnUrl`-lel.
  *
- * A kosár már így viszi vissza a vevőt a pénztárra; a pénztár vendég-sora, a
- * köszönőoldal és a jelszó-levelek korábban csupasz `/belepes`-t adtak, és a
- * belépés után a Kurzusaim/pénztár szándék elveszett. A szűrés ugyanaz, mint
- * a belépő oldalé: idegen eredetű cél a `DEFAULT_AUTH_RETURN_URL`-re esik.
+ * A pénztár vendég-sora, a köszönőoldal és a jelszó-levelek korábban csupasz
+ * `/belepes`-t adtak, és a belépés után a Kurzusaim/pénztár szándék elveszett.
+ * A kosár fizetős sávja vendégként is a pénztárra visz (nincs belépőfal). A
+ * szűrés ugyanaz, mint a belépő oldalé: idegen eredetű cél a
+ * `DEFAULT_AUTH_RETURN_URL`-re esik.
  *
  * Forrás: GOV.UK Design System, Begin with the user need / don’t drop people
  * off a journey (https://design-system.service.gov.uk/patterns/task-list-pages/);

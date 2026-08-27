@@ -45,6 +45,7 @@ import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_ERROR_REGION_ID,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
+  CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
   emptyGuestForm,
   prefillBillingForm,
   withBillingValue,
@@ -445,6 +446,19 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
             {ctaLabel('sign-in')}
           </Button>
         </p>
+      ) : error === CHECKOUT_GUEST_FINISH_AFTER_LOGIN ? (
+        <p className="kc-checkout-form__block-hint">
+          {/*
+            Paid rendelés van az e-mailre, aktivált fiók nincs (W4: ne mondjuk,
+            hogy megvette). A pénztár újra 409 lenne; a lejátszó a következő
+            lépés. WCAG 2.2 · 3.3.1: a hiba mellé jár a következő cselekvés.
+            GOV.UK Error message: tell users what happened and how to fix it
+            (https://design-system.service.gov.uk/components/error-message/).
+          */}
+          <Button href={signInHref(myCoursePlayerHref(product.id))} size="sm" variant="secondary">
+            {ctaLabel('sign-in')}
+          </Button>
+        </p>
       ) : error === CHECKOUT_ALREADY_PURCHASED_ERROR && !alreadyPurchased ? (
         <p className="kc-checkout-form__block-hint">
           <Button href={myCoursePlayerHref(product.id)} size="sm" variant="secondary">
@@ -638,7 +652,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         */
         <Card className="kc-checkout-waiver kc-checkout-waiver--free">
           <p>
-            Ez a kurzus ingyenes — a hozzáférés a regisztrációd után azonnal megnyílik, fizetés és
+            Ez a kurzus ingyenes. A hozzáférés a regisztrációd után azonnal megnyílik, fizetés és
             elállási nyilatkozat nélkül.
           </p>
         </Card>

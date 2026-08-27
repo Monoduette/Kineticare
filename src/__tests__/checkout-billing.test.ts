@@ -630,3 +630,24 @@ describe('CheckoutForm — már megvett kurzus', () => {
     expect(source).toContain('myCoursePlayerHref(product.id)')
   })
 })
+
+describe('CheckoutForm — vendég, már fizetett rendelés (409, W4)', () => {
+  it('a befejezés-belépés után 409-re Belépés gombot tesz a lejátszóra, nem a pénztárra', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('error === CHECKOUT_GUEST_FINISH_AFTER_LOGIN')
+    expect(source).toContain('signInHref(myCoursePlayerHref(product.id))')
+    expect(source).toContain('signInHref(checkoutHref(product.id))')
+  })
+
+  it('a védekező ingyenes ág sem használ töltelék gondolatjelet', () => {
+    const source = readFileSync(
+      new URL('../components/checkout/CheckoutForm.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toContain('Ez a kurzus ingyenes. A hozzáférés a regisztrációd után')
+    expect(source).not.toMatch(/Ez a kurzus ingyenes [–—]/)
+  })
+})

@@ -868,6 +868,9 @@ export function CoursePlayer({
                       {ctaLabel('retry')}
                     </Button>
                   )}
+                  <Button href="/kapcsolat" size="sm" variant="secondary">
+                    {ctaLabel('contact-open')}
+                  </Button>
                 </p>
               ) : null}
               {state.kind === 'error' ? (
@@ -882,6 +885,9 @@ export function CoursePlayer({
                       {ctaLabel('retry')}
                     </Button>
                   )}
+                  <Button href="/kapcsolat" size="sm" variant="secondary">
+                    {ctaLabel('contact-open')}
+                  </Button>
                 </p>
               ) : null}
             </div>

@@ -85,12 +85,16 @@ const HIBAS_ARU: CartItem = {
 /** A vegyes kosár: 1 megvehető + 1 archivált + 1 ingyenes. */
 const VEGYES: CartItem[] = [MEGVEHETO, ARCHIVALT, INGYENES]
 
-function renderKosar(items: CartItem[], isLoggedIn = true): string {
+function renderKosar(items: CartItem[], alreadyPurchasedProductId: number | null = null): string {
   const pillanatkep: CartState = { items }
   const spy = vi.spyOn(cartStore, 'getServerSnapshot').mockReturnValue(pillanatkep)
   try {
     return renderToStaticMarkup(
-      createElement(Fragment, null, createElement(CartView, { initialItem: null, isLoggedIn })),
+      createElement(
+        Fragment,
+        null,
+        createElement(CartView, { alreadyPurchasedProductId, initialItem: null }),
+      ),
     )
   } finally {
     spy.mockRestore()
@@ -157,7 +161,9 @@ describe('VEGYES KOSÁR (1 megvehető + 1 archivált + 1 ingyenes)', () => {
     expect(archivaltSor).toContain(ctaLabel('cart-remove-item'))
     // SC 2.4.4: három kivevő gomb van a lapon, a nevük nem lehet azonos.
     expect(archivaltSor).toMatch(
-      new RegExp(`${ctaLabel('cart-remove-item')}[^<]*<span[^>]*kc-visually-hidden[^>]*>: ${ARCHIVALT.sku}`),
+      new RegExp(
+        `${ctaLabel('cart-remove-item')}[^<]*<span[^>]*kc-visually-hidden[^>]*>: ${ARCHIVALT.sku}`,
+      ),
     )
   })
 
@@ -228,10 +234,21 @@ describe('VEGYES KOSÁR (1 megvehető + 1 archivált + 1 ingyenes)', () => {
     expect(html).not.toContain('aria-disabled')
   })
 
-  it('BEJELENTKEZÉS NÉLKÜL is a megvehető tétel a cél (a belépő ág változatlan)', () => {
-    const html = renderKosar(VEGYES, false)
-    expect(html).toContain(encodeURIComponent(checkoutHref(MEGVEHETO.productId)))
+  it('BEJELENTKEZÉS NÉLKÜL is a pénztárra visz, nem belépésre kényszerít', () => {
+    const html = renderKosar(VEGYES)
+    expect(html).toContain(`href="${checkoutHref(MEGVEHETO.productId)}"`)
+    expect(html).toContain(ctaLabel('cart-to-checkout'))
+    expect(html).not.toContain('Belépés a fizetéshez')
+    expect(html).not.toContain('/belepes?returnUrl=')
     expect(html).not.toContain(encodeURIComponent(checkoutHref(ARCHIVALT.productId)))
+  })
+
+  it('már megvett céltételnél a sáv a lejátszóra visz, nem a pénztárba', () => {
+    const html = renderKosar(VEGYES, MEGVEHETO.productId)
+    expect(html).toContain(`href="/kurzusaim/${MEGVEHETO.productId}"`)
+    expect(html).toContain(ctaLabel('course-start'))
+    expect(html).not.toContain(ctaLabel('cart-to-checkout'))
+    expect(html).not.toContain(`href="${checkoutHref(MEGVEHETO.productId)}"`)
   })
 })
 
@@ -362,6 +379,7 @@ describe('CartView — a tételenkénti cselekvések feliratai is a szótárból
       'cart-remove-item',
       'free-course-claim',
       'course-list-open',
+      'course-start',
     ] as const) {
       expect(forras, `literál felirat a komponensben: ${ctaLabel(akcio)}`).not.toContain(
         ctaLabel(akcio),
@@ -463,10 +481,9 @@ describe('Mért kontraszt, sorhossz és reflow az ÚJ kosár-elemeken', () => {
   it('a hatókör-mondat TELJES tintával áll a lapháttéren: ≥ 4,5:1 (SC 1.4.3)', () => {
     const torzs = szabalyTorzs(checkoutCss, '.kc-cart__scope')
     expect(torzs, 'Hiányzik a `.kc-cart__scope` szabály.').not.toBe('')
-    expect(
-      torzs,
-      'Pénzről szóló állítás, nem lábjegyzet: nem tompítható.',
-    ).toContain('color: var(--kc-color-text)')
+    expect(torzs, 'Pénzről szóló állítás, nem lábjegyzet: nem tompítható.').toContain(
+      'color: var(--kc-color-text)',
+    )
     const mert = arany(szin('--kc-color-text'), szin('--kc-color-surface'))
     expect(mert, `mért ${mert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
   })
@@ -534,7 +551,8 @@ describe('Mért kontraszt, sorhossz és reflow az ÚJ kosár-elemeken', () => {
       const leghosszabbSzo = felirat
         .split(/\s+/)
         .reduce((leghosszabb, szo) => (szo.length > leghosszabb.length ? szo : leghosszabb), '')
-      const gombSzelesseg = leghosszabbSzo.length * LEGSZELESEBB_KARAKTER_EM * 18 + 2 * gombBelso + 4
+      const gombSzelesseg =
+        leghosszabbSzo.length * LEGSZELESEBB_KARAKTER_EM * 18 + 2 * gombBelso + 4
       expect(
         gombSzelesseg,
         `„${leghosszabbSzo}" felső becsléssel ${gombSzelesseg.toFixed(0)} px, a sor sávja ${sorSav} px`,
@@ -570,7 +588,7 @@ describe('A sor szerkezete a kirenderelt HTML-ben', () => {
 
   it('a `CartRow` a valódi komponensből renderel (nem tesztbeli másolatból)', () => {
     // Ha a nézet szerkezete elcsúszna a `CartView`-tól, ez a teszt hazudna.
-    const kozvetlen = renderElem(createElement(CartView, { initialItem: null, isLoggedIn: true }))
+    const kozvetlen = renderElem(createElement(CartView, { initialItem: null }))
     expect(kozvetlen).toContain('kc-cart-empty')
   })
 })

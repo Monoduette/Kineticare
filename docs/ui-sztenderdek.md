@@ -620,8 +620,9 @@ a többi hívóhely.
 **A hívóhelyek átírása 2026-08-18-án MEGTÖRTÉNT.** A 2026-08-17-i audit 136 élő
 gombfeliratot mért, ebből **67 tért el** ettől a táblázattól; a termék-oldali őr
 (**G-UI2**, `src/__tests__/cta-a-termekben.test.ts`) kivétel-listája 96 sorral
-indult. A javítás után **42 sor** maradt, és abból **egyetlen** szótár-eltérés
-(a `CartView` „Belépés a fizetéshez" felirata). A táblázat ugyanebben a körben
+indult. A javítás után **42 sor** maradt; 2026-08-27-én a maradék **egyetlen**
+szótár-eltérés (`CartView` „Belépés a fizetéshez") is a §3.2 #21 alakra
+javult. A táblázat ugyanebben a körben
 **#28–#38** sorokkal bővült, a L-1 lista hatról hét elemre, a mintázatos sorok
 (#14, #15, #23) pedig gépi alakot is kaptak — lásd a **C-6** blokkot a táblázat
 alatt.

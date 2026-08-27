@@ -131,7 +131,12 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
             </p>
           </div>
         ) : null}
-        <CartView initialItem={termekItem} isLoggedIn={user !== null} />
+        <CartView
+          alreadyPurchasedProductId={
+            alreadyPurchased && termekItem !== null ? termekItem.productId : null
+          }
+          initialItem={termekItem}
+        />
       </Container>
     </Section>
   )
