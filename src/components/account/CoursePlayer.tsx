@@ -20,6 +20,7 @@ import { myCoursePlayerHref } from '@/lib/courses'
 import { ACCESS_NOT_PURCHASED_MESSAGE, type PlayerGateKind } from '@/lib/course-access'
 import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
+import { bunnyProtectedLibraryId } from '@/lib/stream/bunny-site-config'
 import { streamIframeSrc } from '@/lib/stream/contract'
 import { fetchStreamToken } from '@/lib/stream-token-client'
 
@@ -489,7 +490,7 @@ export function CoursePlayer({
       }, refreshInSec * 1000)
 
       const nextSrc = streamIframeSrc({
-        libraryId: process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID,
+        libraryId: bunnyProtectedLibraryId(),
         streamAssetId: lesson.streamAssetId,
         token: result.token,
         expiresAtEpochSec,

@@ -26,6 +26,7 @@
     "backfill:ar-snapshot": "tsx src/scripts/backfill-price-snapshot.ts",
     "backfill:access-grants": "tsx src/scripts/backfill-access-grants.ts",
     "kurzus:videok-modulba": "tsx src/scripts/videok-modulba.ts",
+    "import:bunny-curriculum": "tsx src/scripts/import-bunny-curriculum.ts",
     "import:tudastar": "tsx src/scripts/import-tudastar-cikkek.ts"
   },
   "dependencies": {

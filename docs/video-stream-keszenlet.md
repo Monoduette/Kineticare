@@ -26,13 +26,15 @@
 | Lejátszó felület (kezdőlap, előzetes, kurzus)   | ✅ Kész                            |
 | Biztonsági fejléc (CSP) a Bunnyhoz              | ✅ Kész                            |
 | A lejátszási lánc korábbi két kódhibája         | ✅ Javítva (4.3)                   |
-| Bunny-kulcsok és library-azonosítók beállítása  | ❌ Hiányzik (ez az utolsó lépés)   |
-| Videó feltöltése a rendszeren keresztül         | ❌ Nincs — kézi másolás az adminba |
+| Bunny-kulcsok és library-azonosítók beállítása  | ⏳ Tárak megvannak (védett 469119, publikus 738433); Railway titkok + CMS-tananyag kellenek |
+| Videó feltöltése a rendszeren keresztül         | ❌ Nincs — a 28 kész videó a Bunnyn van; GUID-ok: `src/lib/curriculum/bunny-keszlet.ts` |
 
 Magyarul: a **nehéz része kész** (ki férhet hozzá, hogyan lesz belőle
 biztonságos, lejáró link, mit lát a vevő hiba esetén), és a kód a Bunnyra van
-kötve. Ami hiányzik: a Bunny-oldali előkészítés (két library) és a négy
-környezeti változó beállítása a Railway-en. **Kódváltozás nem kell hozzá.**
+kötve. A két tár megvan (védett `469119`, publikus `738433`). Ami hiányzik az
+éles lejátszáshoz: a Railway titkok (`BUNNY_STREAM_TOKEN_AUTH_KEY` és a
+library API-kulcsok) és a GUID-ok beírása a kurzus tananyagába
+(`npm run import:bunny-curriculum`).
 
 ---
 
