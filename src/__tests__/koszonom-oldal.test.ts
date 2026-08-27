@@ -2,7 +2,7 @@ import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import KoszonjukPage from '../app/(frontend)/fizetes/koszonom/page'
+import KoszonjukPage, { metadata } from '../app/(frontend)/fizetes/koszonom/page'
 import {
   ThankYouMissingOrder,
   ThankYouNotFound,
@@ -50,6 +50,19 @@ async function renderPage(order: Record<string, string | string[] | undefined>) 
   }
   return element.props as Record<string, unknown>
 }
+
+describe('köszönőoldal — lapcím (állapot, nem siker)', () => {
+  it('a title nem állít sikert, amíg a fizetés kimenetele ismeretlen', () => {
+    expect(metadata.title).toBe('A fizetésed állapota')
+    expect(metadata.description).toBe(
+      'A banki visszaigazolás után itt látod, mi a következő lépés.',
+    )
+    expect(String(metadata.title)).not.toContain('Köszönjük')
+    expect(String(metadata.description)).not.toContain('feldolgozzuk')
+    expect(String(metadata.title)).not.toMatch(/[–—]/)
+    expect(String(metadata.description)).not.toMatch(/[–—]/)
+  })
+})
 
 describe('köszönőoldal (Barion-visszatérés)', () => {
   it('CSAK a rendelésszámot adja át — bejelentkezettséget NEM dönt szerver-oldalon', async () => {
