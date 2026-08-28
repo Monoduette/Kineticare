@@ -2,3 +2,6 @@
 # If someone dumps HTML here, keep it out of git.
 evidence/
 scratch/
+__pycache__/
+*.pyc
+
