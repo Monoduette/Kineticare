@@ -501,16 +501,7 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       felulir: '.kc-section--dark .kc-cta-banner__action .kc-button:focus-visible',
     },
     // Kivételek — mind mérve, indokkal:
-    {
-      szelektor: '.kc-course-preview',
-      felulir: null,
-      indok:
-        'kurzusok.css — MÁS ÜGYNÖK TULAJDONA (2026-08-16-i fájl-tulajdonlás). ' +
-        'A benne álló iframe fókuszgyűrűje ma 2,87:1 (audit L5). A javítás egy ' +
-        'sor: `.kc-course-preview :focus-visible { outline-color: ' +
-        'var(--kc-color-focus-on-dark) }` → 15,63:1. A vezetőnek jelentve; ' +
-        'amint a fájl felszabadul, ez a kivétel törlendő.',
-    },
+    { szelektor: '.kc-course-preview', felulir: '.kc-course-preview :focus-visible' },
     {
       szelektor: '.kc-states__caption',
       felulir: null,

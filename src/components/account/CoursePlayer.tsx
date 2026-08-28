@@ -774,9 +774,17 @@ export function CoursePlayer({
             <span>Kurzusaim</span>
           </Link>
           <p className="kc-player__course-title">{product.title}</p>
+          {/* WAI-ARIA APG Dialog: a nyitó gomb aria-expanded + aria-haspopup.
+              https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+              WCAG 2.2 · 4.1.2 Name, Role, Value */}
           <button
+            aria-expanded={railOpen}
             aria-haspopup="dialog"
             className="kc-player__rail-toggle"
+            /* aria-expanded: WAI-ARIA APG Dialog (Modal) Pattern,
+               https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+               WCAG 2.2 · 4.1.2 Name, Role, Value
+               https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html */
             onClick={() => setRailOpen(true)}
             ref={railToggleRef}
             type="button"
@@ -824,7 +832,9 @@ export function CoursePlayer({
           {isVideoLesson ? (
             <div className="kc-player__media">
               {state.kind === 'loading' ? (
-                <p className="kc-player__media-note">A videó betöltése…</p>
+                <p aria-live="polite" className="kc-player__media-note" role="status">
+                  A videó betöltése…
+                </p>
               ) : null}
               {playingSrc !== null && activeLesson !== null ? (
                 <iframe
