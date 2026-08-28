@@ -4,6 +4,7 @@ import { BarionApiError, type BarionPaymentStateResponse } from '../lib/barion'
 import {
   classifyBarionFailure,
   INVOICE_PENDING_STALE_MS,
+  LATE_SUCCESS_BATCH_SIZE,
   MAX_CONSECUTIVE_TRANSPORT_FAILURES,
   MAX_LEADING_FAILURES,
   ORDER_POLL_BATCH_SIZE,
@@ -210,9 +211,9 @@ function setup(options: SetupOptions = {}) {
         const target = id === undefined ? undefined : pool.find((order) => order.id === id)
         if (target) {
           Object.assign(target, data)
-          // A Payload valódi update-je bökí az updatedAt-et — a W1 touch
-          // (status: payment_pending újraírása) csak így kerül a sor végére.
-          if (data.status === 'payment_pending') {
+          // A Payload valódi update-je bökí az updatedAt-et — a W1/RF-3 touch
+          // (ugyanazon státusz újraírása) csak így kerül a sor végére.
+          if (typeof data.status === 'string') {
             target.updatedAt = new Date(NOW).toISOString()
           }
         }
@@ -1240,8 +1241,120 @@ describe('order-poll — R-03 late-success (cancelled + Succeeded)', () => {
     const recoverInput = recoverRejectedPaid.mock.calls.at(0)?.at(0)
     expect(recoverInput).toMatchObject({
       reason: 'duplicate-paid-order',
+      source: 'order-poll',
       order: expect.objectContaining({ id: 810 }),
     })
     expect(cancelled.status).toBe('cancelled')
+  })
+
+  it('late-success where: updatedAt ASC + barionPaymentId exists', async () => {
+    const cancelled = createPendingOrder({
+      id: 811,
+      status: 'cancelled',
+      barionPaymentId: 'late-where-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, finds } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Expired',
+    })
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Expired'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    const lateFinds = finds.filter((entry) => whereLooksLikeLateSuccess(entry.where))
+    expect(lateFinds.length).toBeGreaterThanOrEqual(1)
+    expect(lateFinds[0]?.sort).toBe('updatedAt')
+    expect(JSON.stringify(lateFinds[0]?.where ?? {})).toContain('barionPaymentId')
+    expect(JSON.stringify(lateFinds[0]?.where ?? {})).toContain('exists')
+  })
+
+  it('RF-3: 10 Expired (régi updatedAt) + 1 Succeeded → ugyanabban a futásban paid a refill miatt', async () => {
+    const expired = Array.from({ length: LATE_SUCCESS_BATCH_SIZE }, (_, index) =>
+      createPendingOrder({
+        id: 900 + index,
+        status: 'cancelled',
+        barionPaymentId: `expired-${index}`,
+        createdAt: isoHoursAgo(3),
+        updatedAt: isoHoursAgo(5),
+      }),
+    )
+    const succeeded = createPendingOrder({
+      id: 999,
+      status: 'cancelled',
+      barionPaymentId: 'late-succeeded',
+      createdAt: isoHoursAgo(1),
+      updatedAt: isoHoursAgo(1),
+    })
+    const { payload, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [],
+      lateSuccess: [...expired, succeeded],
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async (paymentId: string) => {
+        if (paymentId === 'late-succeeded') {
+          return getStateResponse('Succeeded')
+        }
+        return getStateResponse('Expired')
+      },
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(LATE_SUCCESS_BATCH_SIZE + 1)
+    expect(summary.transitionedPaid).toBe(1)
+    expect(succeeded.status).toBe('paid')
+    expect(paidCalls).toEqual([999])
+    expect(expired.every((row) => row.status === 'cancelled')).toBe(true)
+  })
+
+  it('RF-4: recover failed → late-success sor NEM forog (nincs status-touch)', async () => {
+    const cancelled = createPendingOrder({
+      id: 812,
+      status: 'cancelled',
+      barionPaymentId: 'failed-recover-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(4),
+    })
+    const originalUpdatedAt = cancelled.updatedAt
+    const { payload, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+    })
+    const recoverRejectedPaid = vi.fn(async () => ({
+      action: 'failed' as const,
+      detail: 'barion-refund-error',
+    }))
+    const applyTransition = vi.fn(async () => ({
+      action: 'rejected' as const,
+      reason: 'duplicate-paid-order',
+    }))
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid,
+      queueInvoice,
+      applyTransition: applyTransition as never,
+      recoverRejectedPaid,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    expect(recoverRejectedPaid.mock.calls.at(0)?.at(0)).toMatchObject({ source: 'order-poll' })
+    expect(cancelled.updatedAt).toBe(originalUpdatedAt)
+    expect(orderUpdates.some((row) => row.status === 'cancelled')).toBe(false)
   })
 })

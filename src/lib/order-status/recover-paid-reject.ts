@@ -19,6 +19,14 @@ import {
  * Nem a paid-only `refundOrder`: az owner-út stornót és purchases-levételt
  * vár. Itt a rendelés sosem lett paid, számla nincs, jogosultság nincs.
  * confirmOrder tilos. Tesztből élő Barion-hívás tilos (injektált refund).
+ *
+ * RF-1: a Payment/Refund HTTP az advisory lock + in-process mutex mögött
+ * fut (mint `refundOrder`), friss olvasással. Tesztben a drizzle nincs
+ * injektálva, a mutex nélkül két párhuzamos hívás mindkettő refundolna.
+ * A persist NEM nyit második zárat (ugyanazon a kulcson deadlock).
+ * RF-2: a Barion `PartiallyRefunded` NEM teljes refund — helyi `type:
+ * 'partial'`, a rendelés NEM `refunded`, RIASZTÁS, teljes összegű
+ * auto-retry tilos.
  */
 
 export const AUTO_REFUND_REJECT_REASONS = [
@@ -30,6 +38,8 @@ export const AUTO_REFUND_REJECT_REASONS = [
 export type AutoRefundRejectReason = (typeof AUTO_REFUND_REJECT_REASONS)[number]
 
 export type PaidRejectRecoveryAction = 'refunded' | 'skipped' | 'failed'
+
+export type RecoverPaidRejectSource = 'callback' | 'order-poll' | 'checkout-start'
 
 export interface PaidRejectRecoveryResult {
   action: PaidRejectRecoveryAction
@@ -43,6 +53,8 @@ export interface RecoverRejectedSucceededPaymentInput {
   state: BarionPaymentStateResponse
   reason: string
   log: Logger
+  /** Melyik hívó indította: callback, poll vagy checkout. Kötelező a nyomhoz. */
+  source: RecoverPaidRejectSource
   /** Injektálható (teszteléshez); alapból a valódi refundPayment. */
   refundPayment?: typeof refundPayment
 }
@@ -68,10 +80,29 @@ export function hungarianAutoRefundReason(reason: AutoRefundRejectReason): strin
   }
 }
 
+/** Egységes naplómezők: callback, poll és checkout ugyanazt írja. */
+export function paidRejectRecoveryLogContext(input: {
+  source: RecoverPaidRejectSource
+  action: PaidRejectRecoveryAction
+  detail?: string
+  reason: string
+  orderId: number
+}): Record<string, unknown> {
+  return {
+    source: input.source,
+    action: input.action,
+    detail: input.detail ?? null,
+    reason: input.reason,
+    orderId: input.orderId,
+  }
+}
+
 export interface RefundableBarionTransaction {
   transactionId: string
   amountHuf: number
+  /** Csak a Barion `Refunded` — a `PartiallyRefunded` NEM teljes (RF-2). */
   alreadyRefunded: boolean
+  alreadyPartiallyRefunded: boolean
 }
 
 /**
@@ -112,187 +143,325 @@ export function pickRefundableTransaction(
   return {
     transactionId: refundable.TransactionId,
     amountHuf,
-    alreadyRefunded: status === 'Refunded' || status === 'PartiallyRefunded',
+    alreadyRefunded: status === 'Refunded',
+    alreadyPartiallyRefunded: status === 'PartiallyRefunded',
   }
 }
 
-function hasRecordedSuccessfulRefund(order: Order, transactionId: string): boolean {
+function hasRecordedFullRefund(order: Order, transactionId: string): boolean {
   return readRefundEntries(order).some(
     (entry) =>
       entry.transactionId === transactionId &&
-      classifyRefundedTransactionStatus(entry.status) === 'succeeded',
+      entry.type !== 'partial' &&
+      classifyRefundedTransactionStatus(entry.status) !== 'failed',
   )
+}
+
+function hasRecordedPartialRefund(order: Order, transactionId: string): boolean {
+  return readRefundEntries(order).some(
+    (entry) => entry.transactionId === transactionId && entry.type === 'partial',
+  )
+}
+
+/** Folyamat-szintű lánc: tesztben is serializál, ahol a drizzle-zár no-op. */
+const inProcessRefundChains = new Map<number, Promise<unknown>>()
+
+async function withSerializedOrderRefund<T>(orderId: number, fn: () => Promise<T>): Promise<T> {
+  const previous = inProcessRefundChains.get(orderId) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const chained = previous.then(() => gate)
+  inProcessRefundChains.set(orderId, chained)
+  try {
+    await previous.catch(() => undefined)
+    return await fn()
+  } finally {
+    release()
+    if (inProcessRefundChains.get(orderId) === chained) {
+      inProcessRefundChains.delete(orderId)
+    }
+  }
 }
 
 async function persistAutoRefund(input: {
   payload: Payload
-  order: Order
+  orderId: number
   transactionId: string
   amountHuf: number
   barionStatus: string
   reason: AutoRefundRejectReason
+  type: 'full' | 'partial'
   log: Logger
+  source: RecoverPaidRejectSource
 }): Promise<void> {
-  const { payload, order, transactionId, amountHuf, barionStatus, reason, log } = input
-  await withAdvisoryLock(
-    payload,
-    refundLockKey(order.id),
-    async () => {
-      const fresh = (await payload.findByID({
-        collection: 'orders',
-        id: order.id,
-        depth: 0,
-        overrideAccess: true,
-      })) as Order
-      if (fresh.status === 'refunded' && hasRecordedSuccessfulRefund(fresh, transactionId)) {
-        return
-      }
-      if (hasRecordedSuccessfulRefund(fresh, transactionId)) {
-        if (fresh.status !== 'refunded') {
-          await payload.update({
-            collection: 'orders',
-            id: fresh.id,
-            data: {
-              status: 'refunded',
-              refundedAt: fresh.refundedAt ?? new Date().toISOString(),
-            },
-            overrideAccess: true,
-          })
-        }
-        return
-      }
-
-      const nowIso = new Date().toISOString()
-      const entry: OrderRefundEntry = {
-        transactionId,
-        amountHuf,
-        status: barionStatus,
-        refundedAt: nowIso,
-        type: 'full',
-        reason: hungarianAutoRefundReason(reason),
-      }
-      const refunds = [...readRefundEntries(fresh), entry]
+  const { payload, orderId, transactionId, amountHuf, barionStatus, reason, type, log, source } =
+    input
+  const fresh = (await payload.findByID({
+    collection: 'orders',
+    id: orderId,
+    depth: 0,
+    overrideAccess: true,
+  })) as Order
+  if (type === 'full' && hasRecordedFullRefund(fresh, transactionId)) {
+    if (fresh.status !== 'refunded') {
       await payload.update({
         collection: 'orders',
         id: fresh.id,
         data: {
           status: 'refunded',
+          refundedAt: fresh.refundedAt ?? new Date().toISOString(),
+        },
+        overrideAccess: true,
+      })
+    }
+    return
+  }
+  if (type === 'partial' && hasRecordedPartialRefund(fresh, transactionId)) {
+    return
+  }
+
+  const nowIso = new Date().toISOString()
+  const entry: OrderRefundEntry = {
+    transactionId,
+    amountHuf,
+    status: barionStatus,
+    refundedAt: nowIso,
+    type,
+    reason: hungarianAutoRefundReason(reason),
+  }
+  const refunds = [...readRefundEntries(fresh), entry]
+  const data: Record<string, unknown> =
+    type === 'full'
+      ? {
+          status: 'refunded',
           refundedAt: nowIso,
           refundReason: hungarianAutoRefundReason(reason),
           refunds,
-        } as unknown as Record<string, unknown>,
-        overrideAccess: true,
-      })
-      log.info('paid-reject recovery: automatikus Barion-visszatérítés rögzítve', {
-        reason,
-        amountHuf,
-        transactionId,
-        barionTransactionStatus: barionStatus,
-      })
-    },
-    log,
-  )
+        }
+      : { refunds }
+  await payload.update({
+    collection: 'orders',
+    id: fresh.id,
+    data: data as never,
+    overrideAccess: true,
+  })
+  log.info('paid-reject recovery: automatikus Barion-visszatérítés rögzítve', {
+    source,
+    reason,
+    amountHuf,
+    transactionId,
+    barionTransactionStatus: barionStatus,
+    refundType: type,
+  })
 }
 
 /**
- * Terminális paid-reject után best-effort Barion Payment/Refund.
+ * Terminális paid-reject után Barion Payment/Refund a záron belül.
  * Üres Transactions / ismeretlen ok / már refundolt nyom: skip, nincs HTTP.
  */
 export async function recoverRejectedSucceededPayment(
   input: RecoverRejectedSucceededPaymentInput,
 ): Promise<PaidRejectRecoveryResult> {
-  const { payload, order, state, log } = input
+  const { payload, state, log, source } = input
+  const orderId = input.order.id
+
   if (!isAutoRefundRejectReason(input.reason)) {
+    log.info(
+      'paid-reject recovery: kihagyva (nem auto-refund ok)',
+      paidRejectRecoveryLogContext({
+        source,
+        action: 'skipped',
+        detail: 'reason-not-refundable',
+        reason: input.reason,
+        orderId,
+      }),
+    )
     return { action: 'skipped', detail: 'reason-not-refundable' }
   }
   const reason = input.reason
-  if (order.status === 'refunded') {
-    return { action: 'skipped', detail: 'already-refunded' }
-  }
-  if (typeof order.barionPaymentId !== 'string' || order.barionPaymentId.length === 0) {
-    log.error(
-      'RIASZTÁS: paid-reject recovery: nincs Barion PaymentId, automatikus visszatérítés nem indítható',
-      { reason },
-    )
-    return { action: 'failed', detail: 'missing-payment-id' }
-  }
 
-  const refundable = pickRefundableTransaction(state)
-  if (refundable === null) {
-    log.error(
-      'RIASZTÁS: paid-reject recovery: a GetState nem tartalmaz visszatéríthető tranzakciót — emberi ellenőrzés a Barionban',
-      { reason, orderStatus: order.status },
-    )
-    return { action: 'skipped', detail: 'no-refundable-transaction' }
-  }
-
-  if (hasRecordedSuccessfulRefund(order, refundable.transactionId)) {
-    return { action: 'skipped', detail: 'already-recorded' }
-  }
-
-  if (refundable.alreadyRefunded) {
-    await persistAutoRefund({
+  return withSerializedOrderRefund(orderId, () =>
+    withAdvisoryLock(
       payload,
-      order,
-      transactionId: refundable.transactionId,
-      amountHuf: refundable.amountHuf,
-      barionStatus: 'Refunded',
-      reason,
-      log,
-    })
-    return { action: 'refunded', detail: 'already-refunded-at-barion' }
-  }
+      refundLockKey(orderId),
+      async () => {
+        const order = (await payload.findByID({
+          collection: 'orders',
+          id: orderId,
+          depth: 0,
+          overrideAccess: true,
+        })) as Order
 
-  const runRefund = input.refundPayment ?? refundPayment
-  let barionStatus = 'Unknown'
-  try {
-    const response = await runRefund({
-      paymentId: order.barionPaymentId,
-      transactionsToRefund: [
-        { transactionId: refundable.transactionId, amountToRefund: refundable.amountHuf },
-      ],
-    })
-    const rawStatus = response.RefundedTransactions?.[0]?.Status
-    const outcome = classifyRefundedTransactionStatus(rawStatus)
-    if (outcome === 'failed') {
-      log.error(
-        'RIASZTÁS: paid-reject recovery: a Barion tranzakciószintű státusza RefundFailed — a pénz NEM tért vissza, emberi ellenőrzés kell',
-        { reason, transactionId: refundable.transactionId, amountHuf: refundable.amountHuf },
-      )
-      return { action: 'failed', detail: 'barion-refund-failed' }
-    }
-    barionStatus = rawStatus ?? 'Unknown'
-    if (outcome === 'unknown') {
-      log.error(
-        'RIASZTÁS: paid-reject recovery: a Barion nem adott értelmezhető refund-státuszt — a nyomot rögzítjük, hogy ne legyen dupla kifizetés; ellenőrizd a Barion felületén',
-        {
-          reason,
+        if (order.status === 'refunded') {
+          return { action: 'skipped' as const, detail: 'already-refunded' }
+        }
+        if (typeof order.barionPaymentId !== 'string' || order.barionPaymentId.length === 0) {
+          log.error(
+            'RIASZTÁS: paid-reject recovery: nincs Barion PaymentId, automatikus visszatérítés nem indítható',
+            { source, reason, orderId },
+          )
+          return { action: 'failed' as const, detail: 'missing-payment-id' }
+        }
+
+        const refundable = pickRefundableTransaction(state)
+        if (refundable === null) {
+          log.error(
+            'RIASZTÁS: paid-reject recovery: a GetState nem tartalmaz visszatéríthető tranzakciót — emberi ellenőrzés a Barionban',
+            { source, reason, orderId, orderStatus: order.status },
+          )
+          return { action: 'skipped' as const, detail: 'no-refundable-transaction' }
+        }
+
+        if (hasRecordedFullRefund(order, refundable.transactionId)) {
+          return { action: 'skipped' as const, detail: 'already-recorded' }
+        }
+
+        if (
+          refundable.alreadyPartiallyRefunded ||
+          hasRecordedPartialRefund(order, refundable.transactionId)
+        ) {
+          if (!hasRecordedPartialRefund(order, refundable.transactionId)) {
+            await persistAutoRefund({
+              payload,
+              orderId,
+              transactionId: refundable.transactionId,
+              amountHuf: refundable.amountHuf,
+              barionStatus: 'PartiallyRefunded',
+              reason,
+              type: 'partial',
+              log,
+              source,
+            })
+          }
+          log.error(
+            'RIASZTÁS: paid-reject recovery: Barion részleges refund — teljes auto-refund tilos, emberi ellenőrzés kell',
+            {
+              source,
+              reason,
+              orderId,
+              transactionId: refundable.transactionId,
+              barionStatus: state.Status,
+            },
+          )
+          return { action: 'skipped' as const, detail: 'barion-partially-refunded' }
+        }
+
+        if (refundable.alreadyRefunded) {
+          await persistAutoRefund({
+            payload,
+            orderId,
+            transactionId: refundable.transactionId,
+            amountHuf: refundable.amountHuf,
+            barionStatus: 'Refunded',
+            reason,
+            type: 'full',
+            log,
+            source,
+          })
+          return { action: 'refunded' as const, detail: 'already-refunded-at-barion' }
+        }
+
+        const runRefund = input.refundPayment ?? refundPayment
+        let barionStatus = 'Unknown'
+        try {
+          const response = await runRefund({
+            paymentId: order.barionPaymentId,
+            transactionsToRefund: [
+              { transactionId: refundable.transactionId, amountToRefund: refundable.amountHuf },
+            ],
+          })
+          const rawStatus = response.RefundedTransactions?.[0]?.Status
+          const outcome = classifyRefundedTransactionStatus(rawStatus)
+          if (outcome === 'failed') {
+            log.error(
+              'RIASZTÁS: paid-reject recovery: a Barion tranzakciószintű státusza RefundFailed — a pénz NEM tért vissza, emberi ellenőrzés kell',
+              {
+                source,
+                reason,
+                orderId,
+                transactionId: refundable.transactionId,
+                amountHuf: refundable.amountHuf,
+              },
+            )
+            return { action: 'failed' as const, detail: 'barion-refund-failed' }
+          }
+          if (rawStatus === 'PartiallyRefunded') {
+            await persistAutoRefund({
+              payload,
+              orderId,
+              transactionId: refundable.transactionId,
+              amountHuf: refundable.amountHuf,
+              barionStatus: 'PartiallyRefunded',
+              reason,
+              type: 'partial',
+              log,
+              source,
+            })
+            log.error(
+              'RIASZTÁS: paid-reject recovery: a Barion csak részlegesen térített — teljes összegű újrapróba tilos',
+              { source, reason, orderId, transactionId: refundable.transactionId },
+            )
+            return { action: 'skipped' as const, detail: 'barion-partially-refunded' }
+          }
+          barionStatus = rawStatus ?? 'Unknown'
+          if (outcome === 'unknown') {
+            await persistAutoRefund({
+              payload,
+              orderId,
+              transactionId: refundable.transactionId,
+              amountHuf: refundable.amountHuf,
+              barionStatus,
+              reason,
+              type: 'full',
+              log,
+              source,
+            })
+            log.error(
+              'RIASZTÁS: paid-reject recovery: a Barion nem adott értelmezhető refund-státuszt — a nyomot rögzítjük, hogy ne legyen dupla kifizetés; ellenőrizd a Barion felületén',
+              {
+                source,
+                reason,
+                orderId,
+                transactionId: refundable.transactionId,
+                barionTransactionStatus: rawStatus ?? null,
+              },
+            )
+            return {
+              action: 'failed' as const,
+              detail: `unexpected-barion-status:${rawStatus ?? 'empty'}`,
+            }
+          }
+        } catch (error) {
+          log.error(
+            'RIASZTÁS: paid-reject recovery: a Barion visszatérítés sikertelen — a rendelés nem paid, a pénz még kint lehet',
+            {
+              source,
+              reason,
+              orderId,
+              kind: error instanceof BarionApiError ? error.kind : 'unknown',
+              httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          )
+          return { action: 'failed' as const, detail: 'barion-refund-error' }
+        }
+
+        await persistAutoRefund({
+          payload,
+          orderId,
           transactionId: refundable.transactionId,
-          barionTransactionStatus: rawStatus ?? null,
-        },
-      )
-    }
-  } catch (error) {
-    log.error(
-      'RIASZTÁS: paid-reject recovery: a Barion visszatérítés sikertelen — a rendelés nem paid, a pénz még kint lehet',
-      {
-        reason,
-        kind: error instanceof BarionApiError ? error.kind : 'unknown',
-        httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
-        error: error instanceof Error ? error.message : String(error),
+          amountHuf: refundable.amountHuf,
+          barionStatus,
+          reason,
+          type: 'full',
+          log,
+          source,
+        })
+        return { action: 'refunded' as const }
       },
-    )
-    return { action: 'failed', detail: 'barion-refund-error' }
-  }
-
-  await persistAutoRefund({
-    payload,
-    order,
-    transactionId: refundable.transactionId,
-    amountHuf: refundable.amountHuf,
-    barionStatus,
-    reason,
-    log,
-  })
-  return { action: 'refunded' }
+      log,
+    ),
+  )
 }

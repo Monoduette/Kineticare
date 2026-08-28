@@ -16,6 +16,7 @@ import {
   assertPaymentAmountMatches,
 } from '../order-status/apply-barion-state'
 import {
+  paidRejectRecoveryLogContext,
   recoverRejectedSucceededPayment,
   type RecoverRejectedSucceededPaymentInput,
   type PaidRejectRecoveryResult,
@@ -297,13 +298,30 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
       }
       if (transition.action === 'rejected') {
         if (mapped === 'paid') {
-          await recoverRejectedPaid({
+          const rejectReason = transition.reason ?? 'unknown'
+          const recovery = await recoverRejectedPaid({
             payload: deps.payload,
             order,
             state,
-            reason: transition.reason ?? 'unknown',
+            reason: rejectReason,
             log: orderLog,
+            source: 'callback',
           })
+          const recoveryCtx = paidRejectRecoveryLogContext({
+            source: 'callback',
+            action: recovery.action,
+            detail: recovery.detail,
+            reason: rejectReason,
+            orderId: order.id,
+          })
+          orderLog.info('paid-reject recovery lefutott', recoveryCtx)
+          if (recovery.action === 'failed') {
+            orderLog.error(
+              'RIASZTÁS: paid-reject recovery sikertelen — a webhook-esemény retryable marad',
+              recoveryCtx,
+            )
+            throw new Error(`paid-reject recovery sikertelen (${recovery.detail ?? 'unknown'})`)
+          }
         }
         await closeEvent(store, event, 'rejected')
         return { status: 'rejected', reason: transition.reason, orderId: order.id }
