@@ -155,14 +155,27 @@ describe('vendég visszatérése a Barionból — NEM állítunk sikert', () => 
     expect(html).toContain('próbálhatod')
   })
 
-  it('a rendelésszám és a két kiút megmarad, a belépés NEM a köszönőoldalra visz vissza', () => {
+  it('a rendelésszám és a kiutak megmaradnak, egyik sem a köszönőoldalra visz vissza', () => {
     const html = markup()
     expect(html).toContain('KH-2026-000009')
+    expect(html).toContain('/elfelejtett-jelszo?returnUrl=')
     expect(html).toContain('/belepes?returnUrl=')
     expect(html).toContain('%2Fkurzusaim')
+    expect(html).toContain('Kérem a visszaállító linket')
+    expect(html).toContain('Ha a levél néhány perc múlva sem jön')
     expect(html).not.toContain('/fizetes/koszonom')
     expect(html).toContain('/kurzusok')
     expect(html).not.toMatch(/kc-button[^>]*href="\/kurzusok"/)
+  })
+
+  it('a jelszó-beállító kérés az elsődleges gomb, a Belépés másodlagos (vendégnek nincs jelszava)', () => {
+    const html = markup()
+    const resetIndex = html.indexOf('href="/elfelejtett-jelszo?returnUrl=')
+    const signInIndex = html.indexOf('href="/belepes?returnUrl=')
+    expect(resetIndex).toBeGreaterThan(-1)
+    expect(signInIndex).toBeGreaterThan(resetIndex)
+    expect(html).toMatch(/kc-button(?![^>]*kc-button--secondary)[^>]*href="\/elfelejtett-jelszo/)
+    expect(html).toMatch(/kc-button--secondary[^>]*href="\/belepes/)
   })
 })
 
