@@ -90,6 +90,8 @@ function getStateResponse(
 interface SetupOptions {
   pending?: Order[]
   paidResweep?: Order[]
+  /** R-03: cancelled / payment_failed rendelések a late-success scanhez. */
+  lateSuccess?: Order[]
   stateStatus?: string
   stateError?: Error
   /** A GetState-válasz felülírásai (pl. eltérő Total az összeg-assert teszteléséhez). */
@@ -126,9 +128,15 @@ function extractNotInIds(where: unknown): Array<number | string> | null {
   return null
 }
 
+function whereLooksLikeLateSuccess(where: unknown): boolean {
+  const json = JSON.stringify(where ?? {})
+  return json.includes('cancelled') || json.includes('payment_failed')
+}
+
 function setup(options: SetupOptions = {}) {
   const pending = options.pending ?? [createPendingOrder()]
   const paidResweep = options.paidResweep ?? []
+  const lateSuccess = options.lateSuccess ?? []
   const user = { id: 7, email: 'anna@example.test', purchases: [] as number[] }
   const orderUpdates: Array<Record<string, unknown>> = []
   const queuedInvoices: number[] = []
@@ -152,7 +160,14 @@ function setup(options: SetupOptions = {}) {
         ...(limit !== undefined ? { limit } : {}),
       })
       const json = JSON.stringify(where ?? {})
-      let docs = json.includes('"paid"') && !json.includes('payment_pending') ? [...paidResweep] : [...pending]
+      let docs: Order[]
+      if (whereLooksLikeLateSuccess(where)) {
+        docs = [...lateSuccess]
+      } else if (json.includes('"paid"') && !json.includes('payment_pending')) {
+        docs = [...paidResweep]
+      } else {
+        docs = [...pending]
+      }
       const notIn = extractNotInIds(where)
       if (notIn) {
         const excluded = new Set(notIn.map(String))
@@ -172,7 +187,7 @@ function setup(options: SetupOptions = {}) {
       // Az M5 zár a záron belül ÚJRAOLVASSA a rendelést — a mock a tárolt
       // (és az update által mutált) példányt adja vissza, mint a valódi DB.
       if (collection === 'orders') {
-        const found = [...pending, ...paidResweep].find((order) => order.id === id)
+        const found = [...pending, ...paidResweep, ...lateSuccess].find((order) => order.id === id)
         if (!found) {
           throw new Error(`teszthiba: nincs ilyen rendelés: ${id}`)
         }
@@ -191,7 +206,7 @@ function setup(options: SetupOptions = {}) {
     }) => {
       if (collection === 'orders') {
         orderUpdates.push(data)
-        const pool = [...pending, ...paidResweep]
+        const pool = [...pending, ...paidResweep, ...lateSuccess]
         const target = id === undefined ? undefined : pool.find((order) => order.id === id)
         if (target) {
           Object.assign(target, data)
@@ -241,6 +256,7 @@ function setup(options: SetupOptions = {}) {
     queuedInvoices,
     paidCalls,
     pending,
+    lateSuccess,
     finds,
   }
 }
@@ -282,7 +298,9 @@ describe('order-poll — elveszett callback-mentés', () => {
         if (args.collection === 'users' && grantFails) {
           throw new Error('teszt: a jogosultság-beírás elhasal (DB-hiba)')
         }
-        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(args)
+        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(
+          args,
+        )
       },
     } as never
     const deps = {
@@ -362,16 +380,25 @@ describe('order-poll — elveszett callback-mentés', () => {
     expect(order.status).toBe('cancelled')
   })
 
-  it.each([['Prepared'], ['Started']])('Barion %s → a rendelés payment_pending marad', async (status) => {
-    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
-      stateStatus: status,
-    })
+  it.each([['Prepared'], ['Started']])(
+    'Barion %s → a rendelés payment_pending marad',
+    async (status) => {
+      const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+        stateStatus: status,
+      })
 
-    const summary = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+      const summary = await pollPendingOrders({
+        payload,
+        fetchState,
+        onPaid,
+        queueInvoice,
+        now: NOW,
+      })
 
-    expect(summary.stillPending).toBe(1)
-    expect(orderUpdates).toHaveLength(0)
-  })
+      expect(summary.stillPending).toBe(1)
+      expect(orderUpdates).toHaveLength(0)
+    },
+  )
 
   /**
    * S2 összeg-assert: a poll-job UGYANAZT a magot futtatja, mint a callback,
@@ -436,7 +463,9 @@ describe('order-poll — árva rendelés (barionPaymentId nélkül)', () => {
   })
 
   it('24 óránál régebbi függő rendelés → stillPending + owner-riasztás (státusz marad)', async () => {
-    const stuck = createPendingOrder({ createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString() })
+    const stuck = createPendingOrder({
+      createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString(),
+    })
     const { payload, fetchState, onPaid, queueInvoice } = setup({
       pending: [stuck],
       stateStatus: 'Prepared',
@@ -895,9 +924,7 @@ describe('order-poll — a futás eleji mennyezet (MAX_LEADING_FAILURES)', () =>
       kind: 'provider',
       endpoint: 'GET x',
       httpStatus: 200,
-      providerErrors: [
-        { ErrorCode: 'SomeUnlistedAuthProblem', Title: 'x', Description: 'x' },
-      ],
+      providerErrors: [{ ErrorCode: 'SomeUnlistedAuthProblem', Title: 'x', Description: 'x' }],
     })
 
   const naplo = () => {
@@ -1034,7 +1061,9 @@ describe('order-poll — W1 rejected sorfej (updatedAt + touch + pótlap)', () =
     expect(finds[0]?.limit).toBe(ORDER_POLL_BATCH_SIZE)
     const refill = finds.find((entry, index) => index > 0 && extractNotInIds(entry.where))
     expect(refill).toBeDefined()
-    expect(extractNotInIds(refill?.where)).toEqual(expect.arrayContaining(poisons.map((order) => order.id)))
+    expect(extractNotInIds(refill?.where)).toEqual(
+      expect.arrayContaining(poisons.map((order) => order.id)),
+    )
     expect(extractNotInIds(refill?.where)).not.toContain(PAYABLE_ID)
 
     for (const poison of poisons) {
@@ -1116,5 +1145,103 @@ describe('order-poll — W1 rejected sorfej (updatedAt + touch + pótlap)', () =
     expect(pendingFinds.length).toBeGreaterThanOrEqual(1)
     expect(pendingFinds[0]?.sort).toBe('updatedAt')
     expect(pendingFinds[0]?.sort).not.toBe('createdAt')
+  })
+})
+
+describe('order-poll — R-03 late-success (cancelled + Succeeded)', () => {
+  it('cancelled rendelés + Barion Succeeded → paid + onPaid', async () => {
+    const cancelled = createPendingOrder({
+      id: 808,
+      status: 'cancelled',
+      barionPaymentId: 'late-success-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, paidCalls, user } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Succeeded',
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(1)
+    expect(summary.transitionedPaid).toBe(1)
+    expect(cancelled.status).toBe('paid')
+    expect(user.purchases).toEqual([42])
+    expect(paidCalls).toEqual([808])
+  })
+
+  it('cancelled + Expired → no-op, nem számít cancelled-nek újra', async () => {
+    const cancelled = createPendingOrder({
+      id: 809,
+      status: 'cancelled',
+      barionPaymentId: 'already-cancelled-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Expired',
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Expired'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(1)
+    expect(summary.cancelled).toBe(0)
+    expect(summary.transitionedPaid).toBe(0)
+    expect(cancelled.status).toBe('cancelled')
+    expect(paidCalls).toHaveLength(0)
+  })
+
+  it('cancelled + Succeeded + duplicate reject → recover lefut', async () => {
+    const cancelled = createPendingOrder({
+      id: 810,
+      status: 'cancelled',
+      barionPaymentId: 'dup-late-payment',
+      createdAt: isoHoursAgo(1),
+    })
+    const { payload, onPaid, queueInvoice } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+    })
+    const recoverRejectedPaid = vi.fn(async () => ({ action: 'refunded' as const }))
+    const applyTransition = vi.fn(async () => ({
+      action: 'rejected' as const,
+      reason: 'duplicate-paid-order',
+    }))
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid,
+      queueInvoice,
+      applyTransition: applyTransition as never,
+      recoverRejectedPaid,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    const recoverInput = recoverRejectedPaid.mock.calls.at(0)?.at(0)
+    expect(recoverInput).toMatchObject({
+      reason: 'duplicate-paid-order',
+      order: expect.objectContaining({ id: 810 }),
+    })
+    expect(cancelled.status).toBe('cancelled')
   })
 })

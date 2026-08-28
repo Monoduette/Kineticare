@@ -19,6 +19,7 @@ interface OrderPollJobIO {
     orphaned: number
     invoiceRequeued: number
     invoiceResweep: InvoiceResweepStatus
+    lateSuccessScanned: number
   }
 }
 
@@ -44,6 +45,7 @@ export const orderPollTask: TaskConfig<OrderPollJobIO> = {
     // A `text` szándékos: az outputSchema KIZÁRÓLAG típusgeneráláshoz kell (a
     // job-log `output` mezője sima json), tehát ez a mező NEM jár sémaváltozással.
     { name: 'invoiceResweep', type: 'text', required: true },
+    { name: 'lateSuccessScanned', type: 'number', required: true },
   ],
   handler: async ({ req }) => {
     const summary = await pollPendingOrders({ payload: req.payload })

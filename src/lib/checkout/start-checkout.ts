@@ -18,6 +18,11 @@ import { resolveSingleCourseAccess } from '../course-access-lookup'
 import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import {
+  recoverRejectedSucceededPayment,
+  type RecoverRejectedSucceededPaymentInput,
+  type PaidRejectRecoveryResult,
+} from '../order-status/recover-paid-reject'
 import type { OrderCustomerResolution } from '../order-status/resolve-order-customer'
 import {
   CHECKOUT_PAYMENT_IN_PROGRESS,
@@ -113,6 +118,13 @@ export interface CheckoutStartOptions {
   now?: Date
   /** Tesztben injektálható Barion-környezet a Pay-URL-hez. */
   barionEnvironment?: BarionEnvironment
+  /**
+   * Tesztben injektálható paid-reject recovery (Barion-refund).
+   * Tesztből élő Barion-hívás tilos.
+   */
+  recoverRejectedPaid?: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
 }
 
 export interface CheckoutStartResult {
@@ -349,6 +361,9 @@ interface DuplicateCheckContext {
   fetchPaymentState: typeof fetchPaymentState
   applyBarionStateTransition: typeof applyBarionStateTransition
   resolveSingleCourseAccess: typeof resolveSingleCourseAccess
+  recoverRejectedPaid: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
   barionEnvironment: BarionEnvironment
 }
 
@@ -436,6 +451,15 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         state: rawState,
         log: ctx.log,
       })
+      if (transition.action === 'rejected') {
+        await ctx.recoverRejectedPaid({
+          payload: ctx.payload,
+          order: pending,
+          state: rawState,
+          reason: transition.reason ?? 'unknown',
+          log: ctx.log,
+        })
+      }
       return {
         kind: 'already-paid',
         order:
@@ -743,6 +767,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     options.applyBarionStateTransition ?? applyBarionStateTransition
   const onOrderPaidFn = options.onOrderPaid ?? onOrderPaid
   const resolveSingleCourseAccessFn = options.resolveSingleCourseAccess ?? resolveSingleCourseAccess
+  const recoverRejectedPaidFn = options.recoverRejectedPaid ?? recoverRejectedSucceededPayment
   const nowMs = (options.now ?? new Date()).getTime()
 
   const lockResult = await withAdvisoryLock(
@@ -772,6 +797,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         fetchPaymentState: fetchPaymentStateFn,
         applyBarionStateTransition: applyBarionStateTransitionFn,
         resolveSingleCourseAccess: resolveSingleCourseAccessFn,
+        recoverRejectedPaid: recoverRejectedPaidFn,
         barionEnvironment,
       }
 
