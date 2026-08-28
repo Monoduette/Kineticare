@@ -28,7 +28,7 @@ Preconditions:
 - **Drive.** Run `.cursor/skills/verify-kineticare/bin/kc-verify drive kapcsolat-idopontkeres`.
 - **Section.** `GET /kapcsolat` 200. `h1` is `Kapcsolat`. `id="idopontkeres"` is present. Form class `kc-appointment__form` (or `name="appointmentName"`) is present.
 - **Fields.** `kc-field-appointmentName` and `kc-field-appointmentPhone` exist. Submit text `Időpontot kérek` exists. Body includes `nem foglalás`. No `calendly`.
-- **Stop.** Do not fill fields. Do not POST. Turnstile may be absent when the site key is unset; do not treat a missing widget as a booking calendar.
+- **Stop.** Do not fill fields. Do not POST. "Callback request" means this GET form page. Turnstile may be absent when the site key is unset; do not treat a missing widget as a booking calendar. Do not write site keys into proof files.
 - **Proof.** `kapcsolat-idopontkeres.json` and `pages/kapcsolat.html`. JSON `ok` is true.
 
 ## Gotchas

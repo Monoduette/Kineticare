@@ -25,10 +25,10 @@ Preconditions:
 - Origin is the Railway Next app (or a later cutover host that still serves this HTML). Not www Systeme.
 
 - **Open product.** Run `.cursor/skills/verify-kineticare/bin/kc-verify drive otthoni-kezrehab`. `GET /kurzusok/otthoni-kezrehab-program` is 200. `h1` is `Otthoni KézRehab Program`. `kc-course-buybox` is present. `id="kurzus-vasarlas"` and `id="kurzus-vasarlas-gomb"` are present.
-- **Read the buy control.** The stripped HTML contains an `a` whose text is `Megveszem a kurzust` and whose `href` matches `/penztar?termek=<digits>`. The sticky bar (`role="region"` named `Otthoni KézRehab Program: vásárlás`) repeats the same href. Two identical links are expected.
-- **Open checkout.** The harness `GET`s that `/penztar?termek=N`. `h1` is `Pénztár`. Visible text includes `Otthoni KézRehab Program` and `Megrendelem és fizetek`. Raw HTML includes `checkout_started` (`TrackEvent` on the pénztár page). There is no `#idopontkeres` form.
+- **Read the buy control.** The stripped HTML contains an `a` whose text is `Megveszem a kurzust` and whose `href` matches `/penztar?termek=<digits>`. The sticky bar (`role="region"` named `Otthoni KézRehab Program: vásárlás`) repeats the same href. Two identical links are expected. That GET href is "checkout is on this slug."
+- **Open the form page.** The harness `GET`s that `/penztar?termek=N` HTML. `h1` is `Pénztár`. Visible text includes `Otthoni KézRehab Program` and `Megrendelem és fizetek`. Raw HTML includes `checkout_started` (`TrackEvent` on the pénztár page). There is no `#idopontkeres` form. This is still GET. It is not checkout start.
 - **Reject lookalikes.** `/kapcsolat` and `/kurzusok` are not recorded as checkout. `GET /penztar` without `termek` is not recorded as checkout.
-- **Stop.** Do not fill the form. Do not click `Megrendelem és fizetek`. Do not POST `/api/checkout/start`.
+- **Stop.** Do not fill the form. Do not click `Megrendelem és fizetek`. Do not POST `/api/checkout/start`. GET+HTML only.
 - **Proof.** Evidence files `otthoni-kezrehab.json`, `pages/otthoni-kezrehab.html`, `pages/penztar-otthoni.html` under `$KC_VERIFY_EVIDENCE_DIR`. JSON `ok` is true.
 
 ## Gotchas
@@ -36,5 +36,5 @@ Preconditions:
 - The article CTA `Nyisd meg a kurzusoldalt` is **not** checkout. Checkout starts only after `Megveszem a kurzust` on this product page (or the sticky bar with the same href).
 - `#kurzus-vasarlas` is the buybox. The IntersectionObserver target is `#kurzus-vasarlas-gomb`. Do not assert the sticky bar is visible over HTTP; `data-visible` defaults to `false` in the SSR HTML.
 - Product id is not part of the public slug. Always read `termek` from the live href. Do not hard-code `1` in a new check if the href changed.
-- Railway hostname is the verification origin until cutover. It is not an Ads final.
+- Railway hostname is the verification origin until cutover. It is not an Ads final. `GET /kezrehab` is a 308 to this product page. Doctor checks that redirect. Do not put `/kezrehab` or the Railway host in Ads.
 - Local `npm run dev` without live CMS will 404 this slug. Do not seed production-shaped content to fake it.

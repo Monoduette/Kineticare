@@ -19,7 +19,7 @@ Measured 2026-08-28: `GET /` 200, title `Kineticare – kézrehabilitáció gyó
 
 There is **no local launch in the default path.** The repo starts with `npm run dev` (Next 16, port 3000), **not** `pnpm dev`. `package.json` scripts are npm. Node 24 (`engines`, `.nvmrc`). Required env, asserted in `src/env.ts`: `DATABASE_URI`, `PAYLOAD_SECRET`, `NEXT_PUBLIC_SERVER_URL`, `BARION_API_URL`, `BARION_PAYEE_EMAIL`. This Cloud Agent shell does not export those keys. `.env` is gitignored and must not be created in the repo. The Cloud Agent `start.sh` can write dummy values to `$HOME/.kineticare-dev.env` and run local Postgres + `npx payload migrate`; that database is schema, not the live CMS. Do not `npm run seed` to make verification work. Do not invent Barion/Számlázz keys.
 
-If a later agent has a **seeded, disposable** local app and sets `KC_VERIFY_BASE_URL=http://127.0.0.1:3000`, doctor must still reject Systeme HTML and www hosts. Ready signal: `GET /` 200 and Kineticare brand, plus `GET /blog/teniszkonyok` 200 with two `kc-post-cta__panel` sections. Next's own "Ready" log is not enough.
+If a later agent has a **seeded, disposable** local app and sets `KC_VERIFY_BASE_URL=http://127.0.0.1:3000`, doctor must still reject Systeme HTML and www hosts. Ready signal: `GET /` 200 and Kineticare brand, plus each of the seven `/blog/{slug}` pages 200 with one `.kc-post-cta` root and two sibling `.kc-post-cta__panel`. Next's own "Ready" log is not enough.
 
 Teardown for a local Next you started: kill **that PID** (the one you recorded), never `pkill -f next`. Default Railway HTTP runs start no server.
 
@@ -44,10 +44,16 @@ Pass when all of these hold:
 - `KC_VERIFY_BASE_URL` host is not `www.kineticare.hu` or `kineticare.hu`.
 - `KC_VERIFY_FAIL_ON_WWW_404` is unset. If someone sets it, doctor exits 1 and tells them to stop: www 404 is cutover truth, not a CI goal.
 - `GET /` 200, Kineticare brand, not Systeme.
-- `GET /blog/teniszkonyok` 200 and exactly two `section.kc-post-cta__panel` nodes (scripts/styles stripped first; raw string count hits CSS).
+- `GET` each of the seven dual-CTA articles 200. After stripping script/style, exactly **one** tag with class token `kc-post-cta` (the root) and exactly **two** `section.kc-post-cta__panel` siblings. The seven slugs are `inhuvelygyulladas`, `keztoalagut-szindroma`, `teniszkonyok`, `miert-zsibbad-a-kezem`, `csuklotores-utani-gyogytorna`, `csuklo-es-kezfajdalom`, `pattano-ujj`. Counting two `.kc-post-cta` roots is a fail. Raw string count of `kc-post-cta` hits CSS and `__panel` titles; do not use it.
 - `GET /kurzusok/otthoni-kezrehab-program` 200.
+- `GET /kezrehab` first status **308**, `Location` `/kurzusok/otthoni-kezrehab-program`, followed GET final 200 on that product path. This is a storefront redirect check. It is not an Ads final. Do not use `/kezrehab` or the Railway hostname as a Google Ads final URL.
 
-Doctor also **observes** `GET https://www.kineticare.hu/blog/teniszkonyok` and writes the status into `doctor.json` under `www_cutover.ci_goal: false`. A www 404 does not fail doctor. A www 200 that looks like Systeme still does not fail doctor. Only the Railway (or explicitly overridden) app origin can fail doctor.
+Doctor also **observes**, and never fails on:
+
+- `GET https://www.kineticare.hu/blog/teniszkonyok` (`www_cutover.ci_goal: false`). A www 404 does not fail doctor. A www 200 that looks like Systeme still does not fail doctor.
+- `GET /pattano-ujj` and `GET /csuklo-es-kezfajdalom` without `/blog/` (`bare_not_blog.ci_goal: false`). Those are Railway 404. Do not add them to CI.
+
+Only the Railway (or explicitly overridden) app origin can fail doctor. Harness traffic is GET+HTML. Doctor does not POST, does not submit `#idopontkeres`, does not POST `/api/checkout/start`.
 
 If doctor fails, do not drive.
 
@@ -69,7 +75,7 @@ Mapped features (recipes in `features/`):
 | Feature | Path | Proof |
 | --- | --- | --- |
 | `otthoni-kezrehab` | `/kurzusok/otthoni-kezrehab-program` | `Megveszem a kurzust` → `/penztar?termek=N`; that page is `h1` Pénztár, contains `checkout_started`, product title, `Megrendelem és fizetek`. Not Kapcsolat. Not `/kurzusok`. |
-| `blog-dual-cta` | seven `/blog/{slug}` | exactly two `kc-post-cta__panel`; course link `Nyisd meg a kurzusoldalt` → `/kurzusok/otthoni-kezrehab-program`; appointment `Kérj időpontot üzenetben` → `/kapcsolat#idopontkeres`. Dual CTA **only** on those seven slugs. |
+| `blog-dual-cta` | seven `/blog/{slug}` | one `.kc-post-cta` root, two sibling `.kc-post-cta__panel`; course link `Nyisd meg a kurzusoldalt` → `/kurzusok/otthoni-kezrehab-program`; appointment `Kérj időpontot üzenetben` → `/kapcsolat#idopontkeres`. Dual CTA **only** on those seven slugs. |
 | `befagyott-vall` | `/blog/befagyott-vall` | exactly one panel; appointment only; heading `Hogyan tovább?` |
 | `kurzusok` | `/kurzusok` | `h1` Kurzusok; `#otthoni` band; card link to the Otthoni product; no post-CTA panels; no `#idopontkeres` form |
 | `kapcsolat-idopontkeres` | `/kapcsolat#idopontkeres` | callback form (`Neved`, `Telefonszám`, submit `Időpontot kérek`), copy says this is not a calendar booking. Do not POST. |
@@ -78,8 +84,9 @@ Optional browser pass (computer-use / CDP) after HTTP pass: same selectors, stil
 
 Hard stops on the live app:
 
-- Do not POST `/api/checkout/start` or click `Megrendelem és fizetek`.
-- Do not submit `#idopontkeres` (`Időpontot kérek`).
+- GET+HTML only. The harness never POSTs.
+- "Checkout is on this slug" means read the `Megveszem a kurzust` GET href (and optionally GET that `/penztar?termek=N` form page). Do not POST `/api/checkout/start`. Do not click `Megrendelem és fizetek`.
+- "Callback request" means GET `/kapcsolat#idopontkeres` and read the form. Do not fill it. Do not submit `Időpontot kérek`.
 - Do not sign in, change orders, refund, or call `confirmOrder`.
 - Do not edit CMS, env, or medical copy.
 
@@ -96,10 +103,11 @@ Each drive writes:
 Standards:
 
 - Exercise the visitor path (the route they open), not a test-only endpoint.
-- Capture the action **and** the resulting page. Product proof is the product page **plus** `GET /penztar?termek=N`. Dual-CTA proof is the article HTML, not the Vitest fixture.
-- `checkout_started` is the PostHog event name serialized by `TrackEvent` on `/penztar` when a paid product is present (`src/app/(frontend)/penztar/page.tsx`). An empty `/penztar` is not proof. `/kapcsolat` is not proof. `/kurzusok` is not proof.
+- Capture the GET action **and** the HTML it produces. Product proof is the product page plus the GET href `/penztar?termek=N` (the form page). Dual-CTA proof is the article HTML, not the Vitest fixture.
+- `checkout_started` is the PostHog event name serialized by `TrackEvent` on `/penztar` when a paid product is present (`src/app/(frontend)/penztar/page.tsx`). An empty `/penztar` is not proof. `/kapcsolat` is not proof. `/kurzusok` is not proof. Loading the form page over GET is not submitting checkout.
 - Side effects: this harness does not create orders or leads. If you ever drive a disposable staging checkout, read back the order in admin; that is out of scope here.
-- Strip `<script>` and `<style>` before counting `kc-post-cta__panel`. The inlined CSS repeats the class name.
+- Strip `<script>` and `<style>` before counting. Dual CTA is one `.kc-post-cta` root and two sibling `.kc-post-cta__panel`. The inlined CSS repeats the class name.
+- Proof files must not contain `Set-Cookie`, `Authorization`, or site keys. The harness drops those headers and redacts `data-sitekey` / JSON site-key strings before write.
 
 ## Cleanup
 
@@ -129,9 +137,10 @@ Put `--base` / `--evidence-dir` / `--scratch-dir` **after** the subcommand. Env:
 
 ## Invariants (harness, not PR chat)
 
-1. Dual `.kc-post-cta__panel` (course + appointment) only on the seven slugs listed in `features/blog-dual-cta.md`. A new `/blog/{slug}` with both links fails `drive blog-dual-cta`.
-2. `/blog/befagyott-vall` is one appointment panel. No `Nyisd meg a kurzusoldalt`.
-3. Do not fail CI or doctor because www `/blog/*` is 404.
-4. Checkout proof for Otthoni is `checkout_started` on `/penztar?termek=N` reached from that product slug.
+1. Dual CTA only on the seven slugs listed in `features/blog-dual-cta.md`: one `.kc-post-cta` root, two sibling `.kc-post-cta__panel` (course + appointment). A new `/blog/{slug}` with that shape and both links fails `drive blog-dual-cta`.
+2. `/blog/befagyott-vall` is one root and one appointment panel. No `Nyisd meg a kurzusoldalt`.
+3. Do not fail CI or doctor because www `/blog/*` is 404. Do not fail CI because bare `/pattano-ujj` or `/csuklo-es-kezfajdalom` is 404.
+4. Checkout proof for Otthoni is the GET href `/penztar?termek=N` from that product slug, and the GET form page showing `checkout_started`. Never POST start.
+5. `/kezrehab` 308 → product 200 is a redirect check, not an Ads final.
 
 Keep the map honest with `/maintain-verification-skill` when routes or CTA chrome change.
