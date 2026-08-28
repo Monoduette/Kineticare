@@ -99,10 +99,11 @@ describe('pickRefundableTransaction', () => {
       transactionId: TRANSACTION_ID,
       amountHuf: ORDER_TOTAL_HUF,
       alreadyRefunded: false,
+      alreadyPartiallyRefunded: false,
     })
   })
 
-  it('már Refunded tranzakció → alreadyRefunded', () => {
+  it('már Refunded tranzakció → alreadyRefunded, PartiallyRefunded NEM teljes', () => {
     expect(
       pickRefundableTransaction(
         createState({
@@ -116,7 +117,22 @@ describe('pickRefundableTransaction', () => {
           ],
         }),
       ),
-    ).toMatchObject({ alreadyRefunded: true, transactionId: TRANSACTION_ID })
+    ).toMatchObject({ alreadyRefunded: true, alreadyPartiallyRefunded: false })
+
+    expect(
+      pickRefundableTransaction(
+        createState({
+          Transactions: [
+            {
+              TransactionId: TRANSACTION_ID,
+              TransactionType: 'CardPayment',
+              Status: 'PartiallyRefunded',
+              Total: ORDER_TOTAL_HUF,
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ alreadyRefunded: false, alreadyPartiallyRefunded: true })
   })
 })
 
@@ -132,6 +148,7 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState(),
       reason: 'paid-not-allowed',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -152,6 +169,7 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState({ Transactions: [] }),
       reason: 'duplicate-paid-order',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -178,6 +196,7 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState(),
       reason: 'duplicate-paid-order',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -215,6 +234,7 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState(),
       reason: 'guest-bind-privileged-account',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -250,6 +270,7 @@ describe('recoverRejectedSucceededPayment', () => {
       }),
       reason: 'total-mismatch',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -280,6 +301,7 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState(),
       reason: 'duplicate-paid-order',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
@@ -305,12 +327,125 @@ describe('recoverRejectedSucceededPayment', () => {
       state: createState(),
       reason: 'duplicate-paid-order',
       log: createLogger(),
+      source: 'callback',
       refundPayment: refund,
     })
 
     expect(result).toEqual({ action: 'failed', detail: 'barion-refund-failed' })
     expect(order.status).toBe('payment_pending')
     expect(updates).toHaveLength(0)
+    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
+  it('RF-1: két párhuzamos recover ugyanarra a rendelésre → egy HTTP refund', async () => {
+    const order = createOrder()
+    const { payload } = createMockPayload(order)
+    let inFlight = 0
+    let maxConcurrent = 0
+    const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
+      inFlight += 1
+      maxConcurrent = Math.max(maxConcurrent, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      inFlight -= 1
+      return {
+        PaymentId: PAYMENT_ID,
+        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'Refunded' }],
+      }
+    })
+    const input = {
+      payload,
+      order,
+      state: createState(),
+      reason: 'duplicate-paid-order' as const,
+      log: createLogger(),
+      source: 'callback' as const,
+      refundPayment: refund,
+    }
+
+    const [first, second] = await Promise.all([
+      recoverRejectedSucceededPayment(input),
+      recoverRejectedSucceededPayment(input),
+    ])
+
+    expect(refund).toHaveBeenCalledTimes(1)
+    expect(maxConcurrent).toBe(1)
+    expect([first.action, second.action].sort()).toEqual(['refunded', 'skipped'])
+    expect(order.status).toBe('refunded')
+    expect(order.refunds).toHaveLength(1)
+  })
+
+  it('RF-2: GetState PartiallyRefunded → nem refunded, type partial, nincs HTTP', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder()
+    const { payload, updates } = createMockPayload(order)
+    const refund = vi.fn()
+
+    const result = await recoverRejectedSucceededPayment({
+      payload,
+      order,
+      state: createState({
+        Transactions: [
+          {
+            TransactionId: TRANSACTION_ID,
+            TransactionType: 'CardPayment',
+            Status: 'PartiallyRefunded',
+            Total: ORDER_TOTAL_HUF,
+          },
+        ],
+      }),
+      reason: 'duplicate-paid-order',
+      log: createLogger(),
+      source: 'order-poll',
+      refundPayment: refund,
+    })
+
+    expect(result).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
+    expect(refund).not.toHaveBeenCalled()
+    expect(order.status).toBe('payment_pending')
+    expect(order.refunds).toEqual([
+      expect.objectContaining({ type: 'partial', status: 'PartiallyRefunded' }),
+    ])
+    expect(updates.some((row) => row.status === 'refunded')).toBe(false)
+    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
+  it('RF-2: Barion refund PartiallyRefunded → nem refunded, nincs második HTTP', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder()
+    const { payload } = createMockPayload(order)
+    const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
+      return {
+        PaymentId: PAYMENT_ID,
+        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'PartiallyRefunded' }],
+      }
+    })
+
+    const first = await recoverRejectedSucceededPayment({
+      payload,
+      order,
+      state: createState(),
+      reason: 'total-mismatch',
+      log: createLogger(),
+      source: 'checkout-start',
+      refundPayment: refund,
+    })
+    const second = await recoverRejectedSucceededPayment({
+      payload,
+      order,
+      state: createState(),
+      reason: 'total-mismatch',
+      log: createLogger(),
+      source: 'checkout-start',
+      refundPayment: refund,
+    })
+
+    expect(first).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
+    expect(second).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
+    expect(refund).toHaveBeenCalledTimes(1)
+    expect(order.status).toBe('payment_pending')
+    expect(order.refunds).toEqual([expect.objectContaining({ type: 'partial' })])
     expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
     logSpy.mockRestore()
   })
