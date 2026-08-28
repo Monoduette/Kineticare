@@ -702,6 +702,45 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(calls.create).toHaveLength(0)
   })
 
+  it('RF-4: Succeeded + paid-reject + recover failed → 409, source checkout-start', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const pendingOrder = {
+      id: 91,
+      status: 'payment_pending',
+      createdAt: new Date().toISOString(),
+      barionPaymentId: 'pay-reject',
+      orderNumber: 'KH-REJECT',
+    }
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? { docs: [pendingOrder], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+    const recoverRejectedPaid = vi.fn(async (input: { source?: string }) => {
+      expect(input.source).toBe('checkout-start')
+      return { action: 'failed' as const, detail: 'barion-refund-error' }
+    })
+
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Succeeded' }) as never,
+      applyBarionStateTransition: async () => ({
+        action: 'rejected',
+        reason: 'duplicate-paid-order',
+      }),
+      recoverRejectedPaid,
+      barionEnvironment: 'test',
+    })
+    await expect(promise).rejects.toMatchObject({ status: 409 })
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    expect(calls.create).toHaveLength(0)
+    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
   it('lejárt időkorlátos hozzáférés: bejelentkezve újravásárolható', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
     const { payload, calls } = createMockPayload({

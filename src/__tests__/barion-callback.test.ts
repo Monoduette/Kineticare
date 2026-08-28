@@ -996,6 +996,33 @@ describe('orderNumber-fallback és titokvédelem', () => {
     expect(logOutput(logSpy)).toContain('RIASZT')
   })
 
+  it('RF-4: Succeeded + paid-reject + recover failed → esemény failed, retryable, nem rejected', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { store, docs, payload, order } = setup()
+    fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded', { total: 990 }))
+    const recoverRejectedPaid = vi.fn(async (input: { source?: string }) => {
+      expect(input.source).toBe('callback')
+      return { action: 'failed' as const, detail: 'barion-refund-error' }
+    })
+
+    const result = await processWebhook({
+      store,
+      provider: 'barion',
+      externalId: PAYMENT_ID,
+      handler: createBarionCallbackProcessor({ payload, store, recoverRejectedPaid }),
+    })
+
+    expect(result.kind).toBe('failed')
+    expect(result).toMatchObject({ retryable: true })
+    expect(order?.status).toBe('payment_pending')
+    expect(docs[0]).toMatchObject({ status: 'failed' })
+    expect(docs[0]?.result ?? null).not.toBe('rejected')
+    expect(docs[0]?.processedAt ?? null).toBeNull()
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    expect(logOutput(logSpy)).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
   it('a naplóban sosem szerepel a POSKey', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { POST, capture } = setup()

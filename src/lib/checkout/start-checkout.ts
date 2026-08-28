@@ -19,6 +19,7 @@ import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
 import {
+  paidRejectRecoveryLogContext,
   recoverRejectedSucceededPayment,
   type RecoverRejectedSucceededPaymentInput,
   type PaidRejectRecoveryResult,
@@ -452,13 +453,29 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         log: ctx.log,
       })
       if (transition.action === 'rejected') {
-        await ctx.recoverRejectedPaid({
+        const rejectReason = transition.reason ?? 'unknown'
+        const recovery = await ctx.recoverRejectedPaid({
           payload: ctx.payload,
           order: pending,
           state: rawState,
-          reason: transition.reason ?? 'unknown',
+          reason: rejectReason,
           log: ctx.log,
+          source: 'checkout-start',
         })
+        const recoveryCtx = paidRejectRecoveryLogContext({
+          source: 'checkout-start',
+          action: recovery.action,
+          detail: recovery.detail,
+          reason: rejectReason,
+          orderId: pending.id,
+        })
+        ctx.log.info('paid-reject recovery lefutott', recoveryCtx)
+        if (recovery.action === 'failed') {
+          ctx.log.error(
+            'RIASZTÁS: paid-reject recovery sikertelen — a checkout 409 marad, a pénz még kint lehet',
+            recoveryCtx,
+          )
+        }
       }
       return {
         kind: 'already-paid',
