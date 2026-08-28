@@ -64,14 +64,18 @@ def env_www() -> str:
     return os.environ.get("KC_VERIFY_WWW_URL", DEFAULT_WWW).rstrip("/")
 
 
-def env_evidence_root() -> Path:
-    raw = os.environ.get("KC_VERIFY_EVIDENCE_DIR", "/tmp/kc-verify-evidence")
-    return Path(raw)
+def env_evidence_dir() -> Path:
+    override = os.environ.get("KC_VERIFY_EVIDENCE_DIR")
+    if override:
+        return Path(override)
+    return Path("/tmp/kc-verify-evidence") / run_id()
 
 
-def env_scratch_root() -> Path:
-    raw = os.environ.get("KC_VERIFY_SCRATCH_DIR", "/tmp/kc-verify-scratch")
-    return Path(raw)
+def env_scratch_dir() -> Path:
+    override = os.environ.get("KC_VERIFY_SCRATCH_DIR")
+    if override:
+        return Path(override)
+    return Path("/tmp/kc-verify-scratch") / run_id()
 
 
 def run_id() -> str:
@@ -551,6 +555,9 @@ DRIVERS = {
 def cmd_doctor(args: argparse.Namespace) -> int:
     evidence_dir = Path(args.evidence_dir)
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    scratch = Path(args.scratch_dir)
+    scratch.mkdir(parents=True, exist_ok=True)
+    (scratch / "session.marker").write_text(run_id() + "\n", encoding="utf-8")
     try:
         report = doctor_payload(args.base, evidence_dir)
     except AppHostError as error:
@@ -622,27 +629,34 @@ def cmd_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Verify the Kineticare visitor surface over HTTP GET.")
+def add_common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base", default=env_base(), help="App origin. Default: Railway production.")
-    rid = run_id()
     parser.add_argument(
         "--evidence-dir",
-        default=str(env_evidence_root() / rid),
-        help="Proof directory. Cleanup never deletes this.",
+        default=str(env_evidence_dir()),
+        help="Proof directory for this run. Cleanup never deletes this.",
     )
     parser.add_argument(
         "--scratch-dir",
-        default=str(env_scratch_root() / rid),
-        help="Disposable scratch. cleanup removes only this.",
+        default=str(env_scratch_dir()),
+        help="Disposable scratch for this run. cleanup removes only this.",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    add_common_flags(common)
+    parser = argparse.ArgumentParser(
+        description="Verify the Kineticare visitor surface over HTTP GET.",
+        parents=[common],
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("doctor")
-    drive = sub.add_parser("drive")
+    sub.add_parser("doctor", parents=[common])
+    drive = sub.add_parser("drive", parents=[common])
     drive.add_argument("feature", choices=sorted(DRIVERS))
-    snap = sub.add_parser("snapshot")
+    snap = sub.add_parser("snapshot", parents=[common])
     snap.add_argument("path", help="Storefront path, e.g. /blog/teniszkonyok")
-    sub.add_parser("cleanup")
+    sub.add_parser("cleanup", parents=[common])
     return parser
 
 

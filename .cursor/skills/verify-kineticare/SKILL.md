@@ -118,13 +118,14 @@ After cleanup, `test -s "$KC_VERIFY_EVIDENCE_DIR/doctor.json"` (and the feature 
 ```bash
 chmod +x .cursor/skills/verify-kineticare/bin/kc-verify   # already executable in git
 .cursor/skills/verify-kineticare/bin/kc-verify doctor
-.cursor/skills/verify-kineticare/bin/kc-verify drive blog-dual-cta
+.cursor/skills/verify-kineticare/bin/kc-verify doctor --evidence-dir "$KC_VERIFY_EVIDENCE_DIR"
+.cursor/skills/verify-kineticare/bin/kc-verify drive blog-dual-cta --evidence-dir "$KC_VERIFY_EVIDENCE_DIR"
 .cursor/skills/verify-kineticare/bin/kc-verify drive otthoni-kezrehab
 .cursor/skills/verify-kineticare/bin/kc-verify snapshot /blog/teniszkonyok
-.cursor/skills/verify-kineticare/bin/kc-verify cleanup
+.cursor/skills/verify-kineticare/bin/kc-verify cleanup --evidence-dir "$KC_VERIFY_EVIDENCE_DIR"
 ```
 
-Flags: `--base`, `--evidence-dir`, `--scratch-dir`. Env: `KC_VERIFY_BASE_URL`, `KC_VERIFY_EVIDENCE_DIR`, `KC_VERIFY_SCRATCH_DIR`, `KC_VERIFY_RUN_ID`, `KC_VERIFY_WWW_URL`.
+Put `--base` / `--evidence-dir` / `--scratch-dir` **after** the subcommand. Env: `KC_VERIFY_BASE_URL`, `KC_VERIFY_EVIDENCE_DIR` (this run's directory, not a parent to append to), `KC_VERIFY_SCRATCH_DIR`, `KC_VERIFY_RUN_ID`, `KC_VERIFY_WWW_URL`.
 
 ## Invariants (harness, not PR chat)
 

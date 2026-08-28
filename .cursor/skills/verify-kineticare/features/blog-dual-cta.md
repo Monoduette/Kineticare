@@ -33,7 +33,8 @@ Preconditions:
 ## Gotchas
 
 - Counting `kc-post-cta` in the raw response over-counts because the CSS bundle repeats the class. Count `<section ... kc-post-cta__panel` after stripping script and style.
-- The second panel heading is `Időpontkérés a rendelőbe`, not `Hogyan tovább?`. `Hogyan tovább?` is the váll single-panel title.
+- A second panel heading is `Időpontkérés a rendelőbe`, not `Hogyan tovább?`. `Hogyan tovább?` is the váll single-panel title.
+- A published free course can add a text line (`SOS Kézrelax villámkurzus`) inside the **first** panel. That is not a third `kc-post-cta__panel` and not `Nyisd meg a kurzusoldalt`.
 - Following `Nyisd meg a kurzusoldalt` lands on the product page, not pénztár. Do not call that `checkout_started`.
 - Do not add a Vitest that re-renders `PostArticle` fixtures for these slugs. `src/__tests__/tudastar-cikkoldal.test.tsx` already does (`KEZ_CIKK_PAR_SLUGOK`).
 - A www 404 on these slugs is cutover residue. Changing doctor to require that 404 is forbidden.
