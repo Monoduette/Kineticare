@@ -18,6 +18,7 @@ import { resolveSingleCourseAccess } from '../course-access-lookup'
 import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import type { OrderCustomerResolution } from '../order-status/resolve-order-customer'
 import {
   CHECKOUT_PAYMENT_IN_PROGRESS,
   CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
@@ -303,7 +304,12 @@ function duplicateScopeWhere(scope: DuplicateScope, productId: number): Record<s
 type DuplicateCheckResult =
   | { kind: 'ok' }
   | { kind: 'resume'; orderNumber: string; gatewayUrl: string }
-  | { kind: 'already-paid'; order: Order; transitionedToPaid: boolean }
+  | {
+      kind: 'already-paid'
+      order: Order
+      transitionedToPaid: boolean
+      customer?: OrderCustomerResolution
+    }
 
 function purchaseIdsFromUser(user: User | null | undefined): Set<number> {
   const ids = new Set<number>()
@@ -432,8 +438,12 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
       })
       return {
         kind: 'already-paid',
-        order: pending,
+        order:
+          transition.customer !== undefined
+            ? { ...pending, customer: transition.customer.userId }
+            : pending,
         transitionedToPaid: transition.transitionedToPaid === true,
+        ...(transition.customer !== undefined ? { customer: transition.customer } : {}),
       }
     }
     if (decision.kind === 'cancel-and-restart') {
@@ -837,6 +847,15 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         payload,
         order: lockResult.order,
         logger: log,
+        ...(lockResult.customer
+          ? {
+              account: {
+                passwordSetupPending: lockResult.customer.passwordSetupPending,
+                alreadyLinked: lockResult.customer.alreadyLinked,
+                email: lockResult.customer.email,
+              },
+            }
+          : {}),
       })
     }
     throw new CheckoutError(

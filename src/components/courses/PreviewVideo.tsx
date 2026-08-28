@@ -7,14 +7,16 @@
  * előzetes (és a hero-videó) a PUBLIKUS libraryben él: itt nincs jegy, a
  */
 
-/** A trimmelt publikus library-azonosító, vagy üres string, ha nincs beállítva. */
+import { bunnyPublicLibraryId } from '@/lib/stream/bunny-site-config'
+
+/** A publikus library azonosítója: env, különben az éles KINETICARE-PUBLIC tár. */
 function publicLibraryId(): string {
-  return process.env.NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID?.trim() ?? ''
+  return bunnyPublicLibraryId()
 }
 
 /**
- * Van-e megjeleníthető előzetes: a videó GUID-ja ÉS a publikus library-id ENV
- * együtt kell hozzá — a kurzus-oldal ezzel rejti el az egész szekciót.
+ * Van-e megjeleníthető előzetes: a videó GUID-ja kell. A publikus library id
+ * az env-ből vagy az éles KINETICARE-PUBLIC tárból jön.
  */
 export function hasPreviewVideo(streamId: string | null | undefined): boolean {
   const id = typeof streamId === 'string' ? streamId.trim() : ''

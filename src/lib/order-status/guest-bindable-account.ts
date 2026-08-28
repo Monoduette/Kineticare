@@ -15,3 +15,15 @@ export function isGuestBindableAccount(user: {
 }): boolean {
   return user.role === 'customer' && user.passwordSetupPending === true
 }
+
+/**
+ * Paid-teljesítés fiók-kötése: a pénz MÁR le van vonva (GetState v4 +
+ * összeg-assert után). Aktivált `customer` is köthető — a kurzus kiadása
+ * előbbre való, mint a „jelentkezz be" K2-szabály. A K2-lopás a Starton
+ * marad (`isGuestBindableAccount` + `CHECKOUT_GUEST_EXISTING_ACCOUNT`).
+ *
+ * Staff/owner ide NEM tartozik: azokhoz a paid-ág terminálisan rejectel.
+ */
+export function isPaidFulfillmentBindableAccount(user: { role?: string | null }): boolean {
+  return user.role === 'customer'
+}

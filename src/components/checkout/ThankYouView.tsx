@@ -266,12 +266,14 @@ export function ThankYouTimeout({
  * Forrás: NN/g, Error Message Guidelines
  * https://www.nngroup.com/articles/error-message-guidelines/ ;
  * WCAG 2.2 · 3.3.3 Error Suggestion
- * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html ;
+ * WCAG 2.2 · 2.4.2 Page Titled (a H1 a lapcím állapotát ismétli, nem sikert állít)
+ * https://www.w3.org/WAI/WCAG22/Understanding/page-titled.html
  */
 export function ThankYouMissingOrder() {
   return (
     <div className="kc-thankyou" role="status">
-      <h1>Köszönjük!</h1>
+      <h1>A fizetésed állapota</h1>
       <p>Hiányzik a rendelésszám a hivatkozásból. A kurzusaidat a következő gombbal éred el.</p>
       <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
     </div>
@@ -447,9 +449,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
     <div aria-live="polite" className="kc-thankyou kc-thankyou--polling" role="status">
       <h1>Köszönjük, feldolgozzuk a fizetésedet</h1>
       <p>A bank visszaigazolására várunk… Ez általában néhány másodperc. Ne zárd be az oldalt.</p>
-      <p className="kc-thankyou__spinner" aria-hidden="true">
-        ⏳
-      </p>
+      <span aria-hidden="true" className="kc-thankyou__spinner" />
     </div>
   )
 }

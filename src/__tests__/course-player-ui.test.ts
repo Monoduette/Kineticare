@@ -470,8 +470,17 @@ describe('CoursePlayer — a felület szerződése a szerveroldali kimeneten', (
     expect(html).toContain('role="progressbar"')
   })
 
-  it('a mobil tananyag-panelt nyitó gomb dialógust jelez', () => {
+  it('a mobil tananyag-panelt nyitó gomb dialógust jelez, és a nyitottságot is', () => {
     expect(html).toContain('aria-haspopup="dialog"')
+    expect(html).toContain('aria-expanded="false"')
+  })
+
+  it('a videó betöltése élő állapotüzenet (WCAG 2.2 · 4.1.3)', () => {
+    const source = readFileSync(new URL('../components/account/CoursePlayer.tsx', import.meta.url), 'utf8')
+    expect(source).toContain('A videó betöltése…')
+    expect(source).toMatch(
+      /role="status"[\s\S]{0,80}A videó betöltése…|A videó betöltése…[\s\S]{0,80}role="status"/,
+    )
   })
 
   it('SZÖVEGES lecke: nincs iframe (és így token-kérés sem indul)', () => {
@@ -593,5 +602,16 @@ describe('markWatched — a duplikáció-védelem szerkezeti', () => {
     // …és az analitika-könyvelés kizárólag ott lép előre.
     const advanceCount = source.split('analitikaRef.current = ').length - 1
     expect(advanceCount).toBe(1)
+  })
+})
+
+describe('LessonBody — magyar mikroszöveg', () => {
+  it('a hiányzó melléklet kettőspontot használ, nem gondolatjelet (U-03)', () => {
+    const body = readFileSync(
+      new URL('../components/account/player/LessonBody.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(body).toContain('{attachment.label}: a fájl feltöltése folyamatban')
+    expect(body).not.toMatch(/attachment\.label\} —/)
   })
 })

@@ -1,11 +1,22 @@
 import type { Payload } from 'payload'
 
 import type { Order, User } from '../../payload-types'
+import { durationDaysFromProduct } from '../access-grants'
 import { withAdvisoryLock } from '../advisory-lock'
 import type { BarionPaymentStateResponse, OrderPaymentState } from '../barion'
+import type { CourseAccessState } from '../course-access'
+import {
+  resolveSingleCourseAccess as defaultResolveSingleCourseAccess,
+  type CourseAccessProduct,
+} from '../course-access-lookup'
+import { maskEmail } from '../email/mask'
 import type { Logger } from '../logger'
 import { withUserPurchasesLock } from '../user-purchases-lock'
-import { resolveOrderCustomer, type OrderCustomerResolution } from './resolve-order-customer'
+import {
+  GuestBindPrivilegedAccountError,
+  resolveOrderCustomer,
+  type OrderCustomerResolution,
+} from './resolve-order-customer'
 
 /**
  * Barion-állapot → rendelés-állapotgép. Callback és order-poll közös magja.
@@ -28,6 +39,16 @@ export interface BarionTransitionInput {
    */
   state: BarionPaymentStateResponse
   log: Logger
+  /**
+   * Hozzáférés-óra (K5 megújítás). Teszthez injektálható; élesben a
+   * `course-access-lookup` ugyanazt a szabályt adja, mint a checkout.
+   */
+  resolveSingleCourseAccess?: (input: {
+    payload: Payload
+    userId: number
+    product: CourseAccessProduct
+    logger?: Logger
+  }) => Promise<CourseAccessState>
 }
 
 export type BarionTransitionAction = 'paid' | 'cancelled' | 'pending' | 'rejected'
@@ -36,7 +57,8 @@ export interface BarionTransitionResult {
   action: BarionTransitionAction
   /**
    * rejected akciónál az ok (paid-cancel-rejected / cancel-not-allowed /
-   * paid-not-allowed / total-mismatch / duplicate-paid-order).
+   * paid-not-allowed / total-mismatch / duplicate-paid-order /
+   * guest-bind-privileged-account).
    */
   reason?: string
   /** true, ha a rendelés már a célállapotban volt (no-op átmenet). */
@@ -164,6 +186,75 @@ export async function hasPaidOrderFor(
     // start-checkout.ts duplavásárlás-ellenőrzésének mintája).
   } as unknown as Parameters<Payload['find']>[0])
   return result.totalDocs > 0
+}
+
+/**
+ * K5: a második paid csak akkor BLOKK, ha a meglévő paid még AKTÍV
+ * hozzáférést ad. A checkout a lejárt időkorlátos SKU-t újra eladja
+ * (`resolveDuplicatePurchase` + `reason === 'expired'`); a paid-őrnek
+ * ugyanazt kell engednie, különben a pénz levonva, a kurzus nem újul.
+ * Korlátlan SKU, élő hozzáférés, olvashatatlan termék: továbbra is blokk
+ * (egyidejű dupla terhelés).
+ */
+export async function shouldBlockSecondPaidOrder(input: {
+  payload: Payload
+  customerId: number
+  productIds: number[]
+  excludeOrderId: number | string
+  log: Logger
+  resolveSingleCourseAccess?: BarionTransitionInput['resolveSingleCourseAccess']
+}): Promise<boolean> {
+  const hasPaid = await hasPaidOrderFor(input.payload, {
+    customerId: input.customerId,
+    productIds: input.productIds,
+    excludeOrderId: input.excludeOrderId,
+  })
+  if (!hasPaid) {
+    return false
+  }
+
+  const resolveAccess = input.resolveSingleCourseAccess ?? defaultResolveSingleCourseAccess
+  for (const productId of input.productIds) {
+    let product: CourseAccessProduct
+    try {
+      const raw: unknown = await input.payload.findByID({
+        collection: 'products',
+        id: productId,
+        depth: 0,
+        overrideAccess: true,
+      })
+      if (raw === null || typeof raw !== 'object') {
+        input.log.error(
+          'RIASZTÁS: dupla-fizetés-őr — a termék nem olvasható, a második paid BLOKKOLVA',
+          { productId },
+        )
+        return true
+      }
+      const days = (raw as { accessDurationDays?: number | null }).accessDurationDays
+      product = { id: productId, accessDurationDays: days ?? null }
+    } catch {
+      input.log.error(
+        'RIASZTÁS: dupla-fizetés-őr — a termék olvasása sikertelen, a második paid BLOKKOLVA',
+        { productId },
+      )
+      return true
+    }
+
+    if (durationDaysFromProduct(product) === null) {
+      return true
+    }
+
+    const access = await resolveAccess({
+      payload: input.payload,
+      userId: input.customerId,
+      product,
+      logger: input.log,
+    })
+    if (access.reason !== 'expired') {
+      return true
+    }
+  }
+  return false
 }
 
 /**
@@ -363,30 +454,42 @@ async function applyBarionStateTransitionLocked(
        * hamis fizetésre fiók sem jön létre. A K5 dupla-fizetés-őr viszont már a
        * feloldott fiókkal dolgozik — vendég-rendelésre is érvényes marad.
        */
-      const customer = await resolveOrderCustomer({ payload, order, log })
+      let customer: OrderCustomerResolution
+      try {
+        customer = await resolveOrderCustomer({ payload, order, log })
+      } catch (error) {
+        // Staff/owner e-mail: a kötés tilos, de generic Error örök retryt
+        // okozna (pénz már levonva). Terminális reject — closeEvent rejected.
+        if (error instanceof GuestBindPrivilegedAccountError) {
+          log.error(
+            'RIASZTÁS: vendég-fizetés staff/owner fiók e-mailjére érkezett — kötés elutasítva, manuális ellenőrzés szükséges',
+            { cimzett: maskEmail(error.email), role: error.role },
+          )
+          return { action: 'rejected', reason: 'guest-bind-privileged-account' }
+        }
+        throw error
+      }
       // A helyi példány elavult (a customer mezőt épp most írtuk ki), a
       // jogosultság-beírás viszont ebből olvassa a vevőt.
       const orderWithCustomer: Order = { ...order, customer: customer.userId }
 
       const alreadyPaid = order.status === 'paid'
       if (!alreadyPaid) {
-        // K5 DUPLA-FIZETÉS BLOKK: ha ugyanannak a vevő+termék párnak MÁS rendelése
-        // már paid, ez a második fizetés NEM állhat paid-re (dupla terhelés) —
-        // blokkolás + riasztás, manuális rendezés (visszatérítés) szükséges. A
-        // segéd és az indoklás: hasPaidOrderFor (lásd fentebb). A MÁR paid
-        // rendelés no-op ága szándékosan NEM érintett: az idempotens
-        // jogosultság-javítás továbbra is futhat. A vevő a FELOLDOTT fiók —
-        // vendég-vásárlásnál is (a rendelésen ott még nem volt customer, tehát az
-        // őr enélkül némán kimaradna éppen az új, vendég-úton).
-        //
-        // A BLOKK HELYE KÖTÖTT: MINDEN íráson (jogosultság-beírás ÉS státusz)
-        // ELŐTT kell futnia — utána már nem lenne mit megvédeni.
+        // K5 DUPLA-FIZETÉS BLOKK: más paid ugyanarra a vevő+termékre csak
+        // akkor tilt, ha az még AKTÍV hozzáférést ad. Lejárt időkorlátos
+        // SKU-nál a checkout újravásárlást enged — a paid-őrnek is. A MÁR
+        // paid rendelés no-op ága szándékosan NEM érintett. A vevő a
+        // FELOLDOTT fiók (vendég-úton is). A BLOKK HELYE KÖTÖTT: minden
+        // írás ELŐTT.
         const customerId = customer.userId
         if (
-          await hasPaidOrderFor(payload, {
+          await shouldBlockSecondPaidOrder({
+            payload,
             customerId,
             productIds: orderProductIds(order),
             excludeOrderId: order.id,
+            log,
+            resolveSingleCourseAccess: input.resolveSingleCourseAccess,
           })
         ) {
           log.error(

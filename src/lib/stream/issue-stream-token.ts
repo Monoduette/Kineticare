@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-import { accessExpiredMessage } from '../course-access'
+import { ACCESS_LOOKUP_FAILED_MESSAGE, accessExpiredMessage } from '../course-access'
 import { resolveSingleCourseAccess } from '../course-access-lookup'
 import {
   buildCurriculum,
@@ -185,6 +185,19 @@ export async function issueStreamToken(
     logger: log,
   })
   if (!access.hasAccess) {
+    // A denyOnLookupFailure ág `unknown-purchase-date`-tel zár, NEM lejárattal.
+    // Hamis „lejárt" üzenet: NN/g Error Message Guidelines (ne mondj hamis okot)
+    // https://www.nngroup.com/articles/error-message-guidelines/ ;
+    // WCAG 2.2 · 3.3.1 Error Identification.
+    if (access.reason === 'unknown-purchase-date') {
+      log.warn('stream-token: hozzáférés megtagadva (ellenőrzés sikertelen)', {
+        userId: input.user.id,
+        productId,
+        accessDurationDays: product.accessDurationDays ?? null,
+        expiresAt: access.expiresAt?.toISOString() ?? null,
+      })
+      throw new StreamTokenError(403, ACCESS_LOOKUP_FAILED_MESSAGE)
+    }
     log.warn('stream-token: hozzáférés megtagadva (lejárt hozzáférés)', {
       userId: input.user.id,
       productId,

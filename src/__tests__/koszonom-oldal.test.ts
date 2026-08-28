@@ -2,7 +2,7 @@ import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import KoszonjukPage from '../app/(frontend)/fizetes/koszonom/page'
+import KoszonjukPage, { metadata } from '../app/(frontend)/fizetes/koszonom/page'
 import {
   ThankYouMissingOrder,
   ThankYouNotFound,
@@ -50,6 +50,19 @@ async function renderPage(order: Record<string, string | string[] | undefined>) 
   }
   return element.props as Record<string, unknown>
 }
+
+describe('köszönőoldal — lapcím (állapot, nem siker)', () => {
+  it('a title nem állít sikert, amíg a fizetés kimenetele ismeretlen', () => {
+    expect(metadata.title).toBe('A fizetésed állapota')
+    expect(metadata.description).toBe(
+      'A banki visszaigazolás után itt látod, mi a következő lépés.',
+    )
+    expect(String(metadata.title)).not.toContain('Köszönjük')
+    expect(String(metadata.description)).not.toContain('feldolgozzuk')
+    expect(String(metadata.title)).not.toMatch(/[–—]/)
+    expect(String(metadata.description)).not.toMatch(/[–—]/)
+  })
+})
 
 describe('köszönőoldal (Barion-visszatérés)', () => {
   it('CSAK a rendelésszámot adja át — bejelentkezettséget NEM dönt szerver-oldalon', async () => {
@@ -199,10 +212,23 @@ describe('bejelentkezett, függő fizetés — a poll után is a kurzus a követ
   })
 })
 
+describe('köszönőoldal — pollás állapotjelző', () => {
+  it('a várakozás nem emoji-óra, hanem CSS-sáv (U-10)', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouView, { orderNumber: 'KH-2026-000123' }),
+    )
+    expect(html).toContain('kc-thankyou__spinner')
+    expect(html).not.toContain('⏳')
+    expect(html).toContain('Köszönjük, feldolgozzuk a fizetésedet')
+  })
+})
+
 describe('köszönőoldal — hiányzó vagy idegen rendelés', () => {
   it('rendelésszám nélkül a gomb a kurzusaidhoz visz, nem oldalnévre küld', () => {
     const html = renderToStaticMarkup(createElement(ThankYouMissingOrder))
     expect(html).toContain('Hiányzik a rendelésszám')
+    expect(html).toContain('<h1>A fizetésed állapota</h1>')
+    expect(html).not.toContain('Köszönjük!')
     expect(html).toContain('href="/kurzusaim"')
     expect(html).toContain('Nyisd meg a kurzusaidat')
     expect(html).not.toContain('Kurzusaim oldalon')

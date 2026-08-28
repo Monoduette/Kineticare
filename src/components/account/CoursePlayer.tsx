@@ -20,6 +20,7 @@ import { myCoursePlayerHref } from '@/lib/courses'
 import { ACCESS_NOT_PURCHASED_MESSAGE, type PlayerGateKind } from '@/lib/course-access'
 import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
+import { bunnyProtectedLibraryId } from '@/lib/stream/bunny-site-config'
 import { streamIframeSrc } from '@/lib/stream/contract'
 import { fetchStreamToken } from '@/lib/stream-token-client'
 
@@ -489,7 +490,7 @@ export function CoursePlayer({
       }, refreshInSec * 1000)
 
       const nextSrc = streamIframeSrc({
-        libraryId: process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID,
+        libraryId: bunnyProtectedLibraryId(),
         streamAssetId: lesson.streamAssetId,
         token: result.token,
         expiresAtEpochSec,
@@ -773,9 +774,17 @@ export function CoursePlayer({
             <span>Kurzusaim</span>
           </Link>
           <p className="kc-player__course-title">{product.title}</p>
+          {/* WAI-ARIA APG Dialog: a nyitó gomb aria-expanded + aria-haspopup.
+              https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+              WCAG 2.2 · 4.1.2 Name, Role, Value */}
           <button
+            aria-expanded={railOpen}
             aria-haspopup="dialog"
             className="kc-player__rail-toggle"
+            /* aria-expanded: WAI-ARIA APG Dialog (Modal) Pattern,
+               https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+               WCAG 2.2 · 4.1.2 Name, Role, Value
+               https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html */
             onClick={() => setRailOpen(true)}
             ref={railToggleRef}
             type="button"
@@ -823,7 +832,9 @@ export function CoursePlayer({
           {isVideoLesson ? (
             <div className="kc-player__media">
               {state.kind === 'loading' ? (
-                <p className="kc-player__media-note">A videó betöltése…</p>
+                <p aria-live="polite" className="kc-player__media-note" role="status">
+                  A videó betöltése…
+                </p>
               ) : null}
               {playingSrc !== null && activeLesson !== null ? (
                 <iframe

@@ -26,13 +26,17 @@
 | Lejátszó felület (kezdőlap, előzetes, kurzus)   | ✅ Kész                            |
 | Biztonsági fejléc (CSP) a Bunnyhoz              | ✅ Kész                            |
 | A lejátszási lánc korábbi két kódhibája         | ✅ Javítva (4.3)                   |
-| Bunny-kulcsok és library-azonosítók beállítása  | ❌ Hiányzik (ez az utolsó lépés)   |
-| Videó feltöltése a rendszeren keresztül         | ❌ Nincs — kézi másolás az adminba |
+| Bunny-kulcsok és library-azonosítók beállítása  | ✅ Railway-en (éles + demo), 2026-08-27; védett tár token-hitelesítése BE |
+| Tananyag (modulok) GUID-dal, hosszal, Kész      | ✅ Éles + demo: Otthoni 4×23, SOS 1×5 (`import:bunny-curriculum`) |
+| Videó feltöltése a rendszeren keresztül         | ❌ Nincs — a 28 kész videó a Bunnyn van; GUID-ok: `src/lib/curriculum/bunny-keszlet.ts` |
+| Belépő / vásárlás e-mail                        | ⏳ Resend kulcs él; a `kineticare.hu` feladó **pending** (Tárhely.Eu DNS) |
 
 Magyarul: a **nehéz része kész** (ki férhet hozzá, hogyan lesz belőle
-biztonságos, lejáró link, mit lát a vevő hiba esetén), és a kód a Bunnyra van
-kötve. Ami hiányzik: a Bunny-oldali előkészítés (két library) és a négy
-környezeti változó beállítása a Railway-en. **Kódváltozás nem kell hozzá.**
+biztonságos, lejáró link, mit lát a vevő hiba esetén), a kód a Bunnyra van
+kötve, a két tár megvan (védett `469119`, publikus `738433`), a Railway
+titkok be vannak írva, és a tananyag GUID-jai a CMS-ben vannak. Ami a
+teljes vevői levélúthoz még kell: a Resend DNS-rekordok a Tárhely.Eu
+névszerverén (4.5).
 
 ---
 
@@ -133,16 +137,23 @@ A joker-csapdáról — ami itt már egyszer valódi hibát okozott — a 6. pon
 
 ## 4. Mi hiányzik az élesítéshez
 
+**2026-08-27 — a 4.1–4.2 üzemeltetési lépések az éles és a demo
+Railway-szolgáltatáson kész.** A védett tár token-hitelesítése be van
+kapcsolva. A GUID-ok a kurzusok **Tananyag (modulok)** mezőjében vannak
+(`npm run import:bunny-curriculum`; a demo seed-tananyagot `--felulir`
+írta felül). Új epizódnál továbbra is a 5. pont a szerkesztői út.
+
 ### 4.1 Bunny-oldali előkészítés és a kulcsok
 
-A Bunny-előfizetés megvan, a videók egy része már ott van. Ami kell:
+A Bunny-előfizetés megvan, a videók a tárban vannak. Ami kell (és 2026-08-27-én
+be is van állítva a Railway Kineticare + Kineticare-demo szolgáltatásán):
 
 1. **Két videó-library** (4.4 a döntési dokumentumban): egy **védett**
    (token-hitelesítés BE) és egy **publikus** (token-hitelesítés KI).
 2. A védett libraryn a **token-hitelesítés bekapcsolása** — enélkül a fizetőfal
    megkerülhető: a videó a jegy nélkül is nézhető.
-3. A következő környezeti változók beállítása (Railway → a szolgáltatás
-   **Variables** fülén, lokálisan a `.env` fájlban):
+3. A következő környezeti változók (Railway → a szolgáltatás **Variables**
+   fülén; `NEXT_PUBLIC_*` után **újrabuild** `--from-source`, ne sima redeploy):
 
 | Változó                                      | Mire kell                                           | Titok?   |
 | -------------------------------------------- | --------------------------------------------------- | -------- |
@@ -167,6 +178,37 @@ A `.env.example` mind a négyet felsorolja, érték nélkül.
 > felületén azonnal újragenerálandó; a régi jegyek ilyenkor érvénytelenek, egy
 > futó lejátszás megszakadhat (a lejátszó magyar üzenetet és „Újrapróbálom"
 > gombot ad, nem fagy le).
+
+### 4.5 Resend feladó-domain (Tárhely.Eu DNS)
+
+A `RESEND_API_KEY` és az `EMAIL_FROM` az éles Kineticare-szolgáltatáson be
+van állítva. A kulcs **él**: a Resend a
+`kineticare.hu` domainre `pending` státuszt ad, ezért a
+`Kineticare <noreply@kineticare.hu>` feladós levél 403-mal elutasított
+(„domain is not verified”). Domain nélkül a Resend csak a fiók saját címére
+(`info@kineticare.hu`) enged tesztküldést a `onboarding@resend.dev`
+feladóval.
+
+A névszerver: `ns.tns1.eu`–`ns.tns4.eu` (Tárhely.Eu ügyféladmin,
+Domainek → DNS-kezelő). A Resend **ezeket** a rekordokat kéri a
+`kineticare.hu` zónában — a gyökérre (apexre) rakott SES/DKIM TXT **nem**
+elég:
+
+| Típus | Név (a zónában)     | Érték                                              |
+| ----- | ------------------- | -------------------------------------------------- |
+| TXT   | `resend._domainkey` | a Resend Domains oldalon kiírt DKIM `p=…` érték    |
+| MX    | `send`              | `feedback-smtp.us-east-1.amazonses.com` (prio 10)  |
+| TXT   | `send`              | `v=spf1 include:amazonses.com ~all`                |
+
+A meglévő `mail.kineticare.hu` MX-et ne vedd el: a `send` aldomain a
+Resend/SES bounce-útvonala, a postafiók a gyökér MX-en marad.
+
+Felvitel után a Resendben **Verify**, amíg az állapot **Verified**. Ezután
+az éles `EMAIL_FROM` (`Kineticare <noreply@kineticare.hu>`) kimegy
+tetszőleges vevőnek. A demo szolgáltatás átmenetileg
+`Kineticare <onboarding@resend.dev>` feladót használ, amíg a domain
+Verified nem lesz — vendég-E2E tetszőleges címre ettől még SKIP
+(Resend teszt-korlát).
 
 ### 4.2 Feltöltési automatizmus — nincs, és egyelőre nem is kell
 
@@ -408,17 +450,20 @@ költségét — ezt előbb mérjük, ne becsüljük.
 
 ## 8. Ellenőrzőlista élesítés előtt
 
-- [ ] Bunny: **két library** (védett + publikus), a védetten a
-      **token-hitelesítés bekapcsolva**.
-- [ ] `BUNNY_STREAM_TOKEN_AUTH_KEY` beállítva (Railway Variables, titok).
-- [ ] `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`,
+- [x] Bunny: **két library** (védett `469119` + publikus `738433`), a védetten a
+      **token-hitelesítés bekapcsolva** (2026-08-27).
+- [x] `BUNNY_STREAM_TOKEN_AUTH_KEY` beállítva (Railway Variables, titok) —
+      éles + demo.
+- [x] `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`,
       `NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID`,
       `NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST` beállítva **és utána
-      újrabuildelve**.
-- [ ] Staging: egy tetszőleges videóra generált jegy tényleg lejátszható-e
+      `--from-source` újrabuildelve** (éles + demo).
+- [x] Tananyag: Otthoni + SOS modulok GUID + hossz + Kész (éles és demo CMS).
+- [ ] Staging / demo: egy tetszőleges videóra generált jegy tényleg lejátszható-e
       (ez igazolja az `expires` sztringgé alakításának alakját is).
 - [ ] Próbavásárlás a staging-en: vétel → „Kurzusaim" → a videó elindul →
       epizódváltás → token-frissítés.
 - [ ] Ellenőrzés, hogy **nem** vevőként a lejátszó 403-at ad, és a videó URL-je
       önmagában (jegy nélkül) nem játszható le.
 - [ ] Böngésző-konzol: nincs CSP-hiba a kurzus- és a kezdőlapon.
+- [ ] Resend: `kineticare.hu` **Verified** a Tárhely.Eu DNS-rekordok után (4.5).
