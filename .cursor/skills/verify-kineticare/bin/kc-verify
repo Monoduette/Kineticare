@@ -229,11 +229,13 @@ def fetch(url: str, timeout: float = 25.0, *, follow_redirects: bool = True) -> 
         body = error.read() if error.fp is not None else b""
         html = body.decode("utf-8", errors="replace")
         safe = pick_safe_headers(error.headers)
-        return {
-            "ok": False,
+        status = int(error.code)
+        redirect_observed = (not follow_redirects) and status in {301, 302, 303, 307, 308}
+        payload = {
+            "ok": redirect_observed,
             "http_method": "GET",
             "url": url,
-            "status": int(error.code),
+            "status": status,
             "content_type": safe.get("content_type", ""),
             "server": safe.get("server", ""),
             "location": safe.get("location"),
@@ -241,8 +243,10 @@ def fetch(url: str, timeout: float = 25.0, *, follow_redirects: bool = True) -> 
             "elapsed_ms": elapsed_ms,
             "html": html,
             "bytes": len(body),
-            "error": f"HTTP {error.code}",
         }
+        if not redirect_observed:
+            payload["error"] = f"HTTP {status}"
+        return payload
     except Exception as error:  # noqa: BLE001 — harness must name network failures
         return {
             "ok": False,
