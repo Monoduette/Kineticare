@@ -22,9 +22,11 @@ import {
  * Barion-állapot → rendelés-állapotgép. Callback és order-poll közös magja.
  *
  * paid: fiók-feloldás → purchases → csak utána pending/created → paid.
- * Más státuszból paid TILOS. cancelled: pending → cancelled; paid-ről nem.
- * Író ágak `order-transition` zár + újraolvasás; purchases: order → email →
- * user. GetState és onOrderPaid a záron kívül. confirmOrder tilos.
+ * Late-success (R-03): cancelled / payment_failed + GetState Succeeded → paid
+ * (összeg-assert + K5 után). refunded → paid TILOS. cancelled: pending →
+ * cancelled; paid-ről nem. Író ágak `order-transition` zár + újraolvasás;
+ * purchases: order → email → user. GetState és onOrderPaid a záron kívül.
+ * confirmOrder tilos.
  */
 
 export interface BarionTransitionInput {
@@ -320,6 +322,25 @@ export function orderTransitionLockKey(orderId: number | string): string {
 }
 
 /**
+ * R-03: a GetState Succeeded mely helyi státuszokból mehet paid-re.
+ * refunded soha (a pénz már visszafordult). paid = no-op ág, nem blokk.
+ */
+export function canEnterPaidFrom(status: Order['status']): boolean {
+  return (
+    status === 'payment_pending' ||
+    status === 'created' ||
+    status === 'paid' ||
+    status === 'cancelled' ||
+    status === 'payment_failed'
+  )
+}
+
+/** Checkout cancel-and-restart / sikertelen fizetés utáni késői Succeeded. */
+export function isLateSuccessSourceStatus(status: Order['status']): boolean {
+  return status === 'cancelled' || status === 'payment_failed'
+}
+
+/**
  * Az állapotgép-átmenet végrehajtása a rendelésen. A visszaadott action
  * dönti el a hívó az esemény-lezárást / naplózást / mellékhatásokat.
  *
@@ -412,16 +433,25 @@ async function applyBarionStateTransitionLocked(
     }
 
     case 'paid': {
-      if (
-        order.status === 'cancelled' ||
-        order.status === 'refunded' ||
-        order.status === 'payment_failed'
-      ) {
+      if (order.status === 'refunded') {
+        log.error(
+          'RIASZTÁS: paid jelzés refunded rendelésre — visszaállítás TILOS, állapot marad refunded, manuális ellenőrzés szükséges',
+          { orderStatus: order.status },
+        )
+        return { action: 'rejected', reason: 'paid-not-allowed' }
+      }
+      if (!canEnterPaidFrom(order.status)) {
         log.error(
           'RIASZTÁS: paid jelzés nem engedélyezett kiinduló státuszból — állapot változatlan, manuális ellenőrzés szükséges',
           { orderStatus: order.status },
         )
         return { action: 'rejected', reason: 'paid-not-allowed' }
+      }
+      if (isLateSuccessSourceStatus(order.status)) {
+        log.warn(
+          'késői Barion Succeeded: a rendelés cancelled vagy payment_failed volt, most paid-re állítjuk (GetState v4 + összeg-assert)',
+          { orderStatus: order.status },
+        )
       }
 
       // ÖSSZEG-ASSERT: a paid-átmenet (és a már paid rendelésen a jogosultság-

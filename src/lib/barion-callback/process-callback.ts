@@ -15,6 +15,11 @@ import {
   applyBarionStateTransition,
   assertPaymentAmountMatches,
 } from '../order-status/apply-barion-state'
+import {
+  recoverRejectedSucceededPayment,
+  type RecoverRejectedSucceededPaymentInput,
+  type PaidRejectRecoveryResult,
+} from '../order-status/recover-paid-reject'
 
 /**
  * Barion-callback aszinkron feldolgozó. A payload nem bizonyíték: csak v4
@@ -28,15 +33,17 @@ export interface BarionCallbackProcessorDeps {
   /** Injektálható tár (teszteléshez); alapból a valódi Payload-adapter. */
   store?: WebhookEventStore
   logger?: Logger
+  /**
+   * Injektálható (teszteléshez); alapból a valódi recoverRejectedSucceededPayment.
+   * Tesztből élő Barion-refund tilos.
+   */
+  recoverRejectedPaid?: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
 }
 
 /** A webhook-events.result select értékei (a collection sémával szinkronban). */
-export type BarionCallbackResult =
-  | 'paid'
-  | 'cancelled'
-  | 'pending_repoll'
-  | 'rejected'
-  | 'failed'
+export type BarionCallbackResult = 'paid' | 'cancelled' | 'pending_repoll' | 'rejected' | 'failed'
 
 interface OrderLookupResult {
   order: Order
@@ -133,10 +140,7 @@ async function closeEvent(
  * üresen marad — az esemény újrafeldolgozható (a státuszt a processWebhook
  * hagyja `received`-en, lásd isNonTerminalHandlerOutcome).
  */
-async function markEventPending(
-  store: WebhookEventStore,
-  event: WebhookEventDoc,
-): Promise<void> {
+async function markEventPending(store: WebhookEventStore, event: WebhookEventDoc): Promise<void> {
   await store.update({
     collection: 'webhook-events',
     id: event.id,
@@ -152,6 +156,7 @@ async function markEventPending(
 export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps): WebhookHandler {
   const store = deps.store ?? webhookEventStore(deps.payload)
   const log = (deps.logger ?? logger).child({ module: 'barion-callback' })
+  const recoverRejectedPaid = deps.recoverRejectedPaid ?? recoverRejectedSucceededPayment
 
   return async function processBarionCallbackEvent(event: WebhookEventDoc): Promise<unknown> {
     const paymentId = event.externalId
@@ -291,6 +296,15 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
         }
       }
       if (transition.action === 'rejected') {
+        if (mapped === 'paid') {
+          await recoverRejectedPaid({
+            payload: deps.payload,
+            order,
+            state,
+            reason: transition.reason ?? 'unknown',
+            log: orderLog,
+          })
+        }
         await closeEvent(store, event, 'rejected')
         return { status: 'rejected', reason: transition.reason, orderId: order.id }
       }
@@ -317,7 +331,9 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
           {
             kind: error.kind,
             httpStatus: error.httpStatus ?? null,
-            providerErrorCodes: error.providerErrors.map((providerError) => providerError.ErrorCode),
+            providerErrorCodes: error.providerErrors.map(
+              (providerError) => providerError.ErrorCode,
+            ),
             error: error.message,
           },
         )

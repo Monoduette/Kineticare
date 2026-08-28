@@ -4196,6 +4196,7 @@ export interface TaskOrderPoll {
     orphaned: number;
     invoiceRequeued: number;
     invoiceResweep: string;
+    lateSuccessScanned: number;
   };
 }
 /**
