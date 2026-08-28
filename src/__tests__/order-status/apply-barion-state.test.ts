@@ -7,6 +7,7 @@ import {
   applyBarionStateTransition,
   assertPaymentAmountMatches,
   hasPaidOrderFor,
+  shouldBlockSecondPaidOrder,
 } from '../../lib/order-status/apply-barion-state'
 import type { Order, User } from '../../payload-types'
 
@@ -57,6 +58,7 @@ function createState(
 function createMockPayload(
   order: Order,
   existingOrders: Array<{ id: number; customer: number; product: number; status: string }> = [],
+  product: { id: number; accessDurationDays?: number | null } = { id: PRODUCT_ID },
 ) {
   const user = {
     id: CUSTOMER_ID,
@@ -66,10 +68,17 @@ function createMockPayload(
   const updates: Array<{ collection: string; data: Record<string, unknown> }> = []
   const payload = {
     // Az M5 zár a záron belül findByID-val OLVASSA ÚJRA a rendelést — a mock
-    // ezért collection-tudatos: 'orders'-re a teszt rendelése, 'users'-re a vevő.
-    findByID: vi.fn(async ({ collection }: { collection: string }) =>
-      collection === 'orders' ? order : user,
-    ),
+    // ezért collection-tudatos: 'orders'-re a teszt rendelése, 'users'-re a vevő,
+    // 'products'-re a K5 megújítás-őr terméke.
+    findByID: vi.fn(async ({ collection }: { collection: string }) => {
+      if (collection === 'orders') {
+        return order
+      }
+      if (collection === 'products') {
+        return product
+      }
+      return user
+    }),
     // A hasPaidOrderFor (K5) where-kiértékelése a fixtúrákon — a valódi szűrés mása.
     find: vi.fn(
       async ({ where }: { where: { and: Array<Record<string, Record<string, unknown>>> } }) => {
@@ -309,6 +318,58 @@ describe('applyBarionStateTransition — K5 dupla-fizetés blokk', () => {
     logSpy.mockRestore()
   })
 
+  it('lejárt időkorlátos hozzáférés + más paid → megújítás ENGEDÉLYEZETT (R-01)', async () => {
+    const { payload, updates, user } = createMockPayload(
+      createOrder(),
+      [{ id: 202, customer: CUSTOMER_ID, product: PRODUCT_ID, status: 'paid' }],
+      { id: PRODUCT_ID, accessDurationDays: 365 },
+    )
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order: createOrder(),
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+      resolveSingleCourseAccess: async () => ({
+        hasAccess: false,
+        expiresAt: new Date('2020-01-01T00:00:00.000Z'),
+        reason: 'expired',
+      }),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
+    expect(updates.filter((entry) => entry.collection === 'orders')).toEqual([
+      { collection: 'orders', data: { status: 'paid' } },
+    ])
+    expect(user.purchases).toEqual([PRODUCT_ID])
+  })
+
+  it('élő időkorlátos hozzáférés + más paid → továbbra is rejected', async () => {
+    const { payload, updates, user } = createMockPayload(
+      createOrder(),
+      [{ id: 202, customer: CUSTOMER_ID, product: PRODUCT_ID, status: 'paid' }],
+      { id: PRODUCT_ID, accessDurationDays: 365 },
+    )
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order: createOrder(),
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+      resolveSingleCourseAccess: async () => ({
+        hasAccess: true,
+        expiresAt: new Date('2027-01-01T00:00:00.000Z'),
+        reason: 'active',
+      }),
+    })
+
+    expect(result).toEqual({ action: 'rejected', reason: 'duplicate-paid-order' })
+    expect(updates).toHaveLength(0)
+    expect(user.purchases).toEqual([])
+  })
+
   it('MÁS termékre (vagy más vevőre) paid rendelés → az átmenet ENGEDÉLYEZETT', async () => {
     const { payload, updates, user } = createMockPayload(createOrder(), [
       { id: 202, customer: CUSTOMER_ID, product: 99, status: 'paid' }, // más termék
@@ -352,6 +413,19 @@ describe('applyBarionStateTransition — K5 dupla-fizetés blokk', () => {
 
     await expect(
       hasPaidOrderFor(payload, { customerId: CUSTOMER_ID, productIds: [], excludeOrderId: 101 }),
+    ).resolves.toBe(false)
+  })
+
+  it('shouldBlockSecondPaidOrder: nincs más paid → false', async () => {
+    const { payload } = createMockPayload(createOrder())
+    await expect(
+      shouldBlockSecondPaidOrder({
+        payload,
+        customerId: CUSTOMER_ID,
+        productIds: [PRODUCT_ID],
+        excludeOrderId: 101,
+        log: createLogger(),
+      }),
     ).resolves.toBe(false)
   })
 })
