@@ -1,7 +1,8 @@
 import type { TaskConfig } from 'payload'
 
 import type { Order } from '../../payload-types'
-import { getSzamlazzConfig, issueStornoForOrder } from '../../lib/szamlazz'
+import { issueStornoForOrder } from '../../lib/szamlazz'
+import { resolveSzamlazzTaskGate } from '../szamlazz-task-gate'
 import { logger } from '../../lib/logger'
 
 /**
@@ -33,10 +34,12 @@ export const stornoIssueTask: TaskConfig<StornoIssueJobIO> = {
       throw new Error(`storno-issue: érvénytelen orderId input (${String(orderId)})`)
     }
 
-    // Kikapcsolt integrációnál a task azonnal, hiba nélkül lezárul.
-    if (!getSzamlazzConfig().enabled) {
-      logger.debug('storno-issue: a Számlázz.hu-integráció kikapcsolva (nincs agent-kulcs) — no-op')
+    const gate = resolveSzamlazzTaskGate('storno-issue')
+    if (gate.kind === 'disabled') {
       return { output: { outcome: 'disabled' } }
+    }
+    if (gate.kind === 'failed') {
+      return { output: { outcome: 'failed', reason: gate.reason } }
     }
 
     const order = (await req.payload.findByID({

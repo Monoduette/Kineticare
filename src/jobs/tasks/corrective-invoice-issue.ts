@@ -2,7 +2,8 @@ import type { TaskConfig } from 'payload'
 
 import type { Order } from '../../payload-types'
 import { readRefundEntries } from '../../lib/refund/refund-order'
-import { getSzamlazzConfig, issueCorrectiveInvoiceForOrder } from '../../lib/szamlazz'
+import { issueCorrectiveInvoiceForOrder } from '../../lib/szamlazz'
+import { resolveSzamlazzTaskGate } from '../szamlazz-task-gate'
 import { logger } from '../../lib/logger'
 
 /** corrective-invoice-issue: részleges refund helyesbítő számlája; `refundSeq` = idempotencia-kulcs. */
@@ -39,12 +40,12 @@ export const correctiveInvoiceIssueTask: TaskConfig<CorrectiveInvoiceJobIO> = {
       )
     }
 
-    // Kikapcsolt integrációnál a task azonnal, hiba nélkül lezárul.
-    if (!getSzamlazzConfig().enabled) {
-      logger.debug(
-        'corrective-invoice-issue: a Számlázz.hu-integráció kikapcsolva (nincs agent-kulcs) — no-op',
-      )
+    const gate = resolveSzamlazzTaskGate('corrective-invoice-issue')
+    if (gate.kind === 'disabled') {
       return { output: { outcome: 'disabled' } }
+    }
+    if (gate.kind === 'failed') {
+      return { output: { outcome: 'failed', reason: gate.reason } }
     }
 
     const order = (await req.payload.findByID({

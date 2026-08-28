@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { invoiceIssueTask } from '../../jobs/tasks/invoice-issue'
 import { correctiveInvoiceIssueTask } from '../../jobs/tasks/corrective-invoice-issue'
 import { stornoIssueTask } from '../../jobs/tasks/storno-issue'
+import {
+  resolveSzamlazzTaskGate,
+  SZAMLAZZ_TASK_CONFIG_FAILED_REASON,
+} from '../../jobs/szamlazz-task-gate'
 import type { Order } from '../../payload-types'
 
 /**
- * A stornó- és helyesbítő-jobok bekötése (C4/C5) — a taskok vékony rétegének
- * szerződése: input-validáció, kikapcsolt integráció, hiányzó rendelés és a
- * refund-nyom sorszám-feloldása. A hálózati ág a szolgáltatás-tesztekben fut
- * (szamlazz/storno.test.ts, szamlazz/corrective.test.ts).
+ * A számla / stornó / helyesbítő jobok bekötése (C4/C5, R-04) — a taskok
+ * vékony rétegének szerződése: input-validáció, kikapcsolt integráció,
+ * fél-lábas konfig (failed, nem throw), hiányzó rendelés és a refund-nyom
+ * sorszám-feloldása. A hálózati ág a szolgáltatás-tesztekben fut
+ * (szamlazz.test.ts, szamlazz/storno.test.ts, szamlazz/corrective.test.ts);
+ * az invoice-issue handler itt NEM hívja az `issueInvoiceForOrder`-t.
  *
  * DUMMY érték, egyértelműen jelölve — NEM valódi Számla Agent kulcs.
  */
@@ -40,27 +47,121 @@ function reqWith(order: Order | null) {
  * alanyi adómentes eladónál minden bizonylatot elrontott volna). A jobok a
  * VALÓDI `process.env`-ből olvasnak, ezért itt is oda kell tenni.
  */
+function restoreSzamlazzEnv(previousKey: string | undefined, previousVat: string | undefined) {
+  if (previousKey === undefined) {
+    delete process.env.SZAMLAZZ_AGENT_KEY
+  } else {
+    process.env.SZAMLAZZ_AGENT_KEY = previousKey
+  }
+  if (previousVat === undefined) {
+    delete process.env.SZAMLAZZ_AFAKULCS
+  } else {
+    process.env.SZAMLAZZ_AFAKULCS = previousVat
+  }
+}
+
 function withAgentKey(): () => void {
   const previousKey = process.env.SZAMLAZZ_AGENT_KEY
   const previousVat = process.env.SZAMLAZZ_AFAKULCS
   process.env.SZAMLAZZ_AGENT_KEY = DUMMY_AGENT_KEY
   process.env.SZAMLAZZ_AFAKULCS = '27'
-  return () => {
-    if (previousKey === undefined) {
-      delete process.env.SZAMLAZZ_AGENT_KEY
-    } else {
-      process.env.SZAMLAZZ_AGENT_KEY = previousKey
-    }
-    if (previousVat === undefined) {
-      delete process.env.SZAMLAZZ_AFAKULCS
-    } else {
-      process.env.SZAMLAZZ_AFAKULCS = previousVat
-    }
-  }
+  return () => restoreSzamlazzEnv(previousKey, previousVat)
+}
+
+/**
+ * R-04: agent-kulcs van, áfakulcs nincs. A `getSzamlazzConfig` dobna;
+ * a task-kapu failed kimenetet ad throw nélkül, hálózat nélkül.
+ */
+function withHalfConfig(): () => void {
+  const previousKey = process.env.SZAMLAZZ_AGENT_KEY
+  const previousVat = process.env.SZAMLAZZ_AFAKULCS
+  process.env.SZAMLAZZ_AGENT_KEY = DUMMY_AGENT_KEY
+  delete process.env.SZAMLAZZ_AFAKULCS
+  return () => restoreSzamlazzEnv(previousKey, previousVat)
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('resolveSzamlazzTaskGate', () => {
+  it('nincs agent-kulcs → disabled, nem dob', () => {
+    const previous = process.env.SZAMLAZZ_AGENT_KEY
+    delete process.env.SZAMLAZZ_AGENT_KEY
+    try {
+      expect(resolveSzamlazzTaskGate('invoice-issue')).toEqual({ kind: 'disabled' })
+    } finally {
+      if (previous !== undefined) {
+        process.env.SZAMLAZZ_AGENT_KEY = previous
+      }
+    }
+  })
+
+  it('agent-kulcs van, áfakulcs nincs → failed, nem dob', () => {
+    const restore = withHalfConfig()
+    try {
+      expect(resolveSzamlazzTaskGate('invoice-issue')).toEqual({
+        kind: 'failed',
+        reason: SZAMLAZZ_TASK_CONFIG_FAILED_REASON,
+      })
+    } finally {
+      restore()
+    }
+  })
+
+  it('teljes konfig → ready', () => {
+    const restore = withAgentKey()
+    try {
+      expect(resolveSzamlazzTaskGate('invoice-issue')).toEqual({ kind: 'ready' })
+    } finally {
+      restore()
+    }
+  })
+})
+
+describe('invoice-issue task', () => {
+  it('a slug, a retry-szám és az input-séma megvan', () => {
+    expect(invoiceIssueTask.slug).toBe('invoice-issue')
+    expect(invoiceIssueTask.retries).toBe(3)
+    expect(invoiceIssueTask.inputSchema?.[0]).toMatchObject({ name: 'orderId', required: true })
+  })
+
+  it('érvénytelen orderId → dob (a job hibára fut, nem hallgat)', async () => {
+    const { req } = reqWith(null)
+    await expect(runTask(invoiceIssueTask, { req, input: { orderId: 'x' } })).rejects.toThrow(
+      'érvénytelen orderId',
+    )
+  })
+
+  it('kikapcsolt integrációnál disabled — a rendeléshez sem nyúl', async () => {
+    const previous = process.env.SZAMLAZZ_AGENT_KEY
+    delete process.env.SZAMLAZZ_AGENT_KEY
+    try {
+      const { req, findByID } = reqWith(null)
+      const result = await runTask(invoiceIssueTask, { req, input: { orderId: 555 } })
+      expect(result.output).toEqual({ outcome: 'disabled' })
+      expect(findByID).not.toHaveBeenCalled()
+    } finally {
+      if (previous !== undefined) {
+        process.env.SZAMLAZZ_AGENT_KEY = previous
+      }
+    }
+  })
+
+  it('fél-lábas konfig (kulcs van, áfa nincs) → failed, nem dob, nem POSTol', async () => {
+    const restore = withHalfConfig()
+    try {
+      const { req, findByID } = reqWith(null)
+      const result = await runTask(invoiceIssueTask, { req, input: { orderId: 555 } })
+      expect(result.output).toEqual({
+        outcome: 'failed',
+        reason: SZAMLAZZ_TASK_CONFIG_FAILED_REASON,
+      })
+      expect(findByID).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
 })
 
 describe('storno-issue task', () => {
@@ -92,6 +193,21 @@ describe('storno-issue task', () => {
     }
   })
 
+  it('fél-lábas konfig → failed, a rendeléshez sem nyúl', async () => {
+    const restore = withHalfConfig()
+    try {
+      const { req, findByID } = reqWith(null)
+      const result = await runTask(stornoIssueTask, { req, input: { orderId: 555 } })
+      expect(result.output).toEqual({
+        outcome: 'failed',
+        reason: SZAMLAZZ_TASK_CONFIG_FAILED_REASON,
+      })
+      expect(findByID).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
   it('ismeretlen rendelésnél failed, magyar indokkal', async () => {
     const restore = withAgentKey()
     try {
@@ -119,6 +235,24 @@ describe('corrective-invoice-issue task', () => {
     await expect(
       runTask(correctiveInvoiceIssueTask, { req, input: { orderId: 555, refundSeq: 0 } }),
     ).rejects.toThrow('érvénytelen refundSeq')
+  })
+
+  it('fél-lábas konfig → failed, a rendeléshez sem nyúl', async () => {
+    const restore = withHalfConfig()
+    try {
+      const { req, findByID } = reqWith(null)
+      const result = await runTask(correctiveInvoiceIssueTask, {
+        req,
+        input: { orderId: 555, refundSeq: 1 },
+      })
+      expect(result.output).toEqual({
+        outcome: 'failed',
+        reason: SZAMLAZZ_TASK_CONFIG_FAILED_REASON,
+      })
+      expect(findByID).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
   })
 
   it('ismeretlen sorszámú visszatérítésnél failed (nem állít ki bizonylatot)', async () => {
