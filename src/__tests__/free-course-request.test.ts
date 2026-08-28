@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existingAccountFreeCourseEmail, freeCourseEmail } from '../lib/free-course/email'
 import {
   createFreeCourseRequestHandler,
+  numericActorId,
   verifyTurnstileToken,
   FREE_COURSE_EMAIL_RULE,
   FREE_COURSE_IP_RULE,
@@ -220,7 +221,7 @@ function createMockPayload(options: MockOptions = {}) {
     ),
     // A route-handler a sessiont `payload.auth({ headers })`-szel olvassa
     // (bejelentkezett, egyező e-mail → saját magának grant). Alapból vendég.
-    auth: vi.fn(async (): Promise<{ user: { id: number } | null }> => ({ user: null })),
+    auth: vi.fn(async (): Promise<{ user: { id: number | string } | null }> => ({ user: null })),
   }
 
   return {
@@ -561,6 +562,24 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(
       resolveFreeCourseUiNext({
         actions: { grant: false, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: 101,
+        userId: 101,
+        alreadyOwned: true,
+      }),
+    ).toBe('library')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: 99,
+        userId: 101,
+        alreadyOwned: true,
+      }),
+    ).toBe('email')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
         role: 'staff',
         actorUserId: 7,
         userId: 7,
@@ -759,6 +778,48 @@ describe('jelszó-token és grant kapu (K3)', () => {
     const response = await handler(requestFor({ email: MEGLEVO_VEVO.email, name: 'Anna' }))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'library' })
+  })
+
+  it('I2: belépett vevő, a kurzus már megvan — next=library, grant és levél nincs', async () => {
+    const vevo: UserRow = { ...MEGLEVO_VEVO, purchases: [FREE_COURSE.id] }
+    const mock = createMockPayload({ users: [vevo] })
+    mock.mocks.auth.mockResolvedValue({ user: { id: String(vevo.id) } })
+    const { log } = createLogger()
+
+    const result = await requestFreeCourseAccess({
+      payload: mock.payload,
+      productId: FREE_COURSE.id,
+      name: 'Anna',
+      email: vevo.email,
+      serverUrl: 'https://pelda.kineticare.hu',
+      env: ENV_WITH_EMAIL,
+      logger: log,
+      actorUserId: vevo.id,
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.next).toBe('library')
+    expect(result.emailDelivered).toBe(false)
+    expect(result.grantedProductIds).toEqual([])
+    expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
+    expect(mock.sent).toHaveLength(0)
+
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const response = await handler(requestFor({ email: vevo.email, name: 'Anna' }))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'library' })
+  })
+
+  it('numericActorId: a JWT string id is belépett szereplő', () => {
+    expect(numericActorId({ id: 12 })).toBe(12)
+    expect(numericActorId({ id: '12' })).toBe(12)
+    expect(numericActorId({ id: ' 12 ' })).toBe(12)
+    expect(numericActorId({ id: 'abc' })).toBeNull()
+    expect(numericActorId(null)).toBeNull()
   })
 
   it('bejelentkezett staff a saját címére: next=blocked, a HTTP kiteszi, grant nincs', async () => {

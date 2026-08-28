@@ -152,6 +152,25 @@ export const FREE_COURSE_UNAVAILABLE_ERROR =
 export const FREE_COURSE_TURNSTILE_ERROR =
   'A spam-ellenőrzés nem sikerült. Töltsd újra az oldalt, és próbáld meg még egyszer.'
 
+/**
+ * A Payload `user.id` szám VAGY string lehet (JWT / REST populate).
+ * A `next` ág és a grant-kapu számot vár; szigorú `typeof === 'number'`
+ * a belépett vevőt vendégnek nézné, és elrejtené a `library` választ.
+ */
+export function numericActorId(user: { id?: unknown } | null | undefined): number | null {
+  const raw = user?.id
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw
+  }
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return null
+}
+
 export function createFreeCourseRequestHandler(
   deps: FreeCourseRequestHandlerDeps,
 ): (request: NextRequest) => Promise<NextResponse> {
@@ -240,6 +259,7 @@ export function createFreeCourseRequestHandler(
     try {
       const payload = await deps.getPayload()
       const { user: actor } = await payload.auth({ headers: request.headers })
+      const actorUserId = numericActorId(actor)
       const runRequest = deps.requestAccess ?? requestFreeCourseAccess
       const result = await runRequest({
         payload,
@@ -249,7 +269,7 @@ export function createFreeCourseRequestHandler(
         serverUrl: resolveServerUrlOrNull(env),
         logger: log,
         env,
-        actorUserId: typeof actor?.id === 'number' ? actor.id : null,
+        actorUserId,
       })
 
       if (result.status === 'course-not-available') {
@@ -264,7 +284,7 @@ export function createFreeCourseRequestHandler(
       // a `next` és a `userCreated` elárulná, van-e már fiók). Bejelentkezett
       // hívónak a `next` kimehet: a felület a Kurzusaim / postaláda / blocked
       // ágat ebből választja, nem találgatásból.
-      if (typeof actor?.id === 'number') {
+      if (actorUserId !== null) {
         return NextResponse.json(
           { ok: true, emailSent: result.emailDelivered, next: result.next },
           { status: 200 },
