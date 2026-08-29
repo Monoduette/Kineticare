@@ -217,15 +217,37 @@ async function slugId(
 }
 
 async function userIdByName(payload: Payload, name: string): Promise<number | undefined> {
+  // A Posts.author / reviewedBy mező filterOptions-a (staffOrOwnerUserFilter,
+  // src/lib/admin/relationship-filters.ts) óta CSAK staff/owner szerepű user
+  // érvényes érték — egy másik szerepű találat a mentéskor „A következő mező
+  // érvénytelen: Szerző" hibával dobna, és megakasztaná az egész importot.
+  // Ezért itt ugyanazzal a szűréssel keresünk: ami a mezőben érvénytelen
+  // lenne, azt meg sem találjuk, csak figyelmeztetünk (lentebb a hívó).
   const talalat = await payload.find({
+    collection: 'users',
+    where: { name: { equals: name }, role: { in: ['staff', 'owner'] } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const id = talalat.docs[0]?.id
+  if (typeof id === 'number') return id
+
+  const barmilyenSzerep = await payload.find({
     collection: 'users',
     where: { name: { equals: name } },
     limit: 1,
     depth: 0,
     overrideAccess: true,
   })
-  const id = talalat.docs[0]?.id
-  return typeof id === 'number' ? id : undefined
+  if (barmilyenSzerep.docs[0] !== undefined) {
+    logger.warn(
+      'Tudástár-import: a szerző létezik, de nem staff/owner szerepű, ezért a mező üresen marad. ' +
+        'Szerep-állítás az adminban (Users → szerep), utána az import újrafuttatható.',
+      { nev: name },
+    )
+  }
+  return undefined
 }
 
 interface CikkMezok {
