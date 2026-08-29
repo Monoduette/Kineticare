@@ -139,10 +139,12 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
    always override values from the dashboard"). 2026-08-16-án mérve: az API-n
    beállított egyedi `startCommand`-ot a repóból deployoló szolgáltatás némán
    figyelmen kívül hagyta, és a `railway.json` `startCommand`-ját futtatta —
-   redeploy után is. Ha egy szolgáltatásnak MÁS parancs kell (pl. seed-job,
-   demo), az egyetlen megbízható út: dedikált config-fájl a repóban
-   (`railway.seed-job.json`, `railway.demo.json`) + a szolgáltatáson a
+   redeploy után is. Ha egy szolgáltatásnak MÁS parancs kell (pl. seed-job),
+   az egyetlen megbízható út: dedikált config-fájl a repóban
+   (`railway.seed-job.json`) + a szolgáltatáson a
    „Config file path" (API: `railwayConfigFile`) átállítása erre a fájlra.
+   A `railway.demo.json` történeti: a `Kineticare-demo` 2026-08-29-től
+   kivezetve, oda semmit nem deployolunk.
    A fájlban NEM szereplő beállításokat továbbra is a dashboard adja — a
    felülírás kulcsonként érvényesül.
 3. **A Postgres-szolgáltatás újraindítása kiürítheti az adatbázist.** Egy
@@ -296,12 +298,21 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
     és `pgrun`-tulajdonúnak — különben „Permission denied", és a szerver
     naplója sosem íródik ki. (Mérve 2026-08-21.)
 
-23. **Merge után azonnal a GitHub CI és a Railway.** A squash-merge nem zárja
-    a kört. A `main` CI (`ci.yml` + gitleaks) legyen zöld; a Railway-en
-    tényleges `npm run build` (ne skipped), start-logban `Migrating:` /
-    `Migrated:`, healthcheck `GET /admin`. A „SUCCESS" deploy nem elég
-    (1. pont). `WAITING` snapshot nélkül: előbb a lépés-események, ne indíts
-    vaktában új deployt (12. pont). Hiba esetén azonnal javíts.
+23. **Merge után azonnal a GitHub CI és a Railway production.** A squash-merge
+    nem zárja a kört. A `main` CI (`ci.yml` + gitleaks) legyen zöld; a
+    **`Kineticare`** appservice-en tényleges `npm run build` (ne skipped),
+    start-logban `Migrating:` / `Migrated:` (vagy `Reading migration files` +
+    `Done.`), healthcheck `GET /admin`. A „SUCCESS" deploy nem elég (1. pont).
+    `WAITING` snapshot nélkül: előbb a lépés-események, ne indíts vaktában
+    új deployt (12. pont). Hiba esetén azonnal javíts. A `Kineticare-demo`
+    nem része a körnek (24. pont).
+24. **A `Kineticare-demo` 2026-08-29-től kivezetve (tulajdonosi döntés).**
+    Oda semmit nem deployolunk: nincs `redeploy`, `create-deployment`,
+    GitHub-forrás visszakötése, `--from-source` rebuild, merge-utáni figyelés
+    és élő E2E a demo hoston. A forrás le van választva (`repo: null`).
+    A `railway.demo.json` és a `docs/demo-kornyezet.md` történeti. A demo
+    Postgres (`Postgres-UtWo`) és a régi kötet nélküli `Postgres` békén
+    hagyandó.
 
 ## Munkamodell — Sol orkesztrátor + Grok 4.6 extra high csapat (tulajdonosi alapbeállítás, 2026-08-22)
 

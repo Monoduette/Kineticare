@@ -148,7 +148,7 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   cron: webhook-retry percenként, order-maintenance 5 percenként); dev-ben
   alapból KI vannak kapcsolva. Élesben hiányzó flag → induláskori **warn**
   (`job_workerek_kikapcsolva`), nem fail-closed boot: a bolt ettől még
-  kiszolgál. Railway staging + prod env-ben ellenőrizd. A job-végpontok és a
+  kiszolgál. A production `Kineticare` env-ben ellenőrizd. A job-végpontok és a
   `payload-jobs` collection staff/owner-only (`src/jobs/index.ts`).
 - **Videó:** védett Bunny-library → szerveroldali token-jegy (`/api/stream-token`);
   publikus library (hero, előzetesek) token nélkül. Hiányzó env = magyar
@@ -258,16 +258,26 @@ gyanús vagy elmarad, **azonnal javít** — nem vár külön kérésre.
 1. **GitHub CI** a squash-commiton: `ci.yml` (typecheck, teszt, lint, next
    build, npm audit critical) és `gitleaks.yml`. Bukásnál a job-log a gyökérok,
    majd fix PR a `main`re.
-2. **Railway** (staging + prod, `main` auto-deploy). A dashboard „SUCCESS”
-   önmagában nem elég (lásd a Deploy tanulságokat):
+2. **Railway production** — csak a **`Kineticare`** appservice
+   (`main` auto-deploy). A dashboard „SUCCESS” önmagában nem elég (lásd a
+   Deploy tanulságokat):
    - a build-logban legyen tényleges `npm run build` (ne `Build · skipped`);
-   - a start-logban `Migrating:` / `Migrated:`;
+   - a start-logban `Migrating:` / `Migrated:` (vagy `Reading migration files`
+     + `Done.`, ha nincs függő migráció);
    - a healthcheck (`GET /admin`) menjen át.
    Ha `WAITING` van snapshot és build-log nélkül, előbb a Railway MCP
    lépés-eseményei — ne indíts vaktában új deployt. A kötet nélküli régi
    `Postgres` szolgáltatást újraindítani tilos.
-3. Railway MCP / CLI nélkül a dashboard-log és a publikus healthcheck a
-   tartalék; a figyelést ettől még nem szabad kihagyni.
+3. **A `Kineticare-demo` szolgáltatás 2026-08-29-től kivezetve.** Oda
+   semmit nem deployolunk: nincs `redeploy`, `create-deployment`,
+   `connect-service-source`, `--from-source` rebuild, merge-utáni figyelés
+   és E2E a demo hoston. A GitHub-forrás le van választva (`repo: null`,
+   auto-deploy `NO_REPO`). A `railway.demo.json` és a `docs/demo-kornyezet.md`
+   történeti. A demo Postgres (`Postgres-UtWo`) és a régi kötet nélküli
+   `Postgres` ugyanúgy békén hagyandó.
+4. Railway MCP / CLI nélkül a dashboard-log és a publikus healthcheck a
+   tartalék; a figyelést ettől még nem szabad kihagyni. Csak a
+   `Kineticare` production számít.
 
 ## Cursor-modellek (tulajdonosi kérés, 2026-08-22)
 
@@ -341,9 +351,11 @@ konfigurációval (csak az egyik) az app el sem indul.
 
 ## Deploy (Railway)
 
-Staging + prod a Railway-n fut, konfig: `railway.json` (RAILPACK builder,
-explicit `buildCommand: npm run build`, `startCommand: npx payload migrate &&
-npm start`, `healthcheckPath: /admin`). Részletes runbook: `docs/deploy-railway.md`.
+A production **`Kineticare`** appservice a Railway-n fut, konfig: `railway.json`
+(RAILPACK builder, explicit `buildCommand: npm run build`,
+`startCommand: npx payload migrate && npm start`, `healthcheckPath: /admin`).
+A `Kineticare-demo` 2026-08-29-től kivezetve — oda semmit nem deployolunk.
+Részletes runbook: `docs/deploy-railway.md`.
 
 Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 „Üzemeltetési tanulságok" szekciójában):
@@ -377,6 +389,7 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 | Értékesítési UX-skill (UI-munka előtt kötelező) | `docs/ertekesitesi-ux-skill.md` |
 | Szerkesztői útmutató (admin) | `docs/szerkesztoi-utmutato.md` |
 | Deploy-runbook | `docs/deploy-railway.md` |
+| Demó-környezet (kivezetve) | `docs/demo-kornyezet.md` |
 | Barion sandbox | `docs/barion-sandbox-setup.md` |
 | E2E-futtatás stagingen | `docs/e2e-staging-runbook.md` |
 | OWASP biztonsági audit | `docs/owasp-security-review.md` |

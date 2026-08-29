@@ -1,5 +1,9 @@
 # Railway staging deploy — runbook
 
+> **2026-08-29:** a merge-utáni deploy-kör csak a production **`Kineticare`**
+> appservice. A `Kineticare-demo` kivezetve: oda semmit nem deployolunk
+> (lásd `AGENTS.md`, `docs/demo-kornyezet.md`).
+
 > **Cél:** a `main` branchből automatikusan deployolódó staging környezet
 > Railway-en, managed PostgreSQL-lel, privát hálózaton.
 > A gyökérben lévő `railway.json` tartalmazza a build/start konfigurációt —

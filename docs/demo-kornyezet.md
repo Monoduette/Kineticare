@@ -1,5 +1,12 @@
 # Demó-környezet — bemutató kitalált adatokkal
 
+> **2026-08-29 — kivezetve.** A `Kineticare-demo` Railway-szolgáltatásra
+> ezentúl **semmit nem deployolunk** (tulajdonosi döntés). Nincs `redeploy`,
+> GitHub-forrás, `--from-source` rebuild, merge-utáni figyelés és élő E2E a
+> demo hoston. A GitHub-forrás le van választva. A lenti leírás **történeti**:
+> hogyan volt felépítve, és miért külön adatbázis. Új demo-környezetet ne
+> állíts fel, hacsak a tulajdonos kifejezetten nem kéri.
+
 > **Mire jó:** a rendszer bemutatható legyen **vásárlói szemmel** (regisztráció,
 > pénztár, Kurzusaim, tananyag, haladás) és **admin szemmel** (vásárlók,
 > rendelések, bevétel-alakulás, kurzus-haladás) — **teljesen kitalált adatokon**.
