@@ -92,6 +92,25 @@ export const ANALYTICS_EVENTS = {
   // JS-kivételeket a PostHog saját `$exception` eseménye viszi, a
   // `captureAnalyticsException` segédleten át.
   checkoutFailed: 'checkout_failed',
+
+  // ─── TARTALMI FUNNEL (2026-08-29, tulajdonosi kör) ─────────────────────
+  // A cikk/hub a fizetett és organikus forgalom belépője; az optimalizálás
+  // kérdése nem az, HÁNYAN jöttek (azt a $pageview tudja), hanem hogy MIT
+  // csináltak: elolvasták-e, és melyik hídon léptek tovább. Négy esemény,
+  // mind technikai azonosítókkal (cikk-slug, CTA-fajta), személyes adat
+  // nélkül:
+  //  - article_viewed: a cikkoldal (blog vagy gyökér-hub) megnyílt.
+  //  - article_read: az olvasó a törzs VÉGÉIG jutott (cikkenként egyszer,
+  //    a küldő oldalán retesszel) — a $pageview és e között a különbség a
+  //    tényleges elolvasási arány.
+  //  - article_cta_clicked: a cikk alatti híd-rendszer kattintásai
+  //    (kurzus, ingyenes sor, időpont, kapcsolódó cikk, jegyzék).
+  //  - faq_opened: melyik GYIK-kérdést nyitják — közvetlen input a
+  //    tartalom- és Ads-optimalizáláshoz (mért kérdések visszamérése).
+  articleViewed: 'article_viewed',
+  articleRead: 'article_read',
+  articleCtaClicked: 'article_cta_clicked',
+  faqOpened: 'faq_opened',
 } as const
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS]
 

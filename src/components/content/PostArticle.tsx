@@ -30,6 +30,7 @@ import {
   shouldShowToc,
 } from './post-article'
 import { headingsOf, plainTextOf, wordCountOf } from './post-outline'
+import { ArticleEngagement } from '../analytics/ArticleEngagement'
 
 import '../../app/(frontend)/styles/blocks/post-view.css'
 
@@ -102,6 +103,10 @@ export function PostArticle({ post, related: relatedProp, freeCourse, path }: Po
 
   return (
     <article>
+      {/* Tartalmi funnel-mérés: article_viewed/read, CTA- és GYIK-kattintás.
+          Láthatatlan kliens-komponens, delegált figyelőkkel — a cikk
+          szerver-komponensei nem hidratálódnak miatta. Consent nélkül no-op. */}
+      <ArticleEngagement articleSlug={typeof post.slug === 'string' ? post.slug : ''} path={canonicalPath} />
       {/* A CIKK SÉMÁJA: EGY node, `['Article', 'MedicalWebPage']` kettős
           típussal (`src/lib/seo-cikk.ts`). A `MedicalWebPage`-tag nem
           dísz: a `WebPage` altípusa, és CSAK ettől lesz érvényes a
