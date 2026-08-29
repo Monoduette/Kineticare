@@ -38,6 +38,9 @@ import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
   CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
 } from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
@@ -46,7 +49,13 @@ import {
   type NormalizedGuest,
 } from './guest'
 
-export { CHECKOUT_GUEST_EXISTING_ACCOUNT, CHECKOUT_GUEST_FINISH_AFTER_LOGIN }
+export {
+  CHECKOUT_GUEST_EXISTING_ACCOUNT,
+  CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
+}
 
 /**
  * Bejelentkezett duplavásárlás. A munkamenet a saját fiók, ez nem orákulum.
@@ -54,22 +63,6 @@ export { CHECKOUT_GUEST_EXISTING_ACCOUNT, CHECKOUT_GUEST_FINISH_AFTER_LOGIN }
  * lépés, nem egy meg nem nevezett „fiók”.
  */
 export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
-
-/**
- * Sikeres auto-refund UTÁN a „már megvetted" hazugság lenne: a vevő NEM kapta
- * meg a kurzust (total-mismatch vagy privilegizált-kötés miatt terminális
- * reject), a pénze visszament a Barionon. A 409 marad (ez a Start ütközött a
- * függő rendeléssel), de a szöveg a visszatérítést és a következő lépést
- * mondja. A rendelés a recovery után `refunded`, ezért a KÖVETKEZŐ Start már
- * tiszta lappal indul.
- */
-export const CHECKOUT_REFUNDED_RETRY =
-  'A fizetésed teljes összegét visszatérítettük, mert az összeg nem egyezett a rendeléssel. Hozzáférés nem jött létre. Indítsd újra a vásárlást.'
-
-export const CHECKOUT_REFUNDED_PRIVILEGED =
-  'A fizetésed teljes összegét visszatérítettük: ezzel az e-mail-címmel munkatársi fiók van, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
-export const CHECKOUT_PAID_UNDER_REVIEW =
-  'A fizetésed beérkezett, de a rendelést nem tudtuk automatikusan lezárni. Rövid időn belül rendezzük: vagy megnyitjuk a hozzáférést, vagy a teljes összeget visszatérítjük. Addig ne indíts új fizetést.'
 
 /**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem

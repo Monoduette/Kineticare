@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { CheckoutForm } from '@/components/checkout/CheckoutForm'
+import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { courseCtaHref } from '@/lib/course-url'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
@@ -57,6 +58,21 @@ async function getProductById(id: number): Promise<Product | null> {
       error: error instanceof Error ? error.message : String(error),
     })
     return null
+  }
+}
+
+async function hasLiveAccess(userId: number, product: Product): Promise<boolean> {
+  try {
+    const payload = await getPayload({ config })
+    const access = await resolveSingleCourseAccess({ payload, userId, product, logger })
+    return access.hasAccess
+  } catch (error) {
+    logger.warn('pénztár: hozzáférés-állapot számítása sikertelen', {
+      userId,
+      productId: product.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return true
   }
 }
 
@@ -122,7 +138,10 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
 
   // Vendégként nincs mit összevetni: a „már megvetted" állapotot a szerver a
   // fizetés indításakor (e-mail alapján) is ellenőrzi, 409-cel.
-  const alreadyPurchased = user !== null && hasUserPurchased(user.purchases, product.id)
+  const alreadyPurchased =
+    user !== null &&
+    hasUserPurchased(user.purchases, product.id) &&
+    (await hasLiveAccess(user.id, product))
   const price = coursePriceHuf(product)
   const isFree = isFreeCourse(product)
 

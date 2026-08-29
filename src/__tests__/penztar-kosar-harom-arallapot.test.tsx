@@ -511,6 +511,151 @@ describe('/kosar — FIZETŐS tétel: a pénztár útja sértetlen (pozitív kon
   })
 })
 
+// 5b. LEJÁRT HOZZÁFÉRÉS — a vevő ÚJRA megveheti (P1)
+
+/**
+ * A HIBA, AMIT BEZÁR (2026-08-29).
+ *
+ * Az időkorlátos kurzus (accessDurationDays) hozzáférése lejár. A KURZUSOLDAL
+ * ezt 2026 óta helyesen kezeli: a `purchased` ott `hasUserPurchased(...) ÉS
+ * élő hozzáférés`, tehát lejárat után újra a vásárlási CTA jelenik meg
+ * (src/app/(frontend)/kurzusok/[slug]/page.tsx). A SZERVER is engedi az
+ * újravásárlást: a `startCheckout` duplavásárlás-kapuja `access.reason ===
+ * 'expired'` esetén átenged (src/lib/checkout/start-checkout.ts).
+ *
+ * A pénztár és a kosár viszont csak a `hasUserPurchased`-et nézte, ezért a
+ * lejárt vevő ZSÁKUTCÁBA futott: a lejátszó lejárat-kapuja a kurzusoldalra
+ * küldte, ott a „Megveszem a kurzust" a pénztárba vitt, a pénztár pedig
+ * kiírta, hogy „Ezt a kurzust már megvetted", és a beküldő gomb helyett a
+ * lejátszóra mutató gombot adta — vissza oda, ahonnan jött.
+ *
+ * Ez a blokk azt méri, hogy a HÁROM felület ugyanazt a szabályt mondja
+ * (WCAG 2.2 · 3.2.4 Consistent Identification;
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html ;
+ * GOV.UK, don't drop people off a journey
+ * https://www.gov.uk/service-manual/design/user-centred-design ).
+ */
+const KORLATOS_TERMEK = { ...alapTermek, id: 81, accessDurationDays: 30 } as unknown as Product
+
+const vevoAKurzussal = { ...mockUser, purchases: [KORLATOS_TERMEK.id] } as unknown as User
+
+/**
+ * A hozzáférés-feloldás (`resolveSingleCourseAccess`) a Payload-lekérdezéseken
+ * át dolgozik: a paid rendelés `createdAt`-jából és a felhasználó
+ * `accessGrants` sorából számol (src/lib/course-access-lookup.ts). A mock
+ * ezért NEM a segédfüggvényt cseréli ki, hanem az ALATTA lévő két lekérdezést
+ * adja meg — így a valódi szabály fut le, a teszt pedig azt méri, amit éles.
+ */
+function mockPayloadHozzaferessel(
+  product: Product,
+  user: User | null,
+  paidOrderCreatedAt: string | null,
+) {
+  getPayloadMock.mockResolvedValue({
+    auth: vi.fn(async () => ({ user })),
+    findByID: vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'users' ? { ...(user ?? {}), accessGrants: [] } : product,
+    ),
+    find: vi.fn(async () => ({
+      docs:
+        paidOrderCreatedAt === null
+          ? []
+          : [
+              {
+                id: 1,
+                status: 'paid',
+                createdAt: paidOrderCreatedAt,
+                items: [{ id: 'sor-1', product: product.id, quantity: 1 }],
+              },
+            ],
+      totalDocs: paidOrderCreatedAt === null ? 0 : 1,
+    })),
+  } as never)
+}
+
+/** Réges-régi vásárlás: a 30 napos hozzáférés biztosan lejárt. */
+const LEJART_VASARLAS = '2020-01-01T10:00:00.000Z'
+/** Mai vásárlás: a hozzáférés él. */
+const ELO_VASARLAS = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+describe('/penztar — LEJÁRT hozzáférés: a normál vásárlási út jelenik meg', () => {
+  it('a beküldő űrlap ott van, és NEM „már megvetted" állapotban', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, LEJART_VASARLAS)
+    const tree = await renderPenztar(termekParam(KORLATOS_TERMEK))
+    const form = findElement(tree, CheckoutForm)
+    expect(form, 'a lejárt vevőnek a pénztár-űrlapot kell látnia').not.toBeNull()
+    expect((form as ReactElement).props).toMatchObject({ alreadyPurchased: false })
+  })
+
+  it('a „Ezt a kurzust már megvetted" sáv eltűnik, a fizető gomb visszajön', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, LEJART_VASARLAS)
+    const html = renderMarkup(await renderPenztar(termekParam(KORLATOS_TERMEK)))
+    expect(html).not.toContain('Ezt a kurzust már megvetted')
+    expect(html).toContain('type="submit"')
+    expect(html).toContain(ctaLabel('checkout-submit'))
+    expect(html).not.toContain(`href="/kurzusaim/${KORLATOS_TERMEK.id}"`)
+  })
+
+  it('ÉLŐ hozzáférésnél változatlanul a „már megvetted" állapot fut (pozitív kontroll)', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, ELO_VASARLAS)
+    const tree = await renderPenztar(termekParam(KORLATOS_TERMEK))
+    expect((findElement(tree, CheckoutForm) as ReactElement).props).toMatchObject({
+      alreadyPurchased: true,
+    })
+    const html = renderMarkup(tree)
+    expect(html).toContain('Ezt a kurzust már megvetted')
+    expect(html).toContain(`href="/kurzusaim/${KORLATOS_TERMEK.id}"`)
+  })
+
+  it('KORLÁTLAN kurzusnál a megvett állapot marad (a lejárat ott értelmezhetetlen)', async () => {
+    const vevo = { ...mockUser, purchases: [alapTermek.id] } as unknown as User
+    mockPayloadHozzaferessel(alapTermek, vevo, LEJART_VASARLAS)
+    const tree = await renderPenztar(termekParam(alapTermek))
+    expect((findElement(tree, CheckoutForm) as ReactElement).props).toMatchObject({
+      alreadyPurchased: true,
+    })
+  })
+
+  it('a lap ugyanazt a segédletet hívja, mint a kurzusoldal (nem másolt szabályt)', () => {
+    const oldal = kommentNelkul(olvas('app/(frontend)/penztar/page.tsx'))
+    const kurzusoldal = kommentNelkul(olvas('app/(frontend)/kurzusok/[slug]/page.tsx'))
+    for (const forras of [oldal, kurzusoldal]) {
+      expect(forras).toContain('resolveSingleCourseAccess(')
+      expect(forras).toContain('hasUserPurchased(')
+    }
+  })
+})
+
+describe('/kosar — LEJÁRT hozzáférés: nem a lejátszóra küld, hanem a pénztárba', () => {
+  it('a „már megvetted" sáv és a lejátszó-link eltűnik', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, LEJART_VASARLAS)
+    const html = renderMarkup(await renderKosarOldal(termekParam(KORLATOS_TERMEK)))
+    expect(html).not.toContain('Ezt a kurzust már megvetted')
+    expect(html).not.toContain(`href="/kurzusaim/${KORLATOS_TERMEK.id}"`)
+  })
+
+  it('a CartView a fizetés útját kapja, nem a már-megvett jelzést', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, LEJART_VASARLAS)
+    const view = findElement(await renderKosarOldal(termekParam(KORLATOS_TERMEK)), CartView)
+    expect((view as ReactElement).props).toMatchObject({ alreadyPurchasedProductId: null })
+  })
+
+  it('ÉLŐ hozzáférésnél változatlanul a lejátszóra visz (pozitív kontroll)', async () => {
+    mockPayloadHozzaferessel(KORLATOS_TERMEK, vevoAKurzussal, ELO_VASARLAS)
+    const tree = await renderKosarOldal(termekParam(KORLATOS_TERMEK))
+    expect((findElement(tree, CartView) as ReactElement).props).toMatchObject({
+      alreadyPurchasedProductId: KORLATOS_TERMEK.id,
+    })
+    expect(renderMarkup(tree)).toContain('Ezt a kurzust már megvetted')
+  })
+
+  it('a lap ugyanazt a segédletet hívja, mint a kurzusoldal', () => {
+    const oldal = kommentNelkul(olvas('app/(frontend)/kosar/page.tsx'))
+    expect(oldal).toContain('resolveSingleCourseAccess(')
+    expect(oldal).toContain('hasUserPurchased(')
+  })
+})
+
 // 6. A KOSÁR FELIRATAI — szótárból, elgépelés nélkül
 
 describe('CartView — a feliratok a §3.2 CTA-szótárból jönnek', () => {

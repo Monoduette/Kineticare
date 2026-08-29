@@ -586,6 +586,74 @@ describe('CoursePlayer — kapuzott állapotok', () => {
 })
 
 /**
+ * A 401 ÉS A 403 KÉT KÜLÖN HELYZET — a lejátszó felületén is (2026-08-29).
+ *
+ * A mért hiba: a stream-token kliens a 401-et és a 403-at EGY `forbidden`
+ * ágra ejtette, a lejátszó pedig erre az egy ágra a „Nincs hozzáférésed ehhez
+ * a videóhoz." mondatot írta ki. Akinek KÖZBEN járt le a munkamenete (a jegy
+ * ~5 percenként újul, a videó hosszabb), az azt olvasta, hogy nincs joga a
+ * megvásárolt kurzusához — hamis ok, és a felkínált kiút (kapcsolat) sem az
+ * övé volt. NN/g, Error Message Guidelines: ne mondj hamis okot, és mondd meg
+ * a következő lépést (https://www.nngroup.com/articles/error-message-guidelines/);
+ * GOV.UK Error message pattern: „say what happened and what to do next"
+ * (https://design-system.service.gov.uk/components/error-message/);
+ * WCAG 2.2 · 3.3.3 Error Suggestion
+ * (https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html).
+ *
+ * A DÖNTÉSI MAG tesztelt máshol (stream-token-client, course-player-refresh);
+ * a BEKÖTÉS viszont a komponensben él, és a mutációs próba szerint
+ * visszaírható lenne úgy, hogy minden más teszt zöld marad — ezért forrás-őr,
+ * a fájl bevett mintája szerint.
+ */
+describe('CoursePlayer — lejárt munkamenet a videó közben (forrás-őr)', () => {
+  const source = readFileSync(
+    new URL('../components/account/CoursePlayer.tsx', import.meta.url),
+    'utf8',
+  )
+
+  it('a 401 külön állapotot kap, nem a hozzáférés-hiány ágát', () => {
+    expect(source).toContain("if (result.kind === 'unauthenticated') {")
+    expect(source).toContain("setState({ kind: 'unauthenticated', message: result.message })")
+  })
+
+  it('a szerver magyar üzenete MINDKÉT kapun átjut a felületre', () => {
+    expect(source).toContain("setState({ kind: 'forbidden', message: result.message })")
+    const unauthenticatedJsx = source.indexOf("{state.kind === 'unauthenticated' ?")
+    const forbiddenJsx = source.indexOf("{state.kind === 'forbidden' ?")
+    expect(unauthenticatedJsx).toBeGreaterThan(-1)
+    expect(forbiddenJsx).toBeGreaterThan(unauthenticatedJsx)
+    const unauthenticatedBlock = source.slice(unauthenticatedJsx, forbiddenJsx)
+    expect(unauthenticatedBlock).toContain('{state.message ?? STREAM_SIGN_IN_REQUIRED_MESSAGE}')
+    // A forbidden ág tartaléka a MAI szöveg marad (a szerver üzenete nyer).
+    expect(source).toContain("{state.message ?? 'Nincs hozzáférésed ehhez a videóhoz.'}")
+  })
+
+  it('a lejárt munkamenet kiútja a Belépés, a VISSZATÉRÉSI útvonallal', () => {
+    const unauthenticatedJsx = source.indexOf("{state.kind === 'unauthenticated' ?")
+    const forbiddenJsx = source.indexOf("{state.kind === 'forbidden' ?")
+    const unauthenticatedBlock = source.slice(unauthenticatedJsx, forbiddenJsx)
+    // A cél a saját lejátszója, nem a Kurzusaim lista: belépés után ott
+    // folytatja, ahol abbahagyta (GOV.UK: don't drop people off a journey).
+    expect(unauthenticatedBlock).toContain('signInHref(myCoursePlayerHref(product.id))')
+    expect(unauthenticatedBlock).toContain("ctaLabel('sign-in')")
+    // A szótári felirat, nem literál (G-UI1/G-UI2).
+    expect(unauthenticatedBlock).not.toContain(ctaLabel('sign-in') + '<')
+  })
+
+  it('a belépés-kapu nem a kapcsolat-oldalra küld (az nem az ő teendője)', () => {
+    const unauthenticatedJsx = source.indexOf("{state.kind === 'unauthenticated' ?")
+    const forbiddenJsx = source.indexOf("{state.kind === 'forbidden' ?")
+    const unauthenticatedBlock = source.slice(unauthenticatedJsx, forbiddenJsx)
+    expect(unauthenticatedBlock).not.toContain('href="/kapcsolat"')
+    expect(unauthenticatedBlock).not.toContain("ctaLabel('retry')")
+  })
+
+  it('a hozzáférés-kapu (nincs hasAccess) nem hivatkozik szerver-üzenetre', () => {
+    expect(source).toContain("setState({ kind: 'forbidden', message: null })")
+  })
+})
+
+/**
  * A jelölés duplikáció-védelme korábban a `watched` és a `pending` ÁLLAPOTOT
  * olvasta, ami a callback lezárásából jön, és két renderelés között elavul.
  * Élesben mérve: gyors `timeupdate`-ütem mellett EGY leckére NÉGY

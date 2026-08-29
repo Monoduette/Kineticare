@@ -100,6 +100,16 @@ export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
  * a szöveghez köti; a cél a lejátszó (új pénztár 409 lenne), nem a checkout.
  */
 export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN = 'Ezt a lépést bejelentkezés után tudod befejezni.'
+
+export const CHECKOUT_REFUNDED_RETRY =
+  'A fizetésed teljes összegét visszatérítettük, mert az összeg nem egyezett a rendeléssel. Hozzáférés nem jött létre. Indítsd újra a vásárlást.'
+
+export const CHECKOUT_REFUNDED_PRIVILEGED =
+  'A fizetésed teljes összegét visszatérítettük: ezzel az e-mail-címmel munkatársi fiók van, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
+
+export const CHECKOUT_PAID_UNDER_REVIEW =
+  'A fizetésed beérkezett, de a rendelést nem tudtuk automatikusan lezárni. Rövid időn belül rendezzük: vagy megnyitjuk a hozzáférést, vagy a teljes összeget visszatérítjük. Addig ne indíts új fizetést.'
+
 export const CHECKOUT_WAIVER_ERROR = 'A vásárláshoz mindkét hozzájárulást el kell fogadnod.'
 
 /** ÁSZF-elfogadás a pénztárban — egy jelölőnégyzet, két hivatkozás; alapból üres (ingyenes terméken is). */

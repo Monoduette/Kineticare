@@ -46,6 +46,8 @@ import {
   CHECKOUT_ERROR_REGION_ID,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
   CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
   emptyGuestForm,
   prefillBillingForm,
   withBillingValue,
@@ -440,10 +442,17 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         a CheckoutErrorRegion fejkommentje írja le.
       */}
       <CheckoutErrorRegion error={error} />
-      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ? (
+      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ||
+      error === CHECKOUT_REFUNDED_PRIVILEGED ? (
         <p className="kc-checkout-form__block-hint">
           <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
             {ctaLabel('sign-in')}
+          </Button>
+        </p>
+      ) : error === CHECKOUT_PAID_UNDER_REVIEW ? (
+        <p className="kc-checkout-form__block-hint">
+          <Button href="/kapcsolat" size="sm" variant="secondary">
+            {ctaLabel('contact-open')}
           </Button>
         </p>
       ) : error === CHECKOUT_GUEST_FINISH_AFTER_LOGIN ? (

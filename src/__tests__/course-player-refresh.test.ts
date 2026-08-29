@@ -167,9 +167,29 @@ describe('keepPlayingOnRefreshFailure — a háttér-frissítés hibája nem bon
     expect(keepPlayingOnRefreshFailure('forbidden', true)).toBe(false)
   })
 
+  /**
+   * A 401 (lejárt vagy megszűnt munkamenet) 2026-08-29 óta külön ág. A
+   * viselkedése a `forbidden`-ével AZONOS: háttér-frissítésnél sem tartjuk
+   * életben a lejátszást, mert a következő jegykérés is 401 lenne, a
+   * betöltött jegy lejártakor pedig néma fekete lejátszó maradna. A helyes
+   * kiút a belépés-kapu, és azt látni kell.
+   */
+  it('unauthenticated: a belépés-kapu azonnali, háttér-frissítésnél is', () => {
+    expect(keepPlayingOnRefreshFailure('unauthenticated', true)).toBe(false)
+  })
+
   it('felhasználói betöltés hibája: a hibaállapot jogos, nincs néma elnyelés', () => {
     expect(keepPlayingOnRefreshFailure('error', false)).toBe(false)
     expect(keepPlayingOnRefreshFailure('unavailable', false)).toBe(false)
     expect(keepPlayingOnRefreshFailure('forbidden', false)).toBe(false)
+    expect(keepPlayingOnRefreshFailure('unauthenticated', false)).toBe(false)
+  })
+
+  it('a lejátszást KIZÁRÓLAG az átmeneti hibák tartják életben (a két kapu sosem)', () => {
+    const kinds = ['forbidden', 'unauthenticated', 'unavailable', 'error'] as const
+    expect(kinds.filter((kind) => keepPlayingOnRefreshFailure(kind, true))).toEqual([
+      'unavailable',
+      'error',
+    ])
   })
 })

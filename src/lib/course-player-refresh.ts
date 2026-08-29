@@ -132,13 +132,16 @@ export function nextRefreshDelaySec(
  * hibaosztály, csak a hibaágon át. Háttér-frissítésnél ezért a lejátszás
  * marad, és rövid újrapróba jön (TOKEN_REFRESH_RETRY_SEC).
  *
- * Kivétel a `forbidden`: ott a hozzáférés szűnt meg — a kapu nem várhat a
- * betöltött jegy lejáratáig. Felhasználói (nem-refresh) betöltésnél pedig a
- * hibaállapot jogos: a vevő választ vár, nem néma elnyelést.
+ * Kivétel a `forbidden` és az `unauthenticated`: az elsőnél a hozzáférés szűnt
+ * meg, a másodiknál a munkamenet — egyik kapu sem várhat a betöltött jegy
+ * lejáratáig, mert a következő jegykérés is ugyanazt a választ adná, a vevő
+ * pedig végül néma fekete lejátszót nézne. Felhasználói (nem-refresh)
+ * betöltésnél pedig a hibaállapot jogos: a vevő választ vár, nem néma
+ * elnyelést.
  */
 export function keepPlayingOnRefreshFailure(
-  kind: 'forbidden' | 'unavailable' | 'error',
+  kind: 'forbidden' | 'unauthenticated' | 'unavailable' | 'error',
   isRefresh: boolean,
 ): boolean {
-  return isRefresh && kind !== 'forbidden'
+  return isRefresh && kind !== 'forbidden' && kind !== 'unauthenticated'
 }

@@ -28,7 +28,8 @@ import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
 import { bunnyProtectedLibraryId } from '@/lib/stream/bunny-site-config'
 import { streamIframeSrc } from '@/lib/stream/contract'
-import { fetchStreamToken } from '@/lib/stream-token-client'
+import { fetchStreamToken, STREAM_SIGN_IN_REQUIRED_MESSAGE } from '@/lib/stream-token-client'
+import { signInHref } from '@/lib/return-url'
 
 import { eventsForLessonCompletion } from './player/analytics'
 import { useWatchTracking } from './player/useWatchTracking'
@@ -122,7 +123,8 @@ type PlayerState =
       /** A `loadedSrc`-be égetett jegy lejárata; ettől függ a csere. */
       loadedExpiresAtEpochSec: number | null
     }
-  | { kind: 'forbidden' }
+  | { kind: 'unauthenticated'; message: string | null }
+  | { kind: 'forbidden'; message: string | null }
   | { kind: 'unavailable' }
   | { kind: 'error'; message: string }
 
@@ -438,7 +440,7 @@ export function CoursePlayer({
         // magától „visszaélesztené" a lejátszót (mérve a review-körben).
         loadGenerationRef.current += 1
         clearRefreshTimer()
-        setState({ kind: 'forbidden' })
+        setState({ kind: 'forbidden', message: null })
         return
       }
       const lesson = findLessonByRef(curriculum, lessonRef)
@@ -498,8 +500,12 @@ export function CoursePlayer({
           }, TOKEN_REFRESH_RETRY_SEC * 1000)
           return
         }
+        if (result.kind === 'unauthenticated') {
+          setState({ kind: 'unauthenticated', message: result.message })
+          return
+        }
         if (result.kind === 'forbidden') {
-          setState({ kind: 'forbidden' })
+          setState({ kind: 'forbidden', message: result.message })
           return
         }
         if (result.kind === 'unavailable') {
@@ -880,9 +886,21 @@ export function CoursePlayer({
                   title={`${product.title}: ${activeLesson.title}`}
                 />
               ) : null}
+              {state.kind === 'unauthenticated' ? (
+                <p className="kc-player__media-error" role="alert">
+                  {state.message ?? STREAM_SIGN_IN_REQUIRED_MESSAGE}
+                  <Button
+                    href={signInHref(myCoursePlayerHref(product.id))}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {ctaLabel('sign-in')}
+                  </Button>
+                </p>
+              ) : null}
               {state.kind === 'forbidden' ? (
                 <p className="kc-player__media-error" role="alert">
-                  Nincs hozzáférésed ehhez a videóhoz.
+                  {state.message ?? 'Nincs hozzáférésed ehhez a videóhoz.'}
                   {activeRef === null ? null : (
                     <Button
                       onClick={() => void loadLesson(activeRef)}

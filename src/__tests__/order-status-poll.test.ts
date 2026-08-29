@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { pollOrderStatus } from '../lib/order-status-poll'
+import { ORDER_STATUSES, pollOrderStatus } from '../lib/order-status-poll'
 
 /**
  * A köszönőoldal kliens-oldali státusz-pollerének tesztjei.
@@ -79,6 +79,59 @@ describe('pollOrderStatus', () => {
   it('200, de status nélküli törzs → error', async () => {
     expect(await pollOrderStatus('X', fetchReturning(200, {}))).toEqual({ kind: 'error' })
     expect(await pollOrderStatus('X', fetchReturning(200, { status: 42 }))).toEqual({ kind: 'error' })
+  })
+
+  it('a hat ismert státusz mind átmegy a szűrésen', async () => {
+    for (const status of ORDER_STATUSES) {
+      const result = await pollOrderStatus('X', fetchReturning(200, { status }))
+      expect(result).toEqual({
+        kind: 'status',
+        status,
+        productId: null,
+        value: null,
+        currency: null,
+      })
+    }
+  })
+
+  /**
+   * A `body.status as OrderStatus` cast helyére fehérlista került: az unión
+   * kívüli érték (elgépelt, jövőbeli vagy támadó által küldött) korábban
+   * VÉGIGFOLYT a nézet-állapotgépen `OrderStatus`-ként, holott a
+   * ThankYouView `paid`/`cancelled`/`payment_failed`/`refunded` ágai
+   * pontos egyezésre épülnek. Az ismeretlen érték most a `created` sorsát
+   * kapja: a poll tovább fut, a 2 perces időkorlát pedig véd.
+   */
+  it('ismeretlen státusz → a created sorsa (tovább-pollozás, nincs hamis végállapot)', async () => {
+    for (const ismeretlen of ['', 'PAID', 'refund', 'sikeres', 'paid ']) {
+      expect(await pollOrderStatus('X', fetchReturning(200, { status: ismeretlen }))).toEqual({
+        kind: 'status',
+        status: 'created',
+        productId: null,
+        value: null,
+        currency: null,
+      })
+    }
+  })
+
+  it('az ismeretlen státusz sem veszíti el a többi mezőt', async () => {
+    expect(
+      await pollOrderStatus(
+        'X',
+        fetchReturning(200, {
+          status: 'ismeretlen',
+          productId: 42,
+          totalHufSnapshot: 19990,
+          currency: 'huf',
+        }),
+      ),
+    ).toEqual({
+      kind: 'status',
+      status: 'created',
+      productId: 42,
+      value: 19990,
+      currency: 'HUF',
+    })
   })
 
   it('hálózati hiba (fetch dob) → error, NEM kivétel', async () => {

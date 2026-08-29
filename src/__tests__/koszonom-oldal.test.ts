@@ -1,16 +1,21 @@
+import { readFileSync } from 'node:fs'
+
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import KoszonjukPage, { metadata } from '../app/(frontend)/fizetes/koszonom/page'
 import {
+  ThankYouFailed,
   ThankYouMissingOrder,
   ThankYouNotFound,
   ThankYouPaid,
+  ThankYouRefunded,
   ThankYouTimeout,
   ThankYouUnauthorized,
   ThankYouView,
 } from '../components/checkout/ThankYouView'
+import { ctaLabel } from '../lib/cta-vocabulary'
 
 /**
  * REGRESSZIÓ-ŐR: a köszönőoldal NEM dönthet szerver-oldali hitelesítésből.
@@ -222,6 +227,234 @@ describe('bejelentkezett, függő fizetés — a poll után is a kurzus a követ
     expect(html).toContain('href="/kurzusaim"')
     expect(html).toContain('Nyisd meg a kurzusaidat')
     expect(html).not.toContain('Kurzusaim oldalon')
+  })
+})
+
+/**
+ * VISSZATÉRÍTETT FIZETÉS — a negyedik kimenetel (2026-08-29).
+ *
+ * A rendelés `refunded` állapotba kerülhet a paid-átmenet ELLENŐRZÉSE után
+ * (összeg-eltérés, privilegizált fiókra kötött vendégvásárlás): a pénz
+ * automatikusan visszamegy, hozzáférés viszont NEM jön létre. A poll eddig
+ * ezt az állapotot nem ismerte, tehát a vevő a 2 perces időkorlátig pörgő
+ * „feldolgozzuk" nézetet kapta, majd egy „a bank még dolgozik rajta"
+ * üzenetet — mindkettő hamis állítás egy már lezárt, visszatérített
+ * fizetésről.
+ *
+ * Forrás: NN/g, Error Message Guidelines (mondd meg, mi történt és mi a
+ * következő lépés) https://www.nngroup.com/articles/error-message-guidelines/ ;
+ * GOV.UK Design System, Error message pattern
+ * https://design-system.service.gov.uk/components/error-message/ ;
+ * Baymard, a fizetési állapotot egyértelműen kell közölni
+ * https://baymard.com/blog/order-confirmation-design ;
+ * WCAG 2.2 · 3.3.1 Error Identification, 4.1.3 Status Messages.
+ */
+describe('visszatérített fizetés — a pénz visszament, hozzáférés nincs', () => {
+  const CIM = 'A fizetést visszatérítettük'
+  const TORZS =
+    'A rendelést az ellenőrzés után nem zárhattuk le, ezért a teljes összeget automatikusan visszaküldtük a kártyádra. Hozzáférés nem jött létre. Ha kérdésed van, írj nekünk, vagy indítsd újra a vásárlást.'
+
+  it('kimondja, hogy visszatérítettük az összeget, és hogy hozzáférés nem jött létre', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouRefunded, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain(CIM)
+    expect(html).toContain(TORZS)
+    // A három hamis állítás, amit ez a nézet kizár:
+    expect(html).not.toContain('Köszönjük a vásárlást')
+    expect(html).not.toContain('feldolgozása folyamatban')
+    expect(html).not.toContain('A fizetés nem sikerült')
+  })
+
+  it('a rendelésszám és a kiutak megvannak, új gombfelirat nélkül', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouRefunded, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain('KH-2026-000123')
+    expect(html).toContain('href="/kurzusok/42"')
+    expect(html).toContain(ctaLabel('course-sales-open'))
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).toContain(ctaLabel('contact-open'))
+    // A lejátszóra vivő gomb HAZUGSÁG lenne: hozzáférés nem jött létre.
+    expect(html).not.toContain('href="/kurzusaim/42"')
+    expect(html).not.toContain(ctaLabel('course-start'))
+  })
+
+  it('ismeretlen termék-id: a kapcsolat marad az egyetlen kiút (nem találunk ki célt)', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouRefunded, { orderNumber: 'KH-2026-000123', productId: null }),
+    )
+    expect(html).toContain(CIM)
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).not.toContain('/kurzusok/')
+  })
+
+  it('a meglévő nézet-szerkezetet használja (nincs új CSS-osztály)', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouRefunded, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).toContain('class="kc-thankyou"')
+    expect(html).toContain('kc-thankyou__order')
+    expect(html).toContain('kc-thankyou__actions')
+    expect(html).toContain('role="status"')
+  })
+
+  it('a mikroszöveg magyar szabály szerinti (nincs kvirtmínusz és gondolatjel)', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouRefunded, { orderNumber: 'KH-2026-000123', productId: 42 }),
+    )
+    expect(html).not.toMatch(/[–—]/)
+  })
+})
+
+/**
+ * A SIKERTELEN FIZETÉS SZÖVEGE (2026-08-29-i vezetői döntés).
+ *
+ * A korábbi „Semmi sem került levonásra, újrapróbálhatod bármikor." mondat
+ * OLYAT ÁLLÍTOTT, amit a felület nem tudhat: a kártyán maradhat zárolás, és a
+ * bank a késve jóváhagyott fizetést utólag is teljesítheti (ilyenkor a
+ * rendszer a paid-átmenetet magától elvégzi). A GOV.UK error message pattern
+ * és az NN/g Error Message Guidelines szerint a hibaüzenet nem ígérhet olyat,
+ * ami később hamisnak bizonyulhat; Baymard: a fizetési állapot közlése legyen
+ * pontos.
+ */
+describe('sikertelen fizetés — a levonásról nem állítunk többet a valóságnál', () => {
+  const html = () =>
+    renderToStaticMarkup(createElement(ThankYouFailed, { productId: 42 }))
+
+  it('a régi, feltétlen állítás eltűnt', () => {
+    expect(html()).not.toContain('Semmi sem került levonásra')
+    expect(html()).not.toContain('újrapróbálhatod bármikor')
+  })
+
+  it('a jóváhagyott szöveg áll ott, szó szerint', () => {
+    expect(html()).toContain(
+      'A fizetésedet a bank elutasította vagy megszakította. Ilyenkor általában nem történik levonás. Ha a bankod később mégis jóváhagyja a fizetést, automatikusan érvényesítjük, és e-mailben visszaigazoljuk. Újra is próbálhatod a fizetést.',
+    )
+  })
+
+  it('az újrapróbálás útja és a kapcsolat változatlan', () => {
+    expect(html()).toContain('href="/penztar?termek=42"')
+    expect(html()).toContain(ctaLabel('retry'))
+    expect(html()).toContain('href="/kapcsolat"')
+    expect(html()).toContain('kc-thankyou--failed')
+    expect(html()).toContain('role="alert"')
+  })
+
+  it('ismeretlen termék-id esetén a kurzuslista a biztonságos cél', () => {
+    const listaHtml = renderToStaticMarkup(createElement(ThankYouFailed, { productId: null }))
+    expect(listaHtml).toContain('href="/kurzusok"')
+    expect(listaHtml).not.toContain('/penztar?termek=')
+  })
+
+  it('a mikroszöveg magyar szabály szerinti (nincs kvirtmínusz és gondolatjel)', () => {
+    expect(html()).not.toMatch(/[–—]/)
+  })
+})
+
+/**
+ * MÉRÉS a visszatérítés-nézeten: érintőcél, 320 px-es reflow és a három
+ * betűméret-token. A nézet ÚJ CSS-t nem vezet be (a `.kc-thankyou` dobozt és
+ * a `.kc-thankyou__actions` sávot használja), ezért a mérés a meglévő
+ * tokenekből számol — becslés nélkül.
+ *
+ * WCAG 2.2 · 1.4.10 Reflow (320 CSS px-en nincs vízszintes görgetés)
+ * https://www.w3.org/WAI/WCAG22/Understanding/reflow.html ;
+ * WCAG 2.2 · 2.5.8 Target Size (Minimum)
+ * https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+ */
+describe('visszatérítés-nézet — mért érintőcél és 320 px-es reflow', () => {
+  const olvas = (relativUt: string): string =>
+    readFileSync(new URL(`../${relativUt}`, import.meta.url), 'utf8')
+  const kommentNelkul = (forras: string): string =>
+    forras.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  const szabalyTorzs = (css: string, szelektor: string): string => {
+    const minta = new RegExp(
+      `(^|[,}])\\s*${szelektor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(,[^{]*)?\\{([^}]*)\\}`,
+      'm',
+    )
+    return minta.exec(kommentNelkul(css))?.[3] ?? ''
+  }
+  const remPx = (ertek: string): number => {
+    const rem = /^([\d.]+)rem$/.exec(ertek.trim())
+    if (rem !== null) {
+      return Number.parseFloat(rem[1]) * 16
+    }
+    const px = /^([\d.]+)px$/.exec(ertek.trim())
+    return px === null ? Number.NaN : Number.parseFloat(px[1])
+  }
+
+  /** A tokenek `var(...)` hivatkozásokon át feloldva (a repó bevett mérési módja). */
+  const nyersTokenek = new Map<string, string>()
+  for (const talalat of kommentNelkul(olvas('app/(frontend)/styles/tokens.css')).matchAll(
+    /^\s*(--kc-[a-z0-9-]+):\s*([^;]+);/gm,
+  )) {
+    nyersTokenek.set(talalat[1], talalat[2].trim())
+  }
+  const token = (nev: string, melyseg = 0): number => {
+    const ertek = nyersTokenek.get(nev)
+    if (ertek === undefined || melyseg > 8) {
+      return Number.NaN
+    }
+    const hivatkozas = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+    return hivatkozas === null ? remPx(ertek) : token(hivatkozas[1], melyseg + 1)
+  }
+
+  const ui = olvas('app/(frontend)/styles/ui.css')
+  const checkout = olvas('app/(frontend)/checkout.css')
+
+  it('a nézet a MEGLÉVŐ osztályokat használja (nincs új CSS-szabály)', () => {
+    expect(szabalyTorzs(checkout, '.kc-thankyou')).not.toBe('')
+    expect(szabalyTorzs(checkout, '.kc-thankyou__actions')).not.toBe('')
+    // Új, csak ehhez a nézethez tartozó módosító nem keletkezett.
+    expect(checkout).not.toContain('.kc-thankyou--refunded')
+  })
+
+  it('a gombok érintőcélja legalább 44 px magas (SC 2.5.5/2.5.8)', () => {
+    const magassag = remPx(
+      /min-height:\s*([^;]+);/.exec(szabalyTorzs(ui, '.kc-button'))?.[1] ?? '',
+    )
+    expect(magassag, `mért min-height: ${magassag} px`).toBeGreaterThanOrEqual(44)
+  })
+
+  it('320 px-en a leghosszabb gombfelirat is befér, túlcsordulás nélkül (SC 1.4.10)', () => {
+    const oldalMargo = token('--kc-container-gutter')
+    const dobozBelso = token(
+      /padding:\s*var\((--kc-space-\d)\)/.exec(szabalyTorzs(checkout, '.kc-thankyou'))?.[1] ?? '',
+    )
+    const gombBelso = token(
+      /padding:\s*var\(--kc-space-\d\)\s+var\((--kc-space-\d)\)/.exec(
+        szabalyTorzs(ui, '.kc-button'),
+      )?.[1] ?? '',
+    )
+    for (const ertek of [oldalMargo, dobozBelso, gombBelso]) {
+      expect(ertek).toBeGreaterThan(0)
+    }
+
+    // 320 px-en a --kc-font-m clamp ALSÓ értéke érvényes: 1rem = 16 px.
+    const FONT_PX = 16
+    // A repó felső becslése a legszélesebb karakterre (penztar-kosar mérés).
+    const LEGSZELESEBB_KARAKTER_EM = 0.6
+    const feliratSav = 320 - 2 * oldalMargo - 2 * dobozBelso - 2 * gombBelso - 4
+    expect(feliratSav, `mért felirat-sáv: ${feliratSav} px`).toBeGreaterThan(0)
+
+    for (const felirat of [ctaLabel('course-sales-open'), ctaLabel('contact-open')]) {
+      const leghosszabbSzo = felirat
+        .split(/\s+/)
+        .reduce((leghosszabb, szo) => (szo.length > leghosszabb.length ? szo : leghosszabb), '')
+      const szoSzelesseg = leghosszabbSzo.length * LEGSZELESEBB_KARAKTER_EM * FONT_PX
+      expect(
+        szoSzelesseg,
+        `„${leghosszabbSzo}" felső becsléssel ${szoSzelesseg.toFixed(0)} px, a gomb belső sávja ${feliratSav} px`,
+      ).toBeLessThan(feliratSav)
+    }
+  })
+
+  it('a rendelésszám sora a HÁROM méret-token egyikén áll', () => {
+    expect(szabalyTorzs(checkout, '.kc-thankyou__order')).toMatch(
+      /font-size:\s*var\(--kc-font-[lms]\)/,
+    )
   })
 })
 
