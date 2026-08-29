@@ -254,8 +254,8 @@ interface CikkMezok {
   categories: number[]
   relatedPosts: number[]
   ctaCourse: number | null
-  author?: number
-  reviewedBy?: number
+  author?: number | null
+  reviewedBy?: number | null
 }
 
 /**
@@ -319,8 +319,13 @@ async function cikkMezok(
     relatedPosts,
     ctaCourse,
   }
-  if (szerzoIds[0] !== undefined) mezok.author = szerzoIds[0]
-  if (szerzoIds[1] !== undefined) mezok.reviewedBy = szerzoIds[1]
+  // Feloldott szerző hiányában a mezőt EXPLICIT nullázzuk: a #173 (staff/owner
+  // filterOptions) óta egy korábban beírt, ma már érvénytelen szerepű user a
+  // TÁROLT értékként is elbuktatja a mentést („A következő mező érvénytelen:
+  // Szerző") — akkor is, ha az update nem küld szerzőt. A null a rekordot
+  // menthetővé teszi; a szerep rendezése után a következő import visszaírja.
+  mezok.author = szerzoIds[0] ?? null
+  mezok.reviewedBy = szerzoIds[1] ?? null
   if (szerzoIds.length < meta.szerzoNevek.length) {
     logger.warn(
       'Tudástár-import: a cikk szerzői nem mind oldhatók fel. ' +
