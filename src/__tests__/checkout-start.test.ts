@@ -6,6 +6,8 @@ import type { Order, Product, User } from '../payload-types'
 import { createCheckoutStartHandler } from '../lib/checkout/route-handler'
 import {
   CHECKOUT_ALREADY_PURCHASED,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
   CheckoutError,
   paymentWindowToMs,
   startCheckout,
@@ -774,25 +776,30 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     return { promise, calls }
   }
 
-  it('total-mismatch reject + sikeres refund → 409, de NEM already-paid szöveg', async () => {
+  it('total-mismatch reject + sikeres refund → 409, PONTOSAN a retry-üzenettel', async () => {
     const { promise } = paidRejectRefundedSetup('total-mismatch')
-    await expect(promise).rejects.toMatchObject({ status: 409 })
-    const error = (await promise.catch((err: unknown) => err)) as Error
-    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
-    expect(error.message).toContain('visszatérítettük')
+    // A b1 mutációs próba igazolta: a laza (toContain) assert a felcserélt
+    // üzeneteket is átengedte — ezért az ok→üzenet párosítás pontos egyezéssel
+    // van leszögezve.
+    await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_REFUNDED_RETRY })
+    expect(CHECKOUT_REFUNDED_RETRY).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('guest-bind-privileged reject + sikeres refund → 409, visszatérítés-üzenettel', async () => {
+  it('guest-bind-privileged reject + sikeres refund → 409, PONTOSAN a belépős üzenettel', async () => {
     const { promise } = paidRejectRefundedSetup('guest-bind-privileged-account')
-    await expect(promise).rejects.toMatchObject({ status: 409 })
-    const error = (await promise.catch((err: unknown) => err)) as Error
-    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
-    expect(error.message).toContain('visszatérítettük')
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+      message: CHECKOUT_REFUNDED_PRIVILEGED,
+    })
+    expect(CHECKOUT_REFUNDED_PRIVILEGED).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('duplicate-paid reject + sikeres refund → marad az already-paid 409 (van hozzáférés)', async () => {
     const { promise } = paidRejectRefundedSetup('duplicate-paid-order')
     await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_ALREADY_PURCHASED })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('lejárt időkorlátos hozzáférés: bejelentkezve újravásárolható', async () => {

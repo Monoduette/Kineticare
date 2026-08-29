@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   TOKEN_IFRAME_RELOAD_REMAINING_SEC,
   TOKEN_REFRESH_BEFORE_EXPIRY_SEC,
+  keepPlayingOnRefreshFailure,
   mergePlayingSession,
   nextRefreshDelaySec,
   type FreshPlayingToken,
@@ -143,8 +144,32 @@ describe('nextRefreshDelaySec — a frissítés a betöltött jegy halála ELŐT
     expect(nextRefreshDelaySec(session, 1000)).toBe(30)
   })
 
+  it('a betöltött jegy negatív határidejénél is a 30 mp-es padló érvényes', () => {
+    // A token még bőven él, de a betöltött jegy csere-határideje már elmúlt:
+    // a min() negatívba menne — a padlónak itt is tartania kell.
+    const session = playing(0, 'token-a1', 100_000, SRC_A, 1_050)
+    expect(nextRefreshDelaySec(session, 1_000)).toBe(30)
+  })
+
   it('hiányzó betöltött jegy (null src): csak a token-lejárat számít', () => {
     const session = playing(0, 'token-a1', 7200, null)
     expect(nextRefreshDelaySec(session, 0)).toBe(6900)
+  })
+})
+
+describe('keepPlayingOnRefreshFailure — a háttér-frissítés hibája nem bontja le a lejátszást', () => {
+  it('átmeneti hiba háttér-frissítéskor: a lejátszás marad (a betöltött jegy még él)', () => {
+    expect(keepPlayingOnRefreshFailure('error', true)).toBe(true)
+    expect(keepPlayingOnRefreshFailure('unavailable', true)).toBe(true)
+  })
+
+  it('forbidden: a kapu azonnali (hozzáférés-megvonás nem várhat a jegy lejáratáig)', () => {
+    expect(keepPlayingOnRefreshFailure('forbidden', true)).toBe(false)
+  })
+
+  it('felhasználói betöltés hibája: a hibaállapot jogos, nincs néma elnyelés', () => {
+    expect(keepPlayingOnRefreshFailure('error', false)).toBe(false)
+    expect(keepPlayingOnRefreshFailure('unavailable', false)).toBe(false)
+    expect(keepPlayingOnRefreshFailure('forbidden', false)).toBe(false)
   })
 })

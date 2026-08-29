@@ -1462,4 +1462,114 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     ).toBe(false)
     expect(lateSuccess[0]?.status).toBe('refunded')
   })
+
+  it('párhuzamos refund a lap betöltése után (skipped/already-refunded) → a friss-olvasás véd', async () => {
+    // A mutációs próba (a2) igazolta: ezen az ágon a recoveryRefunded zászló
+    // HAMIS marad (a recovery already-refunded skippel tér vissza), tehát
+    // KIZÁRÓLAG a touch előtti friss DB-olvasás akadályozza a visszaírást.
+    // Ez a teszt szögezi le, hogy a guard nem „fölösleges extra findByID".
+    const order = createPendingOrder({ id: 912, barionPaymentId: 'p0-parallel-payment' })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [order],
+      stateOverrides: refundableState,
+    })
+
+    await pollPendingOrders({
+      payload,
+      // A GetState alatt fut be a párhuzamos callback-recovery: a DB-ben a sor
+      // már refunded, a poll kezében lévő példány payment_pending marad.
+      fetchState: async () => {
+        pending[0].status = 'refunded'
+        return getStateResponse('Succeeded', refundableState)
+      },
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'payment_pending'),
+      'a poll a párhuzamosan refundolt sort payment_pendingre írta vissza',
+    ).toBe(false)
+    expect(pending[0].status).toBe('refunded')
+  })
+})
+
+describe('RF-3 — a nem-paid late-success sor forgatása le van szögezve', () => {
+  it('late-success Canceled (nem fordult paid-re) → touch forgatja a sort', async () => {
+    // A mutációs próba (rf3) igazolta: a touch törlése zölden átment — ez a
+    // teszt zárja a rést. A touch dolga az updatedAt-bump, hogy a 10+10-es
+    // late-success ablak ne ugyanazokat a sorokat nézze minden futásban.
+    const cancelled = createPendingOrder({
+      id: 913,
+      status: 'cancelled',
+      barionPaymentId: 'rf3-rotate-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Canceled',
+    })
+
+    await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'cancelled'),
+      'az RF-3 touch nem forgatta a nem-paid late-success sort (updatedAt-bump elmaradt)',
+    ).toBe(true)
+  })
+})
+
+describe('árva-ág — friss-státusz őr a cancelled írás előtt', () => {
+  it('árva sor, amit a lap betöltése után paid-re állít a callback → nincs cancelled felülírás', async () => {
+    // A checkout a Payment/Start után, a paymentId mentése előtt is elhalhat —
+    // a kései callback a PaymentRequestId-fallbackkel ilyenkor is párosít és
+    // paid-re állíthat. A poll árva-ága a lapbetöltéskori stale példányból
+    // dolgozik: friss-olvasás nélkül a FIZETETT sorra írna cancelled-et.
+    const paidLater = createPendingOrder({
+      id: 914,
+      barionPaymentId: null,
+      createdAt: new Date(NOW - ORPHAN_ORDER_GRACE_MS - 60_000).toISOString(),
+      updatedAt: isoHoursAgo(30),
+    })
+    const first = createPendingOrder({
+      id: 915,
+      barionPaymentId: 'orphan-race-payment',
+      updatedAt: isoHoursAgo(40),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [first, paidLater],
+    })
+
+    await pollPendingOrders({
+      payload,
+      // Az első (paymentId-s) sor GetState-je alatt fut be a kései callback,
+      // és paid-re állítja az árva sort a DB-ben.
+      fetchState: async () => {
+        const target = pending.find((row) => row.id === 914)
+        if (target) {
+          target.status = 'paid'
+        }
+        return getStateResponse('Prepared')
+      },
+      onPaid,
+      queueInvoice,
+      now: NOW,
+    })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'cancelled'),
+      'az árva-ág a közben paid-re állt sort cancelled-re írta felül',
+    ).toBe(false)
+    expect(pending.find((row) => row.id === 914)?.status).toBe('paid')
+  })
 })

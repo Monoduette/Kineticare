@@ -14,6 +14,8 @@ import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/Progress'
 import { markVideoWatched } from '@/lib/course-progress/client'
 import {
+  TOKEN_REFRESH_RETRY_SEC,
+  keepPlayingOnRefreshFailure,
   mergePlayingSession,
   nextRefreshDelaySec,
   type PlayingSession,
@@ -431,11 +433,18 @@ export function CoursePlayer({
   const loadLesson = useCallback<LoadLesson>(
     async (lessonRef, isRefresh = false) => {
       if (!hasAccess) {
+        // A korai hibaágakon is meg kell halnia az ELŐZŐ lecke időzítőjének:
+        // különben a kapu/hibaképernyő fölött a régi lecke frissítője később
+        // magától „visszaélesztené" a lejátszót (mérve a review-körben).
+        loadGenerationRef.current += 1
+        clearRefreshTimer()
         setState({ kind: 'forbidden' })
         return
       }
       const lesson = findLessonByRef(curriculum, lessonRef)
       if (lesson === null || !lesson.playable) {
+        loadGenerationRef.current += 1
+        clearRefreshTimer()
         setState({ kind: 'error', message: 'Ez a lecke jelenleg nem érhető el.' })
         return
       }
@@ -473,15 +482,30 @@ export function CoursePlayer({
         return
       }
 
-      if (result.kind === 'forbidden') {
-        setState({ kind: 'forbidden' })
-        return
-      }
-      if (result.kind === 'unavailable') {
-        setState({ kind: 'unavailable' })
-        return
-      }
-      if (result.kind === 'error') {
+      if (result.kind !== 'token') {
+        // Háttér-frissítés átmeneti hibája NEM bontja le a futó lejátszást: a
+        // betöltött jegy még ~5 percig él, a state-váltás viszont azonnal
+        // unmountolná az iframe-et (pozícióvesztés), és új időzítő híján a
+        // frissítő-lánc végleg meghalna — a fekete-lejátszó osztály a hibaágon
+        // át. Rövid újrapróba megy helyette (a szabály a tiszta modulban).
+        if (
+          keepPlayingOnRefreshFailure(result.kind, isRefresh) &&
+          playingRef.current?.lessonRef === lessonRef
+        ) {
+          clearRefreshTimer()
+          refreshTimerRef.current = window.setTimeout(() => {
+            void loadLessonRef.current?.(lessonRef, true)
+          }, TOKEN_REFRESH_RETRY_SEC * 1000)
+          return
+        }
+        if (result.kind === 'forbidden') {
+          setState({ kind: 'forbidden' })
+          return
+        }
+        if (result.kind === 'unavailable') {
+          setState({ kind: 'unavailable' })
+          return
+        }
         setState({ kind: 'error', message: result.message })
         return
       }

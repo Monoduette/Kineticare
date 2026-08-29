@@ -24,6 +24,9 @@ export const TOKEN_IFRAME_RELOAD_REMAINING_SEC = 90
 /** A token-frissítés a lejárat előtt ennyivel korábban fut (másodperc). */
 export const TOKEN_REFRESH_BEFORE_EXPIRY_SEC = 300
 
+/** Sikertelen háttér-frissítés után ennyi másodperc múlva jön az újrapróba. */
+export const TOKEN_REFRESH_RETRY_SEC = 30
+
 /** A „playing" állapot — a token a legfrissebb, a loadedSrc az iframe-ben lévő. */
 export interface PlayingSession {
   videoIndex: number
@@ -117,4 +120,25 @@ export function nextRefreshDelaySec(
       ? loadedExpires - nowSec - TOKEN_IFRAME_RELOAD_REMAINING_SEC
       : Number.POSITIVE_INFINITY
   return Math.max(30, Math.min(tokenDeadlineSec, loadedDeadlineSec))
+}
+
+/**
+ * Lebonthatja-e a token-válasz hibaága a futó lejátszást?
+ *
+ * A frissítés a lejárat előtt 300 mp-cel fut, tehát hibája pillanatában a
+ * BETÖLTÖTT jegy még percekig érvényes — egyetlen átmeneti 5xx/hálózati hiba
+ * miatt state-et váltani az iframe unmountját (pozícióvesztést) és a
+ * frissítő-lánc végleges halálát jelentené: pontosan a fekete-lejátszó
+ * hibaosztály, csak a hibaágon át. Háttér-frissítésnél ezért a lejátszás
+ * marad, és rövid újrapróba jön (TOKEN_REFRESH_RETRY_SEC).
+ *
+ * Kivétel a `forbidden`: ott a hozzáférés szűnt meg — a kapu nem várhat a
+ * betöltött jegy lejáratáig. Felhasználói (nem-refresh) betöltésnél pedig a
+ * hibaállapot jogos: a vevő választ vár, nem néma elnyelést.
+ */
+export function keepPlayingOnRefreshFailure(
+  kind: 'forbidden' | 'unavailable' | 'error',
+  isRefresh: boolean,
+): boolean {
+  return isRefresh && kind !== 'forbidden'
 }

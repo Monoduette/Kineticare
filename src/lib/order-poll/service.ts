@@ -403,6 +403,13 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
      * Igaz, ha a paid-reject recovery SIKERES auto-refundot zárt (a DB-ben már
      * `refunded` a státusz). Ekkor SEMMILYEN touch nem futhat: a W1/RF-3
      * no-op visszaírás a stale in-memory státusszal újranyitná a lezárt sort.
+     *
+     * FIGYELEM: a zászló NEM teljes körű „a DB refunded" jelző, csak rövidzár.
+     * Van ág, ahol a DB-be refunded kerül, de a zászló hamis marad (a recovery
+     * `skipped/already-refunded`-ot ad, mert egy párhuzamos futás refundolt;
+     * vagy `failed`-et `unexpected-barion-status` mellett) — ott a touch előtti
+     * FRISS DB-olvasás a teherviselő védelem. A zászló elhagyható lenne, a
+     * friss olvasás nem.
      */
     let recoveryRefunded = false
 
@@ -504,6 +511,18 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         // rendelés létrehozása után, a paymentId mentése előtt állt le).
         const createdAtMs = Date.parse(order.createdAt ?? '')
         if (Number.isFinite(createdAtMs) && now - createdAtMs >= ORPHAN_ORDER_GRACE_MS) {
+          // Friss-státusz őr itt is (a W1/RF-3 touch mintájára): a Payment/Start
+          // a paymentId MENTÉSE előtt is elhalhat, a kései callback pedig a
+          // PaymentRequestId-fallbackkel párosít és paid-re állíthat — a lap
+          // betöltésekori stale példány alapján cancelled-et írni egy FIZETETT
+          // rendelést törölne.
+          if ((await readFreshOrderStatus(deps.payload, order.id)) !== 'payment_pending') {
+            summary.skipped += 1
+            orderLog.warn(
+              'árva rendelés: a friss DB-státusz már nem payment_pending — a cancelled írás kimarad',
+            )
+            continue
+          }
           await deps.payload.update({
             collection: 'orders',
             id: order.id,

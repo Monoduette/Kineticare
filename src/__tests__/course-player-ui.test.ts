@@ -488,6 +488,32 @@ describe('CoursePlayer — a felület szerződése a szerveroldali kimeneten', (
   })
 })
 
+describe('CoursePlayer — a token-időzítés bekötése (forrás-őr)', () => {
+  // A tiszta modul (course-player-refresh.ts) tesztelt, de a hibajegy a
+  // BEKÖTÉSEN élt: az időzítő csak az új token lejáratából számolt, a
+  // betöltött jegy csere-határidejét figyelmen kívül hagyva (~1,8 óra fekete
+  // lejátszó). A mutációs próba igazolta, hogy a bekötés visszaírása minden
+  // tesztet zölden hagyna — ezért forrás-őr, a fájl bevett mintája szerint.
+  const source = readFileSync(
+    new URL('../components/account/CoursePlayer.tsx', import.meta.url),
+    'utf8',
+  )
+
+  it('az időzítő az ÖSSZEFÉSÜLT állapotból számol, nem a friss token lejáratából', () => {
+    expect(source).toContain('nextRefreshDelaySec(merged, nowSec) * 1000')
+    expect(source).not.toMatch(/Math\.max\(\s*30,\s*expiresAtEpochSec/)
+  })
+
+  it('a playingRef az összefésült munkamenetet tükrözi (a merge szinkron fut)', () => {
+    expect(source).toContain('playingRef.current = { lessonRef, session: merged }')
+  })
+
+  it('háttér-frissítés hibája a tiszta modul szabályán megy át (nincs azonnali lebontás)', () => {
+    expect(source).toContain('keepPlayingOnRefreshFailure(result.kind, isRefresh)')
+    expect(source).toContain('TOKEN_REFRESH_RETRY_SEC * 1000')
+  })
+})
+
 describe('CoursePlayer — kapuzott állapotok', () => {
   it('feldolgozás alatti tananyagnál nem üres képernyő, hanem magyar magyarázat', () => {
     const onlyProcessing = makeCurriculum([
