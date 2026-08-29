@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import type { AdminViewServerProps } from 'payload'
 import Link from 'next/link'
 
@@ -13,6 +13,17 @@ import type { CourseEngagementReport } from '../../lib/statistics/engagement'
 import { queryRevenueReport } from '../../lib/statistics/query'
 import { formatHuf, type RevenueReport } from '../../lib/statistics/revenue'
 import { AdminChrome, AdminViewFrame } from './AdminChrome'
+import { StatCard } from './statistics/StatCard'
+import {
+  cardRowStyle,
+  headingStyle,
+  leadInSectionStyle,
+  leadStyle,
+  noticeStyle,
+  pageStyle,
+  sectionStyle,
+  sectionTopStyle,
+} from './statistics/styles'
 
 /**
  * Admin Webanalitika nézet (`/admin/webanalitika`).
@@ -40,16 +51,6 @@ import { AdminChrome, AdminViewFrame } from './AdminChrome'
  * (admin-nezet-kapu-kotes.test.tsx).
  */
 
-const pageStyle: CSSProperties = {
-  padding: 'calc(var(--base) * 1.5)',
-  maxWidth: '80rem',
-}
-
-const leadStyle: CSSProperties = {
-  color: 'var(--theme-elevation-650)',
-  maxWidth: '42rem',
-}
-
 /**
  * A külső linkek sora. A célfelület legalább 44 px magas (a repó saját
  * célértéke, docs/ui-sztenderdek.md §3), a linkek új lapon nyílnak — az admin
@@ -72,36 +73,6 @@ export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
 export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
   'Az eladás- és haladás-számok most nem érhetők el. A részletes bontást a Statisztika oldalon találod, vagy próbáld újra pár perc múlva.'
 
-/** Egy kiemelt szám doboza (címke + érték), 320 px-en is tördelődő sorban. */
-const statBoxStyle: CSSProperties = {
-  border: '1px solid var(--theme-elevation-150)',
-  borderRadius: '4px',
-  flex: '1 1 10rem',
-  minWidth: '9rem',
-  padding: 'calc(var(--base) * 0.6) calc(var(--base) * 0.75)',
-}
-
-const statValueStyle: CSSProperties = {
-  display: 'block',
-  fontSize: '1.4rem',
-  fontWeight: 600,
-}
-
-const statLabelStyle: CSSProperties = {
-  color: 'var(--theme-elevation-650)',
-  display: 'block',
-  fontSize: '0.85rem',
-}
-
-function StatBox({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div style={statBoxStyle}>
-      <span style={statValueStyle}>{value}</span>
-      <span style={statLabelStyle}>{label}</span>
-    </div>
-  )
-}
-
 /**
  * A hat kiemelt szám kiszámítása a Statisztika-lekérdezések jelentéseiből.
  *
@@ -112,12 +83,12 @@ function StatBox({ label, value }: { label: string; value: ReactNode }) {
 function dbSummaryStats(
   report: RevenueReport,
   engagement: CourseEngagementReport | null,
-): Array<{ label: string; value: ReactNode }> {
+): Array<{ label: string; value: string }> {
   const currentMonth = report.months.at(-1)
-  const stats: Array<{ label: string; value: ReactNode }> = [
+  const stats: Array<{ label: string; value: string }> = [
     { label: 'Bevétel ebben a hónapban', value: formatHuf(currentMonth?.totalHuf ?? 0) },
-    { label: 'Fizetett rendelés ebben a hónapban', value: currentMonth?.orderCount ?? 0 },
-    { label: 'Fizetett rendelés összesen', value: report.totals.orderCount },
+    { label: 'Fizetett rendelés ebben a hónapban', value: String(currentMonth?.orderCount ?? 0) },
+    { label: 'Fizetett rendelés összesen', value: String(report.totals.orderCount) },
   ]
   if (engagement !== null) {
     let enrolled = 0
@@ -129,9 +100,9 @@ function dbSummaryStats(
       completed += course.completed
     }
     stats.push(
-      { label: 'Kurzus-hozzáférés (vevő × kurzus)', value: enrolled },
-      { label: 'Elkezdte a kurzust', value: started },
-      { label: 'Be is fejezte', value: completed },
+      { label: 'Kurzus-hozzáférés (vevő × kurzus)', value: String(enrolled) },
+      { label: 'Elkezdte a kurzust', value: String(started) },
+      { label: 'Be is fejezte', value: String(completed) },
     )
   }
   return stats
@@ -142,8 +113,8 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   if (!hasStaffOrOwnerRole(req.user)) {
     return (
       <AdminViewFrame props={props}>
-        <div style={pageStyle}>
-          <h1 style={{ marginTop: 0 }}>Webanalitika</h1>
+        <div className="kc-adminstat" style={pageStyle}>
+          <h1 style={headingStyle}>Webanalitika</h1>
           <p>{WEB_ANALYTICS_ACCESS_DENIED_MESSAGE}</p>
         </div>
       </AdminViewFrame>
@@ -176,8 +147,8 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
 
   return (
     <AdminChrome props={props}>
-      <div style={pageStyle}>
-        <h1 style={{ marginTop: 0 }}>Webanalitika</h1>
+      <div className="kc-adminstat" style={pageStyle}>
+        <h1 style={headingStyle}>Webanalitika</h1>
         <p style={leadStyle}>
           Egy képernyőn a legfontosabb számok és a látogatói viselkedés. A részletes bontás (havi
           bevétel-grafikon, kurzusonkénti haladás, név szerinti lista) a{' '}
@@ -186,31 +157,25 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
           </Link>{' '}
           oldalon él: ott is, itt is az adatbázis a forrás.
         </p>
-        <section aria-label="Eladások és kurzushaladás">
-          <h2 style={{ marginBottom: 'calc(var(--base) * 0.5)' }}>Eladások és kurzushaladás</h2>
+        <section aria-label="Eladások és kurzushaladás" style={{ ...sectionStyle, ...sectionTopStyle }}>
+          <h2 style={headingStyle}>Eladások és kurzushaladás</h2>
           {report === null ? (
-            <p style={leadStyle}>{WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE}</p>
+            <p style={leadInSectionStyle}>{WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE}</p>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 'calc(var(--base) * 0.5)',
-              }}
-            >
+            <div style={cardRowStyle}>
               {dbSummaryStats(report, engagement).map((stat) => (
-                <StatBox key={stat.label} label={stat.label} value={stat.value} />
+                <StatCard key={stat.label} label={stat.label} value={stat.value} />
               ))}
             </div>
           )}
           {report !== null && engagement === null ? (
-            <p style={leadStyle}>
+            <p style={noticeStyle}>
               A kurzushaladás-számok most nem érhetők el, a részleteket a Statisztika oldalon
               találod.
             </p>
           ) : null}
         </section>
-        <h2 style={{ marginBottom: 'calc(var(--base) * 0.25)' }}>Látogatói viselkedés</h2>
+        <h2 style={headingStyle}>Látogatói viselkedés</h2>
         <nav aria-label="Külső elemző-felületek">
           <ul
             style={{

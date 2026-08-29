@@ -4,8 +4,8 @@ import {
   HOME_PAGE_SLUG,
   getAllPublishedPages,
   getContentCategories,
-  getPosts,
-  getPublishedProducts,
+  getSitemapPosts,
+  getSitemapProducts,
 } from '@/lib/cms'
 import { courseHref } from '@/lib/course-url'
 import { absoluteUrl } from '@/lib/seo'
@@ -44,9 +44,9 @@ function hasSlug(doc: { slug?: string | null }): boolean {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [pages, posts, categories, products] = await Promise.all([
     getAllPublishedPages(),
-    getPosts({ limit: 500 }),
+    getSitemapPosts(500),
     getContentCategories(),
-    getPublishedProducts(500),
+    getSitemapProducts(500),
   ])
 
   const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({

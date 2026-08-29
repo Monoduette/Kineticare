@@ -51,15 +51,32 @@ export function dotStuff(body: string): string {
   return body.replace(/\r\n\./g, '\r\n..')
 }
 
+const HEADER_BREAK_PATTERN = /[\u0000-\u001F\u007F]+/g
+
+export function stripHeaderBreaks(value: string): string {
+  return value.replace(HEADER_BREAK_PATTERN, ' ').trim()
+}
+
+export function formatFromHeader(from: string): string {
+  const sanitized = stripHeaderBreaks(from)
+  const match = /^(.*)<([^<>]*)>$/.exec(sanitized)
+  if (match === null) {
+    return sanitized.includes('@') ? sanitized : encodeWord(sanitized)
+  }
+  const name = match[1].trim().replace(/^"(.*)"$/, '$1').trim()
+  const address = match[2].trim()
+  return name.length > 0 ? `${encodeWord(name)} <${address}>` : `<${address}>`
+}
+
 /** A tesztek miatt exportált üzenet-összeállító (multipart/alternative, base64). */
 export function buildMessage(config: SmtpConfig, message: MailMessage): string {
   const boundary = `----kineticare-${Date.now().toString(36)}`
   const textPart = Buffer.from(message.text, 'utf8').toString('base64')
   const htmlPart = Buffer.from(message.html, 'utf8').toString('base64')
   const headers = [
-    `From: ${encodeWord(config.from)}`,
-    `To: ${message.to.join(', ')}`,
-    `Subject: ${encodeWord(message.subject)}`,
+    `From: ${formatFromHeader(config.from)}`,
+    `To: ${message.to.map(stripHeaderBreaks).join(', ')}`,
+    `Subject: ${encodeWord(stripHeaderBreaks(message.subject))}`,
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -208,9 +225,9 @@ class SmtpSession {
       await this.command(Buffer.from(config.user, 'utf8').toString('base64'), [334])
       await this.command(Buffer.from(config.pass ?? '', 'utf8').toString('base64'), [235])
     }
-    await this.command(`MAIL FROM:<${config.fromAddress}>`, [250])
+    await this.command(`MAIL FROM:<${stripHeaderBreaks(config.fromAddress)}>`, [250])
     for (const recipient of message.to) {
-      await this.command(`RCPT TO:<${recipient}>`, [250, 251])
+      await this.command(`RCPT TO:<${stripHeaderBreaks(recipient)}>`, [250, 251])
     }
     await this.command('DATA', [354])
     const data = `${dotStuff(buildMessage(config, message))}\r\n.\r\n`

@@ -110,18 +110,38 @@ export const cartStore = {
   getServerSnapshot: getServerCartSnapshot,
 }
 
+function isCartItem(value: unknown): value is CartItem {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { productId } = value as { productId?: unknown }
+  return typeof productId === 'number' && Number.isFinite(productId) && productId > 0
+}
+
+function parseCartItems(parsed: unknown): CartItem[] {
+  if (typeof parsed !== 'object' || parsed === null) {
+    return []
+  }
+  const { items } = parsed as { items?: unknown }
+  return Array.isArray(items) ? items.filter(isCartItem) : []
+}
+
+let memoryCart: CartState | null = null
+
 /** A kosár perzisztencia a localStorage-ban (kliens-oldali minimális — a szerver mindig újraszámolja az árat). */
 export function readCart(): CartState {
   if (typeof window === 'undefined') {
     return { items: [] }
+  }
+  if (memoryCart !== null) {
+    return memoryCart
   }
   try {
     const raw = window.localStorage.getItem(CART_STORAGE_KEY)
     if (!raw) {
       return { items: [] }
     }
-    const parsed = JSON.parse(raw) as CartState
-    return Array.isArray(parsed.items) ? parsed : { items: [] }
+    return { items: parseCartItems(JSON.parse(raw)) }
   } catch {
     return { items: [] }
   }
@@ -131,7 +151,12 @@ export function writeCart(state: CartState): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(state))
+  try {
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(state))
+    memoryCart = null
+  } catch {
+    memoryCart = state
+  }
   notifyCartChanged()
 }
 

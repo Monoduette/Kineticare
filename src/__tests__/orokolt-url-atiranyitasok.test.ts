@@ -442,9 +442,9 @@ describe('sitemap — átirányított cím nem indexelendő', () => {
             'aszf',
           ].map((slug) => ({ slug, updatedAt: '2026-08-16T00:00:00.000Z' })),
         ),
-      getPosts: () => Promise.resolve([]),
+      getSitemapPosts: () => Promise.resolve([]),
       getContentCategories: () => Promise.resolve([]),
-      getPublishedProducts: () =>
+      getSitemapProducts: () =>
         Promise.resolve([
           { id: 1, slug: 'otthoni-kezrehab-program', updatedAt: '2026-08-16T00:00:00.000Z' },
           { id: 2, slug: 'sos-kezrelax-villamkurzus', updatedAt: '2026-08-16T00:00:00.000Z' },

@@ -146,8 +146,10 @@ export default async function KurzusaimPage() {
   const payload = await getPayload({ config })
   const products = await loadPurchasedProducts({ payload, purchases: user.purchases })
 
-  const accessByProductId = await getAccessViews(user.id, products)
-  const watchedByProduct = await getWatchedRefs(user.id, products)
+  const [accessByProductId, watchedByProduct] = await Promise.all([
+    getAccessViews(user.id, products),
+    getWatchedRefs(user.id, products),
+  ])
   const cards = buildCards(products, accessByProductId, watchedByProduct)
   // Egyetlen kurzusnál az összegzés nem mond semmit, amit a kártya ne mondana
   // el — ott a fejléc a puszta címre szorítkozik.

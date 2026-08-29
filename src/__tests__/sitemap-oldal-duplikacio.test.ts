@@ -25,9 +25,9 @@ vi.mock('@/lib/cms', () => ({
       { id: 2, slug: 'kapcsolat', updatedAt: '2026-02-01T10:00:00.000Z' },
       { id: 3, slug: 'szolgaltatasok', updatedAt: '2026-02-01T10:00:00.000Z' },
     ]),
-  getPosts: () => Promise.resolve([]),
+  getSitemapPosts: () => Promise.resolve([]),
   getContentCategories: () => Promise.resolve([]),
-  getPublishedProducts: () => Promise.resolve([]),
+  getSitemapProducts: () => Promise.resolve([]),
 }))
 
 import sitemap from '../app/sitemap'
