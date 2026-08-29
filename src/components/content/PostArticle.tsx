@@ -47,6 +47,14 @@ export interface PostArticleProps {
    * ajánlóhoz; kihagyva vagy null értékkel a panel ingyenes sora elmarad.
    */
   freeCourse?: unknown
+  /**
+   * A cikk kanonikus útvonala a sémákban (Article JSON-LD, morzsa).
+   * Alap: `/blog/{slug}`. A gyökér-hub útvonal (`/[slug]`) ugyanazt a
+   * cikk-élményt rendereli a saját címén — ilyenkor a séma-útvonalnak a
+   * gyökér-URL-t kell mondania, különben a JSON-LD a 308-cal átirányító
+   * régi címre mutatna.
+   */
+  path?: string
 }
 
 /** Csak közzétett, sluggal rendelkező cikk jelenhet meg kapcsolódóként; max 3. */
@@ -58,7 +66,8 @@ function displayableRelated(posts: readonly (number | Post)[] | null | undefined
     .slice(0, 3)
 }
 
-export function PostArticle({ post, related: relatedProp, freeCourse }: PostArticleProps) {
+export function PostArticle({ post, related: relatedProp, freeCourse, path }: PostArticleProps) {
+  const canonicalPath = path ?? `/blog/${post.slug}`
   const author = authorPersonOf(post)
   const reviewer = reviewerPersonOf(post)
   const { reviewedAt, nextReviewAt } = reviewDatesOf(post)
@@ -106,7 +115,7 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
       <JsonLd
         data={postArticleJsonLd({
           post,
-          path: `/blog/${post.slug}`,
+          path: canonicalPath,
           ...(author !== null
             ? { author: { name: author.name, credentials: author.credentials } }
             : {}),
@@ -127,7 +136,7 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
       <JsonLd
         data={breadcrumbJsonLd([
           { name: 'Tudástár', path: '/blog' },
-          { name: post.title, path: `/blog/${post.slug}` },
+          { name: post.title, path: canonicalPath },
         ])}
       />
 
