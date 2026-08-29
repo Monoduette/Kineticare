@@ -16,7 +16,7 @@ import { captureAnalyticsEvent } from '@/lib/analytics/posthog'
 import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 import { pollOrderStatus, type PollResult } from '../../lib/order-status-poll'
-import { signInHref } from '../../lib/return-url'
+import { forgotPasswordHref, signInHref } from '../../lib/return-url'
 
 /**
  * ThankYouView — a köszönőoldal kliens-oldali viselkedése.
@@ -135,16 +135,25 @@ function thankYouCourseCta(productId: number | null): {
  * az állapot-lekérdezés neki mindig 401 — ezen az ágon a lap SOSEM tudja,
  * mi történt.
  *
- * A szöveg e-mail-első: a vendégnek még nincs jelszava, a Belépés a
- * köszönőoldalra visszavezető zsákutca volt. A belépés másodlagos, és a
- * Kurzusaimra visz (ott a belépés után a kurzus van), nem ide vissza.
+ * A szöveg e-mail-első: a vendégnek még nincs jelszava. A korábbi egyetlen
+ * gomb a Belépés volt; az zsákutca, ha a levél (még) nincs meg, mert a
+ * vendégfiók véletlen jelszóval születik, amit a vevő nem kap kézhez.
+ * Az elsődleges gomb ezért a jelszó-beállító kérés (`password-reset-request`,
+ * §3.2 #21): ugyanoda visz, mint a belépő oldal „Elfelejtetted a jelszavad?"
+ * útja, a Kurzusaimra mint returnUrl-lel. A Belépés másodlagos (már van
+ * jelszava). Egyik sem ide, a köszönőoldalra visz vissza.
  *
  * Forrás: NN/g, Error Message Guidelines (mondd meg, mi a következő lépés)
  * https://www.nngroup.com/articles/error-message-guidelines/ ;
  * GOV.UK, Start with the user need / don’t drop people off a journey
  * https://www.gov.uk/service-manual/design/user-centred-design ;
- * WCAG 2.2 · 3.3.1 Error Identification
+ * Baymard, post-purchase confirmation should lead to the purchased item
+ * https://baymard.com/blog/order-confirmation-design ;
+ * WCAG 2.2 · 3.3.1 Error Identification, 3.3.3 Error Suggestion, 3.2.4
+ * Consistent Identification
  * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  */
 export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
   return (
@@ -156,6 +165,10 @@ export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
         jelszó-beállító link is lesz, azzal nyílik meg a fiókod a kurzussal.
       </p>
       <p>
+        Ha a levél néhány perc múlva sem jön, kérj új jelszó-beállító linket ugyanazzal az
+        e-mail-címmel, amellyel fizettél.
+      </p>
+      <p>
         Ha a fizetést megszakítottad vagy a bank elutasította, semmi sem került levonásra. Újra
         próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
       </p>
@@ -163,6 +176,9 @@ export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
         Rendelésszám: <strong>{orderNumber}</strong>
       </p>
       <div className="kc-thankyou__actions">
+        <Button href={forgotPasswordHref('/kurzusaim')}>
+          {ctaLabel('password-reset-request')}
+        </Button>
         <Button href={signInHref('/kurzusaim')} variant="secondary">
           {ctaLabel('sign-in')}
         </Button>
@@ -431,12 +447,11 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }
 
   // 401 — nincs (érvényes) munkamenet. Ez KÉT esetet fed le:
-  //  - VENDÉG-VÁSÁRLÁS: a vevő bejelentkezés nélkül fizetett, a fiókja most
-  //    készül. Neki nincs mit tennie, és belépni sem tud még — ezért a szöveg
-  //    elsőként az e-mailre irányít (ott érkezik a jelszó-beállító link), a
-  //    belépés csak másodlagos ajánlat;
-  //  - lejárt munkamenet egy meglévő fióknál: neki a belépés a helyes út.
-  // A korábbi, feltétel nélküli „jelentkezz be" a vendégnek zsákutca volt.
+  //  - VENDÉG-VÁSÁRLÁS: a vevő bejelentkezés nélkül fizetett, a fiókja a
+  //    paid-átmenetkor készül. A szöveg elsőként az e-mailre irányít; ha a
+  //    levél nem jön, a jelszó-beállító kérés a kiút (nem a Belépés: a
+  //    vendégnek még nincs saját jelszava);
+  //  - lejárt munkamenet egy meglévő fióknál: neki a Belépés a helyes út.
   if (state.kind === 'unauthorized') {
     return <ThankYouUnauthorized orderNumber={orderNumber} />
   }
