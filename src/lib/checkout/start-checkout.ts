@@ -73,6 +73,8 @@ export const CHECKOUT_REFUNDED_RETRY =
 
 export const CHECKOUT_REFUNDED_PRIVILEGED =
   'A fizetésed teljes összegét visszatérítettük: ezzel az e-mail-címmel munkatársi fiók van, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
+export const CHECKOUT_PAID_UNDER_REVIEW =
+  'A fizetésed beérkezett, de a rendelést nem tudtuk automatikusan lezárni. Rövid időn belül rendezzük: vagy megnyitjuk a hozzáférést, vagy a teljes összeget visszatérítjük. Addig ne indíts új fizetést.'
 
 /**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
