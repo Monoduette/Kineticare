@@ -97,7 +97,6 @@ export function ArticleEngagement({ articleSlug, path }: ArticleEngagementProps)
       observer?.disconnect()
     }
     // Mount-egyszeri bekötés: a slug/path a lap életében nem változik.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articleSlug, path])
   return null
 }
