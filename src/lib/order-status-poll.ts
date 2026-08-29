@@ -16,13 +16,24 @@
  * sosem múlhat a mérésen.
  */
 
-export type OrderStatus =
-  | 'created'
-  | 'payment_pending'
-  | 'paid'
-  | 'payment_failed'
-  | 'cancelled'
-  | 'refunded'
+export const ORDER_STATUSES = [
+  'created',
+  'payment_pending',
+  'paid',
+  'payment_failed',
+  'cancelled',
+  'refunded',
+] as const
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number]
+
+function isOrderStatus(value: string): value is OrderStatus {
+  return ORDER_STATUSES.some((status) => status === value)
+}
+
+function toOrderStatus(value: string): OrderStatus {
+  return isOrderStatus(value) ? value : 'created'
+}
 
 export type PollResult =
   | {
@@ -84,7 +95,7 @@ export async function pollOrderStatus(
       typeof body.currency === 'string' && body.currency.trim().length > 0
         ? body.currency.trim().toUpperCase()
         : null
-    return { kind: 'status', status: body.status as OrderStatus, productId, value, currency }
+    return { kind: 'status', status: toOrderStatus(body.status), productId, value, currency }
   } catch {
     return { kind: 'error' }
   }

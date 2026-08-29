@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { MediaImage } from '@/components/content/MediaImage'
@@ -31,11 +32,13 @@ export const dynamic = 'force-dynamic'
 
 type Props = { params: Promise<{ slug: string }> }
 
+const pageOf = cache((slug: string, draft: boolean) => getPageBySlug(slug, { draft }))
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   // Draft mode-ban a piszkozat metaadata jön — és a válasz sosem indexelhető.
   const { isEnabled: isDraft } = await draftMode()
-  const page = await getPageBySlug(slug, { draft: isDraft })
+  const page = await pageOf(slug, isDraft)
   if (!page) return withDraftRobots({}, isDraft)
   return withDraftRobots(buildPageMetadata(page, `/${slug}`), isDraft)
 }
@@ -53,7 +56,7 @@ export default async function CmsPage({ params }: Props) {
   // Előnézet (draft mode): a publikálatlan verzió is látszik. A sütit kizárólag
   // a /next/preview route adhatja, oda pedig csak staff/owner jut be.
   const { isEnabled: isDraft } = await draftMode()
-  const page = await getPageBySlug(slug, { draft: isDraft })
+  const page = await pageOf(slug, isDraft)
   if (!page) notFound()
 
   // GYÖKÉR TÜNET-HUB: a hub a `pages`-ben él (ő a publikálási kapcsoló és a

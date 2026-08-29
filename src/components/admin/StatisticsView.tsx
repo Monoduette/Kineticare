@@ -26,10 +26,13 @@ export async function StatisticsView(props: AdminViewServerProps) {
     )
   }
 
-  let report: RevenueReport
-  try {
-    report = await queryRevenueReport({ payload: req.payload })
-  } catch (error) {
+  const [revenueSettled, engagementSettled] = await Promise.allSettled([
+    (async () => queryRevenueReport({ payload: req.payload }))(),
+    (async () => queryCourseEngagement({ payload: req.payload }))(),
+  ])
+
+  if (revenueSettled.status === 'rejected') {
+    const error: unknown = revenueSettled.reason
     logger.error('statisztika-nézet: a lekérdezés nem sikerült', {
       error: error instanceof Error ? error.message : String(error),
     })
@@ -39,17 +42,19 @@ export async function StatisticsView(props: AdminViewServerProps) {
       </AdminChrome>
     )
   }
+  const report: RevenueReport = revenueSettled.value
 
   // A kurzus-hatás lekérdezés hibája NEM dönti el az oldalt: a bevételi rész
   // ilyenkor is megjelenik, a szekció helyén magyar magyarázat áll (a
   // StatisticsReport `engagement: null` ágán). A hiba naplózva marad.
   let engagement: CourseEngagementReport | null = null
-  try {
-    engagement = await queryCourseEngagement({ payload: req.payload })
-  } catch (error) {
+  if (engagementSettled.status === 'rejected') {
+    const error: unknown = engagementSettled.reason
     logger.error('statisztika-nézet: a kurzus-hatás lekérdezés nem sikerült', {
       error: error instanceof Error ? error.message : String(error),
     })
+  } else {
+    engagement = engagementSettled.value
   }
 
   return (

@@ -92,8 +92,10 @@ export default async function FiokPage() {
     redirect(signInHref('/fiok'))
   }
 
-  const orders = await getUserOrders(user.id)
-  const accessByProductId = await getAccessViews(user)
+  const [orders, accessByProductId] = await Promise.all([
+    getUserOrders(user.id),
+    getAccessViews(user),
+  ])
 
   return (
     <Section>

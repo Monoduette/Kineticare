@@ -13,7 +13,13 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/Progress'
 import { markVideoWatched } from '@/lib/course-progress/client'
-import { mergePlayingSession } from '@/lib/course-player-refresh'
+import {
+  TOKEN_REFRESH_RETRY_SEC,
+  keepPlayingOnRefreshFailure,
+  mergePlayingSession,
+  nextRefreshDelaySec,
+  type PlayingSession,
+} from '@/lib/course-player-refresh'
 import { courseHref } from '@/lib/course-url'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { myCoursePlayerHref } from '@/lib/courses'
@@ -22,7 +28,8 @@ import { findLessonByRef, type Curriculum } from '@/lib/curriculum/curriculum'
 import { summarizeCurriculum } from '@/lib/curriculum/progress'
 import { bunnyProtectedLibraryId } from '@/lib/stream/bunny-site-config'
 import { streamIframeSrc } from '@/lib/stream/contract'
-import { fetchStreamToken } from '@/lib/stream-token-client'
+import { fetchStreamToken, STREAM_SIGN_IN_REQUIRED_MESSAGE } from '@/lib/stream-token-client'
+import { signInHref } from '@/lib/return-url'
 
 import { eventsForLessonCompletion } from './player/analytics'
 import { useWatchTracking } from './player/useWatchTracking'
@@ -96,9 +103,6 @@ export interface CoursePlayerProps {
   bindLessonProgress?: (report: LessonProgressReporter) => (() => void) | void
 }
 
-/** A token-frissítés a lejárat előtt ennyivel korábban (másodperc). */
-const TOKEN_REFRESH_BEFORE_EXPIRY_SEC = 300 // 5 perc
-
 /**
  * Ennyi sikertelen mentés után az AUTOMATIKUS jelölés feladja az adott leckét.
  * A kézi gomb korlátlan marad — a vevő a látható hibaüzenetből tudja, mi van.
@@ -119,7 +123,8 @@ type PlayerState =
       /** A `loadedSrc`-be égetett jegy lejárata; ettől függ a csere. */
       loadedExpiresAtEpochSec: number | null
     }
-  | { kind: 'forbidden' }
+  | { kind: 'unauthenticated'; message: string | null }
+  | { kind: 'forbidden'; message: string | null }
   | { kind: 'unavailable' }
   | { kind: 'error'; message: string }
 
@@ -191,6 +196,13 @@ export function CoursePlayer({
   const loadGenerationRef = useRef(0)
   /** A frissítő-időzítő MINDIG a legfrissebb betöltő-függvényt hívja. */
   const loadLessonRef = useRef<LoadLesson | null>(null)
+  /**
+   * A legutóbbi „playing" állapot tükre. Azért ref és nem a state, mert a
+   * token-válasz feldolgozásakor az összefésült állapotra SZINKRON van szükség
+   * (a következő időzítő késleltetése a betöltött jegy lejáratától is függ),
+   * a setState updaterben pedig mellékhatás — időzítő-állítás — nem futhat.
+   */
+  const playingRef = useRef<{ lessonRef: string; session: PlayingSession } | null>(null)
   /** A lecke címe — váltáskor ide megy a fókusz. */
   const headingRef = useRef<HTMLHeadingElement | null>(null)
   /**
@@ -423,11 +435,18 @@ export function CoursePlayer({
   const loadLesson = useCallback<LoadLesson>(
     async (lessonRef, isRefresh = false) => {
       if (!hasAccess) {
-        setState({ kind: 'forbidden' })
+        // A korai hibaágakon is meg kell halnia az ELŐZŐ lecke időzítőjének:
+        // különben a kapu/hibaképernyő fölött a régi lecke frissítője később
+        // magától „visszaélesztené" a lejátszót (mérve a review-körben).
+        loadGenerationRef.current += 1
+        clearRefreshTimer()
+        setState({ kind: 'forbidden', message: null })
         return
       }
       const lesson = findLessonByRef(curriculum, lessonRef)
       if (lesson === null || !lesson.playable) {
+        loadGenerationRef.current += 1
+        clearRefreshTimer()
         setState({ kind: 'error', message: 'Ez a lecke jelenleg nem érhető el.' })
         return
       }
@@ -465,15 +484,34 @@ export function CoursePlayer({
         return
       }
 
-      if (result.kind === 'forbidden') {
-        setState({ kind: 'forbidden' })
-        return
-      }
-      if (result.kind === 'unavailable') {
-        setState({ kind: 'unavailable' })
-        return
-      }
-      if (result.kind === 'error') {
+      if (result.kind !== 'token') {
+        // Háttér-frissítés átmeneti hibája NEM bontja le a futó lejátszást: a
+        // betöltött jegy még ~5 percig él, a state-váltás viszont azonnal
+        // unmountolná az iframe-et (pozícióvesztés), és új időzítő híján a
+        // frissítő-lánc végleg meghalna — a fekete-lejátszó osztály a hibaágon
+        // át. Rövid újrapróba megy helyette (a szabály a tiszta modulban).
+        if (
+          keepPlayingOnRefreshFailure(result.kind, isRefresh) &&
+          playingRef.current?.lessonRef === lessonRef
+        ) {
+          clearRefreshTimer()
+          refreshTimerRef.current = window.setTimeout(() => {
+            void loadLessonRef.current?.(lessonRef, true)
+          }, TOKEN_REFRESH_RETRY_SEC * 1000)
+          return
+        }
+        if (result.kind === 'unauthenticated') {
+          setState({ kind: 'unauthenticated', message: result.message })
+          return
+        }
+        if (result.kind === 'forbidden') {
+          setState({ kind: 'forbidden', message: result.message })
+          return
+        }
+        if (result.kind === 'unavailable') {
+          setState({ kind: 'unavailable' })
+          return
+        }
         setState({ kind: 'error', message: result.message })
         return
       }
@@ -481,13 +519,6 @@ export function CoursePlayer({
       clearRefreshTimer()
       const expiresAtEpochSec = result.expiresAtEpochSec
       const nowSec = Math.floor(Date.now() / 1000)
-      const refreshInSec = Math.max(
-        30,
-        expiresAtEpochSec - nowSec - TOKEN_REFRESH_BEFORE_EXPIRY_SEC,
-      )
-      refreshTimerRef.current = window.setTimeout(() => {
-        void loadLessonRef.current?.(lessonRef, true)
-      }, refreshInSec * 1000)
 
       const nextSrc = streamIframeSrc({
         libraryId: bunnyProtectedLibraryId(),
@@ -496,22 +527,30 @@ export function CoursePlayer({
         expiresAtEpochSec,
       })
       // A token-frissítés NEM cseréli az iframe src-jét (nincs újramount, nincs
-      // pozícióvesztés) — a szabály a tiszta, tesztelt segédfüggvényé.
-      setState((current) => ({
-        kind: 'playing',
-        lessonRef,
-        ...mergePlayingSession(
-          current.kind === 'playing' && current.lessonRef === lessonRef ? current : null,
-          {
-            videoIndex: lesson.flatIndex,
-            token: result.token,
-            expiresAtEpochSec,
-            src: nextSrc,
-          },
-          isRefresh,
-          nowSec,
-        ),
-      }))
+      // pozícióvesztés) — a szabály a tiszta, tesztelt segédfüggvényé. Az
+      // időzítő az ÖSSZEFÉSÜLT állapotból számol: ha a src megmaradt, a
+      // következő kör a BETÖLTÖTT jegy csere-határidejére áll, nem az új token
+      // lejáratára — különben a betöltött jegy a két kör között lejárna, és a
+      // vevő fekete lejátszót nézne (nextRefreshDelaySec fejléce a mért esettel).
+      const previousPlaying = playingRef.current
+      const merged = mergePlayingSession(
+        previousPlaying !== null && previousPlaying.lessonRef === lessonRef
+          ? previousPlaying.session
+          : null,
+        {
+          videoIndex: lesson.flatIndex,
+          token: result.token,
+          expiresAtEpochSec,
+          src: nextSrc,
+        },
+        isRefresh,
+        nowSec,
+      )
+      refreshTimerRef.current = window.setTimeout(() => {
+        void loadLessonRef.current?.(lessonRef, true)
+      }, nextRefreshDelaySec(merged, nowSec) * 1000)
+      playingRef.current = { lessonRef, session: merged }
+      setState({ kind: 'playing', lessonRef, ...merged })
     },
     [clearRefreshTimer, curriculum, hasAccess, product.id],
   )
@@ -847,9 +886,21 @@ export function CoursePlayer({
                   title={`${product.title}: ${activeLesson.title}`}
                 />
               ) : null}
+              {state.kind === 'unauthenticated' ? (
+                <p className="kc-player__media-error" role="alert">
+                  {state.message ?? STREAM_SIGN_IN_REQUIRED_MESSAGE}
+                  <Button
+                    href={signInHref(myCoursePlayerHref(product.id))}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {ctaLabel('sign-in')}
+                  </Button>
+                </p>
+              ) : null}
               {state.kind === 'forbidden' ? (
                 <p className="kc-player__media-error" role="alert">
-                  Nincs hozzáférésed ehhez a videóhoz.
+                  {state.message ?? 'Nincs hozzáférésed ehhez a videóhoz.'}
                   {activeRef === null ? null : (
                     <Button
                       onClick={() => void loadLesson(activeRef)}

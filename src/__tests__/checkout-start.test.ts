@@ -6,10 +6,14 @@ import type { Order, Product, User } from '../payload-types'
 import { createCheckoutStartHandler } from '../lib/checkout/route-handler'
 import {
   CHECKOUT_ALREADY_PURCHASED,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
   CheckoutError,
   paymentWindowToMs,
   startCheckout,
 } from '../lib/checkout/start-checkout'
+import type { PaidRejectRecoveryResult } from '../lib/order-status/recover-paid-reject'
 import { barionPaymentAdapter, withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buyerFromOrder } from '../lib/szamlazz/invoice'
 import { RATE_LIMIT_RULES, SlidingWindowRateLimiter } from '../lib/security/rate-limit'
@@ -63,6 +67,8 @@ const createdOrderDoc = {
   ],
 } as unknown as Order
 
+type OrderRow = Record<string, unknown> & { id: number; status?: string }
+
 interface MockPayloadOptions {
   product?: Product | null
   /** A duplikáció-ellenőrző find-hívások válasza (a where alapján dönthet). */
@@ -71,6 +77,21 @@ interface MockPayloadOptions {
   authUser?: User | null
   /** A Barion-azonosító mentése dobjon (persist-hiba ág). */
   persistBarionIdsFails?: boolean
+  orderRows?: OrderRow[]
+}
+
+function readConditionalWhere(where: unknown): { id?: unknown; status?: unknown } {
+  const clauses = (where as { and?: Array<Record<string, { equals?: unknown }>> } | null)?.and ?? []
+  const parsed: { id?: unknown; status?: unknown } = {}
+  for (const clause of clauses) {
+    if (clause.id?.equals !== undefined) {
+      parsed.id = clause.id.equals
+    }
+    if (clause.status?.equals !== undefined) {
+      parsed.status = clause.status.equals
+    }
+  }
+  return parsed
 }
 
 function createMockPayload(options: MockPayloadOptions = {}) {
@@ -80,6 +101,9 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     find: [] as unknown[],
     findByID: [] as Array<Record<string, unknown>>,
   }
+  const orderRows = new Map<number, OrderRow>(
+    (options.orderRows ?? []).map((row) => [row.id, row]),
+  )
   const payload = {
     auth: vi.fn(async () => ({
       user: options.authUser === undefined ? mockUser : options.authUser,
@@ -92,6 +116,13 @@ function createMockPayload(options: MockPayloadOptions = {}) {
           purchases: (mockUser as { purchases?: number[] }).purchases ?? [],
           accessGrants: [],
         }
+      }
+      if (args.collection === 'orders') {
+        const row = orderRows.get(Number(args.id))
+        if (!row) {
+          throw new Error('Not Found')
+        }
+        return row
       }
       if (options.product === null) {
         throw new Error('Not Found')
@@ -108,15 +139,32 @@ function createMockPayload(options: MockPayloadOptions = {}) {
       // (snapshot, orderNumber) — a mock a hook-OUTPUTOT adja vissza.
       return { ...data, ...(options.orderDoc ?? createdOrderDoc), id: 101 }
     }),
-    update: vi.fn(async ({ id, data }: { id: number | string; data: Record<string, unknown> }) => {
-      calls.update.push({ id, data })
-      if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
-        throw new Error('db write failed')
-      }
-      return { id, ...data }
-    }),
+    update: vi.fn(
+      async (args: { id?: number | string; where?: unknown; data: Record<string, unknown> }) => {
+        const { id, where, data } = args
+        if (where !== undefined) {
+          const condition = readConditionalWhere(where)
+          calls.update.push({ id: Number(condition.id), data })
+          const row = orderRows.get(Number(condition.id))
+          if (!row || (condition.status !== undefined && row.status !== condition.status)) {
+            return { docs: [], errors: [] }
+          }
+          Object.assign(row, data)
+          return { docs: [row], errors: [] }
+        }
+        calls.update.push({ id: id as number | string, data })
+        if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
+          throw new Error('db write failed')
+        }
+        const row = orderRows.get(Number(id))
+        if (row) {
+          Object.assign(row, data)
+        }
+        return { id, ...data }
+      },
+    ),
   }
-  return { payload: payload as unknown as Payload, calls }
+  return { payload: payload as unknown as Payload, calls, orderRows }
 }
 
 const fetchMock = vi.fn()
@@ -146,6 +194,18 @@ function barionStartSuccess(): Response {
 function lastBarionRequestBody(): Record<string, unknown> {
   const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1] as [string, RequestInit]
   return JSON.parse(String(call[1].body ?? '{}')) as Record<string, unknown>
+}
+
+async function checkoutErrorFrom(promise: Promise<unknown>): Promise<CheckoutError> {
+  try {
+    await promise
+  } catch (error) {
+    if (error instanceof CheckoutError) {
+      return error
+    }
+    throw error
+  }
+  throw new Error('TESZT: a hívás nem dobott CheckoutError-t')
 }
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -558,30 +618,86 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(asText).toContain('"customer"')
   })
 
+  const stalePendingSetup = (rowStatus: string) => {
+    const snapshot = {
+      id: 77,
+      status: 'payment_pending',
+      createdAt: new Date(Date.now() - paymentWindowToMs() - 60_000).toISOString(),
+      barionPaymentId: null,
+      orderNumber: 'KH-REGI',
+    }
+    const row: OrderRow = { id: 77, status: rowStatus, orderNumber: 'KH-REGI' }
+    return {
+      ...createMockPayload({
+        orderRows: [row],
+        findOrders: (where) =>
+          whereMentions(where, 'payment_pending')
+            ? { docs: [snapshot], totalDocs: 1 }
+            : { docs: [], totalDocs: 0 },
+      }),
+      row,
+    }
+  }
+
   it('lejárt payment_pending PaymentId nélkül: helyi cancelled, új Start mehet', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
-    const staleCreatedAt = new Date(Date.now() - paymentWindowToMs() - 60_000).toISOString()
-    const { payload, calls } = createMockPayload({
-      findOrders: (where) =>
-        whereMentions(where, 'payment_pending')
-          ? {
-              docs: [
-                {
-                  id: 77,
-                  status: 'payment_pending',
-                  createdAt: staleCreatedAt,
-                  barionPaymentId: null,
-                  orderNumber: 'KH-REGI',
-                },
-              ],
-              totalDocs: 1,
-            }
-          : { docs: [], totalDocs: 0 },
-    })
+    const { payload, calls, row } = stalePendingSetup('payment_pending')
 
     const result = await startCheckout({ payload, user: mockUser, input: happyInput })
 
     expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(true)
+    expect(row.status).toBe('cancelled')
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+
+  it('a lezárás FELTÉTELES: a sor csak payment_pending állapotból vált cancelled-re', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls } = stalePendingSetup('payment_pending')
+
+    await startCheckout({ payload, user: mockUser, input: happyInput })
+
+    const conditional = calls.update.find((entry) => entry.data.status === 'cancelled')
+    expect(conditional).toBeDefined()
+    expect(payload.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'orders',
+        where: { and: [{ id: { equals: 77 } }, { status: { equals: 'payment_pending' } }] },
+        data: { status: 'cancelled' },
+      }),
+    )
+  })
+
+  it('verseny: a sor közben PAID lett → nincs felülírás, 409 az already-paid üzenettel', async () => {
+    const { payload, calls, row } = stalePendingSetup('paid')
+
+    const promise = startCheckout({ payload, user: mockUser, input: happyInput })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(row.status).toBe('paid')
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('verseny: a sor közben refunded lett → új rendelés indulhat (nincs élő fizetés)', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls, row } = stalePendingSetup('refunded')
+
+    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+
+    expect(row.status).toBe('refunded')
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+
+  it('verseny: a sor közben payment_failed lett → új rendelés indulhat', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls } = stalePendingSetup('payment_failed')
+
+    const result = await startCheckout({ payload, user: mockUser, input: happyInput })
+
     expect(calls.create).toHaveLength(1)
     expect(result.orderNumber).toBe(ORDER_NUMBER)
   })
@@ -738,6 +854,172 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
     expect(calls.create).toHaveLength(0)
     expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
+  /**
+   * P1 — a sikeres auto-refund UTÁN a „már megvásároltad" hazugság: a vevő
+   * total-mismatch vagy privilegizált-kötés miatt NEM kapta meg a kurzust, a
+   * pénze visszament. A 409 marad, de a szövegnek a visszatérítésről és a
+   * következő lépésről kell szólnia. duplicate-paid-order esetén viszont VAN
+   * élő hozzáférés, ott az already-paid üzenet igaz és marad.
+   */
+  function paidRejectRecoverySetup(
+    reason: string,
+    recovery: PaidRejectRecoveryResult = { action: 'refunded' },
+  ) {
+    const pendingOrder = {
+      id: 92,
+      status: 'payment_pending',
+      createdAt: new Date().toISOString(),
+      barionPaymentId: 'pay-refund',
+      orderNumber: 'KH-REFUND',
+    }
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? { docs: [pendingOrder], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Succeeded' }) as never,
+      applyBarionStateTransition: async () => ({ action: 'rejected', reason }),
+      recoverRejectedPaid: vi.fn(async () => recovery),
+      barionEnvironment: 'test',
+    })
+    return { promise, calls }
+  }
+
+  it('total-mismatch reject + sikeres refund → 409, PONTOSAN a retry-üzenettel', async () => {
+    const { promise } = paidRejectRecoverySetup('total-mismatch')
+    // A b1 mutációs próba igazolta: a laza (toContain) assert a felcserélt
+    // üzeneteket is átengedte — ezért az ok→üzenet párosítás pontos egyezéssel
+    // van leszögezve.
+    await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_REFUNDED_RETRY })
+    expect(CHECKOUT_REFUNDED_RETRY).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('guest-bind-privileged reject + sikeres refund → 409, PONTOSAN a belépős üzenettel', async () => {
+    const { promise } = paidRejectRecoverySetup('guest-bind-privileged-account')
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+      message: CHECKOUT_REFUNDED_PRIVILEGED,
+    })
+    expect(CHECKOUT_REFUNDED_PRIVILEGED).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('duplicate-paid reject + sikeres refund → marad az already-paid 409 (van hozzáférés)', async () => {
+    const { promise } = paidRejectRecoverySetup('duplicate-paid-order')
+    await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_ALREADY_PURCHASED })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('total-mismatch + SIKERTELEN refund → 409 a felülvizsgálat-üzenettel (nem „már megvetted")', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { promise, calls } = paidRejectRecoverySetup('total-mismatch', {
+      action: 'failed',
+      detail: 'barion-refund-error',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
+    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(error.message).not.toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
+  it('total-mismatch + skip (nincs visszatéríthető tranzakció) → 409 a felülvizsgálat-üzenettel', async () => {
+    const { promise } = paidRejectRecoverySetup('total-mismatch', {
+      action: 'skipped',
+      detail: 'no-refundable-transaction',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('total-mismatch + skip (már visszatérítve) → 409 a refund-üzenettel: ott igaz', async () => {
+    const { promise } = paidRejectRecoverySetup('total-mismatch', {
+      action: 'skipped',
+      detail: 'already-refunded',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('privilegizált kötés + skip (már visszatérítve) → 409 a belépős refund-üzenettel', async () => {
+    const { promise } = paidRejectRecoverySetup('guest-bind-privileged-account', {
+      action: 'skipped',
+      detail: 'already-refunded',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_REFUNDED_PRIVILEGED)
+  })
+
+  it('total-mismatch + skip (a refund-nyom már rögzítve) → a refund-üzenet igaz', async () => {
+    const { promise } = paidRejectRecoverySetup('total-mismatch', {
+      action: 'skipped',
+      detail: 'already-recorded',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refund-recorded reject (rögzített refund-nyomú függő rendelés) → felülvizsgálat-üzenet', async () => {
+    const { promise } = paidRejectRecoverySetup('refund-recorded', {
+      action: 'skipped',
+      detail: 'reason-not-refundable',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
+    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('privilegizált kötés + részleges Barion-refund skip → 409 a felülvizsgálat-üzenettel', async () => {
+    const { promise } = paidRejectRecoverySetup('guest-bind-privileged-account', {
+      action: 'skipped',
+      detail: 'barion-partially-refunded',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
+    expect(error.message).not.toBe(CHECKOUT_REFUNDED_PRIVILEGED)
+  })
+
+  it('duplicate-paid + SIKERTELEN refund → az already-paid üzenet marad (van élő hozzáférés)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { promise } = paidRejectRecoverySetup('duplicate-paid-order', {
+      action: 'failed',
+      detail: 'barion-refund-error',
+    })
+
+    const error = await checkoutErrorFrom(promise)
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(error.message).not.toBe(CHECKOUT_PAID_UNDER_REVIEW)
     logSpy.mockRestore()
   })
 

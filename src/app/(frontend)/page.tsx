@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { draftMode } from 'next/headers'
+import { cache } from 'react'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
 import { HomeView } from '@/components/content/HomeView'
@@ -13,10 +14,12 @@ import { buildHomeMetadata } from '@/lib/seo'
 
 export const dynamic = 'force-dynamic'
 
+const homePageOf = cache((draft: boolean) => getHomePage({ draft }))
+
 export async function generateMetadata(): Promise<Metadata> {
   // Draft mode-ban a piszkozat metaadata jön — és a válasz sosem indexelhető.
   const { isEnabled: isDraft } = await draftMode()
-  const home = await getHomePage({ draft: isDraft })
+  const home = await homePageOf(isDraft)
   // A `/` a `kezdolap` CMS-oldal `buildDocMetadata` útján kapja a title /
   // description / seoKeywords mezőket (nem a `/kezdolap` path). Üres
   // seoKeywords → a keywords kulcs kimarad.
@@ -33,7 +36,7 @@ export default async function HomePage() {
   // szekciósor bármely beállítása egyetlen párhuzamos lekérdezésből kijöjjön;
   // a rögzített kezdőlap továbbra is 3-at mutat (KnowledgeSection limit).
   const [home, products, posts, testimonials] = await Promise.all([
-    getHomePage({ draft: isDraft }),
+    homePageOf(isDraft),
     getPublishedProducts(),
     getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT),
     getTestimonials(),

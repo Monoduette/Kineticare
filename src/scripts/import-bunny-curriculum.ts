@@ -39,7 +39,7 @@ export function parseImportKapcsolok(argv: readonly string[]): ImportKapcsolok {
 }
 
 export function confirmEnabled(envValue: string | undefined): boolean {
-  return envValue?.trim() === 'igen'
+  return envValue?.trim().toLowerCase() === 'igen'
 }
 
 function modulok(product: Pick<Product, 'modules'> | null | undefined): unknown {

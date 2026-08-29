@@ -21,7 +21,15 @@ describe('parseImportKapcsolok / confirmEnabled', () => {
     expect(parseImportKapcsolok([])).toEqual({ alkalmaz: false, felulir: false })
     expect(confirmEnabled(undefined)).toBe(false)
     expect(confirmEnabled('igen')).toBe(true)
-    expect(confirmEnabled('Igen')).toBe(false)
+  })
+
+  it('a kapu KIS/NAGYBETŰRE érzéketlen és trimmel (a másik nyolc owner-kapu konvenciója)', () => {
+    for (const value of ['Igen', 'IGEN', ' igen ', '\tIgEn\n']) {
+      expect(confirmEnabled(value)).toBe(true)
+    }
+    for (const value of ['', 'nem', 'igen!', 'yes', 'ige']) {
+      expect(confirmEnabled(value)).toBe(false)
+    }
   })
 
   it('az --alkalmaz és --felulir kapcsolót felismeri', () => {

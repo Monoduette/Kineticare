@@ -4,8 +4,14 @@ import type { Order, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { withUserPurchasesLock } from '../user-purchases-lock'
 import { auditLogStore, writeAuditLog } from '../audit'
-import { BarionApiError, fetchPaymentState, refundPayment } from '../barion'
+import {
+  BarionApiError,
+  fetchPaymentState,
+  refundPayment,
+  type BarionPaymentStateResponse,
+} from '../barion'
 import { logger, type Logger } from '../logger'
+import { pickRefundableTransaction } from '../order-status/recover-paid-reject'
 import {
   isRetryableCorrectiveError,
   isRetryableStornoError,
@@ -208,29 +214,6 @@ export async function revokePurchases(
     return { revoked: 0 }
   }
 
-  // Más paid rendelés ugyanerre a termékre → a hozzáférés megmarad.
-  // Ez a lekérdezés a user-záron KÍVÜL marad (nem purchases-írás).
-  const protectedIds = new Set<number>()
-  for (const productId of productIds) {
-    const otherPaid = await payload.find({
-      collection: 'orders',
-      where: {
-        and: [
-          { customer: { equals: customerId } },
-          { status: { equals: 'paid' } },
-          { 'items.product': { equals: productId } },
-          { id: { not_equals: order.id } },
-        ],
-      },
-      limit: 1,
-      depth: 0,
-      overrideAccess: true,
-    } as unknown as Parameters<Payload['find']>[0])
-    if (otherPaid.totalDocs > 0) {
-      protectedIds.add(productId)
-    }
-  }
-
   // User-szintű zár a purchases RMW körül (order → user sorrend: a hívó
   // már tarthatja a `refund:order:<id>` zárat). A findByID a záron BELÜL
   // fut — a zár előtt olvasott snapshotot TILOS visszaírni (K1).
@@ -238,6 +221,28 @@ export async function revokePurchases(
     payload,
     customerId,
     async () => {
+      // Más paid rendelés ugyanerre a termékre → a hozzáférés megmarad.
+      const protectedIds = new Set<number>()
+      for (const productId of productIds) {
+        const otherPaid = await payload.find({
+          collection: 'orders',
+          where: {
+            and: [
+              { customer: { equals: customerId } },
+              { status: { equals: 'paid' } },
+              { 'items.product': { equals: productId } },
+              { id: { not_equals: order.id } },
+            ],
+          },
+          limit: 1,
+          depth: 0,
+          overrideAccess: true,
+        } as unknown as Parameters<Payload['find']>[0])
+        if (otherPaid.totalDocs > 0) {
+          protectedIds.add(productId)
+        }
+      }
+
       const user = (await payload.findByID({
         collection: 'users',
         id: customerId,
@@ -518,7 +523,7 @@ async function resolveBarionTransactionId(
   barionPaymentId: string,
   orderLog: Logger,
 ): Promise<string> {
-  let state
+  let state: BarionPaymentStateResponse
   try {
     state = await fetchPaymentState(barionPaymentId)
   } catch (error) {
@@ -528,15 +533,8 @@ async function resolveBarionTransactionId(
     })
     throw error
   }
-  // A visszatéríthető tranzakció kiválasztása: elsődlegesen a sikeres kártyás
-  // fizetés (TransactionType 'CardPayment'), fallback az első tranzakció — a
-  // Barion dokumentáció szerint a refund a tranzakciószintű TransactionId-t várja.
-  const transactions = state.Transactions ?? []
-  const refundable =
-    transactions.find((tx) => tx.TransactionType === 'CardPayment' && tx.Status === 'Succeeded') ??
-    transactions.find((tx) => tx.TransactionType === 'CardPayment') ??
-    transactions[0]
-  if (!refundable || typeof refundable.TransactionId !== 'string') {
+  const refundable = pickRefundableTransaction(state)
+  if (refundable === null) {
     orderLog.error('refund: a fizetésállapot nem tartalmaz visszatéríthető tranzakciót', {
       barionStatus: state.Status,
     })
@@ -545,7 +543,7 @@ async function resolveBarionTransactionId(
       'A Barion oldalán most nincs visszatéríthető tranzakció ehhez a rendeléshez. Ellenőrizd a fizetést a Barionban, és ha ott rendben van, próbáld újra néhány perc múlva.',
     )
   }
-  return refundable.TransactionId
+  return refundable.transactionId
 }
 
 /** A refund-zár alatt született, a záron kívüli lépésekhez továbbadott eredmény. */

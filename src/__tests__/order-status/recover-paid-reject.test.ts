@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BarionPaymentStateResponse, BarionRefundResponse } from '../../lib/barion'
 import { createLogger } from '../../lib/logger'
 import {
+  AUTO_REFUND_REJECT_REASONS,
   hungarianAutoRefundReason,
   isAutoRefundRejectReason,
   pickRefundableTransaction,
@@ -74,12 +75,9 @@ function createMockPayload(order: Order) {
 }
 
 describe('isAutoRefundRejectReason', () => {
-  it.each(['duplicate-paid-order', 'guest-bind-privileged-account', 'total-mismatch'] as const)(
-    '%s → refundolható',
-    (reason) => {
-      expect(isAutoRefundRejectReason(reason)).toBe(true)
-    },
-  )
+  it.each([...AUTO_REFUND_REJECT_REASONS])('%s → refundolható', (reason) => {
+    expect(isAutoRefundRejectReason(reason)).toBe(true)
+  })
 
   it.each(['paid-not-allowed', 'cancel-not-allowed', 'unknown', undefined])(
     '%s → nem refundolható',
@@ -87,6 +85,14 @@ describe('isAutoRefundRejectReason', () => {
       expect(isAutoRefundRejectReason(reason)).toBe(false)
     },
   )
+
+  it('a lista az EGYETLEN forrás: minden más ok elutasított', () => {
+    const reasons: readonly string[] = AUTO_REFUND_REJECT_REASONS
+    expect(reasons).toHaveLength(new Set(reasons).size)
+    for (const reason of ['paid-not-allowed', 'cancel-not-allowed', 'total-mismatch-x', '']) {
+      expect(isAutoRefundRejectReason(reason)).toBe(reasons.includes(reason))
+    }
+  })
 })
 
 describe('pickRefundableTransaction', () => {

@@ -8,6 +8,7 @@ import { Section } from '@/components/ui/Section'
 import { CartView } from '@/components/checkout/CartView'
 import type { CartItem, CartItemAvailability } from '@/lib/cart'
 import { logger } from '@/lib/logger'
+import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import {
   coursePriceHuf,
@@ -53,6 +54,21 @@ async function getProductById(id: number): Promise<Product | null> {
   }
 }
 
+async function hasLiveAccess(userId: number, product: Product): Promise<boolean> {
+  try {
+    const payload = await getPayload({ config })
+    const access = await resolveSingleCourseAccess({ payload, userId, product, logger })
+    return access.hasAccess
+  } catch (error) {
+    logger.warn('kosár: hozzáférés-állapot számítása sikertelen', {
+      userId,
+      productId: product.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return true
+  }
+}
+
 /**
  * A tétel VÁSÁROLHATÓSÁGA — a kurzusoldal CTA-állapotgépével AZONOS sorrendben.
  * A sorrend nem közömbös: az archivált termék akkor sem igényelhető és nem
@@ -94,9 +110,11 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
       : null
 
   let termekItem: CartItem | null = null
+  let termekProduct: Product | null = null
   if (termekId !== null) {
     const product = await getProductById(termekId)
     if (product && (product.status === 'published' || product.status === 'archived')) {
+      termekProduct = product
       const price = coursePriceHuf(product)
       termekItem = {
         productId: product.id,
@@ -115,7 +133,11 @@ export default async function KosarPage({ searchParams }: KosarPageProps) {
   }
 
   const alreadyPurchased =
-    user !== null && termekItem !== null && hasUserPurchased(user.purchases, termekItem.productId)
+    user !== null &&
+    termekItem !== null &&
+    termekProduct !== null &&
+    hasUserPurchased(user.purchases, termekItem.productId) &&
+    (await hasLiveAccess(user.id, termekProduct))
 
   return (
     <Section>

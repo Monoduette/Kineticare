@@ -198,6 +198,70 @@ export async function getAllPublishedPages(limit = 500): Promise<Page[]> {
   )
 }
 
+export const SITEMAP_POST_SELECT = {
+  slug: true,
+  updatedAt: true,
+  status: true,
+  categories: true,
+} as const
+
+export const SITEMAP_PRODUCT_SELECT = {
+  slug: true,
+  updatedAt: true,
+  status: true,
+  priceInHUFEnabled: true,
+  priceInHUF: true,
+} as const
+
+export type SitemapPost = Pick<Post, 'id' | 'slug' | 'updatedAt' | 'status' | 'categories'>
+
+export type SitemapProduct = Pick<
+  Product,
+  'id' | 'slug' | 'updatedAt' | 'status' | 'priceInHUFEnabled' | 'priceInHUF'
+>
+
+export async function getSitemapPosts(limit = 500): Promise<SitemapPost[]> {
+  return safeQuery(
+    'sitemap-posztok',
+    async () => {
+      const payload = await getPayload({ config })
+      const { docs } = await payload.find({
+        collection: 'posts',
+        where: PUBLISHED_WHERE,
+        limit,
+        sort: '-publishedAt',
+        depth: 0,
+        draft: false,
+        select: SITEMAP_POST_SELECT,
+        overrideAccess: true,
+      })
+      return docs
+    },
+    [],
+  )
+}
+
+export async function getSitemapProducts(limit = 500): Promise<SitemapProduct[]> {
+  return safeQuery(
+    'sitemap-termekek',
+    async () => {
+      const payload = await getPayload({ config })
+      const { docs } = await payload.find({
+        collection: 'products',
+        where: PUBLISHED_WHERE,
+        limit,
+        sort: '-createdAt',
+        depth: 0,
+        draft: false,
+        select: SITEMAP_PRODUCT_SELECT,
+        overrideAccess: true,
+      })
+      return withUnpricedCourseAlert(docs)
+    },
+    [],
+  )
+}
+
 /** Poszt slug alapján — author/categories/relatedPosts populate-olva (depth 2). */
 export async function getPostBySlug(
   slug: string,
@@ -325,7 +389,9 @@ export async function getCategoryBySlug(slug: string): Promise<Category | null> 
  * szól, amikor a hibának üzleti következménye van — a szerkesztő hibája nem
  * marad némán (a tulajdonos gomb-hibájának gyökere ez volt).
  */
-function withUnpricedCourseAlert(docs: Product[]): Product[] {
+function withUnpricedCourseAlert<T extends Pick<Product, 'id' | 'status' | 'priceInHUFEnabled'>>(
+  docs: T[],
+): T[] {
   reportUnpricedPublishedCourses(docs, logger)
   return docs
 }

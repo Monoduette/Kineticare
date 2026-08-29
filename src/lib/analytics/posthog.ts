@@ -36,12 +36,11 @@ export const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu
 export const POSTHOG_API_HOST = '/ingest'
 
 /**
- * A consent-tárolókulcs, az állapot-konstansok és az eseménynév EGYETLEN
- * igazságforrása a ./consent modul (körmenti import elkerülésével) — innen
- * re-exportáljuk a visszafelé kompatibilitásért.
+ * A consent-tárolókulcs és az eseménynév EGYETLEN igazságforrása a ./consent
+ * modul (körmenti import elkerülésével) — innen re-exportáljuk a visszafelé
+ * kompatibilitásért.
  */
-export { CONSENT_EVENT, CONSENT_GRANTED, CONSENT_STORAGE_KEY }
-export { CONSENT_DENIED } from './consent'
+export { CONSENT_EVENT, CONSENT_STORAGE_KEY }
 
 /**
  * Üzleti esemény-nevek EGY helyen — a funnel-riportok ezekre épülnek.

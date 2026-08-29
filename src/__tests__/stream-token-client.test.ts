@@ -57,10 +57,70 @@ describe('fetchStreamToken', () => {
     expect(result).toEqual({ kind: 'error', message: GENERIC_STREAM_ERROR })
   })
 
-  it('401/403 → forbidden (nem-vevő)', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 403 }))
+  it('403 → forbidden, a szerver magyar üzenetével', async () => {
+    const uzenet = 'A hozzáférésed ehhez a kurzushoz lejárt.'
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: uzenet }), { status: 403 }))
     const result = await fetchStreamToken({ productId: 1 }, mockFetch as never)
-    expect(result).toEqual({ kind: 'forbidden' })
+    expect(result).toEqual({ kind: 'forbidden', message: uzenet })
+  })
+
+  /**
+   * A 401 és a 403 KÉT KÜLÖNBÖZŐ helyzet, és két különböző teendő: a 401-nél
+   * a munkamenet hiányzik (belépés a kiút), a 403-nál a jogosultság (a
+   * belépés semmit nem old meg). A korábbi közös `forbidden` ág a lejárt
+   * munkamenetű vevőnek azt mondta, hogy nincs hozzáférése — hamis ok.
+   * NN/g, Error Message Guidelines: ne mondj hamis okot, és mondd meg a
+   * következő lépést (https://www.nngroup.com/articles/error-message-guidelines/).
+   */
+  it('401 → unauthenticated (külön ág), a szerver magyar üzenetével', async () => {
+    const uzenet = 'A videó lejátszásához bejelentkezés szükséges.'
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: uzenet }), { status: 401 }))
+    const result = await fetchStreamToken({ productId: 1 }, mockFetch as never)
+    expect(result).toEqual({ kind: 'unauthenticated', message: uzenet })
+  })
+
+  it('üzenet nélküli 401/403 törzs → message: null (a felület a saját tartalékát mutatja)', async () => {
+    for (const [status, kind] of [
+      [401, 'unauthenticated'],
+      [403, 'forbidden'],
+    ] as const) {
+      expect(
+        await fetchStreamToken(
+          { productId: 1 },
+          vi.fn().mockResolvedValue(new Response('{}', { status })) as never,
+        ),
+      ).toEqual({ kind, message: null })
+      // Nem JSON törzs (üres válasz, proxy-hibalap): a json() dobása sem
+      // ronthatja el az ágat.
+      expect(
+        await fetchStreamToken(
+          { productId: 1 },
+          vi.fn().mockResolvedValue(new Response('', { status })) as never,
+        ),
+      ).toEqual({ kind, message: null })
+      // Nem-szöveg `error` mező szintén nem kerülhet a felületre.
+      expect(
+        await fetchStreamToken(
+          { productId: 1 },
+          vi
+            .fn()
+            .mockResolvedValue(new Response(JSON.stringify({ error: 42 }), { status })) as never,
+        ),
+      ).toEqual({ kind, message: null })
+      // Csak szóközökből álló üzenet sem üzenet.
+      expect(
+        await fetchStreamToken(
+          { productId: 1 },
+          vi
+            .fn()
+            .mockResolvedValue(new Response(JSON.stringify({ error: '   ' }), { status })) as never,
+        ),
+      ).toEqual({ kind, message: null })
+    }
   })
 
   it('503 → unavailable (hiányzó CF-kulcs)', async () => {

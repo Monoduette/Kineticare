@@ -8,6 +8,7 @@ import {
   rateLimitHeaders,
   type CheckRequestRateLimitOptions,
 } from '../security/rate-limit'
+import { readBodyWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import { CourseProgressError, markVideoWatched } from './mark-watched'
 
@@ -27,54 +28,6 @@ export interface CourseProgressHandlerDeps {
  * bőséges ráhagyás, minden e fölött visszaélés vagy hiba.
  */
 export const MAX_BODY_BYTES = 4096
-
-/**
- * A törzs beolvasása felső korláttal. `null`, ha a törzs túllépi a korlátot.
- *
- * A deklarált `content-length` önmagában nem elég (hiányozhat, hazudhat is
- * kifelé kisebbet chunked átvitelnél), ezért a TÉNYLEGES beolvasott mennyiséget
- * mérjük: a stream darabonként jön, és a korlát átlépésekor azonnal megállunk —
- * a maradék be sem kerül a memóriába.
- */
-async function readBodyWithCap(request: Request, maxBytes: number): Promise<string | null> {
-  const declared = Number(request.headers.get('content-length') ?? '')
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    return null
-  }
-  const stream = request.body
-  if (stream === null) {
-    return ''
-  }
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
-    }
-    if (value !== undefined) {
-      total += value.byteLength
-      if (total > maxBytes) {
-        // A maradékot nem olvassuk tovább — a kapcsolat a hívó dolga.
-        try {
-          await reader.cancel()
-        } catch {
-          // A megszakítás hibája nem érdekes: a döntés már megszületett.
-        }
-        return null
-      }
-      chunks.push(value)
-    }
-  }
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(merged)
-}
 
 export function createMarkWatchedHandler(
   deps: CourseProgressHandlerDeps,
