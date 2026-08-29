@@ -27,7 +27,8 @@
     "backfill:access-grants": "tsx src/scripts/backfill-access-grants.ts",
     "kurzus:videok-modulba": "tsx src/scripts/videok-modulba.ts",
     "import:bunny-curriculum": "tsx src/scripts/import-bunny-curriculum.ts",
-    "import:tudastar": "tsx src/scripts/import-tudastar-cikkek.ts"
+    "import:tudastar": "tsx src/scripts/import-tudastar-cikkek.ts",
+    "import:hubok": "tsx src/scripts/import-hub-oldalak.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.88.0",
