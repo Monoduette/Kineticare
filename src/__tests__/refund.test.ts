@@ -137,14 +137,14 @@ function createMockPayload(options: MockPayloadOptions = {}) {
 }
 
 /** Barion GetState v4 válasz. */
-function getStateResponse(): Response {
+function getStateResponse(transactions?: Array<Record<string, unknown>>): Response {
   return new Response(
     JSON.stringify({
       PaymentId: PAYMENT_ID,
       PaymentRequestId: ORDER_NUMBER,
       Status: 'Succeeded',
       Total: TOTAL_HUF,
-      Transactions: [
+      Transactions: transactions ?? [
         {
           TransactionId: TRANSACTION_ID,
           POSTransactionId: `${ORDER_NUMBER}-1`,
@@ -485,6 +485,47 @@ describe('hibaágak', () => {
     expect(response.status).toBe(504)
     expect(calls.update).toHaveLength(0)
     expect(order?.status).toBe('paid')
+  })
+
+  it('ÜRES TransactionId → 502, Refund-hívás nélkül (üres azonosító nem mehet ki a Barionnak)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, calls, order } = setup()
+    fetchMock.mockResolvedValueOnce(
+      getStateResponse([
+        { TransactionId: '', Total: TOTAL_HUF, Status: 'Succeeded', TransactionType: 'CardPayment' },
+      ]),
+    )
+
+    const response = await POST(makeRequest({}), makeContext())
+
+    expect(response.status).toBe(502)
+    const body = await response.json()
+    expect(String(body.error)).toContain('visszatéríthető tranzakció')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(calls.update).toHaveLength(0)
+    expect(order?.status).toBe('paid')
+    expect(logOutput(logSpy)).toContain('visszatéríthető tranzakció')
+  })
+
+  it('nem kártyás, de SIKERES tranzakció élvez elsőbbséget a lista elsőjével szemben', async () => {
+    const { POST } = setup()
+    fetchMock
+      .mockResolvedValueOnce(
+        getStateResponse([
+          { TransactionId: 'tx-elso-fuggo', Total: TOTAL_HUF, Status: 'Prepared' },
+          { TransactionId: 'tx-sikeres', Total: TOTAL_HUF, Status: 'Succeeded' },
+        ]),
+      )
+      .mockResolvedValueOnce(refundResponse(TOTAL_HUF))
+
+    const response = await POST(makeRequest({}), makeContext())
+
+    expect(response.status).toBe(200)
+    const [, refundInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    const refundBody = JSON.parse(String(refundInit.body)) as {
+      TransactionsToRefund: Array<{ TransactionId: string }>
+    }
+    expect(refundBody.TransactionsToRefund[0]?.TransactionId).toBe('tx-sikeres')
   })
 
   it('a naplóban sosem szerepel a POSKey', async () => {

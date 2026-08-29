@@ -18,6 +18,7 @@ import { resolveSingleCourseAccess } from '../course-access-lookup'
 import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import { updateOrderStatusIfCurrent } from '../order-status/conditional-status'
 import {
   paidRejectRecoveryLogContext,
   recoverRejectedSucceededPayment,
@@ -31,12 +32,7 @@ import {
   barionPayUrl,
   decidePendingCheckout,
 } from './pending-payment'
-import {
-  billingSummaryMessage,
-  validateBilling,
-  type BillingFieldError,
-  type NormalizedBilling,
-} from './billing'
+import { billingSummaryMessage, validateBilling, type NormalizedBilling } from './billing'
 import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
 import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
@@ -47,7 +43,6 @@ import {
   GUEST_SUMMARY_MISSING,
   guestSummaryMessage,
   validateGuest,
-  type GuestFieldError,
   type NormalizedGuest,
 } from './guest'
 
@@ -168,24 +163,12 @@ interface ParsedInput {
   guest: NormalizedGuest | null
 }
 
-/**
- * Magyar, a végpont hibaformátumába illeszkedő üzenet a számlázási hibákból.
- *
- * Az ÖSSZEFOGLALÓT a tényleges hibahalmazból származtatjuk
- * (`billingSummaryMessage`) — így a hibás adószám nem „hiányos adat"-ként megy
- * vissza. Ha az összefoglaló épp egybeesik az egyetlen mezőhibával, nem
- * ismételjük meg.
- */
-function billingErrorMessage(errors: readonly BillingFieldError[]): string {
+function fieldErrorMessage<E extends { message: string }>(
+  errors: readonly E[],
+  summarize: (errors: readonly E[]) => string,
+): string {
   const details = errors.map((item) => item.message)
-  const summary = billingSummaryMessage(errors)
-  return (details.includes(summary) ? details : [summary, ...details]).join(' ')
-}
-
-/** Ugyanaz a szerkezet a vendég-mezőkre (e-mail + név). */
-function guestErrorMessage(errors: readonly GuestFieldError[]): string {
-  const details = errors.map((item) => item.message)
-  const summary = guestSummaryMessage(errors)
+  const summary = summarize(errors)
   return (details.includes(summary) ? details : [summary, ...details]).join(' ')
 }
 
@@ -247,13 +230,13 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
   // Számlázási adatok: csak a kérésből, profil-tartalék nélkül (kliens megkerülhető).
   const billingResult = validateBilling(input.billing)
   if (!billingResult.ok) {
-    throw new CheckoutError(400, billingErrorMessage(billingResult.errors))
+    throw new CheckoutError(400, fieldErrorMessage(billingResult.errors, billingSummaryMessage))
   }
 
   // Vendég: bejelentkezve a session az igazság; különben kötelező e-mail + név.
   const guest = hasSession ? null : validateGuest(input.guest)
   if (guest !== null && !guest.ok) {
-    throw new CheckoutError(400, guestErrorMessage(guest.errors))
+    throw new CheckoutError(400, fieldErrorMessage(guest.errors, guestSummaryMessage))
   }
 
   return {
@@ -411,6 +394,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
 
+  let pendingBecamePaid = false
   const pending = pendingOrders.docs[0] as Order | undefined
   if (pending) {
     const paymentId =
@@ -495,11 +479,24 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         // Sikeres refund + a vevő NEM kapott hozzáférést → az „already-paid"
         // válasz hamis lenne. duplicate-paid-order kivétel: ott van élő
         // hozzáférés, az already-paid üzenet igaz.
-        if (recovery.action === 'refunded' && rejectReason === 'total-mismatch') {
-          throw new CheckoutError(409, CHECKOUT_REFUNDED_RETRY)
+        const moneyReturned =
+          recovery.action === 'refunded' ||
+          (recovery.action === 'skipped' &&
+            (recovery.detail === 'already-refunded' || recovery.detail === 'already-recorded'))
+        if (rejectReason === 'total-mismatch') {
+          throw new CheckoutError(
+            409,
+            moneyReturned ? CHECKOUT_REFUNDED_RETRY : CHECKOUT_PAID_UNDER_REVIEW,
+          )
         }
-        if (recovery.action === 'refunded' && rejectReason === 'guest-bind-privileged-account') {
-          throw new CheckoutError(409, CHECKOUT_REFUNDED_PRIVILEGED)
+        if (rejectReason === 'guest-bind-privileged-account') {
+          throw new CheckoutError(
+            409,
+            moneyReturned ? CHECKOUT_REFUNDED_PRIVILEGED : CHECKOUT_PAID_UNDER_REVIEW,
+          )
+        }
+        if (rejectReason === 'refund-recorded') {
+          throw new CheckoutError(409, CHECKOUT_PAID_UNDER_REVIEW)
         }
       }
       return {
@@ -513,12 +510,21 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
       }
     }
     if (decision.kind === 'cancel-and-restart') {
-      await ctx.payload.update({
-        collection: 'orders',
-        id: pending.id,
-        data: { status: 'cancelled' },
-        overrideAccess: true,
+      const cancelled = await updateOrderStatusIfCurrent({
+        payload: ctx.payload,
+        orderId: pending.id,
+        expected: 'payment_pending',
+        next: 'cancelled',
       })
+      if (!cancelled) {
+        const fresh = (await ctx.payload.findByID({
+          collection: 'orders',
+          id: pending.id,
+          depth: 0,
+          overrideAccess: true,
+        })) as Order
+        pendingBecamePaid = fresh.status === 'paid'
+      }
     }
   }
 
@@ -529,7 +535,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     depth: 0,
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
-  const hasPaidOrder = paidOrders.totalDocs > 0
+  const hasPaidOrder = paidOrders.totalDocs > 0 || pendingBecamePaid
   const ownsInPurchases = purchaseIdsFromUser(ctx.user).has(ctx.product.id)
 
   if (!hasPaidOrder && !ownsInPurchases) {

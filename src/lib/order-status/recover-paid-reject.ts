@@ -62,11 +62,7 @@ export interface RecoverRejectedSucceededPaymentInput {
 export function isAutoRefundRejectReason(
   reason: string | undefined,
 ): reason is AutoRefundRejectReason {
-  return (
-    reason === 'duplicate-paid-order' ||
-    reason === 'guest-bind-privileged-account' ||
-    reason === 'total-mismatch'
-  )
+  return reason !== undefined && (AUTO_REFUND_REJECT_REASONS as readonly string[]).includes(reason)
 }
 
 export function hungarianAutoRefundReason(reason: AutoRefundRejectReason): string {

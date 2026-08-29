@@ -155,6 +155,7 @@ function createOrder(overrides: Record<string, unknown> = {}): Order {
 function createMockPayload(order: Order) {
   const calls = {
     orderFinds: 0,
+    protectedFindLocks: [] as string[][],
     update: [] as Array<{ collection: string; id: number | string; data: Record<string, unknown> }>,
     create: [] as Array<{ collection: string; data: Record<string, unknown> }>,
   }
@@ -163,6 +164,7 @@ function createMockPayload(order: Order) {
       const json = JSON.stringify(where ?? {})
       if (json.includes('not_equals')) {
         // A revokePurchases „más paid rendelés" ellenőrzése.
+        calls.protectedFindLocks.push([...lockState.keys])
         return { docs: [], totalDocs: 0 }
       }
       calls.orderFinds += 1
@@ -280,6 +282,16 @@ describe('refund-zár — a pénzmozgató szakasz sorosítása', () => {
     expect(calls.orderFinds).toBe(2)
     expect(result.orderStatus).toBe('refunded')
     expect(result.refundStatusOutcome).toBe('succeeded')
+  })
+
+  it('a „más paid rendelés" ellenőrzés a purchases-záron BELÜL fut (párhuzamos grant nem ékelődhet be)', async () => {
+    const { payload, calls } = createMockPayload(createOrder())
+    responseQueue = [getStateResponse, () => refundResponse(TOTAL_HUF, 'Refunded')]
+
+    await runRefund(payload, {}, invoiceSpies())
+
+    expect(calls.protectedFindLocks).toHaveLength(1)
+    expect(calls.protectedFindLocks[0]).toEqual([refundLockKey(ORDER_ID), userPurchasesLockKey(7)])
   })
 
   it('a záron belüli FRISS olvasás beszámítja a közben lefutott párhuzamos refundot (nincs túlfizetés, nincs elveszett bejegyzés)', async () => {

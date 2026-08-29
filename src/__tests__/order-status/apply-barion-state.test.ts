@@ -81,7 +81,16 @@ function createMockPayload(
     }),
     // A hasPaidOrderFor (K5) where-kiértékelése a fixtúrákon — a valódi szűrés mása.
     find: vi.fn(
-      async ({ where }: { where: { and: Array<Record<string, Record<string, unknown>>> } }) => {
+      async ({
+        collection,
+        where,
+      }: {
+        collection: string
+        where: { and: Array<Record<string, Record<string, unknown>>> }
+      }) => {
+        if (collection === 'products') {
+          return { docs: [product], totalDocs: 1 }
+        }
         const clauses = where.and ?? []
         const customerId = clauses.find((clause) => 'customer' in clause)?.customer.equals
         const productIds = (clauses.find((clause) => 'items.product' in clause)?.['items.product']
@@ -812,5 +821,185 @@ describe('applyBarionStateTransition — W20 reject okok', () => {
 
     expect(result).toEqual({ action: 'rejected', reason: 'cancel-not-allowed' })
     expect(updates).toHaveLength(0)
+  })
+})
+
+describe('applyBarionStateTransition — A4 rögzített refund-nyom a paid-átmenet előtt', () => {
+  const partialRefundTrace = [
+    {
+      transactionId: 'tx-partial-1',
+      amountHuf: 5000,
+      status: 'PartiallyRefunded',
+      refundedAt: '2026-08-01T10:00:00.000Z',
+      type: 'partial' as const,
+      reason: 'Automatikus visszatérítés: a Barion összege nem egyezik a rendeléssel.',
+    },
+  ]
+
+  it('payment_pending + részleges refund-nyom + Succeeded → rejected/refund-recorded, se státusz, se jogosultság', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder({ refunds: partialRefundTrace })
+    const { payload, updates, user } = createMockPayload(order)
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toEqual({ action: 'rejected', reason: 'refund-recorded' })
+    expect(result.transitionedToPaid).toBeUndefined()
+    expect(updates).toHaveLength(0)
+    expect(user.purchases).toEqual([])
+    expect(order.status).toBe('payment_pending')
+    expect(logOutput(logSpy)).toContain('RIASZT')
+    logSpy.mockRestore()
+  })
+
+  it('cancelled late-success sor refund-nyommal + Succeeded → szintén rejected/refund-recorded', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder({ status: 'cancelled', refunds: partialRefundTrace })
+    const { payload, updates, user } = createMockPayload(order)
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toEqual({ action: 'rejected', reason: 'refund-recorded' })
+    expect(updates).toHaveLength(0)
+    expect(user.purchases).toEqual([])
+    expect(order.status).toBe('cancelled')
+    logSpy.mockRestore()
+  })
+
+  it('üres refunds tömb → a paid-átmenet változatlanul lefut', async () => {
+    const order = createOrder({ refunds: [] })
+    const { payload, updates, user } = createMockPayload(order)
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
+    expect(updates.filter((entry) => entry.collection === 'orders')).toEqual([
+      { collection: 'orders', data: { status: 'paid' } },
+    ])
+    expect(user.purchases).toEqual([PRODUCT_ID])
+  })
+})
+
+describe('applyBarionStateTransition — A6 hozzáférés-óra a fizetés igazolásától', () => {
+  function grantsFrom(
+    updates: Array<{ collection: string; data: Record<string, unknown> }>,
+  ): Array<{ product: number; grantedAt: string }> | undefined {
+    const grantUpdate = updates.find(
+      (entry) => entry.collection === 'users' && 'accessGrants' in entry.data,
+    )
+    return grantUpdate?.data.accessGrants as
+      | Array<{ product: number; grantedAt: string }>
+      | undefined
+  }
+
+  it('időkorlátos termék: a paid-átmenet accessGrants kezdőpontot ír', async () => {
+    const order = createOrder({ status: 'cancelled' })
+    const { payload, updates, user } = createMockPayload(order, [], {
+      id: PRODUCT_ID,
+      accessDurationDays: 365,
+    })
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
+    const grants = grantsFrom(updates)
+    expect(grants).toHaveLength(1)
+    expect(grants?.[0]?.product).toBe(PRODUCT_ID)
+    expect(Number.isNaN(Date.parse(grants?.[0]?.grantedAt ?? ''))).toBe(false)
+    expect(user.purchases).toEqual([PRODUCT_ID])
+    expect(order.status).toBe('paid')
+  })
+
+  it('korlátlan termék: NINCS accessGrants-írás', async () => {
+    const order = createOrder()
+    const { payload, updates } = createMockPayload(order, [], {
+      id: PRODUCT_ID,
+      accessDurationDays: null,
+    })
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
+    expect(grantsFrom(updates)).toBeUndefined()
+  })
+
+  it('MÁR paid rendelés (no-op ág): nincs új óra-indítás', async () => {
+    const order = createOrder({ status: 'paid' })
+    const { payload, updates } = createMockPayload(order, [], {
+      id: PRODUCT_ID,
+      accessDurationDays: 365,
+    })
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', duplicate: true, transitionedToPaid: false })
+    expect(grantsFrom(updates)).toBeUndefined()
+  })
+
+  it('a hozzáférés-óra írásának hibája NEM buktatja a paid-átmenetet', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder()
+    const base = createMockPayload(order, [], { id: PRODUCT_ID, accessDurationDays: 365 })
+    const payload = {
+      ...(base.payload as unknown as Record<string, unknown>),
+      update: vi.fn(async (args: { collection: string; data: Record<string, unknown> }) => {
+        if (args.collection === 'users' && 'accessGrants' in args.data) {
+          throw new Error('teszt: az accessGrants-írás elhasal (DB-hiba)')
+        }
+        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(
+          args,
+        )
+      }),
+    } as unknown as Payload
+
+    const result = await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+
+    expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
+    expect(order.status).toBe('paid')
+    expect(base.user.purchases).toEqual([PRODUCT_ID])
+    expect(logOutput(logSpy)).toContain('RIASZT')
+    logSpy.mockRestore()
   })
 })
