@@ -495,7 +495,10 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
   ] as const
 
   it('a 7 kéz-cikk két testvér-panelt ad, csomagoló nélkül', () => {
-    const testver = /kc-container--narrow">\s*<section class="kc-card kc-card--padded kc-post-cta__panel"[\s\S]*?<\/section>\s*<section class="kc-card kc-card--padded kc-post-cta__panel"/
+    // 2026-08-29 (tulajdonosi kérés): a két paneles pár a SZÉLES konténerben
+    // ül (kc-container, --narrow módosító nélkül), a kapcsolódó rács
+    // szélességével azonosan.
+    const testver = /kc-container">\s*<section class="kc-card kc-card--padded kc-post-cta__panel"[\s\S]*?<\/section>\s*<section class="kc-card kc-card--padded kc-post-cta__panel"/
     for (const slug of KEZ_CIKK_PAR_SLUGOK) {
       const html = render(
         createElement(PostArticle, { post: post({ slug, ctaCourse: KURZUS }) }),
@@ -835,7 +838,7 @@ describe('G8 — a mért CSS-küszöbök nem csúszhatnak vissza', () => {
       /\.kc-post-cta__panel \+ \.kc-post-cta__panel \{ margin-block-start: var\(--kc-space-5\); \}/,
     )
     expect(szabaly).toContain(
-      '.kc-post-cta .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)',
+      '.kc-post-cta .kc-container:has(> .kc-post-cta__panel + .kc-post-cta__panel)',
     )
     expect(szabaly).toMatch(
       /@media \(min-width: 900px\) \{ [^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/,
@@ -1102,8 +1105,7 @@ describe('MÉRÉS — érintőcél, térköz, rács és sorhossz', () => {
     expect(hasabSzam(lap, 2560, tartalomHasab(lap, 2560))).toBe(2)
   })
 
-  const PAR_KONTENER =
-    '.kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)'
+  const PAR_KONTENER = '.kc-container:has(> .kc-post-cta__panel + .kc-post-cta__panel)'
 
   const parHasabok = (nezetablak: number): string | null => {
     const lap = lapNezetablakra(nezetablak)

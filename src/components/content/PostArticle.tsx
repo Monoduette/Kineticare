@@ -222,8 +222,14 @@ export function PostArticle({ post, related: relatedProp, freeCourse, path }: Po
           2026-08-25), a témához igazított változattal: a váll-cikk időpontot
           ajánl, a többi kurzust. A fejléc „Kurzusok" navigációja nem ide
           tartozik, az minden lapon marad. */}
+      {/* Két paneles (kurzus + időpont) sávnál a SZÉLES konténer jár
+          (tulajdonosi kérés, 2026-08-29): a kártyapár így pontosan olyan
+          széles, mint alatta a kapcsolódó cikkek rácsa — a keskeny (720px)
+          konténerben a két kártya kényelmetlenül összenyomódott. Az egy
+          paneles időpont-változat (váll) marad keskeny: egy magányos, 1120
+          px-es kártya hamis „szekció-hero" benyomást keltene. */}
       <Section className={ctaClasses} variant="tint">
-        <Container size="narrow">
+        <Container size={ctaVariant === 'idopont' ? 'narrow' : 'wide'}>
           <PostCourseCta
             course={courseCtaTargetOf(post)}
             freeCourse={freeCourseCtaTargetOf(freeCourse)}
