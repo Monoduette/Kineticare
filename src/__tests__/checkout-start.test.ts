@@ -741,6 +741,60 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     logSpy.mockRestore()
   })
 
+  /**
+   * P1 — a sikeres auto-refund UTÁN a „már megvásároltad" hazugság: a vevő
+   * total-mismatch vagy privilegizált-kötés miatt NEM kapta meg a kurzust, a
+   * pénze visszament. A 409 marad, de a szövegnek a visszatérítésről és a
+   * következő lépésről kell szólnia. duplicate-paid-order esetén viszont VAN
+   * élő hozzáférés, ott az already-paid üzenet igaz és marad.
+   */
+  function paidRejectRefundedSetup(reason: string) {
+    const pendingOrder = {
+      id: 92,
+      status: 'payment_pending',
+      createdAt: new Date().toISOString(),
+      barionPaymentId: 'pay-refund',
+      orderNumber: 'KH-REFUND',
+    }
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? { docs: [pendingOrder], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+    const promise = startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Succeeded' }) as never,
+      applyBarionStateTransition: async () => ({ action: 'rejected', reason }),
+      recoverRejectedPaid: vi.fn(async () => ({ action: 'refunded' as const })),
+      barionEnvironment: 'test',
+    })
+    return { promise, calls }
+  }
+
+  it('total-mismatch reject + sikeres refund → 409, de NEM already-paid szöveg', async () => {
+    const { promise } = paidRejectRefundedSetup('total-mismatch')
+    await expect(promise).rejects.toMatchObject({ status: 409 })
+    const error = (await promise.catch((err: unknown) => err)) as Error
+    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(error.message).toContain('visszatérítettük')
+  })
+
+  it('guest-bind-privileged reject + sikeres refund → 409, visszatérítés-üzenettel', async () => {
+    const { promise } = paidRejectRefundedSetup('guest-bind-privileged-account')
+    await expect(promise).rejects.toMatchObject({ status: 409 })
+    const error = (await promise.catch((err: unknown) => err)) as Error
+    expect(error.message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+    expect(error.message).toContain('visszatérítettük')
+  })
+
+  it('duplicate-paid reject + sikeres refund → marad az already-paid 409 (van hozzáférés)', async () => {
+    const { promise } = paidRejectRefundedSetup('duplicate-paid-order')
+    await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_ALREADY_PURCHASED })
+  })
+
   it('lejárt időkorlátos hozzáférés: bejelentkezve újravásárolható', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
     const { payload, calls } = createMockPayload({

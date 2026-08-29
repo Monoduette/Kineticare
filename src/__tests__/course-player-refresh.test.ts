@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   TOKEN_IFRAME_RELOAD_REMAINING_SEC,
+  TOKEN_REFRESH_BEFORE_EXPIRY_SEC,
   mergePlayingSession,
+  nextRefreshDelaySec,
   type FreshPlayingToken,
   type PlayingSession,
 } from '../lib/course-player-refresh'
@@ -92,5 +94,57 @@ describe('mergePlayingSession — iframe-src a betöltött jegy ideje szerint', 
     const merged = mergePlayingSession(null, fresh(0, 'token-a1', 1000, null), false, 0)
     expect(merged.loadedSrc).toBeNull()
     expect(merged.loadedExpiresAtEpochSec).toBeNull()
+  })
+})
+
+/**
+ * A HIBAJEGY IDŐVONALA (2 órás Bunny TTL-lel), amit a nextRefreshDelaySec zár be:
+ * t=0 betöltés (jegy-A, lejárat 7200); t=6900 frissítés (jegy-B) — a merge
+ * HELYESEN megtartja az iframe src-jét, de a régi időzítő CSAK a jegy-B
+ * lejáratából számolt (14100−6900−300 = 6900 mp), így a következő kör t=13800;
+ * közben a betöltött jegy-A t=7200-kor lejár → ~1,8 óra fekete lejátszó.
+ * A szabály: a következő frissítés a token-határidő ÉS a betöltött jegy
+ * csere-határideje (loadedExpires − 90) közül a KORÁBBI.
+ */
+const SRC_A3 = 'https://iframe.mediadelivery.net/embed/1/guid-a?token=token-a3&expires=14310'
+
+describe('nextRefreshDelaySec — a frissítés a betöltött jegy halála ELŐTT fut', () => {
+  it('bő idővel a token-lejárat vezérel: lejárat − 300 mp', () => {
+    const session = playing(0, 'token-a1', 7200, SRC_A, 7200)
+    expect(nextRefreshDelaySec(session, 0)).toBe(7200 - TOKEN_REFRESH_BEFORE_EXPIRY_SEC)
+  })
+
+  it('a hibajegy idővonala: a betöltött jegy határideje rövidíti a kört, a következő kör cserél', () => {
+    // t=0: első betöltés jegy-A-val (lejárat 7200).
+    const session0 = mergePlayingSession(null, fresh(0, 'token-a1', 7200, SRC_A), false, 0)
+    const delay0 = nextRefreshDelaySec(session0, 0)
+    expect(delay0).toBe(6900)
+
+    // t=6900: frissítés jegy-B-vel (lejárat 14100) — a src marad (300 mp > 90 mp).
+    const t1 = delay0
+    const merged1 = mergePlayingSession(session0, fresh(0, 'token-a2', 14100, SRC_A2), true, t1)
+    expect(merged1.loadedSrc).toBe(SRC_A)
+
+    // A következő kör NEM várhat a jegy-B határidejéig: a betöltött jegy-A
+    // csere-határideje (7200 − 90) előtt kell futnia.
+    const delay1 = nextRefreshDelaySec(merged1, t1)
+    expect(t1 + delay1).toBeLessThanOrEqual(7200 - TOKEN_IFRAME_RELOAD_REMAINING_SEC)
+    expect(delay1).toBe(210)
+
+    // t=7110: a soron következő frissítés már CSERÉLI a src-t (maradék = 90, nem > 90).
+    const t2 = t1 + delay1
+    const merged2 = mergePlayingSession(merged1, fresh(0, 'token-a3', 14310, SRC_A3), true, t2)
+    expect(merged2.loadedSrc).toBe(SRC_A3)
+    expect(merged2.loadedExpiresAtEpochSec).toBe(14310)
+  })
+
+  it('a 30 mp-es alsó korlát megmarad', () => {
+    const session = playing(0, 'token-a1', 1200, SRC_A, 1200)
+    expect(nextRefreshDelaySec(session, 1000)).toBe(30)
+  })
+
+  it('hiányzó betöltött jegy (null src): csak a token-lejárat számít', () => {
+    const session = playing(0, 'token-a1', 7200, null)
+    expect(nextRefreshDelaySec(session, 0)).toBe(6900)
   })
 })

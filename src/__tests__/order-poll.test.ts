@@ -13,6 +13,7 @@ import {
   STUCK_ORDER_WARN_MS,
 } from '../lib/order-poll/service'
 import type { applyBarionStateTransition } from '../lib/order-status/apply-barion-state'
+import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
 import type { Order } from '../payload-types'
 
 /**
@@ -182,7 +183,12 @@ function setup(options: SetupOptions = {}) {
       if (typeof limit === 'number') {
         docs = docs.slice(0, limit)
       }
-      return { docs, totalDocs: docs.length }
+      // ÉLETHŰSÉG (P0-repro): a valódi Payload `find` ÚJ objektumokat ad vissza
+      // az SQL-ből — ha közben egy recovery a DB-be ír, a poll kezében lévő
+      // példány NEM változik. A korábbi alias (ugyanaz a referencia) épp a
+      // stale-touch hibát rejtette el: az update mutálta a poll példányát is,
+      // így az in-memory státusz sosem tudott elavulni.
+      return { docs: docs.map((order) => ({ ...order })), totalDocs: docs.length }
     },
     findByID: async ({ collection, id }: { collection: string; id: number }) => {
       // Az M5 zár a záron belül ÚJRAOLVASSA a rendelést — a mock a tárolt
@@ -1356,5 +1362,104 @@ describe('order-poll — R-03 late-success (cancelled + Succeeded)', () => {
     expect(recoverRejectedPaid.mock.calls.at(0)?.at(0)).toMatchObject({ source: 'order-poll' })
     expect(cancelled.updatedAt).toBe(originalUpdatedAt)
     expect(orderUpdates.some((row) => row.status === 'cancelled')).toBe(false)
+  })
+})
+
+describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
+  /**
+   * A VALÓDI recovery fut (recoverRejectedSucceededPayment), injektált Barion
+   * refund-transporttal: a Refund-hívás Refunded-et ad, a persist a DB-be
+   * `status: 'refunded'`-et ír. A poll kezében lévő rendelés-példány közben
+   * NEM változik (a harness `find`-je másolatot ad, mint a valódi Payload) —
+   * a hibás touch tehát a friss DB-státuszt írná felül a stale in-memoryval.
+   */
+  type RecoverInput = Parameters<typeof recoverRejectedSucceededPayment>[0]
+
+  const refundedTransport: NonNullable<RecoverInput['refundPayment']> = async () => ({
+    PaymentId: PAYMENT_ID,
+    RefundedTransactions: [{ TransactionId: 'tx-p0', Status: 'Refunded' }],
+  })
+
+  const refundableState: Partial<BarionPaymentStateResponse> = {
+    Transactions: [
+      {
+        TransactionId: 'tx-p0',
+        TransactionType: 'CardPayment',
+        Status: 'Succeeded',
+        Total: ORDER_TOTAL_HUF,
+      },
+    ] as BarionPaymentStateResponse['Transactions'],
+  }
+
+  it('pending + Succeeded + total-mismatch reject + sikeres auto-refund → nincs payment_pending visszaírás', async () => {
+    const order = createPendingOrder({ id: 910, barionPaymentId: 'p0-pending-payment' })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [order],
+      stateOverrides: refundableState,
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded', refundableState),
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    const refundedIdx = orderUpdates.findIndex((row) => row.status === 'refunded')
+    expect(refundedIdx, 'a recovery nem persistálta a refunded státuszt').toBeGreaterThanOrEqual(0)
+    const later = orderUpdates.slice(refundedIdx + 1)
+    expect(
+      later.some((row) => row.status === 'payment_pending'),
+      'a poll a refunded DB-státuszt payment_pendingre írta vissza',
+    ).toBe(false)
+    expect(pending[0]?.status).toBe('refunded')
+  })
+
+  it('late-success cancelled + duplicate reject + sikeres auto-refund → nincs cancelled visszaírás', async () => {
+    const cancelled = createPendingOrder({
+      id: 911,
+      status: 'cancelled',
+      barionPaymentId: 'p0-late-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates, lateSuccess } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateOverrides: refundableState,
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded', refundableState),
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'duplicate-paid-order',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    const refundedIdx = orderUpdates.findIndex((row) => row.status === 'refunded')
+    expect(refundedIdx, 'a recovery nem persistálta a refunded státuszt').toBeGreaterThanOrEqual(0)
+    const later = orderUpdates.slice(refundedIdx + 1)
+    expect(
+      later.some((row) => row.status === 'cancelled'),
+      'a late-success touch a refunded DB-státuszt cancelledre írta vissza',
+    ).toBe(false)
+    expect(lateSuccess[0]?.status).toBe('refunded')
   })
 })

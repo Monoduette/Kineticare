@@ -269,6 +269,23 @@ async function touchOrderStatus(
   })
 }
 
+/**
+ * A rendelés FRISS státusza a DB-ből. A touch előtt kötelező: a poll `order`
+ * példánya a lap betöltésekor készült, és a paid-reject recovery közben a
+ * DB-be `refunded`-et írhatott (persistAutoRefund) — a stale in-memory
+ * státusszal touch-olni a refundot írná felül, és a sor újra kinyílna
+ * (pénz visszautalva Barionon, helyben mégis payment_pending/cancelled).
+ */
+async function readFreshOrderStatus(payload: Payload, orderId: number): Promise<Order['status']> {
+  const fresh = (await payload.findByID({
+    collection: 'orders',
+    id: orderId,
+    depth: 0,
+    overrideAccess: true,
+  })) as Order
+  return fresh.status
+}
+
 function lateSuccessOrdersWhere(
   sinceIso: string,
   excludeIds: ReadonlyArray<number>,
@@ -382,6 +399,12 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       log: orderLog,
     })
     let recoveryFailed = false
+    /**
+     * Igaz, ha a paid-reject recovery SIKERES auto-refundot zárt (a DB-ben már
+     * `refunded` a státusz). Ekkor SEMMILYEN touch nem futhat: a W1/RF-3
+     * no-op visszaírás a stale in-memory státusszal újranyitná a lezárt sort.
+     */
+    let recoveryRefunded = false
 
     if (transition.transitionedToPaid) {
       await onPaid(
@@ -434,8 +457,19 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             recoveryCtx,
           )
         }
+        if (recovery.action === 'refunded') {
+          recoveryRefunded = true
+        }
       }
-      if (!recoveryFailed && order.status === 'payment_pending') {
+      // W1 touch CSAK friss DB-státuszra: a recovery (vagy egy közben befutó
+      // callback) már írhatott a sorra — refunded/paid/cancelled sort tilos
+      // payment_pendingre visszaírni.
+      if (
+        !recoveryFailed &&
+        !recoveryRefunded &&
+        order.status === 'payment_pending' &&
+        (await readFreshOrderStatus(deps.payload, order.id)) === 'payment_pending'
+      ) {
         await touchOrderStatus(deps.payload, order.id, 'payment_pending')
       }
       orderLog.warn('order-poll: az átmenet visszautasítva (állapotgép-védelem)', {
@@ -443,13 +477,19 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       })
     }
 
+    // RF-3 touch a late-success ágon — szintén csak FRISS DB-státuszra, és a
+    // frissel touch-olunk, nem a lap betöltésekor látott in-memoryval: egy
+    // sikeres auto-refund után a sor refunded, azt tilos visszaírni.
     if (
       !recoveryFailed &&
+      !recoveryRefunded &&
       (statusBefore === 'cancelled' || statusBefore === 'payment_failed') &&
-      !transition.transitionedToPaid &&
-      (order.status === 'cancelled' || order.status === 'payment_failed')
+      !transition.transitionedToPaid
     ) {
-      await touchOrderStatus(deps.payload, order.id, order.status)
+      const freshStatus = await readFreshOrderStatus(deps.payload, order.id)
+      if (freshStatus === 'cancelled' || freshStatus === 'payment_failed') {
+        await touchOrderStatus(deps.payload, order.id, freshStatus)
+      }
     }
   }
 

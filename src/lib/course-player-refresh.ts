@@ -21,6 +21,9 @@
 /** Ha a betöltött embed-jegy ennyi másodpercen belül lejár, az iframe src cserélődik. */
 export const TOKEN_IFRAME_RELOAD_REMAINING_SEC = 90
 
+/** A token-frissítés a lejárat előtt ennyivel korábban fut (másodperc). */
+export const TOKEN_REFRESH_BEFORE_EXPIRY_SEC = 300
+
 /** A „playing" állapot — a token a legfrissebb, a loadedSrc az iframe-ben lévő. */
 export interface PlayingSession {
   videoIndex: number
@@ -84,4 +87,34 @@ export function mergePlayingSession(
     loadedSrc: next.src,
     loadedExpiresAtEpochSec: next.src === null ? null : next.expiresAtEpochSec,
   }
+}
+
+/**
+ * A KÖVETKEZŐ token-frissítés késleltetése (másodperc) az összefésült állapotból.
+ *
+ * ═══ A HIBA, AMIT BEZÁR ═══
+ * A régi időzítő CSAK az új token lejáratából számolt (lejárat − 300 mp), a
+ * src-csere küszöbe viszont a BETÖLTÖTT jegyé (maradék ≤ 90 mp). Két órás
+ * Bunny TTL-lel: t=0 betöltés (jegy-A, lejárat 7200), t=6900 frissítés — a
+ * merge megtartja a src-t (300 mp > 90 mp), az időzítő viszont a jegy-B
+ * lejáratára állt (t=13800); a betöltött jegy-A t=7200-kor meghalt, és a vevő
+ * ~1,8 órán át fekete lejátszót nézett. A szabály: a következő kör a
+ * token-határidő (lejárat − 300) ÉS a betöltött jegy csere-határideje
+ * (loadedExpires − 90) közül a KORÁBBI — így a csere-kör még azelőtt fut le,
+ * hogy a betöltött jegy lejárna.
+ *
+ * @param session az összefésült „playing" állapot (mergePlayingSession kimenete)
+ * @param nowSec a „most" epoch másodpercben (teszthez injektálható)
+ */
+export function nextRefreshDelaySec(
+  session: Pick<PlayingSession, 'expiresAtEpochSec' | 'loadedExpiresAtEpochSec'>,
+  nowSec: number,
+): number {
+  const tokenDeadlineSec = session.expiresAtEpochSec - nowSec - TOKEN_REFRESH_BEFORE_EXPIRY_SEC
+  const loadedExpires = session.loadedExpiresAtEpochSec
+  const loadedDeadlineSec =
+    typeof loadedExpires === 'number' && Number.isFinite(loadedExpires)
+      ? loadedExpires - nowSec - TOKEN_IFRAME_RELOAD_REMAINING_SEC
+      : Number.POSITIVE_INFINITY
+  return Math.max(30, Math.min(tokenDeadlineSec, loadedDeadlineSec))
 }

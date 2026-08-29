@@ -61,6 +61,20 @@ export { CHECKOUT_GUEST_EXISTING_ACCOUNT, CHECKOUT_GUEST_FINISH_AFTER_LOGIN }
 export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
 
 /**
+ * Sikeres auto-refund UTÁN a „már megvetted" hazugság lenne: a vevő NEM kapta
+ * meg a kurzust (total-mismatch vagy privilegizált-kötés miatt terminális
+ * reject), a pénze visszament a Barionon. A 409 marad (ez a Start ütközött a
+ * függő rendeléssel), de a szöveg a visszatérítést és a következő lépést
+ * mondja. A rendelés a recovery után `refunded`, ezért a KÖVETKEZŐ Start már
+ * tiszta lappal indul.
+ */
+export const CHECKOUT_REFUNDED_RETRY =
+  'A fizetésed teljes összegét visszatérítettük, mert az összeg nem egyezett a rendeléssel. Hozzáférés nem jött létre. Indítsd újra a vásárlást.'
+
+export const CHECKOUT_REFUNDED_PRIVILEGED =
+  'A fizetésed teljes összegét visszatérítettük: ezzel az e-mail-címmel munkatársi fiók van, vendégként ide nem köthető vásárlás. Lépj be a fiókodba, és onnan indítsd a vásárlást.'
+
+/**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
  * forrás. Duplavásárlás-blokk + rendelés-létrehozás egy zárban; Barion Start
  * a záron kívül. `paid` csak a callback/poll állapotgépen. Vendég: guest
@@ -475,6 +489,15 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
             'RIASZTÁS: paid-reject recovery sikertelen — a checkout 409 marad, a pénz még kint lehet',
             recoveryCtx,
           )
+        }
+        // Sikeres refund + a vevő NEM kapott hozzáférést → az „already-paid"
+        // válasz hamis lenne. duplicate-paid-order kivétel: ott van élő
+        // hozzáférés, az already-paid üzenet igaz.
+        if (recovery.action === 'refunded' && rejectReason === 'total-mismatch') {
+          throw new CheckoutError(409, CHECKOUT_REFUNDED_RETRY)
+        }
+        if (recovery.action === 'refunded' && rejectReason === 'guest-bind-privileged-account') {
+          throw new CheckoutError(409, CHECKOUT_REFUNDED_PRIVILEGED)
         }
       }
       return {
