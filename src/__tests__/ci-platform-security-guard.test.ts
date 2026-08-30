@@ -31,7 +31,7 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', '5b05d07c764e17e6621c761001b0e332426615b5f0026d4e9e0db76e52dd6832'],
+  ['ci.yml', '53d4c7c56faf61a4078ee94685df7294ea723fe70ec8a9b5cae73ff6163cc1f9'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
   ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
   ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
@@ -50,9 +50,9 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@types/react': '19.2.18',
   '@types/react-dom': '19.2.4',
   eslint: '9.39.5',
-  'eslint-config-next': '16.3.1',
+  'eslint-config-next': '16.3.3',
   graphql: '16.14.2',
-  next: '16.3.0',
+  next: '16.3.3',
   payload: '3.88.0',
   'posthog-js': '1.413.3',
   prettier: '3.9.6',
