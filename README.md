@@ -81,7 +81,7 @@ kizárólag a kezdőlap szekciósorát és a landing tartalmi képeit tölti be
   a `paid` átmenet kizárólag a Barion-callback-útvonal joga (v4-verifikáció).
 - Manuális migráció-írás tilos — a séma-változás generált migrációval megy.
 - Access-control (jogosultsági) módosítás csak emberi jóváhagyással.
-- A `@payloadcms/*` verziók exact-pinnelve (3.86.0) — frissítés csak changelog
+- A `@payloadcms/*` verziók exact-pinnelve (3.88.0) — frissítés csak changelog
   + staging-E2E után.
 
 ## Fizetési és számlázási lánc (röviden)

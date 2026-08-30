@@ -247,7 +247,7 @@ function StatCard({ label, value }: { label: string; value: string }): JSX.Eleme
 
 /**
  * A panel címsora.
- * A címsor eddig `h4` volt. MÉRVE (a Payload 3.88 forrásából): a szerkesztő-
+ * A címsor eddig `h4` volt. MÉRVE (a Payload 3.88.0 forrásából): a szerkesztő-
  * oldal dokumentumcíme `h1` (@payloadcms/ui RenderTitle alapértelmezett
  * eleme), a `type: 'array'` és `type: 'group'` mezők címkéje pedig `h3`
  * (@payloadcms/ui fields/Array és fields/Group). A termékoldalon a panel

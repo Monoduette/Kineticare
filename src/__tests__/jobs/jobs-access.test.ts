@@ -149,7 +149,7 @@ describe('jobs access — a konfiguráció bekötése', () => {
    * A támadási felület pontos leltára: a `jobs.access` KIZÁRÓLAG a jobs-specifikus
    * `/run` és `/handle-schedules` GET-végpontot védi
    * (payload/dist/queues/config/collection.js `endpoints` tömbje). Külön
-   * `/queue` és `/cancel` REST-végpont a 3.86-ban NINCS — azok az access-ágak
+   * `/queue` és `/cancel` REST-végpont a 3.88.0-ban NINCS — azok az access-ágak
    * csak a local API `overrideAccess: false` hívásain élnek. Ha egy verzióemelés
    * új jobs-végpontot hozna, ez a teszt megbukik, és újra kell gondolni a szabályt.
    */

@@ -1,6 +1,6 @@
 # Kineticare — teljes feladatlista
 
-**Utolsó frissítés:** 2026-08-22, a 5. szakasz maradék döntései (J2 session).
+**Utolsó frissítés:** 2026-08-30, a kormányzott Payload/Next dependency-kör lezárása.
 
 ## 2026-08-22 kritikus utak — a #148-ban lezárva
 
@@ -109,7 +109,7 @@ A lista 4 blokkra bomlik: **(A) azonnali, rajtad múló**, **(B) integrációk
 | # | Feladat | Prioritás | Megjegyzés |
 |---|---|---|---|
 | ~~C1~~ | ~~Reset-password szerveroldali jelszópolitika~~ | — | **KÉSZ** (2026-08-09): saját route-handler árnyékolja a `POST /api/users/reset-password` útvonalat (rate-limit + `validatePasswordStrength` + delegálás a Payloadnak), a politika REST-hívással sem kerülhető meg. Részletek: `docs/jelszo-politika.md`. |
-| C2 | **`@payloadcms/*` kormányzott bump** | Közepes | A 3.86.0 peer-tartománya már beengedi a next@16.x-et (`>=16.2.6 <17.0.0`); a `legacy-peer-deps` a régebbi felbontású lockfile miatt marad, amíg a tiszta-registrys lockfile-újragenerálás külön, emberi döntésű PR-ben meg nem történik. A tranzitív sebezhetőségek miatt a CI audit-kapu `critical`-szintű. |
+| ~~C2~~ | ~~`@payloadcms/*` kormányzott bump~~ | — | **KÉSZ (2026-08-30):** az `@payloadcms/*` és a `payload` exact-pinnelve `3.88.0`, a Next `16.3.3`. A `legacy-peer-deps` nem peer-ütközés miatt marad: a lockfile ebben a módban készült és lett validálva. A CI audit-kapu `high` szinttől blokkol. |
 | ~~C3~~ | ~~products `displayTitle` + `slug` mező~~ (SEO) | — | **KÉSZ** (2026-08-09): `displayTitle` + egyedi `slug` mező, kanonikus `/kurzusok/{slug}` URL tartós átirányítással a régi id-s címről; minden hivatkozás a közös `courseHref()`-re állt át. Üzemeltetés: a meglévő kurzusok slugja az adminban mentéskor áll elő (addig az id-s URL él). |
 | ~~C4~~ | ~~stornó-státusz mezők + retry-job~~ | — | **KÉSZ** (2026-08-09): `stornoStatus`/`stornoNumber`/`stornoAttempts`/`stornoLastError` a rendelésen, `storno-issue` retry-job az order-maintenance queue-n, MAX 5 kísérlet. Részletek: `docs/szamlazz-storno.md`. |
 | ~~C5~~ | ~~Helyesbítő számla részrefundhoz~~ | — | **KÉSZ** (2026-08-09): részrefundnál helyesbítő számla (`helyesbitoszamla` + `helyesbitettSzamlaszam`, negatív korrekciós tétel), `correctiveInvoiceStatus/Number/Seq` mezők + `corrective-invoice-issue` job, kétrétegű idempotenciával. Élesítés előtt egy sandbox-os végigfuttatás ajánlott. |

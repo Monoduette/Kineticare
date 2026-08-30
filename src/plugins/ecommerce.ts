@@ -1,7 +1,7 @@
 import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
-import type { Config, Field, FieldAccess } from 'payload'
+import type { Config, Field, FieldAccess, NumberFieldSingleValidation } from 'payload'
 
 import {
   adminOrPublishedStatus,
@@ -41,6 +41,21 @@ export const HUF: Currency = {
  * - isDocumentOwner: customer csak a saját orders/carts dokumentumait
  */
 const adminOnlyFieldAccess = isAdminFieldAccess
+
+export const validateAccessDurationDays: NumberFieldSingleValidation = (
+  value,
+  { operation, previousValue },
+) => {
+  if (value === null || value === undefined || (Number.isSafeInteger(value) && value > 0)) {
+    return true
+  }
+  // Régi 0/negatív sor más mezőjének mentése nem törhet el. Új create,
+  // illetve az érték tényleges módosítása viszont mindig fail-closed.
+  if (operation === 'update' && value === previousValue) {
+    return true
+  }
+  return 'A hozzáférés hossza csak pozitív egész nap lehet, vagy hagyd üresen.'
+}
 
 /**
  * Rekurzív mezőfa-bejárás: a plugin gyári mezői group/row/tabs-struktúrába
@@ -275,8 +290,39 @@ const withOrderStatusStateMachine = (field: Field): Field => {
   } as Field
 }
 
+/**
+ * A rendelés ezen plugin-mezőit kizárólag a szerveroldali checkout- és
+ * fizetési folyamat írhatja. A local API `overrideAccess: true` útja megmarad.
+ */
+const systemOwnedOrderFieldNames = new Set([
+  'items',
+  'customer',
+  'customerEmail',
+  'transactions',
+  'status',
+  'amount',
+  'currency',
+])
+
+const withSystemOwnedOrderWriteAccess = (field: Field): Field => {
+  const named = namedField(field)
+  if (!named || !systemOwnedOrderFieldNames.has(named.name)) {
+    return field
+  }
+  return {
+    ...named,
+    access: {
+      ...named.access,
+      create: denyFieldWrite,
+      update: denyFieldWrite,
+    },
+  } as Field
+}
+
 const visitOrderFields = (field: Field): Field =>
-  withOrderStatusStateMachine(withOrderItemsCell(withOrderItemSnapshots(field)))
+  withSystemOwnedOrderWriteAccess(
+    withOrderStatusStateMachine(withOrderItemsCell(withOrderItemSnapshots(field))),
+  )
 
 /**
  * Admin-csoport a webshop-collectionöknek: a plugin gyári collectionjei
@@ -757,6 +803,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       name: 'accessDurationDays',
       type: 'number',
       label: 'Hozzáférés hossza (nap)',
+      access: {
+        create: isOwnerFieldAccess,
+        update: isOwnerFieldAccess,
+      },
+      validate: validateAccessDurationDays,
       admin: {
         description:
           'Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.',
@@ -861,7 +912,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
  * - a pénzügyi/személyes mezők (customerSnapshot, ipAddress, invoiceNumber,
  *   barionPaymentId) read-access-e owner-only — a staff ugyan olvashatja a
  *   rendelést (collection-szint), de ezeket a mezőket nem;
- * - refundedAt/refundReason update owner-only (a refund-folyamat későbbi ticket).
+ * - a checkout/refund által töltött mezők create/update access-e zárt; a
+ *   szerveroldali `overrideAccess: true` folyamatok írják őket.
  *
  * T-017 rendelés-integritás:
  * - orderNumber + totalHufSnapshot + item-snapshotok (titleSnapshot,
@@ -1222,6 +1274,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       label: 'Vásárlói adatok a megrendeléskor',
       access: {
         read: isOwnerFieldAccess,
+        create: denyFieldWrite,
+        update: denyFieldWrite,
       },
       admin: {
         description: 'A számlázási adatok mentett másolata a rendelés idejéből.',
@@ -1232,6 +1286,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       type: 'checkbox',
       defaultValue: false,
       label: 'Lemondott az elállási jogról',
+      access: {
+        create: denyFieldWrite,
+        update: denyFieldWrite,
+      },
       admin: {
         description:
           'A vásárló a megrendeléskor kérte az azonnali hozzáférést, és tudomásul vette, hogy ezzel elveszti a 14 napos elállási jogát.',
@@ -1241,6 +1299,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'consentWithdrawalWaiverAt',
       type: 'date',
       label: 'Elállási jogról lemondás időpontja',
+      access: {
+        create: denyFieldWrite,
+        update: denyFieldWrite,
+      },
     },
     {
       // Visszatérítés-panel (UI-mező, NEM tárol adatot → nincs séma-változás,
@@ -1261,7 +1323,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       type: 'text',
       label: 'Visszatérítés indoka',
       access: {
-        update: isOwnerFieldAccess,
+        create: denyFieldWrite,
+        update: denyFieldWrite,
       },
     },
     {
@@ -1269,7 +1332,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       type: 'date',
       label: 'Visszatérítés időpontja',
       access: {
-        update: isOwnerFieldAccess,
+        create: denyFieldWrite,
+        update: denyFieldWrite,
       },
     },
     {
@@ -1302,6 +1366,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       label: 'IP-cím a megrendeléskor',
       access: {
         read: isOwnerFieldAccess,
+        create: denyFieldWrite,
+        update: denyFieldWrite,
       },
       admin: {
         description: 'A megrendelés IP-címe — csalásgyanús eset kivizsgálásához.',
@@ -1319,7 +1385,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
  *
  * - Variants kikapcsolva: egy kurzus = egy ár.
  * - Addresses kikapcsolva: digitális termék, a számlázási cím a users-en él.
- *   A plugin 3.86.0 sanitizePluginConfig-ja az `addresses: false` értéket is
+ *   A plugin 3.88.0 sanitizePluginConfig-ja az `addresses: false` értéket is
  *   alapértelmezett mezőkkel tölti fel (azaz a boolean false önmagában nem
  *   tiltja le a collectiont), ezért a plugin lefutása után szűrjük ki az
  *   `addresses` slugot.

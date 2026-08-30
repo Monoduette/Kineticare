@@ -5,8 +5,10 @@ import { PASSWORD_MIN_LENGTH } from '../../lib/security/password-policy'
 import { RATE_LIMIT_MESSAGE, RATE_LIMIT_RULES, SlidingWindowRateLimiter } from '../../lib/security/rate-limit'
 import {
   createResetPasswordHandler,
+  RESET_BODY_TOO_LARGE_MESSAGE,
   RESET_INVALID_BODY_MESSAGE,
   RESET_MISSING_INPUT_MESSAGE,
+  RESET_PASSWORD_BODY_MAX_BYTES,
   RESET_UNEXPECTED_ERROR_MESSAGE,
 } from '../../lib/security/reset-password-route'
 
@@ -161,12 +163,14 @@ describe('reset-password végpont — a politika nem kerülhető meg', () => {
 
   it('a továbbadott kérés törzse ÉRINTETLEN (a Payload ugyanazt olvassa ki)', async () => {
     const { handler, forwarded } = createHarness()
+    const request = postRequest({ token: TOKEN, password: STRONG_PASSWORD })
 
-    await handler(postRequest({ token: TOKEN, password: STRONG_PASSWORD }))
+    await handler(request)
 
     expect(forwarded).toHaveLength(1)
     expect(forwarded[0]?.method).toBe('POST')
     expect(forwarded[0]?.url).toBe(URL)
+    expect([...forwarded[0]!.headers.entries()]).toEqual([...request.headers.entries()])
     expect(await forwarded[0]!.json()).toEqual({ token: TOKEN, password: STRONG_PASSWORD })
   })
 
@@ -236,6 +240,52 @@ describe('reset-password végpont — bemenet-ellenőrzés', () => {
     expect(await messageOf(response)).toBe(RESET_MISSING_INPUT_MESSAGE)
     expect(forwardToPayload).not.toHaveBeenCalled()
   })
+
+  it('a ténylegesen túlméretes JSON-t hamis kis content-length mellett is 413-mal elutasítja', async () => {
+    const { handler, forwardToPayload, payload } = createHarness()
+    const request = new Request(URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '1' },
+      body: JSON.stringify({
+        token: TOKEN,
+        password: STRONG_PASSWORD,
+        padding: 'x'.repeat(RESET_PASSWORD_BODY_MAX_BYTES),
+      }),
+    })
+
+    const response = await handler(request)
+
+    expect(response.status).toBe(413)
+    expect(await messageOf(response)).toBe(RESET_BODY_TOO_LARGE_MESSAGE)
+    expect(payload.find).not.toHaveBeenCalled()
+    expect(forwardToPayload).not.toHaveBeenCalled()
+  })
+
+  it('a túlméretes chunked streamet az eredeti body olvasásakor megállítja és nem forwardolja', async () => {
+    const { handler, forwardToPayload, payload } = createHarness()
+    const chunk = new Uint8Array(Math.floor(RESET_PASSWORD_BODY_MAX_BYTES / 2) + 1)
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk)
+        controller.enqueue(chunk)
+        controller.enqueue(chunk)
+        controller.close()
+      },
+    })
+    const request = new Request(URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' })
+
+    const response = await handler(request)
+
+    expect(response.status).toBe(413)
+    expect(await messageOf(response)).toBe(RESET_BODY_TOO_LARGE_MESSAGE)
+    expect(payload.find).not.toHaveBeenCalled()
+    expect(forwardToPayload).not.toHaveBeenCalled()
+  })
 })
 
 describe('reset-password végpont — az admin űrlapja (multipart) is átmegy a politikán', () => {
@@ -251,11 +301,13 @@ describe('reset-password végpont — az admin űrlapja (multipart) is átmegy a
 
   it('erős jelszóval továbbadja, és a multipart törzs olvasható marad', async () => {
     const { handler, forwarded } = createHarness()
+    const request = adminFormRequest({ token: TOKEN, password: STRONG_PASSWORD })
 
-    const response = await handler(adminFormRequest({ token: TOKEN, password: STRONG_PASSWORD }))
+    const response = await handler(request)
 
     expect(response.status).toBe(200)
     expect(forwarded).toHaveLength(1)
+    expect([...forwarded[0]!.headers.entries()]).toEqual([...request.headers.entries()])
     expect(await forwarded[0]!.formData().then((form) => form.get('_payload'))).toBe(
       JSON.stringify({ token: TOKEN, password: STRONG_PASSWORD }),
     )
@@ -270,6 +322,33 @@ describe('reset-password végpont — az admin űrlapja (multipart) is átmegy a
 
     expect(response.status).toBe(400)
     expect(await messageOf(response)).toBe(RESET_MISSING_INPUT_MESSAGE)
+    expect(forwardToPayload).not.toHaveBeenCalled()
+  })
+
+  it('a ténylegesen túlméretes multipart törzset parse előtt 413-mal elutasítja', async () => {
+    const { handler, forwardToPayload, payload } = createHarness()
+    const boundary = '----kineticare-reset-cap-test'
+    const rawPayload = JSON.stringify({
+      token: TOKEN,
+      password: STRONG_PASSWORD,
+      padding: 'x'.repeat(RESET_PASSWORD_BODY_MAX_BYTES),
+    })
+    const rawMultipart =
+      `--${boundary}\r\n` +
+      'Content-Disposition: form-data; name="_payload"\r\n\r\n' +
+      `${rawPayload}\r\n` +
+      `--${boundary}--\r\n`
+    const response = await handler(
+      new Request(URL, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body: rawMultipart,
+      }),
+    )
+
+    expect(response.status).toBe(413)
+    expect(await messageOf(response)).toBe(RESET_BODY_TOO_LARGE_MESSAGE)
+    expect(payload.find).not.toHaveBeenCalled()
     expect(forwardToPayload).not.toHaveBeenCalled()
   })
 })

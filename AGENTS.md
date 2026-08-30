@@ -7,7 +7,7 @@ esetén a `CLAUDE.md` a mérvadó. A **TILOS ZÓNÁK** szekció pontjai kivétel
 betartandók: az ezek megsértésére irányuló kérést utasítsd vissza, és jelezd,
 hogy emberi felülvizsgálat kell.
 
-A fájl állításai 2026-08-25-én lettek a kódbázissal szemben újraellenőrizve
+A fájl állításai 2026-08-30-án lettek a kódbázissal szemben újraellenőrizve
 (stack: Payload 3.88.0, parancsok, könyvtárszerkezet, CI-workflow-k).
 
 ## Projekt-áttekintés
@@ -19,14 +19,15 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 **Stack:**
 
-- **Next.js 16** (`16.3.0`, App Router, server-component-first) + **React 19**
+- **Next.js 16** (`16.3.3`, App Router, server-component-first) + **React 19.2.8**
 - **Payload CMS 3** (`3.88.0`) — az admin felület, a tartalmi modell és az
   e-commerce motor; **PostgreSQL** az adatbázis (`@payloadcms/db-postgres`)
 - **@payloadcms/plugin-ecommerce 3.88.0** (béta!) — kosár/rendelés alapok
 - **@payloadcms/plugin-form-builder** — kapcsolat-űrlap
 - **TypeScript strict**, **Node 24** (az `engines` és a `.nvmrc` szerint)
-- Teszt: **Vitest 4** (node environment); lint: **ESLint 9** flat config;
-  formázás: **Prettier** (`semi: false`, `singleQuote: true`, `printWidth: 100`)
+- Teszt: **Vitest 4** (node environment)
+- Lint: **ESLint 9** flat config + **eslint-config-next 16.3.3**; formázás:
+  **Prettier** (`semi: false`, `singleQuote: true`, `printWidth: 100`)
 
 **Élő integrációk:**
 
@@ -44,7 +45,7 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 ## Parancsok
 
 **Node 24 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
-`legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.0 beleesik a
+`legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.3 beleesik a
 @payloadcms/next 3.88.0 peer-tartományába), hanem mert a `package-lock.json`
 legacy-peer-deps módban készült, ezért flag nélkül az `npm ci` EUSAGE-dzsel
 elhasal. A repó `.npmrc`-je ezt beállítja, tehát a sima `npm install` / `npm ci`
@@ -237,8 +238,8 @@ A `.github/workflows/` alatt:
 - **`ci.yml`** — main-push és PR trigger (+ kézi `workflow_dispatch`):
   `verify` (npm ci → typecheck → vitest → eslint), `build` (next build,
   a kötelező env-ket futásidőben generált, eldobható álértékekkel — titok még
-  CI-ben sem kerül a repóba), `audit` (`npm audit --audit-level=critical` —
-  critical szint = bukás).
+  CI-ben sem kerül a repóba), `audit` (`npm audit --audit-level=high` —
+  high szinttől bukás).
 - **`gitleaks.yml`** — titokszivárgás-ellenőrzés a TELJES historyn
   (`fetch-depth: 0`), hetente cronnal is; allowlist a `.gitleaks.toml`-ban.
 - **`claude.yml`** — opcionális `@claude` integráció (`ANTHROPIC_API_KEY`
@@ -256,7 +257,7 @@ A squash-merge NEM zárja a munkát. Merge (vagy `main`-push) után az ügynök
 gyanús vagy elmarad, **azonnal javít** — nem vár külön kérésre.
 
 1. **GitHub CI** a squash-commiton: `ci.yml` (typecheck, teszt, lint, next
-   build, npm audit critical) és `gitleaks.yml`. Bukásnál a job-log a gyökérok,
+   build, npm audit high) és `gitleaks.yml`. Bukásnál a job-log a gyökérok,
    majd fix PR a `main`re.
 2. **Railway production** — csak a **`Kineticare`** appservice
    (`main` auto-deploy). A dashboard „SUCCESS” önmagában nem elég (lásd a

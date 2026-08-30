@@ -199,7 +199,7 @@
 - **A tényleges audit-job a `ci.yml`-ben** — ez a mérvadó, ne ezt a doksit másold:
   ```yaml
   audit:
-    name: npm audit (critical = bukás)
+    name: npm audit (high = bukás)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -207,12 +207,16 @@
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci --legacy-peer-deps
-      - run: npm audit --audit-level=critical
+      - name: Függőségek telepítése
+        run: npm ci --legacy-peer-deps
+      - name: Sebezhetőség-riport (nem blokkol)
+        run: npm audit || true
+      - name: Sebezhetőség-audit (high és fölötte bukás)
+        run: npm audit --audit-level=high
   ```
   Három eltérés a fenti eredeti javaslathoz képest, mindegyik szándékos:
-  1. `--legacy-peer-deps` **kötelező** — de NEM peer-ütközés miatt (az megszűnt: a repó ma `next@16.3.0`-n áll, ami beleesik a `@payloadcms/*` 3.86.0 peer-tartományába). A repóban élő `package-lock.json` legacy-peer-deps módban készült, ezért nem tartalmazza a szigorú feloldás peer-csomagjait — flag nélkül az `npm ci` „not in sync" EUSAGE-hibával elhasal. A flag elhagyásához a lockfile-t újra kellene generálni: külön, emberi döntésű PR (a lockfile-hoz és a pinned `@payloadcms/*`-hoz nem nyúlunk, CLAUDE.md 5.).
-  2. `--audit-level=critical` a `moderate` helyett: a `moderate` szint a tranzitív fejlesztői függőségek zajától folyamatosan piros lenne, ami a kaput használhatatlanná teszi. A szint emelése külön döntés.
+  1. `--legacy-peer-deps` **kötelező** — de NEM peer-ütközés miatt (az megszűnt: a repó ma `next@16.3.3`-on áll, ami beleesik a `@payloadcms/*` 3.88.0 peer-tartományába). A repóban élő `package-lock.json` legacy-peer-deps módban készült, ezért nem tartalmazza a szigorú feloldás peer-csomagjait — flag nélkül az `npm ci` „not in sync" EUSAGE-hibával elhasal. A flag elhagyásához a lockfile-t külön, szigorú peer-feloldással validált dependency PR-ben kellene frissíteni.
+  2. `--audit-level=high` a korábbi `critical` helyett: a kritikus küszöb négy HIGH sebezhetőséget zölden átengedett. A `moderate` tételek a nem blokkoló teljes riportban továbbra is látszanak.
   3. `checkout@v7` / `setup-node@v7`: a `@v4` runtime-ja `node20`, amit a GitHub 2026-09-16-án eltávolít a hosztolt runnerekről.
 
 ### 🟢 GREEN A10 — SSRF: nincs felhasználó-vezérelt kimenő kérés (PASS, jegyzettel)

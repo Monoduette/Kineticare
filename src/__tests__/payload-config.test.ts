@@ -328,6 +328,17 @@ describe('payload.config', () => {
     expect(poolOptions.query_timeout).toBe(30_000)
   })
 
+  it('a request tranzakciók READ COMMITTED izolációt használnak', async () => {
+    const config = await configPromise
+    const adapter = (
+      config.db as unknown as {
+        init: (args: { payload: unknown }) => { transactionOptions?: unknown }
+      }
+    ).init({ payload: {} })
+
+    expect(adapter.transactionOptions).toEqual({ isolationLevel: 'read committed' })
+  })
+
   /**
    * C13 — a 2026-08-06-i sorzár-incidens: egy nyitva maradt, TÉTLEN tranzakció
    * zárolta a `users` sort, és minden írás/bejelentkezés befagyott (olvasás
