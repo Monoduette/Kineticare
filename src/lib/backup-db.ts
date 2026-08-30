@@ -8,9 +8,10 @@
  * pg_dump nélkül tesztelhető (src/__tests__/backup-db.test.ts).
  *
  * A modul legfontosabb biztonsági szabálya: a DATABASE_URI értéke SEMMILYEN
- * kimenetbe (napló, konzol, hibaüzenet) nem kerülhet. Erre való a
- * `redactConnectionInfo` — minden külső eredetű szöveget (pg_dump/pg_restore
- * stderr) ezen KELL átvezetni, mielőtt bárhová kiírnánk.
+ * kimenetbe vagy gyermekfolyamat-argumentumba nem kerülhet. A libpq mezők
+ * külön környezeti változókba, a jelszó védett PGPASSFILE-ba kerül. A
+ * `redactConnectionInfo` emellett defense-in-depth réteg minden külső
+ * eredetű szöveghez (pg_dump/pg_restore stderr).
  */
 
 /**
@@ -232,12 +233,119 @@ export function parseBackupArgs(argv: readonly string[]): ArgParseResult {
   return { ok: true, options: { targetDir, keep } }
 }
 
+/** A DATABASE_URI-ból származtatott, credential-mentes libpq környezet és pgpass tartalom. */
+export interface LibpqConnection {
+  readonly environment: Readonly<Record<string, string>>
+  readonly pgpassContents: string
+}
+
+const LIBPQ_QUERY_ENV: Readonly<Record<string, string>> = {
+  application_name: 'PGAPPNAME',
+  channel_binding: 'PGCHANNELBINDING',
+  connect_timeout: 'PGCONNECT_TIMEOUT',
+  options: 'PGOPTIONS',
+  sslcert: 'PGSSLCERT',
+  sslcrl: 'PGSSLCRL',
+  sslkey: 'PGSSLKEY',
+  sslmode: 'PGSSLMODE',
+  sslrootcert: 'PGSSLROOTCERT',
+  target_session_attrs: 'PGTARGETSESSIONATTRS',
+}
+
+function decodeUriField(encoded: string, fieldName: string): string {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    throw new Error(`A DATABASE_URI ${fieldName} mezője hibás percent-kódolást tartalmaz.`)
+  }
+}
+
+function assertSafeLibpqField(value: string, fieldName: string): void {
+  if (value.length === 0) {
+    throw new Error(`A DATABASE_URI ${fieldName} mezője kötelező.`)
+  }
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error(`A DATABASE_URI ${fieldName} mezője tiltott vezérlőkaraktert tartalmaz.`)
+  }
+}
+
+/** A `.pgpass` mezőiben a backslash és a kettőspont backslash-sel escape-elendő. */
+export function escapePgPassField(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/:/g, '\\:')
+}
+
+/**
+ * PostgreSQL URI biztonságos szétbontása libpq env + PGPASSFILE használatához.
+ *
+ * Ismeretlen vagy duplikált query-paraméterre fail-closed hibát ad: egy TLS-
+ * vagy routing-opció nem veszhet el csendben az URI argv-ból való kivezetésekor.
+ * A hibaüzenetek sosem tartalmazzák a teljes URI-t vagy a paraméter értékét.
+ */
+export function parseDatabaseUriForLibpq(uri: string): LibpqConnection {
+  let parsed: URL
+  try {
+    parsed = new URL(uri)
+  } catch {
+    throw new Error('A DATABASE_URI nem érvényes PostgreSQL kapcsolati URI.')
+  }
+
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error('A DATABASE_URI protokollja csak postgres: vagy postgresql: lehet.')
+  }
+  if (parsed.hash.length > 0) {
+    throw new Error('A DATABASE_URI nem tartalmazhat fragmentet.')
+  }
+
+  const host =
+    parsed.hostname.startsWith('[') && parsed.hostname.endsWith(']')
+      ? parsed.hostname.slice(1, -1)
+      : parsed.hostname
+  const port = parsed.port || '5432'
+  const user = decodeUriField(parsed.username, 'felhasználó')
+  const password = decodeUriField(parsed.password, 'jelszó')
+  const database = decodeUriField(parsed.pathname.replace(/^\//, ''), 'adatbázis')
+
+  assertSafeLibpqField(host, 'host')
+  assertSafeLibpqField(port, 'port')
+  assertSafeLibpqField(user, 'felhasználó')
+  assertSafeLibpqField(password, 'jelszó')
+  assertSafeLibpqField(database, 'adatbázis')
+  if (host.includes(',')) {
+    throw new Error('A DATABASE_URI több hostot nem tartalmazhat.')
+  }
+
+  const environment: Record<string, string> = {
+    PGHOST: host,
+    PGPORT: port,
+    PGUSER: user,
+    PGDATABASE: database,
+  }
+  const seenQueryKeys = new Set<string>()
+  for (const [key, value] of parsed.searchParams.entries()) {
+    if (seenQueryKeys.has(key)) {
+      throw new Error('A DATABASE_URI ugyanazt a query-paramétert többször tartalmazza.')
+    }
+    seenQueryKeys.add(key)
+
+    const envKey = LIBPQ_QUERY_ENV[key]
+    if (envKey === undefined) {
+      throw new Error('A DATABASE_URI nem támogatott query-paramétert tartalmaz.')
+    }
+    assertSafeLibpqField(value, 'query-paraméter értéke')
+    environment[envKey] = value
+  }
+
+  const pgpassContents =
+    [host, port, database, user, password].map(escapePgPassField).join(':') + '\n'
+
+  return { environment, pgpassContents }
+}
+
 /**
  * A pg_dump argumentumlistája.
  *
- * KRITIKUS: a kapcsolati URI ÖNÁLLÓ argumentumelemként megy át (execFile),
- * sosem shell-stringbe ágyazva — így nem eshet át shell-értelmezésen
- * (idézőjel, `$`, `;` a jelszóban), és nem kerülhet shell-history-ba.
+ * KRITIKUS: kapcsolati adat egyáltalán nincs az argv-ban. A pg_dump a külön
+ * PGHOST/PGPORT/PGUSER/PGDATABASE env-ből és a 0600-as PGPASSFILE-ból olvas.
  *
  * A custom formátum (`--format=custom`) alapból tömörít és szelektív
  * visszaállítást tesz lehetővé, ezért nincs külön tömörítés-kapcsoló.
@@ -246,8 +354,8 @@ export function parseBackupArgs(argv: readonly string[]): ArgParseResult {
  * dumpban (nincs --no-owner): a custom formátumnál a visszaállításkor lehet
  * róla dönteni (`pg_restore --no-owner --no-privileges`), fordítva nem.
  */
-export function buildPgDumpArgs(uri: string, filePath: string): string[] {
-  return ['--dbname', uri, '--format=custom', '--file', filePath]
+export function buildPgDumpArgs(filePath: string): string[] {
+  return ['--format=custom', '--file', filePath]
 }
 
 /** A pg_restore integritás-ellenőrzés argumentumlistája. */

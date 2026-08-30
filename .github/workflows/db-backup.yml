@@ -46,8 +46,7 @@ concurrency:
   group: db-backup
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   # Az éles Postgres-szolgáltatás főverziója (Railway → Postgres-c8Rg →

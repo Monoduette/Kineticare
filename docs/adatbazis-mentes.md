@@ -1,12 +1,14 @@
 # Adatbázis-mentés és visszaállítás (C14)
 
-> **Állapot:** a mentés-eszköz elkészült, az ÉLESÍTÉS emberi lépést igényel:
-> a `DATABASE_URI` GitHub-secret és a `BACKUP_AGE_RECIPIENT` GitHub repository
-> variable felvételét, valamint a recipienthez tartozó privát age-kulcs
-> biztonságos, offline megőrzését (lásd [Élesítés](#élesítés)). Bármelyik
-> GitHub-konfiguráció hiányában a workflow fail-closed módon pirosra vált;
-> titkosítatlan dumpot nem tölt fel. A Railway-oldali kötet-mentést külön kell
-> bekapcsolni.
+> **Állapot:** a mentés-eszköz és a titkosított offsite workflow implementálva
+> van, de az offsite láncot **még valódi end-to-end restore drillel kell
+> igazolni**. Az ÉLESÍTÉS emberi lépést igényel: a `DATABASE_URI` GitHub-secret
+> és a `BACKUP_AGE_RECIPIENT` GitHub repository variable felvételét, a
+> recipienthez tartozó privát age-kulcs biztonságos offline megőrzését, majd
+> kézi workflow-futtatást és üres adatbázisba visszaállítást (lásd
+> [Élesítés](#élesítés)). Bármelyik GitHub-konfiguráció hiányában a workflow
+> fail-closed módon pirosra vált; titkosítatlan dumpot nem tölt fel. A
+> Railway-oldali kötet-mentést külön kell bekapcsolni.
 
 Ez a dokumentum három kérdésre válaszol: **mi véd** ma az adatvesztés ellen,
 **hogyan kell visszaállítani**, és **hogyan ellenőrizzük**, hogy a mentés
@@ -55,10 +57,13 @@ Backups*, *Volumes → Point-in-Time Recovery*.
    művelet után. *Bekapcsolása emberi lépés a Railway felületén.*
 2. **PITR (Railway)** — pontos időpontra állás két felvétel között.
    *Opcionális; ha bekapcsoljuk, előre kell.*
-3. **Logikai dump (ez a repó)** — az egyetlen réteg, ami **offsite**: másik
-   szolgáltatónál (GitHub) tárolt, **letölthető** és **visszaállítási próbával
-   igazolt** másolat. Ez éli túl a kötet kiürítését, a projekt törlését és a
-   Railway-fiók elvesztését is.
+3. **Logikai dump (ez a repó)** — az egyetlen implementált réteg, ami
+   **offsite**: másik szolgáltatónál (GitHub) tárolt, letölthető másolat. A kód
+   és a fail-closed védelem elkészült, de az első valódi titkosított artifact
+   visszafejtése és üres adatbázisba restore-ja **még kötelező emberi kapu**.
+   Sikeres drill után ez a réteg túlélheti a kötet kiürítését és a Railway-
+   projekt elvesztését; a GitHub-fiók vagy az offline kulcs elvesztése ellen
+   csak a külön kezelt hozzáférések és kulcsmásolatok védenek.
 
 Ez a dokumentum a 3. réteget írja le, mert az van a repó kezében. Az 1. és 2.
 réteg bekapcsolását külön, a Railway felületén kell elvégezni (`Postgres-c8Rg`
@@ -125,11 +130,20 @@ körnek):
 
 ```bash
 # alapértelmezés: ./backups könyvtár, 14 mentés megtartva
-DATABASE_URI="..." npm run backup:db
-
-# saját célkönyvtár és retenció
-DATABASE_URI="..." npm run backup:db -- --cel=/mnt/mentes --megtart=30
+(
+  printf 'DATABASE_URI: ' >&2
+  IFS= read -r -s DATABASE_URI
+  printf '\n' >&2
+  export DATABASE_URI
+  npm run backup:db
+)
 ```
+
+A saját célkönyvtárhoz és retencióhoz az utolsó parancs legyen
+`npm run backup:db -- --cel=/mnt/mentes --megtart=30`. A néma promptban megadott
+érték nem kerül a shell history-ba vagy a parancssorba. Jóváhagyott secret
+manager használatakor annak folyamat-környezeti injektálását használd; a titkot
+ne írd inline assignmentbe, parancsargumentumba vagy lemezre kerülő env-fájlba.
 
 | Kapcsoló | Alapértelmezés | Leírás |
 | --- | --- | --- |
@@ -147,12 +161,15 @@ Amit a script garantál:
   fájlon. Ha nem olvasható végig, vagy egyetlen visszaállítható bejegyzést sem
   tartalmaz, a **fájl törlődik** és a script **1-es kóddal** lép ki — nem
   maradhat hátra hamis biztonságot adó, visszaállíthatatlan mentés.
-- **Titokvédelem:** a `DATABASE_URI` értéke sehol nem jelenik meg — sem a
-  konzolon, sem a strukturált naplóban, sem hibaüzenetben. A pg_dump/pg_restore
-  hibakimenete redakciós szűrőn megy át (`redactConnectionInfo`).
-- **Nincs shell:** a folyamatindítás `execFile`-lal történik, tehát a
-  jelszóban lévő speciális karakter (`$`, `;`, idézőjel) nem eshet át
-  shell-értelmezésen, és nem kerül parancs-history-ba.
+- **Titokvédelem:** a `DATABASE_URI` értéke nem jelenik meg a konzolon,
+  strukturált naplóban, hibaüzenetben vagy gyermekfolyamat argv-jában. A script
+  a nem titkos libpq mezőket külön `PGHOST`/`PGPORT`/`PGUSER`/`PGDATABASE`
+  környezetbe bontja, a jelszót pedig egy 0700-as ideiglenes könyvtár 0600-as
+  `PGPASSFILE` fájljában adja át. A fájl siker és hiba után is törlődik; a
+  pg_dump/pg_restore hibakimenete defense-in-depth redakciós szűrőn is átmegy.
+- **Nincs shell:** a folyamatindítás `execFile`-lal történik, és a teljes URI
+  nem része az argumentumlistának. A jelszó speciális karakterei (`$`, `;`,
+  idézőjel) nem esnek át shell-értelmezésen és nem kerülnek history-ba.
 - **Idegen fájlhoz nem nyúl:** a retenció csak a saját névsémájú fájlokat
   törli.
 
@@ -190,6 +207,42 @@ nélkül.
 > `PG_IMAGE`-e `postgres:18-alpine`), a workflow `PG_IMAGE` értékét is emelni
 > kell — különben a `pg_dump` „server version mismatch"-csel áll le. Ez hangos
 > hiba, nem néma kimaradás.
+
+### 4.3 Trust-modell és release-kapuk
+
+A titkosítás nem szünteti meg a build- és üzemeltetési bizalmi határokat:
+
+- **Workflow-/repo-admin:** aki workflow-kódot írhat vagy védelem nélkül
+  merge-elhet, a következő futásban kiolvashatja a secretet vagy a plaintext
+  dumpot. A `.github/workflows/**` változásaihoz védett branch/ruleset,
+  kijelölt security/infrastruktúra code-owner review, új commitnál elavuló
+  approval, valamint minimális admin-bypass és force-push jog kell. A konkrét
+  reviewer-identitásokat a repó tulajdonosának kell kijelölnie; ezt a kód nem
+  tudja biztonságosan kitalálni.
+- **Runner és supply chain:** a job futása közben a GitHub-hosted runner
+  szükségképpen látja a DB credentialt és a titkosítás előtti dumpot. Egy
+  kompromittált runner, action vagy image ezt kiolvashatja. A minimális
+  `permissions: {}`, a teljes action commit SHA-k, a Postgres image digest, az
+  age release-checksum és az ephemeral hosted runner csökkenti, de nem nullázza
+  ezt a kockázatot; tartós, több projekt által használt self-hosted runner erre
+  a workflow-ra nem elfogadható.
+- **Recipient-átírás:** aki a `BACKUP_AGE_RECIPIENT` repository variable-t
+  átírhatja, a jövőbeli mentéseket támadói kulcsra titkosíttathatja. Felvételkor
+  és rotációkor két ember, repón kívüli csatornán hasonlítsa össze a teljes
+  recipientet az offline privát kulcsból újra levezetett értékkel. Mivel a
+  recipientet szándékosan nem commitoljuk, ez **nem automatizálható emberi
+  kapu**; rotáció után azonnali restore drill kell.
+- **Privát kulcs:** elvesztése olvashatatlanná, kompromittálódása olvashatóvá
+  teszi a hozzá tartozó artifactokat. Legalább két elkülönített offline másolat,
+  dokumentált hozzáférők és rotációs eljárás szükséges; a régi kulcsot a régi
+  artifactok lejártáig meg kell őrizni.
+
+Merge önmagában nem igazolja az offsite mentést. Release előtt kötelező: a két
+GitHub-konfiguráció emberi felvétele, a recipient kétfős out-of-band
+ellenőrzése, egy kézi workflow-futás, az artifact letöltése és offline
+visszafejtése, majd üres eldobható adatbázisba `--exit-on-error` restore és a
+6.4 szerinti sorszám-ellenőrzés. Addig az állapot: **implementált, de end-to-end
+restore drillel még igazolandó**.
 
 ---
 
@@ -279,15 +332,27 @@ A `pg_restore` nem törli a meglévő objektumokat: meglévő táblákra ráfutt
 üres célt használj.
 
 ```bash
-# 1. új, üres adatbázis a cél-szerveren
-createdb --dbname="<admin-kapcsolat>" kineticare_restore
+# A host/user nem titok; a jelszót a libpq minden parancsnál némán kéri be.
+read -r -p 'Postgres host: ' PGHOST
+read -r -p 'Postgres port [5432]: ' PGPORT
+PGPORT="${PGPORT:-5432}"
+read -r -p 'Postgres user: ' PGUSER
+export PGHOST PGPORT PGUSER
 
-# 2. visszaállítás
-pg_restore \
-  --dbname="postgresql://<user>:<jelszo>@<host>:<port>/kineticare_restore" \
-  --no-owner --no-privileges --exit-on-error \
+# 1. új, üres adatbázis a cél-szerveren
+PGDATABASE=postgres createdb --password kineticare_restore
+
+# 2. visszaállítás; credential nincs argv-ban vagy shell history-ban
+PGDATABASE=kineticare_restore pg_restore \
+  --password --no-owner --no-privileges --exit-on-error \
   kineticare-20260815-021709.dump
+
+unset PGHOST PGPORT PGUSER PGDATABASE
 ```
+
+A `--password` kapcsoló kikényszeríti a libpq néma jelszópromptját; magát a
+jelszót ne add meg URI-ban vagy argumentumban. Automatizált drillhez ugyanilyen
+libpq mezőket és 0600-as, rövid életű `PGPASSFILE`-t használj.
 
 - `--no-owner --no-privileges`: a cél-szerveren más lehet a szerepkör neve,
   mint a forráson (Railway `postgres` vs. helyi user). E kapcsolók nélkül a
