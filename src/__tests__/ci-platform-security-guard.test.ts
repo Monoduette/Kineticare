@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -46,16 +47,20 @@ const REQUIRED_CLEANUP_RUN = [
   'fi',
 ].join('\n')
 
-const BACKUP_WORKFLOW_AST_SHA256 =
-  'fe7380cdddc5d853c0c053353e58f32e7b00f453b37c8548a834589effcbe471'
+const BACKUP_WORKFLOW_BYTES_SHA256 =
+  'f7034ba513d0243221a6b029280f5dc793a66ea2073fea78be700dee71e14638'
 
 interface WorkflowInspection {
   readonly violations: string[]
   readonly seenActions: Set<string>
 }
 
+function workflowBytes(name: string): Buffer {
+  return readFileSync(join(WORKFLOWS, name))
+}
+
 function workflow(name: string): string {
-  return readFileSync(join(WORKFLOWS, name), 'utf8')
+  return workflowBytes(name).toString('utf8')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -268,12 +273,6 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
     violations.push('db-backup.yml: a workflow gyökere nem mapping')
     return
   }
-  const astSha256 = createHash('sha256').update(JSON.stringify(parsed)).digest('hex')
-  if (astSha256 !== BACKUP_WORKFLOW_AST_SHA256) {
-    violations.push(
-      'db-backup.yml: a teljes AST-szintű allowlist módosult; minden workflow-változás security review-köteles',
-    )
-  }
   if (!isRecord(parsed.permissions) || Object.keys(parsed.permissions).length !== 0) {
     violations.push(
       'db-backup.yml: a backup workflow minimális jogosultsága permissions: {} kell legyen',
@@ -431,11 +430,22 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
 
 function inspectWorkflowSecurity(
   file: string,
-  source: string,
+  input: string | Buffer,
   options: { inspectBackup?: boolean } = {},
 ): WorkflowInspection {
   const violations: string[] = []
   const seenActions = new Set<string>()
+  const rawBytes = typeof input === 'string' ? Buffer.from(input, 'utf8') : input
+  const source = typeof input === 'string' ? input : input.toString('utf8')
+
+  if (options.inspectBackup) {
+    const rawSha256 = createHash('sha256').update(rawBytes).digest('hex')
+    if (rawSha256 !== BACKUP_WORKFLOW_BYTES_SHA256) {
+      violations.push(
+        'db-backup.yml: a nyers UTF-8 bájtok exact allowlistje módosult; minden workflow-változás security review-köteles',
+      )
+    }
+  }
 
   let document: ReturnType<typeof YAML.parseDocument>
   try {
@@ -451,7 +461,9 @@ function inspectWorkflowSecurity(
   for (const warning of document.warnings) {
     violations.push(`${file}: YAML parse warning: ${warning.message}`)
   }
-  if (violations.length > 0) return { violations, seenActions }
+  if (document.errors.length > 0 || document.warnings.length > 0) {
+    return { violations, seenActions }
+  }
 
   inspectAst(file, source, document.contents, violations, seenActions)
   const parsed = document.toJSON()
@@ -474,7 +486,7 @@ describe('CI/platform supply-chain és backup guard', () => {
     const seenActions = new Set<string>()
 
     for (const file of readdirSync(WORKFLOWS).filter((name) => /\.ya?ml$/.test(name))) {
-      const inspection = inspectWorkflowSecurity(file, workflow(file), {
+      const inspection = inspectWorkflowSecurity(file, workflowBytes(file), {
         inspectBackup: file === 'db-backup.yml',
       })
       violations.push(...inspection.violations)
@@ -630,6 +642,46 @@ describe('CI/platform supply-chain és backup guard', () => {
   })
 
   it.each([
+    ['NaN scalar', '  workflow_dispatch: .nan'],
+    ['Infinity scalar', '  workflow_dispatch: .inf'],
+    ['explicit null tag', '  workflow_dispatch: !!null null'],
+  ])(
+    'a nyers bájt-allowlist a JSON-collisiont okozó %s mutációt is elutasítja',
+    (_label, replacement) => {
+      const baseline = workflow('db-backup.yml')
+      const source = replaceRequired(baseline, '  workflow_dispatch:', replacement)
+
+      expect(JSON.stringify(YAML.parseDocument(source).toJSON())).toBe(
+        JSON.stringify(YAML.parseDocument(baseline).toJSON()),
+      )
+      expect(
+        inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
+          '\n',
+        ),
+      ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
+    },
+  )
+
+  it('a többdokumentumos YAML mutáció a bájt- és parser-kapun is elbukik', () => {
+    const source = `${workflow('db-backup.yml')}\n---\nname: masodik-dokumentum\n`
+    const violations = inspectWorkflowSecurity('db-backup.yml', source, {
+      inspectBackup: true,
+    }).violations.join('\n')
+
+    expect(violations).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
+    expect(violations).toMatch(/YAML parse error/)
+  })
+
+  it('a komment-only workflow-változás is tudatos allowlist review-t igényel', () => {
+    const source = `${workflow('db-backup.yml')}# security review szükséges\n`
+    expect(
+      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
+        '\n',
+      ),
+    ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
+  })
+
+  it.each([
     [
       'if ágban rejtett docker run',
       'if true; then docker run --rm postgres:18-alpine true; fi\n          docker pull --quiet "${PG_IMAGE}"',
@@ -668,7 +720,7 @@ describe('CI/platform supply-chain és backup guard', () => {
       inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
         '\n',
       ),
-    ).toMatch(/teljes AST-szintű allowlist/)
+    ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
   })
 
   it('a job-szintű permissions felülírást elutasítja', () => {
