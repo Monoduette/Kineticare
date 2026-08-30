@@ -4,8 +4,8 @@
 # MIÉRT: a Railway-natív kötet-mentés (volume backup) és a PITR a Railway
 # projektjén BELÜL él — a doksi is kimondja, hogy a kötet kiürítése az összes
 # hozzá tartozó mentést törli, és a mentések nem hagyják el a platformot.
-# Ez a workflow ad egy MÁSIK szolgáltatónál (GitHub) tárolt, letölthető
-# másolatot: ez az, ami egy törölt kötetet/projektet is túlél.
+# Ez a workflow ad egy MÁSIK szolgáltatónál (GitHub) tárolt, age-gel
+# titkosított másolatot: ez az, ami egy törölt kötetet/projektet is túlél.
 # Részletek és visszaállítási eljárás: docs/adatbazis-mentes.md
 #
 # HOGYAN: a mentést a hivatalos `postgres` docker image pg_dump-ja készíti,
@@ -19,9 +19,9 @@
 #
 # TITOKKEZELÉS: a DATABASE_URI kizárólag `env:`-ként megy a lépésbe és a
 # konténerbe (`--env DATABASE_URI`), az értéke sehol nem kerül parancssorba
-# (`ps`-be), echo-ba vagy logba. A konténerben futó `sh -c` idézőjelezett
-# változó-behelyettesítést használ, tehát a jelszó speciális karakterei sem
-# esnek át shell-értelmezésen.
+# (`ps`-be), echo-ba vagy logba. A BACKUP_AGE_RECIPIENT nyilvános kulcs,
+# repository variable-ként érkezik; a hozzá tartozó privát kulcs kizárólag
+# offline marad. Bármelyik konfiguráció hiánya piros, fail-closed futás.
 #
 # A SECRET ÉRTÉKE a PUBLIKUS kapcsolati string legyen (Railway →
 # Postgres-c8Rg → Variables → DATABASE_PUBLIC_URL), mert a GitHub-runner nem
@@ -53,41 +53,52 @@ env:
   # Az éles Postgres-szolgáltatás főverziója (Railway → Postgres-c8Rg →
   # Settings → Source: postgres-ssl:18). Ha ott főverziót emelnek, EZT IS
   # emelni kell, különben a pg_dump „server version mismatch"-csel áll le.
-  PG_IMAGE: postgres:18-alpine
+  PG_IMAGE: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+  AGE_VERSION: "1.3.2"
+  AGE_ARCHIVE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
 
 jobs:
   backup:
-    name: pg_dump + integritás-ellenőrzés + artifact
+    name: pg_dump + integritás + titkosítás + artifact
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # A secret hiánya NEM hiba: amíg nincs beállítva, a job zölden,
-      # magyarázó üzenettel kilép — így a piros futások nem szoktatják le a
-      # csapatot a riasztásokról. Az `if-no-files-found: error` viszont
-      # gondoskodik róla, hogy egy BEÁLLÍTOTT secret melletti néma
-      # mentés-kimaradás igenis bukjon.
-      - name: A DATABASE_URI secret megléte
-        id: secret
+      # A mentés nem futhat védtelenül és nem maradhat némán ki. A secret és
+      # a nyilvános recipient hiánya egyaránt hangos, piros konfigurációs hiba.
+      - name: Kötelező mentési konfiguráció
         env:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
         run: |
           set -euo pipefail
+          MISSING=0
           if [ -z "${DATABASE_URI:-}" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=A mentés kimaradt::A DATABASE_URI secret nincs beállítva, ezért nem készült mentés. Élesítés: Settings -> Secrets and variables -> Actions -> New repository secret, név: DATABASE_URI, érték: a Railway Postgres PUBLIKUS kapcsolati stringje (DATABASE_PUBLIC_URL). Lásd docs/adatbazis-mentes.md."
-            {
-              echo "### DB mentés: kimaradt"
-              echo ""
-              echo "A \`DATABASE_URI\` secret nincs beállítva, ezért nem készült mentés."
-              echo "Élesítési lépések: \`docs/adatbazis-mentes.md\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Hiányzó mentési secret::A DATABASE_URI repository secret nincs beállítva. Lásd docs/adatbazis-mentes.md."
+            MISSING=1
           fi
+          if [ -z "${BACKUP_AGE_RECIPIENT:-}" ]; then
+            echo "::error title=Hiányzó titkosítási recipient::A BACKUP_AGE_RECIPIENT repository variable nincs beállítva. Lásd docs/adatbazis-mentes.md."
+            MISSING=1
+          fi
+          if [ "${MISSING}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: age telepítése ellenőrzött hivatalos release-ből
+        run: |
+          set -euo pipefail
+          ARCHIVE="${RUNNER_TEMP}/age-v${AGE_VERSION}-linux-amd64.tar.gz"
+          curl --fail --show-error --silent --location \
+            "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
+            --output "${ARCHIVE}"
+          echo "${AGE_ARCHIVE_SHA256}  ${ARCHIVE}" | sha256sum --check --strict
+          tar --extract --gzip --file "${ARCHIVE}" --directory "${RUNNER_TEMP}"
+          mkdir -p "${RUNNER_TEMP}/age-bin"
+          install -m 0755 "${RUNNER_TEMP}/age/age" "${RUNNER_TEMP}/age-bin/age"
+          "${RUNNER_TEMP}/age-bin/age" --version
 
       - name: Mentés készítése (pg_dump, custom formátum)
         id: dump
-        if: steps.secret.outputs.run == 'true'
         env:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
         run: |
@@ -110,7 +121,7 @@ jobs:
       # `pg_restore --list` a teljes archívumot végigolvassa: csonka vagy
       # sérült fájlon nem nullával lép ki.
       - name: Integritás-ellenőrzés (pg_restore --list)
-        if: steps.secret.outputs.run == 'true'
+        id: integrity
         env:
           FILE: ${{ steps.dump.outputs.file }}
         run: |
@@ -125,32 +136,57 @@ jobs:
           # kilépése (csonka/sérült fájl) és a nulla bejegyzés (üres archívum).
           ENTRIES="$(grep -cE '^[0-9]+;' toc.txt || true)"
           if [ "${STATUS}" -ne 0 ] || [ "${ENTRIES}" -eq 0 ]; then
-            rm -f "backups/${FILE}"
-            echo "::error title=Sérült mentés::A mentés nem állítható vissza (pg_restore --list kilépési kód: ${STATUS}, visszaállítható bejegyzés: ${ENTRIES}) — a hibás fájl törölve, nem lett feltöltve."
+            echo "::error title=Sérült mentés::A mentés nem állítható vissza (pg_restore --list kilépési kód: ${STATUS}, visszaállítható bejegyzés: ${ENTRIES}) — nem lesz feltöltve."
             exit 1
           fi
-          SIZE="$(du -h "backups/${FILE}" | cut -f1)"
+          echo "entries=${ENTRIES}" >> "$GITHUB_OUTPUT"
+
+      - name: Mentés titkosítása (age)
+        id: encrypt
+        env:
+          FILE: ${{ steps.dump.outputs.file }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          ENCRYPTED_FILE="${FILE}.age"
+          "${RUNNER_TEMP}/age-bin/age" \
+            --recipient "${BACKUP_AGE_RECIPIENT}" \
+            --output "backups/${ENCRYPTED_FILE}" \
+            "backups/${FILE}"
+          test -s "backups/${ENCRYPTED_FILE}"
+          echo "encrypted_file=${ENCRYPTED_FILE}" >> "$GITHUB_OUTPUT"
+          SIZE="$(du -h "backups/${ENCRYPTED_FILE}" | cut -f1)"
           {
             echo "### DB mentés kész"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Fájl | \`${FILE}\` |"
+            echo "| Fájl | \`${ENCRYPTED_FILE}\` |"
             echo "| Méret | ${SIZE} |"
-            echo "| Visszaállítható bejegyzés | ${ENTRIES} |"
+            echo "| Visszaállítható bejegyzés | ${{ steps.integrity.outputs.entries }} |"
+            echo "| Titkosítás | age v${AGE_VERSION} |"
             echo "| Megőrzés | 30 nap (artifact) |"
             echo ""
             echo "Visszaállítás: \`docs/adatbazis-mentes.md\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Plaintext ideiglenes fájlok törlése
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f backups/*.dump toc.txt
+          if [ -d backups ] && find backups -maxdepth 1 -type f -name '*.dump' -print -quit | grep -q .; then
+            echo "::error title=Plaintext mentés maradt::A titkosítatlan dump törlése sikertelen."
+            exit 1
+          fi
+
       - name: Mentés feltöltése artifactként
-        if: steps.secret.outputs.run == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: kineticare-db-${{ steps.dump.outputs.file }}
-          path: backups/${{ steps.dump.outputs.file }}
+          name: kineticare-db-${{ steps.encrypt.outputs.encrypted_file }}
+          path: backups/${{ steps.encrypt.outputs.encrypted_file }}
           retention-days: 30
-          # A custom formátumú dump már tömörített — az újratömörítés csak idő.
+          # Az age-titkosított dump nem tömöríthető érdemben újra.
           compression-level: 0
           # Ha a fájl valamiért nincs meg, az BUKÁS legyen, ne néma zöld futás.
           if-no-files-found: error

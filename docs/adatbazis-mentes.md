@@ -1,9 +1,12 @@
 # Adatbázis-mentés és visszaállítás (C14)
 
 > **Állapot:** a mentés-eszköz elkészült, az ÉLESÍTÉS emberi lépést igényel:
-> a `DATABASE_URI` GitHub-secret felvételét (lásd [Élesítés](#élesítés)) és a
-> Railway-oldali kötet-mentés bekapcsolását. Amíg ez nem történik meg, éles
-> adatvesztés ellen NINCS védelem.
+> a `DATABASE_URI` GitHub-secret és a `BACKUP_AGE_RECIPIENT` GitHub repository
+> variable felvételét, valamint a recipienthez tartozó privát age-kulcs
+> biztonságos, offline megőrzését (lásd [Élesítés](#élesítés)). Bármelyik
+> GitHub-konfiguráció hiányában a workflow fail-closed módon pirosra vált;
+> titkosítatlan dumpot nem tölt fel. A Railway-oldali kötet-mentést külön kell
+> bekapcsolni.
 
 Ez a dokumentum három kérdésre válaszol: **mi véd** ma az adatvesztés ellen,
 **hogyan kell visszaállítani**, és **hogyan ellenőrizzük**, hogy a mentés
@@ -99,7 +102,7 @@ körnek):
                  ┌──────────────────────────────┐
   ütemezett      │ .github/workflows/           │   napi 02:17 UTC
   (offsite)      │   db-backup.yml              │ + kézi indítás
-                 │  postgres:18-alpine image    │
+                 │  postgres:18-alpine@digest   │
                  └──────────────┬───────────────┘
                                 │ pg_dump --format=custom
                                 ▼
@@ -107,8 +110,10 @@ körnek):
                                 │
                     pg_restore --list (integritás)
                                 │
+                     age recipient (titkosítás)
+                                │
                                 ▼
-                     GitHub artifact, 30 nap
+                 *.dump.age GitHub artifact, 30 nap
 
                  ┌──────────────────────────────┐
   kézi /         │ npm run backup:db            │   ugyanaz a formátum,
@@ -160,17 +165,24 @@ nélkül.
 `.github/workflows/db-backup.yml` — napi 02:17 UTC + kézi indítás
 (`workflow_dispatch`).
 
-- **Ha a `DATABASE_URI` secret nincs beállítva, a job ZÖLDEN, magyarázó
-  üzenettel kilép.** Ez szándékos: a piros futások leszoktatnák a csapatot a
-  riasztásokról, mielőtt a secret felkerül.
-- A `pg_dump` a **hivatalos `postgres:18-alpine` image-ből** fut, nem a runner
-  apt-csomagjából. Két oka van: (1) a kliens főverziója nem lehet kisebb a
-  szerverénél, és az image-tag ezt egy sorban, láthatóan rögzíti — az éles
-  `Postgres-c8Rg` szolgáltatás `postgres-ssl:18` (PostgreSQL 18); (2) a mentés így nem függ a
-  repó npm-telepítésétől: ha a build eltörik, a mentés attól még fut.
+- A workflow **fail-closed**: ha a `DATABASE_URI` secret vagy a
+  `BACKUP_AGE_RECIPIENT` repository variable hiányzik, a futás pirosra vált,
+  és nem készül feltölthető artifact. A recipient nyilvános kulcs; a privát
+  kulcs nem kerülhet GitHubra vagy a repóba.
+- A `pg_dump` a **hivatalos `postgres:18-alpine` image digesthez kötött
+  példányából** fut, nem a runner apt-csomagjából. Két oka van: (1) a kliens
+  főverziója nem lehet kisebb a szerverénél, és a tag ezt láthatóan rögzíti —
+  az éles `Postgres-c8Rg` szolgáltatás `postgres-ssl:18` (PostgreSQL 18);
+  (2) a digest kizárja, hogy ugyanaz a tag később észrevétlenül más image-re
+  mutasson. A mentés nem függ a repó npm-telepítésétől.
 - A mentés ugyanazt az integritás-ellenőrzést kapja (`pg_restore --list`);
   bukásnál a fájl törlődik és a job piros.
-- Az eredmény **artifact**, `retention-days: 30`.
+- Az ellenőrzött dumpot **age v1.3.2** titkosítja. Az eszköz a hivatalos
+  release-archívumból töltődik le, és telepítés előtt rögzített SHA-256
+  ellenőrzést kap.
+- Az artifact kizárólag `*.dump.age`, `retention-days: 30`, és hiányzó fájlnál
+  a feltöltés hibára fut. A plaintext `.dump` és a `toc.txt` minden kimenetnél
+  (`always()`) törlődik a runner munkaterületéről.
 - A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és a konténerbe; az
   értéke sosem kerül parancssorba, echo-ba vagy logba.
 
@@ -194,15 +206,37 @@ nélkül.
    a Railway privát hálózatát (`postgres-c8rg.railway.internal`), ezért a belső
    `DATABASE_URI` itt nem használható. A publikus proxyn keresztüli forgalom
    egressként számlázódik — ez a napi mentés ára.
-3. **GitHub → Settings → Secrets and variables → Actions → New repository
+3. **Offline age-kulcspár létrehozása:** megbízható, internetkapcsolat nélküli
+   gépen telepítsd az age-et, majd hozd létre a kulcsot és olvasd ki a
+   nyilvános recipientet:
+
+   ```bash
+   age-keygen -o /biztonsagos/hely/backup-age-key.txt
+   age-keygen -y /biztonsagos/hely/backup-age-key.txt
+   ```
+
+   A privát kulcsfájlról készíts legalább két, elkülönített és
+   hozzáférés-védett offline másolatot. A privát kulcs **nem kerülhet** a
+   repóba, GitHub secrethez, artifactba, chatbe vagy jelszókezelőből exportált
+   közös fájlba.
+4. **GitHub → Settings → Secrets and variables → Actions → New repository
    secret:** név `DATABASE_URI`, érték a 2. pontban kikeresett publikus
    kapcsolati string. **Az értéket sehová ne másold be** — sem PR-be, sem
    dokumentációba, sem chatbe.
-4. **Első futás kézzel:** Actions fül → *DB mentés* → *Run workflow*. Ellenőrizd
-   a job összefoglalóját (fájlnév, méret, bejegyzésszám) és töltsd le az
-   artifactot.
-5. **Visszaállítási próba** az 7. fejezet szerint — a mentés addig nem mentés,
+5. **GitHub → Settings → Secrets and variables → Actions → Variables → New
+   repository variable:** név `BACKUP_AGE_RECIPIENT`, érték a 3. pontban
+   kiolvasott **nyilvános** age-recipient. Ellenőrizd kétszer, hogy valóban a
+   biztonságosan eltett privát kulcshoz tartozik.
+6. **Első futás kézzel:** Actions fül → *DB mentés* → *Run workflow*. Ellenőrizd
+   a job összefoglalóját (titkosított fájlnév, méret, bejegyzésszám), majd
+   töltsd le az artifactot. Kizárólag `.dump.age` lehet benne.
+7. **Visszaállítási próba** az 7. fejezet szerint — a mentés addig nem mentés,
    amíg vissza nem állt egyszer.
+
+> **Kulcsvesztés = mentésvesztés.** A GitHubon csak a nyilvános recipient van;
+> az offline privát kulcs nélkül a régi artifactok nem fejthetők vissza.
+> Kulcsrotációnál a régi privát kulcsot legalább a hozzá tartozó artifactok
+> lejártáig meg kell őrizni.
 
 ---
 
@@ -215,7 +249,17 @@ nélkül.
 ### 6.1 A mentés beszerzése
 
 - **Artifactból:** GitHub → Actions → *DB mentés* → a kívánt futás → Artifacts
-  → letöltés, kicsomagolás (a `.dump` fájl a zipben van).
+  → letöltés, kicsomagolás (a `.dump.age` fájl a zipben van). Megbízható,
+  offline gépen, az ott őrzött privát kulccsal fejtsd vissza:
+
+  ```bash
+  age --decrypt --identity /biztonsagos/hely/backup-age-key.txt \
+    --output kineticare-20260815-021709.dump \
+    kineticare-20260815-021709.dump.age
+  ```
+
+  A visszafejtett `.dump` személyes adatot tartalmaz: csak a visszaállítási
+  próbához szükséges ideig tartsd meg, majd biztonságosan töröld.
 - **Vagy helyi mentésből:** a `--cel` könyvtár legfrissebb `.dump` fájlja.
 
 ### 6.2 Ellenőrzés visszaállítás ELŐTT
@@ -313,13 +357,13 @@ Egy mentés, amit sosem állítottak vissza, nem mentés, hanem feltételezés.
 **Havonta egyszer** (naptárba tenni, kb. 20 perc):
 
 1. Indítsd kézzel a *DB mentés* workflow-t, vagy vedd a legutóbbi artifactot.
-2. Töltsd le, csomagold ki.
-3. `pg_restore --list <fájl> | head -20` — végigolvasható-e.
+2. Töltsd le, csomagold ki, majd offline fejtsd vissza a 6.1 szerint.
+3. `pg_restore --list <visszafejtett-fájl> | head -20` — végigolvasható-e.
 4. Állítsd vissza egy **eldobható** adatbázisba (6.3), `--exit-on-error`-ral.
 5. Futtasd le a 6.4 ellenőrző lekérdezéseket, és vesd össze az élessel.
 6. **Mérd meg, mennyi ideig tartott** — ez lesz a visszaállítási idő becslése
    egy éles incidensben.
-7. Dobd el a próba-adatbázist.
+7. Dobd el a próba-adatbázist, és töröld a visszafejtett plaintext dumpot.
 8. Írd fel az eredményt (dátum, dump mérete, visszaállítási idő, sorszámok) —
    a `docs/feladatlista.md` C14 sorához vagy egy üzemeltetési naplóba.
 
@@ -336,11 +380,10 @@ Egy mentés, amit sosem állítottak vissza, nem mentés, hanem feltételezés.
 
 ## 8. Ami tudatosan kimaradt
 
-- **Titkosított, hosszú távú offsite tár (S3/B2 + GPG).** A GitHub-artifact 30
-  napig él és a repóhoz férők letölthetik. Ha ennél hosszabb megőrzés vagy
-  szigorúbb hozzáférés-korlátozás kell (a dump személyes adatot és
-  jelszó-hash-eket tartalmaz — GDPR), az külön döntés és külön titkok
-  felvétele.
+- **Titkosított, hosszú távú offsite tár (S3/B2).** A GitHub-artifact age-gel
+  titkosított, de csak 30 napig él. Ha ennél hosszabb megőrzés vagy a GitHubtól
+  független harmadik másolat kell, az külön tárhely-, retenciós és
+  adatkezelési döntés.
 - **Média-mentés** (3. fejezet) — külön feladat.
 - **Automatikus visszaállítási próba CI-ban** (dump → eldobható Postgres →
   ellenőrző lekérdezések). Technikailag megoldható lenne egy service
