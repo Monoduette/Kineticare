@@ -382,7 +382,8 @@ export async function assertDemoDatabase(payload: Payload): Promise<void> {
     throw new Error(
       'A users kollekció üres: az első létrehozott felhasználó tulajdonosi (owner) ' +
         'szerepkört kapna, demó-vásárlóból pedig sosem lehet tulajdonos. Futtasd előbb ' +
-        'a `npm run seed`-et (owner-felhasználó), és utána a demó-feltöltést.',
+        'a dokumentált, tokenes owner-bootstrapot, majd a `npm run seed`-et, és csak ' +
+        'utána a demó-feltöltést.',
     )
   }
 

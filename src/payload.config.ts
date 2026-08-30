@@ -636,6 +636,8 @@ export default buildConfig({
   // retransmission-timeoutig) vár, majd „Connection terminated unexpectedly"
   // hibával dől el — emiatt akadt el korábban az admin user létrehozása is.
   db: postgresAdapter({
+    // A first-register lock utáni recountnak friss commitot kell látnia.
+    transactionOptions: { isolationLevel: 'read committed' },
     pool: {
       connectionString: process.env.DATABASE_URI || '',
       // TCP keepalive: életben tartja a kapcsolatot, és a megszakadást

@@ -52,8 +52,9 @@
 | `ENABLE_JOB_WORKERS` | `true` (a callback retry-ladder így élőben is fut) |
 | `LOG_LEVEL` | `info` |
 | `PAYLOAD_MEDIA_DIR` | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
-| `SEED_OWNER_EMAIL` | csak az első seed futtatásához (4. pont), utána törölhető |
-| `SEED_OWNER_PASSWORD` | csak az első seed futtatásához, utána törölhető |
+| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba |
+| `SEED_OWNER_EMAIL` | a már bootstrapelt owner címe az első seedhez, utána törölhető |
+| `SEED_OWNER_PASSWORD` | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban |
 
 > ⚠️ **Turnstile: a két kulcs CSAK PÁRBAN állítható be.** A Railway
 > `next start`-tal fut (`NODE_ENV=production`), és az induláskori ENV-assert
@@ -88,6 +89,28 @@ figyelmeztetést), `SZAMLAZZ_AGENT_KEY`, `SZAMLAZZ_INVOICE_PREFIX`.
 
 A migráció a startCommandból automatikusan lefut az első sikeres deploynál.
 
+### 4.1 Első owner biztonságos bootstrapje
+
+Üres adatbázison a publikus `/api/users` és `/api/users/first-register`
+token nélkül nem hozhat létre felhasználót. Az első ownerhez:
+
+1. állíts be egy egyszer használatos, legalább 32 karakteres, nagy entrópiájú
+   `FIRST_USER_BOOTSTRAP_TOKEN` secretet az appservice Variables felületén;
+2. operátori API-kliensből küldd el az első regisztrációt a
+   `/api/users/first-register` végpontra, az
+   `x-kineticare-bootstrap-token` fejlécben ugyanazzal az értékkel; az owner
+   e-mail-címe egyezzen a későbbi `SEED_OWNER_EMAIL` értékével, a jelszó pedig
+   feleljen meg a normál 12 karakteres kis-/nagybetű/szám szabálynak;
+3. sikeres belépés után ellenőrizd az adminban, hogy pontosan egy owner van;
+4. azonnal töröld a `FIRST_USER_BOOTSTRAP_TOKEN` változót a Railway-ről.
+
+A titkot ne add parancssori argumentumként, ne mentsd shell-historyba, és ne
+naplózd. Hiányzó szerveroldali secret esetén a claim `503`, hibás vagy hiányzó
+fejlécnél `403`. A normál nyilvános regisztráció csak a bootstrap után nyílik
+meg, és mindig `customer` szerepkört kap.
+
+### 4.2 Seed
+
 Seed (egyszeri), két módon:
 
 - **CLI-vel (javasolt):**
@@ -101,8 +124,9 @@ Seed (egyszeri), két módon:
   a seed idempotens, többször is lefuttatható.
 - **Vagy Railway shellben:** a service **⋯ → Shell** menüjéből `npm run seed`.
 
-A seed létrehozza: owner-felhasználó (`SEED_OWNER_EMAIL` /
-`SEED_OWNER_PASSWORD`), `DEMO-KEZREHAB-001` publikált demó-termék (19 990 Ft),
+A seed a már bootstrapelt, `SEED_OWNER_EMAIL` című owner-felhasználót
+megtalálja, majd létrehozza a
+`DEMO-KEZREHAB-001` publikált demó-terméket (19 990 Ft),
 `bemutatkozas` oldal, `kezrehabilitacio-alapok` bejegyzés, demó menüfa.
 
 ## 5. Deploy utáni ellenőrzőlista
