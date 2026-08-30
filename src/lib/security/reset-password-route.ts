@@ -17,6 +17,7 @@ import {
   payloadRestRateLimitResponse,
   type CheckRequestRateLimitOptions,
 } from './rate-limit'
+import { DEFAULT_JSON_BODY_MAX_BYTES, readBodyBytesWithCap } from './request-body'
 import { assertSameOrigin } from './same-origin'
 
 export interface ResetPasswordHandlerDeps {
@@ -38,8 +39,13 @@ export const RESET_MISSING_INPUT_MESSAGE =
 export const RESET_INVALID_BODY_MESSAGE =
   'A jelszó módosítása nem indítható: a küldött adat nem értelmezhető. Frissítsd az oldalt, és próbáld újra.'
 
+export const RESET_BODY_TOO_LARGE_MESSAGE =
+  'A jelszó módosítása nem indítható: a küldött adat túl nagy.'
+
 export const RESET_UNEXPECTED_ERROR_MESSAGE =
   'A jelszó módosítása most nem sikerült. Próbáld újra néhány perc múlva.'
+
+export const RESET_PASSWORD_BODY_MAX_BYTES = DEFAULT_JSON_BODY_MAX_BYTES
 
 interface ResetPasswordRequestBody {
   token?: unknown
@@ -75,10 +81,31 @@ function parseJsonObject(raw: string): ResetPasswordRequestBody | null {
  * mindkettőt értjük. Minden más content-type-nál a Payload sem tölti ki a
  * `req.data`-t, tehát az üres bemenettel egyenértékű (→ hiányzó adat).
  *
- * A törzset MINDIG a kérés klónjából olvassuk, hogy az eredeti kérés
- * változatlanul továbbadható maradjon.
+ * Az eredeti törzset egyszer, byte-limittel olvassuk; siker esetén ugyanebből a
+ * bounded byte-sorból rekonstruált, azonos URL/method/header kérés megy tovább.
  */
-async function readRequestData(request: Request): Promise<ResetPasswordRequestBody | null> {
+type ReadRequestDataResult =
+  { forwardRequest: Request; ok: true; value: ResetPasswordRequestBody } | {
+    ok: false
+    reason: 'invalid' | 'too-large'
+  }
+
+function requestFromBoundedBytes(request: Request, bytes: Uint8Array<ArrayBuffer>): Request {
+  return new Request(request.url, {
+    method: request.method,
+    headers: new Headers(request.headers),
+    body: bytes,
+  })
+}
+
+async function readRequestData(request: Request): Promise<ReadRequestDataResult> {
+  // Az eredeti streamet pontosan egyszer olvassuk. A clone()/tee() lassabb ága
+  // chunked kérésnél korlátlanul bufferelhetne, ezért itt nem használható.
+  const bytes = await readBodyBytesWithCap(request, RESET_PASSWORD_BODY_MAX_BYTES)
+  if (bytes === null) {
+    return { ok: false, reason: 'too-large' }
+  }
+  const forwardRequest = requestFromBoundedBytes(request, bytes)
   const contentType = (request.headers.get('content-type') ?? '')
     .split(';', 1)[0]
     .trim()
@@ -86,14 +113,25 @@ async function readRequestData(request: Request): Promise<ResetPasswordRequestBo
 
   if (contentType.startsWith('multipart/')) {
     try {
-      const raw = (await request.clone().formData()).get('_payload')
-      return typeof raw === 'string' ? parseJsonObject(raw) : {}
+      const parseRequest = requestFromBoundedBytes(request, bytes)
+      const raw = (await parseRequest.formData()).get('_payload')
+      if (typeof raw !== 'string') {
+        return { forwardRequest, ok: true, value: {} }
+      }
+      const parsed = parseJsonObject(raw)
+      return parsed === null
+        ? { ok: false, reason: 'invalid' }
+        : { forwardRequest, ok: true, value: parsed }
     } catch {
-      return null
+      return { ok: false, reason: 'invalid' }
     }
   }
 
-  return parseJsonObject(await request.clone().text())
+  const raw = new TextDecoder().decode(bytes)
+  const parsed = parseJsonObject(raw)
+  return parsed === null
+    ? { ok: false, reason: 'invalid' }
+    : { forwardRequest, ok: true, value: parsed }
 }
 
 /**
@@ -160,10 +198,14 @@ export function createResetPasswordHandler(
     }
 
     try {
-      const body = await readRequestData(request)
-      if (!body) {
+      const bodyResult = await readRequestData(request)
+      if (!bodyResult.ok) {
+        if (bodyResult.reason === 'too-large') {
+          return errorResponse(RESET_BODY_TOO_LARGE_MESSAGE, 413)
+        }
         return errorResponse(RESET_INVALID_BODY_MESSAGE, 400)
       }
+      const body = bodyResult.value
 
       const token = readNonEmptyString(body.token)
       const password = readNonEmptyString(body.password)
@@ -195,7 +237,7 @@ export function createResetPasswordHandler(
         return errorResponse(formatPasswordPolicyErrors(violations), 400)
       }
 
-      return await deps.forwardToPayload(request)
+      return await deps.forwardToPayload(bodyResult.forwardRequest)
     } catch (error) {
       log.error('reset-password: váratlan technikai hiba', {
         error: error instanceof Error ? error.message : String(error),
