@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,14 +46,8 @@ const REQUIRED_CLEANUP_RUN = [
   'fi',
 ].join('\n')
 
-const REQUIRED_DUMP_DOCKER_COMMANDS = [
-  'docker pull --quiet "${PG_IMAGE}"',
-  'docker run --rm --env DATABASE_URI --env "DUMP_TARGET=/backups/${FILE}" --volume "${PWD}/backups:/backups" "${PG_IMAGE}" sh -ceu \'',
-]
-
-const REQUIRED_INTEGRITY_DOCKER_COMMANDS = [
-  'docker run --rm --volume "${PWD}/backups:/backups" "${PG_IMAGE}" pg_restore --list "/backups/${FILE}" > toc.txt || STATUS=$?',
-]
+const BACKUP_WORKFLOW_AST_SHA256 =
+  'fe7380cdddc5d853c0c053353e58f32e7b00f453b37c8548a834589effcbe471'
 
 interface WorkflowInspection {
   readonly violations: string[]
@@ -251,28 +246,6 @@ function inspectJobPermissions(file: string, parsed: unknown, violations: string
   }
 }
 
-function dockerCommands(run: string): string[] {
-  const lines = run.split('\n')
-  const commands: string[] = []
-
-  for (let index = 0; index < lines.length; index += 1) {
-    let line = lines[index].trim()
-    if (!/^docker (?:pull|run)\b/.test(line)) continue
-
-    const parts: string[] = []
-    while (true) {
-      const continued = line.endsWith('\\')
-      parts.push(continued ? line.slice(0, -1).trimEnd() : line)
-      if (!continued || index + 1 >= lines.length) break
-      index += 1
-      line = lines[index].trim()
-    }
-    commands.push(parts.join(' '))
-  }
-
-  return commands
-}
-
 function stepWithId(
   steps: readonly Record<string, unknown>[],
   id: string,
@@ -294,6 +267,12 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
   if (!isRecord(parsed)) {
     violations.push('db-backup.yml: a workflow gyökere nem mapping')
     return
+  }
+  const astSha256 = createHash('sha256').update(JSON.stringify(parsed)).digest('hex')
+  if (astSha256 !== BACKUP_WORKFLOW_AST_SHA256) {
+    violations.push(
+      'db-backup.yml: a teljes AST-szintű allowlist módosult; minden workflow-változás security review-köteles',
+    )
   }
   if (!isRecord(parsed.permissions) || Object.keys(parsed.permissions).length !== 0) {
     violations.push(
@@ -317,11 +296,6 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
   if (dumpRun === '') {
     violations.push('db-backup.yml: a dump step run scriptje hiányzik')
   } else {
-    if (dockerCommands(dumpRun).join('\n') !== REQUIRED_DUMP_DOCKER_COMMANDS.join('\n')) {
-      violations.push(
-        'db-backup.yml: a dump docker pull/run sinkeknek közvetlenül a rögzített PG_IMAGE-et kell használniuk',
-      )
-    }
     const dumpImageLines = dumpRun
       .split('\n')
       .filter((line) => line.includes('PG_IMAGE'))
@@ -379,11 +353,6 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
   if (integrityRun === '') {
     violations.push('db-backup.yml: az integrity step run scriptje hiányzik')
   } else {
-    if (dockerCommands(integrityRun).join('\n') !== REQUIRED_INTEGRITY_DOCKER_COMMANDS.join('\n')) {
-      violations.push(
-        'db-backup.yml: az integrity docker run sinknek közvetlenül a rögzített PG_IMAGE-et kell használnia',
-      )
-    }
     const integrityImageLines = integrityRun
       .split('\n')
       .filter((line) => line.includes('PG_IMAGE'))
@@ -658,6 +627,48 @@ describe('CI/platform supply-chain és backup guard', () => {
     expect(
       inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations,
     ).not.toEqual([])
+  })
+
+  it.each([
+    [
+      'if ágban rejtett docker run',
+      'if true; then docker run --rm postgres:18-alpine true; fi\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'pontosvessző után rejtett docker pull',
+      ':; docker pull postgres:18-alpine\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'command wrapper mögé rejtett docker run',
+      'command docker run --rm postgres:18-alpine true\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'command wrapperes shell scriptbe rejtett docker run',
+      'command sh -c \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'tetszőleges wrapperes shell scriptbe rejtett docker run',
+      'nice sh -c \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'shell here-stringbe rejtett docker run',
+      'bash <<< \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+    [
+      'env split-stringbe rejtett docker run',
+      'env -S \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
+    ],
+  ])('a backup %s sinket parancscsomópontként elutasítja', (_label, injected) => {
+    const source = replaceRequired(
+      workflow('db-backup.yml'),
+      'docker pull --quiet "${PG_IMAGE}"',
+      injected,
+    )
+    expect(
+      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
+        '\n',
+      ),
+    ).toMatch(/teljes AST-szintű allowlist/)
   })
 
   it('a job-szintű permissions felülírást elutasítja', () => {
