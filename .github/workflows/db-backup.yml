@@ -111,8 +111,10 @@ jobs:
           # A DATABASE_URI a konténerbe érték nélküli `--env` opcióval megy át,
           # ezért a host és a docker parancssorában sem jelenik meg. A konténer
           # 0600-as libpq service file-t készít belőle, majd az eredeti env
-          # változót még a pg_dump indítása előtt törli.
+          # változót még a pg_dump indítása előtt törli. A runner UID:GID
+          # biztosítja, hogy a host oldali age olvasni tudja a 0600-as dumpot.
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             --env DATABASE_URI \
             --env "DUMP_TARGET=/backups/${FILE}" \
             --volume "${PWD}/backups:/backups" \
@@ -300,6 +302,7 @@ jobs:
           set -euo pipefail
           STATUS=0
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             --volume "${PWD}/backups:/backups" \
             "${PG_IMAGE}" \
             pg_restore --list "/backups/${FILE}" > toc.txt || STATUS=$?

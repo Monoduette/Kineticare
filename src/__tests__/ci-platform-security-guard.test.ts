@@ -1,11 +1,23 @@
 import { Buffer } from 'node:buffer'
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync } from 'node:fs'
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
-import YAML, { isMap, isPair, isSeq } from 'yaml'
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url))
 const WORKFLOWS = join(REPO, '.github', 'workflows')
@@ -15,44 +27,63 @@ const CI_POSTGRES =
 const BACKUP_POSTGRES =
   'postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2'
 
-const EXPECTED_ACTIONS = new Map<string, { sha: string; version: string }>([
-  ['actions/checkout', { sha: '3d3c42e5aac5ba805825da76410c181273ba90b1', version: 'v7.0.1' }],
-  ['actions/setup-node', { sha: '820762786026740c76f36085b0efc47a31fe5020', version: 'v7.0.0' }],
-  [
-    'actions/upload-artifact',
-    { sha: '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a', version: 'v7.0.1' },
-  ],
-  [
-    'anthropics/claude-code-action',
-    { sha: 'a874e9ecd7bb36efdad65429c6b35815f5a08f10', version: 'v1.0.210' },
-  ],
-  [
-    'gitleaks/gitleaks-action',
-    { sha: 'e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e', version: 'v3.0.0' },
-  ],
+// Ezek teljes UTF-8 fájl-hashek, nem YAML-normalizált reprezentációk. Emiatt
+// bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
+// tudatos security review-t és az allowlist explicit frissítését igényli.
+const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
+  ['ci.yml', '5b05d07c764e17e6621c761001b0e332426615b5f0026d4e9e0db76e52dd6832'],
+  ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
+  ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
+  ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
 ])
 
-const ACTION_SHA_PATTERN = /^[0-9a-f]{40}$/
-const VERSION_COMMENT_PATTERN = /^v\d+(?:\.\d+){1,2}$/
-const IMAGE_DIGEST_PATTERN = /^[^@\s]+:[^@/\s]+@sha256:[0-9a-f]{64}$/
-const DOCKER_ACTION_DIGEST_PATTERN = /^docker:\/\/[^@\s]+@sha256:[0-9a-f]{64}$/
-const SUPPORTED_SCALAR_TYPES = new Set(['PLAIN', 'QUOTE_DOUBLE', 'QUOTE_SINGLE'])
+const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
+  '@eslint/eslintrc': '3.3.6',
+  '@payloadcms/db-postgres': '3.88.0',
+  '@payloadcms/next': '3.88.0',
+  '@payloadcms/plugin-ecommerce': '3.88.0',
+  '@payloadcms/plugin-form-builder': '3.88.0',
+  '@payloadcms/richtext-lexical': '3.88.0',
+  '@payloadcms/translations': '3.88.0',
+  '@types/json-schema': '7.0.15',
+  '@types/node': '24.13.3',
+  '@types/react': '19.2.18',
+  '@types/react-dom': '19.2.4',
+  eslint: '9.39.5',
+  'eslint-config-next': '16.3.1',
+  graphql: '16.14.2',
+  next: '16.3.0',
+  payload: '3.88.0',
+  'posthog-js': '1.413.3',
+  prettier: '3.9.6',
+  react: '19.2.8',
+  'react-dom': '19.2.8',
+  sass: '1.77.4',
+  sharp: '0.35.3',
+  tsx: '4.23.12',
+  typescript: '5.9.3',
+  vite: '8.2.1',
+  vitest: '4.1.10',
+}
 
-const REQUIRED_CLEANUP_RUN = [
-  'set -euo pipefail',
-  'rm -f backups/*.dump toc.txt',
-  "if [ -d backups ] && find backups -maxdepth 1 -type f -name '*.dump' -print -quit | grep -q .; then",
-  '  echo "::error title=Plaintext mentés maradt::A titkosítatlan dump törlése sikertelen."',
-  '  exit 1',
-  'fi',
-].join('\n')
+interface PackageManifest {
+  readonly dependencies?: Record<string, string>
+  readonly devDependencies?: Record<string, string>
+  readonly engines?: Record<string, string>
+}
 
-const BACKUP_WORKFLOW_BYTES_SHA256 =
-  'f7034ba513d0243221a6b029280f5dc793a66ea2073fea78be700dee71e14638'
+interface PackageLock {
+  readonly packages?: Record<string, PackageManifest>
+}
 
-interface WorkflowInspection {
-  readonly violations: string[]
-  readonly seenActions: Set<string>
+interface WorkflowMutation {
+  readonly label: string
+  readonly file: string
+  readonly mutate: (source: string) => string
+}
+
+function sha256(input: Buffer | string): string {
+  return createHash('sha256').update(input).digest('hex')
 }
 
 function workflowBytes(name: string): Buffer {
@@ -63,728 +94,480 @@ function workflow(name: string): string {
   return workflowBytes(name).toString('utf8')
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readNodeProperty(node: unknown, key: string): unknown {
-  return isRecord(node) ? node[key] : undefined
-}
-
-function nodeType(node: unknown): string | undefined {
-  const type = readNodeProperty(node, 'type')
-  return typeof type === 'string' ? type : undefined
-}
-
-function scalarText(node: unknown): string | undefined {
-  const value = readNodeProperty(node, 'value')
-  return typeof value === 'string' ? value : undefined
-}
-
-function nodeItems(node: unknown): readonly unknown[] {
-  const items = readNodeProperty(node, 'items')
-  return Array.isArray(items) ? items : []
-}
-
-function hasOwn(record: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(record, key)
-}
-
-function lineOf(source: string, node: unknown): number {
-  const range = readNodeProperty(node, 'range')
-  const offset = Array.isArray(range) && typeof range[0] === 'number' ? range[0] : 0
-  return source.slice(0, offset).split('\n').length
-}
-
-function location(file: string, source: string, node: unknown): string {
-  return `${file}:${lineOf(source, node)}`
-}
-
-function inspectUses(
-  file: string,
-  source: string,
-  valueNode: unknown,
-  violations: string[],
-  seenActions: Set<string>,
-): void {
-  const at = location(file, source, valueNode)
-  const type = nodeType(valueNode)
-  const uses = scalarText(valueNode)
-
-  if (!SUPPORTED_SCALAR_TYPES.has(type ?? '') || uses === undefined) {
-    violations.push(`${at}: a uses értéke csak plain vagy idézett egysoros scalar lehet`)
-    return
-  }
-
-  if (uses.startsWith('./')) {
-    if (uses.split('/').includes('..')) {
-      violations.push(`${at}: a lokális action nem léphet ki a repóból: ${uses}`)
-    }
-    return
-  }
-
-  if (uses.startsWith('docker://')) {
-    if (!DOCKER_ACTION_DIGEST_PATTERN.test(uses)) {
-      violations.push(`${at}: a docker action csak teljes sha256 digesttel használható: ${uses}`)
-    }
-    return
-  }
-
-  const separator = uses.lastIndexOf('@')
-  if (separator <= 0 || separator === uses.length - 1) {
-    violations.push(`${at}: nem értelmezhető külső action hivatkozás: ${uses}`)
-    return
-  }
-
-  const action = uses.slice(0, separator)
-  const ref = uses.slice(separator + 1)
-  seenActions.add(action)
-
-  const expected = EXPECTED_ACTIONS.get(action)
-  if (expected === undefined) {
-    violations.push(`${at}: ismeretlen, nem engedélyezett külső action: ${action}`)
-    return
-  }
-  if (!ACTION_SHA_PATTERN.test(ref)) {
-    violations.push(`${at}: ${action} nem teljes commit SHA: ${ref}`)
-  }
-
-  const rawComment = readNodeProperty(valueNode, 'comment')
-  const versionComment = typeof rawComment === 'string' ? rawComment.trim() : ''
-  if (!VERSION_COMMENT_PATTERN.test(versionComment)) {
-    violations.push(`${at}: ${action} mellett nincs olvasható verziókomment`)
-  }
-  if (ref !== expected.sha || versionComment !== expected.version) {
-    violations.push(
-      `${at}: ${action} eltér a jóváhagyott ${expected.sha} # ${expected.version} pintől`,
-    )
-  }
-}
-
-function inspectImage(
-  file: string,
-  source: string,
-  valueNode: unknown,
-  violations: string[],
-): void {
-  const at = location(file, source, valueNode)
-  const image = scalarText(valueNode)
-  if (!SUPPORTED_SCALAR_TYPES.has(nodeType(valueNode) ?? '') || image === undefined) {
-    violations.push(`${at}: az image értéke csak plain vagy idézett egysoros scalar lehet`)
-    return
-  }
-  if (!IMAGE_DIGEST_PATTERN.test(image)) {
-    violations.push(`${at}: a container image csak teljes sha256 digesttel használható: ${image}`)
-  }
-}
-
-function inspectAst(
-  file: string,
-  source: string,
-  node: unknown,
-  violations: string[],
-  seenActions: Set<string>,
-): void {
-  if (isPair(node)) {
-    const keyNode = readNodeProperty(node, 'key')
-    const valueNode = readNodeProperty(node, 'value')
-    const key = scalarText(keyNode)
-
-    if (key === 'uses') {
-      inspectUses(file, source, valueNode, violations, seenActions)
-    } else if (key === 'image') {
-      inspectImage(file, source, valueNode, violations)
-    } else if (key === 'continue-on-error') {
-      violations.push(
-        `${location(file, source, keyNode)}: continue-on-error biztonsági workflow-ban tiltott`,
-      )
-    } else if (key === 'steps') {
-      if (!isSeq(valueNode)) {
-        violations.push(`${location(file, source, valueNode)}: a steps értéke csak lista lehet`)
-      } else {
-        for (const stepNode of valueNode.items) {
-          if (!isMap(stepNode)) {
-            violations.push(
-              `${location(file, source, stepNode)}: minden workflow step mapping kell legyen`,
-            )
-          }
-        }
-      }
-    }
-
-    inspectAst(file, source, valueNode, violations, seenActions)
-    return
-  }
-
-  for (const item of nodeItems(node)) {
-    inspectAst(file, source, item, violations, seenActions)
-  }
-}
-
-function backupSteps(parsed: unknown): readonly Record<string, unknown>[] | undefined {
-  if (!isRecord(parsed) || !isRecord(parsed.jobs) || !isRecord(parsed.jobs.backup)) {
-    return undefined
-  }
-  const steps = parsed.jobs.backup.steps
-  return Array.isArray(steps) && steps.every(isRecord) ? steps : undefined
-}
-
-function inspectJobPermissions(file: string, parsed: unknown, violations: string[]): void {
-  if (!isRecord(parsed) || !isRecord(parsed.jobs)) return
-
-  for (const [jobName, job] of Object.entries(parsed.jobs)) {
-    if (!isRecord(job)) continue
-    if (hasOwn(job, 'permissions')) {
-      violations.push(`${file}: a jobs.${jobName}.permissions felülírás tiltott`)
-    }
-    if (isRecord(job.env) && hasOwn(job.env, 'PG_IMAGE')) {
-      violations.push(`${file}: a jobs.${jobName}.env.PG_IMAGE felülírás tiltott`)
-    }
-    if (!Array.isArray(job.steps)) continue
-    for (const [stepIndex, step] of job.steps.entries()) {
-      if (isRecord(step) && isRecord(step.env) && hasOwn(step.env, 'PG_IMAGE')) {
-        violations.push(
-          `${file}: a jobs.${jobName}.steps[${stepIndex}].env.PG_IMAGE felülírás tiltott`,
-        )
-      }
-    }
-  }
-}
-
-function stepWithId(
-  steps: readonly Record<string, unknown>[],
-  id: string,
-  violations: string[],
-): Record<string, unknown> | undefined {
-  const matches = steps.filter((step) => step.id === id)
-  if (matches.length !== 1) {
-    violations.push(`db-backup.yml: pontosan egy ${id} id-jű step kell`)
-    return undefined
-  }
-  return matches[0]
-}
-
-function countExactLine(run: string, expected: string): number {
-  return run.split('\n').filter((line) => line.trim() === expected).length
-}
-
-function inspectBackupShape(parsed: unknown, violations: string[]): void {
-  if (!isRecord(parsed)) {
-    violations.push('db-backup.yml: a workflow gyökere nem mapping')
-    return
-  }
-  if (!isRecord(parsed.permissions) || Object.keys(parsed.permissions).length !== 0) {
-    violations.push(
-      'db-backup.yml: a backup workflow minimális jogosultsága permissions: {} kell legyen',
-    )
-  }
-  if (!isRecord(parsed.env) || parsed.env.PG_IMAGE !== BACKUP_POSTGRES) {
-    violations.push(`db-backup.yml: a PG_IMAGE pontosan ${BACKUP_POSTGRES} kell legyen`)
-  }
-
-  const steps = backupSteps(parsed)
-  if (steps === undefined) {
-    violations.push('db-backup.yml: a jobs.backup.steps nem érvényes step-lista')
-    return
-  }
-
-  const dump = stepWithId(steps, 'dump', violations)
-  const integrity = stepWithId(steps, 'integrity', violations)
-  const dumpRun = typeof dump?.run === 'string' ? dump.run : ''
-  const integrityRun = typeof integrity?.run === 'string' ? integrity.run : ''
-  if (dumpRun === '') {
-    violations.push('db-backup.yml: a dump step run scriptje hiányzik')
-  } else {
-    const dumpImageLines = dumpRun
-      .split('\n')
-      .filter((line) => line.includes('PG_IMAGE'))
-      .map((line) => line.trim())
-    if (
-      dumpImageLines.join('\n') !==
-      ['docker pull --quiet "${PG_IMAGE}"', '"${PG_IMAGE}" \\'].join('\n')
-    ) {
-      violations.push('db-backup.yml: a dump run csak a jóváhagyott PG_IMAGE sinkeket említheti')
-    }
-    if (/^\s*(?:export\s+)?PG_IMAGE=/m.test(dumpRun)) {
-      violations.push('db-backup.yml: a dump run nem írhatja felül a rögzített PG_IMAGE-et')
-    }
-    if (dumpRun.includes('--dbname')) {
-      violations.push('db-backup.yml: a pg_dump nem kaphat credentiales --dbname argumentumot')
-    }
-
-    const writeIndex = dumpRun.indexOf('printf "%s\\n" "${DATABASE_URI}" > "${SERVICE_FILE}"')
-    const unsetMatch = /^\s*unset DATABASE_URI\s*$/m.exec(dumpRun)
-    const unsetIndex = unsetMatch?.index ?? -1
-    const exportServiceIndex = dumpRun.indexOf('export PGSERVICE="kineticare_backup"')
-    const dumpIndex = dumpRun.indexOf('pg_dump --format=custom --file="${DUMP_TARGET}"')
-    if (
-      writeIndex < 0 ||
-      unsetIndex < 0 ||
-      exportServiceIndex < 0 ||
-      dumpIndex < 0 ||
-      writeIndex >= unsetIndex ||
-      unsetIndex >= exportServiceIndex ||
-      exportServiceIndex >= dumpIndex
-    ) {
-      violations.push(
-        'db-backup.yml: a DATABASE_URI → service file → unset → PGSERVICE → pg_dump sorrend kötelező',
-      )
-    }
-    if (countExactLine(dumpRun, 'unset DATABASE_URI') !== 1) {
-      violations.push(
-        'db-backup.yml: a DATABASE_URI-t pontosan egyszer, a feldolgozás elején kell unsetelni',
-      )
-    }
-    if (
-      !dumpRun.includes('trap cleanup_service EXIT') ||
-      !dumpRun.includes('rm -f -- "${SERVICE_FILE}"') ||
-      countExactLine(dumpRun, 'chmod 0600 "${SERVICE_FILE}"') !== 2 ||
-      countExactLine(dumpRun, '[ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config') !==
-        2 ||
-      !dumpRun.includes('export PGSERVICEFILE="${SERVICE_FILE}"')
-    ) {
-      violations.push(
-        'db-backup.yml: a service file 0600-as permissionje, PGSERVICEFILE exportja és trap cleanupja kötelező',
-      )
-    }
-  }
-
-  if (integrityRun === '') {
-    violations.push('db-backup.yml: az integrity step run scriptje hiányzik')
-  } else {
-    const integrityImageLines = integrityRun
-      .split('\n')
-      .filter((line) => line.includes('PG_IMAGE'))
-      .map((line) => line.trim())
-    if (integrityImageLines.join('\n') !== '"${PG_IMAGE}" \\') {
-      violations.push(
-        'db-backup.yml: az integrity run csak a jóváhagyott PG_IMAGE sinket említheti',
-      )
-    }
-    if (/DATABASE_URI|PGSERVICE|PGPASS|password=/i.test(integrityRun)) {
-      violations.push('db-backup.yml: az integritáslépés nem kaphat adatbázis-credentialt')
-    }
-    if (/^\s*(?:export\s+)?PG_IMAGE=/m.test(integrityRun)) {
-      violations.push('db-backup.yml: az integrity run nem írhatja felül a rögzített PG_IMAGE-et')
-    }
-  }
-
-  const encryptIndexes = steps
-    .map((step, index) => (step.id === 'encrypt' ? index : -1))
-    .filter((index) => index >= 0)
-  const cleanupIndexes = steps
-    .map((step, index) => (step.name === 'Plaintext ideiglenes fájlok törlése' ? index : -1))
-    .filter((index) => index >= 0)
-  const uploadIndexes = steps
-    .map((step, index) =>
-      typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@')
-        ? index
-        : -1,
-    )
-    .filter((index) => index >= 0)
-
-  if (encryptIndexes.length !== 1 || cleanupIndexes.length !== 1 || uploadIndexes.length !== 1) {
-    violations.push(
-      'db-backup.yml: pontosan egy encrypt, plaintext-cleanup és artifact-upload step kell',
-    )
-    return
-  }
-
-  const encryptIndex = encryptIndexes[0]
-  const cleanupIndex = cleanupIndexes[0]
-  const uploadIndex = uploadIndexes[0]
-  if (encryptIndex + 1 !== cleanupIndex || cleanupIndex + 1 !== uploadIndex) {
-    violations.push('db-backup.yml: a kötelező sorrend közvetlenül encrypt → cleanup → upload')
-  }
-
-  const cleanup = steps[cleanupIndex]
-  if (cleanup.if !== 'always()') {
-    violations.push('db-backup.yml: a plaintext cleanup feltétele pontosan always() kell legyen')
-  }
-  if (typeof cleanup.run !== 'string' || cleanup.run.trimEnd() !== REQUIRED_CLEANUP_RUN) {
-    violations.push('db-backup.yml: a plaintext cleanup parancsa hiányos, módosult vagy no-op')
-  }
-
-  const upload = steps[uploadIndex]
-  const expectedUpload = EXPECTED_ACTIONS.get('actions/upload-artifact')
-  if (upload.uses !== `actions/upload-artifact@${expectedUpload?.sha}`) {
-    violations.push(
-      'db-backup.yml: az upload step nem a jóváhagyott upload-artifact commitot használja',
-    )
-  }
-  if (!isRecord(upload.with)) {
-    violations.push('db-backup.yml: az upload step with mappingje hiányzik')
-    return
-  }
-
-  const expectedPath = 'backups/${{ steps.encrypt.outputs.encrypted_file }}'
-  if (upload.with.path !== expectedPath) {
-    violations.push(
-      `db-backup.yml: kizárólag az egyetlen titkosított fájl tölthető fel: ${expectedPath}`,
-    )
-  }
-  if (upload.with['if-no-files-found'] !== 'error') {
-    violations.push('db-backup.yml: az upload if-no-files-found értéke error kell legyen')
-  }
-}
-
-function inspectWorkflowSecurity(
-  file: string,
-  input: string | Buffer,
-  options: { inspectBackup?: boolean } = {},
-): WorkflowInspection {
-  const violations: string[] = []
-  const seenActions = new Set<string>()
-  const rawBytes = typeof input === 'string' ? Buffer.from(input, 'utf8') : input
-  const source = typeof input === 'string' ? input : input.toString('utf8')
-
-  if (options.inspectBackup) {
-    const rawSha256 = createHash('sha256').update(rawBytes).digest('hex')
-    if (rawSha256 !== BACKUP_WORKFLOW_BYTES_SHA256) {
-      violations.push(
-        'db-backup.yml: a nyers UTF-8 bájtok exact allowlistje módosult; minden workflow-változás security review-köteles',
-      )
-    }
-  }
-
-  let document: ReturnType<typeof YAML.parseDocument>
-  try {
-    document = YAML.parseDocument(source)
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { violations: [`${file}: YAML parser exception: ${message}`], seenActions }
-  }
-
-  for (const error of document.errors) {
-    violations.push(`${file}: YAML parse error: ${error.message}`)
-  }
-  for (const warning of document.warnings) {
-    violations.push(`${file}: YAML parse warning: ${warning.message}`)
-  }
-  if (document.errors.length > 0 || document.warnings.length > 0) {
-    return { violations, seenActions }
-  }
-
-  inspectAst(file, source, document.contents, violations, seenActions)
-  const parsed = document.toJSON()
-  inspectJobPermissions(file, parsed, violations)
-  if (options.inspectBackup) {
-    inspectBackupShape(parsed, violations)
-  }
-
-  return { violations, seenActions }
+function violationsForWorkflowBytes(name: string, input: Buffer | string): string[] {
+  const expected = EXPECTED_WORKFLOW_SHA256.get(name)
+  if (expected === undefined) return [`${name}: nincs jóváhagyott workflow hash`]
+  const actual = sha256(input)
+  return actual === expected
+    ? []
+    : [`${name}: workflow byte hash eltérés (várt: ${expected}, kapott: ${actual})`]
 }
 
 function replaceRequired(source: string, before: string, after: string): string {
-  expect(source).toContain(before)
+  if (!source.includes(before)) throw new Error(`A mutáció forrásmintája hiányzik: ${before}`)
   return source.replace(before, after)
 }
 
-describe('CI/platform supply-chain és backup guard', () => {
-  it('minden workflow strukturálisan parse-olható, és minden külső action/image immutable', () => {
-    const violations: string[] = []
-    const seenActions = new Set<string>()
+function insertBefore(source: string, marker: string, insertion: string): string {
+  return replaceRequired(source, marker, `${insertion}${marker}`)
+}
 
-    for (const file of readdirSync(WORKFLOWS).filter((name) => /\.ya?ml$/.test(name))) {
-      const inspection = inspectWorkflowSecurity(file, workflowBytes(file), {
-        inspectBackup: file === 'db-backup.yml',
-      })
-      violations.push(...inspection.violations)
-      for (const action of inspection.seenActions) seenActions.add(action)
-    }
+function readJson<T>(path: string): T {
+  return JSON.parse(readFileSync(path, 'utf8')) as T
+}
 
-    expect(violations).toEqual([])
-    expect(seenActions).toEqual(new Set(EXPECTED_ACTIONS.keys()))
-  })
+function exactPinnedDependencies(manifest: PackageManifest): Record<string, string> {
+  return { ...manifest.dependencies, ...manifest.devDependencies }
+}
 
-  it('mindkét PostgreSQL image tag és multi-arch digest együtt rögzített', () => {
-    expect(workflow('ci.yml')).toContain(`image: ${CI_POSTGRES}`)
-    expect(workflow('db-backup.yml')).toContain(`PG_IMAGE: ${BACKUP_POSTGRES}`)
-  })
+function extractDumpDockerInvocation(source: string): string {
+  const lines = source.split('\n')
+  const start = lines.findIndex((line) => line.trim() === 'docker run --rm \\')
+  const end = lines.findIndex((line, index) => index > start && line.trim() === "sh -ceu '")
+  if (start < 0 || end < 0) throw new Error('A dump docker run blokk nem található')
+  return lines.slice(start, end + 1).join('\n')
+}
 
-  it('a strukturált YAML parser exact direct devDependency', () => {
-    const manifest = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as unknown
-    const lockfile = JSON.parse(readFileSync(join(REPO, 'package-lock.json'), 'utf8')) as unknown
+function writeExecutable(path: string, source: string): void {
+  writeFileSync(path, source, { encoding: 'utf8', mode: 0o755 })
+  chmodSync(path, 0o755)
+}
 
-    expect(isRecord(manifest) && isRecord(manifest.devDependencies)).toBe(true)
-    expect(isRecord(manifest) ? manifest.devDependencies : undefined).toMatchObject({
-      yaml: '2.9.0',
-    })
-    expect(isRecord(lockfile) && isRecord(lockfile.packages)).toBe(true)
-    const lockPackages = isRecord(lockfile) && isRecord(lockfile.packages) ? lockfile.packages : {}
-    expect(lockPackages['node_modules/yaml']).toMatchObject({ version: '2.9.0', dev: true })
-  })
+function runFakeBackup(invocation: string): {
+  readonly args: string[]
+  readonly dump: string
+  readonly encrypted: string
+  readonly dumpMode: number
+} {
+  const root = mkdtempSync(join(tmpdir(), 'kineticare-backup-owner-'))
+  const bin = join(root, 'bin')
+  const backups = join(root, 'backups')
+  const argsFile = join(root, 'docker-args')
+  const accessState = join(root, 'docker-access-state')
+  const dump = join(backups, 'kineticare-test.dump')
+  const encrypted = `${dump}.age`
+  mkdirSync(bin)
+  mkdirSync(backups)
 
-  it('a backup mindkét konfiguráció hiányára fail-closed', () => {
-    const source = workflow('db-backup.yml')
-    const preflight = source
-      .split('- name: Kötelező mentési konfiguráció')[1]
-      ?.split('- name: age telepítése')[0]
-
-    expect(preflight).toBeDefined()
-    expect(preflight).toContain('DATABASE_URI: ${{ secrets.DATABASE_URI }}')
-    expect(preflight).toContain('BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}')
-    expect(preflight).toContain('if [ -z "${DATABASE_URI:-}" ]; then')
-    expect(preflight).toContain('if [ -z "${BACKUP_AGE_RECIPIENT:-}" ]; then')
-    expect(preflight).toContain('exit 1')
-    expect(source).not.toContain('run=false')
-    expect(source).not.toContain('steps.secret.outputs.run')
-  })
-
-  it('az age bináris hivatalos v1.3.2 release-ből, rögzített SHA-256-tal települ', () => {
-    const source = workflow('db-backup.yml')
-
-    expect(source).toMatch(/AGE_VERSION: ['"]1\.3\.2['"]/)
-    expect(source).toContain(
-      'AGE_ARCHIVE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10',
-    )
-    expect(source).toContain(
-      'https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz',
-    )
-    expect(source).toContain('sha256sum --check --strict')
-  })
-
-  it.each([
-    ['flow mapping', "steps: [{ uses: 'actions/checkout@main' }]\n"],
-    ['folded scalar', 'steps:\n  - uses: >-\n      actions/checkout@main\n'],
-    ['single quoted scalar', "steps:\n  - uses: 'actions/checkout@main' # v7.0.1\n"],
-    ['double quoted scalar', 'steps:\n  - uses: "actions/checkout@main" # v7.0.1\n'],
-  ])('a mutable actiont %s alakban sem hagyja ki', (_label, source) => {
-    expect(inspectWorkflowSecurity('fixture.yml', source).violations).not.toEqual([])
-  })
-
-  it.each([
-    ['tag-ref', 'steps:\n  - uses: actions/checkout@v7 # v7.0.1\n', /nem teljes commit SHA/],
-    [
-      'unknown action',
-      'steps:\n  - uses: owner/unknown@0123456789abcdef0123456789abcdef01234567 # v1.0.0\n',
-      /ismeretlen/,
-    ],
-    ['docker tag', 'steps:\n  - uses: docker://alpine:3.23\n', /docker action/],
-    ['mutable image', 'services:\n  db:\n    image: postgres:18\n', /container image/],
-    [
-      'digest-only image',
-      `services:\n  db:\n    image: postgres@sha256:${'a'.repeat(64)}\n`,
-      /container image/,
-    ],
-    [
-      'continue-on-error',
-      'steps:\n  - run: exit 1\n    continue-on-error: true\n',
-      /continue-on-error/,
-    ],
-  ])('%s mutációra fail-closed violationt ad', (_label, source, expected) => {
-    expect(inspectWorkflowSecurity('fixture.yml', source).violations.join('\n')).toMatch(expected)
-  })
-
-  it('a kommentben szereplő uses nem számít workflow actionnek', () => {
-    const result = inspectWorkflowSecurity(
-      'fixture.yml',
-      '# uses: actions/checkout@main\nsteps:\n  - run: echo safe\n',
-    )
-    expect(result.violations).toEqual([])
-    expect(result.seenActions).toEqual(new Set())
-  })
-
-  it.each([
-    [
-      'wildcard artifact',
-      'path: backups/${{ steps.encrypt.outputs.encrypted_file }}',
-      'path: backups/*.dump*',
-    ],
-    ['no-op cleanup', 'rm -f backups/*.dump toc.txt', ': # cleanup disabled'],
-    ['comment-only cleanup', 'rm -f backups/*.dump toc.txt', '# rm -f backups/*.dump toc.txt'],
-    ['cleanup condition', 'if: always()', 'if: success()'],
-    [
-      'continue-on-error cleanup',
-      'if: always()\n        run:',
-      'if: always()\n        continue-on-error: true\n        run:',
-    ],
-    [
-      'mutable pull és run image',
-      'docker pull --quiet "${PG_IMAGE}"',
-      'docker pull --quiet postgres:18-alpine',
-    ],
-    [
-      'mutable dump run image',
-      '            "${PG_IMAGE}" \\\n            sh -ceu',
-      '            postgres:18-alpine \\\n            sh -ceu',
-    ],
-    [
-      'mutable integrity run image',
-      '            "${PG_IMAGE}" \\\n            pg_restore --list',
-      '            postgres:18-alpine \\\n            pg_restore --list',
-    ],
-    [
-      'DATABASE_URI argv visszacsempészése',
-      'pg_dump --format=custom --file="${DUMP_TARGET}"',
-      'pg_dump --dbname="$DATABASE_URI" --format=custom --file="${DUMP_TARGET}"',
-    ],
-    [
-      'service env unset kikapcsolása',
-      '              unset DATABASE_URI\n              chmod 0600',
-      '              : # DATABASE_URI unset kikapcsolva\n              chmod 0600',
-    ],
-    [
-      'service file permission gyengítése',
-      'chmod 0600 "${SERVICE_FILE}"',
-      'chmod 0644 "${SERVICE_FILE}"',
-    ],
-    [
-      'service file cleanup kikapcsolása',
-      'rm -f -- "${SERVICE_FILE}"',
-      ': # service cleanup kikapcsolva',
-    ],
-  ])('a backup %s mutációját elutasítja', (_label, before, after) => {
-    const source = replaceRequired(workflow('db-backup.yml'), before, after)
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations,
-    ).not.toEqual([])
-  })
-
-  it.each([
-    ['NaN scalar', '  workflow_dispatch: .nan'],
-    ['Infinity scalar', '  workflow_dispatch: .inf'],
-    ['explicit null tag', '  workflow_dispatch: !!null null'],
-  ])(
-    'a nyers bájt-allowlist a JSON-collisiont okozó %s mutációt is elutasítja',
-    (_label, replacement) => {
-      const baseline = workflow('db-backup.yml')
-      const source = replaceRequired(baseline, '  workflow_dispatch:', replacement)
-
-      expect(JSON.stringify(YAML.parseDocument(source).toJSON())).toBe(
-        JSON.stringify(YAML.parseDocument(baseline).toJSON()),
-      )
-      expect(
-        inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
-          '\n',
-        ),
-      ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
-    },
+  writeExecutable(
+    join(bin, 'id'),
+    `#!/bin/sh
+case "\${1:-}" in
+  -u) printf '%s\\n' 1234 ;;
+  -g) printf '%s\\n' 5678 ;;
+  *) exit 64 ;;
+esac
+`,
+  )
+  writeExecutable(
+    join(bin, 'docker'),
+    `#!/bin/sh
+set -eu
+: > "\${FAKE_DOCKER_ARGS}"
+runner_id=''
+while [ "\$#" -gt 0 ]; do
+  printf '%s\\n' "\$1" >> "\${FAKE_DOCKER_ARGS}"
+  if [ "\$1" = '--user' ] && [ "\$#" -gt 1 ]; then
+    shift
+    runner_id="\$1"
+    printf '%s\\n' "\$1" >> "\${FAKE_DOCKER_ARGS}"
+  fi
+  shift
+done
+umask 077
+printf 'custom-format-dump\\n' > "\${FAKE_DUMP_PATH}"
+if [ "\${runner_id}" = "\${FAKE_RUNNER_ID}" ]; then
+  printf 'readable\\n' > "\${FAKE_DOCKER_ACCESS_STATE}"
+else
+  printf 'wrong-owner\\n' > "\${FAKE_DOCKER_ACCESS_STATE}"
+fi
+`,
+  )
+  writeExecutable(
+    join(bin, 'age'),
+    `#!/bin/sh
+set -eu
+output=''
+input=''
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    --recipient) shift 2 ;;
+    --output) output="\$2"; shift 2 ;;
+    *) input="\$1"; shift ;;
+  esac
+done
+IFS= read -r access_state < "\${FAKE_DOCKER_ACCESS_STATE}"
+[ "\${access_state}" = 'readable' ]
+[ -r "\${input}" ]
+printf 'age-encrypted\\n' > "\${output}"
+`,
   )
 
-  it('a többdokumentumos YAML mutáció a bájt- és parser-kapun is elbukik', () => {
-    const source = `${workflow('db-backup.yml')}\n---\nname: masodik-dokumentum\n`
-    const violations = inspectWorkflowSecurity('db-backup.yml', source, {
-      inspectBackup: true,
-    }).violations.join('\n')
-
-    expect(violations).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
-    expect(violations).toMatch(/YAML parse error/)
-  })
-
-  it('a komment-only workflow-változás is tudatos allowlist review-t igényel', () => {
-    const source = `${workflow('db-backup.yml')}# security review szükséges\n`
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
-        '\n',
-      ),
-    ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
-  })
-
-  it.each([
-    [
-      'if ágban rejtett docker run',
-      'if true; then docker run --rm postgres:18-alpine true; fi\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'pontosvessző után rejtett docker pull',
-      ':; docker pull postgres:18-alpine\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'command wrapper mögé rejtett docker run',
-      'command docker run --rm postgres:18-alpine true\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'command wrapperes shell scriptbe rejtett docker run',
-      'command sh -c \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'tetszőleges wrapperes shell scriptbe rejtett docker run',
-      'nice sh -c \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'shell here-stringbe rejtett docker run',
-      'bash <<< \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-    [
-      'env split-stringbe rejtett docker run',
-      'env -S \'docker run --rm postgres:18-alpine true\'\n          docker pull --quiet "${PG_IMAGE}"',
-    ],
-  ])('a backup %s sinket parancscsomópontként elutasítja', (_label, injected) => {
-    const source = replaceRequired(
-      workflow('db-backup.yml'),
-      'docker pull --quiet "${PG_IMAGE}"',
-      injected,
+  const safeInvocation = replaceRequired(invocation, "sh -ceu '", "sh -ceu 'exit 0'")
+  try {
+    execFileSync(
+      '/bin/sh',
+      [
+        '-ceu',
+        `${safeInvocation}
+age --recipient age1publictestrecipient --output "\${FAKE_ENCRYPTED_PATH}" "\${FAKE_DUMP_PATH}"`,
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          PATH: `${bin}:/usr/bin:/bin`,
+          FILE: 'kineticare-test.dump',
+          PG_IMAGE: BACKUP_POSTGRES,
+          FAKE_DOCKER_ARGS: argsFile,
+          FAKE_DOCKER_ACCESS_STATE: accessState,
+          FAKE_DUMP_PATH: dump,
+          FAKE_ENCRYPTED_PATH: encrypted,
+          FAKE_RUNNER_ID: '1234:5678',
+        },
+        stdio: 'pipe',
+      },
     )
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
-        '\n',
+    accessSync(dump, constants.R_OK)
+    accessSync(encrypted, constants.R_OK)
+    return {
+      args: readFileSync(argsFile, 'utf8').trimEnd().split('\n'),
+      dump: readFileSync(dump, 'utf8'),
+      encrypted: readFileSync(encrypted, 'utf8'),
+      dumpMode: statSync(dump).mode & 0o777,
+    }
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+}
+
+const mutations: readonly WorkflowMutation[] = [
+  {
+    label: 'root permissions módosítás',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, 'permissions: {}', 'permissions: { contents: write }'),
+  },
+  {
+    label: 'job permissions felülírás',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '  backup:\n    name:',
+        '  backup:\n    permissions: { contents: write }\n    name:',
       ),
-    ).toMatch(/nyers UTF-8 bájtok exact allowlistje/)
+  },
+  {
+    label: 'mutable CI image',
+    file: 'ci.yml',
+    mutate: (source) => replaceRequired(source, CI_POSTGRES, 'postgres:18'),
+  },
+  {
+    label: 'mutable backup image',
+    file: 'db-backup.yml',
+    mutate: (source) => replaceRequired(source, BACKUP_POSTGRES, 'postgres:18-alpine'),
+  },
+  {
+    label: 'action tag ref',
+    file: 'ci.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        'actions/checkout@v7',
+      ),
+  },
+  {
+    label: 'idézett mutable action',
+    file: 'ci.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        'uses: "actions/checkout@v7"',
+      ),
+  },
+  {
+    label: 'flow-style mutable action',
+    file: 'ci.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        '- { uses: actions/checkout@v7 }',
+      ),
+  },
+  {
+    label: 'folded mutable action',
+    file: 'ci.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        'uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        'uses: >-\n          actions/checkout@v7',
+      ),
+  },
+  {
+    label: 'run parancs módosítás',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        'pg_dump --format=custom --file="${DUMP_TARGET}"',
+        'pg_dump --dbname="${DATABASE_URI}" --format=custom --file="${DUMP_TARGET}"',
+      ),
+  },
+  {
+    label: 'extra step',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '    steps:\n',
+        '    steps:\n      - name: Nem jóváhagyott lépés\n        run: true\n',
+      ),
+  },
+  {
+    label: 'comment-only változás',
+    file: 'db-backup.yml',
+    mutate: (source) => `${source}# guard bypass comment\n`,
+  },
+  {
+    label: 'CRLF normalizálás',
+    file: 'db-backup.yml',
+    mutate: (source) => source.replaceAll('\n', '\r\n'),
+  },
+  {
+    label: '.nan scalar',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, '  workflow_dispatch:', '  workflow_dispatch: .nan'),
+  },
+  {
+    label: '.inf scalar',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, '  workflow_dispatch:', '  workflow_dispatch: .inf'),
+  },
+  {
+    label: 'explicit YAML tag',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, '  workflow_dispatch:', '  workflow_dispatch: !unsafe null'),
+  },
+  {
+    label: 'multi-document YAML',
+    file: 'db-backup.yml',
+    mutate: (source) => `${source}---\npermissions: write-all\n`,
+  },
+  {
+    label: 'feltételes mutable docker run',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        '          if true; then docker run postgres:18-alpine true; fi\n',
+      ),
+  },
+  {
+    label: 'semicolon mutable docker pull',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        '          :; docker pull postgres:18-alpine\n',
+      ),
+  },
+  {
+    label: 'command docker wrapper',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        '          command docker run postgres:18-alpine true\n',
+      ),
+  },
+  {
+    label: 'command sh wrapper',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        "          command sh -c 'docker run postgres:18-alpine true'\n",
+      ),
+  },
+  {
+    label: 'nice sh wrapper',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        "          nice sh -c 'docker run postgres:18-alpine true'\n",
+      ),
+  },
+  {
+    label: 'bash stdin wrapper',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        "          bash <<< 'docker run postgres:18-alpine true'\n",
+      ),
+  },
+  {
+    label: 'env -S wrapper',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      insertBefore(
+        source,
+        '          docker pull --quiet "${PG_IMAGE}"',
+        '          env -S "sh -c \'docker run postgres:18-alpine true\'"\n',
+      ),
+  },
+  {
+    label: 'wildcard artifact',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        'path: backups/${{ steps.encrypt.outputs.encrypted_file }}',
+        'path: backups/*',
+      ),
+  },
+  {
+    label: 'no-op plaintext cleanup',
+    file: 'db-backup.yml',
+    mutate: (source) => replaceRequired(source, 'rm -f backups/*.dump toc.txt', ': # no cleanup'),
+  },
+  {
+    label: 'comment-only plaintext cleanup',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, 'rm -f backups/*.dump toc.txt', '# rm -f backups/*.dump toc.txt'),
+  },
+  {
+    label: 'cleanup always eltávolítása',
+    file: 'db-backup.yml',
+    mutate: (source) => replaceRequired(source, '        if: always()', '        if: success()'),
+  },
+  {
+    label: 'continue-on-error',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '      - name: Mentés feltöltése artifactként',
+        '      - name: Mentés feltöltése artifactként\n        continue-on-error: true',
+      ),
+  },
+  {
+    label: 'job PG_IMAGE override',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '  backup:\n    name:',
+        '  backup:\n    env:\n      PG_IMAGE: postgres:18-alpine\n    name:',
+      ),
+  },
+  {
+    label: 'step PG_IMAGE override',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(
+        source,
+        '        env:\n          DATABASE_URI:',
+        '        env:\n          PG_IMAGE: postgres:18-alpine\n          DATABASE_URI:',
+      ),
+  },
+  {
+    label: 'service file unset eltávolítása',
+    file: 'db-backup.yml',
+    mutate: (source) => replaceRequired(source, '              unset DATABASE_URI\n', ''),
+  },
+  {
+    label: 'service file engedély lazítása',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, 'chmod 0600 "${SERVICE_FILE}"', 'chmod 0644 "${SERVICE_FILE}"'),
+  },
+  {
+    label: 'service file cleanup eltávolítása',
+    file: 'db-backup.yml',
+    mutate: (source) =>
+      replaceRequired(source, 'rm -f -- "${SERVICE_FILE}"', ': # service file retained'),
+  },
+  {
+    label: 'runner UID:GID eltávolítása',
+    file: 'db-backup.yml',
+    mutate: (source) => replaceRequired(source, '            --user "$(id -u):$(id -g)" \\\n', ''),
+  },
+]
+
+describe('CI/platform supply-chain guard', () => {
+  it('byte-for-byte engedélyezi kizárólag a négy review-zott workflow-t', () => {
+    const files = readdirSync(WORKFLOWS)
+      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+      .sort()
+    expect(files).toEqual([...EXPECTED_WORKFLOW_SHA256.keys()].sort())
+    for (const file of files) {
+      expect(violationsForWorkflowBytes(file, workflowBytes(file)), file).toEqual([])
+    }
   })
 
-  it('a job-szintű permissions felülírást elutasítja', () => {
-    const source = replaceRequired(
-      workflow('db-backup.yml'),
-      '  backup:\n    name:',
-      '  backup:\n    permissions: { contents: write }\n    name:',
+  it.each(mutations)('$label mutációt fail-closed elutasítja', ({ file, mutate }) => {
+    expect(violationsForWorkflowBytes(file, mutate(workflow(file)))).not.toEqual([])
+  })
+
+  it('a jóváhagyott action és image pinek a hash-elt workflow-k részei', () => {
+    expect(workflow('ci.yml')).toContain(CI_POSTGRES)
+    expect(workflow('db-backup.yml')).toContain(BACKUP_POSTGRES)
+    expect(workflow('claude.yml')).toContain(
+      'anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210',
     )
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
-        '\n',
-      ),
-    ).toMatch(/jobs\.backup\.permissions/)
+    expect(workflow('gitleaks.yml')).toContain(
+      'gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0',
+    )
   })
 
-  it.each([
-    [
-      'job env',
-      '  backup:\n    name:',
-      '  backup:\n    env: { PG_IMAGE: postgres:18-alpine }\n    name:',
-    ],
-    [
-      'dump step env',
-      '        env:\n          DATABASE_URI: ${{ secrets.DATABASE_URI }}',
-      '        env:\n          PG_IMAGE: postgres:18-alpine\n          DATABASE_URI: ${{ secrets.DATABASE_URI }}',
-    ],
-    [
-      'integrity step env',
-      '        env:\n          FILE: ${{ steps.dump.outputs.file }}',
-      '        env:\n          PG_IMAGE: postgres:18-alpine\n          FILE: ${{ steps.dump.outputs.file }}',
-    ],
-  ])('a %s PG_IMAGE felülírást elutasítja', (_label, before, after) => {
-    const source = replaceRequired(workflow('db-backup.yml'), before, after)
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
-        '\n',
-      ),
-    ).toMatch(/env\.PG_IMAGE/)
+  it('stdlib JSON parse alapján őrzi az exact package pineket yaml direct dependency nélkül', () => {
+    const manifest = readJson<PackageManifest>(join(REPO, 'package.json'))
+    const lock = readJson<PackageLock>(join(REPO, 'package-lock.json'))
+    const dependencies = exactPinnedDependencies(manifest)
+    expect(manifest.engines?.node).toBe('24.x')
+    expect(dependencies).toEqual(EXPECTED_PACKAGE_PINS)
+    expect(dependencies.yaml).toBeUndefined()
+    expect(lock.packages?.['']?.dependencies?.yaml).toBeUndefined()
+    expect(lock.packages?.['']?.devDependencies?.yaml).toBeUndefined()
+    for (const [name, version] of Object.entries(dependencies)) {
+      expect(version, `${name} csak exact verzióval engedélyezett`).toMatch(/^\d+\.\d+\.\d+$/)
+    }
   })
 
-  it('a pusztán deklarált PG_IMAGE nem fedez mutable docker sinkeket', () => {
+  it('a dump konténer runner UID:GID-ja miatt a host age olvasni tudja a 0600-as fájlt', () => {
     const source = workflow('db-backup.yml')
-      .replace('docker pull --quiet "${PG_IMAGE}"', 'docker pull --quiet postgres:18-alpine')
-      .replaceAll('            "${PG_IMAGE}" \\', '            postgres:18-alpine \\')
-
-    expect(source).toContain(`PG_IMAGE: ${BACKUP_POSTGRES}`)
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations,
-    ).not.toEqual([])
+    expect(source.match(/--user "\$\(id -u\):\$\(id -g\)"/g)).toHaveLength(2)
+    const result = runFakeBackup(extractDumpDockerInvocation(source))
+    const userIndex = result.args.indexOf('--user')
+    expect(userIndex).toBeGreaterThanOrEqual(0)
+    expect(result.args[userIndex + 1]).toBe('1234:5678')
+    expect(result.args).toContain('--env')
+    expect(result.args).toContain('DATABASE_URI')
+    expect(result.dumpMode).toBe(0o600)
+    expect(result.dump).toBe('custom-format-dump\n')
+    expect(result.encrypted).toBe('age-encrypted\n')
   })
 
-  it('a backup encrypt-cleanup-upload sorrend felcserélését elutasítja', () => {
-    const source = workflow('db-backup.yml')
-    const cleanupStart = source.indexOf('      - name: Plaintext ideiglenes fájlok törlése')
-    const uploadStart = source.indexOf('      - name: Mentés feltöltése artifactként')
-    expect(cleanupStart).toBeGreaterThan(0)
-    expect(uploadStart).toBeGreaterThan(cleanupStart)
-
-    const cleanupBlock = source.slice(cleanupStart, uploadStart)
-    const uploadBlock = source.slice(uploadStart)
-    const mutated = source.slice(0, cleanupStart) + uploadBlock + cleanupBlock
-
-    expect(
-      inspectWorkflowSecurity('db-backup.yml', mutated, { inspectBackup: true }).violations,
-    ).not.toEqual([])
+  it('a fake runtime elutasítja a runner UID:GID nélküli dumpot az age előtt', () => {
+    const invocation = extractDumpDockerInvocation(workflow('db-backup.yml'))
+    const unsafe = replaceRequired(invocation, '            --user "$(id -u):$(id -g)" \\\n', '')
+    expect(() => runFakeBackup(unsafe)).toThrow()
   })
 })

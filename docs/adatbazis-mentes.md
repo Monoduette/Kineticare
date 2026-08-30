@@ -205,13 +205,16 @@ nélkül.
   (`always()`) törlődik a runner munkaterületéről.
 - A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és érték nélküli
   `docker --env DATABASE_URI` opcióval a konténerbe, ezért sem a host, sem a
-  konténer parancssorában nincs benne a secret. A konténer `umask 077` mellett
-  egy 0600-as, saját fájlrendszerében élő ideiglenes libpq service file-ba írja,
-  az eredeti env változót azonnal `unset`-eli, majd a URI-t fail-closed módon
+  konténer parancssorában nincs benne a secret. A `docker run` a GitHub-runner
+  aktuális UID:GID-jával fut, ezért a bind mounton létrejövő 0600-as dumpot a
+  host oldali `age` folyamat olvasni tudja. A konténer `umask 077` mellett egy
+  0600-as, saját fájlrendszerében élő ideiglenes libpq service file-ba írja az
+  URI-t, az eredeti env változót azonnal `unset`-eli, majd fail-closed módon
   valódi service-paraméterekre bontja. A `pg_dump` csak `PGSERVICE` és
   `PGSERVICEFILE` alapján indul; siker, hiba és kezelhető jelzés után trap törli
   a fájlt, a `docker run --rm` pedig a konténer teljes ideiglenes
-  fájlrendszerét eltávolítja. Az integritáslépés nem kap DB credentialt.
+  fájlrendszerét eltávolítja. Az integritáslépés nem kap DB credentialt, és
+  ugyanazzal a runner UID:GID-val olvassa a dumpot.
 - A workflow a `postgresql://`/`postgres://` alakú, usert, jelszót, hostot és
   adatbázisnevet tartalmazó URI-t fogadja. Az URL-kódolt komponenseket dekódolja;
   kontrollkarakterre, hibás kódolásra vagy ismeretlen query-paraméterre pirosan
@@ -253,14 +256,16 @@ A titkosítás nem szünteti meg a build- és üzemeltetési bizalmi határokat:
   teszi a hozzá tartozó artifactokat. Legalább két elkülönített offline másolat,
   dokumentált hozzáférők és rotációs eljárás szükséges; a régi kulcsot a régi
   artifactok lejártáig meg kell őrizni.
-- **Guard parser dependency:** a workflow-k strukturált ellenőrzése közvetlen,
-  exact `yaml@2.9.0` devDependencyre támaszkodik. A `package.json` és
-  `package-lock.json` együtt, a registry-integrity és a `npm ls yaml` eredmény
-  külön dependency/security review-t igényel; a lockfile kézi szerkesztése vagy
-  a Payload pinek mellékes módosítása nem elfogadható.
+- **Dependency-mentes workflow guard:** a négy security-kritikus workflow teljes
+  nyers UTF-8 bájtsorozata külön SHA-256 allowlisten van. Bármely tartalmi vagy
+  formázási eltérés — komment, CRLF, YAML-tag vagy extra dokumentum is —
+  fail-closed bukik, és csak tudatos security review után frissíthető az
+  allowlist. A guard kizárólag Node stdlibot használ; nem importál tranzitív YAML
+  parsert, és nem igényel `package.json`- vagy lockfile-változást. A package
+  pineket standard `JSON.parse` ellenőrzi.
 
 Merge önmagában nem igazolja az offsite mentést. Release előtt kötelező: a
-package/lock és a workflow-delta emberi security review-ja, a két
+workflow-delta és az új teljes fájl-hashek emberi security review-ja, a két
 GitHub-konfiguráció emberi felvétele, a recipient kétfős out-of-band
 ellenőrzése, egy kézi workflow-futás, az artifact letöltése és offline
 visszafejtése, majd üres eldobható adatbázisba `--exit-on-error` restore és a
