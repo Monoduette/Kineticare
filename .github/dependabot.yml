@@ -24,7 +24,7 @@ updates:
       # (changelog-olvasás + staging-E2E után, emberi döntéssel).
       - dependency-name: "@payloadcms/*"
       - dependency-name: "payload"
-      # A payload@3.86.x peer-dependency-je graphql ^16.8.1 – a v17-es major
+      # A payload@3.88.0 peer-dependency-je graphql ^16.8.1 – a v17-es major
       # vonalat a Dependabot ne nyissa újra, amíg a Payload nem támogatja.
       - dependency-name: "graphql"
         update-types: ["version-update:semver-major"]

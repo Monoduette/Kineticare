@@ -551,7 +551,7 @@ export default buildConfig({
     },
     components: {
       views: {
-        // T-013: havi bevétel otthoni/szakmai bontásban. A Payload 3.86 a
+        // T-013: havi bevétel otthoni/szakmai bontásban. A Payload 3.88.0 a
         // custom view-t NYILVÁNOS admin-route-ként kezeli — a szerepkör-kapu
         // a nézetben van (`canAccessStatistics`), nem itt.
         statisztika: {
@@ -666,7 +666,7 @@ export default buildConfig({
   }),
   sharp,
   // T-019 lezárás: a feltölthető fájlok mérete globálisan max. 10 MB (bájtban).
-  // Collection-szintű fileSize-limit a pinned 3.86.0-ban nem elérhető, ezért a
+  // Collection-szintű fileSize-limit a pinned 3.88.0-ban nem elérhető, ezért a
   // korlát a globális upload.limits.fileSize mezőn kerül beállításra.
   upload: {
     limits: {
@@ -692,7 +692,7 @@ export default buildConfig({
     audit,
     // T-018: users auth e-mail sablonok (forgot-password) config-injekcióval.
     usersAuthEmails,
-    // T-016: form-builder plugin pinned 3.86.0 — a nyilvános beküldés a plugin
+    // T-016: form-builder plugin pinned 3.88.0 — a nyilvános beküldés a plugin
     // form-submissions endpointján megy (külön POST /api/contact route nincs).
     formBuilderPlugin({
       // Az űrlapok és a beküldések saját admin-csoportot kapnak, magyar

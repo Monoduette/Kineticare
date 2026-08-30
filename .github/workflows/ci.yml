@@ -6,10 +6,10 @@
 #                (Postgres service-konténerrel — enélkül a DB-kapus tesztek
 #                némán kimaradnának; a részletes indoklás a job fölött)
 #   build  job : next build (futásidőben generált álértékekkel)
-#   audit  job : npm audit (critical szint = bukás)
+#   audit  job : npm audit (high szinttől bukás)
 #
 # MIÉRT --legacy-peer-deps? NEM peer-ütközés miatt — az megszűnt. A repó ma
-# next@16.3.0-n áll, ami beleesik a @payloadcms/next 3.86.0 peer-tartományába
+# next@16.3.3-on áll, ami beleesik a @payloadcms/next 3.88.0 peer-tartományába
 # (`>=15.2.9 <15.3.0 || >=15.3.9 <15.4.0 || >=15.4.11 <15.5.0 || >=16.2.6
 # <17.0.0`), és az `npm install --dry-run --strict-peer-deps` egyetlen ERESOLVE
 # nélkül fut le.

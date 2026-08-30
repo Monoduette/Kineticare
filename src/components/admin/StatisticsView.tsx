@@ -10,7 +10,7 @@ import { StatisticsAccessDenied, StatisticsReport, StatisticsUnavailable } from 
 
 /**
  * Admin Statisztika nézet (`/admin/statisztika`) — T-013.
- * A Payload 3.86 a custom view-path-okat nyilvános admin-route-ként kezeli
+ * A Payload 3.88.0 a custom view-path-okat nyilvános admin-route-ként kezeli
  * (`isCustomAdminView`), ezért a Root view auth-átirányítása KIMARAD. A kapu
  * NEM opcionális: be nem jelentkezett látogató is eléri az URL-t. A
  * `canAccessStatistics` (staff/owner, `null` → false) az egyetlen védelem.

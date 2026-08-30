@@ -76,7 +76,7 @@ export interface RevenueReport {
 
 const DEFAULT_MONTHS = 12
 
-/** A Payload 3.86 custom admin-nézet egyetlen védelme: staff vagy owner. */
+/** A Payload 3.88.0 custom admin-nézet egyetlen védelme: staff vagy owner. */
 export function canAccessStatistics(user: RoleUser | null | undefined): boolean {
   return hasStaffOrOwnerRole(user)
 }

@@ -6,7 +6,7 @@ import { STATISTICS_ACCESS_DENIED_MESSAGE } from '../lib/statistics/revenue'
 
 /**
  * ŐR — A NYILVÁNOS ADMIN-NÉZETEK KAPUJA A LEKÉRDEZÉSEK ELŐTT FUT.
- * A Payload 3.86 a custom view-path-okat NYILVÁNOS admin-route-ként kezeli
+ * A Payload 3.88.0 a custom view-path-okat NYILVÁNOS admin-route-ként kezeli
  * (`isCustomAdminView`), ezért a Root view auth-átirányítása KIMARAD — ezt a
  * `StatisticsView.tsx` saját fejkommentje mondja ki. Be nem jelentkezett
  * látogató is eléri az URL-t; a komponensbe írt szerepkör-kapu az EGYETLEN

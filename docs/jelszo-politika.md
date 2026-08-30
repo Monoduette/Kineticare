@@ -38,7 +38,7 @@ javítania.
 
 ### 2. Saját `POST /api/users/reset-password` végpont (C1)
 
-A Payload 3.86 `resetPasswordOperation`-je **nem megy át a `beforeChange`
+A Payload 3.88.0 `resetPasswordOperation`-je **nem megy át a `beforeChange`
 láncon**: maga hívja a `generatePasswordSaltHash`-t, és a már hash-elt rekordot
 írja ki `payload.db.updateOne`-nal (a collection-hookok közül csak a
 `beforeValidate` fut, az pedig már a hash-t látja). Emiatt a
@@ -84,7 +84,7 @@ komplexitási szabályok akkor is érvényesülnek, csak az e-mail-szabály mara
 
 ## Miért hook — és miért route-handler a reset-ágon?
 
-A Payload 3.86 auth-konfigurációja nem ismeri a `passwordMinLength` vagy
+A Payload 3.88.0 auth-konfigurációja nem ismeri a `passwordMinLength` vagy
 hasonló natív beállítást, ezért a szabályokat kódból kell érvényesíteni.
 
 A create/update műveleteknél a `beforeChange` a megfelelő pont: ott a
@@ -125,7 +125,7 @@ A sikertelen bejelentkezéseket (hibás jelszó, zárolt fiók) a Users collecti
 `afterError` hookja naplózza strukturáltan (`src/lib/logger.ts`): e-mail-cím,
 IP-cím (ha a proxy továbbítja), és az ok. Jelszó sosem kerül a naplóba — a
 logger redact-listája az érzékeny kulcsokat minden környezetben maszkolja.
-(A Payload 3.86-ban nincs `afterFailedLogin` hook; a REST login-hibák a
+(A Payload 3.88.0-ban nincs `afterFailedLogin` hook; a REST login-hibák a
 `routeError` segédleten át az `afterError` hookban landolnak.)
 
 ## Más eszközök kijelentkeztetése (J2)

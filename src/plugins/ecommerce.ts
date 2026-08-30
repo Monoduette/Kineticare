@@ -1319,7 +1319,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
  *
  * - Variants kikapcsolva: egy kurzus = egy ár.
  * - Addresses kikapcsolva: digitális termék, a számlázási cím a users-en él.
- *   A plugin 3.86.0 sanitizePluginConfig-ja az `addresses: false` értéket is
+ *   A plugin 3.88.0 sanitizePluginConfig-ja az `addresses: false` értéket is
  *   alapértelmezett mezőkkel tölti fel (azaz a boolean false önmagában nem
  *   tiltja le a collectiont), ezért a plugin lefutása után szűrjük ki az
  *   `addresses` slugot.
