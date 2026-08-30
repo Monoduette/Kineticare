@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { access, readFile, stat } from 'node:fs/promises'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -7,12 +10,15 @@ import {
   buildPgDumpArgs,
   buildPgRestoreListArgs,
   decideRetention,
+  escapePgPassField,
   formatBytes,
   interpretRestoreList,
   isDumpFileName,
   parseBackupArgs,
+  parseDatabaseUriForLibpq,
   redactConnectionInfo,
 } from '@/lib/backup-db'
+import { buildCredentialSafeEnvironment, withPgPassFile } from '@/lib/backup-db-credentials'
 
 /**
  * Az adatbázis-mentés TISZTA logikájának tesztjei.
@@ -259,23 +265,21 @@ describe('parseBackupArgs — CLI-kapcsolók', () => {
 
 describe('buildPgDumpArgs / buildPgRestoreListArgs — argumentumlisták', () => {
   it('a custom (tömörített) formátumot és a célfájlt állítja be', () => {
-    const args = buildPgDumpArgs(FAKE_URI, '/mentes/kineticare-20260815-021709.dump')
+    const args = buildPgDumpArgs('/mentes/kineticare-20260815-021709.dump')
     expect(args).toContain('--format=custom')
     expect(args).toContain('--file')
     expect(args).toContain('/mentes/kineticare-20260815-021709.dump')
   })
 
-  it('a kapcsolati URI ÖNÁLLÓ argumentumelem — sosem ágyazódik shell-stringbe', () => {
-    const args = buildPgDumpArgs(FAKE_URI, '/mentes/x.dump')
-    expect(args).toContain(FAKE_URI)
-    // Egyetlen elem sem tartalmazhatja "beleolvasztva" az URI-t (pl. --dbname=... alakban),
-    // mert az shell-értelmezésnek kitett összefűzés jele lenne.
-    const beolvasztott = args.filter((arg) => arg !== FAKE_URI && arg.includes(FAKE_URI))
-    expect(beolvasztott).toEqual([])
+  it('a kapcsolati URI és credential egyáltalán nem kerül argv-ba', () => {
+    const args = buildPgDumpArgs('/mentes/x.dump')
+    expect(args).not.toContain(FAKE_URI)
+    expect(args.join(' ')).not.toContain('jelszo123')
+    expect(args).not.toContain('--dbname')
   })
 
   it('nem tartalmaz shell-metakaraktert (nincs pipe/átirányítás)', () => {
-    const args = buildPgDumpArgs(FAKE_URI, '/mentes/x.dump')
+    const args = buildPgDumpArgs('/mentes/x.dump')
     expect(args.some((arg) => arg.includes('|') || arg.includes('>') || arg.includes(';'))).toBe(
       false,
     )
@@ -283,6 +287,118 @@ describe('buildPgDumpArgs / buildPgRestoreListArgs — argumentumlisták', () =>
 
   it('az integritás-ellenőrzés a --list kapcsolót használja a kész fájlon', () => {
     expect(buildPgRestoreListArgs('/mentes/x.dump')).toEqual(['--list', '/mentes/x.dump'])
+  })
+})
+
+describe('parseDatabaseUriForLibpq — credential-mentes argv és fail-closed libpq', () => {
+  it('a URI mezőit libpq env-re és escaped pgpass sorra bontja', () => {
+    const password = `pw-${randomUUID()}:back\\slash`
+    const uri =
+      `postgresql://backup-user:${encodeURIComponent(password)}` +
+      '@db.example.test:6432/kineticare?sslmode=require&connect_timeout=10'
+
+    const connection = parseDatabaseUriForLibpq(uri)
+
+    expect(connection.environment).toEqual({
+      PGHOST: 'db.example.test',
+      PGPORT: '6432',
+      PGUSER: 'backup-user',
+      PGDATABASE: 'kineticare',
+      PGSSLMODE: 'require',
+      PGCONNECT_TIMEOUT: '10',
+    })
+    expect(connection.pgpassContents).toBe(
+      `db.example.test:6432:kineticare:backup-user:${escapePgPassField(password)}\n`,
+    )
+  })
+
+  it('alapértelmezett 5432 portot használ és dekódolja az adatbázis nevét', () => {
+    const connection = parseDatabaseUriForLibpq(
+      'postgres://backup:runtime-value@localhost/kineticare%20restore',
+    )
+    expect(connection.environment.PGPORT).toBe('5432')
+    expect(connection.environment.PGDATABASE).toBe('kineticare restore')
+  })
+
+  it.each([
+    'postgresql://backup:runtime-value@db.test/database?unknown=value',
+    'postgresql://backup:runtime-value@db.test/database?sslmode=require&sslmode=verify-full',
+    'postgresql://backup:runtime-value@db.test/database#fragment',
+    'mysql://backup:runtime-value@db.test/database',
+    'postgresql://backup@db.test/database',
+  ])('ismeretlen, kétértelmű vagy hiányos URI-ra fail-closed hibát ad', (uri) => {
+    expect(() => parseDatabaseUriForLibpq(uri)).toThrow(/DATABASE_URI/)
+  })
+
+  it('a parse hiba nem idézi vissza a URI-t vagy a jelszót', () => {
+    const password = `secret-${randomUUID()}`
+    const uri = `postgresql://backup:${password}@db.test/database?${password}=value`
+
+    try {
+      parseDatabaseUriForLibpq(uri)
+      throw new Error('A tesztnek hibát kellett volna kapnia.')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message).not.toContain(uri)
+      expect(message).not.toContain(password)
+    }
+  })
+})
+
+describe('withPgPassFile — védett, rövid életű credential-fájl', () => {
+  it('0600-as fájlt ad a tisztított child env-hez, majd eltávolítja', async () => {
+    const connection = parseDatabaseUriForLibpq(
+      'postgresql://backup:runtime-value@db.test:5432/kineticare',
+    )
+    let pgpassPath = ''
+
+    await withPgPassFile(connection, async (environment) => {
+      pgpassPath = environment.PGPASSFILE ?? ''
+      expect(environment.DATABASE_URI).toBeUndefined()
+      expect(environment.PGPASSWORD).toBeUndefined()
+      expect(environment.PGHOST).toBe('db.test')
+      expect((await stat(pgpassPath)).mode & 0o777).toBe(0o600)
+      expect(await readFile(pgpassPath, 'utf8')).toBe(connection.pgpassContents)
+    })
+
+    await expect(access(pgpassPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('az ambient DATABASE_URI és PG* felülírásokat nem örökíti tovább', () => {
+    const environment = buildCredentialSafeEnvironment(
+      {
+        PATH: '/usr/bin',
+        NODE_ENV: 'test',
+        DATABASE_URI: 'ambient-uri',
+        PGPASSWORD: 'ambient-password',
+        PGSERVICE: 'ambient-service',
+      },
+      { PGHOST: 'approved-host', PGUSER: 'approved-user' },
+      '/protected/pgpass',
+    )
+
+    expect(environment).toEqual({
+      PATH: '/usr/bin',
+      NODE_ENV: 'test',
+      PGHOST: 'approved-host',
+      PGUSER: 'approved-user',
+      PGPASSFILE: '/protected/pgpass',
+    })
+  })
+
+  it('kivétel után is eltávolítja a credential-fájlt', async () => {
+    const connection = parseDatabaseUriForLibpq(
+      'postgresql://backup:runtime-value@db.test:5432/kineticare',
+    )
+    let pgpassPath = ''
+
+    await expect(
+      withPgPassFile(connection, async (environment) => {
+        pgpassPath = environment.PGPASSFILE ?? ''
+        throw new Error('szándékos teszthiba')
+      }),
+    ).rejects.toThrow('szándékos teszthiba')
+    await expect(access(pgpassPath)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })
 

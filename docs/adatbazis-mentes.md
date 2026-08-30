@@ -1,9 +1,14 @@
 # Adatbázis-mentés és visszaállítás (C14)
 
-> **Állapot:** a mentés-eszköz elkészült, az ÉLESÍTÉS emberi lépést igényel:
-> a `DATABASE_URI` GitHub-secret felvételét (lásd [Élesítés](#élesítés)) és a
-> Railway-oldali kötet-mentés bekapcsolását. Amíg ez nem történik meg, éles
-> adatvesztés ellen NINCS védelem.
+> **Állapot:** a mentés-eszköz és a titkosított offsite workflow implementálva
+> van, de az offsite láncot **még valódi end-to-end restore drillel kell
+> igazolni**. Az ÉLESÍTÉS emberi lépést igényel: a `DATABASE_URI` GitHub-secret
+> és a `BACKUP_AGE_RECIPIENT` GitHub repository variable felvételét, a
+> recipienthez tartozó privát age-kulcs biztonságos offline megőrzését, majd
+> kézi workflow-futtatást és üres adatbázisba visszaállítást (lásd
+> [Élesítés](#élesítés)). Bármelyik GitHub-konfiguráció hiányában a workflow
+> fail-closed módon pirosra vált; titkosítatlan dumpot nem tölt fel. A
+> Railway-oldali kötet-mentést külön kell bekapcsolni.
 
 Ez a dokumentum három kérdésre válaszol: **mi véd** ma az adatvesztés ellen,
 **hogyan kell visszaállítani**, és **hogyan ellenőrizzük**, hogy a mentés
@@ -52,10 +57,13 @@ Backups*, *Volumes → Point-in-Time Recovery*.
    művelet után. *Bekapcsolása emberi lépés a Railway felületén.*
 2. **PITR (Railway)** — pontos időpontra állás két felvétel között.
    *Opcionális; ha bekapcsoljuk, előre kell.*
-3. **Logikai dump (ez a repó)** — az egyetlen réteg, ami **offsite**: másik
-   szolgáltatónál (GitHub) tárolt, **letölthető** és **visszaállítási próbával
-   igazolt** másolat. Ez éli túl a kötet kiürítését, a projekt törlését és a
-   Railway-fiók elvesztését is.
+3. **Logikai dump (ez a repó)** — az egyetlen implementált réteg, ami
+   **offsite**: másik szolgáltatónál (GitHub) tárolt, letölthető másolat. A kód
+   és a fail-closed védelem elkészült, de az első valódi titkosított artifact
+   visszafejtése és üres adatbázisba restore-ja **még kötelező emberi kapu**.
+   Sikeres drill után ez a réteg túlélheti a kötet kiürítését és a Railway-
+   projekt elvesztését; a GitHub-fiók vagy az offline kulcs elvesztése ellen
+   csak a külön kezelt hozzáférések és kulcsmásolatok védenek.
 
 Ez a dokumentum a 3. réteget írja le, mert az van a repó kezében. Az 1. és 2.
 réteg bekapcsolását külön, a Railway felületén kell elvégezni (`Postgres-c8Rg`
@@ -99,16 +107,21 @@ körnek):
                  ┌──────────────────────────────┐
   ütemezett      │ .github/workflows/           │   napi 02:17 UTC
   (offsite)      │   db-backup.yml              │ + kézi indítás
-                 │  postgres:18-alpine image    │
+                 │  postgres:18-alpine@digest   │
                  └──────────────┬───────────────┘
+                                │ DATABASE_URI → 0600-as, rövid életű
+                                │ libpq service file → env unset
+                                │ PGSERVICE/PGSERVICEFILE
                                 │ pg_dump --format=custom
                                 ▼
                     kineticare-YYYYMMDD-HHmmss.dump
                                 │
                     pg_restore --list (integritás)
                                 │
+                     age recipient (titkosítás)
+                                │
                                 ▼
-                     GitHub artifact, 30 nap
+                 *.dump.age GitHub artifact, 30 nap
 
                  ┌──────────────────────────────┐
   kézi /         │ npm run backup:db            │   ugyanaz a formátum,
@@ -120,11 +133,20 @@ körnek):
 
 ```bash
 # alapértelmezés: ./backups könyvtár, 14 mentés megtartva
-DATABASE_URI="..." npm run backup:db
-
-# saját célkönyvtár és retenció
-DATABASE_URI="..." npm run backup:db -- --cel=/mnt/mentes --megtart=30
+(
+  printf 'DATABASE_URI: ' >&2
+  IFS= read -r -s DATABASE_URI
+  printf '\n' >&2
+  export DATABASE_URI
+  npm run backup:db
+)
 ```
+
+A saját célkönyvtárhoz és retencióhoz az utolsó parancs legyen
+`npm run backup:db -- --cel=/mnt/mentes --megtart=30`. A néma promptban megadott
+érték nem kerül a shell history-ba vagy a parancssorba. Jóváhagyott secret
+manager használatakor annak folyamat-környezeti injektálását használd; a titkot
+ne írd inline assignmentbe, parancsargumentumba vagy lemezre kerülő env-fájlba.
 
 | Kapcsoló | Alapértelmezés | Leírás |
 | --- | --- | --- |
@@ -142,12 +164,15 @@ Amit a script garantál:
   fájlon. Ha nem olvasható végig, vagy egyetlen visszaállítható bejegyzést sem
   tartalmaz, a **fájl törlődik** és a script **1-es kóddal** lép ki — nem
   maradhat hátra hamis biztonságot adó, visszaállíthatatlan mentés.
-- **Titokvédelem:** a `DATABASE_URI` értéke sehol nem jelenik meg — sem a
-  konzolon, sem a strukturált naplóban, sem hibaüzenetben. A pg_dump/pg_restore
-  hibakimenete redakciós szűrőn megy át (`redactConnectionInfo`).
-- **Nincs shell:** a folyamatindítás `execFile`-lal történik, tehát a
-  jelszóban lévő speciális karakter (`$`, `;`, idézőjel) nem eshet át
-  shell-értelmezésen, és nem kerül parancs-history-ba.
+- **Titokvédelem:** a `DATABASE_URI` értéke nem jelenik meg a konzolon,
+  strukturált naplóban, hibaüzenetben vagy gyermekfolyamat argv-jában. A script
+  a nem titkos libpq mezőket külön `PGHOST`/`PGPORT`/`PGUSER`/`PGDATABASE`
+  környezetbe bontja, a jelszót pedig egy 0700-as ideiglenes könyvtár 0600-as
+  `PGPASSFILE` fájljában adja át. A fájl siker és hiba után is törlődik; a
+  pg_dump/pg_restore hibakimenete defense-in-depth redakciós szűrőn is átmegy.
+- **Nincs shell:** a folyamatindítás `execFile`-lal történik, és a teljes URI
+  nem része az argumentumlistának. A jelszó speciális karakterei (`$`, `;`,
+  idézőjel) nem esnek át shell-értelmezésen és nem kerülnek history-ba.
 - **Idegen fájlhoz nem nyúl:** a retenció csak a saját névsémájú fájlokat
   törli.
 
@@ -160,24 +185,92 @@ nélkül.
 `.github/workflows/db-backup.yml` — napi 02:17 UTC + kézi indítás
 (`workflow_dispatch`).
 
-- **Ha a `DATABASE_URI` secret nincs beállítva, a job ZÖLDEN, magyarázó
-  üzenettel kilép.** Ez szándékos: a piros futások leszoktatnák a csapatot a
-  riasztásokról, mielőtt a secret felkerül.
-- A `pg_dump` a **hivatalos `postgres:18-alpine` image-ből** fut, nem a runner
-  apt-csomagjából. Két oka van: (1) a kliens főverziója nem lehet kisebb a
-  szerverénél, és az image-tag ezt egy sorban, láthatóan rögzíti — az éles
-  `Postgres-c8Rg` szolgáltatás `postgres-ssl:18` (PostgreSQL 18); (2) a mentés így nem függ a
-  repó npm-telepítésétől: ha a build eltörik, a mentés attól még fut.
+- A workflow **fail-closed**: ha a `DATABASE_URI` secret vagy a
+  `BACKUP_AGE_RECIPIENT` repository variable hiányzik, a futás pirosra vált,
+  és nem készül feltölthető artifact. A recipient nyilvános kulcs; a privát
+  kulcs nem kerülhet GitHubra vagy a repóba.
+- A `pg_dump` a **hivatalos `postgres:18-alpine` image digesthez kötött
+  példányából** fut, nem a runner apt-csomagjából. Két oka van: (1) a kliens
+  főverziója nem lehet kisebb a szerverénél, és a tag ezt láthatóan rögzíti —
+  az éles `Postgres-c8Rg` szolgáltatás `postgres-ssl:18` (PostgreSQL 18);
+  (2) a digest kizárja, hogy ugyanaz a tag később észrevétlenül más image-re
+  mutasson. A mentés nem függ a repó npm-telepítésétől.
 - A mentés ugyanazt az integritás-ellenőrzést kapja (`pg_restore --list`);
   bukásnál a fájl törlődik és a job piros.
-- Az eredmény **artifact**, `retention-days: 30`.
-- A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és a konténerbe; az
-  értéke sosem kerül parancssorba, echo-ba vagy logba.
+- Az ellenőrzött dumpot **age v1.3.2** titkosítja. Az eszköz a hivatalos
+  release-archívumból töltődik le, és telepítés előtt rögzített SHA-256
+  ellenőrzést kap.
+- Az artifact kizárólag `*.dump.age`, `retention-days: 30`, és hiányzó fájlnál
+  a feltöltés hibára fut. A plaintext `.dump` és a `toc.txt` minden kimenetnél
+  (`always()`) törlődik a runner munkaterületéről.
+- A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és érték nélküli
+  `docker --env DATABASE_URI` opcióval a konténerbe, ezért sem a host, sem a
+  konténer parancssorában nincs benne a secret. A `docker run` a GitHub-runner
+  aktuális UID:GID-jával fut, ezért a bind mounton létrejövő 0600-as dumpot a
+  host oldali `age` folyamat olvasni tudja. A konténer `umask 077` mellett egy
+  0600-as, saját fájlrendszerében élő ideiglenes libpq service file-ba írja az
+  URI-t, az eredeti env változót azonnal `unset`-eli, majd fail-closed módon
+  valódi service-paraméterekre bontja. A `pg_dump` csak `PGSERVICE` és
+  `PGSERVICEFILE` alapján indul; siker, hiba és kezelhető jelzés után trap törli
+  a fájlt, a `docker run --rm` pedig a konténer teljes ideiglenes
+  fájlrendszerét eltávolítja. Az integritáslépés nem kap DB credentialt, és
+  ugyanazzal a runner UID:GID-val olvassa a dumpot.
+- A workflow a `postgresql://`/`postgres://` alakú, usert, jelszót, hostot és
+  adatbázisnevet tartalmazó URI-t fogadja. Az URL-kódolt komponenseket dekódolja;
+  kontrollkarakterre, hibás kódolásra vagy ismeretlen query-paraméterre pirosan
+  leáll. Az engedélyezett query-k: `application_name`, `channel_binding`,
+  `connect_timeout`, `load_balance_hosts`, `require_auth`, `sslmode` és
+  `target_session_attrs`. Ettől eltérő Railway URL-t előbb review-zni és a
+  parser/guard mutációs tesztjeivel együtt bővíteni kell.
 
 > **Ha a Railway Postgres főverziót vált** (ma `postgres-ssl:18`, a workflow
 > `PG_IMAGE`-e `postgres:18-alpine`), a workflow `PG_IMAGE` értékét is emelni
 > kell — különben a `pg_dump` „server version mismatch"-csel áll le. Ez hangos
 > hiba, nem néma kimaradás.
+
+### 4.3 Trust-modell és release-kapuk
+
+A titkosítás nem szünteti meg a build- és üzemeltetési bizalmi határokat:
+
+- **Workflow-/repo-admin:** aki workflow-kódot írhat vagy védelem nélkül
+  merge-elhet, a következő futásban kiolvashatja a secretet vagy a plaintext
+  dumpot. A `.github/workflows/**` változásaihoz védett branch/ruleset,
+  kijelölt security/infrastruktúra code-owner review, új commitnál elavuló
+  approval, valamint minimális admin-bypass és force-push jog kell. A konkrét
+  reviewer-identitásokat a repó tulajdonosának kell kijelölnie; ezt a kód nem
+  tudja biztonságosan kitalálni.
+- **Runner és supply chain:** a job futása közben a GitHub-hosted runner
+  szükségképpen látja a DB credentialt és a titkosítás előtti dumpot. Egy
+  kompromittált runner, action vagy image ezt kiolvashatja. A minimális
+  `permissions: {}`, a teljes action commit SHA-k, a Postgres image digest, az
+  age release-checksum és az ephemeral hosted runner csökkenti, de nem nullázza
+  ezt a kockázatot; tartós, több projekt által használt self-hosted runner erre
+  a workflow-ra nem elfogadható.
+- **Recipient-átírás:** aki a `BACKUP_AGE_RECIPIENT` repository variable-t
+  átírhatja, a jövőbeli mentéseket támadói kulcsra titkosíttathatja. Felvételkor
+  és rotációkor két ember, repón kívüli csatornán hasonlítsa össze a teljes
+  recipientet az offline privát kulcsból újra levezetett értékkel. Mivel a
+  recipientet szándékosan nem commitoljuk, ez **nem automatizálható emberi
+  kapu**; rotáció után azonnali restore drill kell.
+- **Privát kulcs:** elvesztése olvashatatlanná, kompromittálódása olvashatóvá
+  teszi a hozzá tartozó artifactokat. Legalább két elkülönített offline másolat,
+  dokumentált hozzáférők és rotációs eljárás szükséges; a régi kulcsot a régi
+  artifactok lejártáig meg kell őrizni.
+- **Dependency-mentes workflow guard:** a négy security-kritikus workflow teljes
+  nyers UTF-8 bájtsorozata külön SHA-256 allowlisten van. Bármely tartalmi vagy
+  formázási eltérés — komment, CRLF, YAML-tag vagy extra dokumentum is —
+  fail-closed bukik, és csak tudatos security review után frissíthető az
+  allowlist. A guard kizárólag Node stdlibot használ; nem importál tranzitív YAML
+  parsert, és nem igényel `package.json`- vagy lockfile-változást. A package
+  pineket standard `JSON.parse` ellenőrzi.
+
+Merge önmagában nem igazolja az offsite mentést. Release előtt kötelező: a
+workflow-delta és az új teljes fájl-hashek emberi security review-ja, a két
+GitHub-konfiguráció emberi felvétele, a recipient kétfős out-of-band
+ellenőrzése, egy kézi workflow-futás, az artifact letöltése és offline
+visszafejtése, majd üres eldobható adatbázisba `--exit-on-error` restore és a
+6.4 szerinti sorszám-ellenőrzés. Addig az állapot: **implementált, de end-to-end
+restore drillel még igazolandó**.
 
 ---
 
@@ -194,15 +287,37 @@ nélkül.
    a Railway privát hálózatát (`postgres-c8rg.railway.internal`), ezért a belső
    `DATABASE_URI` itt nem használható. A publikus proxyn keresztüli forgalom
    egressként számlázódik — ez a napi mentés ára.
-3. **GitHub → Settings → Secrets and variables → Actions → New repository
+3. **Offline age-kulcspár létrehozása:** megbízható, internetkapcsolat nélküli
+   gépen telepítsd az age-et, majd hozd létre a kulcsot és olvasd ki a
+   nyilvános recipientet:
+
+   ```bash
+   age-keygen -o /biztonsagos/hely/backup-age-key.txt
+   age-keygen -y /biztonsagos/hely/backup-age-key.txt
+   ```
+
+   A privát kulcsfájlról készíts legalább két, elkülönített és
+   hozzáférés-védett offline másolatot. A privát kulcs **nem kerülhet** a
+   repóba, GitHub secrethez, artifactba, chatbe vagy jelszókezelőből exportált
+   közös fájlba.
+4. **GitHub → Settings → Secrets and variables → Actions → New repository
    secret:** név `DATABASE_URI`, érték a 2. pontban kikeresett publikus
    kapcsolati string. **Az értéket sehová ne másold be** — sem PR-be, sem
    dokumentációba, sem chatbe.
-4. **Első futás kézzel:** Actions fül → *DB mentés* → *Run workflow*. Ellenőrizd
-   a job összefoglalóját (fájlnév, méret, bejegyzésszám) és töltsd le az
-   artifactot.
-5. **Visszaállítási próba** az 7. fejezet szerint — a mentés addig nem mentés,
+5. **GitHub → Settings → Secrets and variables → Actions → Variables → New
+   repository variable:** név `BACKUP_AGE_RECIPIENT`, érték a 3. pontban
+   kiolvasott **nyilvános** age-recipient. Ellenőrizd kétszer, hogy valóban a
+   biztonságosan eltett privát kulcshoz tartozik.
+6. **Első futás kézzel:** Actions fül → *DB mentés* → *Run workflow*. Ellenőrizd
+   a job összefoglalóját (titkosított fájlnév, méret, bejegyzésszám), majd
+   töltsd le az artifactot. Kizárólag `.dump.age` lehet benne.
+7. **Visszaállítási próba** az 7. fejezet szerint — a mentés addig nem mentés,
    amíg vissza nem állt egyszer.
+
+> **Kulcsvesztés = mentésvesztés.** A GitHubon csak a nyilvános recipient van;
+> az offline privát kulcs nélkül a régi artifactok nem fejthetők vissza.
+> Kulcsrotációnál a régi privát kulcsot legalább a hozzá tartozó artifactok
+> lejártáig meg kell őrizni.
 
 ---
 
@@ -215,7 +330,17 @@ nélkül.
 ### 6.1 A mentés beszerzése
 
 - **Artifactból:** GitHub → Actions → *DB mentés* → a kívánt futás → Artifacts
-  → letöltés, kicsomagolás (a `.dump` fájl a zipben van).
+  → letöltés, kicsomagolás (a `.dump.age` fájl a zipben van). Megbízható,
+  offline gépen, az ott őrzött privát kulccsal fejtsd vissza:
+
+  ```bash
+  age --decrypt --identity /biztonsagos/hely/backup-age-key.txt \
+    --output kineticare-20260815-021709.dump \
+    kineticare-20260815-021709.dump.age
+  ```
+
+  A visszafejtett `.dump` személyes adatot tartalmaz: csak a visszaállítási
+  próbához szükséges ideig tartsd meg, majd biztonságosan töröld.
 - **Vagy helyi mentésből:** a `--cel` könyvtár legfrissebb `.dump` fájlja.
 
 ### 6.2 Ellenőrzés visszaállítás ELŐTT
@@ -235,15 +360,27 @@ A `pg_restore` nem törli a meglévő objektumokat: meglévő táblákra ráfutt
 üres célt használj.
 
 ```bash
-# 1. új, üres adatbázis a cél-szerveren
-createdb --dbname="<admin-kapcsolat>" kineticare_restore
+# A host/user nem titok; a jelszót a libpq minden parancsnál némán kéri be.
+read -r -p 'Postgres host: ' PGHOST
+read -r -p 'Postgres port [5432]: ' PGPORT
+PGPORT="${PGPORT:-5432}"
+read -r -p 'Postgres user: ' PGUSER
+export PGHOST PGPORT PGUSER
 
-# 2. visszaállítás
-pg_restore \
-  --dbname="postgresql://<user>:<jelszo>@<host>:<port>/kineticare_restore" \
-  --no-owner --no-privileges --exit-on-error \
+# 1. új, üres adatbázis a cél-szerveren
+PGDATABASE=postgres createdb --password kineticare_restore
+
+# 2. visszaállítás; credential nincs argv-ban vagy shell history-ban
+PGDATABASE=kineticare_restore pg_restore \
+  --password --no-owner --no-privileges --exit-on-error \
   kineticare-20260815-021709.dump
+
+unset PGHOST PGPORT PGUSER PGDATABASE
 ```
+
+A `--password` kapcsoló kikényszeríti a libpq néma jelszópromptját; magát a
+jelszót ne add meg URI-ban vagy argumentumban. Automatizált drillhez ugyanilyen
+libpq mezőket és 0600-as, rövid életű `PGPASSFILE`-t használj.
 
 - `--no-owner --no-privileges`: a cél-szerveren más lehet a szerepkör neve,
   mint a forráson (Railway `postgres` vs. helyi user). E kapcsolók nélkül a
@@ -313,13 +450,13 @@ Egy mentés, amit sosem állítottak vissza, nem mentés, hanem feltételezés.
 **Havonta egyszer** (naptárba tenni, kb. 20 perc):
 
 1. Indítsd kézzel a *DB mentés* workflow-t, vagy vedd a legutóbbi artifactot.
-2. Töltsd le, csomagold ki.
-3. `pg_restore --list <fájl> | head -20` — végigolvasható-e.
+2. Töltsd le, csomagold ki, majd offline fejtsd vissza a 6.1 szerint.
+3. `pg_restore --list <visszafejtett-fájl> | head -20` — végigolvasható-e.
 4. Állítsd vissza egy **eldobható** adatbázisba (6.3), `--exit-on-error`-ral.
 5. Futtasd le a 6.4 ellenőrző lekérdezéseket, és vesd össze az élessel.
 6. **Mérd meg, mennyi ideig tartott** — ez lesz a visszaállítási idő becslése
    egy éles incidensben.
-7. Dobd el a próba-adatbázist.
+7. Dobd el a próba-adatbázist, és töröld a visszafejtett plaintext dumpot.
 8. Írd fel az eredményt (dátum, dump mérete, visszaállítási idő, sorszámok) —
    a `docs/feladatlista.md` C14 sorához vagy egy üzemeltetési naplóba.
 
@@ -336,11 +473,10 @@ Egy mentés, amit sosem állítottak vissza, nem mentés, hanem feltételezés.
 
 ## 8. Ami tudatosan kimaradt
 
-- **Titkosított, hosszú távú offsite tár (S3/B2 + GPG).** A GitHub-artifact 30
-  napig él és a repóhoz férők letölthetik. Ha ennél hosszabb megőrzés vagy
-  szigorúbb hozzáférés-korlátozás kell (a dump személyes adatot és
-  jelszó-hash-eket tartalmaz — GDPR), az külön döntés és külön titkok
-  felvétele.
+- **Titkosított, hosszú távú offsite tár (S3/B2).** A GitHub-artifact age-gel
+  titkosított, de csak 30 napig él. Ha ennél hosszabb megőrzés vagy a GitHubtól
+  független harmadik másolat kell, az külön tárhely-, retenciós és
+  adatkezelési döntés.
 - **Média-mentés** (3. fejezet) — külön feladat.
 - **Automatikus visszaállítási próba CI-ban** (dump → eldobható Postgres →
   ellenőrző lekérdezések). Technikailag megoldható lenne egy service

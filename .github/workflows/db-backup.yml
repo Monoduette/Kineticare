@@ -4,8 +4,8 @@
 # MIÉRT: a Railway-natív kötet-mentés (volume backup) és a PITR a Railway
 # projektjén BELÜL él — a doksi is kimondja, hogy a kötet kiürítése az összes
 # hozzá tartozó mentést törli, és a mentések nem hagyják el a platformot.
-# Ez a workflow ad egy MÁSIK szolgáltatónál (GitHub) tárolt, letölthető
-# másolatot: ez az, ami egy törölt kötetet/projektet is túlél.
+# Ez a workflow ad egy MÁSIK szolgáltatónál (GitHub) tárolt, age-gel
+# titkosított másolatot: ez az, ami egy törölt kötetet/projektet is túlél.
 # Részletek és visszaállítási eljárás: docs/adatbazis-mentes.md
 #
 # HOGYAN: a mentést a hivatalos `postgres` docker image pg_dump-ja készíti,
@@ -18,10 +18,12 @@
 #      a mentés attól még fut.
 #
 # TITOKKEZELÉS: a DATABASE_URI kizárólag `env:`-ként megy a lépésbe és a
-# konténerbe (`--env DATABASE_URI`), az értéke sehol nem kerül parancssorba
-# (`ps`-be), echo-ba vagy logba. A konténerben futó `sh -c` idézőjelezett
-# változó-behelyettesítést használ, tehát a jelszó speciális karakterei sem
-# esnek át shell-értelmezésen.
+# konténerbe (`--env DATABASE_URI`). Ott egy rövid életű, 0600-as libpq service
+# file-ba kerül, majd az env változó törlődik; a pg_dump csak PGSERVICE és
+# PGSERVICEFILE alapján kapcsolódik. Az érték sehol nem kerül parancssorba
+# (`ps`-be), echo-ba vagy logba. A BACKUP_AGE_RECIPIENT nyilvános kulcs,
+# repository variable-ként érkezik; a hozzá tartozó privát kulcs kizárólag
+# offline marad. Bármelyik konfiguráció hiánya piros, fail-closed futás.
 #
 # A SECRET ÉRTÉKE a PUBLIKUS kapcsolati string legyen (Railway →
 # Postgres-c8Rg → Variables → DATABASE_PUBLIC_URL), mert a GitHub-runner nem
@@ -46,48 +48,58 @@ concurrency:
   group: db-backup
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   # Az éles Postgres-szolgáltatás főverziója (Railway → Postgres-c8Rg →
   # Settings → Source: postgres-ssl:18). Ha ott főverziót emelnek, EZT IS
   # emelni kell, különben a pg_dump „server version mismatch"-csel áll le.
-  PG_IMAGE: postgres:18-alpine
+  PG_IMAGE: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+  AGE_VERSION: "1.3.2"
+  AGE_ARCHIVE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
 
 jobs:
   backup:
-    name: pg_dump + integritás-ellenőrzés + artifact
+    name: pg_dump + integritás + titkosítás + artifact
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # A secret hiánya NEM hiba: amíg nincs beállítva, a job zölden,
-      # magyarázó üzenettel kilép — így a piros futások nem szoktatják le a
-      # csapatot a riasztásokról. Az `if-no-files-found: error` viszont
-      # gondoskodik róla, hogy egy BEÁLLÍTOTT secret melletti néma
-      # mentés-kimaradás igenis bukjon.
-      - name: A DATABASE_URI secret megléte
-        id: secret
+      # A mentés nem futhat védtelenül és nem maradhat némán ki. A secret és
+      # a nyilvános recipient hiánya egyaránt hangos, piros konfigurációs hiba.
+      - name: Kötelező mentési konfiguráció
         env:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
         run: |
           set -euo pipefail
+          MISSING=0
           if [ -z "${DATABASE_URI:-}" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=A mentés kimaradt::A DATABASE_URI secret nincs beállítva, ezért nem készült mentés. Élesítés: Settings -> Secrets and variables -> Actions -> New repository secret, név: DATABASE_URI, érték: a Railway Postgres PUBLIKUS kapcsolati stringje (DATABASE_PUBLIC_URL). Lásd docs/adatbazis-mentes.md."
-            {
-              echo "### DB mentés: kimaradt"
-              echo ""
-              echo "A \`DATABASE_URI\` secret nincs beállítva, ezért nem készült mentés."
-              echo "Élesítési lépések: \`docs/adatbazis-mentes.md\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Hiányzó mentési secret::A DATABASE_URI repository secret nincs beállítva. Lásd docs/adatbazis-mentes.md."
+            MISSING=1
           fi
+          if [ -z "${BACKUP_AGE_RECIPIENT:-}" ]; then
+            echo "::error title=Hiányzó titkosítási recipient::A BACKUP_AGE_RECIPIENT repository variable nincs beállítva. Lásd docs/adatbazis-mentes.md."
+            MISSING=1
+          fi
+          if [ "${MISSING}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: age telepítése ellenőrzött hivatalos release-ből
+        run: |
+          set -euo pipefail
+          ARCHIVE="${RUNNER_TEMP}/age-v${AGE_VERSION}-linux-amd64.tar.gz"
+          curl --fail --show-error --silent --location \
+            "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
+            --output "${ARCHIVE}"
+          echo "${AGE_ARCHIVE_SHA256}  ${ARCHIVE}" | sha256sum --check --strict
+          tar --extract --gzip --file "${ARCHIVE}" --directory "${RUNNER_TEMP}"
+          mkdir -p "${RUNNER_TEMP}/age-bin"
+          install -m 0755 "${RUNNER_TEMP}/age/age" "${RUNNER_TEMP}/age-bin/age"
+          "${RUNNER_TEMP}/age-bin/age" --version
 
       - name: Mentés készítése (pg_dump, custom formátum)
         id: dump
-        if: steps.secret.outputs.run == 'true'
         env:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
         run: |
@@ -96,27 +108,201 @@ jobs:
           FILE="kineticare-$(date -u +%Y%m%d-%H%M%S).dump"
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
           docker pull --quiet "${PG_IMAGE}"
-          # A DATABASE_URI a konténerbe környezeti változóként megy át (érték
-          # nélküli `--env`), és csak a konténeren belül, idézőjelben oldódik
-          # fel — a host parancssorában sosem jelenik meg.
+          # A DATABASE_URI a konténerbe érték nélküli `--env` opcióval megy át,
+          # ezért a host és a docker parancssorában sem jelenik meg. A konténer
+          # 0600-as libpq service file-t készít belőle, majd az eredeti env
+          # változót még a pg_dump indítása előtt törli. A runner UID:GID
+          # biztosítja, hogy a host oldali age olvasni tudja a 0600-as dumpot.
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             --env DATABASE_URI \
             --env "DUMP_TARGET=/backups/${FILE}" \
             --volume "${PWD}/backups:/backups" \
             "${PG_IMAGE}" \
-            sh -c 'pg_dump --dbname="$DATABASE_URI" --format=custom --file="$DUMP_TARGET"'
+            sh -ceu '
+              SERVICE_FILE="/tmp/kineticare-pg-service.$$"
+
+              cleanup_service() {
+                unset DATABASE_URI CONNECTION_URI PGSERVICE PGSERVICEFILE
+                rm -f -- "${SERVICE_FILE}"
+              }
+              fail_config() {
+                echo "::error title=Érvénytelen DATABASE_URI::A mentési adatbázis-kapcsolat nem alakítható biztonságos libpq service konfigurációvá."
+                exit 1
+              }
+              decode_uri_component() {
+                printf "%s" "$1" | awk "
+                  function hex_value(char, position) {
+                    position = index(\"0123456789ABCDEF\", toupper(char))
+                    return position - 1
+                  }
+                  {
+                    for (index_in = 1; index_in <= length(\$0); index_in++) {
+                      char = substr(\$0, index_in, 1)
+                      if (char == \"%\") {
+                        if (index_in + 2 > length(\$0)) exit 2
+                        high = hex_value(substr(\$0, index_in + 1, 1))
+                        low = hex_value(substr(\$0, index_in + 2, 1))
+                        if (high < 0 || low < 0) exit 2
+                        code = high * 16 + low
+                        if (code < 32 || code == 127) exit 3
+                        printf \"%c\", code
+                        index_in += 2
+                      } else {
+                        printf \"%s\", char
+                      }
+                    }
+                  }
+                "
+              }
+              safe_service_value() {
+                [ -n "$1" ] || return 1
+                case "$1" in
+                  [[:space:]]*|*[[:space:]]) return 1 ;;
+                esac
+                ! printf "%s" "$1" | LC_ALL=C grep -q "[[:cntrl:]]"
+              }
+
+              trap cleanup_service EXIT
+              trap "exit 129" HUP
+              trap "exit 130" INT
+              trap "exit 143" TERM
+              umask 077
+              printf "%s\n" "${DATABASE_URI}" > "${SERVICE_FILE}"
+              unset DATABASE_URI
+              chmod 0600 "${SERVICE_FILE}"
+              [ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config
+              [ "$(wc -l < "${SERVICE_FILE}")" -eq 1 ] || fail_config
+              IFS= read -r CONNECTION_URI < "${SERVICE_FILE}"
+
+              case "${CONNECTION_URI}" in
+                postgresql://*) URI_BODY="${CONNECTION_URI#postgresql://}" ;;
+                postgres://*) URI_BODY="${CONNECTION_URI#postgres://}" ;;
+                *) fail_config ;;
+              esac
+              case "${URI_BODY}" in
+                *#*|*/*/*) fail_config ;;
+                */*) ;;
+                *) fail_config ;;
+              esac
+
+              AUTHORITY="${URI_BODY%%/*}"
+              DATABASE_AND_QUERY="${URI_BODY#*/}"
+              case "${AUTHORITY}" in
+                *@*) ;;
+                *) fail_config ;;
+              esac
+              USER_INFO="${AUTHORITY%@*}"
+              HOST_PORT="${AUTHORITY##*@}"
+              case "${USER_INFO}" in
+                *@*) fail_config ;;
+              esac
+              case "${USER_INFO}" in
+                *:*) ;;
+                *) fail_config ;;
+              esac
+              USER_ENCODED="${USER_INFO%%:*}"
+              PASSWORD_ENCODED="${USER_INFO#*:}"
+
+              case "${HOST_PORT}" in
+                \[*\]:*)
+                  HOST_ENCODED="${HOST_PORT%%]*}"
+                  HOST_ENCODED="${HOST_ENCODED#\[}"
+                  PORT_ENCODED="${HOST_PORT#*]}"
+                  PORT_ENCODED="${PORT_ENCODED#:}"
+                  ;;
+                \[*\])
+                  HOST_ENCODED="${HOST_PORT#\[}"
+                  HOST_ENCODED="${HOST_ENCODED%\]}"
+                  PORT_ENCODED="5432"
+                  ;;
+                *:*:*) fail_config ;;
+                *:*)
+                  HOST_ENCODED="${HOST_PORT%:*}"
+                  PORT_ENCODED="${HOST_PORT##*:}"
+                  ;;
+                *)
+                  HOST_ENCODED="${HOST_PORT}"
+                  PORT_ENCODED="5432"
+                  ;;
+              esac
+
+              case "${DATABASE_AND_QUERY}" in
+                *\?*)
+                  DATABASE_ENCODED="${DATABASE_AND_QUERY%%\?*}"
+                  QUERY="${DATABASE_AND_QUERY#*\?}"
+                  ;;
+                *)
+                  DATABASE_ENCODED="${DATABASE_AND_QUERY}"
+                  QUERY=""
+                  ;;
+              esac
+
+              PG_USER="$(decode_uri_component "${USER_ENCODED}")" || fail_config
+              PG_PASSWORD="$(decode_uri_component "${PASSWORD_ENCODED}")" || fail_config
+              PG_HOST="$(decode_uri_component "${HOST_ENCODED}")" || fail_config
+              PG_PORT="$(decode_uri_component "${PORT_ENCODED}")" || fail_config
+              PG_DATABASE="$(decode_uri_component "${DATABASE_ENCODED}")" || fail_config
+              safe_service_value "${PG_USER}" || fail_config
+              safe_service_value "${PG_PASSWORD}" || fail_config
+              safe_service_value "${PG_HOST}" || fail_config
+              safe_service_value "${PG_PORT}" || fail_config
+              safe_service_value "${PG_DATABASE}" || fail_config
+              case "${PG_PORT}" in
+                *[!0-9]*) fail_config ;;
+              esac
+
+              {
+                printf "%s\n" "[kineticare_backup]"
+                printf "host=%s\n" "${PG_HOST}"
+                printf "port=%s\n" "${PG_PORT}"
+                printf "user=%s\n" "${PG_USER}"
+                printf "password=%s\n" "${PG_PASSWORD}"
+                printf "dbname=%s\n" "${PG_DATABASE}"
+              } > "${SERVICE_FILE}"
+
+              while [ -n "${QUERY}" ]; do
+                case "${QUERY}" in
+                  *\&*) QUERY_PAIR="${QUERY%%&*}"; QUERY="${QUERY#*&}" ;;
+                  *) QUERY_PAIR="${QUERY}"; QUERY="" ;;
+                esac
+                case "${QUERY_PAIR}" in
+                  *=*) ;;
+                  *) fail_config ;;
+                esac
+                QUERY_KEY="$(decode_uri_component "${QUERY_PAIR%%=*}")" || fail_config
+                QUERY_VALUE="$(decode_uri_component "${QUERY_PAIR#*=}")" || fail_config
+                safe_service_value "${QUERY_VALUE}" || fail_config
+                case "${QUERY_KEY}" in
+                  application_name|channel_binding|connect_timeout|load_balance_hosts|require_auth|sslmode|target_session_attrs)
+                    printf "%s=%s\n" "${QUERY_KEY}" "${QUERY_VALUE}" >> "${SERVICE_FILE}"
+                    ;;
+                  *) fail_config ;;
+                esac
+              done
+
+              chmod 0600 "${SERVICE_FILE}"
+              [ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config
+              unset CONNECTION_URI URI_BODY AUTHORITY DATABASE_AND_QUERY USER_INFO HOST_PORT
+              unset USER_ENCODED PASSWORD_ENCODED HOST_ENCODED PORT_ENCODED DATABASE_ENCODED
+              unset PG_USER PG_PASSWORD PG_HOST PG_PORT PG_DATABASE QUERY QUERY_PAIR QUERY_KEY QUERY_VALUE
+              export PGSERVICE="kineticare_backup"
+              export PGSERVICEFILE="${SERVICE_FILE}"
+              pg_dump --format=custom --file="${DUMP_TARGET}"
+            '
 
       # Egy le nem ellenőrzött mentés csak hamis biztonságérzet. A
       # `pg_restore --list` a teljes archívumot végigolvassa: csonka vagy
       # sérült fájlon nem nullával lép ki.
       - name: Integritás-ellenőrzés (pg_restore --list)
-        if: steps.secret.outputs.run == 'true'
+        id: integrity
         env:
           FILE: ${{ steps.dump.outputs.file }}
         run: |
           set -euo pipefail
           STATUS=0
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             --volume "${PWD}/backups:/backups" \
             "${PG_IMAGE}" \
             pg_restore --list "/backups/${FILE}" > toc.txt || STATUS=$?
@@ -125,32 +311,57 @@ jobs:
           # kilépése (csonka/sérült fájl) és a nulla bejegyzés (üres archívum).
           ENTRIES="$(grep -cE '^[0-9]+;' toc.txt || true)"
           if [ "${STATUS}" -ne 0 ] || [ "${ENTRIES}" -eq 0 ]; then
-            rm -f "backups/${FILE}"
-            echo "::error title=Sérült mentés::A mentés nem állítható vissza (pg_restore --list kilépési kód: ${STATUS}, visszaállítható bejegyzés: ${ENTRIES}) — a hibás fájl törölve, nem lett feltöltve."
+            echo "::error title=Sérült mentés::A mentés nem állítható vissza (pg_restore --list kilépési kód: ${STATUS}, visszaállítható bejegyzés: ${ENTRIES}) — nem lesz feltöltve."
             exit 1
           fi
-          SIZE="$(du -h "backups/${FILE}" | cut -f1)"
+          echo "entries=${ENTRIES}" >> "$GITHUB_OUTPUT"
+
+      - name: Mentés titkosítása (age)
+        id: encrypt
+        env:
+          FILE: ${{ steps.dump.outputs.file }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          ENCRYPTED_FILE="${FILE}.age"
+          "${RUNNER_TEMP}/age-bin/age" \
+            --recipient "${BACKUP_AGE_RECIPIENT}" \
+            --output "backups/${ENCRYPTED_FILE}" \
+            "backups/${FILE}"
+          test -s "backups/${ENCRYPTED_FILE}"
+          echo "encrypted_file=${ENCRYPTED_FILE}" >> "$GITHUB_OUTPUT"
+          SIZE="$(du -h "backups/${ENCRYPTED_FILE}" | cut -f1)"
           {
             echo "### DB mentés kész"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Fájl | \`${FILE}\` |"
+            echo "| Fájl | \`${ENCRYPTED_FILE}\` |"
             echo "| Méret | ${SIZE} |"
-            echo "| Visszaállítható bejegyzés | ${ENTRIES} |"
+            echo "| Visszaállítható bejegyzés | ${{ steps.integrity.outputs.entries }} |"
+            echo "| Titkosítás | age v${AGE_VERSION} |"
             echo "| Megőrzés | 30 nap (artifact) |"
             echo ""
             echo "Visszaállítás: \`docs/adatbazis-mentes.md\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Plaintext ideiglenes fájlok törlése
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -f backups/*.dump toc.txt
+          if [ -d backups ] && find backups -maxdepth 1 -type f -name '*.dump' -print -quit | grep -q .; then
+            echo "::error title=Plaintext mentés maradt::A titkosítatlan dump törlése sikertelen."
+            exit 1
+          fi
+
       - name: Mentés feltöltése artifactként
-        if: steps.secret.outputs.run == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: kineticare-db-${{ steps.dump.outputs.file }}
-          path: backups/${{ steps.dump.outputs.file }}
+          name: kineticare-db-${{ steps.encrypt.outputs.encrypted_file }}
+          path: backups/${{ steps.encrypt.outputs.encrypted_file }}
           retention-days: 30
-          # A custom formátumú dump már tömörített — az újratömörítés csak idő.
+          # Az age-titkosított dump nem tömöríthető érdemben újra.
           compression-level: 0
           # Ha a fájl valamiért nincs meg, az BUKÁS legyen, ne néma zöld futás.
           if-no-files-found: error
