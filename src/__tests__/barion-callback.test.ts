@@ -383,6 +383,29 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
     expect(response.status).toBe(400)
   })
 
+  it('SEC-008: a méret-plafont túllépő törzs elutasítva, akkor is, ha érvényes GUID van benne', async () => {
+    const { POST, docs, capture } = setup()
+
+    const response = await POST(
+      makeRequest({ PaymentId: PAYMENT_ID, pad: 'x'.repeat(20_000) }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(docs).toHaveLength(0)
+    expect(capture.tasks).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a JSON-törzs tartalék-csatorna a méreten belül továbbra is működik', async () => {
+    const { POST, docs } = setup()
+
+    const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    expect(docs).toHaveLength(1)
+  })
+
   /**
    * Az útvonal-osztályozó a callbacket szándékosan kihagyja (a fizetési
    * értesítés elvesztése pénzt jelent). Alak-ellenőrzés nélkül minden hívás
