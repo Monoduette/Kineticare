@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { withAdvisoryLock } from '../advisory-lock'
 import { logger as rootLogger, type Logger } from '../logger'
 import {
   getSzamlazzConfig,
@@ -79,6 +80,11 @@ export const MAX_CORRECTIVE_ATTEMPTS = 5
 /** A helyesbítő visszakeresési kulcsa (szamlaKulsoAzon) egy refund-sorszámhoz. */
 export function correctiveKulsoAzon(orderNumber: string, refundSeq: number): string {
   return `${orderNumber}${CORRECTIVE_KULSO_AZON_INFIX}${refundSeq}`
+}
+
+/** A helyesbítő-kiállítás sorosító advisory-zárának kulcsa (rendelés + refund-sorszám). */
+export function correctiveLockKey(orderId: number | string, refundSeq: number): string {
+  return `corrective:${orderId}:${refundSeq}`
 }
 
 export interface BuildCorrectiveInvoiceXmlInput {
@@ -192,7 +198,46 @@ export function isRetryableCorrectiveError(error: unknown): boolean {
  *   és minden beküldés ELŐTT kulsoAzon-lekérdezés fut — K4: nemcsak ugyanazon
  *   seq retryjén, hanem más seq-es maradék jobon is).
  */
+/**
+ * A helyesbítő kiállítás publikus belépője. A „friss olvasás → döntés →
+ * lekérdezés → POST → persist" szakasz advisory-zár alatt fut (SEC-012): két
+ * azonos (orderId, refundSeq) futás a POST előtti lekérdezés és a beküldés
+ * közti ablakban egyébként duplán POSTolhatna. A záron belül frissen olvassuk
+ * újra a rendelést; a tényleges kiállítást a `performCorrectiveInvoiceForOrder`
+ * végzi (a provider-oldali kulsoAzon-egyediség + a beküldés előtti lekérdezés
+ * továbbra is a második védvonal).
+ */
 export async function issueCorrectiveInvoiceForOrder(
+  order: Order,
+  deps: IssueCorrectiveInvoiceDeps,
+): Promise<IssueCorrectiveInvoiceResult> {
+  const payload = deps.payload
+  if (!payload || typeof payload.findByID !== 'function') {
+    return performCorrectiveInvoiceForOrder(order, deps)
+  }
+  const log = (deps.logger ?? rootLogger).child({
+    module: 'szamlazz-corrective',
+    orderId: order.id,
+    orderNumber: order.orderNumber ?? null,
+    refundSeq: deps.refundSeq,
+  })
+  return withAdvisoryLock(
+    payload,
+    correctiveLockKey(order.id, deps.refundSeq),
+    async () => {
+      const fresh = (await payload.findByID({
+        collection: 'orders',
+        id: order.id,
+        depth: 0,
+        overrideAccess: true,
+      })) as Order | null
+      return performCorrectiveInvoiceForOrder(fresh ?? order, deps)
+    },
+    log,
+  )
+}
+
+async function performCorrectiveInvoiceForOrder(
   order: Order,
   deps: IssueCorrectiveInvoiceDeps,
 ): Promise<IssueCorrectiveInvoiceResult> {

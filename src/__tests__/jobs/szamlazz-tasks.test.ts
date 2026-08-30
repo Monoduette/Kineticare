@@ -218,6 +218,53 @@ describe('storno-issue task', () => {
       restore()
     }
   })
+
+  it('nem visszatérített (nem refunded) rendelésnél failed — refund nélkül nincs stornó, nem POSTol', async () => {
+    const restore = withAgentKey()
+    try {
+      const order = {
+        id: 555,
+        orderNumber: 'KH-2026-000777',
+        status: 'paid',
+        invoiceNumber: 'E-TESZT-1',
+      } as unknown as Order
+      const issueStorno = vi.fn()
+      const { req } = reqWith(order)
+      const result = await runTask(stornoIssueTask, {
+        req,
+        input: { orderId: 555 },
+        issueStorno,
+      })
+      expect(result.output.outcome).toBe('failed')
+      expect(String(result.output.reason)).toContain('visszatérít')
+      expect(issueStorno).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('refunded rendelésnél a stornó-kiállítás elindul', async () => {
+    const restore = withAgentKey()
+    try {
+      const order = {
+        id: 556,
+        orderNumber: 'KH-2026-000778',
+        status: 'refunded',
+        invoiceNumber: 'E-TESZT-2',
+      } as unknown as Order
+      const issueStorno = vi.fn(async () => ({ outcome: 'storned', stornoNumber: 'S-1' }))
+      const { req } = reqWith(order)
+      const result = await runTask(stornoIssueTask, {
+        req,
+        input: { orderId: 556 },
+        issueStorno,
+      })
+      expect(issueStorno).toHaveBeenCalledTimes(1)
+      expect(result.output).toMatchObject({ outcome: 'storned', stornoNumber: 'S-1' })
+    } finally {
+      restore()
+    }
+  })
 })
 
 describe('corrective-invoice-issue task', () => {
