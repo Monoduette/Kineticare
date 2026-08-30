@@ -10,6 +10,7 @@ import {
   resolveRateLimitIp,
   type RateLimitRule,
 } from '../security/rate-limit'
+import { readJsonWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import {
   requestFreeCourseAccess,
@@ -186,10 +187,10 @@ export function createFreeCourseRequestHandler(
       return NextResponse.json({ error: originCheck.message }, { status: originCheck.status })
     }
 
-    let raw: unknown
-    try {
-      raw = await request.json()
-    } catch {
+    // SEC-008: felső korláttal olvassuk a törzset a parse ELŐTT — egy
+    // túlméretes törzs nem bufferelődik korlátlanul (memória-DoS).
+    const bodyResult = await readJsonWithCap(request)
+    if (!bodyResult.ok) {
       return NextResponse.json(
         {
           error:
@@ -198,6 +199,7 @@ export function createFreeCourseRequestHandler(
         { status: 400 },
       )
     }
+    const raw: unknown = bodyResult.value
 
     const parsed = parseFreeCourseRequestBody(raw)
     if (!parsed.ok) {

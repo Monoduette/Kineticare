@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { withAdvisoryLock } from '../advisory-lock'
 import { logger as rootLogger, type Logger } from '../logger'
 import {
   bodyReadError,
@@ -25,6 +26,11 @@ import {
 
 /** Max stornó-kísérlet; felett `failed` + owner-jelzés (kézi ellenőrzés után újrafuttatás). */
 export const MAX_STORNO_ATTEMPTS = 5
+
+/** A stornó-kiállítás sorosító advisory-zárának kulcsa egy rendeléshez. */
+export function stornoLockKey(orderId: number | string): string {
+  return `storno:${orderId}`
+}
 
 export interface BuildStornoXmlInput {
   agentKey: string
@@ -254,132 +260,160 @@ export async function issueStornoForOrder(
     return { outcome: 'disabled' }
   }
 
-  // Idempotencia (alkalmazás-oldal): a rendelésen rögzített stornó.
-  const recordedStornoNumber = order.stornoNumber?.trim()
-  if (recordedStornoNumber || order.stornoStatus === 'storned') {
-    log.info('a rendeléshez már rögzítve van stornó-számla — idempotens no-op', {
-      stornoNumber: recordedStornoNumber ?? null,
-    })
-    return {
-      outcome: 'already-storned',
-      ...(recordedStornoNumber ? { stornoNumber: recordedStornoNumber } : {}),
-    }
-  }
-
-  if (!order.orderNumber) {
-    log.error('RIASZTÁS: a rendelés rendelésszám nélkül fut — stornó nem állítható ki')
-    await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: 'hiányzó rendelésszám' })
-    return { outcome: 'failed', reason: 'hiányzó rendelésszám' }
-  }
-
-  const originalInvoiceNumber = order.invoiceNumber?.trim()
-  if (!originalInvoiceNumber) {
-    // Nem retryable: számla nélkül nincs mit stornózni — emberi pótlás kell.
-    const reason = 'hiányzó eredeti számlaszám (invoiceNumber)'
-    log.warn(
-      'a rendeléshez nem tartozik kiállított számla (invoiceNumber) — stornó NEM állítható ki',
-    )
-    await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
-    return { outcome: 'failed', reason }
-  }
-
-  const previousAttempts = order.stornoAttempts ?? 0
-  if (previousAttempts >= MAX_STORNO_ATTEMPTS) {
-    const reason = `a stornó-kísérletek száma kimerült (${previousAttempts}/${MAX_STORNO_ATTEMPTS})`
-    log.error('RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell', {
-      attempts: previousAttempts,
-      lastError: order.stornoLastError ?? null,
-    })
-    await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
-    return { outcome: 'failed', reason }
-  }
-
-  // F3 — BIZONYTALAN ÁLLAPOT: volt már beküldés, de a rendelésen nincs stornó.
-  // A stornó-kérés nem visszakereshető saját kulccsal (a szamlaKulsoAzon a
-  // SZTORNÓZANDÓ számlát hivatkozná), ezért nem lehet eldönteni, átment-e az
-  // előző beküldés. A vak újraküldés dupla stornót okozhat, ami már nem
-  // javítható — inkább megállunk és emberi ellenőrzést kérünk.
-  if (previousAttempts > 0) {
-    const reason =
-      'a stornó állapota bizonytalan: már történt beküldés, de a rendelésen nincs rögzített stornó — kézi ellenőrzés kell a Számlázz.hu-fiókban (a vak újraküldés dupla stornót okozhat)'
-    log.error(`RIASZTÁS: ${reason}`, {
-      attempts: previousAttempts,
-      lastError: order.stornoLastError ?? null,
-    })
-    await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
-    return { outcome: 'failed', reason }
-  }
-  const attempts = previousAttempts + 1
-
-  const buyerEmail = buyerEmailFromOrder(order)
-  const xml = buildStornoXml({
-    agentKey: config.agentKey as string,
-    originalInvoiceNumber,
-    orderNumber: order.orderNumber,
-    ...(deps.reason ? { reason: deps.reason } : {}),
-    ...(buyerEmail ? { buyerEmail } : {}),
-  })
-
-  await saveState({ stornoStatus: 'pending', stornoAttempts: attempts })
-
-  try {
-    const postXml = deps.postXml ?? postStornoXml
-    const result = await postXml(xml, config)
-    await saveState({
-      stornoStatus: 'storned',
-      stornoNumber: result.szamlaszam,
-      stornoAttempts: attempts,
-      stornoLastError: null,
-    })
-    log.info('stornó-számla kiállítva', {
-      stornoNumber: result.szamlaszam,
-      originalInvoiceNumber,
-      attempts,
-      persisted: payload !== undefined,
-    })
-    return { outcome: 'storned', stornoNumber: result.szamlaszam }
-  } catch (error) {
-    // 71/152 — duplikátum-jelzés. A stornó ágon NINCS visszakereső kulcsunk
-    // (F3), ezért a jelzést nem lehet lekérdezéssel feloldani: a bizonylat a
-    // Számlázz.hu szerint már létezik, de a számát csak a fiókból lehet
-    // kiolvasni — kézi egyeztetés kell.
-    if (isDuplicateOrderError(error)) {
-      const reason =
-        'a Számlázz.hu duplikátumot jelzett (71/152) a stornóra: a bizonylat vélhetően MÁR LÉTEZIK, de a száma automatikusan nem kereshető vissza — kézi egyeztetés szükséges a Számlázz.hu-fiókban'
-      log.error(`RIASZTÁS: ${reason}`, {
-        agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+  // A „friss olvasás → döntés → POST → persist" szakasz advisory-zár alatt fut
+  // (SEC-011): a refund utáni inline stornó és a számla-kompenzáció ugyanazt az
+  // elavult állapotot láthatná, és MINDKETTŐ POSTolna. A záron belül frissen
+  // olvassuk újra a rendelést, így a párhuzamos futás által már rögzített stornó
+  // az idempotencia-ágon no-op lesz — egyszerre csak egy provider-hívás mehet ki.
+  const runIssue = async (currentOrder: Order): Promise<IssueStornoResult> => {
+    // Idempotencia (alkalmazás-oldal): a rendelésen rögzített stornó.
+    const recordedStornoNumber = currentOrder.stornoNumber?.trim()
+    if (recordedStornoNumber || currentOrder.stornoStatus === 'storned') {
+      log.info('a rendeléshez már rögzítve van stornó-számla — idempotens no-op', {
+        stornoNumber: recordedStornoNumber ?? null,
       })
+      return {
+        outcome: 'already-storned',
+        ...(recordedStornoNumber ? { stornoNumber: recordedStornoNumber } : {}),
+      }
+    }
+
+    if (!currentOrder.orderNumber) {
+      log.error('RIASZTÁS: a rendelés rendelésszám nélkül fut — stornó nem állítható ki')
+      await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: 'hiányzó rendelésszám' })
+      return { outcome: 'failed', reason: 'hiányzó rendelésszám' }
+    }
+
+    const originalInvoiceNumber = currentOrder.invoiceNumber?.trim()
+    if (!originalInvoiceNumber) {
+      // Nem retryable: számla nélkül nincs mit stornózni — emberi pótlás kell.
+      const reason = 'hiányzó eredeti számlaszám (invoiceNumber)'
+      log.warn(
+        'a rendeléshez nem tartozik kiállított számla (invoiceNumber) — stornó NEM állítható ki',
+      )
+      await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
+      return { outcome: 'failed', reason }
+    }
+
+    const previousAttempts = currentOrder.stornoAttempts ?? 0
+    if (previousAttempts >= MAX_STORNO_ATTEMPTS) {
+      const reason = `a stornó-kísérletek száma kimerült (${previousAttempts}/${MAX_STORNO_ATTEMPTS})`
+      log.error('RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell', {
+        attempts: previousAttempts,
+        lastError: currentOrder.stornoLastError ?? null,
+      })
+      await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
+      return { outcome: 'failed', reason }
+    }
+
+    // F3 — BIZONYTALAN ÁLLAPOT: volt már beküldés, de a rendelésen nincs stornó.
+    // A stornó-kérés nem visszakereshető saját kulccsal (a szamlaKulsoAzon a
+    // SZTORNÓZANDÓ számlát hivatkozná), ezért nem lehet eldönteni, átment-e az
+    // előző beküldés. A vak újraküldés dupla stornót okozhat, ami már nem
+    // javítható — inkább megállunk és emberi ellenőrzést kérünk.
+    if (previousAttempts > 0) {
+      const reason =
+        'a stornó állapota bizonytalan: már történt beküldés, de a rendelésen nincs rögzített stornó — kézi ellenőrzés kell a Számlázz.hu-fiókban (a vak újraküldés dupla stornót okozhat)'
+      log.error(`RIASZTÁS: ${reason}`, {
+        attempts: previousAttempts,
+        lastError: currentOrder.stornoLastError ?? null,
+      })
+      await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
+      return { outcome: 'failed', reason }
+    }
+    const attempts = previousAttempts + 1
+
+    const buyerEmail = buyerEmailFromOrder(currentOrder)
+    const xml = buildStornoXml({
+      agentKey: config.agentKey as string,
+      originalInvoiceNumber,
+      orderNumber: currentOrder.orderNumber,
+      ...(deps.reason ? { reason: deps.reason } : {}),
+      ...(buyerEmail ? { buyerEmail } : {}),
+    })
+
+    await saveState({ stornoStatus: 'pending', stornoAttempts: attempts })
+
+    try {
+      const postXml = deps.postXml ?? postStornoXml
+      const result = await postXml(xml, config)
+      await saveState({
+        stornoStatus: 'storned',
+        stornoNumber: result.szamlaszam,
+        stornoAttempts: attempts,
+        stornoLastError: null,
+      })
+      log.info('stornó-számla kiállítva', {
+        stornoNumber: result.szamlaszam,
+        originalInvoiceNumber,
+        attempts,
+        persisted: payload !== undefined,
+      })
+      return { outcome: 'storned', stornoNumber: result.szamlaszam }
+    } catch (error) {
+      // 71/152 — duplikátum-jelzés. A stornó ágon NINCS visszakereső kulcsunk
+      // (F3), ezért a jelzést nem lehet lekérdezéssel feloldani: a bizonylat a
+      // Számlázz.hu szerint már létezik, de a számát csak a fiókból lehet
+      // kiolvasni — kézi egyeztetés kell.
+      if (isDuplicateOrderError(error)) {
+        const reason =
+          'a Számlázz.hu duplikátumot jelzett (71/152) a stornóra: a bizonylat vélhetően MÁR LÉTEZIK, de a száma automatikusan nem kereshető vissza — kézi egyeztetés szükséges a Számlázz.hu-fiókban'
+        log.error(`RIASZTÁS: ${reason}`, {
+          agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+        })
+        await saveStateBestEffort({
+          stornoStatus: 'failed',
+          stornoAttempts: attempts,
+          stornoLastError: reason,
+        })
+        return { outcome: 'failed', reason }
+      }
+      const message = error instanceof Error ? error.message : String(error)
       await saveStateBestEffort({
         stornoStatus: 'failed',
         stornoAttempts: attempts,
-        stornoLastError: reason,
+        stornoLastError: message,
       })
-      return { outcome: 'failed', reason }
-    }
-    const message = error instanceof Error ? error.message : String(error)
-    await saveStateBestEffort({
-      stornoStatus: 'failed',
-      stornoAttempts: attempts,
-      stornoLastError: message,
-    })
-    if (error instanceof SzamlazzApiError) {
-      log.warn('stornó-számla kiállítás sikertelen', {
-        kind: error.kind,
-        retryable: error.retryable,
-        attempts,
-        agentErrorCodes: error.agentErrors.map((entry) => entry.code),
-        error: error.message,
-      })
-      if (error.retryable) {
-        // A POST már elindult. A hívó (refund-bekötés) NEM állít sorba
-        // automatikus retry-t: a storno-issue job a stornoAttempts>0 miatt
-        // F3-on RIASZTÁS-sal megállna, és soha nem POSTolna újra — a
-        // sorbaállítás tehát csapda. Dupla stornó semmiképp ne keletkezhessen.
-        throw error
+      if (error instanceof SzamlazzApiError) {
+        log.warn('stornó-számla kiállítás sikertelen', {
+          kind: error.kind,
+          retryable: error.retryable,
+          attempts,
+          agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+          error: error.message,
+        })
+        if (error.retryable) {
+          // A POST már elindult. A hívó (refund-bekötés) NEM állít sorba
+          // automatikus retry-t: a storno-issue job a stornoAttempts>0 miatt
+          // F3-on RIASZTÁS-sal megállna, és soha nem POSTolna újra — a
+          // sorbaállítás tehát csapda. Dupla stornó semmiképp ne keletkezhessen.
+          throw error
+        }
+        return { outcome: 'failed', reason: error.message }
       }
-      return { outcome: 'failed', reason: error.message }
+      log.error('stornó-számla kiállítás váratlan hibával állt le', { attempts, error: message })
+      throw error
     }
-    log.error('stornó-számla kiállítás váratlan hibával állt le', { attempts, error: message })
-    throw error
   }
+
+  // Zár nélkül (nem-production / mock payload findByID nélkül): a bejövő
+  // pillanatképen dolgozunk, ahogy eddig. Éles Payloadnál a záron belül friss
+  // olvasás védi a párhuzamos dupla-POST ellen.
+  if (!payload || typeof payload.findByID !== 'function') {
+    return runIssue(order)
+  }
+  return withAdvisoryLock(
+    payload,
+    stornoLockKey(order.id),
+    async () => {
+      const fresh = (await payload.findByID({
+        collection: 'orders',
+        id: order.id,
+        depth: 0,
+        overrideAccess: true,
+      })) as Order | null
+      return runIssue(fresh ?? order)
+    },
+    log,
+  )
 }

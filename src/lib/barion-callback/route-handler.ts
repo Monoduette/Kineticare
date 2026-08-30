@@ -1,6 +1,7 @@
 import { after } from 'next/server'
 import type { Payload } from 'payload'
 
+import { withAdvisoryLock } from '../advisory-lock'
 import {
   isNonTerminalWebhookResult,
   isTerminallyProcessed,
@@ -12,6 +13,7 @@ import {
 } from '../idempotency'
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
+import { readBodyWithCap } from '../security/request-body'
 import {
   checkIpRateLimit,
   resolveRateLimitIp,
@@ -51,6 +53,20 @@ const PAYMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 /** Egy GUID pontosan ennyi karakter — a mintaillesztés előtti olcsó kapu. */
 export const MAX_PAYMENT_ID_LENGTH = 36
+
+/**
+ * A JSON-törzs tartalék-csatorna felső bájtkorlátja. A valódi Barion-callback
+ * ÜRES törzzsel jön (a PaymentId a query-ben), ez a fallback pedig legföljebb
+ * egy pici `{ "PaymentId": "<guid>" }`-t hoz — 16 KiB bőven elég. A cap a
+ * `request.json()` előtti korlátlan bufferelést zárja (SEC-008): egy több
+ * megabájtos törzs sosem kerül teljes egészében a memóriába.
+ */
+export const MAX_CALLBACK_BODY_BYTES = 16 * 1024
+
+/** A callback-feldolgozás (GetState) sorosító advisory-zárának kulcsa egy PaymentId-re. */
+export function callbackLockKey(paymentId: string): string {
+  return `barion-callback:${paymentId}`
+}
 
 /**
  * Egy nyers érték ALAK-ellenőrzése — hiányzó, üres, túl hosszú vagy nem
@@ -141,7 +157,17 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
     let paymentId = paymentIdFromQuery(request)
     if (!paymentId) {
       paymentIdSource = 'body'
-      const body: unknown = await request.json().catch(() => null)
+      // SEC-008: a törzset FELSŐ KORLÁTTAL olvassuk, a JSON-parse ELŐTT — egy
+      // túlméretes vagy hibás törzs nem bufferelődik korlátlanul (memória-DoS).
+      const rawBody = await readBodyWithCap(request, MAX_CALLBACK_BODY_BYTES).catch(() => null)
+      let body: unknown = null
+      if (rawBody !== null && rawBody.trim().length > 0) {
+        try {
+          body = JSON.parse(rawBody)
+        } catch {
+          body = null
+        }
+      }
       paymentId = extractPaymentId(body)
     }
     if (!paymentId) {
@@ -158,13 +184,24 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
     const store = deps.store ?? webhookEventStore(payload)
 
     const runProcessing = async (): Promise<void> => {
-      const outcome = await processWebhook({
-        store,
-        provider: 'barion',
-        externalId: paymentId,
-        requestId,
-        handler: createBarionCallbackProcessor({ payload, store }),
-      })
+      // SEC-006: a feldolgozás (GetState) PaymentId-re szabott advisory-zár
+      // alatt fut — párhuzamos/egyszerre kézbesített ismétlések nem indítanak
+      // egyidejű GetState-vihart. Az első futás után a rekord terminális lesz,
+      // a záron várakozó ismétlés friss olvasáson már no-opot lát (processWebhook
+      // isTerminallyProcessed), tehát nem hív újabb GetState-et.
+      const outcome = await withAdvisoryLock(
+        payload,
+        callbackLockKey(paymentId),
+        () =>
+          processWebhook({
+            store,
+            provider: 'barion',
+            externalId: paymentId,
+            requestId,
+            handler: createBarionCallbackProcessor({ payload, store }),
+          }),
+        eventLog,
+      )
       if (outcome.kind === 'failed') {
         if (!outcome.retryable) {
           // Ez volt az utolsó megengedett kísérlet: a webhook-retry MÁR NEM

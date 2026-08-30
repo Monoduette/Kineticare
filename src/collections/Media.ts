@@ -60,6 +60,11 @@ export const Media: CollectionConfig = {
         withoutEnlargement: true,
       },
     ],
-    mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'],
+    // SEC-002: AVIF-feltöltés SZÁNDÉKOSAN nincs az allowlistben. A Next.js
+    // <16.3.3 image-optimizer AVIF-dekódolón át RCE-vel érintett
+    // (GHSA-2xp9-vwfh-vxw4); amíg a verzióemelés emberi jóváhagyásra vár, a
+    // rosszindulatú AVIF forrás fel se tölthető. A kimenet úgyis webp
+    // (formatOptions.format), tehát AVIF forrás nem szükséges a minőséghez.
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   },
 }
