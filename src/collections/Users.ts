@@ -69,7 +69,7 @@ async function countExistingUsers(req: PayloadRequest): Promise<number> {
   return totalDocs
 }
 
-// OWASP A07: jelszó-erősségi politika. A Payload 3.86-ban nincs natív
+// OWASP A07: jelszó-erősségi politika. A Payload 3.88.0-ban nincs natív
 // passwordMinLength/komplexitási beállítás, ezért hookból érvényesítjük.
 // A collection beforeChange hook a hash-elés ELŐTT fut (a create/update
 // műveletek csak a hookok után generálják a salt/hash párost), így a
@@ -182,7 +182,7 @@ const promoteFirstUserToOwner: CollectionBeforeChangeHook = async ({ data, req, 
   return { ...data, role: 'owner' }
 }
 
-// Sikertelen bejelentkezés naplózása. A Payload 3.86-ban NINCS
+// Sikertelen bejelentkezés naplózása. A Payload 3.88.0-ban NINCS
 // afterFailedLogin hook; a REST /api/users/login hibák (hibás jelszó →
 // AuthenticationError, zárolt fiók → LockedAuth) a routeError-en át a
 // collection afterError hookjában landolnak. Jelszót sosem naplózunk —
@@ -318,7 +318,7 @@ export const Users: CollectionConfig = {
     // iat + tokenExpiration, node_modules/payload/dist/auth/jwt.js) — nem
     // milliszekundumban, mint a lockTime-ot.
     tokenExpiration: 7200, // 2 óra (másodpercben)
-    // A session-süti Secure-jelölése: a Payload 3.86 defaultja secure:false
+    // A session-süti Secure-jelölése: a Payload 3.88.0 defaultja secure:false
     // (collections/config/defaults.js), így a süti síma HTTP-n is elkészülne.
     // Élesben (https) KÖTELEZŐ a secure; fejlesztésben (http://localhost)
     // kikapcsolva marad, különben a böngésző el sem tárolná.

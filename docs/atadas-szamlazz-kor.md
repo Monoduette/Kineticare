@@ -762,7 +762,7 @@ commitold** (a meglévők is be vannak commitolva).
 
 **c) 🔴 Szerepkör-kapu a nézetben — ez NEM opcionális, ez az EGYETLEN védelem.**
 
-A Payload 3.86 az `admin.components.views`-ben regisztrált útvonalakat
+A Payload 3.88.0 az `admin.components.views`-ben regisztrált útvonalakat
 **nyilvános** admin-route-ként kezeli: az `isCustomAdminView` bármely
 konfigurált view-path-ra igazat ad, ezért a Root view auth-átirányítása
 (`Root/index.js`: `if (!permissions.canAccessAdmin && !isPublicAdminRoute(…) &&

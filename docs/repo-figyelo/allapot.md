@@ -1,8 +1,8 @@
 # Állapot-pillanatkép
 
-> Frissítve: **2026-08-09** · Alap-commit: `38761c7` (`main`) · Commitok száma: 73
+> Frissítve: **2026-08-30** · Alap-commit: `e8616c0` (`fix/security-next-16-3-3`)
 
-> **Frissítési jegyzet (2026-08-09):** a fejléc, ez a bekezdés és a
+> **Frissítési jegyzet (2026-08-30):** a fejléc, ez a bekezdés és a
 > stack-tábla a mai állapotot tükrözi; a lentebbi részletes szakaszok a
 > 2026-07-31-i mélyfelmérés pillanatképei — az azóta történteket a
 > `naplo.md` kronológiája és a PR-történet fedi.
@@ -26,8 +26,8 @@ nyitott: adatbázis-mentés (C14) és az M-12 emberi döntése.
 
 | Csomag | Verzió | Megjegyzés |
 | --- | --- | --- |
-| `payload`, `@payloadcms/db-postgres`, `@payloadcms/next`, `@payloadcms/plugin-ecommerce`, `@payloadcms/plugin-form-builder`, `@payloadcms/richtext-lexical` | `3.86.0` | **Pinned** — a Dependabot ezekre nem nyit PR-t (T-072) |
-| `next` | `16.3.0` | |
+| `payload`, `@payloadcms/db-postgres`, `@payloadcms/next`, `@payloadcms/plugin-ecommerce`, `@payloadcms/plugin-form-builder`, `@payloadcms/richtext-lexical` | `3.88.0` | **Pinned** — a Dependabot ezekre nem nyit PR-t (T-072) |
+| `next` | `16.3.3` | |
 | `react` / `react-dom` | `19.2.8` | |
 | `typescript` | `5.9.3` | strict mód |
 | `vitest` | `4.1.10` | `npm run test` |
