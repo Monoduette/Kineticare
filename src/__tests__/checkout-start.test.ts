@@ -1367,6 +1367,18 @@ describe('POST /api/checkout/start route-handler', () => {
     expect((await response.json()) as { error: string }).toHaveProperty('error')
   })
 
+  it('SEC-008: a méret-plafont túllépő törzs → 400, Barion NEM hívódik', async () => {
+    const { payload } = createMockPayload()
+    const POST = makeHandler(async () => payload)
+
+    const response = await POST(
+      makeRequest({ ...happyInput, pad: 'x'.repeat(70_000) }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('váratlan technikai hiba → 500, általános magyar üzenettel (a részletek csak a naplóba)', async () => {
     const POST = makeHandler(async () => {
       throw new Error('DB-kapcsolat megszakadt')

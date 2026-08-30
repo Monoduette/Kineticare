@@ -72,6 +72,12 @@ export const RATE_LIMIT_RULES = {
   'barion-callback-unknown': { limit: 20, windowMs: TEN_MINUTES_MS },
   login: { limit: 10, windowMs: TEN_MINUTES_MS },
   'login-email': { limit: 10, windowMs: TEN_MINUTES_MS },
+  // SEC-007: a plugin generált szerveroldali kosár-kollekciója (`POST /api/carts`)
+  // a saját checkout-unkban NEM használt, de regisztrált vevőnek elérhető —
+  // keret nélkül korlátlan kosár-sort (tár-kimerítés) hozhatna létre. A saját
+  // vásárlási út a kliens-oldali (localStorage) kosarat használja, ezt nem
+  // érinti; a keret bőven a fölött van, amennyit bármely valódi kliens hívna.
+  'cart-write': { limit: 30, windowMs: TEN_MINUTES_MS },
 } as const satisfies Record<string, RateLimitRule>
 
 /**
@@ -111,6 +117,9 @@ const ROUTE_CLASS_BY_PATH = new Map<string, RateLimitedRouteClass>([
   ['/api/users/login', 'login'],
   ['/api/users/forgot-password', 'password-forgot'],
   ['/api/form-submissions', 'form-submission'],
+  // A plugin szerveroldali kosár-kollekciója — nem a saját checkout-unk útja
+  // (SEC-007): a POST /api/carts (kosár-létrehozás) keret alá kerül.
+  ['/api/carts', 'cart-write'],
   // Saját route-handlerek (maguk hívják a `checkRequestRateLimit`-et):
   ['/api/checkout/start', 'checkout-start'],
   // A jelszó-visszaállítást a Payload REST helyett a saját, jelszó-politikát

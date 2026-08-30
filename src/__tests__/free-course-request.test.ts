@@ -748,6 +748,31 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(new Set(bodies.map((body) => JSON.stringify(body))).size).toBe(1)
   })
 
+  it('SEC-008: a méret-plafont túllépő törzs → 400 (nem bufferelődik korlátlanul)', async () => {
+    const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const oversized = new Request('https://pelda.kineticare.hu/api/free-course/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: FREE_COURSE.id,
+        name: 'Anna',
+        email: 'uj.nagy@pelda.hu',
+        consentPrivacy: true,
+        pad: 'x'.repeat(70_000),
+      }),
+    }) as unknown as Parameters<ReturnType<typeof createFreeCourseRequestHandler>>[0]
+
+    const response = await handler(oversized)
+
+    expect(response.status).toBe(400)
+    expect(mock.sent).toHaveLength(0)
+  })
+
   it('bejelentkezett vevő a saját címére: next=library, levél nincs, a HTTP kiteszi a next-et', async () => {
     const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
     mock.mocks.auth.mockResolvedValue({ user: { id: MEGLEVO_VEVO.id } })

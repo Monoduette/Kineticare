@@ -50,3 +50,33 @@ export async function readBodyWithCap(request: Request, maxBytes: number): Promi
   const bytes = await readBodyBytesWithCap(request, maxBytes)
   return bytes === null ? null : new TextDecoder().decode(bytes)
 }
+
+/** JSON-törzs alapértelmezett felső korlátja a publikus API-kon (64 KiB). */
+export const DEFAULT_JSON_BODY_MAX_BYTES = 64 * 1024
+
+export type JsonBodyResult =
+  | { ok: true; value: unknown }
+  | { ok: false; reason: 'too-large' | 'invalid' }
+
+/**
+ * JSON-törzs beolvasása FELSŐ KORLÁTTAL, majd parse — a korlátlan
+ * `request.json()` bufferelés helyett (memória-DoS ellen). A túl nagy törzs
+ * `too-large`, a hibás/üres `invalid`. A hívó dönti el a HTTP-választ.
+ */
+export async function readJsonWithCap(
+  request: Request,
+  maxBytes: number = DEFAULT_JSON_BODY_MAX_BYTES,
+): Promise<JsonBodyResult> {
+  const raw = await readBodyWithCap(request, maxBytes)
+  if (raw === null) {
+    return { ok: false, reason: 'too-large' }
+  }
+  if (raw.trim().length === 0) {
+    return { ok: false, reason: 'invalid' }
+  }
+  try {
+    return { ok: true, value: JSON.parse(raw) }
+  } catch {
+    return { ok: false, reason: 'invalid' }
+  }
+}
