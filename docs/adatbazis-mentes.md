@@ -109,6 +109,9 @@ körnek):
   (offsite)      │   db-backup.yml              │ + kézi indítás
                  │  postgres:18-alpine@digest   │
                  └──────────────┬───────────────┘
+                                │ DATABASE_URI → 0600-as, rövid életű
+                                │ libpq service file → env unset
+                                │ PGSERVICE/PGSERVICEFILE
                                 │ pg_dump --format=custom
                                 ▼
                     kineticare-YYYYMMDD-HHmmss.dump
@@ -200,8 +203,22 @@ nélkül.
 - Az artifact kizárólag `*.dump.age`, `retention-days: 30`, és hiányzó fájlnál
   a feltöltés hibára fut. A plaintext `.dump` és a `toc.txt` minden kimenetnél
   (`always()`) törlődik a runner munkaterületéről.
-- A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és a konténerbe; az
-  értéke sosem kerül parancssorba, echo-ba vagy logba.
+- A `DATABASE_URI` kizárólag `env:`-ként megy a lépésbe és érték nélküli
+  `docker --env DATABASE_URI` opcióval a konténerbe, ezért sem a host, sem a
+  konténer parancssorában nincs benne a secret. A konténer `umask 077` mellett
+  egy 0600-as, saját fájlrendszerében élő ideiglenes libpq service file-ba írja,
+  az eredeti env változót azonnal `unset`-eli, majd a URI-t fail-closed módon
+  valódi service-paraméterekre bontja. A `pg_dump` csak `PGSERVICE` és
+  `PGSERVICEFILE` alapján indul; siker, hiba és kezelhető jelzés után trap törli
+  a fájlt, a `docker run --rm` pedig a konténer teljes ideiglenes
+  fájlrendszerét eltávolítja. Az integritáslépés nem kap DB credentialt.
+- A workflow a `postgresql://`/`postgres://` alakú, usert, jelszót, hostot és
+  adatbázisnevet tartalmazó URI-t fogadja. Az URL-kódolt komponenseket dekódolja;
+  kontrollkarakterre, hibás kódolásra vagy ismeretlen query-paraméterre pirosan
+  leáll. Az engedélyezett query-k: `application_name`, `channel_binding`,
+  `connect_timeout`, `load_balance_hosts`, `require_auth`, `sslmode` és
+  `target_session_attrs`. Ettől eltérő Railway URL-t előbb review-zni és a
+  parser/guard mutációs tesztjeivel együtt bővíteni kell.
 
 > **Ha a Railway Postgres főverziót vált** (ma `postgres-ssl:18`, a workflow
 > `PG_IMAGE`-e `postgres:18-alpine`), a workflow `PG_IMAGE` értékét is emelni
@@ -236,8 +253,14 @@ A titkosítás nem szünteti meg a build- és üzemeltetési bizalmi határokat:
   teszi a hozzá tartozó artifactokat. Legalább két elkülönített offline másolat,
   dokumentált hozzáférők és rotációs eljárás szükséges; a régi kulcsot a régi
   artifactok lejártáig meg kell őrizni.
+- **Guard parser dependency:** a workflow-k strukturált ellenőrzése közvetlen,
+  exact `yaml@2.9.0` devDependencyre támaszkodik. A `package.json` és
+  `package-lock.json` együtt, a registry-integrity és a `npm ls yaml` eredmény
+  külön dependency/security review-t igényel; a lockfile kézi szerkesztése vagy
+  a Payload pinek mellékes módosítása nem elfogadható.
 
-Merge önmagában nem igazolja az offsite mentést. Release előtt kötelező: a két
+Merge önmagában nem igazolja az offsite mentést. Release előtt kötelező: a
+package/lock és a workflow-delta emberi security review-ja, a két
 GitHub-konfiguráció emberi felvétele, a recipient kétfős out-of-band
 ellenőrzése, egy kézi workflow-futás, az artifact letöltése és offline
 visszafejtése, majd üres eldobható adatbázisba `--exit-on-error` restore és a

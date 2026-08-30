@@ -18,7 +18,9 @@
 #      a mentés attól még fut.
 #
 # TITOKKEZELÉS: a DATABASE_URI kizárólag `env:`-ként megy a lépésbe és a
-# konténerbe (`--env DATABASE_URI`), az értéke sehol nem kerül parancssorba
+# konténerbe (`--env DATABASE_URI`). Ott egy rövid életű, 0600-as libpq service
+# file-ba kerül, majd az env változó törlődik; a pg_dump csak PGSERVICE és
+# PGSERVICEFILE alapján kapcsolódik. Az érték sehol nem kerül parancssorba
 # (`ps`-be), echo-ba vagy logba. A BACKUP_AGE_RECIPIENT nyilvános kulcs,
 # repository variable-ként érkezik; a hozzá tartozó privát kulcs kizárólag
 # offline marad. Bármelyik konfiguráció hiánya piros, fail-closed futás.
@@ -106,15 +108,186 @@ jobs:
           FILE="kineticare-$(date -u +%Y%m%d-%H%M%S).dump"
           echo "file=${FILE}" >> "$GITHUB_OUTPUT"
           docker pull --quiet "${PG_IMAGE}"
-          # A DATABASE_URI a konténerbe környezeti változóként megy át (érték
-          # nélküli `--env`), és csak a konténeren belül, idézőjelben oldódik
-          # fel — a host parancssorában sosem jelenik meg.
+          # A DATABASE_URI a konténerbe érték nélküli `--env` opcióval megy át,
+          # ezért a host és a docker parancssorában sem jelenik meg. A konténer
+          # 0600-as libpq service file-t készít belőle, majd az eredeti env
+          # változót még a pg_dump indítása előtt törli.
           docker run --rm \
             --env DATABASE_URI \
             --env "DUMP_TARGET=/backups/${FILE}" \
             --volume "${PWD}/backups:/backups" \
             "${PG_IMAGE}" \
-            sh -c 'pg_dump --dbname="$DATABASE_URI" --format=custom --file="$DUMP_TARGET"'
+            sh -ceu '
+              SERVICE_FILE="/tmp/kineticare-pg-service.$$"
+
+              cleanup_service() {
+                unset DATABASE_URI CONNECTION_URI PGSERVICE PGSERVICEFILE
+                rm -f -- "${SERVICE_FILE}"
+              }
+              fail_config() {
+                echo "::error title=Érvénytelen DATABASE_URI::A mentési adatbázis-kapcsolat nem alakítható biztonságos libpq service konfigurációvá."
+                exit 1
+              }
+              decode_uri_component() {
+                printf "%s" "$1" | awk "
+                  function hex_value(char, position) {
+                    position = index(\"0123456789ABCDEF\", toupper(char))
+                    return position - 1
+                  }
+                  {
+                    for (index_in = 1; index_in <= length(\$0); index_in++) {
+                      char = substr(\$0, index_in, 1)
+                      if (char == \"%\") {
+                        if (index_in + 2 > length(\$0)) exit 2
+                        high = hex_value(substr(\$0, index_in + 1, 1))
+                        low = hex_value(substr(\$0, index_in + 2, 1))
+                        if (high < 0 || low < 0) exit 2
+                        code = high * 16 + low
+                        if (code < 32 || code == 127) exit 3
+                        printf \"%c\", code
+                        index_in += 2
+                      } else {
+                        printf \"%s\", char
+                      }
+                    }
+                  }
+                "
+              }
+              safe_service_value() {
+                [ -n "$1" ] || return 1
+                case "$1" in
+                  [[:space:]]*|*[[:space:]]) return 1 ;;
+                esac
+                ! printf "%s" "$1" | LC_ALL=C grep -q "[[:cntrl:]]"
+              }
+
+              trap cleanup_service EXIT
+              trap "exit 129" HUP
+              trap "exit 130" INT
+              trap "exit 143" TERM
+              umask 077
+              printf "%s\n" "${DATABASE_URI}" > "${SERVICE_FILE}"
+              unset DATABASE_URI
+              chmod 0600 "${SERVICE_FILE}"
+              [ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config
+              [ "$(wc -l < "${SERVICE_FILE}")" -eq 1 ] || fail_config
+              IFS= read -r CONNECTION_URI < "${SERVICE_FILE}"
+
+              case "${CONNECTION_URI}" in
+                postgresql://*) URI_BODY="${CONNECTION_URI#postgresql://}" ;;
+                postgres://*) URI_BODY="${CONNECTION_URI#postgres://}" ;;
+                *) fail_config ;;
+              esac
+              case "${URI_BODY}" in
+                *#*|*/*/*) fail_config ;;
+                */*) ;;
+                *) fail_config ;;
+              esac
+
+              AUTHORITY="${URI_BODY%%/*}"
+              DATABASE_AND_QUERY="${URI_BODY#*/}"
+              case "${AUTHORITY}" in
+                *@*) ;;
+                *) fail_config ;;
+              esac
+              USER_INFO="${AUTHORITY%@*}"
+              HOST_PORT="${AUTHORITY##*@}"
+              case "${USER_INFO}" in
+                *@*) fail_config ;;
+              esac
+              case "${USER_INFO}" in
+                *:*) ;;
+                *) fail_config ;;
+              esac
+              USER_ENCODED="${USER_INFO%%:*}"
+              PASSWORD_ENCODED="${USER_INFO#*:}"
+
+              case "${HOST_PORT}" in
+                \[*\]:*)
+                  HOST_ENCODED="${HOST_PORT%%]*}"
+                  HOST_ENCODED="${HOST_ENCODED#\[}"
+                  PORT_ENCODED="${HOST_PORT#*]}"
+                  PORT_ENCODED="${PORT_ENCODED#:}"
+                  ;;
+                \[*\])
+                  HOST_ENCODED="${HOST_PORT#\[}"
+                  HOST_ENCODED="${HOST_ENCODED%\]}"
+                  PORT_ENCODED="5432"
+                  ;;
+                *:*:*) fail_config ;;
+                *:*)
+                  HOST_ENCODED="${HOST_PORT%:*}"
+                  PORT_ENCODED="${HOST_PORT##*:}"
+                  ;;
+                *)
+                  HOST_ENCODED="${HOST_PORT}"
+                  PORT_ENCODED="5432"
+                  ;;
+              esac
+
+              case "${DATABASE_AND_QUERY}" in
+                *\?*)
+                  DATABASE_ENCODED="${DATABASE_AND_QUERY%%\?*}"
+                  QUERY="${DATABASE_AND_QUERY#*\?}"
+                  ;;
+                *)
+                  DATABASE_ENCODED="${DATABASE_AND_QUERY}"
+                  QUERY=""
+                  ;;
+              esac
+
+              PG_USER="$(decode_uri_component "${USER_ENCODED}")" || fail_config
+              PG_PASSWORD="$(decode_uri_component "${PASSWORD_ENCODED}")" || fail_config
+              PG_HOST="$(decode_uri_component "${HOST_ENCODED}")" || fail_config
+              PG_PORT="$(decode_uri_component "${PORT_ENCODED}")" || fail_config
+              PG_DATABASE="$(decode_uri_component "${DATABASE_ENCODED}")" || fail_config
+              safe_service_value "${PG_USER}" || fail_config
+              safe_service_value "${PG_PASSWORD}" || fail_config
+              safe_service_value "${PG_HOST}" || fail_config
+              safe_service_value "${PG_PORT}" || fail_config
+              safe_service_value "${PG_DATABASE}" || fail_config
+              case "${PG_PORT}" in
+                *[!0-9]*) fail_config ;;
+              esac
+
+              {
+                printf "%s\n" "[kineticare_backup]"
+                printf "host=%s\n" "${PG_HOST}"
+                printf "port=%s\n" "${PG_PORT}"
+                printf "user=%s\n" "${PG_USER}"
+                printf "password=%s\n" "${PG_PASSWORD}"
+                printf "dbname=%s\n" "${PG_DATABASE}"
+              } > "${SERVICE_FILE}"
+
+              while [ -n "${QUERY}" ]; do
+                case "${QUERY}" in
+                  *\&*) QUERY_PAIR="${QUERY%%&*}"; QUERY="${QUERY#*&}" ;;
+                  *) QUERY_PAIR="${QUERY}"; QUERY="" ;;
+                esac
+                case "${QUERY_PAIR}" in
+                  *=*) ;;
+                  *) fail_config ;;
+                esac
+                QUERY_KEY="$(decode_uri_component "${QUERY_PAIR%%=*}")" || fail_config
+                QUERY_VALUE="$(decode_uri_component "${QUERY_PAIR#*=}")" || fail_config
+                safe_service_value "${QUERY_VALUE}" || fail_config
+                case "${QUERY_KEY}" in
+                  application_name|channel_binding|connect_timeout|load_balance_hosts|require_auth|sslmode|target_session_attrs)
+                    printf "%s=%s\n" "${QUERY_KEY}" "${QUERY_VALUE}" >> "${SERVICE_FILE}"
+                    ;;
+                  *) fail_config ;;
+                esac
+              done
+
+              chmod 0600 "${SERVICE_FILE}"
+              [ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config
+              unset CONNECTION_URI URI_BODY AUTHORITY DATABASE_AND_QUERY USER_INFO HOST_PORT
+              unset USER_ENCODED PASSWORD_ENCODED HOST_ENCODED PORT_ENCODED DATABASE_ENCODED
+              unset PG_USER PG_PASSWORD PG_HOST PG_PORT PG_DATABASE QUERY QUERY_PAIR QUERY_KEY QUERY_VALUE
+              export PGSERVICE="kineticare_backup"
+              export PGSERVICEFILE="${SERVICE_FILE}"
+              pg_dump --format=custom --file="${DUMP_TARGET}"
+            '
 
       # Egy le nem ellenőrzött mentés csak hamis biztonságérzet. A
       # `pg_restore --list` a teljes archívumot végigolvassa: csonka vagy

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
-import YAML from 'yaml'
+import YAML, { isMap, isPair, isSeq } from 'yaml'
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url))
 const WORKFLOWS = join(REPO, '.github', 'workflows')
@@ -45,6 +45,15 @@ const REQUIRED_CLEANUP_RUN = [
   'fi',
 ].join('\n')
 
+const REQUIRED_DUMP_DOCKER_COMMANDS = [
+  'docker pull --quiet "${PG_IMAGE}"',
+  'docker run --rm --env DATABASE_URI --env "DUMP_TARGET=/backups/${FILE}" --volume "${PWD}/backups:/backups" "${PG_IMAGE}" sh -ceu \'',
+]
+
+const REQUIRED_INTEGRITY_DOCKER_COMMANDS = [
+  'docker run --rm --volume "${PWD}/backups:/backups" "${PG_IMAGE}" pg_restore --list "/backups/${FILE}" > toc.txt || STATUS=$?',
+]
+
 interface WorkflowInspection {
   readonly violations: string[]
   readonly seenActions: Set<string>
@@ -75,6 +84,10 @@ function scalarText(node: unknown): string | undefined {
 function nodeItems(node: unknown): readonly unknown[] {
   const items = readNodeProperty(node, 'items')
   return Array.isArray(items) ? items : []
+}
+
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key)
 }
 
 function lineOf(source: string, node: unknown): number {
@@ -172,7 +185,7 @@ function inspectAst(
   violations: string[],
   seenActions: Set<string>,
 ): void {
-  if (nodeType(node) === 'PAIR') {
+  if (isPair(node)) {
     const keyNode = readNodeProperty(node, 'key')
     const valueNode = readNodeProperty(node, 'value')
     const key = scalarText(keyNode)
@@ -186,13 +199,11 @@ function inspectAst(
         `${location(file, source, keyNode)}: continue-on-error biztonsági workflow-ban tiltott`,
       )
     } else if (key === 'steps') {
-      const valueType = nodeType(valueNode)
-      if (valueType !== 'SEQ' && valueType !== 'FLOW_SEQ') {
+      if (!isSeq(valueNode)) {
         violations.push(`${location(file, source, valueNode)}: a steps értéke csak lista lehet`)
       } else {
-        for (const stepNode of nodeItems(valueNode)) {
-          const stepType = nodeType(stepNode)
-          if (stepType !== 'MAP' && stepType !== 'FLOW_MAP') {
+        for (const stepNode of valueNode.items) {
+          if (!isMap(stepNode)) {
             violations.push(
               `${location(file, source, stepNode)}: minden workflow step mapping kell legyen`,
             )
@@ -218,6 +229,67 @@ function backupSteps(parsed: unknown): readonly Record<string, unknown>[] | unde
   return Array.isArray(steps) && steps.every(isRecord) ? steps : undefined
 }
 
+function inspectJobPermissions(file: string, parsed: unknown, violations: string[]): void {
+  if (!isRecord(parsed) || !isRecord(parsed.jobs)) return
+
+  for (const [jobName, job] of Object.entries(parsed.jobs)) {
+    if (!isRecord(job)) continue
+    if (hasOwn(job, 'permissions')) {
+      violations.push(`${file}: a jobs.${jobName}.permissions felülírás tiltott`)
+    }
+    if (isRecord(job.env) && hasOwn(job.env, 'PG_IMAGE')) {
+      violations.push(`${file}: a jobs.${jobName}.env.PG_IMAGE felülírás tiltott`)
+    }
+    if (!Array.isArray(job.steps)) continue
+    for (const [stepIndex, step] of job.steps.entries()) {
+      if (isRecord(step) && isRecord(step.env) && hasOwn(step.env, 'PG_IMAGE')) {
+        violations.push(
+          `${file}: a jobs.${jobName}.steps[${stepIndex}].env.PG_IMAGE felülírás tiltott`,
+        )
+      }
+    }
+  }
+}
+
+function dockerCommands(run: string): string[] {
+  const lines = run.split('\n')
+  const commands: string[] = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    let line = lines[index].trim()
+    if (!/^docker (?:pull|run)\b/.test(line)) continue
+
+    const parts: string[] = []
+    while (true) {
+      const continued = line.endsWith('\\')
+      parts.push(continued ? line.slice(0, -1).trimEnd() : line)
+      if (!continued || index + 1 >= lines.length) break
+      index += 1
+      line = lines[index].trim()
+    }
+    commands.push(parts.join(' '))
+  }
+
+  return commands
+}
+
+function stepWithId(
+  steps: readonly Record<string, unknown>[],
+  id: string,
+  violations: string[],
+): Record<string, unknown> | undefined {
+  const matches = steps.filter((step) => step.id === id)
+  if (matches.length !== 1) {
+    violations.push(`db-backup.yml: pontosan egy ${id} id-jű step kell`)
+    return undefined
+  }
+  return matches[0]
+}
+
+function countExactLine(run: string, expected: string): number {
+  return run.split('\n').filter((line) => line.trim() === expected).length
+}
+
 function inspectBackupShape(parsed: unknown, violations: string[]): void {
   if (!isRecord(parsed)) {
     violations.push('db-backup.yml: a workflow gyökere nem mapping')
@@ -228,11 +300,105 @@ function inspectBackupShape(parsed: unknown, violations: string[]): void {
       'db-backup.yml: a backup workflow minimális jogosultsága permissions: {} kell legyen',
     )
   }
+  if (!isRecord(parsed.env) || parsed.env.PG_IMAGE !== BACKUP_POSTGRES) {
+    violations.push(`db-backup.yml: a PG_IMAGE pontosan ${BACKUP_POSTGRES} kell legyen`)
+  }
 
   const steps = backupSteps(parsed)
   if (steps === undefined) {
     violations.push('db-backup.yml: a jobs.backup.steps nem érvényes step-lista')
     return
+  }
+
+  const dump = stepWithId(steps, 'dump', violations)
+  const integrity = stepWithId(steps, 'integrity', violations)
+  const dumpRun = typeof dump?.run === 'string' ? dump.run : ''
+  const integrityRun = typeof integrity?.run === 'string' ? integrity.run : ''
+  if (dumpRun === '') {
+    violations.push('db-backup.yml: a dump step run scriptje hiányzik')
+  } else {
+    if (dockerCommands(dumpRun).join('\n') !== REQUIRED_DUMP_DOCKER_COMMANDS.join('\n')) {
+      violations.push(
+        'db-backup.yml: a dump docker pull/run sinkeknek közvetlenül a rögzített PG_IMAGE-et kell használniuk',
+      )
+    }
+    const dumpImageLines = dumpRun
+      .split('\n')
+      .filter((line) => line.includes('PG_IMAGE'))
+      .map((line) => line.trim())
+    if (
+      dumpImageLines.join('\n') !==
+      ['docker pull --quiet "${PG_IMAGE}"', '"${PG_IMAGE}" \\'].join('\n')
+    ) {
+      violations.push('db-backup.yml: a dump run csak a jóváhagyott PG_IMAGE sinkeket említheti')
+    }
+    if (/^\s*(?:export\s+)?PG_IMAGE=/m.test(dumpRun)) {
+      violations.push('db-backup.yml: a dump run nem írhatja felül a rögzített PG_IMAGE-et')
+    }
+    if (dumpRun.includes('--dbname')) {
+      violations.push('db-backup.yml: a pg_dump nem kaphat credentiales --dbname argumentumot')
+    }
+
+    const writeIndex = dumpRun.indexOf('printf "%s\\n" "${DATABASE_URI}" > "${SERVICE_FILE}"')
+    const unsetMatch = /^\s*unset DATABASE_URI\s*$/m.exec(dumpRun)
+    const unsetIndex = unsetMatch?.index ?? -1
+    const exportServiceIndex = dumpRun.indexOf('export PGSERVICE="kineticare_backup"')
+    const dumpIndex = dumpRun.indexOf('pg_dump --format=custom --file="${DUMP_TARGET}"')
+    if (
+      writeIndex < 0 ||
+      unsetIndex < 0 ||
+      exportServiceIndex < 0 ||
+      dumpIndex < 0 ||
+      writeIndex >= unsetIndex ||
+      unsetIndex >= exportServiceIndex ||
+      exportServiceIndex >= dumpIndex
+    ) {
+      violations.push(
+        'db-backup.yml: a DATABASE_URI → service file → unset → PGSERVICE → pg_dump sorrend kötelező',
+      )
+    }
+    if (countExactLine(dumpRun, 'unset DATABASE_URI') !== 1) {
+      violations.push(
+        'db-backup.yml: a DATABASE_URI-t pontosan egyszer, a feldolgozás elején kell unsetelni',
+      )
+    }
+    if (
+      !dumpRun.includes('trap cleanup_service EXIT') ||
+      !dumpRun.includes('rm -f -- "${SERVICE_FILE}"') ||
+      countExactLine(dumpRun, 'chmod 0600 "${SERVICE_FILE}"') !== 2 ||
+      countExactLine(dumpRun, '[ "$(stat -c "%a" "${SERVICE_FILE}")" = "600" ] || fail_config') !==
+        2 ||
+      !dumpRun.includes('export PGSERVICEFILE="${SERVICE_FILE}"')
+    ) {
+      violations.push(
+        'db-backup.yml: a service file 0600-as permissionje, PGSERVICEFILE exportja és trap cleanupja kötelező',
+      )
+    }
+  }
+
+  if (integrityRun === '') {
+    violations.push('db-backup.yml: az integrity step run scriptje hiányzik')
+  } else {
+    if (dockerCommands(integrityRun).join('\n') !== REQUIRED_INTEGRITY_DOCKER_COMMANDS.join('\n')) {
+      violations.push(
+        'db-backup.yml: az integrity docker run sinknek közvetlenül a rögzített PG_IMAGE-et kell használnia',
+      )
+    }
+    const integrityImageLines = integrityRun
+      .split('\n')
+      .filter((line) => line.includes('PG_IMAGE'))
+      .map((line) => line.trim())
+    if (integrityImageLines.join('\n') !== '"${PG_IMAGE}" \\') {
+      violations.push(
+        'db-backup.yml: az integrity run csak a jóváhagyott PG_IMAGE sinket említheti',
+      )
+    }
+    if (/DATABASE_URI|PGSERVICE|PGPASS|password=/i.test(integrityRun)) {
+      violations.push('db-backup.yml: az integritáslépés nem kaphat adatbázis-credentialt')
+    }
+    if (/^\s*(?:export\s+)?PG_IMAGE=/m.test(integrityRun)) {
+      violations.push('db-backup.yml: az integrity run nem írhatja felül a rögzített PG_IMAGE-et')
+    }
   }
 
   const encryptIndexes = steps
@@ -304,7 +470,7 @@ function inspectWorkflowSecurity(
 
   let document: ReturnType<typeof YAML.parseDocument>
   try {
-    document = YAML.parseDocument(source, { keepCstNodes: true })
+    document = YAML.parseDocument(source)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     return { violations: [`${file}: YAML parser exception: ${message}`], seenActions }
@@ -319,8 +485,10 @@ function inspectWorkflowSecurity(
   if (violations.length > 0) return { violations, seenActions }
 
   inspectAst(file, source, document.contents, violations, seenActions)
+  const parsed = document.toJSON()
+  inspectJobPermissions(file, parsed, violations)
   if (options.inspectBackup) {
-    inspectBackupShape(document.toJSON(), violations)
+    inspectBackupShape(parsed, violations)
   }
 
   return { violations, seenActions }
@@ -351,6 +519,19 @@ describe('CI/platform supply-chain és backup guard', () => {
   it('mindkét PostgreSQL image tag és multi-arch digest együtt rögzített', () => {
     expect(workflow('ci.yml')).toContain(`image: ${CI_POSTGRES}`)
     expect(workflow('db-backup.yml')).toContain(`PG_IMAGE: ${BACKUP_POSTGRES}`)
+  })
+
+  it('a strukturált YAML parser exact direct devDependency', () => {
+    const manifest = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as unknown
+    const lockfile = JSON.parse(readFileSync(join(REPO, 'package-lock.json'), 'utf8')) as unknown
+
+    expect(isRecord(manifest) && isRecord(manifest.devDependencies)).toBe(true)
+    expect(isRecord(manifest) ? manifest.devDependencies : undefined).toMatchObject({
+      yaml: '2.9.0',
+    })
+    expect(isRecord(lockfile) && isRecord(lockfile.packages)).toBe(true)
+    const lockPackages = isRecord(lockfile) && isRecord(lockfile.packages) ? lockfile.packages : {}
+    expect(lockPackages['node_modules/yaml']).toMatchObject({ version: '2.9.0', dev: true })
   })
 
   it('a backup mindkét konfiguráció hiányára fail-closed', () => {
@@ -437,8 +618,92 @@ describe('CI/platform supply-chain és backup guard', () => {
       'if: always()\n        run:',
       'if: always()\n        continue-on-error: true\n        run:',
     ],
+    [
+      'mutable pull és run image',
+      'docker pull --quiet "${PG_IMAGE}"',
+      'docker pull --quiet postgres:18-alpine',
+    ],
+    [
+      'mutable dump run image',
+      '            "${PG_IMAGE}" \\\n            sh -ceu',
+      '            postgres:18-alpine \\\n            sh -ceu',
+    ],
+    [
+      'mutable integrity run image',
+      '            "${PG_IMAGE}" \\\n            pg_restore --list',
+      '            postgres:18-alpine \\\n            pg_restore --list',
+    ],
+    [
+      'DATABASE_URI argv visszacsempészése',
+      'pg_dump --format=custom --file="${DUMP_TARGET}"',
+      'pg_dump --dbname="$DATABASE_URI" --format=custom --file="${DUMP_TARGET}"',
+    ],
+    [
+      'service env unset kikapcsolása',
+      '              unset DATABASE_URI\n              chmod 0600',
+      '              : # DATABASE_URI unset kikapcsolva\n              chmod 0600',
+    ],
+    [
+      'service file permission gyengítése',
+      'chmod 0600 "${SERVICE_FILE}"',
+      'chmod 0644 "${SERVICE_FILE}"',
+    ],
+    [
+      'service file cleanup kikapcsolása',
+      'rm -f -- "${SERVICE_FILE}"',
+      ': # service cleanup kikapcsolva',
+    ],
   ])('a backup %s mutációját elutasítja', (_label, before, after) => {
     const source = replaceRequired(workflow('db-backup.yml'), before, after)
+    expect(
+      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations,
+    ).not.toEqual([])
+  })
+
+  it('a job-szintű permissions felülírást elutasítja', () => {
+    const source = replaceRequired(
+      workflow('db-backup.yml'),
+      '  backup:\n    name:',
+      '  backup:\n    permissions: { contents: write }\n    name:',
+    )
+    expect(
+      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
+        '\n',
+      ),
+    ).toMatch(/jobs\.backup\.permissions/)
+  })
+
+  it.each([
+    [
+      'job env',
+      '  backup:\n    name:',
+      '  backup:\n    env: { PG_IMAGE: postgres:18-alpine }\n    name:',
+    ],
+    [
+      'dump step env',
+      '        env:\n          DATABASE_URI: ${{ secrets.DATABASE_URI }}',
+      '        env:\n          PG_IMAGE: postgres:18-alpine\n          DATABASE_URI: ${{ secrets.DATABASE_URI }}',
+    ],
+    [
+      'integrity step env',
+      '        env:\n          FILE: ${{ steps.dump.outputs.file }}',
+      '        env:\n          PG_IMAGE: postgres:18-alpine\n          FILE: ${{ steps.dump.outputs.file }}',
+    ],
+  ])('a %s PG_IMAGE felülírást elutasítja', (_label, before, after) => {
+    const source = replaceRequired(workflow('db-backup.yml'), before, after)
+    expect(
+      inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations.join(
+        '\n',
+      ),
+    ).toMatch(/env\.PG_IMAGE/)
+  })
+
+  it('a pusztán deklarált PG_IMAGE nem fedez mutable docker sinkeket', () => {
+    const source = workflow('db-backup.yml')
+      .replace('docker pull --quiet "${PG_IMAGE}"', 'docker pull --quiet postgres:18-alpine')
+      .replaceAll('            "${PG_IMAGE}" \\', '            postgres:18-alpine \\')
+
+    expect(source).toContain(`PG_IMAGE: ${BACKUP_POSTGRES}`)
     expect(
       inspectWorkflowSecurity('db-backup.yml', source, { inspectBackup: true }).violations,
     ).not.toEqual([])
