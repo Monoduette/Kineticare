@@ -10,8 +10,10 @@ import { fileURLToPath } from 'node:url'
 
 import { isAdmin } from './access'
 import { AuditLogs } from './collections/AuditLogs'
+import { RefundIntents } from './collections/RefundIntents'
 import { ensureHomeImages, ensureHomeLayout, ensureHomeTestimonials } from './lib/home-seed'
 import { ensureMediaFiles } from './lib/media-restore'
+import { guardDestructiveMigrationCommands } from './lib/migrations/destructive-migration-guard'
 import { Categories } from './collections/Categories'
 import { CourseProgress } from './collections/CourseProgress'
 import { Media } from './collections/Media'
@@ -601,6 +603,7 @@ export default buildConfig({
     CourseProgress,
     WebhookEvents,
     AuditLogs,
+    RefundIntents,
   ],
   // FixedToolbarFeature: a szerkesztő fölött állandóan látszó eszköztár —
   // laikus szerkesztőnek sokkal felfedezhetőbb, mint a lebegő (kijelölésre
@@ -635,37 +638,39 @@ export default buildConfig({
   // elvágott, tétlen TCP-kapcsolatokon a `pg` egyébként ~45 mp-ig (a TCP
   // retransmission-timeoutig) vár, majd „Connection terminated unexpectedly"
   // hibával dől el — emiatt akadt el korábban az admin user létrehozása is.
-  db: postgresAdapter({
-    // A first-register lock utáni recountnak friss commitot kell látnia.
-    transactionOptions: { isolationLevel: 'read committed' },
-    pool: {
-      connectionString: process.env.DATABASE_URI || '',
-      // TCP keepalive: életben tartja a kapcsolatot, és a megszakadást
-      // másodpercek alatt észreveszi a percek helyett.
-      keepAlive: true,
-      keepAliveInitialDelayMillis: 10_000,
-      // A pool a hálózat előtt dobja el a tétlen kapcsolatot, hogy sose
-      // használjon újra olyan socketet, amit a privát háló már elvágott.
-      idleTimeoutMillis: 30_000,
-      // Fail-fast: ha 10 mp alatt nincs kapcsolat, hiba jöjjön, ne fagyás.
-      connectionTimeoutMillis: 10_000,
-      // Egyetlen kérés se álljon percekig egy beragadt lekérdezésen.
-      statement_timeout: 30_000,
-      query_timeout: 30_000,
-      // Sorzár-incidens: tétlen nyitott tranzakció zárolta a users sort.
-      // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
-      // Aktív hosszú migrate/seed nem esik bele.
-      idle_in_transaction_session_timeout: 60_000,
-      // W3 (2026-08-22): `pool.max` SZÁNDÉKOSAN nincs beállítva. A default 10
-      // a `pg` értéke. Railway `max_connections` × replikaszám nélkül a cap
-      // vagy kimeríti a DB-t, vagy hamis biztonságot ad. A beágyazott zár
-      // (rendelés → e-mail) a sorrenden múlik, nem a pool méretén.
-    },
-    // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
-    // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.
-    // Séma csak migrációs lánccal. A `push: false` őr-teszt védi.
-    push: false,
-  }),
+  db: guardDestructiveMigrationCommands(
+    postgresAdapter({
+      // A first-register lock utáni recountnak friss commitot kell látnia.
+      transactionOptions: { isolationLevel: 'read committed' },
+      pool: {
+        connectionString: process.env.DATABASE_URI || '',
+        // TCP keepalive: életben tartja a kapcsolatot, és a megszakadást
+        // másodpercek alatt észreveszi a percek helyett.
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10_000,
+        // A pool a hálózat előtt dobja el a tétlen kapcsolatot, hogy sose
+        // használjon újra olyan socketet, amit a privát háló már elvágott.
+        idleTimeoutMillis: 30_000,
+        // Fail-fast: ha 10 mp alatt nincs kapcsolat, hiba jöjjön, ne fagyás.
+        connectionTimeoutMillis: 10_000,
+        // Egyetlen kérés se álljon percekig egy beragadt lekérdezésen.
+        statement_timeout: 30_000,
+        query_timeout: 30_000,
+        // Sorzár-incidens: tétlen nyitott tranzakció zárolta a users sort.
+        // A statement_timeout a futó lekérdezést öli; ez a tétlen sessiont.
+        // Aktív hosszú migrate/seed nem esik bele.
+        idle_in_transaction_session_timeout: 60_000,
+        // W3 (2026-08-22): `pool.max` SZÁNDÉKOSAN nincs beállítva. A default 10
+        // a `pg` értéke. Railway `max_connections` × replikaszám nélkül a cap
+        // vagy kimeríti a DB-t, vagy hamis biztonságot ad. A beágyazott zár
+        // (rendelés → e-mail) a sorrenden múlik, nem a pool méretén.
+      },
+      // Dev drizzle-push ki: interaktív TÁBLATÖRLÉS-prompt, amin a nem-interaktív
+      // futás örökre megakad; rossz DATABASE_URI mellett adatot törölne.
+      // Séma csak migrációs lánccal. A `push: false` őr-teszt védi.
+      push: false,
+    }),
+  ),
   sharp,
   // T-019 lezárás: a feltölthető fájlok mérete globálisan max. 10 MB (bájtban).
   // Collection-szintű fileSize-limit a pinned 3.88.0-ban nem elérhető, ezért a
