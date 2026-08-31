@@ -37,6 +37,20 @@ regexes = [
   # A korábbi fixtúra-érték. A munkafában már nem szerepel (DUMMY-ra cseréltük),
   # de a git-történetben benne maradt, a kapu pedig a teljes historyt vizsgálja.
   '''Kecskemeti42Futo''',
+  # A jelszó-politika teszt két korábbi változatának további szintetikus
+  # bemenetei (07f1405 és e07023c). Mind kizárólag a validátor különböző
+  # szabályágait tesztelte; a munkafában már DUMMY fixtúrák vagy semlegesebb
+  # minták váltották őket. A teljes-history scan miatt az értékeket egyenként,
+  # pontos egyezéssel engedjük el, így a fájlban megjelenő más credential továbbra
+  # is fennakad.
+  '''^CSAKNAGYBETU123$''',
+  '''^KovacsBela99Jelszo$''',
+  '''^kovacs\.belaA12345$''',
+  '''^KOVACS\.BELAa12345$''',
+  '''^DUMMYNAGYBETU123$''',
+  '''^DummyTeszt99Jelszo$''',
+  '''^dummy\.tesztA12345$''',
+  '''^DUMMY\.TESZTa12345$''',
   # A Bunny-jegy aláírásának ISMERT TESZTVEKTORAI (src/__tests__/stream-token.test.ts):
   # a kifejezetten DUMMY-nak jelölt kulcsból (DUMMY-BUNNY-TOKEN-AUTH-KEY-NEM-VALODI-TITOK)
   # számolt SHA256-kimenetek. Egy hash-kimenet nem titok — a bemenete pedig a
