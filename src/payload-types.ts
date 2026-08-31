@@ -88,6 +88,7 @@ export interface Config {
     users: User;
     'webhook-events': WebhookEvent;
     'audit-logs': AuditLog;
+    'refund-intents': RefundIntent;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -112,6 +113,7 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     'webhook-events': WebhookEventsSelect<false> | WebhookEventsSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
+    'refund-intents': RefundIntentsSelect<false> | RefundIntentsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -2610,6 +2612,43 @@ export interface AuditLog {
   createdAt: string;
 }
 /**
+ * Passzív, csak olvasható Phase A visszatérítési főkönyv.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "refund-intents".
+ */
+export interface RefundIntent {
+  id: number;
+  order: number | Order;
+  actor: number | User;
+  requestedAmountHuf: number;
+  provider: 'barion';
+  providerPaymentId: string;
+  providerTransactionId: string;
+  state:
+    | 'prepared'
+    | 'provider_started'
+    | 'provider_failed'
+    | 'provider_unknown'
+    | 'provider_succeeded'
+    | 'committed'
+    | 'manual_review';
+  requestHash: string;
+  idempotencyKeyHash: string;
+  activeOrderKey?: string | null;
+  schemaVersion: number;
+  refundSequence: number;
+  currency: 'HUF';
+  reason?: string | null;
+  providerStartedAt?: string | null;
+  providerResolvedAt?: string | null;
+  committedAt?: string | null;
+  reconciliationCheckedAt?: string | null;
+  reconciliationReference?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -4052,6 +4091,33 @@ export interface AuditLogsSelect<T extends boolean = true> {
   after?: T;
   requestId?: T;
   ipAddress?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "refund-intents_select".
+ */
+export interface RefundIntentsSelect<T extends boolean = true> {
+  order?: T;
+  actor?: T;
+  requestedAmountHuf?: T;
+  provider?: T;
+  providerPaymentId?: T;
+  providerTransactionId?: T;
+  state?: T;
+  requestHash?: T;
+  idempotencyKeyHash?: T;
+  activeOrderKey?: T;
+  schemaVersion?: T;
+  refundSequence?: T;
+  currency?: T;
+  reason?: T;
+  providerStartedAt?: T;
+  providerResolvedAt?: T;
+  committedAt?: T;
+  reconciliationCheckedAt?: T;
+  reconciliationReference?: T;
   updatedAt?: T;
   createdAt?: T;
 }
