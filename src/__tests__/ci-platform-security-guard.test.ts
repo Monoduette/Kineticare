@@ -63,7 +63,7 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   tsx: '4.23.12',
   typescript: '5.9.3',
   vite: '8.2.1',
-  vitest: '4.1.10',
+  vitest: '4.1.11',
 }
 
 interface PackageManifest {
