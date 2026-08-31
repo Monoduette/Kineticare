@@ -15,22 +15,22 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 
 ## Parancsok
 
-| Parancs | Leírás |
-| --- | --- |
-| `npm run dev` | Fejlesztői szerver indítása — friss/üres adatbázisnál ELŐTTE `npx payload migrate` kötelező (a dev séma-push ki van kapcsolva, lásd a 22a. üzemeltetési tanulságot) |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint-ellenőrzés |
-| `npm run typecheck` | TypeScript típusellenőrzés |
-| `npm run test` | Tesztek futtatása |
-| `npm run seed` | Demó-/tesztadatok betöltése (`src/scripts/seed.ts`) |
-| `npm run grant:purchase` | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`) |
-| `npm run import:customers` | Tömeges vevő-import CSV-ből (`src/scripts/import-customers.ts`; útmutató: `docs/vasarlo-migracio-terv.md`) |
-| `npm run backup:db` | Adatbázis-mentés integritás-ellenőrzéssel (`src/scripts/backup-db.ts`; útmutató: `docs/adatbazis-mentes.md`) |
-| `npm run import:tudastar` | A Tudástár hat cikkének betöltése markdownból (`src/scripts/import-tudastar-cikkek.ts`); alapból próbafutás, íráshoz `OWNER_TUDASTAR_CONFIRM=igen`, publikáláshoz `OWNER_TUDASTAR_PUBLISH=igen`; útmutató: `docs/tudastar-cikkek-betoltese.md` |
-| `npm run seed:legacy` | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`) |
-| `npm run content:owner` | Tulajdonos által jóváhagyott, egyszeri tartalom-javítások (`src/scripts/apply-owner-content.ts`); alapból próbafutás, íráshoz `OWNER_CONTENT_CONFIRM=igen` |
-| `npm run backfill:ar-snapshot` | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md` |
-| `npm run backfill:access-grants` | Hiányzó accessGrants-óra paid dátumából (`src/scripts/backfill-access-grants.ts`); próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md` |
+| Parancs                          | Leírás                                                                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                    | Fejlesztői szerver indítása — friss/üres adatbázisnál ELŐTTE `npx payload migrate` kötelező (a dev séma-push ki van kapcsolva, lásd a 22a. üzemeltetési tanulságot)                                                                            |
+| `npm run build`                  | Production build                                                                                                                                                                                                                               |
+| `npm run lint`                   | ESLint-ellenőrzés                                                                                                                                                                                                                              |
+| `npm run typecheck`              | TypeScript típusellenőrzés                                                                                                                                                                                                                     |
+| `npm run test`                   | Tesztek futtatása                                                                                                                                                                                                                              |
+| `npm run seed`                   | Demó-/tesztadatok betöltése (`src/scripts/seed.ts`)                                                                                                                                                                                            |
+| `npm run grant:purchase`         | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`)                                                                                                                                                                         |
+| `npm run import:customers`       | Tömeges vevő-import CSV-ből (`src/scripts/import-customers.ts`; útmutató: `docs/vasarlo-migracio-terv.md`)                                                                                                                                     |
+| `npm run backup:db`              | Adatbázis-mentés integritás-ellenőrzéssel (`src/scripts/backup-db.ts`; útmutató: `docs/adatbazis-mentes.md`)                                                                                                                                   |
+| `npm run import:tudastar`        | A Tudástár hat cikkének betöltése markdownból (`src/scripts/import-tudastar-cikkek.ts`); alapból próbafutás, íráshoz `OWNER_TUDASTAR_CONFIRM=igen`, publikáláshoz `OWNER_TUDASTAR_PUBLISH=igen`; útmutató: `docs/tudastar-cikkek-betoltese.md` |
+| `npm run seed:legacy`            | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`)                                                                                                                                                                       |
+| `npm run content:owner`          | Tulajdonos által jóváhagyott, egyszeri tartalom-javítások (`src/scripts/apply-owner-content.ts`); alapból próbafutás, íráshoz `OWNER_CONTENT_CONFIRM=igen`                                                                                     |
+| `npm run backfill:ar-snapshot`   | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md`                                                                  |
+| `npm run backfill:access-grants` | Hiányzó accessGrants-óra paid dátumából (`src/scripts/backfill-access-grants.ts`); próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md`                                                               |
 
 ## Kódolási konvenciók
 
@@ -76,10 +76,10 @@ BÁRMELY elemének tervezése vagy módosítása előtt be kell tölteni (gomb, 
 navigáció, szekció, űrlap, állapot, folyamat, tipográfia, szín, elrendezés — akkor
 is, ha „csak" egy szöveget írnál át).
 
-A tulajdonos 2026-08-16-i kikötése, szó szerint: *„semmit nem jelentetek késznek,
+A tulajdonos 2026-08-16-i kikötése, szó szerint: _„semmit nem jelentetek késznek,
 ha csak memóriából dolgoztatok, mindenre kell több tanulmány, kutatás, tudományos
 legyen, valamint világhírű terméktervező cégeknek a tanulmányait kell figyelembe
-venni minden tervezésnél"* — és: a vevői szövegekben nem lehet AI-ízű,
+venni minden tervezésnél"_ — és: a vevői szövegekben nem lehet AI-ízű,
 gondolatjel-halmozó írásmód, natív magyar kell.
 
 Ebből következően minden felületi döntéshez legalább KÉT külső forrás kell
@@ -175,7 +175,7 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
    tábla esetén a `migrate` „Done"-t ír és nem csinál semmit.
 6. **Hosszú (30+ mp) befagyás írásnál = sorzár, nem lassú lekérdezés.** Egy
    beragadt, nyitva maradt tranzakció (`unexpected EOF on client connection with
-   an open transaction`) zárolja a sort, és minden írás megáll rajta. Olvasás
+an open transaction`) zárolja a sort, és minden írás megáll rajta. Olvasás
    közben gyors marad — ez a megkülönböztető jel.
 7. **A `pg` pool hangolása kötelező a Railway privát hálózatán.** A háló elvágja
    a tétlen TCP-kapcsolatokat; keepalive és idle-timeout nélkül a pool halott
@@ -215,7 +215,8 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
     törölni kellett. Meglévő service újraindításához: `redeploy` (snapshot kell
     hozzá) vagy a `railway-agent` `restartServiceTool`-ja.
 14. **A migrációk a deploy részeként FUTNAK.** A start-parancs
-    `npx payload migrate && npm start` — a `railway.json`-ban ÉS a
+    `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start` —
+    kizárólag a lockfile-ból telepített lokális binárisokat használja; a `railway.json`-ban ÉS a
     service-beállításban is (a 2. pont miatt mindkettőt nézd meg). A `&&` miatt
     bukó migráció esetén az app el sem indul → healthcheck-hiba, tehát a baj
     látható, nem néma. **Ellenőrzés:** a deploy-logban ott kell lennie a
@@ -252,7 +253,7 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
     `git merge-base --is-ancestor` ezért hamisan „nincs benne"-t mond. A helyes
     ellenőrzés: `git diff <branch-tip> <squash-commit>` — ha üres, a tartalom
     hiánytalanul átment, és a branch force-with-lease-szel újraalapozható.
-20b. **Futó ügynökök mellett a `git add -A` SZAKADT fájlt commitolhat.** Mérve
+    20b. **Futó ügynökök mellett a `git add -A` SZAKADT fájlt commitolhat.** Mérve
     2026-08-21: a `npm run typecheck` zöld volt, utána `git add -A`, majd a
     CI mégis `TS1002: Unterminated string literal`-lel bukott. A gyökérok
     verseny-helyzet: a mérés és a stage-elés KÖZÖTT az ügynök újraírta a
@@ -271,32 +272,32 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
     lefutott — így a következő commit magával viszi a bestage-elt fájlokat!).
     Használj `git commit -F -` + heredoc-ot, és commit után ellenőrizd a
     `git status`-t.
-22a. **A Payload dev-módú séma-push KI VAN KAPCSOLVA** (`push: false` a
+    22a. **A Payload dev-módú séma-push KI VAN KAPCSOLVA** (`push: false` a
     postgres-adapterben, őr-teszt védi). Ok: séma-eltérésnél a push interaktív,
     TÁBLATÖRLÉST kínáló promptot ad, amin minden nem-interaktív futás némán,
     örökre megakad (mérve: 6+ perc ep_poll, a GET /admin sosem válaszol), rossz
     env mellett pedig éles-alakú adatbázison törölne. Sémaváltozásnál helyben
     is a migrációs lánc az út: `npx payload migrate:create` + `npx payload
-    migrate`. Következmény: friss adatbázisnál a `npm run dev` előtt migrate
+migrate`. Következmény: friss adatbázisnál a `npm run dev` előtt migrate
     kell — enélkül az admin felállni feláll, de a seed/lekérdezések hangos
     warnnal buknak.
 
 22b. **Helyi Postgres a migráció-generáláshoz** (a `pgrun` user kell, mert az
-    `initdb` rootként nem indul): a socket-könyvtárnak `pgrun`-írhatónak kell
-    lennie (`-k <dir>`), és a scratchpad SZÜLŐ könyvtáraira is kell `o+x`
-    bejárási jog, különben a `pg_ctl` „Permission denied"-dal áll le.
+`initdb` rootként nem indul): a socket-könyvtárnak `pgrun`-írhatónak kell
+lennie (`-k <dir>`), és a scratchpad SZÜLŐ könyvtáraira is kell `o+x`
+bejárási jog, különben a `pg_ctl` „Permission denied"-dal áll le.
 
 22c. **A scratchpadben NEM fér el a Postgres unix socketje.** A socket teljes
-    útja legfeljebb **107 bájt** lehet, a session-scratchpad útja önmagában
-    ~90 karakter, tehát a `-k <scratchpad-alkönyvtár>` mindig elbukik:
-    `Unix-domain socket path … is too long` → `could not create any
+útja legfeljebb **107 bájt** lehet, a session-scratchpad útja önmagában
+~90 karakter, tehát a `-k <scratchpad-alkönyvtár>` mindig elbukik:
+`Unix-domain socket path … is too long` → `could not create any
     Unix-domain sockets` → `FATAL`. A hiba megtévesztő, mert a `pg_ctl` csak
-    annyit ír, hogy „could not start server". **Megoldás:** kapcsold ki a unix
-    socketet és menj TCP-n: `-o "-p 5433 -k '' -h 127.0.0.1"`, a kliens pedig
-    `postgres://postgres@127.0.0.1:5433/<db>`. Mellékfeltétel: a `-l <logfile>`
-    fájlt a `pg_ctl` a `pgrun` nevében nyitja, ezért a logfájlnak LÉTEZNIE kell
-    és `pgrun`-tulajdonúnak — különben „Permission denied", és a szerver
-    naplója sosem íródik ki. (Mérve 2026-08-21.)
+annyit ír, hogy „could not start server". **Megoldás:** kapcsold ki a unix
+socketet és menj TCP-n: `-o "-p 5433 -k '' -h 127.0.0.1"`, a kliens pedig
+`postgres://postgres@127.0.0.1:5433/<db>`. Mellékfeltétel: a `-l <logfile>`
+fájlt a `pg_ctl` a `pgrun` nevében nyitja, ezért a logfájlnak LÉTEZNIE kell
+és `pgrun`-tulajdonúnak — különben „Permission denied", és a szerver
+naplója sosem íródik ki. (Mérve 2026-08-21.)
 
 23. **Merge után azonnal a GitHub CI és a Railway production.** A squash-merge
     nem zárja a kört. A `main` CI (`ci.yml` + gitleaks) legyen zöld; a
@@ -322,10 +323,10 @@ a mérés, a tiszta fájl-tulajdonlás és a merge-utáni figyelés szabályai
 
 **Kiosztás (külön kérés nélkül):**
 
-| Szerep | Modell | Kiosztható slug |
-| --- | --- | --- |
-| Orkesztrátor / vezető | GPT-5.6 Sol, legerősebb thinking | `gpt-5.6-sol-xhigh` |
-| Agentic csapat (felderítés, megvalósítás, javítás, ellenőrzés) | Cursor Grok 4.6 extra high | `cursor-grok-4.6-xhigh` |
+| Szerep                                                         | Modell                           | Kiosztható slug         |
+| -------------------------------------------------------------- | -------------------------------- | ----------------------- |
+| Orkesztrátor / vezető                                          | GPT-5.6 Sol, legerősebb thinking | `gpt-5.6-sol-xhigh`     |
+| Agentic csapat (felderítés, megvalósítás, javítás, ellenőrzés) | Cursor Grok 4.6 extra high       | `cursor-grok-4.6-xhigh` |
 
 **Minden Grok-ügynök extra high.** Cloud Agent, picker, Task-subagent, Bugbot —
 ugyanaz a szabály. A `cursor-grok-4.6-high` és a `cursor-grok-4.6-high-fast`
@@ -369,8 +370,7 @@ Minden kódolási munkánál:
    Nem egyetlen ügynök, hanem a feladathoz szabott csapat: felderítés,
    kutatás, megvalósítás, ellenőrzés — mindegyik a saját szakterületén. A
    csapat összetételét a vezető állítja össze a feladat természete szerint.
-   (A párhuzamossági korlát ~2 egyidejű ügynök, a többi sorban áll — lásd a
-   17. üzemeltetési tanulságot; ez tervezési adat, nem elakadás.)
+   (A párhuzamossági korlát ~2 egyidejű ügynök, a többi sorban áll — lásd a 17. üzemeltetési tanulságot; ez tervezési adat, nem elakadás.)
 8. **Ismétlődő hibánál a vezető ÁTVESZI a feladatot.** Ha egy ügynök többször
    elbukik ugyanazon, vagy a megoldás nem áll össze, a vezető nem indít újabb
    kört vaktában: maga oldja meg. A cél a működő eredmény, nem a delegálás

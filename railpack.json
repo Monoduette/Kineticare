@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "inputs": [
+        "...",
+        {
+          "local": true,
+          "include": [
+            ".npmrc",
+            "package.json",
+            "package-lock.json",
+            "scripts/verify-install-script-lock.mjs"
+          ]
+        }
+      ],
+      "commands": [
+        "npm ci --legacy-peer-deps --ignore-scripts",
+        "echo \"f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e  scripts/verify-install-script-lock.mjs\" | sha256sum -c -",
+        "node scripts/verify-install-script-lock.mjs",
+        "npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false",
+        {
+          "path": "node_modules/.bin"
+        }
+      ]
+    }
+  }
+}

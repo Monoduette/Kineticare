@@ -55,7 +55,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "24.20.0"
 
 jobs:
   verify:
@@ -113,7 +113,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts
+          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          node scripts/verify-install-script-lock.mjs
+          npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
       - name: Typecheck
         run: npm run typecheck
       # A `src/payload-types.ts` GENERÁLT fájl, de kézzel commitolt: ha a
@@ -164,7 +168,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts
+          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          node scripts/verify-install-script-lock.mjs
+          npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
       # A build-hoz az src/env.ts kötelező kulcsai kellenek. Titok (még
       # placeholder sem) nem kerülhet a repóba (CLAUDE.md TILOS ZÓNÁK 1.),
       # ezért a titok-alakú értékeket futásidőben generáljuk — eldobható,
@@ -192,7 +200,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts
+          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          node scripts/verify-install-script-lock.mjs
       # A teljes kép MINDIG látszik, akkor is, ha a kapu átenged: enélkül a
       # `moderate` tételek némán gyűlnek. Nem blokkol (`|| true`), csak riportál.
       - name: Sebezhetőség-riport (nem blokkol)

@@ -31,11 +31,17 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', '53d4c7c56faf61a4078ee94685df7294ea723fe70ec8a9b5cae73ff6163cc1f9'],
+  ['ci.yml', '0489561c31eb451e6049c14987829e47c3a1e70d9d707e8f14f8fb74773e2ae5'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
   ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
   ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
 ])
+
+const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
+const EXPECTED_INSTALL_VERIFIER_SHA256 =
+  'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e'
+const EXPECTED_RAILWAY_SHA256 = '23dacbcc8982b45f93159215d18b1aaf3f67a0f3be9652206f644a3e3da3963d'
+const EXPECTED_RAILPACK_SHA256 = 'fa324e80449cb2c4486cecb2c04bcf6097374cdec243cfabaa2163c80b4f2f06'
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@eslint/eslintrc': '3.3.6',
@@ -58,7 +64,7 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   prettier: '3.9.6',
   react: '19.2.8',
   'react-dom': '19.2.8',
-  sass: '1.77.4',
+  sass: '1.103.1',
   sharp: '0.35.3',
   tsx: '4.23.12',
   typescript: '5.9.3',
@@ -66,10 +72,43 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   vitest: '4.1.11',
 }
 
+const EXPECTED_INSTALL_SCRIPT_IDENTITIES: Readonly<Record<string, string>> = {
+  'node_modules/@esbuild-kit/core-utils/node_modules/esbuild':
+    '5c4075154b788aaae1bc4a2963f5dc1546909beae6dea5443c9769d0afd1efa5',
+  'node_modules/@parcel/watcher':
+    '002e2fffdb293f2d137d00f91eeeea833df98d35c2312510774062caceeca5d4',
+  'node_modules/@payloadcms/graphql/node_modules/esbuild':
+    'f11b2e7569a85e47a2d781b846a417de6f5c44eef72c4916fe01ecabfbe8f93d',
+  'node_modules/core-js': 'ef81b90dec6e13367feab03b87f65de9daf7b1389be238c44c8888ef52dcab3e',
+  'node_modules/esbuild': '73c0c75c0ea247dc6a5b1f0470bb203a849c28d1de4d889207ffa1abb88596e8',
+  'node_modules/fsevents': 'c470ce7eb5ad9039b266026905f8ebf74d886b12acef87d82be31903eab06df1',
+  'node_modules/payload/node_modules/esbuild':
+    '6d5bb7c6d6a05e7ea9b1e202962d9fc160c71de54a66c1530808ed01fe1ae97f',
+  'node_modules/tsx/node_modules/esbuild':
+    '6d5bb7c6d6a05e7ea9b1e202962d9fc160c71de54a66c1530808ed01fe1ae97f',
+  'node_modules/unrs-resolver': '430b66aedb54b3da13317c57d0a36a01dfe1ba729b7b15768eb987796c3f5df9',
+}
+
+const EXPECTED_INSTALL_SCRIPT_APPROVALS: Readonly<Record<string, boolean>> = {
+  '@parcel/watcher@2.6.0': true,
+  'core-js@3.50.0': true,
+  'esbuild@0.18.20': true,
+  'esbuild@0.25.12': true,
+  'esbuild@0.28.1': true,
+  'esbuild@0.28.2': true,
+  'fsevents@2.3.3': true,
+  'unrs-resolver@1.12.2': true,
+}
+
 interface PackageManifest {
+  readonly allowScripts?: Record<string, boolean>
   readonly dependencies?: Record<string, string>
   readonly devDependencies?: Record<string, string>
   readonly engines?: Record<string, string>
+  readonly hasInstallScript?: boolean
+  readonly integrity?: string
+  readonly resolved?: string
+  readonly version?: string
 }
 
 interface PackageLock {
@@ -118,6 +157,17 @@ function readJson<T>(path: string): T {
 
 function exactPinnedDependencies(manifest: PackageManifest): Record<string, string> {
   return { ...manifest.dependencies, ...manifest.devDependencies }
+}
+
+function installScriptIdentities(lock: PackageLock): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(lock.packages ?? {})
+      .filter(([, manifest]) => manifest.hasInstallScript === true)
+      .map(([path, manifest]) => [
+        path,
+        sha256(`${manifest.version}\n${manifest.resolved}\n${manifest.integrity}`),
+      ]),
+  )
 }
 
 function extractDumpDockerInvocation(source: string): string {
@@ -527,6 +577,12 @@ describe('CI/platform supply-chain guard', () => {
   })
 
   it('a jóváhagyott action és image pinek a hash-elt workflow-k részei', () => {
+    expect(workflow('ci.yml')).toContain('NODE_VERSION: "24.20.0"')
+    expect(workflow('ci.yml').match(/npm ci --legacy-peer-deps --ignore-scripts/g)).toHaveLength(3)
+    expect(workflow('ci.yml').match(/node scripts\/verify-install-script-lock\.mjs/g)).toHaveLength(
+      3,
+    )
+    expect(workflow('ci.yml').match(/npm rebuild --ignore-scripts=false/g)).toHaveLength(2)
     expect(workflow('ci.yml')).toContain(CI_POSTGRES)
     expect(workflow('db-backup.yml')).toContain(BACKUP_POSTGRES)
     expect(workflow('claude.yml')).toContain(
@@ -541,13 +597,72 @@ describe('CI/platform supply-chain guard', () => {
     const manifest = readJson<PackageManifest>(join(REPO, 'package.json'))
     const lock = readJson<PackageLock>(join(REPO, 'package-lock.json'))
     const dependencies = exactPinnedDependencies(manifest)
-    expect(manifest.engines?.node).toBe('24.x')
+    expect(manifest.engines).toEqual({ node: '24.20.0', npm: '11.19.0' })
     expect(dependencies).toEqual(EXPECTED_PACKAGE_PINS)
     expect(dependencies.yaml).toBeUndefined()
     expect(lock.packages?.['']?.dependencies?.yaml).toBeUndefined()
     expect(lock.packages?.['']?.devDependencies?.yaml).toBeUndefined()
+    expect(sha256(readFileSync(join(REPO, '.npmrc')))).toBe(EXPECTED_NPMRC_SHA256)
+    expect(sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs')))).toBe(
+      EXPECTED_INSTALL_VERIFIER_SHA256,
+    )
+    expect(sha256(readFileSync(join(REPO, 'railway.json')))).toBe(EXPECTED_RAILWAY_SHA256)
+    expect(sha256(readFileSync(join(REPO, 'railpack.json')))).toBe(EXPECTED_RAILPACK_SHA256)
     for (const [name, version] of Object.entries(dependencies)) {
       expect(version, `${name} csak exact verzióval engedélyezett`).toMatch(/^\d+\.\d+\.\d+$/)
+    }
+  })
+
+  it('csak az explicit review-zott exact csomagok kaphatnak install scriptet', () => {
+    const manifest = readJson<PackageManifest>(join(REPO, 'package.json'))
+    const lock = readJson<PackageLock>(join(REPO, 'package-lock.json'))
+
+    expect(installScriptIdentities(lock)).toEqual(EXPECTED_INSTALL_SCRIPT_IDENTITIES)
+    expect(manifest.allowScripts).toEqual(EXPECTED_INSTALL_SCRIPT_APPROVALS)
+  })
+
+  it('az engedélyezett install-script tarball integrity cseréjét elutasítja', () => {
+    const lock = readJson<PackageLock>(join(REPO, 'package-lock.json'))
+    const watcherPath = 'node_modules/@parcel/watcher'
+    const watcher = lock.packages?.[watcherPath]
+    expect(watcher).toBeDefined()
+
+    const poisonedLock: PackageLock = {
+      packages: {
+        ...lock.packages,
+        [watcherPath]: { ...watcher, integrity: 'sha512-poisoned' },
+      },
+    }
+    expect(installScriptIdentities(poisonedLock)).not.toEqual(EXPECTED_INSTALL_SCRIPT_IDENTITIES)
+  })
+
+  it('a project-root lifecycle scriptet a dependency rebuild előtt elutasítja', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'kineticare-root-lifecycle-'))
+    const scripts = join(fixture, 'scripts')
+    mkdirSync(scripts)
+    try {
+      const manifest = readJson<PackageManifest>(join(REPO, 'package.json'))
+      writeFileSync(
+        join(fixture, 'package.json'),
+        `${JSON.stringify({ ...manifest, scripts: { install: 'node unexpected.js' } }, null, 2)}\n`,
+      )
+      writeFileSync(
+        join(fixture, 'package-lock.json'),
+        readFileSync(join(REPO, 'package-lock.json')),
+      )
+      writeFileSync(
+        join(scripts, 'verify-install-script-lock.mjs'),
+        readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs')),
+      )
+
+      expect(() =>
+        execFileSync(process.execPath, [join(scripts, 'verify-install-script-lock.mjs')], {
+          cwd: fixture,
+          stdio: 'pipe',
+        }),
+      ).toThrow(/project-root lifecycle script is forbidden/)
+    } finally {
+      rmSync(fixture, { force: true, recursive: true })
     }
   })
 

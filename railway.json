@@ -2,10 +2,11 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
+    "railpackVersion": "0.38.0",
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npx payload migrate && exec ./node_modules/.bin/next start",
+    "startCommand": "./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start",
     "healthcheckPath": "/admin",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

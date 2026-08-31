@@ -13,15 +13,18 @@
 
 ## 0. Mi történik deploykor (röviden)
 
-1. **Build:** `npm ci --legacy-peer-deps && npm run build` (**Railpack** builder — lásd
-   `railway.json`, `"builder": "RAILPACK"`; a Nixpacks régi állapot). A Node-verziót a
-   `package.json` `engines.node` mezője adja (**`24.x`**), amit a railpack a
-   24-es vonal legfrissebb patch-ére old fel.
+1. **Build:** a repó `railpack.json` fájlja a pinned **Railpack 0.38.0** install
+   lépését fail-closed módon felülírja: scriptmentes `npm ci`, a lockfile és a
+   lifecycle-tarballok ellenőrzése, kizárólag az exact jóváhagyott install
+   scriptek rebuildje, majd `npm run build`. A Node és npm verzió is exact:
+   **Node `24.20.0`, npm `11.19.0`**.
    **FIGYELEM:** a service Variables közé tett `RAILPACK_NODE_VERSION` **felülírja** az
    `engines.node`-ot (a railpack ebben a sorrendben old fel:
    `RAILPACK_NODE_VERSION` → `engines.node` → `.nvmrc` → `.node-version` → default `lts`).
-   Ha a futásidő nem az, amit vársz, előbb ezt a változót keresd.
-2. **Start:** `npx payload migrate && npm start` — a migráció idempotens és
+   Ha a futásidő eltér, a verifier még a lifecycle scriptek előtt leállítja a
+   buildet; ilyenkor előbb ezt a változót keresd.
+2. **Start:** `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`
+   — kizárólag a lockfile-ból telepített lokális binárisok futnak. A migráció idempotens és
    követett (a `payload_migrations` táblában), tehát minden bootnál biztonságosan
    lefut; új migráció esetén az indulás előtt érvényesül.
 3. **Healthcheck:** `GET /admin` (a Payload admin mindig 200-at ad, bejelentkezés
@@ -40,21 +43,21 @@
 
 ## 2. Környezeti változók (appservice → Variables)
 
-| Változó | Staging érték / forrás |
-|---|---|
-| `DATABASE_URI` | `${{Postgres.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference) |
-| `PAYLOAD_SECRET` | frissen generált, pl. `openssl rand -hex 32` kimenete |
-| `NEXT_PUBLIC_SERVER_URL` | a staging domain, pl. `https://kineticare-staging.up.railway.app` (lásd 3. pont) |
-| `BARION_ENVIRONMENT` | `test` |
-| `BARION_API_URL` | `https://api.test.barion.com` |
-| `BARION_POSKEY_TEST` | sandbox POSKey — ld. `docs/barion-sandbox-setup.md` |
-| `BARION_PAYEE_EMAIL` | a sandbox Barion-fiók e-mail-címe |
-| `ENABLE_JOB_WORKERS` | `true` (a callback retry-ladder így élőben is fut) |
-| `LOG_LEVEL` | `info` |
-| `PAYLOAD_MEDIA_DIR` | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
-| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba |
-| `SEED_OWNER_EMAIL` | a már bootstrapelt owner címe az első seedhez, utána törölhető |
-| `SEED_OWNER_PASSWORD` | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban |
+| Változó                      | Staging érték / forrás                                                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URI`               | `${{Postgres.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference)                                                                                                                                                             |
+| `PAYLOAD_SECRET`             | frissen generált, pl. `openssl rand -hex 32` kimenete                                                                                                                                                                                       |
+| `NEXT_PUBLIC_SERVER_URL`     | a staging domain, pl. `https://kineticare-staging.up.railway.app` (lásd 3. pont)                                                                                                                                                            |
+| `BARION_ENVIRONMENT`         | `test`                                                                                                                                                                                                                                      |
+| `BARION_API_URL`             | `https://api.test.barion.com`                                                                                                                                                                                                               |
+| `BARION_POSKEY_TEST`         | sandbox POSKey — ld. `docs/barion-sandbox-setup.md`                                                                                                                                                                                         |
+| `BARION_PAYEE_EMAIL`         | a sandbox Barion-fiók e-mail-címe                                                                                                                                                                                                           |
+| `ENABLE_JOB_WORKERS`         | `true` (a callback retry-ladder így élőben is fut)                                                                                                                                                                                          |
+| `LOG_LEVEL`                  | `info`                                                                                                                                                                                                                                      |
+| `PAYLOAD_MEDIA_DIR`          | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
+| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba                                            |
+| `SEED_OWNER_EMAIL`           | a már bootstrapelt owner címe az első seedhez, utána törölhető                                                                                                                                                                              |
+| `SEED_OWNER_PASSWORD`        | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban                                                                                                                                                                       |
 
 > ⚠️ **Turnstile: a két kulcs CSAK PÁRBAN állítható be.** A Railway
 > `next start`-tal fut (`NODE_ENV=production`), és az induláskori ENV-assert
@@ -134,11 +137,13 @@ megtalálja, majd létrehozza a
 - [ ] A **build-logban tényleges `npm run build` futás** szerepel — ha
       `Build · skipped (nothing to build)` látszik, a régi `.next/` indult el,
       és a deployt SHA nélkül (a branch HEAD-jére) újra kell indítani
-- [ ] A **deploy-logban ott a `server_start` sor**, benne `"nodeVersion":"v24.…"`
+- [ ] A **deploy-logban ott a `server_start` sor**, benne `"nodeVersion":"v24.20.0"`
       és a **várt `commitSha`**. Ha a nodeVersion nem 24-es: a service Variables
       közt keresd a `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
       Ha a sor egyáltalán nincs meg: előbb a `LOG_LEVEL`-t ellenőrizd (`info` kell
       hozzá), csak utána gyanakodj régi kódra
+- [ ] A build-logban a sorrend: scriptmentes `npm ci` → verifier `OK` →
+      jóváhagyott `npm rebuild` → `npm run build`; nincs Corepack bootstrap
 - [ ] Railway deploy zöld, healthcheck átment
 - [ ] `https://<domain>/admin` → Payload login-oldal töltődik
 - [ ] Owner belép az adminba, látja a demó-terméket
