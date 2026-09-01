@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
 import {
   BarionApiError,
   fetchPaymentState,
@@ -351,10 +352,16 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         summary.stillPending += 1
         const createdAtMs = Date.parse(order.createdAt ?? '')
         if (Number.isFinite(createdAtMs) && now - createdAtMs >= STUCK_ORDER_WARN_MS) {
-          orderLog.error(
-            'RIASZTÁS: a rendelés 24 órája payment_pending — manuális ellenőrzés szükséges (Barion-státusz még mindig függő)',
-            { barionStatus: state.Status, ageMs: now - createdAtMs },
-          )
+          // A beragadt rendelés riasztása FOJTOTT (alert-throttle): az 5
+          // percenkénti futás ugyanarra a — már felszínre hozott — rendelésre
+          // korábban futásonként új error-sort írt; a cooldown lejártáig az
+          // ismétlés elnyelődik, a nyitott ügy a cooldown után újra riaszt.
+          if (shouldEmitThrottledAlert(`stuck-order:${order.id}`, undefined, now)) {
+            orderLog.error(
+              'RIASZTÁS: a rendelés 24 órája payment_pending — manuális ellenőrzés szükséges (Barion-státusz még mindig függő)',
+              { barionStatus: state.Status, ageMs: now - createdAtMs },
+            )
+          }
         }
       } else if (isLateSuccessSourceStatus(statusBefore)) {
         await updateOrderStatusIfCurrent({

@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import { BarionApiError, type BarionPaymentStateResponse } from '../lib/barion'
 import {
   classifyBarionFailure,
@@ -35,6 +36,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 const PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
@@ -528,6 +531,38 @@ describe('order-poll — árva rendelés (barionPaymentId nélkül)', () => {
 
     expect(summary.stillPending).toBe(1)
     expect(stuck.status).toBe('payment_pending')
+  })
+
+  it('a beragadt rendelés riasztása FOJTOTT: az első futás riaszt, a cooldown-on belüli ismétlés nem ír új error-sort', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stuck = createPendingOrder({
+      createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString(),
+    })
+    const { payload, fetchState, onPaid, queueInvoice } = setup({
+      pending: [stuck],
+      stateStatus: 'Prepared',
+    })
+
+    const first = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+    expect(first.stillPending).toBe(1)
+    const firstLogs = logSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(firstLogs).toContain('24 órája payment_pending')
+
+    // Ugyanaz a — már felszínre hozott — rendelés az 5 perccel későbbi futásban:
+    // a rendelés továbbra is stillPending, de a RIASZTÁS nem ismétlődik.
+    logSpy.mockClear()
+    const second = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW + 5 * 60_000,
+    })
+    expect(second.stillPending).toBe(1)
+    const secondLogs = logSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(secondLogs).not.toContain('24 órája payment_pending')
+
+    vi.restoreAllMocks()
   })
 })
 

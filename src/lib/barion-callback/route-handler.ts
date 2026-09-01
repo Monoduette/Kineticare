@@ -2,6 +2,7 @@ import { after } from 'next/server'
 import type { Payload } from 'payload'
 
 import { withAdvisoryLock } from '../advisory-lock'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
 import {
   isNonTerminalWebhookResult,
   isTerminallyProcessed,
@@ -70,7 +71,16 @@ export function callbackLockKey(paymentId: string): string {
 
 /**
  * Egy nyers érték ALAK-ellenőrzése — hiányzó, üres, túl hosszú vagy nem
- * GUID-alakú érték esetén null.
+ * GUID-alakú érték esetén null. A visszaadott érték KANONIKUS (kisbetűs).
+ *
+ * Miért kisbetűs: a Barion GUID kis-nagybetű-érzéketlen, a Postgres `equals`
+ * és a (provider, externalId) unique kulcs viszont érzékeny. Kanonizálás
+ * nélkül ugyanaz a fizetés KÉT alias alatt élhetne: a dedup nem találná a
+ * másik alak rekordját, az advisory-zár kulcsa szétválna (párhuzamos
+ * GetState), az orders-lookup nem találná a rendelést, a processzor
+ * orderNumber-fallbackje pedig hamis `payment-id-conflict`-tal terminálisan
+ * elutasítaná az ÉRVÉNYES fizetést. A checkout a Barion kisbetűs alakját
+ * tárolja, tehát a kisbetűs kanonikus alak a meglévő adattal kompatibilis.
  */
 function normalizePaymentId(raw: unknown): string | null {
   if (typeof raw !== 'string') {
@@ -81,7 +91,7 @@ function normalizePaymentId(raw: unknown): string | null {
   if (trimmed.length === 0 || trimmed.length > MAX_PAYMENT_ID_LENGTH) {
     return null
   }
-  return PAYMENT_ID_PATTERN.test(trimmed) ? trimmed : null
+  return PAYMENT_ID_PATTERN.test(trimmed) ? trimmed.toLowerCase() : null
 }
 
 /**
@@ -206,13 +216,18 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
         if (!outcome.retryable) {
           // Ez volt az utolsó megengedett kísérlet: a webhook-retry MÁR NEM
           // viszi tovább — az owner-riasztás itt, a kimerülés pillanatában megy.
-          eventLog.error(
-            'webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
-            {
-              attempts: outcome.attempts,
-              error: outcome.error,
-            },
-          )
+          // W13 után egy ISMERT+kimerült rekordot a Barion minden ismételt
+          // kézbesítése újra feldolgoztat: a már felszínre hozott ügy riasztása
+          // fojtva ismétlődik (alert-throttle), nem kézbesítésenként.
+          if (shouldEmitThrottledAlert(`webhook-exhausted:barion:${paymentId}`)) {
+            eventLog.error(
+              'webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
+              {
+                attempts: outcome.attempts,
+                error: outcome.error,
+              },
+            )
+          }
         } else {
           eventLog.warn('barion-callback: aszinkron feldolgozás sikertelen (retry-job folytatja)', {
             attempts: outcome.attempts,
@@ -236,8 +251,21 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
       const record = existing.docs[0]
 
       if (record && isTerminallyProcessed(record)) {
-        // Már VÉGLEGESEN feldolgozva → no-op (dupla kézbesítés).
-        eventLog.info('barion-callback: duplikált kézbesítés — már feldolgozva, no-op 200')
+        // Már VÉGLEGESEN feldolgozva → no-op (dupla kézbesítés). Az ELUTASÍTOTT
+        // (rejected) lezárás viszont NEM néma info: azok mögött alias-/párosítási
+        // konfliktus vagy kézi ellenőrzésre váró állapot állhat (total-mismatch,
+        // payment-id-conflict, payment-not-found) — a limit:1 gyorsút korábban
+        // ezt info-szintű "duplikátum" sorral fedte el, és a Barion ismételt
+        // kézbesítése nyomtalanul tűnt el. A warn felszínre hozza, hogy egy
+        // lezárt-elutasított fizetésre még mindig érkezik callback.
+        if (record.result === 'rejected') {
+          eventLog.warn(
+            'barion-callback: duplikált kézbesítés egy korábban ELUTASÍTOTT eseményre — a rendelés kézi ellenőrzést igényelhet (lásd a korábbi RIASZTÁS-sorokat)',
+            { result: record.result, attempts: record.attempts ?? 0 },
+          )
+        } else {
+          eventLog.info('barion-callback: duplikált kézbesítés — már feldolgozva, no-op 200')
+        }
         return jsonResponse({ ok: true, status: 'duplicate' })
       }
 

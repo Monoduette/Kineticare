@@ -1,5 +1,6 @@
 import type { Payload, Where } from 'payload'
 
+import { shouldEmitThrottledAlert } from './alert-throttle'
 import { logger } from './logger'
 
 /**
@@ -210,19 +211,24 @@ async function attemptProcessing(
       if (attempts >= MAX_WEBHOOK_ATTEMPTS) {
         // W13 — a scan-szűrő (attempts < MAX) innentől kihagyja a sort, a
         // failed-ágat pedig ez a kimenetel sosem járja. A riasztás ITT megy ki,
-        // egyszer, akkor is, ha a route-handler vitte a kísérletet. Az
-        // order-poll mentőháló ettől még él.
-        logger.error(
-          'RIASZTÁS: a pending_repoll újrapróbálásai kimerültek — a tulajdonosnak ellenőriznie kell ' +
-            '(provider, externalId, eventId, attempts). Az order-poll mentőháló továbbra is él, ' +
-            'de ez a webhook-esemény a retry-jobból kikerül.',
-          {
-            provider: record.provider,
-            externalId: record.externalId,
-            eventId: record.id,
-            attempts,
-          },
-        )
+        // akkor is, ha a route-handler vitte a kísérletet. Az order-poll
+        // mentőháló ettől még él. A kimerült-ISMERT rekordot a Barion ismételt
+        // kézbesítése (W13) újra és újra feldolgoztatja — a már felszínre
+        // hozott ügy riasztása ezért FOJTOTT (alert-throttle), nem
+        // kézbesítésenként ismétlődik.
+        if (shouldEmitThrottledAlert(`webhook-exhausted:${record.provider}:${record.externalId}`)) {
+          logger.error(
+            'RIASZTÁS: a pending_repoll újrapróbálásai kimerültek — a tulajdonosnak ellenőriznie kell ' +
+              '(provider, externalId, eventId, attempts). Az order-poll mentőháló továbbra is él, ' +
+              'de ez a webhook-esemény a retry-jobból kikerül.',
+            {
+              provider: record.provider,
+              externalId: record.externalId,
+              eventId: record.id,
+              attempts,
+            },
+          )
+        }
       } else if (attempts >= MAX_WEBHOOK_ATTEMPTS - 2) {
         logger.warn(
           'a pending_repoll újrapróbálásai a kimerüléshez közelednek',
