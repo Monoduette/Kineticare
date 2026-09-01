@@ -135,10 +135,7 @@
             ".npmrc",
             "package.json",
             "package-lock.json",
-            "scripts/exact-npm-cli.mjs",
-            "scripts/install-reviewed-dependencies.mjs",
-            "scripts/verify-install-script-lock.mjs",
-            "scripts/verify-install-script-lock.sha256"
+            "scripts"
           ],
           "local": true
         }

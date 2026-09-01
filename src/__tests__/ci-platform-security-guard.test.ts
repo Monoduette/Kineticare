@@ -47,9 +47,9 @@ const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
   'e9dc71bd52ea3e9a958af185fc8c73facc27f41425d8614354b9472e1fc720da'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
-const EXPECTED_RAILPACK_SHA256 = '4b2cd65aac35fdd1f0a314936a429e501568c898135b30540b25d6bd983e0c57'
+const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
-  '853c453963fff20d502595c298a0e5c475940a4172e6a808feb1cce44e2485eb'
+  'dc91bfecd80be1e5ff7d4aed76c2f8148165cc4edb8aea2bff4e3555838b6003'
 const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
   '98ff5a6805798ad69b429a6c2b8835ecd6c3ca628e5a47f3fbde0c847196fe51'
 
@@ -140,6 +140,11 @@ interface RailpackPlan {
   readonly steps?: Array<{
     readonly assets?: Record<string, string>
     readonly commands?: RailpackCommand[]
+    readonly inputs?: Array<{
+      readonly include?: string[]
+      readonly local?: boolean
+      readonly step?: string
+    }>
     readonly name?: string
   }>
 }
@@ -1080,6 +1085,10 @@ describe('CI/platform supply-chain guard', () => {
       "sh -c 'node scripts/install-reviewed-dependencies.mjs'",
       'node_modules/.bin',
     ])
+    expect(install?.inputs).toContainEqual({
+      include: ['.npmrc', 'package.json', 'package-lock.json', 'scripts'],
+      local: true,
+    })
     expect(build?.commands?.map((command) => command.cmd ?? command.path)).toEqual([
       "sh -c 'node ./node_modules/next/dist/bin/next build'",
     ])
