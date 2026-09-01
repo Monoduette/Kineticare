@@ -414,8 +414,10 @@ Ez a legfontosabb rész, itt lehet a legnagyobbat hibázni.
   visszaállított adatbázis „tudja", meddig jutott a migrációs sor. Ezért a
   visszaállítás után **NEM szabad** a migrációkat kézzel újrajátszani vagy a
   `payload_migrations` sorait törölni.
-- Az induláskor futó `./node_modules/.bin/payload migrate` (a `railway.json`
-  `startCommand`-jában) kizárólag a lockfile-ból telepített binárist használja,
+- Az induláskor futó
+  `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start`
+  (a `railway.json` `startCommand`-jában) kizárólag a lockfile-ból telepített
+  direct Node entrypointokat használja,
   a visszaállított állapotot látja, és **csak a
   hiányzó** migrációkat futtatja le. Ez a helyes viselkedés.
 - **Figyelem a régi mentés + új kód kombinációra:** ha egy RÉGI mentést állítasz
