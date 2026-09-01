@@ -41,11 +41,11 @@ const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
   '3b96341b5d648a0ac4d33969b2e14c11e5e43e657529c288153414fa28364b45'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
-  '2f76cacfe15a587890404c9dfcf47a534cdf542eba40c11fb3ade06033bc7d93'
+  'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  'c6372a5530cd3f7b81d87af7647c8d44c4286d6ba4b835d15d0ae57aee267915'
+  'ff46e50239c4974c33a12b7ea67a911e89a3a6fd2675b35eafd91b8ed1c7345f'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  'e9dc71bd52ea3e9a958af185fc8c73facc27f41425d8614354b9472e1fc720da'
+  'fdf654562ea9c9e9eb4568da937e5045fb8d3b193d1098de69088a82f15c1157'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -925,6 +925,51 @@ describe('CI/platform supply-chain guard', () => {
       expect(() => accessSync(marker)).toThrow()
     } finally {
       rmSync(fixture, { force: true, recursive: true })
+    }
+  })
+
+  it('a mise bash npm wrapper helyett a prefix npm-cli.js-t futtatja', async () => {
+    const prefix = mkdtempSync(join(tmpdir(), 'kineticare-mise-npm-'))
+    const binDir = join(prefix, 'bin')
+    const cliDir = join(prefix, 'lib', 'node_modules', 'npm', 'bin')
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(cliDir, { recursive: true })
+    const execPath = join(binDir, 'node')
+    const wrapperPath = join(binDir, 'npm')
+    const cliPath = join(cliDir, 'npm-cli.js')
+    writeExecutable(execPath, '#!/bin/sh\nexit 0\n')
+    writeExecutable(
+      wrapperPath,
+      '#!/usr/bin/env bash\nset -euo pipefail\nprintf "wrapper\\n"\nexit 97\n',
+    )
+    writeFileSync(
+      cliPath,
+      "#!/usr/bin/env node\nprocess.stdout.write('11.19.0\\n')\n",
+      { encoding: 'utf8' },
+    )
+
+    try {
+      expect(() =>
+        execFileSync(process.execPath, [wrapperPath, '--version'], { stdio: 'pipe' }),
+      ).toThrow(/pipefail|Unexpected identifier/)
+      const helperUrl = pathToFileURL(join(REPO, 'scripts', 'exact-npm-cli.mjs')).href
+      const { resolveAdjacentNpmCli } = (await import(helperUrl)) as {
+        resolveAdjacentNpmCli: (
+          execPath?: string,
+          platform?: NodeJS.Platform,
+        ) => { cliPath: string; launcherPath: string }
+      }
+      const resolved = resolveAdjacentNpmCli(execPath, 'linux')
+      expect(resolved.launcherPath).toBe(wrapperPath)
+      expect(resolved.cliPath).toBe(cliPath)
+      expect(
+        execFileSync(process.execPath, [resolved.cliPath, '--version'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }).trim(),
+      ).toBe('11.19.0')
+    } finally {
+      rmSync(prefix, { force: true, recursive: true })
     }
   })
 
