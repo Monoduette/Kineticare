@@ -1,55 +1,89 @@
 # Railway staging deploy — runbook
 
+> **2026-08-29:** a merge-utáni deploy-kör csak a production **`Kineticare`**
+> appservice. A `Kineticare-demo` kivezetve: oda semmit nem deployolunk
+> (lásd `AGENTS.md`, `docs/demo-kornyezet.md`).
+
 > **Cél:** a `main` branchből automatikusan deployolódó staging környezet
 > Railway-en, managed PostgreSQL-lel, privát hálózaton.
 > A gyökérben lévő `railway.json` tartalmazza a build/start konfigurációt —
-> ezt a fájlt a Railway automatikusan felismeri.
+> ezt kizárólag a már Config as Code-dal kezelt, meglévő Kineticare service
+> olvassa. Új service már nem kapcsolható erre a legacy konfigurációra.
+
+> **2026-09-01 — Railway kivezetési határ:** a `railway.json` Config as Code
+> deprecated, de a már ezt használó Kineticare service-nél 2026-12-01-ig
+> továbbra is működik és az itt megadott kulcsokra felülírja a dashboardot.
+> A hard cutoff előtt a live projekthez linkelt repóból előbb
+> `railway config migrate` előnézet, majd emberileg jóváhagyott
+> `railway config migrate --apply` kell: ez írja ki az IaC-fájlt és törli a
+> service Config File beállítását. Ezután a `railway config plan` legyen tiszta,
+> mielőtt a régi fájl törléséről külön döntés születik. A sima `config pull` +
+> `config plan` útvonal blokkolt, amíg ugyanazt a service-t a Config as Code kezeli.
 
 ---
 
 ## 0. Mi történik deploykor (röviden)
 
-1. **Build:** `npm ci --legacy-peer-deps && npm run build` (**Railpack** builder — lásd
-   `railway.json`, `"builder": "RAILPACK"`; a Nixpacks régi állapot). A Node-verziót a
-   `package.json` `engines.node` mezője adja (**`24.x`**), amit a railpack a
-   24-es vonal legfrissebb patch-ére old fel.
-   **FIGYELEM:** a service Variables közé tett `RAILPACK_NODE_VERSION` **felülírja** az
-   `engines.node`-ot (a railpack ebben a sorrendben old fel:
-   `RAILPACK_NODE_VERSION` → `engines.node` → `.nvmrc` → `.node-version` → default `lts`).
-   Ha a futásidő nem az, amit vársz, előbb ezt a változót keresd.
-2. **Start:** `npx payload migrate && npm start` — a migráció idempotens és
+1. **Build:** a repó `railpack.json` fájlja a pinned **Railpack 0.38.0** install
+   lépését egyetlen `node scripts/install-reviewed-dependencies.mjs` bootstrapra
+   írja felül: scriptmentes `npm ci`, a lockfile és a lifecycle-tarballok
+   ellenőrzése, majd kizárólag az exact jóváhagyott install scriptek rebuildje.
+   Ezután az exact Mise Node a lokális Next JS entrypointtal buildel. A Node és
+   npm verzió is exact:
+   **Node `24.20.0`, npm `11.19.0`**. A `package.json` `engines.node`, a
+   `.nvmrc` és a projekt `mise.toml` szándékosan ugyanaz az exact Node-verzió:
+   Railpack 0.38.0 a Node-verziót
+   az `engines.node` alapján írja a generált mise-konfigba, de a bemásolt
+   idiomatikus `.nvmrc` a mise feloldásakor felülírhatná azt. A két forrás
+   eltérése ezért release blocker. A projekt `mise.toml` emellett fail-closed
+   GPG-ellenőrzést kapcsol a Node letöltésére. A Railpack 0.38.0 által használt mise
+   `minimum_release_age = "14d"` beállítása az exact `24.20.0` rögzítést nem
+   utasítja el; ezt a pinned mise-verzióval tényleges telepítés igazolta.
+   **FIGYELEM:** a service Variables közé tett `RAILPACK_NODE_VERSION` a
+   Railpack provider feloldásakor felülírja az `engines.node`-ot, de az eltérő
+   `.nvmrc` ezt később ismét felülírhatja; ne állíts be ilyen változót.
+   Ha a futásidő eltér, a verifier még a lifecycle scriptek előtt leállítja a
+   buildet; ilyenkor előbb ezt a változót keresd.
+   A bizalmi határ a Railpack által generált exact Mise runtime: nem égetünk be
+   változékony `/mise/...` abszolút útvonalat. A bootstrap az első műveletként
+   ellenőrzi a `process.execPath` Node-verzióját és a mellette telepített npm CLI-t.
+2. **Start:** `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start`
+   — az exact Railpack runtime explicit Node-ja futtatja a lockfile-ból telepített
+   lokális JS entrypointokat, shebang-feloldás nélkül. A migráció idempotens és
    követett (a `payload_migrations` táblában), tehát minden bootnál biztonságosan
    lefut; új migráció esetén az indulás előtt érvényesül.
 3. **Healthcheck:** `GET /admin` (a Payload admin mindig 200-at ad, bejelentkezés
    nélkül is a login-oldallal), 300 mp timeout, `ON_FAILURE` restart (3×).
 
-## 1. Projekt és adatbázis létrehozása (Railway UI, ~2 perc)
+## 1. Meglévő projekt és adatbázis ellenőrzése
 
-1. <https://railway.com> → **New Project** → **Deploy from GitHub repo** →
-   válaszd az `anorbert-cmyk/Kineticare` repót (első alkalommal engedélyezni
-   kell a Railway GitHub-appot a repóra).
-2. A projekten belül: **+ New → Database → PostgreSQL**.
-   A Postgres a projekt **privát hálózatán** fut — kívülről nem érhető el,
-   csak az appservice-ből.
+1. Ez a runbook a meglévő production `Kineticare` appservice ellenőrzésére
+   szolgál. Új service-t csak Railway IaC-val hozz létre, és az első deploy
+   előtt rögzítsd benne ugyanezt a build-, start- és healthcheck-szerződést;
+   a `railway.json` automatikus felismerésére új service-nél ne számíts.
+2. A meglévő projektben ellenőrizd, hogy a PostgreSQL service a projekt
+   **privát hálózatán** érhető el, és az appservice `DATABASE_URI` változója
+   erre a service-re hivatkozik.
 3. Az appservice **Settings → Source** részénél ellenőrizd: branch = `main`,
    **Auto-deploy** bekapcsolva (minden main-push új deploy).
 
 ## 2. Környezeti változók (appservice → Variables)
 
-| Változó | Staging érték / forrás |
-|---|---|
-| `DATABASE_URI` | `${{Postgres.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference) |
-| `PAYLOAD_SECRET` | frissen generált, pl. `openssl rand -hex 32` kimenete |
-| `NEXT_PUBLIC_SERVER_URL` | a staging domain, pl. `https://kineticare-staging.up.railway.app` (lásd 3. pont) |
-| `BARION_ENVIRONMENT` | `test` |
-| `BARION_API_URL` | `https://api.test.barion.com` |
-| `BARION_POSKEY_TEST` | sandbox POSKey — ld. `docs/barion-sandbox-setup.md` |
-| `BARION_PAYEE_EMAIL` | a sandbox Barion-fiók e-mail-címe |
-| `ENABLE_JOB_WORKERS` | `true` (a callback retry-ladder így élőben is fut) |
-| `LOG_LEVEL` | `info` |
-| `PAYLOAD_MEDIA_DIR` | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
-| `SEED_OWNER_EMAIL` | csak az első seed futtatásához (4. pont), utána törölhető |
-| `SEED_OWNER_PASSWORD` | csak az első seed futtatásához, utána törölhető |
+| Változó                      | Staging érték / forrás                                                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URI`               | `${{Postgres.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference)                                                                                                                                                             |
+| `PAYLOAD_SECRET`             | frissen generált, pl. `openssl rand -hex 32` kimenete                                                                                                                                                                                       |
+| `NEXT_PUBLIC_SERVER_URL`     | a staging domain, pl. `https://kineticare-staging.up.railway.app` (lásd 3. pont)                                                                                                                                                            |
+| `BARION_ENVIRONMENT`         | `test`                                                                                                                                                                                                                                      |
+| `BARION_API_URL`             | `https://api.test.barion.com`                                                                                                                                                                                                               |
+| `BARION_POSKEY_TEST`         | sandbox POSKey — ld. `docs/barion-sandbox-setup.md`                                                                                                                                                                                         |
+| `BARION_PAYEE_EMAIL`         | a sandbox Barion-fiók e-mail-címe                                                                                                                                                                                                           |
+| `ENABLE_JOB_WORKERS`         | `true` (a callback retry-ladder így élőben is fut)                                                                                                                                                                                          |
+| `LOG_LEVEL`                  | `info`                                                                                                                                                                                                                                      |
+| `PAYLOAD_MEDIA_DIR`          | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
+| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba                                            |
+| `SEED_OWNER_EMAIL`           | a már bootstrapelt owner címe az első seedhez, utána törölhető                                                                                                                                                                              |
+| `SEED_OWNER_PASSWORD`        | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban                                                                                                                                                                       |
 
 > ⚠️ **Turnstile: a két kulcs CSAK PÁRBAN állítható be.** A Railway
 > `next start`-tal fut (`NODE_ENV=production`), és az induláskori ENV-assert
@@ -84,6 +118,28 @@ figyelmeztetést), `SZAMLAZZ_AGENT_KEY`, `SZAMLAZZ_INVOICE_PREFIX`.
 
 A migráció a startCommandból automatikusan lefut az első sikeres deploynál.
 
+### 4.1 Első owner biztonságos bootstrapje
+
+Üres adatbázison a publikus `/api/users` és `/api/users/first-register`
+token nélkül nem hozhat létre felhasználót. Az első ownerhez:
+
+1. állíts be egy egyszer használatos, legalább 32 karakteres, nagy entrópiájú
+   `FIRST_USER_BOOTSTRAP_TOKEN` secretet az appservice Variables felületén;
+2. operátori API-kliensből küldd el az első regisztrációt a
+   `/api/users/first-register` végpontra, az
+   `x-kineticare-bootstrap-token` fejlécben ugyanazzal az értékkel; az owner
+   e-mail-címe egyezzen a későbbi `SEED_OWNER_EMAIL` értékével, a jelszó pedig
+   feleljen meg a normál 12 karakteres kis-/nagybetű/szám szabálynak;
+3. sikeres belépés után ellenőrizd az adminban, hogy pontosan egy owner van;
+4. azonnal töröld a `FIRST_USER_BOOTSTRAP_TOKEN` változót a Railway-ről.
+
+A titkot ne add parancssori argumentumként, ne mentsd shell-historyba, és ne
+naplózd. Hiányzó szerveroldali secret esetén a claim `503`, hibás vagy hiányzó
+fejlécnél `403`. A normál nyilvános regisztráció csak a bootstrap után nyílik
+meg, és mindig `customer` szerepkört kap.
+
+### 4.2 Seed
+
 Seed (egyszeri), két módon:
 
 - **CLI-vel (javasolt):**
@@ -97,20 +153,25 @@ Seed (egyszeri), két módon:
   a seed idempotens, többször is lefuttatható.
 - **Vagy Railway shellben:** a service **⋯ → Shell** menüjéből `npm run seed`.
 
-A seed létrehozza: owner-felhasználó (`SEED_OWNER_EMAIL` /
-`SEED_OWNER_PASSWORD`), `DEMO-KEZREHAB-001` publikált demó-termék (19 990 Ft),
+A seed a már bootstrapelt, `SEED_OWNER_EMAIL` című owner-felhasználót
+megtalálja, majd létrehozza a
+`DEMO-KEZREHAB-001` publikált demó-terméket (19 990 Ft),
 `bemutatkozas` oldal, `kezrehabilitacio-alapok` bejegyzés, demó menüfa.
 
 ## 5. Deploy utáni ellenőrzőlista
 
-- [ ] A **build-logban tényleges `npm run build` futás** szerepel — ha
+- [ ] A **build-logban tényleges `node ./node_modules/next/dist/bin/next build` futás** szerepel — ha
       `Build · skipped (nothing to build)` látszik, a régi `.next/` indult el,
       és a deployt SHA nélkül (a branch HEAD-jére) újra kell indítani
-- [ ] A **deploy-logban ott a `server_start` sor**, benne `"nodeVersion":"v24.…"`
-      és a **várt `commitSha`**. Ha a nodeVersion nem 24-es: a service Variables
-      közt keresd a `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
+- [ ] A **deploy-logban ott a `server_start` sor**, benne
+      `"nodeVersion":"v24.20.0"` és a **várt `commitSha`**. Ha a nodeVersion nem
+      exact `v24.20.0`: a service Variables közt keresd a
+      `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
       Ha a sor egyáltalán nincs meg: előbb a `LOG_LEVEL`-t ellenőrizd (`info` kell
       hozzá), csak utána gyanakodj régi kódra
+- [ ] A build-logban a sorrend: egyetlen review-zott bootstrap → scriptmentes
+      `npm ci` → verifier `OK` → jóváhagyott `npm rebuild` → lokális Next build;
+      nincs Corepack bootstrap
 - [ ] Railway deploy zöld, healthcheck átment
 - [ ] `https://<domain>/admin` → Payload login-oldal töltődik
 - [ ] Owner belép az adminba, látja a demó-terméket

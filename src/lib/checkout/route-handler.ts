@@ -9,6 +9,7 @@ import {
   rateLimitHeaders,
   type CheckRequestRateLimitOptions,
 } from '../security/rate-limit'
+import { readJsonWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import { CheckoutError, startCheckout, type CheckoutStartInput } from './start-checkout'
 
@@ -51,10 +52,11 @@ export function createCheckoutStartHandler(
       // blokkjából azonosítja a vevőt (hiánya → 400, magyar üzenettel).
       const { user } = await payload.auth({ headers: request.headers })
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
+      // SEC-008: felső korláttal olvassuk a törzset a parse ELŐTT — az IP-keret
+      // a kérések SZÁMÁT fogja, de egy kérés túlméretes törzse így sem
+      // bufferelődik korlátlanul (memória-DoS).
+      const bodyResult = await readJsonWithCap(request)
+      if (!bodyResult.ok) {
         return NextResponse.json(
           {
             error:
@@ -63,6 +65,7 @@ export function createCheckoutStartHandler(
           { status: 400 },
         )
       }
+      const body: unknown = bodyResult.value
 
       const result = await startCheckout({
         payload,

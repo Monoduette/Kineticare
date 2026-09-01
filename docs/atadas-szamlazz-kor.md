@@ -260,7 +260,8 @@ szivárgása és a magyar címkék DB-hatása mind tisztázva van.
   működik): `useradd -m pgrun; su -s /bin/bash pgrun -c "/usr/lib/postgresql/16/bin/initdb -D <dir>/pgdata --auth=trust -U kineticare"`,
   indítás pgrun-ként `-k <pgrun-írható socketdir>` opcióval, majd
   `createdb -U kineticare kineticare`; `DATABASE_URI=postgresql://kineticare@127.0.0.1:5432/kineticare`,
-  `npx payload migrate` (a meglévők), aztán `npx payload migrate:create <nev>`.
+  `./node_modules/.bin/payload migrate` (a meglévők), aztán
+  `./node_modules/.bin/payload migrate:create <nev>`.
   Kézzel migrációt írni/szerkeszteni TILOS (CLAUDE.md 3. zóna).
 - **Tesztkapu-envek:** `DATABASE_URI` (ál), `PAYLOAD_SECRET`, `NEXT_PUBLIC_SERVER_URL`,
   `BARION_API_URL=https://api.test.barion.com`, `BARION_PAYEE_EMAIL`,
@@ -365,9 +366,9 @@ hogy „még nem futott éles vásárlás" — nem is tudott volna.
 
 Ez a legfontosabb rész: **ezzel a módszerrel bármikor újra ellenőrizhető.**
 
-1. Tiszta adatbázis A: `createdb` → `npx payload migrate` → ez a **valós éles
-   séma** (csak a commitolt migrációk).
-2. Tiszta adatbázis B: `createdb` → `npx payload migrate` → majd **fejlesztői
+1. Tiszta adatbázis A: `createdb` → `./node_modules/.bin/payload migrate` → ez
+   a **valós éles séma** (csak a commitolt migrációk).
+2. Tiszta adatbázis B: `createdb` → `./node_modules/.bin/payload migrate` → majd **fejlesztői
    módban** egy `getPayload({ config })` hívás → a push szinkronba hozza a
    konfiggal → ez a **konfig szerinti igazi séma**.
 3. Vesd össze a kettőt:
@@ -402,11 +403,11 @@ kellene kitölteni. **Az tilos** (CLAUDE.md 3. zóna).
 1. **Ideiglenesen állítsd a konfigot a VALÓS éles állapotra** (vedd ki a
    mezőt, állítsd vissza az enum-értékeket, vedd ki a job-taskokat). Készíts
    előbb másolatot az érintett fájlokról!
-2. `npx payload migrate:create temp_valos_eles_allapot` → ez **eldobható**, de
+2. `./node_modules/.bin/payload migrate:create temp_valos_eles_allapot` → ez **eldobható**, de
    a mellette született `.json` snapshot mostantól a valóságot tükrözi. (A
    `down()`-ja pont a keresett SQL — de NE másold ki kézzel.)
 3. **Állítsd vissza a konfigot** a másolatokból.
-4. `npx payload migrate:create <rendes_nev>` → a Payload most a valós
+4. `./node_modules/.bin/payload migrate:create <rendes_nev>` → a Payload most a valós
    állapotból diffel, és **maga generálja** a helyes `ALTER TABLE` /
    `ALTER TYPE` utasításokat.
 5. **Töröld az eldobható migrációt** (`.ts` + `.json`), és vedd ki a
@@ -429,7 +430,7 @@ Az 1. lépcső **additív** volt (`ALTER TABLE "orders" ADD COLUMN "refunds" jso
 tehát adattól függetlenül nem tudott elbukni — ezért mehetett előre. A 2.
 lépcső kockázatos magja az `orders.status` enum újraépítése volt (lásd 8.5).
 
-Igazolás élesítés előtt: tiszta adatbázis → `npx payload migrate` →
+Igazolás élesítés előtt: tiszta adatbázis → `./node_modules/.bin/payload migrate` →
 `NODE_ENV=production` mellett a teljes életciklus lefut — rendelés létrehozás
 (`created`, `KH-2026-000001`) → `payment_pending` → `paid` → `refunded` →
 visszatérítés-nyom írás → webhook-esemény kimenetellel → **mind az öt job**
@@ -460,7 +461,9 @@ konverzió elszáll. Kipróbálva, ez a pontos hibaüzenet:
 invalid input value for enum enum_orders_status: "processing"
 ```
 
-A Railway `startCommand`-ja `npx payload migrate && npm start`, tehát egy bukó
+A Railway `startCommand`-ja
+`./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`,
+tehát egy bukó
 migráció azt jelenti, hogy **az alkalmazás el sem indul** — éles leállás.
 
 **Amit tettünk:** előbb az 1. lépcső (additív) ment ki. Attól kezdve a
@@ -762,7 +765,7 @@ commitold** (a meglévők is be vannak commitolva).
 
 **c) 🔴 Szerepkör-kapu a nézetben — ez NEM opcionális, ez az EGYETLEN védelem.**
 
-A Payload 3.86 az `admin.components.views`-ben regisztrált útvonalakat
+A Payload 3.88.0 az `admin.components.views`-ben regisztrált útvonalakat
 **nyilvános** admin-route-ként kezeli: az `isCustomAdminView` bármely
 konfigurált view-path-ra igazat ad, ezért a Root view auth-átirányítása
 (`Root/index.js`: `if (!permissions.canAccessAdmin && !isPublicAdminRoute(…) &&

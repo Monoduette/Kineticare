@@ -40,7 +40,7 @@ vi.mock('@/lib/cms', () => ({
       // Ütköző slug: a valódi `/kapcsolat` route elfedi ezt a CMS-oldalt.
       { slug: 'kapcsolat', updatedAt: '2026-08-07T10:00:00.000Z' },
     ]),
-  getPosts: () =>
+  getSitemapPosts: () =>
     Promise.resolve([
       {
         id: 11,
@@ -55,7 +55,7 @@ vi.mock('@/lib/cms', () => ({
       // ÜRES kategória: egyetlen poszt sem tartozik hozzá.
       { id: 2, slug: 'ures-tema', title: 'Üres téma' },
     ]),
-  getPublishedProducts: () =>
+  getSitemapProducts: () =>
     Promise.resolve([
       { id: 2, slug: 'sos-kezrelax-villamkurzus', updatedAt: '2026-08-11T10:00:00.000Z' },
       // Slug nélküli, régi kurzus: marad az id-alapú (kanonikus) cím.

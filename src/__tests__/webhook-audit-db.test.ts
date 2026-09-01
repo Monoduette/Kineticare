@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import configPromise from '../payload.config'
+import { FIRST_USER_BOOTSTRAP_HEADER, FIRST_USER_BOOTSTRAP_TOKEN_ENV } from '../collections/Users'
 import { processWebhook, webhookEventStore } from '../lib/idempotency'
 import { isDatabaseAvailable } from './helpers/db-available'
 
@@ -18,12 +19,14 @@ import { isDatabaseAvailable } from './helpers/db-available'
 const hasDb = await isDatabaseAvailable()
 
 describe.skipIf(!hasDb)('webhook + audit (DB)', () => {
+  const bootstrapToken = 'DUMMY-webhook-db-bootstrap-token-32-chars'
   let payload: Payload
   let tablesReady = false
   /** A bootstrap-user azonosítója, ha EZ a futás hozta létre (lásd lent). */
   let bootstrapUserId: number | string | null = null
 
   beforeAll(async () => {
+    vi.stubEnv(FIRST_USER_BOOTSTRAP_TOKEN_ENV, bootstrapToken)
     try {
       payload = await getPayload({ config: configPromise })
       await webhookEventStore(payload).find({ collection: 'webhook-events', limit: 1 })
@@ -39,8 +42,8 @@ describe.skipIf(!hasDb)('webhook + audit (DB)', () => {
     /**
      * ÜRES ADATBÁZIS ELŐKÉSZÍTÉSE — a `promoteFirstUserToOwner` miatt.
      *
-     * A rendszer ELSŐ felhasználója mindig `owner` szerepkört kap
-     * (src/collections/Users.ts; enélkül a telepítés zárva maradna). A
+     * A rendszer ELSŐ felhasználója csak explicit operátori tokennel kap
+     * `owner` szerepkört (src/collections/Users.ts). A
      * role-change teszt alanya `customer`-ként jön létre — de ha az adatbázis
      * üres, ő maga az első user, tehát a hook `owner`-ré teszi, és a
      * role-change audit-bejegyzés `before.role`-ja is `owner` lesz.
@@ -63,11 +66,13 @@ describe.skipIf(!hasDb)('webhook + audit (DB)', () => {
             email: `audit-bootstrap-${Date.now()}@example.com`,
             password: `Bootstrap-${Date.now()}!`,
             name: 'Audit Bootstrap',
-            // A `promoteFirstUserToOwner` ezt üres adatbázison úgyis
-            // `owner`-re írja — pont ez a bootstrap célja.
+            // A bootstrap hook a hitelesített első create-ot ownerre írja.
             role: 'customer',
           },
           overrideAccess: true,
+          req: {
+            headers: new Headers({ [FIRST_USER_BOOTSTRAP_HEADER]: bootstrapToken }),
+          },
         })
         bootstrapUserId = bootstrap.id
       }
@@ -81,6 +86,7 @@ describe.skipIf(!hasDb)('webhook + audit (DB)', () => {
         .catch(() => undefined)
     }
     await payload?.db?.destroy?.()
+    vi.unstubAllEnvs()
   })
 
   it('(provider, externalId) unique constraint + dedup: a handler csak egyszer fut', async (ctx) => {

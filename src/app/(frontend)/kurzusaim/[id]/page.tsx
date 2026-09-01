@@ -6,7 +6,7 @@ import { cache } from 'react'
 
 import { CoursePlayer } from '@/components/account/CoursePlayer'
 import { logger } from '@/lib/logger'
-import { resolvePlayerGate } from '@/lib/course-access'
+import { resolvePlayerGate, type CourseAccessState } from '@/lib/course-access'
 import { lookupPurchaseDates, resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { fetchWatchedRefs } from '@/lib/course-progress/lookup'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
@@ -75,7 +75,7 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
 
   const payload = await getPayload({ config })
   const purchased = hasUserPurchased(user.purchases, product.id)
-  let access = null
+  let access: CourseAccessState | null = null
   if (purchased) {
     try {
       access = await resolveSingleCourseAccess({ payload, userId: user.id, product, logger })
@@ -85,6 +85,12 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
         productId: product.id,
         error: error instanceof Error ? error.message : String(error),
       })
+      // A catch NEM hagyhatja access-et nullán. A resolvePlayerGate
+      // `purchased: true, access: null` ága hasAccess=true-t ad, és a
+      // `buildCurriculum(product, true)` a Bunny-GUID-ot az RSC-payloadba
+      // tenné. Ugyanaz a fail-closed állapot, mint a denyOnLookupFailure
+      // (unknown-purchase-date): a kapu lookup-failed, nem lejárat.
+      access = { hasAccess: false, reason: 'unknown-purchase-date', expiresAt: null }
     }
   }
 

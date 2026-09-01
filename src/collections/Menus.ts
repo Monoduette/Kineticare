@@ -1,7 +1,16 @@
-import { ValidationError, type CollectionBeforeValidateHook, type CollectionConfig } from 'payload'
+import { revalidateTag } from 'next/cache'
+import {
+  ValidationError,
+  type CollectionAfterChangeHook,
+  type CollectionAfterDeleteHook,
+  type CollectionBeforeValidateHook,
+  type CollectionConfig,
+} from 'payload'
 
 import { visibleMenusOrAdmin } from '../access/menus-visibility'
 import { rootMenuParentFilter } from '../lib/admin/relationship-filters'
+import { MENUS_CACHE_TAG } from '../lib/cache-tags'
+import { logger, type Logger } from '../lib/logger'
 import {
   clearMismatchedMenuRef,
   filterMenuRefOptions,
@@ -53,6 +62,36 @@ const validateMenu: CollectionBeforeValidateHook = async ({ data, originalDoc, r
   return normalized
 }
 
+export interface RevalidateMenusCacheDeps {
+  revalidate?: (tag: string, profile: { expire: number }) => void
+  log?: Pick<Logger, 'warn'>
+}
+
+export function revalidateMenusCache(deps: RevalidateMenusCacheDeps = {}): boolean {
+  const revalidate = deps.revalidate ?? revalidateTag
+  const log = deps.log ?? logger
+  try {
+    revalidate(MENUS_CACHE_TAG, { expire: 0 })
+    return true
+  } catch (error) {
+    log.warn(
+      'menü-gyorsítótár ürítése sikertelen — a navigáció legfeljebb a lejáratig régi maradhat',
+      { error: error instanceof Error ? error.message : String(error) },
+    )
+    return false
+  }
+}
+
+const revalidateMenusAfterChange: CollectionAfterChangeHook = ({ doc }) => {
+  revalidateMenusCache()
+  return doc
+}
+
+const revalidateMenusAfterDelete: CollectionAfterDeleteHook = ({ doc }) => {
+  revalidateMenusCache()
+  return doc
+}
+
 export const Menus: CollectionConfig = {
   slug: 'menus',
   labels: {
@@ -74,6 +113,8 @@ export const Menus: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [validateMenu],
+    afterChange: [revalidateMenusAfterChange],
+    afterDelete: [revalidateMenusAfterDelete],
   },
   fields: [
     {

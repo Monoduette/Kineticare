@@ -1,8 +1,11 @@
 import type { TaskConfig } from 'payload'
 
 import type { Order } from '../../payload-types'
-import { getSzamlazzConfig, issueStornoForOrder } from '../../lib/szamlazz'
+import { issueStornoForOrder } from '../../lib/szamlazz'
+import { resolveSzamlazzTaskGate } from '../szamlazz-task-gate'
 import { logger } from '../../lib/logger'
+
+type IssueStornoFn = typeof issueStornoForOrder
 
 /**
  * storno-issue: kézi/explicit újrafuttatásra. Automatikus retry tilos (F3 bizonytalan
@@ -27,16 +30,24 @@ export const stornoIssueTask: TaskConfig<StornoIssueJobIO> = {
     { name: 'stornoNumber', type: 'text' },
     { name: 'reason', type: 'text' },
   ],
-  handler: async ({ req, input }) => {
-    const orderId = (input as { orderId?: unknown }).orderId
+  handler: async (args) => {
+    const { req, input } = args as {
+      req: { payload: { findByID: (a: unknown) => Promise<unknown> } }
+      input: { orderId?: unknown }
+      issueStorno?: IssueStornoFn
+    }
+    const issueStorno = (args as { issueStorno?: IssueStornoFn }).issueStorno ?? issueStornoForOrder
+    const orderId = input.orderId
     if (typeof orderId !== 'number' || !Number.isInteger(orderId) || orderId <= 0) {
       throw new Error(`storno-issue: érvénytelen orderId input (${String(orderId)})`)
     }
 
-    // Kikapcsolt integrációnál a task azonnal, hiba nélkül lezárul.
-    if (!getSzamlazzConfig().enabled) {
-      logger.debug('storno-issue: a Számlázz.hu-integráció kikapcsolva (nincs agent-kulcs) — no-op')
+    const gate = resolveSzamlazzTaskGate('storno-issue')
+    if (gate.kind === 'disabled') {
       return { output: { outcome: 'disabled' } }
+    }
+    if (gate.kind === 'failed') {
+      return { output: { outcome: 'failed', reason: gate.reason } }
     }
 
     const order = (await req.payload.findByID({
@@ -50,7 +61,17 @@ export const stornoIssueTask: TaskConfig<StornoIssueJobIO> = {
       return { output: { outcome: 'failed', reason: 'a rendelés nem található' } }
     }
 
-    const result = await issueStornoForOrder(order, { payload: req.payload })
+    if (order.status !== 'refunded') {
+      const reason =
+        'a rendelés nincs visszatérített állapotban — stornó csak igazolt teljes visszatérítés után állítható ki'
+      logger.error('RIASZTÁS: storno-issue visszatérítés nélküli rendelésre — POST kihagyva', {
+        orderId,
+        status: order.status ?? null,
+      })
+      return { output: { outcome: 'failed', reason } }
+    }
+
+    const result = await issueStorno(order, { payload: req.payload as never })
     return {
       output: {
         outcome: result.outcome,

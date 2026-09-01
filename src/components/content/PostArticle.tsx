@@ -30,6 +30,7 @@ import {
   shouldShowToc,
 } from './post-article'
 import { headingsOf, plainTextOf, wordCountOf } from './post-outline'
+import { ArticleEngagement } from '../analytics/ArticleEngagement'
 
 import '../../app/(frontend)/styles/blocks/post-view.css'
 
@@ -47,6 +48,14 @@ export interface PostArticleProps {
    * ajánlóhoz; kihagyva vagy null értékkel a panel ingyenes sora elmarad.
    */
   freeCourse?: unknown
+  /**
+   * A cikk kanonikus útvonala a sémákban (Article JSON-LD, morzsa).
+   * Alap: `/blog/{slug}`. A gyökér-hub útvonal (`/[slug]`) ugyanazt a
+   * cikk-élményt rendereli a saját címén — ilyenkor a séma-útvonalnak a
+   * gyökér-URL-t kell mondania, különben a JSON-LD a 308-cal átirányító
+   * régi címre mutatna.
+   */
+  path?: string
 }
 
 /** Csak közzétett, sluggal rendelkező cikk jelenhet meg kapcsolódóként; max 3. */
@@ -58,7 +67,8 @@ function displayableRelated(posts: readonly (number | Post)[] | null | undefined
     .slice(0, 3)
 }
 
-export function PostArticle({ post, related: relatedProp, freeCourse }: PostArticleProps) {
+export function PostArticle({ post, related: relatedProp, freeCourse, path }: PostArticleProps) {
+  const canonicalPath = path ?? `/blog/${post.slug}`
   const author = authorPersonOf(post)
   const reviewer = reviewerPersonOf(post)
   const { reviewedAt, nextReviewAt } = reviewDatesOf(post)
@@ -93,6 +103,10 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
 
   return (
     <article>
+      {/* Tartalmi funnel-mérés: article_viewed/read, CTA- és GYIK-kattintás.
+          Láthatatlan kliens-komponens, delegált figyelőkkel — a cikk
+          szerver-komponensei nem hidratálódnak miatta. Consent nélkül no-op. */}
+      <ArticleEngagement articleSlug={typeof post.slug === 'string' ? post.slug : ''} path={canonicalPath} />
       {/* A CIKK SÉMÁJA: EGY node, `['Article', 'MedicalWebPage']` kettős
           típussal (`src/lib/seo-cikk.ts`). A `MedicalWebPage`-tag nem
           dísz: a `WebPage` altípusa, és CSAK ettől lesz érvényes a
@@ -106,7 +120,7 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
       <JsonLd
         data={postArticleJsonLd({
           post,
-          path: `/blog/${post.slug}`,
+          path: canonicalPath,
           ...(author !== null
             ? { author: { name: author.name, credentials: author.credentials } }
             : {}),
@@ -127,7 +141,7 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
       <JsonLd
         data={breadcrumbJsonLd([
           { name: 'Tudástár', path: '/blog' },
-          { name: post.title, path: `/blog/${post.slug}` },
+          { name: post.title, path: canonicalPath },
         ])}
       />
 
@@ -208,8 +222,14 @@ export function PostArticle({ post, related: relatedProp, freeCourse }: PostArti
           2026-08-25), a témához igazított változattal: a váll-cikk időpontot
           ajánl, a többi kurzust. A fejléc „Kurzusok" navigációja nem ide
           tartozik, az minden lapon marad. */}
+      {/* Két paneles (kurzus + időpont) sávnál a SZÉLES konténer jár
+          (tulajdonosi kérés, 2026-08-29): a kártyapár így pontosan olyan
+          széles, mint alatta a kapcsolódó cikkek rácsa — a keskeny (720px)
+          konténerben a két kártya kényelmetlenül összenyomódott. Az egy
+          paneles időpont-változat (váll) marad keskeny: egy magányos, 1120
+          px-es kártya hamis „szekció-hero" benyomást keltene. */}
       <Section className={ctaClasses} variant="tint">
-        <Container size="narrow">
+        <Container size={ctaVariant === 'idopont' ? 'narrow' : 'wide'}>
           <PostCourseCta
             course={courseCtaTargetOf(post)}
             freeCourse={freeCourseCtaTargetOf(freeCourse)}

@@ -26,6 +26,7 @@ import * as migration_20260823_195638_access_grants from './20260823_195638_acce
 import * as migration_20260824_185329_pages_eeat_mezok from './20260824_185329_pages_eeat_mezok';
 import * as migration_20260824_204332_seo_kulcsszavak_mezok from './20260824_204332_seo_kulcsszavak_mezok';
 import * as migration_20260824_212628_products_seo_kulcsszavak from './20260824_212628_products_seo_kulcsszavak';
+import * as migration_20260831_211818_refund_intents_phase_a from './20260831_211818_refund_intents_phase_a';
 
 export const migrations = [
   {
@@ -166,6 +167,11 @@ export const migrations = [
   {
     up: migration_20260824_212628_products_seo_kulcsszavak.up,
     down: migration_20260824_212628_products_seo_kulcsszavak.down,
-    name: '20260824_212628_products_seo_kulcsszavak'
+    name: '20260824_212628_products_seo_kulcsszavak',
+  },
+  {
+    up: migration_20260831_211818_refund_intents_phase_a.up,
+    down: migration_20260831_211818_refund_intents_phase_a.down,
+    name: '20260831_211818_refund_intents_phase_a'
   },
 ];

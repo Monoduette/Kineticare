@@ -36,12 +36,11 @@ export const POSTHOG_HOST = (process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu
 export const POSTHOG_API_HOST = '/ingest'
 
 /**
- * A consent-tárolókulcs, az állapot-konstansok és az eseménynév EGYETLEN
- * igazságforrása a ./consent modul (körmenti import elkerülésével) — innen
- * re-exportáljuk a visszafelé kompatibilitásért.
+ * A consent-tárolókulcs és az eseménynév EGYETLEN igazságforrása a ./consent
+ * modul (körmenti import elkerülésével) — innen re-exportáljuk a visszafelé
+ * kompatibilitásért.
  */
-export { CONSENT_EVENT, CONSENT_GRANTED, CONSENT_STORAGE_KEY }
-export { CONSENT_DENIED } from './consent'
+export { CONSENT_EVENT, CONSENT_STORAGE_KEY }
 
 /**
  * Üzleti esemény-nevek EGY helyen — a funnel-riportok ezekre épülnek.
@@ -92,6 +91,25 @@ export const ANALYTICS_EVENTS = {
   // JS-kivételeket a PostHog saját `$exception` eseménye viszi, a
   // `captureAnalyticsException` segédleten át.
   checkoutFailed: 'checkout_failed',
+
+  // ─── TARTALMI FUNNEL (2026-08-29, tulajdonosi kör) ─────────────────────
+  // A cikk/hub a fizetett és organikus forgalom belépője; az optimalizálás
+  // kérdése nem az, HÁNYAN jöttek (azt a $pageview tudja), hanem hogy MIT
+  // csináltak: elolvasták-e, és melyik hídon léptek tovább. Négy esemény,
+  // mind technikai azonosítókkal (cikk-slug, CTA-fajta), személyes adat
+  // nélkül:
+  //  - article_viewed: a cikkoldal (blog vagy gyökér-hub) megnyílt.
+  //  - article_read: az olvasó a törzs VÉGÉIG jutott (cikkenként egyszer,
+  //    a küldő oldalán retesszel) — a $pageview és e között a különbség a
+  //    tényleges elolvasási arány.
+  //  - article_cta_clicked: a cikk alatti híd-rendszer kattintásai
+  //    (kurzus, ingyenes sor, időpont, kapcsolódó cikk, jegyzék).
+  //  - faq_opened: melyik GYIK-kérdést nyitják — közvetlen input a
+  //    tartalom- és Ads-optimalizáláshoz (mért kérdések visszamérése).
+  articleViewed: 'article_viewed',
+  articleRead: 'article_read',
+  articleCtaClicked: 'article_cta_clicked',
+  faqOpened: 'faq_opened',
 } as const
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS]
 
@@ -264,7 +282,7 @@ export function resetAnalyticsIdentity(): void {
 /**
  * JS-kivétel rögzítése (PostHog `$exception`).
  *
- * A `captureException` a posthog-js 1.413.3 publikus API-ja
+ * A `captureException` a posthog-js 1.422.5 publikus API-ja
  * (`captureException(error: unknown, additionalProperties?: Properties)`) —
  * a szignatúrát a telepített típusdefinícióból ellenőriztük, nem emlékezetből.
  *

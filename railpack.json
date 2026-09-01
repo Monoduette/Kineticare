@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "inputs": [
+        "...",
+        {
+          "local": true,
+          "include": [
+            ".npmrc",
+            "package.json",
+            "package-lock.json",
+            "scripts"
+          ]
+        }
+      ],
+      "commands": [
+        "node scripts/install-reviewed-dependencies.mjs",
+        {
+          "path": "node_modules/.bin"
+        }
+      ]
+    },
+    "build": {
+      "commands": ["node ./node_modules/next/dist/bin/next build"]
+    }
+  },
+  "deploy": {
+    "startCommand": "node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start"
+  }
+}

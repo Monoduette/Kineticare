@@ -2,7 +2,7 @@
  * Jelszó-erősségi politika (OWASP A07 — Identification and Authentication
  * Failures).
  *
- * A Payload 3.86 auth-rendszere nem kínál natív minimumhossz-/komplexitási
+ * A Payload 3.88.0 auth-rendszere nem kínál natív minimumhossz-/komplexitási
  * beállítást (nincs passwordMinLength), ezért a szabályokat tiszta függvényként
  * itt definiáljuk, és a Users collection beforeChange hookjából érvényesítjük.
  *

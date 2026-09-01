@@ -5,7 +5,7 @@
     "buildCommand": "echo tudastar-job-nincs-build"
   },
   "deploy": {
-    "startCommand": "sh -c 'echo TUDASTAR_JOB_START commit=$RAILWAY_GIT_COMMIT_SHA; npx tsx src/scripts/import-tudastar-cikkek.ts && echo TUDASTAR_JOB_DONE; sleep 2147483647'",
+    "startCommand": "sh -c 'echo TUDASTAR_JOB_START commit=$RAILWAY_GIT_COMMIT_SHA; npx tsx src/scripts/import-tudastar-cikkek.ts && echo TUDASTAR_CIKK_DONE; npx tsx src/scripts/import-hub-oldalak.ts && echo TUDASTAR_HUB_DONE; echo TUDASTAR_JOB_DONE; sleep 2147483647'",
     "restartPolicyType": "NEVER",
     "numReplicas": 1
   }

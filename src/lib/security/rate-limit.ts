@@ -16,6 +16,7 @@ import { resolveClientIp } from '../audit'
 import { maskEmail } from '../email/mask'
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
+import { readBodyBytesWithCap, readBodyWithCap } from './request-body'
 
 // ---------------------------------------------------------------------------
 // Szabályok (keret + ablak)
@@ -71,6 +72,12 @@ export const RATE_LIMIT_RULES = {
   'barion-callback-unknown': { limit: 20, windowMs: TEN_MINUTES_MS },
   login: { limit: 10, windowMs: TEN_MINUTES_MS },
   'login-email': { limit: 10, windowMs: TEN_MINUTES_MS },
+  // SEC-007: a plugin generált szerveroldali kosár-kollekciója (`POST /api/carts`)
+  // a saját checkout-unkban NEM használt, de regisztrált vevőnek elérhető —
+  // keret nélkül korlátlan kosár-sort (tár-kimerítés) hozhatna létre. A saját
+  // vásárlási út a kliens-oldali (localStorage) kosarat használja, ezt nem
+  // érinti; a keret bőven a fölött van, amennyit bármely valódi kliens hívna.
+  'cart-write': { limit: 30, windowMs: TEN_MINUTES_MS },
 } as const satisfies Record<string, RateLimitRule>
 
 /**
@@ -110,6 +117,9 @@ const ROUTE_CLASS_BY_PATH = new Map<string, RateLimitedRouteClass>([
   ['/api/users/login', 'login'],
   ['/api/users/forgot-password', 'password-forgot'],
   ['/api/form-submissions', 'form-submission'],
+  // A plugin szerveroldali kosár-kollekciója — nem a saját checkout-unk útja
+  // (SEC-007): a POST /api/carts (kosár-létrehozás) keret alá kerül.
+  ['/api/carts', 'cart-write'],
   // Saját route-handlerek (maguk hívják a `checkRequestRateLimit`-et):
   ['/api/checkout/start', 'checkout-start'],
   // A jelszó-visszaállítást a Payload REST helyett a saját, jelszó-politikát
@@ -528,7 +538,7 @@ const MAX_EMAIL_KEY_LENGTH = 254
  * nem érhet meg egy több megabájtos puffert. Ilyenkor az IP-keret marad az
  * egyetlen fék (a Payload maga úgyis elutasítja az értelmetlen törzset).
  */
-const MAX_FORGOT_BODY_BYTES = 64 * 1024
+export const MAX_FORGOT_BODY_BYTES = 64 * 1024
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -559,18 +569,21 @@ function normalizeEmailKey(value: unknown): string | null {
  * SOSEM nyithat rést és sosem dobhat a hívó felé.
  */
 async function readJsonOrMultipartEmail(request: Request): Promise<string | null> {
-  const declaredLength = Number(request.headers.get('content-length') ?? '')
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_FORGOT_BODY_BYTES) {
-    return null
-  }
-  const contentType = (request.headers.get('content-type') ?? '')
-    .split(';', 1)[0]
-    .trim()
-    .toLowerCase()
+  const rawContentType = request.headers.get('content-type') ?? ''
+  const contentType = rawContentType.split(';', 1)[0].trim().toLowerCase()
 
   try {
     if (contentType.startsWith('multipart/')) {
-      const raw = (await request.clone().formData()).get('_payload')
+      const bytes = await readBodyBytesWithCap(request.clone(), MAX_FORGOT_BODY_BYTES)
+      if (bytes === null) {
+        return null
+      }
+      const bounded = new Request('https://rate-limit.local/', {
+        method: 'POST',
+        headers: { 'content-type': rawContentType },
+        body: bytes,
+      })
+      const raw = (await bounded.formData()).get('_payload')
       if (typeof raw !== 'string') {
         return null
       }
@@ -580,7 +593,11 @@ async function readJsonOrMultipartEmail(request: Request): Promise<string | null
     if (contentType !== 'application/json') {
       return null
     }
-    const parsed: unknown = JSON.parse(await request.clone().text())
+    const body = await readBodyWithCap(request.clone(), MAX_FORGOT_BODY_BYTES)
+    if (body === null) {
+      return null
+    }
+    const parsed: unknown = JSON.parse(body)
     return isRecord(parsed) ? normalizeEmailKey(parsed.email) : null
   } catch {
     return null

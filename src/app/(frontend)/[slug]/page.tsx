@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { MediaImage } from '@/components/content/MediaImage'
 import { PageEeat } from '@/components/content/PageEeat'
+import { PostArticle } from '@/components/content/PostArticle'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { hasLexicalContent } from '@/components/lexical/serialize'
 import { RichText } from '@/components/lexical/RichText'
@@ -12,7 +14,16 @@ import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
-import { getLatestPosts, getPageBySlug, getPublishedProducts, getTestimonials } from '@/lib/cms'
+import {
+  getFreeProduct,
+  getLatestPosts,
+  getPageBySlug,
+  getPostBySlug,
+  getPublishedProducts,
+  getRelatedPosts,
+  getTestimonials,
+} from '@/lib/cms'
+import { HUB_OLDALAK } from '@/lib/tudastar/hub-oldalak'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
 import type { Post, Product, Testimonial } from '@/payload-types'
@@ -21,11 +32,13 @@ export const dynamic = 'force-dynamic'
 
 type Props = { params: Promise<{ slug: string }> }
 
+const pageOf = cache((slug: string, draft: boolean) => getPageBySlug(slug, { draft }))
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   // Draft mode-ban a piszkozat metaadata jön — és a válasz sosem indexelhető.
   const { isEnabled: isDraft } = await draftMode()
-  const page = await getPageBySlug(slug, { draft: isDraft })
+  const page = await pageOf(slug, isDraft)
   if (!page) return withDraftRobots({}, isDraft)
   return withDraftRobots(buildPageMetadata(page, `/${slug}`), isDraft)
 }
@@ -43,8 +56,32 @@ export default async function CmsPage({ params }: Props) {
   // Előnézet (draft mode): a publikálatlan verzió is látszik. A sütit kizárólag
   // a /next/preview route adhatja, oda pedig csak staff/owner jut be.
   const { isEnabled: isDraft } = await draftMode()
-  const page = await getPageBySlug(slug, { draft: isDraft })
+  const page = await pageOf(slug, isDraft)
   if (!page) notFound()
+
+  // GYÖKÉR TÜNET-HUB: a hub a `pages`-ben él (ő a publikálási kapcsoló és a
+  // SEO-metaadat gazdája), a LÁTHATÓ lap viszont a forrás-cikk TELJES
+  // cikkélménye — jegyzék, források, GYIK, kurzus-ajánló, ingyenes sor,
+  // időpont-doboz, kapcsolódó cikkek. Enélkül a gyökérre költözéskor pont a
+  // cikk alatti híd-rendszer veszne el (tulajdonosi döntés, 2026-08-25:
+  // ajánló minden cikk alatt). A séma-útvonal a gyökér-URL (path prop), a
+  // generic CMS-render és a PageEeat ilyenkor kimarad — kettős GYIK/séma
+  // nélkül. A cikk maga published-szűrt: a hub a publikált cikk tükre.
+  const hub = HUB_OLDALAK.find((jelolt) => jelolt.slug === slug)
+  if (hub !== undefined) {
+    const post = await getPostBySlug(hub.cikkSlug)
+    if (post) {
+      const [related, freeCourse] = await Promise.all([getRelatedPosts(post), getFreeProduct()])
+      return (
+        <>
+          {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
+          <PostArticle post={post} related={related} freeCourse={freeCourse} path={`/${slug}`} />
+        </>
+      )
+    }
+    // Ha a forrás-cikk valamiért nem elérhető, a lap a CMS-oldal tartalmára
+    // esik vissza — ugyanaz a lektorált törzs, cikk-extrák nélkül.
+  }
 
   const layout = page.layout ?? []
   const hasLayout = layout.length > 0

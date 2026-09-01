@@ -2,6 +2,7 @@ import { withPayload } from '@payloadcms/next/withPayload'
 import type { NextConfig } from 'next'
 
 import { buildLegacyRedirects } from './src/lib/legacy-redirects'
+import { bunnyPullZoneHost } from './src/lib/stream/bunny-site-config'
 import { buildContentSecurityPolicy } from './src/lib/security/csp'
 
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com'
@@ -85,7 +86,7 @@ const nextConfig: NextConfig = {
           {
             key: 'Content-Security-Policy',
             value: buildContentSecurityPolicy(
-              process.env.NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST,
+              bunnyPullZoneHost(),
               process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
               process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
               process.env.POSTHOG_SHARED_DASHBOARD_URL,

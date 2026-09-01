@@ -17,9 +17,11 @@ import {
   formatBytes,
   interpretRestoreList,
   parseBackupArgs,
+  parseDatabaseUriForLibpq,
   redactConnectionInfo,
   type BackupOptions,
 } from '../lib/backup-db'
+import { withPgPassFile } from '../lib/backup-db-credentials'
 import { createLogger } from '../lib/logger'
 
 const log = createLogger({ script: 'backup-db' })
@@ -69,9 +71,11 @@ async function runCommand(
   command: string,
   args: readonly string[],
   uri: string,
+  environment: NodeJS.ProcessEnv,
 ): Promise<CommandResult> {
   try {
     const { stdout, stderr } = await execFileAsync(command, [...args], {
+      env: environment,
       maxBuffer: MAX_BUFFER_BYTES,
     })
     return { exitCode: 0, stdout, stderr: redactConnectionInfo(stderr, uri) }
@@ -126,6 +130,7 @@ async function applyRetention(targetDir: string, keep: number): Promise<void> {
 }
 
 async function createBackup(options: BackupOptions, uri: string): Promise<void> {
+  const connection = parseDatabaseUriForLibpq(uri)
   await mkdir(options.targetDir, { recursive: true })
 
   const fileName = buildDumpFileName(new Date())
@@ -133,39 +138,48 @@ async function createBackup(options: BackupOptions, uri: string): Promise<void> 
 
   log.info('mentés indul', { celkonyvtar: options.targetDir, fajl: fileName })
 
-  const dump = await runCommand('pg_dump', buildPgDumpArgs(uri, filePath), uri)
-  if (dump.exitCode !== 0) {
-    await rm(filePath, { force: true })
-    throw new Error(
-      `A pg_dump hibával állt le (kilépési kód: ${dump.exitCode}). ` +
-        `Részlet: ${dump.stderr.trim() || 'nincs további információ'}`,
+  await withPgPassFile(connection, async (commandEnvironment) => {
+    const dump = await runCommand('pg_dump', buildPgDumpArgs(filePath), uri, commandEnvironment)
+    if (dump.exitCode !== 0) {
+      await rm(filePath, { force: true })
+      throw new Error(
+        `A pg_dump hibával állt le (kilépési kód: ${dump.exitCode}). ` +
+          `Részlet: ${dump.stderr.trim() || 'nincs további információ'}`,
+      )
+    }
+
+    const listing = await runCommand(
+      'pg_restore',
+      buildPgRestoreListArgs(filePath),
+      uri,
+      commandEnvironment,
     )
-  }
+    const integrity = interpretRestoreList({
+      exitCode: listing.exitCode,
+      stdout: listing.stdout,
+      stderr: listing.stderr,
+    })
 
-  const listing = await runCommand('pg_restore', buildPgRestoreListArgs(filePath), uri)
-  const integrity = interpretRestoreList({
-    exitCode: listing.exitCode,
-    stdout: listing.stdout,
-    stderr: listing.stderr,
+    if (!integrity.ok) {
+      await rm(filePath, { force: true })
+      log.error('integritás-ellenőrzés megbukott — a hibás mentés törölve', {
+        fajl: fileName,
+      })
+      throw new Error(`${integrity.message} A hibás mentésfájl törölve lett: ${fileName}`)
+    }
+
+    const { size } = await stat(filePath)
+    log.info('mentés kész és ellenőrizve', {
+      fajl: fileName,
+      meret: size,
+      bejegyzesek: integrity.entryCount,
+    })
+    console.log(
+      `Kész: ${filePath} (${formatBytes(size)}, ${integrity.entryCount} visszaállítható bejegyzés).`,
+    )
+
+    await applyRetention(options.targetDir, options.keep)
   })
-
-  if (!integrity.ok) {
-    await rm(filePath, { force: true })
-    log.error('integritás-ellenőrzés megbukott — a hibás mentés törölve', { fajl: fileName })
-    throw new Error(`${integrity.message} A hibás mentésfájl törölve lett: ${fileName}`)
-  }
-
-  const { size } = await stat(filePath)
-  log.info('mentés kész és ellenőrizve', {
-    fajl: fileName,
-    meret: size,
-    bejegyzesek: integrity.entryCount,
-  })
-  console.log(
-    `Kész: ${filePath} (${formatBytes(size)}, ${integrity.entryCount} visszaállítható bejegyzés).`,
-  )
-
-  await applyRetention(options.targetDir, options.keep)
 }
 
 const parsed = parseBackupArgs(process.argv.slice(2))

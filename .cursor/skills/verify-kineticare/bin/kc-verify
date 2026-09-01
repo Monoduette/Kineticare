@@ -1,0 +1,948 @@
+#!/usr/bin/env python3
+"""Kineticare storefront verification harness (HTTP GET, no product mutation)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin, urlparse
+
+DEFAULT_BASE = "https://kineticare-production.up.railway.app"
+DEFAULT_WWW = "https://www.kineticare.hu"
+FORBIDDEN_APP_HOSTS = frozenset({"www.kineticare.hu", "kineticare.hu"})
+USER_AGENT = "KineticareVerify/1.0 (project-local pstack harness)"
+
+DUAL_CTA_SLUGS = (
+    "inhuvelygyulladas",
+    "keztoalagut-szindroma",
+    "teniszkonyok",
+    "miert-zsibbad-a-kezem",
+    "csuklotores-utani-gyogytorna",
+    "csuklo-es-kezfajdalom",
+    "pattano-ujj",
+)
+SINGLE_APPOINTMENT_SLUG = "befagyott-vall"
+PRODUCT_PATH = "/kurzusok/otthoni-kezrehab-program"
+PRODUCT_TITLE = "Otthoni KézRehab Program"
+COURSE_SALES_LABEL = "Nyisd meg a kurzusoldalt"
+APPOINTMENT_LINK_LABEL = "Kérj időpontot üzenetben"
+APPOINTMENT_HREF = "/kapcsolat#idopontkeres"
+BUY_LABEL = "Megveszem a kurzust"
+CHECKOUT_SUBMIT_LABEL = "Megrendelem és fizetek"
+APPOINTMENT_SUBMIT_LABEL = "Időpontot kérek"
+
+SCRIPT_STYLE = re.compile(r"<(script|style)\b[\s\S]*?</\1>", re.I)
+PANEL_OPEN = re.compile(r"<section\b[^>]*\bkc-post-cta__panel\b[^>]*>", re.I)
+CLASS_ATTR = re.compile(r"<[a-z][a-z0-9]*\b[^>]*\bclass=\"([^\"]+)\"[^>]*>", re.I)
+LINK = re.compile(r"<a\b([^>]*)>([\s\S]*?)</a>", re.I)
+HREF_ATTR = re.compile(r"\bhref=\"([^\"]+)\"", re.I)
+H1 = re.compile(r"<h1\b[^>]*>([\s\S]*?)</h1>", re.I)
+TITLE = re.compile(r"<title\b[^>]*>([\s\S]*?)</title>", re.I)
+ARTICLE_CARD = re.compile(r"<article\b[^>]*\bkc-course-card\b[^>]*>", re.I)
+BLOG_HREF = re.compile(r'href="/blog/([a-z0-9-]+)"')
+PENZTAR_HREF = re.compile(r"/penztar\?termek=(\d+)")
+KEZREHAB_PATH = "/kezrehab"
+BARE_NOT_BLOG_PATHS = ("/pattano-ujj", "/csuklo-es-kezfajdalom")
+MUTATING_PATH_MARKERS = ("/api/checkout", "/api/barion")
+SAFE_RESPONSE_HEADERS = ("content-type", "server", "location")
+DROP_EVIDENCE_KEYS = frozenset(
+    {"set-cookie", "set_cookie", "authorization", "cookie", "proxy-authorization"}
+)
+SCRUB_SET_COOKIE = re.compile(r"(?im)(set-cookie\s*[:=]\s*).+")
+SCRUB_AUTHORIZATION = re.compile(r"(?im)(authorization\s*[:=]\s*).+")
+SCRUB_DATA_SITEKEY = re.compile(r'(?i)data-sitekey="[^"]*"')
+SCRUB_JSON_SITEKEY = re.compile(
+    r'(?i)("(turnstileSiteKey|siteKey|site_key)"\s*:\s*)"(?:[^"\\]|\\.)*"'
+)
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep the first 3xx so doctor can see /kezrehab 308 instead of the followed 200."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+def utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def env_base() -> str:
+    return os.environ.get("KC_VERIFY_BASE_URL", DEFAULT_BASE).rstrip("/")
+
+
+def env_www() -> str:
+    return os.environ.get("KC_VERIFY_WWW_URL", DEFAULT_WWW).rstrip("/")
+
+
+def env_evidence_dir() -> Path:
+    override = os.environ.get("KC_VERIFY_EVIDENCE_DIR")
+    if override:
+        return Path(override)
+    return Path("/tmp/kc-verify-evidence") / run_id()
+
+
+def env_scratch_dir() -> Path:
+    override = os.environ.get("KC_VERIFY_SCRATCH_DIR")
+    if override:
+        return Path(override)
+    return Path("/tmp/kc-verify-scratch") / run_id()
+
+
+def run_id() -> str:
+    return os.environ.get("KC_VERIFY_RUN_ID") or utc_stamp()
+
+
+def die(message: str, code: int = 1) -> None:
+    sys.stderr.write(message.rstrip() + "\n")
+    raise SystemExit(code)
+
+
+def host_of(url: str) -> str:
+    return (urlparse(url).hostname or "").lower()
+
+
+def strip_tags(html: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def strip_noise(html: str) -> str:
+    return SCRIPT_STYLE.sub("", html)
+
+
+def link_items(html: str) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for attrs, inner in LINK.findall(html):
+        href_match = HREF_ATTR.search(attrs)
+        if href_match is None:
+            continue
+        out.append({"href": href_match.group(1), "text": strip_tags(inner)})
+    return out
+
+
+def named_hrefs(html: str, label: str) -> list[str]:
+    return [item["href"] for item in link_items(html) if item["text"] == label]
+
+
+def count_class_token(html: str, token: str) -> int:
+    """Count opening tags whose class list contains the exact token.
+
+    Live dual-CTA HTML is one section.kc-post-cta wrapping two sibling
+    section.kc-post-cta__panel. A substring search for kc-post-cta also hits
+    __panel / __title / CSS, so token-split is the pass/fail measure.
+    """
+    n = 0
+    for classes in CLASS_ATTR.findall(html):
+        if token in classes.split():
+            n += 1
+    return n
+
+
+def scrub_evidence(text: str) -> str:
+    """Strip cookies, Authorization, and site keys from anything written to disk."""
+    if not text:
+        return text
+    text = SCRUB_SET_COOKIE.sub(r"\1[redacted]", text)
+    text = SCRUB_AUTHORIZATION.sub(r"\1[redacted]", text)
+    text = SCRUB_DATA_SITEKEY.sub('data-sitekey="[redacted]"', text)
+    text = SCRUB_JSON_SITEKEY.sub(r'\1"[redacted]"', text)
+    return text
+
+
+def pick_safe_headers(headers: Any) -> dict[str, str]:
+    if headers is None:
+        return {}
+    out: dict[str, str] = {}
+    for key in SAFE_RESPONSE_HEADERS:
+        value = headers.get(key)
+        if value:
+            out[key.replace("-", "_")] = value
+    return out
+
+
+def location_path(base: str, location: str | None) -> str:
+    if not location:
+        return ""
+    return urlparse(urljoin(base + "/", location)).path
+
+
+def without_html(page: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in page.items() if k != "html"}
+
+
+def assert_get_html_url(url: str) -> None:
+    path = (urlparse(url).path or "").lower()
+    if any(marker in path for marker in MUTATING_PATH_MARKERS):
+        die(
+            "kc-verify is GET+HTML only. It will not call checkout start or Barion. "
+            "Observe the storefront GET link or form page."
+        )
+
+
+def fetch(url: str, timeout: float = 25.0, *, follow_redirects: bool = True) -> dict[str, Any]:
+    """GET HTML only. Never POST, never submit a form, never start checkout."""
+    assert_get_html_url(url)
+    req = urllib.request.Request(
+        url,
+        data=None,
+        method="GET",
+        headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
+    )
+    started = time.monotonic()
+    opener = (
+        urllib.request.build_opener()
+        if follow_redirects
+        else urllib.request.build_opener(NoRedirect)
+    )
+    try:
+        with opener.open(req, timeout=timeout) as response:
+            body = response.read()
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            charset = response.headers.get_content_charset() or "utf-8"
+            html = body.decode(charset, errors="replace")
+            safe = pick_safe_headers(response.headers)
+            return {
+                "ok": True,
+                "http_method": "GET",
+                "url": response.geturl(),
+                "status": int(response.status),
+                "content_type": safe.get("content_type", ""),
+                "server": safe.get("server", ""),
+                "location": safe.get("location"),
+                "follow_redirects": follow_redirects,
+                "elapsed_ms": elapsed_ms,
+                "html": html,
+                "bytes": len(body),
+            }
+    except urllib.error.HTTPError as error:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        body = error.read() if error.fp is not None else b""
+        html = body.decode("utf-8", errors="replace")
+        safe = pick_safe_headers(error.headers)
+        status = int(error.code)
+        redirect_observed = (not follow_redirects) and status in {301, 302, 303, 307, 308}
+        payload = {
+            "ok": redirect_observed,
+            "http_method": "GET",
+            "url": url,
+            "status": status,
+            "content_type": safe.get("content_type", ""),
+            "server": safe.get("server", ""),
+            "location": safe.get("location"),
+            "follow_redirects": follow_redirects,
+            "elapsed_ms": elapsed_ms,
+            "html": html,
+            "bytes": len(body),
+        }
+        if not redirect_observed:
+            payload["error"] = f"HTTP {status}"
+        return payload
+    except Exception as error:  # noqa: BLE001 — harness must name network failures
+        return {
+            "ok": False,
+            "http_method": "GET",
+            "url": url,
+            "status": 0,
+            "content_type": "",
+            "server": "",
+            "location": None,
+            "follow_redirects": follow_redirects,
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+            "html": "",
+            "bytes": 0,
+            "error": str(error),
+        }
+
+
+def page_facts(path: str, raw_html: str) -> dict[str, Any]:
+    body = strip_noise(raw_html)
+    title_match = TITLE.search(raw_html)
+    h1_match = H1.search(body)
+    buy_hrefs = named_hrefs(body, BUY_LABEL)
+    termek_ids = sorted({match.group(1) for match in PENZTAR_HREF.finditer(" ".join(buy_hrefs))})
+    return {
+        "path": path,
+        "title": strip_tags(title_match.group(1)) if title_match else None,
+        "h1": strip_tags(h1_match.group(1)) if h1_match else None,
+        "cta_root_count": count_class_token(body, "kc-post-cta"),
+        "cta_section": count_class_token(body, "kc-post-cta") > 0,
+        "panel_count": len(PANEL_OPEN.findall(body)),
+        "course_sales_hrefs": named_hrefs(body, COURSE_SALES_LABEL),
+        "appointment_link_hrefs": named_hrefs(body, APPOINTMENT_LINK_LABEL),
+        "buy_hrefs": buy_hrefs,
+        "checkout_termek_ids": termek_ids,
+        "has_buybox": "kc-course-buybox" in body,
+        "has_buybox_id": 'id="kurzus-vasarlas"' in body,
+        "has_cta_id": 'id="kurzus-vasarlas-gomb"' in body,
+        "has_idopontkeres": 'id="idopontkeres"' in body,
+        "has_appointment_form": "kc-appointment__form" in body or 'name="appointmentName"' in body,
+        "has_appointment_name_field": 'id="kc-field-appointmentName"' in body,
+        "has_appointment_phone_field": 'id="kc-field-appointmentPhone"' in body,
+        "has_appointment_submit": APPOINTMENT_SUBMIT_LABEL in body,
+        "not_a_booking": "nem foglalás" in body.lower(),
+        "has_calendly": "calendly" in body.lower(),
+        "has_systeme": "systeme.io" in body.lower() or "cdn.systeme.io" in body.lower(),
+        "course_card_articles": len(ARTICLE_CARD.findall(body)),
+        "product_href": PRODUCT_PATH in body,
+        "checkout_started_marker": "checkout_started" in raw_html,
+        "checkout_submit_label": CHECKOUT_SUBMIT_LABEL in body,
+        "kineticare_brand": "kineticare" in body.lower() or "Kineticare" in raw_html,
+    }
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(sanitize_payload(payload), ensure_ascii=False, indent=2) + "\n"
+    path.write_text(scrub_evidence(text), encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned = scrub_evidence(text)
+    path.write_text(cleaned if cleaned.endswith("\n") else cleaned + "\n", encoding="utf-8")
+
+
+def save_html(path: Path, html: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(scrub_evidence(strip_noise(html)), encoding="utf-8")
+
+
+def sanitize_payload(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        return {
+            key: sanitize_payload(value)
+            for key, value in payload.items()
+            if key.lower() not in DROP_EVIDENCE_KEYS
+        }
+    if isinstance(payload, list):
+        return [sanitize_payload(item) for item in payload]
+    if isinstance(payload, str):
+        return scrub_evidence(payload)
+    return payload
+
+
+class AppHostError(RuntimeError):
+    pass
+
+
+def assert_app_base(base: str) -> None:
+    host = host_of(base)
+    if host in FORBIDDEN_APP_HOSTS:
+        raise AppHostError(
+            f"{base} a Systeme-cutover hoszt, nem a Next-alkalmazás. "
+            "Állítsd a KC_VERIFY_BASE_URL-t a Railway felületre, amíg a DNS át nem áll."
+        )
+    if os.environ.get("KC_VERIFY_FAIL_ON_WWW_404") == "1":
+        raise AppHostError(
+            "KC_VERIFY_FAIL_ON_WWW_404=1 tiltott: a www 404 a cutover pillanatnyi ténye, "
+            "nem CI-cél. Vedd ki a változót."
+        )
+
+
+def fetch_path(base: str, path: str, *, follow_redirects: bool = True) -> dict[str, Any]:
+    result = fetch(urljoin(base + "/", path.lstrip("/")), follow_redirects=follow_redirects)
+    result["path"] = path
+    if result.get("html"):
+        result["facts"] = page_facts(path, result["html"])
+    return result
+
+
+def fetch_kezrehab_redirect(base: str) -> dict[str, Any]:
+    """Redirect check, not an Ads final. First hop must stay 308."""
+    first = fetch_path(base, KEZREHAB_PATH, follow_redirects=False)
+    followed = fetch_path(base, KEZREHAB_PATH, follow_redirects=True)
+    location = first.get("location") or ""
+    final_url = followed.get("url") or ""
+    final_path = urlparse(final_url).path or ""
+    return {
+        "path": KEZREHAB_PATH,
+        "http_method": "GET",
+        "ads_final": False,
+        "note": (
+            "GET /kezrehab is a storefront redirect check. "
+            "Do not use this URL or the Railway hostname as a Google Ads final."
+        ),
+        "first_status": first.get("status"),
+        "location": location,
+        "final_status": followed.get("status"),
+        "final_url": final_url,
+        "final_path": final_path,
+        "first_error": first.get("error"),
+        "final_error": followed.get("error"),
+    }
+
+
+def observe_bare_not_blog(base: str) -> dict[str, Any]:
+    """Bare /pattano-ujj and /csuklo-es-kezfajdalom are 404. Observe only; never CI."""
+    paths: dict[str, Any] = {}
+    for path in BARE_NOT_BLOG_PATHS:
+        page = fetch_path(base, path)
+        paths[path] = {
+            "status": page.get("status"),
+            "url": page.get("url"),
+            "error": page.get("error"),
+        }
+    return {
+        "checked": True,
+        "ci_goal": False,
+        "note": (
+            "Bare /pattano-ujj and /csuklo-es-kezfajdalom (no /blog/) are 404 on Railway. "
+            "Do not add them to doctor/drive pass conditions or CI."
+        ),
+        "paths": paths,
+    }
+
+
+def dual_cta_shape_failures(path: str, facts: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    root = facts.get("cta_root_count")
+    panels = facts.get("panel_count")
+    if root != 1:
+        failures.append(
+            f"{path} cta_root_count={root} (egy .kc-post-cta gyökér kell, ne két gyökér)"
+        )
+    if panels != 2:
+        failures.append(
+            f"{path} panel_count={panels} (két testvér .kc-post-cta__panel kell)"
+        )
+    return failures
+
+
+def doctor_payload(base: str, evidence_dir: Path) -> dict[str, Any]:
+    assert_app_base(base)
+    home = fetch_path(base, "/")
+    product = fetch_path(base, PRODUCT_PATH)
+    kezrehab = fetch_kezrehab_redirect(base)
+    dual_pages: dict[str, Any] = {}
+    for slug in DUAL_CTA_SLUGS:
+        path = f"/blog/{slug}"
+        page = fetch_path(base, path)
+        dual_pages[slug] = without_html(page)
+        if page.get("html"):
+            save_html(evidence_dir / "pages" / f"blog-{slug}.html", page["html"])
+
+    www_note: dict[str, Any] = {"checked": False, "ci_goal": False}
+    try:
+        www = fetch(env_www() + "/blog/teniszkonyok", timeout=15.0)
+        www_note = {
+            "checked": True,
+            "url": env_www() + "/blog/teniszkonyok",
+            "status": www["status"],
+            "systeme": page_facts("/blog/teniszkonyok", www["html"]).get("has_systeme")
+            if www["html"]
+            else False,
+            "ci_goal": False,
+            "note": (
+                "A www.kineticare.hu /blog/* ma 404 (Systeme). Ez cutover-igazság, "
+                "nem állandó CI-bukás. Ne tedd a doctor/drive sikerfeltételévé."
+            ),
+        }
+    except Exception as error:  # noqa: BLE001
+        www_note = {"checked": False, "error": str(error), "ci_goal": False}
+
+    bare_note = observe_bare_not_blog(base)
+
+    failures: list[str] = []
+    if home.get("status") != 200:
+        failures.append(f"GET / → {home.get('status') or home.get('error')}")
+    home_facts = home.get("facts") or {}
+    if home_facts.get("has_systeme"):
+        failures.append("GET / Systeme-oldalt adott, nem a Kineticare Next-appot")
+    if not home_facts.get("kineticare_brand"):
+        failures.append("GET / nem Kineticare-márkájú")
+    for slug in DUAL_CTA_SLUGS:
+        path = f"/blog/{slug}"
+        page = dual_pages[slug]
+        if page.get("status") != 200:
+            failures.append(f"GET {path} → {page.get('status') or page.get('error')}")
+            continue
+        failures.extend(dual_cta_shape_failures(path, page.get("facts") or {}))
+    if product.get("status") != 200:
+        failures.append(
+            f"GET {PRODUCT_PATH} → {product.get('status') or product.get('error')}"
+        )
+    if kezrehab.get("first_status") != 308:
+        failures.append(
+            f"GET {KEZREHAB_PATH} first_status={kezrehab.get('first_status')} "
+            f"(308 kell, redirect check, nem Ads-final)"
+        )
+    location = location_path(base, kezrehab.get("location") if isinstance(kezrehab.get("location"), str) else None)
+    if location != PRODUCT_PATH:
+        failures.append(
+            f"GET {KEZREHAB_PATH} Location={kezrehab.get('location')!r} (kell {PRODUCT_PATH})"
+        )
+    if kezrehab.get("final_status") != 200:
+        failures.append(
+            f"GET {KEZREHAB_PATH} final_status={kezrehab.get('final_status')} (200 kell)"
+        )
+    if kezrehab.get("final_path") != PRODUCT_PATH:
+        failures.append(
+            f"GET {KEZREHAB_PATH} final_path={kezrehab.get('final_path')!r} (kell {PRODUCT_PATH})"
+        )
+
+    tennis = dual_pages.get("teniszkonyok") or {}
+    report = {
+        "ok": not failures,
+        "base_url": base,
+        "run_id": run_id(),
+        "surface": "railway-http",
+        "http_method": "GET",
+        "failures": failures,
+        "home": without_html(home),
+        "dual_cta": dual_pages,
+        "teniszkonyok": tennis,
+        "product": without_html(product),
+        "kezrehab": kezrehab,
+        "bare_not_blog": bare_note,
+        "www_cutover": www_note,
+        "local_dev": {
+            "command": "PATH=/usr/bin:$PATH; set -a; . \"$HOME/.kineticare-dev.env\"; set +a; npm run dev",
+            "ready": "GET http://127.0.0.1:3000/ → 200 és Kineticare-márka",
+            "not_the_user_surface": True,
+            "reason": (
+                "A kötelező env (DATABASE_URI, PAYLOAD_SECRET, NEXT_PUBLIC_SERVER_URL, "
+                "BARION_API_URL, BARION_PAYEE_EMAIL) nincs a nyers shellben. A Cloud Agent "
+                "$HOME/.kineticare-dev.env dummy Barion-kulcsokkal tudja indítani a Nextet, "
+                "de a helyi Postgres CMS-tartalma nem a látogatói felület. Seedelni tilos."
+            ),
+        },
+        "isolation": (
+            "A Railway-app megosztott éles példány. Csak GET+HTML. Űrlap-POST, "
+            "időpontkérés submit, checkout-start (/api/checkout/start), fizetés, "
+            "CMS-írás, env és deploy tilos."
+        ),
+    }
+    write_json(evidence_dir / "doctor.json", report)
+    dual_bits = []
+    for slug in DUAL_CTA_SLUGS:
+        page = dual_pages[slug]
+        facts = page.get("facts") or {}
+        dual_bits.append(
+            f"{slug}:{page.get('status')}/root={facts.get('cta_root_count')}/panels={facts.get('panel_count')}"
+        )
+    bare_bits = [
+        f"{path} {info.get('status')}" for path, info in (bare_note.get("paths") or {}).items()
+    ]
+    lines = [
+        f"kc-verify doctor {'PASS' if report['ok'] else 'FAIL'}  base={base}",
+        f"  / {home.get('status')}  product {product.get('status')}",
+        f"  dual-cta {' '.join(dual_bits)}",
+        (
+            f"  {KEZREHAB_PATH} first={kezrehab.get('first_status')} "
+            f"location={kezrehab.get('location')} final={kezrehab.get('final_status')} "
+            f"{kezrehab.get('final_path')} (redirect check, not Ads final)"
+        ),
+        f"  bare-not-blog {' '.join(bare_bits)} (observe only, not CI)",
+        f"  www /blog/teniszkonyok status={www_note.get('status')} (not a CI goal)",
+    ]
+    for failure in failures:
+        lines.append(f"  FAIL {failure}")
+    write_text(evidence_dir / "doctor.txt", "\n".join(lines))
+    if product.get("html"):
+        save_html(evidence_dir / "pages" / "otthoni-kezrehab.html", product["html"])
+    return report
+
+
+def require_status(page: dict[str, Any], expected: int = 200) -> None:
+    status = page.get("status")
+    if status != expected:
+        die(f"{page.get('path')} HTTP {status} ({page.get('error') or 'unexpected'})")
+
+
+def drive_blog_dual_cta(base: str, evidence_dir: Path) -> dict[str, Any]:
+    listing = fetch_path(base, "/blog")
+    require_status(listing)
+    listing_html = listing.get("html") or ""
+    listed = tuple(sorted(set(BLOG_HREF.findall(strip_noise(listing_html)))))
+    failures: list[str] = []
+    pages: dict[str, Any] = {}
+    for slug in DUAL_CTA_SLUGS:
+        path = f"/blog/{slug}"
+        page = fetch_path(base, path)
+        require_status(page)
+        facts = page["facts"]
+        pages[slug] = without_html(page)
+        save_html(evidence_dir / "pages" / f"{slug}.html", page["html"])
+        failures.extend(dual_cta_shape_failures(path, facts))
+        if facts["course_sales_hrefs"] != [PRODUCT_PATH]:
+            failures.append(f"{path} kurzus-CTA {facts['course_sales_hrefs']} (kell {PRODUCT_PATH})")
+        if facts["appointment_link_hrefs"] != [APPOINTMENT_HREF]:
+            failures.append(
+                f"{path} időpont-CTA {facts['appointment_link_hrefs']} (kell {APPOINTMENT_HREF})"
+            )
+        if BUY_LABEL in strip_noise(page["html"]):
+            failures.append(f"{path} Megveszem a kurzust — a cikk nem pénztár")
+    shoulder = fetch_path(base, f"/blog/{SINGLE_APPOINTMENT_SLUG}")
+    require_status(shoulder)
+    shoulder_facts = shoulder["facts"]
+    pages[SINGLE_APPOINTMENT_SLUG] = without_html(shoulder)
+    save_html(evidence_dir / "pages" / f"{SINGLE_APPOINTMENT_SLUG}.html", shoulder["html"])
+    if shoulder_facts.get("cta_root_count") != 1:
+        failures.append(
+            f"/blog/{SINGLE_APPOINTMENT_SLUG} cta_root_count={shoulder_facts.get('cta_root_count')} (1 gyökér kell)"
+        )
+    if shoulder_facts["panel_count"] != 1:
+        failures.append(
+            f"/blog/{SINGLE_APPOINTMENT_SLUG} panel_count={shoulder_facts['panel_count']} (1 kell)"
+        )
+    if shoulder_facts["course_sales_hrefs"]:
+        failures.append(
+            f"/blog/{SINGLE_APPOINTMENT_SLUG} kurzus-CTA nem jár ide: {shoulder_facts['course_sales_hrefs']}"
+        )
+    extra = [slug for slug in listed if slug not in DUAL_CTA_SLUGS and slug != SINGLE_APPOINTMENT_SLUG]
+    extra_pages: dict[str, Any] = {}
+    for slug in extra:
+        path = f"/blog/{slug}"
+        page = fetch_path(base, path)
+        require_status(page)
+        facts = page["facts"]
+        extra_pages[slug] = facts
+        if (
+            facts.get("cta_root_count") == 1
+            and facts["panel_count"] == 2
+            and facts["course_sales_hrefs"]
+            and facts["appointment_link_hrefs"]
+        ):
+            failures.append(f"{path} dual CTA, pedig nincs a 7 slug zárt listáján")
+    report = {
+        "ok": not failures,
+        "feature": "blog-dual-cta",
+        "base_url": base,
+        "run_id": run_id(),
+        "listed_slugs": list(listed),
+        "dual_slugs": list(DUAL_CTA_SLUGS),
+        "failures": failures,
+        "pages": pages,
+        "unexpected_listed_slugs": extra_pages,
+        "mutation": (
+            "GET+HTML only. Observe the article hrefs. Do not POST, do not submit "
+            "the appointment form, do not GET /api/checkout/start."
+        ),
+    }
+    write_json(evidence_dir / "blog-dual-cta.json", report)
+    return report
+
+
+def drive_befagyott_vall(base: str, evidence_dir: Path) -> dict[str, Any]:
+    page = fetch_path(base, f"/blog/{SINGLE_APPOINTMENT_SLUG}")
+    require_status(page)
+    facts = page["facts"]
+    save_html(evidence_dir / "pages" / f"{SINGLE_APPOINTMENT_SLUG}.html", page["html"])
+    failures: list[str] = []
+    if facts.get("cta_root_count") != 1:
+        failures.append(f"cta_root_count={facts.get('cta_root_count')} (1 gyökér kell)")
+    if facts["panel_count"] != 1:
+        failures.append(f"panel_count={facts['panel_count']} (1 kell)")
+    if facts["appointment_link_hrefs"] != [APPOINTMENT_HREF]:
+        failures.append(f"időpont-CTA {facts['appointment_link_hrefs']}")
+    if facts["course_sales_hrefs"]:
+        failures.append(f"kurzus-CTA nem jár: {facts['course_sales_hrefs']}")
+    if facts["panel_count"] == 1 and "Hogyan tovább?" not in strip_noise(page["html"]):
+        failures.append("az egyetlen panel címe nem a Hogyan tovább?")
+    report = {
+        "ok": not failures,
+        "feature": "befagyott-vall",
+        "base_url": base,
+        "run_id": run_id(),
+        "failures": failures,
+        "facts": facts,
+    }
+    write_json(evidence_dir / "befagyott-vall.json", report)
+    return report
+
+
+def drive_otthoni(base: str, evidence_dir: Path) -> dict[str, Any]:
+    page = fetch_path(base, PRODUCT_PATH)
+    require_status(page)
+    facts = page["facts"]
+    save_html(evidence_dir / "pages" / "otthoni-kezrehab.html", page["html"])
+    failures: list[str] = []
+    if facts["h1"] != PRODUCT_TITLE:
+        failures.append(f"h1={facts['h1']!r} (kell {PRODUCT_TITLE!r})")
+    if not facts["has_buybox"] or not facts["has_cta_id"]:
+        failures.append("hiányzik a #kurzus-vasarlas / #kurzus-vasarlas-gomb")
+    if not facts["buy_hrefs"]:
+        failures.append("nincs Megveszem a kurzust link")
+    termek_ids = facts["checkout_termek_ids"]
+    checkout_page: dict[str, Any] | None = None
+    if len(termek_ids) != 1:
+        failures.append(f"pénztár termek-id {termek_ids} (pontosan egy kell)")
+    else:
+        checkout_path = f"/penztar?termek={termek_ids[0]}"
+        checkout_page = fetch_path(base, checkout_path)
+        require_status(checkout_page)
+        save_html(evidence_dir / "pages" / "penztar-otthoni.html", checkout_page["html"])
+        c_facts = checkout_page["facts"]
+        if c_facts["h1"] != "Pénztár":
+            failures.append(f"pénztár h1={c_facts['h1']!r}")
+        if PRODUCT_TITLE not in strip_noise(checkout_page["html"]):
+            failures.append("a pénztár nem az Otthoni KézRehab Programot mutatja")
+        if not c_facts["checkout_started_marker"]:
+            failures.append("a pénztár HTML-jéből hiányzik a checkout_started jelölő")
+        if not c_facts["checkout_submit_label"]:
+            failures.append("hiányzik a Megrendelem és fizetek")
+        if c_facts["has_idopontkeres"] or c_facts["has_appointment_form"]:
+            failures.append("a pénztár nem lehet kapcsolat/időpontkérés")
+    bare = fetch_path(base, "/penztar")
+    listing = fetch_path(base, "/kurzusok")
+    if bare.get("facts", {}).get("checkout_started_marker") and not (bare.get("html") or "").count(
+        "termek="
+    ):
+        # Empty /penztar is not checkout proof even if a leftover marker appeared.
+        pass
+    report = {
+        "ok": not failures,
+        "feature": "otthoni-kezrehab",
+        "base_url": base,
+        "run_id": run_id(),
+        "failures": failures,
+        "product": {k: v for k, v in page.items() if k != "html"},
+        "checkout": None if checkout_page is None else {k: v for k, v in checkout_page.items() if k != "html"},
+        "not_proof": {
+            "kapcsolat": "/kapcsolat is not checkout_started",
+            "kurzusok_list": f"/kurzusok HTTP {listing.get('status')} is listing, not checkout",
+            "penztar_without_termek": f"/penztar HTTP {bare.get('status')} is not product checkout",
+        },
+        "mutation": (
+            "GET+HTML only. Checkout proof is the product-page GET link "
+            "Megveszem a kurzust → /penztar?termek=N, then GET of that form page. "
+            "Do not POST /api/checkout/start. Do not submit Megrendelem és fizetek."
+        ),
+    }
+    write_json(evidence_dir / "otthoni-kezrehab.json", report)
+    return report
+
+
+def drive_kurzusok(base: str, evidence_dir: Path) -> dict[str, Any]:
+    page = fetch_path(base, "/kurzusok")
+    require_status(page)
+    facts = page["facts"]
+    save_html(evidence_dir / "pages" / "kurzusok.html", page["html"])
+    body = strip_noise(page["html"])
+    failures: list[str] = []
+    if facts["h1"] != "Kurzusok":
+        failures.append(f"h1={facts['h1']!r}")
+    if facts["panel_count"] != 0 or facts.get("cta_root_count"):
+        failures.append("a lista nem kaphat kc-post-cta gyökeret vagy panelt")
+    if facts["has_idopontkeres"] or facts["has_appointment_form"]:
+        failures.append("a /kurzusok course-only, időpontkérő űrlap nem jár ide")
+    if PRODUCT_PATH not in body:
+        failures.append("nincs link a /kurzusok/otthoni-kezrehab-programra")
+    if 'id="otthoni"' not in body:
+        failures.append("hiányzik a #otthoni sáv")
+    if "aria-label=\"Kurzusok szűrése kategória szerint\"" not in body and "Kurzusok szűrése" not in body:
+        # Filter chips only render when categories exist; do not fail if the live catalogue has none.
+        pass
+    report = {
+        "ok": not failures,
+        "feature": "kurzusok",
+        "base_url": base,
+        "run_id": run_id(),
+        "failures": failures,
+        "facts": facts,
+    }
+    write_json(evidence_dir / "kurzusok.json", report)
+    return report
+
+
+def drive_kapcsolat(base: str, evidence_dir: Path) -> dict[str, Any]:
+    page = fetch_path(base, "/kapcsolat")
+    require_status(page)
+    facts = page["facts"]
+    save_html(evidence_dir / "pages" / "kapcsolat.html", page["html"])
+    failures: list[str] = []
+    if facts["h1"] != "Kapcsolat":
+        failures.append(f"h1={facts['h1']!r}")
+    if not facts["has_idopontkeres"]:
+        failures.append("hiányzik az id=idopontkeres horgony")
+    if not facts["has_appointment_form"]:
+        failures.append("hiányzik az időpontkérő űrlap")
+    if not facts["has_appointment_name_field"] or not facts["has_appointment_phone_field"]:
+        failures.append("a név/telefon mező id-je nem a Field-komponens (kc-field-appointmentName/Phone)")
+    if not facts["has_appointment_submit"]:
+        failures.append("hiányzik az Időpontot kérek")
+    if not facts["not_a_booking"]:
+        failures.append("hiányzik a „nem foglalás” magyarázat")
+    if facts["has_calendly"]:
+        failures.append("naptárfoglaló (Calendly) nem jár ide")
+    if facts["checkout_started_marker"] or facts["buy_hrefs"]:
+        failures.append("a kapcsolat nem checkout")
+    report = {
+        "ok": not failures,
+        "feature": "kapcsolat-idopontkeres",
+        "base_url": base,
+        "run_id": run_id(),
+        "failures": failures,
+        "facts": facts,
+        "mutation": (
+            "GET+HTML only. A callback request here means observe the GET form page. "
+            "Do not fill fields. Do not POST. Do not click Időpontot kérek."
+        ),
+    }
+    write_json(evidence_dir / "kapcsolat-idopontkeres.json", report)
+    return report
+
+
+DRIVERS = {
+    "blog-dual-cta": drive_blog_dual_cta,
+    "befagyott-vall": drive_befagyott_vall,
+    "otthoni-kezrehab": drive_otthoni,
+    "kurzusok": drive_kurzusok,
+    "kapcsolat-idopontkeres": drive_kapcsolat,
+}
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    evidence_dir = Path(args.evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    scratch = Path(args.scratch_dir)
+    scratch.mkdir(parents=True, exist_ok=True)
+    (scratch / "session.marker").write_text(run_id() + "\n", encoding="utf-8")
+    try:
+        report = doctor_payload(args.base, evidence_dir)
+    except AppHostError as error:
+        die(str(error))
+    compact = {
+        "ok": report["ok"],
+        "base_url": report["base_url"],
+        "run_id": report["run_id"],
+        "failures": report["failures"],
+        "dual_cta_status": {
+            slug: {
+                "status": (report.get("dual_cta") or {}).get(slug, {}).get("status"),
+                "cta_root_count": ((report.get("dual_cta") or {}).get(slug, {}).get("facts") or {}).get(
+                    "cta_root_count"
+                ),
+                "panel_count": ((report.get("dual_cta") or {}).get(slug, {}).get("facts") or {}).get(
+                    "panel_count"
+                ),
+            }
+            for slug in DUAL_CTA_SLUGS
+        },
+        "kezrehab": report.get("kezrehab"),
+        "bare_not_blog": report.get("bare_not_blog"),
+        "www_cutover": report.get("www_cutover"),
+    }
+    print(json.dumps(compact, ensure_ascii=False, indent=2))
+    print(f"evidence: {evidence_dir}")
+    return 0 if report["ok"] else 1
+
+
+def cmd_drive(args: argparse.Namespace) -> int:
+    driver = DRIVERS.get(args.feature)
+    if driver is None:
+        die(f"ismeretlen feature: {args.feature}", 2)
+    evidence_dir = Path(args.evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        assert_app_base(args.base)
+        report = driver(args.base, evidence_dir)
+    except AppHostError as error:
+        die(str(error))
+    print(json.dumps({k: v for k, v in report.items() if k not in {"pages"}}, ensure_ascii=False, indent=2))
+    print(f"evidence: {evidence_dir}")
+    return 0 if report["ok"] else 1
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    evidence_dir = Path(args.evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        assert_app_base(args.base)
+    except AppHostError as error:
+        die(str(error))
+    page = fetch_path(args.base, args.path)
+    slug = re.sub(r"[^a-z0-9]+", "-", args.path.strip("/").lower()).strip("-") or "root"
+    save_html(evidence_dir / "pages" / f"{slug}.html", page.get("html") or "")
+    payload = {k: v for k, v in page.items() if k != "html"}
+    write_json(evidence_dir / f"snapshot-{slug}.json", payload)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(f"evidence: {evidence_dir}")
+    return 0 if page.get("status") == 200 else 1
+
+
+def cmd_cleanup(args: argparse.Namespace) -> int:
+    scratch = Path(args.scratch_dir)
+    removed: list[str] = []
+    if scratch.exists():
+        for child in scratch.rglob("*"):
+            if child.is_file():
+                child.unlink()
+                removed.append(str(child))
+        for child in sorted((path for path in scratch.rglob("*") if path.is_dir()), reverse=True):
+            child.rmdir()
+        try:
+            scratch.rmdir()
+        except OSError:
+            pass
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "removed_scratch": removed,
+                "evidence_kept": str(args.evidence_dir),
+                "note": "Evidence is never deleted. Only scratch started by this harness is removed. No process kill: HTTP GET starts no server.",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def add_common_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--base", default=env_base(), help="App origin. Default: Railway production.")
+    parser.add_argument(
+        "--evidence-dir",
+        default=str(env_evidence_dir()),
+        help="Proof directory for this run. Cleanup never deletes this.",
+    )
+    parser.add_argument(
+        "--scratch-dir",
+        default=str(env_scratch_dir()),
+        help="Disposable scratch for this run. cleanup removes only this.",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    add_common_flags(common)
+    parser = argparse.ArgumentParser(
+        description="Verify the Kineticare visitor surface over HTTP GET.",
+        parents=[common],
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("doctor", parents=[common])
+    drive = sub.add_parser("drive", parents=[common])
+    drive.add_argument("feature", choices=sorted(DRIVERS))
+    snap = sub.add_parser("snapshot", parents=[common])
+    snap.add_argument("path", help="Storefront path, e.g. /blog/teniszkonyok")
+    sub.add_parser("cleanup", parents=[common])
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.command == "doctor":
+        return cmd_doctor(args)
+    if args.command == "drive":
+        return cmd_drive(args)
+    if args.command == "snapshot":
+        return cmd_snapshot(args)
+    if args.command == "cleanup":
+        return cmd_cleanup(args)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

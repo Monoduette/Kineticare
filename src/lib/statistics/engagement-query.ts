@@ -150,40 +150,49 @@ export async function queryCourseEngagement(
       // „Hozzáfér" = akinek a purchases listája tartalmazza a terméket — a
       // course-progress handler definíciója. Az azonosító mellett a NÉV jön
       // át (a „nem kezdte el" névsorhoz), e-mail nem: lásd ENROLLMENT_SELECT.
-      const enrollmentPage = await readStatisticsPages<EngagementEnrollmentDoc>(
-        (page, limit) =>
-          deps.payload.find({
-            collection: 'users',
-            where: { purchases: { equals: productId } },
-            depth: 0,
-            page,
-            limit,
-            sort: 'id',
-            select: ENROLLMENT_SELECT,
-            overrideAccess: true,
-          }) as Promise<FindResultLike<EngagementEnrollmentDoc>>,
-        ENROLLMENT_PAGE_SIZE,
-        ENGAGEMENT_ENROLLMENT_MAX,
-      )
-
-      // A `watchedAt` itt nem kell: az összesítő totals-blokkja (elkezdte,
-      // befejezte, átlag) nem használja, csak a hallgatónkénti utolsó
-      // aktivitás — az pedig a kurzuslap dolga.
-      const progressPage = await readStatisticsPages<EngagementProgressDoc>(
-        (page, limit) =>
-          deps.payload.find({
-            collection: 'course-progress',
-            where: { product: { equals: productId } },
-            depth: 0,
-            page,
-            limit,
-            sort: ['user', 'id'],
-            select: PROGRESS_SELECT,
-            overrideAccess: true,
-          }) as Promise<FindResultLike<EngagementProgressDoc>>,
-        PROGRESS_PAGE_SIZE,
-        ENGAGEMENT_PROGRESS_MAX,
-      )
+      const [enrollmentSettled, progressSettled] = await Promise.allSettled([
+        readStatisticsPages<EngagementEnrollmentDoc>(
+          (page, limit) =>
+            deps.payload.find({
+              collection: 'users',
+              where: { purchases: { equals: productId } },
+              depth: 0,
+              page,
+              limit,
+              sort: 'id',
+              select: ENROLLMENT_SELECT,
+              overrideAccess: true,
+            }) as Promise<FindResultLike<EngagementEnrollmentDoc>>,
+          ENROLLMENT_PAGE_SIZE,
+          ENGAGEMENT_ENROLLMENT_MAX,
+        ),
+        // A `watchedAt` itt nem kell: az összesítő totals-blokkja (elkezdte,
+        // befejezte, átlag) nem használja, csak a hallgatónkénti utolsó
+        // aktivitás — az pedig a kurzuslap dolga.
+        readStatisticsPages<EngagementProgressDoc>(
+          (page, limit) =>
+            deps.payload.find({
+              collection: 'course-progress',
+              where: { product: { equals: productId } },
+              depth: 0,
+              page,
+              limit,
+              sort: ['user', 'id'],
+              select: PROGRESS_SELECT,
+              overrideAccess: true,
+            }) as Promise<FindResultLike<EngagementProgressDoc>>,
+          PROGRESS_PAGE_SIZE,
+          ENGAGEMENT_PROGRESS_MAX,
+        ),
+      ])
+      if (enrollmentSettled.status === 'rejected') {
+        throw enrollmentSettled.reason
+      }
+      if (progressSettled.status === 'rejected') {
+        throw progressSettled.reason
+      }
+      const enrollmentPage = enrollmentSettled.value
+      const progressPage = progressSettled.value
 
       truncated = truncated || enrollmentPage.truncated || progressPage.truncated
 

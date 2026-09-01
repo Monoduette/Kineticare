@@ -178,6 +178,13 @@ describe('classifyRateLimitedRoute — mit korlátozunk', () => {
     expect(classifyRateLimitedRoute('POST', '/api/form-submissions')).toBe('form-submission')
   })
 
+  it('SEC-007: a szerveroldali kosár-létrehozás (POST /api/carts) keret alá esik', () => {
+    expect(classifyRateLimitedRoute('POST', '/api/carts')).toBe('cart-write')
+    expect(RATE_LIMIT_RULES['cart-write']).toEqual({ limit: 30, windowMs: TEN_MINUTES })
+    // Olvasás sosem korlátozott.
+    expect(classifyRateLimitedRoute('GET', '/api/carts')).toBeNull()
+  })
+
   it('a Barion-callbacket ÚTVONALON SOSEM korlátozzuk (fizetési értesítés)', () => {
     expect(classifyRateLimitedRoute('POST', '/api/barion/callback')).toBeNull()
   })

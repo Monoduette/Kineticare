@@ -41,6 +41,8 @@ describe('ResetPasswordForm — más eszközök kijelentkezése (J2)', () => {
     )
     expect(html).not.toContain(RESET_OTHER_DEVICES_NOTE)
     expect(html).toContain('Új jelszó')
+    expect(html).toContain('Új jelszó még egyszer')
+    expect(html).not.toContain('mégegyszer')
   })
 })
 

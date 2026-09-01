@@ -76,7 +76,7 @@ function FreeCourseLine({
   return (
     <p className="kc-post-cta__free">
       {variant === 'idopont' ? FREE_LINE_LEAD_KEZ : FREE_LINE_LEAD}
-      <Link className="kc-post-cta__free-link" href={courseHref(freeCourse)}>
+      <Link className="kc-post-cta__free-link" data-cta="ingyenes-kurzus" href={courseHref(freeCourse)}>
         {title}
       </Link>
       {FREE_LINE_TAIL}
@@ -97,7 +97,7 @@ function AppointmentBox() {
       <h2 className="kc-post-cta__title">{APPOINTMENT_BOX_HEADING}</h2>
       <p className="kc-post-cta__text">{APPOINTMENT_BOX_TEXT}</p>
       <p className="kc-post-cta__action">
-        <Link className="kc-button kc-button--secondary" href={APPOINTMENT_HREF}>
+        <Link className="kc-button kc-button--secondary" data-cta="idopont" href={APPOINTMENT_HREF}>
           {ctaLabel('appointment-request-link')}
         </Link>
       </p>
@@ -112,7 +112,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
         <h2 className="kc-post-cta__title">{APPOINTMENT_HEADING}</h2>
         <p className="kc-post-cta__text">{APPOINTMENT_TEXT}</p>
         <p className="kc-post-cta__action">
-          <Link className="kc-button kc-button--secondary" href={APPOINTMENT_HREF}>
+          <Link className="kc-button kc-button--secondary" data-cta="idopont" href={APPOINTMENT_HREF}>
             {ctaLabel('appointment-request-link')}
           </Link>
         </p>
@@ -128,7 +128,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
           <h2 className="kc-post-cta__title">{NO_COURSE_HEADING}</h2>
           <p className="kc-post-cta__text">{NO_COURSE_TEXT}</p>
           <p className="kc-post-cta__action">
-            <Link className="kc-button kc-button--primary" href="/kurzusok">
+            <Link className="kc-button kc-button--primary" data-cta="kurzus-lista" href="/kurzusok">
               {ctaLabel('course-list-open')}
             </Link>
           </p>
@@ -157,7 +157,7 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
             <Badge tone="neutral">{priceLabel}</Badge>
           ) : null}
           {priceKind === 'free' ? <Badge tone="success">Ingyenes</Badge> : null}
-          <Link className="kc-button kc-button--secondary" href={courseHref(course)}>
+          <Link className="kc-button kc-button--secondary" data-cta="kurzus" href={courseHref(course)}>
             {ctaLabel('course-sales-open')}
           </Link>
         </p>

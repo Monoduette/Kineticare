@@ -6,10 +6,10 @@
 #                (Postgres service-konténerrel — enélkül a DB-kapus tesztek
 #                némán kimaradnának; a részletes indoklás a job fölött)
 #   build  job : next build (futásidőben generált álértékekkel)
-#   audit  job : npm audit (critical szint = bukás)
+#   audit  job : npm audit (high szinttől bukás)
 #
 # MIÉRT --legacy-peer-deps? NEM peer-ütközés miatt — az megszűnt. A repó ma
-# next@16.3.0-n áll, ami beleesik a @payloadcms/next 3.86.0 peer-tartományába
+# next@16.3.3-on áll, ami beleesik a @payloadcms/next 3.88.0 peer-tartományába
 # (`>=15.2.9 <15.3.0 || >=15.3.9 <15.4.0 || >=15.4.11 <15.5.0 || >=16.2.6
 # <17.0.0`), és az `npm install --dry-run --strict-peer-deps` egyetlen ERESOLVE
 # nélkül fut le.
@@ -55,7 +55,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "24.20.0"
 
 jobs:
   verify:
@@ -89,7 +89,7 @@ jobs:
     # ------------------------------------------------------------------------
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
         env:
           POSTGRES_USER: kineticare_ci
           POSTGRES_DB: kineticare_ci
@@ -102,18 +102,25 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A G3 migráció-immutabilitás őr (src/__tests__/migration-immutability.test.ts)
           # a baseline-commitig visszamenőleg git-történetet olvas — shallow klónban
           # fail-closed bukna. Teljes history kell (mint a gitleaks.yml-nél).
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - name: Railpack 0.38.0 plan fixture ellenőrzése
+        run: ./scripts/verify-railpack-plan.sh
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       - name: Typecheck
         run: npm run typecheck
       # A `src/payload-types.ts` GENERÁLT fájl, de kézzel commitolt: ha a
@@ -147,7 +154,7 @@ jobs:
       # adatbázison a teljes láncot lefuttatja; a logban a `Migrating:` /
       # `Migrated:` sorok igazolják, hogy tényleg futott.
       - name: Adatbázis-migrációk
-        run: npx payload migrate
+        run: ./node_modules/.bin/payload migrate
       - name: Vitest
         run: npm test
       - name: ESLint
@@ -158,13 +165,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A build-hoz az src/env.ts kötelező kulcsai kellenek. Titok (még
       # placeholder sem) nem kerülhet a repóba (CLAUDE.md TILOS ZÓNÁK 1.),
       # ezért a titok-alakú értékeket futásidőben generáljuk — eldobható,
@@ -186,13 +198,18 @@ jobs:
     name: npm audit (high = bukás)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A teljes kép MINDIG látszik, akkor is, ha a kapu átenged: enélkül a
       # `moderate` tételek némán gyűlnek. Nem blokkol (`|| true`), csak riportál.
       - name: Sebezhetőség-riport (nem blokkol)

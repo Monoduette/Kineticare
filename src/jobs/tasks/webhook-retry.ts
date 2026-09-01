@@ -1,11 +1,13 @@
 import type { TaskConfig } from 'payload'
 
+import { shouldEmitThrottledAlert } from '../../lib/alert-throttle'
 import {
   getWebhookProcessor,
   isRetryDue,
   MAX_WEBHOOK_ATTEMPTS,
   processWebhook,
   webhookEventStore,
+  type ProcessWebhookOutcome,
 } from '../../lib/idempotency'
 import { logger } from '../../lib/logger'
 import { WEBHOOK_RETRY_CRON, WEBHOOK_RETRY_QUEUE } from '../queues'
@@ -16,6 +18,9 @@ import { createStaleAwareBeforeSchedule } from '../schedule-guard'
  * A scan kizárja a kimerült rekordokat (különben eltömik a 25-ös ablakot).
  * `pending_repoll` kimerüléskor received marad (későbbi Succeeded callback).
  * Schedule nélkül soha nem kerül sorba. beforeSchedule: ../schedule-guard.ts.
+ * K8: a batch per-esemény hibaizolációval fut — egyetlen mérgezett rekord
+ * (státuszgépen kívüli throw) nem állíthatja le a futást és nem éheztetheti
+ * ki a mögötte álló érvényes fizetéseket.
  */
 const RETRY_BATCH_SIZE = 25
 
@@ -97,12 +102,69 @@ export const webhookRetryTask: TaskConfig<WebhookRetryJobIO> = {
       }
 
       retried += 1
-      const outcome = await processWebhook({
-        store,
-        provider: event.provider,
-        externalId: event.externalId,
-        handler: processor,
-      })
+      // K8 — PER-ESEMÉNY HIBAIZOLÁCIÓ. A processWebhook a handler-hibákat és
+      // a sikeres ág store.update hibáját is elkapja (attemptProcessing
+      // try/catch) — ami KIREPÜLHET, az a processWebhook ELEJI findByKey
+      // (store.find) és a nem-unique-violation store.create hibája (pl. sérült
+      // azonosítón elhasaló lekérdezés). Ez korábban kiölte a ciklust: a batch
+      // a mérgezett rekordnál megállt, és mivel a sor updatedAt-je nem
+      // mozdult, a következő futás UGYANITT halt el — a mögötte álló érvényes
+      // fizetések véglegesen kiéheztek. A catch: (1) a batch folytatódik,
+      // (2) best-effort attempts++/failed írás, hogy a mérgezett sor backoffal
+      // hátrébb sorolódjon és MAX után kiessen a scanből, (3) kimerüléskor
+      // fojtott owner-riasztás (lásd alert-throttle — nem percenként ismétel).
+      // Ismert, elfogadott verseny: a failed-írás a scan-pillanatkép id-jára
+      // megy — ha közben egy route-kézbesítés terminálisra zárta a sort, a
+      // státusz visszabillen failed-re, de a result/processedAt érintetlen, és
+      // az újrafeldolgozás idempotens no-opként processed-re gyógyítja.
+      let outcome: ProcessWebhookOutcome
+      try {
+        outcome = await processWebhook({
+          store,
+          provider: event.provider,
+          externalId: event.externalId,
+          handler: processor,
+        })
+      } catch (error) {
+        failed += 1
+        const attempts = (event.attempts ?? 0) + 1
+        const message = error instanceof Error ? error.message : String(error)
+        await store
+          .update({
+            collection: 'webhook-events',
+            id: event.id,
+            data: { status: 'failed', attempts, lastError: message },
+            overrideAccess: true,
+          })
+          .catch(() => undefined)
+        if (attempts >= MAX_WEBHOOK_ATTEMPTS) {
+          exhausted += 1
+          if (shouldEmitThrottledAlert(`webhook-retry-crash:${event.provider}:${event.id}`)) {
+            logger.error(
+              'webhook-esemény újrapróbálása a státuszgépen kívül hibázott és a kísérletek kimerültek — owner beavatkozás szükséges',
+              {
+                provider: event.provider,
+                externalId: event.externalId,
+                eventId: event.id,
+                attempts,
+                error: message,
+              },
+            )
+          }
+        } else {
+          logger.warn(
+            'webhook-esemény újrapróbálása a státuszgépen kívül hibázott — a batch folytatódik',
+            {
+              provider: event.provider,
+              externalId: event.externalId,
+              eventId: event.id,
+              attempts,
+              error: message,
+            },
+          )
+        }
+        continue
+      }
       if (outcome.kind === 'processed') {
         if (outcome.nonTerminal && outcome.attempts >= MAX_WEBHOOK_ATTEMPTS) {
           // W13 — pending_repoll kimerülés: NEM terminális siker. A `failed`

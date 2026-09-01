@@ -15,9 +15,9 @@ import { absoluteUrl } from '../lib/seo'
 vi.mock('@/lib/cms', () => ({
   HOME_PAGE_SLUG: 'kezdolap',
   getAllPublishedPages: () => Promise.resolve([]),
-  getPosts: () => Promise.resolve([]),
+  getSitemapPosts: () => Promise.resolve([]),
   getContentCategories: () => Promise.resolve([]),
-  getPublishedProducts: () =>
+  getSitemapProducts: () =>
     Promise.resolve([
       { id: 7, slug: 'kezrehabilitacio-otthon', updatedAt: '2026-02-01T10:00:00.000Z' },
       // Slug nélküli, régi kurzus: marad az id-alapú cím.

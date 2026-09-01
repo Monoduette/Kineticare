@@ -1,6 +1,9 @@
 // A jelszó-politika hook (OWASP A07) + login-hiba naplózás (afterError).
 // A beforeChange hook a hash-elés ELŐTT fut (a create/update műveletek csak a
 // hookok után generálják a salt/hash párost), így a data.password itt még nyers szöveg.
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { sql, type SQL } from 'drizzle-orm'
+
 import {
   formatPasswordPolicyErrors,
   validatePasswordStrength,
@@ -40,59 +43,119 @@ import type { User } from '../payload-types'
 
 const logger = createLogger({ module: 'users' })
 
-/** A kérésen belül megosztott users-darabszám kulcsa a `req.context`-ben. */
+/** A bootstrap pre-countjának kérés-scope-ú cache-kulcsa. */
 const EXISTING_USER_COUNT = 'kineticareExistingUserCount'
+const FIRST_USER_BOOTSTRAP_LOCKED = 'kineticareFirstUserBootstrapLockAcquired'
+const FIRST_USER_BOOTSTRAP_LOCK_KEY = 'kineticare:first-user-bootstrap'
+
+export const FIRST_USER_BOOTSTRAP_HEADER = 'x-kineticare-bootstrap-token'
+export const FIRST_USER_BOOTSTRAP_TOKEN_ENV = 'FIRST_USER_BOOTSTRAP_TOKEN'
+export const FIRST_USER_BOOTSTRAP_TOKEN_MIN_LENGTH = 32
+
+export const FIRST_USER_BOOTSTRAP_FORBIDDEN_MESSAGE =
+  'Az első tulajdonosi fiók létrehozásához érvényes operátori bootstrap-token szükséges.'
+
+export const FIRST_USER_BOOTSTRAP_UNAVAILABLE_MESSAGE =
+  'Az első tulajdonosi fiók létrehozása nincs biztonságosan előkészítve. Állítsd be az operátori bootstrap-titkot, majd próbáld újra.'
+
+interface BootstrapTransactionAdapter {
+  execute: (args: { db: unknown; sql: SQL }) => Promise<unknown>
+  sessions?: Record<string, { db?: unknown }>
+}
+
+function isBootstrapTransactionAdapter(value: unknown): value is BootstrapTransactionAdapter {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  return typeof (value as { execute?: unknown }).execute === 'function'
+}
+
+function bootstrapTokenMatches(expected: string, supplied: string | null): boolean {
+  const expectedDigest = createHash('sha256').update(expected, 'utf8').digest()
+  const suppliedDigest = createHash('sha256')
+    .update(supplied ?? '', 'utf8')
+    .digest()
+  return timingSafeEqual(expectedDigest, suppliedDigest)
+}
+
+function requestPath(req: PayloadRequest): string | null {
+  if (typeof req.url !== 'string') {
+    return null
+  }
+  try {
+    return new URL(req.url, 'http://payload.local').pathname.replace(/\/+$/, '')
+  } catch {
+    return null
+  }
+}
+
+async function acquireFirstUserBootstrapLock(req: PayloadRequest): Promise<void> {
+  if (req.context?.[FIRST_USER_BOOTSTRAP_LOCKED] === true) {
+    return
+  }
+
+  try {
+    const transactionID = await req.transactionID
+    if (transactionID === undefined || transactionID === null) {
+      throw new Error('hiányzó request transaction')
+    }
+    const adapter: unknown = req.payload.db
+    if (!isBootstrapTransactionAdapter(adapter)) {
+      throw new Error('a Payload adatbázis-adapter nem támogat tranzakciós SQL futtatást')
+    }
+    const transaction = adapter.sessions?.[String(transactionID)]?.db
+    if (transaction === undefined || transaction === null) {
+      throw new Error('a Payload request transaction nem végrehajtható')
+    }
+    await adapter.execute({
+      db: transaction,
+      sql: sql`SELECT pg_advisory_xact_lock(hashtextextended(${FIRST_USER_BOOTSTRAP_LOCK_KEY}::text, 0))`,
+    })
+    if (req.context) {
+      req.context[FIRST_USER_BOOTSTRAP_LOCKED] = true
+    }
+  } catch (error) {
+    logger.error('Az első tulajdonosi fiók tranzakciós zárja nem szerezhető meg', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw new APIError(FIRST_USER_BOOTSTRAP_UNAVAILABLE_MESSAGE, 503)
+  }
+}
 
 /**
- * A meglévő felhasználók száma — kérésenként EGYSZER kérdezve le.
- *
- * A `promoteFirstUserToOwner` és az `enforcePasswordPolicy` ugyanazt kérdezi
- * („van-e már felhasználó?"), és mindkettő ugyanabban a beforeChange-láncban,
- * a beszúrás ELŐTT fut — a válasz a kérésen belül nem változhat, tehát a két
- * külön `count` ugyanazt a számot adta. A Payload `req.context`-je a hookok közt
- * megosztott, ezért az elsőként lefutó hook eredményét a másik onnan olvassa:
- * create-enként egy DB-kérdés kettő helyett.
- *
- * A hiányzó `context`-et is elviseli (unit-tesztek egyszerűsített req-mockja):
- * ilyenkor nincs megosztás, csak a friss lekérdezés — a visszaadott érték
- * mindkét ágon ugyanaz.
+ * A meglévő felhasználók száma a Payload request tranzakciójában. A nullás
+ * előellenőrzés cache-e a lock megszerzése után kötelezően törlődik, hogy a
+ * mérvadó recount egy közben commitolt bootstrapot is lásson.
  */
 async function countExistingUsers(req: PayloadRequest): Promise<number> {
   const cached = req.context?.[EXISTING_USER_COUNT]
   if (typeof cached === 'number') {
     return cached
   }
-  const { totalDocs } = await req.payload.count({ collection: 'users' })
+  const { totalDocs } = await req.payload.count({
+    collection: 'users',
+    overrideAccess: true,
+    req,
+  })
   if (req.context) {
     req.context[EXISTING_USER_COUNT] = totalDocs
   }
   return totalDocs
 }
 
-// OWASP A07: jelszó-erősségi politika. A Payload 3.86-ban nincs natív
+// OWASP A07: jelszó-erősségi politika. A Payload 3.88.0-ban nincs natív
 // passwordMinLength/komplexitási beállítás, ezért hookból érvényesítjük.
 // A collection beforeChange hook a hash-elés ELŐTT fut (a create/update
 // műveletek csak a hookok után generálják a salt/hash párost), így a
-// data.password itt még nyers szöveg. ASYNC — az első user ellenőrzéséhez
-// a users-darabszámot a DB-ből kell lekérni.
-const enforcePasswordPolicy: CollectionBeforeChangeHook = async ({
-  data,
-  originalDoc,
-  req,
-  operation,
-}) => {
+// data.password itt még nyers szöveg.
+const enforcePasswordPolicy: CollectionBeforeChangeHook = ({ data, originalDoc }) => {
   // Csak akkor ellenőrzünk, ha ténylegesen jelszót állítanak be vagy
   // módosítanak — a többi profilmező-mentést a hook érintetlenül hagyja.
   if (typeof data.password !== 'string' || data.password.length === 0) {
     return data
   }
-  // Az első felhasználó (create-first-user / seed / első admin) létrehozásakor
-  // a politika NEM érvényesül — különben az első admin létrehozása is
-  // elbukna egy gyengébb jelszón, és a rendszer elérhetetlenné válna.
-  // A politika csak a 2. usertől kezdve él (a create műveletnél).
-  if (operation === 'create' && (await countExistingUsers(req)) === 0) {
-    return data
-  }
+  // A bootstrap-token jogosultságot bizonyít, jelszóerősséget nem: az első
+  // ownerre ugyanaz a politika vonatkozik, mint minden későbbi fiókra.
   // Update-nél az e-mail gyakran nincs a payloadban — ilyenkor a
   // meglévő rekord e-mail-címével vetjük össze a jelszót.
   const email =
@@ -159,7 +222,7 @@ function normalizeEmail(value: unknown): string | undefined {
   return typeof value === 'string' ? value.trim().toLowerCase() : undefined
 }
 
-// Az ELSŐ felhasználó owner-szerepkört kap.
+// Az ELSŐ felhasználó csak operátori bootstrap-tokennel kap owner-szerepkört.
 //
 // Enélkül a rendszer telepítés után zárva marad: a `role` mező field-access-e
 // owner-only (`isOwnerFieldAccess`), owner viszont még nincs, ezért a
@@ -167,22 +230,57 @@ function normalizeEmail(value: unknown): string | undefined {
 // `defaultValue: 'customer'` szerepkörrel jön létre. A collection
 // `access.admin` viszont `isStaffOrOwner` — vagyis az első user NEM jut be az
 // adminba, törölni sem lehet (`access.delete: isOwner`), és a szerepkörét sem
-// írhatja át senki. A hook ezt a patthelyzetet oldja fel: ha a DB-ben még
-// nincs user, a létrejövő rekord owner lesz. A 2. usertől a hook nem nyúl a
-// role-hoz, tehát a jogemelés elleni védelem (owner-only field access)
-// változatlanul él.
+// írhatja át senki. A publikus első-regisztráció ezért csak külön operátori
+// titokkal nyithatja meg ezt az egyszeri jogosultságemelést. A Postgres-zár,
+// a count és az insert ugyanabban a request transactionben fut; zár nélkül a
+// hook fail-closed. A 2. usertől a publikus regisztráció mindig customer.
 const promoteFirstUserToOwner: CollectionBeforeChangeHook = async ({ data, req, operation }) => {
   if (operation !== 'create') {
     return data
   }
-  if ((await countExistingUsers(req)) > 0) {
+
+  let existingUsers = await countExistingUsers(req)
+  if (existingUsers === 0) {
+    await acquireFirstUserBootstrapLock(req)
+    // A lockra várakozás alatt egy másik request commitolhatta az első usert.
+    // A pre-count 0 cache-ét ezért eldobjuk, majd ugyanabban a tx-ben újramérünk.
+    if (req.context) {
+      delete req.context[EXISTING_USER_COUNT]
+    }
+    existingUsers = await countExistingUsers(req)
+  }
+  const path = requestPath(req)
+  const isFirstRegisterRequest = path?.endsWith('/users/first-register') === true
+  const isPublicUsersCreate =
+    req.user == null && (isFirstRegisterRequest || path?.endsWith('/users') === true)
+
+  if (existingUsers > 0) {
+    if (isFirstRegisterRequest) {
+      throw new APIError(FIRST_USER_BOOTSTRAP_FORBIDDEN_MESSAGE, 403)
+    }
+    if (isPublicUsersCreate) {
+      return { ...data, role: 'customer' }
+    }
     return data
   }
-  logger.info('Az első felhasználó owner szerepkörrel jön létre')
+
+  const expectedToken = process.env[FIRST_USER_BOOTSTRAP_TOKEN_ENV]
+  if (
+    typeof expectedToken !== 'string' ||
+    expectedToken.length < FIRST_USER_BOOTSTRAP_TOKEN_MIN_LENGTH
+  ) {
+    throw new APIError(FIRST_USER_BOOTSTRAP_UNAVAILABLE_MESSAGE, 503)
+  }
+  const suppliedToken = req.headers.get(FIRST_USER_BOOTSTRAP_HEADER)
+  if (!bootstrapTokenMatches(expectedToken, suppliedToken)) {
+    throw new APIError(FIRST_USER_BOOTSTRAP_FORBIDDEN_MESSAGE, 403)
+  }
+
+  logger.info('Az első felhasználó operátori bootstrap után owner szerepkörrel jön létre')
   return { ...data, role: 'owner' }
 }
 
-// Sikertelen bejelentkezés naplózása. A Payload 3.86-ban NINCS
+// Sikertelen bejelentkezés naplózása. A Payload 3.88.0-ban NINCS
 // afterFailedLogin hook; a REST /api/users/login hibák (hibás jelszó →
 // AuthenticationError, zárolt fiók → LockedAuth) a routeError-en át a
 // collection afterError hookjában landolnak. Jelszót sosem naplózunk —
@@ -318,7 +416,7 @@ export const Users: CollectionConfig = {
     // iat + tokenExpiration, node_modules/payload/dist/auth/jwt.js) — nem
     // milliszekundumban, mint a lockTime-ot.
     tokenExpiration: 7200, // 2 óra (másodpercben)
-    // A session-süti Secure-jelölése: a Payload 3.86 defaultja secure:false
+    // A session-süti Secure-jelölése: a Payload 3.88.0 defaultja secure:false
     // (collections/config/defaults.js), így a süti síma HTTP-n is elkészülne.
     // Élesben (https) KÖTELEZŐ a secure; fejlesztésben (http://localhost)
     // kikapcsolva marad, különben a böngésző el sem tárolná.

@@ -4,9 +4,21 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ThankYouView } from '@/components/checkout/ThankYouView'
 
+/**
+ * A lap címe NEM állíthat sikert: a Barion ugyanerre a URL-re küld sikeres,
+ * elutasított és megszakított fizetést is, vendéget és belépett vevőt.
+ * „Köszönjük a vásárlást" hamis állítás, amíg az állapot ismeretlen.
+ *
+ * Forrás: WCAG 2.2 · 2.4.2 Page Titled (a cím a lap témáját/célját írja le;
+ * F25: a cím nem azonosítja a tartalmat)
+ * https://www.w3.org/WAI/WCAG22/Understanding/page-titled.html ;
+ * NN/g, Error Message Guidelines (pontosan írd le a helyzetet, ne állíts
+ * hamis okot vagy sikert)
+ * https://www.nngroup.com/articles/error-message-guidelines/ .
+ */
 export const metadata: Metadata = {
-  title: 'Köszönjük a vásárlást',
-  description: 'A fizetésedet feldolgozzuk, hamarosan eléred a kurzust.',
+  title: 'A fizetésed állapota',
+  description: 'A banki visszaigazolás után itt látod, mi a következő lépés.',
 }
 
 interface KoszonjukPageProps {

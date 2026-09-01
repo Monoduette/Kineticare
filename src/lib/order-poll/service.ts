@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
 import {
   BarionApiError,
   fetchPaymentState,
@@ -9,7 +10,17 @@ import {
 } from '../barion'
 import { logger as rootLogger, type Logger } from '../logger'
 import { onOrderPaid, queueInvoiceIssueJob, type OrderPaidAccount } from '../order-paid'
-import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import {
+  applyBarionStateTransition,
+  isLateSuccessSourceStatus,
+} from '../order-status/apply-barion-state'
+import { updateOrderStatusIfCurrent } from '../order-status/conditional-status'
+import {
+  paidRejectRecoveryLogContext,
+  recoverRejectedSucceededPayment,
+  type RecoverRejectedSucceededPaymentInput,
+  type PaidRejectRecoveryResult,
+} from '../order-status/recover-paid-reject'
 import { getSzamlazzConfig } from '../szamlazz'
 
 /**
@@ -31,15 +42,22 @@ export const MAX_LEADING_FAILURES = 5
 // (pénz felvéve, kurzus nem). A 24 óra a késői banki feldolgozás is belefér.
 export const ORPHAN_ORDER_GRACE_MS = 24 * 60 * 60 * 1000 // 24 óra
 export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
+/**
+ * R-03: a checkout cancel-and-restart cancelled rendelést hagy, a poll
+ * pedig csak payment_pending-et nézett. A késői Barion Succeeded-et
+ * ennyi ideig keressük (a 30 perces PaymentWindow + banki késés +
+ * másnapi újrapróbálás belefér).
+ */
+export const LATE_SUCCESS_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
+export const LATE_SUCCESS_BATCH_SIZE = 10
+/** Expired/no-op sorfej után ennyi pótlap kérhető ugyanabban a futásban (RF-3). */
+export const LATE_SUCCESS_REFILL_PAGES = 1
 export const INVOICE_RESWEEP_BATCH_SIZE = 10
 export const INVOICE_PENDING_STALE_MS = 10 * 60 * 1000 // 10 perc
 
 /** Számla-resweep kimenet: `done` | `skipped-disabled` | `skipped-config-error` | `queue-unavailable`. */
 export type InvoiceResweepStatus =
-  | 'done'
-  | 'skipped-disabled'
-  | 'skipped-config-error'
-  | 'queue-unavailable'
+  'done' | 'skipped-disabled' | 'skipped-config-error' | 'queue-unavailable'
 
 export interface OrderPollSummary {
   scanned: number
@@ -57,6 +75,8 @@ export interface OrderPollSummary {
   invoiceRequeued: number
   /** Lefutott-e a számla-resweep, és ha nem, miért nem. */
   invoiceResweep: InvoiceResweepStatus
+  /** R-03: cancelled / payment_failed rendelések, amelyekre GetState ment. */
+  lateSuccessScanned: number
 }
 
 export interface OrderPollDeps {
@@ -76,6 +96,13 @@ export interface OrderPollDeps {
    * élő Barion és a tilos-zónás állapotgép-modul módosítása nélkül.
    */
   applyTransition?: typeof applyBarionStateTransition
+  /**
+   * Injektálható (teszteléshez); alapból a valódi recoverRejectedSucceededPayment.
+   * Terminális paid-reject után Barion-visszatérítés — élő hívás tesztből tilos.
+   */
+  recoverRejectedPaid?: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
   /** Injektálható (teszteléshez); alapból a valódi queueInvoiceIssueJob-hívás. */
   queueInvoice?: (orderId: number) => Promise<boolean>
   /**
@@ -214,11 +241,13 @@ async function resweepInvoices(
  * hoz `updatedAt` szerint; a pótlap a már látott azonosítókat kizárja, tehát
  * rejected sorokat NEM kérdezi újra (és GetState-et sem hív rájuk másodszor).
  */
-function pendingOrdersWhere(excludeIds: ReadonlyArray<number>): {
-  status: { equals: 'payment_pending' }
-} | {
-  and: [{ status: { equals: 'payment_pending' } }, { id: { not_in: number[] } }]
-} {
+function pendingOrdersWhere(excludeIds: ReadonlyArray<number>):
+  | {
+      status: { equals: 'payment_pending' }
+    }
+  | {
+      and: [{ status: { equals: 'payment_pending' } }, { id: { not_in: number[] } }]
+    } {
   if (excludeIds.length === 0) {
     return { status: { equals: 'payment_pending' } }
   }
@@ -227,19 +256,21 @@ function pendingOrdersWhere(excludeIds: ReadonlyArray<number>): {
   }
 }
 
-/**
- * W1 — rejected átmenet után a rendelés `payment_pending` MARAD (emberi
- * ellenőrzés kell, cancelled/failed elrejtené), de az `updatedAt`-nek mozognia
- * kell, különben a 25 mérgezett sor örökre az ablak elején marad. A Payload
- * csak valódi update-re bökí az `updatedAt`-et: ugyanazt a státuszt írjuk vissza.
- */
-async function touchRejectedPendingOrder(payload: Payload, orderId: number): Promise<void> {
-  await payload.update({
-    collection: 'orders',
-    id: orderId,
-    data: { status: 'payment_pending' },
-    overrideAccess: true,
-  })
+function lateSuccessOrdersWhere(
+  sinceIso: string,
+  excludeIds: ReadonlyArray<number>,
+): {
+  and: Array<Record<string, unknown>>
+} {
+  const filters: Array<Record<string, unknown>> = [
+    { status: { in: ['cancelled', 'payment_failed'] } },
+    { createdAt: { greater_than_equal: sinceIso } },
+    { barionPaymentId: { exists: true } },
+  ]
+  if (excludeIds.length > 0) {
+    filters.push({ id: { not_in: [...excludeIds] } })
+  }
+  return { and: filters }
 }
 
 type PendingPageDecision = 'continue' | 'abort'
@@ -259,6 +290,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         ...(account ? { account } : {}),
       }))
   const applyTransition = deps.applyTransition ?? applyBarionStateTransition
+  const recoverRejectedPaid = deps.recoverRejectedPaid ?? recoverRejectedSucceededPayment
 
   const summary: OrderPollSummary = {
     scanned: 0,
@@ -270,6 +302,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     orphaned: 0,
     invoiceRequeued: 0,
     invoiceResweep: 'done',
+    lateSuccessScanned: 0,
   }
 
   /**
@@ -306,8 +339,128 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
   let leadingFailures = 0
 
   const seenIds = new Set<number>()
-  /** W1 — rejected átmenetek száma (a GetState-hibák `failed` számlálójától külön). */
-  let rejectedTransitions = 0
+
+  const applyMappedState = async (
+    order: Order,
+    state: BarionPaymentStateResponse,
+    orderLog: Logger,
+  ): Promise<void> => {
+    const mapped = mapBarionPaymentStatus(state.Status)
+    const statusBefore = order.status
+    if (mapped === 'payment_pending') {
+      if (statusBefore === 'payment_pending') {
+        summary.stillPending += 1
+        const createdAtMs = Date.parse(order.createdAt ?? '')
+        if (Number.isFinite(createdAtMs) && now - createdAtMs >= STUCK_ORDER_WARN_MS) {
+          // A beragadt rendelés riasztása FOJTOTT (alert-throttle): az 5
+          // percenkénti futás ugyanarra a — már felszínre hozott — rendelésre
+          // korábban futásonként új error-sort írt; a cooldown lejártáig az
+          // ismétlés elnyelődik, a nyitott ügy a cooldown után újra riaszt.
+          if (shouldEmitThrottledAlert(`stuck-order:${order.id}`, undefined, now)) {
+            orderLog.error(
+              'RIASZTÁS: a rendelés 24 órája payment_pending — manuális ellenőrzés szükséges (Barion-státusz még mindig függő)',
+              { barionStatus: state.Status, ageMs: now - createdAtMs },
+            )
+          }
+        }
+      } else if (isLateSuccessSourceStatus(statusBefore)) {
+        await updateOrderStatusIfCurrent({
+          payload: deps.payload,
+          orderId: order.id,
+          expected: statusBefore,
+          next: statusBefore,
+        })
+      }
+      return
+    }
+
+    const transition = await applyTransition({
+      payload: deps.payload,
+      order,
+      mapped,
+      state,
+      log: orderLog,
+    })
+    let recoveryFailed = false
+
+    if (transition.transitionedToPaid) {
+      await onPaid(
+        order,
+        transition.customer
+          ? {
+              passwordSetupPending: transition.customer.passwordSetupPending,
+              alreadyLinked: transition.customer.alreadyLinked,
+              email: transition.customer.email,
+            }
+          : undefined,
+      )
+      summary.transitionedPaid += 1
+      orderLog.info(
+        statusBefore === 'cancelled' || statusBefore === 'payment_failed'
+          ? 'order-poll: késői Barion Succeeded — a cancelled rendelés paid (R-03)'
+          : 'order-poll: elveszett callback pótolva — a rendelés paid (utánpollolással zárult)',
+      )
+    } else if (transition.action === 'paid') {
+      summary.transitionedPaid += 1
+    } else if (transition.action === 'cancelled') {
+      if (statusBefore === 'payment_pending') {
+        summary.cancelled += 1
+        orderLog.info('order-poll: a fizetés lejárt/megszakadt — a rendelés cancelled')
+      }
+    } else if (transition.action === 'rejected') {
+      summary.failed += 1
+      if (mapped === 'paid') {
+        const rejectReason = transition.reason ?? 'unknown'
+        const recovery = await recoverRejectedPaid({
+          payload: deps.payload,
+          order,
+          state,
+          reason: rejectReason,
+          log: orderLog,
+          source: 'order-poll',
+        })
+        const recoveryCtx = paidRejectRecoveryLogContext({
+          source: 'order-poll',
+          action: recovery.action,
+          detail: recovery.detail,
+          reason: rejectReason,
+          orderId: order.id,
+        })
+        orderLog.info('paid-reject recovery lefutott', recoveryCtx)
+        if (recovery.action === 'failed') {
+          recoveryFailed = true
+          orderLog.error(
+            'RIASZTÁS: paid-reject recovery sikertelen — a sor nem forog, a következő futás újrapróbálja',
+            recoveryCtx,
+          )
+        }
+      }
+      if (!recoveryFailed && statusBefore === 'payment_pending') {
+        await updateOrderStatusIfCurrent({
+          payload: deps.payload,
+          orderId: order.id,
+          expected: 'payment_pending',
+          next: 'payment_pending',
+        })
+      }
+      orderLog.warn('order-poll: az átmenet visszautasítva (állapotgép-védelem)', {
+        reason: transition.reason ?? null,
+      })
+    }
+
+    if (
+      !recoveryFailed &&
+      isLateSuccessSourceStatus(statusBefore) &&
+      !transition.transitionedToPaid
+    ) {
+      await updateOrderStatusIfCurrent({
+        payload: deps.payload,
+        orderId: order.id,
+        expected: statusBefore,
+        next: statusBefore,
+      })
+    }
+  }
 
   const processPendingPage = async (pendingOrders: Order[]): Promise<PendingPageDecision> => {
     for (let index = 0; index < pendingOrders.length; index += 1) {
@@ -320,12 +473,17 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         // rendelés létrehozása után, a paymentId mentése előtt állt le).
         const createdAtMs = Date.parse(order.createdAt ?? '')
         if (Number.isFinite(createdAtMs) && now - createdAtMs >= ORPHAN_ORDER_GRACE_MS) {
-          await deps.payload.update({
-            collection: 'orders',
-            id: order.id,
-            data: { status: 'cancelled' },
-            overrideAccess: true,
+          const cancelledWritten = await updateOrderStatusIfCurrent({
+            payload: deps.payload,
+            orderId: order.id,
+            expected: 'payment_pending',
+            next: 'cancelled',
           })
+          if (!cancelledWritten) {
+            summary.skipped += 1
+            orderLog.warn('árva rendelés: a sor már nem payment_pending — a cancelled írás kimarad')
+            continue
+          }
           summary.orphaned += 1
           orderLog.warn(
             'árva rendelés (barionPaymentId nélkül) lejárt — cancelled; a vevő újrakezdheti a vásárlást',
@@ -409,59 +567,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         continue
       }
 
-      const mapped = mapBarionPaymentStatus(state.Status)
-      if (mapped === 'payment_pending') {
-        summary.stillPending += 1
-        const createdAtMs = Date.parse(order.createdAt ?? '')
-        if (Number.isFinite(createdAtMs) && now - createdAtMs >= STUCK_ORDER_WARN_MS) {
-          orderLog.error(
-            'RIASZTÁS: a rendelés 24 órája payment_pending — manuális ellenőrzés szükséges (Barion-státusz még mindig függő)',
-            { barionStatus: state.Status, ageMs: now - createdAtMs },
-          )
-        }
-        continue
-      }
-
-      // A NYERS state a maggal utazik: a paid-átmenet előtt a Total/Currency
-      // mezőt a rendelés szerver-oldali snapshotjához méri (S2 összeg-assert).
-      const transition = await applyTransition({
-        payload: deps.payload,
-        order,
-        mapped,
-        state,
-        log: orderLog,
-      })
-
-      if (transition.transitionedToPaid) {
-        await onPaid(
-          order,
-          transition.customer
-            ? {
-                passwordSetupPending: transition.customer.passwordSetupPending,
-                alreadyLinked: transition.customer.alreadyLinked,
-                email: transition.customer.email,
-              }
-            : undefined,
-        )
-        summary.transitionedPaid += 1
-        orderLog.info(
-          'order-poll: elveszett callback pótolva — a rendelés paid (utánpollolással zárult)',
-        )
-      } else if (transition.action === 'paid') {
-        summary.transitionedPaid += 1
-      } else if (transition.action === 'cancelled') {
-        summary.cancelled += 1
-        orderLog.info('order-poll: a fizetés lejárt/megszakadt — a rendelés cancelled')
-      } else if (transition.action === 'rejected') {
-        summary.failed += 1
-        rejectedTransitions += 1
-        // W1: a státusz payment_pending MARAD (emberi ellenőrzés), de az
-        // updatedAt elmozdul — a következő ablak / pótlap már nem ezeken akad.
-        await touchRejectedPendingOrder(deps.payload, order.id)
-        orderLog.warn('order-poll: az átmenet visszautasítva (állapotgép-védelem)', {
-          reason: transition.reason ?? null,
-        })
-      }
+      await applyMappedState(order, state, orderLog)
     }
 
     return 'continue'
@@ -470,11 +576,13 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
   let page = await fetchPendingPage([])
   summary.scanned += page.length
   let extraPages = 0
+  let pendingAborted = false
 
   while (page.length > 0) {
     const pageLength = page.length
     const decision = await processPendingPage(page)
     if (decision === 'abort') {
+      pendingAborted = true
       break
     }
     // Pótlap: teli ablak után egyszer, rejected ÉS still-pending sorfejre is —
@@ -487,6 +595,104 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     extraPages += 1
     page = await fetchPendingPage([...seenIds])
     summary.scanned += page.length
+  }
+
+  // R-03 / RF-3: cancel-and-restart cancelled rendelést hagy. updatedAt ASC +
+  // barionPaymentId a where-ben + egy pótlap, hogy az Expired fej ne éheztesse
+  // a Succeeded sort. Auth/transport abort után NEM kérdezünk tovább.
+  if (!pendingAborted) {
+    const sinceIso = new Date(now - LATE_SUCCESS_LOOKBACK_MS).toISOString()
+    const fetchLatePage = async (excludeIds: ReadonlyArray<number>): Promise<Order[]> => {
+      const page = await deps.payload.find({
+        collection: 'orders',
+        where: lateSuccessOrdersWhere(sinceIso, excludeIds),
+        sort: 'updatedAt',
+        limit: LATE_SUCCESS_BATCH_SIZE,
+        depth: 0,
+        overrideAccess: true,
+      } as unknown as Parameters<Payload['find']>[0])
+      return page.docs as Order[]
+    }
+
+    const lateSeen = new Set<number>()
+    let latePage = await fetchLatePage([])
+    let lateExtraPages = 0
+    let lateAborted = false
+
+    while (latePage.length > 0) {
+      summary.lateSuccessScanned += latePage.length
+      const pageLength = latePage.length
+
+      for (let index = 0; index < latePage.length; index += 1) {
+        const order = latePage[index]
+        lateSeen.add(order.id)
+        const orderLog = log.child({ orderId: order.id, orderNumber: order.orderNumber ?? null })
+        if (typeof order.barionPaymentId !== 'string' || order.barionPaymentId.length === 0) {
+          continue
+        }
+        let state: BarionPaymentStateResponse
+        try {
+          state = await fetchState(order.barionPaymentId)
+          consecutiveTransportFailures = 0
+          hadSuccessfulCall = true
+        } catch (error) {
+          summary.failed += 1
+          orderLog.warn('order-poll: late-success GetState-hiba (a következő futás újrapollolja)', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+          const failureClass = classifyBarionFailure(error)
+          const remaining = latePage.length - (index + 1)
+          if (failureClass === 'auth') {
+            summary.skipped += remaining
+            log.error(
+              'RIASZTÁS: Barion hitelesítési hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
+              { failureClass, skippedOrders: remaining },
+            )
+            lateAborted = true
+            break
+          }
+          if (failureClass === 'transport') {
+            consecutiveTransportFailures += 1
+            if (consecutiveTransportFailures >= MAX_CONSECUTIVE_TRANSPORT_FAILURES) {
+              summary.skipped += remaining
+              log.error(
+                'RIASZTÁS: egymást követő Barion-hiba a late-success scan közben — a maradék cancelled rendelés erre a futásra kimarad',
+                { failureClass, consecutiveTransportFailures, skippedOrders: remaining },
+              )
+              lateAborted = true
+              break
+            }
+          }
+          if (!hadSuccessfulCall) {
+            leadingFailures += 1
+            if (leadingFailures >= MAX_LEADING_FAILURES) {
+              summary.skipped += remaining
+              log.error(
+                `RIASZTÁS: a futás első ${MAX_LEADING_FAILURES} Barion-hívása mind hibára futott ` +
+                  '(egyetlen sikeres válasz sem érkezett) — a late-success scan megszakadt, a ' +
+                  'maradék cancelled rendelés érintetlen. Ellenőrizd a Barion-környezetet, a ' +
+                  'POSKey-t és a szolgáltatás állapotát; a következő ütemezett futás újrapróbálja.',
+                { failureClass, leadingFailures, skippedOrders: remaining },
+              )
+              lateAborted = true
+              break
+            }
+          }
+          continue
+        }
+        await applyMappedState(order, state, orderLog)
+      }
+
+      if (
+        lateAborted ||
+        pageLength < LATE_SUCCESS_BATCH_SIZE ||
+        lateExtraPages >= LATE_SUCCESS_REFILL_PAGES
+      ) {
+        break
+      }
+      lateExtraPages += 1
+      latePage = await fetchLatePage([...lateSeen])
+    }
   }
 
   await resweepInvoices(deps, log, summary)

@@ -28,8 +28,9 @@ export default async function SikertelenPage({ searchParams }: SikertelenPagePro
         <div className="kc-thankyou kc-thankyou--failed">
           <h1>A fizetés nem sikerült</h1>
           <p>
-            A fizetésedet a bank elutasította vagy megszakította. Semmi sem került levonásra,
-            bármikor újrapróbálhatod.
+            A fizetésedet a bank elutasította vagy megszakította. Ilyenkor általában nem történik
+            levonás; ha a bankod később mégis jóváhagyja a fizetést, automatikusan érvényesítjük,
+            és e-mailben visszaigazoljuk. Újra is próbálhatod a fizetést.
           </p>
           <p>
             Ha többször is elutasított a bank, érdemes ellenőrizni a kártyaadataidat, vagy a

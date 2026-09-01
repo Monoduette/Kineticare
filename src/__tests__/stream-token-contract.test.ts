@@ -4,7 +4,8 @@ import { NextRequest } from 'next/server'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { fetchStreamToken } from '../lib/stream-token-client'
+import { accessExpiredMessage } from '../lib/course-access'
+import { fetchStreamToken, STREAM_SIGN_IN_REQUIRED_MESSAGE } from '../lib/stream-token-client'
 import {
   parseStreamTokenResponseBody,
   playableStreamVideos,
@@ -240,16 +241,19 @@ describe('stream-token szerződés — a kliens a szerver VALÓDI válaszát dol
     expect(result.kind).toBe('error')
   })
 
-  it('nem-vevő → forbidden (a paywall változatlan)', async () => {
+  it('nem-vevő → forbidden (a paywall változatlan), a szerver magyar üzenetével', async () => {
     const { fetchImpl, payload } = createHarness({ user: nonBuyerUser })
 
     const result = await fetchStreamToken({ productId: 42 }, fetchImpl)
 
-    expect(result).toEqual({ kind: 'forbidden' })
+    expect(result).toEqual({
+      kind: 'forbidden',
+      message: 'A videó megtekintéséhez a kurzus megvásárlása szükséges.',
+    })
     expect(payload.findByID).not.toHaveBeenCalled()
   })
 
-  it('lejárt hozzáférésű vevő → forbidden (az A1 lejárat-szabály érintetlen)', async () => {
+  it('lejárt hozzáférésű vevő → forbidden, a lejárat NAPJÁVAL (nem általános szöveggel)', async () => {
     const { fetchImpl } = createHarness({
       product: makeProduct([readyVideo('sor-1', 'elso-asset')], 30),
       orders: [makePaidOrder('2020-01-01T10:00:00.000Z')],
@@ -257,7 +261,37 @@ describe('stream-token szerződés — a kliens a szerver VALÓDI válaszát dol
 
     const result = await fetchStreamToken({ productId: 42 }, fetchImpl)
 
-    expect(result).toEqual({ kind: 'forbidden' })
+    expect(result.kind).toBe('forbidden')
+    if (result.kind !== 'forbidden') {
+      return
+    }
+    // A szerver a lejárat napját is kiírja (accessExpiredMessage) — a lánc
+    // 2026-08-29 óta ezt a mondatot a lejátszó felületére is átviszi, tehát a
+    // vevő nem az általános „nincs hozzáférésed" szöveget kapja.
+    expect(result.message).toBe(accessExpiredMessage(new Date('2020-01-31T10:00:00.000Z')))
+    expect(result.message).toContain('2020. 01. 31.')
+  })
+
+  /**
+   * BEJELENTKEZÉS NÉLKÜL a szerver 401-et ad, ami MÁS helyzet, mint a 403: a
+   * kiút a belépés, nem a vásárlás. A kliens ezért külön `unauthenticated`
+   * ágat ad vissza, és a szerver magyar mondatát is átviszi.
+   */
+  it('bejelentkezés nélkül → unauthenticated (nem forbidden), a szerver üzenetével', async () => {
+    const { fetchImpl, payload } = createHarness({ user: null })
+
+    const result = await fetchStreamToken({ productId: 42 }, fetchImpl)
+
+    expect(result).toEqual({
+      kind: 'unauthenticated',
+      message: 'A videó lejátszásához bejelentkezés szükséges.',
+    })
+    // A kliens tartalék-szövege BITRE a szerver 401-es mondata: üzenet nélküli
+    // törzsnél (üres válasz, proxy) a vevő ugyanazt olvassa.
+    expect(STREAM_SIGN_IN_REQUIRED_MESSAGE).toBe(
+      (result as { message: string | null }).message,
+    )
+    expect(payload.findByID).not.toHaveBeenCalled()
   })
 
   it('hiányzó Bunny token-kulcs → unavailable (a szerver 503-a)', async () => {

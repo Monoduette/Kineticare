@@ -30,13 +30,28 @@ useDefault = true
 description = "Teszt-fixtúrák — kitalált (DUMMY) jelszavak és tesztvektorok, nem valódi hitelesítő adatok"
 regexes = [
   # A jelenlegi, kifejezetten DUMMY-nak jelölt fixtúra (src/__tests__/security/).
-  '''DUMMY-Eros-Teszt-Jelszo-42''',
+  '''^DUMMY-Eros-Teszt-Jelszo-42$''',
   # Ékezetes erős-jelszó minta: azt igazolja, hogy a Unicode betűosztályokkal
   # dolgozó szabály a magyar ékezeteket is elfogadja.
   '''ÁrvíztűrőTükör42''',
   # A korábbi fixtúra-érték. A munkafában már nem szerepel (DUMMY-ra cseréltük),
   # de a git-történetben benne maradt, a kapu pedig a teljes historyt vizsgálja.
   '''Kecskemeti42Futo''',
+  # A jelenlegi jelszó-politika teszt további, kifejezetten DUMMY-nak jelölt
+  # bemenetei. A kisbetű- és e-mail-egyezési szabályágakat fedik le.
+  '''^DUMMYNAGYBETU123$''',
+  '''^DUMMY\.tesztA12345$''',
+  '''^DUMMY\.TESZTa12345$''',
+  # A jelszó-politika teszt két korábbi változatának szintetikus bemenetei
+  # (07f1405 és e07023c). A munkafában már DUMMY fixtúrák váltották őket. A
+  # teljes-history scan miatt az értékeket egyenként, teljes-string egyezéssel
+  # engedjük el, így más credential továbbra is fennakad.
+  '''^CSAKNAGYBETU123$''',
+  '''^KovacsBela99Jelszo$''',
+  '''^kovacs\.belaA12345$''',
+  '''^KOVACS\.BELAa12345$''',
+  '''^DummyTeszt99Jelszo$''',
+  '''^dummy\.tesztA12345$''',
   # A Bunny-jegy aláírásának ISMERT TESZTVEKTORAI (src/__tests__/stream-token.test.ts):
   # a kifejezetten DUMMY-nak jelölt kulcsból (DUMMY-BUNNY-TOKEN-AUTH-KEY-NEM-VALODI-TITOK)
   # számolt SHA256-kimenetek. Egy hash-kimenet nem titok — a bemenete pedig a

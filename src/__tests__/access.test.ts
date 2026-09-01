@@ -380,7 +380,7 @@ describe('collection access bekötés a végleges configban', () => {
     }
   })
 
-  it('products: ár-mezők és status owner-only írásúak', async () => {
+  it('products: kereskedelmi mezők és status owner-only írásúak', async () => {
     const config = await configPromise
     const products = (config.collections ?? []).find((c) => c.slug === 'products') as
       | CollectionConfig
@@ -401,9 +401,43 @@ describe('collection access bekötés a végleges configban', () => {
     expect(statusField).toBeDefined()
     expect(statusField?.access?.create).toBe(isOwnerFieldAccess)
     expect(statusField?.access?.update).toBe(isOwnerFieldAccess)
+
+    const accessDurationDays = findField(products as CollectionConfig, 'accessDurationDays')
+    expect(accessDurationDays).toBeDefined()
+    expect(accessDurationDays?.access?.create).toBe(isOwnerFieldAccess)
+    expect(accessDurationDays?.access?.update).toBe(isOwnerFieldAccess)
+    expect(accessDurationDays?.access?.read).toBeUndefined()
+
+    const validate = (accessDurationDays as NamedTestField & { validate?: unknown })?.validate as
+      | ((
+          value: number | null | undefined,
+          options: { operation?: 'create' | 'update'; previousValue?: number },
+        ) => true | string)
+      | undefined
+    expect(validate).toBeDefined()
+    expect(validate?.(1, { operation: 'create' })).toBe(true)
+    expect(validate?.(365, { operation: 'update' })).toBe(true)
+    expect(validate?.(null, { operation: 'create' })).toBe(true)
+    expect(validate?.(undefined, { operation: 'update' })).toBe(true)
+    for (const invalid of [
+      0,
+      -1,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      expect(validate?.(invalid, { operation: 'create' }), String(invalid)).toEqual(
+        expect.any(String),
+      )
+    }
+    expect(validate?.(0, { operation: 'update', previousValue: -1 })).toEqual(expect.any(String))
+    expect(validate?.(0, { operation: 'update', previousValue: 0 })).toBe(true)
+    expect(validate?.(-30, { operation: 'update', previousValue: -30 })).toBe(true)
+    expect(validate?.(-30, { operation: 'update', previousValue: 30 })).toEqual(expect.any(String))
   })
 
-  it('orders: pénzügyi/személyes mezők read owner-only, refund update owner-only', async () => {
+  it('orders: pénzügyi/személyes mezők read owner-only', async () => {
     const config = await configPromise
     const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
       | CollectionConfig
@@ -414,12 +448,6 @@ describe('collection access bekötés a végleges configban', () => {
       const field = findField(orders as CollectionConfig, name)
       expect(field, name).toBeDefined()
       expect(field?.access?.read, name).toBe(isOwnerFieldAccess)
-    }
-
-    for (const name of ['refundedAt', 'refundReason']) {
-      const field = findField(orders as CollectionConfig, name)
-      expect(field, name).toBeDefined()
-      expect(field?.access?.update, name).toBe(isOwnerFieldAccess)
     }
   })
 
@@ -454,6 +482,39 @@ describe('collection access bekötés a végleges configban', () => {
       expect(field?.access?.update, `${name} update`).toBe(denyFieldWrite)
       expect(field?.access?.update?.(fieldAccessArgs(staff)), `${name} staff`).toBe(false)
       expect(field?.access?.update?.(fieldAccessArgs(owner)), `${name} owner`).toBe(false)
+    }
+  })
+
+  it('orders: a rendszermezőket staff és owner sem írhatja create/update során', async () => {
+    const config = await configPromise
+    const orders = (config.collections ?? []).find((c) => c.slug === 'orders') as
+      | CollectionConfig
+      | undefined
+    expect(orders).toBeDefined()
+
+    for (const name of [
+      'items',
+      'customer',
+      'customerEmail',
+      'transactions',
+      'status',
+      'amount',
+      'currency',
+      'customerSnapshot',
+      'ipAddress',
+      'consentWithdrawalWaiver',
+      'consentWithdrawalWaiverAt',
+      'refundReason',
+      'refundedAt',
+    ]) {
+      const field = findField(orders as CollectionConfig, name)
+      expect(field, name).toBeDefined()
+      expect(field?.access?.create, `${name} create`).toBe(denyFieldWrite)
+      expect(field?.access?.update, `${name} update`).toBe(denyFieldWrite)
+      expect(field?.access?.create?.(fieldAccessArgs(staff)), `${name} create staff`).toBe(false)
+      expect(field?.access?.create?.(fieldAccessArgs(owner)), `${name} create owner`).toBe(false)
+      expect(field?.access?.update?.(fieldAccessArgs(staff)), `${name} update staff`).toBe(false)
+      expect(field?.access?.update?.(fieldAccessArgs(owner)), `${name} update owner`).toBe(false)
     }
   })
 

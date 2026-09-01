@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existingAccountFreeCourseEmail, freeCourseEmail } from '../lib/free-course/email'
 import {
   createFreeCourseRequestHandler,
+  numericActorId,
   verifyTurnstileToken,
   FREE_COURSE_EMAIL_RULE,
   FREE_COURSE_IP_RULE,
@@ -38,6 +39,7 @@ import {
 } from '../lib/free-course/validation'
 import type { Logger } from '../lib/logger'
 import { SlidingWindowRateLimiter } from '../lib/security/rate-limit'
+import { SAME_ORIGIN_REJECTED_MESSAGE } from '../lib/security/same-origin'
 
 /**
  * INGYENES KURZUS IGÉNYLÉSE (név + e-mail → hozzáférés + belépő link).
@@ -219,7 +221,7 @@ function createMockPayload(options: MockOptions = {}) {
     ),
     // A route-handler a sessiont `payload.auth({ headers })`-szel olvassa
     // (bejelentkezett, egyező e-mail → saját magának grant). Alapból vendég.
-    auth: vi.fn(async (): Promise<{ user: { id: number } | null }> => ({ user: null })),
+    auth: vi.fn(async (): Promise<{ user: { id: number | string } | null }> => ({ user: null })),
   }
 
   return {
@@ -560,6 +562,24 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(
       resolveFreeCourseUiNext({
         actions: { grant: false, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: 101,
+        userId: 101,
+        alreadyOwned: true,
+      }),
+    ).toBe('library')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
+        role: 'customer',
+        actorUserId: 99,
+        userId: 101,
+        alreadyOwned: true,
+      }),
+    ).toBe('email')
+    expect(
+      resolveFreeCourseUiNext({
+        actions: { grant: false, issueSetPasswordToken: false },
         role: 'staff',
         actorUserId: 7,
         userId: 7,
@@ -728,6 +748,31 @@ describe('jelszó-token és grant kapu (K3)', () => {
     expect(new Set(bodies.map((body) => JSON.stringify(body))).size).toBe(1)
   })
 
+  it('SEC-008: a méret-plafont túllépő törzs → 400 (nem bufferelődik korlátlanul)', async () => {
+    const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const oversized = new Request('https://pelda.kineticare.hu/api/free-course/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: FREE_COURSE.id,
+        name: 'Anna',
+        email: 'uj.nagy@pelda.hu',
+        consentPrivacy: true,
+        pad: 'x'.repeat(70_000),
+      }),
+    }) as unknown as Parameters<ReturnType<typeof createFreeCourseRequestHandler>>[0]
+
+    const response = await handler(oversized)
+
+    expect(response.status).toBe(400)
+    expect(mock.sent).toHaveLength(0)
+  })
+
   it('bejelentkezett vevő a saját címére: next=library, levél nincs, a HTTP kiteszi a next-et', async () => {
     const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
     mock.mocks.auth.mockResolvedValue({ user: { id: MEGLEVO_VEVO.id } })
@@ -758,6 +803,48 @@ describe('jelszó-token és grant kapu (K3)', () => {
     const response = await handler(requestFor({ email: MEGLEVO_VEVO.email, name: 'Anna' }))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'library' })
+  })
+
+  it('I2: belépett vevő, a kurzus már megvan — next=library, grant és levél nincs', async () => {
+    const vevo: UserRow = { ...MEGLEVO_VEVO, purchases: [FREE_COURSE.id] }
+    const mock = createMockPayload({ users: [vevo] })
+    mock.mocks.auth.mockResolvedValue({ user: { id: String(vevo.id) } })
+    const { log } = createLogger()
+
+    const result = await requestFreeCourseAccess({
+      payload: mock.payload,
+      productId: FREE_COURSE.id,
+      name: 'Anna',
+      email: vevo.email,
+      serverUrl: 'https://pelda.kineticare.hu',
+      env: ENV_WITH_EMAIL,
+      logger: log,
+      actorUserId: vevo.id,
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.next).toBe('library')
+    expect(result.emailDelivered).toBe(false)
+    expect(result.grantedProductIds).toEqual([])
+    expect(vi.mocked(grantFreeCoursesToUser)).not.toHaveBeenCalled()
+    expect(mock.sent).toHaveLength(0)
+
+    const handler = createFreeCourseRequestHandler({
+      getPayload: async () => mock.payload,
+      env: ENV_WITH_EMAIL,
+      limiter: new SlidingWindowRateLimiter(),
+    })
+    const response = await handler(requestFor({ email: vevo.email, name: 'Anna' }))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, emailSent: false, next: 'library' })
+  })
+
+  it('numericActorId: a JWT string id is belépett szereplő', () => {
+    expect(numericActorId({ id: 12 })).toBe(12)
+    expect(numericActorId({ id: '12' })).toBe(12)
+    expect(numericActorId({ id: ' 12 ' })).toBe(12)
+    expect(numericActorId({ id: 'abc' })).toBeNull()
+    expect(numericActorId(null)).toBeNull()
   })
 
   it('bejelentkezett staff a saját címére: next=blocked, a HTTP kiteszi, grant nincs', async () => {
@@ -1103,6 +1190,53 @@ describe('spam- és visszaélés-védelem', () => {
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({ error: FREE_COURSE_GENERIC_ERROR })
   })
+
+  describe('same-origin / CSRF-őr', () => {
+    const PRIMARY = 'https://pelda.kineticare.hu'
+
+    beforeEach(() => {
+      vi.stubEnv('NEXT_PUBLIC_SERVER_URL', PRIMARY)
+      vi.stubEnv('EXTRA_ALLOWED_ORIGINS', undefined)
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('idegen Origin → 403, a szolgáltatás nem fut', async () => {
+      const requestAccess = vi.fn(async () => {
+        throw new Error('a szolgáltatás nem futhat idegen eredetről')
+      })
+      const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+      const handler = createFreeCourseRequestHandler({
+        getPayload: async () => mock.payload,
+        env: ENV_WITH_EMAIL,
+        limiter: new SlidingWindowRateLimiter(),
+        requestAccess,
+      })
+
+      const response = await handler(
+        requestFor({ email: 'a@pelda.hu', origin: 'https://evil.example' }),
+      )
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: SAME_ORIGIN_REJECTED_MESSAGE })
+      expect(requestAccess).not.toHaveBeenCalled()
+      expect(mock.created).toHaveLength(0)
+    })
+
+    it('engedélyezett Origin → a mai sikerút', async () => {
+      const mock = createMockPayload({ users: [MEGLEVO_VEVO] })
+      const handler = createFreeCourseRequestHandler({
+        getPayload: async () => mock.payload,
+        env: ENV_WITH_EMAIL,
+        limiter: new SlidingWindowRateLimiter(),
+      })
+
+      const response = await handler(requestFor({ email: 'piroska@pelda.hu', origin: PRIMARY }))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ ok: true, emailSent: true })
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1226,6 +1360,7 @@ interface RequestOptions {
   website?: string
   turnstileToken?: string
   ip?: string
+  origin?: string
 }
 
 /** Egy érvényes beküldés `NextRequest`-alakban (a handler ezt kapja). */
@@ -1245,6 +1380,9 @@ function requestFor(options: RequestOptions) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (options.ip !== undefined) {
     headers['x-forwarded-for'] = options.ip
+  }
+  if (options.origin !== undefined) {
+    headers.origin = options.origin
   }
   return new Request('https://pelda.kineticare.hu/api/free-course/request', {
     method: 'POST',

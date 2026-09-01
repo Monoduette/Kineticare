@@ -18,33 +18,44 @@ import { resolveSingleCourseAccess } from '../course-access-lookup'
 import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
+import { updateOrderStatusIfCurrent } from '../order-status/conditional-status'
+import {
+  paidRejectRecoveryLogContext,
+  recoverRejectedSucceededPayment,
+  type RecoverRejectedSucceededPaymentInput,
+  type PaidRejectRecoveryResult,
+} from '../order-status/recover-paid-reject'
+import type { OrderCustomerResolution } from '../order-status/resolve-order-customer'
 import {
   CHECKOUT_PAYMENT_IN_PROGRESS,
   CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
   barionPayUrl,
   decidePendingCheckout,
 } from './pending-payment'
-import {
-  billingSummaryMessage,
-  validateBilling,
-  type BillingFieldError,
-  type NormalizedBilling,
-} from './billing'
+import { billingSummaryMessage, validateBilling, type NormalizedBilling } from './billing'
 import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
 import {
   CHECKOUT_ALREADY_PURCHASED_ERROR,
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
   CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
 } from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
   guestSummaryMessage,
   validateGuest,
-  type GuestFieldError,
   type NormalizedGuest,
 } from './guest'
 
-export { CHECKOUT_GUEST_EXISTING_ACCOUNT, CHECKOUT_GUEST_FINISH_AFTER_LOGIN }
+export {
+  CHECKOUT_GUEST_EXISTING_ACCOUNT,
+  CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
+  CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_REFUNDED_RETRY,
+}
 
 /**
  * Bejelentkezett duplavásárlás. A munkamenet a saját fiók, ez nem orákulum.
@@ -112,6 +123,13 @@ export interface CheckoutStartOptions {
   now?: Date
   /** Tesztben injektálható Barion-környezet a Pay-URL-hez. */
   barionEnvironment?: BarionEnvironment
+  /**
+   * Tesztben injektálható paid-reject recovery (Barion-refund).
+   * Tesztből élő Barion-hívás tilos.
+   */
+  recoverRejectedPaid?: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
 }
 
 export interface CheckoutStartResult {
@@ -138,24 +156,12 @@ interface ParsedInput {
   guest: NormalizedGuest | null
 }
 
-/**
- * Magyar, a végpont hibaformátumába illeszkedő üzenet a számlázási hibákból.
- *
- * Az ÖSSZEFOGLALÓT a tényleges hibahalmazból származtatjuk
- * (`billingSummaryMessage`) — így a hibás adószám nem „hiányos adat"-ként megy
- * vissza. Ha az összefoglaló épp egybeesik az egyetlen mezőhibával, nem
- * ismételjük meg.
- */
-function billingErrorMessage(errors: readonly BillingFieldError[]): string {
+function fieldErrorMessage<E extends { message: string }>(
+  errors: readonly E[],
+  summarize: (errors: readonly E[]) => string,
+): string {
   const details = errors.map((item) => item.message)
-  const summary = billingSummaryMessage(errors)
-  return (details.includes(summary) ? details : [summary, ...details]).join(' ')
-}
-
-/** Ugyanaz a szerkezet a vendég-mezőkre (e-mail + név). */
-function guestErrorMessage(errors: readonly GuestFieldError[]): string {
-  const details = errors.map((item) => item.message)
-  const summary = guestSummaryMessage(errors)
+  const summary = summarize(errors)
   return (details.includes(summary) ? details : [summary, ...details]).join(' ')
 }
 
@@ -217,13 +223,13 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
   // Számlázási adatok: csak a kérésből, profil-tartalék nélkül (kliens megkerülhető).
   const billingResult = validateBilling(input.billing)
   if (!billingResult.ok) {
-    throw new CheckoutError(400, billingErrorMessage(billingResult.errors))
+    throw new CheckoutError(400, fieldErrorMessage(billingResult.errors, billingSummaryMessage))
   }
 
   // Vendég: bejelentkezve a session az igazság; különben kötelező e-mail + név.
   const guest = hasSession ? null : validateGuest(input.guest)
   if (guest !== null && !guest.ok) {
-    throw new CheckoutError(400, guestErrorMessage(guest.errors))
+    throw new CheckoutError(400, fieldErrorMessage(guest.errors, guestSummaryMessage))
   }
 
   return {
@@ -303,7 +309,12 @@ function duplicateScopeWhere(scope: DuplicateScope, productId: number): Record<s
 type DuplicateCheckResult =
   | { kind: 'ok' }
   | { kind: 'resume'; orderNumber: string; gatewayUrl: string }
-  | { kind: 'already-paid'; order: Order; transitionedToPaid: boolean }
+  | {
+      kind: 'already-paid'
+      order: Order
+      transitionedToPaid: boolean
+      customer?: OrderCustomerResolution
+    }
 
 function purchaseIdsFromUser(user: User | null | undefined): Set<number> {
   const ids = new Set<number>()
@@ -343,6 +354,9 @@ interface DuplicateCheckContext {
   fetchPaymentState: typeof fetchPaymentState
   applyBarionStateTransition: typeof applyBarionStateTransition
   resolveSingleCourseAccess: typeof resolveSingleCourseAccess
+  recoverRejectedPaid: (
+    input: RecoverRejectedSucceededPaymentInput,
+  ) => Promise<PaidRejectRecoveryResult>
   barionEnvironment: BarionEnvironment
 }
 
@@ -373,6 +387,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
 
+  let pendingBecamePaid = false
   const pending = pendingOrders.docs[0] as Order | undefined
   if (pending) {
     const paymentId =
@@ -430,19 +445,79 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         state: rawState,
         log: ctx.log,
       })
+      if (transition.action === 'rejected') {
+        const rejectReason = transition.reason ?? 'unknown'
+        const recovery = await ctx.recoverRejectedPaid({
+          payload: ctx.payload,
+          order: pending,
+          state: rawState,
+          reason: rejectReason,
+          log: ctx.log,
+          source: 'checkout-start',
+        })
+        const recoveryCtx = paidRejectRecoveryLogContext({
+          source: 'checkout-start',
+          action: recovery.action,
+          detail: recovery.detail,
+          reason: rejectReason,
+          orderId: pending.id,
+        })
+        ctx.log.info('paid-reject recovery lefutott', recoveryCtx)
+        if (recovery.action === 'failed') {
+          ctx.log.error(
+            'RIASZTÁS: paid-reject recovery sikertelen — a checkout 409 marad, a pénz még kint lehet',
+            recoveryCtx,
+          )
+        }
+        // Sikeres refund + a vevő NEM kapott hozzáférést → az „already-paid"
+        // válasz hamis lenne. duplicate-paid-order kivétel: ott van élő
+        // hozzáférés, az already-paid üzenet igaz.
+        const moneyReturned =
+          recovery.action === 'refunded' ||
+          (recovery.action === 'skipped' &&
+            (recovery.detail === 'already-refunded' || recovery.detail === 'already-recorded'))
+        if (rejectReason === 'total-mismatch') {
+          throw new CheckoutError(
+            409,
+            moneyReturned ? CHECKOUT_REFUNDED_RETRY : CHECKOUT_PAID_UNDER_REVIEW,
+          )
+        }
+        if (rejectReason === 'guest-bind-privileged-account') {
+          throw new CheckoutError(
+            409,
+            moneyReturned ? CHECKOUT_REFUNDED_PRIVILEGED : CHECKOUT_PAID_UNDER_REVIEW,
+          )
+        }
+        if (rejectReason === 'refund-recorded') {
+          throw new CheckoutError(409, CHECKOUT_PAID_UNDER_REVIEW)
+        }
+      }
       return {
         kind: 'already-paid',
-        order: pending,
+        order:
+          transition.customer !== undefined
+            ? { ...pending, customer: transition.customer.userId }
+            : pending,
         transitionedToPaid: transition.transitionedToPaid === true,
+        ...(transition.customer !== undefined ? { customer: transition.customer } : {}),
       }
     }
     if (decision.kind === 'cancel-and-restart') {
-      await ctx.payload.update({
-        collection: 'orders',
-        id: pending.id,
-        data: { status: 'cancelled' },
-        overrideAccess: true,
+      const cancelled = await updateOrderStatusIfCurrent({
+        payload: ctx.payload,
+        orderId: pending.id,
+        expected: 'payment_pending',
+        next: 'cancelled',
       })
+      if (!cancelled) {
+        const fresh = (await ctx.payload.findByID({
+          collection: 'orders',
+          id: pending.id,
+          depth: 0,
+          overrideAccess: true,
+        })) as Order
+        pendingBecamePaid = fresh.status === 'paid'
+      }
     }
   }
 
@@ -453,7 +528,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     depth: 0,
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
-  const hasPaidOrder = paidOrders.totalDocs > 0
+  const hasPaidOrder = paidOrders.totalDocs > 0 || pendingBecamePaid
   const ownsInPurchases = purchaseIdsFromUser(ctx.user).has(ctx.product.id)
 
   if (!hasPaidOrder && !ownsInPurchases) {
@@ -733,6 +808,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     options.applyBarionStateTransition ?? applyBarionStateTransition
   const onOrderPaidFn = options.onOrderPaid ?? onOrderPaid
   const resolveSingleCourseAccessFn = options.resolveSingleCourseAccess ?? resolveSingleCourseAccess
+  const recoverRejectedPaidFn = options.recoverRejectedPaid ?? recoverRejectedSucceededPayment
   const nowMs = (options.now ?? new Date()).getTime()
 
   const lockResult = await withAdvisoryLock(
@@ -762,6 +838,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         fetchPaymentState: fetchPaymentStateFn,
         applyBarionStateTransition: applyBarionStateTransitionFn,
         resolveSingleCourseAccess: resolveSingleCourseAccessFn,
+        recoverRejectedPaid: recoverRejectedPaidFn,
         barionEnvironment,
       }
 
@@ -837,6 +914,15 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         payload,
         order: lockResult.order,
         logger: log,
+        ...(lockResult.customer
+          ? {
+              account: {
+                passwordSetupPending: lockResult.customer.passwordSetupPending,
+                alreadyLinked: lockResult.customer.alreadyLinked,
+                email: lockResult.customer.email,
+              },
+            }
+          : {}),
       })
     }
     throw new CheckoutError(
@@ -931,7 +1017,10 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       })
     }
     gatewayUrl = startResponse.GatewayUrl
-    barionPaymentId = startResponse.PaymentId
+    // KANONIKUS (kisbetűs) alak az ÍRÁSHELYEN is: a callback-út a kisbetűs
+    // alakkal keres (route-handler normalizePaymentId) — a Barion megfigyelt
+    // viselkedése kisbetűs GUID, de ez itt garancia, nem feltételezés.
+    barionPaymentId = startResponse.PaymentId.toLowerCase()
     barionPaymentRequestId = startResponse.PaymentRequestId ?? orderNumber
   } catch (error) {
     log.error('checkout-start: Barion fizetésindítás sikertelen', {

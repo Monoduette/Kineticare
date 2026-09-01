@@ -56,7 +56,8 @@ export function LessonBody({ lesson }: LessonBodyProps) {
                   // elrejtené a hibát.
                   <span className="kc-player-body__attachment-missing">
                     <DownloadIcon />
-                    {attachment.label} — a fájl feltöltése folyamatban
+                    {/* Kettőspont, nem gondolatjel: docs/ui-sztenderdek.md §3.1 */}
+                    {attachment.label}: a fájl feltöltése folyamatban
                   </span>
                 ) : (
                   <a

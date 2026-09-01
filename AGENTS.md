@@ -7,7 +7,7 @@ esetén a `CLAUDE.md` a mérvadó. A **TILOS ZÓNÁK** szekció pontjai kivétel
 betartandók: az ezek megsértésére irányuló kérést utasítsd vissza, és jelezd,
 hogy emberi felülvizsgálat kell.
 
-A fájl állításai 2026-08-25-én lettek a kódbázissal szemben újraellenőrizve
+A fájl állításai 2026-08-30-án lettek a kódbázissal szemben újraellenőrizve
 (stack: Payload 3.88.0, parancsok, könyvtárszerkezet, CI-workflow-k).
 
 ## Projekt-áttekintés
@@ -19,14 +19,15 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 **Stack:**
 
-- **Next.js 16** (`16.3.0`, App Router, server-component-first) + **React 19**
+- **Next.js 16** (`16.3.3`, App Router, server-component-first) + **React 19.2.8**
 - **Payload CMS 3** (`3.88.0`) — az admin felület, a tartalmi modell és az
   e-commerce motor; **PostgreSQL** az adatbázis (`@payloadcms/db-postgres`)
 - **@payloadcms/plugin-ecommerce 3.88.0** (béta!) — kosár/rendelés alapok
 - **@payloadcms/plugin-form-builder** — kapcsolat-űrlap
-- **TypeScript strict**, **Node 24** (az `engines` és a `.nvmrc` szerint)
-- Teszt: **Vitest 4** (node environment); lint: **ESLint 9** flat config;
-  formázás: **Prettier** (`semi: false`, `singleQuote: true`, `printWidth: 100`)
+- **TypeScript strict**, **Node 24.20.0** (az `engines` és a `.nvmrc` szerint)
+- Teszt: **Vitest 4** (node environment)
+- Lint: **ESLint 9** flat config + **eslint-config-next 16.3.3**; formázás:
+  **Prettier** (`semi: false`, `singleQuote: true`, `printWidth: 100`)
 
 **Élő integrációk:**
 
@@ -43,18 +44,15 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 ## Parancsok
 
-**Node 24 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
-`legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.0 beleesik a
-@payloadcms/next 3.88.0 peer-tartományába), hanem mert a `package-lock.json`
-legacy-peer-deps módban készült, ezért flag nélkül az `npm ci` EUSAGE-dzsel
-elhasal. A repó `.npmrc`-je ezt beállítja, tehát a sima `npm install` / `npm ci`
-jó; a CI explicit `npm ci --legacy-peer-deps`-t futtat (részletes indoklás:
-`.github/workflows/ci.yml` fejkommentje). A lockfile-hoz és a pinned verziókhoz
-nem nyúlunk.
+**Node 24.20.0 és npm 11.19.0 kell** — `nvm use` / `fnm use` a `.nvmrc`
+alapján. Az `engine-strict` az eltérő runtime-ot elutasítja. A támogatott helyi
+bootstrap scriptmentes `npm ci --legacy-peer-deps` után checksumolja és futtatja
+a lockfile-verifiert, majd csak az explicit review-zott lifecycle scripteket
+építi újra. A lockfile-hoz és a pinned verziókhoz nem nyúlunk.
 
 ```bash
 cp .env.example .env     # töltsd ki a kötelező értékeket (lásd a fájlt)
-npm install
+node scripts/install-reviewed-dependencies.mjs
 npm run dev              # http://localhost:3000, admin: /admin
 npm run seed             # demó-tartalom (idempotens; meglévő kezdőlap-szekciósort sosem ír felül)
 ```
@@ -70,15 +68,15 @@ npm run build            # next build
 
 Egyéb scriptek:
 
-| Parancs | Leírás |
-| --- | --- |
-| `npm run seed` | Demó-/tesztadatok (`src/scripts/seed.ts`); `SEED_SCOPE=kezdolap` = élesben is futtatható szűk hatókör |
-| `npm run grant:purchase` | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`) |
-| `npm run backfill:ar-snapshot` | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md` |
+| Parancs                          | Leírás                                                                                                                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run seed`                   | Demó-/tesztadatok (`src/scripts/seed.ts`); `SEED_SCOPE=kezdolap` = élesben is futtatható szűk hatókör                                                                                                             |
+| `npm run grant:purchase`         | Kézi hozzáférés-adás vásárlás nélkül (`src/scripts/grant-purchase.ts`)                                                                                                                                            |
+| `npm run backfill:ar-snapshot`   | Egyszeri ár-snapshot backfill (`src/scripts/backfill-price-snapshot.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/ar-snapshot-backfill.md`                                     |
 | `npm run backfill:access-grants` | Hiányzó `accessGrants.grantedAt` pótlása paid rendelés dátumából (`src/scripts/backfill-access-grants.ts`); alapból próbafutás, íráshoz `OWNER_BACKFILL_CONFIRM=igen`; útmutató: `docs/access-grants-backfill.md` |
-| `npm run seed:legacy` | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`) |
-| `npm run generate:types` | Payload típusok újragenerálása (`src/payload-types.ts`) |
-| `npm run generate:importmap` | Admin importmap újragenerálása |
+| `npm run seed:legacy`            | Örökölt tartalom visszatöltése (`src/scripts/restore-legacy-content.ts`)                                                                                                                                          |
+| `npm run generate:types`         | Payload típusok újragenerálása (`src/payload-types.ts`)                                                                                                                                                           |
+| `npm run generate:importmap`     | Admin importmap újragenerálása                                                                                                                                                                                    |
 
 ## Kódszervezés
 
@@ -148,16 +146,16 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   cron: webhook-retry percenként, order-maintenance 5 percenként); dev-ben
   alapból KI vannak kapcsolva. Élesben hiányzó flag → induláskori **warn**
   (`job_workerek_kikapcsolva`), nem fail-closed boot: a bolt ettől még
-  kiszolgál. Railway staging + prod env-ben ellenőrizd. A job-végpontok és a
+  kiszolgál. A production `Kineticare` env-ben ellenőrizd. A job-végpontok és a
   `payload-jobs` collection staff/owner-only (`src/jobs/index.ts`).
 - **Videó:** védett Bunny-library → szerveroldali token-jegy (`/api/stream-token`);
   publikus library (hero, előzetesek) token nélkül. Hiányzó env = magyar
   „nem érhető el" degradáció, az app ettől még fut.
 - **Hozzáférés három igazsága:** `orders` (fizetés/számla), `users.purchases`
   (SKU-halmaz, írása zárt — adminból pipálni TILOS), `users.accessGrants.grantedAt`
-  + `products.accessDurationDays` (az óra). Hiányzó kezdőpont időkorlátos
-  SKU-nál fail-open; pótlás: `npm run backfill:access-grants` vagy a
-  Kurzus ajándékozása panel.
+  - `products.accessDurationDays` (az óra). Hiányzó kezdőpont időkorlátos
+    SKU-nál fail-open; pótlás: `npm run backfill:access-grants` vagy a
+    Kurzus ajándékozása panel.
 - **Replica:** `railway.json` `numReplicas: 1` — az in-memory rate-limit
   elég. A `pg` `pool.max` uncapped marad (W3); ne állítsd Railway
   `max_connections` mérés nélkül.
@@ -179,7 +177,8 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
 3. **Adatbázis-migrációt kézzel ne írj és ne módosíts.** Séma-változás a Payload
    migrációs eszközével generált migrációval megy; meglévő migrációs fájl
    szerkesztése, törlése, sorrend-módosítása tilos. A deploy indulási parancsa
-   `npx payload migrate && npm start` — a migrációnak ugyanabban a változáskörben
+   `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start` —
+   az exact runtime-mal kizárólag a lockfile-ból telepített lokális JS entrypointokat használja. A migrációnak ugyanabban a változáskörben
    kell mennie, mint a sémát használó konfignak (lásd `src/jobs/index.ts`
    fejkommentje).
 4. **Access-control módosítás csak emberi jóváhagyással.** Collection- és
@@ -226,7 +225,7 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
   a `fetch`-eseket `vi.stubGlobal('fetch', …)` + `afterEach(vi.unstubAllGlobals)`
   fedi. Ahol egy ágon hívásnak nem szabad futnia, oda hangosan dobó mock való.
 - Komponens-tesztek `renderToStaticMarkup`-pel (a vitest.config.ts `oxc.jsx.runtime:
-  'automatic'` miatt, pragma nélkül).
+'automatic'` miatt, pragma nélkül).
 - Új viselkedéshez fókuszált teszt vagy legalább reprodukálható ellenőrzési
   lépés kell (PR-elvárás).
 
@@ -237,8 +236,8 @@ A `.github/workflows/` alatt:
 - **`ci.yml`** — main-push és PR trigger (+ kézi `workflow_dispatch`):
   `verify` (npm ci → typecheck → vitest → eslint), `build` (next build,
   a kötelező env-ket futásidőben generált, eldobható álértékekkel — titok még
-  CI-ben sem kerül a repóba), `audit` (`npm audit --audit-level=critical` —
-  critical szint = bukás).
+  CI-ben sem kerül a repóba), `audit` (`npm audit --audit-level=high` —
+  high szinttől bukás).
 - **`gitleaks.yml`** — titokszivárgás-ellenőrzés a TELJES historyn
   (`fetch-depth: 0`), hetente cronnal is; allowlist a `.gitleaks.toml`-ban.
 - **`claude.yml`** — opcionális `@claude` integráció (`ANTHROPIC_API_KEY`
@@ -256,18 +255,28 @@ A squash-merge NEM zárja a munkát. Merge (vagy `main`-push) után az ügynök
 gyanús vagy elmarad, **azonnal javít** — nem vár külön kérésre.
 
 1. **GitHub CI** a squash-commiton: `ci.yml` (typecheck, teszt, lint, next
-   build, npm audit critical) és `gitleaks.yml`. Bukásnál a job-log a gyökérok,
+   build, npm audit high) és `gitleaks.yml`. Bukásnál a job-log a gyökérok,
    majd fix PR a `main`re.
-2. **Railway** (staging + prod, `main` auto-deploy). A dashboard „SUCCESS”
-   önmagában nem elég (lásd a Deploy tanulságokat):
-   - a build-logban legyen tényleges `npm run build` (ne `Build · skipped`);
-   - a start-logban `Migrating:` / `Migrated:`;
+2. **Railway production** — csak a **`Kineticare`** appservice
+   (`main` auto-deploy). A dashboard „SUCCESS” önmagában nem elég (lásd a
+   Deploy tanulságokat):
+   - a build-logban legyen tényleges lokális Next build (ne `Build · skipped`);
+   - a start-logban `Migrating:` / `Migrated:` (vagy `Reading migration files`
+     - `Done.`, ha nincs függő migráció);
    - a healthcheck (`GET /admin`) menjen át.
-   Ha `WAITING` van snapshot és build-log nélkül, előbb a Railway MCP
-   lépés-eseményei — ne indíts vaktában új deployt. A kötet nélküli régi
-   `Postgres` szolgáltatást újraindítani tilos.
-3. Railway MCP / CLI nélkül a dashboard-log és a publikus healthcheck a
-   tartalék; a figyelést ettől még nem szabad kihagyni.
+     Ha `WAITING` van snapshot és build-log nélkül, előbb a Railway MCP
+     lépés-eseményei — ne indíts vaktában új deployt. A kötet nélküli régi
+     `Postgres` szolgáltatást újraindítani tilos.
+3. **A `Kineticare-demo` szolgáltatás 2026-08-29-től kivezetve.** Oda
+   semmit nem deployolunk: nincs `redeploy`, `create-deployment`,
+   `connect-service-source`, `--from-source` rebuild, merge-utáni figyelés
+   és E2E a demo hoston. A GitHub-forrás le van választva (`repo: null`,
+   auto-deploy `NO_REPO`). A `railway.demo.json` és a `docs/demo-kornyezet.md`
+   történeti. A demo Postgres (`Postgres-UtWo`) és a régi kötet nélküli
+   `Postgres` ugyanúgy békén hagyandó.
+4. Railway MCP / CLI nélkül a dashboard-log és a publikus healthcheck a
+   tartalék; a figyelést ettől még nem szabad kihagyni. Csak a
+   `Kineticare` production számít.
 
 ## Cursor-modellek (tulajdonosi kérés, 2026-08-22)
 
@@ -341,19 +350,27 @@ konfigurációval (csak az egyik) az app el sem indul.
 
 ## Deploy (Railway)
 
-Staging + prod a Railway-n fut, konfig: `railway.json` (RAILPACK builder,
-explicit `buildCommand: npm run build`, `startCommand: npx payload migrate &&
-npm start`, `healthcheckPath: /admin`). Részletes runbook: `docs/deploy-railway.md`.
+A production **`Kineticare`** appservice a Railway-n fut, konfig: `railway.json`
+(RAILPACK builder, explicit `buildCommand: node ./node_modules/next/dist/bin/next build`,
+`startCommand: node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start`,
+`healthcheckPath: /admin`).
+A `Kineticare-demo` 2026-08-29-től kivezetve — oda semmit nem deployolunk.
+Részletes runbook: `docs/deploy-railway.md`.
 
 Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 „Üzemeltetési tanulságok" szekciójában):
 
 - **A „SUCCESS" deploy nem jelenti, hogy az új kód fut.** Explicit `buildCommand`
   nélkül a builder kihagyhatta a buildet és a régi `.next/` mappát indította.
-  A deploy build-logjában tényleges `npm run build` futásnak kell szerepelnie.
-- **A service-szintű (dashboard) beállítás felülírja a `railway.json`-t** — a
-  fájl módosításakor a service-beállítást is ellenőrizd (builder, buildCommand,
-  healthcheck, startCommand).
+  A deploy build-logjában tényleges lokális Next buildnek kell szerepelnie.
+- **A config-as-code (`railway.json`) felülírja a dashboard service-beállítását**
+  az ott megadott kulcsokra. A tényleges deploy-konfigurációban ellenőrizd a
+  builder, buildCommand, healthcheck és startCommand eredetét.
+- **A `railway.json` Config as Code 2026-12-01-én megszűnik.** A meglévő
+  Kineticare service addig használhatja, de előtte a live projekthez linkelt
+  repóban `railway config migrate` előnézet, majd emberileg jóváhagyott
+  `railway config migrate --apply` kell. Ezután tiszta `railway config plan`
+  bizonyítsa az IaC-egyezést; vakon generált `.railway/railway.ts` nem elfogadható.
 - **Feltöltött képekhez Railway Volume kötelező élesben** (`/app/media`
   mountpont + `PAYLOAD_MEDIA_DIR=/app/media`): a konténer lemeze minden
   deploynál üresen jön vissza. Induláskor az `ensureMediaFiles`
@@ -370,33 +387,34 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 
 ## Dokumentáció (docs/)
 
-| Terület | Fájl |
-| --- | --- |
-| **Feladatlista (mi van hátra)** | **`docs/feladatlista.md`** |
-| **Ügynök-térkép (cikk-CTA, Craft-sáv és Shop-sáv zárak)** | **`docs/agent-feature-map.md`** |
-| Kezdőlap szekció-rendszer | `docs/szekcio-rendszer-terv.md` |
-| Értékesítési UX-skill (UI-munka előtt kötelező) | `docs/ertekesitesi-ux-skill.md` |
-| Szerkesztői útmutató (admin) | `docs/szerkesztoi-utmutato.md` |
-| Deploy-runbook | `docs/deploy-railway.md` |
-| Barion sandbox | `docs/barion-sandbox-setup.md` |
-| E2E-futtatás stagingen | `docs/e2e-staging-runbook.md` |
-| OWASP biztonsági audit | `docs/owasp-security-review.md` |
-| Statisztika/Bunny review (2026-08-21) | `docs/review-2026-08-21-statisztika-bunny.md` |
-| Kritikus utak review (2026-08-22) | `docs/review-2026-08-22-kritikus-utak.md` |
-| **Piaci stratégia és végrehajtási terv** | `docs/piaci-strategia.md` |
-| Tudástár-cikkek betöltése | `docs/tudastar-cikkek-betoltese.md` |
-| Kulcsszó-célzás (mért) | `docs/kulcsszavak.md` |
-| Kampányterv mért adatokból | `docs/kampanyterv-mert-adatokbol.md` |
-| Vevőhang és hirdetésszöveg | `docs/vevohang-es-hirdetesszoveg.md` |
-| Monid-kutatás (terv + 2. kör) | `docs/monid-kampany-kutatas.md`, `docs/monid-masodik-kor.md` |
-| Számlázz.hu (követelmények, megfelelés, stornó) | `docs/szamlazz-*.md`, `docs/atadas-szamlazz-kor.md` |
-| Analitika | `docs/posthog.md`, `docs/ga4.md` |
-| kineticare.hu domain-átállás (GSC, Ads, CORS) | `docs/kineticare-hu-atallas.md` |
-| accessGrants backfill | `docs/access-grants-backfill.md` |
-| SEO / GEO / LLM-optimalizálás | `docs/seo-geo-llm.md` |
-| Videóplatform-döntés, hero-videó | `docs/video-platform-dontes.md`, `docs/hero-video-feltoltes.md` |
-| Jelszó-politika | `docs/jelszo-politika.md` |
-| Vásárló-migráció | `docs/vasarlo-migracio-terv.md`, `docs/manualis-vasarlas-hozzaadas.md` |
+| Terület                                         | Fájl                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------- |
+| **Feladatlista (mi van hátra)**                 | **`docs/feladatlista.md`**                                             |
+| **Ügynök-térkép (cikk-CTA, Craft-sáv és Shop-sáv zárak)** | **`docs/agent-feature-map.md`**                              |
+| Kezdőlap szekció-rendszer                       | `docs/szekcio-rendszer-terv.md`                                        |
+| Értékesítési UX-skill (UI-munka előtt kötelező) | `docs/ertekesitesi-ux-skill.md`                                        |
+| Szerkesztői útmutató (admin)                    | `docs/szerkesztoi-utmutato.md`                                         |
+| Deploy-runbook                                  | `docs/deploy-railway.md`                                               |
+| Demó-környezet (kivezetve)                      | `docs/demo-kornyezet.md`                                               |
+| Barion sandbox                                  | `docs/barion-sandbox-setup.md`                                         |
+| E2E-futtatás stagingen                          | `docs/e2e-staging-runbook.md`                                          |
+| OWASP biztonsági audit                          | `docs/owasp-security-review.md`                                        |
+| Statisztika/Bunny review (2026-08-21)           | `docs/review-2026-08-21-statisztika-bunny.md`                          |
+| Kritikus utak review (2026-08-22)               | `docs/review-2026-08-22-kritikus-utak.md`                              |
+| **Piaci stratégia és végrehajtási terv**        | `docs/piaci-strategia.md`                                              |
+| Tudástár-cikkek betöltése                       | `docs/tudastar-cikkek-betoltese.md`                                    |
+| Kulcsszó-célzás (mért)                          | `docs/kulcsszavak.md`                                                  |
+| Kampányterv mért adatokból                      | `docs/kampanyterv-mert-adatokbol.md`                                   |
+| Vevőhang és hirdetésszöveg                      | `docs/vevohang-es-hirdetesszoveg.md`                                   |
+| Monid-kutatás (terv + 2. kör)                   | `docs/monid-kampany-kutatas.md`, `docs/monid-masodik-kor.md`           |
+| Számlázz.hu (követelmények, megfelelés, stornó) | `docs/szamlazz-*.md`, `docs/atadas-szamlazz-kor.md`                    |
+| Analitika                                       | `docs/posthog.md`, `docs/ga4.md`                                       |
+| kineticare.hu domain-átállás (GSC, Ads, CORS)   | `docs/kineticare-hu-atallas.md`                                        |
+| accessGrants backfill                           | `docs/access-grants-backfill.md`                                       |
+| SEO / GEO / LLM-optimalizálás                   | `docs/seo-geo-llm.md`                                                  |
+| Videóplatform-döntés, hero-videó                | `docs/video-platform-dontes.md`, `docs/hero-video-feltoltes.md`        |
+| Jelszó-politika                                 | `docs/jelszo-politika.md`                                              |
+| Vásárló-migráció                                | `docs/vasarlo-migracio-terv.md`, `docs/manualis-vasarlas-hozzaadas.md` |
 
 ## Biztonsági szempontok (rövid összefoglaló)
 

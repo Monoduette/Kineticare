@@ -138,9 +138,8 @@
   color: var(--kc-color-text);
 }
 
-.kc-contact-success__title:focus-visible {
-  outline: none;
-}
+/* A siker-cím programozott fókuszt kap. A gyűrű marad (WCAG 2.2 · 2.4.7).
+   https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html */
 
 @media (min-width: 900px) {
   .kc-contact-success {

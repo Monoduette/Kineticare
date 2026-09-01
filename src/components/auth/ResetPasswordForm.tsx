@@ -125,7 +125,7 @@ export function ResetPasswordForm({ token, returnUrl }: ResetPasswordFormProps) 
       />
       <Field
         autoComplete="new-password"
-        label="Új jelszó mégegyszer"
+        label="Új jelszó még egyszer"
         name="passwordConfirm"
         onChange={(event) => setPasswordConfirm(event.target.value)}
         required

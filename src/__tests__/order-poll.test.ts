@@ -1,9 +1,12 @@
+import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import { BarionApiError, type BarionPaymentStateResponse } from '../lib/barion'
 import {
   classifyBarionFailure,
   INVOICE_PENDING_STALE_MS,
+  LATE_SUCCESS_BATCH_SIZE,
   MAX_CONSECUTIVE_TRANSPORT_FAILURES,
   MAX_LEADING_FAILURES,
   ORDER_POLL_BATCH_SIZE,
@@ -12,6 +15,7 @@ import {
   STUCK_ORDER_WARN_MS,
 } from '../lib/order-poll/service'
 import type { applyBarionStateTransition } from '../lib/order-status/apply-barion-state'
+import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
 import type { Order } from '../payload-types'
 
 /**
@@ -32,6 +36,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 const PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
@@ -90,6 +96,8 @@ function getStateResponse(
 interface SetupOptions {
   pending?: Order[]
   paidResweep?: Order[]
+  /** R-03: cancelled / payment_failed rendelések a late-success scanhez. */
+  lateSuccess?: Order[]
   stateStatus?: string
   stateError?: Error
   /** A GetState-válasz felülírásai (pl. eltérő Total az összeg-assert teszteléséhez). */
@@ -126,11 +134,41 @@ function extractNotInIds(where: unknown): Array<number | string> | null {
   return null
 }
 
+function whereLooksLikeLateSuccess(where: unknown): boolean {
+  const json = JSON.stringify(where ?? {})
+  return json.includes('cancelled') || json.includes('payment_failed')
+}
+
+interface ConditionalUpdateWhere {
+  and?: Array<{
+    id?: { equals?: number | string }
+    status?: { equals?: string }
+  }>
+}
+
+function readConditionalWhere(where: unknown): { id?: number | string; status?: string } {
+  const conditions = (where as ConditionalUpdateWhere | undefined)?.and ?? []
+  const id = conditions.find((condition) => condition.id !== undefined)?.id?.equals
+  const status = conditions.find((condition) => condition.status !== undefined)?.status?.equals
+  return {
+    ...(id !== undefined ? { id } : {}),
+    ...(status !== undefined ? { status } : {}),
+  }
+}
+
+interface CapturedOrderUpdate {
+  id?: number | string
+  where?: { id?: number | string; status?: string }
+  data: Record<string, unknown>
+}
+
 function setup(options: SetupOptions = {}) {
   const pending = options.pending ?? [createPendingOrder()]
   const paidResweep = options.paidResweep ?? []
+  const lateSuccess = options.lateSuccess ?? []
   const user = { id: 7, email: 'anna@example.test', purchases: [] as number[] }
   const orderUpdates: Array<Record<string, unknown>> = []
+  const orderUpdateCalls: CapturedOrderUpdate[] = []
   const queuedInvoices: number[] = []
   const paidCalls: number[] = []
   const finds: CapturedFind[] = []
@@ -152,7 +190,14 @@ function setup(options: SetupOptions = {}) {
         ...(limit !== undefined ? { limit } : {}),
       })
       const json = JSON.stringify(where ?? {})
-      let docs = json.includes('"paid"') && !json.includes('payment_pending') ? [...paidResweep] : [...pending]
+      let docs: Order[]
+      if (whereLooksLikeLateSuccess(where)) {
+        docs = [...lateSuccess]
+      } else if (json.includes('"paid"') && !json.includes('payment_pending')) {
+        docs = [...paidResweep]
+      } else {
+        docs = [...pending]
+      }
       const notIn = extractNotInIds(where)
       if (notIn) {
         const excluded = new Set(notIn.map(String))
@@ -166,13 +211,18 @@ function setup(options: SetupOptions = {}) {
       if (typeof limit === 'number') {
         docs = docs.slice(0, limit)
       }
-      return { docs, totalDocs: docs.length }
+      // ÉLETHŰSÉG (P0-repro): a valódi Payload `find` ÚJ objektumokat ad vissza
+      // az SQL-ből — ha közben egy recovery a DB-be ír, a poll kezében lévő
+      // példány NEM változik. A korábbi alias (ugyanaz a referencia) épp a
+      // stale-touch hibát rejtette el: az update mutálta a poll példányát is,
+      // így az in-memory státusz sosem tudott elavulni.
+      return { docs: docs.map((order) => ({ ...order })), totalDocs: docs.length }
     },
     findByID: async ({ collection, id }: { collection: string; id: number }) => {
       // Az M5 zár a záron belül ÚJRAOLVASSA a rendelést — a mock a tárolt
       // (és az update által mutált) példányt adja vissza, mint a valódi DB.
       if (collection === 'orders') {
-        const found = [...pending, ...paidResweep].find((order) => order.id === id)
+        const found = [...pending, ...paidResweep, ...lateSuccess].find((order) => order.id === id)
         if (!found) {
           throw new Error(`teszthiba: nincs ilyen rendelés: ${id}`)
         }
@@ -183,23 +233,43 @@ function setup(options: SetupOptions = {}) {
     update: async ({
       collection,
       id,
+      where,
       data,
     }: {
       collection: string
       id?: number | string
+      where?: unknown
       data: Record<string, unknown>
     }) => {
       if (collection === 'orders') {
-        orderUpdates.push(data)
-        const pool = [...pending, ...paidResweep]
-        const target = id === undefined ? undefined : pool.find((order) => order.id === id)
-        if (target) {
+        const pool = [...pending, ...paidResweep, ...lateSuccess]
+        // A Payload valódi update-je bökí az updatedAt-et — a W1/RF-3 touch
+        // (ugyanazon státusz újraírása) csak így kerül a sor végére.
+        const applyTo = (target: Order): void => {
           Object.assign(target, data)
-          // A Payload valódi update-je bökí az updatedAt-et — a W1 touch
-          // (status: payment_pending újraírása) csak így kerül a sor végére.
-          if (data.status === 'payment_pending') {
+          if (typeof data.status === 'string') {
             target.updatedAt = new Date(NOW).toISOString()
           }
+        }
+        if (where !== undefined) {
+          const condition = readConditionalWhere(where)
+          orderUpdateCalls.push({ where: condition, data })
+          const target = pool.find(
+            (order) =>
+              String(order.id) === String(condition.id) && order.status === condition.status,
+          )
+          if (!target) {
+            return { docs: [], errors: [] }
+          }
+          orderUpdates.push(data)
+          applyTo(target)
+          return { docs: [target], errors: [] }
+        }
+        orderUpdateCalls.push({ ...(id !== undefined ? { id } : {}), data })
+        orderUpdates.push(data)
+        const target = id === undefined ? undefined : pool.find((order) => order.id === id)
+        if (target) {
+          applyTo(target)
         }
       }
       if (collection === 'users') {
@@ -238,9 +308,11 @@ function setup(options: SetupOptions = {}) {
     invoicingEnabled,
     user,
     orderUpdates,
+    orderUpdateCalls,
     queuedInvoices,
     paidCalls,
     pending,
+    lateSuccess,
     finds,
   }
 }
@@ -282,7 +354,9 @@ describe('order-poll — elveszett callback-mentés', () => {
         if (args.collection === 'users' && grantFails) {
           throw new Error('teszt: a jogosultság-beírás elhasal (DB-hiba)')
         }
-        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(args)
+        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(
+          args,
+        )
       },
     } as never
     const deps = {
@@ -362,16 +436,25 @@ describe('order-poll — elveszett callback-mentés', () => {
     expect(order.status).toBe('cancelled')
   })
 
-  it.each([['Prepared'], ['Started']])('Barion %s → a rendelés payment_pending marad', async (status) => {
-    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
-      stateStatus: status,
-    })
+  it.each([['Prepared'], ['Started']])(
+    'Barion %s → a rendelés payment_pending marad',
+    async (status) => {
+      const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+        stateStatus: status,
+      })
 
-    const summary = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+      const summary = await pollPendingOrders({
+        payload,
+        fetchState,
+        onPaid,
+        queueInvoice,
+        now: NOW,
+      })
 
-    expect(summary.stillPending).toBe(1)
-    expect(orderUpdates).toHaveLength(0)
-  })
+      expect(summary.stillPending).toBe(1)
+      expect(orderUpdates).toHaveLength(0)
+    },
+  )
 
   /**
    * S2 összeg-assert: a poll-job UGYANAZT a magot futtatja, mint a callback,
@@ -436,7 +519,9 @@ describe('order-poll — árva rendelés (barionPaymentId nélkül)', () => {
   })
 
   it('24 óránál régebbi függő rendelés → stillPending + owner-riasztás (státusz marad)', async () => {
-    const stuck = createPendingOrder({ createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString() })
+    const stuck = createPendingOrder({
+      createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString(),
+    })
     const { payload, fetchState, onPaid, queueInvoice } = setup({
       pending: [stuck],
       stateStatus: 'Prepared',
@@ -446,6 +531,38 @@ describe('order-poll — árva rendelés (barionPaymentId nélkül)', () => {
 
     expect(summary.stillPending).toBe(1)
     expect(stuck.status).toBe('payment_pending')
+  })
+
+  it('a beragadt rendelés riasztása FOJTOTT: az első futás riaszt, a cooldown-on belüli ismétlés nem ír új error-sort', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stuck = createPendingOrder({
+      createdAt: new Date(NOW - STUCK_ORDER_WARN_MS - 60_000).toISOString(),
+    })
+    const { payload, fetchState, onPaid, queueInvoice } = setup({
+      pending: [stuck],
+      stateStatus: 'Prepared',
+    })
+
+    const first = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+    expect(first.stillPending).toBe(1)
+    const firstLogs = logSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(firstLogs).toContain('24 órája payment_pending')
+
+    // Ugyanaz a — már felszínre hozott — rendelés az 5 perccel későbbi futásban:
+    // a rendelés továbbra is stillPending, de a RIASZTÁS nem ismétlődik.
+    logSpy.mockClear()
+    const second = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW + 5 * 60_000,
+    })
+    expect(second.stillPending).toBe(1)
+    const secondLogs = logSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(secondLogs).not.toContain('24 órája payment_pending')
+
+    vi.restoreAllMocks()
   })
 })
 
@@ -895,9 +1012,7 @@ describe('order-poll — a futás eleji mennyezet (MAX_LEADING_FAILURES)', () =>
       kind: 'provider',
       endpoint: 'GET x',
       httpStatus: 200,
-      providerErrors: [
-        { ErrorCode: 'SomeUnlistedAuthProblem', Title: 'x', Description: 'x' },
-      ],
+      providerErrors: [{ ErrorCode: 'SomeUnlistedAuthProblem', Title: 'x', Description: 'x' }],
     })
 
   const naplo = () => {
@@ -1034,7 +1149,9 @@ describe('order-poll — W1 rejected sorfej (updatedAt + touch + pótlap)', () =
     expect(finds[0]?.limit).toBe(ORDER_POLL_BATCH_SIZE)
     const refill = finds.find((entry, index) => index > 0 && extractNotInIds(entry.where))
     expect(refill).toBeDefined()
-    expect(extractNotInIds(refill?.where)).toEqual(expect.arrayContaining(poisons.map((order) => order.id)))
+    expect(extractNotInIds(refill?.where)).toEqual(
+      expect.arrayContaining(poisons.map((order) => order.id)),
+    )
     expect(extractNotInIds(refill?.where)).not.toContain(PAYABLE_ID)
 
     for (const poison of poisons) {
@@ -1116,5 +1233,685 @@ describe('order-poll — W1 rejected sorfej (updatedAt + touch + pótlap)', () =
     expect(pendingFinds.length).toBeGreaterThanOrEqual(1)
     expect(pendingFinds[0]?.sort).toBe('updatedAt')
     expect(pendingFinds[0]?.sort).not.toBe('createdAt')
+  })
+})
+
+describe('order-poll — R-03 late-success (cancelled + Succeeded)', () => {
+  it('cancelled rendelés + Barion Succeeded → paid + onPaid', async () => {
+    const cancelled = createPendingOrder({
+      id: 808,
+      status: 'cancelled',
+      barionPaymentId: 'late-success-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, paidCalls, user } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Succeeded',
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(1)
+    expect(summary.transitionedPaid).toBe(1)
+    expect(cancelled.status).toBe('paid')
+    expect(user.purchases).toEqual([42])
+    expect(paidCalls).toEqual([808])
+  })
+
+  it('cancelled + Expired → no-op, nem számít cancelled-nek újra', async () => {
+    const cancelled = createPendingOrder({
+      id: 809,
+      status: 'cancelled',
+      barionPaymentId: 'already-cancelled-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Expired',
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Expired'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(1)
+    expect(summary.cancelled).toBe(0)
+    expect(summary.transitionedPaid).toBe(0)
+    expect(cancelled.status).toBe('cancelled')
+    expect(paidCalls).toHaveLength(0)
+  })
+
+  it('cancelled + Succeeded + duplicate reject → recover lefut', async () => {
+    const cancelled = createPendingOrder({
+      id: 810,
+      status: 'cancelled',
+      barionPaymentId: 'dup-late-payment',
+      createdAt: isoHoursAgo(1),
+    })
+    const { payload, onPaid, queueInvoice } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+    })
+    const recoverRejectedPaid = vi.fn(async () => ({ action: 'refunded' as const }))
+    const applyTransition = vi.fn(async () => ({
+      action: 'rejected' as const,
+      reason: 'duplicate-paid-order',
+    }))
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid,
+      queueInvoice,
+      applyTransition: applyTransition as never,
+      recoverRejectedPaid,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    const recoverInput = recoverRejectedPaid.mock.calls.at(0)?.at(0)
+    expect(recoverInput).toMatchObject({
+      reason: 'duplicate-paid-order',
+      source: 'order-poll',
+      order: expect.objectContaining({ id: 810 }),
+    })
+    expect(cancelled.status).toBe('cancelled')
+  })
+
+  it('late-success where: updatedAt ASC + barionPaymentId exists', async () => {
+    const cancelled = createPendingOrder({
+      id: 811,
+      status: 'cancelled',
+      barionPaymentId: 'late-where-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, finds } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Expired',
+    })
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Expired'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    const lateFinds = finds.filter((entry) => whereLooksLikeLateSuccess(entry.where))
+    expect(lateFinds.length).toBeGreaterThanOrEqual(1)
+    expect(lateFinds[0]?.sort).toBe('updatedAt')
+    expect(JSON.stringify(lateFinds[0]?.where ?? {})).toContain('barionPaymentId')
+    expect(JSON.stringify(lateFinds[0]?.where ?? {})).toContain('exists')
+  })
+
+  it('RF-3: 10 Expired (régi updatedAt) + 1 Succeeded → ugyanabban a futásban paid a refill miatt', async () => {
+    const expired = Array.from({ length: LATE_SUCCESS_BATCH_SIZE }, (_, index) =>
+      createPendingOrder({
+        id: 900 + index,
+        status: 'cancelled',
+        barionPaymentId: `expired-${index}`,
+        createdAt: isoHoursAgo(3),
+        updatedAt: isoHoursAgo(5),
+      }),
+    )
+    const succeeded = createPendingOrder({
+      id: 999,
+      status: 'cancelled',
+      barionPaymentId: 'late-succeeded',
+      createdAt: isoHoursAgo(1),
+      updatedAt: isoHoursAgo(1),
+    })
+    const { payload, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [],
+      lateSuccess: [...expired, succeeded],
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async (paymentId: string) => {
+        if (paymentId === 'late-succeeded') {
+          return getStateResponse('Succeeded')
+        }
+        return getStateResponse('Expired')
+      },
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.lateSuccessScanned).toBe(LATE_SUCCESS_BATCH_SIZE + 1)
+    expect(summary.transitionedPaid).toBe(1)
+    expect(succeeded.status).toBe('paid')
+    expect(paidCalls).toEqual([999])
+    expect(expired.every((row) => row.status === 'cancelled')).toBe(true)
+  })
+
+  it('RF-4: recover failed → late-success sor NEM forog (nincs status-touch)', async () => {
+    const cancelled = createPendingOrder({
+      id: 812,
+      status: 'cancelled',
+      barionPaymentId: 'failed-recover-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(4),
+    })
+    const originalUpdatedAt = cancelled.updatedAt
+    const { payload, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+    })
+    const recoverRejectedPaid = vi.fn(async () => ({
+      action: 'failed' as const,
+      detail: 'barion-refund-error',
+    }))
+    const applyTransition = vi.fn(async () => ({
+      action: 'rejected' as const,
+      reason: 'duplicate-paid-order',
+    }))
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid,
+      queueInvoice,
+      applyTransition: applyTransition as never,
+      recoverRejectedPaid,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    expect(recoverRejectedPaid.mock.calls.at(0)?.at(0)).toMatchObject({ source: 'order-poll' })
+    expect(cancelled.updatedAt).toBe(originalUpdatedAt)
+    expect(orderUpdates.some((row) => row.status === 'cancelled')).toBe(false)
+  })
+})
+
+describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
+  /**
+   * A VALÓDI recovery fut (recoverRejectedSucceededPayment), injektált Barion
+   * refund-transporttal: a Refund-hívás Refunded-et ad, a persist a DB-be
+   * `status: 'refunded'`-et ír. A poll kezében lévő rendelés-példány közben
+   * NEM változik (a harness `find`-je másolatot ad, mint a valódi Payload) —
+   * a hibás touch tehát a friss DB-státuszt írná felül a stale in-memoryval.
+   */
+  type RecoverInput = Parameters<typeof recoverRejectedSucceededPayment>[0]
+
+  const refundedTransport: NonNullable<RecoverInput['refundPayment']> = async () => ({
+    PaymentId: PAYMENT_ID,
+    RefundedTransactions: [{ TransactionId: 'tx-p0', Status: 'Refunded' }],
+  })
+
+  const refundableState: Partial<BarionPaymentStateResponse> = {
+    Transactions: [
+      {
+        TransactionId: 'tx-p0',
+        TransactionType: 'CardPayment',
+        Status: 'Succeeded',
+        Total: ORDER_TOTAL_HUF,
+      },
+    ] as BarionPaymentStateResponse['Transactions'],
+  }
+
+  it('pending + Succeeded + total-mismatch reject + sikeres auto-refund → nincs payment_pending visszaírás', async () => {
+    const order = createPendingOrder({ id: 910, barionPaymentId: 'p0-pending-payment' })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [order],
+      stateOverrides: refundableState,
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded', refundableState),
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    const refundedIdx = orderUpdates.findIndex((row) => row.status === 'refunded')
+    expect(refundedIdx, 'a recovery nem persistálta a refunded státuszt').toBeGreaterThanOrEqual(0)
+    const later = orderUpdates.slice(refundedIdx + 1)
+    expect(
+      later.some((row) => row.status === 'payment_pending'),
+      'a poll a refunded DB-státuszt payment_pendingre írta vissza',
+    ).toBe(false)
+    expect(pending[0]?.status).toBe('refunded')
+  })
+
+  it('late-success cancelled + duplicate reject + sikeres auto-refund → nincs cancelled visszaírás', async () => {
+    const cancelled = createPendingOrder({
+      id: 911,
+      status: 'cancelled',
+      barionPaymentId: 'p0-late-payment',
+      createdAt: isoHoursAgo(2),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates, lateSuccess } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateOverrides: refundableState,
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Succeeded', refundableState),
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'duplicate-paid-order',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(summary.failed).toBe(1)
+    const refundedIdx = orderUpdates.findIndex((row) => row.status === 'refunded')
+    expect(refundedIdx, 'a recovery nem persistálta a refunded státuszt').toBeGreaterThanOrEqual(0)
+    const later = orderUpdates.slice(refundedIdx + 1)
+    expect(
+      later.some((row) => row.status === 'cancelled'),
+      'a late-success touch a refunded DB-státuszt cancelledre írta vissza',
+    ).toBe(false)
+    expect(lateSuccess[0]?.status).toBe('refunded')
+  })
+
+  it('párhuzamos refund a lap betöltése után (skipped/already-refunded) → a friss-olvasás véd', async () => {
+    // A mutációs próba (a2) igazolta: ezen az ágon a recoveryRefunded zászló
+    // HAMIS marad (a recovery already-refunded skippel tér vissza), tehát
+    // KIZÁRÓLAG a touch előtti friss DB-olvasás akadályozza a visszaírást.
+    // Ez a teszt szögezi le, hogy a guard nem „fölösleges extra findByID".
+    const order = createPendingOrder({ id: 912, barionPaymentId: 'p0-parallel-payment' })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [order],
+      stateOverrides: refundableState,
+    })
+
+    await pollPendingOrders({
+      payload,
+      // A GetState alatt fut be a párhuzamos callback-recovery: a DB-ben a sor
+      // már refunded, a poll kezében lévő példány payment_pending marad.
+      fetchState: async () => {
+        pending[0].status = 'refunded'
+        return getStateResponse('Succeeded', refundableState)
+      },
+      onPaid,
+      queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })) as never,
+      recoverRejectedPaid: (input) =>
+        recoverRejectedSucceededPayment({ ...input, refundPayment: refundedTransport }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'payment_pending'),
+      'a poll a párhuzamosan refundolt sort payment_pendingre írta vissza',
+    ).toBe(false)
+    expect(pending[0].status).toBe('refunded')
+  })
+})
+
+describe('RF-3 — a nem-paid late-success sor forgatása le van szögezve', () => {
+  it('late-success Canceled (nem fordult paid-re) → touch forgatja a sort', async () => {
+    // A mutációs próba (rf3) igazolta: a touch törlése zölden átment — ez a
+    // teszt zárja a rést. A touch dolga az updatedAt-bump, hogy a 10+10-es
+    // late-success ablak ne ugyanazokat a sorokat nézze minden futásban.
+    const cancelled = createPendingOrder({
+      id: 913,
+      status: 'cancelled',
+      barionPaymentId: 'rf3-rotate-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateStatus: 'Canceled',
+    })
+
+    await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'cancelled'),
+      'az RF-3 touch nem forgatta a nem-paid late-success sort (updatedAt-bump elmaradt)',
+    ).toBe(true)
+  })
+})
+
+describe('árva-ág — friss-státusz őr a cancelled írás előtt', () => {
+  it('árva sor, amit a lap betöltése után paid-re állít a callback → nincs cancelled felülírás', async () => {
+    // A checkout a Payment/Start után, a paymentId mentése előtt is elhalhat —
+    // a kései callback a PaymentRequestId-fallbackkel ilyenkor is párosít és
+    // paid-re állíthat. A poll árva-ága a lapbetöltéskori stale példányból
+    // dolgozik: friss-olvasás nélkül a FIZETETT sorra írna cancelled-et.
+    const paidLater = createPendingOrder({
+      id: 914,
+      barionPaymentId: null,
+      createdAt: new Date(NOW - ORPHAN_ORDER_GRACE_MS - 60_000).toISOString(),
+      updatedAt: isoHoursAgo(30),
+    })
+    const first = createPendingOrder({
+      id: 915,
+      barionPaymentId: 'orphan-race-payment',
+      updatedAt: isoHoursAgo(40),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates, pending } = setup({
+      pending: [first, paidLater],
+    })
+
+    await pollPendingOrders({
+      payload,
+      // Az első (paymentId-s) sor GetState-je alatt fut be a kései callback,
+      // és paid-re állítja az árva sort a DB-ben.
+      fetchState: async () => {
+        const target = pending.find((row) => row.id === 914)
+        if (target) {
+          target.status = 'paid'
+        }
+        return getStateResponse('Prepared')
+      },
+      onPaid,
+      queueInvoice,
+      now: NOW,
+    })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'cancelled'),
+      'az árva-ág a közben paid-re állt sort cancelled-re írta felül',
+    ).toBe(false)
+    expect(pending.find((row) => row.id === 914)?.status).toBe('paid')
+  })
+})
+
+describe('order-poll — compare-and-set státuszírás (A1)', () => {
+  function withConcurrentWrite(
+    base: ReturnType<typeof setup>,
+    orderId: number,
+    status: Order['status'],
+  ): Payload {
+    return {
+      ...(base.payload as unknown as Record<string, unknown>),
+      update: async (args: { collection: string; data: Record<string, unknown> }) => {
+        if (args.collection === 'orders') {
+          const row = [...base.pending, ...base.lateSuccess].find((entry) => entry.id === orderId)
+          if (row) {
+            row.status = status
+          }
+        }
+        return (base.payload as unknown as { update: (a: unknown) => Promise<unknown> }).update(
+          args,
+        )
+      },
+    } as unknown as Payload
+  }
+
+  it('W1 touch: a sor az írás pillanatában refunded lett → nincs payment_pending visszaírás', async () => {
+    const order = createPendingOrder({ id: 920, barionPaymentId: 'cas-pending-payment' })
+    const base = setup({ pending: [order] })
+
+    await pollPendingOrders({
+      payload: withConcurrentWrite(base, 920, 'refunded'),
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid: base.onPaid,
+      queueInvoice: base.queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'total-mismatch',
+      })) as never,
+      recoverRejectedPaid: async () => ({
+        action: 'skipped' as const,
+        detail: 'no-refundable-transaction',
+      }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(base.orderUpdateCalls.map((call) => call.where)).toEqual([
+      { id: 920, status: 'payment_pending' },
+    ])
+    expect(base.orderUpdates.some((row) => row.status === 'payment_pending')).toBe(false)
+    expect(base.pending[0]?.status).toBe('refunded')
+  })
+
+  it('árva-ág: a sor az írás pillanatában paid lett → nincs cancelled felülírás, skipped', async () => {
+    const orphan = createPendingOrder({
+      id: 921,
+      barionPaymentId: null,
+      createdAt: new Date(NOW - ORPHAN_ORDER_GRACE_MS - 60_000).toISOString(),
+    })
+    const base = setup({ pending: [orphan] })
+
+    const summary = await pollPendingOrders({
+      payload: withConcurrentWrite(base, 921, 'paid'),
+      fetchState: base.fetchState,
+      onPaid: base.onPaid,
+      queueInvoice: base.queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(base.orderUpdateCalls.map((call) => call.where)).toEqual([
+      { id: 921, status: 'payment_pending' },
+    ])
+    expect(base.orderUpdates.some((row) => row.status === 'cancelled')).toBe(false)
+    expect(summary.orphaned).toBe(0)
+    expect(summary.skipped).toBe(1)
+    expect(base.pending[0]?.status).toBe('paid')
+  })
+
+  it('RF-3 touch: a sor az írás pillanatában refunded lett → nincs cancelled visszaírás', async () => {
+    const cancelled = createPendingOrder({
+      id: 922,
+      status: 'cancelled',
+      barionPaymentId: 'cas-late-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(6),
+    })
+    const base = setup({ pending: [], lateSuccess: [cancelled] })
+
+    await pollPendingOrders({
+      payload: withConcurrentWrite(base, 922, 'refunded'),
+      fetchState: async () => getStateResponse('Succeeded'),
+      onPaid: base.onPaid,
+      queueInvoice: base.queueInvoice,
+      applyTransition: (async () => ({
+        action: 'rejected' as const,
+        reason: 'duplicate-paid-order',
+      })) as never,
+      recoverRejectedPaid: async () => ({
+        action: 'skipped' as const,
+        detail: 'no-refundable-transaction',
+      }),
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(base.orderUpdateCalls.map((call) => call.where)).toEqual([
+      { id: 922, status: 'cancelled' },
+    ])
+    expect(base.orderUpdates.some((row) => row.status === 'cancelled')).toBe(false)
+    expect(base.lateSuccess[0]?.status).toBe('refunded')
+  })
+})
+
+describe('order-poll — late-success hurok fékei (A2)', () => {
+  function lateBatch(count: number): Order[] {
+    return Array.from({ length: count }, (_, index) =>
+      createPendingOrder({
+        id: 940 + index,
+        status: 'cancelled',
+        orderNumber: `KH-LATE-${index}`,
+        barionPaymentId: `late-brake-${index}`,
+        createdAt: isoHoursAgo(3),
+        updatedAt: isoHoursAgo(3 + index),
+      }),
+    )
+  }
+
+  const ismeretlenHiba = (): BarionApiError =>
+    new BarionApiError({
+      message: 'ismeretlen szolgáltatói hiba',
+      kind: 'provider',
+      endpoint: 'GET x',
+      httpStatus: 200,
+      providerErrors: [{ ErrorCode: 'SomeUnlistedAuthProblem', Title: 'x', Description: 'x' }],
+    })
+
+  it('csupa order-osztályú hiba → MAX_LEADING_FAILURES után megszakít, a maradék skipped', async () => {
+    const late = lateBatch(LATE_SUCCESS_BATCH_SIZE)
+    const { payload, onPaid, queueInvoice } = setup({ pending: [], lateSuccess: late })
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw ismeretlenHiba()
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES)
+    expect(summary.failed).toBe(MAX_LEADING_FAILURES)
+    expect(summary.skipped).toBe(LATE_SUCCESS_BATCH_SIZE - MAX_LEADING_FAILURES)
+  })
+
+  it('hitelesítési hiba → a lapon maradó sorok skipped-be kerülnek', async () => {
+    const late = lateBatch(3)
+    const { payload, onPaid, queueInvoice } = setup({ pending: [], lateSuccess: late })
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw new BarionApiError({
+        message: 'Barion API hiba (HTTP 401)',
+        kind: 'http',
+        endpoint: 'GET /v4/Payment/{PaymentId}/PaymentState',
+        httpStatus: 401,
+      })
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    expect(summary.failed).toBe(1)
+    expect(summary.skipped).toBe(2)
+  })
+
+  it('egymást követő szállítási hibák → a lapon maradó sorok skipped-be kerülnek', async () => {
+    const late = lateBatch(5)
+    const { payload, onPaid, queueInvoice } = setup({ pending: [], lateSuccess: late })
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw new BarionApiError({ message: 'timeout', kind: 'timeout', endpoint: 'GET x' })
+    })
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(MAX_CONSECUTIVE_TRANSPORT_FAILURES)
+    expect(summary.failed).toBe(MAX_CONSECUTIVE_TRANSPORT_FAILURES)
+    expect(summary.skipped).toBe(5 - MAX_CONSECUTIVE_TRANSPORT_FAILURES)
+  })
+})
+
+describe('order-poll — late-success sor forgatása függő Barion-státusznál (A3)', () => {
+  it('cancelled sor + Prepared → a touch forgatja a sort, a státusz cancelled marad', async () => {
+    const cancelled = createPendingOrder({
+      id: 930,
+      status: 'cancelled',
+      barionPaymentId: 'late-prepared-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(6),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+    })
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Prepared'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(
+      orderUpdates.some((row) => row.status === 'cancelled'),
+      'a függő Barion-státuszú late-success sor nem forgott (updatedAt-bump elmaradt)',
+    ).toBe(true)
+    expect(cancelled.status).toBe('cancelled')
+    expect(cancelled.updatedAt).toBe(new Date(NOW).toISOString())
+  })
+
+  it('payment_failed sor + Started → szintén forog', async () => {
+    const failed = createPendingOrder({
+      id: 931,
+      status: 'payment_failed',
+      barionPaymentId: 'late-started-payment',
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(6),
+    })
+    const { payload, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [failed],
+    })
+
+    await pollPendingOrders({
+      payload,
+      fetchState: async () => getStateResponse('Started'),
+      onPaid,
+      queueInvoice,
+      invoicingEnabled: () => false,
+      now: NOW,
+    })
+
+    expect(orderUpdates.some((row) => row.status === 'payment_failed')).toBe(true)
+    expect(failed.status).toBe('payment_failed')
   })
 })

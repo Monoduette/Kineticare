@@ -119,24 +119,43 @@ export function resolveFreeCourseRequestActions(input: {
   return { grant: false, issueSetPasswordToken: false }
 }
 
+function actorOwnsSession(input: {
+  actorUserId?: number | null
+  userId?: number
+}): boolean {
+  return (
+    input.actorUserId != null &&
+    input.userId != null &&
+    Number(input.actorUserId) === Number(input.userId)
+  )
+}
+
 /** A felületi `next` a kapu-döntésből: vendég HTTP-re ez NEM megy ki. */
 export function resolveFreeCourseUiNext(input: {
   actions: FreeCourseRequestActions
   role: User['role']
   actorUserId?: number | null
   userId?: number
+  /**
+   * A kért SKU már a fiók `purchases` listáján van. Csak akkor visz
+   * `library`-re, ha a munkamenet A SAJÁT fiókja: idegen címre kért
+   * meglévő vásárlás `email` marad (anti-enum).
+   */
+  alreadyOwned?: boolean
 }): FreeCourseUiNext {
   if (input.role === 'owner' || input.role === 'staff') {
-    if (
-      input.actorUserId != null &&
-      input.userId != null &&
-      Number(input.actorUserId) === Number(input.userId)
-    ) {
+    if (actorOwnsSession(input)) {
       return 'blocked'
     }
     return 'email'
   }
-  if (input.actions.grant && !input.actions.issueSetPasswordToken) {
+  if (input.actions.issueSetPasswordToken) {
+    return 'email'
+  }
+  if (input.actions.grant) {
+    return 'library'
+  }
+  if (input.alreadyOwned === true && actorOwnsSession(input)) {
     return 'library'
   }
   return 'email'
@@ -381,12 +400,35 @@ export async function requestFreeCourseAccess(
     actorUserId: input.actorUserId ?? null,
     userId: fresh.id,
   })
+  const alreadyOwned = hasUserPurchased(fresh.purchases, product.id)
   const uiNext = resolveFreeCourseUiNext({
     actions,
     role: fresh.role,
     actorUserId: input.actorUserId ?? null,
     userId: fresh.id,
+    alreadyOwned,
   })
+
+  // I2: belépett vevő, a kért SKU már megvan. Nincs új token, nincs
+  // grant-írás, a felület a Kurzusaimra visz. Vendég ugyanezen a címen
+  // a `!actions.grant` ágon marad (anti-enum, `next` a HTTP-n nincs).
+  if (
+    alreadyOwned &&
+    actorOwnsSession({ actorUserId: input.actorUserId ?? null, userId: fresh.id }) &&
+    fresh.role === 'customer' &&
+    !actions.issueSetPasswordToken
+  ) {
+    log.info('ingyenes kurzus igénylése: a kurzus már a fiókban van — levél nincs', {
+      userId: fresh.id,
+    })
+    return {
+      status: 'ok',
+      emailDelivered: false,
+      userCreated: resolved.created,
+      grantedProductIds: [],
+      next: 'library',
+    }
+  }
 
   // Owner/staff: se grant, se 7 napos reset-token. A válasz attól még
   // `{ ok: true }` — a szerepkör nem szivároghat a nyilvános végpontról.

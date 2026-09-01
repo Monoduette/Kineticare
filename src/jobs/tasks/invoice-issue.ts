@@ -1,9 +1,13 @@
 import type { TaskConfig } from 'payload'
 
-import { getSzamlazzConfig, issueInvoiceForOrder } from '../../lib/szamlazz'
-import { logger } from '../../lib/logger'
+import { issueInvoiceForOrder } from '../../lib/szamlazz'
+import { resolveSzamlazzTaskGate } from '../szamlazz-task-gate'
 
-/** invoice-issue: paid után számla; `szamlaKulsoAzon` = orderNumber (idempotens). */
+/**
+ * invoice-issue: paid után számla; `szamlaKulsoAzon` = orderNumber (idempotens).
+ * A konfig-kapu (`resolveSzamlazzTaskGate`) a no-op / fél-lábas konfig ágát
+ * throw nélkül zárja — lásd src/jobs/szamlazz-task-gate.ts.
+ */
 
 interface InvoiceIssueJobIO {
   input: { orderId: number }
@@ -29,10 +33,12 @@ export const invoiceIssueTask: TaskConfig<InvoiceIssueJobIO> = {
       throw new Error(`invoice-issue: érvénytelen orderId input (${String(orderId)})`)
     }
 
-    // Kikapcsolt integrációnál a task azonnal, hiba nélkül lezárul.
-    if (!getSzamlazzConfig().enabled) {
-      logger.debug('invoice-issue: a Számlázz.hu-integráció kikapcsolva (nincs agent-kulcs) — no-op')
+    const gate = resolveSzamlazzTaskGate('invoice-issue')
+    if (gate.kind === 'disabled') {
       return { output: { outcome: 'disabled' } }
+    }
+    if (gate.kind === 'failed') {
+      return { output: { outcome: 'failed', reason: gate.reason } }
     }
 
     const result = await issueInvoiceForOrder({ payload: req.payload, orderId })

@@ -13,10 +13,11 @@ import {
   type BarionSnapshotStorage,
 } from '@/lib/analytics/barion-events'
 import { captureAnalyticsEvent } from '@/lib/analytics/posthog'
+import { courseHref } from '../../lib/course-url'
 import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 import { pollOrderStatus, type PollResult } from '../../lib/order-status-poll'
-import { signInHref } from '../../lib/return-url'
+import { forgotPasswordHref, signInHref } from '../../lib/return-url'
 
 /**
  * ThankYouView — a köszönőoldal kliens-oldali viselkedése.
@@ -24,7 +25,7 @@ import { signInHref } from '../../lib/return-url'
  * A rendelés-státuszt 2 mp-enként poll-ozza a GET /api/orders/[orderNumber]/status
  * végponton; a `paid` átmenet után siker-nézet, 2 perc után „feldolgozás
  * alatt" + e-mail-ígéret, `cancelled`/`payment_failed` esetén a
- * /sikertelen-nek megfelelő nézet.
+ * /sikertelen-nek megfelelő nézet, `refunded` esetén a visszatérítés-nézet.
  */
 export interface ThankYouViewProps {
   orderNumber: string | null
@@ -104,12 +105,14 @@ const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 120000 // 2 perc
 
 type ViewState =
-  | { kind: 'polling'; attempts: number }
+  | { kind: 'polling' }
   | { kind: 'paid'; productId: number | null }
   /** productId: a poll utolsó ismert tétele, ha a 2 perc alatt megjött. */
   | { kind: 'timeout'; productId: number | null }
   /** productId: az „Újrapróbálom" link célához (a státuszválasz hozza). */
   | { kind: 'failed'; status: string; productId: number | null }
+  /** productId: a kurzusoldal linkjéhez (hozzáférés nem jött létre). */
+  | { kind: 'refunded'; productId: number | null }
   | { kind: 'unauthorized' }
   | { kind: 'not-found' }
 
@@ -135,16 +138,25 @@ function thankYouCourseCta(productId: number | null): {
  * az állapot-lekérdezés neki mindig 401 — ezen az ágon a lap SOSEM tudja,
  * mi történt.
  *
- * A szöveg e-mail-első: a vendégnek még nincs jelszava, a Belépés a
- * köszönőoldalra visszavezető zsákutca volt. A belépés másodlagos, és a
- * Kurzusaimra visz (ott a belépés után a kurzus van), nem ide vissza.
+ * A szöveg e-mail-első: a vendégnek még nincs jelszava. A korábbi egyetlen
+ * gomb a Belépés volt; az zsákutca, ha a levél (még) nincs meg, mert a
+ * vendégfiók véletlen jelszóval születik, amit a vevő nem kap kézhez.
+ * Az elsődleges gomb ezért a jelszó-beállító kérés (`password-reset-request`,
+ * §3.2 #21): ugyanoda visz, mint a belépő oldal „Elfelejtetted a jelszavad?"
+ * útja, a Kurzusaimra mint returnUrl-lel. A Belépés másodlagos (már van
+ * jelszava). Egyik sem ide, a köszönőoldalra visz vissza.
  *
  * Forrás: NN/g, Error Message Guidelines (mondd meg, mi a következő lépés)
  * https://www.nngroup.com/articles/error-message-guidelines/ ;
  * GOV.UK, Start with the user need / don’t drop people off a journey
  * https://www.gov.uk/service-manual/design/user-centred-design ;
- * WCAG 2.2 · 3.3.1 Error Identification
+ * Baymard, post-purchase confirmation should lead to the purchased item
+ * https://baymard.com/blog/order-confirmation-design ;
+ * WCAG 2.2 · 3.3.1 Error Identification, 3.3.3 Error Suggestion, 3.2.4
+ * Consistent Identification
  * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  */
 export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
   return (
@@ -156,13 +168,21 @@ export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
         jelszó-beállító link is lesz, azzal nyílik meg a fiókod a kurzussal.
       </p>
       <p>
-        Ha a fizetést megszakítottad vagy a bank elutasította, semmi sem került levonásra. Újra
-        próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
+        Ha a levél néhány perc múlva sem jön, kérj új jelszó-beállító linket ugyanazzal az
+        e-mail-címmel, amellyel fizettél.
+      </p>
+      <p>
+        Ha a fizetést megszakítottad vagy a bank elutasította, általában nem történik levonás; ha
+        a bankod később mégis jóváhagyja, automatikusan érvényesítjük, és e-mailben
+        visszaigazoljuk. Újra is próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
       </p>
       <p className="kc-thankyou__order">
         Rendelésszám: <strong>{orderNumber}</strong>
       </p>
       <div className="kc-thankyou__actions">
+        <Button href={forgotPasswordHref('/kurzusaim')}>
+          {ctaLabel('password-reset-request')}
+        </Button>
         <Button href={signInHref('/kurzusaim')} variant="secondary">
           {ctaLabel('sign-in')}
         </Button>
@@ -266,12 +286,14 @@ export function ThankYouTimeout({
  * Forrás: NN/g, Error Message Guidelines
  * https://www.nngroup.com/articles/error-message-guidelines/ ;
  * WCAG 2.2 · 3.3.3 Error Suggestion
- * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html ;
+ * WCAG 2.2 · 2.4.2 Page Titled (a H1 a lapcím állapotát ismétli, nem sikert állít)
+ * https://www.w3.org/WAI/WCAG22/Understanding/page-titled.html
  */
 export function ThankYouMissingOrder() {
   return (
     <div className="kc-thankyou" role="status">
-      <h1>Köszönjük!</h1>
+      <h1>A fizetésed állapota</h1>
       <p>Hiányzik a rendelésszám a hivatkozásból. A kurzusaidat a következő gombbal éred el.</p>
       <Button href="/kurzusaim">{ctaLabel('my-courses-open')}</Button>
     </div>
@@ -305,8 +327,62 @@ export function ThankYouNotFound({ orderNumber }: { orderNumber: string }) {
   )
 }
 
+export function ThankYouFailed({ productId }: { productId: number | null }) {
+  // Az Újrapróbálom a TERMÉKRE mutat (a /penztar numerikus termék-id-t vár) —
+  // korábban a rendelésszám került a termék-paraméterbe, ami a pénztár
+  // „nincs kiválasztott termék" ágára vezetett (zsákutca). Ha a termék-id
+  // nem feloldható, a kurzuslista a biztonságos cél.
+  const retryHref = productId !== null ? checkoutHref(productId) : '/kurzusok'
+  return (
+    <div aria-live="assertive" className="kc-thankyou kc-thankyou--failed" role="alert">
+      <h1>A fizetés nem sikerült</h1>
+      <p>
+        A fizetésedet a bank elutasította vagy megszakította. Ilyenkor általában nem történik
+        levonás. Ha a bankod később mégis jóváhagyja a fizetést, automatikusan érvényesítjük, és
+        e-mailben visszaigazoljuk. Újra is próbálhatod a fizetést.
+      </p>
+      <div className="kc-thankyou__actions">
+        <Button href={retryHref}>{ctaLabel('retry')}</Button>
+        <Button href="/kapcsolat" variant="secondary">
+          {ctaLabel('contact-open')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ThankYouRefunded({
+  orderNumber,
+  productId,
+}: {
+  orderNumber: string
+  productId: number | null
+}) {
+  return (
+    <div aria-live="polite" className="kc-thankyou" role="status">
+      <h1>A fizetést visszatérítettük</h1>
+      <p>
+        A rendelést az ellenőrzés után nem zárhattuk le, ezért a teljes összeget automatikusan
+        visszaküldtük a kártyádra. Hozzáférés nem jött létre. Ha kérdésed van, írj nekünk, vagy
+        indítsd újra a vásárlást.
+      </p>
+      <p className="kc-thankyou__order">
+        Rendelésszám: <strong>{orderNumber}</strong>
+      </p>
+      <div className="kc-thankyou__actions">
+        {productId === null ? null : (
+          <Button href={courseHref({ id: productId })}>{ctaLabel('course-sales-open')}</Button>
+        )}
+        <Button href="/kapcsolat" variant="secondary">
+          {ctaLabel('contact-open')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function ThankYouView({ orderNumber }: ThankYouViewProps) {
-  const [state, setState] = useState<ViewState>({ kind: 'polling', attempts: 0 })
+  const [state, setState] = useState<ViewState>({ kind: 'polling' })
 
   useEffect(() => {
     // A hiányzó rendelésszám a PROPBÓL következik (szerver-oldalról érkezik,
@@ -324,7 +400,6 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
     }
 
     let cancelled = false
-    let attempts = 0
     let lastProductId: number | null = null
     const startedAt = Date.now()
 
@@ -339,7 +414,6 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
       if (cancelled) {
         return
       }
-      attempts += 1
       const result = await pollOrderStatus(orderNumber)
       if (cancelled) {
         return
@@ -370,6 +444,11 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
           emitBarionPurchase(pixelOrderNumber, false)
           return
         }
+        if (status === 'refunded') {
+          setState({ kind: 'refunded', productId: result.productId })
+          emitBarionPurchase(pixelOrderNumber, false)
+          return
+        }
       } else if (result.kind === 'not-found') {
         setState({ kind: 'not-found' })
         return
@@ -382,7 +461,6 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
         setState({ kind: 'timeout', productId: lastProductId })
         return
       }
-      setState({ kind: 'polling', attempts })
       window.setTimeout(tick, POLL_INTERVAL_MS)
     }
 
@@ -406,35 +484,19 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }
 
   if (state.kind === 'failed') {
-    // Az Újrapróbálom a TERMÉKRE mutat (a /penztar numerikus termék-id-t vár) —
-    // korábban a rendelésszám került a termék-paraméterbe, ami a pénztár
-    // „nincs kiválasztott termék" ágára vezetett (zsákutca). Ha a termék-id
-    // nem feloldható, a kurzuslista a biztonságos cél.
-    const retryHref = state.productId !== null ? checkoutHref(state.productId) : '/kurzusok'
-    return (
-      <div aria-live="assertive" className="kc-thankyou kc-thankyou--failed" role="alert">
-        <h1>A fizetés nem sikerült</h1>
-        <p>
-          A fizetésedet a bank elutasította vagy megszakította. Semmi sem került levonásra,
-          újrapróbálhatod bármikor.
-        </p>
-        <div className="kc-thankyou__actions">
-          <Button href={retryHref}>{ctaLabel('retry')}</Button>
-          <Button href="/kapcsolat" variant="secondary">
-            {ctaLabel('contact-open')}
-          </Button>
-        </div>
-      </div>
-    )
+    return <ThankYouFailed productId={state.productId} />
+  }
+
+  if (state.kind === 'refunded') {
+    return <ThankYouRefunded orderNumber={orderNumber} productId={state.productId} />
   }
 
   // 401 — nincs (érvényes) munkamenet. Ez KÉT esetet fed le:
-  //  - VENDÉG-VÁSÁRLÁS: a vevő bejelentkezés nélkül fizetett, a fiókja most
-  //    készül. Neki nincs mit tennie, és belépni sem tud még — ezért a szöveg
-  //    elsőként az e-mailre irányít (ott érkezik a jelszó-beállító link), a
-  //    belépés csak másodlagos ajánlat;
-  //  - lejárt munkamenet egy meglévő fióknál: neki a belépés a helyes út.
-  // A korábbi, feltétel nélküli „jelentkezz be" a vendégnek zsákutca volt.
+  //  - VENDÉG-VÁSÁRLÁS: a vevő bejelentkezés nélkül fizetett, a fiókja a
+  //    paid-átmenetkor készül. A szöveg elsőként az e-mailre irányít; ha a
+  //    levél nem jön, a jelszó-beállító kérés a kiút (nem a Belépés: a
+  //    vendégnek még nincs saját jelszava);
+  //  - lejárt munkamenet egy meglévő fióknál: neki a Belépés a helyes út.
   if (state.kind === 'unauthorized') {
     return <ThankYouUnauthorized orderNumber={orderNumber} />
   }
@@ -447,9 +509,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
     <div aria-live="polite" className="kc-thankyou kc-thankyou--polling" role="status">
       <h1>Köszönjük, feldolgozzuk a fizetésedet</h1>
       <p>A bank visszaigazolására várunk… Ez általában néhány másodperc. Ne zárd be az oldalt.</p>
-      <p className="kc-thankyou__spinner" aria-hidden="true">
-        ⏳
-      </p>
+      <span aria-hidden="true" className="kc-thankyou__spinner" />
     </div>
   )
 }

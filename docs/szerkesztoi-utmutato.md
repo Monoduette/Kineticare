@@ -387,7 +387,7 @@ Amit tudni érdemes:
   programja ezt olvassa fel — enélkül számukra a kép nem létezik. Másrészt a
   Google is ebből érti meg, mi van a képen, tehát a keresésben is számít.
   Ne írj bele „kép", „fotó", „IMG_1234" típusú szöveget.
-- **Formátumok:** jpg, png, webp, avif, gif. SVG nem tölthető fel.
+- **Formátumok:** jpg, png, webp, gif. AVIF és SVG nem tölthető fel.
 - **Méret:** legfeljebb 10 MB fájlonként. A rendszer a feltöltött képet
   automatikusan optimalizálja és több méretben eltárolja, hogy gyorsan töltsön be
   mobilon is — neked nem kell méretezned.

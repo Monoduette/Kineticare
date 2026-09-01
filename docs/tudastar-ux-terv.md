@@ -713,7 +713,7 @@ végzettséget, szerepet vagy arcképet. Két út van (10. fejezet, K2):
    ellenőrzés-dátum nélkül. Ez kevesebb, de nem hazudik.
 2. **Séma-bővítés** (`reviewedBy` relationship, `reviewedAt` és `nextReviewAt`
    date, valamint a `users`-en `credentials` és `portrait`). A migrációt a
-   Payload eszközével kell generálni (`npx payload migrate:create`), kézzel írt
+   Payload eszközével kell generálni (`./node_modules/.bin/payload migrate:create`), kézzel írt
    migráció **tilos**. Ez adja meg a teljes E-E-A-T-választ.
 
 **Amit semmiképp nem teszünk:** nem írunk oda ellenőrzés-dátumot, ha nem

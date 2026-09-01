@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
@@ -118,17 +118,39 @@ export async function trackedLogin(
   return result
 }
 
+/**
+ * Üres mező magyar hibái. A mező viseli őket (`Field.error` → `aria-invalid`),
+ * nem egy külön doboz: WCAG 2.2 · 3.3.1 Error Identification.
+ * https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html
+ * GOV.UK Error message: a hibás mezőt magát kell megjelölni.
+ * https://design-system.service.gov.uk/components/error-message/
+ */
+export const URES_BELEPES_EMAIL_HIBA = 'Add meg az e-mail-címed.'
+export const URES_BELEPES_JELSZO_HIBA = 'Add meg a jelszavad.'
+
 export function LoginForm({ returnUrl }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const formErrorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (formError !== null) {
+      formErrorRef.current?.focus()
+    }
+  }, [formError])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError(null)
-    if (!email.trim() || !password) {
-      setError('Add meg az e-mail-címed és a jelszavad.')
+    setFormError(null)
+    const nextEmailError = email.trim() ? null : URES_BELEPES_EMAIL_HIBA
+    const nextPasswordError = password ? null : URES_BELEPES_JELSZO_HIBA
+    setEmailError(nextEmailError)
+    setPasswordError(nextPasswordError)
+    if (nextEmailError !== null || nextPasswordError !== null) {
       return
     }
     setSubmitting(true)
@@ -142,13 +164,14 @@ export function LoginForm({ returnUrl }: LoginFormProps) {
       window.location.href = sanitizeReturnUrl(returnUrl, DEFAULT_AUTH_RETURN_URL)
       return
     }
-    setError(result.message ?? null)
+    setFormError(result.message ?? null)
   }
 
   return (
     <form className="kc-auth-form" noValidate onSubmit={handleSubmit}>
       <Field
         autoComplete="email"
+        error={emailError ?? undefined}
         label="E-mail-cím"
         name="email"
         onChange={(event) => setEmail(event.target.value)}
@@ -158,6 +181,7 @@ export function LoginForm({ returnUrl }: LoginFormProps) {
       />
       <Field
         autoComplete="current-password"
+        error={passwordError ?? undefined}
         label="Jelszó"
         name="password"
         onChange={(event) => setPassword(event.target.value)}
@@ -165,11 +189,15 @@ export function LoginForm({ returnUrl }: LoginFormProps) {
         type="password"
         value={password}
       />
-      {error ? (
-        <div aria-live="assertive" className="kc-auth-form__error" role="alert">
-          {error}
-        </div>
-      ) : null}
+      <div
+        aria-live="assertive"
+        className={formError ? 'kc-auth-form__error' : 'kc-visually-hidden'}
+        ref={formErrorRef}
+        role="alert"
+        tabIndex={-1}
+      >
+        {formError}
+      </div>
       <Button disabled={submitting} type="submit">
         {submitting ? ctaProgressLabel('sign-in') : ctaLabel('sign-in')}
       </Button>

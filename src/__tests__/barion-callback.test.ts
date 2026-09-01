@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
 import { createBarionCallbackHandler } from '../lib/barion-callback/route-handler'
 import {
@@ -91,6 +92,8 @@ afterEach(() => {
   // restoreAllMocks után is működő (Promise-t adó) implementációval kell állnia.
   orderPaidSpy.onOrderPaid.mockReset()
   orderPaidSpy.onOrderPaid.mockImplementation(async () => {})
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 /** Állapottartó in-memory webhook-events tárhely (unique-kényszerrel) — idempotency.test.ts minta. */
@@ -383,6 +386,29 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
     expect(response.status).toBe(400)
   })
 
+  it('SEC-008: a méret-plafont túllépő törzs elutasítva, akkor is, ha érvényes GUID van benne', async () => {
+    const { POST, docs, capture } = setup()
+
+    const response = await POST(
+      makeRequest({ PaymentId: PAYMENT_ID, pad: 'x'.repeat(20_000) }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(docs).toHaveLength(0)
+    expect(capture.tasks).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a JSON-törzs tartalék-csatorna a méreten belül továbbra is működik', async () => {
+    const { POST, docs } = setup()
+
+    const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    expect(docs).toHaveLength(1)
+  })
+
   /**
    * Az útvonal-osztályozó a callbacket szándékosan kihagyja (a fizetési
    * értesítés elvesztése pénzt jelent). Alak-ellenőrzés nélkül minden hívás
@@ -420,7 +446,7 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
     expect(docs).toHaveLength(0)
   })
 
-  it('érvényes GUID átmegy (kis- és nagybetűs hex is)', async () => {
+  it('érvényes GUID átmegy (kis- és nagybetűs hex is) — a tárolt alak KANONIKUS kisbetűs', async () => {
     for (const validId of [PAYMENT_ID, '0A1B2C3D-4E5F-6789-ABCD-EF0123456789']) {
       const { POST, docs } = setup()
 
@@ -429,7 +455,9 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
       expect(response.status, validId).toBe(200)
       expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
       expect(docs).toHaveLength(1)
-      expect(docs[0]?.externalId).toBe(validId)
+      // A kis-nagybetűs alias nem nyithat két eseményt ugyanarra a fizetésre
+      // (dedup, advisory-zár, orders-lookup) — lásd a (b2) csoportot.
+      expect(docs[0]?.externalId).toBe(validId.toLowerCase())
     }
   })
 })
@@ -682,6 +710,123 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     // ÉS a mellékhatás-lánc egyszer sem indult el: se számla-job, se levél,
     // se új jelszó-beállító token.
     expect(orderPaidSpy.onOrderPaid).not.toHaveBeenCalled()
+  })
+})
+
+describe('(b2) PaymentId-kanonizálás — a kis-nagybetűs alias nem kettőzi a fizetést', () => {
+  /**
+   * A Barion GUID kis-nagybetű-érzéketlen, a Postgres `equals` és a
+   * (provider, externalId) unique kulcs viszont érzékeny. Kanonizálás nélkül a
+   * NAGYBETŰS kézbesítés a kisbetűs rekord MELLÉ új eseményt nyitna: a dedup
+   * nem fogná meg, az advisory-zár kulcsa szétválna, az orders-lookup nem
+   * találná a rendelést, az orderNumber-fallback pedig hamis
+   * `payment-id-conflict`-tal terminálisan elutasítaná az ÉRVÉNYES fizetést.
+   */
+  it('nagybetűs GUID a queryben → kisbetűs kanonikus externalId, a rendelés ismert, a fizetés lezárul', async () => {
+    const { POST, docs, order, capture } = setup()
+    fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID.toUpperCase()))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    await capture.runAll()
+
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.externalId).toBe(PAYMENT_ID)
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+    expect(order?.status).toBe('paid')
+  })
+
+  it('kisbetűs első + NAGYBETŰS második kézbesítés → duplikátum, nem második állapotgép', async () => {
+    const { POST, docs, capture } = setup()
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+
+    const first = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(first.status).toBe(200)
+    await capture.runAll()
+
+    const second = await POST(makeBarionRequest(PAYMENT_ID.toUpperCase()))
+    expect(second.status).toBe(200)
+    expect(await second.json()).toEqual({ ok: true, status: 'duplicate' })
+
+    // EGY rekord, EGY GetState — az alias nem nyitott második eseményt.
+    expect(docs).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a processzor a KORÁBBAN (kanonizálás előtt) tárolt nagybetűs externalId-t is kanonizálja — nincs hamis payment-id-conflict', async () => {
+    // Örökölt rekord: nagybetűs externalId, ahogy a kanonizálás előtti route
+    // eltárolhatta. A rendelés barionPaymentId-je a kisbetűs alak.
+    const legacyEvent: WebhookEventDoc = {
+      id: 1,
+      provider: 'barion',
+      externalId: PAYMENT_ID.toUpperCase(),
+      status: 'failed',
+      attempts: 1,
+    }
+    const { store, docs } = createWebhookStore([legacyEvent])
+    const { payload, order } = createMockPayload({})
+    fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
+
+    const outcome = await processWebhook({
+      store,
+      provider: 'barion',
+      externalId: legacyEvent.externalId,
+      handler: createBarionCallbackProcessor({ payload, store }),
+    })
+
+    expect(outcome.kind).toBe('processed')
+    // NEM 'rejected' (payment-id-conflict): a kanonizált lookup megtalálta a
+    // rendelést a kisbetűs barionPaymentId-vel, és a fizetés paid-re zárult.
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+    expect(order?.status).toBe('paid')
+  })
+})
+
+describe('(b3) elutasított eseményre érkező duplikált kézbesítés — felszínre hozás', () => {
+  it('terminálisan rejected esemény ismételt kézbesítése → 200 duplicate, de WARN-szintű napló (nem néma info)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const rejectedEvent: WebhookEventDoc = {
+      id: 1,
+      provider: 'barion',
+      externalId: PAYMENT_ID,
+      status: 'processed',
+      result: 'rejected',
+      processedAt: new Date().toISOString(),
+      attempts: 1,
+    }
+    const { POST, capture } = setup({ initialEvents: [rejectedEvent] })
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'duplicate' })
+    // Nincs újrafeldolgozás (terminális) — de a napló felszínre hozza, hogy egy
+    // ELUTASÍTOTT (alias-/párosítási konfliktus vagy kézi ellenőrzés mögötti)
+    // fizetésre még mindig érkezik callback.
+    expect(capture.tasks).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(logOutput(logSpy)).toContain('ELUTASÍTOTT')
+  })
+
+  it('terminálisan PAID esemény ismételt kézbesítése továbbra is csendes info-duplikátum', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const paidEvent: WebhookEventDoc = {
+      id: 1,
+      provider: 'barion',
+      externalId: PAYMENT_ID,
+      status: 'processed',
+      result: 'paid',
+      processedAt: new Date().toISOString(),
+      attempts: 1,
+    }
+    const { POST } = setup({ initialEvents: [paidEvent] })
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'duplicate' })
+    expect(logOutput(logSpy)).not.toContain('ELUTASÍTOTT')
   })
 })
 
@@ -994,6 +1139,33 @@ describe('orderNumber-fallback és titokvédelem', () => {
     expect(calls.update.filter((call) => call.collection === 'users')).toHaveLength(0)
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'rejected' })
     expect(logOutput(logSpy)).toContain('RIASZT')
+  })
+
+  it('RF-4: Succeeded + paid-reject + recover failed → esemény failed, retryable, nem rejected', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { store, docs, payload, order } = setup()
+    fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded', { total: 990 }))
+    const recoverRejectedPaid = vi.fn(async (input: { source?: string }) => {
+      expect(input.source).toBe('callback')
+      return { action: 'failed' as const, detail: 'barion-refund-error' }
+    })
+
+    const result = await processWebhook({
+      store,
+      provider: 'barion',
+      externalId: PAYMENT_ID,
+      handler: createBarionCallbackProcessor({ payload, store, recoverRejectedPaid }),
+    })
+
+    expect(result.kind).toBe('failed')
+    expect(result).toMatchObject({ retryable: true })
+    expect(order?.status).toBe('payment_pending')
+    expect(docs[0]).toMatchObject({ status: 'failed' })
+    expect(docs[0]?.result ?? null).not.toBe('rejected')
+    expect(docs[0]?.processedAt ?? null).toBeNull()
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(1)
+    expect(logOutput(logSpy)).toContain('RIASZT')
+    logSpy.mockRestore()
   })
 
   it('a naplóban sosem szerepel a POSKey', async () => {

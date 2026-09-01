@@ -7,7 +7,23 @@ import {
   EXTERNAL_ANALYTICS_LINKS,
   posthogEmbedUrl,
 } from '../../lib/admin/web-analytics-config'
+import { logger } from '../../lib/logger'
+import { queryCourseEngagement } from '../../lib/statistics/engagement-query'
+import type { CourseEngagementReport } from '../../lib/statistics/engagement'
+import { queryRevenueReport } from '../../lib/statistics/query'
+import { formatHuf, type RevenueReport } from '../../lib/statistics/revenue'
 import { AdminChrome, AdminViewFrame } from './AdminChrome'
+import { StatCard } from './statistics/StatCard'
+import {
+  cardRowStyle,
+  headingStyle,
+  leadInSectionStyle,
+  leadStyle,
+  noticeStyle,
+  pageStyle,
+  sectionStyle,
+  sectionTopStyle,
+} from './statistics/styles'
 
 /**
  * Admin Webanalitika nézet (`/admin/webanalitika`).
@@ -16,28 +32,24 @@ import { AdminChrome, AdminViewFrame } from './AdminChrome'
  * belépniük és ott tájékozódniuk — a válogatott dashboard (Kineticare —
  * látogatók és érdeklődés) jelenjen meg az adminon belül, mellette pedig egy
  * helyen legyenek a külső elemző-felületek linkjei (GA4, Search Console,
- * Google Ads, PostHog).
+ * Google Ads, PostHog). Második kérés (ugyanaznap): az eladás- és
+ * kurzushaladás-számok is EZEN a képernyőn legyenek.
  *
- * A beágyazás a PostHog MEGOSZTOTT dashboard-linkjén át megy (iframe). A
- * megosztott link jelszó nélkül, a link birtokában megnyitható — a dashboard
- * ezért KIZÁRÓLAG összesített viselkedés-adatot mutat (látogatószám, oldalak,
- * források, tölcsér), személyes adatot nem. A vásárlás- és haladás-SZÁMOK a
- * Statisztika oldalon élnek, az adatbázisból — ugyanaz a mérőszám sosem jön
- * két forrásból (docs/statisztika-audit-2026-08-21.md 4. szakasz).
+ * ═══ HOVA KERÜLHET ELADÁS-ADAT ÉS HOVA NEM ═══
+ * A számok az ADMIN-NÉZET tetejére kerülnek, adatbázisból, a szerepkör-kapu
+ * mögé — pontosan ugyanazokból a lekérdező modulokból, mint a Statisztika
+ * oldal (queryRevenueReport, queryCourseEngagement), tehát a forrás egy
+ * marad. A PostHog MEGOSZTOTT dashboardjára viszont TILOS eladás- vagy
+ * haladás-adatot tenni: a megosztott link jelszó nélkül, a link birtokában
+ * megnyitható, ezért ott kizárólag összesített viselkedés-adat lehet
+ * (docs/statisztika-audit-2026-08-21.md 4. szakasz).
  *
  * A Payload custom view NYILVÁNOS admin-route, ezért a szerver-oldali
- * szerepkör-kapu az egyetlen védelem (a BunnyLibraryView mintája).
+ * szerepkör-kapu az egyetlen védelem (a BunnyLibraryView mintája). A két
+ * statisztika-lekérdezés `overrideAccess: true`-val fut, tehát a kapu itt is
+ * adatvédelmi teherviselő — a kapu-kötést őr-teszt méri
+ * (admin-nezet-kapu-kotes.test.tsx).
  */
-
-const pageStyle: CSSProperties = {
-  padding: 'calc(var(--base) * 1.5)',
-  maxWidth: '80rem',
-}
-
-const leadStyle: CSSProperties = {
-  color: 'var(--theme-elevation-650)',
-  maxWidth: '42rem',
-}
 
 /**
  * A külső linkek sora. A célfelület legalább 44 px magas (a repó saját
@@ -58,33 +70,112 @@ const toolLinkStyle: CSSProperties = {
 export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
   'A Webanalitikát csak munkatárs vagy tulajdonos nézheti meg.'
 
-export function WebAnalyticsView(props: AdminViewServerProps) {
+export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
+  'Az eladás- és haladás-számok most nem érhetők el. A részletes bontást a Statisztika oldalon találod, vagy próbáld újra pár perc múlva.'
+
+/**
+ * A hat kiemelt szám kiszámítása a Statisztika-lekérdezések jelentéseiből.
+ *
+ * A haladás-oszlopok kurzus-hozzáférést számolnak (egy vevő két kurzussal
+ * kétszer számít) — ugyanígy összegez a Statisztika oldal kurzus-táblája is,
+ * a két felület tehát nem tud széttartani.
+ */
+function dbSummaryStats(
+  report: RevenueReport,
+  engagement: CourseEngagementReport | null,
+): Array<{ label: string; value: string }> {
+  const currentMonth = report.months.at(-1)
+  const stats: Array<{ label: string; value: string }> = [
+    { label: 'Bevétel ebben a hónapban', value: formatHuf(currentMonth?.totalHuf ?? 0) },
+    { label: 'Fizetett rendelés ebben a hónapban', value: String(currentMonth?.orderCount ?? 0) },
+    { label: 'Fizetett rendelés összesen', value: String(report.totals.orderCount) },
+  ]
+  if (engagement !== null) {
+    let enrolled = 0
+    let started = 0
+    let completed = 0
+    for (const course of engagement.courses) {
+      enrolled += course.enrolled
+      started += course.started
+      completed += course.completed
+    }
+    stats.push(
+      { label: 'Kurzus-hozzáférés (vevő × kurzus)', value: String(enrolled) },
+      { label: 'Elkezdte a kurzust', value: String(started) },
+      { label: 'Be is fejezte', value: String(completed) },
+    )
+  }
+  return stats
+}
+
+export async function WebAnalyticsView(props: AdminViewServerProps) {
   const { req } = props.initPageResult
   if (!hasStaffOrOwnerRole(req.user)) {
     return (
       <AdminViewFrame props={props}>
-        <div style={pageStyle}>
-          <h1 style={{ marginTop: 0 }}>Webanalitika</h1>
+        <div className="kc-adminstat" style={pageStyle}>
+          <h1 style={headingStyle}>Webanalitika</h1>
           <p>{WEB_ANALYTICS_ACCESS_DENIED_MESSAGE}</p>
         </div>
       </AdminViewFrame>
     )
   }
 
+  // A számok hibája nem döntheti el az oldalt: a viselkedés-rész (linkek +
+  // dashboard) ilyenkor is megjelenik, a szekció helyén magyar magyarázat áll
+  // (a StatisticsView hibakezelési mintája).
+  let report: RevenueReport | null = null
+  let engagement: CourseEngagementReport | null = null
+  try {
+    report = await queryRevenueReport({ payload: req.payload })
+  } catch (error) {
+    logger.error('webanalitika-nézet: a bevétel-lekérdezés nem sikerült', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  if (report !== null) {
+    try {
+      engagement = await queryCourseEngagement({ payload: req.payload })
+    } catch (error) {
+      logger.error('webanalitika-nézet: a kurzus-hatás lekérdezés nem sikerült', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   const embedUrl = posthogEmbedUrl()
 
   return (
     <AdminChrome props={props}>
-      <div style={pageStyle}>
-        <h1 style={{ marginTop: 0 }}>Webanalitika</h1>
+      <div className="kc-adminstat" style={pageStyle}>
+        <h1 style={headingStyle}>Webanalitika</h1>
         <p style={leadStyle}>
-          Az oldal látogatóinak viselkedése: hányan járnak nálunk, mit olvasnak, honnan jönnek, és
-          hol akad el az érdeklődés. A vásárlások darabszáma és a vevők kurzus-haladása a{' '}
+          Egy képernyőn a legfontosabb számok és a látogatói viselkedés. A részletes bontás (havi
+          bevétel-grafikon, kurzusonkénti haladás, név szerinti lista) a{' '}
           <Link href="/admin/statisztika" prefetch={false}>
             Statisztika
           </Link>{' '}
-          oldalon él: ott az adatbázis a forrás, az a pontos.
+          oldalon él: ott is, itt is az adatbázis a forrás.
         </p>
+        <section aria-label="Eladások és kurzushaladás" style={{ ...sectionStyle, ...sectionTopStyle }}>
+          <h2 style={headingStyle}>Eladások és kurzushaladás</h2>
+          {report === null ? (
+            <p style={leadInSectionStyle}>{WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE}</p>
+          ) : (
+            <div style={cardRowStyle}>
+              {dbSummaryStats(report, engagement).map((stat) => (
+                <StatCard key={stat.label} label={stat.label} value={stat.value} />
+              ))}
+            </div>
+          )}
+          {report !== null && engagement === null ? (
+            <p style={noticeStyle}>
+              A kurzushaladás-számok most nem érhetők el, a részleteket a Statisztika oldalon
+              találod.
+            </p>
+          ) : null}
+        </section>
+        <h2 style={headingStyle}>Látogatói viselkedés</h2>
         <nav aria-label="Külső elemző-felületek">
           <ul
             style={{
@@ -125,7 +216,7 @@ export function WebAnalyticsView(props: AdminViewServerProps) {
               padding: 'calc(var(--base) * 1)',
             }}
           >
-            <h2 style={{ marginTop: 0 }}>A beágyazott dashboard még nincs bekötve</h2>
+            <h3 style={{ marginTop: 0 }}>A beágyazott dashboard még nincs bekötve</h3>
             <p>
               A PostHogban a „Kineticare — látogatók és érdeklődés” dashboardon kapcsold be a
               megosztást (Share gomb), majd a kapott linket állítsd be a Railway-en a{' '}

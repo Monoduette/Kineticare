@@ -4,12 +4,13 @@ import {
   HOME_PAGE_SLUG,
   getAllPublishedPages,
   getContentCategories,
-  getPosts,
-  getPublishedProducts,
+  getSitemapPosts,
+  getSitemapProducts,
 } from '@/lib/cms'
 import { courseHref } from '@/lib/course-url'
 import { absoluteUrl } from '@/lib/seo'
 import { categoriesWithPosts } from '@/lib/tudastar'
+import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
 
 /**
  * sitemap.xml — a Next.js metadata-API generálja (`/sitemap.xml`).
@@ -43,9 +44,9 @@ function hasSlug(doc: { slug?: string | null }): boolean {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [pages, posts, categories, products] = await Promise.all([
     getAllPublishedPages(),
-    getPosts({ limit: 500 }),
+    getSitemapPosts(500),
     getContentCategories(),
-    getPublishedProducts(500),
+    getSitemapProducts(500),
   ])
 
   const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({
@@ -81,8 +82,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   }
 
+  // A publikált pages-slugok halmaza a blog→gyökér átirányítás-döntéshez:
+  // amelyik cikk témájának gyökér-hubja már publikált, annak a `/blog/…` címe
+  // 308-cal a hubra irányít (blog/[slug]/page.tsx) — átirányított URL pedig
+  // nem való a sitemapbe (lásd fent a Google-idézetet). A hub maga a pages-
+  // ágon már bekerült.
+  const publishedPageSlugs: ReadonlySet<string> = new Set(
+    pages.filter(hasSlug).map((page) => page.slug as string),
+  )
+
   for (const post of posts) {
     if (!hasSlug(post)) {
+      continue
+    }
+    if (
+      typeof post.slug === 'string' &&
+      hubAtiranyitasCel(post.slug, publishedPageSlugs) !== null
+    ) {
       continue
     }
     entries.push({

@@ -396,13 +396,17 @@
    A köz `--kc-space-5` (24 px): ugyanaz a ritmus, mint a mobil
    egymás-alá táv. Carbon: kapcsolódó dobozoknál a gutter indokolt.
 
-   A szűk konténer (720 px) MARAD. 900 px-en a két hasáb (672 - 24) / 2 =
-   324 px, ami tágabb a 320 px-es mobil panel 272 px-es tartalom-hasábjánál,
-   tehát a gombfelirat nem szorul jobban, mint mobilon (a szó-beférést a
-   meglévő 320 px-es őr méri). */
+   (2026-08-29-ig a szűk, 720 px-es konténerben ült a pár; a tulajdonosi
+   kérés óta a széles konténer a gazdája — lásd a következő kommentet.) */
 
+/* 2026-08-29 (tulajdonosi kérés): a két paneles sáv a SZÉLES konténerben
+   ül (PostArticle: size='wide'), így a kártyapár a kapcsolódó cikkek
+   rácsával azonos szélességű. A szelektor ezért a közös `.kc-container`-t
+   célozza — az egy paneles (keskeny) változatra a `:has` őr miatt továbbra
+   sem hat. 900 px-en a hasáb (1120 - 24) / 2 = 548 px, kényelmesen a
+   320 px-es mobil-őr felett. */
 @media (min-width: 900px) {
-  .kc-post-cta .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel) {
+  .kc-post-cta .kc-container:has(> .kc-post-cta__panel + .kc-post-cta__panel) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--kc-space-5);
@@ -410,14 +414,14 @@
   }
 
   .kc-post-cta
-    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    .kc-container:has(> .kc-post-cta__panel + .kc-post-cta__panel)
     > .kc-post-cta__panel {
     min-width: 0;
     width: 100%;
   }
 
   .kc-post-cta
-    .kc-container--narrow:has(> .kc-post-cta__panel + .kc-post-cta__panel)
+    .kc-container:has(> .kc-post-cta__panel + .kc-post-cta__panel)
     > .kc-post-cta__panel
     + .kc-post-cta__panel {
     margin-block-start: 0;

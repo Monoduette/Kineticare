@@ -12,7 +12,7 @@ export const CI_DB_REQUIRED_PREFIX =
 /** A hibaüzenet záró, teendőt megnevező része. */
 const CI_DB_REQUIRED_HINT =
   'A CI `verify` jobjában Postgres service-konténer fut, a DATABASE_URI és a PAYLOAD_SECRET ' +
-  'a job env-jéből jön, a sémát pedig az `npx payload migrate` lépés hozza létre ' +
+  'a job env-jéből jön, a sémát pedig a `./node_modules/.bin/payload migrate` lépés hozza létre ' +
   '(a dev-módú séma-push ki van kapcsolva, tehát séma CSAK migrációból keletkezik). ' +
   'Ellenőrizd, hogy mindhárom megvan-e a .github/workflows/ci.yml `verify` jobjában. ' +
   'A kihagyás azért nem engedhető meg, mert némán csökkentené a lefedettséget: ' +

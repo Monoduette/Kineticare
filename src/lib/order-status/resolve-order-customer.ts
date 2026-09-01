@@ -5,12 +5,33 @@ import { withAdvisoryLock } from '../advisory-lock'
 import { maskEmail } from '../email/mask'
 import type { Logger } from '../logger'
 import { generateInitialPassword } from '../security/initial-password'
-import { isGuestBindableAccount } from './guest-bindable-account'
+import { isPaidFulfillmentBindableAccount } from './guest-bindable-account'
 
 /**
- * Fiók-feloldás vendég-vásárlásnál (paid előtt). E-mail-zár alatt keresés/létrehozás;
- * aktivált vagy nem-customer fiókhoz nem köt. Generált jelszó nem megy levélben.
+ * Fiók-feloldás vendég-vásárlásnál a paid-ágon (GetState v4 + összeg-assert
+ * UTÁN). E-mail-zár alatt keresés/létrehozás. Aktivált customer-hez KÖT
+ * (teljesítés-első); staff/owner: `GuestBindPrivilegedAccountError` — a hívó
+ * terminálisan rejectel, nem próbálja újra. A checkout K2-kapuja
+ * (`isGuestBindableAccount`) ettől független: ott aktivált fiókra 409.
+ * Generált jelszó nem megy levélben.
  */
+
+/**
+ * Vendég-fizetés staff/owner e-mailjére. Nem újrapróbálható: a kötés tilos,
+ * a generic Error viszont örök webhook-retryt okozna (pénz levonva, paid nincs).
+ */
+export class GuestBindPrivilegedAccountError extends Error {
+  readonly reason = 'guest-bind-privileged-account' as const
+  readonly email: string
+  readonly role: string | null
+
+  constructor(email: string, role?: string | null) {
+    super('a vendég-rendelés staff/owner fiókhoz nem köthető — a fizetés utáni kötés elutasítva')
+    this.name = 'GuestBindPrivilegedAccountError'
+    this.email = email
+    this.role = role ?? null
+  }
+}
 
 /** A rendeléshez feloldott fiók — a paid-átmenet és a visszaigazoló levél is ezt kapja. */
 export interface OrderCustomerResolution {
@@ -150,10 +171,8 @@ export async function resolveOrderCustomer(input: {
     async (): Promise<{ user: User; created: boolean }> => {
       const existing = await findUserByEmail(payload, email)
       if (existing) {
-        if (!isGuestBindableAccount(existing)) {
-          throw new Error(
-            'a vendég-rendelés aktivált vagy nem-customer fiókhoz nem köthető — a vevő jelentkezzen be',
-          )
+        if (!isPaidFulfillmentBindableAccount(existing)) {
+          throw new GuestBindPrivilegedAccountError(email, existing.role)
         }
         return { user: existing, created: false }
       }
@@ -197,15 +216,16 @@ export async function resolveOrderCustomer(input: {
         // ütközik. Ilyenkor a MÁSIK szál fiókját fogadjuk el — duplikátum nem jöhet létre.
         const raced = await findUserByEmail(payload, email)
         if (raced) {
-          if (!isGuestBindableAccount(raced)) {
-            throw new Error(
-              'a vendég-rendelés aktivált vagy nem-customer fiókhoz nem köthető — a vevő jelentkezzen be',
-            )
+          if (!isPaidFulfillmentBindableAccount(raced)) {
+            throw new GuestBindPrivilegedAccountError(email, raced.role)
           }
-          log.warn('fiók-feloldás: a fiókot közben egy párhuzamos szál hozta létre — azt használjuk', {
-            cimzett: maskEmail(email),
-            userId: raced.id,
-          })
+          log.warn(
+            'fiók-feloldás: a fiókot közben egy párhuzamos szál hozta létre — azt használjuk',
+            {
+              cimzett: maskEmail(email),
+              userId: raced.id,
+            },
+          )
           return { user: raced, created: false }
         }
         throw error
