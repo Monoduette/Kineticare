@@ -5,17 +5,18 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveAdjacentNpmCli } from './exact-npm-cli.mjs'
+import { exactNodeChildEnv, resolveAdjacentNpmCli } from './exact-npm-cli.mjs'
 
 const NODE_VERSION = '24.20.0'
 const NPM_VERSION = '11.19.0'
 const CHECKSUM_MANIFEST_SHA256 =
-  '309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'
+  'c6372a5530cd3f7b81d87af7647c8d44c4286d6ba4b835d15d0ae57aee267915'
 const CHECKSUM_TARGETS = [
   'scripts/verify-install-script-lock.mjs',
   'scripts/exact-npm-cli.mjs',
 ]
 const REPO = fileURLToPath(new URL('../', import.meta.url))
+const npmChildEnv = exactNodeChildEnv()
 
 function fail(message) {
   console.error(`[install-reviewed-dependencies] ERROR: ${message}`)
@@ -27,11 +28,15 @@ function sha256(input) {
 }
 
 function runNpm(args) {
-  execFileSync(process.execPath, [npmCliPath, ...args], { cwd: REPO, stdio: 'inherit' })
+  execFileSync(process.execPath, [npmCliPath, ...args], {
+    cwd: REPO,
+    env: npmChildEnv,
+    stdio: 'inherit',
+  })
 }
 
 function runNode(args) {
-  execFileSync(process.execPath, args, { cwd: REPO, stdio: 'inherit' })
+  execFileSync(process.execPath, args, { cwd: REPO, env: npmChildEnv, stdio: 'inherit' })
 }
 
 function verifyInstallVerifier() {
@@ -69,6 +74,7 @@ try {
 const npmVersion = execFileSync(process.execPath, [npmCliPath, '--version'], {
   cwd: REPO,
   encoding: 'utf8',
+  env: npmChildEnv,
   stdio: ['ignore', 'pipe', 'inherit'],
 }).trim()
 if (npmVersion !== NPM_VERSION) {

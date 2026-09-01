@@ -25,9 +25,11 @@
 ## 0. Mi történik deploykor (röviden)
 
 1. **Build:** a repó `railpack.json` fájlja a pinned **Railpack 0.38.0** install
-   lépését fail-closed módon felülírja: scriptmentes `npm ci`, a lockfile és a
-   lifecycle-tarballok ellenőrzése, kizárólag az exact jóváhagyott install
-   scriptek rebuildje, majd `npm run build`. A Node és npm verzió is exact:
+   lépését egyetlen `node scripts/install-reviewed-dependencies.mjs` bootstrapra
+   írja felül: scriptmentes `npm ci`, a lockfile és a lifecycle-tarballok
+   ellenőrzése, majd kizárólag az exact jóváhagyott install scriptek rebuildje.
+   Ezután az exact Mise Node a lokális Next JS entrypointtal buildel. A Node és
+   npm verzió is exact:
    **Node `24.20.0`, npm `11.19.0`**. A `package.json` `engines.node`, a
    `.nvmrc` és a projekt `mise.toml` szándékosan ugyanaz az exact Node-verzió:
    Railpack 0.38.0 a Node-verziót
@@ -42,8 +44,12 @@
    `.nvmrc` ezt később ismét felülírhatja; ne állíts be ilyen változót.
    Ha a futásidő eltér, a verifier még a lifecycle scriptek előtt leállítja a
    buildet; ilyenkor előbb ezt a változót keresd.
-2. **Start:** `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`
-   — kizárólag a lockfile-ból telepített lokális binárisok futnak. A migráció idempotens és
+   A bizalmi határ a Railpack által generált exact Mise runtime: nem égetünk be
+   változékony `/mise/...` abszolút útvonalat. A bootstrap az első műveletként
+   ellenőrzi a `process.execPath` Node-verzióját és a mellette telepített npm CLI-t.
+2. **Start:** `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start`
+   — az exact Railpack runtime explicit Node-ja futtatja a lockfile-ból telepített
+   lokális JS entrypointokat, shebang-feloldás nélkül. A migráció idempotens és
    követett (a `payload_migrations` táblában), tehát minden bootnál biztonságosan
    lefut; új migráció esetén az indulás előtt érvényesül.
 3. **Healthcheck:** `GET /admin` (a Payload admin mindig 200-at ad, bejelentkezés
@@ -154,7 +160,7 @@ megtalálja, majd létrehozza a
 
 ## 5. Deploy utáni ellenőrzőlista
 
-- [ ] A **build-logban tényleges `npm run build` futás** szerepel — ha
+- [ ] A **build-logban tényleges `node ./node_modules/next/dist/bin/next build` futás** szerepel — ha
       `Build · skipped (nothing to build)` látszik, a régi `.next/` indult el,
       és a deployt SHA nélkül (a branch HEAD-jére) újra kell indítani
 - [ ] A **deploy-logban ott a `server_start` sor**, benne
@@ -163,8 +169,9 @@ megtalálja, majd létrehozza a
       `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
       Ha a sor egyáltalán nincs meg: előbb a `LOG_LEVEL`-t ellenőrizd (`info` kell
       hozzá), csak utána gyanakodj régi kódra
-- [ ] A build-logban a sorrend: scriptmentes `npm ci` → verifier `OK` →
-      jóváhagyott `npm rebuild` → `npm run build`; nincs Corepack bootstrap
+- [ ] A build-logban a sorrend: egyetlen review-zott bootstrap → scriptmentes
+      `npm ci` → verifier `OK` → jóváhagyott `npm rebuild` → lokális Next build;
+      nincs Corepack bootstrap
 - [ ] Railway deploy zöld, healthcheck átment
 - [ ] `https://<domain>/admin` → Payload login-oldal töltődik
 - [ ] Owner belép az adminba, látja a demó-terméket

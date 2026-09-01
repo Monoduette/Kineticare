@@ -61,7 +61,7 @@
         "step": "install"
       }
     ],
-    "startCommand": "npm run start",
+    "startCommand": "node ./node_modules/payload/bin.js migrate \u0026\u0026 exec node ./node_modules/next/dist/bin/next start",
     "variables": {
       "CI": "true",
       "NODE_ENV": "production",
@@ -119,24 +119,8 @@
       ],
       "commands": [
         {
-          "cmd": "sh -c 'npm ci --legacy-peer-deps --ignore-scripts'",
-          "customName": "npm ci --legacy-peer-deps --ignore-scripts"
-        },
-        {
-          "cmd": "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'",
-          "customName": "test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc"
-        },
-        {
-          "cmd": "sh -c 'sha256sum --strict -c scripts/verify-install-script-lock.sha256'",
-          "customName": "sha256sum --strict -c scripts/verify-install-script-lock.sha256"
-        },
-        {
-          "cmd": "sh -c 'node scripts/verify-install-script-lock.mjs'",
-          "customName": "node scripts/verify-install-script-lock.mjs"
-        },
-        {
-          "cmd": "sh -c 'npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false'",
-          "customName": "npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false"
+          "cmd": "sh -c 'node scripts/install-reviewed-dependencies.mjs'",
+          "customName": "node scripts/install-reviewed-dependencies.mjs"
         },
         {
           "path": "node_modules/.bin"
@@ -158,6 +142,7 @@
             "package.json",
             "package-lock.json",
             "scripts/exact-npm-cli.mjs",
+            "scripts/install-reviewed-dependencies.mjs",
             "scripts/verify-install-script-lock.mjs",
             "scripts/verify-install-script-lock.sha256"
           ],
@@ -181,7 +166,8 @@
       ],
       "commands": [
         {
-          "cmd": "npm run build"
+          "cmd": "sh -c 'node ./node_modules/next/dist/bin/next build'",
+          "customName": "node ./node_modules/next/dist/bin/next build"
         }
       ],
       "inputs": [

@@ -109,7 +109,7 @@ gomb-gráf), `docs/gomb-inventar.md` (CTA-szótár), `docs/gomb-kontraszt-audit.
 - Titok, `.env*` fájl, migrációs kézi szerkesztés, `confirmOrder`-hívás és
   `any`-típus esetén a PR automatikusan elutasítandó.
 - **Merge után a munka NEM kész.** Azonnal figyeld a `main` GitHub CI-jét és a
-  Railway deployt (tényleges `npm run build`, migráció a start-logban,
+  Railway deployt (tényleges lokális Next build, migráció a start-logban,
   `GET /admin` healthcheck). Piros vagy gyanús állapotot azonnal javíts, ne
   várj külön kérésre. Részletek: `AGENTS.md` „Merge után" szekció.
 - **A modellválasztás nem szabad kéz.** 2026-08-22-től a Kineticare
@@ -132,7 +132,7 @@ nézd végig, hogy nem ezek egyikébe futottál-e.
    `Build · skipped (nothing to build)` döntéssel kihagyhatja a buildet: lehúzza
    az új commitot, de a **régi `.next/` mappát** indítja el. Hetekig futhat így
    régi kód, miközben minden zöld. **Ellenőrzés:** a deploy build-logjában
-   szerepelnie kell egy tényleges `npm run build` futásnak. Ezért van explicit
+   szerepelnie kell egy tényleges lokális Next buildnek. Ezért van explicit
    `buildCommand` és `healthcheckPath` beállítva.
 2. **A config-as-code (`railway.json`) MINDIG felülírja a service-beállítást**
    — a hivatalos dokumentáció szerint is („Configuration defined in code will
@@ -215,8 +215,8 @@ an open transaction`) zárolja a sort, és minden írás megáll rajta. Olvasás
     törölni kellett. Meglévő service újraindításához: `redeploy` (snapshot kell
     hozzá) vagy a `railway-agent` `restartServiceTool`-ja.
 14. **A migrációk a deploy részeként FUTNAK.** A start-parancs
-    `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start` —
-    kizárólag a lockfile-ból telepített lokális binárisokat használja; a tényleges
+    `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start` —
+    az exact runtime-mal kizárólag a lockfile-ból telepített lokális JS entrypointokat használja; a tényleges
     deploy-konfigurációban a `railway.json`-ból kell származnia (a 2. pont miatt).
     Ez a legacy Config as Code útvonal csak 2026-12-01-ig él; előtte a live
     projekthez linkelt repóban `railway config migrate` előnézet, majd emberileg
@@ -306,7 +306,7 @@ naplója sosem íródik ki. (Mérve 2026-08-21.)
 
 23. **Merge után azonnal a GitHub CI és a Railway production.** A squash-merge
     nem zárja a kört. A `main` CI (`ci.yml` + gitleaks) legyen zöld; a
-    **`Kineticare`** appservice-en tényleges `npm run build` (ne skipped),
+    **`Kineticare`** appservice-en tényleges lokális Next build (ne skipped),
     start-logban `Migrating:` / `Migrated:` (vagy `Reading migration files` +
     `Done.`), healthcheck `GET /admin`. A „SUCCESS" deploy nem elég (1. pont).
     `WAITING` snapshot nélkül: előbb a lépés-események, ne indíts vaktában
@@ -383,6 +383,6 @@ Minden kódolási munkánál:
 9. **Merge után a vezető (vagy az ügynök) figyeli a CI-t és a Railwayt, és
    hibánál azonnal javít.** A squash-merge, a zöld PR és a „SUCCESS" deploy
    önmagában nem kész. GitHub: `ci.yml` + gitleaks a `main` squash-commitján.
-   Railway: tényleges `npm run build`, migráció a start-logban, `GET /admin`.
+   Railway: tényleges lokális Next build, migráció a start-logban, `GET /admin`.
    Piros, skipped-build vagy elmaradt healthcheck → azonnali fix, nem jelentés
    és várakozás. (Tulajdonosi kérés, 2026-08-20.)

@@ -102,10 +102,5 @@ echo "[install.sh] Node: $(node --version), npm: $(npm --version)"
 # --- npm-függőségek a lockfile szerint -------------------------------------
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 echo '[install.sh] Scriptmentes npm ci + ellenőrzött lifecycle rebuild…'
-npm ci --legacy-peer-deps --ignore-scripts
-test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = \
-  '309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'
-sha256sum --strict -c scripts/verify-install-script-lock.sha256
-node scripts/verify-install-script-lock.mjs
-npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
+"${node_home}/bin/node" scripts/install-reviewed-dependencies.mjs
 echo '[install.sh] Kész.'

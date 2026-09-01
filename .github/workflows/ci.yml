@@ -116,11 +116,11 @@ jobs:
           cache: npm
       - name: Függőségek telepítése
         run: |
-          npm ci --legacy-peer-deps --ignore-scripts
-          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc"
-          sha256sum --strict -c scripts/verify-install-script-lock.sha256
-          node scripts/verify-install-script-lock.mjs
-          npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       - name: Typecheck
         run: npm run typecheck
       # A `src/payload-types.ts` GENERÁLT fájl, de kézzel commitolt: ha a
@@ -172,11 +172,11 @@ jobs:
           cache: npm
       - name: Függőségek telepítése
         run: |
-          npm ci --legacy-peer-deps --ignore-scripts
-          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc"
-          sha256sum --strict -c scripts/verify-install-script-lock.sha256
-          node scripts/verify-install-script-lock.mjs
-          npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A build-hoz az src/env.ts kötelező kulcsai kellenek. Titok (még
       # placeholder sem) nem kerülhet a repóba (CLAUDE.md TILOS ZÓNÁK 1.),
       # ezért a titok-alakú értékeket futásidőben generáljuk — eldobható,
@@ -205,10 +205,11 @@ jobs:
           cache: npm
       - name: Függőségek telepítése
         run: |
-          npm ci --legacy-peer-deps --ignore-scripts
-          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc"
-          sha256sum --strict -c scripts/verify-install-script-lock.sha256
-          node scripts/verify-install-script-lock.mjs
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A teljes kép MINDIG látszik, akkor is, ha a kapu átenged: enélkül a
       # `moderate` tételek némán gyűlnek. Nem blokkol (`|| true`), csak riportál.
       - name: Sebezhetőség-riport (nem blokkol)

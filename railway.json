@@ -3,10 +3,10 @@
   "build": {
     "builder": "RAILPACK",
     "railpackVersion": "0.38.0",
-    "buildCommand": "npm run build"
+    "buildCommand": "node ./node_modules/next/dist/bin/next build"
   },
   "deploy": {
-    "startCommand": "./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start",
+    "startCommand": "node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start",
     "healthcheckPath": "/admin",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

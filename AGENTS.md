@@ -177,8 +177,8 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
 3. **Adatbázis-migrációt kézzel ne írj és ne módosíts.** Séma-változás a Payload
    migrációs eszközével generált migrációval megy; meglévő migrációs fájl
    szerkesztése, törlése, sorrend-módosítása tilos. A deploy indulási parancsa
-   `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start` —
-   kizárólag a lockfile-ból telepített lokális binárisokat használja. A migrációnak ugyanabban a változáskörben
+   `node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start` —
+   az exact runtime-mal kizárólag a lockfile-ból telepített lokális JS entrypointokat használja. A migrációnak ugyanabban a változáskörben
    kell mennie, mint a sémát használó konfignak (lásd `src/jobs/index.ts`
    fejkommentje).
 4. **Access-control módosítás csak emberi jóváhagyással.** Collection- és
@@ -260,7 +260,7 @@ gyanús vagy elmarad, **azonnal javít** — nem vár külön kérésre.
 2. **Railway production** — csak a **`Kineticare`** appservice
    (`main` auto-deploy). A dashboard „SUCCESS” önmagában nem elég (lásd a
    Deploy tanulságokat):
-   - a build-logban legyen tényleges `npm run build` (ne `Build · skipped`);
+   - a build-logban legyen tényleges lokális Next build (ne `Build · skipped`);
    - a start-logban `Migrating:` / `Migrated:` (vagy `Reading migration files`
      - `Done.`, ha nincs függő migráció);
    - a healthcheck (`GET /admin`) menjen át.
@@ -351,8 +351,8 @@ konfigurációval (csak az egyik) az app el sem indul.
 ## Deploy (Railway)
 
 A production **`Kineticare`** appservice a Railway-n fut, konfig: `railway.json`
-(RAILPACK builder, explicit `buildCommand: npm run build`,
-`startCommand: ./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`,
+(RAILPACK builder, explicit `buildCommand: node ./node_modules/next/dist/bin/next build`,
+`startCommand: node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start`,
 `healthcheckPath: /admin`).
 A `Kineticare-demo` 2026-08-29-től kivezetve — oda semmit nem deployolunk.
 Részletes runbook: `docs/deploy-railway.md`.
@@ -362,7 +362,7 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 
 - **A „SUCCESS" deploy nem jelenti, hogy az új kód fut.** Explicit `buildCommand`
   nélkül a builder kihagyhatta a buildet és a régi `.next/` mappát indította.
-  A deploy build-logjában tényleges `npm run build` futásnak kell szerepelnie.
+  A deploy build-logjában tényleges lokális Next buildnek kell szerepelnie.
 - **A config-as-code (`railway.json`) felülírja a dashboard service-beállítását**
   az ott megadott kulcsokra. A tényleges deploy-konfigurációban ellenőrizd a
   builder, buildCommand, healthcheck és startCommand eredetét.

@@ -11,21 +11,24 @@
             "package.json",
             "package-lock.json",
             "scripts/exact-npm-cli.mjs",
+            "scripts/install-reviewed-dependencies.mjs",
             "scripts/verify-install-script-lock.mjs",
             "scripts/verify-install-script-lock.sha256"
           ]
         }
       ],
       "commands": [
-        "npm ci --legacy-peer-deps --ignore-scripts",
-        "test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc",
-        "sha256sum --strict -c scripts/verify-install-script-lock.sha256",
-        "node scripts/verify-install-script-lock.mjs",
-        "npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false",
+        "node scripts/install-reviewed-dependencies.mjs",
         {
           "path": "node_modules/.bin"
         }
       ]
+    },
+    "build": {
+      "commands": ["node ./node_modules/next/dist/bin/next build"]
     }
+  },
+  "deploy": {
+    "startCommand": "node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start"
   }
 }
