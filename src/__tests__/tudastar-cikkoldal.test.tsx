@@ -547,6 +547,7 @@ describe('G3b — az ingyenes belépő sora minden cikk-ajánlóban', () => {
     // második panelt „javítana" oda, ahova a minta nem való.
     expect(fajlokAhol('kc-post-cta', ['components', 'app', 'blocks'])).toEqual([
       'app/(frontend)/styles/blocks/post-view.css',
+      'components/analytics/ArticleEngagement.tsx',
       'components/content/PostArticle.tsx',
       'components/content/PostCourseCta.tsx',
     ])

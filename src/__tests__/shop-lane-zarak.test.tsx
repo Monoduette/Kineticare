@@ -63,6 +63,10 @@ const ANALYTICS_EVENTS_ZAR = {
   videoStarted: 'video_started',
   videoMilestone: 'video_milestone',
   checkoutFailed: 'checkout_failed',
+  articleViewed: 'article_viewed',
+  articleRead: 'article_read',
+  articleCtaClicked: 'article_cta_clicked',
+  faqOpened: 'faq_opened',
 } as const
 
 const ADS_NEV_MINTA =
