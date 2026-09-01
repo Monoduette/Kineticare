@@ -545,4 +545,12 @@ describe('/szolgaltatasok alap-szekciósora', () => {
   it('nem visz saját h1-et (a lap h1-e a hero címe marad)', () => {
     expect(h1Count(renderLayout(layout))).toBe(0)
   })
+
+  it('nem a cikkoldali kc-post-cta mintát használja', () => {
+    // A cikk-CTA (`.kc-post-cta` + két `.kc-post-cta__panel`) csak a
+    // `/blog/{slug}` cikkeken él. A /szolgaltatasok CMS-szekciósor; ne kapjon
+    // cikk-panelt, és ne örökölje a 900 px-es `:has` rácsot.
+    const markup = renderLayout(layout)
+    expect(markup).not.toContain('kc-post-cta')
+  })
 })
