@@ -44,18 +44,15 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 ## Parancsok
 
-**Node 24.20.0 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
-`legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.3 beleesik a
-@payloadcms/next 3.88.0 peer-tartományába), hanem mert a `package-lock.json`
-legacy-peer-deps módban készült, ezért flag nélkül az `npm ci` EUSAGE-dzsel
-elhasal. A repó `.npmrc`-je ezt beállítja, tehát a sima `npm install` / `npm ci`
-jó; a CI explicit `npm ci --legacy-peer-deps`-t futtat (részletes indoklás:
-`.github/workflows/ci.yml` fejkommentje). A lockfile-hoz és a pinned verziókhoz
-nem nyúlunk.
+**Node 24.20.0 és npm 11.19.0 kell** — `nvm use` / `fnm use` a `.nvmrc`
+alapján. Az `engine-strict` az eltérő runtime-ot elutasítja. A támogatott helyi
+bootstrap scriptmentes `npm ci --legacy-peer-deps` után checksumolja és futtatja
+a lockfile-verifiert, majd csak az explicit review-zott lifecycle scripteket
+építi újra. A lockfile-hoz és a pinned verziókhoz nem nyúlunk.
 
 ```bash
 cp .env.example .env     # töltsd ki a kötelező értékeket (lásd a fájlt)
-npm install
+node scripts/install-reviewed-dependencies.mjs
 npm run dev              # http://localhost:3000, admin: /admin
 npm run seed             # demó-tartalom (idempotens; meglévő kezdőlap-szekciósort sosem ír felül)
 ```

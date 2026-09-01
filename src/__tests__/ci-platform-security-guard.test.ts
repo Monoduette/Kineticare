@@ -42,6 +42,8 @@ const EXPECTED_INSTALL_VERIFIER_SHA256 =
   'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
   '22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'
+const EXPECTED_REVIEWED_INSTALLER_SHA256 =
+  'a067c557a3262f3de9d84de5cfbafc6288aa978baaf1fc6c03c51face1fe9842'
 const EXPECTED_RAILWAY_SHA256 = '23dacbcc8982b45f93159215d18b1aaf3f67a0f3be9652206f644a3e3da3963d'
 const EXPECTED_RAILPACK_SHA256 = 'f1b4acf68f76e7376d07b8262064cb51f14b3a3c09c02ba0beea0ed19fee66cc'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -149,6 +151,16 @@ function sha256(input: Buffer | string): string {
   return createHash('sha256').update(input).digest('hex')
 }
 
+function verifySha256Manifest(source: string, expectedTarget: string): string {
+  const match = source.match(/^([a-f0-9]{64})  ([^\n]+)\n$/)
+  if (match === null || match[2] !== expectedTarget) {
+    throw new Error('SHA-256 manifest format or target mismatch')
+  }
+  const actual = sha256(readFileSync(join(REPO, expectedTarget)))
+  if (actual !== match[1]) throw new Error('SHA-256 manifest digest mismatch')
+  return expectedTarget
+}
+
 function workflowBytes(name: string): Buffer {
   return readFileSync(join(WORKFLOWS, name))
 }
@@ -193,6 +205,50 @@ function cursorStartRuntimeViolations(source: string): string[] {
     violations.push('arm64 arch mapping hiányzik')
   }
   if (source.includes('export PATH="/usr/bin:$PATH"')) violations.push('/usr/bin bypass aktív')
+  return violations
+}
+
+function cursorInstallRuntimeViolations(source: string): string[] {
+  const requiredInOrder = [
+    "NODE_VERSION='24.20.0'",
+    "NPM_VERSION='11.19.0'",
+    'node_home="/opt/node-v${NODE_VERSION}-linux-${node_arch}"',
+    'if [ ! -x "${node_home}/bin/node" ] || [ ! -x "${node_home}/bin/npm" ]; then',
+    'export PATH="${node_home}/bin:/usr/bin:$PATH"',
+    'if [ "$(command -v node)" != "${node_home}/bin/node" ]; then',
+    'if [ "$(command -v npm)" != "${node_home}/bin/npm" ]; then',
+    'if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then',
+    'npm ci --legacy-peer-deps --ignore-scripts',
+  ]
+  const positions = requiredInOrder.map((value) => source.indexOf(value))
+  const violations: string[] = []
+
+  if (positions.some((position) => position < 0)) violations.push('exact install runtime elem hiányzik')
+  if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    violations.push('exact install runtime ellenőrzési sorrend eltér')
+  }
+  return violations
+}
+
+function reviewedInstallerViolations(source: string): string[] {
+  const requiredInOrder = [
+    "const NODE_VERSION = '24.20.0'",
+    "const NPM_VERSION = '11.19.0'",
+    'execFileSync(process.execPath, [npmCliPath, ...args],',
+    "runNpm(['ci', '--legacy-peer-deps', '--ignore-scripts'])",
+    '\nverifyInstallVerifier()\n',
+    "runNode(['scripts/verify-install-script-lock.mjs'])",
+    "runNpm([\n  'rebuild',",
+    "'--strict-allow-scripts=true'",
+    "'--dangerously-allow-all-scripts=false'",
+  ]
+  const positions = requiredInOrder.map((value) => source.indexOf(value))
+  const violations: string[] = []
+
+  if (positions.some((position) => position < 0)) violations.push('reviewed install elem hiányzik')
+  if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    violations.push('reviewed install sorrend eltér')
+  }
   return violations
 }
 
@@ -715,12 +771,58 @@ describe('CI/platform supply-chain guard', () => {
     expect(cursorInstall).toContain(
       '"https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"',
     )
+    expect(cursorInstallRuntimeViolations(cursorInstall)).toEqual([])
     expect(expectedOrder.every((command) => cursorInstall.includes(command))).toBe(true)
     expect(expectedOrder.map((command) => cursorInstall.indexOf(command))).toEqual(
       [...expectedOrder]
         .map((command) => cursorInstall.indexOf(command))
         .sort((left, right) => left - right),
     )
+  })
+
+  it.each([
+    [
+      'hiányzó exact Node path',
+      'if [ "$(command -v node)" != "${node_home}/bin/node" ]; then',
+      'if false; then',
+    ],
+    [
+      'hibás exact Node path',
+      'if [ "$(command -v node)" != "${node_home}/bin/node" ]; then',
+      'if [ "$(command -v node)" != "/usr/bin/node" ]; then',
+    ],
+    [
+      'hiányzó exact npm path',
+      'if [ "$(command -v npm)" != "${node_home}/bin/npm" ]; then',
+      'if false; then',
+    ],
+    [
+      'hibás exact npm path',
+      'if [ "$(command -v npm)" != "${node_home}/bin/npm" ]; then',
+      'if [ "$(command -v npm)" != "/usr/bin/npm" ]; then',
+    ],
+  ])('az install.sh $0 mutációját fail-closed elutasítja', (_label, before, after) => {
+    const cursorInstall = readFileSync(join(REPO, '.cursor', 'install.sh'), 'utf8')
+    expect(
+      cursorInstallRuntimeViolations(replaceRequired(cursorInstall, before, after)),
+    ).not.toEqual([])
+  })
+
+  it('a helyi telepítés egyetlen review-zott fail-closed bootstrapot használ', () => {
+    const installerBytes = readFileSync(
+      join(REPO, 'scripts', 'install-reviewed-dependencies.mjs'),
+    )
+    const installer = installerBytes.toString('utf8')
+    expect(sha256(installerBytes)).toBe(EXPECTED_REVIEWED_INSTALLER_SHA256)
+    expect(reviewedInstallerViolations(installer)).toEqual([])
+
+    for (const guide of ['README.md', 'AGENTS.md']) {
+      const source = readFileSync(join(REPO, guide), 'utf8')
+      expect(source, guide).toContain('node scripts/install-reviewed-dependencies.mjs')
+      expect(source, guide).not.toMatch(/\bnpm install\b/)
+      expect(source, guide).toContain('Node 24.20.0')
+      expect(source, guide).toContain('npm 11.19.0')
+    }
   })
 
   it('az aktív operátori leírások sem tölthetnek le ambient Payload CLI-t', () => {
@@ -776,8 +878,10 @@ describe('CI/platform supply-chain guard', () => {
     const actualInstallCommands = installCommands.map((command) => command.cmd ?? command.path)
     const allShellCommands =
       plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ?? []
-    const checksumAnchorCommand = installCommands[1]?.cmd
-    const checksumCommand = installCommands[2]?.cmd
+    const verifierManifest = readFileSync(
+      join(REPO, 'scripts', 'verify-install-script-lock.sha256'),
+      'utf8',
+    )
 
     expect(sha256(fixtureBytes)).toBe(EXPECTED_RAILPACK_PLAN_SHA256)
     expect(plan.deploy?.variables?.RAILPACK_VERSION).toBe('0.38.0')
@@ -795,20 +899,16 @@ describe('CI/platform supply-chain guard', () => {
     ])
     expect(allShellCommands.some((command) => /\bcorepack\b/i.test(command))).toBe(false)
     expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(false)
-    expect(checksumAnchorCommand).toBeDefined()
-    expect(
-      execFileSync('/bin/sh', ['-c', checksumAnchorCommand ?? 'exit 1'], {
-        cwd: REPO,
-        encoding: 'utf8',
-      }).trim(),
-    ).toBe('')
-    expect(checksumCommand).toBeDefined()
-    expect(
-      execFileSync('/bin/sh', ['-c', checksumCommand ?? 'exit 1'], {
-        cwd: REPO,
-        encoding: 'utf8',
-      }).trim(),
-    ).toBe('scripts/verify-install-script-lock.mjs: OK')
+    expect(sha256(verifierManifest)).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
+    expect(verifySha256Manifest(verifierManifest, 'scripts/verify-install-script-lock.mjs')).toBe(
+      'scripts/verify-install-script-lock.mjs',
+    )
+    expect(() =>
+      verifySha256Manifest(
+        verifierManifest.replace(EXPECTED_INSTALL_VERIFIER_SHA256, '0'.repeat(64)),
+        'scripts/verify-install-script-lock.mjs',
+      ),
+    ).toThrow('digest mismatch')
   })
 
   it('a CI Railpack verifier pinned hivatalos assetből regenerálja a fixture-t', () => {

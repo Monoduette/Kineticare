@@ -64,7 +64,7 @@ if ! command -v openssl >/dev/null 2>&1; then
 fi
 
 # --- Exact Node (engines/.nvmrc/mise.toml) ----------------------------------
-if [ ! -x "${node_home}/bin/node" ]; then
+if [ ! -x "${node_home}/bin/node" ] || [ ! -x "${node_home}/bin/npm" ]; then
   echo "[install.sh] Node ${NODE_VERSION} telepítése (nodejs.org, pinned SHA-256)…"
   if ! command -v curl >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1; then
     apt_update_once
@@ -77,8 +77,22 @@ if [ ! -x "${node_home}/bin/node" ]; then
   printf '%s  %s\n' "$node_sha256" "${node_tmp}/${node_archive}" | sha256sum --strict -c -
   sudo tar -xJf "${node_tmp}/${node_archive}" -C /opt
 fi
-export PATH="${node_home}/bin:/usr/bin:$PATH"
 
+if [ ! -x "${node_home}/bin/node" ] || [ ! -x "${node_home}/bin/npm" ]; then
+  echo '[install.sh] HIBA: az exact /opt Node/npm runtime hiányos.' >&2
+  exit 1
+fi
+export PATH="${node_home}/bin:/usr/bin:$PATH"
+hash -r
+
+if [ "$(command -v node)" != "${node_home}/bin/node" ]; then
+  echo '[install.sh] HIBA: a node nem az exact /opt runtime-ból fut.' >&2
+  exit 1
+fi
+if [ "$(command -v npm)" != "${node_home}/bin/npm" ]; then
+  echo '[install.sh] HIBA: az npm nem az exact /opt runtime-ból fut.' >&2
+  exit 1
+fi
 if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then
   echo "[install.sh] HIBA: exact Node/npm contract nem teljesül." >&2
   exit 1
