@@ -25,9 +25,10 @@ const BETU = {
 
 /**
  * A lap három mérete px-ben. A levélkliens nem érti a CSS-változót és a
- * clamp-et, ezért itt a tokens.css L/M/S számított px-értéke él:
- * L = 32, M = 16 (a clamp alsó, iOS/Litmus padló), S = 14.
- * NN/g Visual Hierarchy: header up to 32px, body 14–16px.
+ * clamp-et, ezért itt a tokens.css L/M/S PADLÓJA él (320 px-es web):
+ * L = 32, M = 16 (iOS/Litmus padló), S = 14.
+ * A web folytonos skálája (32–40 / 16–19 / 14–16) a kliensekben nem
+ * reprodukálható; a padló a Litmus-minimum és az NN/g 14 px fölött marad.
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
  * A rejtett előnézeti sor 1 px-e NEM tipográfiai lépcső.
  */

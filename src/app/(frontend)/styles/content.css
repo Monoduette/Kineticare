@@ -679,11 +679,11 @@
 
 /* A SZAKASZCÍM FÖLÖTTI TÉRKÖZ (2026-08-16, mérve).
    A három-méretes skálán a folyószöveg-H2 a `--kc-text-2xl`-ről (1440 px-en
-   31,2 px) az L lépcsőre került. 2026-09-01-től L = 32 px (NN/g címsor-tető);
-   a cím fölé 48 px kerül (a saját méret 1,5-szerese, a bekezdésköz háromszorosa),
+   31,2 px) az L lépcsőre került. L 32–40 px (folytonos); a cím fölé 48 px
+   kerül (kis képernyőn a saját méret 1,5-szerese, a bekezdésköz háromszorosa),
    alatta marad a szűkebb 12 px — a közelség-elv szerint a cím ahhoz tapad,
-   amit BEVEZET. A h3–h6 (M lépcső, 16–18 px) marad a 32 px-es felső térközön:
-   ott a térköz a betűméret legalább 1,8-szerese. */
+   amit BEVEZET. A h3–h6 (M lépcső, 16–19 px) marad a 32 px-es felső térközön:
+   ott a térköz a betűméret legalább 1,6-szerese a 19 px-es plafonon is. */
 .kc-richtext h2 {
   margin-top: var(--kc-space-7);
   font-family: var(--kc-font-heading);

@@ -4,14 +4,23 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { hosszPx } from './helpers/css-geometria'
+
 /**
  * ŐR — HÁROM-MÉRETES TIPOGRÁFIAI SKÁLA (tulajdonosi döntés, 2026-08-16).
  *
  * A szabály: az ÜGYFÉLOLDALI felületen legfeljebb HÁROM betűméret élhet.
  *
- *   L (--kc-font-l) — címek: a hero H1 ÉS a szekció-H2-k KÖZÖS mérete,
- *   M (--kc-font-m) — törzs: bekezdés, lead, nav, gomb, mező, kártyacím, ár,
- *   S (--kc-font-s) — kiegészítő: eyebrow, badge, meta-sor, apróbetű.
+ *   L (--kc-font-l) — címek: a hero H1 ÉS a szekció-H2-k KÖZÖS tokenje
+ *     (32–40 px a 320–1440 sávon),
+ *   M (--kc-font-m) — törzs: bekezdés, lead, nav, gomb, mező, kártyacím, ár
+ *     (16–19 px),
+ *   S (--kc-font-s) — kiegészítő: eyebrow, badge, meta-sor, apróbetű
+ *     (14–16 px).
+ *
+ * A token FOLYTONOS: nagyobb nézetablakon nagyobb a számított px. Ez nem
+ * negyedik méret. A 2026-09-01 délelőtti diszkrét L=32 / S=14 a kutatás
+ * tartományát és a GOV.UK responsive skálát félreolvasta.
  *
  * Miért ŐR és nem csak konvenció: a repóban korábban 22 különböző fontméret
  * futott (9 törzs- + 13 tábla-lépcső), és mindegyik „egy jó okkal" került be.
@@ -79,7 +88,11 @@ describe('három-méretes tipográfiai skála — token-definíció', () => {
     )
     // A betűCSALÁD-tokenek (--kc-font-heading/body) és a súlyok nem méretek.
     const meretek = definiciok.filter(([nev]) => /^--kc-font-(l|m|s)$/.test(nev))
-    expect(meretek.map(([nev]) => nev).sort()).toEqual(['--kc-font-l', '--kc-font-m', '--kc-font-s'])
+    expect(meretek.map(([nev]) => nev).sort()).toEqual([
+      '--kc-font-l',
+      '--kc-font-m',
+      '--kc-font-s',
+    ])
     for (const [nev, ertek] of meretek) {
       expect(ertek, `${nev} nem clamp-alapú`).toMatch(/^clamp\(/)
     }
@@ -89,13 +102,36 @@ describe('három-méretes tipográfiai skála — token-definíció', () => {
     expect(tokens).toMatch(/--kc-font-m:\s*clamp\(1rem,/)
   })
 
-  it('az L plafon 2rem (NN/g max. 32 px címsor), az S padló 0.875rem (14 px)', () => {
-    // Visual Hierarchy: header up to 32px, body copy 14–16px.
-    // https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
-    expect(tokens).toMatch(/--kc-font-l:\s*clamp\(2rem,\s*2rem,\s*2rem\)/)
-    expect(tokens).toMatch(/--kc-font-s:\s*clamp\(0\.875rem,\s*0\.875rem,\s*0\.875rem\)/)
+  it('az L/M/S mind valódi folytonos clamp (vw a közép tagban), padló/plafon a kutatott sávban', () => {
+    // L 32–40 px, M 16–19 px, S 14–16 px. A 2,9rem (46,4 px) és a 13 px-es
+    // S kikerült; a diszkrét min=max clamp is (az NN/g tartományt és a
+    // GOV.UK responsive skálát félreolvasná).
+    expect(tokens).toMatch(/--kc-font-l:\s*clamp\(2rem,\s*[\d.]+rem \+ [\d.]+vw,\s*2\.5rem\)/)
+    expect(tokens).toMatch(/--kc-font-m:\s*clamp\(1rem,\s*[\d.]+rem \+ [\d.]+vw,\s*1\.1875rem\)/)
+    expect(tokens).toMatch(/--kc-font-s:\s*clamp\(0\.875rem,\s*[\d.]+rem \+ [\d.]+vw,\s*1rem\)/)
     expect(kommentNelkul(tokens)).not.toMatch(/2\.9rem/)
     expect(kommentNelkul(tokens)).not.toMatch(/0\.8125rem/)
+  })
+
+  it('a számított px a nézetablakkal nő, a 320/1440 padló-plafon tartja a kutatott sávot', () => {
+    const meret: Record<'l' | 'm' | 's', string> = { l: '', m: '', s: '' }
+    for (const talalat of tokens.matchAll(/^\s*--kc-font-([lms]):\s*([^;]+);/gm)) {
+      meret[talalat[1] as 'l' | 'm' | 's'] = talalat[2].trim()
+    }
+    const px = (kifejezes: string, nezet: number): number => hosszPx(kifejezes, nezet, 16, 16)
+
+    expect(px(meret.l, 320)).toBeCloseTo(32, 1)
+    expect(px(meret.m, 320)).toBeCloseTo(16, 1)
+    expect(px(meret.s, 320)).toBeCloseTo(14, 1)
+
+    expect(px(meret.l, 1440)).toBeCloseTo(40, 1)
+    expect(px(meret.m, 1440)).toBeCloseTo(19, 1)
+    expect(px(meret.s, 1440)).toBeCloseTo(16, 1)
+
+    expect(px(meret.l, 1440)).toBeGreaterThan(px(meret.l, 768))
+    expect(px(meret.l, 768)).toBeGreaterThan(px(meret.l, 360))
+    expect(px(meret.m, 1440)).toBeGreaterThan(px(meret.m, 768))
+    expect(px(meret.s, 1440)).toBeGreaterThan(px(meret.s, 360))
   })
 
   it('a RÉGI, sokméretes skála egyetlen tokenje sincs többé definiálva', () => {
