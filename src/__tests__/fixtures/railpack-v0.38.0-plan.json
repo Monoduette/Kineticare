@@ -119,6 +119,10 @@
       ],
       "commands": [
         {
+          "dest": "scripts",
+          "src": "scripts"
+        },
+        {
           "cmd": "sh -c 'node scripts/install-reviewed-dependencies.mjs'",
           "customName": "node scripts/install-reviewed-dependencies.mjs"
         },
@@ -132,13 +136,16 @@
         },
         {
           "include": [
+            "."
+          ],
+          "local": true
+        },
+        {
+          "include": [
             ".npmrc",
             "package.json",
             "package-lock.json",
-            "scripts/exact-npm-cli.mjs",
-            "scripts/install-reviewed-dependencies.mjs",
-            "scripts/verify-install-script-lock.mjs",
-            "scripts/verify-install-script-lock.sha256"
+            "scripts"
           ],
           "local": true
         }

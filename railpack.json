@@ -10,14 +10,15 @@
             ".npmrc",
             "package.json",
             "package-lock.json",
-            "scripts/exact-npm-cli.mjs",
-            "scripts/install-reviewed-dependencies.mjs",
-            "scripts/verify-install-script-lock.mjs",
-            "scripts/verify-install-script-lock.sha256"
+            "scripts"
           ]
         }
       ],
       "commands": [
+        {
+          "src": "scripts",
+          "dest": "scripts"
+        },
         "node scripts/install-reviewed-dependencies.mjs",
         {
           "path": "node_modules/.bin"

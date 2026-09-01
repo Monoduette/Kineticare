@@ -47,11 +47,11 @@ const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
   'e9dc71bd52ea3e9a958af185fc8c73facc27f41425d8614354b9472e1fc720da'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
-const EXPECTED_RAILPACK_SHA256 = '4b2cd65aac35fdd1f0a314936a429e501568c898135b30540b25d6bd983e0c57'
+const EXPECTED_RAILPACK_SHA256 = 'ebe4bd7c855224db16ce11c0d9762bca3be56ac6623d539d9991ded5319073c7'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
-  '853c453963fff20d502595c298a0e5c475940a4172e6a808feb1cce44e2485eb'
+  '3e0e1be833c9a18f7ab4eba001e1df51ae815241bb6edd24414ac200e414ec5c'
 const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
-  '98ff5a6805798ad69b429a6c2b8835ecd6c3ca628e5a47f3fbde0c847196fe51'
+  '8cb6c2db7695a064dbc22e3fa6cb7b2dfc32212aceac59beb92388290e550b7e'
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@eslint/eslintrc': '3.3.6',
@@ -127,9 +127,16 @@ interface PackageLock {
 
 interface RailpackCommand {
   readonly cmd?: string
+  readonly customName?: string
   readonly dest?: string
   readonly path?: string
   readonly src?: string
+}
+
+interface RailpackInput {
+  readonly include?: string[]
+  readonly local?: boolean
+  readonly step?: string
 }
 
 interface RailpackPlan {
@@ -140,6 +147,7 @@ interface RailpackPlan {
   readonly steps?: Array<{
     readonly assets?: Record<string, string>
     readonly commands?: RailpackCommand[]
+    readonly inputs?: RailpackInput[]
     readonly name?: string
   }>
 }
@@ -289,6 +297,12 @@ function railpackPlanVerifierViolations(source: string): string[] {
   }
   if (!source.includes('/releases/download/v${RAILPACK_VERSION}/${RAILPACK_ARCHIVE}')) {
     violations.push('official pinned release URL hiányzik')
+  }
+  if (!source.includes('require_plan_literal \'"dest": "scripts"\' "$plan"')) {
+    violations.push('scripts könyvtár dest copy őre hiányzik')
+  }
+  if (!source.includes('require_plan_literal \'"src": "scripts"\' "$plan"')) {
+    violations.push('scripts könyvtár src copy őre hiányzik')
   }
   for (const nonPortableOption of ['--fixed-strings', '--line-regexp', '--extended-regexp', '--quiet']) {
     if (new RegExp(`grep [^\\n]*${nonPortableOption}`).test(source)) {
@@ -1040,6 +1054,23 @@ describe('CI/platform supply-chain guard', () => {
     ).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
     expect(sha256(readFileSync(join(REPO, 'railway.json')))).toBe(EXPECTED_RAILWAY_SHA256)
     expect(sha256(readFileSync(join(REPO, 'railpack.json')))).toBe(EXPECTED_RAILPACK_SHA256)
+    const railpack = readJson<{
+      steps?: {
+        install?: {
+          commands?: Array<{ dest?: string; src?: string } | string>
+          inputs?: Array<{ include?: string[] }>
+        }
+      }
+    }>(join(REPO, 'railpack.json'))
+    const railpackInstallIncludes =
+      railpack.steps?.install?.inputs?.flatMap((input) => input.include ?? []) ?? []
+    expect(railpackInstallIncludes).toEqual([
+      '.npmrc',
+      'package.json',
+      'package-lock.json',
+      'scripts',
+    ])
+    expect(railpack.steps?.install?.commands?.[0]).toEqual({ dest: 'scripts', src: 'scripts' })
     const railway = readJson<{
       build?: { buildCommand?: string }
       deploy?: { startCommand?: string }
@@ -1062,7 +1093,9 @@ describe('CI/platform supply-chain guard', () => {
     const build = plan.steps?.find((step) => step.name === 'build')
     const miseConfig = mise?.assets?.['generated-mise-toml'] ?? ''
     const installCommands = install?.commands ?? []
-    const actualInstallCommands = installCommands.map((command) => command.cmd ?? command.path)
+    const installLockInputs = install?.inputs?.find((input) =>
+      input.include?.includes('package-lock.json'),
+    )
     const allShellCommands =
       plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ?? []
     const verifierManifest = readFileSync(
@@ -1076,10 +1109,21 @@ describe('CI/platform supply-chain guard', () => {
     expect(miseConfig).toContain('minimum_release_age = "14d"')
     expect(mise?.commands).toContainEqual({ dest: '.nvmrc', src: '.nvmrc' })
     expect(mise?.commands).toContainEqual({ dest: 'mise.toml', src: 'mise.toml' })
-    expect(actualInstallCommands).toEqual([
-      "sh -c 'node scripts/install-reviewed-dependencies.mjs'",
-      'node_modules/.bin',
+    expect(installCommands).toEqual([
+      { dest: 'scripts', src: 'scripts' },
+      {
+        cmd: "sh -c 'node scripts/install-reviewed-dependencies.mjs'",
+        customName: 'node scripts/install-reviewed-dependencies.mjs',
+      },
+      { path: 'node_modules/.bin' },
     ])
+    expect(installLockInputs?.include).toEqual([
+      '.npmrc',
+      'package.json',
+      'package-lock.json',
+      'scripts',
+    ])
+    expect(installLockInputs?.include?.some((item) => item.includes('/'))).toBe(false)
     expect(build?.commands?.map((command) => command.cmd ?? command.path)).toEqual([
       "sh -c 'node ./node_modules/next/dist/bin/next build'",
     ])
@@ -1139,6 +1183,11 @@ describe('CI/platform supply-chain guard', () => {
       'checksum előtti kicsomagolás',
       'grep -Fqx -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
       'tar -xzf "$archive_path" -C "$tmp_dir" railpack\ngrep -Fqx -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
+    ],
+    [
+      'scripts dest copy eltávolítása',
+      'require_plan_literal \'"dest": "scripts"\' "$plan"',
+      'require_plan_literal \'"dest": "."\' "$plan"',
     ],
   ])('a Railpack verifier $0 mutációját fail-closed elutasítja', (_label, before, after) => {
     const verifier = readFileSync(join(REPO, 'scripts', 'verify-railpack-plan.sh'), 'utf8')

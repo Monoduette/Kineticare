@@ -66,6 +66,8 @@ verify_plan_semantics() {
   require_plan_literal 'node = \"24.20.0\"' "$plan"
   require_plan_literal 'minimum_release_age = \"14d\"' "$plan"
   require_plan_literal '"cmd": "sh -c '\''node scripts/install-reviewed-dependencies.mjs'\''"' "$plan"
+  require_plan_literal '"dest": "scripts"' "$plan"
+  require_plan_literal '"src": "scripts"' "$plan"
   require_plan_literal '"cmd": "sh -c '\''node ./node_modules/next/dist/bin/next build'\''"' "$plan"
   require_plan_literal '"startCommand": "node ./node_modules/payload/bin.js migrate \u0026\u0026 exec node ./node_modules/next/dist/bin/next start"' "$plan"
   if grep -Eq -- '"cmd": ".*(corepack|npm (ci|install|i|rebuild)( |"))' "$plan"; then

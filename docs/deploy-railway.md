@@ -28,6 +28,11 @@
    lépését egyetlen `node scripts/install-reviewed-dependencies.mjs` bootstrapra
    írja felül: scriptmentes `npm ci`, a lockfile és a lifecycle-tarballok
    ellenőrzése, majd kizárólag az exact jóváhagyott install scriptek rebuildje.
+   A bootstrap `scripts/` relatív útvonalat vár, ezért az install input a
+   `scripts` könyvtárat másolja (nem a külön fájlokat), és van egy explicit
+   `src/dest: scripts` copy is: a Railpack a `scripts/foo.mjs` include-ot
+   `/app/foo.mjs`-re lapítja, és a 2026-09-01-i production build ezen
+   `MODULE_NOT_FOUND`-dal állt le.
    Ezután az exact Mise Node a lokális Next JS entrypointtal buildel. A Node és
    npm verzió is exact:
    **Node `24.20.0`, npm `11.19.0`**. A `package.json` `engines.node`, a
