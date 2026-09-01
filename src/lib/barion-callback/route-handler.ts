@@ -219,7 +219,10 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
           // W13 után egy ISMERT+kimerült rekordot a Barion minden ismételt
           // kézbesítése újra feldolgoztat: a már felszínre hozott ügy riasztása
           // fojtva ismétlődik (alert-throttle), nem kézbesítésenként.
-          if (shouldEmitThrottledAlert(`webhook-exhausted:barion:${paymentId}`)) {
+          // Külön kulcs-előtag, mint a pending_repoll-kimerülésé (idempotency.ts):
+          // a két ág KÜLÖN incidens — közös kulccsal az egyik elnyelné a másik
+          // első riasztását a cooldownon belül.
+          if (shouldEmitThrottledAlert(`webhook-exhausted-failed:barion:${paymentId}`)) {
             eventLog.error(
               'webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
               {
@@ -259,10 +262,16 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
         // kézbesítése nyomtalanul tűnt el. A warn felszínre hozza, hogy egy
         // lezárt-elutasított fizetésre még mindig érkezik callback.
         if (record.result === 'rejected') {
-          eventLog.warn(
-            'barion-callback: duplikált kézbesítés egy korábban ELUTASÍTOTT eseményre — a rendelés kézi ellenőrzést igényelhet (lásd a korábbi RIASZTÁS-sorokat)',
-            { result: record.result, attempts: record.attempts ?? 0 },
-          )
+          // Fojtva: a dedup-gyorsút a rate-limit ELŐTT fut (örökölt sorrend),
+          // egy ismert-elutasított PaymentId ismételgetésével tehát HTTP-ütemű
+          // warn-árasztást lehetne kelteni — a felszínre hozáshoz kulcsonként
+          // egy warn / cooldown elég.
+          if (shouldEmitThrottledAlert(`rejected-redelivery:barion:${paymentId}`)) {
+            eventLog.warn(
+              'barion-callback: duplikált kézbesítés egy korábban ELUTASÍTOTT eseményre — a rendelés kézi ellenőrzést igényelhet (lásd a korábbi RIASZTÁS-sorokat)',
+              { result: record.result, attempts: record.attempts ?? 0 },
+            )
+          }
         } else {
           eventLog.info('barion-callback: duplikált kézbesítés — már feldolgozva, no-op 200')
         }

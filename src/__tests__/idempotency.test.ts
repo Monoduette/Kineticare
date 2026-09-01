@@ -1,6 +1,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import {
   isRetryDue,
   isUniqueViolation,
@@ -81,6 +82,8 @@ const baseParams = {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 describe('processWebhook', () => {

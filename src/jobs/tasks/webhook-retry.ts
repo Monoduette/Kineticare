@@ -102,15 +102,21 @@ export const webhookRetryTask: TaskConfig<WebhookRetryJobIO> = {
       }
 
       retried += 1
-      // K8 — PER-ESEMÉNY HIBAIZOLÁCIÓ. A processWebhook a handler-hibákat
-      // elkapja, de a státuszgépen KÍVÜLI hiba (pl. a sikeres ág store.update
-      // hívása dob egy sérült/zárolt soron) korábban kirepült a ciklusból: a
-      // batch a mérgezett rekordnál megállt, és mivel a sor updatedAt-je nem
+      // K8 — PER-ESEMÉNY HIBAIZOLÁCIÓ. A processWebhook a handler-hibákat és
+      // a sikeres ág store.update hibáját is elkapja (attemptProcessing
+      // try/catch) — ami KIREPÜLHET, az a processWebhook ELEJI findByKey
+      // (store.find) és a nem-unique-violation store.create hibája (pl. sérült
+      // azonosítón elhasaló lekérdezés). Ez korábban kiölte a ciklust: a batch
+      // a mérgezett rekordnál megállt, és mivel a sor updatedAt-je nem
       // mozdult, a következő futás UGYANITT halt el — a mögötte álló érvényes
       // fizetések véglegesen kiéheztek. A catch: (1) a batch folytatódik,
       // (2) best-effort attempts++/failed írás, hogy a mérgezett sor backoffal
       // hátrébb sorolódjon és MAX után kiessen a scanből, (3) kimerüléskor
       // fojtott owner-riasztás (lásd alert-throttle — nem percenként ismétel).
+      // Ismert, elfogadott verseny: a failed-írás a scan-pillanatkép id-jára
+      // megy — ha közben egy route-kézbesítés terminálisra zárta a sort, a
+      // státusz visszabillen failed-re, de a result/processedAt érintetlen, és
+      // az újrafeldolgozás idempotens no-opként processed-re gyógyítja.
       let outcome: ProcessWebhookOutcome
       try {
         outcome = await processWebhook({

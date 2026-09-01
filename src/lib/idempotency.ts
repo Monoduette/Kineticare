@@ -216,7 +216,14 @@ async function attemptProcessing(
         // kézbesítése (W13) újra és újra feldolgoztatja — a már felszínre
         // hozott ügy riasztása ezért FOJTOTT (alert-throttle), nem
         // kézbesítésenként ismétlődik.
-        if (shouldEmitThrottledAlert(`webhook-exhausted:${record.provider}:${record.externalId}`)) {
+        // Külön kulcs-előtag, mint a failed-kimerülésé (route-handler): a két
+        // ág külön incidens. A kulcs kanonikus (kisbetűs) externalId-t használ,
+        // hogy az örökölt nagybetűs sor ne kapjon külön kulcsot.
+        if (
+          shouldEmitThrottledAlert(
+            `webhook-exhausted-repoll:${record.provider}:${record.externalId.toLowerCase()}`,
+          )
+        ) {
           logger.error(
             'RIASZTÁS: a pending_repoll újrapróbálásai kimerültek — a tulajdonosnak ellenőriznie kell ' +
               '(provider, externalId, eventId, attempts). Az order-poll mentőháló továbbra is él, ' +
