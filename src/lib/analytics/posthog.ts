@@ -282,7 +282,7 @@ export function resetAnalyticsIdentity(): void {
 /**
  * JS-kivétel rögzítése (PostHog `$exception`).
  *
- * A `captureException` a posthog-js 1.413.3 publikus API-ja
+ * A `captureException` a posthog-js 1.422.5 publikus API-ja
  * (`captureException(error: unknown, additionalProperties?: Properties)`) —
  * a szignatúrát a telepített típusdefinícióból ellenőriztük, nem emlékezetből.
  *
