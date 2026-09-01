@@ -16,7 +16,7 @@ import {
  * hozta, és mindhármat elronthatná egy későbbi, jó szándékú szerkesztés.
  * Az „Így tudunk segíteni" (`.kc-services__title`) és az „Így működik az
  * online kurzus" (`.kc-section-title`) betűmérete MÁR AZELŐTT is azonos volt
- * (mérve: 46,4 px @1440, 32,55 px @390 — mindkettő a közös L lépcsőn). Amitől
+ * (mérve: 32 px minden nézetablakon — mindkettő a közös L lépcsőn). Amitől
  */
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))

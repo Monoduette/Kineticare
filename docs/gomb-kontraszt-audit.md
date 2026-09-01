@@ -827,23 +827,26 @@ A `tokens.css` három clamp-lépcsőjét kiszámoltam a kért nézetablak-széle
 
 | Nézetablak | L (címek) | M (törzs, **gomb**) | S (kiegészítő) |
 |---|---|---|---|
-| 360 px | **32,04 px** | **16,00 px** | **13,00 px** |
-| 768 px | **38,98 px** | **16,82 px** | **13,48 px** |
-| 1440 px | **46,40 px** | **18,00 px** | **14,00 px** |
+| 360 px | **32,00 px** | **16,00 px** | **14,00 px** |
+| 768 px | **32,00 px** | **16,82 px** | **14,00 px** |
+| 1440 px | **32,00 px** | **18,00 px** | **14,00 px** |
 
 A WCAG „nagy szöveg" határa: **≥ 24 px (18 pt)** normál, vagy **≥ 18,66 px (14 pt)
 félkövér**.
 
-- **L lépcső (32–46,4 px): nagy szöveg** → 3:1 elég. Ezért felel meg a `cta-banner`
-  világos változatának navy címe és a lábléc óriás linkje bőven.
-- **M lépcső: NEM nagy szöveg.** A felső végén (1440 px-en) 18,00 px, ami a `--kc-font-l`
-  clamp plafonjával együtt is **18,16 px alatt marad** — a 700-as súly ellenére **sem
+- **L lépcső (32 px): nagy szöveg** → 3:1 elég. Ezért felel meg a `cta-banner`
+  világos változatának navy címe és a lábléc óriás linkje bőven. Az NN/g
+  Visual Hierarchy 32 px-es címsor-teteje: a korábbi 46,4 px-es display-plafon
+  (2026-08-16) 2026-09-01-től 32 px.
+  https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+- **M lépcső: NEM nagy szöveg.** A felső végén (1440 px-en) 18,00 px, ami
+  **18,16 px alatt marad** — a 700-as súly ellenére **sem
   éri el a 18,66 px-es félkövér küszöböt**. **Következmény: a gomb-feliratra MINDIG a
   szigorúbb 4,5:1 vonatkozik, minden nézetablakon.** Ez fontos, mert az `accent`
   (#3d78aa) tint sávon 4,07:1-es értéke így SEMMILYEN gomb-feliratnál nem menthető meg
   „nagy szöveg" címén — a `tokens.css` akcent-korlátja tehát nem óvatoskodás, hanem
   szükségszerűség.
-- **S lépcső (13–14 px): normál szöveg**, 4,5:1. A badge-ek és a meta-sorok ezért
+- **S lépcső (14 px): normál szöveg**, 4,5:1. NN/g törzs-padló. A badge-ek és a meta-sorok ezért
   mérendők a szigorú küszöbhöz — mind meg is felelnek (5,38–13,53:1).
 
 **Betűtípus és metszet.** A gomb `--kc-font-body` (Nunito Sans, variábilis 400–700) —

@@ -120,42 +120,56 @@
   --kc-font-heading: 'Tenor Sans', 'Georgia', 'Times New Roman', serif;
   --kc-font-body: 'Nunito Sans', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 
-  /* ---- HÁROM-MÉRETES tipográfiai skála (tulajdonosi döntés, 2026-08-16) ----
-     Az ügyféloldali felületen LEGFELJEBB HÁROM betűméret élhet. A korábbi
-     kilenc törzs-lépcső (--kc-text-2xs … 4xl) és tizenhárom tábla-lépcső
-     (--kc-text-board-*) helyére ez a három token lép; minden `font-size`
-     deklaráció KIZÁRÓLAG ezekre hivatkozhat (őr-teszt: kc-harom-meret).
+  /* ---- HÁROM-MÉRETES tipográfiai skála (NN/g, 2026-09-01) ------------------
+     Az ügyféloldali felületen LEGFELJEBB HÁROM betűméret élhet. Minden
+     `font-size` KIZÁRÓLAG ezekre a tokenekre hivatkozhat (őr:
+     src/__tests__/tipografia-harom-meret.test.ts).
 
-     MIÉRT NEM SZEGÉNYEBB EZ A HIERARCHIA. A vizuális hierarchiát nem a
-     méret egyedül hordozza: az NN/g „Visual Hierarchy" alapelve szerint a
-     méret, a SÚLY, a SZÍN, a verzál/betűköz és az ELHELYEZÉS együtt jelölik
-     a szintet. Három mérethez két súly (400/700), két szövegszín (ink /
-     ink-soft), két betűcsalád (Tenor Sans címsor / Nunito Sans törzs) és a
-     verzál+tracking eyebrow-nyelv társul — ez így 5-nél több egyértelműen
-     megkülönböztethető szintet ad, miközben a lapon mért betűméret-készlet
-     háromra szűkül. A korábbi állapot ellenkezője volt ennek: 22 különböző
-     méret futott a kezdőlapon, ami zajt adott hierarchia helyett.
+     FORRÁS, NEM ÍZLÉS. Nielsen Norman Group, Visual Hierarchy in UX:
+     „Use no more than 3 sizes — small, medium, and large. […] On web
+     designs, sizes could range from 14px to 16px for the body copy,
+     18px to 22px for the subheader, and up to 32px for the header."
+     https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+     Ugyanez a három-méretes szabály a Good Visual Design cikkben:
+     „limiting your designs to 3 type sizes will establish a strong
+     hierarchy without overwhelming the design or user."
+     https://www.nngroup.com/articles/good-visual-design/
+     A törzs alsó határa 16 px (1rem), hogy az iOS Safari ne nagyítson
+     rá az űrlapmezőkre, és mert a „reasonably big" alapméret az
+     NN/g Let Users Control Font Size irányelve:
+     https://www.nngroup.com/articles/let-users-control-font-size/
+     Második független kör: GOV.UK type scale (tablet+ törzs 19 px, a
+     mi M plafonunk 18 px) https://design-system.service.gov.uk/styles/type-scale/
+     Apple HIG Typography a címsor/törzs/jelölő hármasra és a simításra:
+     https://developer.apple.com/design/human-interface-guidelines/typography
+
+     A 2026-08-16-i L plafon (2,9rem = 46,4 px) a display-lépcső volt, és
+     túllépte az NN/g 32 px-es címsor-tetejét. A S alsó 13 px a 14 px-es
+     NN/g törzs-padló alá esett. 2026-09-01: L = 32 px, S = 14 px, M
+     marad 16–18 px (iOS-padló + a 18 px a NN/g alcím-sáv alja, a
+     kézrehabilitációs közönségnek a „reasonably big" törzs).
+
+     MIÉRT NEM SZEGÉNYEBB A HIERARCHIA. A méret CSAK EGY hordozó (NN/g
+     Visual Hierarchy): két súly (400/700), két szövegszín (ink /
+     ink-soft), két betűcsalád (Tenor Sans címsor / Nunito Sans törzs)
+     és a verzál+tracking eyebrow. A H1 és a H2 továbbra is közös L —
+     a megkülönböztetés elhelyezés, felvezető sor és szín dolga.
 
      A LÉPCSŐK SZEREPE
-       L — CÍMEK. A hero H1 ÉS a szekció-H2-k KÖZÖS mérete. A H1 és a H2
-           megkülönböztetése NEM méret, hanem elhelyezés (a H1 a hero-ban áll,
-           lead + CTA kíséri), felvezető sor (eyebrow) és szín dolga.
-           Egyben a display-lépcső: a hero címsora ennél nagyobb nem lehet
-           (docs/ertekesitesi-ux-skill.md 4. pont — a 2,9rem a skill
-           --fs-display ≈ 3,5rem-es plafonja alatt marad).
+       L — CÍMEK. 2rem = 32 px, az NN/g web-címsor teteje. Hero H1 és
+           szekció-H2 közös mérete.
        M — TÖRZS. Bekezdés, lead, navigáció, gomb, űrlapmező, kártyacím,
-           kártyaszöveg, ár (az ár kiemelése SÚLLYAL: 700), accordion-fejléc.
-           Alsó határa pontosan 1rem = 16px, hogy az iOS Safari ne
-           nagyítson rá az űrlapmezőkre.
-       S — KIEGÉSZÍTŐ. Eyebrow, badge, meta-sor (dátum, darabszám, hossz),
-           apróbetű, lábléc-finomságok, űrlap-súgó és -hibaüzenet.
+           ár (az ár kiemelése SÚLLYAL: 700). Alsó határ 1rem = 16 px.
+       S — KIEGÉSZÍTŐ. 0,875rem = 14 px (NN/g törzs-padló). Eyebrow,
+           badge, meta-sor, apróbetű, űrlap-súgó.
 
-     Mind a három clamp-alapú és viewport-arányos (360px → ~1200px között nő,
-     felül fix rem-en zár), tehát a skill „folytonos skála" előírását tartja.
-     Mért végpontok: L 32 → 46,4px · M 16 → 18px · S 13 → 14px. */
-  --kc-font-l: clamp(2rem, 1.62rem + 1.7vw, 2.9rem);
+     L és S szándékosan diszkrét (min = max a clamp-ben): a lapon így
+     pontosan három számított méret van, nem egy 13–46 px-es folytonos
+     leves. M enyhén folytonos 16–18 px között, hogy a törzs a széles
+     nézeten a „reasonably big" sávban maradjon. */
+  --kc-font-l: clamp(2rem, 2rem, 2rem);
   --kc-font-m: clamp(1rem, 0.955rem + 0.2vw, 1.125rem);
-  --kc-font-s: clamp(0.8125rem, 0.785rem + 0.12vw, 0.875rem);
+  --kc-font-s: clamp(0.875rem, 0.875rem, 0.875rem);
 
   --kc-leading-tight: 1.15;
   --kc-leading-heading: 1.2; /* legacy headline 108/100 ≈ 1.08, olvashatóságra kerekítve */

@@ -89,6 +89,15 @@ describe('három-méretes tipográfiai skála — token-definíció', () => {
     expect(tokens).toMatch(/--kc-font-m:\s*clamp\(1rem,/)
   })
 
+  it('az L plafon 2rem (NN/g max. 32 px címsor), az S padló 0.875rem (14 px)', () => {
+    // Visual Hierarchy: header up to 32px, body copy 14–16px.
+    // https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+    expect(tokens).toMatch(/--kc-font-l:\s*clamp\(2rem,\s*2rem,\s*2rem\)/)
+    expect(tokens).toMatch(/--kc-font-s:\s*clamp\(0\.875rem,\s*0\.875rem,\s*0\.875rem\)/)
+    expect(kommentNelkul(tokens)).not.toMatch(/2\.9rem/)
+    expect(kommentNelkul(tokens)).not.toMatch(/0\.8125rem/)
+  })
+
   it('a RÉGI, sokméretes skála egyetlen tokenje sincs többé definiálva', () => {
     expect(kommentNelkul(tokens)).not.toMatch(/--kc-text-[a-z0-9-]+\s*:/)
   })
@@ -182,15 +191,19 @@ describe('három-méretes tipográfiai skála — inline (TSX) őr', () => {
 describe('globális tipográfiai finomságok', () => {
   const base = readFileSync(join(REPO, 'app/(frontend)/styles/base.css'), 'utf8')
 
-  it('minden elemen mindkét motorra kér élsimítást (univerzális szelektor + body + űrlap)', () => {
+  it('minden elemen mindkét motorra kér élsimítást (univerzális szelektor + html + body + űrlap + placeholder)', () => {
     const univerzal = base.slice(base.indexOf('*,'), base.indexOf('html {'))
     expect(univerzal).toContain('-webkit-font-smoothing: antialiased')
     expect(univerzal).toContain('-moz-osx-font-smoothing: grayscale')
+    const htmlBlokk = base.slice(base.indexOf('html {'), base.indexOf('body {'))
+    expect(htmlBlokk).toContain('-webkit-font-smoothing: antialiased')
+    expect(htmlBlokk).toContain('-moz-osx-font-smoothing: grayscale')
     expect(base).toContain('-webkit-font-smoothing: antialiased')
     expect(base).toContain('-moz-osx-font-smoothing: grayscale')
     const urlap = base.slice(base.indexOf('button,'), base.indexOf('/* Link-alapnyelv'))
     expect(urlap).toContain('-webkit-font-smoothing: antialiased')
     expect(urlap).toContain('-moz-osx-font-smoothing: grayscale')
+    expect(urlap).toContain('::placeholder')
   })
 
   it('a H1 és a H2 UGYANAZT az L lépcsőt viszi (a különbség nem méret)', () => {

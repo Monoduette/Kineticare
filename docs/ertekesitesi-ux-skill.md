@@ -55,21 +55,23 @@ fallbackként megengedett.
   esetén átmenetek nélkül.
 - Mobilon ugyanez lenyíló menüként; az érintési célfelület min. 44×44 px.
 
-## 4. Tipográfiai skála — a „túl nagy font" szabály
+## 4. Tipográfiai skála — NN/g három méret (L / M / S)
 
-- Fontméret CSAK a közös skáláról jöhet (CSS-tokenek), elemre írt egyedi
-  px/rem érték tilos. A skála **clamp()-alapú, folytonos** (viewport-arányos
-  minimum–maximum), lépcsői kb. 1,2-es modulusú sorra illeszkednek.
-- Referencia-lépcsők (törzs = 1rem/16px):
-  `--fs-sm` ≈ 0,875rem · `--fs-base` 1rem · `--fs-lg` ≈ 1,125rem ·
-  `--fs-xl` ≈ 1,35rem · `--fs-2xl` ≈ 1,6rem · `--fs-3xl` ≈ 2rem ·
-  `--fs-4xl` ≈ 2,5–2,75rem · `--fs-display` ≈ clamp(2,25rem, 1,4rem+3vw, 3,5rem).
-- **A hero/videó címsor a `--fs-display` lépcsőnél nagyobb nem lehet.**
-  (A korábbi hiba: a videós hero címsora aránytalanul nagy volt.)
-- Sortáv: display 1,05–1,15 · címsor 1,2 · törzs 1,55–1,7. Sorhossz törzsnél
-  45–75 karakter (`max-width` ch-ban).
+- Fontméret CSAK a három közös tokenről jöhet. Elemre írt egyedi px/rem
+  érték tilos. Őr: `src/__tests__/tipografia-harom-meret.test.ts`.
+- **NN/g Visual Hierarchy** (web): max. 3 méret — törzs 14–16 px, alcím
+  18–22 px, címsor max. 32 px.
+  https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+  Ugyanez a három-méretes szabály: https://www.nngroup.com/articles/good-visual-design/
+- A live tokenek (`src/app/(frontend)/styles/tokens.css`):
+  `--kc-font-l` = 32 px (címsor), `--kc-font-m` = 16–18 px (törzs, iOS
+  16 px padló), `--kc-font-s` = 14 px (kiegészítő).
+- **A hero/videó címsor az L lépcsőnél (32 px) nagyobb nem lehet.**
+- Sortáv: címsor 1,2 · törzs 1,55–1,7. Sorhossz törzsnél 45–75 karakter
+  (`max-width` ch-ban).
 - A look & feel (fontcsaládok, színek, hangulat) NEM változik a skálára
-  igazítástól — csak a méretek normalizálódnak.
+  igazítástól — csak a méretek. A hierarchia súlyból, színből, betűcsaládból
+  és elhelyezésből is jön, nem csak méretből.
 
 ## 5. Mérés — a kör lezárása
 

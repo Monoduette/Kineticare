@@ -393,7 +393,7 @@ describe('kalibráció — a számolt geometria a böngészős méréshez van hi
    * | 320 | h3 | 272 px | 16 px    | 0,16 px   |
    * | 320 | li | 240 px | 16 px    | 0 px      |
    * | 390 | p  | 342 px | 16,06 px | 0 px      |
-   * | 390 | h2 | 342 px | 32,55 px | 0,3255 px |
+   * | 390 | h2 | 342 px | 32 px    | 0,32 px   |
    *
    * Ha ez a blokk elbukik, a modell és a valóság elvált egymástól: ELŐBB
    * mérj újra böngészővel, és csak utána írd át a számokat.
@@ -410,7 +410,7 @@ describe('kalibráció — a számolt geometria a böngészős méréshez van hi
     { nezetablak: 320, cimke: 'h3', hasab: 272, betumeret: 16, betuKoz: 0.16 },
     { nezetablak: 320, cimke: 'li', hasab: 240, betumeret: 16, betuKoz: 0 },
     { nezetablak: 390, cimke: 'p', hasab: 342, betumeret: 16.06, betuKoz: 0 },
-    { nezetablak: 390, cimke: 'h2', hasab: 342, betumeret: 32.55, betuKoz: 0.3255 },
+    { nezetablak: 390, cimke: 'h2', hasab: 342, betumeret: 32, betuKoz: 0.32 },
   ]
 
   it.each(VART)(
