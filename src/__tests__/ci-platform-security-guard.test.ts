@@ -49,9 +49,9 @@ const EXPECTED_REVIEWED_INSTALLER_SHA256 =
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
 const EXPECTED_RAILPACK_SHA256 = 'ebe4bd7c855224db16ce11c0d9762bca3be56ac6623d539d9991ded5319073c7'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
-  '3e0e1be833c9a18f7ab4eba001e1df51ae815241bb6edd24414ac200e414ec5c'
+  '1d25fbef5524cb709f984fca549c9d8b3ba2d06b1861a35d9b2f193bf48f96d3'
 const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
-  '8cb6c2db7695a064dbc22e3fa6cb7b2dfc32212aceac59beb92388290e550b7e'
+  'c7c862ff957f1696a5ad0763aa4ed4fc72eb395e437ee1010794f137398f22ef'
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@eslint/eslintrc': '3.3.6',
@@ -283,7 +283,8 @@ function railpackPlanVerifierViolations(source: string): string[] {
     'grep -Fqx -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
     'verify_sha256 "$RAILPACK_ARCHIVE_SHA256" "$archive_path"',
     'tar -xzf "$archive_path" -C "$tmp_dir" railpack',
-    '"$tmp_dir/railpack" plan --out "$generated_plan" "$repo_dir"',
+    'git -C "$repo_dir" ls-files -z',
+    '"$tmp_dir/railpack" plan --out "$generated_plan" "$snapshot_dir"',
     'verify_plan_semantics "$generated_plan"',
     'if [ "$platform_key" = "Linux:x86_64" ]; then',
     'cmp -s "$generated_plan" "$expected_plan"',
@@ -1124,6 +1125,9 @@ describe('CI/platform supply-chain guard', () => {
       'scripts',
     ])
     expect(installLockInputs?.include?.some((item) => item.includes('/'))).toBe(false)
+    expect(
+      install?.inputs?.some((input) => input.include?.length === 1 && input.include[0] === '.'),
+    ).toBe(false)
     expect(build?.commands?.map((command) => command.cmd ?? command.path)).toEqual([
       "sh -c 'node ./node_modules/next/dist/bin/next build'",
     ])

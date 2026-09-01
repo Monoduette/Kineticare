@@ -136,12 +136,6 @@
         },
         {
           "include": [
-            "."
-          ],
-          "local": true
-        },
-        {
-          "include": [
             ".npmrc",
             "package.json",
             "package-lock.json",

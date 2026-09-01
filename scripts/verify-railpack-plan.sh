@@ -89,7 +89,15 @@ verify_sha256 "$RAILPACK_ARCHIVE_SHA256" "$archive_path"
 
 tar -xzf "$archive_path" -C "$tmp_dir" railpack
 test "$("$tmp_dir/railpack" --version)" = "railpack version ${RAILPACK_VERSION}"
-"$tmp_dir/railpack" plan --out "$generated_plan" "$repo_dir"
+# A helyi node_modules / .next extra { include: ["."] } inputot ad a tervhez.
+# A CI tiszta checkout, ezért csak a tracked fájlok snapshotjából tervezünk.
+snapshot_dir="${tmp_dir}/snapshot"
+mkdir -p "$snapshot_dir"
+git -C "$repo_dir" ls-files -z | while IFS= read -r -d '' file; do
+  mkdir -p "$snapshot_dir/$(dirname -- "$file")"
+  cp -- "$repo_dir/$file" "$snapshot_dir/$file"
+done
+"$tmp_dir/railpack" plan --out "$generated_plan" "$snapshot_dir"
 verify_plan_semantics "$generated_plan"
 
 if [ "$platform_key" = "Linux:x86_64" ]; then
