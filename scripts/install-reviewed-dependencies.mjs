@@ -2,24 +2,20 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { accessSync, constants, readFileSync, realpathSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveAdjacentNpmCli } from './exact-npm-cli.mjs'
 
 const NODE_VERSION = '24.20.0'
 const NPM_VERSION = '11.19.0'
 const CHECKSUM_MANIFEST_SHA256 =
-  '22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'
-const VERIFIER_PATH = 'scripts/verify-install-script-lock.mjs'
+  '309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'
+const CHECKSUM_TARGETS = [
+  'scripts/verify-install-script-lock.mjs',
+  'scripts/exact-npm-cli.mjs',
+]
 const REPO = fileURLToPath(new URL('../', import.meta.url))
-const npmLauncherPath = join(
-  dirname(process.execPath),
-  process.platform === 'win32' ? 'npm.cmd' : 'npm',
-)
-const npmCliPath =
-  process.platform === 'win32'
-    ? join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
-    : realpathSync(npmLauncherPath)
 
 function fail(message) {
   console.error(`[install-reviewed-dependencies] ERROR: ${message}`)
@@ -45,23 +41,30 @@ function verifyInstallVerifier() {
     fail('install verifier checksum manifest hash mismatch')
   }
 
-  const match = manifest.toString('utf8').match(/^([a-f0-9]{64})  ([^\n]+)\n$/)
-  if (match === null || match[2] !== VERIFIER_PATH) {
+  const manifestSource = manifest.toString('utf8')
+  const lines = manifestSource.endsWith('\n') ? manifestSource.slice(0, -1).split('\n') : []
+  const matches = lines.map((line) => line.match(/^([a-f0-9]{64})  ([^\n]+)$/))
+  if (
+    matches.length !== CHECKSUM_TARGETS.length ||
+    matches.some((match, index) => match === null || match[2] !== CHECKSUM_TARGETS[index])
+  ) {
     fail('install verifier checksum manifest format mismatch')
   }
-  if (sha256(readFileSync(join(REPO, VERIFIER_PATH))) !== match[1]) {
-    fail('install verifier hash mismatch')
+  for (const [index, target] of CHECKSUM_TARGETS.entries()) {
+    if (sha256(readFileSync(join(REPO, target))) !== matches[index]?.[1]) {
+      fail(`install verifier hash mismatch: ${target}`)
+    }
   }
 }
 
 if (process.versions.node !== NODE_VERSION) {
   fail(`Node ${NODE_VERSION} required, found ${process.versions.node}`)
 }
+let npmCliPath
 try {
-  accessSync(npmLauncherPath, constants.X_OK)
-  accessSync(npmCliPath, constants.R_OK)
+  npmCliPath = resolveAdjacentNpmCli().cliPath
 } catch {
-  fail(`exact runtime npm executable missing: ${npmLauncherPath}`)
+  fail(`exact runtime npm executable missing next to ${process.execPath}`)
 }
 const npmVersion = execFileSync(process.execPath, [npmCliPath, '--version'], {
   cwd: REPO,

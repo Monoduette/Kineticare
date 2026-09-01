@@ -123,8 +123,8 @@
           "customName": "npm ci --legacy-peer-deps --ignore-scripts"
         },
         {
-          "cmd": "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'",
-          "customName": "test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2"
+          "cmd": "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'",
+          "customName": "test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc"
         },
         {
           "cmd": "sh -c 'sha256sum --strict -c scripts/verify-install-script-lock.sha256'",
@@ -157,6 +157,7 @@
             ".npmrc",
             "package.json",
             "package-lock.json",
+            "scripts/exact-npm-cli.mjs",
             "scripts/verify-install-script-lock.mjs",
             "scripts/verify-install-script-lock.sha256"
           ],

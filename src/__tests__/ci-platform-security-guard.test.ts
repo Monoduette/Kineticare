@@ -31,7 +31,7 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', '583c6836e0eff5689ae030fc4da26dba2a935a2c5645f846220098daf4d3b323'],
+  ['ci.yml', '0960ab2dc4df9d84987ab58eb4bc55138845ca6d4da738008da1ec22f5a3bd15'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
   ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
   ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
@@ -39,15 +39,17 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e'
+  'fbb0a24fff1e2f2971e2ca73d6fc73804c596ef6db2eb46ada417f677b68ddc3'
+const EXPECTED_EXACT_NPM_CLI_SHA256 =
+  'ed97ea265ba105858b6fc77a25d8bdd42ef3c0287ccd3ff2bee493b23ede6bed'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  '22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'
+  '309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  'a067c557a3262f3de9d84de5cfbafc6288aa978baaf1fc6c03c51face1fe9842'
+  '6e52f5da1813b6f493e580a1a95a55828d81c5db187a7c8f56cc0fdce3a729a5'
 const EXPECTED_RAILWAY_SHA256 = '23dacbcc8982b45f93159215d18b1aaf3f67a0f3be9652206f644a3e3da3963d'
-const EXPECTED_RAILPACK_SHA256 = 'f1b4acf68f76e7376d07b8262064cb51f14b3a3c09c02ba0beea0ed19fee66cc'
+const EXPECTED_RAILPACK_SHA256 = 'cdb40692911424e1625f9c005b35229366d7bee3b6c21d9892c8603f1dddac3c'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
-  '45bda91a9238baf1a0322df39506940a0c89ccbf079c6d439f2a95347a8b9db9'
+  '9f2ee7b1db3c5fd1b05a409505c90d6cd957d62642a559fdb08419de01e0b5b6'
 const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
   '665b522599cae48b6d54c9dfed31067de490137c1b815a62d90235bebefff594'
 
@@ -151,14 +153,20 @@ function sha256(input: Buffer | string): string {
   return createHash('sha256').update(input).digest('hex')
 }
 
-function verifySha256Manifest(source: string, expectedTarget: string): string {
-  const match = source.match(/^([a-f0-9]{64})  ([^\n]+)\n$/)
-  if (match === null || match[2] !== expectedTarget) {
+function verifySha256Manifest(source: string, expectedTargets: string[]): string[] {
+  const lines = source.endsWith('\n') ? source.slice(0, -1).split('\n') : []
+  const matches = lines.map((line) => line.match(/^([a-f0-9]{64})  ([^\n]+)$/))
+  if (
+    matches.length !== expectedTargets.length ||
+    matches.some((match, index) => match === null || match[2] !== expectedTargets[index])
+  ) {
     throw new Error('SHA-256 manifest format or target mismatch')
   }
-  const actual = sha256(readFileSync(join(REPO, expectedTarget)))
-  if (actual !== match[1]) throw new Error('SHA-256 manifest digest mismatch')
-  return expectedTarget
+  for (const [index, target] of expectedTargets.entries()) {
+    const actual = sha256(readFileSync(join(REPO, target)))
+    if (actual !== matches[index]?.[1]) throw new Error('SHA-256 manifest digest mismatch')
+  }
+  return expectedTargets
 }
 
 function workflowBytes(name: string): Buffer {
@@ -829,11 +837,43 @@ describe('CI/platform supply-chain guard', () => {
     const operationalGuides = [
       '.cursor/skills/verify-kineticare/SKILL.md',
       'docs/atadas-szamlazz-kor.md',
+      'docs/tudastar-ux-terv.md',
       'docs/tudastar-technikai-terv.md',
     ]
 
     for (const guide of operationalGuides) {
       expect(readFileSync(join(REPO, guide), 'utf8'), guide).not.toMatch(/\bnpx\s+payload\b/)
+    }
+
+    const historicalReview = readFileSync(join(REPO, 'docs', 'owasp-security-review.md'), 'utf8')
+    expect(historicalReview).toContain('A történeti parancsblokkok nem operatívak')
+    expect(historicalReview).toContain('node scripts/install-reviewed-dependencies.mjs')
+    expect(historicalReview).toContain('./node_modules/.bin/payload')
+  })
+
+  it('az install verifier hostile PATH mellett sem futtat ambient npm-et', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'kineticare-hostile-npm-'))
+    const fakeNpm = join(fixture, 'npm')
+    const marker = join(fixture, 'ambient-npm-ran')
+    writeExecutable(
+      fakeNpm,
+      `#!/bin/sh\nprintf 'called\\n' > ${JSON.stringify(marker)}\nprintf '11.19.0\\n'\n`,
+    )
+
+    try {
+      const output = execFileSync(
+        process.execPath,
+        [join(REPO, 'scripts', 'verify-install-script-lock.mjs')],
+        {
+          cwd: REPO,
+          encoding: 'utf8',
+          env: { ...process.env, PATH: fixture },
+        },
+      )
+      expect(output).toContain('Install-script lock verification passed.')
+      expect(() => accessSync(marker)).toThrow()
+    } finally {
+      rmSync(fixture, { force: true, recursive: true })
     }
   })
 
@@ -856,6 +896,9 @@ describe('CI/platform supply-chain guard', () => {
     expect(sha256(readFileSync(join(REPO, '.npmrc')))).toBe(EXPECTED_NPMRC_SHA256)
     expect(sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs')))).toBe(
       EXPECTED_INSTALL_VERIFIER_SHA256,
+    )
+    expect(sha256(readFileSync(join(REPO, 'scripts', 'exact-npm-cli.mjs')))).toBe(
+      EXPECTED_EXACT_NPM_CLI_SHA256,
     )
     expect(
       sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.sha256'))),
@@ -891,7 +934,7 @@ describe('CI/platform supply-chain guard', () => {
     expect(mise?.commands).toContainEqual({ dest: 'mise.toml', src: 'mise.toml' })
     expect(actualInstallCommands).toEqual([
       "sh -c 'npm ci --legacy-peer-deps --ignore-scripts'",
-      "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'",
+      "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 309c43f603cbd7b6f299ef1177ae856ceae96563d940792e60cfa135e7f103dc'",
       "sh -c 'sha256sum --strict -c scripts/verify-install-script-lock.sha256'",
       "sh -c 'node scripts/verify-install-script-lock.mjs'",
       "sh -c 'npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false'",
@@ -900,15 +943,29 @@ describe('CI/platform supply-chain guard', () => {
     expect(allShellCommands.some((command) => /\bcorepack\b/i.test(command))).toBe(false)
     expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(false)
     expect(sha256(verifierManifest)).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
-    expect(verifySha256Manifest(verifierManifest, 'scripts/verify-install-script-lock.mjs')).toBe(
+    const checksumTargets = [
       'scripts/verify-install-script-lock.mjs',
-    )
+      'scripts/exact-npm-cli.mjs',
+    ]
+    expect(verifySha256Manifest(verifierManifest, checksumTargets)).toEqual(checksumTargets)
     expect(() =>
       verifySha256Manifest(
         verifierManifest.replace(EXPECTED_INSTALL_VERIFIER_SHA256, '0'.repeat(64)),
-        'scripts/verify-install-script-lock.mjs',
+        checksumTargets,
       ),
     ).toThrow('digest mismatch')
+    expect(() =>
+      verifySha256Manifest(
+        verifierManifest.replace(EXPECTED_EXACT_NPM_CLI_SHA256, '0'.repeat(64)),
+        checksumTargets,
+      ),
+    ).toThrow('digest mismatch')
+    expect(() =>
+      verifySha256Manifest(
+        verifierManifest.replace(/^.*scripts\/exact-npm-cli\.mjs\n$/m, ''),
+        checksumTargets,
+      ),
+    ).toThrow('format or target mismatch')
   })
 
   it('a CI Railpack verifier pinned hivatalos assetből regenerálja a fixture-t', () => {
@@ -979,6 +1036,10 @@ describe('CI/platform supply-chain guard', () => {
       writeFileSync(
         join(scripts, 'verify-install-script-lock.mjs'),
         readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs')),
+      )
+      writeFileSync(
+        join(scripts, 'exact-npm-cli.mjs'),
+        readFileSync(join(REPO, 'scripts', 'exact-npm-cli.mjs')),
       )
 
       expect(() =>

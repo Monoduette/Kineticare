@@ -1,1 +1,2 @@
-f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e  scripts/verify-install-script-lock.mjs
+fbb0a24fff1e2f2971e2ca73d6fc73804c596ef6db2eb46ada417f677b68ddc3  scripts/verify-install-script-lock.mjs
+ed97ea265ba105858b6fc77a25d8bdd42ef3c0287ccd3ff2bee493b23ede6bed  scripts/exact-npm-cli.mjs

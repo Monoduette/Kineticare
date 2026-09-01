@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { resolveAdjacentNpmCli } from './exact-npm-cli.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 
@@ -70,7 +71,10 @@ for (const lifecycle of ['preinstall', 'install', 'postinstall', 'prepare']) {
 if (process.versions.node !== EXPECTED_NODE) {
   fail(`Node ${process.versions.node} is not reviewed Node ${EXPECTED_NODE}`)
 }
-const activeNpm = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim()
+const { cliPath: npmCliPath } = resolveAdjacentNpmCli()
+const activeNpm = execFileSync(process.execPath, [npmCliPath, '--version'], {
+  encoding: 'utf8',
+}).trim()
 if (activeNpm !== EXPECTED_NPM || manifest.engines?.npm !== EXPECTED_NPM) {
   fail('npm policy version is not exact')
 }
