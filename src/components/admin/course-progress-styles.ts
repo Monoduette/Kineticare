@@ -75,7 +75,7 @@ export const cardStyle: CSSProperties = {
 
 export const cardValueStyle: CSSProperties = {
   display: 'block',
-  fontSize: '1.5rem',
+  fontSize: 'calc(1rem * 32 / 13)',
   fontWeight: 600,
   lineHeight: 1.2,
 }

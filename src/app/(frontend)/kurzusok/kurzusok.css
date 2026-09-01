@@ -294,9 +294,8 @@
   --kc-course-measure: 34rem; /* ≈ 75 magyar karakter — a felső határ */
   --kc-course-measure-comfort: 30rem; /* ≈ 66 karakter — a kényelmes cél */
   /* A vásárlódoboz hasábja. A három-méretes skálán a H1 az L lépcsőt viszi
-     (1440px-en 46,4px), ami a korábbi 40,8px-nél ~14%-kal szélesebb sort kér:
-     a hasáb ezért 23rem-ről 25rem-re (400px) nőtt, hogy a magyar kurzuscímek
-     továbbra is két sorban maradjanak. A fő hasáb így is ~600px marad, tehát
+     (NN/g szerint 32 px, 2026-09-01). A hasáb 25rem (400px), hogy a magyar
+     kurzuscímek két sorban maradjanak. A fő hasáb így is ~600px marad, tehát
      a 34rem-es (544px) szöveg-mérték érintetlen. */
   --kc-course-aside: 25rem;
 

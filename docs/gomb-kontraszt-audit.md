@@ -187,8 +187,10 @@ tehát a doboz határa érzékelhető ✓ — kivéve, ahol a keret elveszik (**
 ## 4. Teljes állapot-mátrix
 
 Jelmagyarázat: **T** = szöveg-küszöb (1.4.3, 4,5:1), **N** = nem-szöveges küszöb
-(1.4.11, 3:1). A gomb-felirat MINDIG az M lépcső (16–18,16 px), tehát **sosem minősül
-„nagy szövegnek"** — a 3:1-es könnyítés a gombokra sehol nem áll (lásd 8. fejezet).
+(1.4.11, 3:1). A gomb-felirat MINDIG az M lépcső (16–19 px). 1440 px-en a 19 px
+félkövér eléri a WCAG „nagy szöveg" 18,66 px-es küszöbét, 360/768 px-en viszont
+nem. A gombokra ezért **minden nézetablakon a szigorúbb 4,5:1** vonatkozik
+(lásd 8. fejezet): a kontrasztot nem engedjük viewportonként lazulni.
 
 ### 4.1 `kc-button` — a három alapváltozat, minden állapot × minden háttér
 
@@ -764,8 +766,8 @@ elemeken.
 | `.kc-cart__title`, `.kc-course-card__title a`, `.kc-post-card` cím, `.kc-account__course` | **nincs min-height** — inline link | **böngészős mérés kell** | ✗ | lásd lent |
 
 **Amit statikusan nem lehet eldönteni:** az inline `<a>` elemek tényleges befoglaló doboza
-a betű ascent+descent metrikájából jön, nem a `line-height`-ból. Az M lépcsőn (16–18,16 px)
-ez tipikusan **19–24 px** közé esik, tehát **a 24 px-es AA-küszöb határán**. Ezeknél
+a betű ascent+descent metrikájából jön, nem a `line-height`-ból. Az M lépcsőn (16–19 px)
+ez tipikusan **19–26 px** közé esik, tehát **a 24 px-es AA-küszöb határán**. Ezeknél
 **böngészős mérés kell** (`getBoundingClientRect()`); a listát a 10. fejezet tartalmazza.
 Egyszerű, biztonságos megoldás mindegyikre: `display: inline-flex; min-height: 1.5rem`
 (24 px), ami a szövegfolyamot nem bontja meg.
@@ -823,28 +825,36 @@ a részletekért a hivatkozott oldal az irányadó.*
 
 ## 8. Tipográfia: hol áll a küszöb a mi skálánkon
 
-A `tokens.css` három clamp-lépcsőjét kiszámoltam a kért nézetablak-szélességeken:
+A `tokens.css` három clamp-lépcsőjét kiszámoltam a kért nézetablak-szélességeken
+(Utopia-képlet, 320→1440 px; a preferred tag `vw`, a gyökér 16 px):
 
 | Nézetablak | L (címek) | M (törzs, **gomb**) | S (kiegészítő) |
 |---|---|---|---|
-| 360 px | **32,04 px** | **16,00 px** | **13,00 px** |
-| 768 px | **38,98 px** | **16,82 px** | **13,48 px** |
-| 1440 px | **46,40 px** | **18,00 px** | **14,00 px** |
+| 360 px | **32,29 px** | **16,11 px** | **14,07 px** |
+| 768 px | **35,20 px** | **17,20 px** | **14,80 px** |
+| 1440 px | **40,00 px** | **19,00 px** | **16,00 px** |
 
 A WCAG „nagy szöveg" határa: **≥ 24 px (18 pt)** normál, vagy **≥ 18,66 px (14 pt)
 félkövér**.
 
-- **L lépcső (32–46,4 px): nagy szöveg** → 3:1 elég. Ezért felel meg a `cta-banner`
-  világos változatának navy címe és a lábléc óriás linkje bőven.
-- **M lépcső: NEM nagy szöveg.** A felső végén (1440 px-en) 18,00 px, ami a `--kc-font-l`
-  clamp plafonjával együtt is **18,16 px alatt marad** — a 700-as súly ellenére **sem
-  éri el a 18,66 px-es félkövér küszöböt**. **Következmény: a gomb-feliratra MINDIG a
-  szigorúbb 4,5:1 vonatkozik, minden nézetablakon.** Ez fontos, mert az `accent`
-  (#3d78aa) tint sávon 4,07:1-es értéke így SEMMILYEN gomb-feliratnál nem menthető meg
-  „nagy szöveg" címén — a `tokens.css` akcent-korlátja tehát nem óvatoskodás, hanem
-  szükségszerűség.
-- **S lépcső (13–14 px): normál szöveg**, 4,5:1. A badge-ek és a meta-sorok ezért
-  mérendők a szigorú küszöbhöz — mind meg is felelnek (5,38–13,53:1).
+- **L lépcső (32–40 px): nagy szöveg** minden nézetablakon → 3:1 elég. Ezért
+  felel meg a `cta-banner` világos változatának navy címe és a lábléc óriás
+  linkje. Az L padlója az NN/g 32 px-es címsor-teteje (kis képernyőn) és a
+  GOV.UK heading-xl kis lépcsője; a 40 px-es plafon a GOV.UK heading-l (36)
+  és heading-xl (48) között ül, mert a H1 és a H2 közös token. A 2026-08-16-i
+  46,4 px-es 2,9rem plafon öt soros címeket adott, nem tértünk oda vissza.
+  https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+  https://design-system.service.gov.uk/styles/type-scale/
+- **M lépcső: 360/768 px-en NEM nagy szöveg** (16,11 / 17,20 < 18,66).
+  1440 px-en a 19,00 px félkövér **átlépi** a 18,66-os küszöböt (a határ
+  ~1313 px-nél van). A gomb-feliratra ennek ellenére **MINDIG a szigorúbb
+  4,5:1 vonatkozik**, mert a kontrasztot nem engedjük viewportonként
+  lazulni, és a telefonos/tabletes nézet 4,5:1-et követel. Az `accent`
+  (#3d78aa) tint sávon 4,07:1-es értéke így SEMMILYEN gomb-feliratnál nem
+  menthető meg „nagy szöveg" címén. A 19 px a GOV.UK `govuk-body`.
+- **S lépcső (14–16 px): normál szöveg**, 4,5:1. NN/g törzs-padló kis
+  képernyőn, GOV.UK body-s nagy képernyőn. A badge-ek és a meta-sorok
+  ezért mérendők a szigorú küszöbhöz — mind meg is felelnek (5,38–13,53:1).
 
 **Betűtípus és metszet.** A gomb `--kc-font-body` (Nunito Sans, variábilis 400–700) —
 valódi 700-as metszet, nem szintetikus vastagítás. A címsor-betű (Tenor Sans) egyetlen
@@ -1003,8 +1013,10 @@ A kiszolgált CSS-t 2026-08-16-án lekértem az élő telepítésről
 | `.kc-auth-alt a { color: primary }` (aláhúzás nélkül) | van | van | ✓ (**B5 élőben is**) |
 | `.kc-contact-form__consent-label` (link-szabály nélkül) | van | van | ✓ (**B3 élőben is**) |
 
-**Következtetés: nincs eltérés a repó és az élő között** — minden itt leírt bukás
-élesben is jelen van, és minden javítás a repóból deployolható.
+**Következtetés (2026-08-16):** nincs eltérés az akkori repó és az élő között.
+A `--kc-font-l/m/s` clamp-ek azóta a folytonos 32–40 / 16–19 / 14–16 px sávra
+álltak (2026-09-01); ez a tábla a 2026-08-16-i élő állapotot rögzíti, nem a
+mai tokent.
 
 ---
 

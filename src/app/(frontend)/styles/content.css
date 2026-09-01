@@ -679,16 +679,11 @@
 
 /* A SZAKASZCÍM FÖLÖTTI TÉRKÖZ (2026-08-16, mérve).
    A három-méretes skálán a folyószöveg-H2 a `--kc-text-2xl`-ről (1440 px-en
-   31,2 px) az L lépcsőre (46,4 px) került, a fölötte lévő térköz viszont
-   maradt 32 px: a cím fölötti hely a saját méretének 1,03-szorosáról
-   0,69-szeresére esett. Az ÁSZF-en mérve ez 13 szakaszcímet jelent, amelyek
-   mindegyike 32 px-re állt az előző bekezdéstől, miközben két bekezdés között
-   16 px van — a szakaszhatár alig kétszer erősebb jelzés, mint egy
-   bekezdéshatár, egy 15 896 px hosszú lapon.
-   A javítás TÉRKÖZ, nem betűméret: a cím fölé 48 px kerül (a saját méretének
-   1,03-szorosa, a bekezdésköz háromszorosa), alatta marad a szűkebb 12 px —
-   a közelség-elv szerint a cím ahhoz tapad, amit BEVEZET. A h3–h6 (M lépcső,
-   18 px) marad a 32 px-en: ott a térköz a betűméret 1,8-szerese. */
+   31,2 px) az L lépcsőre került. L 32–40 px (folytonos); a cím fölé 48 px
+   kerül (kis képernyőn a saját méret 1,5-szerese, a bekezdésköz háromszorosa),
+   alatta marad a szűkebb 12 px — a közelség-elv szerint a cím ahhoz tapad,
+   amit BEVEZET. A h3–h6 (M lépcső, 16–19 px) marad a 32 px-es felső térközön:
+   ott a térköz a betűméret legalább 1,6-szerese a 19 px-es plafonon is. */
 .kc-richtext h2 {
   margin-top: var(--kc-space-7);
   font-family: var(--kc-font-heading);

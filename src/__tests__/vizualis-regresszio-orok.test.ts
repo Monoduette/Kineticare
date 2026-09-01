@@ -79,7 +79,7 @@ describe('folyószöveg-mérték és szakaszcím-ritmus', () => {
   })
 
   it('a folyószöveg-szakaszcím fölött nagyobb a térköz, mint a bekezdések közt', () => {
-    // A H2 az L lépcsőn áll (1440 px-en 46,4 px); a fölötte lévő 32 px (space-6)
+    // A H2 az L lépcsőn áll (NN/g szerint 32 px); a fölötte lévő 32 px (space-6)
     // a saját méreténél kisebb volt, és csak kétszerese a 16 px-es
     // bekezdésköznek — az ÁSZF 13 szakaszcíme így alig vált ki a szövegből.
     const h2 = blokk(content, '.kc-richtext h2')

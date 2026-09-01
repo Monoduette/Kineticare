@@ -8,17 +8,29 @@
 *::after {
   box-sizing: border-box;
   /* Élsimítás MINDEN elemen, nem csak a body-n. A tulajdonság öröklődik,
-     de a formavezérlők és a ::before/::after egyes motorokon saját
-     user-agent rajzolást kapnak — a univerzális szelektor ezért explicit.
-     NN/g Text Legibility (https://www.nngroup.com/articles/glanceable-fonts/)
-     + Apple HIG Typography: a márka vékony serif/sans metszetei
-     subpixel-simítással vastagabbnak látszanak. */
+     de a formavezérlők, a ::before/::after és a user-agent widgetek
+     egyes motorokon saját rajzolást kapnak — a univerzális szelektor
+     ezért explicit. NN/g Glanceable Fonts (nagyobb, simább betű
+     gyorsabb felismerés): https://www.nngroup.com/articles/glanceable-fonts/
+     Apple HIG Typography: a vékony serif/sans metszetek subpixel-
+     simítással vastagabbnak látszanak, ezért antialiased + grayscale.
+     https://developer.apple.com/design/human-interface-guidelines/typography
+     A Nunito Sans variábilis metszet optikai méretezése a kis S
+     lépcsőn (14 px) tartja a vonalvastagságot. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Az élsimítás a dokumentum gyökerén is: a * öröklődése néhány
+     beágyazott nézetben (iframe-szerű widget, user-agent shadow)
+     megszakad. Ugyanaz a két motor-tulajdonság, mint a univerzális
+     szelektoron. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
   /* A lapon belüli horgonyok (#kurzusok, #ingyenes) ne csússzanak a sticky
      fejléc alá. */
@@ -152,6 +164,17 @@ h6 {
   font-size: var(--kc-font-m);
 }
 
+/* UA-elemek, amik a böngésző alapstílusában negyedik méretet kapnának
+   (`small` ~80 %, `sub`/`sup` `smaller` ≈ 83 %). A Lexical superscript/
+   subscript (`src/components/lexical/serialize.tsx`) ezeket a tageket
+   írja. NN/g Visual Hierarchy: max. 3 méret, a kiegészítő a S.
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/ */
+small,
+sub,
+sup {
+  font-size: var(--kc-font-s);
+}
+
 img,
 picture,
 video,
@@ -171,6 +194,11 @@ textarea {
   /* WebKit/Blink a formavezérlőkön időnként nem viszi át a body
      élsimítását — ugyanaz a két motor-tulajdonság, mint a univerzális
      szelektoron. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::placeholder {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

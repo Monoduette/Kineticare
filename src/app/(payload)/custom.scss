@@ -55,6 +55,15 @@
     U+A720-A7FF;
 }
 
+/* Élsimítás az egész admin-héjon (a storefront base.css univerzális
+   szelektorának párja). A Payload saját stíluslapja nem kéri, a Tenor/
+   Nunito metszetek subpixelen vastagabbnak látszanak. NN/g Glanceable
+   Fonts + Apple HIG Typography, lásd src/app/(frontend)/styles/base.css. */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* ---- Márka-tokenek és alapok — CSAK a Statisztika nézet scope-jában ------
    MÉRET-EGYSÉG: REM, a 13-as Payload-gyökérhez igazított közös egységgel
    (tulajdonosi döntés, 2026-08-20). A történet két lépésben:
@@ -136,25 +145,16 @@
      megengedett (tokens.css 107–111. sor), a paperen 4,45:1 (≥ 3:1). */
   --kc-as-accent: #3d78aa;
 
-  /* Tipográfia (tokens.css 141–196. sor), rem-ben a --kc-as-px egységgel
-     (lásd a szakasz fejkommentjét — a szám a tervezett px-érték). A cím-1 a
-     storefront L lépcsője (tokens.css 178. sor: clamp(2rem, 1.62rem + 1.7vw,
-     2.9rem) 16px-es alapon = 32 → 46,4px); a cím-2 admin-adaptáció: a
-     landing H1/H2-közös L mérete egy táblázatos adatlapon négy óriás
-     szekciócímet adna, ezért a szekciócím kisebb, a szintet a betűcsalád +
-     szín + elhelyezés jelöli (NN/g, Visual Hierarchy: a méret CSAK EGY a
-     hierarchia hordozói közül —
-     https://www.nngroup.com/articles/visual-hierarchy-ux-definition/; a
-     három-méretes őr az admint kifejezetten kiveszi a hatóköréből:
-     src/__tests__/tipografia-harom-meret.test.ts 29–30. sor). */
+  /* Tipográfia: a storefront L/M/S px-értékei a 13-as Payload-gyökéren
+     (NN/g Visual Hierarchy: header 32 px, subheader 18–22 px, body 14–16 px
+     https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
+     A cím-2 a táblázatos lapon az M 18 px-es felsője, nem egy negyedik
+     méret. Az őr az admint kiveszi a storefront-hatókörből, de a számok
+     innentől ugyanazok. */
   --kc-as-font-heading: 'Tenor Sans', 'Georgia', 'Times New Roman', serif;
   --kc-as-font-body: 'Nunito Sans', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  --kc-as-font-cim-1: clamp(
-    calc(32 * var(--kc-as-px)),
-    calc(25.92 * var(--kc-as-px) + 1.7vw),
-    calc(46.4 * var(--kc-as-px))
-  );
-  --kc-as-font-cim-2: calc(24 * var(--kc-as-px));
+  --kc-as-font-cim-1: calc(32 * var(--kc-as-px));
+  --kc-as-font-cim-2: calc(18 * var(--kc-as-px));
   --kc-as-tracking-eyebrow: 0.24em; /* landing eyebrow-nyelv (tokens.css 196. sor) */
 
   /* Térköz: 4px-rács (tokens.css 198–207. sor), rem-ben (--kc-as-px). */
@@ -227,10 +227,12 @@
   background: var(--kc-as-bg);
   color: var(--kc-as-text);
   font-family: var(--kc-as-font-body);
-  /* Az M lépcső alsó határa (tokens.css 179. sor: 1rem a 16px-es
-     storefront-alapon) — rem-ben: 16/13 rem = 16px az alap-gyökéren. */
+  /* Az M lépcső alsó határa (tokens.css: 1rem = 16 px) — rem-ben a 13-as
+     Payload-gyökéren. */
   font-size: calc(16 * var(--kc-as-px));
-  line-height: 1.67; /* --kc-leading-body (tokens.css 184. sor) */
+  line-height: 1.67; /* --kc-leading-body */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .kc-adminstat h1,
@@ -253,6 +255,35 @@
   font-size: var(--kc-as-font-cim-2);
   margin-bottom: var(--kc-as-space-3);
   margin-top: 0;
+}
+
+/* Összesítő kártyák — a 32 px-es L érték bent marad a dobozban.
+   128 px-es flex-padlónál a Payload 768-as töréspontján a négy kártya
+   egy sorban maradt (~129 px tartalom), a fixture „11 304 000 Ft”
+   ~168 px a 32 px-es Nunito 700 tabular-nums metszeten. NN/g Visual
+   Hierarchy a 32 px-es címsor-tetejét tartja, a javítás ELRENDEZÉS:
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+   WCAG 2.2 SC 1.4.10 Reflow. 1340 px fölött négy oszlop (a tartalom
+   ekkor ≥ 177 px). 600–1339: két oszlop. 599 alatt: egy oszlop,
+   min-width 0, hogy a 320 px-es G225-ös őr ne bukjon. */
+.kc-adminstat .kc-as-card {
+  box-sizing: border-box;
+  flex: 1 1 calc(220 * var(--kc-as-px));
+  min-width: calc(220 * var(--kc-as-px));
+}
+
+@media (max-width: 1339px) {
+  .kc-adminstat .kc-as-card {
+    flex-basis: calc((100% - var(--kc-as-space-3)) / 2);
+    min-width: calc((100% - var(--kc-as-space-3)) / 2);
+  }
+}
+
+@media (max-width: 599px) {
+  .kc-adminstat .kc-as-card {
+    flex-basis: 100%;
+    min-width: 0;
+  }
 }
 
 /* Felvezető sor (eyebrow) — a landing `.kc-eyebrow` nyelve (content.css):

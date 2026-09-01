@@ -17,7 +17,7 @@ export function StatCard({
   valueColor?: string
 }) {
   return (
-    <div style={cardStyle}>
+    <div className="kc-as-card" style={cardStyle}>
       <span
         style={valueColor === undefined ? cardValueStyle : { ...cardValueStyle, color: valueColor }}
       >

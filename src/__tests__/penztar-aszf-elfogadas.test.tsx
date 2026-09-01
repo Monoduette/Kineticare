@@ -182,7 +182,7 @@ function tokenTerkep(): Map<string, string> {
     if (ertek === undefined || melyseg > 8) {
       return ''
     }
-    const hivatkozas = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+    const hivatkozas = /^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/.exec(ertek)
     return hivatkozas === null ? ertek : felold(hivatkozas[1], melyseg + 1)
   }
   for (const nev of nyers.keys()) {
@@ -773,7 +773,7 @@ describe('Mért sorhossz és 320 px-es reflow (SC 1.4.10)', () => {
       /padding:\s*([^;]+);/
         .exec(szabalyTorzs(olvas('src/app/(frontend)/styles/ui.css'), '.kc-card--padded'))?.[1]
         ?.trim()
-        .replace(/^var\((--kc-[a-z0-9-]+)\)$/, (_, nev: string) => tokenek.get(nev) ?? '') ?? '',
+        .replace(/^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/, (_, nev: string) => tokenek.get(nev) ?? '') ?? '',
     )
     const res = pixel(
       tokenek.get(/gap:\s*var\((--kc-space-\d)\)/.exec(szabalyTorzs(css, '.kc-checkout-terms__row'))?.[1] ?? '') ?? '',

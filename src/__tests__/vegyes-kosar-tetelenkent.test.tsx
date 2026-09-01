@@ -440,7 +440,7 @@ function tokenTerkep(): Map<string, string> {
     if (ertek === undefined || melyseg > 8) {
       return ''
     }
-    const hivatkozas = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+    const hivatkozas = /^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/.exec(ertek)
     return hivatkozas === null ? ertek : felold(hivatkozas[1], melyseg + 1)
   }
   for (const nev of nyers.keys()) {

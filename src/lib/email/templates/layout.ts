@@ -23,6 +23,21 @@ const BETU = {
   torzs: "'Nunito Sans', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
 } as const
 
+/**
+ * A lap három mérete px-ben. A levélkliens nem érti a CSS-változót és a
+ * clamp-et, ezért itt a tokens.css L/M/S PADLÓJA él (320 px-es web):
+ * L = 32, M = 16 (iOS/Litmus padló), S = 14.
+ * A web folytonos skálája (32–40 / 16–19 / 14–16) a kliensekben nem
+ * reprodukálható; a padló a Litmus-minimum és az NN/g 14 px fölött marad.
+ * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+ * A rejtett előnézeti sor 1 px-e NEM tipográfiai lépcső.
+ */
+const MERET = {
+  l: '32px',
+  m: '16px',
+  s: '14px',
+} as const
+
 /** Egy címke–érték sor a kiemelt összefoglaló panelben. */
 export interface LayoutSummaryRow {
   label: string
@@ -90,25 +105,25 @@ function bekezdesekHtml(paragraphs: string[]): string {
   return paragraphs
     .map(
       (paragraph) =>
-        `<p style="margin:0 0 16px 0;font-family:${BETU.torzs};font-size:16px;line-height:1.7;color:${SZIN.inkHalk};">${paragraph}</p>`,
+        `<p style="margin:0 0 16px 0;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.7;color:${SZIN.inkHalk};">${paragraph}</p>`,
     )
     .join('\n')
 }
 
 function eyebrowHtml(eyebrow: string): string {
-  return `<p style="margin:0 0 10px 0;font-family:${BETU.torzs};font-size:12px;line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;color:${SZIN.akcent};">${escapeHtml(eyebrow)}</p>`
+  return `<p style="margin:0 0 10px 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.4;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;color:${SZIN.akcent};">${escapeHtml(eyebrow)}</p>`
 }
 
 function summaryHtml(summary: NonNullable<LayoutInput['summary']>): string {
   const cim = summary.title
-    ? `<p style="margin:0 0 12px 0;font-family:${BETU.torzs};font-size:13px;line-height:1.4;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:${SZIN.ink};">${escapeHtml(summary.title)}</p>`
+    ? `<p style="margin:0 0 12px 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.4;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:${SZIN.ink};">${escapeHtml(summary.title)}</p>`
     : ''
   const sorok = summary.rows
     .map(
       (row, index) =>
         `<tr>
-            <td style="padding:${index === 0 ? '0' : '8px'} 12px 0 0;font-family:${BETU.torzs};font-size:14px;line-height:1.6;color:${SZIN.inkHalk};white-space:nowrap;vertical-align:top;">${escapeHtml(row.label)}</td>
-            <td style="padding:${index === 0 ? '0' : '8px'} 0 0 0;font-family:${BETU.torzs};font-size:14px;line-height:1.6;color:${SZIN.ink};font-weight:600;vertical-align:top;">${escapeHtml(row.value)}</td>
+            <td style="padding:${index === 0 ? '0' : '8px'} 12px 0 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.6;color:${SZIN.inkHalk};white-space:nowrap;vertical-align:top;">${escapeHtml(row.label)}</td>
+            <td style="padding:${index === 0 ? '0' : '8px'} 0 0 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.6;color:${SZIN.ink};font-weight:600;vertical-align:top;">${escapeHtml(row.value)}</td>
           </tr>`,
     )
     .join('\n')
@@ -124,24 +139,24 @@ function summaryHtml(summary: NonNullable<LayoutInput['summary']>): string {
 
 function itemsHtml(items: NonNullable<LayoutInput['items']>): string {
   const cim = items.title
-    ? `<p style="margin:0 0 12px 0;font-family:${BETU.torzs};font-size:13px;line-height:1.4;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:${SZIN.ink};">${escapeHtml(items.title)}</p>`
+    ? `<p style="margin:0 0 12px 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.4;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:${SZIN.ink};">${escapeHtml(items.title)}</p>`
     : ''
   const sorok = items.rows
     .map(
       (row) =>
         `<tr>
-            <td style="padding:12px 12px 12px 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:15px;line-height:1.5;color:${SZIN.ink};vertical-align:top;">
-              ${escapeHtml(row.title)}${row.meta ? `<br /><span style="font-size:13px;color:${SZIN.inkHalk};">${escapeHtml(row.meta)}</span>` : ''}
+            <td style="padding:12px 12px 12px 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.5;color:${SZIN.ink};vertical-align:top;">
+              ${escapeHtml(row.title)}${row.meta ? `<br /><span style="font-size:${MERET.s};color:${SZIN.inkHalk};">${escapeHtml(row.meta)}</span>` : ''}
             </td>
-            <td style="padding:12px 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:15px;line-height:1.5;color:${SZIN.ink};text-align:right;white-space:nowrap;vertical-align:top;">${row.amount ? escapeHtml(row.amount) : ''}</td>
+            <td style="padding:12px 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.5;color:${SZIN.ink};text-align:right;white-space:nowrap;vertical-align:top;">${row.amount ? escapeHtml(row.amount) : ''}</td>
           </tr>`,
     )
     .join('\n')
   const osszeg =
     items.totalLabel && items.totalValue
       ? `<tr>
-            <td style="padding:14px 12px 0 0;border-top:2px solid ${SZIN.ink};font-family:${BETU.torzs};font-size:15px;line-height:1.5;color:${SZIN.ink};font-weight:700;">${escapeHtml(items.totalLabel)}</td>
-            <td style="padding:14px 0 0 0;border-top:2px solid ${SZIN.ink};font-family:${BETU.torzs};font-size:17px;line-height:1.5;color:${SZIN.ink};font-weight:700;text-align:right;white-space:nowrap;">${escapeHtml(items.totalValue)}</td>
+            <td style="padding:14px 12px 0 0;border-top:2px solid ${SZIN.ink};font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.5;color:${SZIN.ink};font-weight:700;">${escapeHtml(items.totalLabel)}</td>
+            <td style="padding:14px 0 0 0;border-top:2px solid ${SZIN.ink};font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.5;color:${SZIN.ink};font-weight:700;text-align:right;white-space:nowrap;">${escapeHtml(items.totalValue)}</td>
           </tr>`
       : ''
   return `<div style="margin:0 0 24px 0;">
@@ -163,11 +178,11 @@ function ctaHtml(cta: NonNullable<LayoutInput['cta']>): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 20px 0;">
       <tr>
         <td align="center" bgcolor="${SZIN.akcent}" style="border-radius:8px;">
-          <a href="${url}" style="display:inline-block;padding:15px 32px;font-family:${BETU.torzs};font-size:16px;line-height:1;font-weight:700;color:${SZIN.feher};text-decoration:none;border-radius:8px;">${escapeHtml(cta.label)}</a>
+          <a href="${url}" style="display:inline-block;padding:15px 32px;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1;font-weight:700;color:${SZIN.feher};text-decoration:none;border-radius:8px;">${escapeHtml(cta.label)}</a>
         </td>
       </tr>
     </table>
-    <p style="margin:0 0 8px 0;font-family:${BETU.torzs};font-size:13px;line-height:1.6;color:${SZIN.inkHalk};">Ha a gomb nem működik, másold be ezt a címet a böngésződbe:<br /><a href="${url}" style="color:${SZIN.akcent};word-break:break-all;">${url}</a></p>`
+    <p style="margin:0 0 8px 0;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.6;color:${SZIN.inkHalk};">Ha a gomb nem működik, másold be ezt a címet a böngésződbe:<br /><a href="${url}" style="color:${SZIN.akcent};word-break:break-all;">${url}</a></p>`
 }
 
 export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | 'text'> {
@@ -187,35 +202,35 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
     <meta name="supported-color-schemes" content="light" />
     <title>${escapeHtml(input.heading)}</title>
   </head>
-  <body style="margin:0;padding:0;background-color:${SZIN.papir};-webkit-font-smoothing:antialiased;">
+  <body style="margin:0;padding:0;background-color:${SZIN.papir};-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;">
     ${preheaderHtml}
     ${tablaNyit(`background-color:${SZIN.papir};`)}
       <tr>
         <td align="center" style="padding:32px 16px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:collapse;width:100%;max-width:600px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:collapse;width:100%;max-width:600px;table-layout:fixed;">
 
             <tr>
-              <td style="padding:0 4px 16px 4px;font-family:${BETU.cim};font-size:15px;line-height:1;letter-spacing:0.22em;text-transform:uppercase;color:${SZIN.ink};">Kineti<span style="color:${SZIN.akcent};">care</span></td>
+              <td style="padding:0 4px 16px 4px;font-family:${BETU.cim};font-size:${MERET.m};line-height:1;letter-spacing:0.22em;text-transform:uppercase;color:${SZIN.ink};">Kineti<span style="color:${SZIN.akcent};">care</span></td>
             </tr>
 
             <tr>
               <td style="background-color:${SZIN.feher};border:1px solid ${SZIN.hajszal};border-radius:14px;padding:32px;">
                 ${input.eyebrow ? eyebrowHtml(input.eyebrow) : ''}
-                <h1 style="margin:0 0 20px 0;font-family:${BETU.cim};font-size:26px;line-height:1.25;font-weight:400;color:${SZIN.ink};">${escapeHtml(input.heading)}</h1>
+                <h1 style="margin:0 0 20px 0;font-family:${BETU.cim};font-size:${MERET.l};line-height:1.25;font-weight:400;color:${SZIN.ink};max-width:100%;overflow-wrap:break-word;word-break:break-word;">${escapeHtml(input.heading)}</h1>
                 ${bekezdesekHtml(input.paragraphsHtml)}
                 ${input.summary ? summaryHtml(input.summary) : ''}
                 ${input.items ? itemsHtml(input.items) : ''}
                 ${input.cta ? ctaHtml(input.cta) : ''}
                 ${
                   input.note
-                    ? `<p style="margin:16px 0 0 0;padding:16px 0 0 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:13px;line-height:1.6;color:${SZIN.inkHalk};">${escapeHtml(input.note)}</p>`
+                    ? `<p style="margin:16px 0 0 0;padding:16px 0 0 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.6;color:${SZIN.inkHalk};">${escapeHtml(input.note)}</p>`
                     : ''
                 }
               </td>
             </tr>
 
             <tr>
-              <td style="padding:20px 4px 0 4px;font-family:${BETU.torzs};font-size:12px;line-height:1.7;color:${SZIN.inkHalk};">
+              <td style="padding:20px 4px 0 4px;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.7;color:${SZIN.inkHalk};">
                 ${BRAND_NAME} · Kézrehabilitációs online kurzusplatform<br />
                 Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.
               </td>

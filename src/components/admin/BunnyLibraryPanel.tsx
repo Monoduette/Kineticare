@@ -43,7 +43,7 @@ const noteStyle: CSSProperties = {
 const tableStyle: CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
-  fontSize: '0.9rem',
+  fontSize: 'calc(1rem * 14 / 13)',
   marginTop: 'calc(var(--base) * 0.5)',
 }
 

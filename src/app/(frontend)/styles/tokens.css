@@ -99,9 +99,11 @@
      Lásd docs/ertekesitesi-ux-skill.md 3. pont. */
   --kc-color-bg: var(--kc-color-paper); /* lap-háttér: body, szekció, fejléc, lábléc */
   --kc-color-surface: var(--kc-color-bg); /* a lap-felület alias-a (a landingen a kettő egy) */
-  --kc-color-surface-raised: var(--kc-color-white); /* a lap FÖLÉ emelt felület: kártya, mező, fiók, almenü */
+  /* a lap FÖLÉ emelt felület: kártya, mező, fiók, almenü */
+  --kc-color-surface-raised: var(--kc-color-white);
   --kc-color-surface-tint: var(--kc-color-tint-cool); /* tint-sáv (kc-section--tint) */
-  --kc-color-surface-dark: var(--kc-color-ink); /* sötét sáv (kc-section--dark) — a lábléc a landing nyelvén paper hátterű */
+  /* sötét sáv (kc-section--dark) — a lábléc a landing nyelvén paper hátterű */
+  --kc-color-surface-dark: var(--kc-color-ink);
   --kc-color-text: var(--kc-color-ink);
   --kc-color-text-muted: var(--kc-color-ink-soft);
   --kc-color-on-dark: var(--kc-color-white);
@@ -114,52 +116,84 @@
   --kc-color-link: var(--kc-color-text); /* landing footer-meta: ink + aláhúzás */
   --kc-color-link-hover: var(--kc-color-accent-deep);
   --kc-color-focus: var(--kc-color-accent-deep); /* fókuszgyűrű világos felületen */
-  --kc-color-focus-on-dark: var(--kc-color-white); /* sötét sávon (accent-deep az inken csak 2,87:1) */
+  /* sötét sávon (accent-deep az inken csak 2,87:1) */
+  --kc-color-focus-on-dark: var(--kc-color-white);
 
   /* ---- Tipográfia ------------------------------------------------------ */
   --kc-font-heading: 'Tenor Sans', 'Georgia', 'Times New Roman', serif;
   --kc-font-body: 'Nunito Sans', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 
-  /* ---- HÁROM-MÉRETES tipográfiai skála (tulajdonosi döntés, 2026-08-16) ----
-     Az ügyféloldali felületen LEGFELJEBB HÁROM betűméret élhet. A korábbi
-     kilenc törzs-lépcső (--kc-text-2xs … 4xl) és tizenhárom tábla-lépcső
-     (--kc-text-board-*) helyére ez a három token lép; minden `font-size`
-     deklaráció KIZÁRÓLAG ezekre hivatkozhat (őr-teszt: kc-harom-meret).
+  /* ---- HÁROM-MÉRETES, FOLYTONOS tipográfiai skála (2026-09-01) -------------
+     Az ügyféloldali felületen LEGFELJEBB HÁROM betűméret-TOKEN élhet.
+     Egy token a nézetablakkal interpolál: ez NEM negyedik méret, hanem
+     ugyanaz a lépcső, olvashatóbban a tágas képernyőn. Minden `font-size`
+     KIZÁRÓLAG ezekre hivatkozhat (őr: src/__tests__/tipografia-harom-meret.test.ts).
 
-     MIÉRT NEM SZEGÉNYEBB EZ A HIERARCHIA. A vizuális hierarchiát nem a
-     méret egyedül hordozza: az NN/g „Visual Hierarchy" alapelve szerint a
-     méret, a SÚLY, a SZÍN, a verzál/betűköz és az ELHELYEZÉS együtt jelölik
-     a szintet. Három mérethez két súly (400/700), két szövegszín (ink /
-     ink-soft), két betűcsalád (Tenor Sans címsor / Nunito Sans törzs) és a
-     verzál+tracking eyebrow-nyelv társul — ez így 5-nél több egyértelműen
-     megkülönböztethető szintet ad, miközben a lapon mért betűméret-készlet
-     háromra szűkül. A korábbi állapot ellenkezője volt ennek: 22 különböző
-     méret futott a kezdőlapon, ami zajt adott hierarchia helyett.
+     FORRÁS, NEM ÍZLÉS.
+     1) Nielsen Norman Group, Visual Hierarchy in UX: max. 3 méret;
+        TARTOMÁNYOK (nem egyetlen pixel): törzs 14–16, alcím 18–22,
+        címsor 32 px-ig. A hierarchia színből, súlyból, csoportosításból
+        is jön, nem csak méretből.
+        https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+        Good Visual Design, ugyanaz a három-méretes szabály:
+        https://www.nngroup.com/articles/good-visual-design/
+        Let Users Control Font Size: relatív egység (rem/%), reasonably
+        big alap, a px-re zárt skála megöli a nagyítást.
+        https://www.nngroup.com/articles/let-users-control-font-size/
+     2) GOV.UK type scale v6+: a skála A KÉPERNYŐ SZERINT VÁLTOZIK
+        (640 px fölött a „large screens" lépcső). Törzs (govuk-body)
+        19 px; heading-xl 32 px (kis) → 48 px (nagy); heading-l 27 → 36;
+        body-s 16 mindkét oldalon. Relatív rem.
+        https://design-system.service.gov.uk/styles/type-scale/
+     3) Apple HIG Typography: a szöveg STÍLUS (Body, Title, Caption)
+        a Dynamic Type-pal és a size class-szal nő, nem egy befagyott px.
+        Alap Body 17 pt; Large Title 34 pt az alapbeállításnál.
+        https://developer.apple.com/design/human-interface-guidelines/typography
+     4) WCAG 2.2 1.4.4 Resize Text (AA): a méret relatív, a felhasználó
+        nagyíthat. 1.4.10 Reflow: a 320 px-es hasáb nem nyílhat szét
+        (C33, overflow-wrap a body-n).
+
+     MIÉRT clamp() + vw, NEM cqi. A tartalomhasáb --kc-container-narrow
+     (720 px) fölött nem nő: ha a betű a hasábhoz igazodna, 1440 px-en
+     is tablet-méret maradna. A tulajdonosi kérés a KÉPERNYŐHÖZ igazított
+     olvashatóság, ezért a preferred tag vw. A cqi ráadásul a beágyazott
+     kártya-konténereken összezsugorítaná a címsort.
+
+     MIÉRT EZEK A PADLÓK ÉS PLAFONOK (320 → 1440, Utopia-képlet).
+       S  14 → 16 px. NN/g törzs-padló; nagy képernyőn a GOV.UK body-s
+          (16), ne maradjon apróbetű egy 27"-es monitoron.
+       M  16 → 19 px. iOS Safari 16 px padló (űrlap-nagyítás ellen);
+          19 px a GOV.UK govuk-body. Nem 20: arra nincs idézett forrás.
+       L  32 → 40 px. Padló: NN/g „up to 32" + GOV.UK heading-xl kis
+          képernyőn. Plafon NEM 48 (GOV.UK xl nagy), mert a H1 és a H2
+          KÖZÖS L: 48 px minden szekciócímet display-méretűvé tenne.
+          NEM 46,4 (a 2026-08-16-i 2,9rem): az öt soros címeket adott.
+          40 a GOV.UK heading-l (36) és heading-xl (48) között ül.
+
+     A 2026-08-16-i L plafon (2,9rem) és a 13 px-es S kikerült. A
+     2026-09-01 délelőtti diszkrét L=32 / S=14 a „up to 32" félreolvasása
+     volt: a kutatás TARTOMÁNYT ad, a GOV.UK pedig expliciten skáláz.
+
+     MIÉRT NEM SZEGÉNYEBB A HIERARCHIA. A méret CSAK EGY hordozó: két
+     súly (400/700), két szövegszín (ink / ink-soft), két betűcsalád
+     (Tenor Sans címsor / Nunito Sans törzs) és a verzál+tracking
+     eyebrow. H1 és H2 továbbra is közös L.
 
      A LÉPCSŐK SZEREPE
-       L — CÍMEK. A hero H1 ÉS a szekció-H2-k KÖZÖS mérete. A H1 és a H2
-           megkülönböztetése NEM méret, hanem elhelyezés (a H1 a hero-ban áll,
-           lead + CTA kíséri), felvezető sor (eyebrow) és szín dolga.
-           Egyben a display-lépcső: a hero címsora ennél nagyobb nem lehet
-           (docs/ertekesitesi-ux-skill.md 4. pont — a 2,9rem a skill
-           --fs-display ≈ 3,5rem-es plafonja alatt marad).
+       L — CÍMEK. Hero H1 és szekció-H2 közös tokenje.
        M — TÖRZS. Bekezdés, lead, navigáció, gomb, űrlapmező, kártyacím,
-           kártyaszöveg, ár (az ár kiemelése SÚLLYAL: 700), accordion-fejléc.
-           Alsó határa pontosan 1rem = 16px, hogy az iOS Safari ne
-           nagyítson rá az űrlapmezőkre.
-       S — KIEGÉSZÍTŐ. Eyebrow, badge, meta-sor (dátum, darabszám, hossz),
-           apróbetű, lábléc-finomságok, űrlap-súgó és -hibaüzenet.
+           ár (az ár kiemelése SÚLLYAL: 700).
+       S — KIEGÉSZÍTŐ. Eyebrow, badge, meta-sor, apróbetű, űrlap-súgó.
 
-     Mind a három clamp-alapú és viewport-arányos (360px → ~1200px között nő,
-     felül fix rem-en zár), tehát a skill „folytonos skála" előírását tartja.
-     Mért végpontok: L 32 → 46,4px · M 16 → 18px · S 13 → 14px. */
-  --kc-font-l: clamp(2rem, 1.62rem + 1.7vw, 2.9rem);
-  --kc-font-m: clamp(1rem, 0.955rem + 0.2vw, 1.125rem);
-  --kc-font-s: clamp(0.8125rem, 0.785rem + 0.12vw, 0.875rem);
+     html { font-size } NEM ezekre a tokenekre megy: a rem különben
+     önmagát skálázná. A gyökér a böngésző 16 px-e marad. */
+  --kc-font-l: clamp(2rem, 1.8571rem + 0.7143vw, 2.5rem);
+  --kc-font-m: clamp(1rem, 0.9464rem + 0.2679vw, 1.1875rem);
+  --kc-font-s: clamp(0.875rem, 0.8393rem + 0.1786vw, 1rem);
 
   --kc-leading-tight: 1.15;
   --kc-leading-heading: 1.2; /* legacy headline 108/100 ≈ 1.08, olvashatóságra kerekítve */
-  --kc-leading-body: 1.67;   /* legacy 30/18 */
+  --kc-leading-body: 1.67; /* legacy 30/18 */
   /* Display-sortáv az L lépcsőhöz (UX-skill 4. pont: display 1,05-1,15 között).
      A tükör 0,97-0,98-as, óriás betűkhöz hangolt értéke a három-méretes skálán
      már a sáv alá esne (és a magyar ékezetek a fölötte lévő sorba érnének),
@@ -174,21 +208,21 @@
   --kc-tracking-eyebrow: 0.24em;
 
   /* ---- Térközök (4px rács) --------------------------------------------- */
-  --kc-space-1: 0.25rem;  /* 4px */
-  --kc-space-2: 0.5rem;   /* 8px */
-  --kc-space-3: 0.75rem;  /* 12px */
-  --kc-space-4: 1rem;     /* 16px */
-  --kc-space-5: 1.5rem;   /* 24px */
-  --kc-space-6: 2rem;     /* 32px */
-  --kc-space-7: 3rem;     /* 48px */
-  --kc-space-8: 4.5rem;   /* 72px */
-  --kc-space-9: 5.5rem;   /* 88px — legacy szekció-padding (100px) körül */
+  --kc-space-1: 0.25rem; /* 4px */
+  --kc-space-2: 0.5rem; /* 8px */
+  --kc-space-3: 0.75rem; /* 12px */
+  --kc-space-4: 1rem; /* 16px */
+  --kc-space-5: 1.5rem; /* 24px */
+  --kc-space-6: 2rem; /* 32px */
+  --kc-space-7: 3rem; /* 48px */
+  --kc-space-8: 4.5rem; /* 72px */
+  --kc-space-9: 5.5rem; /* 88px — legacy szekció-padding (100px) körül */
 
   /* ---- Lekerekítések ---------------------------------------------------- */
-  --kc-radius-sm: 0.25rem;  /* 4px */
-  --kc-radius-md: 0.5rem;   /* 8px */
-  --kc-radius-lg: 0.75rem;  /* 12px */
-  --kc-radius-full: 999px;  /* badge/tabletta */
+  --kc-radius-sm: 0.25rem; /* 4px */
+  --kc-radius-md: 0.5rem; /* 8px */
+  --kc-radius-lg: 0.75rem; /* 12px */
+  --kc-radius-full: 999px; /* badge/tabletta */
 
   /* ---- Árnyékok -----------------------------------------------------------
      A landing árnyék NÉLKÜLI, hairline-alapú nyelvet használ: a felületeket
@@ -200,7 +234,7 @@
   --kc-shadow-lg: 0 12px 32px rgb(16 36 62 / 0.14);
 
   /* ---- Layout ------------------------------------------------------------ */
-  --kc-container-wide: 1120px;  /* legacy "wide" tartalom-szélesség */
+  --kc-container-wide: 1120px; /* legacy "wide" tartalom-szélesség */
   --kc-container-narrow: 720px; /* legacy "small" tartalom-szélesség */
   --kc-container-gutter: var(--kc-space-5); /* mobil oldal-margó */
 

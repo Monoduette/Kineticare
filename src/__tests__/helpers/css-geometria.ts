@@ -216,7 +216,7 @@ export function hosszPx(
     )
     return szoveg.startsWith('min(') ? Math.min(...reszek) : Math.max(...reszek)
   }
-  // Egyszerű összeg (`0.955rem + 0.2vw`) — a CSS a clamp() közepén ezt használja.
+  // Egyszerű összeg (`0.9464rem + 0.2679vw`) — a CSS a clamp() közepén ezt használja.
   let osszeg = 0
   for (const tag of szoveg.split('+')) {
     const t = tag.trim()

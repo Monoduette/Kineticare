@@ -392,11 +392,14 @@ describe('kalibráció — a számolt geometria a böngészős méréshez van hi
    * | 320 | h2 | 272 px | 32 px    | 0,32 px   |
    * | 320 | h3 | 272 px | 16 px    | 0,16 px   |
    * | 320 | li | 240 px | 16 px    | 0 px      |
-   * | 390 | p  | 342 px | 16,06 px | 0 px      |
-   * | 390 | h2 | 342 px | 32,55 px | 0,3255 px |
+   * | 390 | p  | 342 px | 16,19 px | 0 px      |
+   * | 390 | h2 | 342 px | 32,50 px | 0,325 px  |
    *
-   * Ha ez a blokk elbukik, a modell és a valóság elvált egymástól: ELŐBB
-   * mérj újra böngészővel, és csak utána írd át a számokat.
+   * A 390-es számok a folytonos L/M clampből jönnek (korábban L diszkrét
+   * 32 px volt minden nézetablakon). 320-on a clamp padlója tartja a 16/32-t.
+   *
+   * Ha ez a blokk elbukik, a modell és a CSS elvált egymástól: ELŐBB
+   * nézd a token clampjét, és csak utána írd át a számokat.
    */
   const VART: readonly {
     nezetablak: number
@@ -409,8 +412,8 @@ describe('kalibráció — a számolt geometria a böngészős méréshez van hi
     { nezetablak: 320, cimke: 'h2', hasab: 272, betumeret: 32, betuKoz: 0.32 },
     { nezetablak: 320, cimke: 'h3', hasab: 272, betumeret: 16, betuKoz: 0.16 },
     { nezetablak: 320, cimke: 'li', hasab: 240, betumeret: 16, betuKoz: 0 },
-    { nezetablak: 390, cimke: 'p', hasab: 342, betumeret: 16.06, betuKoz: 0 },
-    { nezetablak: 390, cimke: 'h2', hasab: 342, betumeret: 32.55, betuKoz: 0.3255 },
+    { nezetablak: 390, cimke: 'p', hasab: 342, betumeret: 16.19, betuKoz: 0 },
+    { nezetablak: 390, cimke: 'h2', hasab: 342, betumeret: 32.5, betuKoz: 0.325 },
   ]
 
   it.each(VART)(

@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest'
 
 import { StatisticsReport } from '../components/admin/StatisticsReport'
 import {
+  cardStyle,
+  cardValueStyle,
   leadStyle,
   noticeStyle,
   pageStyle,
@@ -385,6 +387,21 @@ describe('Statisztika — a folyószöveg mértéke a széles lapon sem szalad e
     const karakter = mertek / MERT_KARAKTER_PX
     expect(karakter).toBeGreaterThanOrEqual(45)
     expect(karakter).toBeLessThanOrEqual(75)
+  })
+})
+
+describe('Statisztika — a 32 px-es bevétel a kártyában marad', () => {
+  it('a kártya-elrendezés 768 px-en két oszlop, nem négy 129 px-es cella', () => {
+    // A fixture 11 304 000 Ft ~168 px a 32 px-es L lépcsőn. A korábbi
+    // 128 px-es flex-padló egy sorban tartotta a négy kártyát.
+    expect(HTML).toContain('kc-as-card-row')
+    expect(HTML).toContain('kc-as-card')
+    expect(cardStyle.minWidth).toBeUndefined()
+    expect(cardValueStyle.fontSize).toContain('32')
+    expect(cardValueStyle.overflowWrap).toBe('break-word')
+    expect(BRAND_CSS).toContain('min-width: calc(220 * var(--kc-as-px))')
+    expect(BRAND_CSS).toContain('@media (max-width: 1339px)')
+    expect(BRAND_CSS).toContain('@media (max-width: 599px)')
   })
 })
 

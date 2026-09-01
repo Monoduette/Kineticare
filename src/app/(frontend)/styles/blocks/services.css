@@ -277,7 +277,7 @@
   margin: 0;
   /* A sor-cím L-re nőtt; a szám M marad. A 0,2rem a két M-es sor
      sapka-vonalára volt hangolva. space-2 (8 px) a mért optikai
-     igazítás: 320-on L=32 px / szám=16 px, 1440-en L=46,4 px / szám=18 px.
+     igazítás: 320-on L=32 px / szám=16 px, 1440-en L=32 px / szám=18 px.
      NN/g Visual Hierarchy: a szám UI-jel, nem címsor. */
   padding-top: var(--kc-space-2);
   font-family: var(--kc-font-body);

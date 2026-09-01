@@ -40,11 +40,11 @@ const MEASURE = 'var(--kc-as-measure, calc(480 * var(--kc-as-px, 1px)))'
 
 /* Eyebrow a h1 fölé — a landing prémium felvezető-sora: verzál CSS-ből
    (a DOM-szöveg mondatkezdő marad, ui-sztenderdek §3.1 M-4), 0.24em
-   betűköz, ink-soft (tokens.css 195–196. sor; paperen 8,80:1). A 13px az
-   S lépcső alsó határa (tokens.css 180. sor: 0.8125rem 16px-es alapon). */
+   betűköz, ink-soft (tokens.css; paperen 8,80:1). A 14 px az S lépcső
+   (NN/g törzs-padló, tokens.css --kc-font-s). */
 export const eyebrowStyle: CSSProperties = {
   color: 'var(--kc-as-eyebrow, var(--theme-elevation-650))',
-  fontSize: 'calc(13 * var(--kc-as-px, 1px))',
+  fontSize: 'calc(14 * var(--kc-as-px, 1px))',
   fontWeight: 600,
   letterSpacing: 'var(--kc-as-tracking-eyebrow, 0.24em)',
   marginTop: 0,
@@ -106,8 +106,10 @@ export const cardStyle: CSSProperties = {
   background: 'var(--kc-as-surface-raised, var(--theme-elevation-50))',
   border: '1px solid var(--kc-as-hairline, var(--theme-elevation-100))',
   borderRadius: 'var(--kc-as-radius-lg, 4px)',
-  flex: '1 1 calc(128 * var(--kc-as-px, 1px))',
-  minWidth: 'calc(128 * var(--kc-as-px, 1px))',
+  /* A flex-basis és a min-width a `.kc-as-card` osztályon él
+     (custom.scss): 128 px-es padlónál a Payload 768-as töréspontján a négy
+     kártya egy sorban maradt, a 32 px-es „11 304 000 Ft” kilógott.
+     A sorelés ott van, itt csak a felület. */
   padding: 'var(--kc-as-space-5, calc(var(--base) * 0.75))',
 }
 
@@ -117,10 +119,14 @@ export const cardStyle: CSSProperties = {
    kiemelt számot súllyal jelöli, nem mérettel (tokens.css 168–169. sor). */
 export const cardValueStyle: CSSProperties = {
   display: 'block',
-  fontSize: 'calc(24 * var(--kc-as-px, 1px))',
+  fontSize: 'calc(32 * var(--kc-as-px, 1px))',
   fontVariantNumeric: 'tabular-nums',
   fontWeight: 700,
   lineHeight: 1.2,
+  maxWidth: '100%',
+  /* A magyar csoportosítás nemtörő szóközt használ; a törés csak akkor
+     lép, ha a szám a kétoszlopos kártyánál is hosszabb (WCAG 1.4.10 C33). */
+  overflowWrap: 'break-word',
 }
 
 export const cardLabelStyle: CSSProperties = {
@@ -181,17 +187,16 @@ export const tableWrapStyle: CSSProperties = {
   width: '100%',
 }
 
-/* A minWidth garantálja, hogy az oszlopok sose préselődjenek olvashatatlanra:
+/*    A minWidth garantálja, hogy az oszlopok sose préselődjenek olvashatatlanra:
    keskeny viewporton a tableWrap görget, nem a lap (WCAG 1.4.10 / G225,
-   ugyanaz a minta, mint a CourseProgressPanel táblája). A 15px admin-
-   adaptáció a 16px-es törzs alá: az adatsűrű tábla egy fokkal kisebb, de a
-   12,4px-es (mért) korábbi rendernél jóval olvashatóbb; kontrasztja mérve
-   9,3:1 / 6,61:1 (jegyzőkönyv a custom.scss-ben). */
+   ugyanaz a minta, mint a CourseProgressPanel táblája). A betűméret az M
+   lépcső (16 px): a negyedik, 15 px-es méret NN/g szerint nem fér a
+   három-lépcsős skálába. */ 
 export const tableStyle: CSSProperties = {
   width: '100%',
   minWidth: 'calc(576 * var(--kc-as-px, 1px))',
   borderCollapse: 'collapse',
-  fontSize: 'calc(15 * var(--kc-as-px, 1px))',
+  fontSize: 'calc(16 * var(--kc-as-px, 1px))',
 }
 
 export const captionStyle: CSSProperties = {

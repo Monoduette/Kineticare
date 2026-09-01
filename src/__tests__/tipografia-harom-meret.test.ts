@@ -4,14 +4,23 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { hosszPx } from './helpers/css-geometria'
+
 /**
  * ŐR — HÁROM-MÉRETES TIPOGRÁFIAI SKÁLA (tulajdonosi döntés, 2026-08-16).
  *
  * A szabály: az ÜGYFÉLOLDALI felületen legfeljebb HÁROM betűméret élhet.
  *
- *   L (--kc-font-l) — címek: a hero H1 ÉS a szekció-H2-k KÖZÖS mérete,
- *   M (--kc-font-m) — törzs: bekezdés, lead, nav, gomb, mező, kártyacím, ár,
- *   S (--kc-font-s) — kiegészítő: eyebrow, badge, meta-sor, apróbetű.
+ *   L (--kc-font-l) — címek: a hero H1 ÉS a szekció-H2-k KÖZÖS tokenje
+ *     (32–40 px a 320–1440 sávon),
+ *   M (--kc-font-m) — törzs: bekezdés, lead, nav, gomb, mező, kártyacím, ár
+ *     (16–19 px),
+ *   S (--kc-font-s) — kiegészítő: eyebrow, badge, meta-sor, apróbetű
+ *     (14–16 px).
+ *
+ * A token FOLYTONOS: nagyobb nézetablakon nagyobb a számított px. Ez nem
+ * negyedik méret. A 2026-09-01 délelőtti diszkrét L=32 / S=14 a kutatás
+ * tartományát és a GOV.UK responsive skálát félreolvasta.
  *
  * Miért ŐR és nem csak konvenció: a repóban korábban 22 különböző fontméret
  * futott (9 törzs- + 13 tábla-lépcső), és mindegyik „egy jó okkal" került be.
@@ -79,7 +88,11 @@ describe('három-méretes tipográfiai skála — token-definíció', () => {
     )
     // A betűCSALÁD-tokenek (--kc-font-heading/body) és a súlyok nem méretek.
     const meretek = definiciok.filter(([nev]) => /^--kc-font-(l|m|s)$/.test(nev))
-    expect(meretek.map(([nev]) => nev).sort()).toEqual(['--kc-font-l', '--kc-font-m', '--kc-font-s'])
+    expect(meretek.map(([nev]) => nev).sort()).toEqual([
+      '--kc-font-l',
+      '--kc-font-m',
+      '--kc-font-s',
+    ])
     for (const [nev, ertek] of meretek) {
       expect(ertek, `${nev} nem clamp-alapú`).toMatch(/^clamp\(/)
     }
@@ -87,6 +100,38 @@ describe('három-méretes tipográfiai skála — token-definíció', () => {
 
   it('a törzs alsó határa 1rem — az iOS Safari így nem nagyít rá a mezőkre', () => {
     expect(tokens).toMatch(/--kc-font-m:\s*clamp\(1rem,/)
+  })
+
+  it('az L/M/S mind valódi folytonos clamp (vw a közép tagban), padló/plafon a kutatott sávban', () => {
+    // L 32–40 px, M 16–19 px, S 14–16 px. A 2,9rem (46,4 px) és a 13 px-es
+    // S kikerült; a diszkrét min=max clamp is (az NN/g tartományt és a
+    // GOV.UK responsive skálát félreolvasná).
+    expect(tokens).toMatch(/--kc-font-l:\s*clamp\(2rem,\s*[\d.]+rem \+ [\d.]+vw,\s*2\.5rem\)/)
+    expect(tokens).toMatch(/--kc-font-m:\s*clamp\(1rem,\s*[\d.]+rem \+ [\d.]+vw,\s*1\.1875rem\)/)
+    expect(tokens).toMatch(/--kc-font-s:\s*clamp\(0\.875rem,\s*[\d.]+rem \+ [\d.]+vw,\s*1rem\)/)
+    expect(kommentNelkul(tokens)).not.toMatch(/2\.9rem/)
+    expect(kommentNelkul(tokens)).not.toMatch(/0\.8125rem/)
+  })
+
+  it('a számított px a nézetablakkal nő, a 320/1440 padló-plafon tartja a kutatott sávot', () => {
+    const meret: Record<'l' | 'm' | 's', string> = { l: '', m: '', s: '' }
+    for (const talalat of tokens.matchAll(/^\s*--kc-font-([lms]):\s*([^;]+);/gm)) {
+      meret[talalat[1] as 'l' | 'm' | 's'] = talalat[2].trim()
+    }
+    const px = (kifejezes: string, nezet: number): number => hosszPx(kifejezes, nezet, 16, 16)
+
+    expect(px(meret.l, 320)).toBeCloseTo(32, 1)
+    expect(px(meret.m, 320)).toBeCloseTo(16, 1)
+    expect(px(meret.s, 320)).toBeCloseTo(14, 1)
+
+    expect(px(meret.l, 1440)).toBeCloseTo(40, 1)
+    expect(px(meret.m, 1440)).toBeCloseTo(19, 1)
+    expect(px(meret.s, 1440)).toBeCloseTo(16, 1)
+
+    expect(px(meret.l, 1440)).toBeGreaterThan(px(meret.l, 768))
+    expect(px(meret.l, 768)).toBeGreaterThan(px(meret.l, 360))
+    expect(px(meret.m, 1440)).toBeGreaterThan(px(meret.m, 768))
+    expect(px(meret.s, 1440)).toBeGreaterThan(px(meret.s, 360))
   })
 
   it('a RÉGI, sokméretes skála egyetlen tokenje sincs többé definiálva', () => {
@@ -182,19 +227,27 @@ describe('három-méretes tipográfiai skála — inline (TSX) őr', () => {
 describe('globális tipográfiai finomságok', () => {
   const base = readFileSync(join(REPO, 'app/(frontend)/styles/base.css'), 'utf8')
 
-  it('minden elemen mindkét motorra kér élsimítást (univerzális szelektor + body + űrlap)', () => {
+  it('minden elemen mindkét motorra kér élsimítást (univerzális szelektor + html + body + űrlap + placeholder)', () => {
     const univerzal = base.slice(base.indexOf('*,'), base.indexOf('html {'))
     expect(univerzal).toContain('-webkit-font-smoothing: antialiased')
     expect(univerzal).toContain('-moz-osx-font-smoothing: grayscale')
+    const htmlBlokk = base.slice(base.indexOf('html {'), base.indexOf('body {'))
+    expect(htmlBlokk).toContain('-webkit-font-smoothing: antialiased')
+    expect(htmlBlokk).toContain('-moz-osx-font-smoothing: grayscale')
     expect(base).toContain('-webkit-font-smoothing: antialiased')
     expect(base).toContain('-moz-osx-font-smoothing: grayscale')
     const urlap = base.slice(base.indexOf('button,'), base.indexOf('/* Link-alapnyelv'))
     expect(urlap).toContain('-webkit-font-smoothing: antialiased')
     expect(urlap).toContain('-moz-osx-font-smoothing: grayscale')
+    expect(urlap).toContain('::placeholder')
   })
 
   it('a H1 és a H2 UGYANAZT az L lépcsőt viszi (a különbség nem méret)', () => {
     expect(base).toMatch(/h1,\s*\n\s*h2\s*\{\s*\n\s*font-size: var\(--kc-font-l\);/)
+  })
+
+  it('a böngésző small/sub/sup eleme az S tokenre esik, nem UA-százalékra', () => {
+    expect(base).toMatch(/small,\s*\n\s*sub,\s*\n\s*sup\s*\{\s*\n\s*font-size: var\(--kc-font-s\);/)
   })
 
   it('a sima görgetés él, de `prefers-reduced-motion` esetén kikapcsol', () => {

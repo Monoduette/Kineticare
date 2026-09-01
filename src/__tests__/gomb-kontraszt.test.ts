@@ -173,7 +173,7 @@ function szinToken(nev: string, mélység = 0): RGB {
   if (ertek === undefined || mélység > 8) {
     throw new Error(`Ismeretlen vagy körkörös szín-token: ${nev}`)
   }
-  const alias = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+  const alias = /^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/.exec(ertek)
   if (alias !== null) {
     return szinToken(alias[1], mélység + 1)
   }
