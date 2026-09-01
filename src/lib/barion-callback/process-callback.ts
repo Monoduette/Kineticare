@@ -160,7 +160,12 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
   const recoverRejectedPaid = deps.recoverRejectedPaid ?? recoverRejectedSucceededPayment
 
   return async function processBarionCallbackEvent(event: WebhookEventDoc): Promise<unknown> {
-    const paymentId = event.externalId
+    // KANONIKUS (kisbetűs) alak: a Barion GUID kis-nagybetű-érzéketlen, a
+    // Postgres `equals` nem. A route-handler már kanonizál, de a KORÁBBAN
+    // (kanonizálás előtt) tárolt webhook-events sorok externalId-ja nagybetűs
+    // is lehet — kanonizálás nélkül a rendelés-lookup nem találna, a
+    // barionPaymentId-összevetés pedig hamis alias-konfliktust jelezne.
+    const paymentId = event.externalId.toLowerCase()
     const eventLog = log.child({ paymentId, eventId: event.id })
 
     try {
@@ -210,7 +215,7 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
           await closeEvent(store, event, 'rejected')
           return { status: 'rejected', reason: 'total-mismatch', orderId: order.id }
         }
-        if (order.barionPaymentId && order.barionPaymentId !== paymentId) {
+        if (order.barionPaymentId && order.barionPaymentId.toLowerCase() !== paymentId) {
           // A rendeléshez MÁS fizetés van kötve: a felülírás elszakítaná a
           // valódi fizetéstől. Nem írunk, riasztunk.
           eventLog.error(

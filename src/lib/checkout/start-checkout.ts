@@ -1017,7 +1017,10 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       })
     }
     gatewayUrl = startResponse.GatewayUrl
-    barionPaymentId = startResponse.PaymentId
+    // KANONIKUS (kisbetűs) alak az ÍRÁSHELYEN is: a callback-út a kisbetűs
+    // alakkal keres (route-handler normalizePaymentId) — a Barion megfigyelt
+    // viselkedése kisbetűs GUID, de ez itt garancia, nem feltételezés.
+    barionPaymentId = startResponse.PaymentId.toLowerCase()
     barionPaymentRequestId = startResponse.PaymentRequestId ?? orderNumber
   } catch (error) {
     log.error('checkout-start: Barion fizetésindítás sikertelen', {

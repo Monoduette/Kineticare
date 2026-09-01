@@ -1,6 +1,7 @@
 import type { Payload, Where } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../../lib/alert-throttle'
 import { createBarionCallbackProcessor } from '../../lib/barion-callback/process-callback'
 import {
   MAX_WEBHOOK_ATTEMPTS,
@@ -63,6 +64,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 // ---------------------------------------------------------------------------
@@ -362,6 +365,83 @@ describe('webhook-retry handler — retry-kimenetelek', () => {
 
     expect(result.output).toMatchObject({ scanned: 1, retried: 0, skipped: 1 })
     expect(docs[0]?.status).toBe('failed')
+  })
+})
+
+describe('webhook-retry handler — K8 per-esemény hibaizoláció', () => {
+  it('egy mérgezett rekord (státuszgépen kívüli throw) nem állítja le a batch-et — a mögötte álló esemény feldolgozódik, a mérgezett pedig kimerülésig backoffol', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    // A mérgezett a RÉGEBBI updatedAt-tel az ablak ELEJÉN áll — pont az az
+    // eset, ami korábban minden futást ugyanott ölt meg, és a mögötte álló
+    // érvényes fizetéseket véglegesen kiéheztette.
+    const poisoned = createEvent({ attempts: MAX_WEBHOOK_ATTEMPTS - 1, updatedAt: hoursAgoIso(72) })
+    const healthy = createEvent({ attempts: 1, updatedAt: hoursAgoIso(2) })
+    const { store, docs } = createWebhookStore([poisoned, healthy])
+    registerWebhookProcessor('barion', async () => ({ ok: true }))
+
+    // A processWebhook a mérgezett externalId-jére már a findByKey-nél dob
+    // (pl. sérült azonosító, amin a paraméterezett lekérdezés hibázik) — ez a
+    // státuszgép TRY-CATCH-én KÍVÜLI út.
+    const baseFind = store.find
+    store.find = async (args) => {
+      if (JSON.stringify(args.where ?? {}).includes(poisoned.externalId)) {
+        throw new Error('szimulált DB-hiba a mérgezett azonosító lekérdezésén')
+      }
+      return baseFind(args)
+    }
+
+    const first = await runHandler(store)
+
+    // A batch NEM állt meg: a mérgezett failed-del könyvelt, az egészséges lefutott.
+    expect(first.output).toMatchObject({
+      scanned: 2,
+      retried: 2,
+      succeeded: 1,
+      failed: 1,
+      exhausted: 1,
+    })
+    expect(docs.find((doc) => doc.id === healthy.id)?.status).toBe('processed')
+    // Best-effort attempts-bump: a mérgezett kimerült, és kikerül a scanből.
+    expect(docs.find((doc) => doc.id === poisoned.id)).toMatchObject({
+      status: 'failed',
+      attempts: MAX_WEBHOOK_ATTEMPTS,
+    })
+    expect(String(docs.find((doc) => doc.id === poisoned.id)?.lastError)).toContain('szimulált')
+    const firstLogs = logSpy.mock.calls.map((call) => String(call[0])).join('\n')
+    expect(firstLogs).toContain('owner beavatkozás szükséges')
+
+    // A következő futás: a mérgezett már a scanben sincs (K3) — nincs újabb
+    // percenkénti riasztás, és semmi nem éhezik mögötte.
+    logSpy.mockClear()
+    const second = await runHandler(store)
+    expect(second.output).toMatchObject({ scanned: 0, retried: 0, failed: 0 })
+    expect(logSpy.mock.calls.map((call) => String(call[0])).join('\n')).not.toContain(
+      'owner beavatkozás szükséges',
+    )
+  })
+
+  it('a mérgezett rekord kimerülés ELŐTT: warn + backoff, a batch többi tagja fut, a task nem dob', async () => {
+    const poisoned = createEvent({ attempts: 1, updatedAt: hoursAgoIso(72) })
+    const healthy = createEvent({ attempts: 1, updatedAt: hoursAgoIso(2) })
+    const { store, docs } = createWebhookStore([poisoned, healthy])
+    registerWebhookProcessor('barion', async () => ({ ok: true }))
+    const baseFind = store.find
+    store.find = async (args) => {
+      if (JSON.stringify(args.where ?? {}).includes(poisoned.externalId)) {
+        throw new Error('szimulált DB-hiba a mérgezett azonosító lekérdezésén')
+      }
+      return baseFind(args)
+    }
+
+    const result = await runHandler(store)
+
+    expect(result.output).toMatchObject({ retried: 2, succeeded: 1, failed: 1, exhausted: 0 })
+    // attempts-bump → a sor updatedAt-je mozdul, backoffal hátrébb sorolódik.
+    expect(docs.find((doc) => doc.id === poisoned.id)).toMatchObject({
+      status: 'failed',
+      attempts: 2,
+    })
+    expect(docs.find((doc) => doc.id === healthy.id)?.status).toBe('processed')
   })
 })
 
