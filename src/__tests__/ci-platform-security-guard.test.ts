@@ -31,7 +31,7 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', 'f523f5fc46e39e87d7b2b5da936fdc7b2be3f95164b495642154a5301222ef71'],
+  ['ci.yml', '583c6836e0eff5689ae030fc4da26dba2a935a2c5645f846220098daf4d3b323'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
   ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
   ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
@@ -46,6 +46,8 @@ const EXPECTED_RAILWAY_SHA256 = '23dacbcc8982b45f93159215d18b1aaf3f67a0f3be96522
 const EXPECTED_RAILPACK_SHA256 = 'f1b4acf68f76e7376d07b8262064cb51f14b3a3c09c02ba0beea0ed19fee66cc'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
   '45bda91a9238baf1a0322df39506940a0c89ccbf079c6d439f2a95347a8b9db9'
+const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
+  '665b522599cae48b6d54c9dfed31067de490137c1b815a62d90235bebefff594'
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@eslint/eslintrc': '3.3.6',
@@ -167,6 +169,57 @@ function violationsForWorkflowBytes(name: string, input: Buffer | string): strin
 function replaceRequired(source: string, before: string, after: string): string {
   if (!source.includes(before)) throw new Error(`A mutáció forrásmintája hiányzik: ${before}`)
   return source.replace(before, after)
+}
+
+function cursorStartRuntimeViolations(source: string): string[] {
+  const requiredInOrder = [
+    "NODE_VERSION='24.20.0'",
+    "NPM_VERSION='11.19.0'",
+    'node_home="/opt/node-v${NODE_VERSION}-linux-${node_arch}"',
+    'export PATH="${node_home}/bin:/usr/bin:$PATH"',
+    'if [ "$(command -v node)" != "${node_home}/bin/node" ]; then',
+    'if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then',
+    './node_modules/.bin/payload migrate',
+  ]
+  const positions = requiredInOrder.map((value) => source.indexOf(value))
+  const violations: string[] = []
+
+  if (positions.some((position) => position < 0)) violations.push('exact runtime elem hiányzik')
+  if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    violations.push('exact runtime ellenőrzési sorrend eltér')
+  }
+  if (!source.includes("x86_64) node_arch='x64' ;;")) violations.push('x64 arch mapping hiányzik')
+  if (!source.includes("aarch64 | arm64) node_arch='arm64' ;;")) {
+    violations.push('arm64 arch mapping hiányzik')
+  }
+  if (source.includes('export PATH="/usr/bin:$PATH"')) violations.push('/usr/bin bypass aktív')
+  return violations
+}
+
+function railpackPlanVerifierViolations(source: string): string[] {
+  const requiredInOrder = [
+    "RAILPACK_VERSION='0.38.0'",
+    "RAILPACK_ARCHIVE_SHA256='7c3f0e70ca8bf80bde87e8c30cb0171414c2b6bbd794d6f60a19cc3b71772950'",
+    "RAILPACK_CHECKSUMS_SHA256='69d58f46c00048b1ccddc35151842cfa393d88ad06e5d376e7a2f4bcc8aabb89'",
+    'curl --fail --silent --show-error --location --proto \'=https\' --tlsv1.2',
+    'printf \'%s  %s\\n\' "$RAILPACK_CHECKSUMS_SHA256" "$checksums_path" | sha256sum --strict -c -',
+    'grep --fixed-strings --line-regexp -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
+    'printf \'%s  %s\\n\' "$RAILPACK_ARCHIVE_SHA256" "$archive_path" | sha256sum --strict -c -',
+    'tar -xzf "$archive_path" -C "$tmp_dir" railpack',
+    '"$tmp_dir/railpack" plan --out "$generated_plan" "$repo_dir"',
+    'cmp --silent "$generated_plan" "$expected_plan"',
+  ]
+  const positions = requiredInOrder.map((value) => source.indexOf(value))
+  const violations: string[] = []
+
+  if (positions.some((position) => position < 0)) violations.push('pinned verifier elem hiányzik')
+  if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
+    violations.push('download/checksum/execution sorrend eltér')
+  }
+  if (!source.includes('/releases/download/v${RAILPACK_VERSION}/${RAILPACK_ARCHIVE}')) {
+    violations.push('official pinned release URL hiányzik')
+  }
+  return violations
 }
 
 function insertBefore(source: string, marker: string, insertion: string): string {
@@ -605,6 +658,7 @@ describe('CI/platform supply-chain guard', () => {
       3,
     )
     expect(workflow('ci.yml').match(/npm rebuild --ignore-scripts=false/g)).toHaveLength(2)
+    expect(workflow('ci.yml').match(/\.\/scripts\/verify-railpack-plan\.sh/g)).toHaveLength(1)
     expect(workflow('ci.yml')).toContain(CI_POSTGRES)
     expect(workflow('db-backup.yml')).toContain(BACKUP_POSTGRES)
     expect(workflow('claude.yml')).toContain(
@@ -617,8 +671,22 @@ describe('CI/platform supply-chain guard', () => {
 
   it('a fejlesztői bootstrap is kizárólag a lockfile-lokális Payload CLI-t futtatja', () => {
     const cursorStart = readFileSync(join(REPO, '.cursor', 'start.sh'), 'utf8')
+    expect(cursorStartRuntimeViolations(cursorStart)).toEqual([])
     expect(cursorStart).toContain('./node_modules/.bin/payload migrate')
     expect(cursorStart).not.toMatch(/\bnpx\s+payload\b/)
+  })
+
+  it.each([
+    ['exact Node lazítása', "NODE_VERSION='24.20.0'", "NODE_VERSION='24'"],
+    ['exact npm lazítása', "NPM_VERSION='11.19.0'", "NPM_VERSION='11'"],
+    [
+      'exact /opt runtime bypass',
+      'export PATH="${node_home}/bin:/usr/bin:$PATH"',
+      'export PATH="/usr/bin:$PATH"',
+    ],
+  ])('a start.sh $0 mutációját fail-closed elutasítja', (_label, before, after) => {
+    const cursorStart = readFileSync(join(REPO, '.cursor', 'start.sh'), 'utf8')
+    expect(cursorStartRuntimeViolations(replaceRequired(cursorStart, before, after))).not.toEqual([])
   })
 
   it('a Cloud Agent install exact Node-dal ugyanazt a fail-closed lifecycle kaput futtatja', () => {
@@ -741,6 +809,34 @@ describe('CI/platform supply-chain guard', () => {
         encoding: 'utf8',
       }).trim(),
     ).toBe('scripts/verify-install-script-lock.mjs: OK')
+  })
+
+  it('a CI Railpack verifier pinned hivatalos assetből regenerálja a fixture-t', () => {
+    const verifierBytes = readFileSync(join(REPO, 'scripts', 'verify-railpack-plan.sh'))
+    const verifier = verifierBytes.toString('utf8')
+    expect(sha256(verifierBytes)).toBe(EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256)
+    expect(railpackPlanVerifierViolations(verifier)).toEqual([])
+  })
+
+  it.each([
+    [
+      'archive SHA lazítása',
+      "RAILPACK_ARCHIVE_SHA256='7c3f0e70ca8bf80bde87e8c30cb0171414c2b6bbd794d6f60a19cc3b71772950'",
+      "RAILPACK_ARCHIVE_SHA256='unreviewed'",
+    ],
+    [
+      'official checksum SHA lazítása',
+      "RAILPACK_CHECKSUMS_SHA256='69d58f46c00048b1ccddc35151842cfa393d88ad06e5d376e7a2f4bcc8aabb89'",
+      "RAILPACK_CHECKSUMS_SHA256='unreviewed'",
+    ],
+    [
+      'checksum előtti kicsomagolás',
+      'grep --fixed-strings --line-regexp -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
+      'tar -xzf "$archive_path" -C "$tmp_dir" railpack\ngrep --fixed-strings --line-regexp -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
+    ],
+  ])('a Railpack verifier $0 mutációját fail-closed elutasítja', (_label, before, after) => {
+    const verifier = readFileSync(join(REPO, 'scripts', 'verify-railpack-plan.sh'), 'utf8')
+    expect(railpackPlanVerifierViolations(replaceRequired(verifier, before, after))).not.toEqual([])
   })
 
   it('csak az explicit review-zott exact csomagok kaphatnak install scriptet', () => {
