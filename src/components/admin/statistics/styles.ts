@@ -106,8 +106,10 @@ export const cardStyle: CSSProperties = {
   background: 'var(--kc-as-surface-raised, var(--theme-elevation-50))',
   border: '1px solid var(--kc-as-hairline, var(--theme-elevation-100))',
   borderRadius: 'var(--kc-as-radius-lg, 4px)',
-  flex: '1 1 calc(128 * var(--kc-as-px, 1px))',
-  minWidth: 'calc(128 * var(--kc-as-px, 1px))',
+  /* A flex-basis és a min-width a `.kc-as-card` osztályon él
+     (custom.scss): 128 px-es padlónál a Payload 768-as töréspontján a négy
+     kártya egy sorban maradt, a 32 px-es „11 304 000 Ft” kilógott.
+     A sorelés ott van, itt csak a felület. */
   padding: 'var(--kc-as-space-5, calc(var(--base) * 0.75))',
 }
 
@@ -121,6 +123,10 @@ export const cardValueStyle: CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
   fontWeight: 700,
   lineHeight: 1.2,
+  maxWidth: '100%',
+  /* A magyar csoportosítás nemtörő szóközt használ; a törés csak akkor
+     lép, ha a szám a kétoszlopos kártyánál is hosszabb (WCAG 1.4.10 C33). */
+  overflowWrap: 'break-word',
 }
 
 export const cardLabelStyle: CSSProperties = {

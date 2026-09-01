@@ -6,7 +6,7 @@ import { cardRowStyle } from './styles'
 /** A nézet felső kártyasora: 12 havi bevétel összesen és áganként. */
 export function TotalsCards({ totals }: { totals: RevenueTotals }) {
   return (
-    <div style={cardRowStyle}>
+    <div className="kc-as-card-row" style={cardRowStyle}>
       <StatCard label="Összes bevétel (12 hónap)" value={formatHuf(totals.totalHuf)} />
       <StatCard label={AUDIENCE_LABELS.laikus} value={formatHuf(totals.laikusHuf)} />
       <StatCard label={AUDIENCE_LABELS.szakember} value={formatHuf(totals.szakemberHuf)} />

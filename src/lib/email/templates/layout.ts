@@ -206,7 +206,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
     ${tablaNyit(`background-color:${SZIN.papir};`)}
       <tr>
         <td align="center" style="padding:32px 16px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:collapse;width:100%;max-width:600px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:collapse;width:100%;max-width:600px;table-layout:fixed;">
 
             <tr>
               <td style="padding:0 4px 16px 4px;font-family:${BETU.cim};font-size:${MERET.m};line-height:1;letter-spacing:0.22em;text-transform:uppercase;color:${SZIN.ink};">Kineti<span style="color:${SZIN.akcent};">care</span></td>
@@ -215,7 +215,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
             <tr>
               <td style="background-color:${SZIN.feher};border:1px solid ${SZIN.hajszal};border-radius:14px;padding:32px;">
                 ${input.eyebrow ? eyebrowHtml(input.eyebrow) : ''}
-                <h1 style="margin:0 0 20px 0;font-family:${BETU.cim};font-size:${MERET.l};line-height:1.25;font-weight:400;color:${SZIN.ink};">${escapeHtml(input.heading)}</h1>
+                <h1 style="margin:0 0 20px 0;font-family:${BETU.cim};font-size:${MERET.l};line-height:1.25;font-weight:400;color:${SZIN.ink};max-width:100%;overflow-wrap:break-word;word-break:break-word;">${escapeHtml(input.heading)}</h1>
                 ${bekezdesekHtml(input.paragraphsHtml)}
                 ${input.summary ? summaryHtml(input.summary) : ''}
                 ${input.items ? itemsHtml(input.items) : ''}

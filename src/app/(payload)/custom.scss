@@ -257,6 +257,35 @@ html {
   margin-top: 0;
 }
 
+/* Összesítő kártyák — a 32 px-es L érték bent marad a dobozban.
+   128 px-es flex-padlónál a Payload 768-as töréspontján a négy kártya
+   egy sorban maradt (~129 px tartalom), a fixture „11 304 000 Ft”
+   ~168 px a 32 px-es Nunito 700 tabular-nums metszeten. NN/g Visual
+   Hierarchy a 32 px-es címsor-tetejét tartja, a javítás ELRENDEZÉS:
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+   WCAG 2.2 SC 1.4.10 Reflow. 1340 px fölött négy oszlop (a tartalom
+   ekkor ≥ 177 px). 600–1339: két oszlop. 599 alatt: egy oszlop,
+   min-width 0, hogy a 320 px-es G225-ös őr ne bukjon. */
+.kc-adminstat .kc-as-card {
+  box-sizing: border-box;
+  flex: 1 1 calc(220 * var(--kc-as-px));
+  min-width: calc(220 * var(--kc-as-px));
+}
+
+@media (max-width: 1339px) {
+  .kc-adminstat .kc-as-card {
+    flex-basis: calc((100% - var(--kc-as-space-3)) / 2);
+    min-width: calc((100% - var(--kc-as-space-3)) / 2);
+  }
+}
+
+@media (max-width: 599px) {
+  .kc-adminstat .kc-as-card {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}
+
 /* Felvezető sor (eyebrow) — a landing `.kc-eyebrow` nyelve (content.css):
    akcent-mély szín, 600-as súly, verzál + 0,24em betűköz, 1,3-as sortáv, és
    alatta a rövid akcent-vonal. A DOM-szöveg mondatkezdő marad, a verzált a

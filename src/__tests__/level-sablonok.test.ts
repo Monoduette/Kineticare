@@ -82,6 +82,22 @@ describe('levélváz — akadálymentesség és kliens-biztonság', () => {
     expect(MINTA.html).toContain('-moz-osx-font-smoothing:grayscale')
   })
 
+  it('a 32 px-es címsor keskeny kliensen sem nyitja szét a kártyát', () => {
+    // 320 px-es kliens, 16 px külső + 32 px kártya-padding → ~222 px hasáb.
+    // Az időpontkérő „időpontkérésed" szava 32 px Tenor Sansban ~236 px.
+    // A méret marad L (NN/g), a tábla fixed + a cím tördel (WCAG 1.4.10 C33).
+    expect(MINTA.html).toMatch(/max-width:600px;table-layout:fixed/)
+    expect(MINTA.html).toMatch(/<h1[^>]*overflow-wrap:break-word/)
+    const ido = appointmentCustomerEmail({
+      name: 'Nagy Péter',
+      phone: '+36 30 123 4567',
+      availability: 'Hétköznap délelőtt',
+      contactUrl: 'https://pelda.hu/kapcsolat',
+    })
+    expect(ido.html).toContain('időpontkérésed')
+    expect(ido.html).toMatch(/<h1[^>]*overflow-wrap:break-word/)
+  })
+
   it('NINCS flexbox és NINCS grid (a levélkliensek nem támogatják)', () => {
     expect(MINTA.html).not.toMatch(/display:\s*flex/)
     expect(MINTA.html).not.toMatch(/display:\s*grid/)
