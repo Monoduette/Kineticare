@@ -193,11 +193,15 @@ const SZIN = (nev: string): RGB => szinToken(`--kc-color-${nev}`)
 /**
  * A fejlécsávban a legsötétebb filmblokk (layout.css kontraszt-levezetés:
  * `rgb(34,49,62)`), amire a film-hero felső világosító lejtője legalább 0,50
- * lap-háttér-fedést tesz. A fejléc saját fátyla erre jön rá.
+ * lap-háttér-fedést tesz. Erre jön a fejléc saját fátyla: nem szolid paper,
+ * hanem legfeljebb 72% lap-fedés (fagyott üveg). A `layout.css` ::before
+ * `color-mix(... * 72%)` plafonjával kell egyeznie.
  */
 const FILM_FEJLEC_NYERS: RGB = [34, 49, 62]
+const FEJLEC_FAGY_FEDES = 0.72
+const FILM_FEJLEC_ALAP: RGB = keverek(SZIN('paper'), FILM_FEJLEC_NYERS, 0.5)
 const filmFejlec = (veil: number): RGB =>
-  keverek(SZIN('paper'), keverek(SZIN('paper'), FILM_FEJLEC_NYERS, 0.5), veil)
+  keverek(SZIN('paper'), FILM_FEJLEC_ALAP, veil * FEJLEC_FAGY_FEDES)
 
 /**
  * A hero-szövegdoboz alatti legsötétebb filmblokk (film-hero.css levezetése:
@@ -263,6 +267,11 @@ const PAROK: readonly Par[] = [
   p('kc-site-header :focus-visible', 'veil 0,75', fejlecGyuru(0.75), filmFejlec(0.75), 3, '1.4.11'),
   p('kc-site-header :focus-visible', 'veil 1,00', fejlecGyuru(1), filmFejlec(1), 3, '1.4.11'),
   p('kc-site-header__brand', 'ink szöveg a filmen (veil 0)', SZIN('ink'), filmFejlec(0), 4.5, '1.4.3'),
+  p('kc-site-header__brand', 'ink a fagyott filmen (veil 1)', SZIN('ink'), filmFejlec(1), 4.5, '1.4.3'),
+  p('kc-site-header__brand-accent', 'deeper a fagyott filmen (veil 1)', SZIN('accent-deeper'), filmFejlec(1), 4.5, '1.4.3'),
+  p('kc-site-header__cta', 'primary határ a fagyott filmen (veil 1)', SZIN('primary'), filmFejlec(1), 3, '1.4.11'),
+  p('kc-account-nav__signout', 'keret a fagyott filmen (veil 1)', SZIN('border-strong'), filmFejlec(1), 3, '1.4.11'),
+  p('kc-site-header__brand', 'ink a paperen (belső oldal)', SZIN('ink'), SZIN('paper'), 4.5, '1.4.3'),
 
   // --- B7: a film-hero fókuszgyűrűjének MINDKÉT éle ---
   p('kc-film-hero__cta:focus-visible', 'belső él (fehér haló)', SZIN('ink'), SZIN('white'), 3, '1.4.11'),
@@ -461,6 +470,53 @@ describe('G-K2 — a mért párok mátrixa a küszöbeit tartja', () => {
     // mekkora a különbség. veil = 0 a kezdőlap teteje, az első Tab-lenyomás.
     expect(ker2(arany(SZIN('focus'), filmFejlec(0)))).toBeLessThan(3)
     expect(ker2(arany(fejlecGyuru(0), filmFejlec(0)))).toBeGreaterThanOrEqual(3)
+  })
+
+  it('a fagyott fátyol veil=1-nél NEM szolid paper a filmsávon', () => {
+    expect(filmFejlec(1)).not.toEqual(SZIN('paper'))
+    expect(filmFejlec(1)).toEqual(hexRgb('#d8dde1'))
+    expect(filmFejlec(0)).toEqual(hexRgb('#8c959d'))
+  })
+})
+
+describe('G-K-frost — a fejléc fátyla fagyott üveg, nem réteg-opacity', () => {
+  /**
+   * A korábbi modell `opacity: var(--kc-header-veil)` a ::before-on a
+   * backdrop-filtert is kifakította, veil=1-nél szolid papírlapot adott.
+   * A fagyott üveghez a fedés a background-color ALFÁJA, a blur a
+   * pszeudo-elemen marad (a MobileNav drawer miatt nem a fejlécen).
+   */
+  const layoutForras = readFileSync(join(FRONTEND, 'styles', 'layout.css'), 'utf8')
+  const fagyRetegek = MINDEN_SZABALY.filter((sz) => sz.szelektor === '.kc-site-header::before')
+
+  it('a ::before réteg létezik (a bejáró nem néma)', () => {
+    expect(fagyRetegek.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('a fátyolréteg NEM opacity-vel fedi a blurrt', () => {
+    const opacityVeil = fagyRetegek.filter((sz) =>
+      /opacity\s*:\s*var\(\s*--kc-header-veil/.test(sz.torzs),
+    )
+    expect(
+      opacityVeil.map((sz) => sz.torzs.trim()),
+      'opacity a ::before-on a backdrop-filtert is kifakítja; a fedés legyen color-mix alfa.',
+    ).toEqual([])
+  })
+
+  it('a 72%-os fagy-fedés color-mix alfaként él, a blur a ::before-on', () => {
+    const alap = fagyRetegek.find((sz) => /background-color\s*:/.test(sz.torzs) && /72%/.test(sz.torzs))
+    expect(alap, 'hiányzik a 72%-os color-mix fedés a ::before-on').toBeDefined()
+    expect((alap as Szabaly).torzs).toMatch(/color-mix\(/)
+    expect((alap as Szabaly).torzs).toMatch(/transparent/)
+    expect(fagyRetegek.some((sz) => /backdrop-filter\s*:/.test(sz.torzs))).toBe(true)
+    expect(layoutForras).toMatch(/-webkit-backdrop-filter\s*:/)
+  })
+
+  it('a backdrop-filter a fejlécen magán NINCS (a drawer tartalmazó-blokkja miatt)', () => {
+    const fejlecMagan = MINDEN_SZABALY.filter(
+      (sz) => sz.szelektor === '.kc-site-header' && /backdrop-filter\s*:/.test(sz.torzs),
+    )
+    expect(fejlecMagan.map((sz) => sz.fajl)).toEqual([])
   })
 })
 

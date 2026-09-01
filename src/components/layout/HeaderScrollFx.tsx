@@ -7,14 +7,15 @@ import { useEffect } from 'react'
  * A <html> elemre két jelzést tesz:
  * - `--kc-header-veil`: 0..1 FOLYTONOS érték, a görgetés-pozícióval arányos.
  * A lap tetején 0 (a fejléc teljesen átlátszó), `VEIL_RANGE` pixel után 1
- * (szolid lap-háttér). A fejléc minden vizuális átmenete ebből az egy
- * számból számolódik (layout.css), így a háttér, a hajszálvonal, a
+ * (fagyott üveg: 72% lap-fedés + blur a layout.css ::before rétegén). A fejléc
+ * minden vizuális átmenete ebből az egy számból számolódik, így a háttér, a
+ * hajszálvonal, a CTA és a fókuszgyűrű ugyanazon a görbén marad.
  */
 
 /**
- * Ennyi pixel görgetés után lesz a fejléc szolid. Elég hosszú ahhoz, hogy az
- * átmenet érzékelhetően folytonos legyen, és elég rövid ahhoz, hogy a
- * filmsávon a részlegesen áttetsző állapot ne tartson sokáig.
+ * Ennyi pixel görgetés után éri el a fejléc a fagyott üveget. Elég hosszú
+ * ahhoz, hogy az átmenet érzékelhetően folytonos legyen, és elég rövid ahhoz,
+ * hogy a filmsávon a részlegesen áttetsző állapot ne tartson sokáig.
  */
 const VEIL_RANGE = 280
 

@@ -9,9 +9,10 @@
 
 /* ---- Fejléc -------------------------------------------------------------- */
 /**
- * Sticky sáv FOLYTONOS fátyollal (UX-skill 3. pont):
- * interpolálnak. Árnyékot a sáv NEM kap: a landing hairline-alapú nyelvében az
- * A sáv alatt a kezdőlapon a film-hero gördül el. A méretezés NEM becslésből,
+ * Sticky sáv FOLYTONOS fátyollal (docs/ertekesitesi-ux-skill.md 3. pont,
+ * docs/ui-sztenderdek.md N-16–N-18). A `--kc-header-veil` 0→1 a görgetéssel
+ * interpolál; árnyékot a sáv nem kap (landing hairline-nyelv). A kezdőlapon
+ * a film-hero a sáv alatt gördül. A méretezés számolt, nem becsült.
  */
 .kc-site-header {
   /* Szerep-tokenek egy helyen; a fallback mindig meglévő token, sosem hexa. */
@@ -34,12 +35,10 @@
 }
 
 /**
- * A FEJLÉC FÓKUSZGYŰRŰJE — a fátyollal ARÁNYOSAN, ugyanazon a logikán, mint a
- * wordmark-tag és a CTA-pirula (lásd a fenti kontraszt-levezetés 1–2. pontját).
- * középtónus, pontosan úgy, ahogy a másik két elem volt. A kezdőlap TETEJÉN
- * (veil = 0) a fejléc alatti kompozit `#8c959d`, amin a fix gyűrű mindössze
- * **1,79:1** — ez a lap ELSŐ Tab-lenyomása, és 1.4.11 + 2.4.7 bukás. A fix
- * gyűrű csak `veil ≥ 0,44` felett éri el a 3:1-et (bináris kereséssel mérve).
+ * A FEJLÉC FÓKUSZGYŰRŰJE a fátyollal arányos, ugyanazon a logikán, mint a
+ * wordmark-tag és a CTA-pirula. A kezdőlap tetején (veil = 0) a sáv alatti
+ * kompozit `#8c959d`; a fix accent-deep gyűrű itt 1,79:1 (1.4.11 + 2.4.7
+ * bukás). A kevert gyűrű ink→focus, ezért veil = 0-nál ink, 5,13:1.
  */
 .kc-site-header :focus-visible {
   outline-color: color-mix(
@@ -51,41 +50,67 @@
 
 /**
  * A sáv fátyla KÜLÖN rétegen (::before) él, nem magán a fejlécen.
- * MIÉRT: a `backdrop-filter` — a `transform`-hoz és `filter`-hez hasonlóan —
- * tartalmazó blokkot csinál a `position: fixed` leszármazottaknak. A mobil
- * drawer és az overlay (MobileNav) fixed pozíciójú, ÉS a fejléc DOM-gyereke:
- * ha a blur a fejlécen ülne, a teljes képernyős drawer a fejléc-sávba
- * szorulna. A pszeudo-elemnek nincs leszármazottja, így a drawer a
- */
-/**
- * A sáv fátyla KÜLÖN rétegen (::before) él, nem magán a fejlécen.
- * A teljes réteg átlátszatlanságát a `--kc-header-veil` adja: a lap tetején 0
- * (a réteg — háttér, hajszálvonal, blur — teljesen eltűnik), legörgetve 1
- * (szolid lap-háttér + vonal). Mivel az `opacity` a réteg MINDEN részére hat,
- * a fedés matematikája egyszerű és auditálható: a filmre jutó lap-háttér-fedés
- * pontosan `veil`, amivel a fenti kontraszt-táblázat számol.
+ *
+ * MIÉRT NEM A FEJLÉCEN: a `backdrop-filter` (a `transform`-hoz és `filter`-hez
+ * hasonlóan) tartalmazó blokkot csinál a `position: fixed` leszármazottaknak.
+ * A MobileNav drawer és overlay fixed, ÉS a fejléc DOM-gyereke: ha a blur a
+ * fejlécen ülne, a teljes képernyős drawer a sávba szorulna. A pszeudo-elemnek
+ * nincs leszármazottja.
+ *
+ * MIÉRT NEM `opacity` A RÉTEGEN: az opacity a backdrop-filtert is kifakítja.
+ * veil=1-nél a teljesen fedő lap-háttérnek semmi sem maradna a blurrhöz, a sáv
+ * szolid papírlapnak látszana. A fedés ezért a `background-color` ALFÁJA, a
+ * blur ettől függetlenül nő. A hajszálvonal színe ugyanígy `color-mix`, nem
+ * a szülő opacityja.
+ *
+ * Források:
+ * - Apple HIG, Materials: a regular material blurral és fényerő-igazítással
+ *   tartja olvashatónak a nav szövegét; tiszta üveg csak gazdag média fölött.
+ *   https://developer.apple.com/design/human-interface-guidelines/materials
+ * - NN/g, Sticky Headers: a ragadós sávnak el kell különülnie a tartalomtól;
+ *   teljesen áttetsző sáv gyakran bukik kontraszton. A fagyott üveg a
+ *   kompromisszum: nem teljesen átlátszó, nem lapos tömör.
+ *   https://www.nngroup.com/articles/sticky-headers/
+ * - WCAG 2.2 1.4.3 / 1.4.11: áttetsző háttérnél a legrosszabb (legvilágosabb
+ *   mögöttes) kompozitra kell méretezni.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+ *
+ * Fedés-plafon 72% (blur mellett): veil=1 a filmsáv `#8c959d` kompozitján
+ * `#d8dde1`. Ink 11,42:1 (1.4.3), wordmark-tag 5,17:1, CTA-határ 3,98:1,
+ * fókuszgyűrű 3,98:1, kijelentkezés-keret 3,02:1 (1.4.11). A 28% átütés
+ * tartja láthatóvá a fagyást. Blur nélkül 92%, mert ott nincs a blurról jövő
+ * átlagolás. A 0,01px alsó blur-küszöb azért kell, hogy a Chromium ne hagyja
+ * ki a 0-ból induló backdrop-filter festését.
  */
 .kc-site-header::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  border-bottom: 1px solid var(--kc-header-hairline);
-  background-color: var(--kc-header-surface);
-  opacity: var(--kc-header-veil, 0);
+  pointer-events: none;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--kc-header-hairline) calc(var(--kc-header-veil, 0) * 100%), transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--kc-header-surface) calc(var(--kc-header-veil, 0) * 72%),
+    transparent
+  );
 }
 
-/**
- * A `backdrop-filter` a fejléc PSZEUDO-elemén él, nem a fejlécen.
- * MIÉRT: a `backdrop-filter` — a `transform`-hoz és `filter`-hez hasonlóan —
- * tartalmazó blokkot csinál a `position: fixed` leszármazottaknak. A mobil
- * drawer és az overlay (MobileNav) fixed pozíciójú, ÉS a fejléc DOM-gyereke:
- * ha a blur a fejlécen ülne, a teljes képernyős drawer a fejléc-sávba
- * szorulna. A pszeudo-elemnek nincs leszármazottja, így a drawer a
- */
-@supports (backdrop-filter: blur(8px)) {
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
   .kc-site-header::before {
-    backdrop-filter: blur(calc(var(--kc-header-veil, 0) * 12px)) saturate(1.08);
+    -webkit-backdrop-filter: blur(calc(0.01px + var(--kc-header-veil, 0) * 20px)) saturate(1.2);
+    backdrop-filter: blur(calc(0.01px + var(--kc-header-veil, 0) * 20px)) saturate(1.2);
+  }
+}
+
+@supports not ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .kc-site-header::before {
+    background-color: color-mix(
+      in srgb,
+      var(--kc-header-surface) calc(var(--kc-header-veil, 0) * 92%),
+      transparent
+    );
   }
 }
 
@@ -138,10 +163,9 @@
  * A wordmark akcent-tagja a FÁTYOLLAL ARÁNYOSAN vált színt.
  *
  * Átlátszó fejlécnél (veil = 0) teljesen `ink`: a filmsáv felső lejtőjén 5,13:1.
- * Legörgetve (veil = 1) a megszokott `accent-deeper`: a paperen 6,70:1. A
- * középtónusú akcent önmagában a részleges fátylon 2,32:1-re esne — lásd a
- * fájl elején lévő kontraszt-levezetés 1–2. pontját. Ne cseréld vissza fix
- * színre.
+ * Legörgetve (veil = 1) a megszokott `accent-deeper`: a fagyott filmsávon
+ * 5,17:1, a paperen 6,70:1. A középtónusú akcent önmagában a részleges fátylon
+ * 2,32:1-re esne. Ne cseréld vissza fix színre.
  */
 .kc-site-header__brand-accent {
   color: color-mix(
@@ -219,24 +243,24 @@
  *
  * ── A KONTRASZT LEVEZETÉSE (számolt, nem becsült) ──────────────────────────
  * A fejléc-sáv háttere a `--kc-header-veil` függvénye: 0 a lap tetején (a
- * kezdőlapon a hero-film látszik át), 1 legörgetve (szolid paper). A film
- * legrosszabb esete a fájl elején álló levezetésből: ink 5,13:1, ami ~#949494
- * effektív háttérnek felel meg.
+ * kezdőlapon a hero-film látszik át), 1 legörgetve (72% lap-fedés + blur, nem
+ * szolid paper). A film kompozit veil=0-nál `#8c959d` (ink 5,13:1).
  *
  * Ezért a KERET és a FÓKUSZGYŰRŰ színe is a fátyollal arányosan kevert. A
- * teljes 0→1 sweep mért szélsőértékei (21 lépés):
+ * filmsáv fölötti 0→1 sweep szélsőértékei (a fagyott 72%-os fedéssel):
  *
  *   veil  háttér    keret     keret:bg   gyűrű     gyűrű:bg   felirat(ink):bg
- *   0.00  #949494   #10243e     5,15       #10243e    5,15        5,15
- *   0.40  #bbbcbe   #344860     4,93       #1c4265    5,48        8,22
- *   1.00  #f6f9fc   #6b7f94     3,91       #2f6e9f    5,16       14,79
+ *   0.00  #8c959d   #10243e     5,13       #10243e    5,13        5,13
+ *   0.50  #b2b9bf   #3e5269     4,05       #20496f    4,73        7,88
+ *   1.00  #d8dde1   #6b7f94     3,02       #2f6e9f    3,98       11,42
  *
- *   legrosszabb keret 3,91:1 (küszöb 3,0 — WCAG 2.2 1.4.11 Non-text Contrast)
- *   legrosszabb gyűrű 5,15:1 (küszöb 3,0)
- *   legrosszabb felirat 5,15:1 (küszöb 4,5 — WCAG 2.2 1.4.3)
+ *   legrosszabb keret 3,02:1 (küszöb 3,0 — WCAG 2.2 1.4.11 Non-text Contrast)
+ *   legrosszabb gyűrű 3,98:1 (küszöb 3,0)
+ *   legrosszabb felirat 5,13:1 (küszöb 4,5 — WCAG 2.2 1.4.3)
  *
- * FIX színekkel ez BUKNA: `border-strong` a filmen 1,36:1, `accent-deep`
- * fókuszgyűrű a filmen 1,80:1. Ne cseréld vissza fix értékre.
+ * Belső oldalon a sáv paper fölött ül: ink 14,79:1, keret 3,91:1. FIX színekkel
+ * a filmsáv BUKNA: `border-strong` a filmen 1,36:1, `accent-deep` fókuszgyűrű
+ * a filmen 1,80:1. Ne cseréld vissza fix értékre.
  */
 .kc-account-nav {
   /* Mobilon a sávban nincs hely (wordmark + „Kurzusok" pirula + hamburger már
@@ -348,8 +372,8 @@
 /* A fókuszgyűrű a fejléc-sávban a FÁTYOLLAL arányos — a globális
    `:focus-visible` accent-deep gyűrűje a hero-filmen csak 1,80:1 lenne
    (mérve), ami a WCAG 2.2 1.4.11 alatt van. A keverés minden fátyol-álláson
-   5,15:1 fölött tart (lásd a fenti sweep-táblázatot). A szabály a fejléc-sávra
-   szorítkozik, mert csak ott átlátszó a háttér. */
+   3,98:1 fölött tart (lásd a fenti sweep-táblázatot). A szabály a fejléc-sávra
+   szorítkozik, mert csak ott áttetsző a háttér. */
 .kc-site-header__bar :focus-visible {
   outline-color: color-mix(
     in srgb,
