@@ -1,0 +1,8 @@
+[tools]
+node = "24.20.0"
+
+[settings]
+gpg_verify = true
+
+[settings.node]
+verify = true

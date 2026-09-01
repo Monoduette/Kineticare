@@ -12,14 +12,16 @@ Ami hátra van: `docs/feladatlista.md`.
 
 ## Fejlesztői gyorsindítás
 
-**Node 24 kell** (Active LTS). A repóban van `.nvmrc`, tehát `nvm use` / `fnm use`
-beállítja. Más majoron az `npm install` csak `EBADENGINE` figyelmeztetést ad és
-lefut, de az éles futásidő Node 24 — ne azon fejlessz.
+**Node 24.20.0 és npm 11.19.0 kell.** A repóban lévő `.nvmrc` alapján az
+`nvm use` / `fnm use` exact Node-ot választ; az `engine-strict` az eltérő
+runtime-ot elutasítja. A támogatott bootstrap scriptmentes `npm ci` után
+ellenőrzi a verifier checksumát és a lockfile-t, majd csak a review-zott
+lifecycle scripteket építi újra.
 
 ```bash
-nvm use                  # vagy: fnm use — a .nvmrc szerint Node 24
+nvm use                  # vagy: fnm use — a .nvmrc szerint Node 24.20.0
 cp .env.example .env     # töltsd ki a kötelező értékeket (lásd a fájlt)
-npm install
+node scripts/install-reviewed-dependencies.mjs
 npm run dev              # http://localhost:3000 (admin: /admin)
 npm run seed             # induló tartalom + a kezdőlap szekciósora (idempotens)
 ```

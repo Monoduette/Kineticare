@@ -23,16 +23,41 @@
 # (lásd .cursor/environment.json), nem itt.
 set -euo pipefail
 
-# Node 24-et garantálunk (a repó engines/.nvmrc kikötése). A Cloud Agent
-# /exec-daemon/node shime (Node 22) egyébként PATH-előnyt élvez és elárnyékolná
-# a rendszerbeli Node 24-et — az explicit prepend ezt a parancs futásakor
-# felülírja. A NodeSource Node 24 a /usr/bin/node alatt él.
-export PATH="/usr/bin:$PATH"
-
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$HOME/.kineticare-dev.env"
 
 log() { printf '[start.sh] %s\n' "$*"; }
+
+# Az install.sh exact nodejs.org disztribúcióját választjuk. A Cloud Agent
+# /exec-daemon/node shime és a rendszer /usr/bin/node nem kerülhet elé.
+NODE_VERSION='24.20.0'
+NPM_VERSION='11.19.0'
+case "$(uname -m)" in
+  x86_64) node_arch='x64' ;;
+  aarch64 | arm64) node_arch='arm64' ;;
+  *)
+    log "HIBA: nem támogatott Node architektúra: $(uname -m)"
+    exit 1
+    ;;
+esac
+node_home="/opt/node-v${NODE_VERSION}-linux-${node_arch}"
+if [ ! -x "${node_home}/bin/node" ] || [ ! -x "${node_home}/bin/npm" ]; then
+  log "HIBA: az exact Node/npm runtime hiányzik; futtasd előbb az install.sh-t."
+  exit 1
+fi
+export PATH="${node_home}/bin:/usr/bin:$PATH"
+if [ "$(command -v node)" != "${node_home}/bin/node" ]; then
+  log "HIBA: nem az exact /opt Node bináris aktív."
+  exit 1
+fi
+if [ "$(command -v npm)" != "${node_home}/bin/npm" ]; then
+  log "HIBA: nem az exact /opt npm bináris aktív."
+  exit 1
+fi
+if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then
+  log "HIBA: exact Node ${NODE_VERSION} / npm ${NPM_VERSION} contract nem teljesül."
+  exit 1
+fi
 
 # --- 1) PostgreSQL cluster indítása (idempotens) ---------------------------
 # A cluster verzióját NEM égetjük be. Az install.sh a disztribúció `postgresql`
@@ -114,5 +139,5 @@ fi
 # --- 4) Payload-migráció (idempotens) --------------------------------------
 log 'Payload-migráció futtatása…'
 cd "$REPO_DIR"
-npx payload migrate
+./node_modules/.bin/payload migrate
 log 'Kész: az adatbázis migrálva, a környezet indulásra kész.'

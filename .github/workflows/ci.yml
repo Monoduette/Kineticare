@@ -55,7 +55,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "24.20.0"
 
 jobs:
   verify:
@@ -108,12 +108,19 @@ jobs:
           # a baseline-commitig visszamenőleg git-történetet olvas — shallow klónban
           # fail-closed bukna. Teljes history kell (mint a gitleaks.yml-nél).
           fetch-depth: 0
+      - name: Railpack 0.38.0 plan fixture ellenőrzése
+        run: ./scripts/verify-railpack-plan.sh
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       - name: Typecheck
         run: npm run typecheck
       # A `src/payload-types.ts` GENERÁLT fájl, de kézzel commitolt: ha a
@@ -147,7 +154,7 @@ jobs:
       # adatbázison a teljes láncot lefuttatja; a logban a `Migrating:` /
       # `Migrated:` sorok igazolják, hogy tényleg futott.
       - name: Adatbázis-migrációk
-        run: npx payload migrate
+        run: ./node_modules/.bin/payload migrate
       - name: Vitest
         run: npm test
       - name: ESLint
@@ -164,7 +171,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A build-hoz az src/env.ts kötelező kulcsai kellenek. Titok (még
       # placeholder sem) nem kerülhet a repóba (CLAUDE.md TILOS ZÓNÁK 1.),
       # ezért a titok-alakú értékeket futásidőben generáljuk — eldobható,
@@ -192,7 +204,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Függőségek telepítése
-        run: npm ci --legacy-peer-deps
+        run: |
+          node_exec="$(realpath "$(command -v node)")"
+          test "$node_exec" = "$RUNNER_TOOL_CACHE/node/${NODE_VERSION}/x64/bin/node"
+          test "$("$node_exec" --version)" = "v${NODE_VERSION}"
+          test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
+          "$node_exec" scripts/install-reviewed-dependencies.mjs
       # A teljes kép MINDIG látszik, akkor is, ha a kapu átenged: enélkül a
       # `moderate` tételek némán gyűlnek. Nem blokkol (`|| true`), csak riportál.
       - name: Sebezhetőség-riport (nem blokkol)

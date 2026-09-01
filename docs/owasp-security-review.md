@@ -5,6 +5,11 @@
 - **Dátum:** 2026-08-04
 - **Kockázati összesítés:** 🔴 RED 3 | 🟡 YELLOW 5 | 🟢 GREEN 4 | ✅ PASS (megállapítás nélküli kategória) 3
 
+> **Történeti, nem operatív jelentés.** A történeti parancsblokkok nem operatívak,
+> és az auditkori állapotot őrzik. A jelenlegi támogatott bootstrap parancs
+> `node scripts/install-reviewed-dependencies.mjs`; a repó helyi CLI-jait, például
+> `./node_modules/.bin/payload`, közvetlenül kell futtatni.
+
 > Módszer: a `secure-code-review` checklist (OWASP 2021) szerint, „inkább téves pozitív, mint elmaradt valódi". Minden találathoz fájl:sor és használatra-kész javítókód tartozik. Az A01/A02/A10 kategóriákban NINCS kritikus megállapítás (PASS) — a legerősebb pontok a végén, a prioritás a jelentés alján.
 
 ---
