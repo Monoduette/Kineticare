@@ -230,25 +230,23 @@ kifejezetten megőrzi ezt a kivételt.
 
 A kezdőlapon a sticky fejléc alatt a film gördül. A legsötétebb filmblokk a fejlécsávban
 `rgb(34,49,62)`; a film-hero felső lejtője legalább 0,50 lap-háttér-fedést ad, erre jön a
-fejléc saját fátyla.
+fejléc saját fátyla. **veil = 1 nem szolid paper:** a `::before` 72% lap-fedés plusz
+`backdrop-filter` (fagyott üveg). A korábbi réteg-`opacity` a blurrt is kifakította.
 
 | veil | kompozit háttér | ink szöveg (T) | wordmark-tag (T) | CTA-pirula határa (N) | CTA-felirat (T) | **fókuszgyűrű (N)** |
 |---|---|---|---|---|---|---|
-| 0,00 | `#8c959d` | 5,13 ✓ | 5,13 ✓ | 5,13 ✓ | 15,63 ✓ | **1,79 ✗** |
-| 0,25 | `#a6aeb5` | 6,95 ✓ | 5,82 ✓ | 5,49 ✓ | 12,35 ✓ | **2,43 ✗** |
-| 0,50 | `#c1c7cc` | 9,16 ✓ | 6,28 ✓ | 5,50 ✓ | 9,38 ✓ | 3,20 ✓ |
-| 0,75 | `#dce0e4` | 11,78 ✓ | 6,56 ✓ | 5,33 ✓ | 7,08 ✓ | 4,11 ✓ |
-| 1,00 | `#f6f9fc` | 14,79 ✓ | 6,70 ✓ | 5,16 ✓ | 5,45 ✓ | 5,16 ✓ |
+| 0,00 | `#8c959d` | 5,13 ✓ | 5,13 ✓ | 5,13 ✓ | 15,63 ✓ | kevert gyűrű 5,13 ✓ |
+| 0,25 | `#9fa7ae` | 6,41 ✓ | 5,36 ✓ | 5,06 ✓ | 12,35 ✓ | 5,06 ✓ |
+| 0,50 | `#b2b9bf` | 7,88 ✓ | 5,40 ✓ | 4,73 ✓ | 9,38 ✓ | 4,73 ✓ |
+| 0,75 | `#c5cbd0` | 9,54 ✓ | 5,32 ✓ | 4,32 ✓ | 7,08 ✓ | 4,32 ✓ |
+| 1,00 | `#d8dde1` | 11,42 ✓ | 5,17 ✓ | 3,98 ✓ | 5,45 ✓ | 3,98 ✓ |
 
-**A szöveg és a kitöltés minden állásban rendben van** — a fátyollal arányos
-`color-mix()` (wordmark-tag és CTA-pirula) pontosan azt teszi, amit a `layout.css`
-kontraszt-levezetése ígér. **A fókuszgyűrűre viszont ugyanezt elfelejtették megcsinálni**:
-a fix `accent-deep` gyűrű **csak `veil ≥ 0,44` felett éri el a 3:1-et** (bináris kereséssel
-számolva). A lap TETEJÉN, ahol a `veil = 0`, a fejléc minden fókuszálható eleme
-(wordmark-link, menülinkek, lenyitó-gombok, hamburger, CTA-pirula) **1,79:1-es
-fókuszgyűrűt kap** — ez a **B1** bukás.
+A fókuszgyűrű a fátyollal arányos `color-mix(focus, veil, ink)`: veil = 0-nál ink
+(`#10243e`) a filmsávon 5,13:1. A **fix** `accent-deep` gyűrű továbbra is bukna a
+lap tetején (1,79:1); ezt a G-K2 őr tartja. Belső oldalon a sáv paper fölött ül
+(ink 14,79:1); a fagyás ott a mögöttes tartalom blurrjából látszik.
 
-*A többi oldalon nincs film: ott a fejléc a paperen ül, a gyűrű 5,16:1 ✓.*
+*A 4.2 táblázat 2026-09-01-jén a 72%-os fagy-fedésre lett újraszámolva.*
 
 ### 4.3 Film-hero gombok (kezdőlap, a filmkockán)
 
@@ -897,8 +895,9 @@ illetve `html2canvas`/képernyőkép-mintavétel):
 3. **A filmkockák pillanatnyi világossága** — a méréseim a repó saját, filmkockákból vett
    „legsötétebb blokk" értékeire épülnek. Ha a `scene-02.mp4` cserélődik, **az egész
    film-hero kontraszt-levezetést újra kell futtatni**.
-4. **A `backdrop-filter: saturate(1.08)`** hatása — a telítettség-emelés a luminanciát
-   érdemben nem mozdítja, de a határeseteknél (veil 0,4–0,5) képernyőképből ellenőrizendő.
+4. **A `backdrop-filter: saturate(1.2)`** hatása: a telítettség-emelés a luminanciát
+   érdemben nem mozdítja, de a határeseteknél (kijelentkezés-keret 3,02:1 a fagyott
+   filmsávon) képernyőképből ellenőrizendő.
 5. **A `-webkit-font-smoothing: antialiased`** optikai hatása a 4,5–5,0:1 közötti
    pároknál — szubjektív, felhasználós próbát kér.
 
