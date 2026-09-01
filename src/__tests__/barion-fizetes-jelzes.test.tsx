@@ -151,7 +151,7 @@ function tokenTerkep(): Map<string, string> {
     if (ertek === undefined || melyseg > 8) {
       return ''
     }
-    const hivatkozas = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+    const hivatkozas = /^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/.exec(ertek)
     return hivatkozas === null ? ertek : felold(hivatkozas[1], melyseg + 1)
   }
   for (const nev of nyers.keys()) {
@@ -422,7 +422,8 @@ describe('Mért elrendezés: 320 px-en nincs vízszintes túlcsordulás (SC 1.4.
       /padding:\s*([^;]+);/
         .exec(szabalyTorzs(olvas('src/app/(frontend)/styles/ui.css'), '.kc-card--padded'))?.[1]
         ?.trim()
-        .replace(/^var\((--kc-[a-z0-9-]+)\)$/, (_, nev: string) => tokenek.get(nev) ?? '') ?? '',
+        .replace(/^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/, (_, nev: string) => tokenek.get(nev) ?? '') ??
+        '',
     )
     expect(oldalMargo).toBeGreaterThan(0)
     expect(kartyaBelso).toBeGreaterThan(0)

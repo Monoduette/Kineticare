@@ -397,7 +397,7 @@ describe('visszatérítés-nézet — mért érintőcél és 320 px-es reflow', 
     if (ertek === undefined || melyseg > 8) {
       return Number.NaN
     }
-    const hivatkozas = /^var\((--kc-[a-z0-9-]+)\)$/.exec(ertek)
+    const hivatkozas = /^var\(\s*(--kc-[a-z0-9-]+)\s*\)$/.exec(ertek)
     return hivatkozas === null ? remPx(ertek) : token(hivatkozas[1], melyseg + 1)
   }
 

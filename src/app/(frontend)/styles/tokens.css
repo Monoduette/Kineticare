@@ -99,13 +99,11 @@
      Lásd docs/ertekesitesi-ux-skill.md 3. pont. */
   --kc-color-bg: var(--kc-color-paper); /* lap-háttér: body, szekció, fejléc, lábléc */
   --kc-color-surface: var(--kc-color-bg); /* a lap-felület alias-a (a landingen a kettő egy) */
-  --kc-color-surface-raised: var(
-    --kc-color-white
-  ); /* a lap FÖLÉ emelt felület: kártya, mező, fiók, almenü */
+  /* a lap FÖLÉ emelt felület: kártya, mező, fiók, almenü */
+  --kc-color-surface-raised: var(--kc-color-white);
   --kc-color-surface-tint: var(--kc-color-tint-cool); /* tint-sáv (kc-section--tint) */
-  --kc-color-surface-dark: var(
-    --kc-color-ink
-  ); /* sötét sáv (kc-section--dark) — a lábléc a landing nyelvén paper hátterű */
+  /* sötét sáv (kc-section--dark) — a lábléc a landing nyelvén paper hátterű */
+  --kc-color-surface-dark: var(--kc-color-ink);
   --kc-color-text: var(--kc-color-ink);
   --kc-color-text-muted: var(--kc-color-ink-soft);
   --kc-color-on-dark: var(--kc-color-white);
@@ -118,9 +116,8 @@
   --kc-color-link: var(--kc-color-text); /* landing footer-meta: ink + aláhúzás */
   --kc-color-link-hover: var(--kc-color-accent-deep);
   --kc-color-focus: var(--kc-color-accent-deep); /* fókuszgyűrű világos felületen */
-  --kc-color-focus-on-dark: var(
-    --kc-color-white
-  ); /* sötét sávon (accent-deep az inken csak 2,87:1) */
+  /* sötét sávon (accent-deep az inken csak 2,87:1) */
+  --kc-color-focus-on-dark: var(--kc-color-white);
 
   /* ---- Tipográfia ------------------------------------------------------ */
   --kc-font-heading: 'Tenor Sans', 'Georgia', 'Times New Roman', serif;
