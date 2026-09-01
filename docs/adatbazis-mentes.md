@@ -414,8 +414,9 @@ Ez a legfontosabb rész, itt lehet a legnagyobbat hibázni.
   visszaállított adatbázis „tudja", meddig jutott a migrációs sor. Ezért a
   visszaállítás után **NEM szabad** a migrációkat kézzel újrajátszani vagy a
   `payload_migrations` sorait törölni.
-- Az induláskor futó `npx payload migrate` (a `railway.json`
-  `startCommand`-jában) a visszaállított állapotot látja, és **csak a
+- Az induláskor futó `./node_modules/.bin/payload migrate` (a `railway.json`
+  `startCommand`-jában) kizárólag a lockfile-ból telepített binárist használja,
+  a visszaállított állapotot látja, és **csak a
   hiányzó** migrációkat futtatja le. Ez a helyes viselkedés.
 - **Figyelem a régi mentés + új kód kombinációra:** ha egy RÉGI mentést állítasz
   vissza, miközben a kód azóta továbblépett, az induláskori `migrate` a köztes

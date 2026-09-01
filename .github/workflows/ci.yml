@@ -115,7 +115,8 @@ jobs:
       - name: Függőségek telepítése
         run: |
           npm ci --legacy-peer-deps --ignore-scripts
-          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2"
+          sha256sum --strict -c scripts/verify-install-script-lock.sha256
           node scripts/verify-install-script-lock.mjs
           npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
       - name: Typecheck
@@ -151,7 +152,7 @@ jobs:
       # adatbázison a teljes láncot lefuttatja; a logban a `Migrating:` /
       # `Migrated:` sorok igazolják, hogy tényleg futott.
       - name: Adatbázis-migrációk
-        run: npx payload migrate
+        run: ./node_modules/.bin/payload migrate
       - name: Vitest
         run: npm test
       - name: ESLint
@@ -170,7 +171,8 @@ jobs:
       - name: Függőségek telepítése
         run: |
           npm ci --legacy-peer-deps --ignore-scripts
-          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2"
+          sha256sum --strict -c scripts/verify-install-script-lock.sha256
           node scripts/verify-install-script-lock.mjs
           npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false
       # A build-hoz az src/env.ts kötelező kulcsai kellenek. Titok (még
@@ -202,7 +204,8 @@ jobs:
       - name: Függőségek telepítése
         run: |
           npm ci --legacy-peer-deps --ignore-scripts
-          printf '%s  %s\n' 'f6725a1029b417442a73b35b10ac48da796cda203ea790c64ab406c719c7384e' 'scripts/verify-install-script-lock.mjs' | sha256sum -c -
+          test "$(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64)" = "22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2"
+          sha256sum --strict -c scripts/verify-install-script-lock.sha256
           node scripts/verify-install-script-lock.mjs
       # A teljes kép MINDIG látszik, akkor is, ha a kapu átenged: enélkül a
       # `moderate` tételek némán gyűlnek. Nem blokkol (`|| true`), csak riportál.

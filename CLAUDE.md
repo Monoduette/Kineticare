@@ -17,7 +17,7 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 
 | Parancs                          | Leírás                                                                                                                                                                                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                    | Fejlesztői szerver indítása — friss/üres adatbázisnál ELŐTTE `npx payload migrate` kötelező (a dev séma-push ki van kapcsolva, lásd a 22a. üzemeltetési tanulságot)                                                                            |
+| `npm run dev`                    | Fejlesztői szerver indítása — friss/üres adatbázisnál ELŐTTE `./node_modules/.bin/payload migrate` kötelező (a dev séma-push ki van kapcsolva, lásd a 22a. üzemeltetési tanulságot)                                                            |
 | `npm run build`                  | Production build                                                                                                                                                                                                                               |
 | `npm run lint`                   | ESLint-ellenőrzés                                                                                                                                                                                                                              |
 | `npm run typecheck`              | TypeScript típusellenőrzés                                                                                                                                                                                                                     |
@@ -216,8 +216,12 @@ an open transaction`) zárolja a sort, és minden írás megáll rajta. Olvasás
     hozzá) vagy a `railway-agent` `restartServiceTool`-ja.
 14. **A migrációk a deploy részeként FUTNAK.** A start-parancs
     `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start` —
-    kizárólag a lockfile-ból telepített lokális binárisokat használja; a `railway.json`-ban ÉS a
-    service-beállításban is (a 2. pont miatt mindkettőt nézd meg). A `&&` miatt
+    kizárólag a lockfile-ból telepített lokális binárisokat használja; a tényleges
+    deploy-konfigurációban a `railway.json`-ból kell származnia (a 2. pont miatt).
+    Ez a legacy Config as Code útvonal csak 2026-12-01-ig él; előtte a live
+    projekthez linkelt repóban `railway config migrate` előnézet, majd emberileg
+    jóváhagyott `railway config migrate --apply` kell; ezután tiszta
+    `railway config plan` bizonyítsa az IaC-egyezést. A `&&` miatt
     bukó migráció esetén az app el sem indul → healthcheck-hiba, tehát a baj
     látható, nem néma. **Ellenőrzés:** a deploy-logban ott kell lennie a
     `Migrating: …` / `Migrated: …` soroknak.
@@ -277,9 +281,10 @@ an open transaction`) zárolja a sort, és minden írás megáll rajta. Olvasás
     TÁBLATÖRLÉST kínáló promptot ad, amin minden nem-interaktív futás némán,
     örökre megakad (mérve: 6+ perc ep_poll, a GET /admin sosem válaszol), rossz
     env mellett pedig éles-alakú adatbázison törölne. Sémaváltozásnál helyben
-    is a migrációs lánc az út: `npx payload migrate:create` + `npx payload
-migrate`. Következmény: friss adatbázisnál a `npm run dev` előtt migrate
-    kell — enélkül az admin felállni feláll, de a seed/lekérdezések hangos
+    is a migrációs lánc az út: `./node_modules/.bin/payload migrate:create` +
+    `./node_modules/.bin/payload migrate`. Következmény: friss adatbázisnál a
+    `npm run dev` előtt migrate kell — enélkül az admin felállni feláll, de a
+    seed/lekérdezések hangos
     warnnal buknak.
 
 22b. **Helyi Postgres a migráció-generáláshoz** (a `pgrun` user kell, mert az

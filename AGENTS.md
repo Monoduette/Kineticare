@@ -24,7 +24,7 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
   e-commerce motor; **PostgreSQL** az adatbázis (`@payloadcms/db-postgres`)
 - **@payloadcms/plugin-ecommerce 3.88.0** (béta!) — kosár/rendelés alapok
 - **@payloadcms/plugin-form-builder** — kapcsolat-űrlap
-- **TypeScript strict**, **Node 24** (az `engines` és a `.nvmrc` szerint)
+- **TypeScript strict**, **Node 24.20.0** (az `engines` és a `.nvmrc` szerint)
 - Teszt: **Vitest 4** (node environment)
 - Lint: **ESLint 9** flat config + **eslint-config-next 16.3.3**; formázás:
   **Prettier** (`semi: false`, `singleQuote: true`, `printWidth: 100`)
@@ -44,7 +44,7 @@ videói tokenes embeddel, bejelentkezés után nézhetők.
 
 ## Parancsok
 
-**Node 24 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
+**Node 24.20.0 kell** — `nvm use` / `fnm use` a `.nvmrc` alapján. A telepítéshez
 `legacy-peer-deps` kell: nem peer-ütközés miatt (a next@16.3.3 beleesik a
 @payloadcms/next 3.88.0 peer-tartományába), hanem mert a `package-lock.json`
 legacy-peer-deps módban készült, ezért flag nélkül az `npm ci` EUSAGE-dzsel
@@ -355,7 +355,8 @@ konfigurációval (csak az egyik) az app el sem indul.
 
 A production **`Kineticare`** appservice a Railway-n fut, konfig: `railway.json`
 (RAILPACK builder, explicit `buildCommand: npm run build`,
-`startCommand: npx payload migrate && npm start`, `healthcheckPath: /admin`).
+`startCommand: ./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`,
+`healthcheckPath: /admin`).
 A `Kineticare-demo` 2026-08-29-től kivezetve — oda semmit nem deployolunk.
 Részletes runbook: `docs/deploy-railway.md`.
 
@@ -365,9 +366,14 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 - **A „SUCCESS" deploy nem jelenti, hogy az új kód fut.** Explicit `buildCommand`
   nélkül a builder kihagyhatta a buildet és a régi `.next/` mappát indította.
   A deploy build-logjában tényleges `npm run build` futásnak kell szerepelnie.
-- **A service-szintű (dashboard) beállítás felülírja a `railway.json`-t** — a
-  fájl módosításakor a service-beállítást is ellenőrizd (builder, buildCommand,
-  healthcheck, startCommand).
+- **A config-as-code (`railway.json`) felülírja a dashboard service-beállítását**
+  az ott megadott kulcsokra. A tényleges deploy-konfigurációban ellenőrizd a
+  builder, buildCommand, healthcheck és startCommand eredetét.
+- **A `railway.json` Config as Code 2026-12-01-én megszűnik.** A meglévő
+  Kineticare service addig használhatja, de előtte a live projekthez linkelt
+  repóban `railway config migrate` előnézet, majd emberileg jóváhagyott
+  `railway config migrate --apply` kell. Ezután tiszta `railway config plan`
+  bizonyítsa az IaC-egyezést; vakon generált `.railway/railway.ts` nem elfogadható.
 - **Feltöltött képekhez Railway Volume kötelező élesben** (`/app/media`
   mountpont + `PAYLOAD_MEDIA_DIR=/app/media`): a konténer lemeze minden
   deploynál üresen jön vissza. Induláskor az `ensureMediaFiles`

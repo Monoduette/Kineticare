@@ -114,5 +114,5 @@ fi
 # --- 4) Payload-migráció (idempotens) --------------------------------------
 log 'Payload-migráció futtatása…'
 cd "$REPO_DIR"
-npx payload migrate
+./node_modules/.bin/payload migrate
 log 'Kész: az adatbázis migrálva, a környezet indulásra kész.'

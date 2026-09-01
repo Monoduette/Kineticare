@@ -1,0 +1,224 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "caches": {
+    "apt": {
+      "directory": "/var/cache/apt",
+      "type": "locked"
+    },
+    "apt-lists": {
+      "directory": "/var/lib/apt/lists",
+      "type": "locked"
+    },
+    "next": {
+      "directory": "/app/.next/cache",
+      "type": "shared"
+    },
+    "node-modules": {
+      "directory": "/app/node_modules/.cache",
+      "type": "shared"
+    },
+    "npm-install": {
+      "directory": "/root/.npm",
+      "type": "shared"
+    }
+  },
+  "deploy": {
+    "base": {
+      "step": "packages:apt:runtime"
+    },
+    "inputs": [
+      {
+        "include": [
+          "/mise/shims",
+          "/mise/installs",
+          "/usr/local/bin/mise",
+          "/etc/mise/config.toml",
+          "/root/.local/state/mise"
+        ],
+        "step": "packages:mise"
+      },
+      {
+        "include": [
+          "/app/node_modules"
+        ],
+        "step": "build"
+      },
+      {
+        "exclude": [
+          "node_modules",
+          ".yarn"
+        ],
+        "include": [
+          "/root/.cache",
+          "."
+        ],
+        "step": "build"
+      },
+      {
+        "include": [
+          "."
+        ],
+        "step": "install"
+      }
+    ],
+    "startCommand": "npm run start",
+    "variables": {
+      "CI": "true",
+      "NODE_ENV": "production",
+      "NPM_CONFIG_FETCH_RETRIES": "5",
+      "NPM_CONFIG_FUND": "false",
+      "NPM_CONFIG_PRODUCTION": "false",
+      "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+      "RAILPACK_VERSION": "0.38.0"
+    }
+  },
+  "steps": [
+    {
+      "assets": {
+        "generated-mise-toml": "[tools]\n  node = \"24.20.0\"\n\n[settings]\n  idiomatic_version_file_enable_tools = [\"python\", \"node\", \"ruby\", \"elixir\", \"go\", \"java\", \"yarn\", \"pnpm\", \"bun\", \"deno\", \"dotnet\", \"rust\"]\n  minimum_release_age = \"14d\"\n  paranoid = true\n  trusted_config_paths = [\"/app\"]\n  [settings.node]\n    verify = false\n"
+      },
+      "commands": [
+        {
+          "path": "/mise/shims"
+        },
+        {
+          "dest": "mise.toml",
+          "src": "mise.toml"
+        },
+        {
+          "dest": ".nvmrc",
+          "src": ".nvmrc"
+        },
+        {
+          "customName": "create mise config",
+          "name": "generated-mise-toml",
+          "path": "/etc/mise/config.toml"
+        },
+        {
+          "cmd": "mise install",
+          "customName": "install mise packages: node"
+        }
+      ],
+      "inputs": [
+        {
+          "image": "ghcr.io/railwayapp/railpack-builder:mise-2026.8.13"
+        }
+      ],
+      "name": "packages:mise",
+      "variables": {
+        "MISE_CACHE_DIR": "/mise/cache",
+        "MISE_CONFIG_DIR": "/mise",
+        "MISE_DATA_DIR": "/mise",
+        "MISE_INSTALLS_DIR": "/mise/installs",
+        "MISE_SHIMS_DIR": "/mise/shims"
+      }
+    },
+    {
+      "caches": [
+        "npm-install"
+      ],
+      "commands": [
+        {
+          "cmd": "sh -c 'npm ci --legacy-peer-deps --ignore-scripts'",
+          "customName": "npm ci --legacy-peer-deps --ignore-scripts"
+        },
+        {
+          "cmd": "sh -c 'test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2'",
+          "customName": "test $(sha256sum scripts/verify-install-script-lock.sha256 | cut -c1-64) = 22770112e6e712a96208daa7b47046fe91d3492a90af7cca7224b7c789de02c2"
+        },
+        {
+          "cmd": "sh -c 'sha256sum --strict -c scripts/verify-install-script-lock.sha256'",
+          "customName": "sha256sum --strict -c scripts/verify-install-script-lock.sha256"
+        },
+        {
+          "cmd": "sh -c 'node scripts/verify-install-script-lock.mjs'",
+          "customName": "node scripts/verify-install-script-lock.mjs"
+        },
+        {
+          "cmd": "sh -c 'npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false'",
+          "customName": "npm rebuild --ignore-scripts=false --foreground-scripts --strict-allow-scripts=true --dangerously-allow-all-scripts=false"
+        },
+        {
+          "path": "node_modules/.bin"
+        }
+      ],
+      "inputs": [
+        {
+          "step": "packages:mise"
+        },
+        {
+          "include": [
+            "."
+          ],
+          "local": true
+        },
+        {
+          "include": [
+            ".npmrc",
+            "package.json",
+            "package-lock.json",
+            "scripts/verify-install-script-lock.mjs",
+            "scripts/verify-install-script-lock.sha256"
+          ],
+          "local": true
+        }
+      ],
+      "name": "install",
+      "variables": {
+        "CI": "true",
+        "NODE_ENV": "production",
+        "NPM_CONFIG_FETCH_RETRIES": "5",
+        "NPM_CONFIG_FUND": "false",
+        "NPM_CONFIG_PRODUCTION": "false",
+        "NPM_CONFIG_UPDATE_NOTIFIER": "false"
+      }
+    },
+    {
+      "caches": [
+        "node-modules",
+        "next"
+      ],
+      "commands": [
+        {
+          "cmd": "npm run build"
+        }
+      ],
+      "inputs": [
+        {
+          "step": "install"
+        },
+        {
+          "include": [
+            "."
+          ],
+          "local": true
+        }
+      ],
+      "name": "build",
+      "secrets": [
+        "*"
+      ],
+      "variables": {
+        "NEXT_TELEMETRY_DISABLED": "1"
+      }
+    },
+    {
+      "caches": [
+        "apt",
+        "apt-lists"
+      ],
+      "commands": [
+        {
+          "cmd": "sh -c 'apt-get update \u0026\u0026 apt-get install -y libatomic1'",
+          "customName": "install apt packages: libatomic1"
+        }
+      ],
+      "inputs": [
+        {
+          "image": "ghcr.io/railwayapp/railpack-runtime:mise-2026.8.13"
+        }
+      ],
+      "name": "packages:apt:runtime"
+    }
+  ]
+}

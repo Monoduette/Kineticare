@@ -7,7 +7,18 @@
 > **Cél:** a `main` branchből automatikusan deployolódó staging környezet
 > Railway-en, managed PostgreSQL-lel, privát hálózaton.
 > A gyökérben lévő `railway.json` tartalmazza a build/start konfigurációt —
-> ezt a fájlt a Railway automatikusan felismeri.
+> ezt kizárólag a már Config as Code-dal kezelt, meglévő Kineticare service
+> olvassa. Új service már nem kapcsolható erre a legacy konfigurációra.
+
+> **2026-09-01 — Railway kivezetési határ:** a `railway.json` Config as Code
+> deprecated, de a már ezt használó Kineticare service-nél 2026-12-01-ig
+> továbbra is működik és az itt megadott kulcsokra felülírja a dashboardot.
+> A hard cutoff előtt a live projekthez linkelt repóból előbb
+> `railway config migrate` előnézet, majd emberileg jóváhagyott
+> `railway config migrate --apply` kell: ez írja ki az IaC-fájlt és törli a
+> service Config File beállítását. Ezután a `railway config plan` legyen tiszta,
+> mielőtt a régi fájl törléséről külön döntés születik. A sima `config pull` +
+> `config plan` útvonal blokkolt, amíg ugyanazt a service-t a Config as Code kezeli.
 
 ---
 
@@ -17,10 +28,18 @@
    lépését fail-closed módon felülírja: scriptmentes `npm ci`, a lockfile és a
    lifecycle-tarballok ellenőrzése, kizárólag az exact jóváhagyott install
    scriptek rebuildje, majd `npm run build`. A Node és npm verzió is exact:
-   **Node `24.20.0`, npm `11.19.0`**.
-   **FIGYELEM:** a service Variables közé tett `RAILPACK_NODE_VERSION` **felülírja** az
-   `engines.node`-ot (a railpack ebben a sorrendben old fel:
-   `RAILPACK_NODE_VERSION` → `engines.node` → `.nvmrc` → `.node-version` → default `lts`).
+   **Node `24.20.0`, npm `11.19.0`**. A `package.json` `engines.node`, a
+   `.nvmrc` és a projekt `mise.toml` szándékosan ugyanaz az exact Node-verzió:
+   Railpack 0.38.0 a Node-verziót
+   az `engines.node` alapján írja a generált mise-konfigba, de a bemásolt
+   idiomatikus `.nvmrc` a mise feloldásakor felülírhatná azt. A két forrás
+   eltérése ezért release blocker. A projekt `mise.toml` emellett fail-closed
+   GPG-ellenőrzést kapcsol a Node letöltésére. A Railpack 0.38.0 által használt mise
+   `minimum_release_age = "14d"` beállítása az exact `24.20.0` rögzítést nem
+   utasítja el; ezt a pinned mise-verzióval tényleges telepítés igazolta.
+   **FIGYELEM:** a service Variables közé tett `RAILPACK_NODE_VERSION` a
+   Railpack provider feloldásakor felülírja az `engines.node`-ot, de az eltérő
+   `.nvmrc` ezt később ismét felülírhatja; ne állíts be ilyen változót.
    Ha a futásidő eltér, a verifier még a lifecycle scriptek előtt leállítja a
    buildet; ilyenkor előbb ezt a változót keresd.
 2. **Start:** `./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`
@@ -30,14 +49,15 @@
 3. **Healthcheck:** `GET /admin` (a Payload admin mindig 200-at ad, bejelentkezés
    nélkül is a login-oldallal), 300 mp timeout, `ON_FAILURE` restart (3×).
 
-## 1. Projekt és adatbázis létrehozása (Railway UI, ~2 perc)
+## 1. Meglévő projekt és adatbázis ellenőrzése
 
-1. <https://railway.com> → **New Project** → **Deploy from GitHub repo** →
-   válaszd az `anorbert-cmyk/Kineticare` repót (első alkalommal engedélyezni
-   kell a Railway GitHub-appot a repóra).
-2. A projekten belül: **+ New → Database → PostgreSQL**.
-   A Postgres a projekt **privát hálózatán** fut — kívülről nem érhető el,
-   csak az appservice-ből.
+1. Ez a runbook a meglévő production `Kineticare` appservice ellenőrzésére
+   szolgál. Új service-t csak Railway IaC-val hozz létre, és az első deploy
+   előtt rögzítsd benne ugyanezt a build-, start- és healthcheck-szerződést;
+   a `railway.json` automatikus felismerésére új service-nél ne számíts.
+2. A meglévő projektben ellenőrizd, hogy a PostgreSQL service a projekt
+   **privát hálózatán** érhető el, és az appservice `DATABASE_URI` változója
+   erre a service-re hivatkozik.
 3. Az appservice **Settings → Source** részénél ellenőrizd: branch = `main`,
    **Auto-deploy** bekapcsolva (minden main-push új deploy).
 
@@ -137,9 +157,10 @@ megtalálja, majd létrehozza a
 - [ ] A **build-logban tényleges `npm run build` futás** szerepel — ha
       `Build · skipped (nothing to build)` látszik, a régi `.next/` indult el,
       és a deployt SHA nélkül (a branch HEAD-jére) újra kell indítani
-- [ ] A **deploy-logban ott a `server_start` sor**, benne `"nodeVersion":"v24.20.0"`
-      és a **várt `commitSha`**. Ha a nodeVersion nem 24-es: a service Variables
-      közt keresd a `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
+- [ ] A **deploy-logban ott a `server_start` sor**, benne
+      `"nodeVersion":"v24.20.0"` és a **várt `commitSha`**. Ha a nodeVersion nem
+      exact `v24.20.0`: a service Variables közt keresd a
+      `RAILPACK_NODE_VERSION`-t (felülírja az `engines.node`-ot).
       Ha a sor egyáltalán nincs meg: előbb a `LOG_LEVEL`-t ellenőrizd (`info` kell
       hozzá), csak utána gyanakodj régi kódra
 - [ ] A build-logban a sorrend: scriptmentes `npm ci` → verifier `OK` →

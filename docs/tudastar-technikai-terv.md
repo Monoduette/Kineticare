@@ -120,12 +120,13 @@ szerver-komponens, és csak a nevet rendereli. A szabály a bővítés után is:
 
 ### 2.5 Migráció
 
-- Generálás: `npx payload migrate:create tudastar_szerzoi_reteg`, helyi
+- Generálás: `./node_modules/.bin/payload migrate:create tudastar_szerzoi_reteg`, helyi
   Postgresszel (a `CLAUDE.md` 22b tanulsága szerinti `pgrun`-os indítás).
 - Kézzel migrációt írni, szerkeszteni tilos (TILOS ZÓNA 3, G3/G4 őrök).
 - A `src/payload-types.ts` újragenerálódik; ez az E-csomag kimenete, amire a
   C és D csomag típusai épülnek.
-- Deploy: a migráció a start-parancs része (`npx payload migrate && npm start`),
+- Deploy: a migráció a start-parancs része
+  (`./node_modules/.bin/payload migrate && exec ./node_modules/.bin/next start`),
   a deploy-logban `Migrating:`/`Migrated:` sor igazolja (14. üzemeltetési pont).
 
 ### 2.6 Amit tudatosan NEM veszünk fel
