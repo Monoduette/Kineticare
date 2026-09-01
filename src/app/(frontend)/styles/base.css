@@ -164,6 +164,17 @@ h6 {
   font-size: var(--kc-font-m);
 }
 
+/* UA-elemek, amik a böngésző alapstílusában negyedik méretet kapnának
+   (`small` ~80 %, `sub`/`sup` `smaller` ≈ 83 %). A Lexical superscript/
+   subscript (`src/components/lexical/serialize.tsx`) ezeket a tageket
+   írja. NN/g Visual Hierarchy: max. 3 méret, a kiegészítő a S.
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/ */
+small,
+sub,
+sup {
+  font-size: var(--kc-font-s);
+}
+
 img,
 picture,
 video,

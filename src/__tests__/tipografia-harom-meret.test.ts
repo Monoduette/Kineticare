@@ -210,6 +210,10 @@ describe('globális tipográfiai finomságok', () => {
     expect(base).toMatch(/h1,\s*\n\s*h2\s*\{\s*\n\s*font-size: var\(--kc-font-l\);/)
   })
 
+  it('a böngésző small/sub/sup eleme az S tokenre esik, nem UA-százalékra', () => {
+    expect(base).toMatch(/small,\s*\n\s*sub,\s*\n\s*sup\s*\{\s*\n\s*font-size: var\(--kc-font-s\);/)
+  })
+
   it('a sima görgetés él, de `prefers-reduced-motion` esetén kikapcsol', () => {
     expect(base).toContain('scroll-behavior: smooth')
     const csokkentett = base.slice(base.indexOf('@media (prefers-reduced-motion: reduce)'))

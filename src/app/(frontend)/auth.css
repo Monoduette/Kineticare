@@ -101,8 +101,8 @@
 
    MIÉRT KOMPONENS-CÍM (törzsméret + 700), ÉS NEM SZEKCIÓ-CÍM (L lépcső):
    a base.css a H1-et és a H2-t UGYANARRA az L lépcsőre teszi, tehát a két
-   alcím a lap elsődleges cselekvésénél is hangosabb lenne (1440 px-en 46,4 px
-   betűvel, a gomb fölött). Itt viszont nem külön szekciókról van szó, hanem
+   alcím a lap elsődleges cselekvésénél is hangosabb lenne (L = 32 px a gomb
+   M lépcsője fölött). Itt viszont nem külön szekciókról van szó, hanem
    EGY folyamat két utókérdéséről. A megoldás a repóban MÁR ÉLŐ minta: a
    `.kc-auth-success > h2` ugyanígy komponens-cím (lásd feljebb) — új
    betűméret tehát nem kerül be, csak a meglévő M lépcső 700-as súllyal.
