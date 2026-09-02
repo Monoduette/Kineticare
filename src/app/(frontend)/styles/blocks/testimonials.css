@@ -193,7 +193,7 @@
   display: flex;
   /* content.css `.kc-testimonials__figure` oszlopos flex — itt sornak kell
      lennie, különben a törzs a jel ALÁ esik, a névsor padding-leftje pedig
-     beljebb viszi a nevet, mint a idézetet. */
+     beljebb viszi a nevet, mint az idézetet. */
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
