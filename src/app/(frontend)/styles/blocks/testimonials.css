@@ -191,6 +191,10 @@
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure {
   display: flex;
+  /* content.css `.kc-testimonials__figure` oszlopos flex — itt sornak kell
+     lennie, különben a törzs a jel ALÁ esik, a névsor padding-leftje pedig
+     beljebb viszi a nevet, mint a idézetet. */
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
   width: 100%;
@@ -312,8 +316,14 @@
 
 /* Elválasztó vessző a név és a szerep közt (a tükörben ez egyetlen szöveg volt;
    itt két elem, ezért a vessző dekoratív CSS-tartalom — csak akkor jelenik meg,
-   ha a szerkesztő megadott szerepet). */
+   ha a szerkesztő megadott szerepet). A vessző a név `::after`-jén van, a
+   szóköz a szerep `::before`-ján: 320 px-en a sortörés a vessző UTÁN esik
+   („BAGDAL SZILVIA," / „JÓGAOKTATÓ"), nem elé („, JÓGAOKTATÓ"). */
+.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after {
+  content: ',';
+}
+
 .kc-testimonials .kc-testimonials__role::before {
-  content: ', ';
+  content: ' ';
   white-space: pre;
 }

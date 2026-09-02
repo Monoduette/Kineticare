@@ -94,6 +94,7 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure',
     )
     expect(figura).toContain('display: flex')
+    expect(figura).toContain('flex-direction: row')
     expect(figura).toContain('flex-wrap: wrap')
     expect(figura).not.toContain('display: grid')
 
@@ -109,6 +110,15 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
     expect(nev).toContain('width: auto')
     expect(nev).not.toContain('white-space: nowrap')
     expect(nev).not.toContain('grid-column:')
+
+    expect(kommentNelkul(testimonialsCss)).toContain(
+      '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
+    )
+    const vesszo = szabalyTorzs(
+      testimonialsCss,
+      '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
+    )
+    expect(vesszo).toContain("content: ','")
   })
 })
 
