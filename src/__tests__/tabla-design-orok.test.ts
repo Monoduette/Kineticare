@@ -106,6 +106,7 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
     expect(nev).toContain(
       'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
     )
+    expect(nev).toContain('padding-bottom: var(--kc-space-4)')
     expect(nev).toContain('min-width: 0')
     expect(nev).toContain('width: auto')
     expect(nev).not.toContain('white-space: nowrap')

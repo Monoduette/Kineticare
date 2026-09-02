@@ -231,6 +231,15 @@
   width: auto;
   max-width: 100%;
   padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
+  /* A verzális név (Bagdal / jógaoktató) alatt kell lélegzet: mobilon a kis
+     kártyának nincs alsó item-paddingje, asztalon a space-6 a kártya széle,
+     nem a név alatt ül. Ugyanaz a token mindkét szélességen — NN/g proximity
+     (a névcsoport elválik a következő kártyától / a tábla aljától), GOV.UK
+     spacing unit 4 és Carbon spacing-05 (16 px = --kc-space-4).
+     https://www.nngroup.com/articles/gestalt-proximity/
+     https://design-system.service.gov.uk/styles/spacing/
+     https://carbondesignsystem.com/elements/spacing/overview/ */
+  padding-bottom: var(--kc-space-4);
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__text {
