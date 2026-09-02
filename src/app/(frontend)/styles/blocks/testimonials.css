@@ -172,27 +172,36 @@
 
 /* ---- Oldalsó kis idézetek ------------------------------------------------
    A tükörben a kis idézet kéthasábos: bal oszlopban a mini idézőjel, jobbon a
-   szöveg és a névsor (kineticare.css 742–762.). */
+   szöveg és a névsor (kineticare.css 742–762.).
+
+   Flex, nem rács: a `figure { display: grid }` + `figcaption` páros a WebKit
+   (iOS Safari) alatt a névsort a 3,1rem-es jel-oszlopba ejti — `grid-column: 2`
+   ellenére. Mért: production 390 px, „BAGDAL" / „SZILVIA, JÓGAOKTATÓ" a
+   hajszálvonalnak ütközve. A kiemelt (`--big`) kártya ugyanitt flex-oszlop, és
+   a névsor ott egy vonalban marad. NN/g proximity: a név a törzshöz tartozik,
+   nem a díszjelhez (https://www.nngroup.com/articles/gestalt-proximity/). */
 
 .kc-testimonials .kc-testimonials__item--small {
+  --kc-testimonials-mark-col: 3.1rem;
+  --kc-testimonials-mark-gap: 0.55rem;
   margin-top: var(--kc-space-5);
   padding-top: var(--kc-space-5);
   border-top: 1px solid var(--kc-testimonials-rule);
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   width: 100%;
-  grid-template-columns: 3.1rem minmax(0, 1fr);
-  column-gap: 0.55rem;
-  align-content: center;
+  column-gap: var(--kc-testimonials-mark-gap);
 }
 
 /* A kis idézőjel a mockupon a törzsszövegnél nagyobb, a sor tetejéhez
    igazított függő díszjel. A méret az L token (dekoratív, nem címsor). */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark {
-  grid-column: 1;
-  grid-row: 1;
+  flex: 0 0 var(--kc-testimonials-mark-col);
+  width: var(--kc-testimonials-mark-col);
   margin-top: 0.05rem;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
@@ -200,9 +209,24 @@
   color: var(--kc-testimonials-mark);
 }
 
-.kc-testimonials .kc-testimonials__item--small .kc-testimonials__quote,
+.kc-testimonials .kc-testimonials__item--small .kc-testimonials__quote {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* A névsor külön sor, a törzzsel egy vonalban. A `flex-basis: 100%` új sort
+   nyit; a padding a jel-oszlop + rés, hogy a figcaption akkor is a szöveg
+   alatt maradjon, ha a flex-tétel-számítás a `width: max-content` szabállyal
+   versenyez. WCAG 2.2 SC 1.4.12: nincs nowrap — a verzális, 0,2em-es név
+   törhet, de a teljes hasábban, nem a jel alatt.
+   https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution {
-  grid-column: 2;
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__text {
@@ -255,13 +279,20 @@
 
 /* Dekoratív vonal-előtag a név fölött (a tükörben ez váltja a keretet).
    A szélesség a névsoré: a mockup a vonalat a verzális névvel egy vonalban,
-   annak hosszan viszi, nem egy rögzített 2,6rem-es pálcát. */
+   annak hosszan viszi, nem egy rögzített 2,6rem-es pálcát.
+   A vonal és a verzális név közt `--kc-space-4` (16px): GOV.UK spacing unit 4
+   (15 px kicsin, 20 px nagy képernyőn) és Carbon `$spacing-05` (16 px). A
+   korábbi space-3 (12 px) a hajszálvonalnak ütköztette a nagybetűs „BAGDAL"
+   tetejét. NN/g proximity: a név a vonalhoz tartozik, de nem tapad rá.
+   https://design-system.service.gov.uk/styles/spacing/
+   https://carbondesignsystem.com/elements/spacing/overview/
+   https://www.nngroup.com/articles/gestalt-proximity/ */
 .kc-testimonials .kc-testimonials__attribution::before {
   content: '';
   display: block;
   width: 100%;
   height: 1px;
-  margin-bottom: var(--kc-space-3);
+  margin-bottom: var(--kc-space-4);
   background-color: var(--kc-testimonials-ink);
 }
 
