@@ -189,6 +189,20 @@
   border-top: 1px solid var(--kc-testimonials-rule);
 }
 
+/* 900 px alatt az edge-tábla alsó paddingje 0 (fotó/rács a széléig). Itt az
+   utolsó tartalom a verzális név, ezért a tábla alja is a név alatti ritmust
+   viszi — különben a 24 px-es figcaption-padding a következő sáv színváltásánál
+   eltűnik. Asztalon a 900-as szabály `--kc-space-7` alsó tábla-paddingje marad
+   (nagyobb specifikusságú shorthand ott). Apple HIG Layout: a csoport alsó
+   széle nem vágja a szöveget; WCAG 2.2 SC 1.4.10: 320 px-en a név nem tapad.
+   https://developer.apple.com/design/human-interface-guidelines/layout
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html */
+@media (max-width: 899px) {
+  .kc-section.kc-board.kc-board--edge.kc-testimonials {
+    padding-bottom: var(--kc-space-5);
+  }
+}
+
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure {
   display: flex;
   /* content.css `.kc-testimonials__figure` oszlopos flex — itt sornak kell
@@ -231,15 +245,18 @@
   width: auto;
   max-width: 100%;
   padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
-  /* A verzális név (Bagdal / jógaoktató) alatt kell lélegzet: mobilon a kis
-     kártyának nincs alsó item-paddingje, asztalon a space-6 a kártya széle,
-     nem a név alatt ül. Ugyanaz a token mindkét szélességen — NN/g proximity
-     (a névcsoport elválik a következő kártyától / a tábla aljától), GOV.UK
-     spacing unit 4 és Carbon spacing-05 (16 px = --kc-space-4).
+  /* A verzális név (Bagdal / jógaoktató) ALATT kell látható lélegzet — nem a
+     hajszálvonal FÖLÖTTE. Ugyanaz a token mindkét szélességen: a kis kártya
+     saját `padding-top` / `margin-top` ritmusa (`--kc-space-5` = 24 px).
+     Élesen 390 px-en a név 1 px-re ült a tudástár sávjától (edge-tábla
+     `padding-bottom: 0` + item `padding-bottom: 0`); 16 px (space-4) még
+     tapadásnak olvasható. NN/g proximity: a névcsoport elválik a következő
+     sávtól. GOV.UK spacing unit 5 (25 px tableten) és Carbon spacing-06
+     (24 px) = --kc-space-5.
      https://www.nngroup.com/articles/gestalt-proximity/
      https://design-system.service.gov.uk/styles/spacing/
      https://carbondesignsystem.com/elements/spacing/overview/ */
-  padding-bottom: var(--kc-space-4);
+  padding-bottom: var(--kc-space-5);
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__text {
