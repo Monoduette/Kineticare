@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { transform as minifyCss } from 'lightningcss'
 import { describe, expect, it } from 'vitest'
 
 import { TESTIMONIAL_OPENING_MARK } from '../components/content/home/TestimonialsSection'
@@ -130,6 +131,29 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
     )
     expect(vesszo).toContain("content: ','")
+  })
+
+  it('LightningCSS minify a kis figure-t blokkon hagyja, nem flex-flow:wrap-ra húzza', () => {
+    // A #204 `flex-direction: row` + `flex-wrap: wrap` productionben
+    // `flex-flow: wrap` lett (a row alapérték). iOS Safari a content.css
+    // `flex-direction: column` longhandjét nem írta felül — telefonon a
+    // névsor beljebb maradt. Ez a Next CSS-pipeline minify-lépése.
+    // https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow
+    const { code } = minifyCss({
+      filename: 'testimonials.css',
+      code: Buffer.from(testimonialsCss),
+      minify: true,
+    })
+    const minified = Buffer.from(code).toString('utf8')
+    expect(minified).toMatch(
+      /\.kc-testimonials \.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*display:block/,
+    )
+    expect(minified).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*flex-flow:wrap/,
+    )
+    expect(minified).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*display:flex/,
+    )
   })
 })
 
