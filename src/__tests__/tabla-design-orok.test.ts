@@ -118,6 +118,10 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution',
     )
     expect(nev).toContain('padding-left: 0')
+    expect(nev).toContain('padding-bottom: var(--kc-space-5)')
+    expect(kommentNelkul(testimonialsCss)).toMatch(
+      /@media \(max-width: 899px\)[\s\S]*?\.kc-section\.kc-board\.kc-board--edge\.kc-testimonials \{[\s\S]*?padding-bottom: var\(--kc-space-5\)/,
+    )
     expect(nev).toContain('min-width: 0')
     expect(nev).toContain('width: max-content')
     expect(nev).not.toContain('width: auto')
