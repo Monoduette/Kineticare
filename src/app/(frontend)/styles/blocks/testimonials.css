@@ -201,6 +201,10 @@
   position: relative;
   box-sizing: border-box;
   width: 100%;
+  /* A content.css `height: 100%` a régi kártyarács alsó névsorához kellett.
+     Magas cellában a blokk-figura a tartalom magasságán marad, a név a
+     törzs alatt marad, nem a kártya közepén. */
+  height: auto;
   padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
 }
 
@@ -224,13 +228,17 @@
   min-width: 0;
 }
 
-/* A névsor a figure paddingjében a törzzsel egy vonalban. WCAG 2.2 SC 1.4.12:
-   nincs nowrap — a verzális, 0,2em-es név törhet, de a teljes hasábban.
+/* A névsor a figure paddingjében a törzzsel egy vonalban. A doboz
+   `max-content`: a hajszálvonal (`::before { width: 100% }`) a név+szerep
+   szélességét viszi, nem a teljes idézet-hasábot. A #204 `width: auto` +
+   `flex: 1 0 100%` a vonalat a hasáb teljes szélességére nyújtotta. WCAG 2.2
+   SC 1.4.12: nincs nowrap — 320 px-en a verzális név törhet, a `max-width:
+   100%` a hasábba szorítja.
    https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution {
   box-sizing: border-box;
   min-width: 0;
-  width: auto;
+  width: max-content;
   max-width: 100%;
   padding-left: 0;
 }

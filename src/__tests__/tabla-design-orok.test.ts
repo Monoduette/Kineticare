@@ -96,6 +96,7 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
     )
     expect(figura).toContain('display: block')
     expect(figura).toContain('position: relative')
+    expect(figura).toContain('height: auto')
     expect(figura).toContain(
       'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
     )
@@ -118,7 +119,8 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
     )
     expect(nev).toContain('padding-left: 0')
     expect(nev).toContain('min-width: 0')
-    expect(nev).toContain('width: auto')
+    expect(nev).toContain('width: max-content')
+    expect(nev).not.toContain('width: auto')
     expect(nev).not.toContain('white-space: nowrap')
     expect(nev).not.toContain('grid-column:')
     expect(nev).not.toContain('flex:')
