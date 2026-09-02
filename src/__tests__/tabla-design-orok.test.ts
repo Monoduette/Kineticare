@@ -93,23 +93,34 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure',
     )
-    expect(figura).toContain('display: flex')
-    expect(figura).toContain('flex-direction: row')
-    expect(figura).toContain('flex-wrap: wrap')
+    expect(figura).toContain('display: block')
+    expect(figura).toContain('position: relative')
+    expect(figura).toContain(
+      'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
+    )
     expect(figura).not.toContain('display: grid')
+    expect(figura).not.toContain('display: flex')
+    expect(kommentNelkul(testimonialsCss)).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*flex-flow:wrap[;}]/,
+    )
+
+    const jel = szabalyTorzs(
+      testimonialsCss,
+      '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark',
+    )
+    expect(jel).toContain('position: absolute')
+    expect(jel).toContain('left: 0')
 
     const nev = szabalyTorzs(
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution',
     )
-    expect(nev).toContain('flex: 1 0 100%')
-    expect(nev).toContain(
-      'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
-    )
+    expect(nev).toContain('padding-left: 0')
     expect(nev).toContain('min-width: 0')
     expect(nev).toContain('width: auto')
     expect(nev).not.toContain('white-space: nowrap')
     expect(nev).not.toContain('grid-column:')
+    expect(nev).not.toContain('flex:')
 
     expect(kommentNelkul(testimonialsCss)).toContain(
       '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
