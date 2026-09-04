@@ -14,11 +14,11 @@ import '../../app/(frontend)/styles/blocks/film-hero.css'
  * A `sectionSettings.visible` szűrése NEM itt történik: a blokk-renderelő
  */
 
-/** A statikus film négy assetje (terv 3.3 — desktop + mobil klip és poszter). */
-const FILM_CLIP = '/media/film/scene-02.mp4'
-const FILM_CLIP_MOBILE = '/media/film/scene-02-mobile.mp4'
-const FILM_POSTER = '/media/film/scene-02-poster.png'
-const FILM_POSTER_MOBILE = '/media/film/scene-02-mobile-poster.png'
+/** A jóváhagyott egykezes film verziózott desktop/mobil klipje és posztere. */
+const FILM_CLIP = '/media/film/one-hand-header-v1.mp4'
+const FILM_CLIP_MOBILE = '/media/film/one-hand-header-v1-mobile.mp4'
+const FILM_POSTER = '/media/film/one-hand-header-v1-poster.webp'
+const FILM_POSTER_MOBILE = '/media/film/one-hand-header-v1-mobile-poster.webp'
 
 /**
  * A film scrub-hossza viewport-magasságban (~460dvh) és a középső, terapeutás
@@ -34,14 +34,12 @@ const FILM_LINGER = 0.16
  * szövegre — lásd a tokens.css kontraszt-jegyzetét).
  *
  * A `muted` szándékosan NEM a halvány `text-muted`, hanem a teljes erejű `ink`:
- * a bevezető szöveg FILMKOCKÁN áll, ahol a hierarchiát a méret adja, nem a
- * halványítás. A film legsötétebb foltján (rgb(1,0,0)) a `text-muted` a
- * stage-lejtő 64%-os fátylával is csak 3,4:1 lenne — AA-bukás; az `ink`
- * ugyanott 6,0:1. Lásd a kontraszt-levezetést a film-hero.css fejlécében.
+ * a bevezető szöveg változó filmkockán áll, ahol a hierarchiát a méret adja,
+ * az olvashatóságot pedig a papírmosás és a stage célzott fátylai biztosítják.
  */
 const FILM_THEME: ScrollScrubTheme = {
   accent: 'var(--kc-color-accent-deep)',
-  background: 'var(--kc-color-white)',
+  background: 'var(--kc-color-bg)',
   ink: 'var(--kc-color-navy-900)',
   muted: 'var(--kc-color-navy-900)',
 }
@@ -151,7 +149,9 @@ export function FilmHero({ block }: FilmHeroProps) {
     label: FILM_LABEL,
     linger: FILM_LINGER,
     mobileClip: FILM_CLIP_MOBILE,
+    mobileObjectPosition: '50% 50%',
     mobilePoster: FILM_POSTER_MOBILE,
+    objectPosition: '50% 50%',
     poster: FILM_POSTER,
     scroll: FILM_SCROLL,
     tags,

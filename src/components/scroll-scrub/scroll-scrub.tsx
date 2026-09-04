@@ -64,13 +64,13 @@ export interface ScrollScrubCaption {
   /** A felirat CÍME: egy tömör mondat, amit a néző egy pillantásra elolvas. */
   text: string
   /**
- * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
- * bevezetése előtti viselkedés).
- * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
- * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
- * törzsszöveget olvassa el, amint egy cím érdekli
- * („The Layer-Cake Pattern of Scanning Content on the Web",
- */
+   * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
+   * bevezetése előtti viselkedés).
+   * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
+   * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
+   * törzsszöveget olvassa el, amint egy cím érdekli
+   * („The Layer-Cake Pattern of Scanning Content on the Web",
+   */
   body?: string
   /** Vízszintes elhelyezés a filmvásznon. */
   align: 'center' | 'right'
@@ -148,6 +148,28 @@ const lingerEase = (value: number, amount: number) => {
 
 /** A felirat be- és kiúszásának hossza a scrub 0..1 arányán. */
 export const CAPTION_FADE = 0.07
+
+/** A mobil vágat kitöltése a tényleges viewport-geometria alapján. */
+export function scrollScrubMediaFit(
+  mobileMedia: boolean,
+  viewportWidth: number,
+  viewportHeight: number,
+): 'contain' | 'cover' {
+  return mobileMedia && (viewportWidth >= 640 || viewportWidth > viewportHeight)
+    ? 'contain'
+    : 'cover'
+}
+
+/** A mobil böngészős magasságzajt csak akkor méri újra, ha a fit is változna. */
+export function scrollScrubNeedsLayout(
+  coarsePointer: boolean,
+  previousWidth: number,
+  nextWidth: number,
+  previousMediaFit: string | undefined,
+  nextMediaFit: 'contain' | 'cover',
+): boolean {
+  return !coarsePointer || nextWidth !== previousWidth || previousMediaFit !== nextMediaFit
+}
 
 /**
  * Egy úszó felirat átlátszatlansága a scrub-pozícióból.
@@ -327,6 +349,13 @@ export function ScrollScrub({
       rootTop = root.getBoundingClientRect().top + pageY
       viewportHeight = window.innerHeight
       layoutWidth = window.innerWidth
+      const mobileMedia = isMobile()
+      root.dataset.scrollScrubMobileMedia = mobileMedia ? 'true' : 'false'
+      root.dataset.scrollScrubMediaFit = scrollScrubMediaFit(
+        mobileMedia,
+        layoutWidth,
+        viewportHeight,
+      )
 
       for (const segment of runtime) {
         if (segment.loadedSource && segment.loadedSource !== sourceFor(segment)) {
@@ -585,7 +614,16 @@ export function ScrollScrub({
       dirty = true
     }
     const onResize = () => {
-      if (coarsePointer && window.innerWidth === layoutWidth) {
+      const nextMediaFit = scrollScrubMediaFit(isMobile(), window.innerWidth, window.innerHeight)
+      if (
+        !scrollScrubNeedsLayout(
+          coarsePointer,
+          layoutWidth,
+          window.innerWidth,
+          root.dataset.scrollScrubMediaFit,
+          nextMediaFit,
+        )
+      ) {
         return
       }
       layout()
@@ -642,6 +680,8 @@ export function ScrollScrub({
       window.removeEventListener('touchstart', onFirstGesture)
       root.style.removeProperty('--ss-progress')
       delete root.dataset.activeSection
+      delete root.dataset.scrollScrubMediaFit
+      delete root.dataset.scrollScrubMobileMedia
 
       for (const segment of runtime) {
         unloadClip(segment)
@@ -738,9 +778,7 @@ export function ScrollScrub({
                 key={caption.id}
               >
                 <p className="scroll-scrub__caption-title">{caption.text}</p>
-                {caption.body ? (
-                  <p className="scroll-scrub__caption-body">{caption.body}</p>
-                ) : null}
+                {caption.body ? <p className="scroll-scrub__caption-body">{caption.body}</p> : null}
               </div>
             ))}
           </div>

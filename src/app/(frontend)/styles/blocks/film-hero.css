@@ -7,6 +7,58 @@
  * színsáv, gombok.
  */
 
+/* Desktopon a 0,48-as papír-alap háttérmotívummá halkítja a filmet. A mobil
+   derivatíva már magába sütve hordozza ezt, ezért nem kap második halványítást. */
+.kc-film-hero {
+  --kc-film-media-opacity: 0.48;
+}
+
+.kc-film-hero .scroll-scrub__stage {
+  z-index: 0;
+}
+
+.kc-film-hero .scroll-scrub__media {
+  z-index: 0;
+  opacity: var(--kc-film-media-opacity);
+}
+
+/* A stage saját stacking contextje a teljes hero-szöveg mögött marad; a
+   vásznon élő felirat viszont a stage-scrim fölött ül. */
+.kc-film-hero .scroll-scrub__story {
+  z-index: 3;
+}
+
+.kc-film-hero .scroll-scrub__captions {
+  z-index: 5;
+}
+
+.kc-film-hero[data-scroll-scrub-mobile-media='true'] {
+  --kc-film-media-opacity: 1;
+}
+
+@media (max-width: 860px) {
+  .kc-film-hero {
+    --kc-film-media-opacity: 1;
+  }
+}
+
+/* A runtime attribútum követi a ténylegesen választott mobil forrást és a
+   viewport alakját; így a keskeny portré cover, a tablet/fekvő nézet contain. */
+.kc-film-hero[data-scroll-scrub-media-fit='contain'] .scroll-scrub__poster,
+.kc-film-hero[data-scroll-scrub-media-fit='contain'] .scroll-scrub__video {
+  object-fit: contain;
+  object-position: var(--ss-mobile-position);
+}
+
+/* JS nélküli első festés: a 640–860px-es mobil/tablet forrás teljesen látszik. */
+@media (min-width: 640px) and (max-width: 860px) {
+  .kc-film-hero .scroll-scrub__poster,
+  .kc-film-hero .scroll-scrub__video {
+    object-fit: contain;
+    object-position: var(--ss-mobile-position);
+  }
+}
+
 /**
  * A filmsáv a FEJLÉC ALÁ fut.
  * A landing-tükör navja `position: fixed` és háttértelen (kineticare.css
@@ -37,8 +89,9 @@ main > .kc-film-hero:first-of-type {
 }
 
 /**
- * A SZÍNPAD LEJTŐI — az olvashatóság EGYETLEN eszköze a filmsávon.
- * A film tehát NYERSEN egyik szövegdoboz alatt sem olvasható — a lejtők nem
+ * A SZÍNPAD LEJTŐI — a papírra halkított média fölötti, célzott olvasási
+ * fátylak. Nem alkotnak szövegkártyát: a teljes vászon részei, a média fölött
+ * és minden szövegréteg alatt.
  */
 .kc-film-hero .scroll-scrub__stage::after {
   position: absolute;
@@ -60,7 +113,7 @@ main > .kc-film-hero:first-of-type {
        1 (teljes 64%-os fedés), utána 0 — így a 2. és 3. állásban a filmkocka a
        saját erejével látszik, nem fátyol alól. A fallback 1, tehát felirat
        nélküli filmsávnál a viselkedés változatlan. */
-      linear-gradient(
+    linear-gradient(
         to right,
         color-mix(in srgb, var(--kc-color-bg) calc(64% * var(--ss-copy-scrim, 1)), transparent) 0,
         color-mix(in srgb, var(--kc-color-bg) calc(64% * var(--ss-copy-scrim, 1)), transparent)
@@ -74,9 +127,8 @@ main > .kc-film-hero:first-of-type {
        TARTALOM-vezérelt (cím + leírás), tehát fizikai méret; a százalékos
        lépcső viszont a vászon magasságához kötött, ezért alacsony
        nézetablakon ÖSSZEZSUGORODIK pont ott, ahol a szövegdoboz a
-       képernyő nagyobb hányadát foglalja el. Mérve (320x568, a filmből
-       2 mp-enként kivett kockákon): a felirat CÍME 3,18:1-re esett — AA-bukás.
-       A rem-lépcső ezt a sávot fizikai magasságban rögzíti.
+       képernyő nagyobb hányadát foglalja el. A rem-lépcső ezt a sávot fizikai
+       magasságban rögzíti.
 
        A LÉPCSŐK HITELESÍTÉSE 900 px magas vásznon (a korábbi profil):
          40% @ 0%   → 40% @ 0
@@ -85,7 +137,7 @@ main > .kc-film-hero:first-of-type {
        Vagyis a felső ág gyakorlatilag változatlan; az erősítés (52/42%) a
        vászon alsó ~220 px-ére szorítkozik, ahol a 4. réteg (lap-háttérbe
        olvadás) amúgy is 69%-ban fed, tehát a filmkocka látványa nem hígul. */
-      linear-gradient(
+    linear-gradient(
         to top,
         color-mix(in srgb, var(--kc-color-bg) 52%, transparent) 0,
         color-mix(in srgb, var(--kc-color-bg) 42%, transparent) 14rem,
@@ -93,7 +145,7 @@ main > .kc-film-hero:first-of-type {
       ),
     /* 4–5. A TÜKÖR két rétege, változatlanul: alul a lap-háttérbe olvadás
        (nincs éles vágás a következő szekcióig), fölötte a hűvös hangulat. */
-      linear-gradient(to bottom, transparent 55%, var(--kc-color-white) 100%),
+    linear-gradient(to bottom, transparent 55%, var(--kc-color-white) 100%),
     linear-gradient(
       152deg,
       color-mix(in srgb, var(--kc-color-accent) 18%, transparent),
@@ -145,16 +197,8 @@ main > .kc-film-hero:first-of-type {
   background-color: var(--kc-color-tint-cool);
 }
 
-/* Fókuszgyűrű a film felett: a gyűrűt fehér elválasztó haló öleli körbe, így
-   világos ÉS sötét filmkockán is látszik.
-
-   A gyűrű SZÍNE `ink`, nem `focus` (accent-deep). Miért: a haló 0–6px-en, a
-   gyűrű 3–6px-en fut, tehát a jelzésnek KÉT éle van — a belső a fehér halón,
-   a külső közvetlenül a filmen. Az accent-deep a legsötétebb filmkompoziton
-   (#9e9fa1) csak **2,06:1**, tehát a külső él 1.4.11 alatt maradt. Mérve a
-   csere után: ink a fehér halón **15,63:1**, ink a filmkompoziton **5,90:1** —
-   mindkét él a 3:1-es küszöb felett. Arculati változás nincs: a hero
-   másodlagos gombjának 2px-es kerete már ma is ink. */
+/* A fehér elválasztó haló és az ink fókuszgyűrű két eltérő éllel tartja
+   felismerhetően a jelzést a mozgó film felett. */
 .kc-film-hero .kc-film-hero__cta:focus-visible {
   outline: 3px solid var(--kc-color-ink);
   outline-offset: 3px;
