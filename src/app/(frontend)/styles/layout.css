@@ -551,6 +551,14 @@
   text-decoration-thickness: 2px;
 }
 
+/* A route-állapot színe a fejlécfátyollal együtt változik. Current/ancestor
+   linken ezért nem interpolálhat: veil-váltáskor a késleltetett régi akcent
+   átmenetileg AA alá esne a filmen. Az aláhúzás mozgása megmarad. */
+.kc-nav-desktop__link[aria-current='page'],
+.kc-nav-desktop__link[data-ancestor-active='true'] {
+  transition-property: text-underline-offset;
+}
+
 /* Lenyitó gomb az almenüs főmenüpontok mellett (aria-expanded + Esc-zárás).
    Az érintési cél 44×44px (UX-skill 3. pont): táblagépen ez az EGYETLEN út az
    almenüig, mert hover nincs, a mobil drawer pedig 900px felett rejtve van.

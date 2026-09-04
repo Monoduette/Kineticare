@@ -343,6 +343,17 @@ describe('főmenü állapotstílus-őr', () => {
     )
   })
 
+  it('a tartós route-állapot színe nem késik a fejlécfátyol mögött', () => {
+    for (const selector of [
+      ".kc-nav-desktop__link[aria-current='page']",
+      ".kc-nav-desktop__link[data-ancestor-active='true']",
+    ]) {
+      const body = ruleBodies(selector).join('\n')
+      expect(body).toMatch(/transition-property:\s*text-underline-offset\s*;/)
+      expect(body).not.toMatch(/transition-property:[^;]*\bcolor\b/)
+    }
+  })
+
   it('az állandó Kurzusok-link pontos és ősállapota is kap nem színalapú jelölést', () => {
     for (const selector of [
       ".kc-site-header .kc-site-header__cta[aria-current='page']",
