@@ -75,7 +75,9 @@ describe('refundBlockedReason', () => {
   })
 
   it('minden más státuszra magyar magyarázat jár', () => {
-    expect(refundBlockedReason('refunded')).toContain('már vissza lett térítve')
+    expect(refundBlockedReason('refunded')).toBe(
+      'A rendelésen már teljes visszatérítés van rögzítve. Itt új visszatérítés nem indítható.',
+    )
     expect(refundBlockedReason('created')).toContain('nincs kifizetve')
     expect(refundBlockedReason('payment_pending')).toContain('nincs kifizetve')
     expect(refundBlockedReason('payment_failed')).toContain('nem sikerült')

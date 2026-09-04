@@ -452,7 +452,8 @@ describe('hibaágak', () => {
 
     expect(response.status).toBe(502)
     const body = await response.json()
-    expect(String(body.error)).toContain('nem változott')
+    expect(String(body.error)).toContain('eredménye nem igazolt')
+    expect(body.manualReviewRequired).toBe(true)
     // A rendelésen SEMMI nem változott: nincs orders/users update, státusz paid marad.
     expect(calls.update).toHaveLength(0)
     expect(order?.status).toBe('paid')
@@ -500,7 +501,8 @@ describe('hibaágak', () => {
 
     expect(response.status).toBe(502)
     const body = await response.json()
-    expect(String(body.error)).toContain('visszatéríthető tranzakció')
+    expect(String(body.error)).toContain('eredménye nem igazolt')
+    expect(body.manualReviewRequired).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(calls.update).toHaveLength(0)
     expect(order?.status).toBe('paid')

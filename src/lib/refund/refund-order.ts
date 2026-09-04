@@ -718,10 +718,29 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
           } as unknown as Record<string, unknown>,
           overrideAccess: true,
         })
-        // Purchases-levétel idempotensen, kizárólag teljes refundnál. DB-only,
-        // gyors művelet — a záron belül marad, hogy a „teljes refund ⇒ nincs
-        // hozzáférés" invariáns egy párhuzamos kérés szemszögéből is egyben legyen.
-        await revokePurchases(payload, order, orderLog)
+        // A pénzügyi nyom már rögzült; a külön users-írás hibája nem görgeti vissza.
+        // Csak a cleanup hibáját képezzük át, az order-írásét nem.
+        try {
+          await revokePurchases(payload, order, orderLog)
+        } catch (error) {
+          orderLog.error(
+            'refund: a pénzügyi nyom rögzült, de a hozzáférések rendezése elakadt; kézi ellenőrzés szükséges',
+            {
+              phase: 'purchase-revocation',
+              financialRecordPersisted: true,
+              refundStatusOutcome: statusOutcome,
+              errorKind: error instanceof Error ? 'error' : 'non-error',
+            },
+          )
+          const recorded =
+            statusOutcome === 'succeeded'
+              ? 'A visszatérítés már rögzítve van'
+              : 'A visszatérítési kísérlet már rögzítve van, de a Barion nem igazolta a sikerét'
+          throw new RefundError(
+            503,
+            `${recorded}. A hozzáférések rendezésének eredménye nem igazolt. Ne indíts új pénzvisszatérítést. Kézi ellenőrzés és rendezés szükséges.`,
+          )
+        }
       } else {
         await payload.update({
           collection: 'orders',

@@ -71,7 +71,7 @@ export function refundBlockedReason(status: string | null): string | null {
     case 'paid':
       return null
     case 'refunded':
-      return 'Ez a rendelés már vissza lett térítve.'
+      return 'A rendelésen már teljes visszatérítés van rögzítve. Itt új visszatérítés nem indítható.'
     case 'created':
     case 'payment_pending':
       return 'A rendelés még nincs kifizetve, ezért nincs mit visszatéríteni.'

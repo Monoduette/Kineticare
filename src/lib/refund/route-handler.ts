@@ -18,19 +18,20 @@ export interface RefundRouteContext {
   params: Promise<{ orderNumber: string }>
 }
 
-/** BarionApiError → HTTP-státusz + magyar felhasználói üzenet. */
+const MANUAL_REVIEW_ERROR =
+  'A visszatérítés eredménye nem igazolt. Ne indíts új pénzvisszatérítést. Kézi ellenőrzés és egyeztetés szükséges a Barionban és a rendelésnél.'
+
+/** BarionApiError → HTTP-státusz; a hiba nem bizonyítja a pénzmozgás hiányát. */
 function mapBarionError(error: BarionApiError): { status: number; message: string } {
   if (error.kind === 'timeout') {
     return {
       status: 504,
-      message:
-        'A Barion nem válaszolt időben a visszatérítésre. A rendelés nem változott, próbáld újra néhány perc múlva.',
+      message: MANUAL_REVIEW_ERROR,
     }
   }
   return {
     status: 502,
-    message:
-      'A visszatérítés a Barion felé most nem sikerült. A rendelés nem változott, próbáld újra néhány perc múlva.',
+    message: MANUAL_REVIEW_ERROR,
   }
 }
 
@@ -106,26 +107,40 @@ export function createRefundHandler(
       return Response.json(result, { status: 200 })
     } catch (error) {
       if (error instanceof RefundError) {
+        if (error.status >= 500) {
+          log.error('refund: kézi ellenőrzést igénylő szolgáltatáshiba', {
+            status: error.status,
+            errorKind: 'refund-service',
+          })
+          return Response.json(
+            {
+              error: error.status === 503 ? error.message : MANUAL_REVIEW_ERROR,
+              manualReviewRequired: true,
+            },
+            { status: error.status },
+          )
+        }
         log.warn('refund: üzleti hiba', { status: error.status, error: error.message })
         return Response.json({ error: error.message }, { status: error.status })
       }
       if (error instanceof BarionApiError) {
         const mapped = mapBarionError(error)
-        log.error('refund: Barion-hiba — a rendelés változatlan maradt', {
-          kind: error.kind,
-          httpStatus: error.httpStatus ?? null,
-          endpoint: error.endpoint,
-          error: error.message,
+        log.error('refund: Barion-hiba, a visszatérítés eredménye nem igazolt', {
+          status: mapped.status,
+          errorKind: error.kind === 'timeout' ? 'barion-timeout' : 'barion-error',
         })
-        return Response.json({ error: mapped.message }, { status: mapped.status })
+        return Response.json(
+          { error: mapped.message, manualReviewRequired: true },
+          { status: mapped.status },
+        )
       }
       log.error('refund: váratlan technikai hiba', {
-        error: error instanceof Error ? error.message : String(error),
+        errorKind: error instanceof Error ? 'error' : 'non-error',
       })
       return Response.json(
         {
-          error:
-            'A visszatérítés most nem sikerült. Nézd meg a rendelés állapotát, és ha nem változott, próbáld újra néhány perc múlva.',
+          error: MANUAL_REVIEW_ERROR,
+          manualReviewRequired: true,
         },
         { status: 500 },
       )
