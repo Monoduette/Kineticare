@@ -272,7 +272,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
   )
 
   it('preserves the explicit backend cleanup message and manual-review latch after status refresh', async () => {
-    const error = 'A visszatérítés már rögzítve van. A hozzáférések rendezése nem fejeződött be.'
+    const error = 'A visszatérítés már rögzítve van. A hozzáférések rendezése nem igazolható.'
     fetchMock.mockResolvedValue(
       Response.json({ error, manualReviewRequired: true }, { status: 503 }),
     )
@@ -467,4 +467,146 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
     },
   )
+})
+
+describe('RefundPanel saved operational summary', () => {
+  function summary() {
+    const element = container.querySelector('dl[aria-label="Mentett visszatérítési állapotok"]')
+    if (!element) throw new Error('Expected the owner-only saved operational summary')
+    return element
+  }
+
+  function savedOrder() {
+    return {
+      ...order(ORDER_A, 'refunded'),
+      stornoStatus: 'none',
+      correctiveInvoiceStatus: 'failed',
+      refunds: [
+        {
+          transactionId: 'SYNTHETIC-ENTRY',
+          amountHuf: 20000,
+          type: 'full',
+          refundedAt: '2026-09-04T00:00:00.000Z',
+          status: 'Unknown',
+        },
+      ],
+    }
+  }
+
+  it('renders five semantic label/value pairs from saved data without requests', async () => {
+    await render(savedOrder())
+    expect(summary().querySelectorAll('dt')).toHaveLength(5)
+    expect(summary().querySelectorAll('dd')).toHaveLength(5)
+    expect(summary().getAttribute('aria-live')).toBe('polite')
+    expect(summary().textContent).toContain('Teljes visszatérítés van helyben rögzítve')
+    expect(summary().textContent).toContain('ellenőrzés szükséges')
+    expect(summary().textContent).toContain('legutóbbi helyesbítő sikertelen')
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(ui.refresh).not.toHaveBeenCalled()
+  })
+
+  it('reconstructs the summary after a real React unmount/remount from document data', async () => {
+    await render(savedOrder())
+    const before = summary().innerHTML
+    await act(async () => {
+      root.unmount()
+    })
+    const { createRoot } = await import('react-dom/client')
+    root = createRoot(container)
+    await render()
+    expect(summary().innerHTML).toBe(before)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(ui.refresh).not.toHaveBeenCalled()
+  })
+
+  it('keeps cleanup explicitly unverified after all saved successes and remount', async () => {
+    const data = savedOrder()
+    await render({
+      ...data,
+      stornoStatus: 'storned',
+      correctiveInvoiceStatus: 'issued',
+      refunds: data.refunds.map((entry) => ({ ...entry, status: 'Refunded' })),
+    })
+    function expectSavedSuccessesWithUnknownCleanup() {
+      const rows = Object.fromEntries(
+        Array.from(summary().querySelectorAll('dt')).map((label) => [
+          label.textContent,
+          label.nextElementSibling?.textContent,
+        ]),
+      )
+      expect(rows['Helyi visszatérítési nyom']).toBe('Teljes visszatérítés van helyben rögzítve.')
+      expect(rows['Mentett szolgáltatói eredmény']).toBe(
+        'A megjeleníthető bejegyzésekben sikeres eredmény van mentve.',
+      )
+      expect(rows['Stornó mentett állapota']).toBe('Kiállított stornó van rögzítve.')
+      expect(rows['Legutóbbi helyesbítő mentett állapota']).toBe(
+        'A legutóbbi helyesbítő kiállítása van rögzítve; a korábbiak állapota ebből nem állapítható meg.',
+      )
+      expect(rows['Hozzáférések rendezése']).toBe('A mentett rendelésadatokból nem igazolható.')
+      expect(container.querySelector('[role="status"]')).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(ui.refresh).not.toHaveBeenCalled()
+    }
+    expectSavedSuccessesWithUnknownCleanup()
+    await act(async () => {
+      root.unmount()
+    })
+    const { createRoot } = await import('react-dom/client')
+    root = createRoot(container)
+    await render()
+    expectSavedSuccessesWithUnknownCleanup()
+  })
+
+  it('replaces saved summary data on order navigation without latching a new action', async () => {
+    await render(savedOrder())
+    await render({
+      ...order(ORDER_B),
+      refunds: [],
+      stornoStatus: null,
+      correctiveInvoiceStatus: null,
+    })
+    expect(summary().textContent).toContain('a pénzmozgás ebből nem állapítható meg')
+    expect(summary().textContent).not.toContain('Teljes visszatérítés van helyben rögzítve')
+    expect(button().disabled).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not expose any supplied private values in the summary', async () => {
+    const canary = 'SYNTHETIC-SUMMARY-PRIVACY-CANARY'
+    await render({
+      ...savedOrder(),
+      id: canary,
+      refundReason: canary,
+      customerSnapshot: { name: canary, email: canary },
+      stornoStatus: canary,
+      stornoNumber: canary,
+      stornoLastError: canary,
+      correctiveInvoiceStatus: canary,
+      correctiveInvoiceNumber: canary,
+      correctiveInvoiceLastError: canary,
+      refunds: [
+        {
+          transactionId: canary,
+          amountHuf: 987654321,
+          reason: canary,
+          type: 'full',
+          refundedAt: canary,
+          status: canary,
+        },
+      ],
+    })
+    expect(summary().outerHTML).not.toContain(canary)
+    expect(summary().outerHTML).not.toContain('987654321')
+    expect(summary().textContent).toContain('nem értelmezhető')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['staff', 'customer'])('does not reveal a summary to %s', async (role) => {
+    ui.user = { id: 2, role }
+    await render(savedOrder())
+    expect(container.querySelector('dl')).toBeNull()
+    expect(container.textContent).not.toContain('Mentett szolgáltatói')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

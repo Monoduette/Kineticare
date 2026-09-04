@@ -5,6 +5,7 @@ import { resolveClientIp } from '../audit'
 import { BarionApiError } from '../barion'
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
+import { DEFAULT_JSON_BODY_MAX_BYTES, readBodyWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import { RefundError, refundOrder, type RefundOrderInput } from './refund-order'
 
@@ -76,10 +77,13 @@ export function createRefundHandler(
       }
 
       let body: unknown = {}
-      // A content-length fejléc hiányozhat (chunked átvitel, illetve a tesztekben
-      // konstruált Requesteknél az undici nem tölti ki) — a törzs beolvasása ezért
-      // NEM függhet a fejléctől: üres törzs = üres input, nem-JSON = 400.
-      const rawBody = await request.text()
+      const rawBody = await readBodyWithCap(request, DEFAULT_JSON_BODY_MAX_BYTES)
+      if (rawBody === null) {
+        return Response.json(
+          { error: 'A visszatérítés nem indítható: a kérés mérete meghaladja a megengedett korlátot.' },
+          { status: 413 },
+        )
+      }
       if (rawBody.trim().length > 0) {
         try {
           body = JSON.parse(rawBody)
@@ -92,6 +96,14 @@ export function createRefundHandler(
             { status: 400 },
           )
         }
+      }
+
+      // Preserve JSON null -> {} compatibility, distinct from the size-limit sentinel above.
+      if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
+        return Response.json(
+          { error: 'A visszatérítés nem indítható: a kérés adatai JSON objektumot kell alkossanak.' },
+          { status: 400 },
+        )
       }
 
       const result = await refundOrder({

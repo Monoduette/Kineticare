@@ -6,6 +6,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { hasOwnerRole } from '../../access/roles'
 import { formatPriceHuf } from '../../lib/format-price'
 import { refundBlockedReason, refundConfirmQuestion, validateRefundAmount } from './refund-amount'
+import { readRefundOperationalStatus } from './refund-operational-status'
 import {
   presentRefundResponse,
   REFUND_REVIEW_GUIDANCE,
@@ -234,6 +235,18 @@ export function RefundPanel() {
   return (
     <div className="field-type" style={panelStyle}>
       <h3 style={{ marginTop: 0 }}>Visszatérítés</h3>
+      <dl
+        aria-label="Mentett visszatérítési állapotok"
+        aria-live="polite"
+        style={{ margin: 'var(--base) 0' }}
+      >
+        {readRefundOperationalStatus(data).map(({ key, label, value }) => (
+          <div key={key} style={{ marginBottom: 'calc(var(--base) * 0.5)' }}>
+            <dt style={{ fontWeight: 600 }}>{label}</dt>
+            <dd style={noteStyle}>{value}</dd>
+          </div>
+        ))}
+      </dl>
       {blockedReason ? (
         <p style={noteStyle}>{blockedReason}</p>
       ) : (
