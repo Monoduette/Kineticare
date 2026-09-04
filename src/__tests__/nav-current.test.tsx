@@ -214,7 +214,7 @@ function expectBlueUnderline(selector: string): void {
     bodies.some(
       (body) =>
         /(?:^|;)\s*color:\s*var\(--kc-header-accent\)\s*;/.test(body) &&
-        /(?:^|;)\s*text-decoration:\s*underline\s*;/.test(body) &&
+        /(?:^|;)\s*text-decoration-line:\s*underline\s*;/.test(body) &&
         /(?:^|;)\s*text-decoration-color:\s*var\(--kc-header-accent\)\s*;/.test(body),
     ),
     `${selector} állapotban KC-kék szöveg, aláhúzás és explicit KC-kék aláhúzásszín kell`,
@@ -267,6 +267,16 @@ describe('főmenü állapotstílus-őr', () => {
 
   it.each(stateSelectors)('%s nem változtat betűvastagságot', (selector) => {
     expect(ruleBodies(selector).join('\n')).not.toMatch(/(?:^|;)\s*font-weight\s*:/)
+  })
+
+  it('a desktop focus-within nem írja felül az aktív vagy hover aláhúzás vastagságát', () => {
+    const focusBody = ruleBodies('.kc-nav-desktop__item:focus-within > .kc-nav-desktop__link').join(
+      '\n',
+    )
+
+    expect(focusBody).toMatch(/(?:^|;)\s*text-decoration-line:\s*underline\s*;/)
+    expect(focusBody).not.toMatch(/(?:^|;)\s*text-decoration\s*:/)
+    expect(focusBody).not.toMatch(/(?:^|;)\s*text-decoration-thickness\s*:/)
   })
 
   it('a focus-visible külön 3px-es körvonal marad', () => {

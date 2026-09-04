@@ -523,7 +523,7 @@
 .kc-nav-desktop__link[data-ancestor-active='true'],
 .kc-nav-desktop__item:focus-within > .kc-nav-desktop__link {
   color: var(--kc-header-accent);
-  text-decoration: underline;
+  text-decoration-line: underline;
   text-decoration-color: var(--kc-header-accent);
   text-underline-offset: 0.35em;
 }
@@ -651,7 +651,7 @@
 .kc-nav-desktop__sublink[aria-current='page'],
 .kc-nav-desktop__sublink[data-ancestor-active='true'] {
   color: var(--kc-header-accent);
-  text-decoration: underline;
+  text-decoration-line: underline;
   text-decoration-color: var(--kc-header-accent);
   text-underline-offset: 0.35em;
 }
@@ -838,7 +838,7 @@
 .kc-nav-mobile__link[aria-current='page'],
 .kc-nav-mobile__link[data-ancestor-active='true'] {
   color: var(--kc-header-accent);
-  text-decoration: underline;
+  text-decoration-line: underline;
   text-decoration-color: var(--kc-header-accent);
   text-underline-offset: 0.35em;
 }
@@ -890,7 +890,7 @@
 .kc-nav-mobile__sublink[aria-current='page'],
 .kc-nav-mobile__sublink[data-ancestor-active='true'] {
   color: var(--kc-header-accent);
-  text-decoration: underline;
+  text-decoration-line: underline;
   text-decoration-color: var(--kc-header-accent);
   text-underline-offset: 0.35em;
 }
