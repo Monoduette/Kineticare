@@ -14,6 +14,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 import { DesktopNav } from '../components/layout/DesktopNav'
+import { HeaderCoursesNav } from '../components/layout/HeaderCoursesNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { NavAnchor } from '../components/layout/NavAnchor'
 import type { NavItem } from '../lib/menu-tree'
@@ -50,6 +51,12 @@ const activeTree = (): NavItem[] => [
 const hashChildTree = (): NavItem[] => [
   navItem(10, 'Szolgáltatások', '/szolgaltatasok', [
     navItem(11, 'Rendelői kezelések', '/szolgaltatasok#rendeloi'),
+  ]),
+]
+
+const hashParentTree = (): NavItem[] => [
+  navItem(12, 'Rendelői kezelések', '/szolgaltatasok#rendeloi', [
+    navItem(13, 'Kézterápia', '/szolgaltatasok/kezterapia'),
   ]),
 ]
 
@@ -109,6 +116,12 @@ describe('getNavRouteState — belső útvonal-egyezés', () => {
     expect(getNavRouteState(parent, '/kurzusok/sos')).toBe('ancestor')
     expect(getNavRouteState(parent.children[0], '/kurzusok/sos')).toBe('current')
   })
+
+  it('belső hash-szülőt is ősállapotúnak jelöl az aktív gyermeke alapján', () => {
+    const parent = hashParentTree()[0]
+    expect(getNavRouteState(parent, '/szolgaltatasok/kezterapia')).toBe('ancestor')
+    expect(getNavRouteState(parent.children[0], '/szolgaltatasok/kezterapia')).toBe('current')
+  })
 })
 
 describe.each([
@@ -166,6 +179,43 @@ describe.each([
     expect(parent).not.toContain('data-ancestor-active')
     expect(child).toContain('aria-current="page"')
   })
+
+  it('belső hash-szülő aktív gyermek mellett ősállapotot, de nem aria-current értéket kap', () => {
+    pathnameMock.mockReturnValue('/szolgaltatasok/kezterapia')
+    const html = render(createElement(Component, { items: hashParentTree() }))
+    const parent = anchorFor(html, '/szolgaltatasok#rendeloi')
+    const child = anchorFor(html, '/szolgaltatasok/kezterapia')
+
+    expect(parent).toContain('data-ancestor-active="true"')
+    expect(parent).not.toContain('aria-current')
+    expect(child).toContain('aria-current="page"')
+  })
+})
+
+describe('HeaderCoursesNav — állandó kurzus-link', () => {
+  it('a kurzuslistán pontos aktuális oldal állapotot kap', () => {
+    pathnameMock.mockReturnValue('/kurzusok')
+    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+
+    expect(link).toContain('aria-current="page"')
+    expect(link).not.toContain('data-ancestor-active')
+  })
+
+  it('kurzus-részletoldalon ősállapotot kap', () => {
+    pathnameMock.mockReturnValue('/kurzusok/otthoni-kezrehab-program')
+    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+
+    expect(link).not.toContain('aria-current')
+    expect(link).toContain('data-ancestor-active="true"')
+  })
+
+  it('hasonló útvonalon inaktív marad', () => {
+    pathnameMock.mockReturnValue('/kurzusok-extra')
+    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+
+    expect(link).not.toContain('aria-current')
+    expect(link).not.toContain('data-ancestor-active')
+  })
 })
 
 describe('NavAnchor — route-state védelem', () => {
@@ -207,15 +257,17 @@ function ruleBodies(selector: string): string[] {
   return CSS_RULES.filter((rule) => rule.selectors.includes(selector)).map((rule) => rule.body)
 }
 
-function expectBlueUnderline(selector: string): void {
+function expectBlueUnderline(selector: string, colorToken = '--kc-header-accent'): void {
   const bodies = ruleBodies(selector)
   expect(bodies.length, `hiányzó CSS-szelektor: ${selector}`).toBeGreaterThan(0)
   expect(
     bodies.some(
       (body) =>
-        /(?:^|;)\s*color:\s*var\(--kc-header-accent\)\s*;/.test(body) &&
+        new RegExp(`(?:^|;)\\s*color:\\s*var\\(${escapeRegex(colorToken)}\\)\\s*;`).test(body) &&
         /(?:^|;)\s*text-decoration-line:\s*underline\s*;/.test(body) &&
-        /(?:^|;)\s*text-decoration-color:\s*var\(--kc-header-accent\)\s*;/.test(body),
+        new RegExp(
+          `(?:^|;)\\s*text-decoration-color:\\s*var\\(${escapeRegex(colorToken)}\\)\\s*;`,
+        ).test(body),
     ),
     `${selector} állapotban KC-kék szöveg, aláhúzás és explicit KC-kék aláhúzásszín kell`,
   ).toBe(true)
@@ -251,7 +303,12 @@ describe('főmenü állapotstílus-őr', () => {
   const stateSelectors = [...hoverSelectors, ...persistentSelectors]
 
   it.each(stateSelectors)('%s KC-kék szöveget és explicit KC-kék aláhúzást használ', (selector) => {
-    expectBlueUnderline(selector)
+    expectBlueUnderline(
+      selector,
+      selector.startsWith('.kc-nav-desktop__link')
+        ? '--kc-header-active-ink'
+        : '--kc-header-accent',
+    )
   })
 
   it.each(hoverSelectors)('%s átmeneti állapotban 1px aláhúzást használ', (selector) => {
@@ -277,6 +334,24 @@ describe('főmenü állapotstílus-őr', () => {
     expect(focusBody).toMatch(/(?:^|;)\s*text-decoration-line:\s*underline\s*;/)
     expect(focusBody).not.toMatch(/(?:^|;)\s*text-decoration\s*:/)
     expect(focusBody).not.toMatch(/(?:^|;)\s*text-decoration-thickness\s*:/)
+  })
+
+  it('a desktop főlink állapotszíne a fátyollal együtt inkből akcentbe vált', () => {
+    expect(LAYOUT_CSS).toContain('--kc-header-active-ink: color-mix(')
+    expect(LAYOUT_CSS).toMatch(
+      /--kc-header-active-ink:\s*color-mix\([\s\S]*?var\(--kc-header-accent\)[\s\S]*?var\(--kc-header-veil, 0\)[\s\S]*?var\(--kc-header-ink\)[\s\S]*?\);/,
+    )
+  })
+
+  it('az állandó Kurzusok-link pontos és ősállapota is kap nem színalapú jelölést', () => {
+    for (const selector of [
+      ".kc-site-header .kc-site-header__cta[aria-current='page']",
+      ".kc-site-header .kc-site-header__cta[data-ancestor-active='true']",
+    ]) {
+      const body = ruleBodies(selector).join('\n')
+      expect(body).toMatch(/(?:^|;)\s*text-decoration-line:\s*underline\s*;/)
+      expect(body).toMatch(/(?:^|;)\s*text-decoration-thickness:\s*2px\s*;/)
+    }
   })
 
   it('a focus-visible külön 3px-es körvonal marad', () => {

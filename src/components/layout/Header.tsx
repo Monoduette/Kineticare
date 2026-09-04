@@ -1,12 +1,12 @@
 import Link from 'next/link'
 
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
-import { Button } from '../ui/Button'
 import { Container } from '../ui/Container'
 import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
 import { DesktopNav } from './DesktopNav'
 import { getHeaderAuthState } from './header-user'
+import { HeaderCoursesNav } from './HeaderCoursesNav'
 import { HeaderScrollFx } from './HeaderScrollFx'
 import { MobileNav } from './MobileNav'
 
@@ -33,9 +33,7 @@ export async function Header() {
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
             <AccountNav signedIn={auth.signedIn} variant="header" />
-            <Button className="kc-site-header__cta" href="/kurzusok" size="sm">
-              Kurzusok
-            </Button>
+            <HeaderCoursesNav />
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>
         </div>

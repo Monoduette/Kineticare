@@ -20,6 +20,11 @@
   --kc-header-ink: var(--kc-color-text);
   /* A SÁVBAN álló akcent-szöveg mélyebb lépcsője — lásd a kontraszt-jegyzetet. */
   --kc-header-accent: var(--kc-color-accent-deeper);
+  --kc-header-active-ink: color-mix(
+    in srgb,
+    var(--kc-header-accent) calc(var(--kc-header-veil, 0) * 100%),
+    var(--kc-header-ink)
+  );
   --kc-header-accent-soft: var(--kc-color-surface-tint); /* = hűvös tint */
   --kc-header-hairline: var(--kc-color-border);
 
@@ -218,6 +223,14 @@
    felirattal 7,08:1) — a hover szándékot jelez, nem állapotot. */
 .kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-primary-hover);
+}
+
+.kc-site-header .kc-site-header__cta[aria-current='page'],
+.kc-site-header .kc-site-header__cta[data-ancestor-active='true'] {
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
 }
 
 @media (max-width: 400px) {
@@ -522,9 +535,9 @@
 .kc-nav-desktop__link[aria-current='page'],
 .kc-nav-desktop__link[data-ancestor-active='true'],
 .kc-nav-desktop__item:focus-within > .kc-nav-desktop__link {
-  color: var(--kc-header-accent);
+  color: var(--kc-header-active-ink);
   text-decoration-line: underline;
-  text-decoration-color: var(--kc-header-accent);
+  text-decoration-color: var(--kc-header-active-ink);
   text-underline-offset: 0.35em;
 }
 

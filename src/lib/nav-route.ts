@@ -38,13 +38,16 @@ function normalizeNavTarget(href: string): string | null {
 }
 
 function getNavRouteStateForPath(item: NavItem, currentPath: string): NavRouteState {
-  const itemPath = item.isExternal ? null : normalizeNavTarget(item.href)
-  if (itemPath === null) return 'inactive'
+  if (item.isExternal) return 'inactive'
 
-  if (currentPath === itemPath) return 'current'
+  const itemPath = normalizeNavTarget(item.href)
 
-  // A perjeles határ akadályozza meg, hogy pl. /blog egyezzen /blogger-rel.
-  if (itemPath !== '/' && currentPath.startsWith(`${itemPath}/`)) return 'ancestor'
+  if (itemPath !== null) {
+    if (currentPath === itemPath) return 'current'
+
+    // A perjeles határ akadályozza meg, hogy pl. /blog egyezzen /blogger-rel.
+    if (itemPath !== '/' && currentPath.startsWith(`${itemPath}/`)) return 'ancestor'
+  }
 
   return item.children.some((child) => getNavRouteStateForPath(child, currentPath) !== 'inactive')
     ? 'ancestor'
