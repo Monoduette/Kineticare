@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import type { NavItem } from '../../lib/menu-tree'
+import { getNavRouteState } from '../../lib/nav-route'
 import { AccountNav } from './AccountNav'
 import { NavAnchor } from './NavAnchor'
 
@@ -140,20 +141,36 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         <AccountNav onNavigate={close} signedIn={signedIn} variant="drawer" />
         {items.length > 0 ? (
           <ul className="kc-nav-mobile__list">
-            {items.map((item) => (
-              <li key={item.id}>
-                <NavAnchor className="kc-nav-mobile__link" item={item} onClick={close} />
-                {item.children.length > 0 ? (
-                  <ul aria-label={`${item.label} almenü`} className="kc-nav-mobile__sublist">
-                    {item.children.map((child) => (
-                      <li key={child.id}>
-                        <NavAnchor className="kc-nav-mobile__sublink" item={child} onClick={close} />
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
+            {items.map((item) => {
+              const routeState = getNavRouteState(item, pathname)
+              return (
+                <li key={item.id}>
+                  <NavAnchor
+                    className="kc-nav-mobile__link"
+                    item={item}
+                    onClick={close}
+                    routeState={routeState}
+                  />
+                  {item.children.length > 0 ? (
+                    <ul aria-label={`${item.label} almenü`} className="kc-nav-mobile__sublist">
+                      {item.children.map((child) => {
+                        const childRouteState = getNavRouteState(child, pathname)
+                        return (
+                          <li key={child.id}>
+                            <NavAnchor
+                              className="kc-nav-mobile__sublink"
+                              item={child}
+                              onClick={close}
+                              routeState={childRouteState}
+                            />
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : null}
+                </li>
+              )
+            })}
           </ul>
         ) : (
           <p className="kc-nav-mobile__empty">A menü jelenleg üres.</p>
