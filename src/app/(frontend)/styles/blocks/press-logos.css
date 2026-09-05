@@ -26,7 +26,7 @@
   margin: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
-  letter-spacing: var(--kc-tracking-eyebrow);
+  letter-spacing: 0;
   line-height: 1.3;
   text-align: center;
   text-transform: uppercase;
@@ -84,6 +84,92 @@
   opacity: 1;
 }
 
+/* Egy lista marad a DOM-ban. A natív görgetés a fókuszált linket is behozza,
+   a kézi lapozás pedig szüneteltetés után is elérhető. Nincsenek klónok. */
+.kc-press__rail {
+  min-width: 0;
+}
+
+.kc-press__viewport {
+  overflow-x: auto;
+  padding: var(--kc-space-2);
+  scroll-behavior: auto;
+}
+
+.kc-press__rail[data-motion='rail'] .kc-press__row {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  width: max-content;
+  min-width: 100%;
+  margin-top: var(--kc-space-4);
+}
+
+.kc-press__rail[data-motion='rail'] .kc-press__item {
+  flex: 0 0 13.75rem;
+  justify-content: center;
+  max-width: 13.75rem;
+}
+
+.kc-press__controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--kc-space-4);
+}
+
+.kc-press__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-md);
+  background: var(--kc-color-surface-raised);
+  color: var(--kc-color-text);
+  font-size: var(--kc-font-m);
+  cursor: pointer;
+}
+
+.kc-press__control:hover,
+.kc-press__control:active {
+  background: var(--kc-color-surface-tint);
+  border-color: var(--kc-color-primary);
+}
+
+.kc-press__control:focus-visible {
+  outline: 2px solid var(--kc-color-focus);
+  outline-offset: 3px;
+}
+
+.kc-section--dark .kc-press__control:focus-visible {
+  outline-color: var(--kc-color-focus-on-dark);
+}
+
+.kc-press__control-label {
+  display: none;
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: calc(100% + var(--kc-space-2));
+  width: max-content;
+  max-width: 14rem;
+  padding: var(--kc-space-2) var(--kc-space-3);
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-sm);
+  background: var(--kc-color-surface-raised);
+  color: var(--kc-color-text);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+  pointer-events: none;
+}
+
+.kc-press__control:hover .kc-press__control-label,
+.kc-press__control:focus-visible .kc-press__control-label {
+  display: block;
+}
+
 /* Sötét sávon a jellemzően sötét tintás logók beleolvadnának a háttérbe, ezért
    világos alátétet kapnak (a logó saját színei így maradnak felismerhetők). */
 .kc-section--dark .kc-press__item {
@@ -97,6 +183,26 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kc-press__controls {
+    display: none;
+  }
+
+  .kc-press__viewport {
+    overflow: visible;
+  }
+
+  .kc-press__rail[data-motion='rail'] .kc-press__row {
+    flex-wrap: wrap;
+    width: auto;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .kc-press__rail[data-motion='rail'] .kc-press__item {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
   .kc-press__row img {
     transition: none;
   }

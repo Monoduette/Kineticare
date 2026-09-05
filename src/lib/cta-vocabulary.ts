@@ -62,13 +62,7 @@ export type CtaWeight = 'primary' | 'secondary' | 'ghost' | 'link' | 'none'
 
 /** A folyamatban-feliratok (L-1) kulcsai. A lista ZÁRT – lásd `CTA_PROGRESS_LABELS`. */
 export type CtaProgressKey =
-  | 'sign-in'
-  | 'sign-up'
-  | 'sign-out'
-  | 'send'
-  | 'save'
-  | 'processing'
-  | 'loading'
+  'sign-in' | 'sign-up' | 'sign-out' | 'send' | 'save' | 'processing' | 'loading'
 
 export interface CtaEntry {
   /** A `docs/ui-sztenderdek.md` §3.2 táblázat sorszáma – a visszakereshetőség miatt kötelező. */
@@ -499,10 +493,10 @@ export const CTA_VOCABULARY = [
     pattern: null,
   },
   {
-    // §3.2 #38 (ÚJ, 2026-08-18) – LAPON BELÜLI ugrás a kezdőlap ingyenes
+    // §3.2 #38 – lapon belüli navigáció; P03 szerint a gomb is kimondja az ingyenességet.
     section: '#38',
     action: 'free-strip-jump',
-    label: 'Nézd meg az SOS-kurzust',
+    label: 'Nézd meg ingyenes SOS-kurzusunkat',
     person: 'e2',
     weight: 'ghost',
     progress: null,

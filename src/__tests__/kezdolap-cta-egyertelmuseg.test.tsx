@@ -227,9 +227,9 @@ describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })
 
-  it('másik kurzusra a szerkesztő átteheti a gombot', () => {
+  it('másik kurzus felülírása nem téríti el az ingyenes ajánlatot', () => {
     const cta = resolveFreeSosCta(freeProduct(), { href: '/kurzusok/masik-ingyenes-kurzus' })
-    expect(cta.href).toBe('/kurzusok/masik-ingyenes-kurzus')
+    expect(cta.href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })
 
@@ -379,7 +379,11 @@ describe('Kezdőlapi mikroszöveg', () => {
 
   it('az ingyenes sáv beépített címe kettőspontot használ, nem gondolatjelet', () => {
     const html = render(
-      createElement(HomeView, { home: null, products: [], posts: [] }),
+      createElement(HomeView, {
+        home: null,
+        products: [freeProduct({ displayTitle: '', sku: '' })],
+        posts: [],
+      }),
     )
     expect(html).toContain('SOS Kézrelax: ingyenes villámkurzus')
   })

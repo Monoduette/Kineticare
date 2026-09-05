@@ -227,10 +227,10 @@
   left: 0;
   top: 0;
   width: var(--kc-testimonials-mark-col);
-  margin-top: 0.05rem;
+  margin-top: 0;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
-  line-height: 0.55;
+  line-height: var(--kc-leading-tight);
   color: var(--kc-testimonials-mark);
 }
 

@@ -1,0 +1,124 @@
+{
+  "assets": [
+    {
+      "role": "founders",
+      "file": "founders-intro-white-1600.webp",
+      "sourceId": "1ik31ec2v18pYvKJT-H4ioU4djWbFoSvh",
+      "sourceName": "SYL_9147.jpg",
+      "sha256": "6b73271fbc6685700817bc38f7f1af3f7f53659490e31a50b423d24c2d1ed2bd",
+      "width": 1600,
+      "height": 1067,
+      "alt": "A Kineticare két alapítója."
+    },
+    {
+      "role": "sos",
+      "file": "founders-exercise-ball-1600.webp",
+      "sourceId": "15_FZbnppNOV1qPp4eM1w-IjMss-H4v2J",
+      "sourceName": "IMG_7573.JPG",
+      "sha256": "70db793e38569047c07ef1c3fd4a9de883a622f741874d562160f5913b0999e4",
+      "width": 1600,
+      "height": 2276,
+      "alt": "A Kineticare alapítói tornalabdával és tornaeszközökkel."
+    },
+    {
+      "role": "expectations",
+      "file": "founders-working-laptop-1600.webp",
+      "sourceId": "1iH2TKbclRPq5Td2FeLp0YEVFXSUgJ6Xm",
+      "sourceName": "SYL_9550.jpg",
+      "sha256": "75f510a3b656ba3f85b354c2360c3a6d459f49f50e2304984662fa6c859e584c",
+      "width": 1600,
+      "height": 2400,
+      "alt": "A Kineticare alapítói együtt dolgoznak egy laptopnál."
+    },
+    {
+      "role": "services",
+      "file": "hand-treatment-detail-1600.webp",
+      "sourceId": "1YikQidtm0_j29lFBXyCA5tDv0f5EFeH5",
+      "sourceName": "_MG_0433.png",
+      "sha256": "bca87a00c5e8fff46885ed1a2217a67e2539b8dea874110ccfddbbd272c0b265",
+      "width": 1600,
+      "height": 2400,
+      "alt": "Gyógytornász kézzel végzett kezelés közben."
+    },
+    {
+      "role": "about",
+      "file": "founders-standing-blazers-1600.webp",
+      "sourceId": "1dz9Hu3im-GIOGoNWVl5eM3ilwxwt4-Xh",
+      "sourceName": "IMG_1967.jpeg",
+      "sha256": "2a1c4c10d66fd1f8bc70e8a890dccf11be6d4c251e3ec0499946389fd4c529b1",
+      "width": 1600,
+      "height": 1815,
+      "alt": "A Kineticare alapítói közös portrén."
+    },
+    {
+      "role": "difference",
+      "file": "founders-shared-laugh-1600.webp",
+      "sourceId": "1vAnV4CoQ36CGU7gWlFG6DmGEqxjfjsjX",
+      "sourceName": "SYL_9140.jpeg",
+      "sha256": "ed35916de035cf048aee29981cdedb9a7c623485097d3bca2efb0ca522c430a5",
+      "width": 1600,
+      "height": 1006,
+      "alt": "A Kineticare alapítói egy közös, nevetős pillanatban."
+    },
+    {
+      "role": "benefits",
+      "file": "tablet-anatomical-model-1600.webp",
+      "sourceId": "11bboxGr5u8fFsDKFAtTUY1O6rAy4hTAk",
+      "sourceName": "SYL_9290.jpg",
+      "sha256": "cecf4bd89bc7026eb1e3fa260b57e6a3f7a0a08f24b9c1c8a92fed42baddcfdc",
+      "width": 1600,
+      "height": 2400,
+      "alt": "A Kineticare egyik alapítója tablettel, mellette anatómiai kézmodell."
+    },
+    {
+      "role": "portrait-a",
+      "file": "portrait-seated-ball-a-portrait-1600.webp",
+      "sourceId": "1tuzFYbMJtLxz15JJ4THcMPlf9bI1Ob6L",
+      "sourceName": "IMG_7541.JPG",
+      "sha256": "79be6f421e51c0148f4cd6494619a6f7c6be6cc854f98a603fbbf87a09c0eb1f",
+      "width": 1600,
+      "height": 2000,
+      "alt": "A Kineticare egyik alapítója tornalabda mellett."
+    },
+    {
+      "role": "portrait-b",
+      "file": "portrait-seated-ball-b-portrait-1600.webp",
+      "sourceId": "1ZGqn8NCXiEmK0k6Jwsv8efZjeEptBf0Z",
+      "sourceName": "SYL_9188k.jpg",
+      "sha256": "a18b2324e000265fdb381579895a0e9c0ce11b67121f9807f7a3533dcfab569c",
+      "width": 1600,
+      "height": 2000,
+      "alt": "A Kineticare egyik alapítója tornalabdára támaszkodva."
+    },
+    {
+      "role": "portrait-formal-a",
+      "file": "portrait-standing-navy-portrait-1600.webp",
+      "sourceId": "1RMRFwTaaF62I1VkPT0336UCNNSMFjhAv",
+      "sourceName": "IMG_7288.JPG",
+      "sha256": "d6f72f86aaa3f9bb2557ab34ec515fdef200f1f1209259e819c00fca4ed2d34a",
+      "width": 1600,
+      "height": 2000,
+      "alt": "A Kineticare egyik alapítójának portréja."
+    },
+    {
+      "role": "portrait-formal-b",
+      "file": "portrait-standing-white-blazer-portrait-1600.webp",
+      "sourceId": "1JuWJUXG8RCk3o4yWngb2FmO5qrgWa5_j",
+      "sourceName": "SYL_9564.jpg",
+      "sha256": "b2e6d2870e0337590f7670b65399b02463ceb714fbb95bc2ea557dfd84d98519",
+      "width": 1600,
+      "height": 2000,
+      "alt": "A Kineticare egyik alapítójának portréja."
+    },
+    {
+      "role": "resources",
+      "file": "laptop-exercise-equipment-1600.webp",
+      "sourceId": "17YmI43qMz8utiHY2BqS_R9cDjiFkqD8t",
+      "sourceName": "SYL_8955.jpg",
+      "sha256": "c47fc7ddeeb4ba8bc6a645f80d53030f67cb913b71b972ce3135afe32117a620",
+      "width": 1600,
+      "height": 2400,
+      "alt": "A Kineticare egyik alapítója laptoppal, mellette tornaeszközök."
+    }
+  ]
+}

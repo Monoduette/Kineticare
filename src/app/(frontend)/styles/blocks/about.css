@@ -1,6 +1,5 @@
 /**
- * Rólunk + statisztikák (About) — TÁBLA-szekció stílusa.
- * tokens.css; UX-skill 4. pont: elemre írt px/rem TILOS). A tábla-cím az L
+ * Rólunk: természetes magasságú szekció, közös tipográfiai tokenekkel.
  */
 
 .kc-about {
@@ -28,74 +27,44 @@
 }
 
 /* ---- Rács ---------------------------------------------------------------
-   Mobil-first: egy hasáb, természetes magasság. A tábla 900px-től kapcsol be. */
+   Mobil-first: egy hasáb; a szöveg-fotó páros 900px-től két hasáb. */
 
 .kc-about__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--kc-space-6);
+  align-items: start;
 }
 
 @media (min-width: 900px) {
-  /* A tükör tábla-szegélye aszimmetrikus: a bal hasáb beljebb kezdődik, a
-     szám-oszlop a jobb szélhez simul (kineticare.css 553.). */
-  .kc-section.kc-board.kc-about {
-    padding: var(--kc-board-y) clamp(2.5rem, 4.3vw, 3.875rem) 0 clamp(3.5rem, 6.25vw, 5.625rem);
-  }
-
-  /* HASÁB-ARÁNY: MÉRT sorhossz-kalibráció (2026-08-16).
-     A tükör 30,5%-os szöveghasábja a HÁROM-MÉRETES skála előtti, ~13 px-es
-     tábla-betűhöz készült; a bemutatkozó bekezdés azóta a TÖRZSMÉRETEN (M,
-     18 px) áll. Ugyanabban a hasábban ez Chromiumban mérve 35 kar/sor
-     (1280 px) és 40 kar/sor (1440 px) sorhosszt adott — a
-     docs/ertekesitesi-ux-skill.md 4. pontjának 45 karakteres alsó határa
-     alatt, ami a rövid, csonka sorok miatt rontja az olvasás ritmusát
-     (Baymard/NN-g olvashatósági sáv: 45–85 karakter).
-     A betűméret nem változhat, ezért a MÉRTÉK nő: a szöveghasáb 30,5% → 38%,
-     a fotó hasábja 55,5% → 48% (a fotó `object-fit: cover`, tehát az arány
-     változása nem torzítja). Mért eredmény: 46 kar/sor (1280 px) és
-     50 kar/sor (1440 px) — a sávban. */
-  .kc-about__grid {
-    grid-template-columns: minmax(22rem, 38%) minmax(24rem, 48%) minmax(7rem, 14%);
-    gap: 0;
+  /* A fotó legfeljebb fél szélességű; a statisztikák nem vesznek el hasábot.
+     A minmax(0, ...) a hosszú magyar címeket sem engedi a rács fölé nőni. */
+  .kc-about--paired .kc-about__grid {
+    grid-template-columns: minmax(0, 54%) minmax(0, 1fr);
   }
 }
 
-/* Tablet-kalibráció a tükörből (941–956.): szűkebb hasábok, kisebb címméret.
-   A szöveghasáb itt is bővül (35% → 42%), ugyanabból az okból. */
+/* Kisebb desktopon kiegyensúlyozottabb páros, keskenyebb hasábközzel. */
 @media (min-width: 900px) and (max-width: 1100px) {
-  .kc-section.kc-board.kc-about {
-    padding-left: var(--kc-space-7);
-  }
-
-  .kc-about__grid {
-    grid-template-columns: 42% 42% 16%;
-  }
-
-  .kc-about__copy {
-    padding-right: var(--kc-space-4);
+  .kc-about--paired .kc-about__grid {
+    grid-template-columns: 50% 1fr;
+    column-gap: var(--kc-space-5);
   }
 }
 
 /* ---- Bal hasáb: szöveg --------------------------------------------------- */
 
 .kc-about__copy {
-  align-self: stretch;
+  min-width: 0;
   padding-left: var(--kc-space-5);
   border-left: 1px solid var(--kc-about-accent);
-}
-
-@media (min-width: 900px) {
-  .kc-about__copy {
-    padding: 0 clamp(1.5rem, 2.25vw, 2rem) var(--kc-space-5) clamp(1.5rem, 2.2vw, 2rem);
-  }
 }
 
 .kc-about__eyebrow {
   margin: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
-  letter-spacing: var(--kc-tracking-eyebrow);
+  letter-spacing: 0;
   line-height: 1.3;
   text-transform: uppercase;
   color: var(--kc-about-accent-text);
@@ -138,7 +107,7 @@
 
 .kc-about__text {
   margin: 0 0 var(--kc-space-2);
-  max-width: 38ch;
+  max-width: var(--kc-measure);
   font-size: var(--kc-font-m);
   line-height: 1.55;
   color: var(--kc-about-muted);
@@ -179,7 +148,7 @@
   margin: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
   line-height: 1.4;
   text-transform: uppercase;
   color: var(--kc-about-accent-text);
@@ -194,58 +163,49 @@
   white-space: pre-line;
 }
 
-/* ---- Középső hasáb: csapatfotó -------------------------------------------
-   A tükörben a fotó a tábla ALJÁIG fut (a rács alsó szegélye 0), ezért a
-   figure a rács teljes magasságát kapja. Mobilon arányos képkeret. */
+/* Teljes fotó, természetes képarány: arcot és kezet nem vágunk dekorációért.
+   A kép nem nyúlik a szöveg magasságához és nem válik új hero-elemmé. */
 
 .kc-about__figure {
   margin: 0;
+  width: 100%;
+  max-width: 28rem;
+  justify-self: center;
   overflow: hidden;
   background-color: var(--kc-color-surface-tint);
-  aspect-ratio: 4 / 3;
 }
 
-/* A base.css `img { height: auto }` szabályát felül kell írni, hogy a fotó
-   kitöltse a keretet (a next/image intrinsic méretei mellett is). */
 .kc-about__figure img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  /* A csapatfotón a fejek a kép felső harmadában vannak — a vágás oda igazít. */
-  object-position: 50% 25%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* A01: csak a Rólunk fotó alsó 3px-es szegélye hullámzik, statikusan.
+   A kemény maszkhatár nem fakítja a képet; az arc és a kéz érintetlen. */
+.kc-about#rolunk .kc-about__figure {
+  mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 3px) no-repeat,
+    radial-gradient(ellipse 24px 3px at 50% 0, #000 100%, #0000 100%) bottom left / 48px 3px
+      repeat-x;
 }
 
 @media (min-width: 900px) {
-  /* A fotó abszolút pozícióban tölti ki a hasábot, ezért a SAJÁT képaránya nem
-     nyújthatja meg a táblát: az álló (2:3) fotó a ~750px széles középső
-     hasábban különben 1120px-t követelne, és a tábla nem lenne 100dvh magas.
-     A tükör ezt a figure explicit magasságával oldja meg (kineticare.css 626.);
-     itt a rugalmas rács-magassághoz igazodó, robusztusabb megoldás áll. */
-  .kc-about__figure {
-    position: relative;
-    align-self: stretch;
-    min-height: 0;
-    aspect-ratio: auto;
-  }
-
-  .kc-about__figure img {
-    position: absolute;
-    inset: 0;
+  .kc-about:not(.kc-about--paired) .kc-about__figure {
+    max-width: min(28rem, 50%);
   }
 }
 
-/* ---- Jobb hasáb: szám-oszlop --------------------------------------------- */
+/* ---- Külön statisztikasor ------------------------------------------------ */
 
 .kc-about__stats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  gap: var(--kc-space-4);
   margin: 0;
   padding: 0;
-}
-
-@media (min-width: 900px) {
-  .kc-about__stats {
-    align-self: center;
-    padding-left: clamp(1.25rem, 2vw, 1.8rem);
-  }
 }
 
 .kc-about__stat {
@@ -253,11 +213,7 @@
   flex-direction: column-reverse;
   margin: 0;
   padding: var(--kc-space-5) 0;
-  border-bottom: 1px solid var(--kc-about-rule);
-}
-
-.kc-about__stat:last-child {
-  border-bottom: 0;
+  border-top: 1px solid var(--kc-about-rule);
 }
 
 .kc-about__stat-value {
@@ -270,23 +226,8 @@
 
 .kc-about__stat-label {
   margin: 0;
-  max-width: 12ch;
+  max-width: 100%;
   font-size: var(--kc-font-s);
   line-height: 1.55;
   color: var(--kc-about-muted);
-}
-
-/* Kis kijelzőn a számok egymás mellett is elférnek — a hármas ritmus marad
-   (a tükör mobil-szabálya, kineticare.css 1047–1055.). */
-@media (min-width: 560px) and (max-width: 899px) {
-  .kc-about__stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-    gap: var(--kc-space-4);
-  }
-
-  .kc-about__stat {
-    border-top: 1px solid var(--kc-about-rule);
-    border-bottom: 0;
-  }
 }

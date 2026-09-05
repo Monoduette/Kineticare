@@ -201,7 +201,11 @@ function bandOfSectionWith(html: string, marker: string): SectionBand {
 describe('HomeView (kezdőlap-render)', () => {
   it('hero: CMS-oldal címe/kivonata, fallbackben márka-alapértelmezés', () => {
     const cmsHtml = render(
-      createElement(HomeView, { home: page({ id: 1, title: 'CMS Hero cím', excerpt: 'CMS lead.' }), products: [], posts: [] }),
+      createElement(HomeView, {
+        home: page({ id: 1, title: 'CMS Hero cím', excerpt: 'CMS lead.' }),
+        products: [],
+        posts: [],
+      }),
     )
     expect(cmsHtml).toContain('<h1')
     expect(cmsHtml).toContain('CMS Hero cím')
@@ -261,7 +265,12 @@ describe('HomeView (kezdőlap-render)', () => {
         home: null,
         products: [
           product({ id: 1, sku: 'Fizetős kurzus' }),
-          product({ id: 7, sku: 'SOS Kézrelax villámkurzus', priceInHUF: null, priceInHUFEnabled: false }),
+          product({
+            id: 7,
+            sku: 'SOS Kézrelax villámkurzus',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
         ],
         posts: [],
       }),
@@ -285,7 +294,12 @@ describe('HomeView (kezdőlap-render)', () => {
         home: null,
         products: [
           product({ id: 1, sku: 'Fizetős kurzus' }),
-          product({ id: 9, sku: 'Félrekonfigurált kurzus', priceInHUF: null, priceInHUFEnabled: true }),
+          product({
+            id: 9,
+            sku: 'Félrekonfigurált kurzus',
+            priceInHUF: null,
+            priceInHUFEnabled: true,
+          }),
         ],
         posts: [],
       }),
@@ -351,7 +365,9 @@ describe('HomeView (kezdőlap-render)', () => {
       createElement(HomeView, {
         home: null,
         // Se előny-sor, se hozzáférés-hossz: ezekről a kártya NEM állít semmit.
-        products: [product({ id: 1, sku: 'Csupasz kurzus', accessDurationDays: null, cardHighlights: [] })],
+        products: [
+          product({ id: 1, sku: 'Csupasz kurzus', accessDurationDays: null, cardHighlights: [] }),
+        ],
         posts: [],
       }),
     )
@@ -406,16 +422,23 @@ describe('HomeView (kezdőlap-render)', () => {
   })
 
   /**
-   * A tartalék ágon a gomb NEM ígérheti az ingyenes kurzus indítását: a
-   * kurzuslistán semmi nem indul el. A részletes ágankénti mérés az
+   * A tartalék ágon a teljes sáv semleges: termék nélkül sem a szöveg, sem
+   * a gomb nem ígérhet ingyenes kurzust. A részletes ágankénti mérés az
    * `src/__tests__/kezdolap-cta-egyertelmuseg.test.tsx` őrben van.
    */
-  it('M4 SOS-sáv: ingyenes termék nélkül is megjelenik, de a gomb a listát ígéri', () => {
+  it('M4 SOS-sáv: ingyenes termék nélkül semleges ajánlatot és kurzuslistát mutat', () => {
     const html = render(createElement(HomeView, { home: null, products: [], posts: [] }))
     expect(html).toContain('id="ingyenes"')
-    expect(html).toContain('SOS Kézrelax')
-    expect(html).toContain('Nézd meg a kurzusokat')
-    expect(html).not.toContain('Elindítom ingyen')
+    const start = html.indexOf('id="ingyenes"')
+    const sosSection = html.slice(start, html.indexOf('</section>', start))
+    expect(sosSection).toContain('>Kurzusaink</h2>')
+    expect(sosSection).toContain('Ismerd meg a kurzusainkat, és válaszd ki a neked megfelelőt.')
+    expect(sosSection).toContain('Nézd meg a kurzusokat')
+    expect(sosSection).toContain('href="/kurzusok"')
+    expect(sosSection).not.toContain('SOS Kézrelax')
+    expect(sosSection).not.toContain('kc-free-sos__badge')
+    expect(sosSection).not.toContain('Ingyenes')
+    expect(sosSection).not.toContain('Elindítom ingyen')
   })
 
   it('M5 hogyan-működik: 3 lépés (megveszem → azonnal nézem → otthon gyakorlok)', () => {
@@ -619,7 +642,10 @@ describe('HomeView (kezdőlap-render)', () => {
       createElement(HomeView, {
         home: null,
         products: [],
-        posts: [post({ id: 1, title: 'Friss cikk' }), post({ id: 2, title: 'Vázlat cikk', status: 'draft' })],
+        posts: [
+          post({ id: 1, title: 'Friss cikk' }),
+          post({ id: 2, title: 'Vázlat cikk', status: 'draft' }),
+        ],
       }),
     )
     expect(html).toContain('Friss cikk')
@@ -654,7 +680,9 @@ describe('PostView (poszt-oldal-render)', () => {
 
   it('kategóriák a kategória-oldalakra linkelnek', () => {
     const html = render(
-      createElement(PostView, { post: post({ id: 1, categories: [category({ id: 5, title: 'Csukló', slug: 'csuklo' })] }) }),
+      createElement(PostView, {
+        post: post({ id: 1, categories: [category({ id: 5, title: 'Csukló', slug: 'csuklo' })] }),
+      }),
     )
     expect(html).toContain('href="/blog/kategoria/csuklo"')
     expect(html).toContain('Csukló')
@@ -725,24 +753,29 @@ describe('SEO-fallbacklánc', () => {
   })
 
   it('description: seoDescription → excerpt → undefined', () => {
-    expect(resolveSeoDescription(page({ id: 1, seoDescription: 'SEO leírás', excerpt: 'Kivonat' }))).toBe(
-      'SEO leírás',
+    expect(
+      resolveSeoDescription(page({ id: 1, seoDescription: 'SEO leírás', excerpt: 'Kivonat' })),
+    ).toBe('SEO leírás')
+    expect(resolveSeoDescription(page({ id: 1, seoDescription: null, excerpt: 'Kivonat' }))).toBe(
+      'Kivonat',
     )
-    expect(resolveSeoDescription(page({ id: 1, seoDescription: null, excerpt: 'Kivonat' }))).toBe('Kivonat')
-    expect(resolveSeoDescription(page({ id: 1, seoDescription: null, excerpt: null }))).toBeUndefined()
+    expect(
+      resolveSeoDescription(page({ id: 1, seoDescription: null, excerpt: null })),
+    ).toBeUndefined()
   })
 
   it('og:image: ogImage (og-méret) → ogImage (eredeti) → heroImage (og-méret) → heroImage (eredeti) → undefined', () => {
     const ogMedia = media({ sizes: { og: { url: '/og-1200.webp', width: 1200, height: 630 } } })
-    const heroMedia = media({ url: '/hero.webp', sizes: { og: { url: '/hero-og.webp', width: 1200, height: 630 } } })
+    const heroMedia = media({
+      url: '/hero.webp',
+      sizes: { og: { url: '/hero-og.webp', width: 1200, height: 630 } },
+    })
 
     expect(resolveOgImageUrl(page({ id: 1, ogImage: ogMedia }))).toBe(
       'http://localhost:3000/og-1200.webp',
     )
     expect(
-      resolveOgImageUrl(
-        page({ id: 1, ogImage: media({ url: '/og-eredeti.webp', sizes: {} }) }),
-      ),
+      resolveOgImageUrl(page({ id: 1, ogImage: media({ url: '/og-eredeti.webp', sizes: {} }) })),
     ).toBe('http://localhost:3000/og-eredeti.webp')
     expect(resolveOgImageUrl(page({ id: 1, ogImage: null, heroImage: heroMedia }))).toBe(
       'http://localhost:3000/hero-og.webp',
@@ -757,7 +790,13 @@ describe('SEO-fallbacklánc', () => {
 
   it('buildDocMetadata: canonical + openGraph a fallbacklánccal', () => {
     const metadata = buildDocMetadata(
-      page({ id: 1, title: 'Cím', seoTitle: 'SEO cím', seoDescription: 'Leírás', ogImage: media() }),
+      page({
+        id: 1,
+        title: 'Cím',
+        seoTitle: 'SEO cím',
+        seoDescription: 'Leírás',
+        ogImage: media(),
+      }),
       '/blog/poszt-1',
     )
     expect(metadata.title).toBe('SEO cím')

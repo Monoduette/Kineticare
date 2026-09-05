@@ -146,7 +146,11 @@ describe('HomeView layout-elágazás', () => {
 
   it('kitöltött layoutnál a statikus FAQPage JSON-LD nem duplikálódik', () => {
     const html = render(
-      createElement(HomeView, { home: page({ id: 1, layout: welcomeLayout }), products: [], posts: [] }),
+      createElement(HomeView, {
+        home: page({ id: 1, layout: welcomeLayout }),
+        products: [],
+        posts: [],
+      }),
     )
     // Az Organization séma oldalszintű és marad; FAQPage csak faq blokkból jöhet.
     expect(html).toContain('"@type":"Organization"')
@@ -175,8 +179,18 @@ describe('RenderBlocks', () => {
   it('visible=false blokk kimarad, a látható marad', () => {
     const html = renderBlocks(
       layoutOf(
-        { blockType: 'welcome', id: 'w1', title: 'Látható cím', sectionSettings: { visible: true } },
-        { blockType: 'welcome', id: 'w2', title: 'Rejtett cím', sectionSettings: { visible: false } },
+        {
+          blockType: 'welcome',
+          id: 'w1',
+          title: 'Látható cím',
+          sectionSettings: { visible: true },
+        },
+        {
+          blockType: 'welcome',
+          id: 'w2',
+          title: 'Rejtett cím',
+          sectionSettings: { visible: false },
+        },
       ),
     )
     expect(html).toContain('Látható cím')
@@ -328,43 +342,49 @@ describe('RenderBlocks', () => {
    * `isFreeCourse` (szigorú `=== false`).
    */
   it('freeSos: a HIÁNYOSAN konfigurált termék nem lesz ingyenes lead-magnet', () => {
-    const html = renderBlocks(
-      layoutOf({ blockType: 'freeSos', id: 'f0', sectionSettings: {} }),
-      {
-        products: [
-          // ár-pipa BEÁLLÍTATLAN → sem fizetős, sem ingyenes
-          product({ id: 8, sku: 'Beárazatlan kurzus', priceInHUF: null, priceInHUFEnabled: null }),
-          // ár-pipa BE, ár ÜRES → szintén hibás konfiguráció
-          product({ id: 9, sku: 'Félrekonfigurált kurzus', priceInHUF: null, priceInHUFEnabled: true }),
-        ],
-      },
-    )
+    const html = renderBlocks(layoutOf({ blockType: 'freeSos', id: 'f0', sectionSettings: {} }), {
+      products: [
+        // ár-pipa BEÁLLÍTATLAN → sem fizetős, sem ingyenes
+        product({ id: 8, sku: 'Beárazatlan kurzus', priceInHUF: null, priceInHUFEnabled: null }),
+        // ár-pipa BE, ár ÜRES → szintén hibás konfiguráció
+        product({
+          id: 9,
+          sku: 'Félrekonfigurált kurzus',
+          priceInHUF: null,
+          priceInHUFEnabled: true,
+        }),
+      ],
+    })
     expect(html).not.toContain('Beárazatlan kurzus')
     expect(html).not.toContain('Félrekonfigurált kurzus')
-    // A sáv maga megjelenik, a beépített alapszöveggel (termék nélküli ág).
-    expect(html).toContain('SOS Kézrelax')
+    // A hibás termékadat nem válhat ingyenes ajánlattá: a teljes sáv semleges.
+    expect(html).toContain('>Kurzusaink</h2>')
+    expect(html).toContain('Ismerd meg a kurzusainkat, és válaszd ki a neked megfelelőt.')
+    expect(html).toContain('Nézd meg a kurzusokat')
+    expect(html).toContain('href="/kurzusok"')
+    expect(html).not.toContain('SOS Kézrelax')
+    expect(html).not.toContain('kc-free-sos__badge')
+    expect(html).not.toContain('Ingyenes')
+    expect(html).not.toContain(FREE_SOS_COURSE_CTA_LABEL)
   })
 
   it('freeSos: a TUDATOSAN ingyenes termék változatlanul lead-magnet marad', () => {
-    const html = renderBlocks(
-      layoutOf({ blockType: 'freeSos', id: 'f0b', sectionSettings: {} }),
-      {
-        products: [
-          product({ id: 7, sku: 'Ingyenes SOS', priceInHUF: null, priceInHUFEnabled: false }),
-        ],
-      },
-    )
+    const html = renderBlocks(layoutOf({ blockType: 'freeSos', id: 'f0b', sectionSettings: {} }), {
+      products: [
+        product({ id: 7, sku: 'Ingyenes SOS', priceInHUF: null, priceInHUFEnabled: false }),
+      ],
+    })
     expect(html).toContain('Ingyenes SOS')
   })
 
   /**
-   * A gomb feliratát a szerkesztő adja, DE csak akkor, ha a cél valóban az
-   * ingyenes kurzus. Ingyenes termék nélkül a gomb a listára visz, és ott az
-   * indítás-ígéret hazugság lenne — ezért a felirat a listáéra vált
+   * A gomb felirata szótári. Ingyenes termék nélkül a gomb a listára visz,
+   * a cím és a törzsszöveg pedig semlegesre vált: a CMS-ben maradt ingyenes
+   * ajánlat sem ígérhet nem igazolt hozzáférést
    * (`resolveFreeSosCta`; a mért hiba: docs/gomb-inventar.md B7). A teljes
    * ág-mérés az `src/__tests__/kezdolap-cta-egyertelmuseg.test.tsx` őrben van.
    */
-  it('freeSos: termék híján is renderel, de a gomb nem ígér indítást', () => {
+  it('freeSos: termék híján semleges ajánlat váltja a CMS ingyenes ígéretét', () => {
     const html = renderBlocks(
       layoutOf({
         blockType: 'freeSos',
@@ -375,8 +395,13 @@ describe('RenderBlocks', () => {
         sectionSettings: {},
       }),
     )
-    expect(html).toContain('Ingyenes villámkurzus sáv')
-    expect(html).toContain('Rövid szöveg a sávban.')
+    expect(html).toContain('>Kurzusaink</h2>')
+    expect(html).toContain('Ismerd meg a kurzusainkat, és válaszd ki a neked megfelelőt.')
+    expect(html).not.toContain('Ingyenes villámkurzus sáv')
+    expect(html).not.toContain('Rövid szöveg a sávban.')
+    expect(html).not.toContain('kc-free-sos__badge')
+    expect(html).not.toContain('Ingyenes')
+    expect(html).not.toContain(FREE_SOS_COURSE_CTA_LABEL)
     expect(html).toContain('Nézd meg a kurzusokat')
     expect(html).toContain('href="/kurzusok"')
     expect(html).not.toContain('Kérem az ingyenes anyagot')

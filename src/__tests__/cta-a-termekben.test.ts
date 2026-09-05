@@ -217,6 +217,20 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok: 'A mobilmenü kapcsolójának zárt állapotú hozzáférhető neve.',
   },
   {
+    felirat: 'Elindítom a logósort',
+    fajl: 'components/blocks/LogoRail.tsx',
+    kategoria: 'nem-cta',
+    indok:
+      'Tulajdonos által jóváhagyott helyi mozgásvezérlő: csak a logósor véges görgetését indítja. Nem értékesítési CTA, nem navigál, nem módosít fiók- vagy vásárlási adatot; kizárólag e komponens felirata mentesül.',
+  },
+  {
+    felirat: 'Megállítom a logósort',
+    fajl: 'components/blocks/LogoRail.tsx',
+    kategoria: 'nem-cta',
+    indok:
+      'Tulajdonos által jóváhagyott helyi szüneteltető: a logósor mozgását állítja meg, nem a kurzuslejátszót vezérli. Hozzáférhetőségi kapcsoló, nem értékesítési CTA; kizárólag e komponens felirata mentesül.',
+  },
+  {
     felirat: 'Tananyag bezárása',
     fajl: 'components/account/CoursePlayer.tsx',
     kategoria: 'nem-cta',
@@ -398,8 +412,12 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  *
  * 2026-08-27 (kurzus-flow): a `CartView` „Belépés a fizetéshez" szótár-eltérés
  * kikerült. A webanalitika négy sorával együtt a lista 43, a korlát 47 → 43.
+ *
+ * 2026-09-05: 43 → 45, a tulajdonos kifejezett jóváhagyásával. Kizárólag a
+ * LogoRail két helyi indítás/szünet felirata, nem értékesítési CTA; nincs
+ * általános felmentés és nincs új szótári sor. A korlát pontosan a lista mérete.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 43
+const KIVETEL_LISTA_FELSO_KORLAT = 45
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy

@@ -156,6 +156,17 @@
   color: var(--kc-accordion-ink);
 }
 
+/* A szakmai önéletrajz bevezető portréja nem teljes szélességű illusztráció. */
+#szakmai-hatter .kc-accordion__panel .kc-richtext > .kc-richtext__figure:first-child {
+  width: min(100%, 18rem);
+  margin-inline: 0;
+}
+
+#szakmai-hatter .kc-accordion__panel .kc-richtext > .kc-richtext__figure:first-child img {
+  height: auto;
+  object-fit: contain;
+}
+
 .kc-section--dark .kc-accordion__panel .kc-richtext h2,
 .kc-section--dark .kc-accordion__panel .kc-richtext h3,
 .kc-section--dark .kc-accordion__panel .kc-richtext h4,

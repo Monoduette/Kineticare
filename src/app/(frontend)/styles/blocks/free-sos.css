@@ -25,15 +25,18 @@
   --kc-free-sos-on-band: var(--kc-color-on-dark);
 }
 
-.kc-free-sos .kc-container {
-  position: relative;
-  z-index: 2;
+.kc-free-sos__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: var(--kc-space-6);
 }
 
 .kc-free-sos__inner {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
 }
 
 .kc-free-sos__badge {
@@ -55,7 +58,7 @@
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
   line-height: var(--kc-leading-heading);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color: var(--kc-free-sos-on-band);
   text-wrap: balance;
 }
@@ -109,55 +112,24 @@
   outline-color: var(--kc-free-sos-on-band);
 }
 
-/* ---- Kép-art (csak 900px felett) ----------------------------------------- */
+/* A CMS-fotó tartalom: nincs arcot takaró fátyol vagy mobilos elrejtés.
+   Az intrinsic képarány megmarad, ezért a kézmozdulat sem vágódik le.
+   W3C Images Tutorial; NN/g Photos as Web Content (FreeSos.tsx). */
 
 .kc-free-sos__art {
-  display: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.kc-free-sos__art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--kc-radius-md);
 }
 
 @media (min-width: 900px) {
-  .kc-section.kc-free-sos {
-    display: flex;
-    min-height: 20rem;
-    align-items: center;
-  }
-
-  .kc-free-sos__inner {
-    max-width: 56%;
-  }
-
-  .kc-free-sos__art {
-    position: absolute;
-    z-index: 0;
-    inset: 0 0 0 auto;
-    display: block;
-    width: 44%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  /* A base.css `img { height: auto }`-ját felül kell írni, hogy a kép kitöltse
-     a sávot (a next/image intrinsic méretei mellett is). */
-  .kc-free-sos__art img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-  }
-
-  /* A landing `.kc-sos::after` átmenete: balról tömör sávszín, jobbra a képbe
-     olvadva. Kép nélkül láthatatlan (a sáv színe önmagára fut ki). */
-  .kc-section.kc-free-sos::after {
-    content: '';
-    position: absolute;
-    z-index: 1;
-    inset: 0;
-    background: linear-gradient(
-      90deg,
-      var(--kc-free-sos-band) 0 58%,
-      color-mix(in srgb, var(--kc-free-sos-band) 70%, transparent) 78%,
-      transparent 100%
-    );
-    pointer-events: none;
+  .kc-free-sos--with-image .kc-free-sos__layout {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   }
 }

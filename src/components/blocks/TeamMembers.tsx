@@ -4,6 +4,7 @@ import type { BlockTeamMembers } from '../../payload-types'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { telHref } from '../../lib/tel-href'
 import { MediaImage } from '../content/MediaImage'
+import { pickMediaUrl } from '../content/media-url'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
 
@@ -193,7 +194,10 @@ function TeamMemberCard({
   const name = member.name.trim()
   const role = member.role?.trim() ?? ''
   const bio = member.bio?.trim() ?? ''
-  const photo = typeof member.photo === 'object' && member.photo !== null ? member.photo : null
+  const photo =
+    typeof member.photo === 'object' && member.photo !== null && pickMediaUrl(member.photo, 'sm')
+      ? member.photo
+      : null
   const phone = member.phone?.trim() ?? ''
   const phoneHref = phone.length > 0 ? telHref(phone) : null
   const callLabel = member.callLabel?.trim() ?? ''
@@ -226,9 +230,7 @@ function TeamMemberCard({
     <article className="kc-team__card">
       {photo ? (
         <figure className="kc-team__figure">
-          {/* Két hasáb az 1120px-es konténerben → hasábonként ~540px; mobilon a
-              kártya a teljes szélességet viszi. */}
-          <MediaImage media={photo} preferredSize="md" sizes="(max-width: 899px) 100vw, 540px" />
+          <MediaImage media={photo} preferredSize="sm" sizes="(max-width: 360px) 224px, 288px" />
         </figure>
       ) : null}
       <div className="kc-team__body">

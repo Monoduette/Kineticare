@@ -39,11 +39,14 @@ export function formatPostDate(value: unknown): string | null {
 }
 
 function categoryTitles(categories: Post['categories']): string[] {
-  if (!Array.isArray(categories)) return []
-  return categories
+  if (!Array.isArray(categories)) return ['Tudástár']
+  const titles = categories
     .filter((cat): cat is Category => typeof cat === 'object' && cat !== null)
-    .map((cat) => cat.title)
-    .filter((title): title is string => typeof title === 'string' && title.length > 0)
+    .map((cat) => (typeof cat.title === 'string' ? cat.title.trim() : ''))
+    .filter((title) => title.length > 0)
+  // A fel nem oldott id nem besorolatlan cikket jelent. A tartalomtár neve
+  // igaz fallback, nem feltételezett kategória; a CMS-sorrend megmarad.
+  return titles.length > 0 ? [...new Set(titles)] : ['Tudástár']
 }
 
 export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardProps) {
@@ -60,19 +63,21 @@ export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardP
     <Card as="article" className="kc-post-card" interactive padded={false}>
       {heroMedia ? (
         <div className="kc-post-card__cover">
-          <MediaImage media={heroMedia} preferredSize="sm" sizes="(max-width: 720px) 100vw, 352px" />
+          <MediaImage
+            media={heroMedia}
+            preferredSize="sm"
+            sizes="(max-width: 720px) 100vw, 352px"
+          />
         </div>
       ) : null}
       <div className="kc-post-card__body">
-        {titles.length > 0 ? (
-          <div className="kc-post-card__categories">
-            {titles.map((title) => (
-              <Badge key={title} tone="info">
-                {title}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
+        <div className="kc-post-card__categories">
+          {titles.map((title) => (
+            <Badge key={title} tone="info">
+              {title}
+            </Badge>
+          ))}
+        </div>
         {/* A kártya EGYETLEN linkje. A hozzáférhető neve pontosan a cikk címe
             (mérve: 42 / 51 / 40 karakter a három mintacímen, a terv 80-as
             felső határa alatt) — a kategória, a kivonat és a dátum

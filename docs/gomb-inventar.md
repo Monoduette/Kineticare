@@ -379,7 +379,7 @@ Ezek a `ui-sztenderdek.md` §6.3 **G-UI1** őrének kiegészítései, nem helyet
 | **A tudástár listájára lépés** | 1 | Összes bejegyzés a tudástárban | **#35** | `Nézd meg a tudástárat` |
 | **Süti-beállítások újranyitása** | 1 | Süti-beállítások | **#36** | `Süti-beállítások` |
 | **Jelszó-visszaállítás kezdeményezése** | **2** | Elfelejtetted a jelszavad? · Új link kérése | **#37** | `Elfelejtetted a jelszavad?` |
-| **Ugrás a kezdőlap ingyenes sávjára** | 1 | Ingyenes SOS gyakorlatok | **#38** | `Nézd meg az SOS-kurzust` |
+| **Ugrás a kezdőlap ingyenes sávjára** | 1 | Ingyenes SOS gyakorlatok | **#38** | `Nézd meg ingyenes SOS-kurzusunkat` |
 | Folyamatban | **7** | Feldolgozás… · Küldés… · Mentés… · Belépés… · Regisztráció… · Beállítás… · Kijelentkezés… · Újratöltés folyamatban… | **L-1** | `Belépés…` `Regisztráció…` `Kijelentkezés…` `Küldés…` `Mentés…` `Feldolgozás…` `Betöltés…` |
 
 **Mit mond ez a leképezés összesítve:** 28 mért cselekvésre **63 különböző felirat** élt; a jóváhagyott szótárban ugyanezekre **32 felirat + 7 folyamatban-alak** van. A legnagyobb nyereség a kurzuslistánál (8 → 1) és a saját kurzusoknál (4 → 1) keletkezett – mindkettő WCAG 2.2 **3.2.4** sérülés volt.
@@ -471,6 +471,14 @@ gombfeliratot** talált, ebből **67 tért el** a jóváhagyott §3.2 szótárt�
 **Két szűk kivétel-lista KIÜRÜLT.** A „Tovább…"-sértéseké (`TOVABB_KIVETELEK`, 2 sor → 0) és a
 kvirtmínuszos feliratoké (`GONDOLATJEL_KIVETELEK`, 2 sor → 0). A felületen innentől **egyetlen**
 „Tovább…" kezdetű és **egyetlen** U+2014-et tartalmazó vevői felirat sincs.
+
+**2026-09-05, helyi logóvezérlő (tulajdonosi jóváhagyás):** a G-UI2 aktuális
+listája és pontos felső korlátja **43 → 45**. A két új `nem-cta` pár kizárólag
+`components/blocks/LogoRail.tsx` + `Elindítom a logósort`, illetve ugyanez a fájl
+és a `Megállítom a logósort` felirat. Ezek a véges helyi görgetés indítás/szünet vezérlői,
+nem értékesítési CTA-k, navigáció vagy kurzuslejátszó-parancsok. A §3.2 szótár
+nem változik; általános felirat- vagy fájlkivétel nem keletkezik. Normatív
+hatókör: `ui-sztenderdek.md` §3.2, a G-UI2 helyi vezérlőkivétel bekezdése.
 
 **A WCAG 2.2 · 3.2.4 cél-ütközések 6-ról 4-re csökkentek**, és a maradék négy mind a
 BÖNGÉSZÉS ↔ VISSZALÉPÉS szándékos kettőssége (`/kurzusaim`, `/kurzusok`, `/belepes`, `/blog`),
