@@ -211,5 +211,6 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
     }
     expect(olvas('components/layout/MobileNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
     expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
+    expect(olvas('components/layout/AccountNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
   })
 })

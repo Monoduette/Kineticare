@@ -31,9 +31,10 @@ const bundle = await build({
       import { createRoot } from 'react-dom/client'
       import { Header } from './src/components/layout/Header'
       const root = createRoot(document.getElementById('root'))
-      window.renderHeader = async (signedIn) => {
+      window.renderHeader = async (signedIn, emptyMenu = false) => {
         window.fixtureSignedIn = signedIn
-        root.render(<React.Fragment key={String(signedIn)}>{await Header()}</React.Fragment>)
+        window.fixtureEmptyMenu = emptyMenu
+        root.render(<React.Fragment key={String(signedIn) + String(emptyMenu)}>{await Header()}</React.Fragment>)
       }
     `,
     loader: 'tsx',
@@ -69,7 +70,7 @@ const bundle = await build({
           } else if (args.path.endsWith('/menus')) {
             contents = `
             const item = (id, label, href, children = []) => ({id, label, href, children, isExternal: false, openInNewTab: false})
-            export const getNavTree = async () => [
+            export const getNavTree = async () => window.fixtureEmptyMenu ? [] : [
               item(1, 'Szolgáltatások', '/szolgaltatasok', [
                 item(4, 'Rendelői kezelések', '/kezelesek'), item(5, 'Szakmai képzés', '/szakmai-kepzesek'),
                 item(6, 'SOS KézRelax', '/kurzusok/sos'), item(8, 'olcsó dolgok itt', '/akcios-kurzus')
@@ -371,6 +372,53 @@ try {
         await page.locator('#outside-focus').evaluate((el) => el === document.activeElement),
       )
       console.log(`PASS desktop resize ${signedIn}: ${target} -> ${expected}; submenu stays closed`)
+    }
+  }
+  // A hibás lekérdezés és a látható menüpontok hiánya egyaránt üres fát ad.
+  // A fióksáv ettől még megmarad; mindkét váltási irányt külön ellenőrizzük.
+  for (const signedIn of [true, false]) {
+    await page.evaluate((value) => window.renderHeader(value, true), signedIn)
+    await settle()
+    assert.equal(await page.locator('.kc-nav-desktop').count(), 0)
+    for (const control of ['a', ...(signedIn ? ['button'] : []), 'outside']) {
+      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.mouse.move(0, 899)
+      await settle()
+      const target =
+        control === 'outside'
+          ? '#outside-focus'
+          : `.kc-site-header__actions > .kc-account-nav ${control}`
+      await page.locator('.kc-site-header__brand').focus()
+      for (let step = 0; step < 20; step++) {
+        if (await page.locator(target).evaluate((el) => el === document.activeElement)) break
+        await page.keyboard.press('Tab')
+      }
+      assert.ok(await page.locator(target).evaluate((el) => el === document.activeElement))
+      await page.setViewportSize({ width: 1199, height: 900 })
+      await settle()
+      const expected = control === 'outside' ? target : '.kc-site-header__brand'
+      assert.ok(
+        await page.locator(expected).evaluate((el) => el === document.activeElement),
+        `empty-menu desktop focus: signedIn=${signedIn}, control=${control}`,
+      )
+      await page.locator('.kc-nav-mobile > button').click()
+      const drawerTarget = control === 'outside' ? target : `.kc-account-nav--drawer ${control}`
+      await page.locator(drawerTarget).waitFor({ state: 'visible' })
+      await page.locator(drawerTarget).focus()
+      assert.ok(await page.locator(drawerTarget).evaluate((el) => el === document.activeElement))
+      await page.setViewportSize({ width: 1200, height: 900 })
+      await settle()
+      assert.ok(
+        await page.locator(expected).evaluate((el) => el === document.activeElement),
+        `empty-menu drawer focus: signedIn=${signedIn}, control=${control}`,
+      )
+      assert.equal(
+        await page.locator('.kc-nav-mobile > button').getAttribute('aria-expanded'),
+        'false',
+      )
+      assert.notEqual(await page.evaluate(() => document.body.style.overflow), 'hidden')
+      assert.equal(await page.locator('.kc-nav-desktop').count(), 0)
+      console.log(`PASS empty-menu both directions ${signedIn}: ${control}`)
     }
   }
   assert.deepEqual(errors, [])
