@@ -18,7 +18,7 @@ import { getNavRouteState } from '../../lib/nav-route'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Desktop (>= 900px) vízszintes navigáció, egy szintű almenüvel.
+ * Desktop (>= 75em) vízszintes navigáció, egy szintű almenüvel.
  * `visibility: hidden`, tehát a benne lévő hivatkozások NEM fókuszálhatók — a
  */
 

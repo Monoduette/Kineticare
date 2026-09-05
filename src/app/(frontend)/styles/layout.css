@@ -282,7 +282,7 @@
   display: none;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 75em) {
   .kc-account-nav {
     display: flex;
     align-items: center;
@@ -468,7 +468,13 @@
   display: none;
 }
 
-@media (min-width: 900px) {
+/* Shared navigation threshold (also MobileNav's resize cleanup): 1200px at
+   the default font size. The signed-in four-root header needs ~1035px plus
+   gutters; 900/1024px overflow. Keep the existing drawer until there is room
+   for navigation AND account actions, without shrinking type or clipping.
+   WCAG 1.4.10: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+   Responsive disclosure: https://design-system.service.gov.uk/components/service-navigation/ */
+@media (min-width: 75em) {
   .kc-nav-desktop {
     /* A menü a jobb oldalra húz (brand ↔ menü + CTA). */
     display: block;
@@ -476,7 +482,7 @@
   }
 }
 
-/* MENÜSÁV-TARTALÉK (2026-08-16, Chromiumban mért érték).
+/* MENÜSÁV-TARTALÉK (2026-08-16, történeti, kijelentkezett mérés).
    A menülink a HÁROM-MÉRETES skálán a törzsméretet (M) viszi; korábban a
    kisebb `--kc-text-sm` lépcsőn állt. A sáv helyigénye ezzel 900 px-es
    nézetablakon 676 → 745 px-re nőtt (a mai, négy főmenüpontos élő menüvel
@@ -489,10 +495,9 @@
    Size 24×24-es minimuma felett). Mért nyereség a négy menüpontos menün:
    44 px tartalék vissza — épp annyi, hogy a skill 3. pontja által KÖTELEZŐVÉ
    tett „Kurzusok" menüpont (98 px) is beférjen a 900 px-es sávba.
-   A hamburgerre váltás töréspontját SZÁNDÉKOSAN nem emeltük: az NN/g
-   hidden-navigation vizsgálata szerint a rejtett menü desktopon mérhetően
-   rosszabb (a látogatók 27%-a használta a rejtettet, szemben a látható menü
-   ~50%-ával) — https://www.nngroup.com/articles/hamburger-menus/ */
+   Ez a régi mérés nem tartalmazta a bejelentkezett fiókvezérlők helyigényét.
+   A jelenlegi közös navigációs határt a fenti szabály és a
+   header-responsive.browser.mjs bejelentkezett mérései védik. */
 .kc-nav-desktop__list {
   display: flex;
   align-items: center;
@@ -709,7 +714,7 @@
   display: block;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 75em) {
   .kc-nav-mobile {
     display: none;
   }

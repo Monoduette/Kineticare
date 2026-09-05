@@ -9,7 +9,7 @@ import { AccountNav } from './AccountNav'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Mobil (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
+ * Kompakt (< 75em) navigáció: hamburger-gomb + jobb oldali drawer.
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
  */
 export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signedIn?: boolean }) {
@@ -50,6 +50,28 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
       }
     }
     document.addEventListener('keydown', onKeyDown)
+    // Keep this query aligned with layout.css. A hidden drawer must not keep
+    // the page locked after a resize or browser zoom switches navigation mode.
+    const desktop = window.matchMedia('(min-width: 75em)')
+    const drawer = closeRef.current?.closest('nav')
+    // Chromium can reset activeElement to BODY before the media event arrives.
+    // Track explicit focus moves while visible, including moves outside it.
+    let drawerOwnsFocus = drawer?.contains(document.activeElement) ?? false
+    const onFocusIn = (event: FocusEvent) => {
+      drawerOwnsFocus = event.target instanceof Node && (drawer?.contains(event.target) ?? false)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    const onDesktop = (event: MediaQueryListEvent) => {
+      if (!event.matches) return
+      if (drawerOwnsFocus) {
+        toggleRef.current
+          ?.closest('header')
+          ?.querySelector<HTMLAnchorElement>('.kc-site-header__brand')
+          ?.focus()
+      }
+      setOpen(false)
+    }
+    desktop.addEventListener('change', onDesktop)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     // A drawer ekkorra már `data-open="true"` (a CSS a rejtett → látható
@@ -57,6 +79,8 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
     closeRef.current?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('focusin', onFocusIn)
+      desktop.removeEventListener('change', onDesktop)
       document.body.style.overflow = previousOverflow
     }
   }, [open])

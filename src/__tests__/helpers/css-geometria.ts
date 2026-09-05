@@ -65,7 +65,12 @@ export function stilusLap(fajlok: readonly string[]): readonly Szabaly[] {
  * A `print` és a `prefers-reduced-motion: reduce` a képernyős, alapbeállítású
  * mérésben nem érvényes.
  */
-function mediaErvenyes(prelude: string, nezetablakPx: number, magassagPx: number): boolean {
+function mediaErvenyes(
+  prelude: string,
+  nezetablakPx: number,
+  magassagPx: number,
+  kezdoBetumeretPx: number,
+): boolean {
   // Minden feltételt ellenőrzünk: a rövidzár nem rejthet el ismeretlen jellemzőt.
   return prelude
     .split(',')
@@ -76,9 +81,11 @@ function mediaErvenyes(prelude: string, nezetablakPx: number, magassagPx: number
           const t = feltetel.trim().toLowerCase()
           if (t === 'screen' || t === 'all') return true
           if (t === 'print') return false
-          const m = /^\(\s*(min|max)-(width|height)\s*:\s*(\d*\.?\d+)px\s*\)$/.exec(t)
+          const m = /^\(\s*(min|max)-(width|height)\s*:\s*(\d*\.?\d+)(px|em|rem)\s*\)$/.exec(t)
           if (m) {
-            const hatar = Number(m[3])
+            // Media-relative units use the initial browser font, not authored
+            // root/element styles: https://www.w3.org/TR/mediaqueries-4/#units
+            const hatar = Number(m[3]) * (m[4] === 'px' ? 1 : kezdoBetumeretPx)
             const meret = m[2] === 'height' ? magassagPx : nezetablakPx
             return m[1] === 'min' ? meret >= hatar : meret <= hatar
           }
@@ -96,7 +103,12 @@ function mediaErvenyes(prelude: string, nezetablakPx: number, magassagPx: number
  * a `@keyframes` kimarad. Enélkül a szabály-olvasó a média-blokkokba zárt
  * deklarációkat feltétel nélkül érvényesnek venné.
  */
-function lapit(css: string, nezetablakPx: number, magassagPx: number): string {
+function lapit(
+  css: string,
+  nezetablakPx: number,
+  magassagPx: number,
+  kezdoBetumeretPx: number,
+): string {
   const tiszta = css.replace(KOMMENT, '')
   let ki = ''
   let i = 0
@@ -128,12 +140,12 @@ function lapit(css: string, nezetablakPx: number, magassagPx: number): string {
     }
     const torzs = tiszta.slice(j + 1, k)
     if (nev === 'media') {
-      const ervenyes = mediaErvenyes(prelude, nezetablakPx, magassagPx)
+      const ervenyes = mediaErvenyes(prelude, nezetablakPx, magassagPx, kezdoBetumeretPx)
       // Az inaktív ág is validálandó, de a deklarációi nem kerülnek a kaszkádba.
-      const belso = lapit(torzs, nezetablakPx, magassagPx)
+      const belso = lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx)
       if (ervenyes) ki += belso
     } else if (nev === 'supports' || nev === 'layer') {
-      ki += lapit(torzs, nezetablakPx, magassagPx)
+      ki += lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx)
     } else if (nev !== 'font-face' && nev !== 'keyframes' && nev !== 'page' && nev !== 'property') {
       throw new Error(`ismeretlen at-szabály: @${nev} — az őr nem tudja, érvényes-e`)
     }
@@ -147,12 +159,18 @@ export function stilusLapNezetablakra(
   fajlok: readonly string[],
   nezetablakPx: number,
   magassagPx: number,
+  // Existing geometry fixtures assume the browser's default 16px initial font.
+  // Callers modelling a user font preference must pass that initial size.
+  kezdoBetumeretPx = 16,
 ): readonly Szabaly[] {
   if (!Number.isFinite(magassagPx) || magassagPx <= 0) {
     throw new Error('érvényes, explicit nézetablak-magasság szükséges az őr méréséhez')
   }
+  if (!Number.isFinite(kezdoBetumeretPx) || kezdoBetumeretPx <= 0) {
+    throw new Error('érvényes kezdeti betűméret szükséges az őr méréséhez')
+  }
   return fajlok.flatMap((fajl) =>
-    szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx, magassagPx)),
+    szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx, magassagPx, kezdoBetumeretPx)),
   )
 }
 
