@@ -28,10 +28,9 @@ const FILM_SCROLL = 4.6
 const FILM_LINGER = 0.16
 
 /**
- * A filmsáv színei a fő site tokenjeiről. Az akcent a `accent-deep`: a
- * folyamatjelzőn kívül a fókuszgyűrűt is ez adja, ott pedig 3:1 feletti
- * kontraszt kell (a világosabb `accent` fehéren/tinten AA alatt lenne normál
- * szövegre — lásd a tokens.css kontraszt-jegyzetét).
+ * A filmsáv színei a fő site tokenjeiről. Az akcent a `accent-deep`; a
+ * folyamatjelzőn használjuk, míg a film fölötti interaktív elemek fókuszát a
+ * CSS kontrasztbiztos `ink` gyűrűre írja felül.
  *
  * A `muted` szándékosan NEM a halvány `text-muted`, hanem a teljes erejű `ink`:
  * a bevezető szöveg változó filmkockán áll, ahol a hierarchiát a méret adja,

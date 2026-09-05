@@ -42,8 +42,8 @@
 /**
  * A FEJLÉC FÓKUSZGYŰRŰJE a fátyollal arányos, ugyanazon a logikán, mint a
  * wordmark-tag és a CTA-pirula. A kezdőlap tetején (veil = 0) a sáv alatti
- * kompozit `#8c959d`; a fix accent-deep gyűrű itt 1,79:1 (1.4.11 + 2.4.7
- * bukás). A kevert gyűrű ink→focus, ezért veil = 0-nál ink, 5,13:1.
+ * kompozit `#b2b6bc`; a fix accent-deep gyűrű itt 2,68:1 (1.4.11 + 2.4.7
+ * bukás). A kevert gyűrű ink→focus, ezért veil = 0-nál ink, 7,67:1.
  */
 .kc-site-header :focus-visible {
   outline-color: color-mix(
@@ -80,9 +80,9 @@
  *   mögöttes) kompozitra kell méretezni.
  *   https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
  *
- * Fedés-plafon 72% (blur mellett): veil=1 a filmsáv `#8c959d` kompozitján
- * `#d8dde1`. Ink 11,42:1 (1.4.3), wordmark-tag 5,17:1, CTA-határ 3,98:1,
- * fókuszgyűrű 3,98:1, kijelentkezés-keret 3,02:1 (1.4.11). A 28% átütés
+ * Fedés-plafon 72% (blur mellett): veil=1 a filmsáv `#b2b6bc` kompozitján
+ * `#e3e6ea`. Ink 12,48:1 (1.4.3), wordmark-tag 5,65:1, CTA-határ 4,35:1,
+ * fókuszgyűrű 4,35:1, kijelentkezés-keret 3,30:1 (1.4.11). A 28% átütés
  * tartja láthatóvá a fagyást. Blur nélkül 92%, mert ott nincs a blurról jövő
  * átlagolás. A 0,01px alsó blur-küszöb azért kell, hogy a Chromium ne hagyja
  * ki a 0-ból induló backdrop-filter festését.
@@ -167,10 +167,10 @@
 /**
  * A wordmark akcent-tagja a FÁTYOLLAL ARÁNYOSAN vált színt.
  *
- * Átlátszó fejlécnél (veil = 0) teljesen `ink`: a filmsáv felső lejtőjén 5,13:1.
+ * Átlátszó fejlécnél (veil = 0) teljesen `ink`: a filmsáv felső lejtőjén 7,67:1.
  * Legörgetve (veil = 1) a megszokott `accent-deeper`: a fagyott filmsávon
- * 5,17:1, a paperen 6,70:1. A középtónusú akcent önmagában a részleges fátylon
- * 2,32:1-re esne. Ne cseréld vissza fix színre.
+ * 5,65:1, a paperen 6,70:1. A középtónusú akcent önmagában a lap tetején
+ * 3,48:1-re esne. Ne cseréld vissza fix színre.
  */
 .kc-site-header__brand-accent {
   color: color-mix(
@@ -209,7 +209,7 @@
 
   /* A pirula KITÖLTÉSE a fátyollal arányos: átlátszó fejlécnél `ink` (ez a
      landing-tükör nav-CTA-ja is), legörgetve `primary`. A középtónusú primary
-     a részleges fátylon 1,79:1-es HATÁRT adna a sávhoz képest — AA-bukás egy
+     a lap tetején 2,68:1-es HATÁRT adna a sávhoz képest — AA-bukás egy
      UI-komponens határán. A fehér felirat mindkét végponton AA a saját
      kitöltéséhez mérve (15,63:1 ill. 5,45:1). Lásd a kontraszt-levezetést. */
   background-color: color-mix(
@@ -257,23 +257,23 @@
  * ── A KONTRASZT LEVEZETÉSE (számolt, nem becsült) ──────────────────────────
  * A fejléc-sáv háttere a `--kc-header-veil` függvénye: 0 a lap tetején (a
  * kezdőlapon a hero-film látszik át), 1 legörgetve (72% lap-fedés + blur, nem
- * szolid paper). A film kompozit veil=0-nál `#8c959d` (ink 5,13:1).
+ * szolid paper). A film kompozit veil=0-nál `#b2b6bc` (ink 7,67:1).
  *
  * Ezért a KERET és a FÓKUSZGYŰRŰ színe is a fátyollal arányosan kevert. A
  * filmsáv fölötti 0→1 sweep szélsőértékei (a fagyott 72%-os fedéssel):
  *
  *   veil  háttér    keret     keret:bg   gyűrű     gyűrű:bg   felirat(ink):bg
- *   0.00  #8c959d   #10243e     5,13       #10243e    5,13        5,13
- *   0.50  #b2b9bf   #3e5269     4,05       #20496f    4,73        7,88
- *   1.00  #d8dde1   #6b7f94     3,02       #2f6e9f    3,98       11,42
+ *   0.00  #b2b6bc   #10243e     7,67       #10243e    7,67        7,67
+ *   0.50  #caced3   #3e5269     5,08       #20496f    5,92        9,88
+ *   1.00  #e3e6ea   #6b7f94     3,30       #2f6e9f    4,35       12,48
  *
- *   legrosszabb keret 3,02:1 (küszöb 3,0 — WCAG 2.2 1.4.11 Non-text Contrast)
- *   legrosszabb gyűrű 3,98:1 (küszöb 3,0)
- *   legrosszabb felirat 5,13:1 (küszöb 4,5 — WCAG 2.2 1.4.3)
+ *   legrosszabb keret 3,30:1 (küszöb 3,0 — WCAG 2.2 1.4.11 Non-text Contrast)
+ *   legrosszabb gyűrű 4,35:1 (küszöb 3,0)
+ *   legrosszabb felirat 7,67:1 (küszöb 4,5 — WCAG 2.2 1.4.3)
  *
  * Belső oldalon a sáv paper fölött ül: ink 14,79:1, keret 3,91:1. FIX színekkel
- * a filmsáv BUKNA: `border-strong` a filmen 1,36:1, `accent-deep` fókuszgyűrű
- * a filmen 1,80:1. Ne cseréld vissza fix értékre.
+ * a filmsáv BUKNA: `border-strong` a filmen 2,03:1, `accent-deep` fókuszgyűrű
+ * a filmen 2,68:1. Ne cseréld vissza fix értékre.
  */
 .kc-account-nav {
   /* Mobilon a sávban nincs hely (wordmark + „Kurzusok" pirula + hamburger már
@@ -383,9 +383,9 @@
 }
 
 /* A fókuszgyűrű a fejléc-sávban a FÁTYOLLAL arányos — a globális
-   `:focus-visible` accent-deep gyűrűje a hero-filmen csak 1,80:1 lenne
+   `:focus-visible` accent-deep gyűrűje a hero-filmen csak 2,68:1 lenne
    (mérve), ami a WCAG 2.2 1.4.11 alatt van. A keverés minden fátyol-álláson
-   3,98:1 fölött tart (lásd a fenti sweep-táblázatot). A szabály a fejléc-sávra
+   4,35:1 fölött tart (lásd a fenti sweep-táblázatot). A szabály a fejléc-sávra
    szorítkozik, mert csak ott áttetsző a háttér. */
 .kc-site-header__bar :focus-visible {
   outline-color: color-mix(

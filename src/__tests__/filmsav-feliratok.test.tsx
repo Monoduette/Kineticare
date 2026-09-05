@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,20 +9,18 @@ import { FilmHero } from '@/components/blocks/FilmHero'
 import { scrollScrubMediaFit, scrollScrubNeedsLayout } from '@/components/scroll-scrub/scroll-scrub'
 import type { BlockFilmHero } from '@/payload-types'
 
+import { sajatErtek, stilusLapNezetablakra, type Elem } from './helpers/css-geometria'
+
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
 const FILM_HERO_SOURCE = readFileSync(join(REPO, 'src/components/blocks/FilmHero.tsx'), 'utf8')
-const FILM_HERO_CSS = readFileSync(
-  join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css'),
-  'utf8',
-)
+const FILM_HERO_CSS_PATH = join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css')
+const FILM_HERO_CSS = readFileSync(FILM_HERO_CSS_PATH, 'utf8')
 const SCROLL_SCRUB_SOURCE = readFileSync(
   join(REPO, 'src/components/scroll-scrub/scroll-scrub.tsx'),
   'utf8',
 )
-const SCROLL_SCRUB_CSS = readFileSync(
-  join(REPO, 'src/components/scroll-scrub/scroll-scrub.css'),
-  'utf8',
-)
+const SCROLL_SCRUB_CSS_PATH = join(REPO, 'src/components/scroll-scrub/scroll-scrub.css')
+const SCROLL_SCRUB_CSS = readFileSync(SCROLL_SCRUB_CSS_PATH, 'utf8')
 
 /**
  * ŐR — a filmsáv 2. és 3. „állása" CÍM + LEÍRÁS párban áll.
@@ -73,6 +72,36 @@ function cssSzabaly(selector: string, forras = FILM_HERO_CSS): string {
   const talalat = forras.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, 's'))
   expect(talalat, `hiányzó CSS-szabály: ${selector}`).not.toBeNull()
   return talalat?.[1] ?? ''
+}
+
+function sha256(ut: string): string {
+  return createHash('sha256')
+    .update(readFileSync(join(REPO, ut)))
+    .digest('hex')
+}
+
+function kezdoMediaStilus(
+  szelesseg: number,
+  magassag: number,
+  hover: 'hover' | 'none',
+  pointer: 'coarse' | 'fine',
+): { readonly fit: string | null; readonly opacity: string | null } {
+  const lap = stilusLapNezetablakra([SCROLL_SCRUB_CSS_PATH, FILM_HERO_CSS_PATH], szelesseg, {
+    hover,
+    magassagPx: magassag,
+    pointer,
+  })
+  const hero: Elem = { elemnev: '', osztaly: '.kc-film-hero', ostagOsztaly: null, szulo: null }
+  const poster: Elem = {
+    elemnev: '',
+    osztaly: '.scroll-scrub__poster',
+    ostagOsztaly: '.kc-film-hero',
+    szulo: hero,
+  }
+  return {
+    fit: sajatErtek(lap, poster, 'object-fit'),
+    opacity: sajatErtek(lap, hero, '--kc-film-media-opacity'),
+  }
 }
 
 const markup = renderToStaticMarkup(<FilmHero block={BLOKK} />)
@@ -134,6 +163,21 @@ describe('filmsáv egykezes média-szerződése', () => {
     expect(FILM_HERO_SOURCE).not.toContain('/media/film/scene-02')
   })
 
+  it('az auditált videók és poszterek bitre változatlanok', () => {
+    expect(sha256('public/media/film/one-hand-header-v1.mp4')).toBe(
+      '6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e',
+    )
+    expect(sha256('public/media/film/one-hand-header-v1-mobile.mp4')).toBe(
+      '171574ff5d091977716990352713feffedd637e5adbcb5f85e9ee73c801e128f',
+    )
+    expect(sha256('public/media/film/one-hand-header-v1-poster.webp')).toBe(
+      '8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13',
+    )
+    expect(sha256('public/media/film/one-hand-header-v1-mobile-poster.webp')).toBe(
+      '785af683bd5843222a13ccfc7557a7d37ea1b6207c6096075763d645cbc241f5',
+    )
+  })
+
   it('a klipek a deploy-méretkereten belül maradnak', () => {
     const desktop = statSync(join(REPO, 'public/media/film/one-hand-header-v1.mp4')).size
     const mobile = statSync(join(REPO, 'public/media/film/one-hand-header-v1-mobile.mp4')).size
@@ -185,14 +229,36 @@ describe('filmsáv egykezes média-szerződése', () => {
 
     const containFeltetel = '@media (min-width: 640px) and (max-width: 860px)'
     expect(FILM_HERO_CSS).toContain(containFeltetel)
-    expect(FILM_HERO_CSS).not.toContain('min-aspect-ratio')
-    expect(FILM_HERO_CSS).not.toContain('orientation: landscape')
-    expect(FILM_HERO_CSS).not.toMatch(/\((?:hover|pointer)\s*:/)
 
     const contain = FILM_HERO_CSS.slice(FILM_HERO_CSS.indexOf(containFeltetel))
     expect(contain).toMatch(
       /\.kc-film-hero \.scroll-scrub__poster,\s*\.kc-film-hero \.scroll-scrub__video\s*\{[^}]*object-fit: contain;[^}]*object-position: var\(--ss-mobile-position\);/s,
     )
+  })
+
+  it('az első festés és a runtime ugyanazt a mobil opacity/fit állapotot használja', () => {
+    expect(markup).toContain('media="(hover: none) and (pointer: coarse), (max-width: 860px)"')
+    expect(kezdoMediaStilus(390, 844, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '1' })
+    expect(kezdoMediaStilus(568, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(768, 1024, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(1024, 768, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
+  })
+
+  it('a halk másodlagos CTA hover-felirata nem válik fehérré a világos tinten', () => {
+    const hover = cssSzabaly(
+      '.kc-film-hero .kc-film-hero__cta--quiet:hover:not(:disabled):not(.kc-button--disabled)',
+    )
+    expect(hover).toContain('background-color: var(--kc-color-tint-cool)')
+    expect(hover).toContain('color: var(--kc-color-ink)')
+  })
+
+  it('a latens fejezet-gomb aktív jele és fókusza is ink marad a filmen', () => {
+    const focus = cssSzabaly('.scroll-scrub__route-button:focus-visible', SCROLL_SCRUB_CSS)
+    expect(SCROLL_SCRUB_CSS).toMatch(
+      /\.scroll-scrub__route-button\[aria-current='step'\]\s*\{[^}]*text-decoration-color:\s*var\(--ss-ink\)/,
+    )
+    expect(focus).toContain('outline: 3px solid var(--ss-ink)')
   })
 
   it('a média a scrim alatt, a hero-szöveg és a vászonfeliratok fölötte maradnak', () => {

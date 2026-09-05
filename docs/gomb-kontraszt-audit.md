@@ -230,49 +230,67 @@ kifejezetten megőrzi ezt a kivételt.
 
 ### 4.2 Fejléc — a fátyol (`--kc-header-veil`) MINDEN állásában, a filmsáv fölött
 
-A kezdőlapon a sticky fejléc alatt a film gördül. A legsötétebb filmblokk a fejlécsávban
-`rgb(34,49,62)`; a film-hero felső lejtője legalább 0,50 lap-háttér-fedést ad, erre jön a
-fejléc saját fátyla. **veil = 1 nem szolid paper:** a `::before` 72% lap-fedés plusz
-`backdrop-filter` (fagyott üveg). A korábbi réteg-`opacity` a blurrt is kifakította.
+**Újramérve 2026-09-04-én az egykezes filmre.** A két MP4 mind a 145 képkockájának
+minden pixelét és mindkét WebP-posztert vizsgáltuk. A konzervatív modell alkalmazza a
+desktop 0,48-as média-opacityt (paper háttéren), a mobil sütött kompozícióját, a hűvös
+réteg sötétebb 18%-os akcent-végpontját és a fejléc alatti legalább 50%-os paper fátylat.
+A blur átlagoló javulására, a bal/alsó világosító rétegre és a tényleges fejléc-kivágásra
+nem támaszkodik: az egész képet méri. A legrosszabb fejléc-alap a mobil 32. kockájának
+`rgb(120,113,113)` forráspixeléből `#b2b6bc` lett. **veil = 1 nem szolid paper:** a
+`::before` 72% lap-fedés plusz `backdrop-filter` (fagyott üveg).
+
+| Asset | SHA-256 |
+|---|---|
+| `one-hand-header-v1.mp4` | `6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e` |
+| `one-hand-header-v1-mobile.mp4` | `171574ff5d091977716990352713feffedd637e5adbcb5f85e9ee73c801e128f` |
+| `one-hand-header-v1-poster.webp` | `8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13` |
+| `one-hand-header-v1-mobile-poster.webp` | `785af683bd5843222a13ccfc7557a7d37ea1b6207c6096075763d645cbc241f5` |
 
 | veil | kompozit háttér | ink szöveg (T) | wordmark-tag (T) | CTA-pirula határa (N) | CTA-felirat (T) | **fókuszgyűrű (N)** |
 |---|---|---|---|---|---|---|
-| 0,00 | `#8c959d` | 5,13 ✓ | 5,13 ✓ | 5,13 ✓ | 15,63 ✓ | kevert gyűrű 5,13 ✓ |
-| 0,25 | `#9fa7ae` | 6,41 ✓ | 5,36 ✓ | 5,06 ✓ | 12,35 ✓ | 5,06 ✓ |
-| 0,50 | `#b2b9bf` | 7,88 ✓ | 5,40 ✓ | 4,73 ✓ | 9,38 ✓ | 4,73 ✓ |
-| 0,75 | `#c5cbd0` | 9,54 ✓ | 5,32 ✓ | 4,32 ✓ | 7,08 ✓ | 4,32 ✓ |
-| 1,00 | `#d8dde1` | 11,42 ✓ | 5,17 ✓ | 3,98 ✓ | 5,45 ✓ | 3,98 ✓ |
+| 0,00 | `#b2b6bc` | 7,67 ✓ | 7,67 ✓ | 7,67 ✓ | 15,63 ✓ | kevert gyűrű 7,67 ✓ |
+| 0,25 | `#bec2c8` | 8,74 ✓ | 7,31 ✓ | 6,83 ✓ | 12,21 ✓ | 6,83 ✓ |
+| 0,50 | `#caced3` | 9,88 ✓ | 6,77 ✓ | 5,92 ✓ | 9,36 ✓ | 5,92 ✓ |
+| 0,75 | `#d7dadf` | 11,15 ✓ | 6,21 ✓ | 5,05 ✓ | 7,08 ✓ | 5,05 ✓ |
+| 1,00 | `#e3e6ea` | 12,48 ✓ | 5,65 ✓ | 4,35 ✓ | 5,45 ✓ | 4,35 ✓ |
 
 A fókuszgyűrű a fátyollal arányos `color-mix(focus, veil, ink)`: veil = 0-nál ink
-(`#10243e`) a filmsávon 5,13:1. A **fix** `accent-deep` gyűrű továbbra is bukna a
-lap tetején (1,79:1); ezt a G-K2 őr tartja. Belső oldalon a sáv paper fölött ül
+(`#10243e`) a filmsávon 7,67:1. A **fix** `accent-deep` gyűrű továbbra is bukna a
+lap tetején (2,68:1); ezt a G-K2 őr tartja. Belső oldalon a sáv paper fölött ül
 (ink 14,79:1); a fagyás ott a mögöttes tartalom blurrjából látszik.
 
-*A 4.2 táblázat 2026-09-01-jén a 72%-os fagy-fedésre lett újraszámolva.*
+*A 4.2 táblázat 2026-09-04-én a 72%-os fagy-fedésre és az új assetekre lett
+újraszámolva.*
 
-### 4.3 Film-hero gombok (kezdőlap, a filmkockán)
+### 4.3 Film-hero gombok és szövegek (kezdőlap, a filmkockán)
 
-A hero-szövegdoboz alatti legsötétebb blokk `rgb(1,0,0)`, a bal lejtő 0,64 fedéssel →
-kompozit `#9e9fa1`.
+Ugyanez a teljes képkockás mérés a hero bal oldali, 64%-os paper lejtője után
+`#c5c8ce` alsó korlátot adott (mobil 32. kocka). A vászonfeliratokat külön,
+szándékosan csak 36% paper fedéssel mértük: ez gyengébb a feliratdobozban ténylegesen
+legalább 40%-os alsó páránál, és teljesen figyelmen kívül hagyja az alulról érkező fehér
+kifutást. Ennek konzervatív legrosszabb háttere `#9fa3aa`, ink kontrasztja 6,17:1.
 
 | Elem | Állapot | Előtér | Háttér | Arány | Küszöb | ✓ |
 |---|---|---|---|---|---|---|
 | CTA #1 (primary) | felirat | fehér | accent-deep kitöltés | **5,45:1** | T 4,5 | ✓ |
-| CTA #1 | kitöltés / film | accent-deep | `#9e9fa1` | **2,06:1** | N 3 (határ) | ⚠ ajánlás (1.3a) |
+| CTA #1 | kitöltés / film | accent-deep | `#c5c8ce` | **3,25:1** | N 3 (határ) | ✓ |
 | CTA #2 (`--quiet`) | felirat | ink | fehér lap | **15,63:1** | T 4,5 | ✓ |
-| CTA #2 | 2px ink keret / film | ink | `#9e9fa1` | **5,90:1** | N 3 | ✓ |
-| CTA #2 | hover lap (tint) / film | tint | `#9e9fa1` | 2,29:1 | N 3 (határ) | ✓ (a keret azonosít) |
-| mindkettő | fókuszgyűrű BELSŐ éle | accent-deep | fehér haló | **5,45:1** | N 3 | ✓ |
-| mindkettő | fókuszgyűrű KÜLSŐ éle | accent-deep | `#9e9fa1` | **2,06:1** | N 3 | ⚠ **B7** |
-| hero cím / bevezető | — | ink | `#9e9fa1` | **5,90:1** | T 4,5 | ✓ |
-| tag-pirulák | felirat | navy-900 | 60% fehér pirula | **11,09:1** | T 4,5 | ✓ (nem interaktív) |
-| ScrollScrub route-gomb | alap | navy-900 | `#a2aab1` | 4,72:1 | T 4,5 | ✓ (latens) |
-| ScrollScrub route-gomb | **fókuszgyűrű** | accent-deep | `#a2aab1` | **1,64:1** | N 3 | ⚠ latens (lásd 9.) |
+| CTA #2 | 2px ink keret / film | ink | `#c5c8ce` | **9,32:1** | N 3 | ✓ |
+| CTA #2 | hover felirat | ink | tint | **13,53:1** | T 4,5 | ✓ |
+| CTA #2 | hover lap / film | tint | `#c5c8ce` | 1,45:1 | N 3 (határ) | ✓ (a 2px ink keret azonosít) |
+| mindkettő | fókuszgyűrű BELSŐ éle | ink | fehér haló | **15,63:1** | N 3 | ✓ |
+| mindkettő | fókuszgyűrű KÜLSŐ éle | ink | `#c5c8ce` | **9,32:1** | N 3 | ✓ |
+| hero cím / bevezető | — | ink | `#c5c8ce` | **9,32:1** | T 4,5 | ✓ |
+| vászonfelirat cím / leírás | — | ink | `#9fa3aa` | **6,17:1** | T 4,5 | ✓ |
+| tag-pirulák | felirat | navy-900 | 60% fehér pirula | **12,86:1** | T 4,5 | ✓ (nem interaktív) |
+| ScrollScrub route-gomb | alap / aktív aláhúzás | ink | `#b2b6bc` | **7,67:1** | T 4,5 / N 3 | ✓ (latens) |
+| ScrollScrub route-gomb | **fókuszgyűrű** | ink | `#b2b6bc` | **7,67:1** | N 3 | ✓ (latens) |
 
-A `--quiet` gomb tömör fehér lapja + 2px ink kerete **mintapéldás megoldás**: a keret
-5,90:1-gyel azonosítja a vezérlőt a legrosszabb filmkockán is. A fehér haló
-(`box-shadow: 0 0 0 6px white`) szintén tudatos és jó — csak a rétegsorrend hagyja a
-gyűrű külső élét fedetlenül (B7).
+A `--quiet` gomb tömör fehér lapja + 2px ink kerete 9,32:1-gyel azonosítja a vezérlőt.
+A hover korábban csak a hátteret írta tintre, miközben az általános secondary szabályból
+fehér felirat maradt rajta; az újramérés ezt feltárta, ezért a hover felirat most explicit
+ink. A fehér haló (`box-shadow: 0 0 0 6px white`) és az ink gyűrű mindkét éle AA felett
+marad minden auditált képkockán.
 
 ### 4.4 Sáv- és szekció-gombok
 
@@ -871,17 +889,12 @@ gyakorlati kockázat**. A mi legszorosabb szöveg-párosunk az `accent-deep` a t
 
 | # | Kockázat | Mikor aktiválódik | Mért érték |
 |---|---|---|---|
-| L1 | `.scroll-scrub__route-button` fókuszgyűrűje a filmen | ha a film-heróba **egynél több jelenet** kerül (`scenes.length > 1`) | **1,64:1** (kell 3) |
-| L2 | `.scroll-scrub__route-button` aláhúzása aktív állapotban | ua. | **1,64:1** (kell 3) |
 | L3 | Sötét szekció a lap LEGTETEJÉN | ha egy CMS-oldal első blokkja `hatter: 'sotet'` és a fejléc ott átlátszó marad | a `layout.css:74–78` maga figyelmeztet rá |
-| L4 | Süti-sáv hover-visszajelzés hiánya | ma nincs `:hover` stílus a két gombon | (nem SC-bukás, de szokatlan) |
-| L5 | `.kc-course-preview` / `.kc-richtext__video` iframe fókusza | a sötét konténeren az `accent-deep` gyűrű 2,87:1 lenne | **2,87:1** |
 | L6 | `accordion` hover-sáv sötét szekcióban | 1,27:1 — a hover gyakorlatilag nem látszik | (nem SC-bukás) |
 
-Az L1–L2 javítása most egy sor: a `film-hero.css`-ben a route-gombra is ki kell terjeszteni
-az ink-alapú fókuszgyűrűt és aláhúzást (a B7 javítással azonos logika). Az L5 javítása:
-`.kc-course-preview :focus-visible, .kc-richtext__video :focus-visible { outline-color:
-var(--kc-color-focus-on-dark) }` → 15,63:1.
+**Lezárt korábbi tételek:** az L1–L2 route-gomb most ink fókuszgyűrűt és aláhúzást kap
+(7,67:1); az L4 süti-gomboknak van látható hover-állapotuk; az L5 két videókerete
+`focus-on-dark` gyűrűt kap (15,63:1). Ezeket őrtesztek védik.
 
 **Ellenőrzött NEM-kockázat:** a globális `:focus-visible { border-radius:
 var(--kc-radius-sm) }` elvileg elronthatná a pirula alakú gombok sarkát fókusz közben.
@@ -902,11 +915,12 @@ illetve `html2canvas`/képernyőkép-mintavétel):
 2. **A fejléc-fátyol TÉNYLEGES értéke görgetés közben** — a `--kc-header-veil`-t JS írja;
    a 4.2 táblázat a végpontokat és a negyedeket adja, de a valós görgetési görbét
    érdemes leképezni (mely görgetési pozíciónál lépi át a 0,44-et).
-3. **A filmkockák pillanatnyi világossága** — a méréseim a repó saját, filmkockákból vett
-   „legsötétebb blokk" értékeire épülnek. Ha a `scene-02.mp4` cserélődik, **az egész
-   film-hero kontraszt-levezetést újra kell futtatni**.
+3. **A filmkockák pillanatnyi világossága** — 2026-09-04-én mindkét MP4 mind a 145
+   képkockájának minden pixelét és mindkét posztert megmértük. A teszt SHA-256-tal
+   rögzíti az auditált fájlokat; bármely hash változásakor **az egész film-hero
+   kontraszt-levezetést újra kell futtatni**.
 4. **A `backdrop-filter: saturate(1.2)`** hatása: a telítettség-emelés a luminanciát
-   érdemben nem mozdítja, de a határeseteknél (kijelentkezés-keret 3,02:1 a fagyott
+   érdemben nem mozdítja, de a határeseteknél (kijelentkezés-keret 3,30:1 a fagyott
    filmsávon) képernyőképből ellenőrizendő.
 5. **A `-webkit-font-smoothing: antialiased`** optikai hatása a 4,5–5,0:1 közötti
    pároknál — szubjektív, felhasználós próbát kér.
