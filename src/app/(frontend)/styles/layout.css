@@ -1213,6 +1213,21 @@
   color: var(--kc-footer-accent);
 }
 
+/* Az oldallinkek pontos/ős útvonalállapota: KC-kék + vastagabb aláhúzás. */
+.kc-site-footer__page-link[aria-current='page'],
+.kc-site-footer__page-link[data-ancestor-active='true'] {
+  color: var(--kc-footer-accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-footer-accent);
+  text-decoration-thickness: 2px;
+}
+
+/* A nagy Kapcsolat-link alapból 2px-es, ezért az aktív jelölése 3px. */
+.kc-site-footer__link.kc-site-footer__page-link[aria-current='page'],
+.kc-site-footer__link.kc-site-footer__page-link[data-ancestor-active='true'] {
+  text-decoration-thickness: 3px;
+}
+
 .kc-site-footer__contact {
   display: inline-flex;
   align-items: center;
