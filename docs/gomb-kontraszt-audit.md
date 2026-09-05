@@ -903,8 +903,21 @@ illetve `html2canvas`/képernyőkép-mintavétel):
    a 4.2 táblázat a végpontokat és a negyedeket adja, de a valós görgetési görbét
    érdemes leképezni (mely görgetési pozíciónál lépi át a 0,44-et).
 3. **A filmkockák pillanatnyi világossága** — a méréseim a repó saját, filmkockákból vett
-   „legsötétebb blokk" értékeire épülnek. Ha a `scene-02.mp4` cserélődik, **az egész
-   film-hero kontraszt-levezetést újra kell futtatni**.
+   „legsötétebb blokk" értékeire épülnek. A ténylegesen kiszolgált média byte-szerződése:
+   - `public/media/film/one-hand-header-v1.mp4`:
+     `6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e`
+   - `public/media/film/one-hand-header-v1-mobile.mp4`:
+     `d9b076541937f941585d8d16a2611eb59ebd2d407d4dd07ce52de1c0677fc417`
+   - `public/media/film/one-hand-header-v1-poster.webp`:
+     `8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13`
+   - `public/media/film/one-hand-header-v1-mobile-poster.webp`:
+     `8252b884c2252ff19cdb9b05455c67934af91869c742a489c988a159c240ef0d`
+
+   Ha e négy élő fájl bármelyikének útvonala vagy hash-e változik, **az egész film-hero
+   kontraszt-levezetést újra kell futtatni**. A
+   `src/__tests__/filmsav-feliratok.test.tsx` ezt automatikusan jelzi. A `scene-02*`
+   fájlok csak azonnali rollbackhez maradtak a repóban, ezért változásuk önmagában nem
+   teszi elavulttá az élő film mérését.
 4. **A `backdrop-filter: saturate(1.2)`** hatása: a telítettség-emelés a luminanciát
    érdemben nem mozdítja, de a határeseteknél (kijelentkezés-keret 3,02:1 a fagyott
    filmsávon) képernyőképből ellenőrizendő.

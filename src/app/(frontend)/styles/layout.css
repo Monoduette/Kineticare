@@ -551,11 +551,14 @@
   text-decoration-thickness: 2px;
 }
 
-/* A route-állapot színe a fejlécfátyollal együtt változik. Current/ancestor
-   linken ezért nem interpolálhat: veil-váltáskor a késleltetett régi akcent
-   átmenetileg AA alá esne a filmen. Az aláhúzás mozgása megmarad. */
+/* Az aktív szövegszín a fejlécfátyollal együtt változik. Hover, lenyomás,
+   fókusz és route-állapot közben ezért nem interpolálhat: veil-váltáskor a
+   késleltetett régi akcent átmenetileg AA alá esne a filmen. */
+.kc-nav-desktop__link:hover,
+.kc-nav-desktop__link:active,
 .kc-nav-desktop__link[aria-current='page'],
-.kc-nav-desktop__link[data-ancestor-active='true'] {
+.kc-nav-desktop__link[data-ancestor-active='true'],
+.kc-nav-desktop__item:focus-within > .kc-nav-desktop__link {
   transition-property: text-underline-offset;
 }
 
@@ -979,6 +982,9 @@
 /* Óriás serif link (`.kc-footer-link`). Mérete a skála legnagyobb, display
    lépcsője — egyedi px/rem érték tilos (UX-skill 4. pont). */
 .kc-site-footer__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);

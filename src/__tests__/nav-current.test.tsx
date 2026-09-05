@@ -431,10 +431,13 @@ describe('főmenü állapotstílus-őr', () => {
     )
   })
 
-  it('a tartós route-állapot színe nem késik a fejlécfátyol mögött', () => {
+  it('a desktop aktív szövegszín egyik interakcióban sem késik a fejlécfátyol mögött', () => {
     for (const selector of [
+      '.kc-nav-desktop__link:hover',
+      '.kc-nav-desktop__link:active',
       ".kc-nav-desktop__link[aria-current='page']",
       ".kc-nav-desktop__link[data-ancestor-active='true']",
+      '.kc-nav-desktop__item:focus-within > .kc-nav-desktop__link',
     ]) {
       const body = ruleBodies(selector).join('\n')
       expect(body).toMatch(/transition-property:\s*text-underline-offset\s*;/)
@@ -486,5 +489,13 @@ describe('lábléc current/ancestor állapotstílus-őr', () => {
     ".kc-site-footer__link.kc-site-footer__page-link[data-ancestor-active='true']",
   ])('%s a már alapból aláhúzott nagy linket 3px vastagsággal különíti el', (selector) => {
     expectUnderlineThickness(selector, '3px')
+  })
+
+  it('a nagy Kapcsolat-link megtartja a projekt 44px-es célmagasságát', () => {
+    const body = ruleBodies('.kc-site-footer__link').join('\n')
+
+    expect(body).toMatch(/(?:^|;)\s*display:\s*inline-flex\s*;/)
+    expect(body).toMatch(/(?:^|;)\s*align-items:\s*center\s*;/)
+    expect(body).toMatch(/(?:^|;)\s*min-height:\s*2\.75rem\s*;/)
   })
 })
