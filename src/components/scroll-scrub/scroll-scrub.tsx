@@ -149,13 +149,13 @@ const lingerEase = (value: number, amount: number) => {
 /** A felirat be- és kiúszásának hossza a scrub 0..1 arányán. */
 export const CAPTION_FADE = 0.07
 
-/** A mobil vágat kitöltése a tényleges viewport-geometria alapján. */
+/** A mobil vágat kitöltése a CSS-sel közös media-query döntések alapján. */
 export function scrollScrubMediaFit(
   mobileMedia: boolean,
-  viewportWidth: number,
-  viewportHeight: number,
+  atLeastTabletWidth: boolean,
+  landscapeViewport: boolean,
 ): 'contain' | 'cover' {
-  return mobileMedia && (viewportWidth >= 640 || viewportWidth > viewportHeight)
+  return mobileMedia && (atLeastTabletWidth || landscapeViewport)
     ? 'contain'
     : 'cover'
 }
@@ -299,7 +299,15 @@ export function ScrollScrub({
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
     const smallViewport = window.matchMedia('(max-width: 860px)')
+    const atLeastTabletWidth = window.matchMedia('(min-width: 640px)')
+    const landscapeViewport = window.matchMedia('(orientation: landscape)')
     const isMobile = () => smallViewport.matches
+    const mediaFitForViewport = () =>
+      scrollScrubMediaFit(
+        isMobile(),
+        atLeastTabletWidth.matches,
+        landscapeViewport.matches,
+      )
     const usesMobileVideoTuning = () => coarsePointer || isMobile()
     const sourceFor = (segment: RuntimeSegment) =>
       isMobile() && segment.mobileClip ? segment.mobileClip : segment.clip
@@ -352,11 +360,7 @@ export function ScrollScrub({
       layoutWidth = window.innerWidth
       const mobileMedia = isMobile()
       root.dataset.scrollScrubMobileMedia = mobileMedia ? 'true' : 'false'
-      root.dataset.scrollScrubMediaFit = scrollScrubMediaFit(
-        mobileMedia,
-        layoutWidth,
-        viewportHeight,
-      )
+      root.dataset.scrollScrubMediaFit = mediaFitForViewport()
 
       for (const segment of runtime) {
         if (segment.loadedSource && segment.loadedSource !== sourceFor(segment)) {
@@ -615,7 +619,7 @@ export function ScrollScrub({
       dirty = true
     }
     const onResize = () => {
-      const nextMediaFit = scrollScrubMediaFit(isMobile(), window.innerWidth, window.innerHeight)
+      const nextMediaFit = mediaFitForViewport()
       if (
         !scrollScrubNeedsLayout(
           coarsePointer,

@@ -192,7 +192,7 @@ describe('filmsáv egykezes média-szerződése', () => {
     )
     expect(SCROLL_SCRUB_SOURCE).toContain('if (!video || !usesMobileVideoTuning())')
     expect(SCROLL_SCRUB_SOURCE).toContain('const epsilon = usesMobileVideoTuning() ? 0.02 : 0.008')
-    expect(scrollScrubMediaFit(false, 1024, 768)).toBe('cover')
+    expect(scrollScrubMediaFit(false, true, true)).toBe('cover')
   })
 
   it('a klipek a deploy-méretkereten belül maradnak', () => {
@@ -224,18 +224,21 @@ describe('filmsáv egykezes média-szerződése', () => {
   })
 
   it('tableten és fekvő mobilon a teljes vágatot, keskeny portrén a cover képet tartja', () => {
-    expect(scrollScrubMediaFit(true, 390, 844)).toBe('cover')
-    expect(scrollScrubMediaFit(true, 430, 932)).toBe('cover')
-    expect(scrollScrubMediaFit(true, 568, 320)).toBe('contain')
-    expect(scrollScrubMediaFit(true, 639.5, 320)).toBe('contain')
-    expect(scrollScrubMediaFit(true, 639.5, 844)).toBe('cover')
-    expect(scrollScrubMediaFit(true, 768, 1024)).toBe('contain')
-    expect(scrollScrubMediaFit(true, 860, 900)).toBe('contain')
-    expect(scrollScrubMediaFit(true, 1024, 768)).toBe('contain')
-    expect(scrollScrubMediaFit(false, 1440, 900)).toBe('cover')
+    expect(scrollScrubMediaFit(true, false, false)).toBe('cover')
+    expect(scrollScrubMediaFit(true, false, true)).toBe('contain')
+    expect(scrollScrubMediaFit(true, true, false)).toBe('contain')
+    expect(scrollScrubMediaFit(true, true, true)).toBe('contain')
+    expect(scrollScrubMediaFit(false, true, true)).toBe('cover')
 
     expect(SCROLL_SCRUB_SOURCE).toContain('root.dataset.scrollScrubMobileMedia =')
     expect(SCROLL_SCRUB_SOURCE).toContain('root.dataset.scrollScrubMediaFit =')
+    expect(SCROLL_SCRUB_SOURCE).toContain("window.matchMedia('(min-width: 640px)')")
+    expect(SCROLL_SCRUB_SOURCE).toContain("window.matchMedia('(orientation: landscape)')")
+    expect(SCROLL_SCRUB_SOURCE).toContain('atLeastTabletWidth.matches')
+    expect(SCROLL_SCRUB_SOURCE).toContain('landscapeViewport.matches')
+    expect(SCROLL_SCRUB_SOURCE).not.toContain(
+      'scrollScrubMediaFit(isMobile(), window.innerWidth, window.innerHeight)',
+    )
     expect(SCROLL_SCRUB_SOURCE).toContain('delete root.dataset.scrollScrubMediaFit')
     expect(SCROLL_SCRUB_SOURCE).toContain('delete root.dataset.scrollScrubMobileMedia')
 
