@@ -760,8 +760,8 @@ hirdetésből), ezért az orientáció nem opcionális.
 - **N-4.** Az aktív menüpont **vizuálisan** kiemelt (szín + második jelölő:
   vastagság, aláhúzás vagy jelölősáv – a szín önmagában nem elég, 1.4.1) **és**
   programozottan jelölt: **`aria-current="page"`**.
-  → A repóban a szűrő-chipek, a lejátszó-tananyag és a kurzus-morzsamenü ezt már
-  helyesen adja, **a fő navigáció viszont NEM**. **→ A/7 megállapítás.**
+  → A repóban a szűrő-chipek, a lejátszó-tananyag, a kurzus-morzsamenü, valamint
+  a fő- és láblécnavigáció ezt már helyesen adja. **→ A/7 javítás.**
 - **N-5.** A jelölés **minden nézetben** él: asztali sáv, mobil drawer, lábléc.
 - **N-6.** NN/g teszt-protokoll az ellenőrzésre: kérdezd meg a felhasználót,
   *„Where are you on the website?"* és *„How can you tell?"* – a designernek
@@ -791,7 +791,7 @@ az öt útvonal: `/aszf`, `/kapcsolat`, `/kapcsolat/idopont`, `/impresszum` és
 
 | Ellenőrzés | Mért eredmény | Küszöb / verdikt |
 |---|---|---|
-| Pontos és ős útvonal | pontosan egy `aria-current="page"`; ősállapot csak a `/kapcsolat/idopont` → `/kapcsolat` páron | N-4/N-5 ✓ |
+| Pontos és ős útvonal | 12 pontos egyezésnél egy `aria-current="page"`, 8 nem pontos esetben nulla; ősállapot csak a `/kapcsolat/idopont` → `/kapcsolat` páron | N-4/N-5 ✓ |
 | Aktív footer szöveg + aláhúzás | `#2f6e9f` / `#f6f9fc` = **5,1597:1**; jogi link 2 px, nagy Kapcsolat-link 3 px | szöveg ≥ 4,5:1, nem csak szín ✓ |
 | Billentyűzetes fókusz | a route-állapottal együtt is külön **3 px solid** körvonal | 1.4.11 / 2.4.7 ✓ |
 | 320 px célméret | Kapcsolat **150,7 × 44,0**; Adatvédelem **248,6 × 44,0**; ÁSZF **192,1 × 44,0**; Impresszum **75,8 × 44,0** CSS px | projektcél ≥ 44 px ✓ |
