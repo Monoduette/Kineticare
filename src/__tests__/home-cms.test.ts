@@ -219,7 +219,14 @@ describe('HomeView (kezdőlap-render)', () => {
     const html = render(
       createElement(HomeView, {
         home: null,
-        products: [product({ id: 7, slug: 'sos-kezrelax-villamkurzus', priceInHUFEnabled: false })],
+        products: [
+          product({
+            id: 7,
+            slug: 'sos-kezrelax-villamkurzus',
+            _status: 'published',
+            priceInHUFEnabled: false,
+          }),
+        ],
         posts: [],
       }),
     )
@@ -275,6 +282,7 @@ describe('HomeView (kezdőlap-render)', () => {
             id: 7,
             sku: 'SOS Kézrelax villámkurzus',
             slug: 'sos-kezrelax-villamkurzus',
+            _status: 'published',
             priceInHUF: null,
             priceInHUFEnabled: false,
           }),

@@ -374,6 +374,7 @@ describe('RenderBlocks', () => {
         product({
           id: 7,
           slug: 'sos-kezrelax-villamkurzus',
+          _status: 'published',
           sku: 'Ingyenes SOS',
           priceInHUF: null,
           priceInHUFEnabled: false,
@@ -429,6 +430,7 @@ describe('RenderBlocks', () => {
             id: 7,
             displayTitle: 'SOS Kézrelax villámkurzus',
             slug: 'sos-kezrelax-villamkurzus',
+            _status: 'published',
             priceInHUF: null,
             priceInHUFEnabled: false,
           } as Partial<Product> & { id: number }),

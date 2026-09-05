@@ -6,6 +6,7 @@ export function isAvailableSosProduct(product: Product | null | undefined): prod
   return (
     product?.slug === 'sos-kezrelax-villamkurzus' &&
     product.status === 'published' &&
+    product._status === 'published' &&
     isFreeCourse(product)
   )
 }

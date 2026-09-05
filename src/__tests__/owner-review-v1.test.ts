@@ -11,6 +11,7 @@ vi.mock('payload', () => ({
 
 import { getPayload } from 'payload'
 import { buildHomeLayout } from '../lib/home-seed'
+import { ctaLabel } from '../lib/cta-vocabulary'
 import {
   buildKapcsolatLayout,
   buildRolunkLayout,
@@ -136,6 +137,107 @@ const publishedAboutFixture = (): OwnerReviewV1Input => {
 }
 
 const bioBlock = (layout: Layout): Data => data(layout.find((block) => block.id === 'rolunk-5')!)
+
+describe('P03: stored filmHero SOS caption', () => {
+  const legacyFixture = () => {
+    const input = fixture('kezdolap')
+    rows(find(input.layout!, 'filmHero'), 'ctas')[1].felirat = 'Nézd meg az SOS-kurzust'
+    return input
+  }
+
+  it.each([false, true])(
+    'patches only the approved old label, retaining all hero/row data (reordered: %s)',
+    (reordered) => {
+      const input = legacyFixture()
+      const hero = find(input.layout!, 'filmHero')
+      hero.editorMetadata = { paperVeil: 0.52, keep: null }
+      const ctas = rows(hero, 'ctas')
+      ctas[1].id = 'stored-sos-cta'
+      ctas[1].editorMetadata = { keep: ['custom'], optional: null }
+      if (reordered) ctas.reverse()
+      const index = ctas.findIndex((cta) => cta.url === '#ingyenes')
+      const before = structuredClone(input)
+      const footer = find(input.layout!, 'ctaBanner')
+      const result = planOwnerReviewV1(freeze(input))
+      const next = find(result.layout, 'filmHero')
+      const expected = structuredClone(hero)
+      rows(expected, 'ctas')[index].felirat = ctaLabel('free-strip-jump')
+      expect(next).toEqual(expected)
+      expect(rows(next, 'ctas')[index].id).toBe('stored-sos-cta')
+      expect(rows(next, 'ctas')[index].editorMetadata).toBe(ctas[index].editorMetadata)
+      expect(rows(next, 'ctas')[1 - index]).toBe(ctas[1 - index])
+      expect(next.sectionSettings).toBe(hero.sectionSettings)
+      expect(next.editorMetadata).toBe(hero.editorMetadata)
+      expect(find(result.layout, 'ctaBanner')).toBe(footer)
+      expect(input).toEqual(before)
+      expect(result.changes.filter((change) => change.requestId === 'P03')).toEqual([
+        expect.objectContaining({
+          blockId: hero.id,
+          path: `/layout/0/ctas/${index}/felirat`,
+          before: 'Nézd meg az SOS-kurzust',
+          after: 'Nézd meg ingyenes SOS-kurzusunkat',
+        }),
+      ])
+      expect(planOwnerReviewV1({ ...input, layout: result.layout }).changes).toHaveLength(0)
+    },
+  )
+
+  it.each([
+    'Saját felirat',
+    'Nézd meg az SOS-kurzust ',
+    'nézd meg az SOS-kurzust',
+    ctaLabel('free-strip-jump'),
+  ])('preserves staff captions and the already-approved caption: %s', (label) => {
+    const input = legacyFixture()
+    const hero = find(input.layout!, 'filmHero')
+    rows(hero, 'ctas')[1].felirat = label
+    const result = planOwnerReviewV1(freeze(input))
+    expect(find(result.layout, 'filmHero')).toBe(hero)
+    expect(result.changes.some((change) => change.requestId === 'P03')).toBe(false)
+  })
+
+  it.each([
+    '/kurzusok',
+    '/kurzusok/otthoni-kezrehab-program',
+    '/#ingyenes',
+    '#ingyenes ',
+    '#masik',
+    undefined,
+  ])('does not relabel a different or missing destination: %s', (url) => {
+    const input = legacyFixture()
+    const hero = find(input.layout!, 'filmHero')
+    rows(hero, 'ctas')[1].url = url
+    const result = planOwnerReviewV1(freeze(input))
+    expect(find(result.layout, 'filmHero')).toBe(hero)
+    expect(result.changes.some((change) => change.requestId === 'P03')).toBe(false)
+  })
+
+  it.each(['missing-ctas', 'duplicate-row', 'missing-canonical-row', 'duplicate-hero'])(
+    'does not guess an ambiguous or missing CTA: %s',
+    (variant) => {
+      const input = legacyFixture()
+      const hero = find(input.layout!, 'filmHero')
+      if (variant === 'missing-ctas') delete hero.ctas
+      if (variant === 'duplicate-row')
+        rows(hero, 'ctas').push({ ...rows(hero, 'ctas')[1], id: 'duplicate' })
+      if (variant === 'missing-canonical-row')
+        rows(find(input.canonicalLayout, 'filmHero'), 'ctas').pop()
+      if (variant === 'duplicate-hero')
+        input.layout!.push({ ...hero, id: 'duplicate-hero' } as Block)
+      const result = planOwnerReviewV1(freeze(input))
+      expect(result.changes.some((change) => change.requestId === 'P03')).toBe(false)
+      expect(result.layout.find((block) => block.id === hero.id)).toBe(hero)
+    },
+  )
+
+  it('reports P03 independently when H13 is already applied, so the CLI can enforce the free-proof HOLD', () => {
+    const initial = fixture('kezdolap')
+    const input = { ...initial, layout: planOwnerReviewV1(initial).layout }
+    rows(find(input.layout, 'filmHero'), 'ctas')[1].felirat = 'Nézd meg az SOS-kurzust'
+    const result = planOwnerReviewV1(freeze(input))
+    expect(result.changes.map((change) => change.requestId)).toEqual(['P03'])
+  })
+})
 
 describe('owner-approved 2026-09-05 published variants', () => {
   it('H08 uses canonical media identities remapped into the local database, not captured numeric IDs', () => {

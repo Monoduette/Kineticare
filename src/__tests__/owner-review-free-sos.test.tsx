@@ -12,6 +12,7 @@ const freeProduct = {
   slug: 'sos-kezrelax-villamkurzus',
   displayTitle: 'SOS Kézrelax',
   status: 'published',
+  _status: 'published',
   priceInHUFEnabled: false,
 } as Product
 
@@ -77,6 +78,9 @@ describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
     { priceInHUFEnabled: true, priceInHUF: null },
     { priceInHUFEnabled: undefined },
     { status: 'draft' as const },
+    { _status: 'draft' as const },
+    { _status: null },
+    { _status: undefined },
     { slug: 'masik-ingyenes' },
     { slug: null },
   ])('a prop neve nem helyettesíti az ingyenes, publikált állapotot: %j', (overrides) => {
@@ -114,6 +118,9 @@ describe('H04/P03: informatív CMS-fotó, szerkeszthető tartalom, ingyenes jelz
   it.each([
     null,
     { ...freeProduct, status: 'draft' as const },
+    { ...freeProduct, _status: 'draft' as const },
+    { ...freeProduct, _status: null },
+    { ...freeProduct, _status: undefined },
     { ...freeProduct, status: 'archived' as const },
     { ...freeProduct, priceInHUFEnabled: true, priceInHUF: 10000 },
     { ...freeProduct, priceInHUFEnabled: undefined },

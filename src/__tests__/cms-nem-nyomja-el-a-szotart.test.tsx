@@ -116,6 +116,7 @@ describe('AppointmentForm — a szótári felirat nyer a CMS-mező ellenében', 
 const ingyenesTermek = {
   id: 2,
   slug: 'sos-kezrelax-villamkurzus',
+  _status: 'published',
   displayTitle: 'SOS Kézrelax villámkurzus',
   status: 'published',
   priceInHUF: null,

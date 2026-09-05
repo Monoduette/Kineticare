@@ -47,6 +47,7 @@ function freeProduct(overrides: Partial<Product> = {}): Product {
     sku: 'SOS Kézrelax villámkurzus',
     displayTitle: 'SOS Kézrelax villámkurzus',
     slug: 'sos-kezrelax-villamkurzus',
+    _status: 'published',
     priceInHUF: null,
     priceInHUFEnabled: false,
     ...overrides,

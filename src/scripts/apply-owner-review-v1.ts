@@ -224,14 +224,13 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
       changes: [...result.changes, ...fields.changes],
     }
   })
+  const freeOfferChanges = ['H13', 'P03'].filter((requestId) =>
+    plans.some((plan) => plan.changes.some((change) => change.requestId === requestId)),
+  )
   const blockers =
-    !freeOfferAvailable &&
-    plans.some(
-      (plan) =>
-        plan.slug === 'kezdolap' && plan.changes.some((change) => change.requestId === 'H13'),
-    )
+    !freeOfferAvailable && freeOfferChanges.length > 0
       ? [
-          'H13: Az ingyenes SOS-t említő új GYIK-hez ellenőrzött, közzétett ingyenes kurzus szükséges.',
+          `${freeOfferChanges.join(', ')}: Az ingyenes SOS-t említő új tartalomhoz ellenőrzött, közzétett ingyenes kurzus szükséges.`,
         ]
       : []
   return {

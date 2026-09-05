@@ -1,4 +1,5 @@
 import type { Page } from '../payload-types'
+import { ctaLabel } from './cta-vocabulary'
 import { sanitizeCmsUrl } from './safe-url'
 
 export type OwnerReviewSlug = 'kezdolap' | 'szolgaltatasok' | 'rolunk' | 'kapcsolat'
@@ -516,6 +517,38 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
     const courses = resolve('H10', { type: 'courseCards', anchor: 'kurzusok' })
     const services = resolve('H08', HOME_SERVICES)
     const states = resolve('H08', HOME_STATES)
+
+    if (hero) {
+      const oldCtas = at(hero.old, ['ctas'])
+      const ctas = at(layout[hero.index], ['ctas'])
+      const canonical = Array.isArray(oldCtas)
+        ? oldCtas.filter((cta) => record(cta).url === '#ingyenes')
+        : []
+      const matches = Array.isArray(ctas)
+        ? ctas.flatMap((cta, index) => (record(cta).url === '#ingyenes' ? [index] : []))
+        : []
+      if (
+        canonical.length !== 1 ||
+        matches.length !== 1 ||
+        (record(canonical[0]).id && at(ctas, [matches[0], 'id']) !== record(canonical[0]).id)
+      ) {
+        skip(
+          'P03',
+          'cta-not-unique',
+          'A kanonikus SOS-horgonyhoz tartozó hero-CTA hiányzik vagy nem egyértelmű.',
+          hero.index,
+          ['ctas'],
+        )
+      } else {
+        const path: Path = ['ctas', matches[0], 'felirat']
+        // Explicit legacy caption: the current builder already reads the new vocabulary.
+        // P03 must enter the caller's verified-free-product publication HOLD, independently of H13.
+        const target = { ...hero, old: setAt(hero.old, path, 'Nézd meg az SOS-kurzust') as Block }
+        field('P03', target, path, ctaLabel('free-strip-jump'))
+      }
+    } else {
+      skip('P03', 'target-not-unique', 'A hero nem egyértelmű; az SOS-feliratot nem találgatjuk.')
+    }
 
     paragraphs('H01', founders, HOME_PARAGRAPHS)
     field('H01', founders, ['feature', 'label'], 'Személyre szabott rendelői kezelések')

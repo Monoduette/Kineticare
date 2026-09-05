@@ -193,7 +193,12 @@ function BlockSwitch({
   switch (block.blockType) {
     case 'filmHero':
       return (
-        <FilmHero block={block} freeSosHref={freeSosHref} freeSosAnchorIds={freeSosAnchorIds} />
+        <FilmHero
+          block={block}
+          hasFreeSos={freeProduct !== null}
+          freeSosHref={freeSosHref}
+          freeSosAnchorIds={freeSosAnchorIds}
+        />
       )
     case 'welcome':
       return <Welcome block={block} />

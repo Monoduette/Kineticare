@@ -1,4 +1,7 @@
 import type { BlockFilmHero } from '../../payload-types'
+import { COURSE_SOS_KEZRELAX } from '../../lib/legacy-redirects'
+import { getNavLinkRouteState } from '../../lib/nav-route'
+import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { Button } from '../ui/Button'
 import { ScrollScrub } from '../scroll-scrub/scroll-scrub'
 import type {
@@ -87,13 +90,20 @@ const FILM_LABEL = 'A kéz nyílása'
 
 export interface FilmHeroProps {
   block: BlockFilmHero
+  /** A kanonikus, publikált és explicit ingyenes kurzus elérhető, szekciótól függetlenül. */
+  hasFreeSos?: boolean
   /** Csak publikált, explicit ingyenes termék későbbi, látható sávjának célja. */
   freeSosHref?: string | null
   /** A rejtett SOS-blokkok egyedi horgonyai is ide tartoznak. */
   freeSosAnchorIds?: readonly string[]
 }
 
-export function FilmHero({ block, freeSosHref = null, freeSosAnchorIds = [] }: FilmHeroProps) {
+export function FilmHero({
+  block,
+  hasFreeSos = false,
+  freeSosHref = null,
+  freeSosAnchorIds = [],
+}: FilmHeroProps) {
   const title = block.title?.trim()
   if (!title) {
     return null
@@ -112,7 +122,15 @@ export function FilmHero({ block, freeSosHref = null, freeSosAnchorIds = [] }: F
   )
   const ctas = (block.ctas ?? [])
     .filter((cta) => Boolean(cta.felirat?.trim()) && Boolean(cta.url?.trim()))
-    .filter((cta) => freeSosHref !== null || !sosTargets.has(cta.url.trim()))
+    .filter((cta) => {
+      if (sosTargets.has(cta.url.trim())) return Boolean(freeSosHref)
+      // Csak az összehasonlítás normalizál: a közvetlen href/query/hash megmarad.
+      // A közös route-helper kizárja a külső originű és protokollrelatív célokat.
+      return (
+        hasFreeSos ||
+        getNavLinkRouteState(COURSE_SOS_KEZRELAX, sanitizeCmsUrl(cta.url)) !== 'current'
+      )
+    })
     .map((cta) =>
       sosTargets.has(cta.url.trim()) && freeSosHref ? { ...cta, url: freeSosHref } : cta,
     )

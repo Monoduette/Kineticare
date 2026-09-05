@@ -111,7 +111,8 @@ négy oldalra és a fájlfeltöltésekre kiterjedő visszagörgetés. Hiba eset�
 oldalak vagy új médiafájlok már létrejöhettek: állapotfelmérés és új előnézet
 kell, nem vak újrafuttatás vagy az egész oldal felülírása.
 
-Az új, ingyenes SOS-t említő GYIK publikálását a program írás előtt letiltja,
+Az új, ingyenes SOS-t említő GYIK és a régi hero-gombfelirat ingyenességet
+jelző frissítésének publikálását a program írás előtt letiltja,
 ha nem igazolt a megfelelő kurzus közzétett és explicit ingyenes állapota.
 A HOLD az előnézetben is látszik. A releváns termékek állapota, ára és
 módosítási ideje a terv hash-ének része; közben megváltozott terméknél új
@@ -124,7 +125,11 @@ adatbázison történt alkalmazás és nulla-változásos ismételt előnézet.
 A helyi oldalakhoz 2026-09-05-én a négy nyilvános éles oldal pillanatképét
 is átmásoltuk; a terméktesztadatok továbbra is szintetikusak. Ez nem
 piszkozatokat is tartalmazó éles mentés. A tulajdonos az adminos átvezetést
-jóváhagyta; az admin bejelentkezést kér, éles írás még nem történt.
+jóváhagyta; a Brave „Ügyfélszerzés” lapcsoportjában a bejelentkezett éles
+admin 2026-09-05-én ellenőrizve. A 2-es SOS-termék szerkesztői állapota
+„Piszkozat”, a kanonikus slug helyes, a HUF-ár engedélyezése kikapcsolt.
+A külön megjelenési mező „Közzétéve” jelzése nem helyettesíti a tényleges
+publikálási állapotot; az ajánlati tartalom HOLD-ja megmarad. Éles írás még nem történt.
 Ez nem éles tartalomfrissítési vagy kiadási bizonyíték.
 
 A Mobbin webes mintatára ebben a böngészőben bejelentkezést kér.
@@ -192,6 +197,11 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   kihagyás és retry nélkül; typecheck és production build PASS, lint 0 hiba
   és 3 meglévő figyelmeztetés. A végső független kódreview a dokumentált
   hero- és tartalmi scope-ot jóváhagyta; az új head távoli gate-jei külön kapuk.
+- Az `e6aaa27` távoli CI-ja (33966315251), auditja, buildje és gitleaks-kapui
+  sikeresek. A cloud review további közvetlen-SOS-link és tárolt régi
+  gombfelirat hibát jelzett. Új, célzott javítókör indult, mert a konkrét
+  ellenpéldák a korábbi horgony- és seedteszteken túlmutató bizonyítékot adnak.
+  A javítások helyi kapui és a következő head kiadása külön ellenőrzendők.
 
 ## Tanulságok
 
@@ -216,6 +226,11 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   kötelező a végrehajtható, nulla írással megálló ellenőrzés.
 - Az ajánlat neve is bizalmi határ: az „ingyenes” állapot önmagában nem
   bizonyítja, hogy a kiválasztott termék valóban az SOS-kurzus.
+- A tárolt hero-gombfeliratot külön, pontos régi felirat+cél alapján kell
+  frissíteni; a szótár átírása nem módosít már kitöltött CMS-oldalt. Az új
+  ingyenességi állítás önálló P03-változásként is publikálási előfeltételhez kötött.
+- A közvetlen kurzuslink és a kezdőlapi szekcióugrás külön eset: az előbbihez
+  elérhető kurzus, az utóbbihoz megfelelő, látható célszekció is szükséges.
 - A CSS-geometriai őrnek a magassági médiafeltételt is valódi viewportadattal
   kell kiértékelnie. Az ismeretlen feltétel nem nyelhető el egy inaktív ágban sem.
 - A futás közbeni mozgásemuláció nem helyettesíti a hideg betöltést. A Brave

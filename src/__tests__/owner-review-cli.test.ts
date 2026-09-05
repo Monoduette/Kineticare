@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const runtime = vi.hoisted(() => ({
   find: vi.fn(),
@@ -14,6 +14,8 @@ vi.mock('../payload.config', () => ({ default: {} }))
 vi.mock('../lib/logger', () => ({ logger: { info: runtime.info, error: vi.fn() } }))
 
 import { buildHomeLayout } from '../lib/home-seed'
+import * as ownerReviewPlanner from '../lib/owner-review-v1'
+import { ctaLabel } from '../lib/cta-vocabulary'
 import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import type { Menu, Product } from '../payload-types'
 
@@ -28,6 +30,8 @@ import {
 } from '../scripts/apply-owner-review-v1'
 
 describe('Owner review explicit application boundary', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   beforeEach(() => {
     vi.clearAllMocks()
     runtime.find.mockResolvedValue({ docs: [] })
@@ -231,6 +235,128 @@ describe('Owner review explicit application boundary', () => {
     )
     expect(runtime.create).not.toHaveBeenCalled()
     expect(runtime.update).not.toHaveBeenCalled()
+  })
+
+  describe('P03 free-offer publication prerequisite', () => {
+    const freeProduct = {
+      id: 2,
+      slug: 'sos-kezrelax-villamkurzus',
+      status: 'published',
+      _status: 'published',
+      priceInHUFEnabled: false,
+      updatedAt: '2026-09-05',
+    }
+
+    function setupPlan(products: () => unknown[], requestId: string | null = 'P03') {
+      const layout = buildHomeLayout({}).filter((block) => block.blockType === 'filmHero')
+      if (requestId === 'P03') {
+        for (const hero of layout) {
+          for (const cta of hero.ctas ?? []) {
+            if (cta.url === '#ingyenes') cta.felirat = 'Nézd meg az SOS-kurzust'
+          }
+        }
+      }
+      const page = {
+        id: 1,
+        slug: 'kezdolap',
+        _status: 'published',
+        layout,
+        updatedAt: '2026-09-05',
+      }
+      // P03 and no-op cases use the real planner; only the unrelated control is synthetic.
+      if (requestId && requestId !== 'P03') {
+        vi.spyOn(ownerReviewPlanner, 'planOwnerReviewV1').mockReturnValue({
+          layout,
+          changes: [
+            {
+              requestId,
+              blockId: null,
+              path: '/layout/0/ctas/1/felirat',
+              reason: 'Jóváhagyott régi CTA-felirat frissítése.',
+              before: 'Nézd meg az SOS-kurzust',
+              after: ctaLabel('free-strip-jump'),
+            },
+          ],
+          skips: [],
+        })
+      }
+      runtime.find.mockImplementation(async ({ collection }: { collection: string }) => ({
+        docs: collection === 'pages' ? [page] : collection === 'products' ? products() : [],
+      }))
+    }
+
+    async function preview() {
+      await applyOwnerReviewV1([])
+      const summary = runtime.info.mock.calls.find(
+        ([message]) => message === 'KC V1 tartalmi terv',
+      )?.[1]
+      expect(summary?.pages[0].changes).toBe(1)
+      return summary
+    }
+
+    it.each([
+      ['missing', []],
+      ['draft', [{ ...freeProduct, _status: 'draft' }]],
+      ['unpublished', [{ ...freeProduct, status: 'draft' }]],
+      ['paid', [{ ...freeProduct, priceInHUFEnabled: true, priceInHUF: 1000 }]],
+      ['unrelated', [{ ...freeProduct, slug: 'masik-ingyenes-kurzus' }]],
+      ['duplicated', [freeProduct, { ...freeProduct, id: 3 }]],
+      ['unconfigured', [{ ...freeProduct, priceInHUFEnabled: undefined }]],
+    ])('blocks a changed P03 claim for %s SOS before uploads or writes', async (_, products) => {
+      setupPlan(() => products as unknown[])
+      const summary = await preview()
+      expect(
+        runtime.info.mock.calls
+          .filter(([message]) => message === 'KC V1 tételes változtatás')
+          .map(([, change]) => change.requestId),
+      ).toEqual(['P03'])
+      expect(summary.blockers).toHaveLength(1)
+      expect(summary.blockers[0]).toContain('P03')
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+      expect(runtime.destroy).toHaveBeenCalledTimes(2)
+    })
+
+    it('allows a changed P03 plan only with the verified canonical published free product', async () => {
+      setupPlan(() => [freeProduct])
+      expect((await preview()).blockers).toEqual([])
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it('leaves a no-op unblocked without a free product', async () => {
+      setupPlan(() => [], null)
+      await applyOwnerReviewV1([])
+      const summary = runtime.info.mock.calls.find(
+        ([message]) => message === 'KC V1 tartalmi terv',
+      )?.[1]
+      expect(summary.pages[0].changes).toBe(0)
+      expect(summary.blockers).toEqual([])
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).resolves.toBeUndefined()
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it('does not block an unrelated change without a free product', async () => {
+      setupPlan(() => [], 'H01')
+      expect((await preview()).blockers).toEqual([])
+    })
+
+    it('rechecks product proof before a changed P03 plan can upload or write', async () => {
+      let reads = 0
+      setupPlan(() => [{ ...freeProduct, _status: ++reads >= 3 ? 'draft' : 'published' }])
+      const summary = await preview()
+      expect(summary.blockers).toEqual([])
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'A tartalom az ellenőrzés közben változott',
+      )
+      expect(reads).toBe(3)
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
   })
 
   it('only removes the recognized old about hero after the replacement photo is in the layout', () => {

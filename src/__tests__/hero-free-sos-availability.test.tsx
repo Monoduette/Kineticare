@@ -6,6 +6,7 @@ import { FilmHero } from '../components/blocks/FilmHero'
 import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { HomeView } from '../components/content/HomeView'
 import { HeroCta } from '../components/content/home/HeroCta'
+import { Button } from '../components/ui/Button'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import type { BlockFilmHero, BlockFreeSos, Page, Product } from '../payload-types'
 
@@ -15,6 +16,7 @@ const product = (overrides: Partial<Product> = {}): Product =>
     slug: 'sos-kezrelax-villamkurzus',
     displayTitle: 'SOS tesztkurzus',
     status: 'published',
+    _status: 'published',
     priceInHUFEnabled: false,
     ...overrides,
   }) as Product
@@ -41,6 +43,9 @@ const unavailable: [string, Product[]][] = [
   ['hiányos ár', [product({ priceInHUFEnabled: true, priceInHUF: null })]],
   ['hiányzó árkapcsoló', [product({ priceInHUFEnabled: undefined })]],
   ['draft', [product({ status: 'draft' })]],
+  ['Payload draft', [product({ _status: 'draft' })]],
+  ['Payload null státusz', [product({ _status: null })]],
+  ['hiányzó Payload státusz', [product({ _status: undefined })]],
   ['archived', [product({ status: 'archived' })]],
   ['csak másik ingyenes kurzus', [unrelatedFree]],
   ['draft SOS és másik ingyenes kurzus', [unrelatedFree, product({ status: 'draft' })]],
@@ -239,4 +244,144 @@ describe('P1: FilmHero és a generikus CMS-oldalak SOS-elérhetősége', () => {
     expect(html).toContain('Ismerj meg minket')
     expect(html).toContain('href="#bemutatkozas"')
   })
+})
+
+describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshez tartozik', () => {
+  const directTargets = [
+    '/kurzusok/sos-kezrelax-villamkurzus',
+    '/kurzusok/sos-kezrelax-villamkurzus/',
+    '/kurzusok/sos-kezrelax-villamkurzus?utm_source=teszt',
+    '/kurzusok/sos-kezrelax-villamkurzus#reszletek',
+    ' /kurzusok/sos-kezrelax-villamkurzus/?utm_source=teszt#reszletek ',
+    '/kurzusok/sos-kezrelax-villamkurzus?utm_source=teszt&utm_medium=email#reszletek',
+  ]
+  const customLabel = 'Próbáld ki ingyen a kézgyakorlatokat'
+  const directFilm = (url: string): BlockFilmHero => ({
+    ...film,
+    ctas: [
+      { url: '/kurzusok', felirat: 'Saját kurzusfelirat' },
+      { url, felirat: customLabel, ujAblakban: true },
+    ],
+  })
+
+  it.each(['draft', null, undefined] as const)(
+    'published üzleti státusz mellett a Payload %s nem enged közvetlen vagy horgonyos ígéretet',
+    (_status) => {
+      const layout: Layout = [
+        { ...film, ctas: [...directFilm(directTargets[0]).ctas!, ...film.ctas!] },
+        sos,
+      ]
+      const products = [product({ _status })]
+      const outputs = [
+        blocks(layout, products),
+        renderToStaticMarkup(
+          createElement(HomeView, {
+            home: { title: 'Teszt kezdőlap', layout } as Page,
+            products,
+            posts: [],
+          }),
+        ),
+      ]
+      for (const html of outputs) {
+        expectNoFreeReference(html)
+        expect(html).not.toContain(customLabel)
+        expect(html).not.toContain(`href="${directTargets[0]}"`)
+        expect(html).toContain('>Kurzusaink</h2>')
+        expect(html).toContain('href="/kurzusok"')
+      }
+    },
+  )
+
+  it.each(directTargets)(
+    'hiányzó/draft/fizetős SOS esetén a közvetlen link sem marad: %s',
+    (url) => {
+      for (const products of [
+        [],
+        [product({ status: 'draft' })],
+        [product({ priceInHUFEnabled: true, priceInHUF: 10000 })],
+        [unrelatedFree],
+      ]) {
+        const html = blocks([directFilm(url), sos], products)
+        expect(html).not.toContain(customLabel)
+        expect(html).not.toContain(`href="${url.trim()}"`)
+        expect(html).not.toContain('ingyenes SOS gyakorlatok')
+        expect(html).toContain('Saját kurzusfelirat')
+        expect(html).toContain('href="/kurzusok"')
+        expect(html).toContain('>Kurzusaink</h2>')
+      }
+    },
+  )
+
+  it.each(directTargets)(
+    'igazolt SOS mellett a közvetlen cél, CMS-felirat és új lap megmarad: %s',
+    (url) => {
+      const html = blocks([directFilm(url), sos], [product()])
+      // A Next Link meglévő záróperjel-normalizálása marad; a FilmHero nem
+      // cserélheti a közvetlen célt horgonyra, és nem veszíthet query/hash-t.
+      const baseline = renderToStaticMarkup(<Button href={url}>{customLabel}</Button>)
+      const expectedHref = baseline.match(/href="[^"]*"/)?.[0]
+      const customLink = html.match(new RegExp(`<a\\b[^>]*>${customLabel}</a>`))?.[0]
+      expect(expectedHref).toBeDefined()
+      expect(customLink).toContain(expectedHref)
+      expect(customLink).toContain('target="_blank"')
+      expect(html).toContain('ingyenes SOS gyakorlatok')
+    },
+  )
+
+  it.each([
+    '/kurzusok/masik-ingyenes',
+    '/kurzusok/sos-kezrelax-villamkurzus-masolat',
+    '/kurzusok/sos-kezrelax-villamkurzus/masik',
+    '/kurzusok?next=/kurzusok/sos-kezrelax-villamkurzus',
+    '/blog#sos-kezrelax-villamkurzus',
+    'https://example.invalid/kurzusok/sos-kezrelax-villamkurzus',
+    'https://example.invalid/kurzusok/sos-kezrelax-villamkurzus/?utm_source=teszt#reszletek',
+    'https://example.invalid/#ingyenes',
+    'https://kineticare.invalid/kurzusok/sos-kezrelax-villamkurzus',
+  ])('független vagy külső cél nem lesz helyi SOS-ajánlat: %s', (url) => {
+    for (const freeSosHref of [null, '#ingyenes']) {
+      const html = renderToStaticMarkup(
+        createElement(FilmHero, {
+          block: directFilm(url),
+          freeSosHref,
+        }),
+      )
+      expect(html).toContain(`href="${url}"`)
+      expect(html).toContain(customLabel)
+      expect(html).toContain('target="_blank"')
+    }
+  })
+
+  it('önálló FilmHero hiányzó ellenőrzött adatnál a közvetlen linket is elhagyja', () => {
+    const html = renderToStaticMarkup(
+      createElement(FilmHero, { block: directFilm(directTargets[0]) }),
+    )
+    expect(html).not.toContain(customLabel)
+    expect(html).toContain('Saját kurzusfelirat')
+  })
+
+  it.each(['hiányzó', 'rejtett', 'korábbi'])(
+    'igazolt kurzushoz a közvetlen link %s SOS-szekció mellett is működik, az ugrólink nem',
+    (sectionState) => {
+      const directAndAnchor: BlockFilmHero = {
+        ...film,
+        ctas: [
+          { url: directTargets[0], felirat: customLabel },
+          { url: '#ingyenes', felirat: ctaLabel('free-strip-jump') },
+        ],
+      }
+      const layout: Layout =
+        sectionState === 'hiányzó'
+          ? [directAndAnchor]
+          : sectionState === 'rejtett'
+            ? [directAndAnchor, { ...sos, sectionSettings: { visible: false } }]
+            : [sos, directAndAnchor]
+      const html = blocks(layout, [product()])
+      expect(html).toContain(customLabel)
+      expect(html).toContain(`href="${directTargets[0]}"`)
+      expect(html).not.toContain('href="#ingyenes"')
+      expect(html).not.toContain(ctaLabel('free-strip-jump'))
+      expect(html).not.toContain('ingyenes SOS gyakorlatok')
+    },
+  )
 })
