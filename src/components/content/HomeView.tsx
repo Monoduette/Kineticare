@@ -2,7 +2,7 @@ import type { Page, Post, Product, Testimonial } from '../../payload-types'
 import type { AppointmentSectionContext } from '../../lib/appointment/context'
 import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
-import { isFreeCourse } from '../../lib/courses'
+import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
 import { RenderBlocks } from '../blocks/RenderBlocks'
@@ -113,9 +113,8 @@ export function HomeView({
   // helye a lentebbi FreeSos szekció: 2026-08-15-ig mindkét helyen szerepelt,
   // ami duplikáció volt (kezdőlap-audit) — lásd CourseCards fejléce.
   const paidProducts = visibleProducts.filter(isPaidProduct)
-  // A hero és a sáv ugyanazt az explicit ingyenes, publikált terméket ajánlja.
-  // A hiányos ár-konfiguráció nem bizonyít ingyenes hozzáférést.
-  const freeProduct = visibleProducts.find(isFreeCourse) ?? null
+  // A hero és a sáv csak a kanonikus, publikált és explicit ingyenes SOS-t ajánlja.
+  const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
 
   // Sávritmus: a kezdőlap fehér és tint (világoskék) szekciókat váltogat. A

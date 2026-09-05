@@ -426,6 +426,7 @@ describe('K7 — fókusz, érintőcél és a zárt betűskála', () => {
     const lap = stilusLapNezetablakra(
       [`${REPO}app/(frontend)/styles/tokens.css`],
       320,
+      1000, // docs/ui-sztenderdek.md N-4/N-5: dokumentált 320×1000 CSS px-es mérési nézet.
     )
     const map = tokenek(lap)
     const padding = hosszPx(varFeloldas('var(--kc-space-5)', map), 320, 16, 16)

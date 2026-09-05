@@ -177,6 +177,11 @@ export function captionOpacity(
   return smoothstep(Math.min(rise, fall))
 }
 
+/** Statikus olvasási módban a főszöveg és a lejtője nem függ a scrolltól. */
+export function sceneCopyOpacity(progress: number, handoff: number, reduced = false): number {
+  return reduced ? 1 : captionOpacity(progress, 0, handoff)
+}
+
 function buildSegments(
   scenes: ScrollScrubScene[],
   connectors: (ScrollScrubConnector | null)[],
@@ -522,11 +527,10 @@ export function ScrollScrub({
 
       // A 2. és 3. „állás": a felirat láthatósága TISZTÁN a scrub-arányból jön,
       // ugyanabban a ciklusban, ahol a film kockája is mozog. Csökkentett
-      // mozgásnál nincs átúszás — a felirat állóképként vált (lásd
-      // captionOpacity `reduced` ága).
+      // mozgásnál az úszó változat helyett a főszöveg utáni lista olvasható.
       for (const [index, caption] of captionList.entries()) {
         const node = captionNodes[index]
-        const opacity = captionOpacity(progress, caption.from, caption.to, reduceMotion)
+        const opacity = reduceMotion ? 0 : captionOpacity(progress, caption.from, caption.to)
         node.style.opacity = String(opacity)
         node.setAttribute('aria-hidden', opacity < 0.05 ? 'true' : 'false')
       }
@@ -536,7 +540,7 @@ export function ScrollScrub({
       // viszont el kell venni, különben a láthatatlan gombok elfognák az
       // egérmutatót a film fölött.
       if (copyNodes.length > 0) {
-        const opacity = captionOpacity(progress, 0, copyHandoff, reduceMotion)
+        const opacity = sceneCopyOpacity(progress, copyHandoff, reduceMotion)
         for (const node of copyNodes) {
           node.style.opacity = String(opacity)
           node.style.pointerEvents = opacity < 0.05 ? 'none' : ''
@@ -549,7 +553,7 @@ export function ScrollScrub({
         // tehát a kontraszt a kiúszás közben sem csökken.
         root.style.setProperty(
           '--ss-copy-scrim',
-          String(captionOpacity(progress, 0, copyHandoff + CAPTION_FADE, reduceMotion)),
+          String(sceneCopyOpacity(progress, copyHandoff + CAPTION_FADE, reduceMotion)),
         )
       }
     }
@@ -826,6 +830,16 @@ export function ScrollScrub({
             </article>
           )
         })}
+        {captionList.length > 0 ? (
+          <ul className="scroll-scrub__reading-captions">
+            {captionList.map((caption) => (
+              <li key={caption.id}>
+                <p className="scroll-scrub__caption-title">{caption.text}</p>
+                {caption.body ? <p className="scroll-scrub__caption-body">{caption.body}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </section>
   )

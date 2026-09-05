@@ -12,7 +12,7 @@ import type { BlockFilmHero, BlockFreeSos, Page, Product } from '../payload-type
 const product = (overrides: Partial<Product> = {}): Product =>
   ({
     id: 2,
-    slug: 'sos-fixture',
+    slug: 'sos-kezrelax-villamkurzus',
     displayTitle: 'SOS tesztkurzus',
     status: 'published',
     priceInHUFEnabled: false,
@@ -29,6 +29,11 @@ const film: BlockFilmHero = {
 }
 const sos: BlockFreeSos = { blockType: 'freeSos', title: 'Ingyenes SOS', id: 'sos' }
 type Layout = NonNullable<Page['layout']>
+const unrelatedFree = product({
+  id: 9,
+  slug: 'masik-ingyenes',
+  displayTitle: 'Másik ingyenes kurzus',
+})
 const unavailable: [string, Product[]][] = [
   ['üres', []],
   ['fizetős', [product({ priceInHUFEnabled: true, priceInHUF: 10000 })]],
@@ -37,6 +42,14 @@ const unavailable: [string, Product[]][] = [
   ['hiányzó árkapcsoló', [product({ priceInHUFEnabled: undefined })]],
   ['draft', [product({ status: 'draft' })]],
   ['archived', [product({ status: 'archived' })]],
+  ['csak másik ingyenes kurzus', [unrelatedFree]],
+  ['draft SOS és másik ingyenes kurzus', [unrelatedFree, product({ status: 'draft' })]],
+  [
+    'fizetős SOS és másik ingyenes kurzus',
+    [unrelatedFree, product({ priceInHUFEnabled: true, priceInHUF: 10000 })],
+  ],
+  ['archived SOS és másik ingyenes kurzus', [unrelatedFree, product({ status: 'archived' })]],
+  ['slug nélküli ingyenes kurzus', [product({ slug: null })]],
 ]
 
 function blocks(layout: Layout, products: Product[] = []) {
@@ -91,12 +104,29 @@ describe('P1: a rögzített hero és az SOS ugyanazt az ellenőrzött terméket 
     )
     expect(html).toContain(ctaLabel('free-strip-jump'))
     expect(html).toContain('href="#ingyenes"')
-    expect(html).toContain('href="/kurzusok/sos-fixture"')
+    expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
     expect(html).toContain('Elindítom ingyen')
   })
 })
 
 describe('P1: FilmHero és a generikus CMS-oldalak SOS-elérhetősége', () => {
+  it.each([true, false])(
+    'csak a kanonikus SOS-t ajánlja, függetlenül a másik ingyenes kurzus sorrendjétől: %s',
+    (unrelatedFirst) => {
+      const products = unrelatedFirst ? [unrelatedFree, product()] : [product(), unrelatedFree]
+      const outputs = [
+        blocks([film, sos], products),
+        renderToStaticMarkup(createElement(HomeView, { home: null, products, posts: [] })),
+      ]
+      for (const html of outputs) {
+        expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
+        expect(html).toContain(ctaLabel('free-strip-jump'))
+        expect(html).toContain('Elindítom ingyen')
+        expect(html).not.toContain('href="/kurzusok/masik-ingyenes"')
+        expect(html).not.toContain('Másik ingyenes kurzus')
+      }
+    },
+  )
   it('önálló FilmHero hiányzó adatból nem feltételez ingyenes kínálatot', () => {
     const html = renderToStaticMarkup(createElement(FilmHero, { block: film }))
     expectNoFreeReference(html)

@@ -221,8 +221,14 @@ describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
     expect(cta.newTab).toBe(false)
   })
 
-  it('slug nélküli ingyenes termék: az id-alapú kurzus-URL is kurzusoldal', () => {
+  it('slug nélküli ingyenes termék nem igazolja a nevesített SOS-ajánlatot', () => {
     const cta = resolveFreeSosCta(freeProduct({ slug: null }))
+    expect(cta.href).toBe(COURSE_LIST_PATH)
+    expect(cta.label).toBe(FREE_SOS_LIST_CTA_LABEL)
+  })
+
+  it('a kanonikus SOS id-alapú felülírása továbbra is azonos termékre visz', () => {
+    const cta = resolveFreeSosCta(freeProduct(), { href: '/kurzusok/2' })
     expect(cta.href).toBe('/kurzusok/2')
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })

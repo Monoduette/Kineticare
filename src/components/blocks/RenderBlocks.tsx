@@ -3,7 +3,7 @@ import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
-import { isFreeCourse } from '../../lib/courses'
+import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
 import { CourseCards, isPaidProduct } from '../content/home/CourseCards'
@@ -116,12 +116,9 @@ export function RenderBlocks({
   // megjelenés duplikáció volt — lásd CourseCards fejléce).
   // A freeSos blokk egyetlen lead-magnetre van tervezve, viselkedése változatlan.
   const paidProducts = visibleProducts.filter(isPaidProduct)
-  // A lead-magnet KIZÁRÓLAG a tudatosan ingyenes termék (isFreeCourse). A
-  // korábbi `!isPaidProduct` a HIÁNYOSAN konfigurált terméket (beállítatlan
-  // ár-pipa vagy bepipált, de üres ár) is ingyenesként tette a FreeSos sávba —
-  // az a rács fizetős kártyái közül is kiesett, tehát a szerkesztői hiba némán
-  // ingyenes ajánlattá változott (2026-08-16-i átvizsgálás).
-  const freeProduct = visibleProducts.find(isFreeCourse) ?? null
+  // A nevesített SOS-sávba csak a kanonikus, publikált és explicit ingyenes
+  // SOS kerülhet. Másik ingyenes vagy hiányosan árazott termék nem helyettesíti.
+  const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
   const freeSosBlocks = layout.filter((block) => block.blockType === 'freeSos')
   const visibleFreeSosBlocks = freeSosBlocks.filter(
     (block) => block.sectionSettings?.visible !== false,

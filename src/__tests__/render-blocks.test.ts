@@ -368,13 +368,20 @@ describe('RenderBlocks', () => {
     expect(html).not.toContain(FREE_SOS_COURSE_CTA_LABEL)
   })
 
-  it('freeSos: a TUDATOSAN ingyenes termék változatlanul lead-magnet marad', () => {
+  it('freeSos: a kanonikus, TUDATOSAN ingyenes SOS változatlanul lead-magnet marad', () => {
     const html = renderBlocks(layoutOf({ blockType: 'freeSos', id: 'f0b', sectionSettings: {} }), {
       products: [
-        product({ id: 7, sku: 'Ingyenes SOS', priceInHUF: null, priceInHUFEnabled: false }),
+        product({
+          id: 7,
+          slug: 'sos-kezrelax-villamkurzus',
+          sku: 'Ingyenes SOS',
+          priceInHUF: null,
+          priceInHUFEnabled: false,
+        }),
       ],
     })
     expect(html).toContain('Ingyenes SOS')
+    expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
 
   /**

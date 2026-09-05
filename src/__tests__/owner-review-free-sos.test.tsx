@@ -9,7 +9,7 @@ import type { Product } from '../payload-types'
 
 const freeProduct = {
   id: 2,
-  slug: 'sos-kezrelax',
+  slug: 'sos-kezrelax-villamkurzus',
   displayTitle: 'SOS Kézrelax',
   status: 'published',
   priceInHUFEnabled: false,
@@ -34,9 +34,9 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
   it.each([
-    '/kurzusok/sos-kezrelax',
-    '/kurzusok/sos-kezrelax/',
-    '/kurzusok/sos-kezrelax?utm_source=teszt#igenyles',
+    '/kurzusok/sos-kezrelax-villamkurzus',
+    '/kurzusok/sos-kezrelax-villamkurzus/',
+    '/kurzusok/sos-kezrelax-villamkurzus?utm_source=teszt#igenyles',
     '/kurzusok/2',
   ])('ismert cél: %s', (href) => {
     expect(resolveFreeSosCta(freeProduct, { href, newTab: true })).toEqual({
@@ -56,14 +56,16 @@ describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
   ])('nem bizonyított cél: %s', (href) => {
     const cta = resolveFreeSosCta(freeProduct, { href, newTab: true, label: 'Elindítom ingyen' })
     expect(cta).toEqual({
-      href: '/kurzusok/sos-kezrelax',
+      href: '/kurzusok/sos-kezrelax-villamkurzus',
       newTab: false,
       label: ctaLabel('free-course-claim'),
     })
   })
 
   it('termék nélkül egy ismertnek hangzó URL sem bizonyíték', () => {
-    expect(resolveFreeSosCta(null, { href: '/kurzusok/sos-kezrelax', newTab: true })).toEqual({
+    expect(
+      resolveFreeSosCta(null, { href: '/kurzusok/sos-kezrelax-villamkurzus', newTab: true }),
+    ).toEqual({
       href: '/kurzusok',
       newTab: false,
       label: ctaLabel('course-list-open'),
@@ -75,10 +77,12 @@ describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
     { priceInHUFEnabled: true, priceInHUF: null },
     { priceInHUFEnabled: undefined },
     { status: 'draft' as const },
+    { slug: 'masik-ingyenes' },
+    { slug: null },
   ])('a prop neve nem helyettesíti az ingyenes, publikált állapotot: %j', (overrides) => {
     const product = { ...freeProduct, ...overrides }
     expect(resolveFreeSosCta(product).label).not.toBe(ctaLabel('free-course-claim'))
-    expect(resolveFreeSosCta(product, { href: '/kurzusok/sos-kezrelax' })).toEqual({
+    expect(resolveFreeSosCta(product, { href: '/kurzusok/sos-kezrelax-villamkurzus' })).toEqual({
       href: '/kurzusok',
       newTab: false,
       label: ctaLabel('course-list-open'),
@@ -91,7 +95,9 @@ describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
     '/kurzusok/\\example.invalid',
     '/kurzusok/sos\n-kezrelax',
   ])('nem biztonságos felülírás helyett a bizonyított alapcél: %s', (href) => {
-    expect(resolveFreeSosCta(freeProduct, { href }).href).toBe('/kurzusok/sos-kezrelax')
+    expect(resolveFreeSosCta(freeProduct, { href }).href).toBe(
+      '/kurzusok/sos-kezrelax-villamkurzus',
+    )
   })
 })
 
@@ -101,7 +107,7 @@ describe('H04/P03: informatív CMS-fotó, szerkeszthető tartalom, ingyenes jelz
       createElement(FreeSos, { freeProduct, cta: { href: '/kurzusok/fizetos' } }),
     )
     expect(html).toContain('>Ingyenes</span>')
-    expect(html).toContain('href="/kurzusok/sos-kezrelax"')
+    expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
     expect(html).not.toContain('/kurzusok/fizetos')
   })
 
@@ -111,6 +117,8 @@ describe('H04/P03: informatív CMS-fotó, szerkeszthető tartalom, ingyenes jelz
     { ...freeProduct, status: 'archived' as const },
     { ...freeProduct, priceInHUFEnabled: true, priceInHUF: 10000 },
     { ...freeProduct, priceInHUFEnabled: undefined },
+    { ...freeProduct, slug: 'masik-ingyenes' },
+    { ...freeProduct, slug: null },
   ])('elérhető ingyenes termék nélkül a teljes ajánlat semleges: %j', (product) => {
     for (const cmsCopy of [{}, { title: 'Ingyenes SOS', body: 'Indítsd el ingyen!' }]) {
       const html = renderToStaticMarkup(

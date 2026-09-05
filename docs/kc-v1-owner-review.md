@@ -167,6 +167,31 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   Teljes typecheck és production build PASS; lint 0 hiba, a 3 korábbi warning.
   Független kód- és tartalmi review PASS. A friss CLI-előnézet mind a négy
   helyi oldalon nulla módosítást és nulla blokkolót jelez; a termék szintetikus.
+- A második cloud review után az SOS-ajánlat már nem fogad el másik ingyenes
+  terméket: a kanonikus SOS-slug, publikált állapot és explicit ingyenesség
+  együtt szükséges a hero, a blokkos kezdőlap és a FreeSos számára.
+- Rövid mobilnézetben a betűméretek helyett a térközök csökkentek;
+  nagyon alacsony nézetben a szöveg természetesen görgethető. Normál 320x568:
+  44 px magas CTA-k, alsó szélek 496/552 px. A 700/701 és 480/481 px-es
+  magassági határokon, illetve 568x320 fekvő nézetben a hozzáférés ellenőrizve.
+- Hideg reduced-motion indulásnál a 568x320 nézet korábban eltüntette a CTA-t.
+  A javítás ebben a módban álló posztert, folyamatosan olvasható főszöveget
+  és a főszöveg után mindkét felirat teljes, statikus változatát adja.
+  Main IAB: 320x568 és 568x320 cold reduced PASS; utóbbin 180 px görgetésnél
+  a CTA 230,80–274,80 px-en, opacity 1, pointer auto; valódi SOS-kattintás PASS.
+- 200%-os CSS-gyökérbetűméret stresszteszt reduced módban: 32 px gyökér,
+  64 px cím, 32 px törzsszöveg; a hero szélessége 320 px marad, a szöveg és
+  mindkét CTA görgetéssel hozzáférhető. Ez nem natív böngészőzoom-teszt.
+  A változatlan header ebben a teljes oldalas stresszhelyzetben túlcsordul;
+  ezt a PR nem javítja. Menet közbeni OS-mozgáspreferencia-váltás és tényleges
+  iOS-eszközteszt sem része a teljesített bizonyítéknak.
+- Normál 1280x720 végállapot: CTA-alj 630,390625 px, statikus feliratlista rejtett,
+  egy videó, 52%-os fátyol, dokumentumszélesség 1280 px. A normál filmforrások,
+  lépték és görgetési időzítés változatlan.
+- Végleges helyi stage: **6426/6426 teszt PASS, 283 fájl**, teljes soros futás
+  kihagyás és retry nélkül; typecheck és production build PASS, lint 0 hiba
+  és 3 meglévő figyelmeztetés. A végső független kódreview a dokumentált
+  hero- és tartalmi scope-ot jóváhagyta; az új head távoli gate-jei külön kapuk.
 
 ## Tanulságok
 
@@ -189,3 +214,10 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
 - A publikálási előfeltétel nem maradhat puszta dokumentációs figyelmeztetés:
   hiányzó, piszkozat vagy fizetős SOS-terméknél az új GYIK-állítás előtt
   kötelező a végrehajtható, nulla írással megálló ellenőrzés.
+- Az ajánlat neve is bizalmi határ: az „ingyenes” állapot önmagában nem
+  bizonyítja, hogy a kiválasztott termék valóban az SOS-kurzus.
+- A CSS-geometriai őrnek a magassági médiafeltételt is valódi viewportadattal
+  kell kiértékelnie. Az ismeretlen feltétel nem nyelhető el egy inaktív ágban sem.
+- A futás közbeni mozgásemuláció nem helyettesíti a hideg betöltést. A Brave
+  kötése újratöltéskor elvesztette a beállítást; az IAB megőrizte, és így
+  reprodukálhatóvá vált a rövid reduced-motion sáv és a CTA-k eltűnésének hibája.

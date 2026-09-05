@@ -1,5 +1,5 @@
 import { courseHref } from '../../../lib/course-url'
-import { isFreeCourse } from '../../../lib/courses'
+import { isAvailableSosProduct } from '../../../lib/sos-offer'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { sanitizeCmsUrl } from '../../../lib/safe-url'
 import type { Product } from '../../../payload-types'
@@ -56,10 +56,6 @@ export function isCourseDetailHref(href: string): boolean {
   return courseDetailPath(href) !== null
 }
 
-function isAvailableFreeProduct(product: Product | null): product is Product {
-  return product?.status === 'published' && isFreeCourse(product)
-}
-
 /** A blokkból érkező, RÉSZLEGES gomb-felülírás (bármelyik mező hiányozhat). */
 export interface FreeSosCtaOverride {
   /**
@@ -93,7 +89,7 @@ export function resolveFreeSosCta(
   freeProduct: Product | null,
   override?: FreeSosCtaOverride,
 ): FreeSosCta {
-  if (!isAvailableFreeProduct(freeProduct)) {
+  if (!isAvailableSosProduct(freeProduct)) {
     return { href: COURSE_LIST_PATH, label: FREE_SOS_LIST_CTA_LABEL, newTab: false }
   }
 
@@ -115,7 +111,7 @@ export function resolveFreeSosCta(
 }
 
 export interface FreeSosProps {
-  /** Az első ingyenes (nem árazott) published termék, ha van. */
+  /** A kanonikus, publikált és explicit ingyenes SOS-termék, ha elérhető. */
   freeProduct: Product | null
   /** Cím-felülírás a `freeSos` blokkból — üresen a termék/beépített cím marad. */
   title?: string
@@ -144,7 +140,7 @@ export function FreeSos({
   id = 'ingyenes',
   variant = 'tint',
 }: FreeSosProps) {
-  const knownFree = isAvailableFreeProduct(freeProduct)
+  const knownFree = isAvailableSosProduct(freeProduct)
   // A termék neve a displayTitle → sku lánc; ha MINDKETTŐ üres, a márkás
   // alapszöveg marad (a courseTitle „Kurzus #id" fallbackja itt félrevinne).
   const productHeading = freeProduct?.displayTitle?.trim() || freeProduct?.sku?.trim() || ''

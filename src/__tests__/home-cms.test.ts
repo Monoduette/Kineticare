@@ -219,7 +219,7 @@ describe('HomeView (kezdőlap-render)', () => {
     const html = render(
       createElement(HomeView, {
         home: null,
-        products: [product({ id: 7, priceInHUFEnabled: false })],
+        products: [product({ id: 7, slug: 'sos-kezrelax-villamkurzus', priceInHUFEnabled: false })],
         posts: [],
       }),
     )
@@ -274,6 +274,7 @@ describe('HomeView (kezdőlap-render)', () => {
           product({
             id: 7,
             sku: 'SOS Kézrelax villámkurzus',
+            slug: 'sos-kezrelax-villamkurzus',
             priceInHUF: null,
             priceInHUFEnabled: false,
           }),
@@ -285,13 +286,14 @@ describe('HomeView (kezdőlap-render)', () => {
     // A rácsban KIZÁRÓLAG a fizetős kurzus áll.
     expect(coursesSection).toContain('href="/kurzusok/1"')
     expect(coursesSection).not.toContain('href="/kurzusok/7"')
+    expect(coursesSection).not.toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
     expect(coursesSection).not.toContain('SOS Kézrelax villámkurzus')
     // A megszűnt másodlagos kártya nyoma sem maradhat (prop, CSS, markup).
     expect(html).not.toContain('kc-product-card--secondary')
     // Az SOS-sáv a lead-magnet saját, részletesebb megjelenése — megmarad.
     const sosSection = html.slice(html.indexOf('id="ingyenes"'))
     expect(sosSection).toContain('SOS Kézrelax villámkurzus')
-    expect(sosSection).toContain('href="/kurzusok/7"')
+    expect(sosSection).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
 
   it('M3-őr: az ár-pipa BE + ÜRES ár (konfigurációs hiba) nem kerül a fizetős rácsba', () => {
