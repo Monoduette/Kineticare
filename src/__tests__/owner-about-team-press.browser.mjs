@@ -212,46 +212,192 @@ try {
     }
   }
 
+  const railWidths = [320, 390, 768, 1024, 1440]
+  for (const width of railWidths) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const count of [2, 6, 10]) {
+      await render({ count })
+      await page.waitForFunction(() => {
+        const rail = document.querySelector('.kc-press__rail')
+        const viewport = document.querySelector('.kc-press__viewport')
+        return (
+          rail.dataset.measured === 'true' &&
+          Number.parseFloat(viewport.style.getPropertyValue('--kc-press-viewport-width')) > 0
+        )
+      })
+      const railGeometry = await page.evaluate(() => {
+        const rail = document.querySelector('.kc-press__rail')
+        const viewport = rail.querySelector('.kc-press__viewport').getBoundingClientRect()
+        const track = rail.querySelector('.kc-press__track').getBoundingClientRect()
+        const rows = [...rail.querySelectorAll('.kc-press__row')].map((row) =>
+          row.getBoundingClientRect(),
+        )
+        const items = [...rail.querySelectorAll('.kc-press__item')]
+          .map((item) => item.getBoundingClientRect())
+          .sort((left, right) => left.left - right.left)
+        const gaps = items.slice(1).map((item, index) => item.left - items[index].right)
+        const style = getComputedStyle(rail.querySelector('.kc-press__track'))
+        const measuredWidth = Number.parseFloat(
+          rail
+            .querySelector('.kc-press__viewport')
+            .style.getPropertyValue('--kc-press-viewport-width'),
+        )
+        const cycleWidth = Number.parseFloat(
+          rail
+            .querySelector('.kc-press__viewport')
+            .style.getPropertyValue('--kc-press-cycle-width'),
+        )
+        const cycleOffset = Number.parseFloat(
+          rail
+            .querySelector('.kc-press__viewport')
+            .style.getPropertyValue('--kc-press-cycle-offset'),
+        )
+        return {
+          viewportWidth: viewport.width,
+          trackWidth: track.width,
+          rowWidths: rows.map((row) => row.width),
+          cycleDistance: rows[1].left - rows[0].left,
+          cssGap: Number.parseFloat(style.gap),
+          measuredWidth,
+          cycleWidth,
+          cycleOffset,
+          maxItemGap: Math.max(...gaps),
+          visibleItems: items.filter(
+            (item) =>
+              item.right > viewport.left &&
+              item.left < viewport.right &&
+              item.bottom > viewport.top &&
+              item.top < viewport.bottom,
+          ).length,
+        }
+      })
+      const rail = page.locator('.kc-press__rail')
+      const rows = rail.locator('.kc-press__row')
+      assert.equal(await rows.count(), 2)
+      assert.equal(await rail.locator('.kc-press__item').count(), count * 2)
+      assert.equal(await rail.getByRole('link').count(), count)
+      assert.equal(await rows.nth(1).getAttribute('aria-hidden'), 'true')
+      assert.equal(await rows.nth(1).getAttribute('inert'), '')
+      assert.equal(await rail.getAttribute('data-motion'), 'marquee')
+      assert.ok(Number.isFinite(railGeometry.trackWidth))
+      assert.ok(railGeometry.trackWidth < 100_000)
+      assert.ok(Math.abs(railGeometry.measuredWidth - railGeometry.viewportWidth) <= 1)
+      assert.ok(railGeometry.rowWidths.every((rowWidth) => rowWidth >= railGeometry.viewportWidth))
+      assert.ok(Math.abs(railGeometry.rowWidths[0] - railGeometry.rowWidths[1]) <= 0.5)
+      assert.ok(
+        railGeometry.rowWidths.every(
+          (rowWidth) => Math.abs(rowWidth - railGeometry.cycleWidth) <= 0.5,
+        ),
+      )
+      assert.ok(
+        Math.abs(
+          Math.abs(railGeometry.cycleOffset) - (railGeometry.cycleWidth + railGeometry.cssGap),
+        ) <= 0.5,
+      )
+      assert.ok(
+        Math.abs(
+          railGeometry.trackWidth -
+            (railGeometry.rowWidths[0] + railGeometry.rowWidths[1] + railGeometry.cssGap),
+        ) <= 1,
+      )
+      assert.ok(
+        Math.abs(railGeometry.cycleDistance - (railGeometry.rowWidths[0] + railGeometry.cssGap)) <=
+          1,
+      )
+      assert.ok(railGeometry.maxItemGap < railGeometry.viewportWidth)
+      assert.ok(railGeometry.visibleItems > 0)
+    }
+    console.log(`PASS LogoRail ${width}px: count 2/6/10 finite, seamless, non-empty`)
+  }
+
   await page.setViewportSize({ width: 390, height: 900 })
   await render()
   const button = page.locator('.kc-press__control')
-  const viewport = page.locator('.kc-press__viewport')
-  const position = () => viewport.evaluate((element) => element.scrollLeft)
-  assert.equal(await page.locator('.kc-press__item').count(), 12)
-  assert.equal(await page.locator('.kc-press__link').count(), 12)
-  assert.equal(await page.locator('.kc-press__rail').getAttribute('data-motion'), 'static')
+  const track = page.locator('.kc-press__track')
+  const transform = () => track.evaluate((element) => getComputedStyle(element).transform)
+  const rows = page.locator('.kc-press__row')
+  assert.equal(await rows.count(), 2)
+  assert.equal(await page.locator('.kc-press__item').count(), 24)
+  assert.equal(await page.getByRole('link').count(), 12)
+  assert.equal(await rows.nth(1).getAttribute('aria-hidden'), 'true')
+  assert.equal(await rows.nth(1).getAttribute('inert'), '')
+  assert.equal(await page.locator('.kc-press__rail').getAttribute('data-motion'), 'marquee')
+  assert.equal(await page.locator('.kc-press__rail').getAttribute('data-paused'), 'false')
   const target = await button.boundingBox()
   assert.ok(target.width >= 44 && target.height >= 44)
-  await button.click()
-  await page.waitForFunction(() => document.querySelector('.kc-press__viewport').scrollLeft > 5)
-  await button.click()
-  const paused = await position()
-  await page.waitForTimeout(200)
-  assert.ok(Math.abs((await position()) - paused) <= 1)
-  console.log('PASS opt-in play / explicit pause; >=44px control; one original list')
 
+  const initial = await transform()
+  await page.waitForTimeout(250)
+  assert.notEqual(await transform(), initial)
   await button.click()
-  await page.locator('.kc-press__link').last().focus()
+  await page.waitForFunction(
+    () => document.querySelector('.kc-press__rail').dataset.paused === 'true',
+  )
+  const paused = await transform()
+  await page.waitForTimeout(10_000)
+  assert.equal(await transform(), paused)
   assert.equal(await button.getAttribute('aria-label'), 'Elindítom a logósort')
-  const lastVisible = await page
-    .locator('.kc-press__link')
-    .last()
-    .evaluate((link) => {
-      const box = link.getBoundingClientRect()
-      const frame = link.closest('.kc-press__viewport').getBoundingClientRect()
-      return box.left >= frame.left && box.right <= frame.right
-    })
-  assert.equal(lastVisible, true)
-  await button.focus()
-  await page.waitForTimeout(100)
-  assert.equal(await button.getAttribute('aria-label'), 'Elindítom a logósort')
+  assert.equal(await button.getAttribute('aria-pressed'), 'true')
   await button.press('Space')
-  await page.waitForFunction(() => document.querySelector('.kc-press__viewport').scrollLeft > 5)
-  await viewport.hover()
-  assert.equal(await button.getAttribute('aria-label'), 'Elindítom a logósort')
-  console.log('PASS keyboard activation, focus stops motion, last link visible, hover pause')
+  await page.waitForFunction(
+    () => document.querySelector('.kc-press__rail').dataset.paused === 'false',
+  )
+  await page.waitForTimeout(250)
+  assert.notEqual(await transform(), paused)
+  console.log('PASS default CSS motion / durable keyboard pause; >=44px control; inert clone')
 
-  await button.click()
+  const viewport = page.locator('.kc-press__viewport')
+  await viewport.hover()
+  const hovered = await transform()
+  await page.waitForTimeout(10_000)
+  assert.equal(await transform(), hovered)
+  await page.mouse.move(0, 0)
+
+  const originalLinks = rows.first().locator('.kc-press__link')
+  assert.equal(await originalLinks.count(), 12)
+  for (let index = 0; index < 12; index += 1) {
+    const link = originalLinks.nth(index)
+    await link.focus()
+    await page.waitForTimeout(20)
+    const visible = await link.evaluate((focusedLink) => {
+      const box = focusedLink.getBoundingClientRect()
+      const frame = focusedLink.closest('.kc-press__viewport').getBoundingClientRect()
+      const style = getComputedStyle(focusedLink.closest('.kc-press__viewport'))
+      return {
+        fullyInside: box.left >= frame.left && box.right <= frame.right,
+        fadeRemoved: style.maskImage === 'none',
+      }
+    })
+    assert.equal(visible.fullyInside, true)
+    assert.equal(visible.fadeRemoved, true)
+  }
+  const focused = await track.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { animationName: style.animationName, transform: style.transform }
+  })
+  await page.waitForTimeout(10_000)
+  const focusedLater = await track.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { animationName: style.animationName, transform: style.transform }
+  })
+  assert.deepEqual(focusedLater, focused)
+  assert.equal(focused.animationName, 'none')
+  console.log('PASS hover/focus pause; every original link visible without edge fade')
+
+  await button.focus()
+  await page.waitForTimeout(20)
+  const resetScroll = await page.locator('.kc-press__viewport').evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    const focusedLink = document.activeElement
+    return {
+      scrollLeft: element.scrollLeft,
+      focusOutsideViewport: !element.contains(focusedLink),
+      width: box.width,
+    }
+  })
+  assert.equal(resetScroll.scrollLeft, 0)
+  assert.equal(resetScroll.focusOutsideViewport, true)
+
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.waitForFunction(
     () => document.querySelector('.kc-press__rail').dataset.motion === 'static',
@@ -265,37 +411,31 @@ try {
     }),
   )
   assert.equal(complete, true)
+  const reducedBefore = await page.locator('.kc-press__row').evaluate((list) =>
+    [...list.children].map((item) => {
+      const box = item.getBoundingClientRect()
+      return { left: box.left, top: box.top }
+    }),
+  )
+  await page.waitForTimeout(10_000)
+  const reducedAfter = await page.locator('.kc-press__row').evaluate((list) =>
+    [...list.children].map((item) => {
+      const box = item.getBoundingClientRect()
+      return { left: box.left, top: box.top }
+    }),
+  )
+  assert.deepEqual(reducedAfter, reducedBefore)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await button.waitFor()
-  assert.equal(await page.locator('.kc-press__rail').getAttribute('data-motion'), 'static')
-  console.log('PASS live reduced-motion change: complete static list, no implicit restart')
+  assert.equal(await page.locator('.kc-press__rail').getAttribute('data-motion'), 'marquee')
+  console.log('PASS live reduced-motion change: one complete static list, default motion restored')
 
   await render({ count: 1 })
   assert.equal(await page.locator('.kc-press__control').count(), 0)
+  assert.equal(await page.locator('.kc-press__row').count(), 1)
   await render({ count: 0 })
   assert.equal(await page.locator('.kc-press').count(), 0)
-  await render()
-  await button.click()
-  await button.click()
-  await viewport.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth - element.clientWidth - 10
-  })
-  await button.click()
-  await page.waitForFunction(
-    () =>
-      document.querySelector('.kc-press__control').getAttribute('aria-label') ===
-      'Elindítom a logósort',
-  )
-  const end = await viewport.evaluate((element) => element.scrollWidth - element.clientWidth)
-  assert.ok(Math.abs((await position()) - end) <= 1)
-  console.log('PASS empty/single logo; finite traversal stops at end')
-
-  await render()
-  await page.clock.install()
-  await button.click()
-  await page.clock.runFor(61_000)
-  assert.equal(await button.getAttribute('aria-label'), 'Elindítom a logósort')
-  console.log('PASS 60-second bound')
+  console.log('PASS empty/single logo static fallbacks')
   assert.deepEqual(errors, [])
   assert.deepEqual(requests, [])
   console.log('PASS no page errors, no network requests; offline component verification complete')

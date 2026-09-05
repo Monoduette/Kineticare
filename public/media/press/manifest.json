@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "retrievedAt": "2026-09-05",
+  "integration": {
+    "mode": "additive",
+    "cmsBlock": "pressLogos",
+    "existingCount": 6,
+    "verifiedAdditionCount": 4,
+    "resultingCount": 10,
+    "maxRows": 12,
+    "requiresSchemaChange": false,
+    "requiresCmsWrite": true,
+    "acquisitionPerformedCmsWrite": false
+  },
+  "preserveExisting": [
+    "press-noklapja.png",
+    "press-karc.png",
+    "press-hazipatika.png",
+    "press-kepmas.png",
+    "press-ispor.png",
+    "press-mgyft.png"
+  ],
+  "assets": [
+    {
+      "name": "Kossuth Rádió",
+      "file": "kossuth-radio.png",
+      "alt": "A Kossuth Rádió logója",
+      "classification": "press-requested",
+      "relationshipStatus": "owner-supplied media attribution; not independently verified",
+      "officialPage": "https://sajtoszoba.mtva.hu/kossuth",
+      "sourceUrl": "https://cdn.cms.mtv.hu/wp-content/plugins/sajtoszoba-plugin/images/logok/kossuth-r.png",
+      "sourceFormat": "PNG",
+      "sourceWidth": 157,
+      "sourceHeight": 188,
+      "localWidth": 157,
+      "localHeight": 188,
+      "transformation": "none; source bytes preserved",
+      "sha256": "66b16744dcbbb3aea7309869f3678f6893de48460985fdf7ea808c77a90d297c",
+      "brandUseCaveat": "Use only to identify the named medium. The attribution comes from the owner request and does not imply endorsement."
+    },
+    {
+      "name": "TV2",
+      "file": "tv2.webp",
+      "alt": "A TV2 logója",
+      "classification": "press-requested",
+      "relationshipStatus": "owner-supplied media attribution; not independently verified",
+      "officialPage": "https://tv2csoport.hu/csatornak/tv2",
+      "sourceUrl": "https://tv2csoport.hu/storage/8/conversions/b2078f563ea0ed43a3ad1db395c10a1c66b98866-nav.webp",
+      "sourceFormat": "WebP",
+      "sourceWidth": 256,
+      "sourceHeight": 256,
+      "localWidth": 256,
+      "localHeight": 256,
+      "transformation": "none; source bytes preserved",
+      "sha256": "8b243f0e58d75707edbdee8cb9c6e42b2f7be80f68f7d6040236c83ac5008a83",
+      "brandUseCaveat": "Use only to identify the named medium. The attribution comes from the owner request and does not imply endorsement."
+    },
+    {
+      "name": "Magyar Sportrehabilitációs Egyesület (MASE)",
+      "file": "mase.png",
+      "alt": "A Magyar Sportrehabilitációs Egyesület logója",
+      "classification": "professional-association",
+      "relationshipStatus": "verified; both Kineticare founders are identified by the association as founding members and committee co-chairs",
+      "officialPage": "https://magyarsportrehab.hu/felso-vegtagi-bizottsag/",
+      "sourceUrl": "https://magyarsportrehab.hu/wp-content/uploads/2023/12/02.mase-logo.png",
+      "sourceFormat": "PNG",
+      "sourceWidth": 1900,
+      "sourceHeight": 1900,
+      "sourceSha256": "2f1827c77cef5a9776c453bd72273fdb557ef1b0350aa5f1e2a31094e8f8208a",
+      "localWidth": 1431,
+      "localHeight": 396,
+      "transformation": "transparent outer padding cropped only; artwork, colors and aspect ratio unchanged",
+      "sha256": "bdacf94ba106e7d9d10824e3ba8aa5b34ee926398c2122e21bc2624903ac7d81",
+      "brandUseCaveat": "Label as a professional association relationship, not press coverage or a clinical endorsement."
+    },
+    {
+      "name": "Magyar Kézsebész Társaság",
+      "file": "magyar-kezsebesz-tarsasag.png",
+      "alt": "A Magyar Kézsebész Társaság logója",
+      "classification": "professional-event",
+      "relationshipStatus": "verified speaker and instructor context; membership or partnership not established for Kineticare",
+      "officialPage": "http://www.kezsebesz.hu/",
+      "sourceUrl": "http://www.kezsebesz.hu/wordpress/wp-content/uploads/2023/03/cropped-site_head_color.png",
+      "sourceFormat": "PNG",
+      "sourceWidth": 600,
+      "sourceHeight": 150,
+      "localWidth": 600,
+      "localHeight": 150,
+      "transformation": "none; source bytes preserved",
+      "sha256": "97f70fe6a7e4243e60b0cf70419a23b124d580075e689b423ac815049667043a",
+      "brandUseCaveat": "Label as a professional event or speaker relationship, not press coverage, partnership, membership or endorsement. The official site currently serves this asset over HTTP and its HTTPS certificate is not valid."
+    }
+  ],
+  "unresolved": [
+    {
+      "request": "D3",
+      "reason": "No unique organization, medium or brand identity is established by the owner brief or repository evidence."
+    },
+    {
+      "request": "H14 contact logo",
+      "reason": "The repository contains a light-background Kineticare logo, but the owner brief does not identify the requested new variant. No asset was inferred or invented."
+    }
+  ]
+}

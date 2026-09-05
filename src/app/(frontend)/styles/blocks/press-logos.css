@@ -36,7 +36,7 @@
 .kc-press__row {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(1.5rem, 4vw, 3.5rem);
+  gap: var(--kc-press-gap, clamp(1.5rem, 4vw, 3.5rem));
   align-items: center;
   justify-content: center;
   margin: var(--kc-space-6) 0 0;
@@ -84,30 +84,75 @@
   opacity: 1;
 }
 
-/* Egy lista marad a DOM-ban. A natív görgetés a fókuszált linket is behozza,
-   a kézi lapozás pedig szüneteltetés után is elérhető. Nincsenek klónok. */
 .kc-press__rail {
+  --kc-press-gap: clamp(1.5rem, 4vw, 3.5rem);
+  --kc-press-fade: clamp(1.5rem, 5vw, 4rem);
+
   min-width: 0;
 }
 
 .kc-press__viewport {
-  overflow-x: auto;
-  padding: var(--kc-space-2);
-  scroll-behavior: auto;
+  overflow: hidden;
+  padding-block: var(--kc-space-2);
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--kc-press-fade),
+    #000 calc(100% - var(--kc-press-fade)),
+    transparent 100%
+  );
 }
 
-.kc-press__rail[data-motion='rail'] .kc-press__row {
-  flex-wrap: nowrap;
-  justify-content: flex-start;
+.kc-press__track {
+  display: flex;
+  gap: var(--kc-press-gap);
   width: max-content;
-  min-width: 100%;
   margin-top: var(--kc-space-4);
+  will-change: transform;
 }
 
-.kc-press__rail[data-motion='rail'] .kc-press__item {
-  flex: 0 0 13.75rem;
+.kc-press__rail[data-measured='true'] .kc-press__track {
+  animation: kc-press-marquee 32s linear infinite;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__row {
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  justify-content: space-around;
+  width: var(--kc-press-cycle-width, max-content);
+  min-width: var(--kc-press-viewport-width, 100vw);
+  margin: 0;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__item {
+  flex: 0 0 auto;
   justify-content: center;
-  max-width: 13.75rem;
+}
+
+.kc-press__rail[data-paused='true'] .kc-press__track,
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:hover .kc-press__track {
+  animation-play-state: paused;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within {
+  overflow-x: auto;
+  mask-image: none;
+  scrollbar-width: none;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within::-webkit-scrollbar {
+  display: none;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within .kc-press__track {
+  animation: none;
+  transform: none;
+}
+
+@keyframes kc-press-marquee {
+  to {
+    transform: translate3d(var(--kc-press-cycle-offset), 0, 0);
+  }
 }
 
 .kc-press__controls {
@@ -131,6 +176,15 @@
   color: var(--kc-color-text);
   font-size: var(--kc-font-m);
   cursor: pointer;
+}
+
+.kc-press__control-icon {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .kc-press__control:hover,
@@ -189,16 +243,31 @@
 
   .kc-press__viewport {
     overflow: visible;
+    padding: 0;
+    mask-image: none;
   }
 
-  .kc-press__rail[data-motion='rail'] .kc-press__row {
+  .kc-press__track {
+    display: block;
+    width: auto;
+    margin-top: 0;
+    animation: none;
+    transform: none;
+  }
+
+  .kc-press__rail[data-motion='marquee'] .kc-press__row {
     flex-wrap: wrap;
     width: auto;
     min-width: 0;
+    margin-top: var(--kc-space-6);
     justify-content: center;
   }
 
-  .kc-press__rail[data-motion='rail'] .kc-press__item {
+  .kc-press__rail[data-motion='marquee'] .kc-press__row[aria-hidden='true'] {
+    display: none;
+  }
+
+  .kc-press__rail[data-motion='marquee'] .kc-press__item {
     flex: 0 1 auto;
     max-width: 100%;
   }

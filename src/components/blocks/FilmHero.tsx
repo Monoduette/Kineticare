@@ -1,6 +1,8 @@
 import type { BlockFilmHero } from '../../payload-types'
 import { buildOriginAllowlist } from '../../env'
+import { COURSE_BASE_PATH, parseCourseRouteParam } from '../../lib/course-url'
 import { COURSE_SOS_KEZRELAX, LEGACY_REDIRECTS } from '../../lib/legacy-redirects'
+import { SOS_COURSE_FALLBACK_PATH } from '../../lib/menu-seed'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { PRODUCTION_HOSTS } from '../../lib/security/live-environment'
 import { Button } from '../ui/Button'
@@ -133,9 +135,20 @@ export function FilmHero({
     try {
       const url = new URL(safeUrl, `${siteOrigins[0]}/`)
       if (!siteOrigins.includes(url.origin)) return null
-      const pathname = decodeURIComponent(url.pathname).replace(/\/+$/, '') || '/'
+      const pathname = url.pathname.replace(/\/+$/, '') || '/'
+      const coursePrefix = `${COURSE_BASE_PATH}/`
+      const segment = pathname.startsWith(coursePrefix) ? pathname.slice(coursePrefix.length) : ''
+      // Ugyanaz az egy dinamikus szegmens és parser, mint a kurzusoldalon.
+      const course =
+        segment && !segment.includes('/')
+          ? parseCourseRouteParam(decodeURIComponent(segment))
+          : null
+      const coursePath = course
+        ? `${coursePrefix}${course.kind === 'id' ? course.id : course.slug}`
+        : null
       if (
-        pathname === COURSE_SOS_KEZRELAX ||
+        coursePath === COURSE_SOS_KEZRELAX ||
+        coursePath === SOS_COURSE_FALLBACK_PATH ||
         LEGACY_REDIRECTS.some(
           (redirect) =>
             redirect.source.toLowerCase() === pathname.toLowerCase() &&

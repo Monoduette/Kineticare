@@ -1,6 +1,6 @@
 /** Explicit owner-content operation. No boot hook, default is a write-free preview. */
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -9,6 +9,7 @@ import sharp from 'sharp'
 
 import { logger } from '../lib/logger'
 import { isFreeCourse } from '../lib/courses'
+import { missingMediaFiles } from '../lib/media-restore'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import {
   planOwnerReviewV1,
@@ -63,7 +64,7 @@ export function parseOwnerReviewAssets(value: unknown): PhotoAsset[] {
     throw new Error('Hiányos fotójegyzék.')
   }
   const rawAssets = value.assets
-  return ROLES.map((role) => {
+  const assets = ROLES.map((role) => {
     const matches = rawAssets.filter(
       (item: unknown) => !!item && typeof item === 'object' && 'role' in item && item.role === role,
     )
@@ -86,6 +87,10 @@ export function parseOwnerReviewAssets(value: unknown): PhotoAsset[] {
     }
     return { role, file: asset.file, alt: asset.alt, sha256: asset.sha256 }
   })
+  if (new Set(assets.map((asset) => asset.file)).size !== assets.length) {
+    throw new Error('Ismétlődő fotófájlnév a szerepek között.')
+  }
+  return assets
 }
 
 async function loadAssets(): Promise<PhotoAsset[]> {
@@ -123,6 +128,7 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
   const filenames = new Map(media.docs.map((doc) => [doc.id, doc.filename ?? '']))
   const ids: PhotoIds = {}
   const mediaProof: { id: number; filename: string; updatedAt: string; sha256: string }[] = []
+  const mediaFileBlockers: string[] = []
   const placeholderBase = Math.max(0, ...media.docs.map((doc) => doc.id)) + 1000
   for (const [index, asset] of assets.entries()) {
     const matches = media.docs.filter((doc) => doc.filename === asset.file)
@@ -137,6 +143,10 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
         .digest('hex')
       if (storedHash !== asset.storedSha256) {
         throw new Error(`A meglévő fotó tartalma eltér a jóváhagyott képtől: ${asset.file}`)
+      }
+      const missing = missingMediaFiles(path.resolve(upload.staticDir), matches[0])
+      if (missing.length > 0) {
+        mediaFileBlockers.push(`Hiányzó fotófájlok; helyreállítás szükséges: ${missing.join(', ')}`)
       }
       mediaProof.push({
         id: matches[0].id,
@@ -228,12 +238,56 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
   const freeOfferChanges = ['H13', 'P03'].filter((requestId) =>
     plans.some((plan) => plan.changes.some((change) => change.requestId === requestId)),
   )
-  const blockers =
-    !freeOfferAvailable && freeOfferChanges.length > 0
+  const blockers = [
+    ...mediaFileBlockers,
+    ...(!freeOfferAvailable && freeOfferChanges.length > 0
       ? [
           `${freeOfferChanges.join(', ')}: Az ingyenes SOS-t említő új tartalomhoz ellenőrzött, közzétett ingyenes kurzus szükséges.`,
         ]
-      : []
+      : []),
+  ]
+  const pendingAssets = plans.some((plan) => plan.changes.length > 0)
+    ? assets.filter((asset) => (ids[asset.role] ?? 0) >= placeholderBase)
+    : []
+  if (pendingAssets.length > 0) {
+    const upload = payload.collections.media.config.upload
+    if (!upload || upload.disableLocalStorage || !upload.staticDir) {
+      blockers.push('Az új fotók helyi feltöltési könyvtára nem ellenőrizhető.')
+    } else {
+      let existing: string[]
+      try {
+        existing = await readdir(path.resolve(upload.staticDir))
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+          existing = []
+        } else {
+          throw error
+        }
+      }
+      const reservedNames = media.docs.flatMap((doc) =>
+        [doc.filename, ...Object.values(doc.sizes ?? {}).map((size) => size?.filename)].filter(
+          (filename): filename is string => typeof filename === 'string',
+        ),
+      )
+      const occupiedNames = [...new Set([...existing, ...reservedNames])].sort()
+      for (const asset of pendingAssets) {
+        const sourceName = path.parse(asset.file)
+        // A pinned Payload variánsai: <alapnév>-<szélesség>x<magasság>.<kiterjesztés>.
+        const collision = occupiedNames.find((filename) => {
+          if (filename === asset.file) return true
+          const stored = path.parse(filename)
+          const prefix = `${sourceName.name}-`
+          return (
+            stored.ext === sourceName.ext &&
+            stored.name.startsWith(prefix) &&
+            /^\d+x\d+$/.test(stored.name.slice(prefix.length))
+          )
+        })
+        if (collision)
+          blockers.push(`Fotó fájlnévütközés: ${collision}; meglévő fájlt nem írunk felül.`)
+      }
+    }
+  }
   return {
     pages,
     filenames,
@@ -444,6 +498,7 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
     if (!options.apply) return
     if (options.hash !== hash)
       throw new Error('A terv változott. Új próbafutás és független ellenőrzés szükséges.')
+    if (state.blockers.length) throw new Error(`Publikálási HOLD: ${state.blockers.join(' ')}`)
     const targets = state.plans
       .filter((plan) => 'id' in plan)
       .filter((plan) => plan.changes.length > 0)
@@ -464,7 +519,6 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
     ) {
       throw new Error('A tartalom az ellenőrzés közben változott; nem írtunk az adatbázisba.')
     }
-    if (state.blockers.length) throw new Error(`Publikálási HOLD: ${state.blockers.join(' ')}`)
     const ids = { ...state.ids }
     for (const asset of targets.length ? assets : []) {
       if ((ids[asset.role] ?? 0) < state.placeholderBase) continue
@@ -474,6 +528,12 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
         filePath: path.resolve('public/media/team', asset.file),
         overrideAccess: true,
       })
+      if (created.filename !== asset.file) {
+        throw new Error(
+          `A feltöltés eltérő fájlnevet adott (${asset.file}, média-ID: ${created.id}). ` +
+            'Részleges médiafeltöltés történt; az oldalakat nem módosítottuk. Kézi ellenőrzés szükséges.',
+        )
+      }
       ids[asset.role] = created.id
     }
     for (const target of targets) {

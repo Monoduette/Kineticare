@@ -1,6 +1,14 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FocusEvent,
+  type ReactNode,
+} from 'react'
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
@@ -14,16 +22,16 @@ const reducedMotion = () => window.matchMedia(REDUCED_MOTION).matches
 const staticOnServer = () => true
 
 /**
- * Egy eredeti lista, csak kérésre mozgó, véges bejárással. SSR/JS nélkül és
- * reduced-motion esetén minden logó látható, sorokra tördelve.
- * https://www.w3.org/WAI/tutorials/carousels/animations/
- * https://www.nngroup.com/articles/auto-forwarding/
+ * Az SSR/JS nélküli és reduced-motion alapállapot egy teljes, statikus lista.
+ * Normál módban a második, inert lista kizárólag a folytonos vizuális hurkot
+ * zárja; a képernyőolvasó és a fókuszsorrend minden eredeti logót egyszer kap meg.
+ * https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html
  */
 export function LogoRail({ children, count }: { children: ReactNode; count: number }) {
   const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, staticOnServer)
   const id = useId()
 
-  // A mozgó rész megszűnik a beállítás váltásakor: nem indul újra magától.
+  // Reduced-motion alatt a mozgó DOM és a vizuális másolat is teljesen megszűnik.
   if (reduced || count < 2) {
     return (
       <div className="kc-press__rail" data-motion="static">
@@ -38,72 +46,88 @@ export function LogoRail({ children, count }: { children: ReactNode; count: numb
 }
 
 function MotionRail({ children, id }: { children: ReactNode; id: string }) {
-  const [railMode, setRailMode] = useState(false)
-  const [playing, setPlaying] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [measured, setMeasured] = useState(false)
   const viewport = useRef<HTMLDivElement>(null)
-  const elapsed = useRef(0)
-  const stop = () => setPlaying(false)
-  const label = playing ? 'Megállítom a logósort' : 'Elindítom a logósort'
+  const track = useRef<HTMLDivElement>(null)
+  const originalRow = useRef<HTMLUListElement>(null)
+  const label = paused ? 'Elindítom a logósort' : 'Megállítom a logósort'
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.hidden) setPlaying(false)
+      if (document.hidden) setPaused(true)
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
   useEffect(() => {
-    const element = viewport.current
-    if (!playing || !element) return
+    const viewportElement = viewport.current
+    const trackElement = track.current
+    const rowElement = originalRow.current
+    if (!viewportElement || !trackElement || !rowElement) return
 
-    let frame = 0
-    let previous: number | undefined
-    let position = element.scrollLeft
-    const tick = (now: number) => {
-      // Háttérből visszatérve sem ugrik a sor. Egy indítás legfeljebb 60 s.
-      const duration = previous === undefined ? 0 : now - previous
-      const delta = Math.min(duration, 64)
-      previous = now
-      elapsed.current += duration
-      const end = Math.max(0, element.scrollWidth - element.clientWidth)
-      position = Math.min(end, position + (delta * 32) / 1000)
-      element.scrollLeft = position
-      if (position >= end || elapsed.current >= 60_000 || document.hidden) {
-        setPlaying(false)
-        return
-      }
-      frame = requestAnimationFrame(tick)
+    const measure = () => {
+      const viewportWidth = viewportElement.clientWidth
+      if (viewportWidth <= 0) return
+
+      const items = Array.from(rowElement.children) as HTMLElement[]
+      const rowGap = Number.parseFloat(getComputedStyle(rowElement).gap) || 0
+      const trackGap = Number.parseFloat(getComputedStyle(trackElement).gap) || 0
+      const contentWidth =
+        items.reduce((width, item) => width + item.getBoundingClientRect().width, 0) +
+        Math.max(0, items.length - 1) * rowGap
+      const cycleWidth = Math.ceil(Math.max(viewportWidth, contentWidth))
+
+      viewportElement.style.setProperty(
+        '--kc-press-viewport-width',
+        `${Math.ceil(viewportWidth)}px`,
+      )
+      viewportElement.style.setProperty('--kc-press-cycle-width', `${cycleWidth}px`)
+      viewportElement.style.setProperty('--kc-press-cycle-offset', `${-(cycleWidth + trackGap)}px`)
+      setMeasured(true)
     }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [playing])
+    measure()
 
-  function toggle() {
-    if (playing) {
-      stop()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewportElement)
+    observer.observe(rowElement)
+    Array.from(rowElement.children).forEach((item) => observer.observe(item))
+    return () => observer.disconnect()
+  }, [])
+
+  function keepFocusedLogoVisible(event: FocusEvent<HTMLDivElement>) {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+    requestAnimationFrame(() => target.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+  }
+
+  function resetFocusScroll(event: FocusEvent<HTMLDivElement>) {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))
       return
-    }
-    const element = viewport.current
-    if (element && element.scrollLeft >= element.scrollWidth - element.clientWidth - 1) {
-      element.scrollLeft = 0
-    }
-    elapsed.current = 0
-    setRailMode(true)
-    setPlaying(true)
+    event.currentTarget.scrollLeft = 0
   }
 
   return (
-    <div className="kc-press__rail" data-motion={railMode ? 'rail' : 'static'}>
+    <div
+      className="kc-press__rail"
+      data-measured={measured}
+      data-motion="marquee"
+      data-paused={paused}
+    >
       <div className="kc-press__controls">
         <button
           aria-controls={id}
           aria-label={label}
+          aria-pressed={paused}
           className="kc-press__control"
-          onClick={toggle}
+          onClick={() => setPaused((current) => !current)}
           type="button"
         >
-          <span aria-hidden="true">{playing ? 'Ⅱ' : '▶'}</span>
+          <span aria-hidden="true" className="kc-press__control-icon">
+            {paused ? '▶' : 'Ⅱ'}
+          </span>
           <span aria-hidden="true" className="kc-press__control-label">
             {label}
           </span>
@@ -111,15 +135,19 @@ function MotionRail({ children, id }: { children: ReactNode; id: string }) {
       </div>
       <div
         className="kc-press__viewport"
-        onFocusCapture={stop}
-        onMouseEnter={stop}
-        onPointerDown={stop}
-        onWheel={stop}
+        id={id}
+        onBlurCapture={resetFocusScroll}
+        onFocusCapture={keepFocusedLogoVisible}
         ref={viewport}
       >
-        <ul className="kc-press__row" id={id}>
-          {children}
-        </ul>
+        <div className="kc-press__track" ref={track}>
+          <ul className="kc-press__row" ref={originalRow}>
+            {children}
+          </ul>
+          <ul aria-hidden="true" className="kc-press__row" inert>
+            {children}
+          </ul>
+        </div>
       </div>
     </div>
   )

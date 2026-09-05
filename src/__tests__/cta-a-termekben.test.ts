@@ -221,7 +221,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     fajl: 'components/blocks/LogoRail.tsx',
     kategoria: 'nem-cta',
     indok:
-      'Tulajdonos által jóváhagyott helyi mozgásvezérlő: csak a logósor véges görgetését indítja. Nem értékesítési CTA, nem navigál, nem módosít fiók- vagy vásárlási adatot; kizárólag e komponens felirata mentesül.',
+      'Tulajdonos által jóváhagyott helyi mozgásvezérlő: csak a logósor folyamatos CSS-mozgását indítja. Nem értékesítési CTA, nem navigál, nem módosít fiók- vagy vásárlási adatot; kizárólag e komponens felirata mentesül.',
   },
   {
     felirat: 'Megállítom a logósort',

@@ -267,6 +267,14 @@ describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshe
     '/KezRelax',
     'https://kineticare.hu/KEZRELAX/',
     'https://kineticare.hu/kezrelax/?utm_source=teszt#reszletek',
+    '/kurzusok/2',
+    '/kurzusok/02/',
+    '/kurzusok/%32?utm_source=teszt#reszletek',
+    'https://kineticare.hu/kurzusok/0002',
+    'https://www.kineticare.hu/kurzusok/2/?utm_source=teszt#reszletek',
+    '/kurzusok/SOS-KEZRELAX-VILLAMKURZUS',
+    '/kurzusok/SOS%20Kezrelax%20villamkurzus',
+    '/kurzusok/sos%2Fkezrelax%2Fvillamkurzus',
     ...['https://kineticare.hu', 'https://www.kineticare.hu', 'https://KINETICARE.HU:443'].flatMap(
       (origin) => [
         `${origin}/kurzusok/sos-kezrelax-villamkurzus`,
@@ -351,6 +359,10 @@ describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshe
 
   it.each([
     '/kurzusok/masik-ingyenes',
+    '/kurzusok/3',
+    '/kurzusok/2-masik',
+    '/kurzusok/2/masik',
+    '/kurzusok/2.0',
     '/kurzusok/sos-kezrelax-villamkurzus-masolat',
     '/kurzusok/sos-kezrelax-villamkurzus/masik',
     '/kurzusok?next=/kurzusok/sos-kezrelax-villamkurzus',

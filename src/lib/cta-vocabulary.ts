@@ -42,6 +42,7 @@ export type CtaAction =
   | 'cookie-settings-open'
   | 'password-reset-start'
   | 'free-strip-jump'
+  | 'course-modules-jump'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -499,6 +500,17 @@ export const CTA_VOCABULARY = [
     label: 'Nézd meg ingyenes SOS-kurzusunkat',
     person: 'e2',
     weight: 'ghost',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #39: navigacio a kampany tananyagahoz, nem kurzusinditas vagy vasarlas.
+    section: '#39',
+    action: 'course-modules-jump',
+    label: 'Nézd meg a modulokat',
+    person: 'e2',
+    weight: 'secondary',
     progress: null,
     patterned: false,
     pattern: null,

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import path from 'node:path'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import sharp from 'sharp'
 
 const runtime = vi.hoisted(() => ({
   find: vi.fn(),
@@ -7,8 +11,21 @@ const runtime = vi.hoisted(() => ({
   destroy: vi.fn(),
   getPayload: vi.fn(),
   info: vi.fn(),
+  findByID: vi.fn(),
+  readdir: vi.fn(),
+  collections: {
+    media: {
+      config: {
+        upload: { staticDir: '/tmp/kineticare-cli-unit-media', disableLocalStorage: false },
+      },
+    },
+  },
 }))
 
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  readdir: runtime.readdir,
+}))
 vi.mock('payload', () => ({ getPayload: runtime.getPayload }))
 vi.mock('../payload.config', () => ({ default: {} }))
 vi.mock('../lib/logger', () => ({ logger: { info: runtime.info, error: vi.fn() } }))
@@ -30,11 +47,23 @@ import {
 } from '../scripts/apply-owner-review-v1'
 
 describe('Owner review explicit application boundary', () => {
-  afterEach(() => vi.restoreAllMocks())
+  const fixtureDirectories: string[] = []
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    for (const directory of fixtureDirectories.splice(0)) {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
 
   beforeEach(() => {
     vi.clearAllMocks()
     runtime.find.mockResolvedValue({ docs: [] })
+    runtime.readdir.mockReset().mockResolvedValue([])
+    runtime.create.mockReset()
+    runtime.update.mockReset()
+    runtime.findByID.mockReset()
+    runtime.collections.media.config.upload.disableLocalStorage = false
+    runtime.collections.media.config.upload.staticDir = '/tmp/kineticare-cli-unit-media'
     runtime.destroy.mockResolvedValue(undefined)
     runtime.getPayload.mockResolvedValue(runtime)
   })
@@ -134,6 +163,20 @@ describe('Owner review explicit application boundary', () => {
       updatedAt: '2026-09-05T00:00:00.000Z',
     }
     runtime.find.mockImplementation(async ({ collection }: { collection: string }) => {
+      if (collection === 'products') {
+        return {
+          docs: [
+            {
+              id: 2,
+              slug: 'sos-kezrelax-villamkurzus',
+              status: 'published',
+              _status: 'published',
+              priceInHUFEnabled: false,
+              updatedAt: '2026-09-05T00:00:00.000Z',
+            },
+          ],
+        }
+      }
       if (collection !== 'pages') return { docs: [] }
       pageReads += 1
       return {
@@ -283,6 +326,7 @@ describe('Owner review explicit application boundary', () => {
       runtime.find.mockImplementation(async ({ collection }: { collection: string }) => ({
         docs: collection === 'pages' ? [page] : collection === 'products' ? products() : [],
       }))
+      return page
     }
 
     async function preview() {
@@ -293,6 +337,69 @@ describe('Owner review explicit application boundary', () => {
       expect(summary?.pages[0].changes).toBe(1)
       return summary
     }
+
+    async function managedPhoto(withVariant: boolean) {
+      const directory = await mkdtemp(path.join(tmpdir(), 'kineticare-cli-managed-photo-'))
+      fixtureDirectories.push(directory)
+      runtime.collections.media.config.upload.staticDir = directory
+      const filename = 'founders-intro-white-1600.webp'
+      const variant = 'founders-intro-white-1600-320x213.webp'
+      const source = await readFile(path.resolve('public/media/team', filename))
+      await writeFile(
+        path.join(directory, filename),
+        await sharp(source, { animated: true }).rotate().webp({ quality: 80 }).toBuffer(),
+      )
+      if (withVariant) await writeFile(path.join(directory, variant), 'existing variant fixture')
+      const find = runtime.find.getMockImplementation()!
+      runtime.find.mockImplementation(async (args: { collection: string }) =>
+        args.collection === 'media'
+          ? {
+              docs: [
+                {
+                  id: 30,
+                  filename,
+                  updatedAt: '2026-09-05',
+                  sizes: { small: { filename: variant } },
+                },
+              ],
+            }
+          : find(args),
+      )
+      return { directory, variant }
+    }
+
+    it('reports a missing managed responsive image without uploading or writing pages', async () => {
+      setupPlan(() => [freeProduct])
+      const { variant } = await managedPhoto(false)
+      const summary = await preview()
+      expect(summary.blockers.join(' ')).toContain(variant)
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it('rejects a reviewed plan if a managed responsive image disappears before apply', async () => {
+      setupPlan(() => [freeProduct])
+      const { directory, variant } = await managedPhoto(true)
+      const summary = await preview()
+      expect(summary.blockers).toEqual([])
+      await rm(path.join(directory, variant))
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'A terv változott',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it('keeps a complete managed photo unblocked during read-only preview', async () => {
+      setupPlan(() => [freeProduct])
+      await managedPhoto(true)
+      expect((await preview()).blockers).toEqual([])
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
 
     it.each([
       ['missing', []],
@@ -340,6 +447,22 @@ describe('Owner review explicit application boundary', () => {
       expect(runtime.update).not.toHaveBeenCalled()
     })
 
+    it('holds a no-op apply when a managed responsive image is missing', async () => {
+      setupPlan(() => [], null)
+      const { variant } = await managedPhoto(false)
+      await applyOwnerReviewV1([])
+      const summary = runtime.info.mock.calls.find(
+        ([message]) => message === 'KC V1 tartalmi terv',
+      )?.[1]
+      expect(summary.pages[0].changes).toBe(0)
+      expect(summary.blockers.join(' ')).toContain(variant)
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
     it('does not block an unrelated change without a free product', async () => {
       setupPlan(() => [], 'H01')
       expect((await preview()).blockers).toEqual([])
@@ -356,6 +479,103 @@ describe('Owner review explicit application boundary', () => {
       expect(reads).toBe(3)
       expect(runtime.create).not.toHaveBeenCalled()
       expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it.each(['founders-intro-white-1600.webp', 'founders-intro-white-1600-320x213.webp'])(
+      'blocks an orphan main/variant file before any upload: %s',
+      async (filename) => {
+        setupPlan(() => [freeProduct])
+        runtime.readdir.mockResolvedValue([filename])
+        const summary = await preview()
+        expect(summary.blockers.join(' ')).toContain('fájlnévütközés')
+        await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+          'Publikálási HOLD',
+        )
+        expect(runtime.create).not.toHaveBeenCalled()
+        expect(runtime.update).not.toHaveBeenCalled()
+      },
+    )
+
+    it('rechecks filesystem collisions with the reviewed hash before first upload', async () => {
+      setupPlan(() => [freeProduct])
+      runtime.readdir
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValue(['founders-intro-white-1600.webp'])
+      const summary = await preview()
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'A tartalom az ellenőrzés közben változott',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it.each(['main', 'variant'])(
+      'blocks a database-owned %s filename even when its file is missing',
+      async (kind) => {
+        setupPlan(() => [freeProduct])
+        const filename = 'founders-intro-white-1600-320x213.webp'
+        const find = runtime.find.getMockImplementation()!
+        runtime.find.mockImplementation(async (args: { collection: string }) =>
+          args.collection === 'media'
+            ? {
+                docs: [
+                  {
+                    id: 40,
+                    filename: kind === 'main' ? filename : 'editor-photo.webp',
+                    sizes: kind === 'variant' ? { small: { filename } } : {},
+                  },
+                ],
+              }
+            : find(args),
+        )
+        const summary = await preview()
+        expect(summary.blockers.join(' ')).toContain('fájlnévütközés')
+        await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+          'Publikálási HOLD',
+        )
+        expect(runtime.create).not.toHaveBeenCalled()
+        expect(runtime.update).not.toHaveBeenCalled()
+      },
+    )
+
+    it('stops before page writes if Payload unexpectedly renames an uploaded file', async () => {
+      setupPlan(() => [freeProduct])
+      const summary = await preview()
+      runtime.create.mockResolvedValue({ id: 9, filename: 'founders-intro-white-1601.webp' })
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'eltérő fájlnevet',
+      )
+      expect(runtime.create).toHaveBeenCalledOnce()
+      expect(runtime.update).not.toHaveBeenCalled()
+      expect(runtime.findByID).not.toHaveBeenCalled()
+    })
+
+    it('keeps an unrelated existing file and permits exact-name uploads', async () => {
+      const page = setupPlan(() => [freeProduct])
+      runtime.readdir.mockResolvedValue([
+        'editor-photo.webp',
+        'founders-intro-white-1600-other.webp',
+      ])
+      const summary = await preview()
+      expect(summary.blockers).toEqual([])
+      let id = 10
+      runtime.create.mockImplementation(async ({ filePath }: { filePath: string }) => ({
+        id: id++,
+        filename: path.basename(filePath),
+      }))
+      runtime.findByID.mockResolvedValue(page)
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).resolves.toBeUndefined()
+      expect(runtime.create).toHaveBeenCalledTimes(7)
+      expect(runtime.update).toHaveBeenCalledOnce()
+    })
+
+    it('does not inspect the upload directory for a no-op plan', async () => {
+      setupPlan(() => [], null)
+      runtime.readdir.mockRejectedValue(new Error('No directory read expected'))
+      await applyOwnerReviewV1([])
+      expect(runtime.readdir).not.toHaveBeenCalled()
+      expect(runtime.create).not.toHaveBeenCalled()
     })
   })
 
@@ -415,6 +635,11 @@ describe('Owner review explicit application boundary', () => {
     expect(parseOwnerReviewAssets({ assets })).toHaveLength(7)
     expect(() => parseOwnerReviewAssets({ assets: assets.slice(1) })).toThrow()
     expect(() => parseOwnerReviewAssets({ assets: [...assets, assets[0]] })).toThrow()
+    expect(() =>
+      parseOwnerReviewAssets({
+        assets: [assets[0], { ...assets[1], file: assets[0].file }, ...assets.slice(2)],
+      }),
+    ).toThrow(/ismétlődő fotófájlnév/i)
     for (const file of ['../photo.webp', '/photo.webp', 'https://example.test/a.webp', '.env']) {
       expect(() =>
         parseOwnerReviewAssets({ assets: [{ ...assets[0], file }, ...assets.slice(1)] }),

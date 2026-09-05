@@ -249,6 +249,20 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   **7018/7018 PASS, 300 fájl**, kihagyás és ismétlés nélkül.
   Typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
   A friss helyi CMS-kezdőlapon a sorrend, hero-linkek és a GYIK ellenőrizve.
+- A `7b3a12d` CI/gitleaks sikeres. A cloud review új, név szerint
+  hivatkozott szerződést talált: `menu-seed.ts` számos SOS-tartalékútvonala.
+  A korábbi feltételezés, hogy ez csak ismeretlen adatbázis-azonosító lenne,
+  téves volt. Az orkesztrátor további egy szűk, bizonyítékalapú ciklust enged:
+  a kurzusoldal tényleges parserének újrahasználata zárja össze a slugos és
+  számos névteret, explicit regressziókkal. Külön új média-kritérium a
+  jóváhagyott fotók bekötése a meglévő, induláskori fájl-helyreállításba.
+  A merge mindkét javítás független ellenőrzéséig HOLD.
+  A két helyi HOLD később lezárult: a számos SOS-útvonal regressziói és a
+  fotó-helyreállítás fail-closed/provenance ellenőrzései sikeresek; a média-
+  és CLI-javításokat független review elfogadta. A teljes fagyasztott csomag
+  7125/7125 tesztje, typecheckje, lintje és buildje sikeres. Az új remote
+  head CI/review és az éles CMS-publikálás továbbra is külön kapu;
+  részletes bizonyíték: `docs/kc-v1-delivery-plan.md`.
 
 ## Tanulságok
 

@@ -3,11 +3,14 @@
  * Rekord-id megmarad; overwriteExistingFiles. Saját admin-feltöltés pótolhatatlan.
  */
 
-import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 
 import type { Payload } from 'payload'
 
+import teamManifest from '../../public/media/team/manifest.json'
 import { HOME_IMAGES, LANDING_ASSETS_DIR } from './home-seed'
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR } from './legacy-images'
 import type { Media } from '../payload-types'
@@ -32,8 +35,9 @@ export const mediaBaseName = (fileName: string): string => fileName.replace(/\.[
 /**
  * Alapnév → abszolút forrásútvonal a repóban.
  *
- * Két forráskészlet: a kezdőlapi seed képei (`content/home-images`,
- * LANDING_ASSETS_DIR) és a legacy archívum képei. Névütközésnél az ELSŐ
+ * Három forráskészlet: a kezdőlapi seed képei (`content/home-images`,
+ * LANDING_ASSETS_DIR), a legacy archívum és a kanonikus team manifest képei.
+ * Névütközésnél az ELSŐ
  * (kezdőlap) nyer — a kezdőlap-layout hivatkozásai, azok elvesztése látszik
  * a legjobban.
  */
@@ -50,6 +54,23 @@ export const buildMediaSourceIndex = (): ReadonlyMap<string, string> => {
     if (!index.has(key)) {
       index.set(key, path.join(LEGACY_IMAGES_DIR, image.file))
     }
+  }
+  const teamDir = path.resolve('public/media/team')
+  for (const image of teamManifest.assets) {
+    // Ugyanaz a biztonságos WebP-alapnév, amelyet az owner CLI feltölt.
+    // Csak a manifest fájlmezője számít, nem az eredeti forrásnév vagy a szerep.
+    if (!/^[a-z0-9-]+\.webp$/.test(image.file)) {
+      throw new Error(
+        'A team média manifest fájlneve nem biztonságos; használj kisbetűs WebP alapnevet.',
+      )
+    }
+    if (!/^[a-f0-9]{64}$/.test(image.sha256)) {
+      throw new Error(
+        'A team média manifest SHA-256 értéke hibás; adj meg 64 karakteres kisbetűs hex értéket.',
+      )
+    }
+    const key = mediaBaseName(image.file)
+    if (!index.has(key)) index.set(key, path.join(teamDir, image.file))
   }
   return index
 }
@@ -83,8 +104,31 @@ export const missingMediaFiles = (uploadDir: string, doc: Media): string[] => {
       names.push(sizeName)
     }
   }
+  if (
+    names.some(
+      (name) =>
+        name === '.' ||
+        name === '..' ||
+        name.includes('\0') ||
+        path.basename(name) !== name ||
+        path.win32.basename(name) !== name,
+    )
+  ) {
+    throw new Error(
+      'A médiafájlnév kilépne a feltöltési könyvtárból; használj könyvtárnév nélküli fájlnevet.',
+    )
+  }
   return names.filter((name) => !existsSync(path.join(uploadDir, name)))
 }
+
+const mediaRestoreSnapshot = (doc: Media) => ({
+  filename: doc.filename,
+  sizes: doc.sizes,
+  alt: doc.alt,
+  focalX: doc.focalX,
+  focalY: doc.focalY,
+  updatedAt: doc.updatedAt,
+})
 
 /**
  * Fájl-szintű ellenőrzés és önjavítás minden média-rekordra.
@@ -120,28 +164,104 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
       continue
     }
 
-    const missing = missingMediaFiles(uploadDir, doc)
-    if (missing.length === 0) {
-      summary.rendben += 1
-      continue
-    }
-
-    const source = sources.get(mediaBaseName(filename))
-    if (source === undefined || !existsSync(source)) {
-      summary.potolhatatlan += 1
-      payload.logger.warn(
-        `Média-helyreállítás: hiányzó fájl, de nincs hozzá forrás a repóban (${filename}) — a rekord érintetlen marad.`,
-      )
-      continue
-    }
-
     try {
+      const missing = missingMediaFiles(uploadDir, doc)
+      if (missing.length === 0) {
+        summary.rendben += 1
+        continue
+      }
+
+      const source = sources.get(mediaBaseName(filename))
+      if (source === undefined || !existsSync(source)) {
+        summary.potolhatatlan += 1
+        payload.logger.warn(
+          `Média-helyreállítás: hiányzó fájl, de nincs hozzá forrás a repóban (${filename}) — a rekord érintetlen marad.`,
+        )
+        continue
+      }
+
+      const teamAsset = teamManifest.assets.find(
+        (asset) => source === path.resolve('public/media/team', asset.file),
+      )
+      if (teamAsset) {
+        // Ezek már WebP-források: a CLI/Payload normál fájlneve pontosan a manifest neve.
+        if (filename !== teamAsset.file) {
+          summary.potolhatatlan += 1
+          payload.logger.warn(
+            `Média-helyreállítás: nem kanonikus team fájlnév (${filename}); érintetlen marad.`,
+          )
+          continue
+        }
+        const sourceBytes = readFileSync(source)
+        const hash = createHash('sha256').update(sourceBytes).digest('hex')
+        if (hash !== teamAsset.sha256) {
+          throw new Error('A committed team média-forrás SHA-256 ellenőrzőösszege eltér.')
+        }
+        if (missing.includes(filename)) {
+          throw new Error(
+            'A team főfájl hiányzik; szerkesztői csere nem zárható ki, kézi helyreállítás szükséges.',
+          )
+        }
+        if (!missing.includes(filename)) {
+          const storedHash = createHash('sha256')
+            .update(readFileSync(path.join(uploadDir, filename)))
+            .digest('hex')
+          if (storedHash !== hash) {
+            // A Payload 3.88 Media főfájlja auto-rotate + WebP q80, nem raw copy.
+            // Más transzformációt nem találgatunk: szerkesztői képet veszíthetnénk el.
+            const upload = payload.collections.media.config.upload
+            const sharp = payload.config.sharp
+            if (
+              !sharp ||
+              !isDeepStrictEqual(upload.formatOptions, {
+                format: 'webp',
+                options: { quality: 80 },
+              }) ||
+              upload.resizeOptions ||
+              upload.trimOptions ||
+              upload.constructorOptions ||
+              upload.withMetadata
+            ) {
+              throw new Error(
+                'A team főfájl normalizálása nem igazolható; kézi helyreállítás szükséges.',
+              )
+            }
+            const normalized = await sharp(sourceBytes, { animated: true })
+              .rotate()
+              .webp({ quality: 80 })
+              .toBuffer()
+            if (storedHash !== createHash('sha256').update(normalized).digest('hex')) {
+              throw new Error('A team főfájl eltér a repó-forrástól; kézi helyreállítás szükséges.')
+            }
+          }
+        }
+      }
+
+      // Ez szűkíti, de nem szünteti meg a findByID és update közötti versenyablakot.
+      const latest = await payload.findByID({
+        collection: 'media',
+        id: doc.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      if (!isDeepStrictEqual(mediaRestoreSnapshot(latest), mediaRestoreSnapshot(doc))) {
+        summary.sikertelen += 1
+        payload.logger.warn(
+          `Média-helyreállítás: a rekord közben változott (${filename}, id=${doc.id}); kihagytuk, kézi ellenőrzés szükséges.`,
+        )
+        continue
+      }
+
       await payload.update({
         collection: 'media',
         id: doc.id,
         // Az `alt` kötelező mező: a meglévő értéket visszaírjuk, hogy a
         // frissítés a szerkesztői szöveget se változtassa meg.
         data: { alt: doc.alt },
+        // A data változatlan focalX/Y mezői nem indítják el a Payload cropját.
+        ...(typeof doc.focalX === 'number' && typeof doc.focalY === 'number'
+          ? { req: { query: { uploadEdits: { focalPoint: { x: doc.focalX, y: doc.focalY } } } } }
+          : {}),
         filePath: source,
         overwriteExistingFiles: true,
         overrideAccess: true,

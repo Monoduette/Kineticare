@@ -550,6 +550,7 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
     { szelektor: '.kc-section.kc-free-sos', felulir: '.kc-free-sos :focus-visible' },
     { szelektor: '.kc-consent-banner', felulir: '.kc-consent-banner :focus-visible' },
     { szelektor: '.kc-preview-bar', felulir: '.kc-preview-bar__exit:focus-visible' },
+    { szelektor: '.kc-demo-hero', felulir: '.kc-demo-hero__cta:focus-visible' },
     { szelektor: '.kc-player__media', felulir: '.kc-player__media :focus-visible' },
     { szelektor: '.kc-richtext__video', felulir: '.kc-richtext__video :focus-visible' },
     {
