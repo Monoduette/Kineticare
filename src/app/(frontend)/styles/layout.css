@@ -20,6 +20,11 @@
   --kc-header-ink: var(--kc-color-text);
   /* A SÁVBAN álló akcent-szöveg mélyebb lépcsője — lásd a kontraszt-jegyzetet. */
   --kc-header-accent: var(--kc-color-accent-deeper);
+  --kc-header-active-ink: color-mix(
+    in srgb,
+    var(--kc-header-accent) calc(var(--kc-header-veil, 0) * 100%),
+    var(--kc-header-ink)
+  );
   --kc-header-accent-soft: var(--kc-color-surface-tint); /* = hűvös tint */
   --kc-header-hairline: var(--kc-color-border);
 
@@ -218,6 +223,14 @@
    felirattal 7,08:1) — a hover szándékot jelez, nem állapotot. */
 .kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-primary-hover);
+}
+
+.kc-site-header .kc-site-header__cta[aria-current='page'],
+.kc-site-header .kc-site-header__cta[data-ancestor-active='true'] {
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
 }
 
 @media (max-width: 400px) {
@@ -518,10 +531,32 @@
 }
 
 .kc-nav-desktop__link:hover,
+.kc-nav-desktop__link:active,
+.kc-nav-desktop__link[aria-current='page'],
+.kc-nav-desktop__link[data-ancestor-active='true'],
 .kc-nav-desktop__item:focus-within > .kc-nav-desktop__link {
-  color: var(--kc-header-accent);
-  text-decoration: underline;
+  color: var(--kc-header-active-ink);
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-header-active-ink);
   text-underline-offset: 0.35em;
+}
+
+.kc-nav-desktop__link:hover {
+  text-decoration-thickness: 1px;
+}
+
+.kc-nav-desktop__link:active,
+.kc-nav-desktop__link[aria-current='page'],
+.kc-nav-desktop__link[data-ancestor-active='true'] {
+  text-decoration-thickness: 2px;
+}
+
+/* A route-állapot színe a fejlécfátyollal együtt változik. Current/ancestor
+   linken ezért nem interpolálhat: veil-váltáskor a késleltetett régi akcent
+   átmenetileg AA alá esne a filmen. Az aláhúzás mozgása megmarad. */
+.kc-nav-desktop__link[aria-current='page'],
+.kc-nav-desktop__link[data-ancestor-active='true'] {
+  transition-property: text-underline-offset;
 }
 
 /* Lenyitó gomb az almenüs főmenüpontok mellett (aria-expanded + Esc-zárás).
@@ -624,13 +659,38 @@
   font-size: var(--kc-font-m);
   color: var(--kc-color-text);
   text-decoration: none;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  transition:
+    color var(--kc-motion-fast) var(--kc-ease-out),
+    text-underline-offset var(--kc-motion-fast) var(--kc-ease-out);
 }
 
-/* Hover: hűvös tint háttér + mélyebb akcent felirat = 6,13:1 (AA felett). */
-.kc-nav-desktop__sublink:hover {
-  background-color: var(--kc-header-accent-soft);
+/* Az exact link aria-current, az útvonal-ős külön data-state. */
+.kc-nav-desktop__sublink:hover,
+.kc-nav-desktop__sublink:active,
+.kc-nav-desktop__sublink[aria-current='page'],
+.kc-nav-desktop__sublink[data-ancestor-active='true'] {
   color: var(--kc-header-accent);
-  text-decoration: none;
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-header-accent);
+  text-underline-offset: 0.35em;
+}
+
+.kc-nav-desktop__sublink:hover {
+  text-decoration-thickness: 1px;
+}
+
+.kc-nav-desktop__sublink:active,
+.kc-nav-desktop__sublink[aria-current='page'],
+.kc-nav-desktop__sublink[data-ancestor-active='true'] {
+  text-decoration-thickness: 2px;
+}
+
+/* Hover/lenyomás: hűvös tint háttér + mélyebb akcent felirat = 6,13:1. */
+.kc-nav-desktop__sublink:hover,
+.kc-nav-desktop__sublink:active {
+  background-color: var(--kc-header-accent-soft);
 }
 
 /* Külső hivatkozás jelölése. */
@@ -787,12 +847,36 @@
   letter-spacing: 0.01em;
   color: var(--kc-header-ink);
   text-decoration: none;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  transition:
+    color var(--kc-motion-fast) var(--kc-ease-out),
+    text-underline-offset var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+.kc-nav-mobile__link:hover,
+.kc-nav-mobile__link:active,
+.kc-nav-mobile__link[aria-current='page'],
+.kc-nav-mobile__link[data-ancestor-active='true'] {
+  color: var(--kc-header-accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-header-accent);
+  text-underline-offset: 0.35em;
 }
 
 .kc-nav-mobile__link:hover {
+  text-decoration-thickness: 1px;
+}
+
+.kc-nav-mobile__link:active,
+.kc-nav-mobile__link[aria-current='page'],
+.kc-nav-mobile__link[data-ancestor-active='true'] {
+  text-decoration-thickness: 2px;
+}
+
+.kc-nav-mobile__link:hover,
+.kc-nav-mobile__link:active {
   background-color: var(--kc-header-accent-soft);
-  color: var(--kc-header-accent);
-  text-decoration: none;
 }
 
 .kc-nav-mobile__empty {
@@ -815,12 +899,36 @@
   font-size: var(--kc-font-m);
   color: var(--kc-color-text);
   text-decoration: none;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  transition:
+    color var(--kc-motion-fast) var(--kc-ease-out),
+    text-underline-offset var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+.kc-nav-mobile__sublink:hover,
+.kc-nav-mobile__sublink:active,
+.kc-nav-mobile__sublink[aria-current='page'],
+.kc-nav-mobile__sublink[data-ancestor-active='true'] {
+  color: var(--kc-header-accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-header-accent);
+  text-underline-offset: 0.35em;
 }
 
 .kc-nav-mobile__sublink:hover {
+  text-decoration-thickness: 1px;
+}
+
+.kc-nav-mobile__sublink:active,
+.kc-nav-mobile__sublink[aria-current='page'],
+.kc-nav-mobile__sublink[data-ancestor-active='true'] {
+  text-decoration-thickness: 2px;
+}
+
+.kc-nav-mobile__sublink:hover,
+.kc-nav-mobile__sublink:active {
   background-color: var(--kc-header-accent-soft);
-  color: var(--kc-header-accent);
-  text-decoration: none;
 }
 
 /* ---- Lábléc --------------------------------------------------------------- */

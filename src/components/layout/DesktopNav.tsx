@@ -1,5 +1,6 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import {
 } from 'react'
 
 import type { NavItem } from '../../lib/menu-tree'
+import { getNavRouteState } from '../../lib/nav-route'
 import { NavAnchor } from './NavAnchor'
 
 /**
@@ -50,6 +52,7 @@ const getServerSnapshot = () => false
 
 export function DesktopNav({ items }: { items: NavItem[] }) {
   const [openId, setOpenId] = useState<number | null>(null)
+  const pathname = usePathname()
   const submenuIdPrefix = useId()
   const navRef = useRef<HTMLElement>(null)
   const toggleRefs = useRef(new Map<number, HTMLButtonElement | null>())
@@ -165,12 +168,13 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
         {items.map((item) => {
           const hasChildren = item.children.length > 0
           const isOpen = openId === item.id
+          const routeState = getNavRouteState(item, pathname)
           const submenuId = `${submenuIdPrefix}-${item.id}`
 
           if (!hasChildren) {
             return (
               <li className="kc-nav-desktop__item" key={item.id}>
-                <NavAnchor className="kc-nav-desktop__link" item={item} />
+                <NavAnchor className="kc-nav-desktop__link" item={item} routeState={routeState} />
               </li>
             )
           }
@@ -186,7 +190,7 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
               onPointerEnter={(event) => handlePointerEnter(event, item.id)}
               onPointerLeave={(event) => handlePointerLeave(event, item.id)}
             >
-              <NavAnchor className="kc-nav-desktop__link" item={item} />
+              <NavAnchor className="kc-nav-desktop__link" item={item} routeState={routeState} />
               <button
                 aria-controls={submenuId}
                 aria-expanded={isOpen}
@@ -205,11 +209,18 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
                 className="kc-nav-desktop__submenu"
                 id={submenuId}
               >
-                {item.children.map((child) => (
-                  <li key={child.id}>
-                    <NavAnchor className="kc-nav-desktop__sublink" item={child} />
-                  </li>
-                ))}
+                {item.children.map((child) => {
+                  const childRouteState = getNavRouteState(child, pathname)
+                  return (
+                    <li key={child.id}>
+                      <NavAnchor
+                        className="kc-nav-desktop__sublink"
+                        item={child}
+                        routeState={childRouteState}
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             </li>
           )
