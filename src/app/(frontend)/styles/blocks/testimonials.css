@@ -175,17 +175,14 @@
    szöveg és a névsor (kineticare.css 742–762.).
 
    Nem flex és nem rács. A #204 `flex-direction: row` + `flex-wrap: wrap`
-   LightningCSS kimenete productionben `flex-flow: wrap` volt (a `row` az
-   alapérték, ezért elhagyta). A content.css
-   `.kc-testimonials__figure { flex-direction: column }` iOS Safarin így
-   érvényben maradt: a törzs a jel alá esett, a névsor `padding-left`je
-   beljebb vitte a nevet — telefonon a javítás nem látszott. A `figure` +
-   `figcaption` + `display: grid` a WebKitben a névsort a 3,1rem-es oszlopba
-   ejti. Blokk + abszolút jel: a figcaption sima blokk a padded tartalomban.
+   LightningCSS kimenete `flex-flow: wrap` lett (a `row` az alapérték, ezért
+   elhagyható). Az éles iOS-képen a névsor igazítása hibás maradt, de ez
+   önmagában nem bizonyít böngészőmotor-hibát. A blokk + abszolút jel teljesen
+   kiveszi a névsort a content.css flex-alapja és a minifikált rövidítés közti
+   kölcsönhatásból: a figcaption sima blokk a padded tartalomban.
    NN/g proximity: a név a törzshöz tartozik, nem a díszjelhez
    (https://www.nngroup.com/articles/gestalt-proximity/).
-   MDN flex-flow: a rövidítés elhagyott iránya `row`, a puszta `wrap` a
-   WebKit kaszkádban nem mindig írja felül a longhand `column`-t
+   MDN flex-flow: a rövidítés elhagyott irányának alapértéke `row`
    (https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow). */
 
 .kc-testimonials .kc-testimonials__item--small {

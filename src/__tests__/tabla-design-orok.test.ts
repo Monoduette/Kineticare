@@ -139,11 +139,11 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
     expect(vesszo).toContain("content: ','")
   })
 
-  it('LightningCSS minify a kis figure-t blokkon hagyja, nem flex-flow:wrap-ra húzza', () => {
+  it('a kis figure LightningCSS minify után is blokkelrendezésű marad', () => {
     // A #204 `flex-direction: row` + `flex-wrap: wrap` productionben
-    // `flex-flow: wrap` lett (a row alapérték). iOS Safari a content.css
-    // `flex-direction: column` longhandjét nem írta felül — telefonon a
-    // névsor beljebb maradt. Ez a Next CSS-pipeline minify-lépése.
+    // `flex-flow: wrap` lett (a row alapérték). Ez az őr nem állít történeti
+    // böngésző-gyökérokot: azt védi, hogy az új layout ne függjön a content.css
+    // flex longhandje és a minifikált shorthand kölcsönhatásától.
     // https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow
     const { code } = minifyCss({
       filename: 'testimonials.css',
