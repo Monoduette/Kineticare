@@ -191,23 +191,24 @@ const SZIN = (nev: string): RGB => szinToken(`--kc-color-${nev}`)
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * A fejlécsávban a legsötétebb filmblokk (layout.css kontraszt-levezetés:
- * `rgb(34,49,62)`), amire a film-hero felső világosító lejtője legalább 0,50
- * lap-háttér-fedést tesz. Erre jön a fejléc saját fátyla: nem szolid paper,
- * hanem legfeljebb 72% lap-fedés (fagyott üveg). A `layout.css` ::before
- * `color-mix(... * 72%)` plafonjával kell egyeznie.
+ * Az új desktop + mobil videó mind a 145 képkockájának és mindkét poszterének
+ * teljes-pixeles mérése (2026-09-05). A modell a desktop média-opacityt, a
+ * hűvös gradiens mindkét végpontját és a felső paper fátylat is alkalmazza.
+ * A két végpont és minden pixel csatornaminimumaiból képzett `rgb(179,185,186)`
+ * szándékosan konzervatív, akár nem előforduló alsó korlát.
  */
-const FILM_FEJLEC_NYERS: RGB = [34, 49, 62]
 const FEJLEC_FAGY_FEDES = 0.72
-const FILM_FEJLEC_ALAP: RGB = keverek(SZIN('paper'), FILM_FEJLEC_NYERS, 0.5)
+const FILM_FEJLEC_ALAP: RGB = [179, 185, 186]
 const filmFejlec = (veil: number): RGB =>
   keverek(SZIN('paper'), FILM_FEJLEC_ALAP, veil * FEJLEC_FAGY_FEDES)
 
 /**
- * A hero-szövegdoboz alatti legsötétebb filmblokk (film-hero.css levezetése:
- * `rgb(1,0,0)`), a bal lejtő 0,64-es lap-háttér-fedésével.
+ * Ugyanez 64% paperrel a hero-copy alatt, illetve csak 36% paperrel a
+ * feliratsávban. Mindkettő a két gradiens-végpont csatornaminimumait egyesíti,
+ * és a fehér kifutást teljesen figyelmen kívül hagyja.
  */
-const FILM_HERO: RGB = keverek(SZIN('paper'), [1, 0, 0], 0.64)
+const FILM_HERO: RGB = [198, 203, 204]
+const FILM_FELIRAT: RGB = [161, 167, 167]
 
 /** A fejléc fókuszgyűrűjének futásidejű színe: color-mix(focus veil%, ink). */
 const fejlecGyuru = (veil: number): RGB => keverek(SZIN('focus'), SZIN('ink'), veil)
@@ -276,7 +277,13 @@ const PAROK: readonly Par[] = [
   // --- B7: a film-hero fókuszgyűrűjének MINDKÉT éle ---
   p('kc-film-hero__cta:focus-visible', 'belső él (fehér haló)', SZIN('ink'), SZIN('white'), 3, '1.4.11'),
   p('kc-film-hero__cta:focus-visible', 'külső él (film)', SZIN('ink'), FILM_HERO, 3, '1.4.11'),
+  p('kc-film-hero__cta', 'primary kitöltés határa / film', SZIN('primary'), FILM_HERO, 3, '1.4.11'),
   p('kc-film-hero__cta--quiet', '2px ink keret a filmen', SZIN('ink'), FILM_HERO, 3, '1.4.11'),
+  p('kc-film-hero__cta--quiet', 'hover felirat / tint', SZIN('ink'), SZIN('surface-tint'), 4.5, '1.4.3'),
+  p('kc-film-hero__copy', 'cím és bevezető / film', SZIN('ink'), FILM_HERO, 4.5, '1.4.3'),
+  p('scroll-scrub__caption', 'cím és leírás / film', SZIN('ink'), FILM_FELIRAT, 4.5, '1.4.3'),
+  p('scroll-scrub__route-button', 'aktív aláhúzás / film', SZIN('ink'), FILM_FEJLEC_ALAP, 3, '1.4.11'),
+  p('scroll-scrub__route-button', 'fókuszgyűrű / film', SZIN('ink'), FILM_FEJLEC_ALAP, 3, '1.4.11'),
 
   // --- B2: a süti-sáv ---
   p('kc-consent-banner', 'törzsszöveg', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
@@ -474,8 +481,14 @@ describe('G-K2 — a mért párok mátrixa a küszöbeit tartja', () => {
 
   it('a fagyott fátyol veil=1-nél NEM szolid paper a filmsávon', () => {
     expect(filmFejlec(1)).not.toEqual(SZIN('paper'))
-    expect(filmFejlec(1)).toEqual(hexRgb('#d8dde1'))
-    expect(filmFejlec(0)).toEqual(hexRgb('#8c959d'))
+    expect(filmFejlec(1)).toEqual(hexRgb('#e3e7ea'))
+    expect(filmFejlec(0)).toEqual(hexRgb('#b3b9ba'))
+  })
+
+  it('az új film alsó korlátai a szöveget és a CTA-határokat is védik', () => {
+    expect(ker2(arany(SZIN('ink'), FILM_FELIRAT))).toBe(6.4)
+    expect(ker2(arany(SZIN('ink'), FILM_HERO))).toBe(9.54)
+    expect(ker2(arany(SZIN('primary'), FILM_HERO))).toBe(3.33)
   })
 })
 
