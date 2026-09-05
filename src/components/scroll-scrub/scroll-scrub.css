@@ -205,7 +205,7 @@
 
 /* Az AKTÍV állapot jelölője és a fókuszgyűrű `--ss-ink`, nem `--ss-accent`.
    Az egykezes desktop/mobil film összes képkockáján mért konzervatív felső
-   kompozit #b2b6bc: az accent-deep csak 2,68:1 lenne, az ink 7,67:1. A sáv
+   kompozit #b6bbc2: az accent-deep csak 2,82:1 lenne, az ink 8,09:1. A sáv
    ma latens, mert csak egynél több jelenetnél renderel route-gombot. */
 .scroll-scrub__route-button[aria-current='step'] {
   text-decoration: underline;

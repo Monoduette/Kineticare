@@ -42,13 +42,6 @@
   }
 }
 
-/* A <picture> a nagy érintős tableten is a sütött mobil forrást választja. */
-@media (hover: none) and (pointer: coarse) {
-  .kc-film-hero {
-    --kc-film-media-opacity: 1;
-  }
-}
-
 /* A runtime attribútum követi a ténylegesen választott mobil forrást és a
    viewport alakját; így a keskeny portré cover, a tablet/fekvő nézet contain. */
 .kc-film-hero[data-scroll-scrub-media-fit='contain'] .scroll-scrub__poster,
@@ -66,10 +59,9 @@
   }
 }
 
-/* Az SSR-poszter ugyanazzal a fittel indul, amit a runtime a viewport
-   alakjából számol: fekvő telefonon és 860px fölötti érintős tableten contain. */
-@media (max-width: 639px) and (orientation: landscape),
-  (min-width: 861px) and (hover: none) and (pointer: coarse) {
+/* Az SSR-poszter ugyanazzal a fittel indul, amit a runtime a mobil forráshoz
+   számol: a keskeny fekvő telefonon contain, 860px fölött desktop cover. */
+@media (max-width: 639px) and (orientation: landscape) {
   .kc-film-hero .scroll-scrub__poster,
   .kc-film-hero .scroll-scrub__video {
     object-fit: contain;
