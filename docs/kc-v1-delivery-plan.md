@@ -75,6 +75,40 @@ Forras: https://developers.google.com/search/docs/appearance/ai-features
 
 ## Kiadasi kapu
 
+### 2026-09-05 esti folytatas es engedely
+
+A tulajdonos a keperedet igazolasat tarolo, meglevo adatbazisnaplozasra
+vonatkozo konkret kerdesre "Mindent" valasszal engedelyezte a kiegeszitest.
+Ez a verziozott media-helyreallitasi bizonylat implementalasat es a reviewzott
+kod felteteles kiadasat fedi; nem altalanos production CMS-, fizetesi-,
+jogosultsag-, dependency- vagy migracios felhatalmazas.
+
+Friss GitHub-leltar: #205, #207, #208, #209, #210 es #211 mar mainre mergelve.
+A nav/footer regi munkamappa erdemi hatfajlos valtozasa mar kiadott; a marado
+elteresek regebbi, hianyosabb stilusok/tesztek vagy formazas. A regi hero
+scratch tesztje az elvetett kompoziciohoz tartozik, nem uj kiadando javitas.
+A #197 Railpack PR mar kivaltott, ellentetes szandeku elavult csomag; nem
+kerul be automatikusan. A mai szuk kiadasi cel #212 es az egységes logokeret.
+
+A 838e382 teljes GitHub CI-ja es gitleaks ellenorzese sikeres. A cloud review
+3941483456 talalata azonban igazolt: teljes team fokeploss eseten a korabbi
+biztonsagi or nem tud automatikusan helyreallitani. Uj bizonyitek es explicit
+tulajdonosi engedely miatt egy szuk, legfeljebb harom implementation/review
+ciklust nyitunk. Pascal implemental; Hypatia fuggetlenul reviewz; a vezeto
+masodik kontrollt vegez a tartos bizonyitek es a szerkesztoi vedelmek felett.
+Nevazonossag onmagaban nem eredetigazolas. A legfrissebb, aktualis rekordhoz
+kotott bizonylat, ellenorzott fajlbyte-ok es friss iras-elotti osszehasonlitas
+szukseges; hibas/hianyzo/elavult bizonylat nem enged visszairast.
+
+Boyle az egységes logomeret haromfajlos diffjet fuggetlenul elfogadta:
+320/390 px-en mind a tiz kepkeret 144 x 33.59 px, 1440 px-en 176 x 51.84 px;
+az ismetelt sorok es az eltolasi ciklus merete egyezik. 19 celzott teszt,
+typecheck, lint, Prettier es whitespace ellenorzes sikeres. A tamogatott
+bongeszofelulet nem tudott vegig folyamatos eloteret tartani; a lathatosagi
+vedelem szuneteltette a mozgast. Az uj megszakitasmentes teljes ciklus emiatt
+nem megfigyelt, nem tekintjuk bizonyitott renderhibanak; a reviewer ezt a
+valtozatlan animaciologia melletti szuk CSS-javitasnal nem blokkolonak itelte.
+
 Fagyasztott osszeallitason Node 24 teljes teszt, typecheck, lint es build,
 alkalmazhato security kapuk, majd fuggetlen review. Push utan az uj head
 CI-ja es review-kommentjei iranyadok. Csak minden alkalmazhato HOLD lezartaval
@@ -110,6 +144,34 @@ a kiadasra varo fajlokkal; csak a kesobbi bizonyitekdokumentacio kulonbozik.
 A feltoltes utani exact-head GitHub CI/security es a merge utani automatikus
 production deploy kulon kapu, a fenti helyi PASS nem helyettesiti oket.
 A CMS-publikacio es a hianyzo tulajdonosi anyagok kulon maradnak.
+
+## Provenance es azonos logo-meret: vegso helyi kapuk
+
+A `838e382c9ac2baecaabfeb4d18cff4a865b7030d` headre epulo, izolalt
+osszeallitas Node 24 ellenorzese: 7160/7160 teszt PASS, nulla kihagyas;
+teljes typecheck es production build PASS. ESLint: nulla hiba, a fent
+felsorolt harom meglevo warning. A buildben a middleware warning es egy
+media-restore fajlrendszer-tracing warning maradt; elnyomas nem tortent.
+Az elso teljes kor egy regi inline CSS-clamp elvarast talalt; a teszt most
+a valtozatlan clamp deklaraciojat es a kozos valtozo hasznalatat is orzi.
+Boyle javitasat Hypatia fuggetlenul elfogadta, majd a teljes kor sikerult.
+
+Pascal valodi Payload/PostgreSQL probaja sajat ideiglenes adatbazissal es
+a meglevő migraciokkal PASS: hat torolt fajl helyreallt, az ID/alt/fokusz
+megmaradt, harom receipt tenylegesen tarolodott (enrollment, pending,
+renewed). A masodik kor nem irt uj receiptet es nem valtoztatta az updatedAt
+erteket. Az adatbazis es mediakonyvtar torleset kulon visszaellenorizte;
+az utolagos pool-lezarasi hiba nem hagyott tesztadatbazist. Eles adatot
+vagy CMS-t a proba nem erintett, mock es loader-patch nem volt.
+
+Hypatia es Fermat ket fuggetlen reviewja a hat fagyasztott media-fajlt
+APPROVED allapotra hozta; Boyle az egyenlo logo-kereteket elfogadta.
+A helyi kod-review HOLD lezart. Az uj exact-head tavoli CI/security,
+review-kommentek es normal merge ellenorzese tovabbra is kulon kapu.
+
+Tanulsag: receipt-hiba utani ujraprobalas nem kerulheti meg a media
+eredetigazolasat; ujrafelhasznalt feltoltesnel is publikacio elotti kapu kell.
+Ezt CLI regresszios teszt es valodi adatbazisos visszaolvasas ellenorzi.
 
 ## Tartosan megorzendo tanulsag
 

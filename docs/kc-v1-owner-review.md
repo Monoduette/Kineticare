@@ -29,10 +29,10 @@ a folyamatos fátyol és az elfogadott mobilviselkedés megmarad. A footer kív�
 | ID | Kérés | Állapot |
 | --- | --- | --- |
 | H01 | Közös bemutatkozó fotó közvetlenül a videó alatt | Helyi CMS-előnézetben és független mobil/desktop képelhelyezési review-val ellenőrizve |
-| H02 | Egykezes Higgsfield-videó, folyamatos fátyol, szöveg fölötte | Korábban átadva, regresszióellenőrzés |
-| H03 | KC-kék menü hover és aktív állapot | Korábban átadva, regresszióellenőrzés |
+| H02 | Egykezes Higgsfield-videó, folyamatos fátyol, szöveg fölötte | Mainen: #209 és #210; a jelenlegi csomag megőrzi |
+| H03 | KC-kék menü hover és aktív állapot | Mainen: #208; a lábléc megfelelő állapota #211 |
 | H04 | Saját közös fotó az ingyenes SOS mellé | Saját közös fotó beillesztve; ingyenes cél ellenőrzése tesztelve |
-| H05 | Itt találkozhattál velünk: Kossuth Rádió, TV2, MASE, Kézsebészeti Társaság, D3 | Logófájlokra vár; nem készítünk utánzatot |
+| H05 | Itt találkozhattál velünk: Kossuth Rádió, TV2, MASE, Kézsebészeti Társaság, D3 | Négy hivatalos logó a repóban, helyi CMS-ben ellenőrizve; a D3 szervezet azonosítása hiányzik. Éles CMS-publikálás külön lépés |
 | H06 | Közös fotó az Erre számíthatsz velünk szekcióhoz | Helyi előnézetben saját közös munkafotó |
 | H07 | Több kontextusba illő saját fotó | 12 optimalizált fotó a könyvtárban; 7 különböző új fotó használatban |
 | H08 | Három állapot helyett Így tudunk segíteni, háromrészes felosztással | Megvalósítva; három hasáb desktopon, egymás alatti utak mobilon |
@@ -58,7 +58,7 @@ a folyamatos fátyol és az elfogadott mobilviselkedés megmarad. A footer kív�
 | C01 | Kisebb kapcsolati képek | Korlátozott portréméret; 320 px-en 238 px széles kép ellenőrizve |
 | C02 | Egyszerűbb Kapcsolat-cím | Beszéljünk; helyi renderben ellenőrizve |
 | P01 | Nagy és SOS kurzus külön; további felosztás később | Meglévő kínálat megőrzése |
-| P02 | Kedvezményes oldal link vagy kuponkód alapján | HOLD: kurzus, kedvezmény és lejárat kell; nincs új ár- vagy fizetési logika |
+| P02 | Kedvezményes oldal link vagy kuponkód alapján | A pontosított demó landing elkészült: /akcios-kurzus, szerkeszthető modulok/mintalecke/GYIK, noindex és fizetés nélkül. Valódi ajánlathoz külön ár- és érvényességi adatok kellenek |
 | P03 | SOS minden ajánlati megjelenésénél egyértelműen ingyenes | Gomb és ellenőrzött ingyenes termékre mutató menü kezelve; az éles SOS termék nyilvános lekérése 404, adminos ellenőrzésig publikálási HOLD |
 
 ## Elfogadási feltételek
@@ -81,6 +81,34 @@ A jelenlegi kör kódot és ellenőrizhető tartalmi változtatást készít; az
 állapota külön szerepel a záró bizonyítékban.
 
 ## Tartalmi előnézet és alkalmazás
+
+### Média-eredetigazolás és teljes fájlvesztés
+
+A kezelt team-képekhez verziózott, csak hozzáfűzhető igazolás tartozik a
+meglévő `audit-logs` gyűjteményben. A friss feltöltés után a CLI ellenőrzi a
+tényleges tárolt fájlt és az aktuális rekordot, és még az oldal publikálása
+előtt rögzíti az igazolást. Sikertelen rögzítés után az újrapróbálás sem
+publikálhat igazolás nélküli képet.
+
+Korábban feltöltött képhez az operátor külön, írásmentes előnézetet kérhet:
+
+```sh
+node node_modules/tsx/dist/cli.mjs src/scripts/apply-owner-review-v1.ts --enroll-media-recovery <média-ID>
+```
+
+Az igazolt forrásfájl és a megmaradt főfájl egyezése, friss rekordellenőrzés,
+operátori review és a terv kiírt ellenőrzőösszege után ugyanaz a parancs
+`--apply <ellenőrzött terv SHA-256>` kapcsolóval rögzítheti az igazolást.
+Ez nem publikál oldalt és nem tölthet fel ismeretlen vagy már elveszett képet.
+Éles végrehajtás előtt szerkesztői szünet, mentés és konkrét műveleti terv kell.
+
+Induláskori helyreállításnál kizárólag a legfrissebb, a rekordhoz és a
+forrásbyte-okhoz illő igazolás fogadható el. Az átmeneti `restoring` állapot
+nem jogosít új próbálkozásra; megszakadás vagy sikertelen igazolás-megújítás
+kézi ellenőrzést kér. Siker után azonos rekord-ID, alt és fókusz marad, az új
+igazolás a tényleges visszaadott és újraellenőrzött rekordhoz kötődik.
+A friss olvasás és írás közötti versenyablak nem atomi zárolás: a dokumentált
+szerkesztői szünet továbbra is követelmény.
 
 A `src/scripts/apply-owner-review-v1.ts` nem része az indulási hooknak vagy a
 deploynak. Argumentum nélkül csak olvas és tételes előnézetet készít:

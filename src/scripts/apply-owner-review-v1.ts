@@ -10,6 +10,11 @@ import sharp from 'sharp'
 import { logger } from '../lib/logger'
 import { isFreeCourse } from '../lib/courses'
 import { missingMediaFiles } from '../lib/media-restore'
+import {
+  enrollMediaRecovery,
+  inspectMediaRecoveryReceipt,
+  planMediaRecoveryEnrollment,
+} from '../lib/media-recovery-provenance'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import {
   planOwnerReviewV1,
@@ -51,12 +56,28 @@ export function ownerReviewHash(value: unknown): string {
 export function readOwnerReviewArguments(args: readonly string[]): {
   apply: boolean
   hash?: string
+  enrollMediaId?: number
 } {
   if (args.length === 0) return { apply: false }
+  if (
+    (args.length === 2 ||
+      (args.length === 4 && args[2] === '--apply' && /^[a-f0-9]{64}$/.test(args[3]))) &&
+    args[0] === '--enroll-media-recovery' &&
+    /^[1-9]\d*$/.test(args[1]) &&
+    Number.isSafeInteger(Number(args[1]))
+  ) {
+    return {
+      apply: args.length === 4,
+      enrollMediaId: Number(args[1]),
+      ...(args.length === 4 ? { hash: args[3] } : {}),
+    }
+  }
   if (args.length === 2 && args[0] === '--apply' && /^[a-f0-9]{64}$/.test(args[1])) {
     return { apply: true, hash: args[1] }
   }
-  throw new Error('Próbafutás: argumentum nélkül. Alkalmazás: --apply <ellenőrzött terv SHA-256>.')
+  throw new Error(
+    'Próbafutás: argumentum nélkül. Alkalmazás: --apply <ellenőrzött terv SHA-256>. Médiaigazolás: --enroll-media-recovery <média-ID>.',
+  )
 }
 
 export function parseOwnerReviewAssets(value: unknown): PhotoAsset[] {
@@ -127,7 +148,13 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
   })
   const filenames = new Map(media.docs.map((doc) => [doc.id, doc.filename ?? '']))
   const ids: PhotoIds = {}
-  const mediaProof: { id: number; filename: string; updatedAt: string; sha256: string }[] = []
+  const mediaProof: {
+    id: number
+    filename: string
+    updatedAt: string
+    sha256: string
+    provenance: Awaited<ReturnType<typeof inspectMediaRecoveryReceipt>>
+  }[] = []
   const mediaFileBlockers: string[] = []
   const placeholderBase = Math.max(0, ...media.docs.map((doc) => doc.id)) + 1000
   for (const [index, asset] of assets.entries()) {
@@ -148,11 +175,18 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
       if (missing.length > 0) {
         mediaFileBlockers.push(`Hiányzó fotófájlok; helyreállítás szükséges: ${missing.join(', ')}`)
       }
+      const provenance = await inspectMediaRecoveryReceipt(payload, matches[0])
+      if (!provenance.valid) {
+        mediaFileBlockers.push(
+          `A média eredetigazolása hiányzik vagy eltér (${matches[0].id}); explicit médiaigazolás szükséges.`,
+        )
+      }
       mediaProof.push({
         id: matches[0].id,
         filename: asset.file,
         updatedAt: matches[0].updatedAt,
         sha256: storedHash,
+        provenance,
       })
     }
     ids[asset.role] = matches[0]?.id ?? placeholderBase + index
@@ -457,6 +491,31 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
     cron: false,
   })
   try {
+    if (options.enrollMediaId !== undefined) {
+      const doc = await payload.findByID({
+        collection: 'media',
+        id: options.enrollMediaId,
+        depth: 0,
+        overrideAccess: true,
+      })
+      const plan = await planMediaRecoveryEnrollment(payload, doc)
+      const hash = ownerReviewHash(plan)
+      logger.info('Média-helyreállítási igazolás terve', {
+        hash,
+        mediaId: doc.id,
+        apply: options.apply,
+      })
+      if (!options.apply) return
+      if (
+        options.hash !== hash ||
+        ownerReviewHash(await planMediaRecoveryEnrollment(payload, doc)) !== hash
+      ) {
+        throw new Error('A médiaigazolás terve változott; új előnézet szükséges.')
+      }
+      await enrollMediaRecovery(payload, doc)
+      logger.info('Média-helyreállítási eredetigazolás rögzítve', { mediaId: doc.id })
+      return
+    }
     const state = await readState(payload, assets)
     const fingerprint = {
       version: 1,
@@ -534,6 +593,7 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
             'Részleges médiafeltöltés történt; az oldalakat nem módosítottuk. Kézi ellenőrzés szükséges.',
         )
       }
+      await enrollMediaRecovery(payload, created)
       ids[asset.role] = created.id
     }
     for (const target of targets) {

@@ -9,6 +9,8 @@
 
 .kc-press {
   --kc-press-muted: var(--kc-color-text-muted);
+  --kc-press-logo-width: clamp(9rem, 14vw, 11rem);
+  --kc-press-logo-height: clamp(2.1rem, 3.6vw, 3.4rem);
 }
 
 /* Sötét sáv: halvány akcent az inken 8,49:1. */
@@ -46,23 +48,21 @@
 
 .kc-press__item {
   display: flex;
+  width: var(--kc-press-logo-width);
   min-width: 0;
   max-width: 100%;
   align-items: center;
+  justify-content: center;
 }
 
-/* LOGÓ-MÉRET (tulajdonosi visszajelzés, 2026-08-16): a korábbi
-   clamp(1.7rem, 2.6vw, 2.5rem) magasság a széles sávban apró, alig olvasható
-   logósort adott — a bizalmi elem így nem dolgozott. Az új lépcső ~35%-kal
-   nagyobb, de továbbra is viewport-arányos, és a sáv magassága sem ugrik meg.
-   MOBIL: a `max-width: 100%` + `object-fit: contain` páros miatt a széles
-   logók 320px-en sem csordulnak túl (a magasság ilyenkor a keret arányán belül
-   marad, torzulás nélkül) — WCAG 1.4.10 Reflow. */
+/* Egységes logókeret: a széles és kompakt márkajelek is ugyanakkora helyet
+   kapnak, a saját képarányuk vágás és nyújtás nélkül megmarad. */
 .kc-press__row img {
-  width: auto;
-  height: clamp(2.1rem, 3.6vw, 3.4rem);
+  width: 100%;
+  height: var(--kc-press-logo-height);
   max-width: 100%;
   object-fit: contain;
+  object-position: center;
   filter: grayscale(1);
   opacity: 0.75;
   transition:
@@ -72,10 +72,11 @@
 
 .kc-press__link {
   display: inline-flex;
+  width: 100%;
   min-height: 2.75rem; /* 44px érintési célfelület (UX-skill 3. pont) */
   max-width: 100%;
   align-items: center;
-  padding-inline: var(--kc-space-2);
+  justify-content: center;
 }
 
 .kc-press__link:hover img,

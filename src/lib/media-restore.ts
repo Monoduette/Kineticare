@@ -14,6 +14,14 @@ import teamManifest from '../../public/media/team/manifest.json'
 import { HOME_IMAGES, LANDING_ASSETS_DIR } from './home-seed'
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR } from './legacy-images'
 import type { Media } from '../payload-types'
+import {
+  beginMediaRecovery,
+  enrollMediaRecovery,
+  assertFreshMediaRecovery,
+  requireMediaRecoveryReceipt,
+  verifyMediaRecoveryBytes,
+  mediaRecoverySnapshot,
+} from './media-recovery-provenance'
 
 /** Egy futás mérlege — a hívó ezt naplózza/asszertálja. */
 export interface MediaRestoreSummary {
@@ -121,14 +129,7 @@ export const missingMediaFiles = (uploadDir: string, doc: Media): string[] => {
   return names.filter((name) => !existsSync(path.join(uploadDir, name)))
 }
 
-const mediaRestoreSnapshot = (doc: Media) => ({
-  filename: doc.filename,
-  sizes: doc.sizes,
-  alt: doc.alt,
-  focalX: doc.focalX,
-  focalY: doc.focalY,
-  updatedAt: doc.updatedAt,
-})
+const mediaRestoreSnapshot = mediaRecoverySnapshot
 
 /**
  * Fájl-szintű ellenőrzés és önjavítás minden média-rekordra.
@@ -197,42 +198,12 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         if (hash !== teamAsset.sha256) {
           throw new Error('A committed team média-forrás SHA-256 ellenőrzőösszege eltér.')
         }
-        if (missing.includes(filename)) {
-          throw new Error(
-            'A team főfájl hiányzik; szerkesztői csere nem zárható ki, kézi helyreállítás szükséges.',
-          )
-        }
+        const receipt = await requireMediaRecoveryReceipt(payload, doc, teamAsset)
         if (!missing.includes(filename)) {
-          const storedHash = createHash('sha256')
-            .update(readFileSync(path.join(uploadDir, filename)))
-            .digest('hex')
-          if (storedHash !== hash) {
-            // A Payload 3.88 Media főfájlja auto-rotate + WebP q80, nem raw copy.
-            // Más transzformációt nem találgatunk: szerkesztői képet veszíthetnénk el.
-            const upload = payload.collections.media.config.upload
-            const sharp = payload.config.sharp
-            if (
-              !sharp ||
-              !isDeepStrictEqual(upload.formatOptions, {
-                format: 'webp',
-                options: { quality: 80 },
-              }) ||
-              upload.resizeOptions ||
-              upload.trimOptions ||
-              upload.constructorOptions ||
-              upload.withMetadata
-            ) {
-              throw new Error(
-                'A team főfájl normalizálása nem igazolható; kézi helyreállítás szükséges.',
-              )
-            }
-            const normalized = await sharp(sourceBytes, { animated: true })
-              .rotate()
-              .webp({ quality: 80 })
-              .toBuffer()
-            if (storedHash !== createHash('sha256').update(normalized).digest('hex')) {
-              throw new Error('A team főfájl eltér a repó-forrástól; kézi helyreállítás szükséges.')
-            }
+          if ((await verifyMediaRecoveryBytes(payload, doc)) !== receipt.storedPublicDigest) {
+            throw new Error(
+              'A megmaradt médiafájl eltér az igazolástól; kézi ellenőrzés szükséges.',
+            )
           }
         }
       }
@@ -252,7 +223,11 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         continue
       }
 
-      await payload.update({
+      if (teamAsset) {
+        await beginMediaRecovery(payload, doc)
+        await assertFreshMediaRecovery(payload, doc)
+      }
+      const restored = await payload.update({
         collection: 'media',
         id: doc.id,
         // Az `alt` kötelező mező: a meglévő értéket visszaírjuk, hogy a
@@ -266,6 +241,18 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         overwriteExistingFiles: true,
         overrideAccess: true,
       })
+      if (teamAsset) {
+        if (
+          restored.id !== doc.id ||
+          restored.filename !== doc.filename ||
+          restored.alt !== doc.alt ||
+          restored.focalX !== doc.focalX ||
+          restored.focalY !== doc.focalY
+        ) {
+          throw new Error('A helyreállított média adatai eltérnek; kézi ellenőrzés szükséges.')
+        }
+        await enrollMediaRecovery(payload, restored)
+      }
       summary.visszatoltott += 1
       payload.logger.info(
         `Média-helyreállítás: fájl visszatöltve (${filename}, ${missing.length} hiányzó fájl, id=${doc.id}).`,

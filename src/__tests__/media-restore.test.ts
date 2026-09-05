@@ -21,6 +21,7 @@ import {
   resolveUploadDir,
 } from '../lib/media-restore'
 import type { Media } from '../payload-types'
+import { MEDIA_RECOVERY_ACTION, mediaRecoverySnapshot } from '../lib/media-recovery-provenance'
 
 /**
  * A deploykor elveszett képek önjavítása (src/lib/media-restore.ts) — a DB-t
@@ -105,6 +106,30 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
   })
 
   function payloadFixture(docs: Media[], staticDir: string) {
+    // These restore fixtures model previously enrolled surviving main files.
+    // Real enrollment and audit failure paths live in media-recovery-provenance.test.ts.
+    const receipts = docs.flatMap((doc) => {
+      const asset = teamManifest.assets.find((item) => item.file === doc.filename)
+      const file = path.join(staticDir, doc.filename ?? '')
+      if (!asset || !existsSync(file)) return []
+      return [
+        {
+          action: MEDIA_RECOVERY_ACTION,
+          entityType: 'media',
+          entityId: String(doc.id),
+          after: {
+            version: 1,
+            status: 'verified',
+            receiptKey: 'fixture-receipt',
+            mediaId: doc.id,
+            filename: doc.filename,
+            sourcePublicDigest: asset.sha256,
+            storedPublicDigest: createHash('sha256').update(readFileSync(file)).digest('hex'),
+            mediaSnapshot: mediaRecoverySnapshot(doc),
+          },
+        },
+      ]
+    })
     const update = vi.fn<(args: unknown) => Promise<Media>>(async () => docs[0])
     const findByID = vi.fn(async ({ id }: { id: number | string }) => {
       const doc = docs.find((candidate) => candidate.id === id)
@@ -124,7 +149,18 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
           },
         },
       },
-      find: vi.fn(async () => ({ docs })),
+      find: vi.fn(async ({ collection, where }) => ({
+        docs:
+          collection === 'media'
+            ? docs
+            : receipts
+                .filter((receipt) => receipt.entityId === where.and[2].entityId.equals)
+                .slice(-1),
+      })),
+      create: vi.fn(async ({ data }) => {
+        receipts.push(data)
+        return { id: receipts.length }
+      }),
       findByID,
       update,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

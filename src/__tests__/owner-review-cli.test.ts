@@ -32,6 +32,7 @@ vi.mock('../lib/logger', () => ({ logger: { info: runtime.info, error: vi.fn() }
 
 import { buildHomeLayout } from '../lib/home-seed'
 import * as ownerReviewPlanner from '../lib/owner-review-v1'
+import * as mediaProvenance from '../lib/media-recovery-provenance'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import type { Menu, Product } from '../payload-types'
@@ -46,7 +47,8 @@ import {
   readOwnerReviewArguments,
 } from '../scripts/apply-owner-review-v1'
 
-describe('Owner review explicit application boundary', () => {
+// Each CLI invocation verifies seven real raster assets; retry cases invoke it repeatedly.
+describe('Owner review explicit application boundary', { timeout: 20_000 }, () => {
   const fixtureDirectories: string[] = []
   afterEach(async () => {
     vi.restoreAllMocks()
@@ -66,6 +68,18 @@ describe('Owner review explicit application boundary', () => {
     runtime.collections.media.config.upload.staticDir = '/tmp/kineticare-cli-unit-media'
     runtime.destroy.mockResolvedValue(undefined)
     runtime.getPayload.mockResolvedValue(runtime)
+    vi.spyOn(mediaProvenance, 'enrollMediaRecovery').mockResolvedValue(undefined)
+    vi.spyOn(mediaProvenance, 'inspectMediaRecoveryReceipt').mockResolvedValue({
+      receipt: null,
+      valid: true,
+    })
+    vi.spyOn(mediaProvenance, 'planMediaRecoveryEnrollment').mockResolvedValue({
+      action: 'media.recovery.provenance.v1',
+      mediaSnapshot: 'fixture',
+      sourcePublicDigest: 'a'.repeat(64),
+      storedPublicDigest: 'b'.repeat(64),
+      previousReceipt: null,
+    })
   })
 
   it('accepts the verified old service photo variant but preserves unrelated editor photos', () => {
@@ -570,6 +584,70 @@ describe('Owner review explicit application boundary', () => {
       expect(runtime.update).toHaveBeenCalledOnce()
     })
 
+    it('stops before publication if the created media receipt fails', async () => {
+      const page = setupPlan(() => [freeProduct])
+      const summary = await preview()
+      runtime.create.mockImplementation(async ({ filePath }: { filePath: string }) => ({
+        id: 10,
+        filename: path.basename(filePath),
+      }))
+      vi.mocked(mediaProvenance.enrollMediaRecovery).mockRejectedValue(
+        new Error('Receipt unavailable'),
+      )
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Receipt unavailable',
+      )
+      expect(runtime.create).toHaveBeenCalledOnce()
+      expect(runtime.update).not.toHaveBeenCalled()
+      expect(runtime.findByID).not.toHaveBeenCalled()
+
+      // The first upload survived the failed receipt. A new plan must still HOLD.
+      await managedPhoto(true)
+      vi.mocked(mediaProvenance.inspectMediaRecoveryReceipt).mockResolvedValue({
+        receipt: null,
+        valid: false,
+      })
+      runtime.info.mockClear()
+      const retry = await preview()
+      expect(retry.blockers.join(' ')).toContain('eredetigazolás')
+      runtime.create.mockClear()
+      await expect(applyOwnerReviewV1(['--apply', retry.hash])).rejects.toThrow('Publikálási HOLD')
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+
+      // After separate, explicit enrollment, a newly reviewed plan can publish.
+      vi.mocked(mediaProvenance.inspectMediaRecoveryReceipt).mockResolvedValue({
+        receipt: null,
+        valid: true,
+      })
+      vi.mocked(mediaProvenance.enrollMediaRecovery).mockResolvedValue(undefined)
+      runtime.findByID.mockResolvedValue(page)
+      runtime.info.mockClear()
+      const enrolled = await preview()
+      expect(enrolled.hash).not.toBe(retry.hash)
+      await expect(applyOwnerReviewV1(['--apply', enrolled.hash])).resolves.toBeUndefined()
+      expect(runtime.update).toHaveBeenCalledOnce()
+    })
+
+    it('keeps a no-op with missing provenance on HOLD without implicit enrollment', async () => {
+      setupPlan(() => [], null)
+      await managedPhoto(true)
+      vi.mocked(mediaProvenance.inspectMediaRecoveryReceipt).mockResolvedValue({
+        receipt: null,
+        valid: false,
+      })
+      await applyOwnerReviewV1([])
+      const summary = runtime.info.mock.calls.find(
+        ([message]) => message === 'KC V1 tartalmi terv',
+      )?.[1]
+      expect(summary.pages[0].changes).toBe(0)
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(mediaProvenance.enrollMediaRecovery).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+    })
+
     it('does not inspect the upload directory for a no-op plan', async () => {
       setupPlan(() => [], null)
       runtime.readdir.mockRejectedValue(new Error('No directory read expected'))
@@ -613,6 +691,37 @@ describe('Owner review explicit application boundary', () => {
     ]) {
       expect(() => readOwnerReviewArguments(args)).toThrow()
     }
+  })
+
+  it('explicitly enrolls only the requested media and closes the client', async () => {
+    const doc = { id: 51, filename: 'founders-intro-white-1600.webp' }
+    runtime.findByID.mockResolvedValue(doc)
+    await applyOwnerReviewV1(['--enroll-media-recovery', '51'])
+    expect(mediaProvenance.enrollMediaRecovery).not.toHaveBeenCalled()
+    const summary = runtime.info.mock.calls.find(
+      ([message]) => message === 'Média-helyreállítási igazolás terve',
+    )?.[1]
+    await applyOwnerReviewV1(['--enroll-media-recovery', '51', '--apply', summary.hash])
+    expect(mediaProvenance.enrollMediaRecovery).toHaveBeenCalledWith(runtime, doc)
+    expect(runtime.find).not.toHaveBeenCalled()
+    expect(runtime.update).not.toHaveBeenCalled()
+    expect(runtime.destroy).toHaveBeenCalledTimes(2)
+  })
+
+  it('propagates failed enrollment without page writes', async () => {
+    runtime.findByID.mockResolvedValue({ id: 51 })
+    vi.mocked(mediaProvenance.enrollMediaRecovery).mockRejectedValue(
+      new Error('Receipt unavailable'),
+    )
+    await applyOwnerReviewV1(['--enroll-media-recovery', '51'])
+    const summary = runtime.info.mock.calls.find(
+      ([message]) => message === 'Média-helyreállítási igazolás terve',
+    )?.[1]
+    await expect(
+      applyOwnerReviewV1(['--enroll-media-recovery', '51', '--apply', summary.hash]),
+    ).rejects.toThrow('Receipt unavailable')
+    expect(runtime.update).not.toHaveBeenCalled()
+    expect(runtime.destroy).toHaveBeenCalledTimes(2)
   })
 
   it('binds a plan to the source content and new content', () => {

@@ -66,14 +66,12 @@ export function PressLogos({ block }: PressLogosProps) {
               return null
             }
             const altOverride = logo.alt?.trim() ?? ''
-            // A logók 2026-08-16-tól nagyobbak (lásd press-logos.css); a
-            // `sizes` ezt követi, hogy a böngésző ne egy alulméretezett
-            // forrásból nagyítson fel.
+            // Az egységes logókeret maximális szélességéhez választunk forrást.
             const image = (
               <MediaImage
                 media={altOverride.length > 0 ? { ...media, alt: altOverride } : media}
                 preferredSize="xs"
-                sizes="(max-width: 900px) 140px, 220px"
+                sizes="(max-width: 1028px) 144px, (max-width: 1257px) 14vw, 176px"
               />
             )
             // CMS-webcím allowlist-szűrése (src/lib/safe-url.ts): tiltott
