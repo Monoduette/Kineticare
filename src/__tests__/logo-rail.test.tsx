@@ -146,6 +146,22 @@ describe('LogoRail', () => {
     expect(css).toMatch(/\.kc-press__row img\s*\{[^}]*object-position:\s*center/s)
   })
 
+  it('a logók hover és billentyűzetfókusz alatt is monokrómok maradnak', () => {
+    expect(css).toMatch(/\.kc-press__row img\s*\{[^}]*filter:\s*grayscale\(1\)/s)
+    expect(css).toMatch(
+      /\.kc-press__link:hover img,\s*\.kc-press__link:focus-visible img\s*\{[^}]*filter:\s*grayscale\(1\)[^}]*opacity:\s*1/s,
+    )
+    expect(css).not.toMatch(/filter:\s*grayscale\(0\)/)
+  })
+
+  it('szorosabb, közös térközt használ a logók és a folytonos csoportok között', () => {
+    expect(css).toMatch(/--kc-press-gap:\s*clamp\(1rem, 2vw, 2rem\)/)
+    expect(css).toMatch(
+      /\.kc-press__row\s*\{[^}]*gap:\s*var\(--kc-press-gap, clamp\(1rem, 2vw, 2rem\)\)/s,
+    )
+    expect(css).toMatch(/\.kc-press__track\s*\{[^}]*gap:\s*var\(--kc-press-gap\)/s)
+  })
+
   it('a CSS content-width, folytonos és minden előírt módon megállítható', () => {
     expect(css).toMatch(/\.kc-press__track\s*\{[^}]*width:\s*max-content/s)
     expect(css).toMatch(

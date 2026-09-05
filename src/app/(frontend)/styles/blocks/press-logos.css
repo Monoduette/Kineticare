@@ -38,7 +38,7 @@
 .kc-press__row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--kc-press-gap, clamp(1.5rem, 4vw, 3.5rem));
+  gap: var(--kc-press-gap, clamp(1rem, 2vw, 2rem));
   align-items: center;
   justify-content: center;
   margin: var(--kc-space-6) 0 0;
@@ -81,12 +81,12 @@
 
 .kc-press__link:hover img,
 .kc-press__link:focus-visible img {
-  filter: grayscale(0);
+  filter: grayscale(1);
   opacity: 1;
 }
 
 .kc-press__rail {
-  --kc-press-gap: clamp(1.5rem, 4vw, 3.5rem);
+  --kc-press-gap: clamp(1rem, 2vw, 2rem);
   --kc-press-fade: clamp(1.5rem, 5vw, 4rem);
 
   min-width: 0;
