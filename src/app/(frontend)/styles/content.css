@@ -5,8 +5,8 @@
  * szín/térköz TILOS. Betöltés: az 5B route-page-ek importálják (a 5A
  * styles.css importlánca nem módosítható).
  *
- * Töréspont: 900px (a header/nav váltásával egyezően) — mobil-first,
- * 360px-től 1440px-ig ellenőrzött.
+ * Tartalmi töréspont: 900px, a navigáció 75em-es váltásától függetlenül.
+ * Mobil-first, 360px-től 1440px-ig ellenőrzött.
  */
 
 /* ---- Felvezető sor (eyebrow) --------------------------------------------

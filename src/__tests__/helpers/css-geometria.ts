@@ -83,8 +83,8 @@ function mediaErvenyes(
           if (t === 'print') return false
           const m = /^\(\s*(min|max)-(width|height)\s*:\s*(\d*\.?\d+)(px|em|rem)\s*\)$/.exec(t)
           if (m) {
-            // Media-relative units use the initial browser font, not authored
-            // root/element styles: https://www.w3.org/TR/mediaqueries-4/#units
+            // A relatív médiaegységek a böngésző kezdeti betűméretét használják,
+            // nem az oldal stílusait: https://www.w3.org/TR/mediaqueries-4/#units
             const hatar = Number(m[3]) * (m[4] === 'px' ? 1 : kezdoBetumeretPx)
             const meret = m[2] === 'height' ? magassagPx : nezetablakPx
             return m[1] === 'min' ? meret >= hatar : meret <= hatar
@@ -159,8 +159,8 @@ export function stilusLapNezetablakra(
   fajlok: readonly string[],
   nezetablakPx: number,
   magassagPx: number,
-  // Existing geometry fixtures assume the browser's default 16px initial font.
-  // Callers modelling a user font preference must pass that initial size.
+  // A meglévő geometriai tesztek 16px-es kezdeti böngésző-betűmérettel számolnak.
+  // Eltérő felhasználói beállítás modellezésekor azt a méretet kell átadni.
   kezdoBetumeretPx = 16,
 ): readonly Szabaly[] {
   if (!Number.isFinite(magassagPx) || magassagPx <= 0) {

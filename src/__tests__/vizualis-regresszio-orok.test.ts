@@ -197,8 +197,8 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
   })
 
   it('a desktop, mobil és fiók ugyanazon a tartalomhoz mért határon vált', () => {
-    // The old 900px guard ignored signed-in account controls. Geometry is
-    // covered by header-responsive.browser.mjs, not inferred from this rule.
+    // A régi 900px-es őr kihagyta a bejelentkezett fiókvezérlőket. A geometriát
+    // a header-responsive.browser.mjs méri; ez a szabály csak az együttváltást védi.
     const css = postcss.parse(layout)
     for (const selector of ['.kc-nav-desktop', '.kc-nav-mobile', '.kc-account-nav']) {
       const queries: string[] = []
@@ -210,5 +210,6 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
       expect(queries).toEqual(['(min-width: 75em)'])
     }
     expect(olvas('components/layout/MobileNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
+    expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
   })
 })

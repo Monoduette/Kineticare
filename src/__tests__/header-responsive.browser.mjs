@@ -1,6 +1,6 @@
 /**
- * Network-free actual Header fixture; no Next/Payload server or credentials.
- * Node 24: node <this-file> <existing-playwright/index.mjs> [screenshot-directory]
+ * A valódi Header hálózatmentes tesztje, Next/Payload szerver és hitelesítő adatok nélkül.
+ * Node 24: node <ez-a-fájl> <meglévő-playwright/index.mjs> [képernyőkép-könyvtár]
  */
 import assert from 'node:assert/strict'
 import { mkdir, readFile } from 'node:fs/promises'
@@ -98,7 +98,7 @@ try {
     `<html lang="hu"><head><style>${styles}</style></head><body><div id="root"></div></body></html>`,
   )
   await page.addScriptTag({ content: bundle.outputFiles[0].text })
-  // Prevent fixture links leaving the isolated document; React handlers still run.
+  // A tesztlinkek nem hagyhatják el az izolált dokumentumot; a React-kezelők lefutnak.
   await page.evaluate(() =>
     document.addEventListener('click', (event) => {
       if (event.target.closest('a')) event.preventDefault()
@@ -233,8 +233,8 @@ try {
     await page.evaluate(() => document.documentElement.style.removeProperty('--kc-consent-offset'))
   }
   assert.deepEqual(failures, [])
-  // CSS may clear activeElement before matchMedia fires. Assert the focus target,
-  // not only closure/unlock, and do not steal focus from an unrelated control.
+  // A CSS a matchMedia előtt törölheti az activeElementet. A fókusz célját is
+  // ellenőrizzük a lezárás mellett; a más vezérlőre vitt fókuszt nem vesszük el.
   await page.evaluate(() => {
     const button = document.createElement('button')
     button.id = 'outside-focus'
@@ -291,6 +291,69 @@ try {
       )
       assert.ok(await page.locator(expected).evaluate((el) => el === document.activeElement))
       console.log(`PASS resize focus ${signedIn}: ${target} -> ${expected}; reverse stays closed`)
+    }
+  }
+  // Az ellenkező irányban a rejtett desktop navigáció fókusza és nyitott
+  // almenüje sem maradhat hátra; a kívülre vitt fókuszt meg kell őrizni.
+  for (const signedIn of [true, false]) {
+    await page.evaluate((value) => window.renderHeader(value), signedIn)
+    await settle()
+    for (const target of [
+      '.kc-nav-desktop__sublink',
+      '.kc-nav-desktop__toggle',
+      '.kc-nav-desktop__link',
+      '#outside-focus',
+    ]) {
+      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.mouse.move(0, 899)
+      await settle()
+      const firstLink = page.locator('.kc-nav-desktop__link').first()
+      await firstLink.focus()
+      await page.locator(target).first().waitFor({ state: 'visible' })
+      await page.locator(target).first().focus()
+      if (target === '#outside-focus') {
+        await firstLink.hover()
+      }
+      assert.ok(
+        await page
+          .locator(target)
+          .first()
+          .evaluate((el) => el === document.activeElement),
+        `desktop pre-resize focus: ${target}`,
+      )
+      assert.equal(
+        await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
+        'true',
+      )
+      await page.setViewportSize({ width: 1199, height: 900 })
+      await settle()
+      const expected = target === '#outside-focus' ? target : '.kc-site-header__brand'
+      assert.ok(
+        await page.locator(expected).evaluate((el) => el === document.activeElement),
+        `desktop resize focus: signedIn=${signedIn}, target=${target}`,
+      )
+      assert.equal(
+        await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
+        'false',
+      )
+      assert.equal(
+        await page.locator('.kc-nav-mobile > button').getAttribute('aria-expanded'),
+        'false',
+      )
+      assert.notEqual(await page.evaluate(() => document.body.style.overflow), 'hidden')
+      await page.locator('#outside-focus').focus()
+      await page.mouse.move(0, 899)
+      await page.setViewportSize({ width: 1200, height: 900 })
+      await settle()
+      assert.equal(
+        await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
+        'false',
+        'desktop submenu must not reopen on widening',
+      )
+      assert.ok(
+        await page.locator('#outside-focus').evaluate((el) => el === document.activeElement),
+      )
+      console.log(`PASS desktop resize ${signedIn}: ${target} -> ${expected}; submenu stays closed`)
     }
   }
   assert.deepEqual(errors, [])
