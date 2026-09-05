@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 import type { NavItem } from '../../lib/menu-tree'
+import type { NavRouteState } from '../../lib/nav-route'
 
 /**
  * Közös link-render a navigációhoz: belső útvonal → next/link, külső → <a>;
@@ -33,9 +34,16 @@ export interface NavAnchorProps {
   className?: string
   children?: ReactNode
   onClick?: () => void
+  routeState?: NavRouteState
 }
 
-export function NavAnchor({ item, className, children, onClick }: NavAnchorProps) {
+export function NavAnchor({
+  item,
+  className,
+  children,
+  onClick,
+  routeState = 'inactive',
+}: NavAnchorProps) {
   const content = (
     <>
       {children ?? item.label}
@@ -49,16 +57,31 @@ export function NavAnchor({ item, className, children, onClick }: NavAnchorProps
     </>
   )
   const newTabProps = item.openInNewTab ? { target: '_blank', rel: 'noopener noreferrer' } : {}
+  const ariaCurrent = !item.isExternal && routeState === 'current' ? 'page' : undefined
+  const ancestorActive = !item.isExternal && routeState === 'ancestor' ? 'true' : undefined
 
   if (item.isExternal) {
     return (
-      <a className={className} href={item.href} onClick={onClick} {...newTabProps}>
+      <a
+        className={className}
+        data-ancestor-active={ancestorActive}
+        href={item.href}
+        onClick={onClick}
+        {...newTabProps}
+      >
         {content}
       </a>
     )
   }
   return (
-    <Link className={className} href={item.href} onClick={onClick} {...newTabProps}>
+    <Link
+      aria-current={ariaCurrent}
+      className={className}
+      data-ancestor-active={ancestorActive}
+      href={item.href}
+      onClick={onClick}
+      {...newTabProps}
+    >
       {content}
     </Link>
   )

@@ -760,12 +760,49 @@ hirdetésből), ezért az orientáció nem opcionális.
 - **N-4.** Az aktív menüpont **vizuálisan** kiemelt (szín + második jelölő:
   vastagság, aláhúzás vagy jelölősáv – a szín önmagában nem elég, 1.4.1) **és**
   programozottan jelölt: **`aria-current="page"`**.
-  → A repóban a szűrő-chipek, a lejátszó-tananyag és a kurzus-morzsamenü ezt már
-  helyesen adja, **a fő navigáció viszont NEM**. **→ A/7 megállapítás.**
+  → A repóban a szűrő-chipek, a lejátszó-tananyag, a kurzus-morzsamenü, valamint
+  a fő- és láblécnavigáció ezt már helyesen adja. **→ A/7 javítás.**
 - **N-5.** A jelölés **minden nézetben** él: asztali sáv, mobil drawer, lábléc.
 - **N-6.** NN/g teszt-protokoll az ellenőrzésre: kérdezd meg a felhasználót,
   *„Where are you on the website?"* és *„How can you tell?"* – a designernek
   nyilvánvaló jelzést a látogató gyakran észre sem veszi.
+
+**N-4/N-5 megvalósítási bizonyíték (2026-09-05, PR #211).** A döntés nem csak a
+projekt korábbi auditjára támaszkodik:
+
+1. A [W3C WCAG 2.2 SC 1.4.1 magyarázata](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
+   látható, nem színalapú jelölőt kér, ha a szín információt közöl. Ezért az aktív
+   lábléclink nemcsak KC-kék, hanem az alapállapotnál vastagabb aláhúzást is kap.
+2. A [GOV.UK Service navigation](https://design-system.service.gov.uk/components/service-navigation/)
+   külön kezeli a pontos jelenlegi oldalt és az aktív oldalcsoportot, a jelenlegi elem
+   példájában pedig `aria-current` jelölést használ. Ez támasztja alá a Kineticare pontos
+   `aria-current="page"` és külön `data-ancestor-active` állapotát.
+3. A [GOV.UK focus-state útmutató](https://design-system.service.gov.uk/get-started/focus-states/)
+   a link fókuszát erős, a környező háttértől elkülönülő vizuális jellel tartja
+   felismerhetőnek. A route-aláhúzás ezért nem írhatja felül a Kineticare külön 3 px-es
+   `:focus-visible` körvonalát.
+
+**Mérési jegyzőkönyv.** Az izolált offline Chromium-harness az exact
+`52579fed531f702d20d63a624a9ae3394c4d27dd` runtime commitot mérte a
+`9df69f0b8e6db9b1a945acf95f605699748d1204` base-en, a repó valódi CSS-ével és helyi
+Tenor Sans/Nunito Sans betűivel. A nézetablak 320, 390, 900 és 1440 × 1000 CSS px volt;
+az öt útvonal: `/aszf`, `/kapcsolat`, `/kapcsolat/idopont`, `/impresszum` és
+`/aszf-reszletes` (20 állapot).
+
+| Ellenőrzés | Mért eredmény | Küszöb / verdikt |
+|---|---|---|
+| Pontos és ős útvonal | 12 pontos egyezésnél egy `aria-current="page"`, 8 nem pontos esetben nulla; ősállapot csak a `/kapcsolat/idopont` → `/kapcsolat` páron | N-4/N-5 ✓ |
+| Aktív footer szöveg + aláhúzás | `#2f6e9f` / `#f6f9fc` = **5,1597:1**; jogi link 2 px, nagy Kapcsolat-link 3 px | szöveg ≥ 4,5:1, nem csak szín ✓ |
+| Billentyűzetes fókusz | a route-állapottal együtt is külön **3 px solid** körvonal | 1.4.11 / 2.4.7 ✓ |
+| 320 px célméret | Kapcsolat **150,7 × 44,0**; Adatvédelem **248,6 × 44,0**; ÁSZF **192,1 × 44,0**; Impresszum **75,8 × 44,0** CSS px | projektcél ≥ 44 px ✓ |
+| 320 px reflow | minden állapotban `scrollWidth <= innerWidth` | 1.4.10 ✓ |
+| Gyors fejlécfátyol-váltás | current, ancestor és nem-current hover+focus minimuma **5,1348:1** | szöveg ≥ 4,5:1 ✓ |
+| React SSR + hidratáció | nincs recoverable hydration error vagy page error; a süti-gomb egy kattintásra egy eseményt ad | regresszió nincs ✓ |
+
+A harness határa: a Next `Link`/`usePathname` és a hírlevél adatforrása helyettesített,
+ezért ez nem teljes Next RSC/E2E, nem élő CMS- vagy production-mérés, és nem teljes
+WCAG-tanúsítás. A kontraszt a CSS-színpárból számolt érték, nem antialiasolt
+képernyőkép-pixelekből. A futás hálózatot és `.env*` tartalmat nem használt.
 
 ### 4.3 Morzsamenü
 
@@ -1253,7 +1290,7 @@ végrehajtási kör bemenete; a javítás **nem** ennek a doksinak a feladata.
 | **A/4** | B-3, K-1, NN/g „nonclickable items" | `src/components/content/ProductCard.tsx:230–232` (`<span aria-hidden="true" className="kc-product-card__cta">`) + `src/app/(frontend)/styles/blocks/course-cards.css:186–201` (`background-color: var(--kc-color-primary)`, `min-height: 2.75rem`, `border-radius`) | Minden kurzuskártyán egy **elsődleges gombnak látszó, nem kattintható** elem áll. A kezdőlapon így a hero `primary`-ja mellé kártyánként egy ál-`primary` kerül. |
 | **A/5** | M-2 / **P-1**, C-1 | Vegyes személy **szabály nélkül**: `courses.ts:106` `'Megveszem'`, `ProductCard.tsx:54` `'Megnézem a programot'`, `NewsletterForm.tsx:155` `'Feliratkozom'`, `FreeSos.tsx:71` `'Elindítom az ingyenes kurzust'` (E/1) ↔ `kapcsolat/_lib/validation.ts:43,47,53,57` `'Add meg a neved.'`, `'Írd meg az üzeneted.'` (E/2) | **1.1-es állapot:** a személy-keveredés önmagában már nem hiba – a **P-1** (3.1.5) megmondja, melyik elemen melyik a helyes, és a fenti E/1-es gombok többsége eszerint **helyes marad**. Ami A/5-ként hiba marad: (a) a `'Megnézem a programot'` **navigáció** E/1-ben (P-1b sérül, ráadásul ál-gomb – A/4); (b) a `'Elindítom az ingyenes kurzust'` eltér a #3/#4 egységes feliratától; (c) a deverbális főnévi gombok (`'Üzenet küldése'`, `'Jelszó beállítása'`, `'Visszaállító link küldése'`, `'Számla letöltése'`, `'Törlés'`) – M-1. |
 | **A/6** | C-1, WCAG **3.2.4** | Ugyanaz a cél (`/kurzusok`) öt feliratot kap: `Header.tsx:44` `'Kurzusok'`; `home/HeroCta.tsx:13` `'Kurzusok megtekintése'`; `home/CourseCards.tsx:142` `'Összes kurzus megtekintése'`; `src/lib/home-seed.ts:585` `'Megnézem a kurzusokat'`; `ProductCard.tsx:54` `'Megnézem a programot'` | „Components that have the same functionality… are identified consistently" – ez öt névvel nem teljesül. |
-| **A/7** | N-4, NN/g „You Are Here" | A fő navigáció linkjei `aria-current` nélkül: `src/components/layout/NavAnchor.tsx:38–64` (a `DesktopNav` és a `MobileNav` is ezt használja). Ellenpélda a repóból, ami helyes: `CategoryFilter.tsx:27,39`, `kurzusok/[slug]/page.tsx:425` | A látogató a menüből nem tudja meg, melyik oldalon áll – sem vizuálisan, sem képernyőolvasóval. |
+| **A/7** ✔ **JAVÍTVA, 2026-09-05** | N-4, WCAG 1.4.1, GOV.UK Service navigation | A fő- és láblécnavigáció pontos linkje `aria-current="page"`, az ős külön `data-ancestor-active` állapotot kap. Minden nézetben KC-kék + aláhúzás jelöl, a fókuszkörvonal megmarad. Őr: `src/__tests__/nav-current.test.tsx`; böngészős bizonyíték: N-4/N-5 jegyzőkönyv fent. | A látogató vizuálisan és képernyőolvasóval is megkapja a „hol vagyok?” választ; exact route, query/hash, záró perjel és szegmenshatár védett. |
 | **A/8** | 2.2 4. szint (Carbon *danger*, GOV.UK *warning*) | `src/components/ui/Button.tsx:29` – `variant?: 'primary' \| 'secondary' \| 'ghost'`; destruktív változat nincs. Használat: `src/components/admin/RefundPanel.tsx` | A visszatérítés és a hozzáférés-visszavonás ugyanolyan gombot kap, mint egy mentés – pedig ezek visszafordíthatatlanok. |
 | **A/9** ✔ **JAVÍTVA, 2026-08-22** | 2.7 (GOV.UK: „please" tilos, „valid/invalid" tilos) | A megállapításkor **39 üzenetben élt a „Kérjük"** (29 nagybetűs + 10 kisbetűs alak, pl. `refund/route-handler.ts:49,55`) és **15 üzenetben a címkéző „Érvénytelen"**. A javító kör mind az 54 üzenetet átírta a §2.7 mintájára (mi történt + mit tegyen a látogató, tegezve): checkout, visszatérítés, kurzus-haladás, hozzáférés-adás, videó, előnézet, jelszó-visszaállítás, kérés-korlát, a három űrlap (kapcsolat, hírlevél, időpontkérés) és a vevőnek menő e-mail-sablonok. A hozzájárulás-hiba mind a három űrlapon SZÓ SZERINT azonos lett (`Pipáld be az adatkezelési hozzájárulást.`, WCAG 2.2 SC 3.2.4). | A „Kérjük" választást sugall ott, ahol nincs; az „Érvénytelen" nem mondja meg, mi a baj és hogyan javítható. **Ma őr védi: G-UI7** (`src/__tests__/g-ui7-tiltott-hibaszavak.test.ts`) – a kommenteket maszkolja, tehát a szabályt IDÉZŐ magyarázatok maradhatnak. **Ismert határ:** a kisbetűs, LEÍRÓ „érvénytelen" (pl. „a régi link érvénytelenné válik") szándékosan megengedett, mert az tényt közöl, nem címkéz. |
 | **A/10** | 2.7 (GOV.UK hibaösszegzés) | `src/components/checkout/CheckoutForm.tsx:189` – a lap tetején **csak a beküldési hiba** él (`CheckoutErrorRegion`); a mezőnkénti hibák (`guestErrors`, `billingErrors`, sorok 213–291) nincsenek összegezve és nincsenek a mezőkre linkelve | Hosszú pénztár-űrlapon a képernyő alján lévő hibát a látogató nem találja meg; a GOV.UK ezért követeli meg a lap tetején álló, mezőre ugró hibaösszegzést. |

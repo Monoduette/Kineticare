@@ -105,7 +105,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
   // viszont ITT SEM engedettek — arra külön, szűkebb kivétel-lista van.
   {
     felirat: 'Kurzusok',
-    fajl: 'components/layout/Header.tsx',
+    fajl: 'components/layout/HeaderCoursesNav.tsx',
     kategoria: 'nem-cta',
     indok: 'A főmenü menüpontja — a §3.2 #10 kifejezett kivétele („menücímke, nem CTA — N-3").',
   },

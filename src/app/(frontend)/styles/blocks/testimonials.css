@@ -174,12 +174,16 @@
    A tükörben a kis idézet kéthasábos: bal oszlopban a mini idézőjel, jobbon a
    szöveg és a névsor (kineticare.css 742–762.).
 
-   Flex, nem rács: a `figure { display: grid }` + `figcaption` páros a WebKit
-   (iOS Safari) alatt a névsort a 3,1rem-es jel-oszlopba ejti — `grid-column: 2`
-   ellenére. Mért: production 390 px, „BAGDAL" / „SZILVIA, JÓGAOKTATÓ" a
-   hajszálvonalnak ütközve. A kiemelt (`--big`) kártya ugyanitt flex-oszlop, és
-   a névsor ott egy vonalban marad. NN/g proximity: a név a törzshöz tartozik,
-   nem a díszjelhez (https://www.nngroup.com/articles/gestalt-proximity/). */
+   Nem flex és nem rács. A #204 `flex-direction: row` + `flex-wrap: wrap`
+   LightningCSS kimenete `flex-flow: wrap` lett (a `row` az alapérték, ezért
+   elhagyható). Az éles iOS-képen a névsor igazítása hibás maradt, de ez
+   önmagában nem bizonyít böngészőmotor-hibát. A blokk + abszolút jel teljesen
+   kiveszi a névsort a content.css flex-alapja és a minifikált rövidítés közti
+   kölcsönhatásból: a figcaption sima blokk a padded tartalomban.
+   NN/g proximity: a név a törzshöz tartozik, nem a díszjelhez
+   (https://www.nngroup.com/articles/gestalt-proximity/).
+   MDN flex-flow: a rövidítés elhagyott irányának alapértéke `row`
+   (https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow). */
 
 .kc-testimonials .kc-testimonials__item--small {
   --kc-testimonials-mark-col: 3.1rem;
@@ -204,21 +208,24 @@
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure {
-  display: flex;
-  /* content.css `.kc-testimonials__figure` oszlopos flex — itt sornak kell
-     lennie, különben a törzs a jel ALÁ esik, a névsor padding-leftje pedig
-     beljebb viszi a nevet, mint az idézetet. */
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: block;
+  position: relative;
+  box-sizing: border-box;
   width: 100%;
-  column-gap: var(--kc-testimonials-mark-gap);
+  /* A content.css `height: 100%` a régi kártyarács alsó névsorához kellett.
+     Magas cellában a blokk-figura a tartalom magasságán marad, a név a
+     törzs alatt marad, nem a kártya közepén. */
+  height: auto;
+  padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
 }
 
 /* A kis idézőjel a mockupon a törzsszövegnél nagyobb, a sor tetejéhez
-   igazított függő díszjel. A méret az L token (dekoratív, nem címsor). */
+   igazított függő díszjel. A méret az L token (dekoratív, nem címsor).
+   `left: 0` a relatív figure padding-boxának bal szélén, a paddingben. */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark {
-  flex: 0 0 var(--kc-testimonials-mark-col);
+  position: absolute;
+  left: 0;
+  top: 0;
   width: var(--kc-testimonials-mark-col);
   margin-top: 0.05rem;
   font-family: var(--kc-font-heading);
@@ -228,23 +235,23 @@
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__quote {
-  flex: 1 1 0;
+  margin: 0;
   min-width: 0;
 }
 
-/* A névsor külön sor, a törzzsel egy vonalban. A `flex-basis: 100%` új sort
-   nyit; a padding a jel-oszlop + rés, hogy a figcaption akkor is a szöveg
-   alatt maradjon, ha a flex-tétel-számítás a `width: max-content` szabállyal
-   versenyez. WCAG 2.2 SC 1.4.12: nincs nowrap — a verzális, 0,2em-es név
-   törhet, de a teljes hasábban, nem a jel alatt.
+/* A névsor a figure paddingjében a törzzsel egy vonalban. A doboz
+   `max-content`: a hajszálvonal (`::before { width: 100% }`) a név+szerep
+   szélességét viszi, nem a teljes idézet-hasábot. A #204 `width: auto` +
+   `flex: 1 0 100%` a vonalat a hasáb teljes szélességére nyújtotta. WCAG 2.2
+   SC 1.4.12: nincs nowrap — 320 px-en a verzális név törhet, a `max-width:
+   100%` a hasábba szorítja.
    https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution {
-  flex: 1 0 100%;
   box-sizing: border-box;
   min-width: 0;
-  width: auto;
+  width: max-content;
   max-width: 100%;
-  padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap));
+  padding-left: 0;
   /* A verzális név (Bagdal / jógaoktató) ALATT kell látható lélegzet — nem a
      hajszálvonal FÖLÖTTE. Ugyanaz a token mindkét szélességen: a kis kártya
      saját `padding-top` / `margin-top` ritmusa (`--kc-space-5` = 24 px).

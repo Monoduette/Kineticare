@@ -1,8 +1,7 @@
-import Link from 'next/link'
-
 import { ConsentSettingsButton } from '../analytics/ConsentSettingsButton'
 import { Container } from '../ui/Container'
 
+import { FooterPageLink } from './FooterPageLink'
 import { NewsletterSignup } from './NewsletterSignup'
 
 /**
@@ -29,9 +28,9 @@ export function Footer() {
       <Container>
         <div className="kc-site-footer__grid">
           <div className="kc-site-footer__top">
-            <Link className="kc-site-footer__link" href="/kapcsolat">
+            <FooterPageLink className="kc-site-footer__link" href="/kapcsolat">
               Kapcsolat
-            </Link>
+            </FooterPageLink>
             <div className="kc-site-footer__mark">
               <p className="kc-site-footer__brand">
                 Kineti<span className="kc-site-footer__brand-accent">care</span>
@@ -50,7 +49,7 @@ export function Footer() {
               <ul className="kc-site-footer__legal">
                 {FOOTER_LEGAL_LINKS.map((link) => (
                   <li key={link.href}>
-                    <Link href={link.href}>{link.label}</Link>
+                    <FooterPageLink href={link.href}>{link.label}</FooterPageLink>
                   </li>
                 ))}
                 <li>

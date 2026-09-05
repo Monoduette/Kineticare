@@ -14,11 +14,11 @@ import '../../app/(frontend)/styles/blocks/film-hero.css'
  * A `sectionSettings.visible` szűrése NEM itt történik: a blokk-renderelő
  */
 
-/** A statikus film négy assetje (terv 3.3 — desktop + mobil klip és poszter). */
-const FILM_CLIP = '/media/film/scene-02.mp4'
-const FILM_CLIP_MOBILE = '/media/film/scene-02-mobile.mp4'
-const FILM_POSTER = '/media/film/scene-02-poster.png'
-const FILM_POSTER_MOBILE = '/media/film/scene-02-mobile-poster.png'
+/** A jóváhagyott egykezes film verziózott desktop/mobil klipje és posztere. */
+const FILM_CLIP = '/media/film/one-hand-header-v1.mp4'
+const FILM_CLIP_MOBILE = '/media/film/one-hand-header-v1-mobile.mp4'
+const FILM_POSTER = '/media/film/one-hand-header-v1-poster.webp'
+const FILM_POSTER_MOBILE = '/media/film/one-hand-header-v1-mobile-poster.webp'
 
 /**
  * A film scrub-hossza viewport-magasságban (~460dvh) és a középső, terapeutás
@@ -41,7 +41,7 @@ const FILM_LINGER = 0.16
  */
 const FILM_THEME: ScrollScrubTheme = {
   accent: 'var(--kc-color-accent-deep)',
-  background: 'var(--kc-color-white)',
+  background: 'var(--kc-color-bg)',
   ink: 'var(--kc-color-navy-900)',
   muted: 'var(--kc-color-navy-900)',
 }

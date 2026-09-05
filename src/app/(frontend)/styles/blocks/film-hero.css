@@ -37,8 +37,22 @@ main > .kc-film-hero:first-of-type {
 }
 
 /**
- * A SZÍNPAD LEJTŐI — az olvashatóság EGYETLEN eszköze a filmsávon.
- * A film tehát NYERSEN egyik szövegdoboz alatt sem olvasható — a lejtők nem
+ * ÁLLANDÓ PAPÍRFÁTYOL — a kéz léptéke és mozdulata megmarad, de nem versenyez
+ * a szöveggel. Ez a réteg nem függ a scroll-állapottól; a célzott lejtők alatta
+ * továbbra is csak az aktuális szöveg olvashatóságát segítik.
+ */
+.kc-film-hero .scroll-scrub__stage::before {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  content: '';
+  background: color-mix(in srgb, var(--kc-color-bg) 52%, transparent);
+  pointer-events: none;
+}
+
+/**
+ * A SZÍNPAD LEJTŐI — a konstans fátyol fölötti, célzott olvasási segítség.
+ * Nem alkotnak szövegkártyát: a teljes vászon részei, minden szövegréteg alatt.
  */
 .kc-film-hero .scroll-scrub__stage::after {
   position: absolute;
@@ -60,7 +74,7 @@ main > .kc-film-hero:first-of-type {
        1 (teljes 64%-os fedés), utána 0 — így a 2. és 3. állásban a filmkocka a
        saját erejével látszik, nem fátyol alól. A fallback 1, tehát felirat
        nélküli filmsávnál a viselkedés változatlan. */
-      linear-gradient(
+    linear-gradient(
         to right,
         color-mix(in srgb, var(--kc-color-bg) calc(64% * var(--ss-copy-scrim, 1)), transparent) 0,
         color-mix(in srgb, var(--kc-color-bg) calc(64% * var(--ss-copy-scrim, 1)), transparent)
@@ -85,7 +99,7 @@ main > .kc-film-hero:first-of-type {
        Vagyis a felső ág gyakorlatilag változatlan; az erősítés (52/42%) a
        vászon alsó ~220 px-ére szorítkozik, ahol a 4. réteg (lap-háttérbe
        olvadás) amúgy is 69%-ban fed, tehát a filmkocka látványa nem hígul. */
-      linear-gradient(
+    linear-gradient(
         to top,
         color-mix(in srgb, var(--kc-color-bg) 52%, transparent) 0,
         color-mix(in srgb, var(--kc-color-bg) 42%, transparent) 14rem,
@@ -93,7 +107,7 @@ main > .kc-film-hero:first-of-type {
       ),
     /* 4–5. A TÜKÖR két rétege, változatlanul: alul a lap-háttérbe olvadás
        (nincs éles vágás a következő szekcióig), fölötte a hűvös hangulat. */
-      linear-gradient(to bottom, transparent 55%, var(--kc-color-white) 100%),
+    linear-gradient(to bottom, transparent 55%, var(--kc-color-white) 100%),
     linear-gradient(
       152deg,
       color-mix(in srgb, var(--kc-color-accent) 18%, transparent),
@@ -143,6 +157,7 @@ main > .kc-film-hero:first-of-type {
 
 .kc-film-hero .kc-film-hero__cta--quiet:hover:not(:disabled):not(.kc-button--disabled) {
   background-color: var(--kc-color-tint-cool);
+  color: var(--kc-color-ink);
 }
 
 /* Fókuszgyűrű a film felett: a gyűrűt fehér elválasztó haló öleli körbe, így
