@@ -9,7 +9,7 @@ import { AccountNav } from './AccountNav'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Mobil (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
+ * Kompakt (< 75em) navigáció: hamburger-gomb + jobb oldali drawer.
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
  */
 export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signedIn?: boolean }) {
@@ -50,6 +50,31 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
       }
     }
     document.addEventListener('keydown', onKeyDown)
+    // A layout.css közös határán a rejtett drawer nem tarthatja zárolva az oldalt.
+    const desktop = window.matchMedia('(min-width: 75em)')
+    const drawer = closeRef.current?.closest('nav')
+    // A Chromium a médiaesemény előtt BODY-ra állíthatja az activeElementet.
+    // A drawer és a külső hamburger fókuszát még látható állapotban követjük;
+    // a más vezérlőre vitt fókuszt viszont nem vesszük el.
+    const ownsFocus = (target: EventTarget | null) =>
+      target instanceof Node &&
+      (target === toggleRef.current || (drawer?.contains(target) ?? false))
+    let navigationOwnsFocus = ownsFocus(document.activeElement)
+    const onFocusIn = (event: FocusEvent) => {
+      navigationOwnsFocus = ownsFocus(event.target)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    const onDesktop = (event: MediaQueryListEvent) => {
+      if (!event.matches) return
+      if (navigationOwnsFocus) {
+        toggleRef.current
+          ?.closest('header')
+          ?.querySelector<HTMLAnchorElement>('.kc-site-header__brand')
+          ?.focus()
+      }
+      setOpen(false)
+    }
+    desktop.addEventListener('change', onDesktop)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     // A drawer ekkorra már `data-open="true"` (a CSS a rejtett → látható
@@ -57,6 +82,8 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
     closeRef.current?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('focusin', onFocusIn)
+      desktop.removeEventListener('change', onDesktop)
       document.body.style.overflow = previousOverflow
     }
   }, [open])

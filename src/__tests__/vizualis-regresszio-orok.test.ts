@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import postcss from 'postcss'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -184,7 +185,6 @@ describe('űrlap-súgó és garancia-doboz — sorhossz', () => {
 
 describe('fejléc-navigáció — tartalék a menüsávban', () => {
   const layout = olvas('app/(frontend)/styles/layout.css')
-  const tiszta = kommentNelkul(layout)
 
   it('a menülink belső térköze legfeljebb a 8px-es lépcső', () => {
     const link = blokk(layout, '.kc-nav-desktop__link')
@@ -196,11 +196,21 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
     expect(lista).toMatch(/gap:\s*0\s*;/)
   })
 
-  it('a desktop menü töréspontja marad 900px (nem hamburger desktopon)', () => {
-    // NN/g: a rejtett navigációt desktopon a látogatók 27%-a használta, a
-    // láthatót ~50%-uk — a töréspont felemelése rontana, nem javítana.
-    const index = tiszta.indexOf('.kc-nav-desktop {')
-    const utana = tiszta.slice(index, index + 400)
-    expect(utana).toContain('@media (min-width: 900px)')
+  it('a desktop, mobil és fiók ugyanazon a tartalomhoz mért határon vált', () => {
+    // A régi 900px-es őr kihagyta a bejelentkezett fiókvezérlőket. A geometriát
+    // a header-responsive.browser.mjs méri; ez a szabály csak az együttváltást védi.
+    const css = postcss.parse(layout)
+    for (const selector of ['.kc-nav-desktop', '.kc-nav-mobile', '.kc-account-nav']) {
+      const queries: string[] = []
+      css.walkRules(selector, (rule) => {
+        if (rule.parent?.type === 'atrule' && rule.parent.name === 'media') {
+          queries.push(rule.parent.params)
+        }
+      })
+      expect(queries).toEqual(['(min-width: 75em)'])
+    }
+    expect(olvas('components/layout/MobileNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
+    expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
+    expect(olvas('components/layout/AccountNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
   })
 })

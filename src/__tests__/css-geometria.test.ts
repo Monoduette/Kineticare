@@ -5,9 +5,16 @@ import { stilusLapNezetablakra, tokenek } from './helpers/css-geometria'
 
 vi.mock('node:fs', () => ({ readFileSync: vi.fn() }))
 
-function mediaErtek(css: string, szelesseg: number, magassag: number): string | undefined {
+function mediaErtek(
+  css: string,
+  szelesseg: number,
+  magassag: number,
+  kezdoBetumeretPx = 16,
+): string | undefined {
   vi.mocked(readFileSync).mockReturnValue(css)
-  return tokenek(stilusLapNezetablakra(['meresi-fixture.css'], szelesseg, magassag)).get('--meres')
+  return tokenek(
+    stilusLapNezetablakra(['meresi-fixture.css'], szelesseg, magassag, kezdoBetumeretPx),
+  ).get('--meres')
 }
 
 describe('CSS-geometria: explicit viewportmagasság', () => {
@@ -73,7 +80,8 @@ describe('CSS-geometria: explicit viewportmagasság', () => {
 
   it.each([
     '(orientation: landscape)',
-    '(max-height: 40rem)',
+    '(max-height: 40ch)',
+    '(min-width: 75vw)',
     '(height <= 700px)',
     '(max-width: 1px) and (unknown-feature: 1)',
     'screen, (unknown-feature: 1)',
@@ -114,5 +122,58 @@ describe('CSS-geometria: explicit viewportmagasság', () => {
         844,
       ),
     ).toBe('alap')
+  })
+})
+
+describe('CSS media: initial font size, independent of authored root styles', () => {
+  for (const unit of ['em', 'rem']) {
+    for (const dimension of ['width', 'height']) {
+      for (const bound of ['min', 'max']) {
+        it.each([16, 20])(`${bound}-${dimension}: 75${unit}, initial font %spx`, (initial) => {
+          const css = `:root { font-size: 48px; --meres: alap; }
+            @media (${bound}-${dimension}: 75${unit}) { :root { --meres: aktiv; } }`
+          for (const delta of [-0.5, 0, 0.5]) {
+            const size = 75 * initial + delta
+            expect(
+              mediaErtek(
+                css,
+                dimension === 'width' ? size : 390,
+                dimension === 'height' ? size : 844,
+                initial,
+              ),
+            ).toBe((bound === 'min' ? delta >= 0 : delta <= 0) ? 'aktiv' : 'alap')
+          }
+        })
+      }
+    }
+  }
+
+  it('propagates the initial font through nested media/supports and mixed-unit AND/OR', () => {
+    const css = `:root { --meres: alap; }
+      @media (min-width: 75em) {
+        @supports (display: grid) {
+          @media (max-height: 40rem) and (min-width: 1500px), print { :root { --meres: aktiv; } }
+        }
+      }`
+    expect(mediaErtek(css, 1500, 800, 20)).toBe('aktiv')
+    expect(mediaErtek(css, 1499.5, 800, 20)).toBe('alap')
+    expect(mediaErtek(css, 1500, 800.5, 20)).toBe('alap')
+    expect(mediaErtek(css, 1500, 800, 16)).toBe('alap')
+  })
+
+  it('keeps unsupported units fail-closed even inside inactive relative queries', () => {
+    expect(() =>
+      mediaErtek(
+        `@media (min-width: 75em) {
+      @media (max-height: 40ch) { :root { --meres: aktiv; } }
+    }`,
+        390,
+        844,
+      ),
+    ).toThrow(/ismeretlen média-jellemző.*40ch/)
+  })
+
+  it.each([0, -1, NaN, Infinity])('rejects invalid initial font size %s', (initial) => {
+    expect(() => mediaErtek(':root { --meres: alap; }', 390, 844, initial)).toThrow(/betűméret/)
   })
 })

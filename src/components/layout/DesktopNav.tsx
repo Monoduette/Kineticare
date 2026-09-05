@@ -18,7 +18,7 @@ import { getNavRouteState } from '../../lib/nav-route'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Desktop (>= 900px) vízszintes navigáció, egy szintű almenüvel.
+ * Desktop (>= 75em) vízszintes navigáció, egy szintű almenüvel.
  * `visibility: hidden`, tehát a benne lévő hivatkozások NEM fókuszálhatók — a
  */
 
@@ -63,6 +63,33 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
 
   const close = useCallback((id: number) => {
     setOpenId((current) => (current === id ? null : current))
+  }, [])
+
+  // A layout.css és a MobileNav közös határán a desktop almenüt is lezárjuk.
+  // A CSS a médiaesemény előtt elrejtheti a fókuszált elemet, ezért a
+  // navigációhoz tartozó fókuszt még látható állapotban követjük.
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 75em)')
+    let ownsFocus = navRef.current?.contains(document.activeElement) ?? false
+    const onFocusIn = (event: globalThis.FocusEvent) => {
+      ownsFocus = event.target instanceof Node && (navRef.current?.contains(event.target) ?? false)
+    }
+    const onCompact = (event: MediaQueryListEvent) => {
+      if (event.matches) return
+      if (ownsFocus) {
+        navRef.current
+          ?.closest('header')
+          ?.querySelector<HTMLAnchorElement>('.kc-site-header__brand')
+          ?.focus()
+      }
+      setOpenId(null)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    desktop.addEventListener('change', onCompact)
+    return () => {
+      document.removeEventListener('focusin', onFocusIn)
+      desktop.removeEventListener('change', onCompact)
+    }
   }, [])
 
   /**

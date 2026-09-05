@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { CTA_PROGRESS_LABELS, ctaLabel } from '../../lib/cta-vocabulary'
 import { logoutUser } from '../../lib/logout-client'
@@ -37,6 +37,32 @@ export const ACCOUNT_NAV_LABELS = {
 export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const accountRef = useRef<HTMLDivElement>(null)
+
+  // A fejléc fióksávja üres menü mellett is létezik, ezért a saját elemét
+  // követi. A drawer fókuszát továbbra is a MobileNav kezeli.
+  useEffect(() => {
+    if (variant !== 'header') return
+    const desktop = window.matchMedia('(min-width: 75em)')
+    let ownsFocus = accountRef.current?.contains(document.activeElement) ?? false
+    const onFocusIn = (event: FocusEvent) => {
+      ownsFocus =
+        event.target instanceof Node && (accountRef.current?.contains(event.target) ?? false)
+    }
+    const onCompact = (event: MediaQueryListEvent) => {
+      if (event.matches || !ownsFocus) return
+      accountRef.current
+        ?.closest('header')
+        ?.querySelector<HTMLAnchorElement>('.kc-site-header__brand')
+        ?.focus()
+    }
+    document.addEventListener('focusin', onFocusIn)
+    desktop.addEventListener('change', onCompact)
+    return () => {
+      document.removeEventListener('focusin', onFocusIn)
+      desktop.removeEventListener('change', onCompact)
+    }
+  }, [variant])
 
   const handleSignOut = async () => {
     setError(null)
@@ -59,7 +85,7 @@ export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
 
   if (!signedIn) {
     return (
-      <div className={base}>
+      <div className={base} ref={accountRef}>
         <Link className="kc-account-nav__link" href="/belepes" onClick={onNavigate}>
           {ACCOUNT_NAV_LABELS.signIn}
         </Link>
@@ -68,7 +94,7 @@ export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
   }
 
   return (
-    <div className={base}>
+    <div className={base} ref={accountRef}>
       <Link className="kc-account-nav__link" href="/kurzusaim" onClick={onNavigate}>
         {ACCOUNT_NAV_LABELS.myCourses}
       </Link>

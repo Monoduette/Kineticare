@@ -1,6 +1,7 @@
 /**
  * Layout-stílusok: fejléc, navigáció (desktop + mobil drawer), lábléc,
- * hibaoldalak. Töréspont: 900px (mobil < 900px) — lásd tokens.css.
+ * hibaoldalak. A navigáció és a fiókvezérlők közös töréspontja 75em;
+ * a fejlécméretek és a lábléc külön 900px-es szabályai változatlanok.
  * Vizuális nyelv: a kineticare.higgsfield.app landing minimál fejléce és
  * lábléce (higgsfield-site/app/src/kineticare.css — `.kc-nav` 144. sortól,
  * `.kc-footer` 880. sortól), a fő site SZEREP-tokenjeire portolva:
@@ -282,7 +283,7 @@
   display: none;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 75em) {
   .kc-account-nav {
     display: flex;
     align-items: center;
@@ -468,7 +469,14 @@
   display: none;
 }
 
-@media (min-width: 900px) {
+/* Közös navigációs határ, a MobileNav átméretezési lezárásával együtt:
+   alapértelmezett betűméretnél 1200px. A bejelentkezett, négy főmenüpontos
+   fejléc kb. 1035px-et és oldalsó térközt igényel; 900/1024px-en túlcsordul.
+   A drawer addig marad, amíg a menü ÉS a fiókvezérlők is elférnek,
+   betűméret-csökkentés és levágás nélkül.
+   WCAG 1.4.10: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+   Reszponzív lenyitás: https://design-system.service.gov.uk/components/service-navigation/ */
+@media (min-width: 75em) {
   .kc-nav-desktop {
     /* A menü a jobb oldalra húz (brand ↔ menü + CTA). */
     display: block;
@@ -476,7 +484,7 @@
   }
 }
 
-/* MENÜSÁV-TARTALÉK (2026-08-16, Chromiumban mért érték).
+/* MENÜSÁV-TARTALÉK (2026-08-16, történeti, kijelentkezett mérés).
    A menülink a HÁROM-MÉRETES skálán a törzsméretet (M) viszi; korábban a
    kisebb `--kc-text-sm` lépcsőn állt. A sáv helyigénye ezzel 900 px-es
    nézetablakon 676 → 745 px-re nőtt (a mai, négy főmenüpontos élő menüvel
@@ -489,10 +497,9 @@
    Size 24×24-es minimuma felett). Mért nyereség a négy menüpontos menün:
    44 px tartalék vissza — épp annyi, hogy a skill 3. pontja által KÖTELEZŐVÉ
    tett „Kurzusok" menüpont (98 px) is beférjen a 900 px-es sávba.
-   A hamburgerre váltás töréspontját SZÁNDÉKOSAN nem emeltük: az NN/g
-   hidden-navigation vizsgálata szerint a rejtett menü desktopon mérhetően
-   rosszabb (a látogatók 27%-a használta a rejtettet, szemben a látható menü
-   ~50%-ával) — https://www.nngroup.com/articles/hamburger-menus/ */
+   Ez a régi mérés nem tartalmazta a bejelentkezett fiókvezérlők helyigényét.
+   A jelenlegi közös navigációs határt a fenti szabály és a
+   header-responsive.browser.mjs bejelentkezett mérései védik. */
 .kc-nav-desktop__list {
   display: flex;
   align-items: center;
@@ -564,7 +571,7 @@
 
 /* Lenyitó gomb az almenüs főmenüpontok mellett (aria-expanded + Esc-zárás).
    Az érintési cél 44×44px (UX-skill 3. pont): táblagépen ez az EGYETLEN út az
-   almenüig, mert hover nincs, a mobil drawer pedig 900px felett rejtve van.
+   almenüig, mert hover nincs, a mobil drawer pedig 75em-től rejtve van.
    A negatív bal margó csak a LÁTVÁNYT húzza a felirathoz — a célfelület teljes
    marad. Szín és hover: a menülink nyelve, tehát a kontraszt-levezetés is az. */
 .kc-nav-desktop__toggle {
@@ -709,7 +716,7 @@
   display: block;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 75em) {
   .kc-nav-mobile {
     display: none;
   }
