@@ -5,6 +5,9 @@ import type { CSSProperties, ReactNode } from 'react'
 
 import './scroll-scrub.css'
 
+export const SCROLL_SCRUB_MOBILE_MEDIA_QUERY =
+  '(max-width: 860px), (hover: none) and (pointer: coarse) and (orientation: portrait)'
+
 /**
  * ScrollScrub — görgetéssel vezérelt filmsáv ('use client' sziget).
  * (IntersectionObserver, scroll-listener) NEM indul miattuk.
@@ -64,13 +67,13 @@ export interface ScrollScrubCaption {
   /** A felirat CÍME: egy tömör mondat, amit a néző egy pillantásra elolvas. */
   text: string
   /**
- * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
- * bevezetése előtti viselkedés).
- * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
- * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
- * törzsszöveget olvassa el, amint egy cím érdekli
- * („The Layer-Cake Pattern of Scanning Content on the Web",
- */
+   * Rövid leírás a cím ALATT. Elhagyva a felirat egyetlen sorból áll (a mező
+   * bevezetése előtti viselkedés).
+   * néző megáll rajta, és nincs mit olvasnia tovább. Az NN/g eyetracking
+   * rétegtorta-mintája szerint a tekintet a címeken ugrál, és AZ ALATTA LÉVŐ
+   * törzsszöveget olvassa el, amint egy cím érdekli
+   * („The Layer-Cake Pattern of Scanning Content on the Web",
+   */
   body?: string
   /** Vízszintes elhelyezés a filmvásznon. */
   align: 'center' | 'right'
@@ -148,6 +151,28 @@ const lingerEase = (value: number, amount: number) => {
 
 /** A felirat be- és kiúszásának hossza a scrub 0..1 arányán. */
 export const CAPTION_FADE = 0.07
+
+/** A mobil vágat kitöltése a CSS-sel közös media-query döntések alapján. */
+export function scrollScrubMediaFit(
+  mobileMedia: boolean,
+  atLeastTabletWidth: boolean,
+  landscapeViewport: boolean,
+): 'contain' | 'cover' {
+  return mobileMedia && (atLeastTabletWidth || landscapeViewport)
+    ? 'contain'
+    : 'cover'
+}
+
+/** A mobil böngészős magasságzajt csak akkor méri újra, ha a fit is változna. */
+export function scrollScrubNeedsLayout(
+  coarsePointer: boolean,
+  previousWidth: number,
+  nextWidth: number,
+  previousMediaFit: string | undefined,
+  nextMediaFit: 'contain' | 'cover',
+): boolean {
+  return !coarsePointer || nextWidth !== previousWidth || previousMediaFit !== nextMediaFit
+}
 
 /**
  * Egy úszó felirat átlátszatlansága a scrub-pozícióból.
@@ -276,8 +301,17 @@ export function ScrollScrub({
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-    const smallViewport = window.matchMedia('(max-width: 860px)')
-    const isMobile = () => coarsePointer || smallViewport.matches
+    const mobileViewport = window.matchMedia(SCROLL_SCRUB_MOBILE_MEDIA_QUERY)
+    const atLeastTabletWidth = window.matchMedia('(min-width: 640px)')
+    const landscapeViewport = window.matchMedia('(orientation: landscape)')
+    const isMobile = () => mobileViewport.matches
+    const mediaFitForViewport = () =>
+      scrollScrubMediaFit(
+        isMobile(),
+        atLeastTabletWidth.matches,
+        landscapeViewport.matches,
+      )
+    const usesMobileVideoTuning = () => coarsePointer || isMobile()
     const sourceFor = (segment: RuntimeSegment) =>
       isMobile() && segment.mobileClip ? segment.mobileClip : segment.clip
     const runtime: RuntimeSegment[] = segments.map((segment, index) => ({
@@ -327,6 +361,9 @@ export function ScrollScrub({
       rootTop = root.getBoundingClientRect().top + pageY
       viewportHeight = window.innerHeight
       layoutWidth = window.innerWidth
+      const mobileMedia = isMobile()
+      root.dataset.scrollScrubMobileMedia = mobileMedia ? 'true' : 'false'
+      root.dataset.scrollScrubMediaFit = mediaFitForViewport()
 
       for (const segment of runtime) {
         if (segment.loadedSource && segment.loadedSource !== sourceFor(segment)) {
@@ -341,7 +378,7 @@ export function ScrollScrub({
     }
 
     const primeVideo = async (video?: HTMLVideoElement) => {
-      if (!video || !isMobile()) {
+      if (!video || !usesMobileVideoTuning()) {
         return
       }
       try {
@@ -558,7 +595,7 @@ export function ScrollScrub({
 
         segment.current += (segment.target - segment.current) * 0.2
         const targetTime = clamp(segment.current, 0, 0.999) * (video.duration || 1)
-        const epsilon = isMobile() ? 0.02 : 0.008
+        const epsilon = usesMobileVideoTuning() ? 0.02 : 0.008
         if (Math.abs(video.currentTime - targetTime) > epsilon) {
           try {
             video.currentTime = targetTime
@@ -585,7 +622,16 @@ export function ScrollScrub({
       dirty = true
     }
     const onResize = () => {
-      if (coarsePointer && window.innerWidth === layoutWidth) {
+      const nextMediaFit = mediaFitForViewport()
+      if (
+        !scrollScrubNeedsLayout(
+          coarsePointer,
+          layoutWidth,
+          window.innerWidth,
+          root.dataset.scrollScrubMediaFit,
+          nextMediaFit,
+        )
+      ) {
         return
       }
       layout()
@@ -619,6 +665,7 @@ export function ScrollScrub({
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', layout)
+    mobileViewport.addEventListener('change', layout)
     window.addEventListener('pointerdown', onFirstGesture, {
       once: true,
       passive: true,
@@ -638,10 +685,13 @@ export function ScrollScrub({
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', layout)
+      mobileViewport.removeEventListener('change', layout)
       window.removeEventListener('pointerdown', onFirstGesture)
       window.removeEventListener('touchstart', onFirstGesture)
       root.style.removeProperty('--ss-progress')
       delete root.dataset.activeSection
+      delete root.dataset.scrollScrubMediaFit
+      delete root.dataset.scrollScrubMobileMedia
 
       for (const segment of runtime) {
         unloadClip(segment)
@@ -695,10 +745,7 @@ export function ScrollScrub({
               >
                 <picture className="scroll-scrub__picture">
                   {segment.mobilePoster ? (
-                    <source
-                      media="(hover: none) and (pointer: coarse), (max-width: 860px)"
-                      srcSet={segment.mobilePoster}
-                    />
+                    <source media={SCROLL_SCRUB_MOBILE_MEDIA_QUERY} srcSet={segment.mobilePoster} />
                   ) : null}
                   {/* Sima <img> a <picture>-ben: a poszter a klip PONTOS első
                       kockája, art-direction <source>-szal (mobil vágat) és
@@ -738,9 +785,7 @@ export function ScrollScrub({
                 key={caption.id}
               >
                 <p className="scroll-scrub__caption-title">{caption.text}</p>
-                {caption.body ? (
-                  <p className="scroll-scrub__caption-body">{caption.body}</p>
-                ) : null}
+                {caption.body ? <p className="scroll-scrub__caption-body">{caption.body}</p> : null}
               </div>
             ))}
           </div>
