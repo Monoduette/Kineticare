@@ -303,6 +303,8 @@ try {
       '.kc-nav-desktop__toggle',
       '.kc-nav-desktop__link',
       '#outside-focus',
+      '.kc-site-header__actions > .kc-account-nav a',
+      ...(signedIn ? ['.kc-site-header__actions > .kc-account-nav button'] : []),
     ]) {
       await page.setViewportSize({ width: 1200, height: 900 })
       await page.mouse.move(0, 899)
@@ -310,7 +312,22 @@ try {
       const firstLink = page.locator('.kc-nav-desktop__link').first()
       await firstLink.focus()
       await page.locator(target).first().waitFor({ state: 'visible' })
-      await page.locator(target).first().focus()
+      const accountTarget = target.includes('.kc-account-nav')
+      if (accountTarget) {
+        // A fiókvezérlőket csak Tab-bal érjük el, aktiválás és fiókművelet nélkül.
+        for (let step = 0; step < 20; step++) {
+          if (
+            await page
+              .locator(target)
+              .first()
+              .evaluate((el) => el === document.activeElement)
+          )
+            break
+          await page.keyboard.press('Tab')
+        }
+      } else {
+        await page.locator(target).first().focus()
+      }
       if (target === '#outside-focus') {
         await firstLink.hover()
       }
@@ -323,7 +340,7 @@ try {
       )
       assert.equal(
         await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
-        'true',
+        accountTarget ? 'false' : 'true',
       )
       await page.setViewportSize({ width: 1199, height: 900 })
       await settle()

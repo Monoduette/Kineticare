@@ -67,12 +67,18 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
 
   // A layout.css és a MobileNav közös határán a desktop almenüt is lezárjuk.
   // A CSS a médiaesemény előtt elrejtheti a fókuszált elemet, ezért a
-  // navigációhoz tartozó fókuszt még látható állapotban követjük.
+  // navigáció és a vele együtt eltűnő fejléc-fióksáv fókuszát még láthatóan követjük.
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 75em)')
-    let ownsFocus = navRef.current?.contains(document.activeElement) ?? false
+    const headerAccount = navRef.current
+      ?.closest('header')
+      ?.querySelector('.kc-site-header__actions > .kc-account-nav')
+    const containsFocus = (target: EventTarget | null) =>
+      target instanceof Node &&
+      ((navRef.current?.contains(target) ?? false) || (headerAccount?.contains(target) ?? false))
+    let ownsFocus = containsFocus(document.activeElement)
     const onFocusIn = (event: globalThis.FocusEvent) => {
-      ownsFocus = event.target instanceof Node && (navRef.current?.contains(event.target) ?? false)
+      ownsFocus = containsFocus(event.target)
     }
     const onCompact = (event: MediaQueryListEvent) => {
       if (event.matches) return
