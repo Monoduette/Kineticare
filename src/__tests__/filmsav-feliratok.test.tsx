@@ -6,7 +6,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { FilmHero } from '@/components/blocks/FilmHero'
-import { scrollScrubMediaFit, scrollScrubNeedsLayout } from '@/components/scroll-scrub/scroll-scrub'
+import {
+  SCROLL_SCRUB_MOBILE_MEDIA_QUERY,
+  scrollScrubMediaFit,
+  scrollScrubNeedsLayout,
+} from '@/components/scroll-scrub/scroll-scrub'
 import type { BlockFilmHero } from '@/payload-types'
 
 import { sajatErtek, stilusLapNezetablakra, type Elem } from './helpers/css-geometria'
@@ -182,11 +186,17 @@ describe('filmsáv egykezes média-szerződése', () => {
     expect(FILM_HERO_CSS).toContain('152deg in srgb')
   })
 
-  it('a mobil assetet SSR-ben és runtime is kizárólag 860px-ig választja', () => {
-    expect(markup).toContain('media="(max-width: 860px)"')
-    expect(markup).not.toContain('(pointer: coarse)')
-    expect(SCROLL_SCRUB_SOURCE).toContain('const isMobile = () => smallViewport.matches')
-    expect(SCROLL_SCRUB_SOURCE).not.toContain('coarsePointer || smallViewport.matches')
+  it('a mobil assetet 860px-ig és álló érintős tableten SSR-ben és runtime is választja', () => {
+    expect(SCROLL_SCRUB_MOBILE_MEDIA_QUERY).toBe(
+      '(max-width: 860px), (hover: none) and (pointer: coarse) and (orientation: portrait)',
+    )
+    expect(markup).toContain(`media="${SCROLL_SCRUB_MOBILE_MEDIA_QUERY}"`)
+    expect(SCROLL_SCRUB_SOURCE).toContain(
+      'window.matchMedia(SCROLL_SCRUB_MOBILE_MEDIA_QUERY)',
+    )
+    expect(SCROLL_SCRUB_SOURCE).toContain('const isMobile = () => mobileViewport.matches')
+    expect(SCROLL_SCRUB_SOURCE).toContain("mobileViewport.addEventListener('change', layout)")
+    expect(SCROLL_SCRUB_SOURCE).toContain("mobileViewport.removeEventListener('change', layout)")
     expect(SCROLL_SCRUB_SOURCE).toContain(
       'const usesMobileVideoTuning = () => coarsePointer || isMobile()',
     )
@@ -259,13 +269,15 @@ describe('filmsáv egykezes média-szerződése', () => {
   })
 
   it('az első festés és a runtime ugyanazt a mobil opacity/fit állapotot használja', () => {
-    expect(markup).toContain('media="(max-width: 860px)"')
+    expect(markup).toContain(`media="${SCROLL_SCRUB_MOBILE_MEDIA_QUERY}"`)
     expect(kezdoMediaStilus(390, 844, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '1' })
     expect(kezdoMediaStilus(568, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
     expect(kezdoMediaStilus(639.5, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
     expect(kezdoMediaStilus(639.5, 844, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '1' })
     expect(kezdoMediaStilus(768, 1024, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
     expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '0.48' })
+    expect(kezdoMediaStilus(1024, 1366, 'none', 'coarse')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(1024, 1366, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
     expect(kezdoMediaStilus(1024, 768, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
   })
 

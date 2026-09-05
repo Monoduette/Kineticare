@@ -36,7 +36,8 @@
   --kc-film-media-opacity: 1;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 860px),
+  (hover: none) and (pointer: coarse) and (orientation: portrait) {
   .kc-film-hero {
     --kc-film-media-opacity: 1;
   }
@@ -59,8 +60,18 @@
   }
 }
 
+/* Az álló érintős tablet a hozzá sütött portré forrást választja; 640px fölött
+   az egész kompozíció látszik, ugyanúgy, mint a keskenyebb tableteken. */
+@media (min-width: 640px) and (hover: none) and (pointer: coarse) and (orientation: portrait) {
+  .kc-film-hero .scroll-scrub__poster,
+  .kc-film-hero .scroll-scrub__video {
+    object-fit: contain;
+    object-position: var(--ss-mobile-position);
+  }
+}
+
 /* Az SSR-poszter ugyanazzal a fittel indul, amit a runtime a mobil forráshoz
-   számol: minden legfeljebb 860px-es fekvő nézet contain, fölötte desktop cover. */
+   számol: minden legfeljebb 860px-es fekvő nézet contain. */
 @media (max-width: 860px) and (orientation: landscape) {
   .kc-film-hero .scroll-scrub__poster,
   .kc-film-hero .scroll-scrub__video {

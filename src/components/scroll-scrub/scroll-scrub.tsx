@@ -5,6 +5,9 @@ import type { CSSProperties, ReactNode } from 'react'
 
 import './scroll-scrub.css'
 
+export const SCROLL_SCRUB_MOBILE_MEDIA_QUERY =
+  '(max-width: 860px), (hover: none) and (pointer: coarse) and (orientation: portrait)'
+
 /**
  * ScrollScrub — görgetéssel vezérelt filmsáv ('use client' sziget).
  * (IntersectionObserver, scroll-listener) NEM indul miattuk.
@@ -298,10 +301,10 @@ export function ScrollScrub({
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-    const smallViewport = window.matchMedia('(max-width: 860px)')
+    const mobileViewport = window.matchMedia(SCROLL_SCRUB_MOBILE_MEDIA_QUERY)
     const atLeastTabletWidth = window.matchMedia('(min-width: 640px)')
     const landscapeViewport = window.matchMedia('(orientation: landscape)')
-    const isMobile = () => smallViewport.matches
+    const isMobile = () => mobileViewport.matches
     const mediaFitForViewport = () =>
       scrollScrubMediaFit(
         isMobile(),
@@ -662,6 +665,7 @@ export function ScrollScrub({
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', layout)
+    mobileViewport.addEventListener('change', layout)
     window.addEventListener('pointerdown', onFirstGesture, {
       once: true,
       passive: true,
@@ -681,6 +685,7 @@ export function ScrollScrub({
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', layout)
+      mobileViewport.removeEventListener('change', layout)
       window.removeEventListener('pointerdown', onFirstGesture)
       window.removeEventListener('touchstart', onFirstGesture)
       root.style.removeProperty('--ss-progress')
@@ -740,7 +745,7 @@ export function ScrollScrub({
               >
                 <picture className="scroll-scrub__picture">
                   {segment.mobilePoster ? (
-                    <source media="(max-width: 860px)" srcSet={segment.mobilePoster} />
+                    <source media={SCROLL_SCRUB_MOBILE_MEDIA_QUERY} srcSet={segment.mobilePoster} />
                   ) : null}
                   {/* Sima <img> a <picture>-ben: a poszter a klip PONTOS első
                       kockája, art-direction <source>-szal (mobil vágat) és
