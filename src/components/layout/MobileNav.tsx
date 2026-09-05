@@ -50,20 +50,23 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    // Keep this query aligned with layout.css. A hidden drawer must not keep
-    // the page locked after a resize or browser zoom switches navigation mode.
+    // A layout.css közös határán a rejtett drawer nem tarthatja zárolva az oldalt.
     const desktop = window.matchMedia('(min-width: 75em)')
     const drawer = closeRef.current?.closest('nav')
-    // Chromium can reset activeElement to BODY before the media event arrives.
-    // Track explicit focus moves while visible, including moves outside it.
-    let drawerOwnsFocus = drawer?.contains(document.activeElement) ?? false
+    // A Chromium a médiaesemény előtt BODY-ra állíthatja az activeElementet.
+    // A drawer és a külső hamburger fókuszát még látható állapotban követjük;
+    // a más vezérlőre vitt fókuszt viszont nem vesszük el.
+    const ownsFocus = (target: EventTarget | null) =>
+      target instanceof Node &&
+      (target === toggleRef.current || (drawer?.contains(target) ?? false))
+    let navigationOwnsFocus = ownsFocus(document.activeElement)
     const onFocusIn = (event: FocusEvent) => {
-      drawerOwnsFocus = event.target instanceof Node && (drawer?.contains(event.target) ?? false)
+      navigationOwnsFocus = ownsFocus(event.target)
     }
     document.addEventListener('focusin', onFocusIn)
     const onDesktop = (event: MediaQueryListEvent) => {
       if (!event.matches) return
-      if (drawerOwnsFocus) {
+      if (navigationOwnsFocus) {
         toggleRef.current
           ?.closest('header')
           ?.querySelector<HTMLAnchorElement>('.kc-site-header__brand')

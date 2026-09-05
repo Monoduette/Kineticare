@@ -1,6 +1,7 @@
 /**
  * Layout-stílusok: fejléc, navigáció (desktop + mobil drawer), lábléc,
- * hibaoldalak. Töréspont: 900px (mobil < 900px) — lásd tokens.css.
+ * hibaoldalak. A navigáció és a fiókvezérlők közös töréspontja 75em;
+ * a fejlécméretek és a lábléc külön 900px-es szabályai változatlanok.
  * Vizuális nyelv: a kineticare.higgsfield.app landing minimál fejléce és
  * lábléce (higgsfield-site/app/src/kineticare.css — `.kc-nav` 144. sortól,
  * `.kc-footer` 880. sortól), a fő site SZEREP-tokenjeire portolva:
@@ -468,12 +469,13 @@
   display: none;
 }
 
-/* Shared navigation threshold (also MobileNav's resize cleanup): 1200px at
-   the default font size. The signed-in four-root header needs ~1035px plus
-   gutters; 900/1024px overflow. Keep the existing drawer until there is room
-   for navigation AND account actions, without shrinking type or clipping.
+/* Közös navigációs határ, a MobileNav átméretezési lezárásával együtt:
+   alapértelmezett betűméretnél 1200px. A bejelentkezett, négy főmenüpontos
+   fejléc kb. 1035px-et és oldalsó térközt igényel; 900/1024px-en túlcsordul.
+   A drawer addig marad, amíg a menü ÉS a fiókvezérlők is elférnek,
+   betűméret-csökkentés és levágás nélkül.
    WCAG 1.4.10: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
-   Responsive disclosure: https://design-system.service.gov.uk/components/service-navigation/ */
+   Reszponzív lenyitás: https://design-system.service.gov.uk/components/service-navigation/ */
 @media (min-width: 75em) {
   .kc-nav-desktop {
     /* A menü a jobb oldalra húz (brand ↔ menü + CTA). */
@@ -569,7 +571,7 @@
 
 /* Lenyitó gomb az almenüs főmenüpontok mellett (aria-expanded + Esc-zárás).
    Az érintési cél 44×44px (UX-skill 3. pont): táblagépen ez az EGYETLEN út az
-   almenüig, mert hover nincs, a mobil drawer pedig 900px felett rejtve van.
+   almenüig, mert hover nincs, a mobil drawer pedig 75em-től rejtve van.
    A negatív bal margó csak a LÁTVÁNYT húzza a felirathoz — a célfelület teljes
    marad. Szín és hover: a menülink nyelve, tehát a kontraszt-levezetés is az. */
 .kc-nav-desktop__toggle {

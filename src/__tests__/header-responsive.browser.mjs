@@ -245,6 +245,7 @@ try {
     await page.evaluate((value) => window.renderHeader(value), signedIn)
     await settle()
     for (const target of [
+      '.kc-nav-mobile > button',
       '.kc-nav-mobile__drawer-header button',
       '.kc-nav-mobile__sublink',
       '.kc-account-nav--drawer a',
@@ -258,7 +259,15 @@ try {
       await page.locator('.kc-nav-mobile > button').click()
       await page.waitForFunction(() => document.body.style.overflow === 'hidden')
       await page.locator(target).first().waitFor({ state: 'visible' })
-      await page.locator(target).first().focus()
+      if (target === '.kc-nav-mobile > button') {
+        const closeButton = page.locator('.kc-nav-mobile__drawer-header button')
+        await closeButton.waitFor({ state: 'visible' })
+        await closeButton.focus()
+        assert.ok(await closeButton.evaluate((el) => el === document.activeElement))
+        await page.keyboard.press('Shift+Tab')
+      } else {
+        await page.locator(target).first().focus()
+      }
       assert.ok(
         await page
           .locator(target)
