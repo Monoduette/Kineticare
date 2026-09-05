@@ -13,6 +13,14 @@ vi.mock('../lib/refund/refund-order', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/refund/refund-order')>()),
   refundOrder: service.run,
 }))
+vi.mock('../lib/refund/refund-recovery', () => ({
+  getRefundRecoveryStatus: vi.fn(() => {
+    throw new Error('Unexpected recovery status lookup')
+  }),
+  recoverRefundOrder: vi.fn(() => {
+    throw new Error('Unexpected recovery action')
+  }),
+}))
 
 const ORIGIN = 'https://shop.example.test'
 const ORDER_NUMBER = 'SYNTHETIC-INPUT-001'
@@ -110,6 +118,7 @@ describe('refund route bounded input contract', () => {
   )
 
   it.each([
+    { operationKey: 'DUMMY-OPERATION-KEY-FOR-FORWARDING', amountHuf: 1250 },
     { amountHuf: 1250, reason: 'synthetic' },
     { amountHuf: '1250', reason: 7, unknown: ['kept'] },
     { amountHuf: null, reason: null, extra: { nested: true } },

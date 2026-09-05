@@ -12,6 +12,7 @@ import {
 import { buildInvoiceXml, buyerFromOrder } from './invoice'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
+import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
 import {
   SzamlazzApiError,
   type IssueCorrectiveInvoiceResult,
@@ -269,6 +270,11 @@ async function performCorrectiveInvoiceForOrder(
     return { outcome: 'disabled' }
   }
 
+  const managed = payload
+    ? await managedRefundDocument(payload, order, 'corrective', deps.refundSeq, deps.amountHuf)
+    : null
+  if (managed?.number) return { outcome: 'already-issued', correctiveInvoiceNumber: managed.number }
+
   if (!Number.isInteger(deps.refundSeq) || deps.refundSeq < 1) {
     log.error('érvénytelen refund-sorszám — helyesbítő nem állítható ki', {
       refundSeq: deps.refundSeq,
@@ -422,13 +428,13 @@ async function performCorrectiveInvoiceForOrder(
       return await adoptExisting(found.szamlaszam, 'bekuldes-elotti lekerdezes')
     }
 
+    if (payload && managed) await claimManagedRefundDocument(payload, managed, previousAttempts)
     attempts = previousAttempts + 1
     await saveState({
       correctiveInvoiceStatus: 'pending',
       correctiveInvoiceAttempts: attempts,
       correctiveInvoiceAttemptsSeq: deps.refundSeq,
     })
-
     const postXml = deps.postXml ?? postInvoiceXml
     const result = await postXml(xml, config)
     // Ha egy KORÁBBI seq elmaradt bizonylata készült el utólag (retry), a

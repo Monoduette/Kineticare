@@ -4,6 +4,7 @@ import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RefundPanel } from '../components/admin/RefundPanel'
+import { ensureRefundOperation, readRefundOperation } from '../components/admin/refund-operation'
 
 const ui = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
@@ -34,6 +35,8 @@ vi.mock('@payloadcms/ui', () => ({
 const ORDER_A = 'SYNTHETIC-REFUND-A'
 const ORDER_B = 'SYNTHETIC-REFUND-B'
 const fetchMock = vi.fn<typeof fetch>()
+const statusFetchMock = vi.fn<typeof fetch>()
+const transportMock = vi.fn<typeof fetch>()
 const confirmMock = vi.fn<() => boolean>()
 let window: Window
 let container: HTMLDivElement
@@ -73,8 +76,16 @@ async function render(data = ui.data) {
   })
 }
 
+function monetaryButton() {
+  return Array.from(container.querySelectorAll('button')).find(
+    (element) =>
+      element.textContent?.startsWith('Visszatérítés indítása') ||
+      element.textContent?.startsWith('Visszatérítés folyamatban'),
+  )
+}
+
 function button() {
-  const element = container.querySelector('button')
+  const element = monetaryButton()
   if (!element) throw new Error('Expected the refund submit button')
   return element
 }
@@ -90,7 +101,7 @@ function expectReview() {
   expect(alert?.textContent).toContain('Ne indíts új')
   expect(container.querySelector('[role="status"]')).toBeNull()
   expect(container.textContent).not.toContain('visszatérítés megtörtént')
-  const submitButton = container.querySelector('button')
+  const submitButton = monetaryButton()
   if (submitButton) expect(submitButton.disabled).toBe(true)
 }
 
@@ -103,6 +114,21 @@ beforeEach(async () => {
   fetchMock.mockReset().mockImplementation(async () => {
     throw new Error('Unexpected unconfigured request in refund UI test')
   })
+  statusFetchMock.mockReset().mockImplementation(async (url, options) =>
+    Response.json({
+      orderNumber: decodeURIComponent(String(url).split('/').at(-2)!),
+      state: 'clear',
+      message: 'Nincs rendezetlen feldolgozás.',
+      ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+        ? { operationState: 'unseen' }
+        : {}),
+    }),
+  )
+  transportMock.mockReset().mockImplementation((url, options) => {
+    if (options?.method === 'GET') return statusFetchMock(url, options)
+    if (options?.method === 'POST') return fetchMock(url, options)
+    throw new Error('Unexpected transport method')
+  })
   window = new Window({ url: 'http://localhost:3000' })
   vi.stubGlobal('window', window)
   vi.stubGlobal('document', window.document)
@@ -112,7 +138,7 @@ beforeEach(async () => {
   vi.stubGlobal('MouseEvent', window.MouseEvent)
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   // Only the component transport is mocked; the external runner denies all network access.
-  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('fetch', transportMock)
   confirmMock.mockReset().mockReturnValue(true)
   Object.defineProperty(window, 'confirm', { value: confirmMock })
   const { createRoot } = await import('react-dom/client')
@@ -145,9 +171,12 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
-        body: '{}',
+        body: expect.any(String),
       }),
     )
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      operationKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+    })
     expect(container.querySelector('[role="status"]')?.textContent).toContain(
       'Teljes visszatérítés megtörtént',
     )
@@ -304,7 +333,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       'A rendelésen már teljes visszatérítés van rögzítve. Itt új visszatérítés nem indítható.',
     )
     expect(container.textContent).not.toContain('Ez a rendelés már vissza lett térítve.')
-    expect(container.querySelector('button')).toBeNull()
+    expect(monetaryButton()).toBeUndefined()
     await act(async () => {
       callback()
     })
@@ -373,6 +402,13 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       expect(container.querySelector('[role="status"]')).toBeNull()
       await submit()
       expect(fetchMock).toHaveBeenCalledTimes(2)
+      const first = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as {
+        operationKey: string
+      }
+      const second = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body)) as {
+        operationKey: string
+      }
+      expect(second.operationKey).toBe(first.operationKey)
     },
   )
 
@@ -400,10 +436,20 @@ describe('RefundPanel response presentation and current-mount guards', () => {
     await render(order(ORDER_B))
     expect(button().disabled).toBe(false)
     await submit()
+    const currentOrderAlerts = Array.from(container.querySelectorAll('[role="alert"]')).map(
+      (element) => element.textContent,
+    )
+    const currentOperation = readRefundOperation(ORDER_B)
     await act(async () => {
       first.resolve(Response.json({ error: 'old failure' }, { status: 503 }))
     })
-    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(
+      Array.from(container.querySelectorAll('[role="alert"]')).map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(currentOrderAlerts)
+    expect(container.textContent).not.toContain('old failure')
+    expect(readRefundOperation(ORDER_B)).toEqual(currentOperation)
     expect(button().disabled).toBe(true)
     await render(order(ORDER_A))
     expectReview()
@@ -469,6 +515,508 @@ describe('RefundPanel response presentation and current-mount guards', () => {
   )
 })
 
+describe('RefundPanel persisted recovery status', () => {
+  async function remount() {
+    await act(async () => {
+      root.unmount()
+    })
+    const { createRoot } = await import('react-dom/client')
+    root = createRoot(container)
+    await render()
+  }
+
+  function savedStatus(state: string, orderNumber = ORDER_A) {
+    return Response.json({ orderNumber, state, message: 'Mentett feldolgozási állapot.' })
+  }
+
+  function recoveryButton() {
+    const element = Array.from(container.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('Feldolgozás folytatása'),
+    )
+    if (!element) throw new Error('Expected recovery button')
+    return element
+  }
+
+  function acknowledgementButton() {
+    return Array.from(container.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('Korábbi művelet nyugtázása'),
+    )
+  }
+
+  function retryPreparationButton() {
+    return Array.from(container.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('Korábbi művelet újrapróbálása'),
+    )
+  }
+
+  it('remounts while the original POST is still preclaim and never replaces its key on unseen retry', async () => {
+    const original = deferred<Response>()
+    fetchMock
+      .mockReturnValueOnce(original.promise)
+      .mockRejectedValueOnce(new TypeError('Synthetic retry still pending'))
+    await submit()
+    const stored = readRefundOperation(ORDER_A)!
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await remount()
+    expect(acknowledgementButton()).toBeUndefined()
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    await act(async () => {
+      retryPreparationButton()!.click()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    await submit()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const sent = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1]!.body)))
+    expect(sent).toEqual([{ operationKey: stored.key }, { operationKey: stored.key }])
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    await act(async () => {
+      original.resolve(Response.json(success()))
+    })
+  })
+
+  it.each([null, 5000])(
+    'unseen before claim survives reload and prepares only the identical key and amount: %j',
+    async (amountHuf) => {
+      // A sent request may still be awaiting GetState and has not claimed its durable intent.
+      const stored = ensureRefundOperation(ORDER_A, amountHuf)
+      statusFetchMock.mockImplementation(async () =>
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          operationState: 'unseen',
+          message: 'Még nincs tartós nyom.',
+        }),
+      )
+      await remount()
+      expect(acknowledgementButton()).toBeUndefined()
+      expect(button().disabled).toBe(true)
+      const fresh = deferred<Response>()
+      statusFetchMock.mockReturnValueOnce(fresh.promise)
+      await act(async () => {
+        retryPreparationButton()!.click()
+      })
+      expect(button().disabled).toBe(true)
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(fetchMock).not.toHaveBeenCalled()
+      await act(async () => {
+        fresh.resolve(
+          Response.json({
+            orderNumber: ORDER_A,
+            state: 'clear',
+            operationState: 'unseen',
+            message: 'Még nincs tartós nyom.',
+          }),
+        )
+      })
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(button().disabled).toBe(false)
+      const input = container.querySelector('input') as HTMLInputElement
+      expect(input.value).toBe(amountHuf === null ? '' : String(amountHuf))
+      expect(input.disabled).toBe(true)
+      expect(fetchMock).not.toHaveBeenCalled()
+      fetchMock.mockRejectedValue(new TypeError('Synthetic original request still in flight'))
+      await submit()
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+        `/api/admin/orders/${ORDER_A}/refund`,
+        expect.objectContaining({
+          body: JSON.stringify({
+            ...(amountHuf === null ? {} : { amountHuf }),
+            operationKey: stored.key,
+          }),
+        }),
+      )
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(acknowledgementButton()).toBeUndefined()
+    },
+  )
+
+  it.each(['pending', 'completed', 'no_effect', 'invalid'])(
+    'fresh %s cannot unlock an unseen retry or clear its key',
+    async (operationState) => {
+      const stored = ensureRefundOperation(ORDER_A, 5000)
+      statusFetchMock.mockImplementation(async () =>
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          operationState: 'unseen',
+          message: 'Még nincs tartós nyom.',
+        }),
+      )
+      await remount()
+      statusFetchMock.mockImplementation(async () =>
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          operationState,
+          message: 'Friss mentett állapot.',
+        }),
+      )
+      await act(async () => {
+        retryPreparationButton()!.click()
+      })
+      expect(button().disabled).toBe(true)
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['completed', 'no_effect'])(
+    'reloads keyed %s but clears nothing and sends no POST before explicit acknowledged refresh',
+    async (operationState) => {
+      const stored = ensureRefundOperation(ORDER_A, 5000)
+      statusFetchMock.mockImplementation(async (url, options) =>
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          message: 'Mentett eredmény.',
+          ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+            ? { operationState }
+            : {}),
+        }),
+      )
+      await remount()
+      expect(button().disabled).toBe(true)
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(container.querySelector('[role="status"]')).toBeNull()
+      expect(container.textContent).not.toContain('visszatérítés megtörtént')
+      expect(statusFetchMock.mock.calls.at(-1)![0]).not.toContain(stored.key)
+      expect(
+        new Headers(statusFetchMock.mock.calls.at(-1)![1]!.headers).get('X-Refund-Operation-Key'),
+      ).toBe(stored.key)
+      const refresh = deferred<void>()
+      ui.refresh.mockReturnValue(refresh.promise)
+      await act(async () => {
+        acknowledgementButton()!.click()
+      })
+      expect(button().disabled).toBe(true)
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(fetchMock).not.toHaveBeenCalled()
+      await act(async () => {
+        refresh.resolve(undefined)
+      })
+      expect(readRefundOperation(ORDER_A)).toBeNull()
+      expect(button().disabled).toBe(false)
+      expect((container.querySelector('input') as HTMLInputElement).value).toBe('')
+      expect(
+        new Headers(statusFetchMock.mock.calls.at(-1)![1]!.headers).has('X-Refund-Operation-Key'),
+      ).toBe(false)
+      fetchMock.mockResolvedValue(Response.json(success()))
+      await submit()
+      const next = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { operationKey: string }
+      expect(next.operationKey).not.toBe(stored.key)
+    },
+  )
+
+  it.each([
+    { operationState: 'pending' },
+    {},
+    { operationState: 'invalid' },
+    { operationState: null },
+    { operationState: 'completed', orderNumber: ORDER_B },
+    { operationState: 'completed', state: 'manual_review' },
+    { operationState: 'unseen', state: 'recoverable' },
+  ])(
+    'keeps a reloaded key locked for unconfirmed or globally blocked outcome: %j',
+    async (overrides) => {
+      const stored = ensureRefundOperation(ORDER_A, null)
+      statusFetchMock.mockImplementation(async () =>
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          message: 'Mentett állapot.',
+          ...overrides,
+        }),
+      )
+      await remount()
+      expect(button().disabled).toBe(true)
+      expect(acknowledgementButton()).toBeUndefined()
+      expect(readRefundOperation(ORDER_A)).toEqual(stored)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('preserves the uncertain key across remount after a committed response was lost', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Synthetic lost success response'))
+    statusFetchMock.mockImplementation(async (_url, options) =>
+      Response.json({
+        orderNumber: ORDER_A,
+        state: 'clear',
+        message: 'Mentett állapot.',
+        ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+          ? { operationState: 'completed' }
+          : {}),
+      }),
+    )
+    await submit()
+    const stored = readRefundOperation(ORDER_A)
+    expect(stored).not.toBeNull()
+    await remount()
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    expect(button().disabled).toBe(true)
+    expect(acknowledgementButton()).toBeDefined()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('A korábbi művelet feldolgozása lezárult.')
+    expect(container.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('retains a terminal key when acknowledgement cannot refresh the document', async () => {
+    const stored = ensureRefundOperation(ORDER_A, null)
+    statusFetchMock.mockImplementation(async () =>
+      Response.json({
+        orderNumber: ORDER_A,
+        state: 'clear',
+        operationState: 'completed',
+        message: 'Mentett állapot.',
+      }),
+    )
+    await remount()
+    ui.refresh.mockRejectedValue(new Error('Synthetic refresh failure'))
+    await act(async () => {
+      acknowledgementButton()!.click()
+    })
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    expect(button().disabled).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('cannot POST when the operation key cannot be persisted', async () => {
+    vi.spyOn(window.sessionStorage, 'setItem').mockImplementation(() => {
+      throw new Error('Synthetic storage failure')
+    })
+    await submit()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(button().disabled).toBe(true)
+  })
+
+  it('waits for persisted GET before permitting money movement, with credentials, no-store and abort', async () => {
+    const reply = deferred<Response>()
+    statusFetchMock.mockReturnValue(reply.promise)
+    await remount()
+    expect(button().disabled).toBe(true)
+    const callback = ui.click!
+    await act(async () => {
+      callback()
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(confirmMock).not.toHaveBeenCalled()
+    expect(statusFetchMock).toHaveBeenLastCalledWith(
+      `/api/admin/orders/${ORDER_A}/refund`,
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        signal: expect.any(AbortSignal),
+      }),
+    )
+    await act(async () => {
+      reply.resolve(savedStatus('clear'))
+    })
+    expect(button().disabled).toBe(false)
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    const reads = statusFetchMock.mock.calls.length
+    await render()
+    await render()
+    expect(statusFetchMock).toHaveBeenCalledTimes(reads)
+  })
+
+  it('keeps the mounted operation guard while its initial status and lock display are pending', async () => {
+    const stored = ensureRefundOperation(ORDER_A, 5000)
+    const reply = deferred<Response>()
+    statusFetchMock.mockReturnValueOnce(reply.promise)
+    await remount()
+    expect(button().disabled).toBe(true)
+    const callback = ui.click!
+    await act(async () => {
+      callback()
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(confirmMock).not.toHaveBeenCalled()
+    await act(async () => {
+      reply.resolve(
+        Response.json({
+          orderNumber: ORDER_A,
+          state: 'clear',
+          operationState: 'unseen',
+          message: 'Még nincs tartós nyom.',
+        }),
+      )
+    })
+    expect(button().disabled).toBe(true)
+    expect(retryPreparationButton()).toBeDefined()
+    expect(acknowledgementButton()).toBeUndefined()
+    expect(readRefundOperation(ORDER_A)).toEqual(stored)
+    await act(async () => {
+      callback()
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(confirmMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    null,
+    {},
+    [],
+    { orderNumber: ORDER_A, state: 'clear' },
+    { orderNumber: ORDER_B, state: 'clear', message: 'Wrong order' },
+    { orderNumber: ORDER_A, state: 'completed', message: 'Not a status state' },
+    { orderNumber: ORDER_A, state: 'clear', message: '' },
+    { orderNumber: ORDER_A, state: 'clear', message: 'Conflict', manualReviewRequired: true },
+  ])('fails closed on malformed persisted status: %j', async (body) => {
+    statusFetchMock.mockImplementation(async () => Response.json(body))
+    await remount()
+    expectReview()
+    await submit()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['http', 'json', 'network', 'timeout'])(
+    'fails closed on GET %s failure',
+    async (kind) => {
+      statusFetchMock.mockImplementation(async () => {
+        if (kind === 'http')
+          return Response.json(
+            { orderNumber: ORDER_A, state: 'clear', message: 'Invalid HTTP' },
+            { status: 503 },
+          )
+        if (kind === 'json') return new Response('{')
+        if (kind === 'timeout') throw new DOMException('Synthetic timeout', 'TimeoutError')
+        throw new TypeError('Synthetic network failure')
+      })
+      await remount()
+      expectReview()
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('reconstructs manual-review lock across true reload and never announces GET success', async () => {
+    statusFetchMock.mockImplementation(async () => savedStatus('manual_review'))
+    await remount()
+    expectReview()
+    await remount()
+    expectReview()
+    expect(container.textContent).toContain('Mentett feldolgozási állapot.')
+    expect(container.textContent).not.toContain('Feldolgozás folytatása')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps recovery separate from monetary refund even for a refunded document', async () => {
+    statusFetchMock.mockImplementation(async () => savedStatus('recoverable'))
+    ui.data = order(ORDER_A, 'refunded')
+    await remount()
+    expect(container.textContent).toContain('A pénzvisszatérítést nem indítja újra.')
+    expect(container.textContent).not.toContain('Visszatérítés indítása')
+    expect(recoveryButton().disabled).toBe(false)
+    fetchMock.mockResolvedValue(
+      Response.json({
+        orderNumber: ORDER_A,
+        recoveryStatus: 'completed',
+        message: 'Synthetic completion',
+      }),
+    )
+    statusFetchMock.mockImplementation(async () => savedStatus('clear'))
+    const reads = statusFetchMock.mock.calls.length
+    await act(async () => {
+      recoveryButton().click()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/admin/orders/${ORDER_A}/refund`,
+      expect.objectContaining({ method: 'POST', body: '{"action":"recover"}' }),
+    )
+    expect(confirmMock).not.toHaveBeenCalled()
+    expect(statusFetchMock).toHaveBeenCalledTimes(reads + 1)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      'A visszatérítés feldolgozása rendezve.',
+    )
+    expect(container.textContent).not.toContain('visszatérítés megtörtént')
+    expect(ui.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['manual_review', 'wrong-order', 'malformed', 'network'])(
+    'does not infer completed processing from recovery %s',
+    async (kind) => {
+      statusFetchMock.mockImplementation(async () => savedStatus('recoverable'))
+      await remount()
+      if (kind === 'network') fetchMock.mockRejectedValue(new TypeError('Synthetic failure'))
+      else
+        fetchMock.mockResolvedValue(
+          Response.json(
+            kind === 'malformed'
+              ? {}
+              : {
+                  orderNumber: kind === 'wrong-order' ? ORDER_B : ORDER_A,
+                  recoveryStatus: kind === 'manual_review' ? 'manual_review' : 'completed',
+                  message: 'Kézi ellenőrzés szükséges.',
+                },
+          ),
+        )
+      statusFetchMock.mockImplementation(async () => savedStatus('manual_review'))
+      await act(async () => {
+        recoveryButton().click()
+      })
+      expectReview()
+      expect(ui.refresh).not.toHaveBeenCalled()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('isolates late status from another order and from an earlier visit to the same order', async () => {
+    const old = deferred<Response>()
+    statusFetchMock.mockReturnValueOnce(old.promise)
+    await remount()
+    const oldSignal = statusFetchMock.mock.calls.at(-1)![1]!.signal!
+    statusFetchMock.mockImplementation(async (url) =>
+      savedStatus('manual_review', String(url).includes(ORDER_B) ? ORDER_B : ORDER_A),
+    )
+    await render(order(ORDER_B))
+    expect(oldSignal.aborted).toBe(true)
+    expectReview()
+    await render(order(ORDER_A))
+    expectReview()
+    await act(async () => {
+      old.resolve(savedStatus('clear'))
+    })
+    expectReview()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('cannot re-enable an ambiguous refund through a later clear GET', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Synthetic lost acknowledgment'))
+    const reads = statusFetchMock.mock.calls.length
+    await submit()
+    expect(statusFetchMock).toHaveBeenCalledTimes(reads + 1)
+    expectReview()
+    await submit()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires the post-outcome GET before allowing a new partial refund', async () => {
+    const status = deferred<Response>()
+    statusFetchMock.mockReturnValue(status.promise)
+    fetchMock.mockResolvedValue(
+      Response.json(
+        success({
+          type: 'partial',
+          amountHuf: 5000,
+          totalRefundedHuf: 5000,
+          orderStatus: 'paid',
+          refundedTransactionStatus: 'PartiallyRefunded',
+        }),
+      ),
+    )
+    await submit()
+    expect(button().disabled).toBe(true)
+    await act(async () => {
+      status.resolve(savedStatus('manual_review'))
+    })
+    expect(button().disabled).toBe(true)
+    await submit()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('RefundPanel saved operational summary', () => {
   function summary() {
     const element = container.querySelector('dl[aria-label="Mentett visszatérítési állapotok"]')
@@ -493,7 +1041,7 @@ describe('RefundPanel saved operational summary', () => {
     }
   }
 
-  it('renders five semantic label/value pairs from saved data without requests', async () => {
+  it('renders five semantic label/value pairs from saved data without mutation requests', async () => {
     await render(savedOrder())
     expect(summary().querySelectorAll('dt')).toHaveLength(5)
     expect(summary().querySelectorAll('dd')).toHaveLength(5)

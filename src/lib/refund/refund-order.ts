@@ -3,7 +3,6 @@ import type { Payload } from 'payload'
 import type { Order, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { withUserPurchasesLock } from '../user-purchases-lock'
-import { auditLogStore, writeAuditLog } from '../audit'
 import {
   BarionApiError,
   fetchPaymentState,
@@ -12,15 +11,20 @@ import {
 } from '../barion'
 import { logger, type Logger } from '../logger'
 import { pickRefundableTransaction } from '../order-status/recover-paid-reject'
-import {
-  isRetryableCorrectiveError,
-  isRetryableStornoError,
+import type {
   issueCorrectiveInvoiceForOrder,
   issueStornoForOrder,
-  queueCorrectiveInvoiceJob,
-  type IssueCorrectiveInvoiceDeps,
-  type IssueStornoForOrderDeps,
+  IssueCorrectiveInvoiceDeps,
+  IssueStornoForOrderDeps,
 } from '../szamlazz'
+import { createRefundIntent, loadActiveRefundIntent, transitionRefundIntent } from './intent-store'
+import { prepareRefundReceipt, RECEIPTS, writeReceipt } from './recovery-receipts'
+import {
+  getRefundRecoveryStatus,
+  recoverRefundOrder,
+  validatedRefundHistory,
+} from './refund-recovery'
+import { digestRefundIdempotencyKey } from './refund-intent'
 
 /**
  * Owner-only rendelés-visszatérítés. Check-then-act → advisory-zár
@@ -29,7 +33,8 @@ import {
  * idle-in-transaction).
  *
  * Csak paid téríthető. TransactionId a v4 GetState-ből jön (az orders nem
- * tárolja). RefundFailed → semmi írás. Teljes refund: stornó, purchases le;
+ * tárolja). Bizonytalan/elutasított eredmény: blokkoló intent, nincs order-írás.
+ * Teljes refund: stornó, purchases le;
  * részrefund és záró rész: helyesbítő. Stornó automatikus retry TILOS.
  */
 
@@ -58,6 +63,8 @@ export interface OrderRefundEntry {
 }
 
 export interface RefundOrderInput {
+  /** Stable caller operation identity; never regenerated for an uncertain response. */
+  operationKey?: unknown
   /** Opcionális részösszeg HUF-ban; hiányában a maradék teljes összeg térül vissza. */
   amountHuf?: unknown
   /** Opcionális, szöveges refund-indok (teljes refundnál a refundReason-be is bekerül). */
@@ -75,8 +82,8 @@ export interface RefundOrderOptions {
   logger?: Logger
   /**
    * Injektálható stornó-hívó (teszteléshez); alapból a valódi
-   * issueStornoForOrder. A stornó best-effort: a kimenetele a refund
-   * eredményét SOHA nem befolyásolja.
+   * issueStornoForOrder. Hibája nem fordítja vissza a pénzügyi eredményt,
+   * de a feldolgozás csak tartós bizonylatbizonyítékkal lesz teljes.
    */
   issueStorno?: (
     order: Order,
@@ -102,12 +109,9 @@ export interface RefundOrderResult {
   totalRefundedHuf: number
   orderStatus: 'refunded' | 'paid'
   /**
-   * A Barion tranzakció-státuszának besorolása (M-11). `'succeeded'`: a
-   * visszatérítés igazoltan megtörtént, a bizonylat automatikusan elindult.
-   * `'unknown'`: a Barion nem adott értelmezhető tranzakció-státuszt — a
-   * refund-nyom rögzült (a maradvány így nem téríthető vissza másodszor), de
-   * bizonylat NEM készült, emberi ellenőrzés szükséges. A `'failed'` eset nem
-   * jelenik meg itt: az hibaágon (RefundError) végződik.
+   * A korábbi válaszformátum megmarad. Az új folyamat csak igazolt siker és
+   * befejezett feldolgozás után ad sikeres választ; bizonytalanságnál a tartós
+   * intent blokkol, a HTTP-válasz kézi ellenőrzést kér.
    */
   refundStatusOutcome: 'succeeded' | 'unknown'
 }
@@ -277,112 +281,6 @@ export async function revokePurchases(
   )
 }
 
-/**
- * STORNÓ teljes visszatérítéshez — best-effort (C4).
- *
- * A kiállítás állapota a rendelésre kerül (stornoStatus/stornoNumber/…), így a
- * kimaradt bizonylat lekérdezhető. Ha az inline POST már elindult, és
- * újrapróbálható hibába (timeout/hálózat) fut, a storno-issue job NEM kerül
- * sorba: a job a F3 bizonytalan-állapot ágon soha nem POSTolna újra, viszont
- * a vak újrapróbálás dupla stornót okozhatna. Ilyenkor error-szintű RIASZTÁS
- * kéri az emberi ellenőrzést a Számlázz.hu-fiókban. A kimenetel a refund
- * HTTP-válaszát SOSEM befolyásolja.
- */
-async function issueStornoBestEffort(params: {
-  options: RefundOrderOptions
-  order: Order
-  log: Logger
-  reason: string | null
-}): Promise<void> {
-  const { options, order, log, reason } = params
-  try {
-    const issueStorno = options.issueStorno ?? issueStornoForOrder
-    const result = await issueStorno(order, {
-      payload: options.payload,
-      logger: log,
-      ...(reason ? { reason } : {}),
-    })
-    if (result.outcome === 'failed') {
-      log.warn(
-        'refund: a stornó-számla kiállítása sikertelen — a refund ettől függetlenül sikeres (emberi pótlás szükséges)',
-        { reason: result.reason ?? null },
-      )
-    } else {
-      log.info('refund: stornó-számla feldolgozva', {
-        outcome: result.outcome,
-        stornoNumber: result.stornoNumber ?? null,
-      })
-    }
-  } catch (error) {
-    const retryable = isRetryableStornoError(error)
-    if (retryable) {
-      // Az inline POST már elindult (issueStornoForOrder a pending-írás
-      // UTÁN dob retryable-t). A storno-issue job ilyenkor F3-on
-      // (previousAttempts > 0, nincs stornoNumber) RIASZTÁS-sal megáll,
-      // és SOHA nem POSTolna újra — a sorbaállítás tehát csapda volna.
-      // Automatikus újrapróbálás TILOS (dupla stornó kockázata).
-      log.error(
-        'RIASZTÁS: a stornó-számla kiállítására már történt egy POST, az állapot bizonytalan — automatikus újrapróbálás TILOS (dupla stornó kockázata). A tulajdonosnak a Számlázz.hu-fiókban kell ellenőriznie, hogy készült-e stornó.',
-        { retryable, error: error instanceof Error ? error.message : String(error) },
-      )
-    } else {
-      log.error(
-        'refund: a stornó-számla kiállítása hibával állt le (best-effort) — a refund eredménye ettől változatlan',
-        { retryable, error: error instanceof Error ? error.message : String(error) },
-      )
-    }
-  }
-}
-
-/**
- * HELYESBÍTŐ (módosító) számla részleges visszatérítéshez — best-effort (C5).
- *
- * A refundSeq a refunds-nyom 1-alapú sorszáma: ez köti a bizonylatot a
- * konkrét visszatérítéshez (idempotencia-kulcs), és ezzel áll sorba a
- * corrective-invoice-issue job is újrapróbálható hiba esetén.
- */
-async function issueCorrectiveBestEffort(params: {
-  options: RefundOrderOptions
-  order: Order
-  log: Logger
-  reason: string | null
-  refundSeq: number
-  amountHuf: number
-}): Promise<void> {
-  const { options, order, log, reason, refundSeq, amountHuf } = params
-  try {
-    const issueCorrective = options.issueCorrective ?? issueCorrectiveInvoiceForOrder
-    const result = await issueCorrective(order, {
-      payload: options.payload,
-      logger: log,
-      refundSeq,
-      amountHuf,
-      ...(reason ? { reason } : {}),
-    })
-    if (result.outcome === 'failed') {
-      log.warn(
-        'refund: a helyesbítő számla kiállítása sikertelen — a részleges refund ettől függetlenül sikeres (emberi pótlás szükséges)',
-        { reason: result.reason ?? null },
-      )
-    } else {
-      log.info('refund: helyesbítő számla feldolgozva', {
-        outcome: result.outcome,
-        correctiveInvoiceNumber: result.correctiveInvoiceNumber ?? null,
-        refundSeq,
-      })
-    }
-  } catch (error) {
-    const retryable = isRetryableCorrectiveError(error)
-    log.error(
-      'refund: a helyesbítő számla kiállítása hibával állt le (best-effort) — a refund eredménye ettől változatlan',
-      { retryable, refundSeq, error: error instanceof Error ? error.message : String(error) },
-    )
-    if (retryable) {
-      await queueCorrectiveInvoiceJob(options.payload, order.id, refundSeq, log)
-    }
-  }
-}
-
 /** Rendelés-keresés orderNumber alapján (a zár előtt és a záron belül is ez fut). */
 async function findOrderByNumber(
   payload: Payload,
@@ -445,7 +343,7 @@ function decideRefund(order: Order, input: RefundOrderInput, orderLog: Logger): 
       : typeof order.amount === 'number'
         ? order.amount
         : null
-  if (totalHuf === null || totalHuf <= 0) {
+  if (totalHuf === null || !Number.isSafeInteger(totalHuf) || totalHuf <= 0) {
     orderLog.error('refund: a paid rendeléshez nem tartozik érvényes végösszeg', {
       totalHufSnapshot: order.totalHufSnapshot ?? null,
       amount: order.amount ?? null,
@@ -456,8 +354,8 @@ function decideRefund(order: Order, input: RefundOrderInput, orderLog: Logger): 
     )
   }
 
-  const entries = readRefundEntries(order)
-  const alreadyRefunded = alreadyRefundedHuf(order)
+  const entries = validatedRefundHistory(order)
+  const alreadyRefunded = entries.reduce((sum, entry) => sum + entry.amountHuf, 0)
   const remainingHuf = totalHuf - alreadyRefunded
   if (remainingHuf <= 0) {
     // Védelmi ág: a nyom szerint minden visszatérült, pedig a státusz nem refunded.
@@ -522,7 +420,8 @@ function decideRefund(order: Order, input: RefundOrderInput, orderLog: Logger): 
 async function resolveBarionTransactionId(
   barionPaymentId: string,
   orderLog: Logger,
-): Promise<string> {
+  expectedTransactionId?: string,
+): Promise<{ transactionId: string; posTransactionId: string }> {
   let state: BarionPaymentStateResponse
   try {
     state = await fetchPaymentState(barionPaymentId)
@@ -534,7 +433,19 @@ async function resolveBarionTransactionId(
     throw error
   }
   const refundable = pickRefundableTransaction(state)
-  if (refundable === null) {
+  const matching = Array.isArray(state.Transactions)
+    ? state.Transactions.filter(
+        (item) => item.TransactionId === (expectedTransactionId ?? refundable?.transactionId),
+      )
+    : []
+  const original = matching.length === 1 ? matching[0] : null
+  if (
+    state.PaymentId !== barionPaymentId ||
+    refundable === null ||
+    !original ||
+    typeof original.POSTransactionId !== 'string' ||
+    !original.POSTransactionId.trim()
+  ) {
     orderLog.error('refund: a fizetésállapot nem tartalmaz visszatéríthető tranzakciót', {
       barionStatus: state.Status,
     })
@@ -543,295 +454,140 @@ async function resolveBarionTransactionId(
       'A Barion oldalán most nincs visszatéríthető tranzakció ehhez a rendeléshez. Ellenőrizd a fizetést a Barionban, és ha ott rendben van, próbáld újra néhány perc múlva.',
     )
   }
-  return refundable.transactionId
+  return { transactionId: original.TransactionId, posTransactionId: original.POSTransactionId }
 }
 
-/** A refund-zár alatt született, a záron kívüli lépésekhez továbbadott eredmény. */
-interface LockedRefundOutcome {
-  /** A záron BELÜL frissen olvasott rendelés — az audit és a bizonylat is ezt használja. */
-  order: Order
-  decision: RefundDecision
-  transactionId: string
-  refundedTransactionStatus: string
-  statusOutcome: 'succeeded' | 'unknown'
-  refunds: OrderRefundEntry[]
-  before: {
-    status: Order['status']
-    refunds: OrderRefundEntry[]
-    refundReason: string | null
-    refundedAt: string | null
-  }
-}
+const RECOVERY_REQUIRED =
+  'A visszatérítés eredménye vagy helyi feldolgozása ellenőrzést igényel. Ne indíts új pénzvisszatérítést. A feldolgozás folytatása kizárólag a helyreállítási művelettel történhet.'
 
-/**
- * A teljes refund-folyamat. Barion-hiba esetén a rendelés érintetlen marad —
- * a BarionApiError változatlanul propagálódik (a route-handler képezi válaszra).
- */
+/** Every new provider submission requires a durable claim; recovery never enters this function. */
 export async function refundOrder(options: RefundOrderOptions): Promise<RefundOrderResult> {
   const { payload, orderNumber } = options
-  const log = options.logger ?? logger
-
-  // 1. Rendelés-keresés — ismeretlen orderNumber → 404.
-  const preOrder = await findOrderByNumber(payload, orderNumber)
-  if (!preOrder) {
-    throw new RefundError(404, 'A megadott rendelés nem található.')
+  const operationKey = options.input.operationKey
+  try {
+    digestRefundIdempotencyKey(operationKey as string)
+  } catch {
+    throw new RefundError(
+      400,
+      'A visszatérítéshez műveletazonosító szükséges. Frissítsd a rendelés nézetét.',
+    )
   }
-  const orderLog = log.child({ orderId: preOrder.id, orderNumber: preOrder.orderNumber })
-
-  // 2–3. Elő-validáció a záron KÍVÜL: a nyilvánvalóan érvénytelen kérés (404/409/400)
-  // így zárfoglalás nélkül, azonnal elbukik. A DÖNTŐ validáció a záron belül,
-  // a frissen olvasott rendelésen ismétlődik meg.
-  const preDecision = decideRefund(preOrder, options.input, orderLog)
-
-  // 4. TransactionId elő-feloldás — GetState a záron KÍVÜL (tiszta olvasás).
-  const preResolvedTransactionId =
-    preDecision.storedTransactionId ??
-    (await resolveBarionTransactionId(preDecision.barionPaymentId, orderLog))
-
-  // 5. PÉNZMOZGATÓ SZAKASZ ADVISORY-ZÁR ALATT: friss olvasás → újra-validálás →
-  // Barion-refund → a refunds-nyom írása. A záron belül minden döntés a FRISS
-  // példányból születik, így két párhuzamos kérés nem térít vissza kétszer, és a
-  // refunds-tömb írása sem veszíthet el bejegyzést.
-  const outcome = await withAdvisoryLock<LockedRefundOutcome>(
+  const log = options.logger ?? logger
+  const preOrder = await findOrderByNumber(payload, orderNumber)
+  if (!preOrder) throw new RefundError(404, 'A megadott rendelés nem található.')
+  if (await loadActiveRefundIntent(payload, preOrder.id))
+    throw new RefundError(503, RECOVERY_REQUIRED)
+  const preDecision = decideRefund(preOrder, options.input, log)
+  if ((await getRefundRecoveryStatus({ payload, orderNumber })).state !== 'clear')
+    throw new RefundError(503, RECOVERY_REQUIRED)
+  const resolved = await resolveBarionTransactionId(
+    preDecision.barionPaymentId,
+    log,
+    preDecision.storedTransactionId,
+  )
+  const outcome = await withAdvisoryLock(
     payload,
     refundLockKey(preOrder.id),
     async () => {
-      // 5a. FRISS olvasás — a zár megszerzése közben egy párhuzamos refund már
-      // módosíthatta a rendelést.
       const order = await findOrderByNumber(payload, orderNumber)
-      if (!order) {
-        throw new RefundError(404, 'A megadott rendelés nem található.')
-      }
-      const decision = decideRefund(order, options.input, orderLog)
-      const { amountHuf, type, reason, entries } = decision
-
-      // 5b. A tárolt TransactionId elsőbbsége: ha közben egy párhuzamos refund
-      // beírta a sajátját, azt használjuk a záron kívül feloldott helyett.
-      const transactionId = decision.storedTransactionId ?? preResolvedTransactionId
-
-      // 5c. Barion-refund — ez az egyetlen pénzmozgató hívás. Hiba esetén (a
-      // BarionApiError itt kibillen) a rendelésen SEMMI nem változik: a DB-írás
-      // kizárólag a siker UTÁN következik.
-      let refundResponse
+      if (!order) throw new RefundError(404, 'A megadott rendelés nem található.')
+      if (await loadActiveRefundIntent(payload, order.id))
+        throw new RefundError(503, RECOVERY_REQUIRED)
+      const decision = decideRefund(order, options.input, log)
+      if ((await getRefundRecoveryStatus({ payload, orderNumber })).state !== 'clear')
+        throw new RefundError(503, RECOVERY_REQUIRED)
+      const transactionId = decision.storedTransactionId ?? resolved.transactionId
+      if (
+        transactionId !== resolved.transactionId ||
+        decision.barionPaymentId !== preDecision.barionPaymentId
+      )
+        throw new RefundError(503, RECOVERY_REQUIRED)
+      let intent = await createRefundIntent(
+        payload,
+        {
+          schemaVersion: 1,
+          actorId: String(options.actor.id),
+          orderId: String(order.id),
+          provider: 'barion',
+          providerPaymentId: decision.barionPaymentId,
+          providerTransactionId: transactionId,
+          refundSequence: decision.entries.length + 1,
+          requestedAmountHuf: decision.amountHuf,
+          currency: 'HUF',
+          reason: decision.reason,
+        },
+        operationKey as string,
+      )
+      // An unacknowledged baseline leaves prepared active and MUST NOT launch a provider request.
+      await prepareRefundReceipt(payload, intent, order)
+      intent = await transitionRefundIntent(payload, intent, 'provider_started')
+      let response
       try {
-        refundResponse = await refundPayment({
-          paymentId: decision.barionPaymentId,
-          transactionsToRefund: [{ transactionId, amountToRefund: amountHuf }],
-        })
-      } catch (error) {
-        orderLog.error('refund: a Barion visszatérítés sikertelen — a rendelés változatlan', {
-          kind: error instanceof BarionApiError ? error.kind : 'unknown',
-          httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
-          providerErrorCodes:
-            error instanceof BarionApiError ? error.providerErrors.map((e) => e.ErrorCode) : [],
-          error: error instanceof Error ? error.message : String(error),
-        })
-        throw error
-      }
-
-      // 5d. M-11 — a TRANZAKCIÓ-SZINTŰ státusz kiértékelése.
-      //
-      // A Payment/Refund v2 HTTP 200-at és üres Errors tömböt ad akkor is, ha a
-      // tranzakció maga nem térült vissza (RefundFailed). Korábban ez az érték
-      // csak eltárolódott, és a folyamat sikerként futott tovább: refund-bejegyzés
-      // keletkezett, a rendelés refundedre váltott, és stornó/helyesbítő számla
-      // indult egy MEG NEM TÖRTÉNT visszatérítésre.
-      const refundedTransaction = refundResponse.RefundedTransactions?.[0]
-      const rawStatus = refundedTransaction?.Status
-      const statusOutcome = classifyRefundedTransactionStatus(rawStatus)
-
-      if (statusOutcome === 'failed') {
-        // HIBAÁG: semmilyen írás. Szándékosan NEM írunk „sikertelen" refund-
-        // bejegyzést sem: az alreadyRefundedHuf MINDEN bejegyzés összegét
-        // beszámítja, tehát egy kudarc-bejegyzés hamisan csökkentené a még
-        // visszatéríthető maradványt. A nyom így a strukturált napló.
-        orderLog.error(
-          'refund: a Barion tranzakciószintű státusza RefundFailed — a visszatérítés NEM történt meg, a rendelés változatlan, bizonylat nem készült',
-          {
-            transactionId,
-            amountHuf,
-            barionTransactionStatus: rawStatus ?? null,
-          },
-        )
-        throw new RefundError(
-          502,
-          'A Barion elutasította a visszatérítést (a tranzakció státusza: RefundFailed). A rendelés nem változott, és bizonylat sem készült — ellenőrizd a Barion felületén, majd próbáld újra.',
-        )
-      }
-
-      const refundedTransactionStatus = rawStatus ?? 'Unknown'
-      if (statusOutcome === 'unknown') {
-        // KONZERVATÍV, DOKUMENTÁLT KEZELÉS ismeretlen/hiányzó státuszra.
-        // A Barion nem mondta ki, hogy a refund meghiúsult (azt a RefundFailed
-        // jelentené), de azt sem, hogy sikerült. A két kockázat nem egyforma:
-        //  - ha rögzítjük és mégsem történt meg → hiányzó visszatérítés, amit a
-        //    napló-riasztás alapján ember pótol;
-        //  - ha NEM rögzítjük és mégis megtörtént → a maradvány újra
-        //    visszatéríthetőnek látszik, azaz DUPLA PÉNZKIFIZETÉS.
-        // A pénzügyileg visszafordíthatatlan hibát kerüljük: a bejegyzés
-        // rögzül (a nyom pontos marad), de bizonylat automatikusan NEM készül,
-        // és error-szintű riasztás kéri az emberi ellenőrzést.
-        orderLog.error(
-          'RIASZTÁS: a Barion nem adott értelmezhető tranzakció-státuszt a visszatérítésre — a refund-nyom rögzült, de bizonylat NEM készült; emberi ellenőrzés szükséges a Barion felületén',
-          {
-            transactionId,
-            amountHuf,
-            barionTransactionStatus: rawStatus ?? null,
-          },
-        )
-      }
-
-      // 5e. A refunds-nyom írása a FRISS bejegyzésekre fűzve.
-      const nowIso = new Date().toISOString()
-      const newEntry: OrderRefundEntry = {
-        transactionId,
-        amountHuf,
-        status: refundedTransactionStatus,
-        refundedAt: nowIso,
-        type,
-        ...(reason ? { reason } : {}),
-      }
-      const refunds = [...entries, newEntry]
-
-      // Részrefund-döntés (kommentezett): részösszeges visszatérítésnél a
-      // rendelés státusza paid MARAD, és a vevő hozzáférése (purchases) is
-      // MEGMARAD — a részrefund tipikusan kártérítés/kedvezmény, nem a vásárlás
-      // felbontása; a digitális tartalomhoz való hozzáférés megszüntetése csak a
-      // teljes refundhoz (a pénzügyi tranzakció teljes visszafordításához) kötődik.
-      // A refunds-nyom mindkét esetben pontos pénzügyi auditot ad.
-      const before = {
-        status: order.status,
-        refunds: entries,
-        refundReason: order.refundReason ?? null,
-        refundedAt: order.refundedAt ?? null,
-      }
-
-      if (type === 'full') {
-        await payload.update({
-          collection: 'orders',
-          id: order.id,
-          data: {
-            status: 'refunded',
-            refundedAt: nowIso,
-            ...(reason ? { refundReason: reason } : {}),
-            refunds,
-          } as unknown as Record<string, unknown>,
-          overrideAccess: true,
-        })
-        // A pénzügyi nyom már rögzült; a külön users-írás hibája nem görgeti vissza.
-        // Csak a cleanup hibáját képezzük át, az order-írásét nem.
-        try {
-          await revokePurchases(payload, order, orderLog)
-        } catch (error) {
-          orderLog.error(
-            'refund: a pénzügyi nyom rögzült, de a hozzáférések rendezése elakadt; kézi ellenőrzés szükséges',
+        response = await refundPayment({
+          paymentId: intent.providerPaymentId,
+          transactionsToRefund: [
             {
-              phase: 'purchase-revocation',
-              financialRecordPersisted: true,
-              refundStatusOutcome: statusOutcome,
-              errorKind: error instanceof Error ? 'error' : 'non-error',
+              transactionId,
+              posTransactionId: resolved.posTransactionId,
+              amountToRefund: intent.requestedAmountHuf,
             },
-          )
-          const recorded =
-            statusOutcome === 'succeeded'
-              ? 'A visszatérítés már rögzítve van'
-              : 'A visszatérítési kísérlet már rögzítve van, de a Barion nem igazolta a sikerét'
-          throw new RefundError(
-            503,
-            `${recorded}. A hozzáférések rendezésének eredménye nem igazolt. Ne indíts új pénzvisszatérítést. Kézi ellenőrzés és rendezés szükséges.`,
-          )
-        }
-      } else {
-        await payload.update({
-          collection: 'orders',
-          id: order.id,
-          data: { refunds } as unknown as Record<string, unknown>,
-          overrideAccess: true,
+          ],
         })
+      } catch {
+        try {
+          await transitionRefundIntent(payload, intent, 'provider_unknown')
+        } catch {
+          // The durable provider_started claim still blocks a new payment when the CAS is unacknowledged.
+        }
+        throw new RefundError(503, RECOVERY_REQUIRED)
       }
-
-      return {
-        order,
-        decision,
+      const transaction =
+        Array.isArray(response?.RefundedTransactions) && response.RefundedTransactions.length === 1
+          ? response.RefundedTransactions[0]
+          : null
+      const correlated =
+        response?.PaymentId === intent.providerPaymentId &&
+        (response.Errors === undefined ||
+          (Array.isArray(response.Errors) && response.Errors.length === 0)) &&
+        transaction?.TransactionId === transactionId &&
+        transaction.Total === intent.requestedAmountHuf &&
+        (transaction.AmountToRefund === undefined ||
+          transaction.AmountToRefund === intent.requestedAmountHuf) &&
+        Number.isSafeInteger(transaction.Total)
+      if (!correlated || classifyRefundedTransactionStatus(transaction?.Status) !== 'succeeded') {
+        await transitionRefundIntent(payload, intent, 'provider_unknown')
+        throw new RefundError(503, RECOVERY_REQUIRED)
+      }
+      const status = transaction!.Status
+      // Minimal correlated evidence, never the raw provider body. Lost acknowledgement remains blocking.
+      await writeReceipt(payload, intent, RECEIPTS.provider, {
+        version: 1,
+        paymentId: intent.providerPaymentId,
         transactionId,
-        refundedTransactionStatus,
-        statusOutcome,
-        refunds,
-        before,
-      }
+        amountHuf: intent.requestedAmountHuf,
+        sequence: intent.refundSequence,
+        status,
+        totalHuf: decision.totalHuf,
+        alreadyRefundedHuf: decision.alreadyRefunded,
+        type: decision.type,
+      })
+      await transitionRefundIntent(payload, intent, 'provider_succeeded')
+      return { decision, transactionId, status }
     },
-    orderLog,
+    log,
   )
-
-  const {
-    order,
-    decision,
-    transactionId,
-    refundedTransactionStatus,
-    statusOutcome,
-    refunds,
-    before,
-  } = outcome
-  const { amountHuf, type, reason, alreadyRefunded } = decision
-  const totalRefundedHuf = alreadyRefunded + amountHuf
-
-  // 6. Audit-bejegyzés (az audit-logs collection létezik — best-effort).
-  await writeAuditLog({
-    store: auditLogStore(payload),
-    actor: options.actor.id,
-    action: type === 'full' ? 'order-refund' : 'order-partial-refund',
-    entityType: 'orders',
-    entityId: order.id,
-    before,
-    after: {
-      status: type === 'full' ? 'refunded' : 'paid',
-      refunds,
-      amountHuf,
-      transactionId,
-      refundedTransactionStatus,
-    },
-    req: options.headers ? { headers: options.headers } : undefined,
-    ipAddress: options.ipAddress,
-  })
-
-  orderLog.info('refund: visszatérítés rögzítve', {
-    type,
-    amountHuf,
-    totalRefundedHuf,
-    transactionId,
-    refundedTransactionStatus,
-  })
-
-  // Bizonylat best-effort, záron kívül. Csak igazolt refundhoz.
-  // Első teljes → stornó; rész / záró rész → helyesbítő (stornó duplán írna).
-  // Stornó automatikus retry tilos. A bizonylat hibája a refundot nem billenti.
-  if (statusOutcome !== 'succeeded') {
-    orderLog.warn(
-      'refund: a bizonylat automatikus kiállítása kimaradt, mert a Barion nem igazolta vissza a tranzakció sikerét — emberi pótlás szükséges',
-      { refundedTransactionStatus, type, amountHuf },
-    )
-  } else if (type === 'full' && alreadyRefunded === 0) {
-    await issueStornoBestEffort({ options, order, log: orderLog, reason })
-  } else {
-    await issueCorrectiveBestEffort({
-      options,
-      order,
-      log: orderLog,
-      reason,
-      refundSeq: refunds.length,
-      amountHuf,
-    })
-  }
-
+  const recovered = await recoverRefundOrder(options)
+  if (recovered.recoveryStatus !== 'completed') throw new RefundError(503, RECOVERY_REQUIRED)
+  const { decision, transactionId, status } = outcome
   return {
-    orderNumber: order.orderNumber ?? orderNumber,
-    type,
-    amountHuf,
+    orderNumber,
+    type: decision.type,
+    amountHuf: decision.amountHuf,
     transactionId,
-    refundedTransactionStatus,
-    alreadyRefundedHuf: alreadyRefunded,
-    totalRefundedHuf,
-    orderStatus: type === 'full' ? 'refunded' : 'paid',
-    refundStatusOutcome: statusOutcome,
+    refundedTransactionStatus: status,
+    alreadyRefundedHuf: decision.alreadyRefunded,
+    totalRefundedHuf: decision.alreadyRefunded + decision.amountHuf,
+    orderStatus: decision.type === 'full' ? 'refunded' : 'paid',
+    refundStatusOutcome: 'succeeded',
   }
 }

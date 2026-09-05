@@ -8,6 +8,7 @@ import { generateRequestId, getRequestId } from '../request-id'
 import { DEFAULT_JSON_BODY_MAX_BYTES, readBodyWithCap } from '../security/request-body'
 import { assertSameOrigin } from '../security/same-origin'
 import { RefundError, refundOrder, type RefundOrderInput } from './refund-order'
+import { getRefundRecoveryStatus, recoverRefundOrder } from './refund-recovery'
 
 /** POST /api/admin/orders/[orderNumber]/refund — owner-only, a refundOrder szolgáltatást hívja. */
 export interface RefundHandlerDeps {
@@ -80,7 +81,10 @@ export function createRefundHandler(
       const rawBody = await readBodyWithCap(request, DEFAULT_JSON_BODY_MAX_BYTES)
       if (rawBody === null) {
         return Response.json(
-          { error: 'A visszatérítés nem indítható: a kérés mérete meghaladja a megengedett korlátot.' },
+          {
+            error:
+              'A visszatérítés nem indítható: a kérés mérete meghaladja a megengedett korlátot.',
+          },
           { status: 413 },
         )
       }
@@ -101,9 +105,29 @@ export function createRefundHandler(
       // Preserve JSON null -> {} compatibility, distinct from the size-limit sentinel above.
       if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
         return Response.json(
-          { error: 'A visszatérítés nem indítható: a kérés adatai JSON objektumot kell alkossanak.' },
+          {
+            error: 'A visszatérítés nem indítható: a kérés adatai JSON objektumot kell alkossanak.',
+          },
           { status: 400 },
         )
+      }
+
+      const input = (body ?? {}) as Record<string, unknown>
+      if (Object.hasOwn(input, 'action')) {
+        if (input.action !== 'recover' || Object.keys(input).some((key) => key !== 'action')) {
+          return Response.json(
+            { error: 'Nem támogatott művelet vagy kevert helyreállítási adatok.' },
+            { status: 400 },
+          )
+        }
+        const result = await recoverRefundOrder({
+          payload,
+          orderNumber,
+          actor: user,
+          headers: request.headers,
+          ipAddress: resolveClientIp(request.headers),
+        })
+        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } })
       }
 
       const result = await refundOrder({
@@ -155,6 +179,45 @@ export function createRefundHandler(
           manualReviewRequired: true,
         },
         { status: 500 },
+      )
+    }
+  }
+}
+
+/** Read-only persisted intent status; authenticate before any order lookup. */
+export function createRefundRecoveryStatusHandler(deps: RefundHandlerDeps) {
+  return async function GET(request: Request, context: RefundRouteContext): Promise<Response> {
+    const headers = { 'Cache-Control': 'no-store' }
+    try {
+      const payload = await deps.getPayload()
+      const { user } = await payload.auth({ headers: request.headers })
+      if (!user) {
+        return Response.json({ error: 'Bejelentkezés szükséges.' }, { status: 401, headers })
+      }
+      if (!hasOwnerRole(user)) {
+        return Response.json(
+          { error: 'Kizárólag owner szerepkörrel érhető el.' },
+          { status: 403, headers },
+        )
+      }
+      const { orderNumber } = await context.params
+      if (!orderNumber || !orderNumber.trim()) {
+        return Response.json({ error: 'Hiányzó rendelésszám.' }, { status: 400, headers })
+      }
+      const operationKey = request.headers.get('X-Refund-Operation-Key')
+      return Response.json(
+        await getRefundRecoveryStatus({
+          payload,
+          orderNumber,
+          ...(operationKey === null ? {} : { operationKey }),
+        }),
+        { headers },
+      )
+    } catch (error) {
+      const status = error instanceof RefundError ? error.status : 500
+      return Response.json(
+        { error: 'A mentett feldolgozási állapot nem ellenőrizhető. Ne indíts új visszatérítést.' },
+        { status, headers },
       )
     }
   }

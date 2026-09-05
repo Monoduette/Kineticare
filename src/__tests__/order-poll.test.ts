@@ -1465,6 +1465,7 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     Transactions: [
       {
         TransactionId: 'tx-p0',
+        POSTransactionId: 'DUMMY-P0-ORIGINAL-SHOP-TRANSACTION',
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: ORDER_TOTAL_HUF,

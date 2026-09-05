@@ -359,13 +359,37 @@ export async function recoverRejectedSucceededPayment(
           return { action: 'refunded' as const, detail: 'already-refunded-at-barion' }
         }
 
+        const matchingTransactions = state.Transactions.filter(
+          (transaction) => transaction.TransactionId === refundable.transactionId,
+        )
+        const posTransactionId = matchingTransactions[0]?.POSTransactionId
+        if (
+          matchingTransactions.length !== 1 ||
+          typeof posTransactionId !== 'string' ||
+          !posTransactionId.trim()
+        ) {
+          const detail =
+            matchingTransactions.length !== 1
+              ? 'ambiguous-refund-transaction'
+              : 'missing-pos-transaction-id'
+          log.error(
+            'RIASZTÁS: paid-reject recovery: az eredeti kereskedői tranzakcióazonosító nem igazolható, automatikus visszatérítés nem indítható',
+            { source, reason, orderId, detail },
+          )
+          return { action: 'failed' as const, detail }
+        }
+
         const runRefund = input.refundPayment ?? refundPayment
         let barionStatus = 'Unknown'
         try {
           const response = await runRefund({
             paymentId: order.barionPaymentId,
             transactionsToRefund: [
-              { transactionId: refundable.transactionId, amountToRefund: refundable.amountHuf },
+              {
+                transactionId: refundable.transactionId,
+                posTransactionId,
+                amountToRefund: refundable.amountHuf,
+              },
             ],
           })
           const rawStatus = response.RefundedTransactions?.[0]?.Status

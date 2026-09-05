@@ -1,12 +1,23 @@
 'use client'
 
 import { Button, useAuth, useDocumentInfo, useRouteCache } from '@payloadcms/ui'
-import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { hasOwnerRole } from '../../access/roles'
 import { formatPriceHuf } from '../../lib/format-price'
 import { refundBlockedReason, refundConfirmQuestion, validateRefundAmount } from './refund-amount'
 import { readRefundOperationalStatus } from './refund-operational-status'
+import {
+  clearRefundOperation,
+  ensureRefundOperation,
+  readRefundOperation,
+  type RefundOperation,
+} from './refund-operation'
+import {
+  parseRefundRecoveryResponse,
+  parseRefundRecoveryStatus,
+  type RefundRecoveryStatus,
+} from './refund-recovery-response'
 import {
   presentRefundResponse,
   REFUND_REVIEW_GUIDANCE,
@@ -27,6 +38,15 @@ const REQUEST_TIMEOUT_MS = 30_000
 
 const REFRESH_WARNING = `A rendelés nézetének frissítése nem sikerült. A visszatérítés fenti eredménye változatlan. ${REFUND_REVIEW_GUIDANCE}`
 const NAVIGATION_WARNING = `A válasz másik rendelés megnyitása után érkezett, ezért a nézet nem frissült. ${REFUND_REVIEW_GUIDANCE}`
+const STATUS_WARNING = `A mentett feldolgozási állapot nem ellenőrizhető. ${REFUND_REVIEW_GUIDANCE}`
+const OPERATION_WARNING = `Korábbi visszatérítési művelet nyugtázása szükséges. ${REFUND_REVIEW_GUIDANCE}`
+
+interface OrderVisit {
+  orderNumber: string | null
+  status: RefundRecoveryStatus | null
+  request: AbortController | null
+  operation: RefundOperation | null
+}
 
 interface PanelState {
   amountInput: string
@@ -35,6 +55,11 @@ interface PanelState {
   errorMessage: string | null
   warningMessage: string | null
   successMessage: string | null
+  recovery: RefundRecoveryStatus | null
+  statusLoading: boolean
+  statusError: boolean
+  recovering: boolean
+  operation: RefundOperation | null
 }
 
 const EMPTY_PANEL: PanelState = {
@@ -44,6 +69,11 @@ const EMPTY_PANEL: PanelState = {
   errorMessage: null,
   warningMessage: null,
   successMessage: null,
+  recovery: null,
+  statusLoading: true,
+  statusError: false,
+  recovering: false,
+  operation: null,
 }
 
 interface OrderSummary {
@@ -93,31 +123,109 @@ export function RefundPanel() {
   const blockedReason = refundBlockedReason(order.status)
   const allowed = !isInitializing && !!orderNumber && hasOwnerRole(user) && !blockedReason
   const [panels, setPanels] = useState(() => new Map<string, PanelState>())
-  const { amountInput, pending, locked, errorMessage, warningMessage, successMessage } =
-    (orderNumber && panels.get(orderNumber)) || EMPTY_PANEL
+  const {
+    amountInput,
+    pending,
+    locked,
+    errorMessage,
+    warningMessage,
+    successMessage,
+    recovery,
+    statusLoading,
+    statusError,
+    recovering,
+    operation,
+  } = (orderNumber && panels.get(orderNumber)) || EMPTY_PANEL
   // This guard lasts only for this mounted panel, not across reloads or tabs.
   const lockedOrders = useRef(new Set<string>())
-  const activeVisit = useRef<{ orderNumber: string | null } | null>(null)
+  const activeVisit = useRef<OrderVisit | null>(null)
   const latestAllowed = useRef(false)
+  const busyOrders = useRef(new Set<string>())
+  const owner = hasOwnerRole(user)
 
-  useLayoutEffect(() => {
-    activeVisit.current = { orderNumber }
-    return () => {
-      activeVisit.current = null
-    }
-  }, [orderNumber])
-
-  useLayoutEffect(() => {
-    latestAllowed.current = allowed
-  }, [allowed])
-
-  const updatePanel = (key: string, patch: Partial<PanelState>) => {
+  const updatePanel = useCallback((key: string, patch: Partial<PanelState>) => {
     setPanels((previous) => {
       const next = new Map(previous)
       next.set(key, { ...(previous.get(key) ?? EMPTY_PANEL), ...patch })
       return next
     })
-  }
+  }, [])
+
+  const loadStatus = useCallback(
+    async (visit: OrderVisit, initialState: Partial<PanelState> = {}) => {
+      const key = visit.orderNumber
+      if (!key || activeVisit.current !== visit) return
+      visit.request?.abort()
+      const controller = new AbortController()
+      visit.request = controller
+      visit.status = null
+      updatePanel(key, { statusLoading: true, statusError: false, recovery: null })
+      let status: RefundRecoveryStatus | null = null
+      try {
+        const stored = readRefundOperation(key)
+        if (visit.operation && stored?.key !== visit.operation.key)
+          throw new Error('Refund operation changed')
+        visit.operation = stored
+        updatePanel(key, { operation: stored })
+        const response = await fetch(`/api/admin/orders/${encodeURIComponent(key)}/refund`, {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          ...(stored ? { headers: { 'X-Refund-Operation-Key': stored.key } } : {}),
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
+        })
+        status = parseRefundRecoveryStatus(response.status, await response.json(), key, !!stored)
+      } catch {
+        status = null
+      }
+      if (
+        activeVisit.current !== visit ||
+        visit.request !== controller ||
+        controller.signal.aborted
+      )
+        return
+      visit.status = status
+      updatePanel(key, {
+        ...initialState,
+        recovery: status,
+        statusLoading: false,
+        statusError: !status,
+      })
+    },
+    [updatePanel],
+  )
+
+  useLayoutEffect(() => {
+    const visit: OrderVisit = { orderNumber, status: null, request: null, operation: null }
+    activeVisit.current = visit
+    if (!isInitializing && owner && orderNumber) {
+      const initialState: Partial<PanelState> = {}
+      try {
+        visit.operation = readRefundOperation(orderNumber)
+        if (visit.operation) {
+          lockedOrders.current.add(orderNumber)
+          initialState.operation = visit.operation
+          initialState.locked = true
+        }
+      } catch {
+        lockedOrders.current.add(orderNumber)
+        initialState.locked = true
+        initialState.warningMessage = OPERATION_WARNING
+      }
+      // The guard is synchronous; only the status load and its presentation are scheduled.
+      queueMicrotask(() => {
+        if (activeVisit.current === visit) void loadStatus(visit, initialState)
+      })
+    }
+    return () => {
+      visit.request?.abort()
+      activeVisit.current = null
+    }
+  }, [orderNumber, isInitializing, owner, loadStatus])
+
+  useLayoutEffect(() => {
+    latestAllowed.current = allowed
+  }, [allowed])
 
   // Sima függvény (nem useCallback): a React Compiler maga memoizál, a kézi
   // memoizáció itt csak a `preserve-manual-memoization` szabályba ütközne, mert
@@ -128,6 +236,9 @@ export function RefundPanel() {
       !orderNumber ||
       visit?.orderNumber !== orderNumber ||
       !latestAllowed.current ||
+      visit.status?.state !== 'clear' ||
+      (visit.operation && visit.status.operationState !== 'unseen') ||
+      busyOrders.current.has(orderNumber) ||
       lockedOrders.current.has(orderNumber)
     ) {
       return
@@ -141,13 +252,27 @@ export function RefundPanel() {
       return
     }
 
+    let requestOperation: RefundOperation
+    try {
+      requestOperation = ensureRefundOperation(orderNumber, check.amountHuf)
+      visit.operation = requestOperation
+    } catch {
+      lockedOrders.current.add(orderNumber)
+      updatePanel(orderNumber, { locked: true, warningMessage: OPERATION_WARNING })
+      return
+    }
+
     lockedOrders.current.add(orderNumber)
+    busyOrders.current.add(orderNumber)
+    visit.request?.abort()
+    visit.status = null
     updatePanel(orderNumber, {
       pending: true,
       locked: true,
       errorMessage: null,
       warningMessage: null,
       successMessage: null,
+      operation: requestOperation,
     })
     const isCurrentVisit = () => activeVisit.current === visit
     let result: RefundPresentation
@@ -156,7 +281,10 @@ export function RefundPanel() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(check.amountHuf === null ? {} : { amountHuf: check.amountHuf }),
+        body: JSON.stringify({
+          ...(check.amountHuf === null ? {} : { amountHuf: check.amountHuf }),
+          operationKey: requestOperation.key,
+        }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
       let body: unknown = null
@@ -169,6 +297,21 @@ export function RefundPanel() {
     } catch {
       result = { kind: 'warning', message: REFUND_UNCERTAIN_MESSAGE }
     }
+    busyOrders.current.delete(orderNumber)
+    let operationCleared = false
+    if (result.kind === 'success') {
+      try {
+        clearRefundOperation(orderNumber, requestOperation.key)
+        visit.operation = null
+        updatePanel(orderNumber, { operation: null })
+        operationCleared = true
+      } catch {
+        updatePanel(orderNumber, { warningMessage: OPERATION_WARNING })
+      }
+    }
+    // A fresh persisted read is required after every outcome, including errors.
+    // It cannot remove the local ambiguous-payment latch.
+    if (isCurrentVisit()) void loadStatus(visit)
     if (result.kind === 'warning') {
       updatePanel(orderNumber, { pending: false, warningMessage: result.message })
       return
@@ -196,13 +339,156 @@ export function RefundPanel() {
       updatePanel(orderNumber, { pending: false, warningMessage: REFRESH_WARNING })
       return
     }
-    const canRefundAgain = result.type === 'partial' && isCurrentVisit()
+    const canRefundAgain = result.type === 'partial' && isCurrentVisit() && operationCleared
     if (canRefundAgain) lockedOrders.current.delete(orderNumber)
     updatePanel(orderNumber, {
       pending: false,
       locked: !canRefundAgain,
-      warningMessage: isCurrentVisit() ? null : NAVIGATION_WARNING,
+      warningMessage: !isCurrentVisit()
+        ? NAVIGATION_WARNING
+        : operationCleared
+          ? null
+          : OPERATION_WARNING,
     })
+  }
+
+  const prepareOperationRetry = async (): Promise<void> => {
+    const visit = activeVisit.current
+    const stored = visit?.operation
+    if (
+      !orderNumber ||
+      visit?.orderNumber !== orderNumber ||
+      !stored ||
+      !latestAllowed.current ||
+      busyOrders.current.has(orderNumber) ||
+      visit.status?.state !== 'clear' ||
+      visit.status.operationState !== 'unseen'
+    )
+      return
+    busyOrders.current.add(orderNumber)
+    updatePanel(orderNumber, { pending: true, locked: true })
+    try {
+      await loadStatus(visit)
+      if (
+        activeVisit.current !== visit ||
+        !latestAllowed.current ||
+        visit.status?.state !== 'clear' ||
+        visit.status.operationState !== 'unseen'
+      )
+        return
+      const current = readRefundOperation(orderNumber)
+      if (current?.key !== stored.key || current.amountHuf !== stored.amountHuf) return
+      // Unseen may still be an in-flight pre-claim request. Keep its identity and amount.
+      lockedOrders.current.delete(orderNumber)
+      updatePanel(orderNumber, {
+        locked: false,
+        amountInput: stored.amountHuf === null ? '' : String(stored.amountHuf),
+        errorMessage: null,
+        warningMessage: null,
+        successMessage: null,
+      })
+    } catch {
+      if (activeVisit.current === visit)
+        updatePanel(orderNumber, { warningMessage: OPERATION_WARNING })
+    } finally {
+      busyOrders.current.delete(orderNumber)
+      if (activeVisit.current === visit) updatePanel(orderNumber, { pending: false })
+    }
+  }
+
+  const acknowledgeOperation = async (): Promise<void> => {
+    const visit = activeVisit.current
+    const stored = visit?.operation
+    if (
+      !orderNumber ||
+      visit?.orderNumber !== orderNumber ||
+      !stored ||
+      !owner ||
+      busyOrders.current.has(orderNumber) ||
+      visit.status?.state !== 'clear' ||
+      !['completed', 'no_effect'].includes(visit.status.operationState ?? '')
+    )
+      return
+    busyOrders.current.add(orderNumber)
+    visit.request?.abort()
+    visit.status = null
+    updatePanel(orderNumber, { pending: true, locked: true })
+    try {
+      await clearRouteCache()
+      if (activeVisit.current !== visit) return
+      clearRefundOperation(orderNumber, stored.key)
+      visit.operation = null
+      lockedOrders.current.delete(orderNumber)
+      updatePanel(orderNumber, {
+        operation: null,
+        amountInput: '',
+        locked: false,
+        errorMessage: null,
+        warningMessage: null,
+        successMessage: null,
+      })
+    } catch {
+      if (activeVisit.current === visit)
+        updatePanel(orderNumber, { warningMessage: OPERATION_WARNING })
+    } finally {
+      busyOrders.current.delete(orderNumber)
+      updatePanel(orderNumber, { pending: false })
+      if (activeVisit.current === visit) await loadStatus(visit)
+    }
+  }
+
+  const startRecovery = async (): Promise<void> => {
+    const visit = activeVisit.current
+    if (
+      !orderNumber ||
+      visit?.orderNumber !== orderNumber ||
+      !owner ||
+      visit.status?.state !== 'recoverable' ||
+      busyOrders.current.has(orderNumber)
+    )
+      return
+    busyOrders.current.add(orderNumber)
+    lockedOrders.current.add(orderNumber)
+    visit.request?.abort()
+    visit.status = null
+    updatePanel(orderNumber, {
+      pending: true,
+      recovering: true,
+      locked: true,
+      successMessage: null,
+      errorMessage: null,
+      warningMessage: null,
+    })
+    let result: ReturnType<typeof parseRefundRecoveryResponse> = null
+    try {
+      const response = await fetch(`/api/admin/orders/${encodeURIComponent(orderNumber)}/refund`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recover' }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+      result = parseRefundRecoveryResponse(response.status, await response.json(), orderNumber)
+    } catch {
+      result = null
+    }
+    busyOrders.current.delete(orderNumber)
+    updatePanel(orderNumber, { pending: false, recovering: false })
+    if (activeVisit.current !== visit) return
+    if (result?.recoveryStatus === 'completed') {
+      updatePanel(orderNumber, { successMessage: 'A visszatérítés feldolgozása rendezve.' })
+      try {
+        await clearRouteCache()
+      } catch {
+        if (activeVisit.current === visit)
+          updatePanel(orderNumber, { warningMessage: REFRESH_WARNING })
+      }
+    } else {
+      updatePanel(orderNumber, {
+        warningMessage: result ? `${result.message} ${REFUND_REVIEW_GUIDANCE}` : STATUS_WARNING,
+      })
+    }
+    if (activeVisit.current === visit) await loadStatus(visit)
   }
 
   if (isInitializing) {
@@ -264,7 +550,9 @@ export function RefundPanel() {
           </label>
           <input
             aria-label="Visszatérítendő összeg forintban"
-            disabled={pending || locked}
+            disabled={
+              pending || locked || statusLoading || !!operation || recovery?.state !== 'clear'
+            }
             id="kineticare-refund-amount"
             inputMode="numeric"
             onChange={(event) => updatePanel(orderNumber, { amountInput: event.target.value })}
@@ -276,7 +564,13 @@ export function RefundPanel() {
           <div style={{ marginTop: 'calc(var(--base) * 0.5)' }}>
             <Button
               buttonStyle="secondary"
-              disabled={pending || locked}
+              disabled={
+                pending ||
+                locked ||
+                statusLoading ||
+                recovery?.state !== 'clear' ||
+                (!!operation && recovery.operationState !== 'unseen')
+              }
               onClick={() => {
                 void startRefund()
               }}
@@ -287,6 +581,66 @@ export function RefundPanel() {
           </div>
         </>
       )}
+      {statusLoading ? <p style={noteStyle}>Mentett feldolgozási állapot ellenőrzése…</p> : null}
+      {statusError ? <p role="alert">{STATUS_WARNING}</p> : null}
+      {operation && locked && !pending ? <p role="alert">{OPERATION_WARNING}</p> : null}
+      {operation &&
+      recovery?.state === 'clear' &&
+      ['completed', 'no_effect'].includes(recovery.operationState ?? '') ? (
+        <>
+          <p style={noteStyle}>
+            {recovery.operationState === 'completed'
+              ? 'A korábbi művelet feldolgozása lezárult.'
+              : 'A korábbi művelethez nincs végrehajtott pénzvisszatérítés igazolva.'}
+          </p>
+          <Button
+            buttonStyle="secondary"
+            disabled={pending || statusLoading}
+            onClick={() => {
+              void acknowledgeOperation()
+            }}
+            size="medium"
+          >
+            Korábbi művelet nyugtázása
+          </Button>
+        </>
+      ) : null}
+      {operation &&
+      locked &&
+      allowed &&
+      recovery?.state === 'clear' &&
+      recovery.operationState === 'unseen' ? (
+        <Button
+          buttonStyle="secondary"
+          disabled={pending || statusLoading}
+          onClick={() => {
+            void prepareOperationRetry()
+          }}
+          size="medium"
+        >
+          Korábbi művelet újrapróbálása
+        </Button>
+      ) : null}
+      {recovery && recovery.state !== 'clear' ? (
+        <p role="alert">
+          {recovery.message} {REFUND_REVIEW_GUIDANCE}
+        </p>
+      ) : null}
+      {recovery?.state === 'recoverable' ? (
+        <>
+          <p style={noteStyle}>A pénzvisszatérítést nem indítja újra.</p>
+          <Button
+            buttonStyle="secondary"
+            disabled={pending || statusLoading}
+            onClick={() => {
+              void startRecovery()
+            }}
+            size="medium"
+          >
+            {recovering ? 'Feldolgozás folytatása…' : 'Feldolgozás folytatása'}
+          </Button>
+        </>
+      ) : null}
       {warningMessage ? (
         <p
           role="alert"

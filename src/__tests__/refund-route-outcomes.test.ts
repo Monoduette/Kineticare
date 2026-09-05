@@ -1,6 +1,8 @@
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Register the shared storage/transport mocks before importing the real service graph.
+import { fixture as durableFixture, provider, documents, store, access } from './refund-fixture'
 import { BarionApiError, type BarionErrorKind } from '../lib/barion'
 import {
   RefundError,
@@ -8,33 +10,19 @@ import {
   type RefundOrderResult,
 } from '../lib/refund/refund-order'
 import { createRefundHandler } from '../lib/refund/route-handler'
-import type { Order, User } from '../payload-types'
 
 const service = vi.hoisted(() => ({
   run: vi.fn<(options: RefundOrderOptions) => Promise<RefundOrderResult>>(),
-}))
-const documents = vi.hoisted(() => ({
-  storno: vi.fn(),
-  corrective: vi.fn(),
-  queue: vi.fn(),
 }))
 
 vi.mock('../lib/refund/refund-order', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/refund/refund-order')>()),
   refundOrder: service.run,
 }))
-vi.mock('../lib/szamlazz', () => ({
-  issueStornoForOrder: documents.storno,
-  issueCorrectiveInvoiceForOrder: documents.corrective,
-  queueCorrectiveInvoiceJob: documents.queue,
-  isRetryableStornoError: () => false,
-  isRetryableCorrectiveError: () => false,
-}))
 
 const DUMMY_RAW_ERROR = 'DUMMY-RAW-STORAGE-OR-PROVIDER-ERROR-NOT-A-SECRET'
 const ORIGIN = 'https://shop.example.test'
 const ORDER_NUMBER = 'SYNTHETIC-OUTCOME-001'
-const PAYMENT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 const logs: string[] = []
 
 beforeEach(() => {
@@ -185,126 +173,110 @@ describe('refund route manual-review contract', () => {
 type LostAcknowledgement = 'provider-network' | 'provider-timeout' | 'order' | 'user'
 
 function lostAcknowledgementFixture(failure: LostAcknowledgement) {
-  const order = {
-    id: 555,
-    orderNumber: ORDER_NUMBER,
-    status: 'paid',
-    totalHufSnapshot: 20000,
-    amount: 20000,
-    barionPaymentId: PAYMENT_ID,
-    customer: 7,
-    items: [{ product: 42, quantity: 1 }],
-    refunds: [],
-  } as unknown as Order
-  const customer = { id: 7, purchases: [42, 99] } as unknown as User
+  const f = durableFixture()
+  f.order.orderNumber = ORDER_NUMBER
   const effects = { providerRefunds: 0 }
-  const payload = {
-    // Synthetic committed writes followed by rejection; not real DB transaction evidence.
-    db: {
-      drizzle: {
-        transaction: async (run: (tx: unknown) => Promise<unknown>) =>
-          run({ execute: async () => [] }),
-      },
-    },
-    auth: vi.fn(async () => ({ user: { id: 1, role: 'owner' } })),
-    find: vi.fn(async ({ where }: { where?: { orderNumber?: { equals?: string } } }) =>
-      where?.orderNumber?.equals === ORDER_NUMBER
-        ? { docs: [structuredClone(order)], totalDocs: 1 }
-        : { docs: [], totalDocs: 0 },
-    ),
-    findByID: vi.fn(async () => structuredClone(customer)),
-    update: vi.fn(async (write: { collection: string; data: Record<string, unknown> }) => {
-      if (write.collection === 'orders') {
-        Object.assign(order, structuredClone(write.data))
-        if (failure === 'order') throw new Error(DUMMY_RAW_ERROR)
-      } else if (write.collection === 'users') {
-        Object.assign(customer, structuredClone(write.data))
-        if (failure === 'user') throw new Error(DUMMY_RAW_ERROR)
-      } else {
-        throw new Error('Unexpected collection')
-      }
-      return structuredClone(write.data)
-    }),
-    create: vi.fn(),
-    jobs: { queue: vi.fn() },
-  }
-  const provider = vi.fn(async (url: string | URL | Request) => {
-    if (String(url).endsWith('/PaymentState')) {
-      return Response.json({
-        PaymentId: PAYMENT_ID,
-        Status: 'Succeeded',
-        Total: 20000,
-        Transactions: [
-          {
-            TransactionId: 'synthetic-transaction',
-            Total: 20000,
-            Status: 'Succeeded',
-            TransactionType: 'CardPayment',
-          },
-        ],
-        Errors: [],
-      })
-    }
-    if (!String(url).endsWith('/v2/Payment/Refund')) throw new Error('Unexpected endpoint')
+  const originalRefund = provider.refund.getMockImplementation()!
+  provider.refund.mockImplementation(async (input) => {
+    // The shared fixture proves the durable claim and baseline precede submission.
+    const response = await originalRefund(input)
     effects.providerRefunds += 1
     if (failure.startsWith('provider-')) {
-      const error = new Error(DUMMY_RAW_ERROR)
-      error.name = failure === 'provider-timeout' ? 'TimeoutError' : 'TypeError'
-      throw error
+      throw new BarionApiError({
+        kind: failure === 'provider-timeout' ? 'timeout' : 'network',
+        message: DUMMY_RAW_ERROR,
+        endpoint: '/v2/Payment/Refund',
+      })
     }
-    return Response.json({
-      PaymentId: PAYMENT_ID,
-      RefundedTransactions: [
-        { TransactionId: 'synthetic-transaction', AmountToRefund: 20000, Status: 'Refunded' },
-      ],
-      Errors: [],
-    })
+    return response
   })
-  vi.stubGlobal('fetch', provider)
-  return {
-    order,
-    customer,
-    effects,
-    payload,
-    provider,
-    POST: createRefundHandler({ getPayload: async () => payload as unknown as Payload }),
-  }
+  const originalUpdate = vi.mocked(f.payload.update).getMockImplementation()!
+  const update = vi.fn(async (write: Parameters<Payload['update']>[0]) => {
+    const result = await originalUpdate(write)
+    if (failure === 'order' && write.collection === 'orders') throw new Error(DUMMY_RAW_ERROR)
+    return result
+  })
+  Object.assign(f.payload, { update })
+  const originalCleanup = access.apply.getMockImplementation()!
+  access.apply.mockImplementation(async (...args) => {
+    const result = await originalCleanup(...args)
+    if (failure === 'user') throw new Error(DUMMY_RAW_ERROR)
+    return result
+  })
+  return { ...f, effects, update, POST: createRefundHandler({ getPayload: async () => f.payload }) }
 }
 
-describe('actual service and route with modeled lost acknowledgements', () => {
-  it.each([
-    ['provider-network', 502],
-    ['provider-timeout', 504],
-    ['order', 500],
-    ['user', 503],
-  ] as const)('%s outcome is unverified, not proof of no effect', async (failure, status) => {
+describe('actual service and route with durable claims and modeled lost acknowledgements', () => {
+  it.each(['provider-network', 'provider-timeout', 'order', 'user'] as const)(
+    '%s after possible effects returns 503 and retains the claim against a second monetary attempt',
+    async (failure) => {
+      const actual = await vi.importActual<typeof import('../lib/refund/refund-order')>(
+        '../lib/refund/refund-order',
+      )
+      service.run.mockImplementation(actual.refundOrder)
+      const f = lostAcknowledgementFixture(failure)
+      const operationKey = 'A'.repeat(43)
+      const response = await f.POST(request(JSON.stringify({ operationKey })), context())
+      const failureResult: unknown = await service.run.mock.results
+        .at(-1)
+        ?.value.catch((error: unknown) => error)
+      expect(
+        failureResult,
+        failureResult instanceof Error ? failureResult.stack : undefined,
+      ).toMatchObject({ status: 503 })
+      expect(response.status).toBe(503)
+      const body = await response.json()
+      expect(body).toEqual({ error: expect.any(String), manualReviewRequired: true })
+      expect(body.error).toContain('Ne indíts új pénzvisszatérítést')
+      expect(body.error).not.toContain(DUMMY_RAW_ERROR)
+      expect(logs.join('\n')).not.toContain(DUMMY_RAW_ERROR)
+      expect(f.effects.providerRefunds).toBe(1)
+      expect(provider.refund).toHaveBeenCalledTimes(1)
+      expect(provider.state).toHaveBeenCalledTimes(1)
+      expect(f.audits.some((audit) => audit.action === 'refund-prepared')).toBe(true)
+      expect(store.intents.get(f.payload)?.activeOrderKey).toBeTruthy()
+      expect(store.intents.get(f.payload)?.state).not.toBe('committed')
+      expect(fetch).not.toHaveBeenCalled()
+      // Recovery phases are independent: a lost cleanup acknowledgement does not skip invoices.
+      expect(documents.storno).toHaveBeenCalledTimes(failure === 'user' ? 1 : 0)
+      if (failure === 'user') {
+        expect(f.order.stornoNumber).toBe('SYNTHETIC-ST')
+        expect(f.audits.some((audit) => audit.action === 'refund-cleanup-done')).toBe(true)
+        expect(f.audits.some((audit) => audit.action === 'refund-invoice-done')).toBe(true)
+      }
+      expect(documents.corrective).not.toHaveBeenCalled()
+      expect(documents.queue).not.toHaveBeenCalled()
+      if (failure.startsWith('provider-')) {
+        expect(f.order.status).toBe('paid')
+        expect(f.update).not.toHaveBeenCalled()
+        expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
+      } else {
+        // These mocks commit the order/user write and then lose its acknowledgement.
+        expect(f.order.status).toBe('refunded')
+        expect(f.order.refunds).toHaveLength(1)
+      }
+      expect(f.user.purchases).toEqual(failure === 'user' ? [99] : [42, 99])
+      const retry = await f.POST(request(JSON.stringify({ operationKey })), context())
+      expect(retry.status).toBe(503)
+      expect(provider.refund).toHaveBeenCalledTimes(1)
+      expect(provider.state).toHaveBeenCalledTimes(1)
+      expect(f.effects.providerRefunds).toBe(1)
+      expect(documents.storno).toHaveBeenCalledTimes(failure === 'user' ? 1 : 0)
+    },
+  )
+
+  it('rejects a keyless direct API call before any lookup, claim, or provider request', async () => {
     const actual = await vi.importActual<typeof import('../lib/refund/refund-order')>(
       '../lib/refund/refund-order',
     )
     service.run.mockImplementation(actual.refundOrder)
-    const f = lostAcknowledgementFixture(failure)
-    const body = await expectManualReview(await f.POST(request(), context()), status)
-    expect(f.effects.providerRefunds).toBe(1)
-    expect(f.provider).toHaveBeenCalledTimes(2)
-    expect(f.payload.create).not.toHaveBeenCalled()
-    expect(f.payload.jobs.queue).not.toHaveBeenCalled()
-    expect(documents.storno).not.toHaveBeenCalled()
-    expect(documents.corrective).not.toHaveBeenCalled()
-    expect(documents.queue).not.toHaveBeenCalled()
-    if (failure.startsWith('provider-')) {
-      expect(f.order.status).toBe('paid')
-      expect(f.payload.update).not.toHaveBeenCalled()
-    } else {
-      expect(f.order.status).toBe('refunded')
-      expect(f.order.refunds).toHaveLength(1)
-    }
-    expect(f.customer.purchases).toEqual(failure === 'user' ? [99] : [42, 99])
-    if (failure === 'user') {
-      expect(body.error).toContain('m\u00e1r r\u00f6gz\u00edtve van')
-      expect(body.error).toContain('eredm\u00e9nye nem igazolt')
-      expect(body.error).not.toContain('nem fejez\u0151d\u00f6tt be')
-    } else {
-      expect(body.error).not.toContain('m\u00e1r r\u00f6gz\u00edtve van')
-    }
+    const f = durableFixture()
+    const POST = createRefundHandler({ getPayload: async () => f.payload })
+    expect((await POST(request(), context())).status).toBe(400)
+    expect(f.payload.find).not.toHaveBeenCalled()
+    expect(store.intents.size).toBe(0)
+    expect(f.audits).toEqual([])
+    expect(provider.state).not.toHaveBeenCalled()
+    expect(provider.refund).not.toHaveBeenCalled()
   })
 })
