@@ -168,14 +168,27 @@ describe('filmsáv egykezes média-szerződése', () => {
       '6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e',
     )
     expect(sha256('public/media/film/one-hand-header-v1-mobile.mp4')).toBe(
-      '171574ff5d091977716990352713feffedd637e5adbcb5f85e9ee73c801e128f',
+      'f3fa26f3291e2ffe3ef983998fe8d965b938fa0f769de11a33ec86ace17da432',
     )
     expect(sha256('public/media/film/one-hand-header-v1-poster.webp')).toBe(
       '8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13',
     )
     expect(sha256('public/media/film/one-hand-header-v1-mobile-poster.webp')).toBe(
-      '785af683bd5843222a13ccfc7557a7d37ea1b6207c6096075763d645cbc241f5',
+      '1f62a90d0df74978562caf74090537a0f57b6ec030fb0e23200dc701e98599d8',
     )
+  })
+
+  it('a mobil assetet SSR-ben és runtime is kizárólag 860px-ig választja', () => {
+    expect(markup).toContain('media="(max-width: 860px)"')
+    expect(markup).not.toContain('(pointer: coarse)')
+    expect(SCROLL_SCRUB_SOURCE).toContain('const isMobile = () => smallViewport.matches')
+    expect(SCROLL_SCRUB_SOURCE).not.toContain('coarsePointer || smallViewport.matches')
+    expect(SCROLL_SCRUB_SOURCE).toContain(
+      'const usesMobileVideoTuning = () => coarsePointer || isMobile()',
+    )
+    expect(SCROLL_SCRUB_SOURCE).toContain('if (!video || !usesMobileVideoTuning())')
+    expect(SCROLL_SCRUB_SOURCE).toContain('const epsilon = usesMobileVideoTuning() ? 0.02 : 0.008')
+    expect(scrollScrubMediaFit(false, 1024, 768)).toBe('cover')
   })
 
   it('a klipek a deploy-méretkereten belül maradnak', () => {
@@ -237,11 +250,11 @@ describe('filmsáv egykezes média-szerződése', () => {
   })
 
   it('az első festés és a runtime ugyanazt a mobil opacity/fit állapotot használja', () => {
-    expect(markup).toContain('media="(hover: none) and (pointer: coarse), (max-width: 860px)"')
+    expect(markup).toContain('media="(max-width: 860px)"')
     expect(kezdoMediaStilus(390, 844, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '1' })
     expect(kezdoMediaStilus(568, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
     expect(kezdoMediaStilus(768, 1024, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
-    expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '0.48' })
     expect(kezdoMediaStilus(1024, 768, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
   })
 

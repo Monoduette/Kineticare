@@ -299,7 +299,8 @@ export function ScrollScrub({
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
     const smallViewport = window.matchMedia('(max-width: 860px)')
-    const isMobile = () => coarsePointer || smallViewport.matches
+    const isMobile = () => smallViewport.matches
+    const usesMobileVideoTuning = () => coarsePointer || isMobile()
     const sourceFor = (segment: RuntimeSegment) =>
       isMobile() && segment.mobileClip ? segment.mobileClip : segment.clip
     const runtime: RuntimeSegment[] = segments.map((segment, index) => ({
@@ -370,7 +371,7 @@ export function ScrollScrub({
     }
 
     const primeVideo = async (video?: HTMLVideoElement) => {
-      if (!video || !isMobile()) {
+      if (!video || !usesMobileVideoTuning()) {
         return
       }
       try {
@@ -587,7 +588,7 @@ export function ScrollScrub({
 
         segment.current += (segment.target - segment.current) * 0.2
         const targetTime = clamp(segment.current, 0, 0.999) * (video.duration || 1)
-        const epsilon = isMobile() ? 0.02 : 0.008
+        const epsilon = usesMobileVideoTuning() ? 0.02 : 0.008
         if (Math.abs(video.currentTime - targetTime) > epsilon) {
           try {
             video.currentTime = targetTime
@@ -735,10 +736,7 @@ export function ScrollScrub({
               >
                 <picture className="scroll-scrub__picture">
                   {segment.mobilePoster ? (
-                    <source
-                      media="(hover: none) and (pointer: coarse), (max-width: 860px)"
-                      srcSet={segment.mobilePoster}
-                    />
+                    <source media="(max-width: 860px)" srcSet={segment.mobilePoster} />
                   ) : null}
                   {/* Sima <img> a <picture>-ben: a poszter a klip PONTOS első
                       kockája, art-direction <source>-szal (mobil vágat) és
