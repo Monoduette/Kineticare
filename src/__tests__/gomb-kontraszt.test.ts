@@ -193,21 +193,22 @@ const SZIN = (nev: string): RGB => szinToken(`--kc-color-${nev}`)
 /**
  * Az új desktop + mobil videó mind a 145 képkockájának és mindkét poszterének
  * teljes-pixeles mérése (2026-09-05). A modell a desktop média-opacityt, a
- * sötétebb akcent-réteget és a felső paper fátylat is alkalmazza. A mobil 0.
- * kockáján mért `rgb(182,187,194)` az egész képre vett konzervatív alsó korlát.
+ * hűvös gradiens mindkét végpontját és a felső paper fátylat is alkalmazza.
+ * A két végpont és minden pixel csatornaminimumaiból képzett `rgb(179,185,186)`
+ * szándékosan konzervatív, akár nem előforduló alsó korlát.
  */
 const FEJLEC_FAGY_FEDES = 0.72
-const FILM_FEJLEC_ALAP: RGB = [182, 187, 194]
+const FILM_FEJLEC_ALAP: RGB = [179, 185, 186]
 const filmFejlec = (veil: number): RGB =>
   keverek(SZIN('paper'), FILM_FEJLEC_ALAP, veil * FEJLEC_FAGY_FEDES)
 
 /**
  * Ugyanez 64% paperrel a hero-copy alatt, illetve csak 36% paperrel a
- * feliratsávban. Utóbbi a tényleges alsó párát lefelé kerekíti és a fehér
- * kifutást teljesen figyelmen kívül hagyja.
+ * feliratsávban. Mindkettő a két gradiens-végpont csatornaminimumait egyesíti,
+ * és a fehér kifutást teljesen figyelmen kívül hagyja.
  */
-const FILM_HERO: RGB = [201, 204, 209]
-const FILM_FELIRAT: RGB = [167, 169, 176]
+const FILM_HERO: RGB = [198, 203, 204]
+const FILM_FELIRAT: RGB = [161, 167, 167]
 
 /** A fejléc fókuszgyűrűjének futásidejű színe: color-mix(focus veil%, ink). */
 const fejlecGyuru = (veil: number): RGB => keverek(SZIN('focus'), SZIN('ink'), veil)
@@ -480,14 +481,14 @@ describe('G-K2 — a mért párok mátrixa a küszöbeit tartja', () => {
 
   it('a fagyott fátyol veil=1-nél NEM szolid paper a filmsávon', () => {
     expect(filmFejlec(1)).not.toEqual(SZIN('paper'))
-    expect(filmFejlec(1)).toEqual(hexRgb('#e4e8ec'))
-    expect(filmFejlec(0)).toEqual(hexRgb('#b6bbc2'))
+    expect(filmFejlec(1)).toEqual(hexRgb('#e3e7ea'))
+    expect(filmFejlec(0)).toEqual(hexRgb('#b3b9ba'))
   })
 
   it('az új film alsó korlátai a szöveget és a CTA-határokat is védik', () => {
-    expect(ker2(arany(SZIN('ink'), FILM_FELIRAT))).toBe(6.66)
-    expect(ker2(arany(SZIN('ink'), FILM_HERO))).toBe(9.7)
-    expect(ker2(arany(SZIN('primary'), FILM_HERO))).toBe(3.39)
+    expect(ker2(arany(SZIN('ink'), FILM_FELIRAT))).toBe(6.4)
+    expect(ker2(arany(SZIN('ink'), FILM_HERO))).toBe(9.54)
+    expect(ker2(arany(SZIN('primary'), FILM_HERO))).toBe(3.33)
   })
 })
 

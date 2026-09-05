@@ -178,6 +178,10 @@ describe('filmsáv egykezes média-szerződése', () => {
     )
   })
 
+  it('a hűvös gradiens az auditált sRGB interpolációt használja', () => {
+    expect(FILM_HERO_CSS).toContain('152deg in srgb')
+  })
+
   it('a mobil assetet SSR-ben és runtime is kizárólag 860px-ig választja', () => {
     expect(markup).toContain('media="(max-width: 860px)"')
     expect(markup).not.toContain('(pointer: coarse)')
@@ -223,6 +227,8 @@ describe('filmsáv egykezes média-szerződése', () => {
     expect(scrollScrubMediaFit(true, 390, 844)).toBe('cover')
     expect(scrollScrubMediaFit(true, 430, 932)).toBe('cover')
     expect(scrollScrubMediaFit(true, 568, 320)).toBe('contain')
+    expect(scrollScrubMediaFit(true, 639.5, 320)).toBe('contain')
+    expect(scrollScrubMediaFit(true, 639.5, 844)).toBe('cover')
     expect(scrollScrubMediaFit(true, 768, 1024)).toBe('contain')
     expect(scrollScrubMediaFit(true, 860, 900)).toBe('contain')
     expect(scrollScrubMediaFit(true, 1024, 768)).toBe('contain')
@@ -253,6 +259,8 @@ describe('filmsáv egykezes média-szerződése', () => {
     expect(markup).toContain('media="(max-width: 860px)"')
     expect(kezdoMediaStilus(390, 844, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '1' })
     expect(kezdoMediaStilus(568, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(639.5, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
+    expect(kezdoMediaStilus(639.5, 844, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '1' })
     expect(kezdoMediaStilus(768, 1024, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
     expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '0.48' })
     expect(kezdoMediaStilus(1024, 768, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })

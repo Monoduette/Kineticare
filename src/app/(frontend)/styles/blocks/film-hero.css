@@ -60,8 +60,8 @@
 }
 
 /* Az SSR-poszter ugyanazzal a fittel indul, amit a runtime a mobil forráshoz
-   számol: a keskeny fekvő telefonon contain, 860px fölött desktop cover. */
-@media (max-width: 639px) and (orientation: landscape) {
+   számol: minden legfeljebb 860px-es fekvő nézet contain, fölötte desktop cover. */
+@media (max-width: 860px) and (orientation: landscape) {
   .kc-film-hero .scroll-scrub__poster,
   .kc-film-hero .scroll-scrub__video {
     object-fit: contain;
@@ -157,7 +157,7 @@ main > .kc-film-hero:first-of-type {
        (nincs éles vágás a következő szekcióig), fölötte a hűvös hangulat. */
     linear-gradient(to bottom, transparent 55%, var(--kc-color-white) 100%),
     linear-gradient(
-      152deg,
+      152deg in srgb,
       color-mix(in srgb, var(--kc-color-accent) 18%, transparent),
       color-mix(in srgb, var(--kc-color-navy-900) 4%, transparent)
     );
