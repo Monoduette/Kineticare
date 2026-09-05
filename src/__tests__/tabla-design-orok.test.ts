@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { transform as minifyCss } from 'lightningcss'
 import { describe, expect, it } from 'vitest'
 
 import { TESTIMONIAL_OPENING_MARK } from '../components/content/home/TestimonialsSection'
@@ -93,27 +94,40 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__figure',
     )
-    expect(figura).toContain('display: flex')
-    expect(figura).toContain('flex-direction: row')
-    expect(figura).toContain('flex-wrap: wrap')
+    expect(figura).toContain('display: block')
+    expect(figura).toContain('position: relative')
+    expect(figura).toContain('height: auto')
+    expect(figura).toContain(
+      'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
+    )
     expect(figura).not.toContain('display: grid')
+    expect(figura).not.toContain('display: flex')
+    expect(kommentNelkul(testimonialsCss)).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*flex-flow:wrap[;}]/,
+    )
+
+    const jel = szabalyTorzs(
+      testimonialsCss,
+      '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark',
+    )
+    expect(jel).toContain('position: absolute')
+    expect(jel).toContain('left: 0')
 
     const nev = szabalyTorzs(
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__attribution',
     )
-    expect(nev).toContain('flex: 1 0 100%')
-    expect(nev).toContain(
-      'padding-left: calc(var(--kc-testimonials-mark-col) + var(--kc-testimonials-mark-gap))',
-    )
+    expect(nev).toContain('padding-left: 0')
     expect(nev).toContain('padding-bottom: var(--kc-space-5)')
     expect(kommentNelkul(testimonialsCss)).toMatch(
       /@media \(max-width: 899px\)[\s\S]*?\.kc-section\.kc-board\.kc-board--edge\.kc-testimonials \{[\s\S]*?padding-bottom: var\(--kc-space-5\)/,
     )
     expect(nev).toContain('min-width: 0')
-    expect(nev).toContain('width: auto')
+    expect(nev).toContain('width: max-content')
+    expect(nev).not.toContain('width: auto')
     expect(nev).not.toContain('white-space: nowrap')
     expect(nev).not.toContain('grid-column:')
+    expect(nev).not.toContain('flex:')
 
     expect(kommentNelkul(testimonialsCss)).toContain(
       '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
@@ -123,6 +137,29 @@ describe('Pácienseink mondták — tükör-szerződés', () => {
       '.kc-testimonials .kc-testimonials__cite:has(+ .kc-testimonials__role)::after',
     )
     expect(vesszo).toContain("content: ','")
+  })
+
+  it('a kis figure LightningCSS minify után is blokkelrendezésű marad', () => {
+    // A #204 `flex-direction: row` + `flex-wrap: wrap` productionben
+    // `flex-flow: wrap` lett (a row alapérték). Ez az őr nem állít történeti
+    // böngésző-gyökérokot: azt védi, hogy az új layout ne függjön a content.css
+    // flex longhandje és a minifikált shorthand kölcsönhatásától.
+    // https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow
+    const { code } = minifyCss({
+      filename: 'testimonials.css',
+      code: Buffer.from(testimonialsCss),
+      minify: true,
+    })
+    const minified = Buffer.from(code).toString('utf8')
+    expect(minified).toMatch(
+      /\.kc-testimonials \.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*display:block/,
+    )
+    expect(minified).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*flex-flow:wrap/,
+    )
+    expect(minified).not.toMatch(
+      /\.kc-testimonials__item--small \.kc-testimonials__figure\{[^}]*display:flex/,
+    )
   })
 })
 
