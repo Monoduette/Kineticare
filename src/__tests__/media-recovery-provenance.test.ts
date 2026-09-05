@@ -7,6 +7,7 @@ import type { Payload, PayloadRequest } from 'payload'
 import { generateFileData } from '../../node_modules/payload/dist/uploads/generateFileData.js'
 import type { Media } from '../payload-types'
 import manifest from '../../public/media/team/manifest.json'
+import pressManifest from '../../public/media/press/manifest.json'
 import { Media as MediaCollection } from '../collections/Media'
 import { stripSensitiveFields } from '../lib/audit'
 import { ensureMediaFiles } from '../lib/media-restore'
@@ -14,6 +15,9 @@ import {
   enrollMediaRecovery,
   requireMediaRecoveryReceipt,
   mediaRecoverySnapshot,
+  mediaRecoveryProcessingConfig,
+  planMediaRecoveryEnrollment,
+  managedMediaAssets,
 } from '../lib/media-recovery-provenance'
 
 const folders: string[] = []
@@ -22,11 +26,10 @@ afterEach(() => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
 
-function fixture() {
+function fixture(asset = manifest.assets[0], directory = 'team') {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-provenance-'))
   folders.push(dir)
-  const asset = manifest.assets[0]
-  const bytes = readFileSync(path.resolve('public/media/team', asset.file))
+  const bytes = readFileSync(path.resolve('public/media', directory, asset.file))
   writeFileSync(path.join(dir, asset.file), bytes)
   let doc = {
     id: 51,
@@ -89,6 +92,101 @@ function fixture() {
 }
 
 describe('durable team media recovery provenance', () => {
+  it.each(['width', 'height', 'fit', 'position', 'withoutEnlargement', 'name', 'added', 'removed'])(
+    'binds image size %s before receipt or media writes',
+    async (field) => {
+      const f = fixture()
+      await enrollMediaRecovery(f.payload, f.doc)
+      const before = await planMediaRecoveryEnrollment(f.payload, f.doc)
+      const sizes = structuredClone(f.payload.collections.media.config.upload.imageSizes!)
+      if (field === 'added') sizes.push({ name: 'extra', width: 12 })
+      else if (field === 'removed') sizes.pop()
+      else
+        Object.assign(sizes[0]!, {
+          [field]: {
+            width: 319,
+            height: 99,
+            fit: 'contain',
+            position: 'north',
+            withoutEnlargement: false,
+            name: 'renamed',
+          }[field],
+        })
+      f.payload.collections.media.config.upload.imageSizes = sizes
+      expect((await planMediaRecoveryEnrollment(f.payload, f.doc)).processingConfig).not.toBe(
+        before.processingConfig,
+      )
+      f.lose()
+      f.create.mockClear()
+      expect((await ensureMediaFiles(f.payload)).sikertelen).toBe(1)
+      expect(f.create).not.toHaveBeenCalled()
+      expect(f.update).not.toHaveBeenCalled()
+    },
+  )
+
+  it('holds old receipts without a configuration binding until explicit enrollment', async () => {
+    const f = fixture()
+    await enrollMediaRecovery(f.payload, f.doc)
+    delete (f.receipts[0]!.after as Record<string, unknown>).processingConfig
+    f.lose()
+    f.create.mockClear()
+    expect((await ensureMediaFiles(f.payload)).sikertelen).toBe(1)
+    expect(f.create).not.toHaveBeenCalled()
+    expect(f.update).not.toHaveBeenCalled()
+  })
+
+  it('normalizes object order and absent configuration members but refuses functions', () => {
+    const f = fixture()
+    const before = mediaRecoveryProcessingConfig(f.payload)
+    f.payload.collections.media.config.upload.imageSizes =
+      f.payload.collections.media.config.upload.imageSizes!.map((size) => ({
+        ...Object.fromEntries(Object.entries(size).reverse()),
+        name: size.name,
+        unused: undefined,
+      }))
+    expect(mediaRecoveryProcessingConfig(f.payload)).toBe(before)
+    Object.assign(f.payload.collections.media.config.upload.imageSizes![0]!, {
+      generateImageName: () => 'foreign.webp',
+    })
+    expect(() => mediaRecoveryProcessingConfig(f.payload)).toThrow()
+  })
+
+  it('rejects cross-manifest canonical filename collisions', () => {
+    const original = pressManifest.assets[0]!.file
+    try {
+      pressManifest.assets[0]!.file = manifest.assets[0]!.file.replace('.webp', '.png')
+      expect(() => managedMediaAssets()).toThrow()
+    } finally {
+      pressManifest.assets[0]!.file = original
+    }
+  })
+
+  it.each(['main', 'variant', 'orphan'])(
+    'holds a foreign %s destination before pending and update',
+    async (kind) => {
+      const f = fixture()
+      await enrollMediaRecovery(f.payload, f.doc)
+      f.lose()
+      const name = f.asset.file.replace('.webp', '-320x213.webp')
+      if (kind === 'orphan') writeFileSync(path.join(f.dir, name), 'unowned')
+      else {
+        const other = {
+          ...f.doc,
+          id: 52,
+          filename: kind === 'main' ? name : 'unrelated.webp',
+          sizes: kind === 'variant' ? { xs: { filename: name } } : {},
+        }
+        f.find.mockImplementation(async ({ collection }) => ({
+          docs: collection === 'media' ? [f.doc, other] : f.receipts.slice(-1),
+        }))
+      }
+      f.create.mockClear()
+      await ensureMediaFiles(f.payload)
+      expect(f.create).not.toHaveBeenCalled()
+      expect(f.update).not.toHaveBeenCalled()
+      if (kind === 'orphan') expect(readFileSync(path.join(f.dir, name), 'utf8')).toBe('unowned')
+    },
+  )
   it.each(['raw', 'normalized'])(
     'holds %s receipt before any write after config drift',
     async (kind) => {
@@ -100,6 +198,9 @@ describe('durable team media recovery provenance', () => {
         { trimOptions: 1 },
         { constructorOptions: { limitInputPixels: 100 } },
         { withMetadata: true },
+        { imageSizes: [] },
+        { imageSizes: [{ name: 'xs', width: 319, fit: 'contain' }] },
+        { imageSizes: [{ name: 'xs', width: 320, generateImageName: () => 'other.webp' }] },
       ]) {
         const f = fixture()
         if (kind === 'normalized') {
@@ -177,12 +278,23 @@ describe('durable team media recovery provenance', () => {
     )
   })
 
-  it.each([undefined, { x: 0, y: 0 }, { x: 85, y: 90 }])(
+  it.each([
+    ...[undefined, { x: 0, y: 0 }, { x: 85, y: 90 }].map((focus) => ({
+      focus,
+      asset: manifest.assets[0],
+      directory: 'team',
+    })),
+    ...pressManifest.assets.map((asset) => ({
+      focus: { x: 0, y: 0 },
+      asset: { ...manifest.assets[0], ...asset },
+      directory: 'press',
+    })),
+  ])(
     'uses pinned Payload create and full-loss recovery with focus %j',
-    async (focus) => {
-      const f = fixture()
+    async ({ focus, asset, directory }) => {
+      const f = fixture(asset, directory)
       f.lose()
-      const bytes = readFileSync(path.resolve('public/media/team', f.asset.file))
+      const bytes = readFileSync(path.resolve('public/media', directory, f.asset.file))
       const generate = (
         operation: 'create' | 'update',
         query: PayloadRequest['query'],
@@ -198,7 +310,12 @@ describe('durable team media recovery provenance', () => {
           req: {
             payload: f.payload,
             query,
-            file: { data: bytes, name: f.asset.file, mimetype: 'image/webp', size: bytes.length },
+            file: {
+              data: bytes,
+              name: f.asset.file,
+              mimetype: f.asset.file.endsWith('.png') ? 'image/png' : 'image/webp',
+              size: bytes.length,
+            },
           } as PayloadRequest,
         })
       const created = await generate(
@@ -223,6 +340,8 @@ describe('durable team media recovery provenance', () => {
       expect(f.doc.focalX).toBe(focus?.x ?? 50)
       expect(f.doc.focalY).toBe(focus?.y ?? 50)
       await expect(requireMediaRecoveryReceipt(f.payload, f.doc, f.asset)).resolves.toBeDefined()
+      expect((await ensureMediaFiles(f.payload)).rendben).toBe(1)
+      expect(f.update).toHaveBeenCalledTimes(1)
     },
   )
 

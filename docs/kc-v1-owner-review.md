@@ -84,11 +84,18 @@ A jelenlegi kör kódot és ellenőrizhető tartalmi változtatást készít; az
 
 ### Média-eredetigazolás és teljes fájlvesztés
 
-A kezelt team-képekhez verziózott, csak hozzáfűzhető igazolás tartozik a
-meglévő `audit-logs` gyűjteményben. A friss feltöltés után a CLI ellenőrzi a
+A kezelt team-képekhez és a négy új press-manifest logóhoz verziózott,
+csak hozzáfűzhető igazolás tartozik a meglévő `audit-logs` gyűjteményben.
+A team-képek friss feltöltése után a CLI ellenőrzi a
 tényleges tárolt fájlt és az aktuális rekordot, és még az oldal publikálása
 előtt rögzíti az igazolást. Sikertelen rögzítés után az újrapróbálás sem
 publikálhat igazolás nélküli képet.
+
+A külön engedélyezett sajtólogó-feltöltés után, a kapcsolatok publikálása
+előtt ugyanazzal az alábbi operátori paranccsal kell igazolni mindegyik
+média-ID-t. A PNG-források pontos WebP célnevet kapnak; az eredeti és a
+tárolt fájl ellenőrzőösszege külön marad. Fájlnév alapján nincs automatikus
+bizalom vagy igazolás.
 
 Korábban feltöltött képhez az operátor külön, írásmentes előnézetet kérhet:
 
@@ -107,6 +114,10 @@ forrásbyte-okhoz illő igazolás fogadható el. Az átmeneti `restoring` állap
 nem jogosít új próbálkozásra; megszakadás vagy sikertelen igazolás-megújítás
 kézi ellenőrzést kér. Siker után azonos rekord-ID, alt és fókusz marad, az új
 igazolás a tényleges visszaadott és újraellenőrzött rekordhoz kötődik.
+Az igazolás és az előnézeti terv a feldolgozási konfigurációt, köztük az
+összes képméretet is rögzíti. Eltérő vagy hiányzó konfigurációigazolás új,
+explicit operátori ellenőrzést igényel. Idegen rekordhoz tartozó vagy
+ismeretlen, azonos fájlnévtövű célfájl esetén a helyreállítás írás előtt megáll.
 A friss olvasás és írás közötti versenyablak nem atomi zárolás: a dokumentált
 szerkesztői szünet továbbra is követelmény.
 

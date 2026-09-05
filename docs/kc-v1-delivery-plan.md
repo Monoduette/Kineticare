@@ -173,6 +173,44 @@ Tanulsag: receipt-hiba utani ujraprobalas nem kerulheti meg a media
 eredetigazolasat; ujrafelhasznalt feltoltesnel is publikacio elotti kapu kell.
 Ezt CLI regresszios teszt es valodi adatbazisos visszaolvasas ellenorzi.
 
+## Uj exact-head review: szuk korrekcios kor
+
+Az `a0aa8b095a5a92e0cac9fc7056b99bf57ffd31a7` head tavoli CI-ja
+(`33984047705`: verify 8m6s, build 2m10s, audit 40s) es mindket gitleaks
+ellenorzese sikeres. A friss felhos review viszont harom uj P2 elterest
+azonositott: 3941649817 (raw/normalizalt publikacios ellenorzes), 3941649820
+(imageSizes konfiguracio igazolasa), 3941649823 (negy uj press-forras
+helyreallitasa). Ezek miatt a release HOLD ujra nyitott; main merge nem volt.
+
+Az uj konkret bizonyitek egy tovabbi szuk implementacios-review kort indokol
+a tulajdonos jelenlegi engedelyen belul. Pascal TDD-vel javitja a kozos
+media/CLI utvonalat, Hypatia es Fermat fuggetlenul ellenoriz. Elvaras:
+egyseges byte-ellenorzes, verziozott feldolgozasi konfiguracio a tervben es
+receiptben, PNG -> WebP pontos megfeleltetes, manifestutkozes elutasitasa,
+fajltulajdon megorzese, korabbi igazolas nelkul nincs automatikus enrollment.
+Az uj diff csak uj teszt- es exact-head review/CI bizonyitekkal zarhato le.
+Nincs eles CMS-iras, manualis deploy vagy schema/dependency/access modositas.
+
+A kor fagyasztott hat media-fajljat Hypatia es Fermat fuggetlenul
+APPROVED minositette; a harom kod-review HOLD ezekre a byte-okra lezart.
+157/157 fokuszalt teszt PASS, raw CLI apply ervenyes igazolassal sikeres,
+ervenytelen igazolassal tovabbra is HOLD. Teljes typecheck, build es lint
+PASS (0 hiba, a harom meglevo warning; middleware es egy tracing warning).
+Pascal valodi, sajat PostgreSQL probaja (`kc_press_proof_10414fd49f884c95`)
+a negy press kepet tenyleges Payload create/enrollment/full-loss/restore/
+renewal korben vizsgalta: 13 fajl es 12 receipt igazolt, ID/alt/fokusz
+megmaradt, masodik kor nulla modositas. A pool varakozasa utan a sajat
+folyamatot leallitotta, nulla kapcsolat mellett a sajat DB-t es mappat
+torolte. Release-byte nem valtozott; CI/preview DB es production erintetlen.
+
+Tanulsag: ugyanazon media minden belepesi pontjan kozos byte-policy kell;
+a forras eredete nem helyettesiti a feldolgozasi konfiguracio es a celnev
+tulajdonanak igazolasat. Az uj regresszios tesztek ezeket kulon vedik.
+
+A vegso izolalt teljes Node 24 tesztkor: 7179/7179 PASS, nulla hiba es
+kihagyas. A kiadasi source/teszt byte-ok egyeznek a fagyasztott masolattal.
+Az uj head feltoltese utani CI/security/review tovabbra is kotelezo kapu.
+
 ## Tartosan megorzendo tanulsag
 
 A helyi vizualis keszultseg, a tesztelt kod, a main merge es az eles CMS

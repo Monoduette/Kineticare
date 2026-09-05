@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Payload } from 'payload'
 import type { Media } from '../payload-types'
 import manifest from '../../public/media/team/manifest.json'
+import pressManifest from '../../public/media/press/manifest.json'
 import { auditLogStore, writeAuditLog } from './audit'
 
 export const MEDIA_RECOVERY_ACTION = 'media.recovery.provenance.v1'
@@ -18,6 +19,7 @@ type Receipt = {
   sourcePublicDigest: string
   storedPublicDigest: string
   mediaSnapshot: string
+  processingConfig: string
 }
 
 function canonical(value: unknown): string {
@@ -72,10 +74,57 @@ function hold(): never {
   )
 }
 
-function assetFor(doc: Media): Asset {
-  const asset = manifest.assets.find((item) => item.file === doc.filename)
-  if (!asset || !/^[a-z0-9-]+\.webp$/.test(asset.file)) return hold()
+export function managedMediaAssets() {
+  const names = new Set<string>()
+  return [
+    ...manifest.assets.map((asset) => ({ ...asset, directory: 'team' })),
+    ...pressManifest.assets.map((asset) => ({ ...asset, directory: 'press' })),
+  ].map((asset) => {
+    if (!/^[a-z0-9-]+\.(webp|png)$/.test(asset.file) || !/^[a-f0-9]{64}$/.test(asset.sha256))
+      return hold()
+    const filename = asset.file.replace(/\.[^.]+$/, '.webp')
+    if (names.has(filename)) return hold()
+    names.add(filename)
+    return { ...asset, filename, source: path.resolve('public/media', asset.directory, asset.file) }
+  })
+}
+
+function assetFor(doc: Media) {
+  const asset = managedMediaAssets().find((item) => item.filename === doc.filename)
+  if (!asset) return hold()
   return asset
+}
+
+export function mediaRecoveryProcessingConfig(payload: Payload): string {
+  const upload = payload.collections.media.config.upload
+  const validate = (value: unknown): void => {
+    if (
+      value === undefined ||
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'boolean'
+    )
+      return
+    if (typeof value === 'number' && Number.isFinite(value)) return
+    if (Array.isArray(value)) return value.forEach(validate)
+    if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+      Object.values(value).forEach(validate)
+      return
+    }
+    return hold()
+  }
+  const config = {
+    version: 1,
+    formatOptions: upload.formatOptions ?? null,
+    resizeOptions: upload.resizeOptions ?? null,
+    trimOptions: upload.trimOptions ?? null,
+    constructorOptions: upload.constructorOptions ?? null,
+    withMetadata: upload.withMetadata ?? false,
+    focalPoint: upload.focalPoint ?? true,
+    imageSizes: upload.imageSizes ?? [],
+  }
+  validate(config)
+  return canonical(config)
 }
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
@@ -84,12 +133,13 @@ export async function verifyMediaRecoveryBytes(payload: Payload, doc: Media): Pr
   const asset = assetFor(doc)
   const upload = payload.collections.media.config.upload
   if (!upload.staticDir || upload.disableLocalStorage) return hold()
-  const stored = digest(readFileSync(path.resolve(upload.staticDir, asset.file)))
+  const stored = digest(readFileSync(path.resolve(upload.staticDir, asset.filename)))
   await verifyKnownDigest(payload, asset, stored)
   return stored
 }
 
 async function verifyKnownDigest(payload: Payload, asset: Asset, stored: string): Promise<void> {
+  mediaRecoveryProcessingConfig(payload)
   const upload = payload.collections.media.config.upload
   const sharp = payload.config.sharp
   if (
@@ -106,7 +156,11 @@ async function verifyKnownDigest(payload: Payload, asset: Asset, stored: string)
     upload.withMetadata
   )
     return hold()
-  const source = readFileSync(path.resolve('public/media/team', asset.file))
+  const managed = managedMediaAssets().find(
+    (item) => item.file === asset.file && item.sha256 === asset.sha256,
+  )
+  if (!managed) return hold()
+  const source = readFileSync(managed.source)
   if (digest(source) !== asset.sha256) return hold()
   if (stored === asset.sha256) return
   const normalized = await sharp(source, { animated: true })
@@ -166,11 +220,12 @@ async function validateReceipt(
     !receipt.receiptKey ||
     receipt.mediaId !== doc.id ||
     receipt.filename !== doc.filename ||
-    receipt.filename !== asset.file ||
+    receipt.filename !== assetFor(doc).filename ||
     receipt.sourcePublicDigest !== asset.sha256 ||
     typeof receipt.storedPublicDigest !== 'string' ||
     !/^[a-f0-9]{64}$/.test(receipt.storedPublicDigest) ||
-    receipt.mediaSnapshot !== mediaRecoverySnapshot(doc)
+    receipt.mediaSnapshot !== mediaRecoverySnapshot(doc) ||
+    receipt.processingConfig !== mediaRecoveryProcessingConfig(payload)
   )
     return hold()
   await verifyKnownDigest(payload, asset, receipt.storedPublicDigest)
@@ -193,6 +248,7 @@ export async function planMediaRecoveryEnrollment(payload: Payload, doc: Media) 
   await assertFreshMediaRecovery(payload, doc)
   return {
     action: MEDIA_RECOVERY_ACTION,
+    processingConfig: mediaRecoveryProcessingConfig(payload),
     mediaSnapshot: mediaRecoverySnapshot(doc),
     sourcePublicDigest: assetFor(doc).sha256,
     storedPublicDigest,
@@ -233,10 +289,11 @@ export async function enrollMediaRecovery(payload: Payload, doc: Media): Promise
     status: 'verified',
     receiptKey: randomUUID(),
     mediaId: doc.id,
-    filename: asset.file,
+    filename: asset.filename,
     sourcePublicDigest: asset.sha256,
     storedPublicDigest,
     mediaSnapshot: mediaRecoverySnapshot(doc),
+    processingConfig: mediaRecoveryProcessingConfig(payload),
   })
 }
 

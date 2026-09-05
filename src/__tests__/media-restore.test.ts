@@ -9,6 +9,7 @@ import { generateFileData } from '../../node_modules/payload/dist/uploads/genera
 import { Media as MediaCollection } from '../collections/Media'
 
 import teamManifest from '../../public/media/team/manifest.json'
+import pressManifest from '../../public/media/press/manifest.json'
 
 import { HOME_IMAGES } from '../lib/home-seed'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
@@ -21,7 +22,11 @@ import {
   resolveUploadDir,
 } from '../lib/media-restore'
 import type { Media } from '../payload-types'
-import { MEDIA_RECOVERY_ACTION, mediaRecoverySnapshot } from '../lib/media-recovery-provenance'
+import {
+  MEDIA_RECOVERY_ACTION,
+  mediaRecoverySnapshot,
+  mediaRecoveryProcessingConfig,
+} from '../lib/media-recovery-provenance'
 
 /**
  * A deploykor elveszett képek önjavítása (src/lib/media-restore.ts) — a DB-t
@@ -71,7 +76,12 @@ describe('forrásindex (repóban élő képek)', () => {
    * bukik — nem az éles deploy.
    */
   it('mindhárom forráskészlet minden fájlja létezik a lemezen', () => {
-    expect(index.size).toBe(HOME_IMAGES.length + LEGACY_IMAGES.length + teamManifest.assets.length)
+    expect(index.size).toBe(
+      HOME_IMAGES.length +
+        LEGACY_IMAGES.length +
+        teamManifest.assets.length +
+        pressManifest.assets.length,
+    )
     for (const [baseName, filePath] of index) {
       expect(existsSync(filePath), `${baseName} → ${filePath}`).toBe(true)
     }
@@ -126,6 +136,7 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
             sourcePublicDigest: asset.sha256,
             storedPublicDigest: createHash('sha256').update(readFileSync(file)).digest('hex'),
             mediaSnapshot: mediaRecoverySnapshot(doc),
+            processingConfig: '',
           },
         },
       ]
@@ -165,6 +176,8 @@ describe('owner-review team média helyreállítása, DB és élő szolgáltatá
       update,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     } as unknown as Payload
+    for (const receipt of receipts)
+      receipt.after.processingConfig = mediaRecoveryProcessingConfig(payload)
     return { payload, findByID, update }
   }
 

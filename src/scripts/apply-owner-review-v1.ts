@@ -14,6 +14,7 @@ import {
   enrollMediaRecovery,
   inspectMediaRecoveryReceipt,
   planMediaRecoveryEnrollment,
+  verifyMediaRecoveryBytes,
 } from '../lib/media-recovery-provenance'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import {
@@ -165,12 +166,7 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
       if (!upload || upload.disableLocalStorage || !upload.staticDir) {
         throw new Error(`A meglévő fotó helyi fájlazonossága nem ellenőrizhető: ${asset.file}`)
       }
-      const storedHash = createHash('sha256')
-        .update(await readFile(path.resolve(upload.staticDir, asset.file)))
-        .digest('hex')
-      if (storedHash !== asset.storedSha256) {
-        throw new Error(`A meglévő fotó tartalma eltér a jóváhagyott képtől: ${asset.file}`)
-      }
+      const storedHash = await verifyMediaRecoveryBytes(payload, matches[0])
       const missing = missingMediaFiles(path.resolve(upload.staticDir), matches[0])
       if (missing.length > 0) {
         mediaFileBlockers.push(`Hiányzó fotófájlok; helyreállítás szükséges: ${missing.join(', ')}`)

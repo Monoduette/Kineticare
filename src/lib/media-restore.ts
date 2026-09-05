@@ -4,7 +4,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -21,6 +21,7 @@ import {
   requireMediaRecoveryReceipt,
   verifyMediaRecoveryBytes,
   mediaRecoverySnapshot,
+  managedMediaAssets,
 } from './media-recovery-provenance'
 
 /** Egy futás mérlege — a hívó ezt naplózza/asszertálja. */
@@ -43,8 +44,7 @@ export const mediaBaseName = (fileName: string): string => fileName.replace(/\.[
 /**
  * Alapnév → abszolút forrásútvonal a repóban.
  *
- * Három forráskészlet: a kezdőlapi seed képei (`content/home-images`,
- * LANDING_ASSETS_DIR), a legacy archívum és a kanonikus team manifest képei.
+ * A kezdőlapi seed, a legacy archívum és a team/press manifest forrásai.
  * Névütközésnél az ELSŐ
  * (kezdőlap) nyer — a kezdőlap-layout hivatkozásai, azok elvesztése látszik
  * a legjobban.
@@ -80,7 +80,39 @@ export const buildMediaSourceIndex = (): ReadonlyMap<string, string> => {
     const key = mediaBaseName(image.file)
     if (!index.has(key)) index.set(key, path.join(teamDir, image.file))
   }
+  for (const asset of managedMediaAssets()) {
+    const key = mediaBaseName(asset.filename)
+    if (index.has(key) && index.get(key) !== asset.source) {
+      throw new Error('A médiaforrások neve ütközik; kézi ellenőrzés szükséges.')
+    }
+    index.set(key, asset.source)
+  }
   return index
+}
+
+async function assertManagedDestinationOwnership(payload: Payload, doc: Media, dir: string) {
+  const base = mediaBaseName(doc.filename!)
+  // Default Payload size names share this stem. Reserve it before its eager unlink.
+  const reserved = (name: string) => name.startsWith(`${base}-`) || mediaBaseName(name) === base
+  const names = (record: Media) =>
+    [record.filename, ...Object.values(record.sizes ?? {}).map((size) => size?.filename)].filter(
+      (name): name is string => typeof name === 'string' && !!name,
+    )
+  const own = new Set(names(doc))
+  const records = await payload.find({
+    collection: 'media',
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  })
+  if (
+    records.docs.some((other) => other.id !== doc.id && names(other).some(reserved)) ||
+    (existsSync(dir) && readdirSync(dir).some((name) => reserved(name) && !own.has(name)))
+  ) {
+    throw new Error(
+      'A helyreállítás célfájlja más feltöltéshez tartozhat; kézi ellenőrzés szükséges.',
+    )
+  }
 }
 
 /**
@@ -181,24 +213,22 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         continue
       }
 
-      const teamAsset = teamManifest.assets.find(
-        (asset) => source === path.resolve('public/media/team', asset.file),
-      )
-      if (teamAsset) {
-        // Ezek már WebP-források: a CLI/Payload normál fájlneve pontosan a manifest neve.
-        if (filename !== teamAsset.file) {
+      const managedAsset = managedMediaAssets().find((asset) => source === asset.source)
+      if (managedAsset) {
+        // PNG-forrásnál is kizárólag a pontos Payload WebP célnév engedett.
+        if (filename !== managedAsset.filename) {
           summary.potolhatatlan += 1
           payload.logger.warn(
-            `Média-helyreállítás: nem kanonikus team fájlnév (${filename}); érintetlen marad.`,
+            `Média-helyreállítás: nem kanonikus manifest fájlnév (${filename}); érintetlen marad.`,
           )
           continue
         }
         const sourceBytes = readFileSync(source)
         const hash = createHash('sha256').update(sourceBytes).digest('hex')
-        if (hash !== teamAsset.sha256) {
-          throw new Error('A committed team média-forrás SHA-256 ellenőrzőösszege eltér.')
+        if (hash !== managedAsset.sha256) {
+          throw new Error('A committed média-forrás SHA-256 ellenőrzőösszege eltér.')
         }
-        const receipt = await requireMediaRecoveryReceipt(payload, doc, teamAsset)
+        const receipt = await requireMediaRecoveryReceipt(payload, doc, managedAsset)
         if (!missing.includes(filename)) {
           if ((await verifyMediaRecoveryBytes(payload, doc)) !== receipt.storedPublicDigest) {
             throw new Error(
@@ -223,7 +253,8 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         continue
       }
 
-      if (teamAsset) {
+      if (managedAsset) {
+        await assertManagedDestinationOwnership(payload, doc, uploadDir)
         await beginMediaRecovery(payload, doc)
         await assertFreshMediaRecovery(payload, doc)
       }
@@ -241,7 +272,7 @@ export const ensureMediaFiles = async (payload: Payload): Promise<MediaRestoreSu
         overwriteExistingFiles: true,
         overrideAccess: true,
       })
-      if (teamAsset) {
+      if (managedAsset) {
         if (
           restored.id !== doc.id ||
           restored.filename !== doc.filename ||

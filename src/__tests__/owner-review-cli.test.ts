@@ -13,10 +13,15 @@ const runtime = vi.hoisted(() => ({
   info: vi.fn(),
   findByID: vi.fn(),
   readdir: vi.fn(),
+  config: {} as { sharp?: typeof sharp },
   collections: {
     media: {
       config: {
-        upload: { staticDir: '/tmp/kineticare-cli-unit-media', disableLocalStorage: false },
+        upload: {
+          staticDir: '/tmp/kineticare-cli-unit-media',
+          disableLocalStorage: false,
+          formatOptions: { format: 'webp', options: { quality: 80 } },
+        },
       },
     },
   },
@@ -68,6 +73,7 @@ describe('Owner review explicit application boundary', { timeout: 20_000 }, () =
     runtime.collections.media.config.upload.staticDir = '/tmp/kineticare-cli-unit-media'
     runtime.destroy.mockResolvedValue(undefined)
     runtime.getPayload.mockResolvedValue(runtime)
+    runtime.config.sharp = sharp
     vi.spyOn(mediaProvenance, 'enrollMediaRecovery').mockResolvedValue(undefined)
     vi.spyOn(mediaProvenance, 'inspectMediaRecoveryReceipt').mockResolvedValue({
       receipt: null,
@@ -76,6 +82,7 @@ describe('Owner review explicit application boundary', { timeout: 20_000 }, () =
     vi.spyOn(mediaProvenance, 'planMediaRecoveryEnrollment').mockResolvedValue({
       action: 'media.recovery.provenance.v1',
       mediaSnapshot: 'fixture',
+      processingConfig: 'fixture',
       sourcePublicDigest: 'a'.repeat(64),
       storedPublicDigest: 'b'.repeat(64),
       previousReceipt: null,
@@ -413,6 +420,43 @@ describe('Owner review explicit application boundary', { timeout: 20_000 }, () =
       expect((await preview()).blockers).toEqual([])
       expect(runtime.create).not.toHaveBeenCalled()
       expect(runtime.update).not.toHaveBeenCalled()
+    })
+
+    it('accepts enrolled raw committed bytes at the publication gate', async () => {
+      const page = setupPlan(() => [freeProduct])
+      const { directory } = await managedPhoto(true)
+      const filename = 'founders-intro-white-1600.webp'
+      await writeFile(
+        path.join(directory, filename),
+        await readFile(path.resolve('public/media/team', filename)),
+      )
+      vi.mocked(mediaProvenance.inspectMediaRecoveryReceipt).mockResolvedValue({
+        receipt: null,
+        valid: false,
+      })
+      const blocked = await preview()
+      await expect(applyOwnerReviewV1(['--apply', blocked.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+      vi.mocked(mediaProvenance.inspectMediaRecoveryReceipt).mockResolvedValue({
+        receipt: null,
+        valid: true,
+      })
+      runtime.info.mockClear()
+      const approved = await preview()
+      expect(approved.blockers).toEqual([])
+      expect(approved.hash).not.toBe(blocked.hash)
+      let id = 40
+      runtime.create.mockImplementation(async ({ filePath }: { filePath: string }) => ({
+        id: id++,
+        filename: path.basename(filePath),
+      }))
+      runtime.findByID.mockResolvedValue(page)
+      await expect(applyOwnerReviewV1(['--apply', approved.hash])).resolves.toBeUndefined()
+      expect(runtime.create).toHaveBeenCalledTimes(6)
+      expect(runtime.update).toHaveBeenCalledOnce()
     })
 
     it.each([
