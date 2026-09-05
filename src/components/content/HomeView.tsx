@@ -137,9 +137,9 @@ export function HomeView({
 
       <CourseCards products={paidProducts} />
 
-      <FreeSos freeProduct={freeProduct} />
+      <HowItWorks variant="tint" />
 
-      <HowItWorks />
+      <FreeSos freeProduct={freeProduct} variant="default" />
 
       <TestimonialsSection testimonials={testimonials} />
 

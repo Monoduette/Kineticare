@@ -1,6 +1,6 @@
 import type { BlockFilmHero } from '../../payload-types'
+import { buildOriginAllowlist } from '../../env'
 import { COURSE_SOS_KEZRELAX } from '../../lib/legacy-redirects'
-import { getNavLinkRouteState } from '../../lib/nav-route'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { Button } from '../ui/Button'
 import { ScrollScrub } from '../scroll-scrub/scroll-scrub'
@@ -117,23 +117,34 @@ export function FilmHero({
   // NN/g Better Link Labels; WCAG 2.4.4: a felirat és a tényleges cél összetartozik.
   // https://www.nngroup.com/articles/better-link-labels/
   // https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
-  const sosTargets = new Set(
-    ['ingyenes', ...freeSosAnchorIds].flatMap((id) => [`#${id}`, `/#${id}`]),
-  )
+  const sosAnchors = new Set(['ingyenes', ...freeSosAnchorIds])
+  // A publikus origin és az apex/www pár azonos site; a CORS-kivételek nem
+  // bizonyítanak tartalmi azonosságot. Csak az összehasonlítás normalizál.
+  const siteOrigins = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
+  function sosTarget(rawUrl: string): 'anchor' | 'course' | null {
+    const safeUrl = sanitizeCmsUrl(rawUrl)
+    if (!safeUrl) return null
+    try {
+      const url = new URL(safeUrl, `${siteOrigins[0]}/`)
+      if (!siteOrigins.includes(url.origin)) return null
+      const pathname = decodeURIComponent(url.pathname).replace(/\/+$/, '') || '/'
+      if (pathname === COURSE_SOS_KEZRELAX) return 'course'
+      if (pathname === '/' && sosAnchors.has(decodeURIComponent(url.hash.slice(1)))) {
+        return 'anchor'
+      }
+    } catch {
+      // Hibás URL/kódolás nem válik igazolt SOS-céllá.
+    }
+    return null
+  }
   const ctas = (block.ctas ?? [])
     .filter((cta) => Boolean(cta.felirat?.trim()) && Boolean(cta.url?.trim()))
-    .filter((cta) => {
-      if (sosTargets.has(cta.url.trim())) return Boolean(freeSosHref)
-      // Csak az összehasonlítás normalizál: a közvetlen href/query/hash megmarad.
-      // A közös route-helper kizárja a külső originű és protokollrelatív célokat.
-      return (
-        hasFreeSos ||
-        getNavLinkRouteState(COURSE_SOS_KEZRELAX, sanitizeCmsUrl(cta.url)) !== 'current'
-      )
+    .flatMap((cta) => {
+      const target = sosTarget(cta.url)
+      if (target === 'anchor') return freeSosHref ? [{ ...cta, url: freeSosHref }] : []
+      if (target === 'course' && !hasFreeSos) return []
+      return [cta]
     })
-    .map((cta) =>
-      sosTargets.has(cta.url.trim()) && freeSosHref ? { ...cta, url: freeSosHref } : cta,
-    )
     .slice(0, 2)
 
   const actions =

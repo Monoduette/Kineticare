@@ -557,7 +557,7 @@ describe('HomeView (kezdőlap-render)', () => {
     expect(html).toContain('<summary')
   })
 
-  it('szekció-sorrend az audit szerint: hero → hitel-csík → fizetős kurzusok → ingyenes SOS → hogyan működik → vélemények → CMS-tartalom → GYIK a végén', () => {
+  it('szekció-sorrend H10 szerint: hero → hitel-csík → fizetős kurzusok → hogyan működik → ingyenes SOS → vélemények → CMS-tartalom → GYIK a végén', () => {
     const html = render(
       createElement(HomeView, {
         home: page({ id: 1, content: contentWithWords(10) as unknown as Page['content'] }),
@@ -570,8 +570,8 @@ describe('HomeView (kezdőlap-render)', () => {
       'kc-hero__title',
       ctaLabel('about-open'),
       'id="kurzusok"',
-      'id="ingyenes"',
       'Így működik az online kurzus',
+      'id="ingyenes"',
       'id="velemenyek"',
       'kc-richtext',
       'Gyakori kérdések',
@@ -582,6 +582,32 @@ describe('HomeView (kezdőlap-render)', () => {
     }
     const sorted = [...positions].sort((a, b) => a - b)
     expect(positions).toEqual(sorted)
+  })
+
+  it.each([
+    ['nincs CMS-oldal', null],
+    ['hiányzó layout', page({ id: 1 })],
+    ['null layout', page({ id: 1, layout: null })],
+    ['üres layout', page({ id: 1, layout: [] })],
+  ] as const)('H10 fallback (%s): a kurzusblokk közvetlen szomszédja a magyarázat, majd az SOS', (_label, home) => {
+    const html = render(createElement(HomeView, {
+      home,
+      products: [
+        product({ id: 1 }),
+        product({ id: 7, slug: 'sos-kezrelax-villamkurzus', _status: 'published', priceInHUFEnabled: false }),
+      ],
+      posts: [],
+      testimonials: [testimonial({ id: 1 })],
+    }))
+    const sections = Array.from(html.matchAll(/<section\b[^>]*\sclass="([^"]*)"/g))
+      .map((match) => match[1].split(/\s+/))
+    const courses = sections.findIndex((classes) => classes.includes('kc-course-cards'))
+    expect(courses).toBeGreaterThanOrEqual(0)
+    expect(sections[courses + 1]).toContain('kc-how')
+    expect(sections[courses + 2]).toContain('kc-free-sos')
+    expect(sections[courses + 3]).toContain('kc-testimonials')
+    expect(sections.filter((classes) => classes.includes('kc-how'))).toHaveLength(1)
+    expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
 
   /**

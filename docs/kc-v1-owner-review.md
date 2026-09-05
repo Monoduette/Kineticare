@@ -217,6 +217,17 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   elutasította; a védelmet nem módosítottuk, megfelelő külön tesztadatbázist használtunk.
   Typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
   Két független review (Gauss és Avicenna) jóváhagyta a CLI/P03/H13 scope-ot.
+- A `cd01680` remote CI és gitleaks sikeres, de a friss cloud review két
+  további P2-t talált: abszolút saját SOS-link és a CMS nélküli H10 sorrend.
+  A reprodukció 20 új URL-es és 5 sorrendi hibát igazolt. A javítás után
+  a két fókuszált tesztfájl **168/168 PASS**; az exact-head teljes kapuk
+  és a független review ismét kötelezőek a merge előtt.
+- Az abszolút URL/H10 javítás teljes helyi köre: **6968/6968 PASS, 298 fájl**,
+  kihagyás és ismétlés nélkül, ugyanazon izolált CI-adatbázison.
+  Typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
+  A friss 1280 px-es helyi CMS-nézet sorrendje és hero-linkjei ellenőrizve.
+  Gauss a négy kódfájlt jóváhagyta, 146 saját izolált assertion PASS;
+  James külön origin/path review-ja sem talált blokkoló hibát.
 
 ## Tanulságok
 
@@ -246,6 +257,13 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   ingyenességi állítás önálló P03-változásként is publikálási előfeltételhez kötött.
 - A közvetlen kurzuslink és a kezdőlapi szekcióugrás külön eset: az előbbihez
   elérhető kurzus, az utóbbihoz megfelelő, látható célszekció is szükséges.
+- A nav aktívállapot-segédje csak relatív útvonalakat értelmez; nem általános
+  URL-azonosító. Az ajánlatellenőrzés strukturált URL-parserrel hasonlítja
+  a publikus origin/apex/www célokat, query/hash és eredeti href megőrzésével.
+  A CORS-kivételek önmagukban nem jelentik ugyanazt a tartalmi site-ot.
+  A mátrix külső/lookalike hostot, eltérő portot/sémát és kódolt útvonalat is fed.
+- A H10 sorrend két végrehajtható felület: a CMS-terv és az üres CMS
+  fallback. Mindkettőn tényleges szomszédsági teszt kell, nem csak dokumentáció.
 - A CSS-geometriai őrnek a magassági médiafeltételt is valódi viewportadattal
   kell kiértékelnie. Az ismeretlen feltétel nem nyelhető el egy inaktív ágban sem.
 - A futás közbeni mozgásemuláció nem helyettesíti a hideg betöltést. A Brave

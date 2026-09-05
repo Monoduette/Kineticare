@@ -78,7 +78,10 @@ beforeEach(() => {
     }),
   )
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
 
 describe('P1: a rögzített hero és az SOS ugyanazt az ellenőrzött terméket használja', () => {
   it('HeroCta adat nélkül nem állít ingyenes elérhetőséget', () => {
@@ -247,6 +250,10 @@ describe('P1: FilmHero és a generikus CMS-oldalak SOS-elérhetősége', () => {
 })
 
 describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshez tartozik', () => {
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://kineticare.hu')
+    vi.stubEnv('EXTRA_ALLOWED_ORIGINS', 'https://cors-only.invalid')
+  })
   const directTargets = [
     '/kurzusok/sos-kezrelax-villamkurzus',
     '/kurzusok/sos-kezrelax-villamkurzus/',
@@ -254,6 +261,16 @@ describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshe
     '/kurzusok/sos-kezrelax-villamkurzus#reszletek',
     ' /kurzusok/sos-kezrelax-villamkurzus/?utm_source=teszt#reszletek ',
     '/kurzusok/sos-kezrelax-villamkurzus?utm_source=teszt&utm_medium=email#reszletek',
+    '/kurzusok/%73os-kezrelax-villamkurzus',
+    '/masik/../kurzusok/sos-kezrelax-villamkurzus',
+    ...['https://kineticare.hu', 'https://www.kineticare.hu', 'https://KINETICARE.HU:443'].flatMap(
+      (origin) => [
+        `${origin}/kurzusok/sos-kezrelax-villamkurzus`,
+        `${origin}/kurzusok/sos-kezrelax-villamkurzus/`,
+        ` ${origin}/kurzusok/sos-kezrelax-villamkurzus/?utm_source=teszt#reszletek `,
+        `${origin}/kurzusok/%73os-kezrelax-villamkurzus`,
+      ],
+    ),
   ]
   const customLabel = 'Próbáld ki ingyen a kézgyakorlatokat'
   const directFilm = (url: string): BlockFilmHero => ({
@@ -338,6 +355,12 @@ describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshe
     'https://example.invalid/kurzusok/sos-kezrelax-villamkurzus/?utm_source=teszt#reszletek',
     'https://example.invalid/#ingyenes',
     'https://kineticare.invalid/kurzusok/sos-kezrelax-villamkurzus',
+    'https://kineticare.hu.example.invalid/kurzusok/sos-kezrelax-villamkurzus',
+    'https://kineticare.hu@example.invalid/kurzusok/sos-kezrelax-villamkurzus',
+    'https://kineticare.hu:8443/kurzusok/sos-kezrelax-villamkurzus',
+    'http://kineticare.hu/kurzusok/sos-kezrelax-villamkurzus',
+    'https://cors-only.invalid/kurzusok/sos-kezrelax-villamkurzus',
+    '/kurzusok/%ZZsos-kezrelax-villamkurzus',
   ])('független vagy külső cél nem lesz helyi SOS-ajánlat: %s', (url) => {
     for (const freeSosHref of [null, '#ingyenes']) {
       const html = renderToStaticMarkup(
@@ -350,6 +373,47 @@ describe('P2: a közvetlen SOS-kurzuslink ugyanahhoz az ajánlati ellenőrzéshe
       expect(html).toContain(customLabel)
       expect(html).toContain('target="_blank"')
     }
+  })
+
+  it.each([
+    '#ingyenes',
+    '/?utm_source=teszt#ingyenes',
+    'https://kineticare.hu/#ingyenes',
+    'https://www.kineticare.hu/?utm_source=teszt#ingyenes',
+    'https://kineticare.hu/#%69ngyenes',
+    'https://kineticare.hu/#proba',
+  ])('a saját SOS-horgony csak tényleges későbbi szekcióra mutathat: %s', (url) => {
+    const anchoredSos = { ...sos, sectionSettings: { anchorId: 'proba' } }
+    expect(
+      renderToStaticMarkup(
+        createElement(FilmHero, {
+          block: directFilm(url),
+          hasFreeSos: true,
+          freeSosAnchorIds: ['proba'],
+        }),
+      ),
+    ).not.toContain(customLabel)
+    for (const layout of [
+      [directFilm(url), { ...anchoredSos, sectionSettings: { anchorId: 'proba', visible: false } }],
+      [anchoredSos, directFilm(url)],
+    ] satisfies Layout[]) {
+      expect(blocks(layout, [product()])).not.toContain(customLabel)
+    }
+    const html = blocks([directFilm(url), anchoredSos], [product()])
+    const link = html.match(new RegExp(`<a\\b[^>]*>${customLabel}</a>`))?.[0]
+    expect(link).toContain('href="#proba"')
+    expect(link).toContain('target="_blank"')
+    expect(blocks([directFilm(url), anchoredSos], [])).not.toContain(customLabel)
+  })
+
+  it('a konfigurált publikus origin a saját cél, nem a CORS-lista minden tagja', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://preview.example.test:8443')
+    expect(
+      blocks([directFilm('https://preview.example.test:8443/kurzusok/sos-kezrelax-villamkurzus')]),
+    ).not.toContain(customLabel)
+    expect(
+      blocks([directFilm('https://kineticare.hu/kurzusok/sos-kezrelax-villamkurzus')]),
+    ).toContain(customLabel)
   })
 
   it('önálló FilmHero hiányzó ellenőrzött adatnál a közvetlen linket is elhagyja', () => {
