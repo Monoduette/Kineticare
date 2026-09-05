@@ -13,6 +13,7 @@ import {
 } from './client'
 import { escapeXml } from './invoice'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
+import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
 import {
   SzamlazzApiError,
   type IssueStornoResult,
@@ -266,6 +267,8 @@ export async function issueStornoForOrder(
   // olvassuk újra a rendelést, így a párhuzamos futás által már rögzített stornó
   // az idempotencia-ágon no-op lesz — egyszerre csak egy provider-hívás mehet ki.
   const runIssue = async (currentOrder: Order): Promise<IssueStornoResult> => {
+    const managed = payload ? await managedRefundDocument(payload, currentOrder, 'storno') : null
+    if (managed?.number) return { outcome: 'already-storned', stornoNumber: managed.number }
     // Idempotencia (alkalmazás-oldal): a rendelésen rögzített stornó.
     const recordedStornoNumber = currentOrder.stornoNumber?.trim()
     if (recordedStornoNumber || currentOrder.stornoStatus === 'storned') {
@@ -332,6 +335,7 @@ export async function issueStornoForOrder(
       ...(buyerEmail ? { buyerEmail } : {}),
     })
 
+    if (payload && managed) await claimManagedRefundDocument(payload, managed, previousAttempts)
     await saveState({ stornoStatus: 'pending', stornoAttempts: attempts })
 
     try {

@@ -515,16 +515,23 @@ describe('fetchPaymentState (Payment/PaymentState v4)', () => {
 })
 
 describe('refundPayment (Payment/Refund v2)', () => {
+  const posTransactionId = 'DUMMY-ORIGINAL-SHOP-TRANSACTION'
   const refundParams = {
     paymentId: DUMMY_PAYMENT_ID,
-    transactionsToRefund: [{ transactionId: DUMMY_TRANSACTION_ID, amountToRefund: 10000 }],
+    transactionsToRefund: [
+      { transactionId: DUMMY_TRANSACTION_ID, posTransactionId, amountToRefund: 10000 },
+    ],
   }
 
-  it('refund payload-építés: PaymentId + TransactionsToRefund {TransactionId, AmountToRefund}', () => {
+  it('refund payload-építés: PaymentId + TransactionsToRefund {TransactionId, POSTransactionId, AmountToRefund}', () => {
     const request = buildRefundRequest(refundParams)
     expect(request.PaymentId).toBe(DUMMY_PAYMENT_ID)
     expect(request.TransactionsToRefund).toEqual([
-      { TransactionId: DUMMY_TRANSACTION_ID, AmountToRefund: 10000 },
+      {
+        TransactionId: DUMMY_TRANSACTION_ID,
+        POSTransactionId: posTransactionId,
+        AmountToRefund: 10000,
+      },
     ])
   })
 
@@ -535,8 +542,8 @@ describe('refundPayment (Payment/Refund v2)', () => {
         RefundedTransactions: [
           {
             TransactionId: DUMMY_TRANSACTION_ID,
-            Total: 24990,
-            AmountToRefund: 10000,
+            POSTransactionId: posTransactionId,
+            Total: 10000,
             Status: 'PartiallyRefunded',
           },
         ],
@@ -548,27 +555,149 @@ describe('refundPayment (Payment/Refund v2)', () => {
     expect(response.PaymentId).toBe(DUMMY_PAYMENT_ID)
     expect(response.RefundedTransactions).toHaveLength(1)
     expect(response.RefundedTransactions[0]?.TransactionId).toBe(DUMMY_TRANSACTION_ID)
-    expect(response.RefundedTransactions[0]?.AmountToRefund).toBe(10000)
+    expect(response.RefundedTransactions[0]?.Total).toBe(10000)
+    expect(response.RefundedTransactions[0]?.POSTransactionId).toBe(posTransactionId)
+    expect(response.RefundedTransactions[0]).not.toHaveProperty('AmountToRefund')
     expect(response.RefundedTransactions[0]?.Status).toBe('PartiallyRefunded')
+    expect(response.Errors).toBeUndefined()
 
     const request = lastRequest()
     expect(request.url).toBe('https://api.test.barion.com/v2/Payment/Refund')
     expect(request.body.PaymentId).toBe(DUMMY_PAYMENT_ID)
     expect(request.body.POSKey).toBe(DUMMY_POS_KEY)
     expect(request.body.TransactionsToRefund).toEqual([
-      { TransactionId: DUMMY_TRANSACTION_ID, AmountToRefund: 10000 },
+      {
+        TransactionId: DUMMY_TRANSACTION_ID,
+        POSTransactionId: posTransactionId,
+        AmountToRefund: 10000,
+      },
     ])
   })
 
   it('üres visszatérítés-lista és nem-pozitív összeg hibát dob', () => {
-    expect(() => buildRefundRequest({ paymentId: DUMMY_PAYMENT_ID, transactionsToRefund: [] }))
-      .toThrowError(/tranzakció/)
+    expect(() =>
+      buildRefundRequest({ paymentId: DUMMY_PAYMENT_ID, transactionsToRefund: [] }),
+    ).toThrowError(/tranzakció/)
     expect(() =>
       buildRefundRequest({
         paymentId: DUMMY_PAYMENT_ID,
-        transactionsToRefund: [{ transactionId: DUMMY_TRANSACTION_ID, amountToRefund: 0 }],
+        transactionsToRefund: [
+          { transactionId: DUMMY_TRANSACTION_ID, posTransactionId, amountToRefund: 0 },
+        ],
       }),
     ).toThrowError(/amountToRefund/)
+  })
+
+  it('minden tranzakció eredeti kereskedői azonosítóját változatlanul továbbítja', () => {
+    const transactions = [
+      { transactionId: DUMMY_TRANSACTION_ID, posTransactionId, amountToRefund: 10000 },
+      {
+        transactionId: 'DUMMY-SECOND-TRANSACTION',
+        posTransactionId: ' DUMMY-SECOND-SHOP-ID ',
+        amountToRefund: 500,
+      },
+    ]
+    const original = structuredClone(transactions)
+    expect(
+      buildRefundRequest({ paymentId: DUMMY_PAYMENT_ID, transactionsToRefund: transactions }),
+    ).toEqual({
+      PaymentId: DUMMY_PAYMENT_ID,
+      TransactionsToRefund: [
+        {
+          TransactionId: DUMMY_TRANSACTION_ID,
+          POSTransactionId: posTransactionId,
+          AmountToRefund: 10000,
+        },
+        {
+          TransactionId: 'DUMMY-SECOND-TRANSACTION',
+          POSTransactionId: ' DUMMY-SECOND-SHOP-ID ',
+          AmountToRefund: 500,
+        },
+      ],
+    })
+    expect(transactions).toEqual(original)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['', '   ', '\n\t', undefined, null, 0, false, {}, []])(
+    'hibás posTransactionId esetén a teljes kérés transport előtt elutasítva: %j',
+    async (invalidId) => {
+      const params = {
+        paymentId: DUMMY_PAYMENT_ID,
+        transactionsToRefund: [
+          ...refundParams.transactionsToRefund,
+          {
+            transactionId: 'DUMMY-SECOND-TRANSACTION',
+            posTransactionId: invalidId as unknown as string,
+            amountToRefund: 500,
+          },
+        ],
+      }
+      expect(() => buildRefundRequest(params)).toThrowError(/posTransactionId/)
+      await expect(refundPayment(params, testConfig)).rejects.toThrowError(/posTransactionId/)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('a posTransactionId elhagyása típus- és futásidejű hiba', () => {
+    expect(() =>
+      buildRefundRequest({
+        paymentId: DUMMY_PAYMENT_ID,
+        transactionsToRefund: [
+          // @ts-expect-error The merchant transaction identifier is required, not optional.
+          { transactionId: DUMMY_TRANSACTION_ID, amountToRefund: 10000 },
+        ],
+      }),
+    ).toThrowError(/posTransactionId/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, []])(
+    'hivatalos Total/Succeeded választ megőriz opcionális Errors mellett: %j',
+    async (errors) => {
+      const body = {
+        PaymentId: DUMMY_PAYMENT_ID,
+        RefundedTransactions: [
+          {
+            TransactionId: DUMMY_TRANSACTION_ID,
+            POSTransactionId: posTransactionId,
+            Total: 10000,
+            Status: 'Succeeded',
+          },
+        ],
+        ...(errors === undefined ? {} : { Errors: errors }),
+      }
+      fetchMock.mockResolvedValueOnce(jsonResponse(body))
+      expect(await refundPayment(refundParams, testConfig)).toEqual(body)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('a refund-válasz jelen lévő szolgáltatói hibáit nem hagyja figyelmen kívül', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PaymentId: DUMMY_PAYMENT_ID,
+        RefundedTransactions: [],
+        Errors: [
+          {
+            ErrorCode: 'DUMMY-REFUND-ERROR',
+            Title: 'Synthetic rejection',
+            Description: 'Synthetic refund rejected',
+          },
+        ],
+      }),
+    )
+    await expect(refundPayment(refundParams, testConfig)).rejects.toMatchObject({
+      kind: 'provider',
+      providerErrors: [
+        {
+          ErrorCode: 'DUMMY-REFUND-ERROR',
+          Title: 'Synthetic rejection',
+          Description: 'Synthetic refund rejected',
+        },
+      ],
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 

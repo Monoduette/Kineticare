@@ -1,6 +1,9 @@
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Intent-managed concurrency is covered separately with the real helper guard.
+vi.mock('../../lib/refund/intent-store', () => ({ loadRefundIntentsForOrder: async () => [] }))
+
 import { getSzamlazzConfig } from '../../lib/szamlazz/client'
 import {
   correctiveLockKey,

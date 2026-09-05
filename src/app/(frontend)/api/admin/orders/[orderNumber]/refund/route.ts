@@ -1,6 +1,9 @@
 import { getPayload } from 'payload'
 
-import { createRefundHandler } from '../../../../../../../lib/refund/route-handler'
+import {
+  createRefundHandler,
+  createRefundRecoveryStatusHandler,
+} from '../../../../../../../lib/refund/route-handler'
 import config from '../../../../../../../payload.config'
 
 /**
@@ -14,5 +17,9 @@ import config from '../../../../../../../payload.config'
  * (checkout-start / barion-callback route-minta).
  */
 export const POST = createRefundHandler({
+  getPayload: () => getPayload({ config }),
+})
+
+export const GET = createRefundRecoveryStatusHandler({
   getPayload: () => getPayload({ config }),
 })

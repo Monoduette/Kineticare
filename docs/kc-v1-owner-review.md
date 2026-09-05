@@ -3,7 +3,7 @@
 Forrás: [KC V1 review](https://docs.google.com/document/d/16qu4uU3wy1B0fziBGTNQM4CxXhGqEW-WEtg2sdxT5bI/edit), beolvasva 2026-09-05.
 Fotók: a tulajdonos által megadott [Drive-mappa](https://drive.google.com/drive/folders/1Eq19mFjrMRiWQQ103kXXa5vmAQl7Eq2m), Katák / Kedvencek és Szakmai.
 Kiinduló main: `9df69f0b8e6db9b1a945acf95f605699748d1204`.
-Integrált main: `3da0a89ea26589786d1469afe42732cf97bf8f61` (PR205 és PR211).
+Integrált main: `3f3f9c473db5d775ba5244683d92a39aba5e2a97` (PR207 is).
 Az upstream footer-változás az alap része; ez a változtatáscsomag nem szerkeszti a footert.
 
 ## Közös design-brief
@@ -202,6 +202,21 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   gombfelirat hibát jelzett. Új, célzott javítókör indult, mert a konkrét
   ellenpéldák a korábbi horgony- és seedteszteken túlmutató bizonyítékot adnak.
   A javítások helyi kapui és a következő head kiadása külön ellenőrzendők.
+- A közvetlen SOS-link és P03-migráció javítása után a független ellenőrzés
+  a `status: published`, `_status: draft` eltérést is reprodukálta. Az SOS-helper
+  most mindkét publikált állapotot megköveteli; a célzott kör 18 pirosból
+  355 zöld tesztre váltott. A normál film, a footer és az általános termékgetter változatlan.
+- A `f2c8f0f` javítás helyi teljes köre: **6497/6497 PASS, 283 fájl**,
+  typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
+  A leállt helyi Docker elsőre adatbázis-elérési hibát okozott; a meglévő
+  tesztkonténer helyreállítása után a teljes csomag kihagyás nélkül sikeres.
+  A közben frissült main integrációja új exact-base kapukat igényel.
+- PR207 main-integráció (`3f3f9c4`): **6923/6923 PASS, 298 fájl**, teljes
+  soros futás az izolált `localhost:55441/kineticare_ci` adatbázison.
+  A korábbi helyi adatbázisnevet az upstream refundtesztek tudatos célvédelme
+  elutasította; a védelmet nem módosítottuk, megfelelő külön tesztadatbázist használtunk.
+  Typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
+  Két független review (Gauss és Avicenna) jóváhagyta a CLI/P03/H13 scope-ot.
 
 ## Tanulságok
 

@@ -136,6 +136,8 @@ export interface BarionPaymentStateResponse {
 /** Egy visszatérítendő tranzakció a Payment/Refund v2 kérésben. */
 export interface BarionTransactionToRefund {
   TransactionId: string
+  /** Kötelező kereskedői tranzakcióazonosító: https://docs.barion.com/TransactionToRefund */
+  POSTransactionId: string
   AmountToRefund: number
 }
 
@@ -149,7 +151,9 @@ export interface BarionRefundRequest {
 /** Egy visszatérített tranzakció a Payment/Refund v2 válaszban. */
 export interface BarionRefundedTransaction {
   TransactionId: string
+  /** A visszatérített összeg hivatalos mezője: https://docs.barion.com/RefundedTransaction */
   Total?: number
+  /** Kompatibilitási mező; a hivatalos refund-válasz összege Total, nem AmountToRefund. */
   AmountToRefund?: number
   POSTransactionId?: string
   Comment?: string
@@ -161,6 +165,7 @@ export interface BarionRefundedTransaction {
 export interface BarionRefundResponse {
   PaymentId: string
   RefundedTransactions: BarionRefundedTransaction[]
+  /** Opcionális, a többi Barion-válaszhoz hasonlóan; a kliens a jelen lévő hibákat ellenőrzi. */
   Errors?: BarionError[]
 }
 
