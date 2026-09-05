@@ -9,6 +9,7 @@ import sharp from 'sharp'
 
 import { logger } from '../lib/logger'
 import { isFreeCourse } from '../lib/courses'
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import {
   planOwnerReviewV1,
   type OwnerReviewChange,
@@ -258,11 +259,9 @@ export function planOwnerReviewMenus(menus: Menu[], product: Product | undefined
   return menus.flatMap((menu) => {
     const ref = menu.ref?.relationTo === 'products' ? menu.ref.value : undefined
     const productId = typeof ref === 'number' ? ref : ref?.id
-    if (menu.type !== 'product' || productId !== product.id || menu.label !== 'SOS KézRelax')
+    if (menu.type !== 'product' || productId !== product.id || menu.label !== SOS_MENU_LABEL)
       return []
-    return [
-      { id: menu.id, updatedAt: menu.updatedAt, before: menu, label: 'Ingyenes SOS KézRelax' },
-    ]
+    return [{ id: menu.id, updatedAt: menu.updatedAt, before: menu, label: SOS_FREE_MENU_LABEL }]
   })
 }
 

@@ -215,7 +215,18 @@ function BlockSwitch({
     case 'teamMembers':
       return <TeamMembers block={block} />
     case 'faq':
-      return <FaqBlock block={block} />
+      return (
+        <FaqBlock
+          block={block}
+          hasSosComparison={
+            freeProduct !== null &&
+            paidProducts.some(
+              (product) =>
+                product.slug === 'otthoni-kezrehab-program' && product._status === 'published',
+            )
+          }
+        />
+      )
     case 'accordion':
       return <Accordion block={block} />
     case 'appointment':

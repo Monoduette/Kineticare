@@ -1,7 +1,8 @@
 import type { BlockFilmHero } from '../../payload-types'
 import { buildOriginAllowlist } from '../../env'
-import { COURSE_SOS_KEZRELAX } from '../../lib/legacy-redirects'
+import { COURSE_SOS_KEZRELAX, LEGACY_REDIRECTS } from '../../lib/legacy-redirects'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
+import { PRODUCTION_HOSTS } from '../../lib/security/live-environment'
 import { Button } from '../ui/Button'
 import { ScrollScrub } from '../scroll-scrub/scroll-scrub'
 import type {
@@ -118,9 +119,14 @@ export function FilmHero({
   // https://www.nngroup.com/articles/better-link-labels/
   // https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
   const sosAnchors = new Set(['ingyenes', ...freeSosAnchorIds])
-  // A publikus origin és az apex/www pár azonos site; a CORS-kivételek nem
-  // bizonyítanak tartalmi azonosságot. Csak az összehasonlítás normalizál.
-  const siteOrigins = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
+  // DNS-cutover alatt a Railway-primer mellett a két ismert éles HTTPS-origin
+  // konfigurált kivétele is saját site. Tetszőleges CORS-kivétel nem az.
+  const primaryOrigins = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
+  const liveOrigins = PRODUCTION_HOSTS.map((host) => `https://${host}`)
+  const siteOrigins = buildOriginAllowlist(
+    process.env.NEXT_PUBLIC_SERVER_URL,
+    process.env.EXTRA_ALLOWED_ORIGINS,
+  ).filter((origin) => primaryOrigins.includes(origin) || liveOrigins.includes(origin))
   function sosTarget(rawUrl: string): 'anchor' | 'course' | null {
     const safeUrl = sanitizeCmsUrl(rawUrl)
     if (!safeUrl) return null
@@ -128,7 +134,15 @@ export function FilmHero({
       const url = new URL(safeUrl, `${siteOrigins[0]}/`)
       if (!siteOrigins.includes(url.origin)) return null
       const pathname = decodeURIComponent(url.pathname).replace(/\/+$/, '') || '/'
-      if (pathname === COURSE_SOS_KEZRELAX) return 'course'
+      if (
+        pathname === COURSE_SOS_KEZRELAX ||
+        LEGACY_REDIRECTS.some(
+          (redirect) =>
+            redirect.source.toLowerCase() === pathname.toLowerCase() &&
+            redirect.destination === COURSE_SOS_KEZRELAX,
+        )
+      )
+        return 'course'
       if (pathname === '/' && sosAnchors.has(decodeURIComponent(url.hash.slice(1)))) {
         return 'anchor'
       }

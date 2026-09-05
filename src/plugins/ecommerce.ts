@@ -13,6 +13,7 @@ import {
   denyFieldWrite,
   streamAssetReadAccess,
 } from '../access'
+import { revalidateMenusCache } from '../collections/Menus'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
@@ -377,6 +378,21 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
   },
   hooks: {
     ...defaultCollection.hooks,
+    // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
+    afterChange: [
+      ...(defaultCollection.hooks?.afterChange ?? []),
+      ({ doc }) => {
+        revalidateMenusCache()
+        return doc
+      },
+    ],
+    afterDelete: [
+      ...(defaultCollection.hooks?.afterDelete ?? []),
+      ({ doc }) => {
+        revalidateMenusCache()
+        return doc
+      },
+    ],
     // A kurzus törlésekor a haladás-sorok takarítása. Ugyanaz a séma-ellentmondás,
     // mint a felhasználónál: course_progress.product_id NOT NULL, az idegen kulcs
     // viszont ON DELETE SET NULL — takarítás nélkül a törlés Postgres-hibával áll

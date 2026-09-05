@@ -1,6 +1,7 @@
 import type { Page } from '../payload-types'
 import { ctaLabel } from './cta-vocabulary'
 import { sanitizeCmsUrl } from './safe-url'
+import { SOS_COMPARISON_FAQ } from './sos-offer-copy'
 
 export type OwnerReviewSlug = 'kezdolap' | 'szolgaltatasok' | 'rolunk' | 'kapcsolat'
 export type OwnerReviewMediaRole =
@@ -241,11 +242,7 @@ const GENERAL_FAQ = [
     answer:
       'A kurzus előre összeállított gyakorlatsorokat ad az otthoni mozgáshoz. Személyes kezelésen megvizsgálunk, és hozzád igazítjuk a kezelési tervet. Ha bizonytalan vagy, keress minket, és segítünk eligazodni.',
   },
-  {
-    question: 'Miben különbözik az ingyenes SOS és a teljes kurzus?',
-    answer:
-      'Az SOS Kézrelax ingyenes villámkurzus, amellyel megismerheted a gyakorlatainkat. A teljes, fizetős kurzus részletes otthoni program. A pontos tartalmat és az árat a kurzus oldalán találod.',
-  },
+  { ...SOS_COMPARISON_FAQ },
   {
     question: 'Hogyan kérhetek időpontot személyes kezelésre?',
     answer:

@@ -228,6 +228,27 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   A friss 1280 px-es helyi CMS-nézet sorrendje és hero-linkjei ellenőrizve.
   Gauss a négy kódfájlt jóváhagyta, 146 saját izolált assertion PASS;
   James külön origin/path review-ja sem talált blokkoló hibát.
+- A `0b541ad` remote CI/gitleaks is sikeres, de a cloud review új bizonyítéka
+  az `AGENTS.md:337-343` DNS-cutover konfigurációja. A korábbi origin-mátrix
+  nem fedte a Railway-primer és az ismert éles domain-kivételek együttállását.
+  Az orkesztrátor egy további, szűk javítási ciklust enged: új konfigurációs
+  regresszió és kizárólag a dokumentált két HTTPS-origin ellenőrzése ad új
+  bizonyítékot; az általános CORS-lista továbbra sem tartalmi azonosság.
+  Külön új kritérium a tárolt menü/GYIK ingyenességi állításának későbbi
+  árváltozás utáni érvényessége. A merge mindkét ellenőrzés lezárásáig HOLD.
+- A cutover és a dokumentált `/kezrelax` alias (nagybetűs alakokkal is)
+  célzott köre **141/141 PASS**. James független origin/alias review-ja PASS.
+  A mentett ajánlati szöveg és a cache bekötése 35 piros TDD-eset után
+  **260/260 célzott teszttel PASS**. A GYIK csak mindkét kanonikus kurzus
+  igazolt publikációja és megfelelő ára mellett állít ingyenes/fizetős
+  összehasonlítást, azonos HTML és JSON-LD listából.
+  Gauss jóváhagyta az összeállt 11 kód-/tesztfájlt; Avicenna külön jóváhagyta
+  a 9 fájlos lifecycle/cache határt. A cache-hívás bizonyítéka mockolt
+  regisztrált hook, nem élő Next/Payload termékmódosítás.
+- Végső helyi teljes csomag a cutover/lifecycle/cache javítással:
+  **7018/7018 PASS, 300 fájl**, kihagyás és ismétlés nélkül.
+  Typecheck és production build PASS; lint 0 hiba, 3 meglévő warning.
+  A friss helyi CMS-kezdőlapon a sorrend, hero-linkek és a GYIK ellenőrizve.
 
 ## Tanulságok
 
@@ -264,6 +285,10 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   A mátrix külső/lookalike hostot, eltérő portot/sémát és kódolt útvonalat is fed.
 - A H10 sorrend két végrehajtható felület: a CMS-terv és az üres CMS
   fallback. Mindkettőn tényleges szomszédsági teszt kell, nem csak dokumentáció.
+- Az alkalmazáskori productProof nem garantálja egy tartós marketingállítás
+  későbbi igazságát. Az ismert, generált ajánlati szöveg renderelése és a
+  gyorsítótár érvénytelenítése együtt kövesse a termék állapotát; a szabadon
+  átírt szerkesztői tartalom nem korrigálható általános szövegcserével.
 - A CSS-geometriai őrnek a magassági médiafeltételt is valódi viewportadattal
   kell kiértékelnie. Az ismeretlen feltétel nem nyelhető el egy inaktív ágban sem.
 - A futás közbeni mozgásemuláció nem helyettesíti a hideg betöltést. A Brave
