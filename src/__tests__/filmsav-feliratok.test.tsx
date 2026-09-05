@@ -6,25 +6,23 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { FilmHero } from '@/components/blocks/FilmHero'
-import {
-  SCROLL_SCRUB_MOBILE_MEDIA_QUERY,
-  scrollScrubMediaFit,
-  scrollScrubNeedsLayout,
-} from '@/components/scroll-scrub/scroll-scrub'
+import { scrollScrubUsesMobileMedia } from '@/components/scroll-scrub/scroll-scrub'
 import type { BlockFilmHero } from '@/payload-types'
-
-import { sajatErtek, stilusLapNezetablakra, type Elem } from './helpers/css-geometria'
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
 const FILM_HERO_SOURCE = readFileSync(join(REPO, 'src/components/blocks/FilmHero.tsx'), 'utf8')
-const FILM_HERO_CSS_PATH = join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css')
-const FILM_HERO_CSS = readFileSync(FILM_HERO_CSS_PATH, 'utf8')
+const FILM_HERO_CSS = readFileSync(
+  join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css'),
+  'utf8',
+)
 const SCROLL_SCRUB_SOURCE = readFileSync(
   join(REPO, 'src/components/scroll-scrub/scroll-scrub.tsx'),
   'utf8',
 )
-const SCROLL_SCRUB_CSS_PATH = join(REPO, 'src/components/scroll-scrub/scroll-scrub.css')
-const SCROLL_SCRUB_CSS = readFileSync(SCROLL_SCRUB_CSS_PATH, 'utf8')
+const SCROLL_SCRUB_CSS = readFileSync(
+  join(REPO, 'src/components/scroll-scrub/scroll-scrub.css'),
+  'utf8',
+)
 
 /**
  * ŐR — a filmsáv 2. és 3. „állása" CÍM + LEÍRÁS párban áll.
@@ -48,10 +46,7 @@ const SCROLL_SCRUB_CSS = readFileSync(SCROLL_SCRUB_CSS_PATH, 'utf8')
 
 const BLOKK: BlockFilmHero = {
   blockType: 'filmHero',
-  ctas: [
-    { felirat: 'Nézd meg a kurzusokat', id: 'c1', ujAblakban: false, url: '/kurzusok' },
-    { felirat: 'Nézd meg az SOS-kurzust', id: 'c2', ujAblakban: false, url: '#ingyenes' },
-  ],
+  ctas: [{ felirat: 'Nézd meg a kurzusokat', id: 'c1', ujAblakban: false, url: '/kurzusok' }],
   lead: 'Teszt-bevezető.',
   tags: [{ id: 't1', label: 'Kéz' }],
   title: 'Teszt-cím',
@@ -70,7 +65,6 @@ function bekezdes(blokk: string, osztaly: string): string | null {
   return talalat === null ? null : talalat[1]
 }
 
-/** Egy FilmHero-specifikus CSS-szabály törzse, az első előfordulásból. */
 function cssSzabaly(selector: string, forras = FILM_HERO_CSS): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const talalat = forras.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, 's'))
@@ -82,30 +76,6 @@ function sha256(ut: string): string {
   return createHash('sha256')
     .update(readFileSync(join(REPO, ut)))
     .digest('hex')
-}
-
-function kezdoMediaStilus(
-  szelesseg: number,
-  magassag: number,
-  hover: 'hover' | 'none',
-  pointer: 'coarse' | 'fine',
-): { readonly fit: string | null; readonly opacity: string | null } {
-  const lap = stilusLapNezetablakra([SCROLL_SCRUB_CSS_PATH, FILM_HERO_CSS_PATH], szelesseg, {
-    hover,
-    magassagPx: magassag,
-    pointer,
-  })
-  const hero: Elem = { elemnev: '', osztaly: '.kc-film-hero', ostagOsztaly: null, szulo: null }
-  const poster: Elem = {
-    elemnev: '',
-    osztaly: '.scroll-scrub__poster',
-    ostagOsztaly: '.kc-film-hero',
-    szulo: hero,
-  }
-  return {
-    fit: sajatErtek(lap, poster, 'object-fit'),
-    opacity: sajatErtek(lap, hero, '--kc-film-media-opacity'),
-  }
 }
 
 const markup = renderToStaticMarkup(<FilmHero block={BLOKK} />)
@@ -151,172 +121,84 @@ describe('filmsáv-feliratok', () => {
 })
 
 describe('filmsáv egykezes média-szerződése', () => {
-  it('kizárólag a verziózott egykezes klipeket és WebP-posztereket köti be', () => {
-    const utak = [
-      '/media/film/one-hand-header-v1.mp4',
-      '/media/film/one-hand-header-v1-mobile.mp4',
-      '/media/film/one-hand-header-v1-poster.webp',
-      '/media/film/one-hand-header-v1-mobile-poster.webp',
-    ]
+  const ujAssetek = [
+    'public/media/film/one-hand-header-v1.mp4',
+    'public/media/film/one-hand-header-v1-mobile.mp4',
+    'public/media/film/one-hand-header-v1-poster.webp',
+    'public/media/film/one-hand-header-v1-mobile-poster.webp',
+  ] as const
 
-    for (const ut of utak) {
-      expect(FILM_HERO_SOURCE).toContain(ut)
+  it('a verziózott egykezes klipeket és a hozzájuk tartozó posztereket köti be', () => {
+    for (const ut of ujAssetek) {
+      expect(FILM_HERO_SOURCE).toContain(ut.replace('public', ''))
     }
-    expect(markup).toContain('/media/film/one-hand-header-v1-poster.webp')
-    expect(markup).toContain('/media/film/one-hand-header-v1-mobile-poster.webp')
     expect(FILM_HERO_SOURCE).not.toContain('/media/film/scene-02')
   })
 
-  it('az auditált videók és poszterek bitre változatlanok', () => {
-    expect(sha256('public/media/film/one-hand-header-v1.mp4')).toBe(
+  it('az auditált média byte-ra változatlan, a klipek a deploy-kereten belül maradnak', () => {
+    expect(sha256(ujAssetek[0])).toBe(
       '6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e',
     )
-    expect(sha256('public/media/film/one-hand-header-v1-mobile.mp4')).toBe(
-      'f3fa26f3291e2ffe3ef983998fe8d965b938fa0f769de11a33ec86ace17da432',
+    expect(sha256(ujAssetek[1])).toBe(
+      'd9b076541937f941585d8d16a2611eb59ebd2d407d4dd07ce52de1c0677fc417',
     )
-    expect(sha256('public/media/film/one-hand-header-v1-poster.webp')).toBe(
+    expect(sha256(ujAssetek[2])).toBe(
       '8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13',
     )
-    expect(sha256('public/media/film/one-hand-header-v1-mobile-poster.webp')).toBe(
-      '1f62a90d0df74978562caf74090537a0f57b6ec030fb0e23200dc701e98599d8',
+    expect(sha256(ujAssetek[3])).toBe(
+      '8252b884c2252ff19cdb9b05455c67934af91869c742a489c988a159c240ef0d',
     )
+    expect(statSync(join(REPO, ujAssetek[0])).size).toBeLessThanOrEqual(5 * 1024 * 1024)
+    expect(statSync(join(REPO, ujAssetek[1])).size).toBeLessThanOrEqual(2.5 * 1024 * 1024)
   })
 
-  it('a hűvös gradiens az auditált sRGB interpolációt használja', () => {
-    expect(FILM_HERO_CSS).toContain('152deg in srgb')
+  it('a korábbi filmassetek megmaradnak az azonnali rollbackhez', () => {
+    for (const nev of [
+      'scene-02.mp4',
+      'scene-02-mobile.mp4',
+      'scene-02-poster.png',
+      'scene-02-mobile-poster.png',
+    ]) {
+      expect(statSync(join(REPO, 'public/media/film', nev)).size).toBeGreaterThan(0)
+    }
   })
 
-  it('a mobil assetet 860px-ig és álló érintős tableten SSR-ben és runtime is választja', () => {
-    expect(SCROLL_SCRUB_MOBILE_MEDIA_QUERY).toBe(
-      '(max-width: 860px), (hover: none) and (pointer: coarse) and (orientation: portrait)',
-    )
-    expect(markup).toContain(`media="${SCROLL_SCRUB_MOBILE_MEDIA_QUERY}"`)
+  it('a portré art direction csak keskeny álló nézetben töltődik', () => {
+    expect(markup).toContain('media="(max-width: 860px) and (orientation: portrait)"')
     expect(SCROLL_SCRUB_SOURCE).toContain(
-      'window.matchMedia(SCROLL_SCRUB_MOBILE_MEDIA_QUERY)',
+      'const usesMobileVideoTuning = () => coarsePointer || smallViewport.matches',
     )
-    expect(SCROLL_SCRUB_SOURCE).toContain('const isMobile = () => mobileViewport.matches')
-    expect(SCROLL_SCRUB_SOURCE).toContain("mobileViewport.addEventListener('change', layout)")
-    expect(SCROLL_SCRUB_SOURCE).toContain("mobileViewport.removeEventListener('change', layout)")
-    expect(SCROLL_SCRUB_SOURCE).toContain(
-      'const usesMobileVideoTuning = () => coarsePointer || isMobile()',
-    )
-    expect(SCROLL_SCRUB_SOURCE).toContain('if (!video || !usesMobileVideoTuning())')
-    expect(SCROLL_SCRUB_SOURCE).toContain('const epsilon = usesMobileVideoTuning() ? 0.02 : 0.008')
-    expect(scrollScrubMediaFit(false, true, true)).toBe('cover')
+    expect(scrollScrubUsesMobileMedia(390, 844)).toBe(true)
+    expect(scrollScrubUsesMobileMedia(430, 932)).toBe(true)
+    expect(scrollScrubUsesMobileMedia(768, 1024)).toBe(true)
+    expect(scrollScrubUsesMobileMedia(860, 900)).toBe(true)
+    expect(scrollScrubUsesMobileMedia(568, 320)).toBe(false)
+    expect(scrollScrubUsesMobileMedia(1024, 768)).toBe(false)
+    expect(FILM_HERO_CSS).not.toContain('object-fit: contain')
+    expect(FILM_HERO_CSS).not.toContain('orientation: landscape')
   })
 
-  it('a klipek a deploy-méretkereten belül maradnak', () => {
-    const desktop = statSync(join(REPO, 'public/media/film/one-hand-header-v1.mp4')).size
-    const mobile = statSync(join(REPO, 'public/media/film/one-hand-header-v1-mobile.mp4')).size
-
-    expect(desktop).toBeLessThanOrEqual(5 * 1024 * 1024)
-    expect(mobile).toBeLessThanOrEqual(2.5 * 1024 * 1024)
-  })
-
-  it('a sütött mobil kompozíciót középen tartja, további vágási eltolás nélkül', () => {
-    expect(markup).toContain('--ss-object-position:50% 50%')
-    expect(markup).toContain('--ss-mobile-position:50% 50%')
-  })
-
-  it('desktopon 0,48-as papír-hátterű média, mobilon egyszeres sütött média látszik', () => {
-    expect(cssSzabaly('.kc-film-hero')).toContain('--kc-film-media-opacity: 0.48')
-    expect(cssSzabaly('.kc-film-hero .scroll-scrub__media')).toContain(
-      'opacity: var(--kc-film-media-opacity)',
-    )
-    expect(cssSzabaly(".kc-film-hero[data-scroll-scrub-mobile-media='true']")).toContain(
-      '--kc-film-media-opacity: 1',
-    )
-
-    const mobilFeltetel = '@media (max-width: 860px)'
-    expect(FILM_HERO_CSS).toContain(mobilFeltetel)
-    const mobil = FILM_HERO_CSS.slice(FILM_HERO_CSS.indexOf(mobilFeltetel))
-    expect(cssSzabaly('.kc-film-hero', mobil)).toContain('--kc-film-media-opacity: 1')
-  })
-
-  it('tableten és fekvő mobilon a teljes vágatot, keskeny portrén a cover képet tartja', () => {
-    expect(scrollScrubMediaFit(true, false, false)).toBe('cover')
-    expect(scrollScrubMediaFit(true, false, true)).toBe('contain')
-    expect(scrollScrubMediaFit(true, true, false)).toBe('contain')
-    expect(scrollScrubMediaFit(true, true, true)).toBe('contain')
-    expect(scrollScrubMediaFit(false, true, true)).toBe('cover')
-
-    expect(SCROLL_SCRUB_SOURCE).toContain('root.dataset.scrollScrubMobileMedia =')
-    expect(SCROLL_SCRUB_SOURCE).toContain('root.dataset.scrollScrubMediaFit =')
-    expect(SCROLL_SCRUB_SOURCE).toContain("window.matchMedia('(min-width: 640px)')")
-    expect(SCROLL_SCRUB_SOURCE).toContain("window.matchMedia('(orientation: landscape)')")
-    expect(SCROLL_SCRUB_SOURCE).toContain('atLeastTabletWidth.matches')
-    expect(SCROLL_SCRUB_SOURCE).toContain('landscapeViewport.matches')
-    expect(SCROLL_SCRUB_SOURCE).not.toContain(
-      'scrollScrubMediaFit(isMobile(), window.innerWidth, window.innerHeight)',
-    )
-    expect(SCROLL_SCRUB_SOURCE).toContain('delete root.dataset.scrollScrubMediaFit')
-    expect(SCROLL_SCRUB_SOURCE).toContain('delete root.dataset.scrollScrubMobileMedia')
-
-    expect(scrollScrubNeedsLayout(true, 568, 568, 'cover', 'contain')).toBe(true)
-    expect(scrollScrubNeedsLayout(true, 568, 568, 'contain', 'cover')).toBe(true)
-    expect(scrollScrubNeedsLayout(true, 568, 568, 'cover', 'cover')).toBe(false)
-    expect(scrollScrubNeedsLayout(true, 568, 640, 'cover', 'contain')).toBe(true)
-    expect(scrollScrubNeedsLayout(false, 1440, 1440, 'cover', 'cover')).toBe(true)
-    expect(SCROLL_SCRUB_SOURCE).toContain('scrollScrubNeedsLayout(')
-
-    const containFeltetel = '@media (min-width: 640px) and (max-width: 860px)'
-    expect(FILM_HERO_CSS).toContain(containFeltetel)
-
-    const contain = FILM_HERO_CSS.slice(FILM_HERO_CSS.indexOf(containFeltetel))
-    expect(contain).toMatch(
-      /\.kc-film-hero \.scroll-scrub__poster,\s*\.kc-film-hero \.scroll-scrub__video\s*\{[^}]*object-fit: contain;[^}]*object-position: var\(--ss-mobile-position\);/s,
-    )
-  })
-
-  it('az első festés és a runtime ugyanazt a mobil opacity/fit állapotot használja', () => {
-    expect(markup).toContain(`media="${SCROLL_SCRUB_MOBILE_MEDIA_QUERY}"`)
-    expect(kezdoMediaStilus(390, 844, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '1' })
-    expect(kezdoMediaStilus(568, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
-    expect(kezdoMediaStilus(639.5, 320, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
-    expect(kezdoMediaStilus(639.5, 844, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '1' })
-    expect(kezdoMediaStilus(768, 1024, 'hover', 'fine')).toEqual({ fit: 'contain', opacity: '1' })
-    expect(kezdoMediaStilus(1024, 768, 'none', 'coarse')).toEqual({ fit: 'cover', opacity: '0.48' })
-    expect(kezdoMediaStilus(1024, 1366, 'none', 'coarse')).toEqual({ fit: 'contain', opacity: '1' })
-    expect(kezdoMediaStilus(1024, 1366, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
-    expect(kezdoMediaStilus(1024, 768, 'hover', 'fine')).toEqual({ fit: 'cover', opacity: '0.48' })
-  })
-
-  it('a halk másodlagos CTA hover-felirata nem válik fehérré a világos tinten', () => {
-    const hover = cssSzabaly(
-      '.kc-film-hero .kc-film-hero__cta--quiet:hover:not(:disabled):not(.kc-button--disabled)',
-    )
-    expect(hover).toContain('background-color: var(--kc-color-tint-cool)')
-    expect(hover).toContain('color: var(--kc-color-ink)')
-  })
-
-  it('a latens fejezet-gomb aktív jele és fókusza is ink marad a filmen', () => {
-    const focus = cssSzabaly('.scroll-scrub__route-button:focus-visible', SCROLL_SCRUB_CSS)
-    expect(SCROLL_SCRUB_CSS).toMatch(
-      /\.scroll-scrub__route-button\[aria-current='step'\]\s*\{[^}]*text-decoration-color:\s*var\(--ss-ink\)/,
-    )
-    expect(focus).toContain('outline: 3px solid var(--ss-ink)')
-  })
-
-  it('a média a scrim alatt, a hero-szöveg és a vászonfeliratok fölötte maradnak', () => {
-    expect(cssSzabaly('.kc-film-hero .scroll-scrub__stage')).toContain('z-index: 0')
-    expect(cssSzabaly('.kc-film-hero .scroll-scrub__media')).toContain('z-index: 0')
+  it('az 52%-os papírfátyol scrolltól függetlenül a média és minden szöveg között marad', () => {
+    const fatyol = cssSzabaly('.kc-film-hero .scroll-scrub__stage::before')
+    expect(fatyol).toContain('z-index: 2')
+    expect(fatyol).toContain('var(--kc-color-bg) 52%')
+    expect(fatyol).not.toMatch(/--ss-(?:progress|copy-scrim)|opacity|animation|transition/)
     expect(cssSzabaly('.kc-film-hero .scroll-scrub__stage::after')).toContain('z-index: 4')
-    expect(cssSzabaly('.kc-film-hero .scroll-scrub__captions')).toContain('z-index: 5')
-    expect(cssSzabaly('.kc-film-hero .scroll-scrub__story')).toContain('z-index: 3')
+    expect(cssSzabaly('.scroll-scrub__media', SCROLL_SCRUB_CSS)).toContain('z-index: 0')
+    expect(cssSzabaly('.scroll-scrub__captions', SCROLL_SCRUB_CSS)).toContain('z-index: 5')
+    expect(cssSzabaly('.scroll-scrub__story', SCROLL_SCRUB_CSS)).toContain('z-index: 3')
   })
 
-  it('a szöveg mögé nem tesz kártyát vagy elmosást', () => {
+  it('nem tesz kártyát vagy teljes vásznas blur-effektet a szöveg mögé', () => {
     expect(cssSzabaly('.scroll-scrub__copy', SCROLL_SCRUB_CSS)).not.toMatch(/background/)
     expect(cssSzabaly('.scroll-scrub__caption', SCROLL_SCRUB_CSS)).not.toMatch(/background/)
     expect(FILM_HERO_CSS).not.toMatch(/(?:backdrop-filter|filter)\s*:/)
   })
 
-  it('a csökkentett mozgás továbbra sem tölti le a videót, és egy álló szakaszra vált', () => {
+  it('a csökkentett mozgás továbbra is álló poszterre vált', () => {
     expect(SCROLL_SCRUB_SOURCE).toContain(
       "window.matchMedia('(prefers-reduced-motion: reduce)').matches",
     )
-    expect(SCROLL_SCRUB_SOURCE).toMatch(/if \(\s*reduceMotion \|\|[\s\S]*?\) \{\s*return/)
-
     const reduced = SCROLL_SCRUB_CSS.slice(
       SCROLL_SCRUB_CSS.indexOf('@media (prefers-reduced-motion: reduce)'),
     )
@@ -324,18 +206,20 @@ describe('filmsáv egykezes média-szerződése', () => {
     expect(reduced).toContain('display: none')
   })
 
-  it('az M1 továbbra is legfeljebb 1+1 CTA-t renderel', () => {
-    const haromCta: BlockFilmHero = {
-      ...BLOKK,
-      ctas: [
-        ...(BLOKK.ctas ?? []),
-        { felirat: 'Harmadik CTA', id: 'c3', ujAblakban: false, url: '/harmadik' },
-      ],
-    }
-    const html = renderToStaticMarkup(<FilmHero block={haromCta} />)
-
-    expect(html.match(/<a [^>]*class="[^"]*kc-film-hero__cta[^"]*"/g)).toHaveLength(2)
-    expect(html.match(/href=/g)).toHaveLength(2)
+  it('az M1 továbbra is legfeljebb egy elsődleges és egy halk CTA-t renderel', () => {
+    const html = renderToStaticMarkup(
+      <FilmHero
+        block={{
+          ...BLOKK,
+          ctas: [
+            ...(BLOKK.ctas ?? []),
+            { felirat: 'Második CTA', id: 'c2', ujAblakban: false, url: '/masodik' },
+            { felirat: 'Harmadik CTA', id: 'c3', ujAblakban: false, url: '/harmadik' },
+          ],
+        }}
+      />,
+    )
+    expect(html.match(/class="[^"]*kc-film-hero__cta[^"]*"/g)).toHaveLength(2)
     expect(html).not.toContain('/harmadik')
   })
 })
