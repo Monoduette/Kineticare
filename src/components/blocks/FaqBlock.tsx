@@ -1,4 +1,5 @@
 import { faqPageJsonLd } from '../../lib/seo'
+import { SOS_COMPARISON_FAQ } from '../../lib/sos-offer-copy'
 import type { BlockFaq } from '../../payload-types'
 import { JsonLd } from '../content/JsonLd'
 import { Container } from '../ui/Container'
@@ -16,10 +17,17 @@ import '../../app/(frontend)/styles/blocks/faq.css'
  */
 export interface FaqBlockProps {
   block: BlockFaq
+  hasSosComparison?: boolean
 }
 
-export function FaqBlock({ block }: FaqBlockProps) {
+export function FaqBlock({ block, hasSosComparison = false }: FaqBlockProps) {
   const items = (block.items ?? [])
+    .filter(
+      (item) =>
+        hasSosComparison ||
+        item.question !== SOS_COMPARISON_FAQ.question ||
+        item.answer !== SOS_COMPARISON_FAQ.answer,
+    )
     .map((item) => ({
       id: item.id,
       question: item.question?.trim() ?? '',

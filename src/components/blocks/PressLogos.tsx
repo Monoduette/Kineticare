@@ -3,7 +3,9 @@ import Link from 'next/link'
 import type { BlockPressLogos } from '../../payload-types'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { MediaImage } from '../content/MediaImage'
+import { pickMediaUrl } from '../content/media-url'
 import { Section } from '../ui/Section'
+import { LogoRail } from './LogoRail'
 
 import '../../app/(frontend)/styles/blocks/press-logos.css'
 
@@ -32,7 +34,8 @@ export interface PressLogosProps {
 
 export function PressLogos({ block }: PressLogosProps) {
   const logos = (block.logos ?? []).filter(
-    (logo) => typeof logo.image === 'object' && logo.image !== null,
+    (logo) =>
+      typeof logo.image === 'object' && logo.image !== null && pickMediaUrl(logo.image, 'xs'),
   )
   if (logos.length === 0) {
     return null
@@ -56,21 +59,19 @@ export function PressLogos({ block }: PressLogosProps) {
         <p className="kc-press__label" id={headingId}>
           {heading}
         </p>
-        <ul className="kc-press__row">
+        <LogoRail count={logos.length}>
           {logos.map((logo, index) => {
             const media = logo.image
             if (typeof media !== 'object' || media === null) {
               return null
             }
             const altOverride = logo.alt?.trim() ?? ''
-            // A logók 2026-08-16-tól nagyobbak (lásd press-logos.css); a
-            // `sizes` ezt követi, hogy a böngésző ne egy alulméretezett
-            // forrásból nagyítson fel.
+            // Az egységes logókeret maximális szélességéhez választunk forrást.
             const image = (
               <MediaImage
                 media={altOverride.length > 0 ? { ...media, alt: altOverride } : media}
                 preferredSize="xs"
-                sizes="(max-width: 900px) 140px, 220px"
+                sizes="(max-width: 1028px) 144px, (max-width: 1257px) 14vw, 176px"
               />
             )
             // CMS-webcím allowlist-szűrése (src/lib/safe-url.ts): tiltott
@@ -102,7 +103,7 @@ export function PressLogos({ block }: PressLogosProps) {
               </li>
             )
           })}
-        </ul>
+        </LogoRail>
       </div>
     </Section>
   )

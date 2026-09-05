@@ -47,6 +47,7 @@ function freeProduct(overrides: Partial<Product> = {}): Product {
     sku: 'SOS Kézrelax villámkurzus',
     displayTitle: 'SOS Kézrelax villámkurzus',
     slug: 'sos-kezrelax-villamkurzus',
+    _status: 'published',
     priceInHUF: null,
     priceInHUFEnabled: false,
     ...overrides,
@@ -221,15 +222,21 @@ describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
     expect(cta.newTab).toBe(false)
   })
 
-  it('slug nélküli ingyenes termék: az id-alapú kurzus-URL is kurzusoldal', () => {
+  it('slug nélküli ingyenes termék nem igazolja a nevesített SOS-ajánlatot', () => {
     const cta = resolveFreeSosCta(freeProduct({ slug: null }))
+    expect(cta.href).toBe(COURSE_LIST_PATH)
+    expect(cta.label).toBe(FREE_SOS_LIST_CTA_LABEL)
+  })
+
+  it('a kanonikus SOS id-alapú felülírása továbbra is azonos termékre visz', () => {
+    const cta = resolveFreeSosCta(freeProduct(), { href: '/kurzusok/2' })
     expect(cta.href).toBe('/kurzusok/2')
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })
 
-  it('másik kurzusra a szerkesztő átteheti a gombot', () => {
+  it('másik kurzus felülírása nem téríti el az ingyenes ajánlatot', () => {
     const cta = resolveFreeSosCta(freeProduct(), { href: '/kurzusok/masik-ingyenes-kurzus' })
-    expect(cta.href).toBe('/kurzusok/masik-ingyenes-kurzus')
+    expect(cta.href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })
 
@@ -379,7 +386,11 @@ describe('Kezdőlapi mikroszöveg', () => {
 
   it('az ingyenes sáv beépített címe kettőspontot használ, nem gondolatjelet', () => {
     const html = render(
-      createElement(HomeView, { home: null, products: [], posts: [] }),
+      createElement(HomeView, {
+        home: null,
+        products: [freeProduct({ displayTitle: '', sku: '' })],
+        posts: [],
+      }),
     )
     expect(html).toContain('SOS Kézrelax: ingyenes villámkurzus')
   })

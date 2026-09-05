@@ -3,6 +3,8 @@ import type { Menu, Page, Post, Product } from '../payload-types'
 import { COURSE_BASE_PATH, courseHref } from './course-url'
 import { extractRelationshipId } from './menu-validation'
 import { sanitizeCmsUrl } from './safe-url'
+import { isAvailableSosProduct } from './sos-offer'
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
 
 /**
  * Menüfa → NavItem fa (tiszta logika). Csak visible + published cél; max 2 szint
@@ -91,9 +93,17 @@ export function resolveMenuHref(menu: Menu): string | null {
 }
 
 function toNavItem(menu: Menu, href: string): NavItem {
+  let label = menu.label
+  if (menu.type === 'product' && (label === SOS_MENU_LABEL || label === SOS_FREE_MENU_LABEL)) {
+    const ref = resolveRef(menu)
+    const product = ref?.relationTo === 'products' ? (ref.value as Product) : null
+    if (product?.slug === 'sos-kezrelax-villamkurzus') {
+      label = isAvailableSosProduct(product) ? SOS_FREE_MENU_LABEL : SOS_MENU_LABEL
+    }
+  }
   return {
     id: menu.id,
-    label: menu.label,
+    label,
     href,
     openInNewTab: menu.openInNewTab === true,
     isExternal: /^https?:\/\//i.test(href),
@@ -195,7 +205,10 @@ export function buildNavTree(menus: Menu[]): NavItem[] {
 
   const byOrderThenLabel = (a: NavItem, b: NavItem): number => {
     const diff = (orderById.get(a.id) ?? 0) - (orderById.get(b.id) ?? 0)
-    return diff !== 0 ? diff : a.label.localeCompare(b.label, 'hu')
+    // Az ajánlat változása nem rendezheti át az azonos sorszámú menüpontokat.
+    return diff !== 0
+      ? diff
+      : (byId.get(a.id)?.label ?? a.label).localeCompare(byId.get(b.id)?.label ?? b.label, 'hu')
   }
 
   items.sort(byOrderThenLabel)

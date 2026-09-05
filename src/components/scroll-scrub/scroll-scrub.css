@@ -361,12 +361,35 @@
   }
 }
 
-/* Csökkentett mozgás: a scrub-sávok összeomlanak egy képernyőnyire, az
-   összekötők eltűnnek. A videó ilyenkor be sem töltődik (lásd scroll-scrub.tsx),
-   a poszter áll. */
+.scroll-scrub__reading-captions {
+  display: none;
+}
+
+/* Csökkentett mozgás: természetes olvasási sorrend, a feliratok a főszöveg
+   után következnek. A szöveg megnőhet, a poszter marad 100dvh; nincs videó. */
 @media (prefers-reduced-motion: reduce) {
   .scroll-scrub__chapter {
     min-height: 100dvh !important;
+  }
+
+  .scroll-scrub__chapter-pin {
+    position: relative;
+  }
+
+  .scroll-scrub__captions {
+    display: none;
+  }
+
+  .scroll-scrub__reading-captions {
+    display: grid;
+    gap: var(--kc-space-6);
+    margin: 0;
+    padding: var(--kc-space-6) max(var(--kc-space-5), env(safe-area-inset-right))
+      calc(var(--kc-space-6) + env(safe-area-inset-bottom))
+      max(var(--kc-space-5), env(safe-area-inset-left));
+    list-style: none;
+    background: var(--ss-bg);
+    pointer-events: auto;
   }
 
   .scroll-scrub__connector-band {

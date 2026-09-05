@@ -59,6 +59,83 @@ function block(overrides: Partial<BlockServices> = {}): BlockServices {
 const render = (b: BlockServices): string =>
   renderToStaticMarkup(createElement(Services, { block: b }))
 
+describe('Services — három összehasonlítható út', () => {
+  it('az álló fotót nem zsugorítja fekvő képarányú keretbe', () => {
+    const css = cssFajl('services.css')
+    expect(szabalyTorzs(css, '.kc-services--choices .kc-services__media')).toContain(
+      'aspect-ratio: auto',
+    )
+    expect(szabalyTorzs(css, '.kc-services--choices .kc-services__media img')).toContain(
+      'height: auto',
+    )
+    expect(szabalyTorzs(css, '.kc-services--photo .kc-services__media img')).toContain(
+      'width: 100%',
+    )
+  })
+  it('a lusta fotó helyét a feldolgozott kép aránya már betöltés előtt meghatározza', () => {
+    const markup = render(
+      block({
+        image: {
+          id: 1,
+          url: '/photo.webp',
+          alt: 'Közös szakmai fotó',
+          width: 1600,
+          height: 2400,
+          sizes: { lg: { url: '/photo-lg.webp', width: 800, height: 1000 } },
+        } as BlockServices['image'],
+      }),
+    )
+    expect(markup).toContain('--kc-services-image-ratio:0.8')
+    const imageRule = szabalyTorzs(
+      cssFajl('services.css'),
+      '.kc-services--photo .kc-services__media img',
+    )
+    expect(imageRule).toContain('width: 100%')
+    expect(imageRule).toContain('max-width: calc(34rem * var(--kc-services-image-ratio, 1))')
+  })
+  it('három érvényes sor háromrészes elrendezést kap, a CMS-linkek megmaradnak', () => {
+    const rows = [
+      {
+        title: 'Rendelői kezelések',
+        body: 'Személyesen.',
+        felirat: 'Nézd meg a kezeléseket',
+        url: '/szolgaltatasok#rendeloi',
+      },
+      {
+        title: 'Otthoni program',
+        body: 'Online.',
+        felirat: 'Nézd meg a kurzusokat',
+        url: '/kurzusok',
+      },
+      {
+        title: 'Szakmai képzések',
+        body: 'Szakembereknek.',
+        felirat: 'Nézd meg a képzést',
+        url: 'https://example.com/workshop',
+      },
+    ]
+    const markup = render(block({ rows }))
+    expect(markup).toContain('kc-services--choices')
+    for (const row of rows) expect(markup).toContain(`href="${row.url}"`)
+    expect(markup.match(/class="kc-services__row"/g)).toHaveLength(3)
+  })
+
+  it('nem számol üres címmel, és nem változtatja meg az egy- vagy kétsoros blokkot', () => {
+    expect(render(block())).not.toContain('kc-services--choices')
+    expect(
+      render(
+        block({
+          rows: [
+            { title: 'Egy', body: '' },
+            { title: 'Kettő', body: '' },
+            { title: ' ', body: '' },
+          ],
+        }),
+      ),
+    ).not.toContain('kc-services--choices')
+  })
+})
+
 describe('Services — cím-fokozat hosszú CMS-címnél', () => {
   it('a tükör rövid címe a nagy tábla-lépcsőn marad (a kezdőlap változatlan)', () => {
     const markup = render(block({ title: 'Így tudunk segíteni' }))

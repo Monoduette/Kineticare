@@ -71,9 +71,7 @@ describe('AppointmentForm — a szótári felirat nyer a CMS-mező ellenében', 
 
   it('a KÓD felirata jelenik meg, nem a szerkesztőé', () => {
     const html = kirendereltCmsFelulirassal()
-    expect(html, 'a §3.2 #25 felirata a jóváhagyott alak').toContain(
-      ctaLabel('appointment-submit'),
-    )
+    expect(html, 'a §3.2 #25 felirata a jóváhagyott alak').toContain(ctaLabel('appointment-submit'))
     expect(
       html,
       'A szerkesztő mezője nem írhatja felül a szótári cselekvés feliratát.',
@@ -118,6 +116,7 @@ describe('AppointmentForm — a szótári felirat nyer a CMS-mező ellenében', 
 const ingyenesTermek = {
   id: 2,
   slug: 'sos-kezrelax-villamkurzus',
+  _status: 'published',
   displayTitle: 'SOS Kézrelax villámkurzus',
   status: 'published',
   priceInHUF: null,
@@ -164,14 +163,12 @@ describe('FreeSos — a szótári felirat nyer a CMS-mező ellenében', () => {
     expect(html).toContain('Öt perc, azonnal.')
   })
 
-  it('a CÉL felülírása TOVÁBBRA IS a szerkesztőé (csak a felirat a kódé)', () => {
+  it('a másik termékre mutató CMS-cél nem téríti el az ingyenes ajánlatot', () => {
     const cta = resolveFreeSosCta(ingyenesTermek, {
       label: ELES_ELTERO_FELIRAT,
       href: '/kurzusok/masik-ingyenes-kurzus',
     })
-    expect(cta.href, 'a cél átteendő maradt egy másik kurzusra').toBe(
-      '/kurzusok/masik-ingyenes-kurzus',
-    )
+    expect(cta.href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
     expect(cta.label).toBe(FREE_SOS_COURSE_CTA_LABEL)
   })
 

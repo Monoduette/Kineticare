@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+import { buildHomeLayout } from '../lib/home-seed'
 
 import {
   CTA_PROGRESS_LABELS,
@@ -107,6 +108,25 @@ function progressLabelsFromDoc(markdown: string): string[] {
 }
 
 describe('G-UI1 – CTA-szótár: mikroszöveg-szabályok (docs/ui-sztenderdek.md §3.1)', () => {
+  it('P03: az SOS-ajánlóra navigáló #38 gomb önmagában is kimondja az ingyenességet', () => {
+    expect(ctaEntry('free-strip-jump')).toMatchObject({
+      section: '#38',
+      label: 'Nézd meg ingyenes SOS-kurzusunkat',
+      person: 'e2',
+      weight: 'ghost',
+      progress: null,
+    })
+    expect(isApprovedCtaLabel('Nézd meg az SOS-kurzust')).toBe(false)
+  })
+
+  it('P03: az új kezdőlapi seed az ingyenes feliratot használja, változatlan célokkal', () => {
+    const hero = buildHomeLayout().find((block) => block.blockType === 'filmHero')
+    expect(hero?.ctas).toEqual([
+      { felirat: 'Nézd meg a kurzusokat', url: '/kurzusok', ujAblakban: false },
+      { felirat: 'Nézd meg ingyenes SOS-kurzusunkat', url: '#ingyenes', ujAblakban: false },
+    ])
+  })
+
   it('egyetlen feliratban sincs U+2014 (kvirtmínusz) – magyar szövegben nem írásjel', () => {
     const offenders = ALL_TEXTS.filter((text) => text.includes(EM_DASH))
     expect(offenders, 'U+2014 a CTA-szótárban').toEqual([])
@@ -125,7 +145,9 @@ describe('G-UI1 – CTA-szótár: mikroszöveg-szabályok (docs/ui-sztenderdek.m
   })
 
   it('egyetlen felirat sem puszta tiltott szó (M-7: Küldés, OK, Bővebben, Részletek…)', () => {
-    const offenders = ALL_LABELS.filter((label) => BARE_FORBIDDEN_LABELS.includes(pusztaAlak(label)))
+    const offenders = ALL_LABELS.filter((label) =>
+      BARE_FORBIDDEN_LABELS.includes(pusztaAlak(label)),
+    )
     expect(offenders, 'puszta, célt nem nevező felirat').toEqual([])
   })
 
@@ -199,10 +221,7 @@ describe('G-UI1 – CTA-szótár: egy cselekvés = egy felirat (WCAG 2.2 SC 3.2.
     const szetcsuszott = CTA_VOCABULARY.filter(
       (entry) => entry.patterned !== (entry.pattern !== null),
     ).map((entry) => `${entry.section} ${entry.action}`)
-    expect(
-      szetcsuszott,
-      '`patterned: true` mellett KÖTELEZŐ a `pattern`, és fordítva',
-    ).toEqual([])
+    expect(szetcsuszott, '`patterned: true` mellett KÖTELEZŐ a `pattern`, és fordítva').toEqual([])
   })
 
   it('minden MINTÁZATOS sor saját felirata illeszkedik a saját mintázatára', () => {
@@ -261,6 +280,8 @@ describe('G-UI1 – a szótár és a két doksi bitre egyezik', () => {
     const markdown = readFileSync(BUTTON_INVENTORY_PATH, 'utf8')
     const fromInventory = new Set(backtickedCellsOfColumn(markdown, 'Jóváhagyott'))
     expect(fromInventory.size, 'a gomb-inventar §5 leképezés nem található').toBeGreaterThan(0)
-    expect([...fromInventory].sort()).toEqual([...new Set([...ALL_LABELS, ...PROGRESS_LABELS])].sort())
+    expect([...fromInventory].sort()).toEqual(
+      [...new Set([...ALL_LABELS, ...PROGRESS_LABELS])].sort(),
+    )
   })
 })

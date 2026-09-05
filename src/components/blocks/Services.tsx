@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 
 import type { BlockServices } from '../../payload-types'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { MediaImage } from '../content/MediaImage'
+import { mediaDimensions } from '../content/media-url'
 import { Section } from '../ui/Section'
 
 import '../../app/(frontend)/styles/blocks/services.css'
@@ -43,11 +45,17 @@ export function Services({ block }: ServicesProps) {
   const eyebrow = block.eyebrow?.trim() ?? ''
   const title = block.title?.trim() ?? ''
   const media = typeof block.image === 'object' && block.image !== null ? block.image : null
+  const dimensions = media ? mediaDimensions(media, 'lg') : null
+  const imageRatio =
+    dimensions && dimensions.width > 0 && dimensions.height > 0
+      ? dimensions.width / dimensions.height
+      : undefined
+  const hasThreeChoices = rows.length === 3
 
   return (
     <Section
       aria-labelledby={title.length > 0 ? headingId : undefined}
-      className="kc-services kc-board kc-board--edge"
+      className={`kc-services kc-board kc-board--edge${hasThreeChoices ? ' kc-services--choices' : ''}${media ? ' kc-services--photo' : ''}`}
       id={anchorId}
       variant={variant}
     >
@@ -66,10 +74,21 @@ export function Services({ block }: ServicesProps) {
               </h2>
             ) : null}
             {media ? (
-              <span className="kc-services__media">
+              <span
+                className="kc-services__media"
+                style={
+                  imageRatio && Number.isFinite(imageRatio)
+                    ? ({ '--kc-services-image-ratio': imageRatio } as CSSProperties)
+                    : undefined
+                }
+              >
                 {/* A tábla bal hasábja a viewport ~48%-a, és a kép balra kifut a
                     tábla-szegélyen — ezért 50vw a méret-tipp, nem fix px. */}
-                <MediaImage media={media} preferredSize="lg" sizes="(max-width: 900px) 100vw, 50vw" />
+                <MediaImage
+                  media={media}
+                  preferredSize="lg"
+                  sizes="(max-width: 900px) 100vw, 50vw"
+                />
               </span>
             ) : null}
           </div>
@@ -112,7 +131,9 @@ export function Services({ block }: ServicesProps) {
                         aria-label={`${rowTitle}: ${label}`}
                         className="kc-services__link"
                         href={url}
-                        {...(row.ujAblakban ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        {...(row.ujAblakban
+                          ? { target: '_blank', rel: 'noopener noreferrer' }
+                          : {})}
                       >
                         {linkContent}
                       </a>
@@ -121,7 +142,9 @@ export function Services({ block }: ServicesProps) {
                         aria-label={`${rowTitle}: ${label}`}
                         className="kc-services__link"
                         href={url}
-                        {...(row.ujAblakban ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        {...(row.ujAblakban
+                          ? { target: '_blank', rel: 'noopener noreferrer' }
+                          : {})}
                       >
                         {linkContent}
                       </Link>

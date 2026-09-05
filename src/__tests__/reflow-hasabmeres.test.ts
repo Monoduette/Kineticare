@@ -563,11 +563,14 @@ const TELJES_LAP_FAJLOK: readonly string[] = [
 
 const teljesLapGyorsitotar = new Map<number, ReturnType<typeof stilusLapNezetablakra>>()
 
+// Explicit mérési magasság: docs/ui-sztenderdek.md, N-4/N-5 mérési jegyzőkönyv (1000 CSS px).
+const MERESI_MAGASSAG_PX = 1000
+
 /** A teljes kaszkád adott nézetablakra kiértékelt `@media`-kkal. */
 function teljesLap(nezetablak: number): ReturnType<typeof stilusLapNezetablakra> {
   const meglevo = teljesLapGyorsitotar.get(nezetablak)
   if (meglevo) return meglevo
-  const uj = stilusLapNezetablakra(TELJES_LAP_FAJLOK, nezetablak)
+  const uj = stilusLapNezetablakra(TELJES_LAP_FAJLOK, nezetablak, MERESI_MAGASSAG_PX)
   teljesLapGyorsitotar.set(nezetablak, uj)
   return uj
 }

@@ -3,7 +3,7 @@ import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
-import { isFreeCourse } from '../../lib/courses'
+import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
 import { CourseCards, isPaidProduct } from '../content/home/CourseCards'
@@ -116,12 +116,16 @@ export function RenderBlocks({
   // megjelenés duplikáció volt — lásd CourseCards fejléce).
   // A freeSos blokk egyetlen lead-magnetre van tervezve, viselkedése változatlan.
   const paidProducts = visibleProducts.filter(isPaidProduct)
-  // A lead-magnet KIZÁRÓLAG a tudatosan ingyenes termék (isFreeCourse). A
-  // korábbi `!isPaidProduct` a HIÁNYOSAN konfigurált terméket (beállítatlan
-  // ár-pipa vagy bepipált, de üres ár) is ingyenesként tette a FreeSos sávba —
-  // az a rács fizetős kártyái közül is kiesett, tehát a szerkesztői hiba némán
-  // ingyenes ajánlattá változott (2026-08-16-i átvizsgálás).
-  const freeProduct = visibleProducts.find(isFreeCourse) ?? null
+  // A nevesített SOS-sávba csak a kanonikus, publikált és explicit ingyenes
+  // SOS kerülhet. Másik ingyenes vagy hiányosan árazott termék nem helyettesíti.
+  const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
+  const freeSosBlocks = layout.filter((block) => block.blockType === 'freeSos')
+  const visibleFreeSosBlocks = freeSosBlocks.filter(
+    (block) => block.sectionSettings?.visible !== false,
+  )
+  const freeSosAnchorIds = freeSosBlocks.map(
+    (block) => sectionProps(block).id ?? `ingyenes-${block.id ?? 'ismetelt'}`,
+  )
 
   // Az adatvezérelt szekciók beépített alap-horgonya (kurzusok, ingyenes,
   // velemenyek) csak a típus ELSŐ példányán érvényesülhet: ha a szerkesztő
@@ -139,9 +143,23 @@ export function RenderBlocks({
         const isRepeat = seenTypes.has(block.blockType)
         seenTypes.add(block.blockType)
         const key = block.id ?? `${block.blockType}-${index}`
+        // A „lentebb” ígéretéhez a termék mellett későbbi, látható sáv is kell.
+        const nextFreeSos = freeProduct
+          ? visibleFreeSosBlocks.find((candidate) => layout.indexOf(candidate) > index)
+          : undefined
+        const freeSosHref = nextFreeSos
+          ? `#${
+              sectionProps(nextFreeSos).id ??
+              (visibleFreeSosBlocks.indexOf(nextFreeSos) === 0
+                ? 'ingyenes'
+                : `ingyenes-${nextFreeSos.id ?? 'ismetelt'}`)
+            }`
+          : null
         return (
           <BlockSwitch
             key={key}
+            freeSosHref={freeSosHref}
+            freeSosAnchorIds={freeSosAnchorIds}
             {...{ block, isRepeat, paidProducts, freeProduct, posts, testimonials, appointment }}
           />
         )
@@ -155,6 +173,8 @@ function BlockSwitch({
   isRepeat,
   paidProducts,
   freeProduct,
+  freeSosHref,
+  freeSosAnchorIds,
   posts,
   testimonials,
   appointment,
@@ -164,13 +184,22 @@ function BlockSwitch({
   isRepeat: boolean
   paidProducts: Product[]
   freeProduct: Product | null
+  freeSosHref: string | null
+  freeSosAnchorIds: string[]
   posts: Post[]
   testimonials: Testimonial[]
   appointment: AppointmentSectionContext
 }) {
   switch (block.blockType) {
     case 'filmHero':
-      return <FilmHero block={block} />
+      return (
+        <FilmHero
+          block={block}
+          hasFreeSos={freeProduct !== null}
+          freeSosHref={freeSosHref}
+          freeSosAnchorIds={freeSosAnchorIds}
+        />
+      )
     case 'welcome':
       return <Welcome block={block} />
     case 'usps':
@@ -186,7 +215,18 @@ function BlockSwitch({
     case 'teamMembers':
       return <TeamMembers block={block} />
     case 'faq':
-      return <FaqBlock block={block} />
+      return (
+        <FaqBlock
+          block={block}
+          hasSosComparison={
+            freeProduct !== null &&
+            paidProducts.some(
+              (product) =>
+                product.slug === 'otthoni-kezrehab-program' && product._status === 'published',
+            )
+          }
+        />
+      )
     case 'accordion':
       return <Accordion block={block} />
     case 'appointment':

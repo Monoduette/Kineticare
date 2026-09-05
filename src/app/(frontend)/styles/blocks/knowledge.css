@@ -62,6 +62,18 @@
   flex: 1 1 auto;
 }
 
+/* A nem interaktív címke teljes neve olvasható marad keskeny kártyán is.
+   Carbon Tag: read-only címke; W3C Reflow (WCAG 1.4.10).
+   https://carbondesignsystem.com/components/tag/usage/
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html */
+.kc-post-card__categories .kc-badge {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+}
+
 /* A cím-link INLINE elem a címsorban. A content.css `display: flex;
    height: 100%` szabálya a régi, TELJES kártyát átfogó linké volt; ott most
    nem lenne értelme. A `text-decoration`-t és a `color`-t szándékosan NEM

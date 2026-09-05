@@ -48,7 +48,7 @@
   margin: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
-  letter-spacing: var(--kc-tracking-eyebrow);
+  letter-spacing: 0;
   line-height: 1.3;
   text-transform: uppercase;
   color: var(--kc-team-accent-text);
@@ -110,21 +110,19 @@
   border-color: var(--kc-team-action-line);
 }
 
-/* ---- Portré --------------------------------------------------------------
-   Mindkét portré AZONOS képarányú keretet kap, hogy a páros ne csússzon el.
-   A fejméret-egyezést a kivágásnak kell hoznia (grafikai leltár 3.3/4.) — a
-   keret ezt nem tudja pótolni, csak nem rontja el.
-
-   A portré nem dekoráció: a valódi munkatárs arcát az NN/g fotó-kutatásában
-   10%-kal hosszabban nézték, mint amennyit a mellette álló életrajzot olvasták
-   (https://www.nngroup.com/articles/photos-as-web-content/). Ezért kapja a
-   kártya TELJES szélességét, nem egy apró kör-bélyeget. */
+/* Közepes, azonos keretek, teljes fotóval: az arc és a kéz egyszerre marad.
+   A 18rem helyi méretkorlát, nem a kutatásból származó küszöb.
+   https://www.nngroup.com/articles/photos-as-web-content/
+   https://design-system.service.gov.uk/styles/layout/ */
 
 .kc-team__figure {
-  margin: 0;
+  margin: var(--kc-space-5) 0 0;
+  width: min(100%, 18rem);
+  max-width: calc(100% - var(--kc-space-6));
+  align-self: center;
   overflow: hidden;
   background-color: var(--kc-team-frame);
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 3 / 4;
 }
 
 /* A base.css `img { height: auto }` szabályát felül kell írni, hogy a portré
@@ -132,15 +130,7 @@
 .kc-team__figure img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  /* Portrén a fej a kép felső harmadában van — a vágás oda igazít. */
-  object-position: 50% 30%;
-  transition: transform var(--kc-motion-base) var(--kc-ease-out);
-}
-
-.kc-team__card:hover .kc-team__figure img,
-.kc-team__card:focus-within .kc-team__figure img {
-  transform: scale(1.02);
+  object-fit: contain;
 }
 
 /* ---- Kártya-törzs -------------------------------------------------------- */

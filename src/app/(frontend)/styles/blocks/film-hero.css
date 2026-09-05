@@ -175,3 +175,36 @@ main > .kc-film-hero:first-of-type {
   outline-offset: 3px;
   box-shadow: 0 0 0 6px var(--kc-color-white);
 }
+
+/* Rövid mobilnézet: kisebb térközök hagynak helyet a tartalomnak.
+   Az L/M/S méretek és a 44px célok maradnak; csak a szöveg ritmusa tömörebb.
+   WCAG 1.4.10 Reflow: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+   GOV.UK Layout: https://design-system.service.gov.uk/styles/layout/ */
+@media (max-width: 860px) and (max-height: 700px) {
+  .kc-film-hero .scroll-scrub__chapter-pin {
+    padding-top: calc(3.5rem + var(--kc-space-2));
+    padding-bottom: calc(var(--kc-space-4) + env(safe-area-inset-bottom));
+  }
+
+  .kc-film-hero .scroll-scrub__title {
+    line-height: var(--kc-leading-board);
+  }
+
+  .kc-film-hero .scroll-scrub__body,
+  .kc-film-hero .scroll-scrub__tags,
+  .kc-film-hero .scroll-scrub__actions {
+    margin-top: var(--kc-space-2);
+  }
+
+  .kc-film-hero .kc-film-hero__cta {
+    padding-block: var(--kc-space-2);
+  }
+}
+
+/* Nagyon alacsony nézetben a szöveg természetesen görgethető marad;
+   a film sticky vászna és a feliratok időzítése változatlan. */
+@media (max-width: 860px) and (max-height: 480px) {
+  .kc-film-hero .scroll-scrub__chapter-pin {
+    position: relative;
+  }
+}

@@ -56,7 +56,7 @@ export function stilusLap(fajlok: readonly string[]): readonly Szabaly[] {
 }
 
 /**
- * Egy média-lekérdezés érvényes-e adott nézetablak-szélességen.
+ * Egy média-lekérdezés érvényes-e adott nézetablak-szélességen és -magasságon.
  *
  * A vessző VAGY, az `and` ÉS (Media Queries 4, 3.1 és 3.2). Csak azt a néhány
  * jellemzőt ismeri, amit a repó ténylegesen használ; bármi másra HANGOSAN dob,
@@ -65,23 +65,29 @@ export function stilusLap(fajlok: readonly string[]): readonly Szabaly[] {
  * A `print` és a `prefers-reduced-motion: reduce` a képernyős, alapbeállítású
  * mérésben nem érvényes.
  */
-function mediaErvenyes(prelude: string, nezetablakPx: number): boolean {
-  return prelude.split(',').some((ag) =>
-    ag
-      .split(/\s+and\s+/i)
-      .every((feltetel) => {
-        const t = feltetel.trim().toLowerCase()
-        if (t === 'screen' || t === 'all') return true
-        if (t === 'print') return false
-        const m = /^\(\s*(min|max)-width\s*:\s*(\d*\.?\d+)px\s*\)$/.exec(t)
-        if (m) {
-          const hatar = Number(m[2])
-          return m[1] === 'min' ? nezetablakPx >= hatar : nezetablakPx <= hatar
-        }
-        if (/^\(\s*prefers-reduced-motion\s*:/.test(t)) return false
-        throw new Error(`ismeretlen média-jellemző: „${feltetel.trim()}" — az őr nem tud dönteni`)
-      }),
-  )
+function mediaErvenyes(prelude: string, nezetablakPx: number, magassagPx: number): boolean {
+  // Minden feltételt ellenőrzünk: a rövidzár nem rejthet el ismeretlen jellemzőt.
+  return prelude
+    .split(',')
+    .map((ag) =>
+      ag
+        .split(/\s+and\s+/i)
+        .map((feltetel) => {
+          const t = feltetel.trim().toLowerCase()
+          if (t === 'screen' || t === 'all') return true
+          if (t === 'print') return false
+          const m = /^\(\s*(min|max)-(width|height)\s*:\s*(\d*\.?\d+)px\s*\)$/.exec(t)
+          if (m) {
+            const hatar = Number(m[3])
+            const meret = m[2] === 'height' ? magassagPx : nezetablakPx
+            return m[1] === 'min' ? meret >= hatar : meret <= hatar
+          }
+          if (/^\(\s*prefers-reduced-motion\s*:/.test(t)) return false
+          throw new Error(`ismeretlen média-jellemző: „${feltetel.trim()}" — az őr nem tud dönteni`)
+        })
+        .every(Boolean),
+    )
+    .some(Boolean)
 }
 
 /**
@@ -90,7 +96,7 @@ function mediaErvenyes(prelude: string, nezetablakPx: number): boolean {
  * a `@keyframes` kimarad. Enélkül a szabály-olvasó a média-blokkokba zárt
  * deklarációkat feltétel nélkül érvényesnek venné.
  */
-function lapit(css: string, nezetablakPx: number): string {
+function lapit(css: string, nezetablakPx: number, magassagPx: number): string {
   const tiszta = css.replace(KOMMENT, '')
   let ki = ''
   let i = 0
@@ -122,9 +128,12 @@ function lapit(css: string, nezetablakPx: number): string {
     }
     const torzs = tiszta.slice(j + 1, k)
     if (nev === 'media') {
-      if (mediaErvenyes(prelude, nezetablakPx)) ki += lapit(torzs, nezetablakPx)
+      const ervenyes = mediaErvenyes(prelude, nezetablakPx, magassagPx)
+      // Az inaktív ág is validálandó, de a deklarációi nem kerülnek a kaszkádba.
+      const belso = lapit(torzs, nezetablakPx, magassagPx)
+      if (ervenyes) ki += belso
     } else if (nev === 'supports' || nev === 'layer') {
-      ki += lapit(torzs, nezetablakPx)
+      ki += lapit(torzs, nezetablakPx, magassagPx)
     } else if (nev !== 'font-face' && nev !== 'keyframes' && nev !== 'page' && nev !== 'property') {
       throw new Error(`ismeretlen at-szabály: @${nev} — az őr nem tudja, érvényes-e`)
     }
@@ -137,8 +146,14 @@ function lapit(css: string, nezetablakPx: number): string {
 export function stilusLapNezetablakra(
   fajlok: readonly string[],
   nezetablakPx: number,
+  magassagPx: number,
 ): readonly Szabaly[] {
-  return fajlok.flatMap((fajl) => szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx)))
+  if (!Number.isFinite(magassagPx) || magassagPx <= 0) {
+    throw new Error('érvényes, explicit nézetablak-magasság szükséges az őr méréséhez')
+  }
+  return fajlok.flatMap((fajl) =>
+    szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx, magassagPx)),
+  )
 }
 
 /** A `:root` alatt deklarált egyéni tulajdonságok (`--kc-*`). */
@@ -175,11 +190,7 @@ export function varFeloldas(ertek: string, map: ReadonlyMap<string, string>, mel
   if (hivatkozott === null || hivatkozott === undefined) {
     throw new Error(`ismeretlen egyéni tulajdonság: ${nev}`)
   }
-  return varFeloldas(
-    ertek.slice(0, kezd) + hivatkozott + ertek.slice(veg + 1),
-    map,
-    melyseg + 1,
-  )
+  return varFeloldas(ertek.slice(0, kezd) + hivatkozott + ertek.slice(veg + 1), map, melyseg + 1)
 }
 
 /**

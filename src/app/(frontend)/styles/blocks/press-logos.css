@@ -9,6 +9,8 @@
 
 .kc-press {
   --kc-press-muted: var(--kc-color-text-muted);
+  --kc-press-logo-width: clamp(9rem, 14vw, 11rem);
+  --kc-press-logo-height: clamp(2.1rem, 3.6vw, 3.4rem);
 }
 
 /* Sötét sáv: halvány akcent az inken 8,49:1. */
@@ -26,7 +28,7 @@
   margin: 0;
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
-  letter-spacing: var(--kc-tracking-eyebrow);
+  letter-spacing: 0;
   line-height: 1.3;
   text-align: center;
   text-transform: uppercase;
@@ -36,7 +38,7 @@
 .kc-press__row {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(1.5rem, 4vw, 3.5rem);
+  gap: var(--kc-press-gap, clamp(1.5rem, 4vw, 3.5rem));
   align-items: center;
   justify-content: center;
   margin: var(--kc-space-6) 0 0;
@@ -46,23 +48,21 @@
 
 .kc-press__item {
   display: flex;
+  width: var(--kc-press-logo-width);
   min-width: 0;
   max-width: 100%;
   align-items: center;
+  justify-content: center;
 }
 
-/* LOGÓ-MÉRET (tulajdonosi visszajelzés, 2026-08-16): a korábbi
-   clamp(1.7rem, 2.6vw, 2.5rem) magasság a széles sávban apró, alig olvasható
-   logósort adott — a bizalmi elem így nem dolgozott. Az új lépcső ~35%-kal
-   nagyobb, de továbbra is viewport-arányos, és a sáv magassága sem ugrik meg.
-   MOBIL: a `max-width: 100%` + `object-fit: contain` páros miatt a széles
-   logók 320px-en sem csordulnak túl (a magasság ilyenkor a keret arányán belül
-   marad, torzulás nélkül) — WCAG 1.4.10 Reflow. */
+/* Egységes logókeret: a széles és kompakt márkajelek is ugyanakkora helyet
+   kapnak, a saját képarányuk vágás és nyújtás nélkül megmarad. */
 .kc-press__row img {
-  width: auto;
-  height: clamp(2.1rem, 3.6vw, 3.4rem);
+  width: 100%;
+  height: var(--kc-press-logo-height);
   max-width: 100%;
   object-fit: contain;
+  object-position: center;
   filter: grayscale(1);
   opacity: 0.75;
   transition:
@@ -72,16 +72,157 @@
 
 .kc-press__link {
   display: inline-flex;
+  width: 100%;
   min-height: 2.75rem; /* 44px érintési célfelület (UX-skill 3. pont) */
   max-width: 100%;
   align-items: center;
-  padding-inline: var(--kc-space-2);
+  justify-content: center;
 }
 
 .kc-press__link:hover img,
 .kc-press__link:focus-visible img {
   filter: grayscale(0);
   opacity: 1;
+}
+
+.kc-press__rail {
+  --kc-press-gap: clamp(1.5rem, 4vw, 3.5rem);
+  --kc-press-fade: clamp(1.5rem, 5vw, 4rem);
+
+  min-width: 0;
+}
+
+.kc-press__viewport {
+  overflow: hidden;
+  padding-block: var(--kc-space-2);
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--kc-press-fade),
+    #000 calc(100% - var(--kc-press-fade)),
+    transparent 100%
+  );
+}
+
+.kc-press__track {
+  display: flex;
+  gap: var(--kc-press-gap);
+  width: max-content;
+  margin-top: var(--kc-space-4);
+  will-change: transform;
+}
+
+.kc-press__rail[data-measured='true'] .kc-press__track {
+  animation: kc-press-marquee 32s linear infinite;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__row {
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  justify-content: space-around;
+  width: var(--kc-press-cycle-width, max-content);
+  min-width: var(--kc-press-viewport-width, 100vw);
+  margin: 0;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__item {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.kc-press__rail[data-paused='true'] .kc-press__track,
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:hover .kc-press__track {
+  animation-play-state: paused;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within {
+  overflow-x: auto;
+  mask-image: none;
+  scrollbar-width: none;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within::-webkit-scrollbar {
+  display: none;
+}
+
+.kc-press__rail[data-motion='marquee'] .kc-press__viewport:focus-within .kc-press__track {
+  animation: none;
+  transform: none;
+}
+
+@keyframes kc-press-marquee {
+  to {
+    transform: translate3d(var(--kc-press-cycle-offset), 0, 0);
+  }
+}
+
+.kc-press__controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--kc-space-4);
+}
+
+.kc-press__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-md);
+  background: var(--kc-color-surface-raised);
+  color: var(--kc-color-text);
+  font-size: var(--kc-font-m);
+  cursor: pointer;
+}
+
+.kc-press__control-icon {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.kc-press__control:hover,
+.kc-press__control:active {
+  background: var(--kc-color-surface-tint);
+  border-color: var(--kc-color-primary);
+}
+
+.kc-press__control:focus-visible {
+  outline: 2px solid var(--kc-color-focus);
+  outline-offset: 3px;
+}
+
+.kc-section--dark .kc-press__control:focus-visible {
+  outline-color: var(--kc-color-focus-on-dark);
+}
+
+.kc-press__control-label {
+  display: none;
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: calc(100% + var(--kc-space-2));
+  width: max-content;
+  max-width: 14rem;
+  padding: var(--kc-space-2) var(--kc-space-3);
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-sm);
+  background: var(--kc-color-surface-raised);
+  color: var(--kc-color-text);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+  pointer-events: none;
+}
+
+.kc-press__control:hover .kc-press__control-label,
+.kc-press__control:focus-visible .kc-press__control-label {
+  display: block;
 }
 
 /* Sötét sávon a jellemzően sötét tintás logók beleolvadnának a háttérbe, ezért
@@ -97,6 +238,41 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kc-press__controls {
+    display: none;
+  }
+
+  .kc-press__viewport {
+    overflow: visible;
+    padding: 0;
+    mask-image: none;
+  }
+
+  .kc-press__track {
+    display: block;
+    width: auto;
+    margin-top: 0;
+    animation: none;
+    transform: none;
+  }
+
+  .kc-press__rail[data-motion='marquee'] .kc-press__row {
+    flex-wrap: wrap;
+    width: auto;
+    min-width: 0;
+    margin-top: var(--kc-space-6);
+    justify-content: center;
+  }
+
+  .kc-press__rail[data-motion='marquee'] .kc-press__row[aria-hidden='true'] {
+    display: none;
+  }
+
+  .kc-press__rail[data-motion='marquee'] .kc-press__item {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
   .kc-press__row img {
     transition: none;
   }

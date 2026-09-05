@@ -937,7 +937,9 @@ const LAPOK = [
   `${REPO}app/(frontend)/styles/blocks/tudastar-lista.css`,
 ]
 
-const lapNezetablakra = (nezetablak: number) => stilusLapNezetablakra(LAPOK, nezetablak)
+// Fix magasságú szélességsöprés: docs/ui-sztenderdek.md N-4/N-5, 1000 CSS px-es mérési nézet.
+const MERESI_MAGASSAG_PX = 1000
+const lapNezetablakra = (nezetablak: number) => stilusLapNezetablakra(LAPOK, nezetablak, MERESI_MAGASSAG_PX)
 
 /** Osztály-gyökér elem a kaszkád-modellhez. */
 const osztalyElem = (osztaly: string, ostag: string | null = null): Elem => ({

@@ -1,4 +1,10 @@
 import type { BlockFilmHero } from '../../payload-types'
+import { buildOriginAllowlist } from '../../env'
+import { COURSE_BASE_PATH, parseCourseRouteParam } from '../../lib/course-url'
+import { COURSE_SOS_KEZRELAX, LEGACY_REDIRECTS } from '../../lib/legacy-redirects'
+import { SOS_COURSE_FALLBACK_PATH } from '../../lib/menu-seed'
+import { sanitizeCmsUrl } from '../../lib/safe-url'
+import { PRODUCTION_HOSTS } from '../../lib/security/live-environment'
 import { Button } from '../ui/Button'
 import { ScrollScrub } from '../scroll-scrub/scroll-scrub'
 import type {
@@ -79,15 +85,28 @@ const CAPTION_MID_BODY =
 const CAPTION_END_TEXT = 'A következő mozdulat a tiéd'
 const CAPTION_END_BODY =
   'Lentebb megtalálod a kurzusokat és a rendelői kezeléseket. Ha előbb kipróbálnád, ott vannak az ingyenes SOS gyakorlatok.'
+const CAPTION_END_BODY_WITHOUT_FREE_SOS =
+  'Ismerd meg a kurzusainkat és a rendelői kezeléseinket. Válaszd ki a neked megfelelő segítséget.'
 
 /** A fejezet-navigáció felirata — egyetlen jelenetnél nem is jelenik meg. */
 const FILM_LABEL = 'A kéz nyílása'
 
 export interface FilmHeroProps {
   block: BlockFilmHero
+  /** A kanonikus, publikált és explicit ingyenes kurzus elérhető, szekciótól függetlenül. */
+  hasFreeSos?: boolean
+  /** Csak publikált, explicit ingyenes termék későbbi, látható sávjának célja. */
+  freeSosHref?: string | null
+  /** A rejtett SOS-blokkok egyedi horgonyai is ide tartoznak. */
+  freeSosAnchorIds?: readonly string[]
 }
 
-export function FilmHero({ block }: FilmHeroProps) {
+export function FilmHero({
+  block,
+  hasFreeSos = false,
+  freeSosHref = null,
+  freeSosAnchorIds = [],
+}: FilmHeroProps) {
   const title = block.title?.trim()
   if (!title) {
     return null
@@ -97,8 +116,62 @@ export function FilmHero({ block }: FilmHeroProps) {
     .map((tag) => tag.label?.trim() ?? '')
     .filter((label) => label.length > 0)
 
+  // P1: hiányzó adatból nem lesz ajánlat; a CMS felirata sem bizonyít elérhetőséget.
+  // NN/g Better Link Labels; WCAG 2.4.4: a felirat és a tényleges cél összetartozik.
+  // https://www.nngroup.com/articles/better-link-labels/
+  // https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
+  const sosAnchors = new Set(['ingyenes', ...freeSosAnchorIds])
+  // DNS-cutover alatt a Railway-primer mellett a két ismert éles HTTPS-origin
+  // konfigurált kivétele is saját site. Tetszőleges CORS-kivétel nem az.
+  const primaryOrigins = buildOriginAllowlist(process.env.NEXT_PUBLIC_SERVER_URL)
+  const liveOrigins = PRODUCTION_HOSTS.map((host) => `https://${host}`)
+  const siteOrigins = buildOriginAllowlist(
+    process.env.NEXT_PUBLIC_SERVER_URL,
+    process.env.EXTRA_ALLOWED_ORIGINS,
+  ).filter((origin) => primaryOrigins.includes(origin) || liveOrigins.includes(origin))
+  function sosTarget(rawUrl: string): 'anchor' | 'course' | null {
+    const safeUrl = sanitizeCmsUrl(rawUrl)
+    if (!safeUrl) return null
+    try {
+      const url = new URL(safeUrl, `${siteOrigins[0]}/`)
+      if (!siteOrigins.includes(url.origin)) return null
+      const pathname = url.pathname.replace(/\/+$/, '') || '/'
+      const coursePrefix = `${COURSE_BASE_PATH}/`
+      const segment = pathname.startsWith(coursePrefix) ? pathname.slice(coursePrefix.length) : ''
+      // Ugyanaz az egy dinamikus szegmens és parser, mint a kurzusoldalon.
+      const course =
+        segment && !segment.includes('/')
+          ? parseCourseRouteParam(decodeURIComponent(segment))
+          : null
+      const coursePath = course
+        ? `${coursePrefix}${course.kind === 'id' ? course.id : course.slug}`
+        : null
+      if (
+        coursePath === COURSE_SOS_KEZRELAX ||
+        coursePath === SOS_COURSE_FALLBACK_PATH ||
+        LEGACY_REDIRECTS.some(
+          (redirect) =>
+            redirect.source.toLowerCase() === pathname.toLowerCase() &&
+            redirect.destination === COURSE_SOS_KEZRELAX,
+        )
+      )
+        return 'course'
+      if (pathname === '/' && sosAnchors.has(decodeURIComponent(url.hash.slice(1)))) {
+        return 'anchor'
+      }
+    } catch {
+      // Hibás URL/kódolás nem válik igazolt SOS-céllá.
+    }
+    return null
+  }
   const ctas = (block.ctas ?? [])
     .filter((cta) => Boolean(cta.felirat?.trim()) && Boolean(cta.url?.trim()))
+    .flatMap((cta) => {
+      const target = sosTarget(cta.url)
+      if (target === 'anchor') return freeSosHref ? [{ ...cta, url: freeSosHref }] : []
+      if (target === 'course' && !hasFreeSos) return []
+      return [cta]
+    })
     .slice(0, 2)
 
   const actions =
@@ -135,7 +208,7 @@ export function FilmHero({ block }: FilmHeroProps) {
   if (endText) {
     captions.push({
       align: 'center',
-      body: CAPTION_END_BODY.trim() || undefined,
+      body: freeSosHref ? CAPTION_END_BODY : CAPTION_END_BODY_WITHOUT_FREE_SOS,
       id: 'film-scrub-vege',
       text: endText,
       ...CAPTION_END,
