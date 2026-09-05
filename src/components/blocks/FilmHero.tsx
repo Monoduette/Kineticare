@@ -28,13 +28,16 @@ const FILM_SCROLL = 4.6
 const FILM_LINGER = 0.16
 
 /**
- * A filmsáv színei a fő site tokenjeiről. Az akcent a `accent-deep`; a
- * folyamatjelzőn használjuk, míg a film fölötti interaktív elemek fókuszát a
- * CSS kontrasztbiztos `ink` gyűrűre írja felül.
+ * A filmsáv színei a fő site tokenjeiről. Az akcent a `accent-deep`: a
+ * folyamatjelzőn kívül a fókuszgyűrűt is ez adja, ott pedig 3:1 feletti
+ * kontraszt kell (a világosabb `accent` fehéren/tinten AA alatt lenne normál
+ * szövegre — lásd a tokens.css kontraszt-jegyzetét).
  *
  * A `muted` szándékosan NEM a halvány `text-muted`, hanem a teljes erejű `ink`:
- * a bevezető szöveg változó filmkockán áll, ahol a hierarchiát a méret adja,
- * az olvashatóságot pedig a papírmosás és a stage célzott fátylai biztosítják.
+ * a bevezető szöveg FILMKOCKÁN áll, ahol a hierarchiát a méret adja, nem a
+ * halványítás. A film legsötétebb foltján (rgb(1,0,0)) a `text-muted` a
+ * stage-lejtő 64%-os fátylával is csak 3,4:1 lenne — AA-bukás; az `ink`
+ * ugyanott 6,0:1. Lásd a kontraszt-levezetést a film-hero.css fejlécében.
  */
 const FILM_THEME: ScrollScrubTheme = {
   accent: 'var(--kc-color-accent-deep)',
@@ -148,9 +151,7 @@ export function FilmHero({ block }: FilmHeroProps) {
     label: FILM_LABEL,
     linger: FILM_LINGER,
     mobileClip: FILM_CLIP_MOBILE,
-    mobileObjectPosition: '50% 50%',
     mobilePoster: FILM_POSTER_MOBILE,
-    objectPosition: '50% 50%',
     poster: FILM_POSTER,
     scroll: FILM_SCROLL,
     tags,

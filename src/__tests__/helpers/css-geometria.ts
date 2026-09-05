@@ -11,13 +11,6 @@ type Szabaly = {
   readonly deklaraciok: ReadonlyMap<string, string>
 }
 
-/** A szélességen túli média-jellemzők; az alap finom mutatós portré mérés. */
-export type MediaKornyezet = {
-  readonly magassagPx?: number
-  readonly hover?: 'hover' | 'none'
-  readonly pointer?: 'coarse' | 'fine' | 'none'
-}
-
 /** Elem a modellben: az elemnév és a rá illeszkedő osztály (ha van). */
 export type Elem = {
   /** Elemnév kisbetűvel, pl. `h2`, `p`, `li`. Üres a puszta osztály-gyökérnél. */
@@ -72,38 +65,22 @@ export function stilusLap(fajlok: readonly string[]): readonly Szabaly[] {
  * A `print` és a `prefers-reduced-motion: reduce` a képernyős, alapbeállítású
  * mérésben nem érvényes.
  */
-function mediaErvenyes(prelude: string, nezetablakPx: number, kornyezet: MediaKornyezet): boolean {
-  const magassagPx = kornyezet.magassagPx ?? Number.POSITIVE_INFINITY
-  const hover = kornyezet.hover ?? 'hover'
-  const pointer = kornyezet.pointer ?? 'fine'
+function mediaErvenyes(prelude: string, nezetablakPx: number): boolean {
   return prelude.split(',').some((ag) =>
-    ag.split(/\s+and\s+/i).every((feltetel) => {
-      const t = feltetel.trim().toLowerCase()
-      if (t === 'screen' || t === 'all') return true
-      if (t === 'print') return false
-      const m = /^\(\s*(min|max)-width\s*:\s*(\d*\.?\d+)px\s*\)$/.exec(t)
-      if (m) {
-        const hatar = Number(m[2])
-        return m[1] === 'min' ? nezetablakPx >= hatar : nezetablakPx <= hatar
-      }
-      const orientacio = /^\(\s*orientation\s*:\s*(landscape|portrait)\s*\)$/.exec(t)
-      if (orientacio) {
-        return (nezetablakPx > magassagPx ? 'landscape' : 'portrait') === orientacio[1]
-      }
-      const interakcio = /^\(\s*(hover|pointer)\s*:\s*(hover|none|fine|coarse)\s*\)$/.exec(t)
-      if (interakcio) {
-        const [, tipus, ertek] = interakcio
-        if (tipus === 'hover' && ertek !== 'hover' && ertek !== 'none') {
-          throw new Error(`hibás hover médiaérték: „${ertek}"`)
+    ag
+      .split(/\s+and\s+/i)
+      .every((feltetel) => {
+        const t = feltetel.trim().toLowerCase()
+        if (t === 'screen' || t === 'all') return true
+        if (t === 'print') return false
+        const m = /^\(\s*(min|max)-width\s*:\s*(\d*\.?\d+)px\s*\)$/.exec(t)
+        if (m) {
+          const hatar = Number(m[2])
+          return m[1] === 'min' ? nezetablakPx >= hatar : nezetablakPx <= hatar
         }
-        if (tipus === 'pointer' && ertek !== 'fine' && ertek !== 'coarse' && ertek !== 'none') {
-          throw new Error(`hibás pointer médiaérték: „${ertek}"`)
-        }
-        return tipus === 'hover' ? hover === ertek : pointer === ertek
-      }
-      if (/^\(\s*prefers-reduced-motion\s*:/.test(t)) return false
-      throw new Error(`ismeretlen média-jellemző: „${feltetel.trim()}" — az őr nem tud dönteni`)
-    }),
+        if (/^\(\s*prefers-reduced-motion\s*:/.test(t)) return false
+        throw new Error(`ismeretlen média-jellemző: „${feltetel.trim()}" — az őr nem tud dönteni`)
+      }),
   )
 }
 
@@ -113,7 +90,7 @@ function mediaErvenyes(prelude: string, nezetablakPx: number, kornyezet: MediaKo
  * a `@keyframes` kimarad. Enélkül a szabály-olvasó a média-blokkokba zárt
  * deklarációkat feltétel nélkül érvényesnek venné.
  */
-function lapit(css: string, nezetablakPx: number, kornyezet: MediaKornyezet): string {
+function lapit(css: string, nezetablakPx: number): string {
   const tiszta = css.replace(KOMMENT, '')
   let ki = ''
   let i = 0
@@ -145,11 +122,9 @@ function lapit(css: string, nezetablakPx: number, kornyezet: MediaKornyezet): st
     }
     const torzs = tiszta.slice(j + 1, k)
     if (nev === 'media') {
-      if (mediaErvenyes(prelude, nezetablakPx, kornyezet)) {
-        ki += lapit(torzs, nezetablakPx, kornyezet)
-      }
+      if (mediaErvenyes(prelude, nezetablakPx)) ki += lapit(torzs, nezetablakPx)
     } else if (nev === 'supports' || nev === 'layer') {
-      ki += lapit(torzs, nezetablakPx, kornyezet)
+      ki += lapit(torzs, nezetablakPx)
     } else if (nev !== 'font-face' && nev !== 'keyframes' && nev !== 'page' && nev !== 'property') {
       throw new Error(`ismeretlen at-szabály: @${nev} — az őr nem tudja, érvényes-e`)
     }
@@ -162,11 +137,8 @@ function lapit(css: string, nezetablakPx: number, kornyezet: MediaKornyezet): st
 export function stilusLapNezetablakra(
   fajlok: readonly string[],
   nezetablakPx: number,
-  kornyezet: MediaKornyezet = {},
 ): readonly Szabaly[] {
-  return fajlok.flatMap((fajl) =>
-    szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx, kornyezet)),
-  )
+  return fajlok.flatMap((fajl) => szabalyok(lapit(readFileSync(fajl, 'utf8'), nezetablakPx)))
 }
 
 /** A `:root` alatt deklarált egyéni tulajdonságok (`--kc-*`). */
