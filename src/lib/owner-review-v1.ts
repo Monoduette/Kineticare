@@ -194,7 +194,8 @@ const LEGACY_BIO_PREFIX = [
 }))
 
 const blockTitle = (block: Block): unknown => record(block).title ?? record(block).heading
-const blockAnchor = (block: Block): unknown => at(block, ['sectionSettings', 'anchorId'])
+// Payload materializes an unset optional anchor as null; builders may omit it.
+const blockAnchor = (block: Block): unknown => at(block, ['sectionSettings', 'anchorId']) ?? null
 const withRowIds = (next: RecordValue[], current: unknown): RecordValue[] =>
   next.map((row, index) => {
     const id = at(current, [index, 'id'])

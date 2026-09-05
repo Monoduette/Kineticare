@@ -2,6 +2,7 @@ import type { Page, Post, Product, Testimonial } from '../../payload-types'
 import type { AppointmentSectionContext } from '../../lib/appointment/context'
 import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
+import { isFreeCourse } from '../../lib/courses'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
 import { RenderBlocks } from '../blocks/RenderBlocks'
@@ -44,7 +45,7 @@ export interface HomeViewProps {
   appointment?: AppointmentSectionContext
 }
 
-function HeroSection({ home }: { home: Page | null }) {
+function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: boolean }) {
   const title = home?.title?.trim() || 'Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen'
   const lead =
     home?.excerpt?.trim() ||
@@ -58,7 +59,7 @@ function HeroSection({ home }: { home: Page | null }) {
           <div className="kc-hero__content">
             <h1 className="kc-hero__title">{title}</h1>
             <p className="kc-hero__lead">{lead}</p>
-            <HeroCta />
+            <HeroCta hasFreeSos={hasFreeSos} />
           </div>
           {HERO_VIDEO_STREAM_ID !== null ? (
             <div className="kc-hero__media">
@@ -112,9 +113,9 @@ export function HomeView({
   // helye a lentebbi FreeSos szekció: 2026-08-15-ig mindkét helyen szerepelt,
   // ami duplikáció volt (kezdőlap-audit) — lásd CourseCards fejléce.
   const paidProducts = visibleProducts.filter(isPaidProduct)
-  // A FreeSos szekció egyetlen lead-magnetre van tervezve; a viselkedése
-  // változatlan marad.
-  const freeProduct = visibleProducts.find((product) => !isPaidProduct(product)) ?? null
+  // A hero és a sáv ugyanazt az explicit ingyenes, publikált terméket ajánlja.
+  // A hiányos ár-konfiguráció nem bizonyít ingyenes hozzáférést.
+  const freeProduct = visibleProducts.find(isFreeCourse) ?? null
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
 
   // Sávritmus: a kezdőlap fehér és tint (világoskék) szekciókat váltogat. A
@@ -131,7 +132,7 @@ export function HomeView({
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={homeWebPageJsonLd(home)} />
       <JsonLd data={faqPageJsonLd(FAQ_ITEMS)} />
-      <HeroSection home={home} />
+      <HeroSection home={home} hasFreeSos={freeProduct !== null} />
 
       <CredentialsStrip />
 

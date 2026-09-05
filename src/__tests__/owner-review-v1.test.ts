@@ -730,6 +730,88 @@ describe('exact-match safety', () => {
     expect(find(result.layout, 'about').photo).toBe(media.homeFounders)
   })
 
+  it.each(['filmHero', 'about', 'howItWorks'])(
+    'preserves staff-reordered %s after Payload materializes unset anchors as null',
+    (type) => {
+      const input = fixture('kezdolap')
+      for (const block of input.layout!) {
+        const settings = data(block.sectionSettings)
+        if (settings.anchorId === undefined) settings.anchorId = null
+        data(block).ownerMetadata = { note: null, preserve: ['staff'] }
+      }
+      const unknown = {
+        blockType: 'futureBlock',
+        id: 'staff-unknown',
+        sectionSettings: { anchorId: null },
+        ownerMetadata: { untouched: true },
+      } as unknown as Block
+      input.layout!.splice(2, 0, unknown)
+      const index = input.layout!.findIndex((block) => block.blockType === type)
+      const [moved] = input.layout!.splice(index, 1)
+      input.layout!.push(moved)
+      const before = structuredClone(input)
+      const result = planOwnerReviewV1(freeze(input))
+      // Canonical states may be removed independently; every retained block must keep its order.
+      const retainedIds = new Set(result.layout.map((block) => block.id))
+      expect(result.layout.map((block) => block.id)).toEqual(
+        input.layout!.filter((block) => retainedIds.has(block.id)).map((block) => block.id),
+      )
+      expect(input).toEqual(before)
+      expect(result.layout.find((block) => block.id === unknown.id)).toBe(unknown)
+      for (const blockType of ['filmHero', 'about', 'howItWorks']) {
+        const old = find(input.layout!, blockType)
+        const next = find(result.layout, blockType)
+        expect(next.id).toBe(old.id)
+        expect(next.sectionSettings).toBe(old.sectionSettings)
+        expect(next.ownerMetadata).toBe(old.ownerMetadata)
+      }
+      for (const requestId of ['H01', 'H10']) {
+        expect(result.skips).toContainEqual(
+          expect.objectContaining({ requestId, code: 'editor-order' }),
+        )
+        expect(
+          result.changes.some(
+            (change) => change.requestId === requestId && change.path === '/layout',
+          ),
+        ).toBe(false)
+      }
+      expect(find(result.layout, 'about').photo).toBe(media.homeFounders)
+      expect(planOwnerReviewV1({ ...input, layout: result.layout }).changes).toHaveLength(0)
+    },
+  )
+
+  it.each(['layout', 'canonicalLayout'] as const)(
+    'allows the approved order when only %s has materialized null anchors',
+    (key) => {
+      const input = fixture('kezdolap')
+      for (const block of input[key]!) {
+        const settings = data(block.sectionSettings)
+        if (settings.anchorId === undefined) settings.anchorId = null
+      }
+      const result = planOwnerReviewV1(freeze(input))
+      expect(result.layout[0].blockType).toBe('filmHero')
+      expect(result.layout[1].blockType).toBe('about')
+      const courses = result.layout.findIndex((block) => block.blockType === 'courseCards')
+      expect(result.layout[courses + 1].blockType).toBe('howItWorks')
+      expect(planOwnerReviewV1({ ...input, layout: result.layout }).changes).toHaveLength(0)
+    },
+  )
+
+  it.each(['', ' ', 'kurzusok '])('does not normalize an explicit course anchor %j', (anchor) => {
+    const input = fixture('kezdolap')
+    data(find(input.layout!, 'courseCards').sectionSettings).anchorId = anchor
+    const result = planOwnerReviewV1(freeze(input))
+    expect(find(result.layout, 'courseCards').sectionSettings).toBe(
+      find(input.layout!, 'courseCards').sectionSettings,
+    )
+    expect(
+      result.changes.some((change) => change.requestId === 'H10' && change.path === '/layout'),
+    ).toBe(false)
+    expect(result.skips).toContainEqual(
+      expect.objectContaining({ requestId: 'H10', code: 'target-not-unique' }),
+    )
+  })
+
   it.each(['text', 'image', 'anchor', 'hidden', 'extra'])(
     'does not delete staff-modified states: %s',
     (edit) => {

@@ -167,16 +167,27 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
   const freeMatches = products.docs.filter(
     (product) => product.slug === 'sos-kezrelax-villamkurzus',
   )
+  const free = freeMatches.length === 1 ? freeMatches[0] : undefined
+  const freeOfferAvailable =
+    free?.status === 'published' && free._status === 'published' && isFreeCourse(free)
+  const productProof = products.docs
+    .map((product) => ({
+      id: product.id,
+      slug: product.slug,
+      status: product.status,
+      _status: product._status,
+      priceInHUFEnabled: product.priceInHUFEnabled,
+      priceInHUF: product.priceInHUF,
+      updatedAt: product.updatedAt,
+    }))
+    .sort((a, b) => a.id - b.id)
   const menus = await payload.find({
     collection: 'menus',
     pagination: false,
     depth: 0,
     overrideAccess: true,
   })
-  const menuPlans = planOwnerReviewMenus(
-    menus.docs,
-    freeMatches.length === 1 ? freeMatches[0] : undefined,
-  )
+  const menuPlans = planOwnerReviewMenus(menus.docs, free)
   const completeCourseHref =
     paid?.status === 'published' &&
     paid._status === 'published' &&
@@ -213,6 +224,16 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
       changes: [...result.changes, ...fields.changes],
     }
   })
+  const blockers =
+    !freeOfferAvailable &&
+    plans.some(
+      (plan) =>
+        plan.slug === 'kezdolap' && plan.changes.some((change) => change.requestId === 'H13'),
+    )
+      ? [
+          'H13: Az ingyenes SOS-t említő új GYIK-hez ellenőrzött, közzétett ingyenes kurzus szükséges.',
+        ]
+      : []
   return {
     pages,
     filenames,
@@ -222,6 +243,8 @@ async function readState(payload: Payload, assets: PhotoAsset[]) {
     placeholderBase,
     mediaProof,
     menuPlans,
+    productProof,
+    blockers,
   }
 }
 
@@ -389,11 +412,14 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
       plans: state.plans,
       mediaProof: state.mediaProof,
       menus: state.menuPlans,
+      products: state.productProof,
+      blockers: state.blockers,
     }
     const hash = ownerReviewHash(fingerprint)
     logger.info('KC V1 tartalmi terv', {
       hash,
       apply: options.apply,
+      blockers: state.blockers,
       menus: state.menuPlans.map((plan) => ({
         id: plan.id,
         before: plan.before.label,
@@ -434,10 +460,13 @@ export async function applyOwnerReviewV1(args: readonly string[]): Promise<void>
         plans: fresh.plans,
         mediaProof: fresh.mediaProof,
         menus: fresh.menuPlans,
+        products: fresh.productProof,
+        blockers: fresh.blockers,
       }) !== hash
     ) {
       throw new Error('A tartalom az ellenőrzés közben változott; nem írtunk az adatbázisba.')
     }
+    if (state.blockers.length) throw new Error(`Publikálási HOLD: ${state.blockers.join(' ')}`)
     const ids = { ...state.ids }
     for (const asset of targets.length ? assets : []) {
       if ((ids[asset.role] ?? 0) < state.placeholderBase) continue

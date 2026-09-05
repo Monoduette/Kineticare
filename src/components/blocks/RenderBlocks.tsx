@@ -122,6 +122,13 @@ export function RenderBlocks({
   // az a rács fizetős kártyái közül is kiesett, tehát a szerkesztői hiba némán
   // ingyenes ajánlattá változott (2026-08-16-i átvizsgálás).
   const freeProduct = visibleProducts.find(isFreeCourse) ?? null
+  const freeSosBlocks = layout.filter((block) => block.blockType === 'freeSos')
+  const visibleFreeSosBlocks = freeSosBlocks.filter(
+    (block) => block.sectionSettings?.visible !== false,
+  )
+  const freeSosAnchorIds = freeSosBlocks.map(
+    (block) => sectionProps(block).id ?? `ingyenes-${block.id ?? 'ismetelt'}`,
+  )
 
   // Az adatvezérelt szekciók beépített alap-horgonya (kurzusok, ingyenes,
   // velemenyek) csak a típus ELSŐ példányán érvényesülhet: ha a szerkesztő
@@ -139,9 +146,23 @@ export function RenderBlocks({
         const isRepeat = seenTypes.has(block.blockType)
         seenTypes.add(block.blockType)
         const key = block.id ?? `${block.blockType}-${index}`
+        // A „lentebb” ígéretéhez a termék mellett későbbi, látható sáv is kell.
+        const nextFreeSos = freeProduct
+          ? visibleFreeSosBlocks.find((candidate) => layout.indexOf(candidate) > index)
+          : undefined
+        const freeSosHref = nextFreeSos
+          ? `#${
+              sectionProps(nextFreeSos).id ??
+              (visibleFreeSosBlocks.indexOf(nextFreeSos) === 0
+                ? 'ingyenes'
+                : `ingyenes-${nextFreeSos.id ?? 'ismetelt'}`)
+            }`
+          : null
         return (
           <BlockSwitch
             key={key}
+            freeSosHref={freeSosHref}
+            freeSosAnchorIds={freeSosAnchorIds}
             {...{ block, isRepeat, paidProducts, freeProduct, posts, testimonials, appointment }}
           />
         )
@@ -155,6 +176,8 @@ function BlockSwitch({
   isRepeat,
   paidProducts,
   freeProduct,
+  freeSosHref,
+  freeSosAnchorIds,
   posts,
   testimonials,
   appointment,
@@ -164,13 +187,17 @@ function BlockSwitch({
   isRepeat: boolean
   paidProducts: Product[]
   freeProduct: Product | null
+  freeSosHref: string | null
+  freeSosAnchorIds: string[]
   posts: Post[]
   testimonials: Testimonial[]
   appointment: AppointmentSectionContext
 }) {
   switch (block.blockType) {
     case 'filmHero':
-      return <FilmHero block={block} />
+      return (
+        <FilmHero block={block} freeSosHref={freeSosHref} freeSosAnchorIds={freeSosAnchorIds} />
+      )
     case 'welcome':
       return <Welcome block={block} />
     case 'usps':

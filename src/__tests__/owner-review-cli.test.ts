@@ -153,6 +153,86 @@ describe('Owner review explicit application boundary', () => {
     expect(runtime.destroy).toHaveBeenCalledTimes(2)
   })
 
+  it.each(['missing', 'draft', 'paid'])(
+    'holds new free-offer FAQ publication for a %s SOS product',
+    async (state) => {
+      const page = {
+        id: 1,
+        slug: 'kezdolap',
+        _status: 'published',
+        layout: buildHomeLayout({}),
+        updatedAt: '2026-09-05',
+      }
+      const product = {
+        id: 2,
+        slug: 'sos-kezrelax-villamkurzus',
+        status: 'published',
+        _status: state === 'draft' ? 'draft' : 'published',
+        priceInHUFEnabled: state === 'paid',
+        priceInHUF: 1000,
+      }
+      runtime.find.mockImplementation(async ({ collection }: { collection: string }) => ({
+        docs:
+          collection === 'pages'
+            ? [page]
+            : collection === 'products' && state !== 'missing'
+              ? [product]
+              : [],
+      }))
+      await applyOwnerReviewV1([])
+      const summary = runtime.info.mock.calls.find(
+        ([message]) => message === 'KC V1 tartalmi terv',
+      )?.[1]
+      expect(summary.blockers).toHaveLength(1)
+      await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+        'Publikálási HOLD',
+      )
+      expect(runtime.create).not.toHaveBeenCalled()
+      expect(runtime.update).not.toHaveBeenCalled()
+      expect(runtime.destroy).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  it('binds free-product availability to the plan even when there is no menu to rename', async () => {
+    let productReads = 0
+    const page = {
+      id: 1,
+      slug: 'kezdolap',
+      _status: 'published',
+      layout: buildHomeLayout({}),
+      updatedAt: '2026-09-05',
+    }
+    runtime.find.mockImplementation(async ({ collection }: { collection: string }) => {
+      if (collection === 'pages') return { docs: [page] }
+      if (collection === 'products') {
+        productReads += 1
+        return {
+          docs: [
+            {
+              id: 2,
+              slug: 'sos-kezrelax-villamkurzus',
+              status: 'published',
+              _status: 'published',
+              priceInHUFEnabled: productReads >= 3,
+              priceInHUF: 1000,
+            },
+          ],
+        }
+      }
+      return { docs: [] }
+    })
+    await applyOwnerReviewV1([])
+    const summary = runtime.info.mock.calls.find(
+      ([message]) => message === 'KC V1 tartalmi terv',
+    )?.[1]
+    expect(summary.blockers).toEqual([])
+    await expect(applyOwnerReviewV1(['--apply', summary.hash])).rejects.toThrow(
+      'A tartalom az ellenőrzés közben változott',
+    )
+    expect(runtime.create).not.toHaveBeenCalled()
+    expect(runtime.update).not.toHaveBeenCalled()
+  })
+
   it('only removes the recognized old about hero after the replacement photo is in the layout', () => {
     const page = { slug: 'rolunk', title: 'Rólunk', heroImage: 1 }
     const names = new Map([

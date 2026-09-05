@@ -216,7 +216,13 @@ describe('HomeView (kezdőlap-render)', () => {
   })
 
   it('M1 hero CTA: elsődleges a kurzusokra, másodlagos (visszafogott) az ingyenes SOS-ra', () => {
-    const html = render(createElement(HomeView, { home: null, products: [], posts: [] }))
+    const html = render(
+      createElement(HomeView, {
+        home: null,
+        products: [product({ id: 7, priceInHUFEnabled: false })],
+        posts: [],
+      }),
+    )
     // EGY elsődleges CTA a fizetős kurzusok oldalára (audit K3). A felirat a
     // jóváhagyott szótárból jön (docs/ui-sztenderdek.md §3.2 #10).
     expect(html).toContain(ctaLabel('course-list-open'))

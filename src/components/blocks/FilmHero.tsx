@@ -79,15 +79,21 @@ const CAPTION_MID_BODY =
 const CAPTION_END_TEXT = 'A következő mozdulat a tiéd'
 const CAPTION_END_BODY =
   'Lentebb megtalálod a kurzusokat és a rendelői kezeléseket. Ha előbb kipróbálnád, ott vannak az ingyenes SOS gyakorlatok.'
+const CAPTION_END_BODY_WITHOUT_FREE_SOS =
+  'Ismerd meg a kurzusainkat és a rendelői kezeléseinket. Válaszd ki a neked megfelelő segítséget.'
 
 /** A fejezet-navigáció felirata — egyetlen jelenetnél nem is jelenik meg. */
 const FILM_LABEL = 'A kéz nyílása'
 
 export interface FilmHeroProps {
   block: BlockFilmHero
+  /** Csak publikált, explicit ingyenes termék későbbi, látható sávjának célja. */
+  freeSosHref?: string | null
+  /** A rejtett SOS-blokkok egyedi horgonyai is ide tartoznak. */
+  freeSosAnchorIds?: readonly string[]
 }
 
-export function FilmHero({ block }: FilmHeroProps) {
+export function FilmHero({ block, freeSosHref = null, freeSosAnchorIds = [] }: FilmHeroProps) {
   const title = block.title?.trim()
   if (!title) {
     return null
@@ -97,8 +103,19 @@ export function FilmHero({ block }: FilmHeroProps) {
     .map((tag) => tag.label?.trim() ?? '')
     .filter((label) => label.length > 0)
 
+  // P1: hiányzó adatból nem lesz ajánlat; a CMS felirata sem bizonyít elérhetőséget.
+  // NN/g Better Link Labels; WCAG 2.4.4: a felirat és a tényleges cél összetartozik.
+  // https://www.nngroup.com/articles/better-link-labels/
+  // https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html
+  const sosTargets = new Set(
+    ['ingyenes', ...freeSosAnchorIds].flatMap((id) => [`#${id}`, `/#${id}`]),
+  )
   const ctas = (block.ctas ?? [])
     .filter((cta) => Boolean(cta.felirat?.trim()) && Boolean(cta.url?.trim()))
+    .filter((cta) => freeSosHref !== null || !sosTargets.has(cta.url.trim()))
+    .map((cta) =>
+      sosTargets.has(cta.url.trim()) && freeSosHref ? { ...cta, url: freeSosHref } : cta,
+    )
     .slice(0, 2)
 
   const actions =
@@ -135,7 +152,7 @@ export function FilmHero({ block }: FilmHeroProps) {
   if (endText) {
     captions.push({
       align: 'center',
-      body: CAPTION_END_BODY.trim() || undefined,
+      body: freeSosHref ? CAPTION_END_BODY : CAPTION_END_BODY_WITHOUT_FREE_SOS,
       id: 'film-scrub-vege',
       text: endText,
       ...CAPTION_END,

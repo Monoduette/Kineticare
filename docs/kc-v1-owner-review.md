@@ -40,7 +40,7 @@ a folyamatos fátyol és az elfogadott mobilviselkedés megmarad. A footer kív�
 | H10 | Így működik az online kurzus közvetlenül a kurzusblokk alatt | A tényleges helyi szekciósorrendben ellenőrizve |
 | H11 | Vélemények idézőjeleinek igazítása | Az upstream iOS-javítás megőrzése; Chromium és CSS-őrteszt, tényleges iOS-mérés nélkül |
 | H12 | Tudástár-címkék egységesítése | Üres címke, ismétlődés és egyetlen kártyalink tesztelve |
-| H13 | Általános GYIK, online és személyes segítség közti választás | Új általános kérdéssor; független tartalmi review folyamatban |
+| H13 | Általános GYIK, online és személyes segítség közti választás | Független tartalmi review PASS; igazolt ingyenes SOS nélkül az új GYIK publikálását a CLI letiltja |
 | H14 | Új saját logó a Kapcsolat részhez | A kért új logófájlra vár |
 | S01 | Közös kép a Szolgáltatások oldalon | Saját közös portré beillesztve |
 | S02 | a csuklód, a könyököd vagy a vállad | Javítva, helyi renderben ellenőrizve |
@@ -49,7 +49,7 @@ a folyamatos fátyol és az elfogadott mobilviselkedés megmarad. A footer kív�
 | S05 | Ezért fogod imádni cím és kép | Saját szakmai kontextusfotóval megvalósítva |
 | S06 | A teljes kurzushoz tartozó link ne az SOS-re vigyen | A fizetős kurzus célja ellenőrizve; a nyilvános Szolgáltatások layoutban nincs harmonika. A legördülő menü SOS-terméke adminos ellenőrzést igényel |
 | A01 | Rólunk kép legfeljebb fél oldalszélesség, finom hullámos szél | Kéthasábos természetes képarány; alsó 3 px-es állandó hullám, 320/1440 px és reduced-motion képpontméréssel |
-| A02 | Megérdemled a profi törődést szöveg rövidítése | Rövidítve, független tartalmi review folyamatban |
+| A02 | Megérdemled a profi törődést szöveg rövidítése | Rövidítve, független tartalmi review PASS |
 | A03 | Amiben mások vagyunk mellé fotó | Saját közös fotó beillesztve |
 | A04 | Partnerlogók mozgó sávban, megállítás és csökkentett mozgás | Hozzáférhető komponens tesztelve; tényleges partnerlogófájlok hiányoznak, a meglévő partnernévsor megmarad |
 | A05 | Külön fotók a két szakmai háttér mellett | Névvel azonosított meglévő portrék, korlátozott méret és mobilos ellenőrzés; új portrék név-hozzárendelése vár |
@@ -111,6 +111,12 @@ négy oldalra és a fájlfeltöltésekre kiterjedő visszagörgetés. Hiba eset�
 oldalak vagy új médiafájlok már létrejöhettek: állapotfelmérés és új előnézet
 kell, nem vak újrafuttatás vagy az egész oldal felülírása.
 
+Az új, ingyenes SOS-t említő GYIK publikálását a program írás előtt letiltja,
+ha nem igazolt a megfelelő kurzus közzétett és explicit ingyenes állapota.
+A HOLD az előnézetben is látszik. A releváns termékek állapota, ára és
+módosítási ideje a terv hash-ének része; közben megváltozott terméknél új
+előnézet szükséges akkor is, ha a menücímkén nincs módosítanivaló.
+
 Sikeres alkalmazás után új előnézetben nulla tervezett módosítás, majd a
 tényleges CMS-tartalommal végzett vizuális és útvonalellenőrzés szükséges.
 Eddig kizárólag a `localhost:55441/kineticare_preview` nevű helyi
@@ -150,9 +156,17 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   Install-script lock PASS; natív Railpack-tervinvariánsok PASS.
   `npm audit --audit-level=high`: PASS, 6 meglévő moderate jelzés,
   nincs dependency-változtatás.
-- A végső stage-elt kód teljes soros tesztköre: 6321/6321 PASS, 279 fájl.
+- Az első PR-head (`d2447b0`) teljes soros tesztköre: 6321/6321 PASS, 279 fájl.
   Production build PASS. Meglévő buildfigyelmeztetések: middleware-elnevezés
   kivezetése és a `media-restore.ts` dinamikus fájlrendszer-tracingje.
+- Az első head távoli CI-ja is PASS: 33960853223, audit és production build;
+  a teljes history-s gitleaks ellenőrzés sikeres. A cloud review ezután két
+  valódi problémát talált, ezért a merge a javítások ellenőrzéséig megállt.
+- A P1 ajánlati összhang, P2 opcionális horgony és H13 CLI-kapu javításával:
+  **6366/6366 teszt PASS, 280 fájl**, soros futás, kihagyás és retry nélkül.
+  Teljes typecheck és production build PASS; lint 0 hiba, a 3 korábbi warning.
+  Független kód- és tartalmi review PASS. A friss CLI-előnézet mind a négy
+  helyi oldalon nulla módosítást és nulla blokkolót jelez; a termék szintetikus.
 
 ## Tanulságok
 
@@ -166,3 +180,12 @@ dokumentumban ténylegesen megnyitott elsődleges forrásokra támaszkodik.
   adatbázisra. A korábbi képet ismert fájl és kanonikus kapcsolat azonosítsa.
 - A természetes képarány és a nulla betöltési elmozdulás külön kapu:
   az `auto` szélesség/magasság lazy betöltés előtt nulla méretet is adhat.
+- Az ingyenes ajánlat rendelkezésre állását a hero szövege és hivatkozása
+  is kövesse. A célblokk elrejtése vagy átrendezése sem hagyhat hamis
+  „lentebb” ígéretet vagy hibás horgonylinket.
+- A Payload az elhagyott opcionális horgonyt `null` értékként is visszaadhatja.
+  A sorrendvédelmet ilyen ténylegesen materializált adatokkal is teszteljük;
+  csak a `null` és `undefined` egyenértékű, egyedi horgonyt nem normalizálunk el.
+- A publikálási előfeltétel nem maradhat puszta dokumentációs figyelmeztetés:
+  hiányzó, piszkozat vagy fizetős SOS-terméknél az új GYIK-állítás előtt
+  kötelező a végrehajtható, nulla írással megálló ellenőrzés.
