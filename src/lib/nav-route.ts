@@ -37,17 +37,27 @@ function normalizeNavTarget(href: string): string | null {
   return normalizeRootRelativePath(queryIndex === -1 ? trimmed : trimmed.slice(0, queryIndex))
 }
 
+function getNavLinkRouteStateForPath(href: string, currentPath: string): NavRouteState {
+  const itemPath = normalizeNavTarget(href)
+  if (itemPath === null) return 'inactive'
+
+  if (currentPath === itemPath) return 'current'
+
+  // A perjeles határ akadályozza meg, hogy pl. /blog egyezzen /blogger-rel.
+  return itemPath !== '/' && currentPath.startsWith(`${itemPath}/`) ? 'ancestor' : 'inactive'
+}
+
+/** Egy önálló belső oldallink aktuális útvonalállapota. */
+export function getNavLinkRouteState(href: string, pathname: string | null): NavRouteState {
+  const currentPath = normalizeCurrentPath(pathname)
+  return currentPath === null ? 'inactive' : getNavLinkRouteStateForPath(href, currentPath)
+}
+
 function getNavRouteStateForPath(item: NavItem, currentPath: string): NavRouteState {
   if (item.isExternal) return 'inactive'
 
-  const itemPath = normalizeNavTarget(item.href)
-
-  if (itemPath !== null) {
-    if (currentPath === itemPath) return 'current'
-
-    // A perjeles határ akadályozza meg, hogy pl. /blog egyezzen /blogger-rel.
-    if (itemPath !== '/' && currentPath.startsWith(`${itemPath}/`)) return 'ancestor'
-  }
+  const ownState = getNavLinkRouteStateForPath(item.href, currentPath)
+  if (ownState !== 'inactive') return ownState
 
   return item.children.some((child) => getNavRouteStateForPath(child, currentPath) !== 'inactive')
     ? 'ancestor'

@@ -23,6 +23,7 @@ const SCROLL_SCRUB_CSS = readFileSync(
   join(REPO, 'src/components/scroll-scrub/scroll-scrub.css'),
   'utf8',
 )
+const CONTRAST_AUDIT = readFileSync(join(REPO, 'docs/gomb-kontraszt-audit.md'), 'utf8')
 
 /**
  * ŐR — a filmsáv 2. és 3. „állása" CÍM + LEÍRÁS párban áll.
@@ -150,6 +151,18 @@ describe('filmsáv egykezes média-szerződése', () => {
     )
     expect(statSync(join(REPO, ujAssetek[0])).size).toBeLessThanOrEqual(5 * 1024 * 1024)
     expect(statSync(join(REPO, ujAssetek[1])).size).toBeLessThanOrEqual(2.5 * 1024 * 1024)
+  })
+
+  it('a kontrasztaudit mind a négy élő médiafájlt és annak byte-hashét figyeli', () => {
+    for (const [ut, hash] of [
+      [ujAssetek[0], '6802e75d25bc7c296b3307202ea6c601a037ed04055f2d5a4ac12ffbfb30907e'],
+      [ujAssetek[1], 'd9b076541937f941585d8d16a2611eb59ebd2d407d4dd07ce52de1c0677fc417'],
+      [ujAssetek[2], '8d6c0a8afecdbc1c184dacb509ce86fea653b5dbdc5ead71e0a81bac8752fe13'],
+      [ujAssetek[3], '8252b884c2252ff19cdb9b05455c67934af91869c742a489c988a159c240ef0d'],
+    ] as const) {
+      expect(CONTRAST_AUDIT).toContain(`\`${ut}\``)
+      expect(CONTRAST_AUDIT).toContain(`\`${hash}\``)
+    }
   })
 
   it('a korábbi filmassetek megmaradnak az azonnali rollbackhez', () => {
