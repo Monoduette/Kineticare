@@ -36,8 +36,10 @@ import { PurchasesOverviewPanel as PurchasesOverviewPanel_be42bab410342143f760b0
 import { GrantPurchasePanel as GrantPurchasePanel_20de7d9cfe7b60454d34835b4d120a81 } from '../../../components/admin/GrantPurchasePanel'
 import { StatisticsNavLink as StatisticsNavLink_63f67778ef57ca5216330299cb70718b } from '../../../components/admin/StatisticsNavLink'
 import { BunnyLibraryNavLink as BunnyLibraryNavLink_f6a3c3418c902de7e4c73776134d53c4 } from '../../../components/admin/BunnyLibraryNavLink'
+import { WebAnalyticsNavLink as WebAnalyticsNavLink_8a2eda5c3e5c59caeda7695e2f7dd5db } from '../../../components/admin/WebAnalyticsNavLink'
 import { StatisticsView as StatisticsView_6bedff494c75b1f749e7d2a423ca9b94 } from '../../../components/admin/StatisticsView'
 import { BunnyLibraryView as BunnyLibraryView_07de92bea330a6c245d113b21f93e79c } from '../../../components/admin/BunnyLibraryView'
+import { WebAnalyticsView as WebAnalyticsView_212cf5d02dd68d0edb2d227c20a13d63 } from '../../../components/admin/WebAnalyticsView'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */
@@ -80,7 +82,9 @@ export const importMap = {
   "/components/admin/GrantPurchasePanel#GrantPurchasePanel": GrantPurchasePanel_20de7d9cfe7b60454d34835b4d120a81,
   "/components/admin/StatisticsNavLink#StatisticsNavLink": StatisticsNavLink_63f67778ef57ca5216330299cb70718b,
   "/components/admin/BunnyLibraryNavLink#BunnyLibraryNavLink": BunnyLibraryNavLink_f6a3c3418c902de7e4c73776134d53c4,
+  "/components/admin/WebAnalyticsNavLink#WebAnalyticsNavLink": WebAnalyticsNavLink_8a2eda5c3e5c59caeda7695e2f7dd5db,
   "/components/admin/StatisticsView#StatisticsView": StatisticsView_6bedff494c75b1f749e7d2a423ca9b94,
   "/components/admin/BunnyLibraryView#BunnyLibraryView": BunnyLibraryView_07de92bea330a6c245d113b21f93e79c,
+  "/components/admin/WebAnalyticsView#WebAnalyticsView": WebAnalyticsView_212cf5d02dd68d0edb2d227c20a13d63,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

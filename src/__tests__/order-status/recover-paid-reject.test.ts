@@ -25,6 +25,7 @@ afterEach(() => {
 
 const PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
 const TRANSACTION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+const POS_TRANSACTION_ID = 'DUMMY-ORIGINAL-SHOP-TRANSACTION'
 const ORDER_TOTAL_HUF = 19990
 
 function createOrder(overrides: Partial<Order> = {}): Order {
@@ -52,6 +53,7 @@ function createState(
     Transactions: [
       {
         TransactionId: TRANSACTION_ID,
+        POSTransactionId: POS_TRANSACTION_ID,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: ORDER_TOTAL_HUF,
@@ -143,6 +145,116 @@ describe('pickRefundableTransaction', () => {
 })
 
 describe('recoverRejectedSucceededPayment', () => {
+  it.each([undefined, '', '   ', '\n\t', null, 0, false])(
+    'hiányzó vagy hibás eredeti POSTransactionId esetén refund és helyi írás előtt leáll: %j',
+    async (posTransactionId) => {
+      const order = createOrder()
+      const { payload, updates } = createMockPayload(order)
+      const refund = vi.fn()
+      const state = createState()
+      state.Transactions[0]!.POSTransactionId = posTransactionId as unknown as string
+      const result = await recoverRejectedSucceededPayment({
+        payload,
+        order,
+        state,
+        reason: 'duplicate-paid-order',
+        log: createLogger(),
+        source: 'callback',
+        refundPayment: refund,
+      })
+      expect(result).toEqual({ action: 'failed', detail: 'missing-pos-transaction-id' })
+      expect(refund).not.toHaveBeenCalled()
+      expect(updates).toHaveLength(0)
+      expect(order.status).toBe('payment_pending')
+    },
+  )
+
+  it.each([POS_TRANSACTION_ID, 'DUMMY-OTHER-SHOP-TRANSACTION', undefined])(
+    'duplikált Barion TransactionId akkor sem egyértelmű, ha a kereskedői azonosító %j',
+    async (duplicatePosId) => {
+      const order = createOrder()
+      const { payload, updates } = createMockPayload(order)
+      const refund = vi.fn()
+      const state = createState()
+      state.Transactions.push({ ...state.Transactions[0]!, POSTransactionId: duplicatePosId })
+      const result = await recoverRejectedSucceededPayment({
+        payload,
+        order,
+        state,
+        reason: 'total-mismatch',
+        log: createLogger(),
+        source: 'order-poll',
+        refundPayment: refund,
+      })
+      expect(result).toEqual({ action: 'failed', detail: 'ambiguous-refund-transaction' })
+      expect(refund).not.toHaveBeenCalled()
+      expect(updates).toHaveLength(0)
+    },
+  )
+
+  it('a kiválasztott tranzakció kereskedői azonosítóját használja, nem az első elemét', async () => {
+    const order = createOrder()
+    const { payload } = createMockPayload(order)
+    const state = createState()
+    state.Transactions.unshift({
+      TransactionId: 'DUMMY-UNRELATED-TRANSACTION',
+      POSTransactionId: 'DUMMY-UNRELATED-POS-ID',
+      TransactionType: 'Fee',
+      Status: 'Succeeded',
+      Total: 100,
+    })
+    const refund = vi.fn(async (): Promise<BarionRefundResponse> => ({
+      PaymentId: PAYMENT_ID,
+      RefundedTransactions: [
+        { TransactionId: TRANSACTION_ID, Total: ORDER_TOTAL_HUF, Status: 'Refunded' },
+      ],
+    }))
+    expect(
+      await recoverRejectedSucceededPayment({
+        payload,
+        order,
+        state,
+        reason: 'duplicate-paid-order',
+        log: createLogger(),
+        source: 'callback',
+        refundPayment: refund,
+      }),
+    ).toEqual({ action: 'refunded' })
+    expect(refund).toHaveBeenCalledExactlyOnceWith({
+      paymentId: PAYMENT_ID,
+      transactionsToRefund: [
+        {
+          transactionId: TRANSACTION_ID,
+          posTransactionId: POS_TRANSACTION_ID,
+          amountToRefund: ORDER_TOTAL_HUF,
+        },
+      ],
+    })
+  })
+
+  it('a Barionban már teljesen refundolt tranzakció helyi nyomát kereskedői azonosító nélkül is megőrzi', async () => {
+    const order = createOrder()
+    const { payload } = createMockPayload(order)
+    const state = createState()
+    state.Transactions[0]!.Status = 'Refunded'
+    delete state.Transactions[0]!.POSTransactionId
+    const refund = vi.fn()
+    expect(
+      await recoverRejectedSucceededPayment({
+        payload,
+        order,
+        state,
+        reason: 'duplicate-paid-order',
+        log: createLogger(),
+        source: 'callback',
+        refundPayment: refund,
+      }),
+    ).toEqual({ action: 'refunded', detail: 'already-refunded-at-barion' })
+    expect(refund).not.toHaveBeenCalled()
+    expect(order.status).toBe('refunded')
+    expect(order.refunds).toEqual([expect.objectContaining({ type: 'full', status: 'Refunded' })])
+  })
+
   it('ismeretlen ok → skip, refund NEM hívódik', async () => {
     const order = createOrder()
     const { payload, updates } = createMockPayload(order)
@@ -209,7 +321,9 @@ describe('recoverRejectedSucceededPayment', () => {
     expect(result).toEqual({ action: 'refunded' })
     expect(refund).toHaveBeenCalledWith({
       paymentId: PAYMENT_ID,
-      transactionsToRefund: [{ transactionId: TRANSACTION_ID, amountToRefund: ORDER_TOTAL_HUF }],
+      transactionsToRefund: [
+        { transactionId: TRANSACTION_ID, posTransactionId: POS_TRANSACTION_ID, amountToRefund: ORDER_TOTAL_HUF },
+      ],
     })
     expect(order.status).toBe('refunded')
     expect(order.refundReason).toBe(hungarianAutoRefundReason('duplicate-paid-order'))
@@ -271,6 +385,7 @@ describe('recoverRejectedSucceededPayment', () => {
             TransactionType: 'CardPayment',
             Status: 'Succeeded',
             Total: 1,
+            POSTransactionId: POS_TRANSACTION_ID,
           },
         ],
       }),
@@ -282,7 +397,9 @@ describe('recoverRejectedSucceededPayment', () => {
 
     expect(refund).toHaveBeenCalledWith({
       paymentId: PAYMENT_ID,
-      transactionsToRefund: [{ transactionId: TRANSACTION_ID, amountToRefund: 1 }],
+      transactionsToRefund: [
+        { transactionId: TRANSACTION_ID, posTransactionId: POS_TRANSACTION_ID, amountToRefund: 1 },
+      ],
     })
   })
 

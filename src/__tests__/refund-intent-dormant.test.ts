@@ -15,13 +15,9 @@ function sourceFiles(directory: string): string[] {
   })
 }
 
-describe('refund intent Phase A dormancy', () => {
-  it('keeps every live refund, revocation, access, and job surface free of ledger references', () => {
+describe('refund intent activation boundary', () => {
+  it('keeps unrelated payment, access, and job surfaces free of ledger references', () => {
     const liveRefundFiles = [
-      'src/lib/refund/refund-order.ts',
-      'src/lib/refund/route-handler.ts',
-      'src/app/(frontend)/api/admin/orders/[orderNumber]/refund/route.ts',
-      'src/components/admin/RefundPanel.tsx',
       'src/lib/barion/refund.ts',
       'src/lib/user-purchases-lock.ts',
       'src/lib/order-status/recover-paid-reject.ts',

@@ -1,5 +1,8 @@
 import type { Payload } from 'payload'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// These pre-ledger fixtures exercise the unchanged legacy invoice contract.
+vi.mock('../../lib/refund/intent-store', () => ({ loadRefundIntentsForOrder: async () => [] }))
 
 import { getSzamlazzConfig } from '../../lib/szamlazz/client'
 import {

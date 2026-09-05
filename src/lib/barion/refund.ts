@@ -16,6 +16,8 @@ import type { BarionRefundRequest, BarionRefundResponse, BarionTransactionToRefu
 export interface RefundTransactionInput {
   /** A v4-es fizetésállapot-válasz Transactions tömbjéből származó Barion TransactionId. */
   transactionId: string
+  /** Az eredeti fizetési tranzakció kereskedői azonosítója; nem új refund-azonosító. */
+  posTransactionId: string
   /** Visszatérítendő összeg HUF-ban; lehet a tranzakció teljes összege vagy annál kisebb. */
   amountToRefund: number
 }
@@ -33,6 +35,9 @@ export function buildRefundRequest(
     throw new Error('Barion Payment/Refund: legalább egy visszatérítendő tranzakció kötelező.')
   }
   for (const transaction of params.transactionsToRefund) {
+    if (typeof transaction.posTransactionId !== 'string' || !transaction.posTransactionId.trim()) {
+      throw new Error('Barion Payment/Refund: nem üres posTransactionId kötelező.')
+    }
     if (!(transaction.amountToRefund > 0)) {
       throw new Error(
         `Barion Payment/Refund: az amountToRefund pozitív kell legyen (TransactionId: ${transaction.transactionId}).`,
@@ -43,6 +48,7 @@ export function buildRefundRequest(
   const transactionsToRefund: BarionTransactionToRefund[] = params.transactionsToRefund.map(
     (transaction) => ({
       TransactionId: transaction.transactionId,
+      POSTransactionId: transaction.posTransactionId,
       AmountToRefund: transaction.amountToRefund,
     }),
   )
