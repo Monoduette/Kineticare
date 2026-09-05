@@ -57,7 +57,7 @@ export const KIHAGYOTT_RESZFAK: readonly { readonly eloTag: string; readonly ind
 ]
 
 /** Azok az elemnevek, amelyek gyerekszövege cselekvés-feliratnak számít. */
-const CSELEKVO_ELEMEK = new Set(['Button', 'Link', 'a', 'button'])
+const CSELEKVO_ELEMEK = new Set(['Button', 'FooterPageLink', 'Link', 'a', 'button'])
 
 /** Egy CTA-alakú objektumhoz a `label` mellett legalább ezek egyikének állnia kell. */
 const CTA_ALAKU_TARSMEZOK = new Set([
@@ -101,7 +101,7 @@ export interface CtaTalalat {
   /** 1-alapú sorszám — a beszámolóban visszakereshető legyen. */
   readonly sor: number
   readonly forras: 'jsx-szoveg' | 'aria-label' | 'objektum-label' | 'cta-nevu-konstans'
-  /** A hordozó elem neve (`Button`, `Link`, `a`, `button`) vagy objektumnál a mezőnevek. */
+  /** A hordozó kattintható elem neve vagy objektumnál a mezőnevek. */
   readonly elem: string
   /** A statikusan feloldható cél; `null`, ha futásidőben dől el. */
   readonly href: string | null
@@ -483,6 +483,14 @@ function gyerekSzegmensek(
       // A `{/* komment */}` és a `{null}` nem szöveg.
       if (!gyerek.expression) continue
       if (gyerek.expression.kind === ts.SyntaxKind.NullKeyword) continue
+      // Ez a wrapper csak továbbadja a Footer hívóhelyén külön megmért feliratot.
+      if (
+        sf.fileName.endsWith(join('components', 'layout', 'FooterPageLink.tsx')) &&
+        ts.isIdentifier(gyerek.expression) &&
+        gyerek.expression.text === 'children'
+      ) {
+        continue
+      }
       szegmensek.push(feloldSzoveget(sf, gyerek.expression))
     } else if (ts.isJsxElement(gyerek)) {
       if (dekorativ(gyerek)) continue

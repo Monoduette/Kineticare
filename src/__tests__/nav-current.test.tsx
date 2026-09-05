@@ -13,12 +13,17 @@ vi.mock('next/navigation', () => ({
   usePathname: pathnameMock,
 }))
 
+vi.mock('../components/layout/NewsletterSignup', () => ({
+  NewsletterSignup: () => null,
+}))
+
 import { DesktopNav } from '../components/layout/DesktopNav'
+import { Footer, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
 import { HeaderCoursesNav } from '../components/layout/HeaderCoursesNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { NavAnchor } from '../components/layout/NavAnchor'
 import type { NavItem } from '../lib/menu-tree'
-import { getNavRouteState } from '../lib/nav-route'
+import { getNavLinkRouteState, getNavRouteState } from '../lib/nav-route'
 
 const render = (element: Parameters<typeof renderToStaticMarkup>[0]): string =>
   renderToStaticMarkup(element)
@@ -80,6 +85,12 @@ function anchorFor(html: string, href: string): string {
   return match?.[0] ?? ''
 }
 
+function firstButton(html: string): string {
+  const match = html.match(/<button\b[^>]*>/)
+  expect(match, 'nem található gomb a markupban').not.toBeNull()
+  return match?.[0] ?? ''
+}
+
 describe('getNavRouteState — belső útvonal-egyezés', () => {
   const blog = navItem(1, 'Tudástár', '/blog/')
 
@@ -121,6 +132,25 @@ describe('getNavRouteState — belső útvonal-egyezés', () => {
     const parent = hashParentTree()[0]
     expect(getNavRouteState(parent, '/szolgaltatasok/kezterapia')).toBe('ancestor')
     expect(getNavRouteState(parent.children[0], '/szolgaltatasok/kezterapia')).toBe('current')
+  })
+})
+
+describe('getNavLinkRouteState — önálló oldallink', () => {
+  it('query-t és záró perjelet normalizál, a pontos linket currentnek jelöli', () => {
+    expect(getNavLinkRouteState('/aszf?forras=footer', '/aszf/?kampany=jogi#tartalom')).toBe(
+      'current',
+    )
+  })
+
+  it('hash-cél, külső URL és mailto sosem current', () => {
+    expect(getNavLinkRouteState('/aszf#elfogadas', '/aszf')).toBe('inactive')
+    expect(getNavLinkRouteState('https://pelda.hu/aszf', '/aszf')).toBe('inactive')
+    expect(getNavLinkRouteState('mailto:info@kineticare.hu', '/aszf')).toBe('inactive')
+  })
+
+  it('leszármazott útvonalon ancestor, hasonló szövegű szegmensen inactive', () => {
+    expect(getNavLinkRouteState('/kapcsolat', '/kapcsolat/idopont')).toBe('ancestor')
+    expect(getNavLinkRouteState('/aszf', '/aszf-reszletes')).toBe('inactive')
   })
 })
 
@@ -218,6 +248,64 @@ describe('HeaderCoursesNav — állandó kurzus-link', () => {
   })
 })
 
+describe('Footer — jelenlegi oldal szemantikája', () => {
+  it('a pontos Kapcsolat oldalon egyetlen oldallink current; a mailto és süti-gomb nem', () => {
+    pathnameMock.mockReturnValue('/kapcsolat')
+    const html = render(createElement(Footer))
+    const contactPage = anchorFor(html, '/kapcsolat')
+    const email = anchorFor(html, 'mailto:info@kineticare.hu')
+
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(contactPage).toContain('aria-current="page"')
+    expect(contactPage).toContain('kc-site-footer__page-link')
+    expect(email).not.toContain('aria-current')
+    expect(email).not.toContain('data-ancestor-active')
+    expect(firstButton(html)).not.toContain('aria-current')
+    expect(firstButton(html)).not.toContain('data-ancestor-active')
+  })
+
+  it.each(FOOTER_LEGAL_LINKS)('$label pontos útvonalon az egyetlen current link', ({ href }) => {
+    pathnameMock.mockReturnValue(`${href}/?forras=footer#jogi-dokumentum`)
+    const html = render(createElement(Footer))
+    const current = anchorFor(html, href)
+
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(current).toContain('aria-current="page"')
+    expect(current).toContain('kc-site-footer__page-link')
+  })
+
+  it('leszármazott kapcsolati útvonalon csak ancestor adatállapotot ad', () => {
+    pathnameMock.mockReturnValue('/kapcsolat/idopont')
+    const contactPage = anchorFor(render(createElement(Footer)), '/kapcsolat')
+
+    expect(contactPage).not.toContain('aria-current')
+    expect(contactPage).toContain('data-ancestor-active="true"')
+  })
+
+  it('szegmensnév-részletre nem jelöli az ÁSZF linket', () => {
+    pathnameMock.mockReturnValue('/aszf-reszletes')
+    const legal = anchorFor(render(createElement(Footer)), '/aszf')
+
+    expect(legal).not.toContain('aria-current')
+    expect(legal).not.toContain('data-ancestor-active')
+  })
+
+  it('a Footer szerverkomponens és a NewsletterSignup határa megmarad', () => {
+    const footerSource = readFileSync(
+      fileURLToPath(new URL('../components/layout/Footer.tsx', import.meta.url)),
+      'utf8',
+    )
+    const pageLinkSource = readFileSync(
+      fileURLToPath(new URL('../components/layout/FooterPageLink.tsx', import.meta.url)),
+      'utf8',
+    )
+
+    expect(footerSource.trimStart()).not.toMatch(/^['"]use client['"]/)
+    expect(footerSource).toContain('<NewsletterSignup />')
+    expect(pageLinkSource.trimStart()).toMatch(/^'use client'/)
+  })
+})
+
 describe('NavAnchor — route-state védelem', () => {
   it('külső linken közvetlenül átadott route-state sem renderel aktív szemantikát', () => {
     const external = navItem(30, 'Külső', 'https://pelda.hu/blog', [], true)
@@ -273,7 +361,7 @@ function expectBlueUnderline(selector: string, colorToken = '--kc-header-accent'
   ).toBe(true)
 }
 
-function expectUnderlineThickness(selector: string, thickness: '1px' | '2px'): void {
+function expectUnderlineThickness(selector: string, thickness: '1px' | '2px' | '3px'): void {
   const bodies = ruleBodies(selector)
   expect(bodies.length, `hiányzó CSS-szelektor: ${selector}`).toBeGreaterThan(0)
   expect(
@@ -343,10 +431,13 @@ describe('főmenü állapotstílus-őr', () => {
     )
   })
 
-  it('a tartós route-állapot színe nem késik a fejlécfátyol mögött', () => {
+  it('a desktop aktív szövegszín egyik interakcióban sem késik a fejlécfátyol mögött', () => {
     for (const selector of [
+      '.kc-nav-desktop__link:hover',
+      '.kc-nav-desktop__link:active',
       ".kc-nav-desktop__link[aria-current='page']",
       ".kc-nav-desktop__link[data-ancestor-active='true']",
+      '.kc-nav-desktop__item:focus-within > .kc-nav-desktop__link',
     ]) {
       const body = ruleBodies(selector).join('\n')
       expect(body).toMatch(/transition-property:\s*text-underline-offset\s*;/)
@@ -378,5 +469,33 @@ describe('főmenü állapotstílus-őr', () => {
   it.each(linkClasses)('%s megtartja a 44px-es célmagasságot', (selector) => {
     const rule = CSS_RULES.find((candidate) => candidate.selectors.includes(selector))
     expect(rule?.body).toMatch(/min-height:\s*2\.75rem\s*;/)
+  })
+})
+
+describe('lábléc current/ancestor állapotstílus-őr', () => {
+  const stateSelectors = [
+    ".kc-site-footer__page-link[aria-current='page']",
+    ".kc-site-footer__page-link[data-ancestor-active='true']",
+  ]
+
+  it.each(stateSelectors)('%s KC-kék és nem csak színalapú jelölést használ', (selector) => {
+    expectBlueUnderline(selector, '--kc-footer-accent')
+    expectUnderlineThickness(selector, '2px')
+    expect(ruleBodies(selector).join('\n')).not.toMatch(/(?:^|;)\s*text-decoration\s*:/)
+  })
+
+  it.each([
+    ".kc-site-footer__link.kc-site-footer__page-link[aria-current='page']",
+    ".kc-site-footer__link.kc-site-footer__page-link[data-ancestor-active='true']",
+  ])('%s a már alapból aláhúzott nagy linket 3px vastagsággal különíti el', (selector) => {
+    expectUnderlineThickness(selector, '3px')
+  })
+
+  it('a nagy Kapcsolat-link megtartja a projekt 44px-es célmagasságát', () => {
+    const body = ruleBodies('.kc-site-footer__link').join('\n')
+
+    expect(body).toMatch(/(?:^|;)\s*display:\s*inline-flex\s*;/)
+    expect(body).toMatch(/(?:^|;)\s*align-items:\s*center\s*;/)
+    expect(body).toMatch(/(?:^|;)\s*min-height:\s*2\.75rem\s*;/)
   })
 })
