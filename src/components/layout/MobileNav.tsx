@@ -10,7 +10,7 @@ import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Kompakt (< 75em) navigáció: hamburger-gomb + jobb oldali drawer.
+ * Kompakt (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
  */
 export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signedIn?: boolean }) {
@@ -52,7 +52,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
     }
     document.addEventListener('keydown', onKeyDown)
     // A layout.css közös határán a rejtett drawer nem tarthatja zárolva az oldalt.
-    const desktop = window.matchMedia('(min-width: 75em)')
+    const desktop = window.matchMedia('(min-width: 900px)')
     const drawer = closeRef.current?.closest('nav')
     // A Chromium a médiaesemény előtt BODY-ra állíthatja az activeElementet.
     // A drawer és a külső hamburger fókuszát még látható állapotban követjük;

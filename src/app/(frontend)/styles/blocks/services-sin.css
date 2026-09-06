@@ -37,14 +37,16 @@
  * https://design-system.service.gov.uk/styles/type-scale/
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
  *
- * C drót geometria (desktop ≥ 900 px, token, nem szemre):
+ * C drót geometria (desktop ≥ 900 px, token, a 2026-09-06-os owner-drót):
  * - cím + lead a BAL hasábban a sín fölött, nem full-width sáv a panel fölött
- *   (NN/g proximity: a cím a sínhez tartozik)
+ *   (NN/g proximity: a cím a sínhez tartozik). A cím egy sor, nincs 12ch-törés.
  * - hasáb: 1fr / 2fr ≈ 1/3 : 2/3, a bal track min 16rem, mindkettő minmax(0)
  *   (minmax(auto) a Tenor H2 min-contentjével szétfeszítené a sínt)
- * - panel belső térköz: --kc-space-8 (4,5rem / 72 px), fotó ugyanabból
+ * - panel belső térköz: --kc-space-7 (3rem / 48 px), nem 72 px; fotó ugyanabból
  *   a paddingből ül be; másolat|fotó rés: --kc-space-6
  * - sáv|panel rés: --kc-space-7
+ * - idővonal: 3rem kör, 1 px gerinc, fehér inaktív kitöltés. A sín NEM
+ *   space-between-nel nyúlik a panel magasságára — a körök tartalom-távolságúak.
  * https://www.nngroup.com/articles/proximity-similarity-continuity-closure/
  * https://m3.material.io/foundations/layout/applying-layout/window-size-classes
  *
@@ -93,10 +95,9 @@
   min-width: 0;
 }
 
-/* A tábla 12ch-s mértéke KÉT sorra töri a 19 karakteres címet a bal
-   hasábban — ez a C drót bal oszlopa, nem full-width banner. */
+/* Owner-drót: a cím egy sor a sín fölött („Így tudunk segíteni”). */
 .kc-services--sin .kc-services__title {
-  max-width: 12ch;
+  max-width: none;
   margin-top: 0;
 }
 
@@ -119,15 +120,15 @@
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
-  /* C drót: a három kör azonos 2rem átmérő. Idle és active alias ugyanarra
+  /* C drót: a három kör azonos 3rem átmérő. Idle és active alias ugyanarra
      a tokenre mutat, hogy a :checked állapot ne nagyítson. */
-  --kc-services-marker: 2rem;
+  --kc-services-marker: 3rem;
   --kc-services-marker-idle: var(--kc-services-marker);
   --kc-services-marker-active: var(--kc-services-marker);
   --kc-services-marker-slot: var(--kc-services-marker);
-  /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv help-paperje. */
-  --kc-services-fade: var(--kc-color-help-paper);
-  /* Belső térköz token: mobil space-6 (32 px), asztal space-8 (72 px). */
+  /* Üreges kör: fehér kitöltés a paperen, a gerinc a peremnél eltűnik. */
+  --kc-services-fade: var(--kc-color-white);
+  /* Belső térköz token: mobil space-6 (32 px), asztal space-7 (48 px). */
   --kc-services-panel-pad: var(--kc-space-6);
   --kc-services-panel-gap: var(--kc-space-5);
   --kc-services-stage-gap: var(--kc-space-6);
@@ -170,10 +171,10 @@
 .kc-services-sin__rail::before {
   content: '';
   position: absolute;
-  left: calc(var(--kc-services-marker-slot) / 2 - 1px);
+  left: calc(var(--kc-services-marker-slot) / 2 - 0.5px);
   top: calc(var(--kc-services-marker-slot) / 2);
   bottom: calc(var(--kc-services-marker-slot) / 2);
-  width: 2px;
+  width: 1px;
   background-color: color-mix(in srgb, var(--kc-color-help-chrome) 28%, var(--kc-color-help-paper));
   z-index: 0;
   pointer-events: none;
@@ -198,7 +199,7 @@
   width: var(--kc-services-marker-idle);
   height: var(--kc-services-marker-idle);
   justify-self: center;
-  border: 2px solid var(--kc-color-help-chrome);
+  border: 1px solid var(--kc-color-help-chrome);
   border-radius: var(--kc-radius-full);
   /* A sáv színe: a gerinc a kör pereménél eltűnik, a vonalas ikon olvasható marad. */
   background-color: var(--kc-services-fade);
@@ -209,8 +210,8 @@
 
 .kc-services-sin__marker svg {
   display: block;
-  width: 1rem;
-  height: 1rem;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .kc-services-sin__marker-active {
@@ -531,9 +532,9 @@
   }
 
   .kc-services-sin {
-    height: 100%;
-    /* Desktop C-drót: 1/3 sín-oszlop, 2/3 panel; 72 px belső pad. */
-    --kc-services-panel-pad: var(--kc-space-8);
+    height: auto;
+    /* Desktop owner-drót: 1/3 sín-oszlop, 2/3 panel; 48 px belső pad. */
+    --kc-services-panel-pad: var(--kc-space-7);
     --kc-services-panel-gap: var(--kc-space-6);
     --kc-services-stage-gap: var(--kc-space-7);
   }
@@ -543,24 +544,24 @@
        (board-x + gap után); minmax(0) a Tenor min-content ellen. */
     grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr);
     gap: var(--kc-services-stage-gap);
-    align-items: stretch;
-    height: 100%;
+    align-items: start;
+    height: auto;
   }
 
   .kc-services-sin__col {
-    justify-content: space-between;
-    height: 100%;
+    justify-content: flex-start;
+    height: auto;
   }
 
   .kc-services-sin__rail {
-    justify-content: space-between;
-    gap: 0;
+    justify-content: flex-start;
+    gap: var(--kc-space-6);
   }
 
   .kc-services-sin__stage {
     display: grid;
     align-items: stretch;
-    height: 100%;
+    height: auto;
   }
 
   .kc-services-sin__panel {
@@ -569,8 +570,8 @@
     align-items: stretch;
     padding: var(--kc-services-panel-pad);
     gap: var(--kc-services-panel-gap);
-    min-height: 100%;
-    height: 100%;
+    min-height: 0;
+    height: auto;
   }
 
   .kc-services-sin__photo,

@@ -197,8 +197,9 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
   })
 
   it('a desktop, mobil és fiók ugyanazon a tartalomhoz mért határon vált', () => {
-    // A régi 900px-es őr kihagyta a bejelentkezett fiókvezérlőket. A geometriát
-    // a header-responsive.browser.mjs méri; ez a szabály csak az együttváltást védi.
+    // A 900px-es menüsor és a 75em-es kijelentkezés-pirula szándékosan külön.
+    // A geometriát a header-responsive.browser.mjs méri; ez a szabály az
+    // együttváltó menü/fiók/hamburger hármast védi.
     const css = postcss.parse(layout)
     for (const selector of ['.kc-nav-desktop', '.kc-nav-mobile', '.kc-account-nav']) {
       const queries: string[] = []
@@ -207,10 +208,10 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
           queries.push(rule.parent.params)
         }
       })
-      expect(queries).toEqual(['(min-width: 75em)'])
+      expect(queries).toEqual(['(min-width: 900px)'])
     }
-    expect(olvas('components/layout/MobileNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
-    expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
-    expect(olvas('components/layout/AccountNav.tsx')).toContain("matchMedia('(min-width: 75em)')")
+    expect(olvas('components/layout/MobileNav.tsx')).toContain("matchMedia('(min-width: 900px)')")
+    expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 900px)')")
+    expect(olvas('components/layout/AccountNav.tsx')).toContain("matchMedia('(min-width: 900px)')")
   })
 })
