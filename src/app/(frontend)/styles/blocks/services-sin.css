@@ -31,9 +31,21 @@
  * https://design-system.service.gov.uk/components/button/
  *
  * Tipográfia: szekció-H2 és panel-cím Tenor L 400 (storefront heading);
- * lead/törzs Nunito M. Tenornek nincs 700-as metszete.
+ * lead Nunito M 700, törzs Nunito M 400 muted. Tenornek nincs 700-as metszete.
+ * A hierarchia méret + súly + szín (NN/g Visual Hierarchy; GOV.UK type scale).
  * https://design-system.service.gov.uk/styles/type-scale/
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+ *
+ * C drót geometria (desktop ≥ 900 px, token, nem szemre):
+ * - cím + lead a BAL hasábban a sín fölött, nem full-width sáv a panel fölött
+ *   (NN/g proximity: a cím a sínhez tartozik)
+ * - hasáb: 1fr / 2fr ≈ 1/3 : 2/3, a bal track min 16rem, mindkettő minmax(0)
+ *   (minmax(auto) a Tenor H2 min-contentjével szétfeszítené a sínt)
+ * - panel belső térköz: --kc-space-8 (4,5rem / 72 px), fotó ugyanabból
+ *   a paddingből ül be; másolat|fotó rés: --kc-space-6
+ * - sáv|panel rés: --kc-space-7
+ * https://www.nngroup.com/articles/proximity-similarity-continuity-closure/
+ * https://m3.material.io/foundations/layout/applying-layout/window-size-classes
  *
  * Mért küszöbök (tokens.css, nem szemre):
  * - szöveg: ink a tinten 13,53:1, muted a tinten 8,05:1 (WCAG 2.2 SC 1.4.3)
@@ -62,18 +74,20 @@
 
 .kc-services--sin .kc-services-sin__header {
   display: grid;
-  gap: var(--kc-space-4);
+  gap: var(--kc-space-3);
   min-width: 0;
 }
 
+/* A tábla 12ch-s mértéke KÉT sorra töri a 19 karakteres címet a bal
+   hasábban — ez a C drót bal oszlopa, nem full-width banner. */
 .kc-services--sin .kc-services__title {
-  max-width: 20ch;
+  max-width: 12ch;
   margin-top: 0;
 }
 
 .kc-services-sin__intro {
   margin: 0;
-  max-width: 65ch;
+  max-width: 32ch;
   font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
   line-height: 1.6;
@@ -96,6 +110,10 @@
   --kc-services-marker-slot: var(--kc-services-marker-active);
   /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv paperje. */
   --kc-services-fade: var(--kc-color-bg);
+  /* Belső térköz token: mobil space-6 (32 px), asztal space-8 (72 px). */
+  --kc-services-panel-pad: var(--kc-space-6);
+  --kc-services-panel-gap: var(--kc-space-5);
+  --kc-services-stage-gap: var(--kc-space-6);
 }
 
 /* A clip a `.kc-visually-hidden` osztályon van. Itt csak a fókuszgyűrűt
@@ -107,7 +125,7 @@
 .kc-services-sin__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--kc-space-6);
+  gap: var(--kc-services-stage-gap);
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -220,9 +238,9 @@
 .kc-services-sin__panel {
   display: none;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--kc-space-5);
+  gap: var(--kc-services-panel-gap);
   min-width: 0;
-  padding: var(--kc-space-6);
+  padding: var(--kc-services-panel-pad);
   border-radius: var(--kc-radius-lg);
   /* C drót: puha tint kártya. A sötét sáv-kivételen is tint marad a panel,
      ezért az ink/muted itt a világos szövegtokenekre zár. */
@@ -237,7 +255,8 @@
 .kc-services-sin__copy {
   display: grid;
   align-content: start;
-  gap: var(--kc-space-4);
+  /* Proximity: eyebrow + cím + lead szorosabb, a szabály és a CTA levegőt kap. */
+  gap: var(--kc-space-3);
   min-width: 0;
 }
 
@@ -249,7 +268,7 @@
   letter-spacing: var(--kc-tracking-eyebrow);
   line-height: 1.3;
   text-transform: uppercase;
-  color: var(--kc-services-muted);
+  color: var(--kc-color-text);
 }
 
 .kc-services-sin__panel-title {
@@ -280,7 +299,7 @@
 .kc-services-sin__rule {
   width: 100%;
   height: 1px;
-  margin: 0;
+  margin: var(--kc-space-2) 0 0;
   border: 0;
   background-color: var(--kc-color-border-strong);
 }
@@ -292,7 +311,7 @@
 
 .kc-services-sin__cta {
   justify-self: start;
-  margin-top: var(--kc-space-2);
+  margin-top: var(--kc-space-4);
   /* C drót: a CTA az aktív kör ink családja, nem az accent-deep gombkék.
      A `kc-button--primary` osztály a storefront gombnyelv (érintőcél, állapot). */
   background-color: var(--kc-color-surface-dark);
@@ -504,11 +523,17 @@
 
   .kc-services-sin {
     height: 100%;
+    /* Desktop C-drót: 1/3 sín-oszlop, 2/3 panel; 72 px belső pad. */
+    --kc-services-panel-pad: var(--kc-space-8);
+    --kc-services-panel-gap: var(--kc-space-6);
+    --kc-services-stage-gap: var(--kc-space-7);
   }
 
   .kc-services-sin__layout {
-    grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
-    gap: var(--kc-space-6);
+    /* 1fr : 2fr = 1/3 : 2/3. A 16rem padló 900 px-en is kifér
+       (board-x + gap után); minmax(0) a Tenor min-content ellen. */
+    grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr);
+    gap: var(--kc-services-stage-gap);
     align-items: stretch;
     height: 100%;
   }
@@ -530,11 +555,11 @@
   }
 
   .kc-services-sin__panel {
-    /* Drót: másolat | álló fotó, a fotó a panel ~40%-a. Belső térköz: space-7. */
+    /* Drót: másolat | álló fotó (~60/40). Pad és rés a fenti tokenek. */
     grid-template-columns: minmax(0, 1.5fr) minmax(11rem, 1fr);
     align-items: stretch;
-    padding: var(--kc-space-7);
-    gap: var(--kc-space-6);
+    padding: var(--kc-services-panel-pad);
+    gap: var(--kc-services-panel-gap);
     min-height: 100%;
     height: 100%;
   }
