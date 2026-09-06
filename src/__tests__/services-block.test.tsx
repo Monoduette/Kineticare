@@ -397,6 +397,9 @@ describe('services-sin.css — token-szerződés', () => {
     )
     expect(css).toContain('background-color: var(--kc-color-primary)')
     expect(css).toContain('color: var(--kc-color-on-primary)')
+    expect(szabalyTorzs(css, '.kc-services-sin__rule')).toContain(
+      'background-color: var(--kc-color-border-strong)',
+    )
     expect(szabalyTorzs(css, '.kc-section.kc-board.kc-board--edge.kc-services--sin')).toContain(
       'min-height: auto',
     )
