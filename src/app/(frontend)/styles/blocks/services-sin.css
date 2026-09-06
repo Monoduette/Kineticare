@@ -189,7 +189,8 @@
 
 .kc-services-sin__panel-title {
   margin: 0;
-  font-family: var(--kc-font-heading);
+  /* Tenor Sans csak 400-as: a drót félkövér panel-címét a Nunito 700 viszi, L lépcsőn. */
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-bold);
   line-height: var(--kc-leading-heading);
