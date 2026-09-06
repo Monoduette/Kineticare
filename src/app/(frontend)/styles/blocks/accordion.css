@@ -1,7 +1,42 @@
 /**
  * Nyitható szekció (Accordion) — szekció-stílus.
+ *
+ * A TeamMembers CV-harmonikájának vizuális nyelvét viszi tovább (hajszálvonalas
+ * elválasztók, saját +/− jel a böngésző-háromszög helyett, akcent csak
+ * `accent-deep` szövegszínként), hogy a /rolunk két nyitható része ne legyen
  * kétféle. A szekció NEM tábla (`kc-board`): szöveg-nehéz referencia-tartalom,
- * --kc-font-l/m/s; UX-skill 4. pont — elemre írt px/rem TILOS). A sor-fejléc a
+ * ezért `kc-container--narrow` (720px) szélességben áll.
+ *
+ * MÉRETEK: minden betűméret a közös skáláról jön (UX-skill 4. pont — elemre írt
+ * px/rem TILOS).
+ *
+ * AKCENT-KORLÁT (tokens.css kontraszt-jegyzőkönyv): a kis felső felirat és a
+ * cím melletti kivonat `--kc-color-primary` (= accent-deep #2f6e9f: paperen
+ * 5,16:1, fehéren 5,45:1, tinten 4,72:1 — AA felett). A nyers
+ * `--kc-color-accent` (tinten 4,07:1) itt SEHOL nem jelenik meg.
+ *
+ * ÉRINTÉSI CÉLFELÜLET: a `summary` min-height 2.75rem (44px), a teljes sor
+ * szélességében kattintható (UX-skill 3. pont).
+ *
+ * FÓKUSZ: a gyűrűt a globális `:focus-visible` adja (base.css); itt csak az
+ * eltolása fordul befelé, hogy a teljes szélességű soron ne lógjon le
+ * (WCAG 2.2 SC 2.4.7 / 2.4.13).
+ *
+ * HOVER / NYITOTT SOR: a summary NEM kap háttérszínt hoverre vagy `[open]`-re.
+ * A tint sávon a korábbi hover-token (`surface-raised`, fehér) a kék sávra
+ * fehér sávot festett: a mutató a kattintás után is a summaryn marad, érintőn
+ * a `:hover` gyakran ragad. A nyitott állapotot a natív `details` és a +/− jel
+ * közli. A mutató helyzete a hover jelölője, a kitöltés nem kötelező
+ * (WCAG 2.2 SC 1.4.11):
+ * https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast
+ * Material 3: a hover áttetsző fedés ugyanazon a felületen, nem másik
+ * surface-tokenre cserélés:
+ * https://m3.material.io/foundations/interaction/states/state-layers
+ * Carbon accordion: a header alapból Transparent, a hover `$layer-hover`
+ * (ugyanazon a rétegen), nem emelt fehér felület:
+ * https://carbondesignsystem.com/components/accordion/style/
+ *
+ * Betöltés: a szekció-komponens importálja (src/components/blocks/Accordion.tsx).
  */
 
 .kc-accordion {
@@ -9,12 +44,6 @@
   --kc-accordion-muted: var(--kc-color-text-muted);
   --kc-accordion-rule: var(--kc-color-border);
   --kc-accordion-accent-text: var(--kc-color-primary);
-  --kc-accordion-hover: var(--kc-color-surface-tint);
-}
-
-/* Tint sávon a hover-felület a sáv FÖLÉ emelt fehér, különben nem válna el. */
-.kc-section--tint.kc-accordion {
-  --kc-accordion-hover: var(--kc-color-surface-raised);
 }
 
 /* Sötétkék sáv: fehér 15,63:1, accent-quiet 8,49:1 az inken — az accent-deep
@@ -24,7 +53,6 @@
   --kc-accordion-muted: var(--kc-color-on-dark-muted);
   --kc-accordion-rule: color-mix(in srgb, var(--kc-color-on-dark) 35%, transparent);
   --kc-accordion-accent-text: var(--kc-color-on-dark-muted);
-  --kc-accordion-hover: color-mix(in srgb, var(--kc-color-on-dark) 8%, transparent);
 }
 
 /* ---- Szekció-fej --------------------------------------------------------- */
@@ -82,15 +110,11 @@
   cursor: pointer;
   /* Saját nyitó-jel a böngésző-alapértelmezett háromszög helyett. */
   list-style: none;
-  transition: background-color var(--kc-motion-fast) var(--kc-ease-out);
+  background-color: transparent;
 }
 
 .kc-accordion__summary::-webkit-details-marker {
   display: none;
-}
-
-.kc-accordion__summary:hover {
-  background-color: var(--kc-accordion-hover);
 }
 
 /* A gyűrű a teljes szélességű soron BEFELÉ nyílik, különben a konténer szélén
@@ -178,11 +202,5 @@
 @media (min-width: 900px) {
   .kc-accordion__list {
     margin-top: var(--kc-space-7);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .kc-accordion__summary {
-    transition: none;
   }
 }
