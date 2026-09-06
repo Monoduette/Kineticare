@@ -6,9 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { Services } from '../components/blocks/Services'
-import { ctaLabel } from '../lib/cta-vocabulary'
 import { HOME_HELP_LEAD, HOME_HELP_STATES, HOME_HELP_TITLE } from '../lib/home-help-states'
-import { COURSE_SOS_KEZRELAX } from '../lib/legacy-redirects'
 import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import type { BlockServices } from '../payload-types'
 
@@ -263,7 +261,7 @@ describe('Services — REV C sín + panel', () => {
         body: state.body,
         felirat: state.felirat,
         url: state.url,
-        ujAblakban: false,
+        ujAblakban: state.ujAblakban,
       })),
     })
 
@@ -280,8 +278,22 @@ describe('Services — REV C sín + panel', () => {
     const markup = render(railBlock())
     expect(markup.match(/type="radio"/g)).toHaveLength(3)
     expect(markup).toContain('name="kc-help-sz1"')
-    expect(markup).toContain('Kézállapot')
+    expect(markup).toContain('Szolgáltatás')
+    expect(markup).not.toContain('Kézállapot')
+    expect(markup).not.toMatch(/>Zárt</)
+    expect(markup).not.toMatch(/>Nyíló</)
+    expect(markup).not.toMatch(/>Nyitott</)
     expect(markup).toContain('kc-visually-hidden')
+    expect(markup).toContain('kc-section--tint')
+    expect(markup).toContain('kc-services-sin__marker')
+    expect(markup).toContain('kc-services-sin__rail-blurb')
+    expect(markup).toContain('kc-services-sin__kicker')
+    expect(markup).toContain('kc-services-sin__rule')
+    expect(markup).toContain('kc-services-sin__cta-icon')
+    expect(markup).not.toContain('kc-services-sin__rail-index')
+    expect(markup).toContain('1. ÁLLAPOT')
+    expect(markup).toContain('2. ÁLLAPOT')
+    expect(markup).toContain('3. ÁLLAPOT')
     for (const state of HOME_HELP_STATES) {
       expect(markup).toContain(state.title)
       expect(markup).toContain(state.osszefoglalo)
@@ -289,9 +301,9 @@ describe('Services — REV C sín + panel', () => {
       expect(markup).toContain(state.felirat)
       expect(markup).toContain(`href="${state.url}"`)
     }
-    expect(markup).toContain(ctaLabel('free-sos-named-open'))
-    expect(markup).toContain(`href="${COURSE_SOS_KEZRELAX}"`)
-    expect(markup).toContain('Fotó később: Zárt')
+    expect(markup).toContain('Tovább a kezelésekre')
+    expect(markup).toContain('target="_blank"')
+    expect(markup).toContain('Fotó később: Rendelői kezelések')
     expect(markup).not.toContain('kc-services__row')
   })
 
@@ -301,7 +313,7 @@ describe('Services — REV C sín + panel', () => {
         elrendezes: 'sin',
         rows: [
           {
-            title: 'Zárt',
+            title: 'Rendelői kezelések',
             osszefoglalo: 'Rövid.',
             body: 'Törzs.',
             felirat: 'Gomb',
@@ -309,7 +321,7 @@ describe('Services — REV C sín + panel', () => {
             photo: {
               id: 41,
               url: '/help-zart-img-7541.webp',
-              alt: 'Zárt állapot fotója',
+              alt: 'Rendelői kezelés fotója',
               width: 876,
               height: 1400,
             } as BlockServices['image'],
@@ -319,7 +331,7 @@ describe('Services — REV C sín + panel', () => {
     )
     expect(markup).toContain('help-zart-img-7541.webp')
     expect(markup).toContain('kc-services-sin__photo')
-    expect(markup).toContain('Zárt állapot fotója')
+    expect(markup).toContain('Rendelői kezelés fotója')
     expect(markup).not.toContain('Fotó később')
   })
 
@@ -329,7 +341,7 @@ describe('Services — REV C sín + panel', () => {
         elrendezes: 'sin',
         rows: [
           {
-            title: 'Zárt',
+            title: 'Rendelői kezelések',
             osszefoglalo: 'Rövid.',
             body: 'Hosszabb szöveg.',
             felirat: 'Tovább',
@@ -338,7 +350,7 @@ describe('Services — REV C sín + panel', () => {
         ],
       }),
     )
-    expect(markup).toContain('Zárt')
+    expect(markup).toContain('Rendelői kezelések')
     expect(markup).toContain('Hosszabb szöveg.')
     expect(markup).not.toContain('Tovább')
     expect(markup).not.toContain('javascript:')
@@ -372,9 +384,22 @@ describe('services-sin.css — token-szerződés', () => {
     )
   })
 
-  it('a kiválasztást a meglévő primary és tint token jelzi, új hex nélkül', () => {
-    expect(css).toContain('border-left-color: var(--kc-color-primary)')
-    expect(css).toContain('background-color: var(--kc-color-surface-tint)')
+  it('a kiválasztást körjelölő és kiemelt panel jelzi, számozott lista nélkül, új hex nélkül', () => {
+    expect(css).not.toContain('kc-services-sin__rail-index')
+    expect(css).not.toContain('border-left-color:')
+    expect(css).not.toMatch(/flex-wrap:\s*wrap\b/)
+    expect(szabalyTorzs(css, '.kc-services-sin__rail')).toContain('flex-direction: column')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
+      'border-radius: var(--kc-radius-full)',
+    )
+    expect(css).toContain('background-color: var(--kc-color-primary)')
+    expect(css).toContain('color: var(--kc-color-on-primary)')
+    expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
+      'box-shadow: var(--kc-shadow-md)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
+      'border-radius: var(--kc-radius-lg)',
+    )
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 })

@@ -15,6 +15,7 @@ import '../../app/(frontend)/styles/blocks/services-sin.css'
  * Services — tábla (kép + számozott sorok) vagy sín + panel (REV C).
  * A sín natív rádiócsoport: W3C APG Radio Group, nem hamis tablista.
  * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
+ * Vizuális króm: függőleges idővonal körjelölőkkel, kiemelt kétoszlopos panel.
  */
 export interface ServicesProps {
   block: BlockServices
@@ -57,8 +58,9 @@ export function Services({ block }: ServicesProps) {
 function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[] }) {
   const settings = block.sectionSettings
   const anchorId = settings?.anchorId?.trim() || undefined
-  const variant =
-    settings?.hatter === 'tint' ? 'tint' : settings?.hatter === 'sotet' ? 'dark' : 'default'
+  // A drót a sávot hűvös tinten kéri. A sötét sáv marad szerkesztői kivétel;
+  // a fehér CMS-érték itt is tintet kap, különben a kiemelt panel nem válik el.
+  const variant = settings?.hatter === 'sotet' ? 'dark' : 'tint'
   const headingId = `services-cim-${block.id ?? 'fo'}`
   const eyebrow = block.eyebrow?.trim() ?? ''
   const title = block.title?.trim() ?? ''
@@ -90,7 +92,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
           </div>
         ) : null}
         <fieldset className="kc-services-sin">
-          <legend className="kc-visually-hidden">Kézállapot</legend>
+          <legend className="kc-visually-hidden">Szolgáltatás</legend>
           {rows.map((row, index) => {
             const inputId = `${groupName}-${index}`
             return (
@@ -109,17 +111,27 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
             <div className="kc-services-sin__rail">
               {rows.map((row, index) => {
                 const rowTitle = row.title.trim()
-                const number = row.number?.trim() || String(index + 1)
+                const blurb = row.osszefoglalo?.trim() ?? ''
                 return (
                   <label
                     className="kc-services-sin__rail-label"
                     htmlFor={`${groupName}-${index}`}
                     key={`rail-${row.id ?? index}`}
                   >
-                    <span aria-hidden="true" className="kc-services-sin__rail-index">
-                      {number}
+                    <span aria-hidden="true" className="kc-services-sin__marker">
+                      <span className="kc-services-sin__marker-idle">
+                        <RailDoorIcon index={index} />
+                      </span>
+                      <span className="kc-services-sin__marker-active">
+                        <RailActiveArrow />
+                      </span>
                     </span>
-                    {rowTitle}
+                    <span className="kc-services-sin__rail-copy">
+                      <span className="kc-services-sin__rail-title">{rowTitle}</span>
+                      {blurb.length > 0 ? (
+                        <span className="kc-services-sin__rail-blurb">{blurb}</span>
+                      ) : null}
+                    </span>
                   </label>
                 )
               })}
@@ -157,14 +169,19 @@ function RailPanel({
   const label = row.felirat?.trim() ?? ''
   const photo = populatedMedia(row.photo)
   const headingId = `${groupName}-panel-${index}`
+  const kicker = `${index + 1}. ÁLLAPOT`
 
   return (
     <article aria-labelledby={headingId} className="kc-services-sin__panel">
       <div className="kc-services-sin__copy">
+        <p aria-hidden="true" className="kc-services-sin__kicker">
+          {kicker}
+        </p>
         <h3 className="kc-services-sin__panel-title" id={headingId}>
           {rowTitle}
         </h3>
         {summary.length > 0 ? <p className="kc-services-sin__osszefoglalo">{summary}</p> : null}
+        <hr className="kc-services-sin__rule" />
         {body.length > 0 ? <p className="kc-services-sin__body">{body}</p> : null}
         {url && label.length > 0 ? (
           <Button
@@ -173,6 +190,7 @@ function RailPanel({
             openInNewTab={Boolean(row.ujAblakban)}
           >
             {label}
+            <CtaArrowIcon />
           </Button>
         ) : null}
       </div>
@@ -310,5 +328,82 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
         </ol>
       </div>
     </Section>
+  )
+}
+
+/** Vonalas ajtó-ikon a sín inaktív körében. A kitöltött aktív kör fehér nyilat visz. */
+function RailDoorIcon({ index }: { index: number }) {
+  if (index % 3 === 0) return <ClinicDoorIcon />
+  if (index % 3 === 1) return <HomeDoorIcon />
+  return <WorkshopDoorIcon />
+}
+
+function railIconProps() {
+  return {
+    'aria-hidden': true as const,
+    fill: 'none',
+    focusable: false as const,
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.75,
+    viewBox: '0 0 24 24',
+  }
+}
+
+function ClinicDoorIcon() {
+  return (
+    <svg {...railIconProps()}>
+      <rect height="14" rx="2" width="14" x="5" y="5" />
+      <path d="M12 8.5v7M8.5 12h7" />
+    </svg>
+  )
+}
+
+function HomeDoorIcon() {
+  return (
+    <svg {...railIconProps()}>
+      <path d="M4.5 11 12 4.5 19.5 11" />
+      <path d="M7 10.5V19h10v-8.5" />
+      <path d="M10 19v-5h4v5" />
+    </svg>
+  )
+}
+
+function WorkshopDoorIcon() {
+  return (
+    <svg {...railIconProps()}>
+      <path d="M3.5 10.5 12 6l8.5 4.5L12 15 3.5 10.5z" />
+      <path d="M7 12.5v3.5c2 1.4 8 1.4 10 0v-3.5" />
+      <path d="M20.5 10.5v6" />
+    </svg>
+  )
+}
+
+function RailActiveArrow() {
+  return (
+    <svg {...railIconProps()}>
+      <path d="M7 17 17 7" />
+      <path d="M9 7h8v8" />
+    </svg>
+  )
+}
+
+function CtaArrowIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="kc-services-sin__cta-icon"
+      fill="none"
+      focusable="false"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M5 12h14" />
+      <path d="M13 6l6 6-6 6" />
+    </svg>
   )
 }

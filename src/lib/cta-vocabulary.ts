@@ -43,8 +43,8 @@ export type CtaAction =
   | 'password-reset-start'
   | 'free-strip-jump'
   | 'course-modules-jump'
-  | 'services-list-open'
-  | 'free-sos-named-open'
+  | 'treatments-open'
+  | 'workshop-open'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -518,10 +518,12 @@ export const CTA_VOCABULARY = [
     pattern: null,
   },
   {
-    // §3.2 #40 – a szolgáltatások listája (kezdőlapi sín, Nyitott állapot).
+    // §3.2 #40 – a rendelői kezelések oldala (kezdőlapi sín, 1. ajtó).
+    // A szótár M-7 szerinti alakja; a sín CMS-felirata a Szerkesztő
+    // 2026-09-06-i zárolása: `Tovább a kezelésekre`.
     section: '#40',
-    action: 'services-list-open',
-    label: 'Nézd meg a szolgáltatásokat',
+    action: 'treatments-open',
+    label: 'Nézd meg a kezeléseket',
     person: 'e2',
     weight: 'primary',
     progress: null,
@@ -529,12 +531,10 @@ export const CTA_VOCABULARY = [
     pattern: null,
   },
   {
-    // §3.2 #41 – a Zárt állapot paneljének terméknevű belépője. MERGE HOLD:
-    // ugyanoda visz, mint a #3/#4 (`Elindítom ingyen`). A tulajdonos a
-    // terméknevet hagyta jóvá a sín-CTA-ra; a 3.2.4 ütközést emberi döntés zárja.
+    // §3.2 #41 – a ProBody kézworkshop külső oldala (kezdőlapi sín, 3. ajtó).
     section: '#41',
-    action: 'free-sos-named-open',
-    label: 'Ingyenes SOS KézRelax',
+    action: 'workshop-open',
+    label: 'Nézd meg a kézworkshopot',
     person: 'e2',
     weight: 'primary',
     progress: null,

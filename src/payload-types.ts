@@ -820,11 +820,11 @@ export interface BlockServices {
    */
   title?: string | null;
   /**
-   * A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a kézállapot-út magyarázata. Nem kötelező.
+   * A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a három út rövid magyarázata. Nem kötelező.
    */
   lead?: string | null;
   /**
-   * A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon állapotválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.
+   * A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon ajtóválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.
    */
   elrendezes?: ('tabla' | 'sin') | null;
   /**
@@ -832,7 +832,7 @@ export interface BlockServices {
    */
   image?: (number | null) | Media;
   /**
-   * Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy kézállapot (Zárt, Nyíló, Nyitott). Legfeljebb 5.
+   * Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy ajtó (Rendelői kezelések, Otthoni program, Szakmai képzések). Legfeljebb 5.
    */
   rows?:
     | {
@@ -841,11 +841,11 @@ export interface BlockServices {
          */
         number?: string | null;
         /**
-         * A szolgáltatás vagy kézállapot neve (pl. „Rendelői kezelések" vagy „Zárt").
+         * A szolgáltatás-ajtó neve (pl. „Rendelői kezelések", „Otthoni program").
          */
         title: string;
         /**
-         * Sín-elrendezésnél a panel első mondata (pl. „A kéz még inkább összezárva…"). Táblánál nem jelenik meg. Nem kötelező.
+         * Sín-elrendezésnél a sín rövid másodlagos sora és a panel félkövér bevezetője (pl. „Személyes kezelés a stúdióban."). Táblánál nem jelenik meg. Nem kötelező.
          */
         osszefoglalo?: string | null;
         /**

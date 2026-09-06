@@ -316,7 +316,7 @@ describe('owner-approved 2026-09-05 published variants', () => {
       rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.title),
     ).toEqual([...HOME_HELP_STATE_TITLES])
     expect(rows(find(result.layout, 'services', 'Így tudunk segíteni'))[2].felirat).toBe(
-      ctaLabel('services-list-open'),
+      ctaLabel('workshop-open'),
     )
     expect(
       rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.id),
@@ -355,8 +355,8 @@ describe('owner-approved 2026-09-05 published variants', () => {
       const result = planOwnerReviewV1(input)
       const next = rows(find(result.layout, 'services', 'Így tudunk segíteni'))
       expect(next.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
-      expect(next[2].felirat).toBe(ctaLabel('services-list-open'))
-      expect(next[2].url).toBe('/szolgaltatasok')
+      expect(next[2].felirat).toBe(ctaLabel('workshop-open'))
+      expect(next[2].url).toBe('https://probodystudio.hu/kez-workshop/')
     },
   )
 

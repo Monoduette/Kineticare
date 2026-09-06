@@ -3,6 +3,7 @@ import { ctaLabel } from './cta-vocabulary'
 import {
   HOME_HELP_LEAD,
   HOME_HELP_STATES,
+  isClosedHandHomeHelpRail,
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
 } from './home-help-states'
@@ -637,7 +638,15 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
             typeof record(row).felirat === 'string' &&
             String(record(row).felirat).trim().length > 0,
         )
-      if (isLegacyThreeWayHomeHelp(liveRows) && linkedRows && servicesVisible) {
+      if (isHomeHelpRailRows(liveRows)) {
+        field('H08', services, ['elrendezes'], 'sin')
+        field('H08', services, ['lead'], HOME_HELP_LEAD)
+        field('H08', services, ['sectionSettings', 'hatter'], 'tint')
+      } else if (
+        (isLegacyThreeWayHomeHelp(liveRows) || isClosedHandHomeHelpRail(liveRows)) &&
+        linkedRows &&
+        servicesVisible
+      ) {
         const liveTarget = { ...services, old: layout[services.index] }
         const canonicalHelpRows = at(services.old, ['rows'])
         const lockedPhotos = Array.isArray(canonicalHelpRows)
@@ -656,7 +665,7 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
             body: state.body,
             felirat: state.felirat,
             url: state.url,
-            ujAblakban: false,
+            ujAblakban: state.ujAblakban,
             ...(photos[index] !== undefined ? { photo: photos[index] } : {}),
           })),
           liveRows,
@@ -664,10 +673,8 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
         field('H08', liveTarget, ['elrendezes'], 'sin')
         field('H08', liveTarget, ['lead'], HOME_HELP_LEAD)
         field('H08', liveTarget, ['eyebrow'], '')
+        field('H08', liveTarget, ['sectionSettings', 'hatter'], 'tint')
         field('H08', liveTarget, ['rows'], nextRows)
-      } else if (isHomeHelpRailRows(liveRows)) {
-        field('H08', services, ['elrendezes'], 'sin')
-        field('H08', services, ['lead'], HOME_HELP_LEAD)
       } else {
         patchServiceRows('H08', services)
       }
@@ -713,7 +720,7 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
         skip(
           'H08',
           'missing-service-links',
-          'A háromsoros, látható kézállapot-sín és a meglévő CTA-k szükségesek a states kiváltásához.',
+          'A háromsoros, látható szolgáltatás-sín és a meglévő CTA-k szükségesek a states kiváltásához.',
           states.index,
         )
       } else if (
@@ -733,7 +740,7 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
           before: original[states.index],
           after: null,
           reason:
-            'A kanonikus states helyett a három kézállapot a services sín + panel elrendezésben él.',
+            'A kanonikus states helyett a három szolgáltatás-ajtó a services sín + panel elrendezésben él.',
         })
       }
     }

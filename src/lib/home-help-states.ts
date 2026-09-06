@@ -1,18 +1,22 @@
 /**
  * Kezdőlapi „Így tudunk segíteni" — REV C sín + panel kanonikus szövege.
  *
- * A három kézállapot (Zárt / Nyíló / Nyitott) a logó ívét követi. A szöveget
- * Pocs + Szerkesztő hagyta jóvá, gondolatjel nélkül. A sín-CTA-k a §3.2
- * szótárból jönnek. A /szolgaltatasok tábla-elrendezése ehhez nem nyúl.
+ * A három síncímke szolgáltatás-ajtó (Rendelői kezelések / Otthoni program /
+ * Szakmai képzések), nem kézállapot. A szöveget a Szerkesztő 2026-09-06-án
+ * karakterre zárta, gondolatjel nélkül. A sín-CTA-k a §3.2 szótárból jönnek,
+ * kivéve a rendelői ajtó CMS-feliratát: a tulajdonos az élő
+ * `Tovább a kezelésekre` alakot hagyta jóvá; a szótár #40 M-7 szerint
+ * `Nézd meg a kezeléseket` marad. A /szolgaltatasok tábla-elrendezése ehhez
+ * nem nyúl.
  */
 
 import { ctaLabel } from './cta-vocabulary'
-import { COURSE_SOS_KEZRELAX } from './legacy-redirects'
+import { PROFESSIONAL_TRAINING_URL } from './menu-seed'
 
 export const HOME_HELP_TITLE = 'Így tudunk segíteni'
 
 export const HOME_HELP_LEAD =
-  'A logónk három kézállapotot rajzol ki. Itt ezen az úton igazítunk: megfigyelés alapján, nem diagnózis.'
+  'Három út, ahogy a kezeddel foglalkozunk: személyesen a stúdióban, otthon a saját tempódban, vagy szakmai képzésen.'
 
 export const LEGACY_HOME_HELP_TITLES = [
   'Rendelői kezelések',
@@ -23,10 +27,17 @@ export const LEGACY_HOME_HELP_TITLES = [
 export const LEGACY_HOME_HELP_URLS = [
   '/szolgaltatasok',
   '/kurzusok',
-  'https://probodystudio.hu/kez-workshop/',
+  PROFESSIONAL_TRAINING_URL,
 ] as const
 
-export const HOME_HELP_STATE_TITLES = ['Zárt', 'Nyíló', 'Nyitott'] as const
+export const HOME_HELP_STATE_TITLES = [
+  'Rendelői kezelések',
+  'Otthoni program',
+  'Szakmai képzések',
+] as const
+
+/** A REV C első, kézállapot-címkés sín — H08 ebből viszi át a szolgáltatás-ajtókra. */
+export const CLOSED_HAND_HOME_HELP_TITLES = ['Zárt', 'Nyíló', 'Nyitott'] as const
 
 export interface HomeHelpStateRow {
   readonly number: string
@@ -35,13 +46,14 @@ export interface HomeHelpStateRow {
   readonly body: string
   readonly felirat: string
   readonly url: string
-  readonly ujAblakban: false
+  readonly ujAblakban: boolean
 }
 
 /**
  * Zárolt sín-fotók a Drive-anyagból (IMG_7541, SYL_9297, SYL_9260).
  * Szándékosan nem a `katak-labdaval` / `katak-team` / Katakfeherbenhattal képek:
- * azok más szekciók portréi, a sín állapotonként saját felvételt kap.
+ * azok más szekciók portréi, a sín ajtónként saját felvételt kap.
+ * A fájlnevek történeti (`help-zart-…`); a látogatói címke nem ezekből jön.
  */
 export const HOME_HELP_PHOTO_FILES = [
   'help-zart-img-7541.jpg',
@@ -52,30 +64,30 @@ export const HOME_HELP_PHOTO_FILES = [
 export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
   {
     number: '1',
-    title: 'Zárt',
-    osszefoglalo: 'A kéz még inkább összezárva, a mindennapi mozdulat óvatos.',
-    body: 'Ha a markolás, a nyitás vagy a terhelés még szűk tartományban van, először kis, biztonságos lépéssel érdemes kezdeni. Az Ingyenes SOS KézRelax ehhez ad azonnal elérhető gyakorlatokat: otthon, a saját tempódban.',
-    felirat: ctaLabel('free-sos-named-open'),
-    url: COURSE_SOS_KEZRELAX,
+    title: 'Rendelői kezelések',
+    osszefoglalo: 'Személyes kezelés a stúdióban.',
+    body: 'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.',
+    felirat: 'Tovább a kezelésekre',
+    url: '/szolgaltatasok',
     ujAblakban: false,
   },
   {
     number: '2',
-    title: 'Nyíló',
-    osszefoglalo: 'Már van mozgás, de a tartomány még nem teljes.',
-    body: 'Amikor a kéz már nyílik, de a hétköznapi feladatok még töredeznek, a következő lépés a rendszeres, lépésről lépésre épülő otthoni gyakorlás. A kurzusoldalon látod a teljes programot és az árat: ígéret és százalék nélkül.',
+    title: 'Otthoni program',
+    osszefoglalo: 'Videókurzus, a saját ritmusodban.',
+    body: 'Ha otthon szeretnél gyakorolni, az Otthoni KézRehab Program lépésről lépésre visz. A teljes tartalom és az ár a kurzusoldalon van: ígéret és százalék nélkül.',
     felirat: ctaLabel('course-list-open'),
     url: '/kurzusok',
     ujAblakban: false,
   },
   {
     number: '3',
-    title: 'Nyitott',
-    osszefoglalo: 'A kéz újra szélesebb tartományban használható.',
-    body: 'Ha a cél a tartós mindennapi használat, vagy személyes iránymutatást keresel, egy helyen nézheted át, milyen utak vannak nálunk: rendelő, otthoni program, szakmai út. Te választasz; mi nem sorolunk be diagnózisba.',
-    felirat: ctaLabel('services-list-open'),
-    url: '/szolgaltatasok',
-    ujAblakban: false,
+    title: 'Szakmai képzések',
+    osszefoglalo: 'Akkreditált kézkurzus szakembereknek.',
+    body: 'A ProBody Stúdióval együtt tartott tantermi kézkurzus a kéz, a csukló és a könyök rehabilitációs lehetőségeiről szól: gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.',
+    felirat: ctaLabel('workshop-open'),
+    url: PROFESSIONAL_TRAINING_URL,
+    ujAblakban: true,
   },
 ]
 
@@ -84,6 +96,9 @@ const titlesOf = (rows: readonly { title?: unknown }[]): string[] =>
 
 const urlsOf = (rows: readonly { url?: unknown }[]): string[] =>
   rows.map((row) => (typeof row.url === 'string' ? row.url : ''))
+
+const osszefoglalokOf = (rows: readonly { osszefoglalo?: unknown }[]): string[] =>
+  rows.map((row) => (typeof row.osszefoglalo === 'string' ? row.osszefoglalo : ''))
 
 /** Élő, háromsoros Rendelői / Otthoni / Szakmai felosztás a kanonikus célokkal. */
 export const isLegacyThreeWayHomeHelp = (rows: unknown): boolean => {
@@ -100,14 +115,32 @@ export const isLegacyThreeWayHomeHelp = (rows: unknown): boolean => {
   )
 }
 
-/** Már a REV C három kézállapot-sora. */
+/**
+ * Már a REV C három szolgáltatás-ajtaja a kanonikus összegzéssel.
+ * A cím önmagában nem elég: az élő háromoszlopos tábla ugyanezeket a címeket viseli.
+ */
 export const isHomeHelpRailRows = (rows: unknown): boolean => {
   if (!Array.isArray(rows) || rows.length !== 3) return false
   const titles = titlesOf(rows)
+  const osszefoglalok = osszefoglalokOf(rows)
   return (
     titles[0] === HOME_HELP_STATE_TITLES[0] &&
     titles[1] === HOME_HELP_STATE_TITLES[1] &&
-    titles[2] === HOME_HELP_STATE_TITLES[2]
+    titles[2] === HOME_HELP_STATE_TITLES[2] &&
+    osszefoglalok[0] === HOME_HELP_STATES[0].osszefoglalo &&
+    osszefoglalok[1] === HOME_HELP_STATES[1].osszefoglalo &&
+    osszefoglalok[2] === HOME_HELP_STATES[2].osszefoglalo
+  )
+}
+
+/** REV C sín, még a kézállapot-címkékkel (Zárt / Nyíló / Nyitott). */
+export const isClosedHandHomeHelpRail = (rows: unknown): boolean => {
+  if (!Array.isArray(rows) || rows.length !== 3) return false
+  const titles = titlesOf(rows)
+  return (
+    titles[0] === CLOSED_HAND_HOME_HELP_TITLES[0] &&
+    titles[1] === CLOSED_HAND_HOME_HELP_TITLES[1] &&
+    titles[2] === CLOSED_HAND_HOME_HELP_TITLES[2]
   )
 }
 
@@ -118,7 +151,7 @@ export interface HomeHelpRailRow {
   readonly body: string
   readonly felirat: string
   readonly url: string
-  readonly ujAblakban: false
+  readonly ujAblakban: boolean
   readonly photo?: number
 }
 

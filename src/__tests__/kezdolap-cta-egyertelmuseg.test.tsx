@@ -133,7 +133,7 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
     }
   })
 
-  it('a seed-szekciósorral renderelt kezdőlapon sem tartozik két felirat egy célhoz, a MERGE HOLD SOS-pár kivételével', () => {
+  it('a seed-szekciósorral renderelt kezdőlapon sem tartozik két felirat egy célhoz', () => {
     const html = render(
       createElement(RenderBlocks, {
         layout: buildHomeLayout(),
@@ -143,20 +143,7 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
       }),
     )
 
-    // MERGE HOLD: a Zárt sín-CTA a terméknevet viseli (#41), a FreeSos sáv
-    // ugyanarra a SOS-oldalra az #3/#4 `Elindítom ingyen` feliratot. A
-    // tulajdonos a két feliratot együtt hagyta jóvá; egyesítés külön döntés.
-    const holdSosHref = '/kurzusok/sos-kezrelax-villamkurzus'
-    const holdSosLabels = ['Elindítom ingyen', 'Ingyenes SOS KézRelax']
-
     for (const [href, labels] of labelsByHref(html)) {
-      if (href === holdSosHref) {
-        expect(
-          Array.from(labels).sort(),
-          `A MERGE HOLD SOS-pár feliratai megváltoztak a(z) ${href} célon`,
-        ).toEqual([...holdSosLabels].sort())
-        continue
-      }
       expect(
         Array.from(labels),
         `A(z) ${href} célra több felirat él ugyanazon a lapon: ${Array.from(labels).join(' | ')}`,

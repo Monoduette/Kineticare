@@ -465,9 +465,10 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     sectionSettings: { visible: true, hatter: 'feher' },
   },
 
-  // REV C sín + panel. A ProBody-sor a /szolgaltatasok táblán és a menüben
-  // marad; itt a három kézállapot áll. A panel-fotók a zárolt Drive-képek
-  // (IMG_7541, SYL_9297, SYL_9260), nem a Kata-csoportképek.
+  // REV C sín + panel a drót idővonal-krómjával, tint sávon. A ProBody-sor a
+  // /szolgaltatasok táblán és a menüben is él; itt a három szolgáltatás-ajtó
+  // áll. A panel-fotók a zárolt Drive-képek (IMG_7541, SYL_9297, SYL_9260),
+  // nem a Kata-csoportképek.
   {
     blockType: 'services',
     title: HOME_HELP_TITLE,
@@ -475,7 +476,7 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     elrendezes: 'sin',
     image: media['services-hands.png'],
     rows: homeHelpRailRows(HOME_HELP_PHOTO_FILES.map((file) => media[file])),
-    sectionSettings: { visible: true, hatter: 'feher' },
+    sectionSettings: { visible: true, hatter: 'tint' },
   },
 
   // Rólunk + statisztikák. A számok a landing VALÓS adatai — kitalált

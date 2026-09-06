@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { buildHomeLayout } from '../lib/home-seed'
 import {
+  CLOSED_HAND_HOME_HELP_TITLES,
   HOME_HELP_LEAD,
   HOME_HELP_PHOTO_FILES,
   HOME_HELP_STATE_TITLES,
@@ -10,10 +11,11 @@ import {
   LEGACY_HOME_HELP_ROWS,
   LEGACY_HOME_HELP_URLS,
   homeHelpRailRows,
+  isClosedHandHomeHelpRail,
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
 } from '../lib/home-help-states'
-import { COURSE_SOS_KEZRELAX } from '../lib/legacy-redirects'
+import { PROFESSIONAL_TRAINING_URL } from '../lib/menu-seed'
 
 describe('home-help-states — REV C felismerés', () => {
   it('a háromsoros Rendelői / Otthoni / Szakmai felosztást címen és URL-en ismeri fel', () => {
@@ -34,12 +36,22 @@ describe('home-help-states — REV C felismerés', () => {
     ).toBe(false)
   })
 
-  it('a Zárt / Nyíló / Nyitott sorokat a cím alapján ismeri fel', () => {
+  it('a kanonikus sín-sorokat az összegzésről ismeri fel, a tábla-hármastól megkülönbözteti', () => {
     expect(isHomeHelpRailRows(homeHelpRailRows())).toBe(true)
     expect(isHomeHelpRailRows(LEGACY_HOME_HELP_ROWS)).toBe(false)
+    expect(isClosedHandHomeHelpRail(homeHelpRailRows())).toBe(false)
+    expect(
+      isClosedHandHomeHelpRail(
+        CLOSED_HAND_HOME_HELP_TITLES.map((title, index) => ({
+          title,
+          url: LEGACY_HOME_HELP_URLS[index],
+          felirat: 'Gomb',
+        })),
+      ),
+    ).toBe(true)
   })
 
-  it('a seed kezdőlap a sín kanonikus szövegét és a SOS / lista / szolgáltatások célokat viszi', () => {
+  it('a seed kezdőlap a sín kanonikus szövegét és a kezelés / lista / workshop célokat viszi', () => {
     const help = buildHomeLayout().find(
       (block) => block.blockType === 'services' && block.title === HOME_HELP_TITLE,
     )
@@ -47,14 +59,15 @@ describe('home-help-states — REV C felismerés', () => {
       throw new Error('Hiányzik a kezdőlapi segítség-szekció.')
     }
     expect(help.elrendezes).toBe('sin')
+    expect(help.sectionSettings?.hatter).toBe('tint')
     expect(help.lead).toBe(HOME_HELP_LEAD)
     expect(help.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
     expect(help.rows?.map((row) => row.url)).toEqual([
-      COURSE_SOS_KEZRELAX,
-      '/kurzusok',
       '/szolgaltatasok',
+      '/kurzusok',
+      PROFESSIONAL_TRAINING_URL,
     ])
-    expect(help.rows?.map((row) => row.url)).not.toContain(LEGACY_HOME_HELP_URLS[2])
+    expect(help.rows?.map((row) => row.ujAblakban)).toEqual([false, false, true])
   })
 
   it('a sín fotói a zárolt Drive-képek, nem a Kata-csoportképek', () => {
@@ -90,28 +103,32 @@ describe('home-help-states — REV C felismerés', () => {
   it('a Szerkesztő C panel-szövege karakterre egyezik, gondolatjel nélkül', () => {
     expect(HOME_HELP_TITLE).toBe('Így tudunk segíteni')
     expect(HOME_HELP_LEAD).toBe(
-      'A logónk három kézállapotot rajzol ki. Itt ezen az úton igazítunk: megfigyelés alapján, nem diagnózis.',
+      'Három út, ahogy a kezeddel foglalkozunk: személyesen a stúdióban, otthon a saját tempódban, vagy szakmai képzésen.',
     )
-    expect(HOME_HELP_STATES.map((state) => state.title)).toEqual(['Zárt', 'Nyíló', 'Nyitott'])
+    expect(HOME_HELP_STATES.map((state) => state.title)).toEqual([
+      'Rendelői kezelések',
+      'Otthoni program',
+      'Szakmai képzések',
+    ])
     expect(HOME_HELP_STATES.map((state) => state.osszefoglalo)).toEqual([
-      'A kéz még inkább összezárva, a mindennapi mozdulat óvatos.',
-      'Már van mozgás, de a tartomány még nem teljes.',
-      'A kéz újra szélesebb tartományban használható.',
+      'Személyes kezelés a stúdióban.',
+      'Videókurzus, a saját ritmusodban.',
+      'Akkreditált kézkurzus szakembereknek.',
     ])
     expect(HOME_HELP_STATES.map((state) => state.body)).toEqual([
-      'Ha a markolás, a nyitás vagy a terhelés még szűk tartományban van, először kis, biztonságos lépéssel érdemes kezdeni. Az Ingyenes SOS KézRelax ehhez ad azonnal elérhető gyakorlatokat: otthon, a saját tempódban.',
-      'Amikor a kéz már nyílik, de a hétköznapi feladatok még töredeznek, a következő lépés a rendszeres, lépésről lépésre épülő otthoni gyakorlás. A kurzusoldalon látod a teljes programot és az árat: ígéret és százalék nélkül.',
-      'Ha a cél a tartós mindennapi használat, vagy személyes iránymutatást keresel, egy helyen nézheted át, milyen utak vannak nálunk: rendelő, otthoni program, szakmai út. Te választasz; mi nem sorolunk be diagnózisba.',
+      'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.',
+      'Ha otthon szeretnél gyakorolni, az Otthoni KézRehab Program lépésről lépésre visz. A teljes tartalom és az ár a kurzusoldalon van: ígéret és százalék nélkül.',
+      'A ProBody Stúdióval együtt tartott tantermi kézkurzus a kéz, a csukló és a könyök rehabilitációs lehetőségeiről szól: gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.',
     ])
     expect(HOME_HELP_STATES.map((state) => state.felirat)).toEqual([
-      'Ingyenes SOS KézRelax',
+      'Tovább a kezelésekre',
       'Nézd meg a kurzusokat',
-      'Nézd meg a szolgáltatásokat',
+      'Nézd meg a kézworkshopot',
     ])
     expect(HOME_HELP_STATES.map((state) => state.url)).toEqual([
-      '/kurzusok/sos-kezrelax-villamkurzus',
-      '/kurzusok',
       '/szolgaltatasok',
+      '/kurzusok',
+      PROFESSIONAL_TRAINING_URL,
     ])
     const copy = [
       HOME_HELP_TITLE,
@@ -124,5 +141,6 @@ describe('home-help-states — REV C felismerés', () => {
       ]),
     ].join('\n')
     expect(copy).not.toMatch(/[\u2013\u2014]/)
+    expect(copy).not.toMatch(/\b(Zárt|Nyíló|Nyitott)\b/)
   })
 })

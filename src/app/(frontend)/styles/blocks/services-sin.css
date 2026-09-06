@@ -1,23 +1,30 @@
 /**
  * Szolgáltatás-sín + panel (REV C) — a kezdőlap „Így tudunk segíteni" elrendezése.
  *
- * Nem ARIA-tablista. A három kézállapot kölcsönösen kizáró választás, ezért
- * natív rádiócsoport: a W3C APG Radio Group mintája (nyíl a csoporton belül,
- * Space/kattintás a címkén). A tab-minta azért marad ki, mert a tabok
- * oldal-szintű nézetváltást ígérnek, itt viszont egy folyamat három állapota
- * áll egymás mellett.
+ * Nem ARIA-tablista. A három szolgáltatás-ajtó kölcsönösen kizáró választás,
+ * ezért natív rádiócsoport: a W3C APG Radio Group mintája (nyíl a csoporton
+ * belül, Space/kattintás a címkén). A tab-minta azért marad ki, mert a tabok
+ * oldal-szintű nézetváltást ígérnek; itt egy sáv három ajtaja áll egymás mellett.
  * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
  *
  * Vizuális rokon: NN/g, Tabs, Used Right — azonos kontextusban váltott nézetek,
  * a kiválasztott elem jelölt; a viselkedés mégis rádió, nem tab.
  * https://www.nngroup.com/articles/tabs-used-right/
- * IBM Carbon Tabs: a kiválasztást bal szegély + tint felület jelzi, nem új szín.
- * https://carbondesignsystem.com/components/tabs/usage/
+ *
+ * A kiválasztás KRÓMJA a drót idővonala: vékony összekötő + körjelölő
+ * (inaktív: körvonal + vonalas ikon; aktív: kitöltött primary kör + fehér nyíl).
+ * Nem számozott lista, nem bal oldali sáv. Material 3 a kiválasztást kitöltött
+ * jelölővel teszi egyértelművé; a Carbon Tabs bal-szegélyes mintája ide szándékosan
+ * nem jön át — a tulajdonos azt a kromot utasította el.
+ * https://m3.material.io/foundations/interaction/states/overview
+ *
+ * Panel: GOV.UK a elsődleges gombot kitöltött, egyértelmű cselekvésnek tartja.
+ * https://design-system.service.gov.uk/components/button/
  *
  * Mért küszöbök (tokens.css, nem szemre):
  * - szöveg: ink a tinten 13,53:1, muted a tinten 8,05:1 (WCAG 2.2 SC 1.4.3)
- * - UI-határ: border-strong a papíron 4,13:1; primary szegély UI ≥ 3:1
- * - érintőcél: min-height 2.75rem (44 px, SC 2.5.8 célértéke)
+ * - UI-határ: a körvonal border-strong (≥ 3:1, SC 1.4.11); a gerinc dekoratív
+ * - érintőcél: a címke min-height 2.75rem (44 px, SC 2.5.8 célértéke)
  * - 320 px: overflow-wrap + min-width: 0 (SC 1.4.10 Reflow)
  * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja
  */
@@ -25,6 +32,7 @@
 .kc-section.kc-board.kc-services--sin {
   min-height: auto;
   overflow: visible;
+  padding-bottom: var(--kc-space-7);
 }
 
 .kc-services--sin .kc-services-sin__header {
@@ -64,47 +72,91 @@
 .kc-services-sin__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--kc-space-5);
+  gap: var(--kc-space-6);
   min-width: 0;
 }
 
 .kc-services-sin__rail {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--kc-space-2);
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: var(--kc-space-5);
   min-width: 0;
 }
 
+/* Dekoratív gerinc: a körök közepén fut. A kiválasztást a kör jelzi, nem a vonal. */
+.kc-services-sin__rail::before {
+  content: '';
+  position: absolute;
+  left: calc(1.25rem - 1px);
+  top: 1.25rem;
+  bottom: 1.25rem;
+  width: 2px;
+  background-color: var(--kc-color-border);
+  z-index: 0;
+  pointer-events: none;
+}
+
 .kc-services-sin__rail-label {
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  column-gap: var(--kc-space-4);
+  align-items: start;
   min-width: 0;
   min-height: 2.75rem;
-  padding: var(--kc-space-3) var(--kc-space-4);
-  border-left: var(--kc-space-1) solid transparent;
-  background-color: transparent;
+  padding: var(--kc-space-1) 0;
   color: var(--kc-services-ink);
-  font-size: var(--kc-font-m);
-  font-weight: var(--kc-font-weight-medium);
-  line-height: 1.3;
   cursor: pointer;
   overflow-wrap: break-word;
 }
 
-.kc-services-sin__rail-index {
-  flex: none;
-  margin-right: var(--kc-space-3);
-  color: var(--kc-services-accent-text);
-  font-variant-numeric: tabular-nums;
+.kc-services-sin__marker {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 2px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-full);
+  background-color: var(--kc-color-surface-raised);
+  color: var(--kc-color-primary);
+  position: relative;
+  z-index: 1;
+}
+
+.kc-services-sin__marker svg {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.kc-services-sin__marker-active {
+  display: none;
+}
+
+.kc-services-sin__rail-copy {
+  display: grid;
+  gap: var(--kc-space-1);
+  min-width: 0;
+  padding-top: var(--kc-space-1);
+}
+
+.kc-services-sin__rail-title {
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: 1.3;
+  color: var(--kc-services-ink);
+}
+
+.kc-services-sin__rail-blurb {
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: 1.4;
+  color: var(--kc-services-muted);
 }
 
 .kc-services-sin__stage {
   min-width: 0;
-  padding: var(--kc-space-6);
-  border: 1px solid var(--kc-color-border-strong);
-  border-radius: var(--kc-radius-md);
-  background-color: var(--kc-color-surface-tint);
 }
 
 .kc-services-sin__panel {
@@ -112,6 +164,10 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--kc-space-6);
   min-width: 0;
+  padding: var(--kc-space-6);
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-raised);
+  box-shadow: var(--kc-shadow-md);
 }
 
 .kc-services-sin__copy {
@@ -121,13 +177,23 @@
   min-width: 0;
 }
 
+.kc-services-sin__kicker {
+  margin: 0;
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-medium);
+  letter-spacing: var(--kc-tracking-eyebrow);
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--kc-services-muted);
+}
+
 .kc-services-sin__panel-title {
   margin: 0;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
-  font-weight: var(--kc-font-weight-normal);
+  font-weight: var(--kc-font-weight-bold);
   line-height: var(--kc-leading-heading);
-  color: var(--kc-services-ink);
+  color: var(--kc-color-primary);
   overflow-wrap: break-word;
 }
 
@@ -140,7 +206,16 @@
 }
 
 .kc-services-sin__osszefoglalo {
+  font-weight: var(--kc-font-weight-bold);
   color: var(--kc-services-ink);
+}
+
+.kc-services-sin__rule {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--kc-color-border);
 }
 
 .kc-services-sin__body {
@@ -153,16 +228,32 @@
   margin-top: var(--kc-space-2);
 }
 
+.kc-services-sin__cta-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
 .kc-services-sin__photo,
 .kc-services-sin__placeholder {
   min-width: 0;
   min-height: 12rem;
+  overflow: hidden;
+  border-radius: var(--kc-radius-md);
+}
+
+.kc-services-sin__photo {
+  aspect-ratio: 3 / 4;
+  max-height: 24rem;
+  background-color: var(--kc-color-surface-tint);
 }
 
 .kc-services-sin__photo img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
 
 .kc-services-sin__placeholder {
@@ -170,7 +261,7 @@
   place-items: center;
   padding: var(--kc-space-4);
   border: 1px solid var(--kc-color-border-strong);
-  background-color: var(--kc-color-surface-raised);
+  background-color: var(--kc-color-surface-tint);
   color: var(--kc-services-muted);
   font-size: var(--kc-font-s);
   line-height: 1.4;
@@ -181,25 +272,77 @@
   margin: 0;
 }
 
-/* Kiválasztott sín: tint + primary bal szegély. A :checked ~ layout
-   testvér-kombinátor JS nélkül köti a rádiót a címkéhez és a panelhez. */
+/* Kiválasztott állomás: kitöltött primary kör + fehér nyíl. A :checked ~
+   layout testvér-kombinátor JS nélkül köti a rádiót a címkéhez és a panelhez. */
 .kc-services-sin__input:nth-of-type(1):checked
   ~ .kc-services-sin__layout
-  .kc-services-sin__rail-label:nth-of-type(1),
+  .kc-services-sin__rail-label:nth-of-type(1)
+  .kc-services-sin__marker,
 .kc-services-sin__input:nth-of-type(2):checked
   ~ .kc-services-sin__layout
-  .kc-services-sin__rail-label:nth-of-type(2),
+  .kc-services-sin__rail-label:nth-of-type(2)
+  .kc-services-sin__marker,
 .kc-services-sin__input:nth-of-type(3):checked
   ~ .kc-services-sin__layout
-  .kc-services-sin__rail-label:nth-of-type(3),
+  .kc-services-sin__rail-label:nth-of-type(3)
+  .kc-services-sin__marker,
 .kc-services-sin__input:nth-of-type(4):checked
   ~ .kc-services-sin__layout
-  .kc-services-sin__rail-label:nth-of-type(4),
+  .kc-services-sin__rail-label:nth-of-type(4)
+  .kc-services-sin__marker,
 .kc-services-sin__input:nth-of-type(5):checked
   ~ .kc-services-sin__layout
-  .kc-services-sin__rail-label:nth-of-type(5) {
-  border-left-color: var(--kc-color-primary);
-  background-color: var(--kc-color-surface-tint);
+  .kc-services-sin__rail-label:nth-of-type(5)
+  .kc-services-sin__marker {
+  border-color: var(--kc-color-primary);
+  background-color: var(--kc-color-primary);
+  color: var(--kc-color-on-primary);
+}
+
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(1)
+  .kc-services-sin__marker-idle,
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(2)
+  .kc-services-sin__marker-idle,
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(3)
+  .kc-services-sin__marker-idle,
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(4)
+  .kc-services-sin__marker-idle,
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(5)
+  .kc-services-sin__marker-idle {
+  display: none;
+}
+
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(1)
+  .kc-services-sin__marker-active,
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(2)
+  .kc-services-sin__marker-active,
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(3)
+  .kc-services-sin__marker-active,
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(4)
+  .kc-services-sin__marker-active,
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(5)
+  .kc-services-sin__marker-active {
+  display: block;
 }
 
 .kc-services-sin__input:nth-of-type(1):checked
@@ -243,23 +386,22 @@
 
 @media (min-width: 900px) {
   .kc-services-sin__layout {
-    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
-    gap: var(--kc-space-6);
+    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+    gap: var(--kc-space-8);
     align-items: start;
-  }
-
-  .kc-services-sin__rail {
-    flex-direction: column;
-    flex-wrap: nowrap;
-  }
-
-  .kc-services-sin__rail-label {
-    flex: 0 0 auto;
-    width: 100%;
   }
 
   .kc-services-sin__panel {
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-    align-items: start;
+    grid-template-columns: minmax(0, 1.2fr) minmax(10rem, 0.72fr);
+    align-items: stretch;
+    padding: var(--kc-space-7);
+  }
+
+  .kc-services-sin__photo,
+  .kc-services-sin__placeholder {
+    aspect-ratio: auto;
+    max-height: none;
+    min-height: 22rem;
+    height: 100%;
   }
 }

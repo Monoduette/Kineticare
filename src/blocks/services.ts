@@ -7,7 +7,8 @@ import { sectionSettings } from './section-settings'
  * Szolgáltatás-sorok — tábla (kép + számozott sorok) vagy sín + panel.
  *
  * A `/szolgaltatasok` tábla marad. A kezdőlap „Így tudunk segíteni" szekciója
- * sín-elrendezés: Zárt / Nyíló / Nyitott kézállapot, jobb oldalon szöveg + fotó.
+ * sín-elrendezés: Rendelői kezelések / Otthoni program / Szakmai képzések,
+ * jobb oldalon szöveg + fotó.
  */
 export const services: Block = {
   slug: 'services',
@@ -42,7 +43,7 @@ export const services: Block = {
       label: 'Bevezető',
       admin: {
         description:
-          'A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a kézállapot-út magyarázata. Nem kötelező.',
+          'A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a három út rövid magyarázata. Nem kötelező.',
       },
     },
     {
@@ -52,11 +53,11 @@ export const services: Block = {
       label: 'Elrendezés',
       options: [
         { label: 'Tábla (kép + számozott sorok)', value: 'tabla' },
-        { label: 'Sín és panel (három kézállapot)', value: 'sin' },
+        { label: 'Sín és panel (három szolgáltatás-ajtó)', value: 'sin' },
       ],
       admin: {
         description:
-          'A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon állapotválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.',
+          'A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon ajtóválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.',
       },
     },
     {
@@ -78,7 +79,7 @@ export const services: Block = {
       labels: { singular: 'Sor', plural: 'Sorok' },
       admin: {
         description:
-          'Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy kézállapot (Zárt, Nyíló, Nyitott). Legfeljebb 5.',
+          'Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy ajtó (Rendelői kezelések, Otthoni program, Szakmai képzések). Legfeljebb 5.',
         initCollapsed: true,
       },
       fields: [
@@ -98,7 +99,7 @@ export const services: Block = {
           label: 'Cím',
           admin: {
             description:
-              'A szolgáltatás vagy kézállapot neve (pl. „Rendelői kezelések" vagy „Zárt").',
+              'A szolgáltatás-ajtó neve (pl. „Rendelői kezelések", „Otthoni program").',
           },
         },
         {
@@ -107,7 +108,7 @@ export const services: Block = {
           label: 'Rövid összegzés',
           admin: {
             description:
-              'Sín-elrendezésnél a panel első mondata (pl. „A kéz még inkább összezárva…"). Táblánál nem jelenik meg. Nem kötelező.',
+              'Sín-elrendezésnél a sín rövid másodlagos sora és a panel félkövér bevezetője (pl. „Személyes kezelés a stúdióban."). Táblánál nem jelenik meg. Nem kötelező.',
           },
         },
         {
