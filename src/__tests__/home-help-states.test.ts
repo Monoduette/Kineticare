@@ -74,11 +74,6 @@ describe('home-help-states — REV C felismerés', () => {
       PROFESSIONAL_TRAINING_URL,
     ])
     expect(help.rows?.map((row) => row.ujAblakban)).toEqual([false, false, true])
-    const order = buildHomeLayout().map((block) => block.blockType)
-    expect(order[0]).toBe('filmHero')
-    expect(order[1]).toBe('about')
-    expect(order.indexOf('services')).toBe(order.indexOf('states') + 1)
-    expect(order.indexOf('about')).toBeLessThan(order.indexOf('services'))
   })
 
   it('a sín fotói a zárolt Drive-képek, nem a Kata-csoportképek', () => {

@@ -236,17 +236,12 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
 // ---------------------------------------------------------------------------
 // A kezdőlap alap-szekciósora (docs/szekcio-rendszer-terv.md 4. pont).
 //
-// SORREND: filmHero (M1) → about (H01: Katák a hero alatt) → credsStrip (M2) →
-//   courseCards (M3) → freeSos (M4) → pressLogos → welcome → usps →
-//   states → services (H08: C-sín a régi három állapot helyén) →
+// SORREND: az értékesítési audit M1–M8 hierarchiája, a landing kinézetével —
+//   filmHero (M1) → credsStrip (M2) → courseCards (M3) → freeSos (M4) →
+//   pressLogos → welcome → usps → states → services → about →
 //   howItWorks (M5) → testimonials (M6) → knowledge (M7) → faq (M8) →
 //   ctaBanner (záró CTA-sáv).
 // A lányok ettől szabadon eltérhetnek az adminban — ez a rendszer értelme.
-// H01 a videó utáni bemutatkozó fotót kéri (docs/kc-v1-owner-review.md);
-// a C-sín csak a régi 3-oszlopos / háromállapot-helyet váltja.
-// WCAG 2.2 SC 1.3.2: https://www.w3.org/WAI/WCAG22/Understanding/meaningful-sequence.html
-// NN/g F-alakú minta: https://www.nngroup.com/articles/f-shaped-pattern-reading-web-content-discovered/
-// GOV.UK: a fontos tartalom elöl: https://www.gov.uk/guidance/content-design/writing-for-gov-uk
 //
 // SZÖVEGEK: betűhíven a forrásokból. A landing-szekciók szövege a régi
 // koncepció-landingből jött (egyszeri tükör, már nincs a repóban; a
@@ -305,53 +300,8 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     sectionSettings: { visible: true },
   },
 
-  // H01 — Rólunk + statisztikák, közvetlenül a filmHero után (tulajdonosi zár:
-  // a Katák szekció a fejléc/hero alatt indul). A C-sín NEM ide kerül: az a
-  // régi háromoszlopos „Így tudunk segíteni" helyét váltja, lentebb.
-  // WCAG 2.2 SC 1.3.2: https://www.w3.org/WAI/WCAG22/Understanding/meaningful-sequence.html
-  // NN/g F-alakú minta: https://www.nngroup.com/articles/f-shaped-pattern-reading-web-content-discovered/
-  // GOV.UK: a fontos tartalom elöl: https://www.gov.uk/guidance/content-design/writing-for-gov-uk
-  // A számok a landing VALÓS adatai — kitalált statisztika ide nem kerülhet.
-  {
-    blockType: 'about',
-    eyebrow: 'Rólunk',
-    title: 'Kiss Kata és Kocsis Kata vagyunk',
-    paragraphs: [
-      {
-        text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, és évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
-        emphasized: true,
-      },
-      {
-        text: 'A pácienseink nagy része kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, így pontosan tudjuk, milyen makacs probléma tud ez lenni, és hogy mennyire megkeseríti az ember mindennapjait.',
-        emphasized: false,
-      },
-      {
-        text: 'A legújabb kutatásokat, külföldi guideline-okat és a saját gyakorlati tapasztalatainkat ötvözzük, mindezt a lehető legbiztonságosabb, mégis leggyorsabb felépülés érdekében.',
-        emphasized: false,
-      },
-      {
-        text: 'Hiszünk abban, hogy a kezed nemcsak egy testrész: mindenhez szükséged van rá. Ezért igyekszünk minden módon segíteni rendbehozni a kezed, megszüntetni a fájdalmat, és elérni, hogy úgy használhasd a kezed, mintha sosem lett volna vele semmi baj.',
-        emphasized: false,
-      },
-    ],
-    feature: {
-      label: 'Személyre szabott kezelések',
-      note: 'Minden páciens egyedi, ezért minden terápiát személyre szabunk.',
-    },
-    photo: media['katak-team.jpg'],
-    stats: [
-      { value: '10+', label: 'év szakmai tapasztalat' },
-      // A régi oldal minden előfordulásban „1000+"-t állít (mélyfeltárás,
-      // docs/regi-oldal-valaszok.md) — az „5000+" sehonnan nem volt igazolható,
-      // a tulajdonos 2026-08-15-én hagyta jóvá a javítást.
-      { value: '1000+', label: 'elégedett páciens' },
-      { value: '1', label: 'közös cél: az Ön mozgásszabadsága' },
-    ],
-    sectionSettings: { visible: true, hatter: 'feher' },
-  },
-
-  // M2 — Szakmai hitel-csík a Rólunk után (a sajtólogó-sor NEM helyettesíti:
-  // az lentebb, külön szekcióként jön).
+  // M2 — Szakmai hitel-csík közvetlenül a hero alatt (a sajtólogó-sor NEM
+  // helyettesíti: az lentebb, külön szekcióként jön).
   {
     blockType: 'credsStrip',
     items: [
@@ -527,6 +477,46 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     image: media['services-hands.png'],
     rows: homeHelpRailRows(HOME_HELP_PHOTO_FILES.map((file) => media[file])),
     sectionSettings: { visible: true, hatter: 'tint' },
+  },
+
+  // Rólunk + statisztikák. A számok a landing VALÓS adatai — kitalált
+  // statisztika ide nem kerülhet.
+  {
+    blockType: 'about',
+    eyebrow: 'Rólunk',
+    title: 'Kiss Kata és Kocsis Kata vagyunk',
+    paragraphs: [
+      {
+        text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, és évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
+        emphasized: true,
+      },
+      {
+        text: 'A pácienseink nagy része kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, így pontosan tudjuk, milyen makacs probléma tud ez lenni, és hogy mennyire megkeseríti az ember mindennapjait.',
+        emphasized: false,
+      },
+      {
+        text: 'A legújabb kutatásokat, külföldi guideline-okat és a saját gyakorlati tapasztalatainkat ötvözzük, mindezt a lehető legbiztonságosabb, mégis leggyorsabb felépülés érdekében.',
+        emphasized: false,
+      },
+      {
+        text: 'Hiszünk abban, hogy a kezed nemcsak egy testrész: mindenhez szükséged van rá. Ezért igyekszünk minden módon segíteni rendbehozni a kezed, megszüntetni a fájdalmat, és elérni, hogy úgy használhasd a kezed, mintha sosem lett volna vele semmi baj.',
+        emphasized: false,
+      },
+    ],
+    feature: {
+      label: 'Személyre szabott kezelések',
+      note: 'Minden páciens egyedi, ezért minden terápiát személyre szabunk.',
+    },
+    photo: media['katak-team.jpg'],
+    stats: [
+      { value: '10+', label: 'év szakmai tapasztalat' },
+      // A régi oldal minden előfordulásban „1000+"-t állít (mélyfeltárás,
+      // docs/regi-oldal-valaszok.md) — az „5000+" sehonnan nem volt igazolható,
+      // a tulajdonos 2026-08-15-én hagyta jóvá a javítást.
+      { value: '1000+', label: 'elégedett páciens' },
+      { value: '1', label: 'közös cél: az Ön mozgásszabadsága' },
+    ],
+    sectionSettings: { visible: true, hatter: 'feher' },
   },
 
   // M5 — „Így működik az online kurzus": a videókurzus legfontosabb

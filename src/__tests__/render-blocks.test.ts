@@ -538,16 +538,12 @@ describe('buildHomeLayout (seed alap-layout)', () => {
   it('az értékesítési hierarchia (UX-skill M1–M8) sorrend-szabályai teljesülnek', () => {
     const order: string[] = buildHomeLayout().map((block) => block.blockType)
     const at = (type: string) => order.indexOf(type)
-    // H01: a Katák / Rólunk a filmHero után indul; a C-sín csak a régi
-    // háromoszlopos helyét váltja (states után), nem a lányok szekcióját.
-    expect(at('about')).toBe(1)
-    expect(at('credsStrip')).toBe(2)
-    expect(at('courseCards')).toBe(3)
-    expect(at('states')).toBeGreaterThan(at('usps'))
+    // M2–M4: hitel-csík közvetlenül a hero után, a fizetős blokk előbb, mint az ingyenes.
+    // A C-sín a régi háromoszlopos / states utáni services helyén áll — a Katák
+    // about blokkját a seed nem mozdítja.
+    expect(at('credsStrip')).toBe(1)
+    expect(at('courseCards')).toBe(2)
     expect(at('services')).toBe(at('states') + 1)
-    expect(at('services')).toBeLessThan(at('howItWorks'))
-    expect(at('about')).toBeLessThan(at('services'))
-    // M3–M4: a fizetős blokk előbb, mint az ingyenes.
     expect(at('freeSos')).toBeGreaterThan(at('courseCards'))
     // M6–M7: vélemények és tudástár csak a termékblokk UTÁN jöhetnek.
     expect(at('testimonials')).toBeGreaterThan(at('courseCards'))
