@@ -4,6 +4,7 @@ import { courseHref } from '../../lib/course-url'
 import { AUDIENCE_LABELS, normalizeAudience } from '../../lib/course-audience'
 import { coursePriceBadgeKind, courseTitle } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
+import { rewriteVisitorDashLeftover } from '../../lib/gondolatjel-leftover'
 import type { Product } from '../../payload-types'
 import { Badge } from '../ui/Badge'
 import { Card } from '../ui/Card'
@@ -193,7 +194,9 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
             </span>
           ) : null}
           {product.shortDescription ? (
-            <span className="kc-product-card__description">{product.shortDescription}</span>
+            <span className="kc-product-card__description">
+              {rewriteVisitorDashLeftover(product.shortDescription)}
+            </span>
           ) : null}
           <span className="kc-product-card__foot">
             <span className="kc-product-card__pricing">

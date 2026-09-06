@@ -7,6 +7,7 @@ import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { HomeView } from '../components/content/HomeView'
 import { DEFAULT_HEADING } from '../components/content/home/CourseCards'
 import { FREE_SOS_COURSE_CTA_LABEL } from '../components/content/home/FreeSos'
+import { HOW_IT_WORKS_STEP1_FIXED, HOW_IT_WORKS_STEP1_LEFTOVER } from '../lib/gondolatjel-leftover'
 import { LEGACY_HOME_HELP_ROWS } from '../lib/home-help-states'
 import { buildHomeLayout } from '../scripts/seed'
 import type { Page, Post, Product, Testimonial } from '../payload-types'
@@ -363,6 +364,20 @@ describe('RenderBlocks', () => {
     expect(html).toContain('Saját folyamatcím')
     expect(html).toContain('Első lépés blokkból')
     expect(html).not.toContain('Kiválasztod a kurzust')
+  })
+
+  it('howItWorks: a production leftover U+2014-et vesszőre cseréli', () => {
+    const html = renderBlocks(
+      layoutOf({
+        blockType: 'howItWorks',
+        id: 'h-leftover',
+        title: 'Így működik az online kurzus',
+        steps: [{ id: 's1', title: 'Kiválasztod a kurzust', text: HOW_IT_WORKS_STEP1_LEFTOVER }],
+        sectionSettings: {},
+      }),
+    )
+    expect(html).toContain(HOW_IT_WORKS_STEP1_FIXED)
+    expect(html).not.toContain('\u2014')
   })
 
   it('testimonials: eyebrow/cím-felülírás + maxItems korlát érvényesül', () => {

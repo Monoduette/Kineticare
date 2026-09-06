@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import { courseTitle } from './courses'
+import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
 import { resolveServerUrl } from '../env'
 import type { Media, Post, Product } from '../payload-types'
 import { resolveSeoKeywords, type SeoKeywordRow } from './seo-keywords'
@@ -281,7 +282,7 @@ export function productSeoDoc(
     // HARMADIK foka, a seoDescription és a rövid leírás után).
     excerpt:
       typeof product.shortDescription === 'string' && product.shortDescription.trim().length > 0
-        ? product.shortDescription
+        ? rewriteVisitorDashLeftover(product.shortDescription)
         : `${name} — online kézrehabilitációs kurzus a Kineticare kínálatából.`,
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
@@ -418,7 +419,7 @@ export function courseJsonLd(args: {
   const url = absoluteUrl(path)
   const description =
     typeof product.shortDescription === 'string' && product.shortDescription.trim().length > 0
-      ? product.shortDescription.trim()
+      ? rewriteVisitorDashLeftover(product.shortDescription).trim()
       : undefined
   const sku =
     typeof product.sku === 'string' && product.sku.trim().length > 0

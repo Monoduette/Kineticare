@@ -18,6 +18,12 @@ import { getPayload, type Payload } from 'payload'
 import { HOME_PAGE_SLUG } from '../lib/content-slugs'
 // A kezdőlap alapállapotának builder-e: a 9–11. javítás ÚJ értékei innen
 // jönnek, hogy a seed és a javítás ne két külön literálban éljen.
+import {
+  COURSE_SHORT_DESCRIPTION_FIXED,
+  COURSE_SHORT_DESCRIPTION_LEFTOVER,
+  HOW_IT_WORKS_STEP1_FIXED,
+  HOW_IT_WORKS_STEP1_LEFTOVER,
+} from '../lib/gondolatjel-leftover'
 import { buildHomeLayout } from '../lib/home-seed'
 import {
   JOGI_OLDALAK,
@@ -174,6 +180,8 @@ export type JavitasSzabaly =
   | 'kurzus-szekcio-cim'
   | 'paciens-szam'
   | 'kurzus-elonyok'
+  | 'howitworks-vasarlas-gondolatjel'
+  | 'kurzus-lead-gondolatjel'
   | 'rolunk-hero-kep'
   | 'szakmai-harmonika'
   | 'jogi-oldalak'
@@ -359,6 +367,151 @@ export const alkalmazKezdolapJavitasok = (
   }
 
   return { layout: modositasok.length > 0 ? ujLayout : layout, modositasok, kihagyasok }
+}
+
+/**
+ * Élő kezdőlap: az „Így működik" vásárlás-lépésének U+2014 tölteléke.
+ *
+ * SZIGORÚ EGYEZÉS a 2026-09-06-án mért production mondatra. A seed már vesszős;
+ * a CMS-t `ensureHomeLayout` nem írja felül. Más lépésszöveget nem nyúlunk.
+ */
+export const alkalmazHowItWorksGondolatjel = (
+  layout: Szekciosor | null | undefined,
+): SzekciosorCsere => {
+  const uzenet = 'Az „Így működik” vásárlás-lépésének gondolatjele'
+
+  const kihagyas = (indok: string, hangos = false): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly: 'howitworks-vasarlas-gondolatjel', uzenet, indok, hangos }],
+  })
+
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a kezdőlapnak nincs szekciósora — a lépést nincs hol átírni')
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let voltHowItWorks = false
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (blokk.blockType !== 'howItWorks') {
+      return blokk
+    }
+    voltHowItWorks = true
+    const helye = `${index + 1}. szekció`
+    const lepesek = blokk.steps
+    if (!Array.isArray(lepesek) || lepesek.length === 0) {
+      kihagyasok.push({
+        szabaly: 'howitworks-vasarlas-gondolatjel',
+        uzenet: `${uzenet} (${helye})`,
+        indok: 'a szekciónak nincs lépése — a script üres mezőt nem tölt ki',
+      })
+      return blokk
+    }
+
+    let valtozott = false
+    const ujLepesek = lepesek.map((lepes, lepesIndex) => {
+      if (lepes.text !== HOW_IT_WORKS_STEP1_LEFTOVER) {
+        return lepes
+      }
+      valtozott = true
+      modositasok.push({
+        szabaly: 'howitworks-vasarlas-gondolatjel',
+        uzenet: `${uzenet} (${helye}, ${lepesIndex + 1}. lépés): ${ertekCimke(
+          HOW_IT_WORKS_STEP1_LEFTOVER,
+        )} → ${ertekCimke(HOW_IT_WORKS_STEP1_FIXED)}`,
+        indok: null,
+      })
+      return { ...lepes, text: HOW_IT_WORKS_STEP1_FIXED }
+    })
+
+    if (valtozott) {
+      return { ...blokk, steps: ujLepesek }
+    }
+
+    const marJavitva = lepesek.some((lepes) => lepes.text === HOW_IT_WORKS_STEP1_FIXED)
+    kihagyasok.push({
+      szabaly: 'howitworks-vasarlas-gondolatjel',
+      uzenet: `${uzenet} (${helye})`,
+      indok: marJavitva
+        ? `a vásárlás-lépés MÁR ${ertekCimke(HOW_IT_WORKS_STEP1_FIXED)} — nincs teendő`
+        : `egyetlen lépésszöveg sem PONTOSAN a cserélendő ${ertekCimke(
+            HOW_IT_WORKS_STEP1_LEFTOVER,
+          )} — a script csak pontos egyezésnél ír át`,
+    })
+    return blokk
+  })
+
+  if (!voltHowItWorks) {
+    return kihagyas(
+      'a kezdőlap szekciósorában nincs Így működik (howItWorks) szekció — a lépést nincs hol átírni',
+    )
+  }
+
+  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+}
+
+/**
+ * Élő Otthoni KézRehab kurzuskártya-lead: U+2013 a „gyógytornászoktól" után.
+ *
+ * SZIGORÚ EGYEZÉS a 2026-09-06-án mért production mondatra. A hyphen a
+ * „csukló-, ujj-" szóösszetételben megmarad (AkH. kiskötőjel).
+ */
+export const alkalmazKurzusLeadGondolatjel = (
+  jelenlegi: Product['shortDescription'] | undefined,
+): {
+  shortDescription: string | null
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+} => {
+  const uzenet = `Kurzus rövid leírása („${KURZUS_SKU}”)`
+
+  if (jelenlegi === COURSE_SHORT_DESCRIPTION_LEFTOVER) {
+    return {
+      shortDescription: COURSE_SHORT_DESCRIPTION_FIXED,
+      modositasok: [
+        {
+          szabaly: 'kurzus-lead-gondolatjel',
+          uzenet: `${uzenet}: ${ertekCimke(COURSE_SHORT_DESCRIPTION_LEFTOVER)} → ${ertekCimke(
+            COURSE_SHORT_DESCRIPTION_FIXED,
+          )}`,
+          indok: null,
+        },
+      ],
+      kihagyasok: [],
+    }
+  }
+
+  if (jelenlegi === COURSE_SHORT_DESCRIPTION_FIXED) {
+    return {
+      shortDescription: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly: 'kurzus-lead-gondolatjel',
+          uzenet,
+          indok: `a rövid leírás MÁR ${ertekCimke(COURSE_SHORT_DESCRIPTION_FIXED)} — nincs teendő`,
+        },
+      ],
+    }
+  }
+
+  return {
+    shortDescription: null,
+    modositasok: [],
+    kihagyasok: [
+      {
+        szabaly: 'kurzus-lead-gondolatjel',
+        uzenet,
+        indok: `a jelenlegi rövid leírás ${ertekCimke(
+          jelenlegi,
+        )}, ami nem PONTOSAN a cserélendő ${ertekCimke(
+          COURSE_SHORT_DESCRIPTION_LEFTOVER,
+        )} — a script csak pontos egyezésnél ír át`,
+      },
+    ],
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2587,6 +2740,8 @@ async function futtat(): Promise<void> {
     // A LÁNC VÉGÉN fut, hogy a 11. javítás által ÚJONNAN beszúrt záró CTA-sáv
     // feliratát is elérje — a beszúrás után az is a szekciósor része.
     kezdolapLepes(alkalmazKurzuslistaFeliratok(kezdolapLayout))
+    // --- Gondolatjel-maradék: „Így működik" vásárlás-lépés -------------------
+    kezdolapLepes(alkalmazHowItWorksGondolatjel(kezdolapLayout))
 
     if (kezdolapValtozott && !dryRun) {
       await payload.update({
@@ -2632,11 +2787,24 @@ async function futtat(): Promise<void> {
     modositasokSzama += eredmeny.modositasok.length
     kihagyasokSzama += eredmeny.kihagyasok.length
 
-    if (eredmeny.cardHighlights !== null && !dryRun) {
+    const lead = alkalmazKurzusLeadGondolatjel(termek.shortDescription)
+    naplozdLepeseket(lead, dryRun)
+    modositasokSzama += lead.modositasok.length
+    kihagyasokSzama += lead.kihagyasok.length
+
+    const termekAdat: Partial<Pick<Product, 'cardHighlights' | 'shortDescription'>> = {}
+    if (eredmeny.cardHighlights !== null) {
+      termekAdat.cardHighlights = eredmeny.cardHighlights
+    }
+    if (lead.shortDescription !== null) {
+      termekAdat.shortDescription = lead.shortDescription
+    }
+
+    if (Object.keys(termekAdat).length > 0 && !dryRun) {
       await payload.update({
         collection: 'products',
         id: termek.id,
-        data: { cardHighlights: eredmeny.cardHighlights },
+        data: termekAdat,
         depth: 0,
         overrideAccess: true,
       })
