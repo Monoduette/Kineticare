@@ -19,12 +19,10 @@
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
  * https://m3.material.io/components/icon-buttons/overview
  *
- * Színrétegek a C drót szerint, storefront szerep-tokennel:
- * - sáv: paper (`--kc-color-bg`), a nagyon világos hűvös lap;
- *   a CMS tint-osztály megmarad, de a panel tintje csak így válik el.
- * - panel: `--kc-color-tint-cool`, nem fehér emelt lap.
- * - aktív kör + CTA: `--kc-color-surface-dark` (ink), a címsorokkal
- *   azonos navy család — a drót primary CTA-ja, nem az accent-deep gombkék.
+ * Színrétegek a C drót pixelzárja szerint (tokens.css `--kc-color-help-*`).
+ * A globális paper/tint/ink ITT nem él: a sáv help-paper, a panel
+ * help-panel, az aktív kör és a CTA help-ink a `--kc-color-surface-dark`
+ * helyi aliasán. Muted/inaktív króm: help-muted. Panelkeret: 10% ink a panelben.
  * Material 3 tónusos felület + GOV.UK kártya a vásznon kerettel.
  * https://m3.material.io/styles/color/roles
  * https://design-system.service.gov.uk/styles/colour/
@@ -48,8 +46,10 @@
  * https://m3.material.io/foundations/layout/applying-layout/window-size-classes
  *
  * Mért küszöbök (tokens.css, nem szemre):
- * - szöveg: ink a tinten 13,53:1, muted a tinten 8,05:1 (WCAG 2.2 SC 1.4.3)
- * - UI-határ: a körvonal border-strong (≥ 3:1, SC 1.4.11); a gerinc dekoratív
+ * - szöveg: help-ink a panelen 12,40:1, help-muted a panelen 4,75:1 (SC 1.4.3)
+ * - CTA fehér a help-inken 15,78:1 (SC 1.4.3)
+ * - inaktív kör: help-muted a paperen 5,61:1 (SC 1.4.11); a gerinc dekoratív
+ * - panelkeret: 10% ink-mix, dekoratív (a kártyát a tint-kitöltés azonosítja)
  * - érintőcél: a címke min-height 2.75rem (44 px, SC 2.5.8 célértéke)
  * - 320 px: overflow-wrap + min-width: 0 (SC 1.4.10 Reflow)
  * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja
@@ -66,10 +66,21 @@
   padding-bottom: var(--kc-space-7);
 }
 
-/* A CMS tint-osztály a H08 zár. A C drót két hűvös rétege: a sáv paper,
-   a kártya tint-cool. Ha a sáv is tint, a panel eltűnik a sávban. */
+/* C drót pixelzár: csak a sín-sáv. A sötét szerkesztői kivétel kimarad. */
+.kc-section.kc-services--sin:not(.kc-section--dark) {
+  --kc-color-bg: var(--kc-color-help-paper);
+  --kc-color-text: var(--kc-color-help-ink);
+  --kc-color-text-muted: var(--kc-color-help-muted);
+  --kc-color-surface-dark: var(--kc-color-help-ink);
+  --kc-color-tint-cool: var(--kc-color-help-panel);
+  --kc-color-surface-tint: var(--kc-color-help-panel);
+  background-color: var(--kc-color-help-paper);
+}
+
+/* A CMS tint-osztály a H08 zár. A C drót két hűvös rétege: a sáv help-paper,
+   a kártya help-panel. Ha a sáv is a globális tint, a panel eltűnik a sávban. */
 .kc-section--tint.kc-services--sin {
-  background-color: var(--kc-color-bg);
+  background-color: var(--kc-color-help-paper);
 }
 
 .kc-services--sin .kc-services-sin__header {
@@ -108,8 +119,8 @@
   --kc-services-marker-idle: 1.5rem;
   --kc-services-marker-active: 3.5rem;
   --kc-services-marker-slot: var(--kc-services-marker-active);
-  /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv paperje. */
-  --kc-services-fade: var(--kc-color-bg);
+  /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv help-paperje. */
+  --kc-services-fade: var(--kc-color-help-paper);
   /* Belső térköz token: mobil space-6 (32 px), asztal space-8 (72 px). */
   --kc-services-panel-pad: var(--kc-space-6);
   --kc-services-panel-gap: var(--kc-space-5);
@@ -157,7 +168,7 @@
   top: calc(var(--kc-services-marker-slot) / 2);
   bottom: calc(var(--kc-services-marker-slot) / 2);
   width: 2px;
-  background-color: var(--kc-color-border);
+  background-color: color-mix(in srgb, var(--kc-color-help-muted) 32%, var(--kc-color-help-paper));
   z-index: 0;
   pointer-events: none;
 }
@@ -182,11 +193,11 @@
   height: var(--kc-services-marker-idle);
   justify-self: center;
   margin-top: calc((var(--kc-services-marker-slot) - var(--kc-services-marker-idle)) / 2);
-  border: 2px solid var(--kc-color-text);
+  border: 2px solid var(--kc-color-help-muted);
   border-radius: var(--kc-radius-full);
   /* A sáv színe: a gerinc a kör pereménél eltűnik, a vonalas ikon olvasható marad. */
   background-color: var(--kc-services-fade);
-  color: var(--kc-color-text);
+  color: var(--kc-color-help-muted);
   position: relative;
   z-index: 1;
 }
@@ -242,13 +253,13 @@
   min-width: 0;
   padding: var(--kc-services-panel-pad);
   border-radius: var(--kc-radius-lg);
-  /* C drót: puha tint kártya. A sötét sáv-kivételen is tint marad a panel,
+  /* C drót: hűvös mid-tint kártya. A sötét sáv-kivételen is tint marad a panel,
      ezért az ink/muted itt a világos szövegtokenekre zár. */
-  background-color: var(--kc-color-tint-cool);
-  color: var(--kc-color-text);
-  --kc-services-ink: var(--kc-color-text);
-  --kc-services-muted: var(--kc-color-text-muted);
-  border: 1px solid var(--kc-color-border-strong);
+  background-color: var(--kc-color-help-panel);
+  color: var(--kc-color-help-ink);
+  --kc-services-ink: var(--kc-color-help-ink);
+  --kc-services-muted: var(--kc-color-help-muted);
+  border: 1px solid var(--kc-color-help-border);
   box-shadow: var(--kc-shadow-sm);
 }
 
@@ -301,7 +312,7 @@
   height: 1px;
   margin: var(--kc-space-2) 0 0;
   border: 0;
-  background-color: var(--kc-color-border-strong);
+  background-color: var(--kc-color-help-border);
 }
 
 .kc-services-sin__body {
@@ -357,7 +368,7 @@
   display: grid;
   place-items: center;
   padding: var(--kc-space-4);
-  border: 1px solid var(--kc-color-border-strong);
+  border: 1px solid var(--kc-color-help-border);
   background-color: var(--kc-color-surface-tint);
   color: var(--kc-services-muted);
   font-size: var(--kc-font-s);

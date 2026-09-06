@@ -411,13 +411,13 @@ describe('services-sin.css — token-szerződés', () => {
     expect(css).toContain('background-color: var(--kc-color-surface-dark)')
     expect(css).toContain('color: var(--kc-color-on-dark)')
     expect(szabalyTorzs(css, '.kc-services-sin__rule')).toContain(
-      'background-color: var(--kc-color-border-strong)',
+      'background-color: var(--kc-color-help-border)',
     )
     expect(szabalyTorzs(css, '.kc-section.kc-board.kc-board--edge.kc-services--sin')).toContain(
       'min-height: auto',
     )
     expect(szabalyTorzs(css, '.kc-section--tint.kc-services--sin')).toContain(
-      'background-color: var(--kc-color-bg)',
+      'background-color: var(--kc-color-help-paper)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
       'box-shadow: var(--kc-shadow-sm)',
@@ -426,7 +426,13 @@ describe('services-sin.css — token-szerződés', () => {
       'border-radius: var(--kc-radius-lg)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
-      'background-color: var(--kc-color-tint-cool)',
+      'background-color: var(--kc-color-help-panel)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
+      'border: 1px solid var(--kc-color-help-border)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
+      'border: 2px solid var(--kc-color-help-muted)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('surface-raised')
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('shadow-md')
@@ -455,5 +461,16 @@ describe('services-sin.css — token-szerződés', () => {
     expect(css).toContain('justify-content: space-between')
     expect(css).toContain('align-items: stretch')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
+  it('a C drót pixelzár hexei a tokens.css help-tokenjein élnek', () => {
+    const tokens = readFileSync(
+      fileURLToPath(new URL('../app/(frontend)/styles/tokens.css', import.meta.url)),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(tokens).toMatch(/--kc-color-help-paper:\s*#f2f7fd/)
+    expect(tokens).toMatch(/--kc-color-help-panel:\s*#dae5f4/)
+    expect(tokens).toMatch(/--kc-color-help-ink:\s*#0b214a/)
+    expect(tokens).toMatch(/--kc-color-help-muted:\s*#516385/)
   })
 })

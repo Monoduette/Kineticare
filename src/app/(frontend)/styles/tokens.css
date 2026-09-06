@@ -10,6 +10,25 @@
   --kc-color-tint-cool: #e6f0f8; /* landing --kc-tint: hűvös sáv-háttér */
   --kc-color-ink: #10243e; /* landing --kc-ink: szöveg + sötét felület */
   --kc-color-ink-soft: #33495f; /* landing --kc-muted: másodlagos szöveg */
+  /* REV C sín pixelzár — KIZÁRÓLAG a kezdőlap „Így tudunk segíteni"
+     szekciója (`services-sin.css`). A globális paper/tint/ink NEM ezek.
+     Mintavétel a C drótról: paper #f2f7fd, panel #dae5f4, ink #0b214a.
+     A drót test ~#8392ad a panelen 2,47:1 (WCAG 2.2 SC 1.4.3 bukás),
+     ezért a muted a megadott tartomány sötétebb, még hűvös vége: #516385
+     (4,75:1 a panelen, 5,61:1 a paperen). A keret 10% ink a panelben.
+     GOV.UK colour (szerep, ne szürke iszap) + Material 3 tonal surface.
+     https://design-system.service.gov.uk/styles/colour/
+     https://m3.material.io/styles/color/roles
+     https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html */
+  --kc-color-help-paper: #f2f7fd;
+  --kc-color-help-panel: #dae5f4;
+  --kc-color-help-ink: #0b214a;
+  --kc-color-help-muted: #516385;
+  --kc-color-help-border: color-mix(
+    in srgb,
+    var(--kc-color-help-ink) 10%,
+    var(--kc-color-help-panel)
+  );
   --kc-color-accent: #3d78aa; /* landing --kc-accent */
   --kc-color-accent-deep: #2f6e9f; /* landing --kc-accent-deep */
   --kc-color-accent-deeper: #275c87; /* hover-lépcső: accent-deep + 25% ink */
