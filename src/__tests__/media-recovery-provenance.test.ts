@@ -187,6 +187,9 @@ describe('durable team media recovery provenance', () => {
       if (kind === 'orphan') expect(readFileSync(path.join(f.dir, name), 'utf8')).toBe('unowned')
     },
   )
+  // Tíz upload-drift × sharp rotate/webp CI-terhelés mellett túllépi a 5 mp-es
+  // alap timeoutot (main 19357dc, Actions 33989356297). A költségvetést csak
+  // ezen a teszten emeljük; a globális testTimeoutot nem.
   it.each(['raw', 'normalized'])(
     'holds %s receipt before any write after config drift',
     async (kind) => {
@@ -221,6 +224,7 @@ describe('durable team media recovery provenance', () => {
         expect(f.update, JSON.stringify(drift)).not.toHaveBeenCalled()
       }
     },
+    20_000,
   )
 
   it('does not query receipts for healthy records', async () => {
