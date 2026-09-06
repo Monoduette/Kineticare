@@ -437,11 +437,11 @@ const szolgaltatasokBevezetoNodes = (): BlockNode[] => [
     'Tudjuk, hogy ez a probléma mennyire tud hátráltatni a munkában vagy a sportban, de még a hétköznapokban is.',
   ),
   para(
-    'Ezért professzionális kezeléseinkkel és online programjainkkal abban segítünk, hogy minél gyorsabban visszanyerd a kezed erejét és mozgását – hosszú távú eredményekkel.',
+    'Ezért professzionális kezeléseinkkel és online programjainkkal abban segítünk, hogy minél gyorsabban visszanyerd a kezed erejét és mozgását, hosszú távú eredményekkel.',
   ),
-  heading('h2', 'Van megoldás – ha tudod, merre indulj'),
+  heading('h2', 'Van megoldás, ha tudod, merre indulj'),
   para(
-    'A legtöbb kéz-, csukló- vagy könyökprobléma megfelelő terápiával hatékonyan kezelhető – és akár a műtét is elkerülhető.',
+    'A legtöbb kéz-, csukló- vagy könyökprobléma megfelelő terápiával hatékonyan kezelhető, és akár a műtét is elkerülhető.',
   ),
   para(
     'Ehhez persze türelemre és kitartásra van szükség, de a test egy csodálatos „szerkezet”: ha segítünk neki, képes rendbehozni magát.',
@@ -476,7 +476,7 @@ const SZAKMAI_HATTER_URL = '/rolunk#szakmai-hatter'
 
 /** Rendelői kezelések — a részletes leírás és a technikák felsorolása. */
 const rendeloiKezelesekNodes = (): BlockNode[] => [
-  heading('h3', 'Rendelői kezelések – személyes terápiás megoldások'),
+  heading('h3', 'Rendelői kezelések: személyes terápiás megoldások'),
   para(
     'Ha gyors és hatékony eredményt szeretnél, gyógytornával, manuálterápiával és kiegészítő technikákkal segítünk a kezed, és ha szükséges, a gerinced panaszainak csökkentésében.',
   ),
@@ -485,9 +485,9 @@ const rendeloiKezelesekNodes = (): BlockNode[] => [
   ),
   para('Amiben segíteni tudunk:'),
   bulletList([
-    'Gyógytorna – akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére',
-    'Manuálterápia – a lágyrészek és ízületek célzott, kézzel végzett kezelése',
-    'Kiegészítő terápiák – Kinesio Tape és Dynamic Tape® felhelyezés, flossing, köpölyterápia, fasciakés (eszközös lágyrész-mobilizáció), hegkezelés, NRX® bandázs',
+    'Gyógytorna: akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére',
+    'Manuálterápia: a lágyrészek és ízületek célzott, kézzel végzett kezelése',
+    'Kiegészítő terápiák: Kinesio Tape és Dynamic Tape® felhelyezés, flossing, köpölyterápia, fasciakés (eszközös lágyrész-mobilizáció), hegkezelés, NRX® bandázs',
   ]),
 ]
 
@@ -500,10 +500,10 @@ const rendeloiKezelesekNodes = (): BlockNode[] => [
  *                  lead-jellegű időpontkérés ezért mondatba ágyazott szöveglink.
  */
 const arlistaNodes = (idopontCta: 'gomb' | 'szoveglink'): BlockNode[] => [
-  heading('h3', 'Árlista – gyógytorna / manuálterápia'),
+  heading('h3', 'Árlista: gyógytorna / manuálterápia'),
   bulletList([
-    '50 perces alkalom – 18 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)',
-    '20 perces alkalom – 10 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)',
+    '50 perces alkalom: 18 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)',
+    '20 perces alkalom: 10 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)',
   ]),
   para(
     'Az első alkalom minden esetben 50 perces vizsgálatot foglal magába. Rendelőinkben készpénzes és átutalásos fizetésre van lehetőség.',
@@ -520,7 +520,7 @@ const arlistaNodes = (idopontCta: 'gomb' | 'szoveglink'): BlockNode[] => [
 
 /** Online kurzus — az otthoni program bemutatása a rich-text ágban. */
 const onlineKurzusNodes = (): BlockNode[] => [
-  heading('h3', 'Online kurzus – otthoni fájdalomcsökkentő program'),
+  heading('h3', 'Online kurzus: otthoni fájdalomcsökkentő program'),
   para('Nem tudsz eljutni személyes kezelésre?'),
   para(
     'Ha nincs lehetőséged rendelőbe járni, az otthoni gyakorlóvideóink segítenek enyhíteni a fájdalmad és visszaállítani a kezed működését.',
@@ -533,10 +533,10 @@ const onlineKurzusNodes = (): BlockNode[] => [
 
 /** Szakmai képzés — az akkreditált tantermi kurzus a rich-text ágban. */
 const szakmaiKepzesNodes = (): BlockNode[] => [
-  heading('h3', 'Szakmai képzések – akkreditált kézrehabilitációs képzés szakembereknek'),
+  heading('h3', 'Szakmai képzések: akkreditált kézrehabilitációs képzés szakembereknek'),
   para('Szeretnéd mélyíteni a kézsérülések és rehabilitáció terén szerzett ismereteidet?'),
   para(
-    'Bevezetés a kéz, a csukló- és könyökízület rehabilitációs lehetőségeibe címmel akkreditált tantermi képzést biztosítunk gyógytornászok, orvosok, mozgásterapeuták és edzők számára, a ProBody Stúdióval együttműködve. (12 kreditpont – SZTK-A-33553/2024)',
+    'Bevezetés a kéz, a csukló- és könyökízület rehabilitációs lehetőségeibe címmel akkreditált tantermi képzést biztosítunk gyógytornászok, orvosok, mozgásterapeuták és edzők számára, a ProBody Stúdióval együttműködve. (12 kreditpont: SZTK-A-33553/2024)',
   ),
   cta('https://probodystudio.hu/kez-workshop/', 'Tovább a szakmai képzésre', true),
 ]
@@ -1379,10 +1379,10 @@ const buildSzolgaltatasokLayout = (media: OldalLayoutMedia = {}): NonNullable<Pa
   {
     blockType: 'welcome',
     title: 'Fáj a kezed, csuklód, könyököd vagy vállad?',
-    lead: 'Van megoldás – ha tudod, merre indulj',
+    lead: 'Van megoldás, ha tudod, merre indulj',
     checklist: [
       {
-        text: 'A legtöbb kéz-, csukló- vagy könyökprobléma megfelelő terápiával hatékonyan kezelhető – és akár a műtét is elkerülhető.',
+        text: 'A legtöbb kéz-, csukló- vagy könyökprobléma megfelelő terápiával hatékonyan kezelhető, és akár a műtét is elkerülhető.',
       },
       {
         text: 'Ehhez persze türelemre és kitartásra van szükség, de a test egy csodálatos „szerkezet”: ha segítünk neki, képes rendbehozni magát.',
@@ -1397,7 +1397,7 @@ const buildSzolgaltatasokLayout = (media: OldalLayoutMedia = {}): NonNullable<Pa
         emphasized: false,
       },
       {
-        text: 'Ezért professzionális kezeléseinkkel és online programjainkkal abban segítünk, hogy minél gyorsabban visszanyerd a kezed erejét és mozgását – hosszú távú eredményekkel.',
+        text: 'Ezért professzionális kezeléseinkkel és online programjainkkal abban segítünk, hogy minél gyorsabban visszanyerd a kezed erejét és mozgását, hosszú távú eredményekkel.',
         emphasized: true,
       },
       {
@@ -1491,7 +1491,7 @@ const buildSzolgaltatasokLayout = (media: OldalLayoutMedia = {}): NonNullable<Pa
   {
     blockType: 'ctaBanner',
     title: 'Kezdd el otthon, a saját tempódban',
-    text: 'Az otthoni programunkkal a saját tempódban haladhatsz, bárhol, bármikor — a gyakorlatokat kézrehabilitációs gyógytornászok állították össze.',
+    text: 'Az otthoni programunkkal a saját tempódban haladhatsz, bárhol, bármikor, a gyakorlatokat kézrehabilitációs gyógytornászok állították össze.',
     cta: { felirat: 'Megnézem a kurzusokat', url: '/kurzusok', ujAblakban: false },
     sectionSettings: { visible: true, hatter: 'tint' },
   },
@@ -2399,9 +2399,11 @@ async function restoreLegacyContent(): Promise<void> {
       'Professzionális, mégis emberközeli terápiás megoldásokkal kezeljük a különböző mozgásszervi problémákat, hogy te ismét önfeledten dolgozhass, sportolhass vagy gondoskodhass szeretteidről.',
     content: kezdolapContent(),
     heroImage: mediaId('67b4bc17e0c78_katak-paravan.jpg'),
-    seoTitle: 'Kineticare – kézrehabilitáció gyógytornászoktól',
+    // A `|` a töltelék gondolatjel helyett (§3.1.1). A keret-sablon ne
+    // duplázza a márkanevet: `buildHomeMetadata` `title.absolute`-t ad.
+    seoTitle: 'Kineticare | kézrehabilitáció gyógytornászoktól',
     seoDescription:
-      'Kocsis Kata és Kiss Kata gyógytornászok – kézrehabilitáció, kéztőalagút-szindróma, kézfájdalom, csuklófájdalom, teniszkönyök kezelése rendelőben és online programmal.',
+      'Kocsis Kata és Kiss Kata gyógytornászok: kézrehabilitáció, kéztőalagút-szindróma, kézfájdalom, csuklófájdalom, teniszkönyök kezelése rendelőben és online programmal.',
   })
 
   // --- Oldal: rolunk ---------------------------------------------------------
@@ -2430,14 +2432,17 @@ async function restoreLegacyContent(): Promise<void> {
   // --- Oldal: szolgaltatasok ---------------------------------------------------
   await upsertPage(payload, {
     slug: 'szolgaltatasok',
-    title: 'A kezed folyton dolgozik – segítünk, hogy közben ne fájjon',
+    title: 'A kezed folyton dolgozik, segítünk, hogy közben ne fájjon',
     excerpt:
       'Hatékony kezeléseket, otthon végezhető programokat és szakmai továbbképzéseket nyújtunk azoknak, akik biztos eredményeket szeretnének.',
     content: szolgaltatasokContent(),
     // heroImage szándékosan NINCS (tulajdonosi redesign, 2026-08-16): a lap
     // teteje kompakt hero + welcome-tábla, a nagy Rendelo-fotó kikerült. Az
     // ÉLŐ oldalak mezőjét az apply-owner-content 12a. javítása üríti.
-    seoTitle: 'Szolgáltatások – Kineticare',
+    // A keret-layout `%s | Kineticare` sablonja. A cím NEM viseli a márkanevet,
+    // különben „Szolgáltatások – Kineticare | Kineticare" lenne a <title>
+    // (`docs/ui-sztenderdek.md` §3.1.1; NN/g page titles).
+    seoTitle: 'Szolgáltatások',
     seoDescription:
       'Rendelői gyógytorna és manuálterápia Budapesten (50 perc 18 000 Ft, 20 perc 10 000 Ft), otthoni kézrehabilitációs program és akkreditált szakmai képzések.',
   })
@@ -2502,7 +2507,7 @@ async function restoreLegacyContent(): Promise<void> {
   await upsertProduct(payload, {
     sku: 'Otthoni KézRehab Program',
     shortDescription:
-      'Könnyen követhető, otthon is biztonságosan alkalmazható kézrehabilitációs program gyógytornászoktól – csukló-, ujj-, alkar- és könyökfájdalmakra, a saját tempódban, 50+ videós gyakorlattal.',
+      'Könnyen követhető, otthon is biztonságosan alkalmazható kézrehabilitációs program gyógytornászoktól: csukló-, ujj-, alkar- és könyökfájdalmakra, a saját tempódban, 50+ videós gyakorlattal.',
     longDescription: kezrehabLongDescription(),
     priceInHUFEnabled: true,
     priceInHUF: 79500,
@@ -2516,7 +2521,7 @@ async function restoreLegacyContent(): Promise<void> {
   await upsertProduct(payload, {
     sku: 'SOS Kézrelax villámkurzus',
     shortDescription:
-      'Ingyenes villámkurzus: a 3 legjobb gyakorlatunk a kézfájdalom gyors enyhítésére – drága eszközök és hosszú, macerás gyakorlatok nélkül.',
+      'Ingyenes villámkurzus: a 3 legjobb gyakorlatunk a kézfájdalom gyors enyhítésére, drága eszközök és hosszú, macerás gyakorlatok nélkül.',
     longDescription: kezrelaxLongDescription(),
     // Ingyenes: a HomeView isPaidProduct logikája (priceInHUFEnabled === true &&
     // szám) így NEM kapja el — a termék a FreeSos-blokkba kerül (audit K2).

@@ -67,7 +67,7 @@ export const AUDIENCE_BANDS: readonly AudienceBand[] = [
     audience: 'laikus',
     anchorId: 'otthoni',
     title: AUDIENCE_LABELS.laikus,
-    lead: 'Otthon, egyedül is végezhető gyakorlatok a fájdalom enyhítésére — érthetően, szaknyelv nélkül.',
+    lead: 'Otthon, egyedül is végezhető gyakorlatok a fájdalom enyhítésére, érthetően, szaknyelv nélkül.',
   },
   {
     audience: 'szakember',
