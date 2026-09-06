@@ -252,10 +252,12 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
       },
     ] as unknown as NonNullable<Page['layout']>
     const presented = presentSzolgaltatasokLayout(layout)
+    expect(presented).toHaveLength(2)
     expect(presented[0]).toEqual(layout[0])
-    if (presented[1]?.blockType === 'services') {
-      expect(presented[1].elrendezes).toBe('tabla')
-      expect(presented[1].title).toBe('Válaszd ki, hogyan segíthetünk neked a legjobban')
-    }
+    expect(presented[1]).toMatchObject({
+      blockType: 'services',
+      elrendezes: 'tabla',
+      title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
+    })
   })
 })

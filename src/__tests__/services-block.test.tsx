@@ -468,6 +468,11 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services--sin .kc-services__title')).toContain('max-width: none')
     expect(css).not.toContain('justify-content: space-between')
     expect(css).toContain('align-items: start')
+    expect(css).toContain('align-self: start')
+    expect(szabalyTorzs(css, '.kc-services-sin__rail')).not.toContain('flex: none')
+    expect(css).toMatch(
+      /\.kc-services-sin__rail \{\s*justify-content: flex-start;\s*gap: var\(--kc-space-6\);\s*flex: none;/,
+    )
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 
