@@ -341,6 +341,8 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
 /**
  * REV B kézikonok a C sín inaktív köreiben: ököl / nyíló / nyitott tenyér.
  * A kitöltött aktív kör fehér északkeleti nyilat visz (a C drót).
+ * Minden glifa ugyanazt a 24×24 viewBoxot, 1,85-ös vonalvastagságot és
+ * a CSS 1rem dobozát viseli — az állapotváltás nem méretet vált.
  */
 function RailHandIcon({ index }: { index: number }) {
   if (index % 3 === 0) return <ClosedHandIcon />

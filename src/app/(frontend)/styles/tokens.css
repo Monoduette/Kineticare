@@ -10,23 +10,31 @@
   --kc-color-tint-cool: #e6f0f8; /* landing --kc-tint: hűvös sáv-háttér */
   --kc-color-ink: #10243e; /* landing --kc-ink: szöveg + sötét felület */
   --kc-color-ink-soft: #33495f; /* landing --kc-muted: másodlagos szöveg */
-  /* REV C sín pixelzár — KIZÁRÓLAG a kezdőlap „Így tudunk segíteni"
+  /* REV C sín — KIZÁRÓLAG a kezdőlap „Így tudunk segíteni"
      szekciója (`services-sin.css`). A globális paper/tint/ink NEM ezek.
-     Mintavétel a C drótról: paper #f2f7fd, panel #dae5f4, ink #0b214a.
-     A drót test ~#8392ad a panelen 2,47:1 (WCAG 2.2 SC 1.4.3 bukás),
-     ezért a muted a megadott tartomány sötétebb, még hűvös vége: #516385
-     (4,75:1 a panelen, 5,61:1 a paperen). A keret 10% ink a panelben.
+     Finomítás a colorlock után (Design QA): a poster-erős #dae5f4 panel
+     és a #0b214a tinta egy lépést halkul, a hűvös család megmarad.
+     paper #f4f8fd (egy lépés lágyabb a #f2f7fd-nél),
+     panel #e2ebf6 (a mosott #e6f0f8 és a erős #dae5f4 között),
+     ink #122a4e (navy, nem sötétebb a #0b214a-nál),
+     muted #516385 törzs (5,02:1 a panelen — WCAG 2.2 SC 1.4.3),
+     chrome #6a7d97 inaktív gyűrű/ikon (3,94:1 a paperen, 3,49:1 a
+     panelen — SC 1.4.11). Keret 8% ink a panelben, dekoratív hajszál.
+     A drót ~#8392ad törzsnek 2,61:1 a panelen (SC 1.4.3 bukás), ezért
+     a test help-muted marad; a króm csak UI-határ.
      GOV.UK colour (szerep, ne szürke iszap) + Material 3 tonal surface.
      https://design-system.service.gov.uk/styles/colour/
      https://m3.material.io/styles/color/roles
-     https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html */
-  --kc-color-help-paper: #f2f7fd;
-  --kc-color-help-panel: #dae5f4;
-  --kc-color-help-ink: #0b214a;
+     https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+     https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html */
+  --kc-color-help-paper: #f4f8fd;
+  --kc-color-help-panel: #e2ebf6;
+  --kc-color-help-ink: #122a4e;
   --kc-color-help-muted: #516385;
+  --kc-color-help-chrome: #6a7d97;
   --kc-color-help-border: color-mix(
     in srgb,
-    var(--kc-color-help-ink) 10%,
+    var(--kc-color-help-ink) 8%,
     var(--kc-color-help-panel)
   );
   --kc-color-accent: #3d78aa; /* landing --kc-accent */

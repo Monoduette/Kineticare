@@ -12,17 +12,20 @@
  * https://www.nngroup.com/articles/tabs-used-right/
  *
  * A kiválasztás KRÓMJA a C drót idővonala: vékony gerinc + körjelölő.
- * Inaktív: kisebb körvonalas kör + REV B kézikon (ököl / nyíló / tenyér).
- * Aktív: nagyobb kitöltött ink kör + fehér nyíl. A méretváltás a
- * kiválasztást mérettel is jelzi (NN/g Visual Hierarchy; M3 filled vs outlined
- * toggle). A címke 2,75rem érintőcélja megmarad (WCAG 2.2 SC 2.5.8).
+ * A három kör azonos külső átmérőjű minden állapotban. Az állapotváltás
+ * csak kitöltés + ikon: inaktív körvonal + REV B kéz (ököl / nyíló /
+ * tenyér); aktív ink-kitöltés + fehér északkeleti nyíl. A kört NEM
+ * nagyítjuk (Material 3 outlined vs filled ikongomb, azonos méret;
+ * NN/g: a kiválasztást szín/ikon jelzi, nem méretugrás).
+ * A címke 2,75rem érintőcélja megmarad (WCAG 2.2 SC 2.5.8).
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
  * https://m3.material.io/components/icon-buttons/overview
  *
- * Színrétegek a C drót pixelzárja szerint (tokens.css `--kc-color-help-*`).
- * A globális paper/tint/ink ITT nem él: a sáv help-paper, a panel
- * help-panel, az aktív kör és a CTA help-ink a `--kc-color-surface-dark`
- * helyi aliasán. Muted/inaktív króm: help-muted. Panelkeret: 10% ink a panelben.
+ * Színrétegek a C drót finomított palettája szerint (tokens.css
+ * `--kc-color-help-*`). A globális paper/tint/ink ITT nem él: a sáv
+ * help-paper, a panel help-panel, az aktív kör és a CTA help-ink a
+ * `--kc-color-surface-dark` helyi aliasán. Törzs: help-muted. Inaktív
+ * gyűrű/ikon: help-chrome. Panelkeret: 8% ink a panelben, hajszál.
  * Material 3 tónusos felület + GOV.UK kártya a vásznon kerettel.
  * https://m3.material.io/styles/color/roles
  * https://design-system.service.gov.uk/styles/colour/
@@ -46,10 +49,10 @@
  * https://m3.material.io/foundations/layout/applying-layout/window-size-classes
  *
  * Mért küszöbök (tokens.css, nem szemre):
- * - szöveg: help-ink a panelen 12,40:1, help-muted a panelen 4,75:1 (SC 1.4.3)
- * - CTA fehér a help-inken 15,78:1 (SC 1.4.3)
- * - inaktív kör: help-muted a paperen 5,61:1 (SC 1.4.11); a gerinc dekoratív
- * - panelkeret: 10% ink-mix, dekoratív (a kártyát a tint-kitöltés azonosítja)
+ * - szöveg: help-ink a panelen 11,89:1, help-muted a panelen 5,02:1 (SC 1.4.3)
+ * - CTA fehér a help-inken 14,32:1 (SC 1.4.3)
+ * - inaktív kör: help-chrome a paperen 3,94:1, a panelen 3,49:1 (SC 1.4.11)
+ * - panelkeret: 8% ink-mix, dekoratív (a kártyát a tint-kitöltés azonosítja)
  * - érintőcél: a címke min-height 2.75rem (44 px, SC 2.5.8 célértéke)
  * - 320 px: overflow-wrap + min-width: 0 (SC 1.4.10 Reflow)
  * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja
@@ -115,10 +118,12 @@
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
-  /* C drót: inaktív kisebb körvonal, aktív jelentősen nagyobb töltött kör. */
-  --kc-services-marker-idle: 1.5rem;
-  --kc-services-marker-active: 3.5rem;
-  --kc-services-marker-slot: var(--kc-services-marker-active);
+  /* C drót: a három kör azonos 2rem átmérő. Idle és active alias ugyanarra
+     a tokenre mutat, hogy a :checked állapot ne nagyítson. */
+  --kc-services-marker: 2rem;
+  --kc-services-marker-idle: var(--kc-services-marker);
+  --kc-services-marker-active: var(--kc-services-marker);
+  --kc-services-marker-slot: var(--kc-services-marker);
   /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv help-paperje. */
   --kc-services-fade: var(--kc-color-help-paper);
   /* Belső térköz token: mobil space-6 (32 px), asztal space-8 (72 px). */
@@ -168,7 +173,7 @@
   top: calc(var(--kc-services-marker-slot) / 2);
   bottom: calc(var(--kc-services-marker-slot) / 2);
   width: 2px;
-  background-color: color-mix(in srgb, var(--kc-color-help-muted) 32%, var(--kc-color-help-paper));
+  background-color: color-mix(in srgb, var(--kc-color-help-chrome) 28%, var(--kc-color-help-paper));
   z-index: 0;
   pointer-events: none;
 }
@@ -192,29 +197,23 @@
   width: var(--kc-services-marker-idle);
   height: var(--kc-services-marker-idle);
   justify-self: center;
-  margin-top: calc((var(--kc-services-marker-slot) - var(--kc-services-marker-idle)) / 2);
-  border: 2px solid var(--kc-color-help-muted);
+  border: 2px solid var(--kc-color-help-chrome);
   border-radius: var(--kc-radius-full);
   /* A sáv színe: a gerinc a kör pereménél eltűnik, a vonalas ikon olvasható marad. */
   background-color: var(--kc-services-fade);
-  color: var(--kc-color-help-muted);
+  color: var(--kc-color-help-chrome);
   position: relative;
   z-index: 1;
 }
 
 .kc-services-sin__marker svg {
   display: block;
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .kc-services-sin__marker-active {
   display: none;
-}
-
-.kc-services-sin__marker-active svg {
-  width: 1.5rem;
-  height: 1.5rem;
 }
 
 .kc-services-sin__rail-copy {
@@ -380,8 +379,9 @@
   margin: 0;
 }
 
-/* Kiválasztott állomás: kitöltött ink kör + fehér nyíl. A :checked ~
-   layout testvér-kombinátor JS nélkül köti a rádiót a címkéhez és a panelhez. */
+/* Kiválasztott állomás: azonos átmérő, kitöltött ink kör + fehér nyíl.
+   Méretet a :checked NEM vált. A :checked ~ layout testvér-kombinátor
+   JS nélkül köti a rádiót a címkéhez és a panelhez. */
 .kc-services-sin__input:nth-of-type(1):checked
   ~ .kc-services-sin__layout
   .kc-services-sin__rail-label:nth-of-type(1)
@@ -405,9 +405,6 @@
   border-color: var(--kc-color-surface-dark);
   background-color: var(--kc-color-surface-dark);
   color: var(--kc-color-on-dark);
-  width: var(--kc-services-marker-active);
-  height: var(--kc-services-marker-active);
-  margin-top: 0;
 }
 
 .kc-services-sin__input:nth-of-type(1):checked

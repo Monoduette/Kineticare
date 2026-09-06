@@ -432,7 +432,10 @@ describe('services-sin.css — token-szerződés', () => {
       'border: 1px solid var(--kc-color-help-border)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
-      'border: 2px solid var(--kc-color-help-muted)',
+      'border: 2px solid var(--kc-color-help-chrome)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
+      'color: var(--kc-color-help-chrome)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('surface-raised')
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('shadow-md')
@@ -451,9 +454,14 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'width: var(--kc-services-marker-idle)',
     )
-    expect(css).toContain('--kc-services-marker-idle: 1.5rem')
-    expect(css).toContain('--kc-services-marker-active: 3.5rem')
-    expect(css).toContain('width: var(--kc-services-marker-active)')
+    expect(css).toContain('--kc-services-marker: 2rem')
+    expect(css).toContain('--kc-services-marker-idle: var(--kc-services-marker)')
+    expect(css).toContain('--kc-services-marker-active: var(--kc-services-marker)')
+    expect(css).toContain('--kc-services-marker-slot: var(--kc-services-marker)')
+    expect(css).not.toContain('width: var(--kc-services-marker-active)')
+    expect(css).not.toContain('width: 0.95rem')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('width: 1rem')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('height: 1rem')
     expect(css).toContain('--kc-services-panel-pad: var(--kc-space-8)')
     expect(css).toContain('padding: var(--kc-services-panel-pad)')
     expect(css).toContain('minmax(16rem, 1fr) minmax(0, 2fr)')
@@ -468,9 +476,10 @@ describe('services-sin.css — token-szerződés', () => {
       fileURLToPath(new URL('../app/(frontend)/styles/tokens.css', import.meta.url)),
       'utf8',
     ).replace(/\/\*[\s\S]*?\*\//g, '')
-    expect(tokens).toMatch(/--kc-color-help-paper:\s*#f2f7fd/)
-    expect(tokens).toMatch(/--kc-color-help-panel:\s*#dae5f4/)
-    expect(tokens).toMatch(/--kc-color-help-ink:\s*#0b214a/)
+    expect(tokens).toMatch(/--kc-color-help-paper:\s*#f4f8fd/)
+    expect(tokens).toMatch(/--kc-color-help-panel:\s*#e2ebf6/)
+    expect(tokens).toMatch(/--kc-color-help-ink:\s*#122a4e/)
     expect(tokens).toMatch(/--kc-color-help-muted:\s*#516385/)
+    expect(tokens).toMatch(/--kc-color-help-chrome:\s*#6a7d97/)
   })
 })
