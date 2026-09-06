@@ -402,13 +402,16 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'background-color: var(--kc-services-fade)',
     )
-    expect(css).toContain('background-color: var(--kc-color-primary)')
-    expect(css).toContain('color: var(--kc-color-on-primary)')
+    expect(css).toContain('background-color: var(--kc-color-surface-dark)')
+    expect(css).toContain('color: var(--kc-color-on-dark)')
     expect(szabalyTorzs(css, '.kc-services-sin__rule')).toContain(
       'background-color: var(--kc-color-border-strong)',
     )
     expect(szabalyTorzs(css, '.kc-section.kc-board.kc-board--edge.kc-services--sin')).toContain(
       'min-height: auto',
+    )
+    expect(szabalyTorzs(css, '.kc-section--tint.kc-services--sin')).toContain(
+      'background-color: var(--kc-color-bg)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
       'box-shadow: var(--kc-shadow-sm)',
@@ -427,12 +430,19 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__panel-title')).toContain(
       'font-weight: var(--kc-font-weight-normal)',
     )
+    expect(szabalyTorzs(css, '.kc-services-sin__intro')).toContain(
+      'font-family: var(--kc-font-body)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__cta')).toContain(
+      'background-color: var(--kc-color-surface-dark)',
+    )
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'width: var(--kc-services-marker-idle)',
     )
-    expect(css).toContain('--kc-services-marker-idle: 1.75rem')
-    expect(css).toContain('--kc-services-marker-active: 3rem')
+    expect(css).toContain('--kc-services-marker-idle: 1.5rem')
+    expect(css).toContain('--kc-services-marker-active: 3.5rem')
     expect(css).toContain('width: var(--kc-services-marker-active)')
+    expect(css).toContain('padding: var(--kc-space-7)')
     expect(css).toContain('justify-content: space-between')
     expect(css).toContain('align-items: stretch')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)

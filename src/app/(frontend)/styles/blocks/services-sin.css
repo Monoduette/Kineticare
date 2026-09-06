@@ -13,16 +13,19 @@
  *
  * A kiválasztás KRÓMJA a C drót idővonala: vékony gerinc + körjelölő.
  * Inaktív: kisebb körvonalas kör + REV B kézikon (ököl / nyíló / tenyér).
- * Aktív: nagyobb kitöltött primary kör + fehér nyíl. A méretváltás a
+ * Aktív: nagyobb kitöltött ink kör + fehér nyíl. A méretváltás a
  * kiválasztást mérettel is jelzi (NN/g Visual Hierarchy; M3 filled vs outlined
  * toggle). A címke 2,75rem érintőcélja megmarad (WCAG 2.2 SC 2.5.8).
  * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
  * https://m3.material.io/components/icon-buttons/overview
  *
- * Panel: hűvös tint kártya (`--kc-color-tint-cool`), nem fehér emelt lap.
+ * Színrétegek a C drót szerint, storefront szerep-tokennel:
+ * - sáv: paper (`--kc-color-bg`), a nagyon világos hűvös lap;
+ *   a CMS tint-osztály megmarad, de a panel tintje csak így válik el.
+ * - panel: `--kc-color-tint-cool`, nem fehér emelt lap.
+ * - aktív kör + CTA: `--kc-color-surface-dark` (ink), a címsorokkal
+ *   azonos navy család — a drót primary CTA-ja, nem az accent-deep gombkék.
  * Material 3 tónusos felület + GOV.UK kártya a vásznon kerettel.
- * A szekció is tint; a kártya-olvasást a border-strong hajszál + halk árnyék viszi.
- * CTA és aktív kör ugyanaz a primary család (`--kc-color-primary` = accent-deep).
  * https://m3.material.io/styles/color/roles
  * https://design-system.service.gov.uk/styles/colour/
  * https://design-system.service.gov.uk/components/button/
@@ -51,6 +54,12 @@
   padding-bottom: var(--kc-space-7);
 }
 
+/* A CMS tint-osztály a H08 zár. A C drót két hűvös rétege: a sáv paper,
+   a kártya tint-cool. Ha a sáv is tint, a panel eltűnik a sávban. */
+.kc-section--tint.kc-services--sin {
+  background-color: var(--kc-color-bg);
+}
+
 .kc-services--sin .kc-services-sin__header {
   display: grid;
   gap: var(--kc-space-4);
@@ -65,6 +74,7 @@
 .kc-services-sin__intro {
   margin: 0;
   max-width: 65ch;
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
   line-height: 1.6;
   color: var(--kc-services-muted);
@@ -78,9 +88,14 @@
   padding: 0;
   border: 0;
   min-width: 0;
-  --kc-services-marker-idle: 1.75rem;
-  --kc-services-marker-active: 3rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* C drót: inaktív kisebb körvonal, aktív jelentősen nagyobb töltött kör. */
+  --kc-services-marker-idle: 1.5rem;
+  --kc-services-marker-active: 3.5rem;
   --kc-services-marker-slot: var(--kc-services-marker-active);
+  /* Üreges kör: a gerinc a peremnél eltűnik, a kitöltés a sáv paperje. */
+  --kc-services-fade: var(--kc-color-bg);
 }
 
 /* A clip a `.kc-visually-hidden` osztályon van. Itt csak a fókuszgyűrűt
@@ -102,6 +117,8 @@
   flex-direction: column;
   gap: var(--kc-space-6);
   min-width: 0;
+  min-height: 0;
+  align-self: stretch;
 }
 
 .kc-services-sin__rail {
@@ -158,8 +175,8 @@
 
 .kc-services-sin__marker svg {
   display: block;
-  width: 1rem;
-  height: 1rem;
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .kc-services-sin__marker-active {
@@ -167,8 +184,8 @@
 }
 
 .kc-services-sin__marker-active svg {
-  width: 1.375rem;
-  height: 1.375rem;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .kc-services-sin__rail-copy {
@@ -179,6 +196,7 @@
 }
 
 .kc-services-sin__rail-title {
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
   font-weight: var(--kc-font-weight-bold);
   line-height: 1.3;
@@ -186,6 +204,7 @@
 }
 
 .kc-services-sin__rail-blurb {
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-normal);
   line-height: 1.4;
@@ -194,6 +213,8 @@
 
 .kc-services-sin__stage {
   min-width: 0;
+  min-height: 0;
+  align-self: stretch;
 }
 
 .kc-services-sin__panel {
@@ -222,6 +243,7 @@
 
 .kc-services-sin__kicker {
   margin: 0;
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-s);
   font-weight: var(--kc-font-weight-medium);
   letter-spacing: var(--kc-tracking-eyebrow);
@@ -245,6 +267,7 @@
 .kc-services-sin__body {
   margin: 0;
   max-width: 65ch;
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
   line-height: 1.6;
 }
@@ -270,6 +293,17 @@
 .kc-services-sin__cta {
   justify-self: start;
   margin-top: var(--kc-space-2);
+  /* C drót: a CTA az aktív kör ink családja, nem az accent-deep gombkék.
+     A `kc-button--primary` osztály a storefront gombnyelv (érintőcél, állapot). */
+  background-color: var(--kc-color-surface-dark);
+  border-color: var(--kc-color-surface-dark);
+  color: var(--kc-color-on-dark);
+}
+
+.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-surface-dark);
+  border-color: var(--kc-color-surface-dark);
+  color: var(--kc-color-on-dark);
 }
 
 .kc-services-sin__cta-icon {
@@ -316,7 +350,7 @@
   margin: 0;
 }
 
-/* Kiválasztott állomás: kitöltött primary kör + fehér nyíl. A :checked ~
+/* Kiválasztott állomás: kitöltött ink kör + fehér nyíl. A :checked ~
    layout testvér-kombinátor JS nélkül köti a rádiót a címkéhez és a panelhez. */
 .kc-services-sin__input:nth-of-type(1):checked
   ~ .kc-services-sin__layout
@@ -338,9 +372,9 @@
   ~ .kc-services-sin__layout
   .kc-services-sin__rail-label:nth-of-type(5)
   .kc-services-sin__marker {
-  border-color: var(--kc-color-primary);
-  background-color: var(--kc-color-primary);
-  color: var(--kc-color-on-primary);
+  border-color: var(--kc-color-surface-dark);
+  background-color: var(--kc-color-surface-dark);
+  color: var(--kc-color-on-dark);
   width: var(--kc-services-marker-active);
   height: var(--kc-services-marker-active);
   margin-top: 0;
@@ -412,7 +446,7 @@
   ~ .kc-services-sin__layout
   .kc-services-sin__rail-label:nth-of-type(5)
   .kc-services-sin__rail-title {
-  color: var(--kc-color-primary);
+  color: var(--kc-color-text);
 }
 
 .kc-services-sin__input:nth-of-type(1):checked
@@ -462,17 +496,26 @@
   }
 
   .kc-services--sin.kc-board--edge > .kc-board__inner {
-    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .kc-services-sin {
+    height: 100%;
   }
 
   .kc-services-sin__layout {
     grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
     gap: var(--kc-space-6);
     align-items: stretch;
+    height: 100%;
   }
 
   .kc-services-sin__col {
     justify-content: space-between;
+    height: 100%;
   }
 
   .kc-services-sin__rail {
@@ -483,15 +526,17 @@
   .kc-services-sin__stage {
     display: grid;
     align-items: stretch;
+    height: 100%;
   }
 
   .kc-services-sin__panel {
-    /* Drót: másolat | álló fotó, a fotó a panel ~40%-a. Belső térköz: space-6. */
+    /* Drót: másolat | álló fotó, a fotó a panel ~40%-a. Belső térköz: space-7. */
     grid-template-columns: minmax(0, 1.5fr) minmax(11rem, 1fr);
     align-items: stretch;
-    padding: var(--kc-space-6);
-    gap: var(--kc-space-5);
+    padding: var(--kc-space-7);
+    gap: var(--kc-space-6);
     min-height: 100%;
+    height: 100%;
   }
 
   .kc-services-sin__photo,

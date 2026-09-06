@@ -58,8 +58,9 @@ export function Services({ block }: ServicesProps) {
 function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[] }) {
   const settings = block.sectionSettings
   const anchorId = settings?.anchorId?.trim() || undefined
-  // A drót a sávot hűvös tinten kéri. A sötét sáv marad szerkesztői kivétel;
-  // a fehér CMS-érték itt is tintet kap, különben a kiemelt panel nem válik el.
+  // A drót a sávot világos hűvös lapon kéri, a panelt tint-kártyán.
+  // A CMS fehér érték itt is a tint-osztályt kapja (H08); a CSS a sávot
+  // paperre festi, hogy a tint panel elváljon. A sötét sáv szerkesztői kivétel.
   const variant = settings?.hatter === 'sotet' ? 'dark' : 'tint'
   const headingId = `services-cim-${block.id ?? 'fo'}`
   const eyebrow = block.eyebrow?.trim() ?? ''
@@ -355,7 +356,7 @@ function railIconProps() {
     stroke: 'currentColor',
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
-    strokeWidth: 1.75,
+    strokeWidth: 1.85,
     viewBox: '0 0 24 24',
   }
 }
@@ -363,11 +364,12 @@ function railIconProps() {
 function ClosedHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--closed">
-      <path d="M9 12V8.4c0-.7.6-1.2 1.2-1.2S11.4 7.7 11.4 8.4V12" />
-      <path d="M11.4 12V7.2c0-.8.6-1.4 1.3-1.4s1.3.6 1.3 1.4V12" />
-      <path d="M14 12V8.6c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2V12" />
-      <path d="M8.6 12h8v3.6c0 2-1.6 3.6-3.6 3.6h-.8c-2 0-3.6-1.6-3.6-3.6V12z" />
-      <path d="M8.6 13.6H6.8A1.5 1.5 0 0 1 6.8 10.6h1.8" />
+      <path d="M8.2 12.2h8.2v4.1c0 2.05-1.65 3.7-3.7 3.7h-.8c-2.05 0-3.7-1.65-3.7-3.7v-4.1z" />
+      <path d="M9.4 12.2V9.15c0-.5.4-.9.9-.9s.9.4.9.9V12.2" />
+      <path d="M11.2 12.2V8.35c0-.55.42-1 .95-1s.95.45.95 1V12.2" />
+      <path d="M13.1 12.2V8.7c0-.48.38-.88.88-.88s.88.4.88.88V12.2" />
+      <path d="M14.86 12.2V9.35c0-.42.34-.78.78-.78s.78.36.78.78V12.2" />
+      <path d="M8.2 13.85H6.35a1.35 1.35 0 0 1 0-2.7H8.2" />
     </svg>
   )
 }
@@ -375,12 +377,12 @@ function ClosedHandIcon() {
 function OpeningHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--opening">
-      <path d="M8.2 13.2V7.4c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v5.8" />
-      <path d="M10.4 13.2V6c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2v7.2" />
-      <path d="M12.8 13.2V6.6c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v6.6" />
-      <path d="M15 13.2V8c0-.5.5-1 1.1-1s1.1.5 1.1 1v5.2" />
-      <path d="M8.2 13.2h8v3.1c0 1.8-1.5 3.3-3.3 3.3h-1.4c-1.8 0-3.3-1.5-3.3-3.3v-3.1z" />
-      <path d="M8.2 14.6H6.4A1.4 1.4 0 0 1 6.4 11.8h1.8" />
+      <path d="M8.1 13.6V8.05c0-.52.42-.95.95-.95s.95.43.95.95V13.6" />
+      <path d="M10 13.6V6.7c0-.6.48-1.08 1.08-1.08s1.08.48 1.08 1.08V13.6" />
+      <path d="M12.16 13.6V7.35c0-.52.46-.96 1.02-.96s1.02.44 1.02.96V13.6" />
+      <path d="M14.2 13.6V8.55c0-.48.42-.9.96-.9s.96.42.96.9V13.6" />
+      <path d="M8.1 13.6h8.02v3c0 1.72-1.4 3.12-3.12 3.12h-1.78c-1.72 0-3.12-1.4-3.12-3.12v-3z" />
+      <path d="M8.1 15.15H6.2a1.4 1.4 0 0 1 0-2.8H8.1" />
     </svg>
   )
 }
@@ -388,12 +390,13 @@ function OpeningHandIcon() {
 function OpenHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--open">
-      <path d="M7.5 13.4V5.6c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v7.8" />
-      <path d="M9.7 13.4V4.4c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2v9" />
-      <path d="M12.1 13.4V5.2c0-.6.5-1.1 1.2-1.1s1.1.5 1.1 1.1v8.2" />
-      <path d="M14.4 13.4V6.2c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v7.2" />
-      <path d="M7.5 13.4h8v3.3c0 1.9-1.5 3.4-3.4 3.4h-1.2c-1.9 0-3.4-1.5-3.4-3.4v-3.3z" />
-      <path d="M7.5 15H5.6A1.6 1.6 0 0 1 5.6 11.8L7.5 12.4" />
+      <path d="M7.15 13.85V5.55c0-.58.47-1.05 1.05-1.05s1.05.47 1.05 1.05v8.3" />
+      <path d="M9.25 13.85V4.2c0-.68.52-1.22 1.18-1.22s1.18.54 1.18 1.22v9.65" />
+      <path d="M11.6 13.85V4.85c0-.6.5-1.1 1.12-1.1s1.12.5 1.12 1.1v9" />
+      <path d="M13.84 13.85V6.05c0-.55.47-1.02 1.05-1.02s1.05.47 1.05 1.02v7.8" />
+      <path d="M15.94 13.85V7.35c0-.48.4-.9.92-.9s.92.42.92.9v6.5" />
+      <path d="M7.15 13.85h10.55v3.15c0 1.82-1.48 3.3-3.3 3.3H10.45c-1.82 0-3.3-1.48-3.3-3.3v-3.15z" />
+      <path d="M7.15 15.55H5.2a1.5 1.5 0 1 1 0-3l1.95.55" />
     </svg>
   )
 }
