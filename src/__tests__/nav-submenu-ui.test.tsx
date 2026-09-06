@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { DesktopNav } from '../components/layout/DesktopNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { buildNavTree } from '../lib/menu-tree'
-import type { Menu } from '../payload-types'
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
+import type { Menu, Product } from '../payload-types'
 
 /**
  * A fejléc ALMENÜ-renderelése (desktop lenyíló + mobil drawer).
@@ -127,5 +128,40 @@ describe('MobileNav — drawer almenü', () => {
   it('üres menü esetén beszédes üzenet, nem néma üres drawer', () => {
     const empty = render(createElement(MobileNav, { items: [] }))
     expect(empty).toContain('A menü jelenleg üres.')
+  })
+})
+
+describe('SOS almenüfelirat — desktop és mobil', () => {
+  const items = buildNavTree([
+    urlMenu(1, 'Szolgáltatások', '/szolgaltatasok', { order: 0 }),
+    {
+      ...urlMenu(6, SOS_MENU_LABEL, '/kurzusok/sos-kezrelax-villamkurzus', {
+        parent: 1,
+        order: 2,
+      }),
+      type: 'product',
+      url: null,
+      ref: {
+        relationTo: 'products',
+        value: {
+          id: 2,
+          slug: 'sos-kezrelax-villamkurzus',
+          status: 'published',
+          _status: 'draft',
+          priceInHUFEnabled: false,
+        } as Product,
+      },
+    } as Menu,
+  ])
+
+  it('a storefront-látható ingyenes SOS mindkét navban Ingyenes feliratot kap', () => {
+    const desktop = render(createElement(DesktopNav, { items }))
+    const mobile = render(createElement(MobileNav, { items }))
+
+    for (const html of [desktop, mobile]) {
+      expect(html).toContain(`href="/kurzusok/sos-kezrelax-villamkurzus"`)
+      expect(html).toContain(`>${SOS_FREE_MENU_LABEL}</a>`)
+      expect(html).not.toMatch(new RegExp(`>${SOS_MENU_LABEL}<`))
+    }
   })
 })

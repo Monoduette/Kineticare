@@ -3,7 +3,7 @@ import type { Menu, Page, Post, Product } from '../payload-types'
 import { COURSE_BASE_PATH, courseHref } from './course-url'
 import { extractRelationshipId } from './menu-validation'
 import { sanitizeCmsUrl } from './safe-url'
-import { isAvailableSosProduct } from './sos-offer'
+import { isStorefrontFreeSos } from './sos-offer'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
 
 /**
@@ -98,7 +98,12 @@ function toNavItem(menu: Menu, href: string): NavItem {
     const ref = resolveRef(menu)
     const product = ref?.relationTo === 'products' ? (ref.value as Product) : null
     if (product?.slug === 'sos-kezrelax-villamkurzus') {
-      label = isAvailableSosProduct(product) ? SOS_FREE_MENU_LABEL : SOS_MENU_LABEL
+      // A kurzusoldal a saját `status` + isFreeCourse kaput nézi; a nav ugyanazt.
+      // A drafts `_status` a kezdőlap/GYIK szigorúbb kapuja marad (P03 HOLD).
+      // Forrás: WCAG 2.2 SC 3.2.4
+      // (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html);
+      // NN/g 4. heurisztika (https://www.nngroup.com/articles/consistency-and-standards/).
+      label = isStorefrontFreeSos(product) ? SOS_FREE_MENU_LABEL : SOS_MENU_LABEL
     }
   }
   return {

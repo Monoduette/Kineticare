@@ -1,5 +1,7 @@
 import type { Payload } from 'payload'
 
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
+
 /**
  * Fejléc-navigáció alapstruktúrája — idempotens seed (`menus` collection).
  *
@@ -92,14 +94,14 @@ export function buildNavigationMenuPlan(context: MenuSeedContext = {}): MenuSeed
   const sosCourse: MenuSeedNode =
     context.sosCourseId !== undefined
       ? {
-          label: 'SOS KézRelax',
+          label: SOS_FREE_MENU_LABEL,
           type: 'product',
           ref: { relationTo: 'products', value: context.sosCourseId },
           order: 2,
           children: [],
         }
       : {
-          label: 'SOS KézRelax',
+          label: SOS_FREE_MENU_LABEL,
           type: 'url',
           url: SOS_COURSE_FALLBACK_PATH,
           order: 2,
@@ -177,6 +179,37 @@ async function resolveMenuSeedContext(payload: Payload): Promise<MenuSeedContext
   return context
 }
 
+function labelsMatchingSeedNode(node: MenuSeedNode): string[] {
+  // A régi seed „SOS KézRelax"-szel hozta létre a sort. Az új terv felirata
+  // „Ingyenes SOS KézRelax"; a dedup-kulcs továbbra is label+szülő, ezért a
+  // régi feliratot ugyanannak a pontnak tekintjük, különben a következő seed
+  // duplikálna. Meglévő sort nem írunk felül (szerkesztői elsőbbség).
+  if (node.label === SOS_FREE_MENU_LABEL) {
+    return [SOS_FREE_MENU_LABEL, SOS_MENU_LABEL]
+  }
+  return [node.label]
+}
+
+async function findExistingMenuNode(
+  payload: Payload,
+  label: string,
+  parentId: number | undefined,
+) {
+  const existing = await payload.find({
+    collection: 'menus',
+    where: {
+      and: [
+        { label: { equals: label } },
+        parentId !== undefined ? { parent: { equals: parentId } } : { parent: { exists: false } },
+      ],
+    },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  return existing.docs[0]
+}
+
 /**
  * Egy menüpont biztosítása. A dedup-kulcs a `label` + a szülő (gyökérnél:
  * „nincs szülő") — pontosan úgy, ahogy a seed.ts és a legacy-visszatöltés
@@ -191,23 +224,14 @@ async function ensureMenuNode(
   summary: MenuSeedSummary,
   dryRun: boolean,
 ): Promise<number | undefined> {
-  const existing = await payload.find({
-    collection: 'menus',
-    where: {
-      and: [
-        { label: { equals: node.label } },
-        parentId !== undefined ? { parent: { equals: parentId } } : { parent: { exists: false } },
-      ],
-    },
-    limit: 1,
-    depth: 0,
-    overrideAccess: true,
-  })
-
-  const found = existing.docs[0]
+  let found: Awaited<ReturnType<typeof findExistingMenuNode>> | undefined
+  for (const label of labelsMatchingSeedNode(node)) {
+    found = await findExistingMenuNode(payload, label, parentId)
+    if (found) break
+  }
   if (found) {
-    summary.skipped.push(node.label)
-    payload.logger.info(`Menü-seed: „${node.label}" már létezik — érintetlenül hagyva.`)
+    summary.skipped.push(found.label)
+    payload.logger.info(`Menü-seed: „${found.label}" már létezik — érintetlenül hagyva.`)
     return found.id
   }
 
