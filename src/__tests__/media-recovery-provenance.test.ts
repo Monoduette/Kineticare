@@ -26,6 +26,11 @@ afterEach(() => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
 
+// A generateFileData + sharp kör (fókusz × team/press) és a config-drift
+// encode CI-n kicsúszik a Vitest 5 mp-es alapkorlátján. Az őr alapos, nem
+// lassú: a korlátot emeljük, a vizsgálatot nem szűkítjük (ugyanaz a minta,
+// mint a schema-drift-guard 60 mp-e).
+
 function fixture(asset = manifest.assets[0], directory = 'team') {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-provenance-'))
   folders.push(dir)
@@ -91,7 +96,7 @@ function fixture(asset = manifest.assets[0], directory = 'team') {
   }
 }
 
-describe('durable team media recovery provenance', () => {
+describe('durable team media recovery provenance', { timeout: 60_000 }, () => {
   it.each(['width', 'height', 'fit', 'position', 'withoutEnlargement', 'name', 'added', 'removed'])(
     'binds image size %s before receipt or media writes',
     async (field) => {
@@ -188,8 +193,8 @@ describe('durable team media recovery provenance', () => {
     },
   )
   // Tíz upload-drift × sharp rotate/webp CI-terhelés mellett túllépi a 5 mp-es
-  // alap timeoutot (main 19357dc, Actions 33989356297). A költségvetést csak
-  // ezen a teszten emeljük; a globális testTimeoutot nem.
+  // alap timeoutot (main 19357dc, Actions 33989356297; PR 214 20 mp-et adott).
+  // A generateFileData kör ugyanezen a fájlon 5 mp-en flakel, ezért 60 mp.
   it.each(['raw', 'normalized'])(
     'holds %s receipt before any write after config drift',
     async (kind) => {
@@ -224,7 +229,7 @@ describe('durable team media recovery provenance', () => {
         expect(f.update, JSON.stringify(drift)).not.toHaveBeenCalled()
       }
     },
-    20_000,
+    60_000,
   )
 
   it('does not query receipts for healthy records', async () => {
@@ -347,6 +352,7 @@ describe('durable team media recovery provenance', () => {
       expect((await ensureMediaFiles(f.payload)).rendben).toBe(1)
       expect(f.update).toHaveBeenCalledTimes(1)
     },
+    60_000,
   )
 
   it('normalizes absent metadata and excludes only derived URLs', () => {

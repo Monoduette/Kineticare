@@ -7,6 +7,7 @@ import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { HomeView } from '../components/content/HomeView'
 import { DEFAULT_HEADING } from '../components/content/home/CourseCards'
 import { FREE_SOS_COURSE_CTA_LABEL } from '../components/content/home/FreeSos'
+import { LEGACY_HOME_HELP_ROWS } from '../lib/home-help-states'
 import { buildHomeLayout } from '../scripts/seed'
 import type { Page, Post, Product, Testimonial } from '../payload-types'
 
@@ -168,6 +169,78 @@ describe('HomeView layout-elágazás', () => {
     expect(html).toContain('Gyógytornász és manuálterapeuta szakmai háttér')
     expect(html).toContain(DEFAULT_HEADING)
     expect(html).toContain('"@type":"FAQPage"')
+  })
+
+  it('az élő háromoszlopos „Így tudunk segíteni” táblát C-sínre cseréli, a Katák sorrendje marad', () => {
+    const liveBody =
+      'Otthoni videókurzusunkkal a saját tempódban gyakorolhatsz. A teljes program tartalmát és árát a kurzus oldalán találod.'
+    const html = render(
+      createElement(HomeView, {
+        home: page({
+          id: 1,
+          layout: layoutOf(
+            {
+              blockType: 'filmHero',
+              id: 'hero',
+              title: 'Hero cím',
+              sectionSettings: { visible: true },
+            },
+            {
+              blockType: 'about',
+              id: 'girls',
+              title: 'A Kineticare alapítói',
+              paragraphs: [{ text: 'Kiss Kata és Kocsis Kata a stúdióban.', emphasized: true }],
+              sectionSettings: { visible: true },
+            },
+            {
+              blockType: 'services',
+              id: 'usps',
+              title: 'Erre számíthatsz velünk',
+              rows: [
+                { title: 'Tudomány', body: 'Első kártya.' },
+                { title: 'Személyre szabott', body: 'Második kártya.' },
+              ],
+              sectionSettings: { visible: true },
+            },
+            {
+              blockType: 'services',
+              id: 'help',
+              title: 'Így tudunk segíteni',
+              rows: LEGACY_HOME_HELP_ROWS.map((row, index) =>
+                index === 1 ? { ...row, body: liveBody } : { ...row },
+              ),
+              sectionSettings: { visible: true },
+            },
+            {
+              blockType: 'about',
+              id: 'later-about',
+              title: 'Kiss Kata és Kocsis Kata vagyunk',
+              paragraphs: [{ text: 'Második bemutatkozó blokk.', emphasized: false }],
+              sectionSettings: { visible: true },
+            },
+          ),
+        }),
+        products: [],
+        posts: [],
+      }),
+    )
+    expect(html).toContain('kc-services--sin')
+    expect(html).not.toContain('kc-services--choices')
+    expect(html).toContain('A Kineticare alapítói')
+    expect(html).toContain('Személyes kezelés a stúdióban.')
+    expect(html.indexOf('A Kineticare alapítói')).toBeLessThan(html.indexOf('Így tudunk segíteni'))
+    expect(html.indexOf('Így tudunk segíteni')).toBeLessThan(
+      html.indexOf('Kiss Kata és Kocsis Kata vagyunk'),
+    )
+    expect(html).toContain('Erre számíthatsz velünk')
+    const helpStart = html.indexOf('aria-labelledby="services-cim-help"')
+    const laterAbout = html.indexOf('id="about-cim-later-about"')
+    expect(helpStart).toBeGreaterThan(-1)
+    expect(laterAbout).toBeGreaterThan(helpStart)
+    const helpHtml = html.slice(helpStart, laterAbout)
+    expect(helpHtml).toContain('kc-services--sin')
+    expect(helpHtml).not.toContain('kc-services__num')
+    expect(helpHtml).toContain('help-zart-img-7541.jpg')
   })
 })
 
@@ -466,8 +539,11 @@ describe('buildHomeLayout (seed alap-layout)', () => {
     const order: string[] = buildHomeLayout().map((block) => block.blockType)
     const at = (type: string) => order.indexOf(type)
     // M2–M4: hitel-csík közvetlenül a hero után, a fizetős blokk előbb, mint az ingyenes.
+    // A C-sín a régi háromoszlopos / states utáni services helyén áll — a Katák
+    // about blokkját a seed nem mozdítja.
     expect(at('credsStrip')).toBe(1)
     expect(at('courseCards')).toBe(2)
+    expect(at('services')).toBe(at('states') + 1)
     expect(at('freeSos')).toBeGreaterThan(at('courseCards'))
     // M6–M7: vélemények és tudástár csak a termékblokk UTÁN jöhetnek.
     expect(at('testimonials')).toBeGreaterThan(at('courseCards'))

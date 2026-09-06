@@ -70,6 +70,15 @@ describe('buildNavigationMenuPlan — struktúra', () => {
   it('a „Kurzusok" NEM a menüfából jön (kód-szintű CTA marad a fejlécben)', () => {
     expect(flatten(buildNavigationMenuPlan()).map((node) => node.label)).not.toContain('Kurzusok')
   })
+
+  it('a seed nem hozza létre az élő „olcsó dolgok itt" CMS-menüpontot', () => {
+    // 2026-09-06 élő menü: Szolgáltatások alatt `/akcios-kurzus`, felirat
+    // „olcsó dolgok itt". A seed csak hiányzó pontokat hoz létre, meglévőt
+    // nem töröl — ez CMS-only, kódból nem szűrjük.
+    expect(flatten(buildNavigationMenuPlan()).map((node) => node.label)).not.toContain(
+      'olcsó dolgok itt',
+    )
+  })
 })
 
 describe('buildNavigationMenuPlan — sorrend', () => {
@@ -249,10 +258,7 @@ function createFakePayload(store: FakeStore): { payload: Payload; createCount: (
     logger: { info: () => {}, warn: () => {}, error: () => {} },
     find: async ({ collection, where }: { collection: string; where?: unknown }) => {
       if (collection === 'pages') {
-        const slug = readEquals(
-          typeof where === 'object' && where !== null ? where : {},
-          'slug',
-        )
+        const slug = readEquals(typeof where === 'object' && where !== null ? where : {}, 'slug')
         return { docs: store.pages.filter((page) => page.slug === slug) }
       }
       if (collection === 'products') {

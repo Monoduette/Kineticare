@@ -264,6 +264,8 @@ async function ensureMenuNode(
  *
  * Többször futtatva sem duplikál és nem ír felül semmit: minden menüpontot a
  * felirata (+ a szülője) alapján keres meg, és csak a HIÁNYZÓKAT hozza létre.
+ * A tervben nem szereplő, szerkesztői extra gyerek (például az élő
+ * „olcsó dolgok itt" → `/akcios-kurzus`) megmarad — a seed nem töröl.
  *
  * @param options.dryRun ha igaz, semmit nem ír az adatbázisba — csak összesít
  */

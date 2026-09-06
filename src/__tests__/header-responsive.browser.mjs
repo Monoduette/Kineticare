@@ -70,6 +70,9 @@ const bundle = await build({
           } else if (args.path.endsWith('/menus')) {
             contents = `
             const item = (id, label, href, children = []) => ({id, label, href, children, isExternal: false, openInNewTab: false})
+            // Az „olcsó dolgok itt" az ÉLŐ Payload-menü extra gyereke
+            // (/akcios-kurzus), nem a seed terve. A fixture szándékosan
+            // megtartja, hogy a túlcsordulás/fiók extra CMS-ponttal is mérhető.
             export const getNavTree = async () => window.fixtureEmptyMenu ? [] : [
               item(1, 'Szolgáltatások', '/szolgaltatasok', [
                 item(4, 'Rendelői kezelések', '/kezelesek'), item(5, 'Szakmai képzés', '/szakmai-kepzesek'),
@@ -174,10 +177,7 @@ try {
       await campaign.waitFor({ state: 'visible' })
       assert.equal(await campaign.getAttribute('href'), '/akcios-kurzus')
       assert.equal(await campaign.getAttribute('aria-current'), 'page')
-      assert.equal(
-        await page.getByRole('link', { name: 'Időpontkérés', exact: true }).count(),
-        0,
-      )
+      assert.equal(await page.getByRole('link', { name: 'Időpontkérés', exact: true }).count(), 0)
       if (geometry.mobile) {
         const drawerCta = page.locator('.kc-site-header__drawer-appointment')
         await drawerCta.waitFor({ state: 'visible' })
