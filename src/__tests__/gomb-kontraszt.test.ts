@@ -655,6 +655,14 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       felulir: null,
       indok: 'Ua.: hover-kitöltés a gombon, a gyűrű az offset miatt a lapra esik.',
     },
+    {
+      szelektor:
+        '.kc-services-sin__input:nth-of-type(1):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(1) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(2):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(2) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(3):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(3) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(4):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(4) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(5):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(5) .kc-services-sin__marker',
+      felulir: null,
+      indok:
+        'A sín aktív körjelölője dekoratív (aria-hidden), nem fókuszálható. ' +
+        'A fókusz a címkén van, a gyűrű accent-deep a tint lapon (≥ 4,72:1).',
+    },
   ]
 
   const sotetSzabalyok = MINDEN_SZABALY.filter((sz) => SOTET_HATTER.test(sz.torzs))
