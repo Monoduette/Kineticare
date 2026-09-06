@@ -19,16 +19,9 @@ vi.mock('../components/layout/NewsletterSignup', () => ({
 
 import { DesktopNav } from '../components/layout/DesktopNav'
 import { Footer, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
-import { HeaderAppointmentCta } from '../components/layout/HeaderAppointmentCta'
 import { HeaderCoursesNav } from '../components/layout/HeaderCoursesNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { NavAnchor } from '../components/layout/NavAnchor'
-import {
-  HEADER_APPOINTMENT_HREF,
-  HEADER_APPOINTMENT_LABEL,
-  HEADER_APPOINTMENT_NAV_ITEM,
-  withHeaderAppointmentNav,
-} from '../lib/header-appointment'
 import type { NavItem } from '../lib/menu-tree'
 import { getNavLinkRouteState, getNavRouteState } from '../lib/nav-route'
 
@@ -252,39 +245,6 @@ describe('HeaderCoursesNav — állandó kurzus-link', () => {
 
     expect(link).not.toContain('aria-current')
     expect(link).not.toContain('data-ancestor-active')
-  })
-})
-
-describe('HeaderAppointmentCta — callback, nem foglaló', () => {
-  it.each(['bar', 'drawer'] as const)(
-    '%s: Időpontkérés a callback-hrefre megy, nincs aria-current',
-    (variant) => {
-      pathnameMock.mockReturnValue('/kapcsolat')
-      const html = render(createElement(HeaderAppointmentCta, { variant }))
-
-      expect(html).toContain(HEADER_APPOINTMENT_LABEL)
-      expect(html).not.toContain('Időpontfoglalás')
-      const link = anchorFor(html, HEADER_APPOINTMENT_HREF)
-      expect(link).not.toContain('aria-current')
-      expect(link).not.toContain('data-ancestor-active')
-    },
-  )
-})
-
-describe('főmenü Időpontkérés pont — hash, nem current', () => {
-  it.each([
-    ['DesktopNav', DesktopNav],
-    ['MobileNav', MobileNav],
-  ] as const)('%s a callback-hrefen nem kap aria-current értéket', (_name, Component) => {
-    pathnameMock.mockReturnValue('/kapcsolat')
-    const items = withHeaderAppointmentNav([navItem(1, 'Rólunk', '/rolunk')])
-    const html = render(createElement(Component, { items }))
-    const appointment = anchorFor(html, HEADER_APPOINTMENT_HREF)
-
-    expect(html).toContain(HEADER_APPOINTMENT_LABEL)
-    expect(html).not.toContain('Időpontfoglalás')
-    expect(appointment).not.toContain('aria-current')
-    expect(items).toContainEqual(HEADER_APPOINTMENT_NAV_ITEM)
   })
 })
 

@@ -388,13 +388,6 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok:
       'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
   },
-  {
-    felirat: 'Időpontkérés',
-    fajl: 'lib/header-appointment.ts',
-    kategoria: 'nem-cta',
-    indok:
-      'N-3 főmenü-főnév + fejléc-gomb, Norbert 2026-09-06: nav link ÉS CTA, ugyanazzal a callback-céllal (`/kapcsolat#idopontkeres`). Nem naptáras foglaló, nem a §3.2 #24 igei CTA.',
-  },
 ]
 /**
  * FELSŐ KORLÁT. A 2026-08-17-i mérés 98 sort talált, a 2026-08-18-i kör után
@@ -423,12 +416,8 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * 2026-09-05: 43 → 45, a tulajdonos kifejezett jóváhagyásával. Kizárólag a
  * LogoRail két helyi indítás/szünet felirata, nem értékesítési CTA; nincs
  * általános felmentés és nincs új szótári sor. A korlát pontosan a lista mérete.
- *
- * 2026-09-06: 45 → 46, Norbert zára. Az „Időpontkérés" főmenü-főnév + fejléc-
- * gomb (nav link ÉS CTA), callback `/kapcsolat#idopontkeres`, nem naptáras
- * foglaló. N-3 menücímke, mint a „Kurzusok"; új §3.2 igei sor NINCS.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 46
+const KIVETEL_LISTA_FELSO_KORLAT = 45
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy

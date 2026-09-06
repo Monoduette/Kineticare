@@ -240,25 +240,6 @@
   }
 }
 
-/* Időpontkérés sáv-gomb. A kompakt sávban nincs hely: wordmark + Kurzusok
-   pirula + hamburger már kitölti a 320px-et (N-21, WCAG 2.2 1.4.10).
-   Ott a pont a fiók LISTÁJÁBAN és a fiók alján gombként is él
-   (Norbert 2026-09-06: nav link ÉS CTA). A gomb a meglévő secondary
-   családot viszi, új króm nélkül.
-   GOV.UK Button: egy primary (Kurzusok); a másodlagos cselekvés secondary.
-   https://design-system.service.gov.uk/components/button/
-   NN/g, The Same Link Twice: ismétlés megengedett, ha a két hely más szerep.
-   https://www.nngroup.com/articles/duplicate-links/ */
-.kc-site-header .kc-site-header__appointment-cta {
-  display: none;
-}
-
-@media (min-width: 75em) {
-  .kc-site-header .kc-site-header__appointment-cta {
-    display: inline-flex;
-  }
-}
-
 /* ---- Fiók-belépési pont (AccountNav) --------------------------------------
  *
  * MIÉRT VAN. A site-kereten korábban NULLA belépési pont volt: `/belepes` 0
@@ -906,17 +887,6 @@
 .kc-nav-mobile__link:hover,
 .kc-nav-mobile__link:active {
   background-color: var(--kc-header-accent-soft);
-}
-
-.kc-nav-mobile__appointment {
-  margin-top: auto;
-  padding: var(--kc-space-4);
-  padding-bottom: calc(var(--kc-space-4) + var(--kc-consent-offset));
-  border-top: 1px solid var(--kc-header-hairline);
-}
-
-.kc-nav-mobile__appointment .kc-button {
-  width: 100%;
 }
 
 .kc-nav-mobile__empty {
