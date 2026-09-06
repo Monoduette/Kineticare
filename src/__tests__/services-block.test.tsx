@@ -6,6 +6,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { Services } from '../components/blocks/Services'
+import { ctaLabel } from '../lib/cta-vocabulary'
+import { HOME_HELP_LEAD, HOME_HELP_STATES, HOME_HELP_TITLE } from '../lib/home-help-states'
+import { COURSE_SOS_KEZRELAX } from '../lib/legacy-redirects'
 import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import type { BlockServices } from '../payload-types'
 
@@ -116,6 +119,7 @@ describe('Services — három összehasonlítható út', () => {
     ]
     const markup = render(block({ rows }))
     expect(markup).toContain('kc-services--choices')
+    expect(markup).not.toContain('kc-services--sin')
     for (const row of rows) expect(markup).toContain(`href="${row.url}"`)
     expect(markup.match(/class="kc-services__row"/g)).toHaveLength(3)
   })
@@ -234,5 +238,115 @@ describe('welcome.css — a keskeny nézet őre', () => {
 
   it('az üdvözlő cím hosszú szava megtörik (320 px-en a lap nem görgethető oldalra)', () => {
     expect(szabalyTorzs(css, '.kc-welcome__title')).toContain('overflow-wrap: break-word')
+  })
+})
+
+describe('Services — REV C sín + panel', () => {
+  const railBlock = (): BlockServices =>
+    block({
+      elrendezes: 'sin',
+      title: HOME_HELP_TITLE,
+      lead: HOME_HELP_LEAD,
+      eyebrow: '',
+      image: {
+        id: 9,
+        url: '/tabla.webp',
+        alt: 'Tábla-fotó, a sín nem mutatja',
+        width: 800,
+        height: 600,
+      } as BlockServices['image'],
+      rows: HOME_HELP_STATES.map((state, index) => ({
+        id: `rail-${index}`,
+        number: state.number,
+        title: state.title,
+        osszefoglalo: state.osszefoglalo,
+        body: state.body,
+        felirat: state.felirat,
+        url: state.url,
+        ujAblakban: false,
+      })),
+    })
+
+  it('sín-elrendezésnél nincs háromoszlopos tábla, a tábla-fotó kimarad', () => {
+    const markup = render(railBlock())
+    expect(markup).toContain('kc-services--sin')
+    expect(markup).not.toContain('kc-services--choices')
+    expect(markup).not.toContain('kc-services--photo')
+    expect(markup).not.toContain('/tabla.webp')
+    expect(markup).toContain(HOME_HELP_LEAD)
+  })
+
+  it('három natív rádió, három sín-címke és a jóváhagyott panel-szöveg', () => {
+    const markup = render(railBlock())
+    expect(markup.match(/type="radio"/g)).toHaveLength(3)
+    expect(markup).toContain('name="kc-help-sz1"')
+    expect(markup).toContain('Kézállapot')
+    expect(markup).toContain('kc-visually-hidden')
+    for (const state of HOME_HELP_STATES) {
+      expect(markup).toContain(state.title)
+      expect(markup).toContain(state.osszefoglalo)
+      expect(markup).toContain(state.body)
+      expect(markup).toContain(state.felirat)
+      expect(markup).toContain(`href="${state.url}"`)
+    }
+    expect(markup).toContain(ctaLabel('free-sos-named-open'))
+    expect(markup).toContain(`href="${COURSE_SOS_KEZRELAX}"`)
+    expect(markup).toContain('Fotó később: Zárt')
+    expect(markup).not.toContain('kc-services__row')
+  })
+
+  it('tiltott sémájú panel-URL: a felirat nem jelenik meg, a szöveg marad', () => {
+    const markup = render(
+      block({
+        elrendezes: 'sin',
+        rows: [
+          {
+            title: 'Zárt',
+            osszefoglalo: 'Rövid.',
+            body: 'Hosszabb szöveg.',
+            felirat: 'Tovább',
+            url: 'javascript:alert(1)',
+          },
+        ],
+      }),
+    )
+    expect(markup).toContain('Zárt')
+    expect(markup).toContain('Hosszabb szöveg.')
+    expect(markup).not.toContain('Tovább')
+    expect(markup).not.toContain('javascript:')
+  })
+
+  it('a /szolgaltatasok tábla marad tábla, sín nélkül', () => {
+    const services = buildSzolgaltatasokLayout().find((b) => b.blockType === 'services')
+    if (services?.blockType !== 'services') {
+      throw new Error('A szolgáltatás-szekció hiányzik a szekciósorból.')
+    }
+    const markup = render(services as unknown as BlockServices)
+    expect(markup).not.toContain('kc-services--sin')
+    expect(markup).toContain('kc-services--choices')
+  })
+})
+
+describe('services-sin.css — token-szerződés', () => {
+  const css = cssFajl('services-sin.css')
+
+  it('csak a három betűméret-tokent használja', () => {
+    for (const sor of css.split('\n').filter((s) => s.includes('font-size:'))) {
+      expect(sor).toMatch(/font-size:\s*var\(--kc-font-(l|m|s)\)/)
+    }
+  })
+
+  it('a sín érintőcélja 44 px, a 320 px-es tördelés be van kötve', () => {
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-label')).toContain('min-height: 2.75rem')
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-label')).toContain('overflow-wrap: break-word')
+    expect(szabalyTorzs(css, '.kc-services-sin__panel-title')).toContain(
+      'overflow-wrap: break-word',
+    )
+  })
+
+  it('a kiválasztást a meglévő primary és tint token jelzi, új hex nélkül', () => {
+    expect(css).toContain('border-left-color: var(--kc-color-primary)')
+    expect(css).toContain('background-color: var(--kc-color-surface-tint)')
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 })

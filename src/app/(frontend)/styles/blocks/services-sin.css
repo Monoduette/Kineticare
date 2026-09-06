@@ -1,0 +1,265 @@
+/**
+ * Szolgáltatás-sín + panel (REV C) — a kezdőlap „Így tudunk segíteni" elrendezése.
+ *
+ * Nem ARIA-tablista. A három kézállapot kölcsönösen kizáró választás, ezért
+ * natív rádiócsoport: a W3C APG Radio Group mintája (nyíl a csoporton belül,
+ * Space/kattintás a címkén). A tab-minta azért marad ki, mert a tabok
+ * oldal-szintű nézetváltást ígérnek, itt viszont egy folyamat három állapota
+ * áll egymás mellett.
+ * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
+ *
+ * Vizuális rokon: NN/g, Tabs, Used Right — azonos kontextusban váltott nézetek,
+ * a kiválasztott elem jelölt; a viselkedés mégis rádió, nem tab.
+ * https://www.nngroup.com/articles/tabs-used-right/
+ * IBM Carbon Tabs: a kiválasztást bal szegély + tint felület jelzi, nem új szín.
+ * https://carbondesignsystem.com/components/tabs/usage/
+ *
+ * Mért küszöbök (tokens.css, nem szemre):
+ * - szöveg: ink a tinten 13,53:1, muted a tinten 8,05:1 (WCAG 2.2 SC 1.4.3)
+ * - UI-határ: border-strong a papíron 4,13:1; primary szegély UI ≥ 3:1
+ * - érintőcél: min-height 2.75rem (44 px, SC 2.5.8 célértéke)
+ * - 320 px: overflow-wrap + min-width: 0 (SC 1.4.10 Reflow)
+ * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja
+ */
+
+.kc-section.kc-board.kc-services--sin {
+  min-height: auto;
+  overflow: visible;
+}
+
+.kc-services--sin .kc-services-sin__header {
+  display: grid;
+  gap: var(--kc-space-4);
+  margin-bottom: var(--kc-space-7);
+  min-width: 0;
+}
+
+.kc-services--sin .kc-services__title {
+  max-width: 20ch;
+  margin-top: 0;
+}
+
+.kc-services-sin__intro {
+  margin: 0;
+  max-width: 65ch;
+  font-size: var(--kc-font-m);
+  line-height: 1.6;
+  color: var(--kc-services-muted);
+}
+
+.kc-services-sin {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+/* A clip a `.kc-visually-hidden` osztályon van. Itt csak a fókuszgyűrűt
+   tesszük át a látható címkére, hogy a 1 px-es rádió ne villogjon. */
+.kc-services-sin__input:focus {
+  outline: none;
+}
+
+.kc-services-sin__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-5);
+  min-width: 0;
+}
+
+.kc-services-sin__rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kc-space-2);
+  min-width: 0;
+}
+
+.kc-services-sin__rail-label {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--kc-space-3) var(--kc-space-4);
+  border-left: var(--kc-space-1) solid transparent;
+  background-color: transparent;
+  color: var(--kc-services-ink);
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-medium);
+  line-height: 1.3;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.kc-services-sin__rail-index {
+  flex: none;
+  margin-right: var(--kc-space-3);
+  color: var(--kc-services-accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.kc-services-sin__stage {
+  min-width: 0;
+  padding: var(--kc-space-6);
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-surface-tint);
+}
+
+.kc-services-sin__panel {
+  display: none;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-6);
+  min-width: 0;
+}
+
+.kc-services-sin__copy {
+  display: grid;
+  align-content: start;
+  gap: var(--kc-space-4);
+  min-width: 0;
+}
+
+.kc-services-sin__panel-title {
+  margin: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: var(--kc-leading-heading);
+  color: var(--kc-services-ink);
+  overflow-wrap: break-word;
+}
+
+.kc-services-sin__osszefoglalo,
+.kc-services-sin__body {
+  margin: 0;
+  max-width: 65ch;
+  font-size: var(--kc-font-m);
+  line-height: 1.6;
+}
+
+.kc-services-sin__osszefoglalo {
+  color: var(--kc-services-ink);
+}
+
+.kc-services-sin__body {
+  color: var(--kc-services-muted);
+  white-space: pre-line;
+}
+
+.kc-services-sin__cta {
+  justify-self: start;
+  margin-top: var(--kc-space-2);
+}
+
+.kc-services-sin__photo,
+.kc-services-sin__placeholder {
+  min-width: 0;
+  min-height: 12rem;
+}
+
+.kc-services-sin__photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.kc-services-sin__placeholder {
+  display: grid;
+  place-items: center;
+  padding: var(--kc-space-4);
+  border: 1px solid var(--kc-color-border-strong);
+  background-color: var(--kc-color-surface-raised);
+  color: var(--kc-services-muted);
+  font-size: var(--kc-font-s);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.kc-services-sin__placeholder-caption {
+  margin: 0;
+}
+
+/* Kiválasztott sín: tint + primary bal szegély. A :checked ~ layout
+   testvér-kombinátor JS nélkül köti a rádiót a címkéhez és a panelhez. */
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(1),
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(2),
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(3),
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(4),
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(5) {
+  border-left-color: var(--kc-color-primary);
+  background-color: var(--kc-color-surface-tint);
+}
+
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(1),
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(2),
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(3),
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(4),
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(5) {
+  display: grid;
+}
+
+/* A fókuszgyűrű a látható címkén legyen, ne a 1px-es rádióclipen.
+   A vastagság a globális :focus-visible (base.css, accent-deep 5,16:1). */
+.kc-services-sin__input:nth-of-type(1):focus-visible
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(1),
+.kc-services-sin__input:nth-of-type(2):focus-visible
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(2),
+.kc-services-sin__input:nth-of-type(3):focus-visible
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(3),
+.kc-services-sin__input:nth-of-type(4):focus-visible
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(4),
+.kc-services-sin__input:nth-of-type(5):focus-visible
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(5) {
+  outline: 3px solid var(--kc-color-focus);
+  outline-offset: 2px;
+}
+
+@media (min-width: 900px) {
+  .kc-services-sin__layout {
+    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+    gap: var(--kc-space-6);
+    align-items: start;
+  }
+
+  .kc-services-sin__rail {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .kc-services-sin__rail-label {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .kc-services-sin__panel {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: start;
+  }
+}

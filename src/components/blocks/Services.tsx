@@ -1,25 +1,26 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 
-import type { BlockServices } from '../../payload-types'
+import type { BlockServices, Media } from '../../payload-types'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { MediaImage } from '../content/MediaImage'
 import { mediaDimensions } from '../content/media-url'
+import { Button } from '../ui/Button'
 import { Section } from '../ui/Section'
 
 import '../../app/(frontend)/styles/blocks/services.css'
+import '../../app/(frontend)/styles/blocks/services-sin.css'
 
 /**
- * Services — szolgáltatás-sorok, „Így tudunk segíteni" (terv 2. katalógus, 3.4).
- * A landing `kc-services` szekciójának portja: bal oldalon kis felirat, cím és
- * egy Media-kép, jobb oldalon 1–5 számozott sor (szám, cím, szöveg, opcionális
- * hivatkozás). Kép nélkül a sorok teljes szélességben állnak.
- * A sor-hivatkozás a szabad `url` mezőből jön: belső útvonalra (/…) next/link,
- * külsőre sima `a` — a Button komponens mintája szerint. Új lapon nyíló linknél
+ * Services — tábla (kép + számozott sorok) vagy sín + panel (REV C).
+ * A sín natív rádiócsoport: W3C APG Radio Group, nem hamis tablista.
+ * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
  */
 export interface ServicesProps {
   block: BlockServices
 }
+
+type ServiceRow = NonNullable<BlockServices['rows']>[number]
 
 /**
  * A tábla-cím méret-fokozatának határa KARAKTERBEN.
@@ -31,12 +32,29 @@ export interface ServicesProps {
  */
 const CIM_HOSSZ_HATAR = 24
 
+const populatedMedia = (value: ServiceRow['photo'] | BlockServices['image']): Media | null =>
+  typeof value === 'object' && value !== null ? value : null
+
+const radioGroupName = (blockId: BlockServices['id']): string => {
+  const raw = String(blockId ?? 'fo').replace(/[^a-zA-Z0-9_-]+/g, '')
+  return `kc-help-${raw.length > 0 ? raw : 'fo'}`
+}
+
 export function Services({ block }: ServicesProps) {
   const rows = (block.rows ?? []).filter((row) => (row.title?.trim() ?? '').length > 0)
   if (rows.length === 0) {
     return null
   }
 
+  const isRail = block.elrendezes === 'sin'
+  if (isRail) {
+    return <ServicesRail block={block} rows={rows} />
+  }
+
+  return <ServicesTabla block={block} rows={rows} />
+}
+
+function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[] }) {
   const settings = block.sectionSettings
   const anchorId = settings?.anchorId?.trim() || undefined
   const variant =
@@ -44,7 +62,142 @@ export function Services({ block }: ServicesProps) {
   const headingId = `services-cim-${block.id ?? 'fo'}`
   const eyebrow = block.eyebrow?.trim() ?? ''
   const title = block.title?.trim() ?? ''
-  const media = typeof block.image === 'object' && block.image !== null ? block.image : null
+  const intro = block.lead?.trim() ?? ''
+  const groupName = radioGroupName(block.id)
+
+  return (
+    <Section
+      aria-labelledby={title.length > 0 ? headingId : undefined}
+      className="kc-services kc-board kc-board--edge kc-services--sin"
+      id={anchorId}
+      variant={variant}
+    >
+      <div className="kc-board__inner">
+        {eyebrow.length > 0 || title.length > 0 || intro.length > 0 ? (
+          <div className="kc-services-sin__header">
+            {eyebrow.length > 0 ? <p className="kc-services__eyebrow">{eyebrow}</p> : null}
+            {title.length > 0 ? (
+              <h2
+                className={`kc-services__title${
+                  title.length > CIM_HOSSZ_HATAR ? ' kc-services__title--long' : ''
+                }`}
+                id={headingId}
+              >
+                {title}
+              </h2>
+            ) : null}
+            {intro.length > 0 ? <p className="kc-services-sin__intro">{intro}</p> : null}
+          </div>
+        ) : null}
+        <fieldset className="kc-services-sin">
+          <legend className="kc-visually-hidden">Kézállapot</legend>
+          {rows.map((row, index) => {
+            const inputId = `${groupName}-${index}`
+            return (
+              <input
+                className="kc-visually-hidden kc-services-sin__input"
+                defaultChecked={index === 0}
+                id={inputId}
+                key={`input-${row.id ?? inputId}`}
+                name={groupName}
+                type="radio"
+                value={row.title.trim()}
+              />
+            )
+          })}
+          <div className="kc-services-sin__layout">
+            <div className="kc-services-sin__rail">
+              {rows.map((row, index) => {
+                const rowTitle = row.title.trim()
+                const number = row.number?.trim() || String(index + 1)
+                return (
+                  <label
+                    className="kc-services-sin__rail-label"
+                    htmlFor={`${groupName}-${index}`}
+                    key={`rail-${row.id ?? index}`}
+                  >
+                    <span aria-hidden="true" className="kc-services-sin__rail-index">
+                      {number}
+                    </span>
+                    {rowTitle}
+                  </label>
+                )
+              })}
+            </div>
+            <div className="kc-services-sin__stage">
+              {rows.map((row, index) => (
+                <RailPanel
+                  groupName={groupName}
+                  index={index}
+                  key={row.id ?? `panel-${index}`}
+                  row={row}
+                />
+              ))}
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </Section>
+  )
+}
+
+function RailPanel({
+  row,
+  index,
+  groupName,
+}: {
+  row: ServiceRow
+  index: number
+  groupName: string
+}) {
+  const rowTitle = row.title.trim()
+  const summary = row.osszefoglalo?.trim() ?? ''
+  const body = row.body?.trim() ?? ''
+  const url = sanitizeCmsUrl(row.url)
+  const label = row.felirat?.trim() ?? ''
+  const photo = populatedMedia(row.photo)
+  const headingId = `${groupName}-panel-${index}`
+
+  return (
+    <article aria-labelledby={headingId} className="kc-services-sin__panel">
+      <div className="kc-services-sin__copy">
+        <h3 className="kc-services-sin__panel-title" id={headingId}>
+          {rowTitle}
+        </h3>
+        {summary.length > 0 ? <p className="kc-services-sin__osszefoglalo">{summary}</p> : null}
+        {body.length > 0 ? <p className="kc-services-sin__body">{body}</p> : null}
+        {url && label.length > 0 ? (
+          <Button
+            className="kc-services-sin__cta"
+            href={url}
+            openInNewTab={Boolean(row.ujAblakban)}
+          >
+            {label}
+          </Button>
+        ) : null}
+      </div>
+      {photo ? (
+        <span className="kc-services-sin__photo">
+          <MediaImage media={photo} preferredSize="lg" sizes="(max-width: 900px) 100vw, 36vw" />
+        </span>
+      ) : (
+        <div className="kc-services-sin__placeholder">
+          <p className="kc-services-sin__placeholder-caption">Fotó később: {rowTitle}</p>
+        </div>
+      )}
+    </article>
+  )
+}
+
+function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow[] }) {
+  const settings = block.sectionSettings
+  const anchorId = settings?.anchorId?.trim() || undefined
+  const variant =
+    settings?.hatter === 'tint' ? 'tint' : settings?.hatter === 'sotet' ? 'dark' : 'default'
+  const headingId = `services-cim-${block.id ?? 'fo'}`
+  const eyebrow = block.eyebrow?.trim() ?? ''
+  const title = block.title?.trim() ?? ''
+  const media = populatedMedia(block.image)
   const dimensions = media ? mediaDimensions(media, 'lg') : null
   const imageRatio =
     dimensions && dimensions.width > 0 && dimensions.height > 0

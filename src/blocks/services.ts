@@ -4,10 +4,10 @@ import { linkFields } from './link-fields'
 import { sectionSettings } from './section-settings'
 
 /**
- * Szolgáltatás-sorok — „Így tudunk segíteni" (terv 2. blokk-katalógus).
+ * Szolgáltatás-sorok — tábla (kép + számozott sorok) vagy sín + panel.
  *
- * Bal oldalon egy kép, jobb oldalon 1–5 számozott sor: rendelői kezelések,
- * otthoni program, szakmai képzések. Soronként saját link (belső vagy külső).
+ * A `/szolgaltatasok` tábla marad. A kezdőlap „Így tudunk segíteni" szekciója
+ * sín-elrendezés: Zárt / Nyíló / Nyitott kézállapot, jobb oldalon szöveg + fotó.
  */
 export const services: Block = {
   slug: 'services',
@@ -37,13 +37,36 @@ export const services: Block = {
       },
     },
     {
+      name: 'lead',
+      type: 'textarea',
+      label: 'Bevezető',
+      admin: {
+        description:
+          'A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a kézállapot-út magyarázata. Nem kötelező.',
+      },
+    },
+    {
+      name: 'elrendezes',
+      type: 'select',
+      defaultValue: 'tabla',
+      label: 'Elrendezés',
+      options: [
+        { label: 'Tábla (kép + számozott sorok)', value: 'tabla' },
+        { label: 'Sín és panel (három kézállapot)', value: 'sin' },
+      ],
+      admin: {
+        description:
+          'A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon állapotválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.',
+      },
+    },
+    {
       name: 'image',
       type: 'upload',
       relationTo: 'media',
       label: 'Kép',
       admin: {
         description:
-          'A sorok mellé kerülő kép (pl. terapeuta keze munka közben). Nem kötelező — kép nélkül a sorok teljes szélességben állnak.',
+          'A tábla sorai mellé kerülő kép (pl. terapeuta keze munka közben). Sín-elrendezésnél nem jelenik meg. Nem kötelező.',
       },
     },
     {
@@ -54,7 +77,8 @@ export const services: Block = {
       maxRows: 5,
       labels: { singular: 'Sor', plural: 'Sorok' },
       admin: {
-        description: 'Egy sor = egy szolgáltatás. Legfeljebb 5.',
+        description:
+          'Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy kézállapot (Zárt, Nyíló, Nyitott). Legfeljebb 5.',
         initCollapsed: true,
       },
       fields: [
@@ -63,7 +87,8 @@ export const services: Block = {
           type: 'text',
           label: 'Sorszám',
           admin: {
-            description: 'Nem kötelező. Pl. „01". Ha üresen hagyod, a rendszer maga számoz.',
+            description:
+              'Nem kötelező. Pl. „01" vagy „1". Ha üresen hagyod, a rendszer maga számoz.',
           },
         },
         {
@@ -71,7 +96,19 @@ export const services: Block = {
           type: 'text',
           required: true,
           label: 'Cím',
-          admin: { description: 'A szolgáltatás neve (pl. „Rendelői kezelések").' },
+          admin: {
+            description:
+              'A szolgáltatás vagy kézállapot neve (pl. „Rendelői kezelések" vagy „Zárt").',
+          },
+        },
+        {
+          name: 'osszefoglalo',
+          type: 'text',
+          label: 'Rövid összegzés',
+          admin: {
+            description:
+              'Sín-elrendezésnél a panel első mondata (pl. „A kéz még inkább összezárva…"). Táblánál nem jelenik meg. Nem kötelező.',
+          },
         },
         {
           name: 'body',
@@ -79,6 +116,16 @@ export const services: Block = {
           required: true,
           label: 'Szöveg',
           admin: { description: '2–4 mondat arról, kinek és miben segít.' },
+        },
+        {
+          name: 'photo',
+          type: 'upload',
+          relationTo: 'media',
+          label: 'Panel fotója',
+          admin: {
+            description:
+              'Sín-elrendezésnél a jobb oldali kép. Arckép csak a tulajdonos által kijelölt fotóból; üresen a felület helyőrzőt mutat, nem talál ki arcot. Táblánál nem jelenik meg.',
+          },
         },
         // A MEZŐSÚGÓ MAGA TANÍTOTTA A TILTOTT ALAKOT (2026-08-18-i javítás).
         // A korábbi példa szó szerint „Tovább a kezelésekre" volt — vagyis a

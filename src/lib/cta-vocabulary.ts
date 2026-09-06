@@ -43,6 +43,8 @@ export type CtaAction =
   | 'password-reset-start'
   | 'free-strip-jump'
   | 'course-modules-jump'
+  | 'services-list-open'
+  | 'free-sos-named-open'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -511,6 +513,30 @@ export const CTA_VOCABULARY = [
     label: 'Nézd meg a modulokat',
     person: 'e2',
     weight: 'secondary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #40 – a szolgáltatások listája (kezdőlapi sín, Nyitott állapot).
+    section: '#40',
+    action: 'services-list-open',
+    label: 'Nézd meg a szolgáltatásokat',
+    person: 'e2',
+    weight: 'primary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #41 – a Zárt állapot paneljének terméknevű belépője. MERGE HOLD:
+    // ugyanoda visz, mint a #3/#4 (`Elindítom ingyen`). A tulajdonos a
+    // terméknevet hagyta jóvá a sín-CTA-ra; a 3.2.4 ütközést emberi döntés zárja.
+    section: '#41',
+    action: 'free-sos-named-open',
+    label: 'Ingyenes SOS KézRelax',
+    person: 'e2',
+    weight: 'primary',
     progress: null,
     patterned: false,
     pattern: null,
