@@ -75,22 +75,6 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
       variant={variant}
     >
       <div className="kc-board__inner">
-        {eyebrow.length > 0 || title.length > 0 || intro.length > 0 ? (
-          <div className="kc-services-sin__header">
-            {eyebrow.length > 0 ? <p className="kc-services__eyebrow">{eyebrow}</p> : null}
-            {title.length > 0 ? (
-              <h2
-                className={`kc-services__title${
-                  title.length > CIM_HOSSZ_HATAR ? ' kc-services__title--long' : ''
-                }`}
-                id={headingId}
-              >
-                {title}
-              </h2>
-            ) : null}
-            {intro.length > 0 ? <p className="kc-services-sin__intro">{intro}</p> : null}
-          </div>
-        ) : null}
         <fieldset className="kc-services-sin">
           <legend className="kc-visually-hidden">Szolgáltatás</legend>
           {rows.map((row, index) => {
@@ -108,33 +92,51 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
             )
           })}
           <div className="kc-services-sin__layout">
-            <div className="kc-services-sin__rail">
-              {rows.map((row, index) => {
-                const rowTitle = row.title.trim()
-                const blurb = row.osszefoglalo?.trim() ?? ''
-                return (
-                  <label
-                    className="kc-services-sin__rail-label"
-                    htmlFor={`${groupName}-${index}`}
-                    key={`rail-${row.id ?? index}`}
-                  >
-                    <span aria-hidden="true" className="kc-services-sin__marker">
-                      <span className="kc-services-sin__marker-idle">
-                        <RailDoorIcon index={index} />
+            <div className="kc-services-sin__col">
+              {eyebrow.length > 0 || title.length > 0 || intro.length > 0 ? (
+                <div className="kc-services-sin__header">
+                  {eyebrow.length > 0 ? <p className="kc-services__eyebrow">{eyebrow}</p> : null}
+                  {title.length > 0 ? (
+                    <h2
+                      className={`kc-services__title${
+                        title.length > CIM_HOSSZ_HATAR ? ' kc-services__title--long' : ''
+                      }`}
+                      id={headingId}
+                    >
+                      {title}
+                    </h2>
+                  ) : null}
+                  {intro.length > 0 ? <p className="kc-services-sin__intro">{intro}</p> : null}
+                </div>
+              ) : null}
+              <div className="kc-services-sin__rail">
+                {rows.map((row, index) => {
+                  const rowTitle = row.title.trim()
+                  const blurb = row.osszefoglalo?.trim() ?? ''
+                  return (
+                    <label
+                      className="kc-services-sin__rail-label"
+                      htmlFor={`${groupName}-${index}`}
+                      key={`rail-${row.id ?? index}`}
+                    >
+                      <span aria-hidden="true" className="kc-services-sin__marker">
+                        <span className="kc-services-sin__marker-idle">
+                          <RailHandIcon index={index} />
+                        </span>
+                        <span className="kc-services-sin__marker-active">
+                          <RailActiveArrow />
+                        </span>
                       </span>
-                      <span className="kc-services-sin__marker-active">
-                        <RailActiveArrow />
+                      <span className="kc-services-sin__rail-copy">
+                        <span className="kc-services-sin__rail-title">{rowTitle}</span>
+                        {blurb.length > 0 ? (
+                          <span className="kc-services-sin__rail-blurb">{blurb}</span>
+                        ) : null}
                       </span>
-                    </span>
-                    <span className="kc-services-sin__rail-copy">
-                      <span className="kc-services-sin__rail-title">{rowTitle}</span>
-                      {blurb.length > 0 ? (
-                        <span className="kc-services-sin__rail-blurb">{blurb}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                )
-              })}
+                    </label>
+                  )
+                })}
+              </div>
             </div>
             <div className="kc-services-sin__stage">
               {rows.map((row, index) => (
@@ -335,11 +337,14 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
   )
 }
 
-/** Vonalas ajtó-ikon a sín inaktív körében. A kitöltött aktív kör fehér nyilat visz. */
-function RailDoorIcon({ index }: { index: number }) {
-  if (index % 3 === 0) return <ClinicDoorIcon />
-  if (index % 3 === 1) return <HomeDoorIcon />
-  return <WorkshopDoorIcon />
+/**
+ * REV B kézikonok a C sín inaktív köreiben: ököl / nyíló / nyitott tenyér.
+ * A kitöltött aktív kör fehér északkeleti nyilat visz (a C drót).
+ */
+function RailHandIcon({ index }: { index: number }) {
+  if (index % 3 === 0) return <ClosedHandIcon />
+  if (index % 3 === 1) return <OpeningHandIcon />
+  return <OpenHandIcon />
 }
 
 function railIconProps() {
@@ -355,31 +360,40 @@ function railIconProps() {
   }
 }
 
-function ClinicDoorIcon() {
+function ClosedHandIcon() {
   return (
-    <svg {...railIconProps()}>
-      <rect height="14" rx="2" width="14" x="5" y="5" />
-      <path d="M12 8.5v7M8.5 12h7" />
+    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--closed">
+      <path d="M9 12V8.4c0-.7.6-1.2 1.2-1.2S11.4 7.7 11.4 8.4V12" />
+      <path d="M11.4 12V7.2c0-.8.6-1.4 1.3-1.4s1.3.6 1.3 1.4V12" />
+      <path d="M14 12V8.6c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2V12" />
+      <path d="M8.6 12h8v3.6c0 2-1.6 3.6-3.6 3.6h-.8c-2 0-3.6-1.6-3.6-3.6V12z" />
+      <path d="M8.6 13.6H6.8A1.5 1.5 0 0 1 6.8 10.6h1.8" />
     </svg>
   )
 }
 
-function HomeDoorIcon() {
+function OpeningHandIcon() {
   return (
-    <svg {...railIconProps()}>
-      <path d="M4.5 11 12 4.5 19.5 11" />
-      <path d="M7 10.5V19h10v-8.5" />
-      <path d="M10 19v-5h4v5" />
+    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--opening">
+      <path d="M8.2 13.2V7.4c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v5.8" />
+      <path d="M10.4 13.2V6c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2v7.2" />
+      <path d="M12.8 13.2V6.6c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v6.6" />
+      <path d="M15 13.2V8c0-.5.5-1 1.1-1s1.1.5 1.1 1v5.2" />
+      <path d="M8.2 13.2h8v3.1c0 1.8-1.5 3.3-3.3 3.3h-1.4c-1.8 0-3.3-1.5-3.3-3.3v-3.1z" />
+      <path d="M8.2 14.6H6.4A1.4 1.4 0 0 1 6.4 11.8h1.8" />
     </svg>
   )
 }
 
-function WorkshopDoorIcon() {
+function OpenHandIcon() {
   return (
-    <svg {...railIconProps()}>
-      <path d="M3.5 10.5 12 6l8.5 4.5L12 15 3.5 10.5z" />
-      <path d="M7 12.5v3.5c2 1.4 8 1.4 10 0v-3.5" />
-      <path d="M20.5 10.5v6" />
+    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--open">
+      <path d="M7.5 13.4V5.6c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v7.8" />
+      <path d="M9.7 13.4V4.4c0-.7.5-1.2 1.2-1.2s1.2.5 1.2 1.2v9" />
+      <path d="M12.1 13.4V5.2c0-.6.5-1.1 1.2-1.1s1.1.5 1.1 1.1v8.2" />
+      <path d="M14.4 13.4V6.2c0-.6.5-1.1 1.1-1.1s1.1.5 1.1 1.1v7.2" />
+      <path d="M7.5 13.4h8v3.3c0 1.9-1.5 3.4-3.4 3.4h-1.2c-1.9 0-3.4-1.5-3.4-3.4v-3.3z" />
+      <path d="M7.5 15H5.6A1.6 1.6 0 0 1 5.6 11.8L7.5 12.4" />
     </svg>
   )
 }
