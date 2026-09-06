@@ -49,10 +49,11 @@
  * https://m3.material.io/foundations/layout/applying-layout/window-size-classes
  *
  * Mért küszöbök (tokens.css, nem szemre):
- * - szöveg: help-ink a panelen 11,89:1, help-muted a panelen 5,02:1 (SC 1.4.3)
+ * - szöveg: help-ink a panelen 12,84:1, help-muted a panelen 5,42:1 (SC 1.4.3)
  * - CTA fehér a help-inken 14,32:1 (SC 1.4.3)
- * - inaktív kör: help-chrome a paperen 3,94:1, a panelen 3,49:1 (SC 1.4.11)
- * - panelkeret: 8% ink-mix, dekoratív (a kártyát a tint-kitöltés azonosítja)
+ * - inaktív kör: help-chrome a paperen 3,94:1, a panelen 3,77:1 (SC 1.4.11)
+ * - panelkeret: 8% ink-mix, dekoratív hajszál (a kártya éle a keret, nem a
+ *   erős tint-delta; Material 3 tonal step + GOV.UK card-on-canvas)
  * - érintőcél: a címke min-height 2.75rem (44 px, SC 2.5.8 célértéke)
  * - 320 px: overflow-wrap + min-width: 0 (SC 1.4.10 Reflow)
  * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja

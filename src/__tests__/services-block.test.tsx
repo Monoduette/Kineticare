@@ -477,7 +477,7 @@ describe('services-sin.css — token-szerződés', () => {
       'utf8',
     ).replace(/\/\*[\s\S]*?\*\//g, '')
     expect(tokens).toMatch(/--kc-color-help-paper:\s*#f4f8fd/)
-    expect(tokens).toMatch(/--kc-color-help-panel:\s*#e2ebf6/)
+    expect(tokens).toMatch(/--kc-color-help-panel:\s*#eef3fa/)
     expect(tokens).toMatch(/--kc-color-help-ink:\s*#122a4e/)
     expect(tokens).toMatch(/--kc-color-help-muted:\s*#516385/)
     expect(tokens).toMatch(/--kc-color-help-chrome:\s*#6a7d97/)
