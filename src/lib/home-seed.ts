@@ -98,6 +98,21 @@ export const HOME_IMAGES = [
     alt: 'Teljesen nyitott, szabadon tartott tenyér',
   },
   {
+    file: 'help-zart-img-7541.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász fehér garbóban, tornalabdának támaszkodva, mellettük fehér orchidea',
+  },
+  {
+    file: 'help-nyilo-syl-9297.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász világoskék ingben a padlón ül, mellettük kézcsont-modell és könyvek',
+  },
+  {
+    file: 'help-nyitott-syl-9260.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász fehér ruhában kanapén ül, táblagéppel a kezében, mellettük kézcsont-modell',
+  },
+  {
     file: 'services-hands.png',
     dir: 'brand',
     alt: 'Terapeuta kezei mobilizálják a páciens kezét',
@@ -451,9 +466,8 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
   },
 
   // REV C sín + panel. A ProBody-sor a /szolgaltatasok táblán és a menüben
-  // marad; itt a három kézállapot áll. A panel-fotók ideiglenesen a
-  // state-*.png kéz-csendéletek (nem arcképek). Kiss Kata / Kocsis Kata
-  // állapotonkénti portréi később, a tulajdonos által kijelölt Drive-anyagból.
+  // marad; itt a három kézállapot áll. A panel-fotók a zárolt Drive-képek
+  // (IMG_7541, SYL_9297, SYL_9260), nem a Kata-csoportképek.
   {
     blockType: 'services',
     title: HOME_HELP_TITLE,

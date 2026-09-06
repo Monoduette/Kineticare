@@ -360,6 +360,20 @@ describe('owner-approved 2026-09-05 published variants', () => {
     },
   )
 
+  it('H08 a sínhez a kanonikus zárolt fotókat köti, nem a states csendéleteket', () => {
+    const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'))
+    rows(find(input.canonicalLayout, 'services', 'Így tudunk segíteni')).forEach((row, index) => {
+      row.photo = 41 + index
+    })
+    rows(find(input.layout!, 'states'), 'cards').forEach((card, index) => {
+      card.image = 17 + index
+    })
+    const result = planOwnerReviewV1(input)
+    expect(
+      rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.photo),
+    ).toEqual([41, 42, 43])
+  })
+
   it('H08 does not convert a three-way row whose workshop URL was edited', () => {
     const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'))
     const row = rows(find(input.layout!, 'services', 'Így tudunk segíteni'))[2]

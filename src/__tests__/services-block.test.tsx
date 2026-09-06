@@ -295,6 +295,34 @@ describe('Services — REV C sín + panel', () => {
     expect(markup).not.toContain('kc-services__row')
   })
 
+  it('kitöltött panel-fotót mutat, a helykitöltőt nem', () => {
+    const markup = render(
+      block({
+        elrendezes: 'sin',
+        rows: [
+          {
+            title: 'Zárt',
+            osszefoglalo: 'Rövid.',
+            body: 'Törzs.',
+            felirat: 'Gomb',
+            url: '/kurzusok',
+            photo: {
+              id: 41,
+              url: '/help-zart-img-7541.webp',
+              alt: 'Zárt állapot fotója',
+              width: 876,
+              height: 1400,
+            } as BlockServices['image'],
+          },
+        ],
+      }),
+    )
+    expect(markup).toContain('help-zart-img-7541.webp')
+    expect(markup).toContain('kc-services-sin__photo')
+    expect(markup).toContain('Zárt állapot fotója')
+    expect(markup).not.toContain('Fotó később')
+  })
+
   it('tiltott sémájú panel-URL: a felirat nem jelenik meg, a szöveg marad', () => {
     const markup = render(
       block({

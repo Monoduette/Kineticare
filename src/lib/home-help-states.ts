@@ -38,11 +38,15 @@ export interface HomeHelpStateRow {
   readonly ujAblakban: false
 }
 
-/** Ideiglenes sín-fotók: kézállapot-csendéletek, nem arcképek. Kata-portrék később. */
+/**
+ * Zárolt sín-fotók a Drive-anyagból (IMG_7541, SYL_9297, SYL_9260).
+ * Szándékosan nem a `katak-labdaval` / `katak-team` / Katakfeherbenhattal képek:
+ * azok más szekciók portréi, a sín állapotonként saját felvételt kap.
+ */
 export const HOME_HELP_PHOTO_FILES = [
-  'state-zart.png',
-  'state-nyilo.png',
-  'state-nyitott.png',
+  'help-zart-img-7541.jpg',
+  'help-nyilo-syl-9297.jpg',
+  'help-nyitott-syl-9260.jpg',
 ] as const
 
 export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
@@ -50,7 +54,7 @@ export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
     number: '1',
     title: 'Zárt',
     osszefoglalo: 'A kéz még inkább összezárva, a mindennapi mozdulat óvatos.',
-    body: 'Ha a markolás, a nyitás vagy a terhelés még szűk tartományban van, először kis, biztonságos lépéssel érdemes kezdeni. Az Ingyenes SOS KézRelax ehhez ad azonnal elérhető gyakorlatokat, otthon, a saját tempódban.',
+    body: 'Ha a markolás, a nyitás vagy a terhelés még szűk tartományban van, először kis, biztonságos lépéssel érdemes kezdeni. Az Ingyenes SOS KézRelax ehhez ad azonnal elérhető gyakorlatokat: otthon, a saját tempódban.',
     felirat: ctaLabel('free-sos-named-open'),
     url: COURSE_SOS_KEZRELAX,
     ujAblakban: false,
@@ -59,7 +63,7 @@ export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
     number: '2',
     title: 'Nyíló',
     osszefoglalo: 'Már van mozgás, de a tartomány még nem teljes.',
-    body: 'Amikor a kéz már nyílik, de a hétköznapi feladatok még töredeznek, a következő lépés a rendszeres, lépésről lépésre épülő otthoni gyakorlás. A kurzusoldalon látod a teljes programot és az árat, ígéret és százalék nélkül.',
+    body: 'Amikor a kéz már nyílik, de a hétköznapi feladatok még töredeznek, a következő lépés a rendszeres, lépésről lépésre épülő otthoni gyakorlás. A kurzusoldalon látod a teljes programot és az árat: ígéret és százalék nélkül.',
     felirat: ctaLabel('course-list-open'),
     url: '/kurzusok',
     ujAblakban: false,

@@ -68,6 +68,14 @@ type Spec = {
 const record = (value: unknown): RecordValue =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as RecordValue) : {}
 
+const mediaIdOf = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  const nested = record(value).id
+  return typeof nested === 'number' && Number.isSafeInteger(nested) && nested > 0
+    ? nested
+    : undefined
+}
+
 const at = (value: unknown, path: Path): unknown =>
   path.reduce<unknown>(
     (current, key) =>
@@ -631,18 +639,15 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
         )
       if (isLegacyThreeWayHomeHelp(liveRows) && linkedRows && servicesVisible) {
         const liveTarget = { ...services, old: layout[services.index] }
-        const stateCards = states ? at(layout[states.index], ['cards']) : null
-        const photos = Array.isArray(stateCards)
-          ? stateCards.map((card) => {
-              const image = record(card).image
-              if (typeof image === 'number' && Number.isSafeInteger(image) && image > 0)
-                return image
-              const nested = record(image).id
-              return typeof nested === 'number' && Number.isSafeInteger(nested) && nested > 0
-                ? nested
-                : undefined
-            })
+        const canonicalHelpRows = at(services.old, ['rows'])
+        const lockedPhotos = Array.isArray(canonicalHelpRows)
+          ? canonicalHelpRows.map((row) => mediaIdOf(record(row).photo))
           : []
+        const stateCards = states ? at(layout[states.index], ['cards']) : null
+        const stillPhotos = Array.isArray(stateCards)
+          ? stateCards.map((card) => mediaIdOf(record(card).image))
+          : []
+        const photos = HOME_HELP_STATES.map((_, index) => lockedPhotos[index] ?? stillPhotos[index])
         const nextRows = withRowIds(
           HOME_HELP_STATES.map((state, index) => ({
             number: state.number,
