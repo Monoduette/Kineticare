@@ -392,8 +392,14 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'border-radius: var(--kc-radius-full)',
     )
+    expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
+      'background-color: var(--kc-services-fade)',
+    )
     expect(css).toContain('background-color: var(--kc-color-primary)')
     expect(css).toContain('color: var(--kc-color-on-primary)')
+    expect(szabalyTorzs(css, '.kc-section.kc-board.kc-board--edge.kc-services--sin')).toContain(
+      'min-height: auto',
+    )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
       'box-shadow: var(--kc-shadow-md)',
     )

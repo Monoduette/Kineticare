@@ -29,8 +29,13 @@
  * - mozgás: a globális prefers-reduced-motion a base.css-ben 0.01ms-re vágja
  */
 
-.kc-section.kc-board.kc-services--sin {
+/* 4 osztály: győznie kell a tábla `min-height: max(45rem, 100dvh)` szabályán
+   (ui.css, `.kc-section.kc-board:not(.kc-board--band)`), különben a sín
+   üres viewport-magasságra nyúlik — a drót tartalom-magas. */
+.kc-section.kc-board.kc-board--edge.kc-services--sin {
   min-height: auto;
+  height: auto;
+  justify-content: flex-start;
   overflow: visible;
   padding-bottom: var(--kc-space-7);
 }
@@ -118,7 +123,8 @@
   height: 2.5rem;
   border: 2px solid var(--kc-color-border-strong);
   border-radius: var(--kc-radius-full);
-  background-color: var(--kc-color-surface-raised);
+  /* A sáv színe: a gerinc a kör pereménél eltűnik, a vonalas ikon olvasható marad. */
+  background-color: var(--kc-services-fade);
   color: var(--kc-color-primary);
   position: relative;
   z-index: 1;
@@ -348,6 +354,29 @@
 
 .kc-services-sin__input:nth-of-type(1):checked
   ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(1)
+  .kc-services-sin__rail-title,
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(2)
+  .kc-services-sin__rail-title,
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(3)
+  .kc-services-sin__rail-title,
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(4)
+  .kc-services-sin__rail-title,
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__rail-label:nth-of-type(5)
+  .kc-services-sin__rail-title {
+  color: var(--kc-color-primary);
+}
+
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
   .kc-services-sin__panel:nth-of-type(1),
 .kc-services-sin__input:nth-of-type(2):checked
   ~ .kc-services-sin__layout
@@ -386,6 +415,16 @@
 }
 
 @media (min-width: 900px) {
+  .kc-section.kc-board.kc-board--edge.kc-services--sin {
+    min-height: auto;
+    height: auto;
+    justify-content: flex-start;
+  }
+
+  .kc-services--sin.kc-board--edge > .kc-board__inner {
+    flex: 0 1 auto;
+  }
+
   .kc-services-sin__layout {
     grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
     gap: var(--kc-space-8);
@@ -393,7 +432,8 @@
   }
 
   .kc-services-sin__panel {
-    grid-template-columns: minmax(0, 1.2fr) minmax(10rem, 0.72fr);
+    /* Drót: másolat | álló fotó, a fotó a panel ~40%-a. */
+    grid-template-columns: minmax(0, 1.5fr) minmax(11rem, 1fr);
     align-items: stretch;
     padding: var(--kc-space-7);
   }
