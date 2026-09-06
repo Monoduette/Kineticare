@@ -26,6 +26,11 @@ afterEach(() => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
 
+// A generateFileData + sharp kör (fókusz × team/press) és a config-drift
+// encode CI-n kicsúszik a Vitest 5 mp-es alapkorlátján. Az őr alapos, nem
+// lassú: a korlátot emeljük, a vizsgálatot nem szűkítjük (ugyanaz a minta,
+// mint a schema-drift-guard 60 mp-e).
+
 function fixture(asset = manifest.assets[0], directory = 'team') {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-provenance-'))
   folders.push(dir)
@@ -91,7 +96,7 @@ function fixture(asset = manifest.assets[0], directory = 'team') {
   }
 }
 
-describe('durable team media recovery provenance', () => {
+describe('durable team media recovery provenance', { timeout: 60_000 }, () => {
   it.each(['width', 'height', 'fit', 'position', 'withoutEnlargement', 'name', 'added', 'removed'])(
     'binds image size %s before receipt or media writes',
     async (field) => {
@@ -221,6 +226,7 @@ describe('durable team media recovery provenance', () => {
         expect(f.update, JSON.stringify(drift)).not.toHaveBeenCalled()
       }
     },
+    60_000,
   )
 
   it('does not query receipts for healthy records', async () => {
@@ -343,6 +349,7 @@ describe('durable team media recovery provenance', () => {
       expect((await ensureMediaFiles(f.payload)).rendben).toBe(1)
       expect(f.update).toHaveBeenCalledTimes(1)
     },
+    60_000,
   )
 
   it('normalizes absent metadata and excludes only derived URLs', () => {
