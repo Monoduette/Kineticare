@@ -122,8 +122,8 @@ formálisan nem WCAG-bukás — a 7. fejezetben mutatom meg, miért javítandó 
 | 3 | Szöveges (ghost) gomb | `.kc-button--ghost` | másodlagos utak |
 | 4 | Fejléc CTA-pirula | `.kc-site-header__cta` (`styles/layout.css`) | minden oldal, sticky sáv |
 | 5 | Fejléc wordmark + akcent-tag | `.kc-site-header__brand(-accent)` | minden oldal |
-| 6 | Desktop menülink + lenyitó | `.kc-nav-desktop__link/__toggle/__sublink` | ≥ 75em (alapértelmezetten 1200px) |
-| 7 | Hamburger + drawer-linkek | `.kc-nav-mobile__toggle/__link/__sublink` | < 75em (alapértelmezetten 1200px) |
+| 6 | Desktop menülink + lenyitó | `.kc-nav-desktop__link/__toggle/__sublink` | ≥ 900px |
+| 7 | Hamburger + drawer-linkek | `.kc-nav-mobile__toggle/__link/__sublink` | < 900px |
 | 8 | Film-hero CTA-k | `.kc-film-hero__cta`, `--quiet` (`blocks/film-hero.css`) | kezdőlap |
 | 9 | ScrollScrub fejezet-gombok | `.scroll-scrub__route-button` | csak > 1 jelenetnél (ma nem renderelődik) |
 | 10 | FreeSos sáv-CTA | `.kc-free-sos__cta` (`blocks/free-sos.css`) | kezdőlap ingyenes sáv |

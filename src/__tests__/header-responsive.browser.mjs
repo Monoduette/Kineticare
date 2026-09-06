@@ -152,7 +152,7 @@ try {
       }
       try {
         assert.equal(geometry.scroll, geometry.width, `overflow at ${width}, signedIn=${signedIn}`)
-        assert.equal(geometry.desktop, width >= 1200)
+        assert.equal(geometry.desktop, width >= 900)
         assert.equal(geometry.account, geometry.desktop)
         assert.equal(geometry.mobile, !geometry.desktop)
         for (const [index, box] of geometry.boxes.entries()) {
@@ -237,7 +237,7 @@ try {
         )
       }
     }
-    await page.setViewportSize({ width: 900, height: 390 })
+    await page.setViewportSize({ width: 899, height: 390 })
     await settle()
     await page.evaluate(() =>
       document.documentElement.style.setProperty('--kc-consent-offset', '144px'),
@@ -280,7 +280,7 @@ try {
       '.kc-account-nav--drawer a',
       '#outside-focus',
     ]) {
-      await page.setViewportSize({ width: 1199, height: 900 })
+      await page.setViewportSize({ width: 899, height: 900 })
       await settle()
       await page.evaluate(() => {
         document.body.style.overflow = 'auto'
@@ -304,7 +304,7 @@ try {
           .evaluate((el) => el === document.activeElement),
         'pre-resize focus established',
       )
-      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.setViewportSize({ width: 900, height: 900 })
       await settle()
       await page.waitForFunction(() => document.body.style.overflow === 'auto')
       const expected = target === '#outside-focus' ? target : '.kc-site-header__brand'
@@ -312,7 +312,7 @@ try {
         await page.locator(expected).evaluate((el) => el === document.activeElement),
         `resize focus: signedIn=${signedIn}, target=${target}`,
       )
-      await page.setViewportSize({ width: 1199, height: 900 })
+      await page.setViewportSize({ width: 899, height: 900 })
       await settle()
       assert.equal(
         await page.locator('.kc-nav-mobile > button').getAttribute('aria-expanded'),
@@ -333,9 +333,8 @@ try {
       '.kc-nav-desktop__link',
       '#outside-focus',
       '.kc-site-header__actions > .kc-account-nav a',
-      ...(signedIn ? ['.kc-site-header__actions > .kc-account-nav button'] : []),
     ]) {
-      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.setViewportSize({ width: 900, height: 900 })
       await page.mouse.move(0, 899)
       await settle()
       const firstLink = page.locator('.kc-nav-desktop__link').first()
@@ -371,7 +370,7 @@ try {
         await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
         accountTarget ? 'false' : 'true',
       )
-      await page.setViewportSize({ width: 1199, height: 900 })
+      await page.setViewportSize({ width: 899, height: 900 })
       await settle()
       const expected = target === '#outside-focus' ? target : '.kc-site-header__brand'
       assert.ok(
@@ -389,7 +388,7 @@ try {
       assert.notEqual(await page.evaluate(() => document.body.style.overflow), 'hidden')
       await page.locator('#outside-focus').focus()
       await page.mouse.move(0, 899)
-      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.setViewportSize({ width: 900, height: 900 })
       await settle()
       assert.equal(
         await page.locator('.kc-nav-desktop__toggle').first().getAttribute('aria-expanded'),
@@ -408,8 +407,8 @@ try {
     await page.evaluate((value) => window.renderHeader(value, true), signedIn)
     await settle()
     assert.equal(await page.locator('.kc-nav-desktop').count(), 0)
-    for (const control of ['a', ...(signedIn ? ['button'] : []), 'outside']) {
-      await page.setViewportSize({ width: 1200, height: 900 })
+    for (const control of ['a', 'outside']) {
+      await page.setViewportSize({ width: 900, height: 900 })
       await page.mouse.move(0, 899)
       await settle()
       const target =
@@ -422,7 +421,7 @@ try {
         await page.keyboard.press('Tab')
       }
       assert.ok(await page.locator(target).evaluate((el) => el === document.activeElement))
-      await page.setViewportSize({ width: 1199, height: 900 })
+      await page.setViewportSize({ width: 899, height: 900 })
       await settle()
       const expected = control === 'outside' ? target : '.kc-site-header__brand'
       assert.ok(
@@ -434,7 +433,7 @@ try {
       await page.locator(drawerTarget).waitFor({ state: 'visible' })
       await page.locator(drawerTarget).focus()
       assert.ok(await page.locator(drawerTarget).evaluate((el) => el === document.activeElement))
-      await page.setViewportSize({ width: 1200, height: 900 })
+      await page.setViewportSize({ width: 900, height: 900 })
       await settle()
       assert.ok(
         await page.locator(expected).evaluate((el) => el === document.activeElement),

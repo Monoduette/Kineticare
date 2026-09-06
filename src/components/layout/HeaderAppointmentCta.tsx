@@ -12,15 +12,15 @@ type HeaderAppointmentCtaProps = {
 }
 
 /**
- * A fejléc Időpontfoglalás gombja — secondary/outline, a Kurzusok primary
- * pirula mellett. A hash-cél miatt `aria-current` sosem jár (lásd `nav-route`).
- * Nem menüpont: a CMS-fa érintetlen.
+ * A fejléc Időpontfoglalás gombja — a sávban szöveglink (mint a Belépés),
+ * a Kurzusok primary pirula mellett. A hash-cél miatt `aria-current` sosem
+ * jár (lásd `nav-route`). Nem menüpont: a CMS-fa érintetlen.
  */
 export function HeaderAppointmentCta({ variant, onNavigate }: HeaderAppointmentCtaProps) {
   const pathname = usePathname()
   const className =
     variant === 'bar'
-      ? 'kc-button kc-button--secondary kc-button--sm kc-site-header__appointment-cta'
+      ? 'kc-account-nav__link kc-site-header__appointment-cta'
       : 'kc-button kc-button--secondary kc-site-header__drawer-appointment'
 
   return (

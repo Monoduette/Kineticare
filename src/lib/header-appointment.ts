@@ -11,7 +11,7 @@ import type { NavItem } from './menu-tree'
  * (`Kérj időpontot üzenetben`). A cél a kapcsolat-oldal callback-űrlapja
  * (`/kapcsolat#idopontkeres`), nem naptáras foglaló.
  *
- * Kompakt sávon (75em alatt) a gomb a fiók ALJÁN él, nem a listában —
+ * Kompakt sávon (900px alatt) a gomb a fiók ALJÁN él, nem a listában —
  * a 320px-es sávot a wordmark + Kurzusok + hamburger tölti ki (WCAG 1.4.10).
  *
  * Források:

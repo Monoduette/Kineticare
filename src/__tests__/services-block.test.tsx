@@ -432,7 +432,7 @@ describe('services-sin.css — token-szerződés', () => {
       'border: 1px solid var(--kc-color-help-border)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
-      'border: 2px solid var(--kc-color-help-chrome)',
+      'border: 1px solid var(--kc-color-help-chrome)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'color: var(--kc-color-help-chrome)',
@@ -454,20 +454,20 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
       'width: var(--kc-services-marker-idle)',
     )
-    expect(css).toContain('--kc-services-marker: 2rem')
+    expect(css).toContain('--kc-services-marker: 3rem')
     expect(css).toContain('--kc-services-marker-idle: var(--kc-services-marker)')
     expect(css).toContain('--kc-services-marker-active: var(--kc-services-marker)')
     expect(css).toContain('--kc-services-marker-slot: var(--kc-services-marker)')
     expect(css).not.toContain('width: var(--kc-services-marker-active)')
     expect(css).not.toContain('width: 0.95rem')
-    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('width: 1rem')
-    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('height: 1rem')
-    expect(css).toContain('--kc-services-panel-pad: var(--kc-space-8)')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('width: 1.25rem')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('height: 1.25rem')
+    expect(css).toContain('--kc-services-panel-pad: var(--kc-space-7)')
     expect(css).toContain('padding: var(--kc-services-panel-pad)')
     expect(css).toContain('minmax(16rem, 1fr) minmax(0, 2fr)')
-    expect(szabalyTorzs(css, '.kc-services--sin .kc-services__title')).toContain('max-width: 12ch')
-    expect(css).toContain('justify-content: space-between')
-    expect(css).toContain('align-items: stretch')
+    expect(szabalyTorzs(css, '.kc-services--sin .kc-services__title')).toContain('max-width: none')
+    expect(css).not.toContain('justify-content: space-between')
+    expect(css).toContain('align-items: start')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 

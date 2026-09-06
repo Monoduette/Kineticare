@@ -334,6 +334,14 @@ export const presentHomeHelpServicesBlock = (block: BlockServices): BlockService
   }
 }
 
+/** A /szolgaltatasok minden services-blokkja tábla — sín oda nem kerül. */
+export const presentSzolgaltatasokLayout = (
+  layout: NonNullable<Page['layout']>,
+): NonNullable<Page['layout']> =>
+  layout.map((block) =>
+    block.blockType === 'services' ? { ...block, elrendezes: 'tabla' as const } : block,
+  )
+
 /** A kezdőlap szekciósora: a segítség-blokk sínné válik, a többi indexen marad. */
 export const presentHomeLayout = (
   layout: NonNullable<Page['layout']>,

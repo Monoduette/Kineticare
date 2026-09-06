@@ -24,6 +24,7 @@ import {
   getTestimonials,
 } from '@/lib/cms'
 import { HUB_OLDALAK } from '@/lib/tudastar/hub-oldalak'
+import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
 import type { Post, Product, Testimonial } from '@/payload-types'
@@ -83,7 +84,13 @@ export default async function CmsPage({ params }: Props) {
     // esik vissza — ugyanaz a lektorált törzs, cikk-extrák nélkül.
   }
 
-  const layout = page.layout ?? []
+  const rawLayout = page.layout ?? []
+  const layout =
+    slug === 'szolgaltatasok'
+      ? presentSzolgaltatasokLayout(rawLayout)
+      : slug === 'kezdolap'
+        ? presentHomeLayout(rawLayout)
+        : rawLayout
   const hasLayout = layout.length > 0
   // A film-hero saját h1-et renderel — ilyenkor a szöveges hero elmarad.
   const hasFilmHero = layout.some((block) => block.blockType === 'filmHero')

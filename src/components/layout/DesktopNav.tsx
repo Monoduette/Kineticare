@@ -18,7 +18,7 @@ import { getNavRouteState } from '../../lib/nav-route'
 import { NavAnchor } from './NavAnchor'
 
 /**
- * Desktop (>= 75em) vízszintes navigáció, egy szintű almenüvel.
+ * Desktop (>= 900px) vízszintes navigáció, egy szintű almenüvel.
  * `visibility: hidden`, tehát a benne lévő hivatkozások NEM fókuszálhatók — a
  */
 
@@ -69,7 +69,7 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
   // A CSS a médiaesemény előtt elrejtheti a fókuszált elemet, ezért a
   // navigációhoz tartozó fókuszt még látható állapotban követjük.
   useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 75em)')
+    const desktop = window.matchMedia('(min-width: 900px)')
     let ownsFocus = navRef.current?.contains(document.activeElement) ?? false
     const onFocusIn = (event: globalThis.FocusEvent) => {
       ownsFocus = event.target instanceof Node && (navRef.current?.contains(event.target) ?? false)

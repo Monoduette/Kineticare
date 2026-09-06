@@ -5,7 +5,7 @@
  * szín/térköz TILOS. Betöltés: az 5B route-page-ek importálják (a 5A
  * styles.css importlánca nem módosítható).
  *
- * Tartalmi töréspont: 900px, a navigáció 75em-es váltásától függetlenül.
+ * Tartalmi töréspont: 900px, a navigáció 900px-es váltásával egyezően.
  * Mobil-first, 360px-től 1440px-ig ellenőrzött.
  */
 

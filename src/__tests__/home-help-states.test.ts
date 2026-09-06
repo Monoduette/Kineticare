@@ -19,6 +19,7 @@ import {
   isLegacyThreeWayHomeHelp,
   presentHomeHelpServicesBlock,
   presentHomeLayout,
+  presentSzolgaltatasokLayout,
 } from '../lib/home-help-states'
 import type { BlockServices, Page } from '../payload-types'
 import { PROFESSIONAL_TRAINING_URL } from '../lib/menu-seed'
@@ -237,6 +238,24 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(presented[1]).not.toBe(layout[1])
     if (presented[1]?.blockType === 'services') {
       expect(presented[1].elrendezes).toBe('sin')
+    }
+  })
+
+  it('a /szolgaltatasok services-blokkját sínről is táblára zárja', () => {
+    const layout = [
+      { blockType: 'welcome' as const, title: 'Bevezető' },
+      {
+        blockType: 'services' as const,
+        title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
+        elrendezes: 'sin' as const,
+        rows: [{ title: 'Rendelői kezelések', body: 'Szöveg.' }],
+      },
+    ] as unknown as NonNullable<Page['layout']>
+    const presented = presentSzolgaltatasokLayout(layout)
+    expect(presented[0]).toEqual(layout[0])
+    if (presented[1]?.blockType === 'services') {
+      expect(presented[1].elrendezes).toBe('tabla')
+      expect(presented[1].title).toBe('Válaszd ki, hogyan segíthetünk neked a legjobban')
     }
   })
 })

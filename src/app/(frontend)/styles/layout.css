@@ -1,7 +1,8 @@
 /**
  * Layout-stílusok: fejléc, navigáció (desktop + mobil drawer), lábléc,
- * hibaoldalak. A navigáció és a fiókvezérlők közös töréspontja 75em;
- * a fejlécméretek és a lábléc külön 900px-es szabályai változatlanok.
+ * hibaoldalak. A főmenü (desktop nav + fiók-link + hamburger) 900px-en
+ * vált — a 75em-es határ csak a kijelentkezés-piruláé, hogy 900–1199 px-en
+ * a korábbi asztali sor ne csússzon szét.
  * Vizuális nyelv: a kineticare.higgsfield.app landing minimál fejléce és
  * lábléce (higgsfield-site/app/src/kineticare.css — `.kc-nav` 144. sortól,
  * `.kc-footer` 880. sortól), a fő site SZEREP-tokenjeire portolva:
@@ -240,21 +241,16 @@
   }
 }
 
-/* Időpontfoglalás sáv-gomb — outline, NEM menüpont.
-   A kompakt sávban nincs hely: wordmark + Kurzusok pirula + hamburger
-   kitölti a 320px-et (N-21, WCAG 2.2 1.4.10). Ott a gomb a fiók alján él,
-   a lista NEM kap extra sort (Norbert 2026-09-06: régi menü + ez a gomb).
+/* Időpontfoglalás — szöveglink a sávban (nem második pirula), 900px-től.
+   Kompakt sávon a fiók alján él, a lista NEM kap extra sort.
    A kétosztályos szelektor a `.kc-button { display: inline-flex }` fölött nyer.
-   GOV.UK Button: egy primary (Kurzusok); a másodlagos cselekvés secondary.
-   https://design-system.service.gov.uk/components/button/
-   NN/g, Utility Navigation: a tartós művelet jobb felül.
-   https://www.nngroup.com/articles/utility-navigation/
-   WCAG 2.2 2.5.8: a `.kc-button` min-height 2,75rem (44px). */
+   GOV.UK Button: egy primary (Kurzusok); a másodlagos cselekvés nem gomb.
+   https://design-system.service.gov.uk/components/button/ */
 .kc-site-header .kc-site-header__appointment-cta {
   display: none;
 }
 
-@media (min-width: 75em) {
+@media (min-width: 900px) {
   .kc-site-header .kc-site-header__appointment-cta {
     display: inline-flex;
   }
@@ -303,7 +299,7 @@
   display: none;
 }
 
-@media (min-width: 75em) {
+@media (min-width: 900px) {
   .kc-account-nav {
     display: flex;
     align-items: center;
@@ -386,6 +382,19 @@
   border-color: var(--kc-header-accent);
   background-color: var(--kc-header-accent-soft);
   color: var(--kc-header-accent);
+}
+
+/* 900–1199 px: a sávban csak a „Kurzusaim” link — a kijelentkezés-pirula
+   ott a négy menüpont + Kurzusok mellé már nem fér. A fiókban (drawer)
+   változatlanul látszik. */
+.kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
+  display: none;
+}
+
+@media (min-width: 75em) {
+  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
+    display: inline-flex;
+  }
 }
 
 /* Folyamatban / letiltott: a gomb NEM tűnik el és nem vált feliratot némán —
@@ -489,14 +498,11 @@
   display: none;
 }
 
-/* Közös navigációs határ, a MobileNav átméretezési lezárásával együtt:
-   alapértelmezett betűméretnél 1200px. A bejelentkezett, négy főmenüpontos
-   fejléc kb. 1035px-et és oldalsó térközt igényel; 900/1024px-en túlcsordul.
-   A drawer addig marad, amíg a menü ÉS a fiókvezérlők is elférnek,
-   betűméret-csökkentés és levágás nélkül.
-   WCAG 1.4.10: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
-   Reszponzív lenyitás: https://design-system.service.gov.uk/components/service-navigation/ */
-@media (min-width: 75em) {
+/* Asztali menüsor 900px-től. A 75em-es hamburger asztali ablakon elrejtette
+   a négy menüpontot; a kijelentkezés-pirula 75em-ig rejtve marad a sávban,
+   hogy a sor ne csússzon túl (WCAG 1.4.10).
+   https://www.nngroup.com/articles/hamburger-menus/ */
+@media (min-width: 900px) {
   .kc-nav-desktop {
     /* A menü a jobb oldalra húz (brand ↔ menü + CTA). */
     display: block;
@@ -591,7 +597,7 @@
 
 /* Lenyitó gomb az almenüs főmenüpontok mellett (aria-expanded + Esc-zárás).
    Az érintési cél 44×44px (UX-skill 3. pont): táblagépen ez az EGYETLEN út az
-   almenüig, mert hover nincs, a mobil drawer pedig 75em-től rejtve van.
+   almenüig, mert hover nincs, a mobil drawer pedig 900px felett rejtve van.
    A negatív bal margó csak a LÁTVÁNYT húzza a felirathoz — a célfelület teljes
    marad. Szín és hover: a menülink nyelve, tehát a kontraszt-levezetés is az. */
 .kc-nav-desktop__toggle {
@@ -736,7 +742,7 @@
   display: block;
 }
 
-@media (min-width: 75em) {
+@media (min-width: 900px) {
   .kc-nav-mobile {
     display: none;
   }

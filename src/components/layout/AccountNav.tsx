@@ -43,7 +43,7 @@ export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
   // követi. A drawer fókuszát továbbra is a MobileNav kezeli.
   useEffect(() => {
     if (variant !== 'header') return
-    const desktop = window.matchMedia('(min-width: 75em)')
+    const desktop = window.matchMedia('(min-width: 900px)')
     let ownsFocus = accountRef.current?.contains(document.activeElement) ?? false
     const onFocusIn = (event: FocusEvent) => {
       ownsFocus =
