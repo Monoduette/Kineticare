@@ -169,7 +169,11 @@ function RailPanel({
   const label = row.felirat?.trim() ?? ''
   const photo = populatedMedia(row.photo)
   const headingId = `${groupName}-panel-${index}`
-  const kicker = `${index + 1}. ÁLLAPOT`
+  // Pocs: a tartalom szolgáltatás-ajtó, nem kézállapot. A címke egyezzen
+  // a sávval (NN/g, Headings: Describe the Topic; WCAG 2.2 SC 2.4.6).
+  // https://www.nngroup.com/articles/headings-learn-more/
+  // https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html
+  const kicker = `${index + 1}. ÚT`
 
   return (
     <article aria-labelledby={headingId} className="kc-services-sin__panel">

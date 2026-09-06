@@ -283,6 +283,8 @@ describe('Services — REV C sín + panel', () => {
     expect(markup).not.toMatch(/>Zárt</)
     expect(markup).not.toMatch(/>Nyíló</)
     expect(markup).not.toMatch(/>Nyitott</)
+    expect(markup).not.toMatch(/\b(Zárt|Nyíló|Nyitott)\b/)
+    expect(markup).not.toContain('ÁLLAPOT')
     expect(markup).toContain('kc-visually-hidden')
     expect(markup).toContain('kc-section--tint')
     expect(markup).toContain('kc-services-sin__marker')
@@ -291,9 +293,9 @@ describe('Services — REV C sín + panel', () => {
     expect(markup).toContain('kc-services-sin__rule')
     expect(markup).toContain('kc-services-sin__cta-icon')
     expect(markup).not.toContain('kc-services-sin__rail-index')
-    expect(markup).toContain('1. ÁLLAPOT')
-    expect(markup).toContain('2. ÁLLAPOT')
-    expect(markup).toContain('3. ÁLLAPOT')
+    expect(markup).toContain('1. ÚT')
+    expect(markup).toContain('2. ÚT')
+    expect(markup).toContain('3. ÚT')
     for (const state of HOME_HELP_STATES) {
       expect(markup).toContain(state.title)
       expect(markup).toContain(state.osszefoglalo)
@@ -409,6 +411,10 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
       'border-radius: var(--kc-radius-lg)',
     )
+    expect(szabalyTorzs(css, '.kc-services-sin__panel')).toContain(
+      'background-color: var(--kc-color-tint-cool)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('surface-raised')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 })

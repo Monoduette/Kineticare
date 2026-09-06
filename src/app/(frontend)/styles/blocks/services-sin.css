@@ -18,7 +18,13 @@
  * nem jön át — a tulajdonos azt a kromot utasította el.
  * https://m3.material.io/foundations/interaction/states/overview
  *
- * Panel: GOV.UK a elsődleges gombot kitöltött, egyértelmű cselekvésnek tartja.
+ * Panel: hűvös tint kártya (nem fehér emelt lap). Material 3 a tartalom-
+ * csoportot tónusos felületen tartja; GOV.UK a kártyát a vásznon kerettel
+ * választja el, nem feltétlenül fehér lappal. A szekció is tint, a kártya-
+ * olvasást hajszálkeret + árnyék viszi.
+ * https://m3.material.io/styles/color/roles
+ * https://design-system.service.gov.uk/styles/colour/
+ * GOV.UK a elsődleges gombot kitöltött, egyértelmű cselekvésnek tartja.
  * https://design-system.service.gov.uk/components/button/
  *
  * Mért küszöbök (tokens.css, nem szemre):
@@ -172,7 +178,13 @@
   min-width: 0;
   padding: var(--kc-space-6);
   border-radius: var(--kc-radius-lg);
-  background-color: var(--kc-color-surface-raised);
+  /* Pocs: puha tint kártya. A sötét sáv-kivételen is tint marad a panel,
+     ezért az ink/muted itt a világos szövegtokenekre zár. */
+  background-color: var(--kc-color-tint-cool);
+  color: var(--kc-color-text);
+  --kc-services-ink: var(--kc-color-text);
+  --kc-services-muted: var(--kc-color-text-muted);
+  border: 1px solid var(--kc-color-border);
   box-shadow: var(--kc-shadow-md);
 }
 
