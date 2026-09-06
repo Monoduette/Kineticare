@@ -1536,15 +1536,17 @@ describe('szolgaltatasokUjBevezetoBlokk — a régi bevezető BETŰHÍVEN az új
     expect(`${felsorolas[2]} ${oldalso[2]}`).toBe(sorok[6])
   })
 
-  it('a tipográfia (félkvirtmínusz és magyar idézőjelek) betűhíven marad', () => {
+  it('a tipográfia (magyar idézőjelek megmaradnak, töltelék gondolatjel nincs)', () => {
     if (ujBlokk === null) {
       throw new Error('Az üdvözlő blokk hiányzik a seed-builderből.')
     }
     const felsorolas = (ujBlokk.checklist ?? []).map((tetel) => tetel.text)
-    expect(ujBlokk.lead).toContain('–')
-    expect(felsorolas[0]).toContain('–')
+    const oldalso = (ujBlokk.sideParagraphs ?? []).map((tetel) => tetel.text)
+    expect(ujBlokk.lead).toBe('Van megoldás, ha tudod, merre indulj')
+    expect(felsorolas[0]).toContain(', és akár a műtét is elkerülhető')
     expect(felsorolas[1]).toContain('„szerkezet”')
-    // Kötőjeles pótlás sehol nem csúszott be a félkvirtmínusz helyére.
+    expect(oldalso[1]).toContain('mozgását, hosszú távú')
+    expect(`${ujBlokk.lead} ${felsorolas.join(' ')} ${oldalso.join(' ')}`).not.toMatch(/[–—]/)
     expect(ujBlokk.lead).not.toContain(' - ')
   })
 

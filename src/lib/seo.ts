@@ -140,9 +140,26 @@ export function buildDocMetadata(doc: SeoDoc, path: string): Metadata {
   }
 }
 
-const HOME_FALLBACK_TITLE = 'Kineticare — Kézrehabilitációs online kurzusplatform'
+const HOME_FALLBACK_TITLE = 'Kineticare | Kézrehabilitációs online kurzusplatform'
 const HOME_FALLBACK_DESCRIPTION =
-  'Kineticare — kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.'
+  'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.'
+
+/**
+ * A kezdőlap HTML-címe. A keret-layout sablonja `%s | Kineticare`.
+ * A CMS `seoTitle` már a márkanevet viseli (`Kineticare | …`), ezért a sablon
+ * `… | Kineticare` utótagot duplázná. `title.absolute` kihagyja a sablont
+ * (Next.js Metadata title:
+ * https://nextjs.org/docs/app/api-reference/functions/generate-metadata#title).
+ * Töltelék gondolatjel a címben tilos (`docs/ui-sztenderdek.md` §3.1.1);
+ * a keresőtalálat-cím legyen egyedi és rövid (NN/g, Unique, Short Page Titles:
+ * https://www.nngroup.com/articles/page-titles/).
+ */
+function homeDocumentTitle(title: string): Metadata['title'] {
+  if (title.includes(SITE_NAME) || title.includes('|')) {
+    return { absolute: title }
+  }
+  return title
+}
 
 /**
  * A `/` metaadata: a `kezdolap` CMS-oldal `buildDocMetadata` útján
@@ -152,13 +169,16 @@ const HOME_FALLBACK_DESCRIPTION =
  */
 export function buildHomeMetadata(home: SeoDoc | null | undefined): Metadata {
   if (!home) {
-    return buildStaticPageMetadata({
-      title: HOME_FALLBACK_TITLE,
-      description: HOME_FALLBACK_DESCRIPTION,
-      path: '/',
-    })
+    return {
+      ...buildStaticPageMetadata({
+        title: HOME_FALLBACK_TITLE,
+        description: HOME_FALLBACK_DESCRIPTION,
+        path: '/',
+      }),
+      title: homeDocumentTitle(HOME_FALLBACK_TITLE),
+    }
   }
-  return buildDocMetadata(
+  const metadata = buildDocMetadata(
     {
       title: home.title.trim() ? home.title : HOME_FALLBACK_TITLE,
       excerpt: home.excerpt ?? HOME_FALLBACK_DESCRIPTION,
@@ -170,6 +190,8 @@ export function buildHomeMetadata(home: SeoDoc | null | undefined): Metadata {
     },
     '/',
   )
+  const title = typeof metadata.title === 'string' ? metadata.title : HOME_FALLBACK_TITLE
+  return { ...metadata, title: homeDocumentTitle(title) }
 }
 
 /** A `/kurzusok` lista címe — meta és JSON-LD közös forrás. */
@@ -292,7 +314,7 @@ export function organizationJsonLd(): Record<string, unknown> {
     name: SITE_NAME,
     url: absoluteUrl('/'),
     description:
-      'Kineticare — kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
+      'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
     // Az entitás egyértelműsítése AI-válaszokban: a nyelv és a működési terület
     // explicit megadása csökkenti a más márkákkal való összemosás esélyét.
     inLanguage: 'hu-HU',

@@ -660,7 +660,7 @@ describe('exact-match safety', () => {
     expect(oldNodes[5]).toMatchObject({
       type: 'heading',
       tag: 'h3',
-      children: [expect.objectContaining({ text: 'Árlista – gyógytorna / manuálterápia' })],
+      children: [expect.objectContaining({ text: 'Árlista: gyógytorna / manuálterápia' })],
     })
     const originalNodes = children(find(input.layout!, 'richText').content)
     const result = planOwnerReviewV1(freeze(input))

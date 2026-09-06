@@ -431,12 +431,13 @@ describe('/szolgaltatasok alap-szekciósora', () => {
 
   it('a lap teteje ÜDVÖZLŐ blokk, a régi bevezető szövegével (redesign, 2026-08-16)', () => {
     // A folyó szöveges bevezető helyére tagolt üdvözlő blokk került; a SZÖVEG
-    // betűhíven ugyanaz maradt — a renderelt kimeneten keresve.
+    // ugyanaz maradt, a töltelék gondolatjel vesszőre cserélve
+    // (`docs/ui-sztenderdek.md` §3.1.1).
     expect(layout[0].blockType).toBe('welcome')
     const markup = renderLayout(layout)
 
     expect(markup).toContain('Fáj a kezed, csuklód, könyököd vagy vállad?')
-    expect(markup).toContain('Van megoldás – ha tudod, merre indulj')
+    expect(markup).toContain('Van megoldás, ha tudod, merre indulj')
     expect(markup).toContain('a test egy csodálatos „szerkezet”')
     expect(markup).toContain('akár a műtét is elkerülhető')
     expect(markup).toContain('mennyire tud hátráltatni a munkában vagy a sportban')
@@ -463,6 +464,11 @@ describe('/szolgaltatasok alap-szekciósora', () => {
 
     expect(markup).toContain('18 000 Ft')
     expect(markup).toContain('10 000 Ft')
+    expect(markup).toContain('Árlista: gyógytorna / manuálterápia')
+    expect(markup).toContain('50 perces alkalom: 18 000 Ft')
+    expect(markup).toContain('20 perces alkalom: 10 000 Ft')
+    expect(markup).toContain('bármikor, a gyakorlatokat')
+    expect(markup).not.toMatch(/[–—]/)
     expect(markup).toContain('Nádorliget u. 7/b')
     expect(markup).toContain('Fadrusz utca 15.')
     expect(markup).toContain('SZTK-A-33553/2024')

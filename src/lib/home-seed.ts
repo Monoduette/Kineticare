@@ -659,6 +659,9 @@ export const ensureHomeLayout = async (payload: Payload, media: HomeMediaIds): P
         content: minimalRichText(
           'A Kineticare kézrehabilitációs kurzusplatform: otthon végezhető videós programok és szakmai képzések gyógytornászoktól.',
         ),
+        seoTitle: 'Kineticare | kézrehabilitáció gyógytornászoktól',
+        seoDescription:
+          'Kocsis Kata és Kiss Kata gyógytornászok: kézrehabilitáció, kéztőalagút-szindróma, kézfájdalom, csuklófájdalom, teniszkönyök kezelése rendelőben és online programmal.',
         layout,
         // Lásd a demó oldalnál: a `status` a `_status`-ból szinkronizálódik.
         status: 'published',
