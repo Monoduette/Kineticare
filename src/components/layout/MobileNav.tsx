@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { NavItem } from '../../lib/menu-tree'
 import { getNavRouteState } from '../../lib/nav-route'
 import { AccountNav } from './AccountNav'
+import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { NavAnchor } from './NavAnchor'
 
 /**
@@ -202,6 +203,9 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         ) : (
           <p className="kc-nav-mobile__empty">A menü jelenleg üres.</p>
         )}
+        <div className="kc-nav-mobile__appointment">
+          <HeaderAppointmentCta onNavigate={close} variant="drawer" />
+        </div>
       </nav>
     </div>
   )

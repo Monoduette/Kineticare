@@ -2,10 +2,12 @@ import Link from 'next/link'
 
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
 import { Container } from '../ui/Container'
+import { withHeaderAppointmentNav } from '../../lib/header-appointment'
 import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
 import { DesktopNav } from './DesktopNav'
 import { getHeaderAuthState } from './header-user'
+import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { HeaderCoursesNav } from './HeaderCoursesNav'
 import { HeaderScrollFx } from './HeaderScrollFx'
 import { MobileNav } from './MobileNav'
@@ -14,7 +16,8 @@ import { MobileNav } from './MobileNav'
  * Fejléc — a menus menüfából renderel (visible + published-cél, max 2 szint,
  */
 export async function Header() {
-  const [items, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
+  const [navItems, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
+  const items = withHeaderAppointmentNav(navItems)
 
   return (
     <header className="kc-site-header">
@@ -33,6 +36,7 @@ export async function Header() {
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
             <AccountNav signedIn={auth.signedIn} variant="header" />
+            <HeaderAppointmentCta variant="bar" />
             <HeaderCoursesNav />
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>
