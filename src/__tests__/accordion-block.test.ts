@@ -24,9 +24,9 @@ import type { BlockAccordion, Page } from '../payload-types'
  *     kódban nincs marketingszöveg és nincs helykitöltő (a teamMembers
  *     guard-tesztjének mintája).
  *
- * A stíluslap három szabálya (akcent-korlát, érintési célfelület,
- * prefers-reduced-motion) fájl-szinten őrzött: mindhárom olyan, amit egy
- * későbbi szerkesztés csendben elronthatna.
+ * A stíluslap négy szabálya (akcent-korlát, érintési célfelület,
+ * fókuszgyűrű, summary háttér nélkül hoveren és nyitva) fájl-szinten őrzött:
+ * mind olyan, amit egy későbbi szerkesztés csendben elronthatna.
  */
 
 // ---------------------------------------------------------------------------
@@ -394,10 +394,14 @@ describe('accordion.css szabály-őrök', () => {
     expect(summary.slice(0, summary.indexOf('}'))).toContain('min-height: 2.75rem')
   })
 
-  it('a háttér-átmenet `prefers-reduced-motion: reduce` esetén kikapcsol', () => {
-    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
-    const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
-    expect(reduced).toContain('transition: none')
+  it('a summary hoveren és nyitva sem fest hátteret (tint sávon se surface-raised)', () => {
+    const kod = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(kod).not.toContain('--kc-accordion-hover')
+    expect(kod).not.toMatch(/\.kc-accordion__summary:hover/)
+    expect(kod).not.toContain('--kc-color-surface-raised')
+    const hatterek = [...kod.matchAll(/background(?:-color)?\s*:\s*[^;]+/g)].map((m) => m[0].trim())
+    expect(hatterek).toEqual(['background-color: transparent'])
+    expect(kod).toContain('.kc-accordion__summary:focus-visible')
   })
 
   it('a böngésző-alapértelmezett háromszög helyett saját jelet rajzol', () => {
