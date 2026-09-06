@@ -87,7 +87,32 @@ describe('home-help-states — REV C felismerés', () => {
     expect(help.rows?.map((row) => row.photo)).toEqual([41, 42, 43])
   })
 
-  it('a jóváhagyott panel-szövegben nincs gondolatjel', () => {
+  it('a Szerkesztő C panel-szövege karakterre egyezik, gondolatjel nélkül', () => {
+    expect(HOME_HELP_TITLE).toBe('Így tudunk segíteni')
+    expect(HOME_HELP_LEAD).toBe(
+      'A logónk három kézállapotot rajzol ki. Itt ezen az úton igazítunk: megfigyelés alapján, nem diagnózis.',
+    )
+    expect(HOME_HELP_STATES.map((state) => state.title)).toEqual(['Zárt', 'Nyíló', 'Nyitott'])
+    expect(HOME_HELP_STATES.map((state) => state.osszefoglalo)).toEqual([
+      'A kéz még inkább összezárva, a mindennapi mozdulat óvatos.',
+      'Már van mozgás, de a tartomány még nem teljes.',
+      'A kéz újra szélesebb tartományban használható.',
+    ])
+    expect(HOME_HELP_STATES.map((state) => state.body)).toEqual([
+      'Ha a markolás, a nyitás vagy a terhelés még szűk tartományban van, először kis, biztonságos lépéssel érdemes kezdeni. Az Ingyenes SOS KézRelax ehhez ad azonnal elérhető gyakorlatokat: otthon, a saját tempódban.',
+      'Amikor a kéz már nyílik, de a hétköznapi feladatok még töredeznek, a következő lépés a rendszeres, lépésről lépésre épülő otthoni gyakorlás. A kurzusoldalon látod a teljes programot és az árat: ígéret és százalék nélkül.',
+      'Ha a cél a tartós mindennapi használat, vagy személyes iránymutatást keresel, egy helyen nézheted át, milyen utak vannak nálunk: rendelő, otthoni program, szakmai út. Te választasz; mi nem sorolunk be diagnózisba.',
+    ])
+    expect(HOME_HELP_STATES.map((state) => state.felirat)).toEqual([
+      'Ingyenes SOS KézRelax',
+      'Nézd meg a kurzusokat',
+      'Nézd meg a szolgáltatásokat',
+    ])
+    expect(HOME_HELP_STATES.map((state) => state.url)).toEqual([
+      '/kurzusok/sos-kezrelax-villamkurzus',
+      '/kurzusok',
+      '/szolgaltatasok',
+    ])
     const copy = [
       HOME_HELP_TITLE,
       HOME_HELP_LEAD,
@@ -99,7 +124,5 @@ describe('home-help-states — REV C felismerés', () => {
       ]),
     ].join('\n')
     expect(copy).not.toMatch(/[\u2013\u2014]/)
-    expect(HOME_HELP_STATES[0]?.body).toContain('gyakorlatokat: otthon')
-    expect(HOME_HELP_STATES[1]?.body).toContain('az árat: ígéret')
   })
 })
