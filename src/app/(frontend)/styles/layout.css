@@ -249,12 +249,12 @@
    https://design-system.service.gov.uk/components/button/
    NN/g, The Same Link Twice: ismétlés megengedett, ha a két hely más szerep.
    https://www.nngroup.com/articles/duplicate-links/ */
-.kc-site-header__appointment-cta {
+.kc-site-header .kc-site-header__appointment-cta {
   display: none;
 }
 
 @media (min-width: 75em) {
-  .kc-site-header__appointment-cta {
+  .kc-site-header .kc-site-header__appointment-cta {
     display: inline-flex;
   }
 }
