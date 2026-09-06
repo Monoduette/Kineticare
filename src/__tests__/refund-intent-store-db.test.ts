@@ -232,12 +232,26 @@ describe.skipIf(!hasDb)('refund intent store (real PostgreSQL)', () => {
     const oldPid = await oldPool.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')
     await close(second)
     expect(oldPool.ended).toBe(true)
-    const closedBackend = await adapter(first).pool.query<{ count: number }>(
-      'SELECT count(*)::int AS count FROM pg_stat_activity WHERE pid = $1',
-      [oldPid.rows[0].pid],
-    )
-    expect(closedBackend.rows[0].count).toBe(0)
-    second = await connect('restarted')
+    try {
+      // A pool.end() a kliens oldalon kész, a PostgreSQL backend viszont még
+      // egy pillanatig a pg_stat_activity-ben maradhat. Egyetlen pillanatkép
+      // CI-terhelésen 1-et lát (main 6cd64b6, Actions 33999634006), és a
+      // reconnect elmaradása a későbbi second-hívásokat unavailable-re viszi.
+      await expect
+        .poll(
+          async () => {
+            const closedBackend = await adapter(first).pool.query<{ count: number }>(
+              'SELECT count(*)::int AS count FROM pg_stat_activity WHERE pid = $1',
+              [oldPid.rows[0].pid],
+            )
+            return closedBackend.rows[0].count
+          },
+          { timeout: 5000, interval: 25 },
+        )
+        .toBe(0)
+    } finally {
+      second = await connect('restarted')
+    }
     const newPid = await adapter(second).pool.query<{ pid: number }>(
       'SELECT pg_backend_pid() AS pid',
     )
