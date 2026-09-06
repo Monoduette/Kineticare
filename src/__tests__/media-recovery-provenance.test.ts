@@ -192,6 +192,9 @@ describe('durable team media recovery provenance', { timeout: 60_000 }, () => {
       if (kind === 'orphan') expect(readFileSync(path.join(f.dir, name), 'utf8')).toBe('unowned')
     },
   )
+  // Tíz upload-drift × sharp rotate/webp CI-terhelés mellett túllépi a 5 mp-es
+  // alap timeoutot (main 19357dc, Actions 33989356297; PR 214 20 mp-et adott).
+  // A generateFileData kör ugyanezen a fájlon 5 mp-en flakel, ezért 60 mp.
   it.each(['raw', 'normalized'])(
     'holds %s receipt before any write after config drift',
     async (kind) => {

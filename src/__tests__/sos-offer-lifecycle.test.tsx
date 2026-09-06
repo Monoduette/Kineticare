@@ -15,6 +15,8 @@ import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { buildHomeLayout } from '../lib/home-seed'
 import { buildNavTree } from '../lib/menu-tree'
 import { planOwnerReviewV1 } from '../lib/owner-review-v1'
+import { isAvailableSosProduct, isStorefrontFreeSos } from '../lib/sos-offer'
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import type { BlockFaq, Menu, Product } from '../payload-types'
 import { planOwnerReviewMenus } from '../scripts/apply-owner-review-v1'
 
@@ -103,9 +105,19 @@ afterEach(() => vi.unstubAllGlobals())
 describe('Persisted owner copy follows current SOS availability without CMS rewrites', () => {
   it('uses the real planner output and renders both free claims while verified', () => {
     expect(planned.changes.some((change) => change.requestId === 'H13')).toBe(true)
-    expect(persistedMenu.label).toBe('Ingyenes SOS KézRelax')
+    expect(persistedMenu.label).toBe(SOS_FREE_MENU_LABEL)
     expect(buildNavTree([menuWith(product())])[0].label).toBe(persistedMenu.label)
     expectFaq(faqHtml([product(), fullCourse()]), true, persistedFaq.items!.length)
+  })
+
+  it('storefront-published free SOS is Ingyenes in nav even if Payload _status is draft', () => {
+    const liveShaped = product({ _status: 'draft' })
+    expect(isStorefrontFreeSos(liveShaped)).toBe(true)
+    expect(isAvailableSosProduct(liveShaped)).toBe(false)
+    expect(buildNavTree([menuWith(liveShaped, SOS_MENU_LABEL)])[0]).toMatchObject({
+      label: SOS_FREE_MENU_LABEL,
+      href: '/kurzusok/sos-kezrelax-villamkurzus',
+    })
   })
 
   it.each([
@@ -128,18 +140,27 @@ describe('Persisted owner copy follows current SOS availability without CMS rewr
     ['zero but paid', product({ priceInHUFEnabled: true, priceInHUF: 0 })],
     ['unknown pricing', product({ priceInHUFEnabled: undefined })],
     ['null pricing', product({ priceInHUFEnabled: null })],
-    ['Payload draft', product({ _status: 'draft' })],
-    ['missing publication proof', product({ _status: undefined })],
   ] as const)('%s keeps the link but removes managed free claims', (_, target) => {
     const menu = menuWith(target)
     const before = structuredClone(menu)
     const nav = buildNavTree([menu])
-    expect(nav[0].label).toBe('SOS KézRelax')
+    expect(nav[0].label).toBe(SOS_MENU_LABEL)
     expect(nav[0].href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
     expectFaq(faqHtml([target, fullCourse()]), false, persistedFaq.items!.length - 1)
     expect(menu).toEqual(before)
-    expect(persistedMenu.label).toBe('Ingyenes SOS KézRelax')
+    expect(persistedMenu.label).toBe(SOS_FREE_MENU_LABEL)
     expect(persistedFaq.items).toContain(managedPair)
+  })
+
+  it.each([
+    ['Payload draft', product({ _status: 'draft' })],
+    ['missing publication proof', product({ _status: undefined })],
+  ] as const)('%s keeps storefront-visible Ingyenes on the nav, FAQ stay HOLD', (_, target) => {
+    const menu = menuWith(target)
+    const nav = buildNavTree([menu])
+    expect(nav[0].label).toBe(SOS_FREE_MENU_LABEL)
+    expect(nav[0].href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
+    expectFaq(faqHtml([target, fullCourse()]), false, persistedFaq.items!.length - 1)
   })
 
   it.each([
@@ -164,13 +185,13 @@ describe('Persisted owner copy follows current SOS availability without CMS rewr
 
   it('derives either exact managed label and preserves original ordering, nesting and links', () => {
     const sibling = { id: 8, label: 'Kezelések', type: 'url', url: '/kezelesek', order: 0 } as Menu
-    for (const label of ['SOS KézRelax', 'Ingyenes SOS KézRelax']) {
+    for (const label of [SOS_MENU_LABEL, SOS_FREE_MENU_LABEL]) {
       const free = menuWith(product(), label)
       const paid = menuWith(product({ priceInHUFEnabled: true }), label)
       const before = buildNavTree([sibling, paid])
       const after = buildNavTree([sibling, free])
       expect(after.map((item) => item.id)).toEqual(before.map((item) => item.id))
-      expect(after.find((item) => item.id === free.id)?.label).toBe('Ingyenes SOS KézRelax')
+      expect(after.find((item) => item.id === free.id)?.label).toBe(SOS_FREE_MENU_LABEL)
       const parent = { ...sibling, id: 10, order: -1 }
       const children = [sibling, paid].map((item) => ({ ...item, parent: 10 }))
       const tree = buildNavTree(freeze([parent, ...children]))

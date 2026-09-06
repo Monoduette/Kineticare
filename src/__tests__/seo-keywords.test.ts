@@ -546,6 +546,41 @@ describe('kezdőlap / JSON-LD és meta keywords a CMS seoKeywords-ből', () => {
     expect(metadata.alternates?.canonical).toBe('/')
   })
 
+  it('a CMS-cím márkaneve miatt absolute <title>, a keret-sablon nem dupláz', () => {
+    const metadata = buildHomeMetadata({
+      title: 'Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen',
+      seoTitle: 'Kineticare | kézrehabilitáció gyógytornászoktól',
+      seoDescription:
+        'Kocsis Kata és Kiss Kata gyógytornászok: kézrehabilitáció, kéztőalagút-szindróma.',
+    })
+    expect(metadata.title).toEqual({
+      absolute: 'Kineticare | kézrehabilitáció gyógytornászoktól',
+    })
+    expect(metadata.openGraph?.title).toBe('Kineticare | kézrehabilitáció gyógytornászoktól')
+    expect(metadata.description).toBe(
+      'Kocsis Kata és Kiss Kata gyógytornászok: kézrehabilitáció, kéztőalagút-szindróma.',
+    )
+    expect(JSON.stringify(metadata)).not.toMatch(/[–—]/)
+  })
+
+  it('CMS nélküli tartalék cím is absolute, gondolatjel nélkül', () => {
+    const metadata = buildHomeMetadata(null)
+    expect(metadata.title).toEqual({
+      absolute: 'Kineticare | Kézrehabilitációs online kurzusplatform',
+    })
+    expect(metadata.description).toBe(
+      'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
+    )
+    expect(JSON.stringify(metadata)).not.toMatch(/[–—]/)
+  })
+
+  it('márkanév nélküli H1-cím a keret-sablonra marad (string title)', () => {
+    const metadata = buildHomeMetadata({
+      title: 'Hatékony és biztonságos módszerek a kéz fájdalmaira',
+    })
+    expect(metadata.title).toBe('Hatékony és biztonságos módszerek a kéz fájdalmaira')
+  })
+
   it('üres kezdolap seoKeywords → / metadata-ban nincs keywords kulcs', () => {
     expect('keywords' in buildHomeMetadata({ title: 'Kezdőlap' })).toBe(false)
     expect('keywords' in buildHomeMetadata({ title: 'Kezdőlap', seoKeywords: [] })).toBe(false)

@@ -107,6 +107,14 @@ describe('AUDIENCE_BANDS — sávsorrend és horgonyok', () => {
       'Szakembereknek',
     ])
   })
+
+  it('a sáv-felvezetőben nincs töltelék gondolatjel, a csukló-/ujj- kötőjel megmaradhat', () => {
+    const [homeBand] = AUDIENCE_BANDS
+    expect(homeBand.lead).toBe(
+      'Otthon, egyedül is végezhető gyakorlatok a fájdalom enyhítésére, érthetően, szaknyelv nélkül.',
+    )
+    expect(homeBand.lead).not.toMatch(/[–—]/)
+  })
 })
 
 describe('CourseAudienceBand — a sáv megjelenítése', () => {

@@ -151,5 +151,9 @@ describe('Organization JSON-LD', () => {
     const jsonLd = organizationJsonLd()
     expect(jsonLd.inLanguage).toBe('hu-HU')
     expect(Array.isArray(jsonLd.knowsAbout)).toBe(true)
+    expect(jsonLd.description).toBe(
+      'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
+    )
+    expect(String(jsonLd.description)).not.toMatch(/[–—]/)
   })
 })

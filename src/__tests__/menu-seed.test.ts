@@ -16,6 +16,7 @@ import {
   ensureNavigationMenu,
   type MenuSeedNode,
 } from '../lib/menu-seed'
+import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from '../lib/sos-offer-copy'
 import { validateMenuTypeConsistency } from '../lib/menu-validation'
 import { sanitizeCmsUrl } from '../lib/safe-url'
 import type { Menu, Page, Product } from '../payload-types'
@@ -50,7 +51,7 @@ describe('buildNavigationMenuPlan — struktúra', () => {
     expect(findNode(plan, 'Szolgáltatások')?.children.map((child) => child.label)).toEqual([
       'Rendelői kezelések',
       'Szakmai képzés',
-      'SOS KézRelax',
+      SOS_FREE_MENU_LABEL,
     ])
     // A Tudástár gyökér-pont, nem almenü: az UX-skill M7 szerint másodlagos,
     // de ELÉRHETŐNEK kell lennie (eddig sehonnan nem volt az).
@@ -106,7 +107,7 @@ describe('buildNavigationMenuPlan — sorrend', () => {
     ])
   })
 
-  it('az almenü sorrendje: Rendelői kezelések → Szakmai képzés → SOS KézRelax', () => {
+  it('az almenü sorrendje: Rendelői kezelések → Szakmai képzés → Ingyenes SOS KézRelax', () => {
     const services = findNode(buildNavigationMenuPlan(), 'Szolgáltatások')
     expect(services?.children.map((child) => child.order)).toEqual([0, 1, 2])
     expect(SERVICES_MENU_ORDER).toBeLessThan(KNOWLEDGE_BASE_MENU_ORDER)
@@ -117,7 +118,7 @@ describe('buildNavigationMenuPlan — célok', () => {
   it('feloldott oldal/termék esetén ref-es menüpont (kanonikus cím, published-szűréssel)', () => {
     const plan = buildNavigationMenuPlan({ servicesPageId: 12, sosCourseId: 34 })
     const services = findNode(plan, 'Szolgáltatások')
-    const sos = services?.children.find((child) => child.label === 'SOS KézRelax')
+    const sos = services?.children.find((child) => child.label === SOS_FREE_MENU_LABEL)
 
     expect(services?.type).toBe('page')
     expect(services?.ref).toEqual({ relationTo: 'pages', value: 12 })
@@ -128,7 +129,7 @@ describe('buildNavigationMenuPlan — célok', () => {
   it('feloldatlan cél esetén útvonal-tartalék (a menüpont nem tűnik el)', () => {
     const plan = buildNavigationMenuPlan()
     const services = findNode(plan, 'Szolgáltatások')
-    const sos = services?.children.find((child) => child.label === 'SOS KézRelax')
+    const sos = services?.children.find((child) => child.label === SOS_FREE_MENU_LABEL)
 
     expect(services?.type).toBe('url')
     expect(services?.url).toBe(SERVICES_PAGE_PATH)
@@ -191,7 +192,7 @@ describe('buildNavigationMenuPlan — a meglévő kapukon is átjut', () => {
     expect(services?.children.map((child) => child.label)).toEqual([
       'Rendelői kezelések',
       'Szakmai képzés',
-      'SOS KézRelax',
+      SOS_FREE_MENU_LABEL,
     ])
     const training = services?.children.find((child) => child.label === 'Szakmai képzés')
     expect(training?.isExternal).toBe(true)
@@ -287,7 +288,7 @@ describe('ensureNavigationMenu — idempotencia', () => {
       'Szolgáltatások',
       'Rendelői kezelések',
       'Szakmai képzés',
-      'SOS KézRelax',
+      SOS_FREE_MENU_LABEL,
       'Tudástár',
     ])
     expect(first.skipped).toEqual([])
@@ -380,7 +381,52 @@ describe('ensureNavigationMenu — idempotencia', () => {
       type: 'page',
       ref: { relationTo: 'pages', value: 42 },
     })
-    expect(store.menus.find((row) => row.label === 'SOS KézRelax')).toMatchObject({
+    expect(store.menus.find((row) => row.label === SOS_FREE_MENU_LABEL)).toMatchObject({
+      type: 'product',
+      ref: { relationTo: 'products', value: 43 },
+    })
+  })
+
+  it('a régi SOS KézRelax sort az Ingyenes tervponttal azonosnak tekinti, nem duplikálja', async () => {
+    const store: FakeStore = {
+      menus: [
+        {
+          id: 1,
+          label: 'Szolgáltatások',
+          type: 'url',
+          url: SERVICES_PAGE_PATH,
+          order: 4,
+          visible: true,
+          openInNewTab: false,
+        },
+        {
+          id: 6,
+          label: SOS_MENU_LABEL,
+          type: 'product',
+          ref: { relationTo: 'products', value: 43 },
+          parent: 1,
+          order: 2,
+          visible: true,
+          openInNewTab: false,
+        },
+      ],
+      pages: [],
+      products: [{ id: 43, sku: SOS_COURSE_SKU }],
+    }
+    const { payload, createCount } = createFakePayload(store)
+
+    const summary = await ensureNavigationMenu(payload)
+
+    expect(summary.created).not.toContain(SOS_FREE_MENU_LABEL)
+    expect(summary.skipped).toContain(SOS_MENU_LABEL)
+    expect(summary.created).toEqual(['Rendelői kezelések', 'Szakmai képzés', 'Tudástár'])
+    expect(createCount()).toBe(3)
+    expect(
+      store.menus.filter(
+        (row) => row.label === SOS_MENU_LABEL || row.label === SOS_FREE_MENU_LABEL,
+      ),
+    ).toHaveLength(1)
+    expect(store.menus.find((row) => row.label === SOS_MENU_LABEL)).toMatchObject({
       type: 'product',
       ref: { relationTo: 'products', value: 43 },
     })
