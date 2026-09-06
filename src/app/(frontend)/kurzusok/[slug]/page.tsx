@@ -44,6 +44,7 @@ import {
 } from '@/lib/courses'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { formatPriceHuf } from '@/lib/format-price'
+import { rewriteVisitorDashLeftover } from '@/lib/gondolatjel-leftover'
 import { logger } from '@/lib/logger'
 import {
   absoluteUrl,
@@ -452,7 +453,11 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
                 hasPurchased={purchased}
                 highlights={sales.highlights}
                 id={BUYBOX_ID}
-                lead={product.shortDescription ?? null}
+                lead={
+                  typeof product.shortDescription === 'string'
+                    ? rewriteVisitorDashLeftover(product.shortDescription)
+                    : null
+                }
                 priceBadge={priceBadge}
                 priceHuf={price}
                 product={product}

@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { courseHref } from '../../lib/course-url'
 import { courseCover, coursePriceHuf, courseTitle } from '../../lib/courses'
+import { rewriteVisitorDashLeftover } from '../../lib/gondolatjel-leftover'
 import type { Product } from '../../payload-types'
 import { Card } from '../ui/Card'
 import { PriceTag } from '../ui/PriceTag'
@@ -52,7 +53,9 @@ export function CourseCard({ product, headingLevel = 'h2' }: CourseCardProps) {
           <Link href={href}>{title}</Link>
         </Heading>
         {product.shortDescription ? (
-          <p className="kc-course-card__excerpt">{product.shortDescription}</p>
+          <p className="kc-course-card__excerpt">
+            {rewriteVisitorDashLeftover(product.shortDescription)}
+          </p>
         ) : null}
         {price !== null ? (
           <p className="kc-course-card__price">

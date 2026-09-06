@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import type { Payload } from 'payload'
 
 import { ctaLabel } from './cta-vocabulary'
+import { HOW_IT_WORKS_STEP1_FIXED } from './gondolatjel-leftover'
 import {
   HOME_HELP_LEAD,
   HOME_HELP_PHOTO_FILES,
@@ -527,7 +528,7 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     steps: [
       {
         title: 'Kiválasztod a kurzust',
-        text: 'A panaszodhoz illő programot néhány kattintással megvásárolod, bankkártyával, biztonságosan.',
+        text: HOW_IT_WORKS_STEP1_FIXED,
       },
       {
         title: 'Azonnal hozzáférsz',

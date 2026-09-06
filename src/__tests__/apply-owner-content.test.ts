@@ -23,6 +23,8 @@ import {
   alkalmazKezdolapJavitasok,
   alkalmazKurzuslistaFeliratok,
   alkalmazKurzusElonyok,
+  alkalmazHowItWorksGondolatjel,
+  alkalmazKurzusLeadGondolatjel,
   alkalmazPressLogosFejlec,
   alkalmazRendeloiHorgony,
   alkalmazRolunkHeroKep,
@@ -44,6 +46,12 @@ import {
   type JavitasLepes,
 } from '../scripts/apply-owner-content'
 import { buildHomeLayout } from '../lib/home-seed'
+import {
+  COURSE_SHORT_DESCRIPTION_FIXED,
+  COURSE_SHORT_DESCRIPTION_LEFTOVER,
+  HOW_IT_WORKS_STEP1_FIXED,
+  HOW_IT_WORKS_STEP1_LEFTOVER,
+} from '../lib/gondolatjel-leftover'
 import {
   buildKapcsolatLayout,
   buildSzolgaltatasokLayout,
@@ -105,6 +113,18 @@ const rolunkSzekcio = (stats: { value: string; label: string }[]): Szekcio => ({
   eyebrow: 'Rólunk',
   title: 'Kiss Kata és Kocsis Kata vagyunk',
   stats,
+  sectionSettings: { visible: true, hatter: 'feher' },
+})
+
+/** Így működik-szekció a megadott első lépésszöveggel. */
+const howItWorksSzekcio = (elsoLepes: string): Szekcio => ({
+  blockType: 'howItWorks',
+  id: 'hiw-1',
+  title: 'Így működik az online kurzus',
+  steps: [
+    { id: 's1', title: 'Kiválasztod a kurzust', text: elsoLepes },
+    { id: 's2', title: 'Azonnal hozzáférsz', text: 'A videós anyagokat a fiókodban éred el.' },
+  ],
   sectionSettings: { visible: true, hatter: 'feher' },
 })
 
@@ -196,6 +216,84 @@ describe('alkalmazKezdolapJavitasok — kurzus-szekció címe', () => {
         expect(kihagyas.indok).toContain('nincs szekciósora')
       }
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Gondolatjel-maradék — „Így működik" + kurzuskártya-lead, csak pontos egyezés
+// ---------------------------------------------------------------------------
+
+describe('alkalmazHowItWorksGondolatjel', () => {
+  it('pontos egyezésnél a vásárlás-lépés U+2014-ét vesszőre cseréli, a többi lépést nem', () => {
+    const masodik = {
+      id: 's2',
+      title: 'Azonnal hozzáférsz',
+      text: 'A videós anyagokat a fiókodban éred el.',
+    }
+    const layout: Szekciosor = [
+      heroSzekcio(),
+      {
+        blockType: 'howItWorks',
+        id: 'hiw-1',
+        title: 'Így működik az online kurzus',
+        steps: [
+          { id: 's1', title: 'Kiválasztod a kurzust', text: HOW_IT_WORKS_STEP1_LEFTOVER },
+          masodik,
+        ],
+        sectionSettings: { visible: true, hatter: 'feher' },
+      },
+    ]
+
+    const eredmeny = alkalmazHowItWorksGondolatjel(layout)
+
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].szabaly).toBe('howitworks-vasarlas-gondolatjel')
+    expect(eredmeny.modositasok[0].indok).toBeNull()
+    expect(eredmeny.layout?.[0]).toBe(layout[0])
+    const how = eredmeny.layout?.[1]
+    expect(how?.blockType === 'howItWorks' ? how.steps?.[0]?.text : null).toBe(
+      HOW_IT_WORKS_STEP1_FIXED,
+    )
+    expect(how?.blockType === 'howItWorks' ? how.steps?.[1] : null).toBe(masodik)
+  })
+
+  it('a már javított mondatot és a más szöveget nem nyúlja', () => {
+    const javitott = alkalmazHowItWorksGondolatjel([howItWorksSzekcio(HOW_IT_WORKS_STEP1_FIXED)])
+    expect(javitott.layout).toBeNull()
+    expect(javitott.modositasok).toHaveLength(0)
+    expect(javitott.kihagyasok[0]?.indok).toContain('MÁR')
+
+    const idegen = alkalmazHowItWorksGondolatjel([howItWorksSzekcio('Saját szerkesztői szöveg.')])
+    expect(idegen.layout).toBeNull()
+    expect(idegen.kihagyasok[0]?.indok).toContain('pontos egyezésnél')
+  })
+
+  it('hiányzó howItWorks szekciónál indokolt kihagyást ad', () => {
+    const eredmeny = alkalmazHowItWorksGondolatjel([heroSzekcio()])
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.kihagyasok[0]?.indok).toContain('howItWorks')
+  })
+})
+
+describe('alkalmazKurzusLeadGondolatjel', () => {
+  it('pontos egyezésnél az U+2013-at vesszőre cseréli, a csukló- kötőjelet meghagyja', () => {
+    const eredmeny = alkalmazKurzusLeadGondolatjel(COURSE_SHORT_DESCRIPTION_LEFTOVER)
+
+    expect(eredmeny.shortDescription).toBe(COURSE_SHORT_DESCRIPTION_FIXED)
+    expect(eredmeny.shortDescription).toContain('csukló-, ujj-')
+    expect(eredmeny.shortDescription).not.toMatch(/[–—]/)
+    expect(eredmeny.modositasok[0]?.szabaly).toBe('kurzus-lead-gondolatjel')
+    expect(eredmeny.kihagyasok).toHaveLength(0)
+  })
+
+  it('a már javított és a más leírást nem nyúlja', () => {
+    const mar = alkalmazKurzusLeadGondolatjel(COURSE_SHORT_DESCRIPTION_FIXED)
+    expect(mar.shortDescription).toBeNull()
+    expect(mar.kihagyasok[0]?.indok).toContain('MÁR')
+
+    const idegen = alkalmazKurzusLeadGondolatjel('Otthon végezhető program.')
+    expect(idegen.shortDescription).toBeNull()
+    expect(idegen.kihagyasok[0]?.indok).toContain('pontos egyezésnél')
   })
 })
 
@@ -1707,6 +1805,14 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
             ),
           }
         }
+        if (blokk.blockType === 'howItWorks') {
+          return {
+            ...blokk,
+            steps: (blokk.steps ?? []).map((lepes, index) =>
+              index === 0 ? { ...lepes, text: HOW_IT_WORKS_STEP1_LEFTOVER } : lepes,
+            ),
+          }
+        }
         return blokk
       })
 
@@ -1751,16 +1857,23 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     if (zaro.layout !== null) {
       layout = zaro.layout
     }
+    const how = alkalmazHowItWorksGondolatjel(layout)
+    modositasok.push(...how.modositasok)
+    kihagyasok.push(...how.kihagyasok)
+    if (how.layout !== null) {
+      layout = how.layout
+    }
 
     return { layout, modositasok, kihagyasok }
   }
 
-  it('egy futásban mind a HAT javítást elvégzi, egymást nem ejtve el', () => {
+  it('egy futásban mind a HÉT javítást elvégzi, egymást nem ejtve el', () => {
     const elso = lanc(eloKezdolap())
 
     expect(elso.modositasok.map((lepes) => lepes.szabaly).sort()).toEqual([
       'allapotok-bevezeto',
       'allapotok-nyitott-ige',
+      'howitworks-vasarlas-gondolatjel',
       'kurzus-szekcio-cim',
       'paciens-szam',
       'presslogos-fejlec',
@@ -1770,6 +1883,10 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     const kurzusok = elso.layout.find((blokk) => blokk.blockType === 'courseCards')
     expect(kurzusok?.blockType === 'courseCards' ? kurzusok.heading : null).toBe(
       UJ_KURZUS_SZEKCIO_CIM,
+    )
+    const howItWorks = elso.layout.find((blokk) => blokk.blockType === 'howItWorks')
+    expect(howItWorks?.blockType === 'howItWorks' ? howItWorks.steps?.[0]?.text : null).toBe(
+      HOW_IT_WORKS_STEP1_FIXED,
     )
     const sajto = elso.layout.find((blokk) => blokk.blockType === 'pressLogos')
     expect(sajto?.blockType === 'pressLogos' ? sajto.heading : null).toBe(pressLogosUjFejlec())

@@ -1,3 +1,7 @@
+import {
+  HOW_IT_WORKS_STEP1_FIXED,
+  rewriteVisitorDashLeftover,
+} from '../../../lib/gondolatjel-leftover'
 import { Container } from '../../ui/Container'
 import { Section } from '../../ui/Section'
 
@@ -20,7 +24,7 @@ export interface HowItWorksStep {
 const STEPS: HowItWorksStep[] = [
   {
     title: 'Kiválasztod a kurzust',
-    text: 'A panaszodhoz illő programot néhány kattintással megvásárolod, bankkártyával, biztonságosan.',
+    text: HOW_IT_WORKS_STEP1_FIXED,
   },
   {
     title: 'Azonnal hozzáférsz',
@@ -61,7 +65,8 @@ export function HowItWorks({ title, steps, id, variant = 'default' }: HowItWorks
                 </p>
                 <div className="kc-how__body">
                   <h3 className="kc-how__step-title">{step.title}</h3>
-                  <p className="kc-how__text">{step.text}</p>
+                  {/* Élő CMS-maradék: U+2014 → vessző, pontos egyezés. */}
+                  <p className="kc-how__text">{rewriteVisitorDashLeftover(step.text)}</p>
                 </div>
               </li>
             ))}
