@@ -281,7 +281,8 @@ const withFallbackHelpPhotos = (
 /**
  * Kezdőlapi megjelenítés: a régi háromoszlopos tábla a C-sín UI-t kapja,
  * a szekció indexe változatlan. A `/szolgaltatasok` tábla nem ezen a
- * függvényen megy át (csak a HomeView hívja).
+ * függvényen megy át — azt a `presentSzolgaltatasokLayout` zárja.
+ * A kezdőlap: `HomeView` és a `/kezdolap` slug a `[slug]` oldalon.
  *
  * Sorrend: WCAG 2.2 SC 1.3.2 (Meaningful Sequence) — a DOM-sorrend marad a
  * CMS sorrendje, a sín csak a régi 3-oszlopos helyén jelenik meg.

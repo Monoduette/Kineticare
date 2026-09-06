@@ -243,7 +243,6 @@
 
 /* Időpontfoglalás — szöveglink a sávban (nem második pirula), 900px-től.
    Kompakt sávon a fiók alján él, a lista NEM kap extra sort.
-   A kétosztályos szelektor a `.kc-button { display: inline-flex }` fölött nyer.
    GOV.UK Button: egy primary (Kurzusok); a másodlagos cselekvés nem gomb.
    https://design-system.service.gov.uk/components/button/ */
 .kc-site-header .kc-site-header__appointment-cta {

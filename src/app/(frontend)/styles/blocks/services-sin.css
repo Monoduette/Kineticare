@@ -550,12 +550,14 @@
 
   .kc-services-sin__col {
     justify-content: flex-start;
+    align-self: start;
     height: auto;
   }
 
   .kc-services-sin__rail {
     justify-content: flex-start;
     gap: var(--kc-space-6);
+    flex: none;
   }
 
   .kc-services-sin__stage {
