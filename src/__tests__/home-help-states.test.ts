@@ -5,16 +5,22 @@ import {
   CLOSED_HAND_HOME_HELP_TITLES,
   HOME_HELP_LEAD,
   HOME_HELP_PHOTO_FILES,
+  HOME_HELP_PUBLIC_DIR,
   HOME_HELP_STATE_TITLES,
   HOME_HELP_STATES,
   HOME_HELP_TITLE,
   LEGACY_HOME_HELP_ROWS,
   LEGACY_HOME_HELP_URLS,
+  homeHelpFallbackMedia,
   homeHelpRailRows,
   isClosedHandHomeHelpRail,
+  isConvertibleHomeHelpServices,
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
+  presentHomeHelpServicesBlock,
+  presentHomeLayout,
 } from '../lib/home-help-states'
+import type { BlockServices, Page } from '../payload-types'
 import { PROFESSIONAL_TRAINING_URL } from '../lib/menu-seed'
 
 describe('home-help-states — REV C felismerés', () => {
@@ -68,6 +74,11 @@ describe('home-help-states — REV C felismerés', () => {
       PROFESSIONAL_TRAINING_URL,
     ])
     expect(help.rows?.map((row) => row.ujAblakban)).toEqual([false, false, true])
+    const order = buildHomeLayout().map((block) => block.blockType)
+    expect(order[0]).toBe('filmHero')
+    expect(order[1]).toBe('about')
+    expect(order.indexOf('services')).toBe(order.indexOf('states') + 1)
+    expect(order.indexOf('about')).toBeLessThan(order.indexOf('services'))
   })
 
   it('a sín fotói a zárolt Drive-képek, nem a Kata-csoportképek', () => {
@@ -142,5 +153,95 @@ describe('home-help-states — REV C felismerés', () => {
     ].join('\n')
     expect(copy).not.toMatch(/[\u2013\u2014]/)
     expect(copy).not.toMatch(/\b(Zárt|Nyíló|Nyitott)\b/)
+  })
+})
+
+const liveTablaRows = LEGACY_HOME_HELP_ROWS.map((row, index) =>
+  index === 1
+    ? {
+        ...row,
+        body: 'Otthoni videókurzusunkkal a saját tempódban gyakorolhatsz. A teljes program tartalmát és árát a kurzus oldalán találod.',
+      }
+    : { ...row },
+)
+
+const tablaHelp = (rows: unknown = liveTablaRows): BlockServices =>
+  ({
+    id: 'help-tabla',
+    blockType: 'services',
+    title: HOME_HELP_TITLE,
+    rows,
+    sectionSettings: { visible: true, hatter: 'feher' },
+  }) as unknown as BlockServices
+
+describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => {
+  it('a régi háromoszlopos (H08-törzsű) táblát sínné alakítja, a sorszámot nem cseréli', () => {
+    expect(isConvertibleHomeHelpServices(tablaHelp())).toBe(true)
+    const presented = presentHomeHelpServicesBlock(tablaHelp())
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.title).toBe(HOME_HELP_TITLE)
+    expect(presented.lead).toBe(HOME_HELP_LEAD)
+    expect(presented.eyebrow).toBe('')
+    expect(presented.sectionSettings?.hatter).toBe('tint')
+    expect(presented.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+    expect(presented.rows?.map((row) => row.osszefoglalo)).toEqual(
+      HOME_HELP_STATES.map((state) => state.osszefoglalo),
+    )
+    expect(presented.rows?.[0]?.photo).toEqual(homeHelpFallbackMedia(0))
+    expect(
+      typeof presented.rows?.[0]?.photo === 'object' && presented.rows?.[0]?.photo !== null,
+    ).toBe(true)
+    const photo = presented.rows?.[0]?.photo
+    if (typeof photo === 'object' && photo !== null) {
+      expect(photo.url).toBe(`${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[0]}`)
+    }
+  })
+
+  it('a kétoszlopos „Erre számíthatsz” services blokkot békén hagyja', () => {
+    const usps = {
+      id: 'usps',
+      blockType: 'services' as const,
+      title: 'Erre számíthatsz velünk',
+      rows: [
+        { title: 'Tudomány', body: 'Első.' },
+        { title: 'Személyre szabott', body: 'Második.' },
+      ],
+    }
+    expect(isConvertibleHomeHelpServices(usps)).toBe(false)
+    expect(presentHomeHelpServicesBlock(usps as unknown as BlockServices)).toEqual(usps)
+  })
+
+  it('a kanonikus sín-sorokat megtartja, hiányzó leadet és fotót pótol', () => {
+    const rail = {
+      blockType: 'services' as const,
+      title: HOME_HELP_TITLE,
+      elrendezes: 'tabla' as const,
+      rows: homeHelpRailRows(),
+    }
+    const presented = presentHomeHelpServicesBlock(rail as unknown as BlockServices)
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.lead).toBe(HOME_HELP_LEAD)
+    expect(presented.rows?.map((row) => row.body)).toEqual(
+      HOME_HELP_STATES.map((state) => state.body),
+    )
+    expect(
+      presented.rows?.map((row) => (typeof row.photo === 'object' ? row.photo?.url : row.photo)),
+    ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
+  })
+
+  it('üres layoutot üresen ad vissza, a többi blokk indexe változatlan', () => {
+    expect(presentHomeLayout([])).toEqual([])
+    const girls = { blockType: 'about' as const, title: 'A Kineticare alapítói' }
+    const help = tablaHelp()
+    const later = { blockType: 'about' as const, title: 'Kiss Kata és Kocsis Kata vagyunk' }
+    const layout = [girls, help, later] as unknown as NonNullable<Page['layout']>
+    const presented = presentHomeLayout(layout)
+    expect(presented).toHaveLength(3)
+    expect(presented[0]).toBe(layout[0])
+    expect(presented[2]).toBe(layout[2])
+    expect(presented[1]).not.toBe(layout[1])
+    if (presented[1]?.blockType === 'services') {
+      expect(presented[1].elrendezes).toBe('sin')
+    }
   })
 })

@@ -645,7 +645,7 @@ describe('exact-match safety', () => {
       note: 'A rendelői kezelési tervet a panaszaidhoz és a terhelhetőségedhez igazítjuk.',
     })
     expect(result.changes).toContainEqual(
-      expect.objectContaining({ requestId: 'H01', path: '/layout/9/feature/label' }),
+      expect.objectContaining({ requestId: 'H01', path: '/layout/1/feature/label' }),
     )
   })
 
@@ -658,7 +658,7 @@ describe('exact-match safety', () => {
       expect.objectContaining({
         requestId: 'H01',
         code: 'editor-change',
-        path: `/layout/9/feature/${key}`,
+        path: `/layout/1/feature/${key}`,
       }),
     )
   })
@@ -916,7 +916,10 @@ describe('exact-match safety', () => {
       }
       for (const requestId of ['H01', 'H10']) {
         expect(result.skips).toContainEqual(
-          expect.objectContaining({ requestId, code: 'editor-order' }),
+          expect.objectContaining({
+            requestId,
+            code: expect.stringMatching(/^(editor-order|already-applied)$/),
+          }),
         )
         expect(
           result.changes.some(

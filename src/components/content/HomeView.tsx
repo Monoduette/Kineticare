@@ -22,6 +22,7 @@ import { KnowledgeSection } from './home/KnowledgeSection'
 import { featuredTestimonials, TestimonialsSection } from './home/TestimonialsSection'
 import { hasLexicalContent } from '../lexical/serialize'
 import { RichText } from '../lexical/RichText'
+import { presentHomeLayout } from '../../lib/home-help-states'
 
 /**
  * HomeView — a kezdőlap prezentációs komponense (tiszta, fixture-ből tesztelhető).
@@ -46,7 +47,8 @@ export interface HomeViewProps {
 }
 
 function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: boolean }) {
-  const title = home?.title?.trim() || 'Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen'
+  const title =
+    home?.title?.trim() || 'Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen'
   const lead =
     home?.excerpt?.trim() ||
     'Kézrehabilitációs online videókurzusok otthon végezhető gyógytornászati programmal: ínhüvelygyulladás, kéztőalagút-szindróma és teniszkönyök esetén.'
@@ -67,7 +69,12 @@ function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: bool
             </div>
           ) : heroMedia ? (
             <div className="kc-hero__media">
-              <MediaImage media={heroMedia} preferredSize="md" priority sizes="(max-width: 900px) 100vw, 544px" />
+              <MediaImage
+                media={heroMedia}
+                preferredSize="md"
+                priority
+                sizes="(max-width: 900px) 100vw, 544px"
+              />
             </div>
           ) : null}
         </div>
@@ -76,20 +83,17 @@ function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: bool
   )
 }
 
-export function HomeView({
-  home,
-  products,
-  posts,
-  testimonials = [],
-  appointment,
-}: HomeViewProps) {
+export function HomeView({ home, products, posts, testimonials = [], appointment }: HomeViewProps) {
   // Szekció-rendszer: ha a kezdőlap CMS-oldalán VAN összeállított szekciósor
-  // (Pages → Szekciók), azt rendereljük — a sorrend és a láthatóság teljes
-  // egészében a szerkesztőé. A FAQPage JSON-LD-t ilyenkor a faq blokk adja a
-  // saját tételeiből (FaqBlock). Az Organization mellett a WebPage séma viszi
-  // a CMS `seoKeywords` mezőt; üresen a `keywords` kulcs kimarad.
+  // (Pages → Szekciók), azt rendereljük — a sorrend a szerkesztőé, a régi
+  // háromoszlopos „Így tudunk segíteni" tábla viszont a C-sín UI-t kapja
+  // (presentHomeLayout). Az ensureHomeLayout kitöltött sort nem ír felül,
+  // ezért az élő elrendezes mező üresen maradhat a 20260906-os migráció után is.
+  // A FAQPage JSON-LD-t ilyenkor a faq blokk adja a saját tételeiből (FaqBlock).
+  // Az Organization mellett a WebPage séma viszi a CMS `seoKeywords` mezőt;
+  // üresen a `keywords` kulcs kimarad.
   // Üres layout → az alábbi rögzített, audit szerinti M1–M8 kezdőlap.
-  const layout = home?.layout ?? []
+  const layout = presentHomeLayout(home?.layout ?? [])
   if (layout.length > 0) {
     return (
       <>

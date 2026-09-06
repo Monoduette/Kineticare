@@ -10,6 +10,7 @@
  * nem nyúl.
  */
 
+import type { BlockServices, Media, Page } from '../payload-types'
 import { ctaLabel } from './cta-vocabulary'
 import { PROFESSIONAL_TRAINING_URL } from './menu-seed'
 
@@ -195,3 +196,148 @@ export const LEGACY_HOME_HELP_ROWS = [
     ujAblakban: true,
   },
 ] as const
+
+/**
+ * A C-sín panel-fotók publikus tartaléka. Az élő CMS `elrendezes` mezője a
+ * 20260906-os migráció után is üres marad a kitöltött kezdőlapon
+ * (`ensureHomeLayout` soha nem ír felül szerkesztői sort), ezért a sín
+ * megjelenítés nem várhat Payload-média id-re. A fájlok a seed
+ * `content/home-images/brand` másolatai.
+ */
+export const HOME_HELP_PUBLIC_DIR = '/media/help-rail'
+
+export const HOME_HELP_PHOTO_ALTS = [
+  'Mosolygó gyógytornász fehér garbóban, tornalabdának támaszkodva, mellettük fehér orchidea',
+  'Mosolygó gyógytornász világoskék ingben a padlón ül, mellettük kézcsont-modell és könyvek',
+  'Mosolygó gyógytornász fehér ruhában kanapén ül, táblagéppel a kezében, mellettük kézcsont-modell',
+] as const
+
+export const HOME_HELP_PHOTO_SIZE = [
+  { width: 876, height: 1400 },
+  { width: 933, height: 1400 },
+  { width: 933, height: 1400 },
+] as const
+
+export const homeHelpFallbackMedia = (index: number): Media => {
+  const file = HOME_HELP_PHOTO_FILES[index]
+  const alt = HOME_HELP_PHOTO_ALTS[index]
+  const size = HOME_HELP_PHOTO_SIZE[index]
+  if (file === undefined || alt === undefined || size === undefined) {
+    throw new Error('A sín-tartalékfotó indexe a három zárolt képén kívül esik.')
+  }
+  return {
+    id: 87001 + index,
+    alt,
+    url: `${HOME_HELP_PUBLIC_DIR}/${file}`,
+    filename: file,
+    mimeType: 'image/jpeg',
+    width: size.width,
+    height: size.height,
+    createdAt: '',
+    updatedAt: '',
+  }
+}
+
+const populatedHelpPhoto = (value: unknown): Media | undefined => {
+  if (typeof value !== 'object' || value === null || !('url' in value)) return undefined
+  const url = (value as { url?: unknown }).url
+  return typeof url === 'string' && url.length > 0 ? (value as Media) : undefined
+}
+
+/** A kezdőlap háromajtós segítség-szekciója: régi tábla, zárt-kéz sín vagy kanonikus sín. */
+export const isConvertibleHomeHelpServices = (block: {
+  blockType?: unknown
+  title?: unknown
+  rows?: unknown
+}): boolean => {
+  if (block.blockType !== 'services') return false
+  if (
+    isLegacyThreeWayHomeHelp(block.rows) ||
+    isHomeHelpRailRows(block.rows) ||
+    isClosedHandHomeHelpRail(block.rows)
+  ) {
+    return true
+  }
+  // Élő CMS: a cím és a három ajtócímke megvan, az URL-t a szerkesztő
+  // módosíthatta (H08 a törzset is írta). A sín UI ettől még jár.
+  return (
+    block.title === HOME_HELP_TITLE &&
+    Array.isArray(block.rows) &&
+    block.rows.length === 3 &&
+    titlesOf(block.rows as readonly { title?: unknown }[]).every(
+      (title, index) => title === HOME_HELP_STATE_TITLES[index],
+    )
+  )
+}
+
+const withFallbackHelpPhotos = (
+  rows: NonNullable<BlockServices['rows']>,
+): NonNullable<BlockServices['rows']> =>
+  rows.map((row, index) => ({
+    ...row,
+    photo: populatedHelpPhoto(row.photo) ?? homeHelpFallbackMedia(index),
+  }))
+
+/**
+ * Kezdőlapi megjelenítés: a régi háromoszlopos tábla a C-sín UI-t kapja,
+ * a szekció indexe változatlan. A `/szolgaltatasok` tábla nem ezen a
+ * függvényen megy át (csak a HomeView hívja).
+ *
+ * Sorrend: WCAG 2.2 SC 1.3.2 (Meaningful Sequence) — a DOM-sorrend marad a
+ * CMS sorrendje, a sín csak a régi 3-oszlopos helyén jelenik meg.
+ * https://www.w3.org/WAI/WCAG22/Understanding/meaningful-sequence.html
+ * NN/g: a látogató a lap tetején keresi a fő tartalmat (F-alakú minta).
+ * https://www.nngroup.com/articles/f-shaped-pattern-reading-web-content-discovered/
+ * GOV.UK: a fontos tartalom elöl.
+ * https://www.gov.uk/guidance/content-design/writing-for-gov-uk
+ */
+export const presentHomeHelpServicesBlock = (block: BlockServices): BlockServices => {
+  if (!isConvertibleHomeHelpServices(block)) return block
+  const liveRows = block.rows ?? []
+  const settings = block.sectionSettings ?? {}
+  const presentedSettings = {
+    ...settings,
+    hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
+  }
+
+  if (isHomeHelpRailRows(liveRows)) {
+    return {
+      ...block,
+      elrendezes: 'sin',
+      lead: block.lead?.trim() || HOME_HELP_LEAD,
+      sectionSettings: presentedSettings,
+      rows: withFallbackHelpPhotos(liveRows),
+    }
+  }
+
+  return {
+    ...block,
+    elrendezes: 'sin',
+    title: HOME_HELP_TITLE,
+    lead: HOME_HELP_LEAD,
+    eyebrow: '',
+    sectionSettings: presentedSettings,
+    rows: HOME_HELP_STATES.map((state, index) => {
+      const live = liveRows[index]
+      return {
+        id: live?.id,
+        number: state.number,
+        title: state.title,
+        osszefoglalo: state.osszefoglalo,
+        body: state.body,
+        felirat: state.felirat,
+        url: state.url,
+        ujAblakban: state.ujAblakban,
+        photo: populatedHelpPhoto(live?.photo) ?? homeHelpFallbackMedia(index),
+      }
+    }),
+  }
+}
+
+/** A kezdőlap szekciósora: a segítség-blokk sínné válik, a többi indexen marad. */
+export const presentHomeLayout = (
+  layout: NonNullable<Page['layout']>,
+): NonNullable<Page['layout']> =>
+  layout.map((block) =>
+    block.blockType === 'services' ? presentHomeHelpServicesBlock(block) : block,
+  )
