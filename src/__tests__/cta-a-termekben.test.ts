@@ -388,6 +388,13 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok:
       'Külső elemző-felület tulajdonneve az admin Webanalitika-fülön — ugyanaz a szerep, mint a „Google Analytics" soré: a link a megnevezett külső eszközre visz, nem cselekvésgomb.',
   },
+  {
+    felirat: 'Időpontfoglalás',
+    fajl: 'lib/header-appointment.ts',
+    kategoria: 'nem-cta',
+    indok:
+      'N-3 fejléc-főnév, Norbert 2026-09-06: a régi menü mellé outline gomb (`/kapcsolat#idopontkeres`). Nem menüpont, nem naptáras foglaló, nem a §3.2 #24 igei CTA.',
+  },
 ]
 /**
  * FELSŐ KORLÁT. A 2026-08-17-i mérés 98 sort talált, a 2026-08-18-i kör után
@@ -416,8 +423,12 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * 2026-09-05: 43 → 45, a tulajdonos kifejezett jóváhagyásával. Kizárólag a
  * LogoRail két helyi indítás/szünet felirata, nem értékesítési CTA; nincs
  * általános felmentés és nincs új szótári sor. A korlát pontosan a lista mérete.
+ *
+ * 2026-09-06: 45 → 46, Norbert zára. Az „Időpontfoglalás" fejléc-outline gomb
+ * (régi menü + ez a gomb, NEM nav-injektálás), callback `/kapcsolat#idopontkeres`.
+ * N-3 menücímke, mint a „Kurzusok"; új §3.2 igei sor NINCS.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 45
+const KIVETEL_LISTA_FELSO_KORLAT = 46
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -934,11 +945,13 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `${}`-behelyettesítés statikusan nem oldható fel. A szám azért van
     // állításban, hogy a növekedése látszódjon: minél több a futásidőben
     // eldőlő felirat, annál kevesebbet ér a szótár betartatása a kódban.
+    // 76: a REV C sín CTA a CMS `felirat` mezőt viszi a Button gyerekébe
+    // (szótári #10/#40/#41 a seedben) — szándékos, nem kódba égetett.
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(75)
+    ).toBeLessThanOrEqual(76)
   })
 })

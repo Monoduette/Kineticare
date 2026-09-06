@@ -10,6 +10,30 @@
   --kc-color-tint-cool: #e6f0f8; /* landing --kc-tint: hűvös sáv-háttér */
   --kc-color-ink: #10243e; /* landing --kc-ink: szöveg + sötét felület */
   --kc-color-ink-soft: #33495f; /* landing --kc-muted: másodlagos szöveg */
+  /* REV C sín — KIZÁRÓLAG a kezdőlap „Így tudunk segíteni"
+     szekciója (`services-sin.css`). A globális paper/tint/ink NEM ezek.
+     A jobb panel a bal paperhez simul (Design QA): a kitöltés egy lágy
+     tónuslépés, a kártya élét a hajszál-keret viszi.
+     paper #f4f8fd, panel #eef3fa (nem a korábbi #e2ebf6),
+     ink #122a4e, muted #516385 törzs (5,42:1 a panelen — SC 1.4.3),
+     chrome #6a7d97 inaktív gyűrű/ikon (3,94:1 a paperen, 3,77:1 a
+     panelen — SC 1.4.11). Keret 8% ink a panelben, dekoratív hajszál.
+     Material 3 tonal surface (szomszédos felület = kis tónuslépés) +
+     GOV.UK colour (kártya kerettel a vásznon).
+     https://design-system.service.gov.uk/styles/colour/
+     https://m3.material.io/styles/color/roles
+     https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+     https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html */
+  --kc-color-help-paper: #f4f8fd;
+  --kc-color-help-panel: #eef3fa;
+  --kc-color-help-ink: #122a4e;
+  --kc-color-help-muted: #516385;
+  --kc-color-help-chrome: #6a7d97;
+  --kc-color-help-border: color-mix(
+    in srgb,
+    var(--kc-color-help-ink) 8%,
+    var(--kc-color-help-panel)
+  );
   --kc-color-accent: #3d78aa; /* landing --kc-accent */
   --kc-color-accent-deep: #2f6e9f; /* landing --kc-accent-deep */
   --kc-color-accent-deeper: #275c87; /* hover-lépcső: accent-deep + 25% ink */

@@ -10,6 +10,12 @@ import { fileURLToPath } from 'node:url'
 import type { Payload } from 'payload'
 
 import { ctaLabel } from './cta-vocabulary'
+import {
+  HOME_HELP_LEAD,
+  HOME_HELP_PHOTO_FILES,
+  HOME_HELP_TITLE,
+  homeHelpRailRows,
+} from './home-help-states'
 import { logger } from './logger'
 
 import { HOME_PAGE_SLUG } from './content-slugs'
@@ -90,6 +96,21 @@ export const HOME_IMAGES = [
     file: 'state-nyitott.png',
     dir: 'brand',
     alt: 'Teljesen nyitott, szabadon tartott tenyér',
+  },
+  {
+    file: 'help-zart-img-7541.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász fehér garbóban, tornalabdának támaszkodva, mellettük fehér orchidea',
+  },
+  {
+    file: 'help-nyilo-syl-9297.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász világoskék ingben a padlón ül, mellettük kézcsont-modell és könyvek',
+  },
+  {
+    file: 'help-nyitott-syl-9260.jpg',
+    dir: 'brand',
+    alt: 'Mosolygó gyógytornász fehér ruhában kanapén ül, táblagéppel a kezében, mellettük kézcsont-modell',
   },
   {
     file: 'services-hands.png',
@@ -231,9 +252,9 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
 // importáljuk: a seed adat, a komponensek pedig a fallback-megjelenítés — a
 // kettő a bevezetés után külön életet él (a szöveget innentől a CMS-ben írják).
 //
-// CTA-CÉLOK: kizárólag belső útvonalak (terv 3.5) — a landing külső
-// kineticare.hu-linkjei NEM jönnek át. Az egyetlen külső cím a ProBody-workshop,
-// ami valóban partneroldal.
+// CTA-CÉLOK: a kezdőlapi sín belső útvonalakra visz (SOS-kurzus, /kurzusok,
+// /szolgaltatasok). A ProBody-workshop külső címe a menüben és a
+// /szolgaltatasok táblán marad, ide nem kerül.
 //
 // HÁTTÉRSÁVOK (`sectionSettings.hatter`): a landing sávritmusát követik. A
 // landing minden szekciója a papírfehér `--kc-bg` alapon áll (kineticare.css) —
@@ -444,57 +465,18 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     sectionSettings: { visible: true, hatter: 'feher' },
   },
 
-  // Szolgáltatás-sorok. A sorszámok itt a landing ADATAI (01/02/03), ezért
-  // kiírjuk őket. A két Kineticare-cél belső útvonalra mutat (terv 3.5); a
-  // harmadik valódi partneroldal, ezért új lapon nyílik.
+  // REV C sín + panel a drót idővonal-krómjával, tint sávon. A ProBody-sor a
+  // /szolgaltatasok táblán és a menüben is él; itt a három szolgáltatás-ajtó
+  // áll. A panel-fotók a zárolt Drive-képek (IMG_7541, SYL_9297, SYL_9260),
+  // nem a Kata-csoportképek.
   {
     blockType: 'services',
-    eyebrow: 'Szolgáltatásaink',
-    title: 'Így tudunk segíteni',
+    title: HOME_HELP_TITLE,
+    lead: HOME_HELP_LEAD,
+    elrendezes: 'sin',
     image: media['services-hands.png'],
-    rows: [
-      {
-        number: '01',
-        title: 'Rendelői kezelések',
-        body: 'Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Gyógytornával, manuálterápiával és egy sor kiegészítő terápiával várunk a stúdiónkban.',
-        // A korábbi „Tovább a kezelésekre" puszta „Tovább"-bal kezdett, amit a
-        // §3.1.4 M-7 tilt (a felirat nem mondja meg, mi történik). Az igei alak
-        // a GOV.UK írásmódját követi: „If your link takes the user to a page
-        // where they can start a task, start your link with a verb."
-        // https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/add-links/
-        felirat: 'Nézd meg a kezeléseket',
-        url: '/szolgaltatasok',
-        ujAblakban: false,
-      },
-      {
-        number: '02',
-        title: 'Otthoni program',
-        body: 'Ha nem tudsz eljutni kezelésre, vagy egyszerűen csak megpróbálnád előbb magadnak megoldani a kézproblémádat, akkor ezeket neked készítettük. Az átfogó kézrehabilitációs programban bárhol, bármikor végezhető megoldásokat találsz.',
-        // Korábban „Tovább a programra" volt, ami EGY konkrét programot ígért,
-        // és a kurzuslistára vitt (IA-audit T2). A cél marad a lista, a felirat
-        // pedig a listához tartozó jóváhagyott alakra vált
-        // (docs/ui-sztenderdek.md §3.2 #10) — így a lapon a `/kurzusok` minden
-        // hivatkozása ugyanazt mondja (WCAG 2.2 3.2.4). A puszta „Tovább…"
-        // amúgy sem lehet CTA (§3.1.4 M-7).
-        felirat: 'Nézd meg a kurzusokat',
-        url: '/kurzusok',
-        ujAblakban: false,
-      },
-      {
-        number: '03',
-        title: 'Szakmai képzések',
-        body: 'Akkreditált tantermi kézkurzusunkat a ProBody Stúdióval együttműködve hoztuk létre a kéz, a csukló- és könyökízület rehabilitációs lehetőségeiről gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.',
-        // Ua. a M-7 miatt: a puszta „Tovább" helyett ige + megnevezett cél.
-        // A sor KÜLSŐ oldalra visz, ezért a felirat a partner anyagát nevezi
-        // meg (NN/g, Better Link Labels — „Specific": a felirat mondja meg,
-        // mit talál a látogató a kattintás túloldalán).
-        // https://www.nngroup.com/articles/better-link-labels/
-        felirat: 'Nézd meg a kézworkshopot',
-        url: 'https://probodystudio.hu/kez-workshop/',
-        ujAblakban: true,
-      },
-    ],
-    sectionSettings: { visible: true, hatter: 'feher' },
+    rows: homeHelpRailRows(HOME_HELP_PHOTO_FILES.map((file) => media[file])),
+    sectionSettings: { visible: true, hatter: 'tint' },
   },
 
   // Rólunk + statisztikák. A számok a landing VALÓS adatai — kitalált

@@ -820,26 +820,42 @@ export interface BlockServices {
    */
   title?: string | null;
   /**
-   * A sorok mellé kerülő kép (pl. terapeuta keze munka közben). Nem kötelező — kép nélkül a sorok teljes szélességben állnak.
+   * A cím alatti, mindig látható bekezdés. Sín-elrendezésnél ide kerül a három út rövid magyarázata. Nem kötelező.
+   */
+  lead?: string | null;
+  /**
+   * A tábla a szolgáltatások oldalé. A sín a kezdőlapé: bal oldalon ajtóválasztó, jobb oldalon a kiválasztott szöveg és fotó. Új blokknál a tábla az alap.
+   */
+  elrendezes?: ('tabla' | 'sin') | null;
+  /**
+   * A tábla sorai mellé kerülő kép (pl. terapeuta keze munka közben). Sín-elrendezésnél nem jelenik meg. Nem kötelező.
    */
   image?: (number | null) | Media;
   /**
-   * Egy sor = egy szolgáltatás. Legfeljebb 5.
+   * Táblánál egy sor = egy szolgáltatás. Sínnél egy sor = egy ajtó (Rendelői kezelések, Otthoni program, Szakmai képzések). Legfeljebb 5.
    */
   rows?:
     | {
         /**
-         * Nem kötelező. Pl. „01". Ha üresen hagyod, a rendszer maga számoz.
+         * Nem kötelező. Pl. „01" vagy „1". Ha üresen hagyod, a rendszer maga számoz.
          */
         number?: string | null;
         /**
-         * A szolgáltatás neve (pl. „Rendelői kezelések").
+         * A szolgáltatás-ajtó neve (pl. „Rendelői kezelések", „Otthoni program").
          */
         title: string;
+        /**
+         * Sín-elrendezésnél a sín rövid másodlagos sora és a panel félkövér bevezetője (pl. „Személyes kezelés a stúdióban."). Táblánál nem jelenik meg. Nem kötelező.
+         */
+        osszefoglalo?: string | null;
         /**
          * 2–4 mondat arról, kinek és miben segít.
          */
         body: string;
+        /**
+         * Sín-elrendezésnél a jobb oldali kép. Arckép csak a tulajdonos által kijelölt fotóból; üresen a felület helyőrzőt mutat, nem talál ki arcot. Táblánál nem jelenik meg.
+         */
+        photo?: (number | null) | Media;
         /**
          * A sor végi hivatkozás szövege. Igével kezdd, és nevezd meg a célt (pl. „Nézd meg a kezeléseket"). A puszta „Tovább…" nem mondja meg, mi történik, ezért nem használható.
          */
@@ -3227,13 +3243,17 @@ export interface BlockStatesSelect<T extends boolean = true> {
 export interface BlockServicesSelect<T extends boolean = true> {
   eyebrow?: T;
   title?: T;
+  lead?: T;
+  elrendezes?: T;
   image?: T;
   rows?:
     | T
     | {
         number?: T;
         title?: T;
+        osszefoglalo?: T;
         body?: T;
+        photo?: T;
         felirat?: T;
         url?: T;
         ujAblakban?: T;

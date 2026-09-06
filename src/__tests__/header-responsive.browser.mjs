@@ -174,7 +174,25 @@ try {
       await campaign.waitFor({ state: 'visible' })
       assert.equal(await campaign.getAttribute('href'), '/akcios-kurzus')
       assert.equal(await campaign.getAttribute('aria-current'), 'page')
+      assert.equal(
+        await page.getByRole('link', { name: 'Időpontkérés', exact: true }).count(),
+        0,
+      )
       if (geometry.mobile) {
+        const drawerCta = page.locator('.kc-site-header__drawer-appointment')
+        await drawerCta.waitFor({ state: 'visible' })
+        assert.equal(await drawerCta.textContent(), 'Időpontfoglalás')
+        assert.equal(await drawerCta.getAttribute('href'), '/kapcsolat#idopontkeres')
+        assert.equal(
+          await page.locator('.kc-site-header__appointment-cta').evaluate((el) => {
+            return getComputedStyle(el).display === 'none'
+          }),
+          true,
+        )
+        assert.equal(
+          await page.locator('.kc-nav-mobile__list a', { hasText: 'Időpontfoglalás' }).count(),
+          0,
+        )
         assert.ok(
           await nav
             .getByRole('link', { name: signedIn ? 'Kurzusaim' : 'Belépés', exact: true })
@@ -184,6 +202,16 @@ try {
           assert.ok(
             await nav.getByRole('button', { name: 'Kijelentkezés', exact: true }).isVisible(),
           )
+      } else {
+        const barCta = page.locator('.kc-site-header__appointment-cta')
+        await barCta.waitFor({ state: 'visible' })
+        assert.equal(await barCta.textContent(), 'Időpontfoglalás')
+        assert.equal(await barCta.getAttribute('href'), '/kapcsolat#idopontkeres')
+        assert.equal(await barCta.getAttribute('aria-current'), null)
+        assert.equal(
+          await page.locator('.kc-nav-desktop a', { hasText: 'Időpontfoglalás' }).count(),
+          0,
+        )
       }
       await campaign.focus()
       await campaign.scrollIntoViewIfNeeded()

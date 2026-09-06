@@ -12,6 +12,7 @@ vi.mock('payload', () => ({
 import { getPayload } from 'payload'
 import { buildHomeLayout } from '../lib/home-seed'
 import { ctaLabel } from '../lib/cta-vocabulary'
+import { HOME_HELP_STATE_TITLES, LEGACY_HOME_HELP_ROWS } from '../lib/home-help-states'
 import {
   buildKapcsolatLayout,
   buildRolunkLayout,
@@ -85,10 +86,27 @@ const fixture = (slug: OwnerReviewSlug): OwnerReviewV1Input => {
   }
 }
 
+const applyLegacyThreeWayHomeHelp = (
+  input: OwnerReviewV1Input,
+  workshopCaption?: string,
+): OwnerReviewV1Input => {
+  const services = find(input.layout!, 'services', 'Így tudunk segíteni')
+  delete services.elrendezes
+  delete services.lead
+  services.eyebrow = 'Szolgáltatásaink'
+  services.image = oldHomeMedia['services-hands.png']
+  services.rows = LEGACY_HOME_HELP_ROWS.map((row, index) => ({
+    ...row,
+    id: `published-help-${index}`,
+    ...(index === 2 && workshopCaption !== undefined ? { felirat: workshopCaption } : {}),
+  }))
+  return input
+}
+
 // Exact published differences captured and owner-approved on 2026-09-05.
 // Deliberately independent of the planner's private allowlist and of /tmp snapshots.
 const publishedHomeFixture = (): OwnerReviewV1Input => {
-  const input = fixture('kezdolap')
+  const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'), 'Tovább a kéz workshopra')
   const states = find(input.layout!, 'states')
   states.blockName = null
   data(states.sectionSettings).anchorId = null
@@ -115,7 +133,6 @@ const publishedHomeFixture = (): OwnerReviewV1Input => {
   })
   rows(find(input.layout!, 'howItWorks'), 'steps')[2].text =
     'A gyakorlatok lépésről lépésre vezetnek — naponta néhány perc is elég a haladáshoz.'
-  rows(find(input.layout!, 'services'))[2].felirat = 'Tovább a kéz workshopra'
   return input
 }
 
@@ -295,9 +312,19 @@ describe('owner-approved 2026-09-05 published variants', () => {
     expect(rows(find(result.layout, 'howItWorks'), 'steps')[2].text).toBe(
       'Kövesd a videók útmutatását, és gyakorolj a saját tempódban.',
     )
+    expect(
+      rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.title),
+    ).toEqual([...HOME_HELP_STATE_TITLES])
     expect(rows(find(result.layout, 'services', 'Így tudunk segíteni'))[2].felirat).toBe(
-      'Nézd meg a kézworkshopot',
+      ctaLabel('workshop-open'),
     )
+    expect(
+      rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.id),
+    ).toEqual(['published-help-0', 'published-help-1', 'published-help-2'])
+    expect(
+      rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.photo),
+    ).toEqual([17, 18, 19])
+    expect(find(result.layout, 'services', 'Így tudunk segíteni').elrendezes).toBe('sin')
     expect(planOwnerReviewV1({ ...input, layout: result.layout }).changes).toHaveLength(0)
   })
 
@@ -322,21 +349,40 @@ describe('owner-approved 2026-09-05 published variants', () => {
   )
 
   it.each(['Tovább a kéz workshopra', 'Tovább a szakmai képzésre'])(
-    'H08 accepts only an approved training caption with its unchanged destination: %s',
+    'H08 converts the three-way home help including an approved training caption: %s',
     (label) => {
-      const input = fixture('kezdolap')
-      const row = rows(find(input.layout!, 'services'))[2]
-      row.felirat = label
+      const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'), label)
       const result = planOwnerReviewV1(input)
-      expect(rows(find(result.layout, 'services', 'Így tudunk segíteni'))[2].felirat).toBe(
-        'Nézd meg a kézworkshopot',
-      )
-      row.url = 'https://example.test/custom'
-      expect(
-        rows(find(planOwnerReviewV1(freeze(input)).layout, 'services', 'Így tudunk segíteni'))[2],
-      ).toBe(row)
+      const next = rows(find(result.layout, 'services', 'Így tudunk segíteni'))
+      expect(next.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+      expect(next[2].felirat).toBe(ctaLabel('workshop-open'))
+      expect(next[2].url).toBe('https://probodystudio.hu/kez-workshop/')
     },
   )
+
+  it('H08 a sínhez a kanonikus zárolt fotókat köti, nem a states csendéleteket', () => {
+    const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'))
+    rows(find(input.canonicalLayout, 'services', 'Így tudunk segíteni')).forEach((row, index) => {
+      row.photo = 41 + index
+    })
+    rows(find(input.layout!, 'states'), 'cards').forEach((card, index) => {
+      card.image = 17 + index
+    })
+    const result = planOwnerReviewV1(input)
+    expect(
+      rows(find(result.layout, 'services', 'Így tudunk segíteni')).map((row) => row.photo),
+    ).toEqual([41, 42, 43])
+  })
+
+  it('H08 does not convert a three-way row whose workshop URL was edited', () => {
+    const input = applyLegacyThreeWayHomeHelp(fixture('kezdolap'))
+    const row = rows(find(input.layout!, 'services', 'Így tudunk segíteni'))[2]
+    const states = find(input.layout!, 'states')
+    row.url = 'https://example.test/custom'
+    const result = planOwnerReviewV1(freeze(input))
+    expect(rows(find(result.layout, 'services', 'Így tudunk segíteni'))[2]).toBe(row)
+    expect(find(result.layout, 'states')).toBe(states)
+  })
 
   it('A06 replaces only the exact four-node bio prefix, keeping all partner nodes and input metadata', () => {
     const input = publishedAboutFixture()
@@ -430,8 +476,9 @@ describe('planOwnerReviewV1: approved canonical pages', () => {
     expect(rows(find(result.layout, 'services', 'Erre számíthatsz velünk'))).toHaveLength(2)
     const assistance = find(result.layout, 'services', 'Így tudunk segíteni')
     expect(rows(assistance)).toHaveLength(3)
+    expect(assistance.elrendezes).toBe('sin')
     expect(rows(assistance).map((row) => row.url)).toEqual(
-      rows(find(input.layout!, 'services')).map((row) => row.url),
+      rows(find(input.layout!, 'services', 'Így tudunk segíteni')).map((row) => row.url),
     )
     expect(
       rows(find(result.layout, 'about'), 'stats').find((row) => row.value === '1')?.label,

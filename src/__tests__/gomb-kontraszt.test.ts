@@ -655,6 +655,26 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       felulir: null,
       indok: 'Ua.: hover-kitöltés a gombon, a gyűrű az offset miatt a lapra esik.',
     },
+    {
+      szelektor:
+        '.kc-services-sin__input:nth-of-type(1):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(1) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(2):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(2) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(3):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(3) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(4):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(4) .kc-services-sin__marker, .kc-services-sin__input:nth-of-type(5):checked ~ .kc-services-sin__layout .kc-services-sin__rail-label:nth-of-type(5) .kc-services-sin__marker',
+      felulir: null,
+      indok:
+        'A sín aktív körjelölője dekoratív (aria-hidden), nem fókuszálható. ' +
+        'A fókusz a címkén van, a gyűrű accent-deep a paper lapon (5,16:1).',
+    },
+    {
+      szelektor: '.kc-services-sin__cta',
+      felulir: null,
+      indok:
+        'Gomb-KITÖLTÉS a C sín paneljén: ink felület, a 2px-es outline-offset ' +
+        'miatt a gyűrű a LAPRA esik (fehér az inken 15,63:1, paperen 14,79:1).',
+    },
+    {
+      szelektor: '.kc-services-sin__cta:hover:not(:disabled):not(.kc-button--disabled)',
+      felulir: null,
+      indok: 'Ua.: hover-kitöltés a gombon, a gyűrű az offset miatt a lapra esik.',
+    },
   ]
 
   const sotetSzabalyok = MINDEN_SZABALY.filter((sz) => SOTET_HATTER.test(sz.torzs))

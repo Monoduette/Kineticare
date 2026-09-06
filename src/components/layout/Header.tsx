@@ -6,6 +6,7 @@ import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
 import { DesktopNav } from './DesktopNav'
 import { getHeaderAuthState } from './header-user'
+import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { HeaderCoursesNav } from './HeaderCoursesNav'
 import { HeaderScrollFx } from './HeaderScrollFx'
 import { MobileNav } from './MobileNav'
@@ -33,6 +34,7 @@ export async function Header() {
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
             <AccountNav signedIn={auth.signedIn} variant="header" />
+            <HeaderAppointmentCta variant="bar" />
             <HeaderCoursesNav />
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>

@@ -43,6 +43,8 @@ export type CtaAction =
   | 'password-reset-start'
   | 'free-strip-jump'
   | 'course-modules-jump'
+  | 'treatments-open'
+  | 'workshop-open'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -511,6 +513,30 @@ export const CTA_VOCABULARY = [
     label: 'Nézd meg a modulokat',
     person: 'e2',
     weight: 'secondary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #40 – a rendelői kezelések oldala (kezdőlapi sín, 1. ajtó).
+    // A szótár M-7 szerinti alakja; a sín CMS-felirata a Szerkesztő
+    // 2026-09-06-i zárolása: `Tovább a kezelésekre`.
+    section: '#40',
+    action: 'treatments-open',
+    label: 'Nézd meg a kezeléseket',
+    person: 'e2',
+    weight: 'primary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #41 – a ProBody kézworkshop külső oldala (kezdőlapi sín, 3. ajtó).
+    section: '#41',
+    action: 'workshop-open',
+    label: 'Nézd meg a kézworkshopot',
+    person: 'e2',
+    weight: 'primary',
     progress: null,
     patterned: false,
     pattern: null,

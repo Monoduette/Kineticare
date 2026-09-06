@@ -381,6 +381,8 @@ Ezek a `ui-sztenderdek.md` §6.3 **G-UI1** őrének kiegészítései, nem helyet
 | **Jelszó-visszaállítás kezdeményezése** | **2** | Elfelejtetted a jelszavad? · Új link kérése | **#37** | `Elfelejtetted a jelszavad?` |
 | **Ugrás a kezdőlap ingyenes sávjára** | 1 | Ingyenes SOS gyakorlatok | **#38** | `Nézd meg ingyenes SOS-kurzusunkat` |
 | **Ugrás a kampány tananyagjegyzékéhez** | 1 | Nézd meg a modulokat (KC demó, 2026-09-05) | **#39** | `Nézd meg a modulokat` |
+| **A rendelői kezelések oldalára lépés** | 1 | Tovább a kezelésekre (kezdőlapi sín, REV C, Szerkesztő-zár) | **#40** | `Nézd meg a kezeléseket` |
+| **A ProBody kézworkshop megnyitása** | 1 | Nézd meg a kézworkshopot (kezdőlapi sín, REV C) | **#41** | `Nézd meg a kézworkshopot` |
 | Folyamatban | **7** | Feldolgozás… · Küldés… · Mentés… · Belépés… · Regisztráció… · Beállítás… · Kijelentkezés… · Újratöltés folyamatban… | **L-1** | `Belépés…` `Regisztráció…` `Kijelentkezés…` `Küldés…` `Mentés…` `Feldolgozás…` `Betöltés…` |
 
 **Mit mond ez a leképezés összesítve:** 28 mért cselekvésre **63 különböző felirat** élt; a jóváhagyott szótárban ugyanezekre **32 felirat + 7 folyamatban-alak** van. A legnagyobb nyereség a kurzuslistánál (8 → 1) és a saját kurzusoknál (4 → 1) keletkezett – mindkettő WCAG 2.2 **3.2.4** sérülés volt.

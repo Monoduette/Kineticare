@@ -1,5 +1,12 @@
 import type { Page } from '../payload-types'
 import { ctaLabel } from './cta-vocabulary'
+import {
+  HOME_HELP_LEAD,
+  HOME_HELP_STATES,
+  isClosedHandHomeHelpRail,
+  isHomeHelpRailRows,
+  isLegacyThreeWayHomeHelp,
+} from './home-help-states'
 import { sanitizeCmsUrl } from './safe-url'
 import { SOS_COMPARISON_FAQ } from './sos-offer-copy'
 
@@ -61,6 +68,14 @@ type Spec = {
 
 const record = (value: unknown): RecordValue =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as RecordValue) : {}
+
+const mediaIdOf = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  const nested = record(value).id
+  return typeof nested === 'number' && Number.isSafeInteger(nested) && nested > 0
+    ? nested
+    : undefined
+}
 
 const at = (value: unknown, path: Path): unknown =>
   path.reduce<unknown>(
@@ -609,6 +624,61 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
         body: 'Rendelői kezeléssel és otthoni videókurzussal is támogatunk. Megmutatjuk, hogyan építheted be a gyakorlást a hétköznapjaidba.',
       },
     ])
+    if (services) {
+      const liveRows = at(layout[services.index], ['rows'])
+      const servicesVisible = at(layout[services.index], ['sectionSettings', 'visible']) !== false
+      const linkedRows =
+        Array.isArray(liveRows) &&
+        liveRows.length === 3 &&
+        liveRows.every(
+          (row) =>
+            sanitizeCmsUrl(record(row).url) !== null &&
+            typeof record(row).title === 'string' &&
+            String(record(row).title).trim().length > 0 &&
+            typeof record(row).felirat === 'string' &&
+            String(record(row).felirat).trim().length > 0,
+        )
+      if (isHomeHelpRailRows(liveRows)) {
+        field('H08', services, ['elrendezes'], 'sin')
+        field('H08', services, ['lead'], HOME_HELP_LEAD)
+        field('H08', services, ['sectionSettings', 'hatter'], 'tint')
+      } else if (
+        (isLegacyThreeWayHomeHelp(liveRows) || isClosedHandHomeHelpRail(liveRows)) &&
+        linkedRows &&
+        servicesVisible
+      ) {
+        const liveTarget = { ...services, old: layout[services.index] }
+        const canonicalHelpRows = at(services.old, ['rows'])
+        const lockedPhotos = Array.isArray(canonicalHelpRows)
+          ? canonicalHelpRows.map((row) => mediaIdOf(record(row).photo))
+          : []
+        const stateCards = states ? at(layout[states.index], ['cards']) : null
+        const stillPhotos = Array.isArray(stateCards)
+          ? stateCards.map((card) => mediaIdOf(record(card).image))
+          : []
+        const photos = HOME_HELP_STATES.map((_, index) => lockedPhotos[index] ?? stillPhotos[index])
+        const nextRows = withRowIds(
+          HOME_HELP_STATES.map((state, index) => ({
+            number: state.number,
+            title: state.title,
+            osszefoglalo: state.osszefoglalo,
+            body: state.body,
+            felirat: state.felirat,
+            url: state.url,
+            ujAblakban: state.ujAblakban,
+            ...(photos[index] !== undefined ? { photo: photos[index] } : {}),
+          })),
+          liveRows,
+        )
+        field('H08', liveTarget, ['elrendezes'], 'sin')
+        field('H08', liveTarget, ['lead'], HOME_HELP_LEAD)
+        field('H08', liveTarget, ['eyebrow'], '')
+        field('H08', liveTarget, ['sectionSettings', 'hatter'], 'tint')
+        field('H08', liveTarget, ['rows'], nextRows)
+      } else {
+        patchServiceRows('H08', services)
+      }
+    }
     if (services && states) {
       // The approved builder resolves the same assets into this database's IDs.
       // Never derive expected media from the current, potentially edited cards.
@@ -642,11 +712,15 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
             typeof record(row).felirat === 'string' &&
             String(record(row).felirat).trim().length > 0,
         )
-      if (!usable || at(layout[services.index], ['sectionSettings', 'visible']) === false) {
+      if (
+        !usable ||
+        at(layout[services.index], ['sectionSettings', 'visible']) === false ||
+        !isHomeHelpRailRows(rows)
+      ) {
         skip(
           'H08',
           'missing-service-links',
-          'A háromsoros, látható services és a meglévő CTA-k szükségesek a states kiváltásához.',
+          'A háromsoros, látható szolgáltatás-sín és a meglévő CTA-k szükségesek a states kiváltásához.',
           states.index,
         )
       } else if (
@@ -666,12 +740,11 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
           before: original[states.index],
           after: null,
           reason:
-            'A kanonikus states helyett a meglévő háromsoros services adja a hárompaneles, linkelt felosztást.',
+            'A kanonikus states helyett a három szolgáltatás-ajtó a services sín + panel elrendezésben él.',
         })
       }
     }
     photo('H08', services, ['image'], 'homeServices')
-    patchServiceRows('H08', services)
 
     if (founders) {
       const stats = at(layout[founders.index], ['stats'])
