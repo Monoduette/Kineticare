@@ -386,10 +386,17 @@
   border-color: var(--kc-color-primary);
 }
 
+/* Az űrlapmező ugyanazt a fókuszjelet kapja, mint a lap minden más eleme:
+   3 px tömör gyűrű 2 px eltartással a base.css globális szabályából. A korábbi
+   `outline: none` + 30%-os árnyék MÉRVE 1,32:1 (keretváltás) és 1,49-1,72:1
+   (gyűrű) volt, tehát a fókuszjel nem érte el a WCAG 2.2 SC 1.4.11 (Non-text
+   Contrast) 3:1 küszöbét; az accent-deep gyűrű 5,45:1 a fehér mezőn és 5,16:1
+   a paper felületen. A vastagság és az eltartás egyezik a többi elemével,
+   így a fókuszjel az egész felületen ugyanaz (WCAG 2.2 SC 3.2.4 Consistent
+   Identification, SC 2.4.13 Focus Appearance). A keretszín-váltás másodlagos
+   jelként megmarad, mert önmagában nem hordozhatja az állapotot (SC 1.4.1). */
 .kc-field__input:focus-visible {
-  outline: none;
   border-color: var(--kc-color-focus);
-  box-shadow: 0 0 0 3px rgb(47 110 159 / 0.3);
 }
 
 .kc-field__input:disabled {
