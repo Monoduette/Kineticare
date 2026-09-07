@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { fixture, locks, provider, store, documents, access } from './refund-fixture'
-import { classifyRefundedTransactionStatus } from '../lib/refund/refund-order'
+import { orderTransitionLockKey } from '../lib/order-status/apply-barion-state'
+import { classifyRefundedTransactionStatus, refundLockKey } from '../lib/refund/refund-order'
 
 describe('refund claim and lock boundaries', () => {
+  it('refundLockKey(5) === orderTransitionLockKey(5)', () => {
+    expect(refundLockKey(5)).toBe(orderTransitionLockKey(5))
+    expect(refundLockKey(5)).toBe('order:mutate:5')
+  })
   it('GetState outside order lock, provider POST inside order lock and never user lock', async () => {
     const f = fixture()
     const state = provider.state.getMockImplementation()!
@@ -12,7 +17,7 @@ describe('refund claim and lock boundaries', () => {
     })
     const post = provider.refund.getMockImplementation()!
     provider.refund.mockImplementation(async (...args) => {
-      expect(locks.held).toContain('refund:order:11')
+      expect(locks.held).toContain('order:mutate:11')
       expect(locks.held).not.toContain('purchases:user:7')
       return post(...args)
     })

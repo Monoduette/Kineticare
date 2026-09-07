@@ -98,7 +98,7 @@ vi.mock('../lib/advisory-lock', () => ({
       previous.then(() => next),
     )
     await previous
-    if (key.startsWith('refund:order:') && locks.beforeOrder) {
+    if (key.startsWith('order:mutate:') && locks.beforeOrder) {
       const before = locks.beforeOrder
       locks.beforeOrder = null
       before()
