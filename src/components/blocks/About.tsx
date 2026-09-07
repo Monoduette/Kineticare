@@ -114,7 +114,7 @@ export function About({ block }: AboutProps) {
             <MediaImage
               media={photo}
               preferredSize="lg"
-              sizes="(max-width: 512px) calc(100vw - 64px), (max-width: 899px) 448px, (max-width: 1100px) 42vw, 448px"
+              sizes="(max-width: 512px) calc(100vw - 64px), (max-width: 899px) 448px, 50vw"
             />
           </figure>
         ) : null}

@@ -37,10 +37,18 @@
 }
 
 @media (min-width: 900px) {
-  /* A fotó legfeljebb fél szélességű; a statisztikák nem vesznek el hasábot.
-     A minmax(0, ...) a hosszú magyar címeket sem engedi a rács fölé nőni. */
+  /* A01 (2026-09-07): a tulajdonos kérése, hogy a fotó „fél oldalt foglaljon
+     el, ahogy az előző oldalunkon volt". A régi kineticare.hu Rólunk-táblája
+     (old-rolunk-00.png) fele-fele arányú volt: szöveg balra, fotó jobbra. A
+     szöveghasáb 50% (őr: ≥38%, a 45 karakteres alsó mértékhez; 1440 px-en
+     ≈ 640 px, azaz a --kc-measure még belefér), a fotó a maradék fél hasáb.
+     A minmax(0, ...) a hosszú magyar címeket sem engedi a rács fölé nőni.
+     GOV.UK images: a kép a tartalommal egy rácson, nem „díszként" lebeg
+     (https://design-system.service.gov.uk/styles/images/); NN/g Photos as
+     Web Content: a valódi csapatfotó bizalmi elem, méretét a tartalom adja
+     (https://www.nngroup.com/articles/photos-as-web-content/). */
   .kc-about--paired .kc-about__grid {
-    grid-template-columns: minmax(0, 54%) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 50%) minmax(0, 1fr);
   }
 }
 
@@ -164,7 +172,10 @@
 }
 
 /* Teljes fotó, természetes képarány: arcot és kezet nem vágunk dekorációért.
-   A kép nem nyúlik a szöveg magasságához és nem válik új hero-elemmé. */
+   A kép nem nyúlik a szöveg magasságához és nem válik új hero-elemmé.
+   900 px alatt egy hasáb: a 28 rem-es sapka középre zárva marad (WCAG 2.2
+   SC 1.4.10 Reflow: 320 px-en a figure a hasáb 100%-a, nincs vízszintes
+   túlcsordulás; https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). */
 
 .kc-about__figure {
   margin: 0;
@@ -182,13 +193,52 @@
   object-fit: contain;
 }
 
-/* A01: csak a Rólunk fotó alsó 3px-es szegélye hullámzik, statikusan.
-   A kemény maszkhatár nem fakítja a képet; az arc és a kéz érintetlen. */
+/* A01: a páros táblában a fotó a jobb fél hasábot tölti ki (a 28 rem-es
+   sapka csak az egyhasábos, mobil alakon él). A rács 50% + 1fr-je miatt a
+   figure sosem több a tábla felénél. */
+@media (min-width: 900px) {
+  .kc-about--paired .kc-about__figure {
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
+/* A01: a Rólunk fotó alsó széle lágy hullám-vágás, ahogy a régi oldal
+   hullám-elválasztója (6790dd85a38ec_wave.svg, viewBox 1440×320, egyetlen
+   lágy görbe) — nem a korábbi 3 px-es fogazott csík.
+
+   Megoldás: CSS `mask-image` két réteggel. A felső réteg tömör (a fotó
+   92,5%-a), az alsó 8%-os réteg a régi wave path SVG data-URI-ja, a viewBox
+   a görbére vágva (y 72–142), `preserveAspectRatio='none'`, ezért a
+   hullám mindig a figure SZÉLESSÉGÉHEZ és MAGASSÁGÁHOZ skálázódik: az
+   amplitúdó (139 − 75)/70 × 8% ≈ 7,3%-a a fotó magasságának, 320 px-en és
+   1440 px-en ugyanúgy. A `clip-path: path()` ezt nem tudja: a path()
+   koordinátái px-ben rögzítettek, nem skálázódnak a dobozzal (MDN clip-path,
+   basic-shape path()), tehát reflow-nál törne; a `mask-image` viszont a
+   maszk-dobozhoz méretezhető (MDN mask-image, mask-size:
+   https://developer.mozilla.org/en-US/docs/Web/CSS/mask-image
+   https://developer.mozilla.org/en-US/docs/Web/CSS/mask-size). A -webkit-
+   előtag az iOS/macOS Safari 15-ig kell. A maszk statikus: nincs animáció,
+   ezért a prefers-reduced-motion beállítástól független. A hullám nem visz
+   új színt: ahol a maszk átlátszó, a szekció tokenezett háttere látszik.
+   A két réteg 0,5%-kal átfed, hogy a szélükön ne legyen hajszálrés.
+   GOV.UK images: a képet nem torzítjuk, a vágás csak a széle
+   (https://design-system.service.gov.uk/styles/images/); NN/g Photos as Web
+   Content: a fotó tartalma (arc, kéz) érintetlen marad; WCAG 2.2 SC 1.4.10. */
 .kc-about#rolunk .kc-about__figure {
-  mask:
-    linear-gradient(#000 0 0) top / 100% calc(100% - 3px) no-repeat,
-    radial-gradient(ellipse 24px 3px at 50% 0, #000 100%, #0000 100%) bottom left / 48px 3px
-      repeat-x;
+  --kc-about-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 72 1440 70' preserveAspectRatio='none'%3E%3Cpath d='M0,128L60,117.3C120,107,240,85,360,80C480,75,600,85,720,101.3C840,117,960,139,1080,138.7C1200,139,1320,117,1380,106.7L1440,96L1440,0L0,0Z'/%3E%3C/svg%3E");
+  -webkit-mask-image: linear-gradient(#000 0 0), var(--kc-about-wave);
+  -webkit-mask-size:
+    100% 92.5%,
+    100% 8%;
+  -webkit-mask-position: top, bottom;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(#000 0 0), var(--kc-about-wave);
+  mask-size:
+    100% 92.5%,
+    100% 8%;
+  mask-position: top, bottom;
+  mask-repeat: no-repeat;
 }
 
 @media (min-width: 900px) {
