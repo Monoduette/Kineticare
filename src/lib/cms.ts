@@ -198,6 +198,42 @@ export async function getAllPublishedPages(limit = 500): Promise<Page[]> {
   )
 }
 
+/**
+ * A PUBLIKÁLT CMS-oldalak slugjainak halmaza — a hub-kapu olvasói oldala.
+ *
+ * A `hubAtiranyitasCel` / `hubUtvonalTerkep` ugyanazzal a halmazzal dönt,
+ * amivel a 308-as átirányítás: publikált hubra kanonikus gyökér-link megy,
+ * piszkozatra marad a `/blog/{slug}` (a gyökér ilyenkor 404 lenne).
+ *
+ * `depth: 0` + `select`: a döntéshez csak a slug kell, relációt nem
+ * populate-olunk. Hiba esetén ÜRES halmaz (safeQuery-minta) — a lap ilyenkor a
+ * mai, `/blog/…` alakú linkekkel renderel, ami átirányít ugyan, de sosem
+ * törik el.
+ */
+export async function getPublishedPageSlugs(limit = 500): Promise<ReadonlySet<string>> {
+  return safeQuery(
+    'publikalt-oldal-slugok',
+    async () => {
+      const payload = await getPayload({ config })
+      const { docs } = await payload.find({
+        collection: 'pages',
+        where: PUBLISHED_WHERE,
+        limit,
+        depth: 0,
+        select: { slug: true },
+        draft: false,
+        overrideAccess: true,
+      })
+      return new Set(
+        docs
+          .map((doc) => doc.slug)
+          .filter((slug): slug is string => typeof slug === 'string' && slug.length > 0),
+      )
+    },
+    new Set<string>(),
+  )
+}
+
 export const SITEMAP_POST_SELECT = {
   slug: true,
   updatedAt: true,

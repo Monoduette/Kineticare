@@ -5,10 +5,16 @@ import { cache } from 'react'
 
 import { PostArticle } from '@/components/content/PostArticle'
 import { PreviewBar } from '@/components/preview/PreviewBar'
-import { getFreeProduct, getPageBySlug, getPostBySlug, getRelatedPosts } from '@/lib/cms'
+import {
+  getFreeProduct,
+  getPageBySlug,
+  getPostBySlug,
+  getPublishedPageSlugs,
+  getRelatedPosts,
+} from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
-import { hubSlugForPost } from '@/lib/tudastar/hub-oldalak'
+import { hubSlugForPost, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 /**
  * Blog→gyökér 308 (URL-mátrix lock): ha a cikk témájának gyökér-hubja már
@@ -52,7 +58,20 @@ export default async function BlogPostPage({ params }: Props) {
   if (!post) notFound()
   // Az ingyenes belépő a cikk végi ajánló halk sora (PostCourseCta); hiba
   // vagy hiányzó ingyenes termék esetén null, a sor egyszerűen elmarad.
-  const [related, freeCourse] = await Promise.all([getRelatedPosts(post), getFreeProduct()])
+  const [related, freeCourse, publikaltOldalak] = await Promise.all([
+    getRelatedPosts(post),
+    getFreeProduct(),
+    getPublishedPageSlugs(),
+  ])
+  // A kapcsolódó cikkek kártyái a KANONIKUS gyökér-címre mennek, ahol a hub
+  // publikált — ez a lap maga is csak azért él, mert a SAJÁT hubja piszkozat
+  // (különben 308 vinne a gyökérre), a többi cikké viszont lehet publikált.
+  const hubUtvonalak = hubUtvonalTerkep(
+    related
+      .map((relatedPost) => relatedPost.slug)
+      .filter((relatedSlug): relatedSlug is string => typeof relatedSlug === 'string'),
+    publikaltOldalak,
+  )
 
   // Az Article JSON-LD-t és a morzsa-sémát a PostArticle rendereli (szerző +
   // og:image feloldással), mert a séma mezőinek a LÁTHATÓ tartalomból kell
@@ -60,7 +79,12 @@ export default async function BlogPostPage({ params }: Props) {
   return (
     <>
       {isDraft ? <PreviewBar path={`/blog/${slug}`} /> : null}
-      <PostArticle post={post} related={related} freeCourse={freeCourse} />
+      <PostArticle
+        freeCourse={freeCourse}
+        hubUtvonalak={hubUtvonalak}
+        post={post}
+        related={related}
+      />
     </>
   )
 }

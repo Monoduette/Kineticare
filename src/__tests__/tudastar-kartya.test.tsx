@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { PostCard } from '../components/content/PostCard'
+import { cikkUtvonal, hubUtvonalTerkep } from '../lib/tudastar/hub-oldalak'
 import { KnowledgeSection } from '../components/content/home/KnowledgeSection'
 import { PostView } from '../components/content/PostView'
 import { hosszPx, stilusLapNezetablakra, tokenek, varFeloldas } from './helpers/css-geometria'
@@ -439,5 +440,76 @@ describe('K7 — fókusz, érintőcél és a zárt betűskála', () => {
     for (const meret of [...css.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1]!.trim())) {
       expect(['var(--kc-font-l)', 'var(--kc-font-m)', 'var(--kc-font-s)']).toContain(meret)
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// K8 — a kártya CÉLJA: kanonikus gyökér-hub vagy a mai /blog/ cím
+// ---------------------------------------------------------------------------
+
+/**
+ * Mérve 2026-09-07 (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat): a
+ * kártya fix `/blog/{slug}` célja miatt a honlap MINDEN cikk-hivatkozása egy
+ * 308-as átirányításba futott, miközben a sitemap és a canonical már a
+ * gyökér-hubot hirdette. Az átirányított belső link fölösleges kör a
+ * látogatónak, és ugráson át adja tovább a link-értéket (Google Search
+ * Central, *Redirects and Google Search*:
+ * https://developers.google.com/search/docs/crawling-indexing/301-redirects).
+ * A `href` prop nélkül ez a hiba némán visszatérne.
+ */
+describe('K8 — a kártya-link célja', () => {
+  it('prop nélkül a MAI viselkedés marad (/blog/{slug}) — visszafelé kompatibilis', () => {
+    const html = render(createElement(PostCard, { post: POSZTOK[0]! }))
+    expect(html).toContain('href="/blog/minta-1"')
+  })
+
+  it('átadott href esetén a kártya oda linkel (kanonikus gyökér-hub)', () => {
+    const html = render(
+      createElement(PostCard, { post: POSZTOK[0]!, href: '/keztoalagut-szindroma' }),
+    )
+    expect(html).toContain('href="/keztoalagut-szindroma"')
+    expect(html).not.toContain('href="/blog/minta-1"')
+  })
+
+  it('a KnowledgeSection a térképből adja a célt, piszkozat hubnál a /blog/… marad', () => {
+    // A poszt-slugok itt a valódi hub-párokat használják: az egyiknek van
+    // publikált hubja, a másiknak nincs.
+    const posztok = [
+      { ...POSZTOK[0]!, slug: 'teniszkonyok' },
+      { ...POSZTOK[1]!, slug: 'pattano-ujj' },
+    ] as unknown as Post[]
+    const terkep = hubUtvonalTerkep(
+      posztok.map((poszt) => poszt.slug as string),
+      new Set(['teniszkonyok']),
+    )
+    const html = render(
+      createElement(KnowledgeSection, { posts: posztok, hubUtvonalak: terkep }),
+    )
+    expect(html).toContain('href="/teniszkonyok"')
+    expect(html).toContain('href="/blog/pattano-ujj"')
+    expect(html).not.toContain('href="/blog/teniszkonyok"')
+  })
+
+  it('a PostView kapcsolódó kártyái ugyanazt a térképet követik', () => {
+    const fo = { ...POSZTOK[0]!, slug: 'befagyott-vall' } as unknown as Post
+    const kapcsolodo = [{ ...POSZTOK[1]!, slug: 'teniszkonyok' }] as unknown as Post[]
+    const terkep = hubUtvonalTerkep(['teniszkonyok'], new Set(['teniszkonyok']))
+    const html = render(
+      createElement(PostView, { post: fo, related: kapcsolodo, hubUtvonalak: terkep }),
+    )
+    expect(html).toContain('href="/teniszkonyok"')
+    expect(html).not.toContain('href="/blog/teniszkonyok"')
+  })
+
+  it('a cikkUtvonal és a kártya EGYÜTT ugyanazt a célt adja (egy igazságforrás)', () => {
+    const terkep = hubUtvonalTerkep(['teniszkonyok'], new Set(['teniszkonyok']))
+    const ut = cikkUtvonal('teniszkonyok', terkep)
+    const html = render(
+      createElement(PostCard, {
+        post: { ...POSZTOK[0]!, slug: 'teniszkonyok' } as unknown as Post,
+        href: ut,
+      }),
+    )
+    expect(html).toContain(`href="${ut}"`)
   })
 })

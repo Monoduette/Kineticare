@@ -19,11 +19,12 @@ import {
   getLatestPosts,
   getPageBySlug,
   getPostBySlug,
+  getPublishedPageSlugs,
   getPublishedProducts,
   getRelatedPosts,
   getTestimonials,
 } from '@/lib/cms'
-import { HUB_OLDALAK } from '@/lib/tudastar/hub-oldalak'
+import { HUB_OLDALAK, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildPageMetadata } from '@/lib/seo'
@@ -72,11 +73,30 @@ export default async function CmsPage({ params }: Props) {
   if (hub !== undefined) {
     const post = await getPostBySlug(hub.cikkSlug)
     if (post) {
-      const [related, freeCourse] = await Promise.all([getRelatedPosts(post), getFreeProduct()])
+      const [related, freeCourse, publikaltOldalak] = await Promise.all([
+        getRelatedPosts(post),
+        getFreeProduct(),
+        getPublishedPageSlugs(),
+      ])
+      // A kapcsolódó cikkek kártyái is a KANONIKUS gyökér-címre linkelnek, ahol
+      // a hub publikált — a hub-lapról 308-as átirányításra mutatni különösen
+      // fölösleges kör (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
+      const hubUtvonalak = hubUtvonalTerkep(
+        related
+          .map((relatedPost) => relatedPost.slug)
+          .filter((relatedSlug): relatedSlug is string => typeof relatedSlug === 'string'),
+        publikaltOldalak,
+      )
       return (
         <>
           {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
-          <PostArticle post={post} related={related} freeCourse={freeCourse} path={`/${slug}`} />
+          <PostArticle
+            freeCourse={freeCourse}
+            hubUtvonalak={hubUtvonalak}
+            path={`/${slug}`}
+            post={post}
+            related={related}
+          />
         </>
       )
     }
@@ -107,6 +127,14 @@ export default async function CmsPage({ params }: Props) {
         getTestimonials(),
       ])
     : [[], [], []]
+  // A knowledge blokk kártyáinak KANONIKUS célja (publikált gyökér-hubnál a
+  // gyökér-cím). Lekérdezés csak akkor fut, ha van egyáltalán szekciósor.
+  const hubUtvonalak = hasLayout
+    ? hubUtvonalTerkep(
+        posts.map((post) => post.slug).filter((postSlug): postSlug is string => typeof postSlug === 'string'),
+        await getPublishedPageSlugs(),
+      )
+    : {}
 
   // Az időpontkérő szekció űrlapjához kell a form-azonosító és a Turnstile
   // site key. A lekérdezés CSAK akkor fut, ha van ilyen blokk a lapon
@@ -145,6 +173,7 @@ export default async function CmsPage({ params }: Props) {
         {hasLayout ? (
           <RenderBlocks
             appointment={appointment}
+            hubUtvonalak={hubUtvonalak}
             layout={layout}
             posts={posts}
             products={products}

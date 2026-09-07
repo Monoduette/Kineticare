@@ -109,3 +109,52 @@ export function hubAtiranyitasCel(
   }
   return `/${hubSlug}`
 }
+
+/**
+ * Poszt-slug → KANONIKUS gyökér-út térkép a BELSŐ hivatkozásokhoz.
+ *
+ * Miért kell: a `/blog/{cikk}` cím publikált hub mellett 308-cal a gyökérre
+ * megy (`hubAtiranyitasCel`), a belső linkek viszont a régi alakot hirdették —
+ * mérve 2026-09-07: a `/blog` lapon 7 átirányító és 0 kanonikus cikk-link
+ * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat). Az átirányított
+ * belső link fölösleges kört és késleltetést tesz a látogató elé, a
+ * link-értéket pedig egy ugrással adja tovább (Semrush, *Technical SEO*:
+ * a belső hivatkozás mindig a végleges címre mutasson; Google Search Central,
+ * *Redirects and Google Search*, https://developers.google.com/search/docs/crawling-indexing/301-redirects
+ * — „update your internal links to point to the new URLs").
+ *
+ * A függvény TISZTA (DB nélkül tesztelhető): a döntést a hívó által átadott,
+ * publikált pages-slug halmaz hozza — pontosan ugyanaz a kapu, mint az
+ * átirányításnál. PISZKOZAT hub SOHA nem kap linket: a gyökér-URL ilyenkor
+ * 404, tehát a látogatót zsákutcába küldenénk.
+ *
+ * A visszatérési érték SZÁNDÉKOSAN sima objektum (nem Map, nem függvény):
+ * szerver → kliens komponens-határon szerializálhatónak kell lennie.
+ */
+export function hubUtvonalTerkep(
+  postSlugok: readonly string[],
+  publikaltPageSlugok: ReadonlySet<string>,
+): Record<string, string> {
+  const terkep: Record<string, string> = {}
+  for (const postSlug of postSlugok) {
+    const cel = hubAtiranyitasCel(postSlug, publikaltPageSlugok)
+    if (cel !== null) {
+      terkep[postSlug] = cel
+    }
+  }
+  return terkep
+}
+
+/**
+ * Egy cikk BELSŐ hivatkozásának útja: a publikált hub gyökér-címe, ha van,
+ * egyébként a változatlan `/blog/{slug}`.
+ *
+ * A hiányzó térkép (undefined) a mai viselkedést adja — így a komponensek
+ * visszafelé kompatibilisek maradnak.
+ */
+export function cikkUtvonal(
+  postSlug: string,
+  terkep: Readonly<Record<string, string>> | undefined,
+): string {
+  return terkep?.[postSlug] ?? `/blog/${postSlug}`
+}

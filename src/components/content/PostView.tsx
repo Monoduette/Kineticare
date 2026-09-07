@@ -7,6 +7,7 @@ import { postArticleJsonLd } from '../../lib/seo-cikk'
 import { Badge } from '../ui/Badge'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
+import { cikkUtvonal } from '../../lib/tudastar/hub-oldalak'
 import { RichText } from '../lexical/RichText'
 import { formatPostDate, PostCard } from './PostCard'
 import { JsonLd } from './JsonLd'
@@ -29,6 +30,15 @@ export interface PostViewProps {
   related?: Post[]
   /** A meta-sor (szerző/dátum/olvasási idő) megjelenítése — alapértelmezett: igen. */
   showMeta?: boolean
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`). Ahol egy
+   * cikknek PUBLIKÁLT gyökér-hubja van, a kártya oda linkel; enélkül minden
+   * belső hivatkozás 308-as átirányításon át vinne
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat). Sima objektum,
+   * nem függvény: a szerver → kliens határon szerializálhatónak kell lennie.
+   * Elhagyva a mai `/blog/{slug}` viselkedés marad.
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }
 
 function authorNameOf(post: Post): string | null {
@@ -66,7 +76,12 @@ function displayableRelated(posts: Post[]): Post[] {
     .slice(0, 3)
 }
 
-export function PostView({ post, related: relatedProp, showMeta = true }: PostViewProps) {
+export function PostView({
+  post,
+  related: relatedProp,
+  showMeta = true,
+  hubUtvonalak,
+}: PostViewProps) {
   const author = authorNameOf(post)
   const date = formatPostDate(post.publishedAt)
   const readingMinutes = estimateReadingMinutes(post.content)
@@ -158,7 +173,12 @@ export function PostView({ post, related: relatedProp, showMeta = true }: PostVi
                    (docs/tudastar-a11y-meres.md 3.1) — a repó Ü6 szabályának
                    45-ös alsó tűréshatára alatt. A kártyacím a fenti h2
                    szekciócím alá h3-ként kerül (a `headingLevel` alapja). */
-                <PostCard key={relatedPost.id} post={relatedPost} variant="compact" />
+                <PostCard
+                  key={relatedPost.id}
+                  href={cikkUtvonal(relatedPost.slug ?? '', hubUtvonalak)}
+                  post={relatedPost}
+                  variant="compact"
+                />
               ))}
             </div>
           </Container>

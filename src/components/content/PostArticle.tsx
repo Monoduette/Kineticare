@@ -4,6 +4,7 @@ import type { Post } from '../../payload-types'
 import { estimateReadingMinutes } from '../../lib/reading-time'
 import { breadcrumbJsonLd, resolveOgImageUrl, resolveSeoKeywords } from '../../lib/seo'
 import { postArticleJsonLd } from '../../lib/seo-cikk'
+import { cikkUtvonal } from '../../lib/tudastar/hub-oldalak'
 import { kulcsszoFor } from '../../lib/tudastar/seo-kulcsszavak'
 import { Badge } from '../ui/Badge'
 import { Container } from '../ui/Container'
@@ -56,6 +57,15 @@ export interface PostArticleProps {
    * régi címre mutatna.
    */
   path?: string
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`). Ahol egy
+   * cikknek PUBLIKÁLT gyökér-hubja van, a kártya oda linkel; enélkül minden
+   * belső hivatkozás 308-as átirányításon át vinne
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat). Sima objektum,
+   * nem függvény: a szerver → kliens határon szerializálhatónak kell lennie.
+   * Elhagyva a mai `/blog/{slug}` viselkedés marad.
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }
 
 /** Csak közzétett, sluggal rendelkező cikk jelenhet meg kapcsolódóként; max 3. */
@@ -67,7 +77,13 @@ function displayableRelated(posts: readonly (number | Post)[] | null | undefined
     .slice(0, 3)
 }
 
-export function PostArticle({ post, related: relatedProp, freeCourse, path }: PostArticleProps) {
+export function PostArticle({
+  post,
+  related: relatedProp,
+  freeCourse,
+  path,
+  hubUtvonalak,
+}: PostArticleProps) {
   const canonicalPath = path ?? `/blog/${post.slug}`
   const author = authorPersonOf(post)
   const reviewer = reviewerPersonOf(post)
@@ -245,7 +261,12 @@ export function PostArticle({ post, related: relatedProp, freeCourse, path }: Po
             {/* compact PostCard + kc-card-grid--posts: kivonat nélkül, lista-nyelvvel. */}
             <div className="kc-card-grid kc-card-grid--posts">
               {related.map((relatedPost) => (
-                <PostCard key={relatedPost.id} post={relatedPost} variant="compact" />
+                <PostCard
+                  key={relatedPost.id}
+                  href={cikkUtvonal(relatedPost.slug ?? '', hubUtvonalak)}
+                  post={relatedPost}
+                  variant="compact"
+                />
               ))}
             </div>
           </Container>

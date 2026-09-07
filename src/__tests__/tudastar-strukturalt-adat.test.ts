@@ -82,6 +82,26 @@ describe('Blog (lista) JSON-LD', () => {
     expect(jsonLd.blogPost).toBeUndefined()
   })
 
+  it('publikált gyökér-hubnál a KANONIKUS címet hirdeti, nem az átirányítót', () => {
+    // Mérve 2026-09-07: a `/blog` lap Blog-sémája nyolc, 308-cal átirányító
+    // URL-t hirdetett (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
+    // A strukturált adat sosem mutathat átirányításra.
+    const jsonLd = blogJsonLd({
+      name: 'Tudástár',
+      path: '/blog',
+      posts: [post({ slug: 'teniszkonyok' } as Partial<Post>)],
+      hubUtvonalak: { teniszkonyok: '/teniszkonyok' },
+    })
+    const entries = jsonLd.blogPost as Array<Record<string, unknown>>
+    expect(entries[0]!.url).toBe(absoluteUrl('/teniszkonyok'))
+  })
+
+  it('térkép nélkül (piszkozat hub) marad a /blog/… cím', () => {
+    const jsonLd = blogJsonLd({ name: 'Tudástár', path: '/blog', posts: [post()] })
+    const entries = jsonLd.blogPost as Array<Record<string, unknown>>
+    expect(entries[0]!.url).toBe(absoluteUrl('/blog/gipsz-utan'))
+  })
+
   it('kategória-oldalon a saját címét és útvonalát viseli', () => {
     const jsonLd = blogJsonLd({
       name: 'Kézrehabilitáció',

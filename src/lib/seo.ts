@@ -5,6 +5,7 @@ import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
 import { resolveServerUrl } from '../env'
 import type { Media, Post, Product } from '../payload-types'
 import { resolveSeoKeywords, type SeoKeywordRow } from './seo-keywords'
+import { cikkUtvonal } from './tudastar/hub-oldalak'
 import { KURZUSLISTA_KULCSSZAVAK } from './tudastar/seo-kulcsszavak'
 
 /**
@@ -488,8 +489,17 @@ export function blogJsonLd(args: {
   description?: string
   path: string
   posts: ReadonlyArray<Pick<Post, 'title' | 'slug' | 'excerpt' | 'publishedAt'>>
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`). Publikált
+   * gyökér-hubbal bíró cikknél a `blogPost.url` a GYÖKÉR-címet hirdeti, nem a
+   * 308-cal átirányító `/blog/{slug}`-ot: a strukturált adat sosem mutathat
+   * átirányításra (Google Search Central, *Redirects and Google Search*,
+   * https://developers.google.com/search/docs/crawling-indexing/301-redirects).
+   * Elhagyva a mai viselkedés marad.
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }): Record<string, unknown> {
-  const { name, description, path, posts } = args
+  const { name, description, path, posts, hubUtvonalak } = args
   const entries = posts.filter((post) => typeof post.slug === 'string' && post.slug.length > 0)
   return {
     '@context': 'https://schema.org',
@@ -508,7 +518,7 @@ export function blogJsonLd(args: {
           blogPost: entries.map((post) => ({
             '@type': 'BlogPosting',
             headline: post.title,
-            url: absoluteUrl(`/blog/${post.slug}`),
+            url: absoluteUrl(cikkUtvonal(post.slug ?? '', hubUtvonalak)),
             ...(typeof post.excerpt === 'string' && post.excerpt.trim().length > 0
               ? { description: post.excerpt.trim() }
               : {}),

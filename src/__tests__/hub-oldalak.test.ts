@@ -18,10 +18,12 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  cikkUtvonal,
   HUB_OLDALAK,
   HUB_TILTOTT_SLUGOK,
   hubAtiranyitasCel,
   hubSlugForPost,
+  hubUtvonalTerkep,
 } from '../lib/tudastar/hub-oldalak'
 import { CIKKEK } from '../scripts/import-tudastar-cikkek'
 import { hubokatFordit } from '../scripts/import-hub-oldalak'
@@ -121,5 +123,59 @@ describe('hubokatFordit — a teljes fordítási lánc', () => {
       const szoveg = JSON.stringify(hub.cikk.content)
       expect(tiltott.test(szoveg), `tiltott ígéret a(z) ${hub.slug} hubban`).toBe(false)
     }
+  })
+})
+
+/**
+ * WP23 — a BELSŐ hivatkozások kanonikus címe.
+ *
+ * Miért kell őr: mérve 2026-09-07 (`docs/oldal-audit-b-tudastar-2026-09-07.md`
+ * 1. találat) a honlap MINDEN cikk-hivatkozása a `/blog/{slug}` alakra ment,
+ * ami publikált hub mellett 308-cal átirányít — a látogató fölösleges kört
+ * futott, a link-érték pedig ugráson át adódott. A javítás egyetlen helyen
+ * dőlhet el (a kártya `href`-jében), tehát egyetlen visszalépés is elég a
+ * teljes hatás elvesztéséhez.
+ *
+ * A PISZKOZAT-hub tilalma ugyanaz, mint az átirányításnál: a nem publikált hub
+ * gyökér-URL-je 404, oda linkelni zsákutca lenne.
+ */
+describe('hubUtvonalTerkep — a belső linkek kanonikus térképe', () => {
+  it('csak a PUBLIKÁLT hubbal bíró cikkek kerülnek bele, gyökér-úttal', () => {
+    const terkep = hubUtvonalTerkep(
+      ['teniszkonyok', 'miert-zsibbad-a-kezem', 'pattano-ujj'],
+      new Set(['teniszkonyok', 'kez-zsibbadas']),
+    )
+    expect(terkep).toEqual({
+      teniszkonyok: '/teniszkonyok',
+      'miert-zsibbad-a-kezem': '/kez-zsibbadas',
+    })
+  })
+
+  it('piszkozat hub és hub nélküli cikk EGYÁLTALÁN nem kerül a térképbe', () => {
+    expect(hubUtvonalTerkep(['teniszkonyok', 'nem-letezo-cikk'], new Set<string>())).toEqual({})
+  })
+
+  it('sima, szerializálható objektumot ad (kliens-határon átmegy)', () => {
+    const terkep = hubUtvonalTerkep(['teniszkonyok'], new Set(['teniszkonyok']))
+    expect(JSON.parse(JSON.stringify(terkep))).toEqual(terkep)
+  })
+})
+
+describe('cikkUtvonal — egy kártya linkjének útja', () => {
+  it('publikált hubnál a GYÖKÉR-cím', () => {
+    const terkep = hubUtvonalTerkep(['teniszkonyok'], new Set(['teniszkonyok']))
+    expect(cikkUtvonal('teniszkonyok', terkep)).toBe('/teniszkonyok')
+  })
+
+  it('piszkozat hubnál marad a /blog/… (a gyökér ott 404 lenne)', () => {
+    const terkep = hubUtvonalTerkep(['teniszkonyok'], new Set<string>())
+    expect(cikkUtvonal('teniszkonyok', terkep)).toBe('/blog/teniszkonyok')
+  })
+
+  it('ismeretlen slugnál és térkép NÉLKÜL is a mai viselkedés marad', () => {
+    expect(cikkUtvonal('nem-letezo-cikk', { teniszkonyok: '/teniszkonyok' })).toBe(
+      '/blog/nem-letezo-cikk',
+    )
+    expect(cikkUtvonal('teniszkonyok', undefined)).toBe('/blog/teniszkonyok')
   })
 })

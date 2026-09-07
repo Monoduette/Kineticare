@@ -103,6 +103,13 @@ export interface RenderBlocksProps {
    * `getAppointmentSectionContext`-tel tölti fel.
    */
   appointment?: AppointmentSectionContext
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`); a
+   * `KnowledgeSection` kártyáira megy tovább, hogy a publikált gyökér-hubbal
+   * bíró cikkre ne 308-as átirányításon át linkeljünk
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }
 
 export function RenderBlocks({
@@ -111,6 +118,7 @@ export function RenderBlocks({
   posts,
   testimonials,
   appointment = EMPTY_APPOINTMENT_CONTEXT,
+  hubUtvonalak,
 }: RenderBlocksProps) {
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
   // A fizetős halmaz a GYIK „SOS vs. teljes program” összevetéséhez kell.
@@ -182,6 +190,7 @@ export function RenderBlocks({
               posts,
               testimonials,
               appointment,
+              hubUtvonalak,
             }}
           />
         )
@@ -202,6 +211,7 @@ function BlockSwitch({
   posts,
   testimonials,
   appointment,
+  hubUtvonalak,
 }: {
   block: LayoutBlock
   /** A típus ismételt példánya-e a lapon — az alap-horgony csak az elsőé. */
@@ -217,6 +227,8 @@ function BlockSwitch({
   posts: Post[]
   testimonials: Testimonial[]
   appointment: AppointmentSectionContext
+  /** Poszt-slug → kanonikus útvonal (a knowledge blokk kártyáihoz). */
+  hubUtvonalak: Readonly<Record<string, string>> | undefined
 }) {
   switch (block.blockType) {
     case 'filmHero':
@@ -351,6 +363,7 @@ function BlockSwitch({
       return (
         <KnowledgeSection
           heading={block.heading ?? undefined}
+          hubUtvonalak={hubUtvonalak}
           id={id}
           limit={block.limit ?? undefined}
           posts={posts}
