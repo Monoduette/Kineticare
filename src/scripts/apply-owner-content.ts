@@ -158,6 +158,17 @@ export const REGI_NYITOTT_KARTYA =
 export const REGI_KEZDOLAP_ROLUNK_CIM = 'Kiss Kata és Kocsis Kata vagyunk'
 
 /**
+ * A kezdőlapi Rólunk-blokk RÉGI címei, amelyeknél a csere megengedett: a
+ * seedelt cím és az élő CMS-en a filmsáv utáni alapítói szekció szerkesztői
+ * címe (mérve 2026-09-07: a 2. szekció „A Kineticare alapítói", a 11. szekció
+ * a seedelt cím). Más cím a szerkesztőé, érintetlen.
+ */
+export const REGI_KEZDOLAP_ROLUNK_CIMEK: readonly string[] = [
+  REGI_KEZDOLAP_ROLUNK_CIM,
+  'A Kineticare alapítói',
+]
+
+/**
  * A `/szolgaltatasok` fejléc-képének fájlnév-prefixe (rendelő-fotó).
  *
  * Prefix és futásidejű feloldás a 4. javítás mintájára: a Média collection
@@ -2155,7 +2166,7 @@ export const alkalmazKezdolapRolunkSzoveg = (input: {
     const helye = `${index + 1}. szekció`
     const jelenlegi = blokk.title
 
-    if (jelenlegi === REGI_KEZDOLAP_ROLUNK_CIM) {
+    if (typeof jelenlegi === 'string' && REGI_KEZDOLAP_ROLUNK_CIMEK.includes(jelenlegi)) {
       modositasok.push({
         szabaly: 'kezdolap-rolunk-szoveg',
         uzenet: `${uzenet} (${helye}): ${ertekCimke(jelenlegi)} → ${ertekCimke(
@@ -2203,7 +2214,30 @@ export const alkalmazKezdolapRolunkSzoveg = (input: {
     })
   }
 
-  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+  // Egy bemutatkozás egy lapon: ha a csere után több LÁTHATÓ About-blokk is a
+  // közös címet viseli, az ELSŐ marad (a filmsáv utáni alapítói szekció, a
+  // fotó-frízzel), a későbbi duplikátumok rejtett szekcióvá válnak. A blokk
+  // nem törlődik (a szerkesztő az adminban visszakapcsolhatja); NN/g Common
+  // Region: egy tartalmi egység egyszer (https://www.nngroup.com/articles/common-region/).
+  let elsoKozos = -1
+  const vegleges: Szekciosor = ujLayout.map((blokk, index) => {
+    if (blokk.blockType !== 'about' || blokk.title !== ujSzoveg.title) return blokk
+    if (blokk.sectionSettings?.visible === false) return blokk
+    if (elsoKozos === -1) {
+      elsoKozos = index
+      return blokk
+    }
+    modositasok.push({
+      szabaly: 'kezdolap-rolunk-szoveg',
+      uzenet: `${uzenet} (${index + 1}. szekció): a közös bemutatkozás már a ${
+        elsoKozos + 1
+      }. szekcióban áll, ezért ez a duplikált Rólunk-blokk rejtett szekció lett`,
+      indok: null,
+    })
+    return { ...blokk, sectionSettings: { ...blokk.sectionSettings, visible: false } }
+  })
+
+  return { layout: modositasok.length > 0 ? vegleges : null, modositasok, kihagyasok }
 }
 
 /** Kezdőlap: /kurzusok CTA-k egységes felirata — csak ismert régi szövegek, pontos url. */
