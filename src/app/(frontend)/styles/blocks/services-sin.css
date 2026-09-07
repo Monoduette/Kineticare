@@ -77,16 +77,54 @@
  * - mozgás: a base.css globális prefers-reduced-motion 0.01 ms-re vág, és a
  *   fájl saját reduce-blokkja a helyi átmeneteket teljesen kikapcsolja
  *
- * MOZGÁS: minden átmenet tokenből (--kc-motion-base 200 ms, --kc-motion-fast
- * 120 ms, --kc-ease-out). A panelváltás CSS :checked alapú (JS nélkül):
- * asztalon a panelek EGY rácscellára rétegződnek (grid-area: 1 / 1), így a
- * színpad magassága a legmagasabb ajtóé; az inaktív panel opacity 0 +
- * visibility hidden, az aktív átúszik, a másolat space-2-vel felúszik.
- * Material 3 short4 = 200 ms; NN/g Animation Duration 100–500 ms;
- * WCAG 2.2 SC 2.3.3: reduce alatt minden áll.
+ * MOZGÁS (WP25, tulajdonosi kör 2026-09-07: „túl direkt az animáció/váltás
+ * … finomabb átmenet kell"): minden átmenet tokenből származik. A két
+ * globális token (--kc-motion-base 200 ms, --kc-motion-fast 120 ms) ebből a
+ * fájlból SZÁRMAZTATOTT helyi tokenekkel bővül (calc, nem kézi ms):
+ *   --kc-services-motion-cross   = base × 1,75 = 350 ms (keresztúsztatás)
+ *   --kc-services-motion-stagger = fast ÷ 3    = 40 ms (másolat késleltetés;
+ *                                  a fotó 2× = 80 ms)
+ * Indoklás: Material 3 duration-tokenek: a „medium" sáv (250–400 ms) a
+ * nagy felületű, teljes panelt érintő átmenetekre való, a short (50–200 ms)
+ * kis elemekre; a 350 ms a medium3. Az easing az emphasized-decelerate
+ * jellegű --kc-ease-out (belépéskor lassul, nem lineáris).
  * https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+ * https://m3.material.io/styles/motion/easing-and-duration/applying-easing-and-duration
+ * NN/g Animation Duration and Motion Characteristics: 100–500 ms a hasznos
+ * sáv; nagyobb elmozdulás / nagyobb elem hosszabb időt kér, és az egymás
+ * után belépő elemek kis eltolása (stagger) teszi követhetővé a változást.
  * https://www.nngroup.com/articles/animation-duration/
+ * Apple HIG Motion: a mozgás legyen rövid, indokolt, és tükrözze a
+ * fizikai folytonosságot (a kilépő tartalom is mozog, nem eltűnik).
+ * https://developer.apple.com/design/human-interface-guidelines/motion
+ *
+ * A panelváltás CSS :checked alapú (JS nélkül): asztalon a panelek EGY
+ * rácscellára rétegződnek (grid-area: 1 / 1), így a színpad magassága a
+ * legmagasabb ajtóé. KERESZTÚSZTATÁS: a kilépő panel 350 ms alatt úszik ki
+ * (opacity → 0, a másolata és a fotója space-2-vel visszasüllyed és fakul,
+ * késleltetés nélkül), a belépő ugyanennyi alatt úszik be; a belépő másolat
+ * 40 ms, a fotó 80 ms késleltetéssel indul (staggered). A visibility a
+ * kilépés VÉGÉN vált, hogy a kiúszás látsszon. Mérve Chromiumban
+ * (getComputedStyle transitionDuration/Delay, WP25 jegyzőkönyv).
+ * WCAG 2.2 SC 2.3.3: reduce alatt minden átmenet és eltolás áll, a váltás
+ * azonnali (visibility késleltetés is 0).
  * https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
+ *
+ * SÍN-MAGASSÁG (WP25, a tulajdonos: „a bal oldala olyan magas legyen, mint
+ * a rendelői kezelések doboz: nagyobb legyen a távolság a három tétel
+ * között"): asztalon a bal hasáb a rács sorát KITÖLTI (align-self: stretch,
+ * a sor magassága a színpadé = a legmagasabb panelé), a sín a fejléc alatti
+ * maradékot kapja (flex: 1 1 auto), és a három tételt `justify-content:
+ * space-between` osztja el rajta: az első tétel teteje a fejléc alatt, az
+ * utolsó alja a panel alján, a gerinc a két szélső kör közepe közt fut
+ * végig. A space-7 gap alsó korlát marad (ha a panel alacsony, a tételek
+ * nem érhetnek össze). A drót arányai: a sín a panellel azonos magas, a
+ * tételek egyenlő közzel. Mérve 1024 és 1440 px-en: a sín alja a panel
+ * aljától ±8 px-en belül (WP25 jegyzőkönyv). Mobil accordion változatlan.
+ * Gestalt közös régió: az egy magasságra hozott két hasáb egy egységként
+ * olvasódik. https://www.nngroup.com/articles/common-region/
+ * Material 3 layout: a hasábok a közös rácshoz igazodnak.
+ * https://m3.material.io/foundations/layout/understanding-layout/parts-of-layout
  */
 
 /* 4 osztály: győznie kell a tábla `min-height: max(45rem, 100dvh)` szabályán
@@ -163,6 +201,11 @@
     var(--kc-color-help-chrome) 28%,
     var(--kc-color-help-paper)
   );
+  /* Mozgás-tokenek (fejléc-komment): keresztúsztatás base × 1,75 = 350 ms
+     (M3 medium3), stagger fast ÷ 3 = 40 ms; a fotó 2 × stagger = 80 ms.
+     Kézi ms tilos: minden a globális tokenből származik. */
+  --kc-services-motion-cross: calc(var(--kc-motion-base) * 1.75);
+  --kc-services-motion-stagger: calc(var(--kc-motion-fast) / 3);
   /* Belső térköz tokenek: mobil space-5 (24 px), asztal space-7 / space-8. */
   --kc-services-panel-pad: var(--kc-space-5);
   --kc-services-panel-gap: var(--kc-space-5);
@@ -340,13 +383,15 @@
   padding: var(--kc-services-panel-pad);
   border-radius: var(--kc-radius-lg);
   /* Inaktív ajtó: láthatatlan, nem fókuszálható, nem kattintható; a
-     visibility az opacity lefutása UTÁN vált, hogy a kiúszás látsszon. */
+     visibility az opacity lefutása UTÁN vált, hogy a kiúszás látsszon.
+     A kilépés a teljes keresztúsztatás-időt kapja (350 ms), nem a rövid
+     base-t: a tulajdonos a „túl direkt" váltást kérte finomabbra. */
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity var(--kc-motion-base) var(--kc-ease-out),
-    visibility 0s linear var(--kc-motion-base);
+    opacity var(--kc-services-motion-cross) var(--kc-ease-out),
+    visibility 0s linear var(--kc-services-motion-cross);
   /* Hűvös tint-kártya hajszál-kerettel. A sötét sáv-kivételen is tint marad a
      panel, ezért az ink/muted itt a világos szövegtokenekre zár. */
   background-color: var(--kc-color-help-panel);
@@ -365,9 +410,14 @@
      szűkebb, lásd a tokeneket). Proximity: az eyebrow és a cím összetartozik. */
   gap: var(--kc-space-3);
   min-width: 0;
-  /* Belépő: 8 px-es (space-2) felúszás az aktív panelen. */
+  /* Belépő: 8 px-es (space-2) felúszás + fakulás az aktív panelen; kilépő:
+     ugyanennyit süllyed vissza és fakul. A késleltetés itt 0: a kilépés
+     azonnal indul, a belépő másolat a :checked-szabályban kap 40 ms-ot. */
+  opacity: 0;
   transform: translateY(var(--kc-space-2));
-  transition: transform var(--kc-motion-base) var(--kc-ease-out);
+  transition:
+    transform var(--kc-services-motion-cross) var(--kc-ease-out),
+    opacity var(--kc-services-motion-cross) var(--kc-ease-out);
 }
 
 .kc-services-sin__kicker {
@@ -454,6 +504,14 @@
   min-height: 12rem;
   overflow: hidden;
   border-radius: var(--kc-radius-lg);
+  /* A fotó a másolattal EGYÜTT, de nem egyszerre mozog: belépéskor 80 ms-mal
+     (2 × stagger) a másolat után indul, kilépéskor azonnal. Ugyanaz a
+     space-2 eltolás, hogy a panel egy irányba mozogjon (M3 shared axis). */
+  opacity: 0;
+  transform: translateY(var(--kc-space-2));
+  transition:
+    transform var(--kc-services-motion-cross) var(--kc-ease-out),
+    opacity var(--kc-services-motion-cross) var(--kc-ease-out);
 }
 
 /* Mobil: négyzetes, legfeljebb 20rem magas kivágás a panel alján — a
@@ -608,7 +666,7 @@
   visibility: visible;
   pointer-events: auto;
   transition:
-    opacity var(--kc-motion-base) var(--kc-ease-out),
+    opacity var(--kc-services-motion-cross) var(--kc-ease-out),
     visibility 0s;
 }
 
@@ -633,7 +691,35 @@
   ~ .kc-services-sin__layout
   .kc-services-sin__panel:nth-of-type(5)
   .kc-services-sin__copy {
+  opacity: 1;
   transform: translateY(0);
+  transition-delay: var(--kc-services-motion-stagger);
+}
+
+/* A belépő fotó a másolat után 2 × stagger (80 ms) késéssel úszik be. */
+.kc-services-sin__input:nth-of-type(1):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(1)
+  :is(.kc-services-sin__photo, .kc-services-sin__placeholder),
+.kc-services-sin__input:nth-of-type(2):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(2)
+  :is(.kc-services-sin__photo, .kc-services-sin__placeholder),
+.kc-services-sin__input:nth-of-type(3):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(3)
+  :is(.kc-services-sin__photo, .kc-services-sin__placeholder),
+.kc-services-sin__input:nth-of-type(4):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(4)
+  :is(.kc-services-sin__photo, .kc-services-sin__placeholder),
+.kc-services-sin__input:nth-of-type(5):checked
+  ~ .kc-services-sin__layout
+  .kc-services-sin__panel:nth-of-type(5)
+  :is(.kc-services-sin__photo, .kc-services-sin__placeholder) {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: calc(var(--kc-services-motion-stagger) * 2);
 }
 
 /* A fókuszgyűrű a látható címkén legyen, ne a 1px-es rádióclipen.
@@ -759,15 +845,30 @@
    A base.css globális 0.01ms-e mellett a visibility-késleltetést is nullázni
    kell, különben az inaktív panel 200 ms-ig még látható maradna. */
 @media (prefers-reduced-motion: reduce) {
+  /* A származtatott mozgás-tokenek 0-ra zárnak: a :checked-szabályok
+     `transition-delay`-e is ezekből olvas, így a belépő másolat / fotó
+     stagger-késleltetése (40 / 80 ms) sem marad meg (mérve: a puszta
+     `transition: none` alatt a nagyobb specificitású :checked-longhand
+     0,04 / 0,08 s-ot hagyott volna). */
+  .kc-services-sin {
+    --kc-services-motion-cross: 0s;
+    --kc-services-motion-stagger: 0s;
+  }
+
   .kc-services-sin__rail-label,
   .kc-services-sin__marker,
   .kc-services-sin__rail-title,
   .kc-services-sin__panel,
-  .kc-services-sin__copy {
+  .kc-services-sin__copy,
+  .kc-services-sin__photo,
+  .kc-services-sin__placeholder {
     transition: none;
+    transition-delay: 0s;
   }
 
-  .kc-services-sin__copy {
+  .kc-services-sin__copy,
+  .kc-services-sin__photo,
+  .kc-services-sin__placeholder {
     transform: none;
   }
 }
@@ -800,24 +901,28 @@
 
   .kc-services-sin__layout {
     /* 1 : 2,6 — a drót 345 / 1090 px-e 1440-en. A 16rem padló 900 px-en is
-       kifér (board-x + gap után); minmax(0) a Tenor min-content ellen. */
+       kifér (board-x + gap után); minmax(0) a Tenor min-content ellen.
+       A sor magassága a színpadé (a legmagasabb panel); a bal hasáb ezt
+       kitölti (stretch), hogy a sín alja a panel aljára essen (WP25). */
     grid-template-columns: minmax(16rem, 1fr) minmax(0, 2.6fr);
     gap: var(--kc-services-stage-gap);
-    align-items: start;
+    align-items: stretch;
     height: auto;
   }
 
   .kc-services-sin__col {
     justify-content: flex-start;
-    align-self: start;
+    align-self: stretch;
     gap: var(--kc-space-7);
     height: auto;
   }
 
+  /* A sín a fejléc alatti teljes maradékot kapja, a tételek a panel
+     magasságán oszlanak el; a space-7 a tételek közének ALSÓ korlátja. */
   .kc-services-sin__rail {
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: var(--kc-space-7);
-    flex: none;
+    flex: 1 1 auto;
   }
 
   .kc-services-sin__rail::before {
