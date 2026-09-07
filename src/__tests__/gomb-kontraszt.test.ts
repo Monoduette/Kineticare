@@ -227,14 +227,14 @@ interface Par {
   sc: SC
 }
 
-const p = (
-  elem: string,
-  allapot: string,
-  elo: RGB,
-  hatter: RGB,
-  kuszob: 4.5 | 3,
-  sc: SC,
-): Par => ({ elem, allapot, elo, hatter, kuszob, sc })
+const p = (elem: string, allapot: string, elo: RGB, hatter: RGB, kuszob: 4.5 | 3, sc: SC): Par => ({
+  elem,
+  allapot,
+  elo,
+  hatter,
+  kuszob,
+  sc,
+})
 
 const PAROK: readonly Par[] = [
   // --- kc-button, a három alapváltozat ---
@@ -248,17 +248,88 @@ const PAROK: readonly Par[] = [
   p('kc-button--secondary', 'sötét sáv', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap', SZIN('primary'), SZIN('bg'), 4.5, '1.4.3'),
   p('kc-button--ghost', 'alap / tint', SZIN('primary'), SZIN('surface-tint'), 4.5, '1.4.3'),
-  p('kc-button--ghost', 'sötét sáv hover', SZIN('on-dark-muted'), SZIN('surface-dark'), 4.5, '1.4.3'),
+  p(
+    'kc-button--ghost',
+    'sötét sáv hover',
+    SZIN('on-dark-muted'),
+    SZIN('surface-dark'),
+    4.5,
+    '1.4.3',
+  ),
 
   // --- B8: a letiltott gomb ÚJ, szándékos token-párja (nem opacity) ---
   p('kc-button:disabled', 'felirat / kitöltés', SZIN('text-muted'), SZIN('border'), 4.5, '1.4.3'),
   p('kc-button:disabled', 'keret / paper', SZIN('border-strong'), SZIN('bg'), 3, '1.4.11'),
-  p('kc-button:disabled', 'keret / fehér', SZIN('border-strong'), SZIN('surface-raised'), 3, '1.4.11'),
+  p(
+    'kc-button:disabled',
+    'keret / fehér',
+    SZIN('border-strong'),
+    SZIN('surface-raised'),
+    3,
+    '1.4.11',
+  ),
   p('kc-button:disabled', 'keret / tint', SZIN('border-strong'), SZIN('surface-tint'), 3, '1.4.11'),
-  p('kc-button:disabled', 'keret / saját kitöltés', SZIN('border-strong'), SZIN('border'), 3, '1.4.11'),
-  p('kc-button:disabled', 'sötét sáv felirat', SZIN('on-dark-muted'), SZIN('surface-dark'), 4.5, '1.4.3'),
-  p('kc-button:disabled', 'sötét sáv keret', SZIN('on-dark-muted'), SZIN('surface-dark'), 3, '1.4.11'),
-  p('kc-free-sos .kc-button:disabled', 'felirat/keret a sávon', SZIN('on-primary'), SZIN('primary'), 4.5, '1.4.3'),
+  p(
+    'kc-button:disabled',
+    'keret / saját kitöltés',
+    SZIN('border-strong'),
+    SZIN('border'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-button:disabled',
+    'sötét sáv felirat',
+    SZIN('on-dark-muted'),
+    SZIN('surface-dark'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-button:disabled',
+    'sötét sáv keret',
+    SZIN('on-dark-muted'),
+    SZIN('surface-dark'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-free-sos .kc-button:disabled',
+    'felirat/keret a sávon',
+    SZIN('on-primary'),
+    SZIN('primary'),
+    4.5,
+    '1.4.3',
+  ),
+
+  // --- AUDIT-D: a lejátszó hibapaneljének mentőgombjai a sötét videó-felületen ---
+  // A javítás előtt a felirat ÉS a 2 px-es keret is ink volt az ink felületen
+  // (1,00:1): videóhiba esetén a fizető vevő nem látta az „Újrapróbálom”, az
+  // „Írj nekünk” és a „Belépés” gombot.
+  p(
+    'kc-player__media-error .kc-button--secondary',
+    'felirat a sötét videó-felületen',
+    SZIN('on-dark'),
+    SZIN('surface-dark'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-player__media-error .kc-button--secondary',
+    'keret a sötét videó-felületen',
+    SZIN('on-dark'),
+    SZIN('surface-dark'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-player__media-error .kc-button--secondary:hover',
+    'felirat a fehérre telt gombon',
+    SZIN('surface-dark'),
+    SZIN('on-dark'),
+    4.5,
+    '1.4.3',
+  ),
 
   // --- B1: a fejléc fókuszgyűrűje a filmsávon, a fátyol minden állásában ---
   p('kc-site-header :focus-visible', 'veil 0,00', fejlecGyuru(0), filmFejlec(0), 3, '1.4.11'),
@@ -266,25 +337,102 @@ const PAROK: readonly Par[] = [
   p('kc-site-header :focus-visible', 'veil 0,50', fejlecGyuru(0.5), filmFejlec(0.5), 3, '1.4.11'),
   p('kc-site-header :focus-visible', 'veil 0,75', fejlecGyuru(0.75), filmFejlec(0.75), 3, '1.4.11'),
   p('kc-site-header :focus-visible', 'veil 1,00', fejlecGyuru(1), filmFejlec(1), 3, '1.4.11'),
-  p('kc-site-header__brand', 'ink szöveg a filmen (veil 0)', SZIN('ink'), filmFejlec(0), 4.5, '1.4.3'),
-  p('kc-site-header__brand', 'ink a fagyott filmen (veil 1)', SZIN('ink'), filmFejlec(1), 4.5, '1.4.3'),
-  p('kc-site-header__brand-accent', 'deeper a fagyott filmen (veil 1)', SZIN('accent-deeper'), filmFejlec(1), 4.5, '1.4.3'),
-  p('kc-site-header__cta', 'primary határ a fagyott filmen (veil 1)', SZIN('primary'), filmFejlec(1), 3, '1.4.11'),
-  p('kc-account-nav__signout', 'keret a fagyott filmen (veil 1)', SZIN('border-strong'), filmFejlec(1), 3, '1.4.11'),
-  p('kc-site-header__brand', 'ink a paperen (belső oldal)', SZIN('ink'), SZIN('paper'), 4.5, '1.4.3'),
+  p(
+    'kc-site-header__brand',
+    'ink szöveg a filmen (veil 0)',
+    SZIN('ink'),
+    filmFejlec(0),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-site-header__brand',
+    'ink a fagyott filmen (veil 1)',
+    SZIN('ink'),
+    filmFejlec(1),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-site-header__brand-accent',
+    'deeper a fagyott filmen (veil 1)',
+    SZIN('accent-deeper'),
+    filmFejlec(1),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-site-header__cta',
+    'primary határ a fagyott filmen (veil 1)',
+    SZIN('primary'),
+    filmFejlec(1),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-account-nav__signout',
+    'keret a fagyott filmen (veil 1)',
+    SZIN('border-strong'),
+    filmFejlec(1),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-site-header__brand',
+    'ink a paperen (belső oldal)',
+    SZIN('ink'),
+    SZIN('paper'),
+    4.5,
+    '1.4.3',
+  ),
 
   // --- B7: a film-hero fókuszgyűrűjének MINDKÉT éle ---
-  p('kc-film-hero__cta:focus-visible', 'belső él (fehér haló)', SZIN('ink'), SZIN('white'), 3, '1.4.11'),
+  p(
+    'kc-film-hero__cta:focus-visible',
+    'belső él (fehér haló)',
+    SZIN('ink'),
+    SZIN('white'),
+    3,
+    '1.4.11',
+  ),
   p('kc-film-hero__cta:focus-visible', 'külső él (film)', SZIN('ink'), FILM_HERO, 3, '1.4.11'),
   p('kc-film-hero__cta--quiet', '2px ink keret a filmen', SZIN('ink'), FILM_HERO, 3, '1.4.11'),
 
   // --- B2: a süti-sáv ---
   p('kc-consent-banner', 'törzsszöveg', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
-  p('kc-consent-banner', 'tájékoztató-link', SZIN('on-dark-muted'), SZIN('surface-dark'), 4.5, '1.4.3'),
+  p(
+    'kc-consent-banner',
+    'tájékoztató-link',
+    SZIN('on-dark-muted'),
+    SZIN('surface-dark'),
+    4.5,
+    '1.4.3',
+  ),
   p('kc-consent-banner', 'fókuszgyűrű', SZIN('focus-on-dark'), SZIN('surface-dark'), 3, '1.4.11'),
-  p('kc-consent-banner__button--accept', 'felirat', SZIN('surface-dark'), SZIN('on-dark'), 4.5, '1.4.3'),
-  p('kc-consent-banner__button--accept', 'hover felirat', SZIN('surface-dark'), SZIN('on-dark-muted'), 4.5, '1.4.3'),
-  p('kc-consent-banner__button--decline', 'felirat + keret', SZIN('on-dark'), SZIN('surface-dark'), 4.5, '1.4.3'),
+  p(
+    'kc-consent-banner__button--accept',
+    'felirat',
+    SZIN('surface-dark'),
+    SZIN('on-dark'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-consent-banner__button--accept',
+    'hover felirat',
+    SZIN('surface-dark'),
+    SZIN('on-dark-muted'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-consent-banner__button--decline',
+    'felirat + keret',
+    SZIN('on-dark'),
+    SZIN('surface-dark'),
+    4.5,
+    '1.4.3',
+  ),
 
   // --- B3 / B5 / B6 / B11: linkek (a szín a HÁTTÉRHEZ mérve; a nem-szín
   //     jelölőt — aláhúzás — a G-K3 melletti külön teszt ellenőrzi) ---
@@ -298,10 +446,24 @@ const PAROK: readonly Par[] = [
   p('kc-cart-notice', 'keret / paper', SZIN('info'), SZIN('bg'), 3, '1.4.11'),
   p('kc-cart-notice', 'ink szöveg a felületén', SZIN('text'), SZIN('info-surface'), 4.5, '1.4.3'),
   p('kc-thankyou--timeout', 'keret / paper', SZIN('info'), SZIN('bg'), 3, '1.4.11'),
-  p('kc-thankyou--timeout', 'ink-soft szöveg', SZIN('text-muted'), SZIN('info-surface'), 4.5, '1.4.3'),
+  p(
+    'kc-thankyou--timeout',
+    'ink-soft szöveg',
+    SZIN('text-muted'),
+    SZIN('info-surface'),
+    4.5,
+    '1.4.3',
+  ),
 
   // --- B10: a haladás-sáv --sm ---
-  p('kc-progress-bar--sm', 'gyűrű / fehér fejléc', SZIN('border-strong'), SZIN('surface-raised'), 3, '1.4.11'),
+  p(
+    'kc-progress-bar--sm',
+    'gyűrű / fehér fejléc',
+    SZIN('border-strong'),
+    SZIN('surface-raised'),
+    3,
+    '1.4.11',
+  ),
   p('kc-progress-bar--sm', 'kitöltés / sín', SZIN('primary'), SZIN('border'), 3, '1.4.11'),
   p('kc-progress-bar--sm', 'kész / sín', SZIN('success'), SZIN('border'), 3, '1.4.11'),
 
@@ -313,10 +475,24 @@ const PAROK: readonly Par[] = [
   p('kc-badge--danger', 'felirat', SZIN('danger'), SZIN('danger-surface'), 4.5, '1.4.3'),
   p('kc-badge--info', 'felirat', SZIN('text'), SZIN('accent-quiet'), 4.5, '1.4.3'),
   p('::selection', 'globális', SZIN('ink'), SZIN('accent-quiet'), 4.5, '1.4.3'),
-  p('kc-preview-bar__exit', 'fókuszgyűrű', SZIN('focus-on-dark'), SZIN('surface-dark'), 3, '1.4.11'),
+  p(
+    'kc-preview-bar__exit',
+    'fókuszgyűrű',
+    SZIN('focus-on-dark'),
+    SZIN('surface-dark'),
+    3,
+    '1.4.11',
+  ),
   p('kc-player__media', 'fókuszgyűrű', SZIN('focus-on-dark'), SZIN('surface-dark'), 3, '1.4.11'),
   p('kc-richtext__video', 'fókuszgyűrű', SZIN('focus-on-dark'), SZIN('surface-dark'), 3, '1.4.11'),
-  p('kc-checkout-form__block-hint', 'magyarázat a gomb mellett', SZIN('text-muted'), SZIN('bg'), 4.5, '1.4.3'),
+  p(
+    'kc-checkout-form__block-hint',
+    'magyarázat a gomb mellett',
+    SZIN('text-muted'),
+    SZIN('bg'),
+    4.5,
+    '1.4.3',
+  ),
 ]
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -384,7 +560,9 @@ describe('G-K1 — minden var(--kc-*) hivatkozás LÉTEZŐ tokenre mutat', () =>
 
   const definialt = new Set<string>()
   for (const fajl of [...CSS_FAJLOK, ADMIN_BRAND_CSS]) {
-    for (const e of readFileSync(fajl, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').matchAll(DEFINICIO_MINTA)) {
+    for (const e of readFileSync(fajl, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .matchAll(DEFINICIO_MINTA)) {
       definialt.add(e[1])
     }
   }
@@ -438,18 +616,15 @@ describe('G-K1 — minden var(--kc-*) hivatkozás LÉTEZŐ tokenre mutat', () =>
 })
 
 describe('G-K2 — a mért párok mátrixa a küszöbeit tartja', () => {
-  it.each(PAROK.map((par) => [`${par.elem} · ${par.allapot}`, par] as const))(
-    '%s',
-    (_nev, par) => {
-      const ertek = arany(par.elo, par.hatter)
-      expect(
-        ker2(ertek),
-        `${par.elem} (${par.allapot}) — WCAG ${par.sc}, küszöb ${par.kuszob}:1, ` +
-          `mért ${ker2(ertek)}:1. Ha egy token értéke változott, vagy ez a pár ` +
-          'már nem érvényes, a mátrix sorát KELL frissíteni, nem a küszöböt.',
-      ).toBeGreaterThanOrEqual(par.kuszob)
-    },
-  )
+  it.each(PAROK.map((par) => [`${par.elem} · ${par.allapot}`, par] as const))('%s', (_nev, par) => {
+    const ertek = arany(par.elo, par.hatter)
+    expect(
+      ker2(ertek),
+      `${par.elem} (${par.allapot}) — WCAG ${par.sc}, küszöb ${par.kuszob}:1, ` +
+        `mért ${ker2(ertek)}:1. Ha egy token értéke változott, vagy ez a pár ` +
+        'már nem érvényes, a mátrix sorát KELL frissíteni, nem a küszöböt.',
+    ).toBeGreaterThanOrEqual(par.kuszob)
+  })
 
   it('a mátrix lefedi a P1 bukások mindegyikét (B1, B2, B7, B9, B10)', () => {
     const elemek = new Set(PAROK.map((par) => par.elem))
@@ -504,7 +679,9 @@ describe('G-K-frost — a fejléc fátyla fagyott üveg, nem réteg-opacity', ()
   })
 
   it('a 72%-os fagy-fedés color-mix alfaként él, a blur a ::before-on', () => {
-    const alap = fagyRetegek.find((sz) => /background-color\s*:/.test(sz.torzs) && /72%/.test(sz.torzs))
+    const alap = fagyRetegek.find(
+      (sz) => /background-color\s*:/.test(sz.torzs) && /72%/.test(sz.torzs),
+    )
     expect(alap, 'hiányzik a 72%-os color-mix fedés a ::before-on').toBeDefined()
     expect((alap as Szabaly).torzs).toMatch(/color-mix\(/)
     expect((alap as Szabaly).torzs).toMatch(/transparent/)
@@ -587,7 +764,8 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       indok: 'Ua.: hover-kitöltés, a fókuszgyűrű az offset miatt a lapra esik.',
     },
     {
-      szelektor: '.kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled)',
+      szelektor:
+        '.kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled)',
       felulir: null,
       indok:
         'Ua.: hover-kitöltés a fejléc CTA-piruláján; a fejléc fókuszgyűrűje ' +
@@ -601,7 +779,7 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
         'outline-offset miatt a lapra esik (5,16:1).',
     },
     {
-      szelektor: '.kc-course-filter__chip[aria-current=\'true\']',
+      szelektor: ".kc-course-filter__chip[aria-current='true']",
       felulir: null,
       indok:
         'Chip-KITÖLTÉS a kurzuslistán (kurzusok.css): a chip maga a fókuszálható ' +
@@ -627,7 +805,8 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       indok: 'Dekoráció (nem interaktív) — a kártya EGÉSZE a link, a gyűrű a kártyán.',
     },
     {
-      szelektor: '.kc-card--interactive.kc-product-card:hover .kc-product-card__cta, .kc-card--interactive.kc-product-card:focus-within .kc-product-card__cta',
+      szelektor:
+        '.kc-card--interactive.kc-product-card:hover .kc-product-card__cta, .kc-card--interactive.kc-product-card:focus-within .kc-product-card__cta',
       felulir: null,
       indok:
         'Ua.: a kártya hover/focus-within állapota festi át a DEKORÁCIÓS ' +
@@ -639,7 +818,7 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       indok: 'A haladás-sáv kitöltése — grafika, nem fókuszálható vezérlő.',
     },
     {
-      szelektor: '.kc-progress-bar[aria-valuenow=\'100\'] .kc-progress-bar__fill',
+      szelektor: ".kc-progress-bar[aria-valuenow='100'] .kc-progress-bar__fill",
       felulir: null,
       indok: 'Ua.: a haladás-sáv kész-állapotú kitöltése, nem fókuszálható elem.',
     },
@@ -722,7 +901,10 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       const jo =
         /outline(-color)?\s*:[^;]*var\(\s*--kc-color-(focus-on-dark|on-dark|white)\s*\)/.test(
           szabaly.torzs,
-        ) || /outline(-color)?\s*:[^;]*var\(\s*--kc-(free-sos-on-band|color-white)\s*\)/.test(szabaly.torzs)
+        ) ||
+        /outline(-color)?\s*:[^;]*var\(\s*--kc-(free-sos-on-band|color-white)\s*\)/.test(
+          szabaly.torzs,
+        )
       if (!jo) {
         gyanus.push(`${szabaly.fajl}: ${szabaly.szelektor}`)
       }
@@ -783,9 +965,7 @@ describe('G-K4 — `opacity` nem jelölheti a letiltott állapotot', () => {
   })
 
   it('a letiltott gomb explicit felirat-, keret- és háttérszínt kap', () => {
-    const szabaly = MINDEN_SZABALY.find((sz) =>
-      sz.szelektor.startsWith('.kc-button:disabled'),
-    )
+    const szabaly = MINDEN_SZABALY.find((sz) => sz.szelektor.startsWith('.kc-button:disabled'))
     expect(szabaly, 'a .kc-button:disabled szabály eltűnt').toBeDefined()
     const torzs = (szabaly as Szabaly).torzs
     expect(torzs).toMatch(/color\s*:\s*var\(--kc-color-text-muted\)/)
