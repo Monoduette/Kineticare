@@ -8,6 +8,7 @@ import {
   COURSE_LIST_PATH,
   FREE_SOS_COURSE_CTA_LABEL,
   FREE_SOS_LIST_CTA_LABEL,
+  FREE_SOS_STRIP_TITLE,
   isCourseDetailHref,
   resolveFreeSosCta,
 } from '../components/content/home/FreeSos'
@@ -344,7 +345,7 @@ describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
 // ---------------------------------------------------------------------------
 
 describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradnak', () => {
-  it('a freeSos blokk SZÖVEGEI a szerkesztőé, a szótári CTA-felirat a kódé', () => {
+  it('a freeSos blokk SZÖVEGE a szerkesztőé, a rögzített cím és a szótári CTA-felirat a kódé', () => {
     const layout = [
       {
         blockType: 'freeSos' as const,
@@ -363,7 +364,10 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
         testimonials: [],
       }),
     )
-    expect(html).toContain('Saját cím a szerkesztőtől')
+    // WP26 (tulajdonos, 2026-09-07): a kompakt sáv címe rögzített, a CMS-cím
+    // inaktív (FreeSos.tsx, `FREE_SOS_STRIP_TITLE`); a szöveg a szerkesztőé.
+    expect(html).not.toContain('Saját cím a szerkesztőtől')
+    expect(html).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
     expect(html).toContain('Saját szöveg.')
     // 2026-08-18: a szerkesztő a TARTALMAT írja, a szótári CTA-feliratot nem.
     expect(html).not.toContain('Kipróbálom ingyen')
@@ -418,7 +422,10 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
         home: homePage([
           {
             blockType: 'freeSos',
-            title: 'Csak ez a szekció legyen',
+            // WP26: a sáv címe rögzített (`FREE_SOS_STRIP_TITLE`), a CMS a
+            // SZÖVEGET adja — a felülírás tényét a body bizonyítja.
+            title: 'Ez a cím nem jelenik meg',
+            body: 'Csak ez a szekció legyen',
             sectionSettings: { visible: true },
           },
         ] as unknown as NonNullable<Page['layout']>),
@@ -427,6 +434,8 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
       }),
     )
     expect(html).toContain('Csak ez a szekció legyen')
+    expect(html).toContain(FREE_SOS_STRIP_TITLE)
+    expect(html).not.toContain('Ez a cím nem jelenik meg')
     expect(html).not.toContain('Így működik az online kurzus')
   })
 })
@@ -455,7 +464,7 @@ describe('Kezdőlapi mikroszöveg', () => {
     }
   })
 
-  it('az ingyenes sáv beépített címe kettőspontot használ, nem gondolatjelet', () => {
+  it('az ingyenes sáv rögzített címében nincs gondolatjel (a CMS-cím inaktív)', () => {
     const html = render(
       createElement(HomeView, {
         home: null,
@@ -463,6 +472,11 @@ describe('Kezdőlapi mikroszöveg', () => {
         posts: [],
       }),
     )
-    expect(html).toContain('SOS Kézrelax: ingyenes villámkurzus')
+    expect(html).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
+    const start = html.indexOf('id="ingyenes"')
+    const sosSection = html.slice(start, html.indexOf('</section>', start))
+    for (const dash of DASHES) {
+      expect(sosSection).not.toContain(dash)
+    }
   })
 })

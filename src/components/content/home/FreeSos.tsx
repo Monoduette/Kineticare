@@ -3,23 +3,60 @@ import { isAvailableSosProduct } from '../../../lib/sos-offer'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { sanitizeCmsUrl } from '../../../lib/safe-url'
 import type { Product } from '../../../payload-types'
-import { Badge } from '../../ui/Badge'
 import { Button } from '../../ui/Button'
 import { Container } from '../../ui/Container'
 import { Section } from '../../ui/Section'
-import { MediaImage } from '../MediaImage'
-import { pickMediaUrl, type MediaLike } from '../media-url'
+import type { MediaLike } from '../media-url'
 
 import '../../../app/(frontend)/styles/blocks/free-sos.css'
 
 /**
- * FreeSos — ingyenes SOS lead-magnet, visszafogott súllyal (M4/K2).
- * CTA cél/felirat számított: kurzusoldal vagy kurzuslista; CMS nem írhatja felül a szótárt.
- * A /kurzusok felülírást szándékosan figyelmen kívül hagyjuk (mért CMS-hiba).
+ * FreeSos: ingyenes SOS lead-magnet, KOMPAKT SÁVKÉNT (WP26, tulajdonosi
+ * kérés 2026-09-07 este, szó szerint: „Lehetne csak egy sáv, benne a szöveg:
+ * full width kék sáv, ami most is van, csak kép nélkül, ‚Ingyenes
+ * villámkurzus’ nagyon rövid leírással, benne a gomb ugyanúgy, és hogy ez
+ * ingyenes.” Minta: a /szolgaltatasok „Kezdd el otthon, a saját tempódban”
+ * CtaBanner-sávja: egy sor asztalon (szöveg balra, gomb jobbra), tördelve
+ * mobilon.)
+ *
+ * Miért kompakt és kép nélküli:
+ * - A kezdőlap-audit P1-3 tétele (docs/kezdolap-ux-audit-2026-09-07.md) 848
+ *   px-es sávot mért, saját fotóval, miközben az ingyenes SOS a Kurzusaink
+ *   rácsban már kártyaként áll: a sáv a rácsot ismételte a fizetős ajánlatnál
+ *   nagyobb súllyal (UX-skill M4/K2).
+ * - NN/g, Photos as Web Content: a felhasználó a dekoratív, „élénkítő” fotót
+ *   átugorja, csak az információt hordozó képet nézi meg; a sáv fotója itt
+ *   nem hordozott döntési információt (a rács kártyája már bemutatja).
+ *   https://www.nngroup.com/articles/photos-as-web-content/
+ * - NN/g, Banner Blindness: a színes hátterű, képes, „hirdetés-alakú” tömböt
+ *   a felhasználó reklámnak nézi és kihagyja; a tömör, szöveges sáv a
+ *   tartalom részeként olvasódik.
+ *   https://www.nngroup.com/articles/banner-blindness-old-and-new-findings/
+ * - GOV.UK Button: egy oldalon egy elsődleges hívás; a sáv gombja marad
+ *   másodlagos (keretes), hogy a fizetős rács maradjon az elsődleges.
+ *   https://design-system.service.gov.uk/components/button/
+ *
+ * A CTA célja és felirata SZÁMÍTOTT (kurzusoldal vagy kurzuslista); a CMS
+ * nem írhatja felül a szótárt. A /kurzusok felülírást szándékosan figyelmen
+ * kívül hagyjuk (mért CMS-hiba).
  */
 
-/** A kurzuslista útvonala — a hibatűrő tartalék célja. */
+/** A kurzuslista útvonala, a hibatűrő tartalék célja. */
 export const COURSE_LIST_PATH = '/kurzusok'
+
+/**
+ * A kompakt sáv címe, RÖGZÍTETT, nem a CMS-ből jön.
+ *
+ * A tulajdonos 2026-09-07-i szava: „‚Ingyenes villámkurzus’ nagyon rövid
+ * leírással”. A cím egyben az ÁR-TÉNY is (ingyenes), a sáv legnagyobb
+ * szövegén, ezért nem kell külön tabletta. A CMS `title` mezője azért nem
+ * kerül ide, mert (a) a sáv címét a tulajdonos szó szerint megadta, és (b) az
+ * élő CMS-érték („SOS Kézrelax — ingyenes villámkurzus”) kvirtmínuszt
+ * tartalmaz, amit a magyar tipográfia nem használ és a §3.1 tilt; a mező
+ * tisztogatása helyett a sáv címe konstans, a KURZUS NEVÉT pedig a termék
+ * adja a felvezető sorban (`productHeading`). Lásd `FreeSosProps.title`.
+ */
+export const FREE_SOS_STRIP_TITLE = 'Ingyenes villámkurzus'
 
 /**
  * A gomb felirata, ha a cél VALÓBAN az ingyenes kurzus oldala.
@@ -72,7 +109,7 @@ export interface FreeSosCtaOverride {
   newTab?: boolean
 }
 
-/** A kirendert gomb — a felirat és a cél mindig egymáshoz illik. */
+/** A kirendert gomb, a felirat és a cél mindig egymáshoz illik. */
 export interface FreeSosCta {
   label: string
   href: string
@@ -113,9 +150,17 @@ export function resolveFreeSosCta(
 export interface FreeSosProps {
   /** A kanonikus, publikált és explicit ingyenes SOS-termék, ha elérhető. */
   freeProduct: Product | null
-  /** Cím-felülírás a `freeSos` blokkból — üresen a termék/beépített cím marad. */
+  /**
+   * Cím-felülírás a `freeSos` blokkból.
+   *
+   * INAKTÍV, SZÁNDÉKOSAN (WP26): a kompakt sáv címe a rögzített
+   * `FREE_SOS_STRIP_TITLE`, a tulajdonos szó szerinti kérése szerint. A mező
+   * a típusban marad, mert a `RenderBlocks` továbbra is átadja, és az
+   * adatbázisban élő szerkesztői értéket nem dobjuk el, csak nem jelenítjük
+   * meg. (Indoklás a konstansnál.)
+   */
   title?: string
-  /** Szöveg-felülírás a blokkból. */
+  /** Szöveg-felülírás a blokkból: egy–két mondat a leírás helyén. */
   body?: string
   /**
    * Gomb-felülírás a blokkból. Bármelyik mező hiányozhat: a hiányzókat a
@@ -123,58 +168,51 @@ export interface FreeSosProps {
    */
   cta?: FreeSosCtaOverride
   /**
-   * Informatív CMS-fotó: saját alt-szöveggel, mobilon is láthatóan.
-   * A mező neve kompatibilitásból marad; új CMS-séma nem szükséges.
+   * CMS-fotó a blokkból.
+   *
+   * INAKTÍV, SZÁNDÉKOSAN (WP26): a sáv KÉP NÉLKÜLI („csak kép nélkül”,
+   * tulajdonos, 2026-09-07). A mező a típusban marad, hogy a `RenderBlocks`
+   * hívóhelye és a CMS-séma ne változzon, és a feltöltött kép ne vesszen el;
+   * a komponens nem tölti le és nem rendereli (nincs `<img>`, nincs
+   * képletöltés a kezdőlapon ebből a sávból).
    */
   backgroundImage?: MediaLike | null
   id?: string
   variant?: 'default' | 'tint' | 'dark'
 }
 
-export function FreeSos({
-  freeProduct,
-  title,
-  body,
-  cta,
-  backgroundImage,
-  id = 'ingyenes',
-  variant = 'tint',
-}: FreeSosProps) {
+export function FreeSos({ freeProduct, body, cta, id = 'ingyenes', variant = 'tint' }: FreeSosProps) {
   const knownFree = isAvailableSosProduct(freeProduct)
-  // A termék neve a displayTitle → sku lánc; ha MINDKETTŐ üres, a márkás
-  // alapszöveg marad (a courseTitle „Kurzus #id" fallbackja itt félrevinne).
-  const productHeading = freeProduct?.displayTitle?.trim() || freeProduct?.sku?.trim() || ''
-  // Kettőspont, nem gondolatjel: a magyar tipográfiában a kvirtmínusz nem
-  // írásjel, és a tulajdonos külön kikötötte a gondolatjel-halmozás tilalmát
-  // (docs/ui-sztenderdek.md §3.1, docs/gomb-inventar.md §7).
+  // A termék neve a displayTitle → sku lánc; ha MINDKETTŐ üres, a felvezető
+  // sor elmarad (a courseTitle „Kurzus #id" fallbackja itt félrevinne).
+  // A kurzus neve a rács kártyájával és a hero szövegével AZONOS forrásból jön
+  // (WCAG 2.2 SC 3.2.4 Consistent Identification: ugyanaz a kurzus ugyanazon
+  // a néven, https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
+  const productHeading = knownFree
+    ? freeProduct.displayTitle?.trim() || freeProduct.sku?.trim() || ''
+    : ''
   // Termék nélkül a CMS-ben maradt SOS-szöveg is elavult ígéret lehet.
   // Csak a megjelenítés vált semlegesre; a szerkesztett adatot nem módosítjuk.
-  const heading = knownFree
-    ? title?.trim() || productHeading || 'SOS Kézrelax: ingyenes villámkurzus'
-    : 'Kurzusaink'
+  const heading = knownFree ? FREE_SOS_STRIP_TITLE : 'Kurzusaink'
   const text = knownFree
     ? body?.trim() ||
       freeProduct.shortDescription?.trim() ||
       'Rövid kézgyakorlatokat mutatunk, amelyeket otthon, a saját tempódban próbálhatsz ki.'
     : 'Ismerd meg a kurzusainkat, és válaszd ki a neked megfelelőt.'
   const button = resolveFreeSosCta(freeProduct, cta)
-  const photo = backgroundImage && pickMediaUrl(backgroundImage, 'md') ? backgroundImage : null
+  const headingId = `${id}-cim`
 
   return (
-    <Section
-      className={`kc-free-sos${photo ? ' kc-free-sos--with-image' : ''}`}
-      id={id}
-      variant={variant}
-    >
+    <Section aria-labelledby={headingId} className="kc-free-sos" id={id} variant={variant}>
       <Container className="kc-free-sos__layout">
-        <div className="kc-free-sos__inner">
-          {knownFree ? (
-            <p className="kc-free-sos__badge">
-              <Badge tone="success">Ingyenes</Badge>
-            </p>
-          ) : null}
-          <h2 className="kc-free-sos__title">{heading}</h2>
+        <div className="kc-free-sos__copy">
+          {productHeading ? <p className="kc-free-sos__kicker">{productHeading}</p> : null}
+          <h2 className="kc-free-sos__title" id={headingId}>
+            {heading}
+          </h2>
           <p className="kc-free-sos__text">{text}</p>
+        </div>
+        <div className="kc-free-sos__action">
           <Button
             className="kc-free-sos__cta"
             href={button.href}
@@ -184,14 +222,6 @@ export function FreeSos({
             {button.label} <span aria-hidden="true">→</span>
           </Button>
         </div>
-        {photo ? (
-          <div className="kc-free-sos__art">
-            {/* H04: a valódi szereplők képe információ, nem rejtett dekoráció.
-                https://www.w3.org/WAI/tutorials/images/informative/
-                https://www.nngroup.com/articles/photos-as-web-content/ */}
-            <MediaImage media={photo} preferredSize="md" sizes="(min-width: 900px) 44vw, 100vw" />
-          </div>
-        ) : null}
       </Container>
     </Section>
   )

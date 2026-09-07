@@ -1,6 +1,30 @@
 /**
- * Ingyenes SOS-sáv (FreeSos) — szekció-stílus.
- * teljes képernyős tábla volt. Itt NEM az: normál szekció-ritmusban él
+ * Ingyenes SOS-sáv (FreeSos): KOMPAKT, kép nélküli sáv (WP26, 2026-09-07).
+ *
+ * Tulajdonosi kérés szó szerint: „full width kék sáv, ami most is van, csak
+ * kép nélkül, ‚Ingyenes villámkurzus’ nagyon rövid leírással, benne a gomb
+ * ugyanúgy, és hogy ez ingyenes.” Minta a /szolgaltatasok „Kezdd el otthon,
+ * a saját tempódban” CtaBanner-sávja (blocks/cta-banner.css): szöveg balra,
+ * gomb jobbra egy sorban, mobilon egymás alá tördelve.
+ *
+ * MÉRT KIINDULÁS (Chromium, 1440×900, reduce): a korábbi sáv 849 px magas
+ * volt (88 px függőleges szegély + 473 px-es fotó); a minta-sáv 295 px
+ * (88 px szegély + 119 px tartalom). A kompakt sáv célja ~200 px 1440-en,
+ * ezért a szegélye a szekció-alap (88 px) helyett a 32 px-es térköz-token:
+ * ez egy SZÁMÍTOTT, nem szemre vett érték: 2×32 + felvezető sor (22) + cím
+ * (48) + szöveg két sora (63) + térközök (12) ≈ 209 px.
+ *
+ * Kontraszt (számolt, WCAG 2.2 SC 1.4.3 / 1.4.11):
+ *   fehér szöveg az accent-deep (#2f6e9f) sávon .............. 5,45:1  AA ✓
+ *   fehér 2 px-es gombkeret ugyanazon a sávon (nem-szöveges) .. 5,45:1  ✓ (≥3:1)
+ *   hover: accent-deep felirat a fehér kitöltésen ............. 5,45:1  AA ✓
+ *   sötét (hatter: 'sotet') változat: fehér az inken .......... 15,63:1 ✓
+ *   https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+ * Érintőcél: a gomb a közös `.kc-button` 2,75 rem (44 px) minimumát örökli
+ *   (SC 2.5.8 minimum 24×24 CSS px, cél 44),
+ *   https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+ * Mozgás: a sáv NEM animál (nincs átmenet, transform, keyframe), tehát a
+ *   `prefers-reduced-motion` alatt sincs mit kikapcsolni (SC 2.3.3).
  */
 
 .kc-free-sos {
@@ -8,12 +32,15 @@
   --kc-free-sos-on-band: var(--kc-color-on-primary);
 }
 
-/* A sáv színe a szekció-variánstól függetlenül az akcent — a `.kc-section`
+/* A sáv színe a szekció-variánstól függetlenül az akcent, a `.kc-section`
    (és a `--tint`) háttérszínét ezért kettős osztállyal, specificitásból írjuk
-   felül, nem a betöltési sorrendre bízva. */
+   felül, nem a betöltési sorrendre bízva. Ugyanez a szelektor viszi a KOMPAKT
+   függőleges szegélyt is: a `.kc-section` 900 px felett 88 px-re nő (ui.css),
+   itt mindkét méretben a 32 px-es token marad, a sáv „csak egy sáv”. */
 .kc-section.kc-free-sos {
   position: relative;
   overflow: hidden;
+  padding-block: var(--kc-space-6);
   background-color: var(--kc-free-sos-band);
   color: var(--kc-free-sos-on-band);
 }
@@ -25,35 +52,43 @@
   --kc-free-sos-on-band: var(--kc-color-on-dark);
 }
 
+/* Egy sor asztalon: a szöveg-hasáb nő, a gomb a jobb szélen, függőlegesen
+   középre zárva; ha nem fér el (mobil, 320–600 px), a gomb a szöveg ALÁ
+   tördelődik, a CtaBanner rácsával azonos szabály (`flex-wrap`), a
+   `1 1 20rem` alap miatt 320 px-en is teljes szélességű a szöveg-hasáb, nem
+   csordul túl (WCAG 2.2 SC 1.4.10 Reflow, mérve 320 px-en). */
 .kc-free-sos__layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  gap: var(--kc-space-6);
-}
-
-.kc-free-sos__inner {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--kc-space-4) var(--kc-space-6);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kc-free-sos__copy {
+  flex: 1 1 20rem;
   min-width: 0;
+  max-width: 100%;
 }
 
-.kc-free-sos__badge {
-  margin: 0 0 var(--kc-space-3);
+.kc-free-sos__action {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
-/* A zöld „siker" tabletta a kék sávon idegen, és a kontrasztja sem garantált:
-   a sávon áttetsző alap + fehér keret + fehér felirat (5,45:1) marad. */
-.kc-free-sos .kc-badge {
-  border: 1px solid var(--kc-free-sos-on-band);
-  background-color: transparent;
+/* Felvezető sor: a kurzus neve (a rács kártyájával azonos név, WCAG 3.2.4).
+   S token, félkövér-közeli súly, hogy a cím (L) alatt maradjon a hierarchia
+   második lépcsőjén; a sávon fehér, 5,45:1. */
+.kc-free-sos__kicker {
+  margin: 0;
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-medium);
+  line-height: 1.4;
   color: var(--kc-free-sos-on-band);
 }
 
 .kc-free-sos__title {
-  margin: 0;
-  max-width: 22ch;
+  margin: var(--kc-space-1) 0 0;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
@@ -61,12 +96,17 @@
   letter-spacing: 0;
   color: var(--kc-free-sos-on-band);
   text-wrap: balance;
+  /* 320 px-en a hosszú összetett szó („villámkurzus”) ne csorduljon túl a
+     hasábon: végszükség-tördelés, rendes sortörésnél nem aktiválódik. */
+  overflow-wrap: break-word;
 }
 
-/* A sávon a halvány (muted) szürke szöveg AA alá esne, ezért a törzs is fehér. */
+/* A sávon a halvány (muted) szürke szöveg AA alá esne, ezért a törzs is fehér.
+   Sorhossz: a 60ch felső korlát a 45–85 karakteres sávban tart 1440 px-en is
+   (a hasáb ettől szűkebb, ha a gomb mellette áll). */
 .kc-free-sos__text {
-  margin: var(--kc-space-3) 0 0;
-  max-width: 58ch;
+  margin: var(--kc-space-2) 0 0;
+  max-width: 60ch;
   font-size: var(--kc-font-m);
   line-height: var(--kc-leading-body);
   color: var(--kc-free-sos-on-band);
@@ -76,7 +116,6 @@
    A közös `.kc-button--secondary` ink-keretes alapját írja felül. */
 .kc-free-sos .kc-free-sos__cta.kc-button {
   gap: var(--kc-space-4);
-  margin-top: var(--kc-space-5);
   padding: var(--kc-space-3) var(--kc-space-6);
   border-color: var(--kc-free-sos-on-band);
   background-color: transparent;
@@ -94,7 +133,7 @@
 }
 
 /* Letiltott állapot a saját sávon: a `ui.css` világos kitöltése itt beleolvadna
-   a sávba, ezért a gomb ÜRES marad, sáv-ellenszínű kerettel és felirattal —
+   a sávba, ezért a gomb ÜRES marad, sáv-ellenszínű kerettel és felirattal:
    fehér az accent-deep sávon 5,45:1, az ink változaton 15,63:1 (mindkettő a
    szöveg- ÉS az UI-küszöb felett). A letiltás jelentését a `not-allowed`
    kurzor, a hover hiánya és a gomb melletti magyarázat hordozza, nem a szín.
@@ -107,29 +146,7 @@
   color: var(--kc-free-sos-on-band);
 }
 
-/* A globális fókuszgyűrű az akcent-mély — a saját sávján nem látszana. */
+/* A globális fókuszgyűrű az akcent-mély, a saját sávján nem látszana. */
 .kc-free-sos :focus-visible {
   outline-color: var(--kc-free-sos-on-band);
-}
-
-/* A CMS-fotó tartalom: nincs arcot takaró fátyol vagy mobilos elrejtés.
-   Az intrinsic képarány megmarad, ezért a kézmozdulat sem vágódik le.
-   W3C Images Tutorial; NN/g Photos as Web Content (FreeSos.tsx). */
-
-.kc-free-sos__art {
-  min-width: 0;
-  width: 100%;
-}
-
-.kc-free-sos__art img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--kc-radius-md);
-}
-
-@media (min-width: 900px) {
-  .kc-free-sos--with-image .kc-free-sos__layout {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  }
 }
