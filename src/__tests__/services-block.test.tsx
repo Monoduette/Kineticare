@@ -787,3 +787,119 @@ describe('services-sin.css — mobil accordion (< 900 px)', () => {
     expect(mobil).toMatch(/\.kc-services-sin__layout \{\s*gap: 0;/)
   })
 })
+
+/**
+ * WP30 (2026-09-07, tulajdonosi kör: „az ezért fogod imádni bal oldala kicsit
+ * üres nekem, lehetne kicsit olyan mint a megérdemled a törődést"). A kétsoros
+ * fotós tábla bal hasábja a Rólunk-blokk (About) képnyelvét kapja: teljes
+ * hasáb-széles fotó, ugyanaz a hullám-maszk és ugyanaz a hover, a cím alatt
+ * akcent-vonal, a séma `lead` mezője a cím alatt. Az őr a KÉT stíluslap
+ * tokenjeinek betű szerinti egyezését is méri: a tábla és az About egy nyelvet
+ * beszél (NN/g common region; WCAG 2.2 SC 2.3.3 a reduce-ágra).
+ */
+describe('Services — WP30 hullámos tábla (a Rólunk-blokk képnyelve)', () => {
+  const photo = {
+    id: 41,
+    url: '/tablet.webp',
+    alt: 'Tablettel a kanapén',
+    width: 1600,
+    height: 2400,
+    focalX: 30,
+    focalY: 70,
+  } as BlockServices['image']
+  const twoRows = [
+    { title: 'A kéz a szakterületünk', body: 'Szöveg.' },
+    { title: 'A hétköznapokra készülünk', body: 'Szöveg.' },
+  ]
+
+  it('kétsoros, fotós tábla kapja a hullám-módosítót; a háromutas és a fotótlan nem', () => {
+    expect(render(block({ image: photo, rows: twoRows }))).toContain('kc-services--hullam')
+    expect(
+      render(block({ image: photo, rows: [...twoRows, { title: 'Harmadik', body: '' }] })),
+    ).not.toContain('kc-services--hullam')
+    expect(render(block({ image: null, rows: twoRows }))).not.toContain('kc-services--hullam')
+  })
+
+  it('a séma `lead` mezője a tábla címe alatt is megjelenik (üresen nem)', () => {
+    const withLead = render(block({ image: photo, rows: twoRows, lead: 'Bevezető a cím alatt.' }))
+    expect(withLead).toContain('class="kc-services__intro"')
+    expect(withLead).toContain('Bevezető a cím alatt.')
+    const titleIdx = withLead.indexOf('kc-services__title')
+    const introIdx = withLead.indexOf('kc-services__intro')
+    const mediaIdx = withLead.indexOf('kc-services__media')
+    expect(titleIdx).toBeLessThan(introIdx)
+    expect(introIdx).toBeLessThan(mediaIdx)
+    expect(render(block({ image: photo, rows: twoRows, lead: '   ' }))).not.toContain(
+      'kc-services__intro',
+    )
+  })
+
+  it('a vágás középpontja a Media fókuszpontja; hiányában 50% 50%', () => {
+    expect(render(block({ image: photo, rows: twoRows }))).toContain(
+      '--kc-services-image-focus:30% 70%',
+    )
+    const noFocal = { ...(photo as object), focalX: null, focalY: null } as BlockServices['image']
+    expect(render(block({ image: noFocal, rows: twoRows }))).toContain(
+      '--kc-services-image-focus:50% 50%',
+    )
+  })
+
+  describe('services.css ↔ about.css: azonos maszk-tokenek, azonos hover, azonos akcent-vonal', () => {
+    const services = cssFajl('services.css')
+    const about = cssFajl('about.css')
+    const token = (css: string, nev: string): string => {
+      const m = css.match(new RegExp(`${nev}:\\s*([^;]+);`))
+      if (!m) throw new Error(`Nincs ilyen token: ${nev}`)
+      return m[1].replace(/\s+/g, ' ').trim()
+    }
+
+    it('a hullám SVG-je és a rest/hover maszk-méretek betűre egyeznek', () => {
+      expect(token(services, '--kc-services-wave')).toBe(token(about, '--kc-about-wave'))
+      expect(token(services, '--kc-services-wave-rest')).toBe(token(about, '--kc-about-wave-rest'))
+      expect(token(services, '--kc-services-wave-hover')).toBe(
+        token(about, '--kc-about-wave-hover'),
+      )
+    })
+
+    it('a fotó a tokenes maszkot viszi, hover csak hover-eszközön, reduce alatt áll', () => {
+      const media = szabalyTorzs(services, '.kc-services--hullam .kc-services__media')
+      expect(media).toContain('mask-image: linear-gradient(#000 0 0), var(--kc-services-wave)')
+      expect(media).toContain('mask-size: var(--kc-services-wave-rest)')
+      const hoverBlokk = services.slice(services.indexOf('@media (hover: hover)'))
+      expect(hoverBlokk).toContain('.kc-services--hullam .kc-services__media:hover')
+      expect(hoverBlokk).toContain('mask-size: var(--kc-services-wave-hover)')
+      expect(hoverBlokk).toContain('transition-duration: calc(var(--kc-motion-base) * 1.2)')
+      const reduceBlokk = services.slice(
+        services.lastIndexOf('@media (prefers-reduced-motion: reduce)'),
+      )
+      expect(reduceBlokk).toContain('.kc-services--hullam .kc-services__media:hover')
+      expect(reduceBlokk).toContain('transition: none')
+      expect(reduceBlokk).toContain('mask-size: var(--kc-services-wave-rest)')
+      // Az About hover-időzítése ugyanez (egy nyelv, egy tempó).
+      expect(about).toContain('transition-duration: calc(var(--kc-motion-base) * 1.2)')
+    })
+
+    it('a cím alatti akcent-vonal az About vonalának mérete', () => {
+      const tabla = szabalyTorzs(services, '.kc-services--hullam .kc-services__title::after')
+      const rolunk = szabalyTorzs(about, '.kc-about__title::after')
+      for (const prop of ['width: 2.5rem', 'height: 1.5px', 'margin-top: var(--kc-space-4)']) {
+        expect(tabla).toContain(prop)
+        expect(rolunk).toContain(prop)
+      }
+    })
+
+    it('asztalon a fotó a hasáb maradékát tölti ki, a vágás a fókuszpontból indul', () => {
+      const asztal = services.slice(
+        services.indexOf(
+          '.kc-services--hullam .kc-services__media {',
+          services.indexOf('@media (min-width: 900px)', services.indexOf('WP30')),
+        ),
+      )
+      expect(asztal).toContain('flex: 1 1 auto')
+      expect(asztal).toContain('aspect-ratio: 4 / 3')
+      expect(szabalyTorzs(services, '.kc-services--hullam .kc-services__media img')).toContain(
+        'object-position: var(--kc-services-image-focus, 50% 50%)',
+      )
+    })
+  })
+})

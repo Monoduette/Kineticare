@@ -44,8 +44,16 @@ export async function Header() {
           </Link>
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
-            <AccountNav signedIn={auth.signedIn} variant="header" />
+            {/* WP31 (2026-09-07, tulajdonosi kérés: „ha be vagyok jelentkezve
+                akkor a kijelentkezés az utolsó gomb"): bejelentkezve a
+                fiók-blokk (Kurzusaim + Kijelentkezés) a „Kurzusok" pirula UTÁN
+                áll, így a Kijelentkezés a sáv utolsó fókuszálható eleme; a
+                DOM-sorrend adja a Tab-sorrendet (WCAG 2.2 SC 2.4.3, SC 1.3.2),
+                nem CSS `order`. Kijelentkezve a profil-ikon a pirula előtt
+                marad (WP27 elrendezés, változatlan). */}
+            {auth.signedIn ? null : <AccountNav signedIn={false} variant="header" />}
             <HeaderCoursesNav />
+            {auth.signedIn ? <AccountNav signedIn variant="header" /> : null}
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>
         </div>

@@ -562,3 +562,134 @@
     align-items: stretch;
   }
 }
+
+/* ---- WP30: a kétsoros fotós tábla bal hasábja a Rólunk-blokk nyelvén -------
+   Tulajdonosi kör, 2026-09-07, szó szerint: „a szolgáltatások oldalon az ezért
+   fogod imádni bal oldala kicsit üres nekem. lehetne kicsit olyan mint a
+   megérdemled a törődést".
+
+   MÉRVE (Chromium, 1440×900, /szolgaltatasok): a bal hasáb 626 px széles, a
+   fotó viszont 363 px (álló forrás, `max-width: 34rem × arány`, középre zárva),
+   tehát a hasáb 42%-a két oldalt üres tint volt; a cím és a fotó közt nem állt
+   semmi, a fotónak nem volt kerete, és a tábla aljáig futott vágatlanul.
+   1024-en ugyanez: 447 px-es hasábban 363 px-es fotó.
+
+   A „Megérdemled a profi törődést" (About, about.css A01/WP24) nyelve: a fotó
+   a hasáb TELJES szélességét tölti ki, alsó éle a régi oldal hullámával vágva
+   (`mask-image`), hoverre a hullám mélyül; a cím alatt akcent-vonal, alatta
+   törzsszöveg. Ugyanezt kapja itt a bal hasáb:
+   1. a fotó a hasáb szélességét tölti (nem lebeg középen) — NN/g Visual
+      Hierarchy: „Bigger elements stand out more and attract users' attention,
+      so size can be used as a marker for importance"; a hasáb és a fotó egy
+      régió (Gestalt common region: „items within a boundary are perceived as
+      a group") — https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+      https://www.nngroup.com/articles/common-region/
+   2. ugyanaz a hullám-maszk és ugyanaz a hover (a tokenek értéke betűre az
+      about.css-é; őr-teszt: services-block.test.tsx) — egy nyelv a lapon,
+      WCAG 2.2 SC 3.2.4 szellemében a vizuális minta is következetes;
+   3. a cím alatt az About akcent-vonala, és ha a CMS `lead` mezője ki van
+      töltve, a bekezdés (a séma már tudta, a tábla eddig eldobta);
+   4. asztalon a fotó doboza a hasáb maradék magasságát tölti ki
+      (`flex: 1 1 auto`, alap-arány 4:3, `object-fit: cover`), így a bal hasáb
+      a jobb oszlophoz igazodik, nem tátong; a vágás középpontja a Media
+      fókuszpontja (`--kc-services-image-focus`, Services.tsx).
+   Material 3 layout (canonical layouts, „supporting pane"): a két hasáb egy
+   sorban, a tartalom kitölti a saját sávját —
+   https://m3.material.io/foundations/layout/canonical-layouts/overview
+   Apple HIG Layout: a tartalom illeszkedjen a rendelkezésre álló területhez,
+   következetes margókkal — https://developer.apple.com/design/human-interface-guidelines/layout
+   WCAG 2.2 SC 1.4.11 (Non-text Contrast): a fotó és a hullám dekoratív, a
+   szöveg és a vezérlők kontrasztja változatlan —
+   https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
+   WCAG 2.2 SC 2.3.3 (Animation from Interactions): a hover-hullám csökkentett
+   mozgásnál áll — https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
+
+   Mobilon (< 900 px) a fotó természetes arányú, legfeljebb 28 rem széles,
+   középre zárva (az About mobil figure-je ugyanez), a hullámmal.
+   A háromutas tábla (`--choices`) NEM kapja: annak saját rácsa van. */
+.kc-services {
+  --kc-services-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 72 1440 70' preserveAspectRatio='none'%3E%3Cpath d='M0,128L60,117.3C120,107,240,85,360,80C480,75,600,85,720,101.3C840,117,960,139,1080,138.7C1200,139,1320,117,1380,106.7L1440,96L1440,0L0,0Z'/%3E%3C/svg%3E");
+  --kc-services-wave-rest: 100% 92.5%, 100% 8%;
+  --kc-services-wave-hover: 100% 89.5%, 112% 11%;
+}
+
+/* Akcent-vonal a cím alatt (tükör: .kc-about__title::after). */
+.kc-services--hullam .kc-services__title::after {
+  content: '';
+  display: block;
+  width: 2.5rem;
+  height: 1.5px;
+  margin-top: var(--kc-space-4);
+  background-color: var(--kc-services-accent);
+}
+
+/* A cím alatti bekezdés (a séma `lead` mezője), az About törzsének ritmusán. */
+.kc-services__intro {
+  margin: var(--kc-space-4) 0 0;
+  max-width: var(--kc-measure);
+  font-size: var(--kc-font-m);
+  line-height: 1.55;
+  color: var(--kc-services-muted);
+  white-space: pre-line;
+}
+
+.kc-services--hullam .kc-services__media {
+  width: min(100%, 28rem);
+  margin: var(--kc-space-5) auto 0;
+  background-color: var(--kc-color-surface-tint);
+  -webkit-mask-image: linear-gradient(#000 0 0), var(--kc-services-wave);
+  -webkit-mask-size: var(--kc-services-wave-rest);
+  -webkit-mask-position: top, bottom;
+  -webkit-mask-repeat: no-repeat;
+  mask-image: linear-gradient(#000 0 0), var(--kc-services-wave);
+  mask-size: var(--kc-services-wave-rest);
+  mask-position: top, bottom;
+  mask-repeat: no-repeat;
+}
+
+.kc-services--hullam .kc-services__media img {
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  object-fit: cover;
+  object-position: var(--kc-services-image-focus, 50% 50%);
+}
+
+@media (min-width: 900px) {
+  .kc-services--hullam .kc-services__media {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    margin: var(--kc-space-5) 0 0;
+    aspect-ratio: 4 / 3;
+  }
+
+  .kc-services--hullam .kc-services__media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+@media (hover: hover) {
+  .kc-services--hullam .kc-services__media {
+    transition-property: -webkit-mask-size, mask-size;
+    transition-duration: calc(var(--kc-motion-base) * 1.2);
+    transition-timing-function: var(--kc-ease-out);
+  }
+
+  .kc-services--hullam .kc-services__media:hover {
+    -webkit-mask-size: var(--kc-services-wave-hover);
+    mask-size: var(--kc-services-wave-hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-services--hullam .kc-services__media,
+  .kc-services--hullam .kc-services__media:hover {
+    transition: none;
+    -webkit-mask-size: var(--kc-services-wave-rest);
+    mask-size: var(--kc-services-wave-rest);
+  }
+}

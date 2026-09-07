@@ -494,16 +494,55 @@
   color: var(--kc-header-accent);
 }
 
-/* 900–1199 px: a sávban csak a „Kurzusaim” link — a kijelentkezés-pirula
-   ott a négy menüpont + Kurzusok mellé már nem fér. A fiókban (drawer)
-   változatlanul látszik. */
-.kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
-  display: none;
+/* ---- 56,25em–75em: a kijelentkezés IKON-GOMB (WP31 pótlás, 2026-09-07) ----
+   A szöveges pirula 75em alatt nem fér a négy menüpont + Kurzusok + Kurzusaim
+   mellé, ezért KORÁBBAN rejtve volt; a hamburger-fiók viszont 900 px-től
+   nincs, tehát bejelentkezve ezen a sávon SEHOL nem volt kijelentkezés, és a
+   tulajdonos kérése („a kijelentkezés az utolsó gomb") nem teljesült. Most
+   ugyanaz a gomb ikon-alakot vesz fel: 44×44 CSS px kör (SC 2.5.8), 24 px-es
+   glif, a felirat vizuálisan rejtett (a `.kc-visually-hidden` klip-mintája),
+   de a hozzáférhető név és a folyamatban-felirat marad (SC 4.1.2). A kör a
+   profil-ikon párja: ugyanaz a doboz, ugyanaz a hover-állapotréteg
+   (`--kc-header-accent-soft` + `--kc-header-accent`), keret nélkül — a
+   színpárok azonosak (gomb-kontraszt.test.ts `kc-account-nav__signout-icon`:
+   ink a filmen 5,13:1, fagyott filmen 11,42:1, paperen 14,79:1, hoverre
+   accent-deeper a tinten 6,13:1; küszöb 3:1, SC 1.4.11). A fókuszgyűrű a sáv
+   fátyol-arányos szabálya, az `active` a közös 1 px-es süllyedés, a
+   letiltott (folyamatban) állapot a közös muted szín + `cursor: progress`.
+   NN/g Icon Usability: https://www.nngroup.com/articles/icon-usability/
+   Material 3 Icon buttons: https://m3.material.io/components/icon-buttons/specs
+   WCAG 2.2 SC 2.5.8: https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+   75em-től a szöveges pirula, ikon nélkül. A DOM-sorrend (a gomb a sáv
+   utolsó fókuszálható eleme) mindkét sávon ugyanaz. */
+@media (min-width: 56.25em) and (max-width: 74.99em) {
+  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-color: transparent;
+  }
+
+  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout:hover:not(:disabled) {
+    border-color: transparent;
+  }
+
+  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 @media (min-width: 75em) {
-  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
-    display: inline-flex;
+  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout-icon {
+    display: none;
   }
 }
 
@@ -603,6 +642,24 @@
   padding: var(--kc-space-2) 0 0;
   background-color: transparent;
   box-shadow: none;
+}
+
+/* ---- A kilépő fél: a fiók ALJÁN (WP31, 2026-09-07) --------------------------
+ * Bejelentkezve a „Kijelentkezés" a menülista UTÁN áll (AccountNav.tsx
+ * `section="exit"`), és a fiók flex-oszlopában `margin-top: auto`-val az aljára
+ * ül: a lista görgethető, a gomb mindig látszik. A hajszálvonal itt FELÜL
+ * választ el a menütől (a belépő félnél alul). A süti-sáv (z-index 1000) a
+ * fiók (80) fölé kerül: a lista már számol a MÉRT sávmagassággal
+ * (`--kc-consent-offset`, 2.4.11), az utolsó elemmé lett gombnak ugyanez jár,
+ * különben a sáv teljesen eltakarná (WCAG 2.2 SC 2.4.11 Focus Not Obscured:
+ * https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html).
+ * Érintőcél: a gomb 44 px magas, teljes szélességű (SC 2.5.8, projekt-cél 44×44).
+ */
+.kc-account-nav--drawer.kc-account-nav--exit {
+  margin-top: auto;
+  padding-bottom: calc(var(--kc-space-3) + var(--kc-consent-offset));
+  border-top: 1px solid var(--kc-header-hairline);
+  border-bottom: 0;
 }
 
 /* ---- Desktop navigáció ---------------------------------------------------- */

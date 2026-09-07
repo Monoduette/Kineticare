@@ -455,6 +455,41 @@ const PAROK: readonly Par[] = [
     '1.4.11',
   ),
 
+  // --- WP31 (pótlás): a kijelentkezés IKON-GOMBJA 56,25em–75em között — a
+  //     profil-ikon párja, ugyanazok a színpárok (SC 1.4.11) ---
+  p(
+    'kc-account-nav__signout-icon',
+    'ink a filmen (veil 0)',
+    SZIN('ink'),
+    filmFejlec(0),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-account-nav__signout-icon',
+    'ink a fagyott filmen (veil 1)',
+    SZIN('ink'),
+    filmFejlec(1),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-account-nav__signout-icon',
+    'ink a paperen (belső oldal)',
+    SZIN('ink'),
+    SZIN('paper'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-account-nav__signout:hover',
+    'accent-deeper ikon a tint állapotrétegen',
+    SZIN('accent-deeper'),
+    SZIN('surface-tint'),
+    3,
+    '1.4.11',
+  ),
+
   // --- WP27: a harmonika forgó +/− jele — vonal, nem karakter (SC 1.4.11) ---
   p(
     'kc-accordion__summary::after',
