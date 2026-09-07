@@ -92,6 +92,43 @@
   color: var(--kc-color-surface-dark);
 }
 
+/* ---- Mobil: a sáv a lehető legalacsonyabb (WP19, audit P1-1) --------------
+   Mérve 390×844-en a sáv 244 px volt (a nézetablak 29%-a): a szöveg alatt a két
+   gomb egymás ALÁ tördelt (2×44 px + hézag). Itt a két gomb egy sorban, két
+   egyenlő hasábban áll, a felirat tördelhet; a gombok súlya és mérete továbbra
+   is azonos (nem dark pattern), a 44 px-es célfelület megmarad. NN/g, Sticky
+   headers: a rögzített elem „inherently take up space… even more important on
+   mobile”, a króm a szükséges minimumra szoruljon
+   (https://www.nngroup.com/articles/sticky-headers/); WCAG 2.2 SC 2.4.11
+   Focus Not Obscured (Minimum): a lebegő sáv ne takarja a fókuszált elemet
+   (https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html).
+   A hero ezen felül a sáv MÉRT magasságával emeli a gombjait a sáv fölé
+   (blocks/film-hero.css, `.kc-has-consent-banner`). */
+@media (max-width: 599px) {
+  .kc-consent-banner {
+    padding-block: var(--kc-space-3);
+  }
+
+  .kc-consent-banner__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  /* S token (≥ 14 px), hogy 320 px-en a „szükségeseket” szó egy sorban
+     elférjen a hasábban; szó KÖZBEN sosem törik (overflow-wrap: normal),
+     legfeljebb a szóköznél. A 44 px-es célfelület a min-height-ból marad. */
+  .kc-consent-banner__button {
+    padding-inline: var(--kc-space-3);
+    font-size: var(--kc-font-s);
+    white-space: normal;
+    overflow-wrap: normal;
+    hyphens: manual;
+    line-height: 1.2;
+    text-align: center;
+  }
+}
+
 /* ---- 2.4.11: a sáv ne takarhassa el a fókuszált elemet -------------------- */
 
 .kc-has-consent-banner {

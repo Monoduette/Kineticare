@@ -8,7 +8,7 @@
 
 import type { Product } from '../payload-types'
 import { isPaidCourse } from './courses'
-import { isAvailableSosProduct } from './sos-offer'
+import { isStorefrontFreeSos } from './sos-offer'
 
 export const COURSE_SHOWCASE_MARK = 'Kurzusaink'
 
@@ -101,11 +101,28 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
  * 1. minden fizetős kurzust (érvényes, megjeleníthető ár: `isPaidCourse`), a
  *    bejövő lekérdezés sorrendjében;
  * 2. az ingyenes SOS-t, de KIZÁRÓLAG az igazolt példányt
- *    (`isAvailableSosProduct`: kanonikus slug + publikált storefront-státusz +
- *    publikált piszkozat-státusz + explicit `priceInHUFEnabled === false`).
- *    Az „Ingyenes” felirat bizalmi határ (docs/kc-v1-owner-review.md P03/H13):
- *    hiányosan árazott vagy másik ingyenes termék NEM kerül a rácsba, mert ott
- *    „Ingyenes” címkét kapna, ami szerkesztői hibát takarna el.
+ *    (`isStorefrontFreeSos`: kanonikus slug + publikált storefront-`status` +
+ *    explicit `priceInHUFEnabled === false`). Az „Ingyenes” felirat bizalmi
+ *    határ (docs/kc-v1-owner-review.md P03/H13): hiányosan árazott vagy másik
+ *    ingyenes termék NEM kerül a rácsba, mert ott „Ingyenes” címkét kapna, ami
+ *    szerkesztői hibát takarna el.
+ *
+ * MIÉRT a látogatói feltétel, és nem a szigorúbb `isAvailableSosProduct`
+ * (WP19, 2026-09-07): a rács korábban a drafts `_status === 'published'`-t is
+ * kérte, a /kurzusok lista (src/app/(frontend)/kurzusok/page.tsx) viszont csak
+ * a saját `status` mezőt nézi. Élesben az SOS `_status`-a nem published
+ * (autosave-piszkozat a publikált rekord fölött), ezért a listán látszott, a
+ * kezdőlapi rácsból hiányzott: ugyanaz a termék két helyen kétféleképp.
+ * WCAG 2.2 SC 3.2.4 Consistent Identification: az azonos funkciójú elem
+ * azonosítása legyen következetes
+ * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html);
+ * NN/g, Consistency in design: az egy helyen megtanult szabály máshol is
+ * érvényes (https://www.nngroup.com/articles/consistency-and-standards/).
+ * A lazítás BIZTONSÁGOS: a P03 bizalmi határ (kanonikus slug + `status` +
+ * explicit ingyenes ár) változatlan, csak a technikai piszkozat-jelző esett
+ * ki, ami a látogatói láthatóságot sehol máshol (lista, kurzusoldal, menü:
+ * src/lib/menu-tree.ts) nem befolyásolja. A termék-lekérdezés (`getPublishedProducts`,
+ * `draft: false`) eleve a publikált változatot adja.
  *
  * MIÉRT látszik az ár és az ingyenesség a listában is (a 2026-08-15-i
  * kezdőlap-audit K2-döntése ezt duplikáció miatt vette ki; a felülvizsgálat
@@ -134,6 +151,6 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
  */
 export function showcaseProducts(visibleProducts: readonly Product[]): Product[] {
   const paid = visibleProducts.filter(isPaidCourse)
-  const sos = visibleProducts.find(isAvailableSosProduct)
+  const sos = visibleProducts.find(isStorefrontFreeSos)
   return sos ? [...paid, sos] : paid
 }

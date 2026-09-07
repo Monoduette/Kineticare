@@ -16,7 +16,18 @@ export function isStorefrontFreeSos(product: Product | null | undefined): produc
   )
 }
 
-/** A nevesített SOS-ajánlat nem helyettesíthető másik ingyenes kurzussal. */
+/**
+ * A nevesített SOS-ajánlat nem helyettesíthető másik ingyenes kurzussal.
+ *
+ * 2026-09-07-től a látogatói feltétellel AZONOS: a drafts `_status` már nem
+ * szűr. Ok (mérve élesben): a publikált SOS fölött autosave-piszkozat áll
+ * (`versions.drafts.autosave`), ezért a kezdőlap rácsa, hero-ja és SOS-sávja
+ * eltűnt, miközben a /kurzusok lista és a menü mutatta a kurzust. Ugyanaz a
+ * termék ugyanúgy jelenjen meg mindenhol (WCAG 2.2 SC 3.2.4 Consistent
+ * Identification, https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html;
+ * NN/g Consistency and Standards, https://www.nngroup.com/articles/consistency-and-standards/).
+ * A `getPublishedProducts` `draft: false`-szal eleve a publikált változatot adja.
+ */
 export function isAvailableSosProduct(product: Product | null | undefined): product is Product {
-  return isStorefrontFreeSos(product) && product._status === 'published'
+  return isStorefrontFreeSos(product)
 }

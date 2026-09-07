@@ -310,6 +310,31 @@ describe('HomeView (kezdőlap-render)', () => {
     expect(sosSection).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
 
+  it('WP19: a saját status szerint publikált SOS piszkozat _status mellett is a rácsban áll (a /kurzusok lista feltétele)', () => {
+    const html = render(
+      createElement(HomeView, {
+        home: null,
+        products: [
+          product({ id: 1, sku: 'Fizetős kurzus' }),
+          product({
+            id: 7,
+            sku: 'SOS Kézrelax villámkurzus',
+            slug: 'sos-kezrelax-villamkurzus',
+            _status: 'draft',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
+        ],
+        posts: [],
+      }),
+    )
+    const coursesSection = html.slice(html.indexOf('id="kurzusok"'), html.indexOf('id="ingyenes"'))
+    expect(coursesSection).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
+    expect(coursesSection).toContain('class="kc-course-showcase__price">Ingyenes</span>')
+    // A rács és a /kurzusok lista így egy feltételen áll. (Az SOS-sáv a
+    // FreeSos.tsx-ben még a drafts _status-t is kéri: WP19 nyitott kérdés.)
+  })
+
   it('M3 P03-őr: nem igazolt ingyenes termék (más slug) nem kap „Ingyenes” kártyát a rácsban', () => {
     const html = render(
       createElement(HomeView, {

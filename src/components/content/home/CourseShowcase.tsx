@@ -10,6 +10,7 @@ import {
   splitEditorialTitle,
 } from '../../../lib/course-showcase'
 import { courseHref } from '../../../lib/course-url'
+import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { coursePriceBadgeKind, courseTitle } from '../../../lib/courses'
 import { rewriteVisitorDashLeftover } from '../../../lib/gondolatjel-leftover'
 import type { Product } from '../../../payload-types'
@@ -56,14 +57,27 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
   const coverMedia =
     product.coverImage && typeof product.coverImage === 'object' ? product.coverImage : null
   const fallback = showcaseFallbackAt(index)
+  /*
+    LÁTHATÓ HÍVÁS A KÁRTYA ALJÁN (WP19, audit P2-5). A kártya egésze marad az
+    EGYETLEN link (egy link, egy cél); a felirat csak vizuálisan gomb, nem
+    második interaktív elem: nincs beágyazott gomb vagy link. A felirat a
+    §3.2 szótárból jön: fizetősnél #28 `course-sales-open` („Nyisd meg a
+    kurzusoldalt”), ingyenesnél #3/#4 `free-course-claim` („Elindítom
+    ingyen”), ugyanaz, mint a lentebbi SOS-sáv gombja (WCAG 2.2 SC 3.2.4:
+    azonos cél, azonos felirat). Források: NN/g, Cards: UX Component
+    Guidelines: a kártya egésze linkel, a felismerhető cselekvés mellette áll
+    (https://www.nngroup.com/articles/cards-component/); Baymard, Product
+    Listing UX: a listatétel mutassa a döntéshez és a továbblépéshez szükséges
+    adatot (https://baymard.com/blog/product-listing-information); NN/g
+    heurisztika #6 (felismerés, nem felidézés). A hozzáférhető név a látható
+    címmel kezdődik és a látható hívást is tartalmazza (WCAG 2.2 SC 2.5.3
+    Label in Name).
+  */
+  const ctaText = ctaLabel(priceBadge === 'free' ? 'free-course-claim' : 'course-sales-open')
 
   return (
     <article className="kc-course-showcase__card">
-      <Link
-        aria-label={`${title}: a kurzus részletei`}
-        className="kc-course-showcase__link"
-        href={href}
-      >
+      <Link aria-label={`${title}: ${ctaText}`} className="kc-course-showcase__link" href={href}>
         <span className="kc-course-showcase__media">
           {coverMedia ? (
             <MediaImage
@@ -111,6 +125,7 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
           {priceBadge === 'free' ? (
             <span className="kc-course-showcase__price">Ingyenes</span>
           ) : null}
+          <span className="kc-course-showcase__cta">{ctaText}</span>
         </span>
       </Link>
     </article>

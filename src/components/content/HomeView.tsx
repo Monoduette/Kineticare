@@ -3,7 +3,7 @@ import type { AppointmentSectionContext } from '../../lib/appointment/context'
 import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
 import { showcaseProducts } from '../../lib/course-showcase'
-import { isAvailableSosProduct } from '../../lib/sos-offer'
+import { isStorefrontFreeSos } from '../../lib/sos-offer'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
 import { RenderBlocks } from '../blocks/RenderBlocks'
@@ -120,8 +120,11 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
   // források: `showcaseProducts` (src/lib/course-showcase.ts). A lentebbi
   // FreeSos sáv a lead-magnet részletezése, saját CTA-val.
   const gridProducts = showcaseProducts(visibleProducts)
-  // A hero és a sáv csak a kanonikus, publikált és explicit ingyenes SOS-t ajánlja.
-  const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
+  // A hero és a sáv ugyanazt az SOS-t ajánlja, amelyik a rácsban is áll: a
+  // látogatói feltétel (`isStorefrontFreeSos`, azonos a /kurzusok listáéval),
+  // hogy a hero, a rács és a sáv sose mondjon mást ugyanarról a termékről
+  // (WCAG 2.2 SC 3.2.4; indoklás: `showcaseProducts`, src/lib/course-showcase.ts).
+  const freeProduct = visibleProducts.find(isStorefrontFreeSos) ?? null
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
 
   // Sávritmus: a kezdőlap fehér és tint (világoskék) szekciókat váltogat. A
