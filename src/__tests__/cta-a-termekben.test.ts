@@ -945,13 +945,12 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `${}`-behelyettesítés statikusan nem oldható fel. A szám azért van
     // állításban, hogy a növekedése látszódjon: minél több a futásidőben
     // eldőlő felirat, annál kevesebbet ér a szótár betartatása a kódban.
-    // 76: a REV C sín CTA a CMS `felirat` mezőt viszi a Button gyerekébe
-    // (szótári #10/#40/#41 a seedben) — szándékos, nem kódba égetett.
+    // 78: a kurzusgaléria heading/lead CMS-tartalék (`heading?.trim() || …`).
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(76)
+    ).toBeLessThanOrEqual(78)
   })
 })
