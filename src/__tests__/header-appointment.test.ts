@@ -1,54 +1,59 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  HEADER_APPOINTMENT_HREF,
-  HEADER_APPOINTMENT_LABEL,
-  HEADER_APPOINTMENT_NAV_ITEM,
-} from '../lib/header-appointment'
-import { getNavRouteState } from '../lib/nav-route'
+/**
+ * ŐR: a fejlécben és a mobil fiókban NINCS „Időpontfoglalás” belépő.
+ *
+ * WP10, 2026-09-07, tulajdonosi döntés. A 2026-09-06-i kör egy külön
+ * sáv-gombot (szöveglink 900 px-től, körvonalas gomb a fiók alján) adott a
+ * `/kapcsolat#idopontkeres` célra. A „Kapcsolat” menüpont ugyanoda visz, és
+ * az időpontkérő űrlap a /kapcsolat oldalon él, tehát a második belépő
+ * duplikált utat és zsúfoltabb sávot adott. A komponens, a lock és a CSS
+ * kikerült; ez az őr azt méri, hogy ne szivárogjon vissza.
+ *
+ * Források:
+ * - NN/g, Menu-Design Checklist: kevesebb, egyértelmű menüpont, ugyanarra a
+ *   célra ne álljon két elem. https://www.nngroup.com/articles/menu-design/
+ * - W3C, Understanding SC 3.2.3 Consistent Navigation.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html
+ */
 
-describe('fejléc Időpontfoglalás — CTA, nem menüpont', () => {
-  it('a felirat és a callback-href zárva van', () => {
-    expect(HEADER_APPOINTMENT_LABEL).toBe('Időpontfoglalás')
-    expect(HEADER_APPOINTMENT_HREF).toBe('/kapcsolat#idopontkeres')
-    expect(HEADER_APPOINTMENT_NAV_ITEM.label).toBe(HEADER_APPOINTMENT_LABEL)
-    expect(HEADER_APPOINTMENT_NAV_ITEM.href).toBe(HEADER_APPOINTMENT_HREF)
+const olvas = (relativ: string): string =>
+  readFileSync(fileURLToPath(new URL(relativ, import.meta.url)), 'utf8')
+
+const kommentNelkul = (forras: string): string =>
+  forras.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+describe('fejléc — nincs Időpontfoglalás belépő (WP10 őr)', () => {
+  it('a sáv-gomb komponense és a lockja nem létezik', () => {
+    for (const fajl of ['../components/layout/HeaderAppointmentCta.tsx', '../lib/header-appointment.ts']) {
+      expect(existsSync(fileURLToPath(new URL(fajl, import.meta.url))), fajl).toBe(false)
+    }
   })
 
-  it('hash-célú callback-link a /kapcsolat oldalon is inaktív marad', () => {
-    expect(getNavRouteState(HEADER_APPOINTMENT_NAV_ITEM, '/kapcsolat')).toBe('inactive')
-    expect(getNavRouteState(HEADER_APPOINTMENT_NAV_ITEM, '/kapcsolat#idopontkeres')).toBe('inactive')
-    expect(getNavRouteState(HEADER_APPOINTMENT_NAV_ITEM, '/kurzusok')).toBe('inactive')
+  it('a Header és a MobileNav kódja nem hivatkozik rá', () => {
+    for (const fajl of ['../components/layout/Header.tsx', '../components/layout/MobileNav.tsx']) {
+      const kod = kommentNelkul(olvas(fajl))
+      expect(kod, fajl).not.toContain('HeaderAppointmentCta')
+      expect(kod, fajl).not.toContain('header-appointment')
+      expect(kod, fajl).not.toContain('idopontkeres')
+      expect(kod, fajl).not.toContain('Időpontfoglalás')
+      expect(kod, fajl).not.toContain('Időpontkérés')
+    }
   })
 
-  it('a sáv és a fiók a közös lockot használja; nav-injektálás és Időpontkérés nincs', () => {
-    const lock = readFileSync(
-      fileURLToPath(new URL('../lib/header-appointment.ts', import.meta.url)),
-      'utf8',
-    )
-    const header = readFileSync(
-      fileURLToPath(new URL('../components/layout/Header.tsx', import.meta.url)),
-      'utf8',
-    )
-    const mobile = readFileSync(
-      fileURLToPath(new URL('../components/layout/MobileNav.tsx', import.meta.url)),
-      'utf8',
-    )
-    const cta = readFileSync(
-      fileURLToPath(new URL('../components/layout/HeaderAppointmentCta.tsx', import.meta.url)),
-      'utf8',
-    )
-    const combined = `${lock}${header}${mobile}${cta}`
+  it('a layout.css-ben nincs halott időpont-szabály', () => {
+    const css = kommentNelkul(olvas('../app/(frontend)/styles/layout.css'))
+    expect(css).not.toContain('appointment')
+  })
 
-    expect(header).toContain('HeaderAppointmentCta')
-    expect(header).toContain('getNavTree()')
-    expect(header).not.toContain('withHeaderAppointmentNav')
-    expect(mobile).toContain('HeaderAppointmentCta')
-    expect(lock).not.toContain('withHeaderAppointmentNav')
-    expect(combined).toContain('Időpontfoglalás')
-    expect(combined).not.toContain('Időpontkérés')
+  it('a menülink 900 px-től az alap 8 px-es oldaltérközét használja (mért tartalék)', () => {
+    // A felszabadult sáv-tartalék (900 px, bejelentkezve: 26,6 → 118,9 px a
+    // WP10 mérése szerint) fedezi a 8 px-es lépcsőt; a 4 px-es WP8-as
+    // felülírás nem térhet vissza csendben.
+    const css = kommentNelkul(olvas('../app/(frontend)/styles/layout.css'))
+    expect(css).not.toMatch(/\.kc-nav-desktop__link\s*\{[^}]*padding:\s*var\(--kc-space-2\)\s+var\(--kc-space-1\)/)
   })
 })

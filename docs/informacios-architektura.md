@@ -193,6 +193,7 @@ flowchart LR
     ROOT --> M3["Tudastar<br/>/blog"]
     ROOT --> M4["Kapcsolat<br/>/kapcsolat"]
     ROOT --> BTN["GOMB: Kurzusok<br/>/kurzusok<br/>kodban rogzitve"]
+    ROOT --> ACC["Belepes / Kurzusaim<br/>/belepes · /kurzusaim<br/>AccountNav, kodban rogzitve"]
 
     M1 --> S1["Rendeloi kezelesek<br/>/szolgaltatasok + rendeloi horgony"]
     M1 --> S2["Szakmai kepzes<br/>probodystudio.hu KULSO"]
@@ -210,6 +211,16 @@ flowchart LR
     classDef gond fill:#fff4e6,stroke:#e8590c,color:#000
     class S2,S3,BTN gond
 ```
+
+**Jegyzet (WP10, 2026-09-07).** A fejléc-gráfban NINCS külön
+„Időpontfoglalás” elem. A 2026-09-06-i kör egy sáv-gombot adott a
+`/kapcsolat#idopontkeres` célra; a tulajdonos 2026-09-07-én kivezette, mert a
+**Kapcsolat** menüpont (M4) célja, a `/kapcsolat` oldal időpontkérő űrlapja
+ugyanazt fedi, és a második belépő duplikált utat adott (6.4 minta). Forrás:
+NN/g Menu-Design Checklist, kevesebb és egyértelműen elkülönülő menüpont
+(https://www.nngroup.com/articles/menu-design/); WCAG 2.2 SC 3.2.3 Consistent
+Navigation (https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html).
+Őr: `src/__tests__/header-appointment.test.ts`.
 
 **Taxonómiai hiba:** az `S3` (SOS KézRelax) egy **kurzus**, mégis a
 „Szolgáltatások" (= rendelői kezelés) almenüjében ül, egy **külső** szakmai
@@ -580,7 +591,7 @@ a 3.2 menüfához képest. **Ez jegyzet, nem döntés**: az IA-változtatás
 | # | 3.2 fa / e doksi | Élő menü (menu-seed + Header) | Állapot |
 |---|---|---|---|
 | E1 | S3 „SOS KezRelax" → `/kurzusok/sos-kezrelax-villamkurzus` | „**Ingyenes** SOS KézRelax" (`SOS_FREE_MENU_LABEL`); a cél a termék, ha a `sku` feloldható, különben a tartalék `/kurzusok/2` (a helyi DB-n ez futott, a route a kanonikus címre irányít) | doksi elavult, a menü a jó |
-| E2 | A fejlécben csak a Kurzusok gomb szerepel kódban rögzítve | A sávban 900 px-től a **Belépés / Kurzusaim** szöveglink és az **Időpontfoglalás** szöveglink is él (`AccountNav`, `HeaderAppointmentCta`); 900 px alatt a fiókban | doksi elavult |
+| E2 | A fejlécben csak a Kurzusok gomb szerepel kódban rögzítve | A sávban 900 px-től a **Belépés / Kurzusaim** szöveglink is él (`AccountNav`); 900 px alatt a fiókban. Az **Időpontfoglalás** sáv-gomb 2026-09-07-én tulajdonosi döntésre kikerült (a „Kapcsolat” menüpont fedi, lásd a 3.2 fa jegyzetét) | doksi elavult |
 | E3 | „Tudástár" → `/blog` (N1: címke magyar, URL angol) | Változatlan: `/blog`, **nincs** `/tudastar` átirányítás | nyitott tulajdonosi döntés (N1), átirányítást nem írtunk |
 | E4 | 6.8: a Tudástár üres | Helyben 8 cikk seedelve; a menüpont célja most nem zsákutca | doksi elavult a tartalomra nézve |
 | E5 | 3.1 gráf: a fejléc-CTA „Kurzusok" | Egyezik; `/kurzusok`-on `aria-current="page"`, `/kurzusok/<slug>`-on ős-jelölés (mérve) | egyezik |

@@ -19,14 +19,9 @@ vi.mock('../components/layout/NewsletterSignup', () => ({
 
 import { DesktopNav } from '../components/layout/DesktopNav'
 import { Footer, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
-import { HeaderAppointmentCta } from '../components/layout/HeaderAppointmentCta'
 import { HeaderCoursesNav } from '../components/layout/HeaderCoursesNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { NavAnchor } from '../components/layout/NavAnchor'
-import {
-  HEADER_APPOINTMENT_HREF,
-  HEADER_APPOINTMENT_LABEL,
-} from '../lib/header-appointment'
 import type { NavItem } from '../lib/menu-tree'
 import { getNavLinkRouteState, getNavRouteState } from '../lib/nav-route'
 
@@ -227,34 +222,24 @@ describe.each([
   })
 })
 
-describe('HeaderAppointmentCta — outline callback, nem menüpont', () => {
-  it.each(['bar', 'drawer'] as const)(
-    '%s: Időpontfoglalás a callback-hrefre megy, nincs aria-current',
-    (variant) => {
-      pathnameMock.mockReturnValue('/kapcsolat')
-      const html = render(createElement(HeaderAppointmentCta, { variant }))
-
-      expect(html).toContain(HEADER_APPOINTMENT_LABEL)
-      expect(html).not.toContain('Időpontkérés')
-      const link = anchorFor(html, HEADER_APPOINTMENT_HREF)
-      expect(link).not.toContain('aria-current')
-      expect(link).not.toContain('data-ancestor-active')
-    },
-  )
-
-  it('a DesktopNav és a MobileNav lista nem kapja a callback-gombot', () => {
+describe('fejléc — nincs Időpontfoglalás belépő (WP10, 2026-09-07)', () => {
+  // Tulajdonosi döntés: a „Kapcsolat" menüpont fedi az időpontkérést, a
+  // keret nem ad második utat a /kapcsolat#idopontkeres célra.
+  // NN/g Menu-Design Checklist: https://www.nngroup.com/articles/menu-design/
+  // WCAG 2.2 SC 3.2.3 Consistent Navigation.
+  it('sem a DesktopNav, sem a MobileNav nem renderel időpont-belépőt', () => {
     pathnameMock.mockReturnValue('/kapcsolat')
     const items = [navItem(1, 'Rólunk', '/rolunk'), navItem(2, 'Kapcsolat', '/kapcsolat')]
     const desktop = render(createElement(DesktopNav, { items }))
     const mobile = render(createElement(MobileNav, { items }))
 
-    expect(desktop).not.toContain(HEADER_APPOINTMENT_HREF)
-    expect(desktop).not.toContain('Időpontfoglalás')
-    expect(desktop).not.toContain('Időpontkérés')
-    expect(mobile).toContain(HEADER_APPOINTMENT_LABEL)
-    expect(mobile).toContain('kc-site-header__drawer-appointment')
-    expect(mobile).not.toContain('kc-nav-mobile__link">Időpontfoglalás')
-    expect(mobile).not.toContain('Időpontkérés')
+    for (const html of [desktop, mobile]) {
+      expect(html).not.toContain('idopontkeres')
+      expect(html).not.toContain('Időpontfoglalás')
+      expect(html).not.toContain('Időpontkérés')
+      expect(html).not.toContain('appointment')
+    }
+    expect(anchorFor(mobile, '/kapcsolat')).toContain('aria-current="page"')
   })
 })
 

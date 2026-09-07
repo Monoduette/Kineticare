@@ -6,7 +6,6 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { NavItem } from '../../lib/menu-tree'
 import { getNavRouteState } from '../../lib/nav-route'
 import { AccountNav } from './AccountNav'
-import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { NavAnchor } from './NavAnchor'
 
 /** A fiókban Tab-bal bejárható vezérlők (a rejtett, 0 méretű elemek nélkül). */
@@ -20,7 +19,7 @@ function drawerTabbables(drawer: HTMLElement): HTMLElement[] {
  * FÓKUSZCSAPDA a nyitott fiókban (WP9, 2026-09-07, mérve).
  *
  * A fiók MODÁLIS: overlay fedi a lapot és a body görgetése zárolt. Mérve
- * (Chromium, 320 és 390 px): a fiók utolsó eleméről (Időpontfoglalás) a Tab
+ * (Chromium, 320 és 390 px): a fiók utolsó eleméről a Tab
  * a lap tartalmára vitte a fókuszt, az overlay ALÁ, ahol a fókuszált elem
  * teljesen takart, és a lap nem is görgethető oda. Ez a WCAG 2.2 SC 2.4.11
  * Focus Not Obscured (Minimum) bukása: „a component is not entirely hidden
@@ -64,6 +63,10 @@ function trapTabInDrawer(event: KeyboardEvent, drawer: HTMLElement | null): void
 
 /**
  * Kompakt (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
+ * - A fiók tartalma: fiók-belépő + a CMS-menü. Külön időpont-gomb a fiók
+ *   alján NINCS (2026-09-07, tulajdonosi döntés): a „Kapcsolat” menüpont
+ *   viszi az időpontkérő űrlapra; a lista a fiók utolsó Tab-állomása.
+ *   NN/g Menu-Design Checklist: https://www.nngroup.com/articles/menu-design/
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
  * - Nyitva a Tab a fiókon belül körbejár (fókuszcsapda, lásd fent).
  */
@@ -263,9 +266,6 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         ) : (
           <p className="kc-nav-mobile__empty">A menü jelenleg üres.</p>
         )}
-        <div className="kc-nav-mobile__appointment">
-          <HeaderAppointmentCta onNavigate={close} variant="drawer" />
-        </div>
       </nav>
     </div>
   )

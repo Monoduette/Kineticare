@@ -6,6 +6,10 @@
  * szerint, hogy a háromhasábos rács ne legyen üres keret.
  */
 
+import type { Product } from '../payload-types'
+import { isPaidCourse } from './courses'
+import { isAvailableSosProduct } from './sos-offer'
+
 export const COURSE_SHOWCASE_MARK = 'Kurzusaink'
 
 export const COURSE_SHOWCASE_HEADING = 'A kezed, lépésről lépésre.'
@@ -87,4 +91,49 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
     return { head: trimmed, tail: null }
   }
   return { head, tail }
+}
+
+/**
+ * A kezdőlapi Kurzusaink rács tételei és sorrendje (WP12, tulajdonosi kérés
+ * 2026-09-07: „a kurzusaink részből hiányzik az ingyenes”).
+ *
+ * MIT enged be:
+ * 1. minden fizetős kurzust (érvényes, megjeleníthető ár: `isPaidCourse`), a
+ *    bejövő lekérdezés sorrendjében;
+ * 2. az ingyenes SOS-t, de KIZÁRÓLAG az igazolt példányt
+ *    (`isAvailableSosProduct`: kanonikus slug + publikált storefront-státusz +
+ *    publikált piszkozat-státusz + explicit `priceInHUFEnabled === false`).
+ *    Az „Ingyenes” felirat bizalmi határ (docs/kc-v1-owner-review.md P03/H13):
+ *    hiányosan árazott vagy másik ingyenes termék NEM kerül a rácsba, mert ott
+ *    „Ingyenes” címkét kapna, ami szerkesztői hibát takarna el.
+ *
+ * MIÉRT látszik az ár és az ingyenesség a listában is (a 2026-08-15-i
+ * kezdőlap-audit K2-döntése ezt duplikáció miatt vette ki; a felülvizsgálat
+ * alapja):
+ * - NN/g, „The Anatomy of a List Entry”: „in all our 22 years of usability
+ *   testing, there's one piece of info that every user has requested: the
+ *   price” (https://www.nngroup.com/articles/list-entries/);
+ * - Baymard, „Product Listing UX: What Information to Display in Product
+ *   Listings”: „It is therefore vital that the price be permanently visible
+ *   at all times” a listatételen, különben a látogató a bizonytalanság miatt
+ *   ejti a tételt vagy oda-vissza kattintgat
+ *   (https://baymard.com/blog/product-listing-information);
+ * - NN/g, „Pricing information gives B2B sites a competitive advantage”: az
+ *   elrejtett ár bizalomvesztés (https://www.nngroup.com/articles/show-price/).
+ * A teljes kínálat egy listában (fizetős + ingyenes, ár mindkettőn) a
+ * termékcsapat P03 kérése is: az SOS minden ajánlati megjelenésénél
+ * egyértelműen ingyenes. A lentebbi FreeSos sáv NEM duplikátum, hanem a
+ * lead-magnet részletezése saját CTA-val („Elindítom ingyen”, §3.2 #4).
+ *
+ * MIÉRT ez a sorrend (fizetős elöl, ingyenes hátul): az értékesítési
+ * UX-skill M-hierarchiája (docs/ertekesitesi-ux-skill.md 2. szakasz) az M3
+ * fizetős kártyákat elsődleges, az M4 ingyenes lead-magnetet másodlagos célnak
+ * teszi, és a K2-tilalom szerint az ingyenes nem uralhatja el az oldalt. A
+ * pozíció a rácsban a súlyozás eszköze: az olvasás bal felülről indul (NN/g
+ * F-minta), így az első kártya a fizetős program.
+ */
+export function showcaseProducts(visibleProducts: readonly Product[]): Product[] {
+  const paid = visibleProducts.filter(isPaidCourse)
+  const sos = visibleProducts.find(isAvailableSosProduct)
+  return sos ? [...paid, sos] : paid
 }
