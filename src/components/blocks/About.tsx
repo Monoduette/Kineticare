@@ -33,9 +33,16 @@ import '../../app/(frontend)/styles/blocks/about.css'
  * jelent valamit, ha a közelség mondja meg, mi tartozik össze). A kezdőlap
  * és a /rolunk About-ja ugyanazt a szöveget viszi egy közös forrásból
  * (src/lib/home-seed.ts `rolunkBemutatkozasSzoveg`), a statisztikasor
- * oldalanként más. A hullámos fotókon visszafogott hover-nagyítás
- * (about.css, photo-frieze.css; csak `hover: hover`, reduced-motion alatt
- * nincs).
+ * oldalanként más.
+ *
+ * WP24 (2026-09-07, tulajdonosi kör az élő oldalról): (1) a képhasáb nem
+ * ragad görgetéskor (a WP18 sticky kikerült: „mozog vele a kép; ez nem
+ * jó"); (2) desktopon a szöveghasáb a rács sorát tölti ki, a sor magasságát
+ * a kép adja, így a hasáb bal keretvonala a kép aljáig fut és a kiemelés
+ * (`kc-about__foot`) a hasáb aljára ül („érje le a kép aljáig"); (3) a
+ * hullámos fotók hoverje nem nagyítás, hanem forma-változás: a hullám-maszk
+ * mérete változik (about.css, photo-frieze.css; csak `hover: hover`,
+ * reduced-motion alatt semmi).
  */
 export interface AboutProps {
   block: BlockAbout

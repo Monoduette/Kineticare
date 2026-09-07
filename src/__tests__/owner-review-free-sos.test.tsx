@@ -3,7 +3,11 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { FreeSos, resolveFreeSosCta } from '../components/content/home/FreeSos'
+import {
+  FREE_SOS_STRIP_TITLE,
+  FreeSos,
+  resolveFreeSosCta,
+} from '../components/content/home/FreeSos'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import type { Product } from '../payload-types'
 
@@ -105,12 +109,12 @@ describe('P03: ingyenesség csak az ismert ingyenes kurzushoz', () => {
   })
 })
 
-describe('H04/P03: informatív CMS-fotó, szerkeszthető tartalom, ingyenes jelzés', () => {
+describe('WP26/P03: kompakt, kép nélküli sáv; ingyenes jelzés csak az ismert ingyenes kurzushoz', () => {
   it('az ingyenes sáv fizetős felülírás mellett is az ingyenes termékre visz', () => {
     const html = renderToStaticMarkup(
       createElement(FreeSos, { freeProduct, cta: { href: '/kurzusok/fizetos' } }),
     )
-    expect(html).toContain('>Ingyenes</span>')
+    expect(html).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
     expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
     expect(html).not.toContain('/kurzusok/fizetos')
   })
@@ -142,45 +146,76 @@ describe('H04/P03: informatív CMS-fotó, szerkeszthető tartalom, ingyenes jelz
       expect(html).not.toMatch(/Ingyenes|ingyen!|Elindítom ingyen|SOS|Kérem ingyen/)
       expect(html).not.toContain('/kurzusok/fizetos')
       expect(html).not.toContain('target="_blank"')
-      expect(html).toContain(`alt="${photo.alt}"`)
+      expect(html).not.toContain('kc-free-sos__kicker')
+      expect(html).not.toContain('<img')
     }
   })
 
-  it('a kép nem aria-hidden részfában van, az alt és a CMS-szövegek megmaradnak', () => {
-    const html = renderToStaticMarkup(
-      createElement(FreeSos, {
-        freeProduct,
-        backgroundImage: photo,
-        title: 'Saját SOS-cím',
-        body: 'Megmutatjuk a gyakorlatokat.',
-      }),
-    )
-    expect(html).toContain(`alt="${photo.alt}"`)
-    expect(html).not.toMatch(/<[^>]*aria-hidden="true"[^>]*class="kc-free-sos__art"/)
-    expect(html).toContain('Saját SOS-cím')
-    expect(html).toContain('Megmutatjuk a gyakorlatokat.')
-    expect(html).toContain('>Ingyenes</span>')
-    expect(html).toContain('kc-button--secondary')
+  /**
+   * WP26 (tulajdonos, 2026-09-07): „‚Ingyenes villámkurzus’ nagyon rövid
+   * leírással, benne a gomb ugyanúgy, és hogy ez ingyenes.” A cím rögzített
+   * (a CMS-cím inaktív, mert az élő érték kvirtmínuszt tartalmaz, §3.1); a
+   * kurzus neve a felvezető sorban, a rács kártyájával azonos forrásból
+   * (WCAG 2.2 SC 3.2.4); a szöveg a CMS-é; a gomb a §3.2 #4 szótári alak.
+   */
+  it('a sáv címe rögzített, a CMS-cím (gondolatjellel is) nem jelenik meg', () => {
+    for (const title of ['Saját SOS-cím', 'SOS Kézrelax — ingyenes villámkurzus', undefined]) {
+      const html = renderToStaticMarkup(
+        createElement(FreeSos, { freeProduct, title, body: 'Megmutatjuk a gyakorlatokat.' }),
+      )
+      expect(html).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
+      if (title) expect(html).not.toContain(title)
+      expect(html).not.toContain('\u2014')
+      expect(html).not.toContain('\u2013')
+      expect(html).toContain('class="kc-free-sos__kicker">SOS Kézrelax</p>')
+      expect(html).toContain('Megmutatjuk a gyakorlatokat.')
+      expect(html).toContain(`${ctaLabel('free-course-claim')} <span aria-hidden="true">→</span>`)
+      expect(html).toContain('kc-button--secondary')
+    }
   })
 
-  it.each([undefined, null, {}])('kép nélkül nincs üres képhasáb: %j', (backgroundImage) => {
-    const html = renderToStaticMarkup(createElement(FreeSos, { freeProduct, backgroundImage }))
-    expect(html).not.toContain('kc-free-sos__art')
-    expect(html).not.toContain('kc-free-sos--with-image')
+  it('a felvezető sor a displayTitle → sku láncból jön; mindkettő nélkül elmarad', () => {
+    const skuOnly = renderToStaticMarkup(
+      createElement(FreeSos, { freeProduct: { ...freeProduct, displayTitle: null, sku: 'SKU-név' } }),
+    )
+    expect(skuOnly).toContain('class="kc-free-sos__kicker">SKU-név</p>')
+    const nameless = renderToStaticMarkup(
+      createElement(FreeSos, { freeProduct: { ...freeProduct, displayTitle: null, sku: ' ' } }),
+    )
+    expect(nameless).not.toContain('kc-free-sos__kicker')
+    expect(nameless).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
   })
 
-  it('a sizes és a CSS ugyanazon, inkluzív 900 px-es törésponttal vált', () => {
-    const html = renderToStaticMarkup(
-      createElement(FreeSos, { freeProduct, backgroundImage: photo }),
-    )
-    const sizes = /\bsizes="([^"]+)"/.exec(html)?.[1]
-    expect(sizes).toBe('(min-width: 900px) 44vw, 100vw')
+  it('a szekciót a saját címsora nevezi meg (landmark), a horgony az id-ből jön', () => {
+    const html = renderToStaticMarkup(createElement(FreeSos, { freeProduct }))
+    expect(html).toContain('aria-labelledby="ingyenes-cim"')
+    expect(html).toContain('id="ingyenes-cim"')
+    expect(html).toContain('id="ingyenes"')
+  })
+
+  it.each([undefined, null, {}, photo])(
+    'kép SOHA nem kerül a sávba, akkor sem, ha a CMS ad fotót: %j',
+    (backgroundImage) => {
+      const html = renderToStaticMarkup(createElement(FreeSos, { freeProduct, backgroundImage }))
+      expect(html).not.toContain('<img')
+      expect(html).not.toContain('kc-free-sos__art')
+      expect(html).not.toContain('kc-free-sos--with-image')
+      expect(html).not.toContain(photo.url)
+    },
+  )
+
+  it('a CSS-ben nincs kép-hasáb, háttérkép, animáció vagy átmenet; a szegély a 32 px-es token', () => {
     const css = readFileSync(
       new URL('../app/(frontend)/styles/blocks/free-sos.css', import.meta.url),
       'utf8',
     ).replace(/\/\*[\s\S]*?\*\//g, '')
-    expect(css).toContain('@media (min-width: 900px)')
-    expect(css).not.toMatch(/\.kc-free-sos__art\s*\{[^}]*display:\s*none/)
+    expect(css).not.toContain('kc-free-sos__art')
     expect(css).not.toContain('linear-gradient')
+    expect(css).not.toContain('background-image')
+    expect(css).not.toMatch(/\b(transition|animation|transform)\s*:/)
+    expect(css).toMatch(
+      /\.kc-section\.kc-free-sos\s*\{[^}]*padding-block:\s*var\(--kc-space-6\)/,
+    )
+    expect(css).toMatch(/\.kc-free-sos__layout\s*\{[^}]*flex-wrap:\s*wrap/)
   })
 })

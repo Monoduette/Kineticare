@@ -66,6 +66,38 @@ describe('AccountNav — kijelentkezett látogató', () => {
     expect(header).not.toContain(ACCOUNT_NAV_LABELS.signOut)
     expect(header).not.toContain('/kurzusaim')
   })
+
+  /**
+   * WP27 (2026-09-07, tulajdonosi kérés): a sávban a belépő profil-IKON, nem
+   * kiírt szó. A hozzáférhető név mégis „Belépés" marad: a glif `aria-hidden`,
+   * a nevet a vizuálisan rejtett szöveg adja (WCAG 2.2 SC 2.4.4, SC 4.1.2), a
+   * `title` csak a mutatós tooltip. A fiókban (drawer) az ikon a LÁTHATÓ szó
+   * mellett áll (NN/g Icon Usability: „icons with labels"), rejtett szöveg
+   * nélkül — a két elhelyezés neve ugyanaz (SC 3.2.4).
+   */
+  it('a sávban ikon-link, rejtett „Belépés" névvel; a fiókban ikon + látható szó', () => {
+    const link = header.match(/<a\b[^>]*href="\/belepes"[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
+    expect(link).toContain('kc-account-nav__link--icon')
+    expect(link).toContain('title="Belépés"')
+    expect(link).toMatch(/<svg[^>]*aria-hidden="true"[^>]*class="kc-account-nav__icon"/)
+    expect(link).toContain('<span class="kc-visually-hidden">Belépés</span>')
+    // Az ikon dekoratív: nincs saját neve (a képernyőolvasó egyszer olvas).
+    expect(link).not.toMatch(/<svg[^>]*aria-label/)
+    expect(link).not.toMatch(/<title>/)
+
+    const drawer = render(createElement(AccountNav, { signedIn: false, variant: 'drawer' }))
+    const drawerLink = drawer.match(/<a\b[^>]*href="\/belepes"[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
+    expect(drawerLink).not.toContain('kc-account-nav__link--icon')
+    expect(drawerLink).toContain('kc-account-nav__icon')
+    expect(drawerLink).toContain('<span>Belépés</span>')
+    expect(drawerLink).not.toContain('kc-visually-hidden')
+  })
+
+  it('bejelentkezve a „Kurzusaim" szöveglink marad, ikon-only nincs', () => {
+    const signedIn = render(createElement(AccountNav, { signedIn: true, variant: 'header' }))
+    expect(signedIn).not.toContain('kc-account-nav__link--icon')
+    expect(signedIn).toContain('>Kurzusaim</a>')
+  })
 })
 
 describe('AccountNav — bejelentkezett felhasználó', () => {

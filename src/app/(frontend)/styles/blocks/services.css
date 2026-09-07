@@ -108,28 +108,45 @@
    online kurzus«?").
 
    MÉRVE (Chromium, produkciós build): a betűméret MÁR AZELŐTT is azonos volt —
-   mindkét cím 46,4 px @1440 és 32,55 px @390, mert mindkettő a közös L lépcsőt
-   viseli. A szemnek mégis MÁS méretűnek látszottak, és ennek két MÉRHETŐ oka
-   volt, egyik sem a betűméret:
+   mindkét cím a közös L lépcsőt viseli. A szemnek mégis MÁS méretűnek
+   látszottak, és ennek két MÉRHETŐ oka volt, egyik sem a betűméret:
 
-     1. SORTÁV. Ez a cím a tábla-sortávot vitte (1,06 → 49,18 px), a
-        `.kc-section-title` viszont a címsor-sortávot (1,2 → 55,68 px). Két
-        azonos méretű H2 ugyanazon a lapon nem futhat kétféle sortávval.
-     2. MÉRTÉK. A 7,2ch a tükör ÓRIÁS (89 px-es) tábla-lépcsőjéhez volt szabva.
-        A három-méretes skálán (46,4 px) ez 199 px-es dobozt jelentett, ami a
-        19 karakteres címet HÁROM sorra törte („Így / tudunk / segíteni"), és a
-        keskeny, magas szövegtömb kisebbnek látszik, mint a szélesen futó
-        párja. Mérve 1440 px-en: 7,2ch → 199×148 px, 3 sor.
+     1. SORTÁV. Ez a cím a tábla-sortávot vitte (1,06), a `.kc-section-title`
+        viszont a címsor-sortávot (1,2). Két azonos méretű H2 ugyanazon a
+        lapon nem futhat kétféle sortávval.
+     2. MÉRTÉK. A 7,2ch a tükör ÓRIÁS (89 px-es) tábla-lépcsőjéhez volt szabva,
+        és a 19 karakteres címet HÁROM sorra törte.
 
-   A 12ch-s mérték a mért döntés: 1440/1200/1024/900/390/320 px-en MINDENHOL
-   pontosan két sor lesz belőle (332×111 px @1440) — vagyis a blokk magassága
-   megegyezik a „Így működik az online kurzus" címével (361×111 px), a
-   tábla-jellegű, hasábba tördelt megjelenés pedig megmarad. A hosszú
-   CMS-címek fokozata (`--long`, 16ch) érintetlen, és továbbra is BŐVEBB
-   ennél, tehát a fokozat nem üresedett ki. */
+   A MÉRTÉK EGY SORRA VAN SZABVA (WP25, tulajdonosi kör 2026-09-07, szó
+   szerint: „Erre számíthatsz velünk: a cím két sorba törik, egy sorba kell
+   kerüljön"; a /szolgaltatasok „Ezért fogod imádni" címére ugyanez).
+
+   A korábbi 12ch a 19 karakteres tükör-címre volt kalibrálva („pontosan két
+   sor"), a 23 karakteres élő címet viszont HÁROM sorra törte (mérve 1440 px-en:
+   12ch = 286 px doboz, a cím természetes egysoros szélessége 458 px).
+   A ch-egység a Tenor Sans „0"-jának szélessége (23,88 px @ 40 px-es L), ami
+   szélesebb az átlagos betűnél: a mért címek egysoros szélessége ch-ban
+   (Chromium, 1024/1200/1440 px-en azonos, mert a mérték a betűvel skálázik):
+     „Erre számíthatsz velünk"  23 karakter → 19,16ch
+     „Amiben mások vagyunk"     20 karakter → 19,17ch
+     „Ezért fogod imádni"       18 karakter → 15,59ch
+     „Így tudunk segíteni"      19 karakter → 15,86ch
+   A 20ch-s mérték mindegyiket EGY sorba engedi, és a bal hasábban 1024 px-től
+   kifér (a hasáb 447 px = 20,2ch @ 1024; 626 px = 26,2ch @ 1440). 900–1023
+   px között, ahol a hasáb keskenyebb, a cím a hasáb szélén törik — ez a
+   szükséges, nem a felesleges törés. A sorhossz-felső korlát (NN/g: a címsor
+   is legyen egy pillantással átfogható, a hosszú CMS-cím fokozata külön él)
+   marad: 20ch ≈ 33–35 karakter, ami az egysoros címsor ésszerű plafonja.
+   text-wrap: balance egy sorra nem hat, két sornál a két sort egyenlíti ki.
+   NN/g Visual Hierarchy: a címsor egy egység, a felesleges törés széttagolja.
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+   GOV.UK type scale: a címsor mértéke a hasábhoz, nem fix karakterszámhoz kötve.
+   https://design-system.service.gov.uk/styles/type-scale/
+   A hosszú CMS-címek fokozata (`--long`) BŐVEBB ennél (24ch), tehát a fokozat
+   nem üresedett ki. */
 .kc-services__title {
   margin: var(--kc-space-6) 0 0;
-  max-width: 12ch;
+  max-width: 20ch;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
@@ -149,9 +166,11 @@
    tartalom), és a cím 6 sorra esett szét. A fokozat a HÁROM-MÉRETES skála
    világában (tokens.css) már csak a mértéket bővíti: a betűméret a közös L
    lépcső marad, mert a rácsúszást a szerkezeti javítás (kép a cím ALATT, a
-   folyamban) mérettől függetlenül kizárja. */
+   folyamban) mérettől függetlenül kizárja. WP25: az alap 20ch-ra nőtt, a
+   fokozat vele lép 24ch-ra (≈ 40 karakter soronként), hogy a 47 karakteres
+   seed-cím 2–3 sorban maradjon, ne 4–5-ben. */
 .kc-services__title--long {
-  max-width: 16ch;
+  max-width: 24ch;
 }
 
 /* Mobilon a fotó teljes szélességű sáv a szekció-szegélyen túlnyúlva (tükör

@@ -6,8 +6,8 @@
  * karakterre zárta, gondolatjel nélkül. A sín-CTA-k a §3.2 szótárból jönnek,
  * kivéve a rendelői ajtó CMS-feliratát: a tulajdonos az élő
  * `Tovább a kezelésekre` alakot hagyta jóvá; a szótár #40 M-7 szerint
- * `Nézd meg a kezeléseket` marad. A /szolgaltatasok tábla-elrendezése ehhez
- * nem nyúl.
+ * `Nézd meg a kezeléseket` marad. A /szolgaltatasok ajtó-blokkja a SAJÁT
+ * soraival kapja ugyanezt a sín-megjelenítést (`presentSzolgaltatasokLayout`).
  */
 
 import type { BlockServices, Media, Page } from '../payload-types'
@@ -335,13 +335,78 @@ export const presentHomeHelpServicesBlock = (block: BlockServices): BlockService
   }
 }
 
-/** A /szolgaltatasok minden services-blokkja tábla — sín oda nem kerül. */
+/**
+ * A /szolgaltatasok „Szolgáltatásaink" ajtó-blokkja: három sor, mindegyik
+ * saját CTA-val (felirat + URL). Ez a lap döntés-szekciója („melyik út való
+ * nekem?"); a lap többi services-blokkja (pl. a kétsoros „Ezért fogod
+ * imádni", CTA nélkül) NEM ajtó-blokk, az tábla marad.
+ */
+export const isSzolgaltatasokAjtoBlock = (block: {
+  blockType?: unknown
+  rows?: unknown
+}): boolean => {
+  if (block.blockType !== 'services') return false
+  if (!Array.isArray(block.rows) || block.rows.length !== 3) return false
+  return (block.rows as readonly { felirat?: unknown; url?: unknown }[]).every(
+    (row) =>
+      typeof row.felirat === 'string' &&
+      row.felirat.trim().length > 0 &&
+      typeof row.url === 'string' &&
+      row.url.trim().length > 0,
+  )
+}
+
+/**
+ * A /szolgaltatasok szekciósora (WP25, tulajdonosi kör 2026-09-07: „az »Így
+ * segítünk / Szolgáltatásaink« doboz nagyon csúnya, abszolút nem illik a
+ * stílusunkba"; és a 3. kör: „a miben segíthetünk és az így tudunk segíteni
+ * lényegében ugyanaz, szóval eszerint legyen a kinézete").
+ *
+ * DÖNTÉS: az ajtó-blokk itt is a SÍN + PANEL elrendezést kapja, a lap SAJÁT
+ * soraival (sorcímek, törzs, CTA-feliratok és URL-ek, horgony változatlan;
+ * a tartalom nem módosul, csak a megjelenítés). A régi tábla a lapon mérve
+ * (1440 px): egy 468 px magas, jobbra zárt fotó fölött három 52ch-s
+ * szöveghasáb aláhúzott szöveglinkkel — a kezdőlap és a /rolunk ugyanezt a
+ * három ajtót már a sínnel mutatja, így ugyanaz a három út két különböző
+ * felületi nyelven állt a lapokon. Ugyanaz a funkció = ugyanaz a felület:
+ * WCAG 2.2 SC 3.2.4 Consistent Identification
+ * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
+ * NN/g Consistency and Standards (10 heurisztika, #4;
+ * https://www.nngroup.com/articles/consistency-and-standards/), Jakob törvénye
+ * (a látogató a kezdőlapon tanult mintát viszi tovább).
+ * A (b) út (a táblát a panel kártya-nyelvére festeni) egy HARMADIK változatot
+ * hozott volna létre ugyanarra a három ajtóra, ezért nem az.
+ *
+ * Fotó: a sorok CMS-fotója, ha van; különben a kezdőlapi sín zárolt
+ * tartalék-fotói ajtónként (ugyanaz a három út, ugyanaz a három kép), a
+ * három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
+ * (`image`) a sínen nem jelenik meg (a Services sín-ága nem használja).
+ * Háttér: a sín-sáv help-paper a tint osztály mögött, mint a kezdőlapon; a
+ * szerkesztő sötét választása marad.
+ */
 export const presentSzolgaltatasokLayout = (
   layout: NonNullable<Page['layout']>,
 ): NonNullable<Page['layout']> =>
-  layout.map((block) =>
-    block.blockType === 'services' ? { ...block, elrendezes: 'tabla' as const } : block,
-  )
+  layout.map((block) => {
+    if (block.blockType !== 'services') return block
+    if (!isSzolgaltatasokAjtoBlock(block)) return { ...block, elrendezes: 'tabla' as const }
+    const settings = block.sectionSettings ?? {}
+    return {
+      ...block,
+      elrendezes: 'sin' as const,
+      sectionSettings: {
+        ...settings,
+        hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
+      },
+      rows: (block.rows ?? []).map((row, index) => {
+        const photo = populatedHelpPhoto(row.photo)
+        if (photo) return { ...row, photo }
+        return index < HOME_HELP_PHOTO_FILES.length
+          ? { ...row, photo: homeHelpFallbackMedia(index) }
+          : row
+      }),
+    }
+  })
 
 /**
  * A sín ELŐTTI szekció kis felső felirata (tulajdonosi kör, 2026-09-07).

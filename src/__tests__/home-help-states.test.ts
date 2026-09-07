@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildHomeLayout } from '../lib/home-seed'
+import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import {
   CLOSED_HAND_HOME_HELP_TITLES,
   HOME_HELP_LEAD,
@@ -18,6 +19,7 @@ import {
   isConvertibleHomeHelpServices,
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
+  isSzolgaltatasokAjtoBlock,
   presentHomeHelpServicesBlock,
   presentHomeLayout,
   presentSzolgaltatasokLayout,
@@ -242,24 +244,143 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     }
   })
 
-  it('a /szolgaltatasok services-blokkját sínről is táblára zárja', () => {
+  /**
+   * WP25 (tulajdonos, 2026-09-07: „az »Így segítünk / Szolgáltatásaink« doboz
+   * nagyon csúnya, abszolút nem illik a stílusunkba"; 3. kör: „a miben
+   * segíthetünk és az így tudunk segíteni lényegében ugyanaz, szóval eszerint
+   * legyen a kinézete"): a lap ajtó-blokkja (3 sor, mindegyik CTA-val) a sín
+   * megjelenítést kapja a SAJÁT soraival; a többi services-blokk tábla marad.
+   * WCAG 2.2 SC 3.2.4 Consistent Identification; NN/g Consistency and Standards.
+   */
+  it('a /szolgaltatasok ajtó-blokkját (3 sor, mind CTA-val) sínre teszi, a tartalom változatlan', () => {
+    const rows = [
+      {
+        title: 'Rendelői kezelések',
+        body: 'Szöveg.',
+        felirat: 'Időpontot kérek',
+        url: '/kapcsolat#idopontkeres',
+      },
+      {
+        title: 'Otthoni online program',
+        body: 'Szöveg.',
+        felirat: 'Megnézem a kurzusokat',
+        url: '/kurzusok',
+      },
+      {
+        title: 'Szakmai képzések',
+        body: 'Szöveg.',
+        felirat: 'Tovább a szakmai képzésre',
+        url: 'https://probodystudio.hu/kez-workshop/',
+        ujAblakban: true,
+      },
+    ]
     const layout = [
       { blockType: 'welcome' as const, title: 'Bevezető' },
       {
         blockType: 'services' as const,
-        title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
-        elrendezes: 'sin' as const,
-        rows: [{ title: 'Rendelői kezelések', body: 'Szöveg.' }],
+        eyebrow: 'Szolgáltatásaink',
+        title: 'Így segítünk',
+        image: 39,
+        rows,
+        sectionSettings: { visible: true, anchorId: 'szolgaltatasaink', hatter: 'tint' },
       },
     ] as unknown as NonNullable<Page['layout']>
     const presented = presentSzolgaltatasokLayout(layout)
     expect(presented).toHaveLength(2)
     expect(presented[0]).toEqual(layout[0])
-    expect(presented[1]).toMatchObject({
+    const sin = presented[1]
+    if (sin?.blockType !== 'services') throw new Error('nincs services blokk')
+    expect(sin.elrendezes).toBe('sin')
+    expect(sin.title).toBe('Így segítünk')
+    expect(sin.eyebrow).toBe('Szolgáltatásaink')
+    expect(sin.sectionSettings?.anchorId).toBe('szolgaltatasaink')
+    expect(sin.sectionSettings?.hatter).toBe('tint')
+    expect(sin.rows?.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban])).toEqual(
+      rows.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban]),
+    )
+    // Fotó: CMS-fotó híján a kezdőlapi sín zárolt tartalék-képei, ajtónként.
+    expect(
+      sin.rows?.map((r) => (typeof r.photo === 'object' && r.photo ? r.photo.url : null)),
+    ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
+  })
+
+  it('a /szolgaltatasok ajtó-blokkja a CMS-fotót tartja, a paper hátteret tintre, a sötétet békén hagyja', () => {
+    const cmsFoto = {
+      id: 77,
+      url: '/api/media/file/sajat.jpg',
+      alt: 'Saját',
+      width: 800,
+      height: 1000,
+    }
+    const ajto = (hatter: string) =>
+      ({
+        blockType: 'services' as const,
+        title: 'Így segítünk',
+        rows: [
+          { title: 'A', felirat: 'Gomb', url: '/a', photo: cmsFoto },
+          { title: 'B', felirat: 'Gomb', url: '/b' },
+          { title: 'C', felirat: 'Gomb', url: '/c' },
+        ],
+        sectionSettings: { visible: true, hatter },
+      }) as unknown as NonNullable<Page['layout']>[number]
+    const [paper] = presentSzolgaltatasokLayout([ajto('feher')])
+    if (paper?.blockType !== 'services') throw new Error('nincs services blokk')
+    expect(paper.sectionSettings?.hatter).toBe('tint')
+    expect(paper.rows?.[0]?.photo).toEqual(cmsFoto)
+    expect(
+      typeof paper.rows?.[1]?.photo === 'object' && paper.rows[1].photo
+        ? paper.rows[1].photo.url
+        : null,
+    ).toBe(`${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[1]}`)
+    const [sotet] = presentSzolgaltatasokLayout([ajto('sotet')])
+    if (sotet?.blockType !== 'services') throw new Error('nincs services blokk')
+    expect(sotet.sectionSettings?.hatter).toBe('sotet')
+  })
+
+  it('a /szolgaltatasok NEM ajtó services-blokkja (CTA nélküli sorok, vagy nem három sor) tábla marad, sínről is', () => {
+    const layout = [
+      {
+        blockType: 'services' as const,
+        title: 'Ezért fogod imádni',
+        elrendezes: 'sin' as const,
+        rows: [
+          { title: 'A kéz a szakterületünk', body: 'Szöveg.' },
+          { title: 'A hétköznapokra készülünk', body: 'Szöveg.' },
+        ],
+      },
+      {
+        blockType: 'services' as const,
+        title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
+        elrendezes: 'sin' as const,
+        rows: [
+          { title: 'Rendelői kezelések', body: 'Szöveg.', felirat: 'Gomb', url: '/a' },
+          { title: 'Otthoni program', body: 'Szöveg.', felirat: 'Gomb', url: '/b' },
+          { title: 'Szakmai képzések', body: 'Szöveg.' },
+        ],
+      },
+    ] as unknown as NonNullable<Page['layout']>
+    const presented = presentSzolgaltatasokLayout(layout)
+    expect(presented).toHaveLength(2)
+    expect(presented[0]).toMatchObject({
       blockType: 'services',
       elrendezes: 'tabla',
-      title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
+      title: 'Ezért fogod imádni',
     })
+    expect(presented[1]).toMatchObject({ blockType: 'services', elrendezes: 'tabla' })
+    expect(isSzolgaltatasokAjtoBlock(layout[0] as { blockType?: unknown; rows?: unknown })).toBe(
+      false,
+    )
+    expect(isSzolgaltatasokAjtoBlock(layout[1] as { blockType?: unknown; rows?: unknown })).toBe(
+      false,
+    )
+  })
+
+  it('a seed /szolgaltatasok ajtó-blokkja sínre kerül, az „Ezért fogod imádni" usps marad', () => {
+    const presented = presentSzolgaltatasokLayout(buildSzolgaltatasokLayout())
+    const services = presented.filter((block) => block.blockType === 'services')
+    expect(services).toHaveLength(1)
+    expect(services[0]).toMatchObject({ elrendezes: 'sin' })
+    expect(presented.some((block) => block.blockType === 'usps')).toBe(true)
   })
 })
 

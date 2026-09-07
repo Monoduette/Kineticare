@@ -8,8 +8,8 @@
  * GEOMETRIA. Desktopon (≥ 900 px) 2×2-es rács a Rólunk-tábla jobb
  * hasábjában: két oszlop, soronként 17rem (272 px, a 4 px-es rácson), a
  * köz a 12 px-es rács-lépcső (space-3). Az oszlop teljes magassága így
- * 2 × 272 + 12 = 556 px, amihez a bal hasáb szövege igazodik (about.css,
- * függőleges elosztás). Mobilon (< 900 px) EGY sor három csík, 18rem
+ * 2 × 272 + 12 = 556 px, ez adja a rács sorának magasságát, amit a bal
+ * szöveghasáb kitölt (about.css, WP24: a keretvonal a fríz aljáig fut). Mobilon (< 900 px) EGY sor három csík, 18rem
  * (288 px), a fekvőbb páros portré elmarad (PhotoFrieze.tsx, mérés).
  *
  * ÍV. Desktopon a FELSŐ sor két csempéje félkör-tetejű (a két „ív" alatt
@@ -132,28 +132,53 @@
   }
 }
 
-/* ---- Hover: a kép 1,03-ra nagyít az ívben (WP18) --------------------------
-   Tulajdonosi kérés: „lehetne valami mozgási hover rajtuk, de ne legyen
-   öncélú". A csempe és az ív nem mozdul, csak a kép nagyít a keretében: a
-   figyelmet arra a fotóra teszi, amelyen az egér áll (visszajelzés, nem
-   dísz), és nem ígér kattintást (nincs cursor: pointer, a fríz nem link).
-   A `scale` külön tulajdonság, ezért a görgetés-parallax `transform`-ja
-   (animation) NEM írja felül, a kettő összeadódik (MDN scale:
-   https://developer.mozilla.org/en-US/docs/Web/CSS/scale). Mérték: 240 ms
-   (--kc-motion-base × 1,2, a Material 3 „short" 200–300 ms sávja), --kc-ease-out.
+/* ---- Hover: a FORMA változik, nem a kép (WP24, 2026-09-07) ----------------
+   A WP18 hover a képet 1,03-ra nagyította; a tulajdonos élőben elvetette
+   („nem kell bele ez a képnagyítás"), és az Astra-referencia mintáját kérte:
+   „különböző formák, és ha ráviszem az egeret, a forma változik egy picit:
+   border-re változik, vagy egy hullám az alján". A visszajelzés ezért a
+   csempe SAJÁT élén történik, a kép nem mozdul és nem nagyít:
+    - FELSŐ sor (a két ív): az ív lapul. A nyugalmi sugár a csempe magassága
+      (a böngésző félkörre zsugorítja, lásd fent); hoverre a függőleges sugár
+      a magasság 40%-a, a vízszintes marad a fél szélesség (50%), tehát a
+      félkörből lapos ellipszis-ív lesz (1440 px-en 153 px → 109 px magas
+      ív). A `border-radius` interpolálható (MDN, „Animation type: a length,
+      percentage or calc()"), a %-os és px-es végpont közt is:
+        https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius
+    - ALSÓ sor (a hullámos él): a fríz `ul`-jének maszkja változik, ugyanúgy,
+      mint a /rolunk fotóján (about.css `--kc-about-wave-hover`: a hullám
+      8% → 11% magas, 100% → 112% széles). A `mask-size` interpolálható
+      („a repeatable list"), a `mask-image` nem (discrete):
+        https://developer.mozilla.org/en-US/docs/Web/CSS/mask-size
+      A kiválasztás `:has()`-szal (Baseline 2023): ahol nincs, ott a felső
+      sor íve marad az egyetlen hover-jel, a fríz nem törik.
+   Mérték: 240 ms (--kc-motion-base × 1,2, Material 3 „short" 200–300 ms),
+   --kc-ease-out; NN/g: a visszajelzés 0,1 mp-en belül induljon, a gyors
+   átmenet kevesebb időt vesz el.
      https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
-     https://developer.apple.com/design/human-interface-guidelines/motion
-     https://www.nngroup.com/articles/animation-duration/
-   Csak hover-eszközön (`hover: hover`); csökkentett mozgásnál lentebb
-   `scale: none`, `transition: none` (WCAG 2.2 SC 2.3.3). */
+     https://www.nngroup.com/articles/animation-usability/
+   Csak hover-eszközön (`hover: hover`), nincs cursor: pointer (a fríz nem
+   link); csökkentett mozgásnál lentebb nincs átmenet ÉS nincs forma-változás
+   (WCAG 2.2 SC 2.3.3). */
 
 @media (hover: hover) {
-  .kc-photo-frieze__img {
-    transition: scale calc(var(--kc-motion-base) * 1.2) var(--kc-ease-out);
+  .kc-photo-frieze__strip {
+    transition: border-radius calc(var(--kc-motion-base) * 1.2) var(--kc-ease-out);
   }
 
-  .kc-photo-frieze__strip:hover .kc-photo-frieze__img {
-    scale: 1.03;
+  .kc-photo-frieze__strip:nth-child(-n + 2):hover {
+    border-radius: 50% 50% 0 0 / 40% 40% 0 0;
+  }
+
+  .kc-photo-frieze__strips {
+    transition-property: -webkit-mask-size, mask-size;
+    transition-duration: calc(var(--kc-motion-base) * 1.2);
+    transition-timing-function: var(--kc-ease-out);
+  }
+
+  .kc-photo-frieze__strips:has(.kc-photo-frieze__strip:nth-child(n + 3):hover) {
+    -webkit-mask-size: var(--kc-about-wave-hover);
+    mask-size: var(--kc-about-wave-hover);
   }
 }
 
@@ -186,6 +211,22 @@
   .kc-photo-frieze__strip:nth-child(2n) {
     border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
   }
+
+  /* Egy sorban mind a három csík a hullámot érinti, és az ívesek a párosak. */
+  @media (hover: hover) {
+    .kc-photo-frieze__strip:nth-child(-n + 2):hover {
+      border-radius: 0;
+    }
+
+    .kc-photo-frieze__strip:nth-child(2n):hover {
+      border-radius: 50% 50% 0 0 / 40% 40% 0 0;
+    }
+
+    .kc-photo-frieze__strips:has(.kc-photo-frieze__strip:hover) {
+      -webkit-mask-size: var(--kc-about-wave-hover);
+      mask-size: var(--kc-about-wave-hover);
+    }
+  }
 }
 
 /* ---- Csökkentett mozgás: minden mozgás és transform ki --------------------- */
@@ -201,13 +242,31 @@
     opacity: 1;
   }
 
-  /* KÜLÖN szabály, szándékosan: a build CSS-feldolgozója (Lightning CSS) a
-     `transform` mellé írt önálló `scale`-t a `transform: scale3d(1,1,1)`
-     rövidítésbe hajtja, és a `scale: none` ELVESZIK — mérve 2026-09-07 a
-     kiszolgált chunkon (a hover 1,03 csökkentett mozgásnál is élt). Egy
-     `transform` nélküli szabályban a `scale` megmarad. */
-  .kc-photo-frieze__img,
-  .kc-photo-frieze__strip:hover .kc-photo-frieze__img {
-    scale: none;
+  /* A hover forma-változás sem él (WCAG 2.2 SC 2.3.3): az ív és a hullám a
+     nyugalmi értéken marad. Tanulság a WP18-ból: a build CSS-feldolgozója
+     (Lightning CSS) a `transform` mellé írt önálló tulajdonságot rövidítésbe
+     hajthatja, ezért a visszaállítás KÜLÖN, transform nélküli szabályban áll
+     (a kiszolgált chunkon mérve, lásd a WP24 beszámolót). */
+  .kc-photo-frieze__strip:nth-child(-n + 2):hover {
+    border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
+  }
+
+  @media (max-width: 899px) {
+    .kc-photo-frieze__strip:nth-child(-n + 2):hover {
+      border-radius: 0;
+    }
+
+    .kc-photo-frieze__strip:nth-child(2n):hover {
+      border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
+    }
+  }
+
+  /* A specificitás a hover-szabályokét éri el (:has + nth-child + :hover). */
+  .kc-photo-frieze__strips,
+  .kc-photo-frieze__strips:has(.kc-photo-frieze__strip:hover),
+  .kc-photo-frieze__strips:has(.kc-photo-frieze__strip:nth-child(n + 3):hover) {
+    transition: none;
+    -webkit-mask-size: var(--kc-about-wave-rest);
+    mask-size: var(--kc-about-wave-rest);
   }
 }

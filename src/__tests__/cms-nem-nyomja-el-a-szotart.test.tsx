@@ -158,8 +158,11 @@ describe('FreeSos — a szótári felirat nyer a CMS-mező ellenében', () => {
     )
     expect(html).toContain(ctaLabel('free-course-claim'))
     expect(html).not.toContain(ELES_ELTERO_FELIRAT)
-    // A SZERKESZTŐ TARTALMA viszont változatlanul él.
-    expect(html).toContain('Ingyenes SOS gyakorlatok')
+    // A szerkesztő SZÖVEGE változatlanul él; a sáv címe 2026-09-07-től rögzített
+    // („Ingyenes villámkurzus”, tulajdonosi kérés, KOR4 2. pont), a CMS-cím
+    // nem jelenik meg.
+    expect(html).not.toContain('Ingyenes SOS gyakorlatok')
+    expect(html).toContain('Ingyenes villámkurzus')
     expect(html).toContain('Öt perc, azonnal.')
   })
 

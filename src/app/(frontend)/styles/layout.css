@@ -405,6 +405,49 @@
   text-underline-offset: 0.35em;
 }
 
+/* ---- Ikon-link a „Belépés" helyett (WP27, 2026-09-07, tulajdonosi kérés) ----
+   A sávban a kijelentkezett belépő NEM szöveg, hanem profil-glif. A doboz a
+   hamburgerrel AZONOS: 44×44 CSS px kör, 24 px-es ikon, hoverre a hűvös tint
+   állapotréteg és akcent-mély ikon (ugyanaz a nyelv, mint
+   `.kc-nav-mobile__toggle`). A nevet a komponens rejtett szövege adja
+   (AccountNav.tsx fejkomment: WCAG 2.2 SC 2.4.4, 4.1.2).
+   - Material 3 Icon buttons: 48 dp cél, 24 dp ikon, kör alakú state layer:
+     https://m3.material.io/components/icon-buttons/specs
+   - Apple HIG Buttons: a célfelület legalább 44×44 pt:
+     https://developer.apple.com/design/human-interface-guidelines/buttons
+   - WCAG 2.2 SC 2.5.8 Target Size (Minimum), 24×24 küszöb, itt 44×44:
+     https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+   KONTRASZT (gomb-kontraszt.test.ts, `kc-account-nav__icon`): az ikon ink
+   vonala a filmsávon veil 0-nál 5,13:1, fagyott filmen 11,42:1, paperen
+   14,79:1 (küszöb 3:1, SC 1.4.11); hoverre accent-deeper a tinten 6,13:1.
+   A fókuszgyűrű a sáv fátyol-arányos szabályát örökli (`.kc-site-header__bar
+   :focus-visible`, minden fátyol-álláson ≥ 3,98:1), a kör alak miatt
+   `outline-offset` 2 px kifelé, nem lóg ki a sávból (mérve 900–1440 px).
+   Az aláhúzás (a szöveglink hover-jelölője) itt értelmetlen: nincs szöveg,
+   a hover jelölője a kitöltött kör. */
+.kc-site-header__actions .kc-account-nav__link--icon {
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: var(--kc-radius-full);
+  transition:
+    background-color var(--kc-motion-fast) var(--kc-ease-out),
+    color var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+.kc-site-header__actions .kc-account-nav__link--icon:hover {
+  background-color: var(--kc-header-accent-soft);
+  color: var(--kc-header-accent);
+  text-decoration: none;
+}
+
+.kc-account-nav__icon {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
 /* Az `active` (lenyomott) állapot: a felirat egy hajszálnyit lejjebb ül. Nem
    dísz — visszajelzés, hogy a koppintás célba ért. */
 .kc-account-nav__link:active,
@@ -531,7 +574,9 @@
 }
 
 .kc-account-nav--drawer .kc-account-nav__link {
-  justify-content: space-between;
+  /* Ikon + szó egymás mellett (a fiók listás, ezért itt NEM ikon-only). */
+  justify-content: flex-start;
+  gap: var(--kc-space-3);
   padding: var(--kc-space-3) var(--kc-space-2);
   font-size: var(--kc-font-m);
   font-weight: var(--kc-font-weight-bold);

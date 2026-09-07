@@ -75,49 +75,55 @@
     grid-row: 1;
   }
 
-  /* RAGADÓ KÉPHASÁB (WP18). Ha a szerkesztő hosszabb bemutatkozást ír (mérve
-     hét bekezdéssel: a szöveg 1440 px-en 1203 px, a 2×2 fríz 556 px, a
-     /rolunk fotója 708 px), a képhasáb alatt 500-650 px üres maradna. A
-     képhasáb ezért a görgetéssel együtt marad a nézetben, amíg a szöveg
-     elfogy; a mai kétbekezdéses szövegnél (505 px) nincs mit ragasztani, a
-     szabály semleges. (position:
-     sticky; a rács sorában felül igazítva, különben a stretch miatt nincs
-     mihez képest ragadnia). A minta a Material 3 „supporting pane"
-     elrendezésé: a mellékes tartalom (kép) a fő tartalom (szöveg) mellett,
-     saját görgetéssel; és az NN/g szerint a valódi arcok a bizalmi elem,
-     tehát maradjanak látótérben, amíg a történetet olvassák.
-       https://developer.android.com/develop/ui/compose/layouts/adaptive/canonical-layouts
-       https://developer.mozilla.org/en-US/docs/Web/CSS/position#sticky
-       https://www.nngroup.com/articles/photos-as-web-content/
-     A tető-eltolás a fejléc magassága + egy space-5, hogy a ragadó kép ne
-     bújjon a rögzített fejléc alá. Nem mozgás (nincs animáció), ezért a
-     csökkentett mozgástól független; 900 px alatt (egy hasáb) nem él. */
+  /* A KÉPHASÁB NEM RAGAD (WP24, 2026-09-07). A WP18 `position: sticky` a
+     görgetéssel együtt vitte a képet; a tulajdonos élőben zavarónak mérte
+     („ha legörgetek, mozog vele a kép; ez nem jó"). Az NN/g szerint a látótér
+     szélén ELMOZDULÓ elem ösztönös figyelemváltást vált ki, és a helyüket
+     változtató elemek gyorsabban rántják el a figyelmet, mint bármi más —
+     olvasás közben ez pont a szöveg ellen dolgozik
+     (https://www.nngroup.com/articles/animation-usability/). A GOV.UK a képet
+     a tartalom rácsán tartja, nem lebegteti
+     (https://design-system.service.gov.uk/styles/images/). A kép ezért a
+     hasáb tetején ÁLL, a rács sorában felül igazítva (align-self: start). */
   .kc-about--founders .kc-photo-frieze,
   .kc-about--paired .kc-about__figure {
-    position: sticky;
-    top: calc(var(--kc-header-height) + var(--kc-space-5));
     align-self: start;
   }
 
-  /* TERMÉSZETES FOLYÁS, FELÜL IGAZÍTVA (WP18, 2026-09-07). A korábbi
-     `justify-content: space-between` a fej, a törzs és a láb közé a hasáb
-     maradék magasságát osztotta szét: 1440 px-en a rések 106 px-re nőttek,
-     ami már nem csoportosít, hanem szétszakít (NN/g whitespace: a térköz
-     akkor jelent valamit, ha a közelség mondja meg, mi tartozik össze, nem
-     a maradék; https://www.nngroup.com/videos/whitespace/,
+  /* TERMÉSZETES FOLYÁS, A HASÁB A KÉP MAGASSÁGÁN (WP18 + WP24, 2026-09-07).
+     A korábbi `justify-content: space-between` a fej, a törzs és a láb közé
+     a hasáb maradék magasságát osztotta szét: 1440 px-en a rések 106 px-re
+     nőttek, ami már nem csoportosít, hanem szétszakít (NN/g whitespace: a
+     térköz akkor jelent valamit, ha a közelség mondja meg, mi tartozik
+     össze, nem a maradék; https://www.nngroup.com/videos/whitespace/,
      https://www.nngroup.com/articles/gestalt-proximity/). A GOV.UK is a
      tartalom saját ritmusát tartja: a bekezdések közti köz a tipográfiai
      skálából jön, nem a szomszéd hasáb magasságából
-     (https://design-system.service.gov.uk/styles/spacing/). Ezért a hasáb
-     felül igazodik (align-self: start), a csoportok közt tokenes köz áll
-     (space-5 = 24 px), a magasságot a tartalom adja. Ugyanez a szabály a
-     /rolunk páros alakjára is (egy CSS, egy ritmus). */
+     (https://design-system.service.gov.uk/styles/spacing/). Ezért a fej és
+     a törzs felül, tokenes közzel áll (justify-content: flex-start), a
+     magasságát a tartalom adja.
+     WP24: a tulajdonos kérése, hogy a bal hasáb (szöveg, kiemelés, és a
+     hasáb bal keretvonala) „kb. érje le a kép aljáig desktopon". A hasáb
+     ezért a rács SORÁT tölti ki (align-self: stretch): a sor magasságát a
+     kép adja (a /rolunk fotója, a kezdőlapon a 2×2 fríz), így a
+     `.kc-about__copy` bal keretvonala a kép aljáig fut, a láb-csoport
+     (kiemelés) pedig `margin-top: auto`-val a hasáb aljára ül; a szöveg és
+     a kiemelés közti köz nő, a szövegen belüli ritmus nem. A keretvonal így
+     a szöveget ÉS a képet egy közös régióvá zárja (NN/g common region:
+     https://www.nngroup.com/articles/common-region/). Ha a szöveg hosszabb a
+     képnél, a sor a szöveghez nő, és a kép felül marad (nincs nyúlás, a
+     fotó képaránya érintetlen). 900 px alatt egy hasáb: a mai folyás. */
   .kc-about--founders .kc-about__copy,
   .kc-about--paired .kc-about__copy {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    align-self: start;
+    align-self: stretch;
+  }
+
+  .kc-about--founders .kc-about__foot,
+  .kc-about--paired .kc-about__foot {
+    margin-top: auto;
   }
 }
 
@@ -325,38 +331,67 @@
   mask-repeat: no-repeat;
 }
 
-/* HOVER-MOZGÁS A HULLÁMOS FOTÓN (WP18, tulajdonosi kérés: „lehetne valami
-   mozgási hover rajtuk, de ne legyen öncélú"). A fotó a maszkolt keretben
-   1,03-ra nagyít, a keret és a hullám nem mozdul: a mozgás azt mondja, hogy
-   „ez a kép él, ide néz a figyelmed", nem díszít és nem ígér kattintást
-   (nincs cursor: pointer, a fotó nem link). Mérték: 240 ms (a
-   --kc-motion-base × 1,2; Material 3 „short" sáv, 200–300 ms, kis elem
-   állapotváltása), a --kc-ease-out görbe (belépő lassul, decelerate).
-     Material 3 Motion, easing and duration:
+/* HOVER: A HULLÁM VÁLTOZIK (WP24, 2026-09-07). A WP18 hover a képet
+   1,03-ra nagyította a keretében; a tulajdonos élőben ezt vetette el („nem
+   kell bele ez a képnagyítás"), és azt kérte, ami az Astra-referencián
+   tetszett: „ha ráviszem az egeret, a forma változik egy picit … egy hullám
+   az alján"; a /rolunk hullámáról: „ha ráviszem az egeret a képre, ez a
+   hullámos rés változna valamit". A hover ezért nem a képet mozgatja, hanem
+   a kivágás FORMÁJÁT: a hullám-réteg 8% → 11% magas (az amplitúdó a fotó
+   magasságának ~7,3%-áról ~10%-ára nő) és 100% → 112% széles (a görbe
+   középső szakasza tágul, a hullámhegyek kijjebb csúsznak), a tömör réteg
+   ennek megfelelően 92,5% → 89,5% (a 0,5%-os átfedés marad). A kép maga nem
+   nagyít és nem mozdul: a fotó tartalma (arc, kéz) érintetlen.
+
+   MIÉRT mask-size, ÉS NEM mask-image. A `mask-image` animációs típusa
+   „discrete" (nem interpolálható), a `mask-size` viszont „a repeatable
+   list", tehát a két rétegű maszk méretei simán átmenetelnek (MDN, formális
+   definíció):
+     https://developer.mozilla.org/en-US/docs/Web/CSS/mask-image
+     https://developer.mozilla.org/en-US/docs/Web/CSS/mask-size
+   A -webkit- előtag a Safari 15-ig kell (a maszk-szabály párja). Az
+   átmenet külön szabályban él, a maszk-szabály maga statikus marad.
+
+   MÉRTÉK: 240 ms (--kc-motion-base × 1,2; a Material 3 „short" sáv 200–300
+   ms, kis elem állapotváltása), --kc-ease-out (belépő lassul).
      https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
-     Apple HIG Motion: a mozgás rövid, a cél a visszajelzés, a tartalom
-     nélküle is teljes: https://developer.apple.com/design/human-interface-guidelines/motion
-     NN/g Animation duration and motion characteristics (100–500 ms sáv):
-     https://www.nngroup.com/articles/animation-duration/
-   Csak valódi hover-eszközön (`hover: hover`), érintőn nincs „ragadó" állapot
-   (Material 3 interaction states); csökkentett mozgásnál nincs átmenet és
-   nincs nagyítás (WCAG 2.2 SC 2.3.3 Animation from Interactions:
-   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html). */
+     NN/g: a hover-visszajelzés 0,1 mp-en belül induljon, és a gyors átmenet
+     kevesebb időt vesz el (https://www.nngroup.com/articles/animation-usability/).
+   Csak valódi hover-eszközön (`hover: hover`; érintőn nincs ragadó állapot),
+   nincs cursor: pointer (a fotó nem link, kattintást nem ígér); csökkentett
+   mozgásnál nincs átmenet ÉS nincs forma-változás (WCAG 2.2 SC 2.3.3
+   Animation from Interactions:
+   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html).
+   A kezdőlapi fríz alsó sorának hover-hullámát a photo-frieze.css viszi,
+   ugyanezekkel a maszk-értékekkel (`--kc-about-wave-*`). */
+.kc-about {
+  --kc-about-wave-rest:
+    100% 92.5%,
+    100% 8%;
+  --kc-about-wave-hover:
+    100% 89.5%,
+    112% 11%;
+}
+
 @media (hover: hover) {
-  .kc-about__figure img {
-    transition: scale calc(var(--kc-motion-base) * 1.2) var(--kc-ease-out);
+  .kc-about#rolunk .kc-about__figure {
+    transition-property: -webkit-mask-size, mask-size;
+    transition-duration: calc(var(--kc-motion-base) * 1.2);
+    transition-timing-function: var(--kc-ease-out);
   }
 
-  .kc-about__figure:hover img {
-    scale: 1.03;
+  .kc-about#rolunk .kc-about__figure:hover {
+    -webkit-mask-size: var(--kc-about-wave-hover);
+    mask-size: var(--kc-about-wave-hover);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kc-about__figure img,
-  .kc-about__figure:hover img {
+  .kc-about#rolunk .kc-about__figure,
+  .kc-about#rolunk .kc-about__figure:hover {
     transition: none;
-    scale: none;
+    -webkit-mask-size: var(--kc-about-wave-rest);
+    mask-size: var(--kc-about-wave-rest);
   }
 }
 

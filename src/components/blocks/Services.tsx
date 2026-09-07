@@ -17,8 +17,11 @@ import '../../app/(frontend)/styles/blocks/services-sin.css'
  * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
  * Vizuális króm (WP17, tulajdonosi drótváz 2026-09-07): asztalon függőleges
  * sín 5rem-es körjelölőkkel + kártya-panel; 900 px alatt accordion-sorok,
- * a nyitott sor alatt a panel. A kéz-ikon (zárt / nyíló / nyitott) MINDEN
- * állapotban a tétel jele: inaktívan körvonalas, aktívan fehér a sötét körön.
+ * a nyitott sor alatt a panel. A kéz-ikon (zárt / nyíló / nyitott, Phosphor
+ * Icons, MIT) MINDEN állapotban a tétel jele: inaktívan chrome a fehér körön,
+ * aktívan fehér a sötét körön.
+ * A /szolgaltatasok „Szolgáltatásaink" blokkja is ezt a sínt kapja (WP25), a
+ * lap saját soraival: a döntést a `presentSzolgaltatasokLayout` hozza.
  */
 export interface ServicesProps {
   block: BlockServices
@@ -337,13 +340,37 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
 }
 
 /**
- * A sín kézikonjai: ököl / nyíló / nyitott tenyér. A tulajdonos kérése
- * (2026-09-07): „azokat az ikonokat használd, ahol láthatóak a kezek", a zárt
- * és a nyitott is kell. Ugyanaz a glifa látszik inaktívan (chrome körvonal a
- * fehér körön) és aktívan (fehér a sötét körön) — az állapotváltás csak szín,
- * nem ikoncsere és nem méretugrás (Material 3 icon button: outlined vs filled,
- * azonos méret; https://m3.material.io/components/icon-buttons/overview).
- * Minden glifa ugyanazt a 24×24 viewBoxot és 1,85-ös vonalvastagságot viseli.
+ * A sín kézikonjai: ököl (zárt) / markoló (félig nyitott) / tenyér (nyitott).
+ *
+ * FORRÁS (WP25, tulajdonosi kör 2026-09-07: „ezek az ikonok nem jók, csúnyák:
+ * keress online kéz-ikonokat, hasonló stílusban: nyitott, zárt és félig
+ * nyitott"): Phosphor Icons, `@phosphor-icons/core` 2.1.1, REGULAR súly,
+ * `hand-fist`, `hand-grabbing`, `hand-palm`. Licenc: MIT
+ * (https://github.com/phosphor-icons/core/blob/main/LICENSE). Katalógus:
+ * https://phosphoricons.com. A path-ok betűhíven az npm-csomag
+ * `assets/regular/*.svg` fájljaiból jönnek (256×256 viewBox, `currentColor`
+ * kitöltés); a repó nem húz be ikoncsomag-függőséget. Részletes forrásjegyzék:
+ * a WP25 beszámoló `ikon-forras.md` melléklete.
+ *
+ * MIÉRT EZ A HÁROM: egy készlet, egy súly, azonos optikai ráccsal — a
+ * három állapot (zárt → félig nyitott → nyitott) így egy sorozatként olvasható,
+ * nem három különböző rajzként. Material 3 Icons: a rendszerikonok egy
+ * családból, azonos vonalvastagsággal jöjjenek
+ * (https://m3.material.io/styles/icons/designing-icons). Apple HIG Icons: a
+ * custom ikonok stílusa legyen egységes, a vonalvastagság a mérethez arányos
+ * (https://developer.apple.com/design/human-interface-guidelines/icons).
+ *
+ * MÉRET: a glifa a kör 50%-a marad (asztal 40/80 px, mobil 28/56 px). A
+ * regular súly vonala 16/256 = a doboz 6,25%-a → 40 px-en 2,5 px, 28 px-en
+ * 1,75 px (a régi kézi rajz 1,85/24 = 7,7% volt; a light súly 12/256 = 4,7%
+ * 28 px-en 1,3 px-re vékonyodna, ezért nem az). A kitöltés `currentColor`,
+ * így a kör állapotszíne (chrome / ink / fehér) változatlanul öröklődik:
+ * inaktív chrome a fehér körön 4,21:1, aktív fehér az inken 14,32:1
+ * (WCAG 2.2 SC 1.4.11, küszöb 3:1; gomb-kontraszt.test.ts mátrix).
+ *
+ * Ugyanaz a glifa látszik inaktívan és aktívan — az állapotváltás csak szín,
+ * nem ikoncsere és nem méretugrás (Material 3 icon button: outlined vs
+ * filled, azonos méret; https://m3.material.io/components/icon-buttons/overview).
  */
 function RailHandIcon({ index }: { index: number }) {
   if (index % 3 === 0) return <ClosedHandIcon />
@@ -351,55 +378,39 @@ function RailHandIcon({ index }: { index: number }) {
   return <OpenHandIcon />
 }
 
+/** Phosphor 256-os rács, kitöltött glifa (a vonal a path része, nem stroke). */
 function railIconProps() {
   return {
     'aria-hidden': true as const,
-    fill: 'none',
+    fill: 'currentColor',
     focusable: false as const,
-    stroke: 'currentColor',
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    strokeWidth: 1.85,
-    viewBox: '0 0 24 24',
+    viewBox: '0 0 256 256',
   }
 }
 
+/** Phosphor `hand-fist` (regular) — zárt kéz. */
 function ClosedHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--closed">
-      <path d="M8.2 12.2h8.2v4.1c0 2.05-1.65 3.7-3.7 3.7h-.8c-2.05 0-3.7-1.65-3.7-3.7v-4.1z" />
-      <path d="M9.4 12.2V9.15c0-.5.4-.9.9-.9s.9.4.9.9V12.2" />
-      <path d="M11.2 12.2V8.35c0-.55.42-1 .95-1s.95.45.95 1V12.2" />
-      <path d="M13.1 12.2V8.7c0-.48.38-.88.88-.88s.88.4.88.88V12.2" />
-      <path d="M14.86 12.2V9.35c0-.42.34-.78.78-.78s.78.36.78.78V12.2" />
-      <path d="M8.2 13.85H6.35a1.35 1.35 0 0 1 0-2.7H8.2" />
+      <path d="M200,80H184V64a32,32,0,0,0-56-21.13A32,32,0,0,0,72.21,60.42,32,32,0,0,0,24,88v40a104,104,0,0,0,208,0V112A32,32,0,0,0,200,80ZM152,48a16,16,0,0,1,16,16V80H136V64A16,16,0,0,1,152,48ZM88,64a16,16,0,0,1,32,0v40a16,16,0,0,1-32,0ZM40,88a16,16,0,0,1,32,0v16a16,16,0,0,1-32,0Zm176,40a88,88,0,0,1-175.92,3.75A31.93,31.93,0,0,0,80,125.13a31.93,31.93,0,0,0,44.58,3.35,32.21,32.21,0,0,0,11.8,11.44A47.88,47.88,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,0-16H152a16,16,0,0,1-16-16V96h64a16,16,0,0,1,16,16Z" />
     </svg>
   )
 }
 
+/** Phosphor `hand-grabbing` (regular) — félig nyitott, markoló kéz. */
 function OpeningHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--opening">
-      <path d="M8.1 13.6V8.05c0-.52.42-.95.95-.95s.95.43.95.95V13.6" />
-      <path d="M10 13.6V6.7c0-.6.48-1.08 1.08-1.08s1.08.48 1.08 1.08V13.6" />
-      <path d="M12.16 13.6V7.35c0-.52.46-.96 1.02-.96s1.02.44 1.02.96V13.6" />
-      <path d="M14.2 13.6V8.55c0-.48.42-.9.96-.9s.96.42.96.9V13.6" />
-      <path d="M8.1 13.6h8.02v3c0 1.72-1.4 3.12-3.12 3.12h-1.78c-1.72 0-3.12-1.4-3.12-3.12v-3z" />
-      <path d="M8.1 15.15H6.2a1.4 1.4 0 0 1 0-2.8H8.1" />
+      <path d="M188,80a27.79,27.79,0,0,0-13.36,3.4,28,28,0,0,0-46.64-11A28,28,0,0,0,80,92v20H68a28,28,0,0,0-28,28v12a88,88,0,0,0,176,0V108A28,28,0,0,0,188,80Zm12,72a72,72,0,0,1-144,0V140a12,12,0,0,1,12-12H80v24a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V108a12,12,0,0,1,24,0Z" />
     </svg>
   )
 }
 
+/** Phosphor `hand-palm` (regular) — nyitott tenyér. */
 function OpenHandIcon() {
   return (
     <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--open">
-      <path d="M7.15 13.85V5.55c0-.58.47-1.05 1.05-1.05s1.05.47 1.05 1.05v8.3" />
-      <path d="M9.25 13.85V4.2c0-.68.52-1.22 1.18-1.22s1.18.54 1.18 1.22v9.65" />
-      <path d="M11.6 13.85V4.85c0-.6.5-1.1 1.12-1.1s1.12.5 1.12 1.1v9" />
-      <path d="M13.84 13.85V6.05c0-.55.47-1.02 1.05-1.02s1.05.47 1.05 1.02v7.8" />
-      <path d="M15.94 13.85V7.35c0-.48.4-.9.92-.9s.92.42.92.9v6.5" />
-      <path d="M7.15 13.85h10.55v3.15c0 1.82-1.48 3.3-3.3 3.3H10.45c-1.82 0-3.3-1.48-3.3-3.3v-3.15z" />
-      <path d="M7.15 15.55H5.2a1.5 1.5 0 1 1 0-3l1.95.55" />
+      <path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z" />
     </svg>
   )
 }

@@ -6,7 +6,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { Services } from '../components/blocks/Services'
-import { HOME_HELP_LEAD, HOME_HELP_STATES, HOME_HELP_TITLE } from '../lib/home-help-states'
+import {
+  HOME_HELP_LEAD,
+  HOME_HELP_STATES,
+  HOME_HELP_TITLE,
+  presentSzolgaltatasokLayout,
+} from '../lib/home-help-states'
 import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
 import type { BlockServices } from '../payload-types'
 
@@ -198,7 +203,7 @@ describe('services.css — a rácsúszás és a sorprés őrei', () => {
     // A három-méretes skála (tokens.css) világában a fokozat NEM válthat
     // méretet: a cím a közös L lépcsőn marad, a rácsúszást a szerkezeti
     // javítás zárja ki. A módosító dolga a bővebb sortörés-keret.
-    expect(hosszu).toContain('max-width: 16ch')
+    expect(hosszu).toContain('max-width: 24ch')
     expect(hosszu).not.toContain('font-size')
     // Elemre írt px/rem betűméret az egész stíluslapon tilos (UX-skill 4. pont);
     // minden méret a három-méretes skála tokenje (--kc-font-l/m/s).
@@ -374,7 +379,7 @@ describe('Services — REV C sín + panel', () => {
     expect(markup).not.toContain('javascript:')
   })
 
-  it('a /szolgaltatasok tábla marad tábla, sín nélkül', () => {
+  it('a /szolgaltatasok seed-blokkja `elrendezes` nélkül tábla; a sínt a lap prezentere adja (WP25)', () => {
     const services = buildSzolgaltatasokLayout().find((b) => b.blockType === 'services')
     if (services?.blockType !== 'services') {
       throw new Error('A szolgáltatás-szekció hiányzik a szekciósorból.')
@@ -382,6 +387,47 @@ describe('Services — REV C sín + panel', () => {
     const markup = render(services as unknown as BlockServices)
     expect(markup).not.toContain('kc-services--sin')
     expect(markup).toContain('kc-services--choices')
+    // Ugyanez a blokk a lap prezenterén át: sín, a lap SAJÁT soraival.
+    const presented = presentSzolgaltatasokLayout([services]).find(
+      (b) => b.blockType === 'services',
+    )
+    if (presented?.blockType !== 'services') throw new Error('A prezentált blokk hiányzik.')
+    const sinMarkup = render(presented as unknown as BlockServices)
+    expect(sinMarkup).toContain('kc-services--sin')
+    expect(sinMarkup).not.toContain('kc-services--choices')
+    for (const row of services.rows ?? []) {
+      expect(sinMarkup).toContain(row.title)
+      expect(sinMarkup).toContain(row.felirat ?? '')
+      expect(sinMarkup).toContain(`href="${row.url}"`)
+    }
+  })
+
+  /**
+   * WP25 kéz-ikonok: Phosphor Icons (MIT), `hand-fist` / `hand-grabbing` /
+   * `hand-palm`, regular súly, 256-os rács, currentColor kitöltés. A régi,
+   * kézzel rajzolt 24-es stroke-glifák kimentek (a tulajdonos: „csúnyák").
+   * https://phosphoricons.com · https://github.com/phosphor-icons/core/blob/main/LICENSE
+   */
+  it('a három kéz-ikon a Phosphor-készlet (MIT) 256-os rácsú, currentColor-kitöltésű glifája, forrás-megjelöléssel', () => {
+    const markup = render(railBlock())
+    const svgs = markup.match(/<svg[^>]*kc-services-sin__hand[^>]*>/g) ?? []
+    expect(svgs).toHaveLength(3)
+    for (const svg of svgs) {
+      expect(svg).toContain('viewBox="0 0 256 256"')
+      expect(svg).toContain('fill="currentColor"')
+      expect(svg).not.toContain('stroke=')
+    }
+    const forras = readFileSync(
+      fileURLToPath(new URL('../components/blocks/Services.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(forras).toContain('@phosphor-icons/core')
+    expect(forras).toContain('https://github.com/phosphor-icons/core/blob/main/LICENSE')
+    for (const nev of ['hand-fist', 'hand-grabbing', 'hand-palm']) expect(forras).toContain(nev)
+    // A betűhív Phosphor path-ok kezdete (regular súly, 2.1.1).
+    expect(forras).toContain('M200,80H184V64a32,32,0,0,0-56-21.13')
+    expect(forras).toContain('M188,80a27.79,27.79,0,0,0-13.36,3.4')
+    expect(forras).toContain('M188,88a27.75,27.75,0,0,0-12,2.71V60')
   })
 })
 
@@ -491,14 +537,21 @@ describe('services-sin.css — token-szerződés', () => {
     // Hasáb-arány 1 : 2,6 (a drót 345 / 1090 px-e 1440-en).
     expect(css).toContain('minmax(16rem, 1fr) minmax(0, 2.6fr)')
     expect(szabalyTorzs(css, '.kc-services--sin .kc-services__title')).toContain('max-width: none')
-    expect(css).not.toContain('justify-content: space-between')
-    expect(css).toContain('align-items: start')
-    expect(css).toContain('align-self: start')
-    expect(szabalyTorzs(css, '.kc-services-sin__rail')).not.toContain('flex: none')
-    // Asztali sín-tétel köz: space-7 (48 px, a drót).
+    // WP25 (tulajdonos: „a bal oldala olyan magas legyen, mint a rendelői
+    // kezelések doboz: nagyobb legyen a távolság a három tétel között"):
+    // asztalon a bal hasáb a rács sorát kitölti, a sín a fejléc alatti
+    // maradékot kapja, a tételek space-between-nel oszlanak el; a space-7
+    // gap az alsó korlát. Mérve 1024/1440 px-en: a sín alja a panel aljától
+    // 0 px-re (WP25 jegyzőkönyv).
     expect(css).toMatch(
-      /\.kc-services-sin__rail \{\s*justify-content: flex-start;\s*gap: var\(--kc-space-7\);\s*flex: none;/,
+      /\.kc-services-sin__rail \{\s*justify-content: space-between;\s*gap: var\(--kc-space-7\);\s*flex: 1 1 auto;/,
     )
+    expect(szabalyTorzs(css, '.kc-services-sin__rail')).not.toContain('flex: none')
+    const asztaliLayout = szabalyTorzsek(css, '.kc-services-sin__layout')
+    expect(asztaliLayout.some((t) => t.includes('align-items: stretch'))).toBe(true)
+    expect(
+      szabalyTorzsek(css, '.kc-services-sin__col').some((t) => t.includes('align-self: stretch')),
+    ).toBe(true)
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 
@@ -573,7 +626,8 @@ describe('services-sin.css — mozgás-réteg', () => {
     expect(transitions.length).toBeGreaterThan(0)
     for (const t of transitions) {
       if (t.includes('none')) continue
-      expect(t).toMatch(/var\(--kc-motion-(base|fast)\)/)
+      // A globális token vagy a belőle SZÁRMAZTATOTT helyi sín-token (lent).
+      expect(t).toMatch(/var\(--kc-(motion-(base|fast)|services-motion-(cross|stagger))\)/)
       expect(t).toMatch(/var\(--kc-ease-out\)/)
       expect(t).not.toMatch(/\d+ms/)
     }
@@ -583,6 +637,49 @@ describe('services-sin.css — mozgás-réteg', () => {
     )
   })
 
+  /**
+   * WP25 (tulajdonos: „túl direkt az animáció/váltás … finomabb átmenet
+   * kell"): keresztúsztatás 350 ms (base × 1,75, M3 medium3), a kilépő panel
+   * is kiúszik, a belépő másolat 40 ms (fast ÷ 3), a fotó 80 ms késleltetéssel
+   * (staggered). Mérve Chromiumban (WP25 jegyzőkönyv): transitionDuration
+   * 0.35s a panelen, a másolaton és a fotón; delay 0.04s / 0.08s a belépőn,
+   * 0s a kilépőn; reduce alatt minden 0s.
+   * https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+   * https://www.nngroup.com/articles/animation-duration/
+   * https://developer.apple.com/design/human-interface-guidelines/motion
+   */
+  it('a keresztúsztatás és a stagger a globális tokenekből SZÁRMAZTATOTT helyi token (nincs kézi ms)', () => {
+    const sin = szabalyTorzs(css, '.kc-services-sin')
+    expect(sin).toContain('--kc-services-motion-cross: calc(var(--kc-motion-base) * 1.75)')
+    expect(sin).toContain('--kc-services-motion-stagger: calc(var(--kc-motion-fast) / 3)')
+    expect(tiszta).not.toMatch(/\d+ms/)
+  })
+
+  it('a kilépő panel is úszik: a panel, a másolat és a fotó a keresztúsztatás-időt viszi, a visibility a végén vált', () => {
+    const panel = szabalyTorzs(css, '.kc-services-sin__panel')
+    expect(panel).toContain('opacity var(--kc-services-motion-cross) var(--kc-ease-out)')
+    expect(panel).toContain('visibility 0s linear var(--kc-services-motion-cross)')
+    const copy = szabalyTorzs(css, '.kc-services-sin__copy')
+    expect(copy).toContain('opacity: 0')
+    expect(copy).toContain('transform var(--kc-services-motion-cross) var(--kc-ease-out)')
+    expect(copy).toContain('opacity var(--kc-services-motion-cross) var(--kc-ease-out)')
+    const foto = szabalyTorzs(css, '.kc-services-sin__photo,\n.kc-services-sin__placeholder')
+    expect(foto).toContain('opacity: 0')
+    expect(foto).toContain('transform: translateY(var(--kc-space-2))')
+    expect(foto).toContain('opacity var(--kc-services-motion-cross) var(--kc-ease-out)')
+  })
+
+  it('a belépő másolat és fotó eltérő késleltetéssel indul (40 / 80 ms), a kilépő azonnal', () => {
+    expect(tiszta).toMatch(
+      /\.kc-services-sin__panel:nth-of-type\(5\)\s+\.kc-services-sin__copy \{\s*opacity: 1;\s*transform: translateY\(0\);\s*transition-delay: var\(--kc-services-motion-stagger\);/,
+    )
+    expect(tiszta).toMatch(
+      /:is\(\.kc-services-sin__photo, \.kc-services-sin__placeholder\) \{\s*opacity: 1;\s*transform: translateY\(0\);\s*transition-delay: calc\(var\(--kc-services-motion-stagger\) \* 2\);/,
+    )
+    // Az inaktív (kilépő) állapot nem hord késleltetést: a kiúszás azonnal indul.
+    expect(szabalyTorzs(css, '.kc-services-sin__copy')).not.toContain('transition-delay')
+  })
+
   it('csökkentett mozgásnál minden helyi átmenet és eltolás kikapcsol (SC 2.3.3)', () => {
     const reduce = tiszta.slice(tiszta.indexOf('@media (prefers-reduced-motion: reduce)'))
     expect(reduce).toContain('transition: none')
@@ -590,16 +687,24 @@ describe('services-sin.css — mozgás-réteg', () => {
     for (const osztaly of [
       '.kc-services-sin__panel',
       '.kc-services-sin__copy',
+      '.kc-services-sin__photo',
+      '.kc-services-sin__placeholder',
       '.kc-services-sin__marker',
       '.kc-services-sin__rail-label',
     ]) {
       expect(reduce).toContain(osztaly)
     }
+    // A stagger-késleltetés is nullázódik, különben a váltás 40–80 ms-ot késne.
+    expect(reduce).toContain('transition-delay: 0s')
   })
 
   it('a fókusz-gyűrű szabálya a :checked ELŐTT áll (a kiválasztott körön a kéz-ikon fehér marad)', () => {
-    const fokusz = tiszta.indexOf(':focus-visible\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker')
-    const checked = tiszta.indexOf(':checked\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker')
+    const fokusz = tiszta.indexOf(
+      ':focus-visible\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker',
+    )
+    const checked = tiszta.indexOf(
+      ':checked\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker',
+    )
     expect(fokusz).toBeGreaterThan(-1)
     expect(checked).toBeGreaterThan(fokusz)
   })
@@ -639,7 +744,9 @@ describe('services-sin.css — mobil accordion (< 900 px)', () => {
     )
     for (let n = 1; n <= 3; n += 1) {
       expect(mobil).toMatch(
-        new RegExp(`\\.kc-services-sin__rail-label:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n - 1};`),
+        new RegExp(
+          `\\.kc-services-sin__rail-label:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n - 1};`,
+        ),
       )
       expect(mobil).toMatch(
         new RegExp(`\\.kc-services-sin__panel:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n};`),
@@ -663,7 +770,9 @@ describe('services-sin.css — mobil accordion (< 900 px)', () => {
     expect(jel).toContain("content: ''")
     expect(jel).toContain('linear-gradient(var(--kc-color-help-ink), var(--kc-color-help-ink))')
     expect(jel).toMatch(/background-size:\s*100% 2px,\s*2px 100%/)
-    expect(tiszta).toMatch(/rail-label:nth-of-type\(1\)::after[\s\S]*?background-size:\s*100% 2px,\s*0 0/)
+    expect(tiszta).toMatch(
+      /rail-label:nth-of-type\(1\)::after[\s\S]*?background-size:\s*100% 2px,\s*0 0/,
+    )
     expect(asztal).toMatch(/\.kc-services-sin__rail-label::after \{\s*content: none;/)
   })
 

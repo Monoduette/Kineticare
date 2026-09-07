@@ -142,7 +142,7 @@ describe('fotó-fríz — CSS-őr', () => {
     expect(blokk).toContain('transform: none')
   })
 
-  it('nem interaktív: nincs cursor: pointer, és nincs hover-nyúlás (flex); a WP18 hover csak a kép 1,03-as nagyítása', () => {
+  it('nem interaktív: nincs cursor: pointer, és nincs hover-nyúlás (flex); a hover-blokk nem mozgat (transform/opacity/filter)', () => {
     expect(tiszta).not.toMatch(/cursor\s*:\s*pointer/)
     expect(tiszta).not.toMatch(/:hover[^{]*\{[^}]*flex/)
     const hoverBlokk = tiszta.slice(
@@ -264,7 +264,7 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
     const desktop = tiszta.indexOf('@media (min-width: 900px)')
     expect(desktop).toBeGreaterThan(-1)
     expect(tiszta.slice(desktop)).toMatch(
-      /\.kc-about--founders \.kc-about__copy,\s*\.kc-about--paired \.kc-about__copy\s*\{[^}]*justify-content: flex-start;[^}]*align-self: start;/,
+      /\.kc-about--founders \.kc-about__copy,\s*\.kc-about--paired \.kc-about__copy\s*\{[^}]*justify-content: flex-start;[^}]*align-self: stretch;/,
     )
     // WP18: a space-between 1440 px-en 106 px-es réseket adott — tilos.
     expect(tiszta).not.toContain('space-between')
@@ -272,33 +272,53 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
     expect(tiszta).toMatch(/\.kc-about__text\s*\{[^}]*margin: 0 0 var\(--kc-space-4\);/)
   })
 
-  it('WP18 hover: a hullámos képek 1,03-ra nagyítanak csak hover-eszközön, 240 ms ease-out-tal; reduced-motion alatt nincs', () => {
-    const tiszta = kommentNelkul(ABOUT_CSS)
-    for (const [forras, kep, hover] of [
-      [tiszta, '.kc-about__figure img', '.kc-about__figure:hover img'],
+  it('WP24 hover: a hullám-maszk mérete változik (nem a kép nagyít), csak hover-eszközön, 240 ms ease-out-tal; reduced-motion alatt semmi', () => {
+    const about = kommentNelkul(ABOUT_CSS)
+    const friz = kommentNelkul(CSS)
+    // A nyugalmi és a hover maszk-méret egy helyen, tokenként (a fríz is ezt kapja).
+    expect(about).toMatch(/--kc-about-wave-rest:\s*100% 92\.5%,\s*100% 8%;/)
+    expect(about).toMatch(/--kc-about-wave-hover:\s*100% 89\.5%,\s*112% 11%;/)
+    for (const [forras, elem, hover] of [
+      [about, '.kc-about#rolunk .kc-about__figure', '.kc-about#rolunk .kc-about__figure:hover'],
       [
-        kommentNelkul(CSS),
-        '.kc-photo-frieze__img',
-        '.kc-photo-frieze__strip:hover .kc-photo-frieze__img',
+        friz,
+        '.kc-photo-frieze__strips',
+        '.kc-photo-frieze__strips:has(.kc-photo-frieze__strip:nth-child(n + 3):hover)',
       ],
     ] as const) {
-      const hoverBlokk = forras.slice(forras.indexOf('@media (hover: hover)'))
-      expect(forras.indexOf('@media (hover: hover)')).toBeGreaterThan(-1)
+      const hoverKezdet = forras.indexOf('@media (hover: hover)')
+      expect(hoverKezdet).toBeGreaterThan(-1)
+      const hoverBlokk = forras.slice(hoverKezdet)
       const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       expect(hoverBlokk).toMatch(
         new RegExp(
-          `${esc(kep)}\\s*\\{[^}]*transition: scale calc\\(var\\(--kc-motion-base\\) \\* 1\\.2\\) var\\(--kc-ease-out\\);`,
+          `${esc(elem)}\\s*\\{[^}]*transition-property: -webkit-mask-size, mask-size;[^}]*transition-duration: calc\\(var\\(--kc-motion-base\\) \\* 1\\.2\\);[^}]*transition-timing-function: var\\(--kc-ease-out\\);`,
         ),
       )
-      expect(hoverBlokk).toMatch(new RegExp(`${esc(hover)}\\s*\\{[^}]*scale: 1\\.03;`))
-      // A hover-nagyítás NEM a hover-blokkon kívül él (érintőn nincs ragadó állapot).
-      expect(forras.slice(0, forras.indexOf('@media (hover: hover)'))).not.toContain('scale: 1.03')
+      expect(hoverBlokk).toMatch(
+        new RegExp(
+          `${esc(hover)}\\s*\\{[^}]*-webkit-mask-size: var\\(--kc-about-wave-hover\\);[^}]*mask-size: var\\(--kc-about-wave-hover\\);`,
+        ),
+      )
+      // A hover-állapot NEM a hover-blokkon kívül él (érintőn nincs ragadó állapot).
+      expect(forras.slice(0, hoverKezdet)).not.toContain('--kc-about-wave-hover)')
       const csokkentett = forras.slice(forras.indexOf('@media (prefers-reduced-motion: reduce)'))
-      expect(csokkentett).toContain('scale: none')
       expect(csokkentett).toContain('transition: none')
+      expect(csokkentett).toContain('mask-size: var(--kc-about-wave-rest)')
+      // A régi nagyítás és a ragadó hasáb nem térhet vissza.
+      expect(forras).not.toContain('scale: 1.03')
+      expect(forras).not.toContain('position: sticky')
       // Nem link, nem gomb: nincs kattintás-ígéret.
       expect(forras).not.toContain('cursor: pointer')
     }
+    // A fríz felső sorának íve lapul hoverre (border-radius), és reduce alatt visszaáll.
+    const frizHover = friz.slice(friz.indexOf('@media (hover: hover)'))
+    expect(frizHover).toMatch(
+      /\.kc-photo-frieze__strip:nth-child\(-n \+ 2\):hover\s*\{\s*border-radius: 50% 50% 0 0 \/ 40% 40% 0 0;/,
+    )
+    expect(friz.slice(friz.indexOf('@media (prefers-reduced-motion: reduce)'))).toMatch(
+      /\.kc-photo-frieze__strip:nth-child\(-n \+ 2\):hover\s*\{\s*border-radius: var\(--kc-frieze-arch\) var\(--kc-frieze-arch\) 0 0;/,
+    )
   })
 
   it('az alapítók-alak rácsa fele-fele, a fríz a jobb hasábban, hullámos alsó éllel', () => {
@@ -307,9 +327,14 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
       /\.kc-about--founders \.kc-about__grid,\s*\.kc-about--paired \.kc-about__grid\s*\{[^}]*grid-template-columns: minmax\(0, 50%\) minmax\(0, 1fr\)/,
     )
     expect(tiszta).toMatch(/\.kc-about--founders \.kc-photo-frieze\s*\{[^}]*grid-column: 2;/)
-    // WP18: a képhasáb ragad (a hosszú közös szöveg mellett nem marad üres a hasáb).
+    // WP24: a képhasáb NEM ragad (tulajdonos: „mozog vele a kép"), felül igazítva áll;
+    // a szöveghasáb a sor magasságát tölti ki, a kiemelés a hasáb aljára ül.
     expect(tiszta).toMatch(
-      /\.kc-about--founders \.kc-photo-frieze,\s*\.kc-about--paired \.kc-about__figure\s*\{[^}]*position: sticky;[^}]*align-self: start;/,
+      /\.kc-about--founders \.kc-photo-frieze,\s*\.kc-about--paired \.kc-about__figure\s*\{\s*align-self: start;\s*\}/,
+    )
+    expect(tiszta).not.toContain('position: sticky')
+    expect(tiszta).toMatch(
+      /\.kc-about--founders \.kc-about__foot,\s*\.kc-about--paired \.kc-about__foot\s*\{\s*margin-top: auto;\s*\}/,
     )
     expect(tiszta).toMatch(/\.kc-about--founders \.kc-about__copy\s*\{[^}]*grid-column: 1;/)
     expect(tiszta).toMatch(

@@ -51,7 +51,9 @@ import '../../app/(frontend)/styles/blocks/photo-frieze.css'
  * DEKORATÍV, mind kikapcsol `prefers-reduced-motion: reduce` alatt (WCAG 2.2
  * SC 2.3.3). A korábbi hover-nyúlás (flex 1 → 1,6) a 2×2-es rácsban
  * értelmét vesztette (egy soros, teljes szélességű frízre volt szabva), ezért
- * kikerült. Részletek a photo-frieze.css fejlécében.
+ * kikerült; a WP18 hover-nagyítást (scale 1,03) a tulajdonos vetette el
+ * (WP24). A hover most a csempe SAJÁT élét alakítja: a felső sor íve lapul,
+ * az alsó sor hulláma mélyül. Részletek a photo-frieze.css fejlécében.
  *   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
  *   https://developer.apple.com/design/human-interface-guidelines/motion
  *
