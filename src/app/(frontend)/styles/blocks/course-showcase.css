@@ -1,29 +1,78 @@
 /**
- * Kurzus-galéria — Astra „Bring ideas” szerkezet, Kineticare tokenekkel.
- * Három méret: S kicker, M cím/ár/lead, L szekciócím. A vízjel L + scale,
- * nem negyedik font-size (tipografia-harom-meret őr).
+ * Kurzus-galéria — az Astra „Bring ideas” rácsa + a „Keep your point of view”
+ * jelenet, Kineticare tokenekkel. Szín, betű, méret NEM az Astráé.
+ *
+ * Szerkezet (DOM-sorrend, egyben olvasási sorrend):
+ *   1. szekciócím (L)
+ *   2. kártyarács — 1 termék: fél rács; 2: két hasáb; 3: három hasáb; mobilon egy
+ *   3. jelenet (__scene): halvány „Kurzusaink” vízjel + három döntött csapatfotó,
+ *      görgetéshez kötött, ellentétes irányú finom elmozdulással
+ *   4. lead — a jelenet ALATT, középre zárva; sosem fedi semmi
+ *
+ * Három betűméret: S kicker/ár, M cím/lead, L szekciócím. A vízjel az L token
+ * + `transform: scale()`, nem negyedik font-size (tipografia-harom-meret őr).
+ *
+ * FORRÁSOK.
+ * - NN/g, Visual Hierarchy in UX: a méret, a kontraszt és a tér a hierarchia
+ *   hordozója; a dekoratív elem nem versenyezhet a tartalommal. Ezért a
+ *   vízjel halvány, aria-hidden, és külön színpadon áll, nem a lead mögött.
+ *   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+ * - Material 3, Applying layout / window size classes: compact (< 600 dp) egy
+ *   hasáb, medium/expanded több hasáb; a hasábszám a tartalomhoz igazodik, egy
+ *   elem nem nyúlhat a teljes szélességre óriáskártyaként.
+ *   https://m3.material.io/foundations/layout/applying-layout/window-size-classes
+ * - WCAG 2.2 SC 1.4.10 Reflow: 320 px-en nincs vízszintes görgetés — a jelenet
+ *   `overflow: clip`, a vízjel `nowrap` + a konténerhez mért scale-lépcső.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+ * - WCAG 2.2 SC 2.3.3 Animation from Interactions: a görgetéshez kötött
+ *   mozgás `prefers-reduced-motion: reduce` alatt teljesen statikus.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
+ * - WCAG 2.2 SC 1.4.11 Non-text Contrast: a kártya nyíl-gombja fehér korong,
+ *   ink nyíllal (15,63:1) és hairline-strong gyűrűvel (4,13:1 fehéren), hogy a
+ *   fotó bármely tónusán azonosítható maradjon.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
+ * - MDN, CSS scroll-driven animations: `animation-timeline: view()` a
+ *   nézetablakon áthaladáshoz köti a kulcsképsort, JS nélkül; @supports
+ *   mögött, tehát nem támogató böngészőn statikus a jelenet.
+ *   https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_scroll-driven_animations
  */
 
 .kc-course-showcase {
+  /* A vízjel nagyítása a KONTÉNERHEZ mérve (Chromium 141, Tenor Sans L):
+     a „Kurzusaink” szó 166 px (320 px-en) … 208 px (1440 px-en) széles, a
+     konténer belső szélessége 272 … 1072 px. Minden lépcső a belső szélesség
+     ~92%-a alatt marad, tehát a szó sosem lóg ki (SC 1.4.10). */
+  --kc-showcase-mark-scale: 1.5;
+  /* A jelenet fotóinak magassága; a szélesség százalékos. */
+  --kc-showcase-photo-h: clamp(6rem, 22vw, 13rem);
+  /* A fotó ennyi részével süllyed a vízjel aljába (a szó felső része szabad
+     marad, ahogy az Astra-jelenetben: a szó olvasható, a fotó rajta ül). */
+  --kc-showcase-photo-sink: 0.15;
+  /* A fotók alsó ülése a színpad alján (a döntött sarok se lógjon ki). */
+  --kc-showcase-photo-foot: var(--kc-space-4);
+  /* A görgetés-kötött elmozdulás fél-amplitúdója (a rem a 4px-es rácson). */
+  --kc-showcase-lift: 1rem;
   position: relative;
   display: grid;
   gap: var(--kc-space-6);
   min-width: 0;
-  overflow: hidden;
 }
 
 .kc-course-showcase__head {
-  max-width: 28ch;
+  min-width: 0;
 }
 
 .kc-course-showcase__heading {
   margin: 0;
+  max-width: var(--kc-measure);
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
   line-height: var(--kc-leading-heading);
   color: var(--kc-color-text);
 }
+
+/* ---- Kártyarács --------------------------------------------------------- */
 
 .kc-course-showcase__grid {
   display: grid;
@@ -49,13 +98,14 @@
   color: inherit;
 }
 
+/* A borító eszköz-mockup (fekvő kompozíció): 4/3 tartja olvashatónak. */
 .kc-course-showcase__media {
   position: relative;
   display: block;
   overflow: hidden;
   border-radius: var(--kc-radius-lg);
   background-color: var(--kc-color-surface-tint);
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 3;
 }
 
 .kc-course-showcase__media img {
@@ -65,6 +115,8 @@
   object-fit: cover;
 }
 
+/* 44 px-es célfelület a kártya-link jelzésének (a kattintható felület maga a
+   teljes kártya). Fehér korong + ink nyíl + hairline-strong gyűrű: SC 1.4.11. */
 .kc-course-showcase__go {
   position: absolute;
   top: var(--kc-space-3);
@@ -73,6 +125,7 @@
   place-items: center;
   width: 2.75rem;
   height: 2.75rem;
+  border: 1px solid var(--kc-color-border-strong);
   border-radius: var(--kc-radius-full);
   background-color: var(--kc-color-white);
   color: var(--kc-color-text);
@@ -110,94 +163,187 @@
   color: var(--kc-color-text-muted);
 }
 
-.kc-course-showcase__lead {
-  margin: 0;
-  max-width: 46ch;
-  font-family: var(--kc-font-body);
-  font-size: var(--kc-font-m);
-  line-height: var(--kc-leading-body);
-  color: var(--kc-color-text-muted);
+/* ---- Jelenet: vízjel + döntött fotók ------------------------------------ */
+
+/* A színpad vág: a döntött fotók sarka és a nagyított szó sem nyúlhat a
+   dokumentum szélességébe (SC 1.4.10). A magasság a vízjel nagyított
+   magasságából és a fotók magasságából áll össze, nem kézi px.
+   `overflow: clip`, NEM `hidden`: a hidden görgető-konténert csinál a
+   színpadból, és a `view()` idővonal ahhoz kötné a fotókat, nem a
+   nézetablakhoz (mérve: a progress 0,42-en állt görgetéstől függetlenül). */
+.kc-course-showcase__scene {
+  position: relative;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  min-width: 0;
+  min-height: calc(var(--kc-font-l) * var(--kc-showcase-mark-scale));
+  overflow: clip;
+  pointer-events: none;
 }
 
-.kc-course-showcase__mark {
-  margin: var(--kc-space-4) 0 0;
+/* Vízjel-magasság + a fotók nem-süllyedő része + az alsó ülés. */
+.kc-course-showcase__scene[data-drift='true'] {
+  min-height: calc(
+    var(--kc-font-l) * var(--kc-showcase-mark-scale) + var(--kc-showcase-photo-h) *
+      (1 - var(--kc-showcase-photo-sink)) + var(--kc-showcase-photo-foot)
+  );
+}
+
+/* A vízjel: L token + scale, egy sorban, a színpad közepén. Az ellipszis a
+   reflow-őr vágási feltétele; a scale-lépcsők miatt sosem lép életbe.
+   Szín: szándékosan dekoratív (aria-hidden), az accent-quiet a paperbe mosva. */
+.kc-course-showcase__word {
+  grid-area: 1 / 1;
+  margin: 0;
+  max-width: 100%;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
   font-weight: var(--kc-font-weight-normal);
   line-height: 1;
-  color: var(--kc-color-accent);
-  transform: scale(2.4);
-  transform-origin: left bottom;
-  pointer-events: none;
+  color: color-mix(in srgb, var(--kc-color-accent-quiet) 45%, var(--kc-color-bg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: scale(var(--kc-showcase-mark-scale));
+  transform-origin: center top;
 }
 
-.kc-course-showcase__drift {
+/* A fotók a vízjel FÖLÖTT úsznak, egymást átfedve, három dőlésszöggel.
+   A dőlés a `transform`, a görgetés-kötött elmozdulás a külön `translate`
+   tulajdonság: a kettő nem írja felül egymást. */
+.kc-course-showcase__photo {
   position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.kc-course-showcase__head,
-.kc-course-showcase__grid,
-.kc-course-showcase__lead,
-.kc-course-showcase__mark {
-  position: relative;
   z-index: 1;
-}
-
-.kc-course-showcase__drift-img {
-  position: absolute;
-  width: 7rem;
-  height: auto;
+  bottom: var(--kc-showcase-photo-foot);
+  width: 34%;
+  height: var(--kc-showcase-photo-h);
   border-radius: var(--kc-radius-md);
-  opacity: 0.35;
-  animation: kc-course-showcase-drift 28s var(--kc-ease-out) infinite alternate;
+  box-shadow: var(--kc-shadow-md);
+  object-fit: cover;
+  background-color: var(--kc-color-surface-tint);
 }
 
-.kc-course-showcase__drift-img--0 {
-  top: 8%;
-  right: 4%;
+.kc-course-showcase__photo--0 {
+  left: 6%;
+  transform: rotate(-8deg);
 }
 
-.kc-course-showcase__drift-img--1 {
-  top: 42%;
-  left: 2%;
-  animation-delay: -8s;
+.kc-course-showcase__photo--1 {
+  z-index: 2;
+  left: 33%;
+  transform: rotate(6deg);
+  /* A középső fotó a másik kettővel ellentétes irányba mozdul. */
+  --kc-showcase-lift-dir: -1;
 }
 
-.kc-course-showcase__drift-img--2 {
-  bottom: 12%;
-  right: 18%;
-  animation-delay: -16s;
+.kc-course-showcase__photo--2 {
+  right: 6%;
+  transform: rotate(12deg);
 }
 
-@keyframes kc-course-showcase-drift {
+/* Progresszív ráépítés: csak scroll-driven animációt tudó böngészőben él a
+   mozgás; máshol (és reduced-motion alatt) a jelenet statikus. */
+@supports (animation-timeline: view()) {
+  .kc-course-showcase__photo {
+    animation: kc-course-showcase-lift linear both;
+    animation-timeline: view();
+  }
+}
+
+@keyframes kc-course-showcase-lift {
   from {
-    transform: translate3d(0, 0, 0);
+    translate: 0 calc(var(--kc-showcase-lift) * var(--kc-showcase-lift-dir, 1));
   }
   to {
-    transform: translate3d(0.6rem, -0.8rem, 0);
+    translate: 0 calc(var(--kc-showcase-lift) * var(--kc-showcase-lift-dir, 1) * -1);
+  }
+}
+
+/* ---- Lead: a jelenet alatt, középre zárva -------------------------------- */
+
+.kc-course-showcase__lead {
+  margin: 0 auto;
+  max-width: var(--kc-measure-comfort);
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text-muted);
+  text-align: center;
+}
+
+/* ---- Töréspontok (Material 3 ablakméret-osztályok) ---------------------- */
+
+@media (min-width: 390px) {
+  .kc-course-showcase {
+    --kc-showcase-mark-scale: 1.8;
+  }
+}
+
+@media (min-width: 600px) {
+  .kc-course-showcase {
+    --kc-showcase-mark-scale: 2.8;
+    --kc-showcase-lift: 2rem;
+    --kc-showcase-photo-sink: 0.25;
+  }
+
+  .kc-course-showcase__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kc-course-showcase__photo {
+    width: 28%;
+  }
+
+  .kc-course-showcase__photo--1 {
+    left: 36%;
   }
 }
 
 @media (min-width: 900px) {
+  .kc-course-showcase {
+    --kc-showcase-mark-scale: 4;
+    --kc-showcase-lift: 3rem;
+    --kc-showcase-photo-sink: 0.3;
+    --kc-showcase-photo-foot: var(--kc-space-6);
+  }
+
   .kc-course-showcase__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .kc-course-showcase__grid[data-count='1'],
-  .kc-course-showcase__grid[data-count='2'] {
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* Egy termék: a kártya a rács FELÉT kapja, nem az egészet (a 3/4-es
+     óriáskártya 1900 px magas volt 1440-en, mérve 2026-09-07). */
+  .kc-course-showcase__grid[data-count='1'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .kc-course-showcase__mark {
-    transform: scale(3.2);
+  .kc-course-showcase__grid[data-count='2'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kc-course-showcase__photo {
+    width: 24%;
+  }
+
+  /* A középső fotó kicsit lejjebb ül (Astra-kompozíció), de a döntött sarka
+     még a színpadon belül marad (mérve: 6°-nál ~12 px a túlnyúlás). */
+  .kc-course-showcase__photo--1 {
+    bottom: calc(var(--kc-showcase-photo-foot) / 2);
   }
 }
 
+@media (min-width: 1100px) {
+  .kc-course-showcase {
+    --kc-showcase-mark-scale: 4.6;
+  }
+}
+
+/* SC 2.3.3: csökkentett mozgásnál minden transform statikus (a dőlés marad,
+   a görgetés-kötött elmozdulás nem fut). */
 @media (prefers-reduced-motion: reduce) {
-  .kc-course-showcase__drift-img {
+  .kc-course-showcase__photo {
     animation: none;
+    translate: none;
   }
 }

@@ -86,6 +86,20 @@ const fixture = (slug: OwnerReviewSlug): OwnerReviewV1Input => {
   }
 }
 
+/**
+ * A /rolunk élő szekciósora a 2026-09-07 előtti seed alakjában: a harmonika
+ * sorainak NINCS portréja (`kep`), a kanonikus építő már a jóváhagyott
+ * portrékat adja (a planPage a legacy-média helyett az approved id-kat köti).
+ */
+const legacyRolunkFixture = (): OwnerReviewV1Input => {
+  const input = fixture('rolunk')
+  for (const item of rows(find(input.canonicalLayout, 'accordion'), 'items')) {
+    item.kep = String(item.cim).startsWith('Kocsis') ? media.kocsisPortrait : media.kissPortrait
+  }
+  for (const item of rows(find(input.layout!, 'accordion'), 'items')) delete item.kep
+  return input
+}
+
 const applyLegacyThreeWayHomeHelp = (
   input: OwnerReviewV1Input,
   workshopCaption?: string,
@@ -143,7 +157,9 @@ const publishedAboutFixture = (): OwnerReviewV1Input => {
     input.layout.find(
       (block) =>
         block.blockType === 'richText' &&
-        rows(children(data(block).content)[0], 'children')[0].text === 'Partnereink',
+        String(rows(children(data(block).content)[0], 'children')[0].text).startsWith(
+          'Partnereink',
+        ),
     )!,
   )
   data(data(partners.content).root).children = [
@@ -517,8 +533,8 @@ describe('planOwnerReviewV1: approved canonical pages', () => {
     )
   })
 
-  it('A01/A02/A03/A05 keeps both complete biographies and adds distinct editable upload nodes', () => {
-    const input = fixture('rolunk')
+  it('A01/A02/A03/A05 keeps both complete biographies and fills the empty row portrait (kep)', () => {
+    const input = legacyRolunkFixture()
     const before = structuredClone(input)
     const oldItems = rows(find(input.layout!, 'accordion'), 'items')
     const result = planOwnerReviewV1(freeze(input))
@@ -529,23 +545,68 @@ describe('planOwnerReviewV1: approved canonical pages', () => {
     expect(rows(find(result.layout, 'services', 'Amiben mások vagyunk'))).toHaveLength(2)
     const nextItems = rows(find(result.layout, 'accordion'), 'items')
     for (const [index, role] of (['kocsisPortrait', 'kissPortrait'] as const).entries()) {
-      const nextNodes = children(nextItems[index].tartalom)
-      expect(nextNodes[0]).toEqual(
-        expect.objectContaining({
-          type: 'upload',
-          version: 3,
-          relationTo: 'media',
-          value: media[role],
-          format: '',
-          id: expect.any(String),
-        }),
-      )
-      expect(nextNodes.slice(1)).toEqual(children(oldItems[index].tartalom))
+      // A portré a sor `kep` mezője (csukva is látszik), a lenyitott tartalom
+      // NEM kap upload-csomópontot — így a kép nem ismétlődik.
+      expect(nextItems[index].kep).toBe(media[role])
+      expect(children(nextItems[index].tartalom)).toEqual(children(oldItems[index].tartalom))
       expect(nextItems[index].cim).toBe(oldItems[index].cim)
       expect(nextItems[index].osszefoglalo).toBe(oldItems[index].osszefoglalo)
     }
-    expect(children(nextItems[0].tartalom)[0].id).not.toBe(children(nextItems[1].tartalom)[0].id)
+    expect(result.changes.filter((change) => change.requestId === 'A05')).toHaveLength(2)
     expect(find(result.layout, 'teamMembers')).toBe(find(input.layout!, 'teamMembers'))
+  })
+
+  it('A05 recognises the pre-2026-09-07 dash title and the new title alike', () => {
+    const input = legacyRolunkFixture()
+    const items = rows(find(input.layout!, 'accordion'), 'items')
+    items[0].cim = 'Kocsis Kata — szakmai önéletrajz'
+    items[1].cim = 'Kiss Kata szakmai önéletrajza'
+    const result = planOwnerReviewV1(freeze(input))
+    const next = rows(find(result.layout, 'accordion'), 'items')
+    expect(next.map((item) => item.kep)).toEqual([media.kocsisPortrait, media.kissPortrait])
+  })
+
+  it('A05 moves its own pre-2026-09-07 leading portrait node into kep and keeps foreign nodes', () => {
+    const input = legacyRolunkFixture()
+    const items = rows(find(input.layout!, 'accordion'), 'items')
+    const kocsisBefore = [...children(items[0].tartalom)]
+    const kissBefore = [...children(items[1].tartalom)]
+    children(items[0].tartalom).unshift({
+      type: 'upload',
+      version: 3,
+      relationTo: 'media',
+      value: media.kocsisPortrait,
+      fields: {},
+      format: '',
+      id: 'owner-review-v1-rolunk-7-kocsisPortrait',
+    })
+    const foreign = { type: 'upload', version: 3, relationTo: 'media', value: 555, id: 'editor-node' }
+    children(items[1].tartalom).unshift(foreign)
+    const result = planOwnerReviewV1(freeze(input))
+    const next = rows(find(result.layout, 'accordion'), 'items')
+    expect(next[0].kep).toBe(media.kocsisPortrait)
+    expect(children(next[0].tartalom)).toEqual(kocsisBefore)
+    expect(next[1].kep).toBe(media.kissPortrait)
+    expect(children(next[1].tartalom)).toEqual([foreign, ...kissBefore])
+    expect(result.changes.filter((change) => change.requestId === 'A05')).toHaveLength(3)
+  })
+
+  it('A05 leaves an editor-chosen portrait alone and reports an already-applied one', () => {
+    const input = legacyRolunkFixture()
+    const items = rows(find(input.layout!, 'accordion'), 'items')
+    items[0].kep = 555
+    items[1].kep = { id: media.kissPortrait, alt: 'Kiss Kata portréja' }
+    const result = planOwnerReviewV1(freeze(input))
+    const next = rows(find(result.layout, 'accordion'), 'items')
+    expect(next[0].kep).toBe(555)
+    expect(next[1].kep).toEqual({ id: media.kissPortrait, alt: 'Kiss Kata portréja' })
+    expect(result.changes.filter((change) => change.requestId === 'A05')).toHaveLength(0)
+    expect(result.skips).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: 'A05', code: 'editor-change' }),
+        expect.objectContaining({ requestId: 'A05', code: 'already-applied' }),
+      ]),
+    )
   })
 
   it('C02 only shortens the canonical contact heading', () => {
@@ -737,14 +798,15 @@ describe('exact-match safety', () => {
     },
   )
 
-  it('preserves existing Lexical node IDs when prepending a biography portrait', () => {
-    const input = fixture('rolunk')
+  it('never touches the biography Lexical content when filling the row portrait', () => {
+    const input = legacyRolunkFixture()
     const items = rows(find(input.layout!, 'accordion'), 'items')
     children(items[0].tartalom)[0].id = 'existing-lexical-node'
     const before = structuredClone(items[0].tartalom)
     const result = planOwnerReviewV1(freeze(input))
     const next = rows(find(result.layout, 'accordion'), 'items')[0]
-    expect(children(next.tartalom).slice(1)).toEqual(children(before))
+    expect(next.tartalom).toBe(items[0].tartalom)
+    expect(children(next.tartalom)).toEqual(children(before))
   })
 
   it.each([undefined, null, [] as Layout])('does not seed a missing layout (%s)', (layout) => {
@@ -1045,7 +1107,7 @@ describe('exact-match safety', () => {
   })
 
   it('matches biographies by exact name even when items are reordered and preserves a staff-edited CV', () => {
-    const input = fixture('rolunk')
+    const input = legacyRolunkFixture()
     const items = rows(find(input.layout!, 'accordion'), 'items')
     items.reverse()
     children(items[1].tartalom).push({
@@ -1055,7 +1117,8 @@ describe('exact-match safety', () => {
     const oldKocsis = items[1].tartalom
     const result = planOwnerReviewV1(freeze(input))
     const next = rows(find(result.layout, 'accordion'), 'items')
-    expect(children(next[0].tartalom)[0].value).toBe(media.kissPortrait)
+    expect(next[0].kep).toBe(media.kissPortrait)
+    expect(next[1].kep).toBe(media.kocsisPortrait)
     expect(next[1].tartalom).toBe(oldKocsis)
   })
 

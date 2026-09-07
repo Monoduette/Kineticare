@@ -141,16 +141,34 @@
    viszi, mert a jel NEM szöveg, hanem grafika (NN/g Visual Hierarchy:
    a kiemelt idézet a legnagyobb elem a blokkban;
    https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
-   A foglalt magasság a skálázott glif, hogy a szöveg ne lógjon bele. */
+
+   H11 (2026-09-07, mérve): a korábbi `height: 1,55 L` + `line-height: .72`
+   doboz 127 px volt, de a „66-os" glif tintája csak 22,5 px — a jel 62 px-rel
+   lebegett az idézet első sora fölött. A Tenor Sans U+201C tintája a
+   talpvonal felett 0,45–0,725 em közt ül (canvas `measureText`
+   actualBoundingBox; 0,275 em magas), a betű ascent 0,925 em. A doboz ezért
+   a SKÁLÁZOTT tinta magassága (0,275 × 2,05 ≈ 0,56 L), és a sormagasság úgy
+   áll, hogy a tinta teteje a doboz tetejére essen: (lh − 1,175)/2 + 0,925 −
+   0,725 = 0 → lh = 0,775 (MDN line-height: a fél-lead a betű ascent+descent
+   fölött/alatt oszlik el;
+   https://developer.mozilla.org/en-US/docs/Web/CSS/line-height). Az első
+   szövegsor nagybetű-vonala a saját sordobozától 0,2 L-re van (1,18-as
+   sormagasság), a negatív alsó margó ezt hozza 0,1 L-re: a jel talpa a
+   nagybetű-vonalon áll, egy tizedem optikai lélegzettel — Material 3 a
+   típust a saját metrikáihoz (baseline, cap-height) igazítja, nem a doboz
+   széléhez (https://m3.material.io/styles/typography/applying-type). Minden
+   érték em-alapú (L token), nem px: 390 px-en ugyanaz az arány. A jel
+   dekoratív, WCAG 2.2 SC 1.4.3 Incidental
+   (https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). */
 .kc-testimonials .kc-testimonials__item--big .kc-testimonials__mark {
   display: block;
   width: max-content;
-  height: calc(var(--kc-font-l) * 1.55);
-  margin: 0 0 var(--kc-space-3);
+  height: calc(var(--kc-font-l) * 0.56);
+  margin: 0 0 calc(var(--kc-font-l) * -0.1);
   overflow: visible;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
-  line-height: 0.72;
+  line-height: 0.775;
   color: var(--kc-testimonials-mark);
   transform: scale(2.05);
   transform-origin: left top;
@@ -221,7 +239,21 @@
 
 /* A kis idézőjel a mockupon a törzsszövegnél nagyobb, a sor tetejéhez
    igazított függő díszjel. A méret az L token (dekoratív, nem címsor).
-   `left: 0` a relatív figure padding-boxának bal szélén, a paddingben. */
+   `left: 0` a relatív figure padding-boxának bal szélén, a paddingben.
+
+   H11 (2026-09-07, mérve 1440 px-en): az L-es glif tintája csak 11 px volt
+   (0,275 em × 40 px), és 2,3 px-rel a törzs első sorának nagybetű-vonala
+   FÖLÉ lógott. A jel `scale(1.3)`-at kap (bal-felső origóval, a doboz nem
+   nő): a tinta így ≈ 0,36 L ≈ 14 px, ami az M-es törzs cap-height-je
+   (0,737 × 19 px = 14 px). A tinta teteje a leading-tight (1,15) sordobozban
+   0,1875 L-nél van ((1,15 − 1,175)/2 + 0,925 − 0,725), skálázva 0,244 L ≈
+   9,8 px — az M-es első sor cap-vonala a sordoboz tetejétől (1,67 −
+   1,368)/2 + (1 − 0,737) = 0,41 M ≈ 7,9 px + a figure 2 px-es belső
+   eltolása, tehát a két vonal em-arányosan egybeesik, px-eltolás nélkül.
+   Material 3: a jel a szöveg cap-height-jéhez, nem a dobozhoz igazodik
+   (https://m3.material.io/styles/typography/applying-type); MDN
+   line-height (https://developer.mozilla.org/en-US/docs/Web/CSS/line-height);
+   WCAG 2.2 SC 1.4.3 Incidental a dekoratív jelre. */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark {
   position: absolute;
   left: 0;
@@ -232,6 +264,8 @@
   font-size: var(--kc-font-l);
   line-height: var(--kc-leading-tight);
   color: var(--kc-testimonials-mark);
+  transform: scale(1.3);
+  transform-origin: left top;
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__quote {

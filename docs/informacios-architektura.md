@@ -570,3 +570,19 @@ curl -s "$B/sitemap.xml" | grep -c '/blog/'              # => 0
 # 5. A /kosar árvasága (repóban)
 grep -rn "/kosar" src --include=*.tsx --include=*.ts | grep -v '^\s*\*'
 ```
+
+## 11. Eltérés-jegyzet — a menüfa és a mért élő menü (WP9, 2026-09-07)
+
+Mérve Playwright-tal a helyi szerveren (320/390/900/1024/1440 px, kijelentkezve),
+a 3.2 menüfához képest. **Ez jegyzet, nem döntés**: az IA-változtatás
+(átnevezés, sorrend, átirányítás) tulajdonosi kérdés.
+
+| # | 3.2 fa / e doksi | Élő menü (menu-seed + Header) | Állapot |
+|---|---|---|---|
+| E1 | S3 „SOS KezRelax" → `/kurzusok/sos-kezrelax-villamkurzus` | „**Ingyenes** SOS KézRelax" (`SOS_FREE_MENU_LABEL`); a cél a termék, ha a `sku` feloldható, különben a tartalék `/kurzusok/2` (a helyi DB-n ez futott, a route a kanonikus címre irányít) | doksi elavult, a menü a jó |
+| E2 | A fejlécben csak a Kurzusok gomb szerepel kódban rögzítve | A sávban 900 px-től a **Belépés / Kurzusaim** szöveglink és az **Időpontfoglalás** szöveglink is él (`AccountNav`, `HeaderAppointmentCta`); 900 px alatt a fiókban | doksi elavult |
+| E3 | „Tudástár" → `/blog` (N1: címke magyar, URL angol) | Változatlan: `/blog`, **nincs** `/tudastar` átirányítás | nyitott tulajdonosi döntés (N1), átirányítást nem írtunk |
+| E4 | 6.8: a Tudástár üres | Helyben 8 cikk seedelve; a menüpont célja most nem zsákutca | doksi elavult a tartalomra nézve |
+| E5 | 3.1 gráf: a fejléc-CTA „Kurzusok" | Egyezik; `/kurzusok`-on `aria-current="page"`, `/kurzusok/<slug>`-on ős-jelölés (mérve) | egyezik |
+| E6 | Lábléc: F1–F7 | Egyezik (Kapcsolat óriáslink, hírlevél, három jogi link, süti-gomb, mailto); a jogi `nav` neve „Jogi és kapcsolat" | egyezik |
+| E7 | Taxonómiai megjegyzés (3.2): kurzus a Szolgáltatások alatt | Változatlan: a Szolgáltatások lenyíló három különböző természetű célt tart (horgony, külső képzés, ingyenes kurzus) | nyitott tulajdonosi döntés |

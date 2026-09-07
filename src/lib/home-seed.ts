@@ -18,9 +18,11 @@ import {
   homeHelpRailRows,
 } from './home-help-states'
 import { logger } from './logger'
+import { enrollMediaRecovery } from './media-recovery-provenance'
 
 import { HOME_PAGE_SLUG } from './content-slugs'
 import type { Page } from '../payload-types'
+import pressManifest from '../../public/media/press/manifest.json'
 
 export const minimalRichText = (text: string): Page['content'] => ({
   root: {
@@ -158,10 +160,76 @@ export const HOME_IMAGES = [
     dir: 'site',
     alt: 'A Kineticare logója: KINETICARE felirat világoskék hullámmotívummal',
   },
+  // Partnerlogók a /rolunk „Partnereink" logósávjához (tulajdonosi kérés A04,
+  // docs/kc-v1-owner-review.md). A kezdőlap NEM hivatkozik rájuk; azért élnek
+  // itt, mert a sajtó-logókkal azonos úton kell feltöltődniük és az induláskori
+  // önjavításnak (src/lib/media-restore.ts) is innen kell visszatöltenie őket.
+  // Forrás: a régi kineticare.hu/rolunk saját assetjei, méret- és
+  // eredetnyilvántartás: content/home-images/site/partner-manifest.json,
+  // docs/kc-v1-logo-sources.md „Partnerek". Az alt = a szervezet neve
+  // (WCAG 2.2 SC 1.1.1: a logó szöveges megfelelője a szervezet neve).
+  { file: 'partner-probody-studio.webp', dir: 'site', alt: 'A ProBody Stúdió logója' },
+  { file: 'partner-dynamic-tape.webp', dir: 'site', alt: 'A Dynamic Tape logója' },
+  { file: 'partner-wibbi.webp', dir: 'site', alt: 'A WIBBI logója' },
+  { file: 'partner-halm-optika.webp', dir: 'site', alt: 'A Halm Optika logója' },
+  { file: 'partner-nishi-studio.webp', dir: 'site', alt: 'A NISHI STUDIO pilates logója' },
+  { file: 'partner-bodygps.webp', dir: 'site', alt: 'A BodyGPS logója' },
+  { file: 'partner-magic-smile.webp', dir: 'site', alt: 'A Magic Smile by Juci logója' },
+  { file: 'partner-be-fit-with-ben.webp', dir: 'site', alt: 'A Be Fit With Ben logója' },
+  { file: 'partner-ortocare.webp', dir: 'site', alt: 'Az OrtoCare logója' },
+  { file: 'partner-pille-fizioterapia.webp', dir: 'site', alt: 'A Pille Fizioterápia logója' },
 ] as const satisfies readonly SeedImage[]
 
+/**
+ * A /rolunk partner-logósávjának fájljai a HOME_IMAGES-ből (a `partner-`
+ * előtag a kulcs), a HOME_IMAGES sorrendjében. A sáv élén az egyesületi
+ * MASE-logó áll (`mase.png`, public/media/press) — lásd a restore scriptet.
+ */
+export const PARTNER_LOGO_FILES = HOME_IMAGES.filter((image) =>
+  image.file.startsWith('partner-'),
+).map((image) => image.file)
+
+/**
+ * A négy ellenőrzött sajtó-/szakmai logó (H05) fájlnevei — a
+ * `public/media/press/manifest.json` gépi átadásának típusbiztos tükre. A
+ * partner-logo-assets őr-teszt bizonyítja, hogy a kettő egyezik.
+ */
+export const PRESS_MANIFEST_FILES = [
+  'kossuth-radio.png',
+  'tv2.webp',
+  'mase.png',
+  'magyar-kezsebesz-tarsasag.png',
+] as const
+
+/** A H05 logók forrásmappája (a manifest és az eredetigazolás közös helye). */
+export const PRESS_MANIFEST_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'public',
+  'media',
+  'press',
+)
+
+/**
+ * A sajtó-logósor teljes sora: a manifest `preserveExisting` hat logója
+ * (változatlan sorrendben, elöl), utána a négy új. A manifest additív
+ * szerződése (docs/kc-v1-logo-sources.md „Integration contract"): meglévő
+ * bejegyzés nem tűnik el, az eredmény 10 ≤ 12 (a blokk `maxRows`-a).
+ */
+export const PRESS_RAIL_FILES = [
+  'press-noklapja.png',
+  'press-karc.png',
+  'press-hazipatika.png',
+  'press-kepmas.png',
+  'press-ispor.png',
+  'press-mgyft.png',
+  ...PRESS_MANIFEST_FILES,
+] as const
+
 /** A seed által feltöltött képfájlok neve (típusbiztos hivatkozás a layoutban). */
-export type SeedImageFile = (typeof HOME_IMAGES)[number]['file']
+export type SeedImageFile =
+  (typeof HOME_IMAGES)[number]['file'] | (typeof PRESS_MANIFEST_FILES)[number]
 
 /**
  * Fájlnév → Media id leképezés. Szándékosan `Partial`: ha egy képfájl hiányzik
@@ -231,6 +299,82 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
     payload.logger.info(`Seed: kép feltöltve (${image.file}).`)
   }
 
+  // A H05 logók KEZELT (eredetigazolt) médiák: itt csak megkeressük őket, a
+  // feltöltés és az igazolás az `ensurePressManifestImages` explicit operátori
+  // lépése (npm run seed:legacy) — induláskor nem jön létre igazolás nélküli
+  // kezelt rekord (docs/kc-v1-delivery-plan.md: „korábbi igazolás nélkül nincs
+  // automatikus enrollment").
+  for (const file of PRESS_MANIFEST_FILES) {
+    const id = await findMediaIdByBaseName(payload, file)
+    if (id !== undefined) ids[file] = id
+  }
+
+  return ids
+}
+
+/** Egy média-rekord id-je a kiterjesztés nélküli alapnév alapján (webp-konverzió). */
+const findMediaIdByBaseName = async (
+  payload: Payload,
+  file: string,
+): Promise<number | undefined> => {
+  const baseName = file.replace(/\.[^.]+$/, '')
+  const existing = await payload.find({
+    collection: 'media',
+    where: { filename: { like: `${baseName}%` } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  return existing.docs[0]?.id
+}
+
+/**
+ * A négy H05 logó (public/media/press) idempotens feltöltése ÉS
+ * eredetigazolása (media-recovery receipt) — az owner-review CLI team-fotó
+ * mintája (src/scripts/apply-owner-review-v1.ts). Meglévő rekordot sosem ír
+ * felül. Csak explicit operátori futásból hívandó, induláskor nem.
+ *
+ * Ha az igazolás elbukik, a rekord megmarad, a hiba naplózódik, és a
+ * `--enroll-media-recovery <média-ID>` CLI-lépéssel pótolható.
+ */
+export const ensurePressManifestImages = async (
+  payload: Payload,
+): Promise<Partial<Record<(typeof PRESS_MANIFEST_FILES)[number], number>>> => {
+  const ids: Partial<Record<(typeof PRESS_MANIFEST_FILES)[number], number>> = {}
+  for (const file of PRESS_MANIFEST_FILES) {
+    const asset = pressManifest.assets.find((entry) => entry.file === file)
+    if (asset === undefined) {
+      throw new Error(`A sajtó-logó manifest nem tartalmazza: ${file}`)
+    }
+    const existingId = await findMediaIdByBaseName(payload, file)
+    if (existingId !== undefined) {
+      ids[file] = existingId
+      payload.logger.info(`Seed: sajtó-logó már fel van töltve (${file}), kihagyva.`)
+      continue
+    }
+    const filePath = path.join(PRESS_MANIFEST_DIR, file)
+    if (!existsSync(filePath)) {
+      payload.logger.warn(`Seed: a sajtó-logó fájlja nem található (${filePath}), kihagyva.`)
+      continue
+    }
+    const created = await payload.create({
+      collection: 'media',
+      data: { alt: asset.alt },
+      filePath,
+      overrideAccess: true,
+    })
+    ids[file] = created.id
+    payload.logger.info(`Seed: sajtó-logó feltöltve (${file}, id=${created.id}).`)
+    try {
+      await enrollMediaRecovery(payload, created)
+      payload.logger.info(`Seed: sajtó-logó eredetigazolása rögzítve (${file}).`)
+    } catch (error) {
+      payload.logger.warn(
+        `Seed: a sajtó-logó eredetigazolása nem sikerült (${file}, id=${created.id}): ${
+          error instanceof Error ? error.message : String(error)
+        } — pótlás: npx tsx src/scripts/apply-owner-review-v1.ts --enroll-media-recovery ${created.id}`,
+      )
+    }
+  }
   return ids
 }
 
@@ -364,16 +508,9 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
     heading: 'Itt találkozhattál velünk',
     // A logónkénti alt-felülírást szándékosan üresen hagyjuk: így a Médiatárban
     // megadott képleírás jelenik meg, azaz egy helyen szerkeszthető.
-    logos: (
-      [
-        'press-noklapja.png',
-        'press-karc.png',
-        'press-hazipatika.png',
-        'press-kepmas.png',
-        'press-ispor.png',
-        'press-mgyft.png',
-      ] as const
-    ).flatMap((file) => {
+    // A sor: a hat régi logó + a négy ellenőrzött új (H05, PRESS_RAIL_FILES);
+    // amelyik még nincs a Médiatárban, egyszerűen kimarad.
+    logos: PRESS_RAIL_FILES.flatMap((file) => {
       const image = media[file]
       return image === undefined ? [] : [{ image }]
     }),

@@ -24,7 +24,7 @@ export interface CourseShowcaseProps {
   lead?: string
   /** A vízjel. Üresen a beépített „Kurzusaink”. `null`: nincs vízjel. */
   mark?: string | null
-  /** Lassú, dekoratív csapatképek a vízjel körül. */
+  /** A vízjel körüli döntött csapatfotók (a jelenet). */
   drift?: boolean
 }
 
@@ -70,7 +70,7 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
               decorative
               media={coverMedia}
               preferredSize="md"
-              sizes="(max-width: 900px) 100vw, 33vw"
+              sizes="(max-width: 600px) 100vw, (max-width: 900px) 50vw, 33vw"
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element -- statikus csapatkép, Payload méret nélkül
@@ -108,8 +108,11 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
 }
 
 /**
- * Astra-szerű kurzusgaléria: háromhasábos képkártyák, ár a kártyán,
- * alul Kineticare-kék vízjel. A két audience-ág kicker, nem külön szekció.
+ * Kurzusgaléria: képkártyák (ár a kártyán), alattuk külön „színpadon” a
+ * halvány Kurzusaink vízjel három döntött csapatfotóval, legalul a lead.
+ * A DOM-sorrend egyben az olvasási sorrend: rács → jelenet → lead; a jelenet
+ * teljes egészében dekoratív (aria-hidden), a lead-et sosem fedi.
+ * A két audience-ág a kártya kickere, nem külön szekció.
  */
 export function CourseShowcase({
   products,
@@ -125,6 +128,7 @@ export function CourseShowcase({
   const title = heading?.trim() || COURSE_SHOWCASE_HEADING
   const leadText = rewriteVisitorDashLeftover(lead?.trim() || COURSE_SHOWCASE_LEAD)
   const markText = mark === null ? '' : mark.trim() || COURSE_SHOWCASE_MARK
+  const hasScene = markText.length > 0 || drift
 
   return (
     <div className="kc-course-showcase" data-count={products.length}>
@@ -136,29 +140,31 @@ export function CourseShowcase({
           <ShowcaseCard index={index} key={product.id} product={product} />
         ))}
       </div>
-      <p className="kc-course-showcase__lead">{leadText}</p>
-      {markText.length > 0 ? (
-        <p aria-hidden="true" className="kc-course-showcase__mark">
-          {markText}
-        </p>
-      ) : null}
-      {drift ? (
-        <div aria-hidden="true" className="kc-course-showcase__drift">
-          {COURSE_SHOWCASE_DRIFT.map((image, index) => (
-            // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
-            <img
-              alt=""
-              className={`kc-course-showcase__drift-img kc-course-showcase__drift-img--${index}`}
-              decoding="async"
-              height={image.height}
-              key={image.src}
-              loading="lazy"
-              src={image.src}
-              width={image.width}
-            />
-          ))}
+      {hasScene ? (
+        <div
+          aria-hidden="true"
+          className="kc-course-showcase__scene"
+          data-drift={drift ? 'true' : 'false'}
+        >
+          {markText.length > 0 ? <p className="kc-course-showcase__word">{markText}</p> : null}
+          {drift
+            ? COURSE_SHOWCASE_DRIFT.map((image, index) => (
+                // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
+                <img
+                  alt=""
+                  className={`kc-course-showcase__photo kc-course-showcase__photo--${index}`}
+                  decoding="async"
+                  height={image.height}
+                  key={image.src}
+                  loading="lazy"
+                  src={image.src}
+                  width={image.width}
+                />
+              ))
+            : null}
         </div>
       ) : null}
+      <p className="kc-course-showcase__lead">{leadText}</p>
     </div>
   )
 }

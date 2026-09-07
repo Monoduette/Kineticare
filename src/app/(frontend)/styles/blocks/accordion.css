@@ -123,6 +123,39 @@
   outline-offset: -3px;
 }
 
+/* ---- Kis portré a sor elején (A05) ----------------------------------------
+   Tulajdonosi kérés: „ahol a nevünk szerepel, ott mindenhol legyen mellette
+   kép is". Kör alakú, 40px mobilon / 48px 900px felett (2.5rem / 3rem, a
+   4px-rácson; a térköz-skálán nincs ilyen méret, a doboz nem térköz). A
+   portré NEM önálló
+   érintőcél: a summary belsejében áll, ugyanaz a kattintás nyitja a sort
+   (WCAG 2.2 SC 2.5.8 — a célfelület a teljes summary-sor marad, min. 44px).
+   Az arc-fotó a fejléc bizalmi jelzése (NN/g, Photos as Web Content:
+   https://www.nngroup.com/articles/photos-as-web-content/), a kör az avatar
+   bevett formája (Material 3 list item „leading avatar", 40dp:
+   https://m3.material.io/components/lists/specs). Kontraszt-ügy nincs: a kép
+   nem hordoz szöveget, a név mellette szövegként is ott van. */
+.kc-accordion__portrait {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  overflow: hidden;
+  border-radius: var(--kc-radius-full);
+  /* Halvány keret, hogy világos hátterű portré ne olvadjon a papírba. Háttér
+     szándékosan nincs: a summary-sor egyetlen háttér-deklarációja a
+     transparent marad (fájl-szintű őr az accordion-block tesztben). */
+  box-shadow: inset 0 0 0 1px var(--kc-accordion-rule);
+}
+
+.kc-accordion__portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Az arc a portré felső harmadában van: a vágás ne a homlokot vegye el. */
+  object-position: center 20%;
+}
+
 .kc-accordion__label {
   display: flex;
   flex: 1;
@@ -202,5 +235,10 @@
 @media (min-width: 900px) {
   .kc-accordion__list {
     margin-top: var(--kc-space-7);
+  }
+
+  .kc-accordion__portrait {
+    width: 3rem;
+    height: 3rem;
   }
 }

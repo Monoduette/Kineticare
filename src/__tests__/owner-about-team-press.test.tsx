@@ -86,16 +86,41 @@ describe('owner review: About tartalomhoz igazodó elrendezés', () => {
     expect(css('about')).toMatch(/\.kc-about__stat-label\s*\{[^}]*max-width:\s*100%/s)
   })
 
-  it('az A01 statikus hullámszéle csak a Rólunk horgony alsó 3px-es képszélére vonatkozik', () => {
+  it('az A01 hullám-vágás csak a Rólunk horgony fotójának alsó szélére vonatkozik, statikusan', () => {
+    // 2026-09-07: a 3 px-es fogazott csík helyett a régi oldal wave path-ja
+    // SVG-maszkként (két réteg: tömör 92,5% + 8%-os hullám, ~7,3% amplitúdó).
     const html = renderToStaticMarkup(
       <About block={about({ sectionSettings: { anchorId: 'rolunk' } })} />,
     )
     expect(html).toContain('id="rolunk"')
     const rule = css('about').match(/\.kc-about#rolunk \.kc-about__figure\s*\{([^}]+)\}/)?.[1]
     expect(rule).toBeDefined()
-    expect(rule).toContain('calc(100% - 3px)')
-    expect(rule).toContain('radial-gradient(ellipse 24px 3px at 50% 0, #000 100%, #0000 100%)')
-    expect(rule).not.toMatch(/animation|transition|filter|opacity/)
+    expect(rule).toContain('url("data:image/svg+xml,')
+    expect(rule).toContain("preserveAspectRatio='none'")
+    expect(rule).toContain('M0,128L60,117.3C120,107,240,85,360,80C480,75,600,85,720,101.3')
+    for (const prefix of ['-webkit-mask', 'mask']) {
+      expect(rule).toContain(`${prefix}-image: linear-gradient(#000 0 0), var(--kc-about-wave)`)
+      expect(rule).toMatch(new RegExp(`${prefix}-size:\\s*100% 92\\.5%,\\s*100% 8%`))
+      expect(rule).toMatch(new RegExp(`${prefix}-position:\\s*top,\\s*bottom`))
+      expect(rule).toContain(`${prefix}-repeat: no-repeat`)
+    }
+    expect(rule).not.toMatch(/animation|transition|filter|opacity|clip-path/)
+    expect(css('about')).not.toContain('radial-gradient')
+  })
+
+  it('az A01 páros tábla fele-fele: a szöveghasáb 50%, a fotó a jobb fél hasábot tölti', () => {
+    const aboutCss = css('about')
+    expect(aboutCss).toMatch(
+      /\.kc-about--paired \.kc-about__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 50%\) minmax\(0, 1fr\)/,
+    )
+    expect(aboutCss).toMatch(
+      /\.kc-about--paired \.kc-about__figure\s*\{[^}]*max-width:\s*none;[^}]*justify-self:\s*stretch/,
+    )
+    // 900 px alatt marad a 28 rem-es, középre zárt sapka (egy hasáb, reflow).
+    expect(aboutCss).toMatch(/\.kc-about__figure\s*\{[^}]*max-width:\s*28rem/)
+    const html = renderToStaticMarkup(<About block={about()} />)
+    expect(html).toContain('50vw')
+    expect(html).not.toContain('42vw')
   })
 })
 

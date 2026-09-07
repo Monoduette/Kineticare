@@ -14,6 +14,7 @@ import { pathToFileURL } from 'node:url'
 import { getPayload, type Payload } from 'payload'
 
 import { logger } from '../lib/logger'
+import { kategoriaForCikk, type TudastarKategoria } from '../lib/tudastar-kategoriak'
 import { faqMezore, GYIK_MAX, GYIK_MIN } from '../lib/tudastar/faq'
 import {
   excerptFrom,
@@ -52,12 +53,13 @@ export const CIKKEK: readonly { fajl: string; slug: string }[] = [
 /**
  * A 7. és 8. cikk Posts-mezői, amiket a markdown nem hordoz.
  *
- * Az eredeti hat cikket NEM írjuk itt: azok kategória/CTA/related mezőit
- * ez a script szándékosan békén hagyja. A `de-quervain-szindroma` slug
- * soha nem kerül `relatedPosts`-ba.
+ * Az eredeti hat cikk CTA/related mezőit ez a script csak ÜRES mezőbe tölti
+ * (CIKK_KITOLTES). A KATEGÓRIA viszont mind a nyolc cikknél a scripté:
+ * a hozzárendelés a src/lib/tudastar-kategoriak.ts CIKK_KATEGORIA táblája
+ * (a tartalmi terv 3. szakasza), lásd `kategoriaMezo`. A `de-quervain-szindroma`
+ * slug soha nem kerül `relatedPosts`-ba.
  */
 interface CikkKiegeszito {
-  kategoriaSlugok: readonly string[]
   kurzusSlug: string | null
   kapcsolodoSlugok: readonly string[]
   szerzoNevek: readonly string[]
@@ -65,13 +67,11 @@ interface CikkKiegeszito {
 
 const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
   inhuvelygyulladas: {
-    kategoriaSlugok: ['kez-es-csuklo'],
     kurzusSlug: 'otthoni-kezrehab-program',
     kapcsolodoSlugok: ['keztoalagut-szindroma', 'pattano-ujj', 'csuklo-es-kezfajdalom'],
     szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
   },
   'befagyott-vall': {
-    kategoriaSlugok: ['vall-es-konyok'],
     kurzusSlug: null,
     // Kategória-társ (vall-es-konyok): a kapcsolódó blokk így itt sem üres
     // (tulajdonosi kérés, 2026-08-25: cikk-háló minden cikk alatt).
@@ -84,8 +84,9 @@ const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
  * A hat eredeti cikk kurzus-CTA-ja és kapcsolódó cikkei — KIZÁRÓLAG ÜRES
  * mezőbe írva (tulajdonosi kérés, 2026-08-25: minden cikk alatt álljon
  * ajánló és cikk-háló). A szerkesztő kézi beállítását NEM írjuk felül:
- * ha a mezőben már van érték, a kitöltés kimarad. A kategória- és
- * szerző-mezőkhöz itt nem nyúlunk (azok a hat cikknél a CMS-ben élnek).
+ * ha a mezőben már van érték, a kitöltés kimarad. A szerző-mezőkhöz itt
+ * nem nyúlunk (azok a hat cikknél a CMS-ben élnek); a kategóriát a
+ * `kategoriaMezo` adja mind a nyolc cikknek.
  */
 const CIKK_KITOLTES: Readonly<
   Record<string, { kurzusSlug: string; kapcsolodoSlugok: readonly string[] }>
@@ -251,7 +252,6 @@ async function userIdByName(payload: Payload, name: string): Promise<number | un
 }
 
 interface CikkMezok {
-  categories: number[]
   relatedPosts: number[]
   ctaCourse: number | null
   author?: number | null
@@ -259,7 +259,41 @@ interface CikkMezok {
 }
 
 /**
- * A 7. és 8. cikk kategória / CTA / related / szerző mezői.
+ * A cikk KATEGÓRIA-mezője: a CIKK_KATEGORIA szerinti egyetlen kategória id-je.
+ *
+ * A kategória-rekordot IDEMPOTENSEN hozza létre, ha hiányzik (slug szerint
+ * párosít, `type: 'content'` — enélkül a blog nem mutatná,
+ * `docs/tudastar-hangnem-es-technika.md` 2.3). Meglévő rekord címét nem
+ * írja át: a név szerkesztői döntés az adminban.
+ *
+ * A mező FELÜLÍRÓ (nem csak üres mezőbe tölt), mert a tulajdonosi kérés
+ * (2026-09-07) épp az egységesítés: minden cikknek pontosan egy, a tervben
+ * rögzített kategóriája legyen. Ismeretlen cikk-slugra a `kategoriaForCikk`
+ * dob, tehát kategória nélküli cikk nem íródhat.
+ */
+async function kategoriaId(payload: Payload, kategoria: TudastarKategoria): Promise<number> {
+  const meglevo = await slugId(payload, 'categories', kategoria.slug)
+  if (meglevo !== undefined) return meglevo
+  const uj = await payload.create({
+    collection: 'categories',
+    data: { title: kategoria.title, slug: kategoria.slug, type: 'content' },
+    overrideAccess: true,
+  })
+  logger.info('Tudástár-import: kategória létrehozva', {
+    kategoria: kategoria.slug,
+    cim: kategoria.title,
+    id: uj.id,
+  })
+  return uj.id
+}
+
+async function kategoriaMezo(payload: Payload, slug: string): Promise<{ categories: number[] }> {
+  const kategoria = kategoriaForCikk(slug)
+  return { categories: [await kategoriaId(payload, kategoria)] }
+}
+
+/**
+ * A 7. és 8. cikk CTA / related / szerző mezői.
  *
  * A Posts kollekciónak nincs `noindex` mezője, ezért hiányzó szerzőnél
  * csak figyelmeztetünk: a meglévő hat cikket nem noindexeljük.
@@ -270,16 +304,6 @@ async function cikkMezok(
 ): Promise<CikkMezok | Record<string, never>> {
   const meta = CIKK_KIEGESZITO[slug]
   if (meta === undefined) return {}
-
-  const categories: number[] = []
-  for (const kat of meta.kategoriaSlugok) {
-    const id = await slugId(payload, 'categories', kat)
-    if (id === undefined) {
-      logger.warn('Tudástár-import: kategória nem található', { slug, kategoria: kat })
-      continue
-    }
-    categories.push(id)
-  }
 
   let ctaCourse: number | null = null
   if (meta.kurzusSlug !== null) {
@@ -315,7 +339,6 @@ async function cikkMezok(
   }
 
   const mezok: CikkMezok = {
-    categories,
     relatedPosts,
     ctaCourse,
   }
@@ -560,6 +583,7 @@ async function main(): Promise<void> {
     logger.info('Tudástár-import: lefordítva', {
       slug: cikk.slug,
       cim: cikk.title,
+      kategoria: kategoriaForCikk(cikk.slug).slug,
       szoszam: cikk.szoszam,
       seoTitle: cikk.seoTitle,
       gyikTetelek: cikk.faq?.length ?? 0,
@@ -623,6 +647,10 @@ async function main(): Promise<void> {
       // viszont van tétel, ott a faq.ts az igazság forrása, ugyanúgy, ahogy a
       // törzsnél a markdown: a script felülírja a kézi szerkesztést.
       ...(cikk.faq === undefined ? {} : { faq: cikk.faq }),
+      // Mind a nyolc cikk PONTOSAN EGY kategóriát kap (tartalmi terv 3.,
+      // tulajdonosi egységesítés-kérés 2026-09-07); a rekord hiányában a
+      // kategória létrejön.
+      ...(await kategoriaMezo(payload, cikk.slug)),
       ...(await cikkMezok(payload, cikk.slug)),
       // A hat eredeti cikk üres ctaCourse/relatedPosts mezőjének kitöltése —
       // meglévő szerkesztői értéket sosem ír felül (CIKK_KITOLTES).

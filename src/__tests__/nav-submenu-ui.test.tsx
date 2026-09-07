@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -163,5 +166,81 @@ describe('SOS almenüfelirat — desktop és mobil', () => {
       expect(html).toContain(`>${SOS_FREE_MENU_LABEL}</a>`)
       expect(html).not.toMatch(new RegExp(`>${SOS_MENU_LABEL}<`))
     }
+  })
+})
+
+/**
+ * WP9 (2026-09-07) őrök: a billentyűs viselkedés böngészőben mérhető
+ * (header-responsive.browser.mjs); itt a FORRÁS szerződését rögzítjük, hogy
+ * a csapda és a nyílbillentyűk ne tűnjenek el egy átíráskor.
+ */
+const forras = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+
+describe('MobileNav — fókuszcsapda a nyitott fiókban (WCAG 2.2 SC 2.4.11, APG modális párbeszéd)', () => {
+  const mobile = forras('../components/layout/MobileNav.tsx')
+
+  it('a Tab a fiókon belül körbejár, az Escape zár', () => {
+    expect(mobile).toContain("event.key === 'Tab'")
+    expect(mobile).toContain('trapTabInDrawer(event, drawerRef.current)')
+    expect(mobile).toContain("event.key === 'Escape'")
+    // Az utolsóról az elsőre, az elsőről az utolsóra (APG: „Tab and
+    // Shift + Tab do not move focus outside the dialog").
+    expect(mobile).toMatch(/event\.shiftKey && active === first[\s\S]*last\.focus\(\)/)
+    expect(mobile).toMatch(/!event\.shiftKey && active === last[\s\S]*first\.focus\(\)/)
+    expect(mobile).toContain('focus-not-obscured-minimum')
+    expect(mobile).toContain('patterns/dialog-modal/')
+  })
+
+  it('a fiók elemre ref mutat, és a rejtett elemek nem tabbolhatók a csapdában', () => {
+    expect(mobile).toContain('ref={drawerRef}')
+    expect(mobile).toContain('getClientRects().length > 0')
+  })
+})
+
+describe('DesktopNav — nyílbillentyűk a lenyílóban (APG disclosure navigation, opcionális)', () => {
+  const desktop = forras('../components/layout/DesktopNav.tsx')
+
+  it('Le/Fel nyíl, Home és End kezelve, Escape megmarad', () => {
+    expect(desktop).toContain("new Set(['ArrowDown', 'ArrowUp', 'Home', 'End'])")
+    expect(desktop).toContain("event.key === 'Escape'")
+    expect(desktop).toContain("event.key === 'ArrowUp'")
+    expect(desktop).toContain("event.key === 'ArrowDown' && index !== -1")
+    expect(desktop).toContain('disclosure/examples/disclosure-navigation/')
+  })
+
+  it('zárt lenyílón a nyitás utáni fókuszlépés a következő renderben történik (visibility: hidden)', () => {
+    expect(desktop).toContain('pendingFocus')
+    expect(desktop).toMatch(/useEffect\(\(\) => \{\s*const pending = pendingFocus\.current/)
+  })
+})
+
+describe('layout.css — 320 px-es sáv és a lenyíló hierarchiája (WP9)', () => {
+  const css = forras('../app/(frontend)/styles/layout.css').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('a sáv hamburgere 8 px-es optikai túlnyúlást kap, a fiók bezáró gombja nem', () => {
+    expect(css).toMatch(
+      /\.kc-site-header__actions \.kc-nav-mobile__toggle\s*\{[^}]*--kc-hamburger-overhang:\s*var\(--kc-space-2\)/,
+    )
+    expect(css).toMatch(/\.kc-nav-mobile__toggle\s*\{[^}]*--kc-hamburger-overhang:\s*0px/)
+    expect(css).toMatch(
+      /margin-inline-end:\s*calc\(-1 \* var\(--kc-hamburger-overhang\)\)/,
+    )
+  })
+
+  it('400 px alatt a sáv és az akciósáv köze a 8 px-es lépcső', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 400px)'))
+    expect(narrow).toMatch(
+      /\.kc-site-header__bar,\s*\.kc-site-header__actions\s*\{\s*gap:\s*var\(--kc-space-2\);/,
+    )
+  })
+
+  it('az almenüpont az asztali sávon a szülővel azonos S lépcsőn áll', () => {
+    // Az alap `.kc-nav-desktop__sublink` szabály UTÁN, 900 px-es médiában.
+    const base = css.indexOf('.kc-nav-desktop__sublink {')
+    expect(base).toBeGreaterThan(-1)
+    expect(css.slice(base)).toMatch(
+      /@media \(min-width: 900px\)\s*\{\s*\.kc-nav-desktop__sublink\s*\{\s*font-size:\s*var\(--kc-font-s\);\s*\}\s*\}/,
+    )
   })
 })

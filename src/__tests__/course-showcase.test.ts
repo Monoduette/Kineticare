@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 
 import { CourseShowcase } from '../components/content/home/CourseShowcase'
 import {
+  COURSE_SHOWCASE_DRIFT,
   COURSE_SHOWCASE_HEADING,
+  COURSE_SHOWCASE_LEAD,
   COURSE_SHOWCASE_MARK,
   showcaseFallbackAt,
   splitEditorialTitle,
@@ -70,24 +72,137 @@ describe('CourseShowcase', () => {
   })
 
   it('borító nélkül a csapatportré-tartalékot teszi be', () => {
-    const html = render(createElement(CourseShowcase, { drift: false, products: [product({ id: 1 })] }))
+    const html = render(
+      createElement(CourseShowcase, { drift: false, products: [product({ id: 1 })] }),
+    )
     expect(html).toContain(showcaseFallbackAt(0).src)
+  })
+
+  /**
+   * ŐR — a 2026-09-07-i mért hiba: a vízjel a lead bekezdésre csúszott és
+   * átfedte („Online kézrehabilitációs kurzusaink…” + „Kurzusaink”), a
+   * drift-képek pedig a kártya alatt lebegtek bélyegként. A jelenet (vízjel +
+   * fotók) azóta KÜLÖN, aria-hidden színpad a rács és a lead KÖZÖTT: a DOM-
+   * sorrend rács → jelenet → lead, és a vízjel meg a lead sosem egy elemben.
+   */
+  it('DOM-sorrend: rács → jelenet (vízjel + fotók) → lead; a vízjel nem a lead-ben áll', () => {
+    const html = render(createElement(CourseShowcase, { products: [product({ id: 1 })] }))
+    const grid = html.indexOf('kc-course-showcase__grid')
+    const scene = html.indexOf('kc-course-showcase__scene')
+    const word = html.indexOf('kc-course-showcase__word')
+    const photo = html.indexOf('kc-course-showcase__photo--0')
+    const lead = html.indexOf('kc-course-showcase__lead')
+    expect(grid).toBeGreaterThanOrEqual(0)
+    expect(scene).toBeGreaterThan(grid)
+    expect(word).toBeGreaterThan(scene)
+    expect(photo).toBeGreaterThan(word)
+    expect(lead).toBeGreaterThan(photo)
+    // A jelenet dekoratív: a képernyőolvasó a lead-et olvassa, a vízjelet nem.
+    expect(html).toMatch(/<div aria-hidden="true" class="kc-course-showcase__scene"/)
+    expect(html).toContain(`class="kc-course-showcase__lead">${COURSE_SHOWCASE_LEAD}</p>`)
+    expect(html).not.toContain(`${COURSE_SHOWCASE_LEAD}${COURSE_SHOWCASE_MARK}`)
+    for (const image of COURSE_SHOWCASE_DRIFT) {
+      expect(html).toContain(`src="${image.src}"`)
+    }
+  })
+
+  it('1 terméknél a rács data-count="1", három fölött legfeljebb 3', () => {
+    const one = render(createElement(CourseShowcase, { products: [product({ id: 1 })] }))
+    expect(one).toContain('class="kc-course-showcase__grid" data-count="1"')
+    const four = render(
+      createElement(CourseShowcase, {
+        products: [product({ id: 1 }), product({ id: 2 }), product({ id: 3 }), product({ id: 4 })],
+      }),
+    )
+    expect(four).toContain('class="kc-course-showcase__grid" data-count="3"')
+  })
+
+  it('drift nélkül (kurzuslista) a jelenet csak a vízjelet viszi, fotó nélkül', () => {
+    const html = render(
+      createElement(CourseShowcase, { drift: false, products: [product({ id: 1 })] }),
+    )
+    expect(html).toContain('data-drift="false"')
+    expect(html).toContain('kc-course-showcase__word')
+    expect(html).not.toContain('kc-course-showcase__photo')
+  })
+
+  it('vízjel és drift nélkül nincs jelenet, a lead akkor is a rács után áll', () => {
+    const html = render(
+      createElement(CourseShowcase, { drift: false, mark: null, products: [product({ id: 1 })] }),
+    )
+    expect(html).not.toContain('kc-course-showcase__scene')
+    expect(html.indexOf('kc-course-showcase__lead')).toBeGreaterThan(
+      html.indexOf('kc-course-showcase__grid'),
+    )
   })
 })
 
-describe('course-showcase.css — token-őr', () => {
+describe('course-showcase.css — token- és jelenet-őr', () => {
   const css = readFileSync(
     fileURLToPath(new URL('../app/(frontend)/styles/blocks/course-showcase.css', import.meta.url)),
     'utf8',
-  )
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
 
-  it('900 px-en három hasáb, reduced-motion leállítja a sodródást', () => {
+  /** Egy szelektor blokkjának törzse (az első találat). */
+  const blokk = (szelektor: string): string => {
+    const m = new RegExp(`${szelektor.replace(/[.[\]()*+?]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)
+    if (!m) throw new Error(`hiányzó szabály: ${szelektor}`)
+    return m[1]
+  }
+
+  it('900 px-en három hasáb; a három betűméret-token mind jelen van', () => {
     expect(css).toContain('repeat(3, minmax(0, 1fr))')
-    expect(css).toContain('prefers-reduced-motion: reduce')
-    expect(css).toContain('color: var(--kc-color-accent)')
     expect(css).toContain('font-size: var(--kc-font-l)')
     expect(css).toContain('font-size: var(--kc-font-m)')
     expect(css).toContain('font-size: var(--kc-font-s)')
+    expect(css).not.toMatch(/font-size:(?!\s*var\(--kc-font-[lms]\))/)
+  })
+
+  it('1 termék: desktopon a kártya legfeljebb a rács felét kapja (nem teljes szélességű óriáskártya)', () => {
+    expect(blokk(".kc-course-showcase__grid[data-count='1']")).toMatch(
+      /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    )
+    expect(blokk(".kc-course-showcase__grid[data-count='2']")).toMatch(
+      /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    )
+    // A kártya képaránya nem 3/4: a fekvő eszköz-mockup 4/3-ban olvasható.
+    expect(blokk('.kc-course-showcase__media')).toMatch(/aspect-ratio:\s*4 \/ 3/)
+    expect(css).not.toContain('aspect-ratio: 3 / 4')
+  })
+
+  it('a vízjel L token + scale, egy sorban, egyedi --kc- tulajdonsággal méretezve; a színpad vág', () => {
+    const word = blokk('.kc-course-showcase__word')
+    expect(word).toContain('font-size: var(--kc-font-l)')
+    expect(word).toMatch(/transform:\s*scale\(var\(--kc-showcase-mark-scale\)\)/)
+    expect(word).toContain('white-space: nowrap')
+    expect(word).toMatch(/color:\s*color-mix\(in srgb, var\(--kc-color-accent-quiet\)/)
+    // `clip`, nem `hidden`: a hidden görgető-konténer lenne, és a view() idővonal
+    // ahhoz kötné a fotókat, nem a nézetablakhoz (mérve 2026-09-07).
+    expect(blokk('.kc-course-showcase__scene')).toContain('overflow: clip')
+    // A scale lépcsői a konténerhez mérve nőnek (320 → 1440), sosem egy fix szám.
+    const lepcsok = [...css.matchAll(/--kc-showcase-mark-scale:\s*([\d.]+)/g)].map((m) =>
+      Number(m[1]),
+    )
+    expect(lepcsok.length).toBeGreaterThanOrEqual(4)
+    expect([...lepcsok].sort((a, b) => a - b)).toEqual(lepcsok)
+  })
+
+  it('a görgetés-kötött mozgás progresszív (@supports view()), reduced-motion alatt statikus', () => {
+    expect(css).toMatch(/@supports \(animation-timeline: view\(\)\)/)
+    expect(css).toContain('animation-timeline: view()')
+    const csokkentett = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(csokkentett).toContain('.kc-course-showcase__photo')
+    expect(csokkentett).toContain('animation: none')
+    expect(csokkentett).toContain('translate: none')
+    // A régi, időalapú sodródás megszűnt.
+    expect(css).not.toContain('kc-course-showcase-drift')
+    expect(css).not.toContain('infinite')
+  })
+
+  it('a lead a jelenet alatt középre zárt, mértéke tokenről', () => {
+    const lead = blokk('.kc-course-showcase__lead')
+    expect(lead).toContain('text-align: center')
+    expect(lead).toContain('max-width: var(--kc-measure-comfort)')
   })
 })
 

@@ -41,7 +41,10 @@ export const COURSE_SHOWCASE_FALLBACKS: readonly CourseShowcaseFallbackImage[] =
   },
 ]
 
-/** A „Kurzusaink” vízjel mögötti, lassan mozgó csapatképek. */
+/**
+ * A „Kurzusaink” vízjel körüli három döntött csapatfotó (a galéria alatti
+ * jelenet). Sorrend = a CSS `__photo--0/1/2` helye: bal, közép, jobb.
+ */
 export const COURSE_SHOWCASE_DRIFT: readonly CourseShowcaseFallbackImage[] = [
   {
     src: '/media/team/founders-shared-laugh-1600.webp',
