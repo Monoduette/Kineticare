@@ -2,6 +2,7 @@ import type { Page, Post, Product, Testimonial } from '../../payload-types'
 import type { AppointmentSectionContext } from '../../lib/appointment/context'
 import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
+import { showcaseProducts } from '../../lib/course-showcase'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
@@ -12,7 +13,6 @@ import { HeroVideo } from './HeroVideo'
 import { JsonLd } from './JsonLd'
 import { MediaImage } from './MediaImage'
 import { isPubliclyVisibleProduct } from './ProductCard'
-import { isPaidProduct } from './home/CourseCards'
 import { CourseShowcase } from './home/CourseShowcase'
 import { CredentialsStrip } from './home/CredentialsStrip'
 import { FAQ_ITEMS, Faq } from './home/Faq'
@@ -114,10 +114,12 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
   }
 
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
-  // A kurzus-rácsba KIZÁRÓLAG fizetős termék kerül. Az ingyenes lead-magnet
-  // helye a lentebbi FreeSos szekció: 2026-08-15-ig mindkét helyen szerepelt,
-  // ami duplikáció volt (kezdőlap-audit) — lásd CourseCards fejléce.
-  const paidProducts = visibleProducts.filter(isPaidProduct)
+  // A kurzus-rács a teljes kínálat: fizetős kurzusok elöl, majd az igazolt
+  // ingyenes SOS „Ingyenes” felirattal (WP12, tulajdonosi kérés 2026-09-07).
+  // A 2026-08-15-i „csak fizetős” szabály felülvizsgálva; indoklás és
+  // források: `showcaseProducts` (src/lib/course-showcase.ts). A lentebbi
+  // FreeSos sáv a lead-magnet részletezése, saját CTA-val.
+  const gridProducts = showcaseProducts(visibleProducts)
   // A hero és a sáv csak a kanonikus, publikált és explicit ingyenes SOS-t ajánlja.
   const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
@@ -142,7 +144,7 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
 
       <Section className="kc-course-showcase-band" id="kurzusok">
         <Container>
-          <CourseShowcase products={paidProducts} />
+          <CourseShowcase products={gridProducts} />
         </Container>
       </Section>
 

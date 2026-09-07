@@ -7,8 +7,10 @@ import { ProductCard } from '../ProductCard'
 import '../../../app/(frontend)/styles/blocks/course-cards.css'
 
 /**
- * CourseCards — a FIZETŐS kurzusok kiemelése a hitel-csík után
- * A lead-magnet helye a FreeSos szekció — a rács a fizetős ajánlaté.
+ * CourseCards: a FIZETŐS kurzusok kiemelése a hitel-csík után (ProductCard
+ * alapú, örökölt rács). A kezdőlapi Kurzusaink galéria ma a CourseShowcase;
+ * annak tételeit a `showcaseProducts` (src/lib/course-showcase.ts) adja,
+ * 2026-09-07-től az igazolt ingyenes SOS-szal együtt.
  */
 
 /** Felvezető sor — a `courseCards` blokk `eyebrow` mezője írja felül. */
@@ -49,7 +51,9 @@ export function usesFeaturedCard(productCount: number): boolean {
  *
  * FIGYELEM: a `!isPaidProduct` NEM jelent „ingyenes"-t — a hiányosan
  * konfigurált termék egyik halmazba sem tartozik. Ingyenességre az
- * `isFreeCourse` a helyes kérdés.
+ * `isFreeCourse` a helyes kérdés; a kezdőlapi rácsba az ingyenes SOS csak az
+ * `isAvailableSosProduct` igazolásával kerül (`showcaseProducts`), ez a
+ * függvény tehát már NEM a rács egyetlen beléptető szűrője (WP12).
  */
 export function isPaidProduct(product: {
   priceInHUFEnabled?: boolean | null

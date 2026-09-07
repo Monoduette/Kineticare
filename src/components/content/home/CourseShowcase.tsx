@@ -98,6 +98,16 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
               <PriceTag label="Ár:" priceHuf={product.priceInHUF as number} />
             </span>
           ) : null}
+          {/*
+            „Ingyenes” az ár helyén (nem CTA, hanem ár-tény, §3.1.4 M-8): a rácsba
+            csak a `showcaseProducts` által igazolt SOS jut el ilyen jelzéssel
+            (src/lib/course-showcase.ts, P03: az ingyenes állítás bizalmi
+            határ). A kártya a kurzusoldalra visz; a lentebbi FreeSos sáv
+            külön dolga a lead-magnet részletezése és a szótári „Elindítom
+            ingyen” CTA (docs/ui-sztenderdek.md §3.2 #4). Ugyanaz a stílus,
+            mint a fizetős áré: az ingyenes tétel sorrendben is hátul áll, nem
+            kap külön súlyt (UX-skill M4/K2).
+          */}
           {priceBadge === 'free' ? (
             <span className="kc-course-showcase__price">Ingyenes</span>
           ) : null}

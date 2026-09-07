@@ -2,6 +2,7 @@ import type { BlockAbout } from '../../payload-types'
 import { MediaImage } from '../content/MediaImage'
 import { pickMediaUrl } from '../content/media-url'
 import { Section } from '../ui/Section'
+import { PhotoFrieze } from './PhotoFrieze'
 
 import '../../app/(frontend)/styles/blocks/about.css'
 
@@ -10,9 +11,34 @@ import '../../app/(frontend)/styles/blocks/about.css'
  * és az olvasható szöveg együtt adja a bizalmi elemet, nem egy üres hasáb.
  * https://www.nngroup.com/articles/photos-as-web-content/
  * https://design-system.service.gov.uk/styles/layout/
+ *
+ * KÉT ALAK, EGY SZERKEZET:
+ *  - páros (`kc-about--paired`, pl. /rolunk): bal hasáb szöveg, jobb hasáb a
+ *    CMS-fotó hullámos alsó éllel, alatta a statisztikasor;
+ *  - alapítók (`kc-about--founders`, a kezdőlap filmsáv utáni blokkja, a
+ *    `frieze` prop jelére): ugyanez a párosítás, de a jobb hasábban a CMS-fotó
+ *    HELYETT a négy íves csapatfotó-fríz áll (PhotoFrieze), ugyanazzal a
+ *    hullámos alsó éllel. A CMS-fotó ilyenkor szándékosan nem renderel: a
+ *    fríz már mutatja a két gyógytornászt, és egy régióban két azonos arcpár
+ *    ismétlés lenne (NN/g Common Region: egy határ = egy tartalmi egység;
+ *    https://www.nngroup.com/articles/common-region/). A tulajdonos
+ *    2026-09-07-i kérése: „az alapítók és a fölső mozgó 4 kép mehetne
+ *    egybe", és a /rolunk-féle szöveg–fotó párosítás a kezdőlapon is.
+ *
+ * A szöveghasáb három csoportra oszlik (fej: eyebrow + cím; törzs:
+ * bekezdések; láb: kiemelés), hogy a CSS a hasáb magasságában
+ * ELOSZTHASSA őket a fotó/fríz mellett — a korábbi „felül zsúfolt, alul
+ * üres" hasáb helyett (about.css, függőleges elosztás; NN/g whitespace:
+ * a térköz csoportosít és elválaszt, nem maradék).
  */
 export interface AboutProps {
   block: BlockAbout
+  /**
+   * Alapítók-alak: a jobb hasábban a kódban élő fotó-fríz áll a CMS-fotó
+   * helyett. A RenderBlocks akkor adja, ha a blokk a kezdőlap ELSŐ
+   * About-ja és közvetlenül a filmsáv után áll.
+   */
+  frieze?: boolean
 }
 
 /**
@@ -41,21 +67,27 @@ function FeatureIcon() {
   )
 }
 
-export function About({ block }: AboutProps) {
+export function About({ block, frieze = false }: AboutProps) {
   const paragraphs = (block.paragraphs ?? []).filter((item) => (item.text?.trim() ?? '').length > 0)
   const stats = (block.stats ?? []).filter(
     (item) => (item.value?.trim() ?? '').length > 0 && (item.label?.trim() ?? '').length > 0,
   )
-  const photo =
-    typeof block.photo === 'object' && block.photo !== null && pickMediaUrl(block.photo, 'lg')
-      ? block.photo
-      : null
   const title = block.title?.trim() ?? ''
   const featureLabel = block.feature?.label?.trim() ?? ''
   const featureNote = block.feature?.note?.trim() ?? ''
   const hasFeature = featureLabel.length > 0 || featureNote.length > 0
   const eyebrow = block.eyebrow?.trim() ?? ''
   const hasCopy = title.length > 0 || paragraphs.length > 0 || hasFeature || eyebrow.length > 0
+  // Az alapítók-alak szöveg nélkül értelmetlen (a fríz a bemutatkozás képi
+  // fele, nem önálló szekció): szöveg híján a blokk a sima alakra esik vissza.
+  const founders = frieze && hasCopy
+  const photo =
+    !founders &&
+    typeof block.photo === 'object' &&
+    block.photo !== null &&
+    pickMediaUrl(block.photo, 'lg')
+      ? block.photo
+      : null
 
   // Cím, szöveg, kép és számok nélkül nincs mit mutatni — a szekció kimarad.
   if (!hasCopy && stats.length === 0 && !photo) {
@@ -67,43 +99,55 @@ export function About({ block }: AboutProps) {
   const variant =
     settings?.hatter === 'tint' ? 'tint' : settings?.hatter === 'sotet' ? 'dark' : 'default'
   const headingId = `about-cim-${block.id ?? 'fo'}`
+  const shape = founders ? ' kc-about--founders' : photo && hasCopy ? ' kc-about--paired' : ''
 
   return (
     <Section
       aria-labelledby={title.length > 0 ? headingId : undefined}
-      className={`kc-about kc-board kc-board--band${photo && hasCopy ? ' kc-about--paired' : ''}`}
+      className={`kc-about kc-board kc-board--band${shape}`}
       id={anchorId}
       variant={variant}
     >
       <div className="kc-board__inner kc-about__grid">
+        {founders ? <PhotoFrieze /> : null}
         {hasCopy ? (
           <div className="kc-about__copy">
-            {eyebrow.length > 0 ? <p className="kc-about__eyebrow">{eyebrow}</p> : null}
-            {title.length > 0 ? (
-              <h2 className="kc-about__title" id={headingId}>
-                {title}
-              </h2>
+            {eyebrow.length > 0 || title.length > 0 ? (
+              <div className="kc-about__head">
+                {eyebrow.length > 0 ? <p className="kc-about__eyebrow">{eyebrow}</p> : null}
+                {title.length > 0 ? (
+                  <h2 className="kc-about__title" id={headingId}>
+                    {title}
+                  </h2>
+                ) : null}
+              </div>
             ) : null}
-            {paragraphs.map((item, index) => {
-              const text = item.text.trim()
-              return (
-                <p className="kc-about__text" key={item.id ?? `bekezdes-${index}`}>
-                  {item.emphasized ? <strong>{text}</strong> : text}
-                </p>
-              )
-            })}
+            {paragraphs.length > 0 ? (
+              <div className="kc-about__body">
+                {paragraphs.map((item, index) => {
+                  const text = item.text.trim()
+                  return (
+                    <p className="kc-about__text" key={item.id ?? `bekezdes-${index}`}>
+                      {item.emphasized ? <strong>{text}</strong> : text}
+                    </p>
+                  )
+                })}
+              </div>
+            ) : null}
             {hasFeature ? (
-              <div className="kc-about__feature">
-                <span className="kc-about__feature-icon">
-                  <FeatureIcon />
-                </span>
-                <div className="kc-about__feature-copy">
-                  {featureLabel.length > 0 ? (
-                    <p className="kc-about__feature-label">{featureLabel}</p>
-                  ) : null}
-                  {featureNote.length > 0 ? (
-                    <p className="kc-about__feature-note">{featureNote}</p>
-                  ) : null}
+              <div className="kc-about__foot">
+                <div className="kc-about__feature">
+                  <span className="kc-about__feature-icon">
+                    <FeatureIcon />
+                  </span>
+                  <div className="kc-about__feature-copy">
+                    {featureLabel.length > 0 ? (
+                      <p className="kc-about__feature-label">{featureLabel}</p>
+                    ) : null}
+                    {featureNote.length > 0 ? (
+                      <p className="kc-about__feature-note">{featureNote}</p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : null}

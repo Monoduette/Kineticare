@@ -7,13 +7,19 @@ import { getPageBySlug } from '@/lib/cms'
 import { pageBlockSlugs } from '../blocks'
 import { validateAnchorId } from '../blocks/section-settings'
 import { RenderBlocks } from '../components/blocks/RenderBlocks'
-import { minimalRichText } from '../lib/home-seed'
+import { HOME_HELP_LEAD, HOME_HELP_STATES, HOME_HELP_TITLE } from '../lib/home-help-states'
+import { buildHomeLayout, minimalRichText } from '../lib/home-seed'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
 import {
+  buildKapcsolatLayout,
   buildRolunkLayout,
   buildSzolgaltatasokLayout,
+  IDOPONTKERES_URL,
+  ROLUNK_SZEMELYEK_SZEKCIO,
   tervezdGondolatjelCsereket,
+  tervezdKapcsolatRovidBemutatkozast,
   tervezdOneletrajzKepeket,
+  tervezdRolunkSzetvalasztast,
 } from '../scripts/restore-legacy-content'
 import type { Page } from '../payload-types'
 
@@ -101,6 +107,10 @@ describe('CMS-oldal renderelése (P3)', () => {
 
     // A blokkokból származó szekciók megjelennek…
     expect(markup).toContain('kc-about')
+    // …a /rolunk Rólunk-blokkja a páros alak marad: a kezdőlapi fotó-fríz
+    // (WP11, `kc-about--founders`) csak a filmsáv utáni első About-é.
+    expect(markup).not.toContain('kc-photo-frieze')
+    expect(markup).not.toContain('kc-about--founders')
     expect(markup).toContain('kc-usps')
     expect(markup).toContain('kc-services')
     expect(markup).toContain('kc-cta-banner')
@@ -217,11 +227,11 @@ describe('/rolunk alap-szekciósora', () => {
     }
   })
 
-  it('NEM veszíti el a rich-text változat kulcsadatait (telefonszám, partnerek, CV)', () => {
+  it('NEM veszíti el a rich-text változat kulcsadatait (nevek, partnerek, CV)', () => {
     const markup = renderLayout(layout)
 
-    expect(markup).toContain('+36 30 169 2263')
-    expect(markup).toContain('+36 20 357 3493')
+    expect(markup).toContain('Kocsis Kata')
+    expect(markup).toContain('Kiss Kata')
     expect(markup).toContain('Partnereink')
     expect(markup).toContain('Kocsis Kata szakmai önéletrajza')
     expect(markup).toContain('Kiss Kata szakmai önéletrajza')
@@ -230,12 +240,10 @@ describe('/rolunk alap-szekciósora', () => {
     expect(markup).toContain('Svédmasszázs (2015) – OKTÁV Továbbképző Központ')
   })
 
-  it('a telefonszámok és a partnerek NEM kerülnek lenyitó mögé (GOV.UK-szabály)', () => {
-    // A kapcsolatfelvételi adat és a referencia-sor rövid: MINDIG LÁTHATÓ
-    // blokkban kell maradnia, nem a harmonikában. A telefonszámokat 2026-08-16
-    // óta a `teamMembers` blokk viszi (portréval és kattintható `tel:`
-    // hivatkozással), a partnerek sora maradt szabad szövegben — a lényeg
-    // változatlan: egyik sem kerülhet `details` mögé.
+  it('a szakember-bemutatkozás és a partnerek NEM kerülnek lenyitó mögé (GOV.UK-szabály)', () => {
+    // A rövid bemutatkozás és a referencia-sor MINDIG LÁTHATÓ blokkban marad,
+    // nem a harmonikában: a `teamMembers` blokk (portréval, névvel, titulussal)
+    // és a partnerek sora egyike sem kerülhet `details` mögé.
     const nyitott = layout.filter(
       (block) => block.blockType === 'richText' || block.blockType === 'teamMembers',
     )
@@ -247,29 +255,34 @@ describe('/rolunk alap-szekciósora', () => {
         testimonials: [],
       }),
     )
-    expect(nyitottSzoveg).toContain('+36 30 169 2263')
-    expect(nyitottSzoveg).toContain('+36 20 357 3493')
+    expect(nyitottSzoveg).toContain('Kocsis Kata')
+    expect(nyitottSzoveg).toContain('Kiss Kata')
     expect(nyitottSzoveg).toContain('Partnereink')
     expect(nyitottSzoveg).not.toContain('<details')
   })
 
   /**
-   * BEJELENTKEZÉS A SZAKEMBEREKHEZ (tulajdonosi kérés, 2026-08-16).
+   * A SZEMÉLYEK SZEKCIÓJA (WP15, tulajdonosi kérés 2026-09-07: „Rólunk és
+   * Kapcsolat menüpont is legyen jobban szeparálva tartalmi szempontból").
    *
-   * A /rolunk oldalon a két telefonszám korábban folyó szövegben állt („… –
-   * telefon: +36 30 169 2263"): mobilon kézzel kellett átírni, és nem volt
-   * mellette arc. A `teamMembers` blokk mindkettőt megadja, a részletes
-   * önéletrajzot pedig NEM ismétli meg, hanem a lap alján álló harmonikára
-   * mutat (#szakmai-hatter) — így a tartalom egy helyen él.
+   * A Rólunk a SZEMÉLYEKRŐL szól (NN/g About Us: emberek, hitelesség,
+   * https://www.nngroup.com/articles/about-us-information-on-websites/), a
+   * Kapcsolat a KAPCSOLATFELVÉTELRŐL (NN/g Contact Us: csatornák, válaszidő,
+   * https://www.nngroup.com/articles/contact-us-pages/). Ezért a /rolunk
+   * kártyáin nincs telefon-kártya és hívás-felirat; a részletes önéletrajzot
+   * a kártya nem ismétli, hanem a lap alján álló harmonikára mutat.
    */
-  it('a két szakember kattintható `tel:` hivatkozást és portré-helyet kap', () => {
+  it('a két szakember személyközpontú kártyát kap: portré-hely, bio, szakmai háttér, telefon NÉLKÜL', () => {
     const markup = renderLayout(buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }))
 
-    expect(markup).toContain('href="tel:+36301692263"')
-    expect(markup).toContain('href="tel:+36203573493"')
-    expect(markup).toContain('Hívd Kocsis Katát')
-    expect(markup).toContain('Hívd Kiss Katát')
-    expect((markup.match(/class="kc-team__call"/g) ?? []).length).toBe(2)
+    expect(markup).not.toContain('tel:')
+    expect(markup).not.toContain('+36 30 169 2263')
+    expect(markup).not.toContain('+36 20 357 3493')
+    expect(markup).not.toContain('kc-team__call')
+    expect(markup).not.toContain('kc-team__booking"')
+    expect(markup).toContain('Akik a kezeddel foglalkoznak')
+    expect(markup).toContain('Mi ketten')
+    expect(markup).toContain('Kézsérülésekkel, műtét utáni állapotokkal és sportolói panaszokkal foglalkozik.')
 
     // A portré-hivatkozás adat-szinten ellenőrizhető: a renderelő a Media
     // OBJEKTUMOT várja (mélység-feloldás után), a szekciósor viszont az id-t
@@ -321,17 +334,88 @@ describe('/rolunk alap-szekciósora', () => {
     }
   })
 
-  it('a szekció írásos időpontkérési utat is kínál a /kapcsolat oldalra', () => {
+  it('a személyek szekciója EGY szekció-szintű linkkel visz a /kapcsolat időpontkérőjére (§3.2 #24)', () => {
     const markup = renderLayout(buildRolunkLayout())
     expect(markup).toContain('Kérj időpontot üzenetben')
-    expect(markup).toContain('href="/kapcsolat"')
+    expect(markup).toContain(`href="${IDOPONTKERES_URL}"`)
+    // A kapcsolatfelvétel innen egyetlen úton megy: nincs kártyánkénti hívás.
+    expect((markup.match(/class="kc-team__booking-link"/g) ?? []).length).toBe(1)
   })
 
-  it('egyetlen elsődleges CTA-gombot tartalmaz, a fizetős kurzusra (B6.5)', () => {
-    const markup = renderLayout(layout)
+  it('a szakember-szekció szövegei natív magyarok, gondolatjel nélkül', () => {
+    const blokk = layout.find((block) => block.blockType === 'teamMembers')
+    if (blokk?.blockType !== 'teamMembers') throw new Error('nincs szakember-szekció')
+    expect(blokk.eyebrow).toBe(ROLUNK_SZEMELYEK_SZEKCIO.eyebrow)
+    expect(blokk.title).toBe(ROLUNK_SZEMELYEK_SZEKCIO.title)
+    expect(blokk.lead).toBe(ROLUNK_SZEMELYEK_SZEKCIO.lead)
+    for (const szoveg of [blokk.eyebrow, blokk.title, blokk.lead]) {
+      expect(szoveg).not.toMatch(/[–—]/)
+    }
+    // A cím a szekció tartalmát nevezi meg (WCAG 2.2 SC 2.4.6), nem a hívást.
+    expect(blokk.title?.toLowerCase()).not.toContain('hív')
+    expect(blokk.title?.toLowerCase()).not.toContain('elér')
+  })
 
-    expect((markup.match(/kc-button--primary/g) ?? []).length).toBe(1)
-    expect(markup).toContain('Megnézem a kurzusokat')
+  /**
+   * „ÍGY TUDUNK SEGÍTENI" A RÓLUNK LAPON (WP15; a tulajdonos 2026-09-07-i
+   * kiegészítése: „A főoldalon lévő Így tudunk segíteni a követendő irány").
+   * A három út címe, összefoglalója és CTA-ja a kezdőlappal EGY forrásból jön
+   * (WCAG 2.2 SC 3.2.4 Consistent Identification; NN/g Consistency and
+   * Standards, https://www.nngroup.com/articles/consistency-and-standards/).
+   */
+  it('a „Így tudunk segíteni" szekció a kezdőlapi sín kanonikus soraival épül', () => {
+    const rolunkSin = layout.find((block) => block.blockType === 'services')
+    if (rolunkSin?.blockType !== 'services') throw new Error('nincs szolgáltatás-szekció')
+    const kezdolapSin = buildHomeLayout().find(
+      (block) => block.blockType === 'services' && block.title === HOME_HELP_TITLE,
+    )
+    if (kezdolapSin?.blockType !== 'services') throw new Error('nincs kezdőlapi sín')
+
+    expect(rolunkSin.elrendezes).toBe('sin')
+    expect(rolunkSin.title).toBe(HOME_HELP_TITLE)
+    expect(rolunkSin.lead).toBe(HOME_HELP_LEAD)
+    expect(rolunkSin.sectionSettings?.anchorId).toBe('szolgaltatasaink')
+    const kulcsok = (rows: NonNullable<typeof rolunkSin.rows>) =>
+      rows.map((row) => [row.title, row.osszefoglalo, row.felirat, row.url, row.ujAblakban])
+    expect(kulcsok(rolunkSin.rows ?? [])).toEqual(kulcsok(kezdolapSin.rows ?? []))
+    expect(kulcsok(rolunkSin.rows ?? [])).toEqual(
+      HOME_HELP_STATES.map((state) => [
+        state.title,
+        state.osszefoglalo,
+        state.felirat,
+        state.url,
+        state.ujAblakban,
+      ]),
+    )
+    // A sín ajtó-fotói a kezdőlapi képek id-i, ha megvannak; nélkülük is épül.
+    const fotokkal = buildRolunkLayout({ sinFotok: [4, 5, 6] }).find(
+      (block) => block.blockType === 'services',
+    )
+    expect(fotokkal?.blockType === 'services' ? fotokkal.rows?.map((r) => r.photo) : null).toEqual(
+      [4, 5, 6],
+    )
+    expect(rolunkSin.rows?.map((row) => row.photo)).toEqual([undefined, undefined, undefined])
+    // A kezdőlapi sín horgony nélkül áll: a két lapon nincs dupla azonosító.
+    expect(kezdolapSin.sectionSettings?.anchorId ?? null).toBeNull()
+    // Rendereléskor a sín-elrendezés fut, nem a tábla.
+    const markup = renderLayout([rolunkSin])
+    expect(markup).toContain('kc-services--sin')
+    expect(markup).toContain('id="szolgaltatasaink"')
+    expect(markup).not.toContain('kc-services__list')
+  })
+
+  it('egyetlen elsődleges CTA-gombot tartalmaz a sín panelein kívül, a fizetős kurzusra (B6.5)', () => {
+    const markup = renderLayout(layout)
+    // A sín három paneljének CTA-ja elsődleges gomb (mint a kezdőlapon), de a
+    // rádiócsoport miatt egyszerre CSAK EGY panel látszik; a lap többi részén
+    // egyetlen elsődleges gomb marad: a záró sáv.
+    const sinNelkul = markup.replace(
+      /<section[^>]*kc-services--sin[\s\S]*?<\/section>/,
+      '',
+    )
+    expect((sinNelkul.match(/kc-button--primary/g) ?? []).length).toBe(1)
+    expect(sinNelkul).toContain('Megnézem a kurzusokat')
+    expect((markup.match(/kc-services-sin__cta/g) ?? []).length).toBeGreaterThan(0)
   })
 
   it('nem visz saját h1-et (a lap h1-e a hero címe marad)', () => {
@@ -588,22 +672,103 @@ describe('/szolgaltatasok alap-szekciósora', () => {
 })
 
 /**
- * MEGLÉVŐ /rolunk szekciósor célzott frissítése (két szűk kapu, a LOGOSAV
+ * MEGLÉVŐ /rolunk szekciósor célzott frissítése (három szűk kapu, a LOGOSAV
  * mintájára): a harmonika-sorok üres portré-mezőjének kitöltése
- * (LEGACY_ONELETRAJZ_KEP) és a régi seed gondolatjeles mondatainak cseréje
- * (LEGACY_GONDOLATJEL). Mindkettő tiszta függvény, pontos egyezésre nyúl, a
- * szerkesztő tartalmát nem írja felül.
+ * (LEGACY_ONELETRAJZ_KEP), a régi seed gondolatjeles mondatainak cseréje
+ * (LEGACY_GONDOLATJEL) és a Rólunk/Kapcsolat tartalmi szétválasztása
+ * (LEGACY_ROLUNK_KAPCSOLAT, WP15). Mindegyik tiszta függvény, pontos
+ * egyezésre nyúl, a szerkesztő tartalmát nem írja felül.
  */
 describe('/rolunk — meglévő szekciósor szűk kapui', () => {
-  /** A 2026-09-07 ELŐTTI seed alakja: gondolatjeles címek, portré nélkül. */
-  function regiSzekciosor(): NonNullable<Page['layout']> {
-    const layout = structuredClone(buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }))
+  /** A 2026-09-07 ELŐTTI /rolunk szakember-szekció (telefon-kártyákkal). */
+  function regiSzakemberSzekcio(): Extract<
+    NonNullable<Page['layout']>[number],
+    { blockType: 'teamMembers' }
+  > {
+    const uj = buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }).find(
+      (block) => block.blockType === 'teamMembers',
+    )
+    if (uj?.blockType !== 'teamMembers') throw new Error('nincs szakember-szekció')
+    const telefonok: Record<string, [string, string]> = {
+      'Kocsis Kata': ['+36 30 169 2263', 'Hívd Kocsis Katát'],
+      'Kiss Kata': ['+36 20 357 3493', 'Hívd Kiss Katát'],
+    }
+    return structuredClone({
+      ...uj,
+      eyebrow: 'Elérhetőség',
+      title: 'Így érsz el minket közvetlenül',
+      lead: 'Hívj minket, ha időpontot kérnél, vagy ha kérdésed van a kezelésekről.',
+      bookingLink: { felirat: 'Kérj időpontot üzenetben', url: '/kapcsolat', ujAblakban: false },
+      members: (uj.members ?? []).map((tag) => ({
+        ...tag,
+        phone: telefonok[tag.name]?.[0] ?? '',
+        callLabel: telefonok[tag.name]?.[1] ?? '',
+        availability: 'A hívás során megbeszélitek, melyik rendelőbe érdemes jönnöd.',
+      })),
+    })
+  }
+
+  /** A 2026-09-07 ELŐTTI /rolunk „Miben segíthetünk?" tábla (vesszős sorcímekkel). */
+  function regiSzolgaltatasTabla(): NonNullable<Page['layout']>[number] {
+    return {
+      blockType: 'services',
+      eyebrow: 'Szolgáltatásaink',
+      title: 'Miben segíthetünk?',
+      rows: [
+        {
+          number: '01',
+          title: 'Rendelői kezelések, személyesen',
+          body: 'Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Gyógytornával, manuálterápiával és egy sor kiegészítő terápiával várunk.',
+          felirat: 'Tovább a kezelésekre',
+          url: '/szolgaltatasok',
+          ujAblakban: false,
+        },
+        {
+          number: '02',
+          title: 'Otthoni program, online',
+          body: 'Ha a kézfájdalom enyhítésére szeretnél egy bárhol, bármikor végezhető megoldást, akkor egy átfogó programmal is tudunk segíteni.',
+          felirat: 'Tovább a kurzusokra',
+          url: '/kurzusok',
+          ujAblakban: false,
+        },
+        {
+          number: '03',
+          title: 'Szakmai képzések, kollégáknak',
+          body: 'Akkreditált tantermi kézkurzus a kéz, a csukló- és könyökízület rehabilitációs lehetőségeiről gyógytornászoknak, erőnléti- és szakági edzőknek és orvosoknak.',
+          felirat: 'Tovább a képzésre',
+          url: 'https://probodystudio.hu/kez-workshop/',
+          ujAblakban: true,
+        },
+      ],
+      sectionSettings: { visible: true, anchorId: 'szolgaltatasaink', hatter: 'tint' },
+    }
+  }
+
+  /**
+   * A 2026-09-07 ELŐTTI seed alakja: a WP15 előtti szakember-szekció és
+   * tábla, portré nélküli harmonika; `gondolatjel: true` esetén a
+   * LEGACY_GONDOLATJEL előtti, gondolatjeles címekkel.
+   */
+  function regiSzekciosor(
+    { gondolatjel }: { gondolatjel: boolean } = { gondolatjel: true },
+  ): NonNullable<Page['layout']> {
+    const layout = structuredClone(buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 })).map(
+      (block) =>
+        block.blockType === 'teamMembers'
+          ? regiSzakemberSzekcio()
+          : block.blockType === 'services'
+            ? regiSzolgaltatasTabla()
+            : block,
+    )
     for (const block of layout) {
+      if (block.blockType === 'accordion') {
+        for (const item of block.items ?? []) delete item.kep
+      }
+      if (!gondolatjel) continue
       if (block.blockType === 'accordion') {
         block.lead =
           'A teljes szakmai életutunk — tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.'
         for (const item of block.items ?? []) {
-          delete item.kep
           item.cim = item.cim.replace(' szakmai önéletrajza', ' — szakmai önéletrajz')
         }
       }
@@ -629,6 +794,22 @@ describe('/rolunk — meglévő szekciósor szűk kapui', () => {
       }
     }
     return layout
+  }
+
+  /** A harmonika-sorok portréja nélkül (a kapuk közül a portré-kapu tölti). */
+  function kepNelkul(layout: NonNullable<Page['layout']>): NonNullable<Page['layout']> {
+    return layout.map((block) =>
+      block.blockType === 'accordion'
+        ? {
+            ...block,
+            items: (block.items ?? []).map((item) => {
+              const masolat = { ...item }
+              delete masolat.kep
+              return masolat
+            }),
+          }
+        : block,
+    )
   }
 
   it('a portré-kapu csak az üres kep mezőt tölti, név szerint, a régi és az új címmel is', () => {
@@ -695,7 +876,7 @@ describe('/rolunk — meglévő szekciósor szűk kapui', () => {
     expect(tervezdOneletrajzKepeket(terv.layout, { kocsisPortre: 21, kissPortre: 22 }).layout).toBeNull()
   })
 
-  it('a gondolatjel-kapu a régi seed mondatait pontos egyezésre cseréli, az eredményt a seed adja', () => {
+  it('a gondolatjel-kapu a régi seed mondatait pontos egyezésre cseréli, az eredmény a vesszős alak', () => {
     const regi = regiSzekciosor()
     const regiMarkup = renderLayout(regi)
     expect(regiMarkup).toContain('kreditpont — akkreditált')
@@ -703,23 +884,131 @@ describe('/rolunk — meglévő szekciósor szűk kapui', () => {
     expect(regiMarkup).toContain('– és igazából neked is.')
     const terv = tervezdGondolatjelCsereket(regi)
     expect(terv.layout).not.toBeNull()
-    // Az eredmény azonos a mai seeddel (kep nélkül), a többi blokk érintetlen.
-    const elvart = buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }).map((block) =>
-      block.blockType === 'accordion'
-        ? {
-            ...block,
-            items: (block.items ?? []).map((item) => {
-              const masolat = { ...item }
-              delete masolat.kep
-              return masolat
-            }),
-          }
-        : block,
-    )
-    expect(terv.layout).toEqual(elvart)
+    // Az eredmény a gondolatjel nélküli régi alak (a WP15 előtti tábla és
+    // szakember-szekció, kep nélkül); a többi blokk érintetlen. A WP15
+    // szétválasztást a következő kapu viszi, nem ez.
+    expect(terv.layout).toEqual(regiSzekciosor({ gondolatjel: false }))
     // Idempotens: a javított szekciósoron nincs teendő.
     expect(tervezdGondolatjelCsereket(terv.layout).layout).toBeNull()
     expect(tervezdGondolatjelCsereket(buildRolunkLayout()).layout).toBeNull()
+  })
+
+  /**
+   * WP15 (2026-09-07): a Rólunk/Kapcsolat szétválasztás kapuja. A szakember-
+   * szekció személyközpontú lesz, a tábla a kezdőlapi sínre vált; a blokkok,
+   * sorok és tagok azonosítója, a szerkesztői portré és a 19a. javítás képe
+   * megmarad; szerkesztett cím esetén nincs teendő; a kapu idempotens.
+   */
+  it('a szétválasztás-kapu a régi szakember-szekciót és táblát a mai seed alakjára cseréli, azonosítókkal', () => {
+    const regi = regiSzekciosor({ gondolatjel: false })
+    for (const block of regi) {
+      if (block.blockType === 'teamMembers') {
+        block.id = 'team-elo'
+        for (const [index, tag] of (block.members ?? []).entries()) {
+          tag.id = `tag-${index}`
+          // A szerkesztő Kocsis Katának másik portrét állított be: az marad.
+          if (tag.name === 'Kocsis Kata') tag.photo = 77
+        }
+      }
+      if (block.blockType === 'services') {
+        block.id = 'services-elo'
+        block.image = 55
+        for (const [index, row] of (block.rows ?? []).entries()) row.id = `sor-${index}`
+      }
+    }
+    const terv = tervezdRolunkSzetvalasztast(regi, {
+      kocsisPortre: 21,
+      kissPortre: 22,
+      sinFotok: [4, 5, 6],
+    })
+    expect(terv.layout).not.toBeNull()
+    expect(terv.uzenet).toContain('személyközpontú')
+    expect(terv.uzenet).toContain('Így tudunk segíteni')
+
+    const elvart = kepNelkul(
+      buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22, sinFotok: [4, 5, 6] }),
+    ).map((block) => {
+      if (block.blockType === 'teamMembers') {
+        return {
+          ...block,
+          id: 'team-elo',
+          members: (block.members ?? []).map((tag, index) => ({
+            ...tag,
+            id: `tag-${index}`,
+            photo: tag.name === 'Kocsis Kata' ? 77 : tag.photo,
+          })),
+        }
+      }
+      if (block.blockType === 'services') {
+        return {
+          ...block,
+          id: 'services-elo',
+          image: 55,
+          rows: (block.rows ?? []).map((row, index) => ({ ...row, id: `sor-${index}` })),
+        }
+      }
+      return block
+    })
+    expect(terv.layout).toEqual(elvart)
+
+    // A régi kapu nélküli (gondolatjeles) tábla-sorcímeket is felismeri.
+    expect(tervezdRolunkSzetvalasztast(regiSzekciosor(), {}).uzenet).toContain('Így tudunk segíteni')
+    // Idempotens: a mai seeden és a cserélt szekciósoron nincs teendő.
+    expect(tervezdRolunkSzetvalasztast(terv.layout, { sinFotok: [4, 5, 6] }).layout).toBeNull()
+    expect(tervezdRolunkSzetvalasztast(buildRolunkLayout(), {}).layout).toBeNull()
+    expect(tervezdRolunkSzetvalasztast([], {}).layout).toBeNull()
+  })
+
+  it('a szétválasztás-kapu szerkesztett (nem pontosan egyező) blokkhoz nem nyúl', () => {
+    const regi = regiSzekciosor({ gondolatjel: false })
+    for (const block of regi) {
+      if (block.blockType === 'teamMembers') block.title = 'Így érsz el minket (szerkesztve)'
+      if (block.blockType === 'services') {
+        const [elso] = block.rows ?? []
+        if (elso) elso.title = 'Rendelői kezelések, a stúdióban'
+      }
+    }
+    expect(tervezdRolunkSzetvalasztast(regi, { kocsisPortre: 21 }).layout).toBeNull()
+  })
+
+  it('a kapcsolat-kapu a kártyák TELJES seed-bemutatkozását egy mondatra cseréli, mást nem', () => {
+    const uj = buildKapcsolatLayout({ kocsisPortre: 31, kissPortre: 32 })
+    const rolunkTagok = buildRolunkLayout().find((block) => block.blockType === 'teamMembers')
+    if (rolunkTagok?.blockType !== 'teamMembers') throw new Error('nincs szakember-szekció')
+    // A 2026-09-07 ELŐTTI /kapcsolat: a Rólunk teljes, kétmondatos bemutatkozásával.
+    const regi = structuredClone(uj).map((block) =>
+      block.blockType === 'teamMembers'
+        ? {
+            ...block,
+            members: (block.members ?? []).map((tag) => ({
+              ...tag,
+              bio: (rolunkTagok.members ?? []).find((r) => r.name === tag.name)?.bio ?? tag.bio,
+            })),
+          }
+        : block,
+    )
+    const terv = tervezdKapcsolatRovidBemutatkozast(regi)
+    expect(terv.layout).toEqual(uj)
+    expect(terv.uzenet).toContain('Kocsis Kata, Kiss Kata')
+    // A rövid alak egy mondat, és a teljes alak első mondata (egy forrás).
+    for (const block of uj) {
+      if (block.blockType !== 'teamMembers') continue
+      for (const tag of block.members ?? []) {
+        const teljes = (rolunkTagok.members ?? []).find((r) => r.name === tag.name)?.bio ?? ''
+        expect((tag.bio ?? '').match(/[.!?]/g)?.length).toBe(1)
+        expect(teljes.startsWith(tag.bio ?? '')).toBe(true)
+      }
+    }
+    // Idempotens; szerkesztett bemutatkozáshoz nem nyúl.
+    expect(tervezdKapcsolatRovidBemutatkozast(uj).layout).toBeNull()
+    const szerkesztett = structuredClone(regi)
+    for (const block of szerkesztett) {
+      if (block.blockType === 'teamMembers') {
+        for (const tag of block.members ?? []) tag.bio = `${tag.bio} (szerkesztve)`
+      }
+    }
+    expect(tervezdKapcsolatRovidBemutatkozast(szerkesztett).layout).toBeNull()
+    expect(tervezdKapcsolatRovidBemutatkozast([]).layout).toBeNull()
   })
 
   it('a gondolatjel-kapu szerkesztett (nem pontosan egyező) szöveghez nem nyúl', () => {

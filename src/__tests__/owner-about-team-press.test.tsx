@@ -86,18 +86,26 @@ describe('owner review: About tartalomhoz igazodó elrendezés', () => {
     expect(css('about')).toMatch(/\.kc-about__stat-label\s*\{[^}]*max-width:\s*100%/s)
   })
 
-  it('az A01 hullám-vágás csak a Rólunk horgony fotójának alsó szélére vonatkozik, statikusan', () => {
+  it('az A01 hullám-vágás a Rólunk horgony fotójának és a kezdőlapi fríznek az alsó szélére vonatkozik, statikusan', () => {
     // 2026-09-07: a 3 px-es fogazott csík helyett a régi oldal wave path-ja
     // SVG-maszkként (két réteg: tömör 92,5% + 8%-os hullám, ~7,3% amplitúdó).
+    // WP11: a hullám data-URI-ja a `.kc-about` gyökér változója, mert a
+    // kezdőlapi alapítók-fríz (`kc-about--founders`) ugyanezt az élt kapja.
     const html = renderToStaticMarkup(
       <About block={about({ sectionSettings: { anchorId: 'rolunk' } })} />,
     )
     expect(html).toContain('id="rolunk"')
-    const rule = css('about').match(/\.kc-about#rolunk \.kc-about__figure\s*\{([^}]+)\}/)?.[1]
+    expect(html).not.toContain('kc-photo-frieze')
+    const aboutCss = css('about')
+    const root = aboutCss.match(/\.kc-about\s*\{([^}]+)\}/)?.[1]
+    expect(root).toBeDefined()
+    expect(root).toContain('--kc-about-wave: url("data:image/svg+xml,')
+    expect(root).toContain("preserveAspectRatio='none'")
+    expect(root).toContain('M0,128L60,117.3C120,107,240,85,360,80C480,75,600,85,720,101.3')
+    const rule = aboutCss.match(
+      /\.kc-about--founders \.kc-photo-frieze__strips,\s*\.kc-about#rolunk \.kc-about__figure\s*\{([^}]+)\}/,
+    )?.[1]
     expect(rule).toBeDefined()
-    expect(rule).toContain('url("data:image/svg+xml,')
-    expect(rule).toContain("preserveAspectRatio='none'")
-    expect(rule).toContain('M0,128L60,117.3C120,107,240,85,360,80C480,75,600,85,720,101.3')
     for (const prefix of ['-webkit-mask', 'mask']) {
       expect(rule).toContain(`${prefix}-image: linear-gradient(#000 0 0), var(--kc-about-wave)`)
       expect(rule).toMatch(new RegExp(`${prefix}-size:\\s*100% 92\\.5%,\\s*100% 8%`))

@@ -1,39 +1,43 @@
 /**
- * Fotó-fríz — a kezdőlap filmsávja utáni, négy csíkos csapatfotó-sáv.
- * A szerkezet és a szövegek: src/components/blocks/PhotoFrieze.tsx (ott a
- * tartalmi indoklás: NN/g Photos as Web Content, Decorative Images).
+ * Fotó-fríz — a kezdőlapi alapítók-szekció (About, `kc-about--founders`)
+ * képi fele: négy íves csapatfotó. A szerkezet és az indoklás:
+ * src/components/blocks/PhotoFrieze.tsx (NN/g Common Region, About Us,
+ * Photos as Web Content; WCAG 2.2 SC 1.3.2, 2.4.6). A rácsbeli HELYÉT és a
+ * hullámos alsó élét a befogadó about.css adja (`.kc-about--founders`).
  *
- * GEOMETRIA. A fríz a --kc-container-wide hasábban (.kc-container) ül, a
- * csíkok köze a 12 px-es rács-lépcső (space-3). A magasság clamp-elt: a padló
- * 20rem (320 px), a plafon 27,5rem (440 px) — mindkettő a 4 px-es rácson —, a
- * közép 30vw. Mobilon (< 900 px) három csík, 18rem (288 px, rácson; a
- * referencia 290-e nincs a rácson).
+ * GEOMETRIA. Desktopon (≥ 900 px) 2×2-es rács a Rólunk-tábla jobb
+ * hasábjában: két oszlop, soronként 17rem (272 px, a 4 px-es rácson), a
+ * köz a 12 px-es rács-lépcső (space-3). Az oszlop teljes magassága így
+ * 2 × 272 + 12 = 556 px, amihez a bal hasáb szövege igazodik (about.css,
+ * függőleges elosztás). Mobilon (< 900 px) EGY sor három csík, 18rem
+ * (288 px), a fekvőbb páros portré elmarad (PhotoFrieze.tsx, mérés).
  *
- * ÍV. A páros csíkok teteje félkör. A sugár a fríz magasságának FELE, nem a
- * --kc-radius-full token: (1) a radius-full a tokens.css szerint a
- * badge/tabletta szerepe, egy 999px-es „végtelen" őrszem, amit egy soros
- * pirulára hangoltak — a fríz íve viszont a fríz saját geometriájából jön,
- * és így együtt is változik vele; (2) a CSS Backgrounds 3 (§5.5 „Overlapping
- * curves") előírja, hogy az egymásba érő ívek arányosan zsugorodnak, tehát a
- * magasság-felénél nagyobb sugár is pontosan félkörként rajzolódik a csík
- * szélességéhez — hover-nyúlás közben is, külön sugár-átmenet nélkül.
+ * ÍV. Desktopon a FELSŐ sor két csempéje félkör-tetejű (a két „ív" alatt
+ * két „pillér": a szem egy kapuzatként olvassa a négyest, nem négy külön
+ * képként); mobilon a páros csíkok (ív, egyenes, ív). A sugár a csempe
+ * MAGASSÁGA, nem a --kc-radius-full token: (1) a radius-full a tokens.css
+ * szerint badge/tabletta szerep; (2) a CSS Backgrounds 3 (§5.5 „Overlapping
+ * curves") előírja, hogy a szomszédos ívek összege nem lépheti túl a doboz
+ * szélességét, ezért a böngésző a két felső sugarat arányosan a fél
+ * szélességre zsugorítja — az eredmény PONTOSAN félkör, minden csempe-
+ * szélességen, külön számítás nélkül (306 px-es csempén 153 px, 215-ösön
+ * 108 px sugár).
  *   https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius
  *
  * MOZGÁS — mind dekoratív, mind kikapcsol csökkentett mozgásnál.
  *  1. Belépő: clip-path inset(100% 0 0) → inset(0), csíkonként 80 ms-mal
  *     lépcsőzve. A clip-path <basic-shape> értéke interpolálható (MDN). A
- *     belépő a SectionReveal `is-revealed` jelére indul (a fríz a hajtás alatt
- *     van, egy betöltéskori időzítés rég lefutna, mire a néző ideér); JS
- *     nélkül a csíkok egyszerűen látszanak.
+ *     belépő a befogadó szekció SectionReveal `is-revealed` jelére indul
+ *     (a szekció a hajtás alatt van); JS nélkül a csíkok egyszerűen látszanak.
  *       https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path
- *  2. Hover-nyúlás: flex 1 → 1,6, 1,2 s (calc(var(--kc-motion-base) * 6)),
- *     csak hover-képes mutatóeszközön. Nem cél, nem link: nincs cursor:
- *     pointer, és a nyúlás semmit nem közöl, ami máshol ne lenne meg.
- *  3. Görgetés-parallax: CSS scroll-driven animáció (animation-timeline:
+ *  2. Görgetés-parallax: CSS scroll-driven animáció (animation-timeline:
  *     view()), JS nélkül, @supports mögött; a kép 115% magas, tehát a
  *     −12%-os elmozdulás nem nyit rést. Nem Baseline (MDN), ezért a
  *     támogatás nélküli böngésző egyszerűen a statikus képet kapja.
  *       https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline
+ *  A korábbi hover-nyúlás (flex 1 → 1,6) a soros frízre volt szabva; a
+ *  2×2-es rácsban nincs mi mellett nyúlni, ezért kikerült (nem cél, nem
+ *  link: cursor: pointer sem volt).
  *  Csökkentett mozgás: a base.css 0,01 ms-re rövidít, de a scroll-timeline-nak
  *  nincs időtartama, ezért itt explicit `animation: none`, `transition: none`,
  *  `transform: none` kell. WCAG 2.2 SC 2.3.3 Animation from Interactions (a
@@ -42,33 +46,27 @@
  *   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
  *   https://developer.apple.com/design/human-interface-guidelines/motion
  *
- * FELIRAT. S-token, text-muted a paperen: 8,80:1 (tokens.css jegyzőkönyv;
- * újraszámolva 2026-09-07 — WCAG 2.2 SC 1.4.3 ≥ 4,5:1 ✓). 320 px-en a két
- * fél egymás alá törik, a dokumentum nem szélesedik (SC 1.4.10 Reflow).
+ * REFLOW. A rács `minmax(0, 1fr)` oszlopai és a csíkok `min-width: 0`-ja
+ * miatt a fríz sosem szélesebb a hasábjánál; 320 px-en három 77 px-es csík
+ * fut, a dokumentum nem szélesedik (WCAG 2.2 SC 1.4.10 Reflow).
  *   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
  */
 
 .kc-photo-frieze {
-  --kc-frieze-h: clamp(20rem, 30vw, 27.5rem);
-  --kc-frieze-arch: calc(var(--kc-frieze-h) / 2);
+  --kc-frieze-h: 17rem;
+  --kc-frieze-arch: var(--kc-frieze-h);
   --kc-frieze-gap: var(--kc-space-3);
   --kc-frieze-motion: calc(var(--kc-motion-base) * 6);
-  /* A filmsáv alja fehérbe olvad; a fríz tetején a szekció-token felső
-     fele elég, hogy a fotók ne szakadjanak el a filmtől. */
-  padding-block-start: var(--kc-space-6);
-}
-
-@media (min-width: 900px) {
-  .kc-photo-frieze {
-    padding-block-start: var(--kc-space-7);
-  }
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }
 
 .kc-photo-frieze__strips {
-  display: flex;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: var(--kc-frieze-h);
   gap: var(--kc-frieze-gap);
-  height: var(--kc-frieze-h);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -76,15 +74,14 @@
 
 .kc-photo-frieze__strip {
   position: relative;
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   /* A lap alapszíne a kép betöltéséig: a paper-ről egy tónuslépés. */
   background-color: var(--kc-color-surface-tint);
-  transition: flex var(--kc-frieze-motion) var(--kc-ease-out);
 }
 
-.kc-photo-frieze__strip:nth-child(2n) {
+/* Desktop 2×2: a felső sor két csempéje íves. */
+.kc-photo-frieze__strip:nth-child(-n + 2) {
   border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
 }
 
@@ -96,23 +93,7 @@
   object-position: 50% 20%;
 }
 
-/* ---- Hover-nyúlás: csak a desktop töréspont felett ------------------------
-   A hover-képességű eszköz médiafeltétele írná le pontosan, de a repó
-   geometria-őre (src/__tests__/helpers/css-geometria.ts) szándékosan csak a
-   width/height/reduced-motion jellemzőket ismeri, minden másra HANGOSAN dob
-   (a szó szerinti feltétel-szintaxis kommentben sem szerepelhet).
-   A 900 px-es töréspont ugyanaz, amelyen a menü is egérre vált; érintős nagy
-   kijelzőn a nyúlás legfeljebb egy koppintásra „ragad", és mivel dekoratív,
-   nem vesz el semmit. */
-
-@media (min-width: 900px) {
-  .kc-photo-frieze__strip:hover,
-  .kc-photo-frieze__strip:focus-within {
-    flex: 1.6;
-  }
-}
-
-/* ---- Belépő: a SectionReveal `is-revealed` jelére ------------------------- */
+/* ---- Belépő: a befogadó szekció `is-revealed` jelére --------------------- */
 
 @keyframes kc-frieze-enter {
   from {
@@ -126,7 +107,7 @@
   }
 }
 
-.kc-photo-frieze.is-revealed .kc-photo-frieze__strip {
+.is-revealed .kc-photo-frieze__strip {
   animation: kc-frieze-enter var(--kc-frieze-motion) var(--kc-ease-out) both;
   animation-delay: calc(var(--kc-frieze-i, 0) * 80ms);
 }
@@ -151,27 +132,9 @@
   }
 }
 
-/* ---- Felirat: két vég, vékony sor ---------------------------------------- */
-
-.kc-photo-frieze__note {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--kc-space-1) var(--kc-space-4);
-  margin: var(--kc-space-4) 0 0;
-  font-size: var(--kc-font-s);
-  line-height: var(--kc-leading-body);
-  color: var(--kc-color-text-muted);
-}
-
-.kc-photo-frieze__note-end {
-  margin-inline-start: auto;
-  text-align: end;
-}
-
-/* ---- Mobil: három egyalakos kép, a két szélső íves -------------------------
-   A páros portré marad el (mérve: 106 px-es hasábban a kép 36%-a látszik,
-   a bal arc elvágva; 82 px-en 28%, arc nélkül — a PhotoFrieze.tsx
+/* ---- Mobil: egy sor, három álló kép, a két szélső íves --------------------
+   A páros portré marad el (mérve: 100 px-es csíkban a kép 36%-a látszik,
+   a bal arc elvágva; 77 px-en arc nélkül — a PhotoFrieze.tsx
    fotólistájánál). A maradó 2., 3., 4. csíkból a páros sorszámúak ívesek:
    ív, egyenes, ív. */
 
@@ -180,20 +143,23 @@
     --kc-frieze-h: 18rem;
   }
 
+  .kc-photo-frieze__strips {
+    display: flex;
+    align-items: stretch;
+    height: var(--kc-frieze-h);
+  }
+
+  .kc-photo-frieze__strip {
+    flex: 1;
+    border-radius: 0;
+  }
+
   .kc-photo-frieze__strip:first-child {
     display: none;
   }
 
-  /* A két félsor mobilon nem fér egy sorba (mérve 390 px-en: ~250 + ~280 px
-     egy 342 px-es hasábban), ezért egymás alá áll, MINDKETTŐ balra zárva —
-     a jobbra zárt második sor ragos, nehezen olvasható lépcsőt adott. */
-  .kc-photo-frieze__note {
-    flex-direction: column;
-  }
-
-  .kc-photo-frieze__note-end {
-    margin-inline-start: 0;
-    text-align: start;
+  .kc-photo-frieze__strip:nth-child(2n) {
+    border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
   }
 }
 
@@ -201,17 +167,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .kc-photo-frieze__strip,
-  .kc-photo-frieze.is-revealed .kc-photo-frieze__strip,
+  .is-revealed .kc-photo-frieze__strip,
   .kc-photo-frieze__img {
     animation: none;
     transition: none;
     transform: none;
     clip-path: none;
     opacity: 1;
-  }
-
-  .kc-photo-frieze__strip:hover,
-  .kc-photo-frieze__strip:focus-within {
-    flex: 1;
   }
 }
