@@ -26,10 +26,16 @@ import '../../app/(frontend)/styles/blocks/about.css'
  *    egybe", és a /rolunk-féle szöveg–fotó párosítás a kezdőlapon is.
  *
  * A szöveghasáb három csoportra oszlik (fej: eyebrow + cím; törzs:
- * bekezdések; láb: kiemelés), hogy a CSS a hasáb magasságában
- * ELOSZTHASSA őket a fotó/fríz mellett — a korábbi „felül zsúfolt, alul
- * üres" hasáb helyett (about.css, függőleges elosztás; NN/g whitespace:
- * a térköz csoportosít és elválaszt, nem maradék).
+ * bekezdések; láb: kiemelés). WP18 (2026-09-07): a csoportok TERMÉSZETES
+ * folyásban, felül igazítva állnak, tokenes közökkel; a korábbi
+ * `space-between` elosztás 1440 px-en 106 px-es réseket adott, ami már nem
+ * csoportosított (about.css; NN/g whitespace és proximity: a térköz akkor
+ * jelent valamit, ha a közelség mondja meg, mi tartozik össze). A kezdőlap
+ * és a /rolunk About-ja ugyanazt a szöveget viszi egy közös forrásból
+ * (src/lib/home-seed.ts `rolunkBemutatkozasSzoveg`), a statisztikasor
+ * oldalanként más. A hullámos fotókon visszafogott hover-nagyítás
+ * (about.css, photo-frieze.css; csak `hover: hover`, reduced-motion alatt
+ * nincs).
  */
 export interface AboutProps {
   block: BlockAbout

@@ -18,6 +18,7 @@ import {
   homeHelpRailRows,
 } from './home-help-states'
 import { logger } from './logger'
+import { rolunkBemutatkozasSzoveg } from './rolunk-bemutatkozas'
 import { enrollMediaRecovery } from './media-recovery-provenance'
 
 import { HOME_PAGE_SLUG } from './content-slugs'
@@ -622,29 +623,10 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
   {
     blockType: 'about',
     eyebrow: 'Rólunk',
-    title: 'Kiss Kata és Kocsis Kata vagyunk',
-    paragraphs: [
-      {
-        text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, és évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
-        emphasized: true,
-      },
-      {
-        text: 'A pácienseink nagy része kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, így pontosan tudjuk, milyen makacs probléma tud ez lenni, és hogy mennyire megkeseríti az ember mindennapjait.',
-        emphasized: false,
-      },
-      {
-        text: 'A legújabb kutatásokat, külföldi guideline-okat és a saját gyakorlati tapasztalatainkat ötvözzük, mindezt a lehető legbiztonságosabb, mégis leggyorsabb felépülés érdekében.',
-        emphasized: false,
-      },
-      {
-        text: 'Hiszünk abban, hogy a kezed nemcsak egy testrész: mindenhez szükséged van rá. Ezért igyekszünk minden módon segíteni rendbehozni a kezed, megszüntetni a fájdalmat, és elérni, hogy úgy használhasd a kezed, mintha sosem lett volna vele semmi baj.',
-        emphasized: false,
-      },
-    ],
-    feature: {
-      label: 'Személyre szabott kezelések',
-      note: 'Minden páciens egyedi, ezért minden terápiát személyre szabunk.',
-    },
+    // WP18: cím, bekezdések és kiemelés a /rolunk lappal KÖZÖS forrásból
+    // (src/lib/rolunk-bemutatkozas.ts), nem külön másolatból. A statisztikasor a
+    // kezdőlapé marad (három szám), a fotó a páros alak tartaléka.
+    ...rolunkBemutatkozasSzoveg(),
     photo: media['katak-team.jpg'],
     stats: [
       { value: '10+', label: 'év szakmai tapasztalat' },

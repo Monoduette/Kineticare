@@ -7,6 +7,7 @@ import {
   KURZUS_ELONYOK,
   REGI_ALLAPOTOK_BEVEZETO,
   REGI_NYITOTT_KARTYA,
+  REGI_KEZDOLAP_ROLUNK_CIM,
   REGI_KURZUS_SZEKCIO_CIM,
   REGI_PACIENS_ERTEK,
   REGI_PRESS_FEJLEC,
@@ -21,6 +22,7 @@ import {
   alkalmazJogiOldalak,
   alkalmazKapcsolatSzakemberek,
   alkalmazKezdolapJavitasok,
+  alkalmazKezdolapRolunkSzoveg,
   alkalmazKurzuslistaFeliratok,
   alkalmazKurzusElonyok,
   alkalmazHowItWorksGondolatjel,
@@ -30,6 +32,7 @@ import {
   alkalmazRolunkHeroKep,
   alkalmazSosIngyenesJelolo,
   alkalmazSosKurzusSlug,
+  alkalmazSosPublikalas,
   alkalmazSzakmaiHarmonika,
   alkalmazSzolgaltatasokBevezeto,
   alkalmazSzolgaltatasokHeroKep,
@@ -38,6 +41,7 @@ import {
   allapotokUjNyitottSzoveg,
   heroKepAzonosito,
   kapcsolatSeedBlokkok,
+  kezdolapRolunkUjSzoveg,
   pressLogosUjFejlec,
   rolunkSzakmaiUjBlokkok,
   stabilJson,
@@ -46,6 +50,7 @@ import {
   type JavitasLepes,
 } from '../scripts/apply-owner-content'
 import { buildHomeLayout } from '../lib/home-seed'
+import { ROLUNK_BEMUTATKOZAS, ROLUNK_BEMUTATKOZAS_CIM } from '../lib/rolunk-bemutatkozas'
 import {
   COURSE_SHORT_DESCRIPTION_FIXED,
   COURSE_SHORT_DESCRIPTION_LEFTOVER,
@@ -67,11 +72,8 @@ import { buildCourseSlug } from '../lib/course-url'
 import { coursePriceBadgeKind } from '../lib/courses'
 import { CTA_VOCABULARY } from '../lib/cta-vocabulary'
 import { JOGI_OLDALAK, jogiOldalTartalom, richTextSzoveg } from '../lib/legal-content'
-import {
-  CLINIC_TREATMENTS_ANCHOR,
-  CLINIC_TREATMENTS_PATH,
-  SOS_COURSE_SKU,
-} from '../lib/menu-seed'
+import { buildRolunkLayout } from '../scripts/restore-legacy-content'
+import { CLINIC_TREATMENTS_ANCHOR, CLINIC_TREATMENTS_PATH, SOS_COURSE_SKU } from '../lib/menu-seed'
 import type { Media, Page, Product } from '../payload-types'
 
 /**
@@ -222,6 +224,122 @@ describe('alkalmazKezdolapJavitasok — kurzus-szekció címe', () => {
 // ---------------------------------------------------------------------------
 // Gondolatjel-maradék — „Így működik" + kurzuskártya-lead, csak pontos egyezés
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// WP18 — a kezdőlapi Rólunk-blokk szövege a /rolunk lappal közös forrásra
+// ---------------------------------------------------------------------------
+
+describe('kezdolapRolunkUjSzoveg — a seed-builderből', () => {
+  it('a kezdőlap seedje és a /rolunk builder UGYANAZT a címet, bekezdéseket és kiemelést adja', () => {
+    const uj = kezdolapRolunkUjSzoveg()
+    expect(uj).not.toBeNull()
+    expect(uj?.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(uj?.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(uj?.paragraphs?.map((p) => p.emphasized)).toEqual(
+      ROLUNK_BEMUTATKOZAS.map((_, index) => index === 0),
+    )
+    const rolunk = buildRolunkLayout().find((blokk) => blokk.blockType === 'about')
+    expect(rolunk?.blockType).toBe('about')
+    if (rolunk?.blockType !== 'about') return
+    expect(rolunk.title).toBe(uj?.title)
+    expect(rolunk.paragraphs).toEqual(uj?.paragraphs)
+    expect(rolunk.feature).toEqual(uj?.feature)
+    // A régi cím már sehol nem seedelt (különben a csere önmagát ismételné).
+    expect(uj?.title).not.toBe(REGI_KEZDOLAP_ROLUNK_CIM)
+  })
+
+  it('a bekezdésekben nincs töltelék gondolatjel (natív magyar)', () => {
+    for (const text of ROLUNK_BEMUTATKOZAS) {
+      expect(text).not.toMatch(/[\u2013\u2014]/)
+    }
+  })
+})
+
+describe('alkalmazKezdolapRolunkSzoveg', () => {
+  const regiBlokk = (): Extract<Szekcio, { blockType: 'about' }> => ({
+    blockType: 'about',
+    id: 'ab-1',
+    eyebrow: 'Rólunk',
+    title: REGI_KEZDOLAP_ROLUNK_CIM,
+    sectionSettings: { visible: true, hatter: 'feher' },
+    stats: [
+      { value: '10+', label: 'év szakmai tapasztalat' },
+      { value: '1000+', label: 'elégedett páciens' },
+    ],
+    paragraphs: [
+      { id: 'p1', text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok.', emphasized: true },
+      { id: 'p2', text: 'A kéz rehabilitációjával foglalkozunk.', emphasized: false },
+    ],
+    feature: { label: 'Személyre szabott kezelések', note: 'Minden terápiát személyre szabunk.' },
+    photo: 42,
+  })
+
+  it('pontos címegyezésnél a címet, a bekezdéseket és a kiemelést cseréli; a számok, a fotó, az eyebrow és a beállítás marad', () => {
+    const layout: Szekcio[] = [heroSzekcio(), regiBlokk(), kurzusSzekcio('Kurzusaink')]
+    const eredmeny = alkalmazKezdolapRolunkSzoveg({ layout, ujSzoveg: kezdolapRolunkUjSzoveg() })
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0]?.szabaly).toBe('kezdolap-rolunk-szoveg')
+    expect(eredmeny.layout).not.toBeNull()
+    const about = eredmeny.layout?.[1]
+    expect(about?.blockType).toBe('about')
+    if (about?.blockType !== 'about') return
+    expect(about.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(about.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(about.paragraphs?.[0]?.emphasized).toBe(true)
+    expect(about.paragraphs?.every((p) => !('id' in p))).toBe(true)
+    expect(about.feature?.label).toBe('Szakmai egyesületi tagság')
+    expect(about.stats).toEqual(regiBlokk().stats)
+    expect(about.photo).toBe(42)
+    expect(about.eyebrow).toBe('Rólunk')
+    expect(about.id).toBe('ab-1')
+    expect(about.sectionSettings).toEqual(regiBlokk().sectionSettings)
+    // A többi blokk referencia-azonos.
+    expect(eredmeny.layout?.[0]).toBe(layout[0])
+    expect(eredmeny.layout?.[2]).toBe(layout[2])
+    // A bemenet érintetlen.
+    expect((layout[1] as { title?: string | null }).title).toBe(REGI_KEZDOLAP_ROLUNK_CIM)
+  })
+
+  it('idempotens: a már cserélt blokkot csendben kihagyja', () => {
+    const elso = alkalmazKezdolapRolunkSzoveg({
+      layout: [regiBlokk()],
+      ujSzoveg: kezdolapRolunkUjSzoveg(),
+    })
+    const masodik = alkalmazKezdolapRolunkSzoveg({
+      layout: elso.layout,
+      ujSzoveg: kezdolapRolunkUjSzoveg(),
+    })
+    expect(masodik.layout).toBeNull()
+    expect(masodik.modositasok).toHaveLength(0)
+    expect(masodik.kihagyasok).toHaveLength(1)
+    expect(masodik.kihagyasok[0]?.hangos).toBeUndefined()
+    expect(masodik.kihagyasok[0]?.indok).toContain('MÁR')
+  })
+
+  it('szerkesztett címnél nem ír, és indokkal naplóz', () => {
+    const eredmeny = alkalmazKezdolapRolunkSzoveg({
+      layout: [{ ...regiBlokk(), title: 'Mi vagyunk a Katák' }],
+      ujSzoveg: kezdolapRolunkUjSzoveg(),
+    })
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.kihagyasok[0]?.indok).toContain('nem PONTOSAN')
+  })
+
+  it('hiányzó seed-alak: hangos kihagyás; Rólunk nélküli vagy üres szekciósor: indokolt kihagyás', () => {
+    const hangos = alkalmazKezdolapRolunkSzoveg({ layout: [regiBlokk()], ujSzoveg: null })
+    expect(hangos.layout).toBeNull()
+    expect(hangos.kihagyasok[0]?.hangos).toBe(true)
+    const nincs = alkalmazKezdolapRolunkSzoveg({
+      layout: [heroSzekcio()],
+      ujSzoveg: kezdolapRolunkUjSzoveg(),
+    })
+    expect(nincs.layout).toBeNull()
+    expect(nincs.kihagyasok[0]?.indok).toContain('nincs Rólunk')
+    const ures = alkalmazKezdolapRolunkSzoveg({ layout: [], ujSzoveg: kezdolapRolunkUjSzoveg() })
+    expect(ures.layout).toBeNull()
+    expect(ures.modositasok).toHaveLength(0)
+  })
+})
 
 describe('alkalmazHowItWorksGondolatjel', () => {
   it('pontos egyezésnél a vásárlás-lépés U+2014-ét vesszőre cseréli, a többi lépést nem', () => {
@@ -692,7 +810,9 @@ describe('alkalmazSzakmaiHarmonika — az örökölt óriás-blokk cseréje', ()
   })
 
   it('szerkesztő által átírt tartalomnál csendes, indokolt kihagyás', () => {
-    const tartalom = structuredClone(rolunkSzakmaiOrokoltTartalom()) as { root: { children: unknown[] } }
+    const tartalom = structuredClone(rolunkSzakmaiOrokoltTartalom()) as {
+      root: { children: unknown[] }
+    }
     tartalom.root.children.pop()
     const modositott = { ...orokoltSzakmaiBlokk(), content: tartalom } as Szekcio
     const eredmeny = csere([modositott])
@@ -849,6 +969,44 @@ describe('alkalmazSosKurzusSlug', () => {
 // ===========================================================================
 // 14. javítás — az ÁSZF `[xxx]` helykitöltője.
 // ===========================================================================
+
+describe('alkalmazSosPublikalas — a piszkozat publikálása a publikált fölött', () => {
+  const alap = { status: 'published' as const, priceInHUFEnabled: false, _status: 'draft' as const }
+
+  it('published saját státusz + ingyenes + piszkozat fölötte: publikál', () => {
+    const eredmeny = alkalmazSosPublikalas(alap)
+    expect(eredmeny.publikal).toBe(true)
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0]?.szabaly).toBe('sos-publikalas')
+    expect(eredmeny.kihagyasok).toHaveLength(0)
+  })
+
+  it('hiányzó _status (verziózás nélkül mentett rekord) is publikálható', () => {
+    expect(alkalmazSosPublikalas({ ...alap, _status: null }).publikal).toBe(true)
+    expect(alkalmazSosPublikalas({ ...alap, _status: undefined }).publikal).toBe(true)
+  })
+
+  it('idempotens: már publikált legutóbbi verziónál csendben kihagy', () => {
+    const eredmeny = alkalmazSosPublikalas({ ...alap, _status: 'published' })
+    expect(eredmeny.publikal).toBe(false)
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0]?.indok).toContain('MÁR publikált')
+    expect(eredmeny.kihagyasok[0]?.hangos).toBeUndefined()
+  })
+
+  it.each([
+    [{ ...alap, status: 'draft' as const }, 'saját státusza'],
+    [{ ...alap, status: 'archived' as const }, 'saját státusza'],
+    [{ ...alap, priceInHUFEnabled: true }, 'ingyenesként'],
+    [{ ...alap, priceInHUFEnabled: null }, 'ingyenesként'],
+    [{ ...alap, priceInHUFEnabled: undefined }, 'ingyenesként'],
+  ])('nem publikál, ha az előfeltétel hiányzik: %o', (termek, indokReszlet) => {
+    const eredmeny = alkalmazSosPublikalas(termek)
+    expect(eredmeny.publikal).toBe(false)
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0]?.indok).toContain(indokReszlet)
+  })
+})
 
 describe('alkalmazAszfAdatvedelemLink', () => {
   const aszfTartalom = (bekezdesek: string[]): unknown =>
@@ -1177,14 +1335,17 @@ describe('alkalmazPressLogosFejlec', () => {
     ['üres szöveg', ''],
     ['csak whitespace', '   '],
     ['hiányzó felirat', null],
-  ])('ÜRES feliratot (%s) NEM tölt ki — a komponens fallbackje már az új szöveg', (_eset, heading) => {
-    const eredmeny = csere([sajtoSzekcio(heading)])
+  ])(
+    'ÜRES feliratot (%s) NEM tölt ki — a komponens fallbackje már az új szöveg',
+    (_eset, heading) => {
+      const eredmeny = csere([sajtoSzekcio(heading)])
 
-    expect(eredmeny.layout).toBeNull()
-    expect(eredmeny.modositasok).toHaveLength(0)
-    expect(eredmeny.kihagyasok[0].indok).toContain('ÜRES')
-    expect(eredmeny.kihagyasok[0].hangos).not.toBe(true)
-  })
+      expect(eredmeny.layout).toBeNull()
+      expect(eredmeny.modositasok).toHaveLength(0)
+      expect(eredmeny.kihagyasok[0].indok).toContain('ÜRES')
+      expect(eredmeny.kihagyasok[0].hangos).not.toBe(true)
+    },
+  )
 
   it.each([
     ['más felirat', 'Rólunk írták'],
@@ -1892,9 +2053,10 @@ describe('a kezdőlapi javítások lánca (1–2., 9., 10., 11.)', () => {
     expect(sajto?.blockType === 'pressLogos' ? sajto.heading : null).toBe(pressLogosUjFejlec())
     const allapotok = elso.layout.find((blokk) => blokk.blockType === 'states')
     expect(allapotok?.blockType === 'states' ? allapotok.lead : null).toBe(allapotokUjBevezeto())
-    const nyitottKartya = allapotok?.blockType === 'states'
-      ? (allapotok.cards ?? []).find((kartya) => kartya.title === 'Nyitott')
-      : null
+    const nyitottKartya =
+      allapotok?.blockType === 'states'
+        ? (allapotok.cards ?? []).find((kartya) => kartya.title === 'Nyitott')
+        : null
     expect(nyitottKartya?.text).toBe(allapotokUjNyitottSzoveg())
     expect(elso.layout[elso.layout.length - 1].blockType).toBe('ctaBanner')
   })
@@ -2016,10 +2178,7 @@ describe('alkalmazKapcsolatSzakemberek — a /kapcsolat hiányzó szekciói', ()
     expect(eredmeny.modositasok.every((lepes) => lepes.szabaly === 'kapcsolat-szakemberek')).toBe(
       true,
     )
-    expect(eredmeny.layout?.map((blokk) => blokk.blockType)).toEqual([
-      'appointment',
-      'teamMembers',
-    ])
+    expect(eredmeny.layout?.map((blokk) => blokk.blockType)).toEqual(['appointment', 'teamMembers'])
     // A beszúrt sor a kód-szintű alapállapottal egyezik.
     expect(stabilJson(eredmeny.layout)).toBe(
       stabilJson(buildKapcsolatLayout({ kocsisPortre: 31, kissPortre: 32 })),

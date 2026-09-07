@@ -151,6 +151,13 @@ export const REGI_NYITOTT_KARTYA =
   'Újra a saját kezed. Munkázhatsz, sportolhatsz, önfeledten élhetsz.'
 
 /**
+ * A kezdőlapi Rólunk-blokk RÉGI, seedelt címe (WP18). Kizárólag PONTOSAN ezzel
+ * a címmel álló blokk szövege cserélődik a /rolunk lappal közös
+ * bemutatkozásra (src/lib/rolunk-bemutatkozas.ts).
+ */
+export const REGI_KEZDOLAP_ROLUNK_CIM = 'Kiss Kata és Kocsis Kata vagyunk'
+
+/**
  * A `/szolgaltatasok` fejléc-képének fájlnév-prefixe (rendelő-fotó).
  *
  * Prefix és futásidejű feloldás a 4. javítás mintájára: a Média collection
@@ -202,6 +209,8 @@ export type JavitasSzabaly =
   | 'kapcsolat-szakemberek'
   | 'sos-kapcsolodo-kurzus'
   | 'szolgaltatas-blokk-kep'
+  | 'kezdolap-rolunk-szoveg'
+  | 'sos-publikalas'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -688,7 +697,10 @@ export const stabilJson = (ertek: unknown): string => {
   if (ertek !== null && typeof ertek === 'object') {
     const kulcsok = Object.keys(ertek as Record<string, unknown>).sort()
     return `{${kulcsok
-      .map((kulcs) => `${JSON.stringify(kulcs)}:${stabilJson((ertek as Record<string, unknown>)[kulcs])}`)
+      .map(
+        (kulcs) =>
+          `${JSON.stringify(kulcs)}:${stabilJson((ertek as Record<string, unknown>)[kulcs])}`,
+      )
       .join(',')}}`
   }
   return JSON.stringify(ertek) ?? 'null'
@@ -715,8 +727,7 @@ export const rolunkSzakmaiUjBlokkok = (): {
   const layout = buildRolunkLayout()
   const harmonikaIndex = layout.findIndex(
     (blokk) =>
-      blokk.blockType === 'accordion' &&
-      blokk.sectionSettings?.anchorId === SZAKMAI_HATTER_HORGONY,
+      blokk.blockType === 'accordion' && blokk.sectionSettings?.anchorId === SZAKMAI_HATTER_HORGONY,
   )
   if (harmonikaIndex < 1) {
     return { rovid: null, harmonika: null }
@@ -1071,8 +1082,10 @@ const bekezdesSzovege = (csomopont: unknown): string | null => {
   }
   return node.children
     .map((gyerek) =>
-      typeof gyerek === 'object' && gyerek !== null && typeof (gyerek as { text?: unknown }).text === 'string'
-        ? ((gyerek as { text: string }).text)
+      typeof gyerek === 'object' &&
+      gyerek !== null &&
+      typeof (gyerek as { text?: unknown }).text === 'string'
+        ? (gyerek as { text: string }).text
         : '',
     )
     .join('')
@@ -1088,8 +1101,7 @@ const bekezdesSzovege = (csomopont: unknown): string | null => {
 const bekezdesSzovegCsere = (csomopont: unknown, ujSzoveg: string): unknown => {
   const node = csomopont as { children?: unknown[] }
   const elsoGyerek = Array.isArray(node.children) ? node.children[0] : undefined
-  const alap =
-    typeof elsoGyerek === 'object' && elsoGyerek !== null ? (elsoGyerek as object) : {}
+  const alap = typeof elsoGyerek === 'object' && elsoGyerek !== null ? (elsoGyerek as object) : {}
   return { ...(csomopont as object), children: [{ ...alap, text: ujSzoveg }] }
 }
 
@@ -1453,6 +1465,72 @@ export const alkalmazSosIngyenesJelolo = (
 }
 
 // ---------------------------------------------------------------------------
+// WP18b — az SOS villámkurzus PUBLIKÁLÁSA a Payload verziózás szerint.
+// ---------------------------------------------------------------------------
+
+/** Az SOS kurzus publikálás-lépésének eredménye. */
+export interface SosPublikalasAtalakitas {
+  /** `true`, ha a legutóbbi piszkozatot publikálni kell; `false`, ha nem szabad írni. */
+  publikal: boolean
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Az SOS villámkurzus publikálása a Payload drafts szerint (`_status:
+ * 'published'`, `draft: false`), KIZÁRÓLAG akkor, ha
+ *  - a termék SAJÁT `status` mezője 'published' (a storefront erre szűr),
+ *  - `priceInHUFEnabled === false` (a kurzus ingyenes — ezt a 13. javítás
+ *    biztosítja, tehát ez a lépés utána fut),
+ *  - és a `_status` (a `draft: true`-val olvasott, LEGUTÓBBI verzió) nem
+ *    'published': élesben a publikált termék FÖLÖTT piszkozat áll, ezért az
+ *    anonim API a friss adatot nem adja vissza, és a kezdőlap rácsa nem
+ *    mutatja az ingyenes SOS-t (KOR3 hiánylista, 2026-09-07).
+ * Minden más eset indokolt kihagyás; a hiányzó `_status` (verziózás nélkül
+ * mentett rekord) is publikálható, mert a mező üres, nem 'published'.
+ * A hívó a rekordot `draft: true`-val olvassa, különben a `_status` mindig
+ * a publikált verzióé lenne, és a piszkozat sosem látszana.
+ */
+export const alkalmazSosPublikalas = (
+  termek: Pick<Product, 'status' | 'priceInHUFEnabled' | '_status'>,
+): SosPublikalasAtalakitas => {
+  const uzenet = `Az SOS kurzus publikálása („${SOS_KURZUS_SLUG}”)`
+  const kihagyas = (indok: string): SosPublikalasAtalakitas => ({
+    publikal: false,
+    modositasok: [],
+    kihagyasok: [{ szabaly: 'sos-publikalas', uzenet, indok }],
+  })
+
+  if (termek.status !== 'published') {
+    return kihagyas(
+      `a kurzus saját státusza ${ertekCimke(termek.status)}, nem „published” — a script csak a szerkesztő által közzétettnek jelölt kurzust publikálja`,
+    )
+  }
+  if (termek.priceInHUFEnabled !== false) {
+    return kihagyas(
+      'a kurzus nincs ingyenesként jelölve (priceInHUFEnabled nem false) — előbb a 13. javításnak kell lefutnia',
+    )
+  }
+  if (termek._status === 'published') {
+    return kihagyas('a legutóbbi verzió MÁR publikált — nincs teendő')
+  }
+
+  return {
+    publikal: true,
+    modositasok: [
+      {
+        szabaly: 'sos-publikalas',
+        uzenet: `${uzenet}: a legutóbbi verzió ${ertekCimke(
+          termek._status,
+        )} → „published”. Enélkül a publikált termék fölött piszkozat áll, az anonim API a friss adatot nem adja, és a kezdőlap rácsából hiányzik az ingyenes SOS.`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 17. javítás — az SOS villámkurzus KAPCSOLÓDÓ kurzusa (cross-sell).
 // ---------------------------------------------------------------------------
 
@@ -1644,7 +1722,10 @@ export const alkalmazRendeloiHorgony = (layout: Page['layout']): HorgonyAtalakit
 
   const ujLayout: Szekciosor = layout.map((elem, elemIndex) =>
     elemIndex === index
-      ? { ...elem, sectionSettings: { ...elem.sectionSettings, anchorId: CLINIC_TREATMENTS_ANCHOR } }
+      ? {
+          ...elem,
+          sectionSettings: { ...elem.sectionSettings, anchorId: CLINIC_TREATMENTS_ANCHOR },
+        }
       : elem,
   )
 
@@ -2000,6 +2081,131 @@ export const alkalmazAllapotokNyitottIge = (input: {
  * Kétes esetben (több CTA-sáv, hiányzó seed-blokk, üres szekciósor) HANGOS
  * kihagyás, írás nélkül.
  */
+// ---------------------------------------------------------------------------
+// WP18 — a kezdőlapi Rólunk-blokk szövege a /rolunk lappal közös forrásra.
+// ---------------------------------------------------------------------------
+
+/** A kezdőlapi Rólunk-blokk ÚJ szövege (cím, bekezdések, kiemelés) — a seed-builderből. */
+export type RolunkSzoveg = Pick<SzekcioTipus<'about'>, 'title' | 'paragraphs' | 'feature'>
+
+/**
+ * A kezdőlapi Rólunk-blokk jóváhagyott ÚJ szövege a seed-builderből, vagy
+ * `null`, ha a builder alakja elcsúszott (nincs pontosan egy About-blokk,
+ * vagy nincs benne cím és bekezdés).
+ */
+export const kezdolapRolunkUjSzoveg = (): RolunkSzoveg | null => {
+  const blokk = kezdolapSeedBlokk('about')
+  if (blokk === null) return null
+  const title = blokk.title
+  const paragraphs = blokk.paragraphs ?? []
+  if (typeof title !== 'string' || title.trim().length === 0 || paragraphs.length === 0) {
+    return null
+  }
+  return { title, paragraphs, feature: blokk.feature }
+}
+
+/**
+ * WP18 — a kezdőlapi Rólunk-blokk címének, bekezdéseinek és kiemelésének
+ * cseréje a /rolunk lappal KÖZÖS bemutatkozásra (tulajdonosi kérés,
+ * 2026-09-07: „a főoldalon a rólunk rész legyen olyan, mint a rólunk
+ * menüpont alatt").
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG akkor, ha a blokk címe PONTOSAN a régi seedelt cím
+ *    (`REGI_KEZDOLAP_ROLUNK_CIM`); szerkesztett cím a szerkesztőé, érintetlen;
+ *  - ha a cím MÁR az új, nincs teendő (idempotencia);
+ *  - a statisztikasor, a fotó, az eyebrow, az azonosító és a sávbeállítás
+ *    NEM változik: csak a három szöveges mező cserélődik;
+ *  - a bekezdések sorazonosítói nem öröklődnek (a Payload újakat ad; a régi
+ *    négy sor helyett két új sor jön, az id-k párosítása értelmetlen);
+ *  - hiányzó seed-alak vagy üres szekciósor: HANGOS, illetve indokolt kihagyás.
+ */
+export const alkalmazKezdolapRolunkSzoveg = (input: {
+  layout: Page['layout']
+  ujSzoveg: RolunkSzoveg | null
+}): SzekciosorCsere => {
+  const { layout, ujSzoveg } = input
+  const uzenet = 'A kezdőlap Rólunk-blokkjának szövege (cím, bekezdések, kiemelés)'
+
+  const kihagyas = (indok: string, hangos = false): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly: 'kezdolap-rolunk-szoveg', uzenet, indok, hangos }],
+  })
+
+  if (ujSzoveg === null) {
+    return kihagyas(
+      'a kezdőlap seed-buildere (buildHomeLayout) nem ad pontosan egy, címmel és bekezdésekkel álló Rólunk-blokkot — a kód és a javítás szétcsúszott, kézi átnézés kell',
+      true,
+    )
+  }
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a kezdőlapnak nincs szekciósora — a Rólunk-blokkot nincs hol átírni')
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let voltRolunk = false
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (blokk.blockType !== 'about') {
+      return blokk
+    }
+    voltRolunk = true
+    const helye = `${index + 1}. szekció`
+    const jelenlegi = blokk.title
+
+    if (jelenlegi === REGI_KEZDOLAP_ROLUNK_CIM) {
+      modositasok.push({
+        szabaly: 'kezdolap-rolunk-szoveg',
+        uzenet: `${uzenet} (${helye}): ${ertekCimke(jelenlegi)} → ${ertekCimke(
+          ujSzoveg.title,
+        )}, ${ujSzoveg.paragraphs?.length ?? 0} bekezdés, kiemelés: ${ertekCimke(
+          ujSzoveg.feature?.label,
+        )}`,
+        indok: null,
+      })
+      return {
+        ...blokk,
+        title: ujSzoveg.title,
+        paragraphs: (ujSzoveg.paragraphs ?? []).map(({ text, emphasized }) => ({
+          text,
+          emphasized,
+        })),
+        feature: ujSzoveg.feature,
+      }
+    }
+
+    if (jelenlegi === ujSzoveg.title) {
+      kihagyasok.push({
+        szabaly: 'kezdolap-rolunk-szoveg',
+        uzenet: `${uzenet} (${helye})`,
+        indok: `a cím MÁR ${ertekCimke(ujSzoveg.title)} — nincs teendő`,
+      })
+      return blokk
+    }
+
+    kihagyasok.push({
+      szabaly: 'kezdolap-rolunk-szoveg',
+      uzenet: `${uzenet} (${helye})`,
+      indok: `a jelenlegi cím ${ertekCimke(jelenlegi)}, ami nem PONTOSAN a cserélendő ${ertekCimke(
+        REGI_KEZDOLAP_ROLUNK_CIM,
+      )} — a script csak pontos egyezésnél ír át`,
+    })
+    return blokk
+  })
+
+  if (!voltRolunk) {
+    kihagyasok.push({
+      szabaly: 'kezdolap-rolunk-szoveg',
+      uzenet,
+      indok: 'a kezdőlap szekciósorában nincs Rólunk (about) szekció — a szöveget nincs hol átírni',
+    })
+  }
+
+  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+}
+
 /** Kezdőlap: /kurzusok CTA-k egységes felirata — csak ismert régi szövegek, pontos url. */
 export const KURZUSLISTA_JOVAHAGYOTT_FELIRAT = 'Nézd meg a kurzusokat'
 
@@ -2734,6 +2940,10 @@ async function futtat(): Promise<void> {
         ujSzoveg: allapotokUjNyitottSzoveg(),
       }),
     )
+    // --- WP18: a Rólunk-blokk szövege a /rolunk lappal közös forrásra ---------
+    kezdolapLepes(
+      alkalmazKezdolapRolunkSzoveg({ layout: kezdolapLayout, ujSzoveg: kezdolapRolunkUjSzoveg() }),
+    )
     // --- 11. javítás: a záró CTA-sáv -----------------------------------------
     kezdolapLepes(alkalmazZaroCta({ layout: kezdolapLayout, seedBlokk: zaroCtaSeedBlokk() }))
     // --- 15. javítás: a kurzuslista-gombok egységes felirata -----------------
@@ -3103,6 +3313,43 @@ async function futtat(): Promise<void> {
         sosKurzus.updatedAt,
         piszkozat?.updatedAt,
       )
+    }
+  }
+
+  // --- WP18b: az SOS kurzus publikálása (a piszkozat a publikált fölött) ----
+  // KÜLÖN olvasás `draft: true`-val, a fenti SOS-írás UTÁN: a `_status` csak
+  // így a legutóbbi verzióé. Webcím alapján keresünk (a webcím a 7. javítás
+  // után stabil), nem sku alapján.
+  const sosPiszkozatTalalat = await payload.find({
+    collection: 'products',
+    where: { slug: { equals: SOS_KURZUS_SLUG } },
+    limit: 1,
+    depth: 0,
+    draft: true,
+    overrideAccess: true,
+  })
+  const sosPiszkozat = sosPiszkozatTalalat.docs[0]
+
+  if (sosPiszkozat === undefined) {
+    logger.error(
+      `Tartalom-javítás: nem található az SOS kurzus webcím alapján („${SOS_KURZUS_SLUG}”) — a publikálás kimaradt.`,
+    )
+    hiba = true
+  } else {
+    const publikalas = alkalmazSosPublikalas(sosPiszkozat)
+    naplozdLepeseket(publikalas, dryRun)
+    modositasokSzama += publikalas.modositasok.length
+    kihagyasokSzama += publikalas.kihagyasok.length
+
+    if (publikalas.publikal && !dryRun) {
+      await payload.update({
+        collection: 'products',
+        id: sosPiszkozat.id,
+        data: { _status: 'published' },
+        draft: false,
+        depth: 0,
+        overrideAccess: true,
+      })
     }
   }
 

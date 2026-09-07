@@ -132,6 +132,31 @@
   }
 }
 
+/* ---- Hover: a kép 1,03-ra nagyít az ívben (WP18) --------------------------
+   Tulajdonosi kérés: „lehetne valami mozgási hover rajtuk, de ne legyen
+   öncélú". A csempe és az ív nem mozdul, csak a kép nagyít a keretében: a
+   figyelmet arra a fotóra teszi, amelyen az egér áll (visszajelzés, nem
+   dísz), és nem ígér kattintást (nincs cursor: pointer, a fríz nem link).
+   A `scale` külön tulajdonság, ezért a görgetés-parallax `transform`-ja
+   (animation) NEM írja felül, a kettő összeadódik (MDN scale:
+   https://developer.mozilla.org/en-US/docs/Web/CSS/scale). Mérték: 240 ms
+   (--kc-motion-base × 1,2, a Material 3 „short" 200–300 ms sávja), --kc-ease-out.
+     https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+     https://developer.apple.com/design/human-interface-guidelines/motion
+     https://www.nngroup.com/articles/animation-duration/
+   Csak hover-eszközön (`hover: hover`); csökkentett mozgásnál lentebb
+   `scale: none`, `transition: none` (WCAG 2.2 SC 2.3.3). */
+
+@media (hover: hover) {
+  .kc-photo-frieze__img {
+    transition: scale calc(var(--kc-motion-base) * 1.2) var(--kc-ease-out);
+  }
+
+  .kc-photo-frieze__strip:hover .kc-photo-frieze__img {
+    scale: 1.03;
+  }
+}
+
 /* ---- Mobil: egy sor, három álló kép, a két szélső íves --------------------
    A páros portré marad el (mérve: 100 px-es csíkban a kép 36%-a látszik,
    a bal arc elvágva; 77 px-en arc nélkül — a PhotoFrieze.tsx
@@ -174,5 +199,15 @@
     transform: none;
     clip-path: none;
     opacity: 1;
+  }
+
+  /* KÜLÖN szabály, szándékosan: a build CSS-feldolgozója (Lightning CSS) a
+     `transform` mellé írt önálló `scale`-t a `transform: scale3d(1,1,1)`
+     rövidítésbe hajtja, és a `scale: none` ELVESZIK — mérve 2026-09-07 a
+     kiszolgált chunkon (a hover 1,03 csökkentett mozgásnál is élt). Egy
+     `transform` nélküli szabályban a `scale` megmarad. */
+  .kc-photo-frieze__img,
+  .kc-photo-frieze__strip:hover .kc-photo-frieze__img {
+    scale: none;
   }
 }

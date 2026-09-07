@@ -56,8 +56,53 @@ const oldHomeMedia = {
   'state-nyitott.png': 6,
 }
 const oldPageMedia = { rolunkFoto: 7, szolgaltatasokKep: 8, kocsisPortre: 9, kissPortre: 10 }
+/**
+ * A kezdőlapi Rólunk-blokk RÉGI seed-alakja — rögzített pillanatkép (a
+ * 2026-09-07 WP18 előtti `buildHomeLayout`), mert a H01 szabály erre a
+ * címre és szövegre céloz (élő CMS-en még ez áll), a mai seed viszont már a
+ * /rolunk-kal közös bemutatkozást adja (src/lib/rolunk-bemutatkozas.ts).
+ * A fixtúra ezért nem a mai builderből, hanem ebből épül.
+ */
+const regiKezdolapAbout = {
+  title: 'Kiss Kata és Kocsis Kata vagyunk',
+  paragraphs: [
+    {
+      text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, és évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
+      emphasized: true,
+    },
+    {
+      text: 'A pácienseink nagy része kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, így pontosan tudjuk, milyen makacs probléma tud ez lenni, és hogy mennyire megkeseríti az ember mindennapjait.',
+      emphasized: false,
+    },
+    {
+      text: 'A legújabb kutatásokat, külföldi guideline-okat és a saját gyakorlati tapasztalatainkat ötvözzük, mindezt a lehető legbiztonságosabb, mégis leggyorsabb felépülés érdekében.',
+      emphasized: false,
+    },
+    {
+      text: 'Hiszünk abban, hogy a kezed nemcsak egy testrész: mindenhez szükséged van rá. Ezért igyekszünk minden módon segíteni rendbehozni a kezed, megszüntetni a fájdalmat, és elérni, hogy úgy használhasd a kezed, mintha sosem lett volna vele semmi baj.',
+      emphasized: false,
+    },
+  ],
+  feature: {
+    label: 'Személyre szabott kezelések',
+    note: 'Minden páciens egyedi, ezért minden terápiát személyre szabunk.',
+  },
+} as const
+
+const regiKezdolapLayout = (): Layout =>
+  buildHomeLayout(oldHomeMedia).map((block) =>
+    block.blockType === 'about'
+      ? {
+          ...block,
+          title: regiKezdolapAbout.title,
+          paragraphs: regiKezdolapAbout.paragraphs.map((row) => ({ ...row })),
+          feature: { ...regiKezdolapAbout.feature },
+        }
+      : block,
+  )
+
 const builders: Record<OwnerReviewSlug, () => Layout> = {
-  kezdolap: () => buildHomeLayout(oldHomeMedia),
+  kezdolap: regiKezdolapLayout,
   szolgaltatasok: () => buildSzolgaltatasokLayout(oldPageMedia),
   rolunk: () => buildRolunkLayout(oldPageMedia),
   kapcsolat: () => buildKapcsolatLayout(oldPageMedia),
@@ -580,7 +625,13 @@ describe('planOwnerReviewV1: approved canonical pages', () => {
       format: '',
       id: 'owner-review-v1-rolunk-7-kocsisPortrait',
     })
-    const foreign = { type: 'upload', version: 3, relationTo: 'media', value: 555, id: 'editor-node' }
+    const foreign = {
+      type: 'upload',
+      version: 3,
+      relationTo: 'media',
+      value: 555,
+      id: 'editor-node',
+    }
     children(items[1].tartalom).unshift(foreign)
     const result = planOwnerReviewV1(freeze(input))
     const next = rows(find(result.layout, 'accordion'), 'items')

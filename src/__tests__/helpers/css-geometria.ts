@@ -62,8 +62,8 @@ export function stilusLap(fajlok: readonly string[]): readonly Szabaly[] {
  * jellemzőt ismeri, amit a repó ténylegesen használ; bármi másra HANGOSAN dob,
  * mert egy fel nem ismert lekérdezést némán érvényesnek (vagy érvénytelennek)
  * venni pontosan az a hibaosztály, ami ellen ezek az őrök készültek.
- * A `print` és a `prefers-reduced-motion: reduce` a képernyős, alapbeállítású
- * mérésben nem érvényes.
+ * A `print`, a `prefers-reduced-motion: reduce` és a `hover: hover` a
+ * képernyős, alapbeállítású (érintő) mérésben nem érvényes.
  */
 function mediaErvenyes(
   prelude: string,
@@ -90,6 +90,11 @@ function mediaErvenyes(
             return m[1] === 'min' ? meret >= hatar : meret <= hatar
           }
           if (/^\(\s*prefers-reduced-motion\s*:/.test(t)) return false
+          // A mért nézetablak az alapbeállítású, hover nélküli (érintő) eset:
+          // a `(hover: hover)` blokk csak egér alatt él, geometriát nem
+          // változtat (WP18: a hullámos fotók hover-nagyítása).
+          // https://www.w3.org/TR/mediaqueries-4/#hover
+          if (/^\(\s*hover\s*:\s*hover\s*\)$/.test(t)) return false
           throw new Error(`ismeretlen média-jellemző: „${feltetel.trim()}" — az őr nem tud dönteni`)
         })
         .every(Boolean),

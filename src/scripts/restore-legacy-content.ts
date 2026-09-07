@@ -52,6 +52,11 @@ import {
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR, type LegacyImage } from '../lib/legacy-images'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
 import { withoutOwnerReviewPortraitNode } from '../lib/owner-review-v1'
+import {
+  ROLUNK_BEMUTATKOZAS,
+  ROLUNK_BEMUTATKOZAS_CIM,
+  rolunkBemutatkozasSzoveg,
+} from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
 import type { Page, Product } from '../payload-types'
 
@@ -756,17 +761,6 @@ const rolunkBevezetoNodes = (): BlockNode[] => [
   para('…akkor a legjobb helyen vagy, és szívesen segítünk.'),
 ]
 
-/** „Megérdemled a profi törődést" — az alapítói történet bekezdései. */
-const ROLUNK_BEMUTATKOZAS: readonly string[] = [
-  'Kocsis Kata és Kiss Kata vagyunk, a KINETICARE alapítói. Gyógytornász, manuálterapeuta, sportrehabilitációs tréner végzettséggel, de az évek során egyre inkább a kézrehabilitáció került nálunk a fókuszba.',
-  'A klinikán és utána a saját rendelőnkben is egyre szembetűnőbb volt, hogy milyen sokan jönnek hozzánk a kéz valamelyik részének a problémájával.',
-  'Úgyhogy egyre jobban beleástuk magunkat a témába: a külföldi továbbképzésektől a boncolásokon és műtéteken át a legújabb kezelési technikákig mindent igyekszünk felkutatni, amit a kéz anatómiájáról és rehabilitációjáról tudni érdemes, hogy a pácienseinknek átfogó, profi segítséget nyújthassunk.',
-  'Büszkék vagyunk rá, hogy válogatott sportolók, olimpikonok, kismamák és irodai dolgozók, de még a társszakmákban dolgozók is (és persze sokan mások) hozzánk fordulnak, ha megoldást szeretnének.',
-  'Szakmai képzéseket és workshopokat is tartunk a témában, és emellett a Magyar Sportrehabilitációs Egyesület és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk.',
-  'Hiszünk abban, hogy a megfelelő technikákkal helyrehozhatók a sérülések, sokszor akár a műtétek is elkerülhetőek, és hogy a te kezed is megérdemli a profi törődést.',
-  'Akár kezelésre jössz hozzánk, akár az otthon végezhető gyakorlatainkkal „kezeled” magad, a cél ugyanaz: segítünk megszabadulni a kézfájdalmaiktól, hogy újra élvezhesd a munkát, a sportot és a hétköznapi teendőket.',
-]
-
 /**
  * A két alapító neve, titulusa és telefonszáma.
  *
@@ -1096,7 +1090,7 @@ const rolunkReferenciaNodes = (): BlockNode[] => [
 const rolunkContent = (): RichTextContent =>
   richText([
     ...rolunkBevezetoNodes(),
-    heading('h2', 'Megérdemled a profi törődést'),
+    heading('h2', ROLUNK_BEMUTATKOZAS_CIM),
     ...ROLUNK_BEMUTATKOZAS.map((text) => para(text)),
     ...rolunkSzakemberNodes(),
     ...rolunkVelemenyNodes(),
@@ -1730,7 +1724,9 @@ const tervezdOneletrajzKepeket = (
   const uzenetek = [
     ...(toltott.length > 0 ? [`portré a harmonika-sor elejére: ${toltott.join(', ')}`] : []),
     ...(tisztitott.length > 0
-      ? [`ismétlődő bevezető portré-csomópont levéve a tartalom tetejéről: ${tisztitott.join(', ')}`]
+      ? [
+          `ismétlődő bevezető portré-csomópont levéve a tartalom tetejéről: ${tisztitott.join(', ')}`,
+        ]
       : []),
   ]
   return { layout: ujLayout, uzenet: uzenetek.join('; ') }
@@ -1788,7 +1784,10 @@ const tervezdGondolatjelCsereket = (layout: Page['layout']): LogosavTerv => {
         if (uj === szoveg) return block
         const children = [...block.content.root.children]
         children[0] = { ...first, children: [{ ...(node as object), text: uj }] }
-        return { ...block, content: { ...block.content, root: { ...block.content.root, children } } }
+        return {
+          ...block,
+          content: { ...block.content, root: { ...block.content.root, children } },
+        }
       }
       default:
         return block
@@ -1962,7 +1961,9 @@ const frissitsdKivonatot = async (payload: Payload, slug: string): Promise<void>
   const regi = page.excerpt ?? ''
   const uj = rewriteVisitorDashLeftover(regi)
   if (uj === regi) {
-    payload.logger.info(`Legacy: ${cimke} — nincs teendő: a fejléc-bevezető nem a régi seed mondata.`)
+    payload.logger.info(
+      `Legacy: ${cimke} — nincs teendő: a fejléc-bevezető nem a régi seed mondata.`,
+    )
     return
   }
   if (!DRY_RUN) {
@@ -2051,15 +2052,9 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
     {
       blockType: 'about',
       eyebrow: 'Rólunk',
-      title: 'Megérdemled a profi törődést',
-      paragraphs: ROLUNK_BEMUTATKOZAS.map((text, index) => ({
-        text,
-        emphasized: index === 0,
-      })),
-      feature: {
-        label: 'Szakmai egyesületi tagság',
-        note: 'A Magyar Sportrehabilitációs Egyesület és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk.',
-      },
+      // WP18: cím, bekezdések, kiemelés a kezdőlappal KÖZÖS forrásból
+      // (src/lib/rolunk-bemutatkozas.ts).
+      ...rolunkBemutatkozasSzoveg(),
       photo: media.rolunkFoto,
       stats: [
         { value: '10+', label: 'év szakmai tapasztalat' },
