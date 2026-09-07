@@ -343,6 +343,37 @@ describe('TeamMembers kapcsolati linkek', () => {
     expect(teljes).not.toMatch(/aria-label="[^"]*Kérj időpontot üzenetben/)
   })
 
+  it('telefon, e-mail és elérhetőségi sor NÉLKÜL nincs bejelentkezés-réteg (WP15: a Rólunk személyközpontú kártyája)', () => {
+    // A Rólunk lap a személyekről szól, a Kapcsolat a kapcsolatfelvételről
+    // (NN/g About Us vs. Contact Us). A szétválasztás sémabővítés nélkül
+    // megy: a /rolunk seed üresen hagyja a három hívás-mezőt, és a komponens
+    // ilyenkor sem hívás-felületet, sem üres réteget nem renderel.
+    const html = renderBlock({
+      id: 'b8g',
+      blockType: 'teamMembers',
+      title: 'Akik a kezeddel foglalkoznak',
+      bookingLink: { felirat: 'Kérj időpontot üzenetben', url: '/kapcsolat#idopontkeres' },
+      members: [
+        {
+          ...kocsis,
+          phone: '',
+          callLabel: '',
+          availability: '',
+          link: { felirat: 'Nézd meg a szakmai hátterét', url: '#szakmai-hatter' },
+        },
+      ],
+      sectionSettings: {},
+    })
+    expect(html).toContain('Kocsis Kata')
+    expect(html).toContain('Kézrehabilitációval foglalkozik.')
+    expect(html).not.toContain('kc-team__booking"')
+    expect(html).not.toContain('kc-team__call')
+    expect(html).not.toContain('tel:')
+    // A kártya-link és a szekció-szintű időpontkérő link marad.
+    expect(html).toContain('href="#szakmai-hatter"')
+    expect(html).toContain('href="/kapcsolat#idopontkeres"')
+  })
+
   it('az írásos időpontkérés is átmegy az allowlist-szűrőn', () => {
     const tiltott = renderBlock({
       id: 'b8g',

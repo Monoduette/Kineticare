@@ -597,3 +597,38 @@ a 3.2 menüfához képest. **Ez jegyzet, nem döntés**: az IA-változtatás
 | E5 | 3.1 gráf: a fejléc-CTA „Kurzusok" | Egyezik; `/kurzusok`-on `aria-current="page"`, `/kurzusok/<slug>`-on ős-jelölés (mérve) | egyezik |
 | E6 | Lábléc: F1–F7 | Egyezik (Kapcsolat óriáslink, hírlevél, három jogi link, süti-gomb, mailto); a jogi `nav` neve „Jogi és kapcsolat" | egyezik |
 | E7 | Taxonómiai megjegyzés (3.2): kurzus a Szolgáltatások alatt | Változatlan: a Szolgáltatások lenyíló három különböző természetű célt tart (horgony, külső képzés, ingyenes kurzus) | nyitott tulajdonosi döntés |
+
+## 12. Rólunk vs. Kapcsolat: tartalmi felelősség (WP15, 2026-09-07)
+
+Tulajdonosi kérés: „Rólunk és Kapcsolat menüpont is legyen jobban szeparálva
+tartalmi szempontból.” A 6.4 D-listájának szellemében ez is „két felület, egy
+funkció” hiba volt: a `/rolunk` és a `/kapcsolat` ugyanazt a két
+szakember-kártyát vitte, ugyanazokkal a telefonszámokkal.
+
+**Forrás.** NN/g, About Us Information on Websites: a rólunk-oldal a
+szervezetről és az emberekről szól, a hitelességet a nevek, arcok és
+szakmai út adják
+(<https://www.nngroup.com/articles/about-us-information-on-websites/>).
+NN/g, Contact Us Pages: a kapcsolat-oldal a csatornákat és a válaszidőt
+mondja ki, az űrlap csak a telefonszám MELLETT állhat
+(<https://www.nngroup.com/articles/contact-us-pages/>). WCAG 2.2 SC 2.4.6
+(a szekciócím azt írja le, ami a szekció) és SC 3.2.4 (ugyanaz a cselekvés,
+ugyanaz a szó, minden lapon).
+
+| Lap | Felelősség | Ami ott VAN | Ami ott NINCS | Továbblépés |
+| --- | --- | --- | --- | --- |
+| `/rolunk` | a SZEMÉLYEK és a hitelesség | történet, számok, „Amiben mások vagyunk”, „Így tudunk segíteni” sín (a kezdőlapival azonos), „Mi ketten” kártyák (portré, név, titulus, kétmondatos bio, link a részletes szakmai háttérre), partnerek, önéletrajz-harmonika, vélemények | telefon-kártya, hívás-felirat, rendelési tudnivaló | egy szekció-szintű link: „Kérj időpontot üzenetben” → `/kapcsolat#idopontkeres` (§3.2 #24); záró sáv a kurzusra |
+| `/kapcsolat` | a KAPCSOLATFELVÉTEL | időpontkérő űrlap, rendelők, telefonszámok, e-mail, „Beszéljünk” kártyák (telefon-kártya, egymondatos „ki mivel foglalkozik”), üzenetküldő | kétmondatos életrajz, önéletrajz | „Nézd meg a szakmai hátterét” → `/rolunk#szakmai-hatter` |
+| `/szolgaltatasok` | a RENDELŐI DÖNTÉS | tábla (S03), árlista, „Kihez jössz?” kártyák telefonnal | – | „Időpontot kérek” → `/kapcsolat#idopontkeres` |
+
+A három út (Rendelői kezelések / Otthoni program / Szakmai képzések) címe,
+egymondatos összefoglalója és CTA-ja EGY forrásból jön
+(`src/lib/home-help-states.ts`, `HOME_HELP_STATES`): a kezdőlapi sín és a
+`/rolunk` sín ugyanazt mondja. A `/szolgaltatasok` táblája tábla marad
+(2026-09-06-i tulajdonosi döntés), és a sorai más cselekvésre visznek, ezért
+ott a CTA-k más szótári alakot viselnek.
+
+Horgonyok: a `/rolunk` sín a régi tábla `szolgaltatasaink` horgonyát viszi
+tovább (a meglévő hivatkozások élnek), a kezdőlapi sín horgony nélkül áll,
+a `/rolunk` személyek szekciója az `elerhetoseg` horgonyt tartja meg (URL-
+stabilitás; a szekció címe és tartalma változott, az azonosítója nem).

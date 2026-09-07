@@ -1174,11 +1174,11 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
         skip('A06', 'hidden-source', 'Rejtett szakembertartalmat nem teszünk közzé.', index)
         return
       }
+      // A kanonikus blokkot a horgonya azonosítja, nem a címe: a /rolunk
+      // szakember-szekciójának címe 2026-09-07-én (WP15) személyközpontúra
+      // változott („Akik a kezeddel foglalkoznak"), a horgony változatlan.
       const canonicalTeams = input.canonicalLayout.filter(
-        (block) =>
-          block.blockType === 'teamMembers' &&
-          block.title === 'Így érsz el minket közvetlenül' &&
-          blockAnchor(block) === 'elerhetoseg',
+        (block) => block.blockType === 'teamMembers' && blockAnchor(block) === 'elerhetoseg',
       )
       if (canonicalTeams.length !== 1) {
         skip(

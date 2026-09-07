@@ -20,6 +20,13 @@
  *       szekciósor: a 2026-09-07 előtti seed töltelék-gondolatjeles mondatai
  *       PONTOS egyezésre natív alakra (src/lib/gondolatjel-leftover.ts);
  *       szerkesztett szöveghez nem nyúl.
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_ROLUNK_KAPCSOLAT=igen … # MEGLÉVŐ /rolunk
+ *       és /kapcsolat (WP15, 2026-09-07): a /rolunk szakember-szekciója
+ *       személyközpontú lesz (telefon-kártya nélkül, egy szekció-szintű
+ *       időpontkérő linkkel), a /rolunk „Miben segíthetünk?" táblája a
+ *       kezdőlapi „Így tudunk segíteni" sín kanonikus soraira vált, a
+ *       /kapcsolat kártyáin a bemutatkozás egy mondatra rövidül. Mind a három
+ *       csere PONTOS egyezésre megy; szerkesztett blokkhoz nem nyúl.
  */
 
 import path from 'node:path'
@@ -35,6 +42,13 @@ import {
   PRESS_RAIL_FILES,
 } from '../lib/home-seed'
 import { rewriteVisitorDashLeftover } from '../lib/gondolatjel-leftover'
+import {
+  HOME_HELP_LEAD,
+  HOME_HELP_PHOTO_FILES,
+  HOME_HELP_STATES,
+  HOME_HELP_TITLE,
+  homeHelpRailRows,
+} from '../lib/home-help-states'
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR, type LegacyImage } from '../lib/legacy-images'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
 import { withoutOwnerReviewPortraitNode } from '../lib/owner-review-v1'
@@ -72,6 +86,14 @@ const ONELETRAJZ_KEP = kapuNyitva('LEGACY_ONELETRAJZ_KEP')
  * nélkül). Szerkesztett szöveg nem egyezik, tehát érintetlen marad.
  */
 const GONDOLATJEL = kapuNyitva('LEGACY_GONDOLATJEL')
+/**
+ * A MEGLÉVŐ /rolunk és /kapcsolat tartalmi szétválasztása (WP15, tulajdonosi
+ * kérés 2026-09-07: „Rólunk és Kapcsolat menüpont is legyen jobban szeparálva
+ * tartalmi szempontból", „A Miben segíthetünk rész nem egységes"). Három
+ * pontos egyezésű csere, lásd `tervezdRolunkSzetvalasztast` és
+ * `tervezdKapcsolatRovidBemutatkozast`.
+ */
+const ROLUNK_KAPCSOLAT = kapuNyitva('LEGACY_ROLUNK_KAPCSOLAT')
 /** Próbafutás: minden döntés lefut és naplózódik, de egyetlen írás sem történik. */
 const DRY_RUN = !CONFIRM
 
@@ -790,27 +812,25 @@ const ROLUNK_MEGKULONBOZTETOK: readonly CimSzoveg[] = [
   },
 ]
 
-/** „Miben segíthetünk?" — a három szolgáltatási ág rövid alakja. */
-const ROLUNK_SZOLGALTATASOK: readonly SzolgaltatasSor[] = [
-  {
-    title: 'Rendelői kezelések, személyesen',
-    body: 'Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Gyógytornával, manuálterápiával és egy sor kiegészítő terápiával várunk.',
-    label: 'Tovább a kezelésekre',
-    url: '/szolgaltatasok',
-  },
-  {
-    title: 'Otthoni program, online',
-    body: 'Ha a kézfájdalom enyhítésére szeretnél egy bárhol, bármikor végezhető megoldást, akkor egy átfogó programmal is tudunk segíteni.',
-    label: 'Tovább a kurzusokra',
-    url: '/kurzusok',
-  },
-  {
-    title: 'Szakmai képzések, kollégáknak',
-    body: 'Akkreditált tantermi kézkurzus a kéz, a csukló- és könyökízület rehabilitációs lehetőségeiről gyógytornászoknak, erőnléti- és szakági edzőknek és orvosoknak.',
-    label: 'Tovább a képzésre',
-    url: 'https://probodystudio.hu/kez-workshop/',
-    newTab: true,
-  },
+/**
+ * A /rolunk 2026-09-07 ELŐTTI „Miben segíthetünk?" táblájának címe és
+ * sorcímei: az élő szekciósor felismeréséhez (`tervezdRolunkSzetvalasztast`).
+ * A blokk tartalma azóta a kezdőlapi sín kanonikus forrásából jön
+ * (`HOME_HELP_STATES`, src/lib/home-help-states.ts): a három út címe, egy
+ * mondatos összefoglalója és CTA-felirata a kezdőlapon és a /rolunk oldalon
+ * ugyanaz (WCAG 2.2 SC 3.2.4 Consistent Identification,
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html;
+ * NN/g Consistency and Standards,
+ * https://www.nngroup.com/articles/consistency-and-standards/). A tulajdonos
+ * 2026-09-07-i kiegészítése: „A főoldalon lévő Így tudunk segíteni a követendő
+ * irány." A régi vesszős sorcímek a LEGACY_GONDOLATJEL kapu javított alakjai
+ * (src/lib/gondolatjel-leftover.ts, ROLUNK_SZEKCIO_LEFTOVERS).
+ */
+const ROLUNK_REGI_SZOLGALTATAS_CIM = 'Miben segíthetünk?'
+const ROLUNK_REGI_SZOLGALTATAS_SORCIMEK: readonly string[] = [
+  'Rendelői kezelések, személyesen',
+  'Otthoni program, online',
+  'Szakmai képzések, kollégáknak',
 ]
 
 /**
@@ -1085,11 +1105,13 @@ const rolunkContent = (): RichTextContent =>
       heading('h3', `${index + 1}. ${item.title}`),
       para(item.body),
     ]),
-    heading('h2', 'Miben segíthetünk?'),
-    ...ROLUNK_SZOLGALTATASOK.flatMap((item) => [
-      heading('h3', item.title),
-      para(item.body),
-      cta(item.url, item.label, item.newTab),
+    // A három út a kezdőlapi sín kanonikus forrásából (WP15): a rich-text
+    // tartalék ugyanazt mondja, mint a szekciósor sínje.
+    heading('h2', HOME_HELP_TITLE),
+    ...HOME_HELP_STATES.flatMap((state) => [
+      heading('h3', state.title),
+      para(state.body),
+      cta(state.url, state.felirat, state.ujAblakban),
     ]),
     ...rolunkReferenciaNodes(),
   ])
@@ -1137,6 +1159,12 @@ interface OldalLayoutMedia {
   sajtoLogok?: readonly number[]
   /** A /rolunk partner-logósávjának logói (ROLUNK_PARTNER_LOGO_FAJLOK sorrendjében). */
   partnerLogok?: readonly number[]
+  /**
+   * A /rolunk „Így tudunk segíteni" sínjének ajtó-fotói, a HOME_HELP_PHOTO_FILES
+   * sorrendjében (a kezdőlapi seed tölti fel őket). Hiányzó kép esetén az ajtó
+   * fotó nélkül, helykitöltővel áll.
+   */
+  sinFotok?: readonly (number | undefined)[]
   /** Kocsis Kata portréja a bejelentkezés-szekcióhoz. */
   kocsisPortre?: number
   /** Kiss Kata portréja a bejelentkezés-szekcióhoz. */
@@ -1168,6 +1196,15 @@ interface SzakemberKartya {
   nev: string
   /** Rövid, 2 mondatos bemutatkozás — a teljes életút a harmonikában marad. */
   bemutatkozas: string
+  /**
+   * Egymondatos bemutatkozás a KAPCSOLAT lapra: ott a kártya feladata az, hogy
+   * a látogató eldöntse, kit hívjon („ki mivel foglalkozik"), nem a személy
+   * megismerése. NN/g, Contact Us pages: a kapcsolat-oldal a kapcsolatfelvétel
+   * útjairól szól, nem a cégről
+   * (https://www.nngroup.com/articles/contact-us-pages/). A teljes
+   * bemutatkozás ELSŐ mondata, hogy a két lap ne mondjon mást ugyanarról.
+   */
+  rovidBemutatkozas: string
   /** A hívás-hivatkozás felirata (ige + tárgy, egyes szám második személy). */
   hivasFelirat: string
   telefon: string
@@ -1180,6 +1217,8 @@ const SZAKEMBER_KARTYAK: readonly SzakemberKartya[] = [
     nev: 'Kocsis Kata',
     bemutatkozas:
       'Kézsérülésekkel, műtét utáni állapotokkal és sportolói panaszokkal foglalkozik. A kéz, a csukló és a könyök rehabilitációjáról szóló akkreditált kurzus oktatója.',
+    rovidBemutatkozas:
+      'Kézsérülésekkel, műtét utáni állapotokkal és sportolói panaszokkal foglalkozik.',
     hivasFelirat: 'Hívd Kocsis Katát',
     telefon: '+36 30 169 2263',
     portreFajl: '67b3c6e9e315f_KocsisKatakozeli.png',
@@ -1188,6 +1227,8 @@ const SZAKEMBER_KARTYAK: readonly SzakemberKartya[] = [
     nev: 'Kiss Kata',
     bemutatkozas:
       'Manuálterapeutaként a csukló- és kézpanaszok hátterét keresi, a sportolói eseteket is beleértve. A Magyar Sportrehabilitációs Konferencián az ulnáris oldali csuklófájdalmakról tartott előadást.',
+    rovidBemutatkozas:
+      'Manuálterapeutaként a csukló- és kézpanaszok hátterét keresi, a sportolói eseteket is beleértve.',
     hivasFelirat: 'Hívd Kiss Katát',
     telefon: '+36 20 357 3493',
     portreFajl: '67c07def59ac2_KissKataelegans.png',
@@ -1223,6 +1264,30 @@ interface SzakemberSzekcioOpciok {
   idopontkeresUrl?: string | null
   /** Portré-azonosítók fájlnév szerint; hiányzó kép esetén a kártya kép nélkül áll. */
   portrek?: Partial<Record<string, number | undefined>>
+  /**
+   * A szekció SZEREPE (WP15, 2026-09-07, tulajdonosi kérés: a Rólunk és a
+   * Kapcsolat legyen tartalmilag szétválasztva).
+   *
+   * - `elerhetoseg`: KAPCSOLATFELVÉTEL. A kártyán hívás-felület (telefon,
+   *   felirat, „mit várj a hívástól" sor). A /kapcsolat és a /szolgaltatasok
+   *   bejelentkezés-szekciója. NN/g Contact Us: a kapcsolat-oldal feladata a
+   *   csatornák és a válaszidő kiírása
+   *   (https://www.nngroup.com/articles/contact-us-pages/).
+   * - `szemelyek`: BEMUTATKOZÁS. A kártyán portré, név, titulus, rövid bio és
+   *   a szakmai háttérre mutató link, telefon NÉLKÜL; a kapcsolatfelvétel egy
+   *   szekció-szintű linkkel a /kapcsolat lapra megy. NN/g About Us: a
+   *   rólunk-oldal az emberekről, a hitelességről és a történetről szól, a
+   *   kapcsolati adat egy linknyi távolságra van
+   *   (https://www.nngroup.com/articles/about-us-information-on-websites/).
+   *   A kettő szétválasztása az IA-leltár 6.4 „két felület, egy funkció"
+   *   hibáját szünteti meg (docs/informacios-architektura.md).
+   */
+  szerep: 'elerhetoseg' | 'szemelyek'
+  /**
+   * Melyik bemutatkozás kerül a kártyára: a teljes (2 mondat, Rólunk és
+   * Szolgáltatások) vagy az egymondatos (Kapcsolat, lásd `rovidBemutatkozas`).
+   */
+  bemutatkozas: 'teljes' | 'rovid'
 }
 
 /**
@@ -1258,9 +1323,13 @@ const szakemberSzekcio = (opciok: SzakemberSzekcioOpciok): NonNullable<Page['lay
     photo: opciok.portrek?.[kartya.portreFajl],
     name: kartya.nev,
     role: szakemberTitulus(kartya.nev),
-    bio: kartya.bemutatkozas,
-    phone: kartya.telefon,
-    callLabel: kartya.hivasFelirat,
+    bio: opciok.bemutatkozas === 'rovid' ? kartya.rovidBemutatkozas : kartya.bemutatkozas,
+    // Személyközpontú szekcióban (Rólunk) a három hívás-mező ÜRES: a
+    // TeamMembers komponens telefon, e-mail és elérhetőségi sor nélkül nem
+    // rendereli a bejelentkezés-réteget (őr: team-members-block.test.ts).
+    // Sémabővítés nélkül így válik szét a két lap tartalma.
+    phone: opciok.szerep === 'elerhetoseg' ? kartya.telefon : '',
+    callLabel: opciok.szerep === 'elerhetoseg' ? kartya.hivasFelirat : '',
     email: '',
     // A tulajdonos 2026-08-17-i válasza a korábban nyitva hagyott kérdésre:
     // NINCS közzétehető rendelési idő és fix helyszín, mert a helyszínt a
@@ -1268,7 +1337,10 @@ const szakemberSzekcio = (opciok: SzakemberSzekcioOpciok): NonNullable<Page['lay
     // írunk (az kitalált adat lenne), hanem azt, ami IGAZ: a hívás után derül
     // ki, hova kell menni. Így a mező a valódi folyamatot írja le, és a
     // látogató sem vár hiába egy címet a lapon.
-    availability: 'A hívás során megbeszélitek, melyik rendelőbe érdemes jönnöd.',
+    availability:
+      opciok.szerep === 'elerhetoseg'
+        ? 'A hívás során megbeszélitek, melyik rendelőbe érdemes jönnöd.'
+        : '',
     link: {
       felirat: 'Nézd meg a szakmai hátterét',
       url: opciok.hatterUrl,
@@ -1276,6 +1348,68 @@ const szakemberSzekcio = (opciok: SzakemberSzekcioOpciok): NonNullable<Page['lay
     },
   })),
   sectionSettings: { visible: true, anchorId: opciok.anchorId, hatter: opciok.hatter },
+})
+
+/**
+ * A /rolunk SZEMÉLYKÖZPONTÚ szakember-szekciója (WP15, 2026-09-07).
+ *
+ * Cím és eyebrow személyközpontú, natív magyar, gondolatjel nélkül: a szekció
+ * címe azt mondja, AMI a szekció (WCAG 2.2 SC 2.4.6 Headings and Labels,
+ * https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html), nem a
+ * kapcsolatfelvételt ígéri. A telefon a /kapcsolat lapon él; innen a §3.2 #24
+ * szekció-szintű link viszi oda a látogatót (a /kapcsolat időpontkérő
+ * horgonyára, ahol a szám és az űrlap egyaránt látszik). Egy cselekvés, egy
+ * szó (WCAG 2.2 SC 3.2.4).
+ */
+const ROLUNK_SZEMELYEK_SZEKCIO = {
+  eyebrow: 'Mi ketten',
+  title: 'Akik a kezeddel foglalkoznak',
+  lead: 'Ketten visszük a Kineticare-t, és mindketten a kéz rehabilitációjára szakosodtunk. Itt röviden bemutatkozunk, a teljes szakmai utunkat a lap alján találod.',
+} as const
+
+/** A /rolunk 2026-09-07 ELŐTTI szakember-szekciójának címe — az élő szekciósor felismeréséhez. */
+const ROLUNK_SZAKEMBER_REGI_CIM = 'Így érsz el minket közvetlenül'
+
+const rolunkSzemelyekSzekcio = (
+  media: Pick<OldalLayoutMedia, 'kocsisPortre' | 'kissPortre'>,
+): NonNullable<Page['layout']>[number] =>
+  szakemberSzekcio({
+    ...ROLUNK_SZEMELYEK_SZEKCIO,
+    anchorId: 'elerhetoseg',
+    hatter: 'feher',
+    hatterUrl: '#szakmai-hatter',
+    idopontkeresUrl: IDOPONTKERES_URL,
+    portrek: {
+      '67b3c6e9e315f_KocsisKatakozeli.png': media.kocsisPortre,
+      '67c07def59ac2_KissKataelegans.png': media.kissPortre,
+    },
+    szerep: 'szemelyek',
+    bemutatkozas: 'teljes',
+  })
+
+/**
+ * A /rolunk „Így tudunk segíteni" szekciója: a KEZDŐLAPI sín + panel
+ * (`elrendezes: 'sin'`), soronként a kanonikus címmel, egymondatos
+ * összefoglalóval, törzzsel és CTA-val (`HOME_HELP_STATES`). A tulajdonos
+ * 2026-09-07-i döntése: „A főoldalon lévő Így tudunk segíteni a követendő
+ * irány." Ugyanaz a három ajtó két lapon ugyanúgy néz ki és ugyanazt mondja
+ * (WCAG 2.2 SC 3.2.4; NN/g Consistency and Standards). A horgony a régi
+ * tábláé marad (`szolgaltatasaink`), hogy a meglévő hivatkozások éljenek; a
+ * kezdőlapi sín horgony nélkül áll, ütközés nincs.
+ */
+const rolunkSegitsegSzekcio = (
+  sinFotok: readonly (number | undefined)[] = [],
+): NonNullable<Page['layout']>[number] => ({
+  blockType: 'services',
+  // Kifejezetten üres: a kezdőlapi sín is eyebrow nélkül áll, és a csere
+  // (tervezdRolunkSzetvalasztast) a régi tábla „Szolgáltatásaink" feliratát
+  // csak explicit üres értékkel törli.
+  eyebrow: '',
+  title: HOME_HELP_TITLE,
+  lead: HOME_HELP_LEAD,
+  elrendezes: 'sin',
+  rows: homeHelpRailRows(sinFotok),
+  sectionSettings: { visible: true, anchorId: 'szolgaltatasaink', hatter: 'tint' },
 })
 
 /**
@@ -1666,6 +1800,145 @@ const tervezdGondolatjelCsereket = (layout: Page['layout']): LogosavTerv => {
   return { layout: ujLayout, uzenet: `gondolatjel-csere: ${cserek.join('; ')}` }
 }
 
+/** Kép-hivatkozás (id vagy feloldott Media) → id; hiányzó képnél `undefined`. */
+const kepAzonosito = (value: unknown): number | undefined => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'object' && value !== null && 'id' in value) {
+    const id = (value as { id?: unknown }).id
+    return typeof id === 'number' ? id : undefined
+  }
+  return undefined
+}
+
+/**
+ * A /rolunk 2026-09-07 ELŐTTI „Miben segíthetünk?" táblájának három sora,
+ * PONTOS egyezésre: a vesszős (LEGACY_GONDOLATJEL utáni) és a gondolatjeles
+ * (előtti) sorcím egyaránt felismerhető, más sorcím nem.
+ */
+const regiRolunkSzolgaltatasSorok = (rows: unknown): boolean =>
+  Array.isArray(rows) &&
+  rows.length === ROLUNK_REGI_SZOLGALTATAS_SORCIMEK.length &&
+  rows.every((row, index) => {
+    const title = (row as { title?: unknown } | null)?.title
+    return (
+      typeof title === 'string' &&
+      rewriteVisitorDashLeftover(title) === ROLUNK_REGI_SZOLGALTATAS_SORCIMEK[index]
+    )
+  })
+
+/**
+ * MEGLÉVŐ /rolunk szekciósor tartalmi szétválasztása a /kapcsolat laptól
+ * (LEGACY_ROLUNK_KAPCSOLAT=igen, WP15). Két blokkhoz nyúl, mindkettőhöz
+ * PONTOS egyezésre:
+ *
+ * 1. A „Így érsz el minket közvetlenül" című szakember-szekció →
+ *    személyközpontú szekció (`rolunkSzemelyekSzekcio`): új eyebrow, cím,
+ *    bevezető; a kártyákon nincs telefon, hívás-felirat és elérhetőségi sor;
+ *    a szekció-szintű időpontkérő link a /kapcsolat időpontkérő horgonyára
+ *    mutat. A blokk és a tagok azonosítója, valamint a MÁR beállított portré
+ *    megmarad (a szerkesztő képe erősebb a seed képénél).
+ * 2. A „Miben segíthetünk?" című, három régi sorcímű tábla → a kezdőlapi
+ *    „Így tudunk segíteni" sín (`rolunkSegitsegSzekcio`): a sorok a kanonikus
+ *    HOME_HELP_STATES-ből jönnek, a sor-azonosítók, a blokk azonosítója, a
+ *    szekció-beállítás (horgony, háttér) és a 19a. javítás által beállított
+ *    kép megmarad.
+ *
+ * Szerkesztett cím nem egyezik, tehát a blokk érintetlen marad. Tiszta
+ * függvény, adatbázis nélkül; a második futás nem talál teendőt.
+ */
+const tervezdRolunkSzetvalasztast = (
+  layout: Page['layout'],
+  media: Pick<OldalLayoutMedia, 'kocsisPortre' | 'kissPortre' | 'sinFotok'>,
+): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  const uzenetek: string[] = []
+  const ujLayout = layout.map((block): SzekciosorBlokk => {
+    if (block.blockType === 'teamMembers' && block.title === ROLUNK_SZAKEMBER_REGI_CIM) {
+      const alap = rolunkSzemelyekSzekcio(media)
+      if (alap.blockType !== 'teamMembers') return block
+      const eloTagok = block.members ?? []
+      const members = (alap.members ?? []).map((tag) => {
+        const elo = eloTagok.find((jelolt) => jelolt.name === tag.name)
+        const eloPortre = kepAzonosito(elo?.photo)
+        return {
+          ...tag,
+          ...(typeof elo?.id === 'string' ? { id: elo.id } : {}),
+          photo: eloPortre ?? tag.photo,
+        }
+      })
+      uzenetek.push(
+        `szakember-szekció személyközpontú: „${ROLUNK_SZAKEMBER_REGI_CIM}" → „${ROLUNK_SZEMELYEK_SZEKCIO.title}", telefon nélkül, időpontkérő link a /kapcsolat lapra`,
+      )
+      return {
+        ...alap,
+        ...(typeof block.id === 'string' ? { id: block.id } : {}),
+        members,
+        sectionSettings: block.sectionSettings ?? alap.sectionSettings,
+      }
+    }
+    if (
+      block.blockType === 'services' &&
+      block.title === ROLUNK_REGI_SZOLGALTATAS_CIM &&
+      regiRolunkSzolgaltatasSorok(block.rows)
+    ) {
+      const alap = rolunkSegitsegSzekcio(media.sinFotok)
+      if (alap.blockType !== 'services') return block
+      const eloSorok = block.rows ?? []
+      const rows = (alap.rows ?? []).map((row, index) => {
+        const id = eloSorok[index]?.id
+        return typeof id === 'string' ? { ...row, id } : row
+      })
+      uzenetek.push(
+        `„${ROLUNK_REGI_SZOLGALTATAS_CIM}" tábla → „${HOME_HELP_TITLE}" sín a kanonikus három úttal`,
+      )
+      return {
+        ...alap,
+        ...(typeof block.id === 'string' ? { id: block.id } : {}),
+        ...(block.image !== undefined && block.image !== null ? { image: block.image } : {}),
+        rows,
+        sectionSettings: block.sectionSettings ?? alap.sectionSettings,
+      }
+    }
+    return block
+  })
+  if (uzenetek.length === 0) {
+    return {
+      layout: null,
+      uzenet: 'nincs a régi seed alakjában álló szakember-szekció vagy „Miben segíthetünk?" tábla',
+    }
+  }
+  return { layout: ujLayout, uzenet: uzenetek.join('; ') }
+}
+
+/**
+ * MEGLÉVŐ /kapcsolat szakember-kártyáinak bemutatkozása egy mondatra
+ * (LEGACY_ROLUNK_KAPCSOLAT=igen, WP15). Csak a névhez tartozó TELJES seed-
+ * bemutatkozást cseréli az egymondatosra (pontos egyezés); szerkesztett vagy
+ * már rövid szöveg érintetlen. Tiszta függvény, adatbázis nélkül.
+ */
+const tervezdKapcsolatRovidBemutatkozast = (layout: Page['layout']): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  const cserek: string[] = []
+  const ujLayout = layout.map((block): SzekciosorBlokk => {
+    if (block.blockType !== 'teamMembers') return block
+    const members = (block.members ?? []).map((tag) => {
+      const kartya = SZAKEMBER_KARTYAK.find((jelolt) => jelolt.nev === tag.name)
+      if (kartya === undefined || tag.bio !== kartya.bemutatkozas) return tag
+      cserek.push(kartya.nev)
+      return { ...tag, bio: kartya.rovidBemutatkozas }
+    })
+    return { ...block, members }
+  })
+  if (cserek.length === 0) {
+    return { layout: null, uzenet: 'nincs teljes seed-bemutatkozás a kapcsolat kártyáin' }
+  }
+  return { layout: ujLayout, uzenet: `egymondatos bemutatkozás: ${cserek.join(', ')}` }
+}
+
 /**
  * MEGLÉVŐ oldal fejléc-bevezetőjének (`excerpt`, a lap hero-leadje) cseréje
  * PONTOS egyezésre (`rewriteVisitorDashLeftover`); szerkesztett szöveg nem
@@ -1825,45 +2098,22 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
       sectionSettings: { visible: true, hatter: 'feher' },
     },
 
-    // A három szolgáltatási ág — sor-hivatkozásokkal (nem gombbal): a lap
-    // egyetlen elsődleges CTA-ja a záró sáv (B6.5).
-    {
-      blockType: 'services',
-      eyebrow: 'Szolgáltatásaink',
-      title: 'Miben segíthetünk?',
-      rows: ROLUNK_SZOLGALTATASOK.map((item, index) => ({
-        number: String(index + 1).padStart(2, '0'),
-        title: item.title,
-        body: item.body,
-        felirat: item.label,
-        url: item.url,
-        ujAblakban: item.newTab === true,
-      })),
-      sectionSettings: { visible: true, anchorId: 'szolgaltatasaink', hatter: 'tint' },
-    },
+    // A három út — a KEZDŐLAPI „Így tudunk segíteni" sín + panel, ugyanabból a
+    // forrásból (`rolunkSegitsegSzekcio`), a lap egyetlen elsődleges CTA-ja
+    // továbbra is a záró sáv (B6.5).
+    rolunkSegitsegSzekcio(media.sinFotok),
 
     // Szakmai háttér, 1. rész — a RÖVID, MINDIG LÁTHATÓ tartalom: a két
-    // szakember elérhetősége. Ezek elolvasása másodpercek, és a telefonszám a
-    // lap egyik kapcsolatfelvételi útja (üzleti cél-sorrend 3. pontja) —
-    // lenyitó mögé rejteni hiba lenne.
+    // szakember BEMUTATKOZÁSA (portré, név, titulus, rövid bio), a lap ALJÁN
+    // álló részletes önéletrajz-harmonikára mutató linkkel (#szakmai-hatter).
     //
-    // 2026-08-16 ÓTA BLOKKBAN, NEM FOLYÓ SZÖVEGBEN. Korábban itt egy richText
-    // bekezdés állt („… – telefon: +36 30 169 2263"): a szám nem volt
-    // kattintható, és nem volt mellette arc. A `teamMembers` blokk mindkettőt
-    // megadja, és a lap ALJÁN álló részletes önéletrajz-harmonikára mutat
-    // (#szakmai-hatter) ahelyett, hogy megismételné.
-    szakemberSzekcio({
-      eyebrow: 'Elérhetőség',
-      title: 'Így érsz el minket közvetlenül',
-      lead: 'Hívj minket, ha időpontot kérnél, vagy ha kérdésed van a kezelésekről.',
-      anchorId: 'elerhetoseg',
-      hatter: 'feher',
-      hatterUrl: '#szakmai-hatter',
-      portrek: {
-        '67b3c6e9e315f_KocsisKatakozeli.png': media.kocsisPortre,
-        '67c07def59ac2_KissKataelegans.png': media.kissPortre,
-      },
-    }),
+    // 2026-09-07 ÓTA TELEFON NÉLKÜL (WP15). A telefon-kártya és a hívás-
+    // felirat a /kapcsolat lapé: a Rólunk a személyekről szól, a Kapcsolat a
+    // kapcsolatfelvételről (NN/g About Us vs. Contact Us, lásd a
+    // `SzakemberSzekcioOpciok.szerep` mező indoklását). A kapcsolatfelvétel
+    // innen egyetlen szekció-szintű linkkel érhető el (§3.2 #24, a /kapcsolat
+    // időpontkérő szekciójára), így a lap nem zsákutca (IA-skill 5. pont).
+    rolunkSzemelyekSzekcio(media),
 
     // Partnerek — a lap külső, ellenőrizhető referencia-sora, logósávként
     // (tulajdonosi kérés A04) + a logó nélküli partnerek mondata. Ugyanabban
@@ -2043,6 +2293,10 @@ const buildSzolgaltatasokLayout = (media: OldalLayoutMedia = {}): NonNullable<Pa
       '67b3c6e9e315f_KocsisKatakozeli.png': media.kocsisPortre,
       '67c07def59ac2_KissKataelegans.png': media.kissPortre,
     },
+    // A rendelői lap bejelentkezés-szekciója: itt dől el, kihez jön a
+    // látogató, tehát a hívás-felület marad (NN/g Upfront Disclosure).
+    szerep: 'elerhetoseg',
+    bemutatkozas: 'teljes',
   }),
 
   // Három párhuzamos érv → kártyarács (B3.1).
@@ -2135,6 +2389,10 @@ const kapcsolatSzakemberSzekcio = (
       '67b3c6e9e315f_KocsisKatakozeli.png': media.kocsisPortre,
       '67c07def59ac2_KissKataelegans.png': media.kissPortre,
     },
+    szerep: 'elerhetoseg',
+    // WP15: a Kapcsolat lapon a bemutatkozás egy mondat („ki mivel
+    // foglalkozik"), a teljes bemutatkozás a Rólunk lapé.
+    bemutatkozas: 'rovid',
   })
 
 /** /kapcsolat layout: időpontkérő (tint) + szakember (fehér). */
@@ -3053,6 +3311,17 @@ async function restoreLegacyContent(): Promise<void> {
   // A két portré a bejelentkezés-szekcióhoz (mindkét oldalra ugyanaz a kép).
   const kocsisPortre = mediaId('67b3c6e9e315f_KocsisKatakozeli.png')
   const kissPortre = mediaId('67c07def59ac2_KissKataelegans.png')
+  // A /rolunk „Így tudunk segíteni" sínjének ajtó-fotói: a kezdőlapi seed
+  // tölti fel őket; hiányzó képnél az ajtó helykitöltővel áll (index-hű lista).
+  const sinFotok: (number | undefined)[] = []
+  for (const file of HOME_HELP_PHOTO_FILES) {
+    sinFotok.push(await findMediaId(payload, file))
+  }
+  if (sinFotok.some((id) => id === undefined)) {
+    payload.logger.info(
+      'Legacy: a kezdőlapi sín-fotók egy része hiányzik a Médiatárból (a `npm run seed` tölti fel) — a /rolunk sín érintett ajtói fotó nélkül állnak.',
+    )
+  }
   await ensurePageLayout(
     payload,
     'rolunk',
@@ -3062,6 +3331,7 @@ async function restoreLegacyContent(): Promise<void> {
       partnerLogok,
       kocsisPortre,
       kissPortre,
+      sinFotok,
     }),
   )
   // MEGLÉVŐ szekciósorok logósávjai (H05 + A04) — csak külön kapuval.
@@ -3094,6 +3364,16 @@ async function restoreLegacyContent(): Promise<void> {
       'Legacy: a meglévő /rolunk szekciósor szövegei érintetlenek maradnak (LEGACY_GONDOLATJEL=igen cseréli a régi seed gondolatjeles mondatait pontos egyezésre).',
     )
   }
+  // MEGLÉVŐ /rolunk: személyközpontú szakember-szekció + kezdőlapi sín (WP15).
+  if (ROLUNK_KAPCSOLAT) {
+    await frissitsdSzekciosort(payload, 'rolunk', 'rolunk/kapcsolat szétválasztás: rolunk', [
+      (layout) => tervezdRolunkSzetvalasztast(layout, { kocsisPortre, kissPortre, sinFotok }),
+    ])
+  } else {
+    payload.logger.info(
+      'Legacy: a meglévő /rolunk szakember-szekciója és „Miben segíthetünk?" táblája érintetlen marad (LEGACY_ROLUNK_KAPCSOLAT=igen váltja személyközpontú szekcióra és kezdőlapi sínre, pontos egyezésre).',
+    )
+  }
   await ensurePageLayout(
     payload,
     'szolgaltatasok',
@@ -3120,6 +3400,16 @@ async function restoreLegacyContent(): Promise<void> {
   // A két portré ugyanaz, mint a /rolunk és a /szolgaltatasok szakember-
   // szekciójában (egy kép, egy hely) — a fenti feloldást használjuk újra.
   await ensurePageLayout(payload, 'kapcsolat', buildKapcsolatLayout({ kocsisPortre, kissPortre }))
+  // MEGLÉVŐ /kapcsolat: egymondatos bemutatkozás a kártyákon (WP15).
+  if (ROLUNK_KAPCSOLAT) {
+    await frissitsdSzekciosort(payload, 'kapcsolat', 'rolunk/kapcsolat szétválasztás: kapcsolat', [
+      tervezdKapcsolatRovidBemutatkozast,
+    ])
+  } else {
+    payload.logger.info(
+      'Legacy: a meglévő /kapcsolat kártyáinak bemutatkozása érintetlen marad (LEGACY_ROLUNK_KAPCSOLAT=igen rövidíti egy mondatra, pontos egyezésre).',
+    )
+  }
 
   // --- Termékkategória ---------------------------------------------------------
   const productCategoryId = await ensureProductCategory(payload)
@@ -3271,12 +3561,15 @@ export {
   ROLUNK_TOVABBI_PARTNEREK,
   rolunkContent,
   rolunkPartnerSzekciok,
+  ROLUNK_SZEMELYEK_SZEKCIO,
   rolunkSzakmaiOrokoltTartalom,
   SZAKMAI_HATTER_URL,
   szolgaltatasokContent,
   szolgaltatasokRegiBevezetoTartalom,
   tervezdGondolatjelCsereket,
+  tervezdKapcsolatRovidBemutatkozast,
   tervezdOneletrajzKepeket,
+  tervezdRolunkSzetvalasztast,
   tervezdPartnerSavot,
   tervezdSajtoLogosorBovitest,
 }
