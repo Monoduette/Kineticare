@@ -24,7 +24,7 @@ import type { Order, User } from '../../payload-types'
  * A tesztek a VALÓDI withAdvisoryLockot futtatják (nincs modul-mock): a
  * drizzle-példány szerkezeti utánzata FIFO-sorban sorosítja a tranzakciókat,
  * mint a Postgres advisory-zár. Így bizonyítjuk, hogy
- *  - a zár a rendelés-szintű `order-transition:order:<id>` kulccsal, a döntés
+ *  - a zár a rendelés-szintű `order:mutate:<id>` kulccsal, a döntés
  *    ELŐTT kerül megszerzésre, és a kulcs KÖTÖTT paraméterként utazik,
  *  - a rendelés a záron BELÜL olvasódik újra (findByID a zár megszerzése után),
  *  - két párhuzamos paid-átmenetből PONTOSAN EGY transitionedToPaid=true,
@@ -207,11 +207,11 @@ describe('M5 — rendelés-szintű advisory-zár a paid/cancelled átmeneten', (
 
     await applyBarionStateTransition(paidInput(payload, order))
 
-    // A kulcs a meglévő konvenciót követi (`<scope>:order:<id>`, mint a refund).
-    expect(orderTransitionLockKey(ORDER_ID)).toBe(`order-transition:order:${ORDER_ID}`)
+    // Paid-átmenet és refund ugyanazt a rendelés-mutációs zárat viseli.
+    expect(orderTransitionLockKey(ORDER_ID)).toBe(`order:mutate:${ORDER_ID}`)
     expect(userPurchasesLockKey(CUSTOMER_ID)).toBe(`purchases:user:${CUSTOMER_ID}`)
     expect(queries.map((query) => query.params[0])).toEqual([
-      `order-transition:order:${ORDER_ID}`,
+      `order:mutate:${ORDER_ID}`,
       `purchases:user:${CUSTOMER_ID}`,
     ])
     expect(queries[0]?.sql).toContain('pg_advisory_xact_lock')
@@ -331,11 +331,7 @@ describe('K1 — user-szintű purchases-zár két különböző rendelésen', ()
     expect(user.purchases).toEqual(expect.arrayContaining([11, 22]))
     expect(user.purchases).toHaveLength(2)
     expect(queries.map((query) => query.params[0])).toEqual(
-      expect.arrayContaining([
-        'order-transition:order:101',
-        'order-transition:order:202',
-        'purchases:user:7',
-      ]),
+      expect.arrayContaining(['order:mutate:101', 'order:mutate:202', 'purchases:user:7']),
     )
   })
 

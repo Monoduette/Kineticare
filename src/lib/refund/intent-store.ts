@@ -295,7 +295,7 @@ export async function createRefundIntent(
     return database(payload).transaction(async (tx) => {
       if (!record(tx) || typeof tx.execute !== 'function')
         throw new RefundIntentStoreError('unavailable')
-      // Kulon nevter: a hivo mar tarthatja a refund:order zarat masik kapcsolaton.
+      // Kulon nevter: a hivo mar tarthatja a order:mutate zarat masik kapcsolaton.
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`refund-intent:order:${orderId}`}::text, 0))`,
       )

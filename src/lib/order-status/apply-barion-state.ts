@@ -24,7 +24,7 @@ import {
  * paid: fiók-feloldás → purchases → csak utána pending/created → paid.
  * Late-success (R-03): cancelled / payment_failed + GetState Succeeded → paid
  * (összeg-assert + K5 után). refunded → paid TILOS. cancelled: pending →
- * cancelled; paid-ről nem. Író ágak `order-transition` zár + újraolvasás;
+ * cancelled; paid-ről nem. Író ágak `order:mutate` zár + újraolvasás;
  * purchases: order → email → user. GetState és onOrderPaid a záron kívül.
  * confirmOrder tilos.
  */
@@ -386,9 +386,9 @@ async function startAccessClock(input: {
   }
 }
 
-/** A rendelés Barion-átmenetének advisory-zár kulcsa (egy rendelés = egy zár). */
+/** Paid-átmenet és refund közös rendelés-zára (`order:mutate:<id>`). */
 export function orderTransitionLockKey(orderId: number | string): string {
-  return `order-transition:order:${orderId}`
+  return `order:mutate:${orderId}`
 }
 
 /**

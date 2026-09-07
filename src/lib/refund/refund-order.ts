@@ -28,9 +28,9 @@ import { digestRefundIdempotencyKey } from './refund-intent'
 
 /**
  * Owner-only rendelés-visszatérítés. Check-then-act → advisory-zár
- * (`refund:order:<id>`), záron belül újraolvasott rendelés. GetState és
- * számla a záron kívül; a záron belül csak a Payment/Refund (timeout < 60s
- * idle-in-transaction).
+ * (`order:mutate:<id>` — ugyanaz, mint a paid-átmenet), záron belül
+ * újraolvasott rendelés. GetState és számla a záron kívül; a záron belül
+ * csak a Payment/Refund (timeout < 60s idle-in-transaction).
  *
  * Csak paid téríthető. TransactionId a v4 GetState-ből jön (az orders nem
  * tárolja). Bizonytalan/elutasított eredmény: blokkoló intent, nincs order-írás.
@@ -116,9 +116,9 @@ export interface RefundOrderResult {
   refundStatusOutcome: 'succeeded' | 'unknown'
 }
 
-/** A rendelés refund-műveletének advisory-zár kulcsa (egy rendelés = egy zár). */
+/** Paid-átmenet és refund közös rendelés-zára (`order:mutate:<id>`). */
 export function refundLockKey(orderId: number | string): string {
-  return `refund:order:${orderId}`
+  return `order:mutate:${orderId}`
 }
 
 /**
@@ -219,7 +219,7 @@ export async function revokePurchases(
   }
 
   // User-szintű zár a purchases RMW körül (order → user sorrend: a hívó
-  // már tarthatja a `refund:order:<id>` zárat). A findByID a záron BELÜL
+  // már tarthatja a `order:mutate:<id>` zárat). A findByID a záron BELÜL
   // fut — a zár előtt olvasott snapshotot TILOS visszaírni (K1).
   return withUserPurchasesLock(
     payload,
