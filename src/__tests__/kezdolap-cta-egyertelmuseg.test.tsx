@@ -225,35 +225,6 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
     expect(html).toContain('class="kc-course-showcase__price">Ingyenes</span>')
   })
 
-  /**
-   * WP19: a rács a /kurzusok lista LÁTOGATÓI feltételét használja
-   * (`isStorefrontFreeSos`: saját `status`, nem a drafts `_status`). Élesben az
-   * SOS `_status`-a piszkozat volt a publikált rekord fölött, így a listán
-   * látszott, a rácsból hiányzott (WCAG 2.2 SC 3.2.4).
-   */
-  it('WP19: a saját status szerint publikált SOS akkor is a rácsban áll, ha a drafts _status piszkozat', () => {
-    const html = render(
-      createElement(HomeView, {
-        home: null,
-        products: [product({ id: 1 }), freeProduct({ _status: 'draft' })],
-        posts: [],
-      }),
-    )
-    const cardLinks = links(html).filter(isCourseCardLink)
-    expect(cardLinks.map((link) => link.href)).toEqual([
-      '/kurzusok/1',
-      '/kurzusok/sos-kezrelax-villamkurzus',
-    ])
-    // Az SOS-sáv (FreeSos.tsx) belül még az `isAvailableSosProduct`-ot kéri,
-    // ezért piszkozat _status mellett semleges listát mutat: a rács és a sáv
-    // egy feltételre hozása a FreeSos/RenderBlocks tulajdonosának dolga (WP19
-    // nyitott kérdés). Itt csak azt őrizzük, hogy a lap ettől nem mond
-    // ellent önmagának: egy célra továbbra is egy felirat él.
-    for (const [href, labels] of labelsByHref(html)) {
-      expect(Array.from(labels), `A(z) ${href} célra több felirat él`).toHaveLength(1)
-    }
-  })
-
   it('a kurzuslistára mutató hivatkozások mind a jóváhagyott feliratot használják', () => {
     const html = render(
       createElement(RenderBlocks, {

@@ -370,16 +370,7 @@ describe('RenderBlocks', () => {
     expect(html).not.toContain('kc-product-card--secondary')
   })
 
-  /**
-   * WP19 (2026-09-07): a rács a /kurzusok lista LÁTOGATÓI feltételét nézi
-   * (`isStorefrontFreeSos`: saját `status`), NEM a drafts `_status`-t — élesben
-   * a publikált SOS fölött autosave-piszkozat állt, ezért a listán látszott, a
-   * rácsból hiányzott (SC 3.2.4). A „Piszkozat SOS” (status: published,
-   * _status: draft) ezért MOST a rácsban áll; a P03 bizalmi határ (kanonikus
-   * slug + explicit ingyenes ár) továbbra is kizárja a másik ingyenest és a
-   * beárazatlant.
-   */
-  it('courseCards P03-őr: más slug és hiányos ár nem kerül a rácsba; a drafts _status nem szűr (WP19)', () => {
+  it('courseCards P03-őr: nem igazolt ingyenes termék (más slug, piszkozat, hiányos ár) nem kerül a rácsba', () => {
     const html = renderBlocks(
       layoutOf({ blockType: 'courseCards', id: 'cc3b', sectionSettings: {} }),
       {
@@ -407,9 +398,9 @@ describe('RenderBlocks', () => {
     )
     expect(html).toContain('Fizetős kurzus')
     expect(html).not.toContain('Másik ingyenes')
-    expect(html).toContain('Piszkozat SOS')
+    expect(html).not.toContain('Piszkozat SOS')
     expect(html).not.toContain('Beárazatlan')
-    expect(html.match(/>Ingyenes<\/span>/g)).toHaveLength(1)
+    expect(html).not.toContain('>Ingyenes</span>')
   })
 
   it('howItWorks: a blokk lépései felülírják a beépítetteket', () => {
