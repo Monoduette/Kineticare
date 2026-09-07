@@ -64,6 +64,48 @@ vágva, legfeljebb 200 karakter.
 Ezek a webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
 (7.2). **Eltérni tilos** — a hirdetés különben 404-re vinne.
 
+## 4a. Kategória: minden cikknek pontosan egy (2026-09-07)
+
+A tulajdonosok kérése: „A Tudástár címkéit (bilétáit) kérnénk egységesíteni”
+és „minden elem label-lel legyen ellátva”. Mérve a betöltött készleten
+(helyi adatbázis, `posts_rels` a `categories` útvonalon): a nyolc cikk
+KÖZÜL EGYNEK SEM volt kategóriája, ezért minden kártya a kártya „Tudástár”
+tartalék-címkéjét viselte, a `/blog` kategória-szűrője pedig meg sem jelent.
+
+Ezért a betöltő mostantól **mind a nyolc cikknek** beírja a kategóriát a
+`src/lib/tudastar-kategoriak.ts` `CIKK_KATEGORIA` táblájából. A tábla a
+`docs/tudastar-tartalmi-terv.md` 3. szakaszának döntése (a cikkírás előtt
+rögzítve, a slug utólag nem írható át) és a cikkfájlok fejlécében álló
+„Kategória” sor, géppel ellenőrizve (`src/__tests__/tudastar-kategoriak.test.ts`).
+
+| Kategória | Slug | Cikkek |
+| --- | --- | --- |
+| Kéz és csukló | `kez-es-csuklo` | miert-zsibbad-a-kezem, keztoalagut-szindroma, pattano-ujj, csuklo-es-kezfajdalom, inhuvelygyulladas |
+| Váll és könyök | `vall-es-konyok` | teniszkonyok, befagyott-vall |
+| Törés és műtét után | `tores-es-mutet-utan` | csuklotores-utani-gyogytorna |
+
+Szabályok:
+
+- A kategória-rekord **idempotensen** jön létre, ha hiányzik (slug szerint
+  párosít, `type: 'content'`); meglévő rekord címét a script nem írja át.
+- A cikk `categories` mezője **felülíró**: a script egyelemű tömböt ír, akkor
+  is, ha az adminban más volt. A kártya egyetlen címkét mutat, az első
+  kategória nevét (`docs/tudastar-ux-terv.md` 3.2). A séma nem változik
+  (`hasMany` marad, nincs migráció).
+- Ismeretlen cikk-slugra a betöltő **dob**: kategória nélküli cikk nem íródhat.
+  Új cikk felvételekor a `CIKKEK` mellett a `CIKK_KATEGORIA` táblát is
+  bővíteni kell; az őr-teszt különben bukik.
+- A seed `tudastar` kategóriája érintetlen, cikk nem kerül bele.
+- Próbafutásban a kategória is csak naplózódik (`kategoria` mező a
+  „lefordítva” sorban), írás nem történik.
+
+Mérve 2026-09-07 (helyi Postgres): éles futás után 3 `content` kategória, 8/8
+cikknek pontosan egy relációja, 0 kategória nélküli cikk; ismételt futás 0 új
+kategóriát hoz létre; a `/blog` szűrője 4 chipet mutat (Összes + 3); a három
+kategória-oldal HTTP 200 (5 / 2 / 1 kártya), ismeretlen slug 404. A kártya
+címkéje a kezdőlapon és a `/blog` listán azonos stílus (mérés a
+`knowledge.css` fejlécében).
+
 ## 5. Két külön kapu
 
 ```

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import type { Category, Post } from '../../payload-types'
+import { postCardLabel } from '../../lib/tudastar-kategoriak'
+import type { Post } from '../../payload-types'
 import { Badge } from '../ui/Badge'
 import { Card } from '../ui/Card'
 import { MediaImage } from './MediaImage'
@@ -38,24 +39,19 @@ export function formatPostDate(value: unknown): string | null {
   return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'long' }).format(date)
 }
 
-function categoryTitles(categories: Post['categories']): string[] {
-  if (!Array.isArray(categories)) return ['Tudástár']
-  const titles = categories
-    .filter((cat): cat is Category => typeof cat === 'object' && cat !== null)
-    .map((cat) => (typeof cat.title === 'string' ? cat.title.trim() : ''))
-    .filter((title) => title.length > 0)
-  // A fel nem oldott id nem besorolatlan cikket jelent. A tartalomtár neve
-  // igaz fallback, nem feltételezett kategória; a CMS-sorrend megmarad.
-  return titles.length > 0 ? [...new Set(titles)] : ['Tudástár']
-}
-
 export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardProps) {
   if (post.status !== 'published' || !post.slug) {
     return null
   }
 
   const date = formatPostDate(post.publishedAt)
-  const titles = categoryTitles(post.categories)
+  // EGYETLEN címke: az első feloldott kategória neve (docs/tudastar-ux-terv.md
+  // 3.2: „Pontosan egy, az első kategória"; több címke tördel, a kártyák
+  // magassága szétcsúszik). A tartalék „Tudástár" igaz fallback, nem kitalált
+  // besorolás; az importált készletben nincs kategória nélküli cikk
+  // (src/lib/tudastar-kategoriak.ts, őr-teszt). Egységes elv minden felületen
+  // (WCAG 2.2 3.2.4; GOV.UK Tag: azonos címke azonos színnel mindenhol).
+  const label = postCardLabel(post.categories)
   const heroMedia = post.heroImage && typeof post.heroImage === 'object' ? post.heroImage : null
   const Cim = headingLevel === 2 ? 'h2' : 'h3'
 
@@ -72,11 +68,7 @@ export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardP
       ) : null}
       <div className="kc-post-card__body">
         <div className="kc-post-card__categories">
-          {titles.map((title) => (
-            <Badge key={title} tone="info">
-              {title}
-            </Badge>
-          ))}
+          <Badge tone="info">{label}</Badge>
         </div>
         {/* A kártya EGYETLEN linkje. A hozzáférhető neve pontosan a cikk címe
             (mérve: 42 / 51 / 40 karakter a három mintacímen, a terv 80-as

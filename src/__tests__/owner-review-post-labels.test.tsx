@@ -26,19 +26,20 @@ function labels(html: string) {
   )
 }
 
-describe('H12/K01: megtisztított, valós címkék a kártyán', () => {
-  it.each(['list', 'compact'] as const)('%s: trim, dedupe, CMS-sorrend megőrzése', (variant) => {
+describe('H12/K01: megtisztított, valós címke a kártyán', () => {
+  // EGYETLEN címke: az ELSŐ feloldott, nem üres kategória neve (trimmelve).
+  // docs/tudastar-ux-terv.md 3.2, tulajdonosi egységesítés-kérés 2026-09-07.
+  it.each(['list', 'compact'] as const)('%s: trim, az első valós kategória, egyetlen biléta', (variant) => {
     const html = render(
       [
-        { id: 1, title: '  Kéz  ' },
-        { id: 2, title: 'Kéz' },
-        { id: 3, title: 'Csukló' },
-        { id: 4, title: '  ' },
         99,
+        { id: 4, title: '  ' },
+        { id: 1, title: '  Kéz  ' },
+        { id: 3, title: 'Csukló' },
       ],
       variant,
     )
-    expect(labels(html)).toEqual(['Kéz', 'Csukló'])
+    expect(labels(html)).toEqual(['Kéz'])
     expect([...html.matchAll(/<a\b/g)]).toHaveLength(1)
     expect(html).not.toMatch(/<button|role="button"|tabindex=/i)
     expect(html).toContain('href="/blog/teszt-cikk">A cikk címe</a>')

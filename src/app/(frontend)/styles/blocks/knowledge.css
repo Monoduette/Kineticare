@@ -62,8 +62,24 @@
   flex: 1 1 auto;
 }
 
-/* A nem interaktív címke teljes neve olvasható marad keskeny kártyán is.
-   Carbon Tag: read-only címke; W3C Reflow (WCAG 1.4.10).
+/* ═══ A KATEGÓRIA-CÍMKE EGY ÉS EGYSÉGES ═══
+   A kártya PONTOSAN EGY címkét visel (az első kategória neve, PostCard →
+   postCardLabel), és a címke MINDEN felületen ugyanaz a `.kc-badge--info`:
+   a kezdőlapi Tudástár-szekció (tint sáv, fehér kártya) és a `/blog` lista
+   (paper, fehér kártya) között NINCS felületfüggő felülírás. Mérve
+   2026-09-07 (Chromium, 1440 és 390 px, mindkét lapon minden kártyán): egy
+   darab megkülönböztethető stílus-készlet, magasság 33,6 px (1440) / 30,6 px
+   (390), padding 4 px 12 px, S token (16 / 14,1 px), 700 súly, háttér
+   #9ec4df, szöveg #10243e, kontraszt 8,49:1 (WCAG 2.2 1.4.3 AA 4,5:1 fölött,
+   kis félkövér szövegre). Ugyanaz a címke ugyanazzal a színnel mindenhol:
+   GOV.UK Tag („If you use the same tag in more than one place, make sure you
+   keep the colour consistent", https://design-system.service.gov.uk/components/tag/)
+   és WCAG 2.2 3.2.4 Consistent Identification.
+
+   A nem interaktív címke teljes neve olvasható marad keskeny kártyán is.
+   Carbon Tag: read-only címke („Read-only tags are used to categorize, are
+   used for labeling, and do not have interactive functionality"); W3C
+   Reflow (WCAG 1.4.10).
    https://carbondesignsystem.com/components/tag/usage/
    https://www.w3.org/WAI/WCAG22/Understanding/reflow.html */
 .kc-post-card__categories .kc-badge {
