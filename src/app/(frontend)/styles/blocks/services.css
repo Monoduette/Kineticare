@@ -408,6 +408,22 @@
   min-height: auto;
 }
 
+/* SZEKCIÓHATÁR A SÍN ELŐTT (tulajdonosi kör, 2026-09-07). Az edge-tábla alul
+   szegély nélküli, a fotó a tábla aljáig fut — a kezdőlapon viszont a
+   „Erre számíthatsz velünk" fotós tábla KÖZVETLENÜL az „Így tudunk segíteni"
+   sín előtt áll, és a fotó alja 0 px-re ért a sín tetejéhez (mérve 1440 px-en).
+   A sín előtti tábla ezért alul is a tábla-szegélyt kapja: a két szekció közt
+   a padding-token (board-y fent + board-y lent) ad levegőt, a fotó a saját
+   sávjában marad. Csak erre a szomszédságra vonatkozik (`:has(+ …)`), a
+   /szolgaltatasok táblái változatlanok.
+   NN/g Proximity: a térköz mondja meg, mi tartozik össze.
+   https://www.nngroup.com/articles/gestalt-proximity/
+   GOV.UK spacing: a szekciók közti térköz a skála lépcsője, nem 0.
+   https://design-system.service.gov.uk/styles/spacing/ */
+.kc-section.kc-board.kc-board--edge.kc-services--photo:has(+ .kc-services--sin) {
+  padding-bottom: var(--kc-board-y);
+}
+
 .kc-services--photo .kc-services__media {
   width: 100%;
   margin: var(--kc-space-6) 0 0;

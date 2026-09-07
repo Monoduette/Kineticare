@@ -9,6 +9,7 @@ import {
   HOME_HELP_STATE_TITLES,
   HOME_HELP_STATES,
   HOME_HELP_TITLE,
+  HOME_USPS_EYEBROW,
   LEGACY_HOME_HELP_ROWS,
   LEGACY_HOME_HELP_URLS,
   homeHelpFallbackMedia,
@@ -259,5 +260,102 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
       elrendezes: 'tabla',
       title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
     })
+  })
+})
+
+/**
+ * ŐR — a sín ELŐTTI szekció sávváltása (tulajdonosi kör, 2026-09-07:
+ * „valahogyan legyen jobban elkülönítve"). Mérve 1440 px-en: az élő
+ * „Erre számíthatsz velünk" fotós tábla paperen (#f6f9fc), a sín a
+ * help-paperen (#f4f8fd) állt, a fotó alja 0 px-re a sín tetejétől.
+ * A prezentációs réteg a sín közvetlen szomszédját a tint sávra teszi
+ * (szekció-rendszer terv: váltakozó paper/tint ritmus), és a táblának
+ * kis felső feliratot ad. A seedhez (home-seed.ts) nem nyúlunk.
+ * NN/g Common Region: https://www.nngroup.com/articles/common-region/
+ * NN/g Proximity: https://www.nngroup.com/articles/gestalt-proximity/
+ */
+describe('presentHomeLayout — a sín előtti szekció sávot vált', () => {
+  const uspsTabla = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: 'usps',
+      blockType: 'services' as const,
+      title: 'Erre számíthatsz velünk',
+      rows: [
+        { number: '01', title: 'Szakmai figyelem', body: 'Első.' },
+        { number: '02', title: 'Segítség a mindennapokhoz', body: 'Második.' },
+      ],
+      sectionSettings: { visible: true, hatter: 'feher' },
+      ...overrides,
+    }) as unknown as NonNullable<Page['layout']>[number]
+
+  const asServices = (block: NonNullable<Page['layout']>[number] | undefined) =>
+    block?.blockType === 'services' ? block : undefined
+
+  it('a paper hátterű fotós tábla a sín előtt tintre vált, és eyebrow-t kap', () => {
+    const presented = presentHomeLayout([uspsTabla(), tablaHelp()] as NonNullable<Page['layout']>)
+    const usps = asServices(presented[0])
+    expect(usps?.sectionSettings?.hatter).toBe('tint')
+    expect(usps?.eyebrow).toBe(HOME_USPS_EYEBROW)
+    expect(HOME_USPS_EYEBROW).not.toMatch(/[\u2013\u2014]/)
+    // A sín maga változatlan: help-paper a tint osztály mögött, elrendezes sin.
+    expect(asServices(presented[1])?.elrendezes).toBe('sin')
+    expect(asServices(presented[1])?.sectionSettings?.hatter).toBe('tint')
+  })
+
+  it('kitöltetlen hatter is papernek számít', () => {
+    const presented = presentHomeLayout([
+      uspsTabla({ sectionSettings: { visible: true } }),
+      tablaHelp(),
+    ] as NonNullable<Page['layout']>)
+    expect(asServices(presented[0])?.sectionSettings?.hatter).toBe('tint')
+  })
+
+  it('a szerkesztő sötét sávját és saját eyebrow-ját nem írja felül', () => {
+    const presented = presentHomeLayout([
+      uspsTabla({ eyebrow: 'Saját felirat', sectionSettings: { visible: true, hatter: 'sotet' } }),
+      tablaHelp(),
+    ] as NonNullable<Page['layout']>)
+    expect(asServices(presented[0])?.sectionSettings?.hatter).toBe('sotet')
+    expect(asServices(presented[0])?.eyebrow).toBe('Saját felirat')
+  })
+
+  it('a usps blokk is tintre vált a sín előtt (eyebrow-mezője nincs)', () => {
+    const usps = {
+      id: 'usps-blokk',
+      blockType: 'usps' as const,
+      title: 'Erre számíthatsz velünk',
+      cards: [{ title: 'Első', body: 'Szöveg.' }],
+      sectionSettings: { visible: true, hatter: 'feher' as const },
+    }
+    const presented = presentHomeLayout([usps, tablaHelp()] as NonNullable<Page['layout']>)
+    const first = presented[0]
+    expect(first?.blockType).toBe('usps')
+    expect(first?.blockType === 'usps' ? first.sectionSettings?.hatter : undefined).toBe('tint')
+    expect('eyebrow' in (first ?? {})).toBe(false)
+  })
+
+  it('csak a KÖZVETLEN szomszéd vált: távolabbi és sín utáni blokk marad', () => {
+    const later = uspsTabla({ id: 'later' })
+    const presented = presentHomeLayout([
+      uspsTabla({ id: 'far' }),
+      { blockType: 'about' as const, title: 'Közbeeső' },
+      tablaHelp(),
+      later,
+    ] as NonNullable<Page['layout']>)
+    expect(asServices(presented[0])?.sectionSettings?.hatter).toBe('feher')
+    expect(asServices(presented[0])?.eyebrow).toBeUndefined()
+    expect(presented[1]?.blockType).toBe('about')
+    expect(presented[3]).toBe(later)
+  })
+
+  it('a seed kezdőlapon a sín szomszédja nem services/usps: a seed sorrend érintetlen', () => {
+    const layout = buildHomeLayout({}) as NonNullable<Page['layout']>
+    const presented = presentHomeLayout(layout)
+    const railIndex = presented.findIndex(
+      (block) => block.blockType === 'services' && block.elrendezes === 'sin',
+    )
+    expect(railIndex).toBeGreaterThan(0)
+    expect(presented[railIndex - 1]?.blockType).toBe('states')
+    expect(presented[railIndex - 1]).toBe(layout[railIndex - 1])
   })
 })

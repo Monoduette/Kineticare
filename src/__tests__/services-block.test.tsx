@@ -488,3 +488,96 @@ describe('services-sin.css — token-szerződés', () => {
     expect(tokens).toMatch(/--kc-color-help-chrome:\s*#6a7d97/)
   })
 })
+
+/**
+ * ŐR — szekcióhatár a sín előtt + a sín mozgás-rétege (tulajdonosi kör,
+ * 2026-09-07). A tábla-fotó a sín előtt a saját sávjában marad (alsó
+ * tábla-szegély csak ebben a szomszédságban), a sín panelváltása pedig
+ * tokenből épített, reduce alatt kikapcsoló átmenet, JS nélkül.
+ * https://www.nngroup.com/articles/gestalt-proximity/
+ * https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+ * https://www.nngroup.com/articles/animation-duration/
+ */
+describe('services.css — a sín előtti tábla alsó szegélye', () => {
+  const css = cssFajl('services.css')
+
+  it('csak a sín közvetlen szomszédja kap alsó tábla-szegélyt, tokenből', () => {
+    const torzs = szabalyTorzs(
+      css,
+      '.kc-section.kc-board.kc-board--edge.kc-services--photo:has(+ .kc-services--sin)',
+    )
+    expect(torzs).toContain('padding-bottom: var(--kc-board-y)')
+    // A /szolgaltatasok fotós táblái érintetlenek: az általános --photo szabály nem ír alsó szegélyt.
+    expect(szabalyTorzs(css, '.kc-section.kc-board.kc-services--photo')).not.toContain(
+      'padding-bottom',
+    )
+  })
+
+  it('a tábla eyebrow-ja renderelődik a kezdőlapi „Erre számíthatsz" táblán', () => {
+    const markup = render(
+      block({
+        eyebrow: 'Miért mi',
+        title: 'Erre számíthatsz velünk',
+        rows: [{ title: 'Szakmai figyelem', body: 'Első.' }],
+        sectionSettings: { visible: true, hatter: 'tint' },
+      }),
+    )
+    expect(markup).toContain('kc-services__eyebrow')
+    expect(markup).toContain('Miért mi')
+    expect(markup).toContain('kc-section--tint')
+  })
+})
+
+describe('services-sin.css — mozgás-réteg', () => {
+  const css = cssFajl('services-sin.css')
+  const tiszta = css.replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('a panelek egy rácscellára rétegződnek, az inaktív láthatatlan és nem fókuszálható', () => {
+    expect(szabalyTorzs(css, '.kc-services-sin__stage')).toContain('display: grid')
+    const panel = szabalyTorzs(css, '.kc-services-sin__panel')
+    expect(panel).toContain('grid-area: 1 / 1')
+    expect(panel).toContain('visibility: hidden')
+    expect(panel).toContain('pointer-events: none')
+    expect(panel).not.toContain('display: none')
+    expect(tiszta).not.toContain('display: none')
+  })
+
+  it('minden átmenet a mozgás-tokenekből áll (időtartam és görbe), nem kézi ms', () => {
+    const transitions = tiszta.match(/transition:[^;]+;/g) ?? []
+    expect(transitions.length).toBeGreaterThan(0)
+    for (const t of transitions) {
+      if (t.includes('none')) continue
+      expect(t).toMatch(/var\(--kc-motion-(base|fast)\)/)
+      expect(t).toMatch(/var\(--kc-ease-out\)/)
+      expect(t).not.toMatch(/\d+ms/)
+    }
+    // A másolat felúszása a térköz-tokenről (8 px), nem kézi px.
+    expect(szabalyTorzs(css, '.kc-services-sin__copy')).toContain(
+      'transform: translateY(var(--kc-space-2))',
+    )
+  })
+
+  it('csökkentett mozgásnál minden helyi átmenet és eltolás kikapcsol (SC 2.3.3)', () => {
+    const reduce = tiszta.slice(tiszta.indexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(reduce).toContain('transition: none')
+    expect(reduce).toContain('transform: none')
+    for (const osztaly of [
+      '.kc-services-sin__panel',
+      '.kc-services-sin__copy',
+      '.kc-services-sin__marker',
+      '.kc-services-sin__rail-label',
+    ]) {
+      expect(reduce).toContain(osztaly)
+    }
+  })
+
+  it('hover és fókusz tónusa a help-panel token, a gyűrű help-ink; nincs új hex', () => {
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-label:hover')).toContain(
+      'background-color: var(--kc-color-help-panel)',
+    )
+    expect(
+      szabalyTorzs(css, '.kc-services-sin__rail-label:hover .kc-services-sin__marker'),
+    ).toContain('border-color: var(--kc-color-help-ink)')
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+})
