@@ -297,14 +297,12 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
     expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
 
-  it('a courseCards blokk felvezetői és a kártya-CTA felirata is felülírható', () => {
+  it('a courseCards blokk címe és leadje felülírható', () => {
     const layout = [
       {
         blockType: 'courseCards' as const,
-        eyebrow: 'Saját felvezető',
         heading: 'Saját szekciócím',
         lead: 'Saját bevezető.',
-        ctaLabel: 'Saját kártya-felirat',
         sectionSettings: { visible: true, anchorId: 'kurzusok', hatter: 'feher' as const },
       },
     ] as unknown as NonNullable<Page['layout']>
@@ -317,10 +315,9 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
         testimonials: [],
       }),
     )
-    expect(html).toContain('Saját felvezető')
     expect(html).toContain('Saját szekciócím')
     expect(html).toContain('Saját bevezető.')
-    expect(html).toContain('Saját kártya-felirat')
+    expect(html).toContain('kc-course-showcase')
   })
 
   it('a filmHero gombjai a CMS-blokkból jönnek (a seed csak alapállapot)', () => {
