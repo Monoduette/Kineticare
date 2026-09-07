@@ -95,7 +95,9 @@ describe('kurzus SEO-fallbacklánc (products → SeoDoc)', () => {
       resolveSeoDescription(
         productSeoDoc(product({ seoDescription: null, shortDescription: null })),
       ),
-    ).toBe('Kéz-rehab alapprogram — online kézrehabilitációs kurzus a Kineticare kínálatából.')
+    ).toBe(
+      'Kéz-rehab alapprogram: online kézrehabilitációs kurzus a Kineticare kínálatából, gyógytornászoktól, otthon, a saját tempódban.',
+    )
   })
 
   it('og:image: ogImage (og-méret) → ogImage (eredeti) → borítókép (og-méret) → borítókép (eredeti) → nincs', () => {

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -113,7 +116,7 @@ describe('AccountNav — bejelentkezett felhasználó', () => {
     // W3C WAI-ARIA APG, Button Pattern:
     // https://www.w3.org/WAI/ARIA/apg/patterns/button/
     expect(header).toMatch(
-      /<button[^>]*class="kc-account-nav__signout"[^>]*type="button"[^>]*>Kijelentkezés<\/button>/,
+      /<button[^>]*class="kc-account-nav__signout"[^>]*type="button"[^>]*>[\s\S]*?Kijelentkezés<\/span><\/button>/,
     )
     expect(header).toContain(ACCOUNT_NAV_LABELS.signOut)
     // A felirat SEHOL nem <a>-ban ül.
@@ -252,5 +255,159 @@ describe('logoutUser — a kijelentkezés hálózati szerződése', () => {
       ok: false,
       message: LOGOUT_ERROR_MESSAGE,
     })
+  })
+})
+
+/**
+ * WP31 (2026-09-07, tulajdonosi kérés, szó szerint: „ha be vagyok jelentkezve
+ * akkor a kijelentkezés az utolsó gomb"). Bejelentkezve a Kijelentkezés a fiók
+ * UTOLSÓ fókuszálható eleme (a CMS-menü után), a „Kurzusaim" a fiók elején
+ * marad; kijelentkezve a „Belépés" a fiók elején áll és nincs kilépő fél. A
+ * DOM-sorrend adja a Tab-sorrendet (WCAG 2.2 SC 2.4.3 Focus Order, SC 1.3.2):
+ * https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html
+ */
+describe('MobileNav — bejelentkezve a Kijelentkezés az utolsó gomb (WP31)', () => {
+  const signedIn = render(createElement(MobileNav, { items: menuTree(), signedIn: true }))
+  const signedOut = render(createElement(MobileNav, { items: menuTree(), signedIn: false }))
+  const tabbables = (html: string) => html.match(/<(a|button)\b[^>]*>[\s\S]*?<\/\1>/g) ?? []
+
+  it('a Kurzusaim a menülista ELŐTT, a Kijelentkezés a menülista UTÁN áll', () => {
+    const kurzusaim = signedIn.indexOf('href="/kurzusaim"')
+    const lista = signedIn.indexOf('kc-nav-mobile__list')
+    const kilepes = signedIn.indexOf('kc-account-nav__signout')
+    expect(kurzusaim).toBeGreaterThan(-1)
+    expect(lista).toBeGreaterThan(kurzusaim)
+    expect(kilepes).toBeGreaterThan(lista)
+    expect(signedIn).toContain('kc-account-nav--exit')
+  })
+
+  it('a fiók utolsó fókuszálható eleme a Kijelentkezés gomb', () => {
+    const utolso = tabbables(signedIn).at(-1) ?? ''
+    expect(utolso).toContain('kc-account-nav__signout')
+    expect(utolso).toContain(ACCOUNT_NAV_LABELS.signOut)
+  })
+
+  it('a Kurzusaim link csak egyszer, a Kijelentkezés gomb csak egyszer szerepel', () => {
+    expect(signedIn.match(/href="\/kurzusaim"/g)).toHaveLength(1)
+    expect(signedIn.match(/kc-account-nav__signout/g)).toHaveLength(1)
+  })
+
+  it('kijelentkezve nincs kilépő fél, a Belépés a menülista előtt marad', () => {
+    expect(signedOut).not.toContain('kc-account-nav--exit')
+    expect(signedOut.indexOf('href="/belepes"')).toBeLessThan(
+      signedOut.indexOf('kc-nav-mobile__list'),
+    )
+    expect(tabbables(signedOut).at(-1) ?? '').not.toContain('kc-account-nav__signout')
+  })
+
+  it('üres CMS-menüvel is a Kijelentkezés zárja a fiókot', () => {
+    const empty = render(createElement(MobileNav, { items: [], signedIn: true }))
+    expect(empty.indexOf('A menü jelenleg üres.')).toBeLessThan(
+      empty.indexOf('kc-account-nav__signout'),
+    )
+  })
+})
+
+describe('AccountNav — `section` (a fiók belépő és kilépő fele)', () => {
+  it('bejelentkezve az `entry` csak a Kurzusaim, az `exit` csak a Kijelentkezés', () => {
+    const entry = render(
+      createElement(AccountNav, { signedIn: true, variant: 'drawer', section: 'entry' }),
+    )
+    const exit = render(
+      createElement(AccountNav, { signedIn: true, variant: 'drawer', section: 'exit' }),
+    )
+    expect(entry).toContain('href="/kurzusaim"')
+    expect(entry).not.toContain('kc-account-nav__signout')
+    expect(exit).toContain('kc-account-nav__signout')
+    expect(exit).not.toContain('href="/kurzusaim"')
+    expect(exit).toContain('kc-account-nav--exit')
+  })
+
+  it('kijelentkezve az `exit` nem renderel semmit, az `entry` a Belépés', () => {
+    expect(
+      render(createElement(AccountNav, { signedIn: false, variant: 'drawer', section: 'exit' })),
+    ).toBe('')
+    expect(
+      render(createElement(AccountNav, { signedIn: false, variant: 'drawer', section: 'entry' })),
+    ).toContain('href="/belepes"')
+  })
+
+  it('szekció nélkül (fejléc-sáv) minden egyben marad', () => {
+    const header = render(createElement(AccountNav, { signedIn: true, variant: 'header' }))
+    expect(header).toContain('href="/kurzusaim"')
+    expect(header).toContain('kc-account-nav__signout')
+    expect(header).not.toContain('kc-account-nav--exit')
+  })
+})
+
+describe('Header + layout.css — a kilépő fél helye (WP31)', () => {
+  const olvas = (rel: string): string =>
+    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+
+  it('az asztali sávban bejelentkezve a fiók-blokk a Kurzusok pirula UTÁN áll', () => {
+    const header = olvas('../components/layout/Header.tsx')
+    const pirula = header.indexOf('<HeaderCoursesNav />')
+    const signedInNav = header.indexOf('<AccountNav signedIn variant="header" />')
+    const signedOutNav = header.indexOf('<AccountNav signedIn={false} variant="header" />')
+    expect(pirula).toBeGreaterThan(-1)
+    expect(signedInNav).toBeGreaterThan(pirula)
+    expect(signedOutNav).toBeLessThan(pirula)
+    expect(signedOutNav).toBeGreaterThan(-1)
+  })
+
+  it('a kilépő fél a fiók aljára ül, és a süti-sáv mért magasságával számol (2.4.11)', () => {
+    const css = olvas('../app/(frontend)/styles/layout.css').replace(/\/\*[\s\S]*?\*\//g, '')
+    const szabaly =
+      css.match(/\.kc-account-nav--drawer\.kc-account-nav--exit\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(szabaly).toContain('margin-top: auto')
+    expect(szabaly).toMatch(/padding-bottom:\s*calc\([\s\S]*?--kc-consent-offset/)
+    expect(szabaly).toContain('border-top: 1px solid var(--kc-header-hairline)')
+  })
+})
+
+/**
+ * WP31 pótlás (vezetői döntés, 2026-09-07): 56,25em és 75em között a sávban a
+ * kijelentkezés IKON-GOMB (Lucide `log-out` geometriájú saját glif), a név
+ * szöveg marad (SC 4.1.2), a `title` a mutatós tooltip; 75em-től a szöveges
+ * pirula. A fiókban (drawer) a gomb szöveges marad, ikon nélkül.
+ */
+describe('AccountNav — a fejléc kijelentkezés-gombja ikon + rejtett szöveg (WP31 pótlás)', () => {
+  const header = render(createElement(AccountNav, { signedIn: true, variant: 'header' }))
+  const button =
+    header.match(/<button\b[^>]*kc-account-nav__signout[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+
+  it('dekoratív glif + a nevet adó szöveg-span + title', () => {
+    expect(button).toMatch(
+      /<svg[^>]*aria-hidden="true"[^>]*class="kc-account-nav__icon kc-account-nav__signout-icon"/,
+    )
+    expect(button).not.toMatch(/<svg[^>]*aria-label/)
+    expect(button).toContain('<span class="kc-account-nav__signout-text">Kijelentkezés</span>')
+    expect(button).toContain('title="Kijelentkezés"')
+  })
+
+  it('a fiókban szöveges marad, ikon és title nélkül', () => {
+    const drawer = render(
+      createElement(AccountNav, { signedIn: true, variant: 'drawer', section: 'exit' }),
+    )
+    expect(drawer).not.toContain('kc-account-nav__signout-icon')
+    expect(drawer).not.toContain('title=')
+    expect(drawer).toMatch(/<button[^>]*kc-account-nav__signout[^>]*>Kijelentkezés<\/button>/)
+  })
+
+  it('layout.css: 56,25em–75em között 44×44-es kör, klip-rejtett felirat; 75em-től a glif rejtve', () => {
+    const css = readFileSync(
+      fileURLToPath(new URL('../app/(frontend)/styles/layout.css', import.meta.url)),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    const range = css.slice(css.indexOf('@media (min-width: 56.25em) and (max-width: 74.99em)'))
+    const gomb = range.match(/\.kc-account-nav__signout\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(gomb).toContain('width: 2.75rem')
+    expect(gomb).toContain('height: 2.75rem')
+    const szoveg = range.match(/\.kc-account-nav__signout-text\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(szoveg).toContain('clip: rect(0 0 0 0)')
+    expect(szoveg).toContain('width: 1px')
+    expect(css).not.toMatch(/\.kc-account-nav__signout\s*\{\s*display:\s*none/)
+    const wide = css.slice(css.indexOf('@media (min-width: 75em)'))
+    expect(wide).toMatch(/\.kc-account-nav__signout-icon\s*\{\s*display:\s*none/)
   })
 })

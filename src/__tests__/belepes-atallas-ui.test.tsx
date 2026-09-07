@@ -378,7 +378,9 @@ describe('/belepes-atallas — indexelés', () => {
     )
     const lista = /const DISALLOWED_PATHS = \[([\s\S]*?)\]/u.exec(robotsForras)?.[1] ?? ''
     const utak = [...lista.matchAll(/'([^']+)'/gu)].map((m) => m[1])
-    expect(utak).toContain('/belepes')
+    // A `/belepes` maga indexelhető (tulajdonosi döntés, 2026-09-07), ezért az
+    // átállási lapot saját előtag fedi.
+    expect(utak).not.toContain('/belepes')
     expect(utak.some((ut) => '/belepes-atallas'.startsWith(ut))).toBe(true)
   })
 })

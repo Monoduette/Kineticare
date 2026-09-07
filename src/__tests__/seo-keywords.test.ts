@@ -17,6 +17,7 @@ import {
   buildStaticPageMetadata,
   courseListingJsonLd,
   homeWebPageJsonLd,
+  SITE_DESCRIPTION,
 } from '../lib/seo'
 import { cmsPageJsonLd, postArticleJsonLd } from '../lib/seo-cikk'
 import {
@@ -519,10 +520,7 @@ describe('Search lock 2026-08-24: kurzus seoKeywords', () => {
   })
 
   it('SOS termékoldal nem kapja a listing kulcsszavait', () => {
-    const src = readFileSync(
-      `${process.cwd()}/src/app/(frontend)/kurzusok/[slug]/page.tsx`,
-      'utf8',
-    )
+    const src = readFileSync(`${process.cwd()}/src/app/(frontend)/kurzusok/[slug]/page.tsx`, 'utf8')
     expect(src).not.toContain('KURZUSLISTA_KULCSSZAVAK')
     expect(src).not.toContain('courseListingJsonLd')
     expect(kurzusKulcsszavakFor('sos-kezrelax-villamkurzus')).toBeUndefined()
@@ -530,12 +528,7 @@ describe('Search lock 2026-08-24: kurzus seoKeywords', () => {
 })
 
 describe('kezdőlap / JSON-LD és meta keywords a CMS seoKeywords-ből', () => {
-  const negy = [
-    'Kineticare',
-    'kéztorna',
-    'kéztorna gyakorlatok',
-    'otthoni gyógytorna',
-  ] as const
+  const negy = ['Kineticare', 'kéztorna', 'kéztorna gyakorlatok', 'otthoni gyógytorna'] as const
 
   it('kitöltött kezdolap seoKeywords → buildHomeMetadata a 4 kifejezés', () => {
     const metadata = buildHomeMetadata({
@@ -568,9 +561,7 @@ describe('kezdőlap / JSON-LD és meta keywords a CMS seoKeywords-ből', () => {
     expect(metadata.title).toEqual({
       absolute: 'Kineticare | Kézrehabilitációs online kurzusplatform',
     })
-    expect(metadata.description).toBe(
-      'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
-    )
+    expect(metadata.description).toBe(SITE_DESCRIPTION)
     expect(JSON.stringify(metadata)).not.toMatch(/[–—]/)
   })
 

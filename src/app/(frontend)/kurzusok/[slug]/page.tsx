@@ -48,11 +48,13 @@ import { rewriteVisitorDashLeftover } from '@/lib/gondolatjel-leftover'
 import { logger } from '@/lib/logger'
 import {
   absoluteUrl,
-  breadcrumbJsonLd,
   buildProductMetadata,
   courseJsonLd,
   faqPageJsonLd,
+  productSeoDoc,
+  resolveSeoDescription,
 } from '@/lib/seo'
+import { siteGraphJsonLd } from '@/lib/seo-graph'
 import type { Product, User } from '@/payload-types'
 
 import config from '../../../../payload.config'
@@ -248,13 +250,13 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   const cta = resolveCourseCta(product, purchased)
 
   /**
- * A `free` ág (published + `isFreeCourse` + még nem a vevőé) eddig egy
- * linket adott a `/kurzusaim` oldalra. Be nem jelentkezett látogatónak ez
- * ZSÁKUTCA: fiókja nincs, a lista bejelentkezést kér, a kurzushoz sosem jut
- * hozzá — pedig ez az ingyenes anyag a teljes értékesítési tölcsér teteje.
- * A régi `www.kineticare.hu` ugyanitt űrlapot adott („KÉREM A
- * VILLÁMKURZUST" → név + e-mail → a link e-mailben), tehát a visszatérő
- */
+   * A `free` ág (published + `isFreeCourse` + még nem a vevőé) eddig egy
+   * linket adott a `/kurzusaim` oldalra. Be nem jelentkezett látogatónak ez
+   * ZSÁKUTCA: fiókja nincs, a lista bejelentkezést kér, a kurzushoz sosem jut
+   * hozzá — pedig ez az ingyenes anyag a teljes értékesítési tölcsér teteje.
+   * A régi `www.kineticare.hu` ugyanitt űrlapot adott („KÉREM A
+   * VILLÁMKURZUST" → név + e-mail → a link e-mailben), tehát a visszatérő
+   */
   const showFreeRequestForm = cta.kind === 'free'
   // A site key szerver-oldalon olvasott (nem NEXT_PUBLIC): a spam-ellenőrző
   // widget csak beállított kulcs mellett jelenik meg — kulcs nélkül a szerver
@@ -316,11 +318,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     sections.push({
       target: { id: 'tananyag', label: 'Tananyag' },
       node: (
-        <CourseCurriculum
-          heading="Tananyag"
-          headingId="tananyag-cim"
-          modules={curriculumModules}
-        />
+        <CourseCurriculum heading="Tananyag" headingId="tananyag-cim" modules={curriculumModules} />
       ),
     })
   }
@@ -376,7 +374,10 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   return (
     <>
       {/* PostHog funnel-lépés: a kurzus-oldal megnyitása (no-op consent nélkül). */}
-      <TrackEvent event="course_viewed" properties={{ courseId: product.id, courseSku: product.sku ?? undefined }} />
+      <TrackEvent
+        event="course_viewed"
+        properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
+      />
       {/* Barion Pixel `contentView` (termékoldal). Az ár ugyanabból a
           forrásból jön, mint a kiírt PriceTag és a strukturált adat: az
           `ingyenes` ág 0-t, a hiányos konfiguráció NaN-t ad — utóbbinál az
@@ -405,11 +406,26 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
         })}
       />
+      {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
+          BreadcrumbList (Kurzusok → kurzus). Az ItemPage `mainEntity`-je a
+          fenti Course/Product csomópont (@id …#course), így a lap és a termék
+          egy gráfban áll (schema.org ItemPage: https://schema.org/ItemPage). */}
       <JsonLd
-        data={breadcrumbJsonLd([
-          { name: 'Kurzusok', path: '/kurzusok' },
-          { name: title, path },
-        ])}
+        data={siteGraphJsonLd({
+          page: {
+            path,
+            name: title,
+            description: resolveSeoDescription(productSeoDoc(product)),
+            type: 'ItemPage',
+            ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+            dateModified: product.updatedAt,
+            mainEntityId: `${absoluteUrl(path)}#course`,
+          },
+          breadcrumbs: [
+            { name: 'Kurzusok', path: '/kurzusok' },
+            { name: title, path },
+          ],
+        })}
       />
       {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
           látható harmonika — a kettő így sosem tud szétcsúszni (ez a

@@ -4,11 +4,16 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { ctaLabel } from '@/lib/cta-vocabulary'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'A fizetés nem sikerült',
   description: 'A fizetésedet a bank elutasította vagy megszakította, de bármikor újrapróbálhatod.',
-}
+  path: '/sikertelen',
+})
 
 interface SikertelenPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
@@ -29,8 +34,8 @@ export default async function SikertelenPage({ searchParams }: SikertelenPagePro
           <h1>A fizetés nem sikerült</h1>
           <p>
             A fizetésedet a bank elutasította vagy megszakította. Ilyenkor általában nem történik
-            levonás; ha a bankod később mégis jóváhagyja a fizetést, automatikusan érvényesítjük,
-            és e-mailben visszaigazoljuk. Újra is próbálhatod a fizetést.
+            levonás; ha a bankod később mégis jóváhagyja a fizetést, automatikusan érvényesítjük, és
+            e-mailben visszaigazoljuk. Újra is próbálhatod a fizetést.
           </p>
           <p>
             Ha többször is elutasított a bank, érdemes ellenőrizni a kártyaadataidat, vagy a

@@ -14,9 +14,12 @@ import {
   COURSE_LISTING_TITLE,
   courseListingJsonLd,
 } from '@/lib/seo'
+import { siteGraphJsonLd } from '@/lib/seo-graph'
+import { courseHref } from '@/lib/course-url'
 import {
   CATEGORY_QUERY_PARAM,
   collectCourseCategories,
+  courseTitle,
   filterCoursesByCategory,
   reportUnpricedPublishedCourses,
   resolveCategoryFilter,
@@ -87,7 +90,29 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
 
   return (
     <Section>
-      <JsonLd data={courseListingJsonLd()} />
+      {/* Oldal-gráf (Organization + WebSite + BreadcrumbList Kezdőlap →
+          Kurzusok); a CollectionPage csomópont a `courseListingJsonLd`, benne
+          a LÁTHATÓ kurzusok ItemList-je (@id …#itemlist) — ugyanaz a lista,
+          amit a CourseShowcase renderel, tehát nem tud eltérni tőle. */}
+      <JsonLd
+        data={siteGraphJsonLd({
+          page: {
+            path: '/kurzusok',
+            name: COURSE_LISTING_TITLE,
+            description: COURSE_LISTING_DESCRIPTION,
+            type: 'CollectionPage',
+          },
+          breadcrumbs: [
+            { name: 'Kezdőlap', path: '/' },
+            { name: COURSE_LISTING_TITLE, path: '/kurzusok' },
+          ],
+        })}
+      />
+      <JsonLd
+        data={courseListingJsonLd(
+          visible.map((product) => ({ name: courseTitle(product), path: courseHref(product) })),
+        )}
+      />
       {/* Barion Pixel `contentView` (contentType: 'Page'). A KURZUS-OLDAL
           (/kurzusok/[slug]) ezt NEM kapja meg: ott a Product-ágú
           CourseBarionView fut, és két contentView némán duplázna. */}

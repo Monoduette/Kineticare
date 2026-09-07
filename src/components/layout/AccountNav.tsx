@@ -68,7 +68,74 @@ function UserCircleIcon() {
   )
 }
 
+/**
+ * Kilépő-glif: ajtó + kifelé mutató nyíl. Saját rajz a repó 24-es, 2 px-es,
+ * lekerekített vonalnyelvén, a Lucide `log-out` ikon geometriáját követve
+ * (Lucide: ISC licenc, https://lucide.dev/icons/log-out,
+ * https://lucide.dev/license). Dekoratív (`aria-hidden`), a nevet a mellette
+ * álló szöveg adja (WCAG 2.2 SC 4.1.2 Name, Role, Value:
+ * https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html).
+ *
+ * MIÉRT IKON 56,25em ÉS 75em KÖZÖTT (WP31 pótlás, vezetői döntés 2026-09-07):
+ * a sávban a négy menüpont + Kurzusok + Kurzusaim mellé a szöveges
+ * kijelentkezés-pirula 75em alatt már nem fért, ezért ott REJTVE volt, a
+ * hamburger-fiók pedig 900 px-től nincs, tehát bejelentkezve ezen a sávon
+ * sehol nem volt kijelentkezés. Az ikon-gomb a profil-ikon párja: ugyanaz a
+ * 44×44-es kör, ugyanazok a színpárok (layout.css, gomb-kontraszt.test.ts).
+ * NN/g Icon Usability: az ikon önmagában ritkán egyértelmű, ezért a
+ * hozzáférhető név szöveg marad, és a `title` a mutatós látogatónak is
+ * megnevezi: https://www.nngroup.com/articles/icon-usability/
+ * Material 3 Icon buttons: 48 dp cél, 24 dp ikon, kör állapotréteg:
+ * https://m3.material.io/components/icon-buttons/specs
+ * WCAG 2.2 SC 2.5.8 Target Size (Minimum), küszöb 24×24, itt 44×44:
+ * https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+ * 75em-től a szöveges pirula marad (ott van hely, a szó biztosabb az ikonnál).
+ */
+function LogOutIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="kc-account-nav__icon kc-account-nav__signout-icon"
+      fill="none"
+      focusable="false"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  )
+}
+
 export type AccountNavVariant = 'header' | 'drawer'
+
+/**
+ * A FIÓK KÉT SZEKCIÓJA A DRAWERBEN (WP31, 2026-09-07, tulajdonosi kérés, szó
+ * szerint: „ha be vagyok jelentkezve akkor a kijelentkezés az utolsó gomb").
+ * Mérve: a fiókban a bejelentkezett belépő (Kurzusaim + Kijelentkezés) a
+ * CMS-menü ELŐTT állt, tehát a Kijelentkezés után még a teljes menü jött, és
+ * a Tab-sor sem ott ért véget. A komponens ezért két szekcióra bontható:
+ *  - `entry`: a belépő (kijelentkezve „Belépés", bejelentkezve „Kurzusaim") a
+ *    fiók ELEJÉN marad (NN/g Menu-Design Checklist, 2. pont: a segéd-navigáció
+ *    a fő navigáció fölött; https://www.nngroup.com/articles/menu-design/);
+ *  - `exit`: a Kijelentkezés gomb (és a hibaüzenete) a menülista UTÁN, a fiók
+ *    alján, tehát az UTOLSÓ fókuszálható elem. A DOM-sorrend adja a
+ *    Tab-sorrendet, nem CSS `order` — a fókusz sora és a látvány egyezik
+ *    (WCAG 2.2 SC 2.4.3 Focus Order: „focusable components receive focus in an
+ *    order that preserves meaning and operability";
+ *    https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html; SC 1.3.2
+ *    Meaningful Sequence). A kijelentkezés a fiók végén a bevett minta: az
+ *    állapotot változtató, „kilépő" cselekvés elválik a navigációs céloktól
+ *    (Material 3 navigation drawer: a célok csoportjai elválasztóval, a
+ *    másodlagos tételek a lista végén;
+ *    https://m3.material.io/components/navigation-drawer/guidelines).
+ * Szekció nélkül (fejléc-sáv) a komponens mindent egyben renderel.
+ */
+export type AccountNavSection = 'entry' | 'exit'
 
 export interface AccountNavProps {
   /** Szerver-oldalon megállapított állapot (lásd header-user.ts). */
@@ -77,6 +144,8 @@ export interface AccountNavProps {
   variant: AccountNavVariant
   /** Drawerben: a menü zárása navigációkor (a MobileNav adja). */
   onNavigate?: () => void
+  /** Drawerben: csak a belépő (`entry`) vagy csak a kilépő (`exit`) fele. */
+  section?: AccountNavSection
 }
 
 export const ACCOUNT_NAV_LABELS = {
@@ -90,7 +159,7 @@ export const ACCOUNT_NAV_LABELS = {
   signOutPending: CTA_PROGRESS_LABELS['sign-out'],
 } as const
 
-export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
+export function AccountNav({ signedIn, variant, onNavigate, section }: AccountNavProps) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -139,6 +208,11 @@ export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
 
   const base = variant === 'header' ? 'kc-account-nav' : 'kc-account-nav kc-account-nav--drawer'
 
+  // Kijelentkezve nincs kilépő fél: a „Belépés" a belépő szekcióban áll.
+  if (!signedIn && section === 'exit') {
+    return null
+  }
+
   if (!signedIn) {
     if (variant === 'header') {
       // Ikon-link: a látható felirat helyett rejtett szöveg adja a nevet
@@ -168,25 +242,50 @@ export function AccountNav({ signedIn, variant, onNavigate }: AccountNavProps) {
     )
   }
 
+  const signOutLabel = pending ? ACCOUNT_NAV_LABELS.signOutPending : ACCOUNT_NAV_LABELS.signOut
+  const showEntry = section !== 'exit'
+  const showExit = section !== 'entry'
+  const className = section === 'exit' ? `${base} kc-account-nav--exit` : base
+
   return (
-    <div className={base} ref={accountRef}>
-      <Link className="kc-account-nav__link" href="/kurzusaim" onClick={onNavigate}>
-        {ACCOUNT_NAV_LABELS.myCourses}
-      </Link>
-      <button
-        aria-busy={pending}
-        className="kc-account-nav__signout"
-        disabled={pending}
-        onClick={handleSignOut}
-        type="button"
-      >
-        {pending ? ACCOUNT_NAV_LABELS.signOutPending : ACCOUNT_NAV_LABELS.signOut}
-      </button>
-      {error === null ? null : (
+    <div className={className} ref={accountRef}>
+      {showEntry ? (
+        <Link className="kc-account-nav__link" href="/kurzusaim" onClick={onNavigate}>
+          {ACCOUNT_NAV_LABELS.myCourses}
+        </Link>
+      ) : null}
+      {showExit ? (
+        variant === 'header' ? (
+          <button
+            aria-busy={pending}
+            className="kc-account-nav__signout"
+            disabled={pending}
+            onClick={handleSignOut}
+            title={ACCOUNT_NAV_LABELS.signOut}
+            type="button"
+          >
+            <LogOutIcon />
+            {/* 56,25–75em között vizuálisan rejtett (layout.css), a név
+                forrása minden sávon; folyamatban „Kijelentkezés…"-re vált. */}
+            <span className="kc-account-nav__signout-text">{signOutLabel}</span>
+          </button>
+        ) : (
+          <button
+            aria-busy={pending}
+            className="kc-account-nav__signout"
+            disabled={pending}
+            onClick={handleSignOut}
+            type="button"
+          >
+            {signOutLabel}
+          </button>
+        )
+      ) : null}
+      {showExit && error !== null ? (
         <p aria-live="assertive" className="kc-account-nav__error" role="alert">
           {error}
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

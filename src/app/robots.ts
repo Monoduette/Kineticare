@@ -24,8 +24,12 @@ const DISALLOWED_PATHS = [
   '/penztar',
   '/fizetes/',
   '/sikertelen',
-  '/belepes',
-  '/regisztracio',
+  // A `/belepes` és a `/regisztracio` SZÁNDÉKOSAN NINCS itt (tulajdonosi
+  // döntés, 2026-09-07: „mindent indexelhessenek kivéve a belépett user
+  // fizetős kurzusát”): a márkás keresésre („kineticare belépés”) a lap
+  // indexelhető; a sitemapben viszont nem szerepel (vékony tartalom).
+  // Az átállási lap külön előtag, mert a `/belepes` már nem fedi le.
+  '/belepes-atallas',
   '/elfelejtett-jelszo',
   '/jelszo-visszaallitas',
   // Piszkozat-előnézet be-/kikapcsoló végpontok — a válaszaik amúgy is

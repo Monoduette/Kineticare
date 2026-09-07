@@ -4,6 +4,7 @@ import { cache } from 'react'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
 import { HomeView } from '@/components/content/HomeView'
+import { JsonLd } from '@/components/content/JsonLd'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
@@ -16,7 +17,7 @@ import {
   getTestimonials,
 } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
-import { buildHomeMetadata } from '@/lib/seo'
+import { buildHomeMetadata, webSiteJsonLd } from '@/lib/seo'
 import { hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 export const dynamic = 'force-dynamic'
@@ -69,6 +70,11 @@ export default async function HomePage() {
   return (
     <>
       {isDraft ? <PreviewBar path="/" /> : null}
+      {/* WebSite csomópont (@id: /#website): a HomeView Organization- és
+          WebPage-sémája erre és egymásra hivatkozik — a gráf harmadik tagja.
+          BreadcrumbList a kezdőlapon nincs: egyelemű morzsa nem útvonal
+          (src/lib/seo-graph.ts). SearchAction sincs: nincs kereső. */}
+      <JsonLd data={webSiteJsonLd()} />
       {/* Barion Pixel `contentView` (contentType: 'Page'). A termékoldal SAJÁT
           Product-ágú eseményt küld (CourseBarionView) — a kettő sosem fut
           ugyanazon az oldalon, ezért nincs duplikált megtekintés. */}

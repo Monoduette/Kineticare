@@ -8,7 +8,8 @@ import { PostsEmptyState } from '@/components/content/PostsEmptyState'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { getCategoryBySlug, getPosts, getPublishedPageSlugs, getPublishedProducts } from '@/lib/cms'
-import { blogJsonLd, breadcrumbJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { absoluteUrl, blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { freeCourseHref } from '@/lib/tudastar'
 import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
@@ -38,6 +39,18 @@ const postsOf = cache((slug: string) => getPosts({ categorySlug: slug }))
 /** Van-e EGYÁLTALÁN cikk a Tudástárban (a visszaút értelmességéhez). */
 const anyPost = cache(() => getPosts({ limit: 1 }))
 
+/**
+ * A téma-lap leírása: a téma neve elöl (ez a keresett kifejezés), utána a
+ * Tudástár mért ígérete: otthoni gyógytorna (mért HU 10/hó, CPC $10,
+ * `docs/kulcsszavak.md`), kéztorna gyakorlatok (Strale autocomplete,
+ * `docs/monid-adatok-teljes.md` 3.2). A hossz a témanévvel együtt 120–160
+ * karakter közé esik a tipikus, 8–40 karakteres témaneveknél (mérve: „Kéz és
+ * csukló” → 142).
+ */
+function categoryDescription(title: string): string {
+  return `${title}: kézrehabilitációs cikkek a Kineticare Tudástárában, otthoni gyógytorna és kéztorna gyakorlatok gyógytornászoktól, közérthetően.`
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const category = await categoryOf(slug)
@@ -50,7 +63,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // (docs/ui-sztenderdek.md §3.1.1).
     ...buildStaticPageMetadata({
       title: `${category.title} a Tudástárban`,
-      description: `${category.title}: kézrehabilitációs cikkek és gyakorlatok a Kineticare Tudástárában.`,
+      description: categoryDescription(category.title),
       path: `/blog/kategoria/${category.slug}`,
     }),
     // Üres témánál nem kérünk indexelést (soft 404 elkerülése), de a linkek
@@ -68,7 +81,9 @@ export default async function BlogCategoryPage({ params }: Props) {
   // gyökér-hubnál a kártya a gyökér-címre megy, piszkozatnál marad a
   // `/blog/{slug}` — a piszkozat-hub gyökér-URL-je 404 lenne.
   const hubUtvonalak = hubUtvonalTerkep(
-    posts.map((post) => post.slug).filter((postSlug): postSlug is string => typeof postSlug === 'string'),
+    posts
+      .map((post) => post.slug)
+      .filter((postSlug): postSlug is string => typeof postSlug === 'string'),
     await getPublishedPageSlugs(),
   )
 
@@ -94,13 +109,23 @@ export default async function BlogCategoryPage({ params }: Props) {
             hubUtvonalak,
           })}
         />
-        {/* Morzsa a bejegyzés- és a kurzusoldal bevett alakjában: a szekció
-            gyökere, majd az aktuális lap (PostView, kurzusok/[slug]). */}
+        {/* Oldal-gráf: Organization + WebSite + CollectionPage + morzsa a
+            bejegyzés- és a kurzusoldal bevett alakjában (Tudástár → lap). A
+            CollectionPage `mainEntity`-je a fenti Blog csomópont (@id …#blog). */}
         <JsonLd
-          data={breadcrumbJsonLd([
-            { name: 'Tudástár', path: '/blog' },
-            { name: category.title, path: `/blog/kategoria/${category.slug}` },
-          ])}
+          data={siteGraphJsonLd({
+            page: {
+              path: `/blog/kategoria/${category.slug}`,
+              name: category.title,
+              description: categoryDescription(category.title),
+              type: 'CollectionPage',
+              mainEntityId: `${absoluteUrl(`/blog/kategoria/${category.slug}`)}#blog`,
+            },
+            breadcrumbs: [
+              { name: 'Tudástár', path: '/blog' },
+              { name: category.title, path: `/blog/kategoria/${category.slug}` },
+            ],
+          })}
         />
         <h1>{category.title}</h1>
         {posts.length === 0 ? (

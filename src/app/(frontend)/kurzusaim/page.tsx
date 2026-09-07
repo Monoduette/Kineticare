@@ -21,13 +21,18 @@ import { signInHref } from '@/lib/return-url'
 import { logger } from '@/lib/logger'
 import { loadPurchasedProducts } from '@/lib/purchased-products'
 import type { Product, User } from '@/payload-types'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 import config from '../../../payload.config'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Kurzusaim',
   description: 'A megvett kurzusaid és a lejátszásaid egy helyen.',
-}
+  path: '/kurzusaim',
+})
 
 async function getCurrentUser(): Promise<User | null> {
   try {

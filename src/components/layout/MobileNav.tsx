@@ -65,7 +65,11 @@ function trapTabInDrawer(event: KeyboardEvent, drawer: HTMLElement | null): void
  * Kompakt (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
  * - A fiók tartalma: fiók-belépő + a CMS-menü. Külön időpont-gomb a fiók
  *   alján NINCS (2026-09-07, tulajdonosi döntés): a „Kapcsolat” menüpont
- *   viszi az időpontkérő űrlapra; a lista a fiók utolsó Tab-állomása.
+ *   viszi az időpontkérő űrlapra. Kijelentkezve a lista a fiók utolsó
+ *   Tab-állomása; BEJELENTKEZVE a lista után a „Kijelentkezés" gomb áll, és
+ *   az a fiók utolsó fókuszálható eleme (WP31, tulajdonosi kérés: „ha be
+ *   vagyok jelentkezve akkor a kijelentkezés az utolsó gomb"; AccountNav.tsx
+ *   `section`; WCAG 2.2 SC 2.4.3 Focus Order — a DOM-sorrend a Tab-sorrend).
  *   NN/g Menu-Design Checklist: https://www.nngroup.com/articles/menu-design/
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
  * - Nyitva a Tab a fiókon belül körbejár (fókuszcsapda, lásd fent).
@@ -229,7 +233,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
             </svg>
           </button>
         </div>
-        <AccountNav onNavigate={close} signedIn={signedIn} variant="drawer" />
+        <AccountNav onNavigate={close} section="entry" signedIn={signedIn} variant="drawer" />
         {items.length > 0 ? (
           <ul className="kc-nav-mobile__list">
             {items.map((item) => {
@@ -266,6 +270,9 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         ) : (
           <p className="kc-nav-mobile__empty">A menü jelenleg üres.</p>
         )}
+        {signedIn ? (
+          <AccountNav onNavigate={close} section="exit" signedIn={signedIn} variant="drawer" />
+        ) : null}
       </nav>
     </div>
   )

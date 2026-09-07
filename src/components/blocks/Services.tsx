@@ -39,6 +39,30 @@ type ServiceRow = NonNullable<BlockServices['rows']>[number]
  */
 const CIM_HOSSZ_HATAR = 24
 
+/**
+ * A tábla-fotó inline változói (WP30, 2026-09-07, tulajdonosi kör: „az ezért
+ * fogod imádni bal oldala kicsit üres nekem, lehetne kicsit olyan mint a
+ * megérdemled a törődést").
+ *  - `--kc-services-image-ratio`: a feldolgozott kép aránya (a lusta kép helye
+ *    betöltés előtt is áll; a háromutas tábla `max-width`-je erre épül).
+ *  - `--kc-services-image-focus`: a Media `focalX`/`focalY` mezője százalékban.
+ *    A kétsoros tábla fotója asztalon a hasáb teljes szélességét tölti ki
+ *    (`object-fit: cover`), tehát álló forrásból vág; a vágás középpontját a
+ *    szerkesztő a CMS fókuszpontjával állítja, nem a kód találgatja. Payload
+ *    upload focal point: https://payloadcms.com/docs/upload/overview#crop-and-focal-point-selector
+ *    Alapérték 50% 50% (a séma alapértéke is ez).
+ */
+function tablaMediaStyle(media: Media, imageRatio: number | undefined): CSSProperties {
+  const clamp = (value: number) => Math.min(100, Math.max(0, value))
+  const focalX = typeof media.focalX === 'number' ? media.focalX : 50
+  const focalY = typeof media.focalY === 'number' ? media.focalY : 50
+  const hasRatio = imageRatio !== undefined && Number.isFinite(imageRatio)
+  return {
+    ...(hasRatio ? { '--kc-services-image-ratio': imageRatio } : {}),
+    '--kc-services-image-focus': `${clamp(focalX)}% ${clamp(focalY)}%`,
+  } as CSSProperties
+}
+
 const populatedMedia = (value: ServiceRow['photo'] | BlockServices['image']): Media | null =>
   typeof value === 'object' && value !== null ? value : null
 
@@ -223,6 +247,10 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
   const headingId = `services-cim-${block.id ?? 'fo'}`
   const eyebrow = block.eyebrow?.trim() ?? ''
   const title = block.title?.trim() ?? ''
+  // A séma `lead` mezője a táblán is a cím alatti bekezdés (WP30): a sín már
+  // mutatta, a tábla eddig eldobta. CMS-tartalom nem változik: ahol üres, ott
+  // nem renderel semmit.
+  const intro = block.lead?.trim() ?? ''
   const media = populatedMedia(block.image)
   const dimensions = media ? mediaDimensions(media, 'lg') : null
   const imageRatio =
@@ -230,16 +258,21 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
       ? dimensions.width / dimensions.height
       : undefined
   const hasThreeChoices = rows.length === 3
+  const mediaStyle = media ? tablaMediaStyle(media, imageRatio) : undefined
+  // Hullámos tábla (WP30): a KÉTSOROS, fotós tábla bal hasábja a Rólunk-blokk
+  // képnyelvét kapja (services.css „WP30"). A háromutas tábla (`--choices`)
+  // saját rácsot visz, azt nem érinti.
+  const isWave = media !== null && !hasThreeChoices
 
   return (
     <Section
       aria-labelledby={title.length > 0 ? headingId : undefined}
-      className={`kc-services kc-board kc-board--edge${hasThreeChoices ? ' kc-services--choices' : ''}${media ? ' kc-services--photo' : ''}`}
+      className={`kc-services kc-board kc-board--edge${hasThreeChoices ? ' kc-services--choices' : ''}${media ? ' kc-services--photo' : ''}${isWave ? ' kc-services--hullam' : ''}`}
       id={anchorId}
       variant={variant}
     >
       <div className="kc-board__inner kc-services__grid">
-        {eyebrow.length > 0 || title.length > 0 || media ? (
+        {eyebrow.length > 0 || title.length > 0 || intro.length > 0 || media ? (
           <div className="kc-services__lead">
             {eyebrow.length > 0 ? <p className="kc-services__eyebrow">{eyebrow}</p> : null}
             {title.length > 0 ? (
@@ -252,15 +285,9 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
                 {title}
               </h2>
             ) : null}
+            {intro.length > 0 ? <p className="kc-services__intro">{intro}</p> : null}
             {media ? (
-              <span
-                className="kc-services__media"
-                style={
-                  imageRatio && Number.isFinite(imageRatio)
-                    ? ({ '--kc-services-image-ratio': imageRatio } as CSSProperties)
-                    : undefined
-                }
-              >
+              <span className="kc-services__media" style={mediaStyle}>
                 {/* A tábla bal hasábja a viewport ~48%-a, és a kép balra kifut a
                     tábla-szegélyen — ezért 50vw a méret-tipp, nem fix px. */}
                 <MediaImage
