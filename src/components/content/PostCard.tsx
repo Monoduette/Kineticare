@@ -25,6 +25,18 @@ export interface PostCardProps {
   variant?: 'list' | 'compact'
   /** A kártyacím címsor-szintje. Alapértelmezés: 3 (h2 szekciócím alatt). */
   headingLevel?: 2 | 3
+  /**
+   * A kártya linkjének útvonala. Alapértelmezés: `/blog/{slug}`.
+   *
+   * Publikált gyökér-hubbal rendelkező cikknél a hívó a KANONIKUS gyökér-utat
+   * adja át (`cikkUtvonal`, src/lib/tudastar/hub-oldalak.ts) — enélkül minden
+   * belső hivatkozás egy 308-as átirányításon át vinne
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat; Google Search
+   * Central, *Redirects and Google Search*: a belső linkeket az új címre kell
+   * állítani, https://developers.google.com/search/docs/crawling-indexing/301-redirects).
+   * A prop opcionális: térkép nélkül a kártya a mai viselkedést adja.
+   */
+  href?: string
 }
 
 /** Magyar dátumformázás (pl. 2025. március 4.); érvénytelen/hiányzó dátumra null. */
@@ -39,7 +51,7 @@ export function formatPostDate(value: unknown): string | null {
   return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'long' }).format(date)
 }
 
-export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardProps) {
+export function PostCard({ post, variant = 'list', headingLevel = 3, href }: PostCardProps) {
   if (post.status !== 'published' || !post.slug) {
     return null
   }
@@ -75,7 +87,7 @@ export function PostCard({ post, variant = 'list', headingLevel = 3 }: PostCardP
             felső határa alatt) — a kategória, a kivonat és a dátum
             SZÁNDÉKOSAN a linken kívül áll. */}
         <Cim className="kc-post-card__title">
-          <Link className="kc-post-card__link" href={`/blog/${post.slug}`}>
+          <Link className="kc-post-card__link" href={href ?? `/blog/${post.slug}`}>
             {post.title}
           </Link>
         </Cim>

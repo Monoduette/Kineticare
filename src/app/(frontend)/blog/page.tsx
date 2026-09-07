@@ -9,9 +9,16 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { shouldShowCategoryFilter } from '@/components/content/post-list'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
-import { getCategoryBySlug, getContentCategories, getPosts, getPublishedProducts } from '@/lib/cms'
+import {
+  getCategoryBySlug,
+  getContentCategories,
+  getPosts,
+  getPublishedPageSlugs,
+  getPublishedProducts,
+} from '@/lib/cms'
 import { blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
 import { categoriesWithPosts, freeCourseHref } from '@/lib/tudastar'
+import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 import '../styles/blocks/tudastar-lista.css'
 
@@ -48,10 +55,20 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function BlogPage({ searchParams }: Props) {
   const { kategoria } = await searchParams
-  const [posts, categories] = await Promise.all([
+  const [posts, categories, publikaltOldalak] = await Promise.all([
     getPosts({ categorySlug: kategoria }),
     getContentCategories(),
+    getPublishedPageSlugs(),
   ])
+  // KANONIKUS belső link: ahol a cikknek PUBLIKÁLT gyökér-hubja van, oda
+  // linkelünk, nem a 308-cal átirányító `/blog/{slug}`-ra. Piszkozat-hubnál a
+  // régi cím marad (a gyökér ott 404 lenne). Mérve 2026-09-07: e nélkül a lap
+  // 8 átirányító és 0 kanonikus cikk-linket adott
+  // (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
+  const hubUtvonalak = hubUtvonalTerkep(
+    posts.map((post) => post.slug).filter((slug): slug is string => typeof slug === 'string'),
+    publikaltOldalak,
+  )
 
   const filtered = typeof kategoria === 'string' && kategoria.length > 0
   // Szűrt, üres nézetnél megnézzük, van-e EGYÁLTALÁN cikk. Ha nincs, a
@@ -98,6 +115,7 @@ export default async function BlogPage({ searchParams }: Props) {
               description: LEAD,
               path: '/blog',
               posts,
+              hubUtvonalak,
             })}
           />
         )}
@@ -121,7 +139,12 @@ export default async function BlogPage({ searchParams }: Props) {
                  — fix H3 mellett H1 → H3 ugrás keletkezne (WCAG 2.2 1.3.1).
                  A `list` változat (alapértelmezés) hozza a kivonatot: a
                  sorhossz mediánja mérve 48–64 karakter/sor 592 px felett. */
-              <PostCard key={post.id} post={post} headingLevel={2} />
+              <PostCard
+                key={post.id}
+                headingLevel={2}
+                href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
+                post={post}
+              />
             ))}
           </div>
         )}

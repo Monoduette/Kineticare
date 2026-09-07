@@ -42,9 +42,7 @@
      Tab-bal lefelé haladva a böngésző különben pontosan a sáv MÖGÉ görgetné a
      lecke-törzsben lévő mellékletlinket vagy szöveglinket. */
   --kc-player-actions-h: calc(44px + 2 * var(--kc-space-3));
-  --kc-player-focus-offset-bottom: calc(
-    var(--kc-player-actions-h) + var(--kc-space-3)
-  );
+  --kc-player-focus-offset-bottom: calc(var(--kc-player-actions-h) + var(--kc-space-3));
 
   display: block;
   background-color: var(--kc-color-bg);
@@ -260,6 +258,24 @@
 /* A sötét felületen a fókuszgyűrű fehérre vált (az accent-deep ott 2,87:1). */
 .kc-player__media :focus-visible {
   outline-color: var(--kc-color-focus-on-dark);
+}
+
+/* A hibapanel gombjai (Újrapróbálom, Írj nekünk, Belépés) a sötét videó-
+   felületen ülnek, ezért ugyanazt a sötét-sávos nyelvet kapják, mint a
+   `.kc-section--dark` másodlagos gombja: fehér keret és fehér felirat, a
+   hover fehérre telik. MÉRVE a javítás előtt: a felirat és a 2 px-es keret
+   is ink (#10243e) az ink felületen, tehát 1,00:1 — a fizető vevő a videó
+   hibájakor NEM LÁTTA a mentőgombokat (WCAG 2.2 SC 1.4.3 szövegkontraszt
+   4,5:1 és SC 1.4.11 nem-szöveges kontraszt 3:1). A javítás után fehér az
+   inken: 15,63:1, hover-állapotban ink a fehéren szintén 15,63:1. */
+.kc-player__media-error .kc-button--secondary {
+  border-color: var(--kc-color-on-dark);
+  color: var(--kc-color-on-dark);
+}
+
+.kc-player__media-error .kc-button--secondary:hover:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-on-dark);
+  color: var(--kc-color-surface-dark);
 }
 
 /* ---- Lecke-fej ----------------------------------------------------------- */

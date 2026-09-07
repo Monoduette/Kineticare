@@ -4,6 +4,7 @@ import { ctaLabel } from '../../../lib/cta-vocabulary'
 import type { Post } from '../../../payload-types'
 import { Container } from '../../ui/Container'
 import { Section } from '../../ui/Section'
+import { cikkUtvonal } from '../../../lib/tudastar/hub-oldalak'
 import { PostCard } from '../PostCard'
 
 import '../../../app/(frontend)/styles/blocks/knowledge.css'
@@ -32,6 +33,15 @@ export interface KnowledgeSectionProps {
   limit?: number
   id?: string
   variant?: 'default' | 'tint' | 'dark'
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`). Ahol egy
+   * cikknek PUBLIKÁLT gyökér-hubja van, a kártya oda linkel; enélkül minden
+   * belső hivatkozás 308-as átirányításon át vinne
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat). Sima objektum,
+   * nem függvény: a szerver → kliens határon szerializálhatónak kell lennie.
+   * Elhagyva a mai `/blog/{slug}` viselkedés marad.
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }
 
 export function KnowledgeSection({
@@ -40,6 +50,7 @@ export function KnowledgeSection({
   limit,
   id,
   variant = 'tint',
+  hubUtvonalak,
 }: KnowledgeSectionProps) {
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
   const shownPosts =
@@ -62,7 +73,12 @@ export function KnowledgeSection({
                szabályának 45-ös alsó tűréshatára alatt. A kivonat ezért nem
                kerül a kártyára — a `headingLevel` alapértelmezett 3-as értéke
                pedig a fenti h2 szekciócím alá illeszkedik, hézag nélkül. */
-            <PostCard key={post.id} post={post} variant="compact" />
+            <PostCard
+              key={post.id}
+              href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
+              post={post}
+              variant="compact"
+            />
           ))}
         </div>
         <p className="kc-section-more">

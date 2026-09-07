@@ -40,6 +40,9 @@ vi.mock('@/lib/cms', () => ({
   getPublishedProducts: vi.fn(async () => []),
   getLatestPosts: vi.fn(async () => []),
   getTestimonials: vi.fn(async () => []),
+  // WP23: a szekciósor knowledge-kártyái a publikált CMS-oldal-slugokból
+  // számolják a kanonikus gyökér-hub célt. Üres halmaz = a mai `/blog/…` cél.
+  getPublishedPageSlugs: vi.fn(async () => new Set<string>()),
 }))
 
 const getPageBySlugMock = vi.mocked(getPageBySlug)

@@ -8,9 +8,16 @@ import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/Knowledge
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
-import { getHomePage, getLatestPosts, getPublishedProducts, getTestimonials } from '@/lib/cms'
+import {
+  getHomePage,
+  getLatestPosts,
+  getPublishedPageSlugs,
+  getPublishedProducts,
+  getTestimonials,
+} from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { buildHomeMetadata } from '@/lib/seo'
+import { hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,12 +42,19 @@ export default async function HomePage() {
   // A posztokból a knowledge blokk felső limitjéig (6) kérünk, hogy a
   // szekciósor bármely beállítása egyetlen párhuzamos lekérdezésből kijöjjön;
   // a rögzített kezdőlap továbbra is 3-at mutat (KnowledgeSection limit).
-  const [home, products, posts, testimonials] = await Promise.all([
+  const [home, products, posts, testimonials, publikaltOldalak] = await Promise.all([
     homePageOf(isDraft),
     getPublishedProducts(),
     getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT),
     getTestimonials(),
+    getPublishedPageSlugs(),
   ])
+  // A tudástár-kártyák KANONIKUS célja: publikált gyökér-hubnál a gyökér-cím,
+  // különben a mai `/blog/{slug}` (a piszkozat-hub gyökere 404 lenne).
+  const hubUtvonalak = hubUtvonalTerkep(
+    posts.map((post) => post.slug).filter((slug): slug is string => typeof slug === 'string'),
+    publikaltOldalak,
+  )
 
   // A kezdőlap strukturált adatát (Organization + FAQPage) a HomeView adja —
   // az a komponens, amelyik a látható tartalmat is rendereli, és amelyet a
@@ -66,6 +80,7 @@ export default async function HomePage() {
       <HomeView
         appointment={appointment}
         home={home}
+        hubUtvonalak={hubUtvonalak}
         posts={posts}
         products={products}
         testimonials={testimonials}

@@ -7,9 +7,10 @@ import { PostCard } from '@/components/content/PostCard'
 import { PostsEmptyState } from '@/components/content/PostsEmptyState'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
-import { getCategoryBySlug, getPosts, getPublishedProducts } from '@/lib/cms'
+import { getCategoryBySlug, getPosts, getPublishedPageSlugs, getPublishedProducts } from '@/lib/cms'
 import { blogJsonLd, breadcrumbJsonLd, buildStaticPageMetadata } from '@/lib/seo'
 import { freeCourseHref } from '@/lib/tudastar'
+import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 import '../../../styles/blocks/tudastar-lista.css'
 
@@ -63,6 +64,13 @@ export default async function BlogCategoryPage({ params }: Props) {
   const category = await categoryOf(slug)
   if (!category) notFound()
   const posts = await postsOf(slug)
+  // KANONIKUS belső link (lásd a `/blog` lap azonos lépését): publikált
+  // gyökér-hubnál a kártya a gyökér-címre megy, piszkozatnál marad a
+  // `/blog/{slug}` — a piszkozat-hub gyökér-URL-je 404 lenne.
+  const hubUtvonalak = hubUtvonalTerkep(
+    posts.map((post) => post.slug).filter((postSlug): postSlug is string => typeof postSlug === 'string'),
+    await getPublishedPageSlugs(),
+  )
 
   // Üres témánál: van-e egyáltalán cikk a Tudástárban? Ettől függ, hogy a
   // visszaút értelmes-e (lásd a fejléc „ÜRES ÁLLAPOT" pontját).
@@ -83,6 +91,7 @@ export default async function BlogCategoryPage({ params }: Props) {
             name: category.title,
             path: `/blog/kategoria/${category.slug}`,
             posts,
+            hubUtvonalak,
           })}
         />
         {/* Morzsa a bejegyzés- és a kurzusoldal bevett alakjában: a szekció
@@ -105,7 +114,12 @@ export default async function BlogCategoryPage({ params }: Props) {
                  sorhossza 28,8–37,4 karakter/sor, a kéthasábosban 48,1–60,6 —
                  a repó Ü6 szabályának 45-ös alsó tűréshatára csak az utóbbiban
                  teljesül (styles/blocks/tudastar-lista.css). */
-              <PostCard key={post.id} post={post} headingLevel={2} />
+              <PostCard
+                key={post.id}
+                headingLevel={2}
+                href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
+                post={post}
+              />
             ))}
           </div>
         )}

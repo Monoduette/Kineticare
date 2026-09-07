@@ -45,6 +45,13 @@ export interface HomeViewProps {
    * megmutatja, csak az űrlapja renderel letiltva. A `/` route tölti fel.
    */
   appointment?: AppointmentSectionContext
+  /**
+   * Poszt-slug → KANONIKUS útvonal térkép (`hubUtvonalTerkep`), a
+   * „Legfrissebb a tudástárból" kártyáihoz. Publikált gyökér-hubnál a kártya
+   * a gyökér-címre linkel, nem a 308-cal átirányító `/blog/{slug}`-ra
+   * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
+   */
+  hubUtvonalak?: Readonly<Record<string, string>>
 }
 
 function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: boolean }) {
@@ -84,7 +91,14 @@ function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: bool
   )
 }
 
-export function HomeView({ home, products, posts, testimonials = [], appointment }: HomeViewProps) {
+export function HomeView({
+  home,
+  products,
+  posts,
+  testimonials = [],
+  appointment,
+  hubUtvonalak,
+}: HomeViewProps) {
   // Szekció-rendszer: ha a kezdőlap CMS-oldalán VAN összeállított szekciósor
   // (Pages → Szekciók), azt rendereljük — a sorrend a szerkesztőé, a régi
   // háromoszlopos „Így tudunk segíteni" tábla viszont a C-sín UI-t kapja
@@ -102,6 +116,7 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
         <JsonLd data={homeWebPageJsonLd(home)} />
         <RenderBlocks
           appointment={appointment}
+          hubUtvonalak={hubUtvonalak}
           layout={layout}
           posts={posts}
           products={products}
@@ -164,6 +179,7 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
       ) : null}
 
       <KnowledgeSection
+        hubUtvonalak={hubUtvonalak}
         limit={3}
         posts={visiblePosts}
         variant={previousBandIsTint ? 'default' : 'tint'}

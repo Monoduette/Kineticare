@@ -214,4 +214,21 @@ describe('fejléc-navigáció — tartalék a menüsávban', () => {
     expect(olvas('components/layout/DesktopNav.tsx')).toContain("matchMedia('(min-width: 900px)')")
     expect(olvas('components/layout/AccountNav.tsx')).toContain("matchMedia('(min-width: 900px)')")
   })
+
+  /**
+   * ŐR (2026-09-07, AUDIT-A): az űrlapmező fókuszjele nem eshet vissza a
+   * globális gyűrű alá. A korábbi `outline: none` + 30%-os árnyék MÉRVE
+   * 1,32:1 (keretváltás) és 1,49-1,72:1 (gyűrű) volt, tehát a WCAG 2.2
+   * SC 1.4.11 (Non-text Contrast) 3:1 küszöbe alatt; a hatókör 10 űrlap-
+   * komponens, köztük a minden oldalon látszó lábléc-hírlevél. A mező most a
+   * base.css globális `:focus-visible` szabályát örökli (3 px tömör gyűrű,
+   * 2 px eltartás, accent-deep: 5,45:1 fehér mezőn, 5,16:1 paperen), így a
+   * fókuszjel az egész felületen ugyanaz (SC 3.2.4).
+   */
+  it('az űrlapmező nem kapcsolja ki a globális fókuszgyűrűt', () => {
+    const szabaly = blokk(olvas('app/(frontend)/styles/ui.css'), '.kc-field__input:focus-visible')
+    expect(szabaly).not.toMatch(/outline\s*:\s*none/)
+    expect(szabaly).not.toMatch(/box-shadow/)
+    expect(szabaly).toMatch(/border-color:\s*var\(--kc-color-focus\)/)
+  })
 })
