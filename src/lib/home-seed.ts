@@ -313,7 +313,12 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
   return ids
 }
 
-/** Egy média-rekord id-je a kiterjesztés nélküli alapnév alapján (webp-konverzió). */
+/**
+ * Egy média-rekord id-je a kiterjesztés nélküli alapnév alapján (webp-konverzió).
+ * A Payload `like` TARTALMAZÁSRA illeszt (ILIKE %…%), ezért egy rövid alapnév
+ * (pl. `tv2`, `mase`) idegen fájlra is találna; a jelölteket ezért a pontos
+ * alapnév + kiterjesztés alakra szűrjük, és csak egyértelmű találatot adunk.
+ */
 const findMediaIdByBaseName = async (
   payload: Payload,
   file: string,
@@ -321,11 +326,18 @@ const findMediaIdByBaseName = async (
   const baseName = file.replace(/\.[^.]+$/, '')
   const existing = await payload.find({
     collection: 'media',
-    where: { filename: { like: `${baseName}%` } },
-    limit: 1,
+    where: { filename: { like: `${baseName}.` } },
+    limit: 20,
     overrideAccess: true,
   })
-  return existing.docs[0]?.id
+  const exact = new RegExp(
+    `^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(webp|png|jpe?g)$`,
+    'i',
+  )
+  const hit = existing.docs.find(
+    (doc) => typeof doc.filename === 'string' && exact.test(doc.filename),
+  )
+  return hit?.id
 }
 
 /**
