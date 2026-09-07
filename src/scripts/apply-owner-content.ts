@@ -34,7 +34,7 @@ import {
 import { logger } from '../lib/logger'
 import { CLINIC_TREATMENTS_ANCHOR, SOS_COURSE_SKU } from '../lib/menu-seed'
 import config from '../payload.config'
-import type { Menu, Page, Product } from '../payload-types'
+import type { Page, Product } from '../payload-types'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
 // szakmai-háttér csere és a /szolgaltatasok lap-tetejének cseréje a
 // seed-builderből veszi az ÚJ blokkokat, és az örökölt tartalommal veti össze
@@ -222,7 +222,6 @@ export type JavitasSzabaly =
   | 'szolgaltatas-blokk-kep'
   | 'kezdolap-rolunk-szoveg'
   | 'sos-publikalas'
-  | 'demo-menupont'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -1535,76 +1534,6 @@ export const alkalmazSosPublikalas = (
         uzenet: `${uzenet}: a legutóbbi verzió ${ertekCimke(
           termek._status,
         )} → „published”. Enélkül a publikált termék fölött piszkozat áll, az anonim API a friss adatot nem adja, és a kezdőlap rácsából hiányzik az ingyenes SOS.`,
-        indok: null,
-      },
-    ],
-    kihagyasok: [],
-  }
-}
-
-// ---------------------------------------------------------------------------
-// WP22 — a demó („olcsó dolgok itt") menüpont elrejtése a főmenüből.
-// ---------------------------------------------------------------------------
-
-/** A demó-menüpont PONTOS felirata az éles menüben (mérve 2026-09-07). */
-export const DEMO_MENUPONT_FELIRAT = 'olcsó dolgok itt'
-
-/** A demó-menüpont PONTOS célja (a lap `noindex`, címe „Képzeletbeli akciós kurzus"). */
-export const DEMO_MENUPONT_URL = '/akcios-kurzus'
-
-/** A demó-menüpont elrejtésének eredménye. */
-export interface DemoMenupontAtalakitas {
-  /** `true`, ha a menüpontot rejtettre kell állítani; `false`, ha nem szabad írni. */
-  elrejt: boolean
-  modositasok: JavitasLepes[]
-  kihagyasok: JavitasLepes[]
-}
-
-/**
- * A főmenüben élesben ott állt egy „olcsó dolgok itt" feliratú pont, ami a
- * `/akcios-kurzus` demó-lapra vitt (a lap címe „Képzeletbeli akciós kurzus",
- * `noindex`, ár és vásárlási út nélkül). Placeholder felirat a fő navigációban
- * a bizalom ellen dolgozik, és a navigáció minden oldalon látszik: a menüpont
- * címkéje mondja meg, hova visz (NN/g, Menu Design,
- * https://www.nngroup.com/articles/menu-design/); a felirat legyen igaz és
- * kiszámítható (WCAG 2.2 SC 2.4.6 Headings and Labels, SC 3.2.3 Consistent
- * Navigation).
- *
- * VÉDŐFELTÉTELEK: a rejtés KIZÁRÓLAG akkor, ha a felirat PONTOSAN a demó-szöveg
- * ÉS a cél PONTOSAN a demó-lap. A rekord nem törlődik, csak `visible: false`
- * lesz, tehát a szerkesztő az adminban egy kattintással visszakapcsolhatja.
- * Idempotens: a már rejtett pont indokolt kihagyás.
- */
-export const alkalmazDemoMenupont = (
-  menupont: Pick<Menu, 'label' | 'url' | 'visible'>,
-): DemoMenupontAtalakitas => {
-  const uzenet = `A demó menüpont elrejtése a főmenüből (${ertekCimke(DEMO_MENUPONT_FELIRAT)})`
-  const kihagyas = (indok: string): DemoMenupontAtalakitas => ({
-    elrejt: false,
-    modositasok: [],
-    kihagyasok: [{ szabaly: 'demo-menupont', uzenet, indok }],
-  })
-
-  if (menupont.label !== DEMO_MENUPONT_FELIRAT) {
-    return kihagyas(
-      `a menüpont felirata ${ertekCimke(menupont.label)}, ami nem PONTOSAN a demó-felirat — a script csak pontos egyezésnél nyúl a menühöz`,
-    )
-  }
-  if (menupont.url !== DEMO_MENUPONT_URL) {
-    return kihagyas(
-      `a menüpont célja ${ertekCimke(menupont.url)}, ami nem PONTOSAN ${ertekCimke(DEMO_MENUPONT_URL)} — a szerkesztő időközben átirányította, ezért érintetlen marad`,
-    )
-  }
-  if (menupont.visible === false) {
-    return kihagyas('a menüpont MÁR rejtett — nincs teendő')
-  }
-
-  return {
-    elrejt: true,
-    modositasok: [
-      {
-        szabaly: 'demo-menupont',
-        uzenet: `${uzenet}: a pont a „Képzeletbeli akciós kurzus" című, noindex demó-lapra vitt, ezért rejtett lett. A rekord megmarad, az adminban visszakapcsolható.`,
         indok: null,
       },
     ],
@@ -3455,49 +3384,6 @@ async function futtat(): Promise<void> {
         depth: 0,
         overrideAccess: true,
       })
-    }
-  }
-
-  // --- WP22: a demó menüpont elrejtése a főmenüből -------------------------
-  const demoMenuTalalat = await payload.find({
-    collection: 'menus',
-    where: { label: { equals: DEMO_MENUPONT_FELIRAT } },
-    limit: 5,
-    depth: 0,
-    overrideAccess: true,
-  })
-
-  if (demoMenuTalalat.docs.length === 0) {
-    naplozdLepeseket(
-      {
-        modositasok: [],
-        kihagyasok: [
-          {
-            szabaly: 'demo-menupont',
-            uzenet: `A demó menüpont elrejtése a főmenüből (${ertekCimke(DEMO_MENUPONT_FELIRAT)})`,
-            indok: 'a menüben nincs ilyen feliratú pont — nincs teendő',
-          },
-        ],
-      },
-      dryRun,
-    )
-    kihagyasokSzama += 1
-  } else {
-    for (const menupont of demoMenuTalalat.docs) {
-      const rejtes = alkalmazDemoMenupont(menupont)
-      naplozdLepeseket(rejtes, dryRun)
-      modositasokSzama += rejtes.modositasok.length
-      kihagyasokSzama += rejtes.kihagyasok.length
-
-      if (rejtes.elrejt && !dryRun) {
-        await payload.update({
-          collection: 'menus',
-          id: menupont.id,
-          data: { visible: false },
-          depth: 0,
-          overrideAccess: true,
-        })
-      }
     }
   }
 

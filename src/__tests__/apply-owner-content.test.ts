@@ -22,9 +22,6 @@ import {
   alkalmazJogiOldalak,
   alkalmazKapcsolatSzakemberek,
   alkalmazKezdolapJavitasok,
-  alkalmazDemoMenupont,
-  DEMO_MENUPONT_FELIRAT,
-  DEMO_MENUPONT_URL,
   alkalmazKezdolapRolunkSzoveg,
   alkalmazKurzuslistaFeliratok,
   alkalmazKurzusElonyok,
@@ -2318,37 +2315,5 @@ describe('alkalmazKapcsolatSzakemberek — a /kapcsolat hiányzó szekciói', ()
     for (const tag of szakemberek.members ?? []) {
       expect(tag.link?.url).toBe(SZAKMAI_HATTER_URL)
     }
-  })
-})
-
-// ---------------------------------------------------------------------------
-// WP22 — a demó („olcsó dolgok itt") menüpont elrejtése
-// ---------------------------------------------------------------------------
-
-describe('alkalmazDemoMenupont', () => {
-  const demo = { label: DEMO_MENUPONT_FELIRAT, url: DEMO_MENUPONT_URL, visible: true }
-
-  it('a pontos feliratú és célú demó-pontot rejtésre jelöli', () => {
-    const eredmeny = alkalmazDemoMenupont(demo)
-    expect(eredmeny.elrejt).toBe(true)
-    expect(eredmeny.modositasok).toHaveLength(1)
-    expect(eredmeny.modositasok[0]?.szabaly).toBe('demo-menupont')
-    expect(eredmeny.kihagyasok).toHaveLength(0)
-  })
-
-  it('idempotens: a már rejtett pontot nem írja újra', () => {
-    const eredmeny = alkalmazDemoMenupont({ ...demo, visible: false })
-    expect(eredmeny.elrejt).toBe(false)
-    expect(eredmeny.kihagyasok[0]?.indok).toContain('MÁR rejtett')
-  })
-
-  it('más feliratot vagy más célt nem érint (a szerkesztő munkája)', () => {
-    expect(alkalmazDemoMenupont({ ...demo, label: 'Akciók' }).elrejt).toBe(false)
-    expect(alkalmazDemoMenupont({ ...demo, url: '/kurzusok' }).elrejt).toBe(false)
-  })
-
-  it('a felirat és a cél a mért éles értékkel egyezik', () => {
-    expect(DEMO_MENUPONT_FELIRAT).toBe('olcsó dolgok itt')
-    expect(DEMO_MENUPONT_URL).toBe('/akcios-kurzus')
   })
 })
