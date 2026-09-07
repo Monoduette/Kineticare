@@ -6,7 +6,8 @@ import {
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
-import { CourseCards, isPaidProduct } from '../content/home/CourseCards'
+import { isPaidProduct } from '../content/home/CourseCards'
+import { CourseShowcase } from '../content/home/CourseShowcase'
 import { CredentialsStrip } from '../content/home/CredentialsStrip'
 import { FreeSos } from '../content/home/FreeSos'
 import { HowItWorks } from '../content/home/HowItWorks'
@@ -257,15 +258,19 @@ function BlockSwitch({
     case 'courseCards': {
       const { id, variant } = sectionProps(block)
       return (
-        <CourseCards
-          ctaLabel={block.ctaLabel ?? undefined}
-          eyebrow={block.eyebrow ?? undefined}
-          heading={block.heading ?? undefined}
-          id={id ?? (isRepeat ? `kurzusok-${block.id ?? 'ismetelt'}` : undefined)}
-          lead={block.lead ?? undefined}
-          products={paidProducts}
+        <Section
+          className="kc-course-showcase-band"
+          id={id ?? (isRepeat ? `kurzusok-${block.id ?? 'ismetelt'}` : 'kurzusok')}
           variant={variant}
-        />
+        >
+          <Container>
+            <CourseShowcase
+              heading={block.heading ?? undefined}
+              lead={block.lead ?? undefined}
+              products={paidProducts}
+            />
+          </Container>
+        </Section>
       )
     }
     case 'freeSos': {

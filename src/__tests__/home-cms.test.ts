@@ -336,7 +336,7 @@ describe('HomeView (kezdőlap-render)', () => {
    * tételeket csak így lehet kártyáról kártyára összevetni
    * (docs/ux-belso-oldalak-kutatas.md B4.1).
    */
-  it('M3 mini-buybox: a kártya a CMS-adatokból hozza az előnyöket, a hozzáférést, az árat és a CTA-t', () => {
+  it('M3 galéria: cím, audience-kicker, ár, egész kártya link', () => {
     const html = render(
       createElement(HomeView, {
         home: null,
@@ -348,10 +348,6 @@ describe('HomeView (kezdőlap-render)', () => {
             audience: 'laikus',
             cardHighlights: [
               { id: 'h1', text: '4 modulnyi videóanyag' },
-              { id: 'h2', text: '50+ videós gyakorlat' },
-              { id: 'h3', text: '5 perces miniblokkok' },
-              // A 4. sor már nem fér ki (a mező maxRows: 3 plafonja).
-              { id: 'h4', text: 'Ez a sor már nem jelenhet meg' },
             ],
           }),
         ],
@@ -359,28 +355,21 @@ describe('HomeView (kezdőlap-render)', () => {
       }),
     )
     const coursesSection = html.slice(html.indexOf('id="kurzusok"'), html.indexOf('id="ingyenes"'))
-    expect(coursesSection).toContain('4 modulnyi videóanyag')
-    expect(coursesSection).toContain('50+ videós gyakorlat')
-    expect(coursesSection).toContain('5 perces miniblokkok')
-    expect(coursesSection).not.toContain('Ez a sor már nem jelenhet meg')
-    // Célközönség-címke, hozzáférés-sor, ár és a dekoratív CTA.
+    expect(coursesSection).toContain('kc-course-showcase')
+    expect(coursesSection).toContain('Otthoni KézRehab Program')
     expect(coursesSection).toContain('Otthoni gyakorlóknak')
-    expect(coursesSection).toContain('365 napos hozzáférés')
     expect(normalizeNbsp(coursesSection)).toContain('19 990 Ft')
-    expect(coursesSection).toContain(DEFAULT_CTA_LABEL)
-    // A kártya EGÉSZE a link: benne beágyazott gomb/link nem lehet, a CTA
-    // aria-hidden dekoráció (a korábbi nyíl-CTA mintája).
-    const cardStart = coursesSection.indexOf('kc-product-card__link')
+    expect(coursesSection).toContain('Kurzusaink')
+    expect(coursesSection).not.toContain('4 modulnyi videóanyag')
+    const cardStart = coursesSection.indexOf('kc-course-showcase__link')
     const card = coursesSection.slice(cardStart)
     expect(card.slice(0, card.indexOf('</article>'))).not.toContain('<button')
-    expect(coursesSection).toContain('aria-hidden="true" class="kc-product-card__cta"')
   })
 
-  it('M3 mini-buybox: hiányzó CMS-mezőknél a kártya csendben elhagyja a sorokat (nincs kitalált állítás)', () => {
+  it('M3 galéria: hiányzó kiemelés-sorok nem jelennek meg', () => {
     const html = render(
       createElement(HomeView, {
         home: null,
-        // Se előny-sor, se hozzáférés-hossz: ezekről a kártya NEM állít semmit.
         products: [
           product({ id: 1, sku: 'Csupasz kurzus', accessDurationDays: null, cardHighlights: [] }),
         ],
@@ -390,12 +379,7 @@ describe('HomeView (kezdőlap-render)', () => {
     const coursesSection = html.slice(html.indexOf('id="kurzusok"'), html.indexOf('id="ingyenes"'))
     expect(coursesSection).not.toContain('kc-product-card__highlights')
     expect(coursesSection).not.toContain('kc-product-card__access')
-    // Az „örökös/korlátlan hozzáférés" ígéretét a kártya sosem találja ki:
-    // a régi oldal épp ezen a ponton mondott háromfélét (docs/regi-oldal-valaszok.md).
-    expect(coursesSection).not.toContain('hozzáférés')
-    // Az ár és a CTA viszont ilyenkor is kint van (M3: név + ÁR + CTA).
     expect(normalizeNbsp(coursesSection)).toContain('19 990 Ft')
-    expect(coursesSection).toContain(DEFAULT_CTA_LABEL)
   })
 
   it('cardHighlightTexts: trimmel, üres sort kihagy, és legfeljebb 3 sort ad', () => {
@@ -601,7 +585,7 @@ describe('HomeView (kezdőlap-render)', () => {
     }))
     const sections = Array.from(html.matchAll(/<section\b[^>]*\sclass="([^"]*)"/g))
       .map((match) => match[1].split(/\s+/))
-    const courses = sections.findIndex((classes) => classes.includes('kc-course-cards'))
+    const courses = sections.findIndex((classes) => classes.includes('kc-course-showcase-band'))
     expect(courses).toBeGreaterThanOrEqual(0)
     expect(sections[courses + 1]).toContain('kc-how')
     expect(sections[courses + 2]).toContain('kc-free-sos')
