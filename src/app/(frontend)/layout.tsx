@@ -10,6 +10,7 @@ import { Footer } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { AnchorScroll } from '@/components/motion/AnchorScroll'
 import { resolveServerUrl } from '@/env'
+import { DEFAULT_OG_IMAGE, INDEX_ROBOTS, SITE_DESCRIPTION } from '@/lib/seo'
 
 import './styles.css'
 
@@ -17,8 +18,13 @@ export const dynamic = 'force-dynamic'
 
 const SITE_NAME = 'Kineticare'
 const SITE_TAGLINE = 'Kézrehabilitációs online kurzusplatform'
-const DEFAULT_DESCRIPTION =
-  'Kineticare — kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal. Tanfolyamok, tudástár és szakmai támogatás kézsérülés utáni felépüléshez.'
+/**
+ * A keret alap-leírása EGY forrásból (`src/lib/seo.ts` SITE_DESCRIPTION):
+ * mért kulcsszavak, 120–160 karakter, natív magyar, töltelék gondolatjel
+ * nélkül. Minden nyilvános lap saját leírást ad (`buildStaticPageMetadata`
+ * / `buildDocMetadata`), ez csak a tartalék.
+ */
+const DEFAULT_DESCRIPTION = SITE_DESCRIPTION
 
 export const metadata: Metadata = {
   // A publikus gyökér EGY forrásból (src/env.ts) — ugyanebből az env-értékből
@@ -27,20 +33,32 @@ export const metadata: Metadata = {
   // appot), így ez a `new URL` mindig érvényes bemenetet kap.
   metadataBase: new URL(resolveServerUrl()),
   title: {
-    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    default: `${SITE_NAME} | ${SITE_TAGLINE}`,
     template: `%s | ${SITE_NAME}`,
   },
   description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
+  // Indexelhető alapállapot; a privát lapok saját `NOINDEX_ROBOTS`-t adnak.
+  robots: INDEX_ROBOTS,
   openGraph: {
     type: 'website',
     locale: 'hu_HU',
     siteName: SITE_NAME,
-    title: {
-      default: `${SITE_NAME} — ${SITE_TAGLINE}`,
-      template: `%s | ${SITE_NAME}`,
-    },
+    // SZÁNDÉKOSAN nincs `%s | Kineticare` sablon az og:title-ön: a márkát az
+    // og:site_name viszi (ogp.me), a sablon a CMS-címekben már benne lévő
+    // márkanevet duplázta (mérve 2026-09-07).
+    title: `${SITE_NAME} | ${SITE_TAGLINE}`,
     description: DEFAULT_DESCRIPTION,
+    url: resolveServerUrl(),
+    images: [DEFAULT_OG_IMAGE],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${SITE_NAME} | ${SITE_TAGLINE}`,
+    description: DEFAULT_DESCRIPTION,
+    images: [{ url: DEFAULT_OG_IMAGE.url, alt: DEFAULT_OG_IMAGE.alt }],
+  },
+  formatDetection: { telephone: false },
   // Search Console domain-ellenőrző meta. Üres env = nincs címke (a DNS
   // átállás után kell, ha a régi Systeme.io-s ellenőrzés nem viszi át a
   // tulajdont). A token nyilvános, nem titok; értéket ide SOSEM írunk.

@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest'
 
 import { HomeView } from '../components/content/HomeView'
 import { FAQ_ITEMS } from '../components/content/home/Faq'
-import { breadcrumbJsonLd, courseJsonLd, faqPageJsonLd, organizationJsonLd } from '../lib/seo'
+import {
+  breadcrumbJsonLd,
+  courseJsonLd,
+  faqPageJsonLd,
+  organizationJsonLd,
+  SITE_DESCRIPTION,
+} from '../lib/seo'
 import robots from '../app/robots'
 
 /**
@@ -23,7 +29,13 @@ describe('robots.txt', () => {
 
   it('minden AI-crawlert enged (a GEO-láthatóság előfeltétele)', () => {
     const agents = rules.map((rule) => rule.userAgent)
-    for (const agent of ['GPTBot', 'OAI-SearchBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended']) {
+    for (const agent of [
+      'GPTBot',
+      'OAI-SearchBot',
+      'ClaudeBot',
+      'PerplexityBot',
+      'Google-Extended',
+    ]) {
       expect(agents).toContain(agent)
     }
     // Egyetlen szabály sem tilthatja le a teljes oldalt.
@@ -77,10 +89,18 @@ describe('FAQPage JSON-LD', () => {
 })
 
 describe('Course JSON-LD', () => {
-  const product = { shortDescription: 'Nyolc hetes otthoni kézrehabilitációs program.', status: 'published' as const }
+  const product = {
+    shortDescription: 'Nyolc hetes otthoni kézrehabilitációs program.',
+    status: 'published' as const,
+  }
 
   it('árat és elérhetőséget közöl, ha van ár', () => {
-    const jsonLd = courseJsonLd({ product, name: 'Kéz-rehab alapprogram', path: '/kurzusok/7', priceHuf: 19990 })
+    const jsonLd = courseJsonLd({
+      product,
+      name: 'Kéz-rehab alapprogram',
+      path: '/kurzusok/7',
+      priceHuf: 19990,
+    })
     const offers = jsonLd.offers as Record<string, unknown>
 
     // Egy entitás, kettős típussal: online kurzus ÉS megvásárolható termék.
@@ -105,7 +125,12 @@ describe('Course JSON-LD', () => {
   })
 
   it('ár nélkül NEM közöl offers-t (a 0 Ft félrevezető strukturált adat lenne)', () => {
-    const jsonLd = courseJsonLd({ product, name: 'Ingyenes SOS', path: '/kurzusok/9', priceHuf: null })
+    const jsonLd = courseJsonLd({
+      product,
+      name: 'Ingyenes SOS',
+      path: '/kurzusok/9',
+      priceHuf: null,
+    })
     expect(jsonLd.offers).toBeUndefined()
   })
 })
@@ -151,9 +176,7 @@ describe('Organization JSON-LD', () => {
     const jsonLd = organizationJsonLd()
     expect(jsonLd.inLanguage).toBe('hu-HU')
     expect(Array.isArray(jsonLd.knowsAbout)).toBe(true)
-    expect(jsonLd.description).toBe(
-      'Kineticare: kézrehabilitációs online videókurzusok otthoni gyógytornászati programmal.',
-    )
+    expect(jsonLd.description).toBe(SITE_DESCRIPTION)
     expect(String(jsonLd.description)).not.toMatch(/[–—]/)
   })
 })

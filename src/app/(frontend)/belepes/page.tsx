@@ -10,13 +10,19 @@ import { LoginForm } from '@/components/auth/LoginForm'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { DEFAULT_AUTH_RETURN_URL, forgotPasswordHref, sanitizeReturnUrl } from '@/lib/return-url'
 import type { User } from '@/payload-types'
+import { buildStaticPageMetadata } from '@/lib/seo'
 
 import config from '../../../payload.config'
 
-export const metadata: Metadata = {
+// INDEXELHETŐ (tulajdonosi döntés, 2026-09-07): a márkás keresés
+// („kineticare belépés”) céllapja; canonical, leírás és megosztási kép a közös
+// építőből. A sitemapben nem szerepel (vékony tartalom), de nincs tiltva.
+export const metadata: Metadata = buildStaticPageMetadata({
   title: 'Belépés',
-  description: 'Lépj be a Kineticare fiókodba a kurzusaid és a rendeléseid eléréséhez.',
-}
+  description:
+    'Belépés a Kineticare fiókodba: a megvett kézrehabilitációs kurzusaid, a rendeléseid és a számláid egy helyen, e-mail-címmel és jelszóval.',
+  path: '/belepes',
+})
 
 interface BelepesPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

@@ -5,6 +5,7 @@ import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ctaLabel } from '@/lib/cta-vocabulary'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 /**
  * /belepes-atallas — az ÁTKÖLTÖZTETETT vevő egyetlen belépő útja.
@@ -12,11 +13,15 @@ import { ctaLabel } from '@/lib/cta-vocabulary'
  * Auth-folyamat, access-szabály és kérés-korlát NEM módosult.
  */
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Jelszó beállítása az új felületen',
   description:
     'A korábbi rendszer jelszava nem költözött át. Kérj beállító linket arra az e-mail-címre, amellyel a kurzust megvetted.',
-}
+  path: '/belepes-atallas',
+})
 
 /**
  * A kérés-korlát EMBERI nyelven. A két szám a `password-forgot-email` keretét

@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ThankYouView } from '@/components/checkout/ThankYouView'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 /**
  * A lap címe NEM állíthat sikert: a Barion ugyanerre a URL-re küld sikeres,
@@ -16,10 +17,14 @@ import { ThankYouView } from '@/components/checkout/ThankYouView'
  * hamis okot vagy sikert)
  * https://www.nngroup.com/articles/error-message-guidelines/ .
  */
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'A fizetésed állapota',
   description: 'A banki visszaigazolás után itt látod, mi a következő lépés.',
-}
+  path: '/fizetes/koszonom',
+})
 
 interface KoszonjukPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

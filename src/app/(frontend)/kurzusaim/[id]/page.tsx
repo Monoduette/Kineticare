@@ -13,13 +13,17 @@ import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { courseTitle, hasUserPurchased, parseCourseIdParam } from '@/lib/courses'
 import { signInHref } from '@/lib/return-url'
 import type { Product, User } from '@/payload-types'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 import config from '@payload-config'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Kurzus lejátszása',
   description: 'A megvett kurzus videóinak lejátszása.',
-}
+})
 
 interface KurzusaimPlayerPageProps {
   params: Promise<{ id: string }>

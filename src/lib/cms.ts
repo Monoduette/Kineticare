@@ -247,6 +247,8 @@ export const SITEMAP_PRODUCT_SELECT = {
   status: true,
   priceInHUFEnabled: true,
   priceInHUF: true,
+  // A borítókép a sitemap `<image:image>` bejegyzéséhez (depth 1 populálja).
+  coverImage: true,
 } as const
 
 export type SitemapPost = Pick<Post, 'id' | 'slug' | 'updatedAt' | 'status' | 'categories'>
@@ -254,7 +256,7 @@ export type SitemapPost = Pick<Post, 'id' | 'slug' | 'updatedAt' | 'status' | 'c
 export type SitemapProduct = Pick<
   Product,
   'id' | 'slug' | 'updatedAt' | 'status' | 'priceInHUFEnabled' | 'priceInHUF'
->
+> & { coverImage?: Product['coverImage'] }
 
 export async function getSitemapPosts(limit = 500): Promise<SitemapPost[]> {
   return safeQuery(
@@ -287,7 +289,9 @@ export async function getSitemapProducts(limit = 500): Promise<SitemapProduct[]>
         where: PUBLISHED_WHERE,
         limit,
         sort: '-createdAt',
-        depth: 0,
+        // depth 1: a kiválasztott `coverImage` reláció populálva jön (a
+        // sitemap képbejegyzéséhez URL kell, nem id).
+        depth: 1,
         draft: false,
         select: SITEMAP_PRODUCT_SELECT,
         overrideAccess: true,

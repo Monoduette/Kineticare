@@ -16,12 +16,27 @@ import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
 /**
  * sitemap.xml — a Next.js metadata-API generálja (`/sitemap.xml`).
  * `force-dynamic`: a sitemap a CMS-ből épül, ezért NEM generálható build-időben.
- * BENNE VAN
+ *
+ * BENNE VAN: a négy állandó útvonal, a publikált CMS-oldalak (jogi lapok,
+ * tünet-hubok, rólunk, szolgáltatások), a cikkek KANONIKUS címükön, a nem
+ * üres kategória-lapok, a kurzusok slugos címükön (borítóképpel).
+ * NINCS BENNE: noindex/bejelentkezés mögötti/tranzakciós út (a robots.txt
+ * tiltó listája és a `NOINDEX_ROBOTS`-os lapok), átirányító URL, piszkozat.
+ * A Google a sitemapet a KANONIKUS, 200-as, indexelhető URL-ek listájaként
+ * kezeli (Google Search Central, *Build and submit a sitemap*:
+ * https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap);
+ * a `lastModified` csak valós módosítási dátum lehet, különben a Google
+ * figyelmen kívül hagyja (ugyanott, „lastmod”). Képbejegyzés: *Image
+ * sitemaps* (https://developers.google.com/search/docs/crawling-indexing/sitemaps/image-sitemaps).
  */
 export const dynamic = 'force-dynamic'
 
 /** Statikus, mindig létező storefront-útvonalak. */
-const STATIC_ROUTES: ReadonlyArray<{ path: string; priority: number; changeFrequency: 'daily' | 'weekly' | 'monthly' }> = [
+const STATIC_ROUTES: ReadonlyArray<{
+  path: string
+  priority: number
+  changeFrequency: 'daily' | 'weekly' | 'monthly'
+}> = [
   { path: '/', priority: 1, changeFrequency: 'weekly' },
   { path: '/kurzusok', priority: 0.9, changeFrequency: 'weekly' },
   { path: '/blog', priority: 0.8, changeFrequency: 'daily' },
@@ -37,6 +52,26 @@ function lastModified(value: unknown): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
+/** A legkésőbbi dátum egy listából; üres/érvénytelen listánál undefined. */
+function latestDate(values: ReadonlyArray<Date | undefined>): Date | undefined {
+  let latest: Date | undefined
+  for (const value of values) {
+    if (value !== undefined && (latest === undefined || value.getTime() > latest.getTime())) {
+      latest = value
+    }
+  }
+  return latest
+}
+
+/** A populált borítókép abszolút URL-je; id-ként (populálatlanul) vagy üresen undefined. */
+function coverImageUrl(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || !('url' in value)) {
+    return undefined
+  }
+  const url = (value as { url?: unknown }).url
+  return typeof url === 'string' && url.length > 0 ? absoluteUrl(url) : undefined
+}
+
 /** Slug-gal rendelkező dokumentum (üres slug esetén a cím értelmetlen lenne). */
 function hasSlug(doc: { slug?: string | null }): boolean {
   return typeof doc.slug === 'string' && doc.slug.length > 0
@@ -50,11 +85,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     getSitemapProducts(500),
   ])
 
-  const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({
-    url: absoluteUrl(route.path),
-    changeFrequency: route.changeFrequency,
-    priority: route.priority,
-  }))
+  // A statikus utak `lastModified`-ja a mögöttük álló CMS-tartalom VALÓS
+  // módosítási ideje: a `/` és a `/kapcsolat` a saját CMS-oldaláé, a
+  // `/kurzusok` a legfrissebb kurzusé, a `/blog` a legfrissebb cikké.
+  // Ahol nincs ilyen adat, a mező kimarad (kitalált dátum nem kerül ki).
+  const pageUpdatedAt = new Map<string, Date | undefined>(
+    pages.filter(hasSlug).map((page) => [page.slug as string, lastModified(page.updatedAt)]),
+  )
+  const staticLastModified: Readonly<Record<string, Date | undefined>> = {
+    '/': pageUpdatedAt.get(HOME_PAGE_SLUG),
+    '/kapcsolat': pageUpdatedAt.get('kapcsolat'),
+    '/kurzusok': latestDate(products.map((product) => lastModified(product.updatedAt))),
+    '/blog': latestDate(posts.map((post) => lastModified(post.updatedAt))),
+  }
+
+  const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => {
+    const modified = staticLastModified[route.path]
+    return {
+      url: absoluteUrl(route.path),
+      ...(modified ? { lastModified: modified } : {}),
+      changeFrequency: route.changeFrequency,
+      priority: route.priority,
+    }
+  })
 
   // A statikus lista útvonalai (normalizált alakban): amit már felvettünk, azt
   // a CMS-oldalak körében nem szabad MÉGEGYSZER kiírni.
@@ -129,11 +182,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // A kurzus KANONIKUS címe a slug (C3); slug nélküli, régi terméknél marad az
   // id-alapú út — a sitemapbe így sosem kerül átirányított (301-es) URL.
   for (const product of products) {
+    const cover = coverImageUrl(product.coverImage)
     entries.push({
       url: absoluteUrl(courseHref(product)),
       lastModified: lastModified(product.updatedAt),
       changeFrequency: 'weekly',
       priority: 0.9,
+      // Képbejegyzés a borítóképpel, ha van: a Google képkeresője a
+      // sitemapból is felveszi a képet (Image sitemaps).
+      ...(cover ? { images: [cover] } : {}),
     })
   }
 

@@ -66,6 +66,7 @@ describe('sitemap select — a mezőlista pinnelve', () => {
 
   it('a kurzus-lekérdezés PONTOSAN ezeket a mezőket kéri', () => {
     expect(productFields).toEqual([
+      'coverImage',
       'priceInHUF',
       'priceInHUFEnabled',
       'slug',

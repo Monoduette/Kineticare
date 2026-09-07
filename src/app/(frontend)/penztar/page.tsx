@@ -26,13 +26,18 @@ import {
   myCoursePlayerHref,
 } from '@/lib/courses'
 import type { Product, User } from '@/payload-types'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 import config from '../../../payload.config'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Pénztár',
   description: 'A vásárlás befejezése: számlázási adatok és a digitális tartalom elállási joga.',
-}
+  path: '/penztar',
+})
 
 interface PenztarPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

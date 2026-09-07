@@ -1,4 +1,4 @@
-import { absoluteUrl, faqPageJsonLd, SITE_NAME } from './seo'
+import { absoluteUrl, faqPageJsonLd, ORGANIZATION_ID, SITE_NAME, webPageId } from './seo'
 
 /**
  * Tudástár-cikkek strukturált adata (schema.org / YMYL).
@@ -141,6 +141,9 @@ function schemaDateOnly(value: unknown): string | undefined {
 function publisherNode(): Record<string, unknown> {
   return {
     '@type': 'Organization',
+    // Ugyanaz az entitás, mint az oldal-gráf Organization csomópontja
+    // (src/lib/seo.ts ORGANIZATION_ID): a gépi olvasó @id alapján köti össze.
+    '@id': ORGANIZATION_ID,
     name: SITE_NAME,
     url: absoluteUrl('/'),
   }
@@ -263,6 +266,9 @@ export function postArticleJsonLd(args: {
   return {
     '@context': 'https://schema.org',
     '@type': ['Article', 'MedicalWebPage'],
+    // A lap WebPage csomópontja (`siteGraphJsonLd`) a `mainEntity` mezőben
+    // erre az @id-ra hivatkozik.
+    '@id': `${absoluteUrl(path)}#article`,
     headline: post.title,
     ...(description !== undefined ? { description } : {}),
     inLanguage: ARTICLE_LANGUAGE,
@@ -303,6 +309,9 @@ export function cmsPageJsonLd(args: {
   return {
     '@context': 'https://schema.org',
     '@type': 'MedicalWebPage',
+    // UGYANAZ az @id, mint az oldal-gráf WebPage csomópontjáé (…#webpage): a
+    // két script egy entitást ír le, a JSON-LD olvasó @id szerint egyesíti.
+    '@id': webPageId(path),
     name: page.title,
     headline: page.title,
     ...(description !== undefined ? { description } : {}),

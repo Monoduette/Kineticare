@@ -10,13 +10,19 @@ import { RegisterForm } from '@/components/auth/RegisterForm'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl } from '@/lib/return-url'
 import type { User } from '@/payload-types'
+import { buildStaticPageMetadata } from '@/lib/seo'
 
 import config from '../../../payload.config'
 
-export const metadata: Metadata = {
+// INDEXELHETŐ (tulajdonosi döntés, 2026-09-07): a márkás keresés
+// („kineticare belépés”) céllapja; canonical, leírás és megosztási kép a közös
+// építőből. A sitemapben nem szerepel (vékony tartalom), de nincs tiltva.
+export const metadata: Metadata = buildStaticPageMetadata({
   title: 'Regisztráció',
-  description: 'Hozd létre a Kineticare fiókodat: a kurzusaid és a rendeléseid egy helyen.',
-}
+  description:
+    'Regisztrálj a Kineticare oldalán: fiókkal éred el a megvett kézrehabilitációs kurzusokat, a rendeléseidet és a számláidat, egy helyen.',
+  path: '/regisztracio',
+})
 
 interface RegisztracioPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

@@ -4,12 +4,14 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
+import { JsonLd } from '@/components/content/JsonLd'
 import { MediaImage } from '@/components/content/MediaImage'
 import { PageEeat } from '@/components/content/PageEeat'
 import { PostArticle } from '@/components/content/PostArticle'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { hasLexicalContent } from '@/components/lexical/serialize'
 import { RichText } from '@/components/lexical/RichText'
+import { authorPersonOf } from '@/components/content/post-article'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
@@ -27,7 +29,19 @@ import {
 import { HUB_OLDALAK, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
-import { buildPageMetadata } from '@/lib/seo'
+import {
+  absoluteUrl,
+  buildPageMetadata,
+  organizationNode,
+  resolveOgImageUrl,
+  resolveSeoDescription,
+} from '@/lib/seo'
+import {
+  personNodes,
+  serviceNodesFromLayout,
+  siteGraphJsonLd,
+  teamPersonsFromLayout,
+} from '@/lib/seo-graph'
 import type { Post, Product, Testimonial } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +49,8 @@ export const dynamic = 'force-dynamic'
 type Props = { params: Promise<{ slug: string }> }
 
 const pageOf = cache((slug: string, draft: boolean) => getPageBySlug(slug, { draft }))
+/** A hub forrás-cikke (published-szűrt) — a generateMetadata és a lap közös, kérés-idejű lekérdezése. */
+const hubPostOf = cache((cikkSlug: string) => getPostBySlug(cikkSlug))
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
@@ -42,6 +58,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { isEnabled: isDraft } = await draftMode()
   const page = await pageOf(slug, isDraft)
   if (!page) return withDraftRobots({}, isDraft)
+  // Gyökér tünet-hub: a lap a forrás-cikk teljes cikkélményét adja, ezért a
+  // megosztási típusa `article` (published/modified time, szerző), ahogy a
+  // `/blog/[slug]` útvonalon is (ogp.me article: https://ogp.me/#type_article).
+  const hub = HUB_OLDALAK.find((jelolt) => jelolt.slug === slug)
+  const post = hub !== undefined ? await hubPostOf(hub.cikkSlug) : null
+  if (post) {
+    const author = authorPersonOf(post)
+    return withDraftRobots(
+      buildPageMetadata(page, `/${slug}`, {
+        article: {
+          publishedTime: post.publishedAt,
+          modifiedTime: post.updatedAt,
+          ...(author !== null ? { authors: [author.name] } : {}),
+        },
+      }),
+      isDraft,
+    )
+  }
   return withDraftRobots(buildPageMetadata(page, `/${slug}`), isDraft)
 }
 
@@ -71,7 +105,7 @@ export default async function CmsPage({ params }: Props) {
   // nélkül. A cikk maga published-szűrt: a hub a publikált cikk tükre.
   const hub = HUB_OLDALAK.find((jelolt) => jelolt.slug === slug)
   if (hub !== undefined) {
-    const post = await getPostBySlug(hub.cikkSlug)
+    const post = await hubPostOf(hub.cikkSlug)
     if (post) {
       const [related, freeCourse, publikaltOldalak] = await Promise.all([
         getRelatedPosts(post),
@@ -90,6 +124,24 @@ export default async function CmsPage({ params }: Props) {
       return (
         <>
           {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
+          {/* Oldal-gráf: Organization + WebSite + WebPage. A cikk-csomópontot
+              (Article + MedicalWebPage, @id …#article) és a morzsát a
+              PostArticle rendereli — a WebPage `mainEntity`/`breadcrumb`
+              mezője @id-vel hivatkozik rájuk, nem írja le kétszer. */}
+          <JsonLd
+            data={siteGraphJsonLd({
+              page: {
+                path: `/${slug}`,
+                name: post.title,
+                description: resolveSeoDescription(post),
+                imageUrl: resolveOgImageUrl(post),
+                datePublished: post.publishedAt,
+                dateModified: post.updatedAt,
+                mainEntityId: `${absoluteUrl(`/${slug}`)}#article`,
+              },
+              breadcrumbRef: true,
+            })}
+          />
           <PostArticle
             freeCourse={freeCourse}
             hubUtvonalak={hubUtvonalak}
@@ -131,7 +183,9 @@ export default async function CmsPage({ params }: Props) {
   // gyökér-cím). Lekérdezés csak akkor fut, ha van egyáltalán szekciósor.
   const hubUtvonalak = hasLayout
     ? hubUtvonalTerkep(
-        posts.map((post) => post.slug).filter((postSlug): postSlug is string => typeof postSlug === 'string'),
+        posts
+          .map((post) => post.slug)
+          .filter((postSlug): postSlug is string => typeof postSlug === 'string'),
         await getPublishedPageSlugs(),
       )
     : {}
@@ -142,9 +196,47 @@ export default async function CmsPage({ params }: Props) {
   // elv, mint a fenti három listánál.
   const appointment = await getAppointmentSectionContext(layout)
 
+  // Oldal-gráf (src/lib/seo-graph.ts): Organization + WebSite + WebPage +
+  // BreadcrumbList (Kezdőlap → lap). A /rolunk AboutPage, a két szakember
+  // Person-ként a csapat-blokkból (Google *Organization* / schema.org
+  // AboutPage: https://schema.org/AboutPage); a /szolgaltatasok a services-
+  // blokk sorait Service-ként hirdeti. A PageEeat MedicalWebPage-csomópontja
+  // ugyanazt az @id-t viseli (…#webpage), így a két script EGY entitást ír le.
+  const persons = slug === 'rolunk' ? teamPersonsFromLayout(rawLayout) : []
+  const services = slug === 'szolgaltatasok' ? serviceNodesFromLayout(rawLayout, `/${slug}`) : []
+  const siteGraph = siteGraphJsonLd({
+    page: {
+      path: `/${slug}`,
+      name: page.title,
+      // Film-hero mellett a szöveges bevezető (excerpt) NEM látszik a lapon,
+      // ezért a séma leírása ilyenkor csak a seoDescription lehet (a
+      // strukturált adat a látható tartalmat írja le).
+      description: hasFilmHero
+        ? resolveSeoDescription({ title: page.title, seoDescription: page.seoDescription })
+        : resolveSeoDescription(page),
+      ...(slug === 'rolunk' ? { type: 'AboutPage' } : {}),
+      imageUrl: resolveOgImageUrl(page),
+      datePublished: page.publishedAt,
+      dateModified: page.updatedAt,
+    },
+    breadcrumbs: [
+      { name: 'Kezdőlap', path: '/' },
+      { name: page.title, path: `/${slug}` },
+    ],
+    ...(persons.length > 0
+      ? {
+          organization: organizationNode({
+            founder: personNodes(persons).map((node) => ({ '@id': node['@id'] })),
+          }),
+        }
+      : {}),
+    nodes: [...personNodes(persons), ...services],
+  })
+
   return (
     <>
       {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
+      <JsonLd data={siteGraph} />
       <article className="kc-cms-page">
         {hasFilmHero ? null : (
           <>

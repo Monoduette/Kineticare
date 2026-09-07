@@ -3,7 +3,9 @@ import { draftMode } from 'next/headers'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { cache } from 'react'
 
+import { JsonLd } from '@/components/content/JsonLd'
 import { PostArticle } from '@/components/content/PostArticle'
+import { authorPersonOf } from '@/components/content/post-article'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import {
   getFreeProduct,
@@ -13,7 +15,8 @@ import {
   getRelatedPosts,
 } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
-import { buildPageMetadata } from '@/lib/seo'
+import { absoluteUrl, buildPageMetadata, resolveOgImageUrl, resolveSeoDescription } from '@/lib/seo'
+import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { hubSlugForPost, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 /**
@@ -43,7 +46,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { isEnabled: isDraft } = await draftMode()
   const post = await postOf(slug, isDraft)
   if (!post) return withDraftRobots({}, isDraft)
-  return withDraftRobots(buildPageMetadata(post, `/blog/${slug}`), isDraft)
+  // Cikk: `og:type=article` + article:published_time / modified_time /
+  // author (ogp.me article objektum, https://ogp.me/#type_article). A szerző
+  // a látható byline neve; populálatlan szerzőnél nincs author-meta.
+  const author = authorPersonOf(post)
+  return withDraftRobots(
+    buildPageMetadata(post, `/blog/${slug}`, {
+      article: {
+        publishedTime: post.publishedAt,
+        modifiedTime: post.updatedAt,
+        ...(author !== null ? { authors: [author.name] } : {}),
+      },
+    }),
+    isDraft,
+  )
 }
 
 export default async function BlogPostPage({ params }: Props) {
@@ -79,6 +95,23 @@ export default async function BlogPostPage({ params }: Props) {
   return (
     <>
       {isDraft ? <PreviewBar path={`/blog/${slug}`} /> : null}
+      {/* Oldal-gráf: Organization + WebSite + WebPage; a cikk-csomópontot
+          (@id …#article) és a morzsát a PostArticle adja, a WebPage @id-vel
+          hivatkozik rájuk (mainEntity, breadcrumb). */}
+      <JsonLd
+        data={siteGraphJsonLd({
+          page: {
+            path: `/blog/${slug}`,
+            name: post.title,
+            description: resolveSeoDescription(post),
+            imageUrl: resolveOgImageUrl(post),
+            datePublished: post.publishedAt,
+            dateModified: post.updatedAt,
+            mainEntityId: `${absoluteUrl(`/blog/${slug}`)}#article`,
+          },
+          breadcrumbRef: true,
+        })}
+      />
       <PostArticle
         freeCourse={freeCourse}
         hubUtvonalak={hubUtvonalak}

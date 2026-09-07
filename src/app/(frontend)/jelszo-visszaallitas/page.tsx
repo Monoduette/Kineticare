@@ -6,11 +6,16 @@ import { Section } from '@/components/ui/Section'
 import { ResetPasswordForm } from '@/components/auth/ResetPasswordForm'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { DEFAULT_AUTH_RETURN_URL, forgotPasswordHref, sanitizeReturnUrl } from '@/lib/return-url'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Új jelszó beállítása',
   description: 'Állíts be új jelszót a visszaállító linkkel.',
-}
+  path: '/jelszo-visszaallitas',
+})
 
 interface ResetPasswordPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

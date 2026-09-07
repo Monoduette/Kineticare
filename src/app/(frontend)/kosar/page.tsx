@@ -19,13 +19,18 @@ import {
   myCoursePlayerHref,
 } from '@/lib/courses'
 import type { Product, User } from '@/payload-types'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
 import config from '../../../payload.config'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Kosár',
   description: 'A kosarad tartalma: ellenőrizd a tételeket, és menj tovább a fizetéshez.',
-}
+  path: '/kosar',
+})
 
 interface KosarPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

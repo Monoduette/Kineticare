@@ -6,11 +6,16 @@ import { Section } from '@/components/ui/Section'
 import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
 import { isMyCoursePlayerHref } from '@/lib/courses'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl, signInHref } from '@/lib/return-url'
+import { buildPrivatePageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+// Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
+// (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
+// tartja ki az indexből; Google *Block Search indexing with noindex*).
+export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Elfelejtett jelszó',
   description: 'Kérj jelszó-visszaállító linket az e-mail-címedre.',
-}
+  path: '/elfelejtett-jelszo',
+})
 
 interface ElfelejtettJelszoPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>

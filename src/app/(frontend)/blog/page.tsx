@@ -16,7 +16,8 @@ import {
   getPublishedPageSlugs,
   getPublishedProducts,
 } from '@/lib/cms'
-import { blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { absoluteUrl, blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { categoriesWithPosts, freeCourseHref } from '@/lib/tudastar'
 import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
@@ -30,8 +31,19 @@ import '../styles/blocks/tudastar-lista.css'
 
 export const dynamic = 'force-dynamic'
 
-const LEAD =
-  'Kézrehabilitációs cikkek, gyakorlatok és szakmai tudástár a Kineticare-től.'
+const LEAD = 'Kézrehabilitációs cikkek, gyakorlatok és szakmai tudástár a Kineticare-től.'
+
+/**
+ * A meta description a látható lead MONDATÁVAL kezd (egy igazságforrás), és a
+ * Tudástár MÉRT témáival folytatja (`src/lib/tudastar/seo-kulcsszavak.ts`,
+ * mérés 2026-08-21/24, `docs/ADATOK-mert.md`): kéz zsibbadás 450/hó (forgalmi potenciál 2 200),
+ * kéztőalagút szindróma 1 200/hó, teniszkönyök 3 500/hó, pattanó ujj 800/hó
+ * (KD 0), ínhüvelygyulladás 2 200/hó. 120–160 karakter, hogy a találati
+ * snippet ne vágja (Google *Control your snippets*:
+ * https://developers.google.com/search/docs/appearance/snippet).
+ */
+const BLOG_DESCRIPTION =
+  'Kézrehabilitációs cikkek és gyakorlatok a Kineticare Tudástárában: kéz zsibbadás, kéztőalagút szindróma, teniszkönyök, pattanó ujj, ínhüvelygyulladás.'
 
 type Props = { searchParams: Promise<{ kategoria?: string }> }
 
@@ -48,7 +60,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const { kategoria } = await searchParams
   return buildStaticPageMetadata({
     title: 'Tudástár',
-    description: LEAD,
+    description: BLOG_DESCRIPTION,
     path: await canonicalPathFor(kategoria),
   })
 }
@@ -109,15 +121,35 @@ export default async function BlogPage({ searchParams }: Props) {
             mutat, és ott az a lap viseli a saját sémáját. Így ugyanaz a
             gyűjtemény nem íródik le kétszer, két URL-lel. */}
         {filtered ? null : (
-          <JsonLd
-            data={blogJsonLd({
-              name: 'Tudástár',
-              description: LEAD,
-              path: '/blog',
-              posts,
-              hubUtvonalak,
-            })}
-          />
+          <>
+            {/* Oldal-gráf: Organization + WebSite + CollectionPage +
+                BreadcrumbList (Kezdőlap → Tudástár). A CollectionPage
+                `mainEntity`-je az alábbi Blog csomópont (@id …#blog). */}
+            <JsonLd
+              data={siteGraphJsonLd({
+                page: {
+                  path: '/blog',
+                  name: 'Tudástár',
+                  description: BLOG_DESCRIPTION,
+                  type: 'CollectionPage',
+                  mainEntityId: `${absoluteUrl('/blog')}#blog`,
+                },
+                breadcrumbs: [
+                  { name: 'Kezdőlap', path: '/' },
+                  { name: 'Tudástár', path: '/blog' },
+                ],
+              })}
+            />
+            <JsonLd
+              data={blogJsonLd({
+                name: 'Tudástár',
+                description: LEAD,
+                path: '/blog',
+                posts,
+                hubUtvonalak,
+              })}
+            />
+          </>
         )}
         {/* BreadcrumbList SZÁNDÉKOSAN nincs: a Tudástár maga a szekció
             gyökere, és egy egyelemű morzsa nem hordoz információt. A
