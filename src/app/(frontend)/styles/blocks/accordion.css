@@ -44,6 +44,9 @@
   --kc-accordion-muted: var(--kc-color-text-muted);
   --kc-accordion-rule: var(--kc-color-border);
   --kc-accordion-accent-text: var(--kc-color-primary);
+  /* Nyitás-átmenet ideje: --kc-motion-base × 1,4 = 280 ms (a 240–320 ms-es
+     sáv közepe; lásd a „Nyitás-átmenet" szakaszt a fájl végén). */
+  --kc-accordion-motion-open: calc(var(--kc-motion-base) * 1.4);
 }
 
 /* Sötétkék sáv: fehér 15,63:1, accent-quiet 8,49:1 az inken — az accent-deep
@@ -102,6 +105,8 @@
 
 .kc-accordion__summary {
   display: flex;
+  /* A forgó nyitó-jel függőleges szára abszolút áll a sor végén. */
+  position: relative;
   /* 44px érintési célfelület (UX-skill 3. pont). */
   min-height: 2.75rem;
   align-items: center;
@@ -184,19 +189,47 @@
   color: var(--kc-accordion-accent-text);
 }
 
-/* Dekoratív +/− jel: az állapotot a details/summary maga közli. Méretet NEM
-   ír: a sor törzsméretét (M) örökli — a jel nem tipográfiai szint. */
+/* ---- Dekoratív +/− jel, FORGÓ szárral (WP27) -----------------------------
+   Az állapotot a details/summary maga közli; a jel nem tipográfiai szint és
+   nem szöveg: két 2 px-es vonal (border, nem háttér — a summary-sor egyetlen
+   háttér-deklarációja a transparent marad, fájl-szintű őr). A vízszintes
+   szár (::after) flex-tétel a sor végén; a függőleges szár (::before)
+   abszolút, ugyanarra a középpontra, és NYITVA 90°-ot fordul a vízszintesre:
+   a „+" a szemünk előtt lesz „−", nem cserélődik ki egy képkockában.
+   Karakter-alapú (+ → −) csere nem animálható; a forgó szár a Material 3
+   „expand/collapse" ikon-átmenete és a Polaris Collapsible mintája.
+   - Material 3 Motion, transitions (icon state change):
+     https://m3.material.io/styles/motion/transitions/transition-patterns
+   - Shopify Polaris, Collapsible: https://polaris.shopify.com/components/utilities/collapsible
+   - WCAG 2.2 SC 2.3.3 Animation from Interactions: reduce alatt a forgás
+     kikapcsol (lásd a fájl végét).
+   MÉRET: 0,75em a sor M-es betűméretén (12 px), a 2 px-es vonal a repó
+   ikon-vonalvastagsága (hamburger, caret). A vonal színe a halk szövegszín;
+   nem-szöveges elem, ezért 3:1 a mérce (SC 1.4.11), regisztrálva a
+   gomb-kontraszt őrben (`kc-accordion__summary::after`). */
 .kc-accordion__summary::after {
-  content: '+';
+  content: '';
   flex: 0 0 auto;
-  width: 1ch;
-  line-height: 1;
-  text-align: center;
-  color: var(--kc-accordion-muted);
+  width: 0.75em;
+  height: 0;
+  border-top: 2px solid var(--kc-accordion-muted);
 }
 
-.kc-accordion__item[open] .kc-accordion__summary::after {
-  content: '\2212';
+.kc-accordion__summary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  /* A vízszintes szár közepe: jobb belső térköz + a szár fele. */
+  inset-inline-end: calc(var(--kc-space-2) + 0.375em);
+  width: 0;
+  height: 0.75em;
+  border-left: 2px solid var(--kc-accordion-muted);
+  transform: translate(50%, -50%) rotate(0deg);
+  transition: transform var(--kc-accordion-motion-open) var(--kc-ease-out);
+}
+
+.kc-accordion__item[open] .kc-accordion__summary::before {
+  transform: translate(50%, -50%) rotate(90deg);
 }
 
 /* ---- Lenyitott tartalom -------------------------------------------------- */
@@ -240,5 +273,102 @@
   .kc-accordion__portrait {
     width: 3rem;
     height: 3rem;
+  }
+}
+
+/* ---- Nyitás-átmenet (WP27, 2026-09-07) --------------------------------------
+   TULAJDONOSI HIBAJELZÉS: „ahogy kinyitom a dobozt, nagyon hirtelen; becsukáskor
+   van valami animáció." MÉRVE (Chromium 141, 1440×900, /rolunk, első sor): a
+   közös motion.css 200 ms-os `--kc-ease-out` (0.2, 0.8, 0.2, 1) átmenete a
+   4973 px magas panelt az ELSŐ képkockában (20 ms) 1656 px-re nyitotta: a
+   900 px-es nézetablak egyetlen képkocka alatt megtelt, a nyitás ezért
+   ugrásnak látszott. Csukáskor ugyanez a görbe a végén lassul, az látszott.
+   A nyitó irány ezért ITT, a szekció saját lapján kap külön szabályt (a
+   közös motion.css marad a többi nyitható szakasz alapja):
+   - 280 ms (`--kc-accordion-motion-open`), a Material 3 „medium" sávja
+     (250–400 ms, nagyobb felület kinyílása) alja és a NN/g 100–500 ms-es
+     ajánlása közepe; a csukás marad a mai 200 ms (Material: a kilépés
+     rövidebb, mint a belépés).
+   - A magasság görbéje a Material 3 „standard" (0.4, 0, 0.2, 1): lassan
+     indul, ezért az első képkockák csak néhány tucat px-t nyitnak, a szem
+     követni tudja; a `--kc-ease-out` (gyors indulás) itt mérve pont a hibát
+     adta. Az áttűnés és a jel forgása marad `--kc-ease-out`.
+   - A tartalom ÁTTŰNIK (opacity 0 → 1) a magasság mellett: a nagy panelnél a
+     magasság-animáció önmagában nem látszik, az áttűnés adja a folytonosságot.
+   Források:
+   - MDN <details> és ::details-content:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/::details-content
+   - Chrome for Developers, Animating details (interpolate-size, ::details-content):
+     https://developer.chrome.com/docs/css-ui/animate-to-height-auto
+   - Material 3 Motion, easing and duration tokens (standard easing, medium
+     duration): https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+   - NN/g, Executing UX Animations: Duration and Motion Characteristics
+     (100–500 ms): https://www.nngroup.com/articles/animation-duration/
+   - WCAG 2.2 SC 2.3.3 Animation from Interactions:
+     https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html
+   A szelektor szándékosan egy osztállyal specifikusabb a motion.css-énél
+   (`.kc-accordion .kc-accordion__item`), hogy az importsorrendtől függetlenül
+   ez nyerjen. A `content-visibility` diszkrét átmenete (allow-discrete) a
+   csukáshoz KELL, különben a tartalom a záráskor azonnal eltűnne. */
+@supports (interpolate-size: allow-keywords) and selector(::details-content) {
+  .kc-accordion .kc-accordion__item::details-content {
+    overflow: hidden;
+    block-size: 0;
+    opacity: 0;
+    transition:
+      block-size var(--kc-motion-base) var(--kc-ease-out),
+      opacity var(--kc-motion-fast) var(--kc-ease-out),
+      content-visibility var(--kc-motion-base) allow-discrete;
+  }
+
+  .kc-accordion .kc-accordion__item[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+    transition:
+      block-size var(--kc-accordion-motion-open) cubic-bezier(0.4, 0, 0.2, 1),
+      opacity var(--kc-accordion-motion-open) var(--kc-ease-out),
+      content-visibility var(--kc-accordion-motion-open) allow-discrete;
+  }
+}
+
+/* TARTALÉK (Safari, Firefox: nincs interpolate-size): a magasság natívan,
+   azonnal nyílik, de a tartalom nem villan be: JS nélküli, egyirányú
+   áttűnés + 4 px-es feljebb-úszás a panelen, 280 ms. A csukás ott natív
+   (azonnali). */
+@supports not (interpolate-size: allow-keywords) {
+  @keyframes kc-accordion-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .kc-accordion__item[open] .kc-accordion__panel {
+    animation: kc-accordion-panel-in var(--kc-accordion-motion-open) var(--kc-ease-out) both;
+  }
+}
+
+/* CSÖKKENTETT MOZGÁS: se magasság-, se áttűnés-, se forgás-átmenet, se
+   tartalék-animáció; a details natívan, azonnal nyílik és csukódik. A
+   base.css 0,01 ms-es globális rövidítése mellett itt a kezdőállapot is
+   végállapot (opacity 1), hogy egy képkockányi áttetszőség se legyen. */
+@media (prefers-reduced-motion: reduce) {
+  .kc-accordion .kc-accordion__item::details-content,
+  .kc-accordion .kc-accordion__item[open]::details-content {
+    opacity: 1;
+    transition: none;
+  }
+
+  .kc-accordion__summary::before {
+    transition: none;
+  }
+
+  .kc-accordion__item[open] .kc-accordion__panel {
+    animation: none;
   }
 }

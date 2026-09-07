@@ -302,6 +302,53 @@ const PAROK: readonly Par[] = [
     '1.4.3',
   ),
 
+  // --- WP25: a szolgáltatás-sín kéz-ikonjai (Phosphor, currentColor kitöltés) ---
+  // Az ikon a kör állapotszínét örökli: inaktívan help-chrome a FEHÉR körön
+  // (a marker háttere --kc-services-fade = white), hoverre help-ink a fehéren,
+  // aktívan on-dark a help-ink (surface-dark alias) körön. Nem-szöveges
+  // grafika → SC 1.4.11 (3:1); az aktív fehér az inken a kiírás szerint a
+  // 4,5:1-es szöveg-küszöböt is hozza (14,32:1).
+  p(
+    'kc-services-sin__marker svg',
+    'inaktív: chrome a fehér körön',
+    SZIN('help-chrome'),
+    SZIN('white'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-services-sin__marker svg',
+    'hover: ink a fehér körön',
+    SZIN('help-ink'),
+    SZIN('white'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-services-sin__marker svg',
+    'aktív: fehér a help-ink körön',
+    SZIN('on-dark'),
+    SZIN('help-ink'),
+    4.5,
+    '1.4.11',
+  ),
+  p(
+    'kc-services-sin__marker',
+    'inaktív gyűrű a help-paperen',
+    SZIN('help-chrome'),
+    SZIN('help-paper'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-services-sin__marker',
+    'inaktív gyűrű a help-panelen',
+    SZIN('help-chrome'),
+    SZIN('help-panel'),
+    3,
+    '1.4.11',
+  ),
+
   // --- AUDIT-D: a lejátszó hibapaneljének mentőgombjai a sötét videó-felületen ---
   // A javítás előtt a felirat ÉS a 2 px-es keret is ink volt az ink felületen
   // (1,00:1): videóhiba esetén a fizető vevő nem látta az „Újrapróbálom”, az
@@ -384,6 +431,54 @@ const PAROK: readonly Par[] = [
     SZIN('paper'),
     4.5,
     '1.4.3',
+  ),
+
+  // --- WP27: a fejléc profil-IKONJA a „Belépés” szöveglink helyén (nem
+  //     szöveges elem, SC 1.4.11: a 2 px-es vonal a fátyol minden állásán,
+  //     belső oldalon és a hover tint-rétegen is ≥ 3:1) ---
+  p('kc-account-nav__icon', 'ink a filmen (veil 0)', SZIN('ink'), filmFejlec(0), 3, '1.4.11'),
+  p(
+    'kc-account-nav__icon',
+    'ink a fagyott filmen (veil 1)',
+    SZIN('ink'),
+    filmFejlec(1),
+    3,
+    '1.4.11',
+  ),
+  p('kc-account-nav__icon', 'ink a paperen (belső oldal)', SZIN('ink'), SZIN('paper'), 3, '1.4.11'),
+  p(
+    'kc-account-nav__link--icon:hover',
+    'accent-deeper ikon a tint állapotrétegen',
+    SZIN('accent-deeper'),
+    SZIN('surface-tint'),
+    3,
+    '1.4.11',
+  ),
+
+  // --- WP27: a harmonika forgó +/− jele — vonal, nem karakter (SC 1.4.11) ---
+  p(
+    'kc-accordion__summary::after',
+    'halk vonal / paper',
+    SZIN('text-muted'),
+    SZIN('bg'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-accordion__summary::after',
+    'halk vonal / tint sáv',
+    SZIN('text-muted'),
+    SZIN('surface-tint'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-accordion__summary::after',
+    'halk vonal / sötét sáv',
+    SZIN('on-dark-muted'),
+    SZIN('surface-dark'),
+    3,
+    '1.4.11',
   ),
 
   // --- B7: a film-hero fókuszgyűrűjének MINDKÉT éle ---

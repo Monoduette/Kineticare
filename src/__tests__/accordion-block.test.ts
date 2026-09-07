@@ -486,4 +486,68 @@ describe('accordion.css szabály-őrök', () => {
     expect(css).toContain('list-style: none')
     expect(css).toContain('.kc-accordion__summary::-webkit-details-marker')
   })
+
+  /**
+   * WP27 (2026-09-07, tulajdonosi hibajelzés: „ahogy kinyitom a dobozt, nagyon
+   * hirtelen"). A +/− jel két VONAL (border), a függőleges szár nyitva 90°-ot
+   * fordul; karakter-csere (+ → −) nem animálható. A vonal nem háttér: a
+   * summary-sor egyetlen háttér-deklarációja a transparent marad (fenti őr).
+   */
+  it('a +/− jel két vonal, a függőleges szár nyitva 90°-ot fordul (nem karakter-csere)', () => {
+    const kod = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(kod).not.toMatch(/content:\s*'\+'/)
+    expect(kod).not.toMatch(/content:\s*'\\2212'/)
+    const utan = kod.slice(kod.indexOf('.kc-accordion__summary::after {'))
+    expect(utan.slice(0, utan.indexOf('}'))).toContain('border-top: 2px solid')
+    const elott = kod.slice(kod.indexOf('.kc-accordion__summary::before {'))
+    expect(elott.slice(0, elott.indexOf('}'))).toContain('border-left: 2px solid')
+    expect(elott.slice(0, elott.indexOf('}'))).toContain(
+      'transition: transform var(--kc-accordion-motion-open) var(--kc-ease-out)',
+    )
+    expect(kod).toMatch(
+      /\.kc-accordion__item\[open\] \.kc-accordion__summary::before \{[^}]*rotate\(90deg\)/,
+    )
+  })
+
+  /**
+   * A NYITÓ irány a szekció saját szabálya: mérve a közös 200 ms-os ease-out
+   * az első képkockában a nézetablaknyi tartalmat nyitotta (ugrás). Itt 280 ms
+   * (--kc-motion-base × 1,4, a 240–320 ms-es sáv közepe), Material 3 standard
+   * görbe a magasságon, áttűnés a tartalmon; a csukás marad 200 ms. A szabály
+   * @supports mögött áll (natív tartalék), a nem támogató böngésző JS nélküli
+   * áttűnést kap, és reduce alatt SEMMI nem animál (WCAG 2.2 SC 2.3.3).
+   */
+  it('a nyitás 280 ms-os saját átmenet, tartalékkal, reduce alatt kikapcsolva', () => {
+    const kod = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(kod).toContain('--kc-accordion-motion-open: calc(var(--kc-motion-base) * 1.4)')
+    const tamogatas = kod.indexOf(
+      '@supports (interpolate-size: allow-keywords) and selector(::details-content)',
+    )
+    expect(tamogatas).toBeGreaterThanOrEqual(0)
+    const nyitva = kod.slice(
+      kod.indexOf('.kc-accordion .kc-accordion__item[open]::details-content {'),
+    )
+    expect(nyitva.indexOf('{')).toBeGreaterThanOrEqual(0)
+    const nyitvaTorzs = nyitva.slice(0, nyitva.indexOf('}'))
+    expect(nyitvaTorzs).toContain('block-size: auto')
+    expect(nyitvaTorzs).toContain('opacity: 1')
+    expect(nyitvaTorzs).toContain(
+      'block-size var(--kc-accordion-motion-open) cubic-bezier(0.4, 0, 0.2, 1)',
+    )
+    // A csukáshoz kötelező diszkrét átmenet mindkét állapoton ott van.
+    expect(nyitvaTorzs).toContain(
+      'content-visibility var(--kc-accordion-motion-open) allow-discrete',
+    )
+    expect(kod).toContain('content-visibility var(--kc-motion-base) allow-discrete')
+    // Tartalék: nem támogató böngészőn egyirányú áttűnés, JS nélkül.
+    const tartalek = kod.slice(kod.indexOf('@supports not (interpolate-size: allow-keywords)'))
+    expect(tartalek).toContain('@keyframes kc-accordion-panel-in')
+    expect(tartalek).toContain('.kc-accordion__item[open] .kc-accordion__panel')
+    // Csökkentett mozgás: átmenet és animáció nélkül, a kezdőállapot is látható.
+    const csokkentett = kod.slice(kod.indexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(csokkentett).toContain('transition: none')
+    expect(csokkentett).toContain('animation: none')
+    expect(csokkentett).toContain('opacity: 1')
+    expect(csokkentett).toContain('.kc-accordion__summary::before')
+  })
 })
