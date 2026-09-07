@@ -256,6 +256,29 @@ describe('kezdolapRolunkUjSzoveg — a seed-builderből', () => {
 })
 
 describe('alkalmazKezdolapRolunkSzoveg', () => {
+  it('az élő „A Kineticare alapítói” című (fríz-es) blokkot is cseréli, és a későbbi, közös című duplikátumot elrejti', () => {
+    const alapitok = { ...regiBlokk(), id: 'ab-founders', title: 'A Kineticare alapítói' }
+    const kesobbi = { ...regiBlokk(), id: 'ab-late', title: REGI_KEZDOLAP_ROLUNK_CIM }
+    const layout: Szekcio[] = [heroSzekcio(), alapitok, kurzusSzekcio('Kurzusaink'), kesobbi]
+    const eredmeny = alkalmazKezdolapRolunkSzoveg({ layout, ujSzoveg: kezdolapRolunkUjSzoveg() })
+    expect(eredmeny.modositasok).toHaveLength(3)
+    const elso = eredmeny.layout?.[1]
+    const masodik = eredmeny.layout?.[3]
+    if (elso?.blockType !== 'about' || masodik?.blockType !== 'about') throw new Error('about')
+    expect(elso.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(elso.sectionSettings?.visible).toBe(true)
+    expect(masodik.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(masodik.sectionSettings?.visible).toBe(false)
+    expect(masodik.sectionSettings?.hatter).toBe('feher')
+    // Idempotens: második futásban nincs több módosítás.
+    const ujra = alkalmazKezdolapRolunkSzoveg({
+      layout: eredmeny.layout ?? [],
+      ujSzoveg: kezdolapRolunkUjSzoveg(),
+    })
+    expect(ujra.modositasok).toHaveLength(0)
+    expect(ujra.layout).toBeNull()
+  })
+
   const regiBlokk = (): Extract<Szekcio, { blockType: 'about' }> => ({
     blockType: 'about',
     id: 'ab-1',
