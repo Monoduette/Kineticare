@@ -201,6 +201,44 @@ main > .kc-film-hero:first-of-type {
   }
 }
 
+/* SÜTI-SÁV A HERO ALATT, MOBILON (WP19, audit P1-1). A sáv `position: fixed`
+   (consent-banner.css), a hero-tábla pedig a nézetablak aljára zárja a
+   szöveget, ezért 390×844-en a két gomb (667–780 px) a sáv (600–844 px) ALÁ
+   került: az első képernyő fő hívása kattinthatatlan volt. Amíg a sáv látszik
+   (`.kc-has-consent-banner` a gyökéren, a sáv MÉRT magassága a
+   `--kc-consent-offset`-ben), a tábla alsó belső térköze a sáv magasságával nő,
+   és a rövid-nézet tömörebb ritmusa lép életbe, hogy a szöveg a sáv fölött is
+   elférjen. Ez a GOV.UK süti-sáv elvének (a sáv nem takarhat tartalmat, SC
+   2.4.11 miatt tilos a fixed pozíció) lebegő sávra átültetett, mért változata:
+   a sáv és a hívás nem fedheti egymást.
+   GOV.UK Design System, Cookie banner:
+   https://design-system.service.gov.uk/components/cookie-banner/
+   WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum), a „sticky cookie banner”
+   példa és a scroll-padding-jellegű térköz mint javasolt megoldás:
+   https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html */
+@media (max-width: 860px) {
+  .kc-has-consent-banner .kc-film-hero .scroll-scrub__chapter-pin {
+    padding-top: calc(3.5rem + var(--kc-space-2));
+    padding-bottom: calc(
+      var(--kc-space-4) + env(safe-area-inset-bottom) + var(--kc-consent-offset, 0px)
+    );
+  }
+
+  .kc-has-consent-banner .kc-film-hero .scroll-scrub__title {
+    line-height: var(--kc-leading-board);
+  }
+
+  .kc-has-consent-banner .kc-film-hero .scroll-scrub__body,
+  .kc-has-consent-banner .kc-film-hero .scroll-scrub__tags,
+  .kc-has-consent-banner .kc-film-hero .scroll-scrub__actions {
+    margin-top: var(--kc-space-2);
+  }
+
+  .kc-has-consent-banner .kc-film-hero .kc-film-hero__cta {
+    padding-block: var(--kc-space-2);
+  }
+}
+
 /* Nagyon alacsony nézetben a szöveg természetesen görgethető marad;
    a film sticky vászna és a feliratok időzítése változatlan. */
 @media (max-width: 860px) and (max-height: 480px) {

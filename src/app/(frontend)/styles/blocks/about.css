@@ -75,25 +75,49 @@
     grid-row: 1;
   }
 
-  /* FÜGGŐLEGES ELOSZTÁS (tulajdonosi kérés, 2026-09-07: „a szöveg a bal
-     oldalon esztétikusabban elosztva"). Mérve a változás előtt: a /rolunk
-     táblán 1440 px-en a szöveghasáb 473 px, a fotó 708 px, a hasáb alsó
-     harmada (235 px, 33%) üres, a fej-szöveg-kiemelés egymásra tolva.
-     A hasáb a rács sorát kitölti (align-self: stretch), és a három csoport
-     (fej: eyebrow + cím; törzs: bekezdések; láb: kiemelés) a magasságban
-     oszlik el: a fej felül, a láb alul, a törzs középen. Az NN/g szerint a
-     térköz aktív eszköz: a csoportok KÖZÖTTI nagyobb, a csoportokon BELÜLI
-     kisebb köz mondja meg, mi tartozik össze (proximity), és a szem így
-     látja a hierarchiát (https://www.nngroup.com/videos/whitespace/,
-     https://www.nngroup.com/articles/gestalt-proximity/). A csoporton
-     belüli margók változatlanok, tehát ahol a szöveg magasabb a képnél
-     (keskeny desktop), az elrendezés a korábbi folyó alak marad. */
+  /* RAGADÓ KÉPHASÁB (WP18). Ha a szerkesztő hosszabb bemutatkozást ír (mérve
+     hét bekezdéssel: a szöveg 1440 px-en 1203 px, a 2×2 fríz 556 px, a
+     /rolunk fotója 708 px), a képhasáb alatt 500-650 px üres maradna. A
+     képhasáb ezért a görgetéssel együtt marad a nézetben, amíg a szöveg
+     elfogy; a mai kétbekezdéses szövegnél (505 px) nincs mit ragasztani, a
+     szabály semleges. (position:
+     sticky; a rács sorában felül igazítva, különben a stretch miatt nincs
+     mihez képest ragadnia). A minta a Material 3 „supporting pane"
+     elrendezésé: a mellékes tartalom (kép) a fő tartalom (szöveg) mellett,
+     saját görgetéssel; és az NN/g szerint a valódi arcok a bizalmi elem,
+     tehát maradjanak látótérben, amíg a történetet olvassák.
+       https://developer.android.com/develop/ui/compose/layouts/adaptive/canonical-layouts
+       https://developer.mozilla.org/en-US/docs/Web/CSS/position#sticky
+       https://www.nngroup.com/articles/photos-as-web-content/
+     A tető-eltolás a fejléc magassága + egy space-5, hogy a ragadó kép ne
+     bújjon a rögzített fejléc alá. Nem mozgás (nincs animáció), ezért a
+     csökkentett mozgástól független; 900 px alatt (egy hasáb) nem él. */
+  .kc-about--founders .kc-photo-frieze,
+  .kc-about--paired .kc-about__figure {
+    position: sticky;
+    top: calc(var(--kc-header-height) + var(--kc-space-5));
+    align-self: start;
+  }
+
+  /* TERMÉSZETES FOLYÁS, FELÜL IGAZÍTVA (WP18, 2026-09-07). A korábbi
+     `justify-content: space-between` a fej, a törzs és a láb közé a hasáb
+     maradék magasságát osztotta szét: 1440 px-en a rések 106 px-re nőttek,
+     ami már nem csoportosít, hanem szétszakít (NN/g whitespace: a térköz
+     akkor jelent valamit, ha a közelség mondja meg, mi tartozik össze, nem
+     a maradék; https://www.nngroup.com/videos/whitespace/,
+     https://www.nngroup.com/articles/gestalt-proximity/). A GOV.UK is a
+     tartalom saját ritmusát tartja: a bekezdések közti köz a tipográfiai
+     skálából jön, nem a szomszéd hasáb magasságából
+     (https://design-system.service.gov.uk/styles/spacing/). Ezért a hasáb
+     felül igazodik (align-self: start), a csoportok közt tokenes köz áll
+     (space-5 = 24 px), a magasságot a tartalom adja. Ugyanez a szabály a
+     /rolunk páros alakjára is (egy CSS, egy ritmus). */
   .kc-about--founders .kc-about__copy,
   .kc-about--paired .kc-about__copy {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    align-self: stretch;
+    justify-content: flex-start;
+    align-self: start;
   }
 }
 
@@ -159,8 +183,11 @@
   background-color: var(--kc-about-accent);
 }
 
+/* Bekezdésköz a tokenes rácsról (space-4 = 16 px, a törzs 1,55-ös
+   sorritmusának ~0,6 sora): a hét bekezdés külön gondolatként olvasható,
+   de egy csoport marad (GOV.UK spacing scale; NN/g proximity). */
 .kc-about__text {
-  margin: 0 0 var(--kc-space-2);
+  margin: 0 0 var(--kc-space-4);
   max-width: var(--kc-measure);
   font-size: var(--kc-font-m);
   line-height: 1.55;
@@ -296,6 +323,41 @@
     100% 8%;
   mask-position: top, bottom;
   mask-repeat: no-repeat;
+}
+
+/* HOVER-MOZGÁS A HULLÁMOS FOTÓN (WP18, tulajdonosi kérés: „lehetne valami
+   mozgási hover rajtuk, de ne legyen öncélú"). A fotó a maszkolt keretben
+   1,03-ra nagyít, a keret és a hullám nem mozdul: a mozgás azt mondja, hogy
+   „ez a kép él, ide néz a figyelmed", nem díszít és nem ígér kattintást
+   (nincs cursor: pointer, a fotó nem link). Mérték: 240 ms (a
+   --kc-motion-base × 1,2; Material 3 „short" sáv, 200–300 ms, kis elem
+   állapotváltása), a --kc-ease-out görbe (belépő lassul, decelerate).
+     Material 3 Motion, easing and duration:
+     https://m3.material.io/styles/motion/easing-and-duration/tokens-specs
+     Apple HIG Motion: a mozgás rövid, a cél a visszajelzés, a tartalom
+     nélküle is teljes: https://developer.apple.com/design/human-interface-guidelines/motion
+     NN/g Animation duration and motion characteristics (100–500 ms sáv):
+     https://www.nngroup.com/articles/animation-duration/
+   Csak valódi hover-eszközön (`hover: hover`), érintőn nincs „ragadó" állapot
+   (Material 3 interaction states); csökkentett mozgásnál nincs átmenet és
+   nincs nagyítás (WCAG 2.2 SC 2.3.3 Animation from Interactions:
+   https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html). */
+@media (hover: hover) {
+  .kc-about__figure img {
+    transition: scale calc(var(--kc-motion-base) * 1.2) var(--kc-ease-out);
+  }
+
+  .kc-about__figure:hover img {
+    scale: 1.03;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-about__figure img,
+  .kc-about__figure:hover img {
+    transition: none;
+    scale: none;
+  }
 }
 
 @media (min-width: 900px) {

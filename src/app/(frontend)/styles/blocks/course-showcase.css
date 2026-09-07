@@ -163,6 +163,41 @@
   color: var(--kc-color-text-muted);
 }
 
+/* A kártya alján a LÁTHATÓ hívás (WP19, audit P2-5). Vizuálisan a másodlagos
+   gomb nyelve (ui.css `.kc-button--secondary`: 2px ink keret, ink felirat a
+   paperen 14,79:1, hover-re invertál 15,63:1), de NEM önálló interaktív elem:
+   a link a kártya, a span csak a felismerhető affordancia (NN/g Cards;
+   Baymard listaoldal). 2.75rem = 44px magas doboz (érintőcél, SC 2.5.8 felett).
+   Az egész sor a gombé, hogy a rács minden kártyáján egy magasságban álljon. */
+.kc-course-showcase__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  margin-top: var(--kc-space-2);
+  min-height: 2.75rem;
+  padding: var(--kc-space-2) var(--kc-space-5);
+  border: 2px solid var(--kc-color-text);
+  border-radius: var(--kc-radius-md);
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: 1.2;
+  color: var(--kc-color-text);
+  background-color: transparent;
+  transition:
+    background-color var(--kc-motion-fast) var(--kc-ease-out),
+    color var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+/* A kártya-link hover/fókusz állapota a hívást is átfordítja: a látogató
+   látja, hogy a teljes kártya egy cél (a nyíl-korong mellett második jelzés). */
+.kc-course-showcase__link:hover .kc-course-showcase__cta,
+.kc-course-showcase__link:focus-visible .kc-course-showcase__cta {
+  background-color: var(--kc-color-text);
+  color: var(--kc-color-on-dark);
+}
+
 /* ---- Jelenet: vízjel + döntött fotók ------------------------------------ */
 
 /* A színpad vág: a döntött fotók sarka és a nagyított szó sem nyúlhat a
@@ -345,5 +380,9 @@
   .kc-course-showcase__photo {
     animation: none;
     translate: none;
+  }
+
+  .kc-course-showcase__cta {
+    transition: none;
   }
 }

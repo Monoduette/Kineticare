@@ -142,10 +142,14 @@ describe('fotó-fríz — CSS-őr', () => {
     expect(blokk).toContain('transform: none')
   })
 
-  it('nem interaktív: nincs cursor: pointer, és nincs hover-nyúlás', () => {
+  it('nem interaktív: nincs cursor: pointer, és nincs hover-nyúlás (flex); a WP18 hover csak a kép 1,03-as nagyítása', () => {
     expect(tiszta).not.toMatch(/cursor\s*:\s*pointer/)
-    expect(tiszta).not.toMatch(/:hover/)
-    expect(tiszta).not.toContain('(hover: hover)')
+    expect(tiszta).not.toMatch(/:hover[^{]*\{[^}]*flex/)
+    const hoverBlokk = tiszta.slice(
+      tiszta.indexOf('@media (hover: hover)'),
+      tiszta.indexOf('@media (prefers-reduced-motion: reduce)'),
+    )
+    expect(hoverBlokk).not.toMatch(/transform|translate|filter|opacity/)
   })
 
   it('a CSS nem visz betűméretet (a frízben nincs szöveg)', () => {
@@ -238,14 +242,17 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
 
   it('szöveg nélkül a frieze jel nem ad alapítók-alakot (a fríz a bemutatkozás fele)', () => {
     const html = renderToStaticMarkup(
-      <About block={aboutBlokk({ eyebrow: '', title: '', paragraphs: [], feature: undefined })} frieze />,
+      <About
+        block={aboutBlokk({ eyebrow: '', title: '', paragraphs: [], feature: undefined })}
+        frieze
+      />,
     )
     expect(html).not.toContain('kc-about--founders')
     expect(html).not.toContain('kc-photo-frieze')
     expect(html).toContain('kc-about__figure')
   })
 
-  it('a szöveghasáb három csoportra oszlik (fej, törzs, láb) a függőleges elosztáshoz', () => {
+  it('a szöveghasáb három csoportra oszlik (fej, törzs, láb), természetes folyással, felül igazítva', () => {
     const html = renderToStaticMarkup(<About block={aboutBlokk()} frieze />)
     const fej = html.indexOf('class="kc-about__head"')
     const torzs = html.indexOf('class="kc-about__body"')
@@ -257,8 +264,41 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
     const desktop = tiszta.indexOf('@media (min-width: 900px)')
     expect(desktop).toBeGreaterThan(-1)
     expect(tiszta.slice(desktop)).toMatch(
-      /\.kc-about--founders \.kc-about__copy,\s*\.kc-about--paired \.kc-about__copy\s*\{[^}]*justify-content: space-between;[^}]*align-self: stretch;/,
+      /\.kc-about--founders \.kc-about__copy,\s*\.kc-about--paired \.kc-about__copy\s*\{[^}]*justify-content: flex-start;[^}]*align-self: start;/,
     )
+    // WP18: a space-between 1440 px-en 106 px-es réseket adott — tilos.
+    expect(tiszta).not.toContain('space-between')
+    // A bekezdésköz tokenes (space-4), nem kézi érték.
+    expect(tiszta).toMatch(/\.kc-about__text\s*\{[^}]*margin: 0 0 var\(--kc-space-4\);/)
+  })
+
+  it('WP18 hover: a hullámos képek 1,03-ra nagyítanak csak hover-eszközön, 240 ms ease-out-tal; reduced-motion alatt nincs', () => {
+    const tiszta = kommentNelkul(ABOUT_CSS)
+    for (const [forras, kep, hover] of [
+      [tiszta, '.kc-about__figure img', '.kc-about__figure:hover img'],
+      [
+        kommentNelkul(CSS),
+        '.kc-photo-frieze__img',
+        '.kc-photo-frieze__strip:hover .kc-photo-frieze__img',
+      ],
+    ] as const) {
+      const hoverBlokk = forras.slice(forras.indexOf('@media (hover: hover)'))
+      expect(forras.indexOf('@media (hover: hover)')).toBeGreaterThan(-1)
+      const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(hoverBlokk).toMatch(
+        new RegExp(
+          `${esc(kep)}\\s*\\{[^}]*transition: scale calc\\(var\\(--kc-motion-base\\) \\* 1\\.2\\) var\\(--kc-ease-out\\);`,
+        ),
+      )
+      expect(hoverBlokk).toMatch(new RegExp(`${esc(hover)}\\s*\\{[^}]*scale: 1\\.03;`))
+      // A hover-nagyítás NEM a hover-blokkon kívül él (érintőn nincs ragadó állapot).
+      expect(forras.slice(0, forras.indexOf('@media (hover: hover)'))).not.toContain('scale: 1.03')
+      const csokkentett = forras.slice(forras.indexOf('@media (prefers-reduced-motion: reduce)'))
+      expect(csokkentett).toContain('scale: none')
+      expect(csokkentett).toContain('transition: none')
+      // Nem link, nem gomb: nincs kattintás-ígéret.
+      expect(forras).not.toContain('cursor: pointer')
+    }
   })
 
   it('az alapítók-alak rácsa fele-fele, a fríz a jobb hasábban, hullámos alsó éllel', () => {
@@ -267,6 +307,10 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
       /\.kc-about--founders \.kc-about__grid,\s*\.kc-about--paired \.kc-about__grid\s*\{[^}]*grid-template-columns: minmax\(0, 50%\) minmax\(0, 1fr\)/,
     )
     expect(tiszta).toMatch(/\.kc-about--founders \.kc-photo-frieze\s*\{[^}]*grid-column: 2;/)
+    // WP18: a képhasáb ragad (a hosszú közös szöveg mellett nem marad üres a hasáb).
+    expect(tiszta).toMatch(
+      /\.kc-about--founders \.kc-photo-frieze,\s*\.kc-about--paired \.kc-about__figure\s*\{[^}]*position: sticky;[^}]*align-self: start;/,
+    )
     expect(tiszta).toMatch(/\.kc-about--founders \.kc-about__copy\s*\{[^}]*grid-column: 1;/)
     expect(tiszta).toMatch(
       /\.kc-about--founders \.kc-photo-frieze__strips,\s*\.kc-about#rolunk \.kc-about__figure\s*\{[^}]*mask-image: linear-gradient\(#000 0 0\), var\(--kc-about-wave\)/,

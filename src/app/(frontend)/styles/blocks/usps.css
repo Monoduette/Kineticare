@@ -95,11 +95,17 @@
 
 .kc-usps__card-title {
   margin: 0 0 var(--kc-space-2);
-  font-family: var(--kc-font-heading);
+  /* H3 = M token + félkövér kenyérbetű, a H2 (L, Tenor Sans 400) alatt egy
+     látható lépcsővel (WP19, audit P2-8): a szint méretből ÉS súlyból olvasható,
+     nem egy negyedik betűméretből. A States és a Hogyan-működik H3-ával azonos
+     minta. NN/g, Visual Hierarchy: legfeljebb három méret, a súly a kontraszt
+     hordozója (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/);
+     GOV.UK Headings: a címsorszintek lépcsője következetes
+     (https://design-system.service.gov.uk/styles/headings/); WCAG 2.2 SC 2.4.6. */
+  font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);
-  font-weight: var(--kc-font-weight-normal);
-  letter-spacing: 0.005em;
-  line-height: 1.14;
+  font-weight: var(--kc-font-weight-medium);
+  line-height: 1.3;
   color: var(--kc-usps-ink);
   text-wrap: balance;
 }

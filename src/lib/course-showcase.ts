@@ -101,11 +101,20 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
  * 1. minden fizetős kurzust (érvényes, megjeleníthető ár: `isPaidCourse`), a
  *    bejövő lekérdezés sorrendjében;
  * 2. az ingyenes SOS-t, de KIZÁRÓLAG az igazolt példányt
- *    (`isAvailableSosProduct`: kanonikus slug + publikált storefront-státusz +
- *    publikált piszkozat-státusz + explicit `priceInHUFEnabled === false`).
- *    Az „Ingyenes” felirat bizalmi határ (docs/kc-v1-owner-review.md P03/H13):
- *    hiányosan árazott vagy másik ingyenes termék NEM kerül a rácsba, mert ott
- *    „Ingyenes” címkét kapna, ami szerkesztői hibát takarna el.
+ *    (`isAvailableSosProduct`: kanonikus slug + publikált storefront-`status` +
+ *    publikált drafts `_status` + explicit `priceInHUFEnabled === false`). Az „Ingyenes” felirat bizalmi
+ *    határ (docs/kc-v1-owner-review.md P03/H13): hiányosan árazott vagy másik
+ *    ingyenes termék NEM kerül a rácsba, mert ott „Ingyenes” címkét kapna, ami
+ *    szerkesztői hibát takarna el.
+ *
+ * MIÉRT a szigorú `isAvailableSosProduct` (WP19 felülvizsgálat, 2026-09-07):
+ * a hero, az SOS-sáv és a rács UGYANAZT az ellenőrzött terméket ajánlja
+ * (P1-őr: src/__tests__/hero-free-sos-availability.test.tsx), ezért a drafts
+ * `_status === 'published'` itt is feltétel. Élesben az SOS piszkozat-státuszú
+ * volt (az adminban nem publikált), így a rács, a hero és a sáv egyformán
+ * semleges maradt: a javítás a termék publikálása, nem a feltétel lazítása
+ * (WCAG 2.2 SC 3.2.4: ugyanaz a termék mindenhol ugyanúgy jelenjen meg,
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
  *
  * MIÉRT látszik az ár és az ingyenesség a listában is (a 2026-08-15-i
  * kezdőlap-audit K2-döntése ezt duplikáció miatt vette ki; a felülvizsgálat

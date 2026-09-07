@@ -11,6 +11,7 @@ import {
   isCourseDetailHref,
   resolveFreeSosCta,
 } from '../components/content/home/FreeSos'
+import { ctaLabel } from '../lib/cta-vocabulary'
 import { buildHomeLayout } from '../lib/home-seed'
 import type { Page, Product } from '../payload-types'
 
@@ -59,10 +60,12 @@ interface RenderedLink {
   label: string
   /** A link `aria-label`-je (a hozzáférhető neve), ha van. */
   ariaLabel: string | null
+  /** A link `class` attribútuma (üres, ha nincs). */
+  className: string
 }
 
-/** A Kurzusaink-kártya egész-kártya linkjének hozzáférhető nevének végződése (CourseShowcase). */
-const COURSE_CARD_NAME_SUFFIX = ': a kurzus részletei'
+/** A Kurzusaink-kártya egész-kártya linkjének osztálya (CourseShowcase). */
+const COURSE_CARD_LINK_CLASS = 'kc-course-showcase__link'
 
 /** A renderelt HTML összes hivatkozása (felirat: szövegre csupaszítva, összevont szóközzel). */
 function links(html: string): RenderedLink[] {
@@ -72,13 +75,14 @@ function links(html: string): RenderedLink[] {
       return []
     }
     const ariaLabel = /aria-label="([^"]*)"/.exec(attrs)?.[1] ?? null
+    const className = /class="([^"]*)"/.exec(attrs)?.[1] ?? ''
     const label = inner
       .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, ' ')
       .replace(/→/g, '')
       .trim()
-    return [{ href, label, ariaLabel }]
+    return [{ href, label, ariaLabel, className }]
   })
 }
 
@@ -96,9 +100,13 @@ function links(html: string): RenderedLink[] {
  * (https://www.nngroup.com/articles/cards-component/). A kártyák EGYMÁS
  * KÖZÖTT viszont következetesek: ezt a saját tesztjük őrzi lentebb.
  * WP12 (2026-09-07): az igazolt ingyenes SOS is kártyát kap a rácsban.
+ * WP19 (2026-09-07, audit P2-5): a kártya alján LÁTHATÓ, szótári hívás áll
+ * (`course-sales-open` / `free-course-claim`) egy nem interaktív span-ben; a
+ * link hozzáférhető neve „<cím>: <hívás>” (SC 2.5.3). Az SOS-kártya hívása
+ * SZÁNDÉKOSAN azonos az SOS-sáv CTA-jával: azonos cél, azonos felirat.
  */
 function isCourseCardLink(link: RenderedLink): boolean {
-  return link.ariaLabel !== null && link.ariaLabel.endsWith(COURSE_CARD_NAME_SUFFIX)
+  return link.className.split(/\s+/).includes(COURSE_CARD_LINK_CLASS)
 }
 
 /** Cél → a hozzá tartozó KÜLÖNBÖZŐ CTA-feliratok halmaza (a kártya-linkek nélkül). */
@@ -195,18 +203,26 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
       '/kurzusok/sos-kezrelax-villamkurzus',
     ])
     for (const link of cardLinks) {
-      // A hozzáférhető név a látható címmel kezdődik (WCAG 2.2 SC 2.5.3 Label in Name).
-      const title = (link.ariaLabel ?? '').slice(0, -COURSE_CARD_NAME_SUFFIX.length)
-      expect(title.length).toBeGreaterThan(0)
-      expect(link.label.startsWith(title)).toBe(true)
+      // A hozzáférhető név a látható címmel kezdődik, és a látható hívással
+      // végződik (WCAG 2.2 SC 2.5.3 Label in Name).
+      const [title, cta] = (link.ariaLabel ?? '').split(': ')
+      expect(title !== undefined && title.length > 0).toBe(true)
+      expect(link.label.startsWith(title ?? '')).toBe(true)
+      expect(cta !== undefined && link.label.endsWith(cta)).toBe(true)
     }
+    // A hívás egy span, nem beágyazott gomb vagy link (egy link, egy cél).
+    for (const [, inner] of html.matchAll(/<a[^>]*kc-course-showcase__link[^>]*>([\s\S]*?)<\/a>/g)) {
+      expect(inner).not.toMatch(/<(a|button)\b/)
+    }
+    // A fizetős kártya hívása a szótári #28, az SOS-kártyáé a szótári #3/#4.
+    expect(cardLinks[0]?.label.endsWith(ctaLabel('course-sales-open'))).toBe(true)
+    expect(cardLinks[1]?.label.endsWith(FREE_SOS_COURSE_CTA_LABEL)).toBe(true)
     // Az SOS célra a kártyán kívül PONTOSAN EGY CTA-felirat él: a szótári.
     expect(Array.from(labelsByHref(html).get('/kurzusok/sos-kezrelax-villamkurzus') ?? [])).toEqual([
       FREE_SOS_COURSE_CTA_LABEL,
     ])
-    // A kártyán az ár helyén az „Ingyenes” ár-tény áll, nem CTA.
-    const sosCard = cardLinks[1]
-    expect(sosCard?.label.endsWith('Ingyenes')).toBe(true)
+    // A kártyán az ár helyén az „Ingyenes” ár-tény áll, a hívás alatta külön.
+    expect(html).toContain('class="kc-course-showcase__price">Ingyenes</span>')
   })
 
   it('a kurzuslistára mutató hivatkozások mind a jóváhagyott feliratot használják', () => {

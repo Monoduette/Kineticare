@@ -87,10 +87,13 @@ interface NamedIntroduction {
 
 function namedIntroductions(page: OwnerReviewSlug, layout: Layout): NamedIntroduction[] {
   return layout.flatMap((block): NamedIntroduction[] => {
+    // A kezdőlapi About a két alapító közös bemutatkozása: a címe 2026-09-07-től
+    // a /rolunk-kal azonos („Megérdemled a profi törődést”, WP18), ezért a
+    // közös bemutatkozást a blokk helye azonosítja, nem a nevek a címben.
     if (
       block.blockType === 'about' &&
-      block.title?.includes('Kiss Kata') &&
-      block.title.includes('Kocsis Kata')
+      (page === 'kezdolap' ||
+        (block.title?.includes('Kiss Kata') && block.title.includes('Kocsis Kata')))
     ) {
       return [{ page, founder: 'Kiss Kata és Kocsis Kata', kind: 'joint', photo: block.photo }]
     }
@@ -114,7 +117,9 @@ describe('A06: canonical founder portrait inventory', () => {
         page: 'kezdolap',
         founder: 'Kiss Kata és Kocsis Kata',
         kind: 'joint',
-        photo: HOME_FOUNDERS,
+        // A H01 csak a régi című About-ra cserél fotót; a kanonikus seed
+        // (új cím, WP18) a saját közös alapítói fotóját viszi (katak-team.jpg).
+        photo: homeMedia['katak-team.jpg'],
       },
       {
         page: 'szolgaltatasok',

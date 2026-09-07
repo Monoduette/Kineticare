@@ -120,7 +120,8 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
   // források: `showcaseProducts` (src/lib/course-showcase.ts). A lentebbi
   // FreeSos sáv a lead-magnet részletezése, saját CTA-val.
   const gridProducts = showcaseProducts(visibleProducts)
-  // A hero és a sáv csak a kanonikus, publikált és explicit ingyenes SOS-t ajánlja.
+  // A hero, a sáv és a rács ugyanazt a kanonikus, publikált és explicit
+  // ingyenes SOS-t ajánlja (P1-őr: hero-free-sos-availability.test.tsx).
   const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
   const visiblePosts = posts.filter((post) => post.status === 'published' && post.slug)
 

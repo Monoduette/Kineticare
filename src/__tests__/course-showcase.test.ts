@@ -14,6 +14,7 @@ import {
   showcaseFallbackAt,
   splitEditorialTitle,
 } from '../lib/course-showcase'
+import { ctaLabel } from '../lib/cta-vocabulary'
 import type { Product } from '../payload-types'
 
 function product(overrides: Partial<Product> & { id: number }): Product {
@@ -69,6 +70,29 @@ describe('CourseShowcase', () => {
     expect(html).toContain('/kurzusok/pro')
     expect(html).not.toContain('id="otthoni"')
     expect(html).not.toContain('id="szakembereknek"')
+  })
+
+  it('WP19: a kártya alján szótári hívás áll egy span-ben, a link az egész kártya (nincs beágyazott gomb)', () => {
+    const html = render(
+      createElement(CourseShowcase, {
+        drift: false,
+        products: [
+          product({ id: 1, sku: 'Fizetős', slug: 'fizetos' }),
+          product({
+            id: 2,
+            sku: 'SOS',
+            slug: 'sos-kezrelax-villamkurzus',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
+        ],
+      }),
+    )
+    expect(html).toContain(`class="kc-course-showcase__cta">${ctaLabel('course-sales-open')}</span>`)
+    expect(html).toContain(`class="kc-course-showcase__cta">${ctaLabel('free-course-claim')}</span>`)
+    expect(html).toContain(`aria-label="Fizetős: ${ctaLabel('course-sales-open')}"`)
+    expect(html).not.toContain('<button')
+    expect(html.match(/<a\b/g)).toHaveLength(2)
   })
 
   it('borító nélkül a csapatportré-tartalékot teszi be', () => {

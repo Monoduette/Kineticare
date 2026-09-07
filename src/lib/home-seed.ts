@@ -18,6 +18,7 @@ import {
   homeHelpRailRows,
 } from './home-help-states'
 import { logger } from './logger'
+import { rolunkBemutatkozasSzoveg } from './rolunk-bemutatkozas'
 import { enrollMediaRecovery } from './media-recovery-provenance'
 
 import { HOME_PAGE_SLUG } from './content-slugs'
@@ -312,7 +313,12 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
   return ids
 }
 
-/** Egy média-rekord id-je a kiterjesztés nélküli alapnév alapján (webp-konverzió). */
+/**
+ * Egy média-rekord id-je a kiterjesztés nélküli alapnév alapján (webp-konverzió).
+ * A Payload `like` TARTALMAZÁSRA illeszt (ILIKE %…%), ezért egy rövid alapnév
+ * (pl. `tv2`, `mase`) idegen fájlra is találna; a jelölteket ezért a pontos
+ * alapnév + kiterjesztés alakra szűrjük, és csak egyértelmű találatot adunk.
+ */
 const findMediaIdByBaseName = async (
   payload: Payload,
   file: string,
@@ -320,11 +326,18 @@ const findMediaIdByBaseName = async (
   const baseName = file.replace(/\.[^.]+$/, '')
   const existing = await payload.find({
     collection: 'media',
-    where: { filename: { like: `${baseName}%` } },
-    limit: 1,
+    where: { filename: { like: `${baseName}.` } },
+    limit: 20,
     overrideAccess: true,
   })
-  return existing.docs[0]?.id
+  const exact = new RegExp(
+    `^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(webp|png|jpe?g)$`,
+    'i',
+  )
+  const hit = existing.docs.find(
+    (doc) => typeof doc.filename === 'string' && exact.test(doc.filename),
+  )
+  return hit?.id
 }
 
 /**
@@ -622,29 +635,10 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
   {
     blockType: 'about',
     eyebrow: 'Rólunk',
-    title: 'Kiss Kata és Kocsis Kata vagyunk',
-    paragraphs: [
-      {
-        text: 'Kiss Kata és Kocsis Kata vagyunk, gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, és évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
-        emphasized: true,
-      },
-      {
-        text: 'A pácienseink nagy része kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, így pontosan tudjuk, milyen makacs probléma tud ez lenni, és hogy mennyire megkeseríti az ember mindennapjait.',
-        emphasized: false,
-      },
-      {
-        text: 'A legújabb kutatásokat, külföldi guideline-okat és a saját gyakorlati tapasztalatainkat ötvözzük, mindezt a lehető legbiztonságosabb, mégis leggyorsabb felépülés érdekében.',
-        emphasized: false,
-      },
-      {
-        text: 'Hiszünk abban, hogy a kezed nemcsak egy testrész: mindenhez szükséged van rá. Ezért igyekszünk minden módon segíteni rendbehozni a kezed, megszüntetni a fájdalmat, és elérni, hogy úgy használhasd a kezed, mintha sosem lett volna vele semmi baj.',
-        emphasized: false,
-      },
-    ],
-    feature: {
-      label: 'Személyre szabott kezelések',
-      note: 'Minden páciens egyedi, ezért minden terápiát személyre szabunk.',
-    },
+    // WP18: cím, bekezdések és kiemelés a /rolunk lappal KÖZÖS forrásból
+    // (src/lib/rolunk-bemutatkozas.ts), nem külön másolatból. A statisztikasor a
+    // kezdőlapé marad (három szám), a fotó a páros alak tartaléka.
+    ...rolunkBemutatkozasSzoveg(),
     photo: media['katak-team.jpg'],
     stats: [
       { value: '10+', label: 'év szakmai tapasztalat' },

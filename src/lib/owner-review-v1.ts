@@ -7,6 +7,7 @@ import {
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
 } from './home-help-states'
+import { rolunkBemutatkozasBekezdesek } from './rolunk-bemutatkozas'
 import { sanitizeCmsUrl } from './safe-url'
 import { SOS_COMPARISON_FAQ } from './sos-offer-copy'
 
@@ -266,16 +267,10 @@ const HOME_PARAGRAPHS = [
   },
 ]
 
-const ABOUT_PARAGRAPHS = [
-  {
-    text: 'A kéz rehabilitációja a szakterületünk. Gyógytornával, manuálterápiával és otthoni gyakorlással támogatunk a mindennapi mozgásban.',
-    emphasized: true,
-  },
-  {
-    text: 'Személyes kezelésen a panaszaidhoz és a terhelhetőségedhez igazítjuk a közös munkát. Az online kurzus tartalmát előre megismerheted, és a saját tempódban haladhatsz vele.',
-    emphasized: false,
-  },
-]
+// A02: az ÉLES /rolunk About bekezdései — a kezdőlappal KÖZÖS forrásból
+// (WP18, src/lib/rolunk-bemutatkozas.ts), hogy a review, a seed és a
+// tartalom-csere ne csúszhasson szét.
+const ABOUT_PARAGRAPHS = rolunkBemutatkozasBekezdesek()
 
 const GENERAL_FAQ = [
   {
