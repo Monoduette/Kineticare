@@ -140,7 +140,7 @@ describe('Accordion renderelés', () => {
       items: [
         {
           id: 's1',
-          cim: 'Kocsis Kata — szakmai önéletrajz',
+          cim: 'Kocsis Kata szakmai önéletrajza',
           osszefoglalo: '38 tanfolyam · 7 konferencia',
           tartalom: richText('Gyógytornász, sportrehabilitációs tréner'),
         },
@@ -150,7 +150,7 @@ describe('Accordion renderelés', () => {
 
     expect(html).toContain('<details class="kc-accordion__item">')
     expect(html).toContain('<summary class="kc-accordion__summary">')
-    expect(html).toContain('Kocsis Kata — szakmai önéletrajz')
+    expect(html).toContain('Kocsis Kata szakmai önéletrajza')
     expect(html).toContain('38 tanfolyam · 7 konferencia')
     expect(html).toContain('Gyógytornász, sportrehabilitációs tréner')
     // Alapból zárva: az `open` attribútum nincs kiírva.
@@ -196,6 +196,72 @@ describe('Accordion renderelés', () => {
         items: [{ id: 's6', cim: 'Csak cím', tartalom: URES_TARTALOM }],
       }),
     ).toBe('')
+  })
+
+  it('a sor portréja (kep) a summaryn BELÜL, kör-dobozban, a Médiatár alt-jával renderel (A05)', () => {
+    const html = renderBlock({
+      id: 'b-kep',
+      blockType: 'accordion',
+      items: [
+        {
+          id: 's-kep',
+          kep: {
+            id: 23,
+            alt: 'Kocsis Kata portréja',
+            url: '/media/kocsis.webp',
+            width: 800,
+            height: 1000,
+            sizes: { sm: { url: '/media/kocsis-640.webp', width: 640, height: 800 } },
+          },
+          cim: 'Kocsis Kata szakmai önéletrajza',
+          tartalom: richText('Gyógytornász'),
+        },
+      ],
+      sectionSettings: {},
+    })
+    const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))
+    // A kép a summary tartalma: ugyanaz a kattintás nyitja a sort, nincs
+    // külön link vagy gomb (érintőcél és fókusz változatlan).
+    expect(summary).toContain('<span class="kc-accordion__portrait">')
+    expect(summary).toContain('alt="Kocsis Kata portréja"')
+    expect(summary).toContain('kocsis-640.webp')
+    expect(summary).not.toMatch(/<a |<button/)
+    // A portré a NÉV ELŐTT áll (a fejléc: arc + név + kivonat).
+    expect(summary.indexOf('kc-accordion__portrait')).toBeLessThan(
+      summary.indexOf('kc-accordion__heading'),
+    )
+    // Lenyitva a tartalom nem ismétli a képet.
+    const panel = html.slice(html.indexOf('kc-accordion__panel'))
+    expect(panel).not.toContain('kocsis')
+  })
+
+  it('kép nélkül, feloldatlan (depth 0, szám) vagy URL nélküli médiával nincs portré-doboz', () => {
+    for (const kep of [undefined, null, 23, { id: 23, alt: 'Törölt', url: null }]) {
+      const html = renderBlock({
+        id: 'b-nokep',
+        blockType: 'accordion',
+        items: [{ id: 's-nokep', kep, cim: 'Sor', tartalom: richText('Tartalom') }],
+        sectionSettings: {},
+      })
+      expect(html, `kep=${JSON.stringify(kep)}`).not.toContain('kc-accordion__portrait')
+      expect(html).toContain('Sor')
+    }
+  })
+
+  it('a 2026-09-07 előtti seed gondolatjeles címét és bevezetőjét natív alakra írja át, mást nem', () => {
+    const html = renderBlock({
+      id: 'b-dash',
+      blockType: 'accordion',
+      lead: 'A teljes szakmai életutunk — tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.',
+      items: [
+        { id: 'd1', cim: 'Kiss Kata — szakmai önéletrajz', tartalom: richText('Tartalom') },
+        { id: 'd2', cim: 'Saját cím — szerkesztői', tartalom: richText('Tartalom') },
+      ],
+      sectionSettings: {},
+    })
+    expect(html).toContain('Kiss Kata szakmai önéletrajza')
+    expect(html).toContain('A teljes szakmai életutunk: tanulmányok')
+    expect(html).toContain('Saját cím — szerkesztői')
   })
 
   it('a kivonat elhagyható — nélküle nincs üres jelölő a fejlécben', () => {
@@ -402,6 +468,18 @@ describe('accordion.css szabály-őrök', () => {
     const hatterek = [...kod.matchAll(/background(?:-color)?\s*:\s*[^;]+/g)].map((m) => m[0].trim())
     expect(hatterek).toEqual(['background-color: transparent'])
     expect(kod).toContain('.kc-accordion__summary:focus-visible')
+  })
+
+  it('a portré-doboz tokenekből áll: kör (radius-full), 40px mobilon, 48px 900px felett', () => {
+    const kod = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const doboz = kod.slice(kod.indexOf('.kc-accordion__portrait {'))
+    expect(doboz).toContain('border-radius: var(--kc-radius-full)')
+    expect(doboz).toContain('width: 2.5rem')
+    const desktop = kod.slice(kod.indexOf('@media (min-width: 900px)'))
+    expect(desktop).toContain('.kc-accordion__portrait')
+    expect(desktop).toContain('width: 3rem')
+    expect(kod).toContain('.kc-accordion__portrait img')
+    expect(kod).toContain('object-fit: cover')
   })
 
   it('a böngésző-alapértelmezett háromszög helyett saját jelet rajzol', () => {

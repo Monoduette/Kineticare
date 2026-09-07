@@ -77,6 +77,32 @@ const mediaIdOf = (value: unknown): number | undefined => {
     : undefined
 }
 
+/** A 2026-09-07 előtti A05 által beszúrt bevezető portré-csomópont azonosító-előtagja. */
+export const OWNER_REVIEW_PORTRAIT_NODE_PREFIX = 'owner-review-v1-'
+
+/**
+ * A 2026-09-07 előtti A05 a portrét a lenyitott tartalom ELSŐ upload-
+ * csomópontjaként szúrta be. Mióta a harmonika-sor `kep` mezője viszi a
+ * portrét (csukva is látszik), ez a csomópont ugyanazt a képet ismételné.
+ * Ha a tartalom első gyermeke PONTOSAN ilyen (upload, a saját előtagú id-val,
+ * ugyanarra a Media-id-ra), a nélküle álló tartalmat adja vissza; minden más
+ * tartalmat változatlanul (ugyanazt a referenciát).
+ */
+export const withoutOwnerReviewPortraitNode = (tartalom: unknown, mediaId: number): unknown => {
+  const children = at(tartalom, ['root', 'children'])
+  if (!Array.isArray(children) || children.length === 0) return tartalom
+  const first = record(children[0])
+  if (
+    first.type !== 'upload' ||
+    mediaIdOf(first.value) !== mediaId ||
+    typeof first.id !== 'string' ||
+    !first.id.startsWith(OWNER_REVIEW_PORTRAIT_NODE_PREFIX)
+  ) {
+    return tartalom
+  }
+  return setAt(tartalom, ['root', 'children'], children.slice(1))
+}
+
 const at = (value: unknown, path: Path): unknown =>
   path.reduce<unknown>(
     (current, key) =>
@@ -96,7 +122,7 @@ const setAt = (value: unknown, [key, ...rest]: Path, next: unknown): unknown => 
 // Payload adds row IDs and null optional fields. Media relationships must still match by ID.
 const normalized = (value: unknown, field = ''): unknown => {
   if (
-    ['photo', 'image', 'backgroundImage', 'value'].includes(field) &&
+    ['photo', 'image', 'backgroundImage', 'value', 'kep'].includes(field) &&
     typeof record(value).id === 'number'
   ) {
     return record(value).id
@@ -1050,63 +1076,69 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
       anchor: 'szakmai-hatter',
     })
     if (cv) {
+      // A05 (2026-09-07): a portré a harmonika-sor `kep` mezőjébe kerül (a
+      // csukott sor elején, kis körben), NEM a lenyitott tartalom tetejére —
+      // így a kép nem ismétlődik. A sor címe a régi seed („Név — szakmai
+      // önéletrajz") és az új, gondolatjel nélküli alak szerint is felismert.
       for (const [name, role] of [
         ['Kocsis Kata', 'kocsisPortrait'],
         ['Kiss Kata', 'kissPortrait'],
       ] as const) {
         const items = at(layout[cv.index], ['items'])
         const oldItems = at(cv.old, ['items'])
-        const title = `${name} — szakmai önéletrajz`
+        const titles = [`${name} — szakmai önéletrajz`, `${name} szakmai önéletrajza`]
+        const isBio = (item: unknown) => {
+          const cim = record(item).cim
+          return typeof cim === 'string' && titles.includes(cim)
+        }
         const matches = Array.isArray(items)
-          ? items.flatMap((item, index) => (record(item).cim === title ? [index] : []))
+          ? items.flatMap((item, index) => (isBio(item) ? [index] : []))
           : []
-        const oldMatches = Array.isArray(oldItems)
-          ? oldItems.filter((item) => record(item).cim === title)
-          : []
+        const oldMatches = Array.isArray(oldItems) ? oldItems.filter(isBio) : []
         const mediaId = input.mediaByRole?.[role]
         if (matches.length !== 1 || oldMatches.length !== 1) {
           skip('A05', 'bio-not-unique', `Nem egyértelmű a szakmai háttér: ${name}.`, cv.index)
           continue
         }
-        if (!Number.isSafeInteger(mediaId) || (mediaId ?? 0) <= 0) {
+        if (mediaId === undefined || !Number.isSafeInteger(mediaId) || mediaId <= 0) {
           skip('A05', 'missing-media', `Hiányzó portré: ${role}.`, cv.index)
           continue
         }
         const index = matches[0]
-        const path: Path = ['items', index, 'tartalom']
-        const oldContent = record(oldMatches[0]).tartalom
-        const children = at(oldContent, ['root', 'children'])
-        if (!Array.isArray(children)) {
+        const path: Path = ['items', index, 'kep']
+        const current = at(layout[cv.index], path)
+        if (mediaIdOf(current) === mediaId) {
+          skip('A05', 'already-applied', 'Már a kért portré szerepel.', cv.index, path)
+          continue
+        }
+        if (current !== undefined && current !== null) {
           skip(
             'A05',
-            'canonical-content',
-            'A kanonikus önéletrajz nem Lexical-tartalom.',
+            'editor-change',
+            `A(z) ${name} sorának portréját a szerkesztő már beállította; érintetlen marad.`,
             cv.index,
             path,
           )
           continue
         }
-        const currentContent = at(layout[cv.index], path)
-        const sourceContent = equal(currentContent, oldContent) ? currentContent : oldContent
-        const sourceChildren = at(sourceContent, ['root', 'children']) as unknown[]
-        const next = setAt(
-          sourceContent,
-          ['root', 'children'],
-          [
-            {
-              type: 'upload',
-              version: 3,
-              relationTo: 'media',
-              value: mediaId,
-              fields: {},
-              format: '',
-              id: `owner-review-v1-${original[cv.index].id ?? 'rolunk'}-${role}`,
-            },
-            ...sourceChildren,
-          ],
-        )
-        const target = { ...cv, old: setAt(cv.old, path, oldContent) as Block }
-        field('A05', target, path, next)
+        // Az élő sor `kep` mezője üres (régi seed): a kanonikus érték a portré.
+        const target = { ...cv, old: setAt(cv.old, path, current) as Block }
+        if (!field('A05', target, path, mediaId)) continue
+        // A régi A05 saját bevezető portré-csomópontja ugyanazt a képet
+        // ismételné a lenyitott tartalom tetején: pontos egyezésre levesszük.
+        const tartalomPath: Path = ['items', index, 'tartalom']
+        const tartalom = at(layout[cv.index], tartalomPath)
+        const tisztitott = withoutOwnerReviewPortraitNode(tartalom, mediaId)
+        if (tisztitott !== tartalom) {
+          change(
+            'A05',
+            target,
+            tartalomPath,
+            tartalom,
+            tisztitott,
+            'A korábbi bevezető portré-csomópont a sor portré-mezőjébe költözött; a tartalom tetején nem ismétlődik.',
+          )
+        }
       }
     }
 

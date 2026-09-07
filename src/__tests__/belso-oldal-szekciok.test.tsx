@@ -9,7 +9,12 @@ import { validateAnchorId } from '../blocks/section-settings'
 import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { minimalRichText } from '../lib/home-seed'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
-import { buildRolunkLayout, buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
+import {
+  buildRolunkLayout,
+  buildSzolgaltatasokLayout,
+  tervezdGondolatjelCsereket,
+  tervezdOneletrajzKepeket,
+} from '../scripts/restore-legacy-content'
 import type { Page } from '../payload-types'
 
 /**
@@ -218,8 +223,8 @@ describe('/rolunk alap-szekciósora', () => {
     expect(markup).toContain('+36 30 169 2263')
     expect(markup).toContain('+36 20 357 3493')
     expect(markup).toContain('Partnereink')
-    expect(markup).toContain('Kocsis Kata — szakmai önéletrajz')
-    expect(markup).toContain('Kiss Kata — szakmai önéletrajz')
+    expect(markup).toContain('Kocsis Kata szakmai önéletrajza')
+    expect(markup).toContain('Kiss Kata szakmai önéletrajza')
     // A bizonyíték MENNYISÉGE a bizalmi jelzés — a CV-tételek nincsenek rövidítve
     // (a harmonika CSUKVA is a DOM-ban tartja őket, csak a böngésző rejti el).
     expect(markup).toContain('Svédmasszázs (2015) – OKTÁV Továbbképző Központ')
@@ -381,7 +386,28 @@ describe('/rolunk — a részletes szakmai háttér harmonikája', () => {
       throw new Error('A harmonika-blokk hiányzik a szekciósorból.')
     }
     const cimek = (accordionBlock.items ?? []).map((item) => item.cim)
-    expect(cimek).toEqual(['Kocsis Kata — szakmai önéletrajz', 'Kiss Kata — szakmai önéletrajz'])
+    expect(cimek).toEqual(['Kocsis Kata szakmai önéletrajza', 'Kiss Kata szakmai önéletrajza'])
+  })
+
+  it('a sor elején a NÉVHEZ rendelt portré áll — ugyanaz, mint a szakember-kártyán (A05)', () => {
+    const kepes = buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 })
+    const harmonika = kepes.find((block) => block.blockType === 'accordion')
+    const team = kepes.find((block) => block.blockType === 'teamMembers')
+    if (harmonika?.blockType !== 'accordion' || team?.blockType !== 'teamMembers') {
+      throw new Error('Hiányzik a harmonika vagy a szakember-blokk.')
+    }
+    expect((harmonika.items ?? []).map((item) => [item.cim, item.kep])).toEqual([
+      ['Kocsis Kata szakmai önéletrajza', 21],
+      ['Kiss Kata szakmai önéletrajza', 22],
+    ])
+    expect((team.members ?? []).map((member) => [member.name, member.photo])).toEqual([
+      ['Kocsis Kata', 21],
+      ['Kiss Kata', 22],
+    ])
+    // Kép nélküli futásban a sor kép nélkül épül, nem törik.
+    if (accordionBlock?.blockType === 'accordion') {
+      expect((accordionBlock.items ?? []).every((item) => item.kep === undefined)).toBe(true)
+    }
   })
 
   it('a fejléc darabszáma a TARTALOMBÓL számolódik, nem kézzel beírt szám', () => {
@@ -558,5 +584,159 @@ describe('/szolgaltatasok alap-szekciósora', () => {
     // cikk-panelt, és ne örökölje a 900 px-es `:has` rácsot.
     const markup = renderLayout(layout)
     expect(markup).not.toContain('kc-post-cta')
+  })
+})
+
+/**
+ * MEGLÉVŐ /rolunk szekciósor célzott frissítése (két szűk kapu, a LOGOSAV
+ * mintájára): a harmonika-sorok üres portré-mezőjének kitöltése
+ * (LEGACY_ONELETRAJZ_KEP) és a régi seed gondolatjeles mondatainak cseréje
+ * (LEGACY_GONDOLATJEL). Mindkettő tiszta függvény, pontos egyezésre nyúl, a
+ * szerkesztő tartalmát nem írja felül.
+ */
+describe('/rolunk — meglévő szekciósor szűk kapui', () => {
+  /** A 2026-09-07 ELŐTTI seed alakja: gondolatjeles címek, portré nélkül. */
+  function regiSzekciosor(): NonNullable<Page['layout']> {
+    const layout = structuredClone(buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }))
+    for (const block of layout) {
+      if (block.blockType === 'accordion') {
+        block.lead =
+          'A teljes szakmai életutunk — tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.'
+        for (const item of block.items ?? []) {
+          delete item.kep
+          item.cim = item.cim.replace(' szakmai önéletrajza', ' — szakmai önéletrajz')
+        }
+      }
+      if (block.blockType === 'about') {
+        for (const stat of block.stats ?? []) {
+          stat.label = stat.label.replace('kreditpont, akkreditált', 'kreditpont — akkreditált')
+        }
+      }
+      if (block.blockType === 'services') {
+        for (const row of block.rows ?? []) {
+          row.title = row.title
+            .replace('Rendelői kezelések, személyesen', 'Rendelői kezelések – személyesen')
+            .replace('Otthoni program, online', 'Otthoni program – online')
+            .replace('Szakmai képzések, kollégáknak', 'Szakmai képzések – kollégáknak')
+        }
+      }
+      if (block.blockType === 'richText') {
+        const first = block.content.root.children[0] as { children?: { text?: string }[] }
+        const node = first.children?.[0]
+        if (node?.text?.startsWith('És igazából neked is.')) {
+          node.text = node.text.replace('És igazából neked is.', '– és igazából neked is.')
+        }
+      }
+    }
+    return layout
+  }
+
+  it('a portré-kapu csak az üres kep mezőt tölti, név szerint, a régi és az új címmel is', () => {
+    const regi = regiSzekciosor()
+    const terv = tervezdOneletrajzKepeket(regi, { kocsisPortre: 21, kissPortre: 22 })
+    expect(terv.layout).not.toBeNull()
+    expect(terv.uzenet).toContain('Kocsis Kata, Kiss Kata')
+    const harmonika = terv.layout?.find((block) => block.blockType === 'accordion')
+    if (harmonika?.blockType !== 'accordion') throw new Error('nincs harmonika')
+    expect((harmonika.items ?? []).map((item) => item.kep)).toEqual([21, 22])
+    // A cím érintetlen marad (a szöveget a másik kapu viszi), a többi blokk azonos.
+    expect((harmonika.items ?? []).map((item) => item.cim)).toEqual([
+      'Kocsis Kata — szakmai önéletrajz',
+      'Kiss Kata — szakmai önéletrajz',
+    ])
+    expect(terv.layout?.filter((block) => block.blockType !== 'accordion')).toEqual(
+      regi.filter((block) => block.blockType !== 'accordion'),
+    )
+    // Az új címmel is felismeri; már kitöltött mezőt nem ír felül; másodszor nincs teendő.
+    const uj = buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 })
+    expect(tervezdOneletrajzKepeket(uj, { kocsisPortre: 31, kissPortre: 32 }).layout).toBeNull()
+    const ujKepNelkul = buildRolunkLayout()
+    const masodik = tervezdOneletrajzKepeket(ujKepNelkul, { kocsisPortre: 31, kissPortre: 32 })
+    const blokk = masodik.layout?.find((block) => block.blockType === 'accordion')
+    expect(blokk?.blockType === 'accordion' ? blokk.items?.map((i) => i.kep) : null).toEqual([31, 32])
+    expect(tervezdOneletrajzKepeket(masodik.layout, { kocsisPortre: 31, kissPortre: 32 }).layout).toBeNull()
+    // Portré nélkül és szekciósor nélkül nincs teendő.
+    expect(tervezdOneletrajzKepeket(regi, {}).layout).toBeNull()
+    expect(tervezdOneletrajzKepeket([], { kocsisPortre: 21 }).layout).toBeNull()
+  })
+
+  it('a portré-kapu a régi A05 saját, azonos képre mutató bevezető csomópontját leveszi, idegent nem', () => {
+    const regi = regiSzekciosor()
+    const harmonika = regi.find((block) => block.blockType === 'accordion')
+    if (harmonika?.blockType !== 'accordion') throw new Error('nincs harmonika')
+    const uploadNode = (value: number, id: string) => ({
+      type: 'upload',
+      version: 3,
+      relationTo: 'media',
+      value,
+      fields: {},
+      format: '',
+      id,
+    })
+    const [kocsis, kiss] = harmonika.items ?? []
+    const kocsisEredeti = [...kocsis.tartalom.root.children]
+    const kissEredeti = [...kiss.tartalom.root.children]
+    // Kocsis: a régi apply-owner-review-v1 csomópontja (saját előtag, azonos kép).
+    kocsis.tartalom.root.children.unshift(uploadNode(21, 'owner-review-v1-x-kocsisPortrait'))
+    // Kiss: a portré már be van állítva, a csomópont IDEGEN (szerkesztői kép, más id).
+    kiss.kep = 22
+    kiss.tartalom.root.children.unshift(uploadNode(99, 'szerkesztoi-kep'))
+    const terv = tervezdOneletrajzKepeket(regi, { kocsisPortre: 21, kissPortre: 22 })
+    expect(terv.uzenet).toContain('portré a harmonika-sor elejére: Kocsis Kata')
+    expect(terv.uzenet).toContain('ismétlődő bevezető portré-csomópont levéve a tartalom tetejéről: Kocsis Kata')
+    const uj = terv.layout?.find((block) => block.blockType === 'accordion')
+    if (uj?.blockType !== 'accordion') throw new Error('nincs harmonika')
+    const [ujKocsis, ujKiss] = uj.items ?? []
+    expect(ujKocsis.kep).toBe(21)
+    expect(ujKocsis.tartalom.root.children).toEqual(kocsisEredeti)
+    expect(ujKiss.kep).toBe(22)
+    expect(ujKiss.tartalom.root.children).toEqual([uploadNode(99, 'szerkesztoi-kep'), ...kissEredeti])
+    // Másodszor nincs teendő: a saját csomópont már nincs, az idegen marad.
+    expect(tervezdOneletrajzKepeket(terv.layout, { kocsisPortre: 21, kissPortre: 22 }).layout).toBeNull()
+  })
+
+  it('a gondolatjel-kapu a régi seed mondatait pontos egyezésre cseréli, az eredményt a seed adja', () => {
+    const regi = regiSzekciosor()
+    const regiMarkup = renderLayout(regi)
+    expect(regiMarkup).toContain('kreditpont — akkreditált')
+    expect(regiMarkup).toContain('Rendelői kezelések – személyesen')
+    expect(regiMarkup).toContain('– és igazából neked is.')
+    const terv = tervezdGondolatjelCsereket(regi)
+    expect(terv.layout).not.toBeNull()
+    // Az eredmény azonos a mai seeddel (kep nélkül), a többi blokk érintetlen.
+    const elvart = buildRolunkLayout({ kocsisPortre: 21, kissPortre: 22 }).map((block) =>
+      block.blockType === 'accordion'
+        ? {
+            ...block,
+            items: (block.items ?? []).map((item) => {
+              const masolat = { ...item }
+              delete masolat.kep
+              return masolat
+            }),
+          }
+        : block,
+    )
+    expect(terv.layout).toEqual(elvart)
+    // Idempotens: a javított szekciósoron nincs teendő.
+    expect(tervezdGondolatjelCsereket(terv.layout).layout).toBeNull()
+    expect(tervezdGondolatjelCsereket(buildRolunkLayout()).layout).toBeNull()
+  })
+
+  it('a gondolatjel-kapu szerkesztett (nem pontosan egyező) szöveghez nem nyúl', () => {
+    const regi = regiSzekciosor()
+    for (const block of regi) {
+      if (block.blockType === 'accordion') {
+        block.lead = 'Saját bevezető — a szerkesztőtől.'
+        for (const item of block.items ?? []) item.cim = `${item.cim} (frissítve)`
+      }
+      if (block.blockType === 'about') for (const stat of block.stats ?? []) stat.label += '!'
+      if (block.blockType === 'services') for (const row of block.rows ?? []) row.title += '!'
+      if (block.blockType === 'richText') {
+        const first = block.content.root.children[0] as { children?: { text?: string }[] }
+        const node = first.children?.[0]
+        if (node?.text) node.text = `${node.text} (szerkesztve)`
+      }
+    }
+    expect(tervezdGondolatjelCsereket(regi).layout).toBeNull()
   })
 })

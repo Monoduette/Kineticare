@@ -60,13 +60,31 @@ export const accordion: Block = {
       },
       fields: [
         {
+          // Tulajdonosi kérés (A05, 2026-09-07): „ahol a nevünk szerepel, ott
+          // mindenhol legyen mellette kép is". A portré CSUKOTT állapotban is
+          // látszik a sor elején, kicsi, kör alakú; lenyitva a tartalom nem
+          // ismétli. Az arc a bizalmi jelzés része (NN/g, „Photos as Web
+          // Content": a valódi emberekről készült fotót az olvasó megnézi, a
+          // díszítő stockot átugorja —
+          // https://www.nngroup.com/articles/photos-as-web-content/).
+          // Az alt a Médiatárból jön (WCAG 2.2 SC 1.1.1, egy kép — egy leírás).
+          name: 'kep',
+          type: 'upload',
+          relationTo: 'media',
+          label: 'Kis portré a sor elején',
+          admin: {
+            description:
+              'Nem kötelező. Akkor érdemes, ha a sor EGY személyről szól (pl. szakmai önéletrajz): a kép csukott állapotban is a név mellett áll, kicsi körben. Témához, listához (pl. „Médiamegjelenések") ne tegyél képet — üresen hagyva a sor kép nélkül jelenik meg. A képleírást (alt) a Képek közt add meg egyszer, ide nem kell újra.',
+          },
+        },
+        {
           name: 'cim',
           type: 'text',
           required: true,
           label: 'A sor címe',
           admin: {
             description:
-              'Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata — szakmai önéletrajz").',
+              'Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata szakmai önéletrajza").',
           },
         },
         {

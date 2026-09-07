@@ -1287,7 +1287,11 @@ export interface BlockAccordion {
   items?:
     | {
         /**
-         * Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata — szakmai önéletrajz").
+         * Nem kötelező. Akkor érdemes, ha a sor EGY személyről szól (pl. szakmai önéletrajz): a kép csukott állapotban is a név mellett áll, kicsi körben. Témához, listához (pl. „Médiamegjelenések") ne tegyél képet — üresen hagyva a sor kép nélkül jelenik meg. A képleírást (alt) a Képek közt add meg egyszer, ide nem kell újra.
+         */
+        kep?: (number | null) | Media;
+        /**
+         * Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata szakmai önéletrajza").
          */
         cim: string;
         /**
@@ -3451,6 +3455,7 @@ export interface BlockAccordionSelect<T extends boolean = true> {
   items?:
     | T
     | {
+        kep?: T;
         cim?: T;
         osszefoglalo?: T;
         tartalom?: T;

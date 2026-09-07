@@ -13,6 +13,13 @@
  *       H05-logóval (additív, a régi hat marad), és a /rolunk „Partnereink"
  *       szövegbekezdésének cseréje partner-logósávra (A04). Csak a két
  *       logósáv-blokkhoz nyúl, minden más szekció érintetlen.
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_ONELETRAJZ_KEP=igen … # MEGLÉVŐ /rolunk
+ *       harmonika: a két önéletrajz-sor ÜRES `kep` mezőjébe a névhez rendelt
+ *       portré (A05). Kitöltött mezőt, más sort, más blokkot nem érint.
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_GONDOLATJEL=igen …   # MEGLÉVŐ /rolunk
+ *       szekciósor: a 2026-09-07 előtti seed töltelék-gondolatjeles mondatai
+ *       PONTOS egyezésre natív alakra (src/lib/gondolatjel-leftover.ts);
+ *       szerkesztett szöveghez nem nyúl.
  */
 
 import path from 'node:path'
@@ -27,8 +34,10 @@ import {
   PARTNER_LOGO_FILES,
   PRESS_RAIL_FILES,
 } from '../lib/home-seed'
+import { rewriteVisitorDashLeftover } from '../lib/gondolatjel-leftover'
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR, type LegacyImage } from '../lib/legacy-images'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
+import { withoutOwnerReviewPortraitNode } from '../lib/owner-review-v1'
 import config from '../payload.config'
 import type { Page, Product } from '../payload-types'
 
@@ -51,6 +60,18 @@ const ARCHIVE_DEMO = kapuNyitva('LEGACY_ARCHIVE_DEMO')
  * operátornak a logósáv-frissítéshez nem szabad ezt kinyitnia.
  */
 const LOGOSAV = kapuNyitva('LEGACY_LOGOSAV')
+/**
+ * A MEGLÉVŐ /rolunk harmonika két önéletrajz-sorának portréja (A05). Szűk,
+ * additív kapu: csak az ÜRES `kep` mezőt tölti, név szerint; a lap többi
+ * részét nem írja felül.
+ */
+const ONELETRAJZ_KEP = kapuNyitva('LEGACY_ONELETRAJZ_KEP')
+/**
+ * A MEGLÉVŐ /rolunk szekciósor töltelék-gondolatjeles seed-mondatainak cseréje
+ * pontos egyezésre (tulajdonosi kikötés: natív magyar, gondolatjel-halmozás
+ * nélkül). Szerkesztett szöveg nem egyezik, tehát érintetlen marad.
+ */
+const GONDOLATJEL = kapuNyitva('LEGACY_GONDOLATJEL')
 /** Próbafutás: minden döntés lefut és naplózódik, de egyetlen írás sem történik. */
 const DRY_RUN = !CONFIRM
 
@@ -684,7 +705,7 @@ const szolgaltatasokContent = (): RichTextContent =>
 /** A lap bevezetője: miért fontos a kéz, és mikor kell segítség. */
 const rolunkBevezetoNodes = (): BlockNode[] => [
   para(
-    '– és igazából neked is. Akinek nem fáj a keze, talán bele sem gondol, hogy szinte minden ébren töltött percben használjuk a kezünket valamire.',
+    'És igazából neked is. Akinek nem fáj a keze, talán bele sem gondol, hogy szinte minden ébren töltött percben használjuk a kezünket valamire.',
   ),
   para(
     'Ha pedig azért vagy itt, mert megoldást keresel valamilyen húzódásra, sérülésre vagy idegi-, ízületi fájdalomra, akkor pontosan tudod:',
@@ -772,19 +793,19 @@ const ROLUNK_MEGKULONBOZTETOK: readonly CimSzoveg[] = [
 /** „Miben segíthetünk?" — a három szolgáltatási ág rövid alakja. */
 const ROLUNK_SZOLGALTATASOK: readonly SzolgaltatasSor[] = [
   {
-    title: 'Rendelői kezelések – személyesen',
+    title: 'Rendelői kezelések, személyesen',
     body: 'Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Gyógytornával, manuálterápiával és egy sor kiegészítő terápiával várunk.',
     label: 'Tovább a kezelésekre',
     url: '/szolgaltatasok',
   },
   {
-    title: 'Otthoni program – online',
+    title: 'Otthoni program, online',
     body: 'Ha a kézfájdalom enyhítésére szeretnél egy bárhol, bármikor végezhető megoldást, akkor egy átfogó programmal is tudunk segíteni.',
     label: 'Tovább a kurzusokra',
     url: '/kurzusok',
   },
   {
-    title: 'Szakmai képzések – kollégáknak',
+    title: 'Szakmai képzések, kollégáknak',
     body: 'Akkreditált tantermi kézkurzus a kéz, a csukló- és könyökízület rehabilitációs lehetőségeiről gyógytornászoknak, erőnléti- és szakági edzőknek és orvosoknak.',
     label: 'Tovább a képzésre',
     url: 'https://probodystudio.hu/kez-workshop/',
@@ -1047,7 +1068,7 @@ const rolunkReferenciaNodes = (): BlockNode[] => [
   heading('h2', 'Partnereink'),
   para(ROLUNK_PARTNEREK),
   ...ROLUNK_ONELETRAJZOK.flatMap((cv) => [
-    heading('h2', `${cv.nev} szakmai önéletrajz`),
+    heading('h2', `${cv.nev} szakmai önéletrajza`),
     ...oneletrajzNodes(cv),
   ]),
 ]
@@ -1485,6 +1506,253 @@ const frissitsdLogosavokat = async (
 }
 
 /**
+ * A harmonika-sor címe: birtokos szerkezet, gondolatjel nélkül („Kocsis Kata
+ * szakmai önéletrajza"). A 2026-09-07 előtti „Név — szakmai önéletrajz" alak a
+ * gondolatjel-söprés maradéka (AkH. 12. kiadás 250–251.: a gondolatjel
+ * közbevetést jelöl, cím és alcím közé nem való).
+ */
+const oneletrajzCim = (nev: string): string => `${nev} szakmai önéletrajza`
+
+/** A harmonika-sor 2026-09-07 ELŐTTI címe — az élő szekciósor felismeréséhez. */
+const oneletrajzRegiCim = (nev: string): string => `${nev} — szakmai önéletrajz`
+
+/**
+ * A névhez rendelt portré Media-id-ja (a szakember-kártyák `portreFajl`
+ * hozzárendelését használja, hogy a harmonika és a kártya sose mutasson két
+ * különböző arcot ugyanahhoz a névhez).
+ */
+const oneletrajzPortre = (nev: string, media: OldalLayoutMedia): number | undefined => {
+  const fajl = SZAKEMBER_KARTYAK.find((kartya) => kartya.nev === nev)?.portreFajl
+  if (fajl === '67b3c6e9e315f_KocsisKatakozeli.png') return media.kocsisPortre
+  if (fajl === '67c07def59ac2_KissKataelegans.png') return media.kissPortre
+  return undefined
+}
+
+/** A /rolunk „Részletes szakmai háttér" harmonikájának indexe a szekciósorban. */
+const szakmaiHatterIndex = (layout: NonNullable<Page['layout']>): number =>
+  layout.findIndex(
+    (block) =>
+      block.blockType === 'accordion' && block.sectionSettings?.anchorId === 'szakmai-hatter',
+  )
+
+/**
+ * MEGLÉVŐ /rolunk harmonika önéletrajz-sorainak portréja (A05,
+ * LEGACY_ONELETRAJZ_KEP=igen). Kizárólag a `szakmai-hatter` horgonyú accordion
+ * blokk azon sorait tölti, amelyeknek a címe a seed régi VAGY új alakja, és
+ * a `kep` mezője ÜRES; kitöltött mezőhöz (a szerkesztő választása) nem nyúl.
+ * Ha a lenyitott tartalom tetején a 2026-09-07 előtti apply-owner-review-v1
+ * saját, UGYANARRA a képre mutató upload-csomópontja áll, azt leveszi (a
+ * portré a sor elejére költözött, nem ismétlődik). Tiszta függvény,
+ * adatbázis nélkül.
+ */
+const tervezdOneletrajzKepeket = (
+  layout: Page['layout'],
+  portrek: Pick<OldalLayoutMedia, 'kocsisPortre' | 'kissPortre'>,
+): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  const index = szakmaiHatterIndex(layout)
+  if (index === -1) {
+    return { layout: null, uzenet: 'nincs „szakmai-hatter" horgonyú harmonika a szekciósorban' }
+  }
+  const block = layout[index]
+  if (block.blockType !== 'accordion') return { layout: null, uzenet: 'belső hiba' }
+  const toltott: string[] = []
+  const tisztitott: string[] = []
+  const items = (block.items ?? []).map((item) => {
+    const cv = ROLUNK_ONELETRAJZOK.find(
+      (jelolt) =>
+        item.cim === oneletrajzCim(jelolt.nev) || item.cim === oneletrajzRegiCim(jelolt.nev),
+    )
+    if (cv === undefined) return item
+    const portre = oneletrajzPortre(cv.nev, portrek)
+    if (portre === undefined) return item
+    const meglevo = typeof item.kep === 'number' ? item.kep : item.kep?.id
+    let uj = item
+    if (meglevo === undefined || meglevo === null) {
+      toltott.push(cv.nev)
+      uj = { ...uj, kep: portre }
+    } else if (meglevo !== portre) {
+      // A szerkesztő más képet választott: se a mező, se a tartalom nem a miénk.
+      return item
+    }
+    const tartalom = withoutOwnerReviewPortraitNode(item.tartalom, portre)
+    if (tartalom !== item.tartalom) {
+      tisztitott.push(cv.nev)
+      uj = { ...uj, tartalom: tartalom as typeof item.tartalom }
+    }
+    return uj
+  })
+  if (toltott.length === 0 && tisztitott.length === 0) {
+    return {
+      layout: null,
+      uzenet:
+        'a harmonika önéletrajz-sorai már portréval állnak (vagy nincs hozzájuk portré a Médiatárban)',
+    }
+  }
+  const ujLayout = [...layout]
+  ujLayout[index] = { ...block, items }
+  const uzenetek = [
+    ...(toltott.length > 0 ? [`portré a harmonika-sor elejére: ${toltott.join(', ')}`] : []),
+    ...(tisztitott.length > 0
+      ? [`ismétlődő bevezető portré-csomópont levéve a tartalom tetejéről: ${tisztitott.join(', ')}`]
+      : []),
+  ]
+  return { layout: ujLayout, uzenet: uzenetek.join('; ') }
+}
+
+/**
+ * MEGLÉVŐ /rolunk szekciósor töltelék-gondolatjeles seed-mondatainak cseréje
+ * (LEGACY_GONDOLATJEL=igen). Csak PONTOS egyezésre nyúl a mezőhöz
+ * (`rewriteVisitorDashLeftover`): harmonika cím + bevezető, bemutatkozó
+ * statisztika-felirat, „Miben segíthetünk?" sorcímek, a bevezető rich-text
+ * első bekezdésének szövege. Idézetet, önéletrajz-tételt, más blokkot nem
+ * érint. Tiszta függvény, adatbázis nélkül.
+ */
+const tervezdGondolatjelCsereket = (layout: Page['layout']): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  const cserek: string[] = []
+  const csere = (szoveg: string): string => {
+    const uj = rewriteVisitorDashLeftover(szoveg)
+    if (uj !== szoveg) cserek.push(`„${szoveg}" → „${uj}"`)
+    return uj
+  }
+  const ujLayout = layout.map((block): SzekciosorBlokk => {
+    switch (block.blockType) {
+      case 'accordion':
+        return {
+          ...block,
+          lead: typeof block.lead === 'string' ? csere(block.lead) : block.lead,
+          items: (block.items ?? []).map((item) => ({ ...item, cim: csere(item.cim) })),
+        }
+      case 'about':
+        return {
+          ...block,
+          stats: (block.stats ?? []).map((stat) => ({ ...stat, label: csere(stat.label) })),
+        }
+      case 'services':
+        return {
+          ...block,
+          rows: (block.rows ?? []).map((row) => ({ ...row, title: csere(row.title) })),
+        }
+      case 'richText': {
+        const first = block.content?.root?.children?.[0]
+        const gyerekek = (first as { children?: unknown } | undefined)?.children
+        const node = Array.isArray(gyerekek) && gyerekek.length === 1 ? gyerekek[0] : undefined
+        const szoveg = (node as { type?: unknown; text?: unknown } | undefined)?.text
+        if (
+          first?.type !== 'paragraph' ||
+          (node as { type?: unknown } | undefined)?.type !== 'text' ||
+          typeof szoveg !== 'string'
+        ) {
+          return block
+        }
+        const uj = csere(szoveg)
+        if (uj === szoveg) return block
+        const children = [...block.content.root.children]
+        children[0] = { ...first, children: [{ ...(node as object), text: uj }] }
+        return { ...block, content: { ...block.content, root: { ...block.content.root, children } } }
+      }
+      default:
+        return block
+    }
+  })
+  if (cserek.length === 0) {
+    return { layout: null, uzenet: 'nincs töltelék-gondolatjeles seed-mondat a szekciósorban' }
+  }
+  return { layout: ujLayout, uzenet: `gondolatjel-csere: ${cserek.join('; ')}` }
+}
+
+/**
+ * MEGLÉVŐ oldal fejléc-bevezetőjének (`excerpt`, a lap hero-leadje) cseréje
+ * PONTOS egyezésre (`rewriteVisitorDashLeftover`); szerkesztett szöveg nem
+ * egyezik, tehát érintetlen marad.
+ */
+const frissitsdKivonatot = async (payload: Payload, slug: string): Promise<void> => {
+  const cimke = `gondolatjel-csere (fejléc-bevezető): ${slug}`
+  const page = (
+    await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+  ).docs[0]
+  if (page === undefined) {
+    naploKihagyas(payload, cimke, 'az oldal nem található')
+    return
+  }
+  const regi = page.excerpt ?? ''
+  const uj = rewriteVisitorDashLeftover(regi)
+  if (uj === regi) {
+    payload.logger.info(`Legacy: ${cimke} — nincs teendő: a fejléc-bevezető nem a régi seed mondata.`)
+    return
+  }
+  if (!DRY_RUN) {
+    await payload.update({
+      collection: 'pages',
+      id: page.id,
+      data: { excerpt: uj },
+      overrideAccess: true,
+    })
+  }
+  naploFeluliras(payload, `${cimke} — „${regi}" → „${uj}"`)
+}
+
+/**
+ * Egyetlen oldal szekciósorának célzott frissítése egy vagy több tiszta
+ * tervező-függvénnyel: egy `payload.update`, kizárólag a `layout` mezőre.
+ */
+const frissitsdSzekciosort = async (
+  payload: Payload,
+  slug: string,
+  cimke: string,
+  tervek: ((layout: Page['layout']) => LogosavTerv)[],
+): Promise<void> => {
+  const page = (
+    await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+  ).docs[0]
+  if (page === undefined) {
+    naploKihagyas(payload, cimke, 'az oldal nem található')
+    return
+  }
+  let layout: Page['layout'] = page.layout
+  const valtozasok: string[] = []
+  for (const terv of tervek) {
+    const eredmeny = terv(layout)
+    if (eredmeny.layout === null) {
+      payload.logger.info(`Legacy: ${cimke} — nincs teendő: ${eredmeny.uzenet}.`)
+      continue
+    }
+    layout = eredmeny.layout
+    valtozasok.push(eredmeny.uzenet)
+  }
+  if (valtozasok.length === 0) {
+    naploKihagyas(payload, cimke, 'nincs változás')
+    return
+  }
+  if (!DRY_RUN) {
+    await payload.update({
+      collection: 'pages',
+      id: page.id,
+      data: { layout },
+      overrideAccess: true,
+    })
+  }
+  naploFeluliras(payload, `${cimke} — ${valtozasok.join('; ')}`)
+}
+
+/**
  * A /rolunk alap-szekciósora.
  *
  * Kép nélkül (`buildRolunkLayout()`) is teljes értékű: a fotó és a logósor
@@ -1523,7 +1791,7 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
       stats: [
         { value: '10+', label: 'év szakmai tapasztalat' },
         { value: '1000+', label: 'elégedett páciens' },
-        { value: '12', label: 'kreditpont — akkreditált képzés (SZTK-A-33553/2024)' },
+        { value: '12', label: 'kreditpont, akkreditált képzés (SZTK-A-33553/2024)' },
         { value: '2', label: 'szakmai egyesületi tagság' },
       ],
       sectionSettings: { visible: true, anchorId: 'rolunk', hatter: 'tint' },
@@ -1622,9 +1890,13 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
       blockType: 'accordion',
       eyebrow: 'Szakmai háttér',
       title: 'Részletes szakmai háttér',
-      lead: 'A teljes szakmai életutunk — tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.',
+      lead: 'A teljes szakmai életutunk: tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.',
+      // A05: minden sor elején a NÉVHEZ rendelt portré — ugyanaz a Média-tétel,
+      // mint a szakember-kártyákon (egy arc, egy kép, minden oldalon). Hiányzó
+      // portré (kép nélküli futás) esetén a sor kép nélkül épül.
       items: ROLUNK_ONELETRAJZOK.map((cv) => ({
-        cim: `${cv.nev} — szakmai önéletrajz`,
+        kep: oneletrajzPortre(cv.nev, media),
+        cim: oneletrajzCim(cv.nev),
         osszefoglalo: cvOsszefoglalo(cv),
         tartalom: richText(oneletrajzNodes(cv)),
       })),
@@ -2724,12 +2996,12 @@ async function restoreLegacyContent(): Promise<void> {
     slug: 'rolunk',
     title: 'A kéz a mindenünk',
     excerpt:
-      'Kocsis Kata és Kiss Kata vagyunk, a KINETICARE alapítói – gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
+      'Kocsis Kata és Kiss Kata vagyunk, a KINETICARE alapítói: gyógytornászok, manuálterapeuták és sportrehabilitációs trénerek, évek óta elsősorban a kéz rehabilitációjával foglalkozunk.',
     content: rolunkContent(),
     heroImage: rolunkHeroKep,
     seoTitle: 'Rólunk – Kineticare',
     seoDescription:
-      'Kocsis Kata kézrehabilitációs gyógytornász-fizioterapeuta, Kiss Kata kézrehabilitációs gyógytornász-fizioterapeuta és manuálterapeuta – szakmai háttér, vélemények, média-megjelenések.',
+      'Kocsis Kata kézrehabilitációs gyógytornász-fizioterapeuta, Kiss Kata kézrehabilitációs gyógytornász-fizioterapeuta és manuálterapeuta. Szakmai háttér, vélemények, média-megjelenések.',
   })
 
   // --- Oldal: szolgaltatasok ---------------------------------------------------
@@ -2798,6 +3070,28 @@ async function restoreLegacyContent(): Promise<void> {
   } else {
     payload.logger.info(
       'Legacy: a meglévő szekciósorok logósávjai érintetlenek maradnak (LEGACY_LOGOSAV=igen kapcsolja be a sajtó-logósor bővítését és a /rolunk partner-logósávját).',
+    )
+  }
+  // MEGLÉVŐ /rolunk harmonika: portré a két önéletrajz-sor elejére (A05).
+  if (ONELETRAJZ_KEP) {
+    await frissitsdSzekciosort(payload, 'rolunk', 'harmonika-portrék: rolunk', [
+      (layout) => tervezdOneletrajzKepeket(layout, { kocsisPortre, kissPortre }),
+    ])
+  } else {
+    payload.logger.info(
+      'Legacy: a meglévő /rolunk harmonika sorai érintetlenek maradnak (LEGACY_ONELETRAJZ_KEP=igen tölti ki az önéletrajz-sorok üres portré-mezőjét).',
+    )
+  }
+  // MEGLÉVŐ /rolunk szekciósor + fejléc-bevezető: töltelék-gondolatjeles
+  // seed-mondatok cseréje.
+  if (GONDOLATJEL) {
+    await frissitsdSzekciosort(payload, 'rolunk', 'gondolatjel-csere: rolunk', [
+      tervezdGondolatjelCsereket,
+    ])
+    await frissitsdKivonatot(payload, 'rolunk')
+  } else {
+    payload.logger.info(
+      'Legacy: a meglévő /rolunk szekciósor szövegei érintetlenek maradnak (LEGACY_GONDOLATJEL=igen cseréli a régi seed gondolatjeles mondatait pontos egyezésre).',
     )
   }
   await ensurePageLayout(
@@ -2981,6 +3275,8 @@ export {
   SZAKMAI_HATTER_URL,
   szolgaltatasokContent,
   szolgaltatasokRegiBevezetoTartalom,
+  tervezdGondolatjelCsereket,
+  tervezdOneletrajzKepeket,
   tervezdPartnerSavot,
   tervezdSajtoLogosorBovitest,
 }
