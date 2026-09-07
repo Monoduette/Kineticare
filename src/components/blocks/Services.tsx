@@ -15,7 +15,10 @@ import '../../app/(frontend)/styles/blocks/services-sin.css'
  * Services — tábla (kép + számozott sorok) vagy sín + panel (REV C).
  * A sín natív rádiócsoport: W3C APG Radio Group, nem hamis tablista.
  * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
- * Vizuális króm: függőleges idővonal körjelölőkkel, kiemelt kétoszlopos panel.
+ * Vizuális króm (WP17, tulajdonosi drótváz 2026-09-07): asztalon függőleges
+ * sín 5rem-es körjelölőkkel + kártya-panel; 900 px alatt accordion-sorok,
+ * a nyitott sor alatt a panel. A kéz-ikon (zárt / nyíló / nyitott) MINDEN
+ * állapotban a tétel jele: inaktívan körvonalas, aktívan fehér a sötét körön.
  */
 export interface ServicesProps {
   block: BlockServices
@@ -121,12 +124,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
                       key={`rail-${row.id ?? index}`}
                     >
                       <span aria-hidden="true" className="kc-services-sin__marker">
-                        <span className="kc-services-sin__marker-idle">
-                          <RailHandIcon index={index} />
-                        </span>
-                        <span className="kc-services-sin__marker-active">
-                          <RailActiveArrow />
-                        </span>
+                        <RailHandIcon index={index} />
                       </span>
                       <span className="kc-services-sin__rail-copy">
                         <span className="kc-services-sin__rail-title">{rowTitle}</span>
@@ -203,7 +201,7 @@ function RailPanel({
       </div>
       {photo ? (
         <span className="kc-services-sin__photo">
-          <MediaImage media={photo} preferredSize="lg" sizes="(max-width: 900px) 100vw, 36vw" />
+          <MediaImage media={photo} preferredSize="lg" sizes="(max-width: 899px) 100vw, 30vw" />
         </span>
       ) : (
         <div className="kc-services-sin__placeholder">
@@ -339,10 +337,13 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
 }
 
 /**
- * REV B kézikonok a C sín inaktív köreiben: ököl / nyíló / nyitott tenyér.
- * A kitöltött aktív kör fehér északkeleti nyilat visz (a C drót).
- * Minden glifa ugyanazt a 24×24 viewBoxot, 1,85-ös vonalvastagságot és
- * a CSS 1rem dobozát viseli — az állapotváltás nem méretet vált.
+ * A sín kézikonjai: ököl / nyíló / nyitott tenyér. A tulajdonos kérése
+ * (2026-09-07): „azokat az ikonokat használd, ahol láthatóak a kezek", a zárt
+ * és a nyitott is kell. Ugyanaz a glifa látszik inaktívan (chrome körvonal a
+ * fehér körön) és aktívan (fehér a sötét körön) — az állapotváltás csak szín,
+ * nem ikoncsere és nem méretugrás (Material 3 icon button: outlined vs filled,
+ * azonos méret; https://m3.material.io/components/icon-buttons/overview).
+ * Minden glifa ugyanazt a 24×24 viewBoxot és 1,85-ös vonalvastagságot viseli.
  */
 function RailHandIcon({ index }: { index: number }) {
   if (index % 3 === 0) return <ClosedHandIcon />
@@ -399,15 +400,6 @@ function OpenHandIcon() {
       <path d="M15.94 13.85V7.35c0-.48.4-.9.92-.9s.92.42.92.9v6.5" />
       <path d="M7.15 13.85h10.55v3.15c0 1.82-1.48 3.3-3.3 3.3H10.45c-1.82 0-3.3-1.48-3.3-3.3v-3.15z" />
       <path d="M7.15 15.55H5.2a1.5 1.5 0 1 1 0-3l1.95.55" />
-    </svg>
-  )
-}
-
-function RailActiveArrow() {
-  return (
-    <svg {...railIconProps()}>
-      <path d="M7 17 17 7" />
-      <path d="M9 7h8v8" />
     </svg>
   )
 }

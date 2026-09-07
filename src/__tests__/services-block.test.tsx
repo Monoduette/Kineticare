@@ -303,6 +303,11 @@ describe('Services — REV C sín + panel', () => {
     expect(markup).toContain('kc-services-sin__hand--closed')
     expect(markup).toContain('kc-services-sin__hand--opening')
     expect(markup).toContain('kc-services-sin__hand--open')
+    // WP17: a kéz-ikon MINDEN állapotban a tétel jele — nincs ikoncsere,
+    // nincs aktív nyíl a körben; a nyíl csak a CTA gombon marad.
+    expect(markup).not.toContain('kc-services-sin__marker-idle')
+    expect(markup).not.toContain('kc-services-sin__marker-active')
+    expect(markup.match(/kc-services-sin__hand--/g)).toHaveLength(3)
     expect(markup).not.toContain('kc-services-sin__rail-index')
     expect(markup).toContain('1. ÚT')
     expect(markup).toContain('2. ÚT')
@@ -439,11 +444,19 @@ describe('services-sin.css — token-szerződés', () => {
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('surface-raised')
     expect(szabalyTorzs(css, '.kc-services-sin__panel')).not.toContain('shadow-md')
+    // Audit P2-8: a panel címe a szekció fő tartalmi címe (L, Tenor 400 marad),
+    // a sín-tétel címei M + 600 (közepes), nem 700.
     expect(szabalyTorzs(css, '.kc-services-sin__panel-title')).toContain(
       'font-family: var(--kc-font-heading)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__panel-title')).toContain(
       'font-weight: var(--kc-font-weight-normal)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-title')).toContain(
+      'font-size: var(--kc-font-m)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-title')).toContain(
+      'font-weight: var(--kc-font-weight-medium)',
     )
     expect(szabalyTorzs(css, '.kc-services-sin__intro')).toContain(
       'font-family: var(--kc-font-body)',
@@ -451,27 +464,40 @@ describe('services-sin.css — token-szerződés', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__cta')).toContain(
       'background-color: var(--kc-color-surface-dark)',
     )
+    // WP17 (tulajdonosi drótváz): a kör mobilon 3.5rem, asztalon 5rem (80 px),
+    // a slot ugyanaz — a :checked NEM nagyít; az ikon a slothoz mért token.
     expect(szabalyTorzs(css, '.kc-services-sin__marker')).toContain(
-      'width: var(--kc-services-marker-idle)',
+      'width: var(--kc-services-marker)',
     )
-    expect(css).toContain('--kc-services-marker: 3rem')
-    expect(css).toContain('--kc-services-marker-idle: var(--kc-services-marker)')
-    expect(css).toContain('--kc-services-marker-active: var(--kc-services-marker)')
+    expect(css).toContain('--kc-services-marker: 3.5rem')
+    expect(css).toContain('--kc-services-marker: 5rem')
     expect(css).toContain('--kc-services-marker-slot: var(--kc-services-marker)')
-    expect(css).not.toContain('width: var(--kc-services-marker-active)')
+    expect(css).toContain('--kc-services-marker-icon: 1.75rem')
+    expect(css).toContain('--kc-services-marker-icon: 2.5rem')
+    expect(css).not.toContain('--kc-services-marker-icon: 1.5rem')
+    expect(css).not.toContain('kc-services-marker-active')
+    expect(css).not.toContain('kc-services-marker-idle')
     expect(css).not.toContain('width: 0.95rem')
-    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('width: 1.25rem')
-    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain('height: 1.25rem')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain(
+      'width: var(--kc-services-marker-icon)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain(
+      'height: var(--kc-services-marker-icon)',
+    )
+    // Panel belső térköz: asztalon space-7, 1200-tól a drót 72 px-e (space-8).
     expect(css).toContain('--kc-services-panel-pad: var(--kc-space-7)')
+    expect(css).toContain('--kc-services-panel-pad: var(--kc-space-8)')
     expect(css).toContain('padding: var(--kc-services-panel-pad)')
-    expect(css).toContain('minmax(16rem, 1fr) minmax(0, 2fr)')
+    // Hasáb-arány 1 : 2,6 (a drót 345 / 1090 px-e 1440-en).
+    expect(css).toContain('minmax(16rem, 1fr) minmax(0, 2.6fr)')
     expect(szabalyTorzs(css, '.kc-services--sin .kc-services__title')).toContain('max-width: none')
     expect(css).not.toContain('justify-content: space-between')
     expect(css).toContain('align-items: start')
     expect(css).toContain('align-self: start')
     expect(szabalyTorzs(css, '.kc-services-sin__rail')).not.toContain('flex: none')
+    // Asztali sín-tétel köz: space-7 (48 px, a drót).
     expect(css).toMatch(
-      /\.kc-services-sin__rail \{\s*justify-content: flex-start;\s*gap: var\(--kc-space-6\);\s*flex: none;/,
+      /\.kc-services-sin__rail \{\s*justify-content: flex-start;\s*gap: var\(--kc-space-7\);\s*flex: none;/,
     )
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
@@ -571,6 +597,13 @@ describe('services-sin.css — mozgás-réteg', () => {
     }
   })
 
+  it('a fókusz-gyűrű szabálya a :checked ELŐTT áll (a kiválasztott körön a kéz-ikon fehér marad)', () => {
+    const fokusz = tiszta.indexOf(':focus-visible\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker')
+    const checked = tiszta.indexOf(':checked\n  ~ .kc-services-sin__layout\n  .kc-services-sin__rail-label:nth-of-type(1)\n  .kc-services-sin__marker')
+    expect(fokusz).toBeGreaterThan(-1)
+    expect(checked).toBeGreaterThan(fokusz)
+  })
+
   it('hover és fókusz tónusa a help-panel token, a gyűrű help-ink; nincs új hex', () => {
     expect(szabalyTorzs(css, '.kc-services-sin__rail-label:hover')).toContain(
       'background-color: var(--kc-color-help-panel)',
@@ -579,5 +612,69 @@ describe('services-sin.css — mozgás-réteg', () => {
       szabalyTorzs(css, '.kc-services-sin__rail-label:hover .kc-services-sin__marker'),
     ).toContain('border-color: var(--kc-color-help-ink)')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+})
+
+/**
+ * ŐR — WP17 mobil accordion (tulajdonosi drótváz, 2026-09-07). 900 px alatt a
+ * panel a nyitott sor ALÁ fésülődik: a burkolók display: contents-szel adják
+ * át a gyermekeiket a layout-rácsnak, a sorrendet `order` adja, az inaktív
+ * panel 0 magas (nem display: none — az átúszás marad). A + / − jel tisztán
+ * CSS (::after), a rádió-mechanika változatlan.
+ * https://www.nngroup.com/articles/mobile-accordions/
+ * https://design-system.service.gov.uk/components/accordion/
+ */
+describe('services-sin.css — mobil accordion (< 900 px)', () => {
+  const css = cssFajl('services-sin.css')
+  const tiszta = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const mobil = tiszta.slice(
+    tiszta.indexOf('@media (max-width: 899px)'),
+    tiszta.indexOf('@media (prefers-reduced-motion: reduce)'),
+  )
+  const asztal = tiszta.slice(tiszta.indexOf('@media (min-width: 900px)'))
+
+  it('a burkolók átadják a gyermekeiket, a címkék és panelek összefésülődnek', () => {
+    expect(mobil).toMatch(
+      /\.kc-services-sin__col,\s*\.kc-services-sin__rail,\s*\.kc-services-sin__stage \{\s*display: contents;/,
+    )
+    for (let n = 1; n <= 3; n += 1) {
+      expect(mobil).toMatch(
+        new RegExp(`\\.kc-services-sin__rail-label:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n - 1};`),
+      )
+      expect(mobil).toMatch(
+        new RegExp(`\\.kc-services-sin__panel:nth-of-type\\(${n}\\) \\{\\s*order: ${2 * n};`),
+      )
+    }
+  })
+
+  it('az inaktív panel 0 magas, keret és árnyék nélkül; az aktív a tartalmára nyílik', () => {
+    const panel = mobil.slice(mobil.indexOf('.kc-services-sin__panel {'))
+    expect(panel).toContain('grid-area: auto')
+    expect(panel).toContain('height: 0')
+    expect(panel).toContain('border-width: 0')
+    expect(panel).toContain('overflow: hidden')
+    expect(mobil).toContain('height: auto')
+    expect(mobil).toContain('padding: var(--kc-services-panel-pad)')
+    expect(mobil).not.toContain('display: none')
+  })
+
+  it('a + / − jel gradientből áll, a nyitott sor a vízszintes vonalat viszi; asztalon nincs', () => {
+    const jel = szabalyTorzs(css, '.kc-services-sin__rail-label::after')
+    expect(jel).toContain("content: ''")
+    expect(jel).toContain('linear-gradient(var(--kc-color-help-ink), var(--kc-color-help-ink))')
+    expect(jel).toMatch(/background-size:\s*100% 2px,\s*2px 100%/)
+    expect(tiszta).toMatch(/rail-label:nth-of-type\(1\)::after[\s\S]*?background-size:\s*100% 2px,\s*0 0/)
+    expect(asztal).toMatch(/\.kc-services-sin__rail-label::after \{\s*content: none;/)
+  })
+
+  it('a sorok közt hajszál-elválasztó fut, a nyitott sor és a panelje közt nem', () => {
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-label:not(:first-of-type)')).toContain(
+      'border-top: 1px solid var(--kc-services-rail-line)',
+    )
+    expect(szabalyTorzs(css, '.kc-services-sin__rail-label')).not.toContain('border-bottom')
+  })
+
+  it('a rács köze 0 mobilon (a rejtett panel nem hagy üres rést)', () => {
+    expect(mobil).toMatch(/\.kc-services-sin__layout \{\s*gap: 0;/)
   })
 })
