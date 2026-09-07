@@ -74,9 +74,12 @@ A sorrend a várható hatás és a ráfordítás hányadosa szerint áll. A mér
 5. **Az űrlapmezők fókuszjelölése a szabvány küszöbe alatt volt** (mérve 1,32:1
    a 3:1 helyett), tíz űrlapon, köztük a minden oldalon látszó hírlevélen.
    **JAVÍTVA** ebben a körben. Forrás: AUDIT-A 2. találat.
-6. **A főmenüben demó menüpont állt élesben** („olcsó dolgok itt”, egy
-   „Képzeletbeli akciós kurzus” című, keresőből kizárt lapra). **JAVÍTVA** ebben
-   a körben, kapus és visszafordítható lépéssel. Forrás: AUDIT-C 4. találat.
+6. **A főmenü „olcsó dolgok itt” pontja placeholder feliratot visel**, és egy
+   „Képzeletbeli akciós kurzus” című, keresőből kizárt lapra visz. A menüpont
+   **tulajdonosi döntés alapján marad**; a felirat és a cél valódi kampány-
+   tartalommal töltendő ki. A navigáció címkéje mondja meg, hova visz
+   (NN/g Menu Design; WCAG 2.2 SC 2.4.6 és SC 3.2.3). **Tulajdonosi tartalom
+   kell.** Forrás: AUDIT-C 4. találat.
 7. **A regisztráció hibaüzenete félrevezet, és nincs mezőszintű hiba.** Hiányzó
    nagybetűnél azt írja, hogy „min. 12 karakter”, és összemossa a foglalt
    e-mail esetével; a mezők nem kapnak hibajelölést, pedig a belépés lapja
@@ -127,11 +130,10 @@ A sorrend a várható hatás és a ráfordítás hányadosa szerint áll. A mér
 
 ## 4. Ami ebben a körben már elkészült
 
-| Tétel                                                                     | Hol                                  |
-| ------------------------------------------------------------------------- | ------------------------------------ |
-| A demó menüpont elrejtése a főmenüből, kapus és visszafordítható lépéssel | `src/scripts/apply-owner-content.ts` |
-| Az űrlapmezők a globális, 3 pixeles fókuszgyűrűt kapják (mérve 5,45:1)    | `src/app/(frontend)/styles/ui.css`   |
-| A lejátszó hibapaneljén a mentőgombok láthatóvá váltak (1,00:1 → 15,63:1) | `src/app/(frontend)/player.css`      |
+| Tétel                                                                     | Hol                                |
+| ------------------------------------------------------------------------- | ---------------------------------- |
+| Az űrlapmezők a globális, 3 pixeles fókuszgyűrűt kapják (mérve 5,45:1)    | `src/app/(frontend)/styles/ui.css` |
+| A lejátszó hibapaneljén a mentőgombok láthatóvá váltak (1,00:1 → 15,63:1) | `src/app/(frontend)/player.css`    |
 
 Mindhárom tételt őr-teszt védi.
 
@@ -154,6 +156,8 @@ Mindhárom tételt őr-teszt védi.
    együttes kommunikációja.
 9. **Fotóigény**: a Tudástár kártya- és megosztási képei, a termékoldal
    bizonyítékai.
+10. **Az „olcsó dolgok itt” menüpont valódi felirata és célja**: milyen
+    kampányra visz, és mi legyen a lap tartalma a mai demó-szöveg helyett.
 
 ## 6. Javasolt sorrend
 
