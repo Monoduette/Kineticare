@@ -125,6 +125,10 @@
   display: flex;
   align-items: center;
   gap: var(--kc-space-3);
+  /* A sáv jobb széle: a tartalma pirula és szöveglink, nem tördelhető, ezért
+     sosem zsugorodik — a helyet a menüsor és a wordmark adja (lásd lentebb a
+     900–1199 px-es sáv-tartalékot). */
+  flex: none;
 }
 
 .kc-site-header__bar {
@@ -133,12 +137,51 @@
   justify-content: space-between;
   gap: var(--kc-space-3);
   min-height: 3.5rem; /* landing mobil-sáv (@media max-width: 860px) */
+  min-width: 0;
 }
 
+/**
+ * SÁV-TARTALÉK 900–1199 px (WP8, 2026-09-07, mérve). A tulajdonos 900 px-től
+ * vízszintes menüsort kér (docs/owner-ui-2026-09-06.md 1. pont), menüpont
+ * nem rejthető, a töréspont nem emelhető. A négy menüpont + Belépés/Kurzusaim
+ * + Időpontfoglalás + Kurzusok-pirula az asztali térközökkel 990 px-et kért,
+ * a 900 px-es sáv 852 px-et ad (24 px-es margókkal): a dokumentum 900 px-en
+ * 1014, 960-on 1021, 1024-en 1027 px-re csordult (scrollWidth, Chromium).
+ * Egy asztali lépcső van 900 px-től (sáv-gap 8 px, akciósáv-gap és fiók-link
+ * oldaltérköz 4 px, menülink S betűméret és 4 px-es oldaltérköz, pirula
+ * 12 px-es oldaltérköz, wordmark 0,1em-es ritkítás). A 75em-es tágas második
+ * lépcső azért nem maradhatott: bejelentkezve ott a kijelentkezés-pirula is
+ * a sávban áll, és a tartalom M-es menüfelirattal 1206 px-et kért az 1120
+ * px-es konténer 1072 px-es belső szélességén (1440 px-en is) — korábban a
+ * nav zsugorodott, a linkek az akciósáv ALÁ csúsztak (rejtett átfedés).
+ * Mért tartalék a javítás után: header-responsive.browser.mjs (bejelentkezve
+ * is, 900–1440 px).
+ * Források:
+ * - GOV.UK Service navigation: a menülista `govuk-font(19)`-en fut, ami a
+ *   GOV.UK skálán tablet-szélességen 16 px, asztalon 19 px — a szűkebb sávon
+ *   ott is kisebb a menüfelirat, a lista pedig inline-blokként tördel.
+ *   https://design-system.service.gov.uk/components/service-navigation/
+ * - NN/g, Hamburger Menus and Hidden Navigation Hurt UX Metrics: asztalon a
+ *   rejtett navigáció felfedezhetősége 27% vs 48–50%, a feladatidő ≥39%-kal
+ *   hosszabb — a menüpontok rejtése nem opció.
+ *   https://www.nngroup.com/articles/hamburger-menus/
+ * - WCAG 2.2 SC 1.4.10 Reflow: kétirányú görgetés nélkül; a repó a 320 px-es
+ *   küszöbön túl a köztes sávra is méri (header-responsive.browser.mjs).
+ *   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+ * A célfelületek maradnak ≥ 44 px magasak (WCAG 2.2 2.5.8: 24×24 a küszöb).
+ */
 @media (min-width: 900px) {
   .kc-site-header__bar {
-    gap: var(--kc-space-4);
+    gap: var(--kc-space-2);
     min-height: var(--kc-header-height);
+  }
+
+  .kc-site-header__actions {
+    gap: var(--kc-space-1);
+  }
+
+  .kc-site-header__actions .kc-account-nav__link {
+    padding-inline: var(--kc-space-1);
   }
 }
 
@@ -151,6 +194,7 @@
 .kc-site-header__brand {
   display: inline-flex;
   align-items: center;
+  flex: none;
   min-height: 2.75rem; /* 44px érintési cél */
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-m);
@@ -189,9 +233,13 @@
   }
 }
 
+/* Asztali sáv: a ≤400 px-es 0,1em-es ritkítás (sáv-tartalék; bejelentkezve a
+   „Kurzusaim” 9 px-szel szélesebb a „Belépés”-nél, 75em-től a
+   kijelentkezés-pirula is a sávban áll). A korábbi 0,22em-es tágas ritkítás
+   a bejelentkezett asztali sávval együtt már nem fért ki (1206 px vs 1072). */
 @media (min-width: 900px) {
   .kc-site-header__brand {
-    letter-spacing: 0.22em;
+    letter-spacing: 0.1em;
   }
 }
 
@@ -202,6 +250,8 @@
    specifikusság (`.kc-site-header .kc-site-header__cta`) az importsorrendtől
    függetlenül nyer a `.kc-button--sm` méret-szabálya felett. */
 .kc-site-header .kc-site-header__cta {
+  flex: none;
+  white-space: nowrap;
   min-height: 2.75rem;
   padding-inline: var(--kc-space-5);
   border-radius: var(--kc-radius-full);
@@ -238,6 +288,13 @@
 @media (max-width: 400px) {
   .kc-site-header .kc-site-header__cta {
     padding-inline: var(--kc-space-4);
+  }
+}
+
+/* Asztali sáv: a pirula oldaltérköze a 12 px-es lépcső (sáv-tartalék). */
+@media (min-width: 900px) {
+  .kc-site-header .kc-site-header__cta {
+    padding-inline: var(--kc-space-3);
   }
 }
 
@@ -619,6 +676,24 @@
 .kc-nav-desktop__toggle:hover,
 .kc-nav-desktop__item:hover > .kc-nav-desktop__toggle {
   color: var(--kc-header-accent);
+}
+
+/* Asztali sáv (900 px-től): a menülink a S betűméret-tokenre és a 4 px-es
+   oldaltérközre lép (lásd a sáv-tartalék jegyzetét a fejléc-sáv szabályánál).
+   Az alap szabályok UTÁN áll, mert azonos specifikusságnál a forrássorrend
+   dönt. A lenyitó gomb itt nem kap negatív margót, a 44×44 px-es
+   célfelület teljes marad. */
+@media (min-width: 900px) {
+  .kc-nav-desktop__link {
+    padding: var(--kc-space-2) var(--kc-space-1);
+    font-size: var(--kc-font-s);
+  }
+
+  .kc-nav-desktop__toggle {
+    /* 4 px-es linktérköznél a negatív margó a felirat utolsó betűjére húzná
+       a gomb fókuszkeretét (mérve 1200 px-en), ezért itt nincs átfedés. */
+    margin-inline-start: 0;
+  }
 }
 
 .kc-nav-desktop__caret {

@@ -91,7 +91,14 @@ const bundle = await build({
   define: { 'process.env': JSON.stringify({ NODE_ENV: 'production' }) },
 })
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true })
+// Alapból a telepített Chrome-csatorna; ahol csak Playwright-Chromium van
+// (pl. konténer), a KC_BROWSER_EXECUTABLE útvonala indul.
+const executablePath = process.env.KC_BROWSER_EXECUTABLE
+const browser = await chromium.launch(
+  executablePath
+    ? { executablePath, headless: true, args: ['--no-sandbox'] }
+    : { channel: 'chrome', headless: true },
+)
 try {
   const page = await browser.newPage({ reducedMotion: 'reduce' })
   page.setDefaultTimeout(5000)
@@ -136,6 +143,24 @@ try {
           scroll: document.documentElement.scrollWidth,
           width: document.documentElement.clientWidth,
           height: bar.getBoundingClientRect().height,
+          // A sáv (konténer) jobb széle: a gyerekeknek EZEN belül kell
+          // maradniuk, nem csak a nézetablakon — 1024 px-en az akciósáv a
+          // konténert 27, a nézetablakot 3 px-szel lépte túl (WP8, mérve).
+          barRight: bar.getBoundingClientRect().right,
+          // A menülinkek a saját nav-dobozukon belül: egy zsugorodó nav
+          // (min-width: 0) a linkeket az akciósáv ALÁ csúsztatná — a dobozok
+          // rendben látszanának, a felirat mégis átfedne.
+          navOverflow: (() => {
+            const nav = document.querySelector('.kc-nav-desktop')
+            if (!nav || getComputedStyle(nav).display === 'none') return 0
+            const navRight = nav.getBoundingClientRect().right
+            return Math.max(
+              0,
+              ...[...nav.querySelectorAll('.kc-nav-desktop__link, .kc-nav-desktop__toggle')].map(
+                (el) => el.getBoundingClientRect().right - navRight,
+              ),
+            )
+          })(),
           boxes,
           desktop: getComputedStyle(document.querySelector('.kc-nav-desktop')).display !== 'none',
           account:
@@ -152,11 +177,19 @@ try {
       }
       try {
         assert.equal(geometry.scroll, geometry.width, `overflow at ${width}, signedIn=${signedIn}`)
+        assert.ok(geometry.navOverflow <= 0.5, `menu links overflow the nav at ${width}`)
         assert.equal(geometry.desktop, width >= 900)
         assert.equal(geometry.account, geometry.desktop)
         assert.equal(geometry.mobile, !geometry.desktop)
         for (const [index, box] of geometry.boxes.entries()) {
           assert.ok(box.left >= 0 && box.right <= width, 'header child outside viewport')
+          // Az asztali sávra (≥ 900 px) mérve; 320 px-en a hamburger a
+          // konténert 21 px-szel túllépi (nézetablakon belül) — külön feladat.
+          if (geometry.desktop)
+            assert.ok(
+              box.right <= geometry.barRight + 0.5,
+              `header child outside the bar at ${width}: right=${box.right}, bar=${geometry.barRight}`,
+            )
           if (index)
             assert.ok(box.left >= geometry.boxes[index - 1].right, 'overlapping header children')
         }
