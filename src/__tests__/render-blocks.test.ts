@@ -334,19 +334,73 @@ describe('RenderBlocks', () => {
     expect(html).toContain('kc-course-showcase')
   })
 
-  it('courseCards: az ingyenes termék nem kerül a rácsba (K2 — a lead-magnet helye a freeSos blokk)', () => {
+  /**
+   * WP12 (tulajdonosi kérés, 2026-09-07: „a kurzusaink részből hiányzik az
+   * ingyenes”). A 2026-08-15-i K2-szabály („csak fizetős a rácsban”) itt
+   * SZÁNDÉKOSAN megfordul: a rács a teljes kínálat, az igazolt ingyenes SOS
+   * „Ingyenes” felirattal, a fizetős UTÁN. Indoklás és források a
+   * `showcaseProducts` fejlécében (src/lib/course-showcase.ts). A P03-őr
+   * (csak igazolt SOS kaphat „Ingyenes” címkét) a következő tesztben marad.
+   */
+  it('courseCards: az igazolt ingyenes SOS is a rácsban áll, a fizetős után, „Ingyenes” felirattal', () => {
     const html = renderBlocks(
       layoutOf({ blockType: 'courseCards', id: 'cc3', sectionSettings: {} }),
       {
         products: [
+          product({
+            id: 7,
+            sku: 'Ingyenes SOS',
+            slug: 'sos-kezrelax-villamkurzus',
+            _status: 'published',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
           product({ id: 1, sku: 'Fizetős kurzus' }),
-          product({ id: 7, sku: 'Ingyenes SOS', priceInHUF: null, priceInHUFEnabled: false }),
         ],
       },
     )
     expect(html).toContain('Fizetős kurzus')
-    expect(html).not.toContain('Ingyenes SOS')
+    expect(html).toContain('Ingyenes SOS')
+    expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
+    expect(html).toContain('class="kc-course-showcase__price">Ingyenes</span>')
+    // Sorrend: a fizetős kártya elöl (M3 elsődleges), az ingyenes hátul (M4).
+    expect(html.indexOf('Fizetős kurzus')).toBeLessThan(html.indexOf('Ingyenes SOS'))
+    expect(html).toContain('class="kc-course-showcase__grid" data-count="2"')
+    // Az örökölt „másodlagos” ProductCard-változat nem tér vissza.
     expect(html).not.toContain('kc-product-card--secondary')
+  })
+
+  it('courseCards P03-őr: nem igazolt ingyenes termék (más slug, piszkozat, hiányos ár) nem kerül a rácsba', () => {
+    const html = renderBlocks(
+      layoutOf({ blockType: 'courseCards', id: 'cc3b', sectionSettings: {} }),
+      {
+        products: [
+          product({ id: 1, sku: 'Fizetős kurzus' }),
+          product({
+            id: 7,
+            sku: 'Másik ingyenes',
+            slug: 'masik-ingyenes-kurzus',
+            _status: 'published',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
+          product({
+            id: 8,
+            sku: 'Piszkozat SOS',
+            slug: 'sos-kezrelax-villamkurzus',
+            _status: 'draft',
+            priceInHUF: null,
+            priceInHUFEnabled: false,
+          }),
+          product({ id: 9, sku: 'Beárazatlan', priceInHUF: null, priceInHUFEnabled: null }),
+        ],
+      },
+    )
+    expect(html).toContain('Fizetős kurzus')
+    expect(html).not.toContain('Másik ingyenes')
+    expect(html).not.toContain('Piszkozat SOS')
+    expect(html).not.toContain('Beárazatlan')
+    expect(html).not.toContain('>Ingyenes</span>')
   })
 
   it('howItWorks: a blokk lépései felülírják a beépítetteket', () => {
@@ -583,5 +637,64 @@ describe('buildHomeLayout (seed alap-layout)', () => {
     expect(h1Count).toBe(1)
     // A faq blokk a saját tételeiből adja a FAQPage JSON-LD-t.
     expect(html).toContain('"@type":"FAQPage"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WP11 — a filmsáv utáni első About az alapítók-alak (fotó-fríz), a többi nem
+// ---------------------------------------------------------------------------
+
+describe('RenderBlocks — alapítók-alak (fotó-fríz) a filmsáv után', () => {
+  const film = {
+    blockType: 'filmHero' as const,
+    id: 'film',
+    title: 'Film cím',
+    sectionSettings: { visible: true },
+  }
+  const about = (id: string) => ({
+    blockType: 'about' as const,
+    id,
+    title: 'Kiss Kata és Kocsis Kata vagyunk',
+    paragraphs: [{ text: 'Gyógytornászok vagyunk.', emphasized: true }],
+    sectionSettings: { visible: true },
+  })
+
+  it('a filmsáv után közvetlenül álló első About kapja a frízt, a későbbi nem', () => {
+    const html = renderBlocks(layoutOf(film, about('elso'), about('masodik')))
+    expect(html).not.toContain('kc-section kc-photo-frieze')
+    const elso = html.indexOf('id="about-cim-elso"')
+    const masodik = html.indexOf('id="about-cim-masodik"')
+    expect(elso).toBeGreaterThan(-1)
+    expect(masodik).toBeGreaterThan(elso)
+    expect(html.slice(0, masodik)).toContain('kc-about--founders')
+    expect(html.slice(0, masodik)).toContain('<figure class="kc-photo-frieze">')
+    expect(html.slice(masodik)).not.toContain('kc-about--founders')
+    expect(html.slice(masodik)).not.toContain('kc-photo-frieze')
+    // A fríz a film záró </section>-je UTÁN, az About-szekción belül áll.
+    const filmVege = html.indexOf('</section>')
+    expect(html.indexOf('kc-photo-frieze')).toBeGreaterThan(filmVege)
+  })
+
+  it('filmsáv nélkül (pl. /rolunk) vagy ha más blokk áll közbe, az About nem kap frízt', () => {
+    expect(renderBlocks(layoutOf(about('rolunk')))).not.toContain('kc-photo-frieze')
+    const kozbe = renderBlocks(
+      layoutOf(
+        film,
+        { blockType: 'welcome', id: 'w', title: 'Üdv', sectionSettings: { visible: true } },
+        about('kesobb'),
+      ),
+    )
+    expect(kozbe).not.toContain('kc-photo-frieze')
+  })
+
+  it('a filmsáv és az About közötti REJTETT blokk nem szakítja meg a párost', () => {
+    const html = renderBlocks(
+      layoutOf(
+        film,
+        { blockType: 'welcome', id: 'w', title: 'Üdv', sectionSettings: { visible: false } },
+        about('kozvetlen'),
+      ),
+    )
+    expect(html).toContain('kc-about--founders')
   })
 })

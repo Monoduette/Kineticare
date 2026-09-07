@@ -6,13 +6,24 @@ import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
 import { DesktopNav } from './DesktopNav'
 import { getHeaderAuthState } from './header-user'
-import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { HeaderCoursesNav } from './HeaderCoursesNav'
 import { HeaderScrollFx } from './HeaderScrollFx'
 import { MobileNav } from './MobileNav'
 
 /**
- * Fejléc — a menus menüfából renderel (visible + published-cél, max 2 szint,
+ * Fejléc — a menus menüfából renderel (visible + published-cél, max 2 szint).
+ *
+ * A sávban a CMS-menü mellett CSAK a fiók-szöveglink és a Kurzusok-pirula áll.
+ * Az „Időpontfoglalás” külön sáv-gomb 2026-09-07-én kikerült (tulajdonosi
+ * döntés): a „Kapcsolat” menüpont célja, a /kapcsolat oldal időpontkérő
+ * űrlapja ugyanazt a cselekvést fedi, a második belépő csak duplikált utat
+ * és zsúfoltabb sávot adott.
+ * - NN/g, Menu-Design Checklist: kevesebb, egyértelműen elkülönülő menüpont;
+ *   ugyanarra a célra ne álljon két menüelem.
+ *   https://www.nngroup.com/articles/menu-design/
+ * - WCAG 2.2 SC 3.2.3 Consistent Navigation: a keret minden oldalon ugyanazt
+ *   a rövid, azonos sorrendű navigációt adja.
+ *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html
  */
 export async function Header() {
   const [items, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
@@ -34,7 +45,6 @@ export async function Header() {
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
             <AccountNav signedIn={auth.signedIn} variant="header" />
-            <HeaderAppointmentCta variant="bar" />
             <HeaderCoursesNav />
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>

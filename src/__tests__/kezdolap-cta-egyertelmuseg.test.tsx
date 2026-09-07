@@ -57,7 +57,12 @@ function freeProduct(overrides: Partial<Product> = {}): Product {
 interface RenderedLink {
   href: string
   label: string
+  /** A link `aria-label`-je (a hozzáférhető neve), ha van. */
+  ariaLabel: string | null
 }
+
+/** A Kurzusaink-kártya egész-kártya linkjének hozzáférhető nevének végződése (CourseShowcase). */
+const COURSE_CARD_NAME_SUFFIX = ': a kurzus részletei'
 
 /** A renderelt HTML összes hivatkozása (felirat: szövegre csupaszítva, összevont szóközzel). */
 function links(html: string): RenderedLink[] {
@@ -66,22 +71,46 @@ function links(html: string): RenderedLink[] {
     if (href === undefined) {
       return []
     }
+    const ariaLabel = /aria-label="([^"]*)"/.exec(attrs)?.[1] ?? null
     const label = inner
       .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, ' ')
       .replace(/→/g, '')
       .trim()
-    return [{ href, label }]
+    return [{ href, label, ariaLabel }]
   })
 }
 
-/** Cél → a hozzá tartozó KÜLÖNBÖZŐ feliratok halmaza. */
+/**
+ * Egész-kártya link-e (Kurzusaink galéria). A kártya nem CTA: a kurzus NEVÉVEL
+ * azonosított listatétel, aminek a hozzáférhető neve „<cím>: a kurzus
+ * részletei”. A funkciója (a tétel részleteinek megnyitása) más, mint az
+ * SOS-sáv „Elindítom ingyen” CTA-jáé, ezért a WCAG 2.2 SC 3.2.4 (Consistent
+ * Identification) „azonos funkció = következetes azonosítás” szabálya a kettőt
+ * nem kényszeríti egy feliratra: az Understanding-doksi szerint a
+ * követelmény „consistent, not identical”, és az azonos funkciót az azonos
+ * eredmény adja (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
+ * NN/g „Cards: UX Component Guidelines”: a kártya egésze linkel a
+ * részletoldalra, és mellette külön másodlagos CTA is állhat
+ * (https://www.nngroup.com/articles/cards-component/). A kártyák EGYMÁS
+ * KÖZÖTT viszont következetesek: ezt a saját tesztjük őrzi lentebb.
+ * WP12 (2026-09-07): az igazolt ingyenes SOS is kártyát kap a rácsban.
+ */
+function isCourseCardLink(link: RenderedLink): boolean {
+  return link.ariaLabel !== null && link.ariaLabel.endsWith(COURSE_CARD_NAME_SUFFIX)
+}
+
+/** Cél → a hozzá tartozó KÜLÖNBÖZŐ CTA-feliratok halmaza (a kártya-linkek nélkül). */
 function labelsByHref(html: string): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>()
-  for (const { href, label } of links(html)) {
+  for (const link of links(html)) {
+    const { href, label } = link
     if (label.length === 0) {
       // Kép-linkek (kártyaborító) — a felirat a kártya szövegében van.
+      continue
+    }
+    if (isCourseCardLink(link)) {
       continue
     }
     const set = map.get(href) ?? new Set<string>()
@@ -149,6 +178,35 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
         `A(z) ${href} célra több felirat él ugyanazon a lapon: ${Array.from(labels).join(' | ')}`,
       ).toHaveLength(1)
     }
+  })
+
+  it('a Kurzusaink-kártyák egymás között következetesen, a kurzus nevével azonosítottak (WP12)', () => {
+    const html = render(
+      createElement(HomeView, {
+        home: null,
+        products: [product({ id: 1 }), freeProduct()],
+        posts: [],
+      }),
+    )
+    const cardLinks = links(html).filter(isCourseCardLink)
+    // Két kártya: a fizetős és az igazolt ingyenes SOS, ebben a sorrendben.
+    expect(cardLinks.map((link) => link.href)).toEqual([
+      '/kurzusok/1',
+      '/kurzusok/sos-kezrelax-villamkurzus',
+    ])
+    for (const link of cardLinks) {
+      // A hozzáférhető név a látható címmel kezdődik (WCAG 2.2 SC 2.5.3 Label in Name).
+      const title = (link.ariaLabel ?? '').slice(0, -COURSE_CARD_NAME_SUFFIX.length)
+      expect(title.length).toBeGreaterThan(0)
+      expect(link.label.startsWith(title)).toBe(true)
+    }
+    // Az SOS célra a kártyán kívül PONTOSAN EGY CTA-felirat él: a szótári.
+    expect(Array.from(labelsByHref(html).get('/kurzusok/sos-kezrelax-villamkurzus') ?? [])).toEqual([
+      FREE_SOS_COURSE_CTA_LABEL,
+    ])
+    // A kártyán az ár helyén az „Ingyenes” ár-tény áll, nem CTA.
+    const sosCard = cardLinks[1]
+    expect(sosCard?.label.endsWith('Ingyenes')).toBe(true)
   })
 
   it('a kurzuslistára mutató hivatkozások mind a jóváhagyott feliratot használják', () => {

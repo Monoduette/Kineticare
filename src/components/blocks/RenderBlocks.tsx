@@ -3,6 +3,7 @@ import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
+import { showcaseProducts } from '../../lib/course-showcase'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
@@ -88,7 +89,7 @@ function partialLinkFrom(
 
 export interface RenderBlocksProps {
   layout: NonNullable<Page['layout']>
-  /** Published termékek — a courseCards (fizetős) és a freeSos (ingyenes) blokk adata. */
+  /** Published termékek — a courseCards (teljes kínálat) és a freeSos (ingyenes) blokk adata. */
   products: Product[]
   /** Legfrissebb posztok a knowledge blokkhoz (lásd KNOWLEDGE_POSTS_FETCH_LIMIT). */
   posts: Post[]
@@ -112,14 +113,16 @@ export function RenderBlocks({
   appointment = EMPTY_APPOINTMENT_CONTEXT,
 }: RenderBlocksProps) {
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
-  // A courseCards rácsba KIZÁRÓLAG fizetős termék kerül; az ingyenes
-  // lead-magnet helye a freeSos blokk (kezdőlap-audit, 2026-08-15: a kettős
-  // megjelenés duplikáció volt — lásd CourseCards fejléce).
-  // A freeSos blokk egyetlen lead-magnetre van tervezve, viselkedése változatlan.
+  // A fizetős halmaz a GYIK „SOS vs. teljes program” összevetéséhez kell.
   const paidProducts = visibleProducts.filter(isPaidProduct)
   // A nevesített SOS-sávba csak a kanonikus, publikált és explicit ingyenes
   // SOS kerülhet. Másik ingyenes vagy hiányosan árazott termék nem helyettesíti.
   const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null
+  // A courseCards rács a teljes kínálat: fizetős kurzusok elöl, majd az
+  // igazolt ingyenes SOS „Ingyenes” felirattal (WP12, tulajdonosi kérés
+  // 2026-09-07; a 2026-08-15-i „csak fizetős” K2-szabály felülvizsgálva,
+  // indoklás és források: `showcaseProducts`, src/lib/course-showcase.ts).
+  const gridProducts = showcaseProducts(visibleProducts)
   const freeSosBlocks = layout.filter((block) => block.blockType === 'freeSos')
   const visibleFreeSosBlocks = freeSosBlocks.filter(
     (block) => block.sectionSettings?.visible !== false,
@@ -144,6 +147,14 @@ export function RenderBlocks({
         const isRepeat = seenTypes.has(block.blockType)
         seenTypes.add(block.blockType)
         const key = block.id ?? `${block.blockType}-${index}`
+        // WP11: a filmsáv UTÁN közvetlenül álló első About-blokk az
+        // alapítók-alak (fotó-fríz a jobb hasábban). A jel a szekciósorból
+        // jön, nem a lapból: a /rolunk-on nincs filmsáv, ott a blokk marad.
+        const previousVisible = layout
+          .slice(0, index)
+          .reverse()
+          .find((candidate) => candidate.sectionSettings?.visible !== false)
+        const afterFilmHero = previousVisible?.blockType === 'filmHero'
         // A „lentebb” ígéretéhez a termék mellett későbbi, látható sáv is kell.
         const nextFreeSos = freeProduct
           ? visibleFreeSosBlocks.find((candidate) => layout.indexOf(candidate) > index)
@@ -161,7 +172,17 @@ export function RenderBlocks({
             key={key}
             freeSosHref={freeSosHref}
             freeSosAnchorIds={freeSosAnchorIds}
-            {...{ block, isRepeat, paidProducts, freeProduct, posts, testimonials, appointment }}
+            {...{
+              block,
+              isRepeat,
+              afterFilmHero,
+              paidProducts,
+              gridProducts,
+              freeProduct,
+              posts,
+              testimonials,
+              appointment,
+            }}
           />
         )
       })}
@@ -172,7 +193,9 @@ export function RenderBlocks({
 function BlockSwitch({
   block,
   isRepeat,
+  afterFilmHero,
   paidProducts,
+  gridProducts,
   freeProduct,
   freeSosHref,
   freeSosAnchorIds,
@@ -183,7 +206,11 @@ function BlockSwitch({
   block: LayoutBlock
   /** A típus ismételt példánya-e a lapon — az alap-horgony csak az elsőé. */
   isRepeat: boolean
+  /** A megelőző látható blokk a filmsáv — az első About így alapítók-alak. */
+  afterFilmHero: boolean
   paidProducts: Product[]
+  /** A Kurzusaink rács tételei (fizetős + igazolt ingyenes SOS, ebben a sorrendben). */
+  gridProducts: Product[]
   freeProduct: Product | null
   freeSosHref: string | null
   freeSosAnchorIds: string[]
@@ -210,7 +237,7 @@ function BlockSwitch({
     case 'services':
       return <Services block={block} />
     case 'about':
-      return <About block={block} />
+      return <About block={block} frieze={afterFilmHero && !isRepeat} />
     case 'pressLogos':
       return <PressLogos block={block} />
     case 'teamMembers':
@@ -267,7 +294,7 @@ function BlockSwitch({
             <CourseShowcase
               heading={block.heading ?? undefined}
               lead={block.lead ?? undefined}
-              products={paidProducts}
+              products={gridProducts}
             />
           </Container>
         </Section>

@@ -214,6 +214,35 @@ describe('/kapcsolat szakember-elérhetőség', () => {
     }
   })
 
+  /**
+   * WP15 (2026-09-07): a Kapcsolat a KAPCSOLATFELVÉTELRŐL szól (NN/g Contact
+   * Us, https://www.nngroup.com/articles/contact-us-pages/): a kártyán a
+   * hívás-felület marad, a bemutatkozás viszont egy mondat („ki mivel
+   * foglalkozik"); a teljes bemutatkozás a Rólunk lapé (NN/g About Us,
+   * https://www.nngroup.com/articles/about-us-information-on-websites/).
+   */
+  it('a kártyákon a hívás-felület marad, a bemutatkozás viszont egy mondat', () => {
+    const rolunk = buildRolunkLayout().find((blokk) => blokk.blockType === 'teamMembers')
+    if (rolunk?.blockType !== 'teamMembers') {
+      throw new Error('A szakember-szekció hiányzik a /rolunk szekciósorból.')
+    }
+    for (const tag of kapcsolatSzakember().members ?? []) {
+      const bio = (tag.bio ?? '').trim()
+      expect(bio.length).toBeGreaterThan(0)
+      expect(bio.match(/[.!?]/g)?.length).toBe(1)
+      // Ugyanannak a személynek ugyanaz a leírása: a rövid alak a teljes eleje.
+      const teljes = (rolunk.members ?? []).find((r) => r.name === tag.name)?.bio ?? ''
+      expect(teljes.startsWith(bio)).toBe(true)
+      expect(teljes.length).toBeGreaterThan(bio.length)
+      expect((tag.phone ?? '').trim().length).toBeGreaterThan(0)
+    }
+    // A Rólunk kártyáin viszont NINCS telefon: a két lap tartalma szétvált.
+    for (const tag of rolunk.members ?? []) {
+      expect((tag.phone ?? '').trim()).toBe('')
+      expect((tag.callLabel ?? '').trim()).toBe('')
+    }
+  })
+
   it('a felvezetője kapcsolat-fókuszú, és eltér a másik két lapétól', () => {
     const kapcsolat = kapcsolatSzakember()
     const mezok = (blokk: typeof kapcsolat) => [blokk.eyebrow, blokk.title, blokk.lead]

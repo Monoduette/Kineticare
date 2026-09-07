@@ -193,6 +193,7 @@ flowchart LR
     ROOT --> M3["Tudastar<br/>/blog"]
     ROOT --> M4["Kapcsolat<br/>/kapcsolat"]
     ROOT --> BTN["GOMB: Kurzusok<br/>/kurzusok<br/>kodban rogzitve"]
+    ROOT --> ACC["Belepes / Kurzusaim<br/>/belepes · /kurzusaim<br/>AccountNav, kodban rogzitve"]
 
     M1 --> S1["Rendeloi kezelesek<br/>/szolgaltatasok + rendeloi horgony"]
     M1 --> S2["Szakmai kepzes<br/>probodystudio.hu KULSO"]
@@ -210,6 +211,16 @@ flowchart LR
     classDef gond fill:#fff4e6,stroke:#e8590c,color:#000
     class S2,S3,BTN gond
 ```
+
+**Jegyzet (WP10, 2026-09-07).** A fejléc-gráfban NINCS külön
+„Időpontfoglalás” elem. A 2026-09-06-i kör egy sáv-gombot adott a
+`/kapcsolat#idopontkeres` célra; a tulajdonos 2026-09-07-én kivezette, mert a
+**Kapcsolat** menüpont (M4) célja, a `/kapcsolat` oldal időpontkérő űrlapja
+ugyanazt fedi, és a második belépő duplikált utat adott (6.4 minta). Forrás:
+NN/g Menu-Design Checklist, kevesebb és egyértelműen elkülönülő menüpont
+(https://www.nngroup.com/articles/menu-design/); WCAG 2.2 SC 3.2.3 Consistent
+Navigation (https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html).
+Őr: `src/__tests__/header-appointment.test.ts`.
 
 **Taxonómiai hiba:** az `S3` (SOS KézRelax) egy **kurzus**, mégis a
 „Szolgáltatások" (= rendelői kezelés) almenüjében ül, egy **külső** szakmai
@@ -580,9 +591,44 @@ a 3.2 menüfához képest. **Ez jegyzet, nem döntés**: az IA-változtatás
 | # | 3.2 fa / e doksi | Élő menü (menu-seed + Header) | Állapot |
 |---|---|---|---|
 | E1 | S3 „SOS KezRelax" → `/kurzusok/sos-kezrelax-villamkurzus` | „**Ingyenes** SOS KézRelax" (`SOS_FREE_MENU_LABEL`); a cél a termék, ha a `sku` feloldható, különben a tartalék `/kurzusok/2` (a helyi DB-n ez futott, a route a kanonikus címre irányít) | doksi elavult, a menü a jó |
-| E2 | A fejlécben csak a Kurzusok gomb szerepel kódban rögzítve | A sávban 900 px-től a **Belépés / Kurzusaim** szöveglink és az **Időpontfoglalás** szöveglink is él (`AccountNav`, `HeaderAppointmentCta`); 900 px alatt a fiókban | doksi elavult |
+| E2 | A fejlécben csak a Kurzusok gomb szerepel kódban rögzítve | A sávban 900 px-től a **Belépés / Kurzusaim** szöveglink is él (`AccountNav`); 900 px alatt a fiókban. Az **Időpontfoglalás** sáv-gomb 2026-09-07-én tulajdonosi döntésre kikerült (a „Kapcsolat” menüpont fedi, lásd a 3.2 fa jegyzetét) | doksi elavult |
 | E3 | „Tudástár" → `/blog` (N1: címke magyar, URL angol) | Változatlan: `/blog`, **nincs** `/tudastar` átirányítás | nyitott tulajdonosi döntés (N1), átirányítást nem írtunk |
 | E4 | 6.8: a Tudástár üres | Helyben 8 cikk seedelve; a menüpont célja most nem zsákutca | doksi elavult a tartalomra nézve |
 | E5 | 3.1 gráf: a fejléc-CTA „Kurzusok" | Egyezik; `/kurzusok`-on `aria-current="page"`, `/kurzusok/<slug>`-on ős-jelölés (mérve) | egyezik |
 | E6 | Lábléc: F1–F7 | Egyezik (Kapcsolat óriáslink, hírlevél, három jogi link, süti-gomb, mailto); a jogi `nav` neve „Jogi és kapcsolat" | egyezik |
 | E7 | Taxonómiai megjegyzés (3.2): kurzus a Szolgáltatások alatt | Változatlan: a Szolgáltatások lenyíló három különböző természetű célt tart (horgony, külső képzés, ingyenes kurzus) | nyitott tulajdonosi döntés |
+
+## 12. Rólunk vs. Kapcsolat: tartalmi felelősség (WP15, 2026-09-07)
+
+Tulajdonosi kérés: „Rólunk és Kapcsolat menüpont is legyen jobban szeparálva
+tartalmi szempontból.” A 6.4 D-listájának szellemében ez is „két felület, egy
+funkció” hiba volt: a `/rolunk` és a `/kapcsolat` ugyanazt a két
+szakember-kártyát vitte, ugyanazokkal a telefonszámokkal.
+
+**Forrás.** NN/g, About Us Information on Websites: a rólunk-oldal a
+szervezetről és az emberekről szól, a hitelességet a nevek, arcok és
+szakmai út adják
+(<https://www.nngroup.com/articles/about-us-information-on-websites/>).
+NN/g, Contact Us Pages: a kapcsolat-oldal a csatornákat és a válaszidőt
+mondja ki, az űrlap csak a telefonszám MELLETT állhat
+(<https://www.nngroup.com/articles/contact-us-pages/>). WCAG 2.2 SC 2.4.6
+(a szekciócím azt írja le, ami a szekció) és SC 3.2.4 (ugyanaz a cselekvés,
+ugyanaz a szó, minden lapon).
+
+| Lap | Felelősség | Ami ott VAN | Ami ott NINCS | Továbblépés |
+| --- | --- | --- | --- | --- |
+| `/rolunk` | a SZEMÉLYEK és a hitelesség | történet, számok, „Amiben mások vagyunk”, „Így tudunk segíteni” sín (a kezdőlapival azonos), „Mi ketten” kártyák (portré, név, titulus, kétmondatos bio, link a részletes szakmai háttérre), partnerek, önéletrajz-harmonika, vélemények | telefon-kártya, hívás-felirat, rendelési tudnivaló | egy szekció-szintű link: „Kérj időpontot üzenetben” → `/kapcsolat#idopontkeres` (§3.2 #24); záró sáv a kurzusra |
+| `/kapcsolat` | a KAPCSOLATFELVÉTEL | időpontkérő űrlap, rendelők, telefonszámok, e-mail, „Beszéljünk” kártyák (telefon-kártya, egymondatos „ki mivel foglalkozik”), üzenetküldő | kétmondatos életrajz, önéletrajz | „Nézd meg a szakmai hátterét” → `/rolunk#szakmai-hatter` |
+| `/szolgaltatasok` | a RENDELŐI DÖNTÉS | tábla (S03), árlista, „Kihez jössz?” kártyák telefonnal | – | „Időpontot kérek” → `/kapcsolat#idopontkeres` |
+
+A három út (Rendelői kezelések / Otthoni program / Szakmai képzések) címe,
+egymondatos összefoglalója és CTA-ja EGY forrásból jön
+(`src/lib/home-help-states.ts`, `HOME_HELP_STATES`): a kezdőlapi sín és a
+`/rolunk` sín ugyanazt mondja. A `/szolgaltatasok` táblája tábla marad
+(2026-09-06-i tulajdonosi döntés), és a sorai más cselekvésre visznek, ezért
+ott a CTA-k más szótári alakot viselnek.
+
+Horgonyok: a `/rolunk` sín a régi tábla `szolgaltatasaink` horgonyát viszi
+tovább (a meglévő hivatkozások élnek), a kezdőlapi sín horgony nélkül áll,
+a `/rolunk` személyek szekciója az `elerhetoseg` horgonyt tartja meg (URL-
+stabilitás; a szekció címe és tartalma változott, az azonosítója nem).

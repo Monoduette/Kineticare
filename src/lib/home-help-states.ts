@@ -343,10 +343,89 @@ export const presentSzolgaltatasokLayout = (
     block.blockType === 'services' ? { ...block, elrendezes: 'tabla' as const } : block,
   )
 
-/** A kezdőlap szekciósora: a segítség-blokk sínné válik, a többi indexen marad. */
+/**
+ * A sín ELŐTTI szekció kis felső felirata (tulajdonosi kör, 2026-09-07).
+ * Az „Erre számíthatsz velünk" tábla és az „Így tudunk segíteni" sín címe
+ * azonos L méretű, azonos bal margón állt; az eyebrow a tábla címének ad
+ * saját szintet, hogy a két H2 ne egy tömbként olvasódjon.
+ * NN/g Visual Hierarchy: a szint méret + súly + elhelyezés + csoportosítás.
+ * https://www.nngroup.com/articles/visual-hierarchy-ux-definition/
+ * A szerkesztő saját eyebrow-ja ezt felülírja; a `usps` blokknak nincs ilyen mezője.
+ */
+export const HOME_USPS_EYEBROW = 'Miért mi'
+
+type HomeBlock = NonNullable<Page['layout']>[number]
+
+/** A már megjelenítésre kész (presentált) sín-blokk. */
+const isHomeHelpRailBlock = (block: HomeBlock | undefined): boolean =>
+  block?.blockType === 'services' && block.elrendezes === 'sin'
+
+/** A CMS „Fehér" (vagy kitöltetlen) hattere a lap paper földje. */
+const isPaperBackground = (hatter: unknown): boolean =>
+  hatter === undefined || hatter === null || hatter === 'feher'
+
+/**
+ * A sín KÖZVETLENÜL ELŐTTI szekció sávváltása (tulajdonosi kör, 2026-09-07:
+ * „valahogyan legyen jobban elkülönítve").
+ *
+ * Mérve 1440 px-en: az „Erre számíthatsz velünk" tábla a paper földön
+ * (#f6f9fc), a sín a help-paperen (#f4f8fd) állt; a két háttér különbsége
+ * szemmel nem látszik, a tábla fotója pedig 0 px-re ért a sín tetejéhez.
+ * A szomszédos szekciók így egyetlen régióként olvasódtak.
+ *
+ * A megoldás a szekció-rendszer terv váltakozó paper/tint ritmusa
+ * (docs/szekcio-rendszer-terv.md), a `hatter` mező saját admin-leírása
+ * szerint („váltogasd a fehéret és a világoskéket, hogy az egymás alatti
+ * szekciók jól elkülönüljenek"): a sín előtti tábla vagy usps blokk a tint
+ * sávra kerül, ha a szerkesztő paperen hagyta. A tint (#e6f0f8) és a
+ * help-paper (#f4f8fd) már mérhető tónuslépés; a sín saját palettája
+ * (services-sin.css) érintetlen.
+ *
+ * Gestalt közös régió + közelség: az eltérő háttér külön csoportot jelöl,
+ * a határ pedig ott van, ahol a szín vált.
+ * https://www.nngroup.com/articles/common-region/
+ * https://www.nngroup.com/articles/gestalt-proximity/
+ * Material 3 tónusos felületek: a szomszédos felület egy tónuslépés.
+ * https://m3.material.io/styles/color/roles
+ * GOV.UK spacing: a szekciók közti térköz a rendszer skálájából jön.
+ * https://design-system.service.gov.uk/styles/spacing/
+ *
+ * Kontraszt a tinten (tokens.css jegyzőkönyv): ink 13,53:1, ink-soft 8,05:1,
+ * accent-deep (eyebrow, sorszám) 4,72:1 — SC 1.4.3 teljesül.
+ *
+ * A szerkesztő tint vagy sötét választását nem írjuk felül; a sötét sáv
+ * eyebrow-ja az on-dark-muted tokent viszi (services.css).
+ */
+const presentBlockBeforeHomeHelp = (block: HomeBlock): HomeBlock => {
+  if (block.blockType === 'usps') {
+    const settings = block.sectionSettings ?? {}
+    return isPaperBackground(settings.hatter)
+      ? { ...block, sectionSettings: { ...settings, hatter: 'tint' as const } }
+      : block
+  }
+  if (block.blockType !== 'services' || block.elrendezes === 'sin') return block
+  const settings = block.sectionSettings ?? {}
+  const eyebrow = block.eyebrow?.trim() ?? ''
+  const hatter = isPaperBackground(settings.hatter) ? ('tint' as const) : settings.hatter
+  if (eyebrow.length > 0 && hatter === settings.hatter) return block
+  return {
+    ...block,
+    eyebrow: eyebrow.length > 0 ? block.eyebrow : HOME_USPS_EYEBROW,
+    sectionSettings: { ...settings, hatter },
+  }
+}
+
+/**
+ * A kezdőlap szekciósora: a segítség-blokk sínné válik, a többi indexen marad;
+ * a sín előtti szomszéd sávot vált, hogy a két szekció határa látsszon.
+ */
 export const presentHomeLayout = (
   layout: NonNullable<Page['layout']>,
-): NonNullable<Page['layout']> =>
-  layout.map((block) =>
+): NonNullable<Page['layout']> => {
+  const presented = layout.map((block) =>
     block.blockType === 'services' ? presentHomeHelpServicesBlock(block) : block,
   )
+  return presented.map((block, index) =>
+    isHomeHelpRailBlock(presented[index + 1]) ? presentBlockBeforeHomeHelp(block) : block,
+  )
+}

@@ -6,7 +6,6 @@ import { SOS_COURSE_FALLBACK_PATH } from '../../lib/menu-seed'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { PRODUCTION_HOSTS } from '../../lib/security/live-environment'
 import { Button } from '../ui/Button'
-import { PhotoFrieze } from './PhotoFrieze'
 import { ScrollScrub } from '../scroll-scrub/scroll-scrub'
 import type {
   ScrollScrubCaption,
@@ -232,20 +231,16 @@ export function FilmHero({
     title,
   }
 
-  // A fotó-fríz a scrub-színpad UTÁN, a film testvéreként áll a <main>-ben:
-  // így a `.kc-film-hero:first-of-type` fejléc-alá-húzása változatlan, a fríz
-  // pedig `.kc-section`-ként megkapja a SectionReveal belépőjét. A fotólista
-  // kódban él, mint a feliratok (CAPTION_*): a séma nem bővül.
+  // A filmsáv egyedül áll: a csapatfotó-fríz 2026-09-07-től a közvetlenül
+  // utána következő Rólunk-blokk része (About `frieze` prop, RenderBlocks
+  // `about` ága), nem a film kísérője — egy régió, egy H2 (WP11).
   return (
-    <>
-      <ScrollScrub
-        captions={captions}
-        className="kc-film-hero"
-        id={anchorId || undefined}
-        scenes={[scene]}
-        theme={FILM_THEME}
-      />
-      <PhotoFrieze />
-    </>
+    <ScrollScrub
+      captions={captions}
+      className="kc-film-hero"
+      id={anchorId || undefined}
+      scenes={[scene]}
+      theme={FILM_THEME}
+    />
   )
 }

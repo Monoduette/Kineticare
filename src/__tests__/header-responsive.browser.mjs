@@ -237,21 +237,21 @@ try {
       assert.equal(await campaign.getAttribute('href'), '/akcios-kurzus')
       assert.equal(await campaign.getAttribute('aria-current'), 'page')
       assert.equal(await page.getByRole('link', { name: 'Időpontkérés', exact: true }).count(), 0)
+      // WP10 (2026-09-07, tulajdonosi döntés): a fejlécben és a fiókban NINCS
+      // külön „Időpontfoglalás” belépő; a /kapcsolat#idopontkeres célra a
+      // keretből egyetlen út sem vezet, a „Kapcsolat” menüpont fedi.
+      // NN/g Menu-Design Checklist: https://www.nngroup.com/articles/menu-design/
+      assert.equal(
+        await page.locator('.kc-site-header a', { hasText: 'Időpontfoglalás' }).count(),
+        0,
+        `Időpontfoglalás link in the header at ${width}`,
+      )
+      assert.equal(
+        await page.locator('.kc-site-header a[href*="idopontkeres"]').count(),
+        0,
+        `idopontkeres link in the header at ${width}`,
+      )
       if (geometry.mobile) {
-        const drawerCta = page.locator('.kc-site-header__drawer-appointment')
-        await drawerCta.waitFor({ state: 'visible' })
-        assert.equal(await drawerCta.textContent(), 'Időpontfoglalás')
-        assert.equal(await drawerCta.getAttribute('href'), '/kapcsolat#idopontkeres')
-        assert.equal(
-          await page.locator('.kc-site-header__appointment-cta').evaluate((el) => {
-            return getComputedStyle(el).display === 'none'
-          }),
-          true,
-        )
-        assert.equal(
-          await page.locator('.kc-nav-mobile__list a', { hasText: 'Időpontfoglalás' }).count(),
-          0,
-        )
         assert.ok(
           await nav
             .getByRole('link', { name: signedIn ? 'Kurzusaim' : 'Belépés', exact: true })
@@ -261,23 +261,18 @@ try {
           assert.ok(
             await nav.getByRole('button', { name: 'Kijelentkezés', exact: true }).isVisible(),
           )
-      } else {
-        const barCta = page.locator('.kc-site-header__appointment-cta')
-        await barCta.waitFor({ state: 'visible' })
-        assert.equal(await barCta.textContent(), 'Időpontfoglalás')
-        assert.equal(await barCta.getAttribute('href'), '/kapcsolat#idopontkeres')
-        assert.equal(await barCta.getAttribute('aria-current'), null)
-        assert.equal(
-          await page.locator('.kc-nav-desktop a', { hasText: 'Időpontfoglalás' }).count(),
-          0,
-        )
       }
       if (geometry.mobile) {
         // FÓKUSZCSAPDA (WP9): az utolsó fiókelemről a Tab az elsőre (bezáró
         // gomb), az elsőről a Shift+Tab az utolsóra lép; a fókusz nem kerül
         // az overlay alá (WCAG 2.2 SC 2.4.11; APG modális párbeszéd).
-        const drawerCta = page.locator('.kc-site-header__drawer-appointment')
-        await drawerCta.focus()
+        // WP10 óta az utolsó fiókelem a CMS-lista utolsó látható linkje.
+        const drawerLast = page.locator('.kc-nav-mobile__drawer a[href]:visible').last()
+        assert.ok(
+          await drawerLast.evaluate((el) => !!el.closest('.kc-nav-mobile__list')),
+          `last drawer tabbable is a menu link at ${width}`,
+        )
+        await drawerLast.focus()
         await page.keyboard.press('Tab')
         assert.ok(
           await page
@@ -287,7 +282,7 @@ try {
         )
         await page.keyboard.press('Shift+Tab')
         assert.ok(
-          await drawerCta.evaluate((el) => el === document.activeElement),
+          await drawerLast.evaluate((el) => el === document.activeElement),
           `drawer focus trap backward at ${width}`,
         )
         for (let step = 0; step < 20; step++) {
