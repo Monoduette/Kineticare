@@ -22,12 +22,19 @@ import {
   type OwnerReviewChange,
   type OwnerReviewMediaRole,
 } from '../lib/owner-review-v1'
-import { buildHomeLayout, HOME_IMAGES, type HomeMediaIds } from '../lib/home-seed'
+import {
+  buildHomeLayout,
+  HOME_IMAGES,
+  PRESS_MANIFEST_FILES,
+  PRESS_RAIL_FILES,
+  type HomeMediaIds,
+} from '../lib/home-seed'
 import type { Menu, Page, Product } from '../payload-types'
 import {
   buildKapcsolatLayout,
   buildRolunkLayout,
   buildSzolgaltatasokLayout,
+  ROLUNK_PARTNER_LOGO_FAJLOK,
 } from './restore-legacy-content'
 
 const PAGE_SLUGS = ['kezdolap', 'szolgaltatasok', 'rolunk', 'kapcsolat'] as const
@@ -413,14 +420,21 @@ export function planPage(
   }
   const homeMedia: HomeMediaIds = {}
   for (const entry of HOME_IMAGES) homeMedia[entry.file] = findFile(entry.file)
+  for (const file of PRESS_MANIFEST_FILES) homeMedia[file] = findFile(file)
+  // The canonical rails mirror the seed/restore builders: the full press rail
+  // (six existing + four verified) and the /rolunk partner rail, missing files skipped.
   const legacyMedia = {
     rolunkFoto: findFile('680a69d078306_Katakfeherbenhattal.png'),
     szolgaltatasokKep: findFile('67b2668feae66_Kezeleskek.png'),
     kocsisPortre: ids.kocsis,
     kissPortre: ids.kiss,
-    sajtoLogok: HOME_IMAGES.filter((entry) => entry.file.startsWith('press-')).flatMap((entry) =>
-      homeMedia[entry.file] === undefined ? [] : [homeMedia[entry.file]!],
+    sajtoLogok: PRESS_RAIL_FILES.flatMap((file) =>
+      homeMedia[file] === undefined ? [] : [homeMedia[file]!],
     ),
+    partnerLogok: ROLUNK_PARTNER_LOGO_FAJLOK.flatMap((file) => {
+      const id = findFile(file)
+      return id === undefined ? [] : [id]
+    }),
   }
   if (page.slug === 'szolgaltatasok') {
     const liveServices = page.layout?.filter(

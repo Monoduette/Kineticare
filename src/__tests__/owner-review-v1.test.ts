@@ -143,7 +143,9 @@ const publishedAboutFixture = (): OwnerReviewV1Input => {
     input.layout.find(
       (block) =>
         block.blockType === 'richText' &&
-        rows(children(data(block).content)[0], 'children')[0].text === 'Partnereink',
+        String(rows(children(data(block).content)[0], 'children')[0].text).startsWith(
+          'Partnereink',
+        ),
     )!,
   )
   data(data(partners.content).root).children = [

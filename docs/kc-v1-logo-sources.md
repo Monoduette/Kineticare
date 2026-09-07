@@ -85,6 +85,75 @@ The machine-readable handoff is `public/media/press/manifest.json`.
   an invalid HTTPS certificate. The checked raster is passive PNG, stored
   locally with its hash; no remote asset should be embedded at runtime.
 
+## Partnerek (A04, /rolunk partner-logósáv)
+
+Felvéve 2026-09-07. A tulajdonos kérése (docs/kc-v1-owner-review.md A04): a
+partnerlogók úgy fussanak egy csúszó sávban, ahogy a régi kineticare.hu Rólunk
+oldalán. A forrás minden tételnél **a régi kineticare.hu/rolunk saját, a
+tulajdonos által korábban közzétett képfájlja** (CDN:
+`d1yei2z3i6k35z.cloudfront.net/11095654/`); a szervezetek hivatalos oldaláról
+nem töltöttünk le semmit, és a logó jelenléte itt sem jelent ajánlást vagy
+támogatást (endorsement), csak a régi partnernévsor vizuális alakja.
+
+Gépi nyilvántartás: `content/home-images/site/partner-manifest.json` (forrás-URL,
+forrás-SHA-256, helyi SHA-256, méretek, átalakítás tételenként). Őr-teszt:
+`src/__tests__/partner-logo-assets.test.ts`. A fájlok a `HOME_IMAGES`-ben
+(`src/lib/home-seed.ts`, `partner-` előtag) élnek, így a seed és a restore
+tölti fel őket, az induláskori önjavítás pedig visszatölti. A sáv a meglévő
+`pressLogos` blokk (LogoRail: folyamatos, megállítható, `prefers-reduced-motion`
+alatt statikus, WCAG 2.2 SC 2.2.2), felirata „Partnereink", horgonya
+`#partnereink`, oldala `/rolunk`.
+
+Egységes keret: minden fájl 700 × 400 px-es átlátszó vászon (a `press-*`
+350 × 200 konvenció kétszerese), a rajzolat képaránya változatlan, WebP
+veszteségmentes. Átalakítás csak: az egyszínű KÜLSŐ szegély levágása; a
+fehér hátterű logóknál a fehér háttérpixelek átlátszóvá tétele (a rajzolat
+érintetlen); a márka saját színes háttérblokkját (bézs, barack, fekete)
+megtartottuk.
+
+Bizalmi hatás forrásai: NN/g „Trustworthiness in Web Design"
+(<https://www.nngroup.com/articles/trustworthy-design/>): az ismerős külső
+nevek a hitelesség jelzői; Baymard „site seal trust"
+(<https://baymard.com/blog/site-seal-trust>): a felismerhető jelvények növelik
+a bizalmat, az ismeretlenek nem, ezért a sávba csak tényleges logó került.
+Alt-szöveg: a szervezet neve (WCAG 2.2 SC 1.1.1).
+
+| #   | Szervezet                                   | Régi fájl                                                       | Helyi fájl                                                                           | Alt                                           | Átalakítás                                 |
+| --- | ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------ |
+| 1   | Magyar Sportrehabilitációs Egyesület (MASE) | `67c9a1738798c_IMG_0523.png` (teal, négyzetes közösségi avatár) | `public/media/press/mase.png` (H05, hivatalos szóvédjegy, ugyanaz a Médiatár-rekord) | A Magyar Sportrehabilitációs Egyesület logója | nincs új fájl                              |
+| 2   | ProBody Stúdió                              | `67c9a253f3048_IMG_4351.png` (173 × 173)                        | `partner-probody-studio.webp`                                                        | A ProBody Stúdió logója                       | nincs vágás, barack háttér marad           |
+| 3   | Dynamic Tape                                | `67c9a3c085d56_correct-protect-performLOGO-1.png` (1500 × 1497) | `partner-dynamic-tape.webp`                                                          | A Dynamic Tape logója                         | átlátszó szegély vágva                     |
+| 4   | WIBBI                                       | `67c9a4f8047fa_Wibbi_Primary-FullColour.png` (898 × 242)        | `partner-wibbi.webp`                                                                 | A WIBBI logója                                | átlátszó szegély vágva                     |
+| 5   | Halm Optika                                 | `67c9a51a50b07_logo.png` (632 × 518)                            | `partner-halm-optika.webp`                                                           | A Halm Optika logója                          | fehér szegély vágva, fehér háttér átlátszó |
+| 6   | NISHI STUDIO pilates                        | `67c9a5c5b81f0_bezs_bg_logo.png` (1080 × 1080)                  | `partner-nishi-studio.webp`                                                          | A NISHI STUDIO pilates logója                 | nincs vágás, bézs háttér marad             |
+| 7   | BodyGPS                                     | `67c9a6134bfb5_BodyGPS_Logo.png` (1426 × 1426)                  | `partner-bodygps.webp`                                                               | A BodyGPS logója                              | fehér szegély vágva, fehér háttér átlátszó |
+| 8   | Magic Smile by Juci                         | `67c9a664bbb0c_Jucilogo-5.png` (1202 × 1196)                    | `partner-magic-smile.webp`                                                           | A Magic Smile by Juci logója                  | átlátszó szegély vágva                     |
+| 9   | Be Fit With Ben                             | `69ed225bc16561.91850354_befitwithben2.jpeg` (251 × 220)        | `partner-be-fit-with-ben.webp`                                                       | A Be Fit With Ben logója                      | nincs vágás, fekete háttér marad           |
+| 10  | OrtoCare                                    | `693f1a9ddd2f8_d80bcbe2-…-14ba4d0cc300.jpeg` (750 × 750)        | `partner-ortocare.webp`                                                              | Az OrtoCare logója                            | nincs vágás, fekete háttér marad           |
+| 11  | Pille Fizioterápia                          | `69ed1ddd3fd109.77981488_pille.logo02.png` (1477 × 1500)        | `partner-pille-fizioterapia.webp`                                                    | A Pille Fizioterápia logója                   | fehér szegély vágva, fehér háttér átlátszó |
+
+A SHA-256 értékek a manifestben állnak; a teszt a fájlok bájthashét és
+méretét a manifesthez méri. 11 elem ≤ 12 (a blokk `maxRows`-a).
+
+### Csak a mondatban maradó partnerek
+
+A sáv alatti mondat: „Partnereink közé tartozik még az Aurora Medical, a
+TUDATEST, a PhysioWatch, dr. pharm. Kocsis Kristóf és Csillik Árpád."
+
+| Szervezet / személy       | Régi fájl                              | Miért nincs a sávban                                                                                      |
+| ------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Aurora Medical            | `67c9a3563259b_image_12365029111.jpeg` | A grafikai leltár fotóként jelölte; a képen fehér JPEG-háttéren álló logó (nyitott kérdés, lásd lent)     |
+| TUDATEST                  | `67c9a3ffb7385_474381039_…_n.jpeg`     | Facebook-CDN névmintájú profilkép, sötét beégetett háttérrel (nyitott kérdés)                             |
+| PhysioWatch               | `67c9a4e51c11f_IMG_0515.jpeg`          | `IMG_` képernyőmentés, sötétkék körjelvény (nyitott kérdés)                                               |
+| Csillik Árpád             | `67c9a5b48c0f4_CSH06417copy.jpeg`      | Portréfotó, nem logó; személyiségi jog                                                                    |
+| dr. pharm. Kocsis Kristóf | `67c9a545075cc_IMG_0736.png`           | Kézírásos aláírás: sávmagasságban olvashatatlan, és egy magánszemély aláírásának közzététele nem indokolt |
+
+Nyitott kérdés a tulajdonosnak: az Aurora Medical, a TUDATEST és a PhysioWatch
+képe a megnézés alapján valódi (bár fotóból/képernyőmentésből származó) logó.
+Ha a tulajdonos kéri őket a sávba, hivatalos fájl bekérése után 14 elem lenne,
+ami meghaladja a blokk 12-es korlátját; ehhez a korlát indokolt emelése vagy
+két sáv kell.
+
 ## Unresolved requests
 
 ### D3

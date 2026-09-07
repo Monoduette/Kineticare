@@ -8,6 +8,11 @@
  *   LEGACY_RESTORE_CONFIRM=igen npm run seed:legacy        # hiányzók létrehozása
  *   LEGACY_RESTORE_CONFIRM=igen LEGACY_OVERWRITE=igen …    # meglévő felülírás
  *   LEGACY_RESTORE_CONFIRM=igen LEGACY_ARCHIVE_DEMO=igen … # seed demó depublikálás
+ *   LEGACY_RESTORE_CONFIRM=igen LEGACY_LOGOSAV=igen …      # MEGLÉVŐ szekciósor
+ *       logósávjainak frissítése: a sajtó-logósor bővítése a négy ellenőrzött
+ *       H05-logóval (additív, a régi hat marad), és a /rolunk „Partnereink"
+ *       szövegbekezdésének cseréje partner-logósávra (A04). Csak a két
+ *       logósáv-blokkhoz nyúl, minden más szekció érintetlen.
  */
 
 import path from 'node:path'
@@ -15,7 +20,13 @@ import { pathToFileURL } from 'node:url'
 
 import { getPayload, type Payload } from 'payload'
 
-import { HOME_IMAGES } from '../lib/home-seed'
+import {
+  ensurePressManifestImages,
+  HOME_IMAGES,
+  LANDING_ASSETS_DIR,
+  PARTNER_LOGO_FILES,
+  PRESS_RAIL_FILES,
+} from '../lib/home-seed'
 import { LEGACY_IMAGES, LEGACY_IMAGES_DIR, type LegacyImage } from '../lib/legacy-images'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
 import config from '../payload.config'
@@ -34,6 +45,12 @@ const CONFIRM = kapuNyitva('LEGACY_RESTORE_CONFIRM')
 const OVERWRITE = kapuNyitva('LEGACY_OVERWRITE')
 /** A seed.ts demó-tartalmának depublikálása (archiválás/draft/rejtés, törlés nélkül). */
 const ARCHIVE_DEMO = kapuNyitva('LEGACY_ARCHIVE_DEMO')
+/**
+ * A MEGLÉVŐ szekciósorok két logósávjának célzott frissítése (H05 + A04). Külön
+ * kapu, mert a LEGACY_OVERWRITE az oldalak teljes szövegét írná felül — az
+ * operátornak a logósáv-frissítéshez nem szabad ezt kinyitnia.
+ */
+const LOGOSAV = kapuNyitva('LEGACY_LOGOSAV')
 /** Próbafutás: minden döntés lefut és naplózódik, de egyetlen írás sem történik. */
 const DRY_RUN = !CONFIRM
 
@@ -224,14 +241,57 @@ const ensureMedia = async (payload: Payload, image: LegacyImage): Promise<number
 }
 
 /**
- * A sajtó-logósor képfájljai — a KEZDŐLAPI seed (src/lib/home-seed.ts,
- * HOME_IMAGES) tölti fel őket a `content/home-images` forrásból. Ez a script nem tölt fel
- * semmit belőlük, csak megkeresi a meglévőket: így a /rolunk logósora akkor is
- * helyes marad, ha a lányok időközben lecserélték valamelyik logót.
+ * A sajtó-logósor képfájljai (src/lib/home-seed.ts, PRESS_RAIL_FILES): a régi
+ * hat logót a KEZDŐLAPI seed tölti fel a `content/home-images` forrásból, a
+ * négy ellenőrzött H05-logót (public/media/press) ez a script tölti fel és
+ * igazolja (`ensurePressManifestImages`). A sor itt csak megkeresi a
+ * meglévőket: így a /rolunk logósora akkor is helyes marad, ha a lányok
+ * időközben lecserélték valamelyik logót.
  */
-const SAJTO_LOGO_FAJLOK: readonly string[] = HOME_IMAGES.filter((kep) =>
-  kep.file.startsWith('press-'),
-).map((kep) => kep.file)
+const SAJTO_LOGO_FAJLOK: readonly string[] = PRESS_RAIL_FILES
+
+/**
+ * A /rolunk partner-logósávjának fájljai, a régi kineticare.hu/rolunk
+ * sorrendjében: elöl az egyesületi MASE (a H05-ben ellenőrzött hivatalos
+ * szóvédjegy, public/media/press/mase.png — a régi oldal teal, négyzetes
+ * közösségi avatárja helyett), utána a HOME_IMAGES `partner-` bejegyzései.
+ * Nyilvántartás: content/home-images/site/partner-manifest.json.
+ */
+const ROLUNK_PARTNER_LOGO_FAJLOK: readonly string[] = ['mase.png', ...PARTNER_LOGO_FILES]
+
+/**
+ * Partnerlogók idempotens feltöltése a `content/home-images/site` forrásból
+ * (a HOME_IMAGES `partner-` bejegyzései, alt = a szervezet neve). A kezdőlapi
+ * seed ugyanezt megteszi indításkor; itt azért is fut, hogy a /rolunk
+ * visszaépítése egyetlen operátori lépés legyen. Meglévőt sosem ír felül.
+ */
+const ensurePartnerLogok = async (payload: Payload): Promise<void> => {
+  for (const image of HOME_IMAGES) {
+    if (!image.file.startsWith('partner-')) continue
+    const baseName = image.file.replace(/\.[^.]+$/, '')
+    const existing = await payload.find({
+      collection: 'media',
+      where: { filename: { like: `${baseName}%` } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    if (existing.docs.length > 0) {
+      naploKihagyas(payload, `partnerlogó: ${image.file}`, 'már fel van töltve')
+      continue
+    }
+    if (DRY_RUN) {
+      naploLetrehozas(payload, `partnerlogó: ${image.file}`)
+      continue
+    }
+    await payload.create({
+      collection: 'media',
+      data: { alt: image.alt },
+      filePath: path.join(LANDING_ASSETS_DIR, image.dir, image.file),
+      overrideAccess: true,
+    })
+    naploLetrehozas(payload, `partnerlogó: ${image.file}`)
+  }
+}
 
 /**
  * Meglévő média-elemek id-je fájlnév alapján — FELTÖLTÉS NÉLKÜL.
@@ -741,6 +801,22 @@ const ROLUNK_SZOLGALTATASOK: readonly SzolgaltatasSor[] = [
 const ROLUNK_PARTNEREK =
   'Magyar Sportrehabilitációs Egyesület, ProBody Stúdió, Aurora Medical, Dynamic Tape®, TUDATEST, PhysioWatch, WIBBI, Halm Optika, dr. pharm. Kocsis Kristóf, Csillik Árpád, NISHI STUDIO pilates, BodyGPS, Magic Smile, Be Fit With Ben, OrtoCare, Pille Fizioterápia.'
 
+/** A /rolunk partner-logósávjának felirata (a `pressLogos` blokk `heading`-je). */
+const ROLUNK_PARTNER_FELIRAT = 'Partnereink'
+
+/**
+ * A logósáv ALATTI mondat azokról a partnerekről, akiknek a régi oldalon nem
+ * logófájl, hanem fotó vagy aláírás állt (docs/grafikai-leltar-regi-oldal.md
+ * 2.3; a leltár és a képek megnézése alapján: Aurora Medical, TUDATEST és
+ * PhysioWatch jelvénye fotóról/képernyőmentésről származik, Csillik Árpádé
+ * portréfotó, dr. pharm. Kocsis Kristófé kézírásos aláírás). Ők név szerint
+ * maradnak látszanak — a logósáv nem hagy ki senkit a régi névsorból.
+ * A mondat „Partnereink" szóval kezdődik, mert a szekciósor rich-text ága
+ * ezzel a kulcsszóval bizonyítja, hogy a partnersor nem került lenyitó mögé.
+ */
+const ROLUNK_TOVABBI_PARTNEREK =
+  'Partnereink közé tartozik még az Aurora Medical, a TUDATEST, a PhysioWatch, dr. pharm. Kocsis Kristóf és Csillik Árpád.'
+
 /** Egy szakmai lista az önéletrajzon belül (tanulmányok, tanfolyamok, …). */
 interface SzakmaiLista {
   /** A lista címe az önéletrajzban (h3). */
@@ -1038,6 +1114,8 @@ interface OldalLayoutMedia {
   szolgaltatasokKep?: number
   /** A sajtó-logósor logói — ezeket a KEZDŐLAPI seed tölti fel (HOME_IMAGES). */
   sajtoLogok?: readonly number[]
+  /** A /rolunk partner-logósávjának logói (ROLUNK_PARTNER_LOGO_FAJLOK sorrendjében). */
+  partnerLogok?: readonly number[]
   /** Kocsis Kata portréja a bejelentkezés-szekcióhoz. */
   kocsisPortre?: number
   /** Kiss Kata portréja a bejelentkezés-szekcióhoz. */
@@ -1180,6 +1258,233 @@ const szakemberSzekcio = (opciok: SzakemberSzekcioOpciok): NonNullable<Page['lay
 })
 
 /**
+ * A /rolunk „Partnereink" szekciója: mozgó logósáv + egy mondat a logó nélküli
+ * partnerekről (tulajdonosi kérés A04: „a Partnerek logóit úgy, ahogy az előző
+ * oldalunkon volt, egy sávban csússzanak").
+ *
+ * MIÉRT a meglévő `pressLogos` blokk: ugyanaz a komponens, mint a lap
+ * „Itt találkozhattál velünk" sora — a LogoRail folyamatos, egérrel és a
+ * szünet-gombbal megállítható, `prefers-reduced-motion` alatt statikus
+ * (WCAG 2.2 SC 2.2.2 Pause, Stop, Hide; SC 1.1.1: a logó alt-ja a szervezet
+ * neve). Egy mintát a látogató egyszer tanul meg (NN/g, Consistency and
+ * Standards). A bizalmi hatás forrásai: NN/g „Trustworthiness in Web Design"
+ * (https://www.nngroup.com/articles/trustworthy-design/) — a külső, ismerős
+ * nevek a hitelesség jelzői; Baymard „site seal trust"
+ * (https://baymard.com/blog/site-seal-trust) — a felismerhető jelvények
+ * növelik a bizalmat, az ismeretlenek nem. Ezért a sávba csak tényleges
+ * logófájl kerül, fotó vagy aláírás nem; a többi partner mondatban marad.
+ *
+ * Darabszám: 11 logó (≤ 12, a blokk `maxRows`-a). A folyamatos sáv miatt egy
+ * nézetben így is csak 5–8 logó látszik egyszerre — a Baymard/NN/g 8–12-es
+ * olvashatósági küszöb a statikus sorra vonatkozik, a sáv a többit görgeti.
+ *
+ * Logó nélkül (`partnerLogok` üres) csak a mondat marad, mint eddig — a rich-
+ * text ág és a tesztek így adatbázis nélkül is teljes értékűek.
+ */
+const rolunkPartnerSzekciok = (
+  partnerLogok: readonly number[],
+  hatter: 'feher' | 'tint' | 'sotet' = 'feher',
+): NonNullable<Page['layout']> => [
+  ...(partnerLogok.length > 0
+    ? [
+        {
+          blockType: 'pressLogos' as const,
+          heading: ROLUNK_PARTNER_FELIRAT,
+          logos: partnerLogok.map((image) => ({ image })),
+          sectionSettings: { visible: true, anchorId: 'partnereink', hatter },
+        },
+      ]
+    : []),
+  {
+    blockType: 'richText' as const,
+    content: richText([para(ROLUNK_TOVABBI_PARTNEREK)]),
+    sectionSettings: { visible: true, hatter },
+  },
+]
+
+/** A sajtó-logósor felirata (a home-seed és a PressLogos alapfelirata is ez). */
+const SAJTO_FELIRAT = 'Itt találkozhattál velünk'
+
+type SzekciosorBlokk = NonNullable<Page['layout']>[number]
+
+/** Egy blokk logóinak média-id-jei (depth 0-s olvasásnál számok, különben objektumok). */
+const logoMediaIds = (block: Extract<SzekciosorBlokk, { blockType: 'pressLogos' }>) =>
+  (block.logos ?? []).map((logo) => (typeof logo.image === 'number' ? logo.image : logo.image.id))
+
+/** Egy rich-text blokk ELSŐ csomópontjának szövege (címsor vagy bekezdés). */
+const elsoSzoveg = (block: SzekciosorBlokk): string => {
+  if (block.blockType !== 'richText') return ''
+  const first = block.content?.root?.children?.[0] as
+    { children?: { text?: unknown }[] } | undefined
+  const text = first?.children?.[0]?.text
+  return typeof text === 'string' ? text : ''
+}
+
+/** Egy szekciósor-frissítés terve: az új sor, vagy `null`, ha nincs teendő. */
+interface LogosavTerv {
+  layout: NonNullable<Page['layout']> | null
+  /** Naplózható indoklás: mit tenne, vagy miért nem nyúl hozzá. */
+  uzenet: string
+}
+
+/**
+ * MEGLÉVŐ szekciósor sajtó-logósorának ADDITÍV bővítése (H05): a felirat
+ * szerint azonosított blokk végére fűzi azokat a logókat, amelyek a teljes
+ * sorból (`sajtoLogok`) még hiányoznak. Meglévő bejegyzést nem töröl és nem
+ * rendez át (a manifest `preserveExisting` szabálya); ha a bővítés túllépné a
+ * blokk 12-es korlátját, nem nyúl hozzá. Tiszta függvény, adatbázis nélkül.
+ */
+const tervezdSajtoLogosorBovitest = (
+  layout: Page['layout'],
+  sajtoLogok: readonly number[],
+  felirat: string,
+): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  const index = layout.findIndex(
+    (block) => block.blockType === 'pressLogos' && (block.heading?.trim() || '') === felirat,
+  )
+  if (index === -1) {
+    return { layout: null, uzenet: `nincs „${felirat}" feliratú sajtó-logósor a szekciósorban` }
+  }
+  const block = layout[index]
+  if (block.blockType !== 'pressLogos') return { layout: null, uzenet: 'belső hiba' }
+  const meglevo = new Set(logoMediaIds(block))
+  const hianyzo = sajtoLogok.filter((id) => !meglevo.has(id))
+  if (hianyzo.length === 0) {
+    return { layout: null, uzenet: 'a sajtó-logósor már minden ellenőrzött logót tartalmaz' }
+  }
+  if (meglevo.size + hianyzo.length > 12) {
+    return {
+      layout: null,
+      uzenet: `a bővítés túllépné a blokk 12-es korlátját (${meglevo.size} meglévő + ${hianyzo.length} új) — kézi átnézés kell`,
+    }
+  }
+  const ujLayout = [...layout]
+  ujLayout[index] = {
+    ...block,
+    logos: [...(block.logos ?? []), ...hianyzo.map((image) => ({ image }))],
+  }
+  return {
+    layout: ujLayout,
+    uzenet: `${hianyzo.length} új logó a sajtó-logósor végére (${meglevo.size} meglévő marad)`,
+  }
+}
+
+/**
+ * MEGLÉVŐ /rolunk szekciósor „Partnereink" szövegbekezdésének cseréje a
+ * partner-logósávra + a logó nélküli partnerek mondatára (A04). Csak akkor
+ * nyúl hozzá, ha (a) még nincs „Partnereink" feliratú logósáv, és (b) pontosan
+ * egy olyan rich-text blokk van, amelynek ELSŐ csomópontja a „Partnereink"
+ * címsor — ez a seed által letett bekezdés; bármi más a szerkesztőé.
+ */
+const tervezdPartnerSavot = (
+  layout: Page['layout'],
+  partnerLogok: readonly number[],
+): LogosavTerv => {
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return { layout: null, uzenet: 'az oldalnak nincs szekciósora' }
+  }
+  if (partnerLogok.length === 0) {
+    return { layout: null, uzenet: 'egyetlen partnerlogó sincs a Médiatárban' }
+  }
+  if (
+    layout.some(
+      (block) =>
+        block.blockType === 'pressLogos' &&
+        (block.heading?.trim() || '') === ROLUNK_PARTNER_FELIRAT,
+    )
+  ) {
+    return { layout: null, uzenet: 'a partner-logósáv már a szekciósorban van' }
+  }
+  const jeloltek = layout.flatMap((block, index) =>
+    block.blockType === 'richText' && elsoSzoveg(block) === ROLUNK_PARTNER_FELIRAT ? [index] : [],
+  )
+  if (jeloltek.length !== 1) {
+    return {
+      layout: null,
+      uzenet: `nem pontosan egy „${ROLUNK_PARTNER_FELIRAT}" című rich-text blokk van (${jeloltek.length}) — kézi átnézés kell`,
+    }
+  }
+  const regi = layout[jeloltek[0]]
+  const hatter: 'feher' | 'tint' | 'sotet' =
+    regi.blockType === 'richText' ? (regi.sectionSettings?.hatter ?? 'feher') : 'feher'
+  // A régi blokk háttérsávját örökli, hogy a szerkesztő sávritmusa ne boruljon.
+  const ujSzekciok = rolunkPartnerSzekciok(partnerLogok, hatter)
+  const ujLayout = [...layout]
+  ujLayout.splice(jeloltek[0], 1, ...ujSzekciok)
+  return {
+    layout: ujLayout,
+    uzenet: `a „${ROLUNK_PARTNER_FELIRAT}" szövegbekezdés helyére ${partnerLogok.length} logós sáv + a logó nélküli partnerek mondata`,
+  }
+}
+
+/**
+ * A két logósáv frissítése a MEGLÉVŐ szekciósorokon (LEGACY_LOGOSAV=igen).
+ * Oldalanként egy `payload.update`, kizárólag a `layout` mezőre; a tervezés a
+ * fenti tiszta függvényeké, a döntés minden ágon naplózódik.
+ */
+const frissitsdLogosavokat = async (
+  payload: Payload,
+  input: { sajtoLogok: readonly number[]; partnerLogok: readonly number[] },
+): Promise<void> => {
+  const oldalak: { slug: string; tervek: ((layout: Page['layout']) => LogosavTerv)[] }[] = [
+    {
+      slug: 'kezdolap',
+      tervek: [(layout) => tervezdSajtoLogosorBovitest(layout, input.sajtoLogok, SAJTO_FELIRAT)],
+    },
+    {
+      slug: 'rolunk',
+      tervek: [
+        (layout) => tervezdSajtoLogosorBovitest(layout, input.sajtoLogok, SAJTO_FELIRAT),
+        (layout) => tervezdPartnerSavot(layout, input.partnerLogok),
+      ],
+    },
+  ]
+  for (const oldal of oldalak) {
+    const page = (
+      await payload.find({
+        collection: 'pages',
+        where: { slug: { equals: oldal.slug } },
+        limit: 1,
+        depth: 0,
+        overrideAccess: true,
+      })
+    ).docs[0]
+    const cimke = `logósávok: ${oldal.slug}`
+    if (page === undefined) {
+      naploKihagyas(payload, cimke, 'az oldal nem található')
+      continue
+    }
+    let layout: Page['layout'] = page.layout
+    const valtozasok: string[] = []
+    for (const terv of oldal.tervek) {
+      const eredmeny = terv(layout)
+      if (eredmeny.layout === null) {
+        payload.logger.info(`Legacy: ${cimke} — nincs teendő: ${eredmeny.uzenet}.`)
+        continue
+      }
+      layout = eredmeny.layout
+      valtozasok.push(eredmeny.uzenet)
+    }
+    if (valtozasok.length === 0) {
+      naploKihagyas(payload, cimke, 'a logósávok már naprakészek')
+      continue
+    }
+    if (!DRY_RUN) {
+      await payload.update({
+        collection: 'pages',
+        id: page.id,
+        data: { layout },
+        overrideAccess: true,
+      })
+    }
+    naploFeluliras(payload, `${cimke} — ${valtozasok.join('; ')}`)
+  }
+}
+
+/**
  * A /rolunk alap-szekciósora.
  *
  * Kép nélkül (`buildRolunkLayout()`) is teljes értékű: a fotó és a logósor
@@ -1188,6 +1493,7 @@ const szakemberSzekcio = (opciok: SzakemberSzekcioOpciok): NonNullable<Page['lay
  */
 const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layout']> => {
   const sajtoLogok = media.sajtoLogok ?? []
+  const partnerLogok = media.partnerLogok ?? []
   return [
     // 1. réteg — a lap bevezetője folyó szövegként (a mértéket a .kc-richtext
     // adja: 34rem ≈ 75 karakter, B1.1).
@@ -1291,13 +1597,10 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
       },
     }),
 
-    // Partnerek — a lap külső, ellenőrizhető referencia-sora. Rövid, ezért
-    // ugyanabban a fehér régióban marad, a szakemberek alatt.
-    {
-      blockType: 'richText',
-      content: richText([heading('h2', 'Partnereink'), para(ROLUNK_PARTNEREK)]),
-      sectionSettings: { visible: true, hatter: 'feher' },
-    },
+    // Partnerek — a lap külső, ellenőrizhető referencia-sora, logósávként
+    // (tulajdonosi kérés A04) + a logó nélküli partnerek mondata. Ugyanabban
+    // a fehér régióban marad, a szakemberek alatt.
+    ...rolunkPartnerSzekciok(partnerLogok),
 
     // Szakmai háttér, 2. rész — a HOSSZÚ listás olvasnivaló harmonikában.
     //
@@ -2451,10 +2754,28 @@ async function restoreLegacyContent(): Promise<void> {
   // A két belső oldal blokkosítása (docs/ux-belso-oldalak-kutatas.md P3/P5 és
   // 5.2/5.3). EGYSZERI feltöltés: meglévő szekciósort a script sosem ír felül,
   // a feltöltés után minden szöveg és sorrend az adminban szerkeszthető.
+  // A négy ellenőrzött H05-logó feltöltése + eredetigazolása (public/media/press,
+  // manifest). Próbafutásban csak a szándék naplózódik; a meglévőt sosem írja felül.
+  if (DRY_RUN) {
+    payload.logger.info(
+      'Legacy: PRÓBAFUTÁS — a négy ellenőrzött sajtó-logó (public/media/press/manifest.json) feltöltése és eredetigazolása éles futáskor történne.',
+    )
+  } else {
+    await ensurePressManifestImages(payload)
+  }
+  // A /rolunk partnerlogói (content/home-images/site/partner-*.webp).
+  await ensurePartnerLogok(payload)
+
   const sajtoLogok = await findMediaIds(payload, SAJTO_LOGO_FAJLOK)
   if (sajtoLogok.length === 0) {
     payload.logger.info(
-      'Legacy: sajtó-logó egyet sem találtam a Médiatárban (ezeket a `npm run seed` tölti fel) — a /rolunk logósora kimarad a szekciósorból.',
+      'Legacy: sajtó-logó egyet sem találtam a Médiatárban (a régi hatot a `npm run seed` tölti fel, a négy újat ez a script éles futásban) — a /rolunk logósora kimarad a szekciósorból.',
+    )
+  }
+  const partnerLogok = await findMediaIds(payload, ROLUNK_PARTNER_LOGO_FAJLOK)
+  if (partnerLogok.length === 0) {
+    payload.logger.info(
+      'Legacy: partnerlogó egyet sem találtam a Médiatárban — a /rolunk partner-logósávja kimarad, a partnerek mondatban maradnak.',
     )
   }
   // A két portré a bejelentkezés-szekcióhoz (mindkét oldalra ugyanaz a kép).
@@ -2466,10 +2787,19 @@ async function restoreLegacyContent(): Promise<void> {
     buildRolunkLayout({
       rolunkFoto: mediaId('680a69d078306_Katakfeherbenhattal.png'),
       sajtoLogok,
+      partnerLogok,
       kocsisPortre,
       kissPortre,
     }),
   )
+  // MEGLÉVŐ szekciósorok logósávjai (H05 + A04) — csak külön kapuval.
+  if (LOGOSAV) {
+    await frissitsdLogosavokat(payload, { sajtoLogok, partnerLogok })
+  } else {
+    payload.logger.info(
+      'Legacy: a meglévő szekciósorok logósávjai érintetlenek maradnak (LEGACY_LOGOSAV=igen kapcsolja be a sajtó-logósor bővítését és a /rolunk partner-logósávját).',
+    )
+  }
   await ensurePageLayout(
     payload,
     'szolgaltatasok',
@@ -2487,8 +2817,7 @@ async function restoreLegacyContent(): Promise<void> {
   await upsertPage(payload, {
     slug: 'kapcsolat',
     title: 'Kapcsolat',
-    excerpt:
-      'Kérj időpontot rendelői kezelésre, vagy írj üzenetet a Kineticare csapatának.',
+    excerpt: 'Kérj időpontot rendelői kezelésre, vagy írj üzenetet a Kineticare csapatának.',
     content: kapcsolatContent(),
     seoTitle: 'Kapcsolat – Kineticare',
     seoDescription:
@@ -2643,11 +2972,17 @@ export {
   IDOPONTKERES_HORGONY,
   IDOPONTKERES_URL,
   kezdolapContent,
+  ROLUNK_PARTNER_FELIRAT,
+  ROLUNK_PARTNER_LOGO_FAJLOK,
+  ROLUNK_TOVABBI_PARTNEREK,
   rolunkContent,
+  rolunkPartnerSzekciok,
   rolunkSzakmaiOrokoltTartalom,
   SZAKMAI_HATTER_URL,
   szolgaltatasokContent,
   szolgaltatasokRegiBevezetoTartalom,
+  tervezdPartnerSavot,
+  tervezdSajtoLogosorBovitest,
 }
 
 /**
