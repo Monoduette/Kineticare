@@ -47,6 +47,28 @@ function CaretIcon() {
  * ESLint-szabálya (react-hooks/set-state-in-effect) is tiltja.
  */
 const subscribeToNothing = () => () => {}
+
+const ARROW_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Home', 'End'])
+
+/** Egy főmenüpont almenü-hivatkozásai DOM-sorrendben. */
+function sublinksOf(item: HTMLElement): HTMLAnchorElement[] {
+  return [...item.querySelectorAll<HTMLAnchorElement>('.kc-nav-desktop__sublink')]
+}
+
+/**
+ * Fókusz a frissen látszó almenüpontra, legfeljebb néhány képkockán át
+ * próbálva. Mérve (Chromium, `prefers-reduced-motion: reduce`, 1024 px): a
+ * `data-open="true"` beállítása után a számított `visibility` már `visible`,
+ * a `focus()` mégis csak a MÁSODIK képkockától ér célba (az első két kísérlet
+ * néma). A ciklus ezért képkockánként újrapróbál, és az első sikernél áll le.
+ */
+function focusWhenFocusable(target: HTMLElement, attempts = 5): void {
+  target.focus()
+  if (document.activeElement === target || attempts === 0) {
+    return
+  }
+  requestAnimationFrame(() => focusWhenFocusable(target, attempts - 1))
+}
 const getClientSnapshot = () => true
 const getServerSnapshot = () => false
 
@@ -172,17 +194,77 @@ export function DesktopNav({ items }: { items: NavItem[] }) {
     [close],
   )
 
+  /**
+   * Nyílbillentyűk a lenyílón belül — a W3C APG „Disclosure Navigation Menu"
+   * példájának OPCIONÁLIS billentyűi (WP9, 2026-09-07):
+   * - Le nyíl: zárt lenyílón nyit és az első almenüpontra lép; nyitottan a
+   *   következő almenüpontra (az utolsón marad).
+   * - Fel nyíl: az előző almenüpontra; az elsőről a lenyitó gombra.
+   * - Home / End: az első / utolsó almenüpontra.
+   * A Tab / Shift+Tab, Enter / Space és Escape viselkedése változatlan.
+   * https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/examples/disclosure-navigation/
+   *
+   * A zárt lenyíló `visibility: hidden` (a fókusz nem adható rá), ezért a
+   * nyitás után a fókuszlépést a `pendingFocus` + effekt végzi, a következő
+   * renderben, amikor a `data-open="true"` már látszik.
+   */
+  const pendingFocus = useRef<{ id: number; target: 'first' | 'last' } | null>(null)
+
+  useEffect(() => {
+    const pending = pendingFocus.current
+    if (pending === null || openId !== pending.id) {
+      return
+    }
+    pendingFocus.current = null
+    const toggle = toggleRefs.current.get(pending.id)
+    const item = toggle?.closest('li')
+    const sublinks = item ? sublinksOf(item) : []
+    const target = pending.target === 'first' ? sublinks[0] : sublinks[sublinks.length - 1]
+    if (target) {
+      focusWhenFocusable(target)
+    }
+  }, [openId])
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLLIElement>, id: number) => {
-      if (event.key !== 'Escape') {
+      if (event.key === 'Escape') {
+        // A fókusz ELŐBB kerül biztonságos helyre: a lenyíló zárt állapotban
+        // `visibility: hidden`, tehát a benne álló fókusz elveszne.
+        toggleRefs.current.get(id)?.focus()
+        close(id)
         return
       }
-      // A fókusz ELŐBB kerül biztonságos helyre: a lenyíló zárt állapotban
-      // `visibility: hidden`, tehát a benne álló fókusz elveszne.
-      toggleRefs.current.get(id)?.focus()
-      close(id)
+      if (!ARROW_KEYS.has(event.key)) {
+        return
+      }
+      const sublinks = sublinksOf(event.currentTarget)
+      if (sublinks.length === 0) {
+        return
+      }
+      event.preventDefault()
+      const index = sublinks.findIndex((element) => element === document.activeElement)
+      if (event.key === 'ArrowUp') {
+        if (index > 0) {
+          sublinks[index - 1]?.focus()
+        } else if (index === 0) {
+          toggleRefs.current.get(id)?.focus()
+        }
+        return
+      }
+      if (event.key === 'ArrowDown' && index !== -1) {
+        sublinks[Math.min(index + 1, sublinks.length - 1)]?.focus()
+        return
+      }
+      pendingFocus.current = { id, target: event.key === 'End' ? 'last' : 'first' }
+      setOpenId(id)
+      if (openId === id) {
+        // Már nyitva: nincs újrarender, a fókuszlépés azonnal mehet.
+        pendingFocus.current = null
+        const target = event.key === 'End' ? sublinks[sublinks.length - 1] : sublinks[0]
+        target?.focus()
+      }
     },
-    [close],
+    [close, openId],
   )
 
   if (items.length === 0) {

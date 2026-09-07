@@ -9,9 +9,63 @@ import { AccountNav } from './AccountNav'
 import { HeaderAppointmentCta } from './HeaderAppointmentCta'
 import { NavAnchor } from './NavAnchor'
 
+/** A fiókban Tab-bal bejárható vezérlők (a rejtett, 0 méretű elemek nélkül). */
+function drawerTabbables(drawer: HTMLElement): HTMLElement[] {
+  return [...drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')].filter(
+    (element) => element.getClientRects().length > 0,
+  )
+}
+
+/**
+ * FÓKUSZCSAPDA a nyitott fiókban (WP9, 2026-09-07, mérve).
+ *
+ * A fiók MODÁLIS: overlay fedi a lapot és a body görgetése zárolt. Mérve
+ * (Chromium, 320 és 390 px): a fiók utolsó eleméről (Időpontfoglalás) a Tab
+ * a lap tartalmára vitte a fókuszt, az overlay ALÁ, ahol a fókuszált elem
+ * teljesen takart, és a lap nem is görgethető oda. Ez a WCAG 2.2 SC 2.4.11
+ * Focus Not Obscured (Minimum) bukása: „a component is not entirely hidden
+ * due to author-created content" — az Understanding szerint a modális
+ * réteg csak akkor felel meg, ha a fókuszt magánál tartja.
+ * https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html
+ *
+ * A szabály a W3C APG modális párbeszéd-mintájáé: „Tab and Shift + Tab do
+ * not move focus outside the dialog" — az utolsó elemről a Tab az elsőre, az
+ * elsőről a Shift+Tab az utolsóra lép; az Escape zár.
+ * https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+ *
+ * A csapda CSAK a billentyűs Tab-ot fogja el: a képernyőolvasó virtuális
+ * kurzora és a koppintás érintetlen (az overlay-koppintás zár).
+ */
+function trapTabInDrawer(event: KeyboardEvent, drawer: HTMLElement | null): void {
+  if (!drawer) {
+    return
+  }
+  const tabbables = drawerTabbables(drawer)
+  const first = tabbables[0]
+  const last = tabbables[tabbables.length - 1]
+  if (!first || !last) {
+    return
+  }
+  const active = document.activeElement
+  if (!drawer.contains(active)) {
+    // A fókusz kívül áll (pl. a hamburgeren): az első fiókelemre húzzuk.
+    event.preventDefault()
+    first.focus()
+    return
+  }
+  if (event.shiftKey && active === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 /**
  * Kompakt (< 900px) navigáció: hamburger-gomb + jobb oldali drawer.
  * - Hivatkozásra kattintva a fókusz NEM tér vissza a hamburgerre: ott az
+ * - Nyitva a Tab a fiókon belül körbejár (fókuszcsapda, lásd fent).
  */
 export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signedIn?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -19,6 +73,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
   const drawerId = useId()
   const toggleRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
 
   const close = useCallback(() => setOpen(false), [])
 
@@ -48,12 +103,16 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
       if (event.key === 'Escape') {
         setOpen(false)
         toggleRef.current?.focus()
+        return
+      }
+      if (event.key === 'Tab') {
+        trapTabInDrawer(event, drawerRef.current)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     // A layout.css közös határán a rejtett drawer nem tarthatja zárolva az oldalt.
     const desktop = window.matchMedia('(min-width: 900px)')
-    const drawer = closeRef.current?.closest('nav')
+    const drawer = drawerRef.current
     // A Chromium a médiaesemény előtt BODY-ra állíthatja az activeElementet.
     // A drawer és a külső hamburger fókuszát még látható állapotban követjük;
     // a más vezérlőre vitt fókuszt viszont nem vesszük el.
@@ -142,6 +201,7 @@ export function MobileNav({ items, signedIn = false }: { items: NavItem[]; signe
         className="kc-nav-mobile__drawer"
         data-open={open}
         id={drawerId}
+        ref={drawerRef}
       >
         <div className="kc-nav-mobile__drawer-header">
           <span className="kc-nav-mobile__drawer-title">Menü</span>

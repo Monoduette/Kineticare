@@ -147,6 +147,20 @@ try {
           // maradniuk, nem csak a nézetablakon — 1024 px-en az akciósáv a
           // konténert 27, a nézetablakot 3 px-szel lépte túl (WP8, mérve).
           barRight: bar.getBoundingClientRect().right,
+          // A sáv hamburgerének dokumentált optikai túlnyúlása a jobb margóba
+          // (layout.css `--kc-hamburger-overhang`, WP9): a 44 px-es
+          // célfelület ennyivel lóghat a konténeren túl, az ikon nem.
+          hamburgerOverhang: (() => {
+            const toggle = document.querySelector('.kc-site-header__actions .kc-nav-mobile__toggle')
+            if (!toggle || getComputedStyle(toggle).display === 'none') return 0
+            // A negatív végmargó px-ben feloldva (a tokenérték rem).
+            return Math.max(0, -parseFloat(getComputedStyle(toggle).marginInlineEnd)) || 0
+          })(),
+          hamburgerIconRight: (() => {
+            const icon = document.querySelector('.kc-site-header__actions .kc-nav-mobile__toggle svg')
+            if (!icon || icon.getClientRects().length === 0) return 0
+            return icon.getBoundingClientRect().right
+          })(),
           // A menülinkek a saját nav-dobozukon belül: egy zsugorodó nav
           // (min-width: 0) a linkeket az akciósáv ALÁ csúsztatná — a dobozok
           // rendben látszanának, a felirat mégis átfedne.
@@ -183,15 +197,27 @@ try {
         assert.equal(geometry.mobile, !geometry.desktop)
         for (const [index, box] of geometry.boxes.entries()) {
           assert.ok(box.left >= 0 && box.right <= width, 'header child outside viewport')
-          // Az asztali sávra (≥ 900 px) mérve; 320 px-en a hamburger a
-          // konténert 21 px-szel túllépi (nézetablakon belül) — külön feladat.
-          if (geometry.desktop)
-            assert.ok(
-              box.right <= geometry.barRight + 0.5,
-              `header child outside the bar at ${width}: right=${box.right}, bar=${geometry.barRight}`,
-            )
+          // Minden szélességen a konténeren belül; a kompakt sávon a
+          // hamburger célfelülete a dokumentált 8 px-es optikai túlnyúlással
+          // lóghat a margóba (WP9: 320 px-en korábban 21 px volt a túllépés).
+          const allowance = geometry.desktop ? 0 : geometry.hamburgerOverhang
+          assert.ok(
+            box.right <= geometry.barRight + allowance + 0.5,
+            `header child outside the bar at ${width}: right=${box.right}, bar=${geometry.barRight}, allowance=${allowance}`,
+          )
           if (index)
             assert.ok(box.left >= geometry.boxes[index - 1].right, 'overlapping header children')
+        }
+        if (geometry.mobile) {
+          assert.ok(
+            geometry.hamburgerOverhang >= 8 && geometry.hamburgerOverhang <= 8.5,
+            `hamburger overhang at ${width}: ${geometry.hamburgerOverhang}`,
+          )
+          // Az IKON a konténeren belül marad, csak az üres gyűrű nyúlik ki.
+          assert.ok(
+            geometry.hamburgerIconRight <= geometry.barRight + 0.5,
+            `hamburger icon outside the bar at ${width}: ${geometry.hamburgerIconRight} > ${geometry.barRight}`,
+          )
         }
       } catch (error) {
         failures.push(error.message)
@@ -245,6 +271,63 @@ try {
           await page.locator('.kc-nav-desktop a', { hasText: 'Időpontfoglalás' }).count(),
           0,
         )
+      }
+      if (geometry.mobile) {
+        // FÓKUSZCSAPDA (WP9): az utolsó fiókelemről a Tab az elsőre (bezáró
+        // gomb), az elsőről a Shift+Tab az utolsóra lép; a fókusz nem kerül
+        // az overlay alá (WCAG 2.2 SC 2.4.11; APG modális párbeszéd).
+        const drawerCta = page.locator('.kc-site-header__drawer-appointment')
+        await drawerCta.focus()
+        await page.keyboard.press('Tab')
+        assert.ok(
+          await page
+            .locator('.kc-nav-mobile__drawer-header button')
+            .evaluate((el) => el === document.activeElement),
+          `drawer focus trap forward at ${width}`,
+        )
+        await page.keyboard.press('Shift+Tab')
+        assert.ok(
+          await drawerCta.evaluate((el) => el === document.activeElement),
+          `drawer focus trap backward at ${width}`,
+        )
+        for (let step = 0; step < 20; step++) {
+          await page.keyboard.press('Tab')
+          assert.ok(
+            await page.evaluate(() => !!document.activeElement.closest('.kc-nav-mobile__drawer')),
+            `focus left the open drawer at ${width} (step ${step})`,
+          )
+        }
+      } else {
+        // NYILAK a lenyílóban (WP9, APG disclosure navigation opcionális
+        // billentyűi): Le nyíl a gombról az első almenüpontra, tovább a
+        // következőre, az utolsón marad; Fel nyíl vissza, az elsőről a
+        // gombra; End / Home az utolsó / első almenüpontra; Escape után a
+        // Le nyíl újranyit és az első pontra lép.
+        const toggle = page.locator('.kc-nav-desktop__toggle').first()
+        const sublinks = page.locator('.kc-nav-desktop__item').first().locator('.kc-nav-desktop__sublink')
+        const count = await sublinks.count()
+        const focusedIndex = () =>
+          sublinks.evaluateAll((els) => els.findIndex((el) => el === document.activeElement))
+        await toggle.focus()
+        await page.keyboard.press('ArrowDown')
+        assert.equal(await focusedIndex(), 0, `ArrowDown from toggle at ${width}`)
+        await page.keyboard.press('ArrowDown')
+        assert.equal(await focusedIndex(), 1, `ArrowDown to second at ${width}`)
+        await page.keyboard.press('End')
+        assert.equal(await focusedIndex(), count - 1, `End at ${width}`)
+        await page.keyboard.press('ArrowDown')
+        assert.equal(await focusedIndex(), count - 1, `ArrowDown stays on last at ${width}`)
+        await page.keyboard.press('Home')
+        assert.equal(await focusedIndex(), 0, `Home at ${width}`)
+        await page.keyboard.press('ArrowUp')
+        assert.ok(await toggle.evaluate((el) => el === document.activeElement), `ArrowUp to toggle at ${width}`)
+        await page.keyboard.press('Escape')
+        await settle()
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false', `Escape closes at ${width}`)
+        await page.keyboard.press('ArrowDown')
+        await settle()
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `ArrowDown reopens at ${width}`)
+        assert.equal(await focusedIndex(), 0, `ArrowDown after Escape focuses first at ${width}`)
       }
       await campaign.focus()
       await campaign.scrollIntoViewIfNeeded()
@@ -326,7 +409,9 @@ try {
         await closeButton.waitFor({ state: 'visible' })
         await closeButton.focus()
         assert.ok(await closeButton.evaluate((el) => el === document.activeElement))
-        await page.keyboard.press('Shift+Tab')
+        // A fókuszcsapda (WP9) miatt a Shift+Tab a fiók utolsó elemére lép,
+        // nem a hamburgerre; a hamburger fókuszát ezért közvetlenül adjuk.
+        await page.locator(target).focus()
       } else {
         await page.locator(target).first().focus()
       }
@@ -484,7 +569,7 @@ try {
   assert.deepEqual(errors, [])
   assert.deepEqual(failures, [])
   console.log(
-    'PASS: responsive geometry, account access, exact campaign label/current state, Escape and resize cleanup',
+    'PASS: responsive geometry, hamburger overhang, drawer focus trap, submenu arrow keys, account access, exact campaign label/current state, Escape and resize cleanup',
   )
 } finally {
   await browser.close()

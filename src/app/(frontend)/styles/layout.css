@@ -231,6 +231,22 @@
   .kc-site-header__brand {
     letter-spacing: 0.1em;
   }
+
+  /* SÁV-TARTALÉK 320 PX-EN (WP9, 2026-09-07, mérve). A wordmark (119,6 px) +
+     a 12 px-es sávköz + a Kurzusok-pirula (105,5 px) + 12 px-es akcióköz +
+     a 44 px-es hamburger 293,1 px-et kért, a 320 px-es sáv 24 px-es
+     margókkal 272 px-et ad: az akciósáv a konténert 21,1 px-szel lépte túl
+     (a hamburger jobb margója 3 px volt a 24 helyett; a WP8 mérése ugyanezt
+     adta). A dokumentum nem görgethető (320 px), de a rács sérült. A két
+     köz a 8 px-es lépcsőre lép (16 px nyereség), a pirula oldaltérköze
+     16 → 12 px (8 px nyereség, lásd a `.kc-site-header__cta` szabályát), a
+     hamburger pedig optikai igazítást kap (lásd
+     `.kc-site-header__actions .kc-nav-mobile__toggle`). Mért eredmény a
+     header-responsive.browser.mjs-ben (320 px). */
+  .kc-site-header__bar,
+  .kc-site-header__actions {
+    gap: var(--kc-space-2);
+  }
 }
 
 /* Asztali sáv: a ≤400 px-es 0,1em-es ritkítás (sáv-tartalék; bejelentkezve a
@@ -285,9 +301,12 @@
   text-underline-offset: 0.25em;
 }
 
+/* ≤ 400 px: a pirula oldaltérköze a 12 px-es lépcső — ugyanaz, mint az
+   asztali sávon 900 px-től (sáv-tartalék, WP9; a levezetés a 400 px-es
+   sáv-szabálynál). A 44 px-es magasság és a felirat mérete változatlan. */
 @media (max-width: 400px) {
   .kc-site-header .kc-site-header__cta {
-    padding-inline: var(--kc-space-4);
+    padding-inline: var(--kc-space-3);
   }
 }
 
@@ -752,6 +771,12 @@
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+  /* A NYITÁS iránya nem animálja a visibility-t: a hidden→visible átmenet
+     első képkockáján (p = 0) az érték még `hidden`, és a billentyűvel
+     (Le nyíl) frissen nyitott lenyíló első almenüpontja nem kapna fókuszt
+     (mérve 900 px-en, Chromium). A ZÁRÁS iránya megtartja a késleltetett
+     visibility-t, hogy a kiúszás látszódjon. */
+  transition-property: opacity, transform;
 }
 
 .kc-nav-desktop__item[data-open='false'] > .kc-nav-desktop__submenu {
@@ -774,6 +799,24 @@
   transition:
     color var(--kc-motion-fast) var(--kc-ease-out),
     text-underline-offset var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+/* HIERARCHIA (WP9, 2026-09-07, mérve 1440 px-en): a főmenüpont a 9e3e6bc
+   óta az S lépcsőn áll (16 px), az almenüpont viszont az M lépcsőn maradt
+   (19 px, normál súly), vagyis a GYEREK nagyobb volt a SZÜLŐNÉL, és az
+   „Ingyenes SOS KézRelax" a 224 px-es lenyílóban két sorba tört (79 px
+   magas tétel a 48 px-esek mellett). A szintek vizuális rendjét a szülővel
+   azonos S lépcső és a normál (szülő: közepes) súly adja; a célfelület
+   marad ≥ 44 px (WCAG 2.2 SC 2.5.8). Az alap szabály UTÁN áll (forrássorrend).
+   NN/g, Menu-Design Checklist (12–13. pont): az almenü a főmenüpont ALÁ
+   rendelt, a szintek jelöltek. https://www.nngroup.com/articles/menu-design/
+   GOV.UK Service navigation: a navigációs lista tablet-szélességen 16, asztalon
+   19 px, egyetlen lépcső egy szinten belül.
+   https://design-system.service.gov.uk/components/service-navigation/ */
+@media (min-width: 900px) {
+  .kc-nav-desktop__sublink {
+    font-size: var(--kc-font-s);
+  }
 }
 
 /* Az exact link aria-current, az útvonal-ős külön data-state. */
@@ -824,6 +867,9 @@
 
 /* Hamburger / bezáró gomb — 44×44px érintési cél (UX-skill 3. pont). */
 .kc-nav-mobile__toggle {
+  /* A sáv hamburgerének optikai túlnyúlása a jobb margóba (lásd lentebb). */
+  --kc-hamburger-overhang: 0px;
+  margin-inline-end: calc(-1 * var(--kc-hamburger-overhang));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -847,6 +893,24 @@
 .kc-nav-mobile__toggle svg {
   width: 1.5rem;
   height: 1.5rem;
+}
+
+/* A SÁV hamburgere (nem a fiók bezáró gombja) 8 px-szel a jobb margóba nyúlik:
+   a 44 px-es célfelület 24 px-es ikonja körül 10 px-es üres gyűrű van, ezért
+   az ikon jobb széle a konténer-szélhez képest 10 px-szel beljebb ült, míg a
+   wordmark balra pontosan a margóra állt (mérve 390 px-en: ikon 34 px a
+   nézetablak szélétől, wordmark 24). A negatív margó csak az ÜRES gyűrűt
+   tolja a margóba: az ikon 2 px-szel a margón belül marad, a 44×44 px-es
+   célfelület sértetlen és a nézetablakon belül (320 px-en jobb széle 304 px
+   ≤ 320). A célfelület a WCAG 2.2 SC 2.5.8 szerint „a kijelző pointer-
+   műveletet elfogadó tartománya", nem a látható ikon, tehát a láthatatlan
+   sáv is a célhoz számít.
+   https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
+   NN/g, Hamburger Menus and Hidden Navigation: a menüikon a jobb felső
+   sarokban, a látogató ott keresi. https://www.nngroup.com/articles/hamburger-menus/
+   Mérve: header-responsive.browser.mjs (320–899 px). */
+.kc-site-header__actions .kc-nav-mobile__toggle {
+  --kc-hamburger-overhang: var(--kc-space-2);
 }
 
 .kc-nav-mobile__overlay {
