@@ -4,7 +4,7 @@ import { getPayload } from 'payload'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
 import { JsonLd } from '@/components/content/JsonLd'
-import { CourseAudienceBand } from '@/components/courses/CourseAudienceBand'
+import { CourseShowcase } from '@/components/content/home/CourseShowcase'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
@@ -14,7 +14,6 @@ import {
   COURSE_LISTING_TITLE,
   courseListingJsonLd,
 } from '@/lib/seo'
-import { AUDIENCE_BANDS, groupProductsByAudience } from '@/lib/course-audience'
 import {
   CATEGORY_QUERY_PARAM,
   collectCourseCategories,
@@ -85,7 +84,6 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
   const categories = collectCourseCategories(products)
   const activeSlug = resolveCategoryFilter(params[CATEGORY_QUERY_PARAM], categories)
   const visible = filterCoursesByCategory(products, activeSlug)
-  const byAudience = groupProductsByAudience(visible)
 
   return (
     <Section>
@@ -134,13 +132,7 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
         ) : null}
 
         {visible.length > 0 ? (
-          AUDIENCE_BANDS.map((band) => (
-            <CourseAudienceBand
-              band={band}
-              key={band.audience}
-              products={byAudience[band.audience]}
-            />
-          ))
+          <CourseShowcase drift={false} products={visible} />
         ) : (
           <div className="kc-course-empty" role="status">
             <h2>Jelenleg nincs megjeleníthető kurzus</h2>

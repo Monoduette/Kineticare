@@ -12,7 +12,8 @@ import { HeroVideo } from './HeroVideo'
 import { JsonLd } from './JsonLd'
 import { MediaImage } from './MediaImage'
 import { isPubliclyVisibleProduct } from './ProductCard'
-import { CourseCards, isPaidProduct } from './home/CourseCards'
+import { isPaidProduct } from './home/CourseCards'
+import { CourseShowcase } from './home/CourseShowcase'
 import { CredentialsStrip } from './home/CredentialsStrip'
 import { FAQ_ITEMS, Faq } from './home/Faq'
 import { FreeSos } from './home/FreeSos'
@@ -139,7 +140,11 @@ export function HomeView({ home, products, posts, testimonials = [], appointment
 
       <CredentialsStrip />
 
-      <CourseCards products={paidProducts} />
+      <Section className="kc-course-showcase-band" id="kurzusok">
+        <Container>
+          <CourseShowcase products={paidProducts} />
+        </Container>
+      </Section>
 
       <HowItWorks variant="tint" />
 

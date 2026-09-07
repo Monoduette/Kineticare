@@ -317,20 +317,21 @@ describe('RenderBlocks', () => {
    * Tulajdonosi kikötés (2026-08-15): a kurzus-szekcióban MINDEN szöveg
    * adminból szerkeszthető, a kódban maradó szöveg csak fallback lehet.
    */
-  it('courseCards: a felvezető sor és a kártya-gombfelirat is a blokkból írható felül', () => {
+  it('courseCards: a lead a blokkból írható felül, a vízjel a Kurzusaink', () => {
     const html = renderBlocks(
       layoutOf({
         blockType: 'courseCards',
         id: 'cc2',
-        eyebrow: 'Saját felvezető',
-        ctaLabel: 'Saját gombfelirat',
+        heading: 'Saját kurzuscím',
+        lead: 'Saját bevezető.',
         sectionSettings: {},
       }),
       { products: [product({ id: 1 })] },
     )
-    expect(html).toContain('Saját felvezető')
-    expect(html).toContain('Saját gombfelirat')
-    expect(html).toContain(DEFAULT_HEADING) // a cím marad a beépített fallback
+    expect(html).toContain('Saját kurzuscím')
+    expect(html).toContain('Saját bevezető.')
+    expect(html).toContain(DEFAULT_HEADING)
+    expect(html).toContain('kc-course-showcase')
   })
 
   it('courseCards: az ingyenes termék nem kerül a rácsba (K2 — a lead-magnet helye a freeSos blokk)', () => {

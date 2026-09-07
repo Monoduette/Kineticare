@@ -1,0 +1,203 @@
+/**
+ * Kurzus-galéria — Astra „Bring ideas” szerkezet, Kineticare tokenekkel.
+ * Három méret: S kicker, M cím/ár/lead, L szekciócím. A vízjel L + scale,
+ * nem negyedik font-size (tipografia-harom-meret őr).
+ */
+
+.kc-course-showcase {
+  position: relative;
+  display: grid;
+  gap: var(--kc-space-6);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.kc-course-showcase__head {
+  max-width: 28ch;
+}
+
+.kc-course-showcase__heading {
+  margin: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: var(--kc-leading-heading);
+  color: var(--kc-color-text);
+}
+
+.kc-course-showcase__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-5);
+  min-width: 0;
+}
+
+.kc-course-showcase__card {
+  min-width: 0;
+}
+
+.kc-course-showcase__link {
+  display: grid;
+  gap: var(--kc-space-3);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.kc-course-showcase__link:hover,
+.kc-course-showcase__link:focus-visible {
+  color: inherit;
+}
+
+.kc-course-showcase__media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-tint);
+  aspect-ratio: 3 / 4;
+}
+
+.kc-course-showcase__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kc-course-showcase__go {
+  position: absolute;
+  top: var(--kc-space-3);
+  right: var(--kc-space-3);
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--kc-radius-full);
+  background-color: var(--kc-color-white);
+  color: var(--kc-color-text);
+}
+
+.kc-course-showcase__arrow {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.kc-course-showcase__caption {
+  display: grid;
+  gap: var(--kc-space-1);
+  min-width: 0;
+}
+
+.kc-course-showcase__title {
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: 1.3;
+  color: var(--kc-color-text);
+}
+
+.kc-course-showcase__title em {
+  font-style: italic;
+  font-weight: var(--kc-font-weight-normal);
+}
+
+.kc-course-showcase__kicker,
+.kc-course-showcase__price {
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-s);
+  line-height: 1.4;
+  color: var(--kc-color-text-muted);
+}
+
+.kc-course-showcase__lead {
+  margin: 0;
+  max-width: 46ch;
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text-muted);
+}
+
+.kc-course-showcase__mark {
+  margin: var(--kc-space-4) 0 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: 1;
+  color: var(--kc-color-accent);
+  transform: scale(2.4);
+  transform-origin: left bottom;
+  pointer-events: none;
+}
+
+.kc-course-showcase__drift {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.kc-course-showcase__head,
+.kc-course-showcase__grid,
+.kc-course-showcase__lead,
+.kc-course-showcase__mark {
+  position: relative;
+  z-index: 1;
+}
+
+.kc-course-showcase__drift-img {
+  position: absolute;
+  width: 7rem;
+  height: auto;
+  border-radius: var(--kc-radius-md);
+  opacity: 0.35;
+  animation: kc-course-showcase-drift 28s var(--kc-ease-out) infinite alternate;
+}
+
+.kc-course-showcase__drift-img--0 {
+  top: 8%;
+  right: 4%;
+}
+
+.kc-course-showcase__drift-img--1 {
+  top: 42%;
+  left: 2%;
+  animation-delay: -8s;
+}
+
+.kc-course-showcase__drift-img--2 {
+  bottom: 12%;
+  right: 18%;
+  animation-delay: -16s;
+}
+
+@keyframes kc-course-showcase-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0.6rem, -0.8rem, 0);
+  }
+}
+
+@media (min-width: 900px) {
+  .kc-course-showcase__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .kc-course-showcase__grid[data-count='1'],
+  .kc-course-showcase__grid[data-count='2'] {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+
+  .kc-course-showcase__mark {
+    transform: scale(3.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-course-showcase__drift-img {
+    animation: none;
+  }
+}
