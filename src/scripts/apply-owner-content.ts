@@ -33,6 +33,11 @@ import {
 } from '../lib/legal-content'
 import { logger } from '../lib/logger'
 import { CLINIC_TREATMENTS_ANCHOR, SOS_COURSE_SKU } from '../lib/menu-seed'
+import {
+  kezdolapBemutatkozasSzoveg,
+  rolunkBemutatkozasSzoveg,
+  WP18_KOZOS_BEMUTATKOZAS,
+} from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
 import type { Page, Product } from '../payload-types'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
@@ -221,6 +226,7 @@ export type JavitasSzabaly =
   | 'sos-kapcsolodo-kurzus'
   | 'szolgaltatas-blokk-kep'
   | 'kezdolap-rolunk-szoveg'
+  | 'bemutatkozas-szetvalasztas'
   | 'sos-publikalas'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
@@ -2240,6 +2246,126 @@ export const alkalmazKezdolapRolunkSzoveg = (input: {
   return { layout: modositasok.length > 0 ? vegleges : null, modositasok, kihagyasok }
 }
 
+// ---------------------------------------------------------------------------
+// WP37 — a kezdőlapi és a /rolunk bemutatkozás SZÉTVÁLASZTÁSA.
+// ---------------------------------------------------------------------------
+
+/** Melyik lap About-blokkja kapja a saját bemutatkozását. */
+export type BemutatkozasLap = 'kezdolap' | 'rolunk'
+
+/** A lap ÚJ bemutatkozása (cím, bekezdések, kiemelés) a közös szövegforrásból. */
+export const bemutatkozasUjSzoveg = (lap: BemutatkozasLap): RolunkSzoveg =>
+  lap === 'kezdolap' ? kezdolapBemutatkozasSzoveg() : rolunkBemutatkozasSzoveg()
+
+const bekezdesSzovegek = (blokk: SzekcioTipus<'about'>): string[] =>
+  (blokk.paragraphs ?? []).map((sor) => sor.text)
+
+const ugyanazokABekezdesek = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((szoveg, index) => szoveg === b[index])
+
+/**
+ * WP37 — a kezdőlap és a /rolunk About-blokkja SAJÁT szöveget kap
+ * (tulajdonosi kérés, 2026-09-08: a kezdőlapon „több információ a lányokról”,
+ * a Rólunk-on a menüpontra fókuszáló szöveg). A WP18-as közös szöveg
+ * (`WP18_KOZOS_BEMUTATKOZAS`) mindkét lapon szóról szóra ugyanaz volt.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG akkor, ha a blokk címe ÉS minden bekezdése PONTOSAN a
+ *    WP18-as közös szöveg (a ma élő állapot); szerkesztett cím vagy bekezdés a
+ *    szerkesztőé, érintetlen (indokolt kihagyás);
+ *  - ha a blokk MÁR a lap saját szövegét viseli, nincs teendő (idempotencia);
+ *  - a statisztikasor, a fotó, az eyebrow, az azonosító és a sávbeállítás NEM
+ *    változik: csak a cím, a bekezdések és a kiemelés cserélődik; a bekezdések
+ *    sorazonosítói nem öröklődnek (a Payload újakat ad);
+ *  - rejtett (visible: false) blokkhoz nem nyúl: a kezdőlapon a WP18 által
+ *    elrejtett duplikátum rejtett marad;
+ *  - üres szekciósor vagy About nélküli lap: indokolt kihagyás.
+ */
+export const alkalmazBemutatkozasSzetvalasztas = (input: {
+  lap: BemutatkozasLap
+  layout: Page['layout']
+}): SzekciosorCsere => {
+  const { lap, layout } = input
+  const ujSzoveg = bemutatkozasUjSzoveg(lap)
+  const ujBekezdesek = (ujSzoveg.paragraphs ?? []).map((sor) => sor.text)
+  const lapCimke = lap === 'kezdolap' ? 'A kezdőlap' : 'A Rólunk oldal'
+  const uzenet = `${lapCimke} bemutatkozásának saját szövege (cím, bekezdések, kiemelés)`
+  const szabaly: JavitasSzabaly = 'bemutatkozas-szetvalasztas'
+
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet,
+          indok: `${lapCimke.toLowerCase()}nak nincs szekciósora — a bemutatkozást nincs hol átírni`,
+        },
+      ],
+    }
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let voltAbout = false
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (blokk.blockType !== 'about') return blokk
+    if (blokk.sectionSettings?.visible === false) return blokk
+    voltAbout = true
+    const helye = `${index + 1}. szekció`
+    const jelenlegiCim = blokk.title ?? ''
+    const jelenlegiBekezdesek = bekezdesSzovegek(blokk)
+
+    if (
+      jelenlegiCim === ujSzoveg.title &&
+      ugyanazokABekezdesek(jelenlegiBekezdesek, ujBekezdesek)
+    ) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${helye})`,
+        indok: `a blokk MÁR a lap saját bemutatkozását viseli (${ertekCimke(ujSzoveg.title)}) — nincs teendő`,
+      })
+      return blokk
+    }
+
+    if (
+      jelenlegiCim !== WP18_KOZOS_BEMUTATKOZAS.title ||
+      !ugyanazokABekezdesek(jelenlegiBekezdesek, WP18_KOZOS_BEMUTATKOZAS.paragraphs)
+    ) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${helye})`,
+        indok: `a blokk címe (${ertekCimke(jelenlegiCim)}) vagy bekezdései nem PONTOSAN a WP18-as közös bemutatkozás — a szerkesztő szövegéhez a script nem nyúl`,
+      })
+      return blokk
+    }
+
+    modositasok.push({
+      szabaly,
+      uzenet: `${uzenet} (${helye}): ${ertekCimke(jelenlegiCim)} → ${ertekCimke(ujSzoveg.title)}, ${ujBekezdesek.length} bekezdés, kiemelés: ${ertekCimke(ujSzoveg.feature?.label)}`,
+      indok: null,
+    })
+    return {
+      ...blokk,
+      title: ujSzoveg.title,
+      paragraphs: (ujSzoveg.paragraphs ?? []).map(({ text, emphasized }) => ({ text, emphasized })),
+      feature: ujSzoveg.feature,
+    }
+  })
+
+  if (!voltAbout) {
+    kihagyasok.push({
+      szabaly,
+      uzenet,
+      indok: `${lapCimke.toLowerCase()} szekciósorában nincs látható Rólunk (about) szekció — a bemutatkozást nincs hol átírni`,
+    })
+  }
+
+  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+}
+
 /** Kezdőlap: /kurzusok CTA-k egységes felirata — csak ismert régi szövegek, pontos url. */
 export const KURZUSLISTA_JOVAHAGYOTT_FELIRAT = 'Nézd meg a kurzusokat'
 
@@ -2978,6 +3104,8 @@ async function futtat(): Promise<void> {
     kezdolapLepes(
       alkalmazKezdolapRolunkSzoveg({ layout: kezdolapLayout, ujSzoveg: kezdolapRolunkUjSzoveg() }),
     )
+    // --- WP37: a kezdőlapi bemutatkozás SAJÁT szövege (a WP18-as közös után) --
+    kezdolapLepes(alkalmazBemutatkozasSzetvalasztas({ lap: 'kezdolap', layout: kezdolapLayout }))
     // --- 11. javítás: a záró CTA-sáv -----------------------------------------
     kezdolapLepes(alkalmazZaroCta({ layout: kezdolapLayout, seedBlokk: zaroCtaSeedBlokk() }))
     // --- 15. javítás: a kurzuslista-gombok egységes felirata -----------------
@@ -3121,11 +3249,21 @@ async function futtat(): Promise<void> {
     modositasokSzama += rolunkPress.modositasok.length
     kihagyasokSzama += rolunkPress.kihagyasok.length
 
+    // --- WP37: a /rolunk bemutatkozás SAJÁT szövege (láncban) ---------------
+    const rolunkBemutatkozasAlap = rolunkPress.layout ?? rolunkPressAlap
+    const rolunkBemutatkozas = alkalmazBemutatkozasSzetvalasztas({
+      lap: 'rolunk',
+      layout: rolunkBemutatkozasAlap,
+    })
+    naplozdLepeseket(rolunkBemutatkozas, dryRun)
+    modositasokSzama += rolunkBemutatkozas.modositasok.length
+    kihagyasokSzama += rolunkBemutatkozas.kihagyasok.length
+
     // --- 19a. javítás: fotó a „Miben segíthetünk?" szekcióba ------------------
     // A lánc VÉGÉN, hogy a korábbi lépések eredmény-layoutján dolgozzon.
     const rolunkKep = await keresdMediat(payload, KATAK_LABDAVAL_PREFIX)
     const rolunkKepLepes = alkalmazSzolgaltatasBlokkKep({
-      layout: rolunkPress.layout ?? rolunkPressAlap,
+      layout: rolunkBemutatkozas.layout ?? rolunkBemutatkozasAlap,
       mediaId: rolunkKep?.id ?? null,
       oldalCimke: '/rolunk',
       // Üres képhely: meglévő képet NEM írunk felül.
@@ -3141,7 +3279,8 @@ async function futtat(): Promise<void> {
     if (eredmeny.heroImage !== null) {
       irando.heroImage = eredmeny.heroImage
     }
-    const rolunkVegsoLayout = rolunkKepLepes.layout ?? rolunkPress.layout ?? harmonika.layout
+    const rolunkVegsoLayout =
+      rolunkKepLepes.layout ?? rolunkBemutatkozas.layout ?? rolunkPress.layout ?? harmonika.layout
     if (rolunkVegsoLayout !== null) {
       irando.layout = rolunkVegsoLayout
     }

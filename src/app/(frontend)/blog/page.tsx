@@ -1,13 +1,17 @@
 import type { Metadata } from 'next'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
-import { CategoryFilter } from '@/components/content/CategoryFilter'
 import { JsonLd } from '@/components/content/JsonLd'
 import { PostCard } from '@/components/content/PostCard'
+import { PostListFilter } from '@/components/content/PostListFilter'
 import { PostsEmptyState } from '@/components/content/PostsEmptyState'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
-import { shouldShowCategoryFilter } from '@/components/content/post-list'
+import {
+  findCategory,
+  postCategoryIds,
+  shouldShowCategoryFilter,
+} from '@/components/content/post-list'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
 import {
   getCategoryBySlug,
@@ -67,11 +71,17 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function BlogPage({ searchParams }: Props) {
   const { kategoria } = await searchParams
+  // A TELJES publikált lista jön le egyszer (a mai 60-as limittel): a
+  // kategória-váltás a kliensen történik, hálózati kör nélkül (WP35,
+  // tulajdonosi kérés). A `?kategoria=` csak a KEZDŐ szűrőt adja; ismeretlen
+  // értéknél a szűretlen lista jelenik meg (a canonical is oda mutat).
   const [posts, categories, publikaltOldalak] = await Promise.all([
-    getPosts({ categorySlug: kategoria }),
+    getPosts(),
     getContentCategories(),
     getPublishedPageSlugs(),
   ])
+  const activeCategory = findCategory(categories, kategoria)
+  const activeSlug = activeCategory?.slug ?? undefined
   // KANONIKUS belső link: ahol a cikknek PUBLIKÁLT gyökér-hubja van, oda
   // linkelünk, nem a 308-cal átirányító `/blog/{slug}`-ra. Piszkozat-hubnál a
   // régi cím marad (a gyökér ott 404 lenne). Mérve 2026-09-07: e nélkül a lap
@@ -82,26 +92,15 @@ export default async function BlogPage({ searchParams }: Props) {
     publikaltOldalak,
   )
 
-  const filtered = typeof kategoria === 'string' && kategoria.length > 0
-  // Szűrt, üres nézetnél megnézzük, van-e EGYÁLTALÁN cikk. Ha nincs, a
-  // „Vissza a Tudástárba" út egy ugyanilyen üres lapra vinne, tehát a
-  // magyarázó (hub) állapotot mutatjuk helyette: zsákutcába nem küldünk
-  // senkit (skill 5. pont).
-  const hasAnyPost =
-    posts.length > 0 || (filtered ? (await getPosts({ limit: 1 })).length > 0 : false)
-  const variant = filtered && hasAnyPost ? 'kategoria' : 'tudastar'
+  const filtered = activeSlug !== undefined
   // Az ingyenes kurzus útját CSAK a magyarázó üres állapothoz kérdezzük le:
-  // tele listán egyetlen fölösleges kör sem fut.
-  const freeHref =
-    posts.length === 0 && variant === 'tudastar'
-      ? freeCourseHref(await getPublishedProducts(50))
-      : null
+  // tele listán egyetlen fölösleges kör sem fut. A szűrt, üres nézet a
+  // `kategoria` panelt kapja (máshol VAN cikk), tehát zsákutca nincs.
+  const freeHref = posts.length === 0 ? freeCourseHref(await getPublishedProducts(50)) : null
 
-  // A küszöböt a SZŰRETLEN listán mérjük — szűrt nézetben a `posts` már csak
-  // az adott téma cikkeit tartalmazza, abból a szűrő hasznossága nem
-  // állapítható meg. Szűrt nézetben ezért a sor mindig kint van: az „Összes"
-  // chip a visszaút, és zsákutcába nem küldünk senkit. Extra lekérdezés
-  // nincs: szűretlen nézetben a `posts` maga a teljes lista.
+  // A küszöböt a SZŰRETLEN listán mérjük (a `posts` most mindig a teljes
+  // lista). Szűrt kezdőnézetben a sor mindig kint van: az „Összes" chip a
+  // visszaút, és zsákutcába nem küldünk senkit.
   const showFilter =
     filtered ||
     shouldShowCategoryFilter(categoriesWithPosts(categories, posts).length, posts.length)
@@ -154,31 +153,39 @@ export default async function BlogPage({ searchParams }: Props) {
         {/* BreadcrumbList SZÁNDÉKOSAN nincs: a Tudástár maga a szekció
             gyökere, és egy egyelemű morzsa nem hordoz információt. A
             mélyebb lapok (kategória, bejegyzés) viszont kapnak morzsát, a
-            kurzusoldalak bevett, kétszintű alakjában (Tudástár → lap). */}
-        <div className="kc-tudastar-intro">
-          <h1 className="kc-page-hero__title">Tudástár</h1>
-          {/* A lead ugyanaz a mondat, ami a meta-leírásban áll: a látogató és
-              a találati lista ugyanazt az ígéretet kapja (egy igazságforrás). */}
-          <p className="kc-page-hero__lead">{LEAD}</p>
-        </div>
-        {showFilter ? <CategoryFilter categories={categories} activeSlug={kategoria} /> : null}
+            kurzusoldalak bevett, kétszintű alakjában (Tudástár → lap).
+            A H1 + felvezető a PostListFilter-ben él: a szűrővel együtt vált. */}
         {posts.length === 0 ? (
-          <PostsEmptyState freeCourseHref={freeHref} variant={variant} />
+          <>
+            <div className="kc-tudastar-intro">
+              <h1 className="kc-page-hero__title">Tudástár</h1>
+              <p className="kc-page-hero__lead">{LEAD}</p>
+            </div>
+            <PostsEmptyState freeCourseHref={freeHref} variant="tudastar" />
+          </>
         ) : (
-          <div className="kc-card-grid kc-card-grid--posts">
-            {posts.map((post) => (
+          <PostListFilter
+            categories={categories}
+            emptyState={<PostsEmptyState variant="kategoria" />}
+            initialSlug={activeSlug}
+            items={posts.map((post) => ({
+              key: post.id,
+              categoryIds: postCategoryIds(post),
               /* A lap egyetlen fölérendelt címsora a H1, tehát a kártyacím H2
                  — fix H3 mellett H1 → H3 ugrás keletkezne (WCAG 2.2 1.3.1).
                  A `list` változat (alapértelmezés) hozza a kivonatot: a
                  sorhossz mediánja mérve 48–64 karakter/sor 592 px felett. */
-              <PostCard
-                key={post.id}
-                headingLevel={2}
-                href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
-                post={post}
-              />
-            ))}
-          </div>
+              card: (
+                <PostCard
+                  headingLevel={2}
+                  href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
+                  post={post}
+                />
+              ),
+            }))}
+            lead={LEAD}
+            showFilter={showFilter}
+          />
         )}
       </Container>
     </Section>

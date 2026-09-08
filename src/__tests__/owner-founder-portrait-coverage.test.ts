@@ -88,8 +88,9 @@ interface NamedIntroduction {
 function namedIntroductions(page: OwnerReviewSlug, layout: Layout): NamedIntroduction[] {
   return layout.flatMap((block): NamedIntroduction[] => {
     // A kezdőlapi About a két alapító közös bemutatkozása: a címe 2026-09-07-től
-    // a /rolunk-kal azonos („Megérdemled a profi törődést”, WP18), ezért a
-    // közös bemutatkozást a blokk helye azonosítja, nem a nevek a címben.
+    // „Megérdemled a profi törődést” (WP18; a WP37 óta a /rolunk saját címet
+    // visel), ezért a közös bemutatkozást a blokk helye azonosítja, nem a
+    // nevek a címben.
     if (
       block.blockType === 'about' &&
       (page === 'kezdolap' ||

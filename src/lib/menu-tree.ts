@@ -22,6 +22,47 @@ export interface NavItem {
   children: NavItem[]
 }
 
+/**
+ * A „Kurzusok" főmenüpont — KÓDBAN rögzítve, a CMS-menütől függetlenül.
+ *
+ * WP36 (2026-09-08, tulajdonosi kérés, szó szerint: „a kurzusok mint gomb ami
+ * itt van a főmenüben az pedig legyen egy sima egyszerű menüpont hasonló mint
+ * a Tudástár vagy mint a kapcsolat nem kell hogy ilyen kiemelt legyen").
+ * Korábban a fejléc jobb oldalán kitöltött pirula volt (`HeaderCoursesNav`);
+ * most a főmenü ELSŐ tétele, ugyanazzal a linknyelvvel és aktív-jelöléssel,
+ * mint a CMS-menüpontok (DesktopNav / MobileNav, `NavAnchor`).
+ *
+ * MIÉRT AZ ELSŐ HELY (nem az utolsó):
+ * - NN/g, Menu-Design Checklist: a leggyakoribb / legfontosabb tételek a
+ *   menüt indító célhoz közel (Fitts-törvény), és a lista elejét olvassák a
+ *   legnagyobb eséllyel: https://www.nngroup.com/articles/menu-design/
+ * - docs/ertekesitesi-ux-skill.md §3: a „Kurzusok" menüpont KÖTELEZŐ, mert az
+ *   értékesítés fő útja; a repó saját seed-terve (src/scripts/seed.ts) is a
+ *   Kezdőlap utáni első helyre (order 1) teszi, a Tudástár és a többi elé.
+ * - WCAG 2.2 SC 3.2.3 Consistent Navigation: a sorrend minden oldalon és
+ *   mindkét nézetben (asztali sor, mobil fiók) ugyanaz:
+ *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html
+ * Az `id: 0` nem ütközik a Payload 1-től induló azonosítóival.
+ */
+export const COURSES_NAV_ITEM: NavItem = {
+  id: 0,
+  label: 'Kurzusok',
+  href: COURSE_BASE_PATH,
+  openInNewTab: false,
+  isExternal: false,
+  children: [],
+}
+
+/**
+ * A CMS-menüfa elé illeszti a „Kurzusok" tételt. Ha a szerkesztő már felvett
+ * egy `/kurzusok` célú gyökér-menüpontot, NEM duplázunk: a CMS-tétel marad a
+ * saját helyén (NN/g: ugyanarra a célra ne álljon két menüelem).
+ */
+export function withCoursesNavItem(items: NavItem[]): NavItem[] {
+  const alreadyListed = items.some((item) => item.href === COURSES_NAV_ITEM.href)
+  return alreadyListed ? items : [COURSES_NAV_ITEM, ...items]
+}
+
 /** A menü-célok URL-konvenciója (a storefront route-jai ezekre épülnek). */
 export const MENU_HREF_PREFIX = {
   page: '',

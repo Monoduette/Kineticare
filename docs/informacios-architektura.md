@@ -56,7 +56,7 @@ A három legsúlyosabb, mérhető hiba:
 | Útvonal | Cím (`<title>`) / `<h1>` | Cél | Hozzáférés | Honnan érhető el | HTTP |
 | --- | --- | --- | --- | --- | --- |
 | `/` | *Kineticare – kézrehabilitáció gyógytornászoktól* / „Hatékony és biztonságos módszerek…" | Belépő, tölcsér-tető | nyilvános | logó, `#tartalom` | 200 |
-| `/kurzusok` | *Kurzusok* / „Kurzusok" | Kurzuslista, értékesítés belépője | nyilvános | fejléc-CTA, 6× kezdőlapi CTA, kosár/pénztár/hiba-oldalak | 200 |
+| `/kurzusok` | *Kurzusok* / „Kurzusok" | Kurzuslista, értékesítés belépője | nyilvános | fejléc-menüpont (első tétel, WP36), 6× kezdőlapi CTA, kosár/pénztár/hiba-oldalak | 200 |
 | `/kurzusok/[slug]` | pl. *Otthoni KézRehab Program* | Értékesítési kurzusoldal | nyilvános | kurzuslista, kezdőlapi kártya, menü (SOS) | 200 |
 | `/kurzusok?kategoria=<slug>` | *Kurzusok* | Kategória-szűrt lista | nyilvános | szűrő-chip | 200 |
 | `/szolgaltatasok` | *Szolgáltatások – Kineticare \| Kineticare* / „A kezed folyton dolgozik…" | Rendelői kezelések | nyilvános | menü, kezdőlap, rólunk | 200 |
@@ -182,18 +182,24 @@ fut be**. A `BELEP` csomópontba is csak a `PENZ`-ből, egy szövegLinken át.
 ### 3.2 Menü-hierarchia fa
 
 A menü **nem hardcode**, a Payload `menus` collectionből épül
-(`src/lib/menus.ts:22` → `buildNavTree`). A „Kurzusok" gomb a **kivétel**:
-kódban rögzített (`src/components/layout/Header.tsx:43`).
+(`src/lib/menus.ts:22` → `buildNavTree`). A „Kurzusok" menüpont a **kivétel**:
+kódban rögzített (`src/lib/menu-tree.ts` `COURSES_NAV_ITEM`, a
+`withCoursesNavItem` illeszti a CMS-fa elé; ha a CMS-ben már van `/kurzusok`
+célú gyökér-menüpont, nem duplázódik). **WP36 (2026-09-08):** ez már NEM
+akciógomb, hanem a menüsor első, sima tétele — asztali sorban és mobil
+fiókban egyaránt (tulajdonosi kérés).
 
 ```mermaid
 flowchart LR
     ROOT["Fejlec"]
+    ROOT --> M0["Kurzusok<br/>/kurzusok<br/>kodban rogzitve, ELSO menupont (WP36)"]
     ROOT --> M1["Szolgaltatasok<br/>/szolgaltatasok"]
     ROOT --> M2["Rolunk<br/>/rolunk"]
     ROOT --> M3["Tudastar<br/>/blog"]
     ROOT --> M4["Kapcsolat<br/>/kapcsolat"]
-    ROOT --> BTN["GOMB: Kurzusok<br/>/kurzusok<br/>kodban rogzitve"]
-    ROOT --> ACC["Belepes / Kurzusaim<br/>/belepes · /kurzusaim<br/>AccountNav, kodban rogzitve"]
+    ROOT --> ACC["Profil-ikon (AccountNav)<br/>kijelentkezve: link /belepes<br/>bejelentkezve: FIOKMENU"]
+    ACC --> A1["Kurzusaim<br/>/kurzusaim"]
+    ACC --> A2["Kijelentkezes<br/>POST /api/users/logout"]
 
     M1 --> S1["Rendeloi kezelesek<br/>/szolgaltatasok + rendeloi horgony"]
     M1 --> S2["Szakmai kepzes<br/>probodystudio.hu KULSO"]
@@ -209,8 +215,29 @@ flowchart LR
     FOOT --> F7["mailto:info@kineticare.hu"]
 
     classDef gond fill:#fff4e6,stroke:#e8590c,color:#000
-    class S2,S3,BTN gond
+    class S2,S3 gond
 ```
+
+**Jegyzet (WP36, 2026-09-08).** Két tulajdonosi kérés, szó szerint: _„be
+vagyok jelentkezve akkor ne kerüljön oda a kijelentkezés gomb hanem csak
+maradjon meg az a profil ikon … ha rákattintok elviszem az egeret akkor ide
+kerüljön be a kijelentkezés és a kurzusaim menüpont is"_, és _„a kurzusok
+mint gomb ami itt van a főmenüben az pedig legyen egy sima egyszerű menüpont
+hasonló mint a Tudástár vagy mint a kapcsolat"_. Ennek megfelelően: (1) az
+asztali sáv (≥ 900 px) fiók-belépője MINDKÉT állapotban ugyanaz a 44×44-es
+profil-ikon; bejelentkezve menügomb (W3C WAI-ARIA APG Menu Button:
+https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/), a lenyíló tételei
+„Kurzusaim" (link) és „Kijelentkezés" (gomb); nyitás kattintásra,
+billentyűre (Enter/Space/nyilak) és `(hover: hover)` eszközön hoverre
+300 ms késleltetéssel, 500 ms zárási türelemmel (NN/g:
+https://www.nngroup.com/articles/timing-exposing-content/); WCAG 2.2 SC
+1.4.13 (dismissable: Esc; hoverable; persistent), SC 2.1.1, 2.4.3, 2.4.7,
+2.5.8, 4.1.2. A mobil fiókban (< 900 px) a WP31-es rend marad (Belépés /
+Kurzusaim elöl, Kijelentkezés a fiók alján). (2) A „Kurzusok" a főmenü
+első, sima tétele (`withCoursesNavItem`), a kitöltött pirula megszűnt; az
+M1-es értékesítési célt a hero és a szekció-CTA-k viszik
+(docs/gomb-inventar.md §4.1 jegyzet). Őrök: `fejlec-belepes-ui.test.tsx`,
+`nav-current.test.tsx`, `gomb-kontraszt.test.ts`, `header-responsive.browser.mjs`.
 
 **Jegyzet (WP10, 2026-09-07).** A fejléc-gráfban NINCS külön
 „Időpontfoglalás” elem. A 2026-09-06-i kör egy sáv-gombot adott a

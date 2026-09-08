@@ -18,7 +18,7 @@ import {
   homeHelpRailRows,
 } from './home-help-states'
 import { logger } from './logger'
-import { rolunkBemutatkozasSzoveg } from './rolunk-bemutatkozas'
+import { kezdolapBemutatkozasSzoveg } from './rolunk-bemutatkozas'
 import { enrollMediaRecovery } from './media-recovery-provenance'
 
 import { HOME_PAGE_SLUG } from './content-slugs'
@@ -635,10 +635,11 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
   {
     blockType: 'about',
     eyebrow: 'Rólunk',
-    // WP18: cím, bekezdések és kiemelés a /rolunk lappal KÖZÖS forrásból
-    // (src/lib/rolunk-bemutatkozas.ts), nem külön másolatból. A statisztikasor a
-    // kezdőlapé marad (három szám), a fotó a páros alak tartaléka.
-    ...rolunkBemutatkozasSzoveg(),
+    // WP37: a KEZDŐLAPI bemutatkozás (kik ők, miért bízz bennük 20 másodperc
+    // alatt) a /rolunk-tól külön szövegforrásból (src/lib/rolunk-bemutatkozas.ts,
+    // KEZDOLAP_*), nem külön másolatból. A statisztikasor a kezdőlapé marad
+    // (három szám), a fotó a páros alak tartaléka.
+    ...kezdolapBemutatkozasSzoveg(),
     photo: media['katak-team.jpg'],
     stats: [
       { value: '10+', label: 'év szakmai tapasztalat' },

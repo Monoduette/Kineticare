@@ -19,10 +19,9 @@ vi.mock('../components/layout/NewsletterSignup', () => ({
 
 import { DesktopNav } from '../components/layout/DesktopNav'
 import { Footer, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
-import { HeaderCoursesNav } from '../components/layout/HeaderCoursesNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { NavAnchor } from '../components/layout/NavAnchor'
-import type { NavItem } from '../lib/menu-tree'
+import { COURSES_NAV_ITEM, withCoursesNavItem, type NavItem } from '../lib/menu-tree'
 import { getNavLinkRouteState, getNavRouteState } from '../lib/nav-route'
 
 const render = (element: Parameters<typeof renderToStaticMarkup>[0]): string =>
@@ -243,10 +242,45 @@ describe('fejléc — nincs Időpontfoglalás belépő (WP10, 2026-09-07)', () =
   })
 })
 
-describe('HeaderCoursesNav — állandó kurzus-link', () => {
+/**
+ * WP36 (2026-09-08, tulajdonosi kérés): a „Kurzusok" a főmenü SIMA tétele, a
+ * CMS-menü elé illesztve (`withCoursesNavItem`), ugyanazzal a linknyelvvel és
+ * aktív-jelöléssel, mint a Tudástár vagy a Kapcsolat. A korábbi kitöltött
+ * pirula (`HeaderCoursesNav`) megszűnt.
+ */
+describe('Kurzusok — a főmenü első, sima menüpontja (WP36)', () => {
+  it('a CMS-menü elé kerül, és nem duplázódik, ha a CMS már tartalmazza', () => {
+    const items = withCoursesNavItem(activeTree())
+    expect(items[0]).toBe(COURSES_NAV_ITEM)
+    expect(items.map((item) => item.label)).toEqual(['Kurzusok', 'Szolgáltatások', 'Tudástár'])
+
+    const withCms = withCoursesNavItem([navItem(9, 'Kurzusok', '/kurzusok'), ...activeTree()])
+    expect(withCms.filter((item) => item.href === '/kurzusok')).toHaveLength(1)
+    expect(withCms[0].id).toBe(9)
+  })
+
+  it('az asztali sorban és a mobil fiókban is a menülink osztályát viseli, pirula nélkül', () => {
+    pathnameMock.mockReturnValue('/kurzusok')
+    const items = withCoursesNavItem(activeTree())
+    const desktop = render(createElement(DesktopNav, { items }))
+    const mobile = render(createElement(MobileNav, { items }))
+
+    expect(anchorFor(desktop, '/kurzusok')).toContain('class="kc-nav-desktop__link"')
+    expect(anchorFor(mobile, '/kurzusok')).toContain('class="kc-nav-mobile__link"')
+    for (const html of [desktop, mobile]) {
+      expect(html).not.toContain('kc-button')
+      expect(html).not.toContain('kc-site-header__cta')
+    }
+    // Az első főmenüpont a Kurzusok (a lista elején, a Szolgáltatások előtt).
+    expect(desktop.indexOf('href="/kurzusok"')).toBeLessThan(desktop.indexOf('/szolgaltatasok'))
+  })
+
   it('a kurzuslistán pontos aktuális oldal állapotot kap', () => {
     pathnameMock.mockReturnValue('/kurzusok')
-    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+    const link = anchorFor(
+      render(createElement(DesktopNav, { items: withCoursesNavItem([]) })),
+      '/kurzusok',
+    )
 
     expect(link).toContain('aria-current="page"')
     expect(link).not.toContain('data-ancestor-active')
@@ -254,7 +288,10 @@ describe('HeaderCoursesNav — állandó kurzus-link', () => {
 
   it('kurzus-részletoldalon ősállapotot kap', () => {
     pathnameMock.mockReturnValue('/kurzusok/otthoni-kezrehab-program')
-    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+    const link = anchorFor(
+      render(createElement(DesktopNav, { items: withCoursesNavItem([]) })),
+      '/kurzusok',
+    )
 
     expect(link).not.toContain('aria-current')
     expect(link).toContain('data-ancestor-active="true"')
@@ -262,7 +299,10 @@ describe('HeaderCoursesNav — állandó kurzus-link', () => {
 
   it('hasonló útvonalon inaktív marad', () => {
     pathnameMock.mockReturnValue('/kurzusok-extra')
-    const link = anchorFor(render(createElement(HeaderCoursesNav)), '/kurzusok')
+    const link = anchorFor(
+      render(createElement(DesktopNav, { items: withCoursesNavItem([]) })),
+      '/kurzusok',
+    )
 
     expect(link).not.toContain('aria-current')
     expect(link).not.toContain('data-ancestor-active')
@@ -466,15 +506,12 @@ describe('főmenü állapotstílus-őr', () => {
     }
   })
 
-  it('az állandó Kurzusok-link pontos és ősállapota is kap nem színalapú jelölést', () => {
-    for (const selector of [
-      ".kc-site-header .kc-site-header__cta[aria-current='page']",
-      ".kc-site-header .kc-site-header__cta[data-ancestor-active='true']",
-    ]) {
-      const body = ruleBodies(selector).join('\n')
-      expect(body).toMatch(/(?:^|;)\s*text-decoration-line:\s*underline\s*;/)
-      expect(body).toMatch(/(?:^|;)\s*text-decoration-thickness:\s*2px\s*;/)
-    }
+  it('a fiókmenü Kurzusaim tétele a /kurzusaim oldalon nem színalapú jelölést kap (WP36)', () => {
+    const body = ruleBodies(".kc-account-nav__menu-item[aria-current='page']").join('\n')
+    expect(body).toMatch(/(?:^|;)\s*text-decoration-line:\s*underline\s*;/)
+    expect(body).toMatch(/(?:^|;)\s*color:\s*var\(--kc-header-accent\)\s*;/)
+    // A sávban nincs többé kitöltött Kurzusok-pirula.
+    expect(LAYOUT_CSS).not.toContain('kc-site-header__cta {')
   })
 
   it('a focus-visible külön 3px-es körvonal marad', () => {

@@ -237,13 +237,28 @@ Ezek a `ui-sztenderdek.md` §6.3 **G-UI1** őrének kiegészítései, nem helyet
 | `DesktopNav` | CMS-menü elemei | L | CMS-cél | hover, fókusz, `:focus-within` | `aria-current` hiányzik (`ui-szt.` A/7) |
 | `DesktopNav` | „<menüpont> almenü" | IB | nyit/zár | `aria-expanded`, Esc zár | **példás**, érintésre is működik |
 | `DesktopNav` almenü | Rendelői kezelések · Szakmai képzés (külső hivatkozás) · SOS KézRelax | L | CMS-cél, egy `_blank` | hover, fókusz | a „(külső hivatkozás)" a LÁTHATÓ feliratban van: jó minta (WCAG 2.5.3), de máshol nincs így |
-| fejléc akció | **Kurzusok** | P | `/kurzusok` | hover, fókusz | a `/kurzusok` oldalon önmagára mutat, `aria-current` nélkül |
+| `DesktopNav` / `MobileNav` | Kurzusok (kódban rögzített ELSŐ menüpont, `COURSES_NAV_ITEM`) | L | `/kurzusok` | hover, fókusz, `aria-current` / `data-ancestor-active` | **WP36 (2026-09-08):** a korábbi fejléc-CTA pirula (P) MEGSZŰNT a tulajdonos kérésére („legyen egy sima egyszerű menüpont hasonló mint a Tudástár"); a menüsor sima tétele, a CMS-menü elé illesztve, nem duplázva |
+| `AccountNav` fejléc, kijelentkezve | Fiók-ikon → Belépés | IB (link) | `/belepes` | hover-kör, fókusz | 44×44, rejtett név „Belépés", `title` |
+| `AccountNav` fejléc, bejelentkezve | Fiók-ikon (kitöltött glif) = MENÜGOMB „Fiók (bejelentkezve)" | IB (menu button) | lenyíló: Kurzusaim (L, `/kurzusaim`) · elválasztó · Kijelentkezés (gomb, POST) | `aria-haspopup="menu"`, `aria-expanded`, hover-nyitás 300 ms / zárás 500 ms (NN/g), Enter/Space/nyilak, Esc, Tab, kívül-kattintás; folyamatban „Kijelentkezés…"; hiba a panelen | **WP36:** APG Menu Button; SC 1.4.13 dismissable/hoverable/persistent; a sávban nincs többé szöveges Kurzusaim-link, kijelentkezés-pirula vagy ikon-gomb |
 | `MobileNav` | hamburger / X | IB | drawer | `aria-expanded`, fókusz-visszaadás | **példás** |
 | lábléc | Kapcsolat (óriás serif) | L | `/kapcsolat` | hover | vizuálisan a lap legnagyobb eleme, közben másodlagos cél |
 | `NewsletterForm` | Feliratkozom / Küldés… | P | submit | `disabled` küldés alatt és siker után; `role="status"` | **példás**; a felirat E/1 (`ui-szt.` A/5) |
 | lábléc jogi | Adatkezelési… · ÁSZF · Impresszum | L | CMS-oldalak | hover | élőben az adatvédelmi link **kétszer** szerepel (a hírlevél-hozzájárulásban is) |
 | `ConsentSettingsButton` | Süti-beállítások | nyers `<button>` | sáv újranyitása | - | jogi link-listában gomb, vizuális megkülönböztetés nélkül |
 | `ConsentBanner` | Elfogadom · Elutasítom | inline styled | opt-in/out | - | K5; a §3.2 #18 más feliratot ír elő |
+
+**Jegyzet a fejléc-CTA megszűnéséhez (WP36, 2026-09-08).** A
+`docs/ertekesitesi-ux-skill.md` §3 (sticky-nav) elve szerint a „Kurzusok"
+menüpont kötelező, *„plusz egy vizuálisan elkülönülő CTA"*. A tulajdonos
+2026-09-08-i döntése az elv MÁSODIK felét felülírja: a sávban nincs kiemelt
+gomb, a „Kurzusok" sima menüpont. Az M1-es értékesítési cél (a kurzuslista
+belépője) így a kezdőlap hero-CTA-jára és a szekció-CTA-kra hárul
+(§4.2: „Kurzusok megtekintése", „Megnézem a kurzusokat" stb.), a fejléc
+pedig csak navigál. Az elv első fele (a menüpont kötelező, minden oldalon,
+azonos helyen) teljesül, sőt erősödik: a Kurzusok a menüsor ELSŐ tétele
+(NN/g Menu-Design Checklist: a legfontosabb tétel a lista elején, a menüt
+indító célhoz közel; https://www.nngroup.com/articles/menu-design/). Az elvet
+a skill-doksiban külön PR-ben kell átvezetni (nem e munkacsomag fájlja).
 
 ### 4.2 Kezdőlap
 
