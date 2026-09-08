@@ -709,6 +709,27 @@
   color: var(--kc-color-text-muted);
 }
 
+/* A galéria tartalmi képei nem borítók: teljes képkivágás, a CMS sorrendje.
+   GOV.UK Images: https://design-system.service.gov.uk/styles/images/
+   WCAG 1.1.1: https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html */
+.kc-course-gallery {
+  display: grid;
+  gap: var(--kc-space-5);
+  min-width: 0;
+}
+
+.kc-course-gallery__item {
+  min-width: 0;
+  margin: 0;
+}
+
+.kc-course-gallery__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 /* ---- „Ugrás:" horgony-chipek ---------------------------------------------- */
 
 .kc-course-jump {

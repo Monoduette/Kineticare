@@ -64,12 +64,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params
-  // Publikált gyökér-hub esetén a cikk-URL tartósan (308) a hubra irányít.
-  await hubraIranyit(slug)
   // Előnézet (draft mode): a publikálatlan verzió is látszik. A sütit kizárólag
   // a /next/preview route adhatja, oda pedig csak staff/owner jut be. A
   // kapcsolódó posztok listája marad published-szűrt: azok nyilvános tartalmak.
   const { isEnabled: isDraft } = await draftMode()
+  // A publikus 308 marad; az előnézetnek a szerkesztett cikket kell mutatnia,
+  // nem a hub publikált forrás-cikkét.
+  if (!isDraft) await hubraIranyit(slug)
   const post = await postOf(slug, isDraft)
   if (!post) notFound()
   // Az ingyenes belépő a cikk végi ajánló halk sora (PostCourseCta); hiba

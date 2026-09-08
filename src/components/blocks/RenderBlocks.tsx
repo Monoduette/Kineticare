@@ -304,6 +304,8 @@ function BlockSwitch({
         >
           <Container>
             <CourseShowcase
+              eyebrow={block.eyebrow ?? undefined}
+              ctaLabel={block.ctaLabel ?? undefined}
               heading={block.heading ?? undefined}
               lead={block.lead ?? undefined}
               products={gridProducts}
