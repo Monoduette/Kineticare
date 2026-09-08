@@ -14,6 +14,7 @@ import {
   streamAssetReadAccess,
 } from '../access'
 import { revalidateMenusCache } from '../collections/Menus'
+import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
@@ -398,6 +399,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // viszont ON DELETE SET NULL — takarítás nélkül a törlés Postgres-hibával áll
     // le. Indoklás: src/lib/course-progress/cleanup.ts.
     beforeDelete: [
+      preventCourseDeletionWithFiles,
       ...(defaultCollection.hooks?.beforeDelete ?? []),
       deleteCourseProgressOnParentDelete('product'),
     ],

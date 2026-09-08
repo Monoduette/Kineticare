@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import { emptyRefundLedger } from './empty-refund-ledger'
 import { resetAlertThrottle } from '../lib/alert-throttle'
 import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
 import { createBarionCallbackHandler } from '../lib/barion-callback/route-handler'
@@ -193,6 +194,7 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     update: [] as Array<{ collection: string; id: number | string; data: Record<string, unknown> }>,
   }
   const payload = {
+    db: { drizzle: emptyRefundLedger(order ? [order.id] : []) },
     find: vi.fn(async ({ where }: { collection: string; where?: unknown }) => {
       const json = JSON.stringify(where ?? {})
       if (!order) return { docs: [], totalDocs: 0 }
@@ -389,9 +391,7 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
   it('SEC-008: a méret-plafont túllépő törzs elutasítva, akkor is, ha érvényes GUID van benne', async () => {
     const { POST, docs, capture } = setup()
 
-    const response = await POST(
-      makeRequest({ PaymentId: PAYMENT_ID, pad: 'x'.repeat(20_000) }),
-    )
+    const response = await POST(makeRequest({ PaymentId: PAYMENT_ID, pad: 'x'.repeat(20_000) }))
 
     expect(response.status).toBe(400)
     expect(docs).toHaveLength(0)
@@ -603,11 +603,19 @@ describe('(a) boldog út — paid', () => {
     expect(orderUpdates[0]?.data.status).toBe('paid')
     expect(order?.status).toBe('paid')
 
-    // Purchases-jogosultság beírva (egy bejegyzés).
+    // A membership és az eredetóra külön, egyszeri írás; nem dupla grant.
     const userUpdates = calls.update.filter((call) => call.collection === 'users')
-    expect(userUpdates).toHaveLength(1)
-    expect(userUpdates[0]?.data.purchases).toEqual([42])
+    expect(userUpdates).toHaveLength(2)
+    const purchaseWrites = userUpdates.filter((call) => Object.hasOwn(call.data, 'purchases'))
+    const originWrites = userUpdates.filter((call) => Object.hasOwn(call.data, 'accessGrants'))
+    expect(purchaseWrites).toHaveLength(1)
+    expect(purchaseWrites[0]?.data.purchases).toEqual([42])
+    expect(originWrites).toHaveLength(1)
+    expect(originWrites[0]?.data.accessGrants).toEqual([
+      { product: 42, sourceKind: 'order', sourceOrder: 101, grantedAt: expect.any(String) },
+    ])
     expect(user.purchases).toEqual([42])
+    expect(user.accessGrants).toEqual(originWrites[0]?.data.accessGrants)
 
     // Webhook-events: processed + processedAt + result='paid'.
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 1 })
@@ -649,7 +657,13 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     // EGY GetState-hívás, EGY paid átmenet, EGY purchases-írás, EGY webhook-rekord.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(1)
-    expect(calls.update.filter((call) => call.collection === 'users')).toHaveLength(1)
+    const userWrites = calls.update.filter((call) => call.collection === 'users')
+    expect(userWrites).toHaveLength(2)
+    expect(userWrites.filter((call) => Object.hasOwn(call.data, 'purchases'))).toHaveLength(1)
+    expect(userWrites.filter((call) => Object.hasOwn(call.data, 'accessGrants'))).toHaveLength(1)
+    expect(user.accessGrants).toEqual([
+      { product: 42, sourceKind: 'order', sourceOrder: 101, grantedAt: expect.any(String) },
+    ])
     expect(order?.status).toBe('paid')
     expect(user.purchases).toEqual([42])
     expect(docs).toHaveLength(1)
@@ -1126,9 +1140,10 @@ describe('orderNumber-fallback és titokvédelem', () => {
    * S2 — az elsődleges (barionPaymentId szerinti) ágon is kötelező az
    * összeg-egyezés: a Barion Succeeded önmagában NEM elég bizonyíték.
    */
-  it('eltérő Total az elsődleges ágon → a rendelés NEM lesz paid, rejected', async () => {
+  it('eltérő Total + hiányzó refund-tranzakcióbizonyíték → nincs paid vagy refund, az esemény retryable', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { POST, docs, calls, order, capture } = setup()
+    // Transactions: [] nem bizonyít refundolható összeget az üres ledger mellett sem.
     fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded', { total: 990 }))
 
     await POST(makeRequest({ PaymentId: PAYMENT_ID }))
@@ -1137,8 +1152,11 @@ describe('orderNumber-fallback és titokvédelem', () => {
     expect(order?.status).toBe('payment_pending')
     expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(0)
     expect(calls.update.filter((call) => call.collection === 'users')).toHaveLength(0)
-    expect(docs[0]).toMatchObject({ status: 'processed', result: 'rejected' })
+    expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed' })
+    expect(logOutput(logSpy)).toContain('source-transaction-unproven')
     expect(logOutput(logSpy)).toContain('RIASZT')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(orderPaidSpy.onOrderPaid).not.toHaveBeenCalled()
   })
 
   it('RF-4: Succeeded + paid-reject + recover failed → esemény failed, retryable, nem rejected', async () => {

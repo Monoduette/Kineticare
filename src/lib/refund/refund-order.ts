@@ -10,6 +10,7 @@ import {
   type BarionPaymentStateResponse,
 } from '../barion'
 import { logger, type Logger } from '../logger'
+import { validateRefundResponseProof } from '../barion/refund-response-proof'
 import { pickRefundableTransaction } from '../order-status/recover-paid-reject'
 import type {
   issueCorrectiveInvoiceForOrder,
@@ -18,7 +19,12 @@ import type {
   IssueStornoForOrderDeps,
 } from '../szamlazz'
 import { createRefundIntent, loadActiveRefundIntent, transitionRefundIntent } from './intent-store'
-import { prepareRefundReceipt, RECEIPTS, writeReceipt } from './recovery-receipts'
+import {
+  assertUnusedRefundTransaction,
+  prepareRefundReceipt,
+  RECEIPTS,
+  writeReceipt,
+} from './recovery-receipts'
 import {
   getRefundRecoveryStatus,
   recoverRefundOrder,
@@ -541,29 +547,34 @@ export async function refundOrder(options: RefundOrderOptions): Promise<RefundOr
         }
         throw new RefundError(503, RECOVERY_REQUIRED)
       }
-      const transaction =
-        Array.isArray(response?.RefundedTransactions) && response.RefundedTransactions.length === 1
-          ? response.RefundedTransactions[0]
-          : null
-      const correlated =
-        response?.PaymentId === intent.providerPaymentId &&
-        (response.Errors === undefined ||
-          (Array.isArray(response.Errors) && response.Errors.length === 0)) &&
-        transaction?.TransactionId === transactionId &&
-        transaction.Total === intent.requestedAmountHuf &&
-        (transaction.AmountToRefund === undefined ||
-          transaction.AmountToRefund === intent.requestedAmountHuf) &&
-        Number.isSafeInteger(transaction.Total)
-      if (!correlated || classifyRefundedTransactionStatus(transaction?.Status) !== 'succeeded') {
+      const proof = validateRefundResponseProof(response, {
+        paymentId: intent.providerPaymentId,
+        sourceTransactionId: transactionId,
+        posTransactionId: resolved.posTransactionId,
+        amountHuf: intent.requestedAmountHuf,
+      })
+      if (!proof) {
         await transitionRefundIntent(payload, intent, 'provider_unknown')
         throw new RefundError(503, RECOVERY_REQUIRED)
       }
-      const status = transaction!.Status
+      const status = proof.status
+      try {
+        await assertUnusedRefundTransaction(payload, intent, proof.refundTransactionId)
+      } catch {
+        try {
+          await transitionRefundIntent(payload, intent, 'provider_unknown')
+        } catch {
+          /* The launch claim remains blocking. */
+        }
+        throw new RefundError(503, RECOVERY_REQUIRED)
+      }
       // Minimal correlated evidence, never the raw provider body. Lost acknowledgement remains blocking.
       await writeReceipt(payload, intent, RECEIPTS.provider, {
-        version: 1,
+        version: 2,
         paymentId: intent.providerPaymentId,
         transactionId,
+        refundTransactionId: proof.refundTransactionId,
+        posTransactionId: resolved.posTransactionId,
         amountHuf: intent.requestedAmountHuf,
         sequence: intent.refundSequence,
         status,

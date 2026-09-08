@@ -1,3 +1,4 @@
+import { emptyRefundLedger } from '../empty-refund-ledger'
 import type { Payload } from 'payload'
 import { describe, expect, it, vi, type MockInstance } from 'vitest'
 
@@ -10,6 +11,7 @@ import {
   shouldBlockSecondPaidOrder,
 } from '../../lib/order-status/apply-barion-state'
 import type { Order, User } from '../../payload-types'
+import type { AccessGrantRow } from '../../lib/access-grants'
 
 /**
  * S2 — ÖSSZEG-ASSERT az állapotgép KÖZÖS MAGJÁN.
@@ -67,6 +69,7 @@ function createMockPayload(
   } as unknown as User
   const updates: Array<{ collection: string; data: Record<string, unknown> }> = []
   const payload = {
+    db: { drizzle: emptyRefundLedger([order.id]) },
     // Az M5 zár a záron belül findByID-val OLVASSA ÚJRA a rendelést — a mock
     // ezért collection-tudatos: 'orders'-re a teszt rendelése, 'users'-re a vevő,
     // 'products'-re a K5 megújítás-őr terméke.
@@ -459,7 +462,7 @@ describe('applyBarionStateTransition — K1 írási sorrend', () => {
       log: createLogger(),
     })
 
-    expect(updates.map((entry) => entry.collection)).toEqual(['users', 'orders'])
+    expect(updates.map((entry) => entry.collection)).toEqual(['users', 'users', 'orders'])
   })
 
   it('a grant elhasalása után az újrapróbálás FRISS paid-átmenet (a levél pontosan egyszer megy ki)', async () => {
@@ -534,6 +537,7 @@ function createGuestMockPayload() {
   let nextId = 2
   const updates: Array<{ collection: string; id: unknown; data: Record<string, unknown> }> = []
   const payload = {
+    db: { drizzle: emptyRefundLedger([order.id]) },
     findByID: vi.fn(async ({ collection, id }: { collection: string; id: number }) =>
       collection === 'orders' ? order : users.find((user) => user.id === id),
     ),
@@ -899,6 +903,70 @@ describe('applyBarionStateTransition — A4 rögzített refund-nyom a paid-átme
 })
 
 describe('applyBarionStateTransition — A6 hozzáférés-óra a fizetés igazolásától', () => {
+  it('az új paid eredet külön sor; az ajándék, korábbi order és legacy kezdőpont megmarad', async () => {
+    const order = createOrder()
+    const { payload, user } = createMockPayload(order, [], {
+      id: PRODUCT_ID,
+      accessDurationDays: 365,
+    })
+    const untouched: AccessGrantRow[] = [
+      {
+        id: 'DUMMY-gift-row',
+        product: PRODUCT_ID,
+        grantedAt: '2026-01-01T00:00:00.000Z',
+        sourceKind: 'independent',
+      },
+      {
+        id: 'DUMMY-old-paid',
+        product: PRODUCT_ID,
+        grantedAt: '2024-01-01T00:00:00.000Z',
+        sourceKind: 'order',
+        sourceOrder: 90,
+      },
+      { id: 'DUMMY-legacy-row', product: PRODUCT_ID, grantedAt: '2023-01-01T00:00:00.000Z' },
+    ]
+    Object.assign(user, { accessGrants: structuredClone(untouched) })
+    await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+    const rows = user.accessGrants as AccessGrantRow[]
+    expect(rows.slice(0, 3)).toEqual(untouched)
+    expect(rows).toHaveLength(4)
+    expect(rows[3]).toMatchObject({
+      product: PRODUCT_ID,
+      sourceKind: 'order',
+      sourceOrder: order.id,
+    })
+  })
+
+  it('egy újrapróbált, még nem paid rendelés meglévő saját grant órája nem indul újra', async () => {
+    const order = createOrder()
+    const { payload, user } = createMockPayload(order, [], {
+      id: PRODUCT_ID,
+      accessDurationDays: 365,
+    })
+    const original = {
+      id: 'DUMMY-retry-row',
+      product: PRODUCT_ID,
+      grantedAt: '2026-09-01T00:00:00.000Z',
+      sourceKind: 'order' as const,
+      sourceOrder: order.id,
+    }
+    Object.assign(user, { accessGrants: [original] })
+    await applyBarionStateTransition({
+      payload,
+      order,
+      mapped: 'paid',
+      state: createState(),
+      log: createLogger(),
+    })
+    expect(user.accessGrants).toEqual([original])
+  })
+
   function grantsFrom(
     updates: Array<{ collection: string; data: Record<string, unknown> }>,
   ): Array<{ product: number; grantedAt: string }> | undefined {
@@ -906,8 +974,7 @@ describe('applyBarionStateTransition — A6 hozzáférés-óra a fizetés igazol
       (entry) => entry.collection === 'users' && 'accessGrants' in entry.data,
     )
     return grantUpdate?.data.accessGrants as
-      | Array<{ product: number; grantedAt: string }>
-      | undefined
+      Array<{ product: number; grantedAt: string }> | undefined
   }
 
   it('időkorlátos termék: a paid-átmenet accessGrants kezdőpontot ír', async () => {
@@ -934,7 +1001,7 @@ describe('applyBarionStateTransition — A6 hozzáférés-óra a fizetés igazol
     expect(order.status).toBe('paid')
   })
 
-  it('korlátlan termék: NINCS accessGrants-írás', async () => {
+  it('korlátlan termék: rendelési eredet az accessGrants sorban', async () => {
     const order = createOrder()
     const { payload, updates } = createMockPayload(order, [], {
       id: PRODUCT_ID,
@@ -950,7 +1017,9 @@ describe('applyBarionStateTransition — A6 hozzáférés-óra a fizetés igazol
     })
 
     expect(result).toMatchObject({ action: 'paid', transitionedToPaid: true })
-    expect(grantsFrom(updates)).toBeUndefined()
+    expect(grantsFrom(updates)).toEqual([
+      expect.objectContaining({ product: PRODUCT_ID, sourceKind: 'order', sourceOrder: order.id }),
+    ])
   })
 
   it('MÁR paid rendelés (no-op ág): nincs új óra-indítás', async () => {

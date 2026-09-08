@@ -21,6 +21,20 @@ function fetchReturning(status: number, body?: unknown): typeof fetch {
 }
 
 describe('pollOrderStatus', () => {
+  it('keeps required payment review separate from success or refund confirmation', async () => {
+    expect(
+      await pollOrderStatus(
+        'X',
+        fetchReturning(200, { status: 'refunded', paymentReviewRequired: true }),
+      ),
+    ).toEqual({ kind: 'review' })
+    expect(
+      await pollOrderStatus(
+        'X',
+        fetchReturning(200, { status: 'paid', paymentReviewRequired: true }),
+      ),
+    ).toEqual({ kind: 'review' })
+  })
   it('200 + érvényes törzs → status (a productId-val együtt, #70-es szerződés)', async () => {
     const fetchImpl = fetchReturning(200, { status: 'paid', productId: 42 })
     const result = await pollOrderStatus('KH-2026-000123', fetchImpl)
@@ -35,7 +49,10 @@ describe('pollOrderStatus', () => {
       currency: null,
     })
     // A hívás ugyanazon az originen, sütivel megy (a csrf-szűrő átengedi):
-    const [url, init] = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    const [url, init] = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
     expect(url).toBe('/api/orders/KH-2026-000123/status')
     expect(init.credentials).toBe('include')
   })
@@ -51,9 +68,9 @@ describe('pollOrderStatus', () => {
     expect(
       await pollOrderStatus('X', fetchReturning(200, { status: 'paid', productId: 'abc' })),
     ).toEqual({ kind: 'status', status: 'paid', productId: null, value: null, currency: null })
-    expect(await pollOrderStatus('X', fetchReturning(200, { status: 'paid', productId: -3 }))).toEqual(
-      { kind: 'status', status: 'paid', productId: null, value: null, currency: null },
-    )
+    expect(
+      await pollOrderStatus('X', fetchReturning(200, { status: 'paid', productId: -3 })),
+    ).toEqual({ kind: 'status', status: 'paid', productId: null, value: null, currency: null })
   })
 
   it('a rendelésszám URL-kódolva megy ki', async () => {
@@ -78,7 +95,9 @@ describe('pollOrderStatus', () => {
 
   it('200, de status nélküli törzs → error', async () => {
     expect(await pollOrderStatus('X', fetchReturning(200, {}))).toEqual({ kind: 'error' })
-    expect(await pollOrderStatus('X', fetchReturning(200, { status: 42 }))).toEqual({ kind: 'error' })
+    expect(await pollOrderStatus('X', fetchReturning(200, { status: 42 }))).toEqual({
+      kind: 'error',
+    })
   })
 
   it('a hat ismert státusz mind átmegy a szűrésen', async () => {

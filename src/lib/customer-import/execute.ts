@@ -12,6 +12,7 @@ import { auditLogStore, writeAuditLog } from '../audit'
 import { maskEmail } from '../email/mask'
 import { generateInitialPassword } from '../security/initial-password'
 import type { Logger } from '../logger'
+import { withUserPurchasesLock } from '../user-purchases-lock'
 import { purchaseIdsOf, type ImportPlan, type PlanEntry } from './plan'
 
 /**
@@ -158,32 +159,39 @@ async function appendPurchases(
   if (userId === undefined) {
     throw new Error('Hiányzó felhasználó-azonosító a hozzáfűzéshez.')
   }
-  const owned = await currentPurchaseIds(payload, userId)
-  const ownedKeys = new Set(owned.map(String))
-  const missing = entry.missingProducts.filter((product) => !ownedKeys.has(String(product.id)))
-
-  if (missing.length === 0) {
-    // Idempotens no-op: a másodszori futás ide fut be.
-    return { email: entry.email, action: 'skip-complete', userId, grantedSkus: [] }
-  }
-
-  await payload.update({
-    collection: 'users',
-    id: userId,
-    data: { purchases: [...owned, ...missing.map((product) => product.id)] },
-    overrideAccess: true,
-  })
-  log?.info('vásárló-import: kurzus-hozzáférés hozzáfűzve', {
-    cimzett: maskEmail(entry.email),
+  return withUserPurchasesLock(
+    payload,
     userId,
-    grantedProductIds: missing.map((product) => product.id),
-  })
-  return {
-    email: entry.email,
-    action: 'append-purchases',
-    userId,
-    grantedSkus: missing.map((product) => product.sku),
-  }
+    async () => {
+      const owned = await currentPurchaseIds(payload, userId)
+      const ownedKeys = new Set(owned.map(String))
+      const missing = entry.missingProducts.filter((product) => !ownedKeys.has(String(product.id)))
+
+      if (missing.length === 0) {
+        // Idempotens no-op: a másodszori futás ide fut be.
+        return { email: entry.email, action: 'skip-complete', userId, grantedSkus: [] }
+      }
+
+      await payload.update({
+        collection: 'users',
+        id: userId,
+        data: { purchases: [...owned, ...missing.map((product) => product.id)] },
+        overrideAccess: true,
+      })
+      log?.info('vásárló-import: kurzus-hozzáférés hozzáfűzve', {
+        cimzett: maskEmail(entry.email),
+        userId,
+        grantedProductIds: missing.map((product) => product.id),
+      })
+      return {
+        email: entry.email,
+        action: 'append-purchases',
+        userId,
+        grantedSkus: missing.map((product) => product.sku),
+      }
+    },
+    log,
+  )
 }
 
 /**
@@ -220,6 +228,9 @@ async function recordLegacyPurchase(
       regiVasarlasIdopontja: entry.registeredAt ?? null,
       beirtSkuk: [...outcome.grantedSkus],
       muvelet: outcome.action,
+      // Registration time is audit history, never proof of a SKU grant clock.
+      hozzaferesiEredet: 'legacy-unverified',
+      hozzaferesiEllenorzes: 'manual-review-required',
     },
   })
 }

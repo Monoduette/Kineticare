@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { emptyRefundLedger } from '../empty-refund-ledger'
 import { trackedLogin } from '@/components/auth/LoginForm'
 import { trackedRegister } from '@/components/auth/RegisterForm'
 import {
@@ -273,7 +274,16 @@ describe('reset() — KIJELENTKEZÉS', () => {
 function payloadWithOrder(order: Record<string, unknown> | null) {
   return {
     auth: vi.fn().mockResolvedValue({ user: { id: 7 } }),
-    find: vi.fn().mockResolvedValue({ docs: order ? [order] : [] }),
+    find: vi.fn().mockResolvedValue({ docs: order ? [{ id: 101, ...order }] : [] }),
+    // A státusz és a review flag ugyanannak a saját rendelésnek a főkönyvét olvassa.
+    db: {
+      drizzle: {
+        execute: emptyRefundLedger([101]).execute,
+        transaction: async () => {
+          throw new Error('A státusz GET nem indíthat író tranzakciót.')
+        },
+      },
+    },
   }
 }
 

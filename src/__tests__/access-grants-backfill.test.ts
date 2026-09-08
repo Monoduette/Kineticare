@@ -52,23 +52,32 @@ function keszitsPayloadMockot(input: {
   orders: readonly Order[]
   users: readonly AccessGrantBackfillUserDoc[]
 }) {
-  const find = vi.fn(async (args: { collection: string; page?: number; limit?: number }) => {
-    const forras =
-      args.collection === 'products'
-        ? input.products
-        : args.collection === 'orders'
-          ? input.orders
-          : input.users
-    const limit = args.limit ?? ACCESS_GRANT_BACKFILL_LAPMERET
-    const page = args.page ?? 1
-    const kezdet = (page - 1) * limit
-    const docs = forras.slice(kezdet, kezdet + limit)
-    return {
-      docs,
-      hasNextPage: kezdet + limit < forras.length,
-      totalDocs: forras.length,
-    }
-  })
+  const find = vi.fn(
+    async (args: {
+      collection: string
+      page?: number
+      limit?: number
+      where?: { and?: Array<{ id?: { in?: number[] } }> }
+    }) => {
+      let forras =
+        args.collection === 'products'
+          ? input.products
+          : args.collection === 'orders'
+            ? input.orders
+            : input.users
+      const selectedIds = args.where?.and?.find((clause) => clause.id)?.id?.in
+      if (selectedIds) forras = forras.filter((doc) => selectedIds.includes(doc.id))
+      const limit = args.limit ?? ACCESS_GRANT_BACKFILL_LAPMERET
+      const page = args.page ?? 1
+      const kezdet = (page - 1) * limit
+      const docs = forras.slice(kezdet, kezdet + limit)
+      return {
+        docs,
+        hasNextPage: kezdet + limit < forras.length,
+        totalDocs: forras.length,
+      }
+    },
+  )
   const findByID = vi.fn(async (args: { id: number }) => {
     return input.users.find((user) => user.id === args.id) ?? null
   })
@@ -116,9 +125,9 @@ describe('tervezzAccessGrantBackfill', () => {
         purchases: [42],
         accessGrants: [],
         limitedProductIds: limited,
-        paidDates: new Map([[42, PAID]]),
+        paidSources: new Map([[42, { grantedAt: PAID, sourceOrder: 1 }]]),
       }),
-    ).toEqual([{ dontes: 'ir', productId: 42, grantedAt: PAID }])
+    ).toEqual([{ dontes: 'ir', productId: 42, grantedAt: PAID, sourceOrder: 1 }])
   })
 
   it('meglévő grantot nem ír felül', () => {
@@ -127,7 +136,7 @@ describe('tervezzAccessGrantBackfill', () => {
         purchases: [42],
         accessGrants: [{ product: 42, grantedAt: '2020-01-01T00:00:00.000Z' }],
         limitedProductIds: limited,
-        paidDates: new Map([[42, PAID]]),
+        paidSources: new Map([[42, { grantedAt: PAID, sourceOrder: 1 }]]),
       }),
     ).toEqual([])
   })
@@ -137,7 +146,7 @@ describe('tervezzAccessGrantBackfill', () => {
       purchases: [42],
       accessGrants: [],
       limitedProductIds: limited,
-      paidDates: new Map(),
+      paidSources: new Map(),
     })
 
     expect(terv).toHaveLength(1)
@@ -151,7 +160,7 @@ describe('tervezzAccessGrantBackfill', () => {
         purchases: [99],
         accessGrants: [],
         limitedProductIds: limited,
-        paidDates: new Map([[99, PAID]]),
+        paidSources: new Map([[99, { grantedAt: PAID, sourceOrder: 1 }]]),
       }),
     ).toEqual([])
   })
@@ -165,6 +174,48 @@ describe('futtatAccessGrantBackfill', () => {
   ): Promise<void> => {
     await fn()
   }
+
+  it('records the exact latest paid source order without relabeling other legacy rows', async () => {
+    const retained = { id: 'DUMMY-legacy', product: 99, grantedAt: PAID }
+    const payload = keszitsPayloadMockot({
+      products: [{ id: 42, accessDurationDays: 365 }],
+      orders: [
+        order({ id: 1, customer: 7, createdAt: '2020-01-01T00:00:00.000Z', productId: 42 }),
+        order({ id: 2, customer: 7, createdAt: PAID, productId: 42 }),
+      ],
+      users: [{ id: 7, purchases: [42, 99], accessGrants: [retained] }],
+    })
+    await futtatAccessGrantBackfill({
+      payload: payload as never,
+      dryRun: false,
+      withLock: identityLock,
+    })
+    expect(payload.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          accessGrants: [
+            retained,
+            { product: 42, grantedAt: PAID, sourceKind: 'order', sourceOrder: 2 },
+          ],
+        },
+      }),
+    )
+  })
+
+  it('never replaces a malformed persisted grant array', async () => {
+    const payload = keszitsPayloadMockot({
+      products: [{ id: 42, accessDurationDays: 365 }],
+      orders: [order({ id: 1, customer: 7, createdAt: PAID, productId: 42 })],
+      users: [{ id: 7, purchases: [42], accessGrants: { invalid: true } }],
+    })
+    const result = await futtatAccessGrantBackfill({
+      payload: payload as never,
+      dryRun: false,
+      withLock: identityLock,
+    })
+    expect(payload.update).not.toHaveBeenCalled()
+    expect(result.irasHibak).toHaveLength(1)
+  })
 
   it('próbafutásban nulla payload.update', async () => {
     const payload = keszitsPayloadMockot({
@@ -201,13 +252,21 @@ describe('futtatAccessGrantBackfill', () => {
 
     expect(payload.update).toHaveBeenCalledTimes(1)
     const elsoHivas = payload.update.mock.calls[0] as unknown as
-      | [{ collection: string; id: number; data: { accessGrants: { product: number; grantedAt: string }[] } }]
+      | [
+          {
+            collection: string
+            id: number
+            data: { accessGrants: { product: number; grantedAt: string }[] }
+          },
+        ]
       | undefined
     const iras = elsoHivas?.[0]
     expect(iras).toBeDefined()
     expect(iras?.collection).toBe('users')
     expect(iras?.id).toBe(7)
-    expect(iras?.data.accessGrants).toEqual([{ product: 42, grantedAt: PAID }])
+    expect(iras?.data.accessGrants).toEqual([
+      { product: 42, grantedAt: PAID, sourceKind: 'order', sourceOrder: 1 },
+    ])
   })
 
   it('paid nélküli időkorlátos purchase-t jelent, nem ír', async () => {

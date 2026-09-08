@@ -1,17 +1,18 @@
 /**
- * Adatbázis-mentés (pg_dump custom + pg_restore --list integritás). DATABASE_URI kötelező.
+ * Adatbázis-mentés: pg_dump custom + TOC és teljes archívumdekódolás. DATABASE_URI kötelező.
  *   npm run backup:db [-- --cel=<dir>] [-- --megtart=<n>]
  * A médiafájlokat nem menti. Részletek: docs/adatbazis-mentes.md
  */
 
 import { execFile } from 'node:child_process'
-import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { link, lstat, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import {
   buildDumpFileName,
   buildPgDumpArgs,
+  buildPgRestoreDecodeArgs,
   buildPgRestoreListArgs,
   decideRetention,
   formatBytes,
@@ -135,24 +136,51 @@ async function createBackup(options: BackupOptions, uri: string): Promise<void> 
 
   const fileName = buildDumpFileName(new Date())
   const filePath = join(options.targetDir, fileName)
+  const partialPath = `${filePath}.partial`
+  // Refuse existing regular files and symlinks before obtaining credentials.
+  // This early check is only a fast refusal; link() below enforces no replacement atomically.
+  const existing = await lstat(filePath).catch((error: unknown) => {
+    if (readProp(error, 'code') === 'ENOENT') return null
+    throw error
+  })
+  if (existing) throw new Error(`Már létezik ilyen nevű mentés: ${fileName}`)
+  // Outside the cleanup try: if exclusive creation fails, this file is not ours.
+  // Partial archives never participate in retention or appear as verified .dump files.
+  await writeFile(partialPath, '', { flag: 'wx', mode: 0o600 })
 
   log.info('mentés indul', { celkonyvtar: options.targetDir, fajl: fileName })
 
-  await withPgPassFile(connection, async (commandEnvironment) => {
-    const dump = await runCommand('pg_dump', buildPgDumpArgs(filePath), uri, commandEnvironment)
+  let verified: { entryCount: number; size: number }
+  try {
+    const dump = await withPgPassFile(connection, (commandEnvironment) =>
+      runCommand('pg_dump', buildPgDumpArgs(partialPath), uri, commandEnvironment),
+    )
     if (dump.exitCode !== 0) {
-      await rm(filePath, { force: true })
       throw new Error(
         `A pg_dump hibával állt le (kilépési kód: ${dump.exitCode}). ` +
           `Részlet: ${dump.stderr.trim() || 'nincs további információ'}`,
       )
     }
 
+    // A pgpass már törölve. A helyi archívumolvasó egyik PG felülírást és
+    // alkalmazási titkot sem örökli; --dbname nélkül SQL-t dekódol, nem kapcsolódik.
+    const restoreEnvironment: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV }
+    for (const key of [
+      'PATH',
+      'LANG',
+      'LC_ALL',
+      'LC_CTYPE',
+      'SystemRoot',
+      'SYSTEMROOT',
+      'TMPDIR',
+    ]) {
+      if (process.env[key] !== undefined) restoreEnvironment[key] = process.env[key]
+    }
     const listing = await runCommand(
       'pg_restore',
-      buildPgRestoreListArgs(filePath),
+      buildPgRestoreListArgs(partialPath),
       uri,
-      commandEnvironment,
+      restoreEnvironment,
     )
     const integrity = interpretRestoreList({
       exitCode: listing.exitCode,
@@ -161,25 +189,49 @@ async function createBackup(options: BackupOptions, uri: string): Promise<void> 
     })
 
     if (!integrity.ok) {
-      await rm(filePath, { force: true })
-      log.error('integritás-ellenőrzés megbukott — a hibás mentés törölve', {
-        fajl: fileName,
-      })
-      throw new Error(`${integrity.message} A hibás mentésfájl törölve lett: ${fileName}`)
+      throw new Error(integrity.message)
     }
 
-    const { size } = await stat(filePath)
-    log.info('mentés kész és ellenőrizve', {
-      fajl: fileName,
-      meret: size,
-      bejegyzesek: integrity.entryCount,
-    })
-    console.log(
-      `Kész: ${filePath} (${formatBytes(size)}, ${integrity.entryCount} visszaállítható bejegyzés).`,
+    const decoded = await runCommand(
+      'pg_restore',
+      buildPgRestoreDecodeArgs(partialPath),
+      uri,
+      restoreEnvironment,
     )
+    if (decoded.exitCode !== 0) {
+      throw new Error(
+        `A mentés teljes dekódolása sikertelen (kilépési kód: ${decoded.exitCode}). ` +
+          `Részlet: ${decoded.stderr.trim() || 'nincs további információ'}`,
+      )
+    }
 
-    await applyRetention(options.targetDir, options.keep)
+    const { size } = await stat(partialPath)
+    verified = { size, entryCount: integrity.entryCount }
+    // Same-directory hard link: EEXIST refuses a publication race, without rename overwrite.
+    // Unsupported filesystems fail here; there is no unsafe copy/rename fallback.
+    await link(partialPath, filePath)
+    await rm(partialPath)
+  } catch (error) {
+    // Only our exclusively created partial belongs to this cleanup. A final path
+    // may belong to another run, including when publication failed with EEXIST.
+    await rm(partialPath, { force: true })
+    log.error('mentés vagy ellenőrzés megbukott — a saját részleges fájl törölve', {
+      fajl: fileName,
+    })
+    throw error
+  }
+
+  log.info('mentés kész és ellenőrizve', {
+    fajl: fileName,
+    meret: verified.size,
+    bejegyzesek: verified.entryCount,
+    ellenorzes: 'toc-es-teljes-dekodolas',
   })
+  console.log(
+    `Kész: ${filePath} (${formatBytes(verified.size)}, ${verified.entryCount} TOC-bejegyzés, teljes dekódolás rendben).`,
+  )
+
+  await applyRetention(options.targetDir, options.keep)
 }
 
 const parsed = parseBackupArgs(process.argv.slice(2))

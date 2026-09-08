@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import type { Order } from '../payload-types'
 
 /**
  * Ajándék-hozzáférés időpontjai — a 365 napos (vagy a terméken beállított)
@@ -16,19 +17,110 @@ import type { Payload } from 'payload'
  */
 
 export interface AccessGrantRow {
+  /** Payload tömbsor stabil azonosítója; meglévő sornál mindig megőrzendő. */
+  id?: string | null
   product?: number | { id: number } | null
   /** ISO-8601; Payload date mező stringként tárol. */
   grantedAt?: string | null
+  /** Hiányzó eredet: történeti bizonytalanság, nem automatikusan ajándék. */
+  sourceKind?: 'order' | 'independent' | null
+  sourceOrder?: number | { id: number } | null
 }
 
+export type AccessGrantSource =
+  { sourceKind: 'order'; sourceOrder: number } | { sourceKind: 'independent'; sourceOrder?: null }
+
 export function productIdFromGrant(product: AccessGrantRow['product']): number | null {
-  if (typeof product === 'number' && Number.isFinite(product)) {
-    return product
+  const id = typeof product === 'object' && product !== null ? product.id : product
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** null = legacy; undefined = hibás/hiányos explicit eredet. */
+function sourceFromRow(row: AccessGrantRow): AccessGrantSource | null | undefined {
+  if (row.sourceKind == null && row.sourceOrder == null) return null
+  if (row.sourceKind === 'independent' && row.sourceOrder == null)
+    return { sourceKind: 'independent' }
+  if (row.sourceKind === 'order') {
+    const orderId = productIdFromGrant(row.sourceOrder)
+    if (orderId !== null) return { sourceKind: 'order', sourceOrder: orderId }
   }
-  if (typeof product === 'object' && product !== null && typeof product.id === 'number') {
-    return product.id
+  return undefined
+}
+
+export type AccessGrantOrderEvidence = Pick<Order, 'id' | 'customer' | 'status' | 'items'>
+
+export interface EligibleGrantDates {
+  dates: Map<number, string>
+  legacyDates: Map<number, string>
+  unresolvedProductIds: Set<number>
+  /** Explicit eredetű, de esetleg már nem jogosító SKU; nem eshet fail-open-ra. */
+  knownProductIds: Set<number>
+}
+
+/** Tiszta eligibility: az order snapshotot a hívó friss, korlátos DB-olvasásból adja. */
+export function resolveEligibleGrantDates(input: {
+  rows: unknown
+  userId: number
+  ordersById: ReadonlyMap<number, AccessGrantOrderEvidence>
+}): EligibleGrantDates {
+  const result: EligibleGrantDates = {
+    dates: new Map(),
+    legacyDates: new Map(),
+    unresolvedProductIds: new Set(),
+    knownProductIds: new Set(),
   }
-  return null
+  if (!Array.isArray(input.rows)) return result
+  const putLatest = (dates: Map<number, string>, product: number, date: string) => {
+    const previous = dates.get(product)
+    if (previous === undefined || Date.parse(date) > Date.parse(previous)) dates.set(product, date)
+  }
+  for (const value of input.rows) {
+    if (!isRecord(value)) continue
+    const row = value as AccessGrantRow
+    const product = productIdFromGrant(row.product)
+    if (product === null) continue
+    const source = sourceFromRow(row)
+    const date = toIso(row.grantedAt)
+    if (source === null) {
+      if (date) putLatest(result.legacyDates, product, date.iso)
+      continue
+    }
+    result.knownProductIds.add(product)
+    if (source === undefined || date === null) {
+      result.unresolvedProductIds.add(product)
+      continue
+    }
+    if (source.sourceKind === 'order') {
+      const order = input.ordersById.get(source.sourceOrder)
+      if (
+        !order ||
+        order.id !== source.sourceOrder ||
+        productIdFromGrant(order.customer) !== input.userId ||
+        !order.items?.some((item) => productIdFromGrant(item.product) === product)
+      ) {
+        result.unresolvedProductIds.add(product)
+        continue
+      }
+      if (order.status !== 'paid') continue
+    }
+    putLatest(result.dates, product, date.iso)
+  }
+  return result
+}
+
+export function orderIdsFromAccessGrantRows(rows: unknown): number[] {
+  const ids = new Set<number>()
+  if (!Array.isArray(rows)) return []
+  for (const value of rows) {
+    if (!isRecord(value)) continue
+    const source = sourceFromRow(value as AccessGrantRow)
+    if (source?.sourceKind === 'order') ids.add(source.sourceOrder)
+  }
+  return [...ids].sort((a, b) => a - b)
 }
 
 function toIso(value: string | Date | null | undefined): { iso: string; ms: number } | null {
@@ -92,46 +184,96 @@ export function grantRowsFromUnknown(raw: unknown): AccessGrantRow[] {
 }
 
 /**
- * Upsert: a termékhez tartozó sor `grantedAt` értéke `now`.
- * Meglévő más termékek sorai érintetlenek.
+ * Upsert eredetenként: másik paid rendelés, ajándék vagy legacy sor érintetlen.
+ * A null eredet kizárólag kifejezett legacy művelethez használható.
  */
 export function withUpsertedAccessGrant(
   existing: AccessGrantRow[],
   productId: number,
   grantedAt: Date,
+  source: AccessGrantSource | null = null,
 ): AccessGrantRow[] {
+  if (productIdFromGrant(productId) === null || sourceFromRow(source ?? {}) === undefined) {
+    throw new Error('Access grant: invalid source identity')
+  }
   const iso = grantedAt.toISOString()
-  let found = false
+  let found = 0
   const next = existing.map((row) => {
-    if (productIdFromGrant(row.product) !== productId) {
+    const rowSource = sourceFromRow(row)
+    const sameSource =
+      source === null
+        ? rowSource === null
+        : source.sourceKind === rowSource?.sourceKind &&
+          (source.sourceKind !== 'order' ||
+            (rowSource?.sourceKind === 'order' && source.sourceOrder === rowSource.sourceOrder))
+    if (productIdFromGrant(row.product) !== productId || !sameSource) {
       return row
     }
-    found = true
+    found += 1
     return { ...row, product: productId, grantedAt: iso }
   })
+  if (found > 1) throw new Error('Access grant: ambiguous source rows')
   if (!found) {
-    next.push({ product: productId, grantedAt: iso })
+    next.push({ product: productId, grantedAt: iso, ...(source ?? {}) })
   }
   return next
 }
 
 /** Payload update-hez: kötelező product + grantedAt, null nélkül. */
 export type AccessGrantWriteRow = {
+  id?: string
   product: number
   grantedAt: string
+  sourceKind?: 'order' | 'independent' | null
+  sourceOrder?: number | null
 }
 
 export function accessGrantsForWrite(rows: AccessGrantRow[]): AccessGrantWriteRow[] {
   const next: AccessGrantWriteRow[] = []
+  const seenIds = new Set<string>()
   for (const row of rows) {
+    if (typeof row !== 'object' || row === null || Array.isArray(row))
+      throw new Error('Access grant: invalid row')
     const productId = productIdFromGrant(row.product)
     const granted = toIso(row.grantedAt)
-    if (productId === null || granted === null) {
-      continue
+    const source = sourceFromRow(row)
+    if (productId === null || granted === null || source === undefined) {
+      throw new Error('Access grant: invalid persisted row requires reconciliation')
     }
-    next.push({ product: productId, grantedAt: granted.iso })
+    if (row.id != null) {
+      if (
+        typeof row.id !== 'string' ||
+        !row.id.trim() ||
+        row.id !== row.id.trim() ||
+        seenIds.has(row.id)
+      ) {
+        throw new Error('Access grant: invalid or duplicate row identity')
+      }
+      seenIds.add(row.id)
+    }
+    next.push({
+      ...(row.id != null ? { id: row.id } : {}),
+      product: productId,
+      grantedAt: granted.iso,
+      ...(row.sourceKind !== undefined ? { sourceKind: row.sourceKind } : {}),
+      ...(row.sourceOrder !== undefined
+        ? { sourceOrder: productIdFromGrant(row.sourceOrder) }
+        : {}),
+    })
   }
   return next
+}
+
+/** A collection és a rendszerírók ugyanazt a provenance alakot fogadják el. */
+export function validateAccessGrantRows(value: unknown): true | string {
+  if (value == null) return true
+  if (!Array.isArray(value)) return 'A hozzáférési sorok formátuma hibás.'
+  try {
+    accessGrantsForWrite(value as AccessGrantRow[])
+    return true
+  } catch {
+    return 'A hozzáférési sorok azonosítója vagy eredete hibás. Ellenőrzés szükséges.'
+  }
 }
 
 export async function upsertAccessGrant(input: {
@@ -140,23 +282,30 @@ export async function upsertAccessGrant(input: {
   productId: number
   grantedAt?: Date
   existingRows?: unknown
+  source?: AccessGrantSource | null
 }): Promise<AccessGrantRow[]> {
   const grantedAt = input.grantedAt ?? new Date()
   const next = withUpsertedAccessGrant(
     grantRowsFromUnknown(input.existingRows),
     input.productId,
     grantedAt,
+    input.source ?? null,
   )
-  await input.payload.update({
+  const saved = await input.payload.update({
     collection: 'users',
     id: input.userId,
     data: { accessGrants: accessGrantsForWrite(next) },
     overrideAccess: true,
   })
-  return next
+  // A következő SKU írása már a Payload által kiosztott új sor-ID-ket is őrizze.
+  if (!Array.isArray(saved.accessGrants))
+    throw new Error('A hozzáférési sorok mentése nem igazolható.')
+  return grantRowsFromUnknown(saved.accessGrants)
 }
 
-export function durationDaysFromProduct(product: { accessDurationDays?: number | null }): number | null {
+export function durationDaysFromProduct(product: {
+  accessDurationDays?: number | null
+}): number | null {
   const days = product.accessDurationDays
   if (typeof days === 'number' && Number.isFinite(days) && days > 0) {
     return days

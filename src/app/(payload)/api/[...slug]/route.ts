@@ -7,12 +7,15 @@ import {
   REST_POST,
   REST_PUT,
 } from '@payloadcms/next/routes'
+import { getPayload } from 'payload'
 
-import { withPayloadLoginCsrfProtection } from '@/lib/security/login-csrf'
-import { withPayloadRestRateLimit } from '@/lib/security/rate-limit'
+import { withPrivateCourseFileResponse } from '@/access/privateResponse'
+import { createProtectedPayloadPost } from '@/lib/security/payload-rest-post'
 
 /**
- * A login POST eredetellenőrzése a kérés-korlátozó előtt fut, így az
+ * A reset aliasai a konkrét útvonallal közös védett handlerre mennek: a
+ * Next case-sensitive routingja nem kerülheti meg a Payload case-insensitive
+ * reset endpointjára szánt védelmet. A login eredetellenőrzése a korlátozó előtt fut, így az
  * elutasított kérés nem jut el klónozásig, törzsolvasásig vagy Payloadig.
  * Utána minden POST az IP-alapú kérés-korlátozón megy át (A2). Ez a catch-all
  * szolgálja ki a regisztrációt (`/api/users`), a jelszó-emlékeztetőt
@@ -22,9 +25,15 @@ import { withPayloadRestRateLimit } from '@/lib/security/rate-limit'
  * `src/lib/security/rate-limit.ts`-ben él; minden más POST és minden GET
  * CSRF-viselkedése változatlan.
  */
-export const GET = REST_GET(config)
-export const POST = withPayloadLoginCsrfProtection(withPayloadRestRateLimit(REST_POST(config)))
-export const DELETE = REST_DELETE(config)
-export const PATCH = REST_PATCH(config)
-export const PUT = REST_PUT(config)
-export const OPTIONS = REST_OPTIONS(config)
+export const GET = withPrivateCourseFileResponse(REST_GET(config))
+export const HEAD = GET
+export const POST = withPrivateCourseFileResponse(
+  createProtectedPayloadPost({
+    getPayload: () => getPayload({ config }),
+    payloadPost: REST_POST(config),
+  }),
+)
+export const DELETE = withPrivateCourseFileResponse(REST_DELETE(config))
+export const PATCH = withPrivateCourseFileResponse(REST_PATCH(config))
+export const PUT = withPrivateCourseFileResponse(REST_PUT(config))
+export const OPTIONS = withPrivateCourseFileResponse(REST_OPTIONS(config))

@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
+import { loadActiveRefundIntent } from '../refund/intent-store'
 
 /**
  * GET /api/orders/[orderNumber]/status — read-only rendelés-státusz (a
@@ -12,7 +13,8 @@ import { generateRequestId, getRequestId } from '../request-id'
  * - bejelentkezés kötelező (payload.auth); anon → 401;
  * - CSAK a saját rendelés: a lekérdezés customer=user.id szűrővel történik —
  *   más orderNumber esetén 404 (ne szivárogjon ki, létezik-e a rendelés);
- * - CSAK a { status, productId, totalHufSnapshot, currency } mezők — a productId
+ * - CSAK a { status, productId, totalHufSnapshot, currency } és szükség esetén
+ *   paymentReviewRequired:true mezők — a productId
  *   az ELSŐ tétel termék-id-je (null, ha nem feloldható): a köszönőoldal
  *   „Újrapróbálom" gombja ezzel tud a /penztar?termek={id} útvonalra mutatni.
  *   Nem érzékeny adat: a vásárló a SAJÁT rendelésének a termékét látja, amit a
@@ -44,7 +46,10 @@ export interface OrderStatusHandlerDeps {
 
 export function createOrderStatusHandler(
   deps: OrderStatusHandlerDeps,
-): (request: NextRequest, context: { params: Promise<{ orderNumber: string }> }) => Promise<NextResponse> {
+): (
+  request: NextRequest,
+  context: { params: Promise<{ orderNumber: string }> },
+) => Promise<NextResponse> {
   return async function GET(
     request: NextRequest,
     context: { params: Promise<{ orderNumber: string }> },
@@ -71,10 +76,7 @@ export function createOrderStatusHandler(
       const { docs } = await payload.find({
         collection: 'orders',
         where: {
-          and: [
-            { orderNumber: { equals: orderNumber.trim() } },
-            { customer: { equals: user.id } },
-          ],
+          and: [{ orderNumber: { equals: orderNumber.trim() } }, { customer: { equals: user.id } }],
         },
         limit: 1,
         depth: 0,
@@ -99,10 +101,22 @@ export function createOrderStatusHandler(
 
       // A végösszeg: elsődlegesen a megrendeléskori pillanatkép, tartalékként a
       // plugin `amount` mezője. Érvénytelen/hiányzó érték → null (lásd a fejlécet).
-      const totalHufSnapshot = readOrderTotal(order.totalHufSnapshot) ?? readOrderTotal(order.amount)
+      const totalHufSnapshot =
+        readOrderTotal(order.totalHufSnapshot) ?? readOrderTotal(order.amount)
+      // Authentication and customer ownership precede this lookup. Storage uncertainty is an error,
+      // never a false success; only a customer-facing flag crosses the response boundary.
+      const activeRefund = await loadActiveRefundIntent(payload, order.id)
+      const paymentReviewRequired =
+        activeRefund?.schemaVersion === 2 && activeRefund.actorKind === 'system'
 
       return NextResponse.json(
-        { status: order.status, productId, totalHufSnapshot, currency: readCurrency(order.currency) },
+        {
+          status: order.status,
+          productId,
+          totalHufSnapshot,
+          currency: readCurrency(order.currency),
+          ...(paymentReviewRequired ? { paymentReviewRequired: true } : {}),
+        },
         { status: 200 },
       )
     } catch (error) {
@@ -110,7 +124,10 @@ export function createOrderStatusHandler(
         error: error instanceof Error ? error.message : String(error),
       })
       return NextResponse.json(
-        { error: 'A rendelés állapota most nem kérdezhető le. Frissítsd az oldalt néhány perc múlva.' },
+        {
+          error:
+            'A rendelés állapota most nem kérdezhető le. Frissítsd az oldalt néhány perc múlva.',
+        },
         { status: 500 },
       )
     }

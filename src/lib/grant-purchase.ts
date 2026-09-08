@@ -5,6 +5,7 @@ import {
   accessGrantsForWrite,
   durationDaysFromProduct,
   grantRowsFromUnknown,
+  validateAccessGrantRows,
   withUpsertedAccessGrant,
 } from './access-grants'
 import { auditLogStore, writeAuditLog } from './audit'
@@ -20,11 +21,7 @@ import { withUserPurchasesLock } from './user-purchases-lock'
  */
 
 export type GrantPurchaseStatus =
-  | 'granted'
-  | 'already-had'
-  | 'user-not-found'
-  | 'product-not-found'
-  | 'duration-required'
+  'granted' | 'already-had' | 'user-not-found' | 'product-not-found' | 'duration-required'
 
 /** Új ajándéknál nincs megadva, hány napig él a hozzáférés — CMS-zsargon nélkül. */
 export const GRANT_DURATION_REQUIRED_MESSAGE =
@@ -225,13 +222,15 @@ export async function grantPurchase(options: GrantPurchaseOptions): Promise<Gran
         }
       }
 
+      const validation = validateAccessGrantRows(fresh.accessGrants)
+      if (validation !== true) throw new Error(validation)
       const nextPurchases = alreadyOwned
         ? userPurchaseIds(fresh)
         : [...userPurchaseIds(fresh), product.id]
       const nextGrants =
         durationDays === null
           ? existingGrants
-          : withUpsertedAccessGrant(existingGrants, product.id, now)
+          : withUpsertedAccessGrant(existingGrants, product.id, now, { sourceKind: 'independent' })
 
       await payload.update({
         collection: 'users',

@@ -52,8 +52,8 @@ describe('RefundIntents collection', () => {
     expect(field('actor')).toMatchObject({
       type: 'relationship',
       relationTo: 'users',
-      required: true,
     })
+    expect(field('actor')).not.toHaveProperty('required')
     expect(field('idempotencyKeyHash')).toMatchObject({
       type: 'text',
       required: true,
@@ -64,8 +64,9 @@ describe('RefundIntents collection', () => {
     expect(field('activeOrderKey')).not.toHaveProperty('required')
   })
 
-  it('has no hooks or custom endpoints, and no sensitive raw/error fields', () => {
-    expect(RefundIntents).not.toHaveProperty('hooks')
+  it('has only identity validation, no effect hooks/custom endpoints and no sensitive raw/error fields', () => {
+    expect(Object.keys(RefundIntents.hooks ?? {})).toEqual(['beforeValidate'])
+    expect(RefundIntents.hooks?.beforeValidate).toHaveLength(1)
     expect(RefundIntents).not.toHaveProperty('endpoints')
     const names = fields.map((candidate) => candidate.name)
     for (const prohibited of [
@@ -95,7 +96,7 @@ describe('RefundIntents collection', () => {
       type: 'number',
       required: true,
       min: 1,
-      max: 1,
+      max: 2,
     })
     expect(field('refundSequence')).toMatchObject({ type: 'number', required: true, min: 1 })
     expect(field('currency')).toMatchObject({

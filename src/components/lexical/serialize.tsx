@@ -4,7 +4,13 @@ import { createElement, Fragment, type ReactNode } from 'react'
 
 import { courseHref } from '../../lib/course-url'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
-import { mediaAlt, mediaDimensions, pickMediaUrl, type MediaLike } from '../content/media-url'
+import {
+  isPrivateCourseFileUrl,
+  mediaAlt,
+  mediaDimensions,
+  pickMediaUrl,
+  type MediaLike,
+} from '../content/media-url'
 import { TEXT_FORMAT, type LexicalContent, type LexicalNode, type VideoEmbed } from './types'
 
 /**
@@ -110,7 +116,9 @@ export function detectVideoEmbed(url: string): VideoEmbed | null {
 
   if (host === 'youtu.be') {
     const id = parsed.pathname.slice(1).split('/')[0]
-    return id ? { provider: 'youtube', embedUrl: `https://www.youtube-nocookie.com/embed/${id}` } : null
+    return id
+      ? { provider: 'youtube', embedUrl: `https://www.youtube-nocookie.com/embed/${id}` }
+      : null
   }
   if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
     if (parsed.pathname === '/watch') {
@@ -302,13 +310,20 @@ function renderUpload(node: LexicalNode, key: string): ReactNode {
   const image = dimensions
     ? createElement(Image, {
         src,
+        unoptimized: isPrivateCourseFileUrl(src),
         alt,
         width: dimensions.width,
         height: dimensions.height,
         sizes,
       })
     : // Intrinsic méret hiányában kitöltős render (a figure aránytartó).
-      createElement(Image, { src, alt, fill: true, sizes })
+      createElement(Image, {
+        src,
+        alt,
+        fill: true,
+        sizes,
+        unoptimized: isPrivateCourseFileUrl(src),
+      })
 
   return createElement('figure', { key, className: 'kc-richtext__figure' }, image)
 }

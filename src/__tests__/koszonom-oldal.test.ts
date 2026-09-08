@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 
-import { createElement, type ReactElement } from 'react'
+import { Window } from 'happy-dom'
+import { act, createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import KoszonjukPage, { metadata } from '../app/(frontend)/fizetes/koszonom/page'
 import {
@@ -11,9 +12,11 @@ import {
   ThankYouNotFound,
   ThankYouPaid,
   ThankYouRefunded,
+  ThankYouReview,
   ThankYouTimeout,
   ThankYouUnauthorized,
   ThankYouView,
+  shouldEmitPurchaseConfirmed,
 } from '../components/checkout/ThankYouView'
 import { ctaLabel } from '../lib/cta-vocabulary'
 
@@ -57,6 +60,51 @@ async function renderPage(order: Record<string, string | string[] | undefined>) 
 }
 
 describe('köszönőoldal — lapcím (állapot, nem siker)', () => {
+  it('az élő kliens a review poll-válaszból kapcsolatnézetre vált és nem küld sikeres vásárlást', async () => {
+    const browser = new Window({
+      url: 'http://localhost:3000/fizetes/koszonom?order=SYNTHETIC-123',
+    })
+    vi.stubGlobal('window', browser)
+    vi.stubGlobal('document', browser.document)
+    vi.stubGlobal('navigator', browser.navigator)
+    vi.stubGlobal('HTMLElement', browser.HTMLElement)
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const fetch = vi.fn(async () =>
+      Response.json({ status: 'refunded', paymentReviewRequired: true }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const { createRoot } = await import('react-dom/client')
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    try {
+      await act(async () => {
+        root.render(createElement(ThankYouView, { orderNumber: 'SYNTHETIC-123' }))
+      })
+      expect(container.querySelector('h1')?.textContent).toBe('A fizetésed ellenőrzése szükséges')
+      expect(container.querySelector('a')?.getAttribute('href')).toBe('/kapcsolat')
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(shouldEmitPurchaseConfirmed({ kind: 'review' })).toBe(false)
+      expect(container.textContent).not.toContain('A fizetést visszatérítettük')
+    } finally {
+      await act(async () => {
+        root.unmount()
+      })
+      container.remove()
+      await browser.happyDOM.close()
+      vi.unstubAllGlobals()
+    }
+  })
+  it('az ellenőrzési nézet nem ígér banki sikert, és a kapcsolatfelvételre vezet', () => {
+    const html = renderToStaticMarkup(
+      createElement(ThankYouReview, { orderNumber: 'SYNTHETIC-123' }),
+    )
+    expect(html).toContain('A fizetésed ellenőrzése szükséges')
+    expect(html).toContain('href="/kapcsolat"')
+    expect(html).toContain('SYNTHETIC-123')
+    expect(html).toContain('role="status"')
+    expect(html).not.toMatch(/provider_unknown|refund-intent|idempotency|A pénzed visszatérítettük/)
+  })
   it('a title nem állít sikert, amíg a fizetés kimenetele ismeretlen', () => {
     expect(metadata.title).toBe('A fizetésed állapota')
     expect(metadata.description).toBe(
@@ -319,8 +367,7 @@ describe('visszatérített fizetés — a pénz visszament, hozzáférés nincs'
  * pontos.
  */
 describe('sikertelen fizetés — a levonásról nem állítunk többet a valóságnál', () => {
-  const html = () =>
-    renderToStaticMarkup(createElement(ThankYouFailed, { productId: 42 }))
+  const html = () => renderToStaticMarkup(createElement(ThankYouFailed, { productId: 42 }))
 
   it('a régi, feltétlen állítás eltűnt', () => {
     expect(html()).not.toContain('Semmi sem került levonásra')
@@ -412,9 +459,7 @@ describe('visszatérítés-nézet — mért érintőcél és 320 px-es reflow', 
   })
 
   it('a gombok érintőcélja legalább 44 px magas (SC 2.5.5/2.5.8)', () => {
-    const magassag = remPx(
-      /min-height:\s*([^;]+);/.exec(szabalyTorzs(ui, '.kc-button'))?.[1] ?? '',
-    )
+    const magassag = remPx(/min-height:\s*([^;]+);/.exec(szabalyTorzs(ui, '.kc-button'))?.[1] ?? '')
     expect(magassag, `mért min-height: ${magassag} px`).toBeGreaterThanOrEqual(44)
   })
 

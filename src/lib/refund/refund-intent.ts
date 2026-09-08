@@ -72,9 +72,53 @@ export type RefundIntentRequestV1 = {
   reason?: string | null
 }
 
+export type RefundIntentActorIdentity =
+  | { actorKind: 'owner'; actorId: number; systemActor: null }
+  | { actorKind: 'system'; actorId: null; systemActor: 'paid-reject-recovery' }
+
+/** V1 owner sorok változatlanul olvashatók; V2 rendszereredethez nincs hamis user FK. */
+export function parseRefundIntentActorIdentity(input: {
+  schemaVersion: unknown
+  actor: unknown
+  actorKind?: unknown
+  systemActor?: unknown
+}): RefundIntentActorIdentity {
+  const actor = isPlainRecord(input.actor) ? input.actor.id : input.actor
+  const isOwner = Number.isSafeInteger(actor) && typeof actor === 'number' && actor > 0
+  if (
+    ((input.schemaVersion === 1 && (input.actorKind == null || input.actorKind === 'owner')) ||
+      (input.schemaVersion === 2 && input.actorKind === 'owner')) &&
+    isOwner &&
+    input.systemActor == null
+  ) {
+    return { actorKind: 'owner', actorId: actor as number, systemActor: null }
+  }
+  if (
+    input.schemaVersion === 2 &&
+    input.actorKind === 'system' &&
+    input.actor == null &&
+    input.systemActor === 'paid-reject-recovery'
+  ) {
+    return { actorKind: 'system', actorId: null, systemActor: 'paid-reject-recovery' }
+  }
+  throw new TypeError('Invalid refund intent actor identity')
+}
+
 export type CanonicalRefundIntentRequestV1 = Omit<RefundIntentRequestV1, 'reason'> & {
   reason: string | null
 }
+
+export type CanonicalRefundIntentRequestV2 = Omit<
+  CanonicalRefundIntentRequestV1,
+  'schemaVersion' | 'actorId'
+> & {
+  schemaVersion: 2
+} & (
+    | { actorId: null; actorKind: 'system'; systemActor: 'paid-reject-recovery' }
+    | { actorId: string; actorKind: 'owner'; systemActor: null }
+  )
+export type CanonicalRefundIntentRequest =
+  CanonicalRefundIntentRequestV1 | CanonicalRefundIntentRequestV2
 
 const REQUEST_KEYS = new Set<keyof RefundIntentRequestV1>([
   'schemaVersion',
@@ -258,6 +302,103 @@ export function canonicalRefundIntentRequestTuple(input: unknown): readonly unkn
 
 export function hashRefundIntentRequestV1(input: unknown): string {
   return sha256(JSON.stringify(canonicalRefundIntentRequestTuple(input)))
+}
+
+/** Separate hash domain keeps all existing V1 owner fingerprints byte compatible. */
+export function validateRefundIntentRequest(input: unknown): CanonicalRefundIntentRequest {
+  if (
+    !isPlainRecord(input) ||
+    !hasOwnDataProperties(input, ['schemaVersion']) ||
+    input.schemaVersion !== 2
+  )
+    return validateRefundIntentRequestV1(input)
+  for (const key of Reflect.ownKeys(input)) {
+    if (
+      typeof key !== 'string' ||
+      (!REQUEST_KEYS.has(key as keyof RefundIntentRequestV1) &&
+        !['actorKind', 'systemActor'].includes(key)) ||
+      !hasOwnDataProperties(input, [key])
+    )
+      throw new TypeError('Invalid refund intent V2 fields')
+  }
+  if (!hasOwnDataProperties(input, ['actorId', 'actorKind', 'systemActor']))
+    throw new TypeError('Missing refund intent V2 identity')
+  const actor =
+    typeof input.actorId === 'string' && /^[1-9][0-9]*$/u.test(input.actorId)
+      ? Number(input.actorId)
+      : input.actorId
+  const identity = parseRefundIntentActorIdentity({
+    schemaVersion: 2,
+    actor,
+    actorKind: input.actorKind,
+    systemActor: input.systemActor,
+  })
+  if (
+    identity.actorKind === 'owner' &&
+    (typeof input.actorId !== 'string' || String(identity.actorId) !== input.actorId)
+  )
+    throw new TypeError('Noncanonical refund intent owner identity')
+  const shared = Object.fromEntries(
+    Object.entries(input).filter(([key]) => key !== 'actorKind' && key !== 'systemActor'),
+  )
+  const fields = validateRefundIntentRequestV1({ ...shared, schemaVersion: 1, actorId: 'system' })
+  return identity.actorKind === 'system'
+    ? {
+        ...fields,
+        schemaVersion: 2,
+        actorId: null,
+        actorKind: 'system',
+        systemActor: 'paid-reject-recovery',
+      }
+    : {
+        ...fields,
+        schemaVersion: 2,
+        actorId: String(identity.actorId),
+        actorKind: 'owner',
+        systemActor: null,
+      }
+}
+
+export function hashRefundIntentRequest(input: unknown): string {
+  const request = validateRefundIntentRequest(input)
+  if (request.schemaVersion === 1) return hashRefundIntentRequestV1(request)
+  return sha256(
+    JSON.stringify([
+      'kineticare/refund-intent/request/v2',
+      request.schemaVersion,
+      request.actorKind,
+      request.actorId,
+      request.systemActor,
+      request.orderId,
+      request.provider,
+      request.providerPaymentId,
+      request.providerTransactionId,
+      request.refundSequence,
+      request.requestedAmountHuf,
+      request.currency,
+      request.reason,
+    ]),
+  )
+}
+
+/** Application identity only: Barion does not promise provider idempotency for this key. */
+export function autoRefundOperationKey(input: {
+  orderId: number
+  paymentId: string
+  transactionId: string
+  reason: string
+}): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        'kineticare/paid-reject-recovery/operation/v2',
+        positiveSafeInteger(input.orderId, 'orderId'),
+        strictIdentifier(input.paymentId, 'paymentId'),
+        strictIdentifier(input.transactionId, 'transactionId'),
+        strictIdentifier(input.reason, 'reason'),
+      ]),
+    )
+    .digest('base64url')
 }
 
 export function digestRefundIdempotencyKey(key: unknown): string {

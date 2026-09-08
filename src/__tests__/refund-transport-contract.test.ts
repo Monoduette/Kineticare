@@ -37,7 +37,7 @@ async function transportFixture() {
         PaymentId: f.order.barionPaymentId,
         RefundedTransactions: [
           {
-            TransactionId: 'SYNTHETIC-TX',
+            TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
             POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
             Total: 5000,
             Status: 'Succeeded',

@@ -23,6 +23,16 @@ export interface MediaLike {
   sizes?: Record<string, MediaSizeInfo | undefined> | null
 }
 
+/** A védett kép közvetlenül, a böngésző sessionjével kérhető le. */
+export function isPrivateCourseFileUrl(value: string): boolean {
+  try {
+    const pathname = new URL(value, 'https://kineticare.invalid').pathname
+    return decodeURIComponent(pathname).startsWith('/api/course-files/')
+  } catch {
+    return false
+  }
+}
+
 /** A storefront által használt reszponzív méretek sorrendje (og kizárva — az fix arányú meta-kép). */
 const RESPONSIVE_SIZE_NAMES = ['xs', 'sm', 'md', 'lg'] as const
 

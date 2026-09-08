@@ -472,11 +472,8 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         // Sikeres refund + a vevő NEM kapott hozzáférést → az „already-paid"
         // válasz hamis lenne. duplicate-paid-order kivétel: ott van élő
         // hozzáférés, az already-paid üzenet igaz.
-        const moneyReturned =
-          recovery.action === 'refunded' ||
-          (recovery.action === 'skipped' &&
-            (recovery.detail === 'already-refunded' || recovery.detail === 'already-recorded'))
-        if (rejectReason === 'total-mismatch') {
+        const moneyReturned = recovery.action === 'refunded'
+        if (rejectReason === 'total-mismatch' || rejectReason === 'refund-pending-reconciliation') {
           throw new CheckoutError(
             409,
             moneyReturned ? CHECKOUT_REFUNDED_RETRY : CHECKOUT_PAID_UNDER_REVIEW,
