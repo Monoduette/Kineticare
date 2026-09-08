@@ -25,6 +25,7 @@ import {
   type OwnerReviewSlug,
   type OwnerReviewV1Input,
 } from '../lib/owner-review-v1'
+import { ROLUNK_BEMUTATKOZAS } from '../lib/rolunk-bemutatkozas'
 import type { Page } from '../payload-types'
 
 type Layout = NonNullable<Page['layout']>
@@ -586,7 +587,8 @@ describe('planOwnerReviewV1: approved canonical pages', () => {
     expect(input).toEqual(before)
     const about = find(result.layout, 'about')
     expect(about.photo).toBe(media.aboutPhoto)
-    expect(rows(about, 'paragraphs')).toHaveLength(2)
+    // WP37: a /rolunk saját bemutatkozása három bekezdés (src/lib/rolunk-bemutatkozas.ts).
+    expect(rows(about, 'paragraphs')).toHaveLength(ROLUNK_BEMUTATKOZAS.length)
     expect(rows(find(result.layout, 'services', 'Amiben mások vagyunk'))).toHaveLength(2)
     const nextItems = rows(find(result.layout, 'accordion'), 'items')
     for (const [index, role] of (['kocsisPortrait', 'kissPortrait'] as const).entries()) {

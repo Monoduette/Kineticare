@@ -2052,8 +2052,9 @@ const buildRolunkLayout = (media: OldalLayoutMedia = {}): NonNullable<Page['layo
     {
       blockType: 'about',
       eyebrow: 'Rólunk',
-      // WP18: cím, bekezdések, kiemelés a kezdőlappal KÖZÖS forrásból
-      // (src/lib/rolunk-bemutatkozas.ts).
+      // WP37: a /rolunk SAJÁT bemutatkozása (történet, hitvallás, szakmai út,
+      // egyesületi szerep) a kezdőlapétól külön forrásból
+      // (src/lib/rolunk-bemutatkozas.ts, ROLUNK_*).
       ...rolunkBemutatkozasSzoveg(),
       photo: media.rolunkFoto,
       stats: [

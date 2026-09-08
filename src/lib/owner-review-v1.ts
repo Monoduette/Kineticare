@@ -7,7 +7,11 @@ import {
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
 } from './home-help-states'
-import { rolunkBemutatkozasBekezdesek } from './rolunk-bemutatkozas'
+import {
+  ROLUNK_BEMUTATKOZAS_CIM,
+  rolunkBemutatkozasBekezdesek,
+  WP18_KOZOS_BEMUTATKOZAS,
+} from './rolunk-bemutatkozas'
 import { sanitizeCmsUrl } from './safe-url'
 import { SOS_COMPARISON_FAQ } from './sos-offer-copy'
 
@@ -267,9 +271,10 @@ const HOME_PARAGRAPHS = [
   },
 ]
 
-// A02: az ÉLES /rolunk About bekezdései — a kezdőlappal KÖZÖS forrásból
-// (WP18, src/lib/rolunk-bemutatkozas.ts), hogy a review, a seed és a
-// tartalom-csere ne csúszhasson szét.
+// A02: a /rolunk About bekezdései a /rolunk SAJÁT forrásából (WP37,
+// src/lib/rolunk-bemutatkozas.ts), hogy a review, a seed és a tartalom-csere
+// ne csúszhasson szét. A kanonikus cím az új Rólunk-cím; az élő lapon még a
+// WP18-as közös cím állhat, ezért a célblokk azt is felismeri (nextTitle).
 const ABOUT_PARAGRAPHS = rolunkBemutatkozasBekezdesek()
 
 const GENERAL_FAQ = [
@@ -1050,7 +1055,8 @@ export function planOwnerReviewV1(input: OwnerReviewV1Input): OwnerReviewV1Resul
   if (input.slug === 'rolunk') {
     const about = resolve('A02', {
       type: 'about',
-      title: 'Megérdemled a profi törődést',
+      title: ROLUNK_BEMUTATKOZAS_CIM,
+      nextTitle: WP18_KOZOS_BEMUTATKOZAS.title,
       anchor: 'rolunk',
     })
     paragraphs('A02', about, ABOUT_PARAGRAPHS)

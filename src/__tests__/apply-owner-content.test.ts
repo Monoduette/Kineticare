@@ -22,6 +22,7 @@ import {
   alkalmazJogiOldalak,
   alkalmazKapcsolatSzakemberek,
   alkalmazKezdolapJavitasok,
+  alkalmazBemutatkozasSzetvalasztas,
   alkalmazKezdolapRolunkSzoveg,
   alkalmazKurzuslistaFeliratok,
   alkalmazKurzusElonyok,
@@ -50,7 +51,14 @@ import {
   type JavitasLepes,
 } from '../scripts/apply-owner-content'
 import { buildHomeLayout } from '../lib/home-seed'
-import { ROLUNK_BEMUTATKOZAS, ROLUNK_BEMUTATKOZAS_CIM } from '../lib/rolunk-bemutatkozas'
+import {
+  KEZDOLAP_BEMUTATKOZAS,
+  KEZDOLAP_BEMUTATKOZAS_CIM,
+  ROLUNK_BEMUTATKOZAS,
+  ROLUNK_BEMUTATKOZAS_CIM,
+  ROLUNK_BEMUTATKOZAS_KIEMELES,
+  WP18_KOZOS_BEMUTATKOZAS,
+} from '../lib/rolunk-bemutatkozas'
 import {
   COURSE_SHORT_DESCRIPTION_FIXED,
   COURSE_SHORT_DESCRIPTION_LEFTOVER,
@@ -230,26 +238,30 @@ describe('alkalmazKezdolapJavitasok — kurzus-szekció címe', () => {
 // ---------------------------------------------------------------------------
 
 describe('kezdolapRolunkUjSzoveg — a seed-builderből', () => {
-  it('a kezdőlap seedje és a /rolunk builder UGYANAZT a címet, bekezdéseket és kiemelést adja', () => {
+  it('a kezdőlap seedje a KEZDŐLAPI, a /rolunk builder a RÓLUNK-bemutatkozást adja (WP37: két külön szöveg)', () => {
     const uj = kezdolapRolunkUjSzoveg()
     expect(uj).not.toBeNull()
-    expect(uj?.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
-    expect(uj?.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(uj?.title).toBe(KEZDOLAP_BEMUTATKOZAS_CIM)
+    expect(uj?.paragraphs?.map((p) => p.text)).toEqual([...KEZDOLAP_BEMUTATKOZAS])
     expect(uj?.paragraphs?.map((p) => p.emphasized)).toEqual(
-      ROLUNK_BEMUTATKOZAS.map((_, index) => index === 0),
+      KEZDOLAP_BEMUTATKOZAS.map((_, index) => index === 0),
     )
     const rolunk = buildRolunkLayout().find((blokk) => blokk.blockType === 'about')
     expect(rolunk?.blockType).toBe('about')
     if (rolunk?.blockType !== 'about') return
-    expect(rolunk.title).toBe(uj?.title)
-    expect(rolunk.paragraphs).toEqual(uj?.paragraphs)
-    expect(rolunk.feature).toEqual(uj?.feature)
+    expect(rolunk.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(rolunk.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(rolunk.feature).toEqual({ ...ROLUNK_BEMUTATKOZAS_KIEMELES })
+    // A két lap szövege nem ugyanaz, a kiemelés címkéje viszont közös.
+    expect(rolunk.title).not.toBe(uj?.title)
+    expect(rolunk.paragraphs).not.toEqual(uj?.paragraphs)
+    expect(rolunk.feature?.label).toBe(uj?.feature?.label)
     // A régi cím már sehol nem seedelt (különben a csere önmagát ismételné).
     expect(uj?.title).not.toBe(REGI_KEZDOLAP_ROLUNK_CIM)
   })
 
   it('a bekezdésekben nincs töltelék gondolatjel (natív magyar)', () => {
-    for (const text of ROLUNK_BEMUTATKOZAS) {
+    for (const text of [...KEZDOLAP_BEMUTATKOZAS, ...ROLUNK_BEMUTATKOZAS]) {
       expect(text).not.toMatch(/[\u2013\u2014]/)
     }
   })
@@ -265,9 +277,9 @@ describe('alkalmazKezdolapRolunkSzoveg', () => {
     const elso = eredmeny.layout?.[1]
     const masodik = eredmeny.layout?.[3]
     if (elso?.blockType !== 'about' || masodik?.blockType !== 'about') throw new Error('about')
-    expect(elso.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(elso.title).toBe(KEZDOLAP_BEMUTATKOZAS_CIM)
     expect(elso.sectionSettings?.visible).toBe(true)
-    expect(masodik.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(masodik.title).toBe(KEZDOLAP_BEMUTATKOZAS_CIM)
     expect(masodik.sectionSettings?.visible).toBe(false)
     expect(masodik.sectionSettings?.hatter).toBe('feher')
     // Idempotens: második futásban nincs több módosítás.
@@ -306,8 +318,8 @@ describe('alkalmazKezdolapRolunkSzoveg', () => {
     const about = eredmeny.layout?.[1]
     expect(about?.blockType).toBe('about')
     if (about?.blockType !== 'about') return
-    expect(about.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
-    expect(about.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(about.title).toBe(KEZDOLAP_BEMUTATKOZAS_CIM)
+    expect(about.paragraphs?.map((p) => p.text)).toEqual([...KEZDOLAP_BEMUTATKOZAS])
     expect(about.paragraphs?.[0]?.emphasized).toBe(true)
     expect(about.paragraphs?.every((p) => !('id' in p))).toBe(true)
     expect(about.feature?.label).toBe('Szakmai egyesületi tagság')
@@ -361,6 +373,120 @@ describe('alkalmazKezdolapRolunkSzoveg', () => {
     const ures = alkalmazKezdolapRolunkSzoveg({ layout: [], ujSzoveg: kezdolapRolunkUjSzoveg() })
     expect(ures.layout).toBeNull()
     expect(ures.modositasok).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WP37 — a kezdőlapi és a /rolunk bemutatkozás szétválasztása
+// ---------------------------------------------------------------------------
+
+describe('alkalmazBemutatkozasSzetvalasztas', () => {
+  const wp18Blokk = (extra: Partial<Extract<Szekcio, { blockType: 'about' }>> = {}) =>
+    ({
+      blockType: 'about',
+      id: 'ab-wp18',
+      eyebrow: 'Rólunk',
+      title: WP18_KOZOS_BEMUTATKOZAS.title,
+      sectionSettings: { visible: true, hatter: 'tint', anchorId: 'rolunk' },
+      stats: [{ value: '2', label: 'szakmai egyesületi tagság' }],
+      paragraphs: WP18_KOZOS_BEMUTATKOZAS.paragraphs.map((text, index) => ({
+        id: `p${index}`,
+        text,
+        emphasized: index === 0,
+      })),
+      feature: {
+        label: 'Szakmai egyesületi tagság',
+        note: 'A Magyar Sportrehabilitációs Egyesület és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk.',
+      },
+      photo: 42,
+      ...extra,
+    }) satisfies Szekcio
+
+  it('a mai élő (WP18) szöveggel PONTOSAN egyező blokkot a kezdőlapon a kezdőlapi szövegre cseréli, a cím marad', () => {
+    const layout: Szekcio[] = [heroSzekcio(), wp18Blokk(), kurzusSzekcio('Kurzusaink')]
+    const eredmeny = alkalmazBemutatkozasSzetvalasztas({ lap: 'kezdolap', layout })
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0]?.szabaly).toBe('bemutatkozas-szetvalasztas')
+    const about = eredmeny.layout?.[1]
+    if (about?.blockType !== 'about') throw new Error('about')
+    expect(about.title).toBe(KEZDOLAP_BEMUTATKOZAS_CIM)
+    expect(about.title).toBe(WP18_KOZOS_BEMUTATKOZAS.title)
+    expect(about.paragraphs?.map((p) => p.text)).toEqual([...KEZDOLAP_BEMUTATKOZAS])
+    expect(about.paragraphs?.[0]?.emphasized).toBe(true)
+    expect(about.paragraphs?.every((p) => !('id' in p))).toBe(true)
+    expect(about.feature?.label).toBe('Szakmai egyesületi tagság')
+    expect(about.stats).toEqual(wp18Blokk().stats)
+    expect(about.photo).toBe(42)
+    expect(about.id).toBe('ab-wp18')
+    expect(about.sectionSettings).toEqual(wp18Blokk().sectionSettings)
+    expect(eredmeny.layout?.[0]).toBe(layout[0])
+    expect(eredmeny.layout?.[2]).toBe(layout[2])
+    expect((layout[1] as { paragraphs?: unknown[] }).paragraphs).toHaveLength(2)
+  })
+
+  it('a /rolunk lapon a Rólunk-szövegre ÉS az új címre cseréli, a bővebb egyesületi jegyzettel', () => {
+    const eredmeny = alkalmazBemutatkozasSzetvalasztas({ lap: 'rolunk', layout: [wp18Blokk()] })
+    expect(eredmeny.modositasok).toHaveLength(1)
+    const about = eredmeny.layout?.[0]
+    if (about?.blockType !== 'about') throw new Error('about')
+    expect(about.title).toBe(ROLUNK_BEMUTATKOZAS_CIM)
+    expect(about.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(about.feature).toEqual({ ...ROLUNK_BEMUTATKOZAS_KIEMELES })
+    expect(about.sectionSettings?.anchorId).toBe('rolunk')
+  })
+
+  it('idempotens: a második futásban nincs módosítás, és nem ír', () => {
+    for (const lap of ['kezdolap', 'rolunk'] as const) {
+      const elso = alkalmazBemutatkozasSzetvalasztas({ lap, layout: [wp18Blokk()] })
+      const masodik = alkalmazBemutatkozasSzetvalasztas({ lap, layout: elso.layout ?? [] })
+      expect(masodik.modositasok).toHaveLength(0)
+      expect(masodik.layout).toBeNull()
+      expect(masodik.kihagyasok[0]?.indok).toContain('MÁR')
+    }
+  })
+
+  it('szerkesztett címnél vagy bekezdésnél nem ír, és indokkal naplóz', () => {
+    const cim = alkalmazBemutatkozasSzetvalasztas({
+      lap: 'rolunk',
+      layout: [wp18Blokk({ title: 'Saját cím' })],
+    })
+    expect(cim.layout).toBeNull()
+    expect(cim.kihagyasok[0]?.indok).toContain('nem PONTOSAN')
+    const bekezdes = alkalmazBemutatkozasSzetvalasztas({
+      lap: 'kezdolap',
+      layout: [
+        wp18Blokk({
+          paragraphs: [{ text: WP18_KOZOS_BEMUTATKOZAS.paragraphs[0] ?? '', emphasized: true }],
+        }),
+      ],
+    })
+    expect(bekezdes.layout).toBeNull()
+    expect(bekezdes.modositasok).toHaveLength(0)
+  })
+
+  it('a kezdőlapi címmel, de a kezdőlapi szöveggel álló blokkot a /rolunk lapon sem cseréli', () => {
+    const kezdolapi = alkalmazBemutatkozasSzetvalasztas({ lap: 'kezdolap', layout: [wp18Blokk()] })
+    const rolunkon = alkalmazBemutatkozasSzetvalasztas({
+      lap: 'rolunk',
+      layout: kezdolapi.layout ?? [],
+    })
+    expect(rolunkon.layout).toBeNull()
+  })
+
+  it('rejtett About-blokkhoz nem nyúl; About nélküli vagy üres szekciósor indokolt kihagyás', () => {
+    const rejtett = alkalmazBemutatkozasSzetvalasztas({
+      lap: 'kezdolap',
+      layout: [wp18Blokk({ sectionSettings: { visible: false, hatter: 'feher' } })],
+    })
+    expect(rejtett.layout).toBeNull()
+    expect(rejtett.kihagyasok[0]?.indok).toContain('nincs látható')
+    for (const layout of [undefined, null, [] as Szekciosor]) {
+      const ures = alkalmazBemutatkozasSzetvalasztas({ lap: 'rolunk', layout })
+      expect(ures.layout).toBeNull()
+      expect(ures.kihagyasok[0]?.indok).toContain('nincs szekciósora')
+    }
+    const nincs = alkalmazBemutatkozasSzetvalasztas({ lap: 'rolunk', layout: [heroSzekcio()] })
+    expect(nincs.kihagyasok[0]?.indok).toContain('nincs látható')
   })
 })
 
