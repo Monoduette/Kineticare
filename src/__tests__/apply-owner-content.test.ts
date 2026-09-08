@@ -58,6 +58,7 @@ import {
   ROLUNK_BEMUTATKOZAS_CIM,
   ROLUNK_BEMUTATKOZAS_KIEMELES,
   WP18_KOZOS_BEMUTATKOZAS,
+  ROLUNK_BEMUTATKOZAS_V1,
 } from '../lib/rolunk-bemutatkozas'
 import {
   COURSE_SHORT_DESCRIPTION_FIXED,
@@ -433,6 +434,26 @@ describe('alkalmazBemutatkozasSzetvalasztas', () => {
     expect(about.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
     expect(about.feature).toEqual({ ...ROLUNK_BEMUTATKOZAS_KIEMELES })
     expect(about.sectionSettings?.anchorId).toBe('rolunk')
+  })
+
+  it('a /rolunk első éles változatát (V1, Semmelweis-mondat nélkül) is a mai Rólunk-szövegre cseréli; a kezdőlapon nem', () => {
+    const v1Blokk = wp18Blokk({
+      title: ROLUNK_BEMUTATKOZAS_V1.title,
+      paragraphs: ROLUNK_BEMUTATKOZAS_V1.paragraphs.map((text, index) => ({
+        id: `v${index}`,
+        text,
+        emphasized: index === 0,
+      })),
+    })
+    const rolunk = alkalmazBemutatkozasSzetvalasztas({ lap: 'rolunk', layout: [v1Blokk] })
+    expect(rolunk.modositasok).toHaveLength(1)
+    const about = rolunk.layout?.[0]
+    if (about?.blockType !== 'about') throw new Error('about')
+    expect(about.paragraphs?.map((p) => p.text)).toEqual([...ROLUNK_BEMUTATKOZAS])
+    expect(about.paragraphs?.[1]?.text).toContain('a jövő gyógytornászai')
+    const kezdolap = alkalmazBemutatkozasSzetvalasztas({ lap: 'kezdolap', layout: [v1Blokk] })
+    expect(kezdolap.modositasok).toHaveLength(0)
+    expect(kezdolap.layout).toBeNull()
   })
 
   it('idempotens: a második futásban nincs módosítás, és nem ír', () => {

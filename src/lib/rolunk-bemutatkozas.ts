@@ -57,7 +57,7 @@ export const ROLUNK_BEMUTATKOZAS_CIM = 'Így lett a kéz a szakterületünk'
 /** A /rolunk bemutatkozás bekezdései, sorrendben; az első kiemelt. */
 export const ROLUNK_BEMUTATKOZAS: readonly string[] = [
   'A Kineticare két gyógytornász közös praxisa, amely az évek alatt a kézrehabilitációra épült. A pácienseink nagy része makacs kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, ezért pontosan tudjuk, mennyire megkeseríti a mindennapokat.',
-  'A legújabb kutatásokat, a külföldi irányelveket és a saját tapasztalatunkat együtt használjuk, hogy a felépülés biztonságos és a lehető leggyorsabb legyen. Folyamatosan képezzük magunkat nemzetközi kézterápiás kurzusokon. Amit tudunk, a ProBody Stúdióval közös, akkreditált képzésen adjuk tovább kollégáinknak (12 kreditpont, SZTK-A-33553/2024).',
+  'A legújabb kutatásokat, a külföldi irányelveket és a saját tapasztalatunkat együtt használjuk, hogy a felépülés biztonságos és a lehető leggyorsabb legyen. Folyamatosan képezzük magunkat nemzetközi kézterápiás kurzusokon. Amit tudunk, a ProBody Stúdióval közös, akkreditált képzésen adjuk tovább kollégáinknak (12 kreditpont, SZTK-A-33553/2024). A Semmelweis Egyetemen a jövő gyógytornászai az egyetemi képzésükön többek között a mi anyagunkból is tanulnak.',
   'Hisszük, hogy a kezed nem csak egy testrész: ezzel dolgozol, alkotsz és gondoskodsz. Lentebb megtalálod a részletes szakmai hátterünket, a pácienseink véleményét és a partnereinket; ha kérdésed van, a Kapcsolat oldalon elérsz minket.',
 ]
 
@@ -89,6 +89,21 @@ export const WP18_KOZOS_BEMUTATKOZAS = {
   paragraphs: [
     'A kéz rehabilitációja a szakterületünk. Gyógytornával, manuálterápiával és otthoni gyakorlással támogatunk a mindennapi mozgásban.',
     'Személyes kezelésen a panaszaidhoz és a terhelhetőségedhez igazítjuk a közös munkát. Az online kurzus tartalmát előre megismerheted, és a saját tempódban haladhatsz vele.',
+  ] as readonly string[],
+} as const
+
+/**
+ * A Rólunk-bemutatkozás ELSŐ éles változata (2026-09-08 reggel, WP37): a
+ * tulajdonos ugyanaznap kérte bele a Semmelweis-mondatot („nagyon tetszik”),
+ * ezért a tartalom-csere ezt a változatot is pontos egyezéssel cseréli a
+ * mai szövegre. Kizárólag a csere forrás-mintája, sehol máshol nem használjuk.
+ */
+export const ROLUNK_BEMUTATKOZAS_V1 = {
+  title: 'Így lett a kéz a szakterületünk',
+  paragraphs: [
+    'A Kineticare két gyógytornász közös praxisa, amely az évek alatt a kézrehabilitációra épült. A pácienseink nagy része makacs kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, ezért pontosan tudjuk, mennyire megkeseríti a mindennapokat.',
+    'A legújabb kutatásokat, a külföldi irányelveket és a saját tapasztalatunkat együtt használjuk, hogy a felépülés biztonságos és a lehető leggyorsabb legyen. Folyamatosan képezzük magunkat nemzetközi kézterápiás kurzusokon. Amit tudunk, a ProBody Stúdióval közös, akkreditált képzésen adjuk tovább kollégáinknak (12 kreditpont, SZTK-A-33553/2024).',
+    'Hisszük, hogy a kezed nem csak egy testrész: ezzel dolgozol, alkotsz és gondoskodsz. Lentebb megtalálod a részletes szakmai hátterünket, a pácienseink véleményét és a partnereinket; ha kérdésed van, a Kapcsolat oldalon elérsz minket.',
   ] as readonly string[],
 } as const
 

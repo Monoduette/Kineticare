@@ -37,6 +37,7 @@ import {
   kezdolapBemutatkozasSzoveg,
   rolunkBemutatkozasSzoveg,
   WP18_KOZOS_BEMUTATKOZAS,
+  ROLUNK_BEMUTATKOZAS_V1,
 } from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
 import type { Page, Product } from '../payload-types'
@@ -2330,14 +2331,20 @@ export const alkalmazBemutatkozasSzetvalasztas = (input: {
       return blokk
     }
 
-    if (
-      jelenlegiCim !== WP18_KOZOS_BEMUTATKOZAS.title ||
-      !ugyanazokABekezdesek(jelenlegiBekezdesek, WP18_KOZOS_BEMUTATKOZAS.paragraphs)
-    ) {
+    const wp18Egyezik =
+      jelenlegiCim === WP18_KOZOS_BEMUTATKOZAS.title &&
+      ugyanazokABekezdesek(jelenlegiBekezdesek, WP18_KOZOS_BEMUTATKOZAS.paragraphs)
+    // A Rólunk első éles változata (V1, Semmelweis-mondat nélkül) is ismert
+    // forrás: a tulajdonos ugyanaznap kérte bele a mondatot.
+    const rolunkV1Egyezik =
+      lap === 'rolunk' &&
+      jelenlegiCim === ROLUNK_BEMUTATKOZAS_V1.title &&
+      ugyanazokABekezdesek(jelenlegiBekezdesek, ROLUNK_BEMUTATKOZAS_V1.paragraphs)
+    if (!wp18Egyezik && !rolunkV1Egyezik) {
       kihagyasok.push({
         szabaly,
         uzenet: `${uzenet} (${helye})`,
-        indok: `a blokk címe (${ertekCimke(jelenlegiCim)}) vagy bekezdései nem PONTOSAN a WP18-as közös bemutatkozás — a szerkesztő szövegéhez a script nem nyúl`,
+        indok: `a blokk címe (${ertekCimke(jelenlegiCim)}) vagy bekezdései nem PONTOSAN a WP18-as közös bemutatkozás (Rólunk esetén az első saját változat sem) — a szerkesztő szövegéhez a script nem nyúl`,
       })
       return blokk
     }
