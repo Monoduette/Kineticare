@@ -10,6 +10,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
+/** Az első ALMENÜS főmenüpont és a linkje (WP36 óta az első menüpont a „Kurzusok", almenü nélkül). */
+const SUBMENU_ITEM = '.kc-nav-desktop__item:has(.kc-nav-desktop__toggle)'
+const SUBMENU_ITEM_LINK = `${SUBMENU_ITEM} > .kc-nav-desktop__link`
 assert.ok(process.argv[2], 'Pass the existing Playwright module path.')
 const { chromium } = await import(pathToFileURL(path.resolve(process.argv[2])).href)
 const output = process.argv[3]
@@ -157,7 +160,9 @@ try {
             return Math.max(0, -parseFloat(getComputedStyle(toggle).marginInlineEnd)) || 0
           })(),
           hamburgerIconRight: (() => {
-            const icon = document.querySelector('.kc-site-header__actions .kc-nav-mobile__toggle svg')
+            const icon = document.querySelector(
+              '.kc-site-header__actions .kc-nav-mobile__toggle svg',
+            )
             if (!icon || icon.getClientRects().length === 0) return 0
             return icon.getBoundingClientRect().right
           })(),
@@ -230,7 +235,9 @@ try {
         )
       } else {
         await page.locator('.kc-site-header__brand').focus()
-        await page.locator('.kc-nav-desktop__link').first().focus()
+        // WP36: az első főmenüpont a „Kurzusok" (almenü nélkül); az almenüt az
+        // első ALMENÜS menüpont fókusza nyitja.
+        await page.locator(SUBMENU_ITEM_LINK).first().focus()
       }
       const campaign = nav.getByRole('link', { name: 'olcsó dolgok itt', exact: true })
       await campaign.waitFor({ state: 'visible' })
@@ -266,11 +273,16 @@ try {
         // FÓKUSZCSAPDA (WP9): az utolsó fiókelemről a Tab az elsőre (bezáró
         // gomb), az elsőről a Shift+Tab az utolsóra lép; a fókusz nem kerül
         // az overlay alá (WCAG 2.2 SC 2.4.11; APG modális párbeszéd).
-        // WP10 óta az utolsó fiókelem a CMS-lista utolsó látható linkje.
-        const drawerLast = page.locator('.kc-nav-mobile__drawer a[href]:visible').last()
+        // Kijelentkezve az utolsó fiókelem a CMS-lista utolsó látható linkje;
+        // bejelentkezve (WP31) a fiók alján álló Kijelentkezés gomb.
+        const drawerLast = signedIn
+          ? page.locator('.kc-nav-mobile__drawer .kc-account-nav__signout:visible').last()
+          : page.locator('.kc-nav-mobile__drawer a[href]:visible').last()
         assert.ok(
-          await drawerLast.evaluate((el) => !!el.closest('.kc-nav-mobile__list')),
-          `last drawer tabbable is a menu link at ${width}`,
+          await drawerLast.evaluate(
+            (el) => !!el.closest('.kc-nav-mobile__list') || !!el.closest('.kc-account-nav--exit'),
+          ),
+          `last drawer tabbable is a menu link or the sign-out at ${width}`,
         )
         await drawerLast.focus()
         await page.keyboard.press('Tab')
@@ -299,7 +311,7 @@ try {
         // gombra; End / Home az utolsó / első almenüpontra; Escape után a
         // Le nyíl újranyit és az első pontra lép.
         const toggle = page.locator('.kc-nav-desktop__toggle').first()
-        const sublinks = page.locator('.kc-nav-desktop__item').first().locator('.kc-nav-desktop__sublink')
+        const sublinks = page.locator(SUBMENU_ITEM).first().locator('.kc-nav-desktop__sublink')
         const count = await sublinks.count()
         const focusedIndex = () =>
           sublinks.evaluateAll((els) => els.findIndex((el) => el === document.activeElement))
@@ -315,13 +327,24 @@ try {
         await page.keyboard.press('Home')
         assert.equal(await focusedIndex(), 0, `Home at ${width}`)
         await page.keyboard.press('ArrowUp')
-        assert.ok(await toggle.evaluate((el) => el === document.activeElement), `ArrowUp to toggle at ${width}`)
+        assert.ok(
+          await toggle.evaluate((el) => el === document.activeElement),
+          `ArrowUp to toggle at ${width}`,
+        )
         await page.keyboard.press('Escape')
         await settle()
-        assert.equal(await toggle.getAttribute('aria-expanded'), 'false', `Escape closes at ${width}`)
+        assert.equal(
+          await toggle.getAttribute('aria-expanded'),
+          'false',
+          `Escape closes at ${width}`,
+        )
         await page.keyboard.press('ArrowDown')
         await settle()
-        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `ArrowDown reopens at ${width}`)
+        assert.equal(
+          await toggle.getAttribute('aria-expanded'),
+          'true',
+          `ArrowDown reopens at ${width}`,
+        )
         assert.equal(await focusedIndex(), 0, `ArrowDown after Escape focuses first at ${width}`)
       }
       await campaign.focus()
@@ -443,14 +466,16 @@ try {
     for (const target of [
       '.kc-nav-desktop__sublink',
       '.kc-nav-desktop__toggle',
-      '.kc-nav-desktop__link',
+      SUBMENU_ITEM_LINK,
       '#outside-focus',
-      '.kc-site-header__actions > .kc-account-nav a',
+      // WP36: a fiók-belépő kijelentkezve link, bejelentkezve menügomb —
+      // mindkettő a fiók KÖZVETLEN gyereke (a lenyíló tételei rejtve).
+      '.kc-site-header__actions > .kc-account-nav > :is(a, button)',
     ]) {
       await page.setViewportSize({ width: 900, height: 900 })
       await page.mouse.move(0, 899)
       await settle()
-      const firstLink = page.locator('.kc-nav-desktop__link').first()
+      const firstLink = page.locator(SUBMENU_ITEM_LINK).first()
       await firstLink.focus()
       await page.locator(target).first().waitFor({ state: 'visible' })
       const accountTarget = target.includes('.kc-account-nav')
@@ -519,7 +544,11 @@ try {
   for (const signedIn of [true, false]) {
     await page.evaluate((value) => window.renderHeader(value, true), signedIn)
     await settle()
-    assert.equal(await page.locator('.kc-nav-desktop').count(), 0)
+    // WP36: üres CMS-menü mellett is áll a kódban rögzített „Kurzusok" tétel
+    // (withCoursesNavItem), tehát a nav létezik, egyetlen linkkel.
+    assert.equal(await page.locator('.kc-nav-desktop').count(), 1)
+    assert.equal(await page.locator('.kc-nav-desktop__link').count(), 1)
+    assert.equal(await page.locator('.kc-nav-desktop__link').getAttribute('href'), '/kurzusok')
     for (const control of ['a', 'outside']) {
       await page.setViewportSize({ width: 900, height: 900 })
       await page.mouse.move(0, 899)
@@ -527,7 +556,7 @@ try {
       const target =
         control === 'outside'
           ? '#outside-focus'
-          : `.kc-site-header__actions > .kc-account-nav ${control}`
+          : `.kc-site-header__actions > .kc-account-nav > :is(a, button)`
       await page.locator('.kc-site-header__brand').focus()
       for (let step = 0; step < 20; step++) {
         if (await page.locator(target).evaluate((el) => el === document.activeElement)) break
@@ -557,7 +586,7 @@ try {
         'false',
       )
       assert.notEqual(await page.evaluate(() => document.body.style.overflow), 'hidden')
-      assert.equal(await page.locator('.kc-nav-desktop').count(), 0)
+      assert.equal(await page.locator('.kc-nav-desktop__link').count(), 1)
       console.log(`PASS empty-menu both directions ${signedIn}: ${control}`)
     }
   }

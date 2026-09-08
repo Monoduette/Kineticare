@@ -185,10 +185,6 @@
   .kc-site-header__actions {
     gap: var(--kc-space-1);
   }
-
-  .kc-site-header__actions .kc-account-nav__link {
-    padding-inline: var(--kc-space-1);
-  }
 }
 
 /* Wordmark a landing `.kc-wordmark` mintájára: Tenor Sans, ritkított verzál, a
@@ -245,7 +241,8 @@
      (a hamburger jobb margója 3 px volt a 24 helyett; a WP8 mérése ugyanezt
      adta). A dokumentum nem görgethető (320 px), de a rács sérült. A két
      köz a 8 px-es lépcsőre lép (16 px nyereség), a pirula oldaltérköze
-     16 → 12 px (8 px nyereség, lásd a `.kc-site-header__cta` szabályát), a
+     16 → 12 px (8 px nyereség; a pirula WP36-ban, 2026-09-08-án megszűnt,
+     a „Kurzusok" a főmenü sima tétele lett), a
      hamburger pedig optikai igazítást kap (lásd
      `.kc-site-header__actions .kc-nav-mobile__toggle`). Mért eredmény a
      header-responsive.browser.mjs-ben (320 px). */
@@ -255,71 +252,14 @@
   }
 }
 
-/* Asztali sáv: a ≤400 px-es 0,1em-es ritkítás (sáv-tartalék; bejelentkezve a
-   „Kurzusaim” 9 px-szel szélesebb a „Belépés”-nél, 75em-től a
-   kijelentkezés-pirula is a sávban áll). A korábbi 0,22em-es tágas ritkítás
-   a bejelentkezett asztali sávval együtt már nem fért ki (1206 px vs 1072). */
+/* Asztali sáv: a ≤400 px-es 0,1em-es ritkítás (sáv-tartalék). A korábbi
+   0,22em-es tágas ritkítás a bejelentkezett asztali sávval együtt már nem
+   fért ki (1206 px vs 1072, a WP31-es sávval mérve); WP36 óta a sáv
+   tartalma kisebb (a fiók egyetlen 44 px-es ikon), a szűkebb ritkítás marad,
+   mert a főmenü a „Kurzusok" tétellel bővült. */
 @media (min-width: 900px) {
   .kc-site-header__brand {
     letter-spacing: 0.1em;
-  }
-}
-
-/* CTA-pirula a landing `.kc-nav-cta` nyelvén, lekerekítve. A KITÖLTÉS a
-   `.kc-button--primary`-től jön (akcent-mély + fehér = 5,45:1, hover
-   akcent-mélyebb = 7,08:1 — lásd ui.css), itt csak a FORMA változik: pirula,
-   44px magasság, a landing 600-as súlya és finom ritkítása. A magasabb
-   specifikusság (`.kc-site-header .kc-site-header__cta`) az importsorrendtől
-   függetlenül nyer a `.kc-button--sm` méret-szabálya felett. */
-.kc-site-header .kc-site-header__cta {
-  flex: none;
-  white-space: nowrap;
-  min-height: 2.75rem;
-  padding-inline: var(--kc-space-5);
-  border-radius: var(--kc-radius-full);
-  font-size: var(--kc-font-m);
-  font-weight: var(--kc-font-weight-medium);
-  letter-spacing: 0.02em;
-
-  /* A pirula KITÖLTÉSE a fátyollal arányos: átlátszó fejlécnél `ink` (ez a
-     landing-tükör nav-CTA-ja is), legörgetve `primary`. A középtónusú primary
-     a részleges fátylon 1,79:1-es HATÁRT adna a sávhoz képest — AA-bukás egy
-     UI-komponens határán. A fehér felirat mindkét végponton AA a saját
-     kitöltéséhez mérve (15,63:1 ill. 5,45:1). Lásd a kontraszt-levezetést. */
-  background-color: color-mix(
-    in srgb,
-    var(--kc-color-primary) calc(var(--kc-header-veil, 0) * 100%),
-    var(--kc-color-ink)
-  );
-}
-
-/* Hover: a fátyol állásától függetlenül a mélyebb akcent-lépcső (fehér
-   felirattal 7,08:1) — a hover szándékot jelez, nem állapotot. */
-.kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled) {
-  background-color: var(--kc-color-primary-hover);
-}
-
-.kc-site-header .kc-site-header__cta[aria-current='page'],
-.kc-site-header .kc-site-header__cta[data-ancestor-active='true'] {
-  text-decoration-line: underline;
-  text-decoration-color: currentColor;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.25em;
-}
-
-/* ≤ 400 px: a pirula oldaltérköze a 12 px-es lépcső — ugyanaz, mint az
-   asztali sávon 900 px-től (sáv-tartalék, WP9; a levezetés a 400 px-es
-   sáv-szabálynál). A 44 px-es magasság és a felirat mérete változatlan. */
-@media (max-width: 400px) {
-  .kc-site-header .kc-site-header__cta {
-    padding-inline: var(--kc-space-3);
-  }
-}
-
-/* Asztali sáv: a pirula oldaltérköze a 12 px-es lépcső (sáv-tartalék). */
-@media (min-width: 900px) {
-  .kc-site-header .kc-site-header__cta {
-    padding-inline: var(--kc-space-3);
   }
 }
 
@@ -360,9 +300,9 @@
  * a filmen 1,80:1. Ne cseréld vissza fix értékre.
  */
 .kc-account-nav {
-  /* Mobilon a sávban nincs hely (wordmark + „Kurzusok" pirula + hamburger már
-     kitölti a 320px-es sávot) — ott a blokk a drawer ELSŐ eleme. Így 320px-en
-     sincs vízszintes görgetés (WCAG 2.2 1.4.10 Reflow). */
+  /* Mobilon a sávban csak a wordmark és a hamburger áll — a fiók-belépő a
+     drawer ELSŐ eleme (szöveges, ikon + szó). Így 320px-en sincs vízszintes
+     görgetés (WCAG 2.2 1.4.10 Reflow). */
   display: none;
 }
 
@@ -461,7 +401,8 @@
    https://www.w3.org/WAI/ARIA/apg/patterns/button/
    Ezért a MEGJELENÉSE is gombé (kontúros pirula), nem szöveglinké: az APG
    kifejezetten azt ajánlja, hogy a vizuális terv illeszkedjen a szerephez.
-   A kitöltött „Kurzusok" pirulához képest kontúros = másodlagos súly. */
+   A kontúros pirula a MOBIL FIÓK alakja (WP31, a fiók alján); a fejléc
+   fiókmenüjében a gomb menütétel-alakot vesz fel (lásd lentebb, WP36). */
 .kc-account-nav__signout {
   display: inline-flex;
   align-items: center;
@@ -494,56 +435,141 @@
   color: var(--kc-header-accent);
 }
 
-/* ---- 56,25em–75em: a kijelentkezés IKON-GOMB (WP31 pótlás, 2026-09-07) ----
-   A szöveges pirula 75em alatt nem fér a négy menüpont + Kurzusok + Kurzusaim
-   mellé, ezért KORÁBBAN rejtve volt; a hamburger-fiók viszont 900 px-től
-   nincs, tehát bejelentkezve ezen a sávon SEHOL nem volt kijelentkezés, és a
-   tulajdonos kérése („a kijelentkezés az utolsó gomb") nem teljesült. Most
-   ugyanaz a gomb ikon-alakot vesz fel: 44×44 CSS px kör (SC 2.5.8), 24 px-es
-   glif, a felirat vizuálisan rejtett (a `.kc-visually-hidden` klip-mintája),
-   de a hozzáférhető név és a folyamatban-felirat marad (SC 4.1.2). A kör a
-   profil-ikon párja: ugyanaz a doboz, ugyanaz a hover-állapotréteg
-   (`--kc-header-accent-soft` + `--kc-header-accent`), keret nélkül — a
-   színpárok azonosak (gomb-kontraszt.test.ts `kc-account-nav__signout-icon`:
-   ink a filmen 5,13:1, fagyott filmen 11,42:1, paperen 14,79:1, hoverre
-   accent-deeper a tinten 6,13:1; küszöb 3:1, SC 1.4.11). A fókuszgyűrű a sáv
-   fátyol-arányos szabálya, az `active` a közös 1 px-es süllyedés, a
-   letiltott (folyamatban) állapot a közös muted szín + `cursor: progress`.
-   NN/g Icon Usability: https://www.nngroup.com/articles/icon-usability/
-   Material 3 Icon buttons: https://m3.material.io/components/icon-buttons/specs
-   WCAG 2.2 SC 2.5.8: https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html
-   75em-től a szöveges pirula, ikon nélkül. A DOM-sorrend (a gomb a sáv
-   utolsó fókuszálható eleme) mindkét sávon ugyanaz. */
-@media (min-width: 56.25em) and (max-width: 74.99em) {
-  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout {
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    padding: 0;
-    border-color: transparent;
-  }
-
-  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout:hover:not(:disabled) {
-    border-color: transparent;
-  }
-
-  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
+/* ---- Fiókmenü a fejléc-sávban (WP36, 2026-09-08) --------------------------
+   Bejelentkezve a profil-ikon MENÜGOMB (AccountNav.tsx fejkomment: APG Menu
+   Button, SC 1.4.13, NN/g időzítés). A lenyíló a gomb ALÁ, a sáv jobb
+   széléhez zárva nyílik, a lap FÖLÉ emelt fehér felületen — ugyanaz a
+   réteg-nyelv, mint a főmenü almenüjéé (`.kc-nav-desktop__submenu`): 8 px-es
+   lekerekítés (`--kc-radius-md`), tokenes árnyék (`--kc-shadow-md`),
+   hajszálkeret. A tételek 44 px magasak (SC 2.5.8, projekt-cél 44×44), a
+   tétel-térköz és a panel belső térköze az S/M lépcső (8 / 12 px).
+   - Material 3 Menus: a menü a horgony alatt, emelt felületen, teljes
+     szélességű tételekkel: https://m3.material.io/components/menus/guidelines
+   - Apple HIG Menus: a kilépő cselekvés a menü alján, elválasztó után:
+     https://developer.apple.com/design/human-interface-guidelines/menus
+   KONTRASZT (gomb-kontraszt.test.ts): tétel-felirat ink a fehéren 15,63:1,
+   hoverre accent-deeper a tinten 6,13:1 (SC 1.4.3); a kitöltött ikon-állapot
+   a vonal színét viszi (ink a filmen 5,13:1, paperen 14,79:1; SC 1.4.11).
+   A ZÁRT panel `visibility: hidden` (nem fókuszálható, nem olvassa a
+   képernyőolvasó); a nyitás iránya nem animálja a visibility-t, hogy a
+   billentyűvel nyitott menü első tétele azonnal fókuszt kaphasson (a
+   DesktopNav mérése, WP9). */
+.kc-account-nav--menu {
+  position: relative;
 }
 
-@media (min-width: 75em) {
-  .kc-site-header__actions > .kc-account-nav .kc-account-nav__signout-icon {
-    display: none;
-  }
+/* A bejelentkezett állapot jele: a glif feje és válla kitöltött (kontúros =
+   kijelentkezve). Ugyanaz a szín, mint a vonalé — új színpár nincs. */
+.kc-account-nav__icon-fill {
+  fill: currentColor;
+}
+
+.kc-account-nav__menu-button {
+  min-height: 2.75rem;
+  border: 0;
+  background-color: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Nyitva a gomb a hover-állapotréteget viseli: az `aria-expanded` látható párja. */
+.kc-site-header__actions .kc-account-nav__menu-button[aria-expanded='true'] {
+  background-color: var(--kc-header-accent-soft);
+  color: var(--kc-header-accent);
+}
+
+.kc-account-nav__menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + var(--kc-space-1));
+  z-index: 60;
+  min-width: 13rem;
+  margin: 0;
+  padding: var(--kc-space-2);
+  background-color: var(--kc-color-surface-raised);
+  border: 1px solid var(--kc-header-hairline);
+  border-radius: var(--kc-radius-md);
+  box-shadow: var(--kc-shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(calc(-1 * var(--kc-space-2)));
+  transition:
+    opacity var(--kc-motion-fast) var(--kc-ease-out),
+    transform var(--kc-motion-fast) var(--kc-ease-out),
+    visibility var(--kc-motion-fast);
+}
+
+.kc-account-nav--menu[data-open='true'] > .kc-account-nav__menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-property: opacity, transform;
+}
+
+/* Tétel: link (Kurzusaim) és gomb (Kijelentkezés) AZONOS alakban — a menüben
+   a szerepet az ARIA adja, a látvány a tételé. A gomb a `.kc-account-nav__signout`
+   pirula-szabályait ITT felülírja (magasabb specifikusság). */
+.kc-account-nav__menu-item,
+.kc-account-nav__menu .kc-account-nav__signout {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--kc-space-2) var(--kc-space-3);
+  border: 0;
+  border-radius: var(--kc-radius-sm);
+  background-color: transparent;
+  font-family: inherit;
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-medium);
+  letter-spacing: 0.02em;
+  text-align: start;
+  color: var(--kc-color-text);
+  text-decoration: none;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  cursor: pointer;
+  transition:
+    background-color var(--kc-motion-fast) var(--kc-ease-out),
+    color var(--kc-motion-fast) var(--kc-ease-out);
+}
+
+/* Hover / fókusz: hűvös tint állapotréteg + mélyebb akcent felirat (6,13:1). */
+.kc-account-nav__menu-item:hover,
+.kc-account-nav__menu-item:focus-visible,
+.kc-account-nav__menu .kc-account-nav__signout:hover:not(:disabled),
+.kc-account-nav__menu .kc-account-nav__signout:focus-visible {
+  background-color: var(--kc-header-accent-soft);
+  color: var(--kc-header-accent);
+}
+
+/* „Hol vagyok": a /kurzusaim oldalon a tétel aláhúzott (nem csak szín, SC 1.4.1). */
+.kc-account-nav__menu-item[aria-current='page'] {
+  color: var(--kc-header-accent);
+  text-decoration-line: underline;
+  text-decoration-color: var(--kc-header-accent);
+  text-underline-offset: 0.35em;
+}
+
+.kc-account-nav__menu-separator {
+  margin: var(--kc-space-1) 0;
+  border-top: 1px solid var(--kc-header-hairline);
+}
+
+/* Folyamatban („Kijelentkezés…"): a közös letiltott szín, keret nélkül. */
+.kc-account-nav__menu .kc-account-nav__signout:disabled {
+  border: 0;
+  background-color: transparent;
+}
+
+/* A hibaüzenet a panelen BELÜL, a gomb alatt (a fejléc-sáv abszolút
+   pozíciója itt nem kell: a panel maga a lebegő réteg). */
+.kc-account-nav__menu .kc-account-nav__error {
+  position: static;
+  max-width: none;
+  margin-top: var(--kc-space-2);
+  box-shadow: none;
 }
 
 /* Folyamatban / letiltott: a gomb NEM tűnik el és nem vált feliratot némán —

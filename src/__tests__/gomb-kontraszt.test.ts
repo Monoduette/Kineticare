@@ -408,19 +408,14 @@ const PAROK: readonly Par[] = [
     4.5,
     '1.4.3',
   ),
-  p(
-    'kc-site-header__cta',
-    'primary határ a fagyott filmen (veil 1)',
-    SZIN('primary'),
-    filmFejlec(1),
-    3,
-    '1.4.11',
-  ),
+  // WP36 (2026-09-08): a „Kurzusok" pirula a sávból KIKERÜLT (a főmenü sima
+  // tétele lett), a kijelentkezés-pirula pedig csak a fehér mobil fiókban él —
+  // a keretét a fehér felülethez mérjük (SC 1.4.11).
   p(
     'kc-account-nav__signout',
-    'keret a fagyott filmen (veil 1)',
+    'keret a fehér fiókban (drawer)',
     SZIN('border-strong'),
-    filmFejlec(1),
+    SZIN('surface-raised'),
     3,
     '1.4.11',
   ),
@@ -455,37 +450,54 @@ const PAROK: readonly Par[] = [
     '1.4.11',
   ),
 
-  // --- WP31 (pótlás): a kijelentkezés IKON-GOMBJA 56,25em–75em között — a
-  //     profil-ikon párja, ugyanazok a színpárok (SC 1.4.11) ---
+  // --- WP36: a fejléc FIÓKMENÜJE (bejelentkezve a profil-ikon menügomb) —
+  //     a tételek fehér panelen (SC 1.4.3), hover/fókusz a tint rétegen; a
+  //     kitöltött ikon-állapot a vonal színét viszi (SC 1.4.11) ---
   p(
-    'kc-account-nav__signout-icon',
-    'ink a filmen (veil 0)',
+    'kc-account-nav__menu-item',
+    'ink a fehér panelen',
+    SZIN('ink'),
+    SZIN('surface-raised'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-account-nav__menu-item:hover',
+    'accent-deeper felirat a tint állapotrétegen',
+    SZIN('accent-deeper'),
+    SZIN('surface-tint'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    "kc-account-nav__menu-item[aria-current='page']",
+    'accent-deeper felirat + aláhúzás a fehér panelen',
+    SZIN('accent-deeper'),
+    SZIN('surface-raised'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-account-nav__menu-button[aria-expanded=true]',
+    'accent-deeper ikon a tint állapotrétegen',
+    SZIN('accent-deeper'),
+    SZIN('surface-tint'),
+    3,
+    '1.4.11',
+  ),
+  p(
+    'kc-account-nav__icon-fill',
+    'kitöltött glif ink a filmen (veil 0)',
     SZIN('ink'),
     filmFejlec(0),
     3,
     '1.4.11',
   ),
   p(
-    'kc-account-nav__signout-icon',
-    'ink a fagyott filmen (veil 1)',
-    SZIN('ink'),
-    filmFejlec(1),
-    3,
-    '1.4.11',
-  ),
-  p(
-    'kc-account-nav__signout-icon',
-    'ink a paperen (belső oldal)',
-    SZIN('ink'),
-    SZIN('paper'),
-    3,
-    '1.4.11',
-  ),
-  p(
-    'kc-account-nav__signout:hover',
-    'accent-deeper ikon a tint állapotrétegen',
-    SZIN('accent-deeper'),
-    SZIN('surface-tint'),
+    'kc-account-nav__menu',
+    'panel hajszálkerete a fehér paneltől (border) — dekoratív, a szöveg adja a határt',
+    SZIN('border-strong'),
+    SZIN('surface-raised'),
     3,
     '1.4.11',
   ),
@@ -892,14 +904,6 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       szelektor: '.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled)',
       felulir: null,
       indok: 'Ua.: hover-kitöltés, a fókuszgyűrű az offset miatt a lapra esik.',
-    },
-    {
-      szelektor:
-        '.kc-site-header .kc-site-header__cta:hover:not(:disabled):not(.kc-button--disabled)',
-      felulir: null,
-      indok:
-        'Ua.: hover-kitöltés a fejléc CTA-piruláján; a fejléc fókuszgyűrűje ' +
-        'ráadásul a fátyollal arányos, külön szabályban (layout.css, B1).',
     },
     {
       szelektor: '.kc-category-filter__chip--active, .kc-category-filter__chip--active:hover',

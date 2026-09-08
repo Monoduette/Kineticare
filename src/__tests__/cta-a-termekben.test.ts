@@ -105,9 +105,10 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
   // viszont ITT SEM engedettek — arra külön, szűkebb kivétel-lista van.
   {
     felirat: 'Kurzusok',
-    fajl: 'components/layout/HeaderCoursesNav.tsx',
+    fajl: 'lib/menu-tree.ts',
     kategoria: 'nem-cta',
-    indok: 'A főmenü menüpontja — a §3.2 #10 kifejezett kivétele („menücímke, nem CTA — N-3").',
+    indok:
+      'A főmenü menüpontja (COURSES_NAV_ITEM, WP36 óta sima tétel, nem pirula) — a §3.2 #10 kifejezett kivétele („menücímke, nem CTA — N-3").',
   },
   {
     felirat: 'Kurzusok',
@@ -127,6 +128,13 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     fajl: 'components/layout/AccountNav.tsx',
     kategoria: 'nem-cta',
     indok: 'A fiókmenü menüpontja — N-3 szerint menücímke, nem CTA.',
+  },
+  {
+    felirat: 'Fiók (bejelentkezve)',
+    fajl: 'components/layout/AccountNav.tsx',
+    kategoria: 'nem-cta',
+    indok:
+      'A fejléc fiókmenü-GOMBJÁNAK rejtett neve (WP36): a profil-ikon menügomb neve + állapota (WCAG 2.2 SC 4.1.2, SC 1.3.3) — menücímke, nem cselekvés-felirat (N-3). A vezető kiírása szerint az ikon marad, a név a képernyőolvasónak szól.',
   },
   {
     felirat: 'Kurzusaim',
@@ -426,7 +434,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * Checklist, WCAG 2.2 SC 3.2.3), a `lib/header-appointment.ts` törölve,
  * a sora a listából is kikerült. A korlát a szabály szerint LEFELÉ mozdult.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 45
+const KIVETEL_LISTA_FELSO_KORLAT = 46
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy

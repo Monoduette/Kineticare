@@ -2,22 +2,31 @@ import Link from 'next/link'
 
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
 import { Container } from '../ui/Container'
+import { withCoursesNavItem } from '../../lib/menu-tree'
 import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
 import { DesktopNav } from './DesktopNav'
 import { getHeaderAuthState } from './header-user'
-import { HeaderCoursesNav } from './HeaderCoursesNav'
 import { HeaderScrollFx } from './HeaderScrollFx'
 import { MobileNav } from './MobileNav'
 
 /**
  * Fejléc — a menus menüfából renderel (visible + published-cél, max 2 szint).
  *
- * A sávban a CMS-menü mellett CSAK a fiók-szöveglink és a Kurzusok-pirula áll.
+ * WP36 (2026-09-08, tulajdonosi kérés): a sávban a főmenü ÉS egyetlen
+ * fiók-belépő áll, kitöltött pirula nélkül.
+ * - A „Kurzusok" a főmenü első, sima menüpontja (`withCoursesNavItem`), nem
+ *   külön akciógomb; az M1-es értékesítési célt a hero és a szekció-CTA-k
+ *   viszik (docs/ertekesitesi-ux-skill.md §3, docs/gomb-inventar.md §4.1).
+ * - A fiók-belépő MINDKÉT állapotban ugyanaz a 44×44-es profil-ikon a sáv
+ *   végén (Jakob törvénye: azonos hely, azonos jel); kijelentkezve link a
+ *   /belepes-re, bejelentkezve menügomb (Kurzusaim, Kijelentkezés) — lásd
+ *   AccountNav.tsx. Így a sáv Tab-sora minden állapotban ugyanaz: márka →
+ *   menüpontok → fiók (WCAG 2.2 SC 2.4.3 Focus Order, SC 3.2.3 Consistent
+ *   Navigation).
  * Az „Időpontfoglalás” külön sáv-gomb 2026-09-07-én kikerült (tulajdonosi
  * döntés): a „Kapcsolat” menüpont célja, a /kapcsolat oldal időpontkérő
- * űrlapja ugyanazt a cselekvést fedi, a második belépő csak duplikált utat
- * és zsúfoltabb sávot adott.
+ * űrlapja ugyanazt a cselekvést fedi.
  * - NN/g, Menu-Design Checklist: kevesebb, egyértelműen elkülönülő menüpont;
  *   ugyanarra a célra ne álljon két menüelem.
  *   https://www.nngroup.com/articles/menu-design/
@@ -26,7 +35,8 @@ import { MobileNav } from './MobileNav'
  *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html
  */
 export async function Header() {
-  const [items, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
+  const [cmsItems, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
+  const items = withCoursesNavItem(cmsItems)
 
   return (
     <header className="kc-site-header">
@@ -44,16 +54,7 @@ export async function Header() {
           </Link>
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">
-            {/* WP31 (2026-09-07, tulajdonosi kérés: „ha be vagyok jelentkezve
-                akkor a kijelentkezés az utolsó gomb"): bejelentkezve a
-                fiók-blokk (Kurzusaim + Kijelentkezés) a „Kurzusok" pirula UTÁN
-                áll, így a Kijelentkezés a sáv utolsó fókuszálható eleme; a
-                DOM-sorrend adja a Tab-sorrendet (WCAG 2.2 SC 2.4.3, SC 1.3.2),
-                nem CSS `order`. Kijelentkezve a profil-ikon a pirula előtt
-                marad (WP27 elrendezés, változatlan). */}
-            {auth.signedIn ? null : <AccountNav signedIn={false} variant="header" />}
-            <HeaderCoursesNav />
-            {auth.signedIn ? <AccountNav signedIn variant="header" /> : null}
+            <AccountNav signedIn={auth.signedIn} variant="header" />
             <MobileNav items={items} signedIn={auth.signedIn} />
           </div>
         </div>

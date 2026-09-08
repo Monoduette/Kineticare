@@ -42,7 +42,10 @@ fallbackként megengedett.
 ## 3. Navigáció (sticky) — kötelező viselkedés
 
 - Menüpontok **jobb felül**; a „Kurzusok" menüpont KÖTELEZŐ (az értékesítés
-  fő útja nem hiányozhat a navból), plusz egy vizuálisan elkülönülő CTA.
+  fő útja nem hiányozhat a navból). A korábban előírt, vizuálisan elkülönülő
+  fejléc-CTA 2026-09-08-tól tulajdonosi döntésre megszűnt: a „Kurzusok” sima
+  menüpont (a lista elején), az M1 értékesítési célt a hero és a szekció-CTA-k
+  viszik (lásd `docs/gomb-inventar.md` §4.1).
 - Görgetésre az oldal tetején áttetszőbb, legörgetve **sticky** és **nem
   teljesen átlátszó** háttérű — a váltás folyamatos (scroll-küszöb + átmenet),
   nem ugrás.

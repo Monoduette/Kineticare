@@ -5,7 +5,12 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AccountNav, ACCOUNT_NAV_LABELS } from '../components/layout/AccountNav'
+import {
+  AccountNav,
+  ACCOUNT_MENU_HOVER_CLOSE_MS,
+  ACCOUNT_MENU_HOVER_OPEN_MS,
+  ACCOUNT_NAV_LABELS,
+} from '../components/layout/AccountNav'
 import { MobileNav } from '../components/layout/MobileNav'
 import { buildNavTree } from '../lib/menu-tree'
 import { LOGOUT_ERROR_MESSAGE, logoutUser } from '../lib/logout-client'
@@ -96,10 +101,10 @@ describe('AccountNav — kijelentkezett látogató', () => {
     expect(drawerLink).not.toContain('kc-visually-hidden')
   })
 
-  it('bejelentkezve a „Kurzusaim" szöveglink marad, ikon-only nincs', () => {
+  it('bejelentkezve UGYANAZ az ikon marad a helyén, a „Kurzusaim" a lenyílóban szöveges (WP36)', () => {
     const signedIn = render(createElement(AccountNav, { signedIn: true, variant: 'header' }))
-    expect(signedIn).not.toContain('kc-account-nav__link--icon')
-    expect(signedIn).toContain('>Kurzusaim</a>')
+    expect(signedIn).toContain('kc-account-nav__link--icon')
+    expect(signedIn).toMatch(/<a[^>]*href="\/kurzusaim"[^>]*>Kurzusaim<\/a>/)
   })
 })
 
@@ -116,7 +121,7 @@ describe('AccountNav — bejelentkezett felhasználó', () => {
     // W3C WAI-ARIA APG, Button Pattern:
     // https://www.w3.org/WAI/ARIA/apg/patterns/button/
     expect(header).toMatch(
-      /<button[^>]*class="kc-account-nav__signout"[^>]*type="button"[^>]*>[\s\S]*?Kijelentkezés<\/span><\/button>/,
+      /<button[^>]*class="kc-account-nav__menu-item kc-account-nav__signout"[^>]*type="button"[^>]*>Kijelentkezés<\/button>/,
     )
     expect(header).toContain(ACCOUNT_NAV_LABELS.signOut)
     // A felirat SEHOL nem <a>-ban ül.
@@ -344,15 +349,14 @@ describe('Header + layout.css — a kilépő fél helye (WP31)', () => {
   const olvas = (rel: string): string =>
     readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
 
-  it('az asztali sávban bejelentkezve a fiók-blokk a Kurzusok pirula UTÁN áll', () => {
+  it('az asztali sávban EGY fiók-belépő áll, pirula nélkül; a Kurzusok a menüfa része (WP36)', () => {
     const header = olvas('../components/layout/Header.tsx')
-    const pirula = header.indexOf('<HeaderCoursesNav />')
-    const signedInNav = header.indexOf('<AccountNav signedIn variant="header" />')
-    const signedOutNav = header.indexOf('<AccountNav signedIn={false} variant="header" />')
-    expect(pirula).toBeGreaterThan(-1)
-    expect(signedInNav).toBeGreaterThan(pirula)
-    expect(signedOutNav).toBeLessThan(pirula)
-    expect(signedOutNav).toBeGreaterThan(-1)
+    expect(header).toContain('<AccountNav signedIn={auth.signedIn} variant="header" />')
+    expect(header).not.toContain('HeaderCoursesNav')
+    expect(header).toContain('withCoursesNavItem(cmsItems)')
+    expect(header.indexOf('<DesktopNav items={items} />')).toBeLessThan(
+      header.indexOf('<AccountNav signedIn={auth.signedIn} variant="header" />'),
+    )
   })
 
   it('a kilépő fél a fiók aljára ül, és a süti-sáv mért magasságával számol (2.4.11)', () => {
@@ -366,48 +370,107 @@ describe('Header + layout.css — a kilépő fél helye (WP31)', () => {
 })
 
 /**
- * WP31 pótlás (vezetői döntés, 2026-09-07): 56,25em és 75em között a sávban a
- * kijelentkezés IKON-GOMB (Lucide `log-out` geometriájú saját glif), a név
- * szöveg marad (SC 4.1.2), a `title` a mutatós tooltip; 75em-től a szöveges
- * pirula. A fiókban (drawer) a gomb szöveges marad, ikon nélkül.
+ * WP36 (2026-09-08, tulajdonosi kérés, szó szerint: „be vagyok jelentkezve
+ * akkor ne kerüljön oda a kijelentkezés gomb hanem csak maradjon meg az a
+ * profil ikon … ha rákattintok elviszem az egeret akkor ide kerüljön be a
+ * kijelentkezés és a kurzusaim menüpont is"). A fejléc-sávban bejelentkezve
+ * a profil-ikon MENÜGOMB a W3C WAI-ARIA APG „Menu Button" mintája szerint
+ * (https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/): `aria-haspopup`,
+ * `aria-expanded`, `aria-controls` → `role="menu"`, tételek `role="menuitem"`
+ * (SC 4.1.2). A hover-időzítés az NN/g mért ajánlása
+ * (https://www.nngroup.com/articles/timing-exposing-content/): nyitás
+ * 0,3–0,5 s után, zárás legalább 0,5 s türelemmel.
  */
-describe('AccountNav — a fejléc kijelentkezés-gombja ikon + rejtett szöveg (WP31 pótlás)', () => {
+describe('AccountNav — a fejléc fiókmenüje bejelentkezve (WP36)', () => {
   const header = render(createElement(AccountNav, { signedIn: true, variant: 'header' }))
   const button =
-    header.match(/<button\b[^>]*kc-account-nav__signout[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+    header.match(/<button\b[^>]*kc-account-nav__menu-button[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+  const menu = header.match(/<div\b[^>]*role="menu"[^>]*>[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? ''
 
-  it('dekoratív glif + a nevet adó szöveg-span + title', () => {
-    expect(button).toMatch(
-      /<svg[^>]*aria-hidden="true"[^>]*class="kc-account-nav__icon kc-account-nav__signout-icon"/,
-    )
-    expect(button).not.toMatch(/<svg[^>]*aria-label/)
-    expect(button).toContain('<span class="kc-account-nav__signout-text">Kijelentkezés</span>')
-    expect(button).toContain('title="Kijelentkezés"')
+  it('a gomb menügomb: aria-haspopup="menu", zárt aria-expanded, aria-controls a menüre', () => {
+    expect(button).toContain('aria-haspopup="menu"')
+    expect(button).toContain('aria-expanded="false"')
+    expect(button).toContain('type="button"')
+    const controls = button.match(/aria-controls="([^"]+)"/)?.[1]
+    expect(controls).toBeTruthy()
+    expect(menu).toContain(`id="${controls}"`)
+    expect(header).toContain('data-open="false"')
   })
 
-  it('a fiókban szöveges marad, ikon és title nélkül', () => {
+  it('ugyanaz a 44×44-es ikon-doboz, mint kijelentkezve; a név rejtett szöveg, a glif kitöltött', () => {
+    expect(button).toContain('kc-account-nav__link--icon')
+    expect(button).toContain('title="Fiók"')
+    expect(button).toMatch(/<svg[^>]*aria-hidden="true"[^>]*class="kc-account-nav__icon"/)
+    expect(button).toContain('kc-account-nav__icon-fill')
+    expect(button).toContain('<span class="kc-visually-hidden">Fiók (bejelentkezve)</span>')
+    expect(button).not.toMatch(/<svg[^>]*aria-label/)
+    const signedOut = render(createElement(AccountNav, { signedIn: false, variant: 'header' }))
+    expect(signedOut).not.toContain('kc-account-nav__icon-fill')
+    expect(signedOut).not.toContain('aria-haspopup')
+  })
+
+  it('a menü tételei: Kurzusaim link, elválasztó, Kijelentkezés gomb — mind menuitem, tabindex -1', () => {
+    expect(menu).toContain('role="menu"')
+    expect(menu).toContain('aria-label="Fiók"')
+    const items = menu.match(/<(a|button)\b[^>]*role="menuitem"[^>]*>[\s\S]*?<\/\1>/g) ?? []
+    expect(items).toHaveLength(2)
+    expect(items[0]).toMatch(/^<a\b/)
+    expect(items[0]).toContain('href="/kurzusaim"')
+    expect(items[0]).toContain('tabindex="-1"')
+    expect(items[1]).toMatch(/^<button\b/)
+    expect(items[1]).toContain('kc-account-nav__signout')
+    expect(items[1]).toContain('tabindex="-1"')
+    expect(items[1]).toContain('aria-busy="false"')
+    expect(menu.indexOf('role="separator"')).toBeGreaterThan(menu.indexOf('href="/kurzusaim"'))
+    expect(menu.indexOf('role="separator"')).toBeLessThan(menu.indexOf('kc-account-nav__signout'))
+  })
+
+  it('a sávban NINCS többé szöveges Kurzusaim-link, kijelentkezés-pirula vagy ikon-gomb a menün kívül', () => {
+    const outside = header.replace(menu, '')
+    expect(outside).not.toContain('Kurzusaim')
+    expect(outside).not.toContain('Kijelentkezés')
+    expect(header).not.toContain('kc-account-nav__signout-icon')
+    expect(header).not.toContain('kc-account-nav__signout-text')
+  })
+
+  it('a hover-időzítés az NN/g sávjában áll (nyitás 300–500 ms, zárás ≥ 500 ms)', () => {
+    expect(ACCOUNT_MENU_HOVER_OPEN_MS).toBeGreaterThanOrEqual(300)
+    expect(ACCOUNT_MENU_HOVER_OPEN_MS).toBeLessThanOrEqual(500)
+    expect(ACCOUNT_MENU_HOVER_CLOSE_MS).toBeGreaterThanOrEqual(500)
+  })
+
+  it('a fiókban (drawer) a kijelentkezés szöveges pirula marad, menü-szerep nélkül', () => {
     const drawer = render(
       createElement(AccountNav, { signedIn: true, variant: 'drawer', section: 'exit' }),
     )
-    expect(drawer).not.toContain('kc-account-nav__signout-icon')
+    expect(drawer).not.toContain('role="menu')
     expect(drawer).not.toContain('title=')
-    expect(drawer).toMatch(/<button[^>]*kc-account-nav__signout[^>]*>Kijelentkezés<\/button>/)
+    expect(drawer).toMatch(
+      /<button[^>]*class="kc-account-nav__signout"[^>]*>Kijelentkezés<\/button>/,
+    )
   })
 
-  it('layout.css: 56,25em–75em között 44×44-es kör, klip-rejtett felirat; 75em-től a glif rejtve', () => {
+  it('layout.css: zárt panel visibility: hidden, nyitva látható; 44 px-es tételek; nincs pirula- és ikon-gomb-szabály', () => {
     const css = readFileSync(
       fileURLToPath(new URL('../app/(frontend)/styles/layout.css', import.meta.url)),
       'utf8',
     ).replace(/\/\*[\s\S]*?\*\//g, '')
-    const range = css.slice(css.indexOf('@media (min-width: 56.25em) and (max-width: 74.99em)'))
-    const gomb = range.match(/\.kc-account-nav__signout\s*\{[^}]*\}/)?.[0] ?? ''
-    expect(gomb).toContain('width: 2.75rem')
-    expect(gomb).toContain('height: 2.75rem')
-    const szoveg = range.match(/\.kc-account-nav__signout-text\s*\{[^}]*\}/)?.[0] ?? ''
-    expect(szoveg).toContain('clip: rect(0 0 0 0)')
-    expect(szoveg).toContain('width: 1px')
-    expect(css).not.toMatch(/\.kc-account-nav__signout\s*\{\s*display:\s*none/)
-    const wide = css.slice(css.indexOf('@media (min-width: 75em)'))
-    expect(wide).toMatch(/\.kc-account-nav__signout-icon\s*\{\s*display:\s*none/)
+    const panel = css.match(/\.kc-account-nav__menu\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(panel).toContain('visibility: hidden')
+    expect(panel).toContain('border-radius: var(--kc-radius-md)')
+    expect(panel).toContain('box-shadow: var(--kc-shadow-md)')
+    const open =
+      css.match(
+        /\.kc-account-nav--menu\[data-open='true'\] > \.kc-account-nav__menu\s*\{[^}]*\}/,
+      )?.[0] ?? ''
+    expect(open).toContain('visibility: visible')
+    const item =
+      css.match(
+        /\.kc-account-nav__menu-item,\s*\.kc-account-nav__menu \.kc-account-nav__signout\s*\{[^}]*\}/,
+      )?.[0] ?? ''
+    expect(item).toContain('min-height: 2.75rem')
+    expect(css).not.toContain('kc-site-header__cta')
+    expect(css).not.toContain('@media (min-width: 56.25em) and (max-width: 74.99em)')
+    expect(css).not.toContain('kc-account-nav__signout-icon')
   })
 })
