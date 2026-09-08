@@ -11,6 +11,9 @@ import { describe, expect, it, vi } from 'vitest'
  * Egyik sem ad futásidejű hibát: a lap 200-zal válaszol, minden „működik".
  */
 
+// A lap 2026-09-08 (WP35) óta a TELJES listát kéri le, és a téma cikkeit a
+// `categories` mező alapján maga szűri: a fixtúra ezért hordozza a
+// kategória-id-t (1 = kezrehabilitacio).
 const posts = vi.hoisted(() => ({ current: [] as Array<Record<string, unknown>> }))
 
 vi.mock('@/lib/cms', () => ({
@@ -38,13 +41,13 @@ describe('kategória-oldal metaadata', () => {
   })
 
   it('cikkekkel a lap NORMÁLISAN indexelhető (nincs robots-korlát)', async () => {
-    posts.current = [{ id: 11, slug: 'gipsz-utan' }]
+    posts.current = [{ id: 11, slug: 'gipsz-utan', categories: [1] }]
     const result = await meta('kezrehabilitacio')
     expect(result.robots).toBeUndefined()
   })
 
   it('a canonical a dedikált kategória-cím', async () => {
-    posts.current = [{ id: 11, slug: 'gipsz-utan' }]
+    posts.current = [{ id: 11, slug: 'gipsz-utan', categories: [1] }]
     const result = await meta('kezrehabilitacio')
     expect(result.alternates?.canonical).toBe('/blog/kategoria/kezrehabilitacio')
   })

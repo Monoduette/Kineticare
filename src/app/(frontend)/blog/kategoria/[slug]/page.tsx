@@ -4,10 +4,18 @@ import { cache } from 'react'
 
 import { JsonLd } from '@/components/content/JsonLd'
 import { PostCard } from '@/components/content/PostCard'
+import { PostListFilter } from '@/components/content/PostListFilter'
 import { PostsEmptyState } from '@/components/content/PostsEmptyState'
+import { postCategoryIds } from '@/components/content/post-list'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
-import { getCategoryBySlug, getPosts, getPublishedPageSlugs, getPublishedProducts } from '@/lib/cms'
+import {
+  getCategoryBySlug,
+  getContentCategories,
+  getPosts,
+  getPublishedPageSlugs,
+  getPublishedProducts,
+} from '@/lib/cms'
 import { absoluteUrl, blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { freeCourseHref } from '@/lib/tudastar'
@@ -28,6 +36,9 @@ export const dynamic = 'force-dynamic'
 
 type Props = { params: Promise<{ slug: string }> }
 
+/** A Tudástár felvezető mondata: ugyanaz, mint a `/blog` lapon (egy igazságforrás). */
+const LEAD = 'Kézrehabilitációs cikkek, gyakorlatok és szakmai tudástár a Kineticare-től.'
+
 /**
  * Kérés-idejű dedupe: a generateMetadata és a page UGYANAZT a két lekérdezést
  * használja (a kategória létezik-e, és van-e benne cikk). A React `cache`
@@ -35,9 +46,18 @@ type Props = { params: Promise<{ slug: string }> }
  * mintát viszi.
  */
 const categoryOf = cache((slug: string) => getCategoryBySlug(slug))
-const postsOf = cache((slug: string) => getPosts({ categorySlug: slug }))
-/** Van-e EGYÁLTALÁN cikk a Tudástárban (a visszaút értelmességéhez). */
-const anyPost = cache(() => getPosts({ limit: 1 }))
+/**
+ * A TELJES publikált lista (a mai 60-as limittel): a kliens-oldali szűrő
+ * ebből választ, a SSR csak a téma cikkeit rajzolja ki (WP35). A téma
+ * cikkei ebből szűrődnek, DB-független szabállyal — ugyanazzal, amit a
+ * kliens is futtat kattintáskor.
+ */
+const allPosts = cache(() => getPosts())
+const postsOf = cache(async (slug: string) => {
+  const category = await categoryOf(slug)
+  if (!category) return []
+  return (await allPosts()).filter((post) => postCategoryIds(post).includes(category.id))
+})
 
 /**
  * A téma-lap leírása: a téma neve elöl (ez a keresett kifejezés), utána a
@@ -76,12 +96,17 @@ export default async function BlogCategoryPage({ params }: Props) {
   const { slug } = await params
   const category = await categoryOf(slug)
   if (!category) notFound()
-  const posts = await postsOf(slug)
+  const [posts, everyPost, categories] = await Promise.all([
+    postsOf(slug),
+    allPosts(),
+    getContentCategories(),
+  ])
   // KANONIKUS belső link (lásd a `/blog` lap azonos lépését): publikált
   // gyökér-hubnál a kártya a gyökér-címre megy, piszkozatnál marad a
-  // `/blog/{slug}` — a piszkozat-hub gyökér-URL-je 404 lenne.
+  // `/blog/{slug}` — a piszkozat-hub gyökér-URL-je 404 lenne. A térkép a
+  // TELJES listára készül: a kliens bármelyik témára válthat.
   const hubUtvonalak = hubUtvonalTerkep(
-    posts
+    everyPost
       .map((post) => post.slug)
       .filter((postSlug): postSlug is string => typeof postSlug === 'string'),
     await getPublishedPageSlugs(),
@@ -89,19 +114,16 @@ export default async function BlogCategoryPage({ params }: Props) {
 
   // Üres témánál: van-e egyáltalán cikk a Tudástárban? Ettől függ, hogy a
   // visszaút értelmes-e (lásd a fejléc „ÜRES ÁLLAPOT" pontját).
-  const hasAnyPost = posts.length > 0 || (await anyPost()).length > 0
-  const variant = hasAnyPost ? 'kategoria' : 'tudastar'
-  const freeHref =
-    posts.length === 0 && variant === 'tudastar'
-      ? freeCourseHref(await getPublishedProducts(50))
-      : null
+  const hasAnyPost = everyPost.length > 0
+  const freeHref = hasAnyPost ? null : freeCourseHref(await getPublishedProducts(50))
 
   return (
     <Section>
       <Container>
         <JsonLd
-          // A `name` a LÁTHATÓ H1 szövege (a téma neve), nem a meta-cím: a
-          // strukturált adatnak azzal kell egyeznie, amit az olvasó lát.
+          // A `name` a téma LÁTHATÓ neve (az aktív chip és az állapotsor
+          // szövege), nem a meta-cím: a strukturált adat azzal egyezik, amit
+          // az olvasó a lapon lát.
           data={blogJsonLd({
             name: category.title,
             path: `/blog/kategoria/${category.slug}`,
@@ -127,26 +149,39 @@ export default async function BlogCategoryPage({ params }: Props) {
             ],
           })}
         />
-        <h1>{category.title}</h1>
-        {posts.length === 0 ? (
-          <PostsEmptyState freeCourseHref={freeHref} variant={variant} />
-        ) : (
-          <div className="kc-card-grid kc-card-grid--posts">
-            {posts.map((post) => (
+        {/* A H1 (a téma neve) és a felvezető a PostListFilter-ben él, és a
+            chip-váltással együtt cserélődik: a SSR-lap és a kattintással
+            elért állapot ugyanazt a DOM-ot adja. */}
+        {hasAnyPost ? (
+          <PostListFilter
+            categories={categories}
+            emptyState={<PostsEmptyState variant="kategoria" />}
+            initialSlug={category.slug ?? undefined}
+            items={everyPost.map((post) => ({
+              key: post.id,
+              categoryIds: postCategoryIds(post),
               /* Ugyanaz a kártya-beállítás, mint a `/blog` listán (a terv 4.6
                  pontja: „Azonos a /blog-gal"): H1 alatt H2 kártyacím, és a
-                 KÉTHASÁBOS poszt-rács. A közös hármas rácsban a kivonat mért
-                 sorhossza 28,8–37,4 karakter/sor, a kéthasábosban 48,1–60,6 —
-                 a repó Ü6 szabályának 45-ös alsó tűréshatára csak az utóbbiban
-                 teljesül (styles/blocks/tudastar-lista.css). */
-              <PostCard
-                key={post.id}
-                headingLevel={2}
-                href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
-                post={post}
-              />
-            ))}
-          </div>
+                 KÉTHASÁBOS poszt-rács (styles/blocks/tudastar-lista.css). */
+              card: (
+                <PostCard
+                  headingLevel={2}
+                  href={cikkUtvonal(post.slug ?? '', hubUtvonalak)}
+                  post={post}
+                />
+              ),
+            }))}
+            lead={LEAD}
+            showFilter
+          />
+        ) : (
+          <>
+            <div className="kc-tudastar-intro">
+              <h1 className="kc-page-hero__title">{category.title}</h1>
+              <p className="kc-page-hero__lead">{LEAD}</p>
+            </div>
+            <PostsEmptyState freeCourseHref={freeHref} variant="tudastar" />
+          </>
         )}
       </Container>
     </Section>
