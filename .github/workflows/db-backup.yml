@@ -291,10 +291,10 @@ jobs:
               pg_dump --format=custom --file="${DUMP_TARGET}"
             '
 
-      # Egy le nem ellenőrzött mentés csak hamis biztonságérzet. A
-      # `pg_restore --list` a teljes archívumot végigolvassa: csonka vagy
-      # sérült fájlon nem nullával lép ki.
-      - name: Integritás-ellenőrzés (pg_restore --list)
+      # A TOC önmagában nem olvassa ki az adatblokkokat. A teljes, szűrő
+      # nélküli SQL-dekódolás is kötelező a titkosítás és feltöltés előtt.
+      # Egyik archívumolvasó sem kap hálózatot, DB-célt vagy credentialt.
+      - name: Integritás-ellenőrzés (TOC és teljes dekódolás)
         id: integrity
         env:
           FILE: ${{ steps.dump.outputs.file }}
@@ -302,18 +302,25 @@ jobs:
           set -euo pipefail
           STATUS=0
           docker run --rm \
+            --network none \
             --user "$(id -u):$(id -g)" \
-            --volume "${PWD}/backups:/backups" \
+            --volume "${PWD}/backups:/backups:ro" \
             "${PG_IMAGE}" \
             pg_restore --list "/backups/${FILE}" > toc.txt || STATUS=$?
           # A fejléc-sorok ';'-vel kezdődnek, a visszaállítható bejegyzések
-          # "<id>; ..." alakúak. Két bukási mód van: a pg_restore nem nullás
-          # kilépése (csonka/sérült fájl) és a nulla bejegyzés (üres archívum).
+          # "<id>; ..." alakúak. Az olvasható, nem üres TOC szükséges, de az
+          # adatblokkok épségét csak a következő teljes dekódolás vizsgálja.
           ENTRIES="$(grep -cE '^[0-9]+;' toc.txt || true)"
           if [ "${STATUS}" -ne 0 ] || [ "${ENTRIES}" -eq 0 ]; then
             echo "::error title=Sérült mentés::A mentés nem állítható vissza (pg_restore --list kilépési kód: ${STATUS}, visszaállítható bejegyzés: ${ENTRIES}) — nem lesz feltöltve."
             exit 1
           fi
+          docker run --rm \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --volume "${PWD}/backups:/backups:ro" \
+            "${PG_IMAGE}" \
+            pg_restore --file=/dev/null "/backups/${FILE}"
           echo "entries=${ENTRIES}" >> "$GITHUB_OUTPUT"
 
       - name: Mentés titkosítása (age)
@@ -338,7 +345,8 @@ jobs:
             echo "|---|---|"
             echo "| Fájl | \`${ENCRYPTED_FILE}\` |"
             echo "| Méret | ${SIZE} |"
-            echo "| Visszaállítható bejegyzés | ${{ steps.integrity.outputs.entries }} |"
+            echo "| TOC-bejegyzés | ${{ steps.integrity.outputs.entries }} |"
+            echo "| Ellenőrzés | TOC és teljes archívumdekódolás |"
             echo "| Titkosítás | age v${AGE_VERSION} |"
             echo "| Megőrzés | 30 nap (artifact) |"
             echo ""

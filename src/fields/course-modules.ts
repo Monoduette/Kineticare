@@ -1,6 +1,8 @@
 import type { ArrayField, Field } from 'payload'
 
+import { courseContentReadAccess } from '../access/courseContentRead'
 import { streamAssetReadAccess } from '../access/streamAssetRead'
+import { hideLegacyAttachmentFallback, validateCourseAttachments } from './course-attachments'
 
 /**
  * products.modules: fejezetek → leckék; a régi videos tömb érintetlen (nem destruktív migráció).
@@ -142,14 +144,10 @@ const lessonFields: Field[] = [
     name: 'url',
     type: 'text',
     label: 'Külső webcím',
-    // A code review mérte: a lecke-almezők közül korábban csak a Bunny-GUID
-    // volt védett, miközben a külső link, a szöveges tananyag és a mellékletek
-    // UGYANÚGY a fizetős tartalom hordozói — a nyilvános GET /api/products
-    // kiadta volna őket nem vásárlónak. Ugyanaz a MEGLÉVŐ szabály védi mindet
-    // (streamAssetReadAccess, VÁLTOZATLANUL újrahasznosítva): staff/owner
-    // mindig, vevő csak megvett kurzusnál, anonim soha.
+    // A link maga a tananyag: a GUID-dal ellentétben nincs mögötte egy újabb
+    // token-végpont. Ezért már az olvasás a teljes, lejáratkövető kapun megy át.
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
       condition: showForLink,
@@ -161,7 +159,7 @@ const lessonFields: Field[] = [
     type: 'richText',
     label: 'Lecke szövege',
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
       description:
@@ -171,16 +169,19 @@ const lessonFields: Field[] = [
   {
     name: 'attachments',
     type: 'array',
+    validate: validateCourseAttachments,
+    hooks: { afterRead: [hideLegacyAttachmentFallback] },
     label: 'Letölthető anyagok',
     labels: {
       singular: 'Melléklet',
       plural: 'Mellékletek',
     },
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
-      description: 'PDF, kép vagy egyéb segédlet a leckéhez. Bármelyik lecketípushoz adható.',
+      description:
+        'Új segédlethez védett kurzusfájlt válassz. A korábbi nyilvános fájlok továbbra is elérhetők a saját webcímükön.',
     },
     fields: [
       {
@@ -195,8 +196,22 @@ const lessonFields: Field[] = [
         name: 'file',
         type: 'upload',
         relationTo: 'media',
-        required: true,
-        label: 'Fájl',
+        required: false,
+        label: 'Korábbi nyilvános fájl',
+        admin: {
+          description: 'Korábbi mellékletekhez. Új anyaghoz a védett kurzusfájlt használd.',
+        },
+      },
+      {
+        name: 'protectedFile',
+        type: 'upload',
+        relationTo: 'course-files',
+        label: 'Védett kurzusfájl',
+        filterOptions: ({ id }) => (typeof id === 'number' ? { course: { equals: id } } : false),
+        admin: {
+          description:
+            'Előbb mentsd el a kurzust, majd tölts fel hozzá fájlt. A vevő a lecke publikálása után töltheti le.',
+        },
       },
     ],
   },

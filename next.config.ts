@@ -8,6 +8,17 @@ import { buildContentSecurityPolicy } from './src/lib/security/csp'
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com'
 
 const nextConfig: NextConfig = {
+  // Az optimizer cache közös, és a belső fetch nem továbbítja a vevő sütijét.
+  // Csak a tényleges nyilvános képterek optimalizálhatók; a course-files
+  // külön jogosultságellenőrzött URL-je közvetlenül tölthető le.
+  images: {
+    localPatterns: [
+      { pathname: '/api/media/file/*' },
+      { pathname: '/media/**' },
+      { pathname: '/assets/**' },
+      { pathname: '/_next/static/media/**' },
+    ],
+  },
   experimental: {
     // A `src/app/global-not-found.tsx` KIZÁRÓLAG ezzel a kapcsolóval él —
     // enélkül a Next figyelmen kívül hagyja a fájlt, és a nem illeszkedő

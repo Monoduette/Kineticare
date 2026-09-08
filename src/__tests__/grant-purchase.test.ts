@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { grantPurchase } from '../lib/grant-purchase'
 import type { Logger } from '../lib/logger'
+import type { AccessGrantRow } from '../lib/access-grants'
 
 /**
  * Manuális kurzus-hozzáférés (grant) — a közös szolgáltatás egységtesztjei.
@@ -50,7 +51,7 @@ function createMockPayload(options: MockOptions = {}) {
     id: 7,
     email: EMAIL,
     purchases: options.purchases ?? [],
-    accessGrants: [] as Array<{ product: number; grantedAt: string }>,
+    accessGrants: [] as AccessGrantRow[],
   }
   const product = {
     id: 42,
@@ -122,6 +123,34 @@ function createMockPayload(options: MockOptions = {}) {
 }
 
 describe('grantPurchase — kimeneti ágak', () => {
+  it('az új ajándék saját independent sor; a paid és legacy sorokat nem írja felül', async () => {
+    const { payload, user, updates } = createMockPayload({ accessDurationDays: 365 })
+    const untouched: AccessGrantRow[] = [
+      {
+        id: 'DUMMY-existing-paid',
+        product: 42,
+        grantedAt: '2024-01-01T00:00:00.000Z',
+        sourceKind: 'order',
+        sourceOrder: 10,
+      },
+      { id: 'DUMMY-existing-legacy', product: 42, grantedAt: '2023-01-01T00:00:00.000Z' },
+    ]
+    user.accessGrants = structuredClone(untouched)
+    const result = await grantPurchase({
+      payload,
+      email: EMAIL,
+      productIdOrSku: SKU,
+      reason: 'DUMMY ajándék',
+      grantedBy: { id: 1, email: 'owner@example.test' },
+      logger: silentLogger(),
+    })
+    expect(result.status).toBe('granted')
+    const rows = updates[0].data.accessGrants as AccessGrantRow[]
+    expect(rows.slice(0, 2)).toEqual(untouched)
+    expect(rows).toHaveLength(3)
+    expect(rows[2]).toMatchObject({ product: 42, sourceKind: 'independent' })
+  })
+
   it('granted: a hiányzó terméket hozzáfűzi a purchases-listához', async () => {
     const { payload, updates } = createMockPayload({
       purchases: [11],
@@ -231,7 +260,10 @@ describe('grantPurchase — kimeneti ágak', () => {
     expect(result.status).toBe('granted')
     expect(result.productId).toBe(42)
     expect(updates).toHaveLength(1)
-    const data = updates[0]?.data as { purchases?: number[]; accessGrants?: Array<{ product: number; grantedAt: string }> }
+    const data = updates[0]?.data as {
+      purchases?: number[]
+      accessGrants?: Array<{ product: number; grantedAt: string }>
+    }
     expect(data.purchases).toEqual([42])
     expect(data.accessGrants).toHaveLength(1)
     expect(data.accessGrants?.[0]?.product).toBe(42)
@@ -431,10 +463,13 @@ describe('grantPurchase — W9 e-mail kis-nagybetű', () => {
         return { docs: [], totalDocs: 0 }
       }),
       findByID: vi.fn(async () => ({
-      ...user,
-      purchases: [...user.purchases],
-      accessGrants: [...((user as { accessGrants?: Array<{ product: number; grantedAt: string }> }).accessGrants ?? [])],
-    })),
+        ...user,
+        purchases: [...user.purchases],
+        accessGrants: [
+          ...((user as { accessGrants?: Array<{ product: number; grantedAt: string }> })
+            .accessGrants ?? []),
+        ],
+      })),
       update: vi.fn(async (args: { collection: string; data: Record<string, unknown> }) => {
         if (args.collection === 'users') {
           Object.assign(user, args.data)

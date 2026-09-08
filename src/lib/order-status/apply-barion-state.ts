@@ -1,7 +1,14 @@
 import type { Payload } from 'payload'
 
 import type { Order, User } from '../../payload-types'
-import { durationDaysFromProduct, upsertAccessGrant } from '../access-grants'
+import {
+  accessGrantsForWrite,
+  durationDaysFromProduct,
+  grantRowsFromUnknown,
+  productIdFromGrant,
+  validateAccessGrantRows,
+  withUpsertedAccessGrant,
+} from '../access-grants'
 import { withAdvisoryLock } from '../advisory-lock'
 import type { BarionPaymentStateResponse, OrderPaymentState } from '../barion'
 import type { CourseAccessState } from '../course-access'
@@ -12,6 +19,7 @@ import {
 import { maskEmail } from '../email/mask'
 import type { Logger } from '../logger'
 import { withUserPurchasesLock } from '../user-purchases-lock'
+import { loadActiveRefundIntent } from '../refund/intent-store'
 import {
   GuestBindPrivilegedAccountError,
   resolveOrderCustomer,
@@ -60,7 +68,7 @@ export interface BarionTransitionResult {
   /**
    * rejected akciónál az ok (paid-cancel-rejected / cancel-not-allowed /
    * paid-not-allowed / refund-recorded / total-mismatch / duplicate-paid-order /
-   * guest-bind-privileged-account).
+   * guest-bind-privileged-account / refund-pending-reconciliation).
    */
   reason?: string
   /** true, ha a rendelés már a célállapotban volt (no-op átmenet). */
@@ -323,33 +331,13 @@ function hasRecordedRefund(order: Order): boolean {
 async function startAccessClock(input: {
   payload: Payload
   userId: number
+  orderId: number
   productIds: number[]
   log: Logger
 }): Promise<void> {
-  const { payload, userId, productIds, log } = input
-  if (productIds.length === 0) {
-    return
-  }
+  const { payload, userId, orderId, productIds, log } = input
+  if (productIds.length === 0) return
   try {
-    const products = (await payload.find({
-      collection: 'products',
-      where: { id: { in: productIds } },
-      limit: productIds.length,
-      depth: 0,
-      select: { accessDurationDays: true },
-      overrideAccess: true,
-    } as unknown as Parameters<Payload['find']>[0])) as unknown as {
-      docs?: Array<{ id: number; accessDurationDays?: number | null }> | null
-    }
-
-    const timedProductIds = (products.docs ?? [])
-      .filter((product) => durationDaysFromProduct(product) !== null)
-      .map((product) => product.id)
-    if (timedProductIds.length === 0) {
-      return
-    }
-
-    const grantedAt = new Date()
     await withUserPurchasesLock(
       payload,
       userId,
@@ -360,20 +348,37 @@ async function startAccessClock(input: {
           depth: 0,
           overrideAccess: true,
         })) as User
-        let rows: unknown = fresh.accessGrants
-        for (const productId of timedProductIds) {
-          rows = await upsertAccessGrant({
-            payload,
-            userId,
-            productId,
-            grantedAt,
-            existingRows: rows,
+        const validation = validateAccessGrantRows(fresh.accessGrants)
+        if (validation !== true) throw new Error(validation)
+        let rows = grantRowsFromUnknown(fresh.accessGrants)
+        const grantedAt = new Date()
+        let changed = false
+        for (const productId of productIds) {
+          // A crash/retry may find the grant before the paid status was saved.
+          // Keep that source's first clock; another order or gift is independent.
+          if (
+            rows.some(
+              (row) =>
+                productIdFromGrant(row.product) === productId &&
+                row.sourceKind === 'order' &&
+                productIdFromGrant(row.sourceOrder) === orderId,
+            )
+          )
+            continue
+          rows = withUpsertedAccessGrant(rows, productId, grantedAt, {
+            sourceKind: 'order',
+            sourceOrder: orderId,
           })
+          changed = true
         }
-        log.info('hozzáférés-óra a fizetés igazolásától indítva', {
-          userId,
-          productIds: timedProductIds,
+        if (!changed) return
+        await payload.update({
+          collection: 'users',
+          id: userId,
+          data: { accessGrants: accessGrantsForWrite(rows) },
+          overrideAccess: true,
         })
+        log.info('hozzáférés-óra és rendelési eredet rögzítve', { userId, orderId, productIds })
       },
       log,
     )
@@ -381,7 +386,12 @@ async function startAccessClock(input: {
     log.error(
       'RIASZTÁS: a hozzáférés-óra (accessGrants) beírása sikertelen — a paid-átmenet érvényes, ' +
         'de az óra a rendelés létrehozásától számol; ellenőrizd a hozzáférés lejáratát',
-      { userId, productIds, error: error instanceof Error ? error.message : String(error) },
+      {
+        userId,
+        orderId,
+        productIds,
+        error: error instanceof Error ? error.message : String(error),
+      },
     )
   }
 }
@@ -500,6 +510,18 @@ async function applyBarionStateTransitionLocked(
     }
 
     case 'paid': {
+      // A refund főkönyve a provider-választól az order.refunds helyi írásáig
+      // is kizárja az új grantet. A közös order-zár alatt olvassuk, minden
+      // customer-/purchases-/óraírás előtt; bizonytalan tároló nem üres főkönyv.
+      // A provider_succeeded ág helyi folytatását a recovery dispatcher végzi.
+      const activeRefund = await loadActiveRefundIntent(payload, order.id)
+      if (activeRefund) {
+        log.warn('paid jelzés aktív visszatérítés mellett — kizárólag reconciliation folytatható', {
+          orderId: order.id,
+          refundIntentState: activeRefund.state,
+        })
+        return { action: 'rejected', reason: 'refund-pending-reconciliation' }
+      }
       if (order.status === 'refunded') {
         log.error(
           'RIASZTÁS: paid jelzés refunded rendelésre — visszaállítás TILOS, állapot marad refunded, manuális ellenőrzés szükséges',
@@ -615,6 +637,7 @@ async function applyBarionStateTransitionLocked(
         await startAccessClock({
           payload,
           userId: customer.userId,
+          orderId: order.id,
           productIds: orderProductIds(order),
           log,
         })

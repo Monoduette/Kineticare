@@ -14,6 +14,7 @@ import {
   activeRefundOrderKey,
   digestRefundIdempotencyKey,
   hashRefundIntentRequestV1,
+  hashRefundIntentRequest,
   type CanonicalRefundIntentRequestV1,
   type RefundIntentState,
 } from '@/lib/refund/refund-intent'
@@ -103,6 +104,12 @@ function fakeDatabase(initial: RefundIntent[] = []) {
         refundSequence: p[10] as number,
         currency: p[11] as 'HUF',
         reason: p[12] as string | null,
+        ...(p.length > 13
+          ? {
+              actorKind: p[13] as RefundIntent['actorKind'],
+              systemActor: p[14] as RefundIntent['systemActor'],
+            }
+          : {}),
       }
       if (
         stored.some(
@@ -179,9 +186,75 @@ function fakeDatabase(initial: RefundIntent[] = []) {
 }
 
 describe('refund intent SQL storage', () => {
+  it('uses the same discriminated owner V2 identity rules in canonical requests, SQL and schema', async () => {
+    const db = fakeDatabase()
+    const created = await createRefundIntent(
+      db.payload(),
+      { ...request, schemaVersion: 2, actorKind: 'owner', systemActor: null },
+      key,
+    )
+    expect(created).toMatchObject({ actor: 2, actorKind: 'owner', schemaVersion: 2 })
+    expect(await loadActiveRefundIntent(db.payload(), 1)).toEqual(created)
+    expect(await transitionRefundIntent(db.payload(), created, 'provider_started')).toMatchObject({
+      actor: 2,
+      actorKind: 'owner',
+    })
+  })
+  it('persists a system V2 identity across SQL read and transition without a customer actor', async () => {
+    const db = fakeDatabase()
+    const systemRequest = {
+      ...request,
+      schemaVersion: 2 as const,
+      actorId: null,
+      actorKind: 'system' as const,
+      systemActor: 'paid-reject-recovery' as const,
+    }
+    const created = await createRefundIntent(db.payload(), systemRequest, key)
+    expect(created).toMatchObject({
+      actor: null,
+      actorKind: 'system',
+      systemActor: 'paid-reject-recovery',
+      schemaVersion: 2,
+    })
+    expect(created.requestHash).toBe(hashRefundIntentRequest(systemRequest))
+    expect(db.queries.find((query) => query.sql.startsWith('INSERT'))?.sql).toContain('actor_kind')
+    expect(await loadActiveRefundIntent(db.payload(), 1)).toEqual(created)
+    expect(await transitionRefundIntent(db.payload(), created, 'provider_started')).toMatchObject({
+      actor: null,
+      state: 'provider_started',
+    })
+    await expect(createRefundIntent(db.payload(), request, anotherKey)).rejects.toMatchObject({
+      code: 'conflict',
+    })
+  })
+
+  it('rejects mixed system identity in SQL RETURNING even when its request hash is otherwise valid', async () => {
+    const db = fakeDatabase()
+    db.transform(({ rows, rowCount }) => ({
+      rows: rows.map((row) => ({ ...(row as object), actor: 7 })),
+      rowCount,
+    }))
+    await expect(
+      createRefundIntent(
+        db.payload(),
+        {
+          ...request,
+          schemaVersion: 2,
+          actorId: null,
+          actorKind: 'system',
+          systemActor: 'paid-reject-recovery',
+        },
+        key,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_record' })
+    expect(db.snapshot()).toEqual([])
+  })
+
   it('loads a committed operation by its stable key without exposing or binding the raw key', async () => {
     const db = fakeDatabase([fixture('committed')])
-    await expect(loadRefundIntentForOperation(db.payload(), '1', key)).resolves.toEqual(fixture('committed'))
+    await expect(loadRefundIntentForOperation(db.payload(), '1', key)).resolves.toEqual(
+      fixture('committed'),
+    )
     expect(db.queries).toHaveLength(1)
     expect(db.queries[0].sql).toContain('OR idempotency_key_hash = $3')
     expect(db.queries[0].params[2]).toBe(digestRefundIdempotencyKey(key))
@@ -197,18 +270,25 @@ describe('refund intent SQL storage', () => {
 
   it('rejects a valid digest match belonging to a different order as a conflict', async () => {
     const db = fakeDatabase([fixture('committed')])
-    await expect(loadRefundIntentForOperation(db.payload(), 3, key)).rejects.toMatchObject({ code: 'conflict' })
+    await expect(loadRefundIntentForOperation(db.payload(), 3, key)).rejects.toMatchObject({
+      code: 'conflict',
+    })
   })
 
   it('does not mistake a malformed cross-order digest match for an absent operation', async () => {
     const db = fakeDatabase([{ ...fixture('committed'), requestHash: '0'.repeat(64) }])
-    await expect(loadRefundIntentForOperation(db.payload(), 3, key)).rejects.toMatchObject({ code: 'invalid_record' })
+    await expect(loadRefundIntentForOperation(db.payload(), 3, key)).rejects.toMatchObject({
+      code: 'invalid_record',
+    })
   })
 
   it.each(['', '00000000-0000-4000-8000-000000000000', `${key}=`, `${key.slice(0, -1)}F`])(
-    'rejects a noncanonical application key before querying storage: %s', async (invalidKey) => {
+    'rejects a noncanonical application key before querying storage: %s',
+    async (invalidKey) => {
       const db = fakeDatabase()
-      await expect(loadRefundIntentForOperation(db.payload(), 1, invalidKey)).rejects.toMatchObject({ code: 'invalid_record' })
+      await expect(loadRefundIntentForOperation(db.payload(), 1, invalidKey)).rejects.toMatchObject(
+        { code: 'invalid_record' },
+      )
       expect(db.execute).not.toHaveBeenCalled()
     },
   )
@@ -216,9 +296,13 @@ describe('refund intent SQL storage', () => {
   it('preserves complete-lookup validation even when the requested operation exists', async () => {
     const db = fakeDatabase([fixture('committed')])
     db.transform(({ rows }) => ({ rows, rowCount: 2 }))
-    await expect(loadRefundIntentForOperation(db.payload(), 1, key)).rejects.toMatchObject({ code: 'persistence' })
+    await expect(loadRefundIntentForOperation(db.payload(), 1, key)).rejects.toMatchObject({
+      code: 'persistence',
+    })
     db.transform(({ rows }) => ({ rows: [rows[0], rows[0]], rowCount: 2 }))
-    await expect(loadRefundIntentForOperation(db.payload(), 1, key)).rejects.toMatchObject({ code: 'invalid_record' })
+    await expect(loadRefundIntentForOperation(db.payload(), 1, key)).rejects.toMatchObject({
+      code: 'invalid_record',
+    })
   })
 
   it('fails closed without explicit database capabilities, including in tests', async () => {

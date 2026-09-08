@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
@@ -28,6 +30,7 @@ import {
 
 const MINUTE = 60_000
 const TEN_MINUTES = 10 * MINUTE
+const require = createRequire(import.meta.url)
 
 /** Léptethető óra a csúszóablak teszteléséhez. */
 function createClock(startAt = 1_700_000_000_000) {
@@ -252,6 +255,101 @@ describe('classifyRateLimitedRoute — mit korlátozunk', () => {
     // Dupla-kódolás: egy dekódolás után sem nem lesz védett út (a router is egyszer dekódol).
     expect(classifyRateLimitedRoute('POST', '/api/users/%2566orgot-password')).toBeNull()
   })
+})
+
+describe('Payload method override — a telepített handlerrel azonos értelmezés', () => {
+  const cases: Array<[string, Record<string, string>, string]> = [
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'GET' }, 'GET'],
+    ['post', { 'X-HTTP-Method-Override': 'GET' }, 'GET'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'HEAD' }, 'POST'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'OPTIONS' }, 'POST'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'get' }, 'POST'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'Get' }, 'POST'],
+    ['POST', { 'X-HTTP-Method-Override': 'HEAD' }, 'POST'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'GET, HEAD' }, 'POST'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'HEAD', 'X-HTTP-Method-Override': 'GET' }, 'GET'],
+    ['POST', { 'X-Payload-HTTP-Method-Override': 'GET', 'X-HTTP-Method-Override': 'POST' }, 'GET'],
+    ['GET', { 'X-Payload-HTTP-Method-Override': 'HEAD' }, 'GET'],
+    ['HEAD', { 'X-Payload-HTTP-Method-Override': 'GET' }, 'HEAD'],
+    ['OPTIONS', { 'X-HTTP-Method-Override': 'GET' }, 'OPTIONS'],
+    ['PATCH', { 'X-Payload-HTTP-Method-Override': 'GET' }, 'PATCH'],
+    ['POST', {}, 'POST'],
+  ]
+
+  it.each(cases)('%s + %j → %s', (method, headers, expected) => {
+    expect(resolveEffectiveHttpMethod(method, new Headers(headers))).toBe(expected)
+  })
+
+  it('a framework csak POST + valamelyik pontos GET fejlécet fordítja át', () => {
+    const entry = require.resolve('payload')
+    const source = readFileSync(
+      new URL('./utilities/handleEndpoints.js', `file://${entry}`),
+      'utf8',
+    )
+    // Pinned framework contract: egy csomagváltásnál ezt újra kell vizsgálni,
+    // nem a korábbi alkalmazási feltételezést bemásolni a tesztbe.
+    expect(source).toContain(
+      "request.method.toLowerCase() === 'post' && (request.headers.get('X-Payload-HTTP-Method-Override') === 'GET' || request.headers.get('X-HTTP-Method-Override') === 'GET')",
+    )
+  })
+
+  it.each(['HEAD', 'OPTIONS', 'get'])(
+    '%s override nem kerüli meg a hatodik regisztráció korlátját',
+    async (override) => {
+      let forwarded = 0
+      const handler = withPayloadRestRateLimit(
+        async () => {
+          forwarded += 1
+          return new Response(null, { status: 201 })
+        },
+        { limiter: new SlidingWindowRateLimiter({ now: () => 1000 }) },
+      )
+
+      for (let attempt = 0; attempt <= RATE_LIMIT_RULES.registration.limit; attempt += 1) {
+        const response = await handler(
+          makeRequest('http://localhost:3000/api/users', {
+            ip: '192.0.2.44',
+            headers: { [PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER]: override },
+          }),
+        )
+        expect(response.status).toBe(attempt < RATE_LIMIT_RULES.registration.limit ? 201 : 429)
+      }
+      expect(forwarded).toBe(RATE_LIMIT_RULES.registration.limit)
+    },
+  )
+
+  it.each(['X-Payload-HTTP-Method-Override', 'X-HTTP-Method-Override'])(
+    '%s: GET admin lekérdezését változatlan törzzsel továbbítja',
+    async (headerName) => {
+      const received: string[] = []
+      const handler = withPayloadRestRateLimit(
+        async (request: Request) => {
+          received.push(await request.text())
+          return Response.json({ docs: [] })
+        },
+        { limiter: new SlidingWindowRateLimiter({ now: () => 1000 }) },
+      )
+      for (const contentType of ['application/x-www-form-urlencoded', 'application/json']) {
+        const body =
+          contentType === 'application/json'
+            ? JSON.stringify({ where: { role: { equals: 'staff' } }, limit: 10 })
+            : 'where[role][equals]=staff&limit=10'
+        for (let attempt = 0; attempt < 7; attempt += 1) {
+          const request = new Request('http://localhost:3000/api/users', {
+            method: 'POST',
+            headers: {
+              [headerName]: 'GET',
+              'Content-Type': contentType,
+              'x-forwarded-for': '192.0.2.44',
+            },
+            body,
+          })
+          expect((await handler(request)).status).toBe(200)
+          expect(received.at(-1)).toBe(body)
+        }
+      }
+    },
+  )
 })
 
 describe('SlidingWindowRateLimiter — csúszóablak', () => {

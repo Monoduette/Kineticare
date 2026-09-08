@@ -39,6 +39,8 @@ type Grant = {
   position?: number
   xmin?: string
   age?: number
+  sourceKind?: 'order' | 'independent' | null
+  sourceOrder?: number | null
 }
 type Event = { actorId: number; after: Record<string, unknown> }
 
@@ -48,7 +50,15 @@ function fakeDatabase() {
       { id: 101, productId: 5 },
       { id: 102, productId: 99 },
     ] as Purchase[],
-    grants: [] as Grant[],
+    grants: [
+      {
+        id: 'DUMMY-target-grant',
+        productId: 5,
+        grantedAt: intent.createdAt,
+        sourceKind: 'order',
+        sourceOrder: 10,
+      },
+    ] as Grant[],
     orders: [{ id: 10, status: 'refunded' }],
     items: [{ id: 'DUMMY-item', orderId: 10, productId: 5 }],
     receipts: {} as Record<string, Event>,
@@ -175,13 +185,119 @@ function fakeDatabase() {
 }
 
 describe('bounded SQL refund access cleanup', () => {
+  it('captures source identity in V2 and preserves an independent gift alongside the refunded source', async () => {
+    const db = fakeDatabase()
+    db.state.grants = [
+      {
+        id: 'DUMMY-order',
+        productId: 5,
+        grantedAt: intent.createdAt,
+        sourceKind: 'order',
+        sourceOrder: 10,
+      },
+      { id: 'DUMMY-gift', productId: 5, grantedAt: intent.createdAt, sourceKind: 'independent' },
+    ]
+    const baseline = await db.prepare()
+    expect(baseline).toMatchObject({
+      version: 2,
+      grantProof: 'bounded-xmin-provenance-v2',
+      grants: [
+        expect.objectContaining({ sourceKind: 'order', sourceOrder: 10 }),
+        expect.objectContaining({ sourceKind: 'independent', sourceOrder: null }),
+      ],
+    })
+    expect(
+      await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
+    ).toEqual({ status: 'completed' })
+    expect(db.state.purchases).toContainEqual({ id: 101, productId: 5 })
+    expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
+  })
+
+  it.each(['absent', 'legacy', 'unrelated'] as const)(
+    'holds %s origin instead of deleting membership',
+    async (kind) => {
+      const db = fakeDatabase()
+      db.state.grants =
+        kind === 'absent'
+          ? []
+          : [
+              {
+                id: 'DUMMY-unproven',
+                productId: 5,
+                grantedAt: intent.createdAt,
+                ...(kind === 'unrelated' ? { sourceKind: 'order' as const, sourceOrder: 999 } : {}),
+              },
+            ]
+      const baseline = await db.prepare()
+      expect(
+        await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
+      ).toEqual({ status: 'manual_review' })
+      expect(db.state.purchases).toContainEqual({ id: 101, productId: 5 })
+      expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
+    },
+  )
+
+  it('honors an already completed V1 receipt without promoting a pending V1 baseline', async () => {
+    const db = fakeDatabase()
+    const baseline = await db.prepare()
+    baseline.version = 1
+    baseline.grantProof = 'absence-only'
+    delete baseline.grants
+    delete baseline.fullXid
+    delete baseline.xidCeiling
+    db.state.receipts['refund-prepared'].after.accessBaseline = structuredClone(baseline)
+    expect(
+      await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
+    ).toEqual({ status: 'manual_review' })
+    db.state.receipts['refund-cleanup-done'] = {
+      actorId: 2,
+      after: {
+        version: 1,
+        intentId: 7,
+        orderId: 10,
+        sequence: 1,
+        requestFingerprint: intent.requestHash,
+        completed: true,
+        reason: 'resolved',
+        cleanupKind: 'sql-access-v1',
+      },
+    }
+    expect(
+      await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
+    ).toEqual({ status: 'completed' })
+    expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
+  })
+
+  it('preserves a new independent gift added after baseline capture', async () => {
+    const db = fakeDatabase()
+    const baseline = await db.prepare()
+    db.state.grants.push({
+      id: 'DUMMY-later-gift',
+      productId: 5,
+      grantedAt: intent.updatedAt,
+      sourceKind: 'independent',
+    })
+    expect(
+      await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
+    ).toEqual({ status: 'completed' })
+    expect(db.state.purchases).toHaveLength(2)
+  })
+
   it('reads minimal row identities with bounded grant version evidence', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await readRefundAccessBaseline(db.payload, '1', [5])
     expect(baseline).toMatchObject({
       purchases: [{ id: 101, productId: 5 }],
-      grantProof: 'bounded-xmin-v1',
+      grantProof: 'bounded-xmin-provenance-v2',
       grantProductIds: [5],
       fullXid: '1000',
       xidCeiling: '1001',
@@ -213,7 +329,7 @@ describe('bounded SQL refund access cleanup', () => {
         requestFingerprint: intent.requestHash,
         completed: true,
         reason: 'resolved',
-        cleanupKind: 'sql-access-v1',
+        cleanupKind: 'sql-access-v2',
         deletedRelationIds: [101],
       },
     })
@@ -251,7 +367,15 @@ describe('bounded SQL refund access cleanup', () => {
 
   it('cleans normal paid access with unchanged versioned grants without removing grant rows', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.state.fullXid = '1100'
     db.state.xidCeiling = '1101'
@@ -260,7 +384,13 @@ describe('bounded SQL refund access cleanup', () => {
     ).resolves.toEqual({ status: 'completed' })
     expect(db.state.purchases).toEqual([{ id: 102, productId: 99 }])
     expect(db.state.grants).toEqual([
-      { id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt },
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
     ])
     expect(
       db.queries
@@ -271,7 +401,15 @@ describe('bounded SQL refund access cleanup', () => {
 
   it('keeps a valid horizon when unfinished transactions make snapshot xmax precede our own xid', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.state.fullXid = '1100'
     db.state.rawSnapshotXmax = '1099'
@@ -285,16 +423,28 @@ describe('bounded SQL refund access cleanup', () => {
 
   it('accepts a persisted baseline whose JSONB grant object keys have been reordered', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
-    baseline.grants = baseline.grants!.map(({ id, productId, grantedAt, position, xmin, age }) => ({
-      age,
-      xmin,
-      position,
-      grantedAt,
-      productId,
-      id,
-    }))
+    baseline.grants = baseline.grants!.map(
+      ({ id, productId, grantedAt, position, xmin, age, sourceKind, sourceOrder }) => ({
+        sourceOrder,
+        sourceKind,
+        age,
+        xmin,
+        position,
+        grantedAt,
+        productId,
+        id,
+      }),
+    )
     db.state.receipts['refund-prepared'].after.accessBaseline = JSON.parse(JSON.stringify(baseline))
     await expect(
       applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
@@ -307,7 +457,15 @@ describe('bounded SQL refund access cleanup', () => {
     async (field) => {
       const db = fakeDatabase()
       db.state.grants = [
-        { id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt, xmin: '900', position: 1 },
+        {
+          id: 'DUMMY-grant',
+          productId: 5,
+          sourceKind: 'order',
+          sourceOrder: 10,
+          grantedAt: intent.createdAt,
+          xmin: '900',
+          position: 1,
+        },
       ]
       const baseline = await db.prepare()
       Object.assign(db.state.grants[0], {
@@ -329,7 +487,15 @@ describe('bounded SQL refund access cleanup', () => {
     ['4294968296', '4294968297'], // Same raw xmin after a full wrap.
   ])('rejects an unsafe xid8 observation %s/%s', async (full, ceiling) => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.state.fullXid = full
     db.state.xidCeiling = ceiling
@@ -349,7 +515,16 @@ describe('bounded SQL refund access cleanup', () => {
     { age: 101 },
   ])('rejects special, malformed or incoherent grant version %j', async (version) => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt, ...version }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+        ...version,
+      },
+    ]
     await expect(db.prepare()).rejects.toThrow('unverified')
     expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
   })
@@ -359,7 +534,14 @@ describe('bounded SQL refund access cleanup', () => {
     db.state.fullXid = '4294967290'
     db.state.xidCeiling = '4294967291'
     db.state.grants = [
-      { id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt, xmin: '4294967200' },
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+        xmin: '4294967200',
+      },
     ]
     const baseline = await db.prepare()
     db.state.fullXid = '4294967300'
@@ -375,7 +557,15 @@ describe('bounded SQL refund access cleanup', () => {
     const epoch = 2n * 4_294_967_296n
     db.state.fullXid = String(epoch + 1000n)
     db.state.xidCeiling = String(epoch + 1001n)
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.state.fullXid = String(epoch + 1_000_998n)
     db.state.xidCeiling = String(epoch + 1_000_999n)
@@ -392,8 +582,17 @@ describe('bounded SQL refund access cleanup', () => {
       applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
     ).resolves.toEqual({ status: 'completed' })
     const legacy = fakeDatabase()
-    legacy.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    legacy.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const old = await legacy.prepare()
+    old.version = 1
     old.grantProof = 'absence-only'
     delete old.grants
     delete old.fullXid
@@ -406,7 +605,15 @@ describe('bounded SQL refund access cleanup', () => {
 
   it('preserves access supported by another paid order without rejecting its grants', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.state.orders.push({ id: 11, status: 'paid' })
     db.state.items.push({ id: 'DUMMY-other', orderId: 11, productId: 5 })
@@ -447,7 +654,15 @@ describe('bounded SQL refund access cleanup', () => {
 
   it('resolves a lost commit acknowledgement from the atomic receipt without repeating deletion', async () => {
     const db = fakeDatabase()
-    db.state.grants = [{ id: 'DUMMY-grant', productId: 5, grantedAt: intent.createdAt }]
+    db.state.grants = [
+      {
+        id: 'DUMMY-grant',
+        productId: 5,
+        sourceKind: 'order',
+        sourceOrder: 10,
+        grantedAt: intent.createdAt,
+      },
+    ]
     const baseline = await db.prepare()
     db.fault('lost-commit-ack')
     await expect(

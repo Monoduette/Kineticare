@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const refundState = vi.hoisted(() => ({ active: vi.fn() }))
+vi.mock('../../lib/refund/intent-store', () => ({ loadActiveRefundIntent: refundState.active }))
+beforeEach(() => {
+  refundState.active.mockReset().mockResolvedValue(null)
+})
 
 import { createOrderStatusHandler } from '../../lib/checkout/order-status-handler'
 
@@ -44,7 +50,10 @@ function payloadWithUser(user: { id: number } | null, orders: MockOrder[]) {
 function request(orderNumber?: string): [Request, { params: Promise<{ orderNumber: string }> }] {
   const headers = new Headers({ 'x-request-id': 'test-req-1' })
   const req = new Request('http://localhost/api/orders/KH-2026-000123/status', { headers })
-  return [req as unknown as Request, { params: Promise.resolve({ orderNumber: orderNumber ?? 'KH-2026-000123' }) }]
+  return [
+    req as unknown as Request,
+    { params: Promise.resolve({ orderNumber: orderNumber ?? 'KH-2026-000123' }) },
+  ]
 }
 
 const OWN_ORDER: MockOrder = {
@@ -56,6 +65,63 @@ const OWN_ORDER: MockOrder = {
 }
 
 describe('GET /api/orders/[orderNumber]/status', () => {
+  it('adds only a customer-facing review flag for their active automatic refund', async () => {
+    refundState.active.mockResolvedValue({
+      id: 88,
+      schemaVersion: 2,
+      actorKind: 'system',
+      systemActor: 'paid-reject-recovery',
+      state: 'provider_unknown',
+      requestHash: 'PRIVATE',
+    })
+    const handler = createOrderStatusHandler({
+      getPayload: async () =>
+        payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status: 'payment_pending' }]) as never,
+    })
+    const [req, ctx] = request()
+    const response = await handler(req as never, ctx)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      status: 'payment_pending',
+      productId: 42,
+      totalHufSnapshot: null,
+      currency: null,
+      paymentReviewRequired: true,
+    })
+    expect(refundState.active).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not inspect refund state before authentication and ownership have passed', async () => {
+    const [req, ctx] = request()
+    for (const user of [null, { id: 8 }]) {
+      const handler = createOrderStatusHandler({
+        getPayload: async () => payloadWithUser(user, [OWN_ORDER]) as never,
+      })
+      expect((await handler(req as never, ctx)).status).toBe(user ? 404 : 401)
+    }
+    expect(refundState.active).not.toHaveBeenCalled()
+  })
+
+  it('does not conflate an ordinary owner partial-refund intent with a rejected payment', async () => {
+    refundState.active.mockResolvedValue({ schemaVersion: 1, actor: 1, state: 'provider_unknown' })
+    const handler = createOrderStatusHandler({
+      getPayload: async () => payloadWithUser({ id: 7 }, [OWN_ORDER]) as never,
+    })
+    const [req, ctx] = request()
+    const response = await handler(req as never, ctx)
+    expect(response.status).toBe(200)
+    expect(await response.json()).not.toHaveProperty('paymentReviewRequired')
+  })
+
+  it('does not return an apparent successful payment when refund storage is unavailable', async () => {
+    refundState.active.mockRejectedValue(new Error('DUMMY storage unavailable'))
+    const handler = createOrderStatusHandler({
+      getPayload: async () => payloadWithUser({ id: 7 }, [OWN_ORDER]) as never,
+    })
+    const [req, ctx] = request()
+    expect((await handler(req as never, ctx)).status).toBe(500)
+  })
+
   it('401 bejelentkezés nélkül', async () => {
     const handler = createOrderStatusHandler({
       getPayload: async () => payloadWithUser(null, [OWN_ORDER]) as never,
@@ -135,7 +201,9 @@ describe('GET /api/orders/[orderNumber]/status', () => {
     const req = new Request('http://localhost/api/orders//status', {
       headers: new Headers({ 'x-request-id': 'test-req-2' }),
     })
-    const response = await handler(req as never, { params: Promise.resolve({ orderNumber: '   ' }) })
+    const response = await handler(req as never, {
+      params: Promise.resolve({ orderNumber: '   ' }),
+    })
     expect(response.status).toBe(400)
   })
 })

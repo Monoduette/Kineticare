@@ -6,13 +6,13 @@ import type { Payload } from 'payload'
 import type { RefundIntent } from '../../payload-types'
 
 export interface RefundAccessBaseline {
-  version: 1
+  version: 1 | 2
   customerId: number
   productIds: number[]
   purchases: Array<{ id: number; productId: number }>
   grantProductIds: number[]
   grantsFingerprint: string
-  grantProof: 'absence-only' | 'bounded-xmin-v1'
+  grantProof: 'absence-only' | 'bounded-xmin-v1' | 'bounded-xmin-provenance-v2'
   fullXid?: string
   xidCeiling?: string
   grants?: GrantVersion[]
@@ -25,6 +25,8 @@ interface GrantVersion {
   position: number
   xmin: string
   age: number
+  sourceKind?: 'order' | 'independent' | null
+  sourceOrder?: number | null
 }
 
 export type RefundAccessCleanupResult = { status: 'completed' | 'manual_review' }
@@ -82,16 +84,31 @@ function xid(value: unknown, maximum = 18_446_744_073_709_551_615n): bigint {
   return parsed
 }
 
-function fingerprint(grants: GrantVersion[]): string {
-  // JSONB does not preserve object key order; hash explicit field tuples instead.
-  const tuples = grants.map(({ id, productId, grantedAt, position, xmin, age }) => [
-    id,
-    productId,
-    grantedAt,
-    position,
-    xmin,
-    age,
-  ])
+function grantSource(row: Record<string, unknown>): {
+  sourceKind: 'order' | 'independent' | null
+  sourceOrder: number | null
+} {
+  if (row.sourceKind == null && row.sourceOrder == null)
+    return { sourceKind: null, sourceOrder: null }
+  if (row.sourceKind === 'independent' && row.sourceOrder == null)
+    return { sourceKind: 'independent', sourceOrder: null }
+  if (row.sourceKind === 'order') return { sourceKind: 'order', sourceOrder: id(row.sourceOrder) }
+  return fail()
+}
+
+function fingerprint(grants: GrantVersion[], version: 1 | 2): string {
+  // JSONB does not preserve object key order; keep V1 hashes byte-compatible.
+  const tuples = grants.map(
+    ({ id, productId, grantedAt, position, xmin, age, sourceKind, sourceOrder }) => [
+      id,
+      productId,
+      grantedAt,
+      position,
+      xmin,
+      age,
+      ...(version === 2 ? [sourceKind, sourceOrder] : []),
+    ],
+  )
   return createHash('sha256').update(JSON.stringify(tuples)).digest('hex')
 }
 
@@ -117,12 +134,16 @@ function validateVersions(value: RefundAccessBaseline): void {
       grant.age >= 2_147_483_648
     )
       fail()
+    if (value.version === 2) {
+      const source = grantSource(grant)
+      if (source.sourceKind !== grant.sourceKind || source.sourceOrder !== grant.sourceOrder) fail()
+    }
     const inserting = xid(grant.xmin, XID_MODULUS - 1n)
     if (((full % XID_MODULUS) - inserting + XID_MODULUS) % XID_MODULUS !== BigInt(grant.age)) fail()
   }
   if (new Set(value.grants.map((grant) => grant.id)).size !== value.grants.length) fail()
   if (
-    fingerprint(value.grants) !== value.grantsFingerprint ||
+    fingerprint(value.grants, value.version) !== value.grantsFingerprint ||
     !isDeepStrictEqual(
       [...new Set(value.grants.map((grant) => grant.productId))].sort((a, b) => a - b),
       value.grantProductIds,
@@ -179,7 +200,8 @@ async function lockedBaseline(
   const grants = await rows(
     tx,
     sql`SELECT id, product_id AS "productId", granted_at AS "grantedAt",
-    _order AS "position", xmin::text AS "xmin", age(xmin) AS "age"
+    _order AS "position", xmin::text AS "xmin", age(xmin) AS "age",
+    source_kind AS "sourceKind", source_order_id AS "sourceOrder"
     FROM "public"."users_access_grants" WHERE _parent_id = ${customerId}
     ORDER BY id LIMIT ${LIMIT + 1} FOR UPDATE`,
   )
@@ -202,18 +224,19 @@ async function lockedBaseline(
       position: row.position as number,
       xmin: row.xmin as string,
       age: row.age as number,
+      ...grantSource(row),
     }
   })
   if (new Set(grantRows.map((row) => row.id)).size !== grantRows.length) fail()
   const relevantGrants = grantRows.filter((row) => productIds.includes(row.productId))
   const baseline: RefundAccessBaseline = {
-    version: 1,
+    version: 2,
     customerId,
     productIds,
     purchases: purchaseRows.filter((row) => productIds.includes(row.productId)),
     grantProductIds: [...new Set(relevantGrants.map((row) => row.productId))].sort((a, b) => a - b),
-    grantsFingerprint: fingerprint(relevantGrants),
-    grantProof: 'bounded-xmin-v1',
+    grantsFingerprint: fingerprint(relevantGrants, 2),
+    grantProof: 'bounded-xmin-provenance-v2',
     fullXid: clock[0].fullXid as string,
     xidCeiling: clock[0].xidCeiling as string,
     grants: relevantGrants,
@@ -249,8 +272,10 @@ export async function readRefundAccessBaseline(
 function validateBaseline(value: RefundAccessBaseline, productIds: number[]): void {
   if (
     !record(value) ||
-    value.version !== 1 ||
-    !['absence-only', 'bounded-xmin-v1'].includes(value.grantProof) ||
+    !(
+      (value.version === 1 && ['absence-only', 'bounded-xmin-v1'].includes(value.grantProof)) ||
+      (value.version === 2 && value.grantProof === 'bounded-xmin-provenance-v2')
+    ) ||
     !isDeepStrictEqual(value.productIds, productIds) ||
     !Array.isArray(value.purchases) ||
     value.purchases.length > LIMIT ||
@@ -266,7 +291,7 @@ function validateBaseline(value: RefundAccessBaseline, productIds: number[]): vo
   }
   if (new Set(value.purchases.map((row) => row.id)).size !== value.purchases.length) fail()
   if (value.grantProductIds.some((product) => !productIds.includes(id(product)))) fail()
-  if (value.grantProof === 'bounded-xmin-v1') validateVersions(value)
+  if (value.grantProof !== 'absence-only') validateVersions(value)
 }
 
 function unchangedGrants(
@@ -276,7 +301,7 @@ function unchangedGrants(
 ): boolean {
   if (!baseline.grantProductIds.includes(product) && !current.grantProductIds.includes(product))
     return true
-  if (baseline.grantProof !== 'bounded-xmin-v1') return false
+  if (baseline.version !== 2 || baseline.grantProof !== 'bounded-xmin-provenance-v2') return false
   const start = xid(baseline.fullXid)
   const end = xid(current.fullXid)
   const ceiling = xid(current.xidCeiling)
@@ -287,12 +312,14 @@ function unchangedGrants(
   const versions = (value: RefundAccessBaseline) =>
     value
       .grants!.filter((grant) => grant.productId === product)
-      .map(({ id, productId, grantedAt, position, xmin }) => ({
+      .map(({ id, productId, grantedAt, position, xmin, sourceKind, sourceOrder }) => ({
         id,
         productId,
         grantedAt,
         position,
         xmin,
+        sourceKind,
+        sourceOrder,
       }))
   return isDeepStrictEqual(versions(baseline), versions(current))
 }
@@ -338,6 +365,7 @@ async function protectedProducts(
   intent: RefundIntent,
   customerId: number,
   productIds: number[],
+  grants: GrantVersion[],
 ): Promise<Set<number>> {
   // Lock every existing customer order before reading items; new customer FKs wait on users.
   const orders = await rows(
@@ -376,6 +404,20 @@ async function protectedProducts(
     if (order.status === 'paid') overlap.forEach((item) => protectedIds.add(id(item.productId)))
     else if (!['payment_failed', 'cancelled', 'refunded'].includes(String(order.status))) fail()
   }
+  for (const grant of grants) {
+    if (grant.sourceKind === 'independent') {
+      protectedIds.add(grant.productId)
+    } else if (grant.sourceKind === 'order') {
+      // A foreign/missing source or a source that never contained the SKU is not origin proof.
+      if (
+        !orders.some((order) => order.id === grant.sourceOrder) ||
+        !items.some(
+          (item) => item.orderId === grant.sourceOrder && item.productId === grant.productId,
+        )
+      )
+        fail()
+    }
+  }
   return protectedIds
 }
 
@@ -410,20 +452,37 @@ export async function applyRefundAccessCleanup(
         if (
           done.completed !== true ||
           done.reason !== 'resolved' ||
-          done.cleanupKind !== 'sql-access-v1'
+          !['sql-access-v1', 'sql-access-v2'].includes(String(done.cleanupKind))
         )
           fail()
         return COMPLETED
       }
+      // A completed V1 receipt remains final; a pending V1 observation cannot prove origin.
+      if (baseline.version !== 2) fail()
       const prepared = await receipt(tx, intent, 'refund-prepared')
       if (!prepared || !isDeepStrictEqual(prepared.accessBaseline, baseline)) fail()
       const current = await lockedBaseline(tx, baseline.customerId, productIds)
-      const protectedIds = await protectedProducts(tx, intent, baseline.customerId, productIds)
+      const protectedIds = await protectedProducts(
+        tx,
+        intent,
+        baseline.customerId,
+        productIds,
+        current.grants!,
+      )
       const deleted: Array<{ id: number; productId: number }> = []
       for (const product of productIds) {
         if (protectedIds.has(product)) continue
         const existing = current.purchases.filter((row) => row.productId === product)
         if (!existing.length) continue
+        const relevant = current.grants!.filter((grant) => grant.productId === product)
+        if (
+          !relevant.some(
+            (grant) =>
+              grant.sourceKind === 'order' && grant.sourceOrder === relationId(intent.order),
+          ) ||
+          relevant.some((grant) => grant.sourceKind == null)
+        )
+          fail()
         if (!unchangedGrants(baseline, current, product)) fail()
         const original = baseline.purchases.filter((row) => row.productId === product)
         if (!isDeepStrictEqual(existing, original)) fail()
@@ -455,7 +514,9 @@ export async function applyRefundAccessCleanup(
         ...binding,
         completed: true,
         reason: 'resolved',
-        cleanupKind: 'sql-access-v1',
+        cleanupKind: 'sql-access-v2',
+        revokedSourceOrderId: relationId(intent.order),
+        retainedGrantIds: current.grants!.map((grant) => grant.id).sort(),
         deletedRelationIds: deleted.map((row) => row.id).sort((a, b) => a - b),
         preservedProductIds: [...protectedIds].sort((a, b) => a - b),
       }

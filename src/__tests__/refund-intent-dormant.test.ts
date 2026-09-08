@@ -17,11 +17,7 @@ function sourceFiles(directory: string): string[] {
 
 describe('refund intent activation boundary', () => {
   it('keeps unrelated payment, access, and job surfaces free of ledger references', () => {
-    const liveRefundFiles = [
-      'src/lib/barion/refund.ts',
-      'src/lib/user-purchases-lock.ts',
-      'src/lib/order-status/recover-paid-reject.ts',
-    ]
+    const liveRefundFiles = ['src/lib/barion/refund.ts', 'src/lib/user-purchases-lock.ts']
     const jobFiles = sourceFiles(join(root, 'src/jobs')).map((path) => relative(root, path))
     const references = /refund-intent|refund-intents|RefundIntents/u
     for (const path of [...liveRefundFiles, ...jobFiles]) {

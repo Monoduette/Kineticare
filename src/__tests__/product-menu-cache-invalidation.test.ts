@@ -21,6 +21,7 @@ vi.mock('../lib/logger', async (importOriginal) => ({
 }))
 
 import { MENUS_CACHE_TAG } from '../lib/cache-tags'
+import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { ecommerce } from '../plugins/ecommerce'
 
 beforeAll(async () => {
@@ -66,8 +67,10 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     expect(products.hooks?.afterChange?.slice(0, 2)).toEqual(hooks.afterChange)
     expect(products.hooks?.afterDelete).toHaveLength(3)
     expect(products.hooks?.afterDelete?.slice(0, 2)).toEqual(hooks.afterDelete)
-    expect(products.hooks?.beforeDelete).toHaveLength(2)
-    expect(products.hooks?.beforeDelete?.[0]).toBe(beforeDelete)
+    expect(products.hooks?.beforeDelete).toHaveLength(3)
+    expect(products.hooks?.beforeDelete?.[0]).toBe(preventCourseDeletionWithFiles)
+    expect(products.hooks?.beforeDelete?.[1]).toBe(beforeDelete)
+    expect(hooks.beforeDelete).toEqual([beforeDelete])
     expect(products.hooks?.beforeChange).toBe(hooks.beforeChange)
     expect(hooks.afterChange).toHaveLength(2)
     expect(hooks.afterDelete).toHaveLength(2)

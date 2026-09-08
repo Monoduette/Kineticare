@@ -116,7 +116,10 @@ körnek):
                                 ▼
                     kineticare-YYYYMMDD-HHmmss.dump
                                 │
-                    pg_restore --list (integritás)
+                    pg_restore --list (TOC)
+                                │
+                    pg_restore --file=/dev/null
+                       (teljes dekódolás)
                                 │
                      age recipient (titkosítás)
                                 │
@@ -160,15 +163,19 @@ Amit a script garantál:
   visszaállításkor lehet róla dönteni (`--no-owner`), fordítva nem.
 - **Fájlnév:** `kineticare-YYYYMMDD-HHmmss.dump`, **UTC** időbélyeggel, hogy a
   nevek rendezése időrendi legyen és a nyári időszámítás ne okozzon ütközést.
-- **Integritás-ellenőrzés minden mentés után:** `pg_restore --list` a kész
-  fájlon. Ha nem olvasható végig, vagy egyetlen visszaállítható bejegyzést sem
-  tartalmaz, a **fájl törlődik** és a script **1-es kóddal** lép ki — nem
-  maradhat hátra hamis biztonságot adó, visszaállíthatatlan mentés.
+- **Két ellenőrzés minden mentés után:** `pg_restore --list` ellenőrzi a TOC
+  olvashatóságát és nem üres voltát, majd a szűrő nélküli
+  `pg_restore --file=/dev/null` végigdekódolja a teljes archívumot. Egyik sem
+  kapcsolódik adatbázishoz. Hiba vagy hiányzó ellenőrző eszköz esetén az új
+  **fájl törlődik**, a script **1-es kóddal** lép ki, és a korábbi jó mentések
+  retenciója nem indul el. A teljes dekódolás még nem helyettesít egy
+  eldobható adatbázisba végzett SQL-visszaállítási próbát.
 - **Titokvédelem:** a `DATABASE_URI` értéke nem jelenik meg a konzolon,
   strukturált naplóban, hibaüzenetben vagy gyermekfolyamat argv-jában. A script
   a nem titkos libpq mezőket külön `PGHOST`/`PGPORT`/`PGUSER`/`PGDATABASE`
   környezetbe bontja, a jelszót pedig egy 0700-as ideiglenes könyvtár 0600-as
-  `PGPASSFILE` fájljában adja át. A fájl siker és hiba után is törlődik; a
+  `PGPASSFILE` fájljában adja át. A fájl a pg_dump után, siker és hiba esetén
+  is törlődik; a helyi archívumellenőrző nem örököl PG/app credentialt. A
   pg_dump/pg_restore hibakimenete defense-in-depth redakciós szűrőn is átmegy.
 - **Nincs shell:** a folyamatindítás `execFile`-lal történik, és a teljes URI
   nem része az argumentumlistának. A jelszó speciális karakterei (`$`, `;`,
@@ -195,8 +202,10 @@ nélkül.
   az éles `Postgres-c8Rg` szolgáltatás `postgres-ssl:18` (PostgreSQL 18);
   (2) a digest kizárja, hogy ugyanaz a tag később észrevétlenül más image-re
   mutasson. A mentés nem függ a repó npm-telepítésétől.
-- A mentés ugyanazt az integritás-ellenőrzést kapja (`pg_restore --list`);
-  bukásnál a fájl törlődik és a job piros.
+- A mentés ugyanazt a TOC- és teljes dekódolási ellenőrzést kapja. Az
+  archívumolvasó konténerek `--network none` mellett, csak olvasható dump
+  mounttal futnak. Bukásnál a job piros, titkosítás és feltöltés nem indul;
+  a plaintext fájlt a kötelező cleanup eltávolítja.
 - Az ellenőrzött dumpot **age v1.3.2** titkosítja. Az eszköz a hivatalos
   release-archívumból töltődik le, és telepítés előtt rögzített SHA-256
   ellenőrzést kap.
@@ -272,6 +281,25 @@ visszafejtése, majd üres eldobható adatbázisba `--exit-on-error` restore és
 6.4 szerinti sorszám-ellenőrzés. Addig az állapot: **implementált, de end-to-end
 restore drillel még igazolandó**.
 
+### 4.4 Valódi PG18 regresszió a CI-ben
+
+A `scripts/test-backup-archive-integrity.mjs` a `verify` job meglévő,
+digesttel rögzített PG18 service-konténerében fut, az alkalmazási DB-env és
+migrációk előtt. Két egyedi nevű, eldobható adatbázist használ, csak a konténer
+Unix socketjén. Egy 2048 soros, 2 MiB mesterséges adathalmaz custom mentésén
+a tényleges CLI argumentumsegéd szerinti TOC és teljes dekódolás után
+SQL-visszaállítást és ismert sorszám-/méret-/checksum-egyezést ellenőriz.
+
+A mentés egyetlen, előre rögzített csonkolása után a TOC-nak továbbra is
+olvashatónak kell maradnia, miközben a teljes dekódolásnak hibával kell
+kilépnie. Hiányzó eszköz, sérült TOC, sikertelen cleanup vagy túllépett
+időkeret bukás, nincs néma kihagyás. A futás legfeljebb 120 másodpercet kap,
+és csak a saját fixture-adatbázisait és ideiglenes fájljait törli.
+
+Ez a formátum- és regressziós próba nem használ éles mentést, és nem
+igazolja az éles artifactok visszafejthetőségét vagy az offline kulcs
+elérhetőségét. A 6–8. pont szerinti üzemeltetési restore drill külön kapu.
+
 ---
 
 ## 5. Élesítés
@@ -346,12 +374,16 @@ restore drillel még igazolandó**.
 ### 6.2 Ellenőrzés visszaállítás ELŐTT
 
 ```bash
-pg_restore --list kineticare-20260815-021709.dump | head -20
+pg_restore --list kineticare-20260815-021709.dump > toc.txt &&
+pg_restore --file=/dev/null kineticare-20260815-021709.dump
 ```
 
-A fejlécből leolvasható a `Dumped from database version` és a bejegyzések
-száma. Ha ez a parancs hibázik, **a fájl sérült — ne is kezdd el a
-visszaállítást**, keress egy korábbi mentést.
+A `toc.txt` fejlécéből leolvasható a forrás PostgreSQL-verzió és a TOC
+bejegyzéseinek száma. A lista önmagában nem olvassa az adatblokkokat; a
+második parancs ezért kötelező. Ha bármelyik hibázik vagy a TOC üres,
+**ne kezdd el a visszaállítást**: vizsgáld meg az eszköz-/formátumhibát,
+vagy válassz egy ellenőrzött másik mentést. A TOC is tartalmazhat belső
+objektumneveket; ne tedd nyilvános naplóba, és a próba után töröld.
 
 ### 6.3 Visszaállítás ÜRES adatbázisba (ez az ajánlott út)
 
@@ -454,12 +486,13 @@ Egy mentés, amit sosem állítottak vissza, nem mentés, hanem feltételezés.
 
 1. Indítsd kézzel a *DB mentés* workflow-t, vagy vedd a legutóbbi artifactot.
 2. Töltsd le, csomagold ki, majd offline fejtsd vissza a 6.1 szerint.
-3. `pg_restore --list <visszafejtett-fájl> | head -20` — végigolvasható-e.
+3. A 6.2 szerinti TOC- és teljes dekódolási ellenőrzés; a lista önmagában
+   nem bizonyítja az adatblokkok olvashatóságát.
 4. Állítsd vissza egy **eldobható** adatbázisba (6.3), `--exit-on-error`-ral.
 5. Futtasd le a 6.4 ellenőrző lekérdezéseket, és vesd össze az élessel.
 6. **Mérd meg, mennyi ideig tartott** — ez lesz a visszaállítási idő becslése
    egy éles incidensben.
-7. Dobd el a próba-adatbázist, és töröld a visszafejtett plaintext dumpot.
+7. Dobd el a próba-adatbázist, és töröld a visszafejtett plaintext dumpot és a TOC-listát.
 8. Írd fel az eredményt (dátum, dump mérete, visszaállítási idő, sorszámok) —
    a `docs/feladatlista.md` C14 sorához vagy egy üzemeltetési naplóba.
 

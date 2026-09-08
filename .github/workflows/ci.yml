@@ -121,6 +121,10 @@ jobs:
           test "$("$node_exec" --version)" = "v${NODE_VERSION}"
           test "$("$node_exec" -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_exec"
           "$node_exec" scripts/install-reviewed-dependencies.mjs
+      - name: PG18 archive full-decode regression
+        env:
+          KINETICARE_BACKUP_PG18_CONTAINER: ${{ job.services.postgres.id }}
+        run: node --import tsx scripts/test-backup-archive-integrity.mjs
       - name: Typecheck
         run: npm run typecheck
       # A `src/payload-types.ts` GENERÁLT fájl, de kézzel commitolt: ha a

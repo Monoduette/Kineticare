@@ -16,6 +16,7 @@ import { ensureMediaFiles } from './lib/media-restore'
 import { guardDestructiveMigrationCommands } from './lib/migrations/destructive-migration-guard'
 import { Categories } from './collections/Categories'
 import { CourseProgress } from './collections/CourseProgress'
+import { CourseFiles } from './collections/CourseFiles'
 import { Media } from './collections/Media'
 import { Menus } from './collections/Menus'
 import { Pages } from './collections/Pages'
@@ -604,6 +605,7 @@ export default buildConfig({
     WebhookEvents,
     AuditLogs,
     RefundIntents,
+    CourseFiles,
   ],
   // FixedToolbarFeature: a szerkesztő fölött állandóan látszó eszköztár —
   // laikus szerkesztőnek sokkal felfedezhetőbb, mint a lebegő (kijelölésre

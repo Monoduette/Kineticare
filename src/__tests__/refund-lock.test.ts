@@ -61,13 +61,20 @@ describe('provider response evidence', () => {
   ] as const)('classifies %s as %s', (status, expected) =>
     expect(classifyRefundedTransactionStatus(status)).toBe(expected),
   )
-  it.each(['RefundFailed', 'Future', undefined])(
+  it.each(['RefundFailed', 'Future', 'Refunded', 'PartiallyRefunded', undefined])(
     'blocks %s without changing financial/access state',
     async (Status) => {
       const f = fixture()
       provider.refund.mockResolvedValue({
         PaymentId: 'SYNTHETIC-PAYMENT',
-        RefundedTransactions: [{ TransactionId: 'SYNTHETIC-TX', Total: 20000, Status }],
+        RefundedTransactions: [
+          {
+            TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            Total: 20000,
+            Status,
+          },
+        ],
       })
       await expect(f.start()).rejects.toThrow()
       expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
@@ -81,24 +88,64 @@ describe('provider response evidence', () => {
     { Errors: [{ ErrorCode: 'SYNTHETIC' }] },
     { Errors: null },
     { RefundedTransactions: [] },
-    { RefundedTransactions: [{ TransactionId: 'OTHER', Total: 20000, Status: 'Refunded' }] },
-    { RefundedTransactions: [{ TransactionId: 'SYNTHETIC-TX', Total: 1, Status: 'Refunded' }] },
     {
       RefundedTransactions: [
-        { TransactionId: 'SYNTHETIC-TX', AmountToRefund: 20000, Status: 'Refunded' },
+        {
+          TransactionId: 'OTHER',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 20000,
+          Status: 'Succeeded',
+        },
       ],
     },
     {
       RefundedTransactions: [
-        { TransactionId: 'SYNTHETIC-TX', Total: 20000, Status: 'Refunded' },
-        { TransactionId: 'OTHER', Total: 20000, Status: 'Refunded' },
+        {
+          TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 1,
+          Status: 'Succeeded',
+        },
+      ],
+    },
+    {
+      RefundedTransactions: [
+        {
+          TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          AmountToRefund: 20000,
+          Status: 'Succeeded',
+        },
+      ],
+    },
+    {
+      RefundedTransactions: [
+        {
+          TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 20000,
+          Status: 'Succeeded',
+        },
+        {
+          TransactionId: 'OTHER',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 20000,
+          Status: 'Succeeded',
+        },
       ],
     },
   ])('rejects insufficient or conflicting refund evidence %j', async (override) => {
     const f = fixture()
     provider.refund.mockResolvedValue({
       PaymentId: 'SYNTHETIC-PAYMENT',
-      RefundedTransactions: [{ TransactionId: 'SYNTHETIC-TX', Total: 20000, Status: 'Refunded' }],
+      RefundedTransactions: [
+        {
+          TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 20000,
+          Status: 'Succeeded',
+        },
+      ],
       ...override,
     })
     await expect(f.start()).rejects.toThrow()
@@ -108,7 +155,14 @@ describe('provider response evidence', () => {
     const f = fixture()
     provider.refund.mockResolvedValue({
       PaymentId: 'SYNTHETIC-PAYMENT',
-      RefundedTransactions: [{ TransactionId: 'SYNTHETIC-TX', Total: 20000, Status: 'Refunded' }],
+      RefundedTransactions: [
+        {
+          TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
+          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          Total: 20000,
+          Status: 'Succeeded',
+        },
+      ],
     })
     await expect(f.start()).resolves.toMatchObject({ refundStatusOutcome: 'succeeded' })
   })

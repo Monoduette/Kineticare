@@ -101,9 +101,7 @@ function createMockPayload(options: MockPayloadOptions = {}) {
     find: [] as unknown[],
     findByID: [] as Array<Record<string, unknown>>,
   }
-  const orderRows = new Map<number, OrderRow>(
-    (options.orderRows ?? []).map((row) => [row.id, row]),
-  )
+  const orderRows = new Map<number, OrderRow>((options.orderRows ?? []).map((row) => [row.id, row]))
   const payload = {
     auth: vi.fn(async () => ({
       user: options.authUser === undefined ? mockUser : options.authUser,
@@ -659,10 +657,16 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const conditional = calls.update.find((entry) => entry.data.status === 'cancelled')
     expect(conditional).toBeDefined()
+    expect(payload.findByID).toHaveBeenCalledWith({
+      collection: 'orders',
+      id: 77,
+      depth: 0,
+      overrideAccess: true,
+    })
     expect(payload.update).toHaveBeenCalledWith(
       expect.objectContaining({
         collection: 'orders',
-        where: { and: [{ id: { equals: 77 } }, { status: { equals: 'payment_pending' } }] },
+        id: 77,
         data: { status: 'cancelled' },
       }),
     )
@@ -915,7 +919,10 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
   it('duplicate-paid reject + sikeres refund → marad az already-paid 409 (van hozzáférés)', async () => {
     const { promise } = paidRejectRecoverySetup('duplicate-paid-order')
-    await expect(promise).rejects.toMatchObject({ status: 409, message: CHECKOUT_ALREADY_PURCHASED })
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+      message: CHECKOUT_ALREADY_PURCHASED,
+    })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -949,7 +956,7 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('total-mismatch + skip (már visszatérítve) → 409 a refund-üzenettel: ott igaz', async () => {
+  it('total-mismatch + régi skip jelzés → 409 ellenőrzés, nincs igazolatlan refundígéret', async () => {
     const { promise } = paidRejectRecoverySetup('total-mismatch', {
       action: 'skipped',
       detail: 'already-refunded',
@@ -957,11 +964,11 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const error = await checkoutErrorFrom(promise)
     expect(error.status).toBe(409)
-    expect(error.message).toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('privilegizált kötés + skip (már visszatérítve) → 409 a belépős refund-üzenettel', async () => {
+  it('privilegizált kötés + régi skip jelzés → 409 ellenőrzés szükséges', async () => {
     const { promise } = paidRejectRecoverySetup('guest-bind-privileged-account', {
       action: 'skipped',
       detail: 'already-refunded',
@@ -969,10 +976,10 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const error = await checkoutErrorFrom(promise)
     expect(error.status).toBe(409)
-    expect(error.message).toBe(CHECKOUT_REFUNDED_PRIVILEGED)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
   })
 
-  it('total-mismatch + skip (a refund-nyom már rögzítve) → a refund-üzenet igaz', async () => {
+  it('total-mismatch + régi helyi nyom skip → ellenőrzés szükséges', async () => {
     const { promise } = paidRejectRecoverySetup('total-mismatch', {
       action: 'skipped',
       detail: 'already-recorded',
@@ -980,9 +987,27 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const error = await checkoutErrorFrom(promise)
     expect(error.status).toBe(409)
-    expect(error.message).toBe(CHECKOUT_REFUNDED_RETRY)
+    expect(error.message).toBe(CHECKOUT_PAID_UNDER_REVIEW)
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ['failed', CHECKOUT_PAID_UNDER_REVIEW],
+    ['skipped', CHECKOUT_PAID_UNDER_REVIEW],
+    ['refunded', CHECKOUT_REFUNDED_RETRY],
+  ] as const)(
+    'aktív refund reconciliation %s eredménye nem állíthat már megvett hozzáférést',
+    async (action, message) => {
+      const { promise, calls } = paidRejectRecoverySetup('refund-pending-reconciliation', {
+        action,
+        detail: 'refund-pending-reconciliation',
+      })
+      await expect(promise).rejects.toMatchObject({ status: 409, message })
+      expect(message).not.toBe(CHECKOUT_ALREADY_PURCHASED)
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
 
   it('refund-recorded reject (rögzített refund-nyomú függő rendelés) → felülvizsgálat-üzenet', async () => {
     const { promise } = paidRejectRecoverySetup('refund-recorded', {
@@ -1371,9 +1396,7 @@ describe('POST /api/checkout/start route-handler', () => {
     const { payload } = createMockPayload()
     const POST = makeHandler(async () => payload)
 
-    const response = await POST(
-      makeRequest({ ...happyInput, pad: 'x'.repeat(70_000) }),
-    )
+    const response = await POST(makeRequest({ ...happyInput, pad: 'x'.repeat(70_000) }))
 
     expect(response.status).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()

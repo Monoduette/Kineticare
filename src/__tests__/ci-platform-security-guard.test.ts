@@ -31,9 +31,9 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', '7cf0ed83a7caa85b57c0dea9f51dc1a4a4d9a1e68ad4cce0dbed49057695dfec'],
+  ['ci.yml', 'eef8b6a214d03b4833d57f40b25408fff05897da7cce064251f9fd8527fc8a6e'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
-  ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
+  ['db-backup.yml', '15adb4fa8c0b8582a58916e46400d7670126a746c9d39b2e55670eb42affd388'],
   ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
 ])
 
@@ -237,7 +237,8 @@ function cursorInstallRuntimeViolations(source: string): string[] {
   const positions = requiredInOrder.map((value) => source.indexOf(value))
   const violations: string[] = []
 
-  if (positions.some((position) => position < 0)) violations.push('exact install runtime elem hiányzik')
+  if (positions.some((position) => position < 0))
+    violations.push('exact install runtime elem hiányzik')
   if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
     violations.push('exact install runtime ellenőrzési sorrend eltér')
   }
@@ -272,10 +273,10 @@ function railpackPlanVerifierViolations(source: string): string[] {
   const requiredInOrder = [
     "RAILPACK_VERSION='0.38.0'",
     "RAILPACK_CHECKSUMS_SHA256='69d58f46c00048b1ccddc35151842cfa393d88ad06e5d376e7a2f4bcc8aabb89'",
-    "platform_key=\"$(uname -s):$(uname -m)\"",
+    'platform_key="$(uname -s):$(uname -m)"',
     'Linux:x86_64)',
     'Darwin:arm64 | Darwin:aarch64)',
-    'curl --fail --silent --show-error --location --proto \'=https\' --tlsv1.2',
+    "curl --fail --silent --show-error --location --proto '=https' --tlsv1.2",
     'verify_sha256 "$RAILPACK_CHECKSUMS_SHA256" "$checksums_path"',
     'grep -Fqx -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
     'verify_sha256 "$RAILPACK_ARCHIVE_SHA256" "$archive_path"',
@@ -295,7 +296,12 @@ function railpackPlanVerifierViolations(source: string): string[] {
   if (!source.includes('/releases/download/v${RAILPACK_VERSION}/${RAILPACK_ARCHIVE}')) {
     violations.push('official pinned release URL hiányzik')
   }
-  for (const nonPortableOption of ['--fixed-strings', '--line-regexp', '--extended-regexp', '--quiet']) {
+  for (const nonPortableOption of [
+    '--fixed-strings',
+    '--line-regexp',
+    '--extended-regexp',
+    '--quiet',
+  ]) {
     if (new RegExp(`grep [^\\n]*${nonPortableOption}`).test(source)) {
       violations.push(`nem hordozható grep opció: ${nonPortableOption}`)
     }
@@ -741,6 +747,21 @@ const mutations: readonly WorkflowMutation[] = [
 ]
 
 describe('CI/platform supply-chain guard', () => {
+  it('a valódi PG18 archívumpróba kötelező és az alkalmazási DB-env előtt fut', () => {
+    const ci = workflow('ci.yml')
+    const fixture = ci.indexOf('      - name: PG18 archive full-decode regression\n')
+    const databaseEnv = ci.indexOf('      - name: Teszt-adatbázis env (nem titkok)\n')
+    expect(fixture).toBeGreaterThan(
+      ci.indexOf('"$node_exec" scripts/install-reviewed-dependencies.mjs'),
+    )
+    expect(fixture).toBeLessThan(databaseEnv)
+    const nextStep = ci.indexOf('\n      - name:', fixture + 1)
+    const step = ci.slice(fixture, nextStep)
+    expect(step).toContain('KINETICARE_BACKUP_PG18_CONTAINER: ${{ job.services.postgres.id }}')
+    expect(step).toContain('run: node --import tsx scripts/test-backup-archive-integrity.mjs')
+    expect(step).not.toMatch(/continue-on-error|\|\|\s*true|\bif:/)
+  })
+
   it('byte-for-byte engedélyezi kizárólag a négy review-zott workflow-t', () => {
     const files = readdirSync(WORKFLOWS)
       .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -759,10 +780,18 @@ describe('CI/platform supply-chain guard', () => {
     const ci = workflow('ci.yml')
     expect(ci).toContain('NODE_VERSION: "24.20.0"')
     expect(ci.match(/node_exec="\$\(realpath "\$\(command -v node\)"\)"/g)).toHaveLength(3)
-    expect(ci.match(/test "\$node_exec" = "\$RUNNER_TOOL_CACHE\/node\/\$\{NODE_VERSION\}\/x64\/bin\/node"/g)).toHaveLength(3)
-    expect(ci.match(/test "\$\("\$node_exec" --version\)" = "v\$\{NODE_VERSION\}"/g)).toHaveLength(3)
     expect(
-      ci.match(/test "\$\("\$node_exec" -p 'require\("node:fs"\)\.realpathSync\(process\.execPath\)'\)" = "\$node_exec"/g),
+      ci.match(
+        /test "\$node_exec" = "\$RUNNER_TOOL_CACHE\/node\/\$\{NODE_VERSION\}\/x64\/bin\/node"/g,
+      ),
+    ).toHaveLength(3)
+    expect(ci.match(/test "\$\("\$node_exec" --version\)" = "v\$\{NODE_VERSION\}"/g)).toHaveLength(
+      3,
+    )
+    expect(
+      ci.match(
+        /test "\$\("\$node_exec" -p 'require\("node:fs"\)\.realpathSync\(process\.execPath\)'\)" = "\$node_exec"/g,
+      ),
     ).toHaveLength(3)
     expect(ci.match(/"\$node_exec" scripts\/install-reviewed-dependencies\.mjs/g)).toHaveLength(3)
     expect(ci).not.toContain('npm ci --legacy-peer-deps --ignore-scripts')
@@ -796,14 +825,16 @@ describe('CI/platform supply-chain guard', () => {
     ],
   ])('a start.sh $0 mutációját fail-closed elutasítja', (_label, before, after) => {
     const cursorStart = readFileSync(join(REPO, '.cursor', 'start.sh'), 'utf8')
-    expect(cursorStartRuntimeViolations(replaceRequired(cursorStart, before, after))).not.toEqual([])
+    expect(cursorStartRuntimeViolations(replaceRequired(cursorStart, before, after))).not.toEqual(
+      [],
+    )
   })
 
   it('a Cloud Agent install exact Node-dal ugyanazt a fail-closed lifecycle kaput futtatja', () => {
     const cursorInstall = readFileSync(join(REPO, '.cursor', 'install.sh'), 'utf8')
     const expectedOrder = [
       'curl -fsSLo "${node_tmp}/${node_archive}"',
-      "printf '%s  %s\\n' \"$node_sha256\" \"${node_tmp}/${node_archive}\" | sha256sum --strict -c -",
+      'printf \'%s  %s\\n\' "$node_sha256" "${node_tmp}/${node_archive}" | sha256sum --strict -c -',
       'sudo tar -xJf "${node_tmp}/${node_archive}" -C /opt',
       'if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then',
       '"${node_home}/bin/node" scripts/install-reviewed-dependencies.mjs',
@@ -813,14 +844,12 @@ describe('CI/platform supply-chain guard', () => {
     expect(cursorInstall).toContain("NPM_VERSION='11.19.0'")
     expect(cursorInstall).not.toContain('deb.nodesource.com')
     expect(cursorInstall).toContain(
-      'node_sha256=\'2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2\'',
+      "node_sha256='2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2'",
     )
     expect(cursorInstall).toContain(
-      'node_sha256=\'5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7\'',
+      "node_sha256='5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7'",
     )
-    expect(cursorInstall).toContain(
-      '"https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"',
-    )
+    expect(cursorInstall).toContain('"https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"')
     expect(cursorInstallRuntimeViolations(cursorInstall)).toEqual([])
     expect(expectedOrder.every((command) => cursorInstall.includes(command))).toBe(true)
     expect(expectedOrder.map((command) => cursorInstall.indexOf(command))).toEqual(
@@ -864,16 +893,14 @@ describe('CI/platform supply-chain guard', () => {
   })
 
   it('a helyi telepítés egyetlen review-zott fail-closed bootstrapot használ', () => {
-    const installerBytes = readFileSync(
-      join(REPO, 'scripts', 'install-reviewed-dependencies.mjs'),
-    )
+    const installerBytes = readFileSync(join(REPO, 'scripts', 'install-reviewed-dependencies.mjs'))
     const installer = installerBytes.toString('utf8')
     expect(sha256(installerBytes)).toBe(EXPECTED_REVIEWED_INSTALLER_SHA256)
     expect(reviewedInstallerViolations(installer)).toEqual([])
     expect(installer.match(/env: npmChildEnv/g)).toHaveLength(3)
-    expect(
-      readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs'), 'utf8'),
-    ).toContain('env: exactNodeChildEnv()')
+    expect(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs'), 'utf8')).toContain(
+      'env: exactNodeChildEnv()',
+    )
 
     for (const guide of ['README.md', 'AGENTS.md']) {
       const source = readFileSync(join(REPO, guide), 'utf8')
@@ -942,11 +969,9 @@ describe('CI/platform supply-chain guard', () => {
       wrapperPath,
       '#!/usr/bin/env bash\nset -euo pipefail\nprintf "wrapper\\n"\nexit 97\n',
     )
-    writeFileSync(
-      cliPath,
-      "#!/usr/bin/env node\nprocess.stdout.write('11.19.0\\n')\n",
-      { encoding: 'utf8' },
-    )
+    writeFileSync(cliPath, "#!/usr/bin/env node\nprocess.stdout.write('11.19.0\\n')\n", {
+      encoding: 'utf8',
+    })
 
     try {
       expect(() =>
@@ -1001,8 +1026,7 @@ describe('CI/platform supply-chain guard', () => {
           '': { dependencies: { 'lifecycle-probe': '1.0.0' } },
           'node_modules/lifecycle-probe': {
             version: '1.0.0',
-            resolved:
-              'https://registry.npmjs.org/lifecycle-probe/-/lifecycle-probe-1.0.0.tgz',
+            resolved: 'https://registry.npmjs.org/lifecycle-probe/-/lifecycle-probe-1.0.0.tgz',
             hasInstallScript: true,
           },
         },
@@ -1085,9 +1109,9 @@ describe('CI/platform supply-chain guard', () => {
     expect(sha256(readFileSync(join(REPO, 'scripts', 'exact-npm-cli.mjs')))).toBe(
       EXPECTED_EXACT_NPM_CLI_SHA256,
     )
-    expect(
-      sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.sha256'))),
-    ).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
+    expect(sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.sha256')))).toBe(
+      EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256,
+    )
     expect(sha256(readFileSync(join(REPO, 'railway.json')))).toBe(EXPECTED_RAILWAY_SHA256)
     expect(sha256(readFileSync(join(REPO, 'railpack.json')))).toBe(EXPECTED_RAILPACK_SHA256)
     const railway = readJson<{
@@ -1114,7 +1138,8 @@ describe('CI/platform supply-chain guard', () => {
     const installCommands = install?.commands ?? []
     const actualInstallCommands = installCommands.map((command) => command.cmd ?? command.path)
     const allShellCommands =
-      plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ?? []
+      plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ??
+      []
     const verifierManifest = readFileSync(
       join(REPO, 'scripts', 'verify-install-script-lock.sha256'),
       'utf8',
@@ -1144,12 +1169,11 @@ describe('CI/platform supply-chain guard', () => {
       'A bizalmi határ a Railpack által generált exact Mise runtime',
     )
     expect(allShellCommands.some((command) => /\bcorepack\b/i.test(command))).toBe(false)
-    expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(false)
+    expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(
+      false,
+    )
     expect(sha256(verifierManifest)).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
-    const checksumTargets = [
-      'scripts/verify-install-script-lock.mjs',
-      'scripts/exact-npm-cli.mjs',
-    ]
+    const checksumTargets = ['scripts/verify-install-script-lock.mjs', 'scripts/exact-npm-cli.mjs']
     expect(verifySha256Manifest(verifierManifest, checksumTargets)).toEqual(checksumTargets)
     expect(() =>
       verifySha256Manifest(
@@ -1258,7 +1282,7 @@ describe('CI/platform supply-chain guard', () => {
 
   it('a dump konténer runner UID:GID-ja miatt a host age olvasni tudja a 0600-as fájlt', () => {
     const source = workflow('db-backup.yml')
-    expect(source.match(/--user "\$\(id -u\):\$\(id -g\)"/g)).toHaveLength(2)
+    expect(source.match(/--user "\$\(id -u\):\$\(id -g\)"/g)).toHaveLength(3)
     const result = runFakeBackup(extractDumpDockerInvocation(source))
     const userIndex = result.args.indexOf('--user')
     expect(userIndex).toBeGreaterThanOrEqual(0)
