@@ -42,7 +42,7 @@
     "graphql": "16.14.2",
     "next": "16.3.3",
     "payload": "3.88.0",
-    "posthog-js": "1.422.5",
+    "posthog-js": "1.427.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sass": "1.103.1",
