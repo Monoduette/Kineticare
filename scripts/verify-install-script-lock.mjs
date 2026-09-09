@@ -8,12 +8,11 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 
 const EXPECTED_NODE = '24.20.0'
 const EXPECTED_NPM = '11.19.0'
-const EXPECTED_LOCK_SHA256 = '48ba8e960806a238909e7333dee00f4a75422c6190a90ce36fb424c99675d2c5'
+const EXPECTED_LOCK_SHA256 = 'bc94382063a3a8507250d84addb02600840594077f4d19f9ce23da05a9ec5083'
 
 const EXPECTED_APPROVALS = {
   '@parcel/watcher@2.6.0': true,
   'core-js@3.50.0': true,
-  'esbuild@0.18.20': true,
   'esbuild@0.25.12': true,
   'esbuild@0.28.1': true,
   'esbuild@0.28.2': true,
@@ -22,8 +21,6 @@ const EXPECTED_APPROVALS = {
 }
 
 const EXPECTED_IDENTITIES = {
-  'node_modules/@esbuild-kit/core-utils/node_modules/esbuild':
-    '5c4075154b788aaae1bc4a2963f5dc1546909beae6dea5443c9769d0afd1efa5',
   'node_modules/@parcel/watcher':
     '002e2fffdb293f2d137d00f91eeeea833df98d35c2312510774062caceeca5d4',
   'node_modules/@payloadcms/graphql/node_modules/esbuild':

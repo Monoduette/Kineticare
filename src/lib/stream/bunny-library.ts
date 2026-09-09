@@ -32,6 +32,8 @@ export interface BunnyLibraryList {
    * pozitív érték néma adatvesztést jelentene, ezért számláljuk és naplózzuk.
    */
   droppedItems: number
+  /** Effective provider page size for explicitly requested single-page reads. */
+  pageSize?: number
 }
 
 export type BunnyLibraryListResult =
@@ -255,6 +257,7 @@ export async function listBunnyLibraryVideos(
   }
 
   const itemsPerPage = deps.itemsPerPage ?? DEFAULT_PAGE_SIZE
+  let effectivePageSize = itemsPerPage
   const log = deps.log ?? logger.child({ module: 'bunny-library' })
   const collected: BunnyLibraryVideo[] = []
   let totalItems: number | null = null
@@ -282,6 +285,9 @@ export async function listBunnyLibraryVideos(
     try {
       response = await deps.fetchImpl(url.toString(), {
         method: 'GET',
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(10000),
         headers: {
           AccessKey: config.apiKey,
           Accept: 'application/json',
@@ -356,12 +362,12 @@ export async function listBunnyLibraryVideos(
      * jelentene, a kért méret marad — így a ciklus inkább tovább lapoz, mint
      * hogy némán elhagyjon egy oldalt.
      */
-    const effectivePageSize =
+    effectivePageSize =
       parsed.pageSize === null ? itemsPerPage : Math.min(itemsPerPage, parsed.pageSize)
     if (parsed.rawItemCount < effectivePageSize) {
       break
     }
-    if (totalItems !== null && rawSeen >= totalItems) {
+    if (totalItems !== null && (startPage - 1) * effectivePageSize + rawSeen >= totalItems) {
       break
     }
     if (offset === pagesToRead - 1) {
@@ -380,6 +386,7 @@ export async function listBunnyLibraryVideos(
       // „keresd a Bunny felületén” figyelmeztetést mutassa.
       truncated: truncated || droppedItems > 0,
       droppedItems,
+      ...(deps.page !== undefined ? { pageSize: effectivePageSize } : {}),
     },
   }
 }

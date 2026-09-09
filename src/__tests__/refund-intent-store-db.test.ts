@@ -214,6 +214,7 @@ describe.skipIf(!hasDb)('refund intent store (real PostgreSQL)', () => {
     }
     const created = await createRefundIntent(first, system, key())
     expect(created).toMatchObject({
+      schemaVersion: 2,
       actor: null,
       actorKind: 'system',
       systemActor: 'paid-reject-recovery',
@@ -228,7 +229,8 @@ describe.skipIf(!hasDb)('refund intent store (real PostgreSQL)', () => {
         actor_id: null,
         actor_kind: 'system',
         system_actor: 'paid-reject-recovery',
-        schema_version: 2,
+        // node-postgres preserves raw numeric columns as strings; the store parses them.
+        schema_version: '2',
       },
     ])
     expect(await loadActiveRefundIntent(second, orderId!)).toEqual(created)

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { headers } from 'next/headers'
+import { draftMode, headers } from 'next/headers'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { getPayload } from 'payload'
@@ -25,6 +25,9 @@ import { RelatedCourses } from '@/components/courses/RelatedCourses'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
+import { PreviewBar } from '@/components/preview/PreviewBar'
+import { withDraftRobots } from '@/lib/preview/draft-metadata'
+import { loadProductPreview, previewCurriculum } from '@/lib/preview/product-preview'
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { AUDIENCE_LABELS, normalizeAudience } from '@/lib/course-audience'
 import {
@@ -107,6 +110,22 @@ const getCourseByRouteParam = cache(async (param: string): Promise<Product | nul
   }
 })
 
+// React cache deduplicates only within this request. No persistent draft/auth cache.
+const getCourseView = cache(async (slug: string) => {
+  const { isEnabled } = await draftMode()
+  if (isEnabled) {
+    try {
+      const payload = await getPayload({ config })
+      const product = await loadProductPreview({ payload, headers: await headers(), slug })
+      if (product) return { product, isPreview: true }
+    } catch {
+      // Authentication or draft lookup failure never opens the draft boundary.
+      return { product: null, isPreview: false }
+    }
+  }
+  return { product: await getCourseByRouteParam(slug), isPreview: false }
+})
+
 /** A bejelentkezett felhasználó (anonim látogatónál null) — csak olvasás. */
 async function getCurrentUser(): Promise<User | null> {
   try {
@@ -171,22 +190,32 @@ interface PageSection {
 
 export async function generateMetadata({ params }: CoursePageProps): Promise<Metadata> {
   const { slug } = await params
-  const product = await getCourseByRouteParam(slug)
-  if (!product || (product.status !== 'published' && product.status !== 'archived')) {
+  const { product, isPreview } = await getCourseView(slug)
+  if (
+    !product ||
+    (!isPreview &&
+      (product._status === 'draft' ||
+        (product.status !== 'published' && product.status !== 'archived')))
+  ) {
     return { title: 'A kurzus nem található' }
   }
   // Ugyanaz a fallback-lánc és canonical, mint a poszt- és az oldal-útvonalon
   // (src/lib/seo.ts): seoTitle → kurzusnév, seoDescription → rövid leírás,
   // ogImage → borítókép. Párhuzamos meta-logika itt nincs. A canonical MINDIG
   // a kanonikus (slugos) cím, akkor is, ha épp a régi id-s URL-t szolgáljuk ki.
-  return buildProductMetadata(product, courseHref(product))
+  return withDraftRobots(buildProductMetadata(product, courseHref(product)), isPreview)
 }
 
 export default async function CoursePage({ params, searchParams }: CoursePageProps) {
   const { slug } = await params
-  const product = await getCourseByRouteParam(slug)
+  const { product, isPreview } = await getCourseView(slug)
   // Draft (és minden nem published/archived) termék nyilvánosan nem érhető el.
-  if (!product || (product.status !== 'published' && product.status !== 'archived')) {
+  if (
+    !product ||
+    (!isPreview &&
+      (product._status === 'draft' ||
+        (product.status !== 'published' && product.status !== 'archived')))
+  ) {
     notFound()
   }
 
@@ -201,12 +230,12 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // statikus szabályt tud).
   // A bejövő query string (pl. UTM-paraméterek) változatlanul továbbmegy a
   // kanonikus címre — a kampány-attribúció nem veszhet el az átirányításon.
-  const canonicalPath = canonicalCourseRedirect(slug, product)
+  const canonicalPath = isPreview ? null : canonicalCourseRedirect(slug, product)
   if (canonicalPath !== null) {
     permanentRedirect(withSearchParams(canonicalPath, (await searchParams) ?? {}))
   }
 
-  const user = await getCurrentUser()
+  const user = isPreview ? null : await getCurrentUser()
   // Lejárt hozzáférés = a CTA szempontjából „még nem vevő": újra megvásárolható.
   const purchased =
     user !== null &&
@@ -233,7 +262,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // A tananyag NYILVÁNOS nézete: hozzáférés nélkül épül, ezért a fizetős
   // tartalom hordozói (Bunny-GUID, lecke-szöveg, melléklet, külső link) bele
   // sem kerülnek a modellbe (S2/b — curriculum.ts).
-  const curriculum = buildCurriculum(product, false)
+  const publicCurriculum = buildCurriculum(product, false)
+  const curriculum = isPreview ? previewCurriculum(publicCurriculum) : publicCurriculum
   const sales = buildCourseSalesContent(product, {
     moduleCount: curriculum.modules.filter((module) => module.lessons.length > 0).length,
     lessonCount: curriculum.lessons.length,
@@ -257,7 +287,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
    * A régi `www.kineticare.hu` ugyanitt űrlapot adott („KÉREM A
    * VILLÁMKURZUST" → név + e-mail → a link e-mailben), tehát a visszatérő
    */
-  const showFreeRequestForm = cta.kind === 'free'
+  const showFreeRequestForm = !isPreview && cta.kind === 'free'
   // A site key szerver-oldalon olvasott (nem NEXT_PUBLIC): a spam-ellenőrző
   // widget csak beállított kulcs mellett jelenik meg — kulcs nélkül a szerver
   // sem ellenőriz, tehát a widget hamis biztonságérzet lenne (a kapcsolat-
@@ -274,7 +304,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
    * (§3.2 #27, `Kérd az ingyenes kurzust`, E/2 navigáció), pont a #24 ↔ #25
    * minta szerint.
    */
-  const showBuyBar = cta.kind === 'buy'
+  const showBuyBar = !isPreview && cta.kind === 'buy'
   const priceLabel =
     priceBadge === 'price' && price !== null
       ? formatPriceHuf(price)
@@ -373,64 +403,69 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
 
   return (
     <>
-      {/* PostHog funnel-lépés: a kurzus-oldal megnyitása (no-op consent nélkül). */}
-      <TrackEvent
-        event="course_viewed"
-        properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
-      />
-      {/* Barion Pixel `contentView` (termékoldal). Az ár ugyanabból a
+      {isPreview ? <PreviewBar path={path} /> : null}
+      {!isPreview ? (
+        <>
+          {/* PostHog funnel-lépés: a kurzus-oldal megnyitása (no-op consent nélkül). */}
+          <TrackEvent
+            event="course_viewed"
+            properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
+          />
+          {/* Barion Pixel `contentView` (termékoldal). Az ár ugyanabból a
           forrásból jön, mint a kiírt PriceTag és a strukturált adat: az
           `ingyenes` ág 0-t, a hiányos konfiguráció NaN-t ad — utóbbinál az
           esemény magától kimarad (barion-events.ts). */}
-      <CourseBarionView
-        course={{
-          id: product.id,
-          name: title,
-          priceHuf: priceBadge === 'free' ? 0 : (price ?? Number.NaN),
-          quantity: 1,
-          ...(category !== null ? { category } : {}),
-          ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-        }}
-      />
-      {/* Strukturált adat: Course + Product (egy entitás, kettős @type) és a
+          <CourseBarionView
+            course={{
+              id: product.id,
+              name: title,
+              priceHuf: priceBadge === 'free' ? 0 : (price ?? Number.NaN),
+              quantity: 1,
+              ...(category !== null ? { category } : {}),
+              ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+            }}
+          />
+          {/* Strukturált adat: Course + Product (egy entitás, kettős @type) és a
           hozzá tartozó Offer. Minden mezője a LÁTHATÓ tartalomból jön — a név a
           H1, a leírás a hero lead, a kép a buybox borítóképe, az ár pedig a
           kiírt PriceTag forrása (priceInHUF), tehát árváltozásnál automatikusan
           követi és nem tud elavulni. */}
-      <JsonLd
-        data={courseJsonLd({
-          product,
-          name: title,
-          path,
-          priceHuf: price,
-          ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-        })}
-      />
-      {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
+          <JsonLd
+            data={courseJsonLd({
+              product,
+              name: title,
+              path,
+              priceHuf: price,
+              ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+            })}
+          />
+          {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
           BreadcrumbList (Kurzusok → kurzus). Az ItemPage `mainEntity`-je a
           fenti Course/Product csomópont (@id …#course), így a lap és a termék
           egy gráfban áll (schema.org ItemPage: https://schema.org/ItemPage). */}
-      <JsonLd
-        data={siteGraphJsonLd({
-          page: {
-            path,
-            name: title,
-            description: resolveSeoDescription(productSeoDoc(product)),
-            type: 'ItemPage',
-            ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-            dateModified: product.updatedAt,
-            mainEntityId: `${absoluteUrl(path)}#course`,
-          },
-          breadcrumbs: [
-            { name: 'Kurzusok', path: '/kurzusok' },
-            { name: title, path },
-          ],
-        })}
-      />
-      {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
+          <JsonLd
+            data={siteGraphJsonLd({
+              page: {
+                path,
+                name: title,
+                description: resolveSeoDescription(productSeoDoc(product)),
+                type: 'ItemPage',
+                ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+                dateModified: product.updatedAt,
+                mainEntityId: `${absoluteUrl(path)}#course`,
+              },
+              breadcrumbs: [
+                { name: 'Kurzusok', path: '/kurzusok' },
+                { name: title, path },
+              ],
+            })}
+          />
+          {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
           látható harmonika — a kettő így sosem tud szétcsúszni (ez a
           leggyakoribb ok, amiért a keresők elvetik a rich resultot). */}
-      {sales.faq.length > 0 ? <JsonLd data={faqPageJsonLd(sales.faq)} /> : null}
+          {sales.faq.length > 0 ? <JsonLd data={faqPageJsonLd(sales.faq)} /> : null}
+        </>
+      ) : null}
 
       <Section>
         <Container>
@@ -454,7 +489,11 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
                 categoryLabel={category}
                 ctaId={CTA_ID}
                 ctaSlot={
-                  showFreeRequestForm ? (
+                  isPreview ? (
+                    <p id={CTA_ID}>
+                      Szerkesztői előnézet. Vásárlás és kurzusigénylés itt nem indítható.
+                    </p>
+                  ) : showFreeRequestForm ? (
                     <FreeCourseRequestForm
                       courseTitle={title}
                       id={CTA_ID}
@@ -476,7 +515,17 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
                 }
                 priceBadge={priceBadge}
                 priceHuf={price}
-                product={product}
+                product={
+                  isPreview
+                    ? {
+                        id: product.id,
+                        slug: product.slug,
+                        status: product.status,
+                        priceInHUF: product.priceInHUF,
+                        priceInHUFEnabled: product.priceInHUFEnabled,
+                      }
+                    : product
+                }
                 secondaryHref={secondaryTarget === null ? null : `#${secondaryTarget.id}`}
                 secondaryLabel={secondaryTarget === null ? null : secondaryTarget.label}
                 title={title}
@@ -543,7 +592,9 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           űrlap láthatósága, mert a már igényelt ingyenes kurzus oldalán is ez a
           helyes keretezés. A megjelenő termékek forrása a `relatedProducts`
           mező (a szerkesztő állítja); beállítás nélkül a sáv nem renderelődik. */}
-      <RelatedCourses crossSell={priceBadge === 'free'} products={relatedProductsOf(product)} />
+      {!isPreview ? (
+        <RelatedCourses crossSell={priceBadge === 'free'} products={relatedProductsOf(product)} />
+      ) : null}
     </>
   )
 }

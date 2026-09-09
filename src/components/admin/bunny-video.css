@@ -1,0 +1,226 @@
+.bunny-video {
+  color: var(--theme-text);
+  font-family: var(--font-body);
+  font-size: inherit;
+  line-height: 1.5;
+  letter-spacing: 0;
+  min-width: 0;
+}
+.bunny-video *,
+.bunny-video *::before,
+.bunny-video *::after {
+  box-sizing: border-box;
+}
+.bunny-video button,
+.bunny-video input,
+.bunny-video select {
+  font: inherit;
+  color: var(--theme-text);
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  border: 1px solid var(--theme-elevation-400);
+  border-radius: var(--style-radius-s, 4px);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  max-width: 100%;
+}
+.bunny-video button {
+  min-height: 44px;
+  cursor: pointer;
+  white-space: normal;
+}
+.bunny-video button:hover:not(:disabled) {
+  background: var(--theme-elevation-100);
+}
+.bunny-video button:disabled {
+  color: var(--theme-elevation-700);
+  background: var(--theme-elevation-100);
+  border-color: var(--theme-elevation-400);
+  cursor: not-allowed;
+}
+.bunny-video :focus-visible {
+  outline: 2px solid var(--theme-text);
+  outline-offset: 3px;
+}
+.bunny-video button[aria-pressed='true'] {
+  border-bottom: 3px solid var(--theme-text);
+  font-weight: 600;
+}
+.bunny-video h2,
+.bunny-video h3 {
+  font-size: inherit;
+  font-weight: 600;
+  margin: 0;
+}
+.bunny-video p {
+  overflow-wrap: anywhere;
+}
+.bunny-video [role='alert'] {
+  border-inline-start: 3px solid var(--theme-error-500);
+  padding-inline-start: 12px;
+}
+.bunny-video-dialog {
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-elevation-300);
+  border-radius: 6px;
+  width: min(960px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.bunny-video-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.bunny-video-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.bunny-video-toolbar h2 {
+  flex: 1;
+  min-width: 0;
+}
+.bunny-video-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bunny-video-icon {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px !important;
+  flex-shrink: 0;
+}
+.bunny-video-icon svg,
+.bunny-video-search svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.bunny-video-refresh > span {
+  font-size: 1.5em;
+  line-height: 1;
+}
+.bunny-video-prev svg {
+  transform: rotate(90deg);
+}
+.bunny-video-next svg {
+  transform: rotate(-90deg);
+}
+.bunny-video-search {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.bunny-video-search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.bunny-video-search-input svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+}
+.bunny-video-search-input input {
+  padding-left: 40px;
+  width: 100%;
+}
+.bunny-video-results {
+  min-height: 120px;
+}
+.bunny-video-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bunny-video-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--theme-elevation-200);
+}
+.bunny-video-thumb {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--theme-elevation-100);
+  display: grid;
+  place-items: center;
+}
+.bunny-video-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.bunny-video-thumb span {
+  font-size: inherit;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.bunny-video-meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.bunny-video-meta span {
+  color: var(--theme-elevation-700);
+}
+.bunny-video-pagination {
+  margin-top: 16px;
+}
+.bunny-video-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  display: block;
+}
+.bunny-video-upload {
+  display: grid;
+  gap: 16px;
+  padding-block: 16px;
+}
+.bunny-video-upload label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.bunny-video-upload input {
+  width: 100%;
+}
+.bunny-video-upload progress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--theme-text);
+}
+.bunny-video-tabs {
+  display: flex;
+  gap: 8px;
+  margin-block: 16px;
+}
+.bunny-video-field {
+  margin-bottom: var(--base, 20px);
+}
+@media (max-width: 600px) {
+  .bunny-video-dialog {
+    padding: 12px;
+  }
+  .bunny-video-row {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .bunny-video-row .bunny-video-actions {
+    grid-column: 1 / -1;
+  }
+}

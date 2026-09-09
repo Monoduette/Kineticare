@@ -20,7 +20,7 @@ export const LESSON_KIND_LINK = 'link'
  * nélküle nem indul" szöveg. Forrás: docs/szerkesztoi-utmutato.md 12. pont.
  */
 export const LESSON_DURATION_ADMIN_DESCRIPTION =
-  'A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.'
+  'A videó kiválasztásakor átvett hossz másodpercben. Ajánlott ellenőrizni: ebből számoljuk a hátralévő időt. Ha nem ismert, a lejátszás ettől még elindul (a jegy 24 órás). A lejátszáshoz kiválasztott videó és Kész állapot szükséges.'
 
 /**
  * A Tananyag (modulok) mező admin-leírása. A második mondat a néma elnyelést
@@ -104,19 +104,22 @@ const lessonFields: Field[] = [
   {
     name: 'streamAssetId',
     type: 'text',
-    label: 'Videó azonosítója',
+    label: 'Lecke videója',
     // Ugyanaz a mezőszintű védelem, mint a régi videó-soron (S2/b).
     access: {
       read: streamAssetReadAccess,
     },
     admin: {
       condition: showForVideo,
+      components: {
+        Field: '/components/admin/BunnyVideoField#ProtectedBunnyVideoField',
+      },
       // A zsargon („GUID", „library") az admin UX-audit szerint a kurzusfeltöltés
       // leggyakoribb elakadási pontja volt: a szerkesztő nem tudta, MELYIK
       // értéket kell a Bunny felületéről kimásolni — és rossz érték mellett a
       // videó némán nem indul el.
       description:
-        'A videó azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). A fizetős kurzusvideók a VÉDETT videótárban vannak (csak vásárlás után nézhetők), az ingyenes előzetesek a nyilvánosban.',
+        'A lecke felvétele a védett videótárból. A nyilvános bemutató külön, a Kurzusoldal fülön választható.',
     },
   },
   {
@@ -125,6 +128,7 @@ const lessonFields: Field[] = [
     label: 'Hossz (másodperc)',
     admin: {
       condition: showForVideo,
+      readOnly: true,
       description: LESSON_DURATION_ADMIN_DESCRIPTION,
     },
   },
@@ -136,8 +140,9 @@ const lessonFields: Field[] = [
     options: lessonStatusOptions,
     admin: {
       condition: showForVideo,
+      readOnly: true,
       description:
-        'Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész”-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le és számít bele a haladásba.',
+        'A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le és számít bele a haladásba.',
     },
   },
   {

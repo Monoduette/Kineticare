@@ -18,6 +18,7 @@ export function AdminChrome({
   const { initPageResult, params, searchParams } = props
   return (
     <DefaultTemplate
+      req={initPageResult.req}
       i18n={props.i18n}
       locale={props.locale ?? initPageResult.locale}
       params={params}
