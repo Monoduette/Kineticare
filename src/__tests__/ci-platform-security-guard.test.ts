@@ -34,7 +34,7 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
   ['ci.yml', 'eef8b6a214d03b4833d57f40b25408fff05897da7cce064251f9fd8527fc8a6e'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
   ['db-backup.yml', '15adb4fa8c0b8582a58916e46400d7670126a746c9d39b2e55670eb42affd388'],
-  ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
+  ['gitleaks.yml', 'b0241c695c543fcb2806348317f0bbcc745d51f8967329b53079216c450f98a0'],
 ])
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
@@ -891,9 +891,42 @@ describe('CI/platform supply-chain guard', () => {
     expect(workflow('claude.yml')).toContain(
       'anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210',
     )
-    expect(workflow('gitleaks.yml')).toContain(
-      'gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0',
+    const gitleaks = workflow('gitleaks.yml')
+    expect(gitleaks).toContain(
+      'https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz',
     )
+    expect(gitleaks).toContain(
+      '9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $archive',
+    )
+    expect(gitleaks.indexOf('sha256sum --check --strict')).toBeLessThan(
+      gitleaks.indexOf('tar -xzf'),
+    )
+    expect(gitleaks).toContain('fetch-depth: 0')
+    expect(gitleaks).toContain(
+      'gitleaks git --config .gitleaks.toml --log-opts="--all" --redact=100 --exit-code=1 .',
+    )
+    expect(gitleaks).toContain('set -euo pipefail')
+    expect(gitleaks).not.toMatch(
+      /continue-on-error|\|\|\s*true|pull-requests: write|GITLEAKS_LICENSE/,
+    )
+  })
+
+  it.each([
+    ['CLI verzió', 'v8.24.3/gitleaks_8.24.3', 'v8.24.2/gitleaks_8.24.2'],
+    [
+      'CLI SHA256',
+      '9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c',
+      '0'.repeat(64),
+    ],
+    ['checksum kapu', 'sha256sum --check --strict', 'true'],
+    ['teljes fetch', 'fetch-depth: 0', 'fetch-depth: 1'],
+    ['teljes history', '--log-opts="--all"', '--log-opts="-1"'],
+    ['redakció', '--redact=100', '--redact=0'],
+    ['bukó exit code', '--exit-code=1', '--exit-code=0'],
+    ['fail-closed shell', 'set -euo pipefail', 'set +e'],
+  ])('a Gitleaks $0 mutációját fail-closed elutasítja', (_label, before, after) => {
+    const mutated = replaceRequired(workflow('gitleaks.yml'), before, after)
+    expect(violationsForWorkflowBytes('gitleaks.yml', mutated)).not.toEqual([])
   })
 
   it('a fejlesztői bootstrap is kizárólag a lockfile-lokális Payload CLI-t futtatja', () => {
