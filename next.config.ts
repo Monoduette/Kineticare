@@ -105,6 +105,23 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Next applies the last matching value for the same header key.
+      // Keep direct TUS connections out of the storefront policy.
+      {
+        source: '/admin/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: buildContentSecurityPolicy(
+              bunnyPullZoneHost(),
+              process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+              process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
+              process.env.POSTHOG_SHARED_DASHBOARD_URL,
+              true,
+            ),
+          },
+        ],
+      },
     ]
   },
 }

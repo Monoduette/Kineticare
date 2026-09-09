@@ -88,10 +88,10 @@ const errorMessage = async (response: Response): Promise<string> => {
 }
 
 describe('previewTargetPath / isPreviewCollection', () => {
-  it('csak a pages és a posts collection nyitható előnézetben', () => {
+  it('csak a pages, posts és products collection nyitható előnézetben', () => {
     expect(isPreviewCollection('pages')).toBe(true)
     expect(isPreviewCollection('posts')).toBe(true)
-    expect(isPreviewCollection('products')).toBe(false)
+    expect(isPreviewCollection('products')).toBe(true)
     expect(isPreviewCollection('users')).toBe(false)
     expect(isPreviewCollection(null)).toBe(false)
     expect(isPreviewCollection(42)).toBe(false)
@@ -301,7 +301,7 @@ describe('/next/preview — Location a publikus originre épül', () => {
 
 describe('/next/preview — hibás kérés és technikai hiba', () => {
   it.each([
-    ['ismeretlen collection', '?collection=products&slug=valami'],
+    ['ismeretlen collection', '?collection=orders&slug=valami'],
     ['hiányzó collection', '?slug=valami'],
   ])('%s: 400, és a jogosultság-ellenőrzés el sem indul', async (_label, query) => {
     const harness = harnessWithUser(owner)

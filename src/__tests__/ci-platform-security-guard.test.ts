@@ -39,13 +39,13 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  '939cf1347a759c468d67d555057ba5e45538ce8005f89239f65d36e6d72e20ba'
+  'faefc53ab07948c40cbaa42e525553740685742338bf3e1cdc150b55e8092565'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
   'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  '0c231ed81d1c9878b02f0ef5baa3dfe5f57369555df7a32466bf1082022c8ca6'
+  'a6c2b3abce950fb6e4a94ecd13cd728f792ca98d266a447d2481a8c0fd730f43'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  '21418f41f091e7045ea927a909de33bc31abb2b6d4eb9695ebf0197ec6dcc2d7'
+  '4d27e583b9b89d4c25a77af0a357891f3853e61de4b25036d76404ac4aadf558'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -75,16 +75,15 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   react: '19.2.8',
   'react-dom': '19.2.8',
   sass: '1.103.1',
-  sharp: '0.35.3',
+  sharp: '0.35.4',
   tsx: '4.23.12',
+  'tus-js-client': '4.3.1',
   typescript: '5.9.3',
   vite: '8.2.1',
   vitest: '4.1.11',
 }
 
 const EXPECTED_INSTALL_SCRIPT_IDENTITIES: Readonly<Record<string, string>> = {
-  'node_modules/@esbuild-kit/core-utils/node_modules/esbuild':
-    '5c4075154b788aaae1bc4a2963f5dc1546909beae6dea5443c9769d0afd1efa5',
   'node_modules/@parcel/watcher':
     '002e2fffdb293f2d137d00f91eeeea833df98d35c2312510774062caceeca5d4',
   'node_modules/@payloadcms/graphql/node_modules/esbuild':
@@ -102,7 +101,6 @@ const EXPECTED_INSTALL_SCRIPT_IDENTITIES: Readonly<Record<string, string>> = {
 const EXPECTED_INSTALL_SCRIPT_APPROVALS: Readonly<Record<string, boolean>> = {
   '@parcel/watcher@2.6.0': true,
   'core-js@3.50.0': true,
-  'esbuild@0.18.20': true,
   'esbuild@0.25.12': true,
   'esbuild@0.28.1': true,
   'esbuild@0.28.2': true,
@@ -475,6 +473,96 @@ age --recipient age1publictestrecipient --output "\${FAKE_ENCRYPTED_PATH}" "\${F
     rmSync(root, { force: true, recursive: true })
   }
 }
+
+it('the reviewed esbuild override preserves core-utils and Drizzle schema loading', () => {
+  const fixture = mkdtempSync(join(REPO, '.loader-compat-'))
+  const schema = [
+    "import { pgTable, integer, text } from 'drizzle-orm/pg-core'",
+    "enum Label { Ready = 'ready' }",
+    "export const probe = pgTable('dependency_probe', {",
+    '  id: integer().primaryKey(),',
+    '  label: text().notNull().default(Label.Ready),',
+    '})',
+  ].join('\n')
+  const harness = `
+    import assert from 'node:assert/strict'
+    import { createRequire } from 'node:module'
+    import { readFileSync } from 'node:fs'
+    import { pathToFileURL } from 'node:url'
+    import vm from 'node:vm'
+    const require = createRequire(import.meta.url)
+    const core = require('@esbuild-kit/core-utils')
+    const coreRequire = createRequire(require.resolve('@esbuild-kit/core-utils'))
+    assert.equal(coreRequire('esbuild').version, '0.25.12')
+    const source = 'enum Value { Answer = 42 }\\nexport const answer: number = Value.Answer;'
+    for (const asyncMode of [false, true]) {
+      for (const format of ['cjs', 'esm']) {
+        const path = ${JSON.stringify(fixture)} + '/transform-' + asyncMode + '-' + format + '.ts'
+        // transformSync defaults to a CJS wrapper; ESM exports must stay top-level.
+        const options = format === 'esm' ? { format, banner: '', footer: '' } : { format }
+        const result = asyncMode
+          ? await core.transform(source, path, options)
+          : core.transformSync(source, path, options)
+        assert.equal(result.map.version, 3)
+        assert.deepEqual(result.map.sources, [path])
+        assert.deepEqual(result.map.sourcesContent, [source])
+        assert.ok(result.map.mappings.length > 0)
+        if (format === 'cjs') {
+          const context = { module: { exports: {} } }
+          vm.runInNewContext(result.code, context)
+          assert.equal(context.module.exports.answer, 42)
+        } else {
+          const loaded = await import('data:text/javascript;base64,' + Buffer.from(result.code).toString('base64'))
+          assert.equal(loaded.answer, 42)
+        }
+      }
+    }
+    assert.throws(() => core.transformSync('const broken: = ;', 'broken.ts'))
+    await assert.rejects(core.transform('const broken: = ;', 'broken.mts'))
+    const { register } = require('esbuild-register/dist/node')
+    const { unregister } = register({ target: 'es2022', format: 'cjs' })
+    const cjsSchema = require('./schema.cts')
+    unregister()
+    const esmSchema = await import(pathToFileURL(${JSON.stringify(join(fixture, 'schema.mts'))}).href)
+    const { generateDrizzleJson } = require('drizzle-kit/api')
+    for (const loaded of [cjsSchema, esmSchema]) {
+      const snapshot = generateDrizzleJson(loaded)
+      const table = snapshot.tables['public.dependency_probe']
+      assert.ok(table)
+      assert.equal(table.columns.id.primaryKey, true)
+      assert.equal(table.columns.label.notNull, true)
+      assert.equal(table.columns.label.default, "'ready'")
+    }
+    const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url)))
+    assert.ok(!Object.entries(lock.packages).some(([path, entry]) =>
+      path.endsWith('/esbuild') && entry.version === '0.18.20'))
+    console.log('core-utils transforms, sourcemaps, CJS/ESM schema loaders: PASS')
+  `
+  try {
+    writeFileSync(join(fixture, 'schema.cts'), schema)
+    writeFileSync(join(fixture, 'schema.mts'), schema)
+    writeFileSync(join(fixture, 'probe.mjs'), harness)
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--no-experimental-strip-types',
+        '--loader',
+        '@esbuild-kit/esm-loader',
+        join(fixture, 'probe.mjs'),
+      ],
+      {
+        cwd: fixture,
+        env: { ...process.env, ESBK_DISABLE_CACHE: '1' },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30_000,
+      },
+    )
+    expect(output).toContain('core-utils transforms, sourcemaps, CJS/ESM schema loaders: PASS')
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+}, 35_000)
 
 const mutations: readonly WorkflowMutation[] = [
   {

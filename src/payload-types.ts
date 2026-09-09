@@ -1636,22 +1636,21 @@ export interface User {
   collection: 'users';
 }
 /**
- * A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja.
+ * A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja. Az előnézet a mentett kurzusoldalt mutatja, tananyag-hozzáférést nem ad.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products".
  */
 export interface Product {
   id: number;
-  inventory?: number | null;
   /**
-   * Kikapcsolva a kurzus nem vásárolható meg.
+   * Ez dönti el, hogy a Kurzusok oldalon melyik sávban jelenik meg: „Otthoni gyakorlóknak" vagy „Szakembereknek". Ha üresen marad, az otthoni sávba kerül.
    */
-  priceInHUFEnabled?: boolean | null;
+  audience?: ('laikus' | 'szakember') | null;
   /**
-   * A kurzus bruttó ára forintban — ennyit fizet a vásárló a pénztárnál. Csak tulajdonos állíthatja.
+   * Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.
    */
-  priceInHUF?: number | null;
+  status?: ('draft' | 'published' | 'archived') | null;
   /**
    * A kurzus címe, ahogy a látogató látja (pl. „Kéztorna otthon — 8 hetes program"). Ebből készül a webcím is. Ha üresen hagyod, a lenti „Kurzus neve (azonosító)" jelenik meg.
    */
@@ -1664,6 +1663,31 @@ export interface Product {
    * 1–3 mondat. A kurzuskártyákon és a kezdőlapon ez látszik.
    */
   shortDescription?: string | null;
+  /**
+   * A kurzus kártyáján és az oldala tetején megjelenő kép.
+   */
+  coverImage?: (number | null) | Media;
+  /**
+   * Kötelező. Ha nincs megfelelő, előbb hozd létre a Tartalom → Kategóriák alatt.
+   */
+  category: number | Category;
+  /**
+   * A kurzus egyedi azonosítója — két kurzusnak nem lehet ugyanaz. Ez jelenik meg a rendeléseken és a számlán. Ha a fenti „Kurzus címe" üres, a látogató is ezt látja.
+   */
+  sku?: string | null;
+  /**
+   * Kikapcsolva a kurzus nem vásárolható meg.
+   */
+  priceInHUFEnabled?: boolean | null;
+  /**
+   * A kurzus bruttó ára forintban — ennyit fizet a vásárló a pénztárnál. Csak tulajdonos állíthatja.
+   */
+  priceInHUF?: number | null;
+  /**
+   * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
+   */
+  accessDurationDays?: number | null;
+  inventory?: number | null;
   /**
    * Legfeljebb 3 rövid, pipával jelölt állítás a kezdőlapi kurzuskártyán (pl. „50+ videós gyakorlat”). Tényszerű, ellenőrizhető állítást írj — ígéretet ne. Ha üresen hagyod, a kártyán egyszerűen nem jelenik meg ez a rész.
    */
@@ -1750,10 +1774,6 @@ export interface Product {
       }[]
     | null;
   /**
-   * A kurzus kártyáján és az oldala tetején megjelenő kép.
-   */
-  coverImage?: (number | null) | Media;
-  /**
    * További képek a kurzus oldalára (nem kötelező).
    */
   gallery?:
@@ -1784,17 +1804,13 @@ export interface Product {
    */
   ogImage?: (number | null) | Media;
   /**
-   * Kötelező. Ha nincs megfelelő, előbb hozd létre a Tartalom → Kategóriák alatt.
-   */
-  category: number | Category;
-  /**
-   * Ez dönti el, hogy a Kurzusok oldalon melyik sávban jelenik meg: „Otthoni gyakorlóknak" vagy „Szakembereknek". Ha üresen marad, az otthoni sávba kerül.
-   */
-  audience?: ('laikus' | 'szakember') | null;
-  /**
-   * Az ingyenes előzetes videójának azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). Az előzeteseket a NYILVÁNOS videótárba töltsd fel — azt bárki megnézheti vásárlás nélkül is. Ha nincs előzetes, hagyd üresen.
+   * Vásárlás nélkül is látható a kurzusoldalon. Nem kötelező; ha nincs, a borítókép jelenik meg.
    */
   previewVideoStreamId?: string | null;
+  /**
+   * A kurzus oldalán ajánlott további kurzusok.
+   */
+  relatedProducts?: (number | Product)[] | null;
   /**
    * A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként. Ha felveszel legalább egy leckét egy új modulba, a régi lista elrejtődik. Régi videók átemelése csak a kurzus:videok-modulba paranccsal, különben a vevők haladása nullázódik.
    */
@@ -1823,15 +1839,15 @@ export interface Product {
                */
               summary?: string | null;
               /**
-               * A videó azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). A fizetős kurzusvideók a VÉDETT videótárban vannak (csak vásárlás után nézhetők), az ingyenes előzetesek a nyilvánosban.
+               * A lecke felvétele a védett videótárból. A nyilvános bemutató külön, a Kurzusoldal fülön választható.
                */
               streamAssetId?: string | null;
               /**
-               * A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.
+               * A videó kiválasztásakor átvett hossz másodpercben. Ajánlott ellenőrizni: ebből számoljuk a hátralévő időt. Ha nem ismert, a lejátszás ettől még elindul (a jegy 24 órás). A lejátszáshoz kiválasztott videó és Kész állapot szükséges.
                */
               durationSec?: number | null;
               /**
-               * Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész”-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le és számít bele a haladásba.
+               * A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le és számít bele a haladásba.
                */
               status?: ('processing' | 'ready' | 'error') | null;
               /**
@@ -1889,33 +1905,20 @@ export interface Product {
     | {
         title?: string | null;
         /**
-         * A Bunny Stream videó GUID-ja — a VÉDETT libraryből, a Bunny felületén a videó adatlapján található. Kézzel másolandó be.
+         * A korábbi lecke felvétele a védett videótárból. A lista és a vevők haladása megmarad.
          */
         streamAssetId?: string | null;
+        /**
+         * A videó kiválasztásakor átvett hossz.
+         */
         durationSec?: number | null;
         /**
-         * A videó feldolgozottsága. Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész"-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le.
+         * A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le.
          */
         status?: ('processing' | 'ready' | 'error') | null;
         id?: string | null;
       }[]
     | null;
-  /**
-   * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
-   */
-  accessDurationDays?: number | null;
-  /**
-   * Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.
-   */
-  status?: ('draft' | 'published' | 'archived') | null;
-  /**
-   * A kurzus egyedi azonosítója — két kurzusnak nem lehet ugyanaz. Ez jelenik meg a rendeléseken és a számlán. Ha a fenti „Kurzus címe" üres, a látogató is ezt látja.
-   */
-  sku?: string | null;
-  /**
-   * A kurzus oldalán ajánlott további kurzusok.
-   */
-  relatedProducts?: (number | Product)[] | null;
   updatedAt: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -3821,12 +3824,18 @@ export interface CourseProgressSelect<T extends boolean = true> {
  * via the `definition` "products_select".
  */
 export interface ProductsSelect<T extends boolean = true> {
-  inventory?: T;
-  priceInHUFEnabled?: T;
-  priceInHUF?: T;
+  audience?: T;
+  status?: T;
   displayTitle?: T;
   slug?: T;
   shortDescription?: T;
+  coverImage?: T;
+  category?: T;
+  sku?: T;
+  priceInHUFEnabled?: T;
+  priceInHUF?: T;
+  accessDurationDays?: T;
+  inventory?: T;
   cardHighlights?:
     | T
     | {
@@ -3868,7 +3877,6 @@ export interface ProductsSelect<T extends boolean = true> {
         answer?: T;
         id?: T;
       };
-  coverImage?: T;
   gallery?:
     | T
     | {
@@ -3884,9 +3892,8 @@ export interface ProductsSelect<T extends boolean = true> {
         id?: T;
       };
   ogImage?: T;
-  category?: T;
-  audience?: T;
   previewVideoStreamId?: T;
+  relatedProducts?: T;
   modules?:
     | T
     | {
@@ -3924,10 +3931,6 @@ export interface ProductsSelect<T extends boolean = true> {
         status?: T;
         id?: T;
       };
-  accessDurationDays?: T;
-  status?: T;
-  sku?: T;
-  relatedProducts?: T;
   updatedAt?: T;
   createdAt?: T;
   deletedAt?: T;

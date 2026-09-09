@@ -1,0 +1,53 @@
+:root {
+  --font-body: Arial, sans-serif;
+  --base: 20px;
+  --style-radius-s: 4px;
+  --theme-bg: #fff;
+  --theme-input-bg: #fff;
+  --theme-text: #222;
+  --theme-elevation-0: #fff;
+  --theme-elevation-100: #eee;
+  --theme-elevation-200: #ddd;
+  --theme-elevation-300: #b5b5b5;
+  --theme-elevation-400: #858585;
+  --theme-elevation-700: #555;
+  --theme-error-500: #be3030;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --theme-bg: #171717;
+    --theme-input-bg: #1f1f1f;
+    --theme-text: #eee;
+    --theme-elevation-0: #171717;
+    --theme-elevation-100: #292929;
+    --theme-elevation-200: #3f3f3f;
+    --theme-elevation-300: #626262;
+    --theme-elevation-400: #858585;
+    --theme-elevation-700: #c8c8c8;
+    --theme-error-500: #f16a6a;
+  }
+}
+html {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font:
+    16px Arial,
+    sans-serif;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1100px;
+  padding: 16px;
+  margin: auto;
+}
+h1 {
+  font-size: 24px;
+}
+.fixture-tools {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}

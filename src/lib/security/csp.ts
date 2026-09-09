@@ -108,6 +108,7 @@ export function buildContentSecurityPolicy(
   googleAnalyticsMeasurementId?: string,
   barionPixelId?: string,
   posthogSharedDashboardUrl?: string,
+  adminVideoUploads = false,
 ): string {
   const pullZone = bunnyPullZoneSource(bunnyPullZoneHost)
 
@@ -206,7 +207,9 @@ export function buildContentSecurityPolicy(
     // A GA4 viszont NEM megy elsőfél-proxyn: a gtag.js közvetlenül a Google
     // (régió-specifikus) gyűjtőhostjaira küld — ezek csak beállított
     // GA4-azonosító mellett nyílnak meg.
-    `connect-src 'self'${gaConnectSources}`,
+    // TUS upload origin is opened only by the /admin header override.
+    // https://docs.bunny.net/docs/stream/tus-resumable-uploads
+    `connect-src 'self'${gaConnectSources}${adminVideoUploads ? ' https://video.bunnycdn.com' : ''}`,
 
     // 'unsafe-inline' KÉNYSZER: a React inline `style={{…}}` attribútumai
     // (HeroVideo, ScrollScrub) és a Payload admin injektált <style> blokkjai

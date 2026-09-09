@@ -38,10 +38,9 @@ vi.mock('../lib/statistics/engagement-query', () => ({
 }))
 
 vi.mock('../components/admin/BunnyLibraryPanel', () => ({
-  // A kém a PROPOKAT is rögzíti: a nézet címsor-szintje ebből mérhető.
-  BunnyLibraryPanel: (panelProps: unknown) => {
+  BunnyVideoLibrary: (panelProps: unknown) => {
     bunnyPanelKem(panelProps)
-    return createElement('div', null, 'panel')
+    return createElement('section', { 'aria-label': 'Védett videók' }, 'panel')
   },
 }))
 
@@ -83,7 +82,10 @@ describe('Statisztika nézet: a kapu a lekérdezések ELŐTT zár', () => {
       const html = renderToStaticMarkup(elem)
 
       expect(revenueKem, 'a bevétel-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
-      expect(engagementKem, 'a kurzus-hatás lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
+      expect(
+        engagementKem,
+        'a kurzus-hatás lekérdezés lefutott a tiltott ágon',
+      ).not.toHaveBeenCalled()
       expect(html).toContain('data-keret="frame"')
       // A KONSTANSRA hivatkozunk, nem egy beírt szóra: a korábbi
       // `toContain('jogosultság')` némán elengedte volna a szöveg cseréjét,
@@ -119,15 +121,12 @@ describe('Videótár nézet: ugyanaz a kapu-kötés', () => {
     expect(bunnyPanelKem).toHaveBeenCalledTimes(1)
   })
 
-  it('a nézet h2-t kér a paneltől — a lap h1-e alatt nincs címsor-ugrás', () => {
-    // A panel alapértelmezése `h3` (a termék-szerkesztő környezete), itt
-    // viszont közvetlenül a lap `h1`-e alatt ül: a h1 → h3 ugrásból a
-    // képernyőolvasót használó munkatárs hiányzó szakaszt olvasna ki
-    // (WCAG 2.2 SC 1.3.1, Info and Relationships).
-    renderToStaticMarkup(BunnyLibraryView(props({ role: 'staff' })))
-    expect(bunnyPanelKem).toHaveBeenCalledWith(
-      expect.objectContaining({ headingLevel: 'h2' }),
-    )
+  it('az önálló tár megtartja a lap h1-ét és nem kér régi h3 panelcímsort', () => {
+    const html = renderToStaticMarkup(BunnyLibraryView(props({ role: 'staff' })))
+    expect(bunnyPanelKem).toHaveBeenCalledTimes(1)
+    expect(html).toContain('<h1 style="margin-top:0">Videótár</h1>')
+    expect(html).toContain('aria-label="Védett videók"')
+    expect(html).not.toContain('<h3')
   })
 })
 
@@ -144,7 +143,10 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     it(`${nev} se lekérdezés, se iframe, se külső link`, async () => {
       const html = renderToStaticMarkup(await WebAnalyticsView(props(user)))
       expect(revenueKem, 'a bevétel-lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
-      expect(engagementKem, 'a kurzus-hatás lekérdezés lefutott a tiltott ágon').not.toHaveBeenCalled()
+      expect(
+        engagementKem,
+        'a kurzus-hatás lekérdezés lefutott a tiltott ágon',
+      ).not.toHaveBeenCalled()
       expect(html).toContain('data-keret="frame"')
       expect(html).toContain(WEB_ANALYTICS_ACCESS_DENIED_MESSAGE)
       expect(html).not.toContain('<iframe')

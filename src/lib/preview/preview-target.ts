@@ -10,8 +10,8 @@ import { hasControlCharacter } from '../return-url'
  * kerülhet ellentmondásba.
  */
 
-/** Az előnézetet támogató collectionök (a pages és a posts használ draftokat). */
-export const PREVIEW_COLLECTIONS = ['pages', 'posts'] as const
+/** A products üzleti status mezője független a Payload piszkozatától. */
+export const PREVIEW_COLLECTIONS = ['pages', 'posts', 'products'] as const
 export type PreviewCollection = (typeof PREVIEW_COLLECTIONS)[number]
 
 /** Az előnézetet bekapcsoló route útvonala. */
@@ -45,6 +45,12 @@ export const previewTargetPath = (collection: PreviewCollection, slug: unknown):
   if (normalized.length === 0) {
     return null
   }
+  if (collection === 'products') {
+    // Match the course slug namespace, excluding numeric legacy IDs and URL syntax.
+    return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalized) && !/^\d+$/.test(normalized)
+      ? `/kurzusok/${normalized}`
+      : null
+  }
   if (/[/\\:]/.test(normalized) || hasControlCharacter(normalized)) {
     return null
   }
@@ -71,6 +77,7 @@ export const buildAdminPreviewUrl = (
   if (typeof slug !== 'string' || slug.trim().length === 0) {
     return null
   }
+  if (previewTargetPath(collection, slug) === null) return null
   const params = new URLSearchParams({ collection, slug: slug.trim() })
   return `${serverUrl()}${PREVIEW_PATH}?${params.toString()}`
 }
