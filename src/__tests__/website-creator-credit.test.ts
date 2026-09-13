@@ -21,23 +21,39 @@ describe('source-only website creator credit', () => {
         statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
       )
       .flatMap((statement) => statement.declarationList.declarations)
-      .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'metadata')
-      ?.initializer
+      .find(
+        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'metadata',
+      )?.initializer
 
     if (!metadata || !ts.isObjectLiteralExpression(metadata)) {
       throw new Error('Expected exported metadata object')
     }
 
     const properties = new Map(
-      metadata.properties.filter(ts.isPropertyAssignment).map((property) => [
-        ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-          ? property.name.text
-          : property.name.getText(layout),
-        property.initializer,
-      ]),
+      metadata.properties
+        .filter(ts.isPropertyAssignment)
+        .map((property) => [
+          ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+            ? property.name.text
+            : property.name.getText(layout),
+          property.initializer,
+        ]),
     )
     const creator = properties.get('creator')
     expect(creator && ts.isStringLiteral(creator) ? creator.text : undefined).toBe('Barna Norbert')
+    const other = properties.get('other')
+    const creatorUrl =
+      other && ts.isObjectLiteralExpression(other)
+        ? other.properties
+            .filter(ts.isPropertyAssignment)
+            .find(
+              (property) =>
+                ts.isStringLiteral(property.name) && property.name.text === 'creator-url',
+            )?.initializer
+        : undefined
+    expect(creatorUrl && ts.isStringLiteral(creatorUrl) ? creatorUrl.text : undefined).toBe(
+      'https://www.barnanorbert.com/',
+    )
     expect(properties.has('authors')).toBe(false)
     expect(properties.has('publisher')).toBe(false)
 
@@ -46,6 +62,7 @@ describe('source-only website creator credit', () => {
       .find((declaration) => declaration.name?.text === componentName)
     expect(component).toBeDefined()
     expect(component?.getText(layout)).not.toContain('Barna Norbert')
+    expect(component?.getText(layout)).not.toContain('barnanorbert.com')
   })
 
   it('keeps the standalone global error credit in its head, outside the body', () => {
@@ -63,7 +80,9 @@ describe('source-only website creator credit', () => {
     }
     visit(source)
 
-    const html = elements.find((element) => element.openingElement.tagName.getText(source) === 'html')
+    const html = elements.find(
+      (element) => element.openingElement.tagName.getText(source) === 'html',
+    )
     const head = html?.children
       .filter(ts.isJsxElement)
       .find((element) => element.openingElement.tagName.getText(source) === 'head')
@@ -72,19 +91,25 @@ describe('source-only website creator credit', () => {
       .filter((element) => element.tagName.getText(source) === 'meta')
       .map((element) =>
         Object.fromEntries(
-          element.attributes.properties.filter(ts.isJsxAttribute).map((attribute) => [
-            attribute.name.getText(source),
-            attribute.initializer && ts.isStringLiteral(attribute.initializer)
-              ? attribute.initializer.text
-              : undefined,
-          ]),
+          element.attributes.properties
+            .filter(ts.isJsxAttribute)
+            .map((attribute) => [
+              attribute.name.getText(source),
+              attribute.initializer && ts.isStringLiteral(attribute.initializer)
+                ? attribute.initializer.text
+                : undefined,
+            ]),
         ),
       )
-    expect(metas).toEqual([{ name: 'creator', content: 'Barna Norbert' }])
+    expect(metas).toEqual([
+      { name: 'creator', content: 'Barna Norbert' },
+      { name: 'creator-url', content: 'https://www.barnanorbert.com/' },
+    ])
     const body = html?.children
       .filter(ts.isJsxElement)
       .find((element) => element.openingElement.tagName.getText(source) === 'body')
     expect(body).toBeDefined()
     expect(body?.getText(source)).not.toContain('Barna Norbert')
+    expect(body?.getText(source)).not.toContain('barnanorbert.com')
   })
 })
