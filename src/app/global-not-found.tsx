@@ -10,6 +10,7 @@ import './(frontend)/styles.css'
  * MIÉRT NEM A TELJES `Header`/`Footer` VAN ITT
  */
 export const metadata: Metadata = {
+  creator: 'Barna Norbert',
   title: 'Ez az oldal nem található | Kineticare',
   description:
     'A keresett oldal nem található a Kineticare oldalán. Innen tovább tudsz lépni a kurzusokra, a tudástárba vagy a kapcsolatfelvételhez.',

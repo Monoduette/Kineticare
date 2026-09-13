@@ -34,6 +34,9 @@ export default function GlobalError({
 
   return (
     <html lang="hu">
+      <head>
+        <meta name="creator" content="Barna Norbert" />
+      </head>
       <body>
         <main className="kc-section" id="tartalom">
           <div className="kc-container kc-container--narrow kc-error-page">
