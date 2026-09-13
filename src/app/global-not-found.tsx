@@ -11,6 +11,7 @@ import './(frontend)/styles.css'
  */
 export const metadata: Metadata = {
   creator: 'Barna Norbert',
+  other: { 'creator-url': 'https://www.barnanorbert.com/' },
   title: 'Ez az oldal nem található | Kineticare',
   description:
     'A keresett oldal nem található a Kineticare oldalán. Innen tovább tudsz lépni a kurzusokra, a tudástárba vagy a kapcsolatfelvételhez.',

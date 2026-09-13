@@ -36,6 +36,7 @@ export default function GlobalError({
     <html lang="hu">
       <head>
         <meta name="creator" content="Barna Norbert" />
+        <meta name="creator-url" content="https://www.barnanorbert.com/" />
       </head>
       <body>
         <main className="kc-section" id="tartalom">
