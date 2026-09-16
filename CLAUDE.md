@@ -4,6 +4,7 @@
 > [`docs/ugynok-kezikonyv.md`](docs/ugynok-kezikonyv.md) — hol melyik route,
 > API, collection, `lib`-modul, job, UI-réteg és tilalom él. Olvasd a 0–4.
 > szakaszt mindig. **Küldhető másolat:** [`handover/`](handover/).
+> **Claude első üzenet (másold be):** [`docs/claude-indito-prompt.md`](docs/claude-indito-prompt.md).
 > Ez a fájl marad a **mérvadó szabálykönyv**; a kézikönyv
 > nem írja felül a TILOS ZÓNÁKAT.
 

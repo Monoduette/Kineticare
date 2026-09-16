@@ -14,6 +14,7 @@
 | Fájl | Mit tart |
 | --- | --- |
 | `handover/` | Küldhető átadási csomag (másolat; a kanonikus kézikönyv itt marad) |
+| `docs/claude-indito-prompt.md` | Bemásolható első üzenet a következő Claude-nak |
 | `AGENTS.md` | Rövid szabálykönyv + parancsok + tilos zónák |
 | `CLAUDE.md` | Ugyanaz bővebben; **ellentmondásnál ez a mérvadó** |
 | `docs/agent-feature-map.md` | Cikk-CTA, Craft-sáv, Shop-sáv, Ads-zárak |
@@ -1135,8 +1136,9 @@ azóta megvannak), `owasp-security-review.md` (2026-08-04),
 `feladatlista.md` A/B sorai (későbbi owner-UI / Railway sok mindent
 lerakott). Kampánydoksi ≠ Ads Enable.
 
-**Ügynök / szabály:** `ugynok-kezikonyv.md` (ez), `agent-feature-map.md`,
-`ci-orok.md`, `feladatlista.md`, `repo-figyelo/`.
+**Ügynök / szabály:** `ugynok-kezikonyv.md` (ez), `claude-indito-prompt.md`
+(Claude első üzenet), `agent-feature-map.md`, `ci-orok.md`,
+`feladatlista.md`, `repo-figyelo/`.
 
 **UX / UI (felület előtt):** `ertekesitesi-ux-skill.md`,
 `ui-sztenderdek.md`, `gomb-inventar.md`, `gomb-kontraszt-audit.md`,
