@@ -675,6 +675,33 @@ export const Users: CollectionConfig = {
           'A fiókot a rendszer hozta létre (vendég-vásárlás vagy import), és a vevő még nem állított be saját jelszót. Az első belépéskor magától törlődik.',
       },
     },
+    {
+      /**
+       * Az átköltöztetési értesítő (WP40) kiküldésének időpontja.
+       *
+       * MIRE KELL: a `npm run email:migracio` script idempotenciája. Egy címre
+       * EGYSZER megy ki az „új jelszót kell beállítanod" levél; a jelölt
+       * fiókot a második futás kihagyja, újraküldés csak `--force`-szal.
+       * A Resend idempotencia-kulcsa 24 óra után lejár, ezért nem elég
+       * egyedüli őrnek; ez a mező a tartós nyilvántartás.
+       *
+       * ÍRÁS: kizárólag rendszerfolyamat (`overrideAccess: true`), a
+       * `passwordSetupPending` mintájára; az adminban csak olvasható.
+       */
+      name: 'migrationNoticeSentAt',
+      type: 'date',
+      label: 'Átköltöztetési értesítő kiküldve',
+      access: {
+        create: () => false,
+        update: () => false,
+      },
+      admin: {
+        readOnly: true,
+        date: { pickerAppearance: 'dayAndTime' },
+        description:
+          'Mikor ment ki a vevőnek az „új jelszót kell beállítanod" átköltöztetési levél. Üres = még nem kapta meg. A levelet a rendszer küldi, itt nem szerkeszthető.',
+      },
+    },
   ],
   hooks: {
     // A hitelesítési-adat őr ELSŐKÉNT fut: idegen rekord jelszó-/e-mail-cseréje

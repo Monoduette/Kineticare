@@ -18,6 +18,21 @@ export interface MailMessage {
   subject: string
   html: string
   text: string
+  /**
+   * Válasz-cím (Reply-To). Fiókkal kapcsolatos értesítésnél a vevő válaszát
+   * figyelt postaládába kell terelni, nem a noreply feladóra
+   * (Postmark, Transactional email best practices: „Avoid a noreply@ address
+   * if you can… replies will be sent to a monitored inbox",
+   * https://postmarkapp.com/guides/transactional-email-best-practices).
+   */
+  replyTo?: string
+  /**
+   * Szolgáltató-oldali idempotencia-kulcs: ugyanazzal a kulccsal a második
+   * kérés NEM küld második levelet. Resend: `Idempotency-Key` fejléc, legfeljebb
+   * 256 karakter, 24 óráig él (https://resend.com/docs/dashboard/emails/idempotency-keys).
+   * SMTP-n és noop-on nincs hatása.
+   */
+  idempotencyKey?: string
 }
 
 export interface SendResult {

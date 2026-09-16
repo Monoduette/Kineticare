@@ -63,7 +63,10 @@ export function formatFromHeader(from: string): string {
   if (match === null) {
     return sanitized.includes('@') ? sanitized : encodeWord(sanitized)
   }
-  const name = match[1].trim().replace(/^"(.*)"$/, '$1').trim()
+  const name = match[1]
+    .trim()
+    .replace(/^"(.*)"$/, '$1')
+    .trim()
   const address = match[2].trim()
   return name.length > 0 ? `${encodeWord(name)} <${address}>` : `<${address}>`
 }
@@ -77,6 +80,7 @@ export function buildMessage(config: SmtpConfig, message: MailMessage): string {
     `From: ${formatFromHeader(config.from)}`,
     `To: ${message.to.map(stripHeaderBreaks).join(', ')}`,
     `Subject: ${encodeWord(stripHeaderBreaks(message.subject))}`,
+    ...(message.replyTo ? [`Reply-To: ${stripHeaderBreaks(message.replyTo)}`] : []),
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,

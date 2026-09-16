@@ -1609,6 +1609,10 @@ export interface User {
    * A fiókot a rendszer hozta létre (vendég-vásárlás vagy import), és a vevő még nem állított be saját jelszót. Az első belépéskor magától törlődik.
    */
   passwordSetupPending?: boolean | null;
+  /**
+   * Mikor ment ki a vevőnek az „új jelszót kell beállítanod" átköltöztetési levél. Üres = még nem kapta meg. A levelet a rendszer küldi, itt nem szerkeszthető.
+   */
+  migrationNoticeSentAt?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -4068,6 +4072,7 @@ export interface UsersSelect<T extends boolean = true> {
   taxNumber?: T;
   lastLoginAt?: T;
   passwordSetupPending?: T;
+  migrationNoticeSentAt?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
