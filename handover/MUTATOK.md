@@ -1,6 +1,7 @@
 # Hol találja meg a következő agent ezt a csomagot
 
 A kanonikus kézikönyv: `docs/ugynok-kezikonyv.md`.
+A Claude-nak bemásolható indító: `docs/claude-indito-prompt.md`.
 Ez a mappa (`handover/`) a küldhető másolat.
 
 Mutatók a repóban (ne töröld őket):

@@ -67,6 +67,8 @@ const REQUIRED_SOURCE_PATHS = [
   'src/app/sitemap.ts',
   'docs/agent-feature-map.md',
   'docs/ertekesitesi-ux-skill.md',
+  'docs/szerkesztoi-utmutato.md',
+  'docs/claude-indito-prompt.md',
   '.claude/skills/termektervezes/SKILL.md',
 ]
 
@@ -107,6 +109,18 @@ describe('ügynök-kézikönyv — a következő agent megtalálja és használn
     expect(readRepoFile(HANDOVER_HANDBOOK_REL)).toBe(readRepoFile(HANDBOOK_REL))
     expect(readRepoFile('AGENTS.md')).toContain(`${HANDOVER_DIR}/`)
     expect(readRepoFile('README.md')).toContain(`${HANDOVER_DIR}/`)
+  })
+
+  it('a Claude-indító prompt létezik, bemásolható, és a handover másolat egyezik', () => {
+    const promptRel = 'docs/claude-indito-prompt.md'
+    const handoverPromptRel = 'handover/claude-indito-prompt.md'
+    expect(existsSync(join(REPO_ROOT, promptRel)), promptRel).toBe(true)
+    expect(readRepoFile(handoverPromptRel)).toBe(readRepoFile(promptRel))
+    expect(readRepoFile('handover/README.md')).toContain('claude-indito-prompt.md')
+    expect(readRepoFile(promptRel)).toContain('MÁSOLD INNENTŐL')
+    expect(readRepoFile(promptRel)).toContain('confirmOrder')
+    expect(readRepoFile(promptRel)).toContain('szerkesztoi-utmutato.md')
+    expect(readRepoFile(promptRel)).not.toMatch(/confirmOrder-t hívd/i)
   })
 
   it('az .env.example tartalmazza a kódban élő, korábban hiányzó kulcsneveket érték nélkül', () => {
