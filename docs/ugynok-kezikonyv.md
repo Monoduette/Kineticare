@@ -368,8 +368,9 @@ További scriptek: lásd a 15. szakaszt.
 
 ### 4.3 Tesztelés
 
-- Include: `src/**/*.test.ts` / `src/**/*.test.tsx` (mind
-  `src/__tests__/` alatt, 350+ fájl). Alias `@/*` → `src/*`.
+- Include: `src/**/*.test.ts` / `src/**/*.test.tsx` (a többség
+  `src/__tests__/` alatt, 350+ fájl) plusz `handover/**/*.test.ts`
+  (a küldhető őr). Alias `@/*` → `src/*`.
   DB-kapus fájlok CI-ben dobnak, ha nincs Postgres; helyben skip.
 - **Tesztből SOSEM megy ki valódi hálózat.** HTTP-t injektálj
   (`postXml`, `queryByKulsoAzon`); `fetch`-et `vi.stubGlobal` +
@@ -646,7 +647,7 @@ Origin mindig megy.
 
 | Slug | Fájl | Csoport | Lényeg |
 | --- | --- | --- | --- |
-| `users` | `Users.ts` | Felhasználók | role, purchases (írás zárt), accessGrants (írás zárt), billing, `passwordSetupPending`, `migrationNoticeSentAt`; első user owner bootstrap-tokennel |
+| `users` | `Users.ts` | Felhasználók | role, purchases (írás zárt), accessGrants (írás zárt), billing, `passwordSetupPending`, `migrationNoticeSentAt`; első user csak érvényes bootstrap-tokennel owner, enélkül a fiók nem jön létre |
 | `media` | `Media.ts` | Tartalom | alt kötelező; webp; max 10 MB; `PAYLOAD_MEDIA_DIR` |
 | `pages` | `Pages.ts` | Tartalom | drafts + saját status; `layout` blokksor; preview |
 | `posts` | `Posts.ts` | Tartalom | ugyanez; hero, author, related, categories |
@@ -685,11 +686,15 @@ Tananyag → Haladás. UI-mezők (nincs séma): `courseVisibilityNotice`,
 (`hasStaffOrOwnerRole` / `isAdmin`).
 
 - `role` mező: csak owner írja.
-- Első user: `promoteFirstUserToOwner` + advisory lock +
-  `FIRST_USER_BOOTSTRAP_TOKEN` (min. 32) a
-  `x-kineticare-bootstrap-token` headerben. Enélkül az első fiók
-  customer lenne, és senki nem jutna adminba.
-- 2. usertől default `customer`. Adminhoz kézzel `staff`.
+- Üres DB, első publikus create (`/users` vagy `/users/first-register`):
+  `promoteFirstUserToOwner` + advisory lock. Az első fiók csak akkor
+  jön létre `owner`-ként, ha a `FIRST_USER_BOOTSTRAP_TOKEN` (min. 32)
+  be van állítva, és a kérés `x-kineticare-bootstrap-token` headere
+  egyezik. Hiányzó vagy 32-nél rövidebb token → **503**, fiók **nem**
+  jön létre. Hiányzó vagy rossz header → **403**, fiók **nem** jön
+  létre. Ez fail-closed: ne keress „beragadt customer”-t, add meg a
+  tokent. A 2. usertől a publikus create `customer`. Adminhoz kézzel
+  `staff`.
 - Jelszócsere / e-mailcsere: a többi session meghal, a cserét végző sid
   megmarad (J2). `revokeOtherSessionsAfterCredentialChange`.
 - Jelszó: min. 12, kis+nagy+szám, e-mail local-part tiltva
@@ -979,7 +984,7 @@ után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
 
 | npm | Fájl | Megjegyzés |
 | --- | --- | --- |
-| `seed` | `src/scripts/seed.ts` | Élesben tiltott, kivéve `SEED_SCOPE=kezdolap` vagy `SEED_CONFIRM_LIVE=igen`. Owner jelszó **kötelező** env, a script nem generál/naplóz jelszót. |
+| `seed` | `src/scripts/seed.ts` | Nem dry-run. Nem-éles URL-en hiányzó `SEED_*` = **teljes seed ír**. Éles URL-en tiltott, kivéve `SEED_SCOPE=kezdolap` (szűkített írás) vagy `SEED_CONFIRM_LIVE=igen` (teljes seed). Owner jelszó **kötelező** env, a script nem generál/naplóz jelszót. |
 | `seed:demo` | `demo-seed.ts` | `DEMO_MODE=1`; éles domain tiltott; **nem** `confirmOrder` |
 | `seed:legacy` | `restore-legacy-content.ts` | próba; írás `LEGACY_RESTORE_CONFIRM=igen`; felülírás `LEGACY_OVERWRITE=igen` |
 | `seed:menu` | `seed-menu.ts` | `MENU_SEED_DRY_RUN=igen` = próba |
@@ -999,10 +1004,13 @@ után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
 
 A seed **sosem írja felül** a meglévő kezdőlap-szekciósorát, a meglévő
 média-rekordot, kategóriát, oldalt, cikket, terméket, menüpontot, vagy a
-Kapcsolat/Hírlevél/Időpont űrlapot. Teljes seed éles URL-en tiltott
-(`SEED_CONFIRM_LIVE=igen` kivétel), és akkor is, ha a DB-ben van nem
-`@example.com` vevő vagy rendelés. `SEED_SCOPE=kezdolap` élesen is
-mehet: média-restore + kezdőlap + vélemények + űrlapok, demó-SKU nélkül.
+Kapcsolat/Hírlevél/Időpont űrlapot. A `SEED_*` változók **nem**
+próbafutás-kapuk: hiányuk nem dry-run. Nem-éles `NEXT_PUBLIC_SERVER_URL`
+mellett a script azonnal ír (teljes demó-seed). Éles URL-en a teljes
+seed el sem indul — kivéve `SEED_CONFIRM_LIVE=igen`. Akkor is megáll,
+ha a DB-ben van nem `@example.com` vevő vagy rendelés.
+`SEED_SCOPE=kezdolap` élesen is ír: média-restore + kezdőlap +
+vélemények + űrlapok, demó-SKU nélkül.
 
 ---
 
@@ -1033,9 +1041,10 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | `EXTRA_ALLOWED_ORIGINS` | DNS-cutover CORS |
 | `NEXT_PUBLIC_ALLOW_INDEXING` | `true` = nincs noindex-kapu |
 | `NEXT_PUBLIC_BARION_PIXEL_ID` | BP-…-.. ; BPT- **nem** Pixel |
-| `FIRST_USER_BOOTSTRAP_TOKEN` | első owner, min. 32 |
+| `FIRST_USER_BOOTSTRAP_TOKEN` | első owner, min. 32; hiány/rövid = 503, rossz header = 403, fiók nincs |
 | `TRUST_CF_CONNECTING_IP` | Cloudflare IP-hitelesség |
-| `SEED_SCOPE` / `SEED_CONFIRM_LIVE` | seed hatókör / éles felülírás |
+| `SEED_SCOPE` | `kezdolap` = szűkített **írás** (éles URL-en is). Üres + nem-éles URL = teljes seed **ír** |
+| `SEED_CONFIRM_LIVE` | `igen` = teljes seed éles URL-en. Hiány éles URL-en = a seed el sem indul, nem dry-run |
 | `LOG_LEVEL` | debug\|info\|warn\|error |
 | `CONTACT_STAFF_EMAILS` | űrlap-értesítő |
 | `POSTHOG_SHARED_DASHBOARD_URL` | admin webanalitika iframe; újrabuild |
@@ -1043,7 +1052,7 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | `EMAIL_JOB_ARGS` | `railway.email-job.json` script-argumentum; futás után ürítsd |
 | `MIGRATION_NOTICE_CONFIRM` | `igen` = éles migrációs levél |
 | `DEMO_MODE` | `1` = `seed:demo` futhat; **éles Kineticare-en tilos** |
-| `OWNER_*` / `SEED_*` kapuk | írás csak `…=igen`; hiány = próbafutás |
+| `OWNER_*` kapuk | `OWNER_CONTENT_CONFIRM`, `OWNER_BACKFILL_CONFIRM`, `OWNER_TUDASTAR_CONFIRM` stb.: írás csak `…=igen`; hiány = próbafutás. **Nem** vonatkozik a `SEED_*`-ra |
 | `LEGACY_RESTORE_CONFIRM` / `LEGACY_OVERWRITE` | legacy restore kapuk |
 | `MENU_SEED_DRY_RUN` | `igen` = menü-seed próba |
 | `E2E_EXPECT_ANALYTICS` | `1` = consent E2E valódi PostHog/GA4-et vár |
@@ -1142,7 +1151,7 @@ lerakott). Kampánydoksi ≠ Ads Enable.
 `vasarlo-migracio-terv.md`, `jelszo-politika.md`.
 
 **Videó:** `video-platform-dontes.md`, `video-stream-keszenlet.md`,
-`hero-video-feltoltese.md`, `admin-video-ux.md`.
+`hero-video-feltoltes.md`, `admin-video-ux.md`.
 
 **SEO / tartalom / Ads (tervezet, nem Enable-parancs):** `seo-geo-llm.md`,
 `kulcsszavak.md`, `tudastar-*.md`, `cikkek/`, `adwords-kampany.md`,
@@ -1203,7 +1212,8 @@ A teljes lista a `CLAUDE.md` „Üzemeltetési tanulságok". A sűrűek:
    „Done" = nem az a baj, amire gondolsz.
 5. 30+ mp írásnál = sorzár, nem lassú query. Olvasás gyors marad.
 6. Tétlen TCP a Railway privát hálón: keepalive nélkül ~45 mp timeout.
-7. Első user owner; a 2. customer.
+7. Első user csak érvényes bootstrap-tokennel owner. Token vagy header
+   nélkül a fiók nem jön létre (503 / 403). A 2. user customer.
 8. Lockfile `resolved` URL-jei legyenek publikus registry-n.
 9. `robots.ts` / `sitemap.ts` csak `src/app/` gyökérből.
 10. Tesztből ne hívd a valódi Számlázz.hu-t / Bariont.

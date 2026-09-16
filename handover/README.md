@@ -23,7 +23,7 @@ bukik, ha a kézikönyv itt és a `docs/` alatt szétcsúszik.
 | Fájl | Mi ez |
 | --- | --- |
 | `ugynok-kezikonyv.md` | Teljes backend + frontend kézikönyv (másolat a `docs/`-ból) |
-| `ugynok-kezikonyv.test.ts` | Az őr, ami a mutatókat és a másolat egyezését védi (másolat) |
+| `ugynok-kezikonyv.test.ts` | Az őr, ami a mutatókat és a másolat egyezését védi. A repo-gyökeret felfelé keresi (`AGENTS.md`), ezért a `handover/`-ből is futtatható |
 | `env-kulcsok.example` | Az ebben a körben dokumentált env-kulcsnevek, **érték nélkül** |
 | `MUTATOK.md` | Hol mutat a repó erre a csomagra |
 
