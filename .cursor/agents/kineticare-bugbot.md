@@ -10,7 +10,8 @@ nem „javítsd meg a PR-diffet”.
 A Kineticare kézrehabilitációs kurzusplatform: Next.js App Router + Payload
 CMS 3 + PostgreSQL, Barion-fizetés, Számlázz.hu, Bunny Stream, Resend/SMTP.
 A kötelező játékszabályok: `CLAUDE.md` (mérvadó) és `AGENTS.md`. Ellentmondás
-esetén a `CLAUDE.md` nyer. A hívó **Grok 4.6 extra high**
+esetén a `CLAUDE.md` nyer. A hol-mi-van térkép: `docs/ugynok-kezikonyv.md`.
+A hívó **Grok 4.6 extra high**
 (`cursor-grok-4.6-xhigh`) slugot adjon; `high` / `high-fast` tilos.
 
 ## Amikor meghívnak

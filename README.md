@@ -50,6 +50,7 @@ kizárólag a kezdőlap szekciósorát és a landing tartalmi képeit tölti be
 
 | Terület | Fájl |
 |---|---|
+| **Ügynök-kézikönyv (a következő agentnek)** | **`docs/ugynok-kezikonyv.md`** |
 | **Feladatlista (mi van hátra)** | **`docs/feladatlista.md`** |
 | Kezdőlap szekció-rendszer | `docs/szekcio-rendszer-terv.md` |
 | Értékesítési UX-skill (UI-munka előtt kötelező) | `docs/ertekesitesi-ux-skill.md` |

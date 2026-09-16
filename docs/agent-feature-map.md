@@ -1,5 +1,8 @@
 # Ügynök-térkép: cikk-CTA és tilos találgatások
 
+> **A teljes backend+frontend térkép:** [`docs/ugynok-kezikonyv.md`](ugynok-kezikonyv.md).
+> Ez a fájl csak a cikk-CTA / Craft-sáv / Shop-sáv / Ads **zárakat** tartja.
+
 > **Kinek szól:** a következő kódoló ügynöknek. Nem termékterv, nem architektúra-újraírás.
 > **Honnan a zár:** squash-merge `785a8ad` (PR 174), élő kód a `mainen`.
 > **Őr-tesztek:** `src/__tests__/tudastar-cikkoldal.test.tsx` (pár, 900 px, váll),

@@ -1,5 +1,12 @@
 # AGENTS.md — Ügynök-útmutató a Kineticare repóhoz
 
+> **Teljes ügynök-kézikönyv (backend + frontend térkép):**
+> [`docs/ugynok-kezikonyv.md`](docs/ugynok-kezikonyv.md) — olvasd el a 0–4.
+> szakaszt minden munkakezdéskor, utána ugorj a tartományra, amihez nyúlsz.
+> Ez a fájl a rövid szabálykönyv; a kézikönyv a hol-mi-van térkép. Ellentmondásnál
+> a `CLAUDE.md` a mérvadó. A **TILOS ZÓNÁK** itt és ott is kivétel nélkül
+> betartandók.
+
 Ez a fájl az AI-kódoló ügynököknek készült: a projekt felépítését, parancsait,
 konvencióit és szigorú szabályait foglalja össze. A részletes, kiegészített
 játékszabályok a `CLAUDE.md`-ben élnek — ez a fájl azzal konzisztens, ellentmondás
@@ -389,6 +396,7 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 
 | Terület                                         | Fájl                                                                   |
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| **Ügynök-kézikönyv (backend + frontend térkép)** | **`docs/ugynok-kezikonyv.md`**                                        |
 | **Feladatlista (mi van hátra)**                 | **`docs/feladatlista.md`**                                             |
 | **Ügynök-térkép (cikk-CTA, Craft-sáv és Shop-sáv zárak)** | **`docs/agent-feature-map.md`**                              |
 | Kezdőlap szekció-rendszer                       | `docs/szekcio-rendszer-terv.md`                                        |

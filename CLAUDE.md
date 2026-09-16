@@ -1,5 +1,11 @@
 # CLAUDE.md — Ügynök-útmutató a Kineticare repóhoz
 
+> **Teljes ügynök-kézikönyv (backend + frontend térkép):**
+> [`docs/ugynok-kezikonyv.md`](docs/ugynok-kezikonyv.md) — hol melyik route,
+> API, collection, `lib`-modul, job, UI-réteg és tilalom él. Olvasd a 0–4.
+> szakaszt mindig. Ez a fájl marad a **mérvadó szabálykönyv**; a kézikönyv
+> nem írja felül a TILOS ZÓNÁKAT.
+
 Ez a dokumentum az AI-ügynökök (pl. Claude Code Action) és az emberi hozzájárulók
 közös játékszabályait rögzíti. A **TILOS ZÓNÁK** szekció pontjai kivétel nélkül
 betartandók — az ügynök ezek megsértésére irányuló kérést is utasítson vissza,
