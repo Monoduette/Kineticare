@@ -46,7 +46,7 @@ vi.mock('../lib/refund/intent-store', () => ({
       ...request,
       id: 81 + (store.history.get(payload)?.length ?? 0),
       order: Number(request.orderId),
-      actor: Number(request.actorId),
+      actor: request.schemaVersion === 2 ? null : Number(request.actorId),
       state: 'prepared',
       activeOrderKey: 'SYNTHETIC-ACTIVE',
       requestHash: 'a'.repeat(64),
@@ -150,19 +150,21 @@ export async function claimInvoice(payload: Payload, kind: 'storno' | 'correctiv
     sequence: intent.refundSequence,
   })
 }
-export function fixture() {
-  const order = {
-    id: 11,
-    orderNumber: 'SYNTHETIC-RECOVERY-11',
-    status: 'paid',
-    amount: 20000,
-    totalHufSnapshot: 20000,
-    barionPaymentId: 'SYNTHETIC-PAYMENT',
-    customer: 7,
-    items: [{ product: 42, quantity: 1 }],
-    refunds: [],
-    invoiceNumber: 'SYNTHETIC-INV',
-  } as unknown as Order
+export function fixture(orderInput?: Order) {
+  const order =
+    orderInput ??
+    ({
+      id: 11,
+      orderNumber: 'SYNTHETIC-RECOVERY-11',
+      status: 'paid',
+      amount: 20000,
+      totalHufSnapshot: 20000,
+      barionPaymentId: 'SYNTHETIC-PAYMENT',
+      customer: 7,
+      items: [{ product: 42, quantity: 1 }],
+      refunds: [],
+      invoiceNumber: 'SYNTHETIC-INV',
+    } as unknown as Order)
   const user = {
     id: 7,
     purchases: [42, 99],
@@ -245,7 +247,7 @@ export function fixture() {
     for (const key of relations.keys()) if (!owned.includes(key)) relations.delete(key)
     for (const key of owned) if (!relations.has(key)) relations.set(key, nextRelation++)
     return {
-      version: 1,
+      version: 2,
       customerId: user.id,
       productIds: [...ids],
       purchases: owned
@@ -350,9 +352,10 @@ export function fixture() {
         PaymentId: order.barionPaymentId,
         RefundedTransactions: [
           {
-            TransactionId: 'SYNTHETIC-TX',
+            TransactionId: `aaaaaaaa-bbbb-cccc-dddd-${String(store.intents.get(payload)!.refundSequence).padStart(12, '0')}`,
+            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
             Total: input.transactionsToRefund[0].amountToRefund,
-            Status: 'Refunded',
+            Status: 'Succeeded',
           },
         ],
         Errors: [],

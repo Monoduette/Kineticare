@@ -1,3 +1,5 @@
+import { devNull } from 'node:os'
+
 /**
  * Adatbázis-mentés — TISZTA (mellékhatás-mentes) logika.
  *
@@ -121,7 +123,7 @@ export interface RestoreListResult {
   readonly stderr: string
 }
 
-/** Az integritás-ellenőrzés kiértékelt eredménye. */
+/** A TOC-ellenőrzés kiértékelt eredménye; teljes dekódolás külön szükséges. */
 export type IntegrityOutcome =
   | { readonly ok: true; readonly entryCount: number }
   | { readonly ok: false; readonly message: string }
@@ -140,10 +142,9 @@ function firstMeaningfulLine(text: string): string {
  * A `pg_restore --list` kimenetének értelmezése.
  *
  * A kimenet fejléce `;`-vel kezdődő kommentsorokból áll, utána jönnek a TOC-
- * bejegyzések (`215; 1259 16389 TABLE public users postgres`). Egy csonka vagy
- * sérült archívumon a pg_restore nem nullával lép ki; egy „üres" (bejegyzés
- * nélküli) archívum viszont nullával térhet vissza, ezért a bejegyzések
- * számát külön is ellenőrizzük.
+ * bejegyzések (`215; 1259 16389 TABLE public users postgres`). Sérült fejléc
+ * vagy TOC hibát okoz; későbbi sérült adatblokk viszont rejtve maradhat.
+ * Ezért a bejegyzésszám után teljes dekódolás is kell a sikerhez.
  *
  * A `stdout`/`stderr` értékét a hívó KÖTELESEN redaktálva adja át.
  */
@@ -358,9 +359,14 @@ export function buildPgDumpArgs(filePath: string): string[] {
   return ['--format=custom', '--file', filePath]
 }
 
-/** A pg_restore integritás-ellenőrzés argumentumlistája. */
+/** TOC-listázás a bejegyzésszámhoz; önmagában nem igazolja az adatblokkokat. */
 export function buildPgRestoreListArgs(filePath: string): string[] {
   return ['--list', filePath]
+}
+
+/** Teljes archívumdekódolás SQL-kimenettel a null eszközre, adatbáziscél és szűrő nélkül. */
+export function buildPgRestoreDecodeArgs(filePath: string): string[] {
+  return ['--file', devNull, filePath]
 }
 
 /** Emberi olvasásra szánt méret (a naplóba és a konzolra). */

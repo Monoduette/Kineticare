@@ -1,10 +1,13 @@
 'use client'
 
 import { useAuth } from '@payloadcms/ui'
-import { useCallback, useReducer, type CSSProperties } from 'react'
+import { useCallback, useReducer, useState, type CSSProperties } from 'react'
 
 import { hasStaffOrOwnerRole } from '../../access/roles'
 import type { BunnyLibraryKind, BunnyLibraryVideo } from '../../lib/stream/bunny-library'
+import { BunnyVideoPicker } from './BunnyVideoPicker'
+import { BunnyVideoUpload } from './BunnyVideoUpload'
+import { BunnyVideoDialog } from './BunnyVideoDialog'
 
 /**
  * Bunny videótár panel a kurzus szerkesztőlapján (UI-mező, nem tárol adatot).
@@ -357,3 +360,47 @@ export function BunnyLibraryPanel({
 }
 
 export default BunnyLibraryPanel
+
+/** Onallo nezet; a regi panel exportjai az atmeneti mezo-bekotesekhez maradnak. */
+export function BunnyVideoLibrary() {
+  const { user } = useAuth<{ id: number | string; role?: string | null }>()
+  const [library, setLibrary] = useState<BunnyLibraryKind>('protected')
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [refresh, setRefresh] = useState(0)
+  if (!hasStaffOrOwnerRole(user)) return null
+  return (
+    <div className="bunny-video">
+      <div className="bunny-video-toolbar">
+        <label>
+          Videótár{' '}
+          <select
+            value={library}
+            onChange={(event) =>
+              setLibrary(event.target.value === 'public' ? 'public' : 'protected')
+            }
+          >
+            <option value="protected">Védett</option>
+            <option value="public">Nyilvános</option>
+          </select>
+        </label>
+        {library === 'protected' && (
+          <button type="button" onClick={() => setUploadOpen(true)}>
+            Videó feltöltése
+          </button>
+        )}
+      </div>
+      <BunnyVideoPicker key={library} library={library} refreshKey={refresh} />
+      {uploadOpen && (
+        <BunnyVideoDialog
+          title="Videó feltöltése"
+          onClose={() => {
+            setUploadOpen(false)
+            setRefresh((n) => n + 1)
+          }}
+        >
+          <BunnyVideoUpload onUploaded={() => setRefresh((n) => n + 1)} />
+        </BunnyVideoDialog>
+      )}
+    </div>
+  )
+}

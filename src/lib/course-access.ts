@@ -17,6 +17,8 @@ export type CourseAccessReason =
   | 'active'
   /** Van korlát, a hozzáférés lejárt. */
   | 'expired'
+  /** A bizonyított források egyike sem jogosít többé (pl. teljes visszatérítés). */
+  | 'revoked'
 
 export interface CourseAccessState {
   /** Hozzáfér-e MOST a felhasználó a kurzushoz. */
@@ -169,6 +171,16 @@ export function resolvePlayerGate(input: {
         gate: { kind: 'lookup-failed', message: ACCESS_LOOKUP_FAILED_MESSAGE },
       }
     }
+    // Ugyanaz a nincs-hozzáférés magyarázat és továbblépés; a refund nem
+    // lejárat és nem átmeneti adatbázishiba. NN/g Error-Message Guidelines
+    // https://www.nngroup.com/articles/error-message-guidelines/ ; WCAG 3.2.4
+    // https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+    if (input.access.reason === 'revoked') {
+      return {
+        hasAccess: false,
+        gate: { kind: 'not-purchased', message: ACCESS_NOT_PURCHASED_MESSAGE },
+      }
+    }
     return {
       hasAccess: false,
       gate: { kind: 'expired', message: accessExpiredMessage(input.access.expiresAt) },
@@ -200,6 +212,12 @@ export function toCourseAccessView(state: CourseAccessState): CourseAccessView {
   return {
     hasAccess: state.hasAccess,
     expiryLabel: accessExpiryLabel(state.expiresAt),
-    expiredMessage: state.hasAccess ? null : accessExpiredMessage(state.expiresAt),
+    expiredMessage: state.hasAccess
+      ? null
+      : state.reason === 'revoked'
+        ? ACCESS_NOT_PURCHASED_MESSAGE
+        : state.reason === 'unknown-purchase-date'
+          ? ACCESS_LOOKUP_FAILED_MESSAGE
+          : accessExpiredMessage(state.expiresAt),
   }
 }

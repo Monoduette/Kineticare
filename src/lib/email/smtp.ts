@@ -40,10 +40,59 @@ class SmtpProtocolError extends EmailSendError {
 /** A tesztek miatt exportált tiszta segéd (RFC 2047 encoded-word). */
 export function encodeWord(value: string): string {
   // RFC 2047 encoded-word a nem-ASCII (magyar ékezetes) subject/feladónév miatt.
-  if (!/[^\x20-\x7E]/.test(value)) {
+  if (!/[^\x20-\x7E]/.test(value) && value.length <= 64) {
     return value
   }
-  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
+  // 39 UTF-8 bájt -> legfeljebb 64 karakteres encoded-word. Így a Subject:
+  // prefix is elfér a 76-os fejlécsorban. Kódpontot nem vágunk ketté, mert
+  // minden encoded-wordnek önállóan is dekódolhatónak kell lennie.
+  const words: string[] = []
+  let chunk = ''
+  let bytes = 0
+  for (const character of value) {
+    const length = Buffer.byteLength(character, 'utf8')
+    if (bytes + length > 39) {
+      words.push(`=?UTF-8?B?${Buffer.from(chunk, 'utf8').toString('base64')}?=`)
+      chunk = ''
+      bytes = 0
+    }
+    chunk += character
+    bytes += length
+  }
+  if (chunk) words.push(`=?UTF-8?B?${Buffer.from(chunk, 'utf8').toString('base64')}?=`)
+  return words.join(' ')
+}
+
+/** RFC 2045: kizárólag a kódolt sorokat törjük; a dekódolt törzsbájtok megmaradnak. */
+function encodeMimeBody(value: string): string {
+  return (
+    Buffer.from(value, 'utf8')
+      .toString('base64')
+      .match(/.{1,76}/g)
+      ?.join('\r\n') ?? ''
+  )
+}
+
+/** Csak a már szűrt érték szóközein hajtogat; címbe vagy encoded-wordbe nem vág. */
+function foldHeader(field: string, value: string): string {
+  const prefix = `${field}: `
+  const lines: string[] = []
+  let line = prefix
+  let whitespace = ''
+  for (const token of value.match(/ +|[^ ]+/g) ?? []) {
+    if (token.startsWith(' ')) {
+      whitespace += token
+      continue
+    }
+    if (line !== prefix && Buffer.byteLength(line + whitespace + token) > 76) {
+      lines.push(line)
+      line = whitespace + token
+    } else {
+      line += whitespace + token
+    }
+    whitespace = ''
+  }
+  return [...lines, line + whitespace].join('\r\n')
 }
 
 /** A tesztek miatt exportált tiszta segéd (dot-stuffing a DATA-blokkban). */
@@ -74,13 +123,13 @@ export function formatFromHeader(from: string): string {
 /** A tesztek miatt exportált üzenet-összeállító (multipart/alternative, base64). */
 export function buildMessage(config: SmtpConfig, message: MailMessage): string {
   const boundary = `----kineticare-${Date.now().toString(36)}`
-  const textPart = Buffer.from(message.text, 'utf8').toString('base64')
-  const htmlPart = Buffer.from(message.html, 'utf8').toString('base64')
+  const textPart = encodeMimeBody(message.text)
+  const htmlPart = encodeMimeBody(message.html)
   const headers = [
-    `From: ${formatFromHeader(config.from)}`,
-    `To: ${message.to.map(stripHeaderBreaks).join(', ')}`,
-    `Subject: ${encodeWord(stripHeaderBreaks(message.subject))}`,
-    ...(message.replyTo ? [`Reply-To: ${stripHeaderBreaks(message.replyTo)}`] : []),
+    foldHeader('From', formatFromHeader(config.from)),
+    foldHeader('To', message.to.map(stripHeaderBreaks).join(', ')),
+    foldHeader('Subject', encodeWord(stripHeaderBreaks(message.subject))),
+    ...(message.replyTo ? [foldHeader('Reply-To', stripHeaderBreaks(message.replyTo))] : []),
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,

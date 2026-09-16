@@ -38,6 +38,8 @@ export const metadata: Metadata = {
   },
   description: DEFAULT_DESCRIPTION,
   applicationName: SITE_NAME,
+  creator: 'Barna Norbert',
+  other: { 'creator-url': 'https://www.barnanorbert.com/' },
   // Indexelhető alapállapot; a privát lapok saját `NOINDEX_ROBOTS`-t adnak.
   robots: INDEX_ROBOTS,
   openGraph: {

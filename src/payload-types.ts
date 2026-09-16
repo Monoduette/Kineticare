@@ -77,6 +77,7 @@ export interface Config {
     posts: Post;
     categories: Category;
     testimonials: Testimonial;
+    'course-files': CourseFile;
     menus: Menu;
     'course-progress': CourseProgress;
     products: Product;
@@ -102,6 +103,7 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>;
     categories: CategoriesSelect<false> | CategoriesSelect<true>;
     testimonials: TestimonialsSelect<false> | TestimonialsSelect<true>;
+    'course-files': CourseFilesSelect<false> | CourseFilesSelect<true>;
     menus: MenusSelect<false> | MenusSelect<true>;
     'course-progress': CourseProgressSelect<false> | CourseProgressSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
@@ -1587,12 +1589,17 @@ export interface User {
    */
   purchases?: (number | Product)[] | null;
   /**
-   * Időkorlátos ajándék-kurzus kezdőpontja. A staff a Kurzus ajándékozása panellel adja, nem itt.
+   * Fizetésből vagy önálló ajándékból származó kezdőpontok. A staff a Kurzus ajándékozása panellel adja, nem itt.
    */
   accessGrants?:
     | {
         product: number | Product;
         grantedAt: string;
+        /**
+         * Üres érték: történeti, nem bizonyított eredet.
+         */
+        sourceKind?: ('order' | 'independent') | null;
+        sourceOrder?: (number | null) | Order;
         id?: string | null;
       }[]
     | null;
@@ -1633,22 +1640,21 @@ export interface User {
   collection: 'users';
 }
 /**
- * A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja.
+ * A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja. Az előnézet a mentett kurzusoldalt mutatja, tananyag-hozzáférést nem ad.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products".
  */
 export interface Product {
   id: number;
-  inventory?: number | null;
   /**
-   * Kikapcsolva a kurzus nem vásárolható meg.
+   * Ez dönti el, hogy a Kurzusok oldalon melyik sávban jelenik meg: „Otthoni gyakorlóknak" vagy „Szakembereknek". Ha üresen marad, az otthoni sávba kerül.
    */
-  priceInHUFEnabled?: boolean | null;
+  audience?: ('laikus' | 'szakember') | null;
   /**
-   * A kurzus bruttó ára forintban — ennyit fizet a vásárló a pénztárnál. Csak tulajdonos állíthatja.
+   * Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.
    */
-  priceInHUF?: number | null;
+  status?: ('draft' | 'published' | 'archived') | null;
   /**
    * A kurzus címe, ahogy a látogató látja (pl. „Kéztorna otthon — 8 hetes program"). Ebből készül a webcím is. Ha üresen hagyod, a lenti „Kurzus neve (azonosító)" jelenik meg.
    */
@@ -1661,6 +1667,31 @@ export interface Product {
    * 1–3 mondat. A kurzuskártyákon és a kezdőlapon ez látszik.
    */
   shortDescription?: string | null;
+  /**
+   * A kurzus kártyáján és az oldala tetején megjelenő kép.
+   */
+  coverImage?: (number | null) | Media;
+  /**
+   * Kötelező. Ha nincs megfelelő, előbb hozd létre a Tartalom → Kategóriák alatt.
+   */
+  category: number | Category;
+  /**
+   * A kurzus egyedi azonosítója — két kurzusnak nem lehet ugyanaz. Ez jelenik meg a rendeléseken és a számlán. Ha a fenti „Kurzus címe" üres, a látogató is ezt látja.
+   */
+  sku?: string | null;
+  /**
+   * Kikapcsolva a kurzus nem vásárolható meg.
+   */
+  priceInHUFEnabled?: boolean | null;
+  /**
+   * A kurzus bruttó ára forintban — ennyit fizet a vásárló a pénztárnál. Csak tulajdonos állíthatja.
+   */
+  priceInHUF?: number | null;
+  /**
+   * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
+   */
+  accessDurationDays?: number | null;
+  inventory?: number | null;
   /**
    * Legfeljebb 3 rövid, pipával jelölt állítás a kezdőlapi kurzuskártyán (pl. „50+ videós gyakorlat”). Tényszerű, ellenőrizhető állítást írj — ígéretet ne. Ha üresen hagyod, a kártyán egyszerűen nem jelenik meg ez a rész.
    */
@@ -1747,10 +1778,6 @@ export interface Product {
       }[]
     | null;
   /**
-   * A kurzus kártyáján és az oldala tetején megjelenő kép.
-   */
-  coverImage?: (number | null) | Media;
-  /**
    * További képek a kurzus oldalára (nem kötelező).
    */
   gallery?:
@@ -1781,17 +1808,13 @@ export interface Product {
    */
   ogImage?: (number | null) | Media;
   /**
-   * Kötelező. Ha nincs megfelelő, előbb hozd létre a Tartalom → Kategóriák alatt.
-   */
-  category: number | Category;
-  /**
-   * Ez dönti el, hogy a Kurzusok oldalon melyik sávban jelenik meg: „Otthoni gyakorlóknak" vagy „Szakembereknek". Ha üresen marad, az otthoni sávba kerül.
-   */
-  audience?: ('laikus' | 'szakember') | null;
-  /**
-   * Az ingyenes előzetes videójának azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). Az előzeteseket a NYILVÁNOS videótárba töltsd fel — azt bárki megnézheti vásárlás nélkül is. Ha nincs előzetes, hagyd üresen.
+   * Vásárlás nélkül is látható a kurzusoldalon. Nem kötelező; ha nincs, a borítókép jelenik meg.
    */
   previewVideoStreamId?: string | null;
+  /**
+   * A kurzus oldalán ajánlott további kurzusok.
+   */
+  relatedProducts?: (number | Product)[] | null;
   /**
    * A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként. Ha felveszel legalább egy leckét egy új modulba, a régi lista elrejtődik. Régi videók átemelése csak a kurzus:videok-modulba paranccsal, különben a vevők haladása nullázódik.
    */
@@ -1820,15 +1843,15 @@ export interface Product {
                */
               summary?: string | null;
               /**
-               * A videó azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). A fizetős kurzusvideók a VÉDETT videótárban vannak (csak vásárlás után nézhetők), az ingyenes előzetesek a nyilvánosban.
+               * A lecke felvétele a védett videótárból. A nyilvános bemutató külön, a Kurzusoldal fülön választható.
                */
               streamAssetId?: string | null;
               /**
-               * A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.
+               * A videó kiválasztásakor átvett hossz másodpercben. Ajánlott ellenőrizni: ebből számoljuk a hátralévő időt. Ha nem ismert, a lejátszás ettől még elindul (a jegy 24 órás). A lejátszáshoz kiválasztott videó és Kész állapot szükséges.
                */
               durationSec?: number | null;
               /**
-               * Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész”-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le és számít bele a haladásba.
+               * A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le és számít bele a haladásba.
                */
               status?: ('processing' | 'ready' | 'error') | null;
               /**
@@ -1854,7 +1877,7 @@ export interface Product {
                 [k: string]: unknown;
               } | null;
               /**
-               * PDF, kép vagy egyéb segédlet a leckéhez. Bármelyik lecketípushoz adható.
+               * Új segédlethez védett kurzusfájlt válassz. A korábbi nyilvános fájlok továbbra is elérhetők a saját webcímükön.
                */
               attachments?:
                 | {
@@ -1862,7 +1885,14 @@ export interface Product {
                      * Ha üresen hagyod, a fájl neve jelenik meg.
                      */
                     label?: string | null;
-                    file: number | Media;
+                    /**
+                     * Korábbi mellékletekhez. Új anyaghoz a védett kurzusfájlt használd.
+                     */
+                    file?: (number | null) | Media;
+                    /**
+                     * Előbb mentsd el a kurzust, majd tölts fel hozzá fájlt. A vevő a lecke publikálása után töltheti le.
+                     */
+                    protectedFile?: (number | null) | CourseFile;
                     id?: string | null;
                   }[]
                 | null;
@@ -1879,33 +1909,20 @@ export interface Product {
     | {
         title?: string | null;
         /**
-         * A Bunny Stream videó GUID-ja — a VÉDETT libraryből, a Bunny felületén a videó adatlapján található. Kézzel másolandó be.
+         * A korábbi lecke felvétele a védett videótárból. A lista és a vevők haladása megmarad.
          */
         streamAssetId?: string | null;
+        /**
+         * A videó kiválasztásakor átvett hossz.
+         */
         durationSec?: number | null;
         /**
-         * A videó feldolgozottsága. Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész"-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le.
+         * A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le.
          */
         status?: ('processing' | 'ready' | 'error') | null;
         id?: string | null;
       }[]
     | null;
-  /**
-   * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
-   */
-  accessDurationDays?: number | null;
-  /**
-   * Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.
-   */
-  status?: ('draft' | 'published' | 'archived') | null;
-  /**
-   * A kurzus egyedi azonosítója — két kurzusnak nem lehet ugyanaz. Ez jelenik meg a rendeléseken és a számlán. Ha a fenti „Kurzus címe" üres, a látogató is ezt látja.
-   */
-  sku?: string | null;
-  /**
-   * A kurzus oldalán ajánlott további kurzusok.
-   */
-  relatedProducts?: (number | Product)[] | null;
   updatedAt: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -1935,6 +1952,282 @@ export interface Category {
    * Csak akkor töltsd ki, ha ez egy nagyobb témakör alkategóriája.
    */
   parent?: (number | null) | Category;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Csak a kijelölt kurzus jogosult vevői tölthetik le, miután a leckéhez csatolt fájlt publikáltad. Cseréhez tölts fel új fájlt.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "course-files".
+ */
+export interface CourseFile {
+  id: number;
+  alt: string;
+  /**
+   * A fájl ehhez a kurzushoz tartozik; feltöltés után nem módosítható.
+   */
+  course: number | Product;
+  transferKey?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+  sizes?: {
+    xs?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    sm?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    md?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    lg?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    og?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+  };
+}
+/**
+ * A leadott rendelések és a fizetésük állapota. A rendeléseket a rendszer kezeli — kézzel ne módosítsd őket.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders".
+ */
+export interface Order {
+  id: number;
+  items?:
+    | {
+        product?: (number | null) | Product;
+        quantity: number;
+        /**
+         * A termék azonosító-neve (sku) a megrendeléskor. SZÁNDÉKOSAN a sku, nem a kurzuscím (displayTitle): a rendelés- és számlasoron a stabil azonosító a hasznos, a marketingcím változhat.
+         */
+        titleSnapshot?: string | null;
+        /**
+         * A termék priceInHUF értéke a megrendeléskor (szerver-oldali forrás).
+         */
+        priceHufSnapshot?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  shippingAddress?: {
+    title?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    company?: string | null;
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postalCode?: string | null;
+    country?: string | null;
+    phone?: string | null;
+  };
+  customer?: (number | null) | User;
+  customerEmail?: string | null;
+  transactions?: (number | Transaction)[] | null;
+  status?: OrderStatus;
+  amount?: number | null;
+  currency?: 'HUF' | null;
+  /**
+   * Szerver-oldalon generált rendelésszám (KH-<év>-<6 jegyű sorszám>); create-kor töltődik, update-kor sosem számolódik újra.
+   */
+  orderNumber?: string | null;
+  /**
+   * A rendelés végösszege a megrendeléskor (az item-snapshotok ár × mennyiség összege). A plugin amount mezője ugyanezt tükrözi.
+   */
+  totalHufSnapshot?: number | null;
+  /**
+   * A Barion oldali fizetés azonosítója — hibakereséshez.
+   */
+  barionPaymentId?: string | null;
+  barionPaymentRequestId?: string | null;
+  invoiceNumber?: string | null;
+  invoicePdfUrl?: string | null;
+  /**
+   * A számlázás állapota. A rendszer állítja — ne írd át.
+   */
+  invoiceStatus?: ('none' | 'pending' | 'issued' | 'failed') | null;
+  /**
+   * A számlakiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
+   */
+  invoiceAttempts?: number | null;
+  /**
+   * Az utolsó sikertelen számlakiállítási kísérlet hibaüzenete — hibakereséshez.
+   */
+  invoiceLastError?: string | null;
+  /**
+   * Az eredeti számla teljesítési dátuma (ÉÉÉÉ-HH-NN) — a helyesbítő számla ezt ismétli meg. A rendszer állítja.
+   */
+  invoiceCompletionDate?: string | null;
+  /**
+   * A stornó-számla állapota. A rendszer állítja — ne írd át.
+   */
+  stornoStatus?: ('none' | 'pending' | 'storned' | 'failed') | null;
+  stornoNumber?: string | null;
+  /**
+   * A stornó-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
+   */
+  stornoAttempts?: number | null;
+  /**
+   * Az utolsó sikertelen stornó-kísérlet hibaüzenete — hibakereséshez.
+   */
+  stornoLastError?: string | null;
+  /**
+   * A helyesbítő (módosító) számla állapota. A rendszer állítja — ne írd át.
+   */
+  correctiveInvoiceStatus?: ('none' | 'pending' | 'issued' | 'failed') | null;
+  correctiveInvoiceNumber?: string | null;
+  /**
+   * A refunds-nyom hányadik bejegyzéséhez tartozik a legutóbbi helyesbítő számla (idempotencia). A rendszer állítja.
+   */
+  correctiveInvoiceSeq?: number | null;
+  /**
+   * A helyesbítő-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
+   */
+  correctiveInvoiceAttempts?: number | null;
+  /**
+   * Az utolsó sikertelen helyesbítő-kísérlet hibaüzenete — hibakereséshez.
+   */
+  correctiveInvoiceLastError?: string | null;
+  /**
+   * Melyik refund-sorszámú helyesbítőhöz tartozik a kísérletszámláló. A rendszer állítja.
+   */
+  correctiveInvoiceAttemptsSeq?: number | null;
+  /**
+   * A számlázási adatok mentett másolata a rendelés idejéből.
+   */
+  customerSnapshot?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * A vásárló a megrendeléskor kérte az azonnali hozzáférést, és tudomásul vette, hogy ezzel elveszti a 14 napos elállási jogát.
+   */
+  consentWithdrawalWaiver?: boolean | null;
+  consentWithdrawalWaiverAt?: string | null;
+  refundReason?: string | null;
+  refundedAt?: string | null;
+  /**
+   * Visszatérítési nyom: tranzakciós refund-bejegyzések (transactionId, összeg, Barion-státusz, időpont, típus).
+   */
+  refunds?:
+    | {
+        transactionId: string;
+        amountHuf: number;
+        status: string;
+        refundedAt: string;
+        type: 'full' | 'partial';
+        reason?: string | null;
+      }[]
+    | null;
+  /**
+   * A megrendelés IP-címe — csalásgyanús eset kivizsgálásához.
+   */
+  ipAddress?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * A fizetési tranzakciók nyoma. Csak a rendszer írja — ne szerkeszd.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "transactions".
+ */
+export interface Transaction {
+  id: number;
+  items?:
+    | {
+        product?: (number | null) | Product;
+        quantity: number;
+        id?: string | null;
+      }[]
+    | null;
+  billingAddress?: {
+    title?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    company?: string | null;
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postalCode?: string | null;
+    country?: string | null;
+    phone?: string | null;
+  };
+  status: 'pending' | 'succeeded' | 'failed' | 'cancelled' | 'expired' | 'refunded';
+  customer?: (number | null) | User;
+  customerEmail?: string | null;
+  order?: (number | null) | Order;
+  cart?: (number | null) | Cart;
+  amount?: number | null;
+  currency?: 'HUF' | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * A vásárlók félbehagyott kosarai. Automatikusan keletkezik — ne szerkeszd.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "carts".
+ */
+export interface Cart {
+  id: number;
+  items?:
+    | {
+        product?: (number | null) | Product;
+        quantity: number;
+        id?: string | null;
+      }[]
+    | null;
+  secret?: string | null;
+  customer?: (number | null) | User;
+  purchasedAt?: string | null;
+  status?: ('active' | 'purchased' | 'abandoned') | null;
+  subtotal?: number | null;
+  currency?: 'HUF' | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2164,214 +2457,6 @@ export interface CourseProgress {
    * A megjelölés időpontja — kizárólag a szerver állítja.
    */
   watchedAt: string;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * A vásárlók félbehagyott kosarai. Automatikusan keletkezik — ne szerkeszd.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "carts".
- */
-export interface Cart {
-  id: number;
-  items?:
-    | {
-        product?: (number | null) | Product;
-        quantity: number;
-        id?: string | null;
-      }[]
-    | null;
-  secret?: string | null;
-  customer?: (number | null) | User;
-  purchasedAt?: string | null;
-  status?: ('active' | 'purchased' | 'abandoned') | null;
-  subtotal?: number | null;
-  currency?: 'HUF' | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * A leadott rendelések és a fizetésük állapota. A rendeléseket a rendszer kezeli — kézzel ne módosítsd őket.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "orders".
- */
-export interface Order {
-  id: number;
-  items?:
-    | {
-        product?: (number | null) | Product;
-        quantity: number;
-        /**
-         * A termék azonosító-neve (sku) a megrendeléskor. SZÁNDÉKOSAN a sku, nem a kurzuscím (displayTitle): a rendelés- és számlasoron a stabil azonosító a hasznos, a marketingcím változhat.
-         */
-        titleSnapshot?: string | null;
-        /**
-         * A termék priceInHUF értéke a megrendeléskor (szerver-oldali forrás).
-         */
-        priceHufSnapshot?: number | null;
-        id?: string | null;
-      }[]
-    | null;
-  shippingAddress?: {
-    title?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    company?: string | null;
-    addressLine1?: string | null;
-    addressLine2?: string | null;
-    city?: string | null;
-    state?: string | null;
-    postalCode?: string | null;
-    country?: string | null;
-    phone?: string | null;
-  };
-  customer?: (number | null) | User;
-  customerEmail?: string | null;
-  transactions?: (number | Transaction)[] | null;
-  status?: OrderStatus;
-  amount?: number | null;
-  currency?: 'HUF' | null;
-  /**
-   * Szerver-oldalon generált rendelésszám (KH-<év>-<6 jegyű sorszám>); create-kor töltődik, update-kor sosem számolódik újra.
-   */
-  orderNumber?: string | null;
-  /**
-   * A rendelés végösszege a megrendeléskor (az item-snapshotok ár × mennyiség összege). A plugin amount mezője ugyanezt tükrözi.
-   */
-  totalHufSnapshot?: number | null;
-  /**
-   * A Barion oldali fizetés azonosítója — hibakereséshez.
-   */
-  barionPaymentId?: string | null;
-  barionPaymentRequestId?: string | null;
-  invoiceNumber?: string | null;
-  invoicePdfUrl?: string | null;
-  /**
-   * A számlázás állapota. A rendszer állítja — ne írd át.
-   */
-  invoiceStatus?: ('none' | 'pending' | 'issued' | 'failed') | null;
-  /**
-   * A számlakiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
-   */
-  invoiceAttempts?: number | null;
-  /**
-   * Az utolsó sikertelen számlakiállítási kísérlet hibaüzenete — hibakereséshez.
-   */
-  invoiceLastError?: string | null;
-  /**
-   * Az eredeti számla teljesítési dátuma (ÉÉÉÉ-HH-NN) — a helyesbítő számla ezt ismétli meg. A rendszer állítja.
-   */
-  invoiceCompletionDate?: string | null;
-  /**
-   * A stornó-számla állapota. A rendszer állítja — ne írd át.
-   */
-  stornoStatus?: ('none' | 'pending' | 'storned' | 'failed') | null;
-  stornoNumber?: string | null;
-  /**
-   * A stornó-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
-   */
-  stornoAttempts?: number | null;
-  /**
-   * Az utolsó sikertelen stornó-kísérlet hibaüzenete — hibakereséshez.
-   */
-  stornoLastError?: string | null;
-  /**
-   * A helyesbítő (módosító) számla állapota. A rendszer állítja — ne írd át.
-   */
-  correctiveInvoiceStatus?: ('none' | 'pending' | 'issued' | 'failed') | null;
-  correctiveInvoiceNumber?: string | null;
-  /**
-   * A refunds-nyom hányadik bejegyzéséhez tartozik a legutóbbi helyesbítő számla (idempotencia). A rendszer állítja.
-   */
-  correctiveInvoiceSeq?: number | null;
-  /**
-   * A helyesbítő-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.
-   */
-  correctiveInvoiceAttempts?: number | null;
-  /**
-   * Az utolsó sikertelen helyesbítő-kísérlet hibaüzenete — hibakereséshez.
-   */
-  correctiveInvoiceLastError?: string | null;
-  /**
-   * Melyik refund-sorszámú helyesbítőhöz tartozik a kísérletszámláló. A rendszer állítja.
-   */
-  correctiveInvoiceAttemptsSeq?: number | null;
-  /**
-   * A számlázási adatok mentett másolata a rendelés idejéből.
-   */
-  customerSnapshot?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  /**
-   * A vásárló a megrendeléskor kérte az azonnali hozzáférést, és tudomásul vette, hogy ezzel elveszti a 14 napos elállási jogát.
-   */
-  consentWithdrawalWaiver?: boolean | null;
-  consentWithdrawalWaiverAt?: string | null;
-  refundReason?: string | null;
-  refundedAt?: string | null;
-  /**
-   * Visszatérítési nyom: tranzakciós refund-bejegyzések (transactionId, összeg, Barion-státusz, időpont, típus).
-   */
-  refunds?:
-    | {
-        transactionId: string;
-        amountHuf: number;
-        status: string;
-        refundedAt: string;
-        type: 'full' | 'partial';
-        reason?: string | null;
-      }[]
-    | null;
-  /**
-   * A megrendelés IP-címe — csalásgyanús eset kivizsgálásához.
-   */
-  ipAddress?: string | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * A fizetési tranzakciók nyoma. Csak a rendszer írja — ne szerkeszd.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "transactions".
- */
-export interface Transaction {
-  id: number;
-  items?:
-    | {
-        product?: (number | null) | Product;
-        quantity: number;
-        id?: string | null;
-      }[]
-    | null;
-  billingAddress?: {
-    title?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    company?: string | null;
-    addressLine1?: string | null;
-    addressLine2?: string | null;
-    city?: string | null;
-    state?: string | null;
-    postalCode?: string | null;
-    country?: string | null;
-    phone?: string | null;
-  };
-  status: 'pending' | 'succeeded' | 'failed' | 'cancelled' | 'expired' | 'refunded';
-  customer?: (number | null) | User;
-  customerEmail?: string | null;
-  order?: (number | null) | Order;
-  cart?: (number | null) | Cart;
-  amount?: number | null;
-  currency?: 'HUF' | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2636,7 +2721,7 @@ export interface AuditLog {
   createdAt: string;
 }
 /**
- * Passzív, csak olvasható Phase A visszatérítési főkönyv.
+ * Csak olvasható visszatérítési főkönyv és helyreállítási állapotok.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "refund-intents".
@@ -2644,7 +2729,9 @@ export interface AuditLog {
 export interface RefundIntent {
   id: number;
   order: number | Order;
-  actor: number | User;
+  actor?: (number | null) | User;
+  actorKind?: ('owner' | 'system') | null;
+  systemActor?: string | null;
   requestedAmountHuf: number;
   provider: 'barion';
   providerPaymentId: string;
@@ -2818,6 +2905,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'testimonials';
         value: number | Testimonial;
+      } | null)
+    | ({
+        relationTo: 'course-files';
+        value: number | CourseFile;
       } | null)
     | ({
         relationTo: 'menus';
@@ -3632,6 +3723,80 @@ export interface TestimonialsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "course-files_select".
+ */
+export interface CourseFilesSelect<T extends boolean = true> {
+  alt?: T;
+  course?: T;
+  transferKey?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+  sizes?:
+    | T
+    | {
+        xs?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        sm?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        md?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        lg?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        og?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+      };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "menus_select".
  */
 export interface MenusSelect<T extends boolean = true> {
@@ -3663,12 +3828,18 @@ export interface CourseProgressSelect<T extends boolean = true> {
  * via the `definition` "products_select".
  */
 export interface ProductsSelect<T extends boolean = true> {
-  inventory?: T;
-  priceInHUFEnabled?: T;
-  priceInHUF?: T;
+  audience?: T;
+  status?: T;
   displayTitle?: T;
   slug?: T;
   shortDescription?: T;
+  coverImage?: T;
+  category?: T;
+  sku?: T;
+  priceInHUFEnabled?: T;
+  priceInHUF?: T;
+  accessDurationDays?: T;
+  inventory?: T;
   cardHighlights?:
     | T
     | {
@@ -3710,7 +3881,6 @@ export interface ProductsSelect<T extends boolean = true> {
         answer?: T;
         id?: T;
       };
-  coverImage?: T;
   gallery?:
     | T
     | {
@@ -3726,9 +3896,8 @@ export interface ProductsSelect<T extends boolean = true> {
         id?: T;
       };
   ogImage?: T;
-  category?: T;
-  audience?: T;
   previewVideoStreamId?: T;
+  relatedProducts?: T;
   modules?:
     | T
     | {
@@ -3750,6 +3919,7 @@ export interface ProductsSelect<T extends boolean = true> {
                 | {
                     label?: T;
                     file?: T;
+                    protectedFile?: T;
                     id?: T;
                   };
               id?: T;
@@ -3765,10 +3935,6 @@ export interface ProductsSelect<T extends boolean = true> {
         status?: T;
         id?: T;
       };
-  accessDurationDays?: T;
-  status?: T;
-  sku?: T;
-  relatedProducts?: T;
   updatedAt?: T;
   createdAt?: T;
   deletedAt?: T;
@@ -4063,6 +4229,8 @@ export interface UsersSelect<T extends boolean = true> {
     | {
         product?: T;
         grantedAt?: T;
+        sourceKind?: T;
+        sourceOrder?: T;
         id?: T;
       };
   billingName?: T;
@@ -4131,6 +4299,8 @@ export interface AuditLogsSelect<T extends boolean = true> {
 export interface RefundIntentsSelect<T extends boolean = true> {
   order?: T;
   actor?: T;
+  actorKind?: T;
+  systemActor?: T;
   requestedAmountHuf?: T;
   provider?: T;
   providerPaymentId?: T;

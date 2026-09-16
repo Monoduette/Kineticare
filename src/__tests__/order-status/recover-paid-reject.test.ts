@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import { fixture, store } from '../refund-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { BarionPaymentStateResponse, BarionRefundResponse } from '../../lib/barion'
@@ -65,15 +65,13 @@ function createState(
 
 function createMockPayload(order: Order) {
   const updates: Array<Record<string, unknown>> = []
-  const payload = {
-    findByID: vi.fn(async () => order),
-    update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-      updates.push(data)
-      Object.assign(order, data)
-      return data
-    }),
-  }
-  return { payload: payload as unknown as Payload, updates }
+  const { payload } = fixture(order)
+  const update = vi.mocked(payload.update).getMockImplementation()!
+  vi.mocked(payload.update).mockImplementation(async (args) => {
+    updates.push(args.data as Record<string, unknown>)
+    return update(args)
+  })
+  return { payload, updates }
 }
 
 describe('isAutoRefundRejectReason', () => {
@@ -162,7 +160,7 @@ describe('recoverRejectedSucceededPayment', () => {
         source: 'callback',
         refundPayment: refund,
       })
-      expect(result).toEqual({ action: 'failed', detail: 'missing-pos-transaction-id' })
+      expect(result).toEqual({ action: 'failed', detail: 'source-transaction-unproven' })
       expect(refund).not.toHaveBeenCalled()
       expect(updates).toHaveLength(0)
       expect(order.status).toBe('payment_pending')
@@ -186,7 +184,7 @@ describe('recoverRejectedSucceededPayment', () => {
         source: 'order-poll',
         refundPayment: refund,
       })
-      expect(result).toEqual({ action: 'failed', detail: 'ambiguous-refund-transaction' })
+      expect(result).toEqual({ action: 'failed', detail: 'source-transaction-unproven' })
       expect(refund).not.toHaveBeenCalled()
       expect(updates).toHaveLength(0)
     },
@@ -206,7 +204,12 @@ describe('recoverRejectedSucceededPayment', () => {
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => ({
       PaymentId: PAYMENT_ID,
       RefundedTransactions: [
-        { TransactionId: TRANSACTION_ID, Total: ORDER_TOTAL_HUF, Status: 'Refunded' },
+        {
+          TransactionId: TRANSACTION_ID,
+          POSTransactionId: POS_TRANSACTION_ID,
+          Total: ORDER_TOTAL_HUF,
+          Status: 'Succeeded',
+        },
       ],
     }))
     expect(
@@ -232,7 +235,7 @@ describe('recoverRejectedSucceededPayment', () => {
     })
   })
 
-  it('a Barionban már teljesen refundolt tranzakció helyi nyomát kereskedői azonosító nélkül is megőrzi', async () => {
+  it('a régi Refunded állapotot korrelált bizonyíték nélkül nem alakítja helyi sikerre', async () => {
     const order = createOrder()
     const { payload } = createMockPayload(order)
     const state = createState()
@@ -249,10 +252,10 @@ describe('recoverRejectedSucceededPayment', () => {
         source: 'callback',
         refundPayment: refund,
       }),
-    ).toEqual({ action: 'refunded', detail: 'already-refunded-at-barion' })
+    ).toEqual({ action: 'failed', detail: 'source-transaction-unproven' })
     expect(refund).not.toHaveBeenCalled()
-    expect(order.status).toBe('refunded')
-    expect(order.refunds).toEqual([expect.objectContaining({ type: 'full', status: 'Refunded' })])
+    expect(order.status).toBe('payment_pending')
+    expect(order.refunds).toEqual([])
   })
 
   it('ismeretlen ok → skip, refund NEM hívódik', async () => {
@@ -275,8 +278,7 @@ describe('recoverRejectedSucceededPayment', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('üres Transactions → skip + riasztás, nincs HTTP', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  it('üres Transactions → ellenőrzés szükséges, nincs HTTP', async () => {
     const order = createOrder()
     const { payload, updates } = createMockPayload(order)
     const refund = vi.fn()
@@ -291,11 +293,9 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
-    expect(result).toEqual({ action: 'skipped', detail: 'no-refundable-transaction' })
+    expect(result).toEqual({ action: 'failed', detail: 'source-transaction-unproven' })
     expect(refund).not.toHaveBeenCalled()
     expect(updates).toHaveLength(0)
-    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
-    logSpy.mockRestore()
   })
 
   it('duplicate-paid-order + Succeeded → Barion refund + helyi refunded nyom', async () => {
@@ -304,7 +304,14 @@ describe('recoverRejectedSucceededPayment', () => {
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
       return {
         PaymentId: PAYMENT_ID,
-        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'Refunded' }],
+        RefundedTransactions: [
+          {
+            TransactionId: TRANSACTION_ID,
+            POSTransactionId: POS_TRANSACTION_ID,
+            Total: ORDER_TOTAL_HUF,
+            Status: 'Succeeded',
+          },
+        ],
       }
     })
 
@@ -322,7 +329,11 @@ describe('recoverRejectedSucceededPayment', () => {
     expect(refund).toHaveBeenCalledWith({
       paymentId: PAYMENT_ID,
       transactionsToRefund: [
-        { transactionId: TRANSACTION_ID, posTransactionId: POS_TRANSACTION_ID, amountToRefund: ORDER_TOTAL_HUF },
+        {
+          transactionId: TRANSACTION_ID,
+          posTransactionId: POS_TRANSACTION_ID,
+          amountToRefund: ORDER_TOTAL_HUF,
+        },
       ],
     })
     expect(order.status).toBe('refunded')
@@ -331,7 +342,7 @@ describe('recoverRejectedSucceededPayment', () => {
       expect.objectContaining({
         transactionId: TRANSACTION_ID,
         amountHuf: ORDER_TOTAL_HUF,
-        status: 'Refunded',
+        status: 'Succeeded',
         type: 'full',
       }),
     ])
@@ -344,7 +355,14 @@ describe('recoverRejectedSucceededPayment', () => {
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
       return {
         PaymentId: PAYMENT_ID,
-        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'Succeeded' }],
+        RefundedTransactions: [
+          {
+            TransactionId: TRANSACTION_ID,
+            POSTransactionId: POS_TRANSACTION_ID,
+            Total: ORDER_TOTAL_HUF,
+            Status: 'Succeeded',
+          },
+        ],
       }
     })
 
@@ -370,7 +388,14 @@ describe('recoverRejectedSucceededPayment', () => {
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
       return {
         PaymentId: PAYMENT_ID,
-        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'Refunded' }],
+        RefundedTransactions: [
+          {
+            TransactionId: TRANSACTION_ID,
+            POSTransactionId: POS_TRANSACTION_ID,
+            Total: 1,
+            Status: 'Succeeded',
+          },
+        ],
       }
     })
 
@@ -395,6 +420,7 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
+    expect(order.refunds).toEqual([expect.objectContaining({ amountHuf: 1, status: 'Succeeded' })])
     expect(refund).toHaveBeenCalledWith({
       paymentId: PAYMENT_ID,
       transactionsToRefund: [
@@ -403,7 +429,7 @@ describe('recoverRejectedSucceededPayment', () => {
     })
   })
 
-  it('már rögzített refund-nyom → skip, második HTTP nincs', async () => {
+  it('régi helyi refund-nyom → ellenőrzés szükséges, második HTTP nincs', async () => {
     const order = createOrder({
       refunds: [
         {
@@ -428,13 +454,12 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
-    expect(result).toEqual({ action: 'skipped', detail: 'already-recorded' })
+    expect(result).toEqual({ action: 'failed', detail: 'order-state-reconciliation-required' })
     expect(refund).not.toHaveBeenCalled()
     expect(updates).toHaveLength(0)
   })
 
   it('RefundFailed → failed, a rendelés NEM refunded', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const order = createOrder()
     const { payload, updates } = createMockPayload(order)
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
@@ -454,11 +479,9 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
-    expect(result).toEqual({ action: 'failed', detail: 'barion-refund-failed' })
+    expect(result).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
     expect(order.status).toBe('payment_pending')
     expect(updates).toHaveLength(0)
-    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
-    logSpy.mockRestore()
   })
 
   it('RF-1: két párhuzamos recover ugyanarra a rendelésre → egy HTTP refund', async () => {
@@ -473,7 +496,14 @@ describe('recoverRejectedSucceededPayment', () => {
       inFlight -= 1
       return {
         PaymentId: PAYMENT_ID,
-        RefundedTransactions: [{ TransactionId: TRANSACTION_ID, Status: 'Refunded' }],
+        RefundedTransactions: [
+          {
+            TransactionId: TRANSACTION_ID,
+            POSTransactionId: POS_TRANSACTION_ID,
+            Total: ORDER_TOTAL_HUF,
+            Status: 'Succeeded',
+          },
+        ],
       }
     })
     const input = {
@@ -493,13 +523,12 @@ describe('recoverRejectedSucceededPayment', () => {
 
     expect(refund).toHaveBeenCalledTimes(1)
     expect(maxConcurrent).toBe(1)
-    expect([first.action, second.action].sort()).toEqual(['refunded', 'skipped'])
+    expect([first.action, second.action].sort()).toEqual(['refunded', 'refunded'])
     expect(order.status).toBe('refunded')
     expect(order.refunds).toHaveLength(1)
   })
 
-  it('RF-2: GetState PartiallyRefunded → nem refunded, type partial, nincs HTTP', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  it('RF-2: GetState PartiallyRefunded → nincs kitalált refund összeg, nincs HTTP', async () => {
     const order = createOrder()
     const { payload, updates } = createMockPayload(order)
     const refund = vi.fn()
@@ -523,19 +552,14 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
-    expect(result).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
+    expect(result).toEqual({ action: 'failed', detail: 'source-transaction-unproven' })
     expect(refund).not.toHaveBeenCalled()
     expect(order.status).toBe('payment_pending')
-    expect(order.refunds).toEqual([
-      expect.objectContaining({ type: 'partial', status: 'PartiallyRefunded' }),
-    ])
+    expect(order.refunds).toEqual([])
     expect(updates.some((row) => row.status === 'refunded')).toBe(false)
-    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
-    logSpy.mockRestore()
   })
 
   it('RF-2: Barion refund PartiallyRefunded → nem refunded, nincs második HTTP', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const order = createOrder()
     const { payload } = createMockPayload(order)
     const refund = vi.fn(async (): Promise<BarionRefundResponse> => {
@@ -564,12 +588,11 @@ describe('recoverRejectedSucceededPayment', () => {
       refundPayment: refund,
     })
 
-    expect(first).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
-    expect(second).toEqual({ action: 'skipped', detail: 'barion-partially-refunded' })
+    expect(first).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(second).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
     expect(refund).toHaveBeenCalledTimes(1)
     expect(order.status).toBe('payment_pending')
-    expect(order.refunds).toEqual([expect.objectContaining({ type: 'partial' })])
-    expect(logSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('RIASZT')
-    logSpy.mockRestore()
+    expect(order.refunds).toEqual([])
+    expect(store.intents.get(payload)?.state).toBe('provider_unknown')
   })
 })

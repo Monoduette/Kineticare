@@ -134,8 +134,10 @@ function normalizeAttachment(raw: unknown): CurriculumAttachment | null {
   if (typeof raw !== 'object' || raw === null) {
     return null
   }
-  const entry = raw as { label?: unknown; file?: unknown }
-  const file = entry.file
+  const entry = raw as { label?: unknown; file?: unknown; protectedFile?: unknown }
+  // A kiválasztott privát reláció hibája nem jogosít public fallbackre.
+  // A null az át nem vezetett legacy soroknál is normális DB-érték.
+  const file = entry.protectedFile != null ? entry.protectedFile : entry.file
   const sajatCimke = trimmedOrNull(entry.label)
   // A reláció NEM populált objektum. Két oka lehet:
   //  - depth: 0 lekérdezés (nyers azonosító) — ilyenkor sincs mit letölteni,
@@ -177,7 +179,11 @@ function normalizeAttachments(raw: unknown): CurriculumAttachment[] {
  * (`hasAccess: false`) — a lejátszhatóság megítélése viszont a NYERS adatból
  * kell hogy történjen, különben a paywall-nézet üres tananyagot mutatna.
  */
-function isLessonPlayable(kind: LessonKind, rawStreamAssetId: string | null, status: unknown): boolean {
+function isLessonPlayable(
+  kind: LessonKind,
+  rawStreamAssetId: string | null,
+  status: unknown,
+): boolean {
   if (kind !== 'video') {
     return true
   }

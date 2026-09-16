@@ -108,10 +108,27 @@ export function createBunnyVideosHandler(
       const url = new URL(request.url)
       const kind = parseLibraryKind(url.searchParams.get('library'))
       const search = url.searchParams.get('search')
+      // Optional bounded single-page mode; legacy callers still receive up to five pages.
+      const paginated = url.searchParams.has('page') || url.searchParams.has('pageSize')
+      const pageText = url.searchParams.get('page') ?? '1'
+      const sizeText = url.searchParams.get('pageSize') ?? '24'
+      const page = Number(pageText)
+      const pageSize = Number(sizeText)
+      if (paginated && (
+        url.searchParams.getAll('page').length > 1 || url.searchParams.getAll('pageSize').length > 1 ||
+        !/^[1-9][0-9]{0,4}$/.test(pageText) || page > 10000 ||
+        !/^[1-9][0-9]{0,2}$/.test(sizeText) || pageSize > 100
+      )) {
+        return Response.json(
+          { error: 'A lapozási paraméterek érvénytelenek.', code: 'invalid-pagination' },
+          { status: 400, headers: NO_STORE_HEADERS },
+        )
+      }
       const result = await listBunnyLibraryVideos({
         fetchImpl: deps.fetchImpl ?? fetch,
         kind,
         search: search ?? undefined,
+        ...(paginated ? { page, itemsPerPage: pageSize } : {}),
         // A kérés-azonosítóhoz kötött naplózó: a GUID nélküli, kihagyott
         // tételek figyelmeztetése így ugyanahhoz a kéréshez rendelhető, mint
         // a route többi sora.
@@ -141,6 +158,7 @@ export function createBunnyVideosHandler(
           totalItems: result.list.totalItems,
           truncated: result.list.truncated,
           videos: result.list.videos,
+          ...(paginated ? { page, pageSize: result.list.pageSize ?? pageSize } : {}),
         },
         { headers: NO_STORE_HEADERS },
       )

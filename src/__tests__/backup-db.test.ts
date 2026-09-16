@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { access, readFile, stat } from 'node:fs/promises'
+import { devNull } from 'node:os'
 
 import { describe, expect, it } from 'vitest'
 
@@ -8,6 +9,7 @@ import {
   DEFAULT_TARGET_DIR,
   buildDumpFileName,
   buildPgDumpArgs,
+  buildPgRestoreDecodeArgs,
   buildPgRestoreListArgs,
   decideRetention,
   escapePgPassField,
@@ -285,8 +287,16 @@ describe('buildPgDumpArgs / buildPgRestoreListArgs — argumentumlisták', () =>
     )
   })
 
-  it('az integritás-ellenőrzés a --list kapcsolót használja a kész fájlon', () => {
+  it('a TOC bejegyzésszámához a --list kapcsolót használja a kész fájlon', () => {
     expect(buildPgRestoreListArgs('/mentes/x.dump')).toEqual(['--list', '/mentes/x.dump'])
+  })
+
+  it('a teljes dekódolás minden adatot null eszközre ír, DB cél vagy részleges szűrő nélkül', () => {
+    expect(buildPgRestoreDecodeArgs('/mentes/x.dump')).toEqual([
+      '--file',
+      devNull,
+      '/mentes/x.dump',
+    ])
   })
 })
 

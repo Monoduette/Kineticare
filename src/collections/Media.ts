@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
+import { publicMediaReadAccess } from '../access/mediaFilename'
 import { resolveMediaStaticDir } from '../lib/media-dir'
 
 /** A feltöltési célkönyvtár a `PAYLOAD_MEDIA_DIR`-ből (env nélkül `undefined`). */
@@ -23,7 +24,7 @@ export const Media: CollectionConfig = {
     description: 'Az oldalon használt képek. Feltöltés után bármelyik oldalról kiválaszthatók.',
   },
   access: {
-    read: () => true,
+    read: publicMediaReadAccess,
   },
   fields: [
     {

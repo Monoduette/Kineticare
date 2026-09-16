@@ -152,23 +152,23 @@ function normalizePathname(pathname: string): string {
  * regisztráció (`POST /api/users` fejléc nélkül) ettől külön él.
  */
 export const PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER = 'X-Payload-HTTP-Method-Override'
-
-const SAFE_METHOD_OVERRIDES = new Set(['GET', 'HEAD', 'OPTIONS'])
+export const HTTP_METHOD_OVERRIDE_HEADER = 'X-HTTP-Method-Override'
 
 /**
  * A rate-limit számára érvényes HTTP-módszer.
  *
- * Csak a Payload által GET/HEAD/OPTIONS-re fordított override számít:
- * egy `X-Payload-HTTP-Method-Override: POST` (vagy PUT) NEM minősíti át
- * a kérést, tehát a regisztrációs keret nem kerülhető meg hamis fejléccel.
+ * A pinned Payload handleEndpoints csak POST-ot fordít GET-té, ha BÁRMELYIK
+ * támogatott fejléc értéke pontosan `GET`. A HEAD/OPTIONS/kisbetűs get nem
+ * override: a framework ilyenkor az eredeti POST-ot hajtja végre, ezért a
+ * korlátozó sem kezelheti olvasásként. A két fejléc között nincs elsőbbség.
  */
 export function resolveEffectiveHttpMethod(method: string, headers?: Headers): string {
-  const raw = headers?.get(PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER)
-  if (typeof raw === 'string') {
-    const override = raw.trim().toUpperCase()
-    if (SAFE_METHOD_OVERRIDES.has(override)) {
-      return override
-    }
+  if (
+    method.toLowerCase() === 'post' &&
+    (headers?.get(PAYLOAD_HTTP_METHOD_OVERRIDE_HEADER) === 'GET' ||
+      headers?.get(HTTP_METHOD_OVERRIDE_HEADER) === 'GET')
+  ) {
+    return 'GET'
   }
   return method.toUpperCase()
 }

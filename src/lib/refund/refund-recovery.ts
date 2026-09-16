@@ -5,6 +5,12 @@ import { withAdvisoryLock } from '../advisory-lock'
 import { withUserPurchasesLock } from '../user-purchases-lock'
 import { applyRefundAccessCleanup, type RefundAccessBaseline } from './access-store'
 import { logger, type Logger } from '../logger'
+import {
+  canRecoverAutomaticRefund,
+  commitAutomaticRefund,
+  isAutomaticRefundIntent,
+  verifyAutomaticRefundCompletion,
+} from './auto-refund-recovery'
 import { issueStornoForOrder, issueCorrectiveInvoiceForOrder } from '../szamlazz'
 import {
   loadActiveRefundIntent,
@@ -15,6 +21,7 @@ import {
   productIds,
   isRecord,
   readReceipt,
+  readProviderReceipt,
   RECEIPTS,
   relationId,
   writeReceipt,
@@ -94,7 +101,7 @@ async function ensureFinancialEntry(
   order: Order,
   intent: RefundIntent,
 ): Promise<{ order: Order; entry: OrderRefundEntry }> {
-  const proof = await readReceipt(payload, intent, RECEIPTS.provider)
+  const proof = await readProviderReceipt(payload, intent)
   if (
     !proof ||
     proof.paymentId !== intent.providerPaymentId ||
@@ -228,7 +235,7 @@ async function cleanup(
     if (
       verified?.completed === true &&
       verified.reason === 'resolved' &&
-      verified.cleanupKind === 'sql-access-v1'
+      ['sql-access-v1', 'sql-access-v2'].includes(String(verified.cleanupKind))
     )
       return true
     return manual()
@@ -334,7 +341,15 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             const intent = await loadActiveRefundIntent(payload, preOrder.id)
             const order = await findRecoveryOrder(payload, orderNumber)
             if (!intent || !order || intent.state !== 'provider_succeeded') return null
-            return { ...(await ensureFinancialEntry(payload, order, intent)), intent }
+            if (isAutomaticRefundIntent(intent)) {
+              await commitAutomaticRefund(payload, order, intent)
+              return { automatic: true as const }
+            }
+            return {
+              automatic: false as const,
+              ...(await ensureFinancialEntry(payload, order, intent)),
+              intent,
+            }
           },
           log,
         )
@@ -344,6 +359,8 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             ? { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
             : manual
         }
+        if (financial.automatic)
+          return { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
         const { order, intent, entry } = financial
         const phase = async (name: string, run: () => Promise<boolean>): Promise<boolean> => {
           try {
@@ -445,6 +462,16 @@ async function storageRecoveryStatus({
     if (!order) return { orderNumber, state: 'manual_review', message: MANUAL }
     const intent = await loadActiveRefundIntent(payload, order.id)
     if (intent) {
+      if (isAutomaticRefundIntent(intent)) {
+        return intent.state === 'provider_succeeded' &&
+          (await canRecoverAutomaticRefund(payload, order, intent))
+          ? {
+              orderNumber,
+              state: 'recoverable',
+              message: 'A sikeres visszatérítés rögzítése folytatható új pénzvisszatérítés nélkül.',
+            }
+          : { orderNumber, state: 'manual_review', message: MANUAL }
+      }
       if (
         intent.state !== 'provider_succeeded' ||
         !(await readReceipt(payload, intent, RECEIPTS.provider))
@@ -499,6 +526,14 @@ async function storageRecoveryStatus({
         const entry = entries[index]
         if (matching.length !== 1) return { orderNumber, state: 'manual_review', message: MANUAL }
         const item = matching[0]
+        if (isAutomaticRefundIntent(item)) {
+          if (
+            entries.length !== 1 ||
+            !(await verifyAutomaticRefundCompletion(payload, order, item))
+          )
+            return { orderNumber, state: 'manual_review', message: MANUAL }
+          continue
+        }
         const invoiceProof = await readReceipt(payload, item, RECEIPTS.invoiceDone)
         if (
           relationId(item.order) !== order.id ||

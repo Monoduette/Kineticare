@@ -122,25 +122,28 @@ function jsonLdBlocks(html: string): Record<string, unknown>[] {
   )
 }
 
-function rootFields(fields: Field[], acc = new Map<string, Field>()): Map<string, Field> {
+function* rootFieldEntries(fields: Field[]): Generator<[string, Field]> {
   for (const field of fields) {
     if ('name' in field && typeof field.name === 'string') {
-      acc.set(field.name, field)
+      yield [field.name, field]
       continue
     }
     if (field.type === 'row' || field.type === 'collapsible' || field.type === 'group') {
-      rootFields(field.fields, acc)
+      yield* rootFieldEntries(field.fields)
       continue
     }
     if (field.type === 'tabs') {
       for (const tab of field.tabs) {
         if (!('name' in tab)) {
-          rootFields(tab.fields, acc)
+          yield* rootFieldEntries(tab.fields)
         }
       }
     }
   }
-  return acc
+}
+
+function rootFields(fields: Field[]): Map<string, Field> {
+  return new Map(rootFieldEntries(fields))
 }
 
 describe('seoKeywords mező a posts, pages és products kollekción', () => {
@@ -181,9 +184,7 @@ describe('seoKeywords mező a posts, pages és products kollekción', () => {
     expect(fields.has('seoTitle')).toBe(true)
     expect(fields.has('seoDescription')).toBe(true)
     expect(fields.has('noindex')).toBe(false)
-    const names = products!.fields.flatMap((field) =>
-      'name' in field && typeof field.name === 'string' ? [field.name] : [],
-    )
+    const names = [...rootFieldEntries(products!.fields)].map(([name]) => name)
     expect(names.indexOf('seoKeywords')).toBe(names.indexOf('seoDescription') + 1)
   })
 

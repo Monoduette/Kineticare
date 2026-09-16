@@ -9,7 +9,8 @@
  * MINDEN ADAT KITALÁLT (example.com).
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as purchaseLocks from '../../lib/user-purchases-lock'
 
 import {
   executeImportPlan,
@@ -81,25 +82,62 @@ describe('kezdőjelszó generálása', () => {
   it('megfelel a jelszó-politikának és minden hívásnál más', () => {
     const first = generateInitialPassword('pelda.vasarlo@example.com')
     const second = generateInitialPassword('pelda.vasarlo@example.com')
-    expect(validatePasswordStrength({ password: first, email: 'pelda.vasarlo@example.com' })).toEqual(
-      [],
-    )
+    expect(
+      validatePasswordStrength({ password: first, email: 'pelda.vasarlo@example.com' }),
+    ).toEqual([])
     expect(first).not.toBe(second)
     expect(first.length).toBeGreaterThanOrEqual(12)
   })
 })
 
 describe('végrehajtás', () => {
+  it('a user-zár után olvas frissen, megőrzi a közben adott ajándékot és minden provenance sort', async () => {
+    const db = seedDb()
+    const payload = createFakePayload(db)
+    const user = db.users.find((item) => item.id === 2)!
+    const grants = [
+      {
+        id: 'DUMMY-concurrent-gift',
+        product: 99,
+        grantedAt: '2026-09-01T00:00:00.000Z',
+        sourceKind: 'independent',
+      },
+    ]
+    const lock = vi
+      .spyOn(purchaseLocks, 'withUserPurchasesLock')
+      .mockImplementation(async (_payload, userId, run) => {
+        expect(userId).toBe(2)
+        user.purchases.push(99)
+        Object.assign(user, { accessGrants: structuredClone(grants) })
+        return run()
+      })
+    const update = vi.spyOn(payload, 'update')
+    try {
+      const plan = await buildImportPlan(payload, {
+        rows: parseCustomerCsv(
+          'Email,Name,Courses\nreszben.meglevo@example.com,Részben,Kéz Rehab Halado\n',
+        ).rows,
+        courseMap: COURSE_MAP,
+      })
+      const result = await executeImportPlan(payload, plan)
+      expect(result.summary.bovitve).toBe(1)
+      expect(lock).toHaveBeenCalledTimes(1)
+      expect(user.purchases).toEqual([11, 99, 12])
+      expect((user as unknown as { accessGrants: unknown }).accessGrants).toEqual(grants)
+      expect(update.mock.calls.every(([args]) => !('accessGrants' in args.data))).toBe(true)
+    } finally {
+      lock.mockRestore()
+      update.mockRestore()
+    }
+  })
+
   it('létrehoz, bővít és kihagy — a mérleg számai stimmelnek', async () => {
     const db = seedDb()
     const result = await runImport(db)
 
     expect(result.summary).toEqual({ letrehozva: 1, bovitve: 1, kihagyva: 1, hibas: 0 })
     expect(result.createdEmails).toEqual(['uj.vasarlo@example.com'])
-    expect(result.touchedEmails).toEqual([
-      'reszben.meglevo@example.com',
-      'uj.vasarlo@example.com',
-    ])
+    expect(result.touchedEmails).toEqual(['reszben.meglevo@example.com', 'uj.vasarlo@example.com'])
   })
 
   it('az új felhasználó customer szerepkört és a kurzusait kapja', async () => {
@@ -196,7 +234,6 @@ describe('üres users kollekció elleni védelem', () => {
     expect(db.calls.create).toBe(0)
   })
 })
-
 
 /**
  * A RÉGI VÁSÁRLÁS IDŐPONTJÁNAK megőrzése.

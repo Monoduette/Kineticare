@@ -31,21 +31,21 @@ const BACKUP_POSTGRES =
 // bármilyen bájtváltozás (komment, formázás, CRLF, tag vagy extra dokumentum is)
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
-  ['ci.yml', '7cf0ed83a7caa85b57c0dea9f51dc1a4a4d9a1e68ad4cce0dbed49057695dfec'],
+  ['ci.yml', 'eef8b6a214d03b4833d57f40b25408fff05897da7cce064251f9fd8527fc8a6e'],
   ['claude.yml', '10e8ff4c055d47a9b9db6e9f828ca6defb72b514038f654358b6511cd58672ac'],
-  ['db-backup.yml', '2e94e224cf6e5a444f297b8ac9a1ec790b4bf8334f0f9519b9baf694fedcc3f5'],
-  ['gitleaks.yml', '2a6373e1fd6922147e77003bf3a19b560fc8068160e1ce224b783f57f73dbae9'],
+  ['db-backup.yml', '15adb4fa8c0b8582a58916e46400d7670126a746c9d39b2e55670eb42affd388'],
+  ['gitleaks.yml', 'b0241c695c543fcb2806348317f0bbcc745d51f8967329b53079216c450f98a0'],
 ])
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  '939cf1347a759c468d67d555057ba5e45538ce8005f89239f65d36e6d72e20ba'
+  'faefc53ab07948c40cbaa42e525553740685742338bf3e1cdc150b55e8092565'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
   'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  '0c231ed81d1c9878b02f0ef5baa3dfe5f57369555df7a32466bf1082022c8ca6'
+  'a6c2b3abce950fb6e4a94ecd13cd728f792ca98d266a447d2481a8c0fd730f43'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  '21418f41f091e7045ea927a909de33bc31abb2b6d4eb9695ebf0197ec6dcc2d7'
+  '4d27e583b9b89d4c25a77af0a357891f3853e61de4b25036d76404ac4aadf558'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -75,16 +75,15 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   react: '19.2.8',
   'react-dom': '19.2.8',
   sass: '1.103.1',
-  sharp: '0.35.3',
+  sharp: '0.35.4',
   tsx: '4.23.12',
+  'tus-js-client': '4.3.1',
   typescript: '5.9.3',
   vite: '8.2.1',
   vitest: '4.1.11',
 }
 
 const EXPECTED_INSTALL_SCRIPT_IDENTITIES: Readonly<Record<string, string>> = {
-  'node_modules/@esbuild-kit/core-utils/node_modules/esbuild':
-    '5c4075154b788aaae1bc4a2963f5dc1546909beae6dea5443c9769d0afd1efa5',
   'node_modules/@parcel/watcher':
     '002e2fffdb293f2d137d00f91eeeea833df98d35c2312510774062caceeca5d4',
   'node_modules/@payloadcms/graphql/node_modules/esbuild':
@@ -102,7 +101,6 @@ const EXPECTED_INSTALL_SCRIPT_IDENTITIES: Readonly<Record<string, string>> = {
 const EXPECTED_INSTALL_SCRIPT_APPROVALS: Readonly<Record<string, boolean>> = {
   '@parcel/watcher@2.6.0': true,
   'core-js@3.50.0': true,
-  'esbuild@0.18.20': true,
   'esbuild@0.25.12': true,
   'esbuild@0.28.1': true,
   'esbuild@0.28.2': true,
@@ -237,7 +235,8 @@ function cursorInstallRuntimeViolations(source: string): string[] {
   const positions = requiredInOrder.map((value) => source.indexOf(value))
   const violations: string[] = []
 
-  if (positions.some((position) => position < 0)) violations.push('exact install runtime elem hiányzik')
+  if (positions.some((position) => position < 0))
+    violations.push('exact install runtime elem hiányzik')
   if (positions.some((position, index) => index > 0 && position <= positions[index - 1])) {
     violations.push('exact install runtime ellenőrzési sorrend eltér')
   }
@@ -272,10 +271,10 @@ function railpackPlanVerifierViolations(source: string): string[] {
   const requiredInOrder = [
     "RAILPACK_VERSION='0.38.0'",
     "RAILPACK_CHECKSUMS_SHA256='69d58f46c00048b1ccddc35151842cfa393d88ad06e5d376e7a2f4bcc8aabb89'",
-    "platform_key=\"$(uname -s):$(uname -m)\"",
+    'platform_key="$(uname -s):$(uname -m)"',
     'Linux:x86_64)',
     'Darwin:arm64 | Darwin:aarch64)',
-    'curl --fail --silent --show-error --location --proto \'=https\' --tlsv1.2',
+    "curl --fail --silent --show-error --location --proto '=https' --tlsv1.2",
     'verify_sha256 "$RAILPACK_CHECKSUMS_SHA256" "$checksums_path"',
     'grep -Fqx -- "$RAILPACK_ARCHIVE_SHA256  $RAILPACK_ARCHIVE" "$checksums_path"',
     'verify_sha256 "$RAILPACK_ARCHIVE_SHA256" "$archive_path"',
@@ -295,7 +294,12 @@ function railpackPlanVerifierViolations(source: string): string[] {
   if (!source.includes('/releases/download/v${RAILPACK_VERSION}/${RAILPACK_ARCHIVE}')) {
     violations.push('official pinned release URL hiányzik')
   }
-  for (const nonPortableOption of ['--fixed-strings', '--line-regexp', '--extended-regexp', '--quiet']) {
+  for (const nonPortableOption of [
+    '--fixed-strings',
+    '--line-regexp',
+    '--extended-regexp',
+    '--quiet',
+  ]) {
     if (new RegExp(`grep [^\\n]*${nonPortableOption}`).test(source)) {
       violations.push(`nem hordozható grep opció: ${nonPortableOption}`)
     }
@@ -469,6 +473,96 @@ age --recipient age1publictestrecipient --output "\${FAKE_ENCRYPTED_PATH}" "\${F
     rmSync(root, { force: true, recursive: true })
   }
 }
+
+it('the reviewed esbuild override preserves core-utils and Drizzle schema loading', () => {
+  const fixture = mkdtempSync(join(REPO, '.loader-compat-'))
+  const schema = [
+    "import { pgTable, integer, text } from 'drizzle-orm/pg-core'",
+    "enum Label { Ready = 'ready' }",
+    "export const probe = pgTable('dependency_probe', {",
+    '  id: integer().primaryKey(),',
+    '  label: text().notNull().default(Label.Ready),',
+    '})',
+  ].join('\n')
+  const harness = `
+    import assert from 'node:assert/strict'
+    import { createRequire } from 'node:module'
+    import { readFileSync } from 'node:fs'
+    import { pathToFileURL } from 'node:url'
+    import vm from 'node:vm'
+    const require = createRequire(import.meta.url)
+    const core = require('@esbuild-kit/core-utils')
+    const coreRequire = createRequire(require.resolve('@esbuild-kit/core-utils'))
+    assert.equal(coreRequire('esbuild').version, '0.25.12')
+    const source = 'enum Value { Answer = 42 }\\nexport const answer: number = Value.Answer;'
+    for (const asyncMode of [false, true]) {
+      for (const format of ['cjs', 'esm']) {
+        const path = ${JSON.stringify(fixture)} + '/transform-' + asyncMode + '-' + format + '.ts'
+        // transformSync defaults to a CJS wrapper; ESM exports must stay top-level.
+        const options = format === 'esm' ? { format, banner: '', footer: '' } : { format }
+        const result = asyncMode
+          ? await core.transform(source, path, options)
+          : core.transformSync(source, path, options)
+        assert.equal(result.map.version, 3)
+        assert.deepEqual(result.map.sources, [path])
+        assert.deepEqual(result.map.sourcesContent, [source])
+        assert.ok(result.map.mappings.length > 0)
+        if (format === 'cjs') {
+          const context = { module: { exports: {} } }
+          vm.runInNewContext(result.code, context)
+          assert.equal(context.module.exports.answer, 42)
+        } else {
+          const loaded = await import('data:text/javascript;base64,' + Buffer.from(result.code).toString('base64'))
+          assert.equal(loaded.answer, 42)
+        }
+      }
+    }
+    assert.throws(() => core.transformSync('const broken: = ;', 'broken.ts'))
+    await assert.rejects(core.transform('const broken: = ;', 'broken.mts'))
+    const { register } = require('esbuild-register/dist/node')
+    const { unregister } = register({ target: 'es2022', format: 'cjs' })
+    const cjsSchema = require('./schema.cts')
+    unregister()
+    const esmSchema = await import(pathToFileURL(${JSON.stringify(join(fixture, 'schema.mts'))}).href)
+    const { generateDrizzleJson } = require('drizzle-kit/api')
+    for (const loaded of [cjsSchema, esmSchema]) {
+      const snapshot = generateDrizzleJson(loaded)
+      const table = snapshot.tables['public.dependency_probe']
+      assert.ok(table)
+      assert.equal(table.columns.id.primaryKey, true)
+      assert.equal(table.columns.label.notNull, true)
+      assert.equal(table.columns.label.default, "'ready'")
+    }
+    const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url)))
+    assert.ok(!Object.entries(lock.packages).some(([path, entry]) =>
+      path.endsWith('/esbuild') && entry.version === '0.18.20'))
+    console.log('core-utils transforms, sourcemaps, CJS/ESM schema loaders: PASS')
+  `
+  try {
+    writeFileSync(join(fixture, 'schema.cts'), schema)
+    writeFileSync(join(fixture, 'schema.mts'), schema)
+    writeFileSync(join(fixture, 'probe.mjs'), harness)
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--no-experimental-strip-types',
+        '--loader',
+        '@esbuild-kit/esm-loader',
+        join(fixture, 'probe.mjs'),
+      ],
+      {
+        cwd: fixture,
+        env: { ...process.env, ESBK_DISABLE_CACHE: '1' },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30_000,
+      },
+    )
+    expect(output).toContain('core-utils transforms, sourcemaps, CJS/ESM schema loaders: PASS')
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+}, 35_000)
 
 const mutations: readonly WorkflowMutation[] = [
   {
@@ -741,6 +835,21 @@ const mutations: readonly WorkflowMutation[] = [
 ]
 
 describe('CI/platform supply-chain guard', () => {
+  it('a valódi PG18 archívumpróba kötelező és az alkalmazási DB-env előtt fut', () => {
+    const ci = workflow('ci.yml')
+    const fixture = ci.indexOf('      - name: PG18 archive full-decode regression\n')
+    const databaseEnv = ci.indexOf('      - name: Teszt-adatbázis env (nem titkok)\n')
+    expect(fixture).toBeGreaterThan(
+      ci.indexOf('"$node_exec" scripts/install-reviewed-dependencies.mjs'),
+    )
+    expect(fixture).toBeLessThan(databaseEnv)
+    const nextStep = ci.indexOf('\n      - name:', fixture + 1)
+    const step = ci.slice(fixture, nextStep)
+    expect(step).toContain('KINETICARE_BACKUP_PG18_CONTAINER: ${{ job.services.postgres.id }}')
+    expect(step).toContain('run: node --import tsx scripts/test-backup-archive-integrity.mjs')
+    expect(step).not.toMatch(/continue-on-error|\|\|\s*true|\bif:/)
+  })
+
   it('byte-for-byte engedélyezi kizárólag a négy review-zott workflow-t', () => {
     const files = readdirSync(WORKFLOWS)
       .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
@@ -759,10 +868,18 @@ describe('CI/platform supply-chain guard', () => {
     const ci = workflow('ci.yml')
     expect(ci).toContain('NODE_VERSION: "24.20.0"')
     expect(ci.match(/node_exec="\$\(realpath "\$\(command -v node\)"\)"/g)).toHaveLength(3)
-    expect(ci.match(/test "\$node_exec" = "\$RUNNER_TOOL_CACHE\/node\/\$\{NODE_VERSION\}\/x64\/bin\/node"/g)).toHaveLength(3)
-    expect(ci.match(/test "\$\("\$node_exec" --version\)" = "v\$\{NODE_VERSION\}"/g)).toHaveLength(3)
     expect(
-      ci.match(/test "\$\("\$node_exec" -p 'require\("node:fs"\)\.realpathSync\(process\.execPath\)'\)" = "\$node_exec"/g),
+      ci.match(
+        /test "\$node_exec" = "\$RUNNER_TOOL_CACHE\/node\/\$\{NODE_VERSION\}\/x64\/bin\/node"/g,
+      ),
+    ).toHaveLength(3)
+    expect(ci.match(/test "\$\("\$node_exec" --version\)" = "v\$\{NODE_VERSION\}"/g)).toHaveLength(
+      3,
+    )
+    expect(
+      ci.match(
+        /test "\$\("\$node_exec" -p 'require\("node:fs"\)\.realpathSync\(process\.execPath\)'\)" = "\$node_exec"/g,
+      ),
     ).toHaveLength(3)
     expect(ci.match(/"\$node_exec" scripts\/install-reviewed-dependencies\.mjs/g)).toHaveLength(3)
     expect(ci).not.toContain('npm ci --legacy-peer-deps --ignore-scripts')
@@ -774,9 +891,42 @@ describe('CI/platform supply-chain guard', () => {
     expect(workflow('claude.yml')).toContain(
       'anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210',
     )
-    expect(workflow('gitleaks.yml')).toContain(
-      'gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0',
+    const gitleaks = workflow('gitleaks.yml')
+    expect(gitleaks).toContain(
+      'https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz',
     )
+    expect(gitleaks).toContain(
+      '9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $archive',
+    )
+    expect(gitleaks.indexOf('sha256sum --check --strict')).toBeLessThan(
+      gitleaks.indexOf('tar -xzf'),
+    )
+    expect(gitleaks).toContain('fetch-depth: 0')
+    expect(gitleaks).toContain(
+      'gitleaks git --config .gitleaks.toml --log-opts="--all" --redact=100 --exit-code=1 .',
+    )
+    expect(gitleaks).toContain('set -euo pipefail')
+    expect(gitleaks).not.toMatch(
+      /continue-on-error|\|\|\s*true|pull-requests: write|GITLEAKS_LICENSE/,
+    )
+  })
+
+  it.each([
+    ['CLI verzió', 'v8.24.3/gitleaks_8.24.3', 'v8.24.2/gitleaks_8.24.2'],
+    [
+      'CLI SHA256',
+      '9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c',
+      '0'.repeat(64),
+    ],
+    ['checksum kapu', 'sha256sum --check --strict', 'true'],
+    ['teljes fetch', 'fetch-depth: 0', 'fetch-depth: 1'],
+    ['teljes history', '--log-opts="--all"', '--log-opts="-1"'],
+    ['redakció', '--redact=100', '--redact=0'],
+    ['bukó exit code', '--exit-code=1', '--exit-code=0'],
+    ['fail-closed shell', 'set -euo pipefail', 'set +e'],
+  ])('a Gitleaks $0 mutációját fail-closed elutasítja', (_label, before, after) => {
+    const mutated = replaceRequired(workflow('gitleaks.yml'), before, after)
+    expect(violationsForWorkflowBytes('gitleaks.yml', mutated)).not.toEqual([])
   })
 
   it('a fejlesztői bootstrap is kizárólag a lockfile-lokális Payload CLI-t futtatja', () => {
@@ -796,14 +946,16 @@ describe('CI/platform supply-chain guard', () => {
     ],
   ])('a start.sh $0 mutációját fail-closed elutasítja', (_label, before, after) => {
     const cursorStart = readFileSync(join(REPO, '.cursor', 'start.sh'), 'utf8')
-    expect(cursorStartRuntimeViolations(replaceRequired(cursorStart, before, after))).not.toEqual([])
+    expect(cursorStartRuntimeViolations(replaceRequired(cursorStart, before, after))).not.toEqual(
+      [],
+    )
   })
 
   it('a Cloud Agent install exact Node-dal ugyanazt a fail-closed lifecycle kaput futtatja', () => {
     const cursorInstall = readFileSync(join(REPO, '.cursor', 'install.sh'), 'utf8')
     const expectedOrder = [
       'curl -fsSLo "${node_tmp}/${node_archive}"',
-      "printf '%s  %s\\n' \"$node_sha256\" \"${node_tmp}/${node_archive}\" | sha256sum --strict -c -",
+      'printf \'%s  %s\\n\' "$node_sha256" "${node_tmp}/${node_archive}" | sha256sum --strict -c -',
       'sudo tar -xJf "${node_tmp}/${node_archive}" -C /opt',
       'if [ "$(node --version)" != "v${NODE_VERSION}" ] || [ "$(npm --version)" != "$NPM_VERSION" ]; then',
       '"${node_home}/bin/node" scripts/install-reviewed-dependencies.mjs',
@@ -813,14 +965,12 @@ describe('CI/platform supply-chain guard', () => {
     expect(cursorInstall).toContain("NPM_VERSION='11.19.0'")
     expect(cursorInstall).not.toContain('deb.nodesource.com')
     expect(cursorInstall).toContain(
-      'node_sha256=\'2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2\'',
+      "node_sha256='2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2'",
     )
     expect(cursorInstall).toContain(
-      'node_sha256=\'5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7\'',
+      "node_sha256='5f4ddab610c1ab2016b3c227cebdbf6d9495161487e4739c7b90090595f465f7'",
     )
-    expect(cursorInstall).toContain(
-      '"https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"',
-    )
+    expect(cursorInstall).toContain('"https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"')
     expect(cursorInstallRuntimeViolations(cursorInstall)).toEqual([])
     expect(expectedOrder.every((command) => cursorInstall.includes(command))).toBe(true)
     expect(expectedOrder.map((command) => cursorInstall.indexOf(command))).toEqual(
@@ -864,16 +1014,14 @@ describe('CI/platform supply-chain guard', () => {
   })
 
   it('a helyi telepítés egyetlen review-zott fail-closed bootstrapot használ', () => {
-    const installerBytes = readFileSync(
-      join(REPO, 'scripts', 'install-reviewed-dependencies.mjs'),
-    )
+    const installerBytes = readFileSync(join(REPO, 'scripts', 'install-reviewed-dependencies.mjs'))
     const installer = installerBytes.toString('utf8')
     expect(sha256(installerBytes)).toBe(EXPECTED_REVIEWED_INSTALLER_SHA256)
     expect(reviewedInstallerViolations(installer)).toEqual([])
     expect(installer.match(/env: npmChildEnv/g)).toHaveLength(3)
-    expect(
-      readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs'), 'utf8'),
-    ).toContain('env: exactNodeChildEnv()')
+    expect(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.mjs'), 'utf8')).toContain(
+      'env: exactNodeChildEnv()',
+    )
 
     for (const guide of ['README.md', 'AGENTS.md']) {
       const source = readFileSync(join(REPO, guide), 'utf8')
@@ -942,11 +1090,9 @@ describe('CI/platform supply-chain guard', () => {
       wrapperPath,
       '#!/usr/bin/env bash\nset -euo pipefail\nprintf "wrapper\\n"\nexit 97\n',
     )
-    writeFileSync(
-      cliPath,
-      "#!/usr/bin/env node\nprocess.stdout.write('11.19.0\\n')\n",
-      { encoding: 'utf8' },
-    )
+    writeFileSync(cliPath, "#!/usr/bin/env node\nprocess.stdout.write('11.19.0\\n')\n", {
+      encoding: 'utf8',
+    })
 
     try {
       expect(() =>
@@ -1001,8 +1147,7 @@ describe('CI/platform supply-chain guard', () => {
           '': { dependencies: { 'lifecycle-probe': '1.0.0' } },
           'node_modules/lifecycle-probe': {
             version: '1.0.0',
-            resolved:
-              'https://registry.npmjs.org/lifecycle-probe/-/lifecycle-probe-1.0.0.tgz',
+            resolved: 'https://registry.npmjs.org/lifecycle-probe/-/lifecycle-probe-1.0.0.tgz',
             hasInstallScript: true,
           },
         },
@@ -1085,9 +1230,9 @@ describe('CI/platform supply-chain guard', () => {
     expect(sha256(readFileSync(join(REPO, 'scripts', 'exact-npm-cli.mjs')))).toBe(
       EXPECTED_EXACT_NPM_CLI_SHA256,
     )
-    expect(
-      sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.sha256'))),
-    ).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
+    expect(sha256(readFileSync(join(REPO, 'scripts', 'verify-install-script-lock.sha256')))).toBe(
+      EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256,
+    )
     expect(sha256(readFileSync(join(REPO, 'railway.json')))).toBe(EXPECTED_RAILWAY_SHA256)
     expect(sha256(readFileSync(join(REPO, 'railpack.json')))).toBe(EXPECTED_RAILPACK_SHA256)
     const railway = readJson<{
@@ -1114,7 +1259,8 @@ describe('CI/platform supply-chain guard', () => {
     const installCommands = install?.commands ?? []
     const actualInstallCommands = installCommands.map((command) => command.cmd ?? command.path)
     const allShellCommands =
-      plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ?? []
+      plan.steps?.flatMap((step) => step.commands?.flatMap((command) => command.cmd ?? []) ?? []) ??
+      []
     const verifierManifest = readFileSync(
       join(REPO, 'scripts', 'verify-install-script-lock.sha256'),
       'utf8',
@@ -1144,12 +1290,11 @@ describe('CI/platform supply-chain guard', () => {
       'A bizalmi határ a Railpack által generált exact Mise runtime',
     )
     expect(allShellCommands.some((command) => /\bcorepack\b/i.test(command))).toBe(false)
-    expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(false)
+    expect(allShellCommands.some((command) => /\bnpm\s+(?:install|i)(?:\s|$)/.test(command))).toBe(
+      false,
+    )
     expect(sha256(verifierManifest)).toBe(EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256)
-    const checksumTargets = [
-      'scripts/verify-install-script-lock.mjs',
-      'scripts/exact-npm-cli.mjs',
-    ]
+    const checksumTargets = ['scripts/verify-install-script-lock.mjs', 'scripts/exact-npm-cli.mjs']
     expect(verifySha256Manifest(verifierManifest, checksumTargets)).toEqual(checksumTargets)
     expect(() =>
       verifySha256Manifest(
@@ -1258,7 +1403,7 @@ describe('CI/platform supply-chain guard', () => {
 
   it('a dump konténer runner UID:GID-ja miatt a host age olvasni tudja a 0600-as fájlt', () => {
     const source = workflow('db-backup.yml')
-    expect(source.match(/--user "\$\(id -u\):\$\(id -g\)"/g)).toHaveLength(2)
+    expect(source.match(/--user "\$\(id -u\):\$\(id -g\)"/g)).toHaveLength(3)
     const result = runFakeBackup(extractDumpDockerInvocation(source))
     const userIndex = result.args.indexOf('--user')
     expect(userIndex).toBeGreaterThanOrEqual(0)

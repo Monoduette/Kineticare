@@ -23,11 +23,13 @@ import { UnderlineFeatureClient as UnderlineFeatureClient_e70f5e05f09f93e00b997e
 import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { CourseVisibilityNotice as CourseVisibilityNotice_dd2dbf5ba1c21eae947914cc7330c47d } from '../../../components/admin/CourseVisibilityNotice'
+import { CourseEditorialChecklist as CourseEditorialChecklist_fc57e8c411bc70011c646db46ed90210 } from '../../../components/admin/CourseEditorialChecklist'
 import { PriceCell as PriceCell_e27bf7b8cc50640dcdd584767b8eac3c } from '@payloadcms/plugin-ecommerce/client'
 import { PriceInput as PriceInput_b91672ccd6e8b071c11142ab941fedfb } from '@payloadcms/plugin-ecommerce/rsc'
+import { PublicBunnyVideoField as PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
+import { ProtectedBunnyVideoField as ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
 import { LessonRowLabel as LessonRowLabel_1ae3bdfcb2f2552e78505f80c9b85768 } from '../../../components/admin/CurriculumRowLabels'
 import { ModuleRowLabel as ModuleRowLabel_1ae3bdfcb2f2552e78505f80c9b85768 } from '../../../components/admin/CurriculumRowLabels'
-import { BunnyLibraryPanel as BunnyLibraryPanel_bb3944abc8f19c9587cee0d3a7012aec } from '../../../components/admin/BunnyLibraryPanel'
 import { CourseProgressPanel as CourseProgressPanel_845dc8fb8bc09ce445f441a2d473205a } from '../../../components/admin/CourseProgressPanel'
 import { OrderItemsCell as OrderItemsCell_2c6d79b4079205291accce4c0768f7ee } from '../../../components/admin/OrderItemsCell'
 import { RefundPanel as RefundPanel_3023d898ecda64dc966986d07a3332f3 } from '../../../components/admin/RefundPanel'
@@ -69,11 +71,13 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#BoldFeatureClient": BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "/components/admin/CourseVisibilityNotice#CourseVisibilityNotice": CourseVisibilityNotice_dd2dbf5ba1c21eae947914cc7330c47d,
+  "/components/admin/CourseEditorialChecklist#CourseEditorialChecklist": CourseEditorialChecklist_fc57e8c411bc70011c646db46ed90210,
   "@payloadcms/plugin-ecommerce/client#PriceCell": PriceCell_e27bf7b8cc50640dcdd584767b8eac3c,
   "@payloadcms/plugin-ecommerce/rsc#PriceInput": PriceInput_b91672ccd6e8b071c11142ab941fedfb,
+  "/components/admin/BunnyVideoField#PublicBunnyVideoField": PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
+  "/components/admin/BunnyVideoField#ProtectedBunnyVideoField": ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
   "/components/admin/CurriculumRowLabels#LessonRowLabel": LessonRowLabel_1ae3bdfcb2f2552e78505f80c9b85768,
   "/components/admin/CurriculumRowLabels#ModuleRowLabel": ModuleRowLabel_1ae3bdfcb2f2552e78505f80c9b85768,
-  "/components/admin/BunnyLibraryPanel#BunnyLibraryPanel": BunnyLibraryPanel_bb3944abc8f19c9587cee0d3a7012aec,
   "/components/admin/CourseProgressPanel#CourseProgressPanel": CourseProgressPanel_845dc8fb8bc09ce445f441a2d473205a,
   "/components/admin/OrderItemsCell#OrderItemsCell": OrderItemsCell_2c6d79b4079205291accce4c0768f7ee,
   "/components/admin/RefundPanel#RefundPanel": RefundPanel_3023d898ecda64dc966986d07a3332f3,

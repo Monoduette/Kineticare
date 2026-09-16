@@ -1,7 +1,7 @@
 import { REST_POST } from '@payloadcms/next/routes'
 import { getPayload } from 'payload'
 
-import { createResetPasswordHandler } from '../../../../../lib/security/reset-password-route'
+import { createProtectedResetPost } from '../../../../../lib/security/payload-rest-post'
 import config from '../../../../../payload.config'
 
 /**
@@ -9,15 +9,10 @@ import config from '../../../../../payload.config'
  * szerveroldali kikényszerítésével (OWASP A07).
  * Ez az útvonal SZÁNDÉKOSAN ugyanaz, amit eddig a Payload REST catch-all
  * (`src/app/(payload)/api/[...slug]/route.ts`) szolgált ki: a Next.js a konkrét
- * szegmenst előbbre sorolja a `[...slug]` mintánál, ezért minden ide érkező
- * kérés — a saját űrlapé, az admin reset-oldaláé és a végpont közvetlen hívása
+ * szegmenst előbbre sorolja a `[...slug]` mintánál. A catch-all ugyanazt a
+ * konstruktorból kapott védelmet futtatja az alternatív útvonal-alakokra is.
  */
-const payloadRestPost = REST_POST(config)
-
-export const POST = createResetPasswordHandler({
+export const POST = createProtectedResetPost({
   getPayload: () => getPayload({ config }),
-  forwardToPayload: (request) =>
-    payloadRestPost(request, {
-      params: Promise.resolve({ slug: ['users', 'reset-password'] }),
-    }),
+  payloadPost: REST_POST(config),
 })

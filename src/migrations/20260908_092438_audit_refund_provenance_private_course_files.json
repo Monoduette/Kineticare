@@ -12970,6 +12970,456 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.course_files": {
+      "name": "course_files",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "alt": {
+          "name": "alt",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "course_id": {
+          "name": "course_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transfer_key": {
+          "name": "transfer_key",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "url": {
+          "name": "url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thumbnail_u_r_l": {
+          "name": "thumbnail_u_r_l",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "filesize": {
+          "name": "filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "focal_x": {
+          "name": "focal_x",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "focal_y": {
+          "name": "focal_y",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_url": {
+          "name": "sizes_xs_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_width": {
+          "name": "sizes_xs_width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_height": {
+          "name": "sizes_xs_height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_mime_type": {
+          "name": "sizes_xs_mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_filesize": {
+          "name": "sizes_xs_filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_xs_filename": {
+          "name": "sizes_xs_filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_url": {
+          "name": "sizes_sm_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_width": {
+          "name": "sizes_sm_width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_height": {
+          "name": "sizes_sm_height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_mime_type": {
+          "name": "sizes_sm_mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_filesize": {
+          "name": "sizes_sm_filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_sm_filename": {
+          "name": "sizes_sm_filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_url": {
+          "name": "sizes_md_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_width": {
+          "name": "sizes_md_width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_height": {
+          "name": "sizes_md_height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_mime_type": {
+          "name": "sizes_md_mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_filesize": {
+          "name": "sizes_md_filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_md_filename": {
+          "name": "sizes_md_filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_url": {
+          "name": "sizes_lg_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_width": {
+          "name": "sizes_lg_width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_height": {
+          "name": "sizes_lg_height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_mime_type": {
+          "name": "sizes_lg_mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_filesize": {
+          "name": "sizes_lg_filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_lg_filename": {
+          "name": "sizes_lg_filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_url": {
+          "name": "sizes_og_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_width": {
+          "name": "sizes_og_width",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_height": {
+          "name": "sizes_og_height",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_mime_type": {
+          "name": "sizes_og_mime_type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_filesize": {
+          "name": "sizes_og_filesize",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sizes_og_filename": {
+          "name": "sizes_og_filename",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "course_files_course_idx": {
+          "name": "course_files_course_idx",
+          "columns": [
+            {
+              "expression": "course_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_transfer_key_idx": {
+          "name": "course_files_transfer_key_idx",
+          "columns": [
+            {
+              "expression": "transfer_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_updated_at_idx": {
+          "name": "course_files_updated_at_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_created_at_idx": {
+          "name": "course_files_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_filename_idx": {
+          "name": "course_files_filename_idx",
+          "columns": [
+            {
+              "expression": "filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_sizes_xs_sizes_xs_filename_idx": {
+          "name": "course_files_sizes_xs_sizes_xs_filename_idx",
+          "columns": [
+            {
+              "expression": "sizes_xs_filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_sizes_sm_sizes_sm_filename_idx": {
+          "name": "course_files_sizes_sm_sizes_sm_filename_idx",
+          "columns": [
+            {
+              "expression": "sizes_sm_filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_sizes_md_sizes_md_filename_idx": {
+          "name": "course_files_sizes_md_sizes_md_filename_idx",
+          "columns": [
+            {
+              "expression": "sizes_md_filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_sizes_lg_sizes_lg_filename_idx": {
+          "name": "course_files_sizes_lg_sizes_lg_filename_idx",
+          "columns": [
+            {
+              "expression": "sizes_lg_filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "course_files_sizes_og_sizes_og_filename_idx": {
+          "name": "course_files_sizes_og_sizes_og_filename_idx",
+          "columns": [
+            {
+              "expression": "sizes_og_filename",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "course_files_course_id_products_id_fk": {
+          "name": "course_files_course_id_products_id_fk",
+          "tableFrom": "course_files",
+          "tableTo": "products",
+          "columnsFrom": [
+            "course_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.menus": {
       "name": "menus",
       "schema": "",
@@ -14224,6 +14674,12 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "protected_file_id": {
+          "name": "protected_file_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -14271,6 +14727,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "products_modules_lessons_attachments_protected_file_idx": {
+          "name": "products_modules_lessons_attachments_protected_file_idx",
+          "columns": [
+            {
+              "expression": "protected_file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -14280,6 +14751,19 @@
           "tableTo": "media",
           "columnsFrom": [
             "file_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "products_modules_lessons_attachments_protected_file_id_course_files_id_fk": {
+          "name": "products_modules_lessons_attachments_protected_file_id_course_files_id_fk",
+          "tableFrom": "products_modules_lessons_attachments",
+          "tableTo": "course_files",
+          "columnsFrom": [
+            "protected_file_id"
           ],
           "columnsTo": [
             "id"
@@ -15876,6 +16360,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "protected_file_id": {
+          "name": "protected_file_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "_uuid": {
           "name": "_uuid",
           "type": "varchar",
@@ -15928,6 +16418,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "_products_v_version_modules_lessons_attachments_protecte_idx": {
+          "name": "_products_v_version_modules_lessons_attachments_protecte_idx",
+          "columns": [
+            {
+              "expression": "protected_file_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -15937,6 +16442,19 @@
           "tableTo": "media",
           "columnsFrom": [
             "file_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "_products_v_version_modules_lessons_attachments_protected_file_id_course_files_id_fk": {
+          "name": "_products_v_version_modules_lessons_attachments_protected_file_id_course_files_id_fk",
+          "tableFrom": "_products_v_version_modules_lessons_attachments",
+          "tableTo": "course_files",
+          "columnsFrom": [
+            "protected_file_id"
           ],
           "columnsTo": [
             "id"
@@ -19873,6 +20391,19 @@
           "type": "timestamp(3) with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "enum_users_access_grants_source_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_order_id": {
+          "name": "source_order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -19920,6 +20451,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "users_access_grants_source_order_idx": {
+          "name": "users_access_grants_source_order_idx",
+          "columns": [
+            {
+              "expression": "source_order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -19929,6 +20475,19 @@
           "tableTo": "products",
           "columnsFrom": [
             "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "users_access_grants_source_order_id_orders_id_fk": {
+          "name": "users_access_grants_source_order_id_orders_id_fk",
+          "tableFrom": "users_access_grants",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "source_order_id"
           ],
           "columnsTo": [
             "id"
@@ -20128,12 +20687,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": false
-        },
-        "migration_notice_sent_at": {
-          "name": "migration_notice_sent_at",
-          "type": "timestamp(3) with time zone",
-          "primaryKey": false,
-          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -20778,7 +21331,20 @@
           "name": "actor_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "enum_refund_intents_actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "system_actor": {
+          "name": "system_actor",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
         },
         "requested_amount_huf": {
           "name": "requested_amount_huf",
@@ -21606,6 +22172,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "course_files_id": {
+          "name": "course_files_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "menus_id": {
           "name": "menus_id",
           "type": "integer",
@@ -21784,6 +22356,21 @@
           "columns": [
             {
               "expression": "testimonials_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payload_locked_documents_rels_course_files_id_idx": {
+          "name": "payload_locked_documents_rels_course_files_id_idx",
+          "columns": [
+            {
+              "expression": "course_files_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -22032,6 +22619,19 @@
           "tableTo": "testimonials",
           "columnsFrom": [
             "testimonials_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_course_files_fk": {
+          "name": "payload_locked_documents_rels_course_files_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "course_files",
+          "columnsFrom": [
+            "course_files_id"
           ],
           "columnsTo": [
             "id"
@@ -23103,6 +23703,14 @@
         "redirect"
       ]
     },
+    "public.enum_users_access_grants_source_kind": {
+      "name": "enum_users_access_grants_source_kind",
+      "schema": "public",
+      "values": [
+        "order",
+        "independent"
+      ]
+    },
     "public.enum_users_role": {
       "name": "enum_users_role",
       "schema": "public",
@@ -23139,6 +23747,14 @@
         "pending_repoll",
         "rejected",
         "failed"
+      ]
+    },
+    "public.enum_refund_intents_actor_kind": {
+      "name": "enum_refund_intents_actor_kind",
+      "schema": "public",
+      "values": [
+        "owner",
+        "system"
       ]
     },
     "public.enum_refund_intents_provider": {
@@ -23211,6 +23827,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "2b1a3b52-7657-4895-9799-a98be67bbdf9",
+  "id": "657175b6-b2a7-45a7-8e8e-632d22a6478e",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

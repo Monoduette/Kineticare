@@ -5,6 +5,9 @@ import type { Order, RefundIntent } from '../../payload-types'
 import { auditLogStore, writeAuditLog } from '../audit'
 import { withUserPurchasesLock } from '../user-purchases-lock'
 import { readRefundAccessBaseline } from './access-store'
+import { parseRefundIntentActorIdentity } from './refund-intent'
+import { validateRefundResponseProof } from '../barion/refund-response-proof'
+import { loadRefundIntentsForOrder } from './intent-store'
 
 export const RECEIPTS = {
   prepared: 'refund-prepared',
@@ -72,13 +75,22 @@ export async function readReceipt(
   const after: unknown = event.after
   if (
     !isRecord(after) ||
-    after.version !== 1 ||
+    ![1, 2].includes(after.version as number) ||
     after.orderId !== relationId(intent.order) ||
     after.sequence !== intent.refundSequence ||
     after.requestFingerprint !== intent.requestHash ||
     after.intentId !== intent.id
   )
     throw new Error('refund receipt: invalid identity')
+  if (after.version === 2 || intent.schemaVersion === 2) {
+    const identity = parseRefundIntentActorIdentity({ ...intent, actor: relationId(intent.actor) })
+    if (
+      after.version !== 2 ||
+      after.actorKind !== identity.actorKind ||
+      after.systemActor !== identity.systemActor
+    )
+      throw new Error('refund receipt: invalid actor identity')
+  }
   return after
 }
 
@@ -93,6 +105,15 @@ export async function writeReceipt(
 ): Promise<void> {
   after = {
     ...after,
+    ...(after.version === 2
+      ? (() => {
+          const identity = parseRefundIntentActorIdentity({
+            ...intent,
+            actor: relationId(intent.actor),
+          })
+          return { actorKind: identity.actorKind, systemActor: identity.systemActor }
+        })()
+      : {}),
     ...(createOnly ? { claimReference: randomUUID() } : {}),
     intentId: intent.id,
     orderId: relationId(intent.order),
@@ -144,7 +165,7 @@ export async function prepareRefundReceipt(
     if (
       !accessBaseline ||
       accessBaseline.customerId !== customerId ||
-      accessBaseline.version !== 1
+      accessBaseline.version !== 2
     ) {
       throw new Error('refund receipt: access baseline unavailable')
     }
@@ -154,4 +175,59 @@ export async function prepareRefundReceipt(
       accessBaseline,
     })
   })
+}
+
+/** Distinct refund IDs cannot be consumed by two intents. Source-ID echoes are not unique refund IDs. */
+export async function assertUnusedRefundTransaction(
+  payload: Payload,
+  intent: RefundIntent,
+  refundTransactionId: string,
+): Promise<void> {
+  const canonical = (value: string) => value.replaceAll('-', '').toLowerCase()
+  if (canonical(refundTransactionId) === canonical(intent.providerTransactionId)) return
+  const intents = await loadRefundIntentsForOrder(payload, relationId(intent.order)!)
+  for (const prior of intents) {
+    if (prior.id === intent.id) continue
+    const receipt = await readReceipt(payload, prior, RECEIPTS.provider)
+    if (
+      typeof receipt?.refundTransactionId === 'string' &&
+      canonical(receipt.refundTransactionId) === canonical(refundTransactionId)
+    )
+      throw new Error('refund receipt: transaction already consumed')
+  }
+}
+
+/** A V2 receipt records both provider identities; V1 owner receipts retain their original contract. */
+export async function readProviderReceipt(
+  payload: Payload,
+  intent: RefundIntent,
+): Promise<Record<string, unknown> | null> {
+  const receipt = await readReceipt(payload, intent, RECEIPTS.provider)
+  if (!receipt || receipt.version === 1) return receipt
+  if (
+    !validateRefundResponseProof(
+      {
+        PaymentId: receipt.paymentId,
+        RefundedTransactions: [
+          {
+            TransactionId: receipt.refundTransactionId,
+            POSTransactionId: receipt.posTransactionId,
+            Total: receipt.amountHuf,
+            Status: receipt.status,
+          },
+        ],
+      },
+      {
+        paymentId: intent.providerPaymentId,
+        sourceTransactionId: intent.providerTransactionId,
+        posTransactionId:
+          typeof receipt.posTransactionId === 'string' ? receipt.posTransactionId : '',
+        amountHuf: intent.requestedAmountHuf,
+      },
+    ) ||
+    receipt.transactionId !== intent.providerTransactionId
+  )
+    throw new Error('refund receipt: invalid provider proof')
+  await assertUnusedRefundTransaction(payload, intent, receipt.refundTransactionId as string)
+  return receipt
 }

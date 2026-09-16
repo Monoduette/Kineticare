@@ -52,16 +52,16 @@ export type PollResult =
   | { kind: 'unauthorized' }
   | { kind: 'not-found' }
   | { kind: 'error' }
+  | { kind: 'review' }
 
 export async function pollOrderStatus(
   orderNumber: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<PollResult> {
   try {
-    const response = await fetchImpl(
-      `/api/orders/${encodeURIComponent(orderNumber)}/status`,
-      { credentials: 'include' },
-    )
+    const response = await fetchImpl(`/api/orders/${encodeURIComponent(orderNumber)}/status`, {
+      credentials: 'include',
+    })
     if (response.status === 401) {
       return { kind: 'unauthorized' }
     }
@@ -76,10 +76,12 @@ export async function pollOrderStatus(
       productId?: unknown
       totalHufSnapshot?: unknown
       currency?: unknown
+      paymentReviewRequired?: unknown
     }
     if (typeof body.status !== 'string') {
       return { kind: 'error' }
     }
+    if (body.paymentReviewRequired === true) return { kind: 'review' }
     const productId =
       typeof body.productId === 'number' && Number.isInteger(body.productId) && body.productId > 0
         ? body.productId

@@ -1,3 +1,4 @@
+import { emptyRefundLedger } from '../empty-refund-ledger'
 import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -150,7 +151,9 @@ function createMockPayload(
   const updates: Array<{ collection: string; id?: unknown; data: Record<string, unknown> }> = []
   let userUpdates = 0
   const payload = {
-    db: { drizzle },
+    db: {
+      drizzle: { ...drizzle, execute: emptyRefundLedger(orders.map((entry) => entry.id)).execute },
+    },
     findByID: vi.fn(async ({ collection, id }: { collection: string; id: number | string }) => {
       if (collection === 'orders') {
         events.push('order-reread')
@@ -213,14 +216,18 @@ describe('M5 — rendelés-szintű advisory-zár a paid/cancelled átmeneten', (
     expect(queries.map((query) => query.params[0])).toEqual([
       `order:mutate:${ORDER_ID}`,
       `purchases:user:${CUSTOMER_ID}`,
+      `purchases:user:${CUSTOMER_ID}`,
     ])
     expect(queries[0]?.sql).toContain('pg_advisory_xact_lock')
-    // Sorrend: rendelés-zár → FRISS rendelés-újraolvasás → user-zár (K1) → vége.
+    // Sorrend: order-zár → friss order → membership user-zár → origin user-zár.
     // Deadlock-szabály: order → user, soha fordítva.
     expect(events).toEqual([
       'transaction-start',
       'lock-acquired',
       'order-reread',
+      'transaction-start',
+      'lock-acquired',
+      'transaction-end',
       'transaction-start',
       'lock-acquired',
       'transaction-end',
@@ -248,7 +255,18 @@ describe('M5 — rendelés-szintű advisory-zár a paid/cancelled átmeneten', (
     expect(
       updates.filter((entry) => entry.collection === 'orders' && entry.data.status === 'paid'),
     ).toHaveLength(1)
-    expect(updates.filter((entry) => entry.collection === 'users')).toHaveLength(1)
+    const userWrites = updates.filter((entry) => entry.collection === 'users')
+    expect(userWrites).toHaveLength(2)
+    expect(userWrites.filter((entry) => Object.hasOwn(entry.data, 'purchases'))).toHaveLength(1)
+    expect(userWrites.filter((entry) => Object.hasOwn(entry.data, 'accessGrants'))).toHaveLength(1)
+    expect(user.accessGrants).toEqual([
+      {
+        product: PRODUCT_ID,
+        sourceKind: 'order',
+        sourceOrder: ORDER_ID,
+        grantedAt: expect.any(String),
+      },
+    ])
     expect(order.status).toBe('paid')
     expect(user.purchases).toEqual([PRODUCT_ID])
   })

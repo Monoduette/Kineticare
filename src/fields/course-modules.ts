@@ -1,6 +1,8 @@
 import type { ArrayField, Field } from 'payload'
 
+import { courseContentReadAccess } from '../access/courseContentRead'
 import { streamAssetReadAccess } from '../access/streamAssetRead'
+import { hideLegacyAttachmentFallback, validateCourseAttachments } from './course-attachments'
 
 /**
  * products.modules: fejezetek → leckék; a régi videos tömb érintetlen (nem destruktív migráció).
@@ -18,7 +20,7 @@ export const LESSON_KIND_LINK = 'link'
  * nélküle nem indul" szöveg. Forrás: docs/szerkesztoi-utmutato.md 12. pont.
  */
 export const LESSON_DURATION_ADMIN_DESCRIPTION =
-  'A videó hossza másodpercben. Ajánlott: ebből számoljuk a hátralévő időt, és a rövid lecke jegye is legalább két óráig él. Ha üresen marad, a lejátszás ettől még elindul (a jegy 24 órás). Azonosító és Kész állapot nélkül a videó nem indul.'
+  'A videó kiválasztásakor átvett hossz másodpercben. Ajánlott ellenőrizni: ebből számoljuk a hátralévő időt. Ha nem ismert, a lejátszás ettől még elindul (a jegy 24 órás). A lejátszáshoz kiválasztott videó és Kész állapot szükséges.'
 
 /**
  * A Tananyag (modulok) mező admin-leírása. A második mondat a néma elnyelést
@@ -102,19 +104,22 @@ const lessonFields: Field[] = [
   {
     name: 'streamAssetId',
     type: 'text',
-    label: 'Videó azonosítója',
+    label: 'Lecke videója',
     // Ugyanaz a mezőszintű védelem, mint a régi videó-soron (S2/b).
     access: {
       read: streamAssetReadAccess,
     },
     admin: {
       condition: showForVideo,
+      components: {
+        Field: '/components/admin/BunnyVideoField#ProtectedBunnyVideoField',
+      },
       // A zsargon („GUID", „library") az admin UX-audit szerint a kurzusfeltöltés
       // leggyakoribb elakadási pontja volt: a szerkesztő nem tudta, MELYIK
       // értéket kell a Bunny felületéről kimásolni — és rossz érték mellett a
       // videó némán nem indul el.
       description:
-        'A videó azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). A fizetős kurzusvideók a VÉDETT videótárban vannak (csak vásárlás után nézhetők), az ingyenes előzetesek a nyilvánosban.',
+        'A lecke felvétele a védett videótárból. A nyilvános bemutató külön, a Kurzusoldal fülön választható.',
     },
   },
   {
@@ -123,6 +128,7 @@ const lessonFields: Field[] = [
     label: 'Hossz (másodperc)',
     admin: {
       condition: showForVideo,
+      readOnly: true,
       description: LESSON_DURATION_ADMIN_DESCRIPTION,
     },
   },
@@ -134,22 +140,19 @@ const lessonFields: Field[] = [
     options: lessonStatusOptions,
     admin: {
       condition: showForVideo,
+      readOnly: true,
       description:
-        'Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész”-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le és számít bele a haladásba.',
+        'A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le és számít bele a haladásba.',
     },
   },
   {
     name: 'url',
     type: 'text',
     label: 'Külső webcím',
-    // A code review mérte: a lecke-almezők közül korábban csak a Bunny-GUID
-    // volt védett, miközben a külső link, a szöveges tananyag és a mellékletek
-    // UGYANÚGY a fizetős tartalom hordozói — a nyilvános GET /api/products
-    // kiadta volna őket nem vásárlónak. Ugyanaz a MEGLÉVŐ szabály védi mindet
-    // (streamAssetReadAccess, VÁLTOZATLANUL újrahasznosítva): staff/owner
-    // mindig, vevő csak megvett kurzusnál, anonim soha.
+    // A link maga a tananyag: a GUID-dal ellentétben nincs mögötte egy újabb
+    // token-végpont. Ezért már az olvasás a teljes, lejáratkövető kapun megy át.
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
       condition: showForLink,
@@ -161,7 +164,7 @@ const lessonFields: Field[] = [
     type: 'richText',
     label: 'Lecke szövege',
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
       description:
@@ -171,16 +174,19 @@ const lessonFields: Field[] = [
   {
     name: 'attachments',
     type: 'array',
+    validate: validateCourseAttachments,
+    hooks: { afterRead: [hideLegacyAttachmentFallback] },
     label: 'Letölthető anyagok',
     labels: {
       singular: 'Melléklet',
       plural: 'Mellékletek',
     },
     access: {
-      read: streamAssetReadAccess,
+      read: courseContentReadAccess,
     },
     admin: {
-      description: 'PDF, kép vagy egyéb segédlet a leckéhez. Bármelyik lecketípushoz adható.',
+      description:
+        'Új segédlethez védett kurzusfájlt válassz. A korábbi nyilvános fájlok továbbra is elérhetők a saját webcímükön.',
     },
     fields: [
       {
@@ -195,8 +201,22 @@ const lessonFields: Field[] = [
         name: 'file',
         type: 'upload',
         relationTo: 'media',
-        required: true,
-        label: 'Fájl',
+        required: false,
+        label: 'Korábbi nyilvános fájl',
+        admin: {
+          description: 'Korábbi mellékletekhez. Új anyaghoz a védett kurzusfájlt használd.',
+        },
+      },
+      {
+        name: 'protectedFile',
+        type: 'upload',
+        relationTo: 'course-files',
+        label: 'Védett kurzusfájl',
+        filterOptions: ({ id }) => (typeof id === 'number' ? { course: { equals: id } } : false),
+        admin: {
+          description:
+            'Előbb mentsd el a kurzust, majd tölts fel hozzá fájlt. A vevő a lecke publikálása után töltheti le.',
+        },
       },
     ],
   },

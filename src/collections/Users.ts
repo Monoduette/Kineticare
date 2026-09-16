@@ -9,6 +9,7 @@ import {
   validatePasswordStrength,
 } from '../lib/security/password-policy'
 import { createLogger } from '../lib/logger'
+import { validateAccessGrantRows } from '../lib/access-grants'
 import { resolveClientIp } from '../lib/audit'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import {
@@ -159,9 +160,7 @@ const enforcePasswordPolicy: CollectionBeforeChangeHook = ({ data, originalDoc }
   // Update-nél az e-mail gyakran nincs a payloadban — ilyenkor a
   // meglévő rekord e-mail-címével vetjük össze a jelszót.
   const email =
-    typeof data.email === 'string'
-      ? data.email
-      : (originalDoc?.email as string | undefined)
+    typeof data.email === 'string' ? data.email : (originalDoc?.email as string | undefined)
   const errors = validatePasswordStrength({ password: data.password, email })
   if (errors.length > 0) {
     throw new APIError(formatPasswordPolicyErrors(errors), 400)
@@ -552,7 +551,8 @@ export const Users: CollectionConfig = {
        */
       name: 'accessGrants',
       type: 'array',
-      label: 'Ajándék-hozzáférés (időpontok)',
+      label: 'Hozzáférési időpontok és eredetek',
+      validate: validateAccessGrantRows,
       access: {
         create: () => false,
         update: () => false,
@@ -560,7 +560,7 @@ export const Users: CollectionConfig = {
       admin: {
         readOnly: true,
         description:
-          'Időkorlátos ajándék-kurzus kezdőpontja. A staff a Kurzus ajándékozása panellel adja, nem itt.',
+          'Fizetésből vagy önálló ajándékból származó kezdőpontok. A staff a Kurzus ajándékozása panellel adja, nem itt.',
       },
       fields: [
         {
@@ -574,10 +574,27 @@ export const Users: CollectionConfig = {
           name: 'grantedAt',
           type: 'date',
           required: true,
-          label: 'Ajándékozás időpontja',
+          label: 'Hozzáférés kezdőpontja',
           admin: {
             date: { pickerAppearance: 'dayAndTime' },
           },
+        },
+        {
+          name: 'sourceKind',
+          type: 'select',
+          label: 'Hozzáférés eredete',
+          options: [
+            { label: 'Fizetett rendelés', value: 'order' },
+            { label: 'Önálló ajándék vagy ingyenes hozzáférés', value: 'independent' },
+          ],
+          admin: { readOnly: true, description: 'Üres érték: történeti, nem bizonyított eredet.' },
+        },
+        {
+          name: 'sourceOrder',
+          type: 'relationship',
+          relationTo: 'orders',
+          label: 'Forrásrendelés',
+          admin: { readOnly: true },
         },
       ],
     },
@@ -718,10 +735,7 @@ export const Users: CollectionConfig = {
     // reprodukálva; részletes indoklás: src/lib/course-progress/cleanup.ts.
     beforeDelete: [deleteCourseProgressOnParentDelete('user')],
     afterChange: [revokeOtherSessionsAfterCredentialChangeHook],
-    afterLogin: [
-      clearPasswordSetupPendingAfterLogin,
-      revokeOtherSessionsAfterPasswordResetHook,
-    ],
+    afterLogin: [clearPasswordSetupPendingAfterLogin, revokeOtherSessionsAfterPasswordResetHook],
     afterError: [logFailedLogin],
   },
 }

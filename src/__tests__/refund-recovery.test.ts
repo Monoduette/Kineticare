@@ -7,13 +7,13 @@ describe('durable refund recovery integration', () => {
   it('preserves the bounded row-version baseline through audit storage and recovery', async () => {
     const f = fixture()
     const baseline: RefundAccessBaseline = {
-      version: 1,
+      version: 2,
       customerId: 7,
       productIds: [42],
       purchases: [{ id: 1, productId: 42 }],
       grantProductIds: [42],
       grantsFingerprint: 'b'.repeat(64),
-      grantProof: 'bounded-xmin-v1',
+      grantProof: 'bounded-xmin-provenance-v2',
       fullXid: '1000',
       xidCeiling: '1001',
       grants: [
@@ -24,6 +24,8 @@ describe('durable refund recovery integration', () => {
           position: 0,
           xmin: '900',
           age: 100,
+          sourceKind: 'order',
+          sourceOrder: 11,
         },
       ],
     }

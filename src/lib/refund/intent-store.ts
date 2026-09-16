@@ -8,10 +8,11 @@ import {
   decideRefundIntentCreation,
   decideRefundIntentTransition,
   digestRefundIdempotencyKey,
-  hashRefundIntentRequestV1,
+  hashRefundIntentRequest,
   isRefundIntentState,
-  validateRefundIntentRequestV1,
-  type CanonicalRefundIntentRequestV1,
+  validateRefundIntentRequest,
+  parseRefundIntentActorIdentity,
+  type CanonicalRefundIntentRequest,
   type RefundIntentProviderNoEffectEvidence,
   type RefundIntentState,
 } from './refund-intent'
@@ -45,6 +46,7 @@ interface Database extends Executor {
 const MAX_RECORDS = 1_000
 const DIGEST = /^[a-f0-9]{64}$/u
 const columns = sql`id, order_id AS "order", actor_id AS "actor",
+  actor_kind AS "actorKind", system_actor AS "systemActor",
   requested_amount_huf AS "requestedAmountHuf", provider,
   provider_payment_id AS "providerPaymentId", provider_transaction_id AS "providerTransactionId",
   state, request_hash AS "requestHash", idempotency_key_hash AS "idempotencyKeyHash",
@@ -117,12 +119,23 @@ function parseIntent(value: unknown): RefundIntent {
     throw new RefundIntentStoreError('invalid_record')
   }
   const order = integer(value.order)
-  const actor = integer(value.actor)
-  let request: CanonicalRefundIntentRequestV1
+  const schemaVersion = integer(value.schemaVersion)
+  let actor: number | null
+  let request: CanonicalRefundIntentRequest
   try {
-    request = validateRefundIntentRequestV1({
-      schemaVersion: integer(value.schemaVersion),
-      actorId: String(actor),
+    const identity = parseRefundIntentActorIdentity({
+      schemaVersion,
+      actor: value.actor == null ? null : integer(value.actor),
+      actorKind: value.actorKind,
+      systemActor: value.systemActor,
+    })
+    actor = identity.actorId
+    request = validateRefundIntentRequest({
+      schemaVersion,
+      actorId: actor === null ? null : String(actor),
+      ...(schemaVersion === 2
+        ? { actorKind: identity.actorKind, systemActor: identity.systemActor }
+        : {}),
       orderId: String(order),
       provider: value.provider,
       providerPaymentId: value.providerPaymentId,
@@ -136,7 +149,7 @@ function parseIntent(value: unknown): RefundIntent {
     throw new RefundIntentStoreError('invalid_record')
   }
   if (
-    value.requestHash !== hashRefundIntentRequestV1(request) ||
+    value.requestHash !== hashRefundIntentRequest(request) ||
     value.reason !== request.reason ||
     typeof value.idempotencyKeyHash !== 'string' ||
     !DIGEST.test(value.idempotencyKeyHash) ||
@@ -149,6 +162,8 @@ function parseIntent(value: unknown): RefundIntent {
     id: integer(value.id),
     order,
     actor,
+    ...(value.actorKind != null ? { actorKind: value.actorKind as 'owner' | 'system' } : {}),
+    ...(value.systemActor != null ? { systemActor: value.systemActor as string } : {}),
     requestedAmountHuf: request.requestedAmountHuf,
     provider: request.provider,
     providerPaymentId: request.providerPaymentId,
@@ -277,17 +292,20 @@ export async function loadRefundIntentsForOrder(
 /** Csak uj prepared rekordot ad vissza; a replay soha nem inditasi engedely. */
 export async function createRefundIntent(
   payload: Payload,
-  request: CanonicalRefundIntentRequestV1,
+  request: CanonicalRefundIntentRequest,
   rawApplicationKey?: string,
 ): Promise<RefundIntent> {
   return guarded(async () => {
-    const canonical = validateRefundIntentRequestV1(request)
+    const canonical = validateRefundIntentRequest(request)
     const orderId = integer(canonical.orderId)
-    const actorId = integer(canonical.actorId)
-    if (String(orderId) !== canonical.orderId || String(actorId) !== canonical.actorId) {
+    const actorId = canonical.actorId === null ? null : integer(canonical.actorId)
+    if (
+      String(orderId) !== canonical.orderId ||
+      (actorId !== null && String(actorId) !== canonical.actorId)
+    ) {
       throw new RefundIntentStoreError('invalid_record')
     }
-    const requestHash = hashRefundIntentRequestV1(canonical)
+    const requestHash = hashRefundIntentRequest(canonical)
     const keyHash = digestRefundIdempotencyKey(
       rawApplicationKey ?? randomBytes(32).toString('base64url'),
     )
@@ -315,11 +333,13 @@ export async function createRefundIntent(
         await tx.execute(sql`INSERT INTO "public"."refund_intents"
         (order_id, actor_id, requested_amount_huf, provider, provider_payment_id,
          provider_transaction_id, state, request_hash, idempotency_key_hash, active_order_key,
-         schema_version, refund_sequence, currency, reason)
+         schema_version, refund_sequence, currency, reason, actor_kind, system_actor)
         VALUES (${orderId}, ${actorId}, ${canonical.requestedAmountHuf}, ${canonical.provider},
           ${canonical.providerPaymentId}, ${canonical.providerTransactionId}, 'prepared',
           ${requestHash}, ${keyHash}, ${activeKey}, ${canonical.schemaVersion},
-          ${canonical.refundSequence}, ${canonical.currency}, ${canonical.reason})
+          ${canonical.refundSequence}, ${canonical.currency}, ${canonical.reason},
+          ${canonical.schemaVersion === 2 ? canonical.actorKind : null},
+          ${canonical.schemaVersion === 2 ? canonical.systemActor : null})
         RETURNING ${columns}`),
       )
       if (inserted.length !== 1) throw new RefundIntentStoreError('persistence')

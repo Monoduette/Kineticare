@@ -34,7 +34,7 @@ export const ORDER_POLL_REFILL_PAGES = 1
 /** Egymást követő szállítási hibák után megszakítás; sikeres GetState nullázza. */
 export const MAX_CONSECUTIVE_TRANSPORT_FAILURES = 3
 
-/** A futás elején ennyi hibás hívás után megállás (rossz kulcs / teljes kimaradás). */
+/** Az első siker előtt ennyi ismeretlen kimenet után megállás (pl. új auth-hibakód). */
 export const MAX_LEADING_FAILURES = 5
 // Az árva-rendelés lejárata 24 óra: a Barion PaymentWindow (30 perc) és a
 // banki késleltetések mellett a 2 órás türelem túl szűk volt — a 2 óra UTÁN
@@ -116,12 +116,12 @@ export interface OrderPollDeps {
 /** Ismert Barion auth-hibakódok (pontos egyezés — ne regex, poison pill ellen). */
 export const BARION_AUTH_ERROR_CODES: readonly string[] = ['AuthenticationFailed']
 
-/** GetState-hiba osztálya: `auth` (azonnal megáll) | `transport` (N egymás után) | `order` (folytat). */
-export type BarionFailureClass = 'auth' | 'order' | 'transport'
+/** A definitív rendelés-hiba forgatható; az ismeretlen hiba nem egészségbizonyíték. */
+export type BarionFailureClass = 'auth' | 'order' | 'transport' | 'unknown'
 
 export function classifyBarionFailure(error: unknown): BarionFailureClass {
   if (!(error instanceof BarionApiError)) {
-    return 'order'
+    return 'unknown'
   }
   if (error.httpStatus === 401 || error.httpStatus === 403) {
     return 'auth'
@@ -141,7 +141,7 @@ export function classifyBarionFailure(error: unknown): BarionFailureClass {
   if ((error.httpStatus ?? 0) >= 500) {
     return 'transport'
   }
-  return 'order'
+  return error.httpStatus === 404 ? 'order' : 'unknown'
 }
 
 /**
@@ -325,8 +325,8 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
   /**
    * Egymást követő szállítási hibák (timeout / hálózat / 5xx) száma. SIKERES
-   * GetState-re nullázódik; a rendelés-szintű hibák (404 stb.) nem nyúlnak
-   * hozzá, mert azok nem mondanak semmit a szolgáltatás egészségéről.
+   * GetState-re vagy definitív rendelésválaszra (404) nullázódik. Egy ilyen
+   * válasz megszakítja a szállítási hibák egymásutánját.
    */
   let consecutiveTransportFailures = 0
 
@@ -335,10 +335,27 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
    * `MAX_LEADING_FAILURES` mennyezet él (lásd ott).
    */
   let hadSuccessfulCall = false
-  /** Hibás hívások száma az első SIKERES válaszig. */
+  /** Ismeretlen kimenetű hívások száma az első SIKERES válaszig. */
   let leadingFailures = 0
 
   const seenIds = new Set<number>()
+  let rotationFailures = 0
+
+  // Az updatedAt a meglévő sorforgatási óra. Egy sikertelen touch nem lehet
+  // új globális fék; egyetlen összegző figyelmeztetés jelzi a futás végén.
+  const rotateOrder = async (order: Order): Promise<void> => {
+    if (order.status !== 'payment_pending' && !isLateSuccessSourceStatus(order.status)) return
+    try {
+      await updateOrderStatusIfCurrent({
+        payload: deps.payload,
+        orderId: order.id,
+        expected: order.status,
+        next: order.status,
+      })
+    } catch {
+      rotationFailures += 1
+    }
+  }
 
   const applyMappedState = async (
     order: Order,
@@ -363,14 +380,8 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             )
           }
         }
-      } else if (isLateSuccessSourceStatus(statusBefore)) {
-        await updateOrderStatusIfCurrent({
-          payload: deps.payload,
-          orderId: order.id,
-          expected: statusBefore,
-          next: statusBefore,
-        })
       }
+      await rotateOrder(order)
       return
     }
 
@@ -428,20 +439,17 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         })
         orderLog.info('paid-reject recovery lefutott', recoveryCtx)
         if (recovery.action === 'failed') {
-          recoveryFailed = true
+          recoveryFailed = recovery.detail !== 'refund-pending-reconciliation'
           orderLog.error(
-            'RIASZTÁS: paid-reject recovery sikertelen — a sor nem forog, a következő futás újrapróbálja',
+            recoveryFailed
+              ? 'RIASZTÁS: paid-reject recovery sikertelen — a következő futás újra ellenőrzi'
+              : 'RIASZTÁS: tartós refund ellenőrzésre vár — a sor forgatható új pénzművelet nélkül',
             recoveryCtx,
           )
         }
       }
       if (!recoveryFailed && statusBefore === 'payment_pending') {
-        await updateOrderStatusIfCurrent({
-          payload: deps.payload,
-          orderId: order.id,
-          expected: 'payment_pending',
-          next: 'payment_pending',
-        })
+        await rotateOrder(order)
       }
       orderLog.warn('order-poll: az átmenet visszautasítva (állapotgép-védelem)', {
         reason: transition.reason ?? null,
@@ -453,12 +461,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       isLateSuccessSourceStatus(statusBefore) &&
       !transition.transitionedToPaid
     ) {
-      await updateOrderStatusIfCurrent({
-        payload: deps.payload,
-        orderId: order.id,
-        expected: statusBefore,
-        next: statusBefore,
-      })
+      await rotateOrder(order)
     }
   }
 
@@ -543,12 +546,17 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
           }
         }
 
-        if (!hadSuccessfulCall) {
+        if (failureClass === 'order') {
+          consecutiveTransportFailures = 0
+          await rotateOrder(order)
+        }
+
+        if (!hadSuccessfulCall && failureClass === 'unknown') {
           leadingFailures += 1
           if (leadingFailures >= MAX_LEADING_FAILURES) {
             summary.skipped += remaining
             log.error(
-              `RIASZTÁS: a futás első ${MAX_LEADING_FAILURES} Barion-hívása mind hibára futott ` +
+              `RIASZTÁS: ${MAX_LEADING_FAILURES} tisztázatlan Barion-hiba a futás elején ` +
                 '(egyetlen sikeres válasz sem érkezett) — a futás megszakadt, a maradék függő ' +
                 'rendelés érintetlen. Ellenőrizd a Barion-környezetet, a POSKey-t és a ' +
                 'szolgáltatás állapotát; a következő ütemezett futás újrapróbálja.',
@@ -663,12 +671,16 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
               break
             }
           }
-          if (!hadSuccessfulCall) {
+          if (failureClass === 'order') {
+            consecutiveTransportFailures = 0
+            await rotateOrder(order)
+          }
+          if (!hadSuccessfulCall && failureClass === 'unknown') {
             leadingFailures += 1
             if (leadingFailures >= MAX_LEADING_FAILURES) {
               summary.skipped += remaining
               log.error(
-                `RIASZTÁS: a futás első ${MAX_LEADING_FAILURES} Barion-hívása mind hibára futott ` +
+                `RIASZTÁS: ${MAX_LEADING_FAILURES} tisztázatlan Barion-hiba a futás elején ` +
                   '(egyetlen sikeres válasz sem érkezett) — a late-success scan megszakadt, a ' +
                   'maradék cancelled rendelés érintetlen. Ellenőrizd a Barion-környezetet, a ' +
                   'POSKey-t és a szolgáltatás állapotát; a következő ütemezett futás újrapróbálja.',
@@ -696,6 +708,12 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
   }
 
   await resweepInvoices(deps, log, summary)
+
+  if (rotationFailures > 0) {
+    log.warn('order-poll: a sorforgatás részben sikertelen — a következő futás ismét ellenőrzi', {
+      rotationFailures,
+    })
+  }
 
   log.info('order-poll futás kész', { ...summary })
   return summary

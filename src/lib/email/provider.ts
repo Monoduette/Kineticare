@@ -105,9 +105,17 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
     ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
   }
   const maskedTo = message.to.map(maskEmail)
+  // A tárgy és a provider nyers hiba/azonosító szövege is tartalmazhat
+  // látogatói adatot. Naplóba csak ez a zárt metaadatlista kerül; a valódi
+  // üzenet és a SendResult ettől változatlanul jut el a címzetthez/hívóhoz.
+  const logContext = {
+    provider: provider.name,
+    to: maskedTo,
+    recipientCount: message.to.length,
+  }
 
   if (message.to.length === 0) {
-    logger.warn('e-mail küldés kihagyva: nincs címzett', { subject: message.subject })
+    logger.warn('e-mail küldés kihagyva: nincs címzett', logContext)
     return { ok: false, provider: provider.name, retryable: false, error: 'nincs címzett' }
   }
 
@@ -133,27 +141,17 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
         message,
       )
     } else {
-      logger.debug('noop e-mail provider — küldés szimulálva', {
-        to: maskedTo,
-        subject: message.subject,
-      })
+      logger.debug('noop e-mail provider — küldés szimulálva', logContext)
     }
-    logger.info('e-mail elküldve', {
-      provider: provider.name,
-      to: maskedTo,
-      subject: message.subject,
-      id,
-    })
+    logger.info('e-mail elküldve', logContext)
     return { ok: true, provider: provider.name, ...(id ? { id } : {}) }
   } catch (error) {
     const retryable = error instanceof EmailSendError ? error.retryable : true
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.warn('e-mail küldés sikertelen', {
-      provider: provider.name,
-      to: maskedTo,
-      subject: message.subject,
+      ...logContext,
       retryable,
-      error: errorMessage,
+      errorKind: error instanceof EmailSendError ? 'email-send-error' : 'unexpected-error',
     })
     return { ok: false, provider: provider.name, retryable, error: errorMessage }
   }

@@ -8,6 +8,17 @@ import { buildContentSecurityPolicy } from './src/lib/security/csp'
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://eu.i.posthog.com'
 
 const nextConfig: NextConfig = {
+  // Az optimizer cache közös, és a belső fetch nem továbbítja a vevő sütijét.
+  // Csak a tényleges nyilvános képterek optimalizálhatók; a course-files
+  // külön jogosultságellenőrzött URL-je közvetlenül tölthető le.
+  images: {
+    localPatterns: [
+      { pathname: '/api/media/file/*' },
+      { pathname: '/media/**' },
+      { pathname: '/assets/**' },
+      { pathname: '/_next/static/media/**' },
+    ],
+  },
   experimental: {
     // A `src/app/global-not-found.tsx` KIZÁRÓLAG ezzel a kapcsolóval él —
     // enélkül a Next figyelmen kívül hagyja a fájlt, és a nem illeszkedő
@@ -90,6 +101,23 @@ const nextConfig: NextConfig = {
               process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
               process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
               process.env.POSTHOG_SHARED_DASHBOARD_URL,
+            ),
+          },
+        ],
+      },
+      // Next applies the last matching value for the same header key.
+      // Keep direct TUS connections out of the storefront policy.
+      {
+        source: '/admin/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: buildContentSecurityPolicy(
+              bunnyPullZoneHost(),
+              process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID,
+              process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
+              process.env.POSTHOG_SHARED_DASHBOARD_URL,
+              true,
             ),
           },
         ],

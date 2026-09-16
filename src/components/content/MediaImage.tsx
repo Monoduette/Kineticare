@@ -2,6 +2,7 @@ import Image from 'next/image'
 
 import {
   buildMediaSrcSet,
+  isPrivateCourseFileUrl,
   mediaAlt,
   mediaDimensions,
   pickMediaUrl,
@@ -44,7 +45,9 @@ export function MediaImage({
 
   const alt = decorative ? '' : mediaAlt(media)
   if (process.env.NODE_ENV !== 'production' && !decorative && alt.trim().length === 0) {
-    console.warn('[MediaImage] Hiányzó alt-szöveg — a Media sémában kötelező; ellenőrizd az adatot.')
+    console.warn(
+      '[MediaImage] Hiányzó alt-szöveg — a Media sémában kötelező; ellenőrizd az adatot.',
+    )
   }
 
   const srcSet = buildMediaSrcSet(media)
@@ -53,6 +56,7 @@ export function MediaImage({
   return (
     <Image
       src={src}
+      unoptimized={isPrivateCourseFileUrl(src)}
       alt={alt}
       width={dimensions?.width}
       height={dimensions?.height}

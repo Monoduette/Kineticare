@@ -12,6 +12,7 @@ import {
 import {
   digestRefundIdempotencyKey,
   hashRefundIntentRequestV1,
+  hashRefundIntentRequest,
   type CanonicalRefundIntentRequestV1,
 } from '@/lib/refund/refund-intent'
 import configPromise from '../payload.config'
@@ -23,7 +24,7 @@ if (process.env.DATABASE_URI) {
   const target = new URL(process.env.DATABASE_URI)
   if (
     !['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) ||
-    !['/kineticare_ci', '/kineticare_pr207_validation'].includes(target.pathname)
+    !(target.pathname === '/kineticare_ci' || (target.pathname === '/audit' && target.port === '1'))
   ) {
     throw new Error('Refund intent DB verification requires the disposable localhost CI database')
   }
@@ -113,10 +114,7 @@ describe.skipIf(!hasDb)('refund intent store (real PostgreSQL)', () => {
 
   afterEach(async () => {
     if (orderId === undefined || !first) return
-    await adapter(first).pool.query(
-      'DELETE FROM refund_intents WHERE order_id = $1 AND actor_id = $2',
-      [orderId, actorId],
-    )
+    await adapter(first).pool.query('DELETE FROM refund_intents WHERE order_id = $1', [orderId])
     await adapter(first).pool.query('DELETE FROM orders WHERE id = $1 AND customer_id = $2', [
       orderId,
       actorId,
@@ -204,6 +202,79 @@ describe.skipIf(!hasDb)('refund intent store (real PostgreSQL)', () => {
     )
     expect(persisted.rows).toEqual([{ id: winner.id }])
     await expect(loadActiveRefundIntent(second, orderId!)).resolves.toEqual(winner)
+  }, 15_000)
+
+  it('round-trips a system V2 row with null user actor and preserves identity through SQL CAS', async () => {
+    const system = {
+      ...request,
+      schemaVersion: 2 as const,
+      actorId: null,
+      actorKind: 'system' as const,
+      systemActor: 'paid-reject-recovery' as const,
+    }
+    const created = await createRefundIntent(first, system, key())
+    expect(created).toMatchObject({
+      schemaVersion: 2,
+      actor: null,
+      actorKind: 'system',
+      systemActor: 'paid-reject-recovery',
+      requestHash: hashRefundIntentRequest(system),
+    })
+    const persisted = await adapter(first).pool.query(
+      'SELECT actor_id, actor_kind, system_actor, schema_version FROM refund_intents WHERE id = $1',
+      [created.id],
+    )
+    expect(persisted.rows).toEqual([
+      {
+        actor_id: null,
+        actor_kind: 'system',
+        system_actor: 'paid-reject-recovery',
+        // node-postgres preserves raw numeric columns as strings; the store parses them.
+        schema_version: '2',
+      },
+    ])
+    expect(await loadActiveRefundIntent(second, orderId!)).toEqual(created)
+    expect(await transitionRefundIntent(second, created, 'provider_started')).toMatchObject({
+      actor: null,
+      actorKind: 'system',
+      state: 'provider_started',
+    })
+    await expect(createRefundIntent(first, request, key())).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    await adapter(first).pool.query('UPDATE refund_intents SET actor_id = $1 WHERE id = $2', [
+      actorId,
+      created.id,
+    ])
+    await expect(loadActiveRefundIntent(second, orderId!)).rejects.toMatchObject({
+      code: 'invalid_record',
+    })
+  }, 15_000)
+
+  it('allows only one owner or system create when both connections contend for the same active order', async () => {
+    const system = {
+      ...request,
+      schemaVersion: 2 as const,
+      actorId: null,
+      actorKind: 'system' as const,
+      systemActor: 'paid-reject-recovery' as const,
+    }
+    const results = await contend(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+      [`refund-intent:order:${orderId}`],
+      () =>
+        Promise.allSettled([
+          createRefundIntent(first, request, key()),
+          createRefundIntent(second, system, key()),
+        ]),
+    )
+    const winner = exactlyOne(results, 'conflict')
+    expect(await loadActiveRefundIntent(first, orderId!)).toEqual(winner)
+    const records = await adapter(first).pool.query(
+      'SELECT id FROM refund_intents WHERE order_id = $1',
+      [orderId],
+    )
+    expect(records.rows).toHaveLength(1)
   }, 15_000)
 
   it('allows exactly one prepared CAS winner across independent connections', async () => {

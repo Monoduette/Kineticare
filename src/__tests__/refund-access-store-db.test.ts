@@ -117,13 +117,13 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
       [customerId, productId, unrelatedProductId],
     )
     ;[purchaseId, unrelatedPurchaseId] = relations.rows.map((row) => row.id)
+    orderId = await addOrder('refunded')
     grantId = randomUUID()
     await pool().query(
-      `INSERT INTO users_access_grants (_order, _parent_id, id, product_id, granted_at)
-       VALUES (1, $1, $2, $3, $4), (2, $1, $5, $6, $4)`,
-      [customerId, grantId, productId, grantTime, randomUUID(), unrelatedProductId],
+      `INSERT INTO users_access_grants (_order, _parent_id, id, product_id, granted_at, source_kind, source_order_id)
+       VALUES (1, $1, $2, $3, $4, 'order', $7), (2, $1, $5, $6, $4, NULL, NULL)`,
+      [customerId, grantId, productId, grantTime, randomUUID(), unrelatedProductId, orderId],
     )
-    orderId = await addOrder('refunded')
     const prepared = await createRefundIntent(
       worker,
       {
@@ -145,7 +145,7 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
     baseline = await withUserPurchasesLock(worker, customerId, () =>
       readRefundAccessBaseline(worker, customerId, [productId]),
     )
-    expect(baseline.grantProof).toBe('bounded-xmin-v1')
+    expect(baseline.grantProof).toBe('bounded-xmin-provenance-v2')
     expect(baseline.grants).toHaveLength(1)
     expect(baseline.grants![0].age).toBeGreaterThan(0)
     await pool().query(
@@ -218,7 +218,7 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
       `SELECT
        ARRAY(SELECT id FROM users_rels WHERE parent_id = $1 AND path = 'purchases' ORDER BY id) AS purchases,
        (SELECT coalesce(jsonb_agg(jsonb_build_object('id', id, 'productId', product_id,
-         'grantedAt', granted_at, 'position', _order, 'xmin', xmin::text) ORDER BY id), '[]'::jsonb)
+         'grantedAt', granted_at, 'position', _order, 'xmin', xmin::text, 'sourceKind', source_kind, 'sourceOrder', source_order_id) ORDER BY id), '[]'::jsonb)
          FROM users_access_grants WHERE _parent_id = $1) AS grants,
        (SELECT coalesce(jsonb_agg(jsonb_build_object('actorId', actor_id, 'after', "after") ORDER BY id), '[]'::jsonb)
          FROM audit_logs WHERE entity_type = 'refund-intents' AND entity_id = $2
@@ -267,7 +267,9 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
           requestFingerprint: intent.requestHash,
           completed: true,
           reason: 'resolved',
-          cleanupKind: 'sql-access-v1',
+          cleanupKind: 'sql-access-v2',
+          revokedSourceOrderId: orderId,
+          retainedGrantIds: [grantId],
           deletedRelationIds: [purchaseId],
           preservedProductIds: [],
         },
@@ -275,6 +277,30 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
     ])
     await expect(cleanup()).resolves.toEqual({ status: 'completed' })
     expect(await observe()).toEqual(after)
+  })
+
+  it('retains a new independent gift and every grant row after the target refund', async () => {
+    await pool().query(
+      `INSERT INTO users_access_grants (_order, _parent_id, id, product_id, granted_at, source_kind)
+       VALUES (3, $1, $2, $3, $4, 'independent')`,
+      [customerId, randomUUID(), productId, grantTime],
+    )
+    const before = await observe()
+    await expect(cleanup()).resolves.toEqual({ status: 'completed' })
+    const after = await observe()
+    expect(after.purchases).toEqual(before.purchases)
+    expect(after.grants).toEqual(before.grants)
+    expect(after.receipts[0].after.preservedProductIds).toEqual([productId])
+  })
+
+  it('holds a persisted legacy origin without deleting the membership', async () => {
+    await pool().query(
+      'UPDATE users_access_grants SET source_kind = NULL, source_order_id = NULL WHERE id = $1',
+      [grantId],
+    )
+    const before = await observe()
+    await expect(cleanup()).resolves.toEqual({ status: 'manual_review' })
+    expect(await observe()).toEqual(before)
   })
 
   it('preserves access after same-ID and identical-fields grant replacement changes its real xmin', async () => {
@@ -286,9 +312,9 @@ describe.skipIf(!hasDb)('refund access store (real PostgreSQL)', () => {
         customerId,
       ])
       await replacement.query(
-        `INSERT INTO users_access_grants (_order, _parent_id, id, product_id, granted_at)
-         VALUES (1, $1, $2, $3, $4)`,
-        [customerId, grantId, productId, grantTime],
+        `INSERT INTO users_access_grants (_order, _parent_id, id, product_id, granted_at, source_kind, source_order_id)
+         VALUES (1, $1, $2, $3, $4, 'order', $5)`,
+        [customerId, grantId, productId, grantTime, orderId],
       )
       await replacement.query('COMMIT')
     } finally {

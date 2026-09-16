@@ -11,6 +11,8 @@ import {
   accessGrantsForWrite,
   grantDatesFromRows,
   grantRowsFromUnknown,
+  productIdFromGrant,
+  validateAccessGrantRows,
   withUpsertedAccessGrant,
 } from './access-grants'
 import { purchaseDatesFromOrders } from './course-access-lookup'
@@ -27,15 +29,18 @@ export const ACCESS_GRANT_BACKFILL_PRODUCT_MAX = 5_000
 
 export type AccessGrantKihagyasIndok = 'nincs-paid-datum'
 
-export const ACCESS_GRANT_KIHAGYAS_SZOVEG: Readonly<
-  Record<AccessGrantKihagyasIndok, string>
-> = {
+export const ACCESS_GRANT_KIHAGYAS_SZOVEG: Readonly<Record<AccessGrantKihagyasIndok, string>> = {
   'nincs-paid-datum':
     'időkorlátos kurzus a purchasesben, de nincs paid rendelés dátuma — a script nem találgat (nem mai nap, nem a fiók létrehozása)',
 }
 
 export type AccessGrantTerv =
-  | { readonly dontes: 'ir'; readonly productId: number; readonly grantedAt: string }
+  | {
+      readonly dontes: 'ir'
+      readonly productId: number
+      readonly grantedAt: string
+      readonly sourceOrder: number
+    }
   | {
       readonly dontes: 'kihagy'
       readonly productId: number
@@ -97,6 +102,38 @@ export function paidDatesByCustomer(
   return byCustomer
 }
 
+export interface PaidGrantOrigin {
+  grantedAt: string
+  sourceOrder: number
+}
+
+/** Keep the exact order identity with its verified customer, SKU and historical clock. */
+export function paidOriginsByCustomer(
+  orders: readonly Order[],
+): Map<number, Map<number, PaidGrantOrigin>> {
+  const result = new Map<number, Map<number, PaidGrantOrigin>>()
+  for (const order of orders) {
+    const customerId = productIdFromGrant(order.customer)
+    const sourceOrder = productIdFromGrant(order.id)
+    if (customerId === null || sourceOrder === null) continue
+    const dates = purchaseDatesFromOrders([order])
+    const customer = result.get(customerId) ?? new Map<number, PaidGrantOrigin>()
+    for (const [productId, grantedAt] of dates) {
+      const previous = customer.get(productId)
+      if (
+        !previous ||
+        Date.parse(grantedAt) > Date.parse(previous.grantedAt) ||
+        (Date.parse(grantedAt) === Date.parse(previous.grantedAt) &&
+          sourceOrder > previous.sourceOrder)
+      ) {
+        customer.set(productId, { grantedAt, sourceOrder })
+      }
+    }
+    result.set(customerId, customer)
+  }
+  return result
+}
+
 /**
  * Egy vevő terve — tiszta függvény, mellékhatás nélkül.
  *
@@ -107,7 +144,7 @@ export function tervezzAccessGrantBackfill(input: {
   purchases: unknown
   accessGrants: unknown
   limitedProductIds: ReadonlySet<number>
-  paidDates: ReadonlyMap<number, string>
+  paidSources: ReadonlyMap<number, PaidGrantOrigin>
 }): AccessGrantTerv[] {
   const existing = grantDatesFromRows(input.accessGrants)
   const terv: AccessGrantTerv[] = []
@@ -119,9 +156,14 @@ export function tervezzAccessGrantBackfill(input: {
     if (existing.has(productId)) {
       continue
     }
-    const paid = input.paidDates.get(productId)
+    const paid = input.paidSources.get(productId)
     if (paid !== undefined) {
-      terv.push({ dontes: 'ir', productId, grantedAt: paid })
+      terv.push({
+        dontes: 'ir',
+        productId,
+        grantedAt: paid.grantedAt,
+        sourceOrder: paid.sourceOrder,
+      })
       continue
     }
     terv.push({
@@ -186,11 +228,7 @@ export interface AccessGrantBackfillFuggosegek {
    * Írás alatti zár. Alap: `withUserPurchasesLock`. A teszt identity-t ad,
    * hogy ne kelljen Postgres advisory-lock.
    */
-  withLock?: (
-    payload: Payload,
-    userId: number,
-    fn: () => Promise<void>,
-  ) => Promise<void>
+  withLock?: (payload: Payload, userId: number, fn: () => Promise<void>) => Promise<void>
 }
 
 const NEMA_NAPLO: Pick<Logger, 'info' | 'warn' | 'error'> = {
@@ -300,7 +338,7 @@ export async function futtatAccessGrantBackfill(
     maxOrder,
   )
 
-  const datesByCustomer = paidDatesByCustomer(orders.docs)
+  const originsByCustomer = paidOriginsByCustomer(orders.docs)
 
   const users = await readStatisticsPages<AccessGrantBackfillUserDoc>(
     async (page, limit) =>
@@ -331,7 +369,7 @@ export async function futtatAccessGrantBackfill(
       purchases: user.purchases,
       accessGrants: user.accessGrants,
       limitedProductIds,
-      paidDates: datesByCustomer.get(user.id) ?? new Map(),
+      paidSources: originsByCustomer.get(user.id) ?? new Map(),
     })
     const irandok = terv.filter((sor) => sor.dontes === 'ir')
     for (const sor of terv) {
@@ -373,14 +411,44 @@ export async function futtatAccessGrantBackfill(
           purchases: friss && typeof friss === 'object' ? friss.purchases : null,
           accessGrants: friss && typeof friss === 'object' ? friss.accessGrants : null,
           limitedProductIds,
-          paidDates: datesByCustomer.get(user.id) ?? new Map(),
+          paidSources: originsByCustomer.get(user.id) ?? new Map(),
         }).filter((sor) => sor.dontes === 'ir')
 
+        const validation = validateAccessGrantRows(friss.accessGrants)
+        if (validation !== true) throw new Error(validation)
+        if (ujraTerv.length === 0) return
+        const sourceIds = [...new Set(ujraTerv.map((row) => row.sourceOrder))]
+        const freshOrders = await fuggosegek.payload.find({
+          collection: 'orders',
+          where: {
+            and: [
+              { id: { in: sourceIds } },
+              { customer: { equals: user.id } },
+              { status: { equals: 'paid' } },
+            ],
+          },
+          limit: sourceIds.length,
+          depth: 0,
+          overrideAccess: true,
+        })
+        const proven = paidOriginsByCustomer(freshOrders.docs).get(user.id)
         let rows = grantRowsFromUnknown(
           friss && typeof friss === 'object' ? friss.accessGrants : null,
         )
         for (const sor of ujraTerv) {
-          rows = withUpsertedAccessGrant(rows, sor.productId, new Date(sor.grantedAt))
+          const origin = proven?.get(sor.productId)
+          if (
+            !origin ||
+            origin.sourceOrder !== sor.sourceOrder ||
+            origin.grantedAt !== sor.grantedAt
+          )
+            throw new Error(
+              'A paid rendelés eredete az írás előtt megváltozott; ellenőrzés szükséges.',
+            )
+          rows = withUpsertedAccessGrant(rows, sor.productId, new Date(sor.grantedAt), {
+            sourceKind: 'order',
+            sourceOrder: sor.sourceOrder,
+          })
         }
         await fuggosegek.payload.update({
           collection: 'users',

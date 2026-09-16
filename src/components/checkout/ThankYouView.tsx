@@ -115,6 +115,7 @@ type ViewState =
   | { kind: 'refunded'; productId: number | null }
   | { kind: 'unauthorized' }
   | { kind: 'not-found' }
+  | { kind: 'review' }
 
 /**
  * A köszönőoldal következő lépése: ismert tételnél a lejátszó, egyébként a lista.
@@ -172,9 +173,9 @@ export function ThankYouUnauthorized({ orderNumber }: { orderNumber: string }) {
         e-mail-címmel, amellyel fizettél.
       </p>
       <p>
-        Ha a fizetést megszakítottad vagy a bank elutasította, általában nem történik levonás; ha
-        a bankod később mégis jóváhagyja, automatikusan érvényesítjük, és e-mailben
-        visszaigazoljuk. Újra is próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
+        Ha a fizetést megszakítottad vagy a bank elutasította, általában nem történik levonás; ha a
+        bankod később mégis jóváhagyja, automatikusan érvényesítjük, és e-mailben visszaigazoljuk.
+        Újra is próbálhatod: <Link href="/kurzusok">{ctaLabel('course-list-open')}</Link>.
       </p>
       <p className="kc-thankyou__order">
         Rendelésszám: <strong>{orderNumber}</strong>
@@ -227,6 +228,24 @@ export function ThankYouPaid({
         <Button href="/" variant="secondary">
           Vissza a kezdőlapra
         </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ThankYouReview({ orderNumber }: { orderNumber: string }) {
+  return (
+    <div aria-live="polite" className="kc-thankyou kc-thankyou--timeout" role="status">
+      <h1>A fizetésed ellenőrzése szükséges</h1>
+      <p>
+        A fizetés eredményét még ellenőriznünk kell. Írj nekünk a rendelésszámoddal, és addig ne
+        indíts új fizetést.
+      </p>
+      <p className="kc-thankyou__order">
+        Rendelésszám: <strong>{orderNumber}</strong>
+      </p>
+      <div className="kc-thankyou__actions">
+        <Button href="/kapcsolat">{ctaLabel('contact-open')}</Button>
       </div>
     </div>
   )
@@ -449,6 +468,9 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
           emitBarionPurchase(pixelOrderNumber, false)
           return
         }
+      } else if (result.kind === 'review') {
+        setState({ kind: 'review' })
+        return
       } else if (result.kind === 'not-found') {
         setState({ kind: 'not-found' })
         return
@@ -490,6 +512,7 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   if (state.kind === 'refunded') {
     return <ThankYouRefunded orderNumber={orderNumber} productId={state.productId} />
   }
+  if (state.kind === 'review') return <ThankYouReview orderNumber={orderNumber} />
 
   // 401 — nincs (érvényes) munkamenet. Ez KÉT esetet fed le:
   //  - VENDÉG-VÁSÁRLÁS: a vevő bejelentkezés nélkül fizetett, a fiókja a

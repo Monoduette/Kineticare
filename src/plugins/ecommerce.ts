@@ -14,12 +14,57 @@ import {
   streamAssetReadAccess,
 } from '../access'
 import { revalidateMenusCache } from '../collections/Menus'
+import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
 import { withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
+import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
+
+/** Unnamed tabs change layout only: stored paths and existing field objects survive. */
+function courseEditorTabs(fields: Field[]): Field[] {
+  const root: Field[] = []
+  const tabs = [
+    { label: 'Alapadatok', fields: [] as Field[] },
+    { label: 'Ár és hozzáférés', fields: [] as Field[] },
+    { label: 'Kurzusoldal', fields: [] as Field[] },
+    { label: 'Tananyag', fields: [] as Field[] },
+    { label: 'Haladás', fields: [] as Field[] },
+  ]
+  for (const field of fields) {
+    const name = 'name' in field ? field.name : undefined
+    if (
+      field.admin?.position === 'sidebar' ||
+      name === 'courseVisibilityNotice' ||
+      name === 'courseEditorialChecklist'
+    ) {
+      if (name === 'courseVisibilityNotice') root.unshift(field)
+      else root.push(field)
+      continue
+    }
+    const tab =
+      name === 'courseProgressPanel'
+        ? 4
+        : ['modules', 'videos'].includes(name ?? '')
+          ? 3
+          : name === 'accessDurationDays' || !name
+            ? 1
+            : [
+                  'displayTitle',
+                  'sku',
+                  'slug',
+                  'shortDescription',
+                  'category',
+                  'coverImage',
+                ].includes(name)
+              ? 0
+              : 2
+    tabs[tab].fields.push(field)
+  }
+  return [...root, { type: 'tabs', tabs: tabs.filter((tab) => tab.fields.length > 0) }]
+}
 
 /**
  * HUF deviza — a forintban nincs tizedesjegy (decimals: 0).
@@ -398,6 +443,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // viszont ON DELETE SET NULL — takarítás nélkül a törlés Postgres-hibával áll
     // le. Indoklás: src/lib/course-progress/cleanup.ts.
     beforeDelete: [
+      preventCourseDeletionWithFiles,
       ...(defaultCollection.hooks?.beforeDelete ?? []),
       deleteCourseProgressOnParentDelete('product'),
     ],
@@ -406,7 +452,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     ...defaultCollection.admin,
     useAsTitle: 'sku',
     group: WEBSHOP_GROUP,
-    description: 'A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja.',
+    description:
+      'A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja. Az előnézet a mentett kurzusoldalt mutatja, tananyag-hozzáférést nem ad.',
     // KÖTELEZŐ felülírás: a plugin `defaultColumns: ['prices']`-t állít be
     // (createProductsCollection), DE nincs `prices` nevű mező — a pricesField
     // egy NÉVTELEN group → row alá teszi a `priceInHUFEnabled` + `priceInHUF`
@@ -422,8 +469,21 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // A useAsTitle önmagában csak a technikai azonosítóra keresne; a szerkesztő
     // a kurzus CÍMÉRE keres.
     listSearchableFields: ['sku', 'displayTitle'],
+    preview: (doc) =>
+      typeof doc.id === 'number' && Number.isSafeInteger(doc.id) && doc.id > 0
+        ? buildAdminPreviewUrl('products', doc.slug)
+        : null,
   },
-  fields: [
+  fields: courseEditorTabs([
+    {
+      name: 'courseEditorialChecklist',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '/components/admin/CourseEditorialChecklist#CourseEditorialChecklist',
+        },
+      },
+    },
     {
       /**
        * A LEGELSŐ elem a lapon: kimondja, látszik-e a kurzus a weboldalon.
@@ -723,10 +783,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     {
       name: 'previewVideoStreamId',
       type: 'text',
-      label: 'Bemutató videó azonosítója',
+      label: 'Nyilvános bemutató videó',
       admin: {
+        components: { Field: '/components/admin/BunnyVideoField#PublicBunnyVideoField' },
         description:
-          'Az ingyenes előzetes videójának azonosítója. A Bunny felületén nyisd meg a videót, és másold ki a „Video ID” mezőt (hosszú, kötőjeles kód). Az előzeteseket a NYILVÁNOS videótárba töltsd fel — azt bárki megnézheti vásárlás nélkül is. Ha nincs előzetes, hagyd üresen.',
+          'Vásárlás nélkül is látható a kurzusoldalon. Nem kötelező; ha nincs, a borítókép jelenik meg.',
       },
     },
     // A kurzus tananyaga fejezetekre bontva (modulok → leckék). A mező
@@ -734,19 +795,6 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     // kell összeállítani, a `videos` már csak a korábbi tartalom hordozója.
     // A két szerkezet egyesítése a src/lib/curriculum/curriculum.ts-ben él.
     courseModulesField,
-    {
-      // Bunny Stream library-lista: a feltöltés a Bunny felületén marad, itt
-      // a GUID kimásolható a leckébe. UI-mező, nem tárol adatot, nincs séma-
-      // változás. A streamAssetId access-szabálya VÁLTOZATLAN.
-      name: 'bunnyLibraryPanel',
-      type: 'ui',
-      label: 'Videók a Bunny tárból',
-      admin: {
-        components: {
-          Field: '/components/admin/BunnyLibraryPanel#BunnyLibraryPanel',
-        },
-      },
-    },
     {
       name: 'videos',
       type: 'array',
@@ -778,10 +826,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         {
           name: 'streamAssetId',
           type: 'text',
-          label: 'Videó azonosítója',
+          label: 'Lecke videója',
           admin: {
+            components: { Field: '/components/admin/BunnyVideoField#ProtectedBunnyVideoField' },
             description:
-              'A Bunny Stream videó GUID-ja — a VÉDETT libraryből, a Bunny felületén a videó adatlapján található. Kézzel másolandó be.',
+              'A korábbi lecke felvétele a védett videótárból. A lista és a vevők haladása megmarad.',
           },
           // S2/b: a fizetős tartalom kulcsa nem kerülhet ki a nyilvános REST
           // API-n. Staff/owner és a terméket MEGVÁSÁRLÓ vevő olvassa; anonim és
@@ -797,6 +846,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'durationSec',
           type: 'number',
           label: 'Hossz (másodperc)',
+          admin: { readOnly: true, description: 'A videó kiválasztásakor átvett hossz.' },
         },
         {
           name: 'status',
@@ -809,8 +859,9 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
             { label: 'Hiba', value: 'error' },
           ],
           admin: {
+            readOnly: true,
             description:
-              'A videó feldolgozottsága. Nincs feltöltő-automatizmus, ezért KÉZZEL kell „Kész"-re állítani, miután a Bunny végzett a feldolgozással — csak a Kész állapotú videó játszható le.',
+              'A videó kiválasztásakor átvett feldolgozási állapot. Csak a Kész állapotú videó játszható le.',
           },
         },
       ],
@@ -917,7 +968,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         },
       },
     },
-  ],
+  ]),
 })
 
 /**

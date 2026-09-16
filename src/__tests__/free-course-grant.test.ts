@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { grantFreeCoursesToUser } from '../lib/free-course-grant'
 import type { Logger } from '../lib/logger'
 import { Users } from '../collections/Users'
+import type { AccessGrantRow } from '../lib/access-grants'
 
 /**
  * Ingyenes kurzus hozzáférés-adása — CSAK a kért productId.
@@ -103,7 +104,7 @@ function createMockPayload(
   userSeed: {
     id?: number
     purchases?: number[]
-    accessGrants?: Array<{ product: number; grantedAt: string }>
+    accessGrants?: AccessGrantRow[]
   } = {},
 ) {
   const userDoc = {
@@ -151,6 +152,46 @@ function createMockPayload(
 }
 
 describe('grantFreeCoursesToUser — csak a kért SKU', () => {
+  it('egy új explicit ingyenes grant külön independent eredetet kap a paid/legacy sorok mellett', async () => {
+    const untouched: AccessGrantRow[] = [
+      {
+        id: 'DUMMY-paid-row',
+        product: FREE_TIMED.id,
+        grantedAt: '2025-01-01T00:00:00.000Z',
+        sourceKind: 'order',
+        sourceOrder: 10,
+      },
+      { id: 'DUMMY-legacy-row', product: FREE_TIMED.id, grantedAt: '2024-01-01T00:00:00.000Z' },
+    ]
+    const { payload, updates } = createMockPayload(ALL_PRODUCTS, {
+      purchases: [FREE_TIMED.id],
+      accessGrants: untouched,
+    })
+    await grantFreeCoursesToUser({
+      payload,
+      user: { id: 7, purchases: [FREE_TIMED.id] },
+      productId: FREE_TIMED.id,
+      logger: silentLogger(),
+    })
+    const rows = updates[0]?.data.accessGrants as AccessGrantRow[]
+    expect(rows?.slice(0, 2)).toEqual(untouched)
+    expect(rows).toHaveLength(3)
+    expect(rows[2]).toMatchObject({ product: FREE_TIMED.id, sourceKind: 'independent' })
+  })
+
+  it('korlátlan új free SKU-nál is van independent tagsági eredet', async () => {
+    const { payload, updates } = createMockPayload()
+    await grantFreeCoursesToUser({
+      payload,
+      user: { id: 7, purchases: [] },
+      productId: FREE_PUBLISHED.id,
+      logger: silentLogger(),
+    })
+    expect(updates[0].data.accessGrants).toEqual([
+      expect.objectContaining({ product: FREE_PUBLISHED.id, sourceKind: 'independent' }),
+    ])
+  })
+
   it('CSAK a kért, published + TUDATOSAN ingyenes termék kerül a purchases-be', async () => {
     const { payload, updates } = createMockPayload()
 
@@ -169,7 +210,9 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
       id: 7,
       data: { purchases: [FREE_PUBLISHED.id] },
     })
-    expect(updates[0].data).not.toHaveProperty('accessGrants')
+    expect(updates[0].data.accessGrants).toEqual([
+      expect.objectContaining({ product: FREE_PUBLISHED.id, sourceKind: 'independent' }),
+    ])
   })
 
   it('második ingyenes SKU-t NEM írja be, ha azt nem kérték', async () => {
@@ -233,8 +276,17 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('idempotens: a már meglévő kért termék mellett NEM ír', async () => {
-    const { payload, updates } = createMockPayload()
+  it('idempotens: a már meglévő independent eredetű kért termék mellett NEM ír', async () => {
+    const { payload, updates } = createMockPayload(ALL_PRODUCTS, {
+      purchases: [FREE_PUBLISHED.id, PAID_PUBLISHED.id],
+      accessGrants: [
+        {
+          product: FREE_PUBLISHED.id,
+          grantedAt: '2026-01-15T00:00:00.000Z',
+          sourceKind: 'independent',
+        },
+      ],
+    })
     const log = silentLogger()
 
     const result = await grantFreeCoursesToUser({
@@ -306,7 +358,13 @@ describe('grantFreeCoursesToUser — csak a kért SKU', () => {
   it('már birtokolt időkorlátos SKU meglévő órával: nincs írás (az órát nem nullázzuk)', async () => {
     const { payload, updates } = createMockPayload([FREE_TIMED], {
       purchases: [FREE_TIMED.id],
-      accessGrants: [{ product: FREE_TIMED.id, grantedAt: '2026-01-15T00:00:00.000Z' }],
+      accessGrants: [
+        {
+          product: FREE_TIMED.id,
+          grantedAt: '2026-01-15T00:00:00.000Z',
+          sourceKind: 'independent',
+        },
+      ],
     })
 
     const result = await grantFreeCoursesToUser({
