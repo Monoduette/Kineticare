@@ -5,7 +5,7 @@
     "buildCommand": "echo email-job-nincs-build"
   },
   "deploy": {
-    "startCommand": "sh -c 'echo EMAIL_JOB_START; npx tsx src/scripts/send-migration-notice.ts && echo EMAIL_JOB_DONE; sleep 2147483647'",
+    "startCommand": "sh -c 'echo EMAIL_JOB_START; npx tsx src/scripts/send-migration-notice.ts $EMAIL_JOB_ARGS && echo EMAIL_JOB_DONE; sleep 2147483647'",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 1,
     "numReplicas": 1
