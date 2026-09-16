@@ -694,6 +694,9 @@ A 4.7. levél küldője. **Alapból PRÓBAFUTÁS**: kiírja a címzettek számá
 maszkolt listáját, semmi nem megy ki. Küldeni csak a
 `MIGRATION_NOTICE_CONFIRM=igen` környezeti változóval küld.
 
+> **Railway job-argumentumok (2026-09-16):** a `railway.email-job.json` indítóparancsa az `EMAIL_JOB_ARGS` változó tartalmát adja át a scriptnek (pl. `--test-to=valaki@example.com`, `--limit=20`, `--only=…`, `--include-no-access`). Üres változó = argumentum nélküli (próba- vagy éles) futás a `MIGRATION_NOTICE_CONFIRM` szerint. A változót minden futás után érdemes üríteni, hogy egy későbbi automatikus deploy ne ismételje a teszt-küldést.
+
+
 **Címzett-kör** (`src/lib/migration-notice/recipients.ts`): `customer`
 szerepkör + `passwordSetupPending: true` (a rendszer hozta létre a fiókot:
 import vagy ingyenes-kurzus igénylés, és a vevő MÉG NEM állított be saját
