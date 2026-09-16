@@ -205,7 +205,9 @@ hamis okot ne mondj (NN/g Error Message Guidelines):
 
 A `streamAssetId` (Bunny GUID) **nem kerülhet** a nyilvános RSC-payloadba
 hozzáférés nélkül: `buildCurriculum(..., { hasAccess: false })` kitörli.
-Field-access: `streamAssetReadAccess`.
+Field-access: `streamAssetReadAccess`. A lejátszó oldalon a lookup-hiba
+**fail-closed** (GUID kint marad); a tiszta `resolveCourseAccess` óra
+ismeretlen dátumnál fail-open — a kettőt ne keverd.
 
 ### 3.2 A fizetési cső (a rendszer szíve)
 
@@ -272,7 +274,10 @@ idegen e-mailre ugyanaz a 409, orákulum nélkül (W4).
 
 Üres `SZAMLAZZ_AGENT_KEY` = számlázás kikapcsolva, a fizetés ettől megy.
 Bekapcsolt számlázásnál `SZAMLAZZ_AFAKULCS` (`27` vagy `AAM`) kötelező
-érték, ha megvan adva — hibás érték már bootkor megáll.
+érték, ha megvan adva — hibás érték már bootkor megáll. Az Agent URL
+**záró perjellel** kell (`https://www.szamlazz.hu/szamla/`) — nélküle a
+POST GET-té válik, 53-as hiba. Storno-t a job **ne** retry-zza vakon
+(dupla stornó); helyesbítő timeout/5xx retry engedett.
 
 ### 3.4 Tartalom-modell
 
@@ -362,8 +367,9 @@ További scriptek: lásd a 15. szakaszt.
 
 ### 4.3 Tesztelés
 
-- Include: `src/**/*.test.ts` / `src/**/*.test.tsx` (többség
-  `src/__tests__/`). Alias `@/*` → `src/*`.
+- Include: `src/**/*.test.ts` / `src/**/*.test.tsx` (mind
+  `src/__tests__/` alatt, 350+ fájl). Alias `@/*` → `src/*`.
+  DB-kapus fájlok CI-ben dobnak, ha nincs Postgres; helyben skip.
 - **Tesztből SOSEM megy ki valódi hálózat.** HTTP-t injektálj
   (`postXml`, `queryByKulsoAzon`); `fetch`-et `vi.stubGlobal` +
   `afterEach(vi.unstubAllGlobals)`. Ahol hívásnak nem szabad futnia:
@@ -432,7 +438,7 @@ első sima tétele (WP36). Az alábbi a **mai** térkép.
 | `/blog` | `blog/page.tsx` | Tudástár lista | published posts |
 | `/blog/[slug]` | `blog/[slug]/page.tsx` | Cikk | hub publikált → 308 `/{hub}`; CTA: `PostCourseCta` |
 | `/blog/kategoria/[slug]` | `blog/kategoria/[slug]/page.tsx` | Szűrt lista | üres kategória: noindex, robots.txt NEM tiltja |
-| `/kapcsolat` | `kapcsolat/page.tsx` | Űrlap + időpont | form-builder + Turnstile |
+| `/kapcsolat` | `kapcsolat/page.tsx` | CMS layout (`RenderBlocks`) | Élő lead: időpontkérő blokk. A `ContactForm` **nincs** a lapon (őr: `kapcsolat-idopontkeres.test.tsx`). Üres layout = csak H1. |
 | `/[slug]` | `[slug]/page.tsx` | CMS-oldal / hub | `pages`; hub: forrás-cikk élménye |
 | `/akcios-kurzus` | `akcios-kurzus/page.tsx` | Demo lander | `DEMO_COURSE_SLUG`; **mindig noindex**, nem éles ajánlat |
 | `/adatvedelem` `/aszf` `/impresszum` | `[slug]` | Jogi | lábléc |
@@ -446,7 +452,7 @@ Kitüntetett page-slug: `kezdolap` → a `/` viszi, nem a `/kezdolap`
 | --- | --- | --- |
 | `/kosar` | `kosar/page.tsx` | localStorage kosár (`kineticare-cart-v1`); noindex |
 | `/penztar?termek={id}` | `penztar/page.tsx` | vendég is; ingyenes → kurzusoldali űrlap, nem checkout |
-| `/fizetes/koszonom?order=` | `fizetes/koszonom/page.tsx` | Barion-visszatérés; státusz-poll |
+| `/fizetes/koszonom?order=` | `fizetes/koszonom/page.tsx` | Barion-visszatérés; **cím nem állíthat sikert**. Poll: `GET /api/orders/{n}/status` — csak belépett + saját rendelés (idegen 404, anon 401). |
 | `/sikertelen` | `sikertelen/page.tsx` | sikertelen fizetés |
 
 ### 5.3 Auth és fiók
@@ -527,6 +533,30 @@ A gyökér 404-e **nem** CI-invariáns (Ads-kapu). Részlet:
 Tiltott hub-slugok: `HUB_TILTOTT_SLUGOK` (kezdolap, szolgáltatások,
 kurzusok, kezrehab, kezrelax, kosar, …).
 
+### 5.7 Kurzus-CTA állapotgép
+
+Egy gép, három felület (PDP, kosár, pénztár). Forrás:
+`resolveCourseCta` (`src/lib/courses.ts`). Második gépet ne írj.
+
+| `kind` | Felirat | Cél | Mikor |
+| --- | --- | --- | --- |
+| `purchased` | `course-start` | `/kurzusaim/{id}` | élő hozzáférés |
+| `archived` | nincs gomb | — | `status === 'archived'` |
+| `free` | `Elindítom ingyen` | kurzusoldali űrlap, **nem** `/penztar` | `isFreeCourse` (`priceInHUFEnabled === false`) |
+| `buy` | `Megveszem a kurzust` | `/penztar?termek={id}` | `isPaidCourse` |
+| `unavailable` | nincs gomb | — | hiányos ár / nem published |
+
+A NULL `priceInHUFEnabled` **nem** ingyenes.
+
+### 5.8 Pénztár kapuk (UI, nem néma 400)
+
+`penztar/page.tsx`: hiányzó/unpublished → kurzuslista; archived → „nem
+vásárolható"; ingyenes → `FREE_COURSE_NOT_CHECKOUT_TEXT`; nem fizetős →
+`UNAVAILABLE_COURSE_NOTE`. Submit: kötelező `billing` + két 45/2014
+lemondó pipa + ÁSZF (`src/lib/checkout/form-submission.ts`). Függő
+fizetés: `decidePendingCheckout` (resume / already-paid / cancel-and-restart
+/ wait / fail-closed).
+
 ---
 
 ## 6. API-végpontok
@@ -540,10 +570,10 @@ A saját REST a `(frontend)/api/` alatt van, hogy a storefront originjén
 | --- | --- | --- | --- |
 | `POST /api/checkout/start` | `lib/checkout/route-handler.ts` → `start-checkout.ts` | session vagy vendég | ár csak szerver; same-origin; rate `checkout-start` 10/10p |
 | `POST /api/barion/callback` | `lib/barion-callback/` | Barion | azonnali 200+dedup; **nincs** globális IP-limit; ismeretlen GUID: `barion-callback-unknown` 20/10p |
-| `GET /api/stream-token` | `lib/stream/route-handler.ts` | belépett vevő | `?productId=&videoId=`; 401/403/404/409/429/503 magyarul; `Cache-Control` van (W8); rate 60/perc/user |
+| `GET /api/stream-token` | `lib/stream/route-handler.ts` | belépett vevő | `?productId=&videoId=`; 401/403/404/409/429/503 magyarul; `Cache-Control: no-store`; rate 60/perc/user. **GET, nem POST.** |
 | `POST /api/course-progress/mark-watched` | `lib/course-progress/route-handler.ts` | belépett vevő | `{ productId, videoRef }`; `videoRef` stabil, nem sorszám; rate 60/perc |
-| `GET /api/orders/{orderNumber}/status` | `lib/checkout/order-status-handler.ts` | köszönőoldal | poll a callback után |
-| `POST /api/free-course/request` | `lib/free-course/route-handler.ts` | nyilvános | név+email; `isFreeCourse`; idempotens grant |
+| `GET /api/orders/{orderNumber}/status` | `lib/checkout/order-status-handler.ts` | belépett, **saját** rendelés | `{ status, productId, totalHufSnapshot, currency }` + opcionális `paymentReviewRequired`. Idegen szám → 404. |
+| `POST /api/free-course/request` | `lib/free-course/route-handler.ts` | nyilvános | név+email; honeypot; IP 5/10p + email 3/10p; first-user bootstrap elutasítva; 200 nem árulja el, létrejött-e a fiók |
 | `POST /api/users/reset-password` | `lib/security/payload-rest-post.ts` | nyilvános | politika + rate; árnyékolja a Payload REST-et |
 | `GET /next/preview` | `lib/preview/route-handler.ts` | staff/owner | draft cookie |
 | `GET /next/exit-preview` | `lib/preview/exit-preview.ts` | — | draft ki |
@@ -552,7 +582,7 @@ A saját REST a `(frontend)/api/` alatt van, hogy a storefront originjén
 
 | Metódus + út | Mit |
 | --- | --- |
-| `POST /api/admin/grant-purchase` | Ajándék; ugyanaz a lock, mint fizetésnél; audit |
+| `POST /api/admin/grant-purchase` | Ajándék; ugyanaz a lock; új ajándéknál **kötelező** pozitív `accessDurationDays` |
 | `POST /api/admin/orders/{orderNumber}/refund` | Owner-only; Barion refund + stornó/helyesbítő |
 | `GET /api/admin/orders/{orderNumber}/refund` | Recovery státusz |
 | `GET /api/admin/course-progress` | Kurzus-szintű haladás-stat |
@@ -834,6 +864,14 @@ Hiányzó `payload.jobs.queue` → hangos riasztás, nem néma false (W6).
 A Barion Pixel felhasználását a `bp('consent', …)` szabályozza, a
 betöltését nem. PostHog/GA4 csak `granted` után.
 
+A kezdőlap hero **Stream-videója ki van kapcsolva**:
+`HERO_VIDEO_STREAM_ID === null` (`src/lib/hero-video.ts`). A film-sáv
+helyi `public/media/film/`. Ne találj ki élő Bunny hero-GUID-ot.
+
+Nincs CartProvider / AuthProvider. Kosár: `useCart()`. Auth: szerveren
+`payload.auth({ headers })`, kliensen `auth-client.ts` + full page load
+login után. A `/fiok` PATCH **sosem** küld `role` vagy `purchases` mezőt.
+
 ### 10.2 Komponensfa (`src/components/`)
 
 | Mappa | Szerep |
@@ -928,9 +966,11 @@ Nincs kitalált orvosi ábra.
 6. Hiba: `checkout_failed` (+ PostHog `$exception`)
 
 Személyes adat az event-propertyben tilos. PostHog `/ingest` first-party
-proxy (`next.config.ts` rewrites). Consent: `kc_analytics_consent`.
-`CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
-`analytics_storage`. `ad_*` sosem granted.
+proxy (`next.config.ts` rewrites). Consent: `kc_analytics_consent` +
+`kc_analytics_consent_at`. Ismeretlen → banner. Újra kérdez **365 nap**
+után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
+`analytics_storage`. `ad_*` sosem granted. A sticky buy bar a
+`--kc-consent-offset` tokenre ül.
 
 ---
 
@@ -939,9 +979,9 @@ proxy (`next.config.ts` rewrites). Consent: `kc_analytics_consent`.
 | npm | Fájl | Megjegyzés |
 | --- | --- | --- |
 | `seed` | `src/scripts/seed.ts` | Élesben tiltott, kivéve `SEED_SCOPE=kezdolap` vagy `SEED_CONFIRM_LIVE=igen`. Owner jelszó **kötelező** env, a script nem generál/naplóz jelszót. |
-| `seed:demo` | `demo-seed.ts` | |
-| `seed:legacy` | `restore-legacy-content.ts` | |
-| `seed:menu` | `seed-menu.ts` | |
+| `seed:demo` | `demo-seed.ts` | `DEMO_MODE=1`; éles domain tiltott; **nem** `confirmOrder` |
+| `seed:legacy` | `restore-legacy-content.ts` | próba; írás `LEGACY_RESTORE_CONFIRM=igen`; felülírás `LEGACY_OVERWRITE=igen` |
+| `seed:menu` | `seed-menu.ts` | `MENU_SEED_DRY_RUN=igen` = próba |
 | `grant:purchase` | `grant-purchase.ts` | CLI ugyanarra a szolgáltatásra, mint a panel |
 | `import:customers` | `import-customers.ts` | CSV; `docs/vasarlo-migracio-terv.md` |
 | `import:tudastar` | `import-tudastar-cikkek.ts` | próba; írás `OWNER_TUDASTAR_CONFIRM=igen`; publ. `OWNER_TUDASTAR_PUBLISH=igen` |
@@ -953,7 +993,15 @@ proxy (`next.config.ts` rewrites). Consent: `kc_analytics_consent`.
 | `content:owner` | `apply-owner-content.ts` | `OWNER_CONTENT_CONFIRM=igen` |
 | `email:migracio` | `send-migration-notice.ts` | idempotens; `--force` újraküld |
 | `backup:db` | `backup-db.ts` | `docs/adatbazis-mentes.md` |
-| `generate:types` / `generate:importmap` | Payload | |
+| `generate:types` / `generate:importmap` | Payload | a CI: a generált `src/payload-types.ts` egyezzen a commitolttal |
+| *(nincs npm alias)* | `update-migration-checksums.ts` | G3 manifest, ugyanabban a PR-ben |
+
+A seed **sosem írja felül** a meglévő kezdőlap-szekciósorát, a meglévő
+média-rekordot, kategóriát, oldalt, cikket, terméket, menüpontot, vagy a
+Kapcsolat/Hírlevél/Időpont űrlapot. Teljes seed éles URL-en tiltott
+(`SEED_CONFIRM_LIVE=igen` kivétel), és akkor is, ha a DB-ben van nem
+`@example.com` vevő vagy rendelés. `SEED_SCOPE=kezdolap` élesen is
+mehet: média-restore + kezdőlap + vélemények + űrlapok, demó-SKU nélkül.
 
 ---
 
@@ -995,6 +1043,9 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | `MIGRATION_NOTICE_CONFIRM` | `igen` = éles migrációs levél |
 | `DEMO_MODE` | `1` = `seed:demo` futhat; **éles Kineticare-en tilos** |
 | `OWNER_*` / `SEED_*` kapuk | írás csak `…=igen`; hiány = próbafutás |
+| `LEGACY_RESTORE_CONFIRM` / `LEGACY_OVERWRITE` | legacy restore kapuk |
+| `MENU_SEED_DRY_RUN` | `igen` = menü-seed próba |
+| `E2E_EXPECT_ANALYTICS` | `1` = consent E2E valódi PostHog/GA4-et vár |
 
 `NEXT_PUBLIC_GOOGLE_ADS_ID` üresen marad, amíg az `ad_storage` tiltás él.
 A kulcsnevek kanonikus listája (érték nélkül): `.env.example`.
@@ -1020,9 +1071,14 @@ lokális Next buildet, ne `Build · skipped`. Start-log: `Migrating:` /
 
 **CI** (`.github/workflows/`):
 
-- `ci.yml` — verify (ci → typecheck → vitest → eslint), build (eldobható
-  ál-env, titok nincs a repóban), audit (`npm audit --audit-level=high`)
-- `gitleaks.yml` — teljes history, `fetch-depth: 0`
+- `ci.yml` — **verify** (Postgres 18 service): Railpack-plan fixture →
+  review-zott install → typecheck → `generate:types` egyezés →
+  `payload migrate` → vitest → eslint. Checkout `fetch-depth: 0` (G3).
+  A DB-kapus tesztek CI-ben **dobnak**, ha nincs Postgres
+  (`db-gated-coverage-guard.test.ts`). **build** (eldobható ál-env).
+  **audit:** `npm audit --audit-level=high`. Dependabot: heti npm +
+  Actions; `@payloadcms/*` ignore.
+- `gitleaks.yml` — teljes history, `fetch-depth: 0`, CLI 8.24.3
 - `db-backup.yml` — age-titkosított dump; fail-closed, ha hiányzik a
   `DATABASE_URI` secret / `BACKUP_AGE_RECIPIENT`
 - `claude.yml` — opcionális `@claude`
@@ -1044,7 +1100,7 @@ visszatölti a hiányzó fájlt, az id megmarad.
 | --- | --- |
 | `railway.json` | Production webapp (`Kineticare`) |
 | `railway.email-job.json` | Migrációs értesítő; args: `EMAIL_JOB_ARGS` |
-| `railway.seed-job.json` | Seed-job |
+| `railway.seed-job.json` | `seed-menu` + `restore-legacy-content` |
 | `railway.content-job.json` | Owner content script |
 | `railway.tudastar-job.json` | Tudástár-import |
 | `railway.import-job.json` | Vevő-import |
@@ -1062,8 +1118,15 @@ Railway agent `restartServiceTool`.
 Csoportosítva; a teljes lista a `docs/` alatt. **Ne találj ki** Ads-
 fiókállapotot ezekből.
 
+A `docs/` alatt ~107 markdown. **Elavultnak kezeld, ha a dátum régi és
+a kód más:** `informacios-architektura.md` / `gomb-inventar.md`
+(2026-08-16 leltár), `atadas-szamlazz-kor.md` G1–G4 szakasza (az őrök
+azóta megvannak), `owasp-security-review.md` (2026-08-04),
+`feladatlista.md` A/B sorai (későbbi owner-UI / Railway sok mindent
+lerakott). Kampánydoksi ≠ Ads Enable.
+
 **Ügynök / szabály:** `ugynok-kezikonyv.md` (ez), `agent-feature-map.md`,
-`ci-orok.md`, `feladatlista.md`.
+`ci-orok.md`, `feladatlista.md`, `repo-figyelo/`.
 
 **UX / UI (felület előtt):** `ertekesitesi-ux-skill.md`,
 `ui-sztenderdek.md`, `gomb-inventar.md`, `gomb-kontraszt-audit.md`,
@@ -1119,6 +1182,11 @@ A `docs/feladatlista.md` 2026-08-30-i. A K1–K6 / W1–W20 / J2 kódja a
 - **D:** többnyelv, kupon, tagság, PWA — nincs kérés.
 
 Ads Enable / spend: térkép-only, ne kódold.
+
+Későbbi, a feladatlistában nem szereplő maradék: `docs/oldal-audit-osszefoglalo-2026-09-07.md`
+(P1–P3 UX), `docs/kc-v1-remaining-inputs.md` (portré, logo, éles promo),
+`HERO_VIDEO_STREAM_ID` még `null`. A `docs/video-stream-keszenlet.md`
+a Bunny-kulcsokra nézve újabb, mint a feladatlista B4 sora.
 
 ---
 
@@ -1192,3 +1260,26 @@ Ha egy viselkedést két helyen is megtalálsz, a `src/lib/` a forrás, a
 route/komponens a héj. Ha a CMS és a kód ütközik: a **publikált CMS**
 a látogatói szöveg, a kód a szerkezet, a CTA-szótár a gomb, a
 `resolveCourseAccess` a kapu, a Barion v4 a pénz.
+
+### Hol szerkeszd
+
+| Amit változtatnál | Első fájl |
+| --- | --- |
+| Kezdőlap szekciósorrend | CMS `kezdolap.layout`; fallback `HomeView`; seed `home-seed.ts` |
+| Új CMS-blokk | `src/blocks/*` + `pageBlocks` + `RenderBlocks` + a renderer saját CSS-e |
+| Gombfelirat | `docs/ui-sztenderdek.md` §3.2 → `cta-vocabulary.ts` → őr |
+| Fejléc tételek | Payload `menus` + `withCoursesNavItem` (a Kurzusok kód) |
+| Kurzus-CTA | `resolveCourseCta` — ne forkolj másodikat |
+| Cikk végi CTA | `post-article.ts` + `PostCourseCta` + `post-view.css` |
+| Tipográfia méret | `tokens.css` L/M/S — más font-size token tilos |
+| 404 szöveg | `not-found-content.ts` (mindkét not-found fa) |
+| Fizetés jóváhagyása | `applyBarionStateTransition` + GetState v4 |
+| Hozzáférés adása | `grantPurchase` / `grantFreeCoursesToUser` / paid-ág |
+| Új POST API | same-origin + body cap + `ROUTE_CLASS_BY_PATH`; Barion callback-et ne tedd oda |
+| Séma | `payload migrate:create` + checksum script |
+| Admin custom nézet | `payload.config.ts` views + `generate:importmap` + kapu a nézetben |
+
+Tartalom-forrás a repóban: `docs/cikkek/` (8 lektorálandó törzs),
+`content/home-images/` (brand + site; Higgsfield tükör tilos),
+`public/media/film/` (helyi hero), `public/assets/barion/` (hivatalos
+Smart Banner, ne módosítsd).

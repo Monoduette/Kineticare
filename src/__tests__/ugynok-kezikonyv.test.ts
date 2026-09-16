@@ -24,6 +24,8 @@ const REQUIRED_SOURCE_PATHS = [
   'src/lib/course-access.ts',
   'src/lib/access-grants.ts',
   'src/lib/cta-vocabulary.ts',
+  'src/lib/courses.ts',
+  'src/lib/hero-video.ts',
   'src/lib/curriculum/curriculum.ts',
   'src/lib/legacy-redirects.ts',
   'src/lib/tudastar/hub-oldalak.ts',
@@ -87,6 +89,8 @@ describe('ügynök-kézikönyv — a következő agent megtalálja és használn
       'EMAIL_JOB_ARGS',
       'MIGRATION_NOTICE_CONFIRM',
       'DEMO_MODE',
+      'LEGACY_RESTORE_CONFIRM',
+      'E2E_EXPECT_ANALYTICS',
     ]
 
     for (const key of requiredKeys) {
