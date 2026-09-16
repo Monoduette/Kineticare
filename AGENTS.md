@@ -3,6 +3,7 @@
 > **Teljes ügynök-kézikönyv (backend + frontend térkép):**
 > [`docs/ugynok-kezikonyv.md`](docs/ugynok-kezikonyv.md) — olvasd el a 0–4.
 > szakaszt minden munkakezdéskor, utána ugorj a tartományra, amihez nyúlsz.
+> **Küldhető másolat** a következő agentnek: [`handover/`](handover/).
 > Ez a fájl a rövid szabálykönyv; a kézikönyv a hol-mi-van térkép. Ellentmondásnál
 > a `CLAUDE.md` a mérvadó. A **TILOS ZÓNÁK** itt és ott is kivétel nélkül
 > betartandók.
@@ -397,6 +398,7 @@ Kritikus, élesben szerzett tanulságok (a teljes lista a `CLAUDE.md`
 | Terület                                         | Fájl                                                                   |
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
 | **Ügynök-kézikönyv (backend + frontend térkép)** | **`docs/ugynok-kezikonyv.md`**                                        |
+| **Küldhető átadási csomag**                      | **`handover/`** (másolat; a kanonikus fájlok a helyükön maradnak)     |
 | **Feladatlista (mi van hátra)**                 | **`docs/feladatlista.md`**                                             |
 | **Ügynök-térkép (cikk-CTA, Craft-sáv és Shop-sáv zárak)** | **`docs/agent-feature-map.md`**                              |
 | Kezdőlap szekció-rendszer                       | `docs/szekcio-rendszer-terv.md`                                        |

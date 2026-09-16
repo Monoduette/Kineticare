@@ -3,7 +3,8 @@
 > **Teljes ügynök-kézikönyv (backend + frontend térkép):**
 > [`docs/ugynok-kezikonyv.md`](docs/ugynok-kezikonyv.md) — hol melyik route,
 > API, collection, `lib`-modul, job, UI-réteg és tilalom él. Olvasd a 0–4.
-> szakaszt mindig. Ez a fájl marad a **mérvadó szabálykönyv**; a kézikönyv
+> szakaszt mindig. **Küldhető másolat:** [`handover/`](handover/).
+> Ez a fájl marad a **mérvadó szabálykönyv**; a kézikönyv
 > nem írja felül a TILOS ZÓNÁKAT.
 
 Ez a dokumentum az AI-ügynökök (pl. Claude Code Action) és az emberi hozzájárulók
