@@ -5,7 +5,7 @@
   "terminals": [
     {
       "name": "dev",
-      "command": "export PATH=\"/usr/bin:$PATH\"; set -a; . \"$HOME/.kineticare-dev.env\"; set +a; npm run dev"
+      "command": "node_arch=$(case \"$(uname -m)\" in aarch64|arm64) echo arm64;; *) echo x64;; esac); export PATH=\"/opt/node-v24.20.0-linux-$node_arch/bin:/usr/bin:$PATH\"; set -a; . \"$HOME/.kineticare-dev.env\"; set +a; npm run dev"
     }
   ]
 }
