@@ -6,11 +6,13 @@
 # Másold a gyökér `.env.example`-t `.env`-vé; ide értéket ne írj.
 # ============================================================================
 
-# Szűkített seed-hatókör. `kezdolap` = csak a kezdőlap + landing képek.
+# Seed NEM dry-run. Üres + nem-éles URL = teljes seed ír.
+# `kezdolap` = szűkített írás (kezdőlap + landing képek), éles URL-en is.
 SEED_SCOPE=
-# Éles domainen a teljes seed tiltott. `igen` = tudatos felülírás.
+# Éles URL-en a teljes seed el sem indul. `igen` = tudatos teljes seed.
 SEED_CONFIRM_LIVE=
-# Első user ownerré emelése. Min. 32 karakter. Header: x-kineticare-bootstrap-token.
+# Első user: érvényes token + header nélkül a fiók NEM jön létre (503/403).
+# Min. 32 karakter. Header: x-kineticare-bootstrap-token.
 FIRST_USER_BOOTSTRAP_TOKEN=
 # `true` = a middleware nem rak noindex-et. NEXT_PUBLIC_, újrabuild kell.
 NEXT_PUBLIC_ALLOW_INDEXING=
