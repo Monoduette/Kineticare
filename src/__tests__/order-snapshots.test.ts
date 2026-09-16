@@ -32,6 +32,14 @@ interface OrderWithSnapshots {
 // mellett az env-alapú feltétel hamis pozitívot adna (helpers/db-available.ts).
 const hasDb = await isDatabaseAvailable()
 
+/**
+ * A DB-s hookok (Payload-init + kategória/termék létrehozás, majd takarítás)
+ * a CI párhuzamos suite-jai alatt túlléphetik a vitest 10 s-os alapértékét
+ * (2026-09-16, CI 764: „Hook timed out in 10000ms”, miközben minden teszt
+ * zöld volt). A többi DB-s suite (refund-*-db) is explicit korlátot ad.
+ */
+const DB_HOOK_TIMEOUT_MS = 60_000
+
 describe.skipIf(!hasDb)('orders snapshot-hookok (DB)', () => {
   let payload: Payload
   let categoryId: number
@@ -79,7 +87,7 @@ describe.skipIf(!hasDb)('orders snapshot-hookok (DB)', () => {
       overrideAccess: true,
     })
     productId = product.id
-  })
+  }, DB_HOOK_TIMEOUT_MS)
 
   afterAll(async () => {
     for (const id of createdOrderIds) {
@@ -89,7 +97,7 @@ describe.skipIf(!hasDb)('orders snapshot-hookok (DB)', () => {
       await payload.delete({ collection: 'products', id: productId, overrideAccess: true })
     }
     await payload.db?.destroy?.()
-  })
+  }, DB_HOOK_TIMEOUT_MS)
 
   it('item-snapshotok a products DB-értékeiből töltődnek, a kliens ára nem forrás', async () => {
     const order = await payload.create({
