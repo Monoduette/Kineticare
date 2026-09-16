@@ -1,0 +1,39 @@
+# ============================================================================
+# Kineticare – ebben a körben dokumentált env-kulcsnevek
+# ----------------------------------------------------------------------------
+# TITOK SOHA nem kerül a repóba. Ez a fájl CSAK kulcsneveket ír, érték nélkül.
+# A kanonikus, teljes lista: a gyökér `.env.example`.
+# Másold a gyökér `.env.example`-t `.env`-vé; ide értéket ne írj.
+# ============================================================================
+
+# Szűkített seed-hatókör. `kezdolap` = csak a kezdőlap + landing képek.
+SEED_SCOPE=
+# Éles domainen a teljes seed tiltott. `igen` = tudatos felülírás.
+SEED_CONFIRM_LIVE=
+# Első user ownerré emelése. Min. 32 karakter. Header: x-kineticare-bootstrap-token.
+FIRST_USER_BOOTSTRAP_TOKEN=
+# `true` = a middleware nem rak noindex-et. NEXT_PUBLIC_, újrabuild kell.
+NEXT_PUBLIC_ALLOW_INDEXING=
+# `true` = a cf-connecting-ip megbízható (Cloudflare mögött).
+TRUST_CF_CONNECTING_IP=
+# x-forwarded-for hop jobbról. Üres = 1.
+TRUSTED_PROXY_HOP_COUNT=
+# Owner-script íráskapuk. Érték pontosan `igen`, különben próbafutás.
+OWNER_BACKFILL_CONFIRM=
+OWNER_TUDASTAR_CONFIRM=
+OWNER_TUDASTAR_PUBLISH=
+OWNER_HUB_PUBLISH=
+OWNER_CONTENT_CONFIRM=
+OWNER_BUNNY_CURRICULUM_CONFIRM=
+MIGRATION_NOTICE_CONFIRM=
+# railway.email-job.json script-argumentum. Futás után ürítsd.
+EMAIL_JOB_ARGS=
+# `1` = seed:demo futhat. Éles Kineticare-en TILOS.
+DEMO_MODE=
+DEMO_COURSE_SKU=
+DEMO_CUSTOMER_PASSWORD=
+# Legacy restore / menü-seed / consent E2E.
+LEGACY_RESTORE_CONFIRM=
+LEGACY_OVERWRITE=
+MENU_SEED_DRY_RUN=
+E2E_EXPECT_ANALYTICS=
