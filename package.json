@@ -25,6 +25,7 @@
     "seed:legacy": "tsx src/scripts/restore-legacy-content.ts",
     "seed:menu": "tsx src/scripts/seed-menu.ts",
     "content:owner": "tsx src/scripts/apply-owner-content.ts",
+    "email:migracio": "tsx src/scripts/send-migration-notice.ts",
     "backfill:ar-snapshot": "tsx src/scripts/backfill-price-snapshot.ts",
     "backfill:access-grants": "tsx src/scripts/backfill-access-grants.ts",
     "kurzus:videok-modulba": "tsx src/scripts/videok-modulba.ts",

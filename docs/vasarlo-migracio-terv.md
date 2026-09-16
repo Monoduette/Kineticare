@@ -286,6 +286,82 @@ lineáris folyamatban a sáv nem a helyes eszköz, és „there's evidence that 
 often miss them"
 (https://design-system.service.gov.uk/components/notification-banner/).
 
+### 4.7. A 4.5. levél KÉSZ sablonja és küldője (WP40, 2026-09-16)
+
+A 4.5. szövege 2026-09-16-tól **kódban él**: `src/lib/email/templates/migration.ts`
+(tárgy + előnézeti sor + HTML a közös `layout.ts` brand-keretében + plain-text),
+a kiküldő pedig `npm run email:migracio` (`src/scripts/send-migration-notice.ts`,
+részletek: 6.7.). A tulajdonos 7. körös hangsúlyai kerültek bele: megújult az
+oldal; a régi jelszó elavult; az új jelszót AZZAL a címmel kell beállítani,
+amelyre a levél érkezett (ezzel regisztrált); belépés után a **Kurzusaim**
+menüpontban vannak a megvett kurzusok vagy az ingyenes SOS KézRelax villámkurzus.
+
+> **Tárgy:** Megújult a Kineticare: állítsd be az új jelszavad
+> *(49 karakter; őr-teszt: legfeljebb 60)*
+>
+> **Előnézeti sor:** A régi jelszavad itt már nem működik. A kurzusaid
+> megvannak, újra fizetned nem kell.
+>
+> *Fiók-átköltöztetés*
+>
+> **Megújult az oldal, új jelszó kell**
+>
+> Kedves {{nev}}! *(név nélkül: Kedves Vásárlónk!)*
+>
+> A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. Ezért
+> írunk: a régi jelszavad elavult, az új oldalon már nem működik. Nem veszett el
+> semmi, és nem te hibáztál: mindenkinek új jelszót kell beállítania, aki a
+> korábbi oldalon regisztrált.
+>
+> **A megvásárolt kurzusaid megvannak, újra fizetned nem kell.**
+>
+> Az új jelszót azzal az e-mail-címmel állítsd be, amelyre ezt a levelet kaptad
+> (**{{email}}**), mert ezzel regisztráltál nálunk. A gomb megnyitja a beállító
+> oldalt: ott add meg ezt a címet, és küldünk rá egy linket, amelyen a saját
+> jelszavadat választhatod meg. A link 1 óráig érvényes; ha lejár, ugyanott
+> kérhetsz újat.
+>
+> Belépés után a Kurzusaim menüpontban találod a megvásárolt kurzusaidat, vagy
+> ha azt kérted, az ingyenes SOS KézRelax villámkurzust.
+>
+> **[ Beállítom az új jelszót ]** → `{{NEXT_PUBLIC_SERVER_URL}}/belepes-atallas`
+>
+> Ha elakadsz, vagy nem emlékszel, melyik címmel regisztráltál, válaszolj erre
+> a levélre. Emberi választ kapsz, és megkeressük a fiókodat.
+>
+> Üdvözlettel:
+> a Kineticare csapata
+>
+> *Ha pár percen belül nem érkezik meg a levél, nézd meg a levélszemét mappát
+> is, és keress rá a Kineticare szóra. Ugyanarra a címre 10 percen belül
+> legfeljebb 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány
+> percet az újabb próbálkozással.*
+>
+> **Lábléc:** Kineticare · Kézrehabilitációs online kurzusplatform
+> Ezt a levelet azért kapod, mert a(z) {{email}} címmel fiókod van a Kineticare
+> oldalán, és a fiókodat az új felületre költöztettük át.
+> Kérdésed van? Válaszolj erre a levélre, vagy írj a(z) info@kineticare.hu címre.
+
+**Tervezési döntések (forrással; a részletes indoklás a sablon fejkommentjében):**
+
+| Döntés | Miért | Forrás |
+| --- | --- | --- |
+| Egy levél, egy gomb, aláírás | 1. alapelv, 3. pont; a cselekvés elöl, a kiegészítő tudnivaló hátul | NN/g, *Transactional and Confirmation Email* (https://www.nngroup.com/articles/transactional-and-confirmation-email/) |
+| Tárgy ≤ 60 karakter, a lényeg elöl | a kliens rövidít | Postmark, *Transactional email best practices* (https://postmarkapp.com/guides/transactional-email-best-practices); GOV.UK Service Manual, *Sending emails and text messages* (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages) |
+| A gomb felirata `Beállítom az új jelszót` (§3.2 #22), NEM új szinonima | ugyanaz a cselekvés, mint az aktiváló levélben és a jelszó-beállító lapon → ugyanaz a felirat | WCAG 2.2 SC 3.2.4 Consistent Identification; Polaris („identify and eliminate synonyms"); `docs/ui-sztenderdek.md` §3.2 |
+| Válasz-cím: `info@kineticare.hu`, a lábléc kimondja, miért kapja | fiókkal kapcsolatos értesítés; a válasz figyelt postaládába menjen | Postmark (fent): „Avoid a noreply@ address if you can"; GOV.UK (fent): „include contact details for your service" |
+| Nincs List-Unsubscribe fejléc | tranzakciós, fiókkal kapcsolatos értesítés, nem hírlevél | Postmark (fent) |
+| A „10 percen belül legfeljebb 3 levél" mondat a `password-forgot-email` keret értékéből épül | ne maradjon hazug szám, ha a keretet átállítják | `src/lib/security/rate-limit.ts`; őr: `src/__tests__/email-migracio-sablon.test.ts` (bitre azonos a `/belepes-atallas` mondatával) |
+| Resend `Idempotency-Key` címzettenként (`migracio-<userId>`), 250 ms szünet | a kulcs 24 óráig él, ≤ 256 karakter; a csapat-szintű alap-korlát 10 kérés/mp | https://resend.com/docs/dashboard/emails/idempotency-keys; https://resend.com/docs/api-reference/rate-limit |
+
+A „1 óráig érvényes" mondat a Payload `forgotPassword.expiration` alapértékéből
+(3 600 000 ms) számolódik; őr-teszt köti a `payload.config` users-collectionjéhez.
+
+**Mérve (Chromium, 600 px és 320 px, `scratchpad/wp40/`):** törzs #33495f/#ffffff
+9,30:1; címsor 15,63:1; gomb szövege #ffffff/#2f6e9f 5,45:1 (WCAG 1.4.3 ≥ 4,5:1);
+gombfelület 5,45:1 (1.4.11 ≥ 3:1); gomb 230×46 px (2.5.8 ≥ 24×24, cél 44); 320
+px-en nincs vízszintes görgetés (1.4.10); sorhossz 600 px-en 65 karakter.
+
 ---
 
 ## 5. GYIK — a vevők kérdései és a válaszok
@@ -318,6 +394,21 @@ az új már mindenkinél működik.
 **„Elveszik a haladásom / a jegyzeteim?"**
 A kurzus-hozzáférés átkerül. A régi rendszerben tárolt megtekintési előzmény nem
 költözik — a videók újranézhetők, korlátozás nélkül.
+
+**„A régi jelszavammal próbáltam, és azt írja: Hibás e-mail-cím vagy jelszó."**
+Ez a várt viselkedés: a régi oldal jelszava nem költözött át. Ugyanez az üzenet
+jelenik meg akkor is, ha a cím nincs a rendszerben — a hibaüzenetből nem derül
+ki, van-e fiók (mérve 2026-09-16). A teendő: a levélben kapott linkről, vagy az
+**Elfelejtett jelszó** gombbal kérj beállító linket.
+
+**„Túl sok próbálkozás — ezt írta a lap."**
+Ugyanarra a címre 10 percen belül legfeljebb 3 levelet küldünk ki; a 4. kérés
+ezzel az üzenettel bukik. Várj 10 percet, és a legfrissebb levél linkjét használd.
+
+**„Mikor jár le a hozzáférésem?"**
+Az átköltöztetett vásárlásnál lejáratot nem számolunk: a Kurzusaim listán nincs
+„Hozzáférés eddig" dátum, a kurzus korlátlanul nyílik. (Technikai háttér a 6.5.
+pontban.)
 
 ---
 
@@ -559,6 +650,30 @@ tartalmaz. (Külön körben a második generálás érvénytelenítené az első
    szereplő **egyedi e-mail-címek** száma (a többször szereplő e-mail egynek
    számít — a script összefésüli), a hibás sorok pedig ezen felül vannak.
 
+**Helyben végigmért teljes út (2026-09-16, WP41, Chromium + helyi SMTP-gyűjtő,
+3 fiktív vevő: vásárolt / ingyenes SOS / mindkettő):** import `--dry-run` →
+éles import `--out-links` → `/belepes-atallas` (és `/elfelejtett-jelszo`) →
+a levél linkje (`NEXT_PUBLIC_SERVER_URL` + `/jelszo-visszaallitas?token=…&returnUrl=%2Fkurzusaim`)
+→ új jelszó → a munkamenet a jelszó után él (külön belépés nem kell) →
+**Kurzusaim** a helyes kurzus(ok)kal → `/kurzusaim/<id>` nyílik → a
+`/api/stream-token` nem ad 401/403-at (a nem megvett kurzusra 403). A
+`linkek.csv` aktiválási linkje ugyanide vezet. A használt, hibás vagy hiányzó
+token magyar hibát ad, újrakérési úttal. Őr-teszt: `src/__tests__/atallas-vegpont.test.ts`.
+
+**Amit az admin „Megvásárolt kurzusok" mezője és a Kurzusaim lista másképp
+mutathat:**
+
+- A Kurzusaim csak a `published`/`archived` kurzust listázza; egy `draft`
+  kurzus az adminban a vevőnél látszik, a listán nem (a lejátszó úgysem nyílna).
+- **Időkorlátos kurzusnál (`accessDurationDays`, pl. 365 nap) az import NEM ír
+  `accessGrants` kezdőpontot**, és paid rendelés sincs, ezért a hozzáférés
+  „ismeretlen vásárlási dátum" ággal **korlátlan** (fail-open): a listán nincs
+  „Hozzáférés eddig" felirat, a videó megy. Ez megfelel az 5. GYIK ígéretének
+  („a hozzáférés nem jár le az átállás miatt"). Ha a tulajdonos mégis órát
+  akar az átköltöztetett vevőknek, az külön döntés: a
+  `docs/access-grants-backfill.md` szándékosan nem talál ki dátumot, a
+  „Kurzus ajándékozása" panel pedig a mai naptól indítaná.
+
 ### 6.6. Újrafuttatás (megszakadt futás)
 
 **Az import idempotens**, ezért a megszakadt futás (hálózat-hiba, Ctrl-C,
@@ -572,6 +687,117 @@ adatbázis-zár) **biztonságosan újraindítható ugyanazzal a paranccsal**:
 Amire figyelj: ha a `--out-links` kapcsolót is megismétled, **új tokenek**
 készülnek, és a korábban kiküldött linkek érvénytelenné válnak. Újrafuttatásnál
 a linkgenerálást csak akkor kérd, ha a leveleket még nem küldtétek ki.
+
+### 6.7. Az átköltöztetési értesítő kiküldése (`npm run email:migracio`)
+
+A 4.7. levél küldője. **Alapból PRÓBAFUTÁS**: kiírja a címzettek számát és
+maszkolt listáját, semmi nem megy ki. Küldeni csak a
+`MIGRATION_NOTICE_CONFIRM=igen` környezeti változóval küld.
+
+**Címzett-kör** (`src/lib/migration-notice/recipients.ts`): `customer`
+szerepkör + `passwordSetupPending: true` (a rendszer hozta létre a fiókot:
+import vagy ingyenes-kurzus igénylés, és a vevő MÉG NEM állított be saját
+jelszót; a jelző az első sikeres belépéskor magától törlődik, tehát aki már
+belépett, kiesik). Kimarad: staff/owner; akinek az ÚJ oldalon rendelése van
+(vendég-vásárló, neki nem volt régi jelszava); aki már megkapta a levelet
+(`users.migrationNoticeSentAt`); és **akinek nincs kurzus-hozzáférése**
+(`purchases` és `accessGrants` üres): neki a levél Kurzusaim-ígérete hamis
+lenne (vezetői döntés, 2026-09-16). Ez utóbbiakat a próbafutás külön, maszkolva
+és darabszámmal listázza („HOZZÁFÉRÉS NÉLKÜL, nem kap levelet: N"). Az ilyen
+fiók jellemzően a nem leképezett import-címke következménye: előbb a **10.
+pont 2. sorának címke → SKU tábláját** kell rendezni és a hozzáférést pótolni
+(`--map` az importban vagy `grant-purchase`), utána a vevő magától bekerül a
+körbe. Ha mégis levelet kell kapniuk hozzáférés nélkül, a
+`--include-no-access` kapcsoló veszi be őket. **Egy címre egyszer megy ki** a
+levél; újraküldés csak `--force`-szal.
+
+| Kapcsoló / változó | Mit csinál |
+| --- | --- |
+| *(semmi)* | próbafutás: címzett-kör, maszkolt lista, levél nem megy ki |
+| `MIGRATION_NOTICE_CONFIRM=igen` | éles küldés ugyanazzal a paranccsal |
+| `--test-to=<cím>` | EGY tesztlevél a megadott címre, kapu nélkül, adatbázis és jelölés nélkül (a feladó-domain és a kézbesítés próbája) |
+| `--limit=N` | legfeljebb N címzett (azonosító szerint az első N; a próbafutás és az éles kör ugyanazokkal kezd) |
+| `--only=<cím>` | csak ez az egy vevő a címzett-körből |
+| `--force` | újraküldés a már jelölt fiókoknak is |
+| `--include-no-access` | a kurzus-hozzáférés nélküli fiókok is kapjanak levelet (alapból kimaradnak) |
+| `--help` | súgó |
+
+**A sorrend kötött:** `--test-to` a saját címedre → próbafutás → `--limit=5`
+éles → teljes éles.
+
+```bash
+# 1. tesztlevél a saját címedre (RESEND_API_KEY, EMAIL_FROM, NEXT_PUBLIC_SERVER_URL kell)
+npm run email:migracio -- --test-to=sajat.cim@example.com
+
+# 2. próbafutás (semmi nem megy ki)
+npm run email:migracio
+
+# 3. első 5 vevő élesben
+MIGRATION_NOTICE_CONFIRM=igen npm run email:migracio -- --limit=5
+
+# 4. mindenki
+MIGRATION_NOTICE_CONFIRM=igen npm run email:migracio
+```
+
+**A próbafutás elvárt naplója:**
+
+```text
+CÍMZETT-KÖR: 128 vevő (kihagyva: már kapott 0, új oldalon rendelt 3, hozzáférés nélkül 1, szűrő miatt 0).
+  k***@example.com (#41)
+  …
+
+HOZZÁFÉRÉS NÉLKÜL, nem kap levelet: 1 (purchases és accessGrants üres; előbb a címke → SKU tábla, …; kérésre --include-no-access):
+  m***@example.com (#42) · nincs kurzus-hozzáférés
+
+PRÓBAFUTÁS: levél NEM ment ki, jelölés nem történt. Éles küldés: MIGRATION_NOTICE_CONFIRM=igen környezeti változóval, ugyanezzel a paranccsal.
+```
+
+A „HOZZÁFÉRÉS NÉLKÜL" listát a küldés előtt nézd meg az adminban (a 10. pont
+2. sora: nem leképezett címke); ők levelet csak a hozzáférés pótlása után, vagy
+kifejezett kérésre (`--include-no-access`) kapnak.
+
+**Az éles futás naplója:** soronként `[ELKÜLDVE] k***@example.com`, a végén
+`MÉRLEG: elküldve N, sikertelen M, jelölés sikertelen K.` és a sikertelenek
+listája (maszkolt cím, fiók-azonosító, hiba). Kilépési kód `0` = hibátlan,
+`1` = indítási hiba vagy sikertelen küldés. A napló sosem tartalmaz teljes
+címet vagy kulcsot.
+
+**Ütemezés és idempotencia.** Két küldés között 250 ms szünet (4 kérés/mp, a
+Resend csapat-szintű alap-korlátja 10 kérés/mp); 429 vagy 5xx esetén legfeljebb
+két újrapróbálás (1,5 s, 4 s). Minden címzett saját Resend idempotencia-kulcsot
+kap (`migracio-<userId>`, 24 óráig él), sikeres küldés után a fiók
+`migrationNoticeSentAt` mezője kap időbélyeget. Ha a levél kiment, de a jelölés
+nem sikerült, a sor `[ELKÜLDVE, JELÖLÉS SIKERTELEN]`, és a mérleg is mutatja:
+24 órán belül a Resend-kulcs véd a duplikáció ellen; utána az adminban
+(Felhasználók → a vevő → „Átköltöztetési értesítő kiküldve") látszik, hogy üres.
+
+**Futtatás a Railwayen (email-job szolgáltatás).** A script a Kineticare-app
+környezetében fut, tehát ugyanazok a változók kellenek: `DATABASE_URI`
+(`${{Postgres-c8Rg.DATABASE_URL}}`), `PAYLOAD_SECRET`, `NEXT_PUBLIC_SERVER_URL`
+(https://kineticare.hu), `RESEND_API_KEY`, `EMAIL_FROM`. A `railway.json`
+mindig felülírja a service-beállítást (üzemeltetési tanulság 2.), ezért a
+jobnak saját config-fájl van: **`railway.email-job.json`** (`startCommand`:
+`npx tsx src/scripts/send-migration-notice.ts`, utána `sleep`, hogy a konténer
+ne induljon újra). Lépések:
+
+1. A content-job szolgáltatáson (vagy egy erre a célra létrehozott, a repóhoz
+   kötött szolgáltatáson) a **Config file path** (`railwayConfigFile`)
+   átállítása `railway.email-job.json`-ra.
+2. Variables: a fenti öt változó; `MIGRATION_NOTICE_CONFIRM` **még NEM**.
+3. Deploy → a logban `EMAIL_JOB_START`, majd a PRÓBAFUTÁS naplója,
+   `EMAIL_JOB_DONE`. Ellenőrizd a címzettszámot.
+4. `MIGRATION_NOTICE_CONFIRM=igen` felvétele → redeploy → éles küldés.
+   Kapcsolókhoz (`--limit=5`) a `startCommand` végére írd a kapcsolót a
+   config-fájlban, vagy futtasd a `railway run`-nal helyben, éles változókkal.
+5. A futás UTÁN a `MIGRATION_NOTICE_CONFIRM` változó **törlése**, és a
+   szolgáltatás leállítása (vagy a config-fájl visszaállítása), hogy egy
+   későbbi redeploy ne indítson új kört. (Új kört a jelölés miatt akkor sem
+   küldene, de a próbafutás naplója így nem téveszt meg.)
+
+**Rollback.** A levél visszahívhatatlan; a jelölés törlése nem kell: az
+újrafuttatás a jelölt fiókokat kihagyja, újraküldés csak `--force`-szal. Ha
+rossz szöveg ment ki, a javított sablonnal `--force` küld mindenkinek újra
+(két levelet kapnak), ezért előbb `--test-to` és `--limit`.
 
 ---
 
@@ -591,6 +817,9 @@ a linkgenerálást csak akkor kérd, ha a leveleket még nem küldtétek ki.
 | `a --send-invites és a --dry-run nem használható együtt` (exit 1) | A két kapcsoló egyszerre | **Semmi nem történt.** Előbb próbafutás, aztán éles futás a küldéssel. |
 | `nincs beállítva e-mail-szolgáltató…` (exit 1) | Hiányzik a `RESEND_API_KEY` | **Semmi nem történt.** Állítsd be a kulcsot a Railway → Variables felületén (10. pont), és indítsd újra. |
 | Egy címzetten `SIKERTELEN` | A szolgáltató elutasította vagy nem érte el | A kör folytatódik a többi címzettel; a végén exit-kód 1. A hibás címzetteknek küldj újra (`--send-invites=all` vagy kézi körlevél a `linkek.csv`-ből). |
+| A vevő a lapon sikert lát („Ellenőrizd az e-mail-fiókodat"), de levél nem jön | A `/api/users/forgot-password` **mindig 200-at ad** (fiók-létezés nem szivároghat); a küldés hibája csak a naplóban látszik: `e-mail küldés sikertelen` (Resend elutasítás, nem Verified domain) vagy `noop-provider aktív` (nincs `RESEND_API_KEY`) | Nézd meg a Railway-naplót a maszkolt címre (`v***@…`). Resend: a domain legyen **Verified**, az `EMAIL_FROM` a hitelesített domainen. Csak a napló bizonyít — a 200-as válasz nem. |
+| A levél a szöveges (text/plain) olvasóban üres volt | A Payload forgot-password művelete csak HTML-t ad; az adapter 2026-09-16-ig üres szöveges részt küldött | Javítva: az adapter a HTML-ből szöveges változatot készít, a linkkel (őr-teszt: `atallas-vegpont.test.ts`). |
+| Helyi próbánál `SMTP … nem hirdet STARTTLS-t` | Az SMTP-küldő titkosítás nélkül nem küld | Helyi gyűjtőhöz implicit TLS a 465-ös porton (önaláírt tanúsítvány + `NODE_EXTRA_CA_CERTS`), vagy STARTTLS-t hirdető szerver. |
 
 **Kilépési kódok:** `0` = hibátlan futás; `1` = indítási hiba (fájl, argumentum,
 ismeretlen SKU, üres users-kollekció) **vagy** legalább egy hibás sor a futásban.
@@ -655,7 +884,7 @@ Ezek a nyitott pontok — nélkülük az eszköz kész, de az átállás nem ind
 | 5 | **Az átállás dátuma** és a levelek aláírása | Katák | **NYITOTT.** A 4.1–4.3. sablonok `{{datum_*}}` mezői és MINDEN levél `{{alairas}}` mezője. A 4.5. „egyetlen levél" dátumot SZÁNDÉKOSAN nem tartalmaz, aláírást viszont igen. |
 | 6 | **Kettős e-mail-címek listája** (aki más címmel vásárolt, mint amit használ) | Katák | **NYITOTT.** Kézi összevezetést igényel: az import e-mail-cím alapján dolgozik. |
 | 7 | ~~A vevői céllap, ahova a levél linkje visz~~ | technikai | **KÉSZ** (2026-08-21): `/belepes-atallas` (4.6.), plusz a `/elfelejtett-jelszo` állandó bekezdése a régi vevőnek. Őr-teszt: `src/__tests__/belepes-atallas-ui.test.tsx`. |
-| 8 | **A levél kiküldésének csatornája** | üzemeltetés | **NYITOTT DÖNTÉS.** A 4.5. levél közös linkes, tehát mail merge nélkül is mehet. Eldöntendő, hogy Resend broadcast megy-e, vagy a Katák saját levelezője; ettől függ, hogy a `{{nev}}` mező kitölthető-e. |
+| 8 | **A levél kiküldésének csatornája** | üzemeltetés | **NYITOTT DÖNTÉS.** A 4.5. levél közös linkes, tehát mail merge nélkül is mehet. Eldöntendő, hogy Resend broadcast megy-e, vagy a Katák saját levelezője; ettől függ, hogy a `{{nev}}` mező kitölthető-e. **2026-09-16:** a csatorna KÉSZ: `npm run email:migracio` (6.7.), a `{{nev}}` a fiók nevéből töltődik. Ami még nyitott: az aláírás végleges alakja (ma: „a Kineticare csapata", a 4.1–4.2 levelekkel azonos) és a feladó-domain Verified állapota + próbalevél (`--test-to`). |
 
 **Ami NEM hiányzik (mérve, ne induljon rá újabb kör):** a jelszó-kérő és
 jelszó-beállító lap, az enumeráció-védelem (a végpont mindig 200-at ad), a

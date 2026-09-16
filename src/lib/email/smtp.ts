@@ -129,6 +129,7 @@ export function buildMessage(config: SmtpConfig, message: MailMessage): string {
     foldHeader('From', formatFromHeader(config.from)),
     foldHeader('To', message.to.map(stripHeaderBreaks).join(', ')),
     foldHeader('Subject', encodeWord(stripHeaderBreaks(message.subject))),
+    ...(message.replyTo ? [foldHeader('Reply-To', stripHeaderBreaks(message.replyTo))] : []),
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,

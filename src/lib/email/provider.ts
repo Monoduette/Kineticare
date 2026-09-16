@@ -83,18 +83,26 @@ function getProvider(): ResolvedEmailProvider {
  * propagálódik a hívó felé — a retryable jelzéssel a hívó (pl. egy későbbi
  * e-mail-queue job) eldöntheti, újrapróbálja-e.
  */
-export async function sendMail(input: {
+export interface SendMailInput {
   to: string | string[]
   subject: string
   html: string
   text: string
-}): Promise<SendResult> {
+  /** Válasz-cím (Reply-To); lásd `MailMessage.replyTo`. */
+  replyTo?: string
+  /** Szolgáltató-oldali idempotencia-kulcs; lásd `MailMessage.idempotencyKey`. */
+  idempotencyKey?: string
+}
+
+export async function sendMail(input: SendMailInput): Promise<SendResult> {
   const provider = getProvider()
   const message: MailMessage = {
     to: Array.isArray(input.to) ? input.to : [input.to],
     subject: input.subject,
     html: input.html,
     text: input.text,
+    ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+    ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
   }
   const maskedTo = message.to.map(maskEmail)
   // A tárgy és a provider nyers hiba/azonosító szövege is tartalmazhat

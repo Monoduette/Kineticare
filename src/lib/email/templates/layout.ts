@@ -82,8 +82,28 @@ export interface LayoutInput {
     totalLabel?: string
     totalValue?: string
   }
+  /**
+   * Záró bekezdések a gomb UTÁN, a kártyán belül (pl. „ha elakadsz, válaszolj"
+   * + aláírás). Enélkül az aláírás a gomb FÖLÉ kerülne, ami a levél
+   * olvasási sorrendjét töri: NN/g, Transactional and Confirmation Email
+   * (https://www.nngroup.com/articles/transactional-and-confirmation-email/):
+   * elöl a cselekvés, hátul a kiegészítő tudnivaló.
+   */
+  closingParagraphsHtml?: string[]
+  closingParagraphsText?: string[]
   /** Halk záró megjegyzés a kártyán belül, a gomb alatt. Sima szöveg. */
   note?: string
+  /**
+   * A lábléc két sora, ha a levél NEM „ne válaszolj" típusú. Sima szöveg,
+   * escape-elve.
+   * - `reason`: miért kapja a címzett (Postmark: „Clearly identify the
+   *   source/reason the recipient is receiving the email").
+   * - `replyNote`: hova válaszolhat (GOV.UK: „include contact details for your
+   *   service if the user might need to contact you",
+   *   https://www.gov.uk/service-manual/design/sending-emails-and-text-messages).
+   * Elhagyva a váz a megszokott „automatikus üzenet, ne válaszolj" sort adja.
+   */
+  footer?: { reason: string; replyNote: string }
 }
 
 /** HTML-escape a sablonváltozókhoz (az e-mail-törzsben is XSS-forrás lehet). */
@@ -221,6 +241,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
                 ${input.summary ? summaryHtml(input.summary) : ''}
                 ${input.items ? itemsHtml(input.items) : ''}
                 ${input.cta ? ctaHtml(input.cta) : ''}
+                ${input.closingParagraphsHtml ? bekezdesekHtml(input.closingParagraphsHtml) : ''}
                 ${
                   input.note
                     ? `<p style="margin:16px 0 0 0;padding:16px 0 0 0;border-top:1px solid ${SZIN.hajszal};font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.6;color:${SZIN.inkHalk};">${escapeHtml(input.note)}</p>`
@@ -232,7 +253,11 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
             <tr>
               <td style="padding:20px 4px 0 4px;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.7;color:${SZIN.inkHalk};">
                 ${BRAND_NAME} · Kézrehabilitációs online kurzusplatform<br />
-                Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.
+                ${
+                  input.footer
+                    ? `${escapeHtml(input.footer.reason)}<br />${escapeHtml(input.footer.replyNote)}`
+                    : `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`
+                }
               </td>
             </tr>
 
@@ -278,14 +303,22 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
     textLines.push('', `${input.cta.label}: ${input.cta.url}`)
   }
 
+  if (input.closingParagraphsText && input.closingParagraphsText.length > 0) {
+    textLines.push('', ...input.closingParagraphsText)
+  }
+
   if (input.note) {
     textLines.push('', input.note)
   }
 
-  textLines.push(
-    '',
-    `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`,
-  )
+  if (input.footer) {
+    textLines.push('', input.footer.reason, input.footer.replyNote)
+  } else {
+    textLines.push(
+      '',
+      `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`,
+    )
+  }
 
   return { html, text: textLines.join('\n') }
 }
