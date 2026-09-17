@@ -31,6 +31,41 @@ export class VideoRequestError extends Error {
     super('A videótár nem érhető el. Próbáld újra.')
   }
 }
+/**
+ * A létrehozó kérés (`POST /api/admin/bunny-uploads`) olyan elutasításai,
+ * amelyeknél BIZTOS, hogy a szerver nem hozott létre videót: a kérés a
+ * hitelesítésen, az eredet-ellenőrzésen, a bemenet-ellenőrzésen vagy a
+ * kérés-korláton bukott el. Ezekre a szerkesztő azonnal újraindíthatja a
+ * feltöltést. Minden más (500, 502, hálózat, időtúllépés) bizonytalan marad,
+ * mert a videó a Bunny-nál már létrejöhetett.
+ */
+const CREATE_REJECTED_STATUSES: ReadonlySet<number> = new Set([
+  400, 401, 403, 404, 405, 413, 415, 429, 503,
+])
+
+/**
+ * Ha a létrehozó kérés elutasítás volt (videó biztosan nem jött létre), a
+ * szerkesztőnek szóló üzenet; egyébként `null` (bizonytalan kimenetel).
+ */
+export function createRejection(error: unknown): string | null {
+  if (!(error instanceof VideoRequestError) || !CREATE_REJECTED_STATUSES.has(error.status)) {
+    return null
+  }
+  if (error.code === 'invalid-session' || error.status === 401) {
+    return 'A munkameneted lejárt. Jelentkezz be újra, és indítsd újra a feltöltést.'
+  }
+  if (error.status === 429) {
+    return 'A videótár most túl sok kérést kapott. Várj egy percet, és indítsd újra.'
+  }
+  if (error.status === 503) {
+    return 'A videótár nincs beállítva ezen a környezeten. Szólj a rendszergazdának.'
+  }
+  if (error.status === 400 || error.status === 413 || error.status === 415) {
+    return 'A fájl vagy a cím nem felel meg a feltöltés feltételeinek. Ellenőrizd, és indítsd újra.'
+  }
+  return error.message
+}
+
 export async function videoRequest(
   path: string,
   body?: unknown,

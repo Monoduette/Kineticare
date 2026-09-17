@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Upload, type HttpStack } from 'tus-js-client'
 import {
+  createRejection,
   resumeBunnyUpload,
   uploadCredentials,
   videoDetail,
   videoRequest,
+  VideoRequestError,
 } from '../components/admin/bunny-video-client'
 
 const guid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -151,4 +153,31 @@ it('validates the exact four scoped upload headers and final Unix expiry', () =>
   expect(() =>
     uploadCredentials({ ...fixture, headers: { ...fixture.headers, VideoId: 'other' } }),
   ).toThrow()
+})
+
+// A létrehozó kérés elutasítása (videó biztosan nem jött létre) újraindítható;
+// a válasz nélküli és a feldolgozás közbeni hibák bizonytalanok maradnak.
+it.each([
+  [new VideoRequestError(403, 'invalid-session'), 'Jelentkezz be újra'],
+  [new VideoRequestError(401), 'Jelentkezz be újra'],
+  [new VideoRequestError(429), 'túl sok kérést'],
+  [new VideoRequestError(503), 'nincs beállítva'],
+  [new VideoRequestError(400), 'nem felel meg'],
+  [new VideoRequestError(413), 'nem felel meg'],
+  [new VideoRequestError(415), 'nem felel meg'],
+  [new VideoRequestError(403), 'A videótár nem érhető el'],
+])('createRejection: %o → újraindítható, magyar üzenettel', (error, fragment) => {
+  const message = createRejection(error)
+  expect(message).not.toBeNull()
+  expect(message).toContain(fragment)
+})
+
+it.each([
+  [new VideoRequestError(500)],
+  [new VideoRequestError(502)],
+  [new TypeError('fetch failed')],
+  [new DOMException('timeout', 'TimeoutError')],
+  ['nem hiba-objektum'],
+])('createRejection: %o → bizonytalan (null)', (error) => {
+  expect(createRejection(error)).toBeNull()
 })

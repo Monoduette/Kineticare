@@ -10,6 +10,7 @@ import {
 import {
   MIGRATION_NOTICE_RETRY_DELAYS_MS,
   MIGRATION_NOTICE_SEND_DELAY_MS,
+  migrationNoticeForceRound,
   migrationNoticeIdempotencyKey,
   sendMigrationNotices,
 } from '../lib/migration-notice/send'
@@ -235,6 +236,38 @@ describe('WP40 – küldés', () => {
     expect(sleep).toHaveBeenCalledTimes(1)
     expect(sleep).toHaveBeenCalledWith(MIGRATION_NOTICE_SEND_DELAY_MS)
     expect(MIGRATION_NOTICE_SEND_DELAY_MS).toBeGreaterThanOrEqual(100) // ≤ 10 kérés/mp
+  })
+
+  it('--force kör: az idempotencia-kulcs a kör-azonosítót is hordozza, így a szolgáltató nem nyeli el', async () => {
+    // Cáfolható állítás: a Resend a kulcsot 24 óráig őrzi; az alap kulccsal
+    // egy szándékos újraküldés a szolgáltatónál néma no-op lenne.
+    const store = db([user({ id: 7, email: 'a@example.com' })])
+    const send = vi.fn<(input: SendMailInput) => Promise<SendResult>>(async () => ok())
+    const round = migrationNoticeForceRound(new Date('2026-09-17T08:05:00.000Z'))
+    expect(round).toBe('ujra-202609170805')
+    expect(migrationNoticeIdempotencyKey(7, round)).toBe(`migracio-7-${round}`)
+    expect(migrationNoticeIdempotencyKey(7, '')).toBe('migracio-7')
+    await sendMigrationNotices(fakePayload(store), [recipient(7, 'a@example.com')], {
+      serverUrl: 'https://kineticare.example.com',
+      send,
+      sleep: async () => undefined,
+      idempotencyRound: round,
+    })
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      idempotencyKey: migrationNoticeIdempotencyKey(7, round),
+    })
+    // Kör-azonosító nélkül (normál kör) marad a fiók-alapú kulcs.
+    const alap = vi.fn<(input: SendMailInput) => Promise<SendResult>>(async () => ok())
+    await sendMigrationNotices(
+      fakePayload(db([user({ id: 7, email: 'a@example.com' })])),
+      [recipient(7, 'a@example.com')],
+      {
+        serverUrl: 'https://kineticare.example.com',
+        send: alap,
+        sleep: async () => undefined,
+      },
+    )
+    expect(alap.mock.calls[0]?.[0]).toMatchObject({ idempotencyKey: 'migracio-7' })
   })
 
   it('a bukott küldés nem állítja meg a kört, nem jelöl, és a végén listázódik', async () => {

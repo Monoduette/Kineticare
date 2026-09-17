@@ -5,6 +5,7 @@ import { Upload } from 'tus-js-client'
 import { BunnyVideoDialog } from './BunnyVideoDialog'
 import {
   VideoRequestError,
+  createRejection,
   resumeBunnyUpload,
   uploadCredentials,
   videoDetail,
@@ -25,6 +26,7 @@ type Phase =
   | 'expired'
   | 'uncertain'
   | 'cancelled'
+
 export function BunnyVideoUpload({
   onSelect,
   onUploaded,
@@ -176,13 +178,21 @@ export function BunnyVideoUpload({
       upload.current = instance
       setPhase('uploading')
       instance.start()
-    } catch {
-      if (alive(run)) {
-        setPhase('uncertain')
-        setError(
-          'A feltöltés létrehozása nem igazolható. Ellenőrizd a videótárat új feltöltés indítása előtt.',
-        )
+    } catch (cause) {
+      if (!alive(run)) return
+      const rejected = createRejection(cause)
+      if (rejected) {
+        // A szerver ELUTASÍTOTTA a kérést, mielőtt videót hozott volna létre:
+        // a mezők maradnak, az indítás megismételhető. A „bizonytalan" ág a
+        // válasz nélküli (hálózat, időtúllépés) és a feldolgozás közbeni hibáké.
+        setPhase('idle')
+        setError(rejected)
+        return
       }
+      setPhase('uncertain')
+      setError(
+        'A feltöltés létrehozása nem igazolható. Ellenőrizd a videótárat új feltöltés indítása előtt.',
+      )
     } finally {
       lock.current = false
     }
