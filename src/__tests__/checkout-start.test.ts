@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { BarionApiError } from '../lib/barion'
 import type { Order, Product, User } from '../payload-types'
 import { createCheckoutStartHandler } from '../lib/checkout/route-handler'
 import {
@@ -771,6 +772,51 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     await expect(promise).rejects.toMatchObject({ status: 503 })
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a Barion nem ismeri a függő fizetést (404): a sor cancelled, új Start mehet', async () => {
+    // Cáfolható állítás: a 404 eddig „unavailable"-ként 503-at adott, és a
+    // vevő erre a termékre örökre kizárta magát (pl. teszt-környezetben indított
+    // fizetés az éles kulcs alatt).
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const row: OrderRow = { id: 78, status: 'payment_pending', orderNumber: 'KH-ISMERETLEN' }
+    const { payload, calls } = createMockPayload({
+      orderRows: [row],
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? {
+              docs: [
+                {
+                  id: 78,
+                  status: 'payment_pending',
+                  createdAt: new Date().toISOString(),
+                  barionPaymentId: 'pay-ismeretlen',
+                  orderNumber: 'KH-ISMERETLEN',
+                },
+              ],
+              totalDocs: 1,
+            }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const result = await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => {
+        throw new BarionApiError({
+          message: 'DUMMY payment not found',
+          kind: 'http',
+          endpoint: 'GET /v4/Payment/{id}/PaymentState',
+          httpStatus: 404,
+        })
+      },
+    })
+
+    expect(row.status).toBe('cancelled')
+    expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(true)
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
   })
 
   it('Succeeded függő rendelés: paid-átmenet, új Start 409', async () => {
