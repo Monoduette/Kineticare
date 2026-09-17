@@ -355,7 +355,15 @@ describe('A jelzés akadálymentessége és szövege', () => {
   it('a címsor DOM-szövege mondatkezdő nagybetűs (a verzál csak CSS-transzformáció)', () => {
     // docs/ui-sztenderdek.md M-4. A kezdőlapi csík `.kc-eyebrow` nagybetűs
     // MEGJELENÉST kap; a felolvasott szöveg attól még normál írásmódú marad.
-    expect(BARION_CIM).toBe(BARION_CIM.charAt(0) + BARION_CIM.slice(1).toLowerCase())
+    // A „Barion" tulajdonnév nagy kezdőbetűje helyesírási kötelezettség, ezért
+    // szavanként őrzünk: egyetlen szó sem csupa verzál, és a mondat nagybetűvel
+    // kezdődik. (A név maga a Barion jóváhagyási észrevételének 2. pontja.)
+    expect(BARION_CIM).toBe('Bankkártyás fizetés Barionnal')
+    expect(BARION_CIM.charAt(0)).toBe(BARION_CIM.charAt(0).toUpperCase())
+    for (const szo of BARION_CIM.split(' ')) {
+      expect(szo).not.toBe(szo.toUpperCase())
+      expect(szo.slice(1)).toBe(szo.slice(1).toLowerCase())
+    }
     const css = olvas('src/app/(frontend)/styles/content.css')
     expect(szabalyTorzs(css, '.kc-eyebrow')).toContain('text-transform: uppercase')
   })

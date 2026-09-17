@@ -20,14 +20,14 @@ export const BARION_PIXEL_NOSCRIPT_HOST = BARION_PIXEL_ORIGIN
 
 /**
  * A Pixel-azonosító megengedett alakja: `BP-` + 10 jel + `-` + 2 jel
- * (pl. `BP-oA1zcu4uwm-C0`), összesen 16 karakter.
+ * (pl. `BP-0000000000-00`, a Barion doksi mintája), összesen 16 karakter.
  *
  * A hosszakat a bp.js maga is így kezeli: a saját tartalék-kikeresője a
  * `/.*BP-.{10}-.*​/` mintát futtatja, és 16 karaktert vág ki
  * (`script.substr(script.indexOf("BP-"), 16, 16)`).
  *
  * KIS-NAGYBETŰ SZÁMÍT: a Barion-azonosítók vegyes betűállásúak (a hivatalos
- * példa is az: `BP-oA1zcu4uwm-C0`), ezért — a GA4-azonosítóval ellentétben —
+ * kiadott azonosítók is azok), ezért — a GA4-azonosítóval ellentétben —
  * NEM normalizáljuk nagybetűsre, csak a körüli szóközöket vágjuk le.
  *
  * A `BPT`-vel kezdődő azonosító (a Barion admin más felületén látható érték)
