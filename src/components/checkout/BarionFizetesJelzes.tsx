@@ -24,8 +24,18 @@ export const BARION_LOGOSOR_MAGASSAG = 108
 export const BARION_LOGOSOR_ALT =
   'Elfogadott fizetési módok: Barion, Mastercard, VISA, Apple Pay, Google Pay'
 
-/** A címsor mindkét helyen AZONOS (WCAG 2.2 SC 3.2.4, konzisztens azonosítás). */
-export const BARION_CIM = 'Biztonságos fizetés'
+/**
+ * A címsor mindkét helyen AZONOS (WCAG 2.2 SC 3.2.4, konzisztens azonosítás).
+ *
+ * A megnevezés a Barion elfogadóhely-jóváhagyás szó szerinti kérése (a
+ * jóváhagyási észrevétel 2. pontja, 2026-09-17: „lássuk a 'Bankkártyás fizetés
+ * Barionnal' fizetési módot, mellette a hivatalos logósorral"). A fizetési mód
+ * NEVE tehát a logósor fölé kerül, a gomb felirata változatlan marad
+ * (docs/ui-sztenderdek.md §3.2 #2: a szolgáltató neve a gomb MELLÉ, nem a
+ * gombra). Baymard „Trust Seals": a fizetési mód megnevezése + logó együtt
+ * csökkenti a „hova visz a gomb" bizonytalanságot közvetlenül a kattintás előtt.
+ */
+export const BARION_CIM = 'Bankkártyás fizetés Barionnal'
 
 /** A kezdőlapi szekció címsorának azonosítója (a landmark neve). */
 export const BARION_KEZDOLAP_CIM_ID = 'kc-barion-fizetes-cim'
