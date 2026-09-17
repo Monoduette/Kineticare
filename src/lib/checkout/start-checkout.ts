@@ -2,6 +2,7 @@ import type { Payload } from 'payload'
 
 import type { Order, Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
+import { isPaymentDefinitelyNotFound } from '../barion-callback/process-callback'
 import {
   BARION_DEFAULT_PAYMENT_WINDOW,
   BarionApiError,
@@ -394,18 +395,30 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
       typeof pending.barionPaymentId === 'string' && pending.barionPaymentId.trim().length > 0
         ? pending.barionPaymentId.trim()
         : null
-    let mappedState: 'paid' | 'cancelled' | 'payment_pending' | 'unavailable' | null = null
+    let mappedState: 'paid' | 'cancelled' | 'payment_pending' | 'unavailable' | 'not-found' | null =
+      null
     let rawState: BarionPaymentStateResponse | null = null
     if (paymentId !== null) {
       try {
         rawState = await ctx.fetchPaymentState(paymentId)
         mappedState = mapBarionPaymentStatus(rawState.Status)
       } catch (error) {
-        ctx.log.warn('checkout-start: a Barion fizetésállapot nem kérdezhető le', {
-          orderId: pending.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        mappedState = 'unavailable'
+        if (error instanceof BarionApiError && isPaymentDefinitelyNotFound(error)) {
+          // A Barion nem ismeri a PaymentId-t (pl. teszt-környezetben indított
+          // fizetés az éles kulccsal): a függő sor sosem zárulna le, a vevő
+          // erre a termékre örökre 503-at kapna. Lezárjuk, új Start mehet.
+          ctx.log.warn('checkout-start: a Barion nem ismeri a függő fizetést — a sor lezárul', {
+            orderId: pending.id,
+            httpStatus: error.httpStatus ?? null,
+          })
+          mappedState = 'not-found'
+        } else {
+          ctx.log.warn('checkout-start: a Barion fizetésállapot nem kérdezhető le', {
+            orderId: pending.id,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          mappedState = 'unavailable'
+        }
       }
     }
 

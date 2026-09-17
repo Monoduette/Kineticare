@@ -11,7 +11,8 @@ export const CHECKOUT_PAYMENT_IN_PROGRESS =
   'Ehhez a termékhez már folyamatban van egy fizetés. Fejezd be azt, vagy várd meg a fizetési ablak lejártát.'
 
 export function barionPayUrl(paymentId: string, environment: 'test' | 'prod'): string {
-  const host = environment === 'prod' ? 'https://secure.barion.com' : 'https://secure.test.barion.com'
+  const host =
+    environment === 'prod' ? 'https://secure.barion.com' : 'https://secure.test.barion.com'
   return `${host}/Pay?id=${encodeURIComponent(paymentId)}`
 }
 
@@ -25,7 +26,13 @@ export type PendingCheckoutDecision =
 export function decidePendingCheckout(input: {
   barionPaymentId: string | null | undefined
   createdAt: string | null | undefined
-  mappedState: OrderPaymentState | 'unavailable' | null
+  /**
+   * `'not-found'`: a Barion DEFINITÍVEN nem ismeri a PaymentId-t (404 vagy
+   * PaymentNotFound) — pl. más Barion-környezetben indított fizetés. Ilyenkor
+   * nincs mit folytatni: a sor lezárul, és új Start mehet. Egy késői Succeeded
+   * a late-success ágon (R-03) ettől függetlenül paid-dé válik.
+   */
+  mappedState: OrderPaymentState | 'unavailable' | 'not-found' | null
   nowMs: number
   windowMs: number
 }): PendingCheckoutDecision {
@@ -36,13 +43,15 @@ export function decidePendingCheckout(input: {
 
   if (paymentId === null) {
     const createdMs = input.createdAt ? Date.parse(input.createdAt) : Number.NaN
-    const insideWindow =
-      Number.isNaN(createdMs) || input.nowMs - createdMs <= input.windowMs
+    const insideWindow = Number.isNaN(createdMs) || input.nowMs - createdMs <= input.windowMs
     return insideWindow ? { kind: 'wait-no-payment-id' } : { kind: 'cancel-and-restart' }
   }
 
   if (input.mappedState === 'unavailable' || input.mappedState === null) {
     return { kind: 'barion-unavailable' }
+  }
+  if (input.mappedState === 'not-found') {
+    return { kind: 'cancel-and-restart' }
   }
   if (input.mappedState === 'paid') {
     return { kind: 'already-paid' }

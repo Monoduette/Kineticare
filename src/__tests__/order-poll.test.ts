@@ -14,6 +14,7 @@ import {
   ORPHAN_ORDER_GRACE_MS,
   pollPendingOrders,
   STUCK_ORDER_WARN_MS,
+  UNKNOWN_PAYMENT_CANCEL_AFTER_MS,
 } from '../lib/order-poll/service'
 import { applyBarionStateTransition } from '../lib/order-status/apply-barion-state'
 import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
@@ -882,6 +883,48 @@ describe('order-poll — hibaosztályozás (classifyBarionFailure)', () => {
   })
 })
 
+describe('order-poll — a Barion által nem ismert függő fizetés (404)', () => {
+  const notFound = () =>
+    new BarionApiError({
+      message: 'DUMMY payment not found',
+      kind: 'http',
+      endpoint: 'GET state',
+      httpStatus: 404,
+    })
+
+  it('a türelmi időnél régebbi függő rendelés → cancelled (a vevő újrakezdheti)', async () => {
+    // Cáfolható állítás: eddig a 404 csak „forgatta" a sort, ami örökre
+    // payment_pending maradt, és 5 percenként fölösleges GetState ment rá.
+    const stale = createPendingOrder({
+      createdAt: new Date(NOW - UNKNOWN_PAYMENT_CANCEL_AFTER_MS - 60_000).toISOString(),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [stale],
+      stateError: notFound(),
+    })
+
+    const summary = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+
+    expect(stale.status).toBe('cancelled')
+    expect(summary.cancelled).toBe(1)
+    expect(paidCalls).toHaveLength(0)
+  })
+
+  it('friss függő rendelés 404-gyel → marad payment_pending (csak forgatás)', async () => {
+    const fresh = createPendingOrder({ createdAt: isoHoursAgo(0.25) })
+    const { payload, fetchState, onPaid, queueInvoice } = setup({
+      pending: [fresh],
+      stateError: notFound(),
+    })
+
+    const summary = await pollPendingOrders({ payload, fetchState, onPaid, queueInvoice, now: NOW })
+
+    expect(fresh.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+    expect(summary.failed).toBe(1)
+  })
+})
+
 describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
   const missing = () =>
     new BarionApiError({
@@ -902,6 +945,9 @@ describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
         id: 2000 + index,
         status,
         barionPaymentId: `DUMMY-poll-${index}`,
+        // A forgatás-tesztek FRISS (az UNKNOWN_PAYMENT_CANCEL_AFTER_MS-en belüli)
+        // sorokat feltételeznek: a türelmi időn túli 404 már cancelled-et ír.
+        createdAt: isoHoursAgo(0.5),
         updatedAt: new Date(NOW - (count - index) * 60_000).toISOString(),
       }),
     )

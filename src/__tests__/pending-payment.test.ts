@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  barionPayUrl,
-  decidePendingCheckout,
-} from '../lib/checkout/pending-payment'
+import { barionPayUrl, decidePendingCheckout } from '../lib/checkout/pending-payment'
 
 const WINDOW_MS = 30 * 60 * 1000
 const NOW = Date.parse('2026-08-23T12:00:00.000Z')
@@ -50,6 +47,20 @@ describe('decidePendingCheckout', () => {
         windowMs: WINDOW_MS,
       }),
     ).toEqual({ kind: 'barion-unavailable' })
+  })
+
+  it('a Barion nem ismeri a PaymentId-t (404 / PaymentNotFound) → helyi lezárás és új Start', () => {
+    // Cáfolható állítás: eddig minden GetState-hiba „unavailable" volt, így a
+    // más Barion-környezetben indított függő rendelés örökre 503-at adott.
+    expect(
+      decidePendingCheckout({
+        barionPaymentId: 'pay-1',
+        createdAt: '2026-08-23T11:00:00.000Z',
+        mappedState: 'not-found',
+        nowMs: NOW,
+        windowMs: WINDOW_MS,
+      }),
+    ).toEqual({ kind: 'cancel-and-restart' })
   })
 
   it('Succeeded → already-paid, payment_pending → resume, Failed → új Start', () => {

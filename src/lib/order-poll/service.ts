@@ -8,6 +8,7 @@ import {
   mapBarionPaymentStatus,
   type BarionPaymentStateResponse,
 } from '../barion'
+import { isPaymentDefinitelyNotFound } from '../barion-callback/process-callback'
 import { logger as rootLogger, type Logger } from '../logger'
 import { onOrderPaid, queueInvoiceIssueJob, type OrderPaidAccount } from '../order-paid'
 import {
@@ -42,6 +43,15 @@ export const MAX_LEADING_FAILURES = 5
 // (pénz felvéve, kurzus nem). A 24 óra a késői banki feldolgozás is belefér.
 export const ORPHAN_ORDER_GRACE_MS = 24 * 60 * 60 * 1000 // 24 óra
 export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
+/**
+ * Ennyi idő után zárjuk le azt a függő rendelést, amelynek PaymentId-jét a
+ * Barion DEFINITÍVEN nem ismeri (404 / PaymentNotFound). Tipikus ok: a fizetés
+ * a másik Barion-környezetben indult (teszt-kulcs ↔ éles kulcs váltás). A
+ * 30 perces PaymentWindow kétszerese: egy frissen indított fizetés átmeneti
+ * 404-e (ha egyáltalán előfordul) belefér, a végleg ismeretlen viszont nem
+ * marad örökre payment_pending — a checkout ugyanerre azonnal új Startot enged.
+ */
+export const UNKNOWN_PAYMENT_CANCEL_AFTER_MS = 60 * 60 * 1000 // 1 óra
 /**
  * R-03: a checkout cancel-and-restart cancelled rendelést hagy, a poll
  * pedig csak payment_pending-et nézett. A késői Barion Succeeded-et
@@ -548,7 +558,35 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
         if (failureClass === 'order') {
           consecutiveTransportFailures = 0
-          await rotateOrder(order)
+          const createdAtMs = Date.parse(order.createdAt ?? '')
+          const definitelyUnknown =
+            order.status === 'payment_pending' &&
+            error instanceof BarionApiError &&
+            isPaymentDefinitelyNotFound(error) &&
+            Number.isFinite(createdAtMs) &&
+            now - createdAtMs >= UNKNOWN_PAYMENT_CANCEL_AFTER_MS
+          if (definitelyUnknown) {
+            const cancelledWritten = await updateOrderStatusIfCurrent({
+              payload: deps.payload,
+              orderId: order.id,
+              expected: 'payment_pending',
+              next: 'cancelled',
+            })
+            if (cancelledWritten) {
+              summary.cancelled += 1
+              orderLog.warn(
+                'a Barion nem ismeri a függő fizetést (404) és a PaymentWindow rég lejárt — cancelled; ' +
+                  'a vevő újrakezdheti a vásárlást (tipikus ok: teszt-környezetben indított fizetés)',
+                { ageMs: now - createdAtMs, httpStatus },
+              )
+            } else {
+              orderLog.warn(
+                'ismeretlen fizetés: a sor már nem payment_pending — a cancelled írás kimarad',
+              )
+            }
+          } else {
+            await rotateOrder(order)
+          }
         }
 
         if (!hadSuccessfulCall && failureClass === 'unknown') {
