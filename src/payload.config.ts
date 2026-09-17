@@ -28,6 +28,7 @@ import { buildOriginAllowlist } from './env'
 import { jobsConfig } from './jobs'
 import { restrictJobStatsGlobalAccess } from './jobs/jobs-stats-access'
 import { restrictLockedDocumentsAccess } from './lib/security/locked-documents-access'
+import { restrictResetTokenFieldAccess } from './lib/security/reset-token-field-access'
 import { registerBarionWebhookProcessor } from './lib/barion-callback/process-callback'
 import { APPOINTMENT_FORM_TITLE, ensureAppointmentForm } from './lib/appointment/form'
 import {
@@ -792,3 +793,7 @@ export default buildConfig({
   // collection is (defaultAccess = bármely bejelentkezett user) — a zárak
   // hamisítását zárja a restrictLockedDocumentsAccess.
   .then(restrictLockedDocumentsAccess)
+  // A Payload auth-alapmezői (resetPasswordToken, resetPasswordExpiration)
+  // olvasás-zár nélkül where-szűrhetők: a staff prefix-szűréssel kitalálhatná
+  // az owner élő tokenjét. A zár indoklása a restrictResetTokenFieldAccess fejlécében.
+  .then(restrictResetTokenFieldAccess)
