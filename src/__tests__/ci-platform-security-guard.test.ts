@@ -32,7 +32,7 @@ const BACKUP_POSTGRES =
 // tudatos security review-t és az allowlist explicit frissítését igényli.
 const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
   ['ci.yml', 'eef8b6a214d03b4833d57f40b25408fff05897da7cce064251f9fd8527fc8a6e'],
-  ['claude.yml', '4b22f6142876e2db539212248041ab26199b0f64bd8982e52aa19941564f1817'],
+  ['claude.yml', '49e96a49ffb9c387822602c306d98a1a281f2c15dd290ce174bf9b8933e3e53e'],
   ['db-backup.yml', '15adb4fa8c0b8582a58916e46400d7670126a746c9d39b2e55670eb42affd388'],
   ['gitleaks.yml', 'b0241c695c543fcb2806348317f0bbcc745d51f8967329b53079216c450f98a0'],
 ])
@@ -889,7 +889,7 @@ describe('CI/platform supply-chain guard', () => {
     expect(workflow('ci.yml')).toContain(CI_POSTGRES)
     expect(workflow('db-backup.yml')).toContain(BACKUP_POSTGRES)
     expect(workflow('claude.yml')).toContain(
-      'anthropics/claude-code-action@56cf60fde42f7b19c3abfd5c9c48b69a1288461f # v1.0.222',
+      'anthropics/claude-code-action@51db78a4b844e144f8d02425cb280435c04a3474 # v1.0.224',
     )
     const gitleaks = workflow('gitleaks.yml')
     expect(gitleaks).toContain(
