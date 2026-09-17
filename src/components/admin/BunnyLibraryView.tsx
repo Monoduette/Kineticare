@@ -23,7 +23,7 @@ export function BunnyLibraryView(props: AdminViewServerProps) {
   const { req } = props.initPageResult
   if (!hasStaffOrOwnerRole(req.user)) {
     return (
-      <AdminViewFrame props={props}>
+      <AdminViewFrame props={props} title="Videótár">
         <div style={pageStyle}>
           <h1 style={{ marginTop: 0 }}>Videótár</h1>
           <p>{DENIED_MESSAGE}</p>
@@ -33,7 +33,7 @@ export function BunnyLibraryView(props: AdminViewServerProps) {
   }
 
   return (
-    <AdminChrome props={props}>
+    <AdminChrome props={props} title="Videótár">
       <div style={pageStyle}>
         <h1 style={{ marginTop: 0 }}>Videótár</h1>
         <BunnyVideoLibrary />

@@ -20,7 +20,7 @@ export async function StatisticsView(props: AdminViewServerProps) {
   const { req } = props.initPageResult
   if (!canAccessStatistics(req.user)) {
     return (
-      <AdminViewFrame props={props}>
+      <AdminViewFrame props={props} title="Statisztika">
         <StatisticsAccessDenied />
       </AdminViewFrame>
     )
@@ -37,7 +37,7 @@ export async function StatisticsView(props: AdminViewServerProps) {
       error: error instanceof Error ? error.message : String(error),
     })
     return (
-      <AdminChrome props={props}>
+      <AdminChrome props={props} title="Statisztika">
         <StatisticsUnavailable />
       </AdminChrome>
     )
@@ -58,7 +58,7 @@ export async function StatisticsView(props: AdminViewServerProps) {
   }
 
   return (
-    <AdminChrome props={props}>
+    <AdminChrome props={props} title="Statisztika">
       <StatisticsReport report={report} engagement={engagement} />
     </AdminChrome>
   )

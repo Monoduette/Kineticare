@@ -21,6 +21,9 @@ import '../../../app/(frontend)/styles/blocks/course-showcase.css'
 
 export interface CourseShowcaseProps {
   products: Product[]
+  /** CMS-feliratok; üresen a jelenlegi galéria megjelenítése marad. */
+  eyebrow?: string
+  ctaLabel?: string
   heading?: string
   lead?: string
   /** A vízjel. Üresen a beépített „Kurzusaink”. `null`: nincs vízjel. */
@@ -48,7 +51,15 @@ function ArrowIcon() {
   )
 }
 
-function ShowcaseCard({ product, index }: { product: Product; index: number }) {
+function ShowcaseCard({
+  product,
+  index,
+  ctaLabel: customCtaLabel,
+}: {
+  product: Product
+  index: number
+  ctaLabel?: string
+}) {
   const title = courseTitle(product)
   const href = courseHref(product)
   const { head, tail } = splitEditorialTitle(title)
@@ -73,7 +84,9 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
     címmel kezdődik és a látható hívást is tartalmazza (WCAG 2.2 SC 2.5.3
     Label in Name).
   */
-  const ctaText = ctaLabel(priceBadge === 'free' ? 'free-course-claim' : 'course-sales-open')
+  const ctaText =
+    customCtaLabel?.trim() ||
+    ctaLabel(priceBadge === 'free' ? 'free-course-claim' : 'course-sales-open')
 
   return (
     <article className="kc-course-showcase__card">
@@ -141,6 +154,8 @@ function ShowcaseCard({ product, index }: { product: Product; index: number }) {
  */
 export function CourseShowcase({
   products,
+  eyebrow,
+  ctaLabel,
   heading,
   lead,
   mark = COURSE_SHOWCASE_MARK,
@@ -158,11 +173,12 @@ export function CourseShowcase({
   return (
     <div className="kc-course-showcase" data-count={products.length}>
       <div className="kc-course-showcase__head">
+        {eyebrow?.trim() ? <p className="kc-eyebrow">{eyebrow.trim()}</p> : null}
         <h2 className="kc-course-showcase__heading">{title}</h2>
       </div>
       <div className="kc-course-showcase__grid" data-count={Math.min(products.length, 3)}>
         {products.map((product, index) => (
-          <ShowcaseCard index={index} key={product.id} product={product} />
+          <ShowcaseCard ctaLabel={ctaLabel} index={index} key={product.id} product={product} />
         ))}
       </div>
       {hasScene ? (

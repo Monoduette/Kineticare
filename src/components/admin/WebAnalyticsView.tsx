@@ -112,7 +112,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   const { req } = props.initPageResult
   if (!hasStaffOrOwnerRole(req.user)) {
     return (
-      <AdminViewFrame props={props}>
+      <AdminViewFrame props={props} title="Webanalitika">
         <div className="kc-adminstat" style={pageStyle}>
           <h1 style={headingStyle}>Webanalitika</h1>
           <p>{WEB_ANALYTICS_ACCESS_DENIED_MESSAGE}</p>
@@ -146,7 +146,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   const embedUrl = posthogEmbedUrl()
 
   return (
-    <AdminChrome props={props}>
+    <AdminChrome props={props} title="Webanalitika">
       <div className="kc-adminstat" style={pageStyle}>
         <h1 style={headingStyle}>Webanalitika</h1>
         <p style={leadStyle}>

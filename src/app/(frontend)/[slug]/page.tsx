@@ -165,7 +165,9 @@ export default async function CmsPage({ params }: Props) {
         : rawLayout
   const hasLayout = layout.length > 0
   // A film-hero saját h1-et renderel — ilyenkor a szöveges hero elmarad.
-  const hasFilmHero = layout.some((block) => block.blockType === 'filmHero')
+  const hasFilmHero = layout.some(
+    (block) => block.blockType === 'filmHero' && block.sectionSettings?.visible !== false,
+  )
   const heroMedia = page.heroImage && typeof page.heroImage === 'object' ? page.heroImage : null
 
   // A posztokból a knowledge blokk felső limitjéig kérünk, hogy a szekciósor
