@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -9,9 +9,31 @@ import { describe, expect, it } from 'vitest'
  * Ha a fájl eltűnik, vagy a három kanonikus mutató (AGENTS / CLAUDE /
  * README) lemarad róla, az átadás némán elromlik — ugyanaz a vakfolt,
  * amit a meta-őr a CI-őrökre fog.
+ *
+ * A repo-gyökeret felfelé keressük, ne rögzített `../..`-t: a
+ * `handover/` másolat egy szinttel feljebb él, és onnan a régi
+ * relatív út a repo szülőjét találná.
  */
 
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+function resolveRepoRoot(fromUrl: string): string {
+  let current = dirname(fileURLToPath(fromUrl))
+  for (let step = 0; step < 8; step += 1) {
+    if (
+      existsSync(join(current, 'AGENTS.md')) &&
+      existsSync(join(current, 'docs', 'ugynok-kezikonyv.md'))
+    ) {
+      return current
+    }
+    const parent = dirname(current)
+    if (parent === current) {
+      break
+    }
+    current = parent
+  }
+  throw new Error('Nem találom a Kineticare repo-gyökeret (AGENTS.md + docs/ugynok-kezikonyv.md).')
+}
+
+const REPO_ROOT = resolveRepoRoot(import.meta.url)
 const HANDBOOK_REL = 'docs/ugynok-kezikonyv.md'
 const HANDOVER_DIR = 'handover'
 const HANDOVER_HANDBOOK_REL = 'handover/ugynok-kezikonyv.md'
@@ -45,6 +67,8 @@ const REQUIRED_SOURCE_PATHS = [
   'src/app/sitemap.ts',
   'docs/agent-feature-map.md',
   'docs/ertekesitesi-ux-skill.md',
+  'docs/szerkesztoi-utmutato.md',
+  'docs/claude-indito-prompt.md',
   '.claude/skills/termektervezes/SKILL.md',
 ]
 
@@ -87,6 +111,18 @@ describe('ügynök-kézikönyv — a következő agent megtalálja és használn
     expect(readRepoFile('README.md')).toContain(`${HANDOVER_DIR}/`)
   })
 
+  it('a Claude-indító prompt létezik, bemásolható, és a handover másolat egyezik', () => {
+    const promptRel = 'docs/claude-indito-prompt.md'
+    const handoverPromptRel = 'handover/claude-indito-prompt.md'
+    expect(existsSync(join(REPO_ROOT, promptRel)), promptRel).toBe(true)
+    expect(readRepoFile(handoverPromptRel)).toBe(readRepoFile(promptRel))
+    expect(readRepoFile('handover/README.md')).toContain('claude-indito-prompt.md')
+    expect(readRepoFile(promptRel)).toContain('MÁSOLD INNENTŐL')
+    expect(readRepoFile(promptRel)).toContain('confirmOrder')
+    expect(readRepoFile(promptRel)).toContain('szerkesztoi-utmutato.md')
+    expect(readRepoFile(promptRel)).not.toMatch(/confirmOrder-t hívd/i)
+  })
+
   it('az .env.example tartalmazza a kódban élő, korábban hiányzó kulcsneveket érték nélkül', () => {
     const example = readRepoFile('.env.example')
     const requiredKeys = [
@@ -109,5 +145,20 @@ describe('ügynök-kézikönyv — a következő agent megtalálja és használn
 
     expect(example).not.toMatch(/FIRST_USER_BOOTSTRAP_TOKEN=\S/)
     expect(example).not.toMatch(/SEED_OWNER_PASSWORD=\S/)
+    expect(example).not.toMatch(/első fiók customer marad/)
+  })
+
+  it('az első user fail-closed, a seed nem dry-run, a hero-video fájlnév létezik', () => {
+    const handbook = readRepoFile(HANDBOOK_REL)
+
+    expect(handbook).toMatch(/503/)
+    expect(handbook).toMatch(/403/)
+    expect(handbook).toMatch(/fiók \*\*nem\*\*\s+jön létre/)
+    expect(handbook).not.toMatch(/első fiók\s+customer lenne/)
+    expect(handbook).toMatch(/Nem-éles URL-en hiányzó `SEED_\*` = \*\*teljes seed ír\*\*/)
+    expect(handbook).not.toMatch(/`OWNER_\*` \/ `SEED_\*` kapuk/)
+    expect(handbook).toContain('hero-video-feltoltes.md')
+    expect(handbook).not.toContain('hero-video-feltoltese.md')
+    expect(existsSync(join(REPO_ROOT, 'docs', 'hero-video-feltoltes.md'))).toBe(true)
   })
 })

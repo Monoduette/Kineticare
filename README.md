@@ -51,6 +51,7 @@ kizárólag a kezdőlap szekciósorát és a landing tartalmi képeit tölti be
 | Terület | Fájl |
 |---|---|
 | **Ügynök-kézikönyv (a következő agentnek)** | **`docs/ugynok-kezikonyv.md`** |
+| **Claude indító prompt (másold be)** | **`docs/claude-indito-prompt.md`** |
 | **Küldhető átadási csomag** | **`handover/`** |
 | **Feladatlista (mi van hátra)** | **`docs/feladatlista.md`** |
 | Kezdőlap szekció-rendszer | `docs/szekcio-rendszer-terv.md` |
