@@ -39,13 +39,13 @@ const EXPECTED_WORKFLOW_SHA256 = new Map<string, string>([
 
 const EXPECTED_NPMRC_SHA256 = '9379a4a8600c5bfbd8680df911b23cec5aa55969d6c8e828f1aa8b10ecb64770'
 const EXPECTED_INSTALL_VERIFIER_SHA256 =
-  'faefc53ab07948c40cbaa42e525553740685742338bf3e1cdc150b55e8092565'
+  '9d8badc752e3518c2341a59d5f38838c9e3c877747939baa21ce7efdc6274fac'
 const EXPECTED_EXACT_NPM_CLI_SHA256 =
   'b548d388e4f0d7f6997733c925890a95f386e74c4cdf657b6f3c625e785398c6'
 const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
-  'a6c2b3abce950fb6e4a94ecd13cd728f792ca98d266a447d2481a8c0fd730f43'
+  '21f637b063faed841da7bac1468859549470e5d52ffb65ac9ac5ff060fefb542'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
-  '4d27e583b9b89d4c25a77af0a357891f3853e61de4b25036d76404ac4aadf558'
+  '7bb683ff32299f0b6d063d0c50785ddd0ba4484b53994b97b26e1cb1518fb4a3'
 const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
@@ -54,7 +54,7 @@ const EXPECTED_RAILPACK_PLAN_VERIFIER_SHA256 =
   '98ff5a6805798ad69b429a6c2b8835ecd6c3ca628e5a47f3fbde0c847196fe51'
 
 const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
-  '@eslint/eslintrc': '3.3.6',
+  '@eslint/eslintrc': '3.3.7',
   '@payloadcms/db-postgres': '3.88.0',
   '@payloadcms/next': '3.88.0',
   '@payloadcms/plugin-ecommerce': '3.88.0',
@@ -62,24 +62,24 @@ const EXPECTED_PACKAGE_PINS: Readonly<Record<string, string>> = {
   '@payloadcms/richtext-lexical': '3.88.0',
   '@payloadcms/translations': '3.88.0',
   '@types/json-schema': '7.0.15',
-  '@types/node': '24.13.3',
-  '@types/react': '19.2.18',
-  '@types/react-dom': '19.2.4',
+  '@types/node': '24.13.4',
+  '@types/react': '19.3.0',
+  '@types/react-dom': '19.3.0',
   eslint: '9.39.5',
-  'eslint-config-next': '16.3.3',
+  'eslint-config-next': '16.3.5',
   graphql: '16.14.2',
-  next: '16.3.3',
+  next: '16.3.5',
   payload: '3.88.0',
-  'posthog-js': '1.422.5',
+  'posthog-js': '1.430.3',
   prettier: '3.9.6',
-  react: '19.2.8',
-  'react-dom': '19.2.8',
-  sass: '1.103.1',
+  react: '19.3.0',
+  'react-dom': '19.3.0',
+  sass: '1.104.1',
   sharp: '0.35.4',
-  tsx: '4.23.12',
+  tsx: '4.23.13',
   'tus-js-client': '4.3.1',
   typescript: '5.9.3',
-  vite: '8.2.1',
+  vite: '8.3.0',
   vitest: '4.1.11',
 }
 
