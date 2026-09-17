@@ -8,8 +8,6 @@ import { cache } from 'react'
 
 import { TrackEvent } from '@/components/analytics/TrackEvent'
 import { JsonLd } from '@/components/content/JsonLd'
-import { MediaImage } from '@/components/content/MediaImage'
-import { mediaAlt, mediaDimensions, pickMediaUrl } from '@/components/content/media-url'
 import { CourseBarionView } from '@/components/courses/CourseBarionView'
 import { CourseBuyBar } from '@/components/courses/CourseBuyBar'
 import { CourseBuybox } from '@/components/courses/CourseBuybox'
@@ -317,15 +315,6 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
 
   // ── A szakaszok, dokumentum-sorrendben ────────────────────────────────────
   const sections: PageSection[] = []
-  const gallery = (product.gallery ?? []).flatMap((entry) => {
-    const image = entry.image
-    return image &&
-      typeof image === 'object' &&
-      (!image.mimeType || image.mimeType.startsWith('image/')) &&
-      pickMediaUrl(image)
-      ? [{ id: entry.id, image }]
-      : []
-  })
 
   if (sales.body !== null) {
     sections.push({
@@ -336,46 +325,6 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
             A kurzusról
           </h2>
           <LexicalContent className="kc-course-prose" content={sales.body} />
-        </section>
-      ),
-    })
-  }
-
-  if (gallery.length > 0) {
-    sections.push({
-      target: { id: 'kurzus-kepek', label: 'Képek' },
-      node: (
-        <section aria-labelledby="kurzus-kepek-cim" className="kc-course-section" id="kurzus-kepek">
-          <h2 className="kc-course-section__title" id="kurzus-kepek-cim">
-            Képek a kurzusról
-          </h2>
-          <div className="kc-course-gallery">
-            {gallery.map(({ id, image }, index) => {
-              const dimensions = mediaDimensions(image, 'md')
-              const hasDimensions = dimensions && dimensions.width > 0 && dimensions.height > 0
-              return (
-                <figure className="kc-course-gallery__item" key={id ?? `${image.id}-${index}`}>
-                  {hasDimensions ? (
-                    <MediaImage
-                      className="kc-course-gallery__image"
-                      media={image}
-                      preferredSize="md"
-                      sizes="(max-width: 1023px) 100vw, 720px"
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element -- régi média méretadat nélkül; Next Image kötelező méreteit nem találjuk ki
-                    <img
-                      alt={mediaAlt(image)}
-                      className="kc-course-gallery__image"
-                      decoding="async"
-                      loading="lazy"
-                      src={pickMediaUrl(image, 'md') ?? undefined}
-                    />
-                  )}
-                </figure>
-              )
-            })}
-          </div>
         </section>
       ),
     })

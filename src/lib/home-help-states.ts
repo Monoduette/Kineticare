@@ -314,28 +314,21 @@ export const presentHomeHelpServicesBlock = (block: BlockServices): BlockService
   return {
     ...block,
     elrendezes: 'sin',
-    title: block.title?.trim() || HOME_HELP_TITLE,
-    lead: block.lead?.trim() || HOME_HELP_LEAD,
-    eyebrow: block.eyebrow ?? '',
+    title: HOME_HELP_TITLE,
+    lead: HOME_HELP_LEAD,
+    eyebrow: '',
     sectionSettings: presentedSettings,
     rows: HOME_HELP_STATES.map((state, index) => {
       const live = liveRows[index]
-      const legacy = LEGACY_HOME_HELP_ROWS[index]
-      // Csak az ismert régi alapértékeket cseréljük. A CMS egyedi szövege
-      // nem válhat elvesző adattá egy összegzés vagy cél-URL átírásakor.
       return {
-        ...live,
-        number: live?.number === legacy.number ? state.number : live?.number || state.number,
-        title:
-          live?.title === CLOSED_HAND_HOME_HELP_TITLES[index]
-            ? state.title
-            : live?.title?.trim() || state.title,
-        osszefoglalo: live?.osszefoglalo?.trim() || state.osszefoglalo,
-        body: live?.body === legacy.body ? state.body : live?.body?.trim() || state.body,
-        felirat:
-          live?.felirat === legacy.felirat ? state.felirat : live?.felirat?.trim() || state.felirat,
-        url: live?.url?.trim() || state.url,
-        ujAblakban: live?.ujAblakban ?? state.ujAblakban,
+        id: live?.id,
+        number: state.number,
+        title: state.title,
+        osszefoglalo: state.osszefoglalo,
+        body: state.body,
+        felirat: state.felirat,
+        url: state.url,
+        ujAblakban: state.ujAblakban,
         photo: populatedHelpPhoto(live?.photo) ?? homeHelpFallbackMedia(index),
       }
     }),

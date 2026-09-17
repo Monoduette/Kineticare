@@ -174,43 +174,6 @@ const tablaHelp = (rows: unknown = liveTablaRows): BlockServices =>
   }) as unknown as BlockServices
 
 describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => {
-  it('preserves edited section copy and row fields even when a summary no longer matches the canonical rail', () => {
-    const rows = homeHelpRailRows().map((row, index) => ({
-      ...row,
-      id: `row-${index}`,
-      osszefoglalo: 'Edited summary',
-      body: 'Edited body',
-      felirat: 'Edited link',
-      url: `/custom-${index}`,
-      ujAblakban: false,
-      photo: homeHelpFallbackMedia(index),
-    }))
-    const block: BlockServices = {
-      ...tablaHelp(rows),
-      lead: 'Edited lead',
-      eyebrow: 'Edited eyebrow',
-    }
-    const before = structuredClone(block)
-    const presented = presentHomeHelpServicesBlock(block)
-    expect(presented.lead).toBe(block.lead)
-    expect(presented.eyebrow).toBe(block.eyebrow)
-    expect(presented.rows).toEqual(rows)
-    expect(presented.elrendezes).toBe('sin')
-    expect(block).toEqual(before)
-    expect(presentHomeHelpServicesBlock(presented)).toEqual(presented)
-  })
-
-  it('preserves an edited title and legacy-row body while retaining the approved legacy defaults', () => {
-    const rows = LEGACY_HOME_HELP_ROWS.map((row, index) =>
-      index === 1 ? { ...row, body: 'Edited body' } : { ...row },
-    )
-    const presented = presentHomeHelpServicesBlock({ ...tablaHelp(rows), title: 'Edited title' })
-    expect(presented.title).toBe('Edited title')
-    expect(presented.rows?.[1]?.body).toBe('Edited body')
-    expect(presented.rows?.[0]?.body).toBe(HOME_HELP_STATES[0].body)
-    expect(presented.rows?.[0]?.felirat).toBe(HOME_HELP_STATES[0].felirat)
-  })
-
   it('a régi háromoszlopos (H08-törzsű) táblát sínné alakítja, a sorszámot nem cseréli', () => {
     expect(isConvertibleHomeHelpServices(tablaHelp())).toBe(true)
     const presented = presentHomeHelpServicesBlock(tablaHelp())
