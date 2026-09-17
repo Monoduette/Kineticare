@@ -50,18 +50,18 @@ hogy technikailag mi bonyolult. A vevőt a saját hozzáférése érdekli.
 Ajánlott: **kedd vagy szerda délelőtt** — így a hét maradékában van emberi
 kapacitás a válaszokra. Ne péntek, ne ünnep előtt.
 
-| Nap | Lépés | Ki csinálja | Kimenet |
-| --- | --- | --- | --- |
-| **T−14** | Adat-előkészítés: systeme.io-export letöltése, kurzusnév→SKU tábla összeállítása | technikai + Katák | `export.csv`, `--map` párok listája |
-| **T−13** | **Próbafutás** (`--dry-run`) az éles adatbázis ellen, terv átnézése | technikai | terv-táblázat, nem leképezett kurzusnevek listája |
-| **T−12** | A nem leképezett kurzusnevek tisztázása, `--map` kiegészítése, újabb próbafutás | Katák | tiszta próbafutás (0 ismeretlen kurzusnév) |
-| **T−10** | **1. levél — Bejelentés** (teendő nincs) | Katák | minden meglévő vevő értesítve |
-| **T−3** | Éles import futtatása (fiókok + hozzáférések létrejönnek), aktiválási linkek generálása | technikai | mérleg + `linkek.csv` |
-| **T−3** | **2. levél — Aktiváló, személyre szóló linkkel** (`--send-invites`, vagy körlevél a `linkek.csv`-ből) | technikai / Katák | mindenki tud jelszót állítani |
-| **T−1** | **3. levél — Emlékeztető** csak azoknak, akik még nem léptek be | Katák | lemorzsolódás csökkentése |
-| **T** | **Átállás napja:** a régi felület kezdőlapján/levélben átirányítás az újra | Katák | egyetlen belépési pont |
-| **T+2** | Utókövetés: kik nem léptek be még → egyéni megkeresés | Katák | senki nem marad kint |
-| **T+14** | Zárómérleg: belépési arány, hibalista lezárva | technikai + Katák | döntés a systeme.io lemondásáról |
+| Nap      | Lépés                                                                                                 | Ki csinálja       | Kimenet                                           |
+| -------- | ----------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------- |
+| **T−14** | Adat-előkészítés: systeme.io-export letöltése, kurzusnév→SKU tábla összeállítása                      | technikai + Katák | `export.csv`, `--map` párok listája               |
+| **T−13** | **Próbafutás** (`--dry-run`) az éles adatbázis ellen, terv átnézése                                   | technikai         | terv-táblázat, nem leképezett kurzusnevek listája |
+| **T−12** | A nem leképezett kurzusnevek tisztázása, `--map` kiegészítése, újabb próbafutás                       | Katák             | tiszta próbafutás (0 ismeretlen kurzusnév)        |
+| **T−10** | **1. levél — Bejelentés** (teendő nincs)                                                              | Katák             | minden meglévő vevő értesítve                     |
+| **T−3**  | Éles import futtatása (fiókok + hozzáférések létrejönnek), aktiválási linkek generálása               | technikai         | mérleg + `linkek.csv`                             |
+| **T−3**  | **2. levél — Aktiváló, személyre szóló linkkel** (`--send-invites`, vagy körlevél a `linkek.csv`-ből) | technikai / Katák | mindenki tud jelszót állítani                     |
+| **T−1**  | **3. levél — Emlékeztető** csak azoknak, akik még nem léptek be                                       | Katák             | lemorzsolódás csökkentése                         |
+| **T**    | **Átállás napja:** a régi felület kezdőlapján/levélben átirányítás az újra                            | Katák             | egyetlen belépési pont                            |
+| **T+2**  | Utókövetés: kik nem léptek be még → egyéni megkeresés                                                 | Katák             | senki nem marad kint                              |
+| **T+14** | Zárómérleg: belépési arány, hibalista lezárva                                                         | technikai + Katák | döntés a systeme.io lemondásáról                  |
 
 **Kulcsszabály:** a **T−3**-as import és a **T−3**-as aktiváló levél KÖZÖTT ne
 teljen el több nap. A generált link 30 napig érvényes, de a vevő fejében az
@@ -71,13 +71,13 @@ teljen el több nap. A generált link 30 napig érvényes, de a vevő fejében a
 
 ## 3. Mit tapasztal a vevő
 
-| Kérdés | Mi történik a háttérben |
-| --- | --- |
-| Kap-e új fiókot? | Igen, az **eddigi e-mail-címével**. Ha már regisztrált az új oldalon, a meglévő fiókja marad — új nem jön létre. |
-| Mi lesz a jelszavával? | A régi jelszó **nem költözik át** (nem is ismerjük). Az aktiváló levélben kap egy linket, amivel sajátot állít be. |
-| Mi lesz a kurzusaival? | A megvásárolt kurzusok hozzáférésként (`purchases`) átkerülnek. A már meglévő hozzáféréseket az import **sosem törli** — csak kiegészíti. |
-| Kell újra fizetnie? | Nem. Az import nem hoz létre rendelést és nem indít fizetést. |
-| Mi van, ha kétszer futtatjuk az importot? | Semmi. A művelet idempotens: a második kör a kész sorokat kihagyja. |
+| Kérdés                                                      | Mi történik a háttérben                                                                                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kap-e új fiókot?                                            | Igen, az **eddigi e-mail-címével**. Ha már regisztrált az új oldalon, a meglévő fiókja marad — új nem jön létre.                                             |
+| Mi lesz a jelszavával?                                      | A régi jelszó **nem költözik át** (nem is ismerjük). Az aktiváló levélben kap egy linket, amivel sajátot állít be.                                           |
+| Mi lesz a kurzusaival?                                      | A megvásárolt kurzusok hozzáférésként (`purchases`) átkerülnek. A már meglévő hozzáféréseket az import **sosem törli** — csak kiegészíti.                    |
+| Kell újra fizetnie?                                         | Nem. Az import nem hoz létre rendelést és nem indít fizetést.                                                                                                |
+| Mi van, ha kétszer futtatjuk az importot?                   | Semmi. A művelet idempotens: a második kör a kész sorokat kihagyja.                                                                                          |
 | Mi a helyzet, ha a vevő MÁR fent van, csak nem tud belépni? | Ez a 4.5. „egyetlen levél" esete: közös linket kap a `/belepes-atallas` lapra (4.6.), ott a saját címével kér visszaállító linket. Új import nem kell hozzá. |
 
 ---
@@ -239,11 +239,11 @@ viszont mail merge-öt és a token kezelését kívánja.
 
 **A behelyettesítendő mezők**
 
-| Mező | Mi kerül bele | Ki adja meg |
-| --- | --- | --- |
-| `{{nev}}` | a vevő keresztneve; merge nélkül „Kedves Vásárlónk!" a megszólítás | levelezőrendszer / Katák |
-| `{{belepes_atallas_url}}` | az átállási céllap teljes címe: a `NEXT_PUBLIC_SERVER_URL` + `/belepes-atallas` | üzemeltetés |
-| `{{alairas}}` | az aláírás (a 4.1–4.3. levelekével AZONOS, 1. alapelv) | Katák |
+| Mező                      | Mi kerül bele                                                                   | Ki adja meg              |
+| ------------------------- | ------------------------------------------------------------------------------- | ------------------------ |
+| `{{nev}}`                 | a vevő keresztneve; merge nélkül „Kedves Vásárlónk!" a megszólítás              | levelezőrendszer / Katák |
+| `{{belepes_atallas_url}}` | az átállási céllap teljes címe: a `NEXT_PUBLIC_SERVER_URL` + `/belepes-atallas` | üzemeltetés              |
+| `{{alairas}}`             | az aláírás (a 4.1–4.3. levelekével AZONOS, 1. alapelv)                          | Katák                    |
 
 **Amit a levél SZÁNDÉKOSAN nem tartalmaz:** dátumot (a régi felület
 lekapcsolásának napját a tulajdonos még nem adta meg), határidőt, sürgetést és
@@ -297,16 +297,16 @@ amelyre a levél érkezett (ezzel regisztrált); belépés után a **Kurzusaim**
 menüpontban vannak a megvett kurzusok vagy az ingyenes SOS KézRelax villámkurzus.
 
 > **Tárgy:** Megújult a Kineticare: állítsd be az új jelszavad
-> *(49 karakter; őr-teszt: legfeljebb 60)*
+> _(49 karakter; őr-teszt: legfeljebb 60)_
 >
 > **Előnézeti sor:** A régi jelszavad itt már nem működik. A kurzusaid
 > megvannak, újra fizetned nem kell.
 >
-> *Fiók-átköltöztetés*
+> _Fiók-átköltöztetés_
 >
 > **Megújult az oldal, új jelszó kell**
 >
-> Kedves {{nev}}! *(név nélkül: Kedves Vásárlónk!)*
+> Kedves {{nev}}! _(név nélkül: Kedves Vásárlónk!)_
 >
 > A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. Ezért
 > írunk: a régi jelszavad elavult, az új oldalon már nem működik. Nem veszett el
@@ -332,10 +332,10 @@ menüpontban vannak a megvett kurzusok vagy az ingyenes SOS KézRelax villámkur
 > Üdvözlettel:
 > a Kineticare csapata
 >
-> *Ha pár percen belül nem érkezik meg a levél, nézd meg a levélszemét mappát
+> _Ha pár percen belül nem érkezik meg a levél, nézd meg a levélszemét mappát
 > is, és keress rá a Kineticare szóra. Ugyanarra a címre 10 percen belül
 > legfeljebb 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány
-> percet az újabb próbálkozással.*
+> percet az újabb próbálkozással._
 >
 > **Lábléc:** Kineticare · Kézrehabilitációs online kurzusplatform
 > Ezt a levelet azért kapod, mert a(z) {{email}} címmel fiókod van a Kineticare
@@ -344,15 +344,15 @@ menüpontban vannak a megvett kurzusok vagy az ingyenes SOS KézRelax villámkur
 
 **Tervezési döntések (forrással; a részletes indoklás a sablon fejkommentjében):**
 
-| Döntés | Miért | Forrás |
-| --- | --- | --- |
-| Egy levél, egy gomb, aláírás | 1. alapelv, 3. pont; a cselekvés elöl, a kiegészítő tudnivaló hátul | NN/g, *Transactional and Confirmation Email* (https://www.nngroup.com/articles/transactional-and-confirmation-email/) |
-| Tárgy ≤ 60 karakter, a lényeg elöl | a kliens rövidít | Postmark, *Transactional email best practices* (https://postmarkapp.com/guides/transactional-email-best-practices); GOV.UK Service Manual, *Sending emails and text messages* (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages) |
-| A gomb felirata `Beállítom az új jelszót` (§3.2 #22), NEM új szinonima | ugyanaz a cselekvés, mint az aktiváló levélben és a jelszó-beállító lapon → ugyanaz a felirat | WCAG 2.2 SC 3.2.4 Consistent Identification; Polaris („identify and eliminate synonyms"); `docs/ui-sztenderdek.md` §3.2 |
-| Válasz-cím: `info@kineticare.hu`, a lábléc kimondja, miért kapja | fiókkal kapcsolatos értesítés; a válasz figyelt postaládába menjen | Postmark (fent): „Avoid a noreply@ address if you can"; GOV.UK (fent): „include contact details for your service" |
-| Nincs List-Unsubscribe fejléc | tranzakciós, fiókkal kapcsolatos értesítés, nem hírlevél | Postmark (fent) |
-| A „10 percen belül legfeljebb 3 levél" mondat a `password-forgot-email` keret értékéből épül | ne maradjon hazug szám, ha a keretet átállítják | `src/lib/security/rate-limit.ts`; őr: `src/__tests__/email-migracio-sablon.test.ts` (bitre azonos a `/belepes-atallas` mondatával) |
-| Resend `Idempotency-Key` címzettenként (`migracio-<userId>`), 250 ms szünet | a kulcs 24 óráig él, ≤ 256 karakter; a csapat-szintű alap-korlát 10 kérés/mp | https://resend.com/docs/dashboard/emails/idempotency-keys; https://resend.com/docs/api-reference/rate-limit |
+| Döntés                                                                                                                                                                                                 | Miért                                                                                         | Forrás                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Egy levél, egy gomb, aláírás                                                                                                                                                                           | 1. alapelv, 3. pont; a cselekvés elöl, a kiegészítő tudnivaló hátul                           | NN/g, _Transactional and Confirmation Email_ (https://www.nngroup.com/articles/transactional-and-confirmation-email/)                                                                                                                                     |
+| Tárgy ≤ 60 karakter, a lényeg elöl                                                                                                                                                                     | a kliens rövidít                                                                              | Postmark, _Transactional email best practices_ (https://postmarkapp.com/guides/transactional-email-best-practices); GOV.UK Service Manual, _Sending emails and text messages_ (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages) |
+| A gomb felirata `Beállítom az új jelszót` (§3.2 #22), NEM új szinonima                                                                                                                                 | ugyanaz a cselekvés, mint az aktiváló levélben és a jelszó-beállító lapon → ugyanaz a felirat | WCAG 2.2 SC 3.2.4 Consistent Identification; Polaris („identify and eliminate synonyms"); `docs/ui-sztenderdek.md` §3.2                                                                                                                                   |
+| Válasz-cím: `info@kineticare.hu`, a lábléc kimondja, miért kapja                                                                                                                                       | fiókkal kapcsolatos értesítés; a válasz figyelt postaládába menjen                            | Postmark (fent): „Avoid a noreply@ address if you can"; GOV.UK (fent): „include contact details for your service"                                                                                                                                         |
+| Nincs List-Unsubscribe fejléc                                                                                                                                                                          | tranzakciós, fiókkal kapcsolatos értesítés, nem hírlevél                                      | Postmark (fent)                                                                                                                                                                                                                                           |
+| A „10 percen belül legfeljebb 3 levél" mondat a `password-forgot-email` keret értékéből épül                                                                                                           | ne maradjon hazug szám, ha a keretet átállítják                                               | `src/lib/security/rate-limit.ts`; őr: `src/__tests__/email-migracio-sablon.test.ts` (bitre azonos a `/belepes-atallas` mondatával)                                                                                                                        |
+| Resend `Idempotency-Key` címzettenként (`migracio-<userId>`; `--force` körben `migracio-<userId>-ujra-<ÉÉÉÉHHNNÓÓPP>`, mert az azonos kulcsot a Resend 24 óráig néma no-opként kezelné), 250 ms szünet | a kulcs 24 óráig él, ≤ 256 karakter; a csapat-szintű alap-korlát 10 kérés/mp                  | https://resend.com/docs/dashboard/emails/idempotency-keys; https://resend.com/docs/api-reference/rate-limit                                                                                                                                               |
 
 A „1 óráig érvényes" mondat a Payload `forgotPassword.expiration` alapértékéből
 (3 600 000 ms) számolódik; őr-teszt köti a `payload.config` users-collectionjéhez.
@@ -442,15 +442,15 @@ kényszeríteni a `--format=systeme` kapcsolóval lehet.
 
 **A címkék jelentése** (a szabálytábla helye: `src/lib/customer-import/tags.ts`):
 
-| Címke | Mit jelent | Hozzáférés |
-| --- | --- | --- |
-| `SOS KézRelax vásárló` | az ingyenes SOS Kézrelax villámkurzus vásárlója | **igen** |
-| `Otthoni KézRehab vásárló` | a fizetős Otthoni KézRehab Program vásárlója | **igen** |
-| `Előjelentkezők` | érdeklődő, nem vásárolt | nem |
-| `Visszatérítés KézRelax` | visszatérített SOS Kézrelax | **kiüti** a SOS-t |
-| `Visszatérítés Kézrehab` | visszatérített Otthoni KézRehab | **kiüti** a KézRehabot |
-| üres cella | nincs címke | nem |
-| bármi más | ISMERETLEN címke | nem — figyelmeztetés a mérlegben |
+| Címke                      | Mit jelent                                      | Hozzáférés                       |
+| -------------------------- | ----------------------------------------------- | -------------------------------- |
+| `SOS KézRelax vásárló`     | az ingyenes SOS Kézrelax villámkurzus vásárlója | **igen**                         |
+| `Otthoni KézRehab vásárló` | a fizetős Otthoni KézRehab Program vásárlója    | **igen**                         |
+| `Előjelentkezők`           | érdeklődő, nem vásárolt                         | nem                              |
+| `Visszatérítés KézRelax`   | visszatérített SOS Kézrelax                     | **kiüti** a SOS-t                |
+| `Visszatérítés Kézrehab`   | visszatérített Otthoni KézRehab                 | **kiüti** a KézRehabot           |
+| üres cella                 | nincs címke                                     | nem                              |
+| bármi más                  | ISMERETLEN címke                                | nem — figyelmeztetés a mérlegben |
 
 Két szabály, ami könnyen félremegy:
 
@@ -494,8 +494,8 @@ A vásárlói lista **személyes adat: a repóba nem kerülhet be.** Ha a script
 Railway-en futtatjátok, a fájl helyett egy környezeti változóban adható át,
 base64-kódolva:
 
-| Változó | Tartalom |
-| --- | --- |
+| Változó                       | Tartalom                                  |
+| ----------------------------- | ----------------------------------------- |
 | `IMPORT_CUSTOMERS_CSV_BASE64` | a CSV-fájl teljes tartalma base64-kódolva |
 
 ```bash
@@ -547,22 +547,22 @@ npx tsx src/scripts/import-customers.ts \
   --map "Kéz Rehab Alap=KEZ-ALAP" --dry-run
 ```
 
-| Kapcsoló | Mire jó |
-| --- | --- |
-| `--delimiter=';'` | Magyar Excelből mentett fájl (pontosvessző). `--delimiter='\t'` = tabulátor. |
-| `--email-col` / `--name-col` / `--courses-col` | Az oszlopok fejlécneve, ha az automatikus felismerés nem talál. |
-| `--last-name-col` / `--registered-col` | A systeme.io vezetéknév- és dátum-oszlopa, ha a fejléc szokatlan. |
-| `--format=systeme` | A címke-alapú (systeme.io) értelmezés kényszerítése. `--format=generic` = a régi, kurzusnév-oszlopos alak. |
-| `--ignore-tag "<címke>"` | Ismételhető. A címke NEM vásárlás (hozzáférést nem ad, nem is hiba). |
-| `--refund-tag "V=K"` | Ismételhető. A `V` visszatérítés-címke kiüti a `K` vásárlás-címkét. |
-| `--map "Név=SKU"` | Ismételhető. Egy kurzusnév/címke → egy termék. |
-| `--parse-only` | Csak a fájl ellenőrzése, adatbázis-kapcsolat nélkül. |
-| `--dry-run` | Próbafutás: nulla írás. |
-| `--out-links=<út>` | Aktiválási linkek CSV-be (éles futásnál). |
-| `--invite-all` | Link ne csak az új fiókoknak, hanem minden érintett vevőnek. |
-| `--send-invites` | **Aktiváló levél kiküldése** az új fiókoknak (lásd 6.4.1.). |
-| `--send-invites=all` | Levél minden tervbeli vevőnek — a kihagyottaknak is. |
-| `--help` | Súgó. |
+| Kapcsoló                                       | Mire jó                                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--delimiter=';'`                              | Magyar Excelből mentett fájl (pontosvessző). `--delimiter='\t'` = tabulátor.                               |
+| `--email-col` / `--name-col` / `--courses-col` | Az oszlopok fejlécneve, ha az automatikus felismerés nem talál.                                            |
+| `--last-name-col` / `--registered-col`         | A systeme.io vezetéknév- és dátum-oszlopa, ha a fejléc szokatlan.                                          |
+| `--format=systeme`                             | A címke-alapú (systeme.io) értelmezés kényszerítése. `--format=generic` = a régi, kurzusnév-oszlopos alak. |
+| `--ignore-tag "<címke>"`                       | Ismételhető. A címke NEM vásárlás (hozzáférést nem ad, nem is hiba).                                       |
+| `--refund-tag "V=K"`                           | Ismételhető. A `V` visszatérítés-címke kiüti a `K` vásárlás-címkét.                                        |
+| `--map "Név=SKU"`                              | Ismételhető. Egy kurzusnév/címke → egy termék.                                                             |
+| `--parse-only`                                 | Csak a fájl ellenőrzése, adatbázis-kapcsolat nélkül.                                                       |
+| `--dry-run`                                    | Próbafutás: nulla írás.                                                                                    |
+| `--out-links=<út>`                             | Aktiválási linkek CSV-be (éles futásnál).                                                                  |
+| `--invite-all`                                 | Link ne csak az új fiókoknak, hanem minden érintett vevőnek.                                               |
+| `--send-invites`                               | **Aktiváló levél kiküldése** az új fiókoknak (lásd 6.4.1.).                                                |
+| `--send-invites=all`                           | Levél minden tervbeli vevőnek — a kihagyottaknak is.                                                       |
+| `--help`                                       | Súgó.                                                                                                      |
 
 ### 6.3. Éles futtatás
 
@@ -612,14 +612,14 @@ npx tsx src/scripts/import-customers.ts \
 
 **A sorrend kötött: `--dry-run` → éles futás → küldés.**
 
-| Amit tudni kell | Miért |
-| --- | --- |
-| `--dry-run`-nal EGYÜTT nem használható | A script hibaüzenettel, `1`-es kóddal áll meg, **még a fájl beolvasása előtt**. Próbaképp nem megy ki 300 valódi levél. |
-| `RESEND_API_KEY` nélkül el sem indul | Kulcs híján a levelek csendben elnyelődnének, és a futás sikeresnek látszana. |
-| Alapból csak az **új fiókok** kapnak levelet | `--send-invites=all` esetén minden tervbeli vevő (a `KIHAGY`-ottak is) — ez az „újraküldés mindenkinek" eset. |
-| Egy bukott küldés nem állítja meg a kört | A hibás címzettek a végén listázódnak, a kilépési kód `1`. Javítás után újrafuttatható. |
-| A küldések közt kis szünet van | Rate-limit-barát: egy több százas kör nem fut bele a szolgáltató korlátjába. |
-| A token és a link **nem kerül naplóba** | A napló csak maszkolt címet (`k***@example.com`) és darabszámot lát. |
+| Amit tudni kell                              | Miért                                                                                                                   |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`-nal EGYÜTT nem használható       | A script hibaüzenettel, `1`-es kóddal áll meg, **még a fájl beolvasása előtt**. Próbaképp nem megy ki 300 valódi levél. |
+| `RESEND_API_KEY` nélkül el sem indul         | Kulcs híján a levelek csendben elnyelődnének, és a futás sikeresnek látszana.                                           |
+| Alapból csak az **új fiókok** kapnak levelet | `--send-invites=all` esetén minden tervbeli vevő (a `KIHAGY`-ottak is) — ez az „újraküldés mindenkinek" eset.           |
+| Egy bukott küldés nem állítja meg a kört     | A hibás címzettek a végén listázódnak, a kilépési kód `1`. Javítás után újrafuttatható.                                 |
+| A küldések közt kis szünet van               | Rate-limit-barát: egy több százas kör nem fut bele a szolgáltató korlátjába.                                            |
+| A token és a link **nem kerül naplóba**      | A napló csak maszkolt címet (`k***@example.com`) és darabszámot lát.                                                    |
 
 A futás végén a mérleg egy sorral bővül:
 
@@ -696,7 +696,6 @@ maszkolt listáját, semmi nem megy ki. Küldeni csak a
 
 > **Railway job-argumentumok (2026-09-16):** a `railway.email-job.json` indítóparancsa az `EMAIL_JOB_ARGS` változó tartalmát adja át a scriptnek (pl. `--test-to=valaki@example.com`, `--limit=20`, `--only=…`, `--include-no-access`). Üres változó = argumentum nélküli (próba- vagy éles) futás a `MIGRATION_NOTICE_CONFIRM` szerint. A változót minden futás után érdemes üríteni, hogy egy későbbi automatikus deploy ne ismételje a teszt-küldést.
 
-
 **Címzett-kör** (`src/lib/migration-notice/recipients.ts`): `customer`
 szerepkör + `passwordSetupPending: true` (a rendszer hozta létre a fiókot:
 import vagy ingyenes-kurzus igénylés, és a vevő MÉG NEM állított be saját
@@ -714,16 +713,16 @@ körbe. Ha mégis levelet kell kapniuk hozzáférés nélkül, a
 `--include-no-access` kapcsoló veszi be őket. **Egy címre egyszer megy ki** a
 levél; újraküldés csak `--force`-szal.
 
-| Kapcsoló / változó | Mit csinál |
-| --- | --- |
-| *(semmi)* | próbafutás: címzett-kör, maszkolt lista, levél nem megy ki |
-| `MIGRATION_NOTICE_CONFIRM=igen` | éles küldés ugyanazzal a paranccsal |
-| `--test-to=<cím>` | EGY tesztlevél a megadott címre, kapu nélkül, adatbázis és jelölés nélkül (a feladó-domain és a kézbesítés próbája) |
-| `--limit=N` | legfeljebb N címzett (azonosító szerint az első N; a próbafutás és az éles kör ugyanazokkal kezd) |
-| `--only=<cím>` | csak ez az egy vevő a címzett-körből |
-| `--force` | újraküldés a már jelölt fiókoknak is |
-| `--include-no-access` | a kurzus-hozzáférés nélküli fiókok is kapjanak levelet (alapból kimaradnak) |
-| `--help` | súgó |
+| Kapcsoló / változó              | Mit csinál                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| _(semmi)_                       | próbafutás: címzett-kör, maszkolt lista, levél nem megy ki                                                          |
+| `MIGRATION_NOTICE_CONFIRM=igen` | éles küldés ugyanazzal a paranccsal                                                                                 |
+| `--test-to=<cím>`               | EGY tesztlevél a megadott címre, kapu nélkül, adatbázis és jelölés nélkül (a feladó-domain és a kézbesítés próbája) |
+| `--limit=N`                     | legfeljebb N címzett (azonosító szerint az első N; a próbafutás és az éles kör ugyanazokkal kezd)                   |
+| `--only=<cím>`                  | csak ez az egy vevő a címzett-körből                                                                                |
+| `--force`                       | újraküldés a már jelölt fiókoknak is                                                                                |
+| `--include-no-access`           | a kurzus-hozzáférés nélküli fiókok is kapjanak levelet (alapból kimaradnak)                                         |
+| `--help`                        | súgó                                                                                                                |
 
 **A sorrend kötött:** `--test-to` a saját címedre → próbafutás → `--limit=5`
 éles → teljes éles.
@@ -755,8 +754,7 @@ HOZZÁFÉRÉS NÉLKÜL, nem kap levelet: 1 (purchases és accessGrants üres; el
 PRÓBAFUTÁS: levél NEM ment ki, jelölés nem történt. Éles küldés: MIGRATION_NOTICE_CONFIRM=igen környezeti változóval, ugyanezzel a paranccsal.
 ```
 
-A „HOZZÁFÉRÉS NÉLKÜL" listát a küldés előtt nézd meg az adminban (a 10. pont
-2. sora: nem leképezett címke); ők levelet csak a hozzáférés pótlása után, vagy
+A „HOZZÁFÉRÉS NÉLKÜL" listát a küldés előtt nézd meg az adminban (a 10. pont 2. sora: nem leképezett címke); ők levelet csak a hozzáférés pótlása után, vagy
 kifejezett kérésre (`--include-no-access`) kapnak.
 
 **Az éles futás naplója:** soronként `[ELKÜLDVE] k***@example.com`, a végén
@@ -769,7 +767,10 @@ címet vagy kulcsot.
 Resend csapat-szintű alap-korlátja 10 kérés/mp); 429 vagy 5xx esetén legfeljebb
 két újrapróbálás (1,5 s, 4 s). Minden címzett saját Resend idempotencia-kulcsot
 kap (`migracio-<userId>`, 24 óráig él), sikeres küldés után a fiók
-`migrationNoticeSentAt` mezője kap időbélyeget. Ha a levél kiment, de a jelölés
+`migrationNoticeSentAt` mezője kap időbélyeget. A `--force` kör a kulcsot
+percre pontos kör-azonosítóval toldja meg (`migracio-<userId>-ujra-<ÉÉÉÉHHNNÓÓPP>`):
+enélkül a 24 órán belüli szándékos újraküldést a Resend némán elnyelné,
+miközben a script „elküldve"-t írna és újra jelölne. Ha a levél kiment, de a jelölés
 nem sikerült, a sor `[ELKÜLDVE, JELÖLÉS SIKERTELEN]`, és a mérleg is mutatja:
 24 órán belül a Resend-kulcs véd a duplikáció ellen; utána az adminban
 (Felhasználók → a vevő → „Átköltöztetési értesítő kiküldve") látszik, hogy üres.
@@ -806,23 +807,23 @@ rossz szöveg ment ki, a javított sablonnal `--force` küld mindenkinek újra
 
 ## 7. Hibaágak — mit jelentenek és mi a teendő
 
-| Jelenség | Mit jelent | Teendő |
-| --- | --- | --- |
-| `Nem található a fájl: …` (exit 1) | Rossz útvonal | Ellenőrizd a `--file` értékét. |
-| `Nincs importálható sor.` | Üres fájl vagy csak fejléc | Kérd újra az exportot. |
-| `Nem található e-mail-oszlop…` | A fejléc neve ismeretlen | Add meg: `--email-col="…"`. |
-| `Hiányzó vagy többlet oszlop: …` (sor kimarad) | A sor mezőszáma eltér a fejléctől — elcsúszott adat | Nézd meg az adott sort a fájlban; javítás után futtasd újra. |
-| `Hibás e-mail-formátum` / `Üres e-mail-cím` | Rossz cella | A sor kimarad, a futás megy tovább. Javítsd, és futtasd újra. |
-| `a --map olyan SKU-ra hivatkozik, ami nincs az adatbázisban` (exit 1) | Elgépelt SKU | **Írás nem történt.** Javítsd a `--map` értéket. |
-| `Nem leképezett kurzusnevek (…)` | Hiányzó `--map` pár | Egészítsd ki, vagy tudatosan hagyd ki (pl. hírlevél-címke). |
-| `a users kollekció üres…` (exit 1) | Nincs még admin-felhasználó | Előbb hozd létre az admint — az első user owner szerepkört kapna. |
-| Egy soron `HIBA` | Adatbázis-hiba annál a sornál | A futás folytatódik; a végén exit-kód 1. **Futtasd újra** — az idempotencia miatt csak a hiányzó sorok készülnek el. |
-| `a --send-invites és a --dry-run nem használható együtt` (exit 1) | A két kapcsoló egyszerre | **Semmi nem történt.** Előbb próbafutás, aztán éles futás a küldéssel. |
-| `nincs beállítva e-mail-szolgáltató…` (exit 1) | Hiányzik a `RESEND_API_KEY` | **Semmi nem történt.** Állítsd be a kulcsot a Railway → Variables felületén (10. pont), és indítsd újra. |
-| Egy címzetten `SIKERTELEN` | A szolgáltató elutasította vagy nem érte el | A kör folytatódik a többi címzettel; a végén exit-kód 1. A hibás címzetteknek küldj újra (`--send-invites=all` vagy kézi körlevél a `linkek.csv`-ből). |
+| Jelenség                                                                      | Mit jelent                                                                                                                                                                                                                                           | Teendő                                                                                                                                                                             |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Nem található a fájl: …` (exit 1)                                            | Rossz útvonal                                                                                                                                                                                                                                        | Ellenőrizd a `--file` értékét.                                                                                                                                                     |
+| `Nincs importálható sor.`                                                     | Üres fájl vagy csak fejléc                                                                                                                                                                                                                           | Kérd újra az exportot.                                                                                                                                                             |
+| `Nem található e-mail-oszlop…`                                                | A fejléc neve ismeretlen                                                                                                                                                                                                                             | Add meg: `--email-col="…"`.                                                                                                                                                        |
+| `Hiányzó vagy többlet oszlop: …` (sor kimarad)                                | A sor mezőszáma eltér a fejléctől — elcsúszott adat                                                                                                                                                                                                  | Nézd meg az adott sort a fájlban; javítás után futtasd újra.                                                                                                                       |
+| `Hibás e-mail-formátum` / `Üres e-mail-cím`                                   | Rossz cella                                                                                                                                                                                                                                          | A sor kimarad, a futás megy tovább. Javítsd, és futtasd újra.                                                                                                                      |
+| `a --map olyan SKU-ra hivatkozik, ami nincs az adatbázisban` (exit 1)         | Elgépelt SKU                                                                                                                                                                                                                                         | **Írás nem történt.** Javítsd a `--map` értéket.                                                                                                                                   |
+| `Nem leképezett kurzusnevek (…)`                                              | Hiányzó `--map` pár                                                                                                                                                                                                                                  | Egészítsd ki, vagy tudatosan hagyd ki (pl. hírlevél-címke).                                                                                                                        |
+| `a users kollekció üres…` (exit 1)                                            | Nincs még admin-felhasználó                                                                                                                                                                                                                          | Előbb hozd létre az admint — az első user owner szerepkört kapna.                                                                                                                  |
+| Egy soron `HIBA`                                                              | Adatbázis-hiba annál a sornál                                                                                                                                                                                                                        | A futás folytatódik; a végén exit-kód 1. **Futtasd újra** — az idempotencia miatt csak a hiányzó sorok készülnek el.                                                               |
+| `a --send-invites és a --dry-run nem használható együtt` (exit 1)             | A két kapcsoló egyszerre                                                                                                                                                                                                                             | **Semmi nem történt.** Előbb próbafutás, aztán éles futás a küldéssel.                                                                                                             |
+| `nincs beállítva e-mail-szolgáltató…` (exit 1)                                | Hiányzik a `RESEND_API_KEY`                                                                                                                                                                                                                          | **Semmi nem történt.** Állítsd be a kulcsot a Railway → Variables felületén (10. pont), és indítsd újra.                                                                           |
+| Egy címzetten `SIKERTELEN`                                                    | A szolgáltató elutasította vagy nem érte el                                                                                                                                                                                                          | A kör folytatódik a többi címzettel; a végén exit-kód 1. A hibás címzetteknek küldj újra (`--send-invites=all` vagy kézi körlevél a `linkek.csv`-ből).                             |
 | A vevő a lapon sikert lát („Ellenőrizd az e-mail-fiókodat"), de levél nem jön | A `/api/users/forgot-password` **mindig 200-at ad** (fiók-létezés nem szivároghat); a küldés hibája csak a naplóban látszik: `e-mail küldés sikertelen` (Resend elutasítás, nem Verified domain) vagy `noop-provider aktív` (nincs `RESEND_API_KEY`) | Nézd meg a Railway-naplót a maszkolt címre (`v***@…`). Resend: a domain legyen **Verified**, az `EMAIL_FROM` a hitelesített domainen. Csak a napló bizonyít — a 200-as válasz nem. |
-| A levél a szöveges (text/plain) olvasóban üres volt | A Payload forgot-password művelete csak HTML-t ad; az adapter 2026-09-16-ig üres szöveges részt küldött | Javítva: az adapter a HTML-ből szöveges változatot készít, a linkkel (őr-teszt: `atallas-vegpont.test.ts`). |
-| Helyi próbánál `SMTP … nem hirdet STARTTLS-t` | Az SMTP-küldő titkosítás nélkül nem küld | Helyi gyűjtőhöz implicit TLS a 465-ös porton (önaláírt tanúsítvány + `NODE_EXTRA_CA_CERTS`), vagy STARTTLS-t hirdető szerver. |
+| A levél a szöveges (text/plain) olvasóban üres volt                           | A Payload forgot-password művelete csak HTML-t ad; az adapter 2026-09-16-ig üres szöveges részt küldött                                                                                                                                              | Javítva: az adapter a HTML-ből szöveges változatot készít, a linkkel (őr-teszt: `atallas-vegpont.test.ts`).                                                                        |
+| Helyi próbánál `SMTP … nem hirdet STARTTLS-t`                                 | Az SMTP-küldő titkosítás nélkül nem küld                                                                                                                                                                                                             | Helyi gyűjtőhöz implicit TLS a 465-ös porton (önaláírt tanúsítvány + `NODE_EXTRA_CA_CERTS`), vagy STARTTLS-t hirdető szerver.                                                      |
 
 **Kilépési kódok:** `0` = hibátlan futás; `1` = indítási hiba (fájl, argumentum,
 ismeretlen SKU, üres users-kollekció) **vagy** legalább egy hibás sor a futásban.
@@ -878,16 +879,16 @@ Ezek a nyitott pontok — nélkülük az eszköz kész, de az átállás nem ind
 **Legutóbbi felülvizsgálat: 2026-08-21.** Ami azóta teljesült, áthúzva marad
 (nem törölve): a lista így mutatja, mi mozdult, és mi nem.
 
-| # | Mi hiányzik | Kitől | Állapot 2026-08-21-én |
-| --- | --- | --- | --- |
-| 1 | ~~A systeme.io-export pontos formátuma~~ | Katák | **KÉSZ** (2026-08-16): `"Email","First name","Last name","Tag","Date Registered"`, vesszős elválasztó, címke-alapú lista; a parser felismeri (6.0.1.). Új export érkezésekor egy `--parse-only` futás megmutatja, változott-e a fejléc. |
-| 2 | **Címke → SKU tábla** — melyik Kineticare-termék felel meg a `SOS KézRelax vásárló` és az `Otthoni KézRehab vásárló` címkének | Katák | **NYITOTT.** Enélkül a címkék nem leképezettként kimaradnak (a vevő fiókot kapna, kurzus-hozzáférést nem). A SKU az adminban, a Kurzusok listában látszik. |
-| 3 | ~~E-mail-küldés döntése és beállítása~~ | üzemeltetés | **RÉSZBEN KÉSZ.** A szolgáltató eldöntve (Resend); a `RESEND_API_KEY` és az `EMAIL_FROM` a Railway Kineticare-szolgáltatásán BE VAN ÁLLÍTVA. Ami MÉG NINCS igazolva: a feladó-domain **Verified** állapota a Resendben, és egy sikeres **próbalevél** (10.1. 5. lépés). Amíg ez a kettő nincs meg, a körlevél nem indítható. |
-| 4 | **Adatbázis-mentés** (feladatlista C14) | üzemeltetés | **NYITOTT** a `DATABASE_URI` GitHub-secret beállításáig (`db-backup.yml`). Tömeges írás előtt kötelező visszaállítási pont. |
-| 5 | **Az átállás dátuma** és a levelek aláírása | Katák | **NYITOTT.** A 4.1–4.3. sablonok `{{datum_*}}` mezői és MINDEN levél `{{alairas}}` mezője. A 4.5. „egyetlen levél" dátumot SZÁNDÉKOSAN nem tartalmaz, aláírást viszont igen. |
-| 6 | **Kettős e-mail-címek listája** (aki más címmel vásárolt, mint amit használ) | Katák | **NYITOTT.** Kézi összevezetést igényel: az import e-mail-cím alapján dolgozik. |
-| 7 | ~~A vevői céllap, ahova a levél linkje visz~~ | technikai | **KÉSZ** (2026-08-21): `/belepes-atallas` (4.6.), plusz a `/elfelejtett-jelszo` állandó bekezdése a régi vevőnek. Őr-teszt: `src/__tests__/belepes-atallas-ui.test.tsx`. |
-| 8 | **A levél kiküldésének csatornája** | üzemeltetés | **NYITOTT DÖNTÉS.** A 4.5. levél közös linkes, tehát mail merge nélkül is mehet. Eldöntendő, hogy Resend broadcast megy-e, vagy a Katák saját levelezője; ettől függ, hogy a `{{nev}}` mező kitölthető-e. **2026-09-16:** a csatorna KÉSZ: `npm run email:migracio` (6.7.), a `{{nev}}` a fiók nevéből töltődik. Ami még nyitott: az aláírás végleges alakja (ma: „a Kineticare csapata", a 4.1–4.2 levelekkel azonos) és a feladó-domain Verified állapota + próbalevél (`--test-to`). |
+| #   | Mi hiányzik                                                                                                                   | Kitől       | Állapot 2026-08-21-én                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ~~A systeme.io-export pontos formátuma~~                                                                                      | Katák       | **KÉSZ** (2026-08-16): `"Email","First name","Last name","Tag","Date Registered"`, vesszős elválasztó, címke-alapú lista; a parser felismeri (6.0.1.). Új export érkezésekor egy `--parse-only` futás megmutatja, változott-e a fejléc.                                                                                                                                                                                                                                                 |
+| 2   | **Címke → SKU tábla** — melyik Kineticare-termék felel meg a `SOS KézRelax vásárló` és az `Otthoni KézRehab vásárló` címkének | Katák       | **NYITOTT.** Enélkül a címkék nem leképezettként kimaradnak (a vevő fiókot kapna, kurzus-hozzáférést nem). A SKU az adminban, a Kurzusok listában látszik.                                                                                                                                                                                                                                                                                                                              |
+| 3   | ~~E-mail-küldés döntése és beállítása~~                                                                                       | üzemeltetés | **RÉSZBEN KÉSZ.** A szolgáltató eldöntve (Resend); a `RESEND_API_KEY` és az `EMAIL_FROM` a Railway Kineticare-szolgáltatásán BE VAN ÁLLÍTVA. Ami MÉG NINCS igazolva: a feladó-domain **Verified** állapota a Resendben, és egy sikeres **próbalevél** (10.1. 5. lépés). Amíg ez a kettő nincs meg, a körlevél nem indítható.                                                                                                                                                            |
+| 4   | **Adatbázis-mentés** (feladatlista C14)                                                                                       | üzemeltetés | **NYITOTT** a `DATABASE_URI` GitHub-secret beállításáig (`db-backup.yml`). Tömeges írás előtt kötelező visszaállítási pont.                                                                                                                                                                                                                                                                                                                                                             |
+| 5   | **Az átállás dátuma** és a levelek aláírása                                                                                   | Katák       | **NYITOTT.** A 4.1–4.3. sablonok `{{datum_*}}` mezői és MINDEN levél `{{alairas}}` mezője. A 4.5. „egyetlen levél" dátumot SZÁNDÉKOSAN nem tartalmaz, aláírást viszont igen.                                                                                                                                                                                                                                                                                                            |
+| 6   | **Kettős e-mail-címek listája** (aki más címmel vásárolt, mint amit használ)                                                  | Katák       | **NYITOTT.** Kézi összevezetést igényel: az import e-mail-cím alapján dolgozik.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 7   | ~~A vevői céllap, ahova a levél linkje visz~~                                                                                 | technikai   | **KÉSZ** (2026-08-21): `/belepes-atallas` (4.6.), plusz a `/elfelejtett-jelszo` állandó bekezdése a régi vevőnek. Őr-teszt: `src/__tests__/belepes-atallas-ui.test.tsx`.                                                                                                                                                                                                                                                                                                                |
+| 8   | **A levél kiküldésének csatornája**                                                                                           | üzemeltetés | **NYITOTT DÖNTÉS.** A 4.5. levél közös linkes, tehát mail merge nélkül is mehet. Eldöntendő, hogy Resend broadcast megy-e, vagy a Katák saját levelezője; ettől függ, hogy a `{{nev}}` mező kitölthető-e. **2026-09-16:** a csatorna KÉSZ: `npm run email:migracio` (6.7.), a `{{nev}}` a fiók nevéből töltődik. Ami még nyitott: az aláírás végleges alakja (ma: „a Kineticare csapata", a 4.1–4.2 levelekkel azonos) és a feladó-domain Verified állapota + próbalevél (`--test-to`). |
 
 **Ami NEM hiányzik (mérve, ne induljon rá újabb kör):** a jelszó-kérő és
 jelszó-beállító lap, az enumeráció-védelem (a végpont mindig 200-at ad), a
@@ -903,14 +904,14 @@ az kizárólag üzemeltetői beállítás. Sorrendben:
 1. **Resend-fiók** létrehozása a Kineticare nevére (ne magánfiók legyen: a
    kulcsokat és a domaint a cégnek kell birtokolnia).
 2. **A `kineticare.hu` feladó-domain hitelesítése** a Resend felületén
-   (*Domains → Add Domain*). A Resend kiír néhány **DNS-rekordot** — ezeket a
+   (_Domains → Add Domain_). A Resend kiír néhány **DNS-rekordot** — ezeket a
    domain szolgáltatójánál kell felvenni:
    - **SPF** (TXT) — melyik szerver küldhet a domain nevében,
    - **DKIM** (TXT) — a levelek kriptográfiai aláírása,
    - (ajánlott) **DMARC** (TXT) — mi történjen a nem hitelesíthető levéllel.
-   A rekordok terjedése akár órákig tarthat; a Resend felületén a domain
-   állapotának **Verified**-re kell váltania. **Amíg nem az, a küldés
-   elutasításra kerül** — ne az átállás napján kezdjétek.
+     A rekordok terjedése akár órákig tarthat; a Resend felületén a domain
+     állapotának **Verified**-re kell váltania. **Amíg nem az, a küldés
+     elutasításra kerül** — ne az átállás napján kezdjétek.
 3. **API-kulcs** létrehozása (küldési joggal), és beállítása **KIZÁRÓLAG a
    Railway → Variables** felületén: `RESEND_API_KEY`. A kulcs
    **soha** nem kerülhet a repóba, PR-be, jegybe vagy chat-üzenetbe. Ha

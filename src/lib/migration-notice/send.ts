@@ -35,9 +35,26 @@ export const MIGRATION_NOTICE_SEND_DELAY_MS = 250
 /** Újrapróbálási szünetek (ms) az 1., 2. újrapróbálás előtt. */
 export const MIGRATION_NOTICE_RETRY_DELAYS_MS: readonly number[] = [1_500, 4_000]
 
-/** Resend idempotencia-kulcs címzettenként (≤ 256 karakter). */
-export function migrationNoticeIdempotencyKey(userId: MigrationNoticeRecipient['id']): string {
-  return `migracio-${String(userId)}`
+/**
+ * Resend idempotencia-kulcs címzettenként (≤ 256 karakter).
+ *
+ * A kulcs alapból csak a fiókból áll, így egy megszakadt kör újraindítása
+ * nem küld második levelet. A Resend a kulcsot 24 óráig őrzi: ezalatt egy
+ * `--force` újraküldés ugyanazzal a kulccsal a szolgáltatónál NÉMA no-op
+ * lenne (a válasz „elküldve", levél nem megy ki). Ezért a szándékos
+ * újraküldés külön kör-azonosítót kap, ami a kulcs része.
+ */
+export function migrationNoticeIdempotencyKey(
+  userId: MigrationNoticeRecipient['id'],
+  round?: string,
+): string {
+  const base = `migracio-${String(userId)}`
+  return round === undefined || round === '' ? base : `${base}-${round}`
+}
+
+/** A `--force` kör azonosítója: percre kerekített időbélyeg, kulcsbiztos jelekkel. */
+export function migrationNoticeForceRound(now: Date): string {
+  return `ujra-${now.toISOString().slice(0, 16).replace(/[-:T]/g, '')}`
 }
 
 export type MigrationNoticeSender = (input: SendMailInput) => Promise<SendResult>
@@ -79,6 +96,11 @@ export interface SendMigrationNoticesOptions {
   readonly onOutcome?: (outcome: MigrationNoticeSendOutcome) => void
   /** Az időbélyeg forrása (tesztelhetőség). */
   readonly now?: () => Date
+  /**
+   * Szándékos újraküldés (`--force`) kör-azonosítója; az idempotencia-kulcs
+   * része lesz, hogy a szolgáltató ne nyelje el a levelet. Alapból nincs.
+   */
+  readonly idempotencyRound?: string
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
@@ -150,7 +172,7 @@ export async function sendMigrationNotices(
         html: template.html,
         text: template.text,
         replyTo: MIGRATION_NOTICE_REPLY_TO,
-        idempotencyKey: migrationNoticeIdempotencyKey(recipient.id),
+        idempotencyKey: migrationNoticeIdempotencyKey(recipient.id, options.idempotencyRound),
       },
       sleep,
     )

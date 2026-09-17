@@ -21,7 +21,11 @@ import {
   collectMigrationNoticeRecipients,
   type MigrationNoticeRecipient,
 } from '../lib/migration-notice/recipients'
-import { sendMigrationNotices, type MigrationNoticeSendOutcome } from '../lib/migration-notice/send'
+import {
+  migrationNoticeForceRound,
+  sendMigrationNotices,
+  type MigrationNoticeSendOutcome,
+} from '../lib/migration-notice/send'
 import config from '../payload.config'
 
 const log = createLogger({ script: 'send-migration-notice' })
@@ -258,6 +262,7 @@ async function run(args: CliArgs): Promise<number> {
     send: sendMail,
     log,
     onOutcome: printOutcome,
+    ...(args.force ? { idempotencyRound: migrationNoticeForceRound(new Date()) } : {}),
   })
 
   const failed = sent.outcomes.filter((outcome) => !outcome.ok)
