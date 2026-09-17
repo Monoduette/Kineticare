@@ -19,6 +19,17 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - dependencies
+    # Az ellátási-lánc-őr (src/__tests__/ci-platform-security-guard.test.ts és
+    # scripts/verify-install-script-lock.mjs) a package-lock bájt-hash-ét és a
+    # csomag-pineket rögzíti, ezért egy Dependabot-PR önmagában SOSEM zöld: a
+    # tényleges emelés chore(deps)-ágon, a hash-lánc átvezetésével készül
+    # (minta: #201), a Dependabot-PR csak jelzés, utána bezárjuk. Hogy hetente
+    # EGY lánc-átvezetés legyen, a minor/patch emelések egy csoport-PR-be mennek.
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
     ignore:
       # T-072: pinnelt payload-csomagok – frissítés csak manuálisan
       # (changelog-olvasás + staging-E2E után, emberi döntéssel).
@@ -62,3 +73,10 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    # A workflow-fájlok bájt-hash-e pinelt (EXPECTED_WORKFLOW_SHA256), ezért az
+    # action-emelés is csak a guard-teszt frissítésével mehet át; a csoport-PR
+    # egy átvezetést jelent hetente.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
