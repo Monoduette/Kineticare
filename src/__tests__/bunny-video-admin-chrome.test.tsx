@@ -11,6 +11,7 @@ vi.mock('@payloadcms/next/templates', () => ({
     return props.children
   },
 }))
+vi.mock('@payloadcms/ui', () => ({ SetStepNav: () => null }))
 import { AdminChrome } from '../components/admin/AdminChrome'
 
 it('forwards the initialized request to DefaultTemplate and its navigation preferences', () => {
@@ -20,8 +21,12 @@ it('forwards the initialized request to DefaultTemplate and its navigation prefe
     params: {},
     searchParams: {},
   } as unknown as AdminViewServerProps
-  expect(renderToStaticMarkup(<AdminChrome props={props}>Videótár</AdminChrome>)).toContain(
-    'Videótár',
-  )
+  expect(
+    renderToStaticMarkup(
+      <AdminChrome props={props} title="Videótár">
+        Videótár
+      </AdminChrome>,
+    ),
+  ).toContain('Videótár')
   expect(template.props?.req).toBe(req)
 })
