@@ -997,7 +997,7 @@ után. `CONSENT_MODE_DEFAULT` minden tároló `denied`; granted csak
 | `kurzus:videok-modulba` | `videok-modulba.ts` | **egyetlen** biztonságos átemelés |
 | `backfill:ar-snapshot` | `backfill-price-snapshot.ts` | próba; írás `OWNER_BACKFILL_CONFIRM=igen` |
 | `backfill:access-grants` | `backfill-access-grants.ts` | ugyanez |
-| `content:owner` | `apply-owner-content.ts` | `OWNER_CONTENT_CONFIRM=igen` |
+| `content:owner` | `apply-owner-content.ts` | `OWNER_CONTENT_CONFIRM=igen`; a 2026-09-19-i szabályok (WP52, WP54): `docs/owner-content-2026-09-19.md` |
 | `email:migracio` | `send-migration-notice.ts` | idempotens; `--force` újraküld |
 | `backup:db` | `backup-db.ts` | `docs/adatbazis-mentes.md` |
 | `generate:types` / `generate:importmap` | Payload | a CI: a generált `src/payload-types.ts` egyezzen a commitolttal |
