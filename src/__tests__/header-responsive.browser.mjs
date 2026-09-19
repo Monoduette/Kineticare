@@ -107,9 +107,21 @@ try {
   page.setDefaultTimeout(5000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.route('**/*', (route) => route.abort())
+  // Hálózatmentes: minden kérés elakad, KIVÉVE a márka-logó SVG-jét (WP49), amit
+  // a lemezről szolgálunk — enélkül a fejléc <img>-je törött képként mérne.
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.startsWith('/assets/brand/') && url.pathname.endsWith('.svg')) {
+      const body = await readFile(path.join(root, 'public', url.pathname))
+      await route.fulfill({ body, contentType: 'image/svg+xml' })
+      return
+    }
+    await route.abort()
+  })
   await page.setContent(
-    `<html lang="hu"><head><style>${styles}</style></head><body><div id="root"></div></body></html>`,
+    // A <base> a gyökér-relatív képútvonalakat (a logó SVG-jét) feloldhatóvá
+    // teszi az about:blank dokumentumban; a route-kezelő szolgálja ki.
+    `<html lang="hu"><head><base href="http://kineticare.test/"><style>${styles}</style></head><body><div id="root"></div></body></html>`,
   )
   await page.addScriptTag({ content: bundle.outputFiles[0].text })
   // A tesztlinkek nem hagyhatják el az izolált dokumentumot; a React-kezelők lefutnak.

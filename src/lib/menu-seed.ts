@@ -24,6 +24,18 @@ export const CLINIC_TREATMENTS_PATH = `${SERVICES_PAGE_PATH}#${CLINIC_TREATMENTS
 /** A ProBody Stúdióval közös, akkreditált szakmai képzés (külső oldal). */
 export const PROFESSIONAL_TRAINING_URL = 'https://probodystudio.hu/kez-workshop/'
 
+/**
+ * A „Szakembereknek" menüpont (WP49, tulajdonosi kérés 2026-09): a korábbi
+ * „Szakmai képzés" pont, amely EGYBŐL a ProBody workshopra vitt, a saját
+ * választó oldalunkra mutat (képzés VAGY szakkönyv). Belső cél: nem nyílik
+ * új lapon. Az élő CMS-sor átnevezése az owner-content szabály dolga; a seed
+ * a régi feliratot ugyanannak a pontnak tekinti (nem duplikál).
+ */
+export const PROFESSIONALS_MENU_LABEL = 'Szakembereknek'
+export const PROFESSIONALS_MENU_PATH = '/szakembereknek'
+/** A menüpont 2026-09-19 előtti felirata (dedup-kulcs a meglévő sorhoz). */
+export const LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL = 'Szakmai képzés'
+
 /** Az ingyenes SOS lead-magnet kurzus azonosítója (products.sku = megjelenő név). */
 export const SOS_COURSE_SKU = 'SOS Kézrelax villámkurzus'
 
@@ -117,12 +129,11 @@ export function buildNavigationMenuPlan(context: MenuSeedContext = {}): MenuSeed
       children: [],
     },
     {
-      label: 'Szakmai képzés',
+      label: PROFESSIONALS_MENU_LABEL,
       type: 'url',
-      url: PROFESSIONAL_TRAINING_URL,
-      // Külső oldalra visz: új lapon nyílik, hogy a látogató ne veszítse el a
-      // Kineticare munkamenetét (a NavAnchor ilyenkor rel="noopener noreferrer"-t ad).
-      openInNewTab: true,
+      url: PROFESSIONALS_MENU_PATH,
+      // Belső választó oldal (WP49): a külső ProBody-link a /szakembereknek
+      // kártyájáról nyílik, ott jelölve (ikon + „új lapon nyílik" jegyzet).
       order: 1,
       children: [],
     },
@@ -187,14 +198,15 @@ function labelsMatchingSeedNode(node: MenuSeedNode): string[] {
   if (node.label === SOS_FREE_MENU_LABEL) {
     return [SOS_FREE_MENU_LABEL, SOS_MENU_LABEL]
   }
+  // WP49: a „Szakmai képzés" sor a „Szakembereknek" tervpont elődje; az élő
+  // CMS-sort az owner-content szabály nevezi át, a seed addig sem duplikál.
+  if (node.label === PROFESSIONALS_MENU_LABEL) {
+    return [PROFESSIONALS_MENU_LABEL, LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL]
+  }
   return [node.label]
 }
 
-async function findExistingMenuNode(
-  payload: Payload,
-  label: string,
-  parentId: number | undefined,
-) {
+async function findExistingMenuNode(payload: Payload, label: string, parentId: number | undefined) {
   const existing = await payload.find({
     collection: 'menus',
     where: {

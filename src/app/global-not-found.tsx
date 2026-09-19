@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { NotFoundView } from '@/components/error/NotFoundView'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '@/lib/brand-logo'
 
 import './(frontend)/styles.css'
 
@@ -41,9 +42,17 @@ export default function GlobalNotFound() {
               {/* A hozzáférhető név BITRE a `Header.tsx`-é: ugyanaz az elem,
                   ugyanaz a név (WCAG 2.2 · 3.2.4). A korábbi „Kineticare —
                   kezdőlap" ráadásul U+2014-et tartalmazott, amit a magyar
-                  mikroszöveg-szabályzat tilt (docs/ui-sztenderdek.md §3.1.1). */}
+                  mikroszöveg-szabályzat tilt (docs/ui-sztenderdek.md §3.1.1).
+                  WP49: a logó ugyanaz az SVG, mint a Header.tsx-ben. */}
               <Link aria-label="Kineticare kezdőlap" className="kc-site-header__brand" href="/">
-                Kineti<span className="kc-site-header__brand-accent">care</span>
+                {/* eslint-disable-next-line @next/next/no-img-element -- SVG-logó bitre azonosan, next/image nélkül (src/lib/brand-logo.ts) */}
+                <img
+                  alt={BRAND_LOGO_ALT}
+                  className="kc-site-header__logo"
+                  height={BRAND_LOGO_HORIZONTAL.height}
+                  src={BRAND_LOGO_HORIZONTAL.src}
+                  width={BRAND_LOGO_HORIZONTAL.width}
+                />
               </Link>
             </div>
           </div>

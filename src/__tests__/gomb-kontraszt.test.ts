@@ -212,6 +212,14 @@ const FILM_HERO: RGB = keverek(SZIN('paper'), [1, 0, 0], 0.64)
 /** A fejléc fókuszgyűrűjének futásidejű színe: color-mix(focus veil%, ink). */
 const fejlecGyuru = (veil: number): RGB => keverek(SZIN('focus'), SZIN('ink'), veil)
 
+/**
+ * Az új logó (WP49) wordmark-sötétkékje: a `public/assets/brand/*.svg`
+ * fájlokban rögzített szín, NEM token (a tokeneket a logó miatt nem írjuk át).
+ * A `--kc-color-ink` (#10243e) párja, csatornánként legfeljebb 1 egységnyi
+ * eltéréssel — lásd src/lib/brand-logo.ts.
+ */
+const LOGO_INK: RGB = hexRgb('#11233d')
+
 // ───────────────────────────────────────────────────────────────────────────
 // 5. A PÁR-MÁTRIX — az audit 4.1–4.10 tábláinak gépi párja
 // ───────────────────────────────────────────────────────────────────────────
@@ -384,26 +392,22 @@ const PAROK: readonly Par[] = [
   p('kc-site-header :focus-visible', 'veil 0,50', fejlecGyuru(0.5), filmFejlec(0.5), 3, '1.4.11'),
   p('kc-site-header :focus-visible', 'veil 0,75', fejlecGyuru(0.75), filmFejlec(0.75), 3, '1.4.11'),
   p('kc-site-header :focus-visible', 'veil 1,00', fejlecGyuru(1), filmFejlec(1), 3, '1.4.11'),
+  // WP49 (2026-09-19): a szöveges wordmark helyén az új SVG-logó áll
+  // (src/lib/brand-logo.ts). A wordmark sötétkékje (#11233d) a logó rögzített
+  // színe, nem token; a logotípia az SC 1.4.3/1.4.11 alól kivétel, a párokat
+  // mégis mérjük, hogy a fejléc-fátyol változása ne csúszhasson át némán.
   p(
-    'kc-site-header__brand',
-    'ink szöveg a filmen (veil 0)',
-    SZIN('ink'),
+    'kc-site-header__logo',
+    'logó-wordmark (#11233d) a filmen (veil 0)',
+    LOGO_INK,
     filmFejlec(0),
     4.5,
     '1.4.3',
   ),
   p(
-    'kc-site-header__brand',
-    'ink a fagyott filmen (veil 1)',
-    SZIN('ink'),
-    filmFejlec(1),
-    4.5,
-    '1.4.3',
-  ),
-  p(
-    'kc-site-header__brand-accent',
-    'deeper a fagyott filmen (veil 1)',
-    SZIN('accent-deeper'),
+    'kc-site-header__logo',
+    'logó-wordmark (#11233d) a fagyott filmen (veil 1)',
+    LOGO_INK,
     filmFejlec(1),
     4.5,
     '1.4.3',
@@ -420,9 +424,17 @@ const PAROK: readonly Par[] = [
     '1.4.11',
   ),
   p(
-    'kc-site-header__brand',
-    'ink a paperen (belső oldal)',
-    SZIN('ink'),
+    'kc-site-header__logo',
+    'logó-wordmark (#11233d) a paperen (belső oldal)',
+    LOGO_INK,
+    SZIN('paper'),
+    4.5,
+    '1.4.3',
+  ),
+  p(
+    'kc-site-footer__logo',
+    'logó-wordmark (#11233d) a lábléc paperjén',
+    LOGO_INK,
     SZIN('paper'),
     4.5,
     '1.4.3',

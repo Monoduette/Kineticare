@@ -61,6 +61,7 @@ A három legsúlyosabb, mérhető hiba:
 | `/kurzusok?kategoria=<slug>` | *Kurzusok* | Kategória-szűrt lista | nyilvános | szűrő-chip | 200 |
 | `/szolgaltatasok` | *Szolgáltatások – Kineticare \| Kineticare* / „A kezed folyton dolgozik…" | Rendelői kezelések | nyilvános | menü, kezdőlap, rólunk | 200 |
 | `/rolunk` | *Rólunk – Kineticare \| Kineticare* / „A kéz a mindenünk" | Szakmai háttér, bizalom | nyilvános | menü, kezdőlap | 200 |
+| `/szakembereknek` | *Szakembereknek* / „Szakembereknek" | Szakmai választó: képzés (ProBody, külső) VAGY szakkönyv (WP49, 2026-09-19; kód-útvonal, `src/app/(frontend)/szakembereknek`) | nyilvános | menü („Szolgáltatások" → „Szakembereknek", a korábbi „Szakmai képzés" külső link helyén) | 200 |
 | `/blog` | *Tudástár* / „Tudástár" | Cikklista | nyilvános | menü („Tudástár") | 200 |
 | `/blog/[slug]` | poszt | Cikk | nyilvános | — (jelenleg nincs poszt) | — |
 | `/blog/kategoria/[slug]` | kategória | Szűrt cikklista | nyilvános | kategória-chip | — |
@@ -202,7 +203,9 @@ flowchart LR
     ACC --> A2["Kijelentkezes<br/>POST /api/users/logout"]
 
     M1 --> S1["Rendeloi kezelesek<br/>/szolgaltatasok + rendeloi horgony"]
-    M1 --> S2["Szakmai kepzes<br/>probodystudio.hu KULSO"]
+    M1 --> S2["Szakembereknek<br/>/szakembereknek (WP49)"]
+    S2 --> S2a["Kepzes: probodystudio.hu KULSO"]
+    S2 --> S2b["Szakkonyv: URL nyitott, addig /kapcsolat"]
     M1 --> S3["SOS KezRelax<br/>/kurzusok/sos-kezrelax-villamkurzus"]
 
     FOOT["Lablec"]

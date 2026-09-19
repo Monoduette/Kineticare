@@ -10,11 +10,15 @@ import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/seo'
  * `name`/`short_name`, `description`, `lang`, `start_url`, `display`,
  * `theme_color`/`background_color`, `icons`. A színek a design-tokenek
  * (`styles/tokens.css`): `--kc-color-paper` #f6f9fc a lap-háttér (ugyanaz,
- * mint a `viewport.themeColor`), `--kc-color-accent-deep` #2f6e9f a márka
- * kékje (a favicon háttere is ez).
+ * mint a `viewport.themeColor`); a `background_color` az indítóképernyő
+ * háttere, ezért a lap-háttérrel egyezik.
  *
- * Ikonok: KIZÁRÓLAG a meglévő fájlok (`src/app/icon.svg`, `src/app/apple-icon.png`
- * 180×180), amiket a Next fájl-konvenció a gyökéren szolgál ki. 192/512 px-es
+ * Ikonok (WP49, 2026-09-19): a tulajdonosok új logócsomagjának kéz-ikonja
+ * (`public/assets/brand/kineticare-icon.svg`) fehér mezőn, a csomag két
+ * rögzített színével (#11233d, #8cb0d9); a fájlokat az őr-teszt méri
+ * (`favicon-ikonok.test.ts`). KIZÁRÓLAG a meglévő fájlok (`src/app/icon.svg`,
+ * `src/app/apple-icon.png` 180×180), amiket a Next fájl-konvenció a gyökéren
+ * szolgál ki. 192/512 px-es
  * PNG nincs a repóban; kitalálni tilos — nyitott tétel a tulajdonosnak (a
  * telepíthető PWA-hoz a Chrome legalább egy 192 és egy 512 px-es PNG-t kér:
  * https://developer.chrome.com/docs/lighthouse/pwa/installable-manifest).

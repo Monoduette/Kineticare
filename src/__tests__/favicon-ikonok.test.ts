@@ -9,13 +9,22 @@ import { describe, expect, it } from 'vitest'
  * `/favicon.svg` MIND 404-et adott — helyben és élesben is —, miközben a `/`
  * 200-at. A böngészőfülön és a könyvjelzőben üres lap-ikon látszott, és ez volt
  * az egyetlen konzol-hiba a lapokon.
+ *
+ * WP49 (2026-09-19): az ikonok a tulajdonosok új logócsomagjának kéz-ikonjából
+ * készültek (`public/assets/brand/kineticare-icon.svg`): fehér mezőn a két
+ * rögzített márkaszín, a sötétkék (#11233d) és a világoskék (#8cb0d9) kéz.
+ * A fehér mező a csomag saját bemutató-hátterét követi; a sötétkék kéz hordozza
+ * az azonosítást (a fehéren 15,77:1), a világoskék kéz dekoratív rajz (2,25:1;
+ * a logotípia az SC 1.4.11 alól kivétel:
+ * https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
  */
 
 const APP_DIR = fileURLToPath(new URL('../app/', import.meta.url))
 
-/** A márka-kék mező (tokens.css `--kc-color-accent-deep`) és a fehér jel. */
-const FIELD_RGB = { r: 0x2f, g: 0x6e, b: 0x9f } as const
-const MARK_RGB = { r: 0xff, g: 0xff, b: 0xff } as const
+/** A fehér mező és a logó két rögzített színe (src/lib/brand-logo.ts). */
+const FIELD_RGB = { r: 0xff, g: 0xff, b: 0xff } as const
+const MARK_DARK_RGB = { r: 0x11, g: 0x23, b: 0x3d } as const
+const MARK_LIGHT_RGB = { r: 0x8c, g: 0xb0, b: 0xd9 } as const
 
 /** WCAG 2.2 relatív fényesség (Relative luminance definíció). */
 function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }): number {
@@ -70,15 +79,18 @@ function readIcoDirectory(buffer: Buffer): IcoEntry[] {
 function countIcoPixels(
   buffer: Buffer,
   entry: IcoEntry,
-): { total: number; mark: number; field: number } {
+): { total: number; markDark: number; markLight: number; field: number } {
   const headerSize = buffer.readUInt32LE(entry.offset)
   expect(headerSize, 'BITMAPINFOHEADER mérete').toBe(40)
   const pixelStart = entry.offset + headerSize
   const total = entry.width * entry.height
 
   const near = (value: number, target: number): boolean => Math.abs(value - target) <= 12
+  const is = (r: number, g: number, b: number, rgb: { r: number; g: number; b: number }) =>
+    near(r, rgb.r) && near(g, rgb.g) && near(b, rgb.b)
 
-  let mark = 0
+  let markDark = 0
+  let markLight = 0
   let field = 0
   for (let i = 0; i < total; i += 1) {
     const at = pixelStart + i * 4
@@ -87,10 +99,11 @@ function countIcoPixels(
     const r = buffer.readUInt8(at + 2)
     const a = buffer.readUInt8(at + 3)
     if (a < 200) continue
-    if (near(r, MARK_RGB.r) && near(g, MARK_RGB.g) && near(b, MARK_RGB.b)) mark += 1
-    else if (near(r, FIELD_RGB.r) && near(g, FIELD_RGB.g) && near(b, FIELD_RGB.b)) field += 1
+    if (is(r, g, b, MARK_DARK_RGB)) markDark += 1
+    else if (is(r, g, b, MARK_LIGHT_RGB)) markLight += 1
+    else if (is(r, g, b, FIELD_RGB)) field += 1
   }
-  return { total, mark, field }
+  return { total, markDark, markLight, field }
 }
 
 /** PNG IHDR: szélesség, magasság, szín-típus. */
@@ -117,6 +130,8 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
       expect(existsSync(path), `Hiányzik a src/app/${name} — a /${name} újra 404 lenne.`).toBe(true)
       const bytes = readFileSync(path)
       expect(bytes.length, `A src/app/${name} üres vagy csonka.`).toBeGreaterThan(200)
+      // WP49 kikötés: 100 KB-nál nagyobb ikonfájl nem kerülhet a repóba.
+      expect(bytes.length, `A src/app/${name} 100 KB-nál nagyobb.`).toBeLessThanOrEqual(100_000)
     }
   })
 
@@ -155,11 +170,17 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
 
     expect(large.bitCount, 'Az ICO-kép nem 32 bites (alfa-csatorna nélkül).').toBe(32)
 
-    // Az „üres kép" halálmód ellen: a jelnek és a mezőnek is valódi felületet
-    // kell kitöltenie. Egy átlátszó vagy egyszínű placeholder itt megbukik.
+    // Az „üres kép" halálmód ellen: a két kéznek és a mezőnek is valódi
+    // felületet kell kitöltenie. Egy átlátszó vagy egyszínű placeholder itt
+    // megbukik.
     const pixels = countIcoPixels(buffer, large)
-    expect(pixels.mark / pixels.total, 'A fehér „K" jel eltűnt az ikonról.').toBeGreaterThan(0.05)
-    expect(pixels.field / pixels.total, 'A márka-kék mező eltűnt az ikonról.').toBeGreaterThan(0.05)
+    expect(pixels.markDark / pixels.total, 'A sötétkék kéz eltűnt az ikonról.').toBeGreaterThan(
+      0.05,
+    )
+    expect(pixels.markLight / pixels.total, 'A világoskék kéz eltűnt az ikonról.').toBeGreaterThan(
+      0.05,
+    )
+    expect(pixels.field / pixels.total, 'A fehér mező eltűnt az ikonról.').toBeGreaterThan(0.3)
   })
 
   it('az apple-icon.png 180×180, és — az Apple HIG szerint — átlátszóság nélküli', () => {
@@ -173,26 +194,37 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
     expect(header.colorType, 'Az apple-icon.png nem lehet átlátszó (alfa-csatornás).').toBe(2)
   })
 
-  it('az icon.svg a márka tokenjeit viseli, és a jel↔mező kontrasztja mérve ≥ 4,5:1', () => {
+  it('az icon.svg az új kéz-ikon a fehér mezőn, és a sötétkék kéz↔mező kontrasztja mérve ≥ 4,5:1', () => {
     const svg = readFileSync(`${APP_DIR}icon.svg`, 'utf8')
     expect(svg, 'Az icon.svg nem SVG-gyökérelemmel kezdődik.').toContain('<svg')
     expect(svg, 'Hiányzik a viewBox — az SVG nem skálázódna helyesen.').toContain(
       'viewBox="0 0 32 32"',
     )
-    // A mező a --kc-color-accent-deep, a jel fehér — idegen szín nem kerülhet be.
-    expect(svg, 'A mező nem a márka accent-deep színe.').toContain('#2f6e9f')
-    expect(svg, 'A jel nem fehér.').toContain('#ffffff')
-    // A rajz nem lehet üres: kell benne kitöltött path.
-    const path = /<path d="([^"]+)"/.exec(svg)
-    expect(path, 'Az icon.svg-ből hiányzik a „K" jel path-adata.').not.toBeNull()
-    expect(path?.[1].length ?? 0, 'A „K" jel path-adata üres.').toBeGreaterThan(50)
+    // A mező fehér, a két kéz a logócsomag rögzített színei — idegen szín nem
+    // kerülhet be (a csomag SVG-je: public/assets/brand/kineticare-icon.svg).
+    expect(svg, 'A mező nem fehér.').toContain('fill="#ffffff"')
+    expect(svg, 'Hiányzik a sötétkék kéz (#11233d).').toContain('fill="#11233d"')
+    expect(svg, 'Hiányzik a világoskék kéz (#8cb0d9).').toContain('fill="#8cb0d9"')
+    // A rajz nem lehet üres: a két kéz path-adata a csomag SVG-jével egyezik.
+    const brand = readFileSync(
+      fileURLToPath(new URL('../../public/assets/brand/kineticare-icon.svg', import.meta.url)),
+      'utf8',
+    )
+    const brandPaths = [...brand.matchAll(/ d="([^"]+)"/g)].map((match) => match[1])
+    expect(brandPaths, 'A csomag kéz-ikonjában két path kell legyen.').toHaveLength(2)
+    for (const d of brandPaths) {
+      expect(d.length).toBeGreaterThan(50)
+      expect(svg, 'Az icon.svg kéz-rajza eltér a csomag SVG-jétől.').toContain(d)
+    }
 
-    // Az azonosítást hordozó kontraszt: fehér jel a márka-kék mezőn.
+    // Az azonosítást hordozó kontraszt: sötétkék kéz a fehér mezőn.
     // A WCAG 2.2 1.4.3 szövegküszöbe 4,5:1, az 1.4.11 nem-szöveges küszöbe 3:1.
-    const ratio = contrastRatio(MARK_RGB, FIELD_RGB)
+    const ratio = contrastRatio(MARK_DARK_RGB, FIELD_RGB)
     expect(ratio).toBeGreaterThanOrEqual(4.5)
     // Rögzítjük a mért értéket is, hogy egy színcsere ne csúszhasson át némán.
-    expect(Number(ratio.toFixed(2))).toBe(5.45)
+    expect(Number(ratio.toFixed(2))).toBe(15.77)
+    // A világoskék kéz dekoratív: a mért érték a jegyzőkönyvé (nem küszöb).
+    expect(Number(contrastRatio(MARK_LIGHT_RGB, FIELD_RGB).toFixed(2))).toBe(2.25)
   })
 
   it('a (frontend) layout NEM ír kézi icons metadata-mezőt (az felülírná a fájl-konvenciót)', () => {

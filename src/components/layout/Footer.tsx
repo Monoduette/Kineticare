@@ -1,16 +1,24 @@
 import { ConsentSettingsButton } from '../analytics/ConsentSettingsButton'
 import { Container } from '../ui/Container'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
 
 import { FooterPageLink } from './FooterPageLink'
 import { NewsletterSignup } from './NewsletterSignup'
 
 /**
  * Lábléc — a régi koncepció-landing `kc-footer` nyelvén (egyszeri tükör, már
- * nincs a repóban): felül egy óriás, aláhúzott serif „Kapcsolat" link, mellette a
- * ritkított betűs wordmark (`kc-footer-mark`), alatta a meta-sor a jogi
- * linkekkel és a copyrighttal (`kc-footer-meta`). A korábbi navy sáv helyett a
- * lap-háttér (szerep-token: `--kc-color-surface`) viszi a láblécet, felül
- * hajszálvonallal — lásd styles/layout.css.
+ * nincs a repóban): felül egy óriás, aláhúzott serif „Kapcsolat" link, mellette
+ * a márkajel, alatta a meta-sor a jogi linkekkel és a copyrighttal
+ * (`kc-footer-meta`). A korábbi navy sáv helyett a lap-háttér (szerep-token:
+ * `--kc-color-surface`) viszi a láblécet, felül hajszálvonallal — lásd
+ * styles/layout.css.
+ *
+ * WP49 (2026-09-19): a ritkított szöveges wordmark helyén a tulajdonosok új,
+ * vízszintes logója áll (a fejléccel azonos SVG, színes változat, mert a
+ * lábléc világos, `--kc-color-surface` = paper hátterű). Nem link: a
+ * kezdőlapra a fejléc logója visz, a láblécben a jel csak azonosít (NN/g,
+ * Footers 101: a lábléc-logó nem kötelezően kattintható, a navigációt a
+ * linkek adják; https://www.nngroup.com/articles/footers/).
  */
 export const FOOTER_LEGAL_LINKS = [
   { href: '/adatvedelem', label: 'Adatkezelési és adatvédelmi szabályzat' },
@@ -32,9 +40,14 @@ export function Footer() {
               Kapcsolat
             </FooterPageLink>
             <div className="kc-site-footer__mark">
-              <p className="kc-site-footer__brand">
-                Kineti<span className="kc-site-footer__brand-accent">care</span>
-              </p>
+              {/* eslint-disable-next-line @next/next/no-img-element -- SVG-logó bitre azonosan, next/image nélkül (src/lib/brand-logo.ts) */}
+              <img
+                alt={BRAND_LOGO_ALT}
+                className="kc-site-footer__logo"
+                height={BRAND_LOGO_HORIZONTAL.height}
+                src={BRAND_LOGO_HORIZONTAL.src}
+                width={BRAND_LOGO_HORIZONTAL.width}
+              />
               <p className="kc-site-footer__tagline">Kézrehabilitációs online kurzusplatform</p>
             </div>
           </div>

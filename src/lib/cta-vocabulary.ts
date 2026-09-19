@@ -45,6 +45,8 @@ export type CtaAction =
   | 'course-modules-jump'
   | 'treatments-open'
   | 'workshop-open'
+  | 'book-open'
+  | 'book-inquiry'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -537,6 +539,33 @@ export const CTA_VOCABULARY = [
     label: 'Nézd meg a kézworkshopot',
     person: 'e2',
     weight: 'primary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #42 – a szakkönyv vásárlási oldala (/szakembereknek, 2. kártya).
+    // Puszta navigáció → E/2, a #41 mintáján. Másodlagos súly: a lapon a
+    // képzés gombja az egyetlen elsődleges (GOV.UK Button: egy lapon egy
+    // default gomb). A cél URL-jét a tulajdonosok még nem adták meg (WP49).
+    section: '#42',
+    action: 'book-open',
+    label: 'Nézd meg a szakkönyvet',
+    person: 'e2',
+    weight: 'secondary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #43 – érdeklődés a szakkönyvről, amíg nincs vásárlási cím: a
+    // kattintás a /kapcsolat oldalra visz, a vállalás ott, a #12 gombbal
+    // történik (ugyanaz a kettősség, mint #33 és #24).
+    section: '#43',
+    action: 'book-inquiry',
+    label: 'Érdeklődj a szakkönyvről',
+    person: 'e2',
+    weight: 'secondary',
     progress: null,
     patterned: false,
     pattern: null,
