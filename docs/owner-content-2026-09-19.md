@@ -70,21 +70,36 @@ EGYETLEN szabály él a mezőre (a korábbi „szóló portré → katak-team”
   „Amit a rendelőben kínálunk”, 5 sor („1”–„5”: Gyógytorna, Manuálterápia, Kinesio Tape
   és Dynamic Tape, Flossing és köpölyterápia, Hegkezelés, fasciakés, NRX bandázs),
   horgony `rendeloi-technikak`, fehér háttér.
-- Kép: `treatment-table-hands-1600.webp` (`public/media/team/`, alt: „Csuklókezelés a
-  kezelőasztalon a Kineticare rendelőjében”); kép nélkül a blokk NEM kerül be (hangos
-  kihagyás).
+- Kép (WP55-től): `treatment-wrist-table-1600.webp` (`public/media/team/`, alt: „Csuklókezelés a
+  Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót”), NEM a fejléc
+  kezelőasztalos fotója (ugyanaz a kép kétszer egy lapon rossz); kép nélkül a blokk NEM
+  kerül be (hangos kihagyás).
 - Idempotens: ha már van „Amit a rendelőben kínálunk” című `services` blokk (rejtve is),
   csendes kihagyás. Ha az ajtó-blokk nincs meg pontosan egyszer: indokolt kihagyás.
 
+### 5. A /szolgaltatasok fejléc-képe (`szolgaltatasok-hero-kep`, WP55)
+
+- Tulajdonosi visszajelzés: „olyan szűknek néz ki a sáv” (mérve 1440 px-en: 672 px-es
+  szövegoszlop, a sáv 2/3-a üres). A lap fejléce a /rolunk párosított alakját kapja
+  (route-oldali rész külön); a CMS-szabály a `heroImage` mezőt a kezelőasztalos fotóra
+  állítja: `treatment-table-hands-1600.webp` (`public/media/team/`, alt: „Csuklókezelés a
+  kezelőasztalon a Kineticare rendelőjében”).
+- A korábbi 12a. (ÜRÍTŐ) szabály megszűnt, a mezőre egyetlen szabály él, az
+  `alkalmazRolunkHeroKep` szemantikájával (közös mag: `alkalmazFejlecKep`): csere üres
+  mezőnél vagy az örökölt rendelő-fotónál (`67b3bd06f3936_Rendelo…`); már a kezelőasztalos
+  fotó: csendes kihagyás; szerkesztői kép, nem található rekord, hiányzó forrásfájl:
+  HANGOS kihagyás. A rekordot a script a repó fájljából hozza létre (próbafutásban nem).
+
 Őr: `src/__tests__/owner-content-wp54.test.ts` (a próbafutás-ág hangosan dobó
-`create`/`update` hamisítvánnyal), `src/__tests__/apply-owner-content.test.ts` (a
+`create`/`update` hamisítvánnyal), `src/__tests__/apply-owner-content.test.ts` (a két
 fejléc-kép szabály).
 
 ## Éles alkalmazás
 
 1. A fotófájlok a repóban legyenek (`public/media/team/founders-studio-pair-1600.webp`,
-   `public/media/team/treatment-table-hands-1600.webp`, `public/media/sos/*.webp`).
-2. `npm run content:owner` (próbafutás): a naplóban „MÓDOSÍTANÁ” sorok a négy szabálynál
+   `public/media/team/treatment-table-hands-1600.webp`,
+   `public/media/team/treatment-wrist-table-1600.webp`, `public/media/sos/*.webp`).
+2. `npm run content:owner` (próbafutás): a naplóban „MÓDOSÍTANÁ” sorok az öt szabálynál
    és „Médiatár: … létrehozná” sorok a hiányzó rekordoknál; hangos („KIHAGYNÁ … hiányzik”)
    sor csak akkor, ha egy fájl tényleg hiányzik.
 3. `OWNER_CONTENT_CONFIRM=igen npm run content:owner`, majd második próbafutás: minden
