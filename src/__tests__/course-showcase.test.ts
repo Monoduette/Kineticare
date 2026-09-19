@@ -88,8 +88,12 @@ describe('CourseShowcase', () => {
         ],
       }),
     )
-    expect(html).toContain(`class="kc-course-showcase__cta">${ctaLabel('course-sales-open')}</span>`)
-    expect(html).toContain(`class="kc-course-showcase__cta">${ctaLabel('free-course-claim')}</span>`)
+    expect(html).toContain(
+      `class="kc-course-showcase__cta">${ctaLabel('course-sales-open')}</span>`,
+    )
+    expect(html).toContain(
+      `class="kc-course-showcase__cta">${ctaLabel('free-course-claim')}</span>`,
+    )
     expect(html).toContain(`aria-label="Fizetős: ${ctaLabel('course-sales-open')}"`)
     expect(html).not.toContain('<button')
     expect(html.match(/<a\b/g)).toHaveLength(2)
@@ -211,14 +215,18 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     expect([...lepcsok].sort((a, b) => a - b)).toEqual(lepcsok)
   })
 
-  it('a görgetés-kötött mozgás progresszív (@supports view()), reduced-motion alatt statikus', () => {
-    expect(css).toMatch(/@supports \(animation-timeline: view\(\)\)/)
-    expect(css).toContain('animation-timeline: view()')
-    const csokkentett = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
-    expect(csokkentett).toContain('.kc-course-showcase__photo')
-    expect(csokkentett).toContain('animation: none')
-    expect(csokkentett).toContain('translate: none')
-    // A régi, időalapú sodródás megszűnt.
+  it('WP50: a jelenet három EGYFORMA, statikus fotócella (nincs dőlés, átfedés, mozgás)', () => {
+    const scene = blokk('.kc-course-showcase__scene')
+    expect(scene).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/)
+    const photo = blokk('.kc-course-showcase__photo')
+    expect(photo).toMatch(/aspect-ratio:\s*4 \/ 3/)
+    expect(photo).toContain('object-fit: cover')
+    expect(photo).toContain('width: 100%')
+    expect(photo).not.toMatch(/position:\s*absolute|rotate|animation|translate/)
+    // A vízjel a fotók fölött, a teljes sorban.
+    expect(blokk('.kc-course-showcase__word')).toMatch(/grid-column:\s*1 \/ -1/)
+    // Az Astra-féle döntött, görgetéshez kötött kompozíció nem szivárog vissza.
+    expect(css).not.toMatch(/rotate\(|animation-timeline|@keyframes|__photo--[012]\s*\{/)
     expect(css).not.toContain('kc-course-showcase-drift')
     expect(css).not.toContain('infinite')
   })

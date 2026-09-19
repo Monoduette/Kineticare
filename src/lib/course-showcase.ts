@@ -46,24 +46,27 @@ export const COURSE_SHOWCASE_FALLBACKS: readonly CourseShowcaseFallbackImage[] =
 ]
 
 /**
- * A „Kurzusaink” vízjel körüli három döntött csapatfotó (a galéria alatti
- * jelenet). Sorrend = a CSS `__photo--0/1/2` helye: bal, közép, jobb.
+ * A „Kurzusaink” vízjel alatti három csapatfotó (a galéria alatti jelenet).
+ * Sorrend = a rács helye: bal, közép, jobb. WP50: a fotók egyforma, 4:3-as
+ * rácscellákban állnak (course-showcase.css `__photo`), ezért 800 px széles
+ * változat elég (a cella 1440-en ~340 CSS px, 2×-en 680 px; a korábbi
+ * 1600-as fájl 5,6-szoros túlméret volt, audit 2026-09-07, 2.5).
  */
 export const COURSE_SHOWCASE_DRIFT: readonly CourseShowcaseFallbackImage[] = [
   {
-    src: '/media/team/founders-shared-laugh-1600.webp',
-    width: 1600,
-    height: 1006,
+    src: '/media/team/founders-shared-laugh-800.webp',
+    width: 800,
+    height: 503,
   },
   {
-    src: '/media/team/hand-treatment-detail-1600.webp',
-    width: 1600,
-    height: 2400,
+    src: '/media/team/hand-treatment-detail-800.webp',
+    width: 800,
+    height: 1200,
   },
   {
-    src: '/media/team/founders-intro-white-1600.webp',
-    width: 1600,
-    height: 1067,
+    src: '/media/team/founders-intro-white-800.webp',
+    width: 800,
+    height: 534,
   },
 ]
 

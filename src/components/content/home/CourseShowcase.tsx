@@ -28,7 +28,7 @@ export interface CourseShowcaseProps {
   lead?: string
   /** A vízjel. Üresen a beépített „Kurzusaink”. `null`: nincs vízjel. */
   mark?: string | null
-  /** A vízjel körüli döntött csapatfotók (a jelenet). */
+  /** A vízjel alatti három csapatfotó (a jelenet). */
   drift?: boolean
 }
 
@@ -147,7 +147,8 @@ function ShowcaseCard({
 
 /**
  * Kurzusgaléria: képkártyák (ár a kártyán), alattuk külön „színpadon” a
- * halvány Kurzusaink vízjel három döntött csapatfotóval, legalul a lead.
+ * halvány Kurzusaink vízjel, alatta három egyforma csapatfotó egy
+ * háromhasábos rácsban (WP50: szimmetrikus, nem döntött), legalul a lead.
  * A DOM-sorrend egyben az olvasási sorrend: rács → jelenet → lead; a jelenet
  * teljes egészében dekoratív (aria-hidden), a lead-et sosem fedi.
  * A két audience-ág a kártya kickere, nem külön szekció.

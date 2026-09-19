@@ -176,7 +176,79 @@ main > .kc-film-hero:first-of-type {
   box-shadow: 0 0 0 6px var(--kc-color-white);
 }
 
-/* Rövid mobilnézet: kisebb térközök hagynak helyet a tartalomnak.
+/* ---- Szerző-sor: a két alapító arcképe a H1 fölött (WP50) ---------------
+   Miért ide és miért így: lásd FilmHero.tsx (FOUNDERS_PHOTO). Itt csak a
+   kompozíció.
+
+   KERETEZÉS A MÁRKA SZÍNEIVEL. A kép 3:2 (a vágat aránya, nincs torzítás),
+   lekerekítése a közös `--kc-radius-lg`, körülötte 2 px-es fehér paszpartu és
+   egy 1 px-es navy-25% hajszálvonal: a fotó a filmkocka papírfátyla FÖLÖTT
+   önálló lapként áll, ugyanazzal a nyelvvel, amit a hero címkéi (`__tags li`:
+   fehér 60%, navy 25% keret) és a másodlagos gomb (fehér lap, navy keret)
+   már beszélnek. Az egész sor a lejtő (::after 2. réteg) fölött ül, tehát a
+   névsor kontrasztja ugyanaz, mint a H1-é (ink a fátylas filmkockán ≥ 6,0:1,
+   lásd a fejléc levezetését). Apple HIG, Images: a képnek legyen jól
+   meghatározott kerete és aránya, ne „úszkáljon" a háttéren
+   (https://developer.apple.com/design/human-interface-guidelines/images);
+   Material 3, Cards/Images: a médiának a tartalom rácsához és sugaraihoz
+   kell igazodnia (https://m3.material.io/components/cards/guidelines).
+
+   MÉRETEK A TOKENEKRŐL: a keret magassága 4,5rem (72 px), szélessége 3:2
+   → 6,75rem (108 px); a két sor S token; a sor és a cím közt space-4. A
+   névsor két sora együtt ~2,6rem, tehát a képhez képest középre zárva ül.
+   Mobilon (390×844) a hasáb alulra zárt, ezért a sor a CÍM FÖLÉ nő, nem a
+   gombok alá: a CTA-k függőleges helye nem változik (mérve: lásd a
+   beszámolót). Rövid mobil nézetben (≤ 700 px magas) a sor ELMARAD: ott a
+   szöveg és a két gomb a tábla teljes magasságát kéri, és a fríz a film után
+   amúgy is a két alapítót mutatja. */
+.kc-film-hero .scroll-scrub__aside {
+  margin: 0 0 var(--kc-space-4);
+}
+
+.kc-film-hero .kc-film-hero__founders {
+  display: flex;
+  align-items: center;
+  gap: var(--kc-space-3);
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+}
+
+.kc-film-hero .kc-film-hero__founders-photo {
+  display: block;
+  flex: 0 0 auto;
+  width: 6.75rem;
+  height: 4.5rem;
+  box-sizing: border-box;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--kc-color-navy-900) 25%, transparent);
+  border-radius: var(--kc-radius-lg);
+  background: var(--kc-color-white);
+  object-fit: cover;
+  object-position: 50% 45%;
+}
+
+.kc-film-hero .kc-film-hero__founders-caption {
+  display: grid;
+  gap: var(--kc-space-1);
+  min-width: 0;
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-tight);
+  color: var(--ss-ink);
+}
+
+.kc-film-hero .kc-film-hero__founders-names {
+  font-weight: var(--kc-font-weight-bold);
+}
+
+/* A szerep halványabb súllyal, de ugyanabban az inkben: a filmkockán a
+   halvány szín AA alá esne (lásd FILM_THEME.muted a FilmHero.tsx-ben). */
+.kc-film-hero .kc-film-hero__founders-role {
+  font-weight: var(--kc-font-weight-normal);
+}
+
+/* Rövid mobilnézet: kisebb térközök hagynak helyet a tartalomnak; a
+   szerző-sor (WP50) itt elmarad, lásd fent.
    Az L/M/S méretek és a 44px célok maradnak; csak a szöveg ritmusa tömörebb.
    WCAG 1.4.10 Reflow: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
    GOV.UK Layout: https://design-system.service.gov.uk/styles/layout/ */
@@ -198,6 +270,10 @@ main > .kc-film-hero:first-of-type {
 
   .kc-film-hero .kc-film-hero__cta {
     padding-block: var(--kc-space-2);
+  }
+
+  .kc-film-hero .scroll-scrub__aside {
+    display: none;
   }
 }
 

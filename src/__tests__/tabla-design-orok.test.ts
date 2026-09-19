@@ -35,29 +35,30 @@ const servicesCss = olvas('app/(frontend)/styles/blocks/services.css')
 const testimonialsTsx = olvas('components/content/home/TestimonialsSection.tsx')
 
 describe('Pácienseink mondták — tükör-szerződés', () => {
-  it('a dekoratív nyitó jel a magas 66-os idézőjel (U+201C), nem a magyar alsó-9', () => {
-    expect(TESTIMONIAL_OPENING_MARK).toBe('\u201C')
-    expect(testimonialsTsx).toContain("TESTIMONIAL_OPENING_MARK = '\\u201C'")
+  it('a dekoratív nyitó jel a magyar alsó „ (U+201E), nem a tükör felső 66-osa (WP50)', () => {
+    expect(TESTIMONIAL_OPENING_MARK).toBe('\u201E')
+    expect(testimonialsTsx).toContain("TESTIMONIAL_OPENING_MARK = '\\u201E'")
     expect(testimonialsTsx).toContain('{TESTIMONIAL_OPENING_MARK}')
   })
 
-  it('a kiemelt idézőjel az L tokenen áll, a vizuális méretet scale viszi', () => {
+  it('a kiemelt idézőjel az L tokenen áll, a szöveg display-betűjével', () => {
     const jel = szabalyTorzs(
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--big .kc-testimonials__mark',
     )
+    // WP50: a jel a szöveg betűjével és méretével, skálázás nélkül függ a margóban.
     expect(jel).toContain('font-size: var(--kc-font-l)')
-    expect(jel).toContain('transform: scale(2.05)')
+    expect(jel).not.toContain('transform')
     expect(jel).toContain('font-family: var(--kc-font-heading)')
   })
 
-  it('a kis idézőjel is L méretű szerif díszjel (függő, nem M törzs)', () => {
+  it('a kis idézőjel a törzs M méretén és betűjén áll (WP50: közös alapvonal)', () => {
     const jel = szabalyTorzs(
       testimonialsCss,
       '.kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark',
     )
-    expect(jel).toContain('font-size: var(--kc-font-l)')
-    expect(jel).toContain('font-family: var(--kc-font-heading)')
+    expect(jel).toContain('font-size: var(--kc-font-m)')
+    expect(jel).toContain('font-family: var(--kc-font-body)')
   })
 
   it('a kis idézet törzse ink, nem muted (a mockup navy, mint a kiemelt)', () => {

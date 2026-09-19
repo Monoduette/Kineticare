@@ -7,10 +7,26 @@
  * A tokenek portolása változatlan (muted → text-muted, hairline → border,
  */
 
+/* LOGÓKERET (WP50, tulajdonosi kérés: a logók legyenek nagyobbak).
+   Előtte: 9–11 rem × 2,1–3,4 rem (1440 px-en 176×52 px, 320-on 144×34).
+   Utána: 12–16 rem × 3–5 rem (1440-en 256×80 px, 320-on 192×48): +45%
+   szélesség, +41–54% magasság. A keret marad egységes minden logóra
+   (`object-fit: contain`, a saját arány nem torzul), a sor `flex-wrap`, tehát
+   320 px-en a 272 px-es belső szélességbe egy logó fér soronként, vízszintes
+   túlcsordulás nélkül (WCAG 2.2 SC 1.4.10 Reflow,
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). A 44 px-es
+   linkcél (SC 2.5.8) a magasabb kerettel bőven teljesül. A logósor mint
+   hitelesség-jel: NN/g, Trustworthiness in Web Design (a külső, független
+   forrásokra való hivatkozás a négy hitelesség-tényező egyike,
+   https://www.nngroup.com/articles/trustworthy-design/); Stanford Web
+   Credibility Guidelines 2. és 4. (mutasd meg, hogy valódi szervezet és
+   valódi emberek állnak a lap mögött,
+   https://credibility.stanford.edu/guidelines/index.html). A `sizes`
+   attribútum (PressLogos.tsx) a keret CSS-szélességét követi. */
 .kc-press {
   --kc-press-muted: var(--kc-color-text-muted);
-  --kc-press-logo-width: clamp(9rem, 14vw, 11rem);
-  --kc-press-logo-height: clamp(2.1rem, 3.6vw, 3.4rem);
+  --kc-press-logo-width: clamp(12rem, 20vw, 16rem);
+  --kc-press-logo-height: clamp(3rem, 5.2vw, 5rem);
 }
 
 /* Sötét sáv: halvány akcent az inken 8,49:1. */
