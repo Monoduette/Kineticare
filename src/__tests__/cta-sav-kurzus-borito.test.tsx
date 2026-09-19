@@ -208,6 +208,23 @@ describe('CtaBanner — kurzus-borító a sávban', () => {
     expect(html).not.toContain('kc-cta-banner__figure')
   })
 
+  it('a rácsból kimaradó, SOS-on kívüli ingyenes kurzus borítója is megjelenik (a teljes publikált kínálatból oldódik fel)', () => {
+    const ingyenes = product({
+      id: 7,
+      sku: 'Csuklómobilitás',
+      slug: 'csuklomobilitas',
+      priceInHUFEnabled: false,
+      priceInHUF: 0,
+      coverImage: media({ id: 7, alt: 'Csuklómobilitás borító' }),
+    })
+    const html = renderLayout([ctaBlock('/kurzusok/csuklomobilitas')], [PROGRAM, ingyenes])
+    expect(html).toMatch(KEP)
+    expect(html).toContain('kurzus-7-640.jpg')
+    // A lista-link szabálya változatlan: az első FIZETŐS kurzus borítója.
+    const lista = renderLayout([ctaBlock('/kurzusok')], [ingyenes, PROGRAM])
+    expect(lista).toContain('kurzus-1-640.jpg')
+  })
+
   it('csak publikált kurzus képe jöhet (piszkozat/archivált termék nem)', () => {
     const rejtett = product({ ...PROGRAM, status: 'draft' })
     const html = renderLayout([ctaBlock('/kurzusok/otthoni-kezrehab-program')], [rejtett])

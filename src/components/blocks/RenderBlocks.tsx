@@ -47,7 +47,13 @@ function sectionProps(block: LayoutBlock): {
   const anchorId = settings?.anchorId?.trim() || undefined
   const hatter = settings && 'hatter' in settings ? settings.hatter : undefined
   const variant =
-    hatter === 'tint' ? 'tint' : hatter === 'sotet' ? 'dark' : hatter === 'feher' ? 'default' : undefined
+    hatter === 'tint'
+      ? 'tint'
+      : hatter === 'sotet'
+        ? 'dark'
+        : hatter === 'feher'
+          ? 'default'
+          : undefined
   return { id: anchorId, variant }
 }
 
@@ -55,7 +61,9 @@ function sectionProps(block: LayoutBlock): {
 type CmsLink = { felirat?: string | null; url?: string | null; ujAblakban?: boolean | null }
 
 /** LinkGroup (felirat/url/ujAblakban) → egyszerű link-objektum; hiányos linknél undefined. */
-function linkFrom(link: CmsLink | undefined | null): { label: string; href: string; newTab: boolean } | undefined {
+function linkFrom(
+  link: CmsLink | undefined | null,
+): { label: string; href: string; newTab: boolean } | undefined {
   const label = link?.felirat?.trim() ?? ''
   const href = link?.url?.trim() ?? ''
   if (label.length === 0 || href.length === 0) {
@@ -195,6 +203,7 @@ export function RenderBlocks({
               afterFilmHero,
               paidProducts,
               gridProducts,
+              visibleProducts,
               freeProduct,
               posts,
               testimonials,
@@ -215,6 +224,7 @@ function BlockSwitch({
   afterFilmHero,
   paidProducts,
   gridProducts,
+  visibleProducts,
   freeProduct,
   freeSosHref,
   freeSosAnchorIds,
@@ -232,6 +242,12 @@ function BlockSwitch({
   paidProducts: Product[]
   /** A Kurzusaink rács tételei (fizetős + igazolt ingyenes SOS, ebben a sorrendben). */
   gridProducts: Product[]
+  /**
+   * MINDEN publikált, a boltban látható kurzus (a rács szűkítése nélkül): a
+   * CTA-sáv borítója ebből oldódik fel, hogy egy SOS-on kívüli ingyenes
+   * kurzusra mutató sáv se veszítse el a képét (Devin, 2026-09-19).
+   */
+  visibleProducts: Product[]
   freeProduct: Product | null
   freeSosHref: string | null
   freeSosAnchorIds: string[]
@@ -298,7 +314,7 @@ function BlockSwitch({
       return (
         <CtaBanner
           block={block}
-          courseCover={resolveCtaBannerFigure(block.cta?.url, gridProducts, ctaBannerMontazs)}
+          courseCover={resolveCtaBannerFigure(block.cta?.url, visibleProducts, ctaBannerMontazs)}
         />
       )
     case 'credsStrip': {
