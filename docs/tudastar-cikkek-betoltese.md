@@ -154,8 +154,11 @@ az adminban történik. A markdown itt is az egyetlen igazság (7. szakasz): az
 markdownba is kerüljön vissza.
 
 **Tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study.”** A két
-cikk törzsében minden klinikai állítás számozott hivatkozást visel (`[1]`,
-`[2]`…), a törzs végén „Források” szakasszal. Minden tanulmány
+cikk minden klinikai állítása mögött ellenőrzött tanulmány áll; a lista a
+cikkfájl H1 fölötti, nem renderelt „Forráslista” táblájában él. A tulajdonos
+késő esti döntése szerint a publikált cikkben NINCS „Források” szakasz és
+nincs `[n]` jel („a kettő cikkből kerüljenek ki a források, de a tartalom
+nagyon jó”). Minden tanulmány
 PubMed-azonosítóját és DOI-ját a PubMed E-utilities (`esearch` → `esummary` →
 `efetch`) és a Crossref REST API hívásával ellenőriztük; a cikkfájl H1
 fölötti „Forrás-ellenőrzés” táblája tételenként mondja meg, mire használtuk.
@@ -171,7 +174,7 @@ valódi link ugyanabban a sorban egyetlen hibás linkké olvadt volna össze
 Őr-teszt: `src/__tests__/tudastar-tulajdonosi-piszkozatok.test.ts` (P1–P9:
 lista, fejléc, 700–1100 szó a Források nélkül, bekezdés ≤ 4 mondat,
 felsorolás ≤ 6 tétel, gondolatjel-tilalom, meta-leírás 150–160 karakter,
-belső linkek csak létező útvonalra, Források és `[n]` egyezés, egyetlen
+belső linkek csak létező útvonalra, nincs Források szakasz és `[n]` jel a törzsben (a belső Forráslista ellenőrzött), egyetlen
 publikálási kapu). A fájlnév a cikkek eredeti, piszkozatos indulására utal;
 a tartalma a mai, élesbe szánt állapotot őrzi.
 
