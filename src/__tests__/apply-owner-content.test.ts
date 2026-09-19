@@ -1915,7 +1915,7 @@ describe('alkalmazSzolgaltatasokHeroKep', () => {
       'public/media/team/treatment-table-hands-1600.webp',
     )
     expect(SZOLGALTATASOK_HERO_FORRAS.alt).toBe(
-      'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+      'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében.',
     )
   })
 

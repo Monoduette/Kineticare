@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -145,22 +145,25 @@ describe('WP54/1: a manifestek és a fájlok egyeznek (sha256, méret, plafon)',
     expect(hero?.sourceName).toBe('SYL_9156.jpg')
   })
 
-  it('WP54/6: a kezelőasztalos fotó (CMS-ből kötve) fekvő 3:2, 800-as változattal', async () => {
+  it('WP54/6: a kezelőasztalos fotó (CMS-ből kötve) fekvő 3:2; 800-as változat NINCS (a Payload méretez)', () => {
     const asset = teamAssets.find((item) => item.file === 'treatment-table-hands-1600.webp')
     expect(asset?.width).toBe(1600)
     expect(asset?.height).toBe(1067)
     expect(asset?.sourceName).toBe('_MG_0033.png')
     expect(asset?.alt).toBe('Csuklókezelés a kezelőasztalon a Kineticare rendelőjében.')
-    const kicsi = await sharp(join(REPO, 'public/media/team/treatment-table-hands-800.webp')).metadata()
-    expect(kicsi.width).toBe(800)
-    expect(kicsi.height).toBe(533)
+    // A CMS-be töltött fájl a Payload saját méretváltozatait kapja; repóbeli
+    // 800-as duplikátum nem kell (átnézés, 2026-09-19).
+    expect(existsSync(join(REPO, 'public/media/team/treatment-table-hands-800.webp'))).toBe(false)
+    expect(existsSync(join(REPO, 'public/media/team/treatment-wrist-table-800.webp'))).toBe(false)
   })
 })
 
 describe('WP54/2: a kezdőlapi Kurzusaink jelenet középső cellája', () => {
   it('a középső fotó a labdás-törölközős gyakorlat 800-as változata, mindhárom fekvő', async () => {
     expect(COURSE_SHOWCASE_SCENE_PHOTOS).toHaveLength(3)
-    expect(COURSE_SHOWCASE_SCENE_PHOTOS[1]?.src).toBe('/media/team/home-exercise-ball-towel-800.webp')
+    expect(COURSE_SHOWCASE_SCENE_PHOTOS[1]?.src).toBe(
+      '/media/team/home-exercise-ball-towel-800.webp',
+    )
     for (const image of COURSE_SHOWCASE_SCENE_PHOTOS) {
       const meta = await sharp(join(REPO, 'public', image.src)).metadata()
       expect(meta.width, image.src).toBe(image.width)
@@ -179,9 +182,9 @@ describe('WP54/2: a kezdőlapi Kurzusaink jelenet középső cellája', () => {
       join(REPO, 'public/media/team/home-exercise-ball-towel-800.webp'),
     ).metadata()
     expect(kicsi.width).toBe(800)
-    expect(Math.abs((nagy?.width ?? 0) / (nagy?.height ?? 1) - 800 / (kicsi.height ?? 1))).toBeLessThan(
-      0.01,
-    )
+    expect(
+      Math.abs((nagy?.width ?? 0) / (nagy?.height ?? 1) - 800 / (kicsi.height ?? 1)),
+    ).toBeLessThan(0.01)
   })
 
   it('a cella ablaka a bal széltől 3,1 %-tól látszik: az ujjhegyek (4,1 %) bent maradnak', () => {
@@ -272,7 +275,13 @@ function render(
   ctaBannerMontazs: Media | null = null,
 ): string {
   return renderToStaticMarkup(
-    createElement(RenderBlocks, { layout, products, posts: [], testimonials: [], ctaBannerMontazs }),
+    createElement(RenderBlocks, {
+      layout,
+      products,
+      posts: [],
+      testimonials: [],
+      ctaBannerMontazs,
+    }),
   )
 }
 

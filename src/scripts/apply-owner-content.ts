@@ -36,6 +36,7 @@ import {
 import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
 import { enrollMediaRecovery, managedMediaAssets } from '../lib/media-recovery-provenance'
+import { resolveUploadDir } from '../lib/media-restore'
 import {
   CLINIC_TREATMENTS_ANCHOR,
   LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
@@ -124,7 +125,7 @@ export const ROLUNK_HERO_KORABBI_PREFIXEK: readonly string[] = [
 export const ROLUNK_HERO_FORRAS: MediaForras = {
   filename: 'founders-studio-pair-1600.webp',
   filePath: 'public/media/team/founders-studio-pair-1600.webp',
-  alt: 'Kocsis Kata és Kiss Kata a stúdióban',
+  alt: 'Kocsis Kata és Kiss Kata a stúdióban.',
 }
 
 /**
@@ -138,17 +139,17 @@ export const SOS_GALERIA_FORRASOK: readonly MediaForras[] = [
   {
     filename: 'sos-band-stretch-1600.webp',
     filePath: 'public/media/sos/sos-band-stretch-1600.webp',
-    alt: 'Gumiszalagos csuklónyújtás az asztal szélén',
+    alt: 'Gumiszalagos csuklónyújtás az asztal szélén.',
   },
   {
     filename: 'sos-ball-squeeze-1600.webp',
     filePath: 'public/media/sos/sos-ball-squeeze-1600.webp',
-    alt: 'Puha labda szorítása a tenyérben',
+    alt: 'Puha labda szorítása a tenyérben.',
   },
   {
     filename: 'sos-spiky-ball-forearm-1600.webp',
     filePath: 'public/media/sos/sos-spiky-ball-forearm-1600.webp',
-    alt: 'Tüskés labdás alkarlazítás',
+    alt: 'Tüskés labdás alkarlazítás.',
   },
 ]
 
@@ -247,7 +248,7 @@ export const SZOLGALTATASOK_HERO_PREFIX = '67b3bd06f3936_Rendelo'
 export const SZOLGALTATASOK_HERO_FORRAS: MediaForras = {
   filename: 'treatment-table-hands-1600.webp',
   filePath: 'public/media/team/treatment-table-hands-1600.webp',
-  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében.',
 }
 
 // ---------------------------------------------------------------------------
@@ -2995,6 +2996,15 @@ export const alkalmazKapcsolatSzakemberek = (input: {
 // szekciókba, a tulajdonos által kiválogatott anyagból.
 // ---------------------------------------------------------------------------
 
+/**
+ * A technikák-tábla azonosító címe (WP54/4); ezzel ismeri fel a script a már
+ * beszúrt blokkot, és ezzel zárja ki a 19b szabály a jelöltek közül (a tábla
+ * is `services` blokk, de saját képe van — nélküle a második futás hangosan
+ * „2 szolgáltatás-szekció áll” kihagyást adna, ami az idempotencia ígéretét
+ * sértené).
+ */
+export const TECHNIKAK_TABLA_CIM = 'Amit a rendelőben kínálunk'
+
 /** A két új fotó fájlnév-prefixe (a Média webp-re konvertál, ezért prefix). */
 export const KEZELES_FOTO_PREFIX = 'kezeles-kezen'
 export const KATAK_LABDAVAL_PREFIX = 'katak-labdaval'
@@ -3028,8 +3038,13 @@ export const alkalmazSzolgaltatasBlokkKep = (input: {
     return kihagyas('a Médiatárban nincs meg a kép — előbb az appnak fel kell töltenie', true)
   }
 
+  // A WP54/4 technikák-tábla is `services` blokk, de a script maga szúrja be
+  // saját képpel: a jelöltek közül kimarad, hogy a tábla után is EGY
+  // szolgáltatás-szekció álljon a döntés előtt (idempotens második futás).
   const indexek = layout
-    .map((blokk, index) => (blokk.blockType === 'services' ? index : -1))
+    .map((blokk, index) =>
+      blokk.blockType === 'services' && blokk.title !== TECHNIKAK_TABLA_CIM ? index : -1,
+    )
     .filter((index) => index !== -1)
   if (indexek.length === 0) {
     return kihagyas('a lapon nincs szolgáltatás-szekció', true)
@@ -3498,8 +3513,8 @@ export const MEDIA_ALT_SZOVEGEK: readonly { prefix: string; cimke: string; alt: 
   },
   {
     prefix: '688b873ad2a80_belepotermekpackshot1',
-    cimke: 'Az SOS KézRelax villámkurzus borítója',
-    alt: 'Az SOS KézRelax villámkurzus borítóképe: a gyors kézlazító gyakorlatok kézikönyve.',
+    cimke: 'Az SOS Kézrelax villámkurzus borítója',
+    alt: 'Az SOS Kézrelax villámkurzus borítóképe: a videós gyakorlatok laptopon, tableten és telefonon, mellette a nyomtatott üdvözlő lap.',
   },
 ]
 
@@ -3806,9 +3821,6 @@ export const alkalmazSosGaleria = (input: {
   }
 }
 
-/** A technikák-tábla azonosító címe (WP54/4); ezzel ismeri fel a script a már beszúrt blokkot. */
-export const TECHNIKAK_TABLA_CIM = 'Amit a rendelőben kínálunk'
-
 /** A technikák-tábla horgonya (`sectionSettings.anchorId`). */
 export const TECHNIKAK_TABLA_HORGONY = 'rendeloi-technikak'
 
@@ -3820,7 +3832,7 @@ export const TECHNIKAK_TABLA_HORGONY = 'rendeloi-technikak'
 export const TECHNIKAK_TABLA_KEP_FORRAS: MediaForras = {
   filename: 'treatment-wrist-table-1600.webp',
   filePath: 'public/media/team/treatment-wrist-table-1600.webp',
-  alt: 'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót',
+  alt: 'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót.',
 }
 
 /** A technikák-tábla öt sora, a vezető által jóváhagyott vevői szövegekkel. */
@@ -4106,6 +4118,16 @@ export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggose
     return sor === undefined || sor.filename !== filename ? null : sor.id
   },
   letrehoz: async (forras) => {
+    // Ütközés-előellenőrzés: ha a feltöltési könyvtárban REKORD NÉLKÜL ott a
+    // fájl (félbeszakadt futás, mentésből visszaállított DB, kézi másolás), a
+    // Payload `-1` utótagot fűzne a névhez, és a rekord már létrejönne, mielőtt
+    // az eltérést észrevennénk. Ilyenkor létrehozás nélkül, hangosan állunk meg.
+    const utkozoFajl = path.join(resolveUploadDir(payload), forras.filename)
+    if (existsSync(utkozoFajl)) {
+      throw new Error(
+        `A feltöltési könyvtárban már van „${forras.filename}” nevű fájl, de a Médiatárban nincs hozzá rekord (${utkozoFajl}) — kézi átnézést kér (a fájl törlése vagy a rekord pótlása), a hivatkozó javítás nem futott le.`,
+      )
+    }
     const created: Media = await payload.create({
       collection: 'media',
       data: { alt: forras.alt },
@@ -4113,8 +4135,11 @@ export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggose
       overrideAccess: true,
     })
     if (created.filename !== forras.filename) {
+      // Nem hagyunk árva `-N` rekordot: a félresikerült létrehozást visszavonjuk,
+      // és csak utána dobunk.
+      await payload.delete({ collection: 'media', id: created.id, overrideAccess: true })
       throw new Error(
-        `A Médiatár a(z) „${forras.filename}” helyett „${created.filename ?? ''}” fájlnévvel hozta létre a képet (azonosító: ${created.id}) — ütköző fájl a feltöltési könyvtárban; a rekord kézi átnézést kér, a hivatkozó javítás nem futott le.`,
+        `A Médiatár a(z) „${forras.filename}” helyett „${created.filename ?? ''}” fájlnévvel hozta volna létre a képet — ütköző fájl a feltöltési könyvtárban; a tévesen létrejött rekordot (azonosító: ${created.id}) a script törölte, a hivatkozó javítás nem futott le, kézi átnézést kér.`,
       )
     }
     if (managedMediaAssets().some((asset) => asset.filename === created.filename)) {
@@ -5085,9 +5110,18 @@ async function futtat(): Promise<void> {
       kihagyasokSzama += 1
       continue
     }
+    // A második olvasás átmeneti hibája (pool, zár) NEM jelenthet „üres alt”-ot:
+    // akkor a szabály a szerkesztői szöveget írná felül. Hiba esetén hangos kihagyás.
     const doc = await payload
       .findByID({ collection: 'media', id: media.id, depth: 0, overrideAccess: true })
       .catch(() => null)
+    if (doc === null) {
+      logger.error(
+        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a(z) ${media.id} azonosítójú média-rekord nem olvasható, az alt nem dönthető el)`,
+      )
+      kihagyasokSzama += 1
+      continue
+    }
     const eredmeny = alkalmazMediaAltSzoveg({
       cimke: tetel.cimke,
       jelenlegiAlt: typeof doc?.alt === 'string' ? doc.alt : null,

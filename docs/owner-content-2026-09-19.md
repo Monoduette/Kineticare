@@ -104,7 +104,23 @@ fejléc-kép szabály).
    sor csak akkor, ha egy fájl tényleg hiányzik.
 3. `OWNER_CONTENT_CONFIRM=igen npm run content:owner`, majd második próbafutás: minden
    érintett szabály „MÁR …” kihagyás (idempotencia).
+4. **Volume-feltétel.** A content-job konténer NEM látja az app Railway Volume-ját
+   (`PAYLOAD_MEDIA_DIR`): a `payload.create({ filePath })` a job múlandó `media/`
+   mappájába írja a fájlt és a méretváltozatokat, a rekord viszont az éles
+   adatbázisba kerül. Az app következő indulásakor az `ensureMediaFiles` a
+   manifestből (`public/media/team|sos/manifest.json`) visszatölti a hiányzó
+   fájlokat (a WP54-es képek `enrollMediaRecovery`-vel a nyilvántartásba kerülnek),
+   ezért a job után az appot **újra kell indítani**, és utána a /rolunk és a
+   /szolgaltatasok fejléc-képét, az SOS galériát és a technikák-tábla képét
+   böngészőből ellenőrizni (200-as képválasz, nem törött kép).
+5. Ütközés-őr: ha a feltöltési könyvtárban rekord nélkül ott van a fájl, a script
+   létrehozás nélkül, hangosan áll meg (`letrehoz`); ha a Médiatár mégis `-N`
+   utótagos nevet adna, a tévesen létrejött rekordot törli, és úgy dob. Kézi
+   átnézés kell, a többi szabály nem fut le.
+6. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
+   ELSŐ elemét veszi; ha valaha `…-1.webp` duplikátum keletkezik a packshotokból,
+   a Médiatárban kézzel kell egyértelműsíteni.
 
 ## WP56 — a kurzusborítók alt-szövege
 
-- `media-alt-szoveg`: a két packshot (`688b93e6ab76f_Programpackshot`, `688b873ad2a80_belepotermekpackshot1`) alt-ja csak akkor kap jóváhagyott szöveget, ha ma üres; szerkesztői alt érintetlen, idempotens. Tulajdonosi kérés: „alt image mindenhol van?” (2026-09-19 este).
+- `media-alt-szoveg`: a két packshot (`688b93e6ab76f_Programpackshot`, `688b873ad2a80_belepotermekpackshot1`) alt-ja csak akkor kap jóváhagyott szöveget, ha ma üres; szerkesztői alt érintetlen, idempotens. Élesben mérve (2026-09-19, `/api/media`): mindkét rekordnak MÁR van szerkesztői alt-ja („Otthoni KézRehab Program csomagkép”, „SOS Kézrelax villámkurzus csomagkép”), ezért a szabály ott csendes kihagyást ad; a kezdőlapi és kurzuslistás borítók `alt=""`-je szándékos (dekoratív kép egy szöveges linkben, `ProductCard.tsx`). Ha a média-rekord második olvasása hibázik, a szabály hangosan kihagy, nem ír. Tulajdonosi kérés: „alt image mindenhol van?” (2026-09-19 este).

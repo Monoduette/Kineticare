@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Payload } from 'payload'
@@ -9,6 +13,7 @@ import {
   biztositMediaFajlbol,
   dontsMediaBiztositas,
   payloadMediaFuggosegek,
+  alkalmazSzolgaltatasBlokkKep,
   ROLUNK_HERO_FORRAS,
   ROLUNK_HERO_KORABBI_PREFIXEK,
   SOS_GALERIA_FORRASOK,
@@ -62,11 +67,11 @@ const fuggosegek = (
   } as MediaBiztositasFuggosegek & { letrehoz: ReturnType<typeof vi.fn> }
 }
 
-const allapot = (
-  filename: string,
-  id: number | null,
-  forrasLetezik = true,
-): UjMediaAllapot => ({ filename, id, forrasLetezik })
+const allapot = (filename: string, id: number | null, forrasLetezik = true): UjMediaAllapot => ({
+  filename,
+  id,
+  forrasLetezik,
+})
 
 // ===========================================================================
 // WP54/1 — média a repó fájljából, idempotensen
@@ -193,9 +198,7 @@ describe('payloadMediaFuggosegek — a valódi Médiatár-hozzáférés a próba
     })
     const find = vi.fn(async (args: { where?: { filename?: { equals?: string } } }) => ({
       docs:
-        args.where?.filename?.equals === 'megvan.webp'
-          ? [{ id: 12, filename: 'megvan.webp' }]
-          : [],
+        args.where?.filename?.equals === 'megvan.webp' ? [{ id: 12, filename: 'megvan.webp' }] : [],
     }))
     return { payload: { create, update, find } as unknown as Payload, create, update, find }
   }
@@ -228,6 +231,48 @@ describe('payloadMediaFuggosegek — a valódi Médiatár-hozzáférés a próba
     expect(await deps.keres('megvan.webp')).toBe(12)
     expect(await deps.keres('nincs.webp')).toBeNull()
   })
+
+  /** Hamis Payload feltöltési könyvtárral: a `letrehoz` ütközés-ágait méri. */
+  const hamisPayloadKonyvtarral = (staticDir: string, letrejovoNev: string) => {
+    const create = vi.fn(async () => ({ id: 901, filename: letrejovoNev }))
+    const del = vi.fn(async () => ({}))
+    const payload = {
+      create,
+      delete: del,
+      collections: { media: { config: { upload: { staticDir } } } },
+    } as unknown as Payload
+    return { payload, create, del }
+  }
+
+  it('ha a feltöltési könyvtárban REKORD NÉLKÜL ott a fájl: létrehozás nélkül, hangosan dob', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kc-media-'))
+    try {
+      writeFileSync(join(dir, 'utkozo.webp'), 'x')
+      const { payload, create } = hamisPayloadKonyvtarral(dir, 'utkozo.webp')
+      const deps = payloadMediaFuggosegek(payload)
+      await expect(
+        deps.letrehoz({ filename: 'utkozo.webp', filePath: 'nem-szamit.webp', alt: 'x' }),
+      ).rejects.toThrow('nincs hozzá rekord')
+      expect(create).not.toHaveBeenCalled()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('ha a Médiatár mégis más fájlnevet ad: a tévesen létrejött rekordot törli, majd dob', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kc-media-'))
+    try {
+      const { payload, create, del } = hamisPayloadKonyvtarral(dir, 'kep-1.webp')
+      const deps = payloadMediaFuggosegek(payload)
+      await expect(
+        deps.letrehoz({ filename: 'kep.webp', filePath: 'nem-szamit.webp', alt: 'x' }),
+      ).rejects.toThrow('törölte')
+      expect(create).toHaveBeenCalledTimes(1)
+      expect(del).toHaveBeenCalledWith({ collection: 'media', id: 901, overrideAccess: true })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // ===========================================================================
@@ -238,7 +283,7 @@ describe('alkalmazRolunkHeroKep — WP54 kiegészítések', () => {
   it('a jóváhagyott forrás: pontos webp fájlnév, a megadott alt, a team mappából', () => {
     expect(ROLUNK_HERO_FORRAS.filename).toBe('founders-studio-pair-1600.webp')
     expect(ROLUNK_HERO_FORRAS.filePath).toBe('public/media/team/founders-studio-pair-1600.webp')
-    expect(ROLUNK_HERO_FORRAS.alt).toBe('Kocsis Kata és Kiss Kata a stúdióban')
+    expect(ROLUNK_HERO_FORRAS.alt).toBe('Kocsis Kata és Kiss Kata a stúdióban.')
     expect(ROLUNK_HERO_KORABBI_PREFIXEK).toContain('katak-team')
   })
 
@@ -283,9 +328,9 @@ describe('alkalmazSosGaleria', () => {
       'sos-spiky-ball-forearm-1600.webp',
     ])
     expect(SOS_GALERIA_FORRASOK.map((f) => f.alt)).toEqual([
-      'Gumiszalagos csuklónyújtás az asztal szélén',
-      'Puha labda szorítása a tenyérben',
-      'Tüskés labdás alkarlazítás',
+      'Gumiszalagos csuklónyújtás az asztal szélén.',
+      'Puha labda szorítása a tenyérben.',
+      'Tüskés labdás alkarlazítás.',
     ])
     for (const f of SOS_GALERIA_FORRASOK) {
       expect(f.filePath).toBe(`public/media/sos/${f.filename}`)
@@ -380,6 +425,42 @@ describe('alkalmazSosGaleria', () => {
 // WP54/4 — a /szolgaltatasok technikák-táblája
 // ===========================================================================
 
+describe('alkalmazSzolgaltatasBlokkKep — a technikák-tábla NEM jelölt (idempotens második futás)', () => {
+  it('a beszúrt tábla mellett is egy szolgáltatás-szekciót lát, és a képet arra teszi', () => {
+    const layout = [
+      { blockType: 'services' as const, title: 'Miben segíthetünk?', image: null },
+      { blockType: 'services' as const, title: TECHNIKAK_TABLA_CIM, image: 5 },
+    ] as unknown as NonNullable<Page['layout']>
+    const e = alkalmazSzolgaltatasBlokkKep({
+      layout,
+      mediaId: 77,
+      oldalCimke: '/szolgaltatasok',
+      cserelheto: true,
+    })
+    expect(e.modositasok).toHaveLength(1)
+    const ajto = e.layout?.[0]
+    const tabla = e.layout?.[1]
+    expect(ajto?.blockType === 'services' ? ajto.image : null).toBe(77)
+    expect(tabla?.blockType === 'services' ? tabla.image : null).toBe(5)
+  })
+
+  it('a tábla után, a képpel MÁR feltöltött szekciónál csendes „MÁR” kihagyás, nem hangos', () => {
+    const layout = [
+      { blockType: 'services' as const, title: 'Miben segíthetünk?', image: 77 },
+      { blockType: 'services' as const, title: TECHNIKAK_TABLA_CIM, image: 5 },
+    ] as unknown as NonNullable<Page['layout']>
+    const e = alkalmazSzolgaltatasBlokkKep({
+      layout,
+      mediaId: 77,
+      oldalCimke: '/szolgaltatasok',
+      cserelheto: true,
+    })
+    expect(e.layout).toBeNull()
+    expect(e.kihagyasok[0]?.hangos).toBe(false)
+    expect(e.kihagyasok[0]?.indok).toContain('MÁR ezt a képet')
+  })
+})
+
 describe('alkalmazSzolgaltatasokTechnikakTabla', () => {
   const seed = (): Szekciosor => buildSzolgaltatasokLayout()
   const ajtoIndex = (layout: Szekciosor): number => layout.findIndex(isSzolgaltatasokAjtoBlock)
@@ -396,7 +477,7 @@ describe('alkalmazSzolgaltatasokTechnikakTabla', () => {
       'public/media/team/treatment-wrist-table-1600.webp',
     )
     expect(TECHNIKAK_TABLA_KEP_FORRAS.alt).toBe(
-      'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót',
+      'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót.',
     )
     expect(TECHNIKAK_TABLA_KEP_FORRAS.filename).not.toBe(SZOLGALTATASOK_HERO_FORRAS.filename)
   })
