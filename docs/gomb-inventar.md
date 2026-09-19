@@ -429,6 +429,14 @@ kérést.
 szekciósorokat ez nem írja át — azokat az adminban kell javítani, mert a seed sosem ír felül
 meglévő szekciósort.
 
+**2026-09-19 (WP58) frissítés:** a `/szolgaltatasok#rendeloi` szekció szerkezetes alakja
+(`src/components/blocks/RendeloiArlista.tsx`) a CMS szöveglinkjét már NEM a szerkesztő
+feliratával rendereli, hanem a **#24** szótári gombként (`ctaLabel('appointment-request-link')`,
+másodlagos súly), a link CÉLJA viszont a CMS-é marad. Így az élő „időpontot kérek" felirat
+ütközése a felületen megszűnt anélkül, hogy az adminban át kellett volna írni; ha a szekciót
+a szerkesztők úgy írják át, hogy a szerkezet nem ismerhető fel, a blokk a sima folyószövegre
+és a CMS feliratára esik vissza (őr: `src/__tests__/wp58-rendeloi-arlista.test.tsx`).
+
 ### 5.1 A négy hiányzó cselekvés – FELVÉVE a §3.2-be (2026-08-16)
 
 A leltár négy olyan cselekvést talált, amire nem volt jóváhagyott sor. **A vezető jóváhagyta, és mind a négy bekerült a `ui-sztenderdek.md` §3.2 táblázatába** (#19–#22). Az alábbi táblázat a javaslat → jóváhagyott felirat útját dokumentálja; a normatív alak a §3.2-ben és a `src/lib/cta-vocabulary.ts`-ben él.

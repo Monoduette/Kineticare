@@ -81,7 +81,13 @@ function resolveInternalHref(doc: unknown): string | null {
   }
 }
 
-function linkFields(node: LexicalNode): LinkFields | null {
+/**
+ * Egy link-csomópont feloldott célja (allowlist-szűrt külső URL vagy belső
+ * dokumentum-út). Exportált, hogy a szerkezet-felismerő megjelenítők (WP58
+ * rendelői árlista) UGYANAZZAL a szabállyal oldják fel a CMS-linket, mint a
+ * folyószöveg — külön, elcsúszó másolat nélkül.
+ */
+export function linkFields(node: LexicalNode): LinkFields | null {
   const fields = isRecord(node.fields) ? node.fields : null
   if (!fields) return null
   const linkType = fields.linkType
