@@ -268,9 +268,9 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     const photo = blokk('.kc-course-showcase__photo')
     expect(photo).toMatch(/aspect-ratio:\s*4 \/ 3/)
     expect(photo).toContain('object-fit: cover')
-    // Az álló középső fotón a kéz a kép alsó harmadában van: az ablak az alsó
-    // élhez zár (design-átvétel 2026-09-19; a 35 % a kezet vágta le).
-    expect(photo).toContain('object-position: 50% 100%')
+    // WP54: mindhárom fotó fekvő, a cella szélességben vág; a 25 % a középső
+    // fotó ujjhegyeit (4,1 %-tól) is bent tartja (mérés: course-showcase.css).
+    expect(photo).toContain('object-position: 25% 50%')
     expect(photo).toContain('width: 100%')
     expect(photo).not.toMatch(/position:\s*absolute|rotate|animation|translate/)
     // A vízjel a fotók fölött, a teljes sorban.

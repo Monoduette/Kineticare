@@ -121,3 +121,76 @@ export function resolveCtaBannerCourseCover(
   }
   return { media, title: courseTitle(product), href: courseHref(product) }
 }
+
+/**
+ * A /rolunk CTA-sávjának („Kezdd el otthon, a saját tempódban") statikus
+ * kurzus-montázsa (WP54, tulajdonosi 2. kör, 2026-09-19: ide „összevágott
+ * képet a kurzusból" kértek a borító helyett).
+ *
+ * A kép a fotózás három otthoni gyakorlat-fotójából sharp-pal összeállított
+ * triptichon (public/media/team/course-montage-rolunk-1600.webp, manifest
+ * `rolunk-cta-montage`): 1600×1067 (3:2), három 528 px-es oszlop, köztük
+ * 8 px fehér hézag, lekerekítés nélkül. Az arány a sáv `.kc-cta-banner__figure`
+ * keretének 3:2-es, `contain` dobozát tölti ki vágás nélkül (cta-banner.css).
+ * Nem CMS-mező (migrációt kívánna), nem lekérdezés: tiszta függvény, a
+ * [slug] route adja át a `rolunk` slugon, a kezdőlap a kurzus-borítónál marad.
+ *
+ * MIÉRT a gyakorlatok és nem a packshot: NN/g, Photos as Web Content: a
+ * látogató a tartalomhoz kötött, valódi jelenetet nézi meg, a termékborító
+ * a Rólunk-történet végén nem mond újat
+ * (https://www.nngroup.com/articles/photos-as-web-content/); Material 3,
+ * Cards: a média a tartalom kísérője, nem önálló cselekvés, ezért a montázs
+ * nem link (https://m3.material.io/components/cards/guidelines); WCAG 2.2
+ * SC 1.1.1: a három jelenetet az alt sorolja fel
+ * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html).
+ */
+export const ROLUNK_CTA_MONTAZS_FILE = 'course-montage-rolunk-1600.webp'
+
+export function rolunkCtaMontazs(): Media {
+  return {
+    id: 87020,
+    alt: 'Három gyakorlat az otthoni kurzusból: gumiszalagos csuklónyújtás, puha labda szorítása és tüskés labdás alkarlazítás.',
+    url: `/media/team/${ROLUNK_CTA_MONTAZS_FILE}`,
+    filename: ROLUNK_CTA_MONTAZS_FILE,
+    mimeType: 'image/webp',
+    width: 1600,
+    height: 1067,
+    createdAt: '',
+    updatedAt: '',
+  }
+}
+
+/** A gomb célja kurzus-e (a lista vagy egy kurzus): ekkor jár a montázs. */
+function ctaCoursePathname(url: string | null | undefined): string | null {
+  const pathname = ctaPathname(url)
+  if (pathname === null) {
+    return null
+  }
+  return pathname === COURSE_BASE_PATH || pathname.startsWith(`${COURSE_BASE_PATH}/`)
+    ? pathname
+    : null
+}
+
+/**
+ * A CTA-sáv képe: a lap statikus montázsa, ha a route adott ilyet (ma csak a
+ * /rolunk) ÉS a gomb kurzusra mutat; különben a kurzus-borító feloldása.
+ * A montázs a borító ELÉ sorol, de ugyanahhoz a feltételhez kötött (kurzus-
+ * cél): /kapcsolat vagy külső cél mellett kép nélkül marad a sáv, ahogy a
+ * borítós ág is. Borítókép nélküli kurzusnál a montázs akkor is megjelenik,
+ * mert a fájl a repóban van, nem a termék adata.
+ */
+export function resolveCtaBannerFigure(
+  url: string | null | undefined,
+  products: readonly Product[],
+  montazs: Media | null = null,
+): CtaBannerCourseCover | null {
+  if (!montazs) {
+    return resolveCtaBannerCourseCover(url, products)
+  }
+  const pathname = ctaCoursePathname(url)
+  if (pathname === null) {
+    return null
+  }
+  const cover = resolveCtaBannerCourseCover(url, products)
+  return { media: montazs, title: cover?.title ?? montazs.alt, href: cover?.href ?? pathname }
+}

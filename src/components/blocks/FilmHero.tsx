@@ -119,59 +119,13 @@ const CAPTION_END_BODY_WITHOUT_FREE_SOS =
 /** A fejezet-navigáció felirata — egyetlen jelenetnél nem is jelenik meg. */
 const FILM_LABEL = 'A kéz nyílása'
 
-/**
- * A két alapító arcképe a H1 FÖLÖTT, a szöveghasábban (WP50, tulajdonosi
- * kérés: „kép rólunk a cím mellé, mert alapból minket keresnek az emberek").
- *
- * MIÉRT A SZÖVEGHASÁBBAN, NEM A VÁSZON JOBB FELÉN: a film jelenete a
- * képernyő KÖZEPÉN nyíló ököl (poszter: a kéz a szélesség 32–64%-án, mobilon
- * 10–80%-án áll). Egy nagy fotó a H1 mellé a kezet takarná, vagy vele
- * versenyezne, a kéznyitás pedig a nyitó jelenet egyetlen mozgó eleme; a
- * NN/g Visual Hierarchy elve szerint egy képernyőn EGY fókusz legyen
- * (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
- * A megoldás a „szerző-sor” minta: kis, 3:2-es arckép + név + szerep a cím
- * fölött, a szöveg lejtőjén (a fátyol alatt AA marad), ami a látogató első
- * kérdésére („kik ők?") azonnal felel, de nem nyom el semmit. Stanford Web
- * Credibility Guidelines, 4. irányelv: „show there are real people behind
- * the site" (https://credibility.stanford.edu/guidelines/index.html). NN/g,
- * Photos as Web Content: a valódi munkatársak portréját nézik (10%-kal
- * több idő, mint a szövegen), a dekoratív stockfotót átugorják
- * (https://www.nngroup.com/articles/photos-as-web-content/).
- *
- * KÉPVÁLASZTÁS (mért): a `founders-intro-white` fekvő párosból 3:2-es vágat
- * (eredeti 1600×1067, kivágás 300/180 + 1140×760: a két arc a vágat
- * szélességének 27%-án és 63%-án, magasságának 45–55%-án áll, tehát a
- * 4,5rem magas, 6,75rem széles keretben mindkét arc egészben látszik). A
- * `founders-standing-blazers` álló párost a közvetlenül a film után jövő
- * fríz viszi (PhotoFrieze), a kezdőlapon nem ismétlődik.
- * Fájlok: 320 és 640 px széles webp (7,9 / 20 KB), `sizes` a keret CSS
- * szélessége (108 px), tehát 1× 320, 2×/3× 640 töltődik; nem az 1600-as.
- *
- * A kép `alt=""`: a név és a szerep szövegként ott áll mellette, a kép ezt
- * nem egészíti ki (W3C WAI Images Tutorial, „Decorative Images”: a kép
- * melletti szöveg már közli az információt;
- * https://www.w3.org/WAI/tutorials/images/decorative/).
+/*
+ * A két alapító arcképe a H1 fölött (WP50 „szerző-sor”) 2026-09-19 este
+ * KIKERÜLT a tulajdonos döntésére („innen vedd ki a lányokról a képet, mert
+ * nem jó”): a filmkockán a kis, 3:2-es vágat nem mutatta jól őket. A
+ * bemutatkozó fotó helye a film utáni Rólunk-hasáb és a fríz
+ * (`kc-about--founders`, PhotoFrieze), ahol a fotó nagy és vágatlan.
  */
-const FOUNDERS_PHOTO = {
-  src: '/media/team/founders-intro-white-hero-320.webp',
-  srcSet:
-    '/media/team/founders-intro-white-hero-320.webp 320w, /media/team/founders-intro-white-hero-640.webp 640w',
-  width: 320,
-  height: 213,
-} as const
-export const FOUNDERS_NAMES = 'Kocsis Kata és Kiss Kata'
-/**
- * A szerep rövid, szótári hangnemű, E/3 megnevezés: „a Kineticare alapítói".
- * A korábbi „gyógytornászok, a Kineticare alapítói" 390 px-en (230 px-es
- * felirat-hasáb, S betűméret) két sorra tört, a névvel együtt három sor állt a
- * H1 fölött (design-átvétel, 2026-09-19, mérve). A „gyógytornászok" a lead
- * és a Rólunk-hasáb már közli; a szerző-sor dolga csak az azonosítás (NN/g,
- * Author bios: rövid, névvel és szereppel, nem életrajz:
- * https://www.nngroup.com/articles/author-bio/). Mérve: 390-en a név és a
- * szerep együtt legfeljebb két sor (film-hero.css `text-wrap: balance`).
- * Gondolatjel nincs (docs/ui-sztenderdek.md §3.1).
- */
-export const FOUNDERS_ROLE = 'a Kineticare alapítói'
 
 export interface FilmHeroProps {
   block: BlockFilmHero
@@ -297,35 +251,9 @@ export function FilmHero({
     })
   }
 
-  // A szerző-sor: figure + figcaption (a kép és a névsor egy egység). A kép
-  // statikus fájl (nem Payload Media), ezért sima <img>, ahogy a fríz és a
-  // galéria csapatfotói; `loading="eager"` + `fetchpriority="low"`: a hajtás
-  // fölött áll, de az LCP a H1 szövege marad (audit 2.5), nem ez a kép.
-  const founders = (
-    <figure className="kc-film-hero__founders">
-      {/* eslint-disable-next-line @next/next/no-img-element -- statikus csapatkép, Payload méret nélkül */}
-      <img
-        alt=""
-        className="kc-film-hero__founders-photo"
-        decoding="async"
-        fetchPriority="low"
-        height={FOUNDERS_PHOTO.height}
-        sizes="108px"
-        src={FOUNDERS_PHOTO.src}
-        srcSet={FOUNDERS_PHOTO.srcSet}
-        width={FOUNDERS_PHOTO.width}
-      />
-      <figcaption className="kc-film-hero__founders-caption">
-        <span className="kc-film-hero__founders-names">{FOUNDERS_NAMES}</span>
-        <span className="kc-film-hero__founders-role">{FOUNDERS_ROLE}</span>
-      </figcaption>
-    </figure>
-  )
-
   const scene: ScrollScrubScene = {
     actions,
     align: 'left',
-    aside: founders,
     body: block.lead?.trim() ?? '',
     clip: FILM_CLIP,
     id: 'film-hero',

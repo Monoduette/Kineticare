@@ -209,12 +209,12 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
     const html = renderToStaticMarkup(<FilmHero block={filmBlokk} />)
     expect(html).toContain('class="scroll-scrub kc-film-hero"')
     expect(html).not.toContain('kc-photo-frieze')
-    // WP50 óta a hero a két alapító kis arcképét viszi (szerző-sor), de a
-    // fríz négy fotójából egyet sem: nincs ismétlődő fotó a két régióban.
+    // A hero egyetlen csapatfotót sem visz (a WP50 szerző-sor 2026-09-19-én
+    // tulajdonosi döntésre kikerült): a fríz fotói csak a fríz régiójában.
     expect(html).not.toContain('founders-standing-blazers')
     expect(html).not.toContain('portrait-standing')
     expect(html).not.toContain('hand-treatment-detail')
-    expect(html).toContain('kc-film-hero__founders')
+    expect(html).not.toContain('kc-film-hero__founders')
   })
 
   it('frieze=true: a fríz az About rácsában, a szöveg ELŐTT, a CMS páros fotó nélkül', () => {

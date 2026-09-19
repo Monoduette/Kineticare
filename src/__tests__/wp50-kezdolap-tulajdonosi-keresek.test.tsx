@@ -12,8 +12,6 @@ import {
   FILM_LINGER,
   FILM_SCROLL,
   FilmHero,
-  FOUNDERS_NAMES,
-  FOUNDERS_ROLE,
   PINNED,
 } from '../components/blocks/FilmHero'
 import { PressLogos } from '../components/blocks/PressLogos'
@@ -83,64 +81,20 @@ describe('WP50/1: rövidebb filmsáv', () => {
   })
 })
 
-describe('WP50/2: az alapítók arcképe a H1 fölött', () => {
+describe('WP50/2 visszavonva: nincs alapítói arckép a filmes fejlécben (tulajdonosi döntés, 2026-09-19)', () => {
   const html = renderToStaticMarkup(<FilmHero block={filmBlock} />)
 
-  it('szerző-sor: figure + kis kép + név + szerep, a cím ELŐTT, a szöveghasábban', () => {
-    const aside = html.indexOf('class="scroll-scrub__aside"')
-    const title = html.indexOf('class="scroll-scrub__title"')
-    expect(aside).toBeGreaterThan(-1)
-    expect(aside).toBeLessThan(title)
-    expect(html).toContain('<figure class="kc-film-hero__founders">')
-    expect(html).toContain(`class="kc-film-hero__founders-names">${FOUNDERS_NAMES}<`)
-    expect(html).toContain(`class="kc-film-hero__founders-role">${FOUNDERS_ROLE}<`)
-    // A cím marad az egyetlen H1, a szerző-sor nem címsor.
+  it('a filmkockán nincs szerző-sor, kis arckép vagy aside; a H1 az egyetlen címsor a jeleneten', () => {
+    expect(html).not.toContain('kc-film-hero__founders')
+    expect(html).not.toContain('scroll-scrub__aside')
+    expect(html).not.toContain('founders-intro-white-hero')
     expect(html.match(/<h1\b/g)).toHaveLength(1)
-    expect(html).not.toMatch(/<h[2-6][^>]*class="kc-film-hero__founders/)
   })
 
-  it('a kép dekoratív (alt=""), a 320/640-es vágatot tölti, nem az 1600-as fájlt', () => {
-    const img = html.match(/<img[^>]*kc-film-hero__founders-photo[^>]*>/)?.[0] ?? ''
-    expect(img).toContain('alt=""')
-    expect(img).toContain('founders-intro-white-hero-320.webp 320w')
-    expect(img).toContain('founders-intro-white-hero-640.webp 640w')
-    expect(img).toContain('sizes="108px"')
-    expect(img).toMatch(/fetchpriority="low"/i)
-    expect(html).not.toContain('founders-intro-white-1600')
-  })
-
-  it('a vágat fájljai léteznek és 3:2 arányúak (320×213, 640×427)', async () => {
-    for (const [file, width, height] of [
-      ['founders-intro-white-hero-320.webp', 320, 213],
-      ['founders-intro-white-hero-640.webp', 640, 427],
-    ] as const) {
-      const meta = await sharp(join(REPO, 'public/media/team', file)).metadata()
-      expect(meta.width, file).toBe(width)
-      expect(meta.height, file).toBe(height)
-    }
-  })
-
-  it('a névsor nem használ gondolatjelet és csak az S tokenről vesz betűméretet', () => {
-    expect(`${FOUNDERS_NAMES} ${FOUNDERS_ROLE}`).not.toMatch(/[–—]/)
-    const css = readFileSync(
-      join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css'),
-      'utf8',
-    ).replace(/\/\*[\s\S]*?\*\//g, '')
-    const block = (selector: string) =>
-      new RegExp(`${selector.replace(/[.]/g, '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
-    expect(block('.kc-film-hero .kc-film-hero__founders-caption')).toContain(
-      'font-size: var(--kc-font-s)',
-    )
-    const photo = block('.kc-film-hero .kc-film-hero__founders-photo')
-    expect(photo).toContain('width: 6.75rem')
-    expect(photo).toContain('height: 4.5rem')
-    expect(photo).toContain('object-fit: cover')
-    expect(photo).toContain('border-radius: var(--kc-radius-lg)')
-    expect(photo).toMatch(/var\(--kc-color-navy-900\) 25%/)
-    // Rövid mobil nézetben (≤ 700 px magas) a sor elmarad, a CTA-k kapják a helyet.
-    expect(css).toMatch(
-      /@media \(max-width: 860px\) and \(max-height: 700px\)\s*\{[^@]*\.kc-film-hero \.scroll-scrub__aside\s*\{\s*display: none;/,
-    )
+  it('a CSS-ből is kikerült a szerző-sor és a rövid-mobil elrejtése', () => {
+    const css = readFileSync(join(REPO, 'src/app/(frontend)/styles/blocks/film-hero.css'), 'utf8')
+    expect(css).not.toContain('kc-film-hero__founders')
+    expect(css).not.toContain('scroll-scrub__aside')
   })
 })
 

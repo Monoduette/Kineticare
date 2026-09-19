@@ -31,10 +31,22 @@ import { MediaImage } from './MediaImage'
  * (https://design-system.service.gov.uk/styles/images/).
  *
  * A képet a `pages.heroImage` mező adja; a /rolunk-on ez a páros csapatfotó
- * (`apply-owner-content.ts`, UJ_ROLUNK_HERO_PREFIX). Mérés: content.css
+ * (`apply-owner-content.ts`, ROLUNK_HERO_FORRAS). Mérés: content.css
  * `.kc-page-hero--paired` (1440: a cím és a kép felső éle 0 px eltéréssel;
  * 390: a kép a bevezető alatt).
  */
+/**
+ * A CMS-oldalak, amelyeken a fejléc-kép a cím MELLETT áll (`paired`): a
+ * /rolunk (a két alapító stúdiófotója) és a /szolgaltatasok (kezelés a
+ * kezelőasztalon). Tulajdonosi kérés (2026-09-19) a Szolgáltatások oldalra:
+ * „Ahogy belépünk, olyan szűknek néz ki a sáv, amiben a szövegek vannak”,
+ * és „ide is egy képet rólunk kezelés közben” — mérve 1440 px-en a fejléc
+ * egy 672 px-es szövegoszlop volt, a sáv 53 %-a üres; a páros rács a teljes
+ * konténert használja (NN/g Common Region, Material 3 supporting pane, lásd
+ * fent). Minden más slug marad `stacked` (Codex, 2026-09-19).
+ */
+export const PAROS_FEJLEC_SLUGOK: ReadonlySet<string> = new Set(['rolunk', 'szolgaltatasok'])
+
 export interface PageHeroProps {
   title: string
   lead?: string | null
@@ -43,9 +55,10 @@ export interface PageHeroProps {
    * `stacked` (alap): a kép a fejléc-sáv ALATT, saját sávban, a természetes
    * képarányán, vágás nélkül — minden CMS-oldal ezt kapja, mert a
    * `pages.heroImage` mező általános (fekvő, négyzetes, grafikus kép is
-   * lehet). `paired`: a Rólunk-oldal csapatfotós elrendezése (3:2, a kép a
-   * cím MELLETT, arcokra hangolt `object-position`) — csak ott, ahol a
-   * tulajdonosi kérés ezt kérte (Codex, 2026-09-19).
+   * lehet). `paired`: a Rólunk és a Szolgáltatások fotós elrendezése (3:2-es
+   * keret, a kép a cím MELLETT; a WP54 óta a fejléc-fotók natív 3:2-esek,
+   * vágás nincs) — csak ott, ahol a tulajdonosi kérés ezt kérte
+   * (Codex, 2026-09-19).
    */
   variant?: 'stacked' | 'paired'
 }
@@ -87,12 +100,15 @@ export function PageHero({ title, lead, media, variant = 'stacked' }: PageHeroPr
             {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
           </div>
           <figure className="kc-page-hero__figure">
-            {/* A fejléc-kép a lap LCP-jelöltje: priority (preload, high). */}
+            {/* A fejléc-kép a lap LCP-jelöltje: priority (preload, high).
+                A `sizes` egy hasábban a figure 28rem-es (448 px) sapkáját is
+                tükrözi: 600–899 px-en enélkül a böngésző ~1,6×-os képet kért
+                volna (md 1280 az sm 640 helyett), mérve. */}
             <MediaImage
               media={media}
               preferredSize="lg"
               priority
-              sizes="(max-width: 899px) calc(100vw - 48px), (max-width: 1200px) 45vw, 528px"
+              sizes="(max-width: 899px) min(calc(100vw - 48px), 448px), (max-width: 1200px) 45vw, 528px"
             />
           </figure>
         </div>

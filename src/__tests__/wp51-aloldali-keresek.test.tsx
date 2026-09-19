@@ -5,7 +5,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { PageHero } from '../components/content/PageHero'
+import { PageHero, PAROS_FEJLEC_SLUGOK } from '../components/content/PageHero'
 import { CourseGalleryFigure, firstGalleryMedia } from '../components/courses/CourseGalleryFigure'
 import type { Media, Product } from '../payload-types'
 
@@ -151,7 +151,8 @@ describe('2a. PageHero — a fejléc-kép a cím MELLETT', () => {
     expect(route).not.toContain('kc-page-hero__media')
     // A páros (arcra hangolt, 3:2-re vágó) alak KIZÁRÓLAG a /rolunk-é; minden
     // más CMS-oldal a képet a természetes arányán, a fejléc alatt kapja.
-    expect(route).toContain("variant={slug === 'rolunk' ? 'paired' : 'stacked'}")
+    expect(route).toContain("variant={PAROS_FEJLEC_SLUGOK.has(slug) ? 'paired' : 'stacked'}")
+    expect([...PAROS_FEJLEC_SLUGOK].sort()).toEqual(['rolunk', 'szolgaltatasok'])
   })
 })
 

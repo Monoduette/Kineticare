@@ -11,6 +11,8 @@
  * Jogi oldal create-only; meglévő jogi szöveget a script nem ír felül.
  */
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { getPayload, type Payload } from 'payload'
@@ -32,7 +34,9 @@ import {
   type JogiOldalLeiras,
 } from '../lib/legal-content'
 import { logger } from '../lib/logger'
-import { HOME_HELP_TITLE } from '../lib/home-help-states'
+import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
+import { enrollMediaRecovery, managedMediaAssets } from '../lib/media-recovery-provenance'
+import { resolveUploadDir } from '../lib/media-restore'
 import {
   CLINIC_TREATMENTS_ANCHOR,
   LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
@@ -49,7 +53,7 @@ import {
   ROLUNK_BEMUTATKOZAS_V1,
 } from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
-import type { Menu, Page, Product } from '../payload-types'
+import type { Media, Menu, Page, Product } from '../payload-types'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
 // szakmai-háttér csere és a /szolgaltatasok lap-tetejének cseréje a
 // seed-builderből veszi az ÚJ blokkokat, és az örökölt tartalommal veti össze
@@ -99,14 +103,55 @@ export const KURZUS_ELONYOK: readonly string[] = [
 export const ROLUNK_SLUG = 'rolunk'
 
 /**
- * A LECSERÉLENDŐ fejléc-kép fájlnév-prefixe (szóló portré — csak az egyik
- * gyógytornász látszik). Prefix, mert a Média collection webp-re konvertál, így
- * a kiterjesztés környezetenként eltér.
+ * A /rolunk fejléc-képének KORÁBBI, a script vagy a seed által beállított
+ * képei, fájlnév-prefixként (a Média collection webp-re konvertál, ezért a
+ * kiterjesztés környezetenként eltér). KIZÁRÓLAG ezeket (vagy az üres mezőt)
+ * cseréli le a script a stúdiófotóra: a szóló portrét (`682a121babe80_IMG_7573`,
+ * a régi oldal öröksége) és a páros csapatfotót (`katak-team`, a 4. javítás
+ * korábbi célja). Minden más kép a szerkesztőé, a script hangosan kihagyja.
  */
-export const REGI_ROLUNK_HERO_PREFIX = '682a121babe80_IMG_7573'
+export const ROLUNK_HERO_KORABBI_PREFIXEK: readonly string[] = [
+  '682a121babe80_IMG_7573',
+  'katak-team',
+]
 
-/** Az ÚJ fejléc-kép fájlnév-prefixe (páros csapatfotó — mindkét gyógytornász). */
-export const UJ_ROLUNK_HERO_PREFIX = 'katak-team'
+/**
+ * A /rolunk fejléc-képének jóváhagyott célja (WP54, tulajdonosi kör
+ * 2026-09-19): a stúdióban készült páros alapítói fotó. PONTOS fájlnév, nem
+ * prefix: a forrás már webp, a Payload a nevet változatlanul tartja meg, a
+ * script pedig a repó fájljából maga hozza létre a média-rekordot, ha még
+ * nincs (`biztositMediaFajlbol`).
+ */
+export const ROLUNK_HERO_FORRAS: MediaForras = {
+  filename: 'founders-studio-pair-1600.webp',
+  filePath: 'public/media/team/founders-studio-pair-1600.webp',
+  alt: 'Kocsis Kata és Kiss Kata a stúdióban.',
+}
+
+/**
+ * Az ingyenes SOS villámkurzus galériájának jóváhagyott három képe, EBBEN a
+ * sorrendben (WP54). A kurzusoldal a galéria ELSŐ képét rendereli a leírás
+ * után (src/components/courses/CourseGalleryFigure.tsx); a további képek
+ * megjelenítése külön döntés, a sorrend ezért a gumiszalagos nyújtással
+ * kezdődik.
+ */
+export const SOS_GALERIA_FORRASOK: readonly MediaForras[] = [
+  {
+    filename: 'sos-band-stretch-1600.webp',
+    filePath: 'public/media/sos/sos-band-stretch-1600.webp',
+    alt: 'Gumiszalagos csuklónyújtás az asztal szélén.',
+  },
+  {
+    filename: 'sos-ball-squeeze-1600.webp',
+    filePath: 'public/media/sos/sos-ball-squeeze-1600.webp',
+    alt: 'Puha labda szorítása a tenyérben.',
+  },
+  {
+    filename: 'sos-spiky-ball-forearm-1600.webp',
+    filePath: 'public/media/sos/sos-spiky-ball-forearm-1600.webp',
+    alt: 'Tüskés labdás alkarlazítás.',
+  },
+]
 
 /**
  * Az SOS villámkurzus jóváhagyott webcíme (`products.slug`).
@@ -186,13 +231,25 @@ export const REGI_KEZDOLAP_ROLUNK_CIMEK: readonly string[] = [
 ]
 
 /**
- * A `/szolgaltatasok` fejléc-képének fájlnév-prefixe (rendelő-fotó).
- *
- * Prefix és futásidejű feloldás a 4. javítás mintájára: a Média collection
- * webp-re konvertál, ezért a kiterjesztés környezetenként eltér, fix
- * azonosítót pedig nem használhatunk.
+ * A `/szolgaltatasok` KORÁBBI fejléc-képének fájlnév-prefixe (az örökölt
+ * rendelő-fotó). Prefix, mert a Média collection webp-re konvertál, ezért a
+ * kiterjesztés környezetenként eltér. WP55-től ez a script által cserélhető
+ * „korábbi kép” (lásd `SZOLGALTATASOK_HERO_FORRAS`); a 12a. javítás régebbi,
+ * ürítő változata megszűnt, a mezőre egyetlen szabály él.
  */
 export const SZOLGALTATASOK_HERO_PREFIX = '67b3bd06f3936_Rendelo'
+
+/**
+ * A `/szolgaltatasok` fejléc-képének jóváhagyott célja (WP55, tulajdonosi
+ * visszajelzés: „olyan szűknek néz ki a sáv” — a lap fejléce a /rolunk
+ * párosított alakját kapja, kezelőasztalos fotóval). PONTOS fájlnév; a
+ * rekordot a script a repó fájljából hozza létre, ha még nincs.
+ */
+export const SZOLGALTATASOK_HERO_FORRAS: MediaForras = {
+  filename: 'treatment-table-hands-1600.webp',
+  filePath: 'public/media/team/treatment-table-hands-1600.webp',
+  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében.',
+}
 
 // ---------------------------------------------------------------------------
 // Típusok
@@ -246,6 +303,9 @@ export type JavitasSzabaly =
   | 'kezdolap-bemutatkozas-rovid'
   | 'rolunk-partner-mondat'
   | 'rolunk-logosavok-sorrend'
+  | 'sos-galeria'
+  | 'media-alt-szoveg'
+  | 'szolgaltatasok-technikak-tabla'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -294,10 +354,50 @@ export interface ElonyAtalakitas {
   kihagyasok: JavitasLepes[]
 }
 
+/**
+ * Egy repó-fájlból biztosítandó média leírása (WP54).
+ *
+ * A `filename` a Médiatárban elvárt PONTOS fájlnév (webp forrásnál a Payload
+ * változatlanul tartja meg), a `filePath` a forrás a repóban, a futtatás
+ * gyökeréhez (a repó gyökere) képest.
+ */
+export interface MediaForras {
+  filename: string
+  filePath: string
+  alt: string
+}
+
+/**
+ * Egy jóváhagyott kép állapota a döntéshez: a Médiatárban meglévő rekord
+ * azonosítója (vagy `null`, ha még nincs), és hogy a repó-forrásfájl
+ * létezik-e (ha nincs rekord ÉS nincs forrás, a lépés hangosan kimarad).
+ */
+export interface UjMediaAllapot {
+  filename: string
+  id: number | null
+  forrasLetezik: boolean
+}
+
 /** A /rolunk fejléc-kép cseréjének eredménye. */
 export interface HeroKepAtalakitas {
-  /** A beírandó média-azonosító, vagy `null`, ha nem szabad írni. */
+  /**
+   * A beírandó média-azonosító, vagy `null`, ha nem szabad írni — VAGY ha a
+   * kép még nincs a Médiatárban (ilyenkor a `modositasok` nem üres, és a
+   * futtató a rekord létrehozása után tölti ki az azonosítót).
+   */
   heroImage: number | null
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/** A kurzus-galéria (products.gallery) átalakításának eredménye. */
+export interface GaleriaAtalakitas {
+  /**
+   * A beírandó sorok, vagy `null`, ha nem szabad írni — VAGY ha valamelyik kép
+   * még nincs a Médiatárban (a `modositasok` ilyenkor sem üres; a futtató a
+   * rekordok létrehozása után állítja össze a sorokat).
+   */
+  gallery: NonNullable<Product['gallery']> | null
   modositasok: JavitasLepes[]
   kihagyasok: JavitasLepes[]
 }
@@ -634,79 +734,147 @@ export const heroKepAzonosito = (ertek: Page['heroImage']): number | null => {
 }
 
 /**
- * A /rolunk fejléc-képének tiszta átalakítása.
+ * Egy oldal fejléc-képének (`pages.heroImage`) tiszta átalakítása — a
+ * /rolunk (4. javítás) és a /szolgaltatasok (12a. javítás, WP55-től) KÖZÖS
+ * magja. Oldalanként EGYETLEN szabály él a mezőre.
  *
- * A két média-azonosítót a HÍVÓ deríti ki fájlnév-prefix alapján (a Média
- * collection webp-re konvertál, ezért fix azonosító nem használható); ez a
- * függvény már csak a döntést hozza meg, adatbázis nélkül.
+ * A jelenlegi kép FÁJLNEVÉT és az új kép állapotát a HÍVÓ deríti ki (a
+ * Médiatárból); ez a függvény már csak a döntést hozza meg, adatbázis nélkül.
  *
- * Csere KIZÁRÓLAG akkor, ha a mező pontosan a szóló portréra mutat. Minden más
- * érték — üres, más kép, vagy már a páros fotó — érintetlen marad, indokolt
- * kihagyással. Ha a páros fotó nincs a Médiatárban, a lépés HANGOSAN kimarad.
+ * VÉDŐFELTÉTELEK:
+ *  - ha a mező MÁR az új képre mutat, nincs teendő (idempotencia);
+ *  - ha az új kép nincs a Médiatárban ÉS a repó-forrásfájl is hiányzik, a
+ *    lépés HANGOSAN kimarad;
+ *  - üres mező vagy a script/seed korábbi képe (`korabbiPrefixek`) → csere;
+ *  - minden más kép a szerkesztőé: HANGOS kihagyás (szerkesztői elsőbbség),
+ *    ahogy a nem található média-rekordra mutató mező is.
  */
-export const alkalmazRolunkHeroKep = (input: {
-  /** A `rolunk` oldal jelenlegi `heroImage` értéke. */
+const alkalmazFejlecKep = (input: {
+  szabaly: JavitasSzabaly
+  /** Az oldal címkéje a naplóhoz (pl. „/rolunk”). */
+  oldalCimke: string
+  /** Az új kép rövid neve a naplóhoz (pl. „stúdiófotó”). */
+  ujKepCimke: string
+  /** Az új kép forrása (a hangos kihagyás a forrásútvonalat írja ki). */
+  forras: MediaForras
+  /** A script/seed KORÁBBI képeinek fájlnév-prefixei — csak ezek cserélhetők. */
+  korabbiPrefixek: readonly string[]
+  /** Az oldal jelenlegi `heroImage` értéke. */
   jelenlegi: Page['heroImage']
-  /** A szóló portré média-azonosítója, vagy `null`, ha nincs ilyen rekord. */
-  regiMediaId: number | null
-  /** A páros csapatfotó média-azonosítója, vagy `null`, ha nincs ilyen rekord. */
-  ujMediaId: number | null
+  /**
+   * A jelenlegi kép fájlneve a Médiatárból; `null`, ha nincs kép, vagy a
+   * hivatkozott rekord nem található.
+   */
+  jelenlegiFajlnev: string | null
+  /** Az új kép állapota (meglévő azonosító és/vagy forrásfájl). */
+  ujMedia: UjMediaAllapot
 }): HeroKepAtalakitas => {
-  const { jelenlegi, regiMediaId, ujMediaId } = input
+  const { szabaly, oldalCimke, ujKepCimke, forras, korabbiPrefixek, jelenlegi, ujMedia } = input
+  const { jelenlegiFajlnev } = input
   const jelenlegiId = heroKepAzonosito(jelenlegi)
-  const uzenet = 'A /rolunk oldal fejléc-képe'
+  const uzenet = `A ${oldalCimke} oldal fejléc-képe`
 
   const kihagyas = (indok: string, hangos = false): HeroKepAtalakitas => ({
     heroImage: null,
     modositasok: [],
-    kihagyasok: [{ szabaly: 'rolunk-hero-kep', uzenet, indok, hangos }],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
   })
 
-  // Idempotencia: ha már a páros fotó van beállítva, kész vagyunk.
-  if (ujMediaId !== null && jelenlegiId === ujMediaId) {
+  if (
+    jelenlegiId !== null &&
+    ((ujMedia.id !== null && jelenlegiId === ujMedia.id) || jelenlegiFajlnev === ujMedia.filename)
+  ) {
     return kihagyas(
-      `a fejléc-kép MÁR a páros csapatfotó („${UJ_ROLUNK_HERO_PREFIX}…”, azonosító: ${ujMediaId}) — nincs teendő`,
+      `a fejléc-kép MÁR a ${ujKepCimke} („${ujMedia.filename}”, azonosító: ${jelenlegiId}) — nincs teendő`,
     )
   }
 
-  if (ujMediaId === null) {
+  if (ujMedia.id === null && !ujMedia.forrasLetezik) {
     return kihagyas(
-      `a Médiatárban NINCS „${UJ_ROLUNK_HERO_PREFIX}” kezdetű fájlnevű kép — a páros csapatfotót előbb fel kell tölteni, addig a fejléc-kép érintetlen marad`,
+      `a ${ujKepCimke} („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${forras.filePath}) sem található — a fejléc-kép érintetlen marad`,
       true,
     )
   }
 
-  if (jelenlegiId === null) {
+  if (jelenlegiId !== null && jelenlegiFajlnev === null) {
     return kihagyas(
-      'az oldalnak jelenleg nincs fejléc-képe — a script csak a szóló portrét cseréli le, üres mezőt nem tölt ki',
-    )
-  }
-
-  if (regiMediaId === null) {
-    return kihagyas(
-      `a Médiatárban nincs „${REGI_ROLUNK_HERO_PREFIX}” kezdetű fájlnevű kép, a mostani fejléc-kép (azonosító: ${jelenlegiId}) tehát nem a cserélendő szóló portré — érintetlen marad`,
+      `a fejléc-kép egy nem található média-rekordra mutat (azonosító: ${jelenlegiId}) — kézi átnézés kell, a script nem találgat`,
       true,
     )
   }
 
-  if (jelenlegiId !== regiMediaId) {
+  if (
+    jelenlegiId !== null &&
+    jelenlegiFajlnev !== null &&
+    !korabbiPrefixek.some((prefix) => jelenlegiFajlnev.startsWith(prefix))
+  ) {
     return kihagyas(
-      `a fejléc-kép nem a cserélendő szóló portréra mutat (mostani azonosító: ${jelenlegiId}, várt: ${regiMediaId}) — a script csak pontos egyezésnél ír át`,
+      `a fejléc-kép a szerkesztő által választott kép („${jelenlegiFajlnev}”, azonosító: ${jelenlegiId}), nem a script korábbi képe (${korabbiPrefixek
+        .map((prefix) => `„${prefix}…”`)
+        .join(', ')}) — szerkesztői elsőbbség, a script nem ír felül`,
+      true,
     )
   }
+
+  const honnan =
+    jelenlegiId === null
+      ? 'üres mező'
+      : `korábbi kép („${jelenlegiFajlnev ?? ''}”, azonosító: ${jelenlegiId})`
+  const hova =
+    ujMedia.id === null
+      ? `${ujKepCimke} („${ujMedia.filename}”, a rekordot a script a repó fájljából hozza létre)`
+      : `${ujKepCimke} („${ujMedia.filename}”, azonosító: ${ujMedia.id})`
 
   return {
-    heroImage: ujMediaId,
-    modositasok: [
-      {
-        szabaly: 'rolunk-hero-kep',
-        uzenet: `${uzenet}: szóló portré („${REGI_ROLUNK_HERO_PREFIX}…”, azonosító: ${regiMediaId}) → páros csapatfotó („${UJ_ROLUNK_HERO_PREFIX}…”, azonosító: ${ujMediaId})`,
-        indok: null,
-      },
-    ],
+    heroImage: ujMedia.id,
+    modositasok: [{ szabaly, uzenet: `${uzenet}: ${honnan} → ${hova}`, indok: null }],
     kihagyasok: [],
   }
 }
+
+/** A fejléc-kép szabályok közös bemenete (a futtató oldja fel a Médiatárból). */
+export interface FejlecKepBemenet {
+  /** Az oldal jelenlegi `heroImage` értéke. */
+  jelenlegi: Page['heroImage']
+  /** A jelenlegi kép fájlneve; `null`, ha nincs kép, vagy a rekord nem található. */
+  jelenlegiFajlnev: string | null
+  /** Az új kép állapota (meglévő azonosító és/vagy forrásfájl). */
+  ujMedia: UjMediaAllapot
+}
+
+/**
+ * 4. javítás (WP54-től a stúdiófotóra) — a /rolunk fejléc-képe. A korábbi
+ * célok (szóló portré, `katak-team` páros fotó) itt „korábbi” képek
+ * (`ROLUNK_HERO_KORABBI_PREFIXEK`), nem külön szabály. A döntés:
+ * `alkalmazFejlecKep`.
+ */
+export const alkalmazRolunkHeroKep = (input: FejlecKepBemenet): HeroKepAtalakitas =>
+  alkalmazFejlecKep({
+    ...input,
+    szabaly: 'rolunk-hero-kep',
+    oldalCimke: '/rolunk',
+    ujKepCimke: 'stúdiófotó',
+    forras: ROLUNK_HERO_FORRAS,
+    korabbiPrefixek: ROLUNK_HERO_KORABBI_PREFIXEK,
+  })
+
+/**
+ * 12a. javítás (WP55) — a /szolgaltatasok fejléc-képe: a kezelőasztalos
+ * csuklókezelés-fotó (`SZOLGALTATASOK_HERO_FORRAS`), hogy a lap fejléce a
+ * /rolunk párosított alakját kaphassa (cím + bevezető balra, fotó jobbra).
+ * A korábbi ürítő szabály megszűnt: az örökölt rendelő-fotó
+ * (`SZOLGALTATASOK_HERO_PREFIX`) és az üres mező cserélhető, minden más a
+ * szerkesztőé. A döntés: `alkalmazFejlecKep`.
+ */
+export const alkalmazSzolgaltatasokHeroKep = (input: FejlecKepBemenet): HeroKepAtalakitas =>
+  alkalmazFejlecKep({
+    ...input,
+    szabaly: 'szolgaltatasok-hero-kep',
+    oldalCimke: '/szolgaltatasok',
+    ujKepCimke: 'kezelőasztalos fotó',
+    forras: SZOLGALTATASOK_HERO_FORRAS,
+    korabbiPrefixek: [SZOLGALTATASOK_HERO_PREFIX],
+  })
 
 // ---------------------------------------------------------------------------
 // 5. javítás — a /rolunk szakmai háttere: örökölt óriás-blokk → rövid rész +
@@ -2585,72 +2753,10 @@ export const alkalmazZaroCta = (input: {
 }
 
 // ---------------------------------------------------------------------------
-// 12. javítás — a /szolgaltatasok oldal teteje: fejléc-kép ürítése + az örökölt
-// bevezető blokk cseréje üdvözlő (welcome) blokkra.
+// 12. javítás — a /szolgaltatasok oldal teteje: az örökölt bevezető blokk
+// cseréje üdvözlő (welcome) blokkra. (A 12a. fejléc-kép szabály a 4. javítás
+// mellett él, `alkalmazSzolgaltatasokHeroKep`.)
 // ---------------------------------------------------------------------------
-
-/** A fejléc-kép ürítésének eredménye. */
-export interface HeroKepUritesAtalakitas {
-  /** `true` → a `heroImage` mezőt ÜRÍTENI kell (null-ra írni); `false` → nincs írás. */
-  uritendo: boolean
-  modositasok: JavitasLepes[]
-  kihagyasok: JavitasLepes[]
-}
-
-/**
- * 12a. javítás — a `/szolgaltatasok` fejléc-képének ürítése.
- *
- * A rendelő-fotó a lap tetején csak lejjebb tolta a tartalmat, állítás nélkül
- * (mért redesign). Ürítés KIZÁRÓLAG akkor, ha a mező tényleg a rendelő-fotóra
- * mutat — a média-azonosítót a HÍVÓ deríti ki fájlnév-prefix alapján (a Média
- * collection webp-re konvertál, ezért fix azonosító nem használható).
- */
-export const alkalmazSzolgaltatasokHeroKep = (input: {
-  /** A `szolgaltatasok` oldal jelenlegi `heroImage` értéke. */
-  jelenlegi: Page['heroImage']
-  /** A rendelő-fotó média-azonosítója, vagy `null`, ha nincs ilyen rekord. */
-  regiMediaId: number | null
-}): HeroKepUritesAtalakitas => {
-  const { jelenlegi, regiMediaId } = input
-  const jelenlegiId = heroKepAzonosito(jelenlegi)
-  const uzenet = 'A /szolgaltatasok oldal fejléc-képe'
-
-  const kihagyas = (indok: string, hangos = false): HeroKepUritesAtalakitas => ({
-    uritendo: false,
-    modositasok: [],
-    kihagyasok: [{ szabaly: 'szolgaltatasok-hero-kep', uzenet, indok, hangos }],
-  })
-
-  // Idempotencia: üres mezőn nincs mit üríteni.
-  if (jelenlegiId === null) {
-    return kihagyas('az oldalnak MÁR nincs fejléc-képe — nincs teendő')
-  }
-
-  if (regiMediaId === null) {
-    return kihagyas(
-      `a Médiatárban nincs „${SZOLGALTATASOK_HERO_PREFIX}” kezdetű fájlnevű kép, a mostani fejléc-kép (azonosító: ${jelenlegiId}) tehát nem az ürítendő rendelő-fotó — érintetlen marad`,
-      true,
-    )
-  }
-
-  if (jelenlegiId !== regiMediaId) {
-    return kihagyas(
-      `a fejléc-kép nem a rendelő-fotóra mutat (mostani azonosító: ${jelenlegiId}, várt: ${regiMediaId}) — a script csak pontos egyezésnél üríti a mezőt`,
-    )
-  }
-
-  return {
-    uritendo: true,
-    modositasok: [
-      {
-        szabaly: 'szolgaltatasok-hero-kep',
-        uzenet: `${uzenet}: a rendelő-fotó („${SZOLGALTATASOK_HERO_PREFIX}…”, azonosító: ${regiMediaId}) LEVÉTELE — a lap a tartalommal kezdődik. A kép a Médiatárban marad, bármikor visszatehető.`,
-        indok: null,
-      },
-    ],
-    kihagyasok: [],
-  }
-}
 
 /**
  * A `/szolgaltatasok` szekciósorának ÚJ első blokkja (üdvözlő blokk) a
@@ -2743,7 +2849,7 @@ export const KAPCSOLAT_SLUG = 'kapcsolat'
 /**
  * A két portré fájlnév-prefixe.
  *
- * Prefix és futásidejű feloldás a 4. és a 12a. javítás mintájára: a Média
+ * Prefix és futásidejű feloldás (`keresdMediat`): a Média
  * collection webp-re konvertál, ezért a kiterjesztés környezetenként eltér, fix
  * azonosítót pedig nem használhatunk.
  */
@@ -2890,6 +2996,15 @@ export const alkalmazKapcsolatSzakemberek = (input: {
 // szekciókba, a tulajdonos által kiválogatott anyagból.
 // ---------------------------------------------------------------------------
 
+/**
+ * A technikák-tábla azonosító címe (WP54/4); ezzel ismeri fel a script a már
+ * beszúrt blokkot, és ezzel zárja ki a 19b szabály a jelöltek közül (a tábla
+ * is `services` blokk, de saját képe van — nélküle a második futás hangosan
+ * „2 szolgáltatás-szekció áll” kihagyást adna, ami az idempotencia ígéretét
+ * sértené).
+ */
+export const TECHNIKAK_TABLA_CIM = 'Amit a rendelőben kínálunk'
+
 /** A két új fotó fájlnév-prefixe (a Média webp-re konvertál, ezért prefix). */
 export const KEZELES_FOTO_PREFIX = 'kezeles-kezen'
 export const KATAK_LABDAVAL_PREFIX = 'katak-labdaval'
@@ -2923,8 +3038,13 @@ export const alkalmazSzolgaltatasBlokkKep = (input: {
     return kihagyas('a Médiatárban nincs meg a kép — előbb az appnak fel kell töltenie', true)
   }
 
+  // A WP54/4 technikák-tábla is `services` blokk, de a script maga szúrja be
+  // saját képpel: a jelöltek közül kimarad, hogy a tábla után is EGY
+  // szolgáltatás-szekció álljon a döntés előtt (idempotens második futás).
   const indexek = layout
-    .map((blokk, index) => (blokk.blockType === 'services' ? index : -1))
+    .map((blokk, index) =>
+      blokk.blockType === 'services' && blokk.title !== TECHNIKAK_TABLA_CIM ? index : -1,
+    )
     .filter((index) => index !== -1)
   if (indexek.length === 0) {
     return kihagyas('a lapon nincs szolgáltatás-szekció', true)
@@ -3373,6 +3493,73 @@ export const richTextBekezdesek = (blokk: Szekciosor[number]): string[] | null =
   return bekezdesek
 }
 
+// ---------------------------------------------------------------------------
+// WP56 — a kurzusborítók alt-szövege (tulajdonosi kérés, 2026-09-19 este:
+// „alt image mindenhol van?”). A két packshot a Médiatárban üres alt-tal él,
+// ezért a kurzusoldalon és a megosztott képeken nincs leírás. A szabály CSAK
+// az üres (vagy csupa szóköz) alt-ot tölti ki; a szerkesztő saját szövegét
+// sosem írja felül. WCAG 2.2 SC 1.1.1 Non-text Content
+// (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html);
+// W3C WAI Images Tutorial, Informative images
+// (https://www.w3.org/WAI/tutorials/images/informative/).
+// ---------------------------------------------------------------------------
+
+/** A jóváhagyott alt-szövegek: fájlnév-előtag → alt (a régi oldal médiái). */
+export const MEDIA_ALT_SZOVEGEK: readonly { prefix: string; cimke: string; alt: string }[] = [
+  {
+    prefix: '688b93e6ab76f_Programpackshot',
+    cimke: 'Az Otthoni KézRehab Program borítója',
+    alt: 'Az Otthoni KézRehab Program borítóképe: a videós gyakorlatok laptopon és telefonon.',
+  },
+  {
+    prefix: '688b873ad2a80_belepotermekpackshot1',
+    cimke: 'Az SOS Kézrelax villámkurzus borítója',
+    alt: 'Az SOS Kézrelax villámkurzus borítóképe: a videós gyakorlatok laptopon, tableten és telefonon, mellette a nyomtatott üdvözlő lap.',
+  },
+]
+
+/** Tiszta döntés: üres alt → a jóváhagyott szöveg; minden más érintetlen. */
+export const alkalmazMediaAltSzoveg = (input: {
+  cimke: string
+  jelenlegiAlt: string | null | undefined
+  ujAlt: string
+}): { alt: string | null; modositasok: JavitasLepes[]; kihagyasok: JavitasLepes[] } => {
+  const szabaly: JavitasSzabaly = 'media-alt-szoveg'
+  const uzenet = `${input.cimke} alt-szövege`
+  const jelenlegi = (input.jelenlegiAlt ?? '').trim()
+  if (jelenlegi === input.ujAlt) {
+    return {
+      alt: null,
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet, indok: 'az alt MÁR a jóváhagyott szöveg — nincs teendő' }],
+    }
+  }
+  if (jelenlegi.length > 0) {
+    return {
+      alt: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet,
+          indok: `az alt-ban MÁR VAN szerkesztői szöveg (${ertekCimke(jelenlegi)}) — a script nem írja felül`,
+        },
+      ],
+    }
+  }
+  return {
+    alt: input.ujAlt,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: üres → ${ertekCimke(input.ujAlt)}`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
 /**
  * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
  * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
@@ -3531,6 +3718,439 @@ export const alkalmazRolunkLogosavokSorrend = (layout: Page['layout']): Szekcios
 }
 
 // ---------------------------------------------------------------------------
+// WP54 — a tulajdonosi kör 2026-09-19 fotós része: a /rolunk stúdiófotó, az
+// SOS galéria és a /szolgaltatasok technikák-táblája. A képeket a script a
+// repó fájljaiból maga teszi a Médiatárba (`biztositMediaFajlbol`).
+// ---------------------------------------------------------------------------
+
+/** A galéria sorainak média-azonosítói (az üres sorok kimaradnak). */
+const galeriaAzonositok = (gallery: Product['gallery']): number[] =>
+  (gallery ?? []).flatMap((sor) => {
+    const id = heroKepAzonosito(sor.image ?? null)
+    return id === null ? [] : [id]
+  })
+
+/**
+ * WP54/3 — az ingyenes SOS villámkurzus galériája: a három jóváhagyott kép,
+ * ebben a sorrendben (`SOS_GALERIA_FORRASOK`).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - írás KIZÁRÓLAG ÜRES galériába (nincs sor, vagy egyetlen sorban sincs kép);
+ *  - ha a galéria MÁR pontosan ezt a három képet tartalmazza ebben a
+ *    sorrendben, nincs teendő (idempotencia); ha csak ezekből áll, de más
+ *    sorrendben vagy hiányosan, indokolt (nem hangos) kihagyás — a script nem
+ *    rendez át és nem egészít ki;
+ *  - ha a szerkesztő bármi mást töltött fel, HANGOS kihagyás, nem írunk felül;
+ *  - ha valamelyik kép nincs a Médiatárban ÉS a forrásfájl is hiányzik,
+ *    HANGOS kihagyás (a galéria csak a teljes hármassal kerül be).
+ */
+export const alkalmazSosGaleria = (input: {
+  jelenlegi: Product['gallery']
+  /** A három jóváhagyott kép állapota a `SOS_GALERIA_FORRASOK` sorrendjében. */
+  ujMediak: readonly UjMediaAllapot[]
+  /** A jelenlegi galéria képeinek fájlnevei a naplóhoz (a futtató oldja fel). */
+  ismertFajlnevek?: ReadonlyMap<number, string>
+}): GaleriaAtalakitas => {
+  const { jelenlegi, ujMediak, ismertFajlnevek } = input
+  const szabaly: JavitasSzabaly = 'sos-galeria'
+  const uzenet = `Az SOS kurzus galériája („${SOS_COURSE_SKU}”)`
+  const kihagyas = (indok: string, hangos = false): GaleriaAtalakitas => ({
+    gallery: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+  const fajlnevLista = ujMediak.map((media) => `„${media.filename}”`).join(', ')
+  const jelenlegiIds = galeriaAzonositok(jelenlegi)
+  const ujIds = ujMediak.map((media) => media.id)
+  const cimke = (id: number): string => {
+    const fajlnev = ismertFajlnevek?.get(id)
+    return fajlnev === undefined ? `azonosító: ${id}` : `„${fajlnev}”, azonosító: ${id}`
+  }
+
+  if (jelenlegiIds.length > 0) {
+    const mindenUjMegvan = ujIds.every((id) => id !== null)
+    if (
+      mindenUjMegvan &&
+      jelenlegiIds.length === ujIds.length &&
+      jelenlegiIds.every((id, index) => id === ujIds[index])
+    ) {
+      return kihagyas(
+        `a galéria MÁR a három jóváhagyott képet tartalmazza ebben a sorrendben (${fajlnevLista}) — nincs teendő`,
+      )
+    }
+    if (jelenlegiIds.every((id) => ujIds.includes(id))) {
+      return kihagyas(
+        `a galéria csak a jóváhagyott képekből áll, de más sorrendben vagy hiányosan (${jelenlegiIds
+          .map(cimke)
+          .join('; ')}) — a script nem rendez át és nem egészít ki`,
+      )
+    }
+    return kihagyas(
+      `a galériában a szerkesztő által feltöltött kép van (${jelenlegiIds
+        .map(cimke)
+        .join('; ')}) — szerkesztői elsőbbség, a script nem ír felül`,
+      true,
+    )
+  }
+
+  const hianyzo = ujMediak.filter((media) => media.id === null && !media.forrasLetezik)
+  if (hianyzo.length > 0) {
+    return kihagyas(
+      `a jóváhagyott képek közül ${hianyzo
+        .map((media) => `„${media.filename}”`)
+        .join(
+          ', ',
+        )} nincs a Médiatárban, és a repó-forrásfájl sem található — a galéria csak a teljes hármassal kerül be`,
+      true,
+    )
+  }
+
+  const mindenMegvan = ujIds.every((id): id is number => id !== null)
+  return {
+    gallery: mindenMegvan ? ujIds.map((id) => ({ image: id })) : null,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: az üres galériába a három jóváhagyott kép kerül, ebben a sorrendben: ${fajlnevLista}${
+          mindenMegvan ? '' : ' (a hiányzó rekordokat a script a repó fájljaiból hozza létre)'
+        }`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+/** A technikák-tábla horgonya (`sectionSettings.anchorId`). */
+export const TECHNIKAK_TABLA_HORGONY = 'rendeloi-technikak'
+
+/**
+ * A technikák-tábla képe (WP54/4, WP55-től a csukló-mobilizálás): NEM a
+ * fejléc kezelőasztalos fotója (ugyanaz a kép kétszer egy lapon rossz). A
+ * blokk kép NÉLKÜL nem kerül be.
+ */
+export const TECHNIKAK_TABLA_KEP_FORRAS: MediaForras = {
+  filename: 'treatment-wrist-table-1600.webp',
+  filePath: 'public/media/team/treatment-wrist-table-1600.webp',
+  alt: 'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót.',
+}
+
+/** A technikák-tábla öt sora, a vezető által jóváhagyott vevői szövegekkel. */
+export const TECHNIKAK_TABLA_SOROK: readonly { title: string; body: string }[] = [
+  {
+    title: 'Gyógytorna',
+    body: 'Akut sérülés, műtét utáni időszak és hosszú ideje tartó fájdalom esetén a mozgásterápia a gyógyulás alapja. Otthonra is kapsz gyakorlatokat.',
+  },
+  {
+    title: 'Manuálterápia',
+    body: 'Az ízületek és a lágyrészek célzott, kézzel végzett kezelése, hogy a mozgás újra szabad és fájdalommentes legyen.',
+  },
+  {
+    title: 'Kinesio Tape és Dynamic Tape',
+    body: 'Rugalmas szalag, amely tehermentesíti a fájó szakaszt és támogatja a mozgást a kezelések között.',
+  },
+  {
+    title: 'Flossing és köpölyterápia',
+    body: 'Gumiszalagos kompresszió és vákuumos kezelés: fellazítják a lágyrészeket, élénkítik a keringést és csökkentik a fájdalmat.',
+  },
+  {
+    title: 'Hegkezelés, fasciakés, NRX bandázs',
+    body: 'Műtéti és sérüléses hegek puhítása, eszközös lágyrész-mobilizáció a letapadt kötőszövetre, és rögzítő kötés, ha a kéznek átmenetileg nyugalom kell.',
+  },
+]
+
+/**
+ * A technikák-tábla blokkja (`services`, tábla-elrendezés) a megadott képpel.
+ * Tiszta builder: a rows a `TECHNIKAK_TABLA_SOROK`-ból, „1”–„5” számozással,
+ * felirat/URL/fotó nélkül (a tábla nem ajtó-blokk, CTA nem tartozik hozzá).
+ */
+export const technikakTablaBlokk = (mediaId: number): SzekcioTipus<'services'> => ({
+  blockType: 'services',
+  eyebrow: 'Rendelői kezelések',
+  title: TECHNIKAK_TABLA_CIM,
+  lead: 'Vizsgálat után ezekből állítjuk össze a kezelési tervedet. Minden alkalom a te panaszodhoz igazodik.',
+  elrendezes: 'tabla',
+  image: mediaId,
+  rows: TECHNIKAK_TABLA_SOROK.map((sor, index) => ({
+    number: String(index + 1),
+    title: sor.title,
+    body: sor.body,
+    felirat: '',
+    url: '',
+    photo: null,
+  })),
+  sectionSettings: { visible: true, hatter: 'feher', anchorId: TECHNIKAK_TABLA_HORGONY },
+})
+
+/** A technikák-tábla beszúrásának eredménye. */
+export interface TechnikakTablaAtalakitas extends SzekciosorCsere {
+  /**
+   * A beszúrás indexe, ha a lépés módosít — a futtató ebből építi a blokkot
+   * a kép létrehozása UTÁN, ha a rekord a döntéskor még nem volt meg.
+   */
+  beszurasIndex: number | null
+}
+
+/**
+ * WP54/4 — a /szolgaltatasok technikák-táblája („Amit a rendelőben kínálunk”):
+ * a régi oldal „miket csinálunk” listája (gyógytorna, manuálterápia, tape,
+ * flossing, hegkezelés stb.) a három ajtós `services` blokk UTÁN, tábla-
+ * elrendezésű `services` blokként. Tulajdonosi kérés: „Ez maradhat az új
+ * honlapon is?”
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - ha a lapon MÁR van `services` blokk ezzel a címmel (rejtett is), nincs
+ *    teendő (idempotencia; a szerkesztő elrejtését a script nem bírálja felül);
+ *  - a három ajtós blokkot (`isSzolgaltatasokAjtoBlock`) PONTOSAN egyszer kell
+ *    megtalálni, különben indokolt kihagyás;
+ *  - kép nélkül a blokk NEM kerül be: ha a kép nincs a Médiatárban és a
+ *    forrásfájl is hiányzik, HANGOS kihagyás.
+ */
+export const alkalmazSzolgaltatasokTechnikakTabla = (input: {
+  layout: Page['layout']
+  /** A tábla képének állapota (meglévő azonosító és/vagy forrásfájl). */
+  kep: UjMediaAllapot
+}): TechnikakTablaAtalakitas => {
+  const { layout, kep } = input
+  const szabaly: JavitasSzabaly = 'szolgaltatasok-technikak-tabla'
+  const uzenet = `A /szolgaltatasok technikák-táblája („${TECHNIKAK_TABLA_CIM}”)`
+  const kihagyas = (indok: string, hangos = false): TechnikakTablaAtalakitas => ({
+    layout: null,
+    beszurasIndex: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a Szolgáltatások oldalnak nincs szekciósora — nincs mi után beszúrni')
+  }
+  const meglevo = layout.findIndex(
+    (blokk) => blokk.blockType === 'services' && blokk.title === TECHNIKAK_TABLA_CIM,
+  )
+  if (meglevo !== -1) {
+    return kihagyas(
+      `a lapon MÁR van „${TECHNIKAK_TABLA_CIM}” című szolgáltatás-blokk (${
+        meglevo + 1
+      }. szekció) — nincs teendő`,
+    )
+  }
+  const ajto = egyetlenIndex(layout, (blokk) => isSzolgaltatasokAjtoBlock(blokk))
+  const ajtoIndok = talalatIndok('három ajtós szolgáltatás-blokk (services, 3 sor CTA-val)', ajto)
+  if (ajtoIndok !== null) return kihagyas(ajtoIndok)
+  if (kep.id === null && !kep.forrasLetezik) {
+    return kihagyas(
+      `a tábla képe („${kep.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${TECHNIKAK_TABLA_KEP_FORRAS.filePath}) sem található — kép nélkül a blokk nem kerül be`,
+      true,
+    )
+  }
+  const beszurasIndex = ajto + 1
+  return {
+    layout:
+      kep.id === null
+        ? null
+        : [
+            ...layout.slice(0, beszurasIndex),
+            technikakTablaBlokk(kep.id),
+            ...layout.slice(beszurasIndex),
+          ],
+    beszurasIndex,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: új tábla-blokk a ${ajto + 1}. szekció (ajtó-blokk) után, ${
+          TECHNIKAK_TABLA_SOROK.length
+        } sorral (${TECHNIKAK_TABLA_SOROK.map((sor) => sor.title).join(', ')}), képpel: „${
+          kep.filename
+        }”${
+          kep.id === null
+            ? ' (a rekordot a script a repó fájljából hozza létre)'
+            : ` (azonosító: ${kep.id})`
+        }`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WP54/1 — média a repó fájljából, idempotensen.
+// ---------------------------------------------------------------------------
+
+/** A tiszta döntés eredménye: mi a teendő a képpel. */
+export type MediaBiztositasTeendo = 'megvan' | 'letrehoz' | 'letrehozna' | 'hianyzik'
+
+/**
+ * A tiszta döntés: meglévő rekord → `megvan`; nincs rekord és nincs forrás →
+ * `hianyzik`; különben próbafutásban `letrehozna`, élesben `letrehoz`.
+ */
+export const dontsMediaBiztositas = (input: {
+  meglevoId: number | null
+  forrasLetezik: boolean
+  dryRun: boolean
+}): MediaBiztositasTeendo => {
+  if (input.meglevoId !== null) return 'megvan'
+  if (!input.forrasLetezik) return 'hianyzik'
+  return input.dryRun ? 'letrehozna' : 'letrehoz'
+}
+
+/** A Médiatár-hozzáférés injektálható darabjai (tesztből hamisítható). */
+export interface MediaBiztositasFuggosegek {
+  /** Média-rekord azonosítója PONTOS fájlnév alapján, vagy `null`. */
+  keres: (filename: string) => Promise<number | null>
+  /** Létrehozás a forrásfájlból; az új rekord azonosítóját adja. */
+  letrehoz: (forras: MediaForras) => Promise<number>
+  /** Létezik-e a forrásfájl (a repó gyökeréhez képest). */
+  letezik: (filePath: string) => boolean
+}
+
+/** A média-biztosítás eredménye a naplósorokkal. */
+export interface MediaBiztositasEredmeny {
+  filename: string
+  teendo: MediaBiztositasTeendo
+  /** A rekord azonosítója (`megvan` és `letrehoz` után); különben `null`. */
+  id: number | null
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Egy jóváhagyott kép állapota a döntésekhez: meglévő azonosító + forrás-létezés.
+ * Csak olvas (keres) és fájlrendszert néz; sosem ír.
+ */
+export const ujMediaAllapot = async (
+  forras: MediaForras,
+  fuggosegek: MediaBiztositasFuggosegek,
+): Promise<UjMediaAllapot> => ({
+  filename: forras.filename,
+  id: await fuggosegek.keres(forras.filename),
+  forrasLetezik: fuggosegek.letezik(forras.filePath),
+})
+
+/**
+ * WP54/1 — média-rekord biztosítása a repó fájljából, idempotensen.
+ *
+ * Ha a Médiatárban MÁR van rekord ezzel a fájlnévvel, azt adja vissza (nem
+ * duplikál); különben a `filePath` fájlból létrehozza a megadott alt-tal.
+ * Próbafutásban (`dryRun`) SEMMIT nem hoz létre, csak naplózza, mit hozna
+ * létre. Hiányzó forrásfájlnál hangos kihagyás. A Payload-hívás injektált
+ * (`fuggosegek.letrehoz`), ezért a döntés adatbázis nélkül tesztelhető.
+ */
+export const biztositMediaFajlbol = async (input: {
+  forras: MediaForras
+  /** Melyik szabály kedvéért készül a kép (a naplósor szabály-mezője). */
+  szabaly: JavitasSzabaly
+  dryRun: boolean
+  fuggosegek: MediaBiztositasFuggosegek
+}): Promise<MediaBiztositasEredmeny> => {
+  const { forras, szabaly, dryRun, fuggosegek } = input
+  const uzenet = `Médiatár: „${forras.filename}” (alt: „${forras.alt}”)`
+  const meglevoId = await fuggosegek.keres(forras.filename)
+  const teendo = dontsMediaBiztositas({
+    meglevoId,
+    forrasLetezik: fuggosegek.letezik(forras.filePath),
+    dryRun,
+  })
+  switch (teendo) {
+    case 'megvan':
+      return { filename: forras.filename, teendo, id: meglevoId, modositasok: [], kihagyasok: [] }
+    case 'hianyzik':
+      return {
+        filename: forras.filename,
+        teendo,
+        id: null,
+        modositasok: [],
+        kihagyasok: [
+          {
+            szabaly,
+            uzenet,
+            indok: `nincs ilyen rekord a Médiatárban, és a repó-forrásfájl (${forras.filePath}) sem található — a képet nem lehet létrehozni`,
+            hangos: true,
+          },
+        ],
+      }
+    case 'letrehozna':
+      return {
+        filename: forras.filename,
+        teendo,
+        id: null,
+        modositasok: [
+          { szabaly, uzenet: `${uzenet}: létrehozná a ${forras.filePath} fájlból`, indok: null },
+        ],
+        kihagyasok: [],
+      }
+    case 'letrehoz': {
+      const id = await fuggosegek.letrehoz(forras)
+      return {
+        filename: forras.filename,
+        teendo,
+        id,
+        modositasok: [
+          {
+            szabaly,
+            uzenet: `${uzenet}: létrehozva a ${forras.filePath} fájlból (azonosító: ${id})`,
+            indok: null,
+          },
+        ],
+        kihagyasok: [],
+      }
+    }
+  }
+}
+
+/**
+ * A valódi Médiatár-hozzáférés. A létrehozás után ellenőrzi, hogy a Payload
+ * a várt fájlnevet adta-e (ütköző fájlnál `-1` utótagot fűzne hozzá, és a
+ * rekord nem lenne idempotensen megtalálható) — eltérésnél HANGOSAN dob, mert
+ * a részleges állapot kézi átnézést kér. A team/press manifestben szereplő
+ * (kezelt) képnél az eredetigazolást is rögzíti, hogy a Volume-helyreállítás
+ * (`ensureMediaFiles`) később vissza tudja tölteni.
+ */
+export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggosegek => ({
+  keres: async (filename) => {
+    const talalat = await payload.find({
+      collection: 'media',
+      where: { filename: { equals: filename } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+    const sor = talalat.docs[0]
+    return sor === undefined || sor.filename !== filename ? null : sor.id
+  },
+  letrehoz: async (forras) => {
+    // Ütközés-előellenőrzés: ha a feltöltési könyvtárban REKORD NÉLKÜL ott a
+    // fájl (félbeszakadt futás, mentésből visszaállított DB, kézi másolás), a
+    // Payload `-1` utótagot fűzne a névhez, és a rekord már létrejönne, mielőtt
+    // az eltérést észrevennénk. Ilyenkor létrehozás nélkül, hangosan állunk meg.
+    const utkozoFajl = path.join(resolveUploadDir(payload), forras.filename)
+    if (existsSync(utkozoFajl)) {
+      throw new Error(
+        `A feltöltési könyvtárban már van „${forras.filename}” nevű fájl, de a Médiatárban nincs hozzá rekord (${utkozoFajl}) — kézi átnézést kér (a fájl törlése vagy a rekord pótlása), a hivatkozó javítás nem futott le.`,
+      )
+    }
+    const created: Media = await payload.create({
+      collection: 'media',
+      data: { alt: forras.alt },
+      filePath: path.resolve(forras.filePath),
+      overrideAccess: true,
+    })
+    if (created.filename !== forras.filename) {
+      // Nem hagyunk árva `-N` rekordot: a félresikerült létrehozást visszavonjuk,
+      // és csak utána dobunk.
+      await payload.delete({ collection: 'media', id: created.id, overrideAccess: true })
+      throw new Error(
+        `A Médiatár a(z) „${forras.filename}” helyett „${created.filename ?? ''}” fájlnévvel hozta volna létre a képet — ütköző fájl a feltöltési könyvtárban; a tévesen létrejött rekordot (azonosító: ${created.id}) a script törölte, a hivatkozó javítás nem futott le, kézi átnézést kér.`,
+      )
+    }
+    if (managedMediaAssets().some((asset) => asset.filename === created.filename)) {
+      await enrollMediaRecovery(payload, created)
+    }
+    return created.id
+  },
+  letezik: (filePath) => existsSync(path.resolve(filePath)),
+})
+
+// ---------------------------------------------------------------------------
 // Futtatás — a tiszta átalakításokat köti az adatbázishoz.
 // ---------------------------------------------------------------------------
 
@@ -3586,6 +4206,34 @@ const keresdMediat = async (
   return { id: sor.id, filename: sor.filename }
 }
 
+/** Egy média-rekord fájlneve azonosító alapján; `null`, ha nincs ilyen rekord (csak olvas). */
+const mediaFajlnev = async (payload: Payload, id: number): Promise<string | null> => {
+  const doc = await payload
+    .findByID({ collection: 'media', id, depth: 0, overrideAccess: true })
+    .catch(() => null)
+  return typeof doc?.filename === 'string' ? doc.filename : null
+}
+
+/** Több média-rekord fájlneve azonosító szerint (a naplóhoz; csak olvas). */
+const mediaFajlnevek = async (
+  payload: Payload,
+  ids: readonly number[],
+): Promise<ReadonlyMap<number, string>> => {
+  const nevek = new Map<number, string>()
+  if (ids.length === 0) return nevek
+  const talalat = await payload.find({
+    collection: 'media',
+    where: { id: { in: ids } },
+    limit: ids.length,
+    depth: 0,
+    overrideAccess: true,
+  })
+  for (const doc of talalat.docs) {
+    if (typeof doc.filename === 'string') nevek.set(doc.id, doc.filename)
+  }
+  return nevek
+}
+
 /**
  * Figyelmeztetés, ha a dokumentumnak a publikáltnál FRISSEBB, még nem publikált
  * piszkozata van.
@@ -3617,6 +4265,9 @@ const figyelmeztessPiszkozatra = (
 async function futtat(): Promise<void> {
   const dryRun = !kapuNyitva('OWNER_CONTENT_CONFIRM')
   const payload: Payload = await getPayload({ config })
+  // WP54: a repó-fájlból biztosított képek Médiatár-hozzáférése (a `letrehoz`
+  // ága kizárólag a `biztositMediaFajlbol` `!dryRun` döntésén át hívódik).
+  const mediaFuggosegek = payloadMediaFuggosegek(payload)
 
   logger.info(
     dryRun
@@ -3796,21 +4447,32 @@ async function futtat(): Promise<void> {
     )
     hiba = true
   } else {
-    const regiKep = await keresdMediat(payload, REGI_ROLUNK_HERO_PREFIX)
-    const ujKep = await keresdMediat(payload, UJ_ROLUNK_HERO_PREFIX)
-    logger.info('Tartalom-javítás: a fejléc-képhez tartozó média-rekordok', {
-      regi: regiKep?.filename ?? '(nem található)',
-      uj: ujKep?.filename ?? '(nem található)',
-    })
-
+    // WP54/2: a stúdiófotó. A jelenlegi kép fájlnevét és az új kép állapotát
+    // a Médiatárból OLVASSUK; a rekord létrehozása csak akkor (és csak
+    // élesben) történik, ha a döntés módosít.
+    const jelenlegiHeroId = heroKepAzonosito(rolunk.heroImage)
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: rolunk.heroImage,
-      regiMediaId: regiKep?.id ?? null,
-      ujMediaId: ujKep?.id ?? null,
+      jelenlegiFajlnev:
+        jelenlegiHeroId === null ? null : await mediaFajlnev(payload, jelenlegiHeroId),
+      ujMedia: await ujMediaAllapot(ROLUNK_HERO_FORRAS, mediaFuggosegek),
     })
     naplozdLepeseket(eredmeny, dryRun)
     modositasokSzama += eredmeny.modositasok.length
     kihagyasokSzama += eredmeny.kihagyasok.length
+    let ujHeroId = eredmeny.heroImage
+    if (eredmeny.modositasok.length > 0 && ujHeroId === null) {
+      const heroMedia = await biztositMediaFajlbol({
+        forras: ROLUNK_HERO_FORRAS,
+        szabaly: 'rolunk-hero-kep',
+        dryRun,
+        fuggosegek: mediaFuggosegek,
+      })
+      naplozdLepeseket(heroMedia, dryRun)
+      modositasokSzama += heroMedia.modositasok.length
+      kihagyasokSzama += heroMedia.kihagyasok.length
+      ujHeroId = heroMedia.id
+    }
 
     // --- 5. javítás: a szakmai háttér harmonikába -----------------------------
     const ujBlokkok = rolunkSzakmaiUjBlokkok()
@@ -3881,8 +4543,8 @@ async function futtat(): Promise<void> {
     // A javítások EGY frissítésben mennek ki (a heroImage és a layout külön
     // mező, nem ütköznek), így egyetlen piszkozat-ellenőrzés elég.
     const irando: { heroImage?: number; layout?: Szekciosor } = {}
-    if (eredmeny.heroImage !== null) {
-      irando.heroImage = eredmeny.heroImage
+    if (ujHeroId !== null) {
+      irando.heroImage = ujHeroId
     }
     const rolunkVegsoLayout =
       rolunkLogosavok.layout ??
@@ -4063,9 +4725,53 @@ async function futtat(): Promise<void> {
     modositasokSzama += kapcsolodo.modositasok.length
     kihagyasokSzama += kapcsolodo.kihagyasok.length
 
-    const sosAdat: Partial<Pick<Product, 'slug' | 'priceInHUFEnabled' | 'relatedProducts'>> = {}
+    // --- WP54/3: az SOS kurzus galériája (három jóváhagyott kép) ------------
+    // A képek állapotát OLVASSUK; a rekordokat csak akkor (és csak élesben)
+    // hozzuk létre, ha a döntés módosít — ugyanabba az update-be fut össze.
+    const galeriaAllapotok: UjMediaAllapot[] = []
+    for (const forras of SOS_GALERIA_FORRASOK) {
+      galeriaAllapotok.push(await ujMediaAllapot(forras, mediaFuggosegek))
+    }
+    const galeria = alkalmazSosGaleria({
+      jelenlegi: sosKurzus.gallery,
+      ujMediak: galeriaAllapotok,
+      ismertFajlnevek: await mediaFajlnevek(payload, galeriaAzonositok(sosKurzus.gallery)),
+    })
+    naplozdLepeseket(galeria, dryRun)
+    modositasokSzama += galeria.modositasok.length
+    kihagyasokSzama += galeria.kihagyasok.length
+    let galeriaSorok = galeria.gallery
+    if (galeria.modositasok.length > 0 && galeriaSorok === null) {
+      const galeriaIds: number[] = []
+      for (const forras of SOS_GALERIA_FORRASOK) {
+        const media = await biztositMediaFajlbol({
+          forras,
+          szabaly: 'sos-galeria',
+          dryRun,
+          fuggosegek: mediaFuggosegek,
+        })
+        naplozdLepeseket(media, dryRun)
+        modositasokSzama += media.modositasok.length
+        kihagyasokSzama += media.kihagyasok.length
+        if (media.id !== null) {
+          galeriaIds.push(media.id)
+        }
+      }
+      // Csak a TELJES hármassal írunk (a sorrend a SOS_GALERIA_FORRASOK-é).
+      galeriaSorok =
+        galeriaIds.length === SOS_GALERIA_FORRASOK.length
+          ? galeriaIds.map((id) => ({ image: id }))
+          : null
+    }
+
+    const sosAdat: Partial<
+      Pick<Product, 'slug' | 'priceInHUFEnabled' | 'relatedProducts' | 'gallery'>
+    > = {}
     if (eredmeny.slug !== null) {
       sosAdat.slug = eredmeny.slug
+    }
+    if (galeriaSorok !== null) {
+      sosAdat.gallery = galeriaSorok
     }
     if (ingyenes.priceInHUFEnabled !== null) {
       sosAdat.priceInHUFEnabled = ingyenes.priceInHUFEnabled
@@ -4153,7 +4859,7 @@ async function futtat(): Promise<void> {
     hiba = true
   } else {
     // A két szekciósor-javítás (8. horgony, 12b. bevezető blokk) LÁNCBAN fut, a
-    // fejléc-kép ürítése (12a) pedig külön mező — mindhárom EGYETLEN
+    // fejléc-kép beállítása (12a) pedig külön mező — mindhárom EGYETLEN
     // frissítésben megy ki.
     let szolgaltatasokLayout: Szekciosor = Array.isArray(szolgaltatasok.layout)
       ? szolgaltatasok.layout
@@ -4194,25 +4900,75 @@ async function futtat(): Promise<void> {
       }),
     )
 
-    // --- 12a. javítás: a fejléc-kép ürítése ----------------------------------
-    const rendeloKep = await keresdMediat(payload, SZOLGALTATASOK_HERO_PREFIX)
-    logger.info('Tartalom-javítás: a /szolgaltatasok fejléc-képéhez tartozó média-rekord', {
-      rendelo: rendeloKep?.filename ?? '(nem található)',
+    // --- WP54/4: a technikák-tábla az ajtó-blokk után -------------------------
+    // A lánc VÉGÉN (a horgony, a bevezető és a kép-csere eredmény-layoutján).
+    // A kép állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön
+    // létre, ha a döntés beszúr — a blokk kép nélkül nem kerül be.
+    const tabla = alkalmazSzolgaltatasokTechnikakTabla({
+      layout: szolgaltatasokLayout,
+      kep: await ujMediaAllapot(TECHNIKAK_TABLA_KEP_FORRAS, mediaFuggosegek),
     })
-    const heroUrites = alkalmazSzolgaltatasokHeroKep({
-      jelenlegi: szolgaltatasok.heroImage,
-      regiMediaId: rendeloKep?.id ?? null,
-    })
-    naplozdLepeseket(heroUrites, dryRun)
-    modositasokSzama += heroUrites.modositasok.length
-    kihagyasokSzama += heroUrites.kihagyasok.length
+    naplozdLepeseket(tabla, dryRun)
+    modositasokSzama += tabla.modositasok.length
+    kihagyasokSzama += tabla.kihagyasok.length
+    let tablaLayout = tabla.layout
+    if (tabla.modositasok.length > 0 && tablaLayout === null && tabla.beszurasIndex !== null) {
+      const tablaKep = await biztositMediaFajlbol({
+        forras: TECHNIKAK_TABLA_KEP_FORRAS,
+        szabaly: 'szolgaltatasok-technikak-tabla',
+        dryRun,
+        fuggosegek: mediaFuggosegek,
+      })
+      naplozdLepeseket(tablaKep, dryRun)
+      modositasokSzama += tablaKep.modositasok.length
+      kihagyasokSzama += tablaKep.kihagyasok.length
+      if (tablaKep.id !== null) {
+        tablaLayout = [
+          ...szolgaltatasokLayout.slice(0, tabla.beszurasIndex),
+          technikakTablaBlokk(tablaKep.id),
+          ...szolgaltatasokLayout.slice(tabla.beszurasIndex),
+        ]
+      }
+    }
+    if (tablaLayout !== null) {
+      szolgaltatasokLayout = tablaLayout
+      layoutValtozott = true
+    }
 
-    const irandoSzolgaltatasok: { layout?: Szekciosor; heroImage?: null } = {}
+    // --- 12a. javítás (WP55): a fejléc-kép a kezelőasztalos fotóra -----------
+    // A /rolunk 4. javításának mintája: a jelenlegi kép fájlnevét és az új kép
+    // állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön létre, ha
+    // a döntés módosít.
+    const jelenlegiSzolgHeroId = heroKepAzonosito(szolgaltatasok.heroImage)
+    const szolgHero = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: szolgaltatasok.heroImage,
+      jelenlegiFajlnev:
+        jelenlegiSzolgHeroId === null ? null : await mediaFajlnev(payload, jelenlegiSzolgHeroId),
+      ujMedia: await ujMediaAllapot(SZOLGALTATASOK_HERO_FORRAS, mediaFuggosegek),
+    })
+    naplozdLepeseket(szolgHero, dryRun)
+    modositasokSzama += szolgHero.modositasok.length
+    kihagyasokSzama += szolgHero.kihagyasok.length
+    let ujSzolgHeroId = szolgHero.heroImage
+    if (szolgHero.modositasok.length > 0 && ujSzolgHeroId === null) {
+      const szolgHeroMedia = await biztositMediaFajlbol({
+        forras: SZOLGALTATASOK_HERO_FORRAS,
+        szabaly: 'szolgaltatasok-hero-kep',
+        dryRun,
+        fuggosegek: mediaFuggosegek,
+      })
+      naplozdLepeseket(szolgHeroMedia, dryRun)
+      modositasokSzama += szolgHeroMedia.modositasok.length
+      kihagyasokSzama += szolgHeroMedia.kihagyasok.length
+      ujSzolgHeroId = szolgHeroMedia.id
+    }
+
+    const irandoSzolgaltatasok: { layout?: Szekciosor; heroImage?: number } = {}
     if (layoutValtozott) {
       irandoSzolgaltatasok.layout = szolgaltatasokLayout
     }
-    if (heroUrites.uritendo) {
-      irandoSzolgaltatasok.heroImage = null
+    if (ujSzolgHeroId !== null) {
+      irandoSzolgaltatasok.heroImage = ujSzolgHeroId
     }
 
     if (Object.keys(irandoSzolgaltatasok).length > 0 && !dryRun) {
@@ -4338,6 +5094,47 @@ async function futtat(): Promise<void> {
         collection: 'menus',
         id: menupont.id,
         data: eredmeny.adat,
+        depth: 0,
+        overrideAccess: true,
+      })
+    }
+  }
+
+  // --- WP56: a kurzusborítók alt-szövege (Médiatár) ---------------------------
+  for (const tetel of MEDIA_ALT_SZOVEGEK) {
+    const media = await keresdMediat(payload, tetel.prefix)
+    if (media === null) {
+      logger.warn(
+        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a Médiatárban nincs „${tetel.prefix}” kezdetű fájlnevű kép)`,
+      )
+      kihagyasokSzama += 1
+      continue
+    }
+    // A második olvasás átmeneti hibája (pool, zár) NEM jelenthet „üres alt”-ot:
+    // akkor a szabály a szerkesztői szöveget írná felül. Hiba esetén hangos kihagyás.
+    const doc = await payload
+      .findByID({ collection: 'media', id: media.id, depth: 0, overrideAccess: true })
+      .catch(() => null)
+    if (doc === null) {
+      logger.error(
+        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a(z) ${media.id} azonosítójú média-rekord nem olvasható, az alt nem dönthető el)`,
+      )
+      kihagyasokSzama += 1
+      continue
+    }
+    const eredmeny = alkalmazMediaAltSzoveg({
+      cimke: tetel.cimke,
+      jelenlegiAlt: typeof doc?.alt === 'string' ? doc.alt : null,
+      ujAlt: tetel.alt,
+    })
+    naplozdLepeseket(eredmeny, dryRun)
+    modositasokSzama += eredmeny.modositasok.length
+    kihagyasokSzama += eredmeny.kihagyasok.length
+    if (eredmeny.alt !== null && !dryRun) {
+      await payload.update({
+        collection: 'media',
+        id: media.id,
+        data: { alt: eredmeny.alt },
         depth: 0,
         overrideAccess: true,
       })

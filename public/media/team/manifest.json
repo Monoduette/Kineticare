@@ -119,6 +119,66 @@
       "width": 1600,
       "height": 2400,
       "alt": "A Kineticare egyik alapítója laptoppal, mellette tornaeszközök."
+    },
+    {
+      "role": "rolunk-hero",
+      "file": "founders-studio-pair-1600.webp",
+      "sourceId": "145OEppSbAzy0Tmo1gFKp3nh1E6cSQPNF",
+      "sourceName": "SYL_9156.jpg",
+      "sha256": "1bc9ee6b79aee81c76b75c726414e24214784de364cea86a8b945e924b1df891",
+      "width": 1600,
+      "height": 1067,
+      "alt": "Kocsis Kata és Kiss Kata a stúdióban."
+    },
+    {
+      "role": "services-treatment",
+      "file": "treatment-wrist-smile-1600.webp",
+      "sourceId": "1Ilqs5JlufQNSk-jYWUlaloNjVdEtz6Wm",
+      "sourceName": "_MG_0430.png",
+      "sha256": "20f612d01503e876de941532d4cadc8cf13fd05640079b206d9d4b0dba094c71",
+      "width": 1067,
+      "height": 1600,
+      "alt": "Kiss Kata csuklókezelés közben a rendelőben."
+    },
+    {
+      "role": "showcase-home-exercise",
+      "file": "home-exercise-ball-towel-1600.webp",
+      "sourceId": "1eJOjkVEo10i-8crHrYKSJSaVFT2lUNYC",
+      "sourceName": "_MG_0387.png",
+      "sha256": "83543dfb4ffe544e68c9178693bf922a6155011d21741c54ff4461c74aebea6f",
+      "width": 1600,
+      "height": 1067,
+      "alt": "Kéz kis labdán, kék törölközőn: otthoni gyakorlat."
+    },
+    {
+      "role": "rolunk-cta-montage",
+      "file": "course-montage-rolunk-1600.webp",
+      "sourceId": "15vnusqAREh8J2lELMmJJ7SevFVvxXMfS+1b_-0lhlhqLBOOsfFGKYaMSXqsM_YLO1u+171GqeqYBaqI2Q2KMCPHW-Z6vQbdCJ73T",
+      "sourceName": "_MG_0361.png + _MG_0343.png + _MG_0402.png",
+      "sha256": "3e836faccdd844772ac3dfae9d594e2a7b79b3ed2bddb3d87119a122204531a4",
+      "width": 1600,
+      "height": 1067,
+      "alt": "Három gyakorlat az otthoni kurzusból: gumiszalagos csuklónyújtás, puha labda szorítása és tüskés labdás alkarlazítás."
+    },
+    {
+      "role": "services-table",
+      "file": "treatment-table-hands-1600.webp",
+      "sourceId": "1avv4rmDql8iOTeqZXOMGpFcAjBvkBUgp",
+      "sourceName": "_MG_0033.png",
+      "sha256": "78695ebcea8254183bebd500ac5cbfefaff8150f1aa24049588d7afef20dc618",
+      "width": 1600,
+      "height": 1067,
+      "alt": "Csuklókezelés a kezelőasztalon a Kineticare rendelőjében."
+    },
+    {
+      "role": "services-techniques",
+      "file": "treatment-wrist-table-1600.webp",
+      "sourceId": "1Np1Z3IfVWDYIMLnde77hUA4FILMh5isZ",
+      "sourceName": "_MG_0244.png",
+      "sha256": "c90ab5722583d97e946d2fba5e1fa17588d73252412230723ec68c1ec0b991ed",
+      "width": 1600,
+      "height": 1067,
+      "alt": "Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót."
     }
   ]
 }

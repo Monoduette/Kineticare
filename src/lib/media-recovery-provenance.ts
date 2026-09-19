@@ -6,6 +6,7 @@ import type { Payload } from 'payload'
 import type { Media } from '../payload-types'
 import manifest from '../../public/media/team/manifest.json'
 import pressManifest from '../../public/media/press/manifest.json'
+import sosManifest from '../../public/media/sos/manifest.json'
 import { auditLogStore, writeAuditLog } from './audit'
 
 export const MEDIA_RECOVERY_ACTION = 'media.recovery.provenance.v1'
@@ -79,6 +80,10 @@ export function managedMediaAssets() {
   return [
     ...manifest.assets.map((asset) => ({ ...asset, directory: 'team' })),
     ...pressManifest.assets.map((asset) => ({ ...asset, directory: 'press' })),
+    // WP54: az SOS-galéria három gyakorlat-fotója (public/media/sos) is
+    // kezelt forrás, hogy a CMS-be töltött példány a Volume-vesztés után
+    // ugyanúgy visszatölthető és eredetigazolt legyen, mint a team/press.
+    ...sosManifest.assets.map((asset) => ({ ...asset, directory: 'sos' })),
   ].map((asset) => {
     if (!/^[a-z0-9-]+\.(webp|png)$/.test(asset.file) || !/^[a-f0-9]{64}$/.test(asset.sha256))
       return hold()

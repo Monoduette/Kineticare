@@ -51,12 +51,20 @@ export const COURSE_SHOWCASE_FALLBACKS: readonly CourseShowcaseFallbackImage[] =
  * rácscellákban állnak (course-showcase.css `__photo`), ezért 800 px széles
  * változat elég (a cella 1440-en ~340 CSS px, 2×-en 680 px; a korábbi
  * 1600-as fájl 5,6-szoros túlméret volt, audit 2026-09-07, 2.5).
- * A középső (hand-treatment-detail) ÁLLÓ kép: a public/media/team
- * manifestjében nincs fekvő kezelés-fotó (2026-09-19-én ellenőrizve: a
- * fekvő fájlok mind alapítói csoportképek), ezért a cella az alsó élhez
- * zárt ablakot mutat (css `object-position: 50% 100%`), amíg a tulajdonos
- * fekvő kezelés-fotót nem ad. (Korábbi neve COURSE_SHOWCASE_DRIFT, a WP50
- * előtti görgetésre úszó kompozíció után; a jelenet ma statikus.)
+ * WP54 (tulajdonosi 2. kör, 2026-09-19): a középső cella a fotózás
+ * fekvő gyakorlat-fotóját kapja (kéz kis labdán, kék törölközőn, `_MG_0387`,
+ * manifest `showcase-home-exercise`), az addigi álló kezelés-fotó helyett.
+ * Így mindhárom fotó fekvő és 3:2 közeli (1,59 / 1,50 / 1,50), a 4:3-as cella
+ * mindhármat egyformán, szélességben vágja (css `object-position: 25% 50%`,
+ * mérés ott). A tartalom a szekció tárgya (otthoni gyakorlat), nem az
+ * alapítók ismétlése: NN/g, Photos as Web Content, a tartalomhoz kötött fotó
+ * informatív, a töltelék nem
+ * (https://www.nngroup.com/articles/photos-as-web-content/); Apple HIG,
+ * Images: egy sorban álló képek azonos arányban és méretben állnak, hogy a
+ * sor egységes maradjon
+ * (https://developer.apple.com/design/human-interface-guidelines/images).
+ * (Korábbi neve COURSE_SHOWCASE_DRIFT, a WP50 előtti görgetésre úszó
+ * kompozíció után; a jelenet ma statikus.)
  */
 export const COURSE_SHOWCASE_SCENE_PHOTOS: readonly CourseShowcaseFallbackImage[] = [
   {
@@ -65,9 +73,9 @@ export const COURSE_SHOWCASE_SCENE_PHOTOS: readonly CourseShowcaseFallbackImage[
     height: 503,
   },
   {
-    src: '/media/team/hand-treatment-detail-800.webp',
+    src: '/media/team/home-exercise-ball-towel-800.webp',
     width: 800,
-    height: 1200,
+    height: 533,
   },
   {
     src: '/media/team/founders-intro-white-800.webp',

@@ -298,15 +298,16 @@
    egy álló fotónál 816 px magas lett volna (mérve), ami a tartalmat a
    hajtás alá tolja. 390 px-en a sapka nem lép be (a hasáb keskenyebb).
 
-   MAGASSÁG-SAPKA (design-átvétel, 2026-09-19): a /rolunk álló csapatfotója
-   (1600×1815) a fele-fele rácsban 1440-en 581 px magas lett, a bal hasáb (cím
-   + bevezető) 187 px, azaz ~400 px üres tér állt a szöveg alatt. A figure
-   ezért 3/2-es fekvő vágatot kap (`aspect-ratio`, `object-fit: cover`), a
-   kép felső harmadára zárva (`object-position: 50% 20%`: az arcok a kép
-   26–45 %-ánál vannak, a 3/2-es ablak a 8–67 % sávot mutatja, mérve), és a
-   rács asztalon középre igazít (lent, `align-items: center`), így a cím a kép
-   függőleges közepénél áll. 1440-en a kép 341 px (581 helyett), a szöveg a
-   kép közepén. A 25 %-nál kisebb magasságkülönbség CTA nélkül nem érhető el
+   MAGASSÁG-SAPKA (design-átvétel, 2026-09-19): az eredeti /rolunk álló
+   csapatfotó (1600×1815) a fele-fele rácsban 1440-en 581 px magas lett, a bal
+   hasáb (cím + bevezető) 187 px, azaz ~400 px üres tér állt a szöveg alatt.
+   A figure ezért 3/2-es fekvő keretet kap (`aspect-ratio`, `object-fit:
+   cover`), és a rács asztalon középre igazít (lent, `align-items: center`),
+   így a cím a kép függőleges közepénél áll; 1440-en a kép 341 px (581
+   helyett). A WP54 óta a /rolunk és a /szolgaltatasok fejléc-fotója natív
+   3:2-es (1600×1067), ezért a keret nem vág; az `object-position: 50% 20%`
+   álló vagy magasabb szerkesztői képnél lép be (arcokra hangolt felső
+   harmad), 3:2-esnél hatástalan. A 25 %-nál kisebb magasságkülönbség CTA nélkül nem érhető el
    (a lapnak nincs fő CTA-ja, kitalálni tilos); a kompozíció az arányon, nem
    az azonos magasságon áll. NN/g, Hero Image Guidance: a hero-kép az
    arcokat és a tárgyat mutassa, ne vágja el a lényeget, és ne tolja a szöveget

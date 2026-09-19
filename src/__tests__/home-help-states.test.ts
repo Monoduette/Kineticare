@@ -309,7 +309,7 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
       `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[1]}`,
       `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[2]}`,
     ])
-    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/hand-treatment-detail-1600.webp')
+    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/treatment-wrist-smile-1600.webp')
   })
 
   it('a /szolgaltatasok ajtó-blokkja a CMS-fotót tartja, a paper hátteret tintre, a sötétet békén hagyja', () => {
