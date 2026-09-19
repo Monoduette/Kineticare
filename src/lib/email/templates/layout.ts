@@ -125,7 +125,7 @@ function bekezdesekHtml(paragraphs: string[]): string {
   return paragraphs
     .map(
       (paragraph) =>
-        `<p style="margin:0 0 16px 0;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.7;color:${SZIN.inkHalk};">${paragraph}</p>`,
+        `<p style="margin:0 0 16px 0;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.7;color:${SZIN.inkHalk};overflow-wrap:anywhere;word-break:break-word;">${paragraph}</p>`,
     )
     .join('\n')
 }
@@ -198,7 +198,7 @@ function ctaHtml(cta: NonNullable<LayoutInput['cta']>): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:8px 0 20px 0;">
       <tr>
         <td align="center" bgcolor="${SZIN.akcent}" style="border-radius:8px;">
-          <a href="${url}" style="display:inline-block;padding:15px 32px;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1;font-weight:700;color:${SZIN.feher};text-decoration:none;border-radius:8px;">${escapeHtml(cta.label)}</a>
+          <a href="${url}" style="display:inline-block;padding:15px 24px;font-family:${BETU.torzs};font-size:${MERET.m};line-height:1.4;font-weight:700;color:${SZIN.feher};text-decoration:none;border-radius:8px;">${escapeHtml(cta.label)}</a>
         </td>
       </tr>
     </table>
@@ -221,12 +221,19 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
     <meta name="color-scheme" content="light" />
     <meta name="supported-color-schemes" content="light" />
     <title>${escapeHtml(input.heading)}</title>
+    <style>
+      /* Inline alapstílusok mellett progresszív mobil térköz; CSS nélkül is olvasható. */
+      @media only screen and (max-width:480px) {
+        .kc-email-shell { padding:20px 12px !important; }
+        .kc-email-card { padding:24px 20px !important; }
+      }
+    </style>
   </head>
   <body style="margin:0;padding:0;background-color:${SZIN.papir};-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;">
     ${preheaderHtml}
     ${tablaNyit(`background-color:${SZIN.papir};`)}
       <tr>
-        <td align="center" style="padding:32px 16px;">
+        <td class="kc-email-shell" align="center" style="padding:32px 16px;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="border-collapse:collapse;width:100%;max-width:600px;table-layout:fixed;">
 
             <tr>
@@ -234,7 +241,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
             </tr>
 
             <tr>
-              <td style="background-color:${SZIN.feher};border:1px solid ${SZIN.hajszal};border-radius:14px;padding:32px;">
+              <td class="kc-email-card" style="background-color:${SZIN.feher};border:1px solid ${SZIN.hajszal};border-radius:14px;padding:32px;">
                 ${input.eyebrow ? eyebrowHtml(input.eyebrow) : ''}
                 <h1 style="margin:0 0 20px 0;font-family:${BETU.cim};font-size:${MERET.l};line-height:1.25;font-weight:400;color:${SZIN.ink};max-width:100%;overflow-wrap:break-word;word-break:break-word;">${escapeHtml(input.heading)}</h1>
                 ${bekezdesekHtml(input.paragraphsHtml)}
@@ -251,7 +258,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
             </tr>
 
             <tr>
-              <td style="padding:20px 4px 0 4px;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.7;color:${SZIN.inkHalk};">
+              <td style="padding:20px 4px 0 4px;font-family:${BETU.torzs};font-size:${MERET.s};line-height:1.7;color:${SZIN.inkHalk};overflow-wrap:anywhere;word-break:break-word;">
                 ${BRAND_NAME} · Kézrehabilitációs online kurzusplatform<br />
                 ${
                   input.footer

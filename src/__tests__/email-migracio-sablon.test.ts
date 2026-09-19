@@ -32,6 +32,37 @@ import { EM_DASH, EN_DASH } from './helpers/cta-mikroszoveg'
 
 const SERVER_URL = 'https://kineticare.example.com/'
 
+describe('Átállási értesítő: fizetős és ingyenes fiókok pontos tájékoztatása', () => {
+  it('nem állítja, hogy a már aktivált fiók jelszavát újra le kell cserélni', () => {
+    const email = migrationNoticeEmail({
+      name: null,
+      email: 'pelda@example.com',
+      serverUrl: SERVER_URL,
+    })
+    for (const content of [email.html, email.text]) {
+      expect(content).toContain(
+        'Ha az új felületen már beállítottál jelszót, azzal továbbra is beléphetsz.',
+      )
+      expect(content).not.toContain('mindenkinek új jelszót')
+      expect(content).not.toContain('kurzusaid megvannak')
+      expect(content).toContain('ingyenes SOS')
+    }
+    expect(email.text).toContain('Szia!')
+  })
+
+  it('kiemeli a pontos fiókcímet, a Unicode nevet megőrzi, a HTML-t escape-eli', () => {
+    const name = 'Őri <Próba> & Társa'
+    const address = 'pelda+"teszt"&jel@example.com'
+    const email = migrationNoticeEmail({ name, email: address, serverUrl: SERVER_URL })
+    expect(email.text).toContain(`Kedves ${name}!`)
+    expect(email.text).toContain(`A fiókod e-mail-címe: ${address}`)
+    expect(email.html).toContain('Őri &lt;Próba&gt; &amp; Társa')
+    expect(email.html).toContain('pelda+&quot;teszt&quot;&amp;jel@example.com')
+    expect(email.html).not.toContain('<Próba>')
+    expect(email.html).not.toContain('token=')
+  })
+})
+
 function levél(name: string | null = 'Kiss Anna') {
   return migrationNoticeEmail({ name, email: 'kiss.anna@example.com', serverUrl: SERVER_URL })
 }
@@ -41,24 +72,24 @@ describe('WP40 – átköltöztetési értesítő: a tulajdonos négy hangsúlya
     const email = levél()
     for (const variant of [email.html, email.text]) {
       expect(variant).toContain('megújult')
-      expect(variant).toContain('a régi jelszavad elavult')
+      expect(variant).toContain('a régi jelszavad nem költözött át')
       expect(variant).toContain('amelyre ezt a levelet kaptad')
       expect(variant).toContain('kiss.anna@example.com')
-      expect(variant).toContain('ezzel regisztráltál nálunk')
+      expect(variant).toContain('A fiókod e-mail-címe:')
       expect(variant).toContain('Kurzusaim')
-      expect(variant).toContain('megvásárolt kurzusaidat')
-      expect(variant).toContain('ingyenes SOS KézRelax villámkurzust')
+      expect(variant).toContain('megvásárolt kurzusaidra')
+      expect(variant).toContain('ingyenes SOS KézRelax villámkurzusra')
     }
   })
 
-  it('kimondja szó szerint a 4. alapelv mondatát (hozzáférés, újra fizetni nem kell)', () => {
+  it('a közös kurzusútmutató mellett segítséget ad hiányzó hozzáférésnél', () => {
     const email = levél()
     expect(MIGRATION_NOTICE_ACCESS_SENTENCE).toBe(
-      'A megvásárolt kurzusaid megvannak, újra fizetned nem kell.',
+      'A fiókodhoz tartozó kurzusokat belépés után a Kurzusaim oldalon találod.',
     )
     expect(email.text).toContain(MIGRATION_NOTICE_ACCESS_SENTENCE)
     expect(email.html).toContain(`<strong>${MIGRATION_NOTICE_ACCESS_SENTENCE}</strong>`)
-    expect(email.text).toContain('nem te hibáztál')
+    expect(email.text).toContain('ne vásárold meg újra, hanem írj nekünk')
   })
 })
 
@@ -115,7 +146,7 @@ describe('WP40 – tárgy, előnézet, lábléc', () => {
   it('a lábléc kimondja, miért kapja (fiók-átköltöztetés) és hova válaszolhat; nincs „ne válaszolj"', () => {
     const email = levél()
     for (const variant of [email.html, email.text]) {
-      expect(variant).toContain('a fiókodat az új felületre költöztettük át')
+      expect(variant).toContain('az új felületen történő belépéshez küldünk segítséget')
       expect(variant).toContain('Válaszolj erre a levélre')
       expect(variant).toContain(CONTACT_EMAIL)
       expect(variant).not.toContain('ne válaszolj')
@@ -127,7 +158,7 @@ describe('WP40 – tárgy, előnézet, lábléc', () => {
     expect(levél('Kiss Anna').text).toContain('Kedves Kiss Anna!')
     for (const name of [null, '', '   ']) {
       const email = levél(name)
-      expect(email.text).toContain('Kedves Vásárlónk!')
+      expect(email.text).toContain('Szia!')
       expect(email.html).not.toContain('Kedves !')
     }
   })
@@ -176,7 +207,7 @@ describe('WP40 – natív magyar mikroszöveg (§3.1) és biztonság', () => {
 
   it('a szöveg tegez (E/2), a gomb E/1; nincs „Kérjük" udvariaskodás', () => {
     const email = levél()
-    expect(email.text).toContain('állítsd be')
+    expect(email.text).toContain('nyisd meg')
     expect(email.text).not.toMatch(/Kérjük/u)
     expect(email.text).not.toMatch(/Önt\b|Önnek\b/u)
   })

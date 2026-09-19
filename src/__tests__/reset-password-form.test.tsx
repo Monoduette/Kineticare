@@ -24,9 +24,9 @@ describe('ResetPasswordForm — más eszközök kijelentkezése (J2)', () => {
     expect(source).toContain('{RESET_OTHER_DEVICES_NOTE}')
     expect(RESET_OTHER_DEVICES_NOTE).toBe('A többi eszközön ki leszel jelentkeztetve.')
     expect(RESET_OTHER_DEVICES_NOTE).not.toMatch(/[–—]/)
-    expect(RESET_SUCCESS_NEXT_STEP).toContain('kurzusaidhoz')
+    expect(RESET_SUCCESS_NEXT_STEP).toContain('Kurzusaim oldalra')
     expect(RESET_SUCCESS_NEXT_STEP).not.toMatch(/[–—]/)
-    expect(RESET_SUCCESS_NEXT_STEP_PLAYER).toContain('kurzusod nyílik meg')
+    expect(RESET_SUCCESS_NEXT_STEP_PLAYER).toContain('továbbléphetsz a kurzushoz')
     expect(RESET_SUCCESS_NEXT_STEP_PLAYER).not.toMatch(/[–—]/)
     expect(source).toContain(
       "ctaLabel(isMyCoursePlayerHref(safeReturn) ? 'course-start' : 'my-courses-open')",

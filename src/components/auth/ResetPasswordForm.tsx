@@ -44,7 +44,7 @@ export const RESET_OTHER_DEVICES_NOTE = 'A többi eszközön ki leszel jelentkez
  * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  */
 export const RESET_SUCCESS_NEXT_STEP =
-  'Sikeresen beállítottad az új jelszavadat. A következő gombbal a kurzusaidhoz kerülsz.'
+  'Sikeresen beállítottad az új jelszavadat. A következő gombbal továbbléphetsz a Kurzusaim oldalra.'
 
 /**
  * Ugyanaz a siker-panel, ha a `returnUrl` egy konkrét kurzus lejátszója.
@@ -56,7 +56,7 @@ export const RESET_SUCCESS_NEXT_STEP =
  * https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html
  */
 export const RESET_SUCCESS_NEXT_STEP_PLAYER =
-  'Sikeresen beállítottad az új jelszavadat. A következő gombbal a kurzusod nyílik meg.'
+  'Sikeresen beállítottad az új jelszavadat. A következő gombbal továbbléphetsz a kurzushoz.'
 
 export interface ResetPasswordFormProps {
   token: string

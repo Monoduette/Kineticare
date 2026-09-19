@@ -34,12 +34,12 @@ export function resetPasswordEmail(input: {
       heading: 'Jelszó visszaállítása',
       paragraphsHtml: [
         escapeHtml(greeting),
-        'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi gombbal állíthatsz be új jelszót. A jelszó után a kurzusaid megnyílnak, külön belépés nem kell. A link korlátozott ideig érvényes.',
+        'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi gombbal állíthatsz be új jelszót, majd továbbléphetsz a kurzusaidhoz. A link korlátozott ideig érvényes.',
         'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],
       paragraphsText: [
         greeting,
-        'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi linken állíthatsz be új jelszót. A jelszó után a kurzusaid megnyílnak, külön belépés nem kell. A link korlátozott ideig érvényes.',
+        'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi linken állíthatsz be új jelszót, majd továbbléphetsz a kurzusaidhoz. A link korlátozott ideig érvényes.',
         'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],
       cta: { label: ctaLabel('password-reset-set'), url: input.resetUrl },

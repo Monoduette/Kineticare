@@ -1,5 +1,10 @@
 import { ctaLabel } from '../../cta-vocabulary'
 import { CONTACT_EMAIL } from '../../seo'
+import {
+  MIGRATION_COURSES_NOTE,
+  MIGRATION_EXISTING_PASSWORD_NOTE,
+  MIGRATION_MISSING_COURSE_NOTE,
+} from '../../migration-copy'
 import { RATE_LIMIT_RULES } from '../../security/rate-limit'
 import type { EmailTemplate } from '../types'
 import { escapeHtml, renderLayout } from './layout'
@@ -9,7 +14,7 @@ import { escapeHtml, renderLayout } from './layout'
  *
  * A szöveg alapja `docs/vasarlo-migracio-terv.md` 4.5 (közös link a
  * `/belepes-atallas` lapra, személyes token NÉLKÜL), a tulajdonos 7. körös
- * hangsúlyaival: megújult az oldal; a régi jelszó elavult; az új jelszót AZZAL
+ * hangsúlyaival: megújult az oldal; a régi jelszó nem költözött át; új jelszót AZZAL
  * a címmel kell beállítani, amelyre a levél érkezett; belépés után a Kurzusaim
  * menüpontban vannak a megvett kurzusok vagy az ingyenes SOS-villámkurzus.
  *
@@ -53,11 +58,10 @@ export const MIGRATION_NOTICE_SUBJECT = 'Megújult a Kineticare: állítsd be az
 
 /** Előnézeti sor a postaláda listanézetébe (a tárgy mellett látszik). */
 export const MIGRATION_NOTICE_PREHEADER =
-  'A régi jelszavad itt már nem működik. A kurzusaid megvannak, újra fizetned nem kell.'
+  'Ugyanazzal az e-mail-címmel térhetsz vissza. Segítünk a jelszó beállításában.'
 
-/** A terv 4. alapelve szerint SZÓ SZERINT kimondandó mondat. */
-export const MIGRATION_NOTICE_ACCESS_SENTENCE =
-  'A megvásárolt kurzusaid megvannak, újra fizetned nem kell.'
+/** A levél és a céllap közös, tényleges hozzáférést előre nem ígérő mondata. */
+export const MIGRATION_NOTICE_ACCESS_SENTENCE = MIGRATION_COURSES_NOTE
 
 /**
  * A kérés-korlát emberi nyelven, a `password-forgot-email` szabály VALÓDI
@@ -121,22 +125,21 @@ export function buildMigrationNoticeUrl(serverUrl: string): string {
  */
 export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate {
   const name = input.name?.trim() ?? ''
-  const greeting = name ? `Kedves ${name}!` : 'Kedves Vásárlónk!'
+  const greeting = name ? `Kedves ${name}!` : 'Szia!'
   const url = buildMigrationNoticeUrl(input.serverUrl)
   const email = input.email.trim()
 
   const miert =
-    'A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. Ezért írunk: ' +
-    'a régi jelszavad elavult, az új oldalon már nem működik. Nem veszett el semmi, és nem te ' +
-    'hibáztál: mindenkinek új jelszót kell beállítania, aki a korábbi oldalon regisztrált.'
-  const hogyanEleje =
-    'Az új jelszót azzal az e-mail-címmel állítsd be, amelyre ezt a levelet kaptad ('
-  const hogyanVege =
-    '), mert ezzel regisztráltál nálunk. A gomb megnyitja a beállító oldalt: ott add meg ezt a ' +
-    `címet, és küldünk rá egy linket, amelyen a saját jelszavadat választhatod meg. ${migrationNoticeLinkValiditySentence()}`
+    'A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. ' +
+    'Ha eddig a korábbi felületet használtad, a régi jelszavad nem költözött át.'
+  const hogyan =
+    'Ha még nem állítottál be jelszót az új felületen, a gombbal nyisd meg a beállító oldalt. ' +
+    'Ott add meg azt az e-mail-címet, amelyre ezt a levelet kaptad. ' +
+    'Küldünk rá egy külön levelet, amelynek linkjén kiválaszthatod az új jelszavadat. ' +
+    migrationNoticeLinkValiditySentence()
   const kurzusaim =
-    'Belépés után a Kurzusaim menüpontban találod a megvásárolt kurzusaidat, vagy ha azt kérted, ' +
-    'az ingyenes SOS KézRelax villámkurzust.'
+    'Ez a megvásárolt kurzusaidra és az ingyenes SOS KézRelax villámkurzusra is vonatkozik. ' +
+    MIGRATION_MISSING_COURSE_NOTE
   const segitseg =
     'Ha elakadsz, vagy nem emlékszel, melyik címmel regisztráltál, válaszolj erre a levélre. ' +
     'Emberi választ kapsz, és megkeressük a fiókodat.'
@@ -149,32 +152,39 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
     ...renderLayout({
       eyebrow: 'Fiók-átköltöztetés',
       preheader: MIGRATION_NOTICE_PREHEADER,
-      heading: 'Megújult az oldal, új jelszó kell',
+      heading: 'Megújult a Kineticare',
       paragraphsHtml: [
         escapeHtml(greeting),
         escapeHtml(miert),
+        `A fiókod e-mail-címe:<br /><strong style="overflow-wrap:anywhere;word-break:break-all;">${escapeHtml(email)}</strong>`,
+        escapeHtml(hogyan),
         `<strong>${escapeHtml(MIGRATION_NOTICE_ACCESS_SENTENCE)}</strong>`,
-        `${escapeHtml(hogyanEleje)}<strong>${escapeHtml(email)}</strong>${escapeHtml(hogyanVege)}`,
         escapeHtml(kurzusaim),
       ],
       paragraphsText: [
         greeting,
         miert,
+        `A fiókod e-mail-címe: ${email}`,
+        hogyan,
         MIGRATION_NOTICE_ACCESS_SENTENCE,
-        `${hogyanEleje}${email}${hogyanVege}`,
         kurzusaim,
       ],
       cta: { label: ctaLabel('password-reset-set'), url },
       closingParagraphsHtml: [
+        escapeHtml(MIGRATION_EXISTING_PASSWORD_NOTE),
         escapeHtml(segitseg),
         `Üdvözlettel:<br />${escapeHtml(MIGRATION_NOTICE_SIGNATURE)}`,
       ],
-      closingParagraphsText: [segitseg, `Üdvözlettel: ${MIGRATION_NOTICE_SIGNATURE}`],
+      closingParagraphsText: [
+        MIGRATION_EXISTING_PASSWORD_NOTE,
+        segitseg,
+        `Üdvözlettel: ${MIGRATION_NOTICE_SIGNATURE}`,
+      ],
       note: spam,
       footer: {
         reason:
           `Ezt a levelet azért kapod, mert a(z) ${email} címmel fiókod van a Kineticare oldalán, ` +
-          'és a fiókodat az új felületre költöztettük át.',
+          'és az új felületen történő belépéshez küldünk segítséget.',
         replyNote: `Kérdésed van? Válaszolj erre a levélre, vagy írj a(z) ${MIGRATION_NOTICE_REPLY_TO} címre.`,
       },
     }),

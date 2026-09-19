@@ -32,9 +32,10 @@ idővonal, világos cselekvés, nyitott visszaút.**
    meglepetésként.
 3. **Egyetlen kért cselekvés levelenként.** Egy levél = egy gomb. A bejelentő
    levélben nincs teendő; az aktiváló levélben pontosan egy: jelszót beállítani.
-4. **A hozzáférés kimondva, nem sejtetve.** „A megvásárolt kurzusaid átkerültek,
-   újra fizetni NEM kell." Ez a mondat szó szerint szerepeljen — ez a vevő
-   legfőbb félelme.
+4. **A következő lépés és a segítség kimondva.** Belépés után a Kurzusaim
+   oldalon látszanak a fiókhoz tartozó kurzusok. Ha korábbi hozzáférés hiányzik,
+   segítséget kérjen a vevő újravásárlás helyett. Ellenőrzés nélkül ne ígérjünk
+   teljes importot vagy minden kurzus lejátszhatóságát.
 5. **Visszaút biztosítva.** A régi rendszer addig marad élő, amíg az új
    bizonyítottan működik (lásd 7. — rollback-elv). Ezt is elmondjuk a vevőnek:
    „ha bármi nem sikerül, a régi felület még elérhető."
@@ -207,32 +208,36 @@ személyes tokent visz; ez a levél **nem**. Három oka van:
 lépést akartok, a 4.2. levél és a `--send-invites` út továbbra is él, az
 viszont mail merge-öt és a token kezelését kívánja.
 
-> **Tárgy:** Új helyen a kurzusaid: állítsd be a jelszavad
+> **Tárgy:** Megújult a Kineticare: állítsd be az új jelszavad
 >
 > Kedves {{nev}}!
 >
-> A Kineticare kurzusai új, saját felületre költöztek. Ezért írunk: a **régi
-> jelszavad az új oldalon nem működik**, mert a korábbi oldal külön rendszer
-> volt, és a jelszavakat onnan nem vesszük át. Nem veszett el semmi, és nem is
-> te hibáztál: mindenkinek új jelszót kell beállítania, aki eddig a régi oldalon
-> vásárolt.
+> A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. Ha
+> eddig a korábbi felületet használtad, a régi jelszavad nem költözött át:
+> a korábbi oldal külön rendszer volt.
 >
-> **A megvásárolt kurzusaid megvannak, újra fizetned nem kell.**
+> A fiókod e-mail-címe: **{{email}}**
 >
-> Állítsd be a jelszavad: {{belepes_atallas_url}}
+> Ha még nem állítottál be jelszót az új felületen, nyisd meg a beállító oldalt:
+> {{belepes_atallas_url}}
 >
-> A megnyíló oldalon add meg azt az e-mail-címet, amelyre ezt a levelet kaptad.
-> Küldünk rá egy linket, azon beállítod a saját jelszavad, és utána a
-> **Kurzusaim** oldalon ott lesz minden anyagod. A link 1 óráig érvényes; ha
-> lejár, ugyanott kérhetsz újat.
+> Ott add meg azt az e-mail-címet, amelyre ezt a levelet kaptad. Küldünk rá egy
+> külön levelet, amelynek linkjén kiválaszthatod az új jelszavadat. A link
+> 1 óráig érvényes; ha lejár, ugyanott kérhetsz újat.
+>
+> **A fiókodhoz tartozó kurzusokat belépés után a Kurzusaim oldalon találod.**
+> Ez a megvásárolt kurzusaidra és az ingyenes SOS KézRelax villámkurzusra is
+> vonatkozik. Ha valamelyik korábbi kurzusod hiányzik, ne vásárold meg újra,
+> hanem írj nekünk.
+>
+> Ha az új felületen már beállítottál jelszót, azzal továbbra is beléphetsz.
 >
 > Ha pár percen belül nem érkezik meg a levél, nézd meg a levélszemét mappát is,
 > és keress rá a Kineticare szóra. Ugyanarra a címre 10 percen belül legfeljebb
 > 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány percet az újabb
 > próbálkozással.
 >
-> Ha elakadsz, vagy nem emlékszel, melyik címmel vásároltál, válaszolj erre a
-> levélre. Emberi választ kapsz, és megkeressük a fiókodat.
+> Ha elakadsz, válaszolj erre a levélre, és segítünk.
 >
 > Üdvözlettel:
 > {{alairas}}
@@ -241,7 +246,8 @@ viszont mail merge-öt és a token kezelését kívánja.
 
 | Mező                      | Mi kerül bele                                                                   | Ki adja meg              |
 | ------------------------- | ------------------------------------------------------------------------------- | ------------------------ |
-| `{{nev}}`                 | a vevő keresztneve; merge nélkül „Kedves Vásárlónk!" a megszólítás              | levelezőrendszer / Katák |
+| `{{nev}}`                 | a fiókban megadott név; név nélkül „Szia!" a megszólítás              | levelezőrendszer / Katák |
+| `{{email}}` | a fiók pontos e-mail-címe | rendszer |
 | `{{belepes_atallas_url}}` | az átállási céllap teljes címe: a `NEXT_PUBLIC_SERVER_URL` + `/belepes-atallas` | üzemeltetés              |
 | `{{alairas}}`             | az aláírás (a 4.1–4.3. levelekével AZONOS, 1. alapelv)                          | Katák                    |
 
@@ -268,8 +274,9 @@ A lap négy dolgot teljesít, mindegyiket őr-teszt méri:
 
 1. kimondja, hogy **nem a vevő hibázott**, és megmondja az okot (a régi oldal
    külön rendszer volt);
-2. kimondja szó szerint: **„A megvásárolt kurzusaid megvannak, újra fizetned
-   nem kell."**, a beküldés előtt és a beküldés utáni megerősítő panelen is;
+2. megmutatja a Kurzusaim oldalt mint következő lépést, és hiányzó korábbi
+   kurzusnál segítséget ajánl újravásárlás helyett. Ez az ingyenes regisztrálókra
+   is vonatkozik; a puszta címzettlista nem bizonyít lejátszható hozzáférést;
 3. **egy** kért cselekvés van rajta (a visszaállító link kérése), ugyanazzal a
    végponttal, kérés-korláttal és gombfelirattal, mint a `/elfelejtett-jelszo`;
 4. van **visszaút** (`/belepes`) és **segítségkérés** (`/kapcsolat`).
@@ -288,59 +295,38 @@ often miss them"
 
 ### 4.7. A 4.5. levél KÉSZ sablonja és küldője (WP40, 2026-09-16)
 
-A 4.5. szövege 2026-09-16-tól **kódban él**: `src/lib/email/templates/migration.ts`
-(tárgy + előnézeti sor + HTML a közös `layout.ts` brand-keretében + plain-text),
-a kiküldő pedig `npm run email:migracio` (`src/scripts/send-migration-notice.ts`,
-részletek: 6.7.). A tulajdonos 7. körös hangsúlyai kerültek bele: megújult az
-oldal; a régi jelszó elavult; az új jelszót AZZAL a címmel kell beállítani,
-amelyre a levél érkezett (ezzel regisztrált); belépés után a **Kurzusaim**
-menüpontban vannak a megvett kurzusok vagy az ingyenes SOS KézRelax villámkurzus.
+A sablon forrása `src/lib/email/templates/migration.ts`: tárgy, előnézeti sor,
+HTML a közös `layout.ts` brand-keretében és plain-text. A kiküldő továbbra is
+`npm run email:migracio`; címzettszűrése változatlan (6.7.).
 
-> **Tárgy:** Megújult a Kineticare: állítsd be az új jelszavad
-> _(49 karakter; őr-teszt: legfeljebb 60)_
->
-> **Előnézeti sor:** A régi jelszavad itt már nem működik. A kurzusaid
-> megvannak, újra fizetned nem kell.
->
-> _Fiók-átköltöztetés_
->
-> **Megújult az oldal, új jelszó kell**
->
-> Kedves {{nev}}! _(név nélkül: Kedves Vásárlónk!)_
->
-> A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. Ezért
-> írunk: a régi jelszavad elavult, az új oldalon már nem működik. Nem veszett el
-> semmi, és nem te hibáztál: mindenkinek új jelszót kell beállítania, aki a
-> korábbi oldalon regisztrált.
->
-> **A megvásárolt kurzusaid megvannak, újra fizetned nem kell.**
->
-> Az új jelszót azzal az e-mail-címmel állítsd be, amelyre ezt a levelet kaptad
-> (**{{email}}**), mert ezzel regisztráltál nálunk. A gomb megnyitja a beállító
-> oldalt: ott add meg ezt a címet, és küldünk rá egy linket, amelyen a saját
-> jelszavadat választhatod meg. A link 1 óráig érvényes; ha lejár, ugyanott
-> kérhetsz újat.
->
-> Belépés után a Kurzusaim menüpontban találod a megvásárolt kurzusaidat, vagy
-> ha azt kérted, az ingyenes SOS KézRelax villámkurzust.
->
-> **[ Beállítom az új jelszót ]** → `{{NEXT_PUBLIC_SERVER_URL}}/belepes-atallas`
->
-> Ha elakadsz, vagy nem emlékszel, melyik címmel regisztráltál, válaszolj erre
-> a levélre. Emberi választ kapsz, és megkeressük a fiókodat.
->
-> Üdvözlettel:
-> a Kineticare csapata
->
-> _Ha pár percen belül nem érkezik meg a levél, nézd meg a levélszemét mappát
-> is, és keress rá a Kineticare szóra. Ugyanarra a címre 10 percen belül
-> legfeljebb 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány
-> percet az újabb próbálkozással._
->
-> **Lábléc:** Kineticare · Kézrehabilitációs online kurzusplatform
-> Ezt a levelet azért kapod, mert a(z) {{email}} címmel fiókod van a Kineticare
-> oldalán, és a fiókodat az új felületre költöztettük át.
-> Kérdésed van? Válaszolj erre a levélre, vagy írj a(z) info@kineticare.hu címre.
+A 2026-09-19-i pontosítás a 4.5. mintát követi: a korábbi rendszer jelszava
+nem költözött át, a már aktivált újoldali fiók jelszava viszont használható.
+A név a fiókból jön, üres névnél „Szia!”; a pontos fiókcím külön, kiemelt
+sorban látható. Az ingyenes és fizetős kurzusokhoz azonos visszatérési
+útmutatót adunk, ellenőrizetlen jogosultságígéret nélkül.
+
+A tárgy: „Megújult a Kineticare: állítsd be az új jelszavad”. Az előnézeti sor:
+„Ugyanazzal az e-mail-címmel térhetsz vissza. Segítünk a jelszó beállításában.”
+A gomb továbbra is **Beállítom az új jelszót**, a célja a konfigurált
+`NEXT_PUBLIC_SERVER_URL` + `/belepes-atallas`. Nincs token a kampánylevélben.
+A végleges szöveget a kód állítja elő; az alábbi offline előnézet ebből készül.
+
+**Küldés nélküli ellenőrzés:** `node --import tsx src/scripts/preview-migration-email.tsx <kimeneti-könyvtár>`.
+A segéd kizárólag kitalált mintaadatokat használ, nem inicializál Payloadot,
+nem kapcsolódik adatbázishoz és nem küld levelet. Névvel, név nélkül és hosszú
+adatokkal HTML/text változatot, valamint statikus céllap- és resetmintát ad.
+A Resend-importfájl külön piszkozat: `GREETING` teljes megszólítás (fallback
+„Szia!”), `ACCOUNT_EMAIL` pontos fiókcím, `MIGRATION_URL` teljes, ellenőrzött
+HTTPS-cél. Az utóbbi kettőhöz ne használjunk éles küldésben példafallbacket.
+A változók szolgáltatói behelyettesítését és escapingjét külön ellenőrizni
+kell; a piszkozat nem cseréli le a meglévő `sendMail` integrációt.
+
+**Küldési kapuk:** csak a végleges domain átállítása és mindkét levéllink
+ellenőrzése után; előbb a tényleges import és címzettkör egyeztetése. Az
+értesítők és a resetlevelek közös Resend tranzakciós keretet fogyasztanak:
+a szeptember 19-én látott Free csomag napi 100-as limitje nagyobb kampányhoz
+kevés lehet. A küldés előtt a friss kvótát és a szükséges reset-tartalékot is
+ellenőrizzétek. Ez a sablonmunka nem ad kampányindítási engedélyt.
 
 **Tervezési döntések (forrással; a részletes indoklás a sablon fejkommentjében):**
 

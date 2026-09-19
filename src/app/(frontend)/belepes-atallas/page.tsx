@@ -6,6 +6,12 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { ctaLabel } from '@/lib/cta-vocabulary'
 import { buildPrivatePageMetadata } from '@/lib/seo'
+import {
+  MIGRATION_ACCOUNT_GUIDANCE,
+  MIGRATION_COURSES_NOTE,
+  MIGRATION_EXISTING_PASSWORD_NOTE,
+  MIGRATION_MISSING_COURSE_NOTE,
+} from '@/lib/migration-copy'
 
 /**
  * /belepes-atallas — az ÁTKÖLTÖZTETETT vevő egyetlen belépő útja.
@@ -19,7 +25,7 @@ import { buildPrivatePageMetadata } from '@/lib/seo'
 export const metadata: Metadata = buildPrivatePageMetadata({
   title: 'Jelszó beállítása az új felületen',
   description:
-    'A korábbi rendszer jelszava nem költözött át. Kérj beállító linket arra az e-mail-címre, amellyel a kurzust megvetted.',
+    'Kérj jelszóbeállító linket arra az e-mail-címre, amellyel vásároltál vagy az ingyenes kurzusra regisztráltál.',
   path: '/belepes-atallas',
 })
 
@@ -34,14 +40,8 @@ export const metadata: Metadata = buildPrivatePageMetadata({
 export const ATALLAS_KERES_KORLAT_MONDAT =
   'Ugyanarra a címre 10 percen belül legfeljebb 3 levelet küldünk ki, ezért ha többször is kérted, várj néhány percet az újabb próbálkozással.'
 
-/**
- * A migrációs terv 1. szakaszának 4. alapelve szó szerint megköveteli a
- * hozzáférés kimondását: „A megvásárolt kurzusaid átkerültek, újra fizetni NEM
- * kell." Ez a vevő legfőbb félelme, ezért nem sejtetjük, hanem kimondjuk, és a
- * lapon KÉTSZER szerepel: a beküldés előtt és a beküldés után is.
- */
-export const ATALLAS_HOZZAFERES_MONDAT =
-  'A megvásárolt kurzusaid megvannak, újra fizetned nem kell.'
+/** Ugyanaz a következő lépés a levélben és az űrlap két állapotában. */
+export const ATALLAS_HOZZAFERES_MONDAT = MIGRATION_COURSES_NOTE
 
 export default function BelepesAtallasPage() {
   return (
@@ -60,36 +60,36 @@ export default function BelepesAtallasPage() {
               import."
               https://auth0.com/docs/manage-users/user-migration/bulk-user-imports */}
           <p className="kc-auth-lead">
-            A Kineticare kurzusai új, saját felületre költöztek. A régi jelszavad ide nem jött át,
-            mert a korábbi oldal külön rendszer volt, és a jelszavakat onnan nem vesszük át. Nem te
-            hibáztál: mindenkinek új jelszót kell beállítania, aki eddig a régi oldalon vásárolt.
+            A Kineticare kurzusai új, saját felületre költöztek. A korábbi oldal külön rendszer
+            volt, az ottani jelszavakat nem vesszük át. Ha a régi jelszóval nem tudsz belépni, nem
+            te hibáztál. {MIGRATION_ACCOUNT_GUIDANCE}
           </p>
+          <p className="kc-auth-lead">{MIGRATION_EXISTING_PASSWORD_NOTE}</p>
 
           <p className="kc-atallas__notice">
-            <strong>{ATALLAS_HOZZAFERES_MONDAT}</strong> Ugyanazzal az e-mail-címmel éred el őket,
-            amellyel a régi oldalon vásároltál.
+            <strong>{ATALLAS_HOZZAFERES_MONDAT}</strong> {MIGRATION_MISSING_COURSE_NOTE}
           </p>
 
           {/* EGY kért cselekvés a lapon: a lap alján álló két hivatkozás
               (segítség, visszaút) szöveglink, nem gomb — a vizuális
               elsődlegesség így egyedül a beküldő gombé marad. */}
           <ForgotPasswordForm
-            emailHint="Azt a címet add meg, amellyel a régi oldalon vásároltál."
+            emailHint="Azt a címet add meg, amellyel korábban vásároltál vagy az ingyenes kurzusra regisztráltál."
             successNote={ATALLAS_HOZZAFERES_MONDAT}
           />
 
           <h2>Mi történik, miután elküldted?</h2>
           <ol className="kc-atallas__steps">
-            <li>Küldünk egy levelet a megadott címre.</li>
+            <li>Ha a címhez tartozik fiók, küldünk rá egy visszaállító linket.</li>
             <li>A levélben lévő linken beállítod a saját jelszavad.</li>
-            <li>A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.</li>
+            <li>A jelszó beállítása után továbbléphetsz a Kurzusaim oldalra.</li>
           </ol>
 
           <h2>Nem érkezett meg a levél?</h2>
           <p>
             Nézd meg a levélszemét mappát is, és keress rá a Kineticare szóra.{' '}
             {ATALLAS_KERES_KORLAT_MONDAT} Ha így sem találod, vagy nem emlékszel, melyik címmel
-            vásároltál, szólj nekünk, és megkeressük a fiókodat.
+            regisztráltál, szólj nekünk, és megkeressük a fiókodat.
           </p>
 
           {/* §3.2 #33 („Írj nekünk") és a #15 mintázata („Vissza a <hova>") —
