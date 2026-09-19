@@ -270,6 +270,35 @@ describe('Services — REV C sín + panel', () => {
       })),
     })
 
+  it('átrendezett sorok: az ikon a sor JELENTÉSÉVEL megy, nem a pozícióval (Codex, 2026-09-19)', () => {
+    const alap = railBlock()
+    const rows = alap.rows ?? []
+    const forditva = block({ ...alap, rows: [rows[2], rows[0], rows[1]] })
+    const markup = render(forditva)
+    const sorrend = [...markup.matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g)].map(
+      (m) => m[1],
+    )
+    expect(sorrend).toEqual(['kepzes', 'rendelo', 'otthon'])
+    // Ismeretlen cím, de ismert CTA-cél: az URL dönt.
+    const urlAlapjan = block({
+      ...alap,
+      rows: [
+        {
+          ...rows[0],
+          id: 'x0',
+          title: 'Gyere el hozzánk',
+          url: '/szolgaltatasok#rendeloi-kezelesek',
+        },
+        { ...rows[1], id: 'x1', title: 'Tanulj otthon', url: '/kurzusok/otthoni-program?utm=a' },
+        { ...rows[2], id: 'x2', title: 'Szakembereknek', url: '/szakembereknek' },
+      ],
+    })
+    const urlSorrend = [
+      ...render(urlAlapjan).matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g),
+    ].map((m) => m[1])
+    expect(urlSorrend).toEqual(['rendelo', 'otthon', 'kepzes'])
+  })
+
   it('sín-elrendezésnél nincs háromoszlopos tábla, a tábla-fotó kimarad', () => {
     const markup = render(railBlock())
     expect(markup).toContain('kc-services--sin')

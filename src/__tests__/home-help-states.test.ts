@@ -17,6 +17,7 @@ import {
   homeHelpRailRows,
   isClosedHandHomeHelpRail,
   isConvertibleHomeHelpServices,
+  homeHelpDoorIndex,
   isHomeHelpRailRows,
   isLegacyThreeWayHomeHelp,
   isSzolgaltatasokAjtoBlock,
@@ -485,5 +486,48 @@ describe('presentHomeLayout — a sín előtti szekció sávot vált', () => {
     expect(railIndex).toBeGreaterThan(0)
     expect(presented[railIndex - 1]?.blockType).toBe('states')
     expect(presented[railIndex - 1]).toBe(layout[railIndex - 1])
+  })
+})
+
+describe('homeHelpDoorIndex — az ajtó a sor jelentéséből (Codex, 2026-09-19)', () => {
+  it('cím szerint, kis/nagybetű és térköz nélkül is', () => {
+    expect(homeHelpDoorIndex({ title: 'Rendelői kezelések' }, 2)).toBe(0)
+    expect(homeHelpDoorIndex({ title: '  otthoni PROGRAM ' }, 0)).toBe(1)
+    expect(homeHelpDoorIndex({ title: 'Szakmai képzések' }, 0)).toBe(2)
+  })
+
+  it('URL szerint, ha a cím egyedi', () => {
+    expect(
+      homeHelpDoorIndex({ title: 'Stúdió', url: '/szolgaltatasok#rendeloi-kezelesek' }, 1),
+    ).toBe(0)
+    expect(homeHelpDoorIndex({ title: 'Videók', url: '/kurzusok/otthoni?x=1' }, 0)).toBe(1)
+    expect(homeHelpDoorIndex({ title: 'Kollégáknak', url: '/szakembereknek' }, 0)).toBe(2)
+    expect(homeHelpDoorIndex({ title: 'Kollégáknak', url: PROFESSIONAL_TRAINING_URL }, 0)).toBe(2)
+  })
+
+  it('felismerhetetlen sor: a pozíció a tartalék, a három ajtó körbejár', () => {
+    expect(homeHelpDoorIndex({ title: 'Egyéb' }, 0)).toBe(0)
+    expect(homeHelpDoorIndex({ title: 'Egyéb' }, 4)).toBe(1)
+    expect(homeHelpDoorIndex({}, 5)).toBe(2)
+  })
+
+  it('a /szolgaltatasok átrendezett ajtó-blokkján a kezelés-fotó a rendelői sorral megy', () => {
+    const rows = HOME_HELP_STATES.map((state, index) => ({
+      id: `r${index}`,
+      title: state.title,
+      body: state.body,
+      felirat: state.felirat,
+      url: state.url,
+    }))
+    const layout = [
+      { blockType: 'services', rows: [rows[1], rows[0], rows[2]] },
+    ] as unknown as NonNullable<Page['layout']>
+    const [presented] = presentSzolgaltatasokLayout(layout)
+    const fotok = (presented as BlockServices).rows?.map((row) =>
+      typeof row.photo === 'object' && row.photo ? row.photo.url : null,
+    )
+    expect(fotok?.[1]).toBe(SZOLGALTATASOK_KEZELES_FOTO.url)
+    expect(fotok?.[0]).toBe(homeHelpFallbackMedia(1).url)
+    expect(fotok?.[2]).toBe(homeHelpFallbackMedia(2).url)
   })
 })

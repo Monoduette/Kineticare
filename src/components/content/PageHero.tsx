@@ -39,18 +39,43 @@ export interface PageHeroProps {
   title: string
   lead?: string | null
   media?: Media | null
+  /**
+   * `stacked` (alap): a kép a fejléc-sáv ALATT, saját sávban, a természetes
+   * képarányán, vágás nélkül — minden CMS-oldal ezt kapja, mert a
+   * `pages.heroImage` mező általános (fekvő, négyzetes, grafikus kép is
+   * lehet). `paired`: a Rólunk-oldal csapatfotós elrendezése (3:2, a kép a
+   * cím MELLETT, arcokra hangolt `object-position`) — csak ott, ahol a
+   * tulajdonosi kérés ezt kérte (Codex, 2026-09-19).
+   */
+  variant?: 'stacked' | 'paired'
 }
 
-export function PageHero({ title, lead, media }: PageHeroProps) {
+export function PageHero({ title, lead, media, variant = 'stacked' }: PageHeroProps) {
   const leadText = lead?.trim() ?? ''
-  if (!media) {
+  if (!media || variant === 'stacked') {
     return (
-      <Section className="kc-page-hero" variant="tint">
-        <Container size="narrow">
-          <h1 className="kc-page-hero__title">{title}</h1>
-          {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
-        </Container>
-      </Section>
+      <>
+        <Section className="kc-page-hero" variant="tint">
+          <Container size="narrow">
+            <h1 className="kc-page-hero__title">{title}</h1>
+            {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
+          </Container>
+        </Section>
+        {media ? (
+          <Section flush>
+            <Container>
+              <div className="kc-page-hero__media">
+                <MediaImage
+                  media={media}
+                  preferredSize="lg"
+                  priority
+                  sizes="(max-width: 1120px) 100vw, 1120px"
+                />
+              </div>
+            </Container>
+          </Section>
+        ) : null}
+      </>
     )
   }
   return (

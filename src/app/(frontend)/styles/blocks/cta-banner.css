@@ -124,8 +124,12 @@
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
+  /* A borítók (1080×750, 1080×880) szélről szélre rajzolt packshotok: a
+     laptop-keret és a cím a kép széléig ér, ezért VÁGNI nem szabad (Codex,
+     2026-09-19) — ugyanaz a szabály, mint a kurzusrácson (course-showcase.css):
+     3:2 doboz, `contain`, a keret tint-háttere tölti ki a maradékot. */
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
   border-radius: var(--kc-radius-md);
   background-color: var(--kc-color-surface-tint);
 }

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 
 import type { BlockServices, Media } from '../../payload-types'
+import { homeHelpDoorIndex } from '../../lib/home-help-states'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { MediaImage } from '../content/MediaImage'
 import { mediaDimensions } from '../content/media-url'
@@ -151,7 +152,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
                       key={`rail-${row.id ?? index}`}
                     >
                       <span aria-hidden="true" className="kc-services-sin__marker">
-                        <RailDoorIcon index={index} />
+                        <RailDoorIcon door={homeHelpDoorIndex(row, index)} />
                       </span>
                       <span className="kc-services-sin__rail-copy">
                         <span className="kc-services-sin__rail-title">{rowTitle}</span>
@@ -411,9 +412,9 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
  * A `place-items: center` rács a kört és a glifát középre zárja
  * (services-sin.css), a felirat a kör mellett, a sor közepére igazítva.
  */
-function RailDoorIcon({ index }: { index: number }) {
-  if (index % 3 === 0) return <ClinicIcon />
-  if (index % 3 === 1) return <HomeIcon />
+function RailDoorIcon({ door }: { door: 0 | 1 | 2 }) {
+  if (door === 0) return <ClinicIcon />
+  if (door === 1) return <HomeIcon />
   return <CertificateIcon />
 }
 

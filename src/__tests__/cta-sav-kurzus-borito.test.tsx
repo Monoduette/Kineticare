@@ -282,7 +282,7 @@ describe('cta-banner.css — a borító mérete nézetablakonként', () => {
     expect(px).toBeLessThanOrEqual(260)
   })
 
-  it('a keret a kártya-nyelv tokenjeit viseli (radius-lg, hairline-szegély, 4:3)', () => {
+  it('a keret a kártya-nyelv tokenjeit viseli (radius-lg, hairline-szegély, 3:2 contain)', () => {
     const lap = stilusLapNezetablakra(LAPOK, 1440, 900)
     expect(sajatErtek(lap, FIGURE, 'border-radius')).toBe('var(--kc-radius-lg)')
     expect(sajatErtek(lap, FIGURE, 'border')).toBe('1px solid var(--kc-color-border)')
@@ -292,6 +292,9 @@ describe('cta-banner.css — a borító mérete nézetablakonként', () => {
       osztaly: '.kc-cta-banner__image',
       ostagOsztaly: null,
     }
-    expect(sajatErtek(lap, kep, 'aspect-ratio')).toBe('4 / 3')
+    // A packshot-borító szélről szélre rajzolt: 3:2 doboz + contain, vágás nélkül
+    // (Codex, 2026-09-19; ugyanaz a szabály, mint a kurzusrácson).
+    expect(sajatErtek(lap, kep, 'aspect-ratio')).toBe('3 / 2')
+    expect(sajatErtek(lap, kep, 'object-fit')).toBe('contain')
   })
 })

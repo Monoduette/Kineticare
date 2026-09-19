@@ -240,9 +240,17 @@ export default async function CmsPage({ params }: Props) {
       {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
       <JsonLd data={siteGraph} />
       <article className="kc-cms-page">
-        {/* WP51: a fejléc-kép a cím MELLETT áll (PageHero, `kc-page-hero--paired`),
-            nem külön sávban a fejléc alatt. */}
-        {hasFilmHero ? null : <PageHero lead={page.excerpt} media={heroMedia} title={page.title} />}
+        {/* WP51: a /rolunk fejléc-képe a cím MELLETT áll (PageHero `paired`);
+            minden más CMS-oldal a képet a fejléc alatt, természetes arányán
+            kapja (`stacked`), mert a heroImage mező általános. */}
+        {hasFilmHero ? null : (
+          <PageHero
+            lead={page.excerpt}
+            media={heroMedia}
+            title={page.title}
+            variant={slug === 'rolunk' ? 'paired' : 'stacked'}
+          />
+        )}
         {hasLayout ? (
           <RenderBlocks
             appointment={appointment}

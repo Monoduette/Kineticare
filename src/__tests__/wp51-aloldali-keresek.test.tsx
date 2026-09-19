@@ -95,9 +95,27 @@ describe('2a. PageHero — a fejléc-kép a cím MELLETT', () => {
     expect(html).not.toContain('<figure')
   })
 
-  it('képpel: széles konténer, a cím és a bevezető ELŐBB, a fotó UTÁNA a DOM-ban (mobilon a cím alatt)', () => {
+  it('képpel, de variant nélkül (általános CMS-oldal): a kép a fejléc ALATT, saját sávban, vágás nélkül', () => {
     const html = renderToStaticMarkup(
-      createElement(PageHero, { title: 'A kéz a mindenünk', lead: 'Bevezető.', media: foto }),
+      createElement(PageHero, { title: 'Bármely oldal', lead: 'Bevezető.', media: foto }),
+    )
+    expect(html).toContain('kc-container--narrow')
+    expect(html).not.toContain('kc-page-hero--paired')
+    expect(html).toContain('kc-page-hero__media')
+    expect(html).not.toContain('<figure class="kc-page-hero__figure">')
+    // A cím megelőzi a képet; a kép nem lusta (LCP-jelölt).
+    expect(html.indexOf('kc-page-hero__title')).toBeLessThan(html.indexOf('kc-page-hero__media'))
+    expect(html).not.toContain('loading="lazy"')
+  })
+
+  it('képpel, paired (a /rolunk): széles konténer, a cím és a bevezető ELŐBB, a fotó UTÁNA a DOM-ban (mobilon a cím alatt)', () => {
+    const html = renderToStaticMarkup(
+      createElement(PageHero, {
+        title: 'A kéz a mindenünk',
+        lead: 'Bevezető.',
+        media: foto,
+        variant: 'paired',
+      }),
     )
     expect(html).toContain('kc-page-hero--paired')
     expect(html).not.toContain('kc-container--narrow')
@@ -131,6 +149,9 @@ describe('2a. PageHero — a fejléc-kép a cím MELLETT', () => {
     const route = readFileSync(`${REPO}app/(frontend)/[slug]/page.tsx`, 'utf8')
     expect(route).toContain('<PageHero')
     expect(route).not.toContain('kc-page-hero__media')
+    // A páros (arcra hangolt, 3:2-re vágó) alak KIZÁRÓLAG a /rolunk-é; minden
+    // más CMS-oldal a képet a természetes arányán, a fejléc alatt kapja.
+    expect(route).toContain("variant={slug === 'rolunk' ? 'paired' : 'stacked'}")
   })
 })
 
