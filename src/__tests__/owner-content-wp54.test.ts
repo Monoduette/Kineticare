@@ -5,29 +5,40 @@ import type { Payload } from 'payload'
 import {
   alkalmazRolunkHeroKep,
   alkalmazSosGaleria,
+  alkalmazSzolgaltatasokTechnikakTabla,
   biztositMediaFajlbol,
   dontsMediaBiztositas,
   payloadMediaFuggosegek,
   ROLUNK_HERO_FORRAS,
   ROLUNK_HERO_KORABBI_PREFIXEK,
   SOS_GALERIA_FORRASOK,
+  TECHNIKAK_TABLA_CIM,
+  TECHNIKAK_TABLA_HORGONY,
+  TECHNIKAK_TABLA_KEP_FORRAS,
+  TECHNIKAK_TABLA_SOROK,
+  technikakTablaBlokk,
   ujMediaAllapot,
   type MediaBiztositasFuggosegek,
   type MediaForras,
   type UjMediaAllapot,
 } from '../scripts/apply-owner-content'
-import type { Product } from '../payload-types'
+import { isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
+import { validateAnchorId } from '../blocks/section-settings'
+import { buildSzolgaltatasokLayout } from '../scripts/restore-legacy-content'
+import type { Page, Product } from '../payload-types'
 
 /**
  * WP54 — a tulajdonosi kör 2026-09-19 fotós része, a TISZTA szabályok
  * (src/scripts/apply-owner-content.ts): média a repó fájljából, a /rolunk
- * stúdiófotó, az SOS galéria.
+ * stúdiófotó, az SOS galéria, a /szolgaltatasok technikák-táblája.
  *
  * Adatbázis, fájlrendszer és hálózat NÉLKÜL: a Médiatár-hozzáférés injektált
  * (`MediaBiztositasFuggosegek`), a próbafutásban tiltott ágak HANGOSAN dobó
  * hamisítványt kapnak. A tesztek nem függenek attól, hogy a jóváhagyott
  * fotófájlok léteznek-e a repóban (a `forrasLetezik` bemenet).
  */
+
+type Szekciosor = NonNullable<Page['layout']>
 
 const forras: MediaForras = {
   filename: 'proba-kep-1600.webp',
@@ -361,5 +372,150 @@ describe('alkalmazSosGaleria', () => {
     const masolat = structuredClone(jelenlegi)
     alkalmazSosGaleria({ jelenlegi, ujMediak: ujMediak([1, 2, 3]) })
     expect(jelenlegi).toEqual(masolat)
+  })
+})
+
+// ===========================================================================
+// WP54/4 — a /szolgaltatasok technikák-táblája
+// ===========================================================================
+
+describe('alkalmazSzolgaltatasokTechnikakTabla', () => {
+  const seed = (): Szekciosor => buildSzolgaltatasokLayout()
+  const ajtoIndex = (layout: Szekciosor): number => layout.findIndex(isSzolgaltatasokAjtoBlock)
+  const kep = (id: number | null, forrasLetezik = true): UjMediaAllapot =>
+    allapot(TECHNIKAK_TABLA_KEP_FORRAS.filename, id, forrasLetezik)
+
+  it('a seed pontosan egy ajtó-blokkot tartalmaz (a fixtúra érvényes)', () => {
+    expect(seed().filter(isSzolgaltatasokAjtoBlock)).toHaveLength(1)
+  })
+
+  it('a blokk: tábla-elrendezés, 5 sor „1”–„5” számozással, CTA és fotó nélkül, horgonnyal', () => {
+    const blokk = technikakTablaBlokk(7)
+
+    expect(blokk.blockType).toBe('services')
+    expect(blokk.elrendezes).toBe('tabla')
+    expect(blokk.eyebrow).toBe('Rendelői kezelések')
+    expect(blokk.title).toBe(TECHNIKAK_TABLA_CIM)
+    expect(blokk.lead).toBe(
+      'Vizsgálat után ezekből állítjuk össze a kezelési tervedet. Minden alkalom a te panaszodhoz igazodik.',
+    )
+    expect(blokk.image).toBe(7)
+    expect(blokk.rows).toHaveLength(5)
+    expect(blokk.rows?.map((sor) => sor.number)).toEqual(['1', '2', '3', '4', '5'])
+    expect(blokk.rows?.map((sor) => sor.title)).toEqual([
+      'Gyógytorna',
+      'Manuálterápia',
+      'Kinesio Tape és Dynamic Tape',
+      'Flossing és köpölyterápia',
+      'Hegkezelés, fasciakés, NRX bandázs',
+    ])
+    for (const sor of blokk.rows ?? []) {
+      expect(sor.felirat).toBe('')
+      expect(sor.url).toBe('')
+      expect(sor.photo).toBeNull()
+      expect(sor.body.length).toBeGreaterThan(0)
+    }
+    expect(isSzolgaltatasokAjtoBlock(blokk)).toBe(false)
+    expect(blokk.sectionSettings).toEqual({
+      visible: true,
+      hatter: 'feher',
+      anchorId: TECHNIKAK_TABLA_HORGONY,
+    })
+    expect(validateAnchorId(TECHNIKAK_TABLA_HORGONY)).toBe(true)
+    expect(TECHNIKAK_TABLA_SOROK).toHaveLength(5)
+  })
+
+  it('a vevői szövegekben nincs gondolatjel-halmozás', () => {
+    const szovegek = [
+      TECHNIKAK_TABLA_CIM,
+      ...TECHNIKAK_TABLA_SOROK.flatMap((sor) => [sor.title, sor.body]),
+      TECHNIKAK_TABLA_KEP_FORRAS.alt,
+    ]
+    for (const szoveg of szovegek) {
+      expect(szoveg).not.toContain('—')
+      expect(szoveg).not.toContain(' - ')
+    }
+  })
+
+  it('KÖZVETLENÜL az ajtó-blokk után szúrja be; a többi blokk referenciája változatlan', () => {
+    const layout = seed()
+    const masolat = structuredClone(layout)
+    const ajto = ajtoIndex(layout)
+    const eredmeny = alkalmazSzolgaltatasokTechnikakTabla({ layout, kep: kep(7) })
+
+    expect(eredmeny.layout).not.toBeNull()
+    expect(eredmeny.beszurasIndex).toBe(ajto + 1)
+    expect(eredmeny.layout).toHaveLength(layout.length + 1)
+    expect(eredmeny.layout?.[ajto]).toBe(layout[ajto])
+    expect(eredmeny.layout?.[ajto + 1]).toEqual(technikakTablaBlokk(7))
+    expect(eredmeny.layout?.[ajto + 2]).toBe(layout[ajto + 1])
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].szabaly).toBe('szolgaltatasok-technikak-tabla')
+    expect(eredmeny.modositasok[0].uzenet).toContain(TECHNIKAK_TABLA_KEP_FORRAS.filename)
+    expect(eredmeny.kihagyasok).toHaveLength(0)
+    expect(layout).toEqual(masolat)
+  })
+
+  it('idempotens: a beszúrt (akár rejtett) táblát másodszor csendben kihagyja', () => {
+    const elso = alkalmazSzolgaltatasokTechnikakTabla({ layout: seed(), kep: kep(7) })
+    const beszurt = elso.layout ?? []
+    const rejtett: Szekciosor = beszurt.map((blokk) =>
+      blokk.blockType === 'services' && blokk.title === TECHNIKAK_TABLA_CIM
+        ? { ...blokk, sectionSettings: { ...blokk.sectionSettings, visible: false } }
+        : blokk,
+    )
+    for (const layout of [beszurt, rejtett]) {
+      const masodik = alkalmazSzolgaltatasokTechnikakTabla({ layout, kep: kep(7) })
+      expect(masodik.layout).toBeNull()
+      expect(masodik.modositasok).toHaveLength(0)
+      expect(masodik.kihagyasok[0].hangos).not.toBe(true)
+      expect(masodik.kihagyasok[0].indok).toContain('MÁR')
+    }
+  })
+
+  it('ha a kép még nincs a Médiatárban, de a forrás megvan: módosít, a layoutot a futtató építi az indexre', () => {
+    const layout = seed()
+    const eredmeny = alkalmazSzolgaltatasokTechnikakTabla({ layout, kep: kep(null, true) })
+
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.beszurasIndex).toBe(ajtoIndex(layout) + 1)
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].uzenet).toContain('a repó fájljából hozza létre')
+  })
+
+  it('kép és forrásfájl nélkül NEM szúr be: hangos kihagyás', () => {
+    const eredmeny = alkalmazSzolgaltatasokTechnikakTabla({ layout: seed(), kep: kep(null, false) })
+
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.beszurasIndex).toBeNull()
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0].hangos).toBe(true)
+    expect(eredmeny.kihagyasok[0].indok).toContain(TECHNIKAK_TABLA_KEP_FORRAS.filePath)
+  })
+
+  it('hiányzó, rejtett vagy duplikált ajtó-blokknál indokolt kihagyás', () => {
+    const layout = seed()
+    const ajto = ajtoIndex(layout)
+    const nelkule = layout.filter((_, index) => index !== ajto)
+    const rejtve: Szekciosor = layout.map((blokk, index) =>
+      index === ajto
+        ? { ...blokk, sectionSettings: { ...blokk.sectionSettings, visible: false } }
+        : blokk,
+    )
+    const duplan: Szekciosor = [...layout, layout[ajto]]
+    for (const [eset, jelolt] of [
+      ['nincs', nelkule],
+      ['rejtett', rejtve],
+      ['dupla', duplan],
+    ] as const) {
+      const eredmeny = alkalmazSzolgaltatasokTechnikakTabla({ layout: jelolt, kep: kep(7) })
+      expect(eredmeny.layout, eset).toBeNull()
+      expect(eredmeny.modositasok, eset).toHaveLength(0)
+      expect(eredmeny.kihagyasok[0].hangos, eset).not.toBe(true)
+      expect(eredmeny.kihagyasok[0].indok, eset).toContain('ajtós')
+    }
+    const ures = alkalmazSzolgaltatasokTechnikakTabla({ layout: [], kep: kep(7) })
+    expect(ures.layout).toBeNull()
+    expect(ures.kihagyasok).toHaveLength(1)
   })
 })

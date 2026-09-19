@@ -34,7 +34,7 @@ import {
   type JogiOldalLeiras,
 } from '../lib/legal-content'
 import { logger } from '../lib/logger'
-import { HOME_HELP_TITLE } from '../lib/home-help-states'
+import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
 import { enrollMediaRecovery, managedMediaAssets } from '../lib/media-recovery-provenance'
 import {
   CLINIC_TREATMENTS_ANCHOR,
@@ -291,6 +291,7 @@ export type JavitasSzabaly =
   | 'rolunk-partner-mondat'
   | 'rolunk-logosavok-sorrend'
   | 'sos-galeria'
+  | 'szolgaltatasok-technikak-tabla'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -3638,8 +3639,8 @@ export const alkalmazRolunkLogosavokSorrend = (layout: Page['layout']): Szekcios
 }
 
 // ---------------------------------------------------------------------------
-// WP54 — a tulajdonosi kör 2026-09-19 fotós része: a /rolunk stúdiófotó és az
-// SOS galéria. A képeket a script a
+// WP54 — a tulajdonosi kör 2026-09-19 fotós része: a /rolunk stúdiófotó, az
+// SOS galéria és a /szolgaltatasok technikák-táblája. A képeket a script a
 // repó fájljaiból maga teszi a Médiatárba (`biztositMediaFajlbol`).
 // ---------------------------------------------------------------------------
 
@@ -3731,6 +3732,159 @@ export const alkalmazSosGaleria = (input: {
         szabaly,
         uzenet: `${uzenet}: az üres galériába a három jóváhagyott kép kerül, ebben a sorrendben: ${fajlnevLista}${
           mindenMegvan ? '' : ' (a hiányzó rekordokat a script a repó fájljaiból hozza létre)'
+        }`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+/** A technikák-tábla azonosító címe (WP54/4); ezzel ismeri fel a script a már beszúrt blokkot. */
+export const TECHNIKAK_TABLA_CIM = 'Amit a rendelőben kínálunk'
+
+/** A technikák-tábla horgonya (`sectionSettings.anchorId`). */
+export const TECHNIKAK_TABLA_HORGONY = 'rendeloi-technikak'
+
+/**
+ * A technikák-tábla képe (WP54/4): csuklókezelés a kezelőasztalon. A blokk
+ * kép NÉLKÜL nem kerül be.
+ */
+export const TECHNIKAK_TABLA_KEP_FORRAS: MediaForras = {
+  filename: 'treatment-table-hands-1600.webp',
+  filePath: 'public/media/team/treatment-table-hands-1600.webp',
+  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+}
+
+/** A technikák-tábla öt sora, a vezető által jóváhagyott vevői szövegekkel. */
+export const TECHNIKAK_TABLA_SOROK: readonly { title: string; body: string }[] = [
+  {
+    title: 'Gyógytorna',
+    body: 'Akut sérülés, műtét utáni időszak és hosszú ideje tartó fájdalom esetén a mozgásterápia a gyógyulás alapja. Otthonra is kapsz gyakorlatokat.',
+  },
+  {
+    title: 'Manuálterápia',
+    body: 'Az ízületek és a lágyrészek célzott, kézzel végzett kezelése, hogy a mozgás újra szabad és fájdalommentes legyen.',
+  },
+  {
+    title: 'Kinesio Tape és Dynamic Tape',
+    body: 'Rugalmas szalag, amely tehermentesíti a fájó szakaszt és támogatja a mozgást a kezelések között.',
+  },
+  {
+    title: 'Flossing és köpölyterápia',
+    body: 'Gumiszalagos kompresszió és vákuumos kezelés: fellazítják a lágyrészeket, élénkítik a keringést és csökkentik a fájdalmat.',
+  },
+  {
+    title: 'Hegkezelés, fasciakés, NRX bandázs',
+    body: 'Műtéti és sérüléses hegek puhítása, eszközös lágyrész-mobilizáció a letapadt kötőszövetre, és rögzítő kötés, ha a kéznek átmenetileg nyugalom kell.',
+  },
+]
+
+/**
+ * A technikák-tábla blokkja (`services`, tábla-elrendezés) a megadott képpel.
+ * Tiszta builder: a rows a `TECHNIKAK_TABLA_SOROK`-ból, „1”–„5” számozással,
+ * felirat/URL/fotó nélkül (a tábla nem ajtó-blokk, CTA nem tartozik hozzá).
+ */
+export const technikakTablaBlokk = (mediaId: number): SzekcioTipus<'services'> => ({
+  blockType: 'services',
+  eyebrow: 'Rendelői kezelések',
+  title: TECHNIKAK_TABLA_CIM,
+  lead: 'Vizsgálat után ezekből állítjuk össze a kezelési tervedet. Minden alkalom a te panaszodhoz igazodik.',
+  elrendezes: 'tabla',
+  image: mediaId,
+  rows: TECHNIKAK_TABLA_SOROK.map((sor, index) => ({
+    number: String(index + 1),
+    title: sor.title,
+    body: sor.body,
+    felirat: '',
+    url: '',
+    photo: null,
+  })),
+  sectionSettings: { visible: true, hatter: 'feher', anchorId: TECHNIKAK_TABLA_HORGONY },
+})
+
+/** A technikák-tábla beszúrásának eredménye. */
+export interface TechnikakTablaAtalakitas extends SzekciosorCsere {
+  /**
+   * A beszúrás indexe, ha a lépés módosít — a futtató ebből építi a blokkot
+   * a kép létrehozása UTÁN, ha a rekord a döntéskor még nem volt meg.
+   */
+  beszurasIndex: number | null
+}
+
+/**
+ * WP54/4 — a /szolgaltatasok technikák-táblája („Amit a rendelőben kínálunk”):
+ * a régi oldal „miket csinálunk” listája (gyógytorna, manuálterápia, tape,
+ * flossing, hegkezelés stb.) a három ajtós `services` blokk UTÁN, tábla-
+ * elrendezésű `services` blokként. Tulajdonosi kérés: „Ez maradhat az új
+ * honlapon is?”
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - ha a lapon MÁR van `services` blokk ezzel a címmel (rejtett is), nincs
+ *    teendő (idempotencia; a szerkesztő elrejtését a script nem bírálja felül);
+ *  - a három ajtós blokkot (`isSzolgaltatasokAjtoBlock`) PONTOSAN egyszer kell
+ *    megtalálni, különben indokolt kihagyás;
+ *  - kép nélkül a blokk NEM kerül be: ha a kép nincs a Médiatárban és a
+ *    forrásfájl is hiányzik, HANGOS kihagyás.
+ */
+export const alkalmazSzolgaltatasokTechnikakTabla = (input: {
+  layout: Page['layout']
+  /** A tábla képének állapota (meglévő azonosító és/vagy forrásfájl). */
+  kep: UjMediaAllapot
+}): TechnikakTablaAtalakitas => {
+  const { layout, kep } = input
+  const szabaly: JavitasSzabaly = 'szolgaltatasok-technikak-tabla'
+  const uzenet = `A /szolgaltatasok technikák-táblája („${TECHNIKAK_TABLA_CIM}”)`
+  const kihagyas = (indok: string, hangos = false): TechnikakTablaAtalakitas => ({
+    layout: null,
+    beszurasIndex: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a Szolgáltatások oldalnak nincs szekciósora — nincs mi után beszúrni')
+  }
+  const meglevo = layout.findIndex(
+    (blokk) => blokk.blockType === 'services' && blokk.title === TECHNIKAK_TABLA_CIM,
+  )
+  if (meglevo !== -1) {
+    return kihagyas(
+      `a lapon MÁR van „${TECHNIKAK_TABLA_CIM}” című szolgáltatás-blokk (${
+        meglevo + 1
+      }. szekció) — nincs teendő`,
+    )
+  }
+  const ajto = egyetlenIndex(layout, (blokk) => isSzolgaltatasokAjtoBlock(blokk))
+  const ajtoIndok = talalatIndok('három ajtós szolgáltatás-blokk (services, 3 sor CTA-val)', ajto)
+  if (ajtoIndok !== null) return kihagyas(ajtoIndok)
+  if (kep.id === null && !kep.forrasLetezik) {
+    return kihagyas(
+      `a tábla képe („${kep.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${TECHNIKAK_TABLA_KEP_FORRAS.filePath}) sem található — kép nélkül a blokk nem kerül be`,
+      true,
+    )
+  }
+  const beszurasIndex = ajto + 1
+  return {
+    layout:
+      kep.id === null
+        ? null
+        : [
+            ...layout.slice(0, beszurasIndex),
+            technikakTablaBlokk(kep.id),
+            ...layout.slice(beszurasIndex),
+          ],
+    beszurasIndex,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: új tábla-blokk a ${ajto + 1}. szekció (ajtó-blokk) után, ${
+          TECHNIKAK_TABLA_SOROK.length
+        } sorral (${TECHNIKAK_TABLA_SOROK.map((sor) => sor.title).join(', ')}), képpel: „${
+          kep.filename
+        }”${
+          kep.id === null
+            ? ' (a rekordot a script a repó fájljából hozza létre)'
+            : ` (azonosító: ${kep.id})`
         }`,
         indok: null,
       },
@@ -4653,6 +4807,41 @@ async function futtat(): Promise<void> {
         cserelheto: true,
       }),
     )
+
+    // --- WP54/4: a technikák-tábla az ajtó-blokk után -------------------------
+    // A lánc VÉGÉN (a horgony, a bevezető és a kép-csere eredmény-layoutján).
+    // A kép állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön
+    // létre, ha a döntés beszúr — a blokk kép nélkül nem kerül be.
+    const tabla = alkalmazSzolgaltatasokTechnikakTabla({
+      layout: szolgaltatasokLayout,
+      kep: await ujMediaAllapot(TECHNIKAK_TABLA_KEP_FORRAS, mediaFuggosegek),
+    })
+    naplozdLepeseket(tabla, dryRun)
+    modositasokSzama += tabla.modositasok.length
+    kihagyasokSzama += tabla.kihagyasok.length
+    let tablaLayout = tabla.layout
+    if (tabla.modositasok.length > 0 && tablaLayout === null && tabla.beszurasIndex !== null) {
+      const tablaKep = await biztositMediaFajlbol({
+        forras: TECHNIKAK_TABLA_KEP_FORRAS,
+        szabaly: 'szolgaltatasok-technikak-tabla',
+        dryRun,
+        fuggosegek: mediaFuggosegek,
+      })
+      naplozdLepeseket(tablaKep, dryRun)
+      modositasokSzama += tablaKep.modositasok.length
+      kihagyasokSzama += tablaKep.kihagyasok.length
+      if (tablaKep.id !== null) {
+        tablaLayout = [
+          ...szolgaltatasokLayout.slice(0, tabla.beszurasIndex),
+          technikakTablaBlokk(tablaKep.id),
+          ...szolgaltatasokLayout.slice(tabla.beszurasIndex),
+        ]
+      }
+    }
+    if (tablaLayout !== null) {
+      szolgaltatasokLayout = tablaLayout
+      layoutValtozott = true
+    }
 
     // --- 12a. javítás: a fejléc-kép ürítése ----------------------------------
     const rendeloKep = await keresdMediat(payload, SZOLGALTATASOK_HERO_PREFIX)
