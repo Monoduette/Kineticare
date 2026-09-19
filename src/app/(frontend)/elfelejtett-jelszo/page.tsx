@@ -7,6 +7,11 @@ import { ForgotPasswordForm } from '@/components/auth/ForgotPasswordForm'
 import { isMyCoursePlayerHref } from '@/lib/courses'
 import { DEFAULT_AUTH_RETURN_URL, sanitizeReturnUrl, signInHref } from '@/lib/return-url'
 import { buildPrivatePageMetadata } from '@/lib/seo'
+import {
+  MIGRATION_ACCOUNT_GUIDANCE,
+  MIGRATION_COURSES_NOTE,
+  MIGRATION_EXISTING_PASSWORD_NOTE,
+} from '@/lib/migration-copy'
 
 // Bejelentkezés mögötti / tranzakciós lap: noindex meta + canonical
 // (`src/lib/seo.ts` NOINDEX_ROBOTS — a robots.txt tiltás önmagában nem
@@ -22,8 +27,7 @@ interface ElfelejtettJelszoPageProps {
 }
 
 /**
- * Beküldés utáni második mondat. A Payload reset süti-munkamenetet állíthat,
- * ezért a jelszó után NEM kell újra belépni.
+ * Beküldés utáni következő lépés, a kurzus-jogosultság előzetes ígérete nélkül.
  *
  * Forrás: GOV.UK, Don’t drop people off a journey
  * https://www.gov.uk/service-manual/design/user-centred-design ;
@@ -31,10 +35,10 @@ interface ElfelejtettJelszoPageProps {
  * https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html
  */
 export const FORGOT_PASSWORD_SUCCESS_NOTE =
-  'A linkkel jelszót állítasz. Utána a kurzusaid megnyílnak, külön belépés nem kell.'
+  'A levélben kapott linken beállíthatod az új jelszavadat. Ezután továbbléphetsz a Kurzusaim oldalra.'
 
 export const FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER =
-  'A linkkel jelszót állítasz. Utána a kurzusod megnyílik, külön belépés nem kell.'
+  'A levélben kapott linken beállíthatod az új jelszavadat. Ezután továbbléphetsz a kurzushoz.'
 
 /**
  * A MÁSODIK bekezdés az ÁTKÖLTÖZTETETT vevő biztonsági hálója.
@@ -60,9 +64,7 @@ export default async function ElfelejtettJelszoPage({ searchParams }: Elfelejtet
           rendszerünkben, a link néhány percen belül megérkezik.
         </p>
         <p className="kc-auth-lead">
-          Ha korábban a régi Kineticare-oldalon vásároltál, az ottani jelszavad itt nem működik: az
-          másik rendszer volt. Add meg ugyanazt az e-mail-címet, amellyel vásároltál, és itt
-          állíthatsz be újat. A megvásárolt kurzusaid megvannak, újra fizetned nem kell.
+          {MIGRATION_ACCOUNT_GUIDANCE} {MIGRATION_EXISTING_PASSWORD_NOTE} {MIGRATION_COURSES_NOTE}
         </p>
         <ForgotPasswordForm
           returnUrl={returnUrl}

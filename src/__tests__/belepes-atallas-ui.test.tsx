@@ -68,16 +68,16 @@ const atallasSzoveg = szoveg(atallasHtml)
 
 describe('/belepes-atallas — a négy kötelező állítás', () => {
   it('kimondja, hogy nem a vevő hibázott, és megmondja az okot', () => {
-    expect(atallasSzoveg).toContain('Nem te hibáztál')
+    expect(atallasSzoveg).toContain('nem te hibáztál')
     // Az OK: a régi oldal külön rendszer volt. Enélkül a „nem te hibáztál"
     // puszta vigasztalás — NN/g, Error-Message Guidelines: a hasznos üzenet
     // „precisely indicate the problem".
     expect(atallasSzoveg).toContain('külön rendszer volt')
   })
 
-  it('SZÓ SZERINT kimondja, hogy a kurzus megvan és nem kell újra fizetni', () => {
+  it('a közös kurzusútmutatót jeleníti meg hozzáférésígéret nélkül', () => {
     expect(ATALLAS_HOZZAFERES_MONDAT).toBe(
-      'A megvásárolt kurzusaid megvannak, újra fizetned nem kell.',
+      'A fiókodhoz tartozó kurzusokat belépés után a Kurzusaim oldalon találod.',
     )
     expect(atallasSzoveg).toContain(ATALLAS_HOZZAFERES_MONDAT)
   })
@@ -136,9 +136,9 @@ describe('/belepes-atallas — cím és tájékozódás', () => {
     expect(h2k).toEqual(['Mi történik, miután elküldted?', 'Nem érkezett meg a levél?'])
   })
 
-  it('a harmadik lépés NEM kér újabb belépést (a jelszó után a kurzusok megnyílnak)', () => {
-    expect(atallasSzoveg).toContain('A jelszó után a kurzusaid megnyílnak, külön belépés nem kell.')
-    expect(atallasSzoveg).not.toContain('Belépés után a Kurzusaim oldalon')
+  it('a harmadik lépés továbblépést mutat, nem ígér ellenőrizetlen hozzáférést', () => {
+    expect(atallasSzoveg).toContain('A jelszó beállítása után továbbléphetsz a Kurzusaim oldalra.')
+    expect(atallasSzoveg).not.toContain('külön belépés nem kell')
   })
 })
 
@@ -178,7 +178,9 @@ describe('/belepes-atallas — az űrlap', () => {
     const hintId = /<p class="kc-field__hint" id="([^"]+)"/u.exec(atallasHtml)?.[1]
     expect(hintId).toBeTruthy()
     expect(atallasHtml).toContain(`aria-describedby="${hintId}"`)
-    expect(atallasSzoveg).toContain('amellyel a régi oldalon vásároltál')
+    expect(atallasSzoveg).toContain(
+      'amellyel korábban vásároltál vagy az ingyenes kurzusra regisztráltál',
+    )
   })
 
   it('a megosztott űrlap ALAPÉRTELMEZETT alakja változatlan (nincs hint, nincs note)', () => {
@@ -392,12 +394,14 @@ describe('/belepes-atallas — indexelés', () => {
 describe('/elfelejtett-jelszo — a régi vevő biztonsági hálója', () => {
   const elfelejtettSzoveg = szoveg(elfelejtettHtml)
 
-  it('elmondja, hogy a régi oldal jelszava itt nem működik', () => {
-    expect(elfelejtettSzoveg).toContain('a régi Kineticare-oldalon vásároltál')
-    expect(elfelejtettSzoveg).toContain('nem működik')
+  it('az ingyenes és a már aktivált fiókkal is számol', () => {
+    expect(elfelejtettSzoveg).toContain('ingyenes kurzusra regisztráltál')
+    expect(elfelejtettSzoveg).toContain(
+      'Ha az új felületen már beállítottál jelszót, azzal továbbra is beléphetsz.',
+    )
   })
 
-  it('itt is kimondja, hogy a kurzus megvan és nem kell újra fizetni', () => {
+  it('itt is ugyanazt a kurzusútmutatót adja', () => {
     expect(elfelejtettSzoveg).toContain(ATALLAS_HOZZAFERES_MONDAT)
   })
 
@@ -420,10 +424,10 @@ describe('/elfelejtett-jelszo — a régi vevő biztonsági hálója', () => {
     expect(html).toContain('/belepes?returnUrl=%2Fpenztar%3Ftermek%3D12')
   })
 
-  it('a beküldés utáni panel megmondja, hogy a jelszó után nem kell újra belépni', () => {
-    expect(FORGOT_PASSWORD_SUCCESS_NOTE).toContain('külön belépés nem kell')
+  it('a beküldés utáni panel megmondja a következő lépést', () => {
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE).toContain('továbbléphetsz a Kurzusaim oldalra')
     expect(FORGOT_PASSWORD_SUCCESS_NOTE).not.toMatch(/[–—]/)
-    expect(FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER).toContain('kurzusod megnyílik')
+    expect(FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER).toContain('továbbléphetsz a kurzushoz')
     expect(FORGOT_PASSWORD_SUCCESS_NOTE_PLAYER).not.toMatch(/[–—]/)
     const kuldott = renderToStaticMarkup(
       createElement(ForgotPasswordForm, { successNote: FORGOT_PASSWORD_SUCCESS_NOTE }),
@@ -458,9 +462,11 @@ describe('4.5. levél — a levél és a céllap ugyanazt mondja', () => {
   })
 
   it('kimondja, hogy a régi jelszó nem működik, és megmondja az okot', () => {
-    expect(level).toContain('nem működik')
+    expect(level).toContain('nem költözött át')
     expect(level).toContain('külön rendszer')
-    expect(folyo).toContain('nem is te hibáztál')
+    expect(folyo).toContain(
+      'Ha az új felületen már beállítottál jelszót, azzal továbbra is beléphetsz.',
+    )
   })
 
   it('SZÓ SZERINT tartalmazza a hozzáférés-mondatot', () => {

@@ -128,8 +128,8 @@ describe('e-mail sablonok (magyar, HTML + plain-text)', () => {
     expect(email.html).toContain('Ha nem te kérted')
     expect(email.html).not.toMatch(/[–—]/)
     expect(email.html).toContain('Beállítom az új jelszót')
-    expect(email.html).toContain('külön belépés nem kell')
-    expect(email.text).toContain('külön belépés nem kell')
+    expect(email.html).toContain('továbbléphetsz a kurzusaidhoz')
+    expect(email.text).toContain('továbbléphetsz a kurzusaidhoz')
     expect(email.text).toContain('tok123')
   })
 

@@ -9,7 +9,7 @@ import type { Payload } from 'payload'
 import { ctaLabel } from '../cta-vocabulary'
 import { maskEmail } from '../email/mask'
 import { resolveEmailProvider } from '../email/provider'
-import { escapeHtml, renderLayout } from '../email/templates/layout'
+import { accountEmailBlock, escapeHtml, renderLayout } from '../email/templates/layout'
 import type { EmailTemplate } from '../email/types'
 import type { Logger } from '../logger'
 import { INVITE_TOKEN_TTL_MS, type InviteLink } from './invite'
@@ -48,7 +48,8 @@ export interface InviteEmailInput {
  */
 export function inviteEmail(input: InviteEmailInput): EmailTemplate {
   const name = input.name?.trim() ?? ''
-  const greeting = name ? `Kedves ${name}!` : 'Kedves Vásárlónk!'
+  const greeting = name ? `Kedves ${name}!` : 'Szia!'
+  const account = accountEmailBlock(input.email)
   const days = input.expiresInDays ?? INVITE_TOKEN_TTL_DAYS
   const validity = `A link ${days} napig érvényes.`
   const wrongPerson =
@@ -62,6 +63,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
 
   const bodyHtml = [
     escapeHtml(greeting),
+    account.html,
     'Elkészült az új Kineticare-fiókod. A korábban megvásárolt kurzusaid már benne vannak: ' +
       '<strong>újra fizetned nem kell</strong>, csak egy jelszót kell beállítanod.',
     'Nyisd meg az alábbi gombot, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
@@ -72,6 +74,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
   ]
   const bodyText = [
     greeting,
+    account.text,
     'Elkészült az új Kineticare-fiókod. A korábban megvásárolt kurzusaid már benne vannak: ' +
       'újra fizetned nem kell, csak egy jelszót kell beállítanod.',
     'Nyisd meg az alábbi linket, adj meg egy jelszót (legalább 12 karakter, kis- és nagybetűvel ' +
@@ -84,6 +87,8 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
   return {
     subject: 'Itt a linked: állítsd be a jelszavad a Kineticare új felületén',
     ...renderLayout({
+      eyebrow: 'Jelszóbeállítás',
+      preheader: 'A személyes linkkel állíthatod be a jelszavadat az új felületen.',
       heading: 'Állítsd be a jelszavad',
       paragraphsHtml: bodyHtml,
       paragraphsText: bodyText,

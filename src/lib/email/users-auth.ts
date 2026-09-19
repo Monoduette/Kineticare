@@ -17,6 +17,13 @@ function userDisplayName(user: unknown): string | null {
   return typeof name === 'string' ? name : null
 }
 
+/** A Payload által feloldott fiók címe, nem a kérésből visszatükrözött adat. */
+function userEmail(user: unknown): string | null {
+  if (typeof user !== 'object' || user === null) return null
+  const email = (user as Record<string, unknown>).email
+  return typeof email === 'string' ? email : null
+}
+
 export const usersAuthEmails: Plugin = (config) => {
   const serverURL = process.env.NEXT_PUBLIC_SERVER_URL ?? ''
   const adminRoute = config.routes?.admin ?? '/admin'
@@ -45,7 +52,11 @@ export const usersAuthEmails: Plugin = (config) => {
                 args?.token ?? '',
                 returnUrlFromForgotPasswordRequest(args?.req),
               )
-              return resetPasswordEmail({ name: userDisplayName(args?.user), resetUrl }).html
+              return resetPasswordEmail({
+                name: userDisplayName(args?.user),
+                email: userEmail(args?.user),
+                resetUrl,
+              }).html
             },
           },
           // A verify CSAK engedélyezett állapotban kap sablont (lásd a fejlécet).
