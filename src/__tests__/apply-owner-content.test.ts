@@ -31,6 +31,7 @@ import {
   alkalmazPressLogosFejlec,
   alkalmazRendeloiHorgony,
   alkalmazRolunkHeroKep,
+  ROLUNK_HERO_FORRAS,
   alkalmazSosIngyenesJelolo,
   alkalmazSosKurzusSlug,
   alkalmazSosPublikalas,
@@ -748,11 +749,17 @@ describe('heroKepAzonosito', () => {
 })
 
 describe('alkalmazRolunkHeroKep', () => {
-  it('a szóló portréról a páros csapatfotóra cserél', () => {
+  const studio = (id: number | null, forrasLetezik = true) => ({
+    filename: ROLUNK_HERO_FORRAS.filename,
+    id,
+    forrasLetezik,
+  })
+
+  it('a korábbi páros csapatfotóról (katak-team) a stúdiófotóra cserél', () => {
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: 41,
-      regiMediaId: 41,
-      ujMediaId: 77,
+      jelenlegiFajlnev: 'katak-team.webp',
+      ujMedia: studio(77),
     })
 
     expect(eredmeny.heroImage).toBe(77)
@@ -762,62 +769,67 @@ describe('alkalmazRolunkHeroKep', () => {
     expect(eredmeny.kihagyasok).toHaveLength(0)
   })
 
-  it('populált (depth > 0) heroImage esetén is felismeri a szóló portrét', () => {
+  it('a szóló portréról (a régi oldal öröksége) is a stúdiófotóra cserél, populált heroImage-nél is', () => {
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: mediaDokumentum(41, '682a121babe80_IMG_7573.webp'),
-      regiMediaId: 41,
-      ujMediaId: 77,
+      jelenlegiFajlnev: '682a121babe80_IMG_7573.webp',
+      ujMedia: studio(77),
     })
 
     expect(eredmeny.heroImage).toBe(77)
   })
 
-  it('MÁS képre mutató fejléc-képhez nem nyúl, és indokkal naplózza', () => {
+  it('a szerkesztő által választott képhez nem nyúl, és HANGOSAN naplózza', () => {
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: 99,
-      regiMediaId: 41,
-      ujMediaId: 77,
+      jelenlegiFajlnev: 'sajat-feltoltes.webp',
+      ujMedia: studio(77),
     })
 
     expect(eredmeny.heroImage).toBeNull()
     expect(eredmeny.modositasok).toHaveLength(0)
-    expect(eredmeny.kihagyasok[0].indok).toContain('csak pontos egyezésnél')
-    expect(eredmeny.kihagyasok[0].hangos).toBe(false)
+    expect(eredmeny.kihagyasok[0].hangos).toBe(true)
+    expect(eredmeny.kihagyasok[0].indok).toContain('sajat-feltoltes.webp')
+    expect(eredmeny.kihagyasok[0].indok).toContain('szerkesztői elsőbbség')
   })
 
-  it('ÜRES fejléc-kép mezőt nem tölt ki', () => {
+  it('ÜRES fejléc-kép mezőt a stúdiófotóval tölt ki', () => {
     for (const jelenlegi of [null, undefined]) {
-      const eredmeny = alkalmazRolunkHeroKep({ jelenlegi, regiMediaId: 41, ujMediaId: 77 })
+      const eredmeny = alkalmazRolunkHeroKep({
+        jelenlegi,
+        jelenlegiFajlnev: null,
+        ujMedia: studio(77),
+      })
 
-      expect(eredmeny.heroImage).toBeNull()
-      expect(eredmeny.kihagyasok[0].indok).toContain('nincs fejléc-képe')
+      expect(eredmeny.heroImage).toBe(77)
+      expect(eredmeny.modositasok[0].uzenet).toContain('üres mező')
     }
   })
 
-  it('a páros csapatfotó hiányában HANGOSAN hagyja ki a lépést', () => {
+  it('a stúdiófotó és a forrásfájl hiányában HANGOSAN hagyja ki a lépést', () => {
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: 41,
-      regiMediaId: 41,
-      ujMediaId: null,
+      jelenlegiFajlnev: 'katak-team.webp',
+      ujMedia: studio(null, false),
     })
 
     expect(eredmeny.heroImage).toBeNull()
     expect(eredmeny.modositasok).toHaveLength(0)
     expect(eredmeny.kihagyasok).toHaveLength(1)
     expect(eredmeny.kihagyasok[0].hangos).toBe(true)
-    expect(eredmeny.kihagyasok[0].indok).toContain('katak-team')
+    expect(eredmeny.kihagyasok[0].indok).toContain(ROLUNK_HERO_FORRAS.filename)
   })
 
-  it('a szóló portré média-rekordjának hiányában is hangosan kimarad', () => {
+  it('nem található média-rekordra mutató mezőnél hangosan kimarad', () => {
     const eredmeny = alkalmazRolunkHeroKep({
       jelenlegi: 99,
-      regiMediaId: null,
-      ujMediaId: 77,
+      jelenlegiFajlnev: null,
+      ujMedia: studio(77),
     })
 
     expect(eredmeny.heroImage).toBeNull()
     expect(eredmeny.kihagyasok[0].hangos).toBe(true)
-    expect(eredmeny.kihagyasok[0].indok).toContain('682a121babe80_IMG_7573')
+    expect(eredmeny.kihagyasok[0].indok).toContain('99')
   })
 })
 
@@ -875,20 +887,25 @@ describe('idempotencia — kétszer futtatva ugyanaz jön ki', () => {
   })
 
   it('a /rolunk fejléc-képe a második futásra már nem cserélődik', () => {
-    const elso = alkalmazRolunkHeroKep({ jelenlegi: 41, regiMediaId: 41, ujMediaId: 77 })
+    const studio = { filename: ROLUNK_HERO_FORRAS.filename, id: 77, forrasLetezik: true }
+    const elso = alkalmazRolunkHeroKep({
+      jelenlegi: 41,
+      jelenlegiFajlnev: 'katak-team.webp',
+      ujMedia: studio,
+    })
     expect(elso.heroImage).toBe(77)
 
     const masodik = alkalmazRolunkHeroKep({
       jelenlegi: elso.heroImage,
-      regiMediaId: 41,
-      ujMediaId: 77,
+      jelenlegiFajlnev: ROLUNK_HERO_FORRAS.filename,
+      ujMedia: studio,
     })
 
     expect(masodik.heroImage).toBeNull()
     expect(masodik.modositasok).toHaveLength(0)
     expect(masodik.kihagyasok).toHaveLength(1)
     expect(masodik.kihagyasok[0].hangos).toBe(false)
-    expect(masodik.kihagyasok[0].indok).toContain('MÁR a páros csapatfotó')
+    expect(masodik.kihagyasok[0].indok).toContain('MÁR a stúdiófotó')
   })
 })
 
