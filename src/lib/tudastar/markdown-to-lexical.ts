@@ -163,8 +163,11 @@ function darabokra(sor: string): InlineDarab[] {
       }
     }
     if (sor[i] === '[') {
-      const zarojel = sor.indexOf('](', i)
-      if (zarojel > i) {
+      // Csak akkor link, ha a legközelebbi `]` után rögtön `(` áll. Enélkül a
+      // szövegbeli hivatkozásjel („[1]”) és egy későbbi valódi link ugyanabban
+      // a sorban egyetlen, hibás linkké olvadna össze (9–10. cikk, Források).
+      const zarojel = sor.indexOf(']', i)
+      if (zarojel > i && sor[zarojel + 1] === '(') {
         const veg = sor.indexOf(')', zarojel + 2)
         if (veg > zarojel) {
           pufferKiir()

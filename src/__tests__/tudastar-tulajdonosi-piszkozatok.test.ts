@@ -1,0 +1,398 @@
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+import { CIKK_KATEGORIA } from '../lib/tudastar-kategoriak'
+import {
+  excerptFrom,
+  extractArticleBody,
+  FORRAS_JELOLESEK,
+  inlineNodes,
+  LEKTORI_JELOLESEK,
+  markdownToLexical,
+} from '../lib/tudastar/markdown-to-lexical'
+import {
+  SEO_DESCRIPTION_MAX,
+  SEO_TITLE_MAX,
+} from '../lib/tudastar/seo-kulcsszavak'
+import {
+  celAllapot,
+  CIKKEK,
+  cikketFordit,
+  fejlecMetaadat,
+} from '../scripts/import-tudastar-cikkek'
+
+/**
+ * ŐRÖK — A TULAJDONOSI PISZKOZATOK (9. és 10. cikk, 2026-09-19).
+ *
+ * A két cikk a tulajdonosok blogötlete; a betöltő PISZKOZATKÉNT hozza létre
+ * őket, és a publikálás az övék az adminban. A tulajdonosi kikötés (2026-09-19
+ * este): „a cikkekre legyen study”, ezért a törzs klinikai állításai számozott
+ * hivatkozást viselnek, a végén Források szakasszal.
+ *
+ *  P1  A lista: a két bejegyzés tulajdonosi piszkozat, cikkfejlécből töltött
+ *      SEO-val; a slugok egyediek; a fájl létezik; van kategória.
+ *  P2  A fejléc: metaadat-tábla title/slug/seoTitle/seoDescription/Kategória
+ *      sorokkal, a slug és a kategória a kóddal egyezik.
+ *  P3  A törzs: 700–1100 szó a Források nélkül; H2-tagolás; bekezdésenként
+ *      legfeljebb 4 mondat; felsorolásonként legfeljebb 6 tétel (a Források
+ *      kivételével); lezáró „Mikor keress minket?” belső linkkel.
+ *  P4  Mikroszöveg: nincs kvirtmínusz és nincs szóközös gondolatjel a törzsben,
+ *      a címben és a SEO-mezőkben (docs/ui-sztenderdek.md §3.1); nincs lektori
+ *      vagy forrás-jelölés; a nem-diagnózis mondat megvan.
+ *  P5  SEO: a leírás 150–160 karakter, a cím a keresőkorláton belül; a fordító
+ *      a fejlécből tölti, a seoKeywords és a GYIK undefined (a betöltő nem nyúl
+ *      a mezőhöz).
+ *  P6  Belső linkek csak létező útvonalra (/szolgaltatasok, /kurzusok…,
+ *      /blog/<importált slug>); a külső link https.
+ *  P7  Források: számozott lista, minden tétel DOI-val vagy PubMed-azonosítóval,
+ *      vagy „nem tanulmány” jelöléssel; a törzs [n] jelei mind létező tételre
+ *      mutatnak, és minden tételre hivatkozik a törzs.
+ *  P8  `celAllapot`: tulajdonosi piszkozat sosem publikálódik a scriptből, de
+ *      az adminban közzétett rekord nem esik vissza; a mért cikkek viselkedése
+ *      változatlan.
+ *  P9  Fordító: a „[1]” jel és egy valódi link ugyanabban a sorban nem olvad
+ *      össze; a szószám-őr (T4) szintjén nulla a szövegveszteség.
+ */
+
+const CIKKEK_DIR = path.join(process.cwd(), 'docs', 'cikkek')
+const PISZKOZATOK = CIKKEK.filter((cikk) => cikk.tulajdonosPublikal === true)
+
+const BELSO_UTVONALAK = new Set([
+  '/szolgaltatasok',
+  '/kurzusok',
+  '/kurzusok/otthoni-kezrehab-program',
+  '/kapcsolat',
+  '/rolunk',
+  ...CIKKEK.map((cikk) => `/blog/${cikk.slug}`),
+])
+
+interface Cikk {
+  fajl: string
+  slug: string
+  nyers: string
+  title: string
+  lines: string[]
+  /** A törzs a Források szakasz nélkül. */
+  proza: string[]
+  forrasok: string[]
+}
+
+function beolvas(fajl: string, slug: string): Cikk {
+  const nyers = readFileSync(path.join(CIKKEK_DIR, fajl), 'utf8')
+  const { title, lines } = extractArticleBody(nyers)
+  const forrasIndex = lines.findIndex((sor) => sor.trim() === '## Források')
+  return {
+    fajl,
+    slug,
+    nyers,
+    title,
+    lines,
+    proza: forrasIndex === -1 ? lines : lines.slice(0, forrasIndex),
+    forrasok: forrasIndex === -1 ? [] : lines.slice(forrasIndex + 1),
+  }
+}
+
+const CIKK_ESETEK = PISZKOZATOK.map((cikk) => [cikk.slug, cikk.fajl] as const)
+const szavak = (sorok: readonly string[]): number =>
+  sorok.join(' ').split(/\s+/).filter(Boolean).length
+
+describe('P1 — a két tulajdonosi piszkozat a listán', () => {
+  it('pontosan a 9. és 10. cikk tulajdonosi piszkozat, cikkfejléc SEO-val', () => {
+    expect(PISZKOZATOK.map((cikk) => cikk.slug)).toEqual([
+      'peace-and-love-friss-serules',
+      'gipszben-a-kezed',
+    ])
+    for (const cikk of PISZKOZATOK) {
+      expect(cikk.seoForras).toBe('cikkfejlec')
+      expect(existsSync(path.join(CIKKEK_DIR, cikk.fajl))).toBe(true)
+      expect(CIKK_KATEGORIA[cikk.slug]).toBeDefined()
+    }
+  })
+
+  it('a slugok és a fájlnevek egyediek az egész listán', () => {
+    expect(new Set(CIKKEK.map((cikk) => cikk.slug)).size).toBe(CIKKEK.length)
+    expect(new Set(CIKKEK.map((cikk) => cikk.fajl)).size).toBe(CIKKEK.length)
+  })
+
+  it('a mért nyolc cikk nem tulajdonosi piszkozat és mérésből tölt', () => {
+    const mert = CIKKEK.filter((cikk) => cikk.tulajdonosPublikal !== true)
+    expect(mert).toHaveLength(8)
+    for (const cikk of mert) expect(cikk.seoForras ?? 'meres').toBe('meres')
+  })
+})
+
+describe('P2 — a cikkfejléc metaadat-táblája', () => {
+  it.each(CIKK_ESETEK)('%s: title, slug, seoTitle, seoDescription, Kategória, Állapot', (slug, fajl) => {
+    const { nyers, title } = beolvas(fajl, slug)
+    const sor = (mezo: string): string | undefined =>
+      new RegExp(`^\\|\\s*${mezo}\\s*\\|\\s*(.+?)\\s*\\|\\s*$`, 'm').exec(nyers)?.[1]
+    expect(sor('`title`')).toBe(title)
+    expect(sor('`slug`')).toBe(`\`${slug}\``)
+    expect(fejlecMetaadat(nyers, 'seoTitle').length).toBeGreaterThan(10)
+    expect(fejlecMetaadat(nyers, 'seoDescription').length).toBeGreaterThan(10)
+    const kategoria = /\|\s*Kategória\s*\|[^|]*\(`([a-z0-9-]+)`\)\s*\|/.exec(nyers)?.[1]
+    expect(kategoria).toBe(CIKK_KATEGORIA[slug])
+    expect(sor('Állapot')).toMatch(/piszkozat/)
+  })
+
+  it('hiányzó metaadat-sorra a fejléc-olvasó DOB, nem ad némán üreset', () => {
+    expect(() => fejlecMetaadat('| `title` | x |', 'seoTitle')).toThrow(/seoTitle/)
+  })
+})
+
+describe('P3 — hossz és tagolás', () => {
+  it.each(CIKK_ESETEK)('%s: 700–1100 szó a Források nélkül', (slug, fajl) => {
+    const { proza } = beolvas(fajl, slug)
+    const n = szavak(proza)
+    expect(n, `${slug}: ${n} szó`).toBeGreaterThanOrEqual(700)
+    expect(n, `${slug}: ${n} szó`).toBeLessThanOrEqual(1100)
+  })
+
+  it.each(CIKK_ESETEK)('%s: H2-tagolás, a záró szakaszok a helyükön', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const h2 = lines.filter((sor) => sor.startsWith('## ')).map((sor) => sor.slice(3).trim())
+    expect(h2.length).toBeGreaterThanOrEqual(7)
+    expect(h2).toContain('Mikor keress minket?')
+    expect(h2).toContain('Kik írták ezt a cikket?')
+    expect(h2).toContain('Fontos tudnivaló')
+    expect(h2[h2.length - 1]).toBe('Források')
+    expect(lines.filter((sor) => sor.startsWith('# '))).toHaveLength(0)
+  })
+
+  it.each(CIKK_ESETEK)('%s: bekezdésenként legfeljebb 4 mondat', (slug, fajl) => {
+    const { proza } = beolvas(fajl, slug)
+    const bekezdesek = proza
+      .join('\n')
+      .split(/\n\s*\n/)
+      .map((b) => b.trim())
+      .filter((b) => b.length > 0 && !b.startsWith('#') && !/^[-*] /.test(b))
+    expect(bekezdesek.length).toBeGreaterThan(10)
+    for (const b of bekezdesek) {
+      const mondatok = (b.match(/[.!?](\s|$)/g) ?? []).length
+      expect(mondatok, `${slug}: ${mondatok} mondat: „${b.slice(0, 60)}…”`).toBeLessThanOrEqual(4)
+    }
+  })
+
+  it.each(CIKK_ESETEK)('%s: felsorolásonként legfeljebb 6 tétel', (slug, fajl) => {
+    const { proza } = beolvas(fajl, slug)
+    let hossz = 0
+    let listak = 0
+    for (const sor of [...proza, '']) {
+      if (/^[-*] /.test(sor.trim())) {
+        hossz += 1
+      } else {
+        if (hossz > 0) listak += 1
+        expect(hossz, `${slug}: ${hossz} tételes felsorolás`).toBeLessThanOrEqual(6)
+        hossz = 0
+      }
+    }
+    expect(listak).toBeGreaterThanOrEqual(2)
+  })
+
+  it.each(CIKK_ESETEK)('%s: a „Mikor keress minket?” szakasz a rendelőre visz', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const kezd = lines.findIndex((sor) => sor.trim() === '## Mikor keress minket?')
+    const veg = lines.findIndex((sor, i) => i > kezd && sor.startsWith('## '))
+    const szakasz = lines.slice(kezd, veg).join('\n')
+    expect(szakasz).toContain('](/szolgaltatasok)')
+    // Traumás sérülésnél az otthoni program leírása orvosi engedélyt kér, ezért
+    // itt nincs kurzus-link, csak szöveges említés feltétellel.
+    expect(szakasz).not.toContain('](/kurzusok')
+    expect(szakasz).toMatch(/orvosod már mindent engedélyezett/)
+  })
+})
+
+describe('P4 — magyar mikroszöveg és tilalmak', () => {
+  it.each(CIKK_ESETEK)('%s: nincs kvirtmínusz, nincs szóközös gondolatjel', (slug, fajl) => {
+    const { lines, title, nyers } = beolvas(fajl, slug)
+    const torzs = lines.join('\n')
+    expect(torzs).not.toMatch(/—/)
+    expect(torzs).not.toMatch(/ – /)
+    expect(title).not.toMatch(/[–—]/)
+    expect(fejlecMetaadat(nyers, 'seoTitle')).not.toMatch(/[–—]/)
+    expect(fejlecMetaadat(nyers, 'seoDescription')).not.toMatch(/[–—]/)
+  })
+
+  it.each(CIKK_ESETEK)('%s: nincs lektori és nincs forrás-jelölés a törzsben', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const torzs = lines.join('\n')
+    for (const jel of [...LEKTORI_JELOLESEK, ...FORRAS_JELOLESEK]) {
+      expect(torzs, `${slug}: „${jel}”`).not.toContain(jel)
+    }
+  })
+
+  it.each(CIKK_ESETEK)('%s: kimondja, hogy nem diagnózis, és tegez', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const torzs = lines.join('\n')
+    expect(torzs).toContain('nem helyettesíti a szakorvosi vizsgálatot')
+    expect(torzs).not.toMatch(/\bÖn\b/)
+    expect(torzs).toContain('Kiss Kata és Kocsis Kata vagyunk')
+  })
+})
+
+describe('P5 — SEO a cikkfejlécből', () => {
+  it.each(CIKK_ESETEK)('%s: leírás 150–160 karakter, cím a korláton belül', (slug, fajl) => {
+    const { nyers } = beolvas(fajl, slug)
+    const leiras = fejlecMetaadat(nyers, 'seoDescription')
+    expect(leiras.length, `${slug}: ${leiras.length} karakter`).toBeGreaterThanOrEqual(150)
+    expect(leiras.length, `${slug}: ${leiras.length} karakter`).toBeLessThanOrEqual(160)
+    expect(leiras.length).toBeLessThanOrEqual(SEO_DESCRIPTION_MAX)
+    expect(fejlecMetaadat(nyers, 'seoTitle').length).toBeLessThanOrEqual(SEO_TITLE_MAX)
+  })
+
+  it.each(CIKK_ESETEK)('%s: a fordító a fejlécből tölt, seoKeywords és GYIK érintetlen', (slug, fajl) => {
+    const cikk = cikketFordit(CIKKEK_DIR, fajl, slug, 'cikkfejlec')
+    const { nyers, lines } = beolvas(fajl, slug)
+    expect(cikk.seoTitle).toBe(fejlecMetaadat(nyers, 'seoTitle'))
+    expect(cikk.seoDescription).toBe(fejlecMetaadat(nyers, 'seoDescription'))
+    expect(cikk.seoKeywords).toBeUndefined()
+    expect(cikk.faq).toBeUndefined()
+    expect(cikk.excerpt).toBe(excerptFrom(lines))
+    expect(cikk.excerpt.length).toBeGreaterThan(40)
+  })
+
+  it.each(CIKK_ESETEK)('%s: mérésként kérve DOB, mert nincs kulcsszó-célzás', (slug, fajl) => {
+    expect(() => cikketFordit(CIKKEK_DIR, fajl, slug)).toThrow(/Nincs mért kulcsszó-célzás/)
+  })
+})
+
+describe('P6 — linkek', () => {
+  it.each(CIKK_ESETEK)('%s: belső link csak létező útvonalra, külső csak https', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const celok = [...lines.join('\n').matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1])
+    expect(celok.length).toBeGreaterThan(0)
+    for (const cel of celok) {
+      if (cel.startsWith('/')) {
+        expect(BELSO_UTVONALAK.has(cel), `${slug}: ismeretlen belső útvonal: ${cel}`).toBe(true)
+      } else {
+        expect(cel, `${slug}: nem https külső link: ${cel}`).toMatch(/^https:\/\//)
+      }
+    }
+    expect(celok).not.toContain('/inhuvelygyulladas')
+    expect(lines.join('\n')).not.toContain('de-quervain-szindroma')
+  })
+})
+
+describe('P7 — Források és [n] hivatkozások', () => {
+  it.each(CIKK_ESETEK)('%s: számozott lista DOI-val vagy PubMed-azonosítóval', (slug, fajl) => {
+    const { forrasok } = beolvas(fajl, slug)
+    const tetelek = forrasok.filter((sor) => /^\d+\. /.test(sor.trim()))
+    expect(tetelek.length).toBeGreaterThanOrEqual(5)
+    tetelek.forEach((tetel, index) => {
+      expect(tetel.trim().startsWith(`${index + 1}. `), `${slug}: rossz sorszám: ${tetel.slice(0, 30)}`).toBe(true)
+      const tanulmany = /doi\.org\/10\.\d{4,}/.test(tetel) || /PubMed \d{7,8}/.test(tetel)
+      const betegtajekoztato = /nem tanulmány/.test(tetel)
+      expect(tanulmany || betegtajekoztato, `${slug}: forrás azonosító nélkül: ${tetel.slice(0, 60)}`).toBe(true)
+    })
+  })
+
+  it.each(CIKK_ESETEK)('%s: minden [n] létező tételre mutat, és minden tételre hivatkozik a törzs', (slug, fajl) => {
+    const { proza, forrasok } = beolvas(fajl, slug)
+    const tetelSzam = forrasok.filter((sor) => /^\d+\. /.test(sor.trim())).length
+    const hivatkozott = new Set(
+      [...proza.join('\n').matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])),
+    )
+    expect(hivatkozott.size).toBeGreaterThanOrEqual(5)
+    for (const n of hivatkozott) {
+      expect(n >= 1 && n <= tetelSzam, `${slug}: [${n}] nem létező forrás`).toBe(true)
+    }
+    for (let n = 1; n <= tetelSzam; n += 1) {
+      expect(hivatkozott.has(n), `${slug}: a(z) ${n}. forrásra nem hivatkozik a törzs`).toBe(true)
+    }
+  })
+
+  it.each(CIKK_ESETEK)('%s: a tanulmány-alapú állítások hordozzák a jelet', (slug, fajl) => {
+    const { proza } = beolvas(fajl, slug)
+    // A PEACE & LOVE, illetve az irányelv szakaszai hivatkozás nélkül nem
+    // állhatnak: a tulajdonosi kikötés („legyen study”) őre.
+    const kulcsSzakaszok = proza
+      .join('\n')
+      .split(/\n## /)
+      .filter((szakasz) => /^(PEACE|LOVE|Mozgasd|Mikor kell azonnal|Mikor szólj azonnal)/.test(szakasz))
+    expect(kulcsSzakaszok.length).toBeGreaterThanOrEqual(2)
+    for (const szakasz of kulcsSzakaszok) {
+      expect(szakasz, `${slug}: hivatkozás nélküli kulcsszakasz`).toMatch(/\[\d+\]/)
+    }
+  })
+})
+
+describe('P8 — celAllapot: a script sosem publikál tulajdonosi piszkozatot', () => {
+  it('tulajdonosi piszkozat: új rekord piszkozat, a PUBLISH kapu sem publikálja', () => {
+    for (const publikalKapu of [false, true]) {
+      expect(celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: undefined })).toBe(
+        'draft',
+      )
+      expect(celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: 'draft' })).toBe(
+        'draft',
+      )
+    }
+  })
+
+  it('tulajdonosi piszkozat: az adminban közzétett rekord nem esik vissza piszkozatra', () => {
+    for (const publikalKapu of [false, true]) {
+      expect(
+        celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: 'published' }),
+      ).toBe('published')
+    }
+  })
+
+  it('mért cikk: a két kapu logikája változatlan', () => {
+    for (const letezoAllapot of [undefined, 'draft', 'published'] as const) {
+      expect(celAllapot({ publikalKapu: false, tulajdonosPublikal: false, letezoAllapot })).toBe(
+        'draft',
+      )
+      expect(celAllapot({ publikalKapu: true, tulajdonosPublikal: false, letezoAllapot })).toBe(
+        'published',
+      )
+    }
+  })
+})
+
+describe('P9 — fordító', () => {
+  it('a „[1]” jel és egy valódi link ugyanabban a sorban nem olvad össze', () => {
+    const nodes = inlineNodes('Állítás [1]. Ezt [a szolgáltatások oldalon](/szolgaltatasok) írtuk.')
+    const tipusok = nodes.map((n) => (n as unknown as { type: string }).type)
+    expect(tipusok.filter((t) => t === 'link')).toHaveLength(1)
+    const link = nodes.find((n) => (n as unknown as { type: string }).type === 'link') as unknown as {
+      fields: { url: string }
+      children: { text: string }[]
+    }
+    expect(link.fields.url).toBe('/szolgaltatasok')
+    expect(link.children[0].text).toBe('a szolgáltatások oldalon')
+    const szoveg = nodes
+      .map((n) => (n as unknown as { text?: string }).text ?? '')
+      .join('')
+    expect(szoveg).toContain('[1]')
+  })
+
+  it('a hiányos linkjelölés szövegként marad meg', () => {
+    const nodes = inlineNodes('Nyitott [zárójel és (zárójel) külön.')
+    expect(nodes.every((n) => (n as unknown as { type: string }).type === 'text')).toBe(true)
+  })
+
+  it.each(CIKK_ESETEK)('%s: a Lexical-fa a törzs minden szavát hordozza', (slug, fajl) => {
+    const { lines } = beolvas(fajl, slug)
+    const doc = markdownToLexical(lines) as unknown as { root: unknown }
+    const szoveg = (node: unknown): string => {
+      if (node === null || typeof node !== 'object') return ''
+      const n = node as { type?: string; text?: string; children?: unknown[] }
+      if (n.type === 'text') return n.text ?? ''
+      return (n.children ?? []).map(szoveg).join(' ')
+    }
+    const ki = szoveg(doc.root).split(/\s+/).filter(Boolean).length
+    const be = szavak(
+      lines.map((sor) =>
+        sor
+          .trim()
+          .replace(/^#+ +/, '')
+          .replace(/^[-*] +/, '')
+          .replace(/^\d+\. +/, '')
+          .replace(/\*\*/g, '')
+          .replace(/\[(.+?)\]\((.+?)\)/g, '$1'),
+      ),
+    )
+    expect(ki / be).toBeGreaterThan(0.99)
+  })
+})

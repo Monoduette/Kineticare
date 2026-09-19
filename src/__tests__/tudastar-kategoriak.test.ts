@@ -111,6 +111,9 @@ describe('T3 — a hozzárendelés a tartalmi tervvel és a cikkfejlécekkel azo
       'csuklotores-utani-gyogytorna': 'tores-es-mutet-utan',
       inhuvelygyulladas: 'kez-es-csuklo',
       'befagyott-vall': 'vall-es-konyok',
+      // Tulajdonosi blogötletek (2026-09-19), a cikkfejlécek kategóriájával.
+      'peace-and-love-friss-serules': 'kez-es-csuklo',
+      'gipszben-a-kezed': 'tores-es-mutet-utan',
     })
   })
 

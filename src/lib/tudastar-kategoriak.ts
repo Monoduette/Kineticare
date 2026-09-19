@@ -72,6 +72,10 @@ export const CIKK_KATEGORIA: Readonly<Record<string, string>> = {
   'csuklotores-utani-gyogytorna': 'tores-es-mutet-utan',
   inhuvelygyulladas: 'kez-es-csuklo',
   'befagyott-vall': 'vall-es-konyok',
+  // Tulajdonosi blogötletek (2026-09-19), a cikkfájl fejlécében rögzített
+  // kategóriával azonosan (őr-teszt T3).
+  'peace-and-love-friss-serules': 'kez-es-csuklo',
+  'gipszben-a-kezed': 'tores-es-mutet-utan',
 }
 
 /** A kategória a slugja alapján, vagy `undefined`, ha nincs ilyen. */
