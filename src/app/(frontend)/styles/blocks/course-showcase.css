@@ -104,14 +104,23 @@
   color: inherit;
 }
 
-/* A borító eszköz-mockup (fekvő kompozíció): 4/3 tartja olvashatónak. */
+/* A borító eszköz-mockup (fekvő kompozíció). Tulajdonosi kérés (2026-09-19):
+   „kisebb képekbe tegyük a kurzus képeket, hogy amikor meglesz az összes, akkor
+   is jól átlátható lehessen". 4/3 → 16/9: 1440-en a kép 393 → ~295 px magas, a
+   kártya ~55 %-a a korábbi 72 % helyett, így a cím és a pipás előnyök viszik a
+   hangsúlyt, a kártya pedig egy sorban több terméknél is áttekinthető marad.
+   Baymard, Product List thumbnails: a lista-kép legyen a felismeréshez elég,
+   ne a lap domináns eleme (https://baymard.com/blog/product-thumbnails);
+   Material 3 Cards, media: 16:9 az ajánlott fekvő médiaarány kártyán
+   (https://m3.material.io/components/cards/guidelines). A fekvő mockup 16/9-ben
+   is olvasható marad (object-fit: cover, középre vágva). */
 .kc-course-showcase__media {
   position: relative;
   display: block;
   overflow: hidden;
   border-radius: var(--kc-radius-lg);
   background-color: var(--kc-color-surface-tint);
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
 }
 
 .kc-course-showcase__media img {

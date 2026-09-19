@@ -193,8 +193,9 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     expect(blokk(".kc-course-showcase__grid[data-count='2']")).toMatch(
       /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     )
-    // A kártya képaránya nem 3/4: a fekvő eszköz-mockup 4/3-ban olvasható.
-    expect(blokk('.kc-course-showcase__media')).toMatch(/aspect-ratio:\s*4 \/ 3/)
+    // A kártya képaránya fekvő 16/9 (tulajdonosi kérés 2026-09-19: kisebb kép,
+    // több kurzusnál is áttekinthető rács); nem álló 3/4.
+    expect(blokk('.kc-course-showcase__media')).toMatch(/aspect-ratio:\s*16 \/ 9/)
     expect(css).not.toContain('aspect-ratio: 3 / 4')
   })
 
