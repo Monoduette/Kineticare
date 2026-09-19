@@ -40,14 +40,17 @@ const NO_COURSE_TEXT =
  * lépést adja meg, ígéret nélkül. Gondolatjel és felkiáltójel nincs
  * (§3.1.2, G-UI7).
  *
- * Két változat van: a váll-cikk fő ajánlata maga az időpontkérés
- * (`APPOINTMENT_TEXT`), a kéz-cikkek alatt pedig a kurzus-panel UTÁN álló
+ * Két változat van: az időpont-változatú cikkek (a váll és a két
+ * friss-sérüléses kézcikk, `APPOINTMENT_CTA_SLUGS`) fő ajánlata maga az
+ * időpontkérés (`APPOINTMENT_TEXT`, testrésztől független megfogalmazás:
+ * 2026-09-19-ig „a váll panaszát” állt benne, ami a kézcikkek alatt hibás
+ * volt), a kurzus-változatú kéz-cikkek alatt pedig a kurzus-panel UTÁN álló
  * külön doboz szövege általános (`APPOINTMENT_BOX_TEXT`) — tulajdonosi
  * kérés, 2026-08-25: az időpontkérés minden cikk alól elérhető legyen.
  */
 export const APPOINTMENT_HEADING = 'Hogyan tovább?'
 export const APPOINTMENT_TEXT =
-  'A cikkek a tájékozódáshoz szólnak. A váll panaszát személyes vizsgálat tudja megítélni, időpontot írásban kérhetsz a rendelőnkbe.'
+  'A cikkek a tájékozódáshoz szólnak. A panaszodat személyes vizsgálat tudja megítélni, időpontot írásban kérhetsz a rendelőnkbe.'
 export const APPOINTMENT_BOX_HEADING = 'Időpontkérés a rendelőbe'
 export const APPOINTMENT_BOX_TEXT =
   'A cikk nem helyettesíti a vizsgálatot. Ha a panaszod nem javul, vagy szeretnéd, hogy szakember nézze meg, időpontot írásban kérhetsz a rendelőnkbe.'
@@ -76,7 +79,11 @@ function FreeCourseLine({
   return (
     <p className="kc-post-cta__free">
       {variant === 'idopont' ? FREE_LINE_LEAD_KEZ : FREE_LINE_LEAD}
-      <Link className="kc-post-cta__free-link" data-cta="ingyenes-kurzus" href={courseHref(freeCourse)}>
+      <Link
+        className="kc-post-cta__free-link"
+        data-cta="ingyenes-kurzus"
+        href={courseHref(freeCourse)}
+      >
         {title}
       </Link>
       {FREE_LINE_TAIL}
@@ -112,7 +119,11 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
         <h2 className="kc-post-cta__title">{APPOINTMENT_HEADING}</h2>
         <p className="kc-post-cta__text">{APPOINTMENT_TEXT}</p>
         <p className="kc-post-cta__action">
-          <Link className="kc-button kc-button--secondary" data-cta="idopont" href={APPOINTMENT_HREF}>
+          <Link
+            className="kc-button kc-button--secondary"
+            data-cta="idopont"
+            href={APPOINTMENT_HREF}
+          >
             {ctaLabel('appointment-request-link')}
           </Link>
         </p>
@@ -157,7 +168,11 @@ export function PostCourseCta({ course, freeCourse, variant }: PostCourseCtaProp
             <Badge tone="neutral">{priceLabel}</Badge>
           ) : null}
           {priceKind === 'free' ? <Badge tone="success">Ingyenes</Badge> : null}
-          <Link className="kc-button kc-button--secondary" data-cta="kurzus" href={courseHref(course)}>
+          <Link
+            className="kc-button kc-button--secondary"
+            data-cta="kurzus"
+            href={courseHref(course)}
+          >
             {ctaLabel('course-sales-open')}
           </Link>
         </p>

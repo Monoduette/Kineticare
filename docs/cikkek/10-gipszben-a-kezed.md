@@ -16,8 +16,10 @@
 > `OWNER_TUDASTAR_PUBLISH=igen` közzétesz).
 >
 > Tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study”. Ezért a
-> törzs minden klinikai állítása mögött számozott hivatkozás áll ([1], [2]…),
-> a végén „Források” szakasszal; minden tétel PubMed-azonosítóját és DOI-ját
+> törzs minden klinikai állítása mögött ellenőrzött tanulmány áll (a lenti
+> Forrás-ellenőrzés és Forráslista táblában, belső dokumentációként; a cikk
+> végén NINCS Források szakasz és a törzsben nincs [n] jel, tulajdonosi döntés
+> 2026-09-19 késő este); minden tétel PubMed-azonosítóját és DOI-ját
 > a PubMed E-utilities (esearch + esummary + efetch) hívásával ellenőriztük
 > 2026-09-19-én, a 2024-es irányelv teljes szövegét a kiadó PDF-jéből
 > olvastuk. Ami nem tanulmány (betegtájékoztató), az a listában így van jelölve.
@@ -68,6 +70,15 @@ kereséssel („digit”, „shoulder”, „elbow”, „edema”, „elevation
 
 ---
 
+## Forráslista (belső, nem kerül a cikkbe; tulajdonosi döntés 2026-09-19: a cikk végén nincs Források szakasz)
+1. Mehta SP, Karagiannopoulos C, Pepin ME és mtsai. Distal Radius Fracture Rehabilitation: Clinical Practice Guidelines. J Orthop Sports Phys Ther. 2024;54(9):CPG1–CPG78. [doi:10.2519/jospt.2024.0301](https://doi.org/10.2519/jospt.2024.0301), PubMed 39213418.
+2. Boyd AS, Benjamin HJ, Asplund C. Principles of casting and splinting. Am Fam Physician. 2009;79(1):16–22. PubMed 19145960.
+3. Halanski M, Noonan KJ. Cast and splint immobilization: complications. J Am Acad Orthop Surg. 2008;16(1):30–40. [doi:10.5435/00124635-200801000-00005](https://doi.org/10.5435/00124635-200801000-00005), PubMed 18180390.
+4. Wall BT, Dirks ML, van Loon LJ. Skeletal muscle atrophy during short-term disuse: implications for age-related sarcopenia. Ageing Res Rev. 2013;12(4):898–906. [doi:10.1016/j.arr.2013.07.003](https://doi.org/10.1016/j.arr.2013.07.003), PubMed 23948422.
+5. Shin TM, Bordeaux JS. The role of massage in scar management: a literature review. Dermatol Surg. 2012;38(3):414–423. [doi:10.1111/j.1524-4725.2011.02201.x](https://doi.org/10.1111/j.1524-4725.2011.02201.x), PubMed 22093081.
+6. Betegtájékoztató (nem tanulmány): nhs.uk, Broken arm or wrist, felülvizsgálva 2023. május 26. [nhs.uk/conditions/broken-arm-or-wrist](https://www.nhs.uk/conditions/broken-arm-or-wrist/).
+7. Betegtájékoztató (nem tanulmány): nhs.uk, Compartment syndrome, felülvizsgálva 2026. szeptember 4. [nhs.uk/conditions/compartment-syndrome](https://www.nhs.uk/conditions/compartment-syndrome/).
+
 # Gipszben a kezed: mit csinálj, amíg gyógyul
 
 Feltették a gipszet, és most hetekig ebben élsz. Viszket, nehéz, és nem tudod, mit szabad vele.
@@ -78,46 +89,46 @@ Egy dolgot előre tisztázunk. Ez a cikk nem mondja meg, mikor jöhet le a gipsz
 
 ## Mikor szólj azonnal az orvosnak?
 
-A gipsz legveszélyesebb szövődménye a keringési zavar. A szakirodalom szerint azonnali sürgősségi ellátás kell a gipsz eltávolítására, ha ezek közül bármelyiket észleled [2]:
+A gipsz legveszélyesebb szövődménye a keringési zavar. Azonnali sürgősségi ellátás kell a gipsz eltávolítására, ha ezek közül bármelyiket észleled:
 
 - a fájdalom nem enyhül, hanem erősödik,
 - az ujjaid bizseregnek vagy zsibbadnak,
 - a duzzanat súlyos,
 - a szabadon lévő ujjak szürkés-lilás színűek.
 
-Ha a gipsz alatt hirtelen, nagyon erős fájdalom jelentkezik, ami az ujjak óvatos kinyújtásakor rosszabb, az a szoros gipsz szövődménye lehet: hívd a 112-t, és ne vezess magad a kórházba [7].
+Ha a gipsz alatt hirtelen, nagyon erős fájdalom jelentkezik, ami az ujjak óvatos kinyújtásakor rosszabb, az a szoros gipsz szövődménye lehet: hívd a 112-t, és ne vezess magad a kórházba.
 
-Aznap kérj orvosi tanácsot akkor is, ha a gipsz eltörik, meglazul vagy egyre szorosabb, ha rossz szagot vagy váladékot érzel alóla, és ha magas lázad, hidegrázásod van [6].
+Aznap kérj orvosi tanácsot akkor is, ha a gipsz eltörik, meglazul vagy egyre szorosabb, ha rossz szagot vagy váladékot érzel alóla, és ha magas lázad, hidegrázásod van.
 
 ## A gipsz gondozása: nedvesség, viszketés
 
-A gipsz nem lehet vizes, és vakarózni sem szabad alá semmilyen tárggyal [2]. Fürdésnél használj vízálló huzatot [6]. A gipszelés ismert szövődménye a nyomási fekély és a bőr fertőzése is [2][3].
+A gipsz nem lehet vizes, és vakarózni sem szabad alá semmilyen tárggyal. Fürdésnél használj vízálló huzatot. A gipszelés ismert szövődménye a nyomási fekély és a bőr fertőzése is.
 
-Ne vezess, és ne emelj nehezet, amíg az orvosod nem mondja, hogy szabad [6].
+Ne vezess, és ne emelj nehezet, amíg az orvosod nem mondja, hogy szabad.
 
 ## Mozgasd, ami szabad: ujjak, könyök, váll
 
-Bizonyos fokú ízületi merevség az immobilizáció elkerülhetetlen szövődménye [2], és a kényszerű nyugalom már tíz napnál rövidebb idő alatt is jelentős izomsorvadással és erővesztéssel jár [4]. A 2024-es kézrehabilitációs irányelv ezért azt írja: legalább a korai ujjmozgatást kell hangsúlyozni, és a beteget az ujjak, a könyök, az alkar és a váll önálló mozgatására kell megtanítani [1]. Egy vizsgálatban a leggyakoribb szövődmény a kéz, a csukló és a váll merevsége volt [1].
+Bizonyos fokú ízületi merevség az immobilizáció elkerülhetetlen szövődménye, és a kényszerű nyugalom már tíz napnál rövidebb idő alatt is jelentős izomsorvadással és erővesztéssel jár. A 2024-es kézrehabilitációs irányelv ezért azt írja: legalább a korai ujjmozgatást kell hangsúlyozni, és a beteget az ujjak, a könyök, az alkar és a váll önálló mozgatására kell megtanítani. Egy vizsgálatban a leggyakoribb szövődmény a kéz, a csukló és a váll merevsége volt.
 
-- Az ujjaidat a gipsz felhelyezése után kezdd mozgatni: hajlítsd és nyújtsd őket, óvatosan, gyakran [1].
-- A hüvelykujjadat érintsd sorban a többi ujjhoz, ha a gipsz engedi [1].
-- A könyöködet hajlítsd és nyújtsd naponta többször, ha a gipsz nem rögzíti [1].
-- A válladat emeld, körözz vele, nyúlj fel: a kendőben lógó kar válla is bemerevedik [1].
-- Hatvan év fölött egy vizsgálat szerint a gipsz második hetétől végzett, puha labdás szorítógyakorlat rövid távon javította a szorítóerőt [1]. Hogy neked szabad-e, azt a kezelőorvosod mondja meg.
+- Az ujjaidat a gipsz felhelyezése után kezdd mozgatni: hajlítsd és nyújtsd őket, óvatosan, gyakran.
+- A hüvelykujjadat érintsd sorban a többi ujjhoz, ha a gipsz engedi.
+- A könyöködet hajlítsd és nyújtsd naponta többször, ha a gipsz nem rögzíti.
+- A válladat emeld, körözz vele, nyúlj fel: a kendőben lógó kar válla is bemerevedik.
+- Hatvan év fölött egy vizsgálat szerint a gipsz második hetétől végzett, puha labdás szorítógyakorlat rövid távon javította a szorítóerőt. Hogy neked szabad-e, azt a kezelőorvosod mondja meg.
 
-Ha az ujjaid kirívóan bemerevednek, a bőröd túlérzékennyé válik, vagy a bőr színe és tapintása megváltozik, az irányelv sürgős kézterápiás konzultációt kér [1]. Ne várd meg vele a gipsz levételét.
+Ha az ujjaid kirívóan bemerevednek, a bőröd túlérzékennyé válik, vagy a bőr színe és tapintása megváltozik, az irányelv sürgős kézterápiás konzultációt kér. Ne várd meg vele a gipsz levételét.
 
 ## Polcold fel a duzzanat ellen
 
-Az irányelv szerint a kéz és az ujjak duzzanata jelentős akadály, amely ronthatja a felépülést [1]. A felpolcolás a fájdalmat és a duzzanatot is csökkenti [2]: amikor ülsz, a könyök fölé polcolva, éjjel párnán [6]. Az irányelv az ödéma kezelésére a felpolcolást, a gyakorlatokat és a kompressziós kesztyűt együtt ajánlja, rövid távú előnnyel [1].
+Az irányelv szerint a kéz és az ujjak duzzanata jelentős akadály, amely ronthatja a felépülést. A felpolcolás a fájdalmat és a duzzanatot is csökkenti: amikor ülsz, a könyök fölé polcolva, éjjel párnán. Az irányelv az ödéma kezelésére a felpolcolást, a gyakorlatokat és a kompressziós kesztyűt együtt ajánlja, rövid távú előnnyel.
 
-Hűtés a gipsz fölött, száraz csomaggal, 15–30 percig alkalmazható [2]. Vizes borogatás nem, mert a gipsz nem lehet vizes [2].
+Hűtés a gipsz fölött, száraz csomaggal, 15–30 percig alkalmazható. Vizes borogatás nem, mert a gipsz nem lehet vizes.
 
 ## Mi jön a gipsz levétele után?
 
-Ha nem kellett műtét, a csuklótörést jellemzően 4–6 hétig rögzítik gipszben, és a csukló mozgatása ezután indul [1]. Ekkor a kezed merev és gyenge: a merevség az immobilizáció elkerülhetetlen velejárója [2], és ebben egy gyógytornász tud segíteni [1].
+Ha nem kellett műtét, a csuklótörést jellemzően 4–6 hétig rögzítik gipszben, és a csukló mozgatása ezután indul. Ekkor a kezed merev és gyenge: a merevség az immobilizáció elkerülhetetlen velejárója, és ebben egy gyógytornász tud segíteni.
 
-Műtéti heg esetén a heg masszírozásáról egy irodalmi áttekintés azt találta, hogy a műtéti hegek nagy része javult tőle, de a bizonyíték gyenge [5]. A terhelést fokozatosan kell emelni: előbb a mozgás, aztán az erő, végül a fogás. Ez a mi rendelői tapasztalatunk, nem tanulmány.
+Műtéti heg esetén a heg masszírozásáról egy irodalmi áttekintés azt találta, hogy a műtéti hegek nagy része javult tőle, de a bizonyíték gyenge. A terhelést fokozatosan kell emelni: előbb a mozgás, aztán az erő, végül a fogás. Ez a mi rendelői tapasztalatunk, nem tanulmány.
 
 Erről az időszakról külön cikket írtunk: [csuklótörés utáni gyógytorna](/blog/csuklotores-utani-gyogytorna). Ott a gyakorlatsor és a felépülés menetrendje is benne van.
 
@@ -136,13 +147,3 @@ Oktatunk is. A ProBody Stúdió sportrehabilitációs tréner képzésén a „B
 ## Fontos tudnivaló
 
 A cikk általános tájékoztatás, nem helyettesíti a szakorvosi vizsgálatot és a személyre szabott kezelést. A gipsz levételének idejét és a terhelés engedélyezését a kezelőorvos mondja ki. Ha bizonytalan vagy, vagy a tünetek romlanak, fordulj orvoshoz.
-
-## Források
-
-1. Mehta SP, Karagiannopoulos C, Pepin ME és mtsai. Distal Radius Fracture Rehabilitation: Clinical Practice Guidelines. J Orthop Sports Phys Ther. 2024;54(9):CPG1–CPG78. [doi:10.2519/jospt.2024.0301](https://doi.org/10.2519/jospt.2024.0301), PubMed 39213418.
-2. Boyd AS, Benjamin HJ, Asplund C. Principles of casting and splinting. Am Fam Physician. 2009;79(1):16–22. PubMed 19145960.
-3. Halanski M, Noonan KJ. Cast and splint immobilization: complications. J Am Acad Orthop Surg. 2008;16(1):30–40. [doi:10.5435/00124635-200801000-00005](https://doi.org/10.5435/00124635-200801000-00005), PubMed 18180390.
-4. Wall BT, Dirks ML, van Loon LJ. Skeletal muscle atrophy during short-term disuse: implications for age-related sarcopenia. Ageing Res Rev. 2013;12(4):898–906. [doi:10.1016/j.arr.2013.07.003](https://doi.org/10.1016/j.arr.2013.07.003), PubMed 23948422.
-5. Shin TM, Bordeaux JS. The role of massage in scar management: a literature review. Dermatol Surg. 2012;38(3):414–423. [doi:10.1111/j.1524-4725.2011.02201.x](https://doi.org/10.1111/j.1524-4725.2011.02201.x), PubMed 22093081.
-6. Betegtájékoztató (nem tanulmány): nhs.uk, Broken arm or wrist, felülvizsgálva 2023. május 26. [nhs.uk/conditions/broken-arm-or-wrist](https://www.nhs.uk/conditions/broken-arm-or-wrist/).
-7. Betegtájékoztató (nem tanulmány): nhs.uk, Compartment syndrome, felülvizsgálva 2026. szeptember 4. [nhs.uk/conditions/compartment-syndrome](https://www.nhs.uk/conditions/compartment-syndrome/).
