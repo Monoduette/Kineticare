@@ -4,6 +4,7 @@ import {
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
 import { showcaseProducts } from '../../lib/course-showcase'
+import { resolveCtaBannerCourseCover } from '../../lib/cta-banner-course'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
@@ -278,7 +279,15 @@ function BlockSwitch({
         />
       )
     case 'ctaBanner':
-      return <CtaBanner block={block} />
+      // A sáv képe a gomb CÉLJÁBÓL oldódik fel (kurzusoldal vagy kurzuslista →
+      // a kurzus meglévő borítója), a lap már lekért, publikált termékeiből:
+      // nincs külön lekérdezés, nincs új CMS-mező (src/lib/cta-banner-course.ts).
+      return (
+        <CtaBanner
+          block={block}
+          courseCover={resolveCtaBannerCourseCover(block.cta?.url, gridProducts)}
+        />
+      )
     case 'credsStrip': {
       const { id, variant } = sectionProps(block)
       const items = (block.items ?? [])

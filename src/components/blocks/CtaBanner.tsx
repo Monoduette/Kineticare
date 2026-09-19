@@ -1,4 +1,7 @@
 import type { BlockCtaBanner } from '../../payload-types'
+import type { CtaBannerCourseCover } from '../../lib/cta-banner-course'
+import { MediaImage } from '../content/MediaImage'
+import { mediaAlt } from '../content/media-url'
 import { Button } from '../ui/Button'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
@@ -15,12 +18,31 @@ import '../../app/(frontend)/styles/blocks/cta-banner.css'
  * Értékesítési UX-skill: a sáv NEM sürget és nem tartalmaz dark patternt, a
  * gomb szövege a szerkesztőé. Több CTA-sáv egy oldalon gyengíti egymást — erre
  * a blokk admin-leírása figyelmeztet.
+ *
+ * KURZUS-BORÍTÓ (tulajdonosi kérés, 2026-09-19): ha a gomb egy kurzusra (vagy
+ * a kurzuslistára) mutat, a sáv a kurzus meglévő borítóképét mutatja kicsiben
+ * a szöveg mellett. A feloldást a RenderBlocks végzi a lap termékeiből
+ * (src/lib/cta-banner-course.ts), a komponens csak a kész képet kapja; kép
+ * nélkül a sáv a régi, kétoszlopos alakjában marad. A kép MÁSODLAGOS elem:
+ * nem link, nem gomb, a cím és a gomb súlyát nem éri el (NN/g, Visual
+ * Hierarchy: https://www.nngroup.com/articles/visual-hierarchy-ux-definition/;
+ * Material 3, Cards: a média a tartalom kísérője, nem önálló cselekvés,
+ * https://m3.material.io/components/cards/guidelines). Alt-szöveg: a média
+ * saját alt-ja, hiányában „<kurzus címe> borítóképe" (WCAG 2.2 SC 1.1.1).
  */
 export interface CtaBannerProps {
   block: BlockCtaBanner
+  /** A gomb céljából feloldott kurzus-borító; null vagy elhagyva: nincs kép. */
+  courseCover?: CtaBannerCourseCover | null
 }
 
-export function CtaBanner({ block }: CtaBannerProps) {
+/** A borítókép alt-ja: a média alt-ja, hiányában a kurzus címéből képezve. */
+export function ctaBannerCoverAlt(cover: CtaBannerCourseCover): string {
+  const own = mediaAlt(cover.media).trim()
+  return own.length > 0 ? own : `${cover.title} borítóképe`
+}
+
+export function CtaBanner({ block, courseCover = null }: CtaBannerProps) {
   const title = block.title?.trim() ?? ''
   if (title.length === 0) {
     return null
@@ -36,11 +58,29 @@ export function CtaBanner({ block }: CtaBannerProps) {
   const ctaLabel = block.cta?.felirat?.trim() ?? ''
   const ctaUrl = block.cta?.url?.trim() ?? ''
   const hasCta = ctaLabel.length > 0 && ctaUrl.length > 0
+  const innerClassName = courseCover
+    ? 'kc-cta-banner__inner kc-cta-banner__inner--illustrated'
+    : 'kc-cta-banner__inner'
 
   return (
     <Section aria-labelledby={headingId} className="kc-cta-banner" id={anchorId} variant={variant}>
       <Container>
-        <div className="kc-cta-banner__inner">
+        <div className={innerClassName}>
+          {courseCover ? (
+            // A figure a DOM-ban a szöveg ELŐTT áll (mobilon fölötte, a hasáb
+            // legfeljebb 40%-án), asztali nézetben a CSS-rács a jobb oszlopba
+            // teszi. A kép lusta (next/image alapértelmezése priority nélkül);
+            // a `sizes` a mért megjelenítési szélességet adja: 320-on 40vw,
+            // fölötte a 240 px-es oszlop.
+            <figure className="kc-cta-banner__figure">
+              <MediaImage
+                className="kc-cta-banner__image"
+                media={{ ...courseCover.media, alt: ctaBannerCoverAlt(courseCover) }}
+                preferredSize="sm"
+                sizes="(max-width: 599px) 40vw, 240px"
+              />
+            </figure>
+          ) : null}
           <div className="kc-cta-banner__copy">
             <h2 className="kc-cta-banner__title" id={headingId}>
               {title}

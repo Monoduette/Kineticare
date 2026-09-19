@@ -57,6 +57,88 @@
   flex: 0 0 auto;
 }
 
+/* ---- Illusztrált alak: a kurzus borítója a sávban ------------------------
+   Tulajdonosi kérés (2026-09-19): „picibe" a kurzus képe a záró sávba. A kép
+   MÁSODLAGOS: a cím (L) és a gomb marad a két hangsúly, a kép a méretével
+   nem versenyez velük (NN/g, Visual Hierarchy:
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/; NN/g,
+   Image-Focused Design, a nagy kép a szöveg és a CTA elől veszi el a helyet:
+   https://www.nngroup.com/articles/image-focused-design/). Mért korlátok:
+   - 320 px: a kép a hasáb legfeljebb 40%-a (min(40%, 9rem)), a cím fölött,
+     egy hasábban, vízszintes görgetés nélkül (WCAG 2.2 SC 1.4.10 Reflow,
+     https://www.w3.org/WAI/WCAG22/Understanding/reflow.html);
+   - 600 px-től két oszlop, a kép a jobb oszlopban 12 rem (192 px);
+   - 900 px-től a jobb oszlop 15 rem (240 px), a 220–260 px-es sávban.
+   A gomb a szöveg ALÁ kerül (a szöveg olvasási végére, ahol a döntés
+   születik), a kép jobbra: a klasszikus szöveg + kísérő kép elrendezés,
+   a kép nem interaktív (Material 3, Cards: a média a tartalom kísérője,
+   https://m3.material.io/components/cards/guidelines). A keret a repó
+   kártya-nyelve: fehér paszpartu, hairline-szegély, `--kc-radius-lg`
+   (ui.css `.kc-card`), 4:3 arány a kurzusrács `__media` dobozával azonosan
+   (course-showcase.css). Mozgás nincs, ezért reduced-motion ág sem kell. */
+.kc-cta-banner__inner--illustrated {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'figure'
+    'copy'
+    'action';
+  gap: var(--kc-space-4);
+  align-items: start;
+  justify-content: stretch;
+}
+
+.kc-cta-banner__inner--illustrated .kc-cta-banner__copy {
+  grid-area: copy;
+}
+
+.kc-cta-banner__inner--illustrated .kc-cta-banner__action {
+  grid-area: action;
+}
+
+.kc-cta-banner__figure {
+  grid-area: figure;
+  width: min(40%, 9rem);
+  margin: 0;
+  padding: var(--kc-space-1);
+  background-color: var(--kc-color-surface-raised);
+  border: 1px solid var(--kc-color-border);
+  border-radius: var(--kc-radius-lg);
+  box-shadow: var(--kc-shadow-sm);
+}
+
+.kc-cta-banner__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-surface-tint);
+}
+
+@media (min-width: 600px) {
+  .kc-cta-banner__inner--illustrated {
+    grid-template-columns: minmax(0, 1fr) 12rem;
+    grid-template-areas:
+      'copy figure'
+      'action figure';
+    gap: var(--kc-space-4) var(--kc-space-6);
+    align-items: center;
+  }
+
+  .kc-cta-banner__figure {
+    width: 100%;
+    justify-self: end;
+  }
+}
+
+@media (min-width: 900px) {
+  .kc-cta-banner__inner--illustrated {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+  }
+}
+
 /* Sötét sávon a navy töltésű elsődleges gomb beleolvadna a háttérbe, a
    ui.css `.kc-section--dark a` szabálya pedig fehérre írná a feliratát is.
    Ezért itt fordul a gomb: fehér alap, navy felirat — 15,7:1 (AA/AAA). */
