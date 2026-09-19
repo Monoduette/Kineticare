@@ -31,10 +31,22 @@ import { MediaImage } from './MediaImage'
  * (https://design-system.service.gov.uk/styles/images/).
  *
  * A képet a `pages.heroImage` mező adja; a /rolunk-on ez a páros csapatfotó
- * (`apply-owner-content.ts`, UJ_ROLUNK_HERO_PREFIX). Mérés: content.css
+ * (`apply-owner-content.ts`, ROLUNK_HERO_FORRAS). Mérés: content.css
  * `.kc-page-hero--paired` (1440: a cím és a kép felső éle 0 px eltéréssel;
  * 390: a kép a bevezető alatt).
  */
+/**
+ * A CMS-oldalak, amelyeken a fejléc-kép a cím MELLETT áll (`paired`): a
+ * /rolunk (a két alapító stúdiófotója) és a /szolgaltatasok (kezelés a
+ * kezelőasztalon). Tulajdonosi kérés (2026-09-19) a Szolgáltatások oldalra:
+ * „Ahogy belépünk, olyan szűknek néz ki a sáv, amiben a szövegek vannak”,
+ * és „ide is egy képet rólunk kezelés közben” — mérve 1440 px-en a fejléc
+ * egy 672 px-es szövegoszlop volt, a sáv 53 %-a üres; a páros rács a teljes
+ * konténert használja (NN/g Common Region, Material 3 supporting pane, lásd
+ * fent). Minden más slug marad `stacked` (Codex, 2026-09-19).
+ */
+export const PAROS_FEJLEC_SLUGOK: ReadonlySet<string> = new Set(['rolunk', 'szolgaltatasok'])
+
 export interface PageHeroProps {
   title: string
   lead?: string | null

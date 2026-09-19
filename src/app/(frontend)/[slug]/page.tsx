@@ -6,7 +6,7 @@ import { cache } from 'react'
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { JsonLd } from '@/components/content/JsonLd'
 import { PageEeat } from '@/components/content/PageEeat'
-import { PageHero } from '@/components/content/PageHero'
+import { PageHero, PAROS_FEJLEC_SLUGOK } from '@/components/content/PageHero'
 import { PostArticle } from '@/components/content/PostArticle'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { hasLexicalContent } from '@/components/lexical/serialize'
@@ -241,15 +241,16 @@ export default async function CmsPage({ params }: Props) {
       {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
       <JsonLd data={siteGraph} />
       <article className="kc-cms-page">
-        {/* WP51: a /rolunk fejléc-képe a cím MELLETT áll (PageHero `paired`);
-            minden más CMS-oldal a képet a fejléc alatt, természetes arányán
-            kapja (`stacked`), mert a heroImage mező általános. */}
+        {/* WP51/WP55: a /rolunk és a /szolgaltatasok fejléc-képe a cím MELLETT
+            áll (PageHero `paired`, csapat- és kezelés-fotó); minden más
+            CMS-oldal a képet a fejléc alatt, természetes arányán kapja
+            (`stacked`), mert a heroImage mező általános. */}
         {hasFilmHero ? null : (
           <PageHero
             lead={page.excerpt}
             media={heroMedia}
             title={page.title}
-            variant={slug === 'rolunk' ? 'paired' : 'stacked'}
+            variant={PAROS_FEJLEC_SLUGOK.has(slug) ? 'paired' : 'stacked'}
           />
         )}
         {hasLayout ? (
