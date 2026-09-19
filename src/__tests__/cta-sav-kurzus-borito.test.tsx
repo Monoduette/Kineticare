@@ -128,6 +128,16 @@ describe('resolveCtaBannerCourseCover — a gomb céljából', () => {
     expect(resolveCtaBannerCourseCover('/kurzusok/4', kinalat)?.href).toBe('/kurzusok/4')
   })
 
+  it('a régi /kurzusok/<id> cím a MÁR slugos kurzust is megtalálja, és a kanonikus címet adja', () => {
+    const cover = resolveCtaBannerCourseCover('/kurzusok/1?utm_source=hirlevel', kinalat)
+    expect(cover?.href).toBe('/kurzusok/otthoni-kezrehab-program')
+    expect(cover?.media.id).toBe(1)
+    // Nem szám, nem slug, mélyebb útvonal vagy nulla → nincs találgatás.
+    for (const url of ['/kurzusok/01x', '/kurzusok/1/valami', '/kurzusok/0', '/kurzusok/99']) {
+      expect(resolveCtaBannerCourseCover(url, kinalat)).toBeNull()
+    }
+  })
+
   it('/kurzusok (a lista) → a kínálat első fizetős kurzusa', () => {
     const cover = resolveCtaBannerCourseCover('/kurzusok/', kinalat)
     expect(cover?.href).toBe('/kurzusok/otthoni-kezrehab-program')

@@ -7,6 +7,7 @@ import {
   KNOWLEDGE_BASE_MENU_ORDER,
   KNOWLEDGE_BASE_PATH,
   LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
   PROFESSIONAL_TRAINING_URL,
   PROFESSIONALS_MENU_LABEL,
   PROFESSIONALS_MENU_PATH,
@@ -487,6 +488,47 @@ describe('ensureNavigationMenu — idempotencia', () => {
       ),
     ).toHaveLength(1)
     expect(store.menus.find((row) => row.id === 5)?.url).toBe(PROFESSIONAL_TRAINING_URL)
+  })
+
+  it('a többes számú „Szakmai képzések" sort is ugyanannak a pontnak tekinti (nem duplikál)', async () => {
+    const tobbes = LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS.find(
+      (label) => label !== LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+    )
+    expect(tobbes).toBe('Szakmai képzések')
+    const store: FakeStore = {
+      menus: [
+        {
+          id: 1,
+          label: 'Szolgáltatások',
+          type: 'url',
+          url: SERVICES_PAGE_PATH,
+          order: 4,
+          visible: true,
+          openInNewTab: false,
+        },
+        {
+          id: 5,
+          label: tobbes ?? '',
+          type: 'url',
+          url: PROFESSIONAL_TRAINING_URL,
+          parent: 1,
+          order: 1,
+          visible: true,
+          openInNewTab: true,
+        },
+      ],
+      pages: [],
+      products: [],
+    }
+    const { payload } = createFakePayload(store)
+
+    const summary = await ensureNavigationMenu(payload)
+
+    expect(summary.created).not.toContain(PROFESSIONALS_MENU_LABEL)
+    expect(summary.skipped).toContain(tobbes)
+    expect(
+      store.menus.filter((row) => row.label === PROFESSIONALS_MENU_LABEL || row.label === tobbes),
+    ).toHaveLength(1)
   })
 
   it('próbafutás (dryRun) semmit nem ír az adatbázisba', async () => {

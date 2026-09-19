@@ -35,6 +35,15 @@ export const PROFESSIONALS_MENU_LABEL = 'Szakembereknek'
 export const PROFESSIONALS_MENU_PATH = '/szakembereknek'
 /** A menüpont 2026-09-19 előtti felirata (dedup-kulcs a meglévő sorhoz). */
 export const LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL = 'Szakmai képzés'
+/**
+ * A menüpont MINDEN régi felirata (egyes és többes szám): a seed dedupja és
+ * az owner-content átnevező szabály UGYANEZT a listát használja, hogy egyik
+ * se lásson „új" pontot ott, ahol a másik még a régit ismeri fel.
+ */
+export const LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS: readonly string[] = [
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+  'Szakmai képzések',
+]
 
 /** Az ingyenes SOS lead-magnet kurzus azonosítója (products.sku = megjelenő név). */
 export const SOS_COURSE_SKU = 'SOS Kézrelax villámkurzus'
@@ -201,7 +210,7 @@ function labelsMatchingSeedNode(node: MenuSeedNode): string[] {
   // WP49: a „Szakmai képzés" sor a „Szakembereknek" tervpont elődje; az élő
   // CMS-sort az owner-content szabály nevezi át, a seed addig sem duplikál.
   if (node.label === PROFESSIONALS_MENU_LABEL) {
-    return [PROFESSIONALS_MENU_LABEL, LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL]
+    return [PROFESSIONALS_MENU_LABEL, ...LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS]
   }
   return [node.label]
 }

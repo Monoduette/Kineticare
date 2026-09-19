@@ -35,6 +35,7 @@ import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE } from '../lib/home-help-states'
 import {
   CLINIC_TREATMENTS_ANCHOR,
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
   PROFESSIONAL_TRAINING_URL,
   SOS_COURSE_SKU,
 } from '../lib/menu-seed'
@@ -2978,10 +2979,8 @@ export const alkalmazSzolgaltatasBlokkKep = (input: {
 // ---------------------------------------------------------------------------
 
 /** A „Szakmai képzés” menüpont RÉGI feliratai; kizárólag pontosan ezek cserélhetők. */
-export const SZAKMAI_MENUPONT_REGI_FELIRATOK: readonly string[] = [
-  'Szakmai képzés',
-  'Szakmai képzések',
-]
+export const SZAKMAI_MENUPONT_REGI_FELIRATOK: readonly string[] =
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS
 
 /** A menüpont jóváhagyott ÚJ felirata. */
 export const SZAKMAI_MENUPONT_UJ_FELIRAT = 'Szakembereknek'
@@ -3382,8 +3381,10 @@ export const richTextBekezdesek = (blokk: Szekciosor[number]): string[] | null =
  * (src/scripts/restore-legacy-content.ts, `rolunkPartnerSzekciok`).
  *
  * VÉDŐFELTÉTELEK:
- *  - törlés KIZÁRÓLAG akkor, ha a blokk tartalma PONTOSAN egyetlen, ezzel a
- *    mondattal betűre egyező bekezdés; minden más szabad szöveg érintetlen;
+ *  - törlés KIZÁRÓLAG a „Partnereink” `pressLogos` sáv (látható, pontosan
+ *    egyszer szerepel) KÖZVETLENÜL UTÁNI blokkra, és csak akkor, ha annak
+ *    tartalma PONTOSAN egyetlen, ezzel a mondattal betűre egyező bekezdés;
+ *    ugyanez a mondat a lap MÁS helyén (szerkesztői döntés) érintetlen marad;
  *  - a törölt szöveg a naplóban betűhíven szerepel (nyom nélkül semmi nem
  *    tűnik el);
  *  - ha nincs ilyen blokk (már törölve, vagy a szerkesztő átírta), indokolt
@@ -3401,38 +3402,44 @@ export const alkalmazRolunkPartnerMondat = (layout: Page['layout']): SzekciosorC
       ],
     }
   }
-  const torlendo = layout.flatMap((blokk, index) => {
-    const bekezdesek = richTextBekezdesek(blokk)
-    return bekezdesek !== null &&
-      bekezdesek.length === 1 &&
-      bekezdesek[0] === ROLUNK_TOVABBI_PARTNEREK
-      ? [index]
-      : []
+  const kihagyas = (indok: string): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok }],
   })
-  if (torlendo.length === 0) {
-    return {
-      layout: null,
-      modositasok: [],
-      kihagyasok: [
-        {
-          szabaly,
-          uzenet,
-          indok: `nincs olyan szabad-szöveg blokk, amelynek tartalma PONTOSAN ${ertekCimke(
-            ROLUNK_TOVABBI_PARTNEREK,
-          )} — már törölve, vagy a szerkesztő átírta`,
-        },
-      ],
-    }
+  const partner = egyetlenIndex(
+    layout,
+    (blokk) => blokk.blockType === 'pressLogos' && blokk.heading === ROLUNK_PARTNER_FELIRAT,
+  )
+  const partnerIndok = talalatIndok(`„${ROLUNK_PARTNER_FELIRAT}” logósáv (pressLogos)`, partner)
+  if (partnerIndok !== null) return kihagyas(partnerIndok)
+  const torlendo = partner + 1
+  const kovetkezo = layout[torlendo]
+  const bekezdesek = kovetkezo === undefined ? null : richTextBekezdesek(kovetkezo)
+  if (
+    bekezdesek === null ||
+    bekezdesek.length !== 1 ||
+    bekezdesek[0] !== ROLUNK_TOVABBI_PARTNEREK
+  ) {
+    return kihagyas(
+      `a „${ROLUNK_PARTNER_FELIRAT}” sáv (${
+        partner + 1
+      }. szekció) után nem olyan szabad-szöveg blokk áll, amelynek tartalma PONTOSAN ${ertekCimke(
+        ROLUNK_TOVABBI_PARTNEREK,
+      )} — már törölve, vagy a szerkesztő átírta`,
+    )
   }
   return {
-    layout: layout.filter((_, index) => !torlendo.includes(index)),
-    modositasok: torlendo.map((index) => ({
-      szabaly,
-      uzenet: `${uzenet} (${index + 1}. szekció) törölve. A törölt szöveg: ${ertekCimke(
-        ROLUNK_TOVABBI_PARTNEREK,
-      )}`,
-      indok: null,
-    })),
+    layout: layout.filter((_, index) => index !== torlendo),
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet} (${torlendo + 1}. szekció) törölve. A törölt szöveg: ${ertekCimke(
+          ROLUNK_TOVABBI_PARTNEREK,
+        )}`,
+        indok: null,
+      },
+    ],
     kihagyasok: [],
   }
 }

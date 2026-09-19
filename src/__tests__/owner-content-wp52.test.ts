@@ -545,6 +545,47 @@ describe('alkalmazRolunkPartnerMondat', () => {
     )
     expect(alkalmazRolunkPartnerMondat(bovitett).layout).toBeNull()
   })
+
+  it('csak a „Partnereink” sáv KÖZVETLENÜL utáni blokkot törli; a mondat máshol érintetlen', () => {
+    const kiindulas = rolunkLayout()
+    const partnerIndex = indexe(kiindulas, partner)
+    const masolat: Szekcio = {
+      blockType: 'richText',
+      content: richText([para(ROLUNK_TOVABBI_PARTNEREK)]),
+    }
+    // Ugyanaz a mondat a lap ELEJÉN is (szerkesztői döntés): nem törölhető.
+    const kettovel: Szekciosor = [masolat, ...kiindulas]
+
+    const eredmeny = alkalmazRolunkPartnerMondat(kettovel)
+
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].uzenet).toContain(`(${partnerIndex + 3}. szekció)`)
+    const uj = eredmeny.layout ?? []
+    expect(uj).toHaveLength(kettovel.length - 1)
+    expect(uj[0]).toBe(masolat)
+    expect(uj.filter(partnerMondat)).toHaveLength(1)
+  })
+
+  it('a „Partnereink” sáv nélkül (vagy rejtve, vagy duplán) indokolt kihagyás, akkor is, ha a mondat megvan', () => {
+    const savNelkul = rolunkLayout().filter((blokk) => !partner(blokk))
+    expect(savNelkul.some(partnerMondat)).toBe(true)
+    const eredmeny = alkalmazRolunkPartnerMondat(savNelkul)
+    expect(eredmeny.layout).toBeNull()
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0].indok).toContain('nincs látható')
+
+    const rejtve = rolunkLayout().map((blokk) =>
+      partner(blokk)
+        ? { ...blokk, sectionSettings: { ...blokk.sectionSettings, visible: false } }
+        : blokk,
+    )
+    expect(alkalmazRolunkPartnerMondat(rejtve).layout).toBeNull()
+
+    const duplan = rolunkLayout().flatMap((blokk) => (partner(blokk) ? [blokk, blokk] : [blokk]))
+    const duplaEredmeny = alkalmazRolunkPartnerMondat(duplan)
+    expect(duplaEredmeny.layout).toBeNull()
+    expect(duplaEredmeny.kihagyasok[0].indok).toContain('több látható')
+  })
 })
 
 describe('alkalmazRolunkLogosavokSorrend', () => {

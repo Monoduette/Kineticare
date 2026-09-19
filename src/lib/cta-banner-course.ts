@@ -1,5 +1,5 @@
 import { COURSE_BASE_PATH, courseHref } from './course-url'
-import { courseTitle, isPaidCourse } from './courses'
+import { courseTitle, isPaidCourse, parseCourseIdParam } from './courses'
 import type { Media, Product } from '../payload-types'
 
 /**
@@ -101,7 +101,15 @@ export function resolveCtaBannerCourseCover(
   if (pathname === COURSE_BASE_PATH) {
     product = products.find((candidate) => isPaidCourse(candidate))
   } else if (pathname.startsWith(`${COURSE_BASE_PATH}/`)) {
-    product = products.find((candidate) => courseHref(candidate) === pathname)
+    // A régi, id-alapú /kurzusok/<id> cím akkor is ugyanaz a kurzus, ha a
+    // terméknek AZÓTA van slugja (a route tartósan a kanonikus címre
+    // irányít, lásd course-url.ts) — a sáv sem veszítheti el a borítót.
+    const segment = pathname.slice(COURSE_BASE_PATH.length + 1)
+    const legacyId = segment.includes('/') ? null : parseCourseIdParam(segment)
+    product = products.find(
+      (candidate) =>
+        courseHref(candidate) === pathname || (legacyId !== null && candidate.id === legacyId),
+    )
   }
   if (!product) {
     return null
