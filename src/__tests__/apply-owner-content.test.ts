@@ -13,6 +13,7 @@ import {
   REGI_PRESS_FEJLEC,
   SOS_KURZUS_SLUG,
   SZAKMAI_HATTER_HORGONY,
+  SZOLGALTATASOK_HERO_FORRAS,
   SZOLGALTATASOK_HERO_PREFIX,
   UJ_KURZUS_SZEKCIO_CIM,
   UJ_PACIENS_ERTEK,
@@ -1897,54 +1898,120 @@ describe('alkalmazZaroCta', () => {
 })
 
 // ===========================================================================
-// 12a. javítás — a /szolgaltatasok fejléc-képének ürítése.
+// 12a. javítás (WP55) — a /szolgaltatasok fejléc-képe: a kezelőasztalos fotó.
+// Egyetlen szabály a mezőre, az alkalmazRolunkHeroKep szemantikájával.
 // ===========================================================================
 
 describe('alkalmazSzolgaltatasokHeroKep', () => {
-  it('a rendelő-fotóra mutató mezőt üríti', () => {
-    const eredmeny = alkalmazSzolgaltatasokHeroKep({ jelenlegi: 55, regiMediaId: 55 })
-
-    expect(eredmeny.uritendo).toBe(true)
-    expect(eredmeny.modositasok).toHaveLength(1)
-    expect(eredmeny.modositasok[0].szabaly).toBe('szolgaltatasok-hero-kep')
-    expect(eredmeny.modositasok[0].indok).toBeNull()
-    expect(eredmeny.kihagyasok).toHaveLength(0)
+  const kezeloasztal = (id: number | null, forrasLetezik = true) => ({
+    filename: SZOLGALTATASOK_HERO_FORRAS.filename,
+    id,
+    forrasLetezik,
   })
 
-  it('populált (depth > 0) heroImage esetén is felismeri a rendelő-fotót', () => {
-    const eredmeny = alkalmazSzolgaltatasokHeroKep({
-      jelenlegi: mediaDokumentum(55, `${SZOLGALTATASOK_HERO_PREFIX}.webp`),
-      regiMediaId: 55,
-    })
-
-    expect(eredmeny.uritendo).toBe(true)
+  it('a jóváhagyott forrás: pontos webp fájlnév, a megadott alt, a team mappából', () => {
+    expect(SZOLGALTATASOK_HERO_FORRAS.filename).toBe('treatment-table-hands-1600.webp')
+    expect(SZOLGALTATASOK_HERO_FORRAS.filePath).toBe(
+      'public/media/team/treatment-table-hands-1600.webp',
+    )
+    expect(SZOLGALTATASOK_HERO_FORRAS.alt).toBe(
+      'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+    )
   })
 
-  it('MÁS képhez nem nyúl (csendes kihagyás)', () => {
-    const eredmeny = alkalmazSzolgaltatasokHeroKep({ jelenlegi: 99, regiMediaId: 55 })
+  it('a régi rendelő-fotóról a kezelőasztalos fotóra cserél, populált heroImage-nél is', () => {
+    for (const jelenlegi of [55, mediaDokumentum(55, `${SZOLGALTATASOK_HERO_PREFIX}.webp`)]) {
+      const eredmeny = alkalmazSzolgaltatasokHeroKep({
+        jelenlegi,
+        jelenlegiFajlnev: `${SZOLGALTATASOK_HERO_PREFIX}.webp`,
+        ujMedia: kezeloasztal(77),
+      })
 
-    expect(eredmeny.uritendo).toBe(false)
-    expect(eredmeny.modositasok).toHaveLength(0)
-    expect(eredmeny.kihagyasok[0].indok).toContain('csak pontos egyezésnél')
-    expect(eredmeny.kihagyasok[0].hangos).not.toBe(true)
-  })
-
-  it('idempotens: üres mezőn nincs mit üríteni', () => {
-    for (const jelenlegi of [null, undefined]) {
-      const eredmeny = alkalmazSzolgaltatasokHeroKep({ jelenlegi, regiMediaId: 55 })
-
-      expect(eredmeny.uritendo).toBe(false)
-      expect(eredmeny.kihagyasok[0].indok).toContain('MÁR nincs fejléc-képe')
-      expect(eredmeny.kihagyasok[0].hangos).not.toBe(true)
+      expect(eredmeny.heroImage).toBe(77)
+      expect(eredmeny.modositasok).toHaveLength(1)
+      expect(eredmeny.modositasok[0].szabaly).toBe('szolgaltatasok-hero-kep')
+      expect(eredmeny.modositasok[0].indok).toBeNull()
+      expect(eredmeny.modositasok[0].uzenet).toContain('/szolgaltatasok')
+      expect(eredmeny.kihagyasok).toHaveLength(0)
     }
   })
 
-  it('a rendelő-fotó média-rekordjának hiányában HANGOSAN hagyja ki', () => {
-    const eredmeny = alkalmazSzolgaltatasokHeroKep({ jelenlegi: 99, regiMediaId: null })
+  it('ÜRES fejléc-kép mezőt (a korábbi ürítés után is) a kezelőasztalos fotóval tölt ki', () => {
+    for (const jelenlegi of [null, undefined]) {
+      const eredmeny = alkalmazSzolgaltatasokHeroKep({
+        jelenlegi,
+        jelenlegiFajlnev: null,
+        ujMedia: kezeloasztal(77),
+      })
 
-    expect(eredmeny.uritendo).toBe(false)
+      expect(eredmeny.heroImage).toBe(77)
+      expect(eredmeny.modositasok[0].uzenet).toContain('üres mező')
+    }
+  })
+
+  it('idempotens: a kezelőasztalos fotót csendben kihagyja (azonosító vagy fájlnév alapján)', () => {
+    const elso = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: 55,
+      jelenlegiFajlnev: `${SZOLGALTATASOK_HERO_PREFIX}.webp`,
+      ujMedia: kezeloasztal(77),
+    })
+    for (const bemenet of [
+      { jelenlegi: elso.heroImage, jelenlegiFajlnev: SZOLGALTATASOK_HERO_FORRAS.filename },
+      { jelenlegi: 5, jelenlegiFajlnev: SZOLGALTATASOK_HERO_FORRAS.filename },
+    ]) {
+      const masodik = alkalmazSzolgaltatasokHeroKep({ ...bemenet, ujMedia: kezeloasztal(77) })
+      expect(masodik.heroImage).toBeNull()
+      expect(masodik.modositasok).toHaveLength(0)
+      expect(masodik.kihagyasok[0].hangos).toBe(false)
+      expect(masodik.kihagyasok[0].indok).toContain('MÁR a kezelőasztalos fotó')
+    }
+  })
+
+  it('a szerkesztő által választott képhez nem nyúl, és HANGOSAN naplózza', () => {
+    const eredmeny = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: 99,
+      jelenlegiFajlnev: 'sajat-rendelo-foto.webp',
+      ujMedia: kezeloasztal(77),
+    })
+
+    expect(eredmeny.heroImage).toBeNull()
+    expect(eredmeny.modositasok).toHaveLength(0)
     expect(eredmeny.kihagyasok[0].hangos).toBe(true)
+    expect(eredmeny.kihagyasok[0].indok).toContain('sajat-rendelo-foto.webp')
     expect(eredmeny.kihagyasok[0].indok).toContain(SZOLGALTATASOK_HERO_PREFIX)
+  })
+
+  it('ha a fotó nincs a Médiatárban, de a forrás megvan: módosít, az azonosítót a futtató tölti ki', () => {
+    const eredmeny = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: null,
+      jelenlegiFajlnev: null,
+      ujMedia: kezeloasztal(null, true),
+    })
+
+    expect(eredmeny.heroImage).toBeNull()
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.modositasok[0].uzenet).toContain('a repó fájljából hozza létre')
+  })
+
+  it('rekord és forrásfájl hiányában HANGOSAN kimarad; nem található rekordra mutató mező is hangos', () => {
+    const hianyzo = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: 55,
+      jelenlegiFajlnev: `${SZOLGALTATASOK_HERO_PREFIX}.webp`,
+      ujMedia: kezeloasztal(null, false),
+    })
+    expect(hianyzo.heroImage).toBeNull()
+    expect(hianyzo.modositasok).toHaveLength(0)
+    expect(hianyzo.kihagyasok[0].hangos).toBe(true)
+    expect(hianyzo.kihagyasok[0].indok).toContain(SZOLGALTATASOK_HERO_FORRAS.filePath)
+
+    const szakadt = alkalmazSzolgaltatasokHeroKep({
+      jelenlegi: 99,
+      jelenlegiFajlnev: null,
+      ujMedia: kezeloasztal(77),
+    })
+    expect(szakadt.heroImage).toBeNull()
+    expect(szakadt.kihagyasok[0].hangos).toBe(true)
+    expect(szakadt.kihagyasok[0].indok).toContain('99')
   })
 })
 

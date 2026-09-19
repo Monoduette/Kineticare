@@ -230,13 +230,25 @@ export const REGI_KEZDOLAP_ROLUNK_CIMEK: readonly string[] = [
 ]
 
 /**
- * A `/szolgaltatasok` fejléc-képének fájlnév-prefixe (rendelő-fotó).
- *
- * Prefix és futásidejű feloldás a 4. javítás mintájára: a Média collection
- * webp-re konvertál, ezért a kiterjesztés környezetenként eltér, fix
- * azonosítót pedig nem használhatunk.
+ * A `/szolgaltatasok` KORÁBBI fejléc-képének fájlnév-prefixe (az örökölt
+ * rendelő-fotó). Prefix, mert a Média collection webp-re konvertál, ezért a
+ * kiterjesztés környezetenként eltér. WP55-től ez a script által cserélhető
+ * „korábbi kép” (lásd `SZOLGALTATASOK_HERO_FORRAS`); a 12a. javítás régebbi,
+ * ürítő változata megszűnt, a mezőre egyetlen szabály él.
  */
 export const SZOLGALTATASOK_HERO_PREFIX = '67b3bd06f3936_Rendelo'
+
+/**
+ * A `/szolgaltatasok` fejléc-képének jóváhagyott célja (WP55, tulajdonosi
+ * visszajelzés: „olyan szűknek néz ki a sáv” — a lap fejléce a /rolunk
+ * párosított alakját kapja, kezelőasztalos fotóval). PONTOS fájlnév; a
+ * rekordot a script a repó fájljából hozza létre, ha még nincs.
+ */
+export const SZOLGALTATASOK_HERO_FORRAS: MediaForras = {
+  filename: 'treatment-table-hands-1600.webp',
+  filePath: 'public/media/team/treatment-table-hands-1600.webp',
+  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+}
 
 // ---------------------------------------------------------------------------
 // Típusok
@@ -719,47 +731,51 @@ export const heroKepAzonosito = (ertek: Page['heroImage']): number | null => {
   return null
 }
 
-/** Fájlnév-prefix egyezés a korábbi, script-adta fejléc-képekre. */
-const korabbiRolunkHero = (fajlnev: string): boolean =>
-  ROLUNK_HERO_KORABBI_PREFIXEK.some((prefix) => fajlnev.startsWith(prefix))
-
 /**
- * A /rolunk fejléc-képének tiszta átalakítása (4. javítás, WP54-től a
- * stúdiófotóra).
+ * Egy oldal fejléc-képének (`pages.heroImage`) tiszta átalakítása — a
+ * /rolunk (4. javítás) és a /szolgaltatasok (12a. javítás, WP55-től) KÖZÖS
+ * magja. Oldalanként EGYETLEN szabály él a mezőre.
  *
  * A jelenlegi kép FÁJLNEVÉT és az új kép állapotát a HÍVÓ deríti ki (a
  * Médiatárból); ez a függvény már csak a döntést hozza meg, adatbázis nélkül.
- * EGYETLEN szabály él a mezőre: a korábbi célok (szóló portré, `katak-team`
- * páros fotó) itt „korábbi” képek, nem külön szabály.
  *
  * VÉDŐFELTÉTELEK:
- *  - ha a mező MÁR a stúdiófotóra mutat, nincs teendő (idempotencia);
- *  - ha a stúdiófotó nincs a Médiatárban ÉS a repó-forrásfájl is hiányzik,
- *    a lépés HANGOSAN kimarad;
- *  - üres mező vagy a script/seed korábbi képe (`ROLUNK_HERO_KORABBI_PREFIXEK`)
- *    → csere a stúdiófotóra;
+ *  - ha a mező MÁR az új képre mutat, nincs teendő (idempotencia);
+ *  - ha az új kép nincs a Médiatárban ÉS a repó-forrásfájl is hiányzik, a
+ *    lépés HANGOSAN kimarad;
+ *  - üres mező vagy a script/seed korábbi képe (`korabbiPrefixek`) → csere;
  *  - minden más kép a szerkesztőé: HANGOS kihagyás (szerkesztői elsőbbség),
  *    ahogy a nem található média-rekordra mutató mező is.
  */
-export const alkalmazRolunkHeroKep = (input: {
-  /** A `rolunk` oldal jelenlegi `heroImage` értéke. */
+const alkalmazFejlecKep = (input: {
+  szabaly: JavitasSzabaly
+  /** Az oldal címkéje a naplóhoz (pl. „/rolunk”). */
+  oldalCimke: string
+  /** Az új kép rövid neve a naplóhoz (pl. „stúdiófotó”). */
+  ujKepCimke: string
+  /** Az új kép forrása (a hangos kihagyás a forrásútvonalat írja ki). */
+  forras: MediaForras
+  /** A script/seed KORÁBBI képeinek fájlnév-prefixei — csak ezek cserélhetők. */
+  korabbiPrefixek: readonly string[]
+  /** Az oldal jelenlegi `heroImage` értéke. */
   jelenlegi: Page['heroImage']
   /**
    * A jelenlegi kép fájlneve a Médiatárból; `null`, ha nincs kép, vagy a
    * hivatkozott rekord nem található.
    */
   jelenlegiFajlnev: string | null
-  /** A stúdiófotó állapota (meglévő azonosító és/vagy forrásfájl). */
+  /** Az új kép állapota (meglévő azonosító és/vagy forrásfájl). */
   ujMedia: UjMediaAllapot
 }): HeroKepAtalakitas => {
-  const { jelenlegi, jelenlegiFajlnev, ujMedia } = input
+  const { szabaly, oldalCimke, ujKepCimke, forras, korabbiPrefixek, jelenlegi, ujMedia } = input
+  const { jelenlegiFajlnev } = input
   const jelenlegiId = heroKepAzonosito(jelenlegi)
-  const uzenet = 'A /rolunk oldal fejléc-képe'
+  const uzenet = `A ${oldalCimke} oldal fejléc-képe`
 
   const kihagyas = (indok: string, hangos = false): HeroKepAtalakitas => ({
     heroImage: null,
     modositasok: [],
-    kihagyasok: [{ szabaly: 'rolunk-hero-kep', uzenet, indok, hangos }],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
   })
 
   if (
@@ -767,13 +783,13 @@ export const alkalmazRolunkHeroKep = (input: {
     ((ujMedia.id !== null && jelenlegiId === ujMedia.id) || jelenlegiFajlnev === ujMedia.filename)
   ) {
     return kihagyas(
-      `a fejléc-kép MÁR a stúdiófotó („${ujMedia.filename}”, azonosító: ${jelenlegiId}) — nincs teendő`,
+      `a fejléc-kép MÁR a ${ujKepCimke} („${ujMedia.filename}”, azonosító: ${jelenlegiId}) — nincs teendő`,
     )
   }
 
   if (ujMedia.id === null && !ujMedia.forrasLetezik) {
     return kihagyas(
-      `a stúdiófotó („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${ROLUNK_HERO_FORRAS.filePath}) sem található — a fejléc-kép érintetlen marad`,
+      `a ${ujKepCimke} („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${forras.filePath}) sem található — a fejléc-kép érintetlen marad`,
       true,
     )
   }
@@ -785,11 +801,15 @@ export const alkalmazRolunkHeroKep = (input: {
     )
   }
 
-  if (jelenlegiId !== null && jelenlegiFajlnev !== null && !korabbiRolunkHero(jelenlegiFajlnev)) {
+  if (
+    jelenlegiId !== null &&
+    jelenlegiFajlnev !== null &&
+    !korabbiPrefixek.some((prefix) => jelenlegiFajlnev.startsWith(prefix))
+  ) {
     return kihagyas(
-      `a fejléc-kép a szerkesztő által választott kép („${jelenlegiFajlnev}”, azonosító: ${jelenlegiId}), nem a script korábbi képe (${ROLUNK_HERO_KORABBI_PREFIXEK.map(
-        (prefix) => `„${prefix}…”`,
-      ).join(', ')}) — szerkesztői elsőbbség, a script nem ír felül`,
+      `a fejléc-kép a szerkesztő által választott kép („${jelenlegiFajlnev}”, azonosító: ${jelenlegiId}), nem a script korábbi képe (${korabbiPrefixek
+        .map((prefix) => `„${prefix}…”`)
+        .join(', ')}) — szerkesztői elsőbbség, a script nem ír felül`,
       true,
     )
   }
@@ -800,21 +820,59 @@ export const alkalmazRolunkHeroKep = (input: {
       : `korábbi kép („${jelenlegiFajlnev ?? ''}”, azonosító: ${jelenlegiId})`
   const hova =
     ujMedia.id === null
-      ? `stúdiófotó („${ujMedia.filename}”, a rekordot a script a repó fájljából hozza létre)`
-      : `stúdiófotó („${ujMedia.filename}”, azonosító: ${ujMedia.id})`
+      ? `${ujKepCimke} („${ujMedia.filename}”, a rekordot a script a repó fájljából hozza létre)`
+      : `${ujKepCimke} („${ujMedia.filename}”, azonosító: ${ujMedia.id})`
 
   return {
     heroImage: ujMedia.id,
-    modositasok: [
-      {
-        szabaly: 'rolunk-hero-kep',
-        uzenet: `${uzenet}: ${honnan} → ${hova}`,
-        indok: null,
-      },
-    ],
+    modositasok: [{ szabaly, uzenet: `${uzenet}: ${honnan} → ${hova}`, indok: null }],
     kihagyasok: [],
   }
 }
+
+/** A fejléc-kép szabályok közös bemenete (a futtató oldja fel a Médiatárból). */
+export interface FejlecKepBemenet {
+  /** Az oldal jelenlegi `heroImage` értéke. */
+  jelenlegi: Page['heroImage']
+  /** A jelenlegi kép fájlneve; `null`, ha nincs kép, vagy a rekord nem található. */
+  jelenlegiFajlnev: string | null
+  /** Az új kép állapota (meglévő azonosító és/vagy forrásfájl). */
+  ujMedia: UjMediaAllapot
+}
+
+/**
+ * 4. javítás (WP54-től a stúdiófotóra) — a /rolunk fejléc-képe. A korábbi
+ * célok (szóló portré, `katak-team` páros fotó) itt „korábbi” képek
+ * (`ROLUNK_HERO_KORABBI_PREFIXEK`), nem külön szabály. A döntés:
+ * `alkalmazFejlecKep`.
+ */
+export const alkalmazRolunkHeroKep = (input: FejlecKepBemenet): HeroKepAtalakitas =>
+  alkalmazFejlecKep({
+    ...input,
+    szabaly: 'rolunk-hero-kep',
+    oldalCimke: '/rolunk',
+    ujKepCimke: 'stúdiófotó',
+    forras: ROLUNK_HERO_FORRAS,
+    korabbiPrefixek: ROLUNK_HERO_KORABBI_PREFIXEK,
+  })
+
+/**
+ * 12a. javítás (WP55) — a /szolgaltatasok fejléc-képe: a kezelőasztalos
+ * csuklókezelés-fotó (`SZOLGALTATASOK_HERO_FORRAS`), hogy a lap fejléce a
+ * /rolunk párosított alakját kaphassa (cím + bevezető balra, fotó jobbra).
+ * A korábbi ürítő szabály megszűnt: az örökölt rendelő-fotó
+ * (`SZOLGALTATASOK_HERO_PREFIX`) és az üres mező cserélhető, minden más a
+ * szerkesztőé. A döntés: `alkalmazFejlecKep`.
+ */
+export const alkalmazSzolgaltatasokHeroKep = (input: FejlecKepBemenet): HeroKepAtalakitas =>
+  alkalmazFejlecKep({
+    ...input,
+    szabaly: 'szolgaltatasok-hero-kep',
+    oldalCimke: '/szolgaltatasok',
+    ujKepCimke: 'kezelőasztalos fotó',
+    forras: SZOLGALTATASOK_HERO_FORRAS,
+    korabbiPrefixek: [SZOLGALTATASOK_HERO_PREFIX],
+  })
 
 // ---------------------------------------------------------------------------
 // 5. javítás — a /rolunk szakmai háttere: örökölt óriás-blokk → rövid rész +
@@ -2693,72 +2751,10 @@ export const alkalmazZaroCta = (input: {
 }
 
 // ---------------------------------------------------------------------------
-// 12. javítás — a /szolgaltatasok oldal teteje: fejléc-kép ürítése + az örökölt
-// bevezető blokk cseréje üdvözlő (welcome) blokkra.
+// 12. javítás — a /szolgaltatasok oldal teteje: az örökölt bevezető blokk
+// cseréje üdvözlő (welcome) blokkra. (A 12a. fejléc-kép szabály a 4. javítás
+// mellett él, `alkalmazSzolgaltatasokHeroKep`.)
 // ---------------------------------------------------------------------------
-
-/** A fejléc-kép ürítésének eredménye. */
-export interface HeroKepUritesAtalakitas {
-  /** `true` → a `heroImage` mezőt ÜRÍTENI kell (null-ra írni); `false` → nincs írás. */
-  uritendo: boolean
-  modositasok: JavitasLepes[]
-  kihagyasok: JavitasLepes[]
-}
-
-/**
- * 12a. javítás — a `/szolgaltatasok` fejléc-képének ürítése.
- *
- * A rendelő-fotó a lap tetején csak lejjebb tolta a tartalmat, állítás nélkül
- * (mért redesign). Ürítés KIZÁRÓLAG akkor, ha a mező tényleg a rendelő-fotóra
- * mutat — a média-azonosítót a HÍVÓ deríti ki fájlnév-prefix alapján (a Média
- * collection webp-re konvertál, ezért fix azonosító nem használható).
- */
-export const alkalmazSzolgaltatasokHeroKep = (input: {
-  /** A `szolgaltatasok` oldal jelenlegi `heroImage` értéke. */
-  jelenlegi: Page['heroImage']
-  /** A rendelő-fotó média-azonosítója, vagy `null`, ha nincs ilyen rekord. */
-  regiMediaId: number | null
-}): HeroKepUritesAtalakitas => {
-  const { jelenlegi, regiMediaId } = input
-  const jelenlegiId = heroKepAzonosito(jelenlegi)
-  const uzenet = 'A /szolgaltatasok oldal fejléc-képe'
-
-  const kihagyas = (indok: string, hangos = false): HeroKepUritesAtalakitas => ({
-    uritendo: false,
-    modositasok: [],
-    kihagyasok: [{ szabaly: 'szolgaltatasok-hero-kep', uzenet, indok, hangos }],
-  })
-
-  // Idempotencia: üres mezőn nincs mit üríteni.
-  if (jelenlegiId === null) {
-    return kihagyas('az oldalnak MÁR nincs fejléc-képe — nincs teendő')
-  }
-
-  if (regiMediaId === null) {
-    return kihagyas(
-      `a Médiatárban nincs „${SZOLGALTATASOK_HERO_PREFIX}” kezdetű fájlnevű kép, a mostani fejléc-kép (azonosító: ${jelenlegiId}) tehát nem az ürítendő rendelő-fotó — érintetlen marad`,
-      true,
-    )
-  }
-
-  if (jelenlegiId !== regiMediaId) {
-    return kihagyas(
-      `a fejléc-kép nem a rendelő-fotóra mutat (mostani azonosító: ${jelenlegiId}, várt: ${regiMediaId}) — a script csak pontos egyezésnél üríti a mezőt`,
-    )
-  }
-
-  return {
-    uritendo: true,
-    modositasok: [
-      {
-        szabaly: 'szolgaltatasok-hero-kep',
-        uzenet: `${uzenet}: a rendelő-fotó („${SZOLGALTATASOK_HERO_PREFIX}…”, azonosító: ${regiMediaId}) LEVÉTELE — a lap a tartalommal kezdődik. A kép a Médiatárban marad, bármikor visszatehető.`,
-        indok: null,
-      },
-    ],
-    kihagyasok: [],
-  }
-}
 
 /**
  * A `/szolgaltatasok` szekciósorának ÚJ első blokkja (üdvözlő blokk) a
@@ -2851,7 +2847,7 @@ export const KAPCSOLAT_SLUG = 'kapcsolat'
 /**
  * A két portré fájlnév-prefixe.
  *
- * Prefix és futásidejű feloldás a 4. és a 12a. javítás mintájára: a Média
+ * Prefix és futásidejű feloldás (`keresdMediat`): a Média
  * collection webp-re konvertál, ezért a kiterjesztés környezetenként eltér, fix
  * azonosítót pedig nem használhatunk.
  */
@@ -3747,13 +3743,14 @@ export const TECHNIKAK_TABLA_CIM = 'Amit a rendelőben kínálunk'
 export const TECHNIKAK_TABLA_HORGONY = 'rendeloi-technikak'
 
 /**
- * A technikák-tábla képe (WP54/4): csuklókezelés a kezelőasztalon. A blokk
- * kép NÉLKÜL nem kerül be.
+ * A technikák-tábla képe (WP54/4, WP55-től a csukló-mobilizálás): NEM a
+ * fejléc kezelőasztalos fotója (ugyanaz a kép kétszer egy lapon rossz). A
+ * blokk kép NÉLKÜL nem kerül be.
  */
 export const TECHNIKAK_TABLA_KEP_FORRAS: MediaForras = {
-  filename: 'treatment-table-hands-1600.webp',
-  filePath: 'public/media/team/treatment-table-hands-1600.webp',
-  alt: 'Csuklókezelés a kezelőasztalon a Kineticare rendelőjében',
+  filename: 'treatment-wrist-table-1600.webp',
+  filePath: 'public/media/team/treatment-wrist-table-1600.webp',
+  alt: 'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót',
 }
 
 /** A technikák-tábla öt sora, a vezető által jóváhagyott vevői szövegekkel. */
@@ -4767,7 +4764,7 @@ async function futtat(): Promise<void> {
     hiba = true
   } else {
     // A két szekciósor-javítás (8. horgony, 12b. bevezető blokk) LÁNCBAN fut, a
-    // fejléc-kép ürítése (12a) pedig külön mező — mindhárom EGYETLEN
+    // fejléc-kép beállítása (12a) pedig külön mező — mindhárom EGYETLEN
     // frissítésben megy ki.
     let szolgaltatasokLayout: Szekciosor = Array.isArray(szolgaltatasok.layout)
       ? szolgaltatasok.layout
@@ -4843,25 +4840,40 @@ async function futtat(): Promise<void> {
       layoutValtozott = true
     }
 
-    // --- 12a. javítás: a fejléc-kép ürítése ----------------------------------
-    const rendeloKep = await keresdMediat(payload, SZOLGALTATASOK_HERO_PREFIX)
-    logger.info('Tartalom-javítás: a /szolgaltatasok fejléc-képéhez tartozó média-rekord', {
-      rendelo: rendeloKep?.filename ?? '(nem található)',
-    })
-    const heroUrites = alkalmazSzolgaltatasokHeroKep({
+    // --- 12a. javítás (WP55): a fejléc-kép a kezelőasztalos fotóra -----------
+    // A /rolunk 4. javításának mintája: a jelenlegi kép fájlnevét és az új kép
+    // állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön létre, ha
+    // a döntés módosít.
+    const jelenlegiSzolgHeroId = heroKepAzonosito(szolgaltatasok.heroImage)
+    const szolgHero = alkalmazSzolgaltatasokHeroKep({
       jelenlegi: szolgaltatasok.heroImage,
-      regiMediaId: rendeloKep?.id ?? null,
+      jelenlegiFajlnev:
+        jelenlegiSzolgHeroId === null ? null : await mediaFajlnev(payload, jelenlegiSzolgHeroId),
+      ujMedia: await ujMediaAllapot(SZOLGALTATASOK_HERO_FORRAS, mediaFuggosegek),
     })
-    naplozdLepeseket(heroUrites, dryRun)
-    modositasokSzama += heroUrites.modositasok.length
-    kihagyasokSzama += heroUrites.kihagyasok.length
+    naplozdLepeseket(szolgHero, dryRun)
+    modositasokSzama += szolgHero.modositasok.length
+    kihagyasokSzama += szolgHero.kihagyasok.length
+    let ujSzolgHeroId = szolgHero.heroImage
+    if (szolgHero.modositasok.length > 0 && ujSzolgHeroId === null) {
+      const szolgHeroMedia = await biztositMediaFajlbol({
+        forras: SZOLGALTATASOK_HERO_FORRAS,
+        szabaly: 'szolgaltatasok-hero-kep',
+        dryRun,
+        fuggosegek: mediaFuggosegek,
+      })
+      naplozdLepeseket(szolgHeroMedia, dryRun)
+      modositasokSzama += szolgHeroMedia.modositasok.length
+      kihagyasokSzama += szolgHeroMedia.kihagyasok.length
+      ujSzolgHeroId = szolgHeroMedia.id
+    }
 
-    const irandoSzolgaltatasok: { layout?: Szekciosor; heroImage?: null } = {}
+    const irandoSzolgaltatasok: { layout?: Szekciosor; heroImage?: number } = {}
     if (layoutValtozott) {
       irandoSzolgaltatasok.layout = szolgaltatasokLayout
     }
-    if (heroUrites.uritendo) {
-      irandoSzolgaltatasok.heroImage = null
+    if (ujSzolgHeroId !== null) {
+      irandoSzolgaltatasok.heroImage = ujSzolgHeroId
     }
 
     if (Object.keys(irandoSzolgaltatasok).length > 0 && !dryRun) {

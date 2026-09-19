@@ -12,6 +12,7 @@ import {
   ROLUNK_HERO_FORRAS,
   ROLUNK_HERO_KORABBI_PREFIXEK,
   SOS_GALERIA_FORRASOK,
+  SZOLGALTATASOK_HERO_FORRAS,
   TECHNIKAK_TABLA_CIM,
   TECHNIKAK_TABLA_HORGONY,
   TECHNIKAK_TABLA_KEP_FORRAS,
@@ -387,6 +388,17 @@ describe('alkalmazSzolgaltatasokTechnikakTabla', () => {
 
   it('a seed pontosan egy ajtó-blokkot tartalmaz (a fixtúra érvényes)', () => {
     expect(seed().filter(isSzolgaltatasokAjtoBlock)).toHaveLength(1)
+  })
+
+  it('a tábla képe (WP55) a csukló-mobilizálás, NEM a fejléc kezelőasztalos fotója', () => {
+    expect(TECHNIKAK_TABLA_KEP_FORRAS.filename).toBe('treatment-wrist-table-1600.webp')
+    expect(TECHNIKAK_TABLA_KEP_FORRAS.filePath).toBe(
+      'public/media/team/treatment-wrist-table-1600.webp',
+    )
+    expect(TECHNIKAK_TABLA_KEP_FORRAS.alt).toBe(
+      'Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót',
+    )
+    expect(TECHNIKAK_TABLA_KEP_FORRAS.filename).not.toBe(SZOLGALTATASOK_HERO_FORRAS.filename)
   })
 
   it('a blokk: tábla-elrendezés, 5 sor „1”–„5” számozással, CTA és fotó nélkül, horgonnyal', () => {
