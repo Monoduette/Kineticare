@@ -64,6 +64,7 @@ const UJ_TEAM_FAJLOK = [
   'treatment-wrist-smile-1600.webp',
   'home-exercise-ball-towel-1600.webp',
   'course-montage-rolunk-1600.webp',
+  'treatment-table-hands-1600.webp',
 ] as const
 
 const UJ_SOS_FAJLOK = [
@@ -142,6 +143,17 @@ describe('WP54/1: a manifestek és a fájlok egyeznek (sha256, méret, plafon)',
     expect(hero?.height).toBe(1067)
     expect(hero?.alt).toBe('Kocsis Kata és Kiss Kata a stúdióban.')
     expect(hero?.sourceName).toBe('SYL_9156.jpg')
+  })
+
+  it('WP54/6: a kezelőasztalos fotó (CMS-ből kötve) fekvő 3:2, 800-as változattal', async () => {
+    const asset = teamAssets.find((item) => item.file === 'treatment-table-hands-1600.webp')
+    expect(asset?.width).toBe(1600)
+    expect(asset?.height).toBe(1067)
+    expect(asset?.sourceName).toBe('_MG_0033.png')
+    expect(asset?.alt).toBe('Csuklókezelés a kezelőasztalon a Kineticare rendelőjében.')
+    const kicsi = await sharp(join(REPO, 'public/media/team/treatment-table-hands-800.webp')).metadata()
+    expect(kicsi.width).toBe(800)
+    expect(kicsi.height).toBe(533)
   })
 })
 
