@@ -221,22 +221,32 @@ export const HOME_HELP_PHOTO_SIZE = [
 /**
  * A /szolgaltatasok 1. ajtajának (Rendelői kezelések) tartalék-fotója (WP51,
  * tulajdonosi kör 2026-09-19: „ide is szeretnénk egy képet magunkról kezelés
- * közben"). A `public/media/team/manifest.json` ezt a felvételt kifejezetten
- * a `services` szerepre jelöli („Gyógytornász kézzel végzett kezelés közben",
- * 1600×2400, álló — a panel fotó-hasábja is álló). A CMS „Panel fotója" mező
- * ezt felülírja; a kezdőlap sínje érintetlen (ott a három portré marad).
+ * közben"). WP54 (tulajdonosi 2. kör, 2026-09-19): a fotózás `_MG_0430`
+ * felvétele (Kiss Kata mosolyogva kezel egy csuklót; manifest
+ * `services-treatment`, 1067×1600, álló, mint a panel fotó-hasábja) váltja
+ * a korábbi, arc nélküli kéz-részletet: az arc a kérés lényege („képet
+ * magunkról"). A személy a régi oldal névvel jelölt portréjával
+ * (`KissKataelegans`) azonosítva, ezért az alt nevesít. A CMS „Panel fotója"
+ * mező ezt felülírja; a kezdőlap sínje érintetlen (ott a három portré marad).
  * NN/g Photos as Web Content: a tevékenységet mutató, valódi fotó
  * informatív, a portré ismétlése ugyanazon a lapon nem
- * (https://www.nngroup.com/articles/photos-as-web-content/).
+ * (https://www.nngroup.com/articles/photos-as-web-content/): ugyanez a
+ * tanulmány méri, hogy a látogató a valódi embert mutató fotót megnézi, a
+ * stock-arcot átugorja; Apple HIG, Images: a kép a tartalom értelmét vigye,
+ * ne díszítsen
+ * (https://developer.apple.com/design/human-interface-guidelines/images);
+ * WCAG 2.2 SC 1.1.1: az alt azt írja le, ami a képen van, névvel, ha a név a
+ * tartalom része
+ * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html).
  */
 export const SZOLGALTATASOK_KEZELES_FOTO: Media = {
   id: 87010,
-  alt: 'Gyógytornász kézzel végzett kezelés közben.',
-  url: '/media/team/hand-treatment-detail-1600.webp',
-  filename: 'hand-treatment-detail-1600.webp',
+  alt: 'Kiss Kata csuklókezelés közben a rendelőben.',
+  url: '/media/team/treatment-wrist-smile-1600.webp',
+  filename: 'treatment-wrist-smile-1600.webp',
   mimeType: 'image/webp',
-  width: 1600,
-  height: 2400,
+  width: 1067,
+  height: 1600,
   createdAt: '',
   updatedAt: '',
 }

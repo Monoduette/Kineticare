@@ -279,15 +279,17 @@
 
 /* A három fotó: egyforma cella, közös arány, vágott kitöltés; nincs dőlés,
    átfedés és mozgás. A háttérszín a betöltésig tartja a helyet.
-   `object-position: 50% 100%`: a középső fotó ÁLLÓ (hand-treatment-detail,
-   800×1200), a 4/3-as cella a magasságának 50 %-át mutatja, és a kezelt kéz a
-   kép alsó harmadában van (y 70–85 %, mérve). A korábbi 35 % a kezet vágta le
-   (design-átvétel); a 70 % (a kért érték) az állat vágta ketté és a kezet a
-   keret alsó élére tolta; a 100 % (alsó élhez zárt ablak, sorok 50–100 %) a
-   kezet a keret közepére hozza fél arc nélkül (sharp-pal szimulálva, qa-fix/
-   hand-crops.png). A két fekvő fotónál (1,59 és 1,50 arány) a 4/3 cella
-   szélességben vág, a függőleges pozíció rájuk nem hat. Fekvő kezelés-fotó
-   a public/media/team manifestben nincs, ezért marad az álló.
+   `object-position: 25% 50%` (WP54, 2026-09-19): mindhárom fotó FEKVŐ
+   (1,59 / 1,50 / 1,50 arány), a 4/3-as cella tehát szélességben vág: a 3:2-es
+   fotónak 12,5 %-a, az 1,59-esnek 19,3 %-a marad ki. A középső fotón (kéz kis
+   labdán, home-exercise-ball-towel-800) az ujjhegyek a kép bal szélén, a
+   szélesség 4,1 %-ánál kezdődnek (sharp, bőrszín-oszlopok, mérve). Középre
+   zárt ablak (50 %) a 6,25 %-tól látszana, azaz levágná az ujjhegyeket; a
+   25 % ablaka a 3,1 %-tól 90,6 %-ig tart, így a kéz teljes, a jobb szélen
+   csak a másik könyök marad ki. A két alapítós fotón a 25 % (4,8–85,5 %, ill.
+   3,1–90,6 %) egyik arcot sem éri: a fejek a 22–84 % sávban vannak. A
+   korábbi 100 % az egykori álló középső fotóhoz tartozott, fekvő képen a
+   függőleges érték nem hat.
    Apple HIG, Images: ne vágj úgy, hogy a kép értelme elvesszen
    (https://developer.apple.com/design/human-interface-guidelines/images);
    NN/g, Photos as Web Content: a fotó akkor ér valamit, ha a lényeg
@@ -300,7 +302,7 @@
   border-radius: var(--kc-radius-md);
   box-shadow: var(--kc-shadow-md);
   object-fit: cover;
-  object-position: 50% 100%;
+  object-position: 25% 50%;
   background-color: var(--kc-color-surface-tint);
 }
 

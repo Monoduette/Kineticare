@@ -1,10 +1,10 @@
-import type { Page, Post, Product, Testimonial } from '../../payload-types'
+import type { Media, Page, Post, Product, Testimonial } from '../../payload-types'
 import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
 import { showcaseProducts } from '../../lib/course-showcase'
-import { resolveCtaBannerCourseCover } from '../../lib/cta-banner-course'
+import { resolveCtaBannerFigure } from '../../lib/cta-banner-course'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
@@ -111,6 +111,13 @@ export interface RenderBlocksProps {
    * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
    */
   hubUtvonalak?: Readonly<Record<string, string>>
+  /**
+   * A lap statikus CTA-sáv képe (WP54: a /rolunk kurzus-montázsa,
+   * `rolunkCtaMontazs`). Ha adott, a ctaBanner blokkoknál a kurzus-borító ELÉ
+   * sorol, ugyanazzal a feltétellel (a gomb kurzusra mutat). Elhagyva vagy
+   * null: a sáv a kurzus-borítót oldja fel, ahogy a kezdőlapon.
+   */
+  ctaBannerMontazs?: Media | null
 }
 
 export function RenderBlocks({
@@ -120,6 +127,7 @@ export function RenderBlocks({
   testimonials,
   appointment = EMPTY_APPOINTMENT_CONTEXT,
   hubUtvonalak,
+  ctaBannerMontazs = null,
 }: RenderBlocksProps) {
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
   // A fizetős halmaz a GYIK „SOS vs. teljes program” összevetéséhez kell.
@@ -192,6 +200,7 @@ export function RenderBlocks({
               testimonials,
               appointment,
               hubUtvonalak,
+              ctaBannerMontazs,
             }}
           />
         )
@@ -213,6 +222,7 @@ function BlockSwitch({
   testimonials,
   appointment,
   hubUtvonalak,
+  ctaBannerMontazs,
 }: {
   block: LayoutBlock
   /** A típus ismételt példánya-e a lapon — az alap-horgony csak az elsőé. */
@@ -230,6 +240,8 @@ function BlockSwitch({
   appointment: AppointmentSectionContext
   /** Poszt-slug → kanonikus útvonal (a knowledge blokk kártyáihoz). */
   hubUtvonalak: Readonly<Record<string, string>> | undefined
+  /** A lap statikus CTA-sáv képe (a /rolunk montázsa), vagy null. */
+  ctaBannerMontazs: Media | null
 }) {
   switch (block.blockType) {
     case 'filmHero':
@@ -282,10 +294,11 @@ function BlockSwitch({
       // A sáv képe a gomb CÉLJÁBÓL oldódik fel (kurzusoldal vagy kurzuslista →
       // a kurzus meglévő borítója), a lap már lekért, publikált termékeiből:
       // nincs külön lekérdezés, nincs új CMS-mező (src/lib/cta-banner-course.ts).
+      // WP54: a /rolunk statikus montázsa (ha a route adta) a borító elé sorol.
       return (
         <CtaBanner
           block={block}
-          courseCover={resolveCtaBannerCourseCover(block.cta?.url, gridProducts)}
+          courseCover={resolveCtaBannerFigure(block.cta?.url, gridProducts, ctaBannerMontazs)}
         />
       )
     case 'credsStrip': {

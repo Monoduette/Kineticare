@@ -27,6 +27,7 @@ import {
   getTestimonials,
 } from '@/lib/cms'
 import { HUB_OLDALAK, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
+import { rolunkCtaMontazs } from '@/lib/cta-banner-course'
 import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import {
@@ -254,6 +255,9 @@ export default async function CmsPage({ params }: Props) {
         {hasLayout ? (
           <RenderBlocks
             appointment={appointment}
+            // WP54: a /rolunk CTA-sávja a kurzus-montázst mutatja a borító
+            // helyett; minden más lap (kezdőlap is) a kurzus-borítónál marad.
+            ctaBannerMontazs={slug === 'rolunk' ? rolunkCtaMontazs() : null}
             hubUtvonalak={hubUtvonalak}
             layout={layout}
             posts={posts}

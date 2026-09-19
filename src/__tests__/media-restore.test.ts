@@ -10,6 +10,7 @@ import { Media as MediaCollection } from '../collections/Media'
 
 import teamManifest from '../../public/media/team/manifest.json'
 import pressManifest from '../../public/media/press/manifest.json'
+import sosManifest from '../../public/media/sos/manifest.json'
 
 import { HOME_IMAGES } from '../lib/home-seed'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
@@ -76,11 +77,13 @@ describe('forrásindex (repóban élő képek)', () => {
    * bukik — nem az éles deploy.
    */
   it('mindhárom forráskészlet minden fájlja létezik a lemezen', () => {
+    // WP54: a public/media/sos manifest (SOS-galéria) is kezelt forrás.
     expect(index.size).toBe(
       HOME_IMAGES.length +
         LEGACY_IMAGES.length +
         teamManifest.assets.length +
-        pressManifest.assets.length,
+        pressManifest.assets.length +
+        sosManifest.assets.length,
     )
     for (const [baseName, filePath] of index) {
       expect(existsSync(filePath), `${baseName} → ${filePath}`).toBe(true)
