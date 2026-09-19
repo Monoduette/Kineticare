@@ -303,6 +303,7 @@ export type JavitasSzabaly =
   | 'rolunk-partner-mondat'
   | 'rolunk-logosavok-sorrend'
   | 'sos-galeria'
+  | 'media-alt-szoveg'
   | 'szolgaltatasok-technikak-tabla'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
@@ -3477,6 +3478,73 @@ export const richTextBekezdesek = (blokk: Szekciosor[number]): string[] | null =
   return bekezdesek
 }
 
+// ---------------------------------------------------------------------------
+// WP56 — a kurzusborítók alt-szövege (tulajdonosi kérés, 2026-09-19 este:
+// „alt image mindenhol van?”). A két packshot a Médiatárban üres alt-tal él,
+// ezért a kurzusoldalon és a megosztott képeken nincs leírás. A szabály CSAK
+// az üres (vagy csupa szóköz) alt-ot tölti ki; a szerkesztő saját szövegét
+// sosem írja felül. WCAG 2.2 SC 1.1.1 Non-text Content
+// (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html);
+// W3C WAI Images Tutorial, Informative images
+// (https://www.w3.org/WAI/tutorials/images/informative/).
+// ---------------------------------------------------------------------------
+
+/** A jóváhagyott alt-szövegek: fájlnév-előtag → alt (a régi oldal médiái). */
+export const MEDIA_ALT_SZOVEGEK: readonly { prefix: string; cimke: string; alt: string }[] = [
+  {
+    prefix: '688b93e6ab76f_Programpackshot',
+    cimke: 'Az Otthoni KézRehab Program borítója',
+    alt: 'Az Otthoni KézRehab Program borítóképe: a videós gyakorlatok laptopon és telefonon.',
+  },
+  {
+    prefix: '688b873ad2a80_belepotermekpackshot1',
+    cimke: 'Az SOS KézRelax villámkurzus borítója',
+    alt: 'Az SOS KézRelax villámkurzus borítóképe: a gyors kézlazító gyakorlatok kézikönyve.',
+  },
+]
+
+/** Tiszta döntés: üres alt → a jóváhagyott szöveg; minden más érintetlen. */
+export const alkalmazMediaAltSzoveg = (input: {
+  cimke: string
+  jelenlegiAlt: string | null | undefined
+  ujAlt: string
+}): { alt: string | null; modositasok: JavitasLepes[]; kihagyasok: JavitasLepes[] } => {
+  const szabaly: JavitasSzabaly = 'media-alt-szoveg'
+  const uzenet = `${input.cimke} alt-szövege`
+  const jelenlegi = (input.jelenlegiAlt ?? '').trim()
+  if (jelenlegi === input.ujAlt) {
+    return {
+      alt: null,
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet, indok: 'az alt MÁR a jóváhagyott szöveg — nincs teendő' }],
+    }
+  }
+  if (jelenlegi.length > 0) {
+    return {
+      alt: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet,
+          indok: `az alt-ban MÁR VAN szerkesztői szöveg (${ertekCimke(jelenlegi)}) — a script nem írja felül`,
+        },
+      ],
+    }
+  }
+  return {
+    alt: input.ujAlt,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: üres → ${ertekCimke(input.ujAlt)}`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
 /**
  * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
  * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
@@ -3715,7 +3783,9 @@ export const alkalmazSosGaleria = (input: {
     return kihagyas(
       `a jóváhagyott képek közül ${hianyzo
         .map((media) => `„${media.filename}”`)
-        .join(', ')} nincs a Médiatárban, és a repó-forrásfájl sem található — a galéria csak a teljes hármassal kerül be`,
+        .join(
+          ', ',
+        )} nincs a Médiatárban, és a repó-forrásfájl sem található — a galéria csak a teljes hármassal kerül be`,
       true,
     )
   }
@@ -4999,6 +5069,38 @@ async function futtat(): Promise<void> {
         collection: 'menus',
         id: menupont.id,
         data: eredmeny.adat,
+        depth: 0,
+        overrideAccess: true,
+      })
+    }
+  }
+
+  // --- WP56: a kurzusborítók alt-szövege (Médiatár) ---------------------------
+  for (const tetel of MEDIA_ALT_SZOVEGEK) {
+    const media = await keresdMediat(payload, tetel.prefix)
+    if (media === null) {
+      logger.warn(
+        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a Médiatárban nincs „${tetel.prefix}” kezdetű fájlnevű kép)`,
+      )
+      kihagyasokSzama += 1
+      continue
+    }
+    const doc = await payload
+      .findByID({ collection: 'media', id: media.id, depth: 0, overrideAccess: true })
+      .catch(() => null)
+    const eredmeny = alkalmazMediaAltSzoveg({
+      cimke: tetel.cimke,
+      jelenlegiAlt: typeof doc?.alt === 'string' ? doc.alt : null,
+      ujAlt: tetel.alt,
+    })
+    naplozdLepeseket(eredmeny, dryRun)
+    modositasokSzama += eredmeny.modositasok.length
+    kihagyasokSzama += eredmeny.kihagyasok.length
+    if (eredmeny.alt !== null && !dryRun) {
+      await payload.update({
+        collection: 'media',
+        id: media.id,
+        data: { alt: eredmeny.alt },
         depth: 0,
         overrideAccess: true,
       })

@@ -104,3 +104,7 @@ fejléc-kép szabály).
    sor csak akkor, ha egy fájl tényleg hiányzik.
 3. `OWNER_CONTENT_CONFIRM=igen npm run content:owner`, majd második próbafutás: minden
    érintett szabály „MÁR …” kihagyás (idempotencia).
+
+## WP56 — a kurzusborítók alt-szövege
+
+- `media-alt-szoveg`: a két packshot (`688b93e6ab76f_Programpackshot`, `688b873ad2a80_belepotermekpackshot1`) alt-ja csak akkor kap jóváhagyott szöveget, ha ma üres; szerkesztői alt érintetlen, idempotens. Tulajdonosi kérés: „alt image mindenhol van?” (2026-09-19 este).
