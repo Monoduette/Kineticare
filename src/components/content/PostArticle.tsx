@@ -10,7 +10,7 @@ import { Badge } from '../ui/Badge'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
 import { JsonLd } from './JsonLd'
-import { MediaImage } from './MediaImage'
+import { PageHero } from './PageHero'
 import { formatPostDate, PostCard } from './PostCard'
 import { PostAuthorBox } from './PostAuthorBox'
 import { PostBody } from './PostBody'
@@ -161,29 +161,50 @@ export function PostArticle({
         ])}
       />
 
-      <Section className="kc-page-hero" variant="tint">
-        <Container size="narrow">
-          {/* Morzsa: két szint, JSON-LD-vel azonos; kurzusoldal mintájára. */}
-          <nav aria-label="Morzsamenü" className="kc-post-breadcrumb">
-            <ol role="list">
-              <li>
-                <Link href="/blog">Tudástár</Link>
-              </li>
-              <li aria-current="page">{post.title}</li>
-            </ol>
-          </nav>
-          {/* PONTOSAN egy kategória-címke (docs/tudastar-ux-terv.md 5.3): a
-              következetesség ugyanaz a Baymard-elv, mint a kártyákon, és a
-              címke a kategória-oldalra vezető visszaút is. */}
-          {category !== null && typeof category.slug === 'string' ? (
-            <p className="kc-post-hero__categories">
-              <Link href={`/blog/kategoria/${category.slug}`}>
-                <Badge tone="info">{category.title}</Badge>
-              </Link>
-            </p>
-          ) : null}
-          <h1 className="kc-page-hero__title">{post.title}</h1>
-          {post.excerpt ? <p className="kc-page-hero__lead">{post.excerpt}</p> : null}
+      {/* A CIKK FEJLÉCE A PageHero (WP57, tulajdonosi kérés 2026-09-19: a
+          cikkek „lehetnek szélesebbek, olyan szélesek, mint amit kiemeltek a
+          lányok, hogy túl keskeny"). Mérve élőben (Chromium, 1440 px,
+          /befagyott-vall): a fejléc 720 px-es sávjában a cím 672, a bevezető
+          544 px (64 karakter/sor) volt, ugyanaz a hasáb, amit a /szolgaltatasok
+          fejlécén a tulajdonos szűknek látott (WP51: 672 px, a sáv 53 %-a
+          üres). Borítóképpel a fejléc a PageHero PÁROS alakját kapja: széles
+          konténer, a cím és a bevezető balra, a fotó jobbra, 900 px alatt a
+          kép a szöveg alatt. Borítókép nélkül a szűk, egymás alatti alak
+          marad (ma egyik élő cikknek sincs borítója: a széles fejléc a kép
+          feltöltésével lép életbe, kódváltozás nélkül). A morzsa, a
+          kategória-címke és a meta-sor ugyanabban a szöveghasábban áll, a
+          régi sorrendben (eyebrow, cím, bevezető, meta). Egy markup-forrás
+          (PageHero), nem másolat: a CMS-oldal és a cikk fejléce egy család
+          (WCAG 2.2 SC 3.2.4 Consistent Identification). Források: NN/g Common
+          Region, Material 3 supporting pane, GOV.UK Images (PageHero.tsx). */}
+      <PageHero
+        className="kc-post-hero"
+        eyebrow={
+          <>
+            {/* Morzsa: két szint, JSON-LD-vel azonos; kurzusoldal mintájára. */}
+            <nav aria-label="Morzsamenü" className="kc-post-breadcrumb">
+              <ol role="list">
+                <li>
+                  <Link href="/blog">Tudástár</Link>
+                </li>
+                <li aria-current="page">{post.title}</li>
+              </ol>
+            </nav>
+            {/* PONTOSAN egy kategória-címke (docs/tudastar-ux-terv.md 5.3): a
+                következetesség ugyanaz a Baymard-elv, mint a kártyákon, és a
+                címke a kategória-oldalra vezető visszaút is. */}
+            {category !== null && typeof category.slug === 'string' ? (
+              <p className="kc-post-hero__categories">
+                <Link href={`/blog/kategoria/${category.slug}`}>
+                  <Badge tone="info">{category.title}</Badge>
+                </Link>
+              </p>
+            ) : null}
+          </>
+        }
+        lead={post.excerpt}
+        media={heroMedia}
+        meta={
           <p className="kc-post-meta">
             {author !== null ? (
               <span className="kc-post-meta__author">
@@ -200,23 +221,10 @@ export function PostArticle({
                 nem-fikcióra), magyarra validált érték nincs. */}
             <span>kb. {readingMinutes} perc olvasás</span>
           </p>
-        </Container>
-      </Section>
-
-      {heroMedia ? (
-        <Section flush>
-          <Container>
-            <div className="kc-page-hero__media">
-              <MediaImage
-                media={heroMedia}
-                preferredSize="lg"
-                priority
-                sizes="(max-width: 1120px) 100vw, 1120px"
-              />
-            </div>
-          </Container>
-        </Section>
-      ) : null}
+        }
+        title={post.title}
+        variant="paired"
+      />
 
       <Section>
         <Container size="narrow">

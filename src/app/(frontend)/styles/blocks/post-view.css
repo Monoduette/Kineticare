@@ -187,6 +187,57 @@
   margin-top: var(--kc-space-5);
 }
 
+/* ---- Az olvasóhasáb MÉRTÉKE (WP57, tulajdonosi kérés 2026-09-19) ----------
+   A tulajdonos: a cikkek „lehetnek szélesebbek, olyan szélesek, mint amit
+   kiemeltek a lányok, hogy túl keskeny". Mérve élőben (Chromium,
+   /befagyott-vall, a bekezdés saját szövegén, canvas-glifszélességgel):
+     1440 px: hasáb 672 px, bekezdés 544 px (34rem), 19 px, 66 karakter/sor,
+              a hasáb jobb szélén 128 px üres;
+     1024 px: bekezdés 544 px, 17,9 px, 70 karakter/sor;
+      390 px: bekezdés 342 px (a hasáb), 16,2 px, 49 karakter/sor;
+      320 px: 272 px, 16 px, 39 karakter/sor (a hasáb szabja, nem a sapka).
+   A sapka a Rólunk törzsének (about.css, WP51) 33em-es mértékét kapja: em,
+   mert a karakterszám a SAJÁT betűmérettel skálázik (a Nunito Sans átlagos
+   magyar karaktere 0,43–0,45 em), tehát 33em ≈ 72–76 karakter MINDEN
+   lépcsőn, nem csak 1440-en. Számítva: 1440: 627 px (a 672 px-es hasábba
+   fér), 1024: 590 px, 768: 568 px; 390 és 320 px-en a hasáb keskenyebb a
+   sapkánál, ott a sor a hasáb szélessége marad (reflow sértetlen, WCAG 2.2
+   SC 1.4.10). A 33em a Baymard 50–75-ös sávjának tetején és a WCAG 2.2 SC
+   1.4.8 (AAA) 80-as plafonja alatt áll; a hosszabb sort a törzs 1,67-es
+   sortávja (--kc-leading-body) hordozza, ami az 1.4.8 legalább 1,5-ös
+   sorköz-feltételét is teljesíti. A jegyzék-doboz és a szerző-blokk szövege
+   ugyanezt a jobb szélt kapja (egy vonal, NN/g Alignment). A közös
+   `.kc-richtext` (kurzus-leírás, jogi oldalak) marad 34rem: ez a szabály a
+   `.kc-post-body`-ra szűkít, fajsúllyal (0,2,1) írja felül a content.css
+   (0,1,1) mértékét. Őr: src/__tests__/wp57-tudastar-hasab.test.tsx.
+     NN/g, Line Length Readability (50–75 karakter):
+       https://www.nngroup.com/articles/line-length-readability/
+     Baymard, Line Length Readability (50–75):
+       https://baymard.com/blog/line-length-readability
+     GOV.UK Design System, Layout (a szöveg legfeljebb kétharmad, ≈ 75):
+       https://design-system.service.gov.uk/styles/layout/
+     W3C, Understanding SC 1.4.8 (≤ 80 karakter, sorköz ≥ 1,5):
+       https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html
+     NN/g, Alignment (a közös jobb szél egy csoportot jelez):
+       https://www.nngroup.com/articles/principle-alignment/ */
+.kc-post-body .kc-richtext p,
+.kc-post-body .kc-richtext ul,
+.kc-post-body .kc-richtext ol,
+.kc-post-body .kc-richtext blockquote,
+.kc-post-body .kc-post-toc,
+.kc-post-body .kc-post-author__person {
+  max-width: 33em;
+}
+
+/* A cikk bevezetője ugyanazt a sort viszi, mint a törzs (content.css: „a lead
+   ugyanazt a sort viszi, mint az alatta futó folyószöveg"): a fejléc-sáv a
+   `kc-post-hero` osztályt a PostArticle-től kapja. Mérve 1440-en 544 px
+   (64 karakter) → 627 px (≈ 75 karakter); a páros alakban a fél hasáb
+   (512 px) szab, a sapka ott nem lép be. */
+.kc-post-hero .kc-page-hero__lead {
+  max-width: 33em;
+}
+
 /* ---- Gyakori kérdések a cikk törzsében ------------------------------------
    A megjelenést a közös blocks/faq.css adja (azonos harmonika-nyelv a
    kezdőlapon, a kurzusoldalon és itt — WCAG 3.2.4). Itt csak a törzsbeli
