@@ -54,8 +54,8 @@ const VALL_SLUG = 'befagyott-vall'
  * A tulajdonosok blogötletei (2026-09-19), élesbe szánva. Nem részei a
  * shop-sáv CTA-fixture-ének: traumás sérülésnél az otthoni program leírása
  * orvosi engedélyt kér, ezért `ctaCourse` nélkül jönnek. A cikkoldali
- * CTA-változatuk (kurzus vagy időpont) vezetői döntés (`APPOINTMENT_CTA_SLUGS`),
- * ez a teszt csak a slugkészlet zárát tartja.
+ * CTA-változatuk időpont (`APPOINTMENT_CTA_SLUGS`, vezetői döntés 2026-09-19):
+ * a kurzus dupla-panel ellentmondana a cikk saját tanácsának.
  */
 const TULAJDONOSI_PISZKOZAT_SLUGOK = ['gipszben-a-kezed', 'peace-and-love-friss-serules'] as const
 
@@ -232,7 +232,12 @@ describe('Shop — dual CTA a hét fixture-slugon, váll egy panel', () => {
       [...KEZ_CIKK_PAR_SLUGOK, VALL_SLUG, ...TULAJDONOSI_PISZKOZAT_SLUGOK].sort(),
     )
     expect(KEZ_CIKK_PAR_SLUGOK).toHaveLength(7)
-    expect([...APPOINTMENT_CTA_SLUGS]).toEqual([VALL_SLUG])
+    expect([...APPOINTMENT_CTA_SLUGS].sort()).toEqual(
+      [VALL_SLUG, ...TULAJDONOSI_PISZKOZAT_SLUGOK].sort(),
+    )
+    for (const slug of TULAJDONOSI_PISZKOZAT_SLUGOK) {
+      expect(postCtaVariantOf({ slug }), slug).toBe('idopont')
+    }
   })
 
   it('a hét kéz-cikk kurzus-változat, két testvér-panel, csomagoló nélkül', () => {

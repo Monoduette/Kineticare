@@ -296,7 +296,19 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
  */
 export type PostCtaVariant = 'kurzus' | 'idopont'
 
-export const APPOINTMENT_CTA_SLUGS: readonly string[] = ['befagyott-vall']
+/**
+ * Időpont-változatot kapó cikkek: a befagyott váll (a kurzus nem kézre szól),
+ * és a két friss-sérüléses cikk (2026-09-19, tulajdonosi élesítés): a PEACE &
+ * LOVE és a gipsz-cikk szövege szerint traumás sérülésnél az otthoni program
+ * csak orvosi engedéllyel jön szóba, ezért a cikk végén a rendelői időpont
+ * az egyetlen helyes ajánlat (NN/g, Calls to Action: a CTA a tartalom
+ * következő logikus lépése legyen, ne ellentmondó ajánlat).
+ */
+export const APPOINTMENT_CTA_SLUGS: readonly string[] = [
+  'befagyott-vall',
+  'peace-and-love-friss-serules',
+  'gipszben-a-kezed',
+]
 
 export function postCtaVariantOf(post: Pick<Post, 'slug'>): PostCtaVariant {
   return typeof post.slug === 'string' && APPOINTMENT_CTA_SLUGS.includes(post.slug)
