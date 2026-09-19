@@ -787,6 +787,27 @@
   max-width: var(--kc-course-measure);
 }
 
+/* Galéria-kép a leírás és a lépések között (WP51, CourseGalleryFigure):
+   a főhasáb teljes szélessége, 3:2 kivágás, a kártyák ívével és
+   hajszálkeretével. A folyószöveg mértékénél szélesebb doboz adja a
+   vizuális szünetet; a szakaszköz ugyanaz a space-8, mint a szakaszoké. */
+.kc-course-figure {
+  margin: 0 0 var(--kc-space-8);
+  overflow: hidden;
+  border: 1px solid var(--kc-color-border);
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-tint);
+  aspect-ratio: 3 / 2;
+}
+
+.kc-course-figure img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 30%;
+}
+
 .kc-course-preview {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -1148,10 +1169,7 @@
   .kc-course-buybar[data-visible='true'] {
     justify-content: center;
     gap: var(--kc-space-6);
-    padding-inline: max(
-      var(--kc-space-5),
-      calc((100vw - var(--kc-container-wide)) / 2)
-    );
+    padding-inline: max(var(--kc-space-5), calc((100vw - var(--kc-container-wide)) / 2));
   }
 }
 

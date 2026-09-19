@@ -310,7 +310,7 @@ const PAROK: readonly Par[] = [
     '1.4.3',
   ),
 
-  // --- WP25: a szolgáltatás-sín kéz-ikonjai (Phosphor, currentColor kitöltés) ---
+  // --- WP25/WP51: a szolgáltatás-sín ajtó-ikonjai (Lucide, currentColor vonal) ---
   // Az ikon a kör állapotszínét örökli: inaktívan help-chrome a FEHÉR körön
   // (a marker háttere --kc-services-fade = white), hoverre help-ink a fehéren,
   // aktívan on-dark a help-ink (surface-dark alias) körön. Nem-szöveges

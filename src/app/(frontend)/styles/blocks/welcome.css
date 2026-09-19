@@ -143,9 +143,22 @@
    közepén áll — ez a projekt eddigi mintája is (`.kc-about__copy` szimmetrikus
    bal/jobb belső térköze, blocks/about.css). Mellékhatásként mindkét hasáb
    ~18 px-t nyer, ami a sorhossznak is jót tesz. */
+/* FELE-FELE HASÁBOK (WP51, tulajdonosi kör 2026-09-19, /szolgaltatasok:
+   „ahogy belépünk, olyan szűknek néz ki a sáv, amiben a szövegek vannak").
+   A tükör 6 : 5 aránya a kezdőlap négytételes felsorolásához volt szabva; a
+   /szolgaltatasok EGY pipás tétel mellett a jobb összefoglaló hasábot
+   1024 px-en 393 px-re (46 karakter/sor), 1440-en 553 px-re (61) szorította
+   (Chromiumban mérve). Egyenlő hasábokkal 1024-en ≈ 430, 1440-en ≈ 607 px a
+   hasáb, a bekezdés 50, illetve 65–67 karakter: a Baymard 50–75-ös sávján
+   belül, a WCAG 2.2 1.4.8 80-as plafonja alatt
+   (https://baymard.com/blog/line-length-readability,
+   https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html).
+   A bekezdés sapkája 33em (≈ 75 karakter a saját betűméretén, lásd
+   about.css `.kc-about__text`): egy hasábban (768 px) és ultraszéles
+   kijelzőn ez fog, a 80-as plafon alatt. */
 @media (min-width: 900px) {
   .kc-welcome__grid {
-    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--kc-welcome-gutter);
     margin-top: clamp(2rem, 4vw, 3.25rem);
     align-items: stretch;
@@ -259,7 +272,7 @@
 
 .kc-welcome__side-text {
   margin: 0 0 var(--kc-welcome-rhythm);
-  max-width: var(--kc-measure);
+  max-width: 33em;
   font-size: var(--kc-font-m);
   line-height: 1.65;
   color: var(--kc-welcome-muted);

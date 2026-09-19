@@ -218,6 +218,29 @@ export const HOME_HELP_PHOTO_SIZE = [
   { width: 933, height: 1400 },
 ] as const
 
+/**
+ * A /szolgaltatasok 1. ajtajának (Rendelői kezelések) tartalék-fotója (WP51,
+ * tulajdonosi kör 2026-09-19: „ide is szeretnénk egy képet magunkról kezelés
+ * közben"). A `public/media/team/manifest.json` ezt a felvételt kifejezetten
+ * a `services` szerepre jelöli („Gyógytornász kézzel végzett kezelés közben",
+ * 1600×2400, álló — a panel fotó-hasábja is álló). A CMS „Panel fotója" mező
+ * ezt felülírja; a kezdőlap sínje érintetlen (ott a három portré marad).
+ * NN/g Photos as Web Content: a tevékenységet mutató, valódi fotó
+ * informatív, a portré ismétlése ugyanazon a lapon nem
+ * (https://www.nngroup.com/articles/photos-as-web-content/).
+ */
+export const SZOLGALTATASOK_KEZELES_FOTO: Media = {
+  id: 87010,
+  alt: 'Gyógytornász kézzel végzett kezelés közben.',
+  url: '/media/team/hand-treatment-detail-1600.webp',
+  filename: 'hand-treatment-detail-1600.webp',
+  mimeType: 'image/webp',
+  width: 1600,
+  height: 2400,
+  createdAt: '',
+  updatedAt: '',
+}
+
 export const homeHelpFallbackMedia = (index: number): Media => {
   const file = HOME_HELP_PHOTO_FILES[index]
   const alt = HOME_HELP_PHOTO_ALTS[index]
@@ -377,9 +400,9 @@ export const isSzolgaltatasokAjtoBlock = (block: {
  * A (b) út (a táblát a panel kártya-nyelvére festeni) egy HARMADIK változatot
  * hozott volna létre ugyanarra a három ajtóra, ezért nem az.
  *
- * Fotó: a sorok CMS-fotója, ha van; különben a kezdőlapi sín zárolt
- * tartalék-fotói ajtónként (ugyanaz a három út, ugyanaz a három kép), a
- * három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
+ * Fotó: a sorok CMS-fotója, ha van; különben az 1. ajtó a kezelés közbeni
+ * felvétel (`SZOLGALTATASOK_KEZELES_FOTO`, WP51), a 2–3. ajtó a kezdőlapi
+ * sín zárolt tartalék-fotója, a három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
  * (`image`) a sínen nem jelenik meg (a Services sín-ága nem használja).
  * Háttér: a sín-sáv help-paper a tint osztály mögött, mint a kezdőlapon; a
  * szerkesztő sötét választása marad.
@@ -401,6 +424,8 @@ export const presentSzolgaltatasokLayout = (
       rows: (block.rows ?? []).map((row, index) => {
         const photo = populatedHelpPhoto(row.photo)
         if (photo) return { ...row, photo }
+        // WP51: az első ajtó (rendelői kezelések) kezelés közbeni fotót kap.
+        if (index === 0) return { ...row, photo: SZOLGALTATASOK_KEZELES_FOTO }
         return index < HOME_HELP_PHOTO_FILES.length
           ? { ...row, photo: homeHelpFallbackMedia(index) }
           : row

@@ -17,8 +17,8 @@ import '../../app/(frontend)/styles/blocks/services-sin.css'
  * https://www.w3.org/WAI/ARIA/apg/patterns/radio/
  * Vizuális króm (WP17, tulajdonosi drótváz 2026-09-07): asztalon függőleges
  * sín 5rem-es körjelölőkkel + kártya-panel; 900 px alatt accordion-sorok,
- * a nyitott sor alatt a panel. A kéz-ikon (zárt / nyíló / nyitott, Phosphor
- * Icons, MIT) MINDEN állapotban a tétel jele: inaktívan chrome a fehér körön,
+ * a nyitott sor alatt a panel. Az ajtó-ikon (rendelő / ház / oklevél, Lucide,
+ * ISC; WP51) MINDEN állapotban a tétel jele: inaktívan chrome a fehér körön,
  * aktívan fehér a sötét körön.
  * A /szolgaltatasok „Szolgáltatásaink" blokkja is ezt a sínt kapja (WP25), a
  * lap saját soraival: a döntést a `presentSzolgaltatasokLayout` hozza.
@@ -151,7 +151,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
                       key={`rail-${row.id ?? index}`}
                     >
                       <span aria-hidden="true" className="kc-services-sin__marker">
-                        <RailHandIcon index={index} />
+                        <RailDoorIcon index={index} />
                       </span>
                       <span className="kc-services-sin__rail-copy">
                         <span className="kc-services-sin__rail-title">{rowTitle}</span>
@@ -367,77 +367,101 @@ function ServicesTabla({ block, rows }: { block: BlockServices; rows: ServiceRow
 }
 
 /**
- * A sín kézikonjai: ököl (zárt) / markoló (félig nyitott) / tenyér (nyitott).
+ * A sín ajtó-ikonjai: rendelő (1. út) / ház (2. út) / oklevél (3. út).
  *
- * FORRÁS (WP25, tulajdonosi kör 2026-09-07: „ezek az ikonok nem jók, csúnyák:
- * keress online kéz-ikonokat, hasonló stílusban: nyitott, zárt és félig
- * nyitott"): Phosphor Icons, `@phosphor-icons/core` 2.1.1, REGULAR súly,
- * `hand-fist`, `hand-grabbing`, `hand-palm`. Licenc: MIT
- * (https://github.com/phosphor-icons/core/blob/main/LICENSE). Katalógus:
- * https://phosphoricons.com. A path-ok betűhíven az npm-csomag
- * `assets/regular/*.svg` fájljaiból jönnek (256×256 viewBox, `currentColor`
- * kitöltés); a repó nem húz be ikoncsomag-függőséget. Részletes forrásjegyzék:
- * a WP25 beszámoló `ikon-forras.md` melléklete.
+ * FORRÁS (WP51, tulajdonosi kör 2026-09-19, a lányok mintaképe: három
+ * sötét kártya, mindegyiken vékony vonalas, világoskék ikon és felirat —
+ * „rendelő kezelése" = épület kereszttel, „otthoni képzés" = ház körvonal,
+ * „szakmai továbbképzés" = oklevél jelvénnyel): Lucide Icons, `hospital`,
+ * `house`, `file-badge`. Licenc: ISC
+ * (https://github.com/lucide-icons/lucide/blob/main/LICENSE). Katalógus:
+ * https://lucide.dev/icons/hospital · https://lucide.dev/icons/house ·
+ * https://lucide.dev/icons/file-badge. A path-ok betűhíven a Lucide
+ * `icons/*.svg` forrásfájljaiból jönnek (24×24 viewBox, `stroke=
+ * "currentColor"`, `stroke-width="2"`, kerek végződés és sarok, `fill=
+ * "none"`); a repó nem húz be ikoncsomag-függőséget.
  *
- * MIÉRT EZ A HÁROM: egy készlet, egy súly, azonos optikai ráccsal — a
- * három állapot (zárt → félig nyitott → nyitott) így egy sorozatként olvasható,
- * nem három különböző rajzként. Material 3 Icons: a rendszerikonok egy
- * családból, azonos vonalvastagsággal jöjjenek
- * (https://m3.material.io/styles/icons/designing-icons). Apple HIG Icons: a
- * custom ikonok stílusa legyen egységes, a vonalvastagság a mérethez arányos
- * (https://developer.apple.com/design/human-interface-guidelines/icons).
+ * MIÉRT EZ A HÁROM, ÉS MIÉRT EGY KÉSZLETBŐL: a három út (rendelő → otthon →
+ * képzés) egy sorozatként olvasandó, ezért egy készlet, egy rács, egy
+ * vonalvastagság kell (Lucide Icon Design Guide: 24-es rács, 2 px-es vonal,
+ * 2 px-es belső margó, kerek vég és sarok, optikailag azonos súly —
+ * https://lucide.dev/guide/design/icon-design-guide). Material 3 Icons: a
+ * rendszerikonok egy családból, azonos vonalvastagsággal
+ * (https://m3.material.io/styles/icons/designing-icons). NN/g Icon
+ * Usability: az ikon önmagában ritkán egyértelmű, ezért MINDIG felirattal
+ * áll — a sínen a cím és az egysoros összefoglaló a jelentés hordozója, az
+ * ikon a gyors felismerést gyorsítja (a ház és a kórház-kereszt a
+ * legismertebb univerzális jelek közé tartozik;
+ * https://www.nngroup.com/articles/icon-usability/).
  *
- * MÉRET: a glifa a kör 50%-a marad (asztal 40/80 px, mobil 28/56 px). A
- * regular súly vonala 16/256 = a doboz 6,25%-a → 40 px-en 2,5 px, 28 px-en
- * 1,75 px (a régi kézi rajz 1,85/24 = 7,7% volt; a light súly 12/256 = 4,7%
- * 28 px-en 1,3 px-re vékonyodna, ezért nem az). A kitöltés `currentColor`,
- * így a kör állapotszíne (chrome / ink / fehér) változatlanul öröklődik:
+ * MÉRET ÉS VONAL: a glifa a kör 50%-a marad (asztal 40/80 px, mobil 28/56
+ * px; a körjelölő tokenjei a services-sin.css-ben). A 2/24-es vonal 40 px-en
+ * 3,3 px-re, 28 px-en 2,3 px-re nyúlna — a mintakép vékony vonalat kér,
+ * ezért a vonalvastagságot a CSS a mérethez igazítja (a Lucide
+ * `absoluteStrokeWidth` elve: a vonal a KÉPERNYŐN legyen egyforma, ne a
+ * rácson): asztalon 1,5 → 2,5 px, mobilon 2 → 2,3 px (services-sin.css,
+ * `.kc-services-sin__marker svg`). A `stroke: currentColor` miatt a kör
+ * állapotszíne (chrome / help-ink / fehér) változatlanul öröklődik:
  * inaktív chrome a fehér körön 4,21:1, aktív fehér az inken 14,32:1
  * (WCAG 2.2 SC 1.4.11, küszöb 3:1; gomb-kontraszt.test.ts mátrix).
  *
  * Ugyanaz a glifa látszik inaktívan és aktívan — az állapotváltás csak szín,
  * nem ikoncsere és nem méretugrás (Material 3 icon button: outlined vs
  * filled, azonos méret; https://m3.material.io/components/icon-buttons/overview).
+ * A `place-items: center` rács a kört és a glifát középre zárja
+ * (services-sin.css), a felirat a kör mellett, a sor közepére igazítva.
  */
-function RailHandIcon({ index }: { index: number }) {
-  if (index % 3 === 0) return <ClosedHandIcon />
-  if (index % 3 === 1) return <OpeningHandIcon />
-  return <OpenHandIcon />
+function RailDoorIcon({ index }: { index: number }) {
+  if (index % 3 === 0) return <ClinicIcon />
+  if (index % 3 === 1) return <HomeIcon />
+  return <CertificateIcon />
 }
 
-/** Phosphor 256-os rács, kitöltött glifa (a vonal a path része, nem stroke). */
+/** Lucide 24-es rács: vonalas glifa, a vonal a `stroke`, nem a kitöltés. */
 function railIconProps() {
   return {
     'aria-hidden': true as const,
-    fill: 'currentColor',
+    fill: 'none',
     focusable: false as const,
-    viewBox: '0 0 256 256',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 2,
+    viewBox: '0 0 24 24',
   }
 }
 
-/** Phosphor `hand-fist` (regular) — zárt kéz. */
-function ClosedHandIcon() {
+/** Lucide `hospital` — rendelő: épület, kereszttel az ajtó fölött. */
+function ClinicIcon() {
   return (
-    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--closed">
-      <path d="M200,80H184V64a32,32,0,0,0-56-21.13A32,32,0,0,0,72.21,60.42,32,32,0,0,0,24,88v40a104,104,0,0,0,208,0V112A32,32,0,0,0,200,80ZM152,48a16,16,0,0,1,16,16V80H136V64A16,16,0,0,1,152,48ZM88,64a16,16,0,0,1,32,0v40a16,16,0,0,1-32,0ZM40,88a16,16,0,0,1,32,0v16a16,16,0,0,1-32,0Zm176,40a88,88,0,0,1-175.92,3.75A31.93,31.93,0,0,0,80,125.13a31.93,31.93,0,0,0,44.58,3.35,32.21,32.21,0,0,0,11.8,11.44A47.88,47.88,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,0-16H152a16,16,0,0,1-16-16V96h64a16,16,0,0,1,16,16Z" />
+    <svg {...railIconProps()} className="kc-services-sin__glyph kc-services-sin__glyph--rendelo">
+      <path d="M12 7v4" />
+      <path d="M14 21v-3a2 2 0 0 0-4 0v3" />
+      <path d="M14 9h-4" />
+      <path d="M18 11h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h2" />
+      <path d="M18 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16" />
     </svg>
   )
 }
 
-/** Phosphor `hand-grabbing` (regular) — félig nyitott, markoló kéz. */
-function OpeningHandIcon() {
+/** Lucide `house` — otthoni program: ház körvonal. */
+function HomeIcon() {
   return (
-    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--opening">
-      <path d="M188,80a27.79,27.79,0,0,0-13.36,3.4,28,28,0,0,0-46.64-11A28,28,0,0,0,80,92v20H68a28,28,0,0,0-28,28v12a88,88,0,0,0,176,0V108A28,28,0,0,0,188,80Zm12,72a72,72,0,0,1-144,0V140a12,12,0,0,1,12-12H80v24a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V108a12,12,0,0,1,24,0Z" />
+    <svg {...railIconProps()} className="kc-services-sin__glyph kc-services-sin__glyph--otthon">
+      <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+      <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     </svg>
   )
 }
 
-/** Phosphor `hand-palm` (regular) — nyitott tenyér. */
-function OpenHandIcon() {
+/** Lucide `file-badge` — szakmai képzés: oklevél jelvénnyel. */
+function CertificateIcon() {
   return (
-    <svg {...railIconProps()} className="kc-services-sin__hand kc-services-sin__hand--open">
-      <path d="M188,88a27.75,27.75,0,0,0-12,2.71V60a28,28,0,0,0-41.36-24.6A28,28,0,0,0,80,44v6.71A27.75,27.75,0,0,0,68,48,28,28,0,0,0,40,76v76a88,88,0,0,0,176,0V116A28,28,0,0,0,188,88Zm12,64a72,72,0,0,1-144,0V76a12,12,0,0,1,24,0v44a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v68a8,8,0,0,0,16,0V60a12,12,0,0,1,24,0v68.67A48.08,48.08,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,8-8V116a12,12,0,0,1,24,0Z" />
+    <svg {...railIconProps()} className="kc-services-sin__glyph kc-services-sin__glyph--kepzes">
+      <path d="M13 22h5a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v3.3" />
+      <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+      <path d="m7.69 16.479 1.29 4.88a.5.5 0 0 1-.698.591l-1.843-.849a1 1 0 0 0-.879.001l-1.846.85a.5.5 0 0 1-.692-.593l1.29-4.88" />
+      <circle cx="6" cy="14" r="3" />
     </svg>
   )
 }

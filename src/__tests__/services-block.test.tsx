@@ -305,14 +305,15 @@ describe('Services — REV C sín + panel', () => {
     expect(colIdx).toBeGreaterThan(-1)
     expect(titleIdx).toBeGreaterThan(colIdx)
     expect(stageIdx).toBeGreaterThan(titleIdx)
-    expect(markup).toContain('kc-services-sin__hand--closed')
-    expect(markup).toContain('kc-services-sin__hand--opening')
-    expect(markup).toContain('kc-services-sin__hand--open')
-    // WP17: a kéz-ikon MINDEN állapotban a tétel jele — nincs ikoncsere,
+    expect(markup).toContain('kc-services-sin__glyph--rendelo')
+    expect(markup).toContain('kc-services-sin__glyph--otthon')
+    expect(markup).toContain('kc-services-sin__glyph--kepzes')
+    // WP17: az ikon MINDEN állapotban a tétel jele — nincs ikoncsere,
     // nincs aktív nyíl a körben; a nyíl csak a CTA gombon marad.
     expect(markup).not.toContain('kc-services-sin__marker-idle')
     expect(markup).not.toContain('kc-services-sin__marker-active')
-    expect(markup.match(/kc-services-sin__hand--/g)).toHaveLength(3)
+    expect(markup.match(/kc-services-sin__glyph--/g)).toHaveLength(3)
+    expect(markup).not.toContain('kc-services-sin__hand')
     expect(markup).not.toContain('kc-services-sin__rail-index')
     expect(markup).toContain('1. ÚT')
     expect(markup).toContain('2. ÚT')
@@ -403,31 +404,50 @@ describe('Services — REV C sín + panel', () => {
   })
 
   /**
-   * WP25 kéz-ikonok: Phosphor Icons (MIT), `hand-fist` / `hand-grabbing` /
-   * `hand-palm`, regular súly, 256-os rács, currentColor kitöltés. A régi,
-   * kézzel rajzolt 24-es stroke-glifák kimentek (a tulajdonos: „csúnyák").
-   * https://phosphoricons.com · https://github.com/phosphor-icons/core/blob/main/LICENSE
+   * WP51 ajtó-ikonok (a lányok mintaképe: rendelő / ház / oklevél): Lucide
+   * Icons (ISC), `hospital` / `house` / `file-badge`, 24-es rács, 2-es
+   * `stroke="currentColor"`, kerek végződés, `fill="none"`. A WP25 kéz-ikonok
+   * (Phosphor, kitöltött 256-os glifák) kimentek.
+   * https://lucide.dev · https://github.com/lucide-icons/lucide/blob/main/LICENSE
    */
-  it('a három kéz-ikon a Phosphor-készlet (MIT) 256-os rácsú, currentColor-kitöltésű glifája, forrás-megjelöléssel', () => {
+  it('a három ajtó-ikon a Lucide-készlet (ISC) 24-es rácsú, currentColor-vonalas glifája, forrás-megjelöléssel', () => {
     const markup = render(railBlock())
-    const svgs = markup.match(/<svg[^>]*kc-services-sin__hand[^>]*>/g) ?? []
+    const svgs = markup.match(/<svg[^>]*kc-services-sin__glyph[^>]*>/g) ?? []
     expect(svgs).toHaveLength(3)
     for (const svg of svgs) {
-      expect(svg).toContain('viewBox="0 0 256 256"')
-      expect(svg).toContain('fill="currentColor"')
-      expect(svg).not.toContain('stroke=')
+      expect(svg).toContain('viewBox="0 0 24 24"')
+      expect(svg).toContain('fill="none"')
+      expect(svg).toContain('stroke="currentColor"')
+      expect(svg).toContain('stroke-width="2"')
+      expect(svg).toContain('stroke-linecap="round"')
+      expect(svg).toContain('stroke-linejoin="round"')
+      expect(svg).toContain('aria-hidden="true"')
     }
     const forras = readFileSync(
       fileURLToPath(new URL('../components/blocks/Services.tsx', import.meta.url)),
       'utf8',
     )
-    expect(forras).toContain('@phosphor-icons/core')
-    expect(forras).toContain('https://github.com/phosphor-icons/core/blob/main/LICENSE')
-    for (const nev of ['hand-fist', 'hand-grabbing', 'hand-palm']) expect(forras).toContain(nev)
-    // A betűhív Phosphor path-ok kezdete (regular súly, 2.1.1).
-    expect(forras).toContain('M200,80H184V64a32,32,0,0,0-56-21.13')
-    expect(forras).toContain('M188,80a27.79,27.79,0,0,0-13.36,3.4')
-    expect(forras).toContain('M188,88a27.75,27.75,0,0,0-12,2.71V60')
+    expect(forras).toContain('https://lucide.dev')
+    expect(forras).toContain('https://github.com/lucide-icons/lucide/blob/main/LICENSE')
+    for (const nev of ['`hospital`', '`house`', '`file-badge`']) expect(forras).toContain(nev)
+    expect(forras).not.toContain('@phosphor-icons/core')
+    // A betűhív Lucide path-ok (icons/hospital.svg, house.svg, file-badge.svg).
+    expect(forras).toContain('M18 21V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16')
+    expect(forras).toContain(
+      'M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9',
+    )
+    expect(forras).toContain('m7.69 16.479 1.29 4.88a.5.5 0 0 1-.698.591')
+    // A kórház-kereszt (M12 7v4 + M14 9h-4) az 1. ajtón, a ház a 2.-on, az oklevél a 3.-on.
+    const sorrend = [...markup.matchAll(/kc-services-sin__glyph--(rendelo|otthon|kepzes)/g)].map(
+      (m) => m[1],
+    )
+    expect(sorrend).toEqual(['rendelo', 'otthon', 'kepzes'])
+    // A vonal a képernyőn egyforma: mobil 2 (28 px → 2,3 px), asztal 1,5 (40 px → 2,5 px).
+    const css = cssFajl('services-sin.css')
+    expect(szabalyTorzs(css, '.kc-services-sin__marker svg')).toContain(
+      'stroke-width: var(--kc-services-glyph-stroke, 2)',
+    )
+    expect(css).toContain('--kc-services-glyph-stroke: 1.5')
   })
 })
 

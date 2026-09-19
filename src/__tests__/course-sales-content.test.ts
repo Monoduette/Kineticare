@@ -6,6 +6,7 @@ import {
   classifyHeading,
   factHighlights,
   factSteps,
+  guaranteeBadgeLabel,
   shortenHighlight,
   type CourseFactsInput,
 } from '../components/courses/sales-content'
@@ -39,7 +40,8 @@ const list = (items: string[]): LexicalNode =>
     version: 1,
     tag: 'ul',
     children: items.map(
-      (item) => ({ type: 'listitem', version: 1, children: [text(item)] }) as unknown as LexicalNode,
+      (item) =>
+        ({ type: 'listitem', version: 1, children: [text(item)] }) as unknown as LexicalNode,
     ),
   }) as unknown as LexicalNode
 
@@ -218,6 +220,46 @@ describe('buildCourseSalesContent — néma tartalomvesztés nincs', () => {
   })
 })
 
+/**
+ * WP51 (tulajdonosi kör 2026-09-19, ingyenes SOS villámkurzus): „100%
+ * boldogság garancia: nincs visszatérítés, mert ingyenes." A garancia
+ * visszatérítési ígéret — ingyenes kurzuson HAMIS állítás lenne, ezért a
+ * `free` ágon sem a sáv, sem a vásárlódoboz címkéje nem jelenik meg, akkor
+ * sem, ha a CMS strukturált mezője ki van töltve vagy a leírásban van
+ * garancia-szakasz (az sem kerül vissza a törzsbe).
+ */
+describe('buildCourseSalesContent — ingyenes kurzuson nincs garancia', () => {
+  const ingyenes: CourseFactsInput = { ...facts, free: true }
+
+  it('a strukturált garancia-mező is null-ra esik, a vásárlódoboz címkéje nincs', () => {
+    const product = {
+      ...emptyProduct(legacyDescription()),
+      guaranteeTitle: '100% boldogság garancia',
+      guaranteeText: 'Ha nem tetszik, kérdés nélkül visszafizetjük.',
+    } as unknown as Product
+    const content = buildCourseSalesContent(product, ingyenes)
+    expect(content.guarantee).toBeNull()
+    expect(guaranteeBadgeLabel(content.guarantee)).toBeNull()
+    // Fizetős ágon ugyanez a termék viszi a garanciát: a szabály az ingyenességé.
+    expect(buildCourseSalesContent(product, facts).guarantee).toEqual({
+      title: '100% boldogság garancia',
+      text: 'Ha nem tetszik, kérdés nélkül visszafizetjük.',
+    })
+  })
+
+  it('a leírás garancia-szakasza SEM a sávba, SEM a törzsbe nem kerül', () => {
+    const content = buildCourseSalesContent(emptyProduct(legacyDescription()), ingyenes)
+    expect(content.guarantee).toBeNull()
+    const body = bodyTexts(content)
+    expect(body).not.toContain('30 napos kipróbálási garancia')
+    expect(body).not.toContain('visszafizetjük')
+    // A többi kinyert szakasz változatlan: a szabály csak a garanciát érinti.
+    expect(content.fitFor).toHaveLength(2)
+    expect(content.faq).toHaveLength(2)
+    expect(body).toContain('könnyen követhető program')
+  })
+})
+
 describe('tényadat-tartalékok — kitalált marketingállítás nélkül', () => {
   it('a pipák a tananyag és a hozzáférés MÉRT adataiból állnak', () => {
     expect(factHighlights(facts)).toEqual([
@@ -236,7 +278,9 @@ describe('tényadat-tartalékok — kitalált marketingállítás nélkül', () 
   })
 
   it('a lépések ingyenes kurzusnál nem beszélnek fizetésről', () => {
-    const paid = factSteps(facts).map((step) => step.text ?? '').join(' ')
+    const paid = factSteps(facts)
+      .map((step) => step.text ?? '')
+      .join(' ')
     expect(paid).toContain('Barion')
     const free = factSteps({ ...facts, free: true })
     expect(free.map((step) => step.text ?? '').join(' ')).not.toContain('Barion')

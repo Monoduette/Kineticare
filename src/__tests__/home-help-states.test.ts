@@ -23,6 +23,7 @@ import {
   presentHomeHelpServicesBlock,
   presentHomeLayout,
   presentSzolgaltatasokLayout,
+  SZOLGALTATASOK_KEZELES_FOTO,
 } from '../lib/home-help-states'
 import type { BlockServices, Page } from '../payload-types'
 import { PROFESSIONAL_TRAINING_URL } from '../lib/menu-seed'
@@ -298,10 +299,16 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(sin.rows?.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban])).toEqual(
       rows.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban]),
     )
-    // Fotó: CMS-fotó híján a kezdőlapi sín zárolt tartalék-képei, ajtónként.
+    // Fotó: CMS-fotó híján az 1. ajtó a kezelés közbeni felvételt kapja (WP51,
+    // manifest `services` szerep), a 2–3. ajtó a kezdőlapi sín tartalék-képeit.
     expect(
       sin.rows?.map((r) => (typeof r.photo === 'object' && r.photo ? r.photo.url : null)),
-    ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
+    ).toEqual([
+      SZOLGALTATASOK_KEZELES_FOTO.url,
+      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[1]}`,
+      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[2]}`,
+    ])
+    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/hand-treatment-detail-1600.webp')
   })
 
   it('a /szolgaltatasok ajtó-blokkja a CMS-fotót tartja, a paper hátteret tintre, a sötétet békén hagyja', () => {

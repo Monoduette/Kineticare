@@ -5,8 +5,8 @@ import { cache } from 'react'
 
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { JsonLd } from '@/components/content/JsonLd'
-import { MediaImage } from '@/components/content/MediaImage'
 import { PageEeat } from '@/components/content/PageEeat'
+import { PageHero } from '@/components/content/PageHero'
 import { PostArticle } from '@/components/content/PostArticle'
 import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/KnowledgeSection'
 import { hasLexicalContent } from '@/components/lexical/serialize'
@@ -240,30 +240,9 @@ export default async function CmsPage({ params }: Props) {
       {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
       <JsonLd data={siteGraph} />
       <article className="kc-cms-page">
-        {hasFilmHero ? null : (
-          <>
-            <Section className="kc-page-hero" variant="tint">
-              <Container size="narrow">
-                <h1 className="kc-page-hero__title">{page.title}</h1>
-                {page.excerpt ? <p className="kc-page-hero__lead">{page.excerpt}</p> : null}
-              </Container>
-            </Section>
-            {heroMedia ? (
-              <Section flush>
-                <Container>
-                  <div className="kc-page-hero__media">
-                    <MediaImage
-                      media={heroMedia}
-                      preferredSize="lg"
-                      priority
-                      sizes="(max-width: 1120px) 100vw, 1120px"
-                    />
-                  </div>
-                </Container>
-              </Section>
-            ) : null}
-          </>
-        )}
+        {/* WP51: a fejléc-kép a cím MELLETT áll (PageHero, `kc-page-hero--paired`),
+            nem külön sávban a fejléc alatt. */}
+        {hasFilmHero ? null : <PageHero lead={page.excerpt} media={heroMedia} title={page.title} />}
         {hasLayout ? (
           <RenderBlocks
             appointment={appointment}

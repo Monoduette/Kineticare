@@ -456,8 +456,21 @@ export function buildCourseSalesContent(
   const fitFor = structuredFitFor.length > 0 ? structuredFitFor : derivedFitFor
   const notFitFor = structuredNotFitFor.length > 0 ? structuredNotFitFor : derivedNotFitFor
   const faq = structuredFaq.length > 0 ? structuredFaq : derivedFaq
-  const guarantee: SalesGuarantee | null =
-    structuredGuaranteeTitle.length > 0 && structuredGuaranteeText.length > 0
+  /**
+   * INGYENES KURZUSON NINCS GARANCIA (WP51, tulajdonosi kör 2026-09-19 az SOS
+   * villámkurzusról: „100% boldogság garancia: nincs visszatérítés, mert
+   * ingyenes"). A garancia visszatérítési ígéret; ahol nincs mit
+   * visszatéríteni, a sáv és a vásárlódoboz bizalmi címkéje HAMIS állítás
+   * lenne — a felirat legyen igaz (docs/ui-sztenderdek.md, SKILL 2. pont;
+   * Baymard: a visszaküldési feltételek a fizetős vásárlás kockázatát
+   * csökkentik, ingyenes terméknél nincs ilyen kockázat). Ezért a `free`
+   * ágon a garancia null, akkor is, ha a CMS strukturált mezője ki van
+   * töltve vagy a leírásban van garancia-szakasz; az utóbbi a törzsbe SEM
+   * kerül vissza (lent), különben a lap alján olvasható maradna.
+   */
+  const guarantee: SalesGuarantee | null = facts.free
+    ? null
+    : structuredGuaranteeTitle.length > 0 && structuredGuaranteeText.length > 0
       ? { title: structuredGuaranteeTitle, text: structuredGuaranteeText }
       : derivedGuarantee
 
@@ -468,6 +481,8 @@ export function buildCourseSalesContent(
    */
   const bodyNodes: LexicalNode[] = []
   for (const segment of segments) {
+    // Ingyenes kurzuson a garancia-szakasz sehol nem jelenik meg (lásd fent).
+    if (facts.free && segment.part === 'guarantee') continue
     if (segment.part === 'body' || !derived[segment.part]) {
       if (segment.heading !== null) {
         bodyNodes.push(segment.heading)
