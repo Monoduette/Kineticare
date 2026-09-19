@@ -51,8 +51,14 @@ export const COURSE_SHOWCASE_FALLBACKS: readonly CourseShowcaseFallbackImage[] =
  * rácscellákban állnak (course-showcase.css `__photo`), ezért 800 px széles
  * változat elég (a cella 1440-en ~340 CSS px, 2×-en 680 px; a korábbi
  * 1600-as fájl 5,6-szoros túlméret volt, audit 2026-09-07, 2.5).
+ * A középső (hand-treatment-detail) ÁLLÓ kép: a public/media/team
+ * manifestjében nincs fekvő kezelés-fotó (2026-09-19-én ellenőrizve: a
+ * fekvő fájlok mind alapítói csoportképek), ezért a cella az alsó élhez
+ * zárt ablakot mutat (css `object-position: 50% 100%`), amíg a tulajdonos
+ * fekvő kezelés-fotót nem ad. (Korábbi neve COURSE_SHOWCASE_DRIFT, a WP50
+ * előtti görgetésre úszó kompozíció után; a jelenet ma statikus.)
  */
-export const COURSE_SHOWCASE_DRIFT: readonly CourseShowcaseFallbackImage[] = [
+export const COURSE_SHOWCASE_SCENE_PHOTOS: readonly CourseShowcaseFallbackImage[] = [
   {
     src: '/media/team/founders-shared-laugh-800.webp',
     width: 800,

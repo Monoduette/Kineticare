@@ -69,6 +69,19 @@
      https://www.w3.org/WAI/WCAG22/Understanding/reflow.html);
    - 600 px-től két oszlop, a kép a jobb oszlopban 12 rem (192 px);
    - 900 px-től a jobb oszlop 15 rem (240 px), a 220–260 px-es sávban.
+   A KÉP A SZÖVEG MELLÉ ZÁR (design-átvétel, 2026-09-19): a korábbi
+   `minmax(0, 1fr)` szöveg-oszlop 1440-en 800 px volt, a bekezdés 60ch-s
+   sapkája 684 px, így a szöveg vége és a kép között 153 px (9,6 rem) holt
+   tér állt. A szöveg-oszlop ezért `fit-content(48rem)`: a tartalom saját
+   szélességét (a 60ch-s bekezdést) veszi fel, legfeljebb 48 rem-et, a rács
+   pedig `justify-content: start`, így a kép a szövegtől egy rácsköznyire
+   (3 rem) áll, a levegő a sáv jobb szélére kerül, ahol nem választ el
+   összetartozót. Gestalt-közelség: ami együtt tartozik, álljon együtt
+   (NN/g, Proximity Principle:
+   https://www.nngroup.com/articles/gestalt-proximity/); Material 3 Layout,
+   Spacing: a csoporton belüli köz kisebb, mint a csoportok közti
+   (https://m3.material.io/foundations/layout/understanding-layout/spacing).
+   Mérve: 1440-en a szöveg vége és a kép között 53 px (3,3 rem).
    A gomb a szöveg ALÁ kerül (a szöveg olvasási végére, ahol a döntés
    születik), a kép jobbra: a klasszikus szöveg + kísérő kép elrendezés,
    a kép nem interaktív (Material 3, Cards: a média a tartalom kísérője,
@@ -119,12 +132,13 @@
 
 @media (min-width: 600px) {
   .kc-cta-banner__inner--illustrated {
-    grid-template-columns: minmax(0, 1fr) 12rem;
+    grid-template-columns: fit-content(48rem) 12rem;
     grid-template-areas:
       'copy figure'
       'action figure';
     gap: var(--kc-space-4) var(--kc-space-6);
     align-items: center;
+    justify-content: start;
   }
 
   .kc-cta-banner__figure {
@@ -135,7 +149,7 @@
 
 @media (min-width: 900px) {
   .kc-cta-banner__inner--illustrated {
-    grid-template-columns: minmax(0, 1fr) 15rem;
+    grid-template-columns: fit-content(48rem) 15rem;
   }
 }
 

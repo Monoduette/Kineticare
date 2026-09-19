@@ -160,7 +160,18 @@ const FOUNDERS_PHOTO = {
   height: 213,
 } as const
 export const FOUNDERS_NAMES = 'Kocsis Kata és Kiss Kata'
-export const FOUNDERS_ROLE = 'gyógytornászok, a Kineticare alapítói'
+/**
+ * A szerep rövid, szótári hangnemű, E/3 megnevezés: „a Kineticare alapítói".
+ * A korábbi „gyógytornászok, a Kineticare alapítói" 390 px-en (230 px-es
+ * felirat-hasáb, S betűméret) két sorra tört, a névvel együtt három sor állt a
+ * H1 fölött (design-átvétel, 2026-09-19, mérve). A „gyógytornászok" a lead
+ * és a Rólunk-hasáb már közli; a szerző-sor dolga csak az azonosítás (NN/g,
+ * Author bios: rövid, névvel és szereppel, nem életrajz:
+ * https://www.nngroup.com/articles/author-bio/). Mérve: 390-en a név és a
+ * szerep együtt legfeljebb két sor (film-hero.css `text-wrap: balance`).
+ * Gondolatjel nincs (docs/ui-sztenderdek.md §3.1).
+ */
+export const FOUNDERS_ROLE = 'a Kineticare alapítói'
 
 export interface FilmHeroProps {
   block: BlockFilmHero

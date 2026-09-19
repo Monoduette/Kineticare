@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -17,6 +18,12 @@ import { describe, expect, it } from 'vitest'
  * az azonosítást (a fehéren 15,77:1), a világoskék kéz dekoratív rajz (2,25:1;
  * a logotípia az SC 1.4.11 alól kivétel:
  * https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+ *
+ * Design-átvétel (2026-09-19): a két kéz 16 px-en két elmosódott folt volt
+ * (a rajz 1960 egység széles, egy kéz ~7 px-re zsugorodott). A böngésző-ikon
+ * (icon.svg, favicon.ico) ezért CSAK a sötétkék kezet viszi, a rács ~85 %-át
+ * kitöltve; a csomag teljes, kétkezes rajza az apple-icon.png-n él (180 px,
+ * 8 %-os belső margó). Generátor: src/scripts/generate-app-icons.ts.
  */
 
 const APP_DIR = fileURLToPath(new URL('../app/', import.meta.url))
@@ -170,17 +177,28 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
 
     expect(large.bitCount, 'Az ICO-kép nem 32 bites (alfa-csatorna nélkül).').toBe(32)
 
-    // Az „üres kép" halálmód ellen: a két kéznek és a mezőnek is valódi
+    // Az „üres kép" halálmód ellen: a sötétkék kéznek és a mezőnek is valódi
     // felületet kell kitöltenie. Egy átlátszó vagy egyszínű placeholder itt
-    // megbukik.
+    // megbukik. A világoskék kéz a böngésző-ikonon SZÁNDÉKOSAN nincs
+    // (16 px-en két folt lett volna): ha visszakerül, az őr jelez.
     const pixels = countIcoPixels(buffer, large)
     expect(pixels.markDark / pixels.total, 'A sötétkék kéz eltűnt az ikonról.').toBeGreaterThan(
-      0.05,
+      0.15,
     )
-    expect(pixels.markLight / pixels.total, 'A világoskék kéz eltűnt az ikonról.').toBeGreaterThan(
-      0.05,
-    )
+    expect(
+      pixels.markLight / pixels.total,
+      'A világoskék kéz visszakerült a böngésző-ikonra (16 px-en két folt).',
+    ).toBeLessThan(0.01)
     expect(pixels.field / pixels.total, 'A fehér mező eltűnt az ikonról.').toBeGreaterThan(0.3)
+
+    // A 16×16-os bejegyzésben is tömör sziluett: a sötét kéz a képpontok
+    // legalább 15 %-a (a régi, kétkezes rajzban ez ~6 % volt méretenként).
+    const small = entries.find((entry) => entry.width === 16)
+    expect(small, 'Az ICO-ból hiányzik a 16×16-os kép.').toBeDefined()
+    if (small) {
+      const smallPixels = countIcoPixels(buffer, small)
+      expect(smallPixels.markDark / smallPixels.total).toBeGreaterThan(0.15)
+    }
   })
 
   it('az apple-icon.png 180×180, és — az Apple HIG szerint — átlátszóság nélküli', () => {
@@ -194,6 +212,36 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
     expect(header.colorType, 'Az apple-icon.png nem lehet átlátszó (alfa-csatornás).').toBe(2)
   })
 
+  it('az apple-icon.png a KÉT kezet viszi fehér mezőn, 8 %-os belső margóval', async () => {
+    const { data, info } = await sharp(`${APP_DIR}apple-icon.png`)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    expect(info.channels).toBe(3)
+    const near = (value: number, target: number): boolean => Math.abs(value - target) <= 12
+    const is = (at: number, rgb: { r: number; g: number; b: number }): boolean =>
+      near(data[at], rgb.r) && near(data[at + 1], rgb.g) && near(data[at + 2], rgb.b)
+    let dark = 0
+    let light = 0
+    let marginNonWhite = 0
+    const margin = Math.floor(info.width * 0.08)
+    for (let y = 0; y < info.height; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        const at = (y * info.width + x) * 3
+        if (is(at, MARK_DARK_RGB)) dark += 1
+        else if (is(at, MARK_LIGHT_RGB)) light += 1
+        const inMargin =
+          x < margin || y < margin || x >= info.width - margin || y >= info.height - margin
+        if (inMargin && !is(at, FIELD_RGB)) marginNonWhite += 1
+      }
+    }
+    const total = info.width * info.height
+    expect(dark / total, 'A sötétkék kéz hiányzik az apple-iconról.').toBeGreaterThan(0.03)
+    expect(light / total, 'A világoskék kéz hiányzik az apple-iconról.').toBeGreaterThan(0.03)
+    // A 8 %-os szegély tiszta fehér (a rajz nem ér a széléig).
+    expect(marginNonWhite).toBe(0)
+  })
+
   it('az icon.svg az új kéz-ikon a fehér mezőn, és a sötétkék kéz↔mező kontrasztja mérve ≥ 4,5:1', () => {
     const svg = readFileSync(`${APP_DIR}icon.svg`, 'utf8')
     expect(svg, 'Az icon.svg nem SVG-gyökérelemmel kezdődik.').toContain('<svg')
@@ -204,18 +252,22 @@ describe('alkalmazás-ikonok (favicon, icon, apple-icon)', () => {
     // kerülhet be (a csomag SVG-je: public/assets/brand/kineticare-icon.svg).
     expect(svg, 'A mező nem fehér.').toContain('fill="#ffffff"')
     expect(svg, 'Hiányzik a sötétkék kéz (#11233d).').toContain('fill="#11233d"')
-    expect(svg, 'Hiányzik a világoskék kéz (#8cb0d9).').toContain('fill="#8cb0d9"')
-    // A rajz nem lehet üres: a két kéz path-adata a csomag SVG-jével egyezik.
+    // A böngésző-ikon CSAK a sötétkék kéz: a világoskék 16 px-en második folt.
+    expect(svg, 'A világoskék kéz visszakerült a böngésző-ikonra.').not.toContain('#8cb0d9')
+    // A rajz nem lehet üres: a sötétkék kéz path-adata a csomag SVG-jével egyezik.
     const brand = readFileSync(
       fileURLToPath(new URL('../../public/assets/brand/kineticare-icon.svg', import.meta.url)),
       'utf8',
     )
-    const brandPaths = [...brand.matchAll(/ d="([^"]+)"/g)].map((match) => match[1])
+    const brandPaths = [...brand.matchAll(/<path class="(cls-[12])" d="([^"]+)"/g)]
     expect(brandPaths, 'A csomag kéz-ikonjában két path kell legyen.').toHaveLength(2)
-    for (const d of brandPaths) {
-      expect(d.length).toBeGreaterThan(50)
-      expect(svg, 'Az icon.svg kéz-rajza eltér a csomag SVG-jétől.').toContain(d)
-    }
+    const darkPath = brandPaths.find((match) => match[1] === 'cls-2')?.[2] ?? ''
+    expect(darkPath.length).toBeGreaterThan(50)
+    expect(svg, 'Az icon.svg sötétkék kéz-rajza eltér a csomag SVG-jétől.').toContain(darkPath)
+    // A kéz a rács nagy részét tölti ki: a scale a bbox-illesztésből jön,
+    // egy kéz ~0,0236 (a kétkezes 0,0143 helyett), tehát nagyobb.
+    const scale = Number(/scale\(([\d.]+)\)/.exec(svg)?.[1] ?? 0)
+    expect(scale).toBeGreaterThan(0.02)
 
     // Az azonosítást hordozó kontraszt: sötétkék kéz a fehér mezőn.
     // A WCAG 2.2 1.4.3 szövegküszöbe 4,5:1, az 1.4.11 nem-szöveges küszöbe 3:1.

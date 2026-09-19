@@ -157,7 +157,7 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
         ) : null}
 
         {visible.length > 0 ? (
-          <CourseShowcase drift={false} products={visible} />
+          <CourseShowcase products={visible} scenePhotos={false} />
         ) : (
           <div className="kc-course-empty" role="status">
             <h2>Jelenleg nincs megjeleníthető kurzus</h2>

@@ -38,8 +38,15 @@
  * zónájában; https://baymard.com/blog/mobile-touch-targets-and-thumb-zones).
  */
 
+/* 48ch, nem 40ch: a 40ch-s sapka (456 px 1440-en, mérve) a verzál, ritkított
+   „Gyógytornászoknak és terapeutáknak" felvezetőt két sorba törte, ami egy
+   egysoros címkét kétsoros felirattá tett (design-átvétel). 48ch-n (547 px) a
+   felvezető egy sor, a bevezető ~65 karakteres sorral fut, a Baymard 50–75-ös
+   sávjában (https://baymard.com/blog/line-length-readability); az eyebrow mint
+   címke egy sorban maradjon (GOV.UK Caption: a fejléc fölötti felirat rövid,
+   egysoros kontextus, https://design-system.service.gov.uk/styles/headings/). */
 .kc-szakemberek__head {
-  max-width: 40ch;
+  max-width: 48ch;
   margin-bottom: var(--kc-space-7);
 }
 

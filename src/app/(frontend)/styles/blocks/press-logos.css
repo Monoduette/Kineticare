@@ -244,13 +244,51 @@
 /* Sötét sávon a jellemzően sötét tintás logók beleolvadnának a háttérbe, ezért
    világos alátétet kapnak (a logó saját színei így maradnak felismerhetők). */
 .kc-section--dark .kc-press__item {
-  padding: var(--kc-space-2) var(--kc-space-3);
+  padding: var(--kc-space-1) var(--kc-space-2);
   border-radius: var(--kc-radius-md);
   background-color: var(--kc-color-white);
 }
 
 .kc-section--dark .kc-press__row img {
   opacity: 0.9;
+}
+
+/* MOBIL KÉTOSZLOPOS RÁCS (design-átvétel, 2026-09-19). A statikus sor
+   (SSR, JS nélkül, 2-nél kevesebb logó, vagy reduced-motion) 599 px alatt
+   flex-wrap-pal EGY oszlopba, egymás alá rakta a logókat (390-en 8 logó
+   ~600 px magas oszlop, mérve), és a 192×48-as keretben a kompakt Kossuth-jel
+   48 px-es pötty maradt a széles MASE mellett. Most: két egyenlő oszlop
+   (`repeat(2, minmax(0, 1fr))`), a keret `clamp(8rem, 42vw, 10rem)` széles és
+   4 rem magas (a magasabb keret a kompakt, négyzetes jeleknek ad helyet, a
+   széles jeleket a szélesség fogja: optikai kiegyenlítés egyedi adat nélkül,
+   `object-fit: contain` egységesen). A `min(100%, …)` 320 px-en is a cellán
+   belül tartja a keretet (nincs vízszintes görgetés, WCAG 2.2 SC 1.4.10,
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). Material 3,
+   Window size classes: compact ablakban a tartalom 2 hasábos rácsba
+   rendezhető, egy hosszú oszlop helyett
+   (https://m3.material.io/foundations/layout/applying-layout/window-size-classes);
+   NN/g, Logos as trust signals: a logósor akkor hat, ha egy pillantásra
+   áttekinthető (https://www.nngroup.com/articles/trustworthy-design/).
+   A marquee-mód (mozgó sor) érintetlen: ott a sor nowrap, egy sorban fut. */
+@media (max-width: 599px) {
+  .kc-press {
+    --kc-press-logo-width: min(100%, clamp(8rem, 42vw, 10rem));
+    --kc-press-logo-height: 4rem;
+  }
+
+  .kc-press__rail[data-motion='static'] .kc-press__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 599px) {
+  .kc-press__rail[data-motion='marquee'] .kc-press__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -510,9 +510,20 @@
   }
 }
 
+/* `justify-content: flex-end`: column-reverse-ben a fő tengely kezdete az ALSÓ
+   él, ezért az alapértelmezett flex-start a címkéket zárta össze alul, és a
+   számot a címke magassága tolta: a háromsoros „kreditpont…" címke fölött a
+   „12" 25 px-szel feljebb állt a többi számnál (mérve 1440-en: alapvonalak
+   2225,5 / 2225,5 / 2200,7 / 2225,5). A flex-end a felső élhez zár, így a négy
+   szám egy alapvonalon áll, a címkék hossza csak lefelé nő. NN/g, Alignment
+   (a közös vonal a rács első számú rendezőelve):
+   https://www.nngroup.com/articles/principle-alignment/; Material 3 Layout,
+   Alignment: az egy sorban álló elemek közös felső/alapvonalhoz igazodnak
+   (https://m3.material.io/foundations/layout/understanding-layout/spacing). */
 .kc-about__stat {
   display: flex;
   flex-direction: column-reverse;
+  justify-content: flex-end;
   margin: 0;
   padding: var(--kc-space-5) 0;
   border-top: 1px solid var(--kc-about-rule);

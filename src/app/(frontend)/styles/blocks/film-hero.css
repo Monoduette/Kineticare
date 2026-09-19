@@ -242,9 +242,18 @@ main > .kc-film-hero:first-of-type {
 }
 
 /* A szerep halványabb súllyal, de ugyanabban az inkben: a filmkockán a
-   halvány szín AA alá esne (lásd FILM_THEME.muted a FilmHero.tsx-ben). */
+   halvány szín AA alá esne (lásd FILM_THEME.muted a FilmHero.tsx-ben).
+   `text-wrap: balance`: ha a szerep mégis törik (keskeny hasáb, nagyobb
+   betű), két egyenlő sor legyen, ne egy hosszú és egy egyszavas (design-
+   átvétel, 2026-09-19: 390-en a régi, hosszabb szerep három sorra tört a
+   névvel együtt; a rövidebb szöveg FOUNDERS_ROLE a FilmHero.tsx-ben).
+   MDN text-wrap: balance: rövid, néhány soros szövegre való
+   (https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap);
+   Apple HIG Typography: a rövid feliratok ne törjenek árva szóra
+   (https://developer.apple.com/design/human-interface-guidelines/typography). */
 .kc-film-hero .kc-film-hero__founders-role {
   font-weight: var(--kc-font-weight-normal);
+  text-wrap: balance;
 }
 
 /* Rövid mobilnézet: kisebb térközök hagynak helyet a tartalomnak; a

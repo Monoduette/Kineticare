@@ -20,7 +20,7 @@ import { PressLogos } from '../components/blocks/PressLogos'
 import { CourseShowcase } from '../components/content/home/CourseShowcase'
 import { TestimonialsSection } from '../components/content/home/TestimonialsSection'
 import { CAPTION_FADE } from '../components/scroll-scrub/scroll-scrub'
-import { COURSE_SHOWCASE_DRIFT } from '../lib/course-showcase'
+import { COURSE_SHOWCASE_SCENE_PHOTOS } from '../lib/course-showcase'
 import type { BlockFilmHero, BlockPressLogos, Media, Product, Testimonial } from '../payload-types'
 
 /**
@@ -146,8 +146,8 @@ describe('WP50/2: az alapítók arcképe a H1 fölött', () => {
 
 describe('WP50/4: a Kurzusaink-jelenet fotói', () => {
   it('a három fotó a 800 px-es változat, a fájlok a deklarált mérettel léteznek', async () => {
-    expect(COURSE_SHOWCASE_DRIFT).toHaveLength(3)
-    for (const image of COURSE_SHOWCASE_DRIFT) {
+    expect(COURSE_SHOWCASE_SCENE_PHOTOS).toHaveLength(3)
+    for (const image of COURSE_SHOWCASE_SCENE_PHOTOS) {
       expect(image.src).toMatch(/-800\.webp$/)
       const meta = await sharp(join(REPO, 'public', image.src)).metadata()
       expect(meta.width, image.src).toBe(image.width)

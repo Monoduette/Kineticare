@@ -7,10 +7,10 @@ import { describe, expect, it } from 'vitest'
 
 import { CourseShowcase } from '../components/content/home/CourseShowcase'
 import {
-  COURSE_SHOWCASE_DRIFT,
   COURSE_SHOWCASE_HEADING,
   COURSE_SHOWCASE_LEAD,
   COURSE_SHOWCASE_MARK,
+  COURSE_SHOWCASE_SCENE_PHOTOS,
   showcaseFallbackAt,
   splitEditorialTitle,
 } from '../lib/course-showcase'
@@ -75,7 +75,7 @@ describe('CourseShowcase', () => {
   it('WP19: a kártya alján szótári hívás áll egy span-ben, a link az egész kártya (nincs beágyazott gomb)', () => {
     const html = render(
       createElement(CourseShowcase, {
-        drift: false,
+        scenePhotos: false,
         products: [
           product({ id: 1, sku: 'Fizetős', slug: 'fizetos' }),
           product({
@@ -101,15 +101,17 @@ describe('CourseShowcase', () => {
 
   it('borító nélkül a csapatportré-tartalékot teszi be', () => {
     const html = render(
-      createElement(CourseShowcase, { drift: false, products: [product({ id: 1 })] }),
+      createElement(CourseShowcase, { scenePhotos: false, products: [product({ id: 1 })] }),
     )
     expect(html).toContain(showcaseFallbackAt(0).src)
+    // A tartalék fotó `cover`-t kap (a packshot-doboz `contain`-je csíkot adna).
+    expect(html).toContain('kc-course-showcase__media kc-course-showcase__media--photo')
   })
 
   /**
    * ŐR — a 2026-09-07-i mért hiba: a vízjel a lead bekezdésre csúszott és
    * átfedte („Online kézrehabilitációs kurzusaink…” + „Kurzusaink”), a
-   * drift-képek pedig a kártya alatt lebegtek bélyegként. A jelenet (vízjel +
+   * jelenet-fotók pedig a kártya alatt lebegtek bélyegként. A jelenet (vízjel +
    * fotók) azóta KÜLÖN, aria-hidden színpad a rács és a lead KÖZÖTT: a DOM-
    * sorrend rács → jelenet → lead, és a vízjel meg a lead sosem egy elemben.
    */
@@ -118,7 +120,7 @@ describe('CourseShowcase', () => {
     const grid = html.indexOf('kc-course-showcase__grid')
     const scene = html.indexOf('kc-course-showcase__scene')
     const word = html.indexOf('kc-course-showcase__word')
-    const photo = html.indexOf('kc-course-showcase__photo--0')
+    const photo = html.indexOf('kc-course-showcase__photo')
     const lead = html.indexOf('kc-course-showcase__lead')
     expect(grid).toBeGreaterThanOrEqual(0)
     expect(scene).toBeGreaterThan(grid)
@@ -129,9 +131,14 @@ describe('CourseShowcase', () => {
     expect(html).toMatch(/<div aria-hidden="true" class="kc-course-showcase__scene"/)
     expect(html).toContain(`class="kc-course-showcase__lead">${COURSE_SHOWCASE_LEAD}</p>`)
     expect(html).not.toContain(`${COURSE_SHOWCASE_LEAD}${COURSE_SHOWCASE_MARK}`)
-    for (const image of COURSE_SHOWCASE_DRIFT) {
+    for (const image of COURSE_SHOWCASE_SCENE_PHOTOS) {
       expect(html).toContain(`src="${image.src}"`)
     }
+    // Takarítás (2026-09-19): a halott indexelt osztály és a `data-drift`
+    // attribútum nem renderel; a fotó egyetlen osztálya a rács-cella.
+    expect(html).not.toMatch(/kc-course-showcase__photo--\d/)
+    expect(html).not.toContain('data-drift')
+    expect(html).toContain('class="kc-course-showcase__photo"')
   })
 
   it('1 terméknél a rács data-count="1", három fölött legfeljebb 3', () => {
@@ -145,18 +152,22 @@ describe('CourseShowcase', () => {
     expect(four).toContain('class="kc-course-showcase__grid" data-count="3"')
   })
 
-  it('drift nélkül (kurzuslista) a jelenet csak a vízjelet viszi, fotó nélkül', () => {
+  it('jelenet-fotók nélkül (kurzuslista) a jelenet csak a vízjelet viszi, fotó nélkül', () => {
     const html = render(
-      createElement(CourseShowcase, { drift: false, products: [product({ id: 1 })] }),
+      createElement(CourseShowcase, { scenePhotos: false, products: [product({ id: 1 })] }),
     )
-    expect(html).toContain('data-drift="false"')
+    expect(html).toContain('kc-course-showcase__scene')
     expect(html).toContain('kc-course-showcase__word')
     expect(html).not.toContain('kc-course-showcase__photo')
   })
 
-  it('vízjel és drift nélkül nincs jelenet, a lead akkor is a rács után áll', () => {
+  it('vízjel és jelenet-fotók nélkül nincs jelenet, a lead akkor is a rács után áll', () => {
     const html = render(
-      createElement(CourseShowcase, { drift: false, mark: null, products: [product({ id: 1 })] }),
+      createElement(CourseShowcase, {
+        scenePhotos: false,
+        mark: null,
+        products: [product({ id: 1 })],
+      }),
     )
     expect(html).not.toContain('kc-course-showcase__scene')
     expect(html.indexOf('kc-course-showcase__lead')).toBeGreaterThan(
@@ -193,10 +204,45 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     expect(blokk(".kc-course-showcase__grid[data-count='2']")).toMatch(
       /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     )
-    // A kártya képaránya fekvő 16/9 (tulajdonosi kérés 2026-09-19: kisebb kép,
-    // több kurzusnál is áttekinthető rács); nem álló 3/4.
-    expect(blokk('.kc-course-showcase__media')).toMatch(/aspect-ratio:\s*16 \/ 9/)
+    // A kártya képaránya fekvő 3/2 (tulajdonosi kérés 2026-09-19: kisebb kép,
+    // több kurzusnál is áttekinthető rács); nem álló 3/4 és nem 16/9 (az az élő
+    // borítókat csonkolta, lásd a következő őrt).
+    expect(blokk('.kc-course-showcase__media')).toMatch(/aspect-ratio:\s*3 \/ 2/)
     expect(css).not.toContain('aspect-ratio: 3 / 4')
+    expect(css).not.toContain('aspect-ratio: 16 / 9')
+  })
+
+  /**
+   * ŐR — design-átvétel 2026-09-19 (cover-crop.png): a 16/9 + `cover` az élő
+   * kurzusborítókat (átlátszó packshotok, 1080×750 és 1080×880, a rajz a
+   * keret széléig ér) csonkolta. A doboz `contain`-ben mutatja a képet, és a
+   * két élő aránynál a festett kép sosem nagyobb a doboznál.
+   */
+  it('az élő borító-arányok (1080×750, 1080×880) a 3/2-es dobozban contain-ben nem vágódnak', () => {
+    const media = blokk('.kc-course-showcase__media')
+    const img = blokk('.kc-course-showcase__media img')
+    expect(img).toContain('object-fit: contain')
+    expect(img).not.toContain('object-fit: cover')
+    const arany = /aspect-ratio:\s*(\d+) \/ (\d+)/.exec(media)
+    if (!arany) throw new Error('hiányzó aspect-ratio a __media dobozon')
+    const doboz = { w: 300 * Number(arany[1]), h: 300 * Number(arany[2]) }
+    for (const [w, h] of [
+      [1080, 750],
+      [1080, 880],
+    ]) {
+      const kepArany = w / h
+      const dobozArany = doboz.w / doboz.h
+      // contain: a nagyobbik oldal éri el a doboz élét, a másik kisebb marad.
+      const festett =
+        kepArany > dobozArany
+          ? { w: doboz.w, h: doboz.w / kepArany }
+          : { w: doboz.h * kepArany, h: doboz.h }
+      expect(festett.w).toBeLessThanOrEqual(doboz.w + 1e-9)
+      expect(festett.h).toBeLessThanOrEqual(doboz.h + 1e-9)
+      // 3/2 mellett a kép a doboz szélességének legalább 80 %-át kitölti
+      // (16/9-nél a 1080×880 csak 69 %-ot adna): nem „bélyeg a keretben".
+      expect(festett.w / doboz.w).toBeGreaterThanOrEqual(0.8)
+    }
   })
 
   it('a vízjel L token + scale, egy sorban, egyedi --kc- tulajdonsággal méretezve; a színpad vág', () => {
@@ -222,6 +268,9 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     const photo = blokk('.kc-course-showcase__photo')
     expect(photo).toMatch(/aspect-ratio:\s*4 \/ 3/)
     expect(photo).toContain('object-fit: cover')
+    // Az álló középső fotón a kéz a kép alsó harmadában van: az ablak az alsó
+    // élhez zár (design-átvétel 2026-09-19; a 35 % a kezet vágta le).
+    expect(photo).toContain('object-position: 50% 100%')
     expect(photo).toContain('width: 100%')
     expect(photo).not.toMatch(/position:\s*absolute|rotate|animation|translate/)
     // A vízjel a fotók fölött, a teljes sorban.

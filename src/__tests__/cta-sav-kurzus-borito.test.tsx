@@ -255,7 +255,10 @@ describe('cta-banner.css — a borító mérete nézetablakonként', () => {
   it('768 px: két oszlop, a kép-oszlop 192 px (a 220 px-es asztali sáv alatt)', () => {
     const lap = stilusLapNezetablakra(LAPOK, 768, 1024)
     const oszlopok = sajatErtek(lap, RACS, 'grid-template-columns')!
-    expect(oszlopok).toBe('minmax(0, 1fr) 12rem')
+    // A szöveg-oszlop `fit-content(48rem)`: a kép a szöveg mellé zár, nem a sáv
+    // túlsó szélére (design-átvétel 2026-09-19: 1440-en 153 px holt tér volt).
+    expect(oszlopok).toBe('fit-content(48rem) 12rem')
+    expect(sajatErtek(lap, RACS, 'justify-content')).toBe('start')
     expect(hosszPx('12rem', 768, 16)).toBe(192)
     expect(sajatErtek(lap, FIGURE, 'width')).toBe('100%')
   })
@@ -263,7 +266,7 @@ describe('cta-banner.css — a borító mérete nézetablakonként', () => {
   it('1440 px: a kép-oszlop 240 px, a kért 220–260 px-es sávban', () => {
     const lap = stilusLapNezetablakra(LAPOK, 1440, 900)
     const oszlopok = sajatErtek(lap, RACS, 'grid-template-columns')!
-    expect(oszlopok).toBe('minmax(0, 1fr) 15rem')
+    expect(oszlopok).toBe('fit-content(48rem) 15rem')
     const px = hosszPx('15rem', 1440, 16)
     expect(px).toBeGreaterThanOrEqual(220)
     expect(px).toBeLessThanOrEqual(260)
