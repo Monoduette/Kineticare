@@ -8,7 +8,9 @@
   --kc-testimonials-muted: var(--kc-color-text-muted);
   --kc-testimonials-rule: var(--kc-color-border);
   --kc-testimonials-accent: var(--kc-color-accent);
-  --kc-testimonials-mark: var(--kc-color-accent-quiet);
+  /* WP50: a jel a halvány szöveg színét viszi (text-muted, tinten ≥ 4,5:1),
+     nem a halványkék akcentet: egy tipográfiai jel, nem grafikai dísz. */
+  --kc-testimonials-mark: var(--kc-color-text-muted);
 }
 
 /* Sötét sávon (kc-section--dark): fehér 15,63:1, halvány akcent 8,49:1. */
@@ -17,7 +19,7 @@
   --kc-testimonials-muted: var(--kc-color-on-dark-muted);
   --kc-testimonials-rule: color-mix(in srgb, var(--kc-color-on-dark) 35%, transparent);
   --kc-testimonials-accent: var(--kc-color-on-dark-muted);
-  --kc-testimonials-mark: color-mix(in srgb, var(--kc-color-on-dark) 45%, transparent);
+  --kc-testimonials-mark: var(--kc-color-on-dark-muted);
 }
 
 /* A tükör idézet-táblája alul is kap szegélyt (a fotó/rács nem fut ki), ezért
@@ -160,18 +162,38 @@
    érték em-alapú (L token), nem px: 390 px-en ugyanaz az arány. A jel
    dekoratív, WCAG 2.2 SC 1.4.3 Incidental
    (https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). */
+/* WP50 (2026-09-19): FÜGGESZTETT IDÉZŐJEL, A SZÖVEGGEL EGY SORBAN.
+   A fenti H11-geometria (2×-es, felső 66-os jel a szöveg fölött) a
+   tulajdonosok szerint „huncutul" nézett ki. Az új jel a magyar alsó „
+   (U+201E, TestimonialsSection.tsx), és NEM külön grafika: a szöveg
+   betűjével (Tenor Sans), méretével (L) és sormagasságával (1,18) áll, a
+   figure bal margójába függesztve (`position: absolute; left: 0`), a szöveg
+   pedig 0,55 L-lel beljebb kezdődik. Azonos betű + méret + sormagasság →
+   azonos alapvonal: a jel talpa pontosan az első sor alapvonalán ül, a
+   99-es alak alul, ahogy a magyar szedésben (mérve: a jel dobozának alja és
+   az első szövegsor dobozának alja px-re egyezik, lásd a beszámolót).
+   Ez a „hanging punctuation" klasszikus szedési elve: a jel a margóban, a
+   szöveg bal éle egyenes (Butterick, Practical Typography, Straight and
+   curly quotes: https://practicaltypography.com/straight-and-curly-quotes.html ;
+   AkH. 12. 240. j) https://helyesiras.mta.hu/helyesiras/default/akh12 ).
+   Material 3: a jelet a szöveg saját metrikáihoz (alapvonal) igazítjuk, nem
+   a doboz széléhez (https://m3.material.io/styles/typography/applying-type).
+   Nincs transform és nincs negyedik font-size (tipografia-harom-meret őr). */
+.kc-testimonials .kc-testimonials__item--big .kc-testimonials__figure {
+  position: relative;
+  padding-left: calc(var(--kc-font-l) * 0.55);
+}
+
 .kc-testimonials .kc-testimonials__item--big .kc-testimonials__mark {
-  display: block;
-  width: max-content;
-  height: calc(var(--kc-font-l) * 0.56);
-  margin: 0 0 calc(var(--kc-font-l) * -0.1);
-  overflow: visible;
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-l);
-  line-height: 0.775;
+  letter-spacing: 0.005em;
+  line-height: 1.18;
   color: var(--kc-testimonials-mark);
-  transform: scale(2.05);
-  transform-origin: left top;
 }
 
 .kc-testimonials .kc-testimonials__quote {
@@ -204,8 +226,10 @@
    (https://developer.mozilla.org/en-US/docs/Web/CSS/flex-flow). */
 
 .kc-testimonials .kc-testimonials__item--small {
-  --kc-testimonials-mark-col: 3.1rem;
-  --kc-testimonials-mark-gap: 0.55rem;
+  /* WP50: a kis jel is a szöveg méretén (M) függ a margóban, a hasáb csak a
+     jel szélességével (0,55 M) mozdul beljebb. */
+  --kc-testimonials-mark-col: calc(var(--kc-font-m) * 0.55);
+  --kc-testimonials-mark-gap: 0rem;
   margin-top: var(--kc-space-5);
   padding-top: var(--kc-space-5);
   border-top: 1px solid var(--kc-testimonials-rule);
@@ -254,18 +278,22 @@
    (https://m3.material.io/styles/typography/applying-type); MDN
    line-height (https://developer.mozilla.org/en-US/docs/Web/CSS/line-height);
    WCAG 2.2 SC 1.4.3 Incidental a dekoratív jelre. */
+/* WP50: a kis jel ugyanazzal a betűvel, mérettel (M) és sormagassággal
+   (leading-body) áll, mint a törzs első sora → közös alapvonal, nincs
+   skálázás. (A fenti H11-levezetés a régi, L + scale(1.3) jelre vonatkozott;
+   megőrizve, mert a metrikái a mérés alapját adják.) */
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__mark {
   position: absolute;
   left: 0;
   top: 0;
   width: var(--kc-testimonials-mark-col);
   margin-top: 0;
-  font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-l);
-  line-height: var(--kc-leading-tight);
+  /* A törzs betűje (Nunito Sans), nem a content.css display-betűje: azonos
+     metrika → azonos alapvonal (mérve: Tenor Sans jellel 3 px eltérés). */
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
   color: var(--kc-testimonials-mark);
-  transform: scale(1.3);
-  transform-origin: left top;
 }
 
 .kc-testimonials .kc-testimonials__item--small .kc-testimonials__quote {

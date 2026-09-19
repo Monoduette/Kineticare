@@ -25,6 +25,13 @@ export interface ScrollScrubScene {
   kicker?: string
   tags?: string[]
   actions?: ReactNode
+  /**
+   * A jelenet-szöveg ELÉ (a kicker és a cím fölé) kerülő kísérő elem, pl. a
+   * szerzők arcképe névvel (WP50). A `.scroll-scrub__copy` része: a címmel
+   * együtt úszik ki, ugyanazt a lejtőt kapja, és a jelenet H1-e marad a
+   * dokumentum-vázlat első címe (az aside nem címsor).
+   */
+  aside?: ReactNode
   align?: 'left' | 'right'
   /** A jelenetre jutó viewport-magasság. Több távolság = lassabb scrub. */
   scroll?: number
@@ -812,6 +819,7 @@ export function ScrollScrub({
             >
               <div className="scroll-scrub__chapter-pin">
                 <div className="scroll-scrub__copy">
+                  {scene.aside ? <div className="scroll-scrub__aside">{scene.aside}</div> : null}
                   {scene.kicker ? <p className="scroll-scrub__kicker">{scene.kicker}</p> : null}
                   <Heading className="scroll-scrub__title">{scene.title}</Heading>
                   {scene.body ? <p className="scroll-scrub__body">{scene.body}</p> : null}

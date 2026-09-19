@@ -127,6 +127,51 @@
   }
 }
 
+/* A KIEMELÉS A KÉPEK VONALÁBAN (WP51, tulajdonosi kérés a kezdőlapról: „a
+   szakmai egyesületi tagság rész a képekkel egy vonalba"). Az alapítók-alak
+   jobb hasábja a 2×2 fríz (photo-frieze.css: 2 × 17rem + 12 px = 556 px);
+   a bal hasáb szövege 1440 px-en mérve 752 px magas volt, ezért a rács sora
+   a szöveghez nőtt, a fríz felül maradt, és a láb-kiemelés (`.kc-about__foot`,
+   a szakmai egyesületi tagság) 195 px-szel a képek alsó éle ALÁ került.
+   1200 px-től a fríz a rács SORÁT tölti ki (stretch) és a két sora
+   egyenlően nő (`minmax(17rem, 1fr)`): a képek alsó éle és a kiemelés alja
+   így egy vonalra esik. A csempék MAGASABBAK lesznek, nem szélesebbek —
+   1440-en 306 × ~340 px —, ami a négy álló fotónak (1600×2000, 1600×2400,
+   1600×1815) KEVESEBB vágást jelent, mint a mai 306 × 272-es fekvő csempe.
+   900–1199 között a szöveghasáb keskeny és hosszú (1024: 811 px a 556-hoz),
+   ott a nyújtás 215 px-es csempén ~390 px magasra vágná a páros portrét
+   (az arcok kilógnának), ezért ott a fríz a mai természetes magasságán
+   marad (WP24: a kép felül, a sor a szöveghez nő).
+   Gestalt: az egy vonalra zárt élek egy csoportot jeleznek (NN/g Common
+   Region: https://www.nngroup.com/articles/common-region/; NN/g Gestalt
+   Proximity: https://www.nngroup.com/articles/gestalt-proximity/); GOV.UK
+   images: a kép a tartalom rácsán, a szöveg magasságához igazítva
+   (https://design-system.service.gov.uk/styles/images/). A hullám-maszk és
+   a parallax érintetlen (a kép 115%-os magassága a magasabb csempén is fed). */
+@media (min-width: 1200px) {
+  .kc-about--founders .kc-photo-frieze {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    align-self: stretch;
+  }
+
+  .kc-about--founders .kc-photo-frieze__strips {
+    flex: 1 1 auto;
+    grid-template-rows: repeat(2, minmax(var(--kc-frieze-h), 1fr));
+  }
+
+  /* A csempe belső mérete NEM számít a sor magasságába (`contain: size`):
+     enélkül az `1fr` sor a kép természetes magasságát (306 px-en 459 px a
+     1600×2400-as fotónál) vette max-contentnek, és a fríz 930 px-re nőtt,
+     magával húzva a szöveghasábot (mérve). Így a sor a szöveghasáb
+     magasságából jön, a csempe csak kitölti. */
+  .kc-about--founders .kc-photo-frieze__strip {
+    contain: size;
+    min-height: 0;
+  }
+}
+
 /* Kisebb desktopon kiegyensúlyozottabb páros, keskenyebb hasábközzel. */
 @media (min-width: 900px) and (max-width: 1100px) {
   .kc-about--founders .kc-about__grid,
@@ -191,13 +236,38 @@
 
 /* Bekezdésköz a tokenes rácsról (space-4 = 16 px, a törzs 1,55-ös
    sorritmusának ~0,6 sora): a hét bekezdés külön gondolatként olvasható,
-   de egy csoport marad (GOV.UK spacing scale; NN/g proximity). */
+   de egy csoport marad (GOV.UK spacing scale; NN/g proximity).
+
+   A TÖRZS SZÍNE ÉS MÉRTÉKE (WP51, tulajdonosi kör 2026-09-19: „a szöveg
+   gépen olyan kis vékonykának néz ki, jobban kihúzható a szélére?").
+   Mérve élőben (Chromium, 1440 px): a hasáb 656 px széles, a bekezdés a
+   34rem-es sapka miatt 544 px, 65 karakter/sor — a hasáb jobb szélén 112
+   px üresen maradt; a betű 19 px, 400-as, a szín az ink-soft (#33495f).
+   (1) A „vékony" érzést nem a betűvastagság, hanem a másodlagos szürkéskék
+   szín adja: a törzs ezért a FŐ szövegszínre (ink, #10243e) kerül — a
+   tinten 13,53:1, paperen 14,79:1 (tokens.css jegyzőkönyv; WCAG 2.2 SC
+   1.4.3, küszöb 4,5:1). A betűvastagság marad 400: a Nunito Sans törzs
+   600-as metszete címke-súly (eyebrow, kiemelés), és a folyószöveg
+   félkövérrel nem lesz olvashatóbb, csak sötétebb tömb (NN/g Legibility,
+   Readability, and Comprehension:
+   https://www.nngroup.com/articles/legibility-readability-comprehension/).
+   A Google-t a betűvastagság nem érdekli: a keresőnek a látható szöveg és
+   a szerkezet számít, nem a CSS-súly.
+   (2) A sapka 34rem → 33em: a mérték a SAJÁT betűméretben (em), mert a
+   karakterszám a betűmérettel skálázik — a Nunito Sans átlagos magyar
+   karaktere 0,443 em (a fixture-ön mérve: 631 px / 75 karakter 19 px-en),
+   így 33em ≈ 75 karakter MINDEN lépcsőn (1440: 627 px, a hasáb 631 px-ét
+   kitölti; 768: 568 px). A korábbi rem-es próba (40rem) 768 px-en, a
+   kisebb betűn 84 karakteres sort adott, a WCAG 2.2 SC 1.4.8 (AAA) 80-as
+   plafonja fölé (https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html);
+   a 75 a Baymard 50–75-ös sávjának teteje
+   (https://baymard.com/blog/line-length-readability). */
 .kc-about__text {
   margin: 0 0 var(--kc-space-4);
-  max-width: var(--kc-measure);
+  max-width: 33em;
   font-size: var(--kc-font-m);
   line-height: 1.55;
-  color: var(--kc-about-muted);
+  color: var(--kc-about-ink);
   white-space: pre-line;
 }
 
@@ -365,12 +435,8 @@
    A kezdőlapi fríz alsó sorának hover-hullámát a photo-frieze.css viszi,
    ugyanezekkel a maszk-értékekkel (`--kc-about-wave-*`). */
 .kc-about {
-  --kc-about-wave-rest:
-    100% 92.5%,
-    100% 8%;
-  --kc-about-wave-hover:
-    100% 89.5%,
-    112% 11%;
+  --kc-about-wave-rest: 100% 92.5%, 100% 8%;
+  --kc-about-wave-hover: 100% 89.5%, 112% 11%;
 }
 
 @media (hover: hover) {
@@ -413,18 +479,51 @@
   }
 }
 
+/* A SZÁMOK EGY SORBAN (WP51, tulajdonosi kör 2026-09-19: „Számok 10+ év és
+   társai legyenek egy sorban"). A korábbi auto-fit rács a HELYTŐL függött:
+   a /rolunk négy száma 1440-en és 1024-en egy sorban állt (316 / 221 px-es
+   cellák, mérve), 390-en viszont EGY oszlopba, négy sorba esett (a 10rem-es
+   minimum kettő nem fért a 326 px-es hasábba). Most a szabály kimondott:
+   asztalon és tableten (≥ 600 px) MINDIG egy sor, ahány szám, annyi egyenlő
+   hasáb (`grid-auto-flow: column`; a szám nem tudja megtörni a sort);
+   600 px alatt két oszlop, ahogy a lányok kérték. A cellák `minmax(0, 1fr)`
+   miatt a hosszú címke tördel, a sor nem nő a hasáb fölé (WCAG 2.2 SC
+   1.4.10 Reflow). A statisztika-sor az NN/g „About Us"-kutatás szerint a
+   bizalmi tényadatok helye — egy sorban, egy szinten olvasható végig
+   (https://www.nngroup.com/articles/about-us-information-on-corporate-websites/);
+   Material 3 Layout: az azonos súlyú elemek egy sorban, egyenlő oszlopokon
+   (https://m3.material.io/foundations/layout/understanding-layout/overview). */
 .kc-about__stats {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--kc-space-4);
   margin: 0;
   padding: 0;
 }
 
+@media (min-width: 600px) {
+  .kc-about__stats {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+}
+
+/* `justify-content: flex-end`: column-reverse-ben a fő tengely kezdete az ALSÓ
+   él, ezért az alapértelmezett flex-start a címkéket zárta össze alul, és a
+   számot a címke magassága tolta: a háromsoros „kreditpont…" címke fölött a
+   „12" 25 px-szel feljebb állt a többi számnál (mérve 1440-en: alapvonalak
+   2225,5 / 2225,5 / 2200,7 / 2225,5). A flex-end a felső élhez zár, így a négy
+   szám egy alapvonalon áll, a címkék hossza csak lefelé nő. NN/g, Alignment
+   (a közös vonal a rács első számú rendezőelve):
+   https://www.nngroup.com/articles/principle-alignment/; Material 3 Layout,
+   Alignment: az egy sorban álló elemek közös felső/alapvonalhoz igazodnak
+   (https://m3.material.io/foundations/layout/understanding-layout/spacing). */
 .kc-about__stat {
   display: flex;
   flex-direction: column-reverse;
+  justify-content: flex-end;
   margin: 0;
   padding: var(--kc-space-5) 0;
   border-top: 1px solid var(--kc-about-rule);

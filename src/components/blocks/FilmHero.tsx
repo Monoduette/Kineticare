@@ -27,11 +27,31 @@ const FILM_POSTER = '/media/film/one-hand-header-v1-poster.webp'
 const FILM_POSTER_MOBILE = '/media/film/one-hand-header-v1-mobile-poster.webp'
 
 /**
- * A film scrub-hossza viewport-magasságban (~460dvh) és a középső, terapeutás
- * szakasz lassítása — a landingen bevált értékek (terv 3.3).
+ * A film scrub-hossza viewport-magasságban és a középső, terapeutás szakasz
+ * lassítása (`linger`, a scroll-scrub `lingerEase` görbéje).
+ *
+ * WP50 (2026-09-19, tulajdonosi kérés: „nagyon hosszú az idő, mire a
+ * következő információig eljutunk"): 4,6 → 3,0 képernyő. Mérve a
+ * `.scroll-scrub__chapter` sávján (a H1 utáni első szekció ennyi görgetésre
+ * kezdődik): 1440×900-on 4140 px → 2700 px, 390×844-en 3882 px → 2532 px
+ * (−35%). A kézhez nem nyúlunk: a klip ugyanaz, csak rövidebb görgetésre fut
+ * le; a `linger` a középső (terapeutás) szakaszt továbbra is lassítja.
+ * A 2,5 alatti érték a két úszó feliratnak már nem hagyna olvasási sávot
+ * (lásd CAPTION_MID / CAPTION_END: a sávok egymást a CAPTION_FADE hosszán
+ * belül érintenék), ezért 3,0 a rövidebb, de még olvasható érték.
+ *
+ * Források: NN/g, Scrolljacking 101 (a görgetés-eltérítés a felhasználó
+ * tempóját veszi el; ha marad, legyen rövid és kiszámítható):
+ * https://www.nngroup.com/articles/scrolljacking-101/ ; NN/g, Scrolling and
+ * Attention (a nézési idő 57%-a az első képernyőé, a második 17%; ami ennél
+ * lejjebb van, azt kevesen érik el):
+ * https://www.nngroup.com/articles/scrolling-and-attention/ ; Apple HIG,
+ * Motion („Don't use motion for its own sake”, a mozgás ne késleltesse a
+ * feladatot): https://developer.apple.com/design/human-interface-guidelines/motion
+ * Őr: src/__tests__/film-hero-scrub-hossz.test.ts.
  */
-const FILM_SCROLL = 4.6
-const FILM_LINGER = 0.16
+export const FILM_SCROLL = 3
+export const FILM_LINGER = 0.16
 
 /**
  * A filmsáv színei a fő site tokenjeiről. Az akcent a `accent-deep`: a
@@ -57,11 +77,11 @@ const FILM_THEME: ScrollScrubTheme = {
  *
  * A színpad `position: sticky` és egy képernyőnyi magas, a görgetési sáv pedig
  * FILM_SCROLL képernyőnyi — a vászon tehát addig áll a képernyőn, amíg a sáv
- * alja el nem éri a képernyő alját: (FILM_SCROLL - 1) / FILM_SCROLL ≈ 0,78.
- * A film utolsó ~22%-a már KIFELÉ görögve játszik le (ez a tükör viselkedése
+ * alja el nem éri a képernyő alját: (FILM_SCROLL - 1) / FILM_SCROLL ≈ 0,67.
+ * A film utolsó ~33%-a már KIFELÉ görögve játszik le (ez a tükör viselkedése
  * is), ezért feliratot oda tenni értelmetlen lenne: sosem látnánk állva.
  */
-const PINNED = (FILM_SCROLL - 1) / FILM_SCROLL
+export const PINNED = (FILM_SCROLL - 1) / FILM_SCROLL
 
 /**
  * A 2. és 3. „állás" sávja. A megrendelő „~50%" és „~90%" kérése a LÁTHATÓ
@@ -71,9 +91,17 @@ const PINNED = (FILM_SCROLL - 1) / FILM_SCROLL
  * A záró felirat `to: 1` értéke szándékos: nincs kifutó ága (lásd
  * captionOpacity), így a film végéig kint marad, és nem villan el a vászon
  * távozása közben.
+ *
+ * WP50: a rövidebb scrub mellett a 2. állás vége 0,62 → 0,63 PINNED és a
+ * záró állás kezdete 0,84 → 0,85 PINNED, hogy a középső felirat olvasási
+ * sávja (from..to) a 3,0 képernyős sávon is 0,38 képernyőnyi görgetés
+ * maradjon (342 px 900 px magas nézetben), a kiúszása (to + CAPTION_FADE =
+ * 0,490) pedig még a záró felirat beúszása (from − CAPTION_FADE = 0,497)
+ * ELŐTT véget érjen: a két felirat sosem áll egyszerre a vásznon
+ * (őr: scroll-scrub-captions.test.ts, „nem fedi egymást").
  */
-const CAPTION_MID = { from: 0.44 * PINNED, to: 0.62 * PINNED } as const
-const CAPTION_END = { from: 0.84 * PINNED, to: 1 } as const
+export const CAPTION_MID = { from: 0.44 * PINNED, to: 0.63 * PINNED } as const
+export const CAPTION_END = { from: 0.85 * PINNED, to: 1 } as const
 
 /**
  * A 2. és 3. állás SZÖVEGE — kódban rögzített érték.
@@ -90,6 +118,60 @@ const CAPTION_END_BODY_WITHOUT_FREE_SOS =
 
 /** A fejezet-navigáció felirata — egyetlen jelenetnél nem is jelenik meg. */
 const FILM_LABEL = 'A kéz nyílása'
+
+/**
+ * A két alapító arcképe a H1 FÖLÖTT, a szöveghasábban (WP50, tulajdonosi
+ * kérés: „kép rólunk a cím mellé, mert alapból minket keresnek az emberek").
+ *
+ * MIÉRT A SZÖVEGHASÁBBAN, NEM A VÁSZON JOBB FELÉN: a film jelenete a
+ * képernyő KÖZEPÉN nyíló ököl (poszter: a kéz a szélesség 32–64%-án, mobilon
+ * 10–80%-án áll). Egy nagy fotó a H1 mellé a kezet takarná, vagy vele
+ * versenyezne, a kéznyitás pedig a nyitó jelenet egyetlen mozgó eleme; a
+ * NN/g Visual Hierarchy elve szerint egy képernyőn EGY fókusz legyen
+ * (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
+ * A megoldás a „szerző-sor” minta: kis, 3:2-es arckép + név + szerep a cím
+ * fölött, a szöveg lejtőjén (a fátyol alatt AA marad), ami a látogató első
+ * kérdésére („kik ők?") azonnal felel, de nem nyom el semmit. Stanford Web
+ * Credibility Guidelines, 4. irányelv: „show there are real people behind
+ * the site" (https://credibility.stanford.edu/guidelines/index.html). NN/g,
+ * Photos as Web Content: a valódi munkatársak portréját nézik (10%-kal
+ * több idő, mint a szövegen), a dekoratív stockfotót átugorják
+ * (https://www.nngroup.com/articles/photos-as-web-content/).
+ *
+ * KÉPVÁLASZTÁS (mért): a `founders-intro-white` fekvő párosból 3:2-es vágat
+ * (eredeti 1600×1067, kivágás 300/180 + 1140×760: a két arc a vágat
+ * szélességének 27%-án és 63%-án, magasságának 45–55%-án áll, tehát a
+ * 4,5rem magas, 6,75rem széles keretben mindkét arc egészben látszik). A
+ * `founders-standing-blazers` álló párost a közvetlenül a film után jövő
+ * fríz viszi (PhotoFrieze), a kezdőlapon nem ismétlődik.
+ * Fájlok: 320 és 640 px széles webp (7,9 / 20 KB), `sizes` a keret CSS
+ * szélessége (108 px), tehát 1× 320, 2×/3× 640 töltődik; nem az 1600-as.
+ *
+ * A kép `alt=""`: a név és a szerep szövegként ott áll mellette, a kép ezt
+ * nem egészíti ki (W3C WAI Images Tutorial, „Decorative Images”: a kép
+ * melletti szöveg már közli az információt;
+ * https://www.w3.org/WAI/tutorials/images/decorative/).
+ */
+const FOUNDERS_PHOTO = {
+  src: '/media/team/founders-intro-white-hero-320.webp',
+  srcSet:
+    '/media/team/founders-intro-white-hero-320.webp 320w, /media/team/founders-intro-white-hero-640.webp 640w',
+  width: 320,
+  height: 213,
+} as const
+export const FOUNDERS_NAMES = 'Kocsis Kata és Kiss Kata'
+/**
+ * A szerep rövid, szótári hangnemű, E/3 megnevezés: „a Kineticare alapítói".
+ * A korábbi „gyógytornászok, a Kineticare alapítói" 390 px-en (230 px-es
+ * felirat-hasáb, S betűméret) két sorra tört, a névvel együtt három sor állt a
+ * H1 fölött (design-átvétel, 2026-09-19, mérve). A „gyógytornászok" a lead
+ * és a Rólunk-hasáb már közli; a szerző-sor dolga csak az azonosítás (NN/g,
+ * Author bios: rövid, névvel és szereppel, nem életrajz:
+ * https://www.nngroup.com/articles/author-bio/). Mérve: 390-en a név és a
+ * szerep együtt legfeljebb két sor (film-hero.css `text-wrap: balance`).
+ * Gondolatjel nincs (docs/ui-sztenderdek.md §3.1).
+ */
+export const FOUNDERS_ROLE = 'a Kineticare alapítói'
 
 export interface FilmHeroProps {
   block: BlockFilmHero
@@ -215,9 +297,35 @@ export function FilmHero({
     })
   }
 
+  // A szerző-sor: figure + figcaption (a kép és a névsor egy egység). A kép
+  // statikus fájl (nem Payload Media), ezért sima <img>, ahogy a fríz és a
+  // galéria csapatfotói; `loading="eager"` + `fetchpriority="low"`: a hajtás
+  // fölött áll, de az LCP a H1 szövege marad (audit 2.5), nem ez a kép.
+  const founders = (
+    <figure className="kc-film-hero__founders">
+      {/* eslint-disable-next-line @next/next/no-img-element -- statikus csapatkép, Payload méret nélkül */}
+      <img
+        alt=""
+        className="kc-film-hero__founders-photo"
+        decoding="async"
+        fetchPriority="low"
+        height={FOUNDERS_PHOTO.height}
+        sizes="108px"
+        src={FOUNDERS_PHOTO.src}
+        srcSet={FOUNDERS_PHOTO.srcSet}
+        width={FOUNDERS_PHOTO.width}
+      />
+      <figcaption className="kc-film-hero__founders-caption">
+        <span className="kc-film-hero__founders-names">{FOUNDERS_NAMES}</span>
+        <span className="kc-film-hero__founders-role">{FOUNDERS_ROLE}</span>
+      </figcaption>
+    </figure>
+  )
+
   const scene: ScrollScrubScene = {
     actions,
     align: 'left',
+    aside: founders,
     body: block.lead?.trim() ?? '',
     clip: FILM_CLIP,
     id: 'film-hero',

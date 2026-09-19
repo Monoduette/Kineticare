@@ -41,6 +41,8 @@ const STATIC_ROUTES: ReadonlyArray<{
   { path: '/kurzusok', priority: 0.9, changeFrequency: 'weekly' },
   { path: '/blog', priority: 0.8, changeFrequency: 'daily' },
   { path: '/kapcsolat', priority: 0.5, changeFrequency: 'monthly' },
+  // WP49: a szakmai választó oldal (képzés vagy szakkönyv), kód-útvonal.
+  { path: '/szakembereknek', priority: 0.6, changeFrequency: 'monthly' },
 ]
 
 /** A doc `updatedAt` mezője Date-ként; hiányzó/érvénytelen érték esetén undefined. */

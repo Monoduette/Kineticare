@@ -11,6 +11,7 @@ import { JsonLd } from '@/components/content/JsonLd'
 import { CourseBarionView } from '@/components/courses/CourseBarionView'
 import { CourseBuyBar } from '@/components/courses/CourseBuyBar'
 import { CourseBuybox } from '@/components/courses/CourseBuybox'
+import { CourseGalleryFigure, firstGalleryMedia } from '@/components/courses/CourseGalleryFigure'
 import { CourseCurriculum } from '@/components/courses/CourseCurriculum'
 import { CourseFaq } from '@/components/courses/CourseFaq'
 import { CourseFitCheck } from '@/components/courses/CourseFitCheck'
@@ -328,6 +329,12 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
         </section>
       ),
     })
+  }
+
+  // WP51: a `gallery` első képe a leírás UTÁN, a lépések ELŐTT töri meg a
+  // szöveget (CourseGalleryFigure). Nincs ugrócélja: kép, nem szakasz.
+  if (firstGalleryMedia(product) !== null) {
+    sections.push({ target: null, node: <CourseGalleryFigure product={product} /> })
   }
 
   if (sales.steps.length > 0) {

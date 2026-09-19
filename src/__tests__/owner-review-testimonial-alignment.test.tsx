@@ -3,7 +3,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { TestimonialsSection } from '../components/content/home/TestimonialsSection'
+import {
+  TESTIMONIAL_OPENING_MARK,
+  TestimonialsSection,
+} from '../components/content/home/TestimonialsSection'
 import type { Testimonial } from '../payload-types'
 
 const css = readFileSync(
@@ -12,9 +15,10 @@ const css = readFileSync(
 ).replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('H11: az idézőjel, az idézet és az attribúció igazítása', () => {
-  it('a kis idézőjel sormagassága nem nyomja a jelet a törzssor fölé', () => {
+  it('a kis idézőjel a törzs sormagasságán áll (közös alapvonal), nem a sor fölött', () => {
+    // WP50: a jel a törzzsel azonos betű + M méret + leading-body → közös alapvonal.
     expect(css).toMatch(
-      /\.kc-testimonials__item--small \.kc-testimonials__mark\s*\{[^}]*line-height: var\(--kc-leading-tight\)/,
+      /\.kc-testimonials__item--small \.kc-testimonials__mark\s*\{[^}]*line-height: var\(--kc-leading-body\)/,
     )
     expect(css).toMatch(
       /\.kc-testimonials__item--small \.kc-testimonials__mark\s*\{[^}]*margin-top: 0;/,
@@ -51,30 +55,43 @@ describe('H11: az idézőjel, az idézet és az attribúció igazítása', () =>
     expect(attribution).not.toContain('flex:')
   })
 
-  it('H11 (2026-09-07): a nagy jel doboza a skálázott tinta, a talpa a nagybetű-vonalon áll', () => {
-    // Tenor Sans U+201C tinta: 0,45–0,725 em (0,275 em) → ×2,05 ≈ 0,56 L.
-    // lh 0,775: (lh − 1,175)/2 + 0,925 − 0,725 = 0 → a tinta teteje a doboz teteje.
-    // Az első sor cap-vonala 0,2 L-re van a sordoboz tetejétől; −0,1 L margó
-    // → 0,1 L optikai rés (mérve 1440 px: 4,0 px; 390 px: 2,5 px).
+  it('WP50: a nagy jel a szöveg betűjével, L méretével és 1,18-as sormagasságával függ a margóban', () => {
+    // A H11-es (2026-09-07) skálázott, felső 66-os jel „huncutnak" hatott; a
+    // magyar alsó „ a szöveg első sorával közös alapvonalon áll: azonos betű
+    // (Tenor Sans), azonos méret (L), azonos sormagasság (1,18), abszolút a
+    // figure bal szélén, a szöveg 0,55 L behúzásában. Nincs transform, nincs
+    // px, nincs negyedik font-size.
     const big = css.match(/\.kc-testimonials__item--big \.kc-testimonials__mark\s*\{([^}]*)\}/)?.[1]
-    expect(big).toContain('height: calc(var(--kc-font-l) * 0.56);')
-    expect(big).toContain('margin: 0 0 calc(var(--kc-font-l) * -0.1);')
-    expect(big).toContain('line-height: 0.775;')
-    expect(big).toContain('transform-origin: left top;')
-    expect(big).not.toMatch(/\b\d+px\b/)
+    expect(big).toContain('position: absolute;')
+    expect(big).toContain('left: 0;')
+    expect(big).toContain('font-family: var(--kc-font-heading);')
+    expect(big).toContain('font-size: var(--kc-font-l);')
+    expect(big).toContain('line-height: 1.18;')
+    expect(big).not.toMatch(/transform|scale|\b\d+px\b/)
+    const figure = css.match(
+      /\.kc-testimonials__item--big \.kc-testimonials__figure\s*\{([^}]*)\}/,
+    )?.[1]
+    expect(figure).toContain('position: relative;')
+    expect(figure).toContain('padding-left: calc(var(--kc-font-l) * 0.55);')
+    const text = css.match(
+      /\.kc-testimonials__item--big \.kc-testimonials__text\s*\{([^}]*)\}/,
+    )?.[1]
+    expect(text).toContain('line-height: 1.18;')
   })
 
-  it('H11 (2026-09-07): a kis jel a törzs cap-height-jére skálázódik, px-eltolás nélkül', () => {
-    // 0,275 em × 1,3 ≈ 0,36 L ≈ 14 px = az M-es törzs cap-height-je (0,737 × 19 px).
-    // A tinta teteje 0,244 L ≈ a cap-vonal 0,41 M + 2 px figure-eltolás (mérve
-    // 1440 px: −0,1 px; 390 px: −0,8 px). Nem új font-size: L token + scale.
+  it('WP50: a kis jel a törzs M méretén, skálázás nélkül; az oszlop a jel szélessége', () => {
     const small = css.match(
       /\.kc-testimonials__item--small \.kc-testimonials__mark\s*\{([^}]*)\}/,
     )?.[1]
-    expect(small).toContain('transform: scale(1.3);')
-    expect(small).toContain('transform-origin: left top;')
-    expect(small).toContain('font-size: var(--kc-font-l);')
-    expect(small).not.toMatch(/translate|\b\d+px\b/)
+    expect(small).toContain('font-size: var(--kc-font-m);')
+    expect(small).not.toMatch(/transform|scale|translate|\b\d+px\b/)
+    expect(css).toMatch(
+      /\.kc-testimonials__item--small\s*\{[^}]*--kc-testimonials-mark-col: calc\(var\(--kc-font-m\) \* 0\.55\);/,
+    )
+  })
+
+  it('WP50: a jel a magyar alsó „ (U+201E), nem a felső 66-os', () => {
+    expect(TESTIMONIAL_OPENING_MARK).toBe('„')
   })
 
   it.each([1, 2, 3])('%i idézetnél megmarad a szöveg, a név és a szemantika', (count) => {

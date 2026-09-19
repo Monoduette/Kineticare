@@ -257,15 +257,98 @@
 }
 
 /* A hero bevezetője az NN/g „About Us"-hierarchia 1. rétege: szkennelhető
-   összefoglaló, ezért a KÉNYELMES mértéket kapja (B1.1: 30rem ≈ 66 karakter a
-   törzsméreten, a nagyobb lead-méreten ennél is kevesebb). Korlát nélkül a
-   720px-es szűk konténerben is 92 karakteres sorok futottak. */
+   összefoglaló. Korlát nélkül a 720px-es szűk konténerben 92 karakteres sorok
+   futottak; a korábbi „kényelmes" 30rem-es sapka viszont a lap M méretén
+   (19 px, 1440) csak 57 karakteres sort adott (Chromiumban mérve, WP51), a
+   Baymard 50–75-ös sávjának aljához közel — a tulajdonos élőben ezt látta
+   szűknek („ahogy belépünk, olyan szűknek néz ki a sáv"). A bevezető ezért a
+   törzs közös mértékét kapja (34rem ≈ 65 karakter 19 px-en): a WCAG 2.2
+   1.4.8 (AAA) 80-as plafonja alatt marad, és a lead ugyanazt a sort viszi,
+   mint az alatta futó folyószöveg (`.kc-richtext p`).
+   Baymard, Line Length Readability: https://baymard.com/blog/line-length-readability
+   W3C Understanding 1.4.8: https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html */
 .kc-page-hero__lead {
   margin: 0;
-  max-width: var(--kc-measure-comfort);
+  max-width: var(--kc-measure);
   font-size: var(--kc-font-m);
   line-height: var(--kc-leading-body);
   color: var(--kc-color-text-muted);
+}
+
+/* ---- Fejléc-kép a cím MELLETT (WP51, PageHero `kc-page-hero--paired`) -----
+   Mobil-first: egy hasáb, a kép a cím és a bevezető ALATT (DOM-sorrend);
+   900 px-től fele-fele rács, a cím és a kép felső éle egy vonalban
+   (`align-items: start`, mindkét hasáb 0 felső margóval). Indoklás és
+   források: src/components/content/PageHero.tsx. A kép doboza a régi
+   `.kc-page-hero__media` nyelvét viszi (hajszálkeret, nagy ív), így a
+   blogcikk fejléc-képe és a CMS-oldalé egy család marad. */
+.kc-page-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-6);
+  align-items: start;
+}
+
+.kc-page-hero__copy {
+  min-width: 0;
+}
+
+/* Egy hasábban (< 900 px) a fotó 28rem-es sapkával, középre zárva — mint a
+   Rólunk-tábla figure-je (about.css): 768 px-en a teljes 720 px-es hasáb
+   egy álló fotónál 816 px magas lett volna (mérve), ami a tartalmat a
+   hajtás alá tolja. 390 px-en a sapka nem lép be (a hasáb keskenyebb).
+
+   MAGASSÁG-SAPKA (design-átvétel, 2026-09-19): a /rolunk álló csapatfotója
+   (1600×1815) a fele-fele rácsban 1440-en 581 px magas lett, a bal hasáb (cím
+   + bevezető) 187 px, azaz ~400 px üres tér állt a szöveg alatt. A figure
+   ezért 3/2-es fekvő vágatot kap (`aspect-ratio`, `object-fit: cover`), a
+   kép felső harmadára zárva (`object-position: 50% 20%`: az arcok a kép
+   26–45 %-ánál vannak, a 3/2-es ablak a 8–67 % sávot mutatja, mérve), és a
+   rács asztalon középre igazít (lent, `align-items: center`), így a cím a kép
+   függőleges közepénél áll. 1440-en a kép 341 px (581 helyett), a szöveg a
+   kép közepén. A 25 %-nál kisebb magasságkülönbség CTA nélkül nem érhető el
+   (a lapnak nincs fő CTA-ja, kitalálni tilos); a kompozíció az arányon, nem
+   az azonos magasságon áll. NN/g, Hero Image Guidance: a hero-kép az
+   arcokat és a tárgyat mutassa, ne vágja el a lényeget, és ne tolja a szöveget
+   a hajtás alá (https://www.nngroup.com/articles/hero-image/); Apple HIG,
+   Layout: az egymás mellé rendelt elemek a közös tengelyre, a vizuális
+   egyensúlyra igazodnak
+   (https://developer.apple.com/design/human-interface-guidelines/layout);
+   Apple HIG, Images: ne vágj úgy, hogy a kép értelme elvesszen
+   (https://developer.apple.com/design/human-interface-guidelines/images). */
+.kc-page-hero__figure {
+  width: 100%;
+  max-width: 28rem;
+  margin: 0;
+  min-width: 0;
+  justify-self: center;
+  overflow: hidden;
+  border: 1px solid var(--kc-color-border);
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-raised);
+  aspect-ratio: 3 / 2;
+}
+
+.kc-page-hero__figure img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 20%;
+}
+
+@media (min-width: 900px) {
+  .kc-page-hero__grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--kc-space-7);
+    /* A cím a kép függőleges közepéhez (fent, magasság-sapka). */
+    align-items: center;
+  }
+
+  .kc-page-hero__figure {
+    max-width: none;
+    justify-self: stretch;
+  }
 }
 
 .kc-page-hero__media {

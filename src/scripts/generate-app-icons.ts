@@ -1,10 +1,35 @@
 /**
- * Kineticare alkalmazás-ikonok (favicon.ico, icon.svg, apple-icon.png) egy forrásból.
+ * Kineticare alkalmazás-ikonok (favicon.ico, icon.svg, apple-icon.png) egy
+ * forrásból: a tulajdonosok logócsomagjának kéz-ikonjából
+ * (`public/assets/brand/kineticare-icon.svg`, két path: világoskék #8cb0d9 és
+ * sötétkék #11233d kéz).
  * Futtatás: npx tsx src/scripts/generate-app-icons.ts
- * Kimenet commitolt statikus fájl; fehér „K" monogram #2f6e9f mezőn (tokens.css).
+ * Kimenet: commitolt statikus fájlok a src/app/ gyökérben.
+ *
+ * KÉT RAJZ, KÉT MÉRETOSZTÁLY (design-átvétel, 2026-09-19):
+ *  - A böngésző-ikon (icon.svg, favicon.ico 16/32/48) CSAK a sötétkék kezet
+ *    viszi a fehér mezőn. A két egymásba érő kéz 16 px-en két elmosódott
+ *    folt volt (QA: icons.png), mert a kettő együtt 1960 egység széles, tehát
+ *    egy kéz ~7 px-re zsugorodott, a világoskék pedig 2,25:1-gyel alig vált
+ *    el a fehértől. Egy kéz a 32-es rács ~85 %-át tölti ki, 16 px-en is ~13 px
+ *    széles, sötét (15,77:1) sziluett.
+ *  - Az apple-icon (180×180) a csomag teljes ikonját (két kéz) kapja fehér
+ *    mezőn, 8 %-os belső margóval: itt van hely a két kéznek, és a
+ *    kezdőképernyőn a márkajel egésze ismerhető fel.
+ * Források: Evil Martians, „How to Favicon in 2024": SVG + 32 px ICO + 180 px
+ * apple-touch-icon, az ICO-ban egyszerű, kis méreten olvasható rajz
+ * (https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs);
+ * Apple HIG, App icons: egyszerű, egyetlen fókuszpontú rajz, a lekerekítést a
+ * rendszer teszi rá, ezért az ikon átlátszóság és saját lekerekítés nélkül
+ * készül (https://developer.apple.com/design/human-interface-guidelines/app-icons);
+ * Material Design, Product icons: a kis méretű ikon egyetlen tömör
+ * sziluett, ne részletgazdag illusztráció
+ * (https://m2.material.io/design/iconography/product-icons.html);
+ * WCAG 2.2 SC 1.4.11: a sötétkék kéz a fehér mezőn 15,77:1
+ * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
  */
 
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import sharp from 'sharp'
@@ -12,149 +37,132 @@ import sharp from 'sharp'
 /** A repó gyökere ehhez a fájlhoz képest (src/scripts/ → két szint fel). */
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
-/** Márkaszínek — a tokens.css `--kc-color-accent-deep`, illetve a fehér. */
-const FIELD_COLOR = '#2f6e9f'
-const MARK_COLOR = '#ffffff'
+/** A fehér mező és a csomag két rögzített márkaszíne (src/lib/brand-logo.ts). */
+const FIELD_COLOR = '#ffffff'
+const MARK_DARK = '#11233d'
+const MARK_LIGHT = '#8cb0d9'
 
-/** A rajzrács oldalhossza. Minden koordináta ezen a 32-es rácson él. */
+/** A rajzrács oldalhossza (a böngésző-ikon viewBoxa). */
 const GRID = 32
 
-/** A lekerekített mező sugara a 32-es rácson (20% — tömör, „app-ikon" forma). */
+/** A lekerekített mező sugara a 32-es rácson (20 % — tömör, „app-ikon" forma). */
 const FIELD_RADIUS = 6.4
 
-type Point = { x: number; y: number }
+/** A csomag SVG-jének viewBoxa. */
+const BRAND_VIEWBOX = { width: 1960, height: 1042.00585 }
 
-/**
- * A „K" geometriai paraméterei a 32-es rácson.
- *
- * A vízszintes és függőleges éleket SZÁNDÉKOSAN páros értékekre tettük
- * (szár 8→12, verzálmagasság 8→24): felezéskor — vagyis a 16×16-os
- * raszternél — ezek egész képpont-határra esnek, így a szár és a betű teteje/
- * alja a legkisebb méreten sem mosódik el. A 32×32-es raszteren a szár pontosan
- * 4, az átlók 3,6 képpont vastagok; 16×16-on 2, illetve 1,8. Ez mindkét méreten
- * a kutatás által kért „legalább 2 képpont 32×32-en" fölött marad.
- */
-const K = {
-  /** A függőleges szár középvonalának x-e. */
-  stemX: 10.0,
-  /** A szár vastagsága. */
-  stemWidth: 4.0,
-  /** Az átlós vonások (kar, láb) merőleges vastagsága — a száréhoz képest
-   *  valamivel könnyebb, ahogy a betűtervezésben az átlók szoktak. */
-  diagonalWidth: 3.6,
-  /** Verzálmagasság: felső és alsó vágás. */
-  capTop: 8.0,
-  capBottom: 24.0,
-  /** A kar középvonalának kezdőpontja a száron belül, és a felső végződése. */
-  armStart: { x: 10.0, y: 16.2 } satisfies Point,
-  armEnd: { x: 21.0, y: 8.0 } satisfies Point,
-  /** A láb középvonalának kezdőpontja a száron belül, és az alsó végződése. */
-  legStart: { x: 10.0, y: 16.6 } satisfies Point,
-  legEnd: { x: 20.8, y: 24.0 } satisfies Point,
+type Box = { x: number; y: number; width: number; height: number }
+
+/** Kerekítés 4 tizedesre — a kimeneti SVG rövid és determinisztikus marad. */
+function r4(value: number): number {
+  return Math.round(value * 10000) / 10000
 }
 
-/** Kerekítés 3 tizedesre — a kimeneti SVG így rövid és determinisztikus marad. */
-function r3(value: number): number {
-  return Math.round(value * 1000) / 1000
-}
-
-/**
- * Egy sokszög előjeles területe. A `nonzero` kitöltés csak akkor egyesíti az
- * átfedő alakzatokat, ha AZONOS körüljárásúak — ezért minden sokszöget
- * ugyanarra az irányra fordítunk.
- */
-function signedArea(points: readonly Point[]): number {
-  let sum = 0
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i]
-    const b = points[(i + 1) % points.length]
-    sum += a.x * b.y - b.x * a.y
+/** A csomag két path-adata: [világoskék, sötétkék], a fájl sorrendjében. */
+function readBrandPaths(): { light: string; dark: string } {
+  const svg = readFileSync(
+    new URL('public/assets/brand/kineticare-icon.svg', `file://${REPO_ROOT}`),
+    'utf8',
+  )
+  const paths = [...svg.matchAll(/<path class="(cls-[12])" d="([^"]+)"/g)].map((m) => ({
+    cls: m[1],
+    d: m[2],
+  }))
+  const light = paths.find((p) => p.cls === 'cls-1')?.d
+  const dark = paths.find((p) => p.cls === 'cls-2')?.d
+  if (!light || !dark) {
+    throw new Error('A csomag kéz-ikonjában nem található a két path (cls-1, cls-2).')
   }
-  return sum / 2
-}
-
-/** Sokszög → SVG path-részlet, egységes (pozitív előjelű) körüljárással. */
-function polygonToPath(points: readonly Point[]): string {
-  const ordered = signedArea(points) < 0 ? [...points].reverse() : points
-  const [first, ...rest] = ordered
-  const head = `M${r3(first.x)} ${r3(first.y)}`
-  const body = rest.map((p) => `L${r3(p.x)} ${r3(p.y)}`).join('')
-  return `${head}${body}Z`
+  return { light, dark }
 }
 
 /**
- * Átlós vonás négyszöge VÍZSZINTES végvágással.
- *
- * A `start` a száron BELÜL van (a szár téglalapja eltakarja), a `end` a
- * végződés középvonali pontja, amely a verzálmagasság vonalán ül. Egy
- * `width` merőleges vastagságú vonás két éle vízszintesen `width / |uy|`
- * távolságra van egymástól (levezetés: az egyik élről a másikra a `width·n`
- * merőleges eltolás plusz egy `k·u` menti korrekció visz, ahol k a függőleges
- * komponenst nullázza) — ez adja a végvágás szélességét.
+ * Egy path (vagy több) befoglaló doboza a csomag koordinátáiban: a rajzot
+ * átlátszó háttéren raszterizáljuk, és az alfa-csatorna szélső képpontjait
+ * mérjük (a path-adat ívei miatt a kézi bbox-számítás nem megbízható).
  */
-function diagonalStroke(start: Point, end: Point, width: number): Point[] {
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const length = Math.hypot(dx, dy)
-  const ux = dx / length
-  const uy = dy / length
-  // Merőleges egységvektor.
-  const nx = uy
-  const ny = -ux
-  const half = width / 2
-  const cutHalf = width / Math.abs(uy) / 2
-  // A `+n` oldal a vízszintes végvágáson attól függően esik jobbra vagy balra,
-  // hogy a vonás lefelé (uy > 0) vagy fölfelé (uy < 0) tart. E nélkül a
-  // négyszög két sarka keresztbe kötődne, és csokornyakkendő-alakot kapnánk.
-  const side = Math.sign(nx)
-
-  return [
-    { x: start.x + nx * half, y: start.y + ny * half },
-    { x: end.x + side * cutHalf, y: end.y },
-    { x: end.x - side * cutHalf, y: end.y },
-    { x: start.x - nx * half, y: start.y - ny * half },
-  ]
+async function measureBox(paths: readonly string[]): Promise<Box> {
+  const scale = 0.5
+  const width = Math.round(BRAND_VIEWBOX.width * scale)
+  const height = Math.round(BRAND_VIEWBOX.height * scale)
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BRAND_VIEWBOX.width} ${BRAND_VIEWBOX.height}" width="${width}" height="${height}">`,
+    ...paths.map((d) => `<path fill="#000" d="${d}"/>`),
+    `</svg>`,
+  ].join('')
+  const { data, info } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({
+    resolveWithObject: true,
+  })
+  let minX = info.width
+  let minY = info.height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      if (data[(y * info.width + x) * 4 + 3] > 8) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX < 0) throw new Error('A rajz üres.')
+  return {
+    x: minX / scale,
+    y: minY / scale,
+    width: (maxX - minX + 1) / scale,
+    height: (maxY - minY + 1) / scale,
+  }
 }
 
-/** A „K" jel path-adata: szár + kar + láb, `nonzero` kitöltéssel egyesítve. */
-function buildMarkPath(): string {
-  const stem: Point[] = [
-    { x: K.stemX - K.stemWidth / 2, y: K.capTop },
-    { x: K.stemX + K.stemWidth / 2, y: K.capTop },
-    { x: K.stemX + K.stemWidth / 2, y: K.capBottom },
-    { x: K.stemX - K.stemWidth / 2, y: K.capBottom },
-  ]
-  const arm = diagonalStroke(K.armStart, K.armEnd, K.diagonalWidth)
-  const leg = diagonalStroke(K.legStart, K.legEnd, K.diagonalWidth)
-
-  return [stem, arm, leg].map(polygonToPath).join('')
+/** Transzformáció, amely a `box`-ot a `size` oldalú négyzet közepére illeszti `margin` belső margóval. */
+function fitTransform(box: Box, size: number, margin: number): string {
+  const inner = size - 2 * margin
+  const scale = Math.min(inner / box.width, inner / box.height)
+  const tx = (size - box.width * scale) / 2 - box.x * scale
+  const ty = (size - box.height * scale) / 2 - box.y * scale
+  return `translate(${r4(tx)} ${r4(ty)}) scale(${r4(scale)})`
 }
 
-/**
- * Az ikon SVG-forrása.
- *
- * @param rounded lekerekített mező (böngésző-ikon) vagy teljes négyzet (iOS,
- *   ahol a maszkot a rendszer teszi rá).
- */
-function buildSvg(rounded: boolean): string {
-  const radius = rounded ? FIELD_RADIUS : 0
+/** A böngésző-ikon SVG-forrása: fehér, lekerekített mező + a sötétkék kéz. */
+function buildBrowserSvg(darkPath: string, darkBox: Box): string {
+  // 2,4 px-es margó a 32-es rácson (7,5 %): a kéz a rács 85 %-át tölti ki.
+  const transform = fitTransform(darkBox, GRID, 2.4)
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID} ${GRID}" width="${GRID}" height="${GRID}" role="img" aria-label="Kineticare">`,
     `<title>Kineticare</title>`,
-    `<rect width="${GRID}" height="${GRID}" rx="${radius}" ry="${radius}" fill="${FIELD_COLOR}"/>`,
-    `<path d="${buildMarkPath()}" fill="${MARK_COLOR}" fill-rule="nonzero"/>`,
+    `<rect width="${GRID}" height="${GRID}" rx="${FIELD_RADIUS}" ry="${FIELD_RADIUS}" fill="${FIELD_COLOR}"/>`,
+    `<g transform="${transform}">`,
+    `<path fill="${MARK_DARK}" d="${darkPath}"/>`,
+    `</g>`,
     `</svg>`,
     '',
   ].join('\n')
 }
 
-/** Egy SVG-forrás raszterizálása négyzetes PNG-vé. */
-async function rasterize(svg: string, size: number, flatten: boolean): Promise<Buffer> {
-  const pipeline = sharp(Buffer.from(svg), { density: 512 }).resize(size, size, {
-    fit: 'fill',
-    kernel: 'lanczos3',
-  })
-  return (flatten ? pipeline.flatten({ background: FIELD_COLOR }) : pipeline).png().toBuffer()
+/** Az apple-icon SVG-forrása: fehér négyzet + a két kéz, 8 %-os belső margóval. */
+function buildAppleSvg(paths: { light: string; dark: string }, bothBox: Box, size: number): string {
+  const transform = fitTransform(bothBox, size, size * 0.08)
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`,
+    `<rect width="${size}" height="${size}" fill="${FIELD_COLOR}"/>`,
+    `<g transform="${transform}">`,
+    `<path fill="${MARK_LIGHT}" d="${paths.light}"/>`,
+    `<path fill="${MARK_DARK}" d="${paths.dark}"/>`,
+    `</g>`,
+    `</svg>`,
+  ].join('')
+}
+
+/** Egy SVG-forrás raszterizálása négyzetes PNG-vé (átlátszóság nélkül). */
+async function rasterize(svg: string, size: number): Promise<Buffer> {
+  return sharp(Buffer.from(svg), { density: 512 })
+    .resize(size, size, { fit: 'fill', kernel: 'lanczos3' })
+    .flatten({ background: FIELD_COLOR })
+    .removeAlpha()
+    .png({ compressionLevel: 9, palette: false })
+    .toBuffer()
 }
 
 /**
@@ -224,18 +232,19 @@ function buildIco(images: readonly { size: number; rgba: Buffer }[]): Buffer {
 }
 
 async function main(): Promise<void> {
-  const roundedSvg = buildSvg(true)
-  const squareSvg = buildSvg(false)
+  const paths = readBrandPaths()
+  const darkBox = await measureBox([paths.dark])
+  const bothBox = await measureBox([paths.light, paths.dark])
 
   // 1) SVG-ikon — a modern böngészők elsődleges, méretfüggetlen forrása.
-  const svgPath = new URL('src/app/icon.svg', `file://${REPO_ROOT}`)
-  writeFileSync(svgPath, roundedSvg, 'utf8')
+  const browserSvg = buildBrowserSvg(paths.dark, darkBox)
+  writeFileSync(new URL('src/app/icon.svg', `file://${REPO_ROOT}`), browserSvg, 'utf8')
 
-  // 2) favicon.ico — 16 / 32 / 48, a klasszikus kérési útvonalra.
+  // 2) favicon.ico — 16 / 32 / 48, a klasszikus kérési útvonalra, ugyanabból a rajzból.
   const icoSizes = [16, 32, 48]
   const icoImages = await Promise.all(
     icoSizes.map(async (size) => {
-      const rgba = await sharp(Buffer.from(roundedSvg), { density: 512 })
+      const rgba = await sharp(Buffer.from(browserSvg), { density: 512 })
         .resize(size, size, { fit: 'fill', kernel: 'lanczos3' })
         .ensureAlpha()
         .raw()
@@ -243,18 +252,19 @@ async function main(): Promise<void> {
       return { size, rgba }
     }),
   )
-  writeFileSync(new URL('src/app/favicon.ico', `file://${REPO_ROOT}`), buildIco(icoImages))
+  const ico = buildIco(icoImages)
+  writeFileSync(new URL('src/app/favicon.ico', `file://${REPO_ROOT}`), ico)
 
-  // 3) apple-icon.png — 180×180, átlátszóság NÉLKÜL, lekerekítés nélkül.
-  const applePng = await rasterize(squareSvg, 180, true)
+  // 3) apple-icon.png — 180×180, a két kéz, átlátszóság és lekerekítés NÉLKÜL.
+  const applePng = await rasterize(buildAppleSvg(paths, bothBox, 180), 180)
   writeFileSync(new URL('src/app/apple-icon.png', `file://${REPO_ROOT}`), applePng)
 
   // Ellenőrző kimenet a fejlesztőnek (nem naplózás: egyszeri, kézi eszköz).
   process.stdout.write(
     [
       'Kineticare ikonok előállítva:',
-      `  src/app/icon.svg        ${roundedSvg.length} bájt`,
-      `  src/app/favicon.ico     ${buildIco(icoImages).length} bájt (${icoSizes.join(', ')} px)`,
+      `  src/app/icon.svg        ${browserSvg.length} bájt`,
+      `  src/app/favicon.ico     ${ico.length} bájt (${icoSizes.join(', ')} px)`,
       `  src/app/apple-icon.png  ${applePng.length} bájt (180×180)`,
       '',
     ].join('\n'),

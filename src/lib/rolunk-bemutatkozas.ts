@@ -47,6 +47,27 @@ export const KEZDOLAP_BEMUTATKOZAS: readonly string[] = [
 ]
 
 /**
+ * WP52 — a kezdőlapi bemutatkozás RÖVIDÍTETT változata (tulajdonosi kérés,
+ * 2026-09-19: „lehetséges a rövidítés? jó lenne, ha a szakmai egyesületi
+ * tagság rész a képekkel egy vonalba kerülhetne”). Mérve a `KEZDOLAP_BEMUTATKOZAS`
+ * ellenében: 745 → 483 karakter (35 %-kal rövidebb), 93 → 63 szó; minden
+ * mondat 25 szó alatt (GOV.UK), töltelék gondolatjel nélkül (docs/
+ * ui-sztenderdek.md §3.1). A tények változatlanok: nevek, kézre szakosodott
+ * gyógytornászok, tíz év, két budapesti rendelő és online, Pécs és Semmelweis
+ * (tulajdonosi kikötés: a Semmelweis-mondat marad), képzés-oktatás,
+ * manuálterápia, vizsgálat utáni saját terv, otthoni videókurzus.
+ *
+ * A tartalom-csere (apply-owner-content, `alkalmazKezdolapBemutatkozasRovidites`)
+ * kizárólag a PONTOSAN `KEZDOLAP_BEMUTATKOZAS`-t viselő blokkot cseréli erre;
+ * a kezdőlap seedje a tulajdonosi jóváhagyásig a hosszabb változaton marad.
+ */
+export const KEZDOLAP_BEMUTATKOZAS_ROVID: readonly string[] = [
+  'Kocsis Kata és Kiss Kata vagyunk, kézrehabilitációra szakosodott gyógytornászok. Több mint tíz éve a kéz, a csukló és a könyök panaszaival foglalkozunk, két budapesti rendelőben és online.',
+  'Kocsis Kata a Pécsi Tudományegyetemen végzett, ő az akkreditált kézrehabilitációs képzésünk oktatója. Kiss Kata a Semmelweis Egyetemen diplomázott, manuálterapeutaként a panaszok hátterét keresi.',
+  'Vizsgálat után a panaszaidhoz szabott tervet kapsz, otthonra pedig videókurzust a saját tempódban.',
+]
+
+/**
  * A /rolunk About-blokk címe: a menüpontra fókuszál (történet, szakmai út).
  * Első két szava viszi a lényeget (NN/g F-minta: „if users see only the first
  * 2 words, they should still get the gist”), 31 karakter, a `.kc-about__title`
@@ -120,6 +141,16 @@ export const rolunkBemutatkozasBekezdesek = () => bekezdesek(ROLUNK_BEMUTATKOZAS
 export const kezdolapBemutatkozasSzoveg = () => ({
   title: KEZDOLAP_BEMUTATKOZAS_CIM,
   paragraphs: kezdolapBemutatkozasBekezdesek(),
+  feature: { ...KEZDOLAP_BEMUTATKOZAS_KIEMELES },
+})
+
+/**
+ * A kezdőlapi About-blokk RÖVIDÍTETT szöveges mezői (WP52): a cím és a kiemelés
+ * változatlan, csak a bekezdések rövidebbek (az első kiemelt).
+ */
+export const kezdolapBemutatkozasRovidSzoveg = () => ({
+  title: KEZDOLAP_BEMUTATKOZAS_CIM,
+  paragraphs: bekezdesek(KEZDOLAP_BEMUTATKOZAS_ROVID),
   feature: { ...KEZDOLAP_BEMUTATKOZAS_KIEMELES },
 })
 

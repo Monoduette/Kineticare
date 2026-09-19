@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
 import { Container } from '../ui/Container'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
 import { withCoursesNavItem } from '../../lib/menu-tree'
 import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
@@ -49,8 +50,22 @@ export async function Header() {
       <BarionSessionSignUp signedIn={auth.signedIn} />
       <Container>
         <div className="kc-site-header__bar">
+          {/* WP49 (2026-09-19): a tulajdonosok új, vízszintes logója a
+              korábbi szöveges „Kineti|care" wordmark helyén. Sima <img>, az
+              SVG változtatás nélkül (lásd src/lib/brand-logo.ts). A link
+              hozzáférhető neve marad „Kineticare kezdőlap" (a 404-oldallal
+              bitre azonos, WCAG 2.2 SC 3.2.4); a kép alt-ja a márkanév.
+              Érintőcél: a link min-height 2.75rem (44 px), a logó szélesebb
+              44 px-nél (WCAG 2.2 SC 2.5.8; Apple HIG Layout, 44×44 pt). */}
           <Link aria-label="Kineticare kezdőlap" className="kc-site-header__brand" href="/">
-            Kineti<span className="kc-site-header__brand-accent">care</span>
+            {/* eslint-disable-next-line @next/next/no-img-element -- SVG-logó bitre azonosan, next/image nélkül (src/lib/brand-logo.ts) */}
+            <img
+              alt={BRAND_LOGO_ALT}
+              className="kc-site-header__logo"
+              height={BRAND_LOGO_HORIZONTAL.height}
+              src={BRAND_LOGO_HORIZONTAL.src}
+              width={BRAND_LOGO_HORIZONTAL.width}
+            />
           </Link>
           <DesktopNav items={items} />
           <div className="kc-site-header__actions">

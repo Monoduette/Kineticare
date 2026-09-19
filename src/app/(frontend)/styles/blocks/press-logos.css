@@ -7,10 +7,26 @@
  * A tokenek portolása változatlan (muted → text-muted, hairline → border,
  */
 
+/* LOGÓKERET (WP50, tulajdonosi kérés: a logók legyenek nagyobbak).
+   Előtte: 9–11 rem × 2,1–3,4 rem (1440 px-en 176×52 px, 320-on 144×34).
+   Utána: 12–16 rem × 3–5 rem (1440-en 256×80 px, 320-on 192×48): +45%
+   szélesség, +41–54% magasság. A keret marad egységes minden logóra
+   (`object-fit: contain`, a saját arány nem torzul), a sor `flex-wrap`, tehát
+   320 px-en a 272 px-es belső szélességbe egy logó fér soronként, vízszintes
+   túlcsordulás nélkül (WCAG 2.2 SC 1.4.10 Reflow,
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). A 44 px-es
+   linkcél (SC 2.5.8) a magasabb kerettel bőven teljesül. A logósor mint
+   hitelesség-jel: NN/g, Trustworthiness in Web Design (a külső, független
+   forrásokra való hivatkozás a négy hitelesség-tényező egyike,
+   https://www.nngroup.com/articles/trustworthy-design/); Stanford Web
+   Credibility Guidelines 2. és 4. (mutasd meg, hogy valódi szervezet és
+   valódi emberek állnak a lap mögött,
+   https://credibility.stanford.edu/guidelines/index.html). A `sizes`
+   attribútum (PressLogos.tsx) a keret CSS-szélességét követi. */
 .kc-press {
   --kc-press-muted: var(--kc-color-text-muted);
-  --kc-press-logo-width: clamp(9rem, 14vw, 11rem);
-  --kc-press-logo-height: clamp(2.1rem, 3.6vw, 3.4rem);
+  --kc-press-logo-width: clamp(12rem, 20vw, 16rem);
+  --kc-press-logo-height: clamp(3rem, 5.2vw, 5rem);
 }
 
 /* Sötét sáv: halvány akcent az inken 8,49:1. */
@@ -228,13 +244,51 @@
 /* Sötét sávon a jellemzően sötét tintás logók beleolvadnának a háttérbe, ezért
    világos alátétet kapnak (a logó saját színei így maradnak felismerhetők). */
 .kc-section--dark .kc-press__item {
-  padding: var(--kc-space-2) var(--kc-space-3);
+  padding: var(--kc-space-1) var(--kc-space-2);
   border-radius: var(--kc-radius-md);
   background-color: var(--kc-color-white);
 }
 
 .kc-section--dark .kc-press__row img {
   opacity: 0.9;
+}
+
+/* MOBIL KÉTOSZLOPOS RÁCS (design-átvétel, 2026-09-19). A statikus sor
+   (SSR, JS nélkül, 2-nél kevesebb logó, vagy reduced-motion) 599 px alatt
+   flex-wrap-pal EGY oszlopba, egymás alá rakta a logókat (390-en 8 logó
+   ~600 px magas oszlop, mérve), és a 192×48-as keretben a kompakt Kossuth-jel
+   48 px-es pötty maradt a széles MASE mellett. Most: két egyenlő oszlop
+   (`repeat(2, minmax(0, 1fr))`), a keret `clamp(8rem, 42vw, 10rem)` széles és
+   4 rem magas (a magasabb keret a kompakt, négyzetes jeleknek ad helyet, a
+   széles jeleket a szélesség fogja: optikai kiegyenlítés egyedi adat nélkül,
+   `object-fit: contain` egységesen). A `min(100%, …)` 320 px-en is a cellán
+   belül tartja a keretet (nincs vízszintes görgetés, WCAG 2.2 SC 1.4.10,
+   https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). Material 3,
+   Window size classes: compact ablakban a tartalom 2 hasábos rácsba
+   rendezhető, egy hosszú oszlop helyett
+   (https://m3.material.io/foundations/layout/applying-layout/window-size-classes);
+   NN/g, Logos as trust signals: a logósor akkor hat, ha egy pillantásra
+   áttekinthető (https://www.nngroup.com/articles/trustworthy-design/).
+   A marquee-mód (mozgó sor) érintetlen: ott a sor nowrap, egy sorban fut. */
+@media (max-width: 599px) {
+  .kc-press {
+    --kc-press-logo-width: min(100%, clamp(8rem, 42vw, 10rem));
+    --kc-press-logo-height: 4rem;
+  }
+
+  .kc-press__rail[data-motion='static'] .kc-press__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 599px) {
+  .kc-press__rail[data-motion='marquee'] .kc-press__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

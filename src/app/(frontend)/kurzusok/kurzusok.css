@@ -787,6 +787,37 @@
   max-width: var(--kc-course-measure);
 }
 
+/* Galéria-kép a leírás és a lépések között (WP51, CourseGalleryFigure):
+   a főhasáb teljes szélessége, 3:2 kivágás, a kártyák ívével és
+   hajszálkeretével. A folyószöveg mértékénél szélesebb doboz adja a
+   vizuális szünetet; a szakaszköz ugyanaz a space-8, mint a szakaszoké. */
+.kc-course-figure {
+  margin: 0 0 var(--kc-space-8);
+  overflow: hidden;
+  border: 1px solid var(--kc-color-border);
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-tint);
+  aspect-ratio: 3 / 2;
+}
+
+/* `object-position: 50% 100%`: a galéria-fotó álló (hand-treatment-detail,
+   1600×2400), a 3/2-es doboz a magasság 44 %-át mutatja, és a kezelt kéz a
+   kép alsó harmadában van (y 70–85 %). A 30 % az arcot mutatta, a kezet
+   levágta (design-átvétel); a 70 % az állat vágta ketté; az alsó élhez zárt
+   ablak (sorok 56–100 %) a kezet középre hozza fél arc nélkül (sharp-pal
+   szimulálva, qa-fix/hand-crops.png). Apple HIG, Images: ne vágj úgy, hogy a
+   kép értelme elvesszen
+   (https://developer.apple.com/design/human-interface-guidelines/images);
+   NN/g, Photos as Web Content
+   (https://www.nngroup.com/articles/photos-as-web-content/). */
+.kc-course-figure img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 100%;
+}
+
 .kc-course-preview {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -1148,10 +1179,7 @@
   .kc-course-buybar[data-visible='true'] {
     justify-content: center;
     gap: var(--kc-space-6);
-    padding-inline: max(
-      var(--kc-space-5),
-      calc((100vw - var(--kc-container-wide)) / 2)
-    );
+    padding-inline: max(var(--kc-space-5), calc((100vw - var(--kc-container-wide)) / 2));
   }
 }
 

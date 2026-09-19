@@ -137,7 +137,7 @@ describe('LogoRail', () => {
   })
 
   it('azonos logókeretet ad a linkelt és önálló képeknek, torzítás nélkül', () => {
-    expect(css).toMatch(/--kc-press-logo-width:\s*clamp\(9rem, 14vw, 11rem\)/)
+    expect(css).toMatch(/--kc-press-logo-width:\s*clamp\(12rem, 20vw, 16rem\)/)
     expect(css).toMatch(/\.kc-press__item\s*\{[^}]*width:\s*var\(--kc-press-logo-width\)/s)
     expect(css).toMatch(/\.kc-press__link\s*\{[^}]*width:\s*100%/s)
     expect(css).toMatch(/\.kc-press__row img\s*\{[^}]*width:\s*100%/s)

@@ -38,7 +38,22 @@ export function testimonialQuoteText(testimonial: Testimonial): string {
 }
 
 /**
- * Dekoratív nyitó idézőjel a tükör-táblán (U+201C, „66-os" felső jel).
+ * Dekoratív nyitó idézőjel: a MAGYAR alsó, 99-es alakú jel (U+201E, `„`).
+ *
+ * WP50 (2026-09-19): a korábbi U+201C (felső, 66-os) jel a Tenor Sans
+ * metszetében, 2×-re skálázva, halványkéken a szöveg FÖLÖTT lebegett; a
+ * tulajdonosok szerint „huncutul néz ki". Magyar szövegben a nyitó idézőjel
+ * alul áll: AkH. 12. kiadás, 240. j) pont (a macskaköröm a magyar idézőjel
+ * alapformája, https://helyesiras.mta.hu/helyesiras/default/akh12 ) és a
+ * helyesiras.mta.hu blogja (a nyitó jel alsó helyzetű, 99-es alakú,
+ * https://helyesiras.mta.hu/helyesiras/blog/show/idezojel ). Butterick,
+ * Practical Typography, Straight and curly quotes: az idézőjel a szöveg
+ * betűjével és méretével egy tipográfiai egység, nem díszítés
+ * (https://practicaltypography.com/straight-and-curly-quotes.html). A jel a
+ * szöveg ELSŐ sorával egy alapvonalon, a szöveg betűjével és méretével, a
+ * bal margóba függesztve áll (testimonials.css, WP50 szakasz).
+ *
+ * A korábbi indoklás, megőrzésül: a tükör (U+201C, „66-os" felső jel)
  * Nem a magyar alsó-9 (U+201E, `„`): a Higgsfield-tükör és a tulajdonosi
  * mockup a magas, szerif díszjelet viszi a szöveg FÖLÉ / BALJÁRA. A jel
  * `aria-hidden`, a valódi idézet a `blockquote` — a képernyőolvasó nem
@@ -46,7 +61,7 @@ export function testimonialQuoteText(testimonial: Testimonial): string {
  * kontrasztja nem a szövegküszöb.
  * https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
  */
-export const TESTIMONIAL_OPENING_MARK = '\u201C'
+export const TESTIMONIAL_OPENING_MARK = '\u201E'
 
 export interface TestimonialsSectionProps {
   testimonials: Testimonial[]

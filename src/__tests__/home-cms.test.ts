@@ -508,8 +508,10 @@ describe('HomeView (kezdőlap-render)', () => {
     expect(html.match(/<blockquote/g) ?? []).toHaveLength(3)
     // Dekoratív nyitó jel: a mockup magas „66-os" idézőjele (U+201C), nem a
     // magyar alsó-9 (U+201E). A jel aria-hidden, a blockquote a valódi idézet.
+    // WP50: a jel a magyar alsó „ (U+201E), nem a mockup felső 66-os jele (U+201C).
     expect(html).toContain(`class="kc-testimonials__mark">${TESTIMONIAL_OPENING_MARK}`)
-    expect(html).not.toContain('class="kc-testimonials__mark">\u201E')
+    expect(html).toContain('class="kc-testimonials__mark">\u201E')
+    expect(html).not.toContain('class="kc-testimonials__mark">\u201C')
   })
 
   it('M6 vélemények: a rövid változat elsőbbséget élvez a teljes szöveg felett', () => {

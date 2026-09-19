@@ -12,7 +12,7 @@
 
 import type { BlockServices, Media, Page } from '../payload-types'
 import { ctaLabel } from './cta-vocabulary'
-import { PROFESSIONAL_TRAINING_URL } from './menu-seed'
+import { PROFESSIONALS_MENU_PATH, PROFESSIONAL_TRAINING_URL } from './menu-seed'
 
 export const HOME_HELP_TITLE = 'Így tudunk segíteni'
 
@@ -218,6 +218,29 @@ export const HOME_HELP_PHOTO_SIZE = [
   { width: 933, height: 1400 },
 ] as const
 
+/**
+ * A /szolgaltatasok 1. ajtajának (Rendelői kezelések) tartalék-fotója (WP51,
+ * tulajdonosi kör 2026-09-19: „ide is szeretnénk egy képet magunkról kezelés
+ * közben"). A `public/media/team/manifest.json` ezt a felvételt kifejezetten
+ * a `services` szerepre jelöli („Gyógytornász kézzel végzett kezelés közben",
+ * 1600×2400, álló — a panel fotó-hasábja is álló). A CMS „Panel fotója" mező
+ * ezt felülírja; a kezdőlap sínje érintetlen (ott a három portré marad).
+ * NN/g Photos as Web Content: a tevékenységet mutató, valódi fotó
+ * informatív, a portré ismétlése ugyanazon a lapon nem
+ * (https://www.nngroup.com/articles/photos-as-web-content/).
+ */
+export const SZOLGALTATASOK_KEZELES_FOTO: Media = {
+  id: 87010,
+  alt: 'Gyógytornász kézzel végzett kezelés közben.',
+  url: '/media/team/hand-treatment-detail-1600.webp',
+  filename: 'hand-treatment-detail-1600.webp',
+  mimeType: 'image/webp',
+  width: 1600,
+  height: 2400,
+  createdAt: '',
+  updatedAt: '',
+}
+
 export const homeHelpFallbackMedia = (index: number): Media => {
   const file = HOME_HELP_PHOTO_FILES[index]
   const alt = HOME_HELP_PHOTO_ALTS[index]
@@ -270,12 +293,36 @@ export const isConvertibleHomeHelpServices = (block: {
   )
 }
 
+/**
+ * Melyik AJTÓ egy sín-sor: 0 = rendelő, 1 = otthoni program, 2 = szakmai
+ * képzés. A sor JELENTÉSÉBŐL dől el (a címe vagy a CTA-célja alapján), NEM a
+ * pozíciójából: ha a szerkesztő átrendezi a `rows` tömböt, az ikon és a
+ * tartalék-fotó a sorral megy (Codex, 2026-09-19). Ha sem a cím, sem az URL
+ * nem ismerhető fel, a pozíció marad a tartalék (a három ajtó körbejár).
+ */
+export const homeHelpDoorIndex = (
+  row: { title?: unknown; url?: unknown },
+  index: number,
+): 0 | 1 | 2 => {
+  const title = typeof row.title === 'string' ? row.title.trim().toLocaleLowerCase('hu') : ''
+  const url = typeof row.url === 'string' ? row.url.trim() : ''
+  const path = url.split(/[?#]/, 1)[0]?.replace(/\/+$/, '') ?? ''
+  const cimek = HOME_HELP_STATE_TITLES.map((cim) => cim.toLocaleLowerCase('hu'))
+  const cimIndex = cimek.indexOf(title)
+  if (cimIndex === 0 || cimIndex === 1 || cimIndex === 2) return cimIndex
+  if (path === '/szolgaltatasok' || path.startsWith('/szolgaltatasok#')) return 0
+  if (path === '/kurzusok' || path.startsWith('/kurzusok/')) return 1
+  if (path === PROFESSIONALS_MENU_PATH || url === PROFESSIONAL_TRAINING_URL) return 2
+  const marad = ((index % 3) + 3) % 3
+  return marad === 0 ? 0 : marad === 1 ? 1 : 2
+}
+
 const withFallbackHelpPhotos = (
   rows: NonNullable<BlockServices['rows']>,
 ): NonNullable<BlockServices['rows']> =>
   rows.map((row, index) => ({
     ...row,
-    photo: populatedHelpPhoto(row.photo) ?? homeHelpFallbackMedia(index),
+    photo: populatedHelpPhoto(row.photo) ?? homeHelpFallbackMedia(homeHelpDoorIndex(row, index)),
   }))
 
 /**
@@ -377,9 +424,9 @@ export const isSzolgaltatasokAjtoBlock = (block: {
  * A (b) út (a táblát a panel kártya-nyelvére festeni) egy HARMADIK változatot
  * hozott volna létre ugyanarra a három ajtóra, ezért nem az.
  *
- * Fotó: a sorok CMS-fotója, ha van; különben a kezdőlapi sín zárolt
- * tartalék-fotói ajtónként (ugyanaz a három út, ugyanaz a három kép), a
- * három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
+ * Fotó: a sorok CMS-fotója, ha van; különben az 1. ajtó a kezelés közbeni
+ * felvétel (`SZOLGALTATASOK_KEZELES_FOTO`, WP51), a 2–3. ajtó a kezdőlapi
+ * sín zárolt tartalék-fotója, a három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
  * (`image`) a sínen nem jelenik meg (a Services sín-ága nem használja).
  * Háttér: a sín-sáv help-paper a tint osztály mögött, mint a kezdőlapon; a
  * szerkesztő sötét választása marad.
@@ -401,9 +448,11 @@ export const presentSzolgaltatasokLayout = (
       rows: (block.rows ?? []).map((row, index) => {
         const photo = populatedHelpPhoto(row.photo)
         if (photo) return { ...row, photo }
-        return index < HOME_HELP_PHOTO_FILES.length
-          ? { ...row, photo: homeHelpFallbackMedia(index) }
-          : row
+        // WP51: a rendelői ajtó kezelés közbeni fotót kap — a sor jelentése
+        // (cím/URL) szerint, nem a pozíciója szerint.
+        const ajto = homeHelpDoorIndex(row, index)
+        if (ajto === 0) return { ...row, photo: SZOLGALTATASOK_KEZELES_FOTO }
+        return { ...row, photo: homeHelpFallbackMedia(ajto) }
       }),
     }
   })

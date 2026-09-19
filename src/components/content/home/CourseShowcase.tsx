@@ -2,10 +2,10 @@ import Link from 'next/link'
 
 import { AUDIENCE_LABELS, normalizeAudience } from '../../../lib/course-audience'
 import {
-  COURSE_SHOWCASE_DRIFT,
   COURSE_SHOWCASE_HEADING,
   COURSE_SHOWCASE_LEAD,
   COURSE_SHOWCASE_MARK,
+  COURSE_SHOWCASE_SCENE_PHOTOS,
   showcaseFallbackAt,
   splitEditorialTitle,
 } from '../../../lib/course-showcase'
@@ -28,8 +28,15 @@ export interface CourseShowcaseProps {
   lead?: string
   /** A vízjel. Üresen a beépített „Kurzusaink”. `null`: nincs vízjel. */
   mark?: string | null
-  /** A vízjel körüli döntött csapatfotók (a jelenet). */
-  drift?: boolean
+  /**
+   * A vízjel alatti három csapatfotó (a jelenet). `false`: a jelenet csak a
+   * vízjelet viszi (kurzuslista). A név a WP50 előtti „drift" (görgetésre
+   * úszó fotók) helyett a mai, statikus rácsot írja le; a régi
+   * `kc-course-showcase__photo--N` osztály és a `data-drift` attribútum
+   * halott kódként maradt vissza, egyetlen stílus és teszt sem címezte
+   * (takarítás, 2026-09-19).
+   */
+  scenePhotos?: boolean
 }
 
 function ArrowIcon() {
@@ -91,7 +98,15 @@ function ShowcaseCard({
   return (
     <article className="kc-course-showcase__card">
       <Link aria-label={`${title}: ${ctaText}`} className="kc-course-showcase__link" href={href}>
-        <span className="kc-course-showcase__media">
+        {/* Borító: átlátszó packshot, `contain` (course-showcase.css). Tartalék
+            csapatportré (nincs borító): fotó, ezért `--photo` → `cover`. */}
+        <span
+          className={
+            coverMedia
+              ? 'kc-course-showcase__media'
+              : 'kc-course-showcase__media kc-course-showcase__media--photo'
+          }
+        >
           {coverMedia ? (
             <MediaImage
               decorative
@@ -147,7 +162,8 @@ function ShowcaseCard({
 
 /**
  * Kurzusgaléria: képkártyák (ár a kártyán), alattuk külön „színpadon” a
- * halvány Kurzusaink vízjel három döntött csapatfotóval, legalul a lead.
+ * halvány Kurzusaink vízjel, alatta három egyforma csapatfotó egy
+ * háromhasábos rácsban (WP50: szimmetrikus, nem döntött), legalul a lead.
  * A DOM-sorrend egyben az olvasási sorrend: rács → jelenet → lead; a jelenet
  * teljes egészében dekoratív (aria-hidden), a lead-et sosem fedi.
  * A két audience-ág a kártya kickere, nem külön szekció.
@@ -159,7 +175,7 @@ export function CourseShowcase({
   heading,
   lead,
   mark = COURSE_SHOWCASE_MARK,
-  drift = true,
+  scenePhotos = true,
 }: CourseShowcaseProps) {
   if (products.length === 0) {
     return null
@@ -168,7 +184,7 @@ export function CourseShowcase({
   const title = heading?.trim() || COURSE_SHOWCASE_HEADING
   const leadText = rewriteVisitorDashLeftover(lead?.trim() || COURSE_SHOWCASE_LEAD)
   const markText = mark === null ? '' : mark.trim() || COURSE_SHOWCASE_MARK
-  const hasScene = markText.length > 0 || drift
+  const hasScene = markText.length > 0 || scenePhotos
 
   return (
     <div className="kc-course-showcase" data-count={products.length}>
@@ -182,18 +198,14 @@ export function CourseShowcase({
         ))}
       </div>
       {hasScene ? (
-        <div
-          aria-hidden="true"
-          className="kc-course-showcase__scene"
-          data-drift={drift ? 'true' : 'false'}
-        >
+        <div aria-hidden="true" className="kc-course-showcase__scene">
           {markText.length > 0 ? <p className="kc-course-showcase__word">{markText}</p> : null}
-          {drift
-            ? COURSE_SHOWCASE_DRIFT.map((image, index) => (
+          {scenePhotos
+            ? COURSE_SHOWCASE_SCENE_PHOTOS.map((image) => (
                 // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
                 <img
                   alt=""
-                  className={`kc-course-showcase__photo kc-course-showcase__photo--${index}`}
+                  className="kc-course-showcase__photo"
                   decoding="async"
                   height={image.height}
                   key={image.src}

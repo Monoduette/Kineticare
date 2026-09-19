@@ -43,6 +43,7 @@ describe('film hero short-mobile text layout', () => {
       '.kc-film-hero .scroll-scrub__tags',
       '.kc-film-hero .scroll-scrub__actions',
       '.kc-film-hero .kc-film-hero__cta',
+      '.kc-film-hero .scroll-scrub__aside',
     ])
     const declarations: [string, string][] = []
     compact!.walkDecls(({ prop, value }) => {
@@ -54,6 +55,8 @@ describe('film hero short-mobile text layout', () => {
       ['line-height', 'var(--kc-leading-board)'],
       ['margin-top', 'var(--kc-space-2)'],
       ['padding-block', 'var(--kc-space-2)'],
+      // WP50: a szerző-sor (alapítók arcképe) rövid mobil nézetben elmarad.
+      ['display', 'none'],
     ])
   })
 

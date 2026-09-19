@@ -18,11 +18,11 @@
  * ASZTAL (≥ 900 px) — a `sin-drotvaz-asztali.png` szerint:
  * - bal hasáb: cím + sín; jobbra kártya-panel. Hasáb-arány 1 : 2,6
  *   (a drót 345 / 1090 px 1440-en), rés space-7.
- * - sín: 5rem-es körjelölők (a drót 80 px) 2.5rem-es kéz-ikonnal (a kör
+ * - sín: 5rem-es körjelölők (a drót 80 px) 2.5rem-es ajtó-ikonnal (a kör
  *   fele, a drót aránya), 1 px gerinc a körök közepén,
  *   tétel-köz space-7 (48 px). A három kör azonos átmérőjű minden állapotban;
- *   inaktív = fehér kitöltés + chrome körvonal + chrome kéz-ikon, aktív =
- *   ink kitöltés + fehér kéz-ikon. Ugyanaz a glifa, csak szín vált (Material 3
+ *   inaktív = fehér kitöltés + chrome körvonal + chrome ajtó-ikon, aktív =
+ *   ink kitöltés + fehér ajtó-ikon. Ugyanaz a glifa, csak szín vált (Material 3
  *   outlined vs filled icon button, azonos méret; NN/g: a kiválasztást
  *   szín/ikon jelzi, nem méretugrás).
  *   https://m3.material.io/components/icon-buttons/overview
@@ -39,7 +39,7 @@
  *   https://m3.material.io/foundations/layout/understanding-layout/spacing
  *
  * MOBIL (< 900 px) — a `sin-drotvaz-accordion.png` szerint:
- * - egymás alatti sorok: kéz-ikon körben (3.5rem), cím + kétsoros leírás,
+ * - egymás alatti sorok: ajtó-ikon körben (3.5rem), cím + kétsoros leírás,
  *   jobb szélen + / − jel, vékony elválasztók; a megnyitott sor ALATT a panel.
  * - a DOM nem változik: a `.kc-services-sin__col / __rail / __stage` burkolók
  *   `display: contents`-szel átadják a gyermekeiket a layout-rácsnak, és a
@@ -323,6 +323,14 @@
   display: block;
   width: var(--kc-services-marker-icon);
   height: var(--kc-services-marker-icon);
+  /* WP51: Lucide vonalas glifa (24-es rács, 2-es vonal). A vonal a
+     KÉPERNYŐN legyen egyforma vastag, ne a rácson (Lucide
+     `absoluteStrokeWidth` elve, https://lucide.dev/guide/packages/lucide-react
+     és a design guide: https://lucide.dev/guide/design/icon-design-guide):
+     mobil 28 px-en 2 → 2,3 px; asztali 40 px-en a lenti 1,5 → 2,5 px. A
+     Services.tsx `strokeWidth="2"` attribútumát ez a CSS-érték írja felül
+     (a megjelenítési attribútum specificitása a legkisebb). */
+  stroke-width: var(--kc-services-glyph-stroke, 2);
 }
 
 /* Hover-tónus: a help-panel réteg, a címke dobozán túl space-2 kiterjesztéssel
@@ -549,7 +557,7 @@
 
 /* Billentyűzetes fókusznál a gyűrű ugyanúgy erősödik, mint hoverre. Ez a
    szabály SZÁNDÉKOSAN a :checked-szabály ELŐTT áll: azonos specificitás,
-   ezért a kiválasztott körön a :checked győz (ink kitöltés + fehér kéz-ikon);
+   ezért a kiválasztott körön a :checked győz (ink kitöltés + fehér ajtó-ikon);
    különben a fókusz ink ikonja az ink kitöltésen eltűnne (mérve, WP17). */
 .kc-services-sin__input:nth-of-type(1):focus-visible
   ~ .kc-services-sin__layout
@@ -575,7 +583,7 @@
   color: var(--kc-color-help-ink);
 }
 
-/* Kiválasztott állomás: azonos átmérő, kitöltött ink kör + fehér kéz-ikon.
+/* Kiválasztott állomás: azonos átmérő, kitöltött ink kör + fehér ajtó-ikon.
    Méretet a :checked NEM vált. A :checked ~ layout testvér-kombinátor
    JS nélkül köti a rádiót a címkéhez és a panelhez. */
 .kc-services-sin__input:nth-of-type(1):checked
@@ -894,6 +902,8 @@
        900–1199 között, space-8 (72 px) 1200-tól; másolat|fotó rés space-7. */
     --kc-services-marker: 5rem;
     --kc-services-marker-icon: 2.5rem;
+    /* 40 px-es glifán 1,5/24 → 2,5 px-es vonal (lásd `.kc-services-sin__marker svg`). */
+    --kc-services-glyph-stroke: 1.5;
     --kc-services-panel-pad: var(--kc-space-7);
     --kc-services-panel-gap: var(--kc-space-7);
     --kc-services-stage-gap: var(--kc-space-7);

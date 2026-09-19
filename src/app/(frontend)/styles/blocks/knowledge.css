@@ -146,7 +146,26 @@
   transform: scale(1.02);
 }
 
+/* A KÁRTYACÍM FÉLKÖVÉR (WP51, tulajdonosi kérés a /blog-ról: „címek
+   vastagított betűtípussal, hogy jobban elkülönüljenek"). Mérve élőben
+   (Chromium, 1440 és 390 px): a cím Tenor Sans 400, 19 / 16,2 px, ink; a
+   kivonat Nunito Sans 400, ugyanazon az M lépcsőn, ink-soft — a két sor
+   csak betűcsaládban és árnyalatban tért el, súlyban nem. A Tenor Sans
+   EGYETLEN, 400-as metszettel érkezik (fonts.css), a 600/700 ott szintetikus
+   vastagítás lenne (torz, elmosódó kontúr) — ugyanez a döntés élt már a
+   Három állapot kártyacímén (states.css). A cím ezért a törzs-betű
+   (Nunito Sans, variábilis 400–700) 700-as tokenjét kapja: a méret az M
+   lépcsőn marad (három-méretes skála), a súly különbözteti meg a kivonattól.
+   NN/g Headings: a címsor vizuálisan váljon el a törzstől, hogy a pásztázó
+   olvasó megtalálja (https://www.nngroup.com/articles/headings-pickup-lines/);
+   Material 3 Type scale: a „title" szerep a törzsnél nagyobb súlyú, azonos
+   családból (https://m3.material.io/styles/typography/type-scale-tokens);
+   Apple HIG Typography: a hierarchiát a súly és a méret együtt adja
+   (https://developer.apple.com/design/human-interface-guidelines/typography).
+   Kontraszt: ink a fehér kártyán 15,63:1 (SC 1.4.3). */
 .kc-post-card .kc-post-card__title {
+  font-family: var(--kc-font-body);
+  font-weight: var(--kc-font-weight-bold);
   text-wrap: balance;
 }
 

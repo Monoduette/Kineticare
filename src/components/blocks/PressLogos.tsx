@@ -70,8 +70,8 @@ export function PressLogos({ block }: PressLogosProps) {
             const image = (
               <MediaImage
                 media={altOverride.length > 0 ? { ...media, alt: altOverride } : media}
-                preferredSize="xs"
-                sizes="(max-width: 1028px) 144px, (max-width: 1257px) 14vw, 176px"
+                preferredSize="sm"
+                sizes="(max-width: 960px) 192px, (max-width: 1280px) 20vw, 256px"
               />
             )
             // CMS-webcím allowlist-szűrése (src/lib/safe-url.ts): tiltott

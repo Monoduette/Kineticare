@@ -187,53 +187,60 @@
   }
 }
 
-/* Wordmark a landing `.kc-wordmark` mintájára: Tenor Sans, ritkított verzál, a
-   „care" tag akcentesen (a DOM-szöveg „Kineticare" marad, a verzál csak
-   transzformáció). A tag a MÉLYEBB akcent-lépcsőt kapja, mert a fátylas sávon
-   normál méretű szövegként is 4,5:1 felett kell maradnia — a világos
-   `--kc-color-accent` (a lap-háttéren 4,45:1) és a sima akcent-mély (a fátylon
-   3,74:1) egyaránt AA alá esne. Lásd a fenti kontraszt-jegyzetet. */
+/* ---- Márkajel: az új vízszintes logó (WP49, 2026-09-19) --------------------
+ *
+ * A korábbi szöveges „Kineti|care" wordmark (Tenor Sans, ritkított verzál,
+ * fátyol-arányos akcent-tag) helyén a tulajdonosok új logója áll, sima <img>-
+ * ként (src/lib/brand-logo.ts). A LINK a 44 px-es érintőcél (min-height), a
+ * kép csak a rajz: 320–899 px-en 1,5rem (24 px) magas, 180,5 px széles;
+ * 900 px-től 1,75rem (28 px), 210,5 px (a 383,44:50,99 viewBox-arány, 7,52).
+ * A `width: auto` az img `width`/`height` attribútumából számolt arányt
+ * követi, ezért a doboz a betöltés előtt is helyes (nincs CLS).
+ *
+ * MIÉRT EZ A MÉRET. A sáv 3,5rem/4,5rem magas; a 24/28 px-es logó a sávban
+ * középen ül, a wordmark szövege (a rajz ~60%-a) így 14–17 px-es x-magasságú,
+ * ami a menülinkek S/M méretével egy lépcsőn áll (NN/g, Logo Placement:
+ * a logó legyen a bal felső sarokban, mérsékelt méretű, és vigyen a
+ * kezdőlapra, https://www.nngroup.com/articles/logo-placement/). A 320 px-es
+ * sáv 272 px belső szélességén a 180,5 px-es logó + 8 px köz + 44 px hamburger
+ * (+8 px túlnyúlás) 232,5 px-et kér: 39,5 px tartalék (header-responsive
+ * .browser.mjs, 320 px). A 900 px-es asztali sáv tartaléka ugyanott mérve.
+ *
+ * KONTRASZT (a logó színei rögzítettek, nem tokenek). A sötétkék wordmark
+ * (#11233d) a paperen 14,92:1, a fagyott filmsávon (veil 1, #d8dde1) 11,53:1,
+ * a filmsáv felső lejtőjén (veil 0, #8c959d) 5,18:1 — mind a 4,5:1 szöveges
+ * küszöb felett (WCAG 2.2 SC 1.4.3; a logotípia egyébként kivétel;
+ * gomb-kontraszt.test.ts mátrix). A világoskék kéz (#8cb0d9) a paperen
+ * 2,13:1: dekoratív márkarajz, az
+ * azonosítást a wordmark hordozza (SC 1.4.11 „logotypes" kivétel,
+ * https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+ * Sötét fejléc-állapot ma nincs (a sáv felülete mindig világos); a fehér
+ * változat (`kineticare-horizontal-white.svg`) sötét sávhoz tartalék. */
 .kc-site-header__brand {
   display: inline-flex;
   align-items: center;
   flex: none;
   min-height: 2.75rem; /* 44px érintési cél */
-  font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-m);
-  letter-spacing: 0.14em;
-  line-height: var(--kc-leading-tight);
-  white-space: nowrap;
-  color: var(--kc-header-ink);
   text-decoration: none;
-  text-transform: uppercase;
 }
 
 .kc-site-header__brand:hover {
   text-decoration: none;
 }
 
-/**
- * A wordmark akcent-tagja a FÁTYOLLAL ARÁNYOSAN vált színt.
- *
- * Átlátszó fejlécnél (veil = 0) teljesen `ink`: a filmsáv felső lejtőjén 5,13:1.
- * Legörgetve (veil = 1) a megszokott `accent-deeper`: a fagyott filmsávon
- * 5,17:1, a paperen 6,70:1. A középtónusú akcent önmagában a részleges fátylon
- * 2,32:1-re esne. Ne cseréld vissza fix színre.
- */
-.kc-site-header__brand-accent {
-  color: color-mix(
-    in srgb,
-    var(--kc-header-accent) calc(var(--kc-header-veil, 0) * 100%),
-    var(--kc-header-ink)
-  );
+.kc-site-header__logo {
+  display: block;
+  width: auto;
+  height: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .kc-site-header__logo {
+    height: 1.75rem;
+  }
 }
 
 @media (max-width: 400px) {
-  /* Szűk készüléken a ritkítás fogy, hogy a wordmark + CTA + hamburger elférjen. */
-  .kc-site-header__brand {
-    letter-spacing: 0.1em;
-  }
-
   /* SÁV-TARTALÉK 320 PX-EN (WP9, 2026-09-07, mérve). A wordmark (119,6 px) +
      a 12 px-es sávköz + a Kurzusok-pirula (105,5 px) + 12 px-es akcióköz +
      a 44 px-es hamburger 293,1 px-et kért, a 320 px-es sáv 24 px-es
@@ -249,17 +256,6 @@
   .kc-site-header__bar,
   .kc-site-header__actions {
     gap: var(--kc-space-2);
-  }
-}
-
-/* Asztali sáv: a ≤400 px-es 0,1em-es ritkítás (sáv-tartalék). A korábbi
-   0,22em-es tágas ritkítás a bejelentkezett asztali sávval együtt már nem
-   fért ki (1206 px vs 1072, a WP31-es sávval mérve); WP36 óta a sáv
-   tartalma kisebb (a fiók egyetlen 44 px-es ikon), a szűkebb ritkítás marad,
-   mert a főmenü a „Kurzusok" tétellel bővült. */
-@media (min-width: 900px) {
-  .kc-site-header__brand {
-    letter-spacing: 0.1em;
   }
 }
 
@@ -1298,22 +1294,22 @@
 
 @media (min-width: 900px) {
   .kc-site-footer__mark {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     text-align: end;
   }
 }
 
-/* Ritkított wordmark (`.kc-footer-mark`) — a fejléc-wordmark párja. */
-.kc-site-footer__brand {
-  font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-m);
-  letter-spacing: 0.28em;
-  line-height: var(--kc-leading-tight);
-  color: var(--kc-footer-ink);
-  text-transform: uppercase;
-}
-
-.kc-site-footer__brand-accent {
-  color: var(--kc-footer-accent);
+/* Márkajel a láblécben (WP49): a fejléc logójának párja, 2rem (32 px) magas,
+   240,6 px széles — a 320 px-es sáv 272 px-es belső szélességén elfér
+   (header-responsive.browser.mjs mintájára mérve). A lábléc háttere a paper
+   (#f6f9fc): a sötétkék wordmark rajta 14,92:1, a világoskék kéz 2,13:1 (a
+   logotípia SC 1.4.11-kivétele, lásd a fejléc jegyzetét). */
+.kc-site-footer__logo {
+  display: block;
+  width: auto;
+  height: 2rem;
 }
 
 .kc-site-footer__tagline {

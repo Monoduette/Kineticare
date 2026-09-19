@@ -175,18 +175,9 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok:
       'A tudástár kategóriaszűrőjének „minden kategória" címkéje — szűrő-állapot, nem cselekvés-felirat.',
   },
-  {
-    felirat: 'Kineti care',
-    fajl: 'components/layout/Header.tsx',
-    kategoria: 'nem-cta',
-    indok: 'A logó szövege (két tipográfiai elemre bontva), nem felirat.',
-  },
-  {
-    felirat: 'Kineti care',
-    fajl: 'app/global-not-found.tsx',
-    kategoria: 'nem-cta',
-    indok: 'A logó szövege a keretek nélküli 404-oldalon.',
-  },
+  // WP49 (2026-09-19): a szöveges „Kineti care" wordmark a fejlécből és a
+  // 404-oldalról KIKERÜLT (a logó <img>, alt „Kineticare"); a két kivétel-sor
+  // ezért törölve, a felső korlát 46 → 44.
   {
     felirat: 'Kineticare kezdőlap',
     fajl: 'components/layout/Header.tsx',
@@ -434,7 +425,7 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * Checklist, WCAG 2.2 SC 3.2.3), a `lib/header-appointment.ts` törölve,
  * a sora a listából is kikerült. A korlát a szabály szerint LEFELÉ mozdult.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 46
+const KIVETEL_LISTA_FELSO_KORLAT = 44
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -481,6 +472,12 @@ const HREF_UTKOZES_KIVETELEK: readonly {
   // nem meg nem javított szinonima. A `/kapcsolat` (3 felirat) és az
   // `/elfelejtett-jelszo` (2 felirat) ütközése MEGSZŰNT: mindkettőre egyetlen
   // szótári sor lett (#33 és #37).
+  {
+    href: '/kapcsolat',
+    feliratok: ['Írj nekünk', 'Érdeklődj a szakkönyvről'],
+    indok:
+      'WP49 (2026-09-19): a /szakembereknek szakkönyv-kártyája a vásárlási cím megérkezéséig a kapcsolat-oldalra visz a §3.2 #43 felirattal, amely a TÁRGYAT (a szakkönyvet) is megnevezi; a #33 („Írj nekünk") az általános kapcsolatfelvétel. Két KÜLÖNBÖZŐ célú komponens, nem szinonima (W3C Understanding SC 3.2.4: „consistent", nem „identical"). A #43 megszűnik, amint a SZAKKONYV_URL kitöltődik (#42).',
+  },
   {
     href: '/kurzusaim',
     feliratok: ['Nyisd meg a kurzusaidat', 'Vissza a kurzusaimhoz'],

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
+import {
+  CAPTION_END as END,
+  CAPTION_MID as MID,
+  FILM_SCROLL,
+  PINNED,
+} from '@/components/blocks/FilmHero'
 import { CAPTION_FADE, captionOpacity } from '@/components/scroll-scrub/scroll-scrub'
 
 /**
@@ -9,13 +15,16 @@ import { CAPTION_FADE, captionOpacity } from '@/components/scroll-scrub/scroll-s
  * a görbe tisztán tesztelhető — nem kell hozzá böngésző.
  *
  * A sávok a FilmHero.tsx-ben a TŰZÖTT szakaszra vannak skálázva:
- * PINNED = (FILM_SCROLL - 1) / FILM_SCROLL = (4,6 - 1) / 4,6 ≈ 0,7826.
- * A lenti értékek ennek az átváltásnak az eredményei — ha a FilmHero
- * FILM_SCROLL-ja vagy a sáv-arányok változnak, ezeket is igazítsd.
+ * PINNED = (FILM_SCROLL - 1) / FILM_SCROLL. WP50 óta a teszt a FilmHero
+ * exportált értékeit használja, így a scrub-hossz vagy a sáv-arányok
+ * változása itt automatikusan érvényesül; a „nem fedi egymást" eset a
+ * tényleges sávokra fut.
  */
-const PINNED = (4.6 - 1) / 4.6
-const MID = { from: 0.44 * PINNED, to: 0.62 * PINNED }
-const END = { from: 0.84 * PINNED, to: 1 }
+it('a sávok a tűzött szakaszra skálázottak', () => {
+  expect(PINNED).toBeCloseTo((FILM_SCROLL - 1) / FILM_SCROLL, 12)
+  expect(MID.to).toBeLessThan(END.from)
+  expect(END.to).toBe(1)
+})
 
 /** Egyenletes mintavétel egy szakaszon (a végpontokat is beleértve). */
 const samples = (from: number, to: number, count = 5) =>

@@ -351,10 +351,13 @@ describe('PressLogos — felirat és logóméret', () => {
     const source = css('../app/(frontend)/styles/blocks/press-logos.css')
     const press = ruleBody(source, '.kc-press {')
     const img = ruleBody(source, '.kc-press__row img {')
-    expect(press).toContain('--kc-press-logo-height: clamp(2.1rem, 3.6vw, 3.4rem)')
+    // WP50: a tulajdonosi kérésre nagyobb keret (12–16 rem × 3–5 rem).
+    expect(press).toContain('--kc-press-logo-width: clamp(12rem, 20vw, 16rem)')
+    expect(press).toContain('--kc-press-logo-height: clamp(3rem, 5.2vw, 5rem)')
     expect(img).toContain('height: var(--kc-press-logo-height)')
-    // A korábbi, apró lépcső nem szivároghat vissza.
+    // A korábbi, apró lépcsők nem szivároghatnak vissza.
     expect(press).not.toContain('clamp(1.7rem, 2.6vw, 2.5rem)')
+    expect(press).not.toContain('clamp(2.1rem, 3.6vw, 3.4rem)')
     expect(img).not.toContain('clamp(1.7rem, 2.6vw, 2.5rem)')
     // Reflow-védelem: a széles logó 320px-en sem lóg ki, és nem torzul.
     expect(img).toContain('max-width: 100%')

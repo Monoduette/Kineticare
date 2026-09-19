@@ -6,7 +6,11 @@ import {
   CLINIC_TREATMENTS_PATH,
   KNOWLEDGE_BASE_MENU_ORDER,
   KNOWLEDGE_BASE_PATH,
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+  LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS,
   PROFESSIONAL_TRAINING_URL,
+  PROFESSIONALS_MENU_LABEL,
+  PROFESSIONALS_MENU_PATH,
   SERVICES_MENU_ORDER,
   SERVICES_PAGE_PATH,
   SERVICES_PAGE_SLUG,
@@ -50,7 +54,7 @@ describe('buildNavigationMenuPlan — struktúra', () => {
     expect(plan.map((node) => node.label)).toEqual(['Szolgáltatások', 'Tudástár'])
     expect(findNode(plan, 'Szolgáltatások')?.children.map((child) => child.label)).toEqual([
       'Rendelői kezelések',
-      'Szakmai képzés',
+      PROFESSIONALS_MENU_LABEL,
       SOS_FREE_MENU_LABEL,
     ])
     // A Tudástár gyökér-pont, nem almenü: az UX-skill M7 szerint másodlagos,
@@ -107,7 +111,7 @@ describe('buildNavigationMenuPlan — sorrend', () => {
     ])
   })
 
-  it('az almenü sorrendje: Rendelői kezelések → Szakmai képzés → Ingyenes SOS KézRelax', () => {
+  it('az almenü sorrendje: Rendelői kezelések → Szakembereknek → Ingyenes SOS KézRelax', () => {
     const services = findNode(buildNavigationMenuPlan(), 'Szolgáltatások')
     expect(services?.children.map((child) => child.order)).toEqual([0, 1, 2])
     expect(SERVICES_MENU_ORDER).toBeLessThan(KNOWLEDGE_BASE_MENU_ORDER)
@@ -145,22 +149,26 @@ describe('buildNavigationMenuPlan — célok', () => {
     expect(CLINIC_TREATMENTS_PATH.startsWith(`${SERVICES_PAGE_PATH}#`)).toBe(true)
   })
 
-  it('a szakmai képzés KÜLSŐ cím, és új lapon nyílik', () => {
+  it('a „Szakembereknek" BELSŐ választó oldalra visz, nem egyből a ProBodyra (WP49)', () => {
     const services = findNode(buildNavigationMenuPlan(), 'Szolgáltatások')
-    const training = services?.children.find((child) => child.label === 'Szakmai képzés')
+    const professionals = services?.children.find(
+      (child) => child.label === PROFESSIONALS_MENU_LABEL,
+    )
 
-    expect(training?.url).toBe(PROFESSIONAL_TRAINING_URL)
-    expect(training?.openInNewTab).toBe(true)
+    expect(professionals?.url).toBe(PROFESSIONALS_MENU_PATH)
+    expect(professionals?.url).toBe('/szakembereknek')
+    expect(professionals?.openInNewTab).toBeUndefined()
+    // A ProBody workshop címe a választó oldal képzés-kártyájáé marad.
     expect(/^https:\/\//.test(PROFESSIONAL_TRAINING_URL)).toBe(true)
+    expect(professionals?.url).not.toBe(PROFESSIONAL_TRAINING_URL)
   })
 
-  it('CSAK a külső cél nyílik új lapon — a saját oldalunkon belüli sosem', () => {
+  it('a menüfában nincs külső cél, és belső pont sosem nyílik új lapon', () => {
     const nodes = flatten(buildNavigationMenuPlan({ servicesPageId: 1, sosCourseId: 2 }))
     const external = nodes.filter((node) => /^https?:\/\//i.test(node.url ?? ''))
-    const internal = nodes.filter((node) => !/^https?:\/\//i.test(node.url ?? ''))
 
-    expect(external.map((node) => node.label)).toEqual(['Szakmai képzés'])
-    for (const node of internal) {
+    expect(external.map((node) => node.label)).toEqual([])
+    for (const node of nodes) {
       expect(node.openInNewTab === true, node.label).toBe(false)
     }
   })
@@ -191,12 +199,15 @@ describe('buildNavigationMenuPlan — a meglévő kapukon is átjut', () => {
     expect(tree.map((item) => item.label)).toEqual(['Szolgáltatások', 'Tudástár'])
     expect(services?.children.map((child) => child.label)).toEqual([
       'Rendelői kezelések',
-      'Szakmai képzés',
+      PROFESSIONALS_MENU_LABEL,
       SOS_FREE_MENU_LABEL,
     ])
-    const training = services?.children.find((child) => child.label === 'Szakmai képzés')
-    expect(training?.isExternal).toBe(true)
-    expect(training?.openInNewTab).toBe(true)
+    const professionals = services?.children.find(
+      (child) => child.label === PROFESSIONALS_MENU_LABEL,
+    )
+    expect(professionals?.isExternal).toBe(false)
+    expect(professionals?.openInNewTab).toBe(false)
+    expect(professionals?.href).toBe(PROFESSIONALS_MENU_PATH)
   })
 })
 
@@ -287,7 +298,7 @@ describe('ensureNavigationMenu — idempotencia', () => {
     expect(first.created).toEqual([
       'Szolgáltatások',
       'Rendelői kezelések',
-      'Szakmai képzés',
+      PROFESSIONALS_MENU_LABEL,
       SOS_FREE_MENU_LABEL,
       'Tudástár',
     ])
@@ -419,7 +430,7 @@ describe('ensureNavigationMenu — idempotencia', () => {
 
     expect(summary.created).not.toContain(SOS_FREE_MENU_LABEL)
     expect(summary.skipped).toContain(SOS_MENU_LABEL)
-    expect(summary.created).toEqual(['Rendelői kezelések', 'Szakmai képzés', 'Tudástár'])
+    expect(summary.created).toEqual(['Rendelői kezelések', PROFESSIONALS_MENU_LABEL, 'Tudástár'])
     expect(createCount()).toBe(3)
     expect(
       store.menus.filter(
@@ -430,6 +441,94 @@ describe('ensureNavigationMenu — idempotencia', () => {
       type: 'product',
       ref: { relationTo: 'products', value: 43 },
     })
+  })
+
+  it('a régi „Szakmai képzés" sort a „Szakembereknek" tervponttal azonosnak tekinti (WP49)', async () => {
+    const store: FakeStore = {
+      menus: [
+        {
+          id: 1,
+          label: 'Szolgáltatások',
+          type: 'url',
+          url: SERVICES_PAGE_PATH,
+          order: 4,
+          visible: true,
+          openInNewTab: false,
+        },
+        {
+          // Az élő CMS-sor a 2026-09-19 előtti felirattal és külső céllal: az
+          // átnevezés az owner-content szabály dolga, a seed NEM ír felül és
+          // nem hoz létre mellé második pontot.
+          id: 5,
+          label: LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+          type: 'url',
+          url: PROFESSIONAL_TRAINING_URL,
+          parent: 1,
+          order: 1,
+          visible: true,
+          openInNewTab: true,
+        },
+      ],
+      pages: [],
+      products: [],
+    }
+    const { payload, createCount } = createFakePayload(store)
+
+    const summary = await ensureNavigationMenu(payload)
+
+    expect(summary.created).not.toContain(PROFESSIONALS_MENU_LABEL)
+    expect(summary.skipped).toContain(LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL)
+    expect(summary.created).toEqual(['Rendelői kezelések', SOS_FREE_MENU_LABEL, 'Tudástár'])
+    expect(createCount()).toBe(3)
+    expect(
+      store.menus.filter(
+        (row) =>
+          row.label === PROFESSIONALS_MENU_LABEL ||
+          row.label === LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+      ),
+    ).toHaveLength(1)
+    expect(store.menus.find((row) => row.id === 5)?.url).toBe(PROFESSIONAL_TRAINING_URL)
+  })
+
+  it('a többes számú „Szakmai képzések" sort is ugyanannak a pontnak tekinti (nem duplikál)', async () => {
+    const tobbes = LEGACY_PROFESSIONAL_TRAINING_MENU_LABELS.find(
+      (label) => label !== LEGACY_PROFESSIONAL_TRAINING_MENU_LABEL,
+    )
+    expect(tobbes).toBe('Szakmai képzések')
+    const store: FakeStore = {
+      menus: [
+        {
+          id: 1,
+          label: 'Szolgáltatások',
+          type: 'url',
+          url: SERVICES_PAGE_PATH,
+          order: 4,
+          visible: true,
+          openInNewTab: false,
+        },
+        {
+          id: 5,
+          label: tobbes ?? '',
+          type: 'url',
+          url: PROFESSIONAL_TRAINING_URL,
+          parent: 1,
+          order: 1,
+          visible: true,
+          openInNewTab: true,
+        },
+      ],
+      pages: [],
+      products: [],
+    }
+    const { payload } = createFakePayload(store)
+
+    const summary = await ensureNavigationMenu(payload)
+
+    expect(summary.created).not.toContain(PROFESSIONALS_MENU_LABEL)
+    expect(summary.skipped).toContain(tobbes)
+    expect(
+      store.menus.filter((row) => row.label === PROFESSIONALS_MENU_LABEL || row.label === tobbes),
+    ).toHaveLength(1)
   })
 
   it('próbafutás (dryRun) semmit nem ír az adatbázisba', async () => {
