@@ -27,7 +27,7 @@ import {
   getTestimonials,
 } from '@/lib/cms'
 import { HUB_OLDALAK, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
-import { rolunkCtaMontazs } from '@/lib/cta-banner-course'
+import { CTA_TERMEK_LEKERDEZES_LIMIT, rolunkCtaMontazs } from '@/lib/cta-banner-course'
 import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import {
@@ -177,7 +177,7 @@ export default async function CmsPage({ params }: Props) {
   // piszkozat-előnézet az oldal SAJÁT tartalmára vonatkozik.
   const [products, posts, testimonials]: [Product[], Post[], Testimonial[]] = hasLayout
     ? await Promise.all([
-        getPublishedProducts(),
+        getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT),
         getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT),
         getTestimonials(),
       ])

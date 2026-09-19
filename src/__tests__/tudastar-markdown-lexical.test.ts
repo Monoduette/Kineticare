@@ -31,6 +31,8 @@ const CIKKEK = [
   '6-csuklotores-utani-gyogytorna',
   '7-inhuvelygyulladas',
   '8-befagyott-vall',
+  '9-peace-and-love-friss-serules',
+  '10-gipszben-a-kezed',
 ] as const
 
 const cikkPath = (nev: string): string =>
@@ -264,7 +266,7 @@ describe('T6 — a 7. és 8. cikk zárai', () => {
     expect(torzs).not.toContain('/kurzusok/otthoni-kezrehab-program')
   })
 
-  it('az importer listája megtartja az eredeti hat slughot, és felveszi a kettőt', () => {
+  it('az importer listája megtartja az eredeti hat slughot, felveszi a kettőt és a két tulajdonosi piszkozatot', () => {
     const src = readFileSync(
       path.join(process.cwd(), 'src/scripts/import-tudastar-cikkek.ts'),
       'utf8',
@@ -278,6 +280,8 @@ describe('T6 — a 7. és 8. cikk zárai', () => {
       'csuklotores-utani-gyogytorna',
       'inhuvelygyulladas',
       'befagyott-vall',
+      'peace-and-love-friss-serules',
+      'gipszben-a-kezed',
     ]) {
       expect(src).toContain(`slug: '${slug}'`)
     }

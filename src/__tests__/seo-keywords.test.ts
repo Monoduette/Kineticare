@@ -332,21 +332,33 @@ describe('nyilvános HTML: forrásban benne, lapon nincs felhő', () => {
   })
 })
 
-describe('tudástár-importer: a nyolc slug a mért táblából tölti a mezőt', () => {
+describe('tudástár-importer: a nyolc mért slug a mért táblából tölti a mezőt', () => {
   const cikkekDir = `${process.cwd()}/docs/cikkek`
+  const mertCikkek = CIKKEK.filter((cikk) => (cikk.seoForras ?? 'meres') === 'meres')
 
-  it.each(CIKKEK.map((cikk) => [cikk.slug, cikk.fajl] as const))(
+  it('a mért cikkek száma nyolc, a cikkfejlécből töltött cikkek külön ágon mennek', () => {
+    expect(mertCikkek).toHaveLength(8)
+    for (const cikk of CIKKEK.filter((item) => item.seoForras === 'cikkfejlec')) {
+      expect(CIKK_KULCSSZAVAK.find((item) => item.slug === cikk.slug)).toBeUndefined()
+      const forditott = cikketFordit(cikkekDir, cikk.fajl, cikk.slug, 'cikkfejlec')
+      // Nincs mérés → a seoKeywords kulcs kimarad a payloadból (nem üres lista).
+      expect(forditott.seoKeywords).toBeUndefined()
+    }
+  })
+
+  it.each(mertCikkek.map((cikk) => [cikk.slug, cikk.fajl] as const))(
     '%s: elsodleges elöl, utána a masodlagosak',
     (slug, fajl) => {
       const meres = CIKK_KULCSSZAVAK.find((item) => item.slug === slug)
       expect(meres, `nincs mérés: ${slug}`).toBeDefined()
       const cikk = cikketFordit(cikkekDir, fajl, slug)
-      expect(cikk.seoKeywords.map((row) => row.phrase)).toEqual([
+      expect(cikk.seoKeywords).toBeDefined()
+      expect(cikk.seoKeywords!.map((row) => row.phrase)).toEqual([
         meres!.elsodleges,
         ...meres!.masodlagos,
       ])
       expect(cikk.seoKeywords).toEqual(meresToSeoKeywords(meres!))
-      expect(cikk.seoKeywords.length).toBeLessThanOrEqual(SEO_KEYWORDS_MAX_ROWS)
+      expect(cikk.seoKeywords!.length).toBeLessThanOrEqual(SEO_KEYWORDS_MAX_ROWS)
     },
   )
 

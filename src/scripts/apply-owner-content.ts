@@ -35,7 +35,12 @@ import {
 } from '../lib/legal-content'
 import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
-import { enrollMediaRecovery, managedMediaAssets } from '../lib/media-recovery-provenance'
+import { LEGACY_IMAGES } from '../lib/legacy-images'
+import {
+  enrollMediaRecovery,
+  inspectMediaRecoveryReceipt,
+  managedMediaAssets,
+} from '../lib/media-recovery-provenance'
 import { resolveUploadDir } from '../lib/media-restore'
 import {
   CLINIC_TREATMENTS_ANCHOR,
@@ -3560,6 +3565,245 @@ export const alkalmazMediaAltSzoveg = (input: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WP57 — alt-lefedettség a TELJES Médiatárra (tulajdonosi kérés, 2026-09-19:
+// „minden képnek kell alt text a CMS-ben”). A WP56 két kurzusborítója után
+// ugyanaz a tiszta-függvény + naplózott-kihagyás minta megy végig minden
+// olyan képen, amelynek a forrása a repóban él és jóváhagyott leírása van:
+//  a) a kezelt manifestek (public/media/team, press, sos; `managedMediaAssets`)
+//     tételei, a manifest `alt`-jával;
+//  b) a régi oldal médiái (`src/lib/legacy-images.ts`), a LEGACY_MEDIA_ALT
+//     táblából (a lista alt-jai közül négy gondolatjeles volt, ezért a tábla
+//     ír minden tételre gondolatjel nélküli, tárgyszerű magyar leírást).
+// A szabály CSAK üres (vagy csupa szóköz) alt-ot tölt ki, a szerkesztő
+// szövegét sosem írja felül, és idempotens (`alkalmazMediaAltSzoveg`). A
+// futás végén egy összesítő sor mondja meg, hány rekord alt-ja maradt üres,
+// fájlnév-listával (legfeljebb 50), hogy a lányok az adminban pótolhassák.
+// WCAG 2.2 SC 1.1.1 Non-text Content
+// (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html);
+// W3C WAI Images Tutorial, Informative images
+// (https://www.w3.org/WAI/tutorials/images/informative/).
+// ---------------------------------------------------------------------------
+
+/**
+ * A régi oldal médiáinak alt-szövege, fájlnév → alt. MINDEN
+ * `LEGACY_IMAGES`-tételt lefed (őr-teszt), gondolatjel nélkül; a két
+ * kurzusborító alt-ja a WP56 `MEDIA_ALT_SZOVEGEK` bővebb szövegével azonos,
+ * a jelölt-listában az élvez elsőbbséget.
+ */
+export const LEGACY_MEDIA_ALT: Readonly<Record<string, string>> = {
+  '6790f4bfde577_kckeklogog.png': 'A Kineticare kék logója.',
+  '67b4bc17e0c78_katak-paravan.jpg':
+    'Kiss Kata és Kocsis Kata gyógytornászok, a Kineticare alapítói egy paraván előtt.',
+  '67c07b094d012_SYL_9113.jpeg': 'Gyógytornász kezelés a Kineticare rendelőjében.',
+  '678fa5f84cd52_Katakeleganslaptoppal.jpeg':
+    'Kiss Kata és Kocsis Kata laptoppal, az online program bemutatásához.',
+  '67b3c6e9e315f_KocsisKatakozeli.png': 'Kocsis Kata gyógytornász közeli portréja.',
+  '67c07def59ac2_KissKataelegans.png': 'Kiss Kata gyógytornász portréja.',
+  '682a121babe80_IMG_7573.jpeg': 'Kocsis Kata gyógytornász, a Kineticare alapítója.',
+  '6883e93d26513_GaramiGabor.png':
+    'Garami Gábor zenész és műsorvezető portréja a vélemények között.',
+  '682c8a154f5ba_IMG_0039.jpeg': 'Egy páciens portréfotója a vélemények között.',
+  '688b93e6ab76f_Programpackshot.png':
+    'Az Otthoni KézRehab Program borítóképe: a videós gyakorlatok laptopon és telefonon.',
+  '678fcfac079a8_Gyakorlat.JPG': 'Kézrehabilitációs gyakorlat bemutatása.',
+  '680a69d078306_Katakfeherbenhattal.png':
+    'Kiss Kata és Kocsis Kata fehér ruhában, háttal a kamerának.',
+  '688b873ad2a80_belepotermekpackshot1.png':
+    'Az SOS KézRelax villámkurzus borítóképe: a gyors kézlazító gyakorlatok kézikönyve.',
+  '6884161138c15_puska.png': 'A villámkurzus letölthető gyakorlat-összefoglalója (puska).',
+  '67b3bd06f3936_Rendelo.png': 'A Kineticare rendelője, a személyes kezelések helyszíne.',
+  '67b2668feae66_Kezeleskek.png': 'Rendelői kezelések: gyógytorna és manuálterápia.',
+}
+
+/** Egy alt-jelölt: a fájlnév törzse (kiterjesztés nélkül), a címke és a szöveg. */
+export interface MediaAltJelolt {
+  /** A fájlnév törzse a Médiatárban (a Payload webp-re vált, `-1` utótagot fűzhet). */
+  readonly prefix: string
+  readonly cimke: string
+  readonly alt: string
+  readonly forras: 'kurzusborito' | 'manifest' | 'regi-oldal'
+}
+
+/** A fájlnév törzse: kiterjesztés nélkül (`kep.jpeg` → `kep`). */
+const fajlnevTorzs = (file: string): string => file.replace(/\.[^.]+$/, '')
+
+const regexSzokes = (szoveg: string): string => szoveg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Illeszkedik-e a Médiatár-rekord fájlneve a jelölt törzsére: pontosan a
+ * törzs, VAGY a Payload `-1`, `-2`… ütközés-utótagos változata, tetszőleges
+ * kiterjesztéssel (`kep.webp`, `kep-1.webp`, `kep.png`). A `kep_v2.webp` és a
+ * `kepek.webp` NEM illeszkedik: a laza `startsWith` idegen fájlt is elkapna.
+ */
+export const illeszkedikMediaFajlnev = (prefix: string, filename: string): boolean =>
+  new RegExp(`^${regexSzokes(prefix)}(-\\d+)?\\.[a-z0-9]+$`, 'i').test(filename)
+
+/**
+ * A teljes jelölt-lista, forrás szerinti elsőbbséggel: kurzusborító (WP56),
+ * manifest, régi oldal. Egy törzs egyszer szerepel (az első nyer), így a két
+ * packshot a WP56 bővebb szövegét kapja, nem a legacy-táblát.
+ */
+export const mediaAltJeloltek = (): readonly MediaAltJelolt[] => {
+  const latott = new Set<string>()
+  const eredmeny: MediaAltJelolt[] = []
+  const vegyFel = (jelolt: MediaAltJelolt): void => {
+    if (latott.has(jelolt.prefix)) return
+    latott.add(jelolt.prefix)
+    eredmeny.push(jelolt)
+  }
+  for (const tetel of MEDIA_ALT_SZOVEGEK) {
+    vegyFel({ prefix: tetel.prefix, cimke: tetel.cimke, alt: tetel.alt, forras: 'kurzusborito' })
+  }
+  for (const asset of managedMediaAssets()) {
+    vegyFel({
+      prefix: fajlnevTorzs(asset.file),
+      cimke: `${asset.directory}/${asset.file}`,
+      alt: asset.alt,
+      forras: 'manifest',
+    })
+  }
+  for (const kep of LEGACY_IMAGES) {
+    const alt = LEGACY_MEDIA_ALT[kep.file]
+    if (alt === undefined) {
+      throw new Error(
+        `A régi oldal médiájának nincs alt-szövege a LEGACY_MEDIA_ALT táblában: ${kep.file}`,
+      )
+    }
+    vegyFel({
+      prefix: fajlnevTorzs(kep.file),
+      cimke: `régi oldal: ${kep.file}`,
+      alt,
+      forras: 'regi-oldal',
+    })
+  }
+  return eredmeny
+}
+
+/** A Médiatár-rekord, amennyit az alt-lefedettségnek látnia kell. */
+export interface MediaAltRekord {
+  readonly id: number
+  readonly filename: string
+  readonly alt: string | null | undefined
+}
+
+/** Az összesítéshez listázott fájlnevek felső korlátja. */
+export const URES_ALT_LISTA_LIMIT = 50
+
+/**
+ * Tiszta összesítés: mely rekordok alt-ja marad üres a (tervezett) kitöltés
+ * UTÁN. A `kitoltott` a futásban kitöltött (próbafutásban: kitöltendő)
+ * rekord-azonosítók halmaza. A lista fájlnév szerint rendezett és legfeljebb
+ * `URES_ALT_LISTA_LIMIT` hosszú; a `darab` a teljes szám.
+ */
+export const uresAltOsszesites = (
+  rekordok: readonly MediaAltRekord[],
+  kitoltott: ReadonlySet<number>,
+): { darab: number; fajlnevek: readonly string[] } => {
+  const uresek = rekordok
+    .filter((rekord) => (rekord.alt ?? '').trim().length === 0 && !kitoltott.has(rekord.id))
+    .map((rekord) => rekord.filename)
+    .sort((a, b) => a.localeCompare(b, 'hu'))
+  return { darab: uresek.length, fajlnevek: uresek.slice(0, URES_ALT_LISTA_LIMIT) }
+}
+
+/** A Médiatár-hozzáférés, amit az alt-lefedettség futtatója kap (tesztben mock). */
+export interface MediaAltTar {
+  /** A törzsre `like` szűrt rekordok (a pontos illesztést a futtató végzi). */
+  readonly keres: (prefix: string) => Promise<readonly MediaAltRekord[]>
+  /** A teljes Médiatár (id, fájlnév, alt) az összesítéshez. */
+  readonly osszes: () => Promise<readonly MediaAltRekord[]>
+  /** Az alt írása; próbafutásban SOHA nem hívódik. */
+  readonly irAlt: (id: number, alt: string) => Promise<void>
+}
+
+/**
+ * Az alt-lefedettség futtatója: minden jelöltre megkeresi az illeszkedő
+ * rekord(ok)at, a tiszta döntés szerint ír vagy naplózva kihagy, végül egy
+ * összesítő sort ír a még üres alt-okról. Próbafutásban nem ír.
+ */
+export const futtatMediaAltLefedettseg = async (
+  tar: MediaAltTar,
+  dryRun: boolean,
+): Promise<{
+  modositasok: number
+  kihagyasok: number
+  uresMaradt: { darab: number; fajlnevek: readonly string[] }
+}> => {
+  let modositasok = 0
+  let kihagyasok = 0
+  const kitoltott = new Set<number>()
+  for (const jelolt of mediaAltJeloltek()) {
+    const talalatok = (await tar.keres(jelolt.prefix)).filter((rekord) =>
+      illeszkedikMediaFajlnev(jelolt.prefix, rekord.filename),
+    )
+    if (talalatok.length === 0) {
+      // A kurzusborító hiánya a WP56 óta HANGOS figyelmeztetés; a manifest- és
+      // a régi-oldali képek nem mind élnek a Médiatárban (csak azok, amelyeket
+      // egy oldal használ), ezért ott a hiány csendes, számolt kihagyás.
+      const sor = `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${jelolt.cimke} alt-szövege (a Médiatárban nincs „${jelolt.prefix}” törzsű fájlnevű kép)`
+      if (jelolt.forras === 'kurzusborito') logger.warn(sor)
+      else logger.info(sor)
+      kihagyasok += 1
+      continue
+    }
+    for (const rekord of talalatok) {
+      const eredmeny = alkalmazMediaAltSzoveg({
+        cimke: `${jelolt.cimke} (${rekord.filename})`,
+        jelenlegiAlt: rekord.alt,
+        ujAlt: jelolt.alt,
+      })
+      naplozdLepeseket(eredmeny, dryRun)
+      modositasok += eredmeny.modositasok.length
+      kihagyasok += eredmeny.kihagyasok.length
+      if (eredmeny.alt === null) continue
+      kitoltott.add(rekord.id)
+      if (!dryRun) await tar.irAlt(rekord.id, eredmeny.alt)
+    }
+  }
+  const uresMaradt = uresAltOsszesites(await tar.osszes(), kitoltott)
+  if (uresMaradt.darab === 0) {
+    logger.info(
+      `Alt-lefedettség: a Médiatár minden rekordjának ${dryRun ? 'lenne' : 'van'} alt-szövege.`,
+    )
+  } else {
+    logger.warn(
+      `Alt-lefedettség: ${uresMaradt.darab} Médiatár-rekord alt-ja ${dryRun ? 'maradna' : 'maradt'} üres, az adminban pótlandó (${Math.min(uresMaradt.darab, URES_ALT_LISTA_LIMIT)} fájlnév): ${uresMaradt.fajlnevek.join(', ')}`,
+    )
+  }
+  return { modositasok, kihagyasok, uresMaradt }
+}
+
+/** A valódi Médiatár-hozzáférés az alt-lefedettséghez (csak a `-1` utótagos, webp-re váltott fájlnevek miatt `like`). */
+export const payloadMediaAltTar = (payload: Payload): MediaAltTar => ({
+  keres: async (prefix) => {
+    const talalat = await payload.find({
+      collection: 'media',
+      where: { filename: { like: `${prefix}%` } },
+      limit: 25,
+      depth: 0,
+      overrideAccess: true,
+    })
+    return talalat.docs
+      .filter((doc): doc is Media & { filename: string } => typeof doc.filename === 'string')
+      .map((doc) => ({ id: doc.id, filename: doc.filename, alt: doc.alt }))
+  },
+  osszes: async () => {
+    const talalat = await payload.find({
+      collection: 'media',
+      pagination: false,
+      depth: 0,
+      overrideAccess: true,
+    })
+    return talalat.docs
+      .filter((doc): doc is Media & { filename: string } => typeof doc.filename === 'string')
+      .map((doc) => ({ id: doc.id, filename: doc.filename, alt: doc.alt }))
+  },
+  irAlt: async (id, alt) => {
+    await payload.update({ collection: 'media', id, data: { alt }, depth: 0, overrideAccess: true })
+  },
+})
+
 /**
  * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
  * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
@@ -4105,7 +4349,10 @@ export const biztositMediaFajlbol = async (input: {
  * (kezelt) képnél az eredetigazolást is rögzíti, hogy a Volume-helyreállítás
  * (`ensureMediaFiles`) később vissza tudja tölteni.
  */
-export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggosegek => ({
+export const payloadMediaFuggosegek = (
+  payload: Payload,
+  opciok: { dryRun: boolean } = { dryRun: true },
+): MediaBiztositasFuggosegek => ({
   keres: async (filename) => {
     const talalat = await payload.find({
       collection: 'media',
@@ -4115,7 +4362,35 @@ export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggose
       overrideAccess: true,
     })
     const sor = talalat.docs[0]
-    return sor === undefined || sor.filename !== filename ? null : sor.id
+    if (sor === undefined || sor.filename !== filename) return null
+    // Meglévő KEZELT (manifestes) rekord igazolás nélkül (félbeszakadt korábbi
+    // futás, kézzel létrehozott rekord): a „megvan” ág addig nem hivatkozhat rá,
+    // amíg az eredetigazolás nincs meg, különben a Volume-helyreállítás később
+    // elutasítja a képet (Devin-találat, #270). Élesben idempotensen igazoljuk
+    // (a bájtok és a rekord ellenőrzésével, hibánál hangos dobás); próbafutásban
+    // csak jelezzük, mert az igazolás írás.
+    if (managedMediaAssets().some((asset) => asset.filename === filename)) {
+      const allapot = await inspectMediaRecoveryReceipt(payload, sor)
+      if (!allapot.valid) {
+        if (opciok.dryRun) {
+          logger.warn(
+            `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül — az éles futás igazolná (vagy hangosan megállna, ha a fájl nem ellenőrizhető).`,
+          )
+        } else {
+          try {
+            await enrollMediaRecovery(payload, sor)
+          } catch (hiba) {
+            throw new Error(
+              `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolása sikertelen (${
+                hiba instanceof Error ? hiba.message : String(hiba)
+              }) — a rekordot a script nem hivatkozza, kézi átnézést kér.`,
+            )
+          }
+          logger.info(`Médiatár: „${filename}” (azonosító: ${sor.id}) eredetigazolása pótolva.`)
+        }
+      }
+    }
+    return sor.id
   },
   letrehoz: async (forras) => {
     // Ütközés-előellenőrzés: ha a feltöltési könyvtárban REKORD NÉLKÜL ott a
@@ -4267,7 +4542,7 @@ async function futtat(): Promise<void> {
   const payload: Payload = await getPayload({ config })
   // WP54: a repó-fájlból biztosított képek Médiatár-hozzáférése (a `letrehoz`
   // ága kizárólag a `biztositMediaFajlbol` `!dryRun` döntésén át hívódik).
-  const mediaFuggosegek = payloadMediaFuggosegek(payload)
+  const mediaFuggosegek = payloadMediaFuggosegek(payload, { dryRun })
 
   logger.info(
     dryRun
@@ -5100,46 +5375,12 @@ async function futtat(): Promise<void> {
     }
   }
 
-  // --- WP56: a kurzusborítók alt-szövege (Médiatár) ---------------------------
-  for (const tetel of MEDIA_ALT_SZOVEGEK) {
-    const media = await keresdMediat(payload, tetel.prefix)
-    if (media === null) {
-      logger.warn(
-        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a Médiatárban nincs „${tetel.prefix}” kezdetű fájlnevű kép)`,
-      )
-      kihagyasokSzama += 1
-      continue
-    }
-    // A második olvasás átmeneti hibája (pool, zár) NEM jelenthet „üres alt”-ot:
-    // akkor a szabály a szerkesztői szöveget írná felül. Hiba esetén hangos kihagyás.
-    const doc = await payload
-      .findByID({ collection: 'media', id: media.id, depth: 0, overrideAccess: true })
-      .catch(() => null)
-    if (doc === null) {
-      logger.error(
-        `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${tetel.cimke} alt-szövege (a(z) ${media.id} azonosítójú média-rekord nem olvasható, az alt nem dönthető el)`,
-      )
-      kihagyasokSzama += 1
-      continue
-    }
-    const eredmeny = alkalmazMediaAltSzoveg({
-      cimke: tetel.cimke,
-      jelenlegiAlt: typeof doc?.alt === 'string' ? doc.alt : null,
-      ujAlt: tetel.alt,
-    })
-    naplozdLepeseket(eredmeny, dryRun)
-    modositasokSzama += eredmeny.modositasok.length
-    kihagyasokSzama += eredmeny.kihagyasok.length
-    if (eredmeny.alt !== null && !dryRun) {
-      await payload.update({
-        collection: 'media',
-        id: media.id,
-        data: { alt: eredmeny.alt },
-        depth: 0,
-        overrideAccess: true,
-      })
-    }
-  }
+  // --- WP56 + WP57: alt-szöveg a kurzusborítókra és a teljes Médiatárra ------
+  // (a jelöltek: MEDIA_ALT_SZOVEGEK, a kezelt manifestek, a régi oldal médiái;
+  // a végén összesítő sor a még üres alt-okról, lásd futtatMediaAltLefedettseg)
+  const altEredmeny = await futtatMediaAltLefedettseg(payloadMediaAltTar(payload), dryRun)
+  modositasokSzama += altEredmeny.modositasok
+  kihagyasokSzama += altEredmeny.kihagyasok
 
   // --- Összesítés -----------------------------------------------------------
   const osszesites = `${modositasokSzama} módosítás, ${kihagyasokSzama} indokolt kihagyás`

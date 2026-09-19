@@ -9,6 +9,7 @@ import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/Knowledge
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
+import { CTA_TERMEK_LEKERDEZES_LIMIT } from '@/lib/cta-banner-course'
 import {
   getHomePage,
   getLatestPosts,
@@ -45,7 +46,7 @@ export default async function HomePage() {
   // a rögzített kezdőlap továbbra is 3-at mutat (KnowledgeSection limit).
   const [home, products, posts, testimonials, publikaltOldalak] = await Promise.all([
     homePageOf(isDraft),
-    getPublishedProducts(),
+    getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT),
     getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT),
     getTestimonials(),
     getPublishedPageSlugs(),

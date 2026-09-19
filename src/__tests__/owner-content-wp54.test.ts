@@ -4,6 +4,26 @@ import { join } from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
+/**
+ * Az eredetigazolás (audit-log) rétege hamisítva: a `keres` kezelt képnél
+ * ellenőriz és élesben igazol, de a teszt nem ér adatbázist és fájlrendszert.
+ */
+const provenanceMocks = vi.hoisted(() => ({
+  inspect: vi.fn(async (): Promise<{ receipt: unknown; valid: boolean }> => ({
+    receipt: null,
+    valid: true,
+  })),
+  enroll: vi.fn(async (): Promise<void> => undefined),
+}))
+vi.mock('../lib/media-recovery-provenance', async (importOriginal) => {
+  const eredeti = await importOriginal<typeof import('../lib/media-recovery-provenance')>()
+  return {
+    ...eredeti,
+    inspectMediaRecoveryReceipt: provenanceMocks.inspect,
+    enrollMediaRecovery: provenanceMocks.enroll,
+  }
+})
+
 import type { Payload } from 'payload'
 
 import {
@@ -230,6 +250,54 @@ describe('payloadMediaFuggosegek — a valódi Médiatár-hozzáférés a próba
     const deps = payloadMediaFuggosegek(payload)
     expect(await deps.keres('megvan.webp')).toBe(12)
     expect(await deps.keres('nincs.webp')).toBeNull()
+  })
+
+  describe('kezelt (manifestes) kép meglévő rekordja — eredetigazolás (Devin-találat, #270)', () => {
+    const KEZELT = 'founders-intro-white-1600.webp'
+    const hamisKezelt = () => {
+      const find = vi.fn(async () => ({ docs: [{ id: 33, filename: KEZELT }] }))
+      return { payload: { find } as unknown as Payload, find }
+    }
+
+    it('érvényes igazolással: azonosítót ad, nem igazol újra', async () => {
+      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: {}, valid: true })
+      provenanceMocks.enroll.mockClear()
+      const { payload } = hamisKezelt()
+      expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
+      expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+    })
+
+    it('igazolás nélkül próbafutásban: azonosítót ad, de NEM ír (nem igazol)', async () => {
+      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+      provenanceMocks.enroll.mockClear()
+      const { payload } = hamisKezelt()
+      expect(await payloadMediaFuggosegek(payload).keres(KEZELT)).toBe(33)
+      expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+    })
+
+    it('igazolás nélkül élesben: idempotensen igazol, majd az azonosítót adja', async () => {
+      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+      provenanceMocks.enroll.mockClear()
+      const { payload } = hamisKezelt()
+      expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
+      expect(provenanceMocks.enroll).toHaveBeenCalledTimes(1)
+    })
+
+    it('ha az igazolás nem sikerül (a fájl nem ellenőrizhető): hangosan dob, azonosító nélkül', async () => {
+      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+      provenanceMocks.enroll.mockRejectedValueOnce(new Error('bájt-eltérés'))
+      const { payload } = hamisKezelt()
+      await expect(
+        payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT),
+      ).rejects.toThrow('igazolása sikertelen')
+    })
+
+    it('nem kezelt fájlnévnél nincs igazolás-ellenőrzés', async () => {
+      provenanceMocks.inspect.mockClear()
+      const { payload } = hamisPayload()
+      expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres('megvan.webp')).toBe(12)
+      expect(provenanceMocks.inspect).not.toHaveBeenCalled()
+    })
   })
 
   /** Hamis Payload feltöltési könyvtárral: a `letrehoz` ütközés-ágait méri. */

@@ -101,7 +101,10 @@ describe('hubokatFordit — a teljes fordítási lánc', () => {
     for (const hub of forditott) {
       expect(hub.cikk.seoTitle.length).toBeGreaterThan(0)
       expect(hub.cikk.seoDescription.length).toBeGreaterThan(0)
-      expect(hub.cikk.seoKeywords.length).toBeGreaterThan(0)
+      // Hub csak MÉRT cikkre épül: a cikkfejlécből töltött (seoKeywords
+      // undefined) tulajdonosi piszkozatokra nincs hub.
+      expect(hub.cikk.seoKeywords).toBeDefined()
+      expect(hub.cikk.seoKeywords!.length).toBeGreaterThan(0)
     }
   })
 

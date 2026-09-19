@@ -1,11 +1,13 @@
 # A Tudástár cikkeinek betöltése
 
-> **Mi ez?** A `docs/cikkek/` alatti nyolc markdown-cikk betöltése a Payload
+> **Mi ez?** A `docs/cikkek/` alatti tíz markdown-cikk betöltése a Payload
 > `posts` kollekciójába, hogy megjelenjenek a `/blog` listán és a saját
 > cikkoldalukon. A 7. és 8. cikk csak `/blog/{slug}` poszt: gyökér
-> `/inhuvelygyulladas` pages-hubot a script nem hoz létre.
+> `/inhuvelygyulladas` pages-hubot a script nem hoz létre. A 9. és 10. cikk a
+> tulajdonosok blogötlete (5.1 szakasz): SEO-mezőik a cikkfejlécből jönnek,
+> a publikálás ugyanazon a két kapun megy, mint a többinél.
 >
-> **Készült:** 2026-08-21.
+> **Készült:** 2026-08-21. **Frissítve:** 2026-09-19 (9–10. cikk).
 
 ## 1. Miért script, és miért nem kézi bemásolás
 
@@ -60,6 +62,8 @@ vágva, legfeljebb 200 karakter.
 | `6-csuklotores-utani-gyogytorna.md` | `csuklotores-utani-gyogytorna` |
 | `7-inhuvelygyulladas.md` | `inhuvelygyulladas` (csak `/blog/…`; nincs gyökér pages-hub) |
 | `8-befagyott-vall.md` | `befagyott-vall` (csak `/blog/…`; kategória `vall-es-konyok`) |
+| `9-peace-and-love-friss-serules.md` | `peace-and-love-friss-serules` (tulajdonosi cikk, 5.1; kategória `kez-es-csuklo`) |
+| `10-gipszben-a-kezed.md` | `gipszben-a-kezed` (tulajdonosi cikk, 5.1; kategória `tores-es-mutet-utan`) |
 
 Ezek a webcímek szerepelnek a `docs/adwords-kampany.md` céloldal-hozzárendelésében
 (7.2). **Eltérni tilos** — a hirdetés különben 404-re vinne.
@@ -80,9 +84,9 @@ rögzítve, a slug utólag nem írható át) és a cikkfájlok fejlécében áll
 
 | Kategória | Slug | Cikkek |
 | --- | --- | --- |
-| Kéz és csukló | `kez-es-csuklo` | miert-zsibbad-a-kezem, keztoalagut-szindroma, pattano-ujj, csuklo-es-kezfajdalom, inhuvelygyulladas |
+| Kéz és csukló | `kez-es-csuklo` | miert-zsibbad-a-kezem, keztoalagut-szindroma, pattano-ujj, csuklo-es-kezfajdalom, inhuvelygyulladas, peace-and-love-friss-serules |
 | Váll és könyök | `vall-es-konyok` | teniszkonyok, befagyott-vall |
-| Törés és műtét után | `tores-es-mutet-utan` | csuklotores-utani-gyogytorna |
+| Törés és műtét után | `tores-es-mutet-utan` | csuklotores-utani-gyogytorna, gipszben-a-kezed |
 
 Szabályok:
 
@@ -122,6 +126,57 @@ lezárva (B1 mentőhívási szint, B2 ellenjavallat, B4 irányelv-olvasat), a B3
 pedig úgy, hogy a nem igazolt akkreditációs szám kikerült a szövegekből. Ami
 **nyitva maradt: a két gyógytornász szakmai átolvasása.** Ezért alapból
 piszkozat.
+
+### 5.1 A tulajdonosok cikkei: a 9. és 10. cikk (2026-09-19)
+
+A két cikk (`peace-and-love-friss-serules`, `gipszben-a-kezed`) a tulajdonosok
+blogötlete, tulajdonosi utasításra **élesbe szánva**. A publikálásuk pontosan
+ugyanaz a két kapu, mint a többi cikknél, kivétel nélkül:
+
+```
+OWNER_TUDASTAR_CONFIRM=igen npm run import:tudastar                              # betöltés piszkozatként
+OWNER_TUDASTAR_CONFIRM=igen OWNER_TUDASTAR_PUBLISH=igen npm run import:tudastar  # közzététel (_status és status: published)
+```
+
+Kapu nélkül próbafutás marad. A célállapotot a `celAllapot(publikal)` tiszta
+függvény adja minden cikkre (őr-teszt P8: a 9–10. cikknek nincs kivétele).
+Ami eltér a mért nyolc cikktől, az a `CIKKEK` bejegyzés `seoForras`
+jelölése (`CikkBejegyzes`, `src/scripts/import-tudastar-cikkek.ts`):
+
+| Jelölés | Hatás |
+| --- | --- |
+| `seoForras: 'cikkfejlec'` | Kulcsszó-mérés még nincs, ezért a `seoTitle` és a `seoDescription` a cikkfájl „Cikk-metaadatok” táblájából jön (`fejlecMetaadat`), ugyanazokkal a hossz- és gondolatjel-korlátokkal, mint a mért célzás. A `seoKeywords` kulcs **kimarad** a payloadból (ugyanaz az elv, mint a GYIK-nél: adminban felvett listát nem töröl). GYIK nincs: mért kérdés nélkül tétel sem születhet. |
+
+A `heroImage` mezőt a script egyik cikknél sem állítja; a két cikkfájl
+metaadat-táblája javaslatot ad a `public/media/team` készletből, a beállítás
+az adminban történik. A markdown itt is az egyetlen igazság (7. szakasz): az
+újrafuttatás a törzset felülírja, ezért a tulajdonosi szövegjavítás a
+markdownba is kerüljön vissza.
+
+**Tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study.”** A két
+cikk törzsében minden klinikai állítás számozott hivatkozást visel (`[1]`,
+`[2]`…), a törzs végén „Források” szakasszal. Minden tanulmány
+PubMed-azonosítóját és DOI-ját a PubMed E-utilities (`esearch` → `esummary` →
+`efetch`) és a Crossref REST API hívásával ellenőriztük; a cikkfájl H1
+fölötti „Forrás-ellenőrzés” táblája tételenként mondja meg, mire használtuk.
+Ami betegtájékoztató (nem tanulmány), az a listában így van jelölve. A
+`FORRAS_JELOLESEK` őr miatt a listában a kiadót a domainjével nevezzük meg
+(`nhs.uk`), és a PubMed-azonosító „PubMed” címkével áll.
+
+A fordító ehhez egy pontosítást kapott: a soron belüli `[` csak akkor link,
+ha a legközelebbi `]` után rögtön `(` áll; enélkül a `[1]` jel és egy későbbi
+valódi link ugyanabban a sorban egyetlen hibás linkké olvadt volna össze
+(őr-teszt P9).
+
+Őr-teszt: `src/__tests__/tudastar-tulajdonosi-piszkozatok.test.ts` (P1–P9:
+lista, fejléc, 700–1100 szó a Források nélkül, bekezdés ≤ 4 mondat,
+felsorolás ≤ 6 tétel, gondolatjel-tilalom, meta-leírás 150–160 karakter,
+belső linkek csak létező útvonalra, Források és `[n]` egyezés, egyetlen
+publikálási kapu). A fájlnév a cikkek eredeti, piszkozatos indulására utal;
+a tartalma a mai, élesbe szánt állapotot őrzi.
+
+Nyitott: a kulcsszó-mérés (Monid/Ahrefs) a két témára; ha elkészül, a
+`CIKK_KULCSSZAVAK` bővül, és a bejegyzésről a `seoForras` lekerül.
 
 ## 6. Futtatás
 
@@ -327,7 +382,8 @@ szócikk fejlécében volna helyük.
 - Fordító: `src/lib/tudastar/markdown-to-lexical.ts`
 - Betöltő: `src/scripts/import-tudastar-cikkek.ts`
 - GYIK-tételek: `src/lib/tudastar/faq.ts`
-- Őrök: `src/__tests__/tudastar-markdown-lexical.test.ts`, `src/__tests__/tudastar-faq.test.ts`
+- Őrök: `src/__tests__/tudastar-markdown-lexical.test.ts`, `src/__tests__/tudastar-faq.test.ts`,
+  `src/__tests__/tudastar-tulajdonosi-piszkozatok.test.ts` (9–10. cikk)
 - Job-konfiguráció: `railway.tudastar-job.json`
 - Tartalmi állapot: `docs/cikkek-javitas-naplo.md`
 - Céloldal-hozzárendelés: `docs/adwords-kampany.md` 7.2

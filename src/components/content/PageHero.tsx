@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import type { Media } from '../../payload-types'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
@@ -61,18 +63,52 @@ export interface PageHeroProps {
    * (Codex, 2026-09-19).
    */
   variant?: 'stacked' | 'paired'
+  /**
+   * A cím ELŐTT álló sorok (WP57: a Tudástár-cikk morzsamenüje és
+   * kategória-címkéje). A szöveghasábban maradnak, tehát a páros alakban a
+   * fotó mellett, a cím fölött állnak; a DOM-sorrend a felolvasási sorrend
+   * (WCAG 2.2 SC 1.3.2 Meaningful Sequence).
+   */
+  eyebrow?: ReactNode
+  /**
+   * A bevezető UTÁN álló sor (WP57: a cikk szerző / dátum / olvasási idő
+   * meta-sora). Ugyanabban a szöveghasábban, a bevezető alatt.
+   */
+  meta?: ReactNode
+  /** További osztály a fejléc-sávon (a cikk saját, sávra szűkített szabályaihoz). */
+  className?: string
 }
 
-export function PageHero({ title, lead, media, variant = 'stacked' }: PageHeroProps) {
+/**
+ * WP57: a cikkoldal a PageHero-n át kapja a fejlécét (PostArticle), tehát a
+ * morzsa, a kategória-címke és a meta-sor ugyanabban a szöveghasábban áll,
+ * mint a cím és a bevezető. Mindkét alak ugyanazt a sorrendet rendereli:
+ * eyebrow, cím, bevezető, meta.
+ */
+export function PageHero({
+  title,
+  lead,
+  media,
+  variant = 'stacked',
+  eyebrow,
+  meta,
+  className,
+}: PageHeroProps) {
   const leadText = lead?.trim() ?? ''
+  const sectionClasses = ['kc-page-hero', className ?? ''].filter(Boolean).join(' ')
+  const copy = (
+    <>
+      {eyebrow}
+      <h1 className="kc-page-hero__title">{title}</h1>
+      {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
+      {meta}
+    </>
+  )
   if (!media || variant === 'stacked') {
     return (
       <>
-        <Section className="kc-page-hero" variant="tint">
-          <Container size="narrow">
-            <h1 className="kc-page-hero__title">{title}</h1>
-            {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
-          </Container>
+        <Section className={sectionClasses} variant="tint">
+          <Container size="narrow">{copy}</Container>
         </Section>
         {media ? (
           <Section flush>
@@ -92,13 +128,10 @@ export function PageHero({ title, lead, media, variant = 'stacked' }: PageHeroPr
     )
   }
   return (
-    <Section className="kc-page-hero kc-page-hero--paired" variant="tint">
+    <Section className={`${sectionClasses} kc-page-hero--paired`} variant="tint">
       <Container>
         <div className="kc-page-hero__grid">
-          <div className="kc-page-hero__copy">
-            <h1 className="kc-page-hero__title">{title}</h1>
-            {leadText.length > 0 ? <p className="kc-page-hero__lead">{leadText}</p> : null}
-          </div>
+          <div className="kc-page-hero__copy">{copy}</div>
           <figure className="kc-page-hero__figure">
             {/* A fejléc-kép a lap LCP-jelöltje: priority (preload, high).
                 A `sizes` egy hasábban a figure 28rem-es (448 px) sapkáját is

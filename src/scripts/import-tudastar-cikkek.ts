@@ -28,8 +28,28 @@ import {
   meresToSeoKeywords,
   OLDAL_KULCSSZAVAK,
   oldalSeoKeywordsFor,
+  SEO_DESCRIPTION_MAX,
+  SEO_DESCRIPTION_MIN,
+  SEO_TITLE_MAX,
 } from '../lib/tudastar/seo-kulcsszavak'
 import config from '../payload.config'
+
+/** Honnan jön egy cikk SEO-címe és -leírása. */
+export type SeoForras = 'meres' | 'cikkfejlec'
+
+export interface CikkBejegyzes {
+  readonly fajl: string
+  readonly slug: string
+  /**
+   * `'cikkfejlec'`: a SEO-cím és -leírás a cikkfájl „Cikk-metaadatok”
+   * táblájából jön, mert mért kulcsszó-célzás még nincs; a `seoKeywords`
+   * mezőhöz a betöltő ilyenkor nem nyúl. Alap: `'meres'` (seo-kulcsszavak.ts).
+   *
+   * A publikálást ez NEM érinti: minden cikk ugyanazon a két kapun megy át
+   * (`OWNER_TUDASTAR_CONFIRM`, `OWNER_TUDASTAR_PUBLISH`), lásd `celAllapot`.
+   */
+  readonly seoForras?: SeoForras
+}
 
 /**
  * A cikkek. A slug a fájlnév sorszám-előtag nélküli alakja — ezek a
@@ -38,8 +58,13 @@ import config from '../payload.config'
  *
  * A 7. és 8. cikk CSAK `/blog/{slug}` poszt. Gyökér `/inhuvelygyulladas`
  * pages-rekordot ez a script nem hoz létre.
+ *
+ * A 9. és 10. cikk a tulajdonosok blogötlete (2026-09-19), tulajdonosi
+ * utasításra élesbe szánva: ugyanazon a két kapun megy át, mint a többi;
+ * kulcsszó-mérés híján a SEO-mezők a cikkfejlécből jönnek (lásd
+ * `CikkBejegyzes`).
  */
-export const CIKKEK: readonly { fajl: string; slug: string }[] = [
+export const CIKKEK: readonly CikkBejegyzes[] = [
   { fajl: '1-miert-zsibbad-a-kezem.md', slug: 'miert-zsibbad-a-kezem' },
   { fajl: '2-keztoalagut-szindroma.md', slug: 'keztoalagut-szindroma' },
   { fajl: '3-teniszkonyok.md', slug: 'teniszkonyok' },
@@ -48,7 +73,58 @@ export const CIKKEK: readonly { fajl: string; slug: string }[] = [
   { fajl: '6-csuklotores-utani-gyogytorna.md', slug: 'csuklotores-utani-gyogytorna' },
   { fajl: '7-inhuvelygyulladas.md', slug: 'inhuvelygyulladas' },
   { fajl: '8-befagyott-vall.md', slug: 'befagyott-vall' },
+  { fajl: '9-peace-and-love-friss-serules.md', slug: 'peace-and-love-friss-serules', seoForras: 'cikkfejlec' },
+  { fajl: '10-gipszben-a-kezed.md', slug: 'gipszben-a-kezed', seoForras: 'cikkfejlec' },
 ]
+
+export type CikkAllapot = 'draft' | 'published'
+
+/**
+ * A cikk célállapota egy futásban: KIZÁRÓLAG a `OWNER_TUDASTAR_PUBLISH` kapu
+ * dönt, minden cikkre egyformán (`docs/tudastar-cikkek-betoltese.md` 5.).
+ * Tiszta függvény, hogy az őr-teszt DB nélkül kimondhassa: a 9–10. cikknek
+ * nincs külön kivétele, `OWNER_TUDASTAR_PUBLISH=igen` őket is közzéteszi.
+ */
+export function celAllapot(publikalKapu: boolean): CikkAllapot {
+  return publikalKapu ? 'published' : 'draft'
+}
+
+/**
+ * A cikkfájl H1 fölötti „Cikk-metaadatok” táblájának egy sora, például
+ * `| \`seoTitle\` | Ínhüvelygyulladás: tünetek és mit tehetsz |`.
+ * Hiányzó sorra DOB: a néma visszaesés a cím/bevezető fallbackre pont az a
+ * hiba, amit a mért célzás megszüntetett, és amit itt sem engedünk vissza.
+ */
+export function fejlecMetaadat(nyers: string, mezo: 'seoTitle' | 'seoDescription'): string {
+  const talalat = new RegExp(`^\\|\\s*\`${mezo}\`\\s*\\|\\s*(.+?)\\s*\\|\\s*$`, 'm').exec(nyers)
+  const ertek = talalat?.[1]?.trim()
+  if (ertek === undefined || ertek.length === 0) {
+    throw new Error(
+      `A cikkfejléc „Cikk-metaadatok” táblájában nincs \`${mezo}\` sor, pedig a cikk ` +
+        'SEO-mezői onnan jönnek (seoForras: cikkfejlec).',
+    )
+  }
+  return ertek
+}
+
+/** A cikkfejlécből jövő SEO-pár, ugyanazokkal a korlátokkal, mint a mért célzás. */
+function fejlecSeo(nyers: string, slug: string): { seoTitle: string; seoDescription: string } {
+  const seoTitle = fejlecMetaadat(nyers, 'seoTitle')
+  const seoDescription = fejlecMetaadat(nyers, 'seoDescription')
+  if (seoTitle.length > SEO_TITLE_MAX) {
+    throw new Error(`A(z) „${slug}” cikk seoTitle mezője ${seoTitle.length} karakter, a max. ${SEO_TITLE_MAX}.`)
+  }
+  if (seoDescription.length < SEO_DESCRIPTION_MIN || seoDescription.length > SEO_DESCRIPTION_MAX) {
+    throw new Error(
+      `A(z) „${slug}” cikk seoDescription mezője ${seoDescription.length} karakter, ` +
+        `a megengedett ${SEO_DESCRIPTION_MIN}–${SEO_DESCRIPTION_MAX} helyett.`,
+    )
+  }
+  if (/[–—]/.test(seoTitle) || /[–—]/.test(seoDescription)) {
+    throw new Error(`A(z) „${slug}” cikk SEO-mezőiben gondolatjel áll (docs/ui-sztenderdek.md §3.1).`)
+  }
+  return { seoTitle, seoDescription }
+}
 
 /**
  * A 7. és 8. cikk Posts-mezői, amiket a markdown nem hordoz.
@@ -76,6 +152,21 @@ const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
     // Kategória-társ (vall-es-konyok): a kapcsolódó blokk így itt sem üres
     // (tulajdonosi kérés, 2026-08-25: cikk-háló minden cikk alatt).
     kapcsolodoSlugok: ['teniszkonyok'],
+    szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
+  },
+  // A 9. és 10. cikk (tulajdonosi piszkozatok, 2026-09-19): nincs kurzus-CTA,
+  // mert az Otthoni KézRehab Program leírása traumás sérülésnél orvosi
+  // engedélyt kér („nem javasoljuk, ha traumás sérülésed volt, és az orvos
+  // még nem enged mindent”); a záró szakasz a rendelőre (`/szolgaltatasok`)
+  // visz.
+  'peace-and-love-friss-serules': {
+    kurzusSlug: null,
+    kapcsolodoSlugok: ['csuklo-es-kezfajdalom', 'teniszkonyok', 'inhuvelygyulladas'],
+    szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
+  },
+  'gipszben-a-kezed': {
+    kurzusSlug: null,
+    kapcsolodoSlugok: ['csuklotores-utani-gyogytorna', 'csuklo-es-kezfajdalom', 'miert-zsibbad-a-kezem'],
     szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
   },
 }
@@ -131,9 +222,11 @@ export interface ForditottCikk {
   seoDescription: string
   /**
    * A CMS `seoKeywords` mezője: elsodleges elöl, utána a masodlagosak.
-   * A mért táblából jön, kitalálni tilos.
+   * A mért táblából jön, kitalálni tilos. `undefined`, ha a cikkhez nincs
+   * mérés (seoForras: cikkfejlec): a betöltő ilyenkor a mezőhöz nem nyúl,
+   * ugyanazzal a logikával, mint a GYIK-nél.
    */
-  seoKeywords: { phrase: string }[]
+  seoKeywords: { phrase: string }[] | undefined
   /**
    * A cikk GYIK-tételei, vagy `undefined`, ha ehhez a slughoz nincs.
    *
@@ -144,8 +237,19 @@ export interface ForditottCikk {
   faq: { question: string; answer: string }[] | undefined
 }
 
-/** Egy cikkfájl beolvasása és fordítása. Hibára DOB, nem ugrik át. */
-export function cikketFordit(cikkekDir: string, fajl: string, slug: string): ForditottCikk {
+/**
+ * Egy cikkfájl beolvasása és fordítása. Hibára DOB, nem ugrik át.
+ *
+ * `seoForras` alapból `'meres'`; `'cikkfejlec'` esetén a SEO-cím és -leírás a
+ * fájl metaadat-táblájából jön, és a `seoKeywords` `undefined` (lásd
+ * `CikkBejegyzes`).
+ */
+export function cikketFordit(
+  cikkekDir: string,
+  fajl: string,
+  slug: string,
+  seoForras: SeoForras = 'meres',
+): ForditottCikk {
   const nyers = readFileSync(path.join(cikkekDir, fajl), 'utf8')
   const { title, lines } = extractArticleBody(nyers)
   const content = markdownToLexical(lines)
@@ -154,14 +258,25 @@ export function cikketFordit(cikkekDir: string, fajl: string, slug: string): For
   // nem a cikk címéből. Enélkül a `buildDocMetadata` fallback-lánca a címet és a
   // bevezetőt használná — jó magyar mondatok, de nem a keresett kifejezéssel
   // kezdenek. Hiányzó célzásra DOBUNK: a néma visszaesés a fallbackre pont az a
-  // hiba, amit ez a modul megszüntet.
-  const kulcsszo = kulcsszoFor(slug)
-  if (kulcsszo === undefined) {
+  // hiba, amit ez a modul megszüntet. Az egyetlen kivétel a KIMONDOTT
+  // `seoForras: 'cikkfejlec'`: ott a fejléc táblája a forrás, és a cikk-lista
+  // bejegyzése mondja ki, hogy mérés még nincs (nem néma fallback).
+  const kulcsszo = seoForras === 'meres' ? kulcsszoFor(slug) : undefined
+  if (seoForras === 'meres' && kulcsszo === undefined) {
     throw new Error(
       `Nincs mért kulcsszó-célzás a(z) „${slug}” cikkhez. Vedd fel a ` +
-        'src/lib/tudastar/seo-kulcsszavak.ts CIKK_KULCSSZAVAK listájába, mérésre hivatkozva.',
+        'src/lib/tudastar/seo-kulcsszavak.ts CIKK_KULCSSZAVAK listájába, mérésre hivatkozva, ' +
+        'vagy jelöld a CIKKEK bejegyzését seoForras: cikkfejlec értékkel.',
     )
   }
+  const seo =
+    kulcsszo === undefined
+      ? { ...fejlecSeo(nyers, slug), seoKeywords: undefined }
+      : {
+          seoTitle: kulcsszo.seoTitle,
+          seoDescription: kulcsszo.seoDescription,
+          seoKeywords: meresToSeoKeywords(kulcsszo),
+        }
 
   // A GYIK-nél SZÁNDÉKOSAN nincs ugyanilyen kemény kényszer, és ez nem
   // következetlenség:
@@ -193,9 +308,7 @@ export function cikketFordit(cikkekDir: string, fajl: string, slug: string): For
     excerpt: excerptFrom(lines),
     content,
     szoszam: lines.join(' ').split(/\s+/).filter(Boolean).length,
-    seoTitle: kulcsszo.seoTitle,
-    seoDescription: kulcsszo.seoDescription,
-    seoKeywords: meresToSeoKeywords(kulcsszo),
+    ...seo,
     faq,
   }
 }
@@ -578,15 +691,25 @@ async function main(): Promise<void> {
 
   // Előbb MIND a listán lévő cikket lefordítjuk, és csak utána írunk. Így egy hibás
   // fájl nem hagy félkész állapotot az adatbázisban.
-  const forditott = CIKKEK.map(({ fajl, slug }) => cikketFordit(cikkekDir, fajl, slug))
-  for (const cikk of forditott) {
+  const forditott = CIKKEK.map((bejegyzes) => ({
+    bejegyzes,
+    cikk: cikketFordit(cikkekDir, bejegyzes.fajl, bejegyzes.slug, bejegyzes.seoForras),
+  }))
+  const allapot = celAllapot(publikal)
+  for (const { bejegyzes, cikk } of forditott) {
     logger.info('Tudástár-import: lefordítva', {
       slug: cikk.slug,
       cim: cikk.title,
       kategoria: kategoriaForCikk(cikk.slug).slug,
       szoszam: cikk.szoszam,
       seoTitle: cikk.seoTitle,
+      seoForras: bejegyzes.seoForras ?? 'meres',
       gyikTetelek: cikk.faq?.length ?? 0,
+      allapot,
+      muvelet:
+        allapot === 'published'
+          ? 'létrehozná vagy frissítené közzétéve'
+          : 'létrehozná vagy frissítené piszkozatként',
     })
     if (cikk.faq === undefined) {
       logger.warn(
@@ -613,7 +736,7 @@ async function main(): Promise<void> {
   let letrehozva = 0
   let frissitve = 0
 
-  for (const cikk of forditott) {
+  for (const { cikk } of forditott) {
     const meglevo = await payload.find({
       collection: 'posts',
       where: { slug: { equals: cikk.slug } },
@@ -632,15 +755,19 @@ async function main(): Promise<void> {
       content: cikk.content,
       seoTitle: cikk.seoTitle,
       seoDescription: cikk.seoDescription,
-      seoKeywords: cikk.seoKeywords,
+      // A mért kifejezéslista csak akkor kerül a payloadba, ha van mérés; a
+      // cikkfejlécből töltött cikknél a kulcs KIMARAD, hogy egy adminban
+      // kézzel felvett listát ne töröljön le a betöltő (ugyanaz az elv, mint a
+      // GYIK-nél lentebb).
+      ...(cikk.seoKeywords === undefined ? {} : { seoKeywords: cikk.seoKeywords }),
       // Mindkét állapotmezőt kiírjuk, ahogy a `seed.ts` és a
       // `restore-legacy-content.ts` is teszi: a `_status` a Payload technikai
       // verzió-állapota, a `status` pedig a nyilvános szűrők (PUBLISHED_WHERE,
       // sitemap) mezője. A `syncStatusFromDraftStatus` hook amúgy is
       // összehangolja őket, de a Payload típusa a teljes dokumentumot kéri,
       // és így nem kell literál `draft: true` paramétert adni.
-      status: publikal ? ('published' as const) : ('draft' as const),
-      _status: publikal ? ('published' as const) : ('draft' as const),
+      status: allapot,
+      _status: allapot,
       // A GYIK csak akkor kerül a payloadba, ha van mit írni. Ha a slughoz
       // nincs tétel, a kulcs KIMARAD, így egy adminban kézzel felvett GYIK-et
       // nem töröl le egy olyan modul, amelynek épp nincs mondanivalója. Ahol
@@ -665,7 +792,7 @@ async function main(): Promise<void> {
         overrideAccess: true,
       })
       frissitve += 1
-      logger.info('Tudástár-import: frissítve', { slug: cikk.slug, id: letezo.id })
+      logger.info('Tudástár-import: frissítve', { slug: cikk.slug, id: letezo.id, allapot })
     } else {
       const uj = await payload.create({
         collection: 'posts',
@@ -673,7 +800,7 @@ async function main(): Promise<void> {
         overrideAccess: true,
       })
       letrehozva += 1
-      logger.info('Tudástár-import: létrehozva', { slug: cikk.slug, id: uj.id })
+      logger.info('Tudástár-import: létrehozva', { slug: cikk.slug, id: uj.id, allapot })
     }
   }
 
@@ -683,8 +810,11 @@ async function main(): Promise<void> {
   logger.info('Tudástár-import: kész.', {
     letrehozva,
     frissitve,
-    allapot: publikal ? 'published' : 'draft',
-    gyikTetelek: forditott.reduce((osszeg, cikk) => osszeg + (cikk.faq?.length ?? 0), 0),
+    allapot,
+    cikkfejlecSeo: forditott
+      .filter(({ bejegyzes }) => bejegyzes.seoForras === 'cikkfejlec')
+      .map(({ cikk }) => cikk.slug),
+    gyikTetelek: forditott.reduce((osszeg, { cikk }) => osszeg + (cikk.faq?.length ?? 0), 0),
     oldalKulcsszoFrissitve: oldal.frissitve,
     oldalKulcsszoKihagyva: oldal.kihagyva,
     oldalKulcsszoHianyzik: oldal.hianyzik,
