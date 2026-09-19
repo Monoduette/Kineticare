@@ -41,16 +41,12 @@ export interface CikkBejegyzes {
   readonly fajl: string
   readonly slug: string
   /**
-   * Tulajdonosi piszkozat. A betöltő az ilyen cikket SOHA nem publikálja,
-   * még `OWNER_TUDASTAR_PUBLISH=igen` mellett sem, és ha a tulajdonosok az
-   * adminban már közzétették, azt nem írja vissza piszkozatra. A döntés a
-   * `celAllapot` tiszta függvényben él (teszt őrzi).
-   */
-  readonly tulajdonosPublikal?: boolean
-  /**
    * `'cikkfejlec'`: a SEO-cím és -leírás a cikkfájl „Cikk-metaadatok”
    * táblájából jön, mert mért kulcsszó-célzás még nincs; a `seoKeywords`
    * mezőhöz a betöltő ilyenkor nem nyúl. Alap: `'meres'` (seo-kulcsszavak.ts).
+   *
+   * A publikálást ez NEM érinti: minden cikk ugyanazon a két kapun megy át
+   * (`OWNER_TUDASTAR_CONFIRM`, `OWNER_TUDASTAR_PUBLISH`), lásd `celAllapot`.
    */
   readonly seoForras?: SeoForras
 }
@@ -63,9 +59,10 @@ export interface CikkBejegyzes {
  * A 7. és 8. cikk CSAK `/blog/{slug}` poszt. Gyökér `/inhuvelygyulladas`
  * pages-rekordot ez a script nem hoz létre.
  *
- * A 9. és 10. cikk a tulajdonosok blogötlete (2026-09-19): piszkozatként
- * érkezik, a publikálás az övék az adminban; kulcsszó-mérés híján a SEO-mezők
- * a cikkfejlécből jönnek (lásd `CikkBejegyzes`).
+ * A 9. és 10. cikk a tulajdonosok blogötlete (2026-09-19), tulajdonosi
+ * utasításra élesbe szánva: ugyanazon a két kapun megy át, mint a többi;
+ * kulcsszó-mérés híján a SEO-mezők a cikkfejlécből jönnek (lásd
+ * `CikkBejegyzes`).
  */
 export const CIKKEK: readonly CikkBejegyzes[] = [
   { fajl: '1-miert-zsibbad-a-kezem.md', slug: 'miert-zsibbad-a-kezem' },
@@ -76,40 +73,20 @@ export const CIKKEK: readonly CikkBejegyzes[] = [
   { fajl: '6-csuklotores-utani-gyogytorna.md', slug: 'csuklotores-utani-gyogytorna' },
   { fajl: '7-inhuvelygyulladas.md', slug: 'inhuvelygyulladas' },
   { fajl: '8-befagyott-vall.md', slug: 'befagyott-vall' },
-  {
-    fajl: '9-peace-and-love-friss-serules.md',
-    slug: 'peace-and-love-friss-serules',
-    tulajdonosPublikal: true,
-    seoForras: 'cikkfejlec',
-  },
-  {
-    fajl: '10-gipszben-a-kezed.md',
-    slug: 'gipszben-a-kezed',
-    tulajdonosPublikal: true,
-    seoForras: 'cikkfejlec',
-  },
+  { fajl: '9-peace-and-love-friss-serules.md', slug: 'peace-and-love-friss-serules', seoForras: 'cikkfejlec' },
+  { fajl: '10-gipszben-a-kezed.md', slug: 'gipszben-a-kezed', seoForras: 'cikkfejlec' },
 ]
 
 export type CikkAllapot = 'draft' | 'published'
 
 /**
- * A cikk célállapota egy futásban. Tiszta függvény, DB nélkül tesztelhető.
- *
- *  - Mért, „scriptes” cikk: a `OWNER_TUDASTAR_PUBLISH` kapu dönt (a két kapu
- *    logikája változatlan, `docs/tudastar-cikkek-betoltese.md` 5.).
- *  - Tulajdonosi piszkozat: a script sosem publikál. Ha a rekord az adminban
- *    már `published`, az marad (a tulajdonosok döntését nem vonjuk vissza);
- *    minden más esetben `draft`.
+ * A cikk célállapota egy futásban: KIZÁRÓLAG a `OWNER_TUDASTAR_PUBLISH` kapu
+ * dönt, minden cikkre egyformán (`docs/tudastar-cikkek-betoltese.md` 5.).
+ * Tiszta függvény, hogy az őr-teszt DB nélkül kimondhassa: a 9–10. cikknek
+ * nincs külön kivétele, `OWNER_TUDASTAR_PUBLISH=igen` őket is közzéteszi.
  */
-export function celAllapot(args: {
-  publikalKapu: boolean
-  tulajdonosPublikal: boolean
-  letezoAllapot: CikkAllapot | undefined
-}): CikkAllapot {
-  if (!args.tulajdonosPublikal) {
-    return args.publikalKapu ? 'published' : 'draft'
-  }
-  return args.letezoAllapot === 'published' ? 'published' : 'draft'
+export function celAllapot(publikalKapu: boolean): CikkAllapot {
+  return publikalKapu ? 'published' : 'draft'
 }
 
 /**
@@ -718,8 +695,8 @@ async function main(): Promise<void> {
     bejegyzes,
     cikk: cikketFordit(cikkekDir, bejegyzes.fajl, bejegyzes.slug, bejegyzes.seoForras),
   }))
+  const allapot = celAllapot(publikal)
   for (const { bejegyzes, cikk } of forditott) {
-    const tulajdonosPublikal = bejegyzes.tulajdonosPublikal === true
     logger.info('Tudástár-import: lefordítva', {
       slug: cikk.slug,
       cim: cikk.title,
@@ -728,16 +705,9 @@ async function main(): Promise<void> {
       seoTitle: cikk.seoTitle,
       seoForras: bejegyzes.seoForras ?? 'meres',
       gyikTetelek: cikk.faq?.length ?? 0,
-      // Új rekordnál ez lesz az állapot; meglévőnél a `celAllapot` az adminban
-      // látott állapotot is figyelembe veszi (lásd az írási ciklust).
-      allapotUjRekordnal: celAllapot({
-        publikalKapu: publikal,
-        tulajdonosPublikal,
-        letezoAllapot: undefined,
-      }),
-      muvelet: tulajdonosPublikal
-        ? 'létrehozná piszkozatként; publikálás a tulajdonosoké az adminban'
-        : publikal
+      allapot,
+      muvelet:
+        allapot === 'published'
           ? 'létrehozná vagy frissítené közzétéve'
           : 'létrehozná vagy frissítené piszkozatként',
     })
@@ -766,7 +736,7 @@ async function main(): Promise<void> {
   let letrehozva = 0
   let frissitve = 0
 
-  for (const { bejegyzes, cikk } of forditott) {
+  for (const { cikk } of forditott) {
     const meglevo = await payload.find({
       collection: 'posts',
       where: { slug: { equals: cikk.slug } },
@@ -777,14 +747,6 @@ async function main(): Promise<void> {
     })
 
     const letezo = meglevo.docs[0]
-
-    // A célállapot: mért cikknél a PUBLISH kapu, tulajdonosi piszkozatnál soha
-    // nem publikálunk, de az adminban már közzétett rekordot sem vonjuk vissza.
-    const allapot = celAllapot({
-      publikalKapu: publikal,
-      tulajdonosPublikal: bejegyzes.tulajdonosPublikal === true,
-      letezoAllapot: letezo?._status === 'published' ? 'published' : 'draft',
-    })
 
     const adat = {
       title: cikk.title,
@@ -848,9 +810,9 @@ async function main(): Promise<void> {
   logger.info('Tudástár-import: kész.', {
     letrehozva,
     frissitve,
-    allapot: publikal ? 'published' : 'draft',
-    tulajdonosiPiszkozatok: forditott
-      .filter(({ bejegyzes }) => bejegyzes.tulajdonosPublikal === true)
+    allapot,
+    cikkfejlecSeo: forditott
+      .filter(({ bejegyzes }) => bejegyzes.seoForras === 'cikkfejlec')
       .map(({ cikk }) => cikk.slug),
     gyikTetelek: forditott.reduce((osszeg, { cikk }) => osszeg + (cikk.faq?.length ?? 0), 0),
     oldalKulcsszoFrissitve: oldal.frissitve,

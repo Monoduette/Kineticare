@@ -24,15 +24,17 @@ import {
 } from '../scripts/import-tudastar-cikkek'
 
 /**
- * ŐRÖK — A TULAJDONOSI PISZKOZATOK (9. és 10. cikk, 2026-09-19).
+ * ŐRÖK — A TULAJDONOSI CIKKEK (9. és 10. cikk, 2026-09-19).
  *
- * A két cikk a tulajdonosok blogötlete; a betöltő PISZKOZATKÉNT hozza létre
- * őket, és a publikálás az övék az adminban. A tulajdonosi kikötés (2026-09-19
- * este): „a cikkekre legyen study”, ezért a törzs klinikai állításai számozott
- * hivatkozást viselnek, a végén Források szakasszal.
+ * A két cikk a tulajdonosok blogötlete, tulajdonosi utasításra élesbe szánva:
+ * ugyanazon a két kapun megy át, mint a többi (CONFIRM ír, PUBLISH közzétesz).
+ * A tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study”, ezért a
+ * törzs klinikai állításai számozott hivatkozást viselnek, a végén Források
+ * szakasszal.
  *
- *  P1  A lista: a két bejegyzés tulajdonosi piszkozat, cikkfejlécből töltött
- *      SEO-val; a slugok egyediek; a fájl létezik; van kategória.
+ *  P1  A lista: a két bejegyzés cikkfejlécből töltött SEO-val áll a listán,
+ *      publikálási kivétel nélkül; a slugok egyediek; a fájl létezik; van
+ *      kategória.
  *  P2  A fejléc: metaadat-tábla title/slug/seoTitle/seoDescription/Kategória
  *      sorokkal, a slug és a kategória a kóddal egyezik.
  *  P3  A törzs: 700–1100 szó a Források nélkül; H2-tagolás; bekezdésenként
@@ -49,15 +51,14 @@ import {
  *  P7  Források: számozott lista, minden tétel DOI-val vagy PubMed-azonosítóval,
  *      vagy „nem tanulmány” jelöléssel; a törzs [n] jelei mind létező tételre
  *      mutatnak, és minden tételre hivatkozik a törzs.
- *  P8  `celAllapot`: tulajdonosi piszkozat sosem publikálódik a scriptből, de
- *      az adminban közzétett rekord nem esik vissza; a mért cikkek viselkedése
- *      változatlan.
+ *  P8  `celAllapot`: kizárólag a PUBLISH kapu dönt, a két új cikknek nincs
+ *      kivétele (OWNER_TUDASTAR_PUBLISH=igen őket is közzéteszi).
  *  P9  Fordító: a „[1]” jel és egy valódi link ugyanabban a sorban nem olvad
  *      össze; a szószám-őr (T4) szintjén nulla a szövegveszteség.
  */
 
 const CIKKEK_DIR = path.join(process.cwd(), 'docs', 'cikkek')
-const PISZKOZATOK = CIKKEK.filter((cikk) => cikk.tulajdonosPublikal === true)
+const PISZKOZATOK = CIKKEK.filter((cikk) => cikk.seoForras === 'cikkfejlec')
 
 const BELSO_UTVONALAK = new Set([
   '/szolgaltatasok',
@@ -98,14 +99,16 @@ const CIKK_ESETEK = PISZKOZATOK.map((cikk) => [cikk.slug, cikk.fajl] as const)
 const szavak = (sorok: readonly string[]): number =>
   sorok.join(' ').split(/\s+/).filter(Boolean).length
 
-describe('P1 — a két tulajdonosi piszkozat a listán', () => {
-  it('pontosan a 9. és 10. cikk tulajdonosi piszkozat, cikkfejléc SEO-val', () => {
+describe('P1 — a két tulajdonosi cikk a listán', () => {
+  it('pontosan a 9. és 10. cikk tölt a cikkfejlécből, publikálási kivétel nélkül', () => {
     expect(PISZKOZATOK.map((cikk) => cikk.slug)).toEqual([
       'peace-and-love-friss-serules',
       'gipszben-a-kezed',
     ])
     for (const cikk of PISZKOZATOK) {
       expect(cikk.seoForras).toBe('cikkfejlec')
+      // Nincs külön publikálási mező: a bejegyzés csak fajl, slug, seoForras.
+      expect(Object.keys(cikk).sort()).toEqual(['fajl', 'seoForras', 'slug'])
       expect(existsSync(path.join(CIKKEK_DIR, cikk.fajl))).toBe(true)
       expect(CIKK_KATEGORIA[cikk.slug]).toBeDefined()
     }
@@ -116,8 +119,8 @@ describe('P1 — a két tulajdonosi piszkozat a listán', () => {
     expect(new Set(CIKKEK.map((cikk) => cikk.fajl)).size).toBe(CIKKEK.length)
   })
 
-  it('a mért nyolc cikk nem tulajdonosi piszkozat és mérésből tölt', () => {
-    const mert = CIKKEK.filter((cikk) => cikk.tulajdonosPublikal !== true)
+  it('a mért nyolc cikk mérésből tölt', () => {
+    const mert = CIKKEK.filter((cikk) => cikk.seoForras !== 'cikkfejlec')
     expect(mert).toHaveLength(8)
     for (const cikk of mert) expect(cikk.seoForras ?? 'meres').toBe('meres')
   })
@@ -134,7 +137,7 @@ describe('P2 — a cikkfejléc metaadat-táblája', () => {
     expect(fejlecMetaadat(nyers, 'seoDescription').length).toBeGreaterThan(10)
     const kategoria = /\|\s*Kategória\s*\|[^|]*\(`([a-z0-9-]+)`\)\s*\|/.exec(nyers)?.[1]
     expect(kategoria).toBe(CIKK_KATEGORIA[slug])
-    expect(sor('Állapot')).toMatch(/piszkozat/)
+    expect(sor('Állapot')).toMatch(/OWNER_TUDASTAR_PUBLISH=igen/)
   })
 
   it('hiányzó metaadat-sorra a fejléc-olvasó DOB, nem ad némán üreset', () => {
@@ -318,35 +321,20 @@ describe('P7 — Források és [n] hivatkozások', () => {
   })
 })
 
-describe('P8 — celAllapot: a script sosem publikál tulajdonosi piszkozatot', () => {
-  it('tulajdonosi piszkozat: új rekord piszkozat, a PUBLISH kapu sem publikálja', () => {
-    for (const publikalKapu of [false, true]) {
-      expect(celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: undefined })).toBe(
-        'draft',
-      )
-      expect(celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: 'draft' })).toBe(
-        'draft',
-      )
-    }
+describe('P8 — celAllapot: egyetlen kapu, minden cikkre egyformán', () => {
+  it('OWNER_TUDASTAR_PUBLISH=igen nélkül piszkozat, vele közzétéve', () => {
+    expect(celAllapot(false)).toBe('draft')
+    expect(celAllapot(true)).toBe('published')
   })
 
-  it('tulajdonosi piszkozat: az adminban közzétett rekord nem esik vissza piszkozatra', () => {
-    for (const publikalKapu of [false, true]) {
-      expect(
-        celAllapot({ publikalKapu, tulajdonosPublikal: true, letezoAllapot: 'published' }),
-      ).toBe('published')
-    }
-  })
-
-  it('mért cikk: a két kapu logikája változatlan', () => {
-    for (const letezoAllapot of [undefined, 'draft', 'published'] as const) {
-      expect(celAllapot({ publikalKapu: false, tulajdonosPublikal: false, letezoAllapot })).toBe(
-        'draft',
-      )
-      expect(celAllapot({ publikalKapu: true, tulajdonosPublikal: false, letezoAllapot })).toBe(
-        'published',
-      )
-    }
+  it('a betöltő a célállapotot minden cikkre a celAllapot-ból veszi, kivétel nélkül', () => {
+    const src = readFileSync(
+      path.join(process.cwd(), 'src/scripts/import-tudastar-cikkek.ts'),
+      'utf8',
+    )
+    expect(src).toMatch(/const allapot = celAllapot\(publikal\)/)
+    expect(src).toMatch(/status: allapot,\s*_status: allapot,/)
+    expect(src).not.toMatch(/tulajdonosPublikal/)
   })
 })
 

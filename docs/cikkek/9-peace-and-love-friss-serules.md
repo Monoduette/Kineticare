@@ -11,8 +11,9 @@
 > témához még NEM készült, ezért a `seoTitle` és a `seoDescription` az alábbi
 > metaadat-táblából jön (a betöltő `seoForras: 'cikkfejlec'` jelöléssel), a
 > `seoKeywords` mező üresen marad, amíg nincs mérés. GYIK nincs (mért kérdés
-> nélkül tétel sem születhet). A betöltő ezt a cikket MINDIG piszkozatként
-> hozza létre: a publikálás a tulajdonosok döntése az adminban.
+> nélkül tétel sem születhet). Tulajdonosi utasítás (2026-09-19): a cikk
+> élesbe megy; a betöltő ugyanazon a két kapun viszi, mint a többit
+> (`OWNER_TUDASTAR_CONFIRM=igen` ír, `OWNER_TUDASTAR_PUBLISH=igen` közzétesz).
 >
 > Tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study”. Ezért a
 > törzs minden klinikai állítása mögött számozott hivatkozás áll ([1], [2]…),
@@ -34,7 +35,8 @@
 | `relatedPosts` | `csuklo-es-kezfajdalom`, `teniszkonyok`, `inhuvelygyulladas` |
 | Szerző | Kiss Kata és Kocsis Kata |
 | Gyökér pages | nincs |
-| Állapot | piszkozat, a tulajdonosok publikálják |
+| Állapot | publikálásra kész; `OWNER_TUDASTAR_CONFIRM=igen OWNER_TUDASTAR_PUBLISH=igen npm run import:tudastar` teszi közzé |
+| `heroImage` | a script nem állítja; javaslat: `public/media/team/treatment-wrist-table-1600.webp` (csuklóvizsgálat a kezelőasztalon), az adminban |
 
 ## Forrás-ellenőrzés (az integrátornak és a lektornak)
 
@@ -106,7 +108,7 @@ A kompresszióról egy 12 vizsgálatot összegző áttekintés azt írja, hogy e
 ## LOVE: amikor az első napok elmúltak
 
 - **Terhelés (Load).** A mozgás és a fokozatos terhelés a legtöbb mozgásszervi panasznál használ; kezdd korán, és térj vissza a hétköznapi teendőkhöz, amint a tüneteid engedik [1]. Egy 101 betegen végzett vizsgálatban a korai gyakorlatozás már az első két héten jobb funkciót adott, mint a hagyományos pihentetés [7]. A szövet a terheléstől tanul: a mechanikai inger ín-, izom- és csontszövetben is javító folyamatokat indít [8].
-- **Optimizmus (Optimism).** Aki bízik a gyógyulásban, jobban gyógyul [1]. Egy 84 betegen végzett vizsgálatban a pszichés tényezők többet magyaráztak a tünetekből, mint a sérülés foka, és a rándulás súlyossága nem függött össze a fájdalom erősségével [9].
+- **Optimizmus (Optimism).** A bizakodó várakozás jobb kimenetellel jár együtt, a félelem és a katasztrofizálás pedig akadály [1]. Egy 84 betegen végzett vizsgálatban a pszichés tényezők többet magyaráztak a tünetekből, mint a sérülés foka, és a rándulás súlyossága nem függött össze a fájdalom erősségével [9].
 - **Vérkeringés (Vascularisation).** Néhány nappal a sérülés után kezdj fájdalommentes, keringést fokozó mozgást [1]. Kézsérülésnél ez lehet séta, szobabicikli vagy az alsótest edzése.
 - **Gyakorlás (Exercise).** A gyakorlatok visszaadják a mozgástartományt, az erőt és a helyzetérzékelést; a fájdalom itt iránytű, a szubakut szakaszban kerülni kell [1]. Az irányelv is a felügyelt gyakorlatprogramot teszi a passzív kezelések elé [4].
 
@@ -114,12 +116,11 @@ A kompresszióról egy 12 vizsgálatot összegző áttekintés azt írja, hogy e
 
 Ez a lista a fentiek kézre fordított, gyakorlati változata. Nem helyettesíti a vizsgálatot.
 
-- Vedd le a gyűrűt és a karórát a sérült kézről, amíg még lejön. A duzzanat órák alatt nő.
+- Vedd le a gyűrűt és a karórát a sérült kézről, amíg még lejön: ez a mi rendelői tapasztalatunk, nem tanulmány.
 - Polcold fel a kezed a szíved fölé, amikor ülsz vagy fekszel [1].
-- Tekerj rá rugalmas pólyát nappal, de ne olyan szorosan, hogy az ujjaid elzsibbadjanak [1].
-- A nem sérült ujjaidat mozgasd óvatosan, hogy ne merevedjenek be.
+- Tekerj rá rugalmas pólyát, de ne olyan szorosan, hogy az ujjaid elzsibbadjanak [1].
 - Az első napokban kerüld a meleget, a forró fürdőt, az alkoholt és a masszázst [12].
-- Figyeld a fenti azonnali jeleket, mert azok bármikor megjelenhetnek.
+- Figyeld a fenti azonnali jeleket, mert azok bármikor megjelenhetnek [12].
 
 ## Mikor jön a gyógytornász?
 

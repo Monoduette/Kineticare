@@ -10,9 +10,10 @@
 > A cikk a tulajdonosok blogötlete (2026-09-19). Kulcsszó-mérés ehhez a
 > témához még NEM készült, ezért a `seoTitle` és a `seoDescription` az alábbi
 > metaadat-táblából jön (a betöltő `seoForras: 'cikkfejlec'` jelöléssel), a
-> `seoKeywords` mező üresen marad, amíg nincs mérés. GYIK nincs. A betöltő ezt
-> a cikket MINDIG piszkozatként hozza létre: a publikálás a tulajdonosok
-> döntése az adminban.
+> `seoKeywords` mező üresen marad, amíg nincs mérés. GYIK nincs. Tulajdonosi
+> utasítás (2026-09-19): a cikk élesbe megy; a betöltő ugyanazon a két kapun
+> viszi, mint a többit (`OWNER_TUDASTAR_CONFIRM=igen` ír,
+> `OWNER_TUDASTAR_PUBLISH=igen` közzétesz).
 >
 > Tulajdonosi kikötés (2026-09-19 este): „a cikkekre legyen study”. Ezért a
 > törzs minden klinikai állítása mögött számozott hivatkozás áll ([1], [2]…),
@@ -38,7 +39,8 @@
 | `relatedPosts` | `csuklotores-utani-gyogytorna`, `csuklo-es-kezfajdalom`, `miert-zsibbad-a-kezem` |
 | Szerző | Kiss Kata és Kocsis Kata |
 | Gyökér pages | nincs |
-| Állapot | piszkozat, a tulajdonosok publikálják |
+| Állapot | publikálásra kész; `OWNER_TUDASTAR_CONFIRM=igen OWNER_TUDASTAR_PUBLISH=igen npm run import:tudastar` teszi közzé |
+| `heroImage` | a script nem állítja; javaslat: `public/media/team/hand-treatment-detail-1600.webp` (kézkezelés közelről), az adminban |
 
 ## Forrás-ellenőrzés (az integrátornak és a lektornak)
 
@@ -89,16 +91,16 @@ Aznap kérj orvosi tanácsot akkor is, ha a gipsz eltörik, meglazul vagy egyre 
 
 ## A gipsz gondozása: nedvesség, viszketés
 
-A gipsz nem lehet vizes, és vakarózni sem szabad alá semmilyen tárggyal [2]. Fürdésnél használj vízálló huzatot [6]. A gipszelés ismert szövődménye a nyomási fekély és a bőrsérülés [3], és egy felsértett bőr a gipsz alatt nehezen vehető észre.
+A gipsz nem lehet vizes, és vakarózni sem szabad alá semmilyen tárggyal [2]. Fürdésnél használj vízálló huzatot [6]. A gipszelés ismert szövődménye a nyomási fekély és a bőr fertőzése is [2][3].
 
-Ne vezess, és ne emelj nehezet, amíg az orvosod nem mondja, hogy szabad [6]. A gipszes kéz nem fog, és a hirtelen mozdulat a törésnek sem tesz jót.
+Ne vezess, és ne emelj nehezet, amíg az orvosod nem mondja, hogy szabad [6].
 
 ## Mozgasd, ami szabad: ujjak, könyök, váll
 
 Bizonyos fokú ízületi merevség az immobilizáció elkerülhetetlen szövődménye [2], és a kényszerű nyugalom már tíz napnál rövidebb idő alatt is jelentős izomsorvadással és erővesztéssel jár [4]. A 2024-es kézrehabilitációs irányelv ezért azt írja: legalább a korai ujjmozgatást kell hangsúlyozni, és a beteget az ujjak, a könyök, az alkar és a váll önálló mozgatására kell megtanítani [1]. Egy vizsgálatban a leggyakoribb szövődmény a kéz, a csukló és a váll merevsége volt [1].
 
-- Az ujjaidat a gipsz feltétele után kezdd mozgatni: hajlítsd és nyújtsd őket, óvatosan, gyakran [1].
-- A hüvelykujjadat érintsd sorban a többi ujjhoz, ha a gipsz engedi.
+- Az ujjaidat a gipsz felhelyezése után kezdd mozgatni: hajlítsd és nyújtsd őket, óvatosan, gyakran [1].
+- A hüvelykujjadat érintsd sorban a többi ujjhoz, ha a gipsz engedi [1].
 - A könyöködet hajlítsd és nyújtsd naponta többször, ha a gipsz nem rögzíti [1].
 - A válladat emeld, körözz vele, nyúlj fel: a kendőben lógó kar válla is bemerevedik [1].
 - Hatvan év fölött egy vizsgálat szerint a gipsz második hetétől végzett, puha labdás szorítógyakorlat rövid távon javította a szorítóerőt [1]. Hogy neked szabad-e, azt a kezelőorvosod mondja meg.
@@ -107,13 +109,13 @@ Ha az ujjaid kirívóan bemerevednek, a bőröd túlérzékennyé válik, vagy a
 
 ## Polcold fel a duzzanat ellen
 
-A duzzanat a gipsz alatt feszít, és a merevséget is növeli. A felpolcolás a fájdalmat és a duzzanatot is csökkenti [2]: amikor ülsz, a könyök fölé polcolva, éjjel párnán [6]. Az irányelv az ödéma kezelésére a felpolcolást, a gyakorlatokat és a kompressziós kesztyűt együtt ajánlja, rövid távú előnnyel [1].
+Az irányelv szerint a kéz és az ujjak duzzanata jelentős akadály, amely ronthatja a felépülést [1]. A felpolcolás a fájdalmat és a duzzanatot is csökkenti [2]: amikor ülsz, a könyök fölé polcolva, éjjel párnán [6]. Az irányelv az ödéma kezelésére a felpolcolást, a gyakorlatokat és a kompressziós kesztyűt együtt ajánlja, rövid távú előnnyel [1].
 
-Hűtés a gipsz fölött, száraz csomaggal, 15–30 percig alkalmazható [2]. Vizes borogatás nem, mert átáztatja a gipszet.
+Hűtés a gipsz fölött, száraz csomaggal, 15–30 percig alkalmazható [2]. Vizes borogatás nem, mert a gipsz nem lehet vizes [2].
 
 ## Mi jön a gipsz levétele után?
 
-Ha nem kellett műtét, a csuklótörést jellemzően 4–6 hétig rögzítik gipszben, és a csukló mozgatása ezután indul [1]. Ekkor a kezed merev és gyenge. Ez így szokott lenni, és ebben egy gyógytornász tud segíteni.
+Ha nem kellett műtét, a csuklótörést jellemzően 4–6 hétig rögzítik gipszben, és a csukló mozgatása ezután indul [1]. Ekkor a kezed merev és gyenge: a merevség az immobilizáció elkerülhetetlen velejárója [2], és ebben egy gyógytornász tud segíteni [1].
 
 Műtéti heg esetén a heg masszírozásáról egy irodalmi áttekintés azt találta, hogy a műtéti hegek nagy része javult tőle, de a bizonyíték gyenge [5]. A terhelést fokozatosan kell emelni: előbb a mozgás, aztán az erő, végül a fogás. Ez a mi rendelői tapasztalatunk, nem tanulmány.
 

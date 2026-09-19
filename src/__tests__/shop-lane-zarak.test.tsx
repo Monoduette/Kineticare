@@ -51,12 +51,11 @@ const KEZ_CIKK_PAR_SLUGOK = [
 const VALL_SLUG = 'befagyott-vall'
 
 /**
- * A tulajdonosok blogötletei (2026-09-19): piszkozatként érkező cikkek, a
- * publikálás az övék az adminban. Nem részei a shop-sáv CTA-fixture-ének:
- * traumás sérülésnél az otthoni program leírása orvosi engedélyt kér, ezért
- * `ctaCourse` nélkül jönnek. A cikkoldali CTA-változatuk (kurzus vagy
- * időpont) vezetői döntés (`APPOINTMENT_CTA_SLUGS`), ez a teszt csak a
- * slugkészlet zárát tartja.
+ * A tulajdonosok blogötletei (2026-09-19), élesbe szánva. Nem részei a
+ * shop-sáv CTA-fixture-ének: traumás sérülésnél az otthoni program leírása
+ * orvosi engedélyt kér, ezért `ctaCourse` nélkül jönnek. A cikkoldali
+ * CTA-változatuk (kurzus vagy időpont) vezetői döntés (`APPOINTMENT_CTA_SLUGS`),
+ * ez a teszt csak a slugkészlet zárát tartja.
  */
 const TULAJDONOSI_PISZKOZAT_SLUGOK = ['gipszben-a-kezed', 'peace-and-love-friss-serules'] as const
 
