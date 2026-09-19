@@ -40,6 +40,15 @@ import type { Media, Product } from '../payload-types'
  * szöveg és a CTA elől veszi el a helyet, „nagyobb" nem jobb.
  */
 
+/**
+ * A CTA-cél feloldásához a route-ok ENNYI publikált terméket kérnek le
+ * (`getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT)`): a `getPublishedProducts`
+ * alapértelmezett 12-es limitje a rács megjelenítési korlátja, nem a cél-
+ * keresésé; egy 13. (legrégebbi) kurzusra mutató sáv borító nélkül maradt
+ * volna (Devin-találat, #270). A kínálat ma 2 termék, a plafon bőven fölötte.
+ */
+export const CTA_TERMEK_LEKERDEZES_LIMIT = 50
+
 /** A sáv képének megjelenítéséhez szükséges adat. */
 export interface CtaBannerCourseCover {
   /** A populált média (url + sizes + alt), a MediaImage bemenete. */
@@ -64,6 +73,20 @@ function ctaPathname(url: string | null | undefined): string | null {
   const withoutQuery = withoutHash.split('?', 1)[0] ?? ''
   const pathname = withoutQuery.replace(/\/+$/, '')
   return pathname.length > 0 ? pathname : '/'
+}
+
+/**
+ * A /kurzusok/<szegmens> címhez tartozó kurzus: a kanonikus cím egyezik, VAGY a
+ * régi, id-alapú cím a MÁR slugos terméket is megtalálja (a route tartósan a
+ * kanonikus címre irányít, lásd course-url.ts).
+ */
+function findCtaCourse(pathname: string, products: readonly Product[]): Product | undefined {
+  const segment = pathname.slice(COURSE_BASE_PATH.length + 1)
+  const legacyId = segment.includes('/') ? null : parseCourseIdParam(segment)
+  return products.find(
+    (candidate) =>
+      courseHref(candidate) === pathname || (legacyId !== null && candidate.id === legacyId),
+  )
 }
 
 /** A termék populált borítóképe, ha url-lel együtt megvan; különben null. */
@@ -101,15 +124,7 @@ export function resolveCtaBannerCourseCover(
   if (pathname === COURSE_BASE_PATH) {
     product = products.find((candidate) => isPaidCourse(candidate))
   } else if (pathname.startsWith(`${COURSE_BASE_PATH}/`)) {
-    // A régi, id-alapú /kurzusok/<id> cím akkor is ugyanaz a kurzus, ha a
-    // terméknek AZÓTA van slugja (a route tartósan a kanonikus címre
-    // irányít, lásd course-url.ts) — a sáv sem veszítheti el a borítót.
-    const segment = pathname.slice(COURSE_BASE_PATH.length + 1)
-    const legacyId = segment.includes('/') ? null : parseCourseIdParam(segment)
-    product = products.find(
-      (candidate) =>
-        courseHref(candidate) === pathname || (legacyId !== null && candidate.id === legacyId),
-    )
+    product = findCtaCourse(pathname, products)
   }
   if (!product) {
     return null
@@ -192,5 +207,17 @@ export function resolveCtaBannerFigure(
     return null
   }
   const cover = resolveCtaBannerCourseCover(url, products)
+  // /kurzusok/<slug-vagy-id> csak akkor kap montázst, ha a cél LÉTEZŐ publikált
+  // kurzus (borító nélkül is); elgépelt vagy megszűnt kurzus-cím mellett a sáv
+  // kép nélkül marad, hogy a montázs ne öltöztessen fel egy 404-re vivő gombot
+  // (Devin-találat, #270). A lista (/kurzusok) mindig érvényes cél.
+  if (pathname !== COURSE_BASE_PATH && !ctaCourseExists(pathname, products)) {
+    return null
+  }
   return { media: montazs, title: cover?.title ?? montazs.alt, href: cover?.href ?? pathname }
+}
+
+/** Van-e a /kurzusok/<szegmens> címhez tartozó publikált kurzus (slug vagy régi id). */
+function ctaCourseExists(pathname: string, products: readonly Product[]): boolean {
+  return findCtaCourse(pathname, products) !== undefined
 }

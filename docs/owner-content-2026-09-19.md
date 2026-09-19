@@ -117,7 +117,11 @@ fejléc-kép szabály).
    létrehozás nélkül, hangosan áll meg (`letrehoz`); ha a Médiatár mégis `-N`
    utótagos nevet adna, a tévesen létrejött rekordot törli, és úgy dob. Kézi
    átnézés kell, a többi szabály nem fut le.
-6. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
+6. Meglévő kezelt (manifestes) rekord igazolás nélkül (félbeszakadt korábbi futás,
+   kézi rekord): a `keres` élesben idempotensen pótolja az eredetigazolást
+   (`enrollMediaRecovery`), próbafutásban csak jelzi; ha a fájl nem ellenőrizhető,
+   hangosan dob, és a hivatkozó szabály nem fut le (Devin-találat, #270).
+7. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
    ELSŐ elemét veszi; ha valaha `…-1.webp` duplikátum keletkezik a packshotokból,
    a Médiatárban kézzel kell egyértelműsíteni.
 

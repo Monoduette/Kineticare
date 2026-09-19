@@ -15,6 +15,7 @@ import { COURSE_SHOWCASE_SCENE_PHOTOS } from '../lib/course-showcase'
 import {
   ROLUNK_CTA_MONTAZS_FILE,
   resolveCtaBannerCourseCover,
+  CTA_TERMEK_LEKERDEZES_LIMIT,
   resolveCtaBannerFigure,
   rolunkCtaMontazs,
 } from '../lib/cta-banner-course'
@@ -342,10 +343,28 @@ describe('WP54/4: a /rolunk CTA-sáv a kurzus-montázst mutatja, a kezdőlap a b
     for (const url of ['/kapcsolat', 'https://kineticare.hu/kurzusok', '', null, undefined]) {
       expect(resolveCtaBannerFigure(url, kinalat, montazs), String(url)).toBeNull()
     }
+    // Elgépelt vagy megszűnt kurzus-cím: nincs montázs (a gomb 404-re vinne;
+    // Devin-találat, #270). A régi, id-alapú cím továbbra is létező kurzus.
+    expect(resolveCtaBannerFigure('/kurzusok/elirt-nev', kinalat, montazs)).toBeNull()
+    expect(resolveCtaBannerFigure('/kurzusok/999999', kinalat, montazs)).toBeNull()
+    expect(resolveCtaBannerFigure(`/kurzusok/${PROGRAM.id}`, kinalat, montazs)?.media.url).toBe(
+      montazs.url,
+    )
     // Montázs nélkül ugyanaz, mint a borító-feloldás.
     expect(resolveCtaBannerFigure('/kurzusok', kinalat)).toEqual(
       resolveCtaBannerCourseCover('/kurzusok', kinalat),
     )
+  })
+
+  it('a route-ok a CTA-feloldáshoz a 12-es rács-limit helyett a CTA-limittel kérik a termékeket', () => {
+    // Devin-találat (#270): a getPublishedProducts alap 12-es limitje a rácsé;
+    // egy 13. kurzusra mutató sáv borító nélkül maradt volna.
+    expect(CTA_TERMEK_LEKERDEZES_LIMIT).toBeGreaterThanOrEqual(50)
+    for (const route of ['src/app/(frontend)/[slug]/page.tsx', 'src/app/(frontend)/page.tsx']) {
+      const forras = readFileSync(join(REPO, route), 'utf8')
+      expect(forras, route).toContain('getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT)')
+      expect(forras, route).not.toContain('getPublishedProducts()')
+    }
   })
 
   it('RenderBlocks: a /rolunk-alak a montázst rendereli, a kezdőlap-alak a borítót', () => {

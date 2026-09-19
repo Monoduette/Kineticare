@@ -36,7 +36,11 @@ import {
 import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
-import { enrollMediaRecovery, managedMediaAssets } from '../lib/media-recovery-provenance'
+import {
+  enrollMediaRecovery,
+  inspectMediaRecoveryReceipt,
+  managedMediaAssets,
+} from '../lib/media-recovery-provenance'
 import { resolveUploadDir } from '../lib/media-restore'
 import {
   CLINIC_TREATMENTS_ANCHOR,
@@ -3662,9 +3666,16 @@ export const mediaAltJeloltek = (): readonly MediaAltJelolt[] => {
   for (const kep of LEGACY_IMAGES) {
     const alt = LEGACY_MEDIA_ALT[kep.file]
     if (alt === undefined) {
-      throw new Error(`A régi oldal médiájának nincs alt-szövege a LEGACY_MEDIA_ALT táblában: ${kep.file}`)
+      throw new Error(
+        `A régi oldal médiájának nincs alt-szövege a LEGACY_MEDIA_ALT táblában: ${kep.file}`,
+      )
     }
-    vegyFel({ prefix: fajlnevTorzs(kep.file), cimke: `régi oldal: ${kep.file}`, alt, forras: 'regi-oldal' })
+    vegyFel({
+      prefix: fajlnevTorzs(kep.file),
+      cimke: `régi oldal: ${kep.file}`,
+      alt,
+      forras: 'regi-oldal',
+    })
   }
   return eredmeny
 }
@@ -3714,7 +3725,11 @@ export interface MediaAltTar {
 export const futtatMediaAltLefedettseg = async (
   tar: MediaAltTar,
   dryRun: boolean,
-): Promise<{ modositasok: number; kihagyasok: number; uresMaradt: { darab: number; fajlnevek: readonly string[] } }> => {
+): Promise<{
+  modositasok: number
+  kihagyasok: number
+  uresMaradt: { darab: number; fajlnevek: readonly string[] }
+}> => {
   let modositasok = 0
   let kihagyasok = 0
   const kitoltott = new Set<number>()
@@ -4334,7 +4349,10 @@ export const biztositMediaFajlbol = async (input: {
  * (kezelt) képnél az eredetigazolást is rögzíti, hogy a Volume-helyreállítás
  * (`ensureMediaFiles`) később vissza tudja tölteni.
  */
-export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggosegek => ({
+export const payloadMediaFuggosegek = (
+  payload: Payload,
+  opciok: { dryRun: boolean } = { dryRun: true },
+): MediaBiztositasFuggosegek => ({
   keres: async (filename) => {
     const talalat = await payload.find({
       collection: 'media',
@@ -4344,7 +4362,35 @@ export const payloadMediaFuggosegek = (payload: Payload): MediaBiztositasFuggose
       overrideAccess: true,
     })
     const sor = talalat.docs[0]
-    return sor === undefined || sor.filename !== filename ? null : sor.id
+    if (sor === undefined || sor.filename !== filename) return null
+    // Meglévő KEZELT (manifestes) rekord igazolás nélkül (félbeszakadt korábbi
+    // futás, kézzel létrehozott rekord): a „megvan” ág addig nem hivatkozhat rá,
+    // amíg az eredetigazolás nincs meg, különben a Volume-helyreállítás később
+    // elutasítja a képet (Devin-találat, #270). Élesben idempotensen igazoljuk
+    // (a bájtok és a rekord ellenőrzésével, hibánál hangos dobás); próbafutásban
+    // csak jelezzük, mert az igazolás írás.
+    if (managedMediaAssets().some((asset) => asset.filename === filename)) {
+      const allapot = await inspectMediaRecoveryReceipt(payload, sor)
+      if (!allapot.valid) {
+        if (opciok.dryRun) {
+          logger.warn(
+            `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül — az éles futás igazolná (vagy hangosan megállna, ha a fájl nem ellenőrizhető).`,
+          )
+        } else {
+          try {
+            await enrollMediaRecovery(payload, sor)
+          } catch (hiba) {
+            throw new Error(
+              `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolása sikertelen (${
+                hiba instanceof Error ? hiba.message : String(hiba)
+              }) — a rekordot a script nem hivatkozza, kézi átnézést kér.`,
+            )
+          }
+          logger.info(`Médiatár: „${filename}” (azonosító: ${sor.id}) eredetigazolása pótolva.`)
+        }
+      }
+    }
+    return sor.id
   },
   letrehoz: async (forras) => {
     // Ütközés-előellenőrzés: ha a feltöltési könyvtárban REKORD NÉLKÜL ott a
@@ -4496,7 +4542,7 @@ async function futtat(): Promise<void> {
   const payload: Payload = await getPayload({ config })
   // WP54: a repó-fájlból biztosított képek Médiatár-hozzáférése (a `letrehoz`
   // ága kizárólag a `biztositMediaFajlbol` `!dryRun` döntésén át hívódik).
-  const mediaFuggosegek = payloadMediaFuggosegek(payload)
+  const mediaFuggosegek = payloadMediaFuggosegek(payload, { dryRun })
 
   logger.info(
     dryRun
