@@ -32,15 +32,23 @@ import {
   type JogiOldalLeiras,
 } from '../lib/legal-content'
 import { logger } from '../lib/logger'
-import { CLINIC_TREATMENTS_ANCHOR, SOS_COURSE_SKU } from '../lib/menu-seed'
+import { HOME_HELP_TITLE } from '../lib/home-help-states'
 import {
+  CLINIC_TREATMENTS_ANCHOR,
+  PROFESSIONAL_TRAINING_URL,
+  SOS_COURSE_SKU,
+} from '../lib/menu-seed'
+import {
+  KEZDOLAP_BEMUTATKOZAS,
+  KEZDOLAP_BEMUTATKOZAS_CIM,
+  kezdolapBemutatkozasRovidSzoveg,
   kezdolapBemutatkozasSzoveg,
   rolunkBemutatkozasSzoveg,
   WP18_KOZOS_BEMUTATKOZAS,
   ROLUNK_BEMUTATKOZAS_V1,
 } from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
-import type { Page, Product } from '../payload-types'
+import type { Menu, Page, Product } from '../payload-types'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
 // szakmai-háttér csere és a /szolgaltatasok lap-tetejének cseréje a
 // seed-builderből veszi az ÚJ blokkokat, és az örökölt tartalommal veti össze
@@ -50,6 +58,8 @@ import {
   buildRolunkLayout,
   buildSzolgaltatasokLayout,
   para,
+  ROLUNK_PARTNER_FELIRAT,
+  ROLUNK_TOVABBI_PARTNEREK,
   rolunkSzakmaiOrokoltTartalom,
   szolgaltatasokRegiBevezetoTartalom,
 } from './restore-legacy-content'
@@ -229,6 +239,12 @@ export type JavitasSzabaly =
   | 'kezdolap-rolunk-szoveg'
   | 'bemutatkozas-szetvalasztas'
   | 'sos-publikalas'
+  | 'szakmai-menupont'
+  | 'kezdolap-segitseg-sorrend'
+  | 'kezdolap-sajtologo-sorrend'
+  | 'kezdolap-bemutatkozas-rovid'
+  | 'rolunk-partner-mondat'
+  | 'rolunk-logosavok-sorrend'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -2956,6 +2972,558 @@ export const alkalmazSzolgaltatasBlokkKep = (input: {
 }
 
 // ---------------------------------------------------------------------------
+// WP52 — a tulajdonosi kérések CMS-adat oldala (2026-09-19): a „Szakmai
+// képzés” menüpont, a kezdőlap szekció-sorrendje, a bemutatkozás rövidítése,
+// a /rolunk két logósávja és a partner-mondat.
+// ---------------------------------------------------------------------------
+
+/** A „Szakmai képzés” menüpont RÉGI feliratai; kizárólag pontosan ezek cserélhetők. */
+export const SZAKMAI_MENUPONT_REGI_FELIRATOK: readonly string[] = [
+  'Szakmai képzés',
+  'Szakmai képzések',
+]
+
+/** A menüpont jóváhagyott ÚJ felirata. */
+export const SZAKMAI_MENUPONT_UJ_FELIRAT = 'Szakembereknek'
+
+/** A menüpont ÚJ, belső célja (kód-útvonal, külön munkacsomag készíti). */
+export const SZAKEMBEREKNEK_UTVONAL = '/szakembereknek'
+
+/** A menüpont-csere eredménye: a beírandó mezők, vagy `null`, ha nem szabad írni. */
+export interface MenupontAtalakitas {
+  adat: Pick<Menu, 'label' | 'type' | 'url' | 'openInNewTab'> | null
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * WP52/1 — a „Szakmai képzés” menüpont átnevezése „Szakembereknek”-re, belső
+ * `/szakembereknek` céllal.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG akkor, ha a felirat PONTOSAN a régi („Szakmai képzés”
+ *    vagy „Szakmai képzések”), a típus „Külső link”, és a cél PONTOSAN a
+ *    ProBody-workshop címe (`PROFESSIONAL_TRAINING_URL`);
+ *  - ha a felirat és a cél MÁR az új, nincs teendő (idempotencia);
+ *  - minden más (szerkesztett felirat, más cél, más típus) a szerkesztőé:
+ *    indokolt kihagyás;
+ *  - belső útvonalra visz, ezért az „új lapon nyíljon” kapcsolót kikapcsolja
+ *    (belső lapnál a látogató munkamenete nem szakad meg; a NavAnchor a
+ *    kapcsolóból adja a target="_blank"-ot).
+ *
+ * A futtató a Menus collection MINDEN, a régi URL-re mutató sorára lefuttatja
+ * (a fejléc almenüje és egy esetleges másolat is). Lábléc-menü collection
+ * ebben a repóban nincs: a lábléc a kódból épül, nem CMS-menüből.
+ */
+export const alkalmazSzakmaiMenupont = (
+  menupont: Pick<Menu, 'id' | 'label' | 'type' | 'url' | 'openInNewTab'>,
+): MenupontAtalakitas => {
+  const szabaly: JavitasSzabaly = 'szakmai-menupont'
+  const uzenet = `A „Szakmai képzés” menüpont (menus #${menupont.id})`
+  const kihagyas = (indok: string): MenupontAtalakitas => ({
+    adat: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok }],
+  })
+
+  if (
+    menupont.label === SZAKMAI_MENUPONT_UJ_FELIRAT &&
+    menupont.type === 'url' &&
+    menupont.url === SZAKEMBEREKNEK_UTVONAL
+  ) {
+    return kihagyas(
+      `a menüpont MÁR ${ertekCimke(SZAKMAI_MENUPONT_UJ_FELIRAT)} → ${SZAKEMBEREKNEK_UTVONAL} — nincs teendő`,
+    )
+  }
+  if (!SZAKMAI_MENUPONT_REGI_FELIRATOK.includes(menupont.label)) {
+    return kihagyas(
+      `a felirat ${ertekCimke(menupont.label)}, ami nem PONTOSAN a cserélendő ${SZAKMAI_MENUPONT_REGI_FELIRATOK.map(
+        ertekCimke,
+      ).join(' / ')} — a script csak pontos egyezésnél ír át`,
+    )
+  }
+  if (menupont.type !== 'url' || menupont.url !== PROFESSIONAL_TRAINING_URL) {
+    return kihagyas(
+      `a cél nem PONTOSAN a ProBody-workshop külső címe (típus: ${menupont.type}, cél: ${ertekCimke(
+        menupont.url,
+      )}) — a script csak a ${ertekCimke(PROFESSIONAL_TRAINING_URL)} célt cseréli`,
+    )
+  }
+
+  return {
+    adat: {
+      label: SZAKMAI_MENUPONT_UJ_FELIRAT,
+      type: 'url',
+      url: SZAKEMBEREKNEK_UTVONAL,
+      openInNewTab: false,
+    },
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: ${ertekCimke(menupont.label)} → ${ertekCimke(
+          SZAKMAI_MENUPONT_UJ_FELIRAT,
+        )}, cél ${ertekCimke(menupont.url)} → ${ertekCimke(SZAKEMBEREKNEK_UTVONAL)} (belső útvonal, nem új lapon)`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+/** Egy szekció látható-e (a rejtett blokkhoz a sorrend-szabályok nem nyúlnak). */
+const lathato = (blokk: Szekciosor[number]): boolean => blokk.sectionSettings?.visible !== false
+
+/**
+ * A szekciósor EGYETLEN, látható, a feltételnek megfelelő blokkjának indexe.
+ * `-1`, ha nincs ilyen; `-2`, ha több is van (kétértelmű, a script nem
+ * találgat).
+ */
+const egyetlenIndex = (
+  layout: Szekciosor,
+  feltetel: (blokk: Szekciosor[number]) => boolean,
+): number => {
+  const indexek = layout.flatMap((blokk, index) =>
+    lathato(blokk) && feltetel(blokk) ? [index] : [],
+  )
+  if (indexek.length === 0) return -1
+  if (indexek.length > 1) return -2
+  return indexek[0]
+}
+
+/** Indokolt kihagyás szövege, ha egy blokk nincs meg vagy többször is megvan. */
+const talalatIndok = (leiras: string, index: number): string | null => {
+  if (index === -1) return `nincs látható ${leiras} a szekciósorban — a script nem találgat`
+  if (index === -2) return `több látható ${leiras} is van a szekciósorban — kézi átnézés kell`
+  return null
+}
+
+/**
+ * Egy blokk áthelyezése egy horgony-blokk ELÉ vagy MÖGÉ — a kezdőlapi
+ * sorrend-szabályok közös magja. Tiszta függvény: a bemenetet nem módosítja,
+ * a nem érintett blokkok referenciája változatlan. Mindkét blokkot
+ * `blockType` + cím alapján, PONTOSAN egyszer kell megtalálni; különben
+ * indokolt kihagyás. Ha a blokk már a helyén áll, nincs teendő.
+ */
+const alkalmazSzekcioAthelyezes = (input: {
+  layout: Page['layout']
+  szabaly: JavitasSzabaly
+  uzenet: string
+  mozgatando: { leiras: string; feltetel: (blokk: Szekciosor[number]) => boolean }
+  horgony: { leiras: string; feltetel: (blokk: Szekciosor[number]) => boolean }
+  hova: 'ele' | 'moge'
+}): SzekciosorCsere => {
+  const { layout, szabaly, uzenet, mozgatando, horgony, hova } = input
+  const kihagyas = (indok: string): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok }],
+  })
+
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('az oldalnak nincs szekciósora — nincs mit átrendezni')
+  }
+  const forras = egyetlenIndex(layout, mozgatando.feltetel)
+  const forrasIndok = talalatIndok(mozgatando.leiras, forras)
+  if (forrasIndok !== null) return kihagyas(forrasIndok)
+  const cel = egyetlenIndex(layout, horgony.feltetel)
+  const celIndok = talalatIndok(horgony.leiras, cel)
+  if (celIndok !== null) return kihagyas(celIndok)
+
+  // A kívánt hely: a horgony előtti, illetve utáni látható SZOMSZÉD. Rejtett
+  // blokk közéjük eshet, az a látogató sorrendjét nem érinti.
+  const kozteLathato = (a: number, b: number): boolean =>
+    layout.slice(Math.min(a, b) + 1, Math.max(a, b)).some(lathato)
+  const jelenlegHelyen =
+    hova === 'ele'
+      ? forras < cel && !kozteLathato(forras, cel)
+      : forras > cel && !kozteLathato(cel, forras)
+  if (jelenlegHelyen) {
+    return kihagyas(
+      `a ${mozgatando.leiras} MÁR közvetlenül a ${horgony.leiras} ${
+        hova === 'ele' ? 'előtt' : 'után'
+      } áll (${forras + 1}. szekció) — nincs teendő`,
+    )
+  }
+
+  const nelkule = layout.filter((_, index) => index !== forras)
+  const ujCel = nelkule.indexOf(layout[cel])
+  const beszuras = hova === 'ele' ? ujCel : ujCel + 1
+  const ujLayout: Szekciosor = [
+    ...nelkule.slice(0, beszuras),
+    layout[forras],
+    ...nelkule.slice(beszuras),
+  ]
+
+  return {
+    layout: ujLayout,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: a ${mozgatando.leiras} a ${forras + 1}. szekcióból a ${
+          beszuras + 1
+        }. szekcióba került, közvetlenül a ${horgony.leiras} ${hova === 'ele' ? 'elé' : 'mögé'}`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+/** A sajtó-logósor felirata a látogatónak: a mező értéke, vagy üresen a beépített felirat. */
+const sajtoLogosorFelirat = (heading: string | null | undefined): string =>
+  typeof heading === 'string' && heading.trim().length > 0 ? heading : (pressLogosUjFejlec() ?? '')
+
+/**
+ * WP52/2a — a kezdőlapon az „Így tudunk segíteni” sín (a `services` blokk,
+ * sín-elrendezés: Rendelői kezelések / Otthoni program / Szakmai képzések)
+ * a „Kurzusaink” kurzuskártyák ELÉ kerül.
+ *
+ * Azonosítás: `services` + PONTOSAN a `HOME_HELP_TITLE` cím; `courseCards` +
+ * PONTOSAN az `UJ_KURZUS_SZEKCIO_CIM` cím. Ha bármelyik hiányzik vagy több
+ * van belőle, indokolt kihagyás. Ha a sín már közvetlenül a kártyák előtt áll,
+ * nincs teendő. (A kiírás „states”-ként hivatkozott rá; a `states` blokk a
+ * „Három állapot, egy folyamat” kártyasor, a háromsoros Rendelői/Otthoni/
+ * Szakmai sín a `services` blokk — src/lib/home-seed.ts, home-help-states.ts.)
+ */
+export const alkalmazKezdolapSegitsegSorrend = (layout: Page['layout']): SzekciosorCsere =>
+  alkalmazSzekcioAthelyezes({
+    layout,
+    szabaly: 'kezdolap-segitseg-sorrend',
+    uzenet: 'A kezdőlap szekció-sorrendje („Így tudunk segíteni” a „Kurzusaink” elé)',
+    mozgatando: {
+      leiras: `„${HOME_HELP_TITLE}” szolgáltatás-sín (services)`,
+      feltetel: (blokk) => blokk.blockType === 'services' && blokk.title === HOME_HELP_TITLE,
+    },
+    horgony: {
+      leiras: `„${UJ_KURZUS_SZEKCIO_CIM}” kurzuskártya-szekció (courseCards)`,
+      feltetel: (blokk) =>
+        blokk.blockType === 'courseCards' && blokk.heading === UJ_KURZUS_SZEKCIO_CIM,
+    },
+    hova: 'ele',
+  })
+
+/**
+ * WP52/2b — a kezdőlapon az „Itt találkozhattál velünk” sajtó-logósor
+ * (ÖNÁLLÓ `pressLogos` blokk; az About-blokknak nincs beágyazott logó-mezője,
+ * src/blocks/about.ts) közvetlenül a „Megérdemled a profi törődést”
+ * About-blokk MÖGÉ kerül.
+ *
+ * Azonosítás: `pressLogos`, amelynek felirata PONTOSAN a beépített „Itt
+ * találkozhattál velünk” (vagy üres, mert akkor a komponens ugyanezt írja ki);
+ * `about` + PONTOSAN a kezdőlapi bemutatkozás címe. Rejtett duplikátum (a
+ * WP18 által elrejtett About) nem számít.
+ */
+export const alkalmazKezdolapSajtologoSorrend = (layout: Page['layout']): SzekciosorCsere => {
+  const uzenet = 'A kezdőlap szekció-sorrendje (sajtó-logósor a bemutatkozás alá)'
+  const sajtoFelirat = pressLogosUjFejlec()
+  if (sajtoFelirat === null) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly: 'kezdolap-sajtologo-sorrend',
+          uzenet,
+          indok:
+            'a kezdőlap seed-buildere (buildHomeLayout) nem ad pontosan egy, feliratos sajtó-logósort — a kód és a javítás szétcsúszott, kézi átnézés kell',
+          hangos: true,
+        },
+      ],
+    }
+  }
+  return alkalmazSzekcioAthelyezes({
+    layout,
+    szabaly: 'kezdolap-sajtologo-sorrend',
+    uzenet,
+    mozgatando: {
+      leiras: `„${sajtoFelirat}” sajtó-logósor (pressLogos)`,
+      feltetel: (blokk) =>
+        blokk.blockType === 'pressLogos' && sajtoLogosorFelirat(blokk.heading) === sajtoFelirat,
+    },
+    horgony: {
+      leiras: `„${KEZDOLAP_BEMUTATKOZAS_CIM}” bemutatkozás (about)`,
+      feltetel: (blokk) => blokk.blockType === 'about' && blokk.title === KEZDOLAP_BEMUTATKOZAS_CIM,
+    },
+    hova: 'moge',
+  })
+}
+
+/**
+ * WP52/3 — a kezdőlapi bemutatkozás RÖVIDÍTÉSE (tulajdonosi kérés: „lehetséges
+ * a rövidítés? jó lenne, ha a szakmai egyesületi tagság rész a képekkel egy
+ * vonalba kerülhetne”). Az új szöveg: `KEZDOLAP_BEMUTATKOZAS_ROVID`
+ * (src/lib/rolunk-bemutatkozas.ts, mérésekkel).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG akkor, ha a látható About-blokk címe PONTOSAN
+ *    `KEZDOLAP_BEMUTATKOZAS_CIM` ÉS minden bekezdése PONTOSAN a mai
+ *    `KEZDOLAP_BEMUTATKOZAS` (a WP37 óta élő, tulajdonos által jóváhagyott
+ *    szöveg); bármi más a szerkesztőé, indokolt kihagyás;
+ *  - ha a blokk MÁR a rövid szöveget viseli, nincs teendő (idempotencia);
+ *  - a cím, a kiemelés, a statisztikasor, a fotó és a sávbeállítás NEM
+ *    változik: kizárólag a `paragraphs` cserélődik (az első kiemelt marad).
+ */
+export const alkalmazKezdolapBemutatkozasRovidites = (layout: Page['layout']): SzekciosorCsere => {
+  const szabaly: JavitasSzabaly = 'kezdolap-bemutatkozas-rovid'
+  const uzenet = 'A kezdőlap bemutatkozásának rövidítése (About-blokk bekezdései)'
+  const ujSzoveg = kezdolapBemutatkozasRovidSzoveg()
+  const ujBekezdesek = ujSzoveg.paragraphs.map((sor) => sor.text)
+
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet,
+          indok: 'a kezdőlapnak nincs szekciósora — a bemutatkozást nincs hol rövidíteni',
+        },
+      ],
+    }
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let voltAbout = false
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (blokk.blockType !== 'about' || !lathato(blokk)) return blokk
+    voltAbout = true
+    const helye = `${index + 1}. szekció`
+    const jelenlegiCim = blokk.title ?? ''
+    const jelenlegiBekezdesek = bekezdesSzovegek(blokk)
+
+    if (jelenlegiCim !== KEZDOLAP_BEMUTATKOZAS_CIM) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${helye})`,
+        indok: `a blokk címe ${ertekCimke(jelenlegiCim)}, nem PONTOSAN ${ertekCimke(
+          KEZDOLAP_BEMUTATKOZAS_CIM,
+        )} — a szerkesztő blokkjához a script nem nyúl`,
+      })
+      return blokk
+    }
+    if (ugyanazokABekezdesek(jelenlegiBekezdesek, ujBekezdesek)) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${helye})`,
+        indok: 'a bekezdések MÁR a rövidített szöveget viselik — nincs teendő',
+      })
+      return blokk
+    }
+    if (!ugyanazokABekezdesek(jelenlegiBekezdesek, KEZDOLAP_BEMUTATKOZAS)) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${helye})`,
+        indok:
+          'a bekezdések nem PONTOSAN a mai, jóváhagyott kezdőlapi bemutatkozás (KEZDOLAP_BEMUTATKOZAS) — a szerkesztő szövegéhez a script nem nyúl',
+      })
+      return blokk
+    }
+
+    modositasok.push({
+      szabaly,
+      uzenet: `${uzenet} (${helye}): ${jelenlegiBekezdesek.join(' ').length} → ${
+        ujBekezdesek.join(' ').length
+      } karakter, ${ujBekezdesek.length} bekezdés; a cím, a kiemelés, a számok és a fotó változatlan`,
+      indok: null,
+    })
+    return {
+      ...blokk,
+      paragraphs: ujSzoveg.paragraphs.map(({ text, emphasized }) => ({ text, emphasized })),
+    }
+  })
+
+  if (!voltAbout) {
+    kihagyasok.push({
+      szabaly,
+      uzenet,
+      indok:
+        'a kezdőlap szekciósorában nincs látható Rólunk (about) szekció — a bemutatkozást nincs hol rövidíteni',
+    })
+  }
+
+  return { layout: modositasok.length > 0 ? ujLayout : null, modositasok, kihagyasok }
+}
+
+/**
+ * Egy szabad-szöveg (richText) blokk bekezdéseinek sima szövege, ha a tartalom
+ * KIZÁRÓLAG szöveges bekezdésekből áll; különben `null` (címsor, lista, link
+ * vagy más csomópont esetén a script nem értelmezi a tartalmat, és nem nyúl
+ * hozzá).
+ */
+export const richTextBekezdesek = (blokk: Szekciosor[number]): string[] | null => {
+  if (blokk.blockType !== 'richText') return null
+  const gyerekek = blokk.content?.root?.children
+  if (!Array.isArray(gyerekek)) return null
+  const bekezdesek: string[] = []
+  for (const csomopont of gyerekek) {
+    if (typeof csomopont !== 'object' || csomopont === null) return null
+    const { type, children } = csomopont as { type?: unknown; children?: unknown }
+    if (type !== 'paragraph' || !Array.isArray(children)) return null
+    let szoveg = ''
+    for (const gyerek of children) {
+      if (typeof gyerek !== 'object' || gyerek === null) return null
+      const { type: gyerekTipus, text } = gyerek as { type?: unknown; text?: unknown }
+      if (gyerekTipus !== 'text' || typeof text !== 'string') return null
+      szoveg += text
+    }
+    bekezdesek.push(szoveg)
+  }
+  return bekezdesek
+}
+
+/**
+ * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
+ * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
+ * `ROLUNK_TOVABBI_PARTNEREK` szövege egy önálló szabad-szöveg (richText)
+ * blokkban, közvetlenül a „Partnereink” `pressLogos` sáv után
+ * (src/scripts/restore-legacy-content.ts, `rolunkPartnerSzekciok`).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - törlés KIZÁRÓLAG akkor, ha a blokk tartalma PONTOSAN egyetlen, ezzel a
+ *    mondattal betűre egyező bekezdés; minden más szabad szöveg érintetlen;
+ *  - a törölt szöveg a naplóban betűhíven szerepel (nyom nélkül semmi nem
+ *    tűnik el);
+ *  - ha nincs ilyen blokk (már törölve, vagy a szerkesztő átírta), indokolt
+ *    kihagyás (idempotencia).
+ */
+export const alkalmazRolunkPartnerMondat = (layout: Page['layout']): SzekciosorCsere => {
+  const szabaly: JavitasSzabaly = 'rolunk-partner-mondat'
+  const uzenet = 'A Rólunk oldal „Partnereink” alatti mondata'
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        { szabaly, uzenet, indok: 'a Rólunk oldalnak nincs szekciósora — nincs mit törölni' },
+      ],
+    }
+  }
+  const torlendo = layout.flatMap((blokk, index) => {
+    const bekezdesek = richTextBekezdesek(blokk)
+    return bekezdesek !== null &&
+      bekezdesek.length === 1 &&
+      bekezdesek[0] === ROLUNK_TOVABBI_PARTNEREK
+      ? [index]
+      : []
+  })
+  if (torlendo.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet,
+          indok: `nincs olyan szabad-szöveg blokk, amelynek tartalma PONTOSAN ${ertekCimke(
+            ROLUNK_TOVABBI_PARTNEREK,
+          )} — már törölve, vagy a szerkesztő átírta`,
+        },
+      ],
+    }
+  }
+  return {
+    layout: layout.filter((_, index) => !torlendo.includes(index)),
+    modositasok: torlendo.map((index) => ({
+      szabaly,
+      uzenet: `${uzenet} (${index + 1}. szekció) törölve. A törölt szöveg: ${ertekCimke(
+        ROLUNK_TOVABBI_PARTNEREK,
+      )}`,
+      indok: null,
+    })),
+    kihagyasok: [],
+  }
+}
+
+/**
+ * WP52/4a — a /rolunk két logósávjának sorrendcseréje: a „Partnereink” sáv
+ * kerül előre (a sajtó-logósor mai helyére), az „Itt találkozhattál velünk”
+ * sajtó-logósor pedig a „Partnereink” mai helyére.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - mindkét sáv `pressLogos`, PONTOSAN a feliratával azonosítva (a sajtó-
+ *    logósornál az üres felirat is számít, mert a komponens ugyanazt írja ki),
+ *    mindkettő látható és pontosan egyszer szerepel;
+ *  - ha a „Partnereink” MÁR a sajtó-logósor előtt áll, nincs teendő
+ *    (idempotencia: a cserét a script nem forgatja vissza);
+ *  - ha a „Partnereink” sáv után közvetlenül még ott a partner-mondat
+ *    (`alkalmazRolunkPartnerMondat` kihagyott), a csere HANGOSAN kimarad,
+ *    különben a mondat a sajtó-logósor alá csúszna.
+ */
+export const alkalmazRolunkLogosavokSorrend = (layout: Page['layout']): SzekciosorCsere => {
+  const szabaly: JavitasSzabaly = 'rolunk-logosavok-sorrend'
+  const uzenet =
+    'A Rólunk oldal logósávjainak sorrendje („Partnereink” előre, sajtó-logósor a helyére)'
+  const kihagyas = (indok: string, hangos = false): SzekciosorCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a Rólunk oldalnak nincs szekciósora — nincs mit átrendezni')
+  }
+  const sajtoFelirat = pressLogosUjFejlec()
+  if (sajtoFelirat === null) {
+    return kihagyas(
+      'a kezdőlap seed-buildere (buildHomeLayout) nem ad pontosan egy, feliratos sajtó-logósort — a kód és a javítás szétcsúszott, kézi átnézés kell',
+      true,
+    )
+  }
+  const partner = egyetlenIndex(
+    layout,
+    (blokk) => blokk.blockType === 'pressLogos' && blokk.heading === ROLUNK_PARTNER_FELIRAT,
+  )
+  const partnerIndok = talalatIndok(`„${ROLUNK_PARTNER_FELIRAT}” logósáv (pressLogos)`, partner)
+  if (partnerIndok !== null) return kihagyas(partnerIndok)
+  const sajto = egyetlenIndex(
+    layout,
+    (blokk) =>
+      blokk.blockType === 'pressLogos' && sajtoLogosorFelirat(blokk.heading) === sajtoFelirat,
+  )
+  const sajtoIndok = talalatIndok(`„${sajtoFelirat}” sajtó-logósor (pressLogos)`, sajto)
+  if (sajtoIndok !== null) return kihagyas(sajtoIndok)
+
+  if (partner < sajto) {
+    return kihagyas(
+      `a „${ROLUNK_PARTNER_FELIRAT}” sáv (${partner + 1}. szekció) MÁR a sajtó-logósor (${
+        sajto + 1
+      }. szekció) előtt áll — nincs teendő`,
+    )
+  }
+  const kovetkezo = layout[partner + 1]
+  const kovetkezoBekezdesek = kovetkezo === undefined ? null : richTextBekezdesek(kovetkezo)
+  if (kovetkezoBekezdesek !== null && kovetkezoBekezdesek[0] === ROLUNK_TOVABBI_PARTNEREK) {
+    return kihagyas(
+      'a „Partnereink” sáv alatt még ott a partner-mondat (a törlése kimaradt), ezért a csere nem futott — különben a mondat a sajtó-logósor alá csúszna',
+      true,
+    )
+  }
+
+  const ujLayout: Szekciosor = layout.map((blokk, index) => {
+    if (index === partner) return layout[sajto]
+    if (index === sajto) return layout[partner]
+    return blokk
+  })
+  return {
+    layout: ujLayout,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: a „${ROLUNK_PARTNER_FELIRAT}” sáv a ${partner + 1}. szekcióból a ${
+          sajto + 1
+        }. szekcióba, a „${sajtoFelirat}” sajtó-logósor a ${sajto + 1}. szekcióból a ${
+          partner + 1
+        }. szekcióba került`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Futtatás — a tiszta átalakításokat köti az adatbázishoz.
 // ---------------------------------------------------------------------------
 
@@ -3121,6 +3689,11 @@ async function futtat(): Promise<void> {
     kezdolapLepes(alkalmazKurzuslistaFeliratok(kezdolapLayout))
     // --- Gondolatjel-maradék: „Így működik" vásárlás-lépés -------------------
     kezdolapLepes(alkalmazHowItWorksGondolatjel(kezdolapLayout))
+    // --- WP52/3: a bemutatkozás rövidítése (a WP37 saját szövege UTÁN) --------
+    kezdolapLepes(alkalmazKezdolapBemutatkozasRovidites(kezdolapLayout))
+    // --- WP52/2: szekció-sorrend — a sín a kártyák elé, a logósor az About alá
+    kezdolapLepes(alkalmazKezdolapSegitsegSorrend(kezdolapLayout))
+    kezdolapLepes(alkalmazKezdolapSajtologoSorrend(kezdolapLayout))
 
     if (kezdolapValtozott && !dryRun) {
       await payload.update({
@@ -3280,6 +3853,24 @@ async function futtat(): Promise<void> {
     modositasokSzama += rolunkKepLepes.modositasok.length
     kihagyasokSzama += rolunkKepLepes.kihagyasok.length
 
+    // --- WP52/4: a partner-mondat törlése, majd a két logósáv sorrendcseréje --
+    // A SORREND KÖTÖTT: előbb a mondat, különben a csere hangosan kimarad.
+    const rolunkPartnerMondat = alkalmazRolunkPartnerMondat(
+      rolunkKepLepes.layout ?? rolunkBemutatkozas.layout ?? rolunkBemutatkozasAlap,
+    )
+    naplozdLepeseket(rolunkPartnerMondat, dryRun)
+    modositasokSzama += rolunkPartnerMondat.modositasok.length
+    kihagyasokSzama += rolunkPartnerMondat.kihagyasok.length
+    const rolunkLogosavok = alkalmazRolunkLogosavokSorrend(
+      rolunkPartnerMondat.layout ??
+        rolunkKepLepes.layout ??
+        rolunkBemutatkozas.layout ??
+        rolunkBemutatkozasAlap,
+    )
+    naplozdLepeseket(rolunkLogosavok, dryRun)
+    modositasokSzama += rolunkLogosavok.modositasok.length
+    kihagyasokSzama += rolunkLogosavok.kihagyasok.length
+
     // A javítások EGY frissítésben mennek ki (a heroImage és a layout külön
     // mező, nem ütköznek), így egyetlen piszkozat-ellenőrzés elég.
     const irando: { heroImage?: number; layout?: Szekciosor } = {}
@@ -3287,7 +3878,12 @@ async function futtat(): Promise<void> {
       irando.heroImage = eredmeny.heroImage
     }
     const rolunkVegsoLayout =
-      rolunkKepLepes.layout ?? rolunkBemutatkozas.layout ?? rolunkPress.layout ?? harmonika.layout
+      rolunkLogosavok.layout ??
+      rolunkPartnerMondat.layout ??
+      rolunkKepLepes.layout ??
+      rolunkBemutatkozas.layout ??
+      rolunkPress.layout ??
+      harmonika.layout
     if (rolunkVegsoLayout !== null) {
       irando.layout = rolunkVegsoLayout
     }
@@ -3706,6 +4302,38 @@ async function futtat(): Promise<void> {
         })
         .catch(() => null)
       figyelmeztessPiszkozatra('Kapcsolat oldal', kapcsolat.updatedAt, piszkozat?.updatedAt)
+    }
+  }
+
+  // --- WP52/1: a „Szakmai képzés” menüpont → „Szakembereknek” ---------------
+  // MINDEN, a ProBody-címre mutató menüpontra lefut (a fejléc almenüje és egy
+  // esetleges másolat is); a tiszta szabály dönt soronként.
+  const menuTalalat = await payload.find({
+    collection: 'menus',
+    where: { url: { equals: PROFESSIONAL_TRAINING_URL } },
+    limit: 20,
+    depth: 0,
+    overrideAccess: true,
+  })
+  if (menuTalalat.docs.length === 0) {
+    logger.warn(
+      `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: a „Szakmai képzés” menüpont (nincs a ProBody-címre („${PROFESSIONAL_TRAINING_URL}”) mutató menüpont a Menus collectionben — már átírva, vagy a szerkesztő törölte)`,
+    )
+    kihagyasokSzama += 1
+  }
+  for (const menupont of menuTalalat.docs) {
+    const eredmeny = alkalmazSzakmaiMenupont(menupont)
+    naplozdLepeseket(eredmeny, dryRun)
+    modositasokSzama += eredmeny.modositasok.length
+    kihagyasokSzama += eredmeny.kihagyasok.length
+    if (eredmeny.adat !== null && !dryRun) {
+      await payload.update({
+        collection: 'menus',
+        id: menupont.id,
+        data: eredmeny.adat,
+        depth: 0,
+        overrideAccess: true,
+      })
     }
   }
 
