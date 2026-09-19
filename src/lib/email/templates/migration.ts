@@ -7,7 +7,7 @@ import {
 } from '../../migration-copy'
 import { RATE_LIMIT_RULES } from '../../security/rate-limit'
 import type { EmailTemplate } from '../types'
-import { escapeHtml, renderLayout } from './layout'
+import { accountEmailBlock, escapeHtml, renderLayout } from './layout'
 
 /**
  * Átköltöztetési értesítő a MÁR feltöltött vevőknek (WP40, 2026-09-16).
@@ -128,6 +128,7 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
   const greeting = name ? `Kedves ${name}!` : 'Szia!'
   const url = buildMigrationNoticeUrl(input.serverUrl)
   const email = input.email.trim()
+  const account = accountEmailBlock(email)
 
   const miert =
     'A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. ' +
@@ -156,7 +157,7 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
       paragraphsHtml: [
         escapeHtml(greeting),
         escapeHtml(miert),
-        `A fiókod e-mail-címe:<br /><strong style="overflow-wrap:anywhere;word-break:break-all;">${escapeHtml(email)}</strong>`,
+        account.html,
         escapeHtml(hogyan),
         `<strong>${escapeHtml(MIGRATION_NOTICE_ACCESS_SENTENCE)}</strong>`,
         escapeHtml(kurzusaim),
@@ -164,7 +165,7 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
       paragraphsText: [
         greeting,
         miert,
-        `A fiókod e-mail-címe: ${email}`,
+        account.text,
         hogyan,
         MIGRATION_NOTICE_ACCESS_SENTENCE,
         kurzusaim,

@@ -44,9 +44,9 @@ describe('aktiváló levél sablonja', () => {
         email: 'valaki@example.com',
         activationUrl: 'https://kineticare.example.com/x?token=abc',
       })
-      expect(email.html).toContain('Kedves Vásárlónk!')
+      expect(email.html).toContain('Szia!')
       expect(email.html).not.toContain('Kedves !')
-      expect(email.text).toContain('Kedves Vásárlónk!')
+      expect(email.text).toContain('Szia!')
     }
   })
 
@@ -132,7 +132,7 @@ describe('aktiváló levelek kiküldése', () => {
     expect(db.sentEmails[0].html).toContain('token-elso@example.com')
     expect(db.sentEmails[0].html).toContain('Kedves Első Vevő!')
     // A név nélküli címzett is kap semleges megszólítást.
-    expect(db.sentEmails[1].html).toContain('Kedves Vásárlónk!')
+    expect(db.sentEmails[1].html).toContain('Szia!')
     // Egyik levélbe sem szivárog át a MÁSIK címzett linkje.
     expect(db.sentEmails[0].html).not.toContain('token-masodik@example.com')
   })

@@ -116,6 +116,15 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
+/** A cím a levélben azonosítja a fiókot; sosem kerül a CTA tokenje helyére. */
+export function accountEmailBlock(email: string): Pick<EmailTemplate, 'html' | 'text'> {
+  const address = email.trim()
+  return {
+    html: `A fiókod e-mail-címe:<br /><strong style="overflow-wrap:anywhere;word-break:break-all;">${escapeHtml(address)}</strong>`,
+    text: `A fiókod e-mail-címe: ${address}`,
+  }
+}
+
 /** Elrendezés-táblázat nyitása — mindig `role="presentation"` (lásd a fejlécet). */
 function tablaNyit(extraStyle = ''): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;${extraStyle}">`
@@ -210,7 +219,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
   // A rejtett előnézeti szöveg után szóköz-kitöltés, különben a kliens a
   // levél további tartalmát is behúzza a listanézetbe.
   const preheaderHtml = preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${SZIN.papir};">${escapeHtml(preheader)}${'&#8199;&#65279;&#847; '.repeat(30)}</div>`
+    ? `<div data-email-preheader="" style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${SZIN.papir};">${escapeHtml(preheader)}${'&#8199;&#65279;&#847; '.repeat(30)}</div>`
     : ''
 
   const html = `<!DOCTYPE html>

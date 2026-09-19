@@ -25,6 +25,8 @@ import type { SendResult } from './types'
  */
 export function plainTextFromHtml(html: string): string {
   const withoutBlocks = html
+    // A saját layout rejtett postaláda-előnézete és kitöltése nem levéltörzs.
+    .replace(/<div\b[^>]*data-email-preheader[^>]*>[\s\S]*?<\/div>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')

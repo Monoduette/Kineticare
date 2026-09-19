@@ -2,7 +2,7 @@ import { ctaLabel } from '../../cta-vocabulary'
 import { isMyCoursePlayerUrl } from '../../courses'
 import type { EmailTemplate } from '../types'
 import { formatPriceHuf } from '../../format-price'
-import { escapeHtml, renderLayout } from './layout'
+import { accountEmailBlock, escapeHtml, renderLayout } from './layout'
 
 /**
  * Vásárlás-visszaigazoló sablon (paid után). Fiók-változatok: bejelentkezett,
@@ -98,6 +98,7 @@ export function orderConfirmationEmail(input: {
 
   if (input.account?.kind === 'password-setup') {
     const account = input.account
+    const identity = accountEmailBlock(account.email)
     const created =
       `A vásárláshoz fiókot készítettünk a(z) ${account.email} címmel. ` +
       'Már csak egy jelszót kell beállítanod, utána a kurzusod megnyílik.'
@@ -106,11 +107,12 @@ export function orderConfirmationEmail(input: {
       'Ha a link lejárt vagy nem működik, a belépési oldal „Elfelejtett jelszó" gombjával bármikor ' +
       'kérhetsz újat, ugyanezzel az e-mail-címmel.'
     paragraphsHtml.push(
+      identity.html,
       escapeHtml(created),
       `<strong>${escapeHtml(validity)}</strong>`,
       escapeHtml(notWorking),
     )
-    paragraphsText.push(created, validity, notWorking)
+    paragraphsText.push(identity.text, created, validity, notWorking)
     cta = { label: ctaLabel('password-reset-set'), url: account.activationUrl }
   } else if (input.account?.kind === 'login') {
     const account = input.account

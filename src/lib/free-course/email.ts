@@ -1,5 +1,5 @@
 import { ctaLabel } from '../cta-vocabulary'
-import { escapeHtml, renderLayout } from '../email/templates/layout'
+import { accountEmailBlock, escapeHtml, renderLayout } from '../email/templates/layout'
 import type { EmailTemplate } from '../email/types'
 
 /**
@@ -32,6 +32,7 @@ export interface FreeCourseEmailInput {
 export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
   const name = input.name?.trim() ?? ''
   const greeting = name ? `Kedves ${name}!` : 'Szia!'
+  const account = accountEmailBlock(input.email)
   const validity = `A link ${input.expiresInDays} napig érvényes.`
   const notWorking =
     'Ha a link lejárt vagy nem működik, a belépési oldal „Elfelejtett jelszó" gombjával bármikor ' +
@@ -48,6 +49,7 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
 
   const bodyHtml = [
     escapeHtml(greeting),
+    account.html,
     `A(z) <strong>${escapeHtml(input.courseTitle)}</strong> mostantól a tiéd. ` +
       '<strong>Ingyenes</strong>, fizetned nem kell érte.',
     escapeHtml(howTo),
@@ -57,6 +59,7 @@ export function freeCourseEmail(input: FreeCourseEmailInput): EmailTemplate {
   ]
   const bodyText = [
     greeting,
+    account.text,
     intro,
     howTo,
     `${validity} A link személyre szól, ne add tovább.`,

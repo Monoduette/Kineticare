@@ -1,6 +1,6 @@
 import { ctaLabel } from '../../cta-vocabulary'
 import type { EmailTemplate } from '../types'
-import { escapeHtml, renderLayout } from './layout'
+import { accountEmailBlock, escapeHtml, renderLayout } from './layout'
 
 /** Welcome (regisztráció) sablon. */
 export function welcomeEmail(input: { name: string; loginUrl: string }): EmailTemplate {
@@ -25,20 +25,26 @@ export function welcomeEmail(input: { name: string; loginUrl: string }): EmailTe
 /** Reset (elfelejtett jelszó) sablon. */
 export function resetPasswordEmail(input: {
   name?: string | null
+  email?: string | null
   resetUrl: string
 }): EmailTemplate {
   const greeting = input.name?.trim() ? `Kedves ${input.name.trim()}!` : 'Szia!'
+  const account = input.email?.trim() ? accountEmailBlock(input.email) : null
   return {
     subject: 'Jelszó visszaállítása',
     ...renderLayout({
+      eyebrow: 'Jelszó-visszaállítás',
+      preheader: 'A személyes linkkel állíthatod be az új jelszavadat.',
       heading: 'Jelszó visszaállítása',
       paragraphsHtml: [
         escapeHtml(greeting),
+        ...(account ? [account.html] : []),
         'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi gombbal állíthatsz be új jelszót, majd továbbléphetsz a kurzusaidhoz. A link korlátozott ideig érvényes.',
         'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],
       paragraphsText: [
         greeting,
+        ...(account ? [account.text] : []),
         'Jelszó-visszaállítást kértél a fiókodhoz. Az alábbi linken állíthatsz be új jelszót, majd továbbléphetsz a kurzusaidhoz. A link korlátozott ideig érvényes.',
         'Ha nem te kérted a visszaállítást, hagyd figyelmen kívül ezt a levelet. A jelszavad nem változik.',
       ],

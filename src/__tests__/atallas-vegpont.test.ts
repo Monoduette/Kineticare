@@ -50,6 +50,19 @@ describe('Payload auth-levél: a text/plain rész SOSEM üres', () => {
     expect(sent.text).toBe('saját szöveg')
   })
 
+  it('az auth-levél rejtett előnézeti kitöltése nem kerül a szöveges törzsbe', () => {
+    const mail = resetPasswordEmail({
+      email: 'pelda@example.test',
+      resetUrl: 'https://example.test/reset',
+    })
+    const text = plainTextFromHtml(mail.html)
+    expect(text).not.toContain('&#8199;')
+    expect(text).not.toContain('&#65279;')
+    expect(text).not.toContain('&#847;')
+    expect(text).toContain('pelda@example.test')
+    expect(text).toContain('https://example.test/reset')
+  })
+
   it('plainTextFromHtml: style/script kimarad, sortörés a blokkoknál, entitások dekódolva', () => {
     const text = plainTextFromHtml(
       '<html><head><style>p{color:red}</style></head><body><h1>Cím</h1><p>Első &amp; második</p><p>Link: <a href="https://x.hu/?a=1&amp;b=2">https://x.hu/?a=1&amp;b=2</a></p><script>alert(1)</script></body></html>',
