@@ -10,6 +10,7 @@ import { GoogleAnalytics } from '../components/analytics/GoogleAnalytics'
 import { PostHogProvider } from '../components/analytics/PostHogProvider'
 import { PostArticle } from '../components/content/PostArticle'
 import { APPOINTMENT_CTA_SLUGS, postCtaVariantOf } from '../components/content/post-article'
+import { APPOINTMENT_TEXT } from '../components/content/PostCourseCta'
 import {
   applyConsentToGoogleAnalytics,
   enableGoogleAnalytics,
@@ -238,6 +239,10 @@ describe('Shop — dual CTA a hét fixture-slugon, váll egy panel', () => {
     for (const slug of TULAJDONOSI_PISZKOZAT_SLUGOK) {
       expect(postCtaVariantOf({ slug }), slug).toBe('idopont')
     }
+    // Az időpontos panel szövege testrésztől független: a kézcikkek alatt nem
+    // szólhat „a váll panaszáról” (élesben mérve 2026-09-19, javítva).
+    expect(APPOINTMENT_TEXT).not.toMatch(/váll/i)
+    expect(APPOINTMENT_TEXT).toContain('személyes vizsgálat')
   })
 
   it('a hét kéz-cikk kurzus-változat, két testvér-panel, csomagoló nélkül', () => {
