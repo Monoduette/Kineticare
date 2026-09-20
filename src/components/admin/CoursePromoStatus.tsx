@@ -74,7 +74,10 @@ const HALF_DAY_MS = 12 * 60 * 60 * 1000
  * előtti nap, az első nap a kezdő pillanat napja.
  */
 export const NOT_PUBLISHED_WARNING =
-  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve és a dokumentum nincs közzétéve.'
+  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve.'
+
+export const DRAFT_WARNING =
+  'A dokumentumnak nem közzétett módosításai vannak: a látogató a legutóbb közzétett változatot látja, az itteni beállítások közzététel után élnek.'
 
 export const NO_PRICE_WARNING =
   'A kurzusnak nincs érvényes ára (ingyenes vagy üres az ár), ezért az akciós megjelenés és az Akció címke nem jelenik meg.'
@@ -105,15 +108,22 @@ export function deriveCoursePromoStatus(
   // A bolt KÉT kaput néz: a saját `status` mezőt ÉS a Payload `_status`-t
   // (piszkozat dokumentum nyilvánosan 404). Mindkettőnek közzétettnek kell
   // lennie (Devin, #278).
-  const published = fields.status === 'published' && fields._status !== 'draft'
+  const published = fields.status === 'published'
+  // Piszkozat dokumentum: vagy még sosem volt közzétéve (404), vagy egy már
+  // közzétett kurzus ÚJABB piszkozata (a látogató a legutóbb közzétett változatot
+  // látja). A form ezt nem tudja megkülönböztetni, ezért a szöveg csak annyit
+  // mond, amit biztosan tudunk: az itteni módosítások közzététel nélkül nem élnek.
+  const draftDocument = fields._status === 'draft'
   const warning =
     promo.enabled && !published
       ? NOT_PUBLISHED_WARNING
-      : promo.enabled && !hasValidPrice
-        ? NO_PRICE_WARNING
-        : promo.enabled && originalWanted && promo.originalPriceHuf === null
-          ? ORIGINAL_PRICE_WARNING
-          : null
+      : promo.enabled && draftDocument
+        ? DRAFT_WARNING
+        : promo.enabled && !hasValidPrice
+          ? NO_PRICE_WARNING
+          : promo.enabled && originalWanted && promo.originalPriceHuf === null
+            ? ORIGINAL_PRICE_WARNING
+            : null
 
   if (promo.reason === 'kikapcsolva') {
     return { message: PROMO_OFF_MESSAGE, warning: null, reason: promo.reason }

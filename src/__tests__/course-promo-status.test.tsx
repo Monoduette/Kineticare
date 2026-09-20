@@ -28,6 +28,7 @@ afterEach(() => {
 const {
   CoursePromoStatus,
   CoursePromoStatusView,
+  DRAFT_WARNING,
   NO_PRICE_WARNING,
   NOT_PUBLISHED_WARNING,
   ORIGINAL_PRICE_WARNING,
@@ -130,7 +131,7 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
     expect(
       deriveCoursePromoStatus({ ...base, ...on, status: 'published', _status: 'draft' }, NOW)
         .warning,
-    ).toBe(NOT_PUBLISHED_WARNING)
+    ).toBe(DRAFT_WARNING)
     expect(
       deriveCoursePromoStatus({ ...base, ...on, status: 'published', _status: 'published' }, NOW)
         .warning,
