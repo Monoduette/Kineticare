@@ -9,17 +9,14 @@ import { describe, expect, it, vi } from 'vitest'
  * ellenőriz és élesben igazol, de a teszt nem ér adatbázist és fájlrendszert.
  */
 const provenanceMocks = vi.hoisted(() => ({
-  inspect: vi.fn(async (): Promise<{ receipt: unknown; valid: boolean }> => ({
-    receipt: null,
-    valid: true,
-  })),
+  require: vi.fn(async (): Promise<unknown> => ({})),
   enroll: vi.fn(async (): Promise<void> => undefined),
 }))
 vi.mock('../lib/media-recovery-provenance', async (importOriginal) => {
   const eredeti = await importOriginal<typeof import('../lib/media-recovery-provenance')>()
   return {
     ...eredeti,
-    inspectMediaRecoveryReceipt: provenanceMocks.inspect,
+    requireMediaRecoveryReceipt: provenanceMocks.require,
     enrollMediaRecovery: provenanceMocks.enroll,
   }
 })
@@ -252,51 +249,95 @@ describe('payloadMediaFuggosegek — a valódi Médiatár-hozzáférés a próba
     expect(await deps.keres('nincs.webp')).toBeNull()
   })
 
-  describe('kezelt (manifestes) kép meglévő rekordja — eredetigazolás (Devin-találat, #270)', () => {
+  describe('kezelt (manifestes) kép meglévő rekordja — eredetigazolás (Devin #270, Codex #271)', () => {
     const KEZELT = 'founders-intro-white-1600.webp'
-    const hamisKezelt = () => {
+    const hamisKezelt = (staticDir: string) => {
       const find = vi.fn(async () => ({ docs: [{ id: 33, filename: KEZELT }] }))
-      return { payload: { find } as unknown as Payload, find }
+      const payload = {
+        find,
+        collections: { media: { config: { upload: { staticDir } } } },
+      } as unknown as Payload
+      return { payload, find }
+    }
+    const konyvtarFajllal = () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kc-media-'))
+      writeFileSync(join(dir, KEZELT), 'x')
+      return dir
     }
 
-    it('érvényes igazolással: azonosítót ad, nem igazol újra', async () => {
-      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: {}, valid: true })
+    it('érvényes igazolással (a tárolt fájl NÉLKÜL is eldönthető): azonosítót ad, nem igazol újra', async () => {
+      provenanceMocks.require.mockResolvedValueOnce({})
       provenanceMocks.enroll.mockClear()
-      const { payload } = hamisKezelt()
-      expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
-      expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      const dir = mkdtempSync(join(tmpdir(), 'kc-media-'))
+      try {
+        const { payload } = hamisKezelt(dir)
+        expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
+        expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
 
     it('igazolás nélkül próbafutásban: azonosítót ad, de NEM ír (nem igazol)', async () => {
-      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+      provenanceMocks.require.mockRejectedValueOnce(new Error('nincs igazolás'))
       provenanceMocks.enroll.mockClear()
-      const { payload } = hamisKezelt()
-      expect(await payloadMediaFuggosegek(payload).keres(KEZELT)).toBe(33)
-      expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      const dir = konyvtarFajllal()
+      try {
+        const { payload } = hamisKezelt(dir)
+        expect(await payloadMediaFuggosegek(payload).keres(KEZELT)).toBe(33)
+        expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
 
-    it('igazolás nélkül élesben: idempotensen igazol, majd az azonosítót adja', async () => {
-      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+    it('igazolás nélkül élesben, a fájl megvan: idempotensen igazol, majd az azonosítót adja', async () => {
+      provenanceMocks.require.mockRejectedValueOnce(new Error('nincs igazolás'))
       provenanceMocks.enroll.mockClear()
-      const { payload } = hamisKezelt()
-      expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
-      expect(provenanceMocks.enroll).toHaveBeenCalledTimes(1)
+      const dir = konyvtarFajllal()
+      try {
+        const { payload } = hamisKezelt(dir)
+        expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
+        expect(provenanceMocks.enroll).toHaveBeenCalledTimes(1)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
 
-    it('ha az igazolás nem sikerül (a fájl nem ellenőrizhető): hangosan dob, azonosító nélkül', async () => {
-      provenanceMocks.inspect.mockResolvedValueOnce({ receipt: null, valid: false })
+    it('igazolás nélkül élesben, a fájl NINCS meg (nincs Volume): hangosan dob, nem próbál igazolni', async () => {
+      provenanceMocks.require.mockRejectedValueOnce(new Error('nincs igazolás'))
+      provenanceMocks.enroll.mockClear()
+      const dir = mkdtempSync(join(tmpdir(), 'kc-media-'))
+      try {
+        const { payload } = hamisKezelt(dir)
+        await expect(
+          payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT),
+        ).rejects.toThrow('nincs csatolt Volume')
+        expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('ha az igazolás nem sikerül (bájt-eltérés): hangosan dob, azonosító nélkül', async () => {
+      provenanceMocks.require.mockRejectedValueOnce(new Error('nincs igazolás'))
       provenanceMocks.enroll.mockRejectedValueOnce(new Error('bájt-eltérés'))
-      const { payload } = hamisKezelt()
-      await expect(
-        payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT),
-      ).rejects.toThrow('igazolása sikertelen')
+      const dir = konyvtarFajllal()
+      try {
+        const { payload } = hamisKezelt(dir)
+        await expect(
+          payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT),
+        ).rejects.toThrow('igazolása sikertelen')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
 
     it('nem kezelt fájlnévnél nincs igazolás-ellenőrzés', async () => {
-      provenanceMocks.inspect.mockClear()
+      provenanceMocks.require.mockClear()
       const { payload } = hamisPayload()
       expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres('megvan.webp')).toBe(12)
-      expect(provenanceMocks.inspect).not.toHaveBeenCalled()
+      expect(provenanceMocks.require).not.toHaveBeenCalled()
     })
   })
 

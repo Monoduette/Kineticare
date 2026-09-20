@@ -185,9 +185,11 @@
   border-color: var(--kc-color-on-dark-muted);
 }
 
-.kc-section--dark .kc-arlista__duration,
+/* A kártyák (`.kc-card`) sötét sávon is fehérek maradnak, ezért a bennük
+   álló időtartam és megjegyzés a sötét szöveg-tokenen marad (a halvány
+   on-dark szín a fehér kártyán 1,84:1 lenne, WCAG 2.2 SC 1.4.3; Codex/Devin,
+   #273). A halvány szín csak a közvetlenül a sötét sávon álló szövegeké. */
 .kc-section--dark .kc-arlista__note,
-.kc-section--dark .kc-arlista__card-note,
 .kc-section--dark .kc-arlista__panel-sub {
   color: var(--kc-color-on-dark-muted);
 }

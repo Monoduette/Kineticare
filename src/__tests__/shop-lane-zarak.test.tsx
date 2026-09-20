@@ -9,7 +9,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { GoogleAnalytics } from '../components/analytics/GoogleAnalytics'
 import { PostHogProvider } from '../components/analytics/PostHogProvider'
 import { PostArticle } from '../components/content/PostArticle'
-import { APPOINTMENT_CTA_SLUGS, postCtaVariantOf } from '../components/content/post-article'
+import {
+  APPOINTMENT_CTA_SLUGS,
+  postCtaShowsFreeCourse,
+  postCtaVariantOf,
+} from '../components/content/post-article'
 import { APPOINTMENT_TEXT } from '../components/content/PostCourseCta'
 import {
   applyConsentToGoogleAnalytics,
@@ -243,6 +247,13 @@ describe('Shop — dual CTA a hét fixture-slugon, váll egy panel', () => {
     // szólhat „a váll panaszáról” (élesben mérve 2026-09-19, javítva).
     expect(APPOINTMENT_TEXT).not.toMatch(/váll/i)
     expect(APPOINTMENT_TEXT).toContain('személyes vizsgálat')
+    // Traumás cikkek alatt az ingyenes belépő kurzus sora sem jelenik meg
+    // (a cikk szerint az otthoni program csak orvosi engedéllyel jön szóba;
+    // Codex P1, #271); a váll-cikknél a sor marad.
+    for (const slug of TULAJDONOSI_PISZKOZAT_SLUGOK) {
+      expect(postCtaShowsFreeCourse({ slug }), slug).toBe(false)
+    }
+    expect(postCtaShowsFreeCourse({ slug: VALL_SLUG })).toBe(true)
   })
 
   it('a hét kéz-cikk kurzus-változat, két testvér-panel, csomagoló nélkül', () => {

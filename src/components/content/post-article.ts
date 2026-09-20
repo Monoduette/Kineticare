@@ -310,6 +310,21 @@ export const APPOINTMENT_CTA_SLUGS: readonly string[] = [
   'gipszben-a-kezed',
 ]
 
+/**
+ * Friss sérüléses (traumás) cikkek: az időpont-panel alatt az ingyenes belépő
+ * kurzus sora sem jelenik meg, mert a cikk szövege szerint az otthoni program
+ * csak orvosi engedéllyel jön szóba (Codex P1, #271). A váll-cikknél a sor
+ * marad (a kézpanaszos kurzus ott kiegészítő ajánlat).
+ */
+export const TRAUMA_CTA_SLUGS: readonly string[] = [
+  'peace-and-love-friss-serules',
+  'gipszben-a-kezed',
+]
+
+export function postCtaShowsFreeCourse(post: Pick<Post, 'slug'>): boolean {
+  return !(typeof post.slug === 'string' && TRAUMA_CTA_SLUGS.includes(post.slug))
+}
+
 export function postCtaVariantOf(post: Pick<Post, 'slug'>): PostCtaVariant {
   return typeof post.slug === 'string' && APPOINTMENT_CTA_SLUGS.includes(post.slug)
     ? 'idopont'

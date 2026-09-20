@@ -121,7 +121,14 @@ fejléc-kép szabály).
    kézi rekord): a `keres` élesben idempotensen pótolja az eredetigazolást
    (`enrollMediaRecovery`), próbafutásban csak jelzi; ha a fájl nem ellenőrizhető,
    hangosan dob, és a hivatkozó szabály nem fut le (Devin-találat, #270).
-7. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
+7. Kezelt (manifestes) rekord alt-ját az alt-lefedettség NEM írja: az eredetigazolás a
+   rekord pillanatképét (alt, updatedAt) rögzíti, egy sima update érvénytelenítené, és a
+   Volume-helyreállítás elutasítaná a képet (Devin/Codex, #271). Ezek a képek a
+   létrehozáskor a manifest alt-ját kapják; ha mégis üres, az adminban pótlandó. A
+   `keres` az igazolás érvényességét a tárolt fájl NÉLKÜL dönti el
+   (`requireMediaRecoveryReceipt`), mert a content-job nem látja a Volume-ot; hiányzó
+   igazolásnál csak akkor igazol, ha a fájl a konténerben megvan, különben hangosan dob.
+8. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
    ELSŐ elemét veszi; ha valaha `…-1.webp` duplikátum keletkezik a packshotokból,
    a Médiatárban kézzel kell egyértelműsíteni.
 

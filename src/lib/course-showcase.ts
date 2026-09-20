@@ -158,6 +158,14 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
  * pozíció a rácsban a súlyozás eszköze: az olvasás bal felülről indul (NN/g
  * F-minta), így az első kártya a fizetős program.
  */
+/**
+ * A kurzusrács megjelenítési sapkája. Korábban a `getPublishedProducts` alap
+ * 12-es lekérdezési limitje adta; a CTA-cél feloldásához a route-ok azóta
+ * többet kérnek (`CTA_TERMEK_LEKERDEZES_LIMIT`), ezért a rács saját sapkát
+ * kap, hogy a kínálat bővülésével ne nőjön 12 fölé (Devin/Codex, #271).
+ */
+export const KURZUSRACS_LIMIT = 12
+
 export function showcaseProducts(visibleProducts: readonly Product[]): Product[] {
   const paid = visibleProducts.filter(isPaidCourse)
   const sos = visibleProducts.find(isAvailableSosProduct)

@@ -128,23 +128,42 @@ describe('WP57 — a jelölt-lista', () => {
 
 describe('WP57 — fájlnév-illesztés', () => {
   it('a törzs, a webp-változat és a Payload -1 utótagos változata illeszkedik', () => {
-    expect(illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600.webp')).toBe(true)
-    expect(illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-1.webp')).toBe(true)
-    expect(illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-12.webp')).toBe(true)
+    expect(
+      illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600.webp'),
+    ).toBe(true)
+    expect(
+      illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-1.webp'),
+    ).toBe(true)
+    expect(
+      illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-12.webp'),
+    ).toBe(true)
     expect(illeszkedikMediaFajlnev('kossuth-radio', 'kossuth-radio.png')).toBe(true)
-    expect(illeszkedikMediaFajlnev('67b3c6e9e315f_KocsisKatakozeli', '67b3c6e9e315f_KocsisKatakozeli.webp')).toBe(true)
+    expect(
+      illeszkedikMediaFajlnev(
+        '67b3c6e9e315f_KocsisKatakozeli',
+        '67b3c6e9e315f_KocsisKatakozeli.webp',
+      ),
+    ).toBe(true)
   })
 
   it('idegen fájl nem illeszkedik (toldalék, más törzs, regex-karakter)', () => {
-    expect(illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-v2.webp')).toBe(false)
-    expect(illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-16000.webp')).toBe(false)
+    expect(
+      illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-1600-v2.webp'),
+    ).toBe(false)
+    expect(
+      illeszkedikMediaFajlnev('founders-intro-white-1600', 'founders-intro-white-16000.webp'),
+    ).toBe(false)
     expect(illeszkedikMediaFajlnev('kep', 'kepek.webp')).toBe(false)
     expect(illeszkedikMediaFajlnev('kep.v1', 'kepXv1.webp')).toBe(false)
   })
 })
 
 describe('WP57 — üres-alt összesítés', () => {
-  const rekord = (id: number, filename: string, alt: string | null | undefined): MediaAltRekord => ({
+  const rekord = (
+    id: number,
+    filename: string,
+    alt: string | null | undefined,
+  ): MediaAltRekord => ({
     id,
     filename,
     alt,
@@ -166,7 +185,9 @@ describe('WP57 — üres-alt összesítés', () => {
   })
 
   it('a lista legfeljebb 50 fájlnév, a darab a teljes szám', () => {
-    const sok = Array.from({ length: 70 }, (_, i) => rekord(i + 1, `kep-${String(i + 1).padStart(3, '0')}.webp`, ''))
+    const sok = Array.from({ length: 70 }, (_, i) =>
+      rekord(i + 1, `kep-${String(i + 1).padStart(3, '0')}.webp`, ''),
+    )
     const o = uresAltOsszesites(sok, new Set())
     expect(o.darab).toBe(70)
     expect(o.fajlnevek).toHaveLength(URES_ALT_LISTA_LIMIT)
@@ -203,12 +224,17 @@ describe('WP57 — a futtató', () => {
     const { tar: t } = tar(irAlt)
     const e = await futtatMediaAltLefedettseg(t, true)
     expect(irAlt).not.toHaveBeenCalled()
-    // 1 (packshot) + 2 (founders-intro és a -1 változat) módosítandó.
-    expect(e.modositasok).toBe(3)
-    // Az üres alt-ok közül a három kitöltendő nem, a nem illeszkedő -v2 és az
-    // ismeretlen kép igen: kettő maradna.
-    expect(e.uresMaradt.darab).toBe(2)
-    expect(e.uresMaradt.fajlnevek).toEqual(['founders-intro-white-1600-v2.webp', 'ismeretlen-kep.webp'])
+    // A packshot és a -1 utótagos (NEM kezelt) változat módosítandó; a kezelt
+    // (manifestes, pontos fájlnevű) founders-intro rekord alt-ját a job nem írja
+    // (az eredetigazolás pillanatképe sérülne; Devin/Codex, #271).
+    expect(e.modositasok).toBe(2)
+    // Üresen marad: a kezelt rekord, a nem illeszkedő -v2 és az ismeretlen kép.
+    expect(e.uresMaradt.darab).toBe(3)
+    expect(e.uresMaradt.fajlnevek).toEqual([
+      'founders-intro-white-1600-v2.webp',
+      'founders-intro-white-1600.webp',
+      'ismeretlen-kep.webp',
+    ])
     expect(e.kihagyasok).toBeGreaterThan(0)
   })
 
@@ -219,13 +245,14 @@ describe('WP57 — a futtató', () => {
     })
     const { tar: t } = tar(irAlt)
     const e = await futtatMediaAltLefedettseg(t, false)
-    expect(e.modositasok).toBe(3)
-    expect(irt.map(([id]) => id).sort()).toEqual([1, 2, 3])
-    const alapitok = managedMediaAssets().find((a) => a.file === 'founders-intro-white-1600.webp')
-    expect(irt.find(([id]) => id === 2)?.[1]).toBe(alapitok?.alt)
-    expect(irt.find(([id]) => id === 3)?.[1]).toBe(alapitok?.alt)
+    expect(e.modositasok).toBe(2)
+    expect(irt.map(([id]) => id).sort()).toEqual([1, 3])
     expect(irt.find(([id]) => id === 1)?.[1]).toBe(MEDIA_ALT_SZOVEGEK[0].alt)
-    expect(irt.some(([id]) => id === 4 || id === 5 || id === 6 || id === 7)).toBe(false)
+    const alapitok = managedMediaAssets().find((a) => a.file === 'founders-intro-white-1600.webp')
+    expect(irt.find(([id]) => id === 3)?.[1]).toBe(alapitok?.alt)
+    // A kezelt (manifestes, pontos fájlnevű) rekord (2) érintetlen: az alt-írás
+    // az eredetigazolást érvénytelenítené (Devin/Codex, #271).
+    expect(irt.some(([id]) => id === 2 || id === 4 || id === 5 || id === 6 || id === 7)).toBe(false)
   })
 
   it('idempotens: a második futás semmit nem módosít', async () => {
@@ -234,13 +261,13 @@ describe('WP57 — a futtató', () => {
       rekordok[i] = { ...rekordok[i]!, alt }
     })
     const elso = await futtatMediaAltLefedettseg(t, false)
-    expect(elso.modositasok).toBe(3)
+    expect(elso.modositasok).toBe(2)
     const irAltMasodik = vi.fn(async () => {
       throw new Error('a második futásnak nincs mit írnia')
     })
     const masodik = await futtatMediaAltLefedettseg({ ...t, irAlt: irAltMasodik }, false)
     expect(masodik.modositasok).toBe(0)
     expect(irAltMasodik).not.toHaveBeenCalled()
-    expect(masodik.uresMaradt.darab).toBe(2)
+    expect(masodik.uresMaradt.darab).toBe(3)
   })
 })

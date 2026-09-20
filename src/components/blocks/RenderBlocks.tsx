@@ -3,7 +3,7 @@ import {
   EMPTY_APPOINTMENT_CONTEXT,
   type AppointmentSectionContext,
 } from '../../lib/appointment/context'
-import { showcaseProducts } from '../../lib/course-showcase'
+import { KURZUSRACS_LIMIT, showcaseProducts } from '../../lib/course-showcase'
 import { resolveCtaBannerFigure } from '../../lib/cta-banner-course'
 import { logger } from '../../lib/logger'
 import { CLINIC_TREATMENTS_ANCHOR } from '../../lib/menu-seed'
@@ -151,7 +151,9 @@ export function RenderBlocks({
   // igazolt ingyenes SOS „Ingyenes” felirattal (WP12, tulajdonosi kérés
   // 2026-09-07; a 2026-08-15-i „csak fizetős” K2-szabály felülvizsgálva,
   // indoklás és források: `showcaseProducts`, src/lib/course-showcase.ts).
-  const gridProducts = showcaseProducts(visibleProducts)
+  // A rács legfeljebb KURZUSRACS_LIMIT kártya; a CTA-feloldás a teljes
+  // `visibleProducts` listából dolgozik (Devin/Codex, #271).
+  const gridProducts = showcaseProducts(visibleProducts).slice(0, KURZUSRACS_LIMIT)
   const freeSosBlocks = layout.filter((block) => block.blockType === 'freeSos')
   const visibleFreeSosBlocks = freeSosBlocks.filter(
     (block) => block.sectionSettings?.visible !== false,

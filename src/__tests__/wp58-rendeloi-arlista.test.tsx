@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { CLINIC_TREATMENTS_ANCHOR } from '../lib/menu-seed'
-import { felismerRendeloiArlista, labjegyzetMondat } from '../lib/rendeloi-arlista'
+import { felismerRendeloiArlista, idopontkeroCel, labjegyzetMondat } from '../lib/rendeloi-arlista'
 import type { Page } from '../payload-types'
 import {
   buildSzolgaltatasokLayout,
@@ -318,6 +318,47 @@ describe('WP58 H3: visszaesés sima folyószövegre', () => {
     expect(html).not.toContain('kc-arlista')
     expect(html).toContain('<h2>Rendelői kezelések</h2>')
     expect(html).toContain('Átírt, árlista nélküli szöveg.')
+  })
+  it('tájékoztató linkes bekezdés (nem időpontkérés) → visszaesés, a mondat és a link megmarad', () => {
+    // Codex/Devin (#273): egy /biztositas-ra mutató mondatot a régi kód a CTA-nak
+    // vett, a szöveg eltűnt, és a fix felirat idegen célra vitt volna.
+    const tartalom = eloTartalom()
+    tartalom.root.children.pop()
+    tartalom.root.children.push(
+      paragraph([
+        textNode('A biztosítói tudnivalókat '),
+        link('/biztositas', 'itt találod'),
+        textNode('.'),
+      ]),
+    )
+    const html = render([richTextBlokk(tartalom, CLINIC_TREATMENTS_ANCHOR)])
+    expect(html).not.toContain('kc-arlista')
+    expect(html).toContain('<a href="/biztositas">itt találod</a>')
+    expect(html).toContain('A biztosítói tudnivalókat')
+  })
+
+  it('feloldhatatlan (tiltott sémájú) időpontkérő link → visszaesés, semmi nem vész el', () => {
+    const tartalom = eloTartalom()
+    tartalom.root.children.pop()
+    tartalom.root.children.push(
+      paragraph([
+        textNode('Időpont: '),
+        link('javascript:alert(1)', 'időpontot kérek'),
+        textNode('.'),
+      ]),
+    )
+    const html = render([richTextBlokk(tartalom, CLINIC_TREATMENTS_ANCHOR)])
+    expect(html).not.toContain('kc-arlista')
+    expect(html).toContain('időpontot kérek')
+  })
+
+  it('idopontkeroCel: csak a /kapcsolat oldal (horgonnyal, query-vel is) számít időpontkérésnek', () => {
+    expect(idopontkeroCel('/kapcsolat')).toBe(true)
+    expect(idopontkeroCel('/kapcsolat#idopontkeres')).toBe(true)
+    expect(idopontkeroCel('/kapcsolat?forras=arlista')).toBe(true)
+    expect(idopontkeroCel('/kapcsolatok')).toBe(false)
+    expect(idopontkeroCel('/biztositas')).toBe(false)
+    expect(idopontkeroCel('https://kineticare.hu/kapcsolat')).toBe(false)
   })
 })
 
