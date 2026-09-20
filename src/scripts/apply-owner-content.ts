@@ -4847,6 +4847,11 @@ const mediaFajlnevek = async (
  * szöveget — ezt jelezni kell, nem elhallgatni. (Ugyanez a csapda:
  * src/scripts/videok-modulba.ts.)
  */
+// A piszkozatot az ÍRÁS ELŐTT kell `draft: true`-val olvasni: a publikáló
+// `update` után a legutóbbi verzió mindig a friss publikált, így az utána
+// olvasott dátum minden futásnál „újabb” lenne (mérve élesben 2026-09-20: az
+// akciós kurzusnál hamis riasztás), a valódi, korábbi piszkozat pedig
+// észrevétlen maradna.
 const figyelmeztessPiszkozatra = (
   cimke: string,
   publikaltFrissitve: unknown,
@@ -4956,15 +4961,6 @@ async function futtat(): Promise<void> {
     kezdolapLepes(alkalmazKezdolapSajtologoSorrend(kezdolapLayout))
 
     if (kezdolapValtozott && !dryRun) {
-      await payload.update({
-        collection: 'pages',
-        id: kezdolap.id,
-        // A blokk-mező részlegesen nem frissíthető: a TELJES szekciósor megy
-        // vissza, de a nem érintett blokkok objektumai változatlanok.
-        data: { layout: kezdolapLayout },
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'pages',
@@ -4974,6 +4970,15 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'pages',
+        id: kezdolap.id,
+        // A blokk-mező részlegesen nem frissíthető: a TELJES szekciósor megy
+        // vissza, de a nem érintett blokkok objektumai változatlanok.
+        data: { layout: kezdolapLayout },
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra('kezdőlap', kezdolap.updatedAt, piszkozat?.updatedAt)
     }
   }
@@ -5013,13 +5018,6 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(termekAdat).length > 0 && !dryRun) {
-      await payload.update({
-        collection: 'products',
-        id: termek.id,
-        data: termekAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'products',
@@ -5029,6 +5027,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'products',
+        id: termek.id,
+        data: termekAdat,
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra(`kurzus („${KURZUS_SKU}”)`, termek.updatedAt, piszkozat?.updatedAt)
     }
   }
@@ -5160,13 +5165,6 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(irando).length > 0 && !dryRun) {
-      await payload.update({
-        collection: 'pages',
-        id: rolunk.id,
-        data: irando,
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'pages',
@@ -5176,6 +5174,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'pages',
+        id: rolunk.id,
+        data: irando,
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra('Rólunk oldal', rolunk.updatedAt, piszkozat?.updatedAt)
     }
   }
@@ -5246,13 +5251,6 @@ async function futtat(): Promise<void> {
     const aszfVegsoTartalom = aszfBarion.content ?? aszfTenyek.content ?? aszfEredmeny.content
 
     if (aszfVegsoTartalom !== null && !dryRun) {
-      await payload.update({
-        collection: 'pages',
-        id: aszfOldal.id,
-        data: { content: aszfVegsoTartalom as typeof aszfOldal.content },
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'pages',
@@ -5262,6 +5260,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'pages',
+        id: aszfOldal.id,
+        data: { content: aszfVegsoTartalom as typeof aszfOldal.content },
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra('ÁSZF', aszfOldal.updatedAt, piszkozat?.updatedAt)
     }
   }
@@ -5383,13 +5388,6 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(sosAdat).length > 0 && !dryRun) {
-      await payload.update({
-        collection: 'products',
-        id: sosKurzus.id,
-        data: sosAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'products',
@@ -5399,6 +5397,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'products',
+        id: sosKurzus.id,
+        data: sosAdat,
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra(
         `SOS kurzus („${SOS_COURSE_SKU}”)`,
         sosKurzus.updatedAt,
@@ -5574,13 +5579,6 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(irandoSzolgaltatasok).length > 0 && !dryRun) {
-      await payload.update({
-        collection: 'pages',
-        id: szolgaltatasok.id,
-        data: irandoSzolgaltatasok,
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'pages',
@@ -5590,6 +5588,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'pages',
+        id: szolgaltatasok.id,
+        data: irandoSzolgaltatasok,
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra(
         'Szolgáltatások oldal',
         szolgaltatasok.updatedAt,
@@ -5650,13 +5655,6 @@ async function futtat(): Promise<void> {
     kihagyasokSzama += kapcsolatEredmeny.kihagyasok.length
 
     if (kapcsolatEredmeny.layout !== null && !dryRun) {
-      await payload.update({
-        collection: 'pages',
-        id: kapcsolat.id,
-        data: { layout: kapcsolatEredmeny.layout },
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'pages',
@@ -5666,6 +5664,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'pages',
+        id: kapcsolat.id,
+        data: { layout: kapcsolatEredmeny.layout },
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra('Kapcsolat oldal', kapcsolat.updatedAt, piszkozat?.updatedAt)
     }
   }
@@ -5762,13 +5767,6 @@ async function futtat(): Promise<void> {
       akciosAdat.longDescription = arszoveg.content as Product['longDescription']
     }
     if (Object.keys(akciosAdat).length > 0 && !dryRun) {
-      await payload.update({
-        collection: 'products',
-        id: akciosKurzus.id,
-        data: akciosAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
       const piszkozat = await payload
         .findByID({
           collection: 'products',
@@ -5778,6 +5776,13 @@ async function futtat(): Promise<void> {
           overrideAccess: true,
         })
         .catch(() => null)
+      await payload.update({
+        collection: 'products',
+        id: akciosKurzus.id,
+        data: akciosAdat,
+        depth: 0,
+        overrideAccess: true,
+      })
       figyelmeztessPiszkozatra(
         `akciós kurzus („${AKCIOS_KURZUS_SLUG}”)`,
         akciosKurzus.updatedAt,
