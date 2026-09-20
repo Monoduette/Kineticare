@@ -1,6 +1,6 @@
 import { createElement, Fragment, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ProductCard } from '../components/content/ProductCard'
 import { CourseShowcase } from '../components/content/home/CourseShowcase'
@@ -58,6 +58,15 @@ const KIKAPCSOLT = {
   promoStart: '2026-09-01T00:00:00.000Z',
   promoEnd: '2026-09-30T00:00:00.000Z',
 }
+
+// A kártyák a VALÓS órát nézik (nem kapnak `now`-t), ezért az órát befagyasztjuk,
+// különben a rögzített időablak 2026-10-01 után lejárna (Codex, #278).
+beforeEach(() => {
+  vi.useFakeTimers({ now: NOW })
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('CoursePromoBadge', () => {
   it('ingyenes vagy archivált kurzuson élő időablak mellett sincs címke (a kártya és az oldal egyet mond)', () => {

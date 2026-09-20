@@ -66,7 +66,7 @@ beforeEach(() => {
 })
 
 describe('kurzusoldal — akciós kapcsoló', () => {
-  it('élő akciónál az akciós sablon megy, a strukturált adat priceValidUntil-lel', async () => {
+  it('élő akciónál az akciós sablon megy, határidő-állítás nélkül', async () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-hero')
     expect(html).toContain('id="akcios-vasarlas"')
@@ -75,7 +75,7 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     expect(html).toContain('id="tananyag"')
     expect(html).toContain('TRACKING')
     expect(html).toContain('BARION')
-    expect(html).toContain('"priceValidUntil":"2099-12-31"')
+    expect(html).not.toContain('priceValidUntil')
     expect(html).not.toContain('kc-course-buybox')
     expect(html).not.toContain('kc-course-breadcrumb')
   })

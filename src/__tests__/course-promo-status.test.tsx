@@ -36,7 +36,12 @@ const {
   withDaySuffix,
 } = await import('../components/admin/CoursePromoStatus')
 
-const base = { priceInHUF: 19_900, priceInHUFEnabled: true, promoOriginalPriceHuf: null }
+const base = {
+  priceInHUF: 19_900,
+  priceInHUFEnabled: true,
+  promoOriginalPriceHuf: null,
+  status: 'published',
+}
 const NOW = new Date('2026-09-20T10:00:00Z')
 
 describe('withDaySuffix: a keltezés ragja hangrend szerint', () => {
@@ -116,6 +121,12 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
       NOT_PUBLISHED_WARNING,
     )
     expect(deriveCoursePromoStatus({ ...base, ...on, status: 'published' }, NOW).warning).toBeNull()
+    expect(deriveCoursePromoStatus({ ...base, ...on, status: null }, NOW).warning).toBe(
+      NOT_PUBLISHED_WARNING,
+    )
+    expect(deriveCoursePromoStatus({ ...base, ...on, status: undefined }, NOW).warning).toBe(
+      NOT_PUBLISHED_WARNING,
+    )
   })
 
   it('ingyenes vagy ár nélküli kurzuson a pipa hatástalan, és ezt a doboz kimondja', () => {
@@ -172,6 +183,7 @@ describe('CoursePromoStatus (konténer, SSR)', () => {
     formFields.promoOriginalPriceHuf = { value: 15_000 }
     formFields.priceInHUF = { value: 19_900 }
     formFields.priceInHUFEnabled = { value: true }
+    formFields.status = { value: 'published' }
     const html = renderToStaticMarkup(createElement(CoursePromoStatus))
     expect(html).toContain('Az akció most él (szeptember 30-ig).')
     expect(html).toContain(ORIGINAL_PRICE_WARNING)

@@ -30,7 +30,7 @@ import {
 export const PROMO_OFF_MESSAGE = 'Az akciós megjelenés ki van kapcsolva.'
 
 export const ORIGINAL_PRICE_WARNING =
-  'Az eredeti ár nem jelenik meg áthúzva, mert nem nagyobb a mostani árnál.'
+  'A teljes ár nem jelenik meg áthúzva, mert nem nagyobb a mostani árnál.'
 
 /**
  * A magyar keltezés ragjai a nap sorszámához (AkH. 12. kiadás 297. pont):
@@ -96,10 +96,9 @@ export function deriveCoursePromoStatus(
     fields.priceInHUF > 0
   // A bolti státusz is feltétel (isCoursePromoDisplayed): archivált vagy
   // piszkozat kurzuson a doboz ne mondjon élő akciót (Devin, #278).
-  // Ismeretlen (nincs a formban) státusz nem riaszt: csak a tényleges
-  // piszkozat/archivált érték.
-  const published =
-    fields.status === undefined || fields.status === null || fields.status === 'published'
+  // Fail-closed, mint a bolt: CSAK a szó szerinti 'published' számít
+  // közzétettnek; hiányzó vagy null státusz is figyelmeztet (Devin, #278).
+  const published = fields.status === 'published'
   const warning =
     promo.enabled && !published
       ? NOT_PUBLISHED_WARNING
@@ -224,7 +223,7 @@ export function CoursePromoStatus(): JSX.Element {
   // újraszámol: a következő határig időzítőt állítunk, a mezők változásakor
   // újraállítjuk (Devin, #278). Az időzítő felső korlátja a setTimeout 32 bites
   // maximuma; azon túl a következő ébredéskor újra ütemezünk.
-  const [, setTick] = useState(0)
+  const [tick, setTick] = useState(0)
   useEffect(() => {
     const now = Date.now()
     const promo = resolveCoursePromo(values)
@@ -237,9 +236,11 @@ export function CoursePromoStatus(): JSX.Element {
     const delay = Math.min(Math.min(...boundaries) + 1000, 2_147_483_647)
     const timer = setTimeout(() => setTick((n) => n + 1), delay)
     return () => clearTimeout(timer)
-    // A dátumok és a pipa határozzák meg a következő határt.
+    // A dátumok és a pipa határozzák meg a következő határt; a `tick` is
+    // függőség: minden ébredés után a KÖVETKEZŐ határra is ütemezünk (kezdet
+    // után a vég), és a 32 bites korlát után újra.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.promoEnabled, values.promoStart, values.promoEnd])
+  }, [tick, values.promoEnabled, values.promoStart, values.promoEnd])
 
   return <CoursePromoStatusView status={deriveCoursePromoStatus(values)} />
 }

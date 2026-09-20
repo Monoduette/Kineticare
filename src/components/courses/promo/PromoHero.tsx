@@ -43,7 +43,6 @@ export interface PromoHeroProps {
   priceHuf: number
   originalPriceHuf: number | null
   /** „szeptember 30-ig" vagy null, ha az akciónak nincs vége. */
-  untilLabel: string | null
   cta: CourseCtaState
   /** A CTA-blokk horgonya — a ragadós vásárlósáv EZT figyeli. */
   ctaId: string
@@ -70,7 +69,6 @@ export function PromoHero({
   heroMedia,
   priceHuf,
   originalPriceHuf,
-  untilLabel,
   cta,
   ctaId,
   hasCurriculum,
@@ -98,9 +96,10 @@ export function PromoHero({
       <div aria-hidden="true" className="kc-promo-hero__veil" />
       <Container className="kc-promo-hero__inner">
         <div className="kc-promo-hero__copy">
-          <p className="kc-promo-hero__badge">
-            {untilLabel === null ? 'Akciós ár' : `Akciós ár ${untilLabel}`}
-          </p>
+          {/* Nincs határidő-állítás: az időablak a MEGJELENÉST vezérli, az árat
+              a szerkesztő állítja, ezért egy „…-ig” ígéret nem lenne igazolható
+              (Codex, #278; UCPD tiltott lista: hamis korlátozott idejű ajánlat). */}
+          <p className="kc-promo-hero__badge">Akciós ár</p>
           <p className="kc-promo-hero__meta">
             {categoryLabel !== null ? <span>{categoryLabel}</span> : null}
             <span>{audienceLabel}</span>

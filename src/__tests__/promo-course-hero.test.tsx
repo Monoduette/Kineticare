@@ -22,10 +22,13 @@ import type { Product } from '../payload-types'
  *  - a jelzés statikus dátum („szeptember 30-ig"), nem visszaszámláló.
  */
 
-const buyable = { id: 42, slug: 'kez-torna', status: 'published', priceInHUF: 79500, priceInHUFEnabled: true } as Pick<
-  Product,
-  'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'
->
+const buyable = {
+  id: 42,
+  slug: 'kez-torna',
+  status: 'published',
+  priceInHUF: 79500,
+  priceInHUFEnabled: true,
+} as Pick<Product, 'id' | 'slug' | 'status' | 'priceInHUF' | 'priceInHUFEnabled'>
 
 function hero(overrides: Partial<PromoHeroProps> = {}): string {
   return renderToStaticMarkup(
@@ -42,7 +45,6 @@ function hero(overrides: Partial<PromoHeroProps> = {}): string {
       originalPriceHuf: 99000,
       priceHuf: 79500,
       title: 'Otthoni KézRehab Program',
-      untilLabel: 'szeptember 30-ig',
       ...overrides,
     }),
   )
@@ -51,21 +53,27 @@ function hero(overrides: Partial<PromoHeroProps> = {}): string {
 describe('PromoHero — ár-sor', () => {
   it('az eredeti ár áthúzva, mindkét összeg előtt képernyőolvasó-címkével', () => {
     const html = hero()
-    expect(html).toContain(`<span class="kc-visually-hidden">Eredeti ár: </span><s>${formatPriceHuf(99000)}</s>`)
-    expect(html).toContain(`<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(79500)}`)
+    expect(html).toContain(
+      `<span class="kc-visually-hidden">Teljes ár: </span><s>${formatPriceHuf(99000)}</s>`,
+    )
+    expect(html).toContain(
+      `<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(79500)}`,
+    )
     expect(html).toContain('egyszeri díj, további költség nincs')
   })
 
   it('eredeti ár nélkül nincs áthúzott összeg, az akciós ár címkéje marad', () => {
     const html = hero({ originalPriceHuf: null })
     expect(html).not.toContain('<s>')
-    expect(html).not.toContain('Eredeti ár:')
-    expect(html).toContain(`<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(79500)}`)
+    expect(html).not.toContain('Teljes ár:')
+    expect(html).toContain(
+      `<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(79500)}`,
+    )
   })
 
-  it('a jelzés statikus dátum; vég nélkül csak „Akciós ár"', () => {
-    expect(hero()).toContain('<p class="kc-promo-hero__badge">Akciós ár szeptember 30-ig</p>')
-    expect(hero({ untilLabel: null })).toContain('<p class="kc-promo-hero__badge">Akciós ár</p>')
+  it('a jelzés „Akciós ár", határidő-ígéret nélkül (az ár nem vált magától a végén)', () => {
+    expect(hero()).toContain('<p class="kc-promo-hero__badge">Akciós ár</p>')
+    expect(hero()).not.toContain('-ig')
   })
 })
 

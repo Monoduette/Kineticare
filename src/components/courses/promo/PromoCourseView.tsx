@@ -13,7 +13,6 @@ import type { CourseSalesContent } from '../sales-content'
 import { PromoClosingCta } from './PromoClosingCta'
 import { PromoHero } from './PromoHero'
 import { PromoHighlights } from './PromoHighlights'
-import { promoUntilLabel } from './promo-date'
 
 import './promo-course.css'
 
@@ -161,7 +160,6 @@ export function PromoCourseView({
         originalPriceHuf={promo.originalPriceHuf}
         priceHuf={priceHuf}
         title={title}
-        untilLabel={promoUntilLabel(promo)}
       />
 
       {jumpTargets.length >= 2 ? (

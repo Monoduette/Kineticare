@@ -1003,13 +1003,13 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         {
           name: 'promoOriginalPriceHuf',
           type: 'number',
-          label: 'Eredeti ár (Ft, áthúzva jelenik meg)',
+          label: 'Teljes ár (Ft, áthúzva jelenik meg)',
           min: 1,
           validate: validatePromoOriginalPriceHuf,
           admin: {
             step: 1,
             description:
-              'Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.',
+              'Csak olyan összeg lehet, amelyen a kurzus ténylegesen elérhető volt vagy elérhető (például a teljes árú program ára). Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.',
           },
         },
         {

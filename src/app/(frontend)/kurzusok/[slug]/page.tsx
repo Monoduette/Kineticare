@@ -22,7 +22,7 @@ import { FreeCourseFormLink } from '@/components/courses/FreeCourseFormLink'
 import { FreeCourseRequestForm } from '@/components/courses/FreeCourseRequestForm'
 import { LexicalContent } from '@/components/courses/LexicalContent'
 import { PreviewVideo, hasPreviewVideo } from '@/components/courses/PreviewVideo'
-import { PromoCourseView, promoLastDayIso } from '@/components/courses/promo'
+import { PromoCourseView } from '@/components/courses/promo'
 import { RelatedCourses } from '@/components/courses/RelatedCourses'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
@@ -429,9 +429,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // #278) így a rendes oldalt kapja, ahol a vásárlás tiltása látszik.
   const usePromoView =
     isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
-  // A strukturált adat Offer-je az akció utolsó napjáig érvényes (schema.org
-  // priceValidUntil) — csak az akciós sablonon, különben a kimenet változatlan.
-  const promoValidUntil = usePromoView ? promoLastDayIso(promo) : null
+  // priceValidUntil SZÁNDÉKOSAN nincs: az időablak a megjelenést vezérli, az ár
+  // nem változik magától a végén, ezért az Offer-ben sem állítjuk (Codex, #278).
 
   // Az ingyenes előzetes videó MINDKÉT sablonon ugyanaz a csomópont: az
   // akciós oldal sem veszítheti el (Devin, #278), a kapu (hasPreviewVideo)
@@ -476,7 +475,6 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           path,
           priceHuf: price,
           ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-          ...(promoValidUntil !== null ? { priceValidUntil: promoValidUntil } : {}),
         })}
       />
       {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
