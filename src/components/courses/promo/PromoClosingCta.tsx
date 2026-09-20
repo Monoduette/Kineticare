@@ -27,6 +27,8 @@ export interface PromoClosingCtaProps {
 }
 
 export const PROMO_CLOSING_ID = 'akcios-vasarlas'
+/** A záró sáv gombjának horgonya: a ragadós sáv ezt is figyeli (nincs két gomb egyszerre). */
+export const PROMO_CLOSING_CTA_ID = `${PROMO_CLOSING_ID}-gomb`
 
 export function PromoClosingCta({
   priceHuf,
@@ -61,9 +63,11 @@ export function PromoClosingCta({
           ) : null}
         </div>
         <div className="kc-promo-closing__action">
-          <Button className="kc-promo-closing__button" href={href} variant="primary">
-            {ctaLabel('course-buy')}
-          </Button>
+          <span className="kc-promo-closing__cta" id={PROMO_CLOSING_CTA_ID}>
+            <Button className="kc-promo-closing__button" href={href} variant="primary">
+              {ctaLabel('course-buy')}
+            </Button>
+          </span>
         </div>
       </Container>
     </Section>

@@ -12,6 +12,12 @@ export interface CourseBuyBarProps {
    * pontosan akkor jelenik meg, amikor ez az elem nem látszik.
    */
   anchorId: string
+  /**
+   * További megfigyelt elemek `id`-i (pl. az akciós oldal záró sávjának gombja):
+   * amíg BÁRMELYIK teljesen látszik, a sáv rejtve marad, hogy sose álljon két
+   * elsődleges vásárlógomb egyszerre a képernyőn (Codex, #278).
+   */
+  alsoHideForIds?: string[]
   /** A kurzus címe — a sáv akadálymentes megnevezéséhez. */
   courseTitle: string
   /** A CTA felirata (a courses.ts resolveCourseCta állapotgépéből). */
@@ -36,6 +42,7 @@ const TELJESEN_LATSZIK = 0.99
 
 export function CourseBuyBar({
   anchorId,
+  alsoHideForIds,
   courseTitle,
   label,
   href,
@@ -45,8 +52,11 @@ export function CourseBuyBar({
 
   useEffect(() => {
     const bar = barRef.current
-    const target = document.getElementById(anchorId)
-    if (bar === null || target === null || typeof IntersectionObserver !== 'function') {
+    const targets = [anchorId, ...(alsoHideForIds ?? [])]
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => element !== null)
+    const primary = document.getElementById(anchorId)
+    if (bar === null || primary === null || typeof IntersectionObserver !== 'function') {
       return
     }
     const root = document.documentElement
@@ -54,23 +64,29 @@ export function CourseBuyBar({
       bar.dataset.visible = show ? 'true' : 'false'
       root.classList.toggle(ROOT_CLASS, show)
     }
+    // Célonként a legutóbbi láthatósági arány; a sáv csak akkor látszik, ha
+    // EGYIK megfigyelt gomb sem látszik teljesen.
+    const ratios = new Map<Element, number>()
     const observer = new IntersectionObserver(
       (entries) => {
-        const entry = entries[entries.length - 1]
-        if (entry !== undefined) {
-          apply(entry.intersectionRatio < TELJESEN_LATSZIK)
+        for (const entry of entries) {
+          ratios.set(entry.target, entry.intersectionRatio)
         }
+        const anyFullyVisible = [...ratios.values()].some((ratio) => ratio >= TELJESEN_LATSZIK)
+        apply(!anyFullyVisible)
       },
       // Mindkét határon értesülünk: amikor a gomb egyáltalán eltűnik, és
       // amikor éppen teljesen láthatóvá válik.
       { threshold: [0, TELJESEN_LATSZIK] },
     )
-    observer.observe(target)
+    for (const target of targets) {
+      observer.observe(target)
+    }
     return () => {
       observer.disconnect()
       apply(false)
     }
-  }, [anchorId])
+  }, [anchorId, alsoHideForIds])
 
   return (
     <div

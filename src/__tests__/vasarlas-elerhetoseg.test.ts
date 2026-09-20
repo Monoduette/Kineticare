@@ -184,7 +184,10 @@ describe('ragadós vásárlósáv — méret-alapú tartalék, nem töréspont',
   it('a RÉSZBEN levágott gomb is elégtelen: az arány dönt, nem a puszta metszés', () => {
     // A régi kód `!entry.isIntersecting`-et használt: egy 21 pixeles sáv a
     // gombból már „láthatónak" számított, holott a közepe nem volt kattintható.
-    expect(sav).toContain('entry.intersectionRatio < TELJESEN_LATSZIK')
+    // Több megfigyelt gomb (akciós záró sáv) mellett is az ARÁNY dönt: a sáv
+    // csak akkor látszik, ha egyik gomb sem éri el a küszöböt.
+    expect(sav).toContain('ratio >= TELJESEN_LATSZIK')
+    expect(sav).toContain('ratios.set(entry.target, entry.intersectionRatio)')
     expect(sav).toContain('threshold: [0, TELJESEN_LATSZIK]')
     expect(sav).not.toContain('!entry.isIntersecting')
   })

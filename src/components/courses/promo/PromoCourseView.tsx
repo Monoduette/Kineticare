@@ -10,11 +10,14 @@ import { CourseBuyBar } from '../CourseBuyBar'
 import { CourseJumpNav, type CourseJumpTarget } from '../CourseJumpNav'
 import { RelatedCourses } from '../RelatedCourses'
 import type { CourseSalesContent } from '../sales-content'
-import { PromoClosingCta } from './PromoClosingCta'
+import { PROMO_CLOSING_CTA_ID, PromoClosingCta } from './PromoClosingCta'
 import { PromoHero } from './PromoHero'
 import { PromoHighlights } from './PromoHighlights'
 
 import './promo-course.css'
+
+/** A ragadós sáv a záró sáv gombját is figyeli (stabil referencia, nem re-render-enként új tömb). */
+const PROMO_BUYBAR_ALSO_HIDE = [PROMO_CLOSING_CTA_ID]
 
 /**
  * PromoCourseView — a kurzusoldal AKCIÓS sablonja (WP59, tulajdonosi kérés).
@@ -195,6 +198,7 @@ export function PromoCourseView({
 
       {showBuyBar && cta.href !== null && cta.label !== null ? (
         <CourseBuyBar
+          alsoHideForIds={PROMO_BUYBAR_ALSO_HIDE}
           anchorId={ctaId}
           courseTitle={title}
           href={cta.href}

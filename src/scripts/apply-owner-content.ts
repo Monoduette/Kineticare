@@ -4776,6 +4776,14 @@ export const alkalmazAkciosAkcioMezok = (input: {
 
   const teljesArKitoltve =
     typeof jelenlegi.promoOriginalPriceHuf === 'number' && jelenlegi.promoOriginalPriceHuf > 0
+  const jelenlegiAr =
+    jelenlegi.priceInHUFEnabled === true &&
+    typeof jelenlegi.priceInHUF === 'number' &&
+    jelenlegi.priceInHUF > 0
+      ? jelenlegi.priceInHUF
+      : null
+  const teljesArIrhato = teljesAr !== null && jelenlegiAr !== null && teljesAr > jelenlegiAr
+
   if (jelenlegi.promoEnabled === true) {
     kihagyasok.push({
       szabaly,
@@ -4784,9 +4792,9 @@ export const alkalmazAkciosAkcioMezok = (input: {
       hangos: false,
     })
   } else if (teljesArKitoltve) {
-    // EGYSZERI beállítás (Codex, #278): ha a teljes ár már ki van töltve, a
-    // csoportot valaki már beállította, a kikapcsolt pipa tehát szerkesztői
-    // döntés (az akció lezárása), nem érintetlen alapérték. Nem kapcsoljuk vissza.
+    // EGYSZERI beállítás (Codex, #278): a kitöltött teljes ár a bekapcsolás
+    // jelzője; a kikapcsolt pipa tehát szerkesztői döntés (az akció lezárva),
+    // nem érintetlen alapérték. Nem kapcsoljuk vissza.
     kihagyasok.push({
       szabaly,
       uzenet: cimke,
@@ -4794,44 +4802,28 @@ export const alkalmazAkciosAkcioMezok = (input: {
         'a teljes ár MÁR kitöltött, a kikapcsolt pipa szerkesztői döntés (az akció lezárva), a script nem kapcsolja vissza',
       hangos: false,
     })
-  } else {
-    adat.promoEnabled = true
-    modositasok.push({
-      szabaly,
-      uzenet: `${cimke}: az „Akciós kurzus” pipa bekapcsolva (dátum nélkül, nyílt végű)`,
-      indok: 'a kurzusoldal az akciós sablont, a kártya az Akció címkét kapja',
-    })
-  }
-
-  const jelenlegiAr =
-    jelenlegi.priceInHUFEnabled === true &&
-    typeof jelenlegi.priceInHUF === 'number' &&
-    jelenlegi.priceInHUF > 0
-      ? jelenlegi.priceInHUF
-      : null
-  if (typeof jelenlegi.promoOriginalPriceHuf === 'number' && jelenlegi.promoOriginalPriceHuf > 0) {
+  } else if (!teljesArIrhato) {
+    // A bekapcsolás CSAK a teljes árral együtt történik: a teljes ár a jelző,
+    // amiből a következő futás tudja, hogy a beállítás már megtörtént. Teljes
+    // ár nélkül bekapcsolni azt jelentené, hogy egy későbbi szerkesztői
+    // kikapcsolást a script visszakapcsolna (Codex, #278).
     kihagyasok.push({
       szabaly,
-      uzenet: `${cimke}: teljes ár`,
-      indok: `a mező MÁR kitöltött (${formatPriceHuf(jelenlegi.promoOriginalPriceHuf)}), szerkesztői tartalmat a script sosem ír felül`,
-      hangos: false,
-    })
-  } else if (teljesAr === null || jelenlegiAr === null || teljesAr <= jelenlegiAr) {
-    kihagyasok.push({
-      szabaly,
-      uzenet: `${cimke}: teljes ár`,
+      uzenet: cimke,
       indok:
         teljesAr === null
-          ? 'a teljes árú program ára nem olvasható, a teljes ár kimarad'
-          : 'a teljes árú program ára nem nagyobb az akciós árnál, áthúzva úgysem jelenne meg',
+          ? 'a teljes árú program ára nem olvasható, teljes ár nélkül az akciót nem kapcsoljuk be (az adminban kézzel állítható)'
+          : 'a teljes árú program ára nem nagyobb az akciós árnál, teljes ár nélkül az akciót nem kapcsoljuk be (az adminban kézzel állítható)',
       hangos: true,
     })
   } else {
+    adat.promoEnabled = true
     adat.promoOriginalPriceHuf = teljesAr
     modositasok.push({
       szabaly,
-      uzenet: `${cimke}: teljes ár ${formatPriceHuf(teljesAr)} (a teljes árú program ma élő ára, áthúzva jelenik meg)`,
-      indok: 'csak ténylegesen elérhető ár adható meg, ez a teljes árú program ára',
+      uzenet: `${cimke}: az „Akciós kurzus” pipa bekapcsolva (dátum nélkül, nyílt végű), teljes ár ${formatPriceHuf(teljesAr)} (a teljes árú program ma élő ára, áthúzva jelenik meg)`,
+      indok:
+        'a kurzusoldal az akciós sablont, a kártya az Akció címkét kapja; csak ténylegesen elérhető ár adható meg',
     })
   }
 

@@ -370,3 +370,8 @@
     padding-inline: var(--kc-space-4);
   }
 }
+
+/* A záró gomb burka: a ragadós sáv ezt figyeli; inline-block, hogy a mérete a gombé legyen. */
+.kc-promo-closing__cta {
+  display: inline-block;
+}

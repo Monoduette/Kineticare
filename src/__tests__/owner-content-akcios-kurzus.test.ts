@@ -215,21 +215,21 @@ describe('alkalmazAkciosAkcioMezok (PR #278: akciós megjelenés bekapcsolása)'
     priceInHUFEnabled: true,
   }
 
-  it('bekapcsolja a pipát és beírja a teljes árú program árát teljes árnak', () => {
+  it('bekapcsolja a pipát és beírja a teljes árú program árát teljes árnak (egy lépésben)', () => {
     const eredmeny = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 79500 })
     expect(eredmeny.adat).toEqual({ promoEnabled: true, promoOriginalPriceHuf: 79500 })
-    expect(eredmeny.modositasok).toHaveLength(2)
+    expect(eredmeny.modositasok).toHaveLength(1)
     expect(eredmeny.kihagyasok).toHaveLength(0)
   })
 
-  it('bekapcsolt pipa és kitöltött teljes ár mellett csendben kihagy (idempotencia)', () => {
+  it('bekapcsolt pipa mellett csendben kihagy (idempotencia)', () => {
     const eredmeny = alkalmazAkciosAkcioMezok({
       jelenlegi: { ...alap, promoEnabled: true, promoOriginalPriceHuf: 79500 },
       teljesAr: 79500,
     })
     expect(eredmeny.adat).toEqual({})
     expect(eredmeny.modositasok).toHaveLength(0)
-    expect(eredmeny.kihagyasok.every((l) => l.hangos === false)).toBe(true)
+    expect(eredmeny.kihagyasok[0]?.hangos).toBe(false)
     expect(eredmeny.kihagyasok[0]?.indok).toContain('MÁR')
   })
 
@@ -239,16 +239,15 @@ describe('alkalmazAkciosAkcioMezok (PR #278: akciós megjelenés bekapcsolása)'
       teljesAr: 79500,
     })
     expect(eredmeny.adat).toEqual({})
-    expect(eredmeny.modositasok).toHaveLength(0)
     expect(eredmeny.kihagyasok[0]?.indok).toContain('szerkesztői döntés')
   })
 
-  it('ha a teljes árú program ára nem nagyobb vagy nem olvasható, a teljes ár hangosan kimarad, a pipa íródik', () => {
+  it('teljes ár nélkül (nem olvasható vagy nem nagyobb) az akciót sem kapcsolja be, hangosan', () => {
     const kisebb = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 30000 })
-    expect(kisebb.adat).toEqual({ promoEnabled: true })
+    expect(kisebb.adat).toEqual({})
     expect(kisebb.kihagyasok[0]?.hangos).toBe(true)
     const nincs = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: null })
-    expect(nincs.adat).toEqual({ promoEnabled: true })
+    expect(nincs.adat).toEqual({})
     expect(nincs.kihagyasok[0]?.hangos).toBe(true)
   })
 
