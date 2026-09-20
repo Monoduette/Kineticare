@@ -32,6 +32,7 @@ import * as migration_20260907_104729_accordion_tetel_kep from './20260907_10472
 import * as migration_20260908_092438_audit_refund_provenance_private_course_files from './20260908_092438_audit_refund_provenance_private_course_files';
 import * as migration_20260916_145714_users_migration_notice_sent_at from './20260916_145714_users_migration_notice_sent_at';
 import * as migration_20260920_174501_menus_unlisted from './20260920_174501_menus_unlisted';
+import * as migration_20260920_203756_products_promo from './20260920_203756_products_promo';
 
 export const migrations = [
   {
@@ -202,6 +203,11 @@ export const migrations = [
   {
     up: migration_20260920_174501_menus_unlisted.up,
     down: migration_20260920_174501_menus_unlisted.down,
-    name: '20260920_174501_menus_unlisted'
+    name: '20260920_174501_menus_unlisted',
+  },
+  {
+    up: migration_20260920_203756_products_promo.up,
+    down: migration_20260920_203756_products_promo.down,
+    name: '20260920_203756_products_promo'
   },
 ];

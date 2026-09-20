@@ -1,7 +1,13 @@
 import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
-import type { Config, Field, FieldAccess, NumberFieldSingleValidation } from 'payload'
+import type {
+  Config,
+  DateFieldValidation,
+  Field,
+  FieldAccess,
+  NumberFieldSingleValidation,
+} from 'payload'
 
 import {
   adminOrPublishedStatus,
@@ -19,9 +25,29 @@ import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
+import { budapestDateString } from '../lib/date/budapest'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
 import { withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
+
+/**
+ * Az „Akciós megjelenés” csoport mezői (WP58). Lapos nevek (collapsible, nem
+ * group), hogy a tárolt útvonal és a `resolveCoursePromo` bemenete egy legyen.
+ */
+export const coursePromoFieldNames = [
+  'promoEnabled',
+  'promoStart',
+  'promoEnd',
+  'promoOriginalPriceHuf',
+  'promoStatusPanel',
+] as const
+
+const coursePromoFieldNameSet: ReadonlySet<string> = new Set(coursePromoFieldNames)
+
+/** A collapsible-nek nincs neve: a benne lévő promo-mezők alapján ismerjük fel. */
+const isCoursePromoCollapsible = (field: Field): boolean =>
+  field.type === 'collapsible' &&
+  field.fields.some((inner) => 'name' in inner && coursePromoFieldNameSet.has(inner.name))
 
 /** Unnamed tabs change layout only: stored paths and existing field objects survive. */
 function courseEditorTabs(fields: Field[]): Field[] {
@@ -49,7 +75,10 @@ function courseEditorTabs(fields: Field[]): Field[] {
         ? 4
         : ['modules', 'videos'].includes(name ?? '')
           ? 3
-          : name === 'accessDurationDays' || !name
+          : name === 'accessDurationDays' ||
+              (name !== undefined && coursePromoFieldNameSet.has(name)) ||
+              isCoursePromoCollapsible(field) ||
+              !name
             ? 1
             : [
                   'displayTitle',
@@ -101,6 +130,46 @@ export const validateAccessDurationDays: NumberFieldSingleValidation = (
     return true
   }
   return 'A hozzáférés hossza csak pozitív egész nap lehet, vagy hagyd üresen.'
+}
+
+const toValidDate = (value: unknown): Date | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+  if (typeof value !== 'string' || value.length === 0) {
+    return null
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export const PROMO_END_BEFORE_START_MESSAGE =
+  'Az akció vége nem lehet a kezdete előtt. Adj meg a kezdettel azonos vagy későbbi napot.'
+
+/**
+ * WP58: az akció vége ne előzze meg a kezdetét. A dayOnly választó a napot
+ * 12:00 UTC-ként menti, a REST API-n pedig éjfél is jöhet, ezért nem a
+ * pillanatokat, hanem a Budapest szerinti NAPOKAT hasonlítjuk (azonos nap
+ * megengedett: egynapos akció). A `value` futásidőben string vagy Date.
+ */
+export const validatePromoEnd: DateFieldValidation = (value, { siblingData }) => {
+  const end = toValidDate(value)
+  const start = toValidDate((siblingData as { promoStart?: unknown } | undefined)?.promoStart)
+  if (end === null || start === null) {
+    return true
+  }
+  return budapestDateString(end) < budapestDateString(start) ? PROMO_END_BEFORE_START_MESSAGE : true
+}
+
+export const PROMO_ORIGINAL_PRICE_MESSAGE =
+  'Az eredeti ár csak pozitív egész forintösszeg lehet, vagy hagyd üresen.'
+
+/** WP58: az áthúzott ár egész, pozitív forint (a HUF-nak nincs tizedese). */
+export const validatePromoOriginalPriceHuf: NumberFieldSingleValidation = (value) => {
+  if (value === null || value === undefined || (Number.isSafeInteger(value) && value > 0)) {
+    return true
+  }
+  return PROMO_ORIGINAL_PRICE_MESSAGE
 }
 
 /**
@@ -879,6 +948,88 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         description:
           'Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.',
       },
+    },
+    {
+      /**
+       * WP58 „Akciós megjelenés”: a szerkesztő egy időablakban akciósra
+       * állíthatja a kurzust. Az időablakban a kurzusoldal az akciós sablont
+       * kapja, a kurzuskártyán Akció címke áll; a döntést EGY helyen a
+       * `resolveCoursePromo` hozza (src/lib/course-promo.ts), hogy az oldal, a
+       * kártya és az admin állapotjelző ugyanazt mondja. Collapsible és NEM
+       * group: a mezőnevek laposak maradnak (promoEnabled, promoStart…), így a
+       * tárolt útvonal és a feloldó bemenete egy. A pipa az ÁRAT nem
+       * változtatja: az árat továbbra is az Ár mezőben kell beállítani, a
+       * csoport csak a megjelenést és az áthúzott eredeti árat vezérli.
+       */
+      type: 'collapsible',
+      label: 'Akciós megjelenés',
+      admin: {
+        initCollapsed: false,
+      },
+      fields: [
+        {
+          name: 'promoEnabled',
+          type: 'checkbox',
+          defaultValue: false,
+          label: 'Akciós kurzus',
+          admin: {
+            description:
+              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán pedig Akció címke jelenik meg. A pipa önmagában az árat nem változtatja: az akciós árat az Ár mezőben kell beállítani.',
+          },
+        },
+        {
+          name: 'promoStart',
+          type: 'date',
+          label: 'Akció kezdete',
+          admin: {
+            description: 'Ettől a naptól él az akció. Ha üresen hagyod, azonnal érvényes.',
+            // Csak NAP, óra nélkül (a Posts.ts reviewedAt mintája): a szerkesztő
+            // napban gondolkodik, az órának itt nincs jelentése. Az oszlop
+            // timestamp marad, a feloldó a Budapest szerinti napra vetít.
+            date: { pickerAppearance: 'dayOnly' },
+          },
+        },
+        {
+          name: 'promoEnd',
+          type: 'date',
+          label: 'Akció vége',
+          validate: validatePromoEnd,
+          admin: {
+            description:
+              'A megadott nap végéig él az akció. Ha üresen hagyod, az akciónak nincs vége.',
+            date: { pickerAppearance: 'dayOnly' },
+          },
+        },
+        {
+          name: 'promoOriginalPriceHuf',
+          type: 'number',
+          label: 'Eredeti ár (Ft, áthúzva jelenik meg)',
+          min: 1,
+          validate: validatePromoOriginalPriceHuf,
+          admin: {
+            step: 1,
+            description:
+              'Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.',
+          },
+        },
+        {
+          /*
+           * UI-mező (nem tárol adatot, nincs séma-hatása). Csak bekapcsolt
+           * pipa mellett látszik, és kimondja, MOST él-e az akció, és mikortól
+           * vagy meddig; a Menus.unlistedLinkPanel mintája
+           * (src/components/admin/CoursePromoStatus.tsx).
+           */
+          name: 'promoStatusPanel',
+          type: 'ui',
+          label: 'Az akció állapota',
+          admin: {
+            condition: (_, siblingData) => siblingData?.promoEnabled === true,
+            components: {
+              Field: '/components/admin/CoursePromoStatus#CoursePromoStatus',
+            },
+          },
+        },
+      ],
     },
     {
       name: 'status',

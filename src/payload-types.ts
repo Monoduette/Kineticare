@@ -1691,6 +1691,22 @@ export interface Product {
    * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
    */
   accessDurationDays?: number | null;
+  /**
+   * Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán pedig Akció címke jelenik meg. A pipa önmagában az árat nem változtatja: az akciós árat az Ár mezőben kell beállítani.
+   */
+  promoEnabled?: boolean | null;
+  /**
+   * Ettől a naptól él az akció. Ha üresen hagyod, azonnal érvényes.
+   */
+  promoStart?: string | null;
+  /**
+   * A megadott nap végéig él az akció. Ha üresen hagyod, az akciónak nincs vége.
+   */
+  promoEnd?: string | null;
+  /**
+   * Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.
+   */
+  promoOriginalPriceHuf?: number | null;
   inventory?: number | null;
   /**
    * Legfeljebb 3 rövid, pipával jelölt állítás a kezdőlapi kurzuskártyán (pl. „50+ videós gyakorlat”). Tényszerű, ellenőrizhető állítást írj — ígéretet ne. Ha üresen hagyod, a kártyán egyszerűen nem jelenik meg ez a rész.
@@ -3844,6 +3860,10 @@ export interface ProductsSelect<T extends boolean = true> {
   priceInHUFEnabled?: T;
   priceInHUF?: T;
   accessDurationDays?: T;
+  promoEnabled?: T;
+  promoStart?: T;
+  promoEnd?: T;
+  promoOriginalPriceHuf?: T;
   inventory?: T;
   cardHighlights?:
     | T
