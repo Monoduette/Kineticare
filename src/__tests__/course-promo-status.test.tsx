@@ -28,6 +28,7 @@ afterEach(() => {
 const {
   CoursePromoStatus,
   CoursePromoStatusView,
+  NO_PRICE_WARNING,
   ORIGINAL_PRICE_WARNING,
   PROMO_OFF_MESSAGE,
   deriveCoursePromoStatus,
@@ -103,6 +104,15 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
       deriveCoursePromoStatus({ ...base, ...on, promoOriginalPriceHuf: 24_900 }, NOW).warning,
     ).toBeNull()
     expect(deriveCoursePromoStatus({ ...base, ...on }, NOW).warning).toBeNull()
+  })
+
+  it('ingyenes vagy ár nélküli kurzuson a pipa hatástalan, és ezt a doboz kimondja', () => {
+    expect(deriveCoursePromoStatus({ ...base, ...on, priceInHUFEnabled: false }, NOW).warning).toBe(
+      NO_PRICE_WARNING,
+    )
+    expect(deriveCoursePromoStatus({ ...base, ...on, priceInHUF: null }, NOW).warning).toBe(
+      NO_PRICE_WARNING,
+    )
   })
 })
 

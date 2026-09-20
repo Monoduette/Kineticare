@@ -73,6 +73,9 @@ const HALF_DAY_MS = 12 * 60 * 60 * 1000
  * A dátumfeliratok Budapest szerintiek: az utolsó nap a kizáró pillanat
  * előtti nap, az első nap a kezdő pillanat napja.
  */
+export const NO_PRICE_WARNING =
+  'A kurzusnak nincs érvényes ára (ingyenes vagy üres az ár), ezért az akciós megjelenés és az Akció címke nem jelenik meg.'
+
 export function deriveCoursePromoStatus(
   fields: Parameters<typeof resolveCoursePromo>[0],
   now: Date = new Date(),
@@ -80,10 +83,20 @@ export function deriveCoursePromoStatus(
   const promo = resolveCoursePromo(fields, now)
   const originalWanted =
     typeof fields.promoOriginalPriceHuf === 'number' && fields.promoOriginalPriceHuf > 0
+  // Az akciós MEGJELENÉS csak érvényes, pozitív árú kurzuson él (course-promo
+  // isCoursePromoDisplayed); ingyenes vagy ár nélküli kurzuson a pipa hatástalan,
+  // és ezt itt kell kimondani, ne a kártyán derüljön ki (Codex, #278).
+  const hasValidPrice =
+    fields.priceInHUFEnabled === true &&
+    typeof fields.priceInHUF === 'number' &&
+    Number.isFinite(fields.priceInHUF) &&
+    fields.priceInHUF > 0
   const warning =
-    promo.enabled && originalWanted && promo.originalPriceHuf === null
-      ? ORIGINAL_PRICE_WARNING
-      : null
+    promo.enabled && !hasValidPrice
+      ? NO_PRICE_WARNING
+      : promo.enabled && originalWanted && promo.originalPriceHuf === null
+        ? ORIGINAL_PRICE_WARNING
+        : null
 
   if (promo.reason === 'kikapcsolva') {
     return { message: PROMO_OFF_MESSAGE, warning: null, reason: promo.reason }
