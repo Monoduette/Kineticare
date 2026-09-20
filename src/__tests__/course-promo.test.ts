@@ -202,6 +202,11 @@ describe('isCoursePromoDisplayed: élő időablak + közzétett + érvényes ár
     expect(isCoursePromoDisplayed({ ...alap, status: 'draft' }, most)).toBe(false)
   })
 
+  it('visszavont (draft) dokumentumon nem, közzétett dokumentumon igen', () => {
+    expect(isCoursePromoDisplayed({ ...alap, _status: 'draft' }, most)).toBe(false)
+    expect(isCoursePromoDisplayed({ ...alap, _status: 'published' }, most)).toBe(true)
+  })
+
   it('ingyenes vagy ár nélküli kurzuson nem', () => {
     expect(isCoursePromoDisplayed({ ...alap, priceInHUFEnabled: false }, most)).toBe(false)
     expect(isCoursePromoDisplayed({ ...alap, priceInHUF: null }, most)).toBe(false)

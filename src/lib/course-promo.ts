@@ -165,7 +165,8 @@ export function resolveCoursePromo(
 
 /** A megjelenítési döntéshez kellő mezők: akció + ár + bolti státusz. */
 export type CoursePromoDisplayFields = CoursePromoFields &
-  Pick<Product, 'priceInHUF' | 'priceInHUFEnabled' | 'status'>
+  Pick<Product, 'priceInHUF' | 'priceInHUFEnabled' | 'status'> &
+  Partial<Pick<Product, '_status'>>
 
 /**
  * Igaz, ha a kurzus MOST akciósként JELENIK MEG: az akció él (időablak), a
@@ -180,6 +181,11 @@ export function isCoursePromoDisplayed(
   now: Date = new Date(),
 ): boolean {
   if (product.status !== 'published') {
+    return false
+  }
+  // A Payload dokumentum-státusz is kapu (Codex, #278): a visszavont
+  // (draft) dokumentum a kurzusoldalon 404, ezért a kártya sem hirdethet akciót.
+  if (product._status === 'draft') {
     return false
   }
   if (
