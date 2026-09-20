@@ -92,7 +92,7 @@ export function csomopontSzovege(node: LexicalNode): string {
 
 /** Az időpontkérés célja: a /kapcsolat oldal (horgonnyal, query-vel vagy anélkül). */
 export function idopontkeroCel(url: string): boolean {
-  return url === '/kapcsolat' || /^\/kapcsolat[#?/]/u.test(url)
+  return /^\/kapcsolat\/?(?:[?#].*)?$/u.test(url)
 }
 
 function elsoLink(node: LexicalNode): LexicalNode | null {

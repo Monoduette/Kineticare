@@ -2,7 +2,7 @@ import type { Page, Post, Product, Testimonial } from '../../payload-types'
 import type { AppointmentSectionContext } from '../../lib/appointment/context'
 import { faqPageJsonLd, homeWebPageJsonLd, organizationJsonLd } from '../../lib/seo'
 import { HERO_VIDEO_STREAM_ID } from '../../lib/hero-video'
-import { showcaseProducts } from '../../lib/course-showcase'
+import { showcaseGridProducts } from '../../lib/course-showcase'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { SectionReveal } from '../motion/SectionReveal'
 import { BarionFizetesJelzes } from '../checkout/BarionFizetesJelzes'
@@ -134,7 +134,7 @@ export function HomeView({
   // A 2026-08-15-i „csak fizetős” szabály felülvizsgálva; indoklás és
   // források: `showcaseProducts` (src/lib/course-showcase.ts). A lentebbi
   // FreeSos sáv a lead-magnet részletezése, saját CTA-val.
-  const gridProducts = showcaseProducts(visibleProducts)
+  const gridProducts = showcaseGridProducts(visibleProducts)
   // A hero, a sáv és a rács ugyanazt a kanonikus, publikált és explicit
   // ingyenes SOS-t ajánlja (P1-őr: hero-free-sos-availability.test.tsx).
   const freeProduct = visibleProducts.find(isAvailableSosProduct) ?? null

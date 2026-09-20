@@ -40,6 +40,7 @@ import {
   enrollMediaRecovery,
   managedMediaAssets,
   requireMediaRecoveryReceipt,
+  verifyMediaRecoveryBytes,
 } from '../lib/media-recovery-provenance'
 import { resolveUploadDir } from '../lib/media-restore'
 import {
@@ -3756,7 +3757,7 @@ export const futtatMediaAltLefedettseg = async (
       if (managedMediaAssets().some((asset) => asset.filename === rekord.filename)) {
         if ((rekord.alt ?? '').trim().length === 0) {
           logger.warn(
-            `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${jelolt.cimke} (${rekord.filename}) alt-szövege (kezelt kép: az alt írása az eredetigazolást érvénytelenítené; az adminban pótlandó)`,
+            `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${jelolt.cimke} (${rekord.filename}) alt-szövege (kezelt kép: az alt írása az eredetigazolást érvénytelenítené; az adminban pótlandó, utána újraigazolás: apply-owner-review-v1.ts --enroll-media-recovery ${rekord.id})`,
           )
           kihagyasok += 1
         }
@@ -4385,16 +4386,29 @@ export const payloadMediaFuggosegek = (
     // csak jelezzük, mert az igazolás írás.
     const kezelt = managedMediaAssets().find((asset) => asset.filename === filename)
     if (kezelt) {
-      // Az igazolás érvényességét a FÁJL nélkül döntjük el (a content-job
-      // konténer nem látja a Volume-ot, Codex P1, #271): a
+      // Az igazolás érvényességét a FÁJL nélkül is el tudjuk dönteni (a
+      // content-job konténer nem látja a Volume-ot, Codex P1, #271): a
       // requireMediaRecoveryReceipt a rekord pillanatképét és a repó-forrás
-      // ellenőrzőösszegét nézi, a tárolt bájtokat nem. Érvényes igazolásnál
-      // nincs teendő; hiányzónál csak akkor igazolunk, ha a fájl itt megvan.
-      const igazolasErvenyes = await requireMediaRecoveryReceipt(payload, sor, kezelt)
-        .then(() => true)
-        .catch(() => false)
-      if (!igazolasErvenyes) {
-        const fajlMegvan = existsSync(path.join(resolveUploadDir(payload), filename))
+      // ellenőrzőösszegét nézi, a tárolt bájtokat nem. Ha viszont a fájl ITT
+      // megvan, a tárolt bájtokat is az igazoláshoz mérjük (Codex P2, #274):
+      // egy érvényes igazolás mellett kicserélt vagy sérült fájl nem mehet át
+      // csendben. Eltérésnél élesben hangos dobás (kézi átnézés), próbafutásban
+      // jelzés. Hiányzó igazolásnál csak akkor igazolunk, ha a fájl itt megvan.
+      const fajlMegvan = existsSync(path.join(resolveUploadDir(payload), filename))
+      const igazolas = await requireMediaRecoveryReceipt(payload, sor, kezelt).catch(() => null)
+      if (igazolas && fajlMegvan) {
+        const taroltOsszeg = await verifyMediaRecoveryBytes(payload, sor).catch(() => null)
+        if (taroltOsszeg !== igazolas.storedPublicDigest) {
+          const uzenet = `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép tárolt bájtjai eltérnek az eredetigazolástól`
+          if (!opciok.dryRun) {
+            throw new Error(
+              `${uzenet} — a rekordot a script nem hivatkozza, kézi átnézést kér (a fájl kicserélődött vagy sérült; újraigazolás: apply-owner-review-v1.ts --enroll-media-recovery ${sor.id}).`,
+            )
+          }
+          logger.warn(`${uzenet} — az éles futás hangosan megállna.`)
+        }
+      }
+      if (!igazolas) {
         if (opciok.dryRun) {
           logger.warn(
             `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül — az éles futás ${

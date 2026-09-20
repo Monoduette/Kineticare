@@ -11,7 +11,10 @@ import {
   COURSE_SHOWCASE_LEAD,
   COURSE_SHOWCASE_MARK,
   COURSE_SHOWCASE_SCENE_PHOTOS,
+  KURZUSRACS_LIMIT,
   showcaseFallbackAt,
+  showcaseGridProducts,
+  showcaseProducts,
   splitEditorialTitle,
 } from '../lib/course-showcase'
 import { ctaLabel } from '../lib/cta-vocabulary'
@@ -285,6 +288,53 @@ describe('course-showcase.css — token- és jelenet-őr', () => {
     const lead = blokk('.kc-course-showcase__lead')
     expect(lead).toContain('text-align: center')
     expect(lead).toContain('max-width: var(--kc-measure-comfort)')
+  })
+})
+
+describe('showcaseGridProducts — sapka SOS-hellyel (Devin/Codex, #274)', () => {
+  const SOS = product({
+    id: 999,
+    slug: 'sos-kezrelax-villamkurzus',
+    priceInHUF: null,
+    priceInHUFEnabled: false,
+    _status: 'published',
+  })
+  const fizetos = (db: number) =>
+    Array.from({ length: db }, (_, i) => product({ id: i + 1, slug: `kurzus-${i + 1}` }))
+
+  it('a sapka a KURZUSRACS_LIMIT, és ugyanezt használja a RenderBlocks és a HomeView tartalék is', () => {
+    expect(KURZUSRACS_LIMIT).toBe(12)
+    for (const route of [
+      '../components/blocks/RenderBlocks.tsx',
+      '../components/content/HomeView.tsx',
+    ]) {
+      const forras = readFileSync(fileURLToPath(new URL(route, import.meta.url)), 'utf8')
+      expect(forras, route).toContain('showcaseGridProducts(visibleProducts)')
+      expect(forras, route).not.toMatch(/showcaseProducts\(visibleProducts\)/)
+    }
+  })
+
+  it('12 fizetős + SOS: a 12. fizetős kiesik, az SOS marad az utolsó helyen', () => {
+    const grid = showcaseGridProducts([...fizetos(12), SOS])
+    expect(grid).toHaveLength(KURZUSRACS_LIMIT)
+    expect(grid.at(-1)?.slug).toBe('sos-kezrelax-villamkurzus')
+    expect(grid.map((p) => p.slug)).not.toContain('kurzus-12')
+    // A sapkázatlan lista viszont mind a 13-at hozza (a CTA-feloldás ebből dolgozik).
+    expect(showcaseProducts([...fizetos(12), SOS])).toHaveLength(13)
+  })
+
+  it('11 fizetős + SOS: minden bent marad; SOS nélkül 13 fizetősből 12 marad', () => {
+    expect(showcaseGridProducts([...fizetos(11), SOS])).toHaveLength(12)
+    expect(showcaseGridProducts(fizetos(13))).toHaveLength(12)
+    expect(showcaseGridProducts(fizetos(13)).map((p) => p.slug)).not.toContain('kurzus-13')
+    expect(showcaseGridProducts(fizetos(3))).toHaveLength(3)
+  })
+
+  it('a sapka 1 és 0 esetén sem dob, és az SOS-t részesíti előnyben', () => {
+    expect(showcaseGridProducts([...fizetos(5), SOS], 1).map((p) => p.slug)).toEqual([
+      'sos-kezrelax-villamkurzus',
+    ])
+    expect(showcaseGridProducts([...fizetos(5), SOS], 0)).toEqual([])
   })
 })
 

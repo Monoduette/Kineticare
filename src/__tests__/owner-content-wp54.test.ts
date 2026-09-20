@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 const provenanceMocks = vi.hoisted(() => ({
   require: vi.fn(async (): Promise<unknown> => ({})),
   enroll: vi.fn(async (): Promise<void> => undefined),
+  bytes: vi.fn(async (): Promise<string> => 'a'.repeat(64)),
 }))
 vi.mock('../lib/media-recovery-provenance', async (importOriginal) => {
   const eredeti = await importOriginal<typeof import('../lib/media-recovery-provenance')>()
@@ -18,6 +19,7 @@ vi.mock('../lib/media-recovery-provenance', async (importOriginal) => {
     ...eredeti,
     requireMediaRecoveryReceipt: provenanceMocks.require,
     enrollMediaRecovery: provenanceMocks.enroll,
+    verifyMediaRecoveryBytes: provenanceMocks.bytes,
   }
 })
 
@@ -274,6 +276,40 @@ describe('payloadMediaFuggosegek — a valódi Médiatár-hozzáférés a próba
         expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
         expect(provenanceMocks.enroll).not.toHaveBeenCalled()
       } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('érvényes igazolás + a fájl megvan: a tárolt bájtokat az igazoláshoz méri, egyezésnél azonosítót ad (Codex #274)', async () => {
+      provenanceMocks.require.mockResolvedValueOnce({ storedPublicDigest: 'a'.repeat(64) })
+      provenanceMocks.bytes.mockResolvedValueOnce('a'.repeat(64))
+      provenanceMocks.enroll.mockClear()
+      const dir = konyvtarFajllal()
+      try {
+        const { payload } = hamisKezelt(dir)
+        expect(await payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT)).toBe(33)
+        expect(provenanceMocks.bytes).toHaveBeenCalledTimes(1)
+        expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('érvényes igazolás, de a tárolt bájtok eltérnek: élesben hangosan dob, próbafutásban jelez', async () => {
+      provenanceMocks.require.mockResolvedValue({ storedPublicDigest: 'a'.repeat(64) })
+      provenanceMocks.bytes.mockResolvedValue('b'.repeat(64))
+      provenanceMocks.enroll.mockClear()
+      const dir = konyvtarFajllal()
+      try {
+        const { payload } = hamisKezelt(dir)
+        await expect(
+          payloadMediaFuggosegek(payload, { dryRun: false }).keres(KEZELT),
+        ).rejects.toThrow('eltérnek az eredetigazolástól')
+        expect(await payloadMediaFuggosegek(payload).keres(KEZELT)).toBe(33)
+        expect(provenanceMocks.enroll).not.toHaveBeenCalled()
+      } finally {
+        provenanceMocks.require.mockImplementation(async () => ({}))
+        provenanceMocks.bytes.mockImplementation(async () => 'a'.repeat(64))
         rmSync(dir, { recursive: true, force: true })
       }
     })
