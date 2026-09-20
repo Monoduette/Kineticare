@@ -1704,7 +1704,7 @@ export interface Product {
    */
   promoEnd?: string | null;
   /**
-   * Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.
+   * Csak olyan összeg lehet, amelyen a kurzus ténylegesen elérhető volt vagy elérhető (például a teljes árú program ára). Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.
    */
   promoOriginalPriceHuf?: number | null;
   inventory?: number | null;
