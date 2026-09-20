@@ -107,6 +107,7 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
   })
 
   it('ingyenes vagy ár nélküli kurzuson a pipa hatástalan, és ezt a doboz kimondja', () => {
+    const on = { promoEnabled: true, promoStart: null, promoEnd: null }
     expect(deriveCoursePromoStatus({ ...base, ...on, priceInHUFEnabled: false }, NOW).warning).toBe(
       NO_PRICE_WARNING,
     )
