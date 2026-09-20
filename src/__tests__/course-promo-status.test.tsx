@@ -29,6 +29,7 @@ const {
   CoursePromoStatus,
   CoursePromoStatusView,
   NO_PRICE_WARNING,
+  NOT_PUBLISHED_WARNING,
   ORIGINAL_PRICE_WARNING,
   PROMO_OFF_MESSAGE,
   deriveCoursePromoStatus,
@@ -104,6 +105,17 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
       deriveCoursePromoStatus({ ...base, ...on, promoOriginalPriceHuf: 24_900 }, NOW).warning,
     ).toBeNull()
     expect(deriveCoursePromoStatus({ ...base, ...on }, NOW).warning).toBeNull()
+  })
+
+  it('archivált vagy piszkozat kurzuson a doboz kimondja, hogy az akció nem jelenik meg', () => {
+    const on = { promoEnabled: true, promoStart: null, promoEnd: null }
+    expect(deriveCoursePromoStatus({ ...base, ...on, status: 'archived' }, NOW).warning).toBe(
+      NOT_PUBLISHED_WARNING,
+    )
+    expect(deriveCoursePromoStatus({ ...base, ...on, status: 'draft' }, NOW).warning).toBe(
+      NOT_PUBLISHED_WARNING,
+    )
+    expect(deriveCoursePromoStatus({ ...base, ...on, status: 'published' }, NOW).warning).toBeNull()
   })
 
   it('ingyenes vagy ár nélküli kurzuson a pipa hatástalan, és ezt a doboz kimondja', () => {

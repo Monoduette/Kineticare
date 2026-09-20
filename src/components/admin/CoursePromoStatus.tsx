@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormFields } from '@payloadcms/ui'
-import type { CSSProperties, JSX } from 'react'
+import { useEffect, useState, type CSSProperties, type JSX } from 'react'
 
 import {
   promoDayLabel,
@@ -73,11 +73,14 @@ const HALF_DAY_MS = 12 * 60 * 60 * 1000
  * A dátumfeliratok Budapest szerintiek: az utolsó nap a kizáró pillanat
  * előtti nap, az első nap a kezdő pillanat napja.
  */
+export const NOT_PUBLISHED_WARNING =
+  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve.'
+
 export const NO_PRICE_WARNING =
   'A kurzusnak nincs érvényes ára (ingyenes vagy üres az ár), ezért az akciós megjelenés és az Akció címke nem jelenik meg.'
 
 export function deriveCoursePromoStatus(
-  fields: Parameters<typeof resolveCoursePromo>[0],
+  fields: Parameters<typeof resolveCoursePromo>[0] & { status?: string | null },
   now: Date = new Date(),
 ): CoursePromoStatusText {
   const promo = resolveCoursePromo(fields, now)
@@ -91,12 +94,20 @@ export function deriveCoursePromoStatus(
     typeof fields.priceInHUF === 'number' &&
     Number.isFinite(fields.priceInHUF) &&
     fields.priceInHUF > 0
+  // A bolti státusz is feltétel (isCoursePromoDisplayed): archivált vagy
+  // piszkozat kurzuson a doboz ne mondjon élő akciót (Devin, #278).
+  // Ismeretlen (nincs a formban) státusz nem riaszt: csak a tényleges
+  // piszkozat/archivált érték.
+  const published =
+    fields.status === undefined || fields.status === null || fields.status === 'published'
   const warning =
-    promo.enabled && !hasValidPrice
-      ? NO_PRICE_WARNING
-      : promo.enabled && originalWanted && promo.originalPriceHuf === null
-        ? ORIGINAL_PRICE_WARNING
-        : null
+    promo.enabled && !published
+      ? NOT_PUBLISHED_WARNING
+      : promo.enabled && !hasValidPrice
+        ? NO_PRICE_WARNING
+        : promo.enabled && originalWanted && promo.originalPriceHuf === null
+          ? ORIGINAL_PRICE_WARNING
+          : null
 
   if (promo.reason === 'kikapcsolva') {
     return { message: PROMO_OFF_MESSAGE, warning: null, reason: promo.reason }
@@ -192,8 +203,13 @@ export function CoursePromoStatus(): JSX.Element {
   const promoOriginalPriceHuf = useFormFields(([fields]) => fields?.promoOriginalPriceHuf?.value)
   const priceInHUF = useFormFields(([fields]) => fields?.priceInHUF?.value)
   const priceInHUFEnabled = useFormFields(([fields]) => fields?.priceInHUFEnabled?.value)
+  const status = useFormFields(([fields]) => fields?.status?.value)
 
-  const values: CoursePromoFields & { priceInHUF: number | null; priceInHUFEnabled: boolean } = {
+  const values: CoursePromoFields & {
+    priceInHUF: number | null
+    priceInHUFEnabled: boolean
+    status: string | null
+  } = {
     promoEnabled: promoEnabled === true,
     // Az űrlapban a dátum Date vagy ISO string is lehet; a feloldó stringet vár.
     promoStart: readDateValue(promoStart),
@@ -201,7 +217,29 @@ export function CoursePromoStatus(): JSX.Element {
     promoOriginalPriceHuf: readNumber(promoOriginalPriceHuf),
     priceInHUF: readNumber(priceInHUF),
     priceInHUFEnabled: priceInHUFEnabled === true,
+    status: typeof status === 'string' ? status : null,
   }
+
+  // A nyitva hagyott lap az időablak határán (kezdet vagy vég) magától
+  // újraszámol: a következő határig időzítőt állítunk, a mezők változásakor
+  // újraállítjuk (Devin, #278). Az időzítő felső korlátja a setTimeout 32 bites
+  // maximuma; azon túl a következő ébredéskor újra ütemezünk.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const now = Date.now()
+    const promo = resolveCoursePromo(values)
+    const boundaries = [promo.start, promo.end]
+      .filter((d): d is Date => d !== null && d.getTime() > now)
+      .map((d) => d.getTime() - now)
+    if (boundaries.length === 0) {
+      return undefined
+    }
+    const delay = Math.min(Math.min(...boundaries) + 1000, 2_147_483_647)
+    const timer = setTimeout(() => setTick((n) => n + 1), delay)
+    return () => clearTimeout(timer)
+    // A dátumok és a pipa határozzák meg a következő határt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.promoEnabled, values.promoStart, values.promoEnd])
 
   return <CoursePromoStatusView status={deriveCoursePromoStatus(values)} />
 }
