@@ -23,6 +23,7 @@ import {
   courseCtaTargetOf,
   firstCategoryOf,
   freeCourseCtaTargetOf,
+  postCtaShowsFreeCourse,
   postCtaVariantOf,
   postFaqItems,
   relatedHeading,
@@ -122,7 +123,10 @@ export function PostArticle({
       {/* Tartalmi funnel-mérés: article_viewed/read, CTA- és GYIK-kattintás.
           Láthatatlan kliens-komponens, delegált figyelőkkel — a cikk
           szerver-komponensei nem hidratálódnak miatta. Consent nélkül no-op. */}
-      <ArticleEngagement articleSlug={typeof post.slug === 'string' ? post.slug : ''} path={canonicalPath} />
+      <ArticleEngagement
+        articleSlug={typeof post.slug === 'string' ? post.slug : ''}
+        path={canonicalPath}
+      />
       {/* A CIKK SÉMÁJA: EGY node, `['Article', 'MedicalWebPage']` kettős
           típussal (`src/lib/seo-cikk.ts`). A `MedicalWebPage`-tag nem
           dísz: a `WebPage` altípusa, és CSAK ettől lesz érvényes a
@@ -256,7 +260,7 @@ export function PostArticle({
         <Container size={ctaVariant === 'idopont' ? 'narrow' : 'wide'}>
           <PostCourseCta
             course={courseCtaTargetOf(post)}
-            freeCourse={freeCourseCtaTargetOf(freeCourse)}
+            freeCourse={postCtaShowsFreeCourse(post) ? freeCourseCtaTargetOf(freeCourse) : null}
             variant={ctaVariant}
           />
         </Container>

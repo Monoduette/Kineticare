@@ -38,8 +38,8 @@ import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-sta
 import { LEGACY_IMAGES } from '../lib/legacy-images'
 import {
   enrollMediaRecovery,
-  inspectMediaRecoveryReceipt,
   managedMediaAssets,
+  requireMediaRecoveryReceipt,
 } from '../lib/media-recovery-provenance'
 import { resolveUploadDir } from '../lib/media-restore'
 import {
@@ -3748,6 +3748,20 @@ export const futtatMediaAltLefedettseg = async (
       continue
     }
     for (const rekord of talalatok) {
+      // Kezelt (manifestes) rekord alt-ját a job NEM írja: az eredetigazolás
+      // a rekord pillanatképét (alt, updatedAt) is rögzíti, egy sima update
+      // érvénytelenítené, és a Volume-helyreállítás elutasítaná a képet
+      // (Devin/Codex, #271). Ezek a képek a létrehozáskor a manifest alt-ját
+      // kapják; ha mégis üres, az adminban (az app kötetén) pótlandó.
+      if (managedMediaAssets().some((asset) => asset.filename === rekord.filename)) {
+        if ((rekord.alt ?? '').trim().length === 0) {
+          logger.warn(
+            `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: ${jelolt.cimke} (${rekord.filename}) alt-szövege (kezelt kép: az alt írása az eredetigazolást érvénytelenítené; az adminban pótlandó)`,
+          )
+          kihagyasok += 1
+        }
+        continue
+      }
       const eredmeny = alkalmazMediaAltSzoveg({
         cimke: `${jelolt.cimke} (${rekord.filename})`,
         jelenlegiAlt: rekord.alt,
@@ -4369,12 +4383,29 @@ export const payloadMediaFuggosegek = (
     // elutasítja a képet (Devin-találat, #270). Élesben idempotensen igazoljuk
     // (a bájtok és a rekord ellenőrzésével, hibánál hangos dobás); próbafutásban
     // csak jelezzük, mert az igazolás írás.
-    if (managedMediaAssets().some((asset) => asset.filename === filename)) {
-      const allapot = await inspectMediaRecoveryReceipt(payload, sor)
-      if (!allapot.valid) {
+    const kezelt = managedMediaAssets().find((asset) => asset.filename === filename)
+    if (kezelt) {
+      // Az igazolás érvényességét a FÁJL nélkül döntjük el (a content-job
+      // konténer nem látja a Volume-ot, Codex P1, #271): a
+      // requireMediaRecoveryReceipt a rekord pillanatképét és a repó-forrás
+      // ellenőrzőösszegét nézi, a tárolt bájtokat nem. Érvényes igazolásnál
+      // nincs teendő; hiányzónál csak akkor igazolunk, ha a fájl itt megvan.
+      const igazolasErvenyes = await requireMediaRecoveryReceipt(payload, sor, kezelt)
+        .then(() => true)
+        .catch(() => false)
+      if (!igazolasErvenyes) {
+        const fajlMegvan = existsSync(path.join(resolveUploadDir(payload), filename))
         if (opciok.dryRun) {
           logger.warn(
-            `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül — az éles futás igazolná (vagy hangosan megállna, ha a fájl nem ellenőrizhető).`,
+            `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül — az éles futás ${
+              fajlMegvan
+                ? 'igazolná'
+                : 'hangosan megállna (a fájl ebben a környezetben nem ellenőrizhető)'
+            }.`,
+          )
+        } else if (!fajlMegvan) {
+          throw new Error(
+            `Médiatár: „${filename}” (azonosító: ${sor.id}) kezelt kép igazolás nélkül, és a fájl ebben a környezetben nem ellenőrizhető (nincs csatolt Volume) — az igazolást az app kötetén kell pótolni, a rekordot a script nem hivatkozza.`,
           )
         } else {
           try {

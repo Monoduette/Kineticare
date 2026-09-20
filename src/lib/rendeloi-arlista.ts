@@ -1,3 +1,4 @@
+import { linkFields } from '../components/lexical/serialize'
 import type { LexicalNode } from '../components/lexical/types'
 
 /**
@@ -87,6 +88,11 @@ export function csomopontSzovege(node: LexicalNode): string {
     .join('')
     .replace(/\s+/gu, ' ')
     .trim()
+}
+
+/** Az időpontkérés célja: a /kapcsolat oldal (horgonnyal, query-vel vagy anélkül). */
+export function idopontkeroCel(url: string): boolean {
+  return url === '/kapcsolat' || /^\/kapcsolat[#?/]/u.test(url)
 }
 
 function elsoLink(node: LexicalNode): LexicalNode | null {
@@ -184,7 +190,14 @@ export function felismerRendeloiArlista(content: unknown): RendeloiArlista | nul
     if (szoveg.length === 0) continue
     const link = elsoLink(node)
     if (link) {
+      // Csak az időpontkérő CTA-t fogyasztjuk el: a link célja feloldható ÉS a
+      // /kapcsolat oldalra mutat. Bármely más linkes bekezdés (térkép, biztosítói
+      // tudnivaló, elírt cél) → visszaesés a sima folyószövegre, hogy a
+      // szerkesztő mondata ne vesszen el, és a fix „Kérj időpontot üzenetben”
+      // felirat ne vigyen idegen célra (Codex/Devin, #273).
       if (cta !== null) return null
+      const cel = linkFields(link)
+      if (!cel || !idopontkeroCel(cel.url)) return null
       cta = link
       continue
     }

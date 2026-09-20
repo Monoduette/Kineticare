@@ -73,7 +73,11 @@ export const CIKKEK: readonly CikkBejegyzes[] = [
   { fajl: '6-csuklotores-utani-gyogytorna.md', slug: 'csuklotores-utani-gyogytorna' },
   { fajl: '7-inhuvelygyulladas.md', slug: 'inhuvelygyulladas' },
   { fajl: '8-befagyott-vall.md', slug: 'befagyott-vall' },
-  { fajl: '9-peace-and-love-friss-serules.md', slug: 'peace-and-love-friss-serules', seoForras: 'cikkfejlec' },
+  {
+    fajl: '9-peace-and-love-friss-serules.md',
+    slug: 'peace-and-love-friss-serules',
+    seoForras: 'cikkfejlec',
+  },
   { fajl: '10-gipszben-a-kezed.md', slug: 'gipszben-a-kezed', seoForras: 'cikkfejlec' },
 ]
 
@@ -112,7 +116,9 @@ function fejlecSeo(nyers: string, slug: string): { seoTitle: string; seoDescript
   const seoTitle = fejlecMetaadat(nyers, 'seoTitle')
   const seoDescription = fejlecMetaadat(nyers, 'seoDescription')
   if (seoTitle.length > SEO_TITLE_MAX) {
-    throw new Error(`A(z) „${slug}” cikk seoTitle mezője ${seoTitle.length} karakter, a max. ${SEO_TITLE_MAX}.`)
+    throw new Error(
+      `A(z) „${slug}” cikk seoTitle mezője ${seoTitle.length} karakter, a max. ${SEO_TITLE_MAX}.`,
+    )
   }
   if (seoDescription.length < SEO_DESCRIPTION_MIN || seoDescription.length > SEO_DESCRIPTION_MAX) {
     throw new Error(
@@ -121,7 +127,9 @@ function fejlecSeo(nyers: string, slug: string): { seoTitle: string; seoDescript
     )
   }
   if (/[–—]/.test(seoTitle) || /[–—]/.test(seoDescription)) {
-    throw new Error(`A(z) „${slug}” cikk SEO-mezőiben gondolatjel áll (docs/ui-sztenderdek.md §3.1).`)
+    throw new Error(
+      `A(z) „${slug}” cikk SEO-mezőiben gondolatjel áll (docs/ui-sztenderdek.md §3.1).`,
+    )
   }
   return { seoTitle, seoDescription }
 }
@@ -139,6 +147,13 @@ interface CikkKiegeszito {
   kurzusSlug: string | null
   kapcsolodoSlugok: readonly string[]
   szerzoNevek: readonly string[]
+  /**
+   * Társszerzős cikk, amelynél a második név NEM szakmai lektor: a
+   * `reviewedBy` üres marad, amíg a lektorálás tényleg meg nem történt
+   * (Codex P1, #271: a „Szakmailag ellenőrizte” felirat és a reviewedBy
+   * JSON-LD hamis attesztáció lenne).
+   */
+  tarsszerzos?: true
 }
 
 const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
@@ -161,12 +176,18 @@ const CIKK_KIEGESZITO: Readonly<Record<string, CikkKiegeszito>> = {
   // visz.
   'peace-and-love-friss-serules': {
     kurzusSlug: null,
+    tarsszerzos: true,
     kapcsolodoSlugok: ['csuklo-es-kezfajdalom', 'teniszkonyok', 'inhuvelygyulladas'],
     szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
   },
   'gipszben-a-kezed': {
     kurzusSlug: null,
-    kapcsolodoSlugok: ['csuklotores-utani-gyogytorna', 'csuklo-es-kezfajdalom', 'miert-zsibbad-a-kezem'],
+    tarsszerzos: true,
+    kapcsolodoSlugok: [
+      'csuklotores-utani-gyogytorna',
+      'csuklo-es-kezfajdalom',
+      'miert-zsibbad-a-kezem',
+    ],
     szerzoNevek: ['Kiss Kata', 'Kocsis Kata'],
   },
 }
@@ -200,7 +221,11 @@ const CIKK_KITOLTES: Readonly<
   },
   'csuklo-es-kezfajdalom': {
     kurzusSlug: 'otthoni-kezrehab-program',
-    kapcsolodoSlugok: ['keztoalagut-szindroma', 'csuklotores-utani-gyogytorna', 'inhuvelygyulladas'],
+    kapcsolodoSlugok: [
+      'keztoalagut-szindroma',
+      'csuklotores-utani-gyogytorna',
+      'inhuvelygyulladas',
+    ],
   },
   'csuklotores-utani-gyogytorna': {
     kurzusSlug: 'otthoni-kezrehab-program',
@@ -461,7 +486,7 @@ async function cikkMezok(
   // Szerző") — akkor is, ha az update nem küld szerzőt. A null a rekordot
   // menthetővé teszi; a szerep rendezése után a következő import visszaírja.
   mezok.author = szerzoIds[0] ?? null
-  mezok.reviewedBy = szerzoIds[1] ?? null
+  mezok.reviewedBy = meta.tarsszerzos ? null : (szerzoIds[1] ?? null)
   if (szerzoIds.length < meta.szerzoNevek.length) {
     logger.warn(
       'Tudástár-import: a cikk szerzői nem mind oldhatók fel. ' +
@@ -501,9 +526,7 @@ async function kitoltesMezok(
   }
 
   const nincsRelated =
-    letezo === undefined ||
-    !Array.isArray(letezo.relatedPosts) ||
-    letezo.relatedPosts.length === 0
+    letezo === undefined || !Array.isArray(letezo.relatedPosts) || letezo.relatedPosts.length === 0
   if (nincsRelated) {
     const relatedPosts: number[] = []
     for (const kap of meta.kapcsolodoSlugok) {
