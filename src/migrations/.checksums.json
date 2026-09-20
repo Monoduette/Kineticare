@@ -66,6 +66,8 @@
     "20260908_092438_audit_refund_provenance_private_course_files.json": "bf737a71ce81204ab0135b3944aff29b2d6fa12251203690c7f0c6d7ffeaf4e5",
     "20260908_092438_audit_refund_provenance_private_course_files.ts": "3013403a5a927a09a69961f37fb456ff5a3bedb650151e51a9ab10b70fb26da5",
     "20260916_145714_users_migration_notice_sent_at.json": "6414e49b3930e297aa9d841c19f23c0705b6ed53058e675f25c8ab25fe71b7d9",
-    "20260916_145714_users_migration_notice_sent_at.ts": "1263dee2710105fbcb0e76381407166cfd9aa1bee4286b40ff18aceed4b2921f"
+    "20260916_145714_users_migration_notice_sent_at.ts": "1263dee2710105fbcb0e76381407166cfd9aa1bee4286b40ff18aceed4b2921f",
+    "20260920_174501_menus_unlisted.json": "218288cfe34d9fc0f05d698a31b099db3c660686c8496563d59f7085031df3ce",
+    "20260920_174501_menus_unlisted.ts": "f01552cd7ce501f8b34efe8eeb52cdc748e5565933b052b9153fb129c0c82f26"
   }
 }

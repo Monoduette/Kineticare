@@ -2433,6 +2433,10 @@ export interface Menu {
    */
   visible?: boolean | null;
   /**
+   * A menüpont célja a közvetlen linkjén továbbra is elérhető, de a fejléc és a mobil menü nem mutatja. A linket alább másolhatod ki.
+   */
+  unlisted?: boolean | null;
+  /**
    * Külső linkeknél szokás bekapcsolni, hogy a látogató ne hagyja el az oldalt.
    */
   openInNewTab?: boolean | null;
@@ -3807,6 +3811,7 @@ export interface MenusSelect<T extends boolean = true> {
   parent?: T;
   order?: T;
   visible?: T;
+  unlisted?: T;
   openInNewTab?: T;
   updatedAt?: T;
   createdAt?: T;

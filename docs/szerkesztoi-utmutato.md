@@ -333,6 +333,31 @@ A menü az oldal tetején látszó navigáció. Legfeljebb **2 szintű**: főmen
 Ha valamit rosszul állítasz be (pl. „Oldal" típust választasz, de nem adsz meg
 célt), a mentés magyar hibaüzenettel megáll — nem tudsz elrontani semmit.
 
+### Rejtett link: elérhető cél, ami nincs benne a menüben
+
+Van olyan oldal vagy kurzus, amit csak azok érjenek el, akiknek elküldöd a
+linkjét (például egy zárt csoportnak vagy hírlevélben)? Erre való a **Rejtett
+link (nem jelenik meg a menüben)** kapcsoló a menüpont szerkesztőlapján.
+
+1. Állítsd be a menüpontot a szokott módon (felirat, típus, cél).
+2. Kapcsold be a **Rejtett link** pipát. A **Látható** pipát hagyd bekapcsolva.
+3. Megjelenik a **Közvetlen link** doboz a menüpont teljes webcímével. A
+   **Másolás** gombbal a vágólapra kerül, és bárhová beillesztheted.
+4. **Mentés**. A menüpont ezután nem látszik a fejlécben és a mobil menüben, de
+   aki megkapja a linket, az eléri a célt.
+
+Amire figyelj:
+
+- Ha a cél (oldal, bejegyzés vagy kurzus) még **piszkozat**, a doboz
+  figyelmeztet: a link addig hibaoldalt ad, amíg a célt közzé nem teszed.
+- A rejtett link nem jelszó. Aki ismeri a címet, megnyithatja, és a keresők is
+  megtalálhatják, ha valahol nyilvánosan hivatkoznak rá.
+- Ha egy **főmenüpontot** teszel rejtetté, az alatta lévő almenüpontok nem
+  tűnnek el: főmenüpontként jelennek meg tovább. Ha azokat sem akarod mutatni,
+  azoknál is kapcsold be a Rejtett linket.
+- A **Látható** pipa kivétele továbbra is a menüpont teljes elrejtése. A
+  Rejtett link ennél finomabb: csak a menüből veszi ki, a cél elérhető marad.
+
 ---
 
 ## 9. Új vélemény
