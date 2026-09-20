@@ -22,6 +22,7 @@ import { FreeCourseFormLink } from '@/components/courses/FreeCourseFormLink'
 import { FreeCourseRequestForm } from '@/components/courses/FreeCourseRequestForm'
 import { LexicalContent } from '@/components/courses/LexicalContent'
 import { PreviewVideo, hasPreviewVideo } from '@/components/courses/PreviewVideo'
+import { PromoCourseView, promoLastDayIso } from '@/components/courses/promo'
 import { RelatedCourses } from '@/components/courses/RelatedCourses'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
@@ -31,6 +32,7 @@ import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { loadProductPreview, previewCurriculum } from '@/lib/preview/product-preview'
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { AUDIENCE_LABELS, normalizeAudience } from '@/lib/course-audience'
+import { resolveCoursePromo } from '@/lib/course-promo'
 import {
   canonicalCourseRedirect,
   courseHref,
@@ -408,71 +410,124 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     jumpTargets[0] ??
     null
 
+  /**
+   * AKCIÓS SABLON (WP59, tulajdonosi kérés). Ha az admin „Akció" csoportja
+   * szerint az akció MOST él (course-promo.ts), a lap a kampányoldal
+   * dizájnját kapja a kurzus saját tartalmával (PromoCourseView) — a
+   * számítások, a CTA-állapotgép, a szakaszok és az id-k UGYANAZOK, csak az
+   * elrendezés más. Két kizárás:
+   *  - `priceBadge !== 'price'`: az akció ÁR-üzenet; ingyenes kurzuson nincs
+   *    mit akciózni, ár nélküli (hiányos konfigurációjú) terméken pedig az
+   *    „akciós ár" hamis állítás lenne (a felirat legyen igaz, SKILL 2. pont);
+   *  - `isPreview`: a szerkesztői előnézet a tartalom ellenőrzésére való, ott
+   *    az akciós jelölés és a vásárlás-mentes sablon csak zavarná az ellenőrzést.
+   * Minden más esetben a lap kimenete változatlan.
+   */
+  const promo = resolveCoursePromo(product)
+  const usePromoView = promo.active && priceBadge === 'price' && price !== null && !isPreview
+  // A strukturált adat Offer-je az akció utolsó napjáig érvényes (schema.org
+  // priceValidUntil) — csak az akciós sablonon, különben a kimenet változatlan.
+  const promoValidUntil = usePromoView ? promoLastDayIso(promo) : null
+
+  const structuredHead = !isPreview ? (
+    <>
+      {/* PostHog funnel-lépés: a kurzus-oldal megnyitása (no-op consent nélkül). */}
+      <TrackEvent
+        event="course_viewed"
+        properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
+      />
+      {/* Barion Pixel `contentView` (termékoldal). Az ár ugyanabból a
+      forrásból jön, mint a kiírt PriceTag és a strukturált adat: az
+      `ingyenes` ág 0-t, a hiányos konfiguráció NaN-t ad — utóbbinál az
+      esemény magától kimarad (barion-events.ts). */}
+      <CourseBarionView
+        course={{
+          id: product.id,
+          name: title,
+          priceHuf: priceBadge === 'free' ? 0 : (price ?? Number.NaN),
+          quantity: 1,
+          ...(category !== null ? { category } : {}),
+          ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+        }}
+      />
+      {/* Strukturált adat: Course + Product (egy entitás, kettős @type) és a
+      hozzá tartozó Offer. Minden mezője a LÁTHATÓ tartalomból jön — a név a
+      H1, a leírás a hero lead, a kép a buybox borítóképe, az ár pedig a
+      kiírt PriceTag forrása (priceInHUF), tehát árváltozásnál automatikusan
+      követi és nem tud elavulni. */}
+      <JsonLd
+        data={courseJsonLd({
+          product,
+          name: title,
+          path,
+          priceHuf: price,
+          ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+          ...(promoValidUntil !== null ? { priceValidUntil: promoValidUntil } : {}),
+        })}
+      />
+      {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
+      BreadcrumbList (Kurzusok → kurzus). Az ItemPage `mainEntity`-je a
+      fenti Course/Product csomópont (@id …#course), így a lap és a termék
+      egy gráfban áll (schema.org ItemPage: https://schema.org/ItemPage). */}
+      <JsonLd
+        data={siteGraphJsonLd({
+          page: {
+            path,
+            name: title,
+            description: resolveSeoDescription(productSeoDoc(product)),
+            type: 'ItemPage',
+            ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
+            dateModified: product.updatedAt,
+            mainEntityId: `${absoluteUrl(path)}#course`,
+          },
+          breadcrumbs: [
+            { name: 'Kurzusok', path: '/kurzusok' },
+            { name: title, path },
+          ],
+        })}
+      />
+      {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
+      látható harmonika — a kettő így sosem tud szétcsúszni (ez a
+      leggyakoribb ok, amiért a keresők elvetik a rich resultot). */}
+      {sales.faq.length > 0 ? <JsonLd data={faqPageJsonLd(sales.faq)} /> : null}
+    </>
+  ) : null
+
+  if (usePromoView && price !== null) {
+    return (
+      <>
+        {structuredHead}
+        <PromoCourseView
+          audienceLabel={audienceLabel}
+          category={category}
+          cta={cta}
+          ctaId={CTA_ID}
+          curriculumModules={curriculumModules}
+          guaranteeLabel={guaranteeLabel}
+          jumpTargets={jumpTargets}
+          lead={
+            typeof product.shortDescription === 'string'
+              ? rewriteVisitorDashLeftover(product.shortDescription)
+              : null
+          }
+          priceHuf={price}
+          priceLabel={priceLabel}
+          product={product}
+          promo={promo}
+          related={relatedProductsOf(product)}
+          sales={sales}
+          sections={sections}
+          showBuyBar={showBuyBar}
+          title={title}
+        />
+      </>
+    )
+  }
+
   return (
     <>
       {isPreview ? <PreviewBar path={path} /> : null}
-      {!isPreview ? (
-        <>
-          {/* PostHog funnel-lépés: a kurzus-oldal megnyitása (no-op consent nélkül). */}
-          <TrackEvent
-            event="course_viewed"
-            properties={{ courseId: product.id, courseSku: product.sku ?? undefined }}
-          />
-          {/* Barion Pixel `contentView` (termékoldal). Az ár ugyanabból a
-          forrásból jön, mint a kiírt PriceTag és a strukturált adat: az
-          `ingyenes` ág 0-t, a hiányos konfiguráció NaN-t ad — utóbbinál az
-          esemény magától kimarad (barion-events.ts). */}
-          <CourseBarionView
-            course={{
-              id: product.id,
-              name: title,
-              priceHuf: priceBadge === 'free' ? 0 : (price ?? Number.NaN),
-              quantity: 1,
-              ...(category !== null ? { category } : {}),
-              ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-            }}
-          />
-          {/* Strukturált adat: Course + Product (egy entitás, kettős @type) és a
-          hozzá tartozó Offer. Minden mezője a LÁTHATÓ tartalomból jön — a név a
-          H1, a leírás a hero lead, a kép a buybox borítóképe, az ár pedig a
-          kiírt PriceTag forrása (priceInHUF), tehát árváltozásnál automatikusan
-          követi és nem tud elavulni. */}
-          <JsonLd
-            data={courseJsonLd({
-              product,
-              name: title,
-              path,
-              priceHuf: price,
-              ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-            })}
-          />
-          {/* Oldal-gráf: Organization + WebSite + ItemPage (a kurzus lapja) +
-          BreadcrumbList (Kurzusok → kurzus). Az ItemPage `mainEntity`-je a
-          fenti Course/Product csomópont (@id …#course), így a lap és a termék
-          egy gráfban áll (schema.org ItemPage: https://schema.org/ItemPage). */}
-          <JsonLd
-            data={siteGraphJsonLd({
-              page: {
-                path,
-                name: title,
-                description: resolveSeoDescription(productSeoDoc(product)),
-                type: 'ItemPage',
-                ...(cover ? { imageUrl: absoluteUrl(cover.url) } : {}),
-                dateModified: product.updatedAt,
-                mainEntityId: `${absoluteUrl(path)}#course`,
-              },
-              breadcrumbs: [
-                { name: 'Kurzusok', path: '/kurzusok' },
-                { name: title, path },
-              ],
-            })}
-          />
-          {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
-          látható harmonika — a kettő így sosem tud szétcsúszni (ez a
-          leggyakoribb ok, amiért a keresők elvetik a rich resultot). */}
-          {sales.faq.length > 0 ? <JsonLd data={faqPageJsonLd(sales.faq)} /> : null}
-        </>
-      ) : null}
+      {structuredHead}
 
       <Section>
         <Container>

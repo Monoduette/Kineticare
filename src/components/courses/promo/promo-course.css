@@ -1,0 +1,372 @@
+/*
+ * Akciós kurzusoldal (PromoCourseView) — WP59.
+ *
+ * A minta a kampányoldal hero-ja és váltakozó hátterű sávjai (az „olcsó
+ * dolgok itt" demóoldal), a kurzus SAJÁT tartalmával. Minden szín és méret a
+ * tokens.css szerep-tokenjeiről jön; nyers hex nincs. Betűméret KIZÁRÓLAG a
+ * három token (--kc-font-l/m/s). Mozgás nincs (az egyetlen animáció a
+ * kurzusoldal közös pipás listájáé, amit a base.css reduced-motion blokkja
+ * kikapcsol).
+ *
+ * KONTRASZT (számolt, WCAG 2.2 SC 1.4.3 / 1.4.11; a tokens.css értékeivel):
+ *   fátyol: ink (#10243e) 78% + a kép. A LEGROSSZABB eset a tiszta fehér
+ *   képrészlet: a kompozit #455468 (69,84,104).
+ *   - fehér (--kc-color-on-dark, #ffffff) a legrosszabb kompoziton ... 7,71:1 ✓
+ *   - fehér a tiszta inken (kép nélkül, záró sáv) ...................... 15,63:1 ✓
+ *   - accent-quiet (#9ec4df) a legrosszabb kompoziton .................. 4,19:1 ✗ (4,5 alatt)
+ *     → a heróban MINDEN szöveg fehér; az accent-quiet csak a jelzés
+ *       dekoratív keretén él (nem-szöveg, ≥ 3:1 ✓, SC 1.4.11).
+ *   - elsődleges gomb a sötét sávon FORDUL: fehér alap, ink felirat ..... 15,63:1 ✓
+ *     hover: tint alap (#e6f0f8), ink felirat ............................ 13,53:1 ✓
+ *     a fehér gombfelület a legrosszabb kompoziton (nem-szöveg) .......... 7,71:1 ✓
+ *   - másodlagos gomb: fehér keret + fehér felirat (ui.css sötét-sáv szabálya)
+ *   - pipa (--kc-color-primary, #2f6e9f) a tint sávon (#e6f0f8) ......... 4,72:1 ✓
+ *   - ink a tinten 13,53:1, ink-soft a tinten 8,05:1, a paperen 8,80:1 ✓
+ *   - fókuszgyűrű: a sötét sávon fehér (ui.css .kc-section--dark), a világos
+ *     sávokon a globális accent-deep (base.css) — SC 2.4.11 / 1.4.11.
+ * ÉRINTŐCÉL: minden gomb és chip min-height 2.75rem (44 px) — ui.css
+ *   .kc-button, kurzusok.css .kc-course-jump__chip
+ *   (WCAG 2.2 SC 2.5.8 a 24 px-et kéri, a repó 44 px-et használ).
+ * REFLOW (SC 1.4.10): 320 px-en egy hasáb, a gombok tördelődnek (flex-wrap),
+ *   az ár-sor tördelődik, a kép `object-fit: cover` — vízszintes görgetés
+ *   nincs (mérve: a dokumentum scrollWidth = 320).
+ * SORHOSSZ: a hero és a záró sáv szövege --kc-measure (34rem ≈ 75 magyar
+ *   karakter), a lead --kc-measure-comfort (30rem ≈ 66); a szakaszok a
+ *   kurzusoldal saját mértékét (--kc-course-measure) kapják, amit itt a
+ *   gyökéren DEFINIÁLUNK, mert a kurzusok.css a .kc-course-layout-on adja,
+ *   ami az akciós sablonon nincs.
+ * Források: GOV.UK Images (szöveg a képen minden részleten kontrasztos),
+ *   https://design-system.service.gov.uk/styles/images/ ; GOV.UK Button (egy
+ *   elsődleges gomb), https://design-system.service.gov.uk/components/button/ ;
+ *   Material 3 Color roles (tonal surfaces, sávváltás),
+ *   https://m3.material.io/styles/color/roles ; WCAG 2.2 Understanding
+ *   1.4.3, 1.4.10, 1.4.11, 2.5.8, https://www.w3.org/WAI/WCAG22/Understanding/ .
+ */
+
+.kc-promo-course {
+  --kc-course-measure: 34rem;
+  --kc-course-measure-comfort: 30rem;
+
+  background: var(--kc-color-bg);
+}
+
+/* ---- Hero ---------------------------------------------------------------- */
+
+.kc-promo-hero {
+  position: relative;
+  display: flex;
+  min-height: min(78svh, 46rem);
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.kc-promo-hero__media,
+.kc-promo-hero__veil {
+  position: absolute;
+  inset: 0;
+}
+
+.kc-promo-hero__media .kc-promo-hero__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 86%;
+}
+
+.kc-promo-hero__veil {
+  background: color-mix(in srgb, var(--kc-color-surface-dark) 78%, transparent);
+}
+
+.kc-promo-hero__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  padding-block: var(--kc-space-8) var(--kc-space-7);
+}
+
+.kc-promo-hero__copy {
+  max-width: var(--kc-measure);
+}
+
+/* Az akció-jelzés: keretes címke, fehér szöveg (7,71:1 a legrosszabb
+   képrészleten). Statikus dátum, nem visszaszámláló. */
+.kc-promo-hero__badge {
+  display: inline-block;
+  margin: 0;
+  padding: var(--kc-space-2) var(--kc-space-3);
+  border: 1px solid var(--kc-color-on-dark-muted);
+  border-radius: var(--kc-radius-sm);
+  color: var(--kc-color-on-dark);
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-promo-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kc-space-1) var(--kc-space-3);
+  margin: var(--kc-space-4) 0 0;
+  color: var(--kc-color-on-dark);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-promo-hero__meta span + span::before {
+  content: '·';
+  margin-right: var(--kc-space-3);
+}
+
+.kc-promo-hero__title {
+  margin: var(--kc-space-3) 0 0;
+  color: var(--kc-color-on-dark);
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: var(--kc-leading-heading);
+  text-wrap: balance;
+}
+
+.kc-promo-hero__lead {
+  max-width: var(--kc-measure-comfort);
+  margin: var(--kc-space-4) 0 0;
+  color: var(--kc-color-on-dark);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+}
+
+/* ---- Ár-sor (heróban és a záró sávban) ----------------------------------- */
+
+.kc-promo-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--kc-space-1) var(--kc-space-3);
+  margin: var(--kc-space-5) 0 0;
+  color: var(--kc-color-on-dark);
+  font-family: var(--kc-font-body);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--kc-leading-heading);
+}
+
+/* Az eredeti ár: törzsméret, normál súly, áthúzva. A jelentést a rejtett
+   „Eredeti ár:" címke hordozza, nem a vonal (SC 1.3.1). */
+.kc-promo-price__old {
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-normal);
+}
+
+.kc-promo-price__old s {
+  text-decoration-thickness: 2px;
+}
+
+/* Az akciós ár az L lépcsőn, félkövér: a lap egyetlen szám-hangsúlya. */
+.kc-promo-price__now {
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: var(--kc-leading-tight);
+}
+
+.kc-promo-price__note {
+  flex-basis: 100%;
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+/* ---- CTA-blokk a heróban ------------------------------------------------- */
+
+.kc-promo-hero__cta {
+  margin-top: var(--kc-space-5);
+}
+
+.kc-promo-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kc-space-3);
+}
+
+/* Az elsődleges gomb a sötét sávon fordul (fehér alap, ink felirat,
+   15,63:1) — ugyanaz a levezetés, mint a cta-banner.css sötét sávján. */
+.kc-promo-hero__button.kc-button--primary,
+.kc-promo-closing__button.kc-button--primary {
+  background-color: var(--kc-color-on-dark);
+  color: var(--kc-color-surface-dark);
+}
+
+.kc-promo-hero__button.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled),
+.kc-promo-closing__button.kc-button--primary:hover:not(:disabled):not(.kc-button--disabled) {
+  background-color: var(--kc-color-surface-tint);
+  color: var(--kc-color-surface-dark);
+}
+
+.kc-promo-hero__note {
+  max-width: var(--kc-measure-comfort);
+  margin: var(--kc-space-3) 0 0;
+  color: var(--kc-color-on-dark);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+}
+
+/* ---- Bizalmi sor: garancia + tényadatok ---------------------------------- */
+
+.kc-promo-hero__trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kc-space-2) var(--kc-space-5);
+  margin: var(--kc-space-5) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--kc-color-on-dark);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-promo-hero__trust-item {
+  display: inline-flex;
+  gap: var(--kc-space-2);
+  align-items: baseline;
+}
+
+.kc-promo-hero__trust-mark {
+  font-weight: var(--kc-font-weight-bold);
+}
+
+/* ---- Ugrás-chipek sávja -------------------------------------------------- */
+
+.kc-promo-course__jump {
+  border-bottom: 1px solid var(--kc-color-border);
+}
+
+.kc-promo-course__jump .kc-course-jump {
+  margin-bottom: 0;
+  padding-block: var(--kc-space-4);
+  border-bottom: 0;
+}
+
+/* ---- Fő előnyök sáv ------------------------------------------------------ */
+
+.kc-promo-highlights__list {
+  gap: var(--kc-space-3) var(--kc-space-6);
+  max-width: none;
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+}
+
+@media (min-width: 900px) {
+  .kc-promo-highlights__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---- Szakasz-sávok ------------------------------------------------------- */
+
+/* A szakaszok a kurzusoldal komponensei: a saját alsó margójukat a sáv
+   függőleges ritmusa váltja ki (Section padding), a sávon belüli elemek
+   (leírás + galéria-kép) között a szakaszköz marad. */
+.kc-promo-course__band .kc-course-section,
+.kc-promo-course__band .kc-course-guarantee,
+.kc-promo-course__band .kc-course-figure {
+  margin-bottom: 0;
+}
+
+.kc-promo-course__band .kc-course-figure {
+  max-width: var(--kc-container-narrow);
+  margin-top: var(--kc-space-7);
+}
+
+/* A garancia-doboz a tint sávon beleolvadna a háttérbe: ott fehér, keretes
+   kártya lesz (ui.css kártya-nyelve), a paper sávon marad tint. */
+.kc-section--tint .kc-course-guarantee {
+  background-color: var(--kc-color-surface-raised);
+  border: 1px solid var(--kc-color-border);
+}
+
+/* ---- Záró vásárlási sáv -------------------------------------------------- */
+
+.kc-promo-closing__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kc-space-5) var(--kc-space-6);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kc-promo-closing__copy {
+  flex: 1 1 20rem;
+  max-width: var(--kc-measure);
+}
+
+.kc-promo-closing__title {
+  margin: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-l);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: var(--kc-leading-heading);
+  text-wrap: balance;
+}
+
+.kc-promo-closing__price {
+  margin-top: var(--kc-space-3);
+}
+
+.kc-promo-closing__guarantee {
+  display: flex;
+  gap: var(--kc-space-2);
+  align-items: baseline;
+  margin: var(--kc-space-3) 0 0;
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-promo-closing__guarantee-mark {
+  font-weight: var(--kc-font-weight-bold);
+}
+
+.kc-promo-closing__action {
+  flex: 0 0 auto;
+}
+
+/* ---- Kisebb nézetablakok ------------------------------------------------- */
+
+@media (max-width: 899px) {
+  .kc-promo-hero {
+    min-height: min(68svh, 38rem);
+  }
+
+  .kc-promo-hero__inner {
+    padding-block: var(--kc-space-7) var(--kc-space-6);
+  }
+}
+
+@media (max-width: 420px) {
+  .kc-promo-hero {
+    min-height: min(64svh, 32rem);
+  }
+
+  .kc-promo-hero__media .kc-promo-hero__image {
+    object-position: center 89%;
+  }
+
+  .kc-promo-hero__inner {
+    padding-block: var(--kc-space-4);
+  }
+
+  .kc-promo-hero__badge {
+    padding: var(--kc-space-1) var(--kc-space-2);
+  }
+
+  .kc-promo-hero__actions {
+    gap: var(--kc-space-2);
+  }
+
+  /* 320 px-en a két gomb egymás alá tördelődik és a hasáb teljes szélességét
+     kapja (a kurzuscím hosszú magyar felirata így sem tör két sorba). */
+  .kc-promo-hero__button.kc-button,
+  .kc-promo-closing__button.kc-button {
+    width: 100%;
+    padding-inline: var(--kc-space-4);
+  }
+}
