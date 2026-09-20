@@ -5,6 +5,9 @@ import {
 } from '../../lib/appointment/context'
 import { showcaseProducts } from '../../lib/course-showcase'
 import { resolveCtaBannerFigure } from '../../lib/cta-banner-course'
+import { logger } from '../../lib/logger'
+import { CLINIC_TREATMENTS_ANCHOR } from '../../lib/menu-seed'
+import { felismerRendeloiArlista } from '../../lib/rendeloi-arlista'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
@@ -25,6 +28,7 @@ import { CtaBanner } from './CtaBanner'
 import { FaqBlock } from './FaqBlock'
 import { FilmHero } from './FilmHero'
 import { PressLogos } from './PressLogos'
+import { RendeloiArlista } from './RendeloiArlista'
 import { Services } from './Services'
 import { States } from './States'
 import { TeamMembers } from './TeamMembers'
@@ -415,6 +419,23 @@ function BlockSwitch({
       const { id, variant } = sectionProps(block)
       if (!hasLexicalContent(block.content)) {
         return null
+      }
+      // WP58: a rendelői szekció (a fejléc-menü `#rendeloi` horgonya) a
+      // szabad szövegből felismert árlista-szerkezetet kap: két hasáb,
+      // árkártyák egymás mellett, gomb az időpontkérésre. Csak a horgonyzott
+      // blokkon próbálkozik, és ha a szerkezet nem ismerhető fel, a blokk a
+      // sima folyószövegre esik vissza (a tartalom sosem veszik el). A
+      // visszaesés naplózott, hogy a szerkesztői átírás után ne némán tűnjön
+      // el az elrendezés.
+      if (id === CLINIC_TREATMENTS_ANCHOR) {
+        const arlista = felismerRendeloiArlista(block.content)
+        if (arlista) {
+          return <RendeloiArlista blockId={block.id} id={id} modell={arlista} variant={variant} />
+        }
+        logger.warn('WP58: a rendelői árlista szerkezete nem ismerhető fel, sima folyószöveg', {
+          blockId: block.id ?? null,
+          anchorId: id,
+        })
       }
       return (
         <Section id={id} variant={variant}>

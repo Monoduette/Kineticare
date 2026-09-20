@@ -1,0 +1,198 @@
+/**
+ * Rendelői árlista (RendeloiArlista) — a /szolgaltatasok „Rendelői kezelések"
+ * szekciójának strukturált alakja (WP58, tulajdonosi kérés 2026-09-19).
+ *
+ * Minden méret a `--kc-font-l/m/s` skáláról, minden szín szerep-tokenről,
+ * minden köz a 4 px-es rácsról (tokens.css). Nyers px és hex TILOS.
+ *
+ * SZERKEZET. 900 px alatt egy hasáb: cím, bevezető, gomb, majd az árkártyák
+ * és a tények. 900 px-től két hasáb (5/12 : 7/12): balra a szöveg és a gomb,
+ * jobbra a kártyák és a tény-sor. A csoporton belüli köz kisebb, mint a
+ * csoportok közti (NN/g, Proximity Principle:
+ * https://www.nngroup.com/articles/gestalt-proximity/; Material 3 Layout,
+ * Spacing: https://m3.material.io/foundations/layout/understanding-layout/spacing).
+ *
+ * KÁRTYÁK. `auto-fit` rács 12 rem-es padlóval: 320 és 390 px-en egymás
+ * alatt (a hasáb 272 / 342 px, két 12 rem-es kártya + köz nem fér el), 768
+ * px-től egymás mellett. A kártya a repó `kc-card` nyelve (fehér felület,
+ * hairline-keret, `--kc-radius-lg`), és MINDEN kártya azonos felépítésű:
+ * időtartam felül, ár alatta (NN/g, Comparison Tables: azonos attribútum-
+ * sorrend, kis képernyőn legfeljebb 2 egymás mellett,
+ * https://www.nngroup.com/articles/comparison-tables/; Material 3 Cards:
+ * gyűjtemény rácsban, https://m3.material.io/components/cards/guidelines).
+ * Az ár a TÖRZS méretén (M) áll, a kiemelést a 700-as súly adja (tokens.css:
+ * „ár: az ár kiemelése SÚLLYAL"), nem egy negyedik betűméret.
+ *
+ * TÉNY-SOR. A GOV.UK Summary list mintája: sorok hairline-elválasztóval,
+ * mert a vonal a nagyítva olvasóknak is segít sort tartani
+ * (https://design-system.service.gov.uk/components/summary-list/).
+ *
+ * KONTRASZT (tokens.css jegyzőkönyve): ink a fehér kártyán 15,63:1, a
+ * paperen 14,79:1; ink-soft a fehéren 9,30:1, a paperen 8,80:1; a
+ * másodlagos gomb ink szövege és 2 px ink kerete a paperen 14,79:1
+ * (WCAG 2.2 SC 1.4.3, 1.4.11). A hairline dekoratív, nem azonosító határ.
+ *
+ * REFLOW. 320 px-en a rács egyetlen `minmax(0, 1fr)` oszlop, a kártyarács
+ * padlója `min(100%, 12rem)`, a szöveg `overflow-wrap: break-word` a
+ * `.kc-richtext`-től örökölve — vízszintes görgetés nincs (WCAG 2.2 SC
+ * 1.4.10, https://www.w3.org/WAI/WCAG22/Understanding/reflow.html).
+ *
+ * Betöltés: a szekció-komponens importálja (src/components/blocks/RendeloiArlista.tsx).
+ */
+
+.kc-arlista__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-6);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .kc-arlista__grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--kc-space-7);
+  }
+}
+
+/* ---- Bal hasáb: cím, bevezető, gomb -------------------------------------
+   A cím a közös `.kc-section-title` (content.css), a bevezető a közös
+   `.kc-richtext` (mérték 34 rem a bekezdésen) — saját szabály nem kell. */
+
+/* A gomb a bevezető olvasási végén áll, ahol a döntés születik; a köz
+   fölötte a bekezdésköz másfélszerese, hogy a bevezetőtől külön csoport
+   legyen, de a hasábon belül maradjon. */
+.kc-arlista__action {
+  margin: var(--kc-space-5) 0 0;
+}
+
+@media (max-width: 599px) {
+  /* Mobilon a gomb teljes szélességű: a hüvelykujjnak nagyobb cél, a
+     hasáb szélével egy vonalban (a kurzusoldal vásárlósávjának mintája). */
+  .kc-arlista__action .kc-button {
+    width: 100%;
+  }
+}
+
+/* ---- Jobb hasáb: árkártyák és tények ------------------------------------ */
+.kc-arlista__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kc-space-4);
+  min-width: 0;
+}
+
+/* Az árlista címe a folyószöveg h3-jával azonos lépcsőn (M, 700, törzsbetű):
+   a szintet a súly jelöli, nem a méret. Az alcím („gyógytorna /
+   manuálterápia") halkabb, normál súllyal, a cím után. */
+.kc-arlista__panel-title {
+  margin: 0;
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: var(--kc-leading-heading);
+  color: var(--kc-color-text);
+}
+
+.kc-arlista__panel-sub {
+  display: block;
+  margin-top: var(--kc-space-1);
+  font-weight: var(--kc-font-weight-normal);
+  color: var(--kc-color-text-muted);
+}
+
+.kc-arlista__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--kc-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-arlista__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kc-space-1);
+  padding: var(--kc-space-5);
+  margin: 0;
+}
+
+.kc-arlista__duration {
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text-muted);
+}
+
+.kc-arlista__price {
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tételenkénti (nem közös) megjegyzés a kártyán belül, apróbetűvel. */
+.kc-arlista__card-note {
+  margin-top: var(--kc-space-2);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text-muted);
+}
+
+/* A közös lábjegyzet egyszer, a kártyák alatt, a kártyák teljes szélességén. */
+.kc-arlista__note {
+  margin: 0;
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text-muted);
+}
+
+.kc-arlista__facts {
+  margin: var(--kc-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--kc-color-border);
+}
+
+.kc-arlista__fact {
+  margin: 0;
+  padding: var(--kc-space-3) 0;
+  border-bottom: 1px solid var(--kc-color-border);
+  font-size: var(--kc-font-m);
+  line-height: var(--kc-leading-body);
+  color: var(--kc-color-text);
+}
+
+.kc-arlista__fact-key {
+  display: block;
+  font-weight: var(--kc-font-weight-bold);
+}
+
+.kc-arlista__places {
+  margin: var(--kc-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-arlista__place {
+  margin: 0;
+}
+
+/* Sötét sávon a hairline nem látszana: az elválasztó a halvány akcentre vált
+   (a `.kc-section--dark` szövegszabályait a ui.css adja). */
+.kc-section--dark .kc-arlista__facts,
+.kc-section--dark .kc-arlista__fact {
+  border-color: var(--kc-color-on-dark-muted);
+}
+
+.kc-section--dark .kc-arlista__duration,
+.kc-section--dark .kc-arlista__note,
+.kc-section--dark .kc-arlista__card-note,
+.kc-section--dark .kc-arlista__panel-sub {
+  color: var(--kc-color-on-dark-muted);
+}
+
+.kc-section--dark .kc-arlista__fact,
+.kc-section--dark .kc-arlista__panel-title {
+  color: var(--kc-color-on-dark);
+}

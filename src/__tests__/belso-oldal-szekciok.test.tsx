@@ -577,24 +577,43 @@ describe('/szolgaltatasok alap-szekciósora', () => {
 
     expect(markup).toContain('18 000 Ft')
     expect(markup).toContain('10 000 Ft')
-    expect(markup).toContain('Árlista: gyógytorna / manuálterápia')
-    expect(markup).toContain('50 perces alkalom: 18 000 Ft')
-    expect(markup).toContain('20 perces alkalom: 10 000 Ft')
+    // WP58 (2026-09-19): a rendelői blokk a felismert árlista-szerkezetben
+    // renderel (src/components/blocks/RendeloiArlista.tsx): az „Árlista"
+    // cím és alcíme külön elem, a tétel időtartam + ár kártya, az ár ezres
+    // csoportja nem törő szóközzel. A tartalom ugyanaz, a szerkezet más.
+    const NBSP = String.fromCharCode(0xa0)
+    expect(markup).toContain(
+      'Árlista<span class="kc-arlista__panel-sub">gyógytorna / manuálterápia',
+    )
+    expect(markup).toContain(
+      `<span class="kc-arlista__duration">50 perces alkalom</span><span class="kc-arlista__price">18${NBSP}000${NBSP}Ft</span>`,
+    )
+    expect(markup).toContain(
+      `<span class="kc-arlista__duration">20 perces alkalom</span><span class="kc-arlista__price">10${NBSP}000${NBSP}Ft</span>`,
+    )
     expect(markup).toContain('bármikor, a gyakorlatokat')
     expect(markup).not.toMatch(/[–—]/)
     expect(markup).toContain('Nádorliget u. 7/b')
-    expect(markup).toContain('Fadrusz utca 15.')
+    // A helyszín a tény-sor listaeleme: a mondatzáró pont a felismerésnél
+    // lekerül róla (a GOV.UK summary list értékei sem pontozottak).
+    expect(markup).toContain('<li class="kc-arlista__place">1114 Budapest, Fadrusz utca 15</li>')
     expect(markup).toContain('SZTK-A-33553/2024')
     // A kiegészítő terápiák felsorolása is megmarad (nem csak a rövid sor-szöveg).
     expect(markup).toContain('Manuálterápia')
   })
 
-  it('egyetlen elsődleges CTA-gomb: az időpontkérés szöveglink marad (B6.5)', () => {
+  it('egyetlen elsődleges CTA-gomb: az időpontkérés MÁSODLAGOS gomb (B6.5, WP58)', () => {
     const markup = renderLayout(layout)
 
     expect((markup.match(/kc-button--primary/g) ?? []).length).toBe(1)
     expect(markup).toContain('Megnézem a kurzusokat')
-    expect(markup).toContain('időpontot kérek')
+    // WP58 (tulajdonosi kérés, 2026-09-19): a rendelői szekció szöveglinkje
+    // gomb lett, de MÁSODLAGOS (§3.2 #24), hogy a lap egyetlen elsődleges
+    // CTA-ja a záró sáv maradjon; a cél a seed időpontkérő horgonya.
+    expect(markup).toContain(
+      '<a class="kc-button kc-button--secondary" href="/kapcsolat#idopontkeres">Kérj időpontot üzenetben</a>',
+    )
+    expect(markup).not.toContain('időpontot kérek')
   })
 
   /**
