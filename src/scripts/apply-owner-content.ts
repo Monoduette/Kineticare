@@ -5943,8 +5943,10 @@ async function futtat(): Promise<void> {
     const teljesAru = teljesAruTalalat.docs[0]
     const akcioMezok = alkalmazAkciosAkcioMezok({
       jelenlegi: akciosKurzus,
+      // Csak KÖZZÉTETT teljes árú program ára számít élő teljes árnak (Devin, #278).
       teljesAr:
         teljesAru !== undefined &&
+        teljesAru.status === 'published' &&
         teljesAru.priceInHUFEnabled === true &&
         typeof teljesAru.priceInHUF === 'number' &&
         teljesAru.priceInHUF > 0

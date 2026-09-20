@@ -116,20 +116,27 @@ export function PromoHero({
             priceHuf={priceHuf}
           />
 
-          <div className="kc-promo-hero__cta" id={ctaId}>
+          {/* A ragadós sáv horgonya CSAK az elsődleges gomb burka (nem a két gomb
+              sora): kis kijelzőn a második gomb levágása ne mutassa a sávot,
+              amíg a vásárlógomb teljesen látszik (Codex, #278). */}
+          <div className="kc-promo-hero__cta">
             <div className="kc-promo-hero__actions">
               {/* A felirat a szótárból, a CTA-ág szerint (§3.2 #1 / #8) — a
                   `resolveCourseCta` ugyanezt adja a `label` mezőben; a két
                   cselekvő ágon a gomb, a nem cselekvő ágon (label null) nincs
                   gomb, csak a magyarázat. */}
               {cta.kind === 'purchased' && cta.href !== null ? (
-                <Button className="kc-promo-hero__button" href={cta.href} variant="secondary">
-                  {ctaLabel('course-start')}
-                </Button>
+                <span className="kc-promo-hero__primary" id={ctaId}>
+                  <Button className="kc-promo-hero__button" href={cta.href} variant="secondary">
+                    {ctaLabel('course-start')}
+                  </Button>
+                </span>
               ) : cta.kind === 'buy' && cta.href !== null ? (
-                <Button className="kc-promo-hero__button" href={cta.href} variant="primary">
-                  {ctaLabel('course-buy')}
-                </Button>
+                <span className="kc-promo-hero__primary" id={ctaId}>
+                  <Button className="kc-promo-hero__button" href={cta.href} variant="primary">
+                    {ctaLabel('course-buy')}
+                  </Button>
+                </span>
               ) : null}
               {hasCurriculum ? (
                 <Button className="kc-promo-hero__button" href="#tananyag" variant="secondary">

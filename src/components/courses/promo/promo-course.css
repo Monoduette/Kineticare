@@ -375,3 +375,8 @@
 .kc-promo-closing__cta {
   display: inline-block;
 }
+
+/* Az elsődleges gomb burka: a ragadós sáv ezt figyeli; a mérete a gombé. */
+.kc-promo-hero__primary {
+  display: inline-flex;
+}

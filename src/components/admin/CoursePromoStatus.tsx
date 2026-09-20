@@ -62,8 +62,8 @@ export interface CoursePromoStatusText {
   message: string
   /** Figyelmeztetés az áthúzott árról, vagy null. */
   warning: string | null
-  /** Az állapot kódja (a nézet ebből színez). */
-  reason: CoursePromo['reason']
+  /** Az állapot kódja (a nézet ebből színez); 'nem-lathato': az időablak él, de a bolt nem mutatja. */
+  reason: CoursePromo['reason'] | 'nem-lathato'
 }
 
 const HALF_DAY_MS = 12 * 60 * 60 * 1000
@@ -142,6 +142,16 @@ export function deriveCoursePromoStatus(
       message: `Az akció lejárt (${withDaySuffix(last, 'an')}).`,
       warning,
       reason: promo.reason,
+    }
+  }
+  // Az időablak él, de a bolt nem mutatja (nem közzétett vagy ár nélküli
+  // kurzus): a főcím nem mondhat élő akciót (Devin, #278). A piszkozat eset
+  // külön: ott a közzétett változat élhet, a figyelmeztetés magyaráz.
+  if (!published || !hasValidPrice) {
+    return {
+      message: 'Az akció időablaka él, de az akciós megjelenés most nem látszik.',
+      warning,
+      reason: 'nem-lathato',
     }
   }
   const message =
