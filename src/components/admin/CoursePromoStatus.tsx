@@ -74,13 +74,17 @@ const HALF_DAY_MS = 12 * 60 * 60 * 1000
  * előtti nap, az első nap a kezdő pillanat napja.
  */
 export const NOT_PUBLISHED_WARNING =
-  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve.'
+  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve és a dokumentum nincs közzétéve.'
 
 export const NO_PRICE_WARNING =
   'A kurzusnak nincs érvényes ára (ingyenes vagy üres az ár), ezért az akciós megjelenés és az Akció címke nem jelenik meg.'
 
 export function deriveCoursePromoStatus(
-  fields: Parameters<typeof resolveCoursePromo>[0] & { status?: string | null },
+  fields: Parameters<typeof resolveCoursePromo>[0] & {
+    status?: string | null
+    /** A Payload dokumentum-státusza (piszkozat vagy közzétett verzió). */
+    _status?: string | null
+  },
   now: Date = new Date(),
 ): CoursePromoStatusText {
   const promo = resolveCoursePromo(fields, now)
@@ -98,7 +102,10 @@ export function deriveCoursePromoStatus(
   // piszkozat kurzuson a doboz ne mondjon élő akciót (Devin, #278).
   // Fail-closed, mint a bolt: CSAK a szó szerinti 'published' számít
   // közzétettnek; hiányzó vagy null státusz is figyelmeztet (Devin, #278).
-  const published = fields.status === 'published'
+  // A bolt KÉT kaput néz: a saját `status` mezőt ÉS a Payload `_status`-t
+  // (piszkozat dokumentum nyilvánosan 404). Mindkettőnek közzétettnek kell
+  // lennie (Devin, #278).
+  const published = fields.status === 'published' && fields._status !== 'draft'
   const warning =
     promo.enabled && !published
       ? NOT_PUBLISHED_WARNING
@@ -203,11 +210,13 @@ export function CoursePromoStatus(): JSX.Element {
   const priceInHUF = useFormFields(([fields]) => fields?.priceInHUF?.value)
   const priceInHUFEnabled = useFormFields(([fields]) => fields?.priceInHUFEnabled?.value)
   const status = useFormFields(([fields]) => fields?.status?.value)
+  const documentStatus = useFormFields(([fields]) => fields?._status?.value)
 
   const values: CoursePromoFields & {
     priceInHUF: number | null
     priceInHUFEnabled: boolean
     status: string | null
+    _status: string | null
   } = {
     promoEnabled: promoEnabled === true,
     // Az űrlapban a dátum Date vagy ISO string is lehet; a feloldó stringet vár.
@@ -217,6 +226,7 @@ export function CoursePromoStatus(): JSX.Element {
     priceInHUF: readNumber(priceInHUF),
     priceInHUFEnabled: priceInHUFEnabled === true,
     status: typeof status === 'string' ? status : null,
+    _status: typeof documentStatus === 'string' ? documentStatus : null,
   }
 
   // A nyitva hagyott lap az időablak határán (kezdet vagy vég) magától

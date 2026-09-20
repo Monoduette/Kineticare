@@ -127,6 +127,14 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
     expect(deriveCoursePromoStatus({ ...base, ...on, status: undefined }, NOW).warning).toBe(
       NOT_PUBLISHED_WARNING,
     )
+    expect(
+      deriveCoursePromoStatus({ ...base, ...on, status: 'published', _status: 'draft' }, NOW)
+        .warning,
+    ).toBe(NOT_PUBLISHED_WARNING)
+    expect(
+      deriveCoursePromoStatus({ ...base, ...on, status: 'published', _status: 'published' }, NOW)
+        .warning,
+    ).toBeNull()
   })
 
   it('ingyenes vagy ár nélküli kurzuson a pipa hatástalan, és ezt a doboz kimondja', () => {

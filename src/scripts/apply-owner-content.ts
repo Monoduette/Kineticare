@@ -4774,11 +4774,24 @@ export const alkalmazAkciosAkcioMezok = (input: {
   const kihagyasok: JavitasLepes[] = []
   const { jelenlegi, teljesAr } = input
 
+  const teljesArKitoltve =
+    typeof jelenlegi.promoOriginalPriceHuf === 'number' && jelenlegi.promoOriginalPriceHuf > 0
   if (jelenlegi.promoEnabled === true) {
     kihagyasok.push({
       szabaly,
       uzenet: cimke,
       indok: 'az Akciós kurzus pipa MÁR be van kapcsolva, nincs teendő',
+      hangos: false,
+    })
+  } else if (teljesArKitoltve) {
+    // EGYSZERI beállítás (Codex, #278): ha a teljes ár már ki van töltve, a
+    // csoportot valaki már beállította, a kikapcsolt pipa tehát szerkesztői
+    // döntés (az akció lezárása), nem érintetlen alapérték. Nem kapcsoljuk vissza.
+    kihagyasok.push({
+      szabaly,
+      uzenet: cimke,
+      indok:
+        'a teljes ár MÁR kitöltött, a kikapcsolt pipa szerkesztői döntés (az akció lezárva), a script nem kapcsolja vissza',
       hangos: false,
     })
   } else {

@@ -233,6 +233,16 @@ describe('alkalmazAkciosAkcioMezok (PR #278: akciós megjelenés bekapcsolása)'
     expect(eredmeny.kihagyasok[0]?.indok).toContain('MÁR')
   })
 
+  it('szerkesztő által kikapcsolt akciót (kitöltött teljes ár mellett) nem kapcsol vissza', () => {
+    const eredmeny = alkalmazAkciosAkcioMezok({
+      jelenlegi: { ...alap, promoEnabled: false, promoOriginalPriceHuf: 79500 },
+      teljesAr: 79500,
+    })
+    expect(eredmeny.adat).toEqual({})
+    expect(eredmeny.modositasok).toHaveLength(0)
+    expect(eredmeny.kihagyasok[0]?.indok).toContain('szerkesztői döntés')
+  })
+
   it('ha a teljes árú program ára nem nagyobb vagy nem olvasható, a teljes ár hangosan kimarad, a pipa íródik', () => {
     const kisebb = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 30000 })
     expect(kisebb.adat).toEqual({ promoEnabled: true })
