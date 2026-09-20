@@ -596,7 +596,11 @@ describe('/szolgaltatasok alap-szekciósora', () => {
     expect(markup).toContain('Nádorliget u. 7/b')
     // A helyszín a tény-sor listaeleme: a mondatzáró pont a felismerésnél
     // lekerül róla (a GOV.UK summary list értékei sem pontozottak).
-    expect(markup).toContain('<li class="kc-arlista__place">1114 Budapest, Fadrusz utca 15</li>')
+    // A cím kattintható: a látható szöveg maga a cím, a link a Google Térképet
+    // nyitja új lapon, a rejtett toldat a képernyőolvasónak szól (src/lib/maps-href.ts).
+    expect(markup).toContain(
+      '<li class="kc-arlista__place"><a href="https://www.google.com/maps/search/?api=1&amp;query=1114%20Budapest%2C%20Fadrusz%20utca%2015" target="_blank" rel="noopener noreferrer">1114 Budapest, Fadrusz utca 15<span class="kc-visually-hidden"> (Google Térkép, új lapon nyílik)</span></a></li>',
+    )
     expect(markup).toContain('SZTK-A-33553/2024')
     // A kiegészítő terápiák felsorolása is megmarad (nem csak a rövid sor-szöveg).
     expect(markup).toContain('Manuálterápia')

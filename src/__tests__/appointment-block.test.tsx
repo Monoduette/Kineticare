@@ -11,6 +11,7 @@ import { RenderBlocks } from '../components/blocks/RenderBlocks'
 import { APPOINTMENT_CONSENT_TEXT } from '../lib/appointment/consent-text'
 import { APPOINTMENT_UNAVAILABLE_ERROR } from '../lib/appointment/submit'
 import { APPOINTMENT_UI_TEXT } from '../lib/appointment/validation'
+import { MAPS_LINK_HINT } from '../lib/maps-href'
 import type { BlockAppointment, Page } from '../payload-types'
 
 /**
@@ -189,6 +190,11 @@ describe('Appointment renderelés', () => {
     expect(html).toContain('+36 30 169 2263')
     expect(html).toContain('href="tel:+36301692263"')
     expect(html).toContain('href="mailto:info@kineticare.hu"')
+    // A cím is kattintható: a látható szöveg maga a cím, a link a Google
+    // Térképet nyitja új lapon, a rejtett toldat a képernyőolvasónak szól.
+    expect(html).toContain(
+      '<a href="https://www.google.com/maps/search/?api=1&amp;query=1117%20Budapest%2C%20N%C3%A1dorliget%20u.%207%2Fb" target="_blank" rel="noopener noreferrer">1117 Budapest, Nádorliget u. 7/b<span class="kc-visually-hidden"> (Google Térkép, új lapon nyílik)</span></a>',
+    )
   })
 
   it('cím nélküli szekció nem visz aria-labelledby-t (nincs név nélküli landmark)', () => {
@@ -448,6 +454,10 @@ describe('Appointment — a szekció-fej és a rendelő adatai az adminból jön
       expect(remaining, `hiányzó mező-érték a kimenetből: ${value}`).toContain(value)
       remaining = remaining.split(value).join(' ')
     }
+    // Az EGYETLEN rögzített szöveg az intróban a címlink képernyőolvasó-toldata
+    // (`kc-visually-hidden`, a látó vevő nem látja): a linknek meg kell
+    // mondania, hogy térképet nyit új lapon (WCAG 2.2 SC 2.4.4, SC 3.2.5).
+    remaining = remaining.split(MAPS_LINK_HINT.trim()).join(' ')
     expect(remaining.replace(/\s/g, '')).toBe('')
   })
 
@@ -502,6 +512,8 @@ describe('Appointment — a szekció-fej és a rendelő adatai az adminból jön
       APPOINTMENT_CONSENT_TEXT.before,
       APPOINTMENT_CONSENT_TEXT.linkLabel,
       APPOINTMENT_CONSENT_TEXT.after,
+      // A címlink képernyőolvasó-toldata (rejtett, src/lib/maps-href.ts).
+      MAPS_LINK_HINT.trim(),
       // A `Field` primitív képernyőolvasós kiegészítései és a honeypot felirata.
       '(kötelező)',
       'Weboldal',

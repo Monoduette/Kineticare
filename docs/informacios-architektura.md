@@ -190,6 +190,14 @@ célú gyökér-menüpont, nem duplázódik). **WP36 (2026-09-08):** ez már NEM
 akciógomb, hanem a menüsor első, sima tétele — asztali sorban és mobil
 fiókban egyaránt (tulajdonosi kérés).
 
+**Rejtett link (unlisted):** a `menus.unlisted = true` menüpont a `visible`
+sorral együtt aktív marad és a célja a közvetlen linkjén elérhető, de a
+`buildNavTree` ugyanúgy kihagyja a fejlécből és a mobil fiókból, mint a
+`visible: false` sort; unlisted szülő gyermeke a kiesett-szülő szabály szerint
+gyökér-szintre emelkedik. A közvetlen linket az admin szerkesztőlap „Közvetlen
+link" doboza mutatja (`src/lib/menu-public-url.ts`), ugyanazzal a feloldással,
+mint a navigáció (WCAG 2.2 SC 3.2.4).
+
 ```mermaid
 flowchart LR
     ROOT["Fejlec"]

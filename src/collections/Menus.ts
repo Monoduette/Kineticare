@@ -101,7 +101,7 @@ export const Menus: CollectionConfig = {
   admin: {
     useAsTitle: 'label',
     group: 'Navigáció',
-    defaultColumns: ['label', 'type', 'order', 'visible'],
+    defaultColumns: ['label', 'type', 'order', 'visible', 'unlisted'],
     description:
       'Az oldal tetején látszó menü. Legfeljebb 2 szint: főmenüpont és alatta almenüpontok.',
   },
@@ -218,6 +218,44 @@ export const Menus: CollectionConfig = {
       label: 'Látható',
       admin: {
         description: 'Ha kiveszed a pipát, a menüpont eltűnik az oldalról, de nem vész el.',
+      },
+    },
+    {
+      /*
+       * „Rejtett link" (unlisted): a menüpont AKTÍV marad, a célja a közvetlen
+       * linkjén elérhető, de a fejléc és a mobil menü nem mutatja. A szűrést a
+       * `buildNavTree` végzi (src/lib/menu-tree.ts), az access-szabályok
+       * (src/access/menus-visibility.ts) szándékosan érintetlenek: a sor
+       * olvasható marad, csak a navigációból esik ki. A `visible` ettől
+       * független kapcsoló marad (az „eltűnik az oldalról" jelentése nem
+       * változik), így a két állapot nem keveredik a szerkesztő fejében.
+       */
+      name: 'unlisted',
+      type: 'checkbox',
+      defaultValue: false,
+      label: 'Rejtett link (nem jelenik meg a menüben)',
+      admin: {
+        description:
+          'A menüpont célja a közvetlen linkjén továbbra is elérhető, de a fejléc és a mobil menü nem mutatja. A linket alább másolhatod ki.',
+      },
+    },
+    {
+      /*
+       * UI-mező (nem tárol adatot → nincs séma-hatása). Csak bekapcsolt
+       * „Rejtett link" mellett látszik: a közvetlen, abszolút linket mutatja
+       * másoló gombbal (src/components/admin/MenuUnlistedLink.tsx). A linket
+       * UGYANAZ a feloldás adja, mint a navigációét (WCAG 2.2 SC 3.2.4,
+       * Consistent Identification: ugyanaz a cél mindenhol ugyanazt a címet
+       * kapja), ezért nem térhet el attól, amit a látogató a menüben kapna.
+       */
+      name: 'unlistedLinkPanel',
+      type: 'ui',
+      label: 'Közvetlen link',
+      admin: {
+        condition: (_, siblingData) => siblingData?.unlisted === true,
+        components: {
+          Field: '/components/admin/MenuUnlistedLink#MenuUnlistedLink',
+        },
       },
     },
     {

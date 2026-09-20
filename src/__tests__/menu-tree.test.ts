@@ -12,6 +12,7 @@ function menu(overrides: Partial<Menu> & { id: number; label: string }): Menu {
     parent: null,
     order: null,
     visible: true,
+    unlisted: false,
     openInNewTab: false,
     updatedAt: '2026-01-01T00:00:00.000Z',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -19,12 +20,7 @@ function menu(overrides: Partial<Menu> & { id: number; label: string }): Menu {
   } as Menu
 }
 
-function urlMenu(
-  id: number,
-  label: string,
-  url: string,
-  overrides: Partial<Menu> = {},
-): Menu {
+function urlMenu(id: number, label: string, url: string, overrides: Partial<Menu> = {}): Menu {
   return menu({ id, label, type: 'url', url, ...overrides })
 }
 
@@ -34,7 +30,9 @@ function publishedPage(id: number, slug: string): Page {
     title: slug,
     slug,
     status: 'published',
-    content: { root: { type: 'root', children: [], direction: null, format: '', indent: 0, version: 1 } },
+    content: {
+      root: { type: 'root', children: [], direction: null, format: '', indent: 0, version: 1 },
+    },
     updatedAt: '',
     createdAt: '',
   } as unknown as Page
@@ -76,7 +74,12 @@ describe('resolveMenuHref', () => {
 
   it('post típus: /blog/{slug} konvenció', () => {
     const post = { id: 5, slug: 'alapok', status: 'published' } as Post
-    const item = menu({ id: 2, label: 'Blog', type: 'post', ref: { relationTo: 'posts', value: post } })
+    const item = menu({
+      id: 2,
+      label: 'Blog',
+      type: 'post',
+      ref: { relationTo: 'posts', value: post },
+    })
     expect(resolveMenuHref(item)).toBe('/blog/alapok')
   })
 
@@ -133,6 +136,31 @@ describe('buildNavTree', () => {
       urlMenu(2, 'Rejtett', '/rejtett', { visible: false }),
     ])
     expect(labels(tree)).toEqual(['Látható'])
+  })
+
+  it('unlisted:true („rejtett link") sorok kiesnek a navigációból', () => {
+    const tree = buildNavTree([
+      urlMenu(1, 'Látható', '/lat'),
+      urlMenu(2, 'Rejtett link', '/rejtett-link', { unlisted: true }),
+    ])
+    expect(labels(tree)).toEqual(['Látható'])
+  })
+
+  it('unlisted szülő gyermeke gyökér-szintre emelkedik (a kiesett szülő szabálya)', () => {
+    const tree = buildNavTree([
+      urlMenu(1, 'Rejtett szülő', '/szulo', { unlisted: true }),
+      urlMenu(2, 'Látható gyermek', '/gyermek', { parent: 1 }),
+    ])
+    expect(labels(tree)).toEqual(['Látható gyermek'])
+    expect(tree[0].children).toEqual([])
+  })
+
+  it('unlisted nem befolyásolja a resolveMenuHref-et: a cél linkje ugyanaz marad', () => {
+    const page = publishedPage(10, 'rejtett-oldal')
+    expect(resolveMenuHref(pageRefMenu(1, 'Rejtett', page, { unlisted: true }))).toBe(
+      '/rejtett-oldal',
+    )
+    expect(resolveMenuHref(urlMenu(2, 'Rejtett url', '/x', { unlisted: true }))).toBe('/x')
   })
 
   it('két szint: a gyermek a szülő children-listájába kerül, order szerint', () => {

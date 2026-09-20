@@ -7,9 +7,16 @@ import { isStorefrontFreeSos } from './sos-offer'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
 
 /**
- * Menüfa → NavItem fa (tiszta logika). Csak visible + published cél; max 2 szint
- * (mélyebb lánc → legközelebbi gyökér). Kiesett szülő → gyerek gyökérré emelődik.
- * Rendezés: order, majd label (hu). Külső URL: safe-url allowlist.
+ * Menüfa → NavItem fa (tiszta logika). Csak visible + NEM unlisted + published
+ * cél; max 2 szint (mélyebb lánc → legközelebbi gyökér). Kiesett szülő →
+ * gyerek gyökérré emelődik. Rendezés: order, majd label (hu). Külső URL:
+ * safe-url allowlist.
+ *
+ * „Rejtett link" (unlisted): a menüpont aktív, a célja a közvetlen linkjén
+ * elérhető, de a navigáció nem mutatja — ugyanúgy esik ki, mint a visible:false
+ * sor. Tudatos következmény: az unlisted SZÜLŐ gyermeke gyökér-szintre
+ * emelkedik (a „kiesett szülő" szabály), mert a gyermek maga nem rejtett, és
+ * szülő nélkül nem lenne elérhető a menüből.
  */
 
 export interface NavItem {
@@ -87,8 +94,43 @@ function resolveRef(menu: Menu): { relationTo: string; value: unknown } | null {
 }
 
 /** Published-ellenőrzés a cél-dokumentumon (collectionönként egyező szabály: saját status select). */
-function isPublishedTarget(doc: Page | Post | Product): boolean {
+export function isPublishedTarget(doc: Page | Post | Product): boolean {
   return doc.status === 'published'
+}
+
+/** A menü-cél collectionjei (a `ref` relationTo értékei). */
+export type MenuTargetCollection = 'pages' | 'posts' | 'products'
+
+/**
+ * A cél-dokumentum útvonala a menü-konvenció szerint, STÁTUSZTÓL FÜGGETLENÜL;
+ * null, ha nincs miből címet képezni (hiányzó slug, ismeretlen collection).
+ *
+ * Külön függvény, mert két hívója van: a navigáció (`resolveMenuHref`, amely
+ * a published-kaput is ráteszi) és az admin „Rejtett link" doboza
+ * (src/lib/menu-public-url.ts), amely piszkozat célnál is mutatja a linket,
+ * figyelmeztetéssel. Az útvonal-képzés EGY helyen él, így a két felület nem
+ * csúszhat el egymástól (WCAG 2.2 SC 3.2.4 Consistent Identification).
+ */
+export function resolveMenuTargetPath(
+  relationTo: MenuTargetCollection,
+  doc: Page | Post | Product,
+): string | null {
+  switch (relationTo) {
+    case 'pages': {
+      const page = doc as Page
+      return page.slug ? `${MENU_HREF_PREFIX.page}/${page.slug}` : null
+    }
+    case 'posts': {
+      const post = doc as Post
+      return post.slug ? `${MENU_HREF_PREFIX.post}/${post.slug}` : null
+    }
+    case 'products':
+      // A kurzus kanonikus címe: slug, ennek hiányában a régi, id-alapú út
+      // (a kurzus-route ezt átirányítja) — src/lib/course-url.ts.
+      return courseHref(doc as Product)
+    default:
+      return null
+  }
 }
 
 /**
@@ -110,27 +152,12 @@ export function resolveMenuHref(menu: Menu): string | null {
     return null
   }
 
-  switch (ref.relationTo) {
-    case 'pages': {
-      const doc = ref.value as Page
-      if (!isPublishedTarget(doc)) return null
-      return doc.slug ? `${MENU_HREF_PREFIX.page}/${doc.slug}` : null
-    }
-    case 'posts': {
-      const doc = ref.value as Post
-      if (!isPublishedTarget(doc)) return null
-      return doc.slug ? `${MENU_HREF_PREFIX.post}/${doc.slug}` : null
-    }
-    case 'products': {
-      const doc = ref.value as Product
-      if (!isPublishedTarget(doc)) return null
-      // A kurzus kanonikus címe: slug, ennek hiányában a régi, id-alapú út
-      // (a kurzus-route ezt átirányítja) — src/lib/course-url.ts.
-      return courseHref(doc)
-    }
-    default:
-      return null
+  if (ref.relationTo !== 'pages' && ref.relationTo !== 'posts' && ref.relationTo !== 'products') {
+    return null
   }
+  const doc = ref.value as Page | Post | Product
+  if (!isPublishedTarget(doc)) return null
+  return resolveMenuTargetPath(ref.relationTo, doc)
 }
 
 function toNavItem(menu: Menu, href: string): NavItem {
@@ -162,7 +189,9 @@ function toNavItem(menu: Menu, href: string): NavItem {
  * közömbös; a gyökerek és a children listák is rendezettek.
  */
 export function buildNavTree(menus: Menu[]): NavItem[] {
-  const visible = menus.filter((menu) => menu.visible !== false)
+  // A visible:false és az unlisted:true sor is kimarad a navigációból; a
+  // különbség szerkesztői: az unlisted cél a közvetlen linkjén továbbra is él.
+  const visible = menus.filter((menu) => menu.visible !== false && menu.unlisted !== true)
   const byId = new Map<number, Menu>(visible.map((menu) => [menu.id, menu]))
   const orderById = new Map<number, number>(
     visible.map((menu) => [menu.id, typeof menu.order === 'number' ? menu.order : 0]),

@@ -31,6 +31,7 @@ import * as migration_20260906_093747_services_sin_mezok from './20260906_093747
 import * as migration_20260907_104729_accordion_tetel_kep from './20260907_104729_accordion_tetel_kep';
 import * as migration_20260908_092438_audit_refund_provenance_private_course_files from './20260908_092438_audit_refund_provenance_private_course_files';
 import * as migration_20260916_145714_users_migration_notice_sent_at from './20260916_145714_users_migration_notice_sent_at';
+import * as migration_20260920_174501_menus_unlisted from './20260920_174501_menus_unlisted';
 
 export const migrations = [
   {
@@ -196,6 +197,11 @@ export const migrations = [
   {
     up: migration_20260916_145714_users_migration_notice_sent_at.up,
     down: migration_20260916_145714_users_migration_notice_sent_at.down,
-    name: '20260916_145714_users_migration_notice_sent_at'
+    name: '20260916_145714_users_migration_notice_sent_at',
+  },
+  {
+    up: migration_20260920_174501_menus_unlisted.up,
+    down: migration_20260920_174501_menus_unlisted.down,
+    name: '20260920_174501_menus_unlisted'
   },
 ];

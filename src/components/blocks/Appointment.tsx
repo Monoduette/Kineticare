@@ -1,5 +1,6 @@
 import type { BlockAppointment } from '../../payload-types'
 import { appointmentShowsForm } from '../../lib/appointment/context'
+import { MAPS_LINK_HINT, mapsHref } from '../../lib/maps-href'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { telHref } from '../../lib/tel-href'
 import { Container } from '../ui/Container'
@@ -56,6 +57,7 @@ export function AppointmentIntro({ block, headingId }: AppointmentIntroProps) {
   const helyszinek = (block.helyszinek ?? [])
     .map((row) => ({ cim: row.cim?.trim() ?? '', megjegyzes: row.megjegyzes?.trim() ?? '' }))
     .filter((row) => row.cim.length > 0)
+    .map((row) => ({ ...row, href: mapsHref(row.cim) }))
   const telefonok = appointmentPhones(block)
   const email = block.email?.trim() ?? ''
   const emailHref = email.length > 0 ? sanitizeCmsUrl(`mailto:${email}`) : null
@@ -92,7 +94,25 @@ export function AppointmentIntro({ block, headingId }: AppointmentIntroProps) {
               {helyszinekFelirat.length > 0 ? <dt>{helyszinekFelirat}</dt> : null}
               {helyszinek.map((helyszin) => (
                 <dd key={helyszin.cim}>
-                  {helyszin.cim}
+                  {/* A cím a telefonszámmal azonos mintán kattintható: a látható
+                      szöveg maga a cím, a link a Google Térképet nyitja új lapon
+                      (miért `search` és miért új lap: src/lib/maps-href.ts). A
+                      rejtett toldat a képernyőolvasónak mondja meg a célt és az
+                      ablaknyitást (WCAG 2.2 SC 2.4.4, SC 3.2.5; G200, G201).
+                      Az aláhúzást és a 44 px-es célt az appointment.css
+                      `.kc-appointment__contact dd a` szabálya adja, ahogy a
+                      tel- és mailto-linknek (NN/g, Guidelines for Visualizing
+                      Links: a linkek egy oldalon egyformán nézzenek ki,
+                      https://www.nngroup.com/articles/guidelines-for-visualizing-links/).
+                      A megjegyzés a linken KÍVÜL marad: nem része a címnek. */}
+                  {helyszin.href ? (
+                    <a href={helyszin.href} target="_blank" rel="noopener noreferrer">
+                      {helyszin.cim}
+                      <span className="kc-visually-hidden">{MAPS_LINK_HINT}</span>
+                    </a>
+                  ) : (
+                    helyszin.cim
+                  )}
                   {helyszin.megjegyzes.length > 0 ? (
                     <span className="kc-appointment__contact-note">{helyszin.megjegyzes}</span>
                   ) : null}

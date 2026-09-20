@@ -180,6 +180,87 @@ export const SOS_KURZUS_SLUG = 'sos-kezrelax-villamkurzus'
  */
 export const OTTHONI_KURZUS_SLUG = 'otthoni-kezrehab-program'
 
+// ---------------------------------------------------------------------------
+// WP54/2026-09-20 — az akciós kurzus (tulajdonosi kérés): az „olcsó dolgok
+// itt” menüpont az akciós Otthoni KézRehab Program SAJÁT kurzusoldalára mutat,
+// rejtett linkként (nem látszik a menüben, a lányok linkként osztják meg a
+// partnereiknek). A kurzus a teljes árú program pontos másolata (mérve
+// 2026-09-20: azonos modul- és leckecímek, azonos videó-azonosítók), 39 500 Ft.
+// ---------------------------------------------------------------------------
+
+/** Az akciós kurzus webcíme — a kurzus stabil, nyilvános azonosítója. */
+export const AKCIOS_KURZUS_SLUG = 'otthoni-kezrehab-program-akcio'
+
+/** A menüpont ma élő felirata (kisbetű, mérve 2026-09-20 a /api/menus-on). */
+export const AKCIOS_MENUPONT_REGI_FELIRAT = 'olcsó dolgok itt'
+
+/** A menüpont új felirata (a tulajdonos szava: „valami olyasmi, hogy akciós kézrehab kurzus”). */
+export const AKCIOS_MENUPONT_UJ_FELIRAT = 'Akciós KézRehab kurzus'
+
+/**
+ * A kurzusoldal „Fő előnyök” pipás sorai (buybox, max 4 látszik; sorhossz a
+ * sales-content.ts MAX_HIGHLIGHT_LENGTH = 84 alatt). Csak akkor íródik, ha a
+ * mező üres. Az első sor az akció lényege: ugyanaz a program, más ár.
+ * Az ár-összehasonlítás a MA ÉLŐ teljes árú programra hivatkozik (79 500 Ft,
+ * mérve 2026-09-20), nem „korábbi” árra: a kettő két külön termék.
+ */
+export const AKCIOS_KURZUS_FO_ELONYOK: readonly string[] = [
+  'Ugyanaz a teljes program, mint a 79 500 Ft-os Otthoni KézRehab, itt 39 500 Ft',
+  '23 videós lecke 4 modulban, kézrehabilitációs gyógytornászoktól',
+  'Azonnali hozzáférés a fizetés után, a saját tempódban, bármilyen eszközön',
+  '30 napos kipróbálási garancia',
+]
+
+/** Gyakori kérdések az akciós oldalra (a teljes árú programnak nincs GYIK-je). */
+export const AKCIOS_KURZUS_GYIK: readonly { question: string; answer: string }[] = [
+  {
+    question: 'Miben különbözik az akciós változat a teljes árú programtól?',
+    answer:
+      'Semmiben. Ugyanazt a 4 modult és 23 videós leckét kapod, ugyanazoktól a gyógytornászoktól. Csak az ár más.',
+  },
+  {
+    question: 'Meddig érhető el ezen az áron?',
+    answer:
+      'Az akciós ár visszavonásig érvényes. Amit megvettél, az utána is a tiéd marad, az ár későbbi változása nem érinti.',
+  },
+  {
+    question: 'Mennyi ideig férek hozzá a videókhoz?',
+    answer:
+      'A hozzáférés nem jár le. Bejelentkezés után a Kurzusaim oldalon bármikor visszanézheted a leckéket.',
+  },
+  {
+    question: 'Kell hozzá bármilyen eszköz?',
+    answer:
+      'Néhány egyszerű eszköz jól jön, például puha labda vagy gumiszalag. A program külön modulban mutatja meg, mit és hogyan használj.',
+  },
+  {
+    question: 'Mi van, ha nem válik be?',
+    answer:
+      '30 napos kipróbálási garanciát adunk. Ha úgy érzed, nem segített, egy e-mailben kérheted a program árának visszafizetését.',
+  },
+]
+
+/** SEO-cím és -leírás az akciós oldalra (a leírás 160 karakter alatt). */
+export const AKCIOS_KURZUS_SEO_CIM = 'Akciós Otthoni KézRehab Program 39 500 Ft-ért'
+export const AKCIOS_KURZUS_SEO_LEIRAS =
+  'A teljes Otthoni KézRehab Program akciós áron: 4 modul, 23 videós lecke gyógytornászoktól csukló-, ujj- és könyökfájdalomra, 39 500 Ft, 30 napos garanciával.'
+
+/**
+ * Az akciós kurzus törzsében ma a TELJES ÁRÚ program ár-mondata áll (a termék
+ * másolással készült; mérve 2026-09-20 a /api/products/4-en). Ez az akciós
+ * oldalon téves állítás. A csere bekezdés-eleji, a zárójeles maradék
+ * („A kurzus nem helyettesíti…”) változatlan marad. Gondolatjel helyett
+ * vessző (docs/ui-sztenderdek.md §3.1.3).
+ */
+export const AKCIOS_KURZUS_ARSZOVEG_CSERE: AszfBekezdesCsere = {
+  szabaly: 'akcios-kurzus-arszoveg',
+  cimke: 'Az akciós kurzus ár-mondata a törzsben',
+  regiKezdet: 'A program eredeti ára 119 000 Ft – bevezető áron most 79 500 Ft-ért érhető el.',
+  ujKezdet:
+    'Ez az akciós példány a teljes Otthoni KézRehab Programot adja: ugyanaz az anyag, mint a 79 500 Ft-os programban, itt 39 500 Ft-ért.',
+  nyom: 'szakorvosi kontrollt',
+}
+
 /** A `/szolgaltatasok` oldal webcíme (Pages.slug). */
 export const SZOLGALTATASOK_SLUG = 'szolgaltatasok'
 
@@ -312,6 +393,9 @@ export type JavitasSzabaly =
   | 'sos-galeria'
   | 'media-alt-szoveg'
   | 'szolgaltatasok-technikak-tabla'
+  | 'akcios-kurzus-menupont'
+  | 'akcios-kurzus-eladoszoveg'
+  | 'akcios-kurzus-arszoveg'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -4471,6 +4555,204 @@ export const payloadMediaFuggosegek = (
 })
 
 // ---------------------------------------------------------------------------
+// WP54/2026-09-20 — az akciós kurzus tiszta szabályai.
+// ---------------------------------------------------------------------------
+
+export interface AkciosMenupontAtalakitas {
+  adat: Pick<Menu, 'label' | 'type' | 'ref' | 'unlisted' | 'openInNewTab'> | null
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Az „olcsó dolgok itt” menüpont → „Akciós KézRehab kurzus”, célja az akciós
+ * kurzus (Kurzus típus), rejtett linkként.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csere KIZÁRÓLAG akkor, ha a felirat PONTOSAN a régi (kis/nagybetű és
+ *    szélső szóköz nélkül nézve) — a szerkesztett feliratot nem írjuk át;
+ *  - ha a felirat MÁR az új, és a cél az akciós kurzus, nincs teendő;
+ *  - az akciós kurzus azonosítója nélkül (nincs ilyen webcímű termék) hangos
+ *    kihagyás: a menüpont cél nélkül maradna, azt nem írjuk;
+ *  - a „Látható” pipához nem nyúlunk (a rejtés az új `unlisted` mezővel
+ *    történik, ami a nav-ból kiveszi, de a linket élve hagyja);
+ *  - belső útvonal, ezért nem új lapon nyílik.
+ */
+export const alkalmazAkciosMenupont = (input: {
+  menupont: Pick<Menu, 'id' | 'label' | 'type' | 'ref' | 'unlisted'>
+  /** Az akciós kurzus azonosítója, vagy `null`, ha a webcím nem található. */
+  akciosId: number | null
+}): AkciosMenupontAtalakitas => {
+  const szabaly: JavitasSzabaly = 'akcios-kurzus-menupont'
+  const { menupont, akciosId } = input
+  const uzenet = `Az akciós kurzus menüpontja (menus #${menupont.id})`
+  const kihagyas = (indok: string, hangos = false): AkciosMenupontAtalakitas => ({
+    adat: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+  const refErtek =
+    menupont.ref !== null && menupont.ref !== undefined
+      ? typeof menupont.ref.value === 'object'
+        ? menupont.ref.value.id
+        : menupont.ref.value
+      : null
+  const marAkciosCel =
+    menupont.type === 'product' && menupont.ref?.relationTo === 'products' && refErtek === akciosId
+
+  if (menupont.label === AKCIOS_MENUPONT_UJ_FELIRAT && marAkciosCel && menupont.unlisted === true) {
+    return kihagyas(
+      `a menüpont MÁR ${ertekCimke(AKCIOS_MENUPONT_UJ_FELIRAT)} → az akciós kurzus, rejtett linkként — nincs teendő`,
+    )
+  }
+  if (akciosId === null) {
+    return kihagyas(
+      `az akciós kurzus nem található a „${AKCIOS_KURZUS_SLUG}” webcímen — cél nélkül a menüpontot nem írjuk át; a kurzus webcímét az adminban kell beállítani`,
+      true,
+    )
+  }
+  const feliratNormalizalt = menupont.label.trim().toLowerCase()
+  if (
+    feliratNormalizalt !== AKCIOS_MENUPONT_REGI_FELIRAT &&
+    menupont.label !== AKCIOS_MENUPONT_UJ_FELIRAT
+  ) {
+    return kihagyas(
+      `a felirat ${ertekCimke(menupont.label)}, ami nem PONTOSAN a cserélendő ${ertekCimke(
+        AKCIOS_MENUPONT_REGI_FELIRAT,
+      )} — a script csak pontos egyezésnél ír át`,
+    )
+  }
+
+  return {
+    adat: {
+      label: AKCIOS_MENUPONT_UJ_FELIRAT,
+      type: 'product',
+      ref: { relationTo: 'products', value: akciosId },
+      unlisted: true,
+      openInNewTab: false,
+    },
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet}: ${ertekCimke(menupont.label)} → ${ertekCimke(
+          AKCIOS_MENUPONT_UJ_FELIRAT,
+        )}, cél: Kurzus „${AKCIOS_KURZUS_SLUG}” (#${akciosId}), rejtett link (a menüben nem látszik, a közvetlen linkje él)`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
+export type AkciosEladoMezok = Pick<
+  Product,
+  'salesHighlights' | 'faq' | 'seoTitle' | 'seoDescription' | 'relatedProducts'
+>
+
+export interface AkciosEladoAtalakitas {
+  adat: Partial<AkciosEladoMezok>
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Az akciós kurzus eladó mezői: fő előnyök, GYIK, SEO-cím és -leírás,
+ * kapcsolódó kurzus (az ingyenes SOS). Mezőnként CSAK ÜRES mezőbe ír; a
+ * szerkesztői értéket sosem írja felül. A többi szakasz (hogyan működik,
+ * kinek való, garancia) a teljes árú programmal azonos módon a törzsből és a
+ * tényadatokból épül (sales-content.ts), oda nem kell írni.
+ */
+export const alkalmazAkciosEladoMezok = (input: {
+  jelenlegi: AkciosEladoMezok
+  /** Az SOS kurzus azonosítója a kapcsolódó sávhoz, vagy `null`. */
+  sosId: number | null
+}): AkciosEladoAtalakitas => {
+  const szabaly: JavitasSzabaly = 'akcios-kurzus-eladoszoveg'
+  const cimke = `Az akciós kurzus („${AKCIOS_KURZUS_SLUG}”)`
+  const adat: Partial<AkciosEladoMezok> = {}
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  const { jelenlegi } = input
+
+  const kitoltottElonyok = (jelenlegi.salesHighlights ?? []).filter(
+    (sor) => typeof sor.text === 'string' && sor.text.trim().length > 0,
+  )
+  if (kitoltottElonyok.length > 0) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke} fő előnyei`,
+      indok: `a mezőben MÁR VAN ${kitoltottElonyok.length} kitöltött sor — szerkesztői tartalmat a script sosem ír felül`,
+    })
+  } else {
+    adat.salesHighlights = AKCIOS_KURZUS_FO_ELONYOK.map((text) => ({ text }))
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke} fő előnyei: ${AKCIOS_KURZUS_FO_ELONYOK.map((t) => `„${t}”`).join(', ')}`,
+      indok: null,
+    })
+  }
+
+  const kitoltottGyik = (jelenlegi.faq ?? []).filter(
+    (sor) => typeof sor.question === 'string' && sor.question.trim().length > 0,
+  )
+  if (kitoltottGyik.length > 0) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke} gyakori kérdései`,
+      indok: `a mezőben MÁR VAN ${kitoltottGyik.length} kérdés — szerkesztői tartalmat a script sosem ír felül`,
+    })
+  } else {
+    adat.faq = AKCIOS_KURZUS_GYIK.map((sor) => ({ ...sor }))
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke} gyakori kérdései: ${AKCIOS_KURZUS_GYIK.length} kérdés-válasz pár`,
+      indok: null,
+    })
+  }
+
+  for (const mezo of ['seoTitle', 'seoDescription'] as const) {
+    const ertek = jelenlegi[mezo]
+    const uj = mezo === 'seoTitle' ? AKCIOS_KURZUS_SEO_CIM : AKCIOS_KURZUS_SEO_LEIRAS
+    const nev = mezo === 'seoTitle' ? 'SEO-címe' : 'SEO-leírása'
+    if (typeof ertek === 'string' && ertek.trim().length > 0) {
+      kihagyasok.push({
+        szabaly,
+        uzenet: `${cimke} ${nev}`,
+        indok: `a mező MÁR kitöltött (${ertekCimke(ertek)}) — szerkesztői tartalmat a script sosem ír felül`,
+      })
+    } else {
+      adat[mezo] = uj
+      modositasok.push({ szabaly, uzenet: `${cimke} ${nev}: ${ertekCimke(uj)}`, indok: null })
+    }
+  }
+
+  const kapcsolodoIds = kapcsolodoAzonositok(jelenlegi.relatedProducts)
+  if (kapcsolodoIds.length > 0) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke} kapcsolódó kurzusa`,
+      indok: `a mezőben MÁR VAN ${kapcsolodoIds.length} kapcsolat — szerkesztői tartalmat a script sosem ír felül`,
+    })
+  } else if (input.sosId === null) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke} kapcsolódó kurzusa`,
+      indok: `az SOS kurzus nem található — a kapcsolódó sáv üres marad`,
+      hangos: true,
+    })
+  } else {
+    adat.relatedProducts = [input.sosId]
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke} kapcsolódó kurzusa: az SOS kurzus (#${input.sosId})`,
+      indok: null,
+    })
+  }
+
+  return { adat, modositasok, kihagyasok }
+}
+
+// ---------------------------------------------------------------------------
 // Futtatás — a tiszta átalakításokat köti az adatbázishoz.
 // ---------------------------------------------------------------------------
 
@@ -5426,6 +5708,117 @@ async function futtat(): Promise<void> {
   const altEredmeny = await futtatMediaAltLefedettseg(payloadMediaAltTar(payload), dryRun)
   modositasokSzama += altEredmeny.modositasok
   kihagyasokSzama += altEredmeny.kihagyasok
+
+  // --- WP54/2026-09-20: az akciós kurzus oldala és rejtett menüpontja -------
+  // A kurzust és a menüpontot WEBCÍM, illetve felirat alapján keressük; az
+  // azonosító környezetenként más. Egy termék = EGY update (verzió-takarékosság).
+  const akciosTalalat = await payload.find({
+    collection: 'products',
+    where: { slug: { equals: AKCIOS_KURZUS_SLUG } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const akciosKurzus = akciosTalalat.docs[0]
+  if (akciosKurzus === undefined) {
+    logger.error(
+      `Tartalom-javítás: nem található az akciós kurzus (Kurzusok, webcím: „${AKCIOS_KURZUS_SLUG}”) — az eladó mezők és a menüpont kimaradtak.`,
+    )
+    hiba = true
+  } else {
+    if (akciosKurzus.status !== 'published') {
+      logger.error(
+        `Tartalom-javítás: az akciós kurzus („${AKCIOS_KURZUS_SLUG}”) állapota „${
+          akciosKurzus.status ?? '(nincs)'
+        }”, nem „published” — a menüpont beíródik, de a link 404-et ad, amíg a kurzust nem teszed közzé.`,
+      )
+    }
+    const sosTalalat = await payload.find({
+      collection: 'products',
+      where: { sku: { equals: SOS_COURSE_SKU } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+    const elado = alkalmazAkciosEladoMezok({
+      jelenlegi: akciosKurzus,
+      sosId: sosTalalat.docs[0]?.id ?? null,
+    })
+    naplozdLepeseket(elado, dryRun)
+    modositasokSzama += elado.modositasok.length
+    kihagyasokSzama += elado.kihagyasok.length
+
+    const arszoveg = alkalmazAszfBekezdesCserek(akciosKurzus.longDescription, [
+      AKCIOS_KURZUS_ARSZOVEG_CSERE,
+    ])
+    naplozdLepeseket(arszoveg, dryRun)
+    modositasokSzama += arszoveg.modositasok.length
+    kihagyasokSzama += arszoveg.kihagyasok.length
+
+    const akciosAdat: Partial<AkciosEladoMezok> & Pick<Partial<Product>, 'longDescription'> = {
+      ...elado.adat,
+    }
+    if (arszoveg.content !== null) {
+      akciosAdat.longDescription = arszoveg.content as Product['longDescription']
+    }
+    if (Object.keys(akciosAdat).length > 0 && !dryRun) {
+      await payload.update({
+        collection: 'products',
+        id: akciosKurzus.id,
+        data: akciosAdat,
+        depth: 0,
+        overrideAccess: true,
+      })
+      const piszkozat = await payload
+        .findByID({
+          collection: 'products',
+          id: akciosKurzus.id,
+          depth: 0,
+          draft: true,
+          overrideAccess: true,
+        })
+        .catch(() => null)
+      figyelmeztessPiszkozatra(
+        `akciós kurzus („${AKCIOS_KURZUS_SLUG}”)`,
+        akciosKurzus.updatedAt,
+        piszkozat?.updatedAt,
+      )
+    }
+  }
+
+  const akciosMenuTalalat = await payload.find({
+    collection: 'menus',
+    where: {
+      or: [
+        { label: { equals: AKCIOS_MENUPONT_REGI_FELIRAT } },
+        { label: { equals: AKCIOS_MENUPONT_UJ_FELIRAT } },
+      ],
+    },
+    limit: 5,
+    depth: 0,
+    overrideAccess: true,
+  })
+  if (akciosMenuTalalat.docs.length === 0) {
+    logger.warn(
+      `Tartalom-javítás — ${dryRun ? 'KIHAGYNÁ' : 'KIHAGYVA'}: az akciós kurzus menüpontja (nincs „${AKCIOS_MENUPONT_REGI_FELIRAT}” vagy „${AKCIOS_MENUPONT_UJ_FELIRAT}” feliratú menüpont a Menus collectionben — a szerkesztő átnevezte vagy törölte)`,
+    )
+    kihagyasokSzama += 1
+  }
+  for (const menupont of akciosMenuTalalat.docs) {
+    const eredmeny = alkalmazAkciosMenupont({ menupont, akciosId: akciosKurzus?.id ?? null })
+    naplozdLepeseket(eredmeny, dryRun)
+    modositasokSzama += eredmeny.modositasok.length
+    kihagyasokSzama += eredmeny.kihagyasok.length
+    if (eredmeny.adat !== null && !dryRun) {
+      await payload.update({
+        collection: 'menus',
+        id: menupont.id,
+        data: eredmeny.adat,
+        depth: 0,
+        overrideAccess: true,
+      })
+    }
+  }
 
   // --- Összesítés -----------------------------------------------------------
   const osszesites = `${modositasokSzama} módosítás, ${kihagyasokSzama} indokolt kihagyás`

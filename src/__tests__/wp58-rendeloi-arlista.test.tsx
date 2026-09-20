@@ -283,6 +283,13 @@ describe('WP58 H2: a szerkezetes alak renderelése', () => {
     expect(html).toContain('Rendelőinkben készpénzes és átutalásos fizetésre van lehetőség.')
     expect(html).toContain('<span class="kc-arlista__fact-key">Helyszíneink</span>')
     expect(html.match(/kc-arlista__place"/gu)).toHaveLength(2)
+    // Mindkét cím Google Térkép-link, új lapon, a látható szöveg a cím marad.
+    expect(html).toContain(
+      '<a href="https://www.google.com/maps/search/?api=1&amp;query=1117%20Budapest%2C%20N%C3%A1dorliget%20u.%207%2Fb" target="_blank" rel="noopener noreferrer">1117 Budapest, Nádorliget u. 7/b<span class="kc-visually-hidden"> (Google Térkép, új lapon nyílik)</span></a>',
+    )
+    expect(html).toContain(
+      '<a href="https://www.google.com/maps/search/?api=1&amp;query=1114%20Budapest%2C%20Fadrusz%20utca%2015" target="_blank" rel="noopener noreferrer">1114 Budapest, Fadrusz utca 15<span class="kc-visually-hidden"> (Google Térkép, új lapon nyílik)</span></a>',
+    )
     expect(html).toContain(
       'Árlista<span class="kc-arlista__panel-sub">gyógytorna / manuálterápia</span>',
     )

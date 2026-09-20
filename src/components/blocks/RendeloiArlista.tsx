@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 
 import { ctaLabel } from '../../lib/cta-vocabulary'
+import { MAPS_LINK_HINT, mapsHref } from '../../lib/maps-href'
 import { labjegyzetMondat, type RendeloiArlista as ArlistaModell } from '../../lib/rendeloi-arlista'
 import { linkFields, renderLexicalContent } from '../lexical/serialize'
 import { Button } from '../ui/Button'
@@ -131,11 +132,27 @@ export function RendeloiArlista({ modell, id, variant, blockId }: RendeloiArlist
                   <li className="kc-arlista__fact kc-arlista__fact--places">
                     <span className="kc-arlista__fact-key">{modell.helyszinek.cimke}</span>
                     <ul className="kc-arlista__places">
-                      {modell.helyszinek.cimek.map((cim) => (
-                        <li className="kc-arlista__place" key={cim}>
-                          {cim}
-                        </li>
-                      ))}
+                      {modell.helyszinek.cimek.map((cim) => {
+                        // Ugyanaz a címlink-minta, mint a Kapcsolat oldal
+                        // időpontkérő szekciójában (WCAG 2.2 SC 3.2.4, azonos
+                        // cselekvés = azonos alak): látható szöveg a cím, a
+                        // link a Google Térképet nyitja új lapon, a rejtett
+                        // toldat a képernyőolvasónak szól. Miért `search`,
+                        // miért új lap, források: src/lib/maps-href.ts.
+                        const href = mapsHref(cim)
+                        return (
+                          <li className="kc-arlista__place" key={cim}>
+                            {href ? (
+                              <a href={href} target="_blank" rel="noopener noreferrer">
+                                {cim}
+                                <span className="kc-visually-hidden">{MAPS_LINK_HINT}</span>
+                              </a>
+                            ) : (
+                              cim
+                            )}
+                          </li>
+                        )
+                      })}
                     </ul>
                   </li>
                 ) : null}

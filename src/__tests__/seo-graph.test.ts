@@ -307,6 +307,14 @@ describe('Kapcsolat: ContactPage + MedicalBusiness a CMS-ből', () => {
       expect('openingHoursSpecification' in node).toBe(false)
       expect('geo' in node).toBe(false)
     }
+    // schema.org Place.hasMap: ugyanaz a Google Térkép-link, amit a vevő a
+    // felületen kattint (src/lib/maps-href.ts).
+    expect(nodes[0]!.hasMap).toBe(
+      'https://www.google.com/maps/search/?api=1&query=1117%20Budapest%2C%20N%C3%A1dorliget%20u.%207%2Fb',
+    )
+    expect(nodes[1]!.hasMap).toBe(
+      'https://www.google.com/maps/search/?api=1&query=1114%20Budapest%2C%20Fadrusz%20utca%2015.',
+    )
     expect(nodes[0]!['@id']).not.toBe(nodes[1]!['@id'])
   })
 
