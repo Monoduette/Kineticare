@@ -124,10 +124,16 @@ fejléc-kép szabály).
 7. Kezelt (manifestes) rekord alt-ját az alt-lefedettség NEM írja: az eredetigazolás a
    rekord pillanatképét (alt, updatedAt) rögzíti, egy sima update érvénytelenítené, és a
    Volume-helyreállítás elutasítaná a képet (Devin/Codex, #271). Ezek a képek a
-   létrehozáskor a manifest alt-ját kapják; ha mégis üres, az adminban pótlandó. A
-   `keres` az igazolás érvényességét a tárolt fájl NÉLKÜL dönti el
-   (`requireMediaRecoveryReceipt`), mert a content-job nem látja a Volume-ot; hiányzó
-   igazolásnál csak akkor igazol, ha a fájl a konténerben megvan, különben hangosan dob.
+   létrehozáskor a manifest alt-ját kapják; ha mégis üres, az adminban pótlandó, és az
+   admin-mentés UTÁN az igazolást újra ki kell adni az app kötetén:
+   `node node_modules/tsx/dist/cli.mjs src/scripts/apply-owner-review-v1.ts --enroll-media-recovery <média-ID>`
+   (a script naplója a média-ID-t is kiírja; enélkül a Volume-helyreállítás a képet
+   elutasítja, Codex P2, #274). A `keres` az igazolás érvényességét a tárolt fájl NÉLKÜL
+   is eldönti (`requireMediaRecoveryReceipt`), mert a content-job nem látja a Volume-ot;
+   ha a fájl a konténerben megvan, a tárolt bájtokat is az igazolás `storedPublicDigest`
+   értékéhez méri (`verifyMediaRecoveryBytes`), eltérésnél élesben hangosan dob
+   (Codex P2, #274); hiányzó igazolásnál csak akkor igazol, ha a fájl a konténerben
+   megvan, különben hangosan dob.
 8. Ismert korlát: a `keresdMediat` (prefix-alapú keresés, WP56) a `like`-találatok
    ELSŐ elemét veszi; ha valaha `…-1.webp` duplikátum keletkezik a packshotokból,
    a Médiatárban kézzel kell egyértelműsíteni.

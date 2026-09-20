@@ -171,3 +171,20 @@ export function showcaseProducts(visibleProducts: readonly Product[]): Product[]
   const sos = visibleProducts.find(isAvailableSosProduct)
   return sos ? [...paid, sos] : paid
 }
+
+/**
+ * A rács tényleges, sapkázott tételsora — EZT használja minden kezdőlapi
+ * megjelenítő (RenderBlocks és a HomeView üres-layout tartaléka), hogy a
+ * kettő ne térjen el. A sapka a fizetős listát vágja, az igazolt SOS-nek
+ * helyet tart: a lead-magnet nem eshet ki csak azért, mert a fizetős kínálat
+ * elérte a limitet (Devin/Codex, #274). `limit` csak tesztből paraméterezendő.
+ */
+export function showcaseGridProducts(
+  visibleProducts: readonly Product[],
+  limit: number = KURZUSRACS_LIMIT,
+): Product[] {
+  const paid = visibleProducts.filter(isPaidCourse)
+  const sos = visibleProducts.find(isAvailableSosProduct)
+  if (!sos) return paid.slice(0, limit)
+  return [...paid.slice(0, Math.max(limit - 1, 0)), sos].slice(0, limit)
+}
