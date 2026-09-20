@@ -113,10 +113,11 @@ export function promoFacts(
   if (lessonCount > 0) {
     rows.push(`${lessonCount} lecke`)
   }
+  // Üres mezőből NEM következtetünk „örökös” hozzáférésre: az ÁSZF három
+  // hónapot garantál, a kártyák (ProductCard.accessDurationLabel) sem
+  // ígérnek többet; csak a beállított időtartam jelenik meg (Codex, #278).
   if (typeof accessDurationDays === 'number' && accessDurationDays > 0) {
     rows.push(`${accessDurationDays} napos hozzáférés`)
-  } else {
-    rows.push('Örökös hozzáférés')
   }
   return rows
 }

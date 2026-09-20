@@ -1,5 +1,5 @@
 import type { Page, Post, Product } from '../payload-types'
-import { isLegacyNoindexSlug } from './legacy-noindex'
+import { isLegacyNoindexPage } from './legacy-noindex'
 import { courseHref } from './course-url'
 import { courseTitle } from './courses'
 import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
@@ -309,7 +309,7 @@ function pagePath(page: LlmsPage): string {
  * az ide sem kerül be.
  */
 function isPublicPage(page: LlmsPage): boolean {
-  return typeof page.slug === 'string' && page.slug.length > 0 && !isLegacyNoindexSlug(page.slug)
+  return typeof page.slug === 'string' && page.slug.length > 0 && !isLegacyNoindexPage(page)
 }
 
 /**

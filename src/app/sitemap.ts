@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next'
-import { isLegacyNoindexSlug } from '@/lib/legacy-noindex'
+import { isLegacyNoindexPage } from '@/lib/legacy-noindex'
 
 import {
   HOME_PAGE_SLUG,
@@ -130,7 +130,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (
       page.slug === HOME_PAGE_SLUG ||
       !hasSlug(page) ||
-      isLegacyNoindexSlug(page.slug) ||
+      isLegacyNoindexPage(page) ||
       staticPaths.has(`/${page.slug}`)
     ) {
       continue

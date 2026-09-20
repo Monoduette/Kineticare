@@ -44,8 +44,10 @@ azonos módon a törzs címsoraiból és a tényadatokból épülnek
 - **Ár-összehasonlítás.** Az akciós oldal a MA ÉLŐ teljes árú programra hivatkozik
   („mint a 79 500 Ft-os programban, itt 39 500 Ft"), nem „korábbi" árra. A kettő két
   külön termék. Ha a teljes árú program ára változik, ezt a mondatot és a fő előnyök
-  első sorát az adminban frissíteni kell. Egy „eredeti ár / akciós ár" (áthúzott ár)
-  mező ma nincs a terméken; az bevezetése migrációval járna, külön döntés.
+  első sorát az adminban frissíteni kell, és az akciós kurzus „Teljes ár (Ft, áthúzva
+  jelenik meg)" mezőjét is (Ár és hozzáférés fül, Akciós megjelenés csoport): a
+  kiadás egyszer beírta a teljes árú program akkori árát, később a script nem írja
+  felül, a frissítés kézi. Csak ténylegesen elérhető ár adható meg.
 - **A rejtett link nem hozzáférés-védelem.** Aki tudja a linket, megnyitja. A
   kurzus a `/kurzusok` listában és a keresőkben is látszik, mert közzétett termék.
   Ha a partneri árat a nyilvánosság elől is el kell rejteni, az külön feladat

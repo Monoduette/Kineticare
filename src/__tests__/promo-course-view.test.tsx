@@ -58,8 +58,18 @@ const sections: PromoPageSection[] = [
 ]
 
 const modules: CurriculumModule[] = [
-  { id: 'm1', title: 'Alapok', summary: null, lessons: [{ id: 'l1', title: 'Első', kind: 'video', durationSec: 60 }] },
-  { id: 'm2', title: 'Haladó', summary: null, lessons: [{ id: 'l2', title: 'Második', kind: 'video', durationSec: 60 }] },
+  {
+    id: 'm1',
+    title: 'Alapok',
+    summary: null,
+    lessons: [{ id: 'l1', title: 'Első', kind: 'video', durationSec: 60 }],
+  },
+  {
+    id: 'm2',
+    title: 'Haladó',
+    summary: null,
+    lessons: [{ id: 'l2', title: 'Második', kind: 'video', durationSec: 60 }],
+  },
 ] as unknown as CurriculumModule[]
 
 const sales: CourseSalesContent = {
@@ -188,7 +198,7 @@ describe('PromoCourseView — záró vásárlási sáv', () => {
 
 describe('promoFacts', () => {
   it('modul- és leckeszám, hozzáférés — ellenőrizhető tényadatok', () => {
-    expect(promoFacts(modules, null)).toEqual(['2 modul', '2 lecke', 'Örökös hozzáférés'])
+    expect(promoFacts(modules, null)).toEqual(['2 modul', '2 lecke'])
     expect(promoFacts(modules.slice(0, 1), 365)).toEqual(['1 lecke', '365 napos hozzáférés'])
   })
 })

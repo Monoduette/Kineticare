@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { isLegacyNoindexSlug } from '@/lib/legacy-noindex'
+import { isLegacyNoindexPage } from '@/lib/legacy-noindex'
 import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
@@ -79,7 +79,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     )
   }
   const metadata = buildPageMetadata(page, `/${slug}`)
-  if (isLegacyNoindexSlug(slug)) {
+  if (isLegacyNoindexPage({ slug, title: page.title })) {
     // Örökölt demólap: amíg a CMS-ben közzétett, kódszintű noindex védi
     // (src/lib/legacy-noindex.ts). A `follow: true` a belső linkeket meghagyja.
     return withDraftRobots(

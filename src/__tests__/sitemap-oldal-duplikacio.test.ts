@@ -24,7 +24,12 @@ vi.mock('@/lib/cms', () => ({
       { id: 1, slug: 'kezdolap', updatedAt: '2026-02-01T10:00:00.000Z' },
       { id: 2, slug: 'kapcsolat', updatedAt: '2026-02-01T10:00:00.000Z' },
       { id: 3, slug: 'szolgaltatasok', updatedAt: '2026-02-01T10:00:00.000Z' },
-      { id: 16, slug: 'akcios-kurzus', updatedAt: '2026-02-01T10:00:00.000Z' },
+      {
+        id: 16,
+        slug: 'akcios-kurzus',
+        title: 'Képzeletbeli akciós kurzus',
+        updatedAt: '2026-02-01T10:00:00.000Z',
+      },
     ]),
   getSitemapPosts: () => Promise.resolve([]),
   getContentCategories: () => Promise.resolve([]),
