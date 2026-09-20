@@ -163,7 +163,37 @@ export function resolveCoursePromo(
   }
 }
 
-/** Igaz, ha a kurzus MOST az akciós sablont kapja. */
+/** A megjelenítési döntéshez kellő mezők: akció + ár + bolti státusz. */
+export type CoursePromoDisplayFields = CoursePromoFields &
+  Pick<Product, 'priceInHUF' | 'priceInHUFEnabled' | 'status'>
+
+/**
+ * Igaz, ha a kurzus MOST akciósként JELENIK MEG: az akció él (időablak), a
+ * kurzus közzétett (archivált kurzuson a vásárlás tiltott, ott az „akciós ár”
+ * hamis ígéret lenne), és van érvényes, pozitív ára (ingyenes vagy ár nélküli
+ * kurzuson nincs mit akciózni). EZ az egyetlen szabály a kurzusoldal
+ * sablonválasztásához, a kártya-címkéhez és a link-név előtagjához (Devin,
+ * #278: a kártya és az oldal nem mondhat mást).
+ */
+export function isCoursePromoDisplayed(
+  product: CoursePromoDisplayFields,
+  now: Date = new Date(),
+): boolean {
+  if (product.status !== 'published') {
+    return false
+  }
+  if (
+    product.priceInHUFEnabled !== true ||
+    typeof product.priceInHUF !== 'number' ||
+    !Number.isFinite(product.priceInHUF) ||
+    product.priceInHUF <= 0
+  ) {
+    return false
+  }
+  return resolveCoursePromo(product, now).active
+}
+
+/** Igaz, ha az akció időablaka MOST él (ár és státusz nélkül; lásd isCoursePromoDisplayed). */
 export function isCoursePromoActive(
   product: Parameters<typeof resolveCoursePromo>[0],
   now: Date = new Date(),

@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   isCoursePromoActive,
+  isCoursePromoDisplayed,
   promoEndExclusive,
   promoFirstDayLabel,
   promoLastDayLabel,
@@ -177,6 +178,39 @@ describe('resolveCoursePromo', () => {
     expect(promoFirstDayLabel({ start: null })).toBeNull()
     // Az UTC-s vég (22:00Z) budapesti napja a következő nap lenne; a felirat a MEGADOTT nap.
     expect(promoLastDayLabel({ end: new Date('2026-09-30T22:00:00.000Z') })).toBe('szeptember 30')
+  })
+})
+
+describe('isCoursePromoDisplayed: élő időablak + közzétett + érvényes ár', () => {
+  const alap = {
+    promoEnabled: true,
+    promoStart: '2026-09-01T12:00:00.000Z',
+    promoEnd: '2026-09-30T12:00:00.000Z',
+    promoOriginalPriceHuf: 79500,
+    priceInHUF: 39500,
+    priceInHUFEnabled: true,
+    status: 'published' as const,
+  }
+  const most = new Date('2026-09-20T10:00:00.000Z')
+
+  it('közzétett, fizetős, élő akció: megjelenik', () => {
+    expect(isCoursePromoDisplayed(alap, most)).toBe(true)
+  })
+
+  it('archivált kurzuson nem, akkor sem, ha az időablak él', () => {
+    expect(isCoursePromoDisplayed({ ...alap, status: 'archived' }, most)).toBe(false)
+    expect(isCoursePromoDisplayed({ ...alap, status: 'draft' }, most)).toBe(false)
+  })
+
+  it('ingyenes vagy ár nélküli kurzuson nem', () => {
+    expect(isCoursePromoDisplayed({ ...alap, priceInHUFEnabled: false }, most)).toBe(false)
+    expect(isCoursePromoDisplayed({ ...alap, priceInHUF: null }, most)).toBe(false)
+    expect(isCoursePromoDisplayed({ ...alap, priceInHUF: 0 }, most)).toBe(false)
+  })
+
+  it('lejárt vagy kikapcsolt akciónál nem', () => {
+    expect(isCoursePromoDisplayed(alap, new Date('2026-10-05T10:00:00.000Z'))).toBe(false)
+    expect(isCoursePromoDisplayed({ ...alap, promoEnabled: false }, most)).toBe(false)
   })
 })
 

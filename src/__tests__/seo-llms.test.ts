@@ -151,6 +151,22 @@ describe('llms.txt — llmstxt.org alak', () => {
     expect(body).not.toContain('/kezdolap')
   })
 
+  it('az örökölt demólap (akcios-kurzus) közzétéve sem kerül az llms.txt-be (legacy-noindex)', () => {
+    const demoBody = buildLlmsTxt({
+      ...SOURCE,
+      pages: [
+        ...SOURCE.pages,
+        {
+          title: 'Képzeletbeli akciós kurzus',
+          slug: 'akcios-kurzus',
+          excerpt: 'Demo.',
+          updatedAt: '2026-09-04T00:00:00.000Z',
+        },
+      ],
+    })
+    expect(demoBody).not.toContain('akcios-kurzus')
+  })
+
   it('a cikk a KANONIKUS (hub) címén áll, a jogi lap az Optional alatt', () => {
     expect(body).toContain(`](${absoluteUrl('/keztoalagut-szindroma')})`)
     expect(body).not.toContain('/blog/keztoalagut-szindroma')

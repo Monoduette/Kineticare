@@ -32,7 +32,7 @@ import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { loadProductPreview, previewCurriculum } from '@/lib/preview/product-preview'
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { AUDIENCE_LABELS, normalizeAudience } from '@/lib/course-audience'
-import { resolveCoursePromo } from '@/lib/course-promo'
+import { isCoursePromoDisplayed, resolveCoursePromo } from '@/lib/course-promo'
 import {
   canonicalCourseRedirect,
   courseHref,
@@ -424,10 +424,24 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
    * Minden más esetben a lap kimenete változatlan.
    */
   const promo = resolveCoursePromo(product)
-  const usePromoView = promo.active && priceBadge === 'price' && price !== null && !isPreview
+  // Az akciós megjelenés közös szabálya (course-promo.ts isCoursePromoDisplayed):
+  // élő időablak + közzétett kurzus + érvényes ár. Archivált kurzus (Devin,
+  // #278) így a rendes oldalt kapja, ahol a vásárlás tiltása látszik.
+  const usePromoView =
+    isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
   // A strukturált adat Offer-je az akció utolsó napjáig érvényes (schema.org
   // priceValidUntil) — csak az akciós sablonon, különben a kimenet változatlan.
   const promoValidUntil = usePromoView ? promoLastDayIso(promo) : null
+
+  // Az ingyenes előzetes videó MINDKÉT sablonon ugyanaz a csomópont: az
+  // akciós oldal sem veszítheti el (Devin, #278), a kapu (hasPreviewVideo)
+  // és a nyilvános stream-kezelés változatlan.
+  const previewFigure = showPreview ? (
+    <figure className="kc-course-media">
+      <PreviewVideo streamId={product.previewVideoStreamId} title={`${title}: előzetes`} />
+      <figcaption className="kc-course-media__caption">Ingyenes előzetes</figcaption>
+    </figure>
+  ) : null
 
   const structuredHead = !isPreview ? (
     <>
@@ -510,6 +524,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
               ? rewriteVisitorDashLeftover(product.shortDescription)
               : null
           }
+          preview={previewFigure}
           priceHuf={price}
           priceLabel={priceLabel}
           product={product}
@@ -595,14 +610,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
             </div>
 
             <div className="kc-course-layout__main">
-              {showPreview ? (
-                <figure className="kc-course-media">
-                  <PreviewVideo
-                    streamId={product.previewVideoStreamId}
-                    title={`${title}: előzetes`}
-                  />
-                  <figcaption className="kc-course-media__caption">Ingyenes előzetes</figcaption>
-                </figure>
+              {previewFigure !== null ? (
+                previewFigure
               ) : cover ? (
                 <figure className="kc-course-media">
                   {/* eslint-disable-next-line @next/next/no-img-element -- a Payload media méretei kézileg vannak bekötve (width/height a CMS-ből) */}

@@ -60,6 +60,15 @@ const KIKAPCSOLT = {
 }
 
 describe('CoursePromoBadge', () => {
+  it('ingyenes vagy archivált kurzuson élő időablak mellett sincs címke (a kártya és az oldal egyet mond)', () => {
+    const ingyenes = product({ ...ELO, priceInHUFEnabled: false })
+    const archivalt = product({ ...ELO, status: 'archived' })
+    expect(render(createElement(CoursePromoBadge, { now: NOW, product: ingyenes }))).toBe('')
+    expect(render(createElement(CoursePromoBadge, { now: NOW, product: archivalt }))).toBe('')
+    expect(promoAccessibleNamePrefix(ingyenes, NOW)).toBe('')
+    expect(promoAccessibleNamePrefix(archivalt, NOW)).toBe('')
+  })
+
   it('élő akciónál látható „Akció” szó és „Akciós kurzus” felolvasott név', () => {
     const html = render(createElement(CoursePromoBadge, { product: product(ELO), now: NOW }))
     expect(html).toContain('kc-promo-badge')

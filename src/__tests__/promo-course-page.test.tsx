@@ -102,6 +102,22 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     expect(html).toContain('CLAIM_FORM')
   })
 
+  it('archivált kurzuson sosem akciós sablon: a rendes oldal mondja ki, hogy nem vásárolható', async () => {
+    mocks.find.mockResolvedValue({ docs: [{ ...base, status: 'archived' }] })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).not.toContain('kc-promo-hero')
+    expect(html).not.toContain('Akciós ár')
+    expect(html).toContain('nem vásárolható')
+  })
+
+  it('az ingyenes előzetes videó az akciós sablonon is megmarad', async () => {
+    mocks.find.mockResolvedValue({ docs: [{ ...base, previewVideoStreamId: 'elozetes-guid' }] })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).toContain('kc-promo-hero')
+    expect(html).toContain('kc-promo-course__preview')
+    expect(html).toContain('Ingyenes előzetes')
+  })
+
   it('szerkesztői előnézetben sosem akciós sablon', async () => {
     mocks.draft.mockResolvedValue({ isEnabled: true })
     mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })

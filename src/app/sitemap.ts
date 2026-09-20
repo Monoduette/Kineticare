@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { isLegacyNoindexSlug } from '@/lib/legacy-noindex'
 
 import {
   HOME_PAGE_SLUG,
@@ -126,7 +127,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // A `hasSlug` őr a slug NÉLKÜLI (piszkozat, elrontott) rekordot zárja ki:
   // enélkül `/undefined` alakú cím kerülne a sitemapbe.
   for (const page of pages) {
-    if (page.slug === HOME_PAGE_SLUG || !hasSlug(page) || staticPaths.has(`/${page.slug}`)) {
+    if (
+      page.slug === HOME_PAGE_SLUG ||
+      !hasSlug(page) ||
+      isLegacyNoindexSlug(page.slug) ||
+      staticPaths.has(`/${page.slug}`)
+    ) {
       continue
     }
     entries.push({

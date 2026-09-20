@@ -65,6 +65,8 @@ export interface PromoCourseViewProps {
   related: Product[]
   category: string | null
   audienceLabel: string
+  /** Az ingyenes előzetes videó (a rendes oldallal közös csomópont) vagy null. */
+  preview?: ReactNode
 }
 
 interface Band {
@@ -131,6 +133,7 @@ export function PromoCourseView({
   priceLabel,
   guaranteeLabel,
   sections,
+  preview = null,
   jumpTargets,
   related,
   category,
@@ -166,6 +169,12 @@ export function PromoCourseView({
           <Container>
             <CourseJumpNav targets={jumpTargets} />
           </Container>
+        </Section>
+      ) : null}
+
+      {preview ? (
+        <Section as="div" className="kc-promo-course__preview">
+          <Container>{preview}</Container>
         </Section>
       ) : null}
 

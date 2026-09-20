@@ -1,9 +1,9 @@
-import { isCoursePromoActive, type CoursePromoFields } from '../../lib/course-promo'
+import { isCoursePromoDisplayed, type CoursePromoDisplayFields } from '../../lib/course-promo'
 
 /**
  * CoursePromoBadge: „Akció” címke a kurzuskártyákon (WP60, 2026-09-20).
  *
- * Egyetlen helyen dől el, hogy a kártya kap-e címkét: `isCoursePromoActive`
+ * Egyetlen helyen dől el, hogy a kártya kap-e címkét: `isCoursePromoDisplayed`
  * (src/lib/course-promo.ts), ugyanaz a szabály, mint a kurzusoldalé és az
  * admin állapotjelzőé (WCAG 2.2 SC 3.2.4 Consistent Identification). Nem él
  * az akció: a komponens NEM renderel semmit, nincs üres doboz.
@@ -37,7 +37,7 @@ export const PROMO_BADGE_LABEL = 'Akció'
 export const PROMO_BADGE_ACCESSIBLE_NAME = 'Akciós kurzus'
 
 export interface CoursePromoBadgeProps {
-  product: CoursePromoFields
+  product: CoursePromoDisplayFields
   /** Csak teszthez: a „most” pillanat. */
   now?: Date
   /**
@@ -52,8 +52,8 @@ export interface CoursePromoBadgeProps {
  * Az `aria-label`-es kártya-linkek nevének előtagja: „Akciós kurzus: ” ha az
  * akció él, különben üres. A hívó a saját nevét fűzi utána.
  */
-export function promoAccessibleNamePrefix(product: CoursePromoFields, now?: Date): string {
-  return isCoursePromoActive(product, now) ? `${PROMO_BADGE_ACCESSIBLE_NAME}: ` : ''
+export function promoAccessibleNamePrefix(product: CoursePromoDisplayFields, now?: Date): string {
+  return isCoursePromoDisplayed(product, now) ? `${PROMO_BADGE_ACCESSIBLE_NAME}: ` : ''
 }
 
 export function CoursePromoBadge({
@@ -62,7 +62,7 @@ export function CoursePromoBadge({
   nameInLink = false,
   className,
 }: CoursePromoBadgeProps) {
-  if (!isCoursePromoActive(product, now)) {
+  if (!isCoursePromoDisplayed(product, now)) {
     return null
   }
   const classes = ['kc-promo-badge', className ?? ''].filter(Boolean).join(' ')
