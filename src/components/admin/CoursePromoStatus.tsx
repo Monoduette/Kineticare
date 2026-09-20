@@ -77,7 +77,7 @@ export const NOT_PUBLISHED_WARNING =
   'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve.'
 
 export const DRAFT_WARNING =
-  'A dokumentumnak nem közzétett módosításai vannak: a látogató a legutóbb közzétett változatot látja, az itteni beállítások közzététel után élnek.'
+  'A dokumentumnak nem közzétett módosításai vannak: az itteni beállítások közzététel után élnek.'
 
 export const NO_PRICE_WARNING =
   'A kurzusnak nincs érvényes ára (ingyenes vagy üres az ár), ezért az akciós megjelenés és az Akció címke nem jelenik meg.'
