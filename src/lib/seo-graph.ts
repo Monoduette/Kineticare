@@ -1,4 +1,5 @@
 import type { Media, Page } from '../payload-types'
+import { mapsHref } from './maps-href'
 import {
   absoluteUrl,
   breadcrumbId,
@@ -222,9 +223,18 @@ export function telephoneUri(number: string): string {
  * CMS-ben, ezért nincs a sémában sem. A telefonszám nem telephelyhez, hanem
  * személyhez kötött a CMS-ben, ezért a szervezet `contactPoint`-jain áll.
  */
+/** A cím térkép-linkje mezőként; üres címre (nincs) üres objektum, hogy a gráfban ne álljon üres érték. */
+function hasMapField(cim: string): { hasMap?: string } {
+  const href = mapsHref(cim)
+  return href ? { hasMap: href } : {}
+}
+
 export function medicalBusinessNodes(contact: ContactData): Record<string, unknown>[] {
   return contact.addresses.map((cim, index) => ({
     '@type': 'MedicalBusiness',
+    // schema.org Place.hasMap: ugyanaz a Google Térkép-link, amit a vevő a
+    // felületen kattint (https://schema.org/hasMap; src/lib/maps-href.ts).
+    ...hasMapField(cim),
     '@id': `${absoluteUrl('/kapcsolat')}#rendelo-${index + 1}`,
     name: `Kineticare rendelő ${index + 1}`,
     parentOrganization: organizationRef(),

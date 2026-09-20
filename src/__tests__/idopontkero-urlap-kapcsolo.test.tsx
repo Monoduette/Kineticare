@@ -152,6 +152,13 @@ describe('kikapcsolt űrlap', () => {
     const kimenet = html()
     expect(kimenet).toContain('1117 Budapest, Nádorliget u. 7/b')
     expect(kimenet).toContain('1114 Budapest, Fadrusz utca 15.')
+    // Mindkét cím Google Térkép-link, új lapon, a cím szövege változatlan.
+    expect(kimenet).toContain(
+      'href="https://www.google.com/maps/search/?api=1&amp;query=1117%20Budapest%2C%20N%C3%A1dorliget%20u.%207%2Fb" target="_blank"',
+    )
+    expect(kimenet).toContain(
+      'href="https://www.google.com/maps/search/?api=1&amp;query=1114%20Budapest%2C%20Fadrusz%20utca%2015." target="_blank"',
+    )
     expect(kimenet).toContain('+36 30 169 2263')
     expect(kimenet).toContain('+36 20 357 3493')
     expect(kimenet).toContain('info@kineticare.hu')

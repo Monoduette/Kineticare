@@ -898,6 +898,7 @@ actions mean the same thing."*
 | **C-5** | **A látható felirat része a hozzáférhető névnek** (WCAG 2.5.3). | Automatizált (6.3) |
 | **C-6** | A mintázatos feliratok megengedettek, ha a **minta** azonos: a WCAG magyarázata szerint a „Go to page 4" / „Go to page 5" megfelel. Nálunk: `Letöltöm a számlát` / `Letöltöm az igazolást` (§3.2 #14), illetve `Vissza a kurzusokhoz` / `Vissza a kezdőlapra` (#15). | – |
 | **C-7** | **Az e-mail-sablonok CTA-i is a szótárból jönnek** (`src/lib/email/templates/**`) – a levélből érkező látogató ugyanazt a szót találja az oldalon. | Szótár-őrteszt |
+| **C-8** | **Az elérhetőség-adat maga a link felirata, és mindenhol ugyanúgy néz ki.** Telefonszám → `tel:` (`src/lib/tel-href.ts`), e-mail → `mailto:`, postacím → Google Térkép `search`-link új lapon (`src/lib/maps-href.ts`, `rel="noopener noreferrer"`, rejtett „(Google Térkép, új lapon nyílik)" toldat a képernyőolvasónak: SC 2.4.4, SC 3.2.5, G200/G201). A látható szöveg a szám, a cím, az e-mail-cím; aláhúzott, örökölt színű, `inline-flex` + `min-height: 2.75rem` (44 px) célfelület. Ugyanez a minta a Kapcsolat időpontkérőjében és a rendelői árlistán (2026-09-20). Forrás: NN/g, *Guidelines for Visualizing Links* (https://www.nngroup.com/articles/guidelines-for-visualizing-links/); Google, *Maps URLs* (https://developers.google.com/maps/documentation/urls/get-started). | `maps-href.test.ts`, `appointment-block.test.tsx`, `wp58-rendeloi-arlista.test.tsx` |
 
 ---
 

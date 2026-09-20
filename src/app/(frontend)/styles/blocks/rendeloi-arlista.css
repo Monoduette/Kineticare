@@ -178,6 +178,36 @@
   margin: 0;
 }
 
+/* ---- Címlink: a helyszín a Google Térképet nyitja ------------------------
+   A látható szöveg maga a cím; a link ugyanúgy néz ki, mint a Kapcsolat
+   oldal időpontkérő szekciójának tel-/mailto-/címlinkje (appointment.css):
+   örökölt szín + aláhúzás. A repó alap link-nyelve aláhúzás nélküli
+   (base.css), mert a navigáció helyzetéből felismerhető; itt viszont a cím
+   egy tény-lista sorában áll, ahol a szövegtől SEMMI nem különböztetné meg,
+   ezért az aláhúzás kötelező jel (WCAG 2.2 SC 1.4.1, a szín nem lehet az
+   egyetlen jel; NN/g, Guidelines for Visualizing Links: „underline links”,
+   „the same treatment consistently throughout your site”,
+   https://www.nngroup.com/articles/guidelines-for-visualizing-links/).
+   Az `inline-flex` + `min-height: 2.75rem` (44 CSS px 16 px-es alapnál) a
+   link SAJÁT dobozát növeli az érintőcélhoz, a sor magasságát nem: a cím
+   koppintás mobilon a térképhez vezető cselekvés, ezért a 2.5.8 (AA) 24 px
+   helyett a projekt 44 px-es célja jár neki
+   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html;
+   docs/ui-sztenderdek.md §2.4). A fókuszgyűrűt a globális `:focus-visible`
+   adja (base.css: accent-deep 3 px), sötét sávon a ui.css fehérre váltja.
+   KONTRASZT (tokens.css): a paperen ink 14,79:1, a fehér kártyán 15,63:1;
+   sötét sávon (`.kc-section--dark a` → on-dark, fehér az inken) 15,63:1,
+   hoverre on-dark-muted (#9ec4df az inken) 8,49:1. Mind ≥ 4,5:1
+   (WCAG 2.2 SC 1.4.3). */
+.kc-arlista__place a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 /* Sötét sávon a hairline nem látszana: az elválasztó a halvány akcentre vált
    (a `.kc-section--dark` szövegszabályait a ui.css adja). */
 .kc-section--dark .kc-arlista__facts,

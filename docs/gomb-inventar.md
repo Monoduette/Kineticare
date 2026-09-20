@@ -341,6 +341,7 @@ a skill-doksiban külön PR-ben kell átvezetni (nem e munkacsomag fájlja).
 | `/blog` | *(nincs üres állapot)* | - | **Z5** |
 | `/kapcsolat` | Üzenet küldése / Küldés… | P | `disabled`, `role="alert"`; rendben |
 | `/kapcsolat` siker | Vissza a kezdőlapra | S | rendben |
+| `/kapcsolat` időpontkérő, `/szolgaltatasok` rendelői árlista | rendelői postacím (a cím maga a felirat) | L | Google Térkép `search`-link új lapon, `rel="noopener noreferrer"`, rejtett „(Google Térkép, új lapon nyílik)" toldat; aláhúzott, örökölt szín, 44 px-es cél (`src/lib/maps-href.ts`, `ui-szt.` C-8, 2026-09-20). Nem CTA: nincs §3.2 sor, ahogy a `tel:`/`mailto:` soroknak sincs |
 | jogi oldalak | RichText-linkek | L / P | `lexical/serialize.tsx:228` `kc-button`-t ad: **K2** |
 | 404 | Vissza a kezdőlapra | P | **élőben nem renderel** (IA TOP-10 #1) |
 | 500 | Próbáld újra · Vissza a kezdőlapra | P/S | nincs folyamatban-állapot a `reset()`-en |

@@ -949,11 +949,15 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // állításban, hogy a növekedése látszódjon: minél több a futásidőben
     // eldőlő felirat, annál kevesebbet ér a szótár betartatása a kódban.
     // 78: a kurzusgaléria heading/lead CMS-tartalék (`heading?.trim() || …`).
+    // 80 (2026-09-20): a két rendelői címlink (`Appointment.tsx`,
+    // `RendeloiArlista.tsx`) felirata maga a CMS-ből jövő cím + a rejtett
+    // „(Google Térkép, új lapon nyílik)" toldat: nem CTA, a cím a felirat
+    // (ugyanaz az elbírálás, mint a `mailto:` sorok kivételeié).
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(78)
+    ).toBeLessThanOrEqual(80)
   })
 })

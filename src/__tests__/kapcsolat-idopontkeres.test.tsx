@@ -67,6 +67,13 @@ describe('/kapcsolat alap-szekciósor', () => {
     // A telefonszámok kattinthatók (mobilon ez a leggyorsabb út).
     expect(html).toContain('href="tel:+36301692263"')
     expect(html).toContain('href="tel:+36203573493"')
+    // A címek Google Térkép-linkek, új lapon (src/lib/maps-href.ts).
+    expect(html).toContain(
+      'href="https://www.google.com/maps/search/?api=1&amp;query=1117%20Budapest%2C%20N%C3%A1dorliget%20u.%207%2Fb" target="_blank" rel="noopener noreferrer"',
+    )
+    expect(html).toContain(
+      'href="https://www.google.com/maps/search/?api=1&amp;query=1114%20Budapest%2C%20Fadrusz%20utca%2015." target="_blank" rel="noopener noreferrer"',
+    )
   })
 
   it('a szekció horgonyt kap, és a szolgáltatás-oldal CTA-ja arra mutat', () => {
@@ -201,7 +208,10 @@ describe('/kapcsolat szakember-elérhetőség', () => {
       /\d{1,2}\s*[–-]\s*\d{1,2}\s*(óra|h\b)/i, //  8–16 óra
       /\b(hétfő|kedd|szerda|csütörtök|péntek|szombat|vasárnap)/i,
     ]
-    const cimMintak = [/\b(utca|út|tér|körút|krt\.|hrsz|emelet|házszám)\b/i, /\b\d{4}\s+[A-ZÁÉÍÓÖŐÚÜŰ]/]
+    const cimMintak = [
+      /\b(utca|út|tér|körút|krt\.|hrsz|emelet|házszám)\b/i,
+      /\b\d{4}\s+[A-ZÁÉÍÓÖŐÚÜŰ]/,
+    ]
 
     for (const tag of kapcsolatSzakember().members ?? []) {
       const szoveg = (tag.availability ?? '').trim()
