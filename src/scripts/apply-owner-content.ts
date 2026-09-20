@@ -396,6 +396,7 @@ export type JavitasSzabaly =
   | 'akcios-kurzus-menupont'
   | 'akcios-kurzus-eladoszoveg'
   | 'akcios-kurzus-arszoveg'
+  | 'demo-oldal-visszavonas'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -4644,6 +4645,90 @@ export const alkalmazAkciosMenupont = (input: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// WP60 (2026-09-20) — az egykori demó CMS-oldal közzétételének visszavonása.
+// ---------------------------------------------------------------------------
+
+/** Az egykori demólap webcíme (Pages.slug); a `/akcios-kurzus` kód-útvonal megszűnt. */
+export const DEMO_OLDAL_SLUG = 'akcios-kurzus'
+/** Az egykori demólap címe: CSAK ezt a rekordot vonjuk vissza, más címűt nem. */
+export const DEMO_OLDAL_CIM = 'Képzeletbeli akciós kurzus'
+
+/** A demólap-visszavonás eredménye. */
+export interface DemoOldalVisszavonas {
+  /** Igaz, ha a rekord közzétételét vissza kell vonni (`_status: 'draft'`). */
+  visszavon: boolean
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Az egykori demó-lander („Képzeletbeli akciós kurzus”, `akcios-kurzus` webcím)
+ * a WP60-ig a saját, mindig noindex `/akcios-kurzus` route-on élt. A route
+ * megszűnt; az általános `[slug]` route a közzétett CMS-oldalt sima, INDEXELHETŐ
+ * oldalként szolgálná ki. Ezért a rekord közzétételét vissza kell vonni.
+ *
+ * MECHANIKA (Payload 3.88, mérve a csomag forrásából): az admin „Unpublish”
+ * gombja (`@payloadcms/ui` UnpublishButton) egy PATCH-et küld
+ * `{ _status: 'draft' }` törzzsel, `draft` kapcsoló NÉLKÜL. A helyi API-n ez
+ * `payload.update({ data: { _status: 'draft' }, draft: false })`: a
+ * `draft: false` miatt nem piszkozat-verzió készül a publikált fölé, hanem a
+ * FŐ rekord `_status`-a vált piszkozatra; a Pages `syncStatusFromDraftStatus`
+ * hookja ebből állítja a `status` mezőt, amire a nyilvános olvasás szűr
+ * (`PUBLISHED_WHERE`). Ugyanaz az út, mint az SOS publikálásé, csak fordítva.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - nincs ilyen webcímű rekord: csendes kihagyás (a cél állapot adott);
+ *  - a rekord címe NEM a demó címe: HANGOS kihagyás (más szerkesztői oldal
+ *    kaphatta ezt a webcímet, azt nem vonjuk vissza);
+ *  - a fő rekord `_status`-a már nem 'published': csendes kihagyás.
+ * A hívó a rekordot `draft: true` NÉLKÜL olvassa: a fő rekord `_status`-a
+ * mondja meg, él-e a közzététel (a `draft: true` a legutóbbi piszkozat-verziót
+ * adná, ami piszkozat lehet akkor is, ha a lap közzé van téve).
+ */
+export const alkalmazDemoOldalVisszavonas = (
+  oldal: Pick<Page, 'id' | 'title' | 'slug' | '_status'> | undefined,
+): DemoOldalVisszavonas => {
+  const szabaly: JavitasSzabaly = 'demo-oldal-visszavonas'
+  const uzenet = `Az egykori demólap („${DEMO_OLDAL_SLUG}”) közzétételének visszavonása`
+  const kihagyas = (indok: string, hangos = false): DemoOldalVisszavonas => ({
+    visszavon: false,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+  })
+
+  if (oldal === undefined) {
+    return kihagyas(`nincs „${DEMO_OLDAL_SLUG}” webcímű oldal, nincs teendő`)
+  }
+  if (oldal.title.trim() !== DEMO_OLDAL_CIM) {
+    return kihagyas(
+      `a „${DEMO_OLDAL_SLUG}” webcímű oldal (pages #${oldal.id}) címe ${ertekCimke(
+        oldal.title,
+      )}, nem ${ertekCimke(DEMO_OLDAL_CIM)}, más szerkesztői oldalt a script nem von vissza`,
+      true,
+    )
+  }
+  if (oldal._status !== 'published') {
+    return kihagyas(
+      `az oldal (pages #${oldal.id}) MÁR nincs közzétéve (${ertekCimke(oldal._status)}), nincs teendő`,
+    )
+  }
+
+  return {
+    visszavon: true,
+    modositasok: [
+      {
+        szabaly,
+        uzenet: `${uzenet} (pages #${oldal.id}, ${ertekCimke(
+          oldal.title,
+        )}): „published” → „draft”. A dedikált noindex route megszűnt (WP60), az általános [slug] route indexelhető oldalként szolgálná ki.`,
+        indok: null,
+      },
+    ],
+    kihagyasok: [],
+  }
+}
+
 export type AkciosEladoMezok = Pick<
   Product,
   'salesHighlights' | 'faq' | 'seoTitle' | 'seoDescription' | 'relatedProducts'
@@ -4852,6 +4937,30 @@ const mediaFajlnevek = async (
 // olvasott dátum minden futásnál „újabb” lenne (mérve élesben 2026-09-20: az
 // akciós kurzusnál hamis riasztás), a valódi, korábbi piszkozat pedig
 // észrevétlen maradna.
+/**
+ * A legutóbbi verzió (`draft: true`) olvasása az ÍRÁS ELŐTT. Olvasási hibánál
+ * `undefined`: a hívó ilyenkor az adott írást KIHAGYJA és hibát jelez, mert
+ * ellenőrizetlen állapotban publikálni azt jelentené, hogy egy létező
+ * szerkesztői piszkozat szó nélkül kiszorul a legutóbbi verzióból (Devin,
+ * #277). Az azonosító egy korábbi sikeres lekérdezésből jön, ezért itt a
+ * hiba nem „nincs piszkozat”, hanem valódi adatbázis- vagy kapcsolathiba.
+ */
+async function olvasdLegutobbiVerziot(
+  payload: Payload,
+  collection: 'pages' | 'products',
+  id: number,
+): Promise<{ updatedAt?: string | null } | undefined> {
+  try {
+    return await payload.findByID({ collection, id, depth: 0, draft: true, overrideAccess: true })
+  } catch (error) {
+    logger.error(
+      `Tartalom-javítás: a legutóbbi verzió olvasása sikertelen (${collection} #${id}), ez az írás kimarad.`,
+      { error: error instanceof Error ? error.message : String(error) },
+    )
+    return undefined
+  }
+}
+
 const figyelmeztessPiszkozatra = (
   cimke: string,
   publikaltFrissitve: unknown,
@@ -4961,25 +5070,21 @@ async function futtat(): Promise<void> {
     kezdolapLepes(alkalmazKezdolapSajtologoSorrend(kezdolapLayout))
 
     if (kezdolapValtozott && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kezdolap.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'pages',
           id: kezdolap.id,
+          // A blokk-mező részlegesen nem frissíthető: a TELJES szekciósor megy
+          // vissza, de a nem érintett blokkok objektumai változatlanok.
+          data: { layout: kezdolapLayout },
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'pages',
-        id: kezdolap.id,
-        // A blokk-mező részlegesen nem frissíthető: a TELJES szekciósor megy
-        // vissza, de a nem érintett blokkok objektumai változatlanok.
-        data: { layout: kezdolapLayout },
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra('kezdőlap', kezdolap.updatedAt, piszkozat?.updatedAt)
+        figyelmeztessPiszkozatra('kezdőlap', kezdolap.updatedAt, piszkozat?.updatedAt)
+      }
     }
   }
 
@@ -5018,23 +5123,19 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(termekAdat).length > 0 && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'products', termek.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'products',
           id: termek.id,
+          data: termekAdat,
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'products',
-        id: termek.id,
-        data: termekAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra(`kurzus („${KURZUS_SKU}”)`, termek.updatedAt, piszkozat?.updatedAt)
+        figyelmeztessPiszkozatra(`kurzus („${KURZUS_SKU}”)`, termek.updatedAt, piszkozat?.updatedAt)
+      }
     }
   }
 
@@ -5165,23 +5266,19 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(irando).length > 0 && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', rolunk.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'pages',
           id: rolunk.id,
+          data: irando,
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'pages',
-        id: rolunk.id,
-        data: irando,
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra('Rólunk oldal', rolunk.updatedAt, piszkozat?.updatedAt)
+        figyelmeztessPiszkozatra('Rólunk oldal', rolunk.updatedAt, piszkozat?.updatedAt)
+      }
     }
   }
 
@@ -5251,23 +5348,19 @@ async function futtat(): Promise<void> {
     const aszfVegsoTartalom = aszfBarion.content ?? aszfTenyek.content ?? aszfEredmeny.content
 
     if (aszfVegsoTartalom !== null && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', aszfOldal.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'pages',
           id: aszfOldal.id,
+          data: { content: aszfVegsoTartalom as typeof aszfOldal.content },
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'pages',
-        id: aszfOldal.id,
-        data: { content: aszfVegsoTartalom as typeof aszfOldal.content },
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra('ÁSZF', aszfOldal.updatedAt, piszkozat?.updatedAt)
+        figyelmeztessPiszkozatra('ÁSZF', aszfOldal.updatedAt, piszkozat?.updatedAt)
+      }
     }
   }
 
@@ -5388,27 +5481,23 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(sosAdat).length > 0 && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'products', sosKurzus.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'products',
           id: sosKurzus.id,
+          data: sosAdat,
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'products',
-        id: sosKurzus.id,
-        data: sosAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra(
-        `SOS kurzus („${SOS_COURSE_SKU}”)`,
-        sosKurzus.updatedAt,
-        piszkozat?.updatedAt,
-      )
+        figyelmeztessPiszkozatra(
+          `SOS kurzus („${SOS_COURSE_SKU}”)`,
+          sosKurzus.updatedAt,
+          piszkozat?.updatedAt,
+        )
+      }
     }
   }
 
@@ -5579,27 +5668,23 @@ async function futtat(): Promise<void> {
     }
 
     if (Object.keys(irandoSzolgaltatasok).length > 0 && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', szolgaltatasok.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'pages',
           id: szolgaltatasok.id,
+          data: irandoSzolgaltatasok,
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'pages',
-        id: szolgaltatasok.id,
-        data: irandoSzolgaltatasok,
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra(
-        'Szolgáltatások oldal',
-        szolgaltatasok.updatedAt,
-        piszkozat?.updatedAt,
-      )
+        figyelmeztessPiszkozatra(
+          'Szolgáltatások oldal',
+          szolgaltatasok.updatedAt,
+          piszkozat?.updatedAt,
+        )
+      }
     }
   }
 
@@ -5655,23 +5740,19 @@ async function futtat(): Promise<void> {
     kihagyasokSzama += kapcsolatEredmeny.kihagyasok.length
 
     if (kapcsolatEredmeny.layout !== null && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kapcsolat.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'pages',
           id: kapcsolat.id,
+          data: { layout: kapcsolatEredmeny.layout },
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'pages',
-        id: kapcsolat.id,
-        data: { layout: kapcsolatEredmeny.layout },
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra('Kapcsolat oldal', kapcsolat.updatedAt, piszkozat?.updatedAt)
+        figyelmeztessPiszkozatra('Kapcsolat oldal', kapcsolat.updatedAt, piszkozat?.updatedAt)
+      }
     }
   }
 
@@ -5767,27 +5848,23 @@ async function futtat(): Promise<void> {
       akciosAdat.longDescription = arszoveg.content as Product['longDescription']
     }
     if (Object.keys(akciosAdat).length > 0 && !dryRun) {
-      const piszkozat = await payload
-        .findByID({
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'products', akciosKurzus.id)
+      if (piszkozat === undefined) {
+        hiba = true
+      } else {
+        await payload.update({
           collection: 'products',
           id: akciosKurzus.id,
+          data: akciosAdat,
           depth: 0,
-          draft: true,
           overrideAccess: true,
         })
-        .catch(() => null)
-      await payload.update({
-        collection: 'products',
-        id: akciosKurzus.id,
-        data: akciosAdat,
-        depth: 0,
-        overrideAccess: true,
-      })
-      figyelmeztessPiszkozatra(
-        `akciós kurzus („${AKCIOS_KURZUS_SLUG}”)`,
-        akciosKurzus.updatedAt,
-        piszkozat?.updatedAt,
-      )
+        figyelmeztessPiszkozatra(
+          `akciós kurzus („${AKCIOS_KURZUS_SLUG}”)`,
+          akciosKurzus.updatedAt,
+          piszkozat?.updatedAt,
+        )
+      }
     }
   }
 
@@ -5819,6 +5896,33 @@ async function futtat(): Promise<void> {
         collection: 'menus',
         id: menupont.id,
         data: eredmeny.adat,
+        depth: 0,
+        overrideAccess: true,
+      })
+    }
+  }
+
+  // --- WP60: az egykori demólap közzétételének visszavonása -----------------
+  // `draft: true` NÉLKÜL: a FŐ rekord `_status`-a dönt (lásd a szabály fejlécét).
+  const demoOldalTalalat = await payload.find({
+    collection: 'pages',
+    where: { slug: { equals: DEMO_OLDAL_SLUG } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const demoVisszavonas = alkalmazDemoOldalVisszavonas(demoOldalTalalat.docs[0])
+  naplozdLepeseket(demoVisszavonas, dryRun)
+  modositasokSzama += demoVisszavonas.modositasok.length
+  kihagyasokSzama += demoVisszavonas.kihagyasok.length
+  if (demoVisszavonas.visszavon && !dryRun) {
+    const demoOldal = demoOldalTalalat.docs[0]
+    if (demoOldal !== undefined) {
+      await payload.update({
+        collection: 'pages',
+        id: demoOldal.id,
+        data: { _status: 'draft' },
+        draft: false,
         depth: 0,
         overrideAccess: true,
       })

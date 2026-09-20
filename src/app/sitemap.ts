@@ -8,7 +8,6 @@ import {
   getSitemapProducts,
 } from '@/lib/cms'
 import { courseHref } from '@/lib/course-url'
-import { DEMO_COURSE_SLUG } from '@/lib/demo-course-route'
 import { absoluteUrl } from '@/lib/seo'
 import { categoriesWithPosts } from '@/lib/tudastar'
 import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
@@ -127,12 +126,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // A `hasSlug` őr a slug NÉLKÜLI (piszkozat, elrontott) rekordot zárja ki:
   // enélkül `/undefined` alakú cím kerülne a sitemapbe.
   for (const page of pages) {
-    if (
-      page.slug === HOME_PAGE_SLUG ||
-      page.slug === DEMO_COURSE_SLUG ||
-      !hasSlug(page) ||
-      staticPaths.has(`/${page.slug}`)
-    ) {
+    if (page.slug === HOME_PAGE_SLUG || !hasSlug(page) || staticPaths.has(`/${page.slug}`)) {
       continue
     }
     entries.push({

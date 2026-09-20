@@ -24,7 +24,6 @@ vi.mock('@/lib/cms', () => ({
       { id: 1, slug: 'kezdolap', updatedAt: '2026-02-01T10:00:00.000Z' },
       { id: 2, slug: 'kapcsolat', updatedAt: '2026-02-01T10:00:00.000Z' },
       { id: 3, slug: 'szolgaltatasok', updatedAt: '2026-02-01T10:00:00.000Z' },
-      { id: 4, slug: 'akcios-kurzus', updatedAt: '2026-02-01T10:00:00.000Z' },
     ]),
   getSitemapPosts: () => Promise.resolve([]),
   getContentCategories: () => Promise.resolve([]),
@@ -34,11 +33,6 @@ vi.mock('@/lib/cms', () => ({
 import sitemap from '../app/sitemap'
 
 describe('sitemap — statikus útvonal és CMS-oldal nem duplikálódik', () => {
-  it('a demo kurzus publikalt CMS-oldala sem kerul a sitemapbe', async () => {
-    const urls = (await sitemap()).map((entry) => entry.url)
-    expect(urls).not.toContain(absoluteUrl('/akcios-kurzus'))
-  })
-
   it('a /kapcsolat PONTOSAN egyszer szerepel', async () => {
     const urls = (await sitemap()).map((entry) => entry.url)
     expect(urls.filter((url) => url === absoluteUrl('/kapcsolat'))).toHaveLength(1)

@@ -12,8 +12,9 @@ menüben nem látszó módon. Emellett a rendelő címe legyen kattintható (Goo
    Barion-pénztárat, a tananyag-listát, a garanciát, a GYIK-et és a strukturált
    adatot; egy CMS-oldalon ezek egyike sem áll rendelkezésre blokként, és egy
    termék-beágyazó blokk új adatbázis-táblát (migrációt) igényelne
-   (`src/lib/cta-banner-course.ts` fejkomment). Az `/akcios-kurzus` kód-útvonal a
-   tartósan noindex demóoldal (`docs/kc-demo-course-cms.md`), ide nem való.
+   (`src/lib/cta-banner-course.ts` fejkomment). Az egykori `/akcios-kurzus`
+   kód-útvonal (noindex demóoldal, `docs/kc-demo-course-cms.md`, történeti) a
+   WP60-ban megszűnt.
 2. **Rejtett link = új `unlisted` mező a menüpontokon.** A „Látható" pipa kivétele a
    sort a nyilvános API-ról is levenné; az `unlisted` csak a navigációból veszi ki
    (`src/lib/menu-tree.ts`), a cél linkje él. Az admin szerkesztőlapon a kapcsoló
@@ -29,8 +30,9 @@ menüben nem látszó módon. Emellett a rendelő címe legyen kattintható (Goo
 | `akcios-kurzus-menupont`    | Az „olcsó dolgok itt" menüpont → „Akciós KézRehab kurzus", típus Kurzus, cél az akciós kurzus (webcím alapján), `unlisted: true`, nem új lapon          | felirat pontosan a régi (kis/nagybetű, szélső szóköz nélkül) vagy már az új; az akciós kurzus létezik, különben hangos |
 | `akcios-kurzus-eladoszoveg` | Fő előnyök (4 sor), GYIK (5 pár), SEO-cím, SEO-leírás, kapcsolódó kurzus (SOS) az akciós kurzuson                                                       | mezőnként csak ÜRES mezőbe ír; kitöltött mező kihagyás                                                                 |
 | `akcios-kurzus-arszoveg`    | A törzs téves, teljes árú ár-mondata („eredeti ára 119 000 Ft… 79 500 Ft") → akciós mondat; a zárójeles „nem helyettesíti a szakorvosi kontrollt" marad | bekezdés-eleji pontos egyezés; átírt szövegnél hangos kihagyás                                                         |
+| `demo-oldal-visszavonas`    | WP60: az egykori demólap („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím) közzétételének visszavonása: `_status` published → draft                | csak a pontosan ilyen című rekordon; más címnél hangos kihagyás; hiányzó vagy már piszkozat rekordnál csendes kihagyás |
 
-Őr: `src/__tests__/owner-content-akcios-kurzus.test.ts`.
+Őr: `src/__tests__/owner-content-akcios-kurzus.test.ts`, `src/__tests__/owner-content-demo-oldal.test.ts`.
 
 A „Hogyan működik", „Kinek való" és „Garancia" szakaszok a teljes árú programmal
 azonos módon a törzs címsoraiból és a tényadatokból épülnek
@@ -47,8 +49,12 @@ azonos módon a törzs címsoraiból és a tényadatokból épülnek
   kurzus a `/kurzusok` listában és a keresőkben is látszik, mert közzétett termék.
   Ha a partneri árat a nyilvánosság elől is el kell rejteni, az külön feladat
   (pl. kuponkód vagy nem listázott termék), ma nincs ilyen funkció.
-- **A demóoldal** („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím) megmarad,
-  de menüpont már nem mutat rá. Ha nem kell, az adminban visszavonható a közzététele.
+- **A demóoldal** („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím): a dedikált
+  noindex route a WP60-ban megszűnt, ezért a közzétett CMS-rekordot az általános
+  `[slug]` route indexelhető oldalként szolgálná ki. A `demo-oldal-visszavonas`
+  szabály (`npm run content:owner`, íráshoz `OWNER_CONTENT_CONFIRM=igen`) a rekord
+  közzétételét vonja vissza (`_status: 'draft'`, `draft: false`, ugyanaz, amit az
+  admin „Unpublish” gombja küld); őr: `src/__tests__/owner-content-demo-oldal.test.ts`.
 - **Kategória.** Az akciós kurzus az „Akciós termékek" kategóriában van; a kurzuslista
   kategória-szűrője így külön chipet mutat rá.
 

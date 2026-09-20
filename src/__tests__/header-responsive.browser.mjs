@@ -65,7 +65,7 @@ const bundle = await build({
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => {
           let contents
           if (args.path === 'next/navigation') {
-            contents = `export const usePathname = () => '/akcios-kurzus'`
+            contents = `export const usePathname = () => '/kurzusok/otthoni-kezrehab-program-akcio'`
           } else if (args.path === 'next/link') {
             contents = `const next = require(${JSON.stringify(path.join(root, 'node_modules/next/dist/client/link.js'))}); export default next.default`
           } else if (args.path.endsWith('/header-user')) {
@@ -73,13 +73,14 @@ const bundle = await build({
           } else if (args.path.endsWith('/menus')) {
             contents = `
             const item = (id, label, href, children = []) => ({id, label, href, children, isExternal: false, openInNewTab: false})
-            // Az „olcsó dolgok itt" az ÉLŐ Payload-menü extra gyereke
-            // (/akcios-kurzus), nem a seed terve. A fixture szándékosan
-            // megtartja, hogy a túlcsordulás/fiók extra CMS-ponttal is mérhető.
+            // Az „olcsó dolgok itt" az ÉLŐ Payload-menü extra gyereke (a WP60
+            // óta az akciós kurzus oldalára mutat, a demó /akcios-kurzus route
+            // megszűnt), nem a seed terve. A fixture szándékosan megtartja,
+            // hogy a túlcsordulás/fiók extra CMS-ponttal is mérhető.
             export const getNavTree = async () => window.fixtureEmptyMenu ? [] : [
               item(1, 'Szolgáltatások', '/szolgaltatasok', [
                 item(4, 'Rendelői kezelések', '/kezelesek'), item(5, 'Szakmai képzés', '/szakmai-kepzesek'),
-                item(6, 'SOS KézRelax', '/kurzusok/sos'), item(8, 'olcsó dolgok itt', '/akcios-kurzus')
+                item(6, 'SOS KézRelax', '/kurzusok/sos'), item(8, 'olcsó dolgok itt', '/kurzusok/otthoni-kezrehab-program-akcio')
               ]),
               item(2, 'Rólunk', '/rolunk'), item(7, 'Tudástár', '/blog'), item(3, 'Kapcsolat', '/kapcsolat')
             ]`
@@ -253,7 +254,7 @@ try {
       }
       const campaign = nav.getByRole('link', { name: 'olcsó dolgok itt', exact: true })
       await campaign.waitFor({ state: 'visible' })
-      assert.equal(await campaign.getAttribute('href'), '/akcios-kurzus')
+      assert.equal(await campaign.getAttribute('href'), '/kurzusok/otthoni-kezrehab-program-akcio')
       assert.equal(await campaign.getAttribute('aria-current'), 'page')
       assert.equal(await page.getByRole('link', { name: 'Időpontkérés', exact: true }).count(), 0)
       // WP10 (2026-09-07, tulajdonosi döntés): a fejlécben és a fiókban NINCS

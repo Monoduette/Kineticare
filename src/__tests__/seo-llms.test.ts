@@ -78,12 +78,6 @@ const SOURCE: LlmsSource = {
       updatedAt: '2026-09-04T00:00:00.000Z',
     },
     {
-      title: 'Képzeletbeli akciós kurzus',
-      slug: 'akcios-kurzus',
-      excerpt: 'Demo.',
-      updatedAt: '2026-09-04T00:00:00.000Z',
-    },
-    {
       title: 'Kéztőalagút szindróma',
       slug: 'keztoalagut-szindroma',
       excerpt: 'Hub.',
@@ -157,11 +151,10 @@ describe('llms.txt — llmstxt.org alak', () => {
     expect(body).not.toContain('/kezdolap')
   })
 
-  it('a cikk a KANONIKUS (hub) címén áll, a jogi lap az Optional alatt, a demo-lap sehol', () => {
+  it('a cikk a KANONIKUS (hub) címén áll, a jogi lap az Optional alatt', () => {
     expect(body).toContain(`](${absoluteUrl('/keztoalagut-szindroma')})`)
     expect(body).not.toContain('/blog/keztoalagut-szindroma')
     expect(body.split('## Optional')[1]).toContain('Impresszum')
-    expect(body).not.toContain('akcios-kurzus')
   })
 
   it('a kurzus a slugos címén, a rövid leírásból a töltelék gondolatjel eltűnik', () => {
@@ -211,8 +204,7 @@ describe('llms-full.txt — teljes szöveg', () => {
     expect(body).toContain('URL: ' + absoluteUrl('/keztoalagut-szindroma'))
   })
 
-  it('a demo-lap és a bejelentkezés mögötti utak nincsenek benne', () => {
-    expect(body).not.toContain('akcios-kurzus')
+  it('a bejelentkezés mögötti utak nincsenek benne', () => {
     expect(body).not.toContain('/kurzusaim')
     expect(body).not.toContain('/fiok')
   })

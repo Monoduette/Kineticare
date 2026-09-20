@@ -290,8 +290,6 @@ const HOME_SLUG = 'kezdolap'
 /** Dedikált route-tal bíró slugok: a CMS-oldal a route címén jelenik meg. */
 const ROUTE_SLUGS: Readonly<Record<string, string>> = { kapcsolat: '/kapcsolat', [HOME_SLUG]: '/' }
 const LEGAL_SLUGS = new Set(['aszf', 'adatvedelem', 'impresszum'])
-/** Belső, nyilvánosan nem hirdetett CMS-lapok (demo-kampány). */
-const HIDDEN_SLUGS = new Set(['akcios-kurzus'])
 
 /** A publikált gyökér-hubok slugjai a poszt→hub térképből. */
 function hubSlugSet(hubUtvonalak: Readonly<Record<string, string>> | undefined): Set<string> {
@@ -302,8 +300,15 @@ function pagePath(page: LlmsPage): string {
   return ROUTE_SLUGS[page.slug] ?? `/${page.slug}`
 }
 
+/**
+ * Slug nélküli (piszkozat, elrontott) rekord kimarad. Rejtett slug-lista
+ * nincs (WP60): az egykori demólap (`akcios-kurzus`) kivezetése nem kódból,
+ * hanem a CMS-ből történik (közzététel visszavonása, `demo-oldal-visszavonas`
+ * szabály a src/scripts/apply-owner-content.ts-ben), és ami nincs közzétéve,
+ * az ide sem kerül be.
+ */
 function isPublicPage(page: LlmsPage): boolean {
-  return typeof page.slug === 'string' && page.slug.length > 0 && !HIDDEN_SLUGS.has(page.slug)
+  return typeof page.slug === 'string' && page.slug.length > 0
 }
 
 /**

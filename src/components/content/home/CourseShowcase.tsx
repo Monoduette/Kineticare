@@ -15,6 +15,7 @@ import { coursePriceBadgeKind, courseTitle } from '../../../lib/courses'
 import { rewriteVisitorDashLeftover } from '../../../lib/gondolatjel-leftover'
 import type { Product } from '../../../payload-types'
 import { PriceTag } from '../../ui/PriceTag'
+import { CoursePromoBadge, promoAccessibleNamePrefix } from '../../courses/CoursePromoBadge'
 import { MediaImage } from '../MediaImage'
 
 import '../../../app/(frontend)/styles/blocks/course-showcase.css'
@@ -94,10 +95,17 @@ function ShowcaseCard({
   const ctaText =
     customCtaLabel?.trim() ||
     ctaLabel(priceBadge === 'free' ? 'free-course-claim' : 'course-sales-open')
+  // Élő akciónál a link neve „Akciós kurzus: ” előtaggal kezdődik: a kártya
+  // egyetlen link, az `aria-label` elfedné a belső címkét (CoursePromoBadge).
+  const promoPrefix = promoAccessibleNamePrefix(product)
 
   return (
     <article className="kc-course-showcase__card">
-      <Link aria-label={`${title}: ${ctaText}`} className="kc-course-showcase__link" href={href}>
+      <Link
+        aria-label={`${promoPrefix}${title}: ${ctaText}`}
+        className="kc-course-showcase__link"
+        href={href}
+      >
         {/* Borító: átlátszó packshot, `contain` (course-showcase.css). Tartalék
             csapatportré (nincs borító): fotó, ezért `--photo` → `cover`. */}
         <span
@@ -130,6 +138,7 @@ function ShowcaseCard({
           </span>
         </span>
         <span className="kc-course-showcase__caption">
+          <CoursePromoBadge className="kc-course-showcase__promo" nameInLink product={product} />
           <span className="kc-course-showcase__title">
             {head}
             {tail ? <em> {tail}</em> : null}

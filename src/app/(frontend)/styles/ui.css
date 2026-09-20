@@ -479,6 +479,35 @@
   color: var(--kc-color-danger);
 }
 
+/* ---- Akció-címke a kurzuskártyákon (CoursePromoBadge, WP60) ------------
+   Tömör, kitöltött címke a primer színnel: a kártyán ez az egyetlen kitöltött
+   tabletta, ezért a szem előbb éri el, mint a semleges (tint) közönség-badge-et,
+   de nem versenyez a CTA-val (a CTA a kártya alján, nagyobb dobozban áll).
+   Az elrendezés a `.kc-badge`-é (tabletta, S betűméret, félkövér), hogy a két
+   címke egy sorban azonos magasságú legyen.
+
+   SZÁMOLT KONTRASZT (WCAG 2.2, relatív luminancia-képlet, tokens.css):
+     szöveg: fehér (--kc-color-on-primary #ffffff) a primeren
+             (--kc-color-primary = accent-deep #2f6e9f) ........ 5,45:1 ✓ (SC 1.4.3, ≥ 4,5)
+     felület a háttérhez (SC 1.4.11, ≥ 3:1):
+             #2f6e9f a paperen (#f6f9fc) ......................... 5,16:1 ✓
+             #2f6e9f a tint sávon (#e6f0f8) ...................... 4,72:1 ✓
+             #2f6e9f a fehér kártyán (#ffffff) ................... 5,45:1 ✓
+   A jelentést a szöveg („Akció”) hordozza, nem a szín (SC 1.4.1). */
+.kc-promo-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--kc-space-1) var(--kc-space-3);
+  border-radius: var(--kc-radius-full);
+  background-color: var(--kc-color-primary);
+  color: var(--kc-color-on-primary);
+  font-family: var(--kc-font-body);
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-bold);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
 /* ---- PriceTag (HUF ár-címke) --------------------------------------------
    A három-méretes skálán az ár a TÖRZS-méreten (M) áll, a kiemelését a
    700-as SÚLY viszi. Ezért vált a címsor-betűről (Tenor Sans, egyetlen 400-as

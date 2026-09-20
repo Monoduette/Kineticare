@@ -6,12 +6,16 @@ import { rewriteVisitorDashLeftover } from '../../lib/gondolatjel-leftover'
 import type { Product } from '../../payload-types'
 import { Card } from '../ui/Card'
 import { PriceTag } from '../ui/PriceTag'
+import { CoursePromoBadge } from './CoursePromoBadge'
 
 /**
  * CourseCard — kurzuskártya a /kurzusok listán és a kapcsolódó kurzusok
  * (upsell) sávban. Borító (media sm-méret), cím, rövid leírás és az 5A
  * Ár-címke (PriceTag, ezres tagolás); a cím linkje a kurzus KANONIKUS
  * címére visz (courseHref: slug, ennek hiányában a régi id-s út).
+ * Élő akciónál a cím FELETT az „Akció” címke áll (CoursePromoBadge): a
+ * borító-link `aria-label`-je elfedné, a törzsben viszont a képernyőolvasó a
+ * címsor előtt hallja. A határidő nincs a kártyán, az a kurzusoldalé.
  */
 export interface CourseCardProps {
   product: Product
@@ -49,6 +53,7 @@ export function CourseCard({ product, headingLevel = 'h2' }: CourseCardProps) {
         )}
       </Link>
       <div className="kc-course-card__body">
+        <CoursePromoBadge className="kc-course-card__promo" product={product} />
         <Heading className="kc-course-card__title">
           <Link href={href}>{title}</Link>
         </Heading>

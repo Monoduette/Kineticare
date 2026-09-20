@@ -1,3 +1,11 @@
+> **TÖRTÉNETI DOKUMENTUM (WP60, 2026-09-20).** A `/akcios-kurzus` dedikált
+> route, a `DemoCourseLanding`, a `demo-course-content.ts`/`demo-course-route.ts`
+> és a hozzájuk tartozó tesztek ki lettek vezetve; az akciós megjelenést a
+> kurzusoldal saját akciós sablonja adja (`src/components/courses/promo/`,
+> `docs/akcios-kurzus-2026-09-20.md`). A „Képzeletbeli akciós kurzus” CMS-oldal
+> közzétételét a `demo-oldal-visszavonas` szabály vonja vissza
+> (`npm run content:owner`). Az alábbi leírás a korábbi állapotot rögzíti.
+
 # Demo kurzusoldal: helyi CMS-életciklus
 
 ## Hatókör

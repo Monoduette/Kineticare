@@ -48,8 +48,12 @@
   flex: 1;
 }
 
+/* Címkesor: élő akciónál az „Akció” címke áll elöl, mellette a közönség-badge;
+   szűk hasábon a második sorba törik, nem nyúlik. */
 .kc-product-card .kc-product-card__audience {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kc-space-2);
 }
 
 .kc-product-card .kc-product-card__title {

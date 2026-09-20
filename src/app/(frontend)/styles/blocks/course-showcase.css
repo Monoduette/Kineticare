@@ -179,6 +179,12 @@
   min-width: 0;
 }
 
+/* Az „Akció” címke a felirat-rács első sora, a saját szélességén (a rács
+   különben a hasáb teljes szélességére húzná). Stílus: ui.css. */
+.kc-course-showcase__promo {
+  justify-self: start;
+}
+
 .kc-course-showcase__title {
   font-family: var(--kc-font-body);
   font-size: var(--kc-font-m);

@@ -67,7 +67,6 @@ const PRIVATE_PATHS = [
   '/sikertelen',
   '/fizetes/koszonom',
   '/belepes-atallas',
-  '/akcios-kurzus',
   '/admin',
 ]
 
