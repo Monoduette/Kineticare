@@ -33,6 +33,7 @@ import {
   richTextSzoveg,
   type JogiOldalLeiras,
 } from '../lib/legal-content'
+import { formatPriceHuf } from '../lib/format-price'
 import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
@@ -396,6 +397,7 @@ export type JavitasSzabaly =
   | 'akcios-kurzus-menupont'
   | 'akcios-kurzus-eladoszoveg'
   | 'akcios-kurzus-arszoveg'
+  | 'akcios-kurzus-akcio-mezok'
   | 'demo-oldal-visszavonas'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
@@ -4740,6 +4742,89 @@ export interface AkciosEladoAtalakitas {
   kihagyasok: JavitasLepes[]
 }
 
+export type AkciosAkcioMezok = Pick<
+  Product,
+  'promoEnabled' | 'promoOriginalPriceHuf' | 'priceInHUF' | 'priceInHUFEnabled'
+>
+
+export interface AkciosAkcioAtalakitas {
+  adat: Partial<Pick<Product, 'promoEnabled' | 'promoOriginalPriceHuf'>>
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+}
+
+/**
+ * Az akciós kurzus AKCIÓS MEGJELENÉSE (PR #278): a pipa bekapcsolása és a
+ * „Teljes ár” (a teljes árú Otthoni KézRehab MA ÉLŐ ára, amit a hívó ad át)
+ * beírása, hogy a kurzusoldal az akciós sablont, a kártya az Akció címkét
+ * kapja. Dátumot NEM ír (nyílt végű akció; a tulajdonos az adminban ad
+ * időablakot, ha kér). Idempotens: bekapcsolt pipa mellett csendes kihagyás;
+ * kitöltött teljes árhoz nem nyúl; ha a teljes ár nem nagyobb a mostani
+ * árnál, a teljes árat kihagyja (áthúzva úgysem jelenne meg), a pipát írja.
+ */
+export const alkalmazAkciosAkcioMezok = (input: {
+  jelenlegi: AkciosAkcioMezok
+  /** A teljes árú program ma élő ára (Ft) vagy `null`, ha nincs. */
+  teljesAr: number | null
+}): AkciosAkcioAtalakitas => {
+  const szabaly: JavitasSzabaly = 'akcios-kurzus-akcio-mezok'
+  const cimke = `Az akciós kurzus („${AKCIOS_KURZUS_SLUG}”) akciós megjelenése`
+  const adat: AkciosAkcioAtalakitas['adat'] = {}
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  const { jelenlegi, teljesAr } = input
+
+  if (jelenlegi.promoEnabled === true) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: cimke,
+      indok: 'az Akciós kurzus pipa MÁR be van kapcsolva, nincs teendő',
+      hangos: false,
+    })
+  } else {
+    adat.promoEnabled = true
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke}: az „Akciós kurzus” pipa bekapcsolva (dátum nélkül, nyílt végű)`,
+      indok: 'a kurzusoldal az akciós sablont, a kártya az Akció címkét kapja',
+    })
+  }
+
+  const jelenlegiAr =
+    jelenlegi.priceInHUFEnabled === true &&
+    typeof jelenlegi.priceInHUF === 'number' &&
+    jelenlegi.priceInHUF > 0
+      ? jelenlegi.priceInHUF
+      : null
+  if (typeof jelenlegi.promoOriginalPriceHuf === 'number' && jelenlegi.promoOriginalPriceHuf > 0) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke}: teljes ár`,
+      indok: `a mező MÁR kitöltött (${formatPriceHuf(jelenlegi.promoOriginalPriceHuf)}), szerkesztői tartalmat a script sosem ír felül`,
+      hangos: false,
+    })
+  } else if (teljesAr === null || jelenlegiAr === null || teljesAr <= jelenlegiAr) {
+    kihagyasok.push({
+      szabaly,
+      uzenet: `${cimke}: teljes ár`,
+      indok:
+        teljesAr === null
+          ? 'a teljes árú program ára nem olvasható, a teljes ár kimarad'
+          : 'a teljes árú program ára nem nagyobb az akciós árnál, áthúzva úgysem jelenne meg',
+      hangos: true,
+    })
+  } else {
+    adat.promoOriginalPriceHuf = teljesAr
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke}: teljes ár ${formatPriceHuf(teljesAr)} (a teljes árú program ma élő ára, áthúzva jelenik meg)`,
+      indok: 'csak ténylegesen elérhető ár adható meg, ez a teljes árú program ára',
+    })
+  }
+
+  return { adat, modositasok, kihagyasok }
+}
+
 /**
  * Az akciós kurzus eladó mezői: fő előnyök, GYIK, SEO-cím és -leírás,
  * kapcsolódó kurzus (az ingyenes SOS). Mezőnként CSAK ÜRES mezőbe ír; a
@@ -5841,8 +5926,34 @@ async function futtat(): Promise<void> {
     modositasokSzama += arszoveg.modositasok.length
     kihagyasokSzama += arszoveg.kihagyasok.length
 
-    const akciosAdat: Partial<AkciosEladoMezok> & Pick<Partial<Product>, 'longDescription'> = {
+    // PR #278: az akciós megjelenés bekapcsolása; a teljes ár a teljes árú
+    // program MA ÉLŐ ára (webcím alapján), nem beégetett szám.
+    const teljesAruTalalat = await payload.find({
+      collection: 'products',
+      where: { slug: { equals: OTTHONI_KURZUS_SLUG } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+    const teljesAru = teljesAruTalalat.docs[0]
+    const akcioMezok = alkalmazAkciosAkcioMezok({
+      jelenlegi: akciosKurzus,
+      teljesAr:
+        teljesAru !== undefined &&
+        teljesAru.priceInHUFEnabled === true &&
+        typeof teljesAru.priceInHUF === 'number' &&
+        teljesAru.priceInHUF > 0
+          ? teljesAru.priceInHUF
+          : null,
+    })
+    naplozdLepeseket(akcioMezok, dryRun)
+    modositasokSzama += akcioMezok.modositasok.length
+    kihagyasokSzama += akcioMezok.kihagyasok.length
+
+    const akciosAdat: Partial<AkciosEladoMezok> &
+      Pick<Partial<Product>, 'longDescription' | 'promoEnabled' | 'promoOriginalPriceHuf'> = {
       ...elado.adat,
+      ...akcioMezok.adat,
     }
     if (arszoveg.content !== null) {
       akciosAdat.longDescription = arszoveg.content as Product['longDescription']
