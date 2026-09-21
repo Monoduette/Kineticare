@@ -866,8 +866,15 @@ export function courseJsonLd(args: {
   path: string
   priceHuf: number | null
   imageUrl?: string
+  /**
+   * Az ajánlat érvényességének utolsó napja (ISO dátum, `YYYY-MM-DD`) — csak
+   * az AKCIÓS kurzusoldal adja meg, az akció utolsó napjával
+   * (schema.org Offer.priceValidUntil, https://schema.org/priceValidUntil).
+   * Nélküle a kimenet változatlan.
+   */
+  priceValidUntil?: string
 }): Record<string, unknown> {
-  const { product, name, path, priceHuf, imageUrl } = args
+  const { product, name, path, priceHuf, imageUrl, priceValidUntil } = args
   const url = absoluteUrl(path)
   const description =
     typeof product.shortDescription === 'string' && product.shortDescription.trim().length > 0
@@ -912,6 +919,7 @@ export function courseJsonLd(args: {
             '@type': 'Offer',
             price: priceHuf,
             priceCurrency: 'HUF',
+            ...(priceValidUntil ? { priceValidUntil } : {}),
             url,
             availability:
               product.status === 'published'

@@ -443,7 +443,6 @@ első sima tétele (WP36). Az alábbi a **mai** térkép.
 | `/blog/kategoria/[slug]` | `blog/kategoria/[slug]/page.tsx` | Szűrt lista | üres kategória: noindex, robots.txt NEM tiltja |
 | `/kapcsolat` | `kapcsolat/page.tsx` | CMS layout (`RenderBlocks`) | Élő lead: időpontkérő blokk. A `ContactForm` **nincs** a lapon (őr: `kapcsolat-idopontkeres.test.tsx`). Üres layout = csak H1. |
 | `/[slug]` | `[slug]/page.tsx` | CMS-oldal / hub | `pages`; hub: forrás-cikk élménye |
-| `/akcios-kurzus` | `akcios-kurzus/page.tsx` | Demo lander | `DEMO_COURSE_SLUG`; **mindig noindex**, nem éles ajánlat |
 | `/adatvedelem` `/aszf` `/impresszum` | `[slug]` | Jogi | lábléc |
 
 Kitüntetett page-slug: `kezdolap` → a `/` viszi, nem a `/kezdolap`
@@ -828,7 +827,7 @@ A route-ok vékonyak. Ha viselkedést változtatsz, a `lib` a helye.
 `analytics/` (consent, PostHog, GA4, Barion Pixel), `appointment/`,
 `newsletter/`, `preview/`, `migration-notice/`, `media-restore.ts`,
 `migrations/destructive-migration-guard.ts`, `sos-offer.ts`,
-`demo-course-route.ts`, `owner-review-v1.ts`, `gondolatjel-leftover.ts`
+`owner-review-v1.ts`, `gondolatjel-leftover.ts`
 (tiltott kötőjel-maradvány őre).
 
 ---
@@ -894,7 +893,6 @@ login után. A `/fiok` PATCH **sosem** küld `role` vagy `purchases` mezőt.
 | `auth/` | Login / Register / Forgot / Reset formok |
 | `analytics/` | Consent, PostHog, GA4, Barion, TrackEvent, ArticleEngagement |
 | `admin/` | Stat, Bunny tár, refund, grant, progress, webanalitika |
-| `campaign/` | DemoCourseLanding (`/akcios-kurzus`) |
 | `error/` | NotFoundView |
 | `lexical/` | RichText serialize |
 | `preview/` | PreviewBar |

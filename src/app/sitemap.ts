@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { isLegacyNoindexPage } from '@/lib/legacy-noindex'
 
 import {
   HOME_PAGE_SLUG,
@@ -8,7 +9,6 @@ import {
   getSitemapProducts,
 } from '@/lib/cms'
 import { courseHref } from '@/lib/course-url'
-import { DEMO_COURSE_SLUG } from '@/lib/demo-course-route'
 import { absoluteUrl } from '@/lib/seo'
 import { categoriesWithPosts } from '@/lib/tudastar'
 import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
@@ -129,8 +129,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const page of pages) {
     if (
       page.slug === HOME_PAGE_SLUG ||
-      page.slug === DEMO_COURSE_SLUG ||
       !hasSlug(page) ||
+      isLegacyNoindexPage(page) ||
       staticPaths.has(`/${page.slug}`)
     ) {
       continue

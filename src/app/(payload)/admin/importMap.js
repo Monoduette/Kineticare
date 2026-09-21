@@ -27,6 +27,7 @@ import { CourseVisibilityNotice as CourseVisibilityNotice_dd2dbf5ba1c21eae947914
 import { CourseEditorialChecklist as CourseEditorialChecklist_fc57e8c411bc70011c646db46ed90210 } from '../../../components/admin/CourseEditorialChecklist'
 import { PriceCell as PriceCell_e27bf7b8cc50640dcdd584767b8eac3c } from '@payloadcms/plugin-ecommerce/client'
 import { PriceInput as PriceInput_b91672ccd6e8b071c11142ab941fedfb } from '@payloadcms/plugin-ecommerce/rsc'
+import { CoursePromoStatus as CoursePromoStatus_dafdca7d9ed2fe5c084a35d5f5b14d33 } from '../../../components/admin/CoursePromoStatus'
 import { PublicBunnyVideoField as PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
 import { ProtectedBunnyVideoField as ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68 } from '../../../components/admin/BunnyVideoField'
 import { LessonRowLabel as LessonRowLabel_1ae3bdfcb2f2552e78505f80c9b85768 } from '../../../components/admin/CurriculumRowLabels'
@@ -76,6 +77,7 @@ export const importMap = {
   "/components/admin/CourseEditorialChecklist#CourseEditorialChecklist": CourseEditorialChecklist_fc57e8c411bc70011c646db46ed90210,
   "@payloadcms/plugin-ecommerce/client#PriceCell": PriceCell_e27bf7b8cc50640dcdd584767b8eac3c,
   "@payloadcms/plugin-ecommerce/rsc#PriceInput": PriceInput_b91672ccd6e8b071c11142ab941fedfb,
+  "/components/admin/CoursePromoStatus#CoursePromoStatus": CoursePromoStatus_dafdca7d9ed2fe5c084a35d5f5b14d33,
   "/components/admin/BunnyVideoField#PublicBunnyVideoField": PublicBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
   "/components/admin/BunnyVideoField#ProtectedBunnyVideoField": ProtectedBunnyVideoField_d58bbef92a23c9306b6d124d7b5ade68,
   "/components/admin/CurriculumRowLabels#LessonRowLabel": LessonRowLabel_1ae3bdfcb2f2552e78505f80c9b85768,

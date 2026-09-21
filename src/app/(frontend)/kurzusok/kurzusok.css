@@ -160,6 +160,12 @@
   flex: 1;
 }
 
+/* Az akció-címke a cím felett, a saját szélességén (a törzs flex-oszlop
+   különben teljes szélességű csíkot húzna belőle). Stílus: ui.css. */
+.kc-course-card__promo {
+  align-self: flex-start;
+}
+
 .kc-course-card__title {
   font-family: var(--kc-font-heading);
   font-size: var(--kc-font-m);

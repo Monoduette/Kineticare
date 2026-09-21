@@ -881,7 +881,6 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
     { szelektor: '.kc-section.kc-free-sos', felulir: '.kc-free-sos :focus-visible' },
     { szelektor: '.kc-consent-banner', felulir: '.kc-consent-banner :focus-visible' },
     { szelektor: '.kc-preview-bar', felulir: '.kc-preview-bar__exit:focus-visible' },
-    { szelektor: '.kc-demo-hero', felulir: '.kc-demo-hero__cta:focus-visible' },
     { szelektor: '.kc-player__media', felulir: '.kc-player__media :focus-visible' },
     { szelektor: '.kc-richtext__video', felulir: '.kc-richtext__video :focus-visible' },
     {
@@ -944,6 +943,14 @@ describe('G-K3 — minden sötét felület definiál fókusz-felülírást', () 
       indok:
         'Hover-kitöltés azon az elemen, aminek a fókusz-felülírása külön ' +
         'szabályban már megvan (.kc-preview-bar__exit:focus-visible).',
+    },
+    {
+      szelektor: '.kc-promo-badge',
+      felulir: null,
+      indok:
+        'Az „Akció” címke (CoursePromoBadge, WP60) kitöltött tabletta, nem ' +
+        'interaktív és nincs fókuszálható leszármazottja; a kártya-link ' +
+        'fókuszgyűrűje a kártyára/lapra esik (accent-deep a paperen 5,16:1).',
     },
     {
       szelektor: '.kc-product-card .kc-product-card__cta',

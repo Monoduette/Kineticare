@@ -61,7 +61,7 @@ vi.mock('@/components/preview/PreviewBar', () => ({
 }))
 
 import BlogPostPage, { generateMetadata as blogMetadata } from '../app/(frontend)/blog/[slug]/page'
-import CmsPage from '../app/(frontend)/[slug]/page'
+import CmsPage, { generateMetadata as cmsMetadata } from '../app/(frontend)/[slug]/page'
 
 function page(overrides: Partial<Page> = {}): Page {
   return {
@@ -101,6 +101,25 @@ afterEach(() => vi.unstubAllGlobals())
 describe('FilmHero header visibility', () => {
   // WCAG 2.4.6 Headings and Labels: https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html
   // GOV.UK Headings: https://design-system.service.gov.uk/styles/headings/
+  it('az örökölt demólap (akcios-kurzus) közzétéve is noindex (legacy-noindex), más CMS-oldal nem', async () => {
+    mocks.page.mockResolvedValue(
+      page({ title: 'Képzeletbeli akciós kurzus', slug: 'akcios-kurzus' }),
+    )
+    const demo = await cmsMetadata({ params: Promise.resolve({ slug: 'akcios-kurzus' }) })
+    expect(demo.robots).toEqual({
+      index: false,
+      follow: true,
+      googleBot: { index: false, follow: true },
+    })
+    // Ugyanaz a webcím MÁS címmel (újrahasznosított lap): nem noindex.
+    mocks.page.mockResolvedValue(page({ title: 'Valódi akciós oldal', slug: 'akcios-kurzus' }))
+    const reused = await cmsMetadata({ params: Promise.resolve({ slug: 'akcios-kurzus' }) })
+    expect(reused.robots).not.toEqual(demo.robots)
+    mocks.page.mockResolvedValue(page())
+    const other = await cmsMetadata({ params: Promise.resolve({ slug: 'rolunk' }) })
+    expect(other.robots).not.toEqual(demo.robots)
+  })
+
   it('the CMS page retains the header for a hidden FilmHero', async () => {
     mocks.page.mockResolvedValue(
       page({

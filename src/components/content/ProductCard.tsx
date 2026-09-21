@@ -9,6 +9,7 @@ import type { Product } from '../../payload-types'
 import { Badge } from '../ui/Badge'
 import { Card } from '../ui/Card'
 import { PriceTag } from '../ui/PriceTag'
+import { CoursePromoBadge, promoAccessibleNamePrefix } from '../courses/CoursePromoBadge'
 import { MediaImage } from './MediaImage'
 
 import '../../app/(frontend)/styles/blocks/course-cards.css'
@@ -48,6 +49,11 @@ export interface ProductCardProps {
     | 'accessDurationDays'
     | 'audience'
     | 'status'
+    // Az akció-címke négy mezője (src/lib/course-promo.ts), WP60.
+    | 'promoEnabled'
+    | 'promoStart'
+    | 'promoEnd'
+    | 'promoOriginalPriceHuf'
   >
   /**
    * A dekoratív CTA-gomb felirata (a `courseCards` blokk `ctaLabel` mezőjéből).
@@ -147,6 +153,9 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
   const accessLabel = accessDurationLabel(product)
   const audienceLabel = AUDIENCE_LABELS[normalizeAudience(product.audience)]
   const cta = ctaLabel?.trim() || DEFAULT_CTA_LABEL
+  // Élő akciónál a link neve „Akciós kurzus: ” előtaggal kezdődik: a kártya
+  // egyetlen link, az `aria-label` elfedné a belső címkét (CoursePromoBadge).
+  const promoPrefix = promoAccessibleNamePrefix(product)
 
   return (
     <Card
@@ -156,7 +165,7 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
       padded={false}
     >
       <Link
-        aria-label={`${title}: a kurzus részletei`}
+        aria-label={`${promoPrefix}${title}: a kurzus részletei`}
         className="kc-product-card__link"
         href={courseHref(product)}
       >
@@ -180,6 +189,7 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
         ) : null}
         <span className="kc-product-card__body">
           <span className="kc-product-card__audience">
+            <CoursePromoBadge nameInLink product={product} />
             <Badge tone="neutral">{audienceLabel}</Badge>
           </span>
           <span className="kc-product-card__title">{title}</span>

@@ -76,9 +76,10 @@ describe('buildNavigationMenuPlan — struktúra', () => {
   })
 
   it('a seed nem hozza létre az élő „olcsó dolgok itt" CMS-menüpontot', () => {
-    // 2026-09-06 élő menü: Szolgáltatások alatt `/akcios-kurzus`, felirat
-    // „olcsó dolgok itt". A seed csak hiányzó pontokat hoz létre, meglévőt
-    // nem töröl — ez CMS-only, kódból nem szűrjük.
+    // 2026-09-06 élő menü: Szolgáltatások alatt egy szerkesztői extra pont,
+    // felirat „olcsó dolgok itt" (2026-09-20 óta „Akciós KézRehab kurzus",
+    // célja az akciós kurzus oldala). A seed csak hiányzó pontokat hoz létre,
+    // meglévőt nem töröl — ez CMS-only, kódból nem szűrjük.
     expect(flatten(buildNavigationMenuPlan()).map((node) => node.label)).not.toContain(
       'olcsó dolgok itt',
     )
