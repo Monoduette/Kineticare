@@ -47,6 +47,9 @@ export type CtaAction =
   | 'workshop-open'
   | 'book-open'
   | 'book-inquiry'
+  | 'feedback-open'
+  | 'feedback-submit'
+  | 'feedback-close'
 
 /** A P-1 szabály szerinti nyelvtani alak – auditálható, ezért a szótár tárolja. */
 export type CtaPerson =
@@ -566,6 +569,50 @@ export const CTA_VOCABULARY = [
     label: 'Érdeklődj a szakkönyvről',
     person: 'e2',
     weight: 'secondary',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #44 (ÚJ, WP65, 2026-09-21) – a hibajelző doboz megnyitása a
+    // láblécből és a hibaoldalakról. P-1a → E/1: a látogató SAJÁT bejelentése
+    // indul el, tehát elkötelezés, nem puszta navigáció. A `link` súly azért
+    // kell, mert a hibaoldalon és a 404-en már áll egy elsődleges gomb
+    // (GOV.UK Button: egy lapon egy default gomb).
+    section: '#44',
+    action: 'feedback-open',
+    label: 'Hibát jelzek',
+    person: 'e1',
+    weight: 'link',
+    progress: null,
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #45 (ÚJ, WP65, 2026-09-21) – a hibajelzés BEKÜLDÉSE. Adat megy el,
+    // tehát E/1 (ugyanaz a logika, mint a #12-nél). Tárgy nélkül áll, mert a
+    // dialógus egyetlen dologról szól, és a címe („Mi a probléma?") a gomb
+    // közvetlen szomszédja: a felirat a környezetében egyértelmű (NN/g,
+    // Better Link Labels – „Substantial" a KÖRNYEZETTEL együtt értendő).
+    section: '#45',
+    action: 'feedback-submit',
+    label: 'Elküldöm',
+    person: 'e1',
+    weight: 'primary',
+    progress: 'send',
+    patterned: false,
+    pattern: null,
+  },
+  {
+    // §3.2 #46 (ÚJ, WP65, 2026-09-21) – a modális doboz bezárása. P-1c: bevett,
+    // egyszavas felületi címke, ugyanaz a kivétel, mint a #5 („Belépés") és a
+    // #31 („Mentés") esetében – a Carbon és a Polaris is nevesítve mentesíti a
+    // rövid, bevett parancsokat (Done, Close, Cancel) az ige+főnév képlet alól.
+    section: '#46',
+    action: 'feedback-close',
+    label: 'Bezárás',
+    person: 'nominal',
+    weight: 'ghost',
     progress: null,
     patterned: false,
     pattern: null,

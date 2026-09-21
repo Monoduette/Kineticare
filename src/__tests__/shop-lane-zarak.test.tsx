@@ -81,6 +81,9 @@ const ANALYTICS_EVENTS_ZAR = {
   articleRead: 'article_read',
   articleCtaClicked: 'article_cta_clicked',
   faqOpened: 'faq_opened',
+  // WP65 visszajelzés-doboz: szerver-szerver rögzítésű esemény
+  // (src/lib/feedback/posthog-capture.ts), a zárolt név-térkép része.
+  siteFeedback: 'site_feedback',
 } as const
 
 const ADS_NEV_MINTA =

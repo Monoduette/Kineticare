@@ -1,0 +1,221 @@
+/**
+ * VISSZAJELZÉS (WP65) — a hibajelző doboz és a belépőpont gombja.
+ *
+ * BETŰMÉRET: ebben a fájlban SZÁNDÉKOSAN nincs egyetlen `font-size`
+ * deklaráció sem. A doboz a meglévő `.kc-field__*` és `.kc-button` osztályokat
+ * viszi, tehát a három-méretes skála (L/M/S) sértetlen marad
+ * (őr: src/__tests__/tipografia-harom-meret.test.ts).
+ *
+ * KONTRASZT (számolt értékek, WCAG 2.2 relatív luminancia; normál szöveg
+ * >= 4,5:1, UI-határ és fókuszjel >= 3:1):
+ *   ink (#10243e) a doboz fehér felületén ................. 15,63:1  AA/AAA
+ *   ink-soft (#33495f) a fehér felületen ...................  9,30:1  AA/AAA
+ *   accent-deep (#2f6e9f) link a fehér felületen ...........  5,45:1  AA
+ *   border-strong (#6b7f94) keret a fehér felületen ........  4,13:1  UI
+ *   danger (#b3261e) a danger-surface (#fdecea) dobozon ....  5,72:1  AA
+ *   danger keret a fehér felületen .........................  6,54:1  UI
+ *   fókuszgyűrű (accent-deep) a fehér felületen ............  5,45:1  UI
+ *   ink a paperen (a nyitógomb a láblécen és a hibaoldalon)  14,79:1  AA/AAA
+ * Mérve: WCAG 2.2 SC 1.4.3 (Contrast Minimum) és SC 1.4.11 (Non-text
+ * Contrast) küszöbeihez, nem szemre becsülve.
+ *
+ * SÖTÉT FELÜLET NINCS: a doboz a lap fölé emelt FEHÉR felület, ezért nem kell
+ * fókusz-felülírás (G-K3 regiszter, src/__tests__/gomb-kontraszt.test.ts).
+ */
+
+/* ---- A belépőpont gombja ------------------------------------------------
+   Szövegszerű gomb: a hibaoldalon és a 404-en már áll egy elsődleges gomb,
+   és a GOV.UK Button komponens tiltja a több elsődleges gombot egy lapon
+   (https://design-system.service.gov.uk/components/button/).
+   A láblécben a `.kc-site-footer__legal button` szabály nagyobb
+   specifikussággal adja a lábléc saját színeit, tehát a gomb ott a süti-
+   beállítások gombjával BITRE azonosan néz ki (WCAG 2.2 SC 3.2.4).
+   Az aláhúzás kötelező: a link nem különbözhet CSAK színben a környező
+   szövegtől (SC 1.4.1 Use of Color).
+   A célfelület 44 px: a WCAG 2.2 SC 2.5.8 küszöbe 24x24 px, a projekt
+   szabálya (docs/ui-sztenderdek.md §2.4) 44x44 px. */
+.kc-visszajelzes__nyito {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem; /* 44px */
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--kc-color-link);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.kc-visszajelzes__nyito:hover {
+  color: var(--kc-color-link-hover);
+}
+
+/* ---- A modális doboz -----------------------------------------------------
+   A natív `<dialog>` a böngésző TOP LAYER rétegére kerül, ezért `z-index`
+   nem kell hozzá, és a süti-sáv (z-index 1000) sem takarhatja el
+   (WCAG 2.2 SC 2.4.11 Focus Not Obscured, Minimum).
+
+   320 px-en: a szélességet a `max-width` fogja vissza (320 - 2 x 16 = 288 px),
+   tehát vízszintes görgetés nem keletkezik (SC 1.4.10 Reflow). A magasságot a
+   `max-block-size` korlátozza, a törzs pedig görgethető marad. */
+.kc-visszajelzes {
+  inline-size: var(--kc-measure);
+  max-inline-size: calc(100% - 2 * var(--kc-space-4));
+  max-block-size: min(90dvh, 44rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-lg);
+  background-color: var(--kc-color-surface-raised);
+  color: var(--kc-color-text);
+  box-shadow: var(--kc-shadow-lg);
+}
+
+/* A háttérfátyol a márka-sötét, ugyanaz az érték, mint a mobilmenü mögötti
+   fátyolé (layout.css). Nyers `rgb()`, mert a `::backdrop` egyedi
+   tulajdonság-öröklése böngészőnként eltérő korú. */
+.kc-visszajelzes::backdrop {
+  background-color: rgb(16 36 62 / 0.5);
+}
+
+.kc-visszajelzes__torzs {
+  display: grid;
+  gap: var(--kc-space-4);
+  padding: var(--kc-space-5);
+}
+
+/* MÉRT (2026-09-21, a repó betűmetrika-mérőjével, Tenor Sans 400 @32px):
+   320 px-es nézetablakon a doboz tartalom-hasábja 238 px, a bezáró gomb
+   83 px, tehát a címsornak 143 px marad. A cím leghosszabb szava
+   („probléma?") 160 px, a nyugta címsoráé („Megkaptuk.") 181 px: egy sorban
+   maradva ez vízszintes túlcsordulást adna (WCAG 2.2 SC 1.4.10 Reflow).
+   Ezért a fejléc TÖRIK: a `wrap-reverse` a bezáró gombot a cím FÖLÉ, jobbra
+   teszi, a cím pedig teljes szélességben áll. 353 px-es nézetablaktól
+   fölfelé a kettő újra egy sorba fér. */
+.kc-visszajelzes__fejlec {
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: flex-start;
+  gap: var(--kc-space-3);
+}
+
+/* A programozottan fókuszált címsor (tabIndex -1) fókuszgyűrűje a globális
+   :focus-visible-ből jön; a `text-wrap: balance` a 320 px-es dobozban tartja
+   együtt a kétsoros címet. */
+.kc-visszajelzes__cim {
+  flex: 1 1 11rem;
+  margin: 0;
+  text-wrap: balance;
+}
+
+/* Mérték: a törzsszöveg 45-85 karakteres sávban marad (termektervezes skill
+   3. pont). A doboz 34rem széles, a kényelmes mérték 30rem. */
+.kc-visszajelzes__szoveg {
+  margin: 0;
+  max-inline-size: var(--kc-measure-comfort);
+  color: var(--kc-color-text-muted);
+}
+
+.kc-visszajelzes__link {
+  color: var(--kc-color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* A szabad szöveges mező magasabb, mint a sima beviteli mező: a hibaleírás
+   több sor. `resize: vertical` — a vízszintes átméretezés kitörne a
+   320 px-es hasábból. */
+.kc-visszajelzes__mezo {
+  inline-size: 100%;
+  min-block-size: 5.5rem;
+  resize: vertical;
+  font-family: var(--kc-font-body);
+  line-height: 1.5;
+}
+
+/* Csalétek-mező: a botok számára létező, a látogató számára nem. A
+   `display: none` helyett tolás, mert a kitöltő szkriptek egy része a
+   rejtett mezőket kihagyja. */
+.kc-visszajelzes__csaletek {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A beküldési hiba doboza a mező ALATT, a beküldő gomb MELLETT áll (NN/g:
+   „Display the error message close to the error's source"). A jelentést nem
+   csak a szín hordozza: keret + felület + `role="alert"` (SC 1.4.1). */
+.kc-visszajelzes__hiba {
+  margin: 0;
+  padding: var(--kc-space-3) var(--kc-space-4);
+  border: 1px solid var(--kc-color-danger);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-danger-surface);
+  color: var(--kc-color-danger);
+}
+
+.kc-visszajelzes__muveletek {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kc-space-3);
+}
+
+/* Az élő állapot-régiónak a frissítés ELŐTT is a DOM-ban kell állnia,
+   különben a képernyőolvasó nem jelenti be a változást (WCAG 2.2 SC 4.1.3).
+   Üresen viszont ne foglaljon helyet. */
+.kc-visszajelzes__allapot {
+  margin: 0;
+  color: var(--kc-color-text-muted);
+}
+
+.kc-visszajelzes__allapot:empty {
+  display: none;
+}
+
+/* ---- Bezáró gomb ---------------------------------------------------------
+   44x44 px célfelület (WCAG 2.2 SC 2.5.8 küszöbe 24x24; a projekt szabálya
+   szigorúbb). Keretes, hogy a gomb HATÁRA is azonosítsa a vezérlőt
+   (border-strong a fehér felületen 4,13:1 — SC 1.4.11). */
+.kc-visszajelzes__bezar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-inline-size: 2.75rem;
+  min-height: 2.75rem; /* 44px */
+  padding-inline: var(--kc-space-3);
+  border: 1px solid var(--kc-color-border-strong);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-surface-raised);
+  font: inherit;
+  color: var(--kc-color-text);
+  cursor: pointer;
+}
+
+/* A fejlécben a bezáró gomb jobbra simul; a nyugta művelet-sorában viszont
+   balra, a többi cselekvés mellé. */
+.kc-visszajelzes__fejlec .kc-visszajelzes__bezar {
+  margin-inline-start: auto;
+}
+
+.kc-visszajelzes__bezar:hover {
+  border-color: var(--kc-color-primary);
+  background-color: var(--kc-color-surface-tint);
+}
+
+/* ---- Mozgás --------------------------------------------------------------
+   A doboz a közös belépő kulcsképsorral (motion.css `kc-fade-up`) úszik be,
+   és KIZÁRÓLAG akkor, ha a látogató nem kért csökkentett mozgást
+   (WCAG 2.2 SC 2.3.3 Animation from Interactions). A `no-preference` ág
+   miatt a `reduce` beállításnál a szabály létre sem jön. */
+@media (prefers-reduced-motion: no-preference) {
+  .kc-visszajelzes[open] {
+    animation: kc-fade-up var(--kc-motion-base) var(--kc-ease-out) both;
+  }
+}

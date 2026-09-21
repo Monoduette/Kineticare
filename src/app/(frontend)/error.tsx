@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState, useTransition } from 'react'
 
+import { FeedbackTrigger } from '@/components/feedback/FeedbackTrigger'
 import { Button } from '@/components/ui/Button'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
@@ -74,6 +75,13 @@ export default function ErrorPage({
         <p className="kc-error-page__contact">
           Ha a hiba ismétlődik, írj a <Link href="/kapcsolat">kapcsolati oldalon</Link>, és
           megkeressük a megoldást.
+        </p>
+        {/* WP65 — a hibajelzés ott is elérhető, ahol a probléma TÉNYLEGESEN
+            felszínre jött. Szövegszerű gomb, mert a lapon már áll két igazi
+            gomb, és a GOV.UK Button komponens tiltja a több elsődleges gombot
+            egy lapon (https://design-system.service.gov.uk/components/button/). */}
+        <p className="kc-error-page__contact">
+          <FeedbackTrigger />
         </p>
       </Container>
     </Section>

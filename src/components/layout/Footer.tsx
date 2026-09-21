@@ -1,4 +1,5 @@
 import { ConsentSettingsButton } from '../analytics/ConsentSettingsButton'
+import { FeedbackTrigger } from '../feedback/FeedbackTrigger'
 import { Container } from '../ui/Container'
 import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
 
@@ -69,6 +70,16 @@ export function Footer() {
                   {/* GDPR: a süti-hozzájárulás visszavonása/módosítása — a
                       ConsentBanner-t nyitja újra (kliens-komponens). */}
                   <ConsentSettingsButton />
+                </li>
+                <li>
+                  {/* WP65 — hibajelzés. A GOV.UK szolgáltatási kézikönyve a lap
+                      ALJÁRA teszi a „Report a problem with this page" utat, mert
+                      a látogató ott keresi a segítséget, és mert a visszajelzés
+                      gyűjtése a felhasználói elégedettség mérésének alapja
+                      (https://www.gov.uk/service-manual/measuring-success/measuring-user-satisfaction).
+                      A süti-beállítások gombja mellé kerül: mindkettő „a lapról
+                      magáról szóló" művelet, nem tartalmi menüpont. */}
+                  <FeedbackTrigger />
                 </li>
                 <li className="kc-site-footer__contact">
                   Kapcsolat: <a href={`mailto:${FOOTER_CONTACT_EMAIL}`}>{FOOTER_CONTACT_EMAIL}</a>

@@ -149,6 +149,34 @@ mérföldköveket is megkapja. Ez nem hiba — az „ordered funnel" épp ilyen,
 előtag-zárt lefutást igényel. A tényleges nézettséget a `lesson_completed` és
 az admin haladás-nézet mondja meg, nem ez.
 
+### 4d. Visszajelzés (hibabejelentő doboz)
+
+| Esemény | Mikor | Tulajdonságok |
+|---|---|---|
+| `site_feedback` | a látogató elküldi a hibabejelentő űrlapot | `page`, `whatHappened`, `whatWereYouDoing`, `messageLength`, `hasAnalyticsConsent` |
+
+Tulajdonosi kérés (2026-09-21): „tudni akarom, ha bárkinek bármi probléma
+merül fel az oldallal". A doboz a láblécből és a hibaoldalakról nyílik,
+natív `dialog` párbeszédablakban, két kérdéssel (mit csináltál, mi történt),
+a GOV.UK hibabejelentő mintája szerint.
+
+**Miért SZERVEROLDALI a küldés.** A PostHog a kliensen csak analytics-
+hozzájárulás után indul el (3. pont), tehát a kliensoldali `capture` némán
+elnyelné minden olyan látogató bejelentését, aki a süti-sávot elutasította
+vagy még nem válaszolt, és pont az ő hibáikról nem tudnánk. Ezért a
+bejelentést a `/api/visszajelzes` végpont küldi tovább szerverről szerverre,
+a látogató eszközén semmit nem tárolva. Másodlagos ok: a reklámblokkolók a
+kliensoldali hívást akkor is kilőhetik, ha a `/ingest` elsőfél-proxyn megy.
+
+**Azonosító.** Hozzájárulás esetén a kliens elküldi a saját PostHog
+distinct_id-jét, így a bejelentés a látogató eseménysorához kapcsolódik.
+Hozzájárulás nélkül a szerver véletlen, egyszeri azonosítót használ, tehát a
+bejelentés nem köthető személyhez.
+
+**Spam ellen.** Rejtett csapdamező (a kitöltött mező néma sikerrel zárul) és
+IP-alapú kérés-korlát. E-mail-mező szándékosan NINCS: aki választ szeretne, a
+Kapcsolat oldalt használja, így cím sem kerül az eseménybe.
+
 ## 5. Dashboard-terv (a PostHog projektben felépítendő)
 
 Ez a rész **nem kód** — a PostHog felületén kell összeállítani. Sorrendben:
@@ -222,6 +250,13 @@ tehát a 3a. pont nélkül üres lenne.
   üzenetszöveg, cím SOHA. Kurzus- és lecke-azonosító igen. (A
   `src/lib/logger.ts` redact-listája a NAPLÓRA véd, a PostHog-hívásra nem —
   itt kézzel kell a fegyelem.)
+  **EGYETLEN, NEVESÍTETT KIVÉTEL: a `site_feedback` esemény**
+  (4d. pont, tulajdonosi kérés 2026-09-21). Ott a látogató által beírt szöveg
+  maga a küldemény, nem követési melléktermék: a látogató szándékosan írja és
+  küldi el, a párbeszédablak pedig a beküldés előtt figyelmezteti, hogy ne
+  írjon bele személyes vagy egészségügyi adatot. A tiltás a kivétel mellett is
+  teljes körű marad e-mailre, névre, telefonszámra, címre és IP-címre: az
+  űrlapon nincs is e-mail-mező.
 - **Vendég-vásárlás `purchase_confirmed` nélkül.** Nincs munkamenet → a
   státusz-poll 401 → nincs paid-esemény. Hamis paid-et nem küldünk; lásd
   a 4a. pont lyuk-leírását.
@@ -231,5 +266,11 @@ tehát a 3a. pont nélkül üres lenne.
 **Az adatkezelési tájékoztatóban nevesíteni kell a PostHogot** mint
 adatfeldolgozót (EU-cloud, mit tárol, meddig), ugyanúgy, ahogy a Barion is
 hiányzik onnan (lásd `docs/barion-pixel-jogi-szovegterv.md`). Ez ügyvédi
-szöveg — a kód nem tudja pótolni. Amíg nincs meg, a munkamenet-felvétel
+szöveg — a kód nem tudja pótolni.
+
+**2026-09-21-i bővülés:** a tájékoztatóban a hibabejelentő dobozt (4d. pont)
+is nevesíteni kell, mert a beküldött szöveg hozzájárulás nélkül is a
+PostHoghoz kerül. A jogalap itt nem a süti-hozzájárulás (a látogató eszközén
+semmit nem tárolunk), hanem maga a szándékos beküldés, de a tájékoztatónak ezt
+ki kell mondania. Ez tulajdonosi és ügyvédi feladat. Amíg nincs meg, a munkamenet-felvétel
 bekapcsolása különösen nem javasolt.
