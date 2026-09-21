@@ -171,6 +171,28 @@ describe('szerkesztői mezőleírások — ne hazudjanak a lejátszásról', () 
  * ráadásul nem is tudja átállítani (owner-only mező), tehát sem észrevenni, sem
  */
 describe('courseVisibilityNotice — látszik-e a kurzus a weboldalon', () => {
+  it('a rejtett közzétett kurzusnál pontosan elválasztja a listázást a hozzáféréstől', () => {
+    const notice = courseVisibilityNotice('published', true, true)
+    expect(notice.kind).toBe('rendben')
+    expect(notice.title).toContain('közvetlen linkkel')
+    expect(notice.body).toContain('bárki')
+    expect(notice.body).toContain('Kurzusaim')
+    expect(notice.body).toContain('nem hozzáférés-védelem')
+  })
+
+  it('a rejtett jelzés nem teszi elérhetővé a piszkozatot vagy az archivált kurzust', () => {
+    for (const status of ['draft', 'archived', null]) {
+      expect(courseVisibilityNotice(status, true, true)).toEqual(
+        courseVisibilityNotice(status, true),
+      )
+    }
+    for (const unlisted of [undefined, null, false, 'true']) {
+      expect(courseVisibilityNotice('published', true, unlisted)).toEqual(
+        courseVisibilityNotice('published', true),
+      )
+    }
+  })
+
   it('a KITÖLTETLEN mezőnél figyelmeztet, és megnevezi a félrevezető felső sávot', () => {
     const notice = courseVisibilityNotice(null, false)
     expect(notice.kind).toBe('figyelmeztetes')

@@ -21,6 +21,14 @@ function mockPayload(docs: Product[]) {
 }
 
 describe('loadPurchasedProducts', () => {
+  it('a listából rejtett megvásárolt kurzus a Kurzusaim között marad', async () => {
+    const hidden = { ...product(9), unlisted: true }
+    const payload = mockPayload([hidden])
+    expect(await loadPurchasedProducts({ payload, purchases: [9] })).toEqual([hidden])
+    const find = vi.mocked(payload.find)
+    expect(JSON.stringify(find.mock.calls[0]?.[0].where)).not.toContain('unlisted')
+  })
+
   it('üres vagy hiányzó purchases → üres lista, nincs lekérdezés', async () => {
     const payload = mockPayload([])
     expect(await loadPurchasedProducts({ payload, purchases: null })).toEqual([])

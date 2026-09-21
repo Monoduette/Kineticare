@@ -1,3 +1,4 @@
+import { isDiscoverableCourse } from '../../lib/course-discovery'
 import {
   postFaqItems as faqItemsFrom,
   type PostFaqItem,
@@ -294,7 +295,7 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
   if (!isRecord(raw)) return null
   const id = readNumber(raw.id)
   if (id === null) return null
-  if (raw.status !== 'published') return null
+  if (!isDiscoverableCourse(raw)) return null
   return {
     id,
     slug: readText(raw.slug),
@@ -360,7 +361,7 @@ export function freeCourseCtaTargetOf(product: unknown): CourseCtaTarget | null 
   if (!isRecord(product)) return null
   const id = readNumber(product.id)
   if (id === null) return null
-  if (product.status !== 'published') return null
+  if (!isDiscoverableCourse(product)) return null
   if (product.priceInHUFEnabled !== false) return null
   return {
     id,
