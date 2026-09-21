@@ -21,6 +21,7 @@ import { CourseJumpNav, type CourseJumpTarget } from '@/components/courses/Cours
 import { FreeCourseFormLink } from '@/components/courses/FreeCourseFormLink'
 import { FreeCourseRequestForm } from '@/components/courses/FreeCourseRequestForm'
 import { LexicalContent } from '@/components/courses/LexicalContent'
+import { CourseDescriptionContent } from '@/components/courses/promo/CourseDescriptionContent'
 import { PreviewVideo, hasPreviewVideo } from '@/components/courses/PreviewVideo'
 import { PromoCourseView } from '@/components/courses/promo'
 import { RelatedCourses } from '@/components/courses/RelatedCourses'
@@ -336,7 +337,11 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           <h2 className="kc-course-section__title" id="mi-ez-cim">
             A kurzusról
           </h2>
-          <LexicalContent className="kc-course-prose" content={packageContent.body} />
+          {usePromoView && packageContent.package !== null ? (
+            <CourseDescriptionContent content={packageContent.body} />
+          ) : (
+            <LexicalContent className="kc-course-prose" content={packageContent.body} />
+          )}
         </section>
       ),
     })

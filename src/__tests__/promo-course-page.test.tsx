@@ -100,6 +100,8 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     })
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-course--content')
+    expect(html).toContain('kc-course-description')
+    expect(html).toContain('kc-promo-course__band--description')
     const positions = ['id="csomag"', 'id="kinek-valo"', 'id="hogyan-mukodik"', 'id="mi-ez"'].map(
       (id) => html.indexOf(id),
     )
@@ -164,6 +166,8 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     })
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).not.toContain('kc-promo-course--content')
+    expect(html).not.toContain('kc-course-description')
+    expect(html).not.toContain('kc-promo-course__band--description')
     for (const text of [
       'CSOMAG_CIM',
       'CSOMAG_TETEL',
@@ -186,6 +190,7 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('CSOMAG_TETEL')
     expect(html).toContain('CSOMAG_LEIRAS')
+    expect(html).not.toContain('kc-course-description')
     expect(html).not.toContain('kc-promo-course--content')
     expect(html).not.toContain('/penztar')
   })
@@ -195,6 +200,7 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-hero')
     expect(html).toContain('href="/penztar?termek=12"')
+    expect(html).not.toContain('kc-course-description')
     expect(html).toContain('Megveszem a kurzust')
     expect(html).toContain(formatPriceHuf(39500))
     expect(JSON.stringify(mocks.find.mock.calls[0]?.[0].where)).not.toContain('unlisted')

@@ -216,7 +216,7 @@ export function PromoCourseView({
       {orderedBands.map((band) => (
         <Section
           as="div"
-          className={`kc-promo-course__band${packageContent && featuredKeys.includes(band.key) ? ' kc-promo-course__band--featured' : ''}`}
+          className={`kc-promo-course__band${packageContent && featuredKeys.includes(band.key) ? ' kc-promo-course__band--featured' : ''}${packageContent && band.key === 'mi-ez' ? ' kc-promo-course__band--description' : ''}`}
           key={band.key}
           variant={packageContent && featuredKeys.includes(band.key) ? 'default' : band.variant}
         >
