@@ -167,7 +167,7 @@ export function splitEditorialTitle(title: string): { head: string; tail: string
 export const KURZUSRACS_LIMIT = 12
 
 export function showcaseProducts(visibleProducts: readonly Product[]): Product[] {
-  const paid = visibleProducts.filter(isPaidCourse)
+  const paid = visibleProducts.filter((product) => isPaidCourse(product))
   const sos = visibleProducts.find(isAvailableSosProduct)
   return sos ? [...paid, sos] : paid
 }
@@ -183,7 +183,7 @@ export function showcaseGridProducts(
   visibleProducts: readonly Product[],
   limit: number = KURZUSRACS_LIMIT,
 ): Product[] {
-  const paid = visibleProducts.filter(isPaidCourse)
+  const paid = visibleProducts.filter((product) => isPaidCourse(product))
   const sos = visibleProducts.find(isAvailableSosProduct)
   if (!sos) return paid.slice(0, limit)
   return [...paid.slice(0, Math.max(limit - 1, 0)), sos].slice(0, limit)

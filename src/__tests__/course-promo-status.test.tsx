@@ -2,6 +2,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { formatPriceHuf } from '../lib/format-price'
+
 /**
  * „Az akció állapota” doboz (src/components/admin/CoursePromoStatus.tsx) őre,
  * a menu-unlisted-link.test.tsx mintájára: DOM nélkül, `renderToStaticMarkup`
@@ -31,8 +33,8 @@ const {
   DRAFT_WARNING,
   NO_PRICE_WARNING,
   NOT_PUBLISHED_WARNING,
-  ORIGINAL_PRICE_WARNING,
   PROMO_OFF_MESSAGE,
+  PROMO_PRICE_WARNING,
   deriveCoursePromoStatus,
   withDaySuffix,
 } = await import('../components/admin/CoursePromoStatus')
@@ -40,10 +42,11 @@ const {
 const base = {
   priceInHUF: 19_900,
   priceInHUFEnabled: true,
-  promoOriginalPriceHuf: null,
+  promoPriceHuf: null,
   status: 'published',
 }
 const NOW = new Date('2026-09-20T10:00:00Z')
+const NO_PROMO_PRICE_TAIL = ' Akciós ár nincs megadva, a vevő a rendes Árat fizeti.'
 
 describe('withDaySuffix: a keltezés ragja hangrend szerint', () => {
   it('-án/-én, -tól/-től, -ig; az elseje kivétel', () => {
@@ -69,19 +72,37 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
     ).toEqual({ message: PROMO_OFF_MESSAGE, warning: null, reason: 'kikapcsolva' })
   })
 
-  it('most él, véggel és vég nélkül', () => {
+  it('most él, véggel és vég nélkül; akciós ár nélkül ezt kimondja', () => {
     expect(
       deriveCoursePromoStatus(
         { ...base, promoEnabled: true, promoStart: null, promoEnd: '2026-09-30T12:00:00.000Z' },
         NOW,
       ).message,
-    ).toBe('Az akció most él (szeptember 30-ig).')
+    ).toBe(`Az akció most él (szeptember 30-ig).${NO_PROMO_PRICE_TAIL}`)
     expect(
       deriveCoursePromoStatus(
         { ...base, promoEnabled: true, promoStart: null, promoEnd: null },
         NOW,
       ).message,
-    ).toBe('Az akció most él, és nincs megadva a vége.')
+    ).toBe(`Az akció most él, és nincs megadva a vége.${NO_PROMO_PRICE_TAIL}`)
+  })
+
+  it('most él, akciós árral: kimondja, mit fizet a vevő, és mi lesz az ár utána', () => {
+    const status = deriveCoursePromoStatus(
+      {
+        ...base,
+        promoEnabled: true,
+        promoStart: null,
+        promoEnd: '2026-09-30T12:00:00.000Z',
+        promoPriceHuf: 14_900,
+      },
+      NOW,
+    )
+    expect(status.message).toBe(
+      `Az akció most él (szeptember 30-ig). A vevő most ${formatPriceHuf(14_900)}-ot fizet, az akció után magától ${formatPriceHuf(19_900)} lesz az ár.`,
+    )
+    expect(status.warning).toBeNull()
+    expect(status.reason).toBeNull()
   })
 
   it('még nem kezdődött el', () => {
@@ -102,15 +123,27 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
     ).toEqual({ message: 'Az akció lejárt (szeptember 30-án).', warning: null, reason: 'lejart' })
   })
 
-  it('figyelmeztet, ha az eredeti ár nem nagyobb a mostani árnál', () => {
+  it('figyelmeztet, ha az akciós ár nem kisebb az Árnál; ilyenkor a rendes árat mondja', () => {
     const on = { promoEnabled: true, promoStart: null, promoEnd: null }
-    expect(
-      deriveCoursePromoStatus({ ...base, ...on, promoOriginalPriceHuf: 19_900 }, NOW).warning,
-    ).toBe(ORIGINAL_PRICE_WARNING)
-    expect(
-      deriveCoursePromoStatus({ ...base, ...on, promoOriginalPriceHuf: 24_900 }, NOW).warning,
-    ).toBeNull()
+    const equal = deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 19_900 }, NOW)
+    expect(equal.warning).toBe(PROMO_PRICE_WARNING)
+    expect(equal.message).toBe(`Az akció most él, és nincs megadva a vége.${NO_PROMO_PRICE_TAIL}`)
+    expect(deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 24_900 }, NOW).warning).toBe(
+      PROMO_PRICE_WARNING,
+    )
+    expect(deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 14_900 }, NOW).warning).toBeNull()
     expect(deriveCoursePromoStatus({ ...base, ...on }, NOW).warning).toBeNull()
+    // Lejárt akciónál is figyelmeztet a hibás akciós árra, hogy a következő akció előtt javítsák.
+    expect(
+      deriveCoursePromoStatus(
+        { ...base, ...on, promoEnd: '2026-09-10T12:00:00.000Z', promoPriceHuf: 24_900 },
+        NOW,
+      ),
+    ).toEqual({
+      message: 'Az akció lejárt (szeptember 10-én).',
+      warning: PROMO_PRICE_WARNING,
+      reason: 'lejart',
+    })
   })
 
   it('archivált vagy piszkozat kurzuson a doboz kimondja, hogy az akció nem jelenik meg', () => {
@@ -155,7 +188,7 @@ describe('CoursePromoStatusView', () => {
       createElement(CoursePromoStatusView, {
         status: {
           message: 'Az akció most él (szeptember 30-ig).',
-          warning: ORIGINAL_PRICE_WARNING,
+          warning: PROMO_PRICE_WARNING,
           reason: null,
         },
       }),
@@ -164,7 +197,7 @@ describe('CoursePromoStatusView', () => {
     expect(html).toContain('aria-live="polite"')
     expect(html).toContain('Az akció most él (szeptember 30-ig).')
     expect(html).toContain('role="alert"')
-    expect(html).toContain(ORIGINAL_PRICE_WARNING)
+    expect(html).toContain(PROMO_PRICE_WARNING)
   })
 
   it('figyelmeztetés nélkül nincs alert', () => {
@@ -177,32 +210,47 @@ describe('CoursePromoStatusView', () => {
   })
 
   it('a felületi szövegekben nincs gondolatjel (tulajdonosi kikötés)', () => {
-    for (const text of [PROMO_OFF_MESSAGE, ORIGINAL_PRICE_WARNING]) {
+    for (const text of [PROMO_OFF_MESSAGE, PROMO_PRICE_WARNING]) {
       expect(text).not.toMatch(/[–—]/)
     }
   })
 })
 
 describe('CoursePromoStatus (konténer, SSR)', () => {
-  it('az űrlap mezőiből számol: a vég napjáig él, az eredeti ár figyelmeztetésével', () => {
+  it('az űrlap mezőiből számol: a vég napjáig él, a hibás akciós ár figyelmeztetésével', () => {
     vi.useFakeTimers({ now: NOW })
     formFields.promoEnabled = { value: true }
     formFields.promoStart = { value: null }
     formFields.promoEnd = { value: new Date('2026-09-30T12:00:00.000Z') }
-    formFields.promoOriginalPriceHuf = { value: 15_000 }
+    formFields.promoPriceHuf = { value: 25_000 }
     formFields.priceInHUF = { value: 19_900 }
     formFields.priceInHUFEnabled = { value: true }
     formFields.status = { value: 'published' }
     const html = renderToStaticMarkup(createElement(CoursePromoStatus))
     expect(html).toContain('Az akció most él (szeptember 30-ig).')
-    expect(html).toContain(ORIGINAL_PRICE_WARNING)
+    expect(html).toContain(PROMO_PRICE_WARNING)
+  })
+
+  it('az űrlap akciós árából a vevő mostani és akció utáni ára', () => {
+    vi.useFakeTimers({ now: NOW })
+    formFields.promoEnabled = { value: true }
+    formFields.promoStart = { value: null }
+    formFields.promoEnd = { value: '2026-09-30T12:00:00.000Z' }
+    formFields.promoPriceHuf = { value: 14_900 }
+    formFields.priceInHUF = { value: 19_900 }
+    formFields.priceInHUFEnabled = { value: true }
+    formFields.status = { value: 'published' }
+    const html = renderToStaticMarkup(createElement(CoursePromoStatus))
+    expect(html).toContain(`A vevő most ${formatPriceHuf(14_900)}-ot fizet`)
+    expect(html).toContain(`magától ${formatPriceHuf(19_900)} lesz az ár.`)
+    expect(html).not.toContain('role="alert"')
   })
 
   it('kikapcsolt pipa: a kikapcsolt üzenet', () => {
     formFields.promoEnabled = { value: false }
     formFields.promoStart = { value: null }
     formFields.promoEnd = { value: null }
-    formFields.promoOriginalPriceHuf = { value: null }
+    formFields.promoPriceHuf = { value: null }
     const html = renderToStaticMarkup(createElement(CoursePromoStatus))
     expect(html).toContain(PROMO_OFF_MESSAGE)
   })

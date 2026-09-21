@@ -33,6 +33,7 @@ import * as migration_20260908_092438_audit_refund_provenance_private_course_fil
 import * as migration_20260916_145714_users_migration_notice_sent_at from './20260916_145714_users_migration_notice_sent_at';
 import * as migration_20260920_174501_menus_unlisted from './20260920_174501_menus_unlisted';
 import * as migration_20260920_203756_products_promo from './20260920_203756_products_promo';
+import * as migration_20260921_070618_products_promo_price from './20260921_070618_products_promo_price';
 
 export const migrations = [
   {
@@ -208,6 +209,11 @@ export const migrations = [
   {
     up: migration_20260920_203756_products_promo.up,
     down: migration_20260920_203756_products_promo.down,
-    name: '20260920_203756_products_promo'
+    name: '20260920_203756_products_promo',
+  },
+  {
+    up: migration_20260921_070618_products_promo_price.up,
+    down: migration_20260921_070618_products_promo_price.down,
+    name: '20260921_070618_products_promo_price'
   },
 ];

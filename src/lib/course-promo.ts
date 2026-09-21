@@ -16,10 +16,25 @@ import { budapestDateString } from './date/budapest'
  * - `promoEnabled`   pipa: akciós megjelenés kérve.
  * - `promoStart`     ISO dátum, opcionális; üresen azonnal kezdődik.
  * - `promoEnd`       ISO dátum, opcionális; üresen nincs vége.
- * - `promoOriginalPriceHuf` az eredeti (áthúzott) ár; opcionális, csak akkor
- *   jelenik meg, ha NAGYOBB a kurzus tényleges áránál (az áthúzott ár nem
- *   lehet félrevezető: a fogyasztóvédelmi „korábbi ár” szabály és a Baymard
- *   ár-megjelenítési ajánlása szerint csak valódi, magasabb ár húzható át).
+ * - `promoPriceHuf`   az AKCIÓS ár (WP63, tulajdonosi kérés 2026-09-21: „a
+ *   dátum lejárta állítsa vissza automatikusan az árat”). Az `Ár` mező a
+ *   rendes, teljes ár marad; az időablakban a vevő az akciós árat fizeti, az
+ *   ablakon kívül magától a rendes árat. NINCS ütemezett visszaírás: a
+ *   fizetendő árat MINDEN olvasó a `coursePriceHuf` (src/lib/courses.ts)
+ *   függvényből veszi, ami ezt a feloldót hívja, ezért az oldal, a kártya, a
+ *   kosár, a pénztár, a Barion-összeg és a rendelés-snapshot ugyanazt az árat
+ *   látja, a lejárat pillanatától kezdve. Ez a WooCommerce „regular price /
+ *   sale price with schedule” modellje (https://woocommerce.com/document/managing-products/#sale-price),
+ *   és a Shopify „compare at price” szabálya: az áthúzott ár a termék rendes
+ *   ára (https://help.shopify.com/en/manual/products/details/product-pricing/sale-pricing).
+ *   Az áthúzott (rendes) ár csak akkor jelenik meg, ha NAGYOBB az akciós
+ *   árnál (a fogyasztóvédelmi „korábbi ár” szabály és a Baymard ár-megjelenítési
+ *   ajánlása szerint csak valódi, magasabb ár húzható át:
+ *   https://baymard.com/blog/list-price-discount-display).
+ * - `promoOriginalPriceHuf` ÖRÖKSÉG (WP58): az egykori, kézzel beírt áthúzott
+ *   ár. A WP63-tól nem olvassa senki; az oszlop a content-job átállító
+ *   szabálya (`akcios-ar-atallas`) után külön PR-ben, generált migrációval
+ *   szűnik meg.
  *
  * Időkezelés. A Payload a dátumot ISO stringként (UTC pillanat) tárolja. A
  * dayOnly választó MÉRTEN (@payloadcms/ui DatePicker, `setHours(12 - tzOffset)`)
@@ -40,7 +55,19 @@ export interface CoursePromo {
   start: Date | null
   /** Az akció végének KIZÁRÓ pillanata (a megadott nap utáni 00:00 Budapest szerint) vagy null. */
   end: Date | null
-  /** Az áthúzott eredeti ár, ha van és nagyobb a tényleges árnál. */
+  /** A kurzus rendes (teljes) ára: az `Ár` mező, ha érvényes és pozitív. */
+  regularPriceHuf: number | null
+  /** Az akciós ár, ha érvényes, pozitív és KISEBB a rendes árnál; különben null. */
+  promoPriceHuf: number | null
+  /**
+   * A MOST fizetendő ár: élő akcióban az akciós ár (ha van), különben a
+   * rendes ár. Ezt tükrözi `coursePriceHuf` (src/lib/courses.ts).
+   */
+  priceHuf: number | null
+  /**
+   * Az áthúzva mutatandó rendes ár: csak élő akcióban, és csak ha az akciós
+   * ár tényleg kisebb nála; különben null (nincs áthúzott ár).
+   */
   originalPriceHuf: number | null
   /** Miért nem él: 'kikapcsolva' | 'meg-nem-kezdodott' | 'lejart' | null (ha él). */
   reason: 'kikapcsolva' | 'meg-nem-kezdodott' | 'lejart' | null
@@ -48,8 +75,16 @@ export interface CoursePromo {
 
 export type CoursePromoFields = Pick<
   Product,
-  'promoEnabled' | 'promoStart' | 'promoEnd' | 'promoOriginalPriceHuf'
+  'promoEnabled' | 'promoStart' | 'promoEnd' | 'promoPriceHuf'
 >
+
+/** A feloldó bemenete: az akció mezői + a rendes ár mezői. */
+export type CoursePromoPriceFields = CoursePromoFields &
+  Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>
+
+function positiveIntegerOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : null
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -122,26 +157,20 @@ export function promoEndExclusive(value: unknown): Date | null {
 }
 
 export function resolveCoursePromo(
-  product: CoursePromoFields & { priceInHUF?: number | null; priceInHUFEnabled?: boolean | null },
+  product: CoursePromoPriceFields,
   now: Date = new Date(),
 ): CoursePromo {
   const enabled = product.promoEnabled === true
   const start = promoStartInclusive(product.promoStart)
   const end = promoEndExclusive(product.promoEnd)
-  const currentPrice =
-    product.priceInHUFEnabled === true &&
-    typeof product.priceInHUF === 'number' &&
-    Number.isFinite(product.priceInHUF) &&
-    product.priceInHUF > 0
-      ? product.priceInHUF
-      : null
-  const original =
-    typeof product.promoOriginalPriceHuf === 'number' &&
-    Number.isFinite(product.promoOriginalPriceHuf) &&
-    product.promoOriginalPriceHuf > 0 &&
-    currentPrice !== null &&
-    product.promoOriginalPriceHuf > currentPrice
-      ? Math.round(product.promoOriginalPriceHuf)
+  const regularPriceHuf =
+    product.priceInHUFEnabled === true ? positiveIntegerOrNull(product.priceInHUF) : null
+  const promoCandidate = positiveIntegerOrNull(product.promoPriceHuf)
+  // Az akciós ár csak akkor ár, ha a rendes árnál KISEBB: egyenlő vagy
+  // nagyobb „akció” a vevőnek nem kedvezmény, az áthúzás félrevezető lenne.
+  const promoPriceHuf =
+    promoCandidate !== null && regularPriceHuf !== null && promoCandidate < regularPriceHuf
+      ? promoCandidate
       : null
 
   let reason: CoursePromo['reason'] = null
@@ -152,20 +181,50 @@ export function resolveCoursePromo(
   } else if (end !== null && now.getTime() >= end.getTime()) {
     reason = 'lejart'
   }
+  const active = reason === null
+  const priceHuf = active && promoPriceHuf !== null ? promoPriceHuf : regularPriceHuf
 
   return {
-    active: reason === null,
+    active,
     enabled,
     start,
     end,
-    originalPriceHuf: original,
+    regularPriceHuf,
+    promoPriceHuf,
+    priceHuf,
+    originalPriceHuf: active && promoPriceHuf !== null ? regularPriceHuf : null,
     reason,
   }
 }
 
+/**
+ * A MOST fizetendő ár egész forintban, vagy null, ha nincs érvényes ár. Élő
+ * akcióban az akciós ár, különben a rendes ár. A `coursePriceHuf`
+ * (src/lib/courses.ts) ezt hívja; a promo-mezők opcionálisak, hogy a régi,
+ * szűk Pick-típusú hívók is forduljanak, de aki `select`-tel kér terméket,
+ * annak a promo-mezőket is kérnie kell, különben csendben a rendes árat kapja
+ * (őr: src/__tests__/course-promo.test.ts).
+ */
+export function effectiveCoursePriceHuf(
+  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'> & Partial<CoursePromoFields>,
+  now: Date = new Date(),
+): number | null {
+  return resolveCoursePromo(
+    {
+      priceInHUF: product.priceInHUF,
+      priceInHUFEnabled: product.priceInHUFEnabled,
+      promoEnabled: product.promoEnabled ?? null,
+      promoStart: product.promoStart ?? null,
+      promoEnd: product.promoEnd ?? null,
+      promoPriceHuf: product.promoPriceHuf ?? null,
+    },
+    now,
+  ).priceHuf
+}
+
 /** A megjelenítési döntéshez kellő mezők: akció + ár + bolti státusz. */
-export type CoursePromoDisplayFields = CoursePromoFields &
-  Pick<Product, 'priceInHUF' | 'priceInHUFEnabled' | 'status'> &
+export type CoursePromoDisplayFields = CoursePromoPriceFields &
+  Pick<Product, 'status'> &
   Partial<Pick<Product, '_status'>>
 
 /**

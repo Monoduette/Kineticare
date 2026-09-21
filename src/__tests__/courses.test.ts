@@ -259,6 +259,53 @@ describe('ár-formázás (Ft, ezres tagolás)', () => {
   })
 })
 
+describe('coursePriceHuf — akciós ár az időablakban, rendes ár azon kívül (WP63)', () => {
+  const regular = { priceInHUFEnabled: true, priceInHUF: 79500 }
+  const promo = {
+    ...regular,
+    promoEnabled: true,
+    promoStart: '2026-09-01T12:00:00.000Z',
+    promoEnd: '2026-09-30T12:00:00.000Z',
+    promoPriceHuf: 39500,
+  }
+  const inWindow = new Date('2026-09-20T10:00:00.000Z')
+  const beforeWindow = new Date('2026-08-31T21:59:59.999Z')
+  const afterWindow = new Date('2026-09-30T22:00:00.000Z')
+
+  it('az időablakban az akciós ár, előtte és utána magától a rendes ár', () => {
+    expect(coursePriceHuf(promo, inWindow)).toBe(39500)
+    expect(coursePriceHuf(promo, beforeWindow)).toBe(79500)
+    expect(coursePriceHuf(promo, afterWindow)).toBe(79500)
+    expect(coursePriceLabel(promo, inWindow)).toBe(`39${NBSP}500${NBSP}Ft`)
+    expect(coursePriceLabel(promo, afterWindow)).toBe(`79${NBSP}500${NBSP}Ft`)
+  })
+
+  it('kikapcsolt pipa vagy hiányzó promo-mezők: a rendes ár', () => {
+    expect(coursePriceHuf({ ...promo, promoEnabled: false }, inWindow)).toBe(79500)
+    expect(coursePriceHuf(regular, inWindow)).toBe(79500)
+    expect(coursePriceHuf({ ...promo, promoPriceHuf: null }, inWindow)).toBe(79500)
+  })
+
+  it('az akciós ár csak akkor ár, ha kisebb a rendes árnál', () => {
+    expect(coursePriceHuf({ ...promo, promoPriceHuf: 79500 }, inWindow)).toBe(79500)
+    expect(coursePriceHuf({ ...promo, promoPriceHuf: 99000 }, inWindow)).toBe(79500)
+    expect(coursePriceHuf({ ...promo, promoPriceHuf: 0 }, inWindow)).toBe(79500)
+  })
+
+  it('ingyenes vagy ár nélküli kurzuson akciós ár mellett sincs fizetendő ár', () => {
+    expect(coursePriceHuf({ ...promo, priceInHUFEnabled: false }, inWindow)).toBeNull()
+    expect(coursePriceHuf({ ...promo, priceInHUF: null }, inWindow)).toBeNull()
+    expect(coursePriceBadgeKind({ ...promo, priceInHUFEnabled: false }, inWindow)).toBe('free')
+    expect(coursePriceBadgeKind({ ...promo, priceInHUF: null }, inWindow)).toBe('none')
+  })
+
+  it('a fizetős halmaz és az ár-címke az akciós árral is egyezik', () => {
+    expect(isPaidCourse(promo, inWindow)).toBe(true)
+    expect(isPaidCourse(promo, afterWindow)).toBe(true)
+    expect(coursePriceBadgeKind(promo, inWindow)).toBe('price')
+  })
+})
+
 describe('coursePriceBadgeKind — a kurzusoldal ár-címkéje (Ingyenes/Megveszem finding)', () => {
   it('érvényes ár → price (a PriceTag látszik)', () => {
     expect(coursePriceBadgeKind({ priceInHUFEnabled: true, priceInHUF: 19990 })).toBe('price')

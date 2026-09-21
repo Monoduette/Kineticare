@@ -38,6 +38,7 @@ export const coursePromoFieldNames = [
   'promoEnabled',
   'promoStart',
   'promoEnd',
+  'promoPriceHuf',
   'promoOriginalPriceHuf',
   'promoStatusPanel',
 ] as const
@@ -161,15 +162,15 @@ export const validatePromoEnd: DateFieldValidation = (value, { siblingData }) =>
   return budapestDateString(end) < budapestDateString(start) ? PROMO_END_BEFORE_START_MESSAGE : true
 }
 
-export const PROMO_ORIGINAL_PRICE_MESSAGE =
-  'Az eredeti ár csak pozitív egész forintösszeg lehet, vagy hagyd üresen.'
+export const PROMO_PRICE_MESSAGE =
+  'Az akciós ár csak pozitív egész forintösszeg lehet, vagy hagyd üresen.'
 
-/** WP58: az áthúzott ár egész, pozitív forint (a HUF-nak nincs tizedese). */
-export const validatePromoOriginalPriceHuf: NumberFieldSingleValidation = (value) => {
+/** WP63: az akciós ár egész, pozitív forint (a HUF-nak nincs tizedese). */
+export const validatePromoPriceHuf: NumberFieldSingleValidation = (value) => {
   if (value === null || value === undefined || (Number.isSafeInteger(value) && value > 0)) {
     return true
   }
-  return PROMO_ORIGINAL_PRICE_MESSAGE
+  return PROMO_PRICE_MESSAGE
 }
 
 /**
@@ -213,6 +214,8 @@ const namedField = (field: Field): NamedField | null =>
  * T-011: a products ár-mezői (priceInHUF, priceInHUFEnabled) create/update
  * kizárólag ownernek — a staff így nem módosíthat árat.
  */
+// WP63: az akciós ár (`promoPriceHuf`) is fizetendő ár, de saját mező, nem
+// a plugin gyári mezője: az owner-only kapuja a mezőn közvetlenül áll.
 const ownerOnlyProductFieldNames = new Set(['priceInHUF', 'priceInHUFEnabled'])
 
 const withOwnerOnlyPriceAccess = (field: Field): Field => {
@@ -957,9 +960,10 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
        * `resolveCoursePromo` hozza (src/lib/course-promo.ts), hogy az oldal, a
        * kártya és az admin állapotjelző ugyanazt mondja. Collapsible és NEM
        * group: a mezőnevek laposak maradnak (promoEnabled, promoStart…), így a
-       * tárolt útvonal és a feloldó bemenete egy. A pipa az ÁRAT nem
-       * változtatja: az árat továbbra is az Ár mezőben kell beállítani, a
-       * csoport csak a megjelenést és az áthúzott eredeti árat vezérli.
+       * tárolt útvonal és a feloldó bemenete egy. WP63: az Ár mező a RENDES ár
+       * marad, az akciós ár külön mező; az időablakban a vevő az akciós árat
+       * fizeti, a lejárat után magától a rendes árat (nincs visszaírás, a
+       * fizetendő árat a `coursePriceHuf` számolja, src/lib/courses.ts).
        */
       type: 'collapsible',
       label: 'Akciós megjelenés',
@@ -974,7 +978,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           label: 'Akciós kurzus',
           admin: {
             description:
-              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán pedig Akció címke jelenik meg. A pipa önmagában az árat nem változtatja: az akciós árat az Ár mezőben kell beállítani.',
+              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra.',
           },
         },
         {
@@ -1001,16 +1005,35 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           },
         },
         {
-          name: 'promoOriginalPriceHuf',
+          name: 'promoPriceHuf',
           type: 'number',
-          label: 'Teljes ár (Ft, áthúzva jelenik meg)',
+          label: 'Akciós ár (Ft)',
           min: 1,
-          validate: validatePromoOriginalPriceHuf,
+          // Fizetendő ár, ezért az Ár mezővel azonos owner-only írás védi
+          // (T-011). Az `ownerOnlyProductFieldNames` bejárása csak a plugin
+          // gyári mezőit éri el, ezért itt közvetlenül áll (őr:
+          // src/__tests__/course-promo.test.ts).
+          access: {
+            create: isOwnerFieldAccess,
+            update: isOwnerFieldAccess,
+          },
+          validate: validatePromoPriceHuf,
           admin: {
             step: 1,
             description:
-              'Csak olyan összeg lehet, amelyen a kurzus ténylegesen elérhető volt vagy elérhető (például a teljes árú program ára). Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.',
+              'Ezt fizeti a vevő az akció ideje alatt. A fenti Ár áthúzva jelenik meg mellette. Kisebbnek kell lennie az Árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak tulajdonos állíthatja.',
           },
+        },
+        {
+          /*
+           * ÖRÖKSÉG (WP58): a kézzel beírt áthúzott ár. A WP63-tól nem olvassa
+           * senki (az áthúzott ár a rendes Ár). Rejtve marad, amíg a content-job
+           * `akcios-ar-atallas` szabálya át nem viszi az értékét; utána külön
+           * PR-ben, generált migrációval szűnik meg az oszlop.
+           */
+          name: 'promoOriginalPriceHuf',
+          type: 'number',
+          admin: { hidden: true },
         },
         {
           /*

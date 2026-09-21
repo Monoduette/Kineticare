@@ -9,12 +9,13 @@ import {
   AKCIOS_KURZUS_SLUG,
   AKCIOS_MENUPONT_REGI_FELIRAT,
   AKCIOS_MENUPONT_UJ_FELIRAT,
-  alkalmazAkciosAkcioMezok,
+  alkalmazAkciosArAtallas,
   alkalmazAkciosEladoMezok,
   alkalmazAkciosMenupont,
   alkalmazAszfBekezdesCserek,
   type AkciosEladoMezok,
 } from '../scripts/apply-owner-content'
+import { formatPriceHuf } from '../lib/format-price'
 import type { Menu } from '../payload-types'
 
 /**
@@ -207,52 +208,81 @@ describe('alkalmazAkciosEladoMezok', () => {
   })
 })
 
-describe('alkalmazAkciosAkcioMezok (PR #278: akciós megjelenés bekapcsolása)', () => {
-  const alap = {
-    promoEnabled: false,
-    promoOriginalPriceHuf: null,
+describe('alkalmazAkciosArAtallas (WP63: Ár = rendes ár, Akciós ár = akciós ár)', () => {
+  const oroklott = {
+    promoEnabled: true,
+    promoOriginalPriceHuf: 79500,
+    promoPriceHuf: null,
     priceInHUF: 39500,
     priceInHUFEnabled: true,
   }
 
-  it('bekapcsolja a pipát és beírja a teljes árú program árát teljes árnak (egy lépésben)', () => {
-    const eredmeny = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 79500 })
-    expect(eredmeny.adat).toEqual({ promoEnabled: true, promoOriginalPriceHuf: 79500 })
+  it('az örökölt állapotot egy lépésben átfordítja: Ár 79 500, Akciós ár 39 500, Teljes ár üres', () => {
+    const eredmeny = alkalmazAkciosArAtallas({ jelenlegi: oroklott })
+    expect(eredmeny.adat).toEqual({
+      priceInHUF: 79500,
+      promoPriceHuf: 39500,
+      promoOriginalPriceHuf: null,
+    })
     expect(eredmeny.modositasok).toHaveLength(1)
     expect(eredmeny.kihagyasok).toHaveLength(0)
+    expect(eredmeny.modositasok[0]?.uzenet).toContain(formatPriceHuf(79500))
+    expect(eredmeny.modositasok[0]?.uzenet).toContain(formatPriceHuf(39500))
+    expect(eredmeny.modositasok[0]?.indok).toContain('magától a rendes ár él')
   })
 
-  it('bekapcsolt pipa mellett csendben kihagy (idempotencia)', () => {
-    const eredmeny = alkalmazAkciosAkcioMezok({
-      jelenlegi: { ...alap, promoEnabled: true, promoOriginalPriceHuf: 79500 },
-      teljesAr: 79500,
+  it('kitöltött akciós ár mellett csendben kihagy (idempotencia, második futás)', () => {
+    const elso = alkalmazAkciosArAtallas({ jelenlegi: oroklott })
+    const masodik = alkalmazAkciosArAtallas({ jelenlegi: { ...oroklott, ...elso.adat } })
+    expect(masodik.adat).toEqual({})
+    expect(masodik.modositasok).toHaveLength(0)
+    expect(masodik.kihagyasok[0]?.hangos).toBe(false)
+    expect(masodik.kihagyasok[0]?.indok).toContain('MÁR')
+  })
+
+  it('kitöltött akciós ár mellett akkor sem nyúl hozzá, ha az örökölt mező még ott van', () => {
+    const eredmeny = alkalmazAkciosArAtallas({
+      jelenlegi: { ...oroklott, priceInHUF: 79500, promoPriceHuf: 39500 },
     })
     expect(eredmeny.adat).toEqual({})
-    expect(eredmeny.modositasok).toHaveLength(0)
     expect(eredmeny.kihagyasok[0]?.hangos).toBe(false)
-    expect(eredmeny.kihagyasok[0]?.indok).toContain('MÁR')
   })
 
-  it('szerkesztő által kikapcsolt akciót (kitöltött teljes ár mellett) nem kapcsol vissza', () => {
-    const eredmeny = alkalmazAkciosAkcioMezok({
-      jelenlegi: { ...alap, promoEnabled: false, promoOriginalPriceHuf: 79500 },
-      teljesAr: 79500,
+  it('üres örökölt teljes árnál csendben kihagy, nincs teendő', () => {
+    for (const ertek of [null, undefined, 0]) {
+      const eredmeny = alkalmazAkciosArAtallas({
+        jelenlegi: { ...oroklott, promoOriginalPriceHuf: ertek },
+      })
+      expect(eredmeny.adat).toEqual({})
+      expect(eredmeny.modositasok).toHaveLength(0)
+      expect(eredmeny.kihagyasok[0]?.hangos).toBe(false)
+      expect(eredmeny.kihagyasok[0]?.indok).toContain('nincs örökölt teljes ár')
+    }
+  })
+
+  it('használhatatlan örökölt értéknél hangosan kihagy (nem nagyobb az Árnál, vagy nincs érvényes Ár)', () => {
+    const nemNagyobb = alkalmazAkciosArAtallas({
+      jelenlegi: { ...oroklott, promoOriginalPriceHuf: 39500 },
     })
-    expect(eredmeny.adat).toEqual({})
-    expect(eredmeny.kihagyasok[0]?.indok).toContain('szerkesztői döntés')
+    expect(nemNagyobb.adat).toEqual({})
+    expect(nemNagyobb.kihagyasok[0]?.hangos).toBe(true)
+    expect(nemNagyobb.kihagyasok[0]?.indok).toContain('adminban')
+
+    const nincsAr = alkalmazAkciosArAtallas({ jelenlegi: { ...oroklott, priceInHUF: null } })
+    expect(nincsAr.adat).toEqual({})
+    expect(nincsAr.kihagyasok[0]?.hangos).toBe(true)
+
+    const kikapcsoltAr = alkalmazAkciosArAtallas({
+      jelenlegi: { ...oroklott, priceInHUFEnabled: false },
+    })
+    expect(kikapcsoltAr.adat).toEqual({})
+    expect(kikapcsoltAr.kihagyasok[0]?.hangos).toBe(true)
   })
 
-  it('teljes ár nélkül (nem olvasható vagy nem nagyobb) az akciót sem kapcsolja be, hangosan', () => {
-    const kisebb = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 30000 })
-    expect(kisebb.adat).toEqual({})
-    expect(kisebb.kihagyasok[0]?.hangos).toBe(true)
-    const nincs = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: null })
-    expect(nincs.adat).toEqual({})
-    expect(nincs.kihagyasok[0]?.hangos).toBe(true)
-  })
-
-  it('a szövegekben nincs gondolatjel', () => {
-    const eredmeny = alkalmazAkciosAkcioMezok({ jelenlegi: alap, teljesAr: 79500 })
+  it('a bemenetet nem módosítja helyben, és a szövegekben nincs gondolatjel', () => {
+    const jelenlegi = { ...oroklott }
+    const eredmeny = alkalmazAkciosArAtallas({ jelenlegi })
+    expect(jelenlegi).toEqual(oroklott)
     for (const lepes of [...eredmeny.modositasok, ...eredmeny.kihagyasok]) {
       expect(`${lepes.uzenet} ${lepes.indok}`).not.toMatch(GONDOLATJEL)
     }

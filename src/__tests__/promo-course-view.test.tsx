@@ -31,10 +31,11 @@ const product = {
   id: 42,
   slug: 'kez-torna',
   status: 'published',
-  priceInHUF: 79500,
+  // WP63: az Ár a rendes (áthúzott) ár, az akciós ár a promoPriceHuf.
+  priceInHUF: 99000,
   priceInHUFEnabled: true,
   promoEnabled: true,
-  promoOriginalPriceHuf: 99000,
+  promoPriceHuf: 79500,
   promoEnd: '2026-09-30T00:00:00.000Z',
   accessDurationDays: null,
   coverImage: null,
@@ -172,13 +173,30 @@ describe('PromoCourseView — szerkezet', () => {
 })
 
 describe('PromoCourseView — záró vásárlási sáv', () => {
-  it('buy ágon: cím, áthúzott ár, ugyanaz a gomb, garancia', () => {
+  it('buy ágon: cím, áthúzott rendes ár és akciós ár, ugyanaz a gomb, garancia', () => {
     const html = view()
     expect(html).toContain('Kezdd el az akciós áron')
     expect(html.split(`<s>${formatPriceHuf(99000)}</s>`).length - 1).toBe(2)
+    expect(html).toContain(
+      `<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(79500)}`,
+    )
     expect(html.split(`href="${checkoutHref(42)}"`).length - 1).toBeGreaterThanOrEqual(2)
     expect(html.split(ctaLabel('course-buy')).length - 1).toBeGreaterThanOrEqual(2)
     expect(html).toContain('kc-promo-closing__guarantee')
+  })
+
+  it('akciós ár nélkül nincs áthúzott összeg, a rendes ár a fizetendő', () => {
+    const noPromoPrice = { ...product, promoPriceHuf: null } as Product
+    const html = view({
+      product: noPromoPrice,
+      promo: resolveCoursePromo(noPromoPrice, NOW),
+      priceHuf: 99000,
+      priceLabel: formatPriceHuf(99000),
+    })
+    expect(html).not.toContain('<s>')
+    expect(html).toContain(
+      `<span class="kc-visually-hidden">Akciós ár: </span>${formatPriceHuf(99000)}`,
+    )
   })
 
   it('purchased ágon nincs záró sáv és nincs ragadós sáv', () => {

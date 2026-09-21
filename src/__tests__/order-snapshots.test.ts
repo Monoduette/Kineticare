@@ -161,6 +161,59 @@ describe.skipIf(!hasDb)('orders snapshot-hookok (DB)', () => {
     await payload.delete({ collection: 'products', id: otherProduct.id, overrideAccess: true })
   })
 
+  it('élő akcióban a priceHufSnapshot az akciós ár, lejárt akciónál a rendes ár (WP63)', async () => {
+    const promoProduct = await payload.create({
+      collection: 'products',
+      data: {
+        sku: `TEST-SNAPSHOT-PROMO-${Date.now()}`,
+        category: categoryId,
+        priceInHUFEnabled: true,
+        priceInHUF: 79500,
+        promoEnabled: true,
+        promoStart: '2020-01-01T12:00:00.000Z',
+        promoEnd: '2099-12-31T12:00:00.000Z',
+        promoPriceHuf: 39500,
+      },
+      overrideAccess: true,
+    })
+
+    const promoOrder = await payload.create({
+      collection: 'orders',
+      data: {
+        items: [{ product: promoProduct.id, quantity: 2, priceHufSnapshot: 1 }],
+      } as Record<string, unknown>,
+      overrideAccess: true,
+    })
+    createdOrderIds.push(promoOrder.id)
+    const promoReadBack = await readOrder(promoOrder.id)
+    expect(promoReadBack.items?.[0]?.priceHufSnapshot).toBe(39500)
+    expect(promoReadBack.totalHufSnapshot).toBe(39500 * 2)
+    expect(promoReadBack.amount).toBe(39500 * 2)
+
+    // Az akció lejár: a következő rendelés már a rendes árat rögzíti, a
+    // korábbi rendelés snapshotja változatlan.
+    await payload.update({
+      collection: 'products',
+      id: promoProduct.id,
+      data: { promoEnd: '2020-01-02T12:00:00.000Z' },
+      overrideAccess: true,
+    })
+    const regularOrder = await payload.create({
+      collection: 'orders',
+      data: {
+        items: [{ product: promoProduct.id, quantity: 1 }],
+      } as Record<string, unknown>,
+      overrideAccess: true,
+    })
+    createdOrderIds.push(regularOrder.id)
+    const regularReadBack = await readOrder(regularOrder.id)
+    expect(regularReadBack.items?.[0]?.priceHufSnapshot).toBe(79500)
+    expect(regularReadBack.totalHufSnapshot).toBe(79500)
+    expect((await readOrder(promoOrder.id)).items?.[0]?.priceHufSnapshot).toBe(39500)
+
+    await payload.delete({ collection: 'products', id: promoProduct.id, overrideAccess: true })
+  })
+
   it('update-kor a snapshotok nem számolódnak újra (megrendeléskori igazság)', async () => {
     const order = await payload.create({
       collection: 'orders',

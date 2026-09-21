@@ -276,12 +276,16 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
   }
   // Szerver-oldali ár-kikényszerítés: a kliens ára sosem forrás — ha eltér a
   // szerveren tárolt ártól, a kérést elutasítjuk (eltérés = 400).
-  if (priceHuf !== undefined && priceHuf !== product.priceInHUF) {
+  // WP63: a szerver ára a MOST fizetendő ár (akcióban az akciós ár); ha az
+  // akció a lapnyitás és a fizetés között járt le, az eltérés 400, a vevő a
+  // friss árat látja újratöltés után.
+  const serverPriceHuf = coursePriceHuf(product)
+  if (priceHuf !== undefined && priceHuf !== serverPriceHuf) {
     log.warn('checkout-start: vásárlás elutasítva — a kliens ára eltér a szerver árától', {
       productId: product.id,
       productStatus: product.status,
       clientPriceHuf: priceHuf,
-      serverPriceHuf: product.priceInHUF,
+      serverPriceHuf,
       reason: 'client-price-mismatch',
     })
     throw new CheckoutError(

@@ -263,6 +263,22 @@ export interface CourseCtaTarget {
   shortDescription: string | null
   priceInHUF: number | null
   priceInHUFEnabled: boolean | null
+  /** WP63: az akció mezői, hogy a cikk-ajánló is a MOST fizetendő árat írja. */
+  promoEnabled: boolean | null
+  promoStart: string | null
+  promoEnd: string | null
+  promoPriceHuf: number | null
+}
+
+function readPromoFields(
+  raw: Record<string, unknown>,
+): Pick<CourseCtaTarget, 'promoEnabled' | 'promoStart' | 'promoEnd' | 'promoPriceHuf'> {
+  return {
+    promoEnabled: typeof raw.promoEnabled === 'boolean' ? raw.promoEnabled : null,
+    promoStart: readText(raw.promoStart),
+    promoEnd: readText(raw.promoEnd),
+    promoPriceHuf: readNumber(raw.promoPriceHuf),
+  }
 }
 
 /**
@@ -287,6 +303,7 @@ export function courseCtaTargetOf(post: Post): CourseCtaTarget | null {
     shortDescription: readText(raw.shortDescription),
     priceInHUF: readNumber(raw.priceInHUF),
     priceInHUFEnabled: typeof raw.priceInHUFEnabled === 'boolean' ? raw.priceInHUFEnabled : null,
+    ...readPromoFields(raw),
   }
 }
 
@@ -353,5 +370,6 @@ export function freeCourseCtaTargetOf(product: unknown): CourseCtaTarget | null 
     shortDescription: readText(product.shortDescription),
     priceInHUF: readNumber(product.priceInHUF),
     priceInHUFEnabled: false,
+    ...readPromoFields(product),
   }
 }

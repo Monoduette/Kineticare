@@ -247,6 +247,11 @@ export const SITEMAP_PRODUCT_SELECT = {
   status: true,
   priceInHUFEnabled: true,
   priceInHUF: true,
+  // WP63: a fizetendő ár az akció mezőitől is függ (coursePriceHuf).
+  promoEnabled: true,
+  promoStart: true,
+  promoEnd: true,
+  promoPriceHuf: true,
   // A borítókép a sitemap `<image:image>` bejegyzéséhez (depth 1 populálja).
   coverImage: true,
 } as const
@@ -255,7 +260,16 @@ export type SitemapPost = Pick<Post, 'id' | 'slug' | 'updatedAt' | 'status' | 'c
 
 export type SitemapProduct = Pick<
   Product,
-  'id' | 'slug' | 'updatedAt' | 'status' | 'priceInHUFEnabled' | 'priceInHUF'
+  | 'id'
+  | 'slug'
+  | 'updatedAt'
+  | 'status'
+  | 'priceInHUFEnabled'
+  | 'priceInHUF'
+  | 'promoEnabled'
+  | 'promoStart'
+  | 'promoEnd'
+  | 'promoPriceHuf'
 > & { coverImage?: Product['coverImage'] }
 
 export async function getSitemapPosts(limit = 500): Promise<SitemapPost[]> {

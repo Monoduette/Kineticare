@@ -1,5 +1,6 @@
 import type { CollectionBeforeChangeHook } from 'payload'
 
+import { coursePriceHuf } from './courses'
 import { generateOrderNumber } from './order-number'
 
 /**
@@ -52,7 +53,9 @@ export const orderIntegrityBeforeChange: CollectionBeforeChangeHook = async ({
     })
 
     const quantity = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1
-    const priceHuf = typeof product.priceInHUF === 'number' ? product.priceInHUF : 0
+    // WP63: a MOST fizetendő ár (élő akcióban az akciós ár), ugyanabból a
+    // forrásból, mint az oldal és a pénztár (coursePriceHuf); hiányzó ár 0.
+    const priceHuf = coursePriceHuf(product) ?? 0
 
     // A kliens által küldött értékek felülírása — a snapshot forrása mindig a DB.
     item.titleSnapshot = product.sku ?? null
