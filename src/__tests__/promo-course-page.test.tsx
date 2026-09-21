@@ -68,6 +68,45 @@ beforeEach(() => {
 })
 
 describe('kurzusoldal — akciós kapcsoló', () => {
+  it.each(['package', 'normal', 'preview', 'no-package'])(
+    'a galériakép mérettippje csak a széles csomagos oldalon változik: %s',
+    async (mode) => {
+      if (mode === 'preview') {
+        mocks.draft.mockResolvedValue({ isEnabled: true })
+        mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })
+      }
+      mocks.find.mockResolvedValue({
+        docs: [
+          {
+            ...base,
+            promoEnabled: mode !== 'normal',
+            longDescription: mode === 'no-package' ? null : packageDescription,
+            gallery: [
+              {
+                image: {
+                  id: 77,
+                  url: '/media/gallery.webp',
+                  width: 864,
+                  height: 988,
+                  alt: 'Eredeti galériakép',
+                },
+              },
+            ],
+          },
+        ],
+      })
+      const html = renderToStaticMarkup(await CoursePage(props))
+      const figure = html.match(/<figure class="kc-course-figure">[\s\S]*?<\/figure>/)?.[0]
+      expect(figure).toBeDefined()
+      expect(figure).toContain('alt="Eredeti galériakép"')
+      expect(figure).toContain(
+        mode === 'package'
+          ? 'sizes="(min-width: 1120px) 1072px, calc(100vw - 48px)"'
+          : 'sizes="(max-width: 899px) 100vw, 60vw"',
+      )
+    },
+  )
+
   const packageDescription = {
     root: {
       type: 'root',
@@ -100,6 +139,8 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     })
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-course--content')
+    expect(html).toContain('kc-course-description')
+    expect(html).toContain('kc-promo-course__band--description')
     const positions = ['id="csomag"', 'id="kinek-valo"', 'id="hogyan-mukodik"', 'id="mi-ez"'].map(
       (id) => html.indexOf(id),
     )
@@ -164,6 +205,8 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     })
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).not.toContain('kc-promo-course--content')
+    expect(html).not.toContain('kc-course-description')
+    expect(html).not.toContain('kc-promo-course__band--description')
     for (const text of [
       'CSOMAG_CIM',
       'CSOMAG_TETEL',
@@ -186,6 +229,7 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('CSOMAG_TETEL')
     expect(html).toContain('CSOMAG_LEIRAS')
+    expect(html).not.toContain('kc-course-description')
     expect(html).not.toContain('kc-promo-course--content')
     expect(html).not.toContain('/penztar')
   })
@@ -195,6 +239,7 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-hero')
     expect(html).toContain('href="/penztar?termek=12"')
+    expect(html).not.toContain('kc-course-description')
     expect(html).toContain('Megveszem a kurzust')
     expect(html).toContain(formatPriceHuf(39500))
     expect(JSON.stringify(mocks.find.mock.calls[0]?.[0].where)).not.toContain('unlisted')

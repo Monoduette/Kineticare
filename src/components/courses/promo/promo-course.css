@@ -480,6 +480,80 @@
   display: inline-flex;
 }
 
+/* Csak a CMS-csomaggal bekapcsolt akciós leírás és az azt követő meglévő kép. */
+.kc-promo-course .kc-promo-course__band--description {
+  padding-block: var(--kc-space-7);
+}
+
+.kc-promo-course__band--description .kc-course-description {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kc-space-7);
+}
+
+.kc-promo-course__band--description .kc-course-description__section {
+  min-width: 0;
+}
+
+.kc-promo-course__band--description .kc-course-description__groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-7) var(--kc-space-5);
+}
+
+.kc-promo-course__band--description .kc-course-description__lead + .kc-course-description__groups {
+  margin-top: var(--kc-space-7);
+}
+
+.kc-promo-course__band--description .kc-course-description__group {
+  min-width: 0;
+  padding-top: var(--kc-space-5);
+  border-top: 1px solid var(--kc-color-border);
+  overflow-wrap: anywhere;
+}
+
+.kc-promo-course__band--description .kc-course-description__group > :first-child,
+.kc-promo-course__band--description .kc-course-description__lead > :first-child {
+  margin-top: 0;
+}
+
+.kc-promo-course__band--description .kc-course-description__group > :last-child,
+.kc-promo-course__band--description .kc-course-description__lead > :last-child {
+  margin-bottom: 0;
+}
+
+.kc-promo-course__band--description .kc-course-description__group h3 {
+  margin-bottom: var(--kc-space-5);
+}
+
+.kc-promo-course .kc-promo-course__band--description .kc-course-figure {
+  max-width: none;
+  width: 100%;
+  margin-top: var(--kc-space-7);
+  aspect-ratio: 4 / 3;
+}
+
+@media (min-width: 640px) {
+  .kc-promo-course__band--description .kc-course-description__groups[data-columns='2'],
+  .kc-promo-course__band--description .kc-course-description__groups[data-columns='3'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .kc-promo-course .kc-promo-course__band--description {
+    padding-block: var(--kc-space-9);
+  }
+
+  .kc-promo-course__band--description .kc-course-description__groups[data-columns='3'] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .kc-promo-course .kc-promo-course__band--description .kc-course-figure {
+    aspect-ratio: 16 / 9;
+  }
+}
+
 /* A szerkesztett kurzuscsomag saját tartalmi ritmusa. A régi sablon és a
    normál kurzusoldal nem kapja meg ezt a gyökérosztályt. */
 .kc-promo-course--content .kc-promo-course__package,

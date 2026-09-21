@@ -31,6 +31,7 @@ import { pickMediaUrl } from '../content/media-url'
  */
 export interface CourseGalleryFigureProps {
   product: Pick<Product, 'gallery'>
+  sizes?: string
 }
 
 /** A galéria első, feloldott (URL-lel bíró) képe, vagy null. */
@@ -44,14 +45,17 @@ export function firstGalleryMedia(product: Pick<Product, 'gallery'>): Media | nu
   return null
 }
 
-export function CourseGalleryFigure({ product }: CourseGalleryFigureProps) {
+export function CourseGalleryFigure({
+  product,
+  sizes = '(max-width: 899px) 100vw, 60vw',
+}: CourseGalleryFigureProps) {
   const media = firstGalleryMedia(product)
   if (media === null) {
     return null
   }
   return (
     <figure className="kc-course-figure">
-      <MediaImage media={media} preferredSize="lg" sizes="(max-width: 899px) 100vw, 60vw" />
+      <MediaImage media={media} preferredSize="lg" sizes={sizes} />
     </figure>
   )
 }
