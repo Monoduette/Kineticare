@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 
 import type { CoursePromo } from '../../../lib/course-promo'
+import type { CoursePackageData } from '../../../lib/course-package'
 import type { CourseCtaState } from '../../../lib/courses'
 import type { CurriculumModule } from '../../../lib/curriculum/curriculum'
 import type { Media, Product } from '../../../payload-types'
@@ -13,6 +14,7 @@ import type { CourseSalesContent } from '../sales-content'
 import { PROMO_CLOSING_CTA_ID, PromoClosingCta } from './PromoClosingCta'
 import { PromoHero } from './PromoHero'
 import { PromoHighlights } from './PromoHighlights'
+import { CoursePackageContent } from './CoursePackageContent'
 
 import './promo-course.css'
 
@@ -69,6 +71,7 @@ export interface PromoCourseViewProps {
   audienceLabel: string
   /** Az ingyenes előzetes videó (a rendes oldallal közös csomópont) vagy null. */
   preview?: ReactNode
+  packageContent?: CoursePackageData | null
 }
 
 interface Band {
@@ -137,6 +140,7 @@ export function PromoCourseView({
   guaranteeLabel,
   sections,
   preview = null,
+  packageContent = null,
   jumpTargets,
   related,
   category,
@@ -148,9 +152,23 @@ export function PromoCourseView({
       : null
   const hasCurriculum = curriculumModules.length > 0
   const bands = groupSectionsIntoBands(sections)
+  const featuredKeys = ['kinek-valo', 'hogyan-mukodik']
+  const orderedBands = packageContent
+    ? [
+        ...featuredKeys.flatMap((key) => bands.filter((band) => band.key === key)),
+        ...bands.filter((band) => !featuredKeys.includes(band.key)),
+      ]
+    : bands
+  const orderedTargets = packageContent
+    ? [...jumpTargets].sort(
+        (a, b) =>
+          orderedBands.findIndex((band) => band.key === a.id) -
+          orderedBands.findIndex((band) => band.key === b.id),
+      )
+    : jumpTargets
 
   return (
-    <article className="kc-promo-course">
+    <article className={`kc-promo-course${packageContent ? ' kc-promo-course--content' : ''}`}>
       <PromoHero
         audienceLabel={audienceLabel}
         categoryLabel={category}
@@ -169,7 +187,7 @@ export function PromoCourseView({
       {jumpTargets.length >= 2 ? (
         <Section as="div" className="kc-promo-course__jump" flush>
           <Container>
-            <CourseJumpNav targets={jumpTargets} />
+            <CourseJumpNav targets={orderedTargets} />
           </Container>
         </Section>
       ) : null}
@@ -182,8 +200,26 @@ export function PromoCourseView({
 
       <PromoHighlights highlights={sales.highlights} />
 
-      {bands.map((band) => (
-        <Section as="div" className="kc-promo-course__band" key={band.key} variant={band.variant}>
+      {packageContent ? (
+        <Section
+          aria-labelledby="csomag-cim"
+          className="kc-promo-course__package"
+          id="csomag"
+          variant="tint"
+        >
+          <Container>
+            <CoursePackageContent data={packageContent} enhanced />
+          </Container>
+        </Section>
+      ) : null}
+
+      {orderedBands.map((band) => (
+        <Section
+          as="div"
+          className={`kc-promo-course__band${packageContent && featuredKeys.includes(band.key) ? ' kc-promo-course__band--featured' : ''}`}
+          key={band.key}
+          variant={packageContent && featuredKeys.includes(band.key) ? 'default' : band.variant}
+        >
           <Container>{band.nodes}</Container>
         </Section>
       ))}

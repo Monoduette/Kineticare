@@ -68,6 +68,128 @@ beforeEach(() => {
 })
 
 describe('kurzusoldal — akciós kapcsoló', () => {
+  const packageDescription = {
+    root: {
+      type: 'root',
+      version: 1,
+      children: [
+        { type: 'paragraph', children: [{ type: 'text', text: 'LEIRAS_ELOTTE' }] },
+        {
+          type: 'block',
+          fields: {
+            blockType: 'coursePackage',
+            heading: 'CSOMAG_CIM',
+            items: [{ icon: 'book', title: 'CSOMAG_TETEL', description: 'CSOMAG_LEIRAS' }],
+          },
+        },
+        { type: 'paragraph', children: [{ type: 'text', text: 'LEIRAS_UTANA' }] },
+      ],
+    },
+  }
+
+  it('csak explicit CMS-csomag esetén rendezi előre a csomagot, alkalmasságot és működést', async () => {
+    mocks.find.mockResolvedValue({
+      docs: [
+        {
+          ...base,
+          longDescription: packageDescription,
+          fitFor: [{ text: 'ALKALMAS' }],
+          notFitFor: [{ text: 'KIZARAS' }],
+        },
+      ],
+    })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).toContain('kc-promo-course--content')
+    const positions = ['id="csomag"', 'id="kinek-valo"', 'id="hogyan-mukodik"', 'id="mi-ez"'].map(
+      (id) => html.indexOf(id),
+    )
+    expect(positions.every((position) => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    for (const text of [
+      'CSOMAG_CIM',
+      'CSOMAG_TETEL',
+      'CSOMAG_LEIRAS',
+      'LEIRAS_ELOTTE',
+      'LEIRAS_UTANA',
+      'ALKALMAS',
+      'KIZARAS',
+    ]) {
+      expect(html.split(text).length - 1, text).toBe(1)
+    }
+    expect(html).toContain('href="/penztar?termek=12"')
+    expect(html).toContain('id="kurzus-vasarlas-gomb"')
+  })
+
+  it.each(['promo', 'normal', 'preview'])(
+    'a felismert szakaszcím alatti csomag megmarad: %s',
+    async (mode) => {
+      mocks.draft.mockResolvedValue({ isEnabled: mode === 'preview' })
+      if (mode === 'preview') mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })
+      mocks.find.mockResolvedValue({
+        docs: [
+          {
+            ...base,
+            promoEnabled: mode !== 'normal',
+            longDescription: {
+              ...packageDescription,
+              root: {
+                ...packageDescription.root,
+                children: [
+                  { type: 'heading', tag: 'h2', children: [{ type: 'text', text: 'Kinek való?' }] },
+                  packageDescription.root.children[1],
+                  {
+                    type: 'list',
+                    listType: 'bullet',
+                    children: [
+                      { type: 'listitem', children: [{ type: 'text', text: 'SZAKASZ_TETEL' }] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      })
+      const html = renderToStaticMarkup(await CoursePage(props))
+      for (const text of ['CSOMAG_CIM', 'CSOMAG_TETEL', 'CSOMAG_LEIRAS', 'SZAKASZ_TETEL']) {
+        expect(html.split(text).length - 1, text).toBe(1)
+      }
+      expect(html.includes('kc-promo-course--content')).toBe(mode === 'promo')
+    },
+  )
+
+  it('az akció kikapcsolásakor a CMS-csomag a normál leírásban is olvasható marad', async () => {
+    mocks.find.mockResolvedValue({
+      docs: [{ ...base, promoEnabled: false, longDescription: packageDescription }],
+    })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).not.toContain('kc-promo-course--content')
+    for (const text of [
+      'CSOMAG_CIM',
+      'CSOMAG_TETEL',
+      'CSOMAG_LEIRAS',
+      'LEIRAS_ELOTTE',
+      'LEIRAS_UTANA',
+    ]) {
+      expect(html.split(text).length - 1, text).toBe(1)
+    }
+    expect(html.indexOf('LEIRAS_ELOTTE')).toBeLessThan(html.indexOf('CSOMAG_CIM'))
+    expect(html.indexOf('CSOMAG_CIM')).toBeLessThan(html.indexOf('LEIRAS_UTANA'))
+  })
+
+  it('CMS-előnézetben a csomag tartalma megmarad vásárlási vezérlők nélkül', async () => {
+    mocks.draft.mockResolvedValue({ isEnabled: true })
+    mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })
+    mocks.find.mockResolvedValue({
+      docs: [{ ...base, _status: 'draft', longDescription: packageDescription }],
+    })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).toContain('CSOMAG_TETEL')
+    expect(html).toContain('CSOMAG_LEIRAS')
+    expect(html).not.toContain('kc-promo-course--content')
+    expect(html).not.toContain('/penztar')
+  })
+
   it('a listából rejtett kurzus közvetlenül anonim látogatónak is megvehető', async () => {
     mocks.find.mockResolvedValue({ docs: [{ ...base, unlisted: true }] })
     const html = renderToStaticMarkup(await CoursePage(props))

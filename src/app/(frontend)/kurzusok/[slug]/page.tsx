@@ -33,6 +33,7 @@ import { loadProductPreview, previewCurriculum } from '@/lib/preview/product-pre
 import { resolveSingleCourseAccess } from '@/lib/course-access-lookup'
 import { AUDIENCE_LABELS, normalizeAudience } from '@/lib/course-audience'
 import { isCoursePromoDisplayed, resolveCoursePromo } from '@/lib/course-promo'
+import { extractCoursePackage } from '@/lib/course-package'
 import {
   canonicalCourseRedirect,
   courseHref,
@@ -316,10 +317,18 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
         : null
   const guaranteeLabel = sales.guarantee === null ? null : sales.guarantee.title
 
+  const usePromoView =
+    isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
+  // Csak explicit, szerkeszthető CMS-blokk választja az új tartalmi kiosztást.
+  // A normál és az előnézeti oldalon a blokk a leírásban marad, tartalomvesztés nélkül.
+  const packageContent = usePromoView
+    ? extractCoursePackage(sales.body)
+    : { package: null, body: sales.body }
+
   // ── A szakaszok, dokumentum-sorrendben ────────────────────────────────────
   const sections: PageSection[] = []
 
-  if (sales.body !== null) {
+  if (packageContent.body && packageContent.body.root.children.length > 0) {
     sections.push({
       target: { id: 'mi-ez', label: 'Mi ez?' },
       node: (
@@ -327,7 +336,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           <h2 className="kc-course-section__title" id="mi-ez-cim">
             A kurzusról
           </h2>
-          <LexicalContent className="kc-course-prose" content={sales.body} />
+          <LexicalContent className="kc-course-prose" content={packageContent.body} />
         </section>
       ),
     })
@@ -427,8 +436,6 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // Az akciós megjelenés közös szabálya (course-promo.ts isCoursePromoDisplayed):
   // élő időablak + közzétett kurzus + érvényes ár. Archivált kurzus (Devin,
   // #278) így a rendes oldalt kapja, ahol a vásárlás tiltása látszik.
-  const usePromoView =
-    isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
   // priceValidUntil SZÁNDÉKOSAN nincs: a `price` a coursePriceHuf MOST fizetendő
   // ára (WP63: akcióban az akciós ár, utána magától a rendes ár), a végdátumot
   // az Offer-ben nem ígérjük (Codex, #278).
@@ -523,6 +530,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
               ? rewriteVisitorDashLeftover(product.shortDescription)
               : null
           }
+          packageContent={packageContent.package}
           preview={previewFigure}
           priceHuf={price}
           priceLabel={priceLabel}

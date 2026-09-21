@@ -481,13 +481,30 @@ export function buildCourseSalesContent(
    */
   const bodyNodes: LexicalNode[] = []
   for (const segment of segments) {
+    // A mezőalapú csomagblokk nem része a simaszöveges szakasz-kinyerésnek.
+    // Megmarad akkor is, ha a körülötte lévő lista/garancia külön szakaszba kerül.
+    const packageNodes = segment.nodes.filter((node) => {
+      const fields: unknown = node.fields
+      return (
+        nodeType(node) === 'block' &&
+        typeof fields === 'object' &&
+        fields !== null &&
+        'blockType' in fields &&
+        fields.blockType === 'coursePackage'
+      )
+    })
     // Ingyenes kurzuson a garancia-szakasz sehol nem jelenik meg (lásd fent).
-    if (facts.free && segment.part === 'guarantee') continue
+    if (facts.free && segment.part === 'guarantee') {
+      bodyNodes.push(...packageNodes)
+      continue
+    }
     if (segment.part === 'body' || !derived[segment.part]) {
       if (segment.heading !== null) {
         bodyNodes.push(segment.heading)
       }
       bodyNodes.push(...segment.nodes)
+    } else {
+      bodyNodes.push(...packageNodes)
     }
   }
   const source = product.longDescription

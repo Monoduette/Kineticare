@@ -4542,6 +4542,22 @@ export interface TaskCorrectiveInvoiceIssue {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CoursePackageBlock".
+ */
+export interface CoursePackageBlock {
+  heading: string;
+  items: {
+    icon?: ('play' | 'video' | 'clock' | 'shield' | 'book' | 'file' | 'users') | null;
+    title: string;
+    description?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'coursePackage';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "auth".
  */
 export interface Auth {
