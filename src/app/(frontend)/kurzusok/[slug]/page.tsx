@@ -350,7 +350,19 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // WP51: a `gallery` első képe a leírás UTÁN, a lépések ELŐTT töri meg a
   // szöveget (CourseGalleryFigure). Nincs ugrócélja: kép, nem szakasz.
   if (firstGalleryMedia(product) !== null) {
-    sections.push({ target: null, node: <CourseGalleryFigure product={product} /> })
+    sections.push({
+      target: null,
+      node: (
+        <CourseGalleryFigure
+          product={product}
+          sizes={
+            usePromoView && packageContent.package !== null
+              ? '(min-width: 1120px) 1072px, calc(100vw - 48px)'
+              : undefined
+          }
+        />
+      ),
+    })
   }
 
   if (sales.steps.length > 0) {

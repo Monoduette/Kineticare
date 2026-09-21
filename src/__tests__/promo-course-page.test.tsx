@@ -68,6 +68,45 @@ beforeEach(() => {
 })
 
 describe('kurzusoldal — akciós kapcsoló', () => {
+  it.each(['package', 'normal', 'preview', 'no-package'])(
+    'a galériakép mérettippje csak a széles csomagos oldalon változik: %s',
+    async (mode) => {
+      if (mode === 'preview') {
+        mocks.draft.mockResolvedValue({ isEnabled: true })
+        mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })
+      }
+      mocks.find.mockResolvedValue({
+        docs: [
+          {
+            ...base,
+            promoEnabled: mode !== 'normal',
+            longDescription: mode === 'no-package' ? null : packageDescription,
+            gallery: [
+              {
+                image: {
+                  id: 77,
+                  url: '/media/gallery.webp',
+                  width: 864,
+                  height: 988,
+                  alt: 'Eredeti galériakép',
+                },
+              },
+            ],
+          },
+        ],
+      })
+      const html = renderToStaticMarkup(await CoursePage(props))
+      const figure = html.match(/<figure class="kc-course-figure">[\s\S]*?<\/figure>/)?.[0]
+      expect(figure).toBeDefined()
+      expect(figure).toContain('alt="Eredeti galériakép"')
+      expect(figure).toContain(
+        mode === 'package'
+          ? 'sizes="(min-width: 1120px) 1072px, calc(100vw - 48px)"'
+          : 'sizes="(max-width: 899px) 100vw, 60vw"',
+      )
+    },
+  )
+
   const packageDescription = {
     root: {
       type: 'root',
