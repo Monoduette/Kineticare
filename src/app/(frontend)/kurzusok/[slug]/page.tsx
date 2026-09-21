@@ -429,8 +429,9 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   // #278) így a rendes oldalt kapja, ahol a vásárlás tiltása látszik.
   const usePromoView =
     isCoursePromoDisplayed(product) && priceBadge === 'price' && price !== null && !isPreview
-  // priceValidUntil SZÁNDÉKOSAN nincs: az időablak a megjelenést vezérli, az ár
-  // nem változik magától a végén, ezért az Offer-ben sem állítjuk (Codex, #278).
+  // priceValidUntil SZÁNDÉKOSAN nincs: a `price` a coursePriceHuf MOST fizetendő
+  // ára (WP63: akcióban az akciós ár, utána magától a rendes ár), a végdátumot
+  // az Offer-ben nem ígérjük (Codex, #278).
 
   // Az ingyenes előzetes videó MINDKÉT sablonon ugyanaz a csomópont: az
   // akciós oldal sem veszítheti el (Devin, #278), a kapu (hasPreviewVideo)

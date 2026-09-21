@@ -11,7 +11,7 @@ import {
 } from '../../../lib/course-showcase'
 import { courseHref } from '../../../lib/course-url'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
-import { coursePriceBadgeKind, courseTitle } from '../../../lib/courses'
+import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../../lib/courses'
 import { rewriteVisitorDashLeftover } from '../../../lib/gondolatjel-leftover'
 import type { Product } from '../../../payload-types'
 import { PriceTag } from '../../ui/PriceTag'
@@ -146,7 +146,7 @@ function ShowcaseCard({
           <span className="kc-course-showcase__kicker">{audienceLabel}</span>
           {priceBadge === 'price' ? (
             <span className="kc-course-showcase__price">
-              <PriceTag label="Ár:" priceHuf={product.priceInHUF as number} />
+              <PriceTag label="Ár:" priceHuf={coursePriceHuf(product) as number} />
             </span>
           ) : null}
           {/*

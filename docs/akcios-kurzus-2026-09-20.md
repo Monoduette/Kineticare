@@ -25,13 +25,13 @@ menüben nem látszó módon. Emellett a rendelő címe legyen kattintható (Goo
 
 ## Owner-content szabályok (`npm run content:owner`)
 
-| Szabály                     | Mit tesz                                                                                                                                                                                                    | Feltétel                                                                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `akcios-kurzus-menupont`    | Az „olcsó dolgok itt" menüpont → „Akciós KézRehab kurzus", típus Kurzus, cél az akciós kurzus (webcím alapján), `unlisted: true`, nem új lapon                                                              | felirat pontosan a régi (kis/nagybetű, szélső szóköz nélkül) vagy már az új; az akciós kurzus létezik, különben hangos                                     |
-| `akcios-kurzus-eladoszoveg` | Fő előnyök (4 sor), GYIK (5 pár), SEO-cím, SEO-leírás, kapcsolódó kurzus (SOS) az akciós kurzuson                                                                                                           | mezőnként csak ÜRES mezőbe ír; kitöltött mező kihagyás                                                                                                     |
-| `akcios-kurzus-arszoveg`    | A törzs téves, teljes árú ár-mondata („eredeti ára 119 000 Ft… 79 500 Ft") → akciós mondat; a zárójeles „nem helyettesíti a szakorvosi kontrollt" marad                                                     | bekezdés-eleji pontos egyezés; átírt szövegnél hangos kihagyás                                                                                             |
-| `akcios-kurzus-akcio-mezok` | PR #278: az „Akciós kurzus” pipa bekapcsolása (dátum nélkül, nyílt végű) és a „Teljes ár” a teljes árú Otthoni KézRehab ma élő árával, hogy a kurzusoldal az akciós sablont, a kártya az Akció címkét kapja | bekapcsolt pipa: csendes kihagyás; kitöltött teljes ár: kihagyás; ha a teljes árú program ára nem nagyobb vagy nem olvasható: a teljes ár hangosan kimarad |
-| `demo-oldal-visszavonas`    | WP60: az egykori demólap („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím) közzétételének visszavonása: `_status` published → draft                                                                    | csak a pontosan ilyen című rekordon; más címnél hangos kihagyás; hiányzó vagy már piszkozat rekordnál csendes kihagyás                                     |
+| Szabály                     | Mit tesz                                                                                                                                                                                                                         | Feltétel                                                                                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `akcios-kurzus-menupont`    | Az „olcsó dolgok itt" menüpont → „Akciós KézRehab kurzus", típus Kurzus, cél az akciós kurzus (webcím alapján), `unlisted: true`, nem új lapon                                                                                   | felirat pontosan a régi (kis/nagybetű, szélső szóköz nélkül) vagy már az új; az akciós kurzus létezik, különben hangos                                                                          |
+| `akcios-kurzus-eladoszoveg` | Fő előnyök (4 sor), GYIK (5 pár), SEO-cím, SEO-leírás, kapcsolódó kurzus (SOS) az akciós kurzuson                                                                                                                                | mezőnként csak ÜRES mezőbe ír; kitöltött mező kihagyás                                                                                                                                          |
+| `akcios-kurzus-arszoveg`    | A törzs téves, teljes árú ár-mondata („eredeti ára 119 000 Ft… 79 500 Ft") → akciós mondat; a zárójeles „nem helyettesíti a szakorvosi kontrollt" marad                                                                          | bekezdés-eleji pontos egyezés; átírt szövegnél hangos kihagyás                                                                                                                                  |
+| `akcios-ar-atallas`         | WP63: az ár-modell egyszeri átállása. Ár (rendes ár) = a régi Teljes ár értéke (79 500 Ft), Akciós ár = a régi Ár értéke (39 500 Ft), a régi Teljes ár mező kiürül. Az akció végén magától a rendes ár él, nincs kézi visszaírás | kitöltött Akciós ár: csendes kihagyás; üres örökölt Teljes ár: csendes kihagyás; örökölt Teljes ár, ami nem nagyobb az Árnál vagy nincs érvényes Ár: hangos kihagyás, az adminban kell rendezni |
+| `demo-oldal-visszavonas`    | WP60: az egykori demólap („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím) közzétételének visszavonása: `_status` published → draft                                                                                         | csak a pontosan ilyen című rekordon; más címnél hangos kihagyás; hiányzó vagy már piszkozat rekordnál csendes kihagyás                                                                          |
 
 Őr: `src/__tests__/owner-content-akcios-kurzus.test.ts`, `src/__tests__/owner-content-demo-oldal.test.ts`.
 
@@ -41,13 +41,17 @@ azonos módon a törzs címsoraiból és a tényadatokból épülnek
 
 ## Amit a tulajdonosnak tudnia kell
 
-- **Ár-összehasonlítás.** Az akciós oldal a MA ÉLŐ teljes árú programra hivatkozik
-  („mint a 79 500 Ft-os programban, itt 39 500 Ft"), nem „korábbi" árra. A kettő két
-  külön termék. Ha a teljes árú program ára változik, ezt a mondatot és a fő előnyök
-  első sorát az adminban frissíteni kell, és az akciós kurzus „Teljes ár (Ft, áthúzva
-  jelenik meg)" mezőjét is (Ár és hozzáférés fül, Akciós megjelenés csoport): a
-  kiadás egyszer beírta a teljes árú program akkori árát, később a script nem írja
-  felül, a frissítés kézi. Csak ténylegesen elérhető ár adható meg.
+- **Ár-modell (WP63, 2026-09-21).** Az akciós kurzuson az „Ár” mező a RENDES ár
+  (79 500 Ft), az „Akciós ár” mező az akciós időablakban fizetendő ár (39 500 Ft).
+  Amíg az akció él (bekapcsolt pipa és a dátumablakon belül, vagy dátum nélkül nyílt
+  végű), a vevő az akciós árat fizeti és a rendes ár áthúzva jelenik meg; az akció
+  végén magától a rendes ár él, nincs kézi visszaírás és nincs időzített feladat
+  (`coursePriceHuf`, `src/lib/courses.ts`). A régi „Teljes ár (Ft, áthúzva jelenik
+  meg)” mező örökölt: az adminban rejtett, senki nem olvassa, egy későbbi PR
+  megszünteti az oszlopot. Az akciós oldal szövege továbbra is a teljes árú
+  programra hivatkozik („mint a 79 500 Ft-os programban, itt 39 500 Ft”); ha
+  bármelyik ár változik, ezt a mondatot és a fő előnyök első sorát az adminban
+  kell frissíteni.
 - **A rejtett link nem hozzáférés-védelem.** Aki tudja a linket, megnyitja. A
   kurzus a `/kurzusok` listában és a keresőkben is látszik, mert közzétett termék.
   Ha a partneri árat a nyilvánosság elől is el kell rejteni, az külön feladat
@@ -72,3 +76,9 @@ azonos módon a törzs címsoraiból és a tényadatokból épülnek
    `/kurzusok/otthoni-kezrehab-program-akcio` 200, ár 39 500 Ft, „Megveszem" gomb,
    fő előnyök, GYIK, a törzsben az akciós ár-mondat; az adminban a menüpont lapján
    a „Közvetlen link" doboz a teljes URL-lel.
+5. WP63 (`akcios-ar-atallas`): a `promoPriceHuf` oszlop migrációja után
+   `npm run content:owner` (próbafutás): egy „MÓDOSÍTANÁ" sor az ár-átállásról
+   (Ár 39 500 Ft → 79 500 Ft, Akciós ár 39 500 Ft, Teljes ár kiürítve). Majd
+   `OWNER_CONTENT_CONFIRM=igen npm run content:owner`, és második próbafutás: a
+   szabály „MÁR" kihagyás. Ellenőrzés az adminban: Ár 79 500, Akciós ár 39 500,
+   a régi Teljes ár üres; a kurzusoldalon fizetendő ár 39 500 Ft, áthúzva 79 500 Ft.

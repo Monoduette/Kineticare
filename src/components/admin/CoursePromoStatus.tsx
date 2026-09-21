@@ -3,6 +3,8 @@
 import { useFormFields } from '@payloadcms/ui'
 import { useEffect, useState, type CSSProperties, type JSX } from 'react'
 
+import { formatPriceHuf } from '../../lib/format-price'
+
 import {
   promoDayLabel,
   resolveCoursePromo,
@@ -29,8 +31,8 @@ import {
 
 export const PROMO_OFF_MESSAGE = 'Az akciós megjelenés ki van kapcsolva.'
 
-export const ORIGINAL_PRICE_WARNING =
-  'A teljes ár nem jelenik meg áthúzva, mert nem nagyobb a mostani árnál.'
+export const PROMO_PRICE_WARNING =
+  'Az akciós ár nem kisebb az Árnál (vagy nem egész, pozitív összeg), ezért nem érvényes: a vevő a rendes Árat fizeti, és áthúzott ár nem jelenik meg.'
 
 /**
  * A magyar keltezés ragjai a nap sorszámához (AkH. 12. kiadás 297. pont):
@@ -91,8 +93,8 @@ export function deriveCoursePromoStatus(
   now: Date = new Date(),
 ): CoursePromoStatusText {
   const promo = resolveCoursePromo(fields, now)
-  const originalWanted =
-    typeof fields.promoOriginalPriceHuf === 'number' && fields.promoOriginalPriceHuf > 0
+  // WP63: a kitöltött, de érvénytelen (nem kisebb az Árnál) akciós ár figyelmeztet.
+  const promoPriceWanted = typeof fields.promoPriceHuf === 'number' && fields.promoPriceHuf > 0
   // Az akciós MEGJELENÉS csak érvényes, pozitív árú kurzuson él (course-promo
   // isCoursePromoDisplayed); ingyenes vagy ár nélküli kurzuson a pipa hatástalan,
   // és ezt itt kell kimondani, ne a kártyán derüljön ki (Codex, #278).
@@ -121,8 +123,8 @@ export function deriveCoursePromoStatus(
         ? DRAFT_WARNING
         : promo.enabled && !hasValidPrice
           ? NO_PRICE_WARNING
-          : promo.enabled && originalWanted && promo.originalPriceHuf === null
-            ? ORIGINAL_PRICE_WARNING
+          : promo.enabled && promoPriceWanted && promo.promoPriceHuf === null
+            ? PROMO_PRICE_WARNING
             : null
 
   if (promo.reason === 'kikapcsolva') {
@@ -154,11 +156,18 @@ export function deriveCoursePromoStatus(
       reason: 'nem-lathato',
     }
   }
-  const message =
+  const head =
     promo.end === null
       ? 'Az akció most él, és nincs megadva a vége.'
       : `Az akció most él (${withDaySuffix(promoDayLabel(new Date(promo.end.getTime() - 1)), 'ig')}).`
-  return { message, warning, reason: null }
+  // WP63: kimondjuk, mit fizet MOST a vevő, és mi lesz az ár az akció után,
+  // hogy a szerkesztő ne csak a dátumot, az ár-váltást is lássa (NN/g,
+  // Visibility of System Status).
+  const price =
+    promo.promoPriceHuf !== null && promo.regularPriceHuf !== null
+      ? ` A vevő most ${formatPriceHuf(promo.promoPriceHuf)}-ot fizet, az akció után magától ${formatPriceHuf(promo.regularPriceHuf)} lesz az ár.`
+      : ' Akciós ár nincs megadva, a vevő a rendes Árat fizeti.'
+  return { message: `${head}${price}`, warning, reason: null }
 }
 
 const panelStyle: CSSProperties = {
@@ -226,7 +235,7 @@ export function CoursePromoStatus(): JSX.Element {
   const promoEnabled = useFormFields(([fields]) => fields?.promoEnabled?.value)
   const promoStart = useFormFields(([fields]) => fields?.promoStart?.value)
   const promoEnd = useFormFields(([fields]) => fields?.promoEnd?.value)
-  const promoOriginalPriceHuf = useFormFields(([fields]) => fields?.promoOriginalPriceHuf?.value)
+  const promoPriceHuf = useFormFields(([fields]) => fields?.promoPriceHuf?.value)
   const priceInHUF = useFormFields(([fields]) => fields?.priceInHUF?.value)
   const priceInHUFEnabled = useFormFields(([fields]) => fields?.priceInHUFEnabled?.value)
   const status = useFormFields(([fields]) => fields?.status?.value)
@@ -242,7 +251,7 @@ export function CoursePromoStatus(): JSX.Element {
     // Az űrlapban a dátum Date vagy ISO string is lehet; a feloldó stringet vár.
     promoStart: readDateValue(promoStart),
     promoEnd: readDateValue(promoEnd),
-    promoOriginalPriceHuf: readNumber(promoOriginalPriceHuf),
+    promoPriceHuf: readNumber(promoPriceHuf),
     priceInHUF: readNumber(priceInHUF),
     priceInHUFEnabled: priceInHUFEnabled === true,
     status: typeof status === 'string' ? status : null,

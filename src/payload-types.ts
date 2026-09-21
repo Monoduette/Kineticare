@@ -1692,7 +1692,7 @@ export interface Product {
    */
   accessDurationDays?: number | null;
   /**
-   * Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán pedig Akció címke jelenik meg. A pipa önmagában az árat nem változtatja: az akciós árat az Ár mezőben kell beállítani.
+   * Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra.
    */
   promoEnabled?: boolean | null;
   /**
@@ -1704,8 +1704,9 @@ export interface Product {
    */
   promoEnd?: string | null;
   /**
-   * Csak olyan összeg lehet, amelyen a kurzus ténylegesen elérhető volt vagy elérhető (például a teljes árú program ára). Csak akkor jelenik meg áthúzva a kurzusoldalon, ha nagyobb a kurzus tényleges áránál. Ha üresen hagyod, nincs áthúzott ár.
+   * Ezt fizeti a vevő az akció ideje alatt. A fenti Ár áthúzva jelenik meg mellette. Kisebbnek kell lennie az Árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak tulajdonos állíthatja.
    */
+  promoPriceHuf?: number | null;
   promoOriginalPriceHuf?: number | null;
   inventory?: number | null;
   /**
@@ -3863,6 +3864,7 @@ export interface ProductsSelect<T extends boolean = true> {
   promoEnabled?: T;
   promoStart?: T;
   promoEnd?: T;
+  promoPriceHuf?: T;
   promoOriginalPriceHuf?: T;
   inventory?: T;
   cardHighlights?:

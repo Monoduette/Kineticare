@@ -2,7 +2,9 @@ import type { CollectionOverride } from '@payloadcms/plugin-ecommerce/types'
 import type { Config, Field } from 'payload'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { isOwnerFieldAccess } from '../access'
 import {
+  effectiveCoursePriceHuf,
   isCoursePromoActive,
   isCoursePromoDisplayed,
   promoEndExclusive,
@@ -33,14 +35,14 @@ vi.mock('@payloadcms/plugin-ecommerce', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }))
 
-const { ecommerce, coursePromoFieldNames, validatePromoEnd, validatePromoOriginalPriceHuf } =
+const { ecommerce, coursePromoFieldNames, validatePromoEnd, validatePromoPriceHuf } =
   await import('../plugins/ecommerce')
 
 beforeAll(async () => {
   await ecommerce({ collections: [] } as unknown as Config)
 })
 
-const base = { priceInHUF: 19_900, priceInHUFEnabled: true, promoOriginalPriceHuf: null }
+const base = { priceInHUF: 19_900, priceInHUFEnabled: true, promoPriceHuf: null }
 
 /** Nyári időszámítás: 2026-09-30 23:59 Budapest = 21:59Z; október 1. 00:00 Budapest = 22:00Z. */
 const SEP30_2359_BUDAPEST = new Date('2026-09-30T21:59:59.999Z')
@@ -70,6 +72,9 @@ describe('resolveCoursePromo', () => {
       enabled: true,
       start: null,
       end: null,
+      regularPriceHuf: 19_900,
+      promoPriceHuf: null,
+      priceHuf: 19_900,
       originalPriceHuf: null,
       reason: null,
     })
@@ -126,29 +131,106 @@ describe('resolveCoursePromo', () => {
     )
   })
 
-  it('eredeti ár csak akkor, ha nagyobb a tényleges (bekapcsolt) árnál', () => {
+  it('akciós ár csak akkor, ha kisebb a rendes árnál; különben nincs áthúzott ár sem', () => {
     const on = { promoEnabled: true, promoStart: null, promoEnd: null }
+    expect(resolveCoursePromo({ ...base, ...on, promoPriceHuf: 14_900 })).toMatchObject({
+      regularPriceHuf: 19_900,
+      promoPriceHuf: 14_900,
+      priceHuf: 14_900,
+      originalPriceHuf: 19_900,
+    })
+    // Egyenlő vagy nagyobb „akció” nem kedvezmény: a rendes ár marad, áthúzás nincs.
+    for (const promoPriceHuf of [19_900, 24_900]) {
+      expect(resolveCoursePromo({ ...base, ...on, promoPriceHuf })).toMatchObject({
+        promoPriceHuf: null,
+        priceHuf: 19_900,
+        originalPriceHuf: null,
+      })
+    }
+    // Nem pozitív vagy nem szám: nincs akciós ár.
+    expect(resolveCoursePromo({ ...base, ...on, promoPriceHuf: 0 }).priceHuf).toBe(19_900)
+    expect(resolveCoursePromo({ ...base, ...on, promoPriceHuf: -5 }).promoPriceHuf).toBeNull()
+    expect(resolveCoursePromo({ ...base, ...on, promoPriceHuf: Number.NaN }).priceHuf).toBe(19_900)
+  })
+
+  it('ingyenes vagy ár nélküli kurzuson nincs fizetendő ár, akciós ár mellett sem', () => {
+    const on = { promoEnabled: true, promoStart: null, promoEnd: null, promoPriceHuf: 9_900 }
+    expect(resolveCoursePromo({ ...base, ...on, priceInHUFEnabled: false })).toMatchObject({
+      regularPriceHuf: null,
+      promoPriceHuf: null,
+      priceHuf: null,
+      originalPriceHuf: null,
+    })
+    expect(resolveCoursePromo({ ...base, ...on, priceInHUF: null })).toMatchObject({
+      regularPriceHuf: null,
+      priceHuf: null,
+      originalPriceHuf: null,
+    })
+    expect(resolveCoursePromo({ ...base, ...on, priceInHUF: 0 }).priceHuf).toBeNull()
+  })
+
+  it('fizetendő ár az időablakban az akciós, előtte és utána magától a rendes (budapesti naphatár)', () => {
+    const fields = {
+      ...base,
+      promoEnabled: true,
+      promoStart: '2026-10-01T12:00:00.000Z',
+      promoEnd: '2026-10-31T12:00:00.000Z',
+      promoPriceHuf: 9_900,
+    }
+    // Szeptember 30. 23:59 Budapest: még nem kezdődött el, a rendes ár.
+    expect(resolveCoursePromo(fields, SEP30_2359_BUDAPEST)).toMatchObject({
+      active: false,
+      priceHuf: 19_900,
+      originalPriceHuf: null,
+    })
+    // Október 1. 00:00 Budapest: az akciós ár, a rendes áthúzva.
+    expect(resolveCoursePromo(fields, OCT1_0000_BUDAPEST)).toMatchObject({
+      active: true,
+      priceHuf: 9_900,
+      originalPriceHuf: 19_900,
+    })
+    // Október 31. 23:59:59 Budapest (téli időszámítás előtt még nyári: 21:59Z): még él.
+    expect(resolveCoursePromo(fields, new Date('2026-10-31T21:59:59.999Z')).priceHuf).toBe(9_900)
+    // November 1. 00:00 Budapest (23:00Z, már téli időszámítás): lejárt, a rendes ár.
+    expect(resolveCoursePromo(fields, new Date('2026-10-31T23:00:00.000Z'))).toMatchObject({
+      active: false,
+      reason: 'lejart',
+      priceHuf: 19_900,
+      originalPriceHuf: null,
+    })
+  })
+
+  it('effectiveCoursePriceHuf: a most fizetendő ár, hiányzó promo-mezőknél a rendes ár', () => {
+    const now = new Date('2026-09-20T10:00:00.000Z')
+    expect(effectiveCoursePriceHuf({ priceInHUF: 19_900, priceInHUFEnabled: true }, now)).toBe(
+      19_900,
+    )
+    expect(effectiveCoursePriceHuf({ priceInHUF: 19_900, priceInHUFEnabled: false }, now)).toBeNull()
     expect(
-      resolveCoursePromo({ ...base, ...on, promoOriginalPriceHuf: 24_900 }).originalPriceHuf,
-    ).toBe(24_900)
+      effectiveCoursePriceHuf(
+        { ...base, promoEnabled: true, promoStart: null, promoEnd: null, promoPriceHuf: 9_900 },
+        now,
+      ),
+    ).toBe(9_900)
     expect(
-      resolveCoursePromo({ ...base, ...on, promoOriginalPriceHuf: 19_900 }).originalPriceHuf,
-    ).toBeNull()
+      effectiveCoursePriceHuf(
+        {
+          ...base,
+          promoEnabled: true,
+          promoStart: null,
+          promoEnd: '2026-09-19T12:00:00.000Z',
+          promoPriceHuf: 9_900,
+        },
+        now,
+      ),
+    ).toBe(19_900)
+    // Kikapcsolt pipa mellett az akciós ár hatástalan.
     expect(
-      resolveCoursePromo({ ...base, ...on, promoOriginalPriceHuf: 10_000 }).originalPriceHuf,
-    ).toBeNull()
-    expect(
-      resolveCoursePromo({
-        ...base,
-        ...on,
-        priceInHUFEnabled: false,
-        promoOriginalPriceHuf: 24_900,
-      }).originalPriceHuf,
-    ).toBeNull()
-    expect(
-      resolveCoursePromo({ ...base, ...on, priceInHUF: null, promoOriginalPriceHuf: 24_900 })
-        .originalPriceHuf,
-    ).toBeNull()
+      effectiveCoursePriceHuf(
+        { ...base, promoEnabled: false, promoStart: null, promoEnd: null, promoPriceHuf: 9_900 },
+        now,
+      ),
+    ).toBe(19_900)
   })
 
   it('érvénytelen dátum: null, és nem korlátoz', () => {
@@ -186,8 +268,8 @@ describe('isCoursePromoDisplayed: élő időablak + közzétett + érvényes ár
     promoEnabled: true,
     promoStart: '2026-09-01T12:00:00.000Z',
     promoEnd: '2026-09-30T12:00:00.000Z',
-    promoOriginalPriceHuf: 79500,
-    priceInHUF: 39500,
+    promoPriceHuf: 39500,
+    priceInHUF: 79500,
     priceInHUFEnabled: true,
     status: 'published' as const,
   }
@@ -219,7 +301,7 @@ describe('isCoursePromoDisplayed: élő időablak + közzétett + érvényes ár
   })
 })
 
-describe('validatePromoEnd és validatePromoOriginalPriceHuf', () => {
+describe('validatePromoEnd és validatePromoPriceHuf', () => {
   const opts = (promoStart: unknown) =>
     ({ siblingData: { promoStart } }) as unknown as Parameters<typeof validatePromoEnd>[1]
 
@@ -244,12 +326,14 @@ describe('validatePromoEnd és validatePromoOriginalPriceHuf', () => {
     expect(validatePromoEnd(new Date('2026-09-30T12:00:00.000Z'), opts(null))).toBe(true)
   })
 
-  it('az eredeti ár pozitív egész vagy üres', () => {
-    const numberOpts = {} as unknown as Parameters<typeof validatePromoOriginalPriceHuf>[1]
-    expect(validatePromoOriginalPriceHuf(24_900, numberOpts)).toBe(true)
-    expect(validatePromoOriginalPriceHuf(null, numberOpts)).toBe(true)
-    expect(validatePromoOriginalPriceHuf(0, numberOpts)).toMatch(/pozitív egész/)
-    expect(validatePromoOriginalPriceHuf(19.5, numberOpts)).toMatch(/pozitív egész/)
+  it('az akciós ár pozitív egész vagy üres', () => {
+    const numberOpts = {} as unknown as Parameters<typeof validatePromoPriceHuf>[1]
+    expect(validatePromoPriceHuf(14_900, numberOpts)).toBe(true)
+    expect(validatePromoPriceHuf(null, numberOpts)).toBe(true)
+    expect(validatePromoPriceHuf(undefined, numberOpts)).toBe(true)
+    expect(validatePromoPriceHuf(0, numberOpts)).toMatch(/pozitív egész/)
+    expect(validatePromoPriceHuf(-1, numberOpts)).toMatch(/pozitív egész/)
+    expect(validatePromoPriceHuf(19.5, numberOpts)).toMatch(/pozitív egész/)
   })
 })
 
@@ -322,12 +406,34 @@ describe('products collection: az „Akciós megjelenés” csoport', () => {
     const end = byName.get('promoEnd')
     expect(end?.type === 'date' ? end.validate : undefined).toBe(validatePromoEnd)
     expect(end === undefined ? undefined : descriptionOf(end)).toContain('nap végéig')
-    const original = byName.get('promoOriginalPriceHuf')
-    expect(original?.type).toBe('number')
-    expect(original?.type === 'number' ? original.validate : undefined).toBe(
-      validatePromoOriginalPriceHuf,
+    const promoPrice = byName.get('promoPriceHuf')
+    expect(promoPrice?.type).toBe('number')
+    expect(promoPrice?.type === 'number' ? promoPrice.validate : undefined).toBe(
+      validatePromoPriceHuf,
     )
-    expect(original?.type === 'number' ? original.min : undefined).toBe(1)
+    expect(promoPrice?.type === 'number' ? promoPrice.min : undefined).toBe(1)
+    // Az örökölt mező a sémában marad, de rejtve: senki nem olvassa.
+    const legacy = byName.get('promoOriginalPriceHuf')
+    expect(legacy?.type).toBe('number')
+    expect(legacy?.type === 'number' ? legacy.admin?.hidden : undefined).toBe(true)
+  })
+
+  it('a mezőnevek között ott az akciós ár, és az Ár mezővel azonos owner-only írás védi', async () => {
+    expect(coursePromoFieldNames).toContain('promoPriceHuf')
+    const byName = new Map(
+      (await promoCollapsible()).fields.map((field) => ['name' in field ? field.name : '', field]),
+    )
+    // A mezőszintű access csak a nevesített (nem ui) mezőkön él (access.test.ts mintája).
+    const accessOf = (field: Field | undefined) =>
+      field !== undefined && field.type !== 'ui' ? field.access : undefined
+    const promoPrice = accessOf(byName.get('promoPriceHuf'))
+    expect(promoPrice?.create).toBe(isOwnerFieldAccess)
+    expect(promoPrice?.update).toBe(isOwnerFieldAccess)
+    expect(promoPrice?.read).toBeUndefined()
+    // A többi akció-mező (pipa, dátumok) nem ár: a staff is állíthatja.
+    for (const name of ['promoEnabled', 'promoStart', 'promoEnd']) {
+      expect(accessOf(byName.get(name))?.update, name).toBeUndefined()
+    }
   })
 
   it('az állapot-doboz ui-mező, a saját komponensére mutat, és csak bekapcsolt pipa mellett látszik', async () => {

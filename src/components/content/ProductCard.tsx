@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { courseHref } from '../../lib/course-url'
 import { AUDIENCE_LABELS, normalizeAudience } from '../../lib/course-audience'
-import { coursePriceBadgeKind, courseTitle } from '../../lib/courses'
+import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../lib/courses'
 import { ctaLabel } from '../../lib/cta-vocabulary'
 import { rewriteVisitorDashLeftover } from '../../lib/gondolatjel-leftover'
 import type { Product } from '../../payload-types'
@@ -77,10 +77,7 @@ export function isPubliclyVisibleProduct(product: { status?: string | null }): b
  * sorok nélkül, legfeljebb 3 (a mező `maxRows`-ával azonos plafon — a felület
  * akkor sem törik el, ha egy régi rekordban több sor maradt).
  */
-export function cardHighlightTexts(
-  product: Pick<Product, 'cardHighlights'>,
-  limit = 3,
-): string[] {
+export function cardHighlightTexts(product: Pick<Product, 'cardHighlights'>, limit = 3): string[] {
   if (!Array.isArray(product.cardHighlights)) {
     return []
   }
@@ -108,9 +105,7 @@ export function cardHighlightTexts(
  * garantált", lásd docs/regi-oldal-valaszok.md 4. táblázat 3. sora). Ki nem
  * töltött mezőnél tehát a sor egyszerűen elmarad — állítás helyett csend.
  */
-export function accessDurationLabel(
-  product: Pick<Product, 'accessDurationDays'>,
-): string | null {
+export function accessDurationLabel(product: Pick<Product, 'accessDurationDays'>): string | null {
   const days = product.accessDurationDays
   if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
     return null
@@ -212,7 +207,7 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
             <span className="kc-product-card__pricing">
               {priceBadge === 'price' ? (
                 <span className="kc-product-card__price">
-                  <PriceTag label="Ár:" priceHuf={product.priceInHUF as number} />
+                  <PriceTag label="Ár:" priceHuf={coursePriceHuf(product) as number} />
                 </span>
               ) : null}
               {priceBadge === 'free' ? (
@@ -220,9 +215,7 @@ export function ProductCard({ product, ctaLabel, featured = false }: ProductCard
                   <Badge tone="success">Ingyenes</Badge>
                 </span>
               ) : null}
-              {accessLabel ? (
-                <span className="kc-product-card__access">{accessLabel}</span>
-              ) : null}
+              {accessLabel ? <span className="kc-product-card__access">{accessLabel}</span> : null}
             </span>
             {/* A kártya EGÉSZE a kurzus-oldalra vivő link, ezért a CTA dekoratív
                 felirat (aria-hidden) — beágyazott gomb/link nem lehet benne. */}

@@ -1,5 +1,6 @@
 import type { Category, Media, Product } from '../payload-types'
 
+import { effectiveCoursePriceHuf, type CoursePromoFields } from './course-promo'
 import { courseCtaHref } from './course-url'
 import { ctaLabel } from './cta-vocabulary'
 import { formatPriceHuf } from './format-price'
@@ -323,32 +324,48 @@ export function courseTitle(
   return sku.length > 0 ? sku : `Kurzus #${product.id}`
 }
 
-/** A termék ára egész forintban; null, ha az ár nincs engedélyezve/kitöltve. */
-export function coursePriceHuf(
-  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
-): number | null {
-  if (product.priceInHUFEnabled !== true) {
-    return null
-  }
-  if (typeof product.priceInHUF !== 'number' || !Number.isFinite(product.priceInHUF)) {
-    return null
-  }
-  // A NEM POZITÍV ár nem ár, hanem konfigurációs hiba. A 0 Ft csábító
-  // rövidítés lenne az „ingyenes"-re, de az ingyenességet KIZÁRÓLAG a
-  // priceInHUFEnabled: false fejezi ki (lásd isFreeCourse). Ha a 0-t itt
-  // érvényes árnak vennénk, a felület „Megveszem" gombot adna rá, a
-  // checkout-kapu viszont elutasítaná — pontosan az a szétcsúszás, amit a
-  // tulajdonos élő hibabejelentése után zártunk be. A kapu ugyanezt a
-  // függvényt hívja (src/lib/checkout/start-checkout.ts), tehát a kettő nem
-  // tud egymástól elsodródni.
-  return product.priceInHUF > 0 ? product.priceInHUF : null
+/**
+ * A termék MOST fizetendő ára egész forintban; null, ha az ár nincs
+ * engedélyezve/kitöltve.
+ *
+ * WP63 (2026-09-21): élő akcióban az akciós ár (`promoPriceHuf`), az
+ * időablakon kívül a rendes ár (`priceInHUF`). A visszaállás magától, a
+ * lejárat pillanatában történik, ütemezett visszaírás nélkül, mert MINDEN
+ * ár-olvasó (oldal, kártya, kosár, pénztár, Barion-összeg, rendelés-snapshot,
+ * strukturált adat) ezt a függvényt hívja. A promo-mezők a típusban
+ * opcionálisak a szűk Pick-hívók miatt; aki `select`-tel kér terméket, a
+ * `COURSE_PRICE_SELECT` mezőit kérje, különben csendben a rendes árat kapja.
+ *
+ * A NEM POZITÍV ár nem ár, hanem konfigurációs hiba. A 0 Ft csábító
+ * rövidítés lenne az „ingyenes"-re, de az ingyenességet KIZÁRÓLAG a
+ * priceInHUFEnabled: false fejezi ki (lásd isFreeCourse). Ha a 0-t itt
+ * érvényes árnak vennénk, a felület „Megveszem" gombot adna rá, a
+ * checkout-kapu viszont elutasítaná; pontosan az a szétcsúszás, amit a
+ * tulajdonos élő hibabejelentése után zártunk be. A kapu ugyanezt a
+ * függvényt hívja (src/lib/checkout/start-checkout.ts), tehát a kettő nem
+ * tud egymástól elsodródni.
+ */
+export function coursePriceHuf(product: CoursePriceInput, now: Date = new Date()): number | null {
+  return effectiveCoursePriceHuf(product, now)
 }
 
+/** A `coursePriceHuf` bemenete: rendes ár + (opcionálisan) az akció mezői. */
+export type CoursePriceInput = Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'> &
+  Partial<CoursePromoFields>
+
+/** A fizetendő ár kiszámításához `select`-ben kérendő mezők. */
+export const COURSE_PRICE_SELECT = {
+  priceInHUFEnabled: true,
+  priceInHUF: true,
+  promoEnabled: true,
+  promoStart: true,
+  promoEnd: true,
+  promoPriceHuf: true,
+} as const
+
 /** Ár-megjelenítés a kártyákon/részleteken — az 5A formatPriceHuf közös formázója. */
-export function coursePriceLabel(
-  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
-): string | null {
-  const price = coursePriceHuf(product)
+export function coursePriceLabel(product: CoursePriceInput, now?: Date): string | null {
+  const price = coursePriceHuf(product, now)
   return price === null ? null : formatPriceHuf(price)
 }
 
@@ -364,10 +381,8 @@ export type CoursePriceBadgeKind = 'price' | 'free' | 'none'
  *   A hibás rekordot a staff javítja — a storefront addig sem árat, sem
  *   „Ingyenes"-t nem mutat.
  */
-export function coursePriceBadgeKind(
-  product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>,
-): CoursePriceBadgeKind {
-  if (coursePriceHuf(product) !== null) {
+export function coursePriceBadgeKind(product: CoursePriceInput, now?: Date): CoursePriceBadgeKind {
+  if (coursePriceHuf(product, now) !== null) {
     return 'price'
   }
   // Az „ingyenes" megítélése az egyetlen igazságforrásból (isFreeCourse) jön:
@@ -385,8 +400,8 @@ export function coursePriceBadgeKind(
  * kezelné (pontosan ez tette a rosszul konfigurált terméket a kezdőlap
  * lead-magnet sávjába).
  */
-export function isPaidCourse(product: Pick<Product, 'priceInHUF' | 'priceInHUFEnabled'>): boolean {
-  return coursePriceHuf(product) !== null
+export function isPaidCourse(product: CoursePriceInput, now?: Date): boolean {
+  return coursePriceHuf(product, now) !== null
 }
 
 export interface CourseCategoryOption {

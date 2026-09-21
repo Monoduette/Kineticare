@@ -65,10 +65,16 @@ describe('sitemap select — a mezőlista pinnelve', () => {
   })
 
   it('a kurzus-lekérdezés PONTOSAN ezeket a mezőket kéri', () => {
+    // WP63: a fizetendő ár az akció mezőitől is függ (coursePriceHuf), ezért
+    // a sitemap is kéri őket, hogy a szűkített dokumentum ugyanazt az árat adja.
     expect(productFields).toEqual([
       'coverImage',
       'priceInHUF',
       'priceInHUFEnabled',
+      'promoEnabled',
+      'promoEnd',
+      'promoPriceHuf',
+      'promoStart',
       'slug',
       'status',
       'updatedAt',
