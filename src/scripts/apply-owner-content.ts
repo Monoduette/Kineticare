@@ -5947,6 +5947,7 @@ async function futtat(): Promise<void> {
       teljesAr:
         teljesAru !== undefined &&
         teljesAru.status === 'published' &&
+        teljesAru._status !== 'draft' &&
         teljesAru.priceInHUFEnabled === true &&
         typeof teljesAru.priceInHUF === 'number' &&
         teljesAru.priceInHUF > 0
