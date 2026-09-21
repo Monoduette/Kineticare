@@ -401,6 +401,9 @@ a skill-doksiban külön PR-ben kell átvezetni (nem e munkacsomag fájlja).
 | **A ProBody kézworkshop megnyitása** | 1 | Nézd meg a kézworkshopot (kezdőlapi sín, REV C) | **#41** | `Nézd meg a kézworkshopot` |
 | **A szakkönyv vásárlási oldalának megnyitása** | 0 | (új, WP49: a /szakembereknek 2. kártyája, amint lesz vásárlási cím) | **#42** | `Nézd meg a szakkönyvet` |
 | **Érdeklődés a szakkönyvről** | 0 | (új, WP49: a /szakembereknek 2. kártyája, amíg nincs vásárlási cím) | **#43** | `Érdeklődj a szakkönyvről` |
+| **A hibajelző doboz megnyitása** | 0 | (új, WP65: lábléc + hibaoldal + 404) | **#44** | `Hibát jelzek` |
+| **A hibajelzés beküldése** | 0 | (új, WP65: a doboz beküldő gombja) | **#45** | `Elküldöm` |
+| **A modális doboz bezárása** | 0 | (új, WP65: a hibajelző doboz fejléce) | **#46** | `Bezárás` |
 | Folyamatban | **7** | Feldolgozás… · Küldés… · Mentés… · Belépés… · Regisztráció… · Beállítás… · Kijelentkezés… · Újratöltés folyamatban… | **L-1** | `Belépés…` `Regisztráció…` `Kijelentkezés…` `Küldés…` `Mentés…` `Feldolgozás…` `Betöltés…` |
 
 **Mit mond ez a leképezés összesítve:** 28 mért cselekvésre **63 különböző felirat** élt; a jóváhagyott szótárban ugyanezekre **32 felirat + 7 folyamatban-alak** van. A legnagyobb nyereség a kurzuslistánál (8 → 1) és a saját kurzusoknál (4 → 1) keletkezett – mindkettő WCAG 2.2 **3.2.4** sérülés volt.

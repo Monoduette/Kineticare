@@ -49,6 +49,11 @@ export const RATE_LIMIT_RULES = {
   'password-reset': { limit: 5, windowMs: TEN_MINUTES_MS },
   'checkout-start': { limit: 10, windowMs: TEN_MINUTES_MS },
   'form-submission': { limit: 5, windowMs: TEN_MINUTES_MS },
+  // Visszajelzés-doboz (WP65): nyilvános, hitelesítés nélküli végpont, és
+  // minden elfogadott hívás kimenő PostHog-kérést indít. Ugyanaz az osztály,
+  // mint a `form-submission`-é: egy valódi látogató tíz percen belül nem küld
+  // ötnél több hibabejelentést, a gépi zápor viszont elakad.
+  visszajelzes: { limit: 5, windowMs: TEN_MINUTES_MS },
   'stream-token': { limit: 60, windowMs: ONE_MINUTE_MS },
   // A haladás-jelölés a stream-tokennel PÁROSÍTVA fut (leckénként legfeljebb
   // egyszer), de ÍR az adatbázisba, és az automatikus, nézettség-alapú jelölés
@@ -122,6 +127,7 @@ const ROUTE_CLASS_BY_PATH = new Map<string, RateLimitedRouteClass>([
   ['/api/carts', 'cart-write'],
   // Saját route-handlerek (maguk hívják a `checkRequestRateLimit`-et):
   ['/api/checkout/start', 'checkout-start'],
+  ['/api/visszajelzes', 'visszajelzes'],
   // A jelszó-visszaállítást a Payload REST helyett a saját, jelszó-politikát
   // kikényszerítő végpont szolgálja ki (src/lib/security/reset-password-route.ts).
   ['/api/users/reset-password', 'password-reset'],

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { FeedbackTrigger } from '../feedback/FeedbackTrigger'
 import { Button } from '../ui/Button'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
@@ -62,6 +63,12 @@ export function NotFoundView() {
         <p className="kc-error-page__contact">
           Nem találod, amit kerestél? Írj a{' '}
           <a href={`mailto:${NOT_FOUND_CONTACT_EMAIL}`}>{NOT_FOUND_CONTACT_EMAIL}</a> címre.
+        </p>
+        {/* WP65 — hibajelzés a 404-ről is. A gomb NEM hivatkozás, tehát a lap
+            cél-leltárát nem duplázza (őr: src/__tests__/hibaoldal.test.tsx),
+            és a doboz csak nyitáskor kerül a DOM-ba. */}
+        <p className="kc-error-page__contact">
+          <FeedbackTrigger />
         </p>
       </Container>
     </Section>
