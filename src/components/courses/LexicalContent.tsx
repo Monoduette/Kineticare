@@ -2,7 +2,9 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 import { sanitizeCmsUrl } from '../../lib/safe-url'
+import { parseCoursePackageNode } from '../../lib/course-package'
 import type { Product } from '../../payload-types'
+import { CoursePackageContent } from './promo/CoursePackageContent'
 
 /**
  * Minimális Lexical richText → React renderer a kurzus longDescription-höz.
@@ -22,7 +24,13 @@ interface LexicalNode {
   format?: number | string
   children?: LexicalNode[]
   text?: string
-  fields?: { url?: string; newTab?: boolean }
+  fields?: {
+    url?: string
+    newTab?: boolean
+    blockType?: unknown
+    heading?: unknown
+    items?: unknown
+  }
   [key: string]: unknown
 }
 
@@ -51,8 +59,41 @@ function renderChildren(node: LexicalNode, keyPrefix: string): ReactNode[] {
   return (node.children ?? []).map((child, index) => renderNode(child, `${keyPrefix}-${index}`))
 }
 
+/** Félkész szerkesztői blokkban is megmarad minden olvasható szöveg, ikon nélkül. */
+function renderIncompletePackage(node: LexicalNode, key: string): ReactNode {
+  const heading = typeof node.fields?.heading === 'string' ? node.fields.heading : null
+  const rows = Array.isArray(node.fields?.items) ? node.fields.items : []
+  return (
+    <div key={key}>
+      {heading ? <h2>{heading}</h2> : null}
+      <ul>
+        {rows.map((row: unknown, index: number) => {
+          if (typeof row !== 'object' || row === null) return null
+          const title = 'title' in row && typeof row.title === 'string' ? row.title : ''
+          const description =
+            'description' in row && typeof row.description === 'string' ? row.description : ''
+          return title || description ? (
+            <li key={index}>
+              {title ? <strong>{title}</strong> : null}
+              {title && description ? ' ' : null}
+              {description}
+            </li>
+          ) : null
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function renderNode(node: LexicalNode, key: string): ReactNode {
   switch (node.type) {
+    case 'block': {
+      const data = parseCoursePackageNode(node)
+      if (data !== null) return <CoursePackageContent data={data} key={key} />
+      if (node.fields?.blockType === 'coursePackage') return renderIncompletePackage(node, key)
+      // Más vagy hibás blokkot nem értelmezünk az új csomagformátumként.
+      return renderChildren(node, key)
+    }
     case 'text':
       return renderFormattedText(node, key)
     case 'linebreak':

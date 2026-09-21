@@ -1,4 +1,5 @@
 import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
+import { BlocksFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
 import type { JSONSchema4 } from 'json-schema'
 import type {
@@ -20,6 +21,7 @@ import {
   streamAssetReadAccess,
 } from '../access'
 import { revalidateMenusCache } from '../collections/Menus'
+import { coursePackage } from '../blocks/CoursePackage'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
@@ -634,6 +636,12 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       name: 'longDescription',
       type: 'richText',
       label: 'Részletes leírás',
+      editor: lexicalEditor({
+        features: ({ rootFeatures }) => [
+          ...rootFeatures,
+          BlocksFeature({ blocks: [coursePackage] }),
+        ],
+      }),
       admin: {
         description: 'A kurzus oldalán megjelenő teljes szöveg.',
       },
