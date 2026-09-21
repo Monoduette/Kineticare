@@ -1652,6 +1652,10 @@ export interface Product {
    */
   audience?: ('laikus' | 'szakember') | null;
   /**
+   * Bekapcsolva a kurzus kimarad a nyilvános kurzuslistából, ajánlókból és a kurzusra hivatkozó menüpontokból. Közzétett állapotban a közvetlen linkkel továbbra is megnyitható és megvásárolható; a vásárlók Kurzusaim listájában megmarad. Ez nem hozzáférés-védelem. Csak tulajdonos állíthatja.
+   */
+  unlisted?: boolean | null;
+  /**
    * Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.
    */
   status?: ('draft' | 'published' | 'archived') | null;
@@ -3851,6 +3855,7 @@ export interface CourseProgressSelect<T extends boolean = true> {
  */
 export interface ProductsSelect<T extends boolean = true> {
   audience?: T;
+  unlisted?: T;
   status?: T;
   displayTitle?: T;
   slug?: T;

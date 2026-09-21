@@ -34,6 +34,7 @@ import * as migration_20260916_145714_users_migration_notice_sent_at from './202
 import * as migration_20260920_174501_menus_unlisted from './20260920_174501_menus_unlisted';
 import * as migration_20260920_203756_products_promo from './20260920_203756_products_promo';
 import * as migration_20260921_070618_products_promo_price from './20260921_070618_products_promo_price';
+import * as migration_20260921_095507_products_unlisted from './20260921_095507_products_unlisted';
 
 export const migrations = [
   {
@@ -214,6 +215,11 @@ export const migrations = [
   {
     up: migration_20260921_070618_products_promo_price.up,
     down: migration_20260921_070618_products_promo_price.down,
-    name: '20260921_070618_products_promo_price'
+    name: '20260921_070618_products_promo_price',
+  },
+  {
+    up: migration_20260921_095507_products_unlisted.up,
+    down: migration_20260921_095507_products_unlisted.down,
+    name: '20260921_095507_products_unlisted'
   },
 ];

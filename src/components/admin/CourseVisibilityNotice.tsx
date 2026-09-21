@@ -20,8 +20,9 @@ import { courseVisibilityNotice } from './course-visibility'
 export function CourseVisibilityNotice(): JSX.Element | null {
   const { user } = useAuth<{ id: number | string; role?: string | null }>()
   const status = useFormFields(([fields]) => fields?.status?.value)
+  const unlisted = useFormFields(([fields]) => fields?.unlisted?.value)
 
-  const notice = courseVisibilityNotice(status, hasOwnerRole(user))
+  const notice = courseVisibilityNotice(status, hasOwnerRole(user), unlisted)
   const figyelmeztet = notice.kind === 'figyelmeztetes'
 
   // A Payload admin saját CSS-változóit használjuk, hogy a sáv világos és

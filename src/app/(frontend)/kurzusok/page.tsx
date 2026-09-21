@@ -15,6 +15,7 @@ import {
   courseListingJsonLd,
 } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
+import { DISCOVERABLE_COURSES_WHERE } from '@/lib/course-discovery'
 import { courseHref } from '@/lib/course-url'
 import {
   CATEGORY_QUERY_PARAM,
@@ -58,9 +59,7 @@ async function listPublishedCourses(): Promise<Product[]> {
     const payload = await getPayload({ config })
     const { docs } = await payload.find({
       collection: 'products',
-      where: {
-        status: { equals: 'published' },
-      },
+      where: DISCOVERABLE_COURSES_WHERE,
       depth: 1,
       limit: 100,
       sort: 'sku',

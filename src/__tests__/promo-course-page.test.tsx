@@ -68,6 +68,16 @@ beforeEach(() => {
 })
 
 describe('kurzusoldal — akciós kapcsoló', () => {
+  it('a listából rejtett kurzus közvetlenül anonim látogatónak is megvehető', async () => {
+    mocks.find.mockResolvedValue({ docs: [{ ...base, unlisted: true }] })
+    const html = renderToStaticMarkup(await CoursePage(props))
+    expect(html).toContain('kc-promo-hero')
+    expect(html).toContain('href="/penztar?termek=12"')
+    expect(html).toContain('Megveszem a kurzust')
+    expect(html).toContain(formatPriceHuf(39500))
+    expect(JSON.stringify(mocks.find.mock.calls[0]?.[0].where)).not.toContain('unlisted')
+  })
+
   it('élő akciónál az akciós sablon megy, az akciós árral és az áthúzott rendes árral', async () => {
     const html = renderToStaticMarkup(await CoursePage(props))
     expect(html).toContain('kc-promo-hero')

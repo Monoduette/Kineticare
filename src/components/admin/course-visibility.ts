@@ -29,10 +29,21 @@ export function normalizeVisibility(value: unknown): CourseVisibilityStatus | nu
  * @param status a `products.status` nyers értéke
  * @param canEdit állíthatja-e a bejelentkezett felhasználó a mezőt (owner)
  */
-export function courseVisibilityNotice(status: unknown, canEdit: boolean): CourseVisibilityNotice {
+export function courseVisibilityNotice(
+  status: unknown,
+  canEdit: boolean,
+  unlisted: unknown = false,
+): CourseVisibilityNotice {
   const ertek = normalizeVisibility(status)
 
   if (ertek === 'published') {
+    if (unlisted === true) {
+      return {
+        kind: 'rendben',
+        title: 'Ez a kurzus közvetlen linkkel érhető el.',
+        body: 'A nyilvános listákban és ajánlókban nem jelenik meg. A linkkel bárki megnyithatja és megvásárolhatja; a vásárlók a Kurzusaim között továbbra is elérik. Ez nem hozzáférés-védelem.',
+      }
+    }
     return {
       kind: 'rendben',
       title: 'Ez a kurzus LÁTSZIK a weboldalon.',

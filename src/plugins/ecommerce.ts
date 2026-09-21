@@ -1055,6 +1055,21 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       ],
     },
     {
+      name: 'unlisted',
+      type: 'checkbox',
+      defaultValue: false,
+      label: 'Rejtett kurzus (csak közvetlen linkkel)',
+      access: {
+        create: isOwnerFieldAccess,
+        update: isOwnerFieldAccess,
+      },
+      admin: {
+        position: 'sidebar',
+        description:
+          'Bekapcsolva a kurzus kimarad a nyilvános kurzuslistából, ajánlókból és a kurzusra hivatkozó menüpontokból. Közzétett állapotban a közvetlen linkkel továbbra is megnyitható és megvásárolható; a vásárlók Kurzusaim listájában megmarad. Ez nem hozzáférés-védelem. Csak tulajdonos állíthatja.',
+      },
+    },
+    {
       name: 'status',
       type: 'select',
       /**

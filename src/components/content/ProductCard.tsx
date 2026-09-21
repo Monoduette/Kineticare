@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { isDiscoverableCourse } from '../../lib/course-discovery'
 import { courseHref } from '../../lib/course-url'
 import { AUDIENCE_LABELS, normalizeAudience } from '../../lib/course-audience'
 import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../lib/courses'
@@ -49,6 +50,7 @@ export interface ProductCardProps {
     | 'accessDurationDays'
     | 'audience'
     | 'status'
+    | 'unlisted'
     // Az akció-címke négy mezője (src/lib/course-promo.ts), WP60.
     | 'promoEnabled'
     | 'promoStart'
@@ -68,9 +70,7 @@ export interface ProductCardProps {
 }
 
 /** Publikusan megjeleníthető-e a termék (draft/archived sosem). */
-export function isPubliclyVisibleProduct(product: { status?: string | null }): boolean {
-  return product.status === 'published'
-}
+export const isPubliclyVisibleProduct = isDiscoverableCourse
 
 /**
  * A kártyán megjelenő előny-sorok a `cardHighlights` tömbből: trimmelve, üres

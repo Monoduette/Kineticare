@@ -1,5 +1,6 @@
 import type { Menu, Page, Post, Product } from '../payload-types'
 
+import { isDiscoverableCourse } from './course-discovery'
 import { COURSE_BASE_PATH, courseHref } from './course-url'
 import { extractRelationshipId } from './menu-validation'
 import { sanitizeCmsUrl } from './safe-url'
@@ -157,6 +158,7 @@ export function resolveMenuHref(menu: Menu): string | null {
   }
   const doc = ref.value as Page | Post | Product
   if (!isPublishedTarget(doc)) return null
+  if (ref.relationTo === 'products' && !isDiscoverableCourse(doc)) return null
   return resolveMenuTargetPath(ref.relationTo, doc)
 }
 

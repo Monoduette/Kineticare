@@ -46,6 +46,23 @@ function readOnly(field: Field | undefined) {
 }
 
 describe('course editor presentation bindings', () => {
+  it('keeps discovery separate from publication and uses the existing owner-only write policy', async () => {
+    const collection = await runtime.override!({
+      defaultCollection: { slug: 'products', fields: [] },
+    })
+    const field = paths(collection.fields).get('unlisted')
+    expect(field).toMatchObject({
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { position: 'sidebar' },
+    })
+    expect(field && 'access' in field ? field.access?.create : null).toBe(isOwnerFieldAccess)
+    expect(field && 'access' in field ? field.access?.update : null).toBe(isOwnerFieldAccess)
+    expect(field?.type === 'checkbox' ? field.admin?.description : null).toContain(
+      'nem hozzáférés-védelem',
+    )
+  })
+
   it('keeps root field paths and all original access functions under task tabs', async () => {
     const price: Field = {
       type: 'group',

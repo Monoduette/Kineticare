@@ -608,10 +608,16 @@ export function productSeoDoc(
  * Ugyanaz a fallback-lánc + canonical, mint a pages/posts útvonalakon.
  */
 export function buildProductMetadata(
-  product: Parameters<typeof productSeoDoc>[0],
+  product: Parameters<typeof productSeoDoc>[0] & { unlisted?: boolean | null },
   path: string,
 ): Metadata {
-  return buildDocMetadata(productSeoDoc(product), path)
+  const metadata = buildDocMetadata(productSeoDoc(product), path)
+  // A rejtett kurzus továbbra is publikus URL. A noindex felfedezhetőségi
+  // jelzés, nem jogosultsági kapu; robots.txt-tiltás nem kerül elé.
+  // https://developers.google.com/search/docs/crawling-indexing/block-indexing
+  return product.unlisted === true
+    ? { ...metadata, robots: { index: false, follow: true } }
+    : metadata
 }
 
 // ---------------------------------------------------------------------------

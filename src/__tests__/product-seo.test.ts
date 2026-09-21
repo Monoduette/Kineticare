@@ -64,6 +64,15 @@ const COURSE_PATH = '/kurzusok/7'
 // ---------------------------------------------------------------------------
 
 describe('kurzus SEO-fallbacklánc (products → SeoDoc)', () => {
+  it('a rejtett kurzus nem indexelhető, de megosztási adatai és canonical címe megmaradnak', () => {
+    const listed = buildProductMetadata(product(), COURSE_PATH)
+    const hidden = buildProductMetadata(product({ unlisted: true }), COURSE_PATH)
+    expect(hidden).toEqual({ ...listed, robots: { index: false, follow: true } })
+    for (const unlisted of [false, null, undefined]) {
+      expect(buildProductMetadata(product({ unlisted }), COURSE_PATH)).toEqual(listed)
+    }
+  })
+
   it('title: seoTitle → kurzusnév (sku)', () => {
     expect(
       resolveSeoTitle(productSeoDoc(product({ seoTitle: 'Kéztorna otthon — 8 hetes program' }))),

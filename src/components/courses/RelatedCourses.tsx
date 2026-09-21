@@ -1,3 +1,4 @@
+import { isDiscoverableCourse } from '../../lib/course-discovery'
 import { coursePriceHuf } from '../../lib/courses'
 import type { Product } from '../../payload-types'
 import { Container } from '../ui/Container'
@@ -45,7 +46,7 @@ export interface RelatedCoursesProps {
 }
 
 export function RelatedCourses({ products, crossSell = false }: RelatedCoursesProps) {
-  const published = products.filter((product) => product.status === 'published')
+  const published = products.filter(isDiscoverableCourse)
   if (published.length === 0) {
     return null
   }

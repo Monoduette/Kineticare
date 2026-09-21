@@ -2,6 +2,7 @@ import { getPayload } from 'payload'
 
 import config from '../payload.config'
 import type { Category, Page, Post, Product, Testimonial } from '../payload-types'
+import { DISCOVERABLE_COURSES_WHERE } from './course-discovery'
 import { HOME_PAGE_SLUG } from './content-slugs'
 import { reportUnpricedPublishedCourses } from './courses'
 import { logger } from './logger'
@@ -300,7 +301,7 @@ export async function getSitemapProducts(limit = 500): Promise<SitemapProduct[]>
       const payload = await getPayload({ config })
       const { docs } = await payload.find({
         collection: 'products',
-        where: PUBLISHED_WHERE,
+        where: DISCOVERABLE_COURSES_WHERE,
         limit,
         sort: '-createdAt',
         // depth 1: a kiválasztott `coverImage` reláció populálva jön (a
@@ -462,7 +463,7 @@ export async function getFeaturedProducts(limit = 3): Promise<Product[]> {
       const payload = await getPayload({ config })
       const { docs } = await payload.find({
         collection: 'products',
-        where: PUBLISHED_WHERE,
+        where: DISCOVERABLE_COURSES_WHERE,
         limit,
         sort: '-createdAt',
         depth: 1,
@@ -487,7 +488,7 @@ export async function getPublishedProducts(limit = 12): Promise<Product[]> {
       const payload = await getPayload({ config })
       const { docs } = await payload.find({
         collection: 'products',
-        where: PUBLISHED_WHERE,
+        where: DISCOVERABLE_COURSES_WHERE,
         limit,
         sort: '-createdAt',
         depth: 1,
@@ -515,7 +516,7 @@ export async function getFreeProduct(): Promise<Product | null> {
       const payload = await getPayload({ config })
       const { docs } = await payload.find({
         collection: 'products',
-        where: { and: [PUBLISHED_WHERE, { priceInHUFEnabled: { equals: false } }] },
+        where: { and: [DISCOVERABLE_COURSES_WHERE, { priceInHUFEnabled: { equals: false } }] },
         limit: 1,
         sort: '-createdAt',
         depth: 0,
