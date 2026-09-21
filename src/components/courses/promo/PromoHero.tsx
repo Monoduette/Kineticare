@@ -109,47 +109,49 @@ export function PromoHero({
           </h1>
           {lead ? <p className="kc-promo-hero__lead">{lead}</p> : null}
 
-          <PromoPrice
-            className="kc-promo-hero__price"
-            note="egyszeri díj, további költség nincs"
-            originalPriceHuf={originalPriceHuf}
-            priceHuf={priceHuf}
-          />
+          <div className="kc-promo-hero__purchase">
+            <PromoPrice
+              className="kc-promo-hero__price"
+              note="egyszeri díj, további költség nincs"
+              originalPriceHuf={originalPriceHuf}
+              priceHuf={priceHuf}
+            />
 
-          {/* A ragadós sáv horgonya CSAK az elsődleges gomb burka (nem a két gomb
-              sora): kis kijelzőn a második gomb levágása ne mutassa a sávot,
-              amíg a vásárlógomb teljesen látszik (Codex, #278). */}
-          <div className="kc-promo-hero__cta">
-            <div className="kc-promo-hero__actions">
-              {/* A felirat a szótárból, a CTA-ág szerint (§3.2 #1 / #8) — a
-                  `resolveCourseCta` ugyanezt adja a `label` mezőben; a két
-                  cselekvő ágon a gomb, a nem cselekvő ágon (label null) nincs
-                  gomb, csak a magyarázat. */}
-              {cta.kind === 'purchased' && cta.href !== null ? (
-                <span className="kc-promo-hero__primary" id={ctaId}>
-                  <Button className="kc-promo-hero__button" href={cta.href} variant="secondary">
-                    {ctaLabel('course-start')}
+            {/* A ragadós sáv horgonya CSAK az elsődleges gomb burka (nem a két gomb
+                sora): kis kijelzőn a második gomb levágása ne mutassa a sávot,
+                amíg a vásárlógomb teljesen látszik (Codex, #278). */}
+            <div className="kc-promo-hero__cta">
+              <div className="kc-promo-hero__actions">
+                {/* A felirat a szótárból, a CTA-ág szerint (§3.2 #1 / #8) — a
+                    `resolveCourseCta` ugyanezt adja a `label` mezőben; a két
+                    cselekvő ágon a gomb, a nem cselekvő ágon (label null) nincs
+                    gomb, csak a magyarázat. */}
+                {cta.kind === 'purchased' && cta.href !== null ? (
+                  <span className="kc-promo-hero__primary" id={ctaId}>
+                    <Button className="kc-promo-hero__button" href={cta.href} variant="secondary">
+                      {ctaLabel('course-start')}
+                    </Button>
+                  </span>
+                ) : cta.kind === 'buy' && cta.href !== null ? (
+                  <span className="kc-promo-hero__primary" id={ctaId}>
+                    <Button className="kc-promo-hero__button" href={cta.href} variant="primary">
+                      {ctaLabel('course-buy')}
+                    </Button>
+                  </span>
+                ) : null}
+                {hasCurriculum ? (
+                  <Button className="kc-promo-hero__button" href="#tananyag" variant="secondary">
+                    {ctaLabel('course-modules-jump')}
                   </Button>
-                </span>
-              ) : cta.kind === 'buy' && cta.href !== null ? (
-                <span className="kc-promo-hero__primary" id={ctaId}>
-                  <Button className="kc-promo-hero__button" href={cta.href} variant="primary">
-                    {ctaLabel('course-buy')}
-                  </Button>
-                </span>
-              ) : null}
-              {hasCurriculum ? (
-                <Button className="kc-promo-hero__button" href="#tananyag" variant="secondary">
-                  {ctaLabel('course-modules-jump')}
-                </Button>
+                ) : null}
+              </div>
+              {cta.note !== null ? <p className="kc-promo-hero__note">{cta.note}</p> : null}
+              {cta.kind === 'purchased' ? (
+                <p className="kc-promo-hero__note">
+                  Már megvetted ezt a kurzust. A lejátszóban éred el.
+                </p>
               ) : null}
             </div>
-            {cta.note !== null ? <p className="kc-promo-hero__note">{cta.note}</p> : null}
-            {cta.kind === 'purchased' ? (
-              <p className="kc-promo-hero__note">
-                Már megvetted ezt a kurzust. A lejátszóban éred el.
-              </p>
-            ) : null}
           </div>
 
           {trustRows.length > 0 ? (

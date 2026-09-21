@@ -9,7 +9,7 @@
  * kikapcsol).
  *
  * KONTRASZT (számolt, WCAG 2.2 SC 1.4.3 / 1.4.11; a tokens.css értékeivel):
- *   fátyol: ink (#10243e) 78% + a kép. A LEGROSSZABB eset a tiszta fehér
+ *   fátyol: ink (#10243e) 90→78% + a kép. A LEGROSSZABB eset a tiszta fehér
  *   képrészlet: a kompozit #455468 (69,84,104).
  *   - fehér (--kc-color-on-dark, #ffffff) a legrosszabb kompoziton ... 7,71:1 ✓
  *   - fehér a tiszta inken (kép nélkül, záró sáv) ...................... 15,63:1 ✓
@@ -27,10 +27,10 @@
  * ÉRINTŐCÉL: minden gomb és chip min-height 2.75rem (44 px) — ui.css
  *   .kc-button, kurzusok.css .kc-course-jump__chip
  *   (WCAG 2.2 SC 2.5.8 a 24 px-et kéri, a repó 44 px-et használ).
- * REFLOW (SC 1.4.10): 320 px-en egy hasáb, a gombok tördelődnek (flex-wrap),
- *   az ár-sor tördelődik, a kép `object-fit: cover` — vízszintes görgetés
- *   nincs (mérve: a dokumentum scrollWidth = 320).
- * SORHOSSZ: a hero és a záró sáv szövege --kc-measure (34rem ≈ 75 magyar
+ * REFLOW (SC 1.4.10): a vásárlási sor 1100 px alatt egy hasáb; az ár-sor
+ *   tördelődik, a kép `object-fit: cover`. A kiadás előtt 320 px-en is
+ *   mérendő a dokumentum szélessége és a gombok érintőcélja.
+ * SORHOSSZ: a hero címe és a záró sáv szövege --kc-measure (34rem ≈ 75 magyar
  *   karakter), a lead --kc-measure-comfort (30rem ≈ 66); a szakaszok a
  *   kurzusoldal saját mértékét (--kc-course-measure) kapják, amit itt a
  *   gyökéren DEFINIÁLUNK, mert a kurzusok.css a .kc-course-layout-on adja,
@@ -55,7 +55,7 @@
 .kc-promo-hero {
   position: relative;
   display: flex;
-  min-height: min(78svh, 46rem);
+  min-height: min(72svh, 43rem);
   align-items: flex-end;
   overflow: hidden;
 }
@@ -74,7 +74,11 @@
 }
 
 .kc-promo-hero__veil {
-  background: color-mix(in srgb, var(--kc-color-surface-dark) 78%, transparent);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--kc-color-surface-dark) 90%, transparent),
+    color-mix(in srgb, var(--kc-color-surface-dark) 78%, transparent)
+  );
 }
 
 .kc-promo-hero__inner {
@@ -86,7 +90,9 @@
 }
 
 .kc-promo-hero__copy {
-  max-width: var(--kc-measure);
+  width: 100%;
+  max-width: 56rem;
+  min-width: 0;
 }
 
 /* Az akció-jelzés: keretes címke, fehér szöveg (7,71:1 a legrosszabb
@@ -119,6 +125,7 @@
 }
 
 .kc-promo-hero__title {
+  max-width: var(--kc-measure);
   margin: var(--kc-space-3) 0 0;
   color: var(--kc-color-on-dark);
   font-family: var(--kc-font-heading);
@@ -176,15 +183,54 @@
 
 /* ---- CTA-blokk a heróban ------------------------------------------------- */
 
-.kc-promo-hero__cta {
+.kc-promo-hero__purchase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--kc-space-5);
   margin-top: var(--kc-space-5);
+  padding-top: var(--kc-space-5);
+  border-top: 1px solid color-mix(in srgb, var(--kc-color-on-dark) 35%, transparent);
+}
+
+.kc-promo-hero__purchase .kc-promo-hero__price {
+  margin-top: 0;
+}
+
+.kc-promo-hero__cta {
+  min-width: 0;
 }
 
 .kc-promo-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: var(--kc-space-3);
+}
+
+.kc-promo-hero__primary,
+.kc-promo-hero__button.kc-button {
+  width: 100%;
+  min-width: 0;
+}
+
+.kc-promo-hero__button.kc-button {
+  padding-inline: var(--kc-space-4);
+}
+
+/* A kiválasztott vásárlási sor csak elegendő helyen lesz három oszlopos.
+   A DOM-sorrend mobilon is ár → vásárlás → tananyag; a gombhorgony nem változik.
+   WCAG 2.2 SC 1.4.10: https://www.w3.org/WAI/WCAG22/Understanding/reflow.html
+   Egy elsődleges CTA: https://design-system.service.gov.uk/components/button/ */
+@media (min-width: 1100px) {
+  .kc-promo-hero__purchase {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: var(--kc-space-6);
+  }
+
+  .kc-promo-hero__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Az elsődleges gomb a sötét sávon fordul (fehér alap, ink felirat,
@@ -247,8 +293,12 @@
 
 /* ---- Fő előnyök sáv ------------------------------------------------------ */
 
+.kc-promo-course .kc-promo-highlights {
+  padding-block: var(--kc-space-6);
+}
+
 .kc-promo-highlights__list {
-  gap: var(--kc-space-3) var(--kc-space-6);
+  gap: var(--kc-space-5) var(--kc-space-7);
   max-width: none;
   font-size: var(--kc-font-m);
   line-height: var(--kc-leading-body);
@@ -279,9 +329,52 @@
 
 /* A garancia-doboz a tint sávon beleolvadna a háttérbe: ott fehér, keretes
    kártya lesz (ui.css kártya-nyelve), a paper sávon marad tint. */
-.kc-section--tint .kc-course-guarantee {
+.kc-promo-course .kc-section--tint .kc-course-guarantee {
   background-color: var(--kc-color-surface-raised);
   border: 1px solid var(--kc-color-border);
+}
+
+/* A közös komponensek finomításai kizárólag az akciós sablon alatt élnek. */
+.kc-promo-course .kc-promo-course__band {
+  padding-block: var(--kc-space-7);
+}
+
+.kc-promo-course .kc-course-section__title {
+  max-width: var(--kc-measure);
+  margin-bottom: var(--kc-space-6);
+  text-wrap: balance;
+}
+
+.kc-promo-course .kc-course-module {
+  min-width: 0;
+  padding: var(--kc-space-5);
+}
+
+.kc-promo-course .kc-course-module__lessons {
+  gap: var(--kc-space-2);
+}
+
+.kc-promo-course .kc-course-faq__question {
+  padding-block: var(--kc-space-5);
+}
+
+.kc-promo-course .kc-course-guarantee {
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .kc-promo-course .kc-promo-course__band {
+    padding-block: var(--kc-space-8);
+  }
+
+  .kc-promo-course .kc-course-modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--kc-space-6);
+  }
+
+  .kc-promo-course .kc-course-module {
+    padding: var(--kc-space-6);
+  }
 }
 
 /* ---- Záró vásárlási sáv -------------------------------------------------- */
@@ -332,6 +425,12 @@
 /* ---- Kisebb nézetablakok ------------------------------------------------- */
 
 @media (max-width: 899px) {
+  .kc-promo-closing__action,
+  .kc-promo-closing__cta,
+  .kc-promo-closing__button.kc-button {
+    width: 100%;
+  }
+
   .kc-promo-hero {
     min-height: min(68svh, 38rem);
   }
@@ -351,7 +450,7 @@
   }
 
   .kc-promo-hero__inner {
-    padding-block: var(--kc-space-4);
+    padding-block: var(--kc-space-6);
   }
 
   .kc-promo-hero__badge {
