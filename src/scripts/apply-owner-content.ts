@@ -37,6 +37,7 @@ import { formatPriceHuf } from '../lib/format-price'
 import { logger } from '../lib/logger'
 import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
+import { LEGACY_DEMO_TITLES, isLegacyDemoTitle } from '../lib/legacy-noindex'
 import {
   enrollMediaRecovery,
   managedMediaAssets,
@@ -4702,11 +4703,13 @@ export const alkalmazDemoOldalVisszavonas = (
   if (oldal === undefined) {
     return kihagyas(`nincs „${DEMO_OLDAL_SLUG}” webcímű oldal, nincs teendő`)
   }
-  if (oldal.title.trim() !== DEMO_OLDAL_CIM) {
+  // Ugyanaz a cím-őr, mint a kódszintű noindexé (src/lib/legacy-noindex.ts):
+  // az eredeti demó-cím és a szerkesztők általi átnevezés is a demó.
+  if (!isLegacyDemoTitle(oldal.title)) {
     return kihagyas(
       `a „${DEMO_OLDAL_SLUG}” webcímű oldal (pages #${oldal.id}) címe ${ertekCimke(
         oldal.title,
-      )}, nem ${ertekCimke(DEMO_OLDAL_CIM)}, más szerkesztői oldalt a script nem von vissza`,
+      )}, nem a demólap ismert címe (${[...LEGACY_DEMO_TITLES].map(ertekCimke).join(', ')}), más szerkesztői oldalt a script nem von vissza`,
       true,
     )
   }

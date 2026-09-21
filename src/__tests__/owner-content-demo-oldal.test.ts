@@ -68,6 +68,11 @@ describe('demo-oldal-visszavonas', () => {
     expect(eredmeny.visszavon).toBe(true)
   })
 
+  it('a szerkesztők általi átnevezett demólap („Akciós kézrehab kurzus”) is visszavonandó', () => {
+    const eredmeny = alkalmazDemoOldalVisszavonas(oldal({ title: 'Akciós kézrehab kurzus' }))
+    expect(eredmeny.visszavon).toBe(true)
+  })
+
   it('a naplósorok gondolatjel nélküliek', () => {
     for (const eset of [oldal(), oldal({ _status: 'draft' }), oldal({ title: 'Más' }), undefined]) {
       const eredmeny = alkalmazDemoOldalVisszavonas(eset)
