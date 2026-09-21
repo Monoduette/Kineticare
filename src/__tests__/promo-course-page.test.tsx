@@ -120,6 +120,44 @@ describe('kurzusoldal — akciós kapcsoló', () => {
     expect(html).toContain('id="kurzus-vasarlas-gomb"')
   })
 
+  it.each(['promo', 'normal', 'preview'])(
+    'a felismert szakaszcím alatti csomag megmarad: %s',
+    async (mode) => {
+      mocks.draft.mockResolvedValue({ isEnabled: mode === 'preview' })
+      if (mode === 'preview') mocks.auth.mockResolvedValue({ user: { id: 7, role: 'staff' } })
+      mocks.find.mockResolvedValue({
+        docs: [
+          {
+            ...base,
+            promoEnabled: mode !== 'normal',
+            longDescription: {
+              ...packageDescription,
+              root: {
+                ...packageDescription.root,
+                children: [
+                  { type: 'heading', tag: 'h2', children: [{ type: 'text', text: 'Kinek való?' }] },
+                  packageDescription.root.children[1],
+                  {
+                    type: 'list',
+                    listType: 'bullet',
+                    children: [
+                      { type: 'listitem', children: [{ type: 'text', text: 'SZAKASZ_TETEL' }] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      })
+      const html = renderToStaticMarkup(await CoursePage(props))
+      for (const text of ['CSOMAG_CIM', 'CSOMAG_TETEL', 'CSOMAG_LEIRAS', 'SZAKASZ_TETEL']) {
+        expect(html.split(text).length - 1, text).toBe(1)
+      }
+      expect(html.includes('kc-promo-course--content')).toBe(mode === 'promo')
+    },
+  )
+
   it('az akció kikapcsolásakor a CMS-csomag a normál leírásban is olvasható marad', async () => {
     mocks.find.mockResolvedValue({
       docs: [{ ...base, promoEnabled: false, longDescription: packageDescription }],

@@ -118,6 +118,33 @@ describe('classifyHeading — a szakasz-felismerés a SAJÁT címsorainkon', () 
 })
 
 describe('buildCourseSalesContent — kinyerés a MEGLÉVŐ leírásból', () => {
+  it.each([
+    ['Kinek való?', [list(['Alkalmas'])], false],
+    ['Kinek nem való?', [list(['Kizárás'])], false],
+    ['Gyakori kérdések', [heading('h3', 'Kérdés?'), para('Válasz.')], false],
+    ['Garancia', [para('Garanciaszöveg.')], false],
+    ['Garancia', [para('Garanciaszöveg.')], true],
+  ] as const)('a kiemelt %s szakasz csomagblokkjait megőrzi (free=%s)', (title, nodes, free) => {
+    const first = {
+      type: 'block',
+      version: 2,
+      fields: { blockType: 'coursePackage', heading: 'Csomag', items: [{ title: 'Tartalom' }] },
+    } as LexicalNode
+    const incomplete = {
+      type: 'block',
+      version: 2,
+      fields: { blockType: 'coursePackage', heading: 'Hiányos, megőrzendő', items: [] },
+    } as LexicalNode
+    const source = doc([heading('h2', title), first, ...nodes, incomplete])
+    const before = JSON.stringify(source)
+    const result = buildCourseSalesContent(emptyProduct(source), { ...facts, free })
+    expect(result.body?.root.children).toEqual([first, incomplete])
+    expect(result.body?.root.children[0]).toBe(first)
+    expect(result.body?.root.children[1]).toBe(incomplete)
+    expect(JSON.stringify(source)).toBe(before)
+    if (free) expect(result.guarantee).toBeNull()
+  })
+
   const content = buildCourseSalesContent(emptyProduct(legacyDescription()), facts)
 
   it('a „kinek való / kinek nem" listák a saját szakaszukból jönnek', () => {
