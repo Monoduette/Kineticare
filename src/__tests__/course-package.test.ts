@@ -92,7 +92,7 @@ describe('kurzuscsomag strukturált tartalma', () => {
       { label: 'Lejátszás', value: 'play' },
       { label: 'Videó', value: 'video' },
       { label: 'Időtartam', value: 'clock' },
-      { label: 'Garancia', value: 'shield' },
+      { label: 'Pajzs', value: 'shield' },
       { label: 'Tananyag', value: 'book' },
       { label: 'Dokumentum', value: 'file' },
       { label: 'Szakemberek', value: 'users' },
