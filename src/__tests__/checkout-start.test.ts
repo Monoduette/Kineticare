@@ -707,6 +707,24 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(result.orderNumber).toBe(ORDER_NUMBER)
   })
 
+  /**
+   * A függő rendelés ár- és vevő-snapshotja, ahogy a `happyInput` és a
+   * `mockUser` (5000 Ft, profil-számlázás) mellett keletkezett volna.
+   */
+  const matchingPendingSnapshot = {
+    totalHufSnapshot: 5000,
+    customerSnapshot: {
+      id: 7,
+      email: 'vevo@example.test',
+      name: 'Minta Mari',
+      billingName: 'Minta Mari',
+      billingZip: '1011',
+      billingCity: 'Budapest',
+      billingStreet: 'Fő utca 1.',
+      taxNumber: null,
+    },
+  }
+
   it('nyitott Barion-fizetés: ugyanarra a Pay-URL-re visz, második Start nincs', async () => {
     const { payload, calls } = createMockPayload({
       findOrders: (where) =>
@@ -719,6 +737,7 @@ describe('startCheckout — duplavásárlás-blokk', () => {
                   createdAt: new Date().toISOString(),
                   barionPaymentId: 'pay-open',
                   orderNumber: 'KH-NYITOTT',
+                  ...matchingPendingSnapshot,
                 },
               ],
               totalDocs: 1,
@@ -740,6 +759,92 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     })
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  const openPendingWith = (overrides: Record<string, unknown>) => {
+    const row: OrderRow = { id: 90, status: 'payment_pending', orderNumber: 'KH-ELTERO' }
+    return {
+      ...createMockPayload({
+        orderRows: [row],
+        findOrders: (where) =>
+          whereMentions(where, 'payment_pending')
+            ? {
+                docs: [
+                  {
+                    id: 90,
+                    status: 'payment_pending',
+                    createdAt: new Date().toISOString(),
+                    barionPaymentId: 'pay-eltero',
+                    orderNumber: 'KH-ELTERO',
+                    ...matchingPendingSnapshot,
+                    ...overrides,
+                  },
+                ],
+                totalDocs: 1,
+              }
+            : { docs: [], totalDocs: 0 },
+      }),
+      row,
+    }
+  }
+
+  it('nyitott fizetés MÁS árral (akció indult vagy lejárt): a régi lezárul, új fizetés indul', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls, row } = openPendingWith({ totalHufSnapshot: 3900 })
+
+    const result = await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Started' }) as never,
+      barionEnvironment: 'test',
+    })
+
+    expect(row.status).toBe('cancelled')
+    expect(calls.create).toHaveLength(1)
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+    expect(result.gatewayUrl).not.toContain('pay-eltero')
+  })
+
+  it('nyitott fizetés MÁS számlázási adatokkal (idegen vendégrendelés): nem folytatjuk', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls, row } = openPendingWith({
+      customerSnapshot: {
+        ...matchingPendingSnapshot.customerSnapshot,
+        id: null,
+        name: 'Idegen Ember',
+        billingName: 'Idegen Ember',
+        billingStreet: 'Másik utca 9.',
+      },
+    })
+
+    const result = await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Started' }) as never,
+      barionEnvironment: 'test',
+    })
+
+    expect(row.status).toBe('cancelled')
+    expect(calls.create).toHaveLength(1)
+    expect(result.gatewayUrl).not.toContain('pay-eltero')
+  })
+
+  it('snapshot nélküli függő sor sem folytatható vakon', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload, calls, row } = openPendingWith({ customerSnapshot: null })
+
+    await startCheckout({
+      payload,
+      user: mockUser,
+      input: happyInput,
+      fetchPaymentState: async () => ({ Status: 'Started' }) as never,
+      barionEnvironment: 'test',
+    })
+
+    expect(row.status).toBe('cancelled')
+    expect(calls.create).toHaveLength(1)
   })
 
   it('GetPaymentState hiba → 503, második Start tilos', async () => {

@@ -505,6 +505,24 @@ describe('planCheckoutSubmission — a beküldés a MÓDOSÍTOTT állapotból é
     })
     expect(plan.kind).toBe('send')
   })
+
+  it('a megjelenített ár priceHuf néven megy ki, hogy a szerver eltérésnél 400-at adjon', () => {
+    const plan = planCheckoutSubmission({
+      ...context(prefillBillingForm(PROFILE)),
+      displayedPriceHuf: 39_500,
+    })
+    expect(plan.kind === 'send' ? plan.body.priceHuf : undefined).toBe(39_500)
+  })
+
+  it('ingyenes vagy ismeretlen árnál nincs priceHuf a törzsben', () => {
+    for (const displayedPriceHuf of [null, undefined, Number.NaN]) {
+      const plan = planCheckoutSubmission({
+        ...context(prefillBillingForm(PROFILE)),
+        displayedPriceHuf,
+      })
+      expect(plan.kind === 'send' ? 'priceHuf' in plan.body : true).toBe(false)
+    }
+  })
 })
 
 describe('withoutBillingError — a mezőhiba gépeléskor eltűnik', () => {

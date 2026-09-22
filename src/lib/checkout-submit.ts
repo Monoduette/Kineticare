@@ -62,6 +62,11 @@ export interface CheckoutUser {
 export interface CheckoutSubmitInput {
   productId: number
   quantity: number
+  /**
+   * A pénztárban megjelenített ár. A szerver nem ebből számol (a kliens ára
+   * sosem forrás), csak összeveti a most érvényes árral, és eltérésnél 400-at ad.
+   */
+  priceHuf?: number
   consentWithdrawalWaiver: boolean
   /**
    * Az ÁSZF elfogadása + az adatkezelési tájékoztató megismerése — EGY

@@ -4,6 +4,9 @@ import {
   AKCIOS_KURZUS_ARSZOVEG_CSERE,
   AKCIOS_KURZUS_FO_ELONYOK,
   AKCIOS_KURZUS_GYIK,
+  AKCIOS_KURZUS_KORABBI_FO_ELONYOK,
+  AKCIOS_KURZUS_KORABBI_SEO_CIM,
+  AKCIOS_KURZUS_KORABBI_SEO_LEIRAS,
   AKCIOS_KURZUS_SEO_CIM,
   AKCIOS_KURZUS_SEO_LEIRAS,
   AKCIOS_KURZUS_SLUG,
@@ -75,10 +78,29 @@ describe('vevői szövegek: natív magyar, gondolatjel nélkül, a felület korl
     expect(AKCIOS_KURZUS_SEO_CIM.length).toBeLessThanOrEqual(60)
   })
 
-  it('az ár-mondat cseréje a régi, teljes árú mondatra illeszkedik, és a helyes akciós árat írja', () => {
+  it('az ár-mondat cseréje a régi, teljes árú mondatra és a korábbi futás mondatára is illeszkedik', () => {
     expect(AKCIOS_KURZUS_ARSZOVEG_CSERE.regiKezdet).toContain('79 500 Ft-ért érhető el')
-    expect(AKCIOS_KURZUS_ARSZOVEG_CSERE.ujKezdet).toContain('39 500 Ft')
+    expect(AKCIOS_KURZUS_ARSZOVEG_CSERE.korabbiKezdetek?.[0]).toContain('39 500 Ft')
     expect(AKCIOS_KURZUS_ARSZOVEG_CSERE.ujKezdet).not.toContain('119 000')
+  })
+
+  it('a statikus szövegek árat nem mondanak ki: az akció lejárta után is igazak maradnak', () => {
+    // Az árat egyedül a buybox mutatja, élőben (coursePriceHuf). A beégetett
+    // összeg a lejárat után félrevezető árközlés lenne (2005/29/EK 6. cikk (1) d).
+    const ARAT_MOND = /\d[\d\s.]*\s*Ft|forint/iu
+    const szovegek = [
+      AKCIOS_KURZUS_SEO_CIM,
+      AKCIOS_KURZUS_SEO_LEIRAS,
+      AKCIOS_KURZUS_ARSZOVEG_CSERE.ujKezdet,
+      ...AKCIOS_KURZUS_FO_ELONYOK,
+      ...AKCIOS_KURZUS_GYIK.flatMap((sor) => [sor.question, sor.answer]),
+    ]
+    for (const szoveg of szovegek) {
+      expect(szoveg, szoveg).not.toMatch(ARAT_MOND)
+    }
+    // Az árelőnyt állító fordulat sem maradhat a statikus leírásban.
+    expect(AKCIOS_KURZUS_SEO_LEIRAS).not.toMatch(/akciós áron/iu)
+    expect(AKCIOS_KURZUS_FO_ELONYOK.join(' ')).not.toMatch(/akciós áron/iu)
   })
 })
 
@@ -182,6 +204,42 @@ describe('alkalmazAkciosEladoMezok', () => {
     for (const lepes of eredmeny.kihagyasok) {
       expect(lepes.indok).toContain('sosem ír felül')
     }
+  })
+
+  it('a script korábbi, beégetett árú szövegeit lecseréli (és csak azokat)', () => {
+    const eredmeny = alkalmazAkciosEladoMezok({
+      jelenlegi: {
+        ...uresMezok(),
+        salesHighlights: AKCIOS_KURZUS_KORABBI_FO_ELONYOK.map((text) => ({ text })),
+        faq: [{ question: 'Saját kérdés?', answer: 'Saját válasz.' }],
+        seoTitle: AKCIOS_KURZUS_KORABBI_SEO_CIM,
+        seoDescription: AKCIOS_KURZUS_KORABBI_SEO_LEIRAS,
+        relatedProducts: [1],
+      },
+      sosId: 2,
+    })
+    expect(eredmeny.adat.salesHighlights?.map((sor) => sor.text)).toEqual([
+      ...AKCIOS_KURZUS_FO_ELONYOK,
+    ])
+    expect(eredmeny.adat.seoTitle).toBe(AKCIOS_KURZUS_SEO_CIM)
+    expect(eredmeny.adat.seoDescription).toBe(AKCIOS_KURZUS_SEO_LEIRAS)
+    expect(eredmeny.adat.faq).toBeUndefined()
+    expect(eredmeny.modositasok).toHaveLength(3)
+  })
+
+  it('a korábbi sorokat szerkesztői módosítás után már nem írja felül', () => {
+    const szerkesztett = [...AKCIOS_KURZUS_KORABBI_FO_ELONYOK]
+    szerkesztett[1] = 'Szerkesztői sor'
+    const eredmeny = alkalmazAkciosEladoMezok({
+      jelenlegi: {
+        ...uresMezok(),
+        salesHighlights: szerkesztett.map((text) => ({ text })),
+        seoTitle: `${AKCIOS_KURZUS_KORABBI_SEO_CIM} `,
+      },
+      sosId: 2,
+    })
+    expect(eredmeny.adat.salesHighlights).toBeUndefined()
+    expect(eredmeny.adat.seoTitle).toBeUndefined()
   })
 
   it('második futásra (minden kitöltve) egyetlen módosítás sincs', () => {
@@ -314,6 +372,18 @@ describe('az akciós törzs ár-mondatának cseréje (alkalmazAszfBekezdesCserek
     expect(uj.startsWith(AKCIOS_KURZUS_ARSZOVEG_CSERE.ujKezdet)).toBe(true)
     expect(uj).toContain('(A kurzus nem helyettesíti a szakorvosi kontrollt.)')
     expect(uj).not.toContain('119 000')
+  })
+
+  it('a script korábbi futásának beégetett árú mondatát is lecseréli, a maradék marad', () => {
+    const korabbi = AKCIOS_KURZUS_ARSZOVEG_CSERE.korabbiKezdetek?.[0] ?? ''
+    const eredmeny = alkalmazAszfBekezdesCserek(torzs(korabbi), [AKCIOS_KURZUS_ARSZOVEG_CSERE])
+    expect(eredmeny.modositasok).toHaveLength(1)
+    expect(eredmeny.kihagyasok).toHaveLength(0)
+    const uj = (eredmeny.content as { root: { children: { children: { text: string }[] }[] } }).root
+      .children[1].children[0].text
+    expect(uj.startsWith(AKCIOS_KURZUS_ARSZOVEG_CSERE.ujKezdet)).toBe(true)
+    expect(uj).toContain('(A kurzus nem helyettesíti a szakorvosi kontrollt.)')
+    expect(uj).not.toContain('39 500')
   })
 
   it('a már javított törzsön csendben kihagy', () => {

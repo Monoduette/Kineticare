@@ -283,6 +283,15 @@ export function withoutBillingError(
 export interface CheckoutSubmissionContext {
   productId: number
   quantity?: number
+  /**
+   * A pénztárban a vevőnek MEGJELENÍTETT fizetendő ár. A törzsbe `priceHuf`
+   * néven kerül, és a szerver összeveti a MOST érvényes árral
+   * (start-checkout.ts `assertPurchasable`): ha az akció a lapnyitás és a
+   * beküldés között járt le vagy indult el, a vevő 400-at és frissítési kérést
+   * kap, nem pedig csendben más összeget terhel a Barion. Ingyenes terméknél
+   * és ismeretlen árnál hiányzik.
+   */
+  displayedPriceHuf?: number | null
   alreadyPurchased: boolean
   /** Fizetős termék → a két elállási nyilatkozat kötelező. */
   waiverRequired: boolean
@@ -394,6 +403,10 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
     body: {
       productId: context.productId,
       quantity: context.quantity ?? 1,
+      ...(typeof context.displayedPriceHuf === 'number' &&
+      Number.isFinite(context.displayedPriceHuf)
+        ? { priceHuf: context.displayedPriceHuf }
+        : {}),
       consentWithdrawalWaiver: true,
       // Ide CSAK a fenti `blocked` ág átengedésével juthatunk el, tehát a
       // `true` itt TÉNYÁLLÍTÁS. A szerver ettől függetlenül újra ellenőrzi

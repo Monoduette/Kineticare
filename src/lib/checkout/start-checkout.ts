@@ -32,6 +32,8 @@ import {
   CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
   barionPayUrl,
   decidePendingCheckout,
+  pendingOrderMatchesRequest,
+  type PendingResumeExpectation,
 } from './pending-payment'
 import { billingSummaryMessage, validateBilling, type NormalizedBilling } from './billing'
 import { isGuestBindableAccount } from '../order-status/guest-bindable-account'
@@ -363,6 +365,8 @@ interface DuplicateCheckContext {
     input: RecoverRejectedSucceededPaymentInput,
   ) => Promise<PaidRejectRecoveryResult>
   barionEnvironment: BarionEnvironment
+  /** A mostani kérés ára és számlázási adatai: csak egyezésnél folytatunk. */
+  resumeExpectation: PendingResumeExpectation
 }
 
 /**
@@ -440,7 +444,18 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     if (decision.kind === 'wait-no-payment-id') {
       throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
     }
-    if (decision.kind === 'resume') {
+    const resumeMatches =
+      decision.kind === 'resume' && pendingOrderMatchesRequest(pending, ctx.resumeExpectation)
+    if (decision.kind === 'resume' && !resumeMatches) {
+      // Az élő fizetés más árral vagy más számlázási adatokkal indult: nem
+      // küldjük vissza rá a vevőt. A régi sor lezárul, új fizetés indul; ha a
+      // régi mégis teljesülne, a késői siker és a K5 duplafizetés-őr kezeli.
+      ctx.log.info('checkout-start: a függő fizetés adatai eltérnek — új fizetés indul', {
+        orderId: pending.id,
+        priceMatches: pending.totalHufSnapshot === ctx.resumeExpectation.priceHuf,
+      })
+    }
+    if (decision.kind === 'resume' && resumeMatches) {
       const orderNumber = pending.orderNumber
       if (typeof orderNumber !== 'string' || orderNumber.length === 0) {
         throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
@@ -516,7 +531,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         ...(transition.customer !== undefined ? { customer: transition.customer } : {}),
       }
     }
-    if (decision.kind === 'cancel-and-restart') {
+    if (decision.kind === 'cancel-and-restart' || (decision.kind === 'resume' && !resumeMatches)) {
       const cancelled = await updateOrderStatusIfCurrent({
         payload: ctx.payload,
         orderId: pending.id,
@@ -854,6 +869,11 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
         resolveSingleCourseAccess: resolveSingleCourseAccessFn,
         recoverRejectedPaid: recoverRejectedPaidFn,
         barionEnvironment,
+        resumeExpectation: {
+          priceHuf: coursePriceHuf(product),
+          buyerName: buyer.name,
+          billing,
+        },
       }
 
       if (buyer.existingUser !== null) {

@@ -1696,7 +1696,7 @@ export interface Product {
    */
   accessDurationDays?: number | null;
   /**
-   * Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra.
+   * Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra. Csak tulajdonos állíthatja.
    */
   promoEnabled?: boolean | null;
   /**
