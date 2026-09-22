@@ -22,6 +22,23 @@ const ROBOTS_TAG_HEADER = 'X-Robots-Tag'
 const NOINDEX_DIRECTIVES = 'noindex, nofollow, noarchive, nosnippet'
 
 /**
+ * A PostHog elsőfél-proxy (`/ingest`, `next.config.ts` rewrites) útvonala.
+ *
+ * A Next külső rewrite-ja (httpxy) MINDEN bejövő fejlécet továbbít, a
+ * `Cookie`-t is. A posthog-js azonos eredetű kérései a böngészőben magukkal
+ * viszik a `payload-token` munkamenet-JWT-t, így e szűrés nélkül a
+ * bejelentkezett vevők, a staff és a tulajdonos munkamenet-tokenje minden
+ * analitikai kéréssel a PostHoghoz kerülne. A PostHognak egyik sem kell: az
+ * azonosítás a kérés törzsében megy.
+ */
+const POSTHOG_PROXY_PREFIX = '/ingest'
+const POSTHOG_PROXY_STRIPPED_HEADERS = ['cookie', 'authorization'] as const
+
+function isPosthogProxyPath(pathname: string): boolean {
+  return pathname === POSTHOG_PROXY_PREFIX || pathname.startsWith(`${POSTHOG_PROXY_PREFIX}/`)
+}
+
+/**
  * Request ID middleware: minden bejövő kéréshez egyedi azonosítót rendel.
  *
  * - A meglévő `x-request-id` headert tiszteletben tartja (ha formailag érvényes),
@@ -58,6 +75,14 @@ export function middleware(request: NextRequest): NextResponse {
 
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set(REQUEST_ID_HEADER, requestId)
+  if (isPosthogProxyPath(request.nextUrl.pathname)) {
+    // A Next a middleware fejléc-felülírását a rewrite ELŐTT alkalmazza, és a
+    // listából hiányzó fejlécet törli (router-utils/resolve-routes.js), így a
+    // proxy már süti és Authorization nélkül hívja a PostHogot.
+    for (const header of POSTHOG_PROXY_STRIPPED_HEADERS) {
+      requestHeaders.delete(header)
+    }
+  }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   response.headers.set(REQUEST_ID_HEADER, requestId)

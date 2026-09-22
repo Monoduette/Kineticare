@@ -390,6 +390,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
    */
   const readCheckoutContext = (): CheckoutSubmissionContext => ({
     productId: product.id,
+    displayedPriceHuf: product.isFree ? null : product.priceHuf,
     alreadyPurchased,
     waiverRequired: requiresWaiver,
     waiverStartAccepted: waiverStart,

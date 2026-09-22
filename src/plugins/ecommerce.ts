@@ -120,6 +120,16 @@ export const HUF: Currency = {
  */
 const adminOnlyFieldAccess = isAdminFieldAccess
 
+/**
+ * Az akció időablakának mezői (pipa, kezdet, vég): mivel ezek döntik el a
+ * fizetendő árat, az Ár mezővel azonos owner-only írás védi őket (T-011).
+ * Olvasásuk nyitott, mert a kurzusoldal és a kártya ebből számol.
+ */
+const promoWindowFieldAccess = {
+  create: isOwnerFieldAccess,
+  update: isOwnerFieldAccess,
+}
+
 export const validateAccessDurationDays: NumberFieldSingleValidation = (
   value,
   { operation, previousValue },
@@ -984,15 +994,20 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           type: 'checkbox',
           defaultValue: false,
           label: 'Akciós kurzus',
+          // WP63 óta a pipa és a két dátum dönti el, hogy a vevő az akciós vagy
+          // a rendes árat fizeti (`coursePriceHuf`), tehát ár-mező: az Ár és az
+          // Akciós ár mezővel azonos owner-only írás védi (T-011).
+          access: promoWindowFieldAccess,
           admin: {
             description:
-              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra.',
+              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra. Csak tulajdonos állíthatja.',
           },
         },
         {
           name: 'promoStart',
           type: 'date',
           label: 'Akció kezdete',
+          access: promoWindowFieldAccess,
           admin: {
             description: 'Ettől a naptól él az akció. Ha üresen hagyod, azonnal érvényes.',
             // Csak NAP, óra nélkül (a Posts.ts reviewedAt mintája): a szerkesztő
@@ -1005,6 +1020,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoEnd',
           type: 'date',
           label: 'Akció vége',
+          access: promoWindowFieldAccess,
           validate: validatePromoEnd,
           admin: {
             description:

@@ -61,3 +61,63 @@ export function decidePendingCheckout(input: {
   }
   return { kind: 'cancel-and-restart' }
 }
+
+/**
+ * Az új checkout-kérés adatai, amelyekkel egy függő fizetés folytatható.
+ */
+export interface PendingResumeExpectation {
+  /** A MOST fizetendő ár (Ft), a szerver számolja; ismeretlen ár esetén null. */
+  priceHuf: number | null
+  buyerName: string | null
+  billing: {
+    name: string
+    zip: string
+    city: string
+    street: string
+    taxNumber: string | null
+  }
+}
+
+function snapshotString(snapshot: Record<string, unknown>, key: string): string | null {
+  const value = snapshot[key]
+  return typeof value === 'string' ? value : null
+}
+
+/**
+ * Folytatható-e a függő fizetés a MOSTANI kéréssel.
+ *
+ * A folytatás a régi Barion-fizetésre küldi a vevőt, a régi rendelés
+ * ár- és számlázási snapshotjával. Ez csak akkor helyes, ha a kettő egyezik a
+ * mostani kéréssel:
+ * - az ár: az akció a két kérés között indulhatott vagy járhatott le, és a
+ *   vevő nem fizethet mást, mint amit most a pénztárban lát;
+ * - a vevő neve és a számlázási adatok: a számla a rendelés snapshotjából
+ *   készül. E nélkül bárki indíthatna vendégként rendelést más e-mail-címével
+ *   és a saját számlázási adataival, és a cím valódi gazdája ebbe a rendelésbe
+ *   futna bele, a számla pedig idegen névre szólna.
+ *
+ * Eltérésnél a hívó a régi függő rendelést lezárja, és új fizetést indít
+ * (ugyanaz az ág, mint a lejárt vagy megszakadt fizetésnél).
+ */
+export function pendingOrderMatchesRequest(
+  order: { totalHufSnapshot?: number | null; customerSnapshot?: unknown },
+  expected: PendingResumeExpectation,
+): boolean {
+  if (expected.priceHuf === null || order.totalHufSnapshot !== expected.priceHuf) {
+    return false
+  }
+  const snapshot = order.customerSnapshot
+  if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return false
+  }
+  const record = snapshot as Record<string, unknown>
+  const taxNumber = record.taxNumber
+  return (
+    snapshotString(record, 'name') === expected.buyerName &&
+    snapshotString(record, 'billingName') === expected.billing.name &&
+    snapshotString(record, 'billingZip') === expected.billing.zip &&
+    snapshotString(record, 'billingCity') === expected.billing.city &&
+    snapshotString(record, 'billingStreet') === expected.billing.street &&
+    (taxNumber === undefined ? null : taxNumber) === expected.billing.taxNumber
+  )
+}

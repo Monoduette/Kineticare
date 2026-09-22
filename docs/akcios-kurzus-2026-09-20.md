@@ -28,7 +28,7 @@ menüben nem látszó módon. Emellett a rendelő címe legyen kattintható (Goo
 | Szabály                     | Mit tesz                                                                                                                                                                                                                         | Feltétel                                                                                                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `akcios-kurzus-menupont`    | Az „olcsó dolgok itt" menüpont → „Akciós KézRehab kurzus", típus Kurzus, cél az akciós kurzus (webcím alapján), `unlisted: true`, nem új lapon                                                                                   | felirat pontosan a régi (kis/nagybetű, szélső szóköz nélkül) vagy már az új; az akciós kurzus létezik, különben hangos                                                                          |
-| `akcios-kurzus-eladoszoveg` | Fő előnyök (4 sor), GYIK (5 pár), SEO-cím, SEO-leírás, kapcsolódó kurzus (SOS) az akciós kurzuson                                                                                                                                | mezőnként csak ÜRES mezőbe ír; kitöltött mező kihagyás                                                                                                                                          |
+| `akcios-kurzus-eladoszoveg` | Fő előnyök (4 sor), GYIK (5 pár), SEO-cím, SEO-leírás, kapcsolódó kurzus (SOS) az akciós kurzuson                                                                                                                                | mezőnként csak ÜRES mezőbe ír, vagy a script korábbi, beégetett árú szövegét cseréli (betűre egyezve); más kitöltött mező kihagyás                                                              |
 | `akcios-kurzus-arszoveg`    | A törzs téves, teljes árú ár-mondata („eredeti ára 119 000 Ft… 79 500 Ft") → akciós mondat; a zárójeles „nem helyettesíti a szakorvosi kontrollt" marad                                                                          | bekezdés-eleji pontos egyezés; átírt szövegnél hangos kihagyás                                                                                                                                  |
 | `akcios-ar-atallas`         | WP63: az ár-modell egyszeri átállása. Ár (rendes ár) = a régi Teljes ár értéke (79 500 Ft), Akciós ár = a régi Ár értéke (39 500 Ft), a régi Teljes ár mező kiürül. Az akció végén magától a rendes ár él, nincs kézi visszaírás | kitöltött Akciós ár: csendes kihagyás; üres örökölt Teljes ár: csendes kihagyás; örökölt Teljes ár, ami nem nagyobb az Árnál vagy nincs érvényes Ár: hangos kihagyás, az adminban kell rendezni |
 | `demo-oldal-visszavonas`    | WP60: az egykori demólap („Képzeletbeli akciós kurzus", `akcios-kurzus` webcím) közzétételének visszavonása: `_status` published → draft                                                                                         | csak a pontosan ilyen című rekordon; más címnél hangos kihagyás; hiányzó vagy már piszkozat rekordnál csendes kihagyás                                                                          |
@@ -48,10 +48,13 @@ azonos módon a törzs címsoraiból és a tényadatokból épülnek
   végén magától a rendes ár él, nincs kézi visszaírás és nincs időzített feladat
   (`coursePriceHuf`, `src/lib/courses.ts`). A régi „Teljes ár (Ft, áthúzva jelenik
   meg)” mező örökölt: az adminban rejtett, senki nem olvassa, egy későbbi PR
-  megszünteti az oszlopot. Az akciós oldal szövege továbbra is a teljes árú
-  programra hivatkozik („mint a 79 500 Ft-os programban, itt 39 500 Ft”); ha
-  bármelyik ár változik, ezt a mondatot és a fő előnyök első sorát az adminban
-  kell frissíteni.
+  megszünteti az oszlopot. Az akciós oldal statikus szövege (fő előnyök, SEO-cím
+  és -leírás, a törzs ár-mondata) 2026-09-22 óta NEM mond ki árat: a korábbi
+  „itt 39 500 Ft” az akció lejárta után is ott maradt volna, miközben a pénztár
+  már a rendes árat kéri (félrevezető árközlés, 2005/29/EK 6. cikk (1) d). Az
+  árat egyedül a buybox mutatja, élőben. A `content:owner` a script korábbi,
+  beégetett árú szövegeit (és csak azokat, betűre egyezve) lecseréli; ha az
+  adminban kézzel írtál árat a szövegbe, azt neked kell kivenned.
 - **A rejtett link nem hozzáférés-védelem.** Aki tudja a linket, megnyitja. A
   kurzus a `/kurzusok` listában és a keresőkben is látszik, mert közzétett termék.
   Ha a partneri árat a nyilvánosság elől is el kell rejteni, az külön feladat

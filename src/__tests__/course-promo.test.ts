@@ -418,7 +418,7 @@ describe('products collection: az „Akciós megjelenés” csoport', () => {
     expect(legacy?.type === 'number' ? legacy.admin?.hidden : undefined).toBe(true)
   })
 
-  it('a mezőnevek között ott az akciós ár, és az Ár mezővel azonos owner-only írás védi', async () => {
+  it('az akciós ár és az akció időablaka az Ár mezővel azonos owner-only írás alatt áll', async () => {
     expect(coursePromoFieldNames).toContain('promoPriceHuf')
     const byName = new Map(
       (await promoCollapsible()).fields.map((field) => ['name' in field ? field.name : '', field]),
@@ -430,9 +430,14 @@ describe('products collection: az „Akciós megjelenés” csoport', () => {
     expect(promoPrice?.create).toBe(isOwnerFieldAccess)
     expect(promoPrice?.update).toBe(isOwnerFieldAccess)
     expect(promoPrice?.read).toBeUndefined()
-    // A többi akció-mező (pipa, dátumok) nem ár: a staff is állíthatja.
+    // WP63 óta a pipa és a két dátum is a fizetendő árat dönti el
+    // (`coursePriceHuf`): a staff ezekkel sem kapcsolhat be, hosszabbíthat meg
+    // vagy kapcsolhat ki egy akciós árat, ezért ugyanaz az owner-only írás védi.
     for (const name of ['promoEnabled', 'promoStart', 'promoEnd']) {
-      expect(accessOf(byName.get(name))?.update, name).toBeUndefined()
+      const access = accessOf(byName.get(name))
+      expect(access?.create, name).toBe(isOwnerFieldAccess)
+      expect(access?.update, name).toBe(isOwnerFieldAccess)
+      expect(access?.read, name).toBeUndefined()
     }
   })
 

@@ -207,6 +207,32 @@ export const AKCIOS_MENUPONT_UJ_FELIRAT = 'Akciós KézRehab kurzus'
  * mérve 2026-09-20), nem „korábbi” árra: a kettő két külön termék.
  */
 export const AKCIOS_KURZUS_FO_ELONYOK: readonly string[] = [
+  'Ugyanaz a teljes program és ugyanazok a leckék, mint az Otthoni KézRehabban',
+  '23 videós lecke 4 modulban, kézrehabilitációs gyógytornászoktól',
+  'Azonnali hozzáférés a fizetés után, a saját tempódban, bármilyen eszközön',
+  '30 napos kipróbálási garancia',
+]
+
+/**
+ * Árat a statikus CMS-szöveg NEM mond ki. WP63 óta az akció lejártával a
+ * pénztár magától a rendes árat kéri (`coursePriceHuf`), a beégetett
+ * „39 500 Ft” pedig ezután is ott állna a címben, a leírásban és a törzsben.
+ * Ez félrevezető árközlés: az EU tisztességtelen kereskedelmi gyakorlatokról
+ * szóló irányelve a „az ár vagy az ár kiszámításának módja, illetve különleges
+ * árelőny megléte” körében tett valótlan állítást megtévesztő cselekedetnek
+ * minősíti (2005/29/EK irányelv 6. cikk (1) d),
+ * https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32005L0029).
+ * A Baymard mérése szerint a vevők 12%-a azért hagyja el a pénztárat, mert
+ * nem látja előre a végösszeget (https://baymard.com/lists/cart-abandonment-rate),
+ * a lapon mondott és a fizetéskor kért ár eltérése ennél is rosszabb. Az árat
+ * ezért egyedül a buybox mutatja, élőben (`coursePriceHuf`), az akció ideje
+ * alatt áthúzott rendes árral; a „mennyibe kerül” kérdésre ott a válasz.
+ *
+ * A lenti KORÁBBI szövegeket a script egy régebbi futása írta be. Ezeket (és
+ * csak ezeket, betűre egyezve) a mostani futás lecseréli; szerkesztői szöveget
+ * továbbra sem ír felül.
+ */
+export const AKCIOS_KURZUS_KORABBI_FO_ELONYOK: readonly string[] = [
   'Ugyanaz a teljes program, mint a 79 500 Ft-os Otthoni KézRehab, itt 39 500 Ft',
   '23 videós lecke 4 modulban, kézrehabilitációs gyógytornászoktól',
   'Azonnali hozzáférés a fizetés után, a saját tempódban, bármilyen eszközön',
@@ -243,8 +269,13 @@ export const AKCIOS_KURZUS_GYIK: readonly { question: string; answer: string }[]
 ]
 
 /** SEO-cím és -leírás az akciós oldalra (a leírás 160 karakter alatt). */
-export const AKCIOS_KURZUS_SEO_CIM = 'Akciós Otthoni KézRehab Program 39 500 Ft-ért'
+export const AKCIOS_KURZUS_SEO_CIM = 'Akciós Otthoni KézRehab Program'
 export const AKCIOS_KURZUS_SEO_LEIRAS =
+  'A teljes Otthoni KézRehab Program: 4 modul, 23 videós lecke gyógytornászoktól csukló-, ujj- és könyökfájdalomra, 30 napos kipróbálási garanciával.'
+
+/** A script korábbi futásának beégetett árú SEO-szövegei (lásd fent). */
+export const AKCIOS_KURZUS_KORABBI_SEO_CIM = 'Akciós Otthoni KézRehab Program 39 500 Ft-ért'
+export const AKCIOS_KURZUS_KORABBI_SEO_LEIRAS =
   'A teljes Otthoni KézRehab Program akciós áron: 4 modul, 23 videós lecke gyógytornászoktól csukló-, ujj- és könyökfájdalomra, 39 500 Ft, 30 napos garanciával.'
 
 /**
@@ -259,7 +290,10 @@ export const AKCIOS_KURZUS_ARSZOVEG_CSERE: AszfBekezdesCsere = {
   cimke: 'Az akciós kurzus ár-mondata a törzsben',
   regiKezdet: 'A program eredeti ára 119 000 Ft – bevezető áron most 79 500 Ft-ért érhető el.',
   ujKezdet:
+    'Ez az akciós példány a teljes Otthoni KézRehab Programot adja, ugyanazzal az anyaggal, mint a teljes árú program.',
+  korabbiKezdetek: [
     'Ez az akciós példány a teljes Otthoni KézRehab Programot adja: ugyanaz az anyag, mint a 79 500 Ft-os programban, itt 39 500 Ft-ért.',
+  ],
   nyom: 'szakorvosi kontrollt',
 }
 
@@ -1447,6 +1481,12 @@ export interface AszfBekezdesCsere {
   /** A helyére kerülő szöveg. */
   ujKezdet: string
   /**
+   * A script KORÁBBI futásai által írt, azóta elavult `ujKezdet` változatok.
+   * Ezekkel kezdődő bekezdést a csere ugyanúgy javít, mint a `regiKezdet`-tel
+   * kezdődőt: a saját korábbi kimenetünk, nem szerkesztői szöveg.
+   */
+  korabbiKezdetek?: readonly string[]
+  /**
    * Rövid, jellemző szófordulat a bekezdés AZONOSÍTÁSÁHOZ, ha se a régi, se az
    * új alak nem található. Csak a HANGOS kihagyás naplósorába kerül, hogy az
    * üzemeltető lássa, mi áll ma a helyén — döntést sosem alapozunk rá.
@@ -1512,11 +1552,19 @@ export const alkalmazAszfBekezdesCserek = (
 
   for (const csere of cserek) {
     const szovegek = aktualisGyerekek.map(bekezdesSzovege)
+    const cserelendoKezdetek = [csere.regiKezdet, ...(csere.korabbiKezdetek ?? [])]
     const talalatok = szovegek
-      .map((szoveg, index) => ({ szoveg, index }))
+      .map((szoveg, index) => ({
+        szoveg,
+        index,
+        kezdet:
+          szoveg === null
+            ? undefined
+            : cserelendoKezdetek.find((kezdet) => szoveg.startsWith(kezdet)),
+      }))
       .filter(
-        (elem): elem is { szoveg: string; index: number } =>
-          elem.szoveg !== null && elem.szoveg.startsWith(csere.regiKezdet),
+        (elem): elem is { szoveg: string; index: number; kezdet: string } =>
+          elem.szoveg !== null && elem.kezdet !== undefined,
       )
 
     if (talalatok.length > 1) {
@@ -1558,15 +1606,15 @@ export const alkalmazAszfBekezdesCserek = (
       continue
     }
 
-    const { index, szoveg } = talalatok[0]
-    const maradek = szoveg.slice(csere.regiKezdet.length)
+    const { index, szoveg, kezdet } = talalatok[0]
+    const maradek = szoveg.slice(kezdet.length)
     aktualisGyerekek = aktualisGyerekek.map((csomopont, i) =>
       i === index ? bekezdesSzovegCsere(csomopont, `${csere.ujKezdet}${maradek}`) : csomopont,
     )
     voltIras = true
     modositasok.push({
       szabaly: csere.szabaly,
-      uzenet: `${csere.cimke}: ${roviditettIdezet(csere.regiKezdet)} → ${roviditettIdezet(
+      uzenet: `${csere.cimke}: ${roviditettIdezet(kezdet)} → ${roviditettIdezet(
         csere.ujKezdet,
       )}. A bekezdés maradéka (${
         maradek.trim().length === 0 ? 'nincs ilyen' : roviditettIdezet(maradek, 60)
@@ -4858,7 +4906,19 @@ export const alkalmazAkciosEladoMezok = (input: {
   const kitoltottElonyok = (jelenlegi.salesHighlights ?? []).filter(
     (sor) => typeof sor.text === 'string' && sor.text.trim().length > 0,
   )
-  if (kitoltottElonyok.length > 0) {
+  const elonyokAKorabbiFutasbol =
+    kitoltottElonyok.length === AKCIOS_KURZUS_KORABBI_FO_ELONYOK.length &&
+    kitoltottElonyok.every((sor, i) => sor.text === AKCIOS_KURZUS_KORABBI_FO_ELONYOK[i])
+  if (elonyokAKorabbiFutasbol) {
+    adat.salesHighlights = AKCIOS_KURZUS_FO_ELONYOK.map((text) => ({ text }))
+    modositasok.push({
+      szabaly,
+      uzenet: `${cimke} fő előnyei: a script korábbi, beégetett árú sorai helyett ${AKCIOS_KURZUS_FO_ELONYOK.map(
+        (t) => `„${t}”`,
+      ).join(', ')}`,
+      indok: null,
+    })
+  } else if (kitoltottElonyok.length > 0) {
     kihagyasok.push({
       szabaly,
       uzenet: `${cimke} fő előnyei`,
@@ -4894,8 +4954,17 @@ export const alkalmazAkciosEladoMezok = (input: {
   for (const mezo of ['seoTitle', 'seoDescription'] as const) {
     const ertek = jelenlegi[mezo]
     const uj = mezo === 'seoTitle' ? AKCIOS_KURZUS_SEO_CIM : AKCIOS_KURZUS_SEO_LEIRAS
+    const korabbi =
+      mezo === 'seoTitle' ? AKCIOS_KURZUS_KORABBI_SEO_CIM : AKCIOS_KURZUS_KORABBI_SEO_LEIRAS
     const nev = mezo === 'seoTitle' ? 'SEO-címe' : 'SEO-leírása'
-    if (typeof ertek === 'string' && ertek.trim().length > 0) {
+    if (ertek === korabbi) {
+      adat[mezo] = uj
+      modositasok.push({
+        szabaly,
+        uzenet: `${cimke} ${nev}: a script korábbi, beégetett árú szövege helyett ${ertekCimke(uj)}`,
+        indok: null,
+      })
+    } else if (typeof ertek === 'string' && ertek.trim().length > 0) {
       kihagyasok.push({
         szabaly,
         uzenet: `${cimke} ${nev}`,
