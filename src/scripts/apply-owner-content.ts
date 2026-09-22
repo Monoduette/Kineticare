@@ -434,6 +434,7 @@ export type JavitasSzabaly =
   | 'akcios-kurzus-arszoveg'
   | 'akcios-ar-atallas'
   | 'demo-oldal-visszavonas'
+  | 'diagnozis-tagmondat'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -3956,6 +3957,80 @@ export const payloadMediaAltTar = (payload: Payload): MediaAltTar => ({
 })
 
 /**
+ * 2026-09-22 — tulajdonosi kérés a „Rendelői kezelések" ajtó szövegéről:
+ * „ebből a szövegből mindenhol […] kivenném, hogy ez nem diagnózis a webről".
+ * A mondatot a sín kanonikus szövege (src/lib/home-help-states.ts) írta be a
+ * CMS-be; élesben a /rolunk „Így tudunk segíteni" szekciójában áll (mérve
+ * 2026-09-22 a /api/pages-en), a kezdőlap CMS-szövegében nem.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csak `services` blokk sorának törzsében, és csak a PONTOSAN ezzel a
+ *    mondattal betűre egyező részt cseréli (a mondat eleje megmarad, a
+ *    tagmondat helyére pont kerül); a szerkesztő által átírt szöveg érintetlen;
+ *  - a csere a naplóban betűhíven szerepel;
+ *  - ha a régi mondat sehol nincs, de az új igen: „MÁR" kihagyás; ha egyik
+ *    sincs: csendes, indokolt kihagyás (a szerkesztő másként fogalmazott).
+ */
+export const DIAGNOZIS_REGI_MONDAT =
+  'A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.'
+export const DIAGNOZIS_UJ_MONDAT = 'A pontos tervet vizsgálat után állítjuk össze.'
+
+export const alkalmazDiagnozisTagmondatTorles = (
+  layout: Page['layout'],
+  oldalCimke: string,
+): SzekciosorCsere => {
+  const szabaly: JavitasSzabaly = 'diagnozis-tagmondat'
+  const uzenet = `${oldalCimke}: a „nem diagnózis a webről" tagmondat`
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet, indok: 'a lapnak nincs szekciósora, nincs mit javítani' }],
+    }
+  }
+  const modositasok: JavitasLepes[] = []
+  let marJavitott = false
+  const ujLayout = layout.map((blokk, blokkIndex) => {
+    if (blokk.blockType !== 'services' || !Array.isArray(blokk.rows)) return blokk
+    let blokkValtozott = false
+    const ujSorok = blokk.rows.map((sor, sorIndex) => {
+      const torzs = typeof sor.body === 'string' ? sor.body : null
+      if (torzs === null) return sor
+      if (!torzs.includes(DIAGNOZIS_REGI_MONDAT)) {
+        if (torzs.includes(DIAGNOZIS_UJ_MONDAT)) marJavitott = true
+        return sor
+      }
+      blokkValtozott = true
+      modositasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${blokkIndex + 1}. szekció, ${sorIndex + 1}. sor „${
+          typeof sor.title === 'string' ? sor.title : ''
+        }"): ${ertekCimke(DIAGNOZIS_REGI_MONDAT)} → ${ertekCimke(DIAGNOZIS_UJ_MONDAT)}`,
+        indok: null,
+      })
+      return { ...sor, body: torzs.split(DIAGNOZIS_REGI_MONDAT).join(DIAGNOZIS_UJ_MONDAT) }
+    })
+    return blokkValtozott ? { ...blokk, rows: ujSorok } : blokk
+  })
+  if (modositasok.length > 0) {
+    return { layout: ujLayout, modositasok, kihagyasok: [] }
+  }
+  return {
+    layout: null,
+    modositasok: [],
+    kihagyasok: [
+      {
+        szabaly,
+        uzenet,
+        indok: marJavitott
+          ? 'a szöveg MÁR a javított mondattal áll, nincs teendő'
+          : 'a tagmondat egyik szolgáltatás-sorban sem szerepel betűre egyezően (vagy sosem volt ott, vagy a szerkesztő átírta)',
+      },
+    ],
+  }
+}
+
+/**
  * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
  * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
  * `ROLUNK_TOVABBI_PARTNEREK` szövege egy önálló szabad-szöveg (richText)
@@ -5233,6 +5308,8 @@ async function futtat(): Promise<void> {
     // --- WP52/2: szekció-sorrend — a sín a kártyák elé, a logósor az About alá
     kezdolapLepes(alkalmazKezdolapSegitsegSorrend(kezdolapLayout))
     kezdolapLepes(alkalmazKezdolapSajtologoSorrend(kezdolapLayout))
+    // --- 2026-09-22: a „nem diagnózis a webről" tagmondat törlése ------------
+    kezdolapLepes(alkalmazDiagnozisTagmondatTorles(kezdolapLayout, 'Kezdőlap'))
 
     if (kezdolapValtozott && !dryRun) {
       const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kezdolap.id)
@@ -5413,6 +5490,19 @@ async function futtat(): Promise<void> {
     modositasokSzama += rolunkLogosavok.modositasok.length
     kihagyasokSzama += rolunkLogosavok.kihagyasok.length
 
+    // --- 2026-09-22: a „nem diagnózis a webről" tagmondat törlése (a lánc végén)
+    const rolunkDiagnozis = alkalmazDiagnozisTagmondatTorles(
+      rolunkLogosavok.layout ??
+        rolunkPartnerMondat.layout ??
+        rolunkKepLepes.layout ??
+        rolunkBemutatkozas.layout ??
+        rolunkBemutatkozasAlap,
+      'Rólunk oldal',
+    )
+    naplozdLepeseket(rolunkDiagnozis, dryRun)
+    modositasokSzama += rolunkDiagnozis.modositasok.length
+    kihagyasokSzama += rolunkDiagnozis.kihagyasok.length
+
     // A javítások EGY frissítésben mennek ki (a heroImage és a layout külön
     // mező, nem ütköznek), így egyetlen piszkozat-ellenőrzés elég.
     const irando: { heroImage?: number; layout?: Szekciosor } = {}
@@ -5420,6 +5510,7 @@ async function futtat(): Promise<void> {
       irando.heroImage = ujHeroId
     }
     const rolunkVegsoLayout =
+      rolunkDiagnozis.layout ??
       rolunkLogosavok.layout ??
       rolunkPartnerMondat.layout ??
       rolunkKepLepes.layout ??
