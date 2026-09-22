@@ -242,6 +242,13 @@ describe('HomeView layout-elágazás', () => {
     expect(helpHtml).toContain('kc-services--sin')
     expect(helpHtml).not.toContain('kc-services__num')
     expect(helpHtml).toContain('help-zart-img-7541.jpg')
+    // Tulajdonosi hibajelentés (2026-09-22): a sín a CMS-ben mentett szöveget
+    // mutatja, nem a kódbeli kanonikusat. Az adminban „Akut sérülések…”
+    // kezdetű törzs van, a lapon is ennek kell állnia, nem „Akut panasz…”-nak.
+    expect(helpHtml).toContain('Akut sérülések, műtét utáni állapotok')
+    expect(helpHtml).not.toContain('Akut panasz')
+    expect(helpHtml).toContain(liveBody)
+    expect(helpHtml).toContain('Nézd meg a kezeléseket')
   })
 })
 

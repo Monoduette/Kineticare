@@ -8,6 +8,10 @@
  * `Tovább a kezelésekre` alakot hagyta jóvá; a szótár #40 M-7 szerint
  * `Nézd meg a kezeléseket` marad. A /szolgaltatasok ajtó-blokkja a SAJÁT
  * soraival kapja ugyanezt a sín-megjelenítést (`presentSzolgaltatasokLayout`).
+ *
+ * A kanonikus szöveg a seed és az üres CMS-mező pótléka. A kezdőlapon a
+ * megjelenítés (`presentHomeHelpServicesBlock`) a CMS-ben mentett szöveget
+ * mutatja, a konstansokkal csak az üresen hagyott mezőt tölti ki.
  */
 
 import type { BlockServices, Media, Page } from '../payload-types'
@@ -67,7 +71,7 @@ export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
     number: '1',
     title: 'Rendelői kezelések',
     osszefoglalo: 'Személyes kezelés a stúdióban.',
-    body: 'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.',
+    body: 'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze.',
     felirat: 'Tovább a kezelésekre',
     url: '/szolgaltatasok',
     ujAblakban: false,
@@ -327,19 +331,56 @@ export const homeHelpDoorIndex = (
   return marad === 0 ? 0 : marad === 1 ? 1 : 2
 }
 
-const withFallbackHelpPhotos = (
-  rows: NonNullable<BlockServices['rows']>,
-): NonNullable<BlockServices['rows']> =>
-  rows.map((row, index) => ({
-    ...row,
-    photo: populatedHelpPhoto(row.photo) ?? homeHelpFallbackMedia(homeHelpDoorIndex(row, index)),
-  }))
+/** A CMS szöveges mezője, ha valóban ki van töltve (nem üres, nem csak szóköz). */
+const cmsSzoveg = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+type HomeHelpRow = NonNullable<BlockServices['rows']>[number]
 
 /**
- * Kezdőlapi megjelenítés: a régi háromoszlopos tábla a C-sín UI-t kapja,
- * a szekció indexe változatlan. A `/szolgaltatasok` tábla nem ezen a
- * függvényen megy át — azt a `presentSzolgaltatasokLayout` zárja.
- * A kezdőlap: `HomeView` és a `/kezdolap` slug a `[slug]` oldalon.
+ * Egy sín-sor megjelenítése: MINDEN szöveges mező a CMS-é, a kanonikus
+ * `HOME_HELP_STATES` csak az üresen hagyott mezőt pótolja (tulajdonosi
+ * hibajelentés, 2026-09-22: az adminban mentett „Akut sérülések…” törzs
+ * helyett a kódbeli „Akut panasz…” jelent meg). A pótlás az ajtó jelentése
+ * (`homeHelpDoorIndex`) szerint megy, nem a pozíció szerint, ugyanúgy, mint a fotónál.
+ * A CTA célja és az „új ablakban” jelző együtt jár: ha a CMS-ben van URL,
+ * a jelzőt is a CMS adja; üres URL-nél mindkettő a pótlásból jön.
+ */
+const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
+  const door = homeHelpDoorIndex(live, index)
+  const fallback = HOME_HELP_STATES[door]
+  const cmsUrl = cmsSzoveg(live.url)
+  return {
+    ...live,
+    number: cmsSzoveg(live.number) ?? String(index + 1),
+    title: cmsSzoveg(live.title) ?? fallback.title,
+    osszefoglalo: cmsSzoveg(live.osszefoglalo) ?? fallback.osszefoglalo,
+    body: cmsSzoveg(live.body) ?? fallback.body,
+    felirat: cmsSzoveg(live.felirat) ?? fallback.felirat,
+    url: cmsUrl ?? fallback.url,
+    ujAblakban: cmsUrl !== undefined ? live.ujAblakban === true : fallback.ujAblakban,
+    photo: populatedHelpPhoto(live.photo) ?? homeHelpFallbackMedia(door),
+  }
+}
+
+/**
+ * Kezdőlapi megjelenítés: a háromajtós segítség-blokk (régi háromoszlopos
+ * tábla, zárt-kéz sín vagy kanonikus sín) a C-sín UI-t kapja, a szekció
+ * indexe változatlan. A `/szolgaltatasok` tábla nem ezen a függvényen megy
+ * át — azt a `presentSzolgaltatasokLayout` zárja. A kezdőlap: `HomeView` és
+ * a `/kezdolap` slug a `[slug]` oldalon.
+ *
+ * Tartalom: a megjelenítés CSAK a formát állítja (sín elrendezés, tint
+ * sáv); a szöveg a CMS-é. Kis felirat, cím, bevezető és a sorok minden
+ * mezője (cím, összegzés, törzs, CTA-felirat, URL, új ablak, fotó) a
+ * szerkesztő mentett értéke; a kódbeli kanonikus szöveg csak üres mezőt
+ * pótol, hogy üres CMS mellett se essen szét a szekció. Korábban a régi
+ * táblát és a zárt-kéz sínt a kód teljes egészében a kanonikus szövegre
+ * cserélte, így az admin szerkesztései nem jelentek meg (tulajdonosi
+ * hibajelentés, 2026-09-22).
  *
  * Sorrend: WCAG 2.2 SC 1.3.2 (Meaningful Sequence) — a DOM-sorrend marad a
  * CMS sorrendje, a sín csak a régi 3-oszlopos helyén jelenik meg.
@@ -351,44 +392,18 @@ const withFallbackHelpPhotos = (
  */
 export const presentHomeHelpServicesBlock = (block: BlockServices): BlockServices => {
   if (!isConvertibleHomeHelpServices(block)) return block
-  const liveRows = block.rows ?? []
   const settings = block.sectionSettings ?? {}
-  const presentedSettings = {
-    ...settings,
-    hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
-  }
-
-  if (isHomeHelpRailRows(liveRows)) {
-    return {
-      ...block,
-      elrendezes: 'sin',
-      lead: block.lead?.trim() || HOME_HELP_LEAD,
-      sectionSettings: presentedSettings,
-      rows: withFallbackHelpPhotos(liveRows),
-    }
-  }
-
   return {
     ...block,
     elrendezes: 'sin',
-    title: HOME_HELP_TITLE,
-    lead: HOME_HELP_LEAD,
-    eyebrow: '',
-    sectionSettings: presentedSettings,
-    rows: HOME_HELP_STATES.map((state, index) => {
-      const live = liveRows[index]
-      return {
-        id: live?.id,
-        number: state.number,
-        title: state.title,
-        osszefoglalo: state.osszefoglalo,
-        body: state.body,
-        felirat: state.felirat,
-        url: state.url,
-        ujAblakban: state.ujAblakban,
-        photo: populatedHelpPhoto(live?.photo) ?? homeHelpFallbackMedia(index),
-      }
-    }),
+    eyebrow: cmsSzoveg(block.eyebrow) ?? '',
+    title: cmsSzoveg(block.title) ?? HOME_HELP_TITLE,
+    lead: cmsSzoveg(block.lead) ?? HOME_HELP_LEAD,
+    sectionSettings: {
+      ...settings,
+      hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
+    },
+    rows: (block.rows ?? []).map(presentHomeHelpRow),
   }
 }
 
