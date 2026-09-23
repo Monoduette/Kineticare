@@ -8,6 +8,10 @@
 > Az útmutató a jelenlegi admin felülethez készült: minden gombnév és mezőnév úgy
 > szerepel benne, ahogy a képernyőn látod. Ha valami mást látsz, mint amit itt
 > olvasol, az hiba — jelezd (lásd a legvégén: „Hibát látsz?").
+>
+> Hogy a weboldal melyik szövegét és képét hol írod át, és mi van a weboldal
+> kódjában, azt oldalanként és modulonként a [Mi hol szerkeszthető](mi-hol-szerkesztheto.md)
+> táblázat mondja meg (lásd a 13. pontot is).
 
 ---
 
@@ -38,14 +42,20 @@ Kilépni jobbra fent, a fiókodnál található **Kijelentkezés** ponttal tudsz
 Belépés után bal oldalon látod a menüt. A tételek csoportokba vannak rendezve,
 felül a leggyakrabban használt, alul a legritkábban kellő dolgokkal:
 
-| Csoport          | Mi van benne                                            | Kell-e neked?                                                                          |
-| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Tartalom**     | Képek, Oldalak, Blogbejegyzések, Kategóriák, Vélemények | Igen — ez a napi munkád.                                                               |
-| **Navigáció**    | Menüpontok                                              | Igen — az oldal tetején látszó menü.                                                   |
-| **Webshop**      | Kurzusok, Rendelések, Kosarak, Tranzakciók              | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (13. pont). |
-| **Űrlapok**      | Űrlapok, Űrlapbeküldések                                | A kapcsolati űrlap és a beérkezett üzenetek.                                           |
-| **Felhasználók** | Felhasználók                                            | Csak óvatosan. Lásd a 13. pontot.                                                      |
-| **Rendszer**     | Rendszeresemények, Műveletnapló                         | Nem a tiéd — csak technikai napló.                                                     |
+| Csoport                         | Mi van benne                                                                 | Kell-e neked?                                                                                                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Leggyakrabban használt**      | Kezdőlap, Kezdőlapi videó szövegei, Szerkesztő nézet (új lapon)              | Igen: egy kattintással a kezdőlap szerkesztője, illetve a nyitó videó szövegei. A Szerkesztő nézet új lapon a kezdőlap piszkozatát nyitja meg (14. pont). |
+| **Kimutatások és kurzusvideók** | Statisztika, Webanalitika, Videótár                                          | A Videótár a kurzusok videóit tartja, a kezdőlapi videóét nem.                                                                                            |
+| **Tartalom**                    | Oldalak, Blogbejegyzések, Képek, Vélemények, Kategóriák, Védett kurzusfájlok | Igen, ez a napi munkád.                                                                                                                                   |
+| **Navigáció**                   | Menüpontok                                                                   | Igen, az oldal tetején látszó menü.                                                                                                                       |
+| **Webshop**                     | Kurzusok, Rendelések, Kurzus-haladás                                         | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (19. pont).                                                                    |
+| **Űrlapok és beküldések**       | Űrlapok, Űrlapbeküldések                                                     | A beérkezett üzenetek az Űrlapbeküldések között vannak.                                                                                                   |
+| **Fiókok**                      | Felhasználók                                                                 | Csak óvatosan. Lásd a 19. pontot.                                                                                                                         |
+| **Rendszer**                    | Rendszeresemények, Műveletnapló, Visszatérítési szándékok                    | Nem a tiéd, csak technikai napló.                                                                                                                         |
+
+Az Irányítópulton a „Gyakori teendők” kártyái ugyanezekre a helyekre visznek
+(Kezdőlap, Kezdőlapi videó szövegei, Kurzusok és árak, Menüpontok,
+Űrlapbeküldések, Statisztika).
 
 Egy csoportra kattintva megkapod a listát (pl. az összes blogbejegyzést). A lista
 jobb felső sarkában van az **Új létrehozása** gomb, a listaelemre kattintva pedig
@@ -86,19 +96,25 @@ tartalom azonnal eltűnik az oldalról, de nem vész el, piszkozatként megmarad
 Az előnézettel megnézheted, hogyan fest a **piszkozatod** az éles oldal
 kinézetében, mielőtt bárki más látná.
 
-**Hol találod?** A dokumentum tetején, a jobb felső sarokban lévő gombsorban
-(a **Mentés** / **Közzététel** gombok mellett) van egy kis **ikon: négyzetből
-kifelé mutató nyíl**. Nincs mellette felirat — ha ráviszed az egeret, megjelenik
-a buborék: „Előnézet". Erre kattintva **új lapon** nyílik meg az oldal a
-piszkozat tartalmával. Az ikon csak akkor jelenik meg, ha a dokumentumnak már
-van webcíme (slugja) — vagyis miután először elmentetted.
+**Hol találod?** Az Oldalak és a Blogbejegyzések szerkesztőjének tetején, a
+jobb felső gombsorban az **Előnézet** gomb áll (mellette egy kifelé mutató nyíl
+ikon). Erre kattintva **új lapon** nyílik meg az oldal a piszkozat tartalmával.
+Ha épp gépeltél, az új lap előbb a „Mentés folyamatban, az előnézet pár
+másodperc múlva megnyílik…” szöveget mutatja, és a mentés után tölti be a
+piszkozatot. A gomb csak akkor jelenik meg, ha a dokumentumnak már van
+webcíme, vagyis miután először elmentetted.
+
+A szerkesztő tetején egy állapotdoboz is mutatja, mit látnak most a látogatók
+(például „Van közzé nem tett módosításod.”), és a „Korábbi verziók és
+visszaállítás” link a Verziók fülre visz. Egy szekciót közvetlenül is
+megnézhetsz az oldalon: lásd a 14. pontot.
 
 Az előnézet csak bejelentkezett munkatársnak/tulajdonosnak működik: ha valaki
 másnak küldöd el a linket, ő nem fogja látni a piszkozatot.
 
-### Webcím (slug)
+### Webcím
 
-A **Webcím (slug)** a cím webcímes alakja: ékezetek nélkül, kisbetűvel,
+A **Webcím** a cím webcímes alakja (angolul slug): ékezetek nélkül, kisbetűvel,
 kötőjelekkel. **Magától kitöltődik** a címből — például
 „Kézrehabilitáció otthon" → `kezrehabilitacio-otthon`.
 
@@ -117,9 +133,15 @@ visszahozható.
 
 ## 4. Új blogbejegyzés lépésről lépésre
 
+A blogbejegyzés szerkesztőjében a mezők három fülön állnak: **Blogbejegyzés**
+(Cím, Rövid bevezető, Tartalom, Borítókép), **GYIK és ajánló** (Ajánlott kurzus,
+Gyakori kérdések, Kapcsolódó blogbejegyzések) és **Kereső és megosztás**
+(SEO-cím, SEO-leírás, SEO-kulcsszavak, Megosztási kép). A Webcím, a Megjelenés
+dátuma, a Szerző és a Kategóriák jobb oldalt, az oldalsávban vannak.
+
 1. Bal oldalt: **Tartalom → Blogbejegyzések**, majd jobb fent **Új létrehozása**.
 2. **Cím** — kötelező. Ez jelenik meg a bloglistán és a Google találatai közt.
-3. **Webcím (slug)** — magától kitöltődik a címből, hagyd békén.
+3. **Webcím** — magától kitöltődik a címből, hagyd békén.
 4. **Rövid bevezető** — 1–3 mondat. A bloglista kártyáin és a Google-ban is ez látszik.
 5. **Tartalom** — ide írod a cikket. A szövegdoboz fölött **mindig ott van az
    eszköztár**: címsorok, félkövér, dőlt, felsorolás, számozott lista, link,
@@ -132,15 +154,16 @@ visszahozható.
 7. **SEO-cím** és **SEO-leírás** — ha üresen hagyod, a Google a fenti címet és
    bevezetőt használja. A leírás kb. 150 karakter legyen.
 8. **Megosztási kép** — ez látszik, ha valaki Facebookon vagy Messengeren megosztja.
+   Ha üres, a Borítókép, annak híján a Kineticare alapképe látszik (15. pont).
 9. **Megjelenés dátuma** — az első közzétételkor magától kitöltődik; a bloglista
    ez alapján rendez (a legfrissebb elöl). Csak akkor írd át, ha szándékosan más
    dátumot akarsz mutatni.
 10. **Szerző** — alapból te vagy. Csak akkor állítsd át, ha más nevében írod.
 11. **Kategóriák** — több is választható. Ha még nincs megfelelő, előbb hozd létre
     (5. pont).
-12. **Kapcsolódó bejegyzések** — legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk.
-13. Mentés után kattints a jobb fenti **előnézet-ikonra** (négyzetből kifelé
-    mutató nyíl), és nézd meg új lapon, jól fest-e.
+12. **Kapcsolódó blogbejegyzések** — legfeljebb 3 cikk, amit a bejegyzés alján ajánlunk.
+13. Mentés után kattints a jobb fenti **Előnézet** gombra, és nézd meg új lapon,
+    jól fest-e.
 14. Ha jó: **Közzététel**.
 
 A kész cikk itt jelenik meg:
@@ -158,7 +181,7 @@ A kategória a cikkek témakörökbe rendezésére való.
 
 1. **Tartalom → Kategóriák → Új létrehozása**.
 2. **Név** — ahogy az olvasó látja, pl. „Kézrehabilitáció".
-3. **Webcím (slug)** — magától kitöltődik, ékezet nélkül (`kezrehabilitacio`).
+3. **Webcím** — magától kitöltődik, ékezet nélkül (`kezrehabilitacio`).
 4. **Mihez tartozik**:
    - _Blogbejegyzésekhez_ — ez a blog témaköre; a blog csak ezeket mutatja,
    - _Kurzusokhoz_ — a webshop termékeinek besorolása.
@@ -177,15 +200,17 @@ Az „oldal" az állandó tartalom (pl. Rólunk, Szolgáltatások) — szemben a
 blogbejegyzéssel, ami idővel régivé válik.
 
 1. **Tartalom → Oldalak → Új létrehozása**.
-2. **Cím**, **Webcím (slug)**, **Rövid bevezető**, **Tartalom** — ugyanúgy, mint a
-   blogbejegyzésnél (4. pont).
+2. **Cím**, **Webcím**, **Rövid bevezető**, **Tartalom** — ugyanúgy, mint a
+   blogbejegyzésnél (4. pont). Az Oldalaknál nincsenek fülek: a mezők egymás
+   alatt állnak, a Webcím és a Szerző az oldalsávban.
 3. **Szekciók** — az oldal „építőkockás" része (sávok: nyitó blokk,
    kurzuskártyák, vélemények…). Nem kötelező: ha üresen hagyod, az oldal a
    megszokott módon jelenik meg. Részletesen a 7. pontban.
 4. **Fejléckép** — az oldal tetején megjelenő nagy kép (nem kötelező).
-5. **SEO-cím**, **SEO-leírás**, **Megosztási kép** — mint a bejegyzésnél.
-6. Mentés, **előnézet** (jobb fent a kifelé mutató nyíl ikonja), majd
-   **Közzététel**.
+5. **SEO-cím**, **SEO-leírás**, **Megosztási kép** — mint a bejegyzésnél. Az
+   Oldalnál üres Megosztási kép helyett a Fejléckép, annak híján a Kineticare
+   alapképe látszik (15. pont).
+6. Mentés, **Előnézet** (a jobb felső gomb), majd **Közzététel**.
 
 A kész oldal a webcímén él: pl. `/rolunk`.
 
@@ -209,9 +234,14 @@ Payload adminból kezelhetők: szöveget írhatsz beléjük, újat vehetsz fel,
 elrejtheted valamelyiket, és — ami a legfontosabb — **átrendezheted a
 sorrendjüket**. Programozó nem kell hozzá.
 
-> **Hol találod?** **Tartalom → Oldalak → `kezdolap`**, majd görgess a
-> **Szekciók** mezőig. A szekciók alapból összecsukva jelennek meg, a nevükre
-> (pl. „Film-hero (kéznyitás)") kattintva nyílnak ki.
+> **Hol találod?** Bal oldalt **Leggyakrabban használt → Kezdőlap** (vagy
+> **Tartalom → Oldalak**, a lista fölötti „Fő oldalak a weboldal menüje szerint”
+> dobozban **Kezdőlap**), majd görgess a **Szekciók** mezőig. A szekciók alapból
+> összecsukva jelennek meg. Minden sor címkéje megmondja a sorszámot, a típust
+> és a szekció címét, például „01 · Nyitó videó (kéznyitás): Hatékony és
+> biztonságos módszerek…”; a sorra kattintva nyílik ki. A nyitó videó
+> szövegeihez közvetlenül is eljutsz: **Leggyakrabban használt → Kezdőlapi videó
+> szövegei**.
 
 ### Mit tudsz csinálni?
 
@@ -224,8 +254,9 @@ rövid leírással. A lista két csoportra oszlik:
 
 - **Kezdőlap (ajánlott sorrendben)** — a kezdőlap saját sávjai, abban a
   sorrendben felkínálva, ahogy a lapon ajánlott állniuk;
-- **Bárhol használható** — a **Szabad szöveg** és a **CTA-sáv**, amit bármelyik
-  oldalon, bárhová beszúrhatsz.
+- **Bárhol használható** — a **Szakemberek kártyái**, a **Nyitható sorok**, az
+  **Időpontkérés**, a **Szabad szöveg** és a **Gombos kiemelő sáv**, amit
+  bármelyik oldalon, bárhová beszúrhatsz.
 
 **Sorrendet cserélni.** Minden szekciósor bal szélén van egy **fogantyú** (a
 pontokból álló kis ikon). Fogd meg az egérrel, húzd a helyére, engedd el — a
@@ -233,40 +264,44 @@ szekció odakerül. Billentyűzettel is megy: állj a fogantyúra a **Tab**
 billentyűvel, nyomj **szóközt**, a **nyilakkal** vidd a sort a helyére, majd
 újabb **szóközzel** tedd le.
 
-**Elrejteni törlés nélkül.** Minden szekció alján ott van a
-**Szekció-beállítások** csoport, benne a **Látható** pipa. Ha kiveszed, a sáv
-eltűnik az oldalról, **de a tartalma megmarad** — bármikor visszakapcsolhatod.
-Ez a helyes módja egy szekció „kikapcsolásának"; törölni nem kell (a törléssel a
-beleírt szöveg is elvész).
+**Elrejteni törlés nélkül.** Minden szekció alján ott van a csukott
+**Megjelenés és elrejtés** rész; kinyitva benne a **Látható** pipa. Ha kiveszed,
+a sáv eltűnik az oldalról, **de a tartalma megmarad** — bármikor
+visszakapcsolhatod. A sor címkéjén ilyenkor „Rejtve” áll. Ez a helyes módja egy
+szekció „kikapcsolásának"; törölni nem kell (a törléssel a beleírt szöveg is
+elvész).
 
 **Háttérszínt váltani.** Ugyanitt van a **Háttér** választó (Fehér /
 Világoskék / Sötétkék). Váltogasd a fehéret és a világoskéket, hogy az egymás
 alatti sávok jól elkülönüljenek; a sötétkéket ritkán, egy-egy kiemeléshez
 használd.
 
-**Horgony azonosítót adni.** Szintén a Szekció-beállítások közt: a **Horgony
-azonosító** egy rövid név (pl. `kurzusok`), amivel a lapon belül lehet erre a
-szekcióra ugrani. Ha megadod, a `https://kineticare.hu/#kurzusok` cím pontosan
-ide görget. Így tud egy gomb, egy menüpont vagy egy hírlevél-link a lap közepére
-mutatni. Csak ékezet nélküli kisbetűt, számot és kötőjelet írj bele, a `#` jelet
-pedig hagyd ki — ha elrontod, a mentés magyar hibaüzenettel figyelmeztet.
+**Ugrópontot adni.** Szintén a Megjelenés és elrejtés részben: az **Ugrópont
+neve (haladó beállítás)** egy rövid név (pl. `kurzusok`), amivel a lapon belül
+lehet erre a szekcióra ugrani. Ha megadod, a `https://kineticare.hu/#kurzusok`
+cím pontosan ide görget. Így tud egy gomb, egy menüpont vagy egy hírlevél-link a
+lap közepére mutatni. Csak ékezet nélküli kisbetűt, számot és kötőjelet írj
+bele, a `#` jelet pedig hagyd ki — ha elrontod, a mentés magyar hibaüzenettel
+figyelmeztet. Néhány ugrópontra a weboldal vagy más oldalak linkjei épülnek
+(„rendeloi”, „idopontkeres”, „szakmai-hatter”): ezeknél a szekció tetején
+figyelmeztetés áll, ezeket ne nevezd át.
 
 ### Az ajánlott sorrend — és miért ez
 
 A kezdőlap alap-sorrendje nem véletlen: azt a sorrendet követi, amiben a
 látogató dönteni szokott. Fentről lefelé:
 
-| Sorrend | Szekció                                                                              | Mit csinál                                                                                       |
-| ------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| 1.      | Film-hero                                                                            | Megmondja, kinek és miben segítünk, és egyetlen hangsúlyos gombbal a kurzusokra visz.            |
-| 2.      | Hitel-csík                                                                           | Egy sorban a szakmai háttér — ez keretezi az egész lapot.                                        |
-| 3.      | Kurzuskártyák                                                                        | A fizetős kurzusok árral és gombbal. Ez az oldal legfontosabb blokkja.                           |
-| 4.      | Ingyenes SOS-sáv                                                                     | Aki még nem venne kurzust, itt kap ingyenes anyagot — a fizetős ajánlat UTÁN, visszafogottabban. |
-| 5–10.   | Sajtólogók, Üdvözlő blokk, „Erre számíthatsz", Három állapot, Szolgáltatások, Rólunk | A bizalomépítő, bemutatkozó rész.                                                                |
-| 11.     | Így működik                                                                          | Eloszlatja a „vajon menni fog otthon?" kételyt.                                                  |
-| 12.     | Vélemények                                                                           | Páciens-visszajelzések — a kurzusok után, legfeljebb három.                                      |
-| 13.     | Tudástár                                                                             | A legfrissebb blogcikkek (ez hozza a Google-ből az olvasókat).                                   |
-| 14.     | GYIK                                                                                 | A vásárlás előtti utolsó kérdések a lap alján.                                                   |
+| Sorrend | Szekció                                                                                                                 | Mit csinál                                                                                       |
+| ------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 1.      | Nyitó videó (kéznyitás)                                                                                                 | Megmondja, kinek és miben segítünk, és egyetlen hangsúlyos gombbal a kurzusokra visz.            |
+| 2.      | Szakmai háttér sáv                                                                                                      | Egy sorban a szakmai háttér — ez keretezi az egész lapot.                                        |
+| 3.      | Kurzuskártyák (automatikus)                                                                                             | A fizetős kurzusok árral és gombbal. Ez az oldal legfontosabb blokkja.                           |
+| 4.      | Ingyenes villámkurzus sáv                                                                                               | Aki még nem venne kurzust, itt kap ingyenes anyagot — a fizetős ajánlat UTÁN, visszafogottabban. |
+| 5–10.   | Logósor, Üdvözlés és gondok, Ígéretek kártyákon, A kéz három állapota, Képes lista vagy kártyák, Bemutatkozás és számok | A bizalomépítő, bemutatkozó rész.                                                                |
+| 11.     | Számozott lépések                                                                                                       | Eloszlatja a „vajon menni fog otthon?" kételyt.                                                  |
+| 12.     | Vélemények (automatikus)                                                                                                | Páciens-visszajelzések — a kurzusok után, legfeljebb három.                                      |
+| 13.     | Tudástár-ajánló (automatikus)                                                                                           | A legfrissebb blogcikkek (ez hozza a Google-ből az olvasókat).                                   |
+| 14.     | GYIK (gyakori kérdések)                                                                                                 | A vásárlás előtti utolsó kérdések a lap alján.                                                   |
 
 Két szabály, amit érdemes megtartani, ha átrendezel:
 
@@ -282,11 +317,17 @@ visszaállítható (és a **Verziók** fül is ott van, lásd a 3. pontot).
 
 ### Ha üresen hagyod a Szekciók mezőt
 
-Semmi baj nem történik: **az oldal a megszokott módon jelenik meg**. A kezdőlap
-ilyenkor a beépített felépítését hozza (nyitó blokk, kurzuskártyák, ingyenes
-SOS, „Így működik", vélemények, Tudástár, GYIK), a többi oldal pedig a
-**Tartalom** mezőbe írt szöveget. **Semmi nem vész el** — ha kiürítenéd a
-szekciólistát, az oldal nem lesz üres, csak visszaáll erre az alapállapotra.
+Az oldal nem lesz üres. A kezdőlap ilyenkor a weboldal beépített alapváltozatát
+hozza (nyitó blokk, kurzuskártyák, ingyenes SOS, „Így működik", vélemények,
+Tudástár, GYIK), a többi oldal pedig a **Tartalom** mezőbe írt szöveget.
+
+A kezdőlapon azonban a törölt szekciók szövege elvész. A kezdőlap szerkesztőjének
+tetején ez áll:
+
+> Ha az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített alapváltozata jelenik meg, a weboldal következő indulásakor pedig az alapszekciók visszakerülnek, a korábbi szerkesztések nélkül.
+
+Ha egy szekciót nem akarsz mutatni, rejtsd el (lásd fent), ne töröld. A
+részleteket a 16. pont írja le.
 
 ### Piszkozat, előnézet, közzététel — a szekciókra is
 
@@ -294,9 +335,10 @@ A szekciók pontosan úgy viselkednek, mint az oldal többi mezője (3. pont):
 
 1. Amíg dolgozol, a rendszer **magától ment piszkozatba**. A látogatók
    eközben a korábban közzétett változatot látják — az átrendezésed még nem él.
-2. Ha kész vagy, kattints a jobb fent lévő **előnézet-ikonra** (négyzetből
-   kifelé mutató nyíl): új lapon, az éles kinézetben látod a piszkozatot, az új
-   sorrenddel.
+2. Ha kész vagy, kattints a jobb fent lévő **Előnézet** gombra: új lapon, az
+   éles kinézetben látod a piszkozatot, az új sorrenddel. Egy szekciót a
+   tetején álló **Megnézem az oldalon (új lapon)** linkkel közvetlenül is
+   megnézhetsz (14. pont).
 3. Ha jónak találod: **Módosítások közzététele** — ettől a pillanattól a
    látogatók is az új sorrendet látják.
 4. Ha mégsem: a **Verziók** fülön bármelyik korábbi állapot visszaállítható.
@@ -312,15 +354,19 @@ A menü az oldal tetején látszó navigáció. Legfeljebb **2 szintű**: főmen
 és alattuk almenüpontok.
 
 1. **Navigáció → Menüpontok → Új létrehozása**.
-2. **Felirat** — ez a szöveg jelenik meg a menüben (pl. „Kurzusok").
+2. **Felirat** — ez a szöveg jelenik meg a menüben (pl. „Rólunk").
 3. **Hová mutat** — ettől függ a következő mező:
 
-   | Típus          | Mit válassz utána                                                  |
-   | -------------- | ------------------------------------------------------------------ |
-   | **Oldal**      | a **Cél** mezőben az oldalak közül választasz (pl. Rólunk)         |
-   | **Bejegyzés**  | a **Cél** mezőben egy blogbejegyzést                               |
-   | **Kurzus**     | a **Cél** mezőben egy terméket a webshopból                        |
-   | **Külső link** | a **Külső webcím** mezőbe teljes címet írsz, `https://`-sel kezdve |
+   | Típus                             | Mit válassz utána                                                                                                                                 |
+   | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **Oldal**                         | a **Cél** mezőben az oldalak közül választasz (pl. Rólunk)                                                                                        |
+   | **Blogbejegyzés**                 | a **Cél** mezőben egy blogbejegyzést                                                                                                              |
+   | **Webcím (saját vagy más oldal)** | a **Webcím** mezőbe a weboldal saját lapjához perjellel kezdődő útvonalat (pl. `/blog`), más weboldalhoz `https://`-sel kezdődő teljes címet írsz |
+   | **Kurzus**                        | a **Cél** mezőben egy kurzust                                                                                                                     |
+
+   A menü első pontját (**Kurzusok**) a rendszer teszi ki, ha itt nincs
+   `/kurzusok` webcímű főmenüpont. A Kurzus típusú SOS KézRelax menüpont
+   feliratának „Ingyenes” szavát is a rendszer kezeli.
 
 4. **Fölérendelt menüpont** — csak akkor töltsd ki, ha ez almenüpont. Almenüpont
    alá már nem tehetsz továbbit (a menü 2 szintű).
@@ -355,32 +401,41 @@ Amire figyelj:
 - Ha egy **főmenüpontot** teszel rejtetté, az alatta lévő almenüpontok nem
   tűnnek el: főmenüpontként jelennek meg tovább. Ha azokat sem akarod mutatni,
   azoknál is kapcsold be a Rejtett linket.
-- A **Látható** pipa kivétele továbbra is a menüpont teljes elrejtése. A
-  Rejtett link ennél finomabb: csak a menüből veszi ki, a cél elérhető marad.
+- A **Látható** pipa kivétele ugyanígy kiveszi a menüpontot a menüből, és a
+  cél a saját címén ugyanígy elérhető marad. A különbség annyi, hogy a Rejtett
+  linknél kimásolhatod a cél közvetlen linkjét.
+- A `/blog` webcímű menüpont a Tudástár kapcsolója is: ha ott kiveszed a
+  Látható pipát vagy bekapcsolod a Rejtett linket, a Tudástár az egész
+  weboldalon eltűnik.
 
 ---
 
 ## 9. Új vélemény
 
-A vélemények a pácienseink visszajelzései. A kezdőlapon a **kiemelt** vélemények
-jelennek meg.
+A vélemények a pácienseink visszajelzései. A weboldal Vélemények szekcióiban
+(ma a kezdőlapon, a Rólunk és a Szolgáltatások oldalon) a **kiemelt**
+vélemények jelennek meg, mindegyikben ugyanazok; a Kapcsolat oldalon a
+Vélemények szekció nem jelenik meg. A lista „Hol látszik” oszlopa véleményenként
+megmutatja, hol látszik.
 
 > **A legfontosabb szabály:** ide **kizárólag valós, tényleg elhangzott vélemény**
 > kerülhet, **betűhíven**. Kitalált, összeollózott vagy „megszépített"
 > visszajelzés tilos.
 
 1. **Tartalom → Vélemények → Új létrehozása**.
-2. **Teljes szöveg**: kötelező. A teljes, eredeti szöveg, pontosan
-   úgy, ahogy elhangzott.
-3. **Rövid idézet**: nem kötelező, de a kezdőlapra ez való: 1–2
+2. **Rövid idézet**: nem kötelező, de a weboldalra ez való: 1–2
    mondat, **legfeljebb 260 karakter**. Ha hosszabbat írsz, a mentés magyar
-   hibaüzenettel figyelmeztet. A kezdőlapon ez a rövid szöveg jelenik meg; ha
+   hibaüzenettel figyelmeztet. A weboldalon ez a rövid szöveg jelenik meg; ha
    üresen hagyod, a Teljes szöveg kerül ki.
+3. **Teljes szöveg**: kötelező. A teljes, eredeti szöveg, pontosan
+   úgy, ahogy elhangzott. Ha a Rövid idézet ki van töltve, a weboldalon az
+   látszik, ez nem.
 4. **Név** — aki mondta (pl. „Garami Gábor" vagy „P. Benjámin", ha csak
    keresztnévvel vállalta).
 5. **Titulus, foglalkozás** — nem kötelező, pl. „zenész / műsorvezető".
-6. **Kiemelt** — ez a pipa jelenti azt, hogy **megjelenik a kezdőlapon**.
-   A kezdőlapon **legfeljebb 3** vélemény látszik: a kiemeltek közül a
+6. **Kiemelt** — ez a pipa jelenti azt, hogy **megjelenik a Vélemények
+   szekciókban**, a kezdőlapon is.
+   **Legfeljebb 3** vélemény látszik: a kiemeltek közül a
    **Sorrend** szerint **első három** (a legkisebb sorszámúak), a többi
    egyszerűen kimarad. Ezért adj a kiemelteknek **különböző** sorszámot —
    azonos sorszám esetén nem garantált, melyikük kerül ki a kezdőlapra.
@@ -395,6 +450,11 @@ jelennek meg.
 Ha új véleményt akarsz kitenni a kezdőlapra egy régi helyett: az újnál pipáld be a
 **Kiemelt**et és adj neki 1–3 közötti sorszámot, a leváltottnál pedig **vedd ki a
 Kiemelt pipát** (a vélemény megmarad, csak nem a kezdőlapon).
+
+A három induló véleményt (Garami Gábor, Kállai Dóra, Bagdal Szilvia) ne töröld,
+és a nevüket ne írd át: a weboldal induláskor név szerint keresi őket, és ha
+nem találja, újra létrehozza, kiemelve (16. pont). Ha valamelyiket nem akarod
+mutatni, vedd ki a Kiemelt vagy a Látható pipát.
 
 ---
 
@@ -426,8 +486,22 @@ ha üresen hagyod, a lapon a beépített fotó marad (a mező alatt olvasod, mel
 
 - **Bemutatkozás és számok → Mozgó fotósor a kezdőlapon (négy kép):** a
   nyitó videó alatti négy íves fotó. Az 1. kép telefonon nem látszik. Ez a
-  sor csak akkor jelenik meg, ha a szekció közvetlenül a nyitó videó után áll;
-  ilyenkor a **Csapatfotó** mező képe nem látszik a kezdőlapon.
+  sor csak akkor jelenik meg, ha három feltétel együtt teljesül:
+  - ez az első látható „Bemutatkozás és számok” szekció a lapon;
+  - közvetlenül a nyitó videó után áll;
+  - a „Felső kis felirat”, a „Szekció címe”, a „Bekezdések” és a „Kiemelt
+    blokk” közül legalább egy ki van töltve.
+
+  Ilyenkor a **Csapatfotó** mező képe nem látszik. Ha a szekcióban csak Számok
+  és Csapatfotó van, szöveg nincs, akkor a Csapatfotó látszik, a fotósor nem.
+  A Csapatfotó mező alatt a szerkesztő jelzi, melyik eset áll fenn. Ha a
+  fotósor látszik, ez áll ott: „Ebben a helyzetben a jobb oldalon a mozgó
+  fotósor látszik, ez a kép nem.” Ha nem látszik, ez: „Ebben a helyzetben a
+  mozgó fotósor nem látszik: csak akkor jelenik meg, ha ez az első látható
+  „Bemutatkozás és számok” szekció, közvetlenül a nyitó videó után áll, és a
+  „Felső kis felirat”, a „Szekció címe”, a „Bekezdések” és a „Kiemelt blokk”
+  közül legalább egy ki van töltve.”
+
 - **Kurzuskártyák (automatikus) → Fotók a „Kurzusaink” felirat alatt:** a
   bal, a középső és a jobb oldali díszítő fotó a kártyák alatt.
 
@@ -578,7 +652,365 @@ Praktikák:
 
 ---
 
-## 13. Amihez ne nyúlj
+## 13. Mi hol szerkeszthető?
+
+Amit a weboldalon látsz, az háromféle helyről jöhet:
+
+1. **Az oldal vagy a szekció saját mezőjéből.** Ezt ott írod át, ahol a
+   szekciót vagy az oldalt szerkeszted.
+2. **Egy másik gyűjteményből** (Kurzusok, Vélemények, Blogbejegyzések). Ilyenkor
+   a szekció tetején egy doboz megmondja, honnan jön a tartalom, és az
+   „Ugrás oda, ahol szerkeszted” link odavisz.
+3. **A weboldal kódjából.** Ezt az adminban nem tudod átírni: szólj a
+   fejlesztőnek.
+
+Oldalanként és modulonként a [Mi hol szerkeszthető](mi-hol-szerkesztheto.md)
+táblázat sorolja fel, mi melyik fajta, és hol találod. Ahol a táblázatban az áll,
+hogy „kódban van, szólj a fejlesztőnek”, ott az adminban nincs rá mező.
+
+---
+
+## 14. Az oldalról a szerkesztőbe, és vissza
+
+Ha a weboldalon látsz valamit, amit át akarsz írni, nem kell a Szekciók között
+keresgélned: az oldalról egy kattintással a pontos szekcióhoz jutsz.
+
+### Az oldalról a szerkesztőbe
+
+1. Lépj be az adminba, majd ugyanabban a böngészőben nyisd meg a weboldal
+   lapját. A fejléc fölött egy sáv jelenik meg ezzel a szöveggel: „Ezt a sávot
+   csak a szerkesztők látják.” Mellette a **Szerkesztő nézet** link áll. A
+   látogatók ezt a sávot nem látják.
+
+   A kezdőlaphoz rövidebb az út: az admin bal oldali menüjében kattints a
+   **Leggyakrabban használt → Szerkesztő nézet (új lapon)** linkre. Ez új lapon
+   rögtön a kezdőlap piszkozatát nyitja meg, vagyis a 2. lépés eredményét, így
+   onnan a 3. lépéssel folytatod. Ez a link mindig a kezdőlapot nyitja; a többi
+   laphoz a fejléc fölötti sáv kell.
+
+2. Kattints a **Szerkesztő nézet** linkre. Ugyanennek a lapnak a piszkozata
+   nyílik meg. A lap tetején ez áll: „Előnézet: a piszkozatot látod, ez a
+   változat még nem nyilvános.” Mellette a **Vissza a szerkesztőbe** és a
+   **Kilépés az előnézetből** link.
+3. Az előnézetben minden szekció előtt egy szalag áll. Rajta a szekció
+   címkéje, betűre ugyanaz, mint az adminban (például „05 · Képes lista vagy
+   kártyák (sín): Így tudunk segíteni”), és a **Szerkesztem** link. A lap
+   tetején „Az egész oldal: …” kezdetű szalag az egész oldal szerkesztőjét
+   nyitja meg.
+4. Kattints a szekció **Szerkesztem** linkjére. Ugyanabban a lapban megnyílik
+   az admin, az oldal szerkesztője. A böngésző címsorában a cím végén
+   `?szekcio=` és a szekció azonosítója áll.
+5. Az admin megkeresi a szekciót, kinyitja, odagörget úgy, hogy a ragadós
+   fejléc ne takarja, és a kurzort a szekció első mezőjébe teszi. A szekciót
+   zöld keret emeli ki, amíg máshová nem kattintasz, a képernyőolvasó pedig felolvassa:
+   „Megnyitva:” és a szekció címkéje. Ha közben görgetsz, kattintasz vagy
+   gépelsz, a nyitás megáll, és nem veszi el tőled a kurzort.
+6. Ha a szekció közben kikerült az oldalról, vagy a link régi, egy bezárható
+   figyelmeztetés jelenik meg, például „A hivatkozott szekció nincs ezen a
+   lapon”, azzal, hogy a szekciókat lent, a Szekciók alatt találod. A
+   **Bezárás** gombbal eltünteted.
+7. Az előnézethez a böngésző **Vissza** gombjával térsz vissza.
+
+A szalagon további jelzések is állhatnak:
+
+- **Máshonnan jövő tartalom.** Ha a szekció egy másik gyűjteményből töltődik
+  (például a kurzuskártyák a Kurzusokból), a szalag ezt kimondja, és egy
+  második link is áll rajta: „Ugrás oda, ahol szerkeszted: Kurzusok”.
+- **Rejtett szekció.** A rejtett szekció előtt is áll szalag: „Figyelem:
+  rejtett szekció. Ez a szekció most rejtve van, a lapon nem látszik.” Utána
+  az, hogy hol kapcsolod vissza, vagy melyik látható sor a párja.
+- **Rendelői árlista.** Ha az árlista szövegéből nem lesznek árkártyák, a
+  szalag figyelmeztet: „Az árlista nem ismerhető fel, sima szövegként
+  látszik.” A szabályt a 18. pont írja le.
+- **Tünet-oldalak.** A nyolc tünet-oldalon (például /keztoalagut-szindroma) a
+  lap tetején két link áll: **Szerkesztem a blogbejegyzést** (a látható cikk)
+  és **Szerkesztem az oldalt** (a keresőben megjelenő cím és leírás).
+
+A **Szerkesztő nézet** a kódban élő lapokon nem jelenik meg (például a
+Kurzusok listáján, a Tudástár listáján, a Szakembereknek oldalon, a fiók- és
+pénztároldalakon). A kurzusoldalak és a blogbejegyzések előnézetében csak az
+előnézet sávja áll, szekciónkénti szalag nincs.
+
+A bal oldali menü **Kezdőlapi videó szövegei** pontja ugyanígy működik: a
+kezdőlap szerkesztőjét a nyitó videó szekciójánál nyitja meg.
+
+### A szerkesztőből az oldalra
+
+- **Egy szekció:** minden szekció tetején ott a **Megnézem az oldalon (új
+  lapon)** link. Új lapon nyílik meg a piszkozat előnézete, pontosan annál a
+  szekciónál. Mindig a legutóbb mentett piszkozatot mutatja; az automatikus
+  mentés pár másodperccel a gépelés után történik. Ritkán, ha a szekciónak
+  nincs azonosítója, a link a lap tetejére visz; ezt a link melletti mondat
+  jelzi: „A lap a tetején nyílik meg, innen görgess a szekcióhoz.”
+- **Az egész oldal:** a jobb felső **Előnézet** gomb (3. pont).
+- Rejtett szekciónál a Megnézem link nem jelenik meg, hiszen a szekció a lapon
+  nem látszik. A Kapcsolat oldalon a Vélemények, a Tudástár-ajánló, a
+  Kurzuskártyák és a kurzusra vivő Gombos kiemelő sáv szekciónál sincs ilyen
+  link, mert ott ezek nem vagy hiányosan látszanak; a szekció tetején álló doboz
+  megmondja, miért.
+
+### A rejtett szekció és a látható párja
+
+Ha egy szekció rejtve van, a tetején figyelmeztető doboz áll: „Figyelem:
+rejtett szekció”. Ha ugyanazon a lapon egy ugyanilyen típusú és ugyanilyen című
+szekció látható, a doboz ezt is megmondja (például „Ugyanezzel a címmel a 2. sor
+látszik a lapon, a látható szöveget ott írod át.”), alatta pedig egy link áll:
+
+> A látható párja: 02 · Megérdemled a profi törődést
+
+A linkre kattintva a szerkesztő a látható szekcióra ugrik, és kinyitja. A lap
+nem töltődik újra, ezért amit addig beírtál, megmarad. A kezdőlapon ma ez a
+helyzet: a 11. sor a 2. sor rejtett ikerpéldánya, amit ott írsz, az a lapon
+nem jelenik meg.
+
+### Ugyanez máshol
+
+Néhány szekció más oldalon is él, külön példányban (például az „Így tudunk
+segíteni” sín a kezdőlapon, a Rólunk és a Szolgáltatások oldalon; a
+szakemberkártyák a Rólunk és a Kapcsolat oldalon). Ilyenkor a szekció tetején
+egy lista áll, ezzel a bevezetővel: „Hasonló szekció más oldalon:”. Utána a
+másik példányok, mindegyik linkkel, végül ez a mondat: „Ezek külön példányok: az
+itteni módosítás csak ezt az oldalt érinti.”
+
+Ha ugyanaz a telefonszám, e-mail-cím vagy kép más szekcióban is szerepel,
+ugyanitt egy másik lista mondja meg, hol: „Ugyanez a telefonszám (…) máshol is
+szerepel:”, a lista után pedig: „Ha itt cseréled, ott is cseréld.” Képnél a
+lista után ez áll: „Ha itt az X-szel kiveszed, és másik képet választasz, ott a
+régi marad. A ceruza viszont a kép adatait mindenhol módosítja.” A képmezők
+súgója ugyanezt mondja:
+
+> Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+
+A listák linkjei a másik szekciót ugyanígy nyitják meg, a Felhasználók
+arcképénél pedig a munkatárs adatlapját.
+
+---
+
+## 15. Ami nem a lapon látszik
+
+Néhány szöveg és kép nem a lapon jelenik meg, hanem megosztáskor, a Google
+találatai között, a gépi olvasásnak szóló fájlokban vagy a levelekben. Ezek
+forrását itt találod.
+
+### Megosztási kép (Facebook, Messenger)
+
+Ha valaki megoszt egy linket, az előnézet képe ebben a sorrendben dől el: az
+első kitöltött mező nyer.
+
+| Tartalom               | 1. próba       | 2. próba  | Ha mindkettő üres     |
+| ---------------------- | -------------- | --------- | --------------------- |
+| Oldal (a Kapcsolat is) | Megosztási kép | Fejléckép | a Kineticare alapképe |
+| Blogbejegyzés          | Megosztási kép | Borítókép | a Kineticare alapképe |
+| Kurzus                 | Megosztási kép | Borítókép | a Kineticare alapképe |
+
+A **Kineticare alapképe** egy 1200 × 630 pixeles kép a két alapító közös
+fotójával, a „Kézrehabilitációs online kurzusplatform” felirattal és a weboldal
+címével. Ez a kép a weboldal kódjában van, az adminban nem látod, és nem is
+tudod cserélni: a cseréje fejlesztői munka. Ma a legtöbb oldal megosztásakor
+ez látszik, mert az Oldalakon a Megosztási kép üres. A kezdőlapon és a
+Szolgáltatások oldalon a Fejléckép a megosztási kép, a kurzusoknál a
+Borítókép. Ha a kezdőlap Fejlécképét cseréled, a Facebook-előnézet is változik,
+pedig a kép a kezdőlapon nem látszik.
+
+A kódban élő lapoknak (Kurzusok, Tudástár, Szakembereknek) nincs saját
+megosztási képük, náluk is az alapkép látszik.
+
+### A Google-találat címe és leírása
+
+| Tartalom                                  | A találat címe                                               | A találat leírása                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Oldal                                     | SEO-cím, üresen a Cím                                        | SEO-leírás, üresen a Rövid bevezető                                                             |
+| Kezdőlap                                  | SEO-cím, üresen a Cím                                        | SEO-leírás, üresen a Rövid bevezető                                                             |
+| Kapcsolat                                 | SEO-cím, üresen a Cím, annak híján „Kapcsolat”               | SEO-leírás, üresen a weboldal beépített leírása (a Rövid bevezető itt nem számít)               |
+| Blogbejegyzés                             | SEO-cím, üresen a Cím                                        | SEO-leírás, üresen a Rövid bevezető                                                             |
+| Tünet-oldal (a nyolc Tudástár-cikk tükre) | az Oldal SEO-címe, üresen az Oldal Címe                      | az Oldal SEO-leírása, üresen az Oldal Rövid bevezetője; a blogbejegyzés SEO-címe itt nem számít |
+| Kurzus                                    | SEO-cím, üresen a Kurzus címe, annak híján a Belső azonosító | SEO-leírás, üresen a Rövid leírás, annak híján egy beépített mondat a kurzus nevével            |
+| Kurzusok, Tudástár, Szakembereknek        | a weboldal kódjában van                                      | a weboldal kódjában van                                                                         |
+
+A böngészőfülön a cím után „| Kineticare” áll, ezt a rendszer teszi hozzá. Ha
+a SEO-cím végére magad írod ki a márkát, a rendszer nem ismétli meg; ha a cím
+közepén szerepel a Kineticare szó, a cím úgy marad, ahogy írtad. A **SEO-kulcsszavak**
+a keresőknek szóló kifejezések, a lapon nem jelennek meg. A „Rejtett kurzus
+(csak közvetlen linkkel)” pipás kurzust a Google nem veszi fel a találatai
+közé.
+
+### Gépi olvasás: llms.txt és llms-full.txt
+
+Két fájl a mesterséges intelligencián alapuló keresőknek és asszisztenseknek
+szól. A lapon nem látszanak, de a tartalmukat az adminban írt szövegek adják.
+
+- **/llms.txt**: a weboldal térképe. A bevezetője (a két szakember neve, a
+  kapcsolati e-mail-cím, a „Fontos:” kezdetű figyelmeztetés) és a Kezdőlap sora
+  a weboldal kódjában van. Utána jön minden közzétett Oldal (a kezdőlap, a
+  Kapcsolat, a jogi oldalak és a tünet-oldalak kivételével): a link szövege az
+  Oldal Címe, a leírása a SEO-leírás, üresen a Rövid bevezető. A Kapcsolat sora
+  a Kapcsolat oldal SEO-leírását, üresen a Rövid bevezetőjét mutatja. A
+  kurzusoknál a Kurzus címe (üresen a Belső azonosító) és a SEO-leírás, üresen
+  a Rövid leírás; a Tudástár cikkeinél a Cím és a SEO-leírás, üresen a Rövid
+  bevezető. A jogi oldalak a fájl végén állnak.
+- **/llms-full.txt**: a nyilvános lapok teljes szövege. Minden közzétett Oldal
+  Címe, Rövid bevezetője és szekcióinak szövege (a rejtett szekciók nélkül, a
+  kezdőlapon úgy, ahogy a lapon látszik); Szekciók nélküli oldalnál a Tartalom.
+  Utána a kurzusok neve, Rövid leírása és Részletes leírása, végül a
+  blogbejegyzések címe, Rövid bevezetője és szövege. A tünet-oldalak a cikkük
+  szövegével, egyszer szerepelnek.
+
+Ha a Tudástár ki van kapcsolva, a cikkek egyik fájlban sem szerepelnek. A két
+fájl a módosítás után legfeljebb kb. 10 perc alatt frissül.
+
+### Visszaigazoló levelek
+
+A weboldal leveleinek szövege a kódban van. Két részletük a lapon írt
+szövegekkel függ össze:
+
+- **Időpontkérés.** Aki az időpontkérő űrlapot elküldi, levelet kap „Megkaptuk
+  az időpontkérésed: Kineticare” tárggyal. A levél ezt ígéri: „Megkaptuk az
+  időpontkérésed. Ez még nem foglalás: két munkanapon belül telefonon keresünk,
+  és közösen egyeztetjük a pontos időpontot.”, és „Az első alkalom minden
+  esetben 50 perces vizsgálattal kezdődik.” Ugyanezt ígéri a Kapcsolat oldalon
+  az Időpontkérés szekció „Hogyan megy tovább?” és „A sikeres beküldés szövege”
+  mezője, a Szakemberek kártyái bevezetője és a Szolgáltatások oldal árlistája.
+  Ha ezeken a helyeken mást ígérsz (például három munkanapot), szólj a
+  fejlesztőnek, hogy a levél is ugyanezt mondja. A két mező súgója is
+  emlékeztet erre.
+- **Vásárlás.** A vevő „Sikeres vásárlás:” kezdetű tárgyú levelet kap a
+  rendelésszámmal, benne: „Köszönjük a vásárlásod! A fizetésed sikeres, a
+  kurzushozzáférésed aktív.” A számlát a Számlázz.hu rendszere külön levélben
+  küldi. A megvett kurzus neve a levélben a Belső azonosító (lásd lent).
+
+### A számlán és a fizetésnél látszó kurzusnév
+
+A **Webshop → Kurzusok →** a kurzus → **Alapadatok → Belső azonosító** mező
+áll a számlán, a rendeléseken, a vásárlási visszaigazoló levélben és a Barion
+fizetőoldalán. A weboldalon a **Kurzus címe** látszik, ha ki van töltve,
+különben ugyanez a Belső azonosító. A Belső azonosító minden kurzusnál más kell,
+hogy legyen, és a módosítása csak a következő vásárlástól látszik: a régi
+rendelések és számlák a régi nevet őrzik.
+
+---
+
+## 16. Amit a rendszer induláskor visszahoz
+
+A weboldal minden indulásakor, vagyis minden élesítés után lefut néhány
+ellenőrzés. Ezek a meglévő tartalmat sosem írják felül, de ha valami hiányzik,
+újra létrehozzák. Ezért néhány dolgot ne törölj és ne nevezz át.
+
+| Mit néz                                                                           | Mikor hozza vissza                                                                                   | Mit hoz létre                                                                       |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| A kezdőlapot, a „kezdolap” webcím alapján                                         | Ha az Oldalak között nincs „kezdolap” webcímű oldal (például mert a webcímét átírták, vagy törölték) | Egy új, azonnal közzétett kezdőlapot az alap-szekciósorral                          |
+| A kezdőlap szekcióit                                                              | Ha van „kezdolap” webcímű oldal, de nincs egyetlen szekciója sem                                     | Az alap-szekciósort; ha a kezdőlapnak van legalább egy szekciója, semmihez nem nyúl |
+| A három induló véleményt, név szerint (Garami Gábor, Kállai Dóra, Bagdal Szilvia) | Ha nincs ilyen nevű vélemény (például törölték, vagy a nevét javították)                             | Egy új véleményt Kiemelt és Látható pipával, 1., 2., illetve 3. sorrenddel          |
+| A három űrlapot, pontos név szerint (Időpontkérés, Hírlevél, Kapcsolat)           | Ha nincs ilyen nevű űrlap (például törölték)                                                         | Egy új, alapmezős űrlapot ugyanezzel a névvel                                       |
+| A kezdőlap induló képeit, fájlnév szerint                                         | Ha a Képek között nincs ilyen nevű fájl (például törölték)                                           | A képet újra feltölti                                                               |
+
+Mit jelent ez a gyakorlatban:
+
+- **A kezdőlap webcímét ne írd át, és a kezdőlapot ne töröld.** A webcím
+  átírása után a `/` cím a weboldal beépített alapváltozatát mutatja, a
+  következő indulás pedig egy második, új kezdőlapot hoz létre: két hasonló
+  kezdőlap-dokumentum lesz, és a régin végzett munkád nem látszik. A webcím
+  mező alatt ez a figyelmeztetés is áll: „A weboldal kódja erre a webcímre
+  épít, ne írd át.”
+- **A kezdőlap közzétételét ne vond vissza.** Ezt a rendszer induláskor sem
+  hozza helyre. Közzétett kezdőlapnál a webcím mező alatti doboz ezt is
+  kimondja: „A „Közzététel visszavonása” után a kezdőlapon (/) a weboldal
+  beépített tartalék-kezdőlapja jelenik meg, új kezdőlap nem jön létre, és az
+  újbóli közzététellel ismét ez az oldal látszik.”
+- **A kezdőlap összes szekcióját ne töröld.** A szerkesztő tetején ez áll: „Ha
+  az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített
+  alapváltozata jelenik meg, a weboldal következő indulásakor pedig az
+  alapszekciók visszakerülnek, a korábbi szerkesztések nélkül.” Egy szekció
+  helyett használd a Látható pipát (7. pont).
+- **A három induló véleményt ne töröld, és a nevüket ne írd át.** Ha egy ilyen
+  nevű vélemény megvan, a rendszer semmit nem ír át rajta, akkor sem, ha
+  kivetted a Kiemelt pipát. Ha nem akarod mutatni, a Kiemelt vagy a Látható
+  pipát vedd ki.
+- **A három űrlapot ne töröld.** Átnevezni nem is tudod őket: a mentés
+  hibaüzenettel megáll. Törlés után az Időpontkérés szekció űrlapja letiltva
+  jelenik meg, a láblécből eltűnik a hírlevél-feliratkozó, a következő indulás
+  pedig új, üres űrlapot hoz létre.
+- **A kezdőlap induló képeit** a Képek között hagyd meg. Ha egy képnek a fájlja
+  vész el a tárhelyről, a rendszer a kódban őrzött eredetiből pótolja, ha van
+  ilyen; a saját feltöltésű képeknél nincs ilyen pótlás.
+
+Ha ezek közül valamit végleg el akarsz tüntetni, szólj a fejlesztőnek.
+
+---
+
+## 17. Kódban lévő feliratok a kurzusoldalon
+
+A kurzusoldal néhány felirata nem a kurzus mezőiből jön, hanem a weboldal
+kódjából. Ezeket az adminban nem tudod átírni; ha változtatni szeretnél, szólj
+a fejlesztőnek.
+
+**Kapcsolódó kurzusok.** A kurzusoldal alján álló sávban a kurzusokat te
+választod ki: **Webshop → Kurzusok →** a kurzus → **Kurzusoldal → Kapcsolódó
+kurzusok**. Csak a közzétett, nem rejtett kurzusok látszanak. A sáv címe és
+bevezetője viszont a kódban van:
+
+- fizetős kurzus oldalán a cím: „Kapcsolódó kurzusok”, bevezető nélkül;
+- az ingyenes kurzus oldalán a cím: „Mi jön az ingyenes kurzus után?”, alatta
+  ez a bevezető: „Ha az ingyenes anyag után rendszeresen gyakorolnál, itt folytathatod. Az árat alább látod, a teljes tananyagot pedig a kurzus oldalán.”
+  Ha a kapcsolt kurzusnak nincs látható ára, a második mondat helyett ez áll:
+  „A teljes tananyagot a kurzus oldalán találod.”
+
+**Az akciós kurzusoldal feliratai.** Az akciót a **Webshop → Kurzusok →** a
+kurzus → **Ár és hozzáférés → Akciós megjelenés** részben állítod be (Akciós
+kurzus, Akció kezdete, Akció vége, Akciós ár (Ft)). Az akciós oldal három
+állandó felirata a kódban van:
+
+- a lap tetején a jelvény: „Akciós ár”;
+- az előnyök sávjának címe: „A kurzus fő előnyei”;
+- a záró sáv címe: „Kezdd el az akciós áron”.
+
+Az Akciós megjelenés súgója is ezt mondja. Az akciós elrendezést csak élesben
+látod: az előnézet mindig a normál kurzusoldalt mutatja.
+
+A kurzusoldal szakaszcímei („Hogyan működik?”, „Tananyag”, „Kinek való, és
+kinek nem?”, „Garancia”, „Gyakori kérdések”) és a vásárlógombok feliratai
+szintén a kódban vannak, szándékosan minden kurzuson egyformák.
+
+---
+
+## 18. A rendelői árlista formai szabálya
+
+A Szolgáltatások oldal rendelői árlistája egy **Szabad szöveg** szekció, amelynek
+az ugrópontja „rendeloi” (**Megjelenés és elrejtés → Ugrópont neve (haladó
+beállítás)**). A lap ebből a szövegből árkártyákat épít, ha a szöveg szerkezete
+felismerhető. A szabályt a Tartalom mező fölött is olvashatod, ugyanezekkel a
+mondatokkal.
+
+Ennek a szekciónak az ugrópontja „rendeloi”, ezért a szövegből akkor lesznek
+árkártyák, ha az alábbi szabályok mind teljesülnek.
+
+1. A szöveg első eleme egy nem üres címsor az első három szint valamelyikén (Címsor 1, 2 vagy 3); a kisebb címsor nem számít.
+2. Valahol utána egy „Árlista” szóval kezdődő címsor jön, szintén az első három szint valamelyikén.
+3. Közvetlenül e címsor alatt egy felsorolás áll legalább egy, legfeljebb négy tétellel, és minden tétel „50 perces alkalom: 18 000 Ft” alakú; a kettőspont helyett kötőjel is állhat, a tétel végén pedig zárójeles megjegyzés.
+4. A felsorolás után csak bekezdés következhet, újabb felsorolás vagy címsor nem.
+5. Ezekben a bekezdésekben legfeljebb egy link lehet, és annak a /kapcsolat oldalra kell mutatnia; a „Helyszíneink:” kezdetű bekezdés legfeljebb egyszer szerepelhet.
+
+Ha bármelyik nem teljesül, a szöveg sima szövegként látszik.
+
+Egy felismerhető szerkezet például:
+
+- Címsor 2: Rendelői kezelések
+- Bekezdés: pár mondat a kezelésekről
+- Címsor 3: Árlista
+- Felsorolás: „50 perces alkalom: 18 000 Ft”
+- Bekezdés: „Helyszíneink: …” a rendelők címével
+- Bekezdés: egy link a /kapcsolat oldalra (ebből lesz a „Kérj időpontot
+  üzenetben” gomb)
+
+Ha a szabály sérül, a lap figyelmeztetés nélkül sima szöveget mutat. Az
+előnézetben viszont a szekció szalagján ez a figyelmeztetés áll: „Az árlista
+nem ismerhető fel, sima szövegként látszik.” Mentés után ezért mindig nézd meg
+az árlistát a **Megnézem az oldalon (új lapon)** linkkel. Az ugrópontot ne
+nevezd át: a „rendeloi” név nélkül nincsenek árkártyák, és a menü „Rendelői
+kezelések” pontja sem ide visz.
+
+---
+
+## 19. Amihez ne nyúlj
 
 Ezek nem tiltások a tiltás kedvéért: mindegyik mögött van valami, ami a
 látogatóknak vagy a vásárlóknak fáj, ha elromlik.
@@ -617,7 +1049,7 @@ látogatóknak vagy a vásárlóknak fáj, ha elromlik.
 
 ---
 
-## 14. Hibát látsz?
+## 20. Hibát látsz?
 
 Előfordul. Ilyenkor a legtöbbet azzal segítesz, ha **pontosan** leírod, mi
 történt. Küldd el ezt az öt dolgot:
