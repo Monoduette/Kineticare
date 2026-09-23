@@ -400,7 +400,7 @@ export interface BlockFilmHero {
       }[]
     | null;
   /**
-   * Legfeljebb 2 gomb. Az első a hangsúlyos (ez vigyen a kurzusokhoz), a második visszafogottabb. Ha üresen hagyod, nem jelenik meg gomb. Az ingyenes kurzusra mutató gomb csak feltétellel jelenik meg. Ha az ingyenes SOS-kurzus oldalára visz (/kurzusok/sos-kezrelax-villamkurzus, /kurzusok/2 vagy /kezrelax), csak akkor látszik, ha az ingyenes SOS Kézrelax villámkurzus közzétéve elérhető a Kurzusok között. Ha a kezdőlap ingyenes sávjára visz (/#ingyenes, vagy egy Ingyenes villámkurzus sáv saját horgonya), csak akkor látszik, ha a kurzus elérhető, és ezen a lapon a Nyitó videó alatt áll egy nem rejtett Ingyenes villámkurzus sáv. Ilyenkor a gomb az első ilyen sávra visz. Ha a feltétel nem teljesül, a gomb kimarad, és ha ez volt az első, a második gomb lép a helyére hangsúlyosként.
+   * Legfeljebb 2 gomb. Az első a hangsúlyos (ez vigyen a kurzusokhoz), a második visszafogottabb. Ha üresen hagyod, nem jelenik meg gomb. Az ingyenes kurzusra mutató gomb csak feltétellel jelenik meg. Ha az ingyenes SOS-kurzus oldalára visz (/kurzusok/sos-kezrelax-villamkurzus, /kurzusok/2, /kezrelax vagy /kezrelax-penztar), csak akkor látszik, ha az ingyenes SOS Kézrelax villámkurzus közzétéve elérhető a Kurzusok között. Ha a kezdőlap ingyenes sávjára visz (/#ingyenes, vagy egy Ingyenes villámkurzus sáv saját horgonya), csak akkor látszik, ha a kurzus elérhető, és ezen a lapon a Nyitó videó alatt áll egy nem rejtett Ingyenes villámkurzus sáv. Ilyenkor a gomb az első ilyen sávra visz. Ha a feltétel nem teljesül, a gomb kimarad, és ha ez volt az első, a második gomb lép a helyére hangsúlyosként.
    */
   ctas?:
     | {
