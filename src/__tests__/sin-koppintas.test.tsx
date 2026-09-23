@@ -204,7 +204,7 @@ describe('mobil nyitás-zárás animáció', () => {
     })
 
     /** Élő mérés (390×844): a 2. és 3. sor 304 / 419 px-ről 1139 / 1254 px-re csúszik. */
-    function felfeleKoppintas(harmadikVege: number) {
+    function felfeleKoppintas(harmadikVege: number, atlatszosag?: string) {
       Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
       const { cimkek, radiok } = sinDom()
       const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
@@ -215,6 +215,21 @@ describe('mobil nyitás-zárás animáció', () => {
         throw new Error('hiányzó sín-elem')
       }
       mobilKornyezet()
+      if (atlatszosag !== undefined) {
+        // Egy előző, félbeszakított halványítás pillanatnyi értéke.
+        vi.spyOn(window, 'getComputedStyle').mockImplementation(
+          () =>
+            ({
+              opacity: atlatszosag,
+              transitionDuration: '0.35s, 0s',
+              paddingTop: '24px',
+              paddingBottom: '24px',
+              marginBottom: '24px',
+              borderTopWidth: '1px',
+              borderBottomWidth: '1px',
+            }) as CSSStyleDeclaration,
+        )
+      }
       magassag(elso, 0, 812)
       magassag(masodik, 0, 0)
       magassag(harmadik, 858, 0)
@@ -259,6 +274,19 @@ describe('mobil nyitás-zárás animáció', () => {
       const { halvanyit2, halvanyit3 } = felfeleKoppintas(700)
       expect(halvanyit2).toHaveBeenCalledTimes(1)
       expect(halvanyit3).not.toHaveBeenCalled()
+    })
+
+    it('gyors ismételt koppintásnál a pillanatnyi átlátszatlanságból folytat, felvillanás nélkül', () => {
+      const { halvanyit2, halvanyit3, koppintott } = felfeleKoppintas(700, '0.3')
+      const [kilepo] = halvanyit2.mock.calls[0] as unknown as [Keyframe[]]
+      expect(kilepo[0]).toEqual({ opacity: 0.3, easing: SIN_KILEPO_GORBE })
+      expect(kilepo.at(-1)).toEqual({ opacity: 0 })
+      // A képernyőn maradó és a koppintott sor 0,3-ról fokozatosan tér vissza.
+      for (const visszater of [halvanyit3, koppintott.animate as ReturnType<typeof vi.fn>]) {
+        const [kockak] = visszater.mock.calls[0] as unknown as [Keyframe[]]
+        expect(kockak[0]).toEqual({ opacity: 0.3, easing: SIN_KILEPO_GORBE })
+        expect(kockak.at(-1)).toEqual({ opacity: 1 })
+      }
     })
   })
 

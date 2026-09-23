@@ -209,6 +209,14 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   const kezdoCimkek = mobil
     ? cimkek.map((masik) => (masik === cimke ? null : masik.getBoundingClientRect()))
     : []
+  // A sorok pillanatnyi átlátszatlansága, még az előző váltás leállítása
+  // előtt: a leállítás 1-re ugratná a félig halvány sort (felvillanás).
+  const kezdoAtlatszosag = mobil
+    ? cimkek.map((masik) => {
+        const ertek = Number.parseFloat(ablak.getComputedStyle(masik).opacity)
+        return Number.isFinite(ertek) ? ertek : 1
+      })
+    : []
   // Egy fieldsetben egyszerre egy váltás él: a gyors második koppintás
   // leállítja az előző animációit és görgetéskövetését (a két követés
   // különben egymás ellen görgetne).
@@ -277,15 +285,24 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
       )
     })
     // A képernyő alja alá kicsúszó sor a záródó panellel együtt halványul el,
-    // és az átmenet végén, már a képernyőn kívül, újra teljesen látszik.
+    // és az átmenet végén, már a képernyőn kívül, újra teljesen látszik. Egy
+    // gyors ismételt koppintás után minden sor a pillanatnyi átlátszatlanságából
+    // folytatja: a kilépő tovább halványul, a maradó ugyanazzal a görbével tér
+    // vissza, ugrás nélkül.
     const kilepoVege = Math.min(1, athalvanyulasMs / SIN_MAGASSAG_MS)
-    kilepoCimkek.forEach((masik) => {
+    cimkek.forEach((masik, index) => {
+      const kezdoAtlatszo = kezdoAtlatszosag[index] ?? 1
+      const kilep = kilepoCimkek.includes(masik)
+      if (!kilep && kezdoAtlatszo >= 0.99) {
+        return
+      }
+      const cel = kilep ? 0 : 1
       animaciok.push(
         masik.animate(
           [
-            { opacity: 1, easing: SIN_KILEPO_GORBE },
-            { opacity: 0, offset: kilepoVege },
-            { opacity: 0 },
+            { opacity: kezdoAtlatszo, easing: SIN_KILEPO_GORBE },
+            { opacity: cel, offset: kilepoVege },
+            { opacity: cel },
           ],
           { duration: SIN_MAGASSAG_MS },
         ),
