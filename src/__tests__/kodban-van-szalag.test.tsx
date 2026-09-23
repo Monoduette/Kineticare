@@ -201,6 +201,9 @@ describe('az építők', () => {
 
   it('fejléc: a Menüpontok listájára visz, az admin-útvonal előtagjával', () => {
     expect(fejlecSzalag().cimke).toBe(`Fejléc · ${RESZBEN_KODBAN_VAN}`)
+    expect(fejlecSzalag().magyarazat).toBe(
+      'A menüpontokat a Menüpontok között írod át. A logó és a fiók ikonja a weboldal kódjában van. Ha a menüben nincs a Kurzusok oldalra vivő főmenüpont, a kód maga tesz egyet az első helyre.',
+    )
     expect(fejlecSzalag().linkek).toEqual([
       {
         felirat: `${UGRAS_FELIRAT}: Menüpontok`,

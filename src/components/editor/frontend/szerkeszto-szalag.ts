@@ -340,10 +340,10 @@ export function szerkesztoReteg({
  *   Barion elfogadóhelyi jóváhagyásának szó szerinti kérése, a logósort
  *   „módosítás nélkül” kell kiszolgálni, az MNB-engedélyszám az ÁSZF-ből).
  * - Fejléc: src/components/layout/Header.tsx (a logó kódban), a menü a
- *   Menüpontokból (src/lib/menus.ts getNavTree), a „Kurzusok” menüpontot a
- *   kód teszi az első helyre, ha a Menüpontok között nincs `/kurzusok` célú
- *   gyökér-menüpont (src/lib/menu-tree.ts withCoursesNavItem), a fiók ikonja
- *   kódban (AccountNav).
+ *   Menüpontokból (src/lib/menus.ts getNavTree). Ha a Menüpontok között
+ *   nincs `/kurzusok` célú gyökér-menüpont, a kód a lista elejére betesz egy
+ *   „Kurzusok” tételt; meglévő menüpontot nem helyez át (src/lib/menu-tree.ts
+ *   withCoursesNavItem). A fiók ikonja kódban van (AccountNav).
  * - Lábléc: src/components/layout/Footer.tsx (a szlogen, a jogi linkek és a
  *   felépítés kódban), a hírlevél-doboz címe és bevezetője a
  *   NewsletterForm.tsx-ben (nem az Űrlapokban), a kapcsolati e-mail a
@@ -412,7 +412,7 @@ export function fejlecSzalag({ adminRoute = '/admin' }: { adminRoute?: string } 
   return kodSzalag({
     cimke: kodCimke('Fejléc', RESZBEN_KODBAN_VAN),
     magyarazat:
-      'A menüpontokat a Menüpontok között írod át. A logó és a fiók ikonja a weboldal kódjában van, és a kód a Kurzusok menüpontot is az első helyre teszi, ha a menüben nincs a Kurzusok oldalra vivő főmenüpont.',
+      'A menüpontokat a Menüpontok között írod át. A logó és a fiók ikonja a weboldal kódjában van. Ha a menüben nincs a Kurzusok oldalra vivő főmenüpont, a kód maga tesz egyet az első helyre.',
     linkek: [
       forrasLink('Menüpontok', `${adminGyoker(adminRoute)}/collections/menus`, ', a fejléc menüje'),
     ],
