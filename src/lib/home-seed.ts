@@ -1,6 +1,18 @@
 /**
- * Kezdőlap seed: képek + `kezdolap` layout. Fut: `npm run seed` és Payload onInit.
- * Idempotens — kitöltött layoutot és meglévő képet nem ír felül.
+ * Kezdőlap seed: képek + `kezdolap` layout + a három induló vélemény.
+ * Idempotens: kitöltött layoutot és meglévő képet nem ír felül.
+ *
+ * KÉT HÍVÓ, KÉT SZEMANTIKA (modul-térkép H40, H48 A17):
+ *  - `npm run seed` (src/scripts/seed.ts): a webcím- és név-alapú
+ *    `ensureHomeLayout` / `ensureHomeTestimonials`. Kézzel indított, célzott
+ *    feltöltés: hiányzó `kezdolap` oldalt létrehoz, üres szekciósort kitölt,
+ *    hiányzó nevű véleményt pótol.
+ *  - Payload onInit (src/payload.config.ts `ensureHomeBaseline`, MINDEN
+ *    deploynál fut): a `…FrissTelepitesen` változatok. Ezek CSAK friss
+ *    telepítésen írnak: kezdőlapot csak teljesen üres Oldalak-gyűjteménynél,
+ *    véleményt csak üres Vélemények-gyűjteménynél. Beállt rendszeren a
+ *    szerkesztő döntése (webcímcsere, üres szekciósor, törölt vagy átnevezett
+ *    vélemény) így nem fordul vissza csendben a következő induláskor.
  */
 
 import { existsSync } from 'node:fs'
@@ -788,12 +800,15 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
 ]
 
 /**
- * A kezdőlap `layout` mezőjének idempotens feltöltése.
+ * A kezdőlap `layout` mezőjének idempotens feltöltése, WEBCÍM szerint.
  *
  * Három eset:
  *  - nincs `kezdolap` oldal → létrejön, rögtön az alap-szekciósorral,
  *  - van, de üres a szekciósora → megkapja az alap-szekciósort,
  *  - van szekciósora → ÉRINTETLEN marad (az már szerkesztői munka).
+ *
+ * Hívója a kézzel indított `npm run seed`. Az onInit NEM ezt hívja, hanem a
+ * `ensureHomeLayoutFrissTelepitesen`-t (lásd ott, miért).
  */
 export const ensureHomeLayout = async (payload: Payload, media: HomeMediaIds): Promise<void> => {
   const existing = await payload.find({
@@ -847,6 +862,58 @@ export const ensureHomeLayout = async (payload: Payload, media: HomeMediaIds): P
     overrideAccess: true,
   })
   payload.logger.info(`Seed: kezdőlap alap-szekciósora felvéve (${layout.length} szekció).`)
+}
+
+/**
+ * Az Oldalak-gyűjtemény ÖSSZES dokumentuma, bármilyen állapotban.
+ *
+ * A Payload 3.88 `count` művelete (payload/dist/collections/operations/count.js
+ * → @payloadcms/drizzle/dist/count.js) a gyűjtemény FŐ táblájában számol, és
+ * állapotra nem szűr: a `create` piszkozatnál is a fő táblába ír
+ * (operations/create.js `payload.db.create`), tehát a piszkozat-állapotú
+ * oldal is beleszámít. A lomtárat csak az `appendNonTrashedFilter` zárja ki,
+ * és csak akkor, ha a gyűjteményen be van kapcsolva a `trash` ÉS a hívás
+ * `trash: false`; a `trash: true` így a lomtárban lévő oldalt is számolja
+ * (ma a Pages-en nincs lomtár, ott a kapcsoló hatástalan, de egy későbbi
+ * bekapcsolásnál sem fordul át a szabály).
+ */
+async function osszesOldal(payload: Payload): Promise<number> {
+  const eredmeny = await payload.count({ collection: 'pages', overrideAccess: true, trash: true })
+  return eredmeny.totalDocs
+}
+
+/**
+ * Az onInit kezdőlap-lépése: CSAK friss telepítésen ír (H40, H48 A17).
+ *
+ * Ha az Oldalak gyűjteményben BÁRMILYEN oldal van (közzétett, piszkozat, más
+ * webcímű, átnevezett kezdőlap), a lépés naplóz és kilép, írás nélkül. Így
+ * nem jön létre második, közzétett kezdőlap, ha a szerkesztő átírta a
+ * `kezdolap` webcímet vagy törölte a kezdőlapot, és a szándékosan kiürített
+ * szekciósort sem tölti vissza. Üres gyűjteménynél a mai viselkedés fut
+ * (`ensureHomeLayout`: új, közzétett kezdőlap az alap-szekciósorral).
+ *
+ * BEST-EFFORT: bármely hiba (pl. migráció előtti adatbázis) csak
+ * figyelmeztetés, kivétel nem szökik ki az onInitből.
+ */
+export async function ensureHomeLayoutFrissTelepitesen(
+  payload: Payload,
+  media: HomeMediaIds,
+): Promise<void> {
+  try {
+    const oldalak = await osszesOldal(payload)
+    if (oldalak > 0) {
+      logger.info(
+        'Induláskor: az Oldalak gyűjteményben már van oldal, a kezdőlap-seed kimarad (csak friss telepítésen ír).',
+        { oldalak },
+      )
+      return
+    }
+    await ensureHomeLayout(payload, media)
+  } catch (error) {
+    logger.warn('Induláskor: a kezdőlap friss telepítési seedje sikertelen (best-effort)', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -908,7 +975,10 @@ export const HOME_TESTIMONIALS: readonly HomeTestimonialSeed[] = [
 ]
 
 /**
- * A három kiemelt vélemény idempotens létrehozása.
+ * A három kiemelt vélemény idempotens létrehozása, NÉV szerint.
+ *
+ * Hívója a kézzel indított `npm run seed`; az onInit a
+ * `ensureHomeTestimonialsFrissTelepitesen`-t hívja.
  *
  * IDEMPOTENCIA: a kulcs a NÉV (`authorName`). Ha ilyen nevű vélemény már van a
  * collectionben, a függvény kihagyja, és SEMMIT nem ír felül — a szerkesztői
@@ -958,5 +1028,44 @@ export async function ensureHomeTestimonials(payload: Payload): Promise<void> {
     logger.warn('Kezdőlap: a kiemelt vélemények betöltése sikertelen (best-effort)', {
       error: error instanceof Error ? error.message : String(error),
     })
+  }
+}
+
+/**
+ * Az onInit vélemény-lépése: CSAK friss telepítésen ír (H40).
+ *
+ * A név szerinti `ensureHomeTestimonials` minden induláskor visszahozta a
+ * törölt vagy átnevezett induló véleményt (új példányként). Ez a változat
+ * a Vélemények gyűjtemény DARABSZÁMÁT nézi: ha legalább egy vélemény van
+ * (bármilyen névvel, láthatósággal), naplóz és kilép, írás nélkül; üres
+ * gyűjteménynél a mai viselkedés fut (a három induló vélemény).
+ *
+ * A számlálás a gyűjtemény fő táblájában, lomtárral együtt történik (lásd
+ * `osszesOldal`); a Vélemények gyűjteményen ma nincs se piszkozat, se lomtár.
+ *
+ * BEST-EFFORT: bármely hiba csak figyelmeztetés, kivétel nem szökik ki.
+ */
+export async function ensureHomeTestimonialsFrissTelepitesen(payload: Payload): Promise<void> {
+  try {
+    const eredmeny = await payload.count({
+      collection: 'testimonials',
+      overrideAccess: true,
+      trash: true,
+    })
+    if (eredmeny.totalDocs > 0) {
+      logger.info(
+        'Induláskor: a Vélemények gyűjteményben már van vélemény, az induló vélemények seedje kimarad (csak friss telepítésen ír).',
+        { velemenyek: eredmeny.totalDocs },
+      )
+      return
+    }
+    await ensureHomeTestimonials(payload)
+  } catch (error) {
+    logger.warn(
+      'Induláskor: az induló vélemények friss telepítési seedje sikertelen (best-effort)',
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    )
   }
 }

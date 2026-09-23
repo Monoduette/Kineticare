@@ -9,6 +9,19 @@
  *
  * Értékek: home-seed.ts, restore-legacy-content.ts, legal-content.ts.
  * Jogi oldal create-only; meglévő jogi szöveget a script nem ír felül.
+ *
+ * 2026-09-23 (A8): két új lépés.
+ *  - A sín `elrendezes` / `hatter` mezője (H15, src/scripts/sin-elrendezes-kitoltes.ts)
+ *    a kezdőlapon és a /szolgaltatasokon. DEPLOY-FELTÉTEL: az A3 kódváltása (a
+ *    sín az Elrendezés mezőt tiszteli, src/lib/home-help-states.ts) CSAK
+ *    ugyanabban a deployban élesíthető, mint ennek a szabálynak az éles
+ *    futtatása; a szabály nélkül a két lap ajtó-blokkja táblára váltana.
+ *    A szabály EGYSZERI jellegű: a RÉGI kód döntését írja a mezőbe, ezért ha a
+ *    deploy után egy szerkesztő tudatosan Táblára állítja a kezdőlapi
+ *    háromajtós blokkot, egy ismételt éles futás visszaírná Sínre.
+ *  - A „szakembereknek” webcímű oldal létrehozása (H11,
+ *    src/scripts/szakembereknek-oldal.ts): csak ha nincs ilyen oldal
+ *    (piszkozattal együtt keresve), egyszer; meglévő oldalhoz nem nyúl.
  */
 
 import { existsSync } from 'node:fs'
@@ -71,7 +84,9 @@ import config from '../payload.config'
 import type { Media, Menu, Page, Product } from '../payload-types'
 import { filmFeliratokKitoltese } from './film-feliratok-kitoltes'
 import { kitoltKurzusCimeket, type KurzusCimKitoltes } from './kurzus-cim-kitoltes'
+import { sinElrendezesKitoltese, type SinElrendezesLap } from './sin-elrendezes-kitoltes'
 import { kitoltSosCim } from './sos-cim-kitoltes'
+import { SZAKEMBEREKNEK_OLDAL_SLUG, szakembereknekOldalTerv } from './szakembereknek-oldal'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
 // szakmai-háttér csere és a /szolgaltatasok lap-tetejének cseréje a
 // seed-builderből veszi az ÚJ blokkokat, és az örökölt tartalommal veti össze
@@ -450,6 +465,8 @@ export type JavitasSzabaly =
   | 'sos-cim'
   | 'film-feliratok'
   | 'kurzus-cim'
+  | 'sin-elrendezes'
+  | 'szakembereknek-oldal'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -5776,6 +5793,97 @@ export function alkalmazFilmFeliratok(layout: Szekciosor, oldalCimke: string): S
 }
 
 /**
+ * A sín `elrendezes` és `sectionSettings.hatter` mezője
+ * (src/scripts/sin-elrendezes-kitoltes.ts, H15): a services blokkok mezője
+ * pontosan arra áll, ahogy a RÉGI kód a lapon rajzolta, így a mezőt tisztelő
+ * kódváltás után a lap látványa nem változik. A döntés a modulban él, itt
+ * csak a naplósorok alakja változik. Egyszeri jellegű: lásd a fejkommentet.
+ */
+export function alkalmazSinElrendezes(
+  layout: Szekciosor,
+  oldalCimke: string,
+  lap: SinElrendezesLap,
+): SzekciosorCsere {
+  const szabaly: JavitasSzabaly = 'sin-elrendezes'
+  const eredmeny = sinElrendezesKitoltese(layout, lap)
+  if (eredmeny.allapot === 'NINCS_SERVICES') {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet: `${oldalCimke}: a szolgáltatás-szekciók elrendezése`,
+          indok: 'a szekciósorban nincs szolgáltatás-szekció',
+        },
+      ],
+    }
+  }
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  for (const sor of eredmeny.naplo) {
+    if (sor.allapot === 'KITOLTVE') {
+      modositasok.push({ szabaly, uzenet: sor.uzenet, indok: null })
+      continue
+    }
+    kihagyasok.push({
+      szabaly,
+      uzenet: sor.uzenet,
+      indok: sor.allapot === 'MAR' ? 'már javítva' : 'tábla, a mező is tábla',
+    })
+  }
+  return { layout: eredmeny.layout as Szekciosor | null, modositasok, kihagyasok }
+}
+
+/** A /szakembereknek lépés adatbázis-függősége (a teszt ezt injektálja). */
+export type SzakembereknekOldalPayload = Pick<Payload, 'find' | 'create'>
+
+/**
+ * A „szakembereknek” webcímű Oldalak-rekord létrehozása
+ * (src/scripts/szakembereknek-oldal.ts, H11).
+ *
+ * A keresés `draft: true`-val megy, hogy a csak piszkozatban létező oldalt
+ * is megtalálja: meglévő oldalnál (bármilyen állapotban) a lépés `MAR_LETEZIK`
+ * és semmit nem ír. Hiányzó oldalnál próbafutásban csak naplóz, élesben
+ * egyetlen `payload.create`-tel hozza létre a mai lap szövegével. A második
+ * futás így mindig kihagyás, írás nélkül.
+ */
+export async function szakembereknekOldalLepes(
+  payload: SzakembereknekOldalPayload,
+  opciok: { dryRun: boolean; most: Date },
+): Promise<{ modositasok: JavitasLepes[]; kihagyasok: JavitasLepes[] }> {
+  const szabaly: JavitasSzabaly = 'szakembereknek-oldal'
+  const talalat = await payload.find({
+    collection: 'pages',
+    where: { slug: { equals: SZAKEMBEREKNEK_OLDAL_SLUG } },
+    limit: 1,
+    depth: 0,
+    draft: true,
+    overrideAccess: true,
+  })
+  const meglevo = talalat.docs[0]
+  const terv = szakembereknekOldalTerv(
+    meglevo === undefined ? null : { id: meglevo.id },
+    opciok.most,
+  )
+  if (terv.allapot === 'MAR_LETEZIK' || terv.adat === null) {
+    return {
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet: terv.uzenet, indok: 'az oldal már létezik' }],
+    }
+  }
+  if (!opciok.dryRun) {
+    await payload.create({
+      collection: 'pages',
+      data: terv.adat,
+      depth: 0,
+      overrideAccess: true,
+    })
+  }
+  return { modositasok: [{ szabaly, uzenet: terv.uzenet, indok: null }], kihagyasok: [] }
+}
+
+/**
  * A kurzusok üres „Kurzus címe” mezője (src/scripts/kurzus-cim-kitoltes.ts):
  * a naplósorok a futtató alakjában, a modul döntésével együtt.
  */
@@ -6080,6 +6188,9 @@ async function futtat(): Promise<void> {
     // --- 2026-09-23: az SOS-sáv címe és a nyitó videó feliratai a CMS-ben -----
     kezdolapLepes(alkalmazSosCim(kezdolapLayout, 'Kezdőlap'))
     kezdolapLepes(alkalmazFilmFeliratok(kezdolapLayout, 'Kezdőlap'))
+    // --- 2026-09-23 (A8, H15): a sín Elrendezés és Háttér mezője -------------
+    // A lánc végén, a végleges szekciósoron (a sorrend-lépések után).
+    kezdolapLepes(alkalmazSinElrendezes(kezdolapLayout, 'Kezdőlap', 'kezdolap'))
 
     if (kezdolapValtozott && !dryRun) {
       const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kezdolap.id)
@@ -6686,6 +6797,13 @@ async function futtat(): Promise<void> {
     // érvényes, ahol a lapot a seed állította elő.
     szolgaltatasokLepes(await kocsisCvFotoLepes(szolgaltatasokLayout, 'Szolgáltatások oldal'))
 
+    // --- 2026-09-23 (A8, H15): a sín Elrendezés és Háttér mezője -------------
+    // A szekciósor-lánc VÉGÉN, hogy a beszúrt technikák-táblát is lássa (az
+    // tábla marad, a szabály csak az ajtó-blokkot állítja sínre).
+    szolgaltatasokLepes(
+      alkalmazSinElrendezes(szolgaltatasokLayout, 'Szolgáltatások oldal', 'szolgaltatasok'),
+    )
+
     // --- 12a. javítás (WP55): a fejléc-kép a kezelőasztalos fotóra -----------
     // A /rolunk 4. javításának mintája: a jelenlegi kép fájlnevét és az új kép
     // állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön létre, ha
@@ -6742,6 +6860,13 @@ async function futtat(): Promise<void> {
       }
     }
   }
+
+  // --- 2026-09-23 (A8, H11): a /szakembereknek oldal-rekord ----------------
+  // Csak hiányzó oldalnál ír (egyetlen create); meglévőhöz nem nyúl.
+  const szakembereknek = await szakembereknekOldalLepes(payload, { dryRun, most: new Date() })
+  naplozdLepeseket(szakembereknek, dryRun)
+  modositasokSzama += szakembereknek.modositasok.length
+  kihagyasokSzama += szakembereknek.kihagyasok.length
 
   // --- 16. javítás: a /kapcsolat lap szekciói -------------------------------
   const kapcsolatTalalat = await payload.find({

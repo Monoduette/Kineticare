@@ -17,7 +17,11 @@ import { isAdmin } from './access'
 import { ADMIN_UTAK } from './components/admin/KezdolapCel'
 import { AuditLogs } from './collections/AuditLogs'
 import { RefundIntents } from './collections/RefundIntents'
-import { ensureHomeImages, ensureHomeLayout, ensureHomeTestimonials } from './lib/home-seed'
+import {
+  ensureHomeImages,
+  ensureHomeLayoutFrissTelepitesen,
+  ensureHomeTestimonialsFrissTelepitesen,
+} from './lib/home-seed'
 import { ensureMediaFiles } from './lib/media-restore'
 import { guardDestructiveMigrationCommands } from './lib/migrations/destructive-migration-guard'
 import { Categories } from './collections/Categories'
@@ -452,11 +456,17 @@ function registerWebhookProcessors(payload: Payload): void {
 
 /**
  * Kezdőlap-alapállapot indulásnál: a hiányzó képFÁJLOK visszatöltése, majd a
- * landing tartalmi képei + a `kezdolap` alap-szekciósora (src/lib/home-seed.ts).
- * Az ensureContactForm mintája: telepítési előfeltétel, ezért minden bootnál
- * lefut — idempotens, meglévő képet és kitöltött szekciósort SOHA nem ír felül,
- * így beállt rendszeren néhány olcsó olvasás az ára. Best-effort: hibája nem
- * állíthatja meg az appot.
+ * landing tartalmi képei, a `kezdolap` alap-szekciósora és a három induló
+ * vélemény (src/lib/home-seed.ts). Minden bootnál lefut, best-effort: hibája
+ * nem állíthatja meg az appot.
+ *
+ * A kezdőlap és a vélemények lépése CSAK FRISS TELEPÍTÉSEN ír (H40, H48 A17):
+ * kezdőlapot csak teljesen üres Oldalak-gyűjteménynél hoz létre, véleményt
+ * csak üres Vélemények-gyűjteménynél. Beállt rendszeren a két lépés egy-egy
+ * `count` olvasás, írás nélkül: a webcímcsere, a kiürített szekciósor, a
+ * törölt vagy átnevezett vélemény a következő deploy után is a szerkesztő
+ * döntése marad. (A kézi `npm run seed` a webcím- és név-alapú változatot
+ * hívja, az ott célzott pótlás.)
  *
  * A SORREND KÖTÖTT: az `ensureMediaFiles` FÁJL-szinten ellenőriz és javít, az
  * `ensureHomeImages` viszont csak a DB-rekord létét nézi (fájlnév-dedup) — ha
@@ -467,8 +477,8 @@ async function ensureHomeBaseline(payload: Payload): Promise<void> {
   try {
     await ensureMediaFiles(payload)
     const mediaIds = await ensureHomeImages(payload)
-    await ensureHomeLayout(payload, mediaIds)
-    await ensureHomeTestimonials(payload)
+    await ensureHomeLayoutFrissTelepitesen(payload, mediaIds)
+    await ensureHomeTestimonialsFrissTelepitesen(payload)
   } catch (error) {
     logger.warn('Kezdőlap-alapállapot ellenőrzése/betöltése sikertelen (best-effort)', {
       error: error instanceof Error ? error.message : String(error),
@@ -514,8 +524,8 @@ async function ensureContactForm(payload: Payload): Promise<void> {
  * tétlen kapcsolat kezeletlen `error` eseménye `uncaughtException`-ként viszi
  * el a Next.js szerverfolyamatot. A három lépésnek nincs köze egymáshoz, ezért
  * itt látszik is, hogy külön dolog: pool-handler, webhook-feldolgozók,
- * kezdőlap-alapállapot (képek, szekciósor, kiemelt vélemények), majd a
- * „Kapcsolat" űrlap.
+ * kezdőlap-alapállapot (képek; a szekciósor és a kiemelt vélemények csak friss
+ * telepítésen), majd a „Kapcsolat" űrlap.
  *
  * A két memóriabeli regisztráció (pool-handler, webhook-feldolgozók) MEGELŐZI a
  * DB-t érintő, best-effort seedelést: azok hibája (pl. migráció előtti adatbázis)
