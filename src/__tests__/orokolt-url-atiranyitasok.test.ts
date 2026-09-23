@@ -257,7 +257,8 @@ describe('őr — a mért 25 régi sitemap-URL mindegyike kap sorsot', () => {
     expect(target('/kezrelax-penztar')).toBe(COURSE_SOS_KEZRELAX)
     expect(target('/kiss-kata')).toBe('/rolunk')
     expect(target('/home')).toBe('/')
-    expect(target('/en')).toBe('/')
+    // Szándékosan 404 marad: angol változat nincs, a magyar kezdőlap nem egyenértékű cél.
+    expect(target('/en')).toBeUndefined()
   })
 
   it('a változatlan slugok NEM kapnak szabályt (a redirects a fájlrendszer előtt fut)', async () => {

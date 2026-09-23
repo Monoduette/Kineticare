@@ -1,5 +1,5 @@
 /**
- * Örökölt kineticare.hu URL-ek — domain-átállításhoz. 25 sitemap-URL + 4 Search Console
+ * Örökölt kineticare.hu URL-ek — domain-átállításhoz. 25 sitemap-URL + 3 Search Console
  * 404-URL; három sors: változatlan, 308 (`LEGACY_REDIRECTS`), 410 spam (middleware).
  * Változatlan útvonalra szabály tilos.
  */
@@ -68,10 +68,13 @@ export const LEGACY_SITEMAP_PATHS: readonly string[] = [
  * a rá mutató linkek értékét elveszíti; a legközelebbi mai tartalomra vivő
  * 308 megtartja. A lista külön él a `LEGACY_SITEMAP_PATHS` mellett, mert az a
  * 2026-08-16-i sitemap-mérés rögzített, 25 elemű lenyomata.
+ *
+ * SZÁNDÉKOSAN kimaradt: `/en`. Angol változat nincs; egy nyelvi címet a magyar
+ * kezdőlapra irányítani nem egyenértékű csere, a Google ezt soft 404-nek veheti.
+ * Marad 404, amíg valódi angol cél nem készül.
  */
 export const LEGACY_SEARCH_CONSOLE_PATHS: readonly string[] = [
   '/home',
-  '/en',
   '/kezrelax-penztar',
   '/kiss-kata',
 ]
@@ -190,12 +193,6 @@ export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
     destination: '/',
     reason:
       'A régi oldal kezdőlapjának másodlagos címe. A kezdőlap mai CMS-slugja kezdolap, a /home útvonal nem létezik (mérve: 404).',
-  },
-  {
-    source: '/en',
-    destination: '/',
-    reason:
-      'A régi sablon angol nyelvi előtagja. Angol változat ma nincs, a magyar kezdőlap a legközelebbi valódi tartalom.',
   },
 ]
 

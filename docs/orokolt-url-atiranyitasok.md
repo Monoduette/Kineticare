@@ -77,7 +77,7 @@ Minden örökölt URL **pontosan egy** kezelést kap. A három oszlop-típus:
 A domain átállításának éjszakáján a Search Console „Not found (404)”
 jelentése négy olyan címet mutatott, amely a régi sitemapban nem szerepelt,
 de a Google ismeri (belső link, külső hivatkozás vagy régi megosztás). A régi
-oldalon is 404-et adtak, az új hoszton is 404-et adtak (mérve). Mind 308-at
+oldalon is 404-et adtak, az új hoszton is 404-et adtak (mérve). Három 308-at
 kap a legközelebbi mai tartalomra; a lista a
 `LEGACY_SEARCH_CONSOLE_PATHS`-ban él, külön a 25 elemű sitemap-lenyomattól.
 
@@ -86,9 +86,12 @@ kap a legközelebbi mai tartalomra; a lista a
 | 26 | `/kezrelax-penztar` | `/kurzusok/sos-kezrelax-villamkurzus` | 308 | Az ingyenes SOS régi pénztára; szándékosan nem a `/penztar` (lásd 12. sor). |
 | 27 | `/kiss-kata` | `/rolunk` | 308 | Kiss Kata régi bemutatkozó oldala; ma a Rólunk mutatja be mindkét gyógytornászt. |
 | 28 | `/home` | `/` | 308 | A kezdőlap másodlagos régi címe. |
-| 29 | `/en` | `/` | 308 | A régi sablon angol előtagja; angol változat nincs. |
 
-**Összesen a 2.1-gyel:** 7 változatlan + 17 tartós átirányítás + 5 megszűnt = 29.
+A negyedik, `/en`, **szándékosan 404 marad**: angol változat nincs, és egy nyelvi
+címet a magyar kezdőlapra irányítani nem egyenértékű csere (a Google soft
+404-nek veheti). Ha angol oldal készül, arra kap 308-at.
+
+**Összesen a 2.1-gyel:** 7 változatlan + 16 tartós átirányítás + 5 megszűnt = 28.
 
 ---
 
