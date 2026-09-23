@@ -13,6 +13,7 @@ import { SzerkesztoOldalSzalag } from '@/components/editor/frontend/SzerkesztoSz
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { CTA_TERMEK_LEKERDEZES_LIMIT } from '@/lib/cta-banner-course'
 import {
   getHomePage,
@@ -57,13 +58,18 @@ export default async function HomePage() {
   // A posztokból a knowledge blokk felső limitjéig (6) kérünk, hogy a
   // szekciósor bármely beállítása egyetlen párhuzamos lekérdezésből kijöjjön;
   // a rögzített kezdőlap továbbra is 3-at mutat (KnowledgeSection limit).
-  const [cmsHome, products, posts, testimonials, publikaltOldalak] = await Promise.all([
-    homePageOf(isDraft),
-    getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT),
-    tudastarLathato ? getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT) : Promise.resolve<Post[]>([]),
-    getTestimonials(),
-    tudastarLathato ? getPublishedPageSlugs() : Promise.resolve<ReadonlySet<string>>(new Set()),
-  ])
+  // A kapcsolati e-mail (H18, H46) az Organization JSON-LD-be: a /kapcsolat
+  // első látható Időpontkérés szekciójának címe, hiba esetén a kódtartalék
+  // (a feloldó nem dob). React `cache`: a lábléccel egy lekérdezés.
+  const [cmsHome, products, posts, testimonials, publikaltOldalak, kapcsolatiEmail] =
+    await Promise.all([
+      homePageOf(isDraft),
+      getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT),
+      tudastarLathato ? getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT) : Promise.resolve<Post[]>([]),
+      getTestimonials(),
+      tudastarLathato ? getPublishedPageSlugs() : Promise.resolve<ReadonlySet<string>>(new Set()),
+      getContactEmail(),
+    ])
   const home =
     cmsHome && !tudastarLathato && cmsHome.layout
       ? { ...cmsHome, layout: layoutTudastarLinkekNelkul(cmsHome.layout) }
@@ -119,8 +125,10 @@ export default async function HomePage() {
       />
       <HomeView
         appointment={appointment}
+        elonezet={isDraft}
         home={home}
         hubUtvonalak={hubUtvonalak}
+        kapcsolatiEmail={kapcsolatiEmail}
         posts={posts}
         products={products}
         szerkesztes={szerkesztes}

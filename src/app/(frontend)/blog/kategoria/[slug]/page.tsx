@@ -18,6 +18,7 @@ import {
 } from '@/lib/cms'
 import { absoluteUrl, blogJsonLd, buildStaticPageMetadata, NOINDEX_ROBOTS } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { freeCourseHref } from '@/lib/tudastar'
 import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
@@ -100,10 +101,11 @@ export default async function BlogCategoryPage({ params }: Props) {
   const { slug } = await params
   const category = await categoryOf(slug)
   if (!category) notFound()
-  const [posts, everyPost, categories] = await Promise.all([
+  const [posts, everyPost, categories, contactEmail] = await Promise.all([
     postsOf(slug),
     allPosts(),
     getContentCategories(),
+    getContactEmail(),
   ])
   // KANONIKUS belső link (lásd a `/blog` lap azonos lépését): publikált
   // gyökér-hubnál a kártya a gyökér-címre megy, piszkozatnál marad a
@@ -151,6 +153,7 @@ export default async function BlogCategoryPage({ params }: Props) {
               { name: 'Tudástár', path: '/blog' },
               { name: category.title, path: `/blog/kategoria/${category.slug}` },
             ],
+            contactEmail,
           })}
         />
         {/* A H1 (a téma neve) és a felvezető a PostListFilter-ben él, és a

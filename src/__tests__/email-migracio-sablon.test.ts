@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ATALLAS_KERES_KORLAT_MONDAT } from '../app/(frontend)/belepes-atallas/page'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { sendViaResend } from '../lib/email/resend'
-import { CONTACT_EMAIL } from '../lib/seo'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 import { RATE_LIMIT_RULES } from '../lib/security/rate-limit'
 import { buildMessage } from '../lib/email/smtp'
 import { renderLayout } from '../lib/email/templates/layout'
@@ -148,10 +148,23 @@ describe('WP40 – tárgy, előnézet, lábléc', () => {
     for (const variant of [email.html, email.text]) {
       expect(variant).toContain('az új felületen történő belépéshez küldünk segítséget')
       expect(variant).toContain('Válaszolj erre a levélre')
-      expect(variant).toContain(CONTACT_EMAIL)
+      expect(variant).toContain(KAPCSOLATI_EMAIL_TARTALEK)
       expect(variant).not.toContain('ne válaszolj')
     }
-    expect(MIGRATION_NOTICE_REPLY_TO).toBe(CONTACT_EMAIL)
+    expect(MIGRATION_NOTICE_REPLY_TO).toBe(KAPCSOLATI_EMAIL_TARTALEK)
+  })
+
+  it('a lábléc-mondat a feloldott kapcsolati e-mailt írja (a Reply-To-val azonos)', () => {
+    const email = migrationNoticeEmail({
+      name: 'Kiss Anna',
+      email: 'kiss.anna@example.com',
+      serverUrl: SERVER_URL,
+      replyTo: 'rendelo@example.com',
+    })
+    for (const variant of [email.html, email.text]) {
+      expect(variant).toContain('vagy írj a(z) rendelo@example.com címre.')
+      expect(variant).not.toContain(KAPCSOLATI_EMAIL_TARTALEK)
+    }
   })
 
   it('a megszólítás névvel és név nélkül is helyes', () => {

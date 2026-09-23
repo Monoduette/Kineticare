@@ -2,7 +2,10 @@ import { SzekcioHorgonyIgazito } from './SzekcioHorgonyIgazito'
 import {
   ARLISTA_NEM_ISMERHETO,
   ARLISTA_TEENDO,
+  fejlecSzalag,
+  lablecSzalag,
   SZERKESZTEM_FELIRAT,
+  type KodSzalag,
   type OldalSzalag,
   type SzalagLink,
   type SzekcioSzalag,
@@ -128,4 +131,79 @@ export function SzerkesztoOldalSzalag({ szalag }: { szalag: OldalSzalag }) {
       </div>
     </div>
   )
+}
+
+/**
+ * Egy NEM szekció modul „Kódban van” szalagja (modul-térkép H09 1. pont,
+ * H21, H35, H18): címke, magyarázat, és ha a modul egy része máshol
+ * szerkeszthető, a forrás-link(ek).
+ *
+ * UGYANAZ A HELY ÉS NYELV, MINT A SZEKCIÓ-SZALAGOKNÁL: a modulja ELŐTT áll,
+ * a folyamban, a tartalmat nem fedi; ugyanazok a kc-szerkeszto-szalag
+ * osztályok, a `--kod` módosító csak a felületet és a keretet váltja
+ * (világoskék info-felület, pontozott keret), hogy a szerkesztő első
+ * pillantásra lássa: ez nem az a fajta szalag, amelyből szerkeszteni lehet
+ * (NN/g, Visibility of System Status,
+ * https://www.nngroup.com/articles/visibility-system-status/; Sanity: a
+ * szerkeszthetőséget jelző elem csak ott áll, ahol a tartalom a CMS-ből jön,
+ * https://www.sanity.io/docs/visual-editing/visual-editing-overlays). A
+ * különbséget a címke szövege is kimondja (WCAG 2.2 SC 1.4.1). Horgony-id
+ * nincs: ezekre a modulokra mélylink nem mutat.
+ *
+ * A mért kontraszt, érintési cél, fókusz és 320 px-es tördelés a
+ * szerkeszto-reteg.css fejkommentjének táblázatában.
+ */
+export function SzerkesztoKodSzalag({ szalag }: { szalag: KodSzalag }) {
+  return (
+    <div className="kc-szerkeszto-szalag kc-szerkeszto-szalag--kod">
+      <div className="kc-container kc-szerkeszto-szalag__belso">
+        <p className="kc-szerkeszto-szalag__cimke">{szalag.cimke}</p>
+        <p className="kc-szerkeszto-szalag__jelzes">{szalag.magyarazat}</p>
+        {szalag.linkek.length > 0 ? (
+          <p className="kc-szerkeszto-szalag__linkek">
+            {szalag.linkek.map((link) => (
+              <Link key={link.href} link={link} />
+            ))}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** Melyik keret-modul előtt áll a szalag. */
+export type KeretHely = 'fejlec' | 'lablec'
+
+export interface ElonezetKeretSzalagProps {
+  /** Piszkozat-előnézet (`draftMode().isEnabled`); hamisnál a komponens semmit nem renderel. */
+  elonezet: boolean
+  hely: KeretHely
+  /** A lábléc e-mail-linkjének célja (`kapcsolatIdopontSzerkesztoHref`). */
+  kapcsolatIdopontHref?: string
+  /** A Payload admin-útvonala, alapból `/admin`. */
+  adminRoute?: string
+}
+
+/**
+ * A keret (fejléc, lábléc) szalagja a (frontend) layoutban. Nem
+ * piszkozatban `null`; a layout ettől függetlenül CSAK a piszkozat-ágban
+ * rendereli, hogy a látogató RSC-adatában még egy üres hely se maradjon.
+ */
+export function ElonezetKeretSzalag({
+  elonezet,
+  hely,
+  kapcsolatIdopontHref,
+  adminRoute = '/admin',
+}: ElonezetKeretSzalagProps) {
+  if (!elonezet) {
+    return null
+  }
+  const szalag =
+    hely === 'fejlec'
+      ? fejlecSzalag({ adminRoute })
+      : lablecSzalag({
+          adminRoute,
+          ...(kapcsolatIdopontHref ? { kapcsolatIdopontHref } : {}),
+        })
+  return <SzerkesztoKodSzalag szalag={szalag} />
 }

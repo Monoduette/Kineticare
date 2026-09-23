@@ -11,19 +11,26 @@ import ErrorPage from '../app/(frontend)/error'
 import NotFound, { metadata as notFoundMetadata } from '../app/(frontend)/not-found'
 import {
   NOT_FOUND_CHECKS,
-  NOT_FOUND_CONTACT_EMAIL,
   NOT_FOUND_DESTINATIONS,
   NOT_FOUND_LEAD,
   NOT_FOUND_PRIMARY_ACTION,
   NOT_FOUND_SECONDARY_ACTION,
   NOT_FOUND_TITLE,
 } from '../components/error/not-found-content'
-import { FOOTER_CONTACT_EMAIL, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
+import { FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 
 // A (frontend) not-found a Tudástár-kapcsolót kérdezi (aszinkron szerver-
 // komponens); itt a bekapcsolt állapot a mérce. A kikapcsolt ágat a
 // tudastar-link-szuro.test.tsx méri.
 vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+// A kapcsolati e-mail feloldója (src/lib/contact-email-server.ts) itt a mai
+// élő értéket, a kódtartalékot adja; valódi adatbázis-hívás nem mehet ki. Az
+// eltérő CMS-címet a kapcsolati-email-feloldo.test.ts méri.
+vi.mock('@/lib/contact-email-server', async () => {
+  const { KAPCSOLATI_EMAIL_TARTALEK: tartalek } = await import('../lib/contact-email')
+  return { getContactEmail: async () => tartalek }
+})
 
 /**
  * ŐR — HIBAOLDALAK (nem található + váratlan hiba).
@@ -92,7 +99,7 @@ describe('404 — a (frontend) not-found határa', () => {
   })
 
   it('a kapcsolatfelvétel elérhető a lapról (mailto)', () => {
-    expect(hrefs(notFoundMarkup)).toContain(`mailto:${NOT_FOUND_CONTACT_EMAIL}`)
+    expect(hrefs(notFoundMarkup)).toContain(`mailto:${KAPCSOLATI_EMAIL_TARTALEK}`)
   })
 
   it('a második navigációs landmark meg van nevezve (WCAG 2.2 · 1.3.1)', () => {
@@ -189,8 +196,20 @@ describe('hibaoldal — CMS-függetlenség és mikroszöveg', () => {
     }
   })
 
-  it('a kapcsolati e-mail egyezik a láblécével (egy cím, két helyen)', () => {
-    expect(NOT_FOUND_CONTACT_EMAIL).toBe(FOOTER_CONTACT_EMAIL)
+  it('a kapcsolati e-mail a közös feloldóból jön, a tartalék = KAPCSOLATI_EMAIL_TARTALEK', () => {
+    // A (frontend) határ a kérésidejű feloldást adja át, a nézet alapértéke a
+    // kódtartalék (a global-not-found így a tartalékot mutatja), saját
+    // e-mail-konstans egyik modulban sincs.
+    const hatar = readFileSync(join(REPO, 'app/(frontend)/not-found.tsx'), 'utf8')
+    expect(hatar).toContain('getContactEmail()')
+    expect(hatar).toContain('kapcsolatiEmail={kapcsolatiEmail}')
+    expect(nezetModul).toContain('kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK')
+    expect(nezetModul).not.toContain('contact-email-server')
+    expect(tartalomModul).not.toContain('@kineticare.hu')
+    expect(hrefs(globalNotFoundMarkup)).toContain(`mailto:${KAPCSOLATI_EMAIL_TARTALEK}`)
+    const lablec = readFileSync(join(REPO, 'components/layout/Footer.tsx'), 'utf8')
+    expect(lablec).toContain('kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK')
+    expect(lablec).toContain('<Footer kapcsolatiEmail={await getContactEmail()} />')
   })
 
   it('a global-not-found jogi listája egyezik a láblécével', () => {
@@ -224,7 +243,9 @@ describe('hibaoldal — stíluslap', () => {
 })
 
 describe('hibaoldal — váratlan hiba (error + global-error)', () => {
-  const errorMarkup = renderToStaticMarkup(<ErrorPage error={new Error('teszt')} reset={() => {}} />)
+  const errorMarkup = renderToStaticMarkup(
+    <ErrorPage error={new Error('teszt')} reset={() => {}} />,
+  )
   const globalErrorMarkup = renderToStaticMarkup(
     <GlobalError error={new Error('teszt')} reset={() => {}} />,
   )

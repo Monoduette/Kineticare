@@ -28,6 +28,16 @@ import { RelatedCourses } from '@/components/courses/RelatedCourses'
 import { buildCourseSalesContent } from '@/components/courses/sales-content'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
+import {
+  kurzusForrasSzalagok,
+  type KurzusSzakaszId,
+} from '@/components/editor/frontend/kurzus-forras-szalag'
+import {
+  KurzusAkciosSzalag,
+  KurzusOldalForrasSzalag,
+  KurzusSzakaszForrasSzalag,
+} from '@/components/editor/frontend/KurzusForrasSzalag'
+import { szekcioMelylink } from '@/components/editor/szekcio-melylink'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { loadProductPreview, previewCurriculum } from '@/lib/preview/product-preview'
@@ -50,6 +60,7 @@ import {
   hasUserPurchased,
   resolveCourseCta,
 } from '@/lib/courses'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { buildCurriculum } from '@/lib/curriculum/curriculum'
 import { formatPriceHuf } from '@/lib/format-price'
 import { rewriteVisitorDashLeftover } from '@/lib/gondolatjel-leftover'
@@ -356,13 +367,44 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
     ? extractCoursePackage(sales.body)
     : { package: null, body: sales.body }
 
+  const curriculumModules = curriculum.modules.filter((module) => module.lessons.length > 0)
+
+  /**
+   * FORRÁS-SZALAGOK (modul-térkép H50/A19), CSAK piszkozat-előnézetben: a lap
+   * tetején a kurzus szerkesztője (és akciós kurzusnál a figyelmeztetés, hogy
+   * az előnézet a normál elrendezést mutatja), minden szakasz ELŐTT a szakasz
+   * forrása és mező-mélylinkje (kurzus-forras-szalag.ts). Nem előnézetben
+   * `null`, és a `forrassal` a szakasz csomópontját VÁLTOZATLANUL adja vissza:
+   * a látogatói kimenetben nincs új burkoló, azonosító vagy attribútum.
+   */
+  const forrasSzalagok = isPreview
+    ? kurzusForrasSzalagok({
+        product,
+        sales,
+        tananyag: curriculumModules.length > 0 ? (curriculum.legacy ? 'regi' : 'modulok') : null,
+        galeria: firstGalleryMedia(product) !== null,
+      })
+    : null
+  const forrassal = (szakaszId: KurzusSzakaszId, node: ReactNode): ReactNode => {
+    const szalag = forrasSzalagok?.szakaszok[szakaszId]
+    return szalag ? (
+      <>
+        <KurzusSzakaszForrasSzalag szalag={szalag} />
+        {node}
+      </>
+    ) : (
+      node
+    )
+  }
+
   // ── A szakaszok, dokumentum-sorrendben ────────────────────────────────────
   const sections: PageSection[] = []
 
   if (packageContent.body && packageContent.body.root.children.length > 0) {
     sections.push({
       target: { id: 'mi-ez', label: 'Mi ez?' },
-      node: (
+      node: forrassal(
+        'mi-ez',
         <section aria-labelledby="mi-ez-cim" className="kc-course-section" id="mi-ez">
           <h2 className="kc-course-section__title" id="mi-ez-cim">
             A kurzusról
@@ -372,7 +414,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           ) : (
             <LexicalContent className="kc-course-prose" content={packageContent.body} />
           )}
-        </section>
+        </section>,
       ),
     })
   }
@@ -382,7 +424,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   if (firstGalleryMedia(product) !== null) {
     sections.push({
       target: null,
-      node: (
+      node: forrassal(
+        'galeria',
         <CourseGalleryFigure
           product={product}
           sizes={
@@ -390,7 +433,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
               ? '(min-width: 1120px) 1072px, calc(100vw - 48px)'
               : undefined
           }
-        />
+        />,
       ),
     })
   }
@@ -398,22 +441,27 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   if (sales.steps.length > 0) {
     sections.push({
       target: { id: 'hogyan-mukodik', label: 'Hogyan működik?' },
-      node: (
+      node: forrassal(
+        'hogyan-mukodik',
         <CourseHowItWorks
           heading="Hogyan működik?"
           headingId="hogyan-mukodik-cim"
           steps={sales.steps}
-        />
+        />,
       ),
     })
   }
 
-  const curriculumModules = curriculum.modules.filter((module) => module.lessons.length > 0)
   if (curriculumModules.length > 0) {
     sections.push({
       target: { id: 'tananyag', label: 'Tananyag' },
-      node: (
-        <CourseCurriculum heading="Tananyag" headingId="tananyag-cim" modules={curriculumModules} />
+      node: forrassal(
+        'tananyag',
+        <CourseCurriculum
+          heading="Tananyag"
+          headingId="tananyag-cim"
+          modules={curriculumModules}
+        />,
       ),
     })
   }
@@ -421,7 +469,8 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   if (sales.fitFor.length > 0 || sales.notFitFor.length > 0) {
     sections.push({
       target: { id: 'kinek-valo', label: 'Kinek való?' },
-      node: (
+      node: forrassal(
+        'kinek-valo',
         <CourseFitCheck
           fitFor={sales.fitFor}
           fitTitle="Neked való, ha…"
@@ -429,7 +478,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           headingId="kinek-valo-cim"
           notFitFor={sales.notFitFor}
           notFitTitle="Nem javasoljuk, ha…"
-        />
+        />,
       ),
     })
   }
@@ -437,14 +486,20 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
   if (sales.guarantee !== null) {
     sections.push({
       target: { id: 'garancia', label: 'Garancia' },
-      node: <CourseGuarantee guarantee={sales.guarantee} headingId="garancia-cim" />,
+      node: forrassal(
+        'garancia',
+        <CourseGuarantee guarantee={sales.guarantee} headingId="garancia-cim" />,
+      ),
     })
   }
 
   if (sales.faq.length > 0) {
     sections.push({
       target: { id: 'gyik', label: 'GYIK' },
-      node: <CourseFaq heading="Gyakori kérdések" headingId="gyik-cim" items={sales.faq} />,
+      node: forrassal(
+        'gyik',
+        <CourseFaq heading="Gyakori kérdések" headingId="gyik-cim" items={sales.faq} />,
+      ),
     })
   }
 
@@ -551,6 +606,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
             { name: 'Kurzusok', path: '/kurzusok' },
             { name: title, path },
           ],
+          contactEmail: await getContactEmail(),
         })}
       />
       {/* A FAQPage strukturált adat UGYANABBÓL a listából készül, mint a
@@ -595,7 +651,18 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
 
   return (
     <>
-      {isPreview ? <PreviewBar path={path} /> : null}
+      {forrasSzalagok !== null ? (
+        <>
+          <PreviewBar
+            path={path}
+            szerkesztoHref={szekcioMelylink({ collection: 'products', id: product.id })}
+          />
+          {forrasSzalagok.akcios !== null ? (
+            <KurzusAkciosSzalag szalag={forrasSzalagok.akcios} />
+          ) : null}
+          <KurzusOldalForrasSzalag szalag={forrasSzalagok.oldal} />
+        </>
+      ) : null}
       {structuredHead}
 
       <Section>

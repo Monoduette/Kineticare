@@ -21,6 +21,7 @@ import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
+import { getContactEmail } from '@/lib/contact-email-server'
 import {
   getFreeProduct,
   getLatestPosts,
@@ -31,6 +32,7 @@ import {
   getRelatedPosts,
   getTestimonials,
 } from '@/lib/cms'
+import { hubSeoForras } from '@/lib/hub-seo'
 import { HUB_OLDALAK, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 import { CTA_TERMEK_LEKERDEZES_LIMIT, rolunkCtaMontazs } from '@/lib/cta-banner-course'
 import { presentHomeLayout, presentSzolgaltatasokLayout } from '@/lib/home-help-states'
@@ -80,12 +82,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = hub !== undefined ? await hubPostOf(hub.cikkSlug) : null
   if (post) {
     const author = authorPersonOf(post)
+    // A leírás és a kulcsszavak a hub KÖZÖS feloldóláncából (src/lib/hub-seo.ts,
+    // modul-térkép H05/A20): a lap WebPage- és Article-sémája ugyanezt kapja,
+    // így a meta és a strukturált adat nem válhat szét. Cím és megosztási kép:
+    // továbbra is az Oldalé.
     const hubMetadata = buildPageMetadata(page, `/${slug}`, {
       article: {
         publishedTime: post.publishedAt,
         modifiedTime: post.updatedAt,
         ...(author !== null ? { authors: [author.name] } : {}),
       },
+      seoForras: hubSeoForras({ page, post }),
     })
     return withDraftRobots(
       hubRejtett ? { ...hubMetadata, robots: NOINDEX_ROBOTS } : hubMetadata,
@@ -138,11 +145,15 @@ export default async function CmsPage({ params }: Props) {
   if (hub !== undefined) {
     const post = await hubPostOf(hub.cikkSlug)
     if (post) {
-      const [related, freeCourse, publikaltOldalak] = await Promise.all([
+      const [related, freeCourse, publikaltOldalak, contactEmail] = await Promise.all([
         getRelatedPosts(post),
         getFreeProduct(),
         getPublishedPageSlugs(),
+        getContactEmail(),
       ])
+      // Ugyanaz a lánc, mint a generateMetadata-ban: a WebPage leírása = a meta
+      // leírása, az Article kulcsszavai = a meta kulcsszavai.
+      const seoForras = hubSeoForras({ page, post })
       // A kapcsolódó cikkek kártyái is a KANONIKUS gyökér-címre linkelnek, ahol
       // a hub publikált — a hub-lapról 308-as átirányításra mutatni különösen
       // fölösleges kör (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
@@ -174,18 +185,20 @@ export default async function CmsPage({ params }: Props) {
               page: {
                 path: `/${slug}`,
                 name: post.title,
-                description: resolveSeoDescription(post),
+                description: seoForras.description,
                 imageUrl: resolveOgImageUrl(post),
                 datePublished: post.publishedAt,
                 dateModified: post.updatedAt,
                 mainEntityId: `${absoluteUrl(`/${slug}`)}#article`,
               },
               breadcrumbRef: true,
+              contactEmail,
             })}
           />
           <PostArticle
             freeCourse={freeCourse}
             hubUtvonalak={hubUtvonalak}
+            jsonLdKulcsszavak={seoForras.keywords}
             path={`/${slug}`}
             post={post}
             related={related}
@@ -253,7 +266,10 @@ export default async function CmsPage({ params }: Props) {
   // site key. A lekérdezés CSAK akkor fut, ha van ilyen blokk a lapon
   // (getAppointmentSectionContext maga dönti el) — ugyanaz a takarékossági
   // elv, mint a fenti három listánál.
-  const appointment = await getAppointmentSectionContext(layout)
+  const [appointment, contactEmail] = await Promise.all([
+    getAppointmentSectionContext(layout),
+    getContactEmail(),
+  ])
 
   // Oldal-gráf (src/lib/seo-graph.ts): Organization + WebSite + WebPage +
   // BreadcrumbList (Kezdőlap → lap). A /rolunk AboutPage, a két szakember
@@ -290,10 +306,12 @@ export default async function CmsPage({ params }: Props) {
       ? {
           organization: organizationNode({
             founder: personNodes(persons).map((node) => ({ '@id': node['@id'] })),
+            email: contactEmail,
           }),
         }
       : {}),
     nodes: [...personNodes(persons), ...services],
+    contactEmail,
   })
 
   // A „Szerkesztem” réteg CSAK piszkozat-előnézetben (modul-térkép A3), a

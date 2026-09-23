@@ -1,4 +1,5 @@
 import type { Page, Post, Product } from '../payload-types'
+import { feloldottKapcsolatiEmail, KAPCSOLAT_OLDAL_WEBCIM } from './contact-email'
 import { isLegacyNoindexPage } from './legacy-noindex'
 import { isDiscoverableCourse } from './course-discovery'
 import { courseHref } from './course-url'
@@ -6,8 +7,9 @@ import { courseTitle } from './courses'
 import { resolveFilmCaptions } from './film-captions'
 import { freeSosStripTitle } from './free-sos-title'
 import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
+import { sanitizeCmsUrl } from './safe-url'
 import { presentHomeLayout } from './home-help-states'
-import { absoluteUrl, CONTACT_EMAIL, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from './seo'
+import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from './seo'
 import { isAvailableSosProduct } from './sos-offer'
 import { isHubSlug } from './tudastar-kapcsolo'
 import { layoutTudastarLinkekNelkul, lexicalTudastarLinkekNelkul } from './tudastar-link-szuro'
@@ -239,6 +241,39 @@ function itemLines(item: Record<string, unknown>): string[] {
 }
 
 /**
+ * Az „Ajánlat-kártyák” blokk egy kártyája markdownban (modul-térkép H46, az
+ * A6 /szakembereknek blokkja). REKORD-alapú, típusimport nélkül: a blokk
+ * típusai egy későbbi körrel érkeznek, és a szekciósor-bejárás addig is a
+ * nyers CMS-rekordot kapja. A kártya sorrendje a lapéval egyezik: cím
+ * (`### `), szöveg, a tények felsorolásként, végül a gomb linkként.
+ *
+ * A gomb két alakját is olvassa: `gomb: { felirat, url }` csoport, vagy
+ * lapos `gombFelirat` + `gombUrl` mező. Link csak akkor kerül ki, ha a
+ * felirat és a biztonságos cél (src/lib/safe-url.ts `sanitizeCmsUrl`) is
+ * megvan; a relatív cél abszolút lesz, ahogy a rich text linkjeinél.
+ */
+function ajanlatKartyaSorai(kartya: Record<string, unknown>): string[] {
+  const lines: string[] = []
+  const cim = trimmed(kartya.cim)
+  if (cim) lines.push(`### ${clean(cim)}`)
+  const szoveg = trimmed(kartya.szoveg)
+  if (szoveg) lines.push(clean(szoveg))
+  const tenyek = (Array.isArray(kartya.tenyek) ? kartya.tenyek : [])
+    .map((teny) => (isRecord(teny) ? trimmed(teny.szoveg) : undefined))
+    .filter((teny): teny is string => teny !== undefined)
+  if (tenyek.length > 0) lines.push(tenyek.map((teny) => `- ${clean(teny)}`).join('\n'))
+  const gomb = isRecord(kartya.gomb) ? kartya.gomb : {}
+  const felirat = trimmed(gomb.felirat) ?? trimmed(kartya.gombFelirat)
+  const cel = sanitizeCmsUrl(trimmed(gomb.url) ?? trimmed(kartya.gombUrl))
+  if (felirat && cel) {
+    // Sémás cél (https:, mailto:, tel:) maradjon, a webhelyen belüli út abszolút lesz.
+    const href = /^[a-z][a-z0-9+.-]*:/i.test(cel) ? cel : absoluteUrl(cel)
+    lines.push(`[${clean(felirat)}](${href})`)
+  }
+  return lines
+}
+
+/**
  * Amit a lap a blokkon KÍVÜLRŐL dönt el, és a szekció szövegét változtatja.
  * A RenderBlocks ugyanezt a két jelet számolja (`freeProduct`, `freeSosHref`,
  * src/components/blocks/RenderBlocks.tsx).
@@ -302,8 +337,15 @@ export function layoutBlockToMarkdown(
     const md = lexicalToMarkdown(record.content)
     if (md.length > 0) lines.push(md)
   }
+  const kartyak = Array.isArray(record.kartyak) ? record.kartyak : null
+  if (kartyak !== null) {
+    for (const kartya of kartyak) {
+      if (isRecord(kartya)) lines.push(...ajanlatKartyaSorai(kartya))
+    }
+  }
   for (const [key, value] of Object.entries(record)) {
     if (SKIP_KEYS.has(key) || !Array.isArray(value)) continue
+    if (key === 'kartyak' && kartyak !== null) continue
     for (const entry of value) {
       if (isRecord(entry)) {
         lines.push(...itemLines(entry))
@@ -488,13 +530,17 @@ export function buildLlmsTxt(input: LlmsSource): string {
   )
 
   const legalPages = pages.filter((page) => LEGAL_SLUGS.has(page.slug))
-  const contact = pages.find((page) => page.slug === 'kapcsolat')
+  const contact = pages.find((page) => page.slug === KAPCSOLAT_OLDAL_WEBCIM)
+  // A kapcsolati e-mail ugyanabból a láncból, mint a lábléc és a szervezet
+  // JSON-LD-je (src/lib/contact-email.ts): a Kapcsolat-oldal első látható
+  // Időpontkérőjének mezője, különben a kódtartalék.
+  const kapcsolatiEmail = feloldottKapcsolatiEmail(contact?.layout)
   const lines: string[] = [
     `# ${SITE_NAME}`,
     '',
     `> ${SITE_DESCRIPTION}`,
     '',
-    `${SITE_NAME}: ${SITE_TAGLINE.toLowerCase()}. Két budapesti gyógytornász, Kocsis Kata és Kiss Kata kézrehabilitációs praxisa: rendelői kezelés, otthoni online videóprogram és akkreditált szakmai képzés. ${tudastarLathato ? 'A cikkek és a kurzusok magyar nyelvűek.' : 'A kurzusok magyar nyelvűek.'} Kapcsolat: ${CONTACT_EMAIL}.`,
+    `${SITE_NAME}: ${SITE_TAGLINE.toLowerCase()}. Két budapesti gyógytornász, Kocsis Kata és Kiss Kata kézrehabilitációs praxisa: rendelői kezelés, otthoni online videóprogram és akkreditált szakmai képzés. ${tudastarLathato ? 'A cikkek és a kurzusok magyar nyelvűek.' : 'A kurzusok magyar nyelvűek.'} Kapcsolat: ${kapcsolatiEmail}.`,
     '',
     'Fontos: a tartalom tájékoztató jellegű, nem helyettesíti az orvosi vizsgálatot; a gyakorlatokat a kezelőorvos jóváhagyásával érdemes végezni.',
     '',
@@ -509,7 +555,7 @@ export function buildLlmsTxt(input: LlmsSource): string {
       '/kapcsolat',
       contact?.seoDescription ??
         contact?.excerpt ??
-        `Időpontkérés és elérhetőségek, e-mail: ${CONTACT_EMAIL}`,
+        `Időpontkérés és elérhetőségek, e-mail: ${kapcsolatiEmail}`,
     ),
     '',
     '## Kurzusok',
@@ -627,10 +673,13 @@ function productMarkdown(product: LlmsProduct): string {
  */
 export function buildLlmsFullTxt(input: LlmsSource): string {
   const source = tudastarSzurtForras(input)
+  const contact = source.pages.find((page) => page.slug === KAPCSOLAT_OLDAL_WEBCIM)
+  // Az llms.txt bevezetőjével azonos kapcsolati e-mail, ugyanabból a láncból.
   const sections: string[] = [
     `# ${SITE_NAME}`,
     `> ${SITE_DESCRIPTION}`,
     `Forrás: ${absoluteUrl('/llms.txt')}`,
+    `Kapcsolat: ${feloldottKapcsolatiEmail(contact?.layout)}`,
   ]
   const hubSlugs = hubSlugSet(source.hubUtvonalak)
   for (const page of source.pages.filter(isPublicPage)) {

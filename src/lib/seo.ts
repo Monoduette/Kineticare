@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 
+import { KAPCSOLATI_EMAIL_TARTALEK } from './contact-email'
 import { courseTitle } from './courses'
 import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
 import { resolveServerUrl } from '../env'
@@ -52,12 +53,12 @@ export const SITE_DESCRIPTION =
   'Kineticare: kézrehabilitáció gyógytornászoktól. Kéztőalagút szindróma, ínhüvelygyulladás, teniszkönyök, csuklófájdalom kezelése otthon és budapesti rendelőben.'
 
 /**
- * A kapcsolati e-mail EGY forrásból: a lábléc ugyanezt írja ki
- * (`Footer.tsx` `FOOTER_CONTACT_EMAIL`), őr-teszt köti össze a kettőt. A
- * lábléc-komponens ide nem importálható (a robots/sitemap route-ok is ezt a
- * modult töltik, React-fa nélkül).
+ * A kapcsolati e-mail KÓDTARTALÉKA. A cím egy forrásból jön
+ * (src/lib/contact-email.ts): a /kapcsolat oldal első látható Időpontkérő
+ * szekciójának E-mail-cím mezője, ennek hiányában ez a tartalék. A név a
+ * meglévő importok miatt marad; a literál csak a contact-email.ts-ben áll.
  */
-export const CONTACT_EMAIL = 'info@kineticare.hu'
+export const CONTACT_EMAIL = KAPCSOLATI_EMAIL_TARTALEK
 
 /**
  * A kanonikus oldal-gyökér — a keret-layout `metadataBase`-ével KÖZÖS
@@ -557,9 +558,23 @@ export function courseListingJsonLd(
 export function buildPageMetadata(
   doc: SeoDoc,
   path: string,
-  options: { article?: ArticleMeta } = {},
+  options: { article?: ArticleMeta; seoForras?: SeoForras } = {},
 ): Metadata {
-  return buildDocMetadata(doc, path, options)
+  const { article, seoForras } = options
+  const forrasDoc: SeoDoc = seoForras
+    ? { ...doc, seoDescription: seoForras.description ?? null, seoKeywords: seoForras.keywords }
+    : doc
+  return buildDocMetadata(forrasDoc, path, article ? { article } : {})
+}
+
+/**
+ * Külső feloldólánc a leíráshoz és a kulcsszavakhoz. A gyökér tünet-hub adja
+ * (src/lib/hub-seo.ts `hubSeoForras`), hogy a meta és a JSON-LD ugyanabból a
+ * láncból jöjjön. A cím és a megosztási kép továbbra is a dokumentumé.
+ */
+export interface SeoForras {
+  description: string | undefined
+  keywords: readonly SeoKeywordRow[] | null
 }
 
 /**
@@ -675,7 +690,8 @@ function logoNode(): Record<string, unknown> {
  * Az Organization csomópont a gráfhoz (`@context` nélkül).
  *
  * CSAK ami a kódban/CMS-ben van: név, URL, leírás, logó, kapcsolati e-mail
- * (lábléc), nyelv, működési terület, szakterület. Telefon, cím, nyitvatartás
+ * (ugyanaz, mint a láblécben: src/lib/contact-email.ts), nyelv, működési
+ * terület, szakterület. Telefon, cím, nyitvatartás
  * a Kapcsolat-lap CMS-blokkjából jön, és csak ott (`seo-graph.ts`); a
  * `sameAs` üres, mert a láblécben nincs közösségi link — kitalálni tilos.
  */
@@ -684,8 +700,15 @@ export function organizationNode(
     telephone?: readonly string[]
     location?: readonly Record<string, unknown>[]
     founder?: readonly Record<string, unknown>[]
+    /**
+     * A feloldott kapcsolati e-mail (src/lib/contact-email-server.ts
+     * `getContactEmail`); elhagyva a kódtartalék. Ez kerül a szervezet
+     * `email`-jébe és a customer service ContactPoint `email`-jébe is.
+     */
+    email?: string
   } = {},
 ): Record<string, unknown> {
+  const email = extra.email ?? KAPCSOLATI_EMAIL_TARTALEK
   return {
     '@type': 'Organization',
     '@id': ORGANIZATION_ID,
@@ -694,12 +717,12 @@ export function organizationNode(
     description: SITE_DESCRIPTION,
     logo: logoNode(),
     image: { '@id': LOGO_ID },
-    email: CONTACT_EMAIL,
+    email,
     contactPoint: [
       {
         '@type': 'ContactPoint',
         contactType: 'customer service',
-        email: CONTACT_EMAIL,
+        email,
         availableLanguage: ['hu'],
         ...(extra.telephone && extra.telephone.length > 0 ? { telephone: extra.telephone[0] } : {}),
       },
@@ -723,11 +746,14 @@ export function organizationNode(
   }
 }
 
-/** Organization JSON-LD a kezdőlaphoz (önálló script, `@context`-tel). */
-export function organizationJsonLd(): Record<string, unknown> {
+/**
+ * Organization JSON-LD a kezdőlaphoz (önálló script, `@context`-tel). Az
+ * `email` a feloldott kapcsolati e-mail; elhagyva a kódtartalék.
+ */
+export function organizationJsonLd(email?: string): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
-    ...organizationNode(),
+    ...organizationNode(email === undefined ? {} : { email }),
   }
 }
 

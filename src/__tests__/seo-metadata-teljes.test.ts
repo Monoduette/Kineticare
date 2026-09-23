@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { Metadata } from 'next'
 import { describe, expect, it } from 'vitest'
 
-import { FOOTER_CONTACT_EMAIL } from '../components/layout/Footer'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 import {
   buildDocMetadata,
   buildHomeMetadata,
@@ -19,6 +19,7 @@ import {
   documentTitle,
   INDEX_ROBOTS,
   NOINDEX_ROBOTS,
+  organizationNode,
   renderedDocumentTitle,
   SITE_DESCRIPTION,
 } from '../lib/seo'
@@ -365,8 +366,17 @@ describe('robots meta — indexelhető alapállapot a keretben', () => {
 })
 
 describe('kapcsolati e-mail egy forrásból', () => {
-  it('a lábléc és a séma ugyanazt a címet közli', () => {
-    expect(CONTACT_EMAIL).toBe(FOOTER_CONTACT_EMAIL)
+  it('a lábléc és a séma a közös feloldót használja, a tartalék = KAPCSOLATI_EMAIL_TARTALEK', () => {
+    // A cím a /kapcsolat Időpontkérőjéből jön (src/lib/contact-email.ts); a
+    // kódbeli név csak a tartalékra mutat, saját literál nélkül.
+    expect(CONTACT_EMAIL).toBe(KAPCSOLATI_EMAIL_TARTALEK)
+    expect(organizationNode().email).toBe(KAPCSOLATI_EMAIL_TARTALEK)
+    const lablec = readFileSync(
+      fileURLToPath(new URL('../components/layout/Footer.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(lablec).toContain('getContactEmail()')
+    expect(lablec).not.toContain('@kineticare.hu')
   })
 })
 

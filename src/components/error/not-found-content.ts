@@ -76,16 +76,3 @@ export function notFoundDestinations(
     ? NOT_FOUND_DESTINATIONS
     : NOT_FOUND_DESTINATIONS.filter((destination) => destination.href !== NOT_FOUND_TUDASTAR_HREF)
 }
-
-/**
- * Kapcsolatfelvételi e-mail.
- *
- * Szándékosan NEM a `Footer.tsx` konstansát importáljuk: a lábléc modulja
- * magával hozná a `NewsletterSignup`-ot és rajta keresztül a teljes
- * Payload-példányt, a `global-not-found` viszont a Next dokumentációja szerint
- * kifejezetten könnyű lapnak való
- * (https://nextjs.org/docs/app/api-reference/file-conventions/not-found).
- * A két érték egyezését őr-teszt tartja szinkronban
- * (`src/__tests__/hibaoldal.test.tsx`).
- */
-export const NOT_FOUND_CONTACT_EMAIL = 'info@kineticare.hu'

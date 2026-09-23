@@ -24,7 +24,8 @@ import { featuredTestimonials, TestimonialsSection } from './home/TestimonialsSe
 import { hasLexicalContent } from '../lexical/serialize'
 import { RichText } from '../lexical/RichText'
 import { presentHomeLayout } from '../../lib/home-help-states'
-import type { SzerkesztoReteg } from '../editor/frontend/szerkeszto-szalag'
+import { barionSavSzalag, type SzerkesztoReteg } from '../editor/frontend/szerkeszto-szalag'
+import { SzerkesztoKodSzalag } from '../editor/frontend/SzerkesztoSzalag'
 
 /**
  * HomeView — a kezdőlap prezentációs komponense (tiszta, fixture-ből tesztelhető).
@@ -59,6 +60,18 @@ export interface HomeViewProps {
    * hiányában a kimenet a réteg nélküli render.
    */
   szerkesztes?: SzerkesztoReteg | null
+  /**
+   * Piszkozat-előnézet (a `/` route `draftMode()`-ja). Igaznál a Barion-sáv
+   * ELŐTT a „Kódban van” szalag áll (modul-térkép H35); hamisnál (alap) a
+   * kimenet bájtra a szalag nélküli.
+   */
+  elonezet?: boolean
+  /**
+   * A feloldott kapcsolati e-mail (src/lib/contact-email-server.ts
+   * `getContactEmail`) az Organization JSON-LD-be (H18, H46). Elhagyva a
+   * kódtartalék; mai adatokkal a kettő ugyanaz.
+   */
+  kapcsolatiEmail?: string
 }
 
 function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: boolean }) {
@@ -106,6 +119,8 @@ export function HomeView({
   appointment,
   hubUtvonalak,
   szerkesztes = null,
+  elonezet = false,
+  kapcsolatiEmail,
 }: HomeViewProps) {
   // Szekció-rendszer: ha a kezdőlap CMS-oldalán VAN összeállított szekciósor
   // (Pages → Szekciók), azt rendereljük — a sorrend a szerkesztőé, a régi
@@ -120,7 +135,7 @@ export function HomeView({
   if (layout.length > 0) {
     return (
       <>
-        <JsonLd data={organizationJsonLd()} />
+        <JsonLd data={organizationJsonLd(kapcsolatiEmail)} />
         <JsonLd data={homeWebPageJsonLd(home)} />
         <RenderBlocks
           appointment={appointment}
@@ -131,7 +146,18 @@ export function HomeView({
           szerkesztes={szerkesztes}
           testimonials={testimonials}
         />
-        <BarionFizetesJelzes hely="kezdolap" />
+        {/* A Barion-sáv, piszkozatban előtte a „Kódban van” szalaggal (H35).
+            Nem piszkozatban PONTOSAN a korábbi JSX-elem áll ezen a helyen
+            (nincs üres hely, nincs csomagoló komponens), így a látogató
+            HTML-je és RSC-adata nem változik. */}
+        {elonezet ? (
+          <>
+            <SzerkesztoKodSzalag szalag={barionSavSzalag()} />
+            <BarionFizetesJelzes hely="kezdolap" />
+          </>
+        ) : (
+          <BarionFizetesJelzes hely="kezdolap" />
+        )}
         <SectionReveal />
       </>
     )
@@ -160,7 +186,7 @@ export function HomeView({
 
   return (
     <>
-      <JsonLd data={organizationJsonLd()} />
+      <JsonLd data={organizationJsonLd(kapcsolatiEmail)} />
       <JsonLd data={homeWebPageJsonLd(home)} />
       <JsonLd data={faqPageJsonLd(FAQ_ITEMS)} />
       <HeroSection home={home} hasFreeSos={freeProduct !== null} />
@@ -196,7 +222,15 @@ export function HomeView({
 
       <Faq />
 
-      <BarionFizetesJelzes hely="kezdolap" />
+      {/* Ugyanaz, mint a szekciós ágban: a szalag csak piszkozatban. */}
+      {elonezet ? (
+        <>
+          <SzerkesztoKodSzalag szalag={barionSavSzalag()} />
+          <BarionFizetesJelzes hely="kezdolap" />
+        </>
+      ) : (
+        <BarionFizetesJelzes hely="kezdolap" />
+      )}
 
       <SectionReveal />
     </>

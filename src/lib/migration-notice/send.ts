@@ -24,7 +24,8 @@ import type { Payload } from 'payload'
 
 import { maskEmail } from '../email/mask'
 import type { SendMailInput } from '../email/provider'
-import { MIGRATION_NOTICE_REPLY_TO, migrationNoticeEmail } from '../email/templates/migration'
+import { kapcsolatiEmailPayloadbol } from '../contact-email-server'
+import { migrationNoticeEmail } from '../email/templates/migration'
 import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
 import type { MigrationNoticeRecipient } from './recipients'
@@ -101,6 +102,12 @@ export interface SendMigrationNoticesOptions {
    * része lesz, hogy a szolgáltató ne nyelje el a levelet. Alapból nincs.
    */
   readonly idempotencyRound?: string
+  /**
+   * A feloldott kapcsolati e-mail (a Reply-To és a lábléc-mondat). A CLI a
+   * futás elején egyszer feloldja és átadja; elhagyva a kiküldő maga oldja
+   * fel a `kapcsolatiEmailPayloadbol`-lal (hibánál a kódtartalék).
+   */
+  readonly replyTo?: string
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
@@ -153,6 +160,9 @@ export async function sendMigrationNotices(
   const delayMs = options.delayMs ?? MIGRATION_NOTICE_SEND_DELAY_MS
   const sleep = options.sleep ?? defaultSleep
   const now = options.now ?? (() => new Date())
+  // A kapcsolati e-mail a futás elején EGYSZER (nem címzettenként): minden
+  // levél ugyanazt a Reply-To-t és lábléc-mondatot kapja.
+  const replyTo = options.replyTo ?? (await kapcsolatiEmailPayloadbol(payload))
 
   for (const [index, recipient] of recipients.entries()) {
     if (index > 0 && delayMs > 0) {
@@ -163,6 +173,7 @@ export async function sendMigrationNotices(
       name: recipient.name,
       email: recipient.email,
       serverUrl: options.serverUrl,
+      replyTo,
     })
     const { result, attempts } = await sendWithRetry(
       options.send,
@@ -171,7 +182,7 @@ export async function sendMigrationNotices(
         subject: template.subject,
         html: template.html,
         text: template.text,
-        replyTo: MIGRATION_NOTICE_REPLY_TO,
+        replyTo,
         idempotencyKey: migrationNoticeIdempotencyKey(recipient.id, options.idempotencyRound),
       },
       sleep,

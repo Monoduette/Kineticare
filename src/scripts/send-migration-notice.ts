@@ -15,7 +15,9 @@ import { getPayload } from 'payload'
 import { resolveServerUrl } from '../lib/customer-import/invite'
 import { maskEmail } from '../lib/email/mask'
 import { resolveEmailProvider, sendMail } from '../lib/email/provider'
-import { MIGRATION_NOTICE_REPLY_TO, migrationNoticeEmail } from '../lib/email/templates/migration'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
+import { kapcsolatiEmailPayloadbol } from '../lib/contact-email-server'
+import { migrationNoticeEmail } from '../lib/email/templates/migration'
 import { createLogger } from '../lib/logger'
 import {
   collectMigrationNoticeRecipients,
@@ -157,6 +159,24 @@ function printRecipients(recipients: readonly MigrationNoticeRecipient[]): void 
   }
 }
 
+/**
+ * A kapcsolati e-mail (Reply-To és a levél lábléc-mondata) a futás elején,
+ * EGYSZER: ugyanaz a cím, ami a lábléc és a Kapcsolat oldal Időpontkérőjében
+ * áll (src/lib/contact-email.ts). A tesztlevél-ág eddig adatbázis nélkül
+ * futott; ha a Payload nem indul, ott is a kódtartalék megy ki, a küldés
+ * nem akad el miatta.
+ */
+async function kapcsolatiEmailFutasra(): Promise<string> {
+  try {
+    return await kapcsolatiEmailPayloadbol(await getPayload({ config }))
+  } catch (error) {
+    log.warn('átköltöztetési értesítő: a Payload nem indult, a Reply-To a kódtartalék', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return KAPCSOLATI_EMAIL_TARTALEK
+  }
+}
+
 async function run(args: CliArgs): Promise<number> {
   const confirmed = process.env[MIGRATION_NOTICE_CONFIRM_ENV] === MIGRATION_NOTICE_CONFIRM_VALUE
   const willSend = confirmed || args.testTo !== undefined
@@ -169,17 +189,18 @@ async function run(args: CliArgs): Promise<number> {
     }
   }
   const serverUrl = resolveServerUrl()
+  const replyTo = await kapcsolatiEmailFutasra()
 
-  // --- Tesztlevél EGY címre (kapu nélkül, adatbázis nélkül) -------------------
+  // --- Tesztlevél EGY címre (kapu nélkül, jelölés nélkül) ---------------------
   if (args.testTo !== undefined) {
-    const template = migrationNoticeEmail({ name: null, email: args.testTo, serverUrl })
+    const template = migrationNoticeEmail({ name: null, email: args.testTo, serverUrl, replyTo })
     write(`TESZTLEVÉL küldése: ${maskEmail(args.testTo)} (tárgy: „${template.subject}")`)
     const result = await sendMail({
       to: args.testTo,
       subject: template.subject,
       html: template.html,
       text: template.text,
-      replyTo: MIGRATION_NOTICE_REPLY_TO,
+      replyTo,
       idempotencyKey: `migracio-teszt-${Date.now().toString(36)}`,
     })
     if (!result.ok) {
@@ -259,6 +280,7 @@ async function run(args: CliArgs): Promise<number> {
   }
   const sent = await sendMigrationNotices(payload, recipients, {
     serverUrl,
+    replyTo,
     send: sendMail,
     log,
     onOutcome: printOutcome,

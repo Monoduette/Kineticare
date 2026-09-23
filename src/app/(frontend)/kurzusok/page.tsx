@@ -1,13 +1,18 @@
 import type { Metadata } from 'next'
+import { draftMode } from 'next/headers'
 import Link from 'next/link'
 import { getPayload } from 'payload'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
 import { JsonLd } from '@/components/content/JsonLd'
 import { CourseShowcase } from '@/components/content/home/CourseShowcase'
+import { listaFejSzalag } from '@/components/editor/frontend/szerkeszto-szalag'
+import { SzerkesztoKodSzalag } from '@/components/editor/frontend/SzerkesztoSzalag'
+import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { BARION_PAGE_VIEW } from '@/lib/analytics/barion-events'
+import { getContactEmail } from '@/lib/contact-email-server'
 import {
   buildStaticPageMetadata,
   COURSE_LISTING_DESCRIPTION,
@@ -82,12 +87,20 @@ async function listPublishedCourses(): Promise<Product[]> {
 
 export default async function KurzusokPage({ searchParams }: KurzusokPageProps) {
   const params = await searchParams
-  const products = await listPublishedCourses()
+  // Piszkozat-előnézet (csak staff/owner, a /next/preview kapcsolja be): a lap
+  // elején az előnézet-sáv és a lapfej „Kódban van” szalagja (H21). A lapnak
+  // nincs CMS-dokumentuma, ezért „Vissza a szerkesztőbe” link sincs.
+  // A kapcsolati e-mail (H18, H46) a szervezet-csomópontba; a feloldó nem dob.
+  const [{ isEnabled: isDraft }, products, kapcsolatiEmail] = await Promise.all([
+    draftMode(),
+    listPublishedCourses(),
+    getContactEmail(),
+  ])
   const categories = collectCourseCategories(products)
   const activeSlug = resolveCategoryFilter(params[CATEGORY_QUERY_PARAM], categories)
   const visible = filterCoursesByCategory(products, activeSlug)
 
-  return (
+  const lap = (
     <Section>
       {/* Oldal-gráf (Organization + WebSite + BreadcrumbList Kezdőlap →
           Kurzusok); a CollectionPage csomópont a `courseListingJsonLd`, benne
@@ -105,6 +118,7 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
             { name: 'Kezdőlap', path: '/' },
             { name: COURSE_LISTING_TITLE, path: '/kurzusok' },
           ],
+          contactEmail: kapcsolatiEmail,
         })}
       />
       <JsonLd
@@ -168,5 +182,17 @@ export default async function KurzusokPage({ searchParams }: KurzusokPageProps) 
         )}
       </Container>
     </Section>
+  )
+  // Nem piszkozatban PONTOSAN a korábbi elem, csomagoló nélkül: a látogató
+  // HTML-je és RSC-adata nem változik.
+  if (!isDraft) {
+    return lap
+  }
+  return (
+    <>
+      <PreviewBar path="/kurzusok" />
+      <SzerkesztoKodSzalag szalag={listaFejSzalag('kurzusok')} />
+      {lap}
+    </>
   )
 }

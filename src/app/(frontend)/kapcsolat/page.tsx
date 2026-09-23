@@ -13,6 +13,7 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
 import { getPageBySlug } from '@/lib/cms'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import {
   buildStaticPageMetadata,
@@ -125,7 +126,10 @@ export default async function KapcsolatPage() {
   // szekciósorból kikerül minden Tudástár-hivatkozás, és a lap ugyanúgy
   // renderel. Ezt a szűrt sort kapja minden felhasználó: az időpontkérő, a
   // strukturált adat (így az sem hirdethet /blog címet) és a megjelenítés.
-  const tudastarLathato = await getTudastarLathato()
+  const [tudastarLathato, contactEmail] = await Promise.all([
+    getTudastarLathato(),
+    getContactEmail(),
+  ])
   const rawLayout = page?.layout ?? []
   const layout = tudastarLathato ? rawLayout : layoutTudastarLinkekNelkul(rawLayout)
   const appointment = await getAppointmentSectionContext(layout)
@@ -156,7 +160,9 @@ export default async function KapcsolatPage() {
             { name: 'Kezdőlap', path: '/' },
             { name: CONTACT_TITLE, path: CONTACT_PATH },
           ],
-          organization: contactOrganizationNode(contact),
+          // A lap saját Időpontkérőjének címe az első; ha az üres, a közös
+          // feloldó (src/lib/contact-email.ts), a lábléccel azonos cím.
+          organization: contactOrganizationNode(contact, contactEmail),
           nodes: [...medicalBusinessNodes(contact), ...personNodes(persons)],
         })}
       />
