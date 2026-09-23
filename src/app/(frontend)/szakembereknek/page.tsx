@@ -23,6 +23,7 @@ import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import { getAppointmentSectionContext } from '@/lib/appointment/section'
 import { getPageBySlug } from '@/lib/cms'
+import { SZAKEMBEREKNEK_PAGE_SLUG } from '@/lib/content-slugs'
 import { getContactEmail } from '@/lib/contact-email-server'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import { UGRAS_FELIRAT } from '@/lib/section-row-label'
@@ -81,7 +82,7 @@ import { layoutTudastarLinkekNelkul } from '@/lib/tudastar-link-szuro'
  * ui-sztenderdek.md §3.1).
  */
 
-const SZAKEMBEREKNEK_SLUG = 'szakembereknek'
+const SZAKEMBEREKNEK_SLUG = SZAKEMBEREKNEK_PAGE_SLUG
 
 /** A lapfej H1-ének id-je (a szekció `aria-labelledby`-ja). */
 const CIM_ID = 'szakembereknek-cim'

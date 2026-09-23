@@ -1,4 +1,4 @@
-import { HOME_PAGE_SLUG } from '../content-slugs'
+import { HOME_PAGE_SLUG, SZAKEMBEREKNEK_PAGE_SLUG } from '../content-slugs'
 import { HUB_OLDALAK, type HubOldal } from '../tudastar/hub-oldalak'
 
 /**
@@ -220,10 +220,27 @@ function oldalKotes(webcim: string): KotottWebcim | null {
       visszavonas: `${VISSZAVONAS_UTAN} a /kapcsolat címen csak a „Kapcsolat” cím marad, szekciók nélkül, és a blogbejegyzések végi időpontkérő gomb is erre a lapra visz.`,
     }
   }
+  if (webcim === SZAKEMBEREKNEK_PAGE_SLUG) {
+    // A7 (H11): a dedikált /szakembereknek route ezt a rekordot tölti; rekord
+    // nélkül a route kódtartaléka áll (szakembereknek/page.tsx).
+    return {
+      mire: ['A /szakembereknek cím ennek az oldalnak a címét, bevezetőjét és szekcióit mutatja.'],
+      kovetkezmeny: [
+        'Ha átírod és közzéteszed, a /szakembereknek címen a weboldal beépített tartalék-tartalma jelenik meg, ez az oldal pedig az új webcímen.',
+      ],
+      visszavonas: `${VISSZAVONAS_UTAN} a /szakembereknek címen a weboldal beépített tartalék-tartalma jelenik meg, és az újbóli közzététellel ismét ez az oldal látszik.`,
+    }
+  }
   const jogi = JOGI_LINKEK[webcim]
   if (jogi !== undefined) {
     return {
-      mire: [jogi],
+      // A linkfeliratok kódban rögzítettek (Footer.tsx FOOTER_LEGAL_LINKS, a
+      // pénztár és a hibaoldal; őr: jogi-linkfeliratok.test.ts), a Cím mező
+      // tehát csak magán a lapon hat. A2 kérése, H18.
+      mire: [
+        jogi,
+        'Ezeknek a linkeknek a felirata rögzített: ha a Címet átírod, az csak ezen a lapon látszik, a linkeken nem.',
+      ],
       kovetkezmeny: [
         'Ha átírod és közzéteszed, ezek a linkek „az oldal nem található” hibaoldalra visznek.',
       ],
@@ -285,6 +302,7 @@ export function kotottWebcimek(gyujtemeny: Gyujtemeny): string[] {
     return [
       HOME_PAGE_SLUG,
       KAPCSOLAT_WEBCIM,
+      SZAKEMBEREKNEK_PAGE_SLUG,
       ...JOGI_WEBCIMEK,
       ...HUB_OLDALAK.map((hub) => hub.slug),
     ]

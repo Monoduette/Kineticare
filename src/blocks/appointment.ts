@@ -1,4 +1,5 @@
 import type { Block } from 'payload'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 
 import { appointmentShowsForm } from '../lib/appointment/context'
 import { ctaLabel } from '../lib/cta-vocabulary'
@@ -244,7 +245,10 @@ export const appointment: Block = {
       type: 'text',
       label: 'E-mail-cím',
       admin: {
-        description: 'Nem kötelező. Ha megadod, kattintható levélíró-linkként jelenik meg.',
+        // A H18/H46 közös feloldó (src/lib/contact-email.ts) ezt a mezőt olvassa a
+        // Kapcsolat oldal első látható Időpontkérőjéből: a súgó ezért mondja ki,
+        // hol jelenik még meg (NN/g, Visibility of System Status).
+        description: `Nem kötelező. Ha megadod, kattintható levélíró-linkként jelenik meg. A Kapcsolat oldal első látható Időpontkérő szekciójában megadott cím a weboldal kapcsolati címe is: ez áll a láblécben, a hibaoldalon, a keresőknek szóló adatokban és a kiküldött levelek válaszcímében. Ha ott üres, ${KAPCSOLATI_EMAIL_TARTALEK} látszik.`,
       },
     },
     {

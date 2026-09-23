@@ -65,16 +65,17 @@ describe('a kötött webcímek listája a kódból', () => {
     expect([...IDOPONTKEROS_BLOGBEJEGYZESEK]).toEqual([...APPOINTMENT_CTA_SLUGS])
   })
 
-  it('az Oldalak: kezdőlap, Kapcsolat, 3 jogi és a 8 hub; a Blogbejegyzések: 8 hub-pár és az időpontkérősök', () => {
+  it('az Oldalak: kezdőlap, Kapcsolat, Szakembereknek, 3 jogi és a 8 hub; a Blogbejegyzések: 8 hub-pár és az időpontkérősök', () => {
     expect(kotottWebcimek('pages')).toEqual([
       HOME_PAGE_SLUG,
       KAPCSOLAT_WEBCIM,
+      'szakembereknek',
       'aszf',
       'adatvedelem',
       'impresszum',
       ...HUB_OLDALAK.map((hub) => hub.slug),
     ])
-    expect(kotottWebcimek('pages')).toHaveLength(13)
+    expect(kotottWebcimek('pages')).toHaveLength(14)
     const posts = kotottWebcimek('posts')
     expect(posts).toHaveLength(10)
     expect(posts).toContain('miert-zsibbad-a-kezem')
@@ -225,15 +226,30 @@ describe('a „mi épít rá” és a „mi történik” állítások a forrás
     )
     // Az impresszumra csak a lábléc és a hibaoldal mutat, a pénztár nem.
     expect(checkout).not.toContain('/impresszum')
+    const rogzitett =
+      'Ezeknek a linkeknek a felirata rögzített: ha a Címet átírod, az csak ezen a lapon látszik, a linkeken nem.'
     expect(kotottWebcim('pages', 'aszf')?.mire).toEqual([
       'A lábléc, a hibaoldal és a pénztár linkje erre a webcímre mutat.',
+      rogzitett,
     ])
     expect(kotottWebcim('pages', 'adatvedelem')?.mire.join(' ')).toContain(
       'a pénztár, a sütisáv és az űrlapok adatkezelési linkje',
     )
     expect(kotottWebcim('pages', 'impresszum')?.mire).toEqual([
       'A lábléc és a hibaoldal linkje erre a webcímre mutat.',
+      rogzitett,
     ])
+    // A rögzített felirat állítása a jogi linkfelirat-őrhöz kötve (A2).
+    expect(forras('./jogi-linkfeliratok.test.ts')).toContain('FOOTER_LEGAL_LINKS')
+  })
+
+  it('Szakembereknek: a dedikált route ezt a rekordot tölti, rekord nélkül a kódtartalékot', () => {
+    const route = forras('../app/(frontend)/szakembereknek/page.tsx')
+    expect(route).toContain('getPageBySlug(SZAKEMBEREKNEK_SLUG')
+    expect(route).toContain('const SZAKEMBEREKNEK_SLUG = SZAKEMBEREKNEK_PAGE_SLUG')
+    const k = kotottWebcim('pages', 'szakembereknek')
+    expect(k?.mire.join(' ')).toContain('/szakembereknek')
+    expect(k?.kovetkezmeny.join(' ')).toContain('beépített tartalék-tartalma')
   })
 
   it('Tudástár-hub: a lap a pár blogbejegyzést mutatja, a /blog cím csak közzétett Oldalnál irányít át', () => {
