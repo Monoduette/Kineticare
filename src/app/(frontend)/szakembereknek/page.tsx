@@ -1,223 +1,294 @@
 import type { Metadata } from 'next'
+import { draftMode } from 'next/headers'
+import { cache } from 'react'
 
+import { pageBlocks } from '@/blocks'
+import { OfferCards } from '@/components/blocks/OfferCards'
+import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { JsonLd } from '@/components/content/JsonLd'
-import { ExternalLinkIcon } from '@/components/layout/NavAnchor'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
+import {
+  kodSzalag,
+  RESZBEN_KODBAN_VAN,
+  szerkesztoReteg,
+  KODBAN_VAN,
+  type KodSzalag,
+} from '@/components/editor/frontend/szerkeszto-szalag'
+import {
+  SzerkesztoKodSzalag,
+  SzerkesztoOldalSzalag,
+} from '@/components/editor/frontend/SzerkesztoSzalag'
+import { szekcioMelylink } from '@/components/editor/szekcio-melylink'
+import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
-import { ctaLabel } from '@/lib/cta-vocabulary'
-import { buildStaticPageMetadata } from '@/lib/seo'
+import { getAppointmentSectionContext } from '@/lib/appointment/section'
+import { getPageBySlug } from '@/lib/cms'
+import { getContactEmail } from '@/lib/contact-email-server'
+import { withDraftRobots } from '@/lib/preview/draft-metadata'
+import { UGRAS_FELIRAT } from '@/lib/section-row-label'
+import {
+  buildStaticPageMetadata,
+  documentTitle,
+  documentTitleText,
+  resolveOgImageUrl,
+  resolveSeoDescription,
+  resolveSeoTitle,
+} from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
 import {
-  resolveKepzesCta,
-  resolveSzakkonyvCta,
   SZAKEMBEREKNEK_DESCRIPTION,
+  SZAKEMBEREKNEK_EYEBROW,
+  SZAKEMBEREKNEK_LEAD,
   SZAKEMBEREKNEK_PATH,
   SZAKEMBEREKNEK_TITLE,
-  SZAKKONYV_URL,
+  szakembereknekAlapBlokk,
 } from '@/lib/szakembereknek'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
+import { layoutTudastarLinkekNelkul } from '@/lib/tudastar-link-szuro'
 
 /**
- * /szakembereknek — a szakmai választó oldal (WP49, tulajdonosi kérés 2026-09).
+ * /szakembereknek — a szakmai választó oldal (WP49), CMS-ből (modul-térkép
+ * H11, a /kapcsolat mintája).
  *
- * MIÉRT VAN. A fejléc „Szakembereknek" menüpontja eddig („Szakmai képzés")
- * egyből a ProBody külső oldalára vitt: a látogató a menüből kilépett a
- * Kineticare-ből, és a második szakmai ajánlatról (szakkönyv) nem is tudott.
- * Itt két EGYENRANGÚ kártya közül választ: képzés vagy szakkönyv.
+ * MIÉRT VAN. A fejléc „Szakembereknek” menüpontja eddig egyből a ProBody
+ * külső oldalára vitt: a látogató a menüből kilépett a Kineticare-ből, és a
+ * második szakmai ajánlatról (szakkönyv) nem is tudott. Itt két EGYENRANGÚ
+ * kártya közül választ: képzés vagy szakkönyv.
  *
- * MINTA: kártyás választó (két út, egy-egy cselekvéssel).
- * - NN/g, Cards: Ul Design Patterns: „a card should be an entry point to
- *   more detailed information", a kártyák EGYFORMA szerkezetűek, hogy
- *   pásztázhatók legyenek (https://www.nngroup.com/articles/cards-component/).
- * - Material 3, Cards: a kártya egy témát tartalmaz, a cselekvések a kártya
- *   alján, egyértelmű hierarchiával (https://m3.material.io/components/cards/guidelines).
- * - GOV.UK, Button: egy lapon egy elsődleges gomb; a többi másodlagos
- *   (https://design-system.service.gov.uk/components/button/). Ezért a képzés
- *   gombja `primary` (§3.2 #41), a szakkönyvé `secondary` (§3.2 #42/#43).
- * - Apple HIG, Layout: az érintőcélok legalább 44×44 pt
- *   (https://developer.apple.com/design/human-interface-guidelines/layout) és
- *   WCAG 2.2 SC 2.5.8: a `.kc-button` min-height 2.75rem (44 px).
- * - WCAG 2.2 SC 3.2.5 (Change on Request): az új lapon nyíló külső link
- *   előre jelzi ezt (ikon + „Külső oldal, új lapon nyílik" jegyzet, amelyet
- *   az `aria-describedby` a gombhoz köt);
- *   https://www.w3.org/WAI/WCAG22/Understanding/change-on-request.html
+ * HONNAN JÖN A TARTALOM. A „szakembereknek” webcímű Oldalak-rekordból: a
+ * H1 a Cím, a bevezető a Rövid bevezető, a lapfej alatt a szekciósor
+ * (jellemzően egy „Ajánlat-kártyák” szekció). A felső kis felirat a kódban
+ * van (`SZAKEMBEREKNEK_EYEBROW`), piszkozatban a szalag ezt kimondja. Üres
+ * Cím vagy Rövid bevezető helyén a kódbeli szöveg áll. Ha nincs rekord, vagy
+ * a szekciósorban nincs látható szekció, a lap a kódtartalékot mutatja
+ * (`szakembereknekAlapBlokk`): a WP49 lap szerkezete és látványa, egyetlen
+ * szekcióban, ahogy eddig. A kártyák mintájának forrásai az OfferCards.tsx
+ * fejkommentjében (NN/g Cards, Material 3 Cards, GOV.UK Button, WCAG 2.2 SC
+ * 1.3.1 és 3.2.5).
+ *
+ * MIÉRT DEDIKÁLT ROUTE, ÉS NEM A [slug]. A /kapcsolat mintája: a lapfej (a
+ * kódbeli felső felirattal és a WP49 térközeivel) és a kódtartalék a route-ban
+ * él, a fájlrendszer-útvonal erősebb a `[slug]`-nál. A sitemap a
+ * /szakembereknek címet a statikus listából egyszer írja ki (a rekord slugja
+ * ott kimarad), a Tudástár-hub pedig nem épülhet erre a slugra
+ * (HUB_TILTOTT_SLUGOK).
  *
  * A SZAKKÖNYV VÁSÁRLÁSI CÍMÉT A TULAJDONOSOK MÉG NEM ADTÁK MEG (`SZAKKONYV_URL`
- * = null): addig a kártya a /kapcsolat oldalra visz érdeklődő felirattal.
- * Kitalált URL tilos.
+ * = null): addig a kódtartalék kártyája a /kapcsolat oldalra visz érdeklődő
+ * felirattal. Kitalált URL tilos.
  *
  * Mikroszöveg: natív magyar, tegező, töltelék gondolatjel nélkül (docs/
- * ui-sztenderdek.md §3.1). A képzés adatai a tulajdonosok korábbi, jóváhagyott
- * szövegéből (restore-legacy-content.ts, „Szakmai képzések").
+ * ui-sztenderdek.md §3.1).
  */
 
-export const metadata: Metadata = buildStaticPageMetadata({
-  title: SZAKEMBEREKNEK_TITLE,
-  description: SZAKEMBEREKNEK_DESCRIPTION,
-  path: SZAKEMBEREKNEK_PATH,
-})
+const SZAKEMBEREKNEK_SLUG = 'szakembereknek'
 
+/** A lapfej H1-ének id-je (a szekció `aria-labelledby`-ja). */
 const CIM_ID = 'szakembereknek-cim'
-const KEPZES_JEGYZET_ID = 'szakembereknek-kepzes-jegyzet'
-const SZAKKONYV_JEGYZET_ID = 'szakembereknek-szakkonyv-jegyzet'
 
-/** Phosphor 256-os rács, kitöltött glifa (a Services-sín kézikonjainak mintája). */
-function ikonProps() {
-  return {
-    'aria-hidden': true as const,
-    className: 'kc-szakemberek__glifa',
-    fill: 'currentColor',
-    focusable: false as const,
-    viewBox: '0 0 256 256',
-  }
+/** A kódtartalék kártyáinak id-előtagja (a jegyzetek: `szakembereknek-<n>-jegyzet`). */
+const KODTARTALEK_ID_ELOTAG = 'szakembereknek'
+
+/**
+ * A „szakembereknek” slugú CMS-oldal; előnézetben (draft mode) a legújabb
+ * piszkozat. A sütit kizárólag a /next/preview route adhatja, oda pedig csak
+ * staff/owner jut be. A metaadat és a lap ugyanazt a (kérésenként egyszer
+ * lefutó) lekérdezést használja.
+ */
+const pageOf = cache((draft: boolean) => getPageBySlug(SZAKEMBEREKNEK_SLUG, { draft }))
+
+type SzakembereknekPageDoc = Awaited<ReturnType<typeof pageOf>>
+
+/** A H1: a rekord Címe, üresen vagy rekord nélkül a kódtartalék. */
+function heading(page: SzakembereknekPageDoc): string {
+  return page?.title?.trim() || SZAKEMBEREKNEK_TITLE
+}
+
+/** A bevezető: a rekord Rövid bevezetője, üresen vagy rekord nélkül a kódtartalék. */
+function lead(page: SzakembereknekPageDoc): string {
+  return page?.excerpt?.trim() || SZAKEMBEREKNEK_LEAD
+}
+
+/** A <title> szövege a [slug] oldalakkal azonos feloldóval, márka-utótag nélkül. */
+function pageDocumentTitle(page: SzakembereknekPageDoc): string {
+  return documentTitleText(
+    documentTitle(resolveSeoTitle({ title: heading(page), seoTitle: page?.seoTitle })),
+  )
 }
 
 /**
- * Phosphor `chalkboard-teacher` (regular), MIT
- * (https://github.com/phosphor-icons/core/blob/main/LICENSE) — a képzés jele.
- * A path betűhíven a `@phosphor-icons/core` 2.1.1 `assets/regular/` fájljából;
- * a repó nem húz be ikoncsomag-függőséget (a Services-sín ugyanígy).
+ * A leírás: a SEO-leírás, üresen a Rövid bevezető (a Pages súgójának
+ * ígérete), annak híján vagy rekord nélkül a kódtartalék.
  */
-function KepzesIkon() {
+function pageDescription(page: SzakembereknekPageDoc): string {
   return (
-    <svg {...ikonProps()}>
-      <path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H53.39a8,8,0,0,0,7.23-4.57,48,48,0,0,1,86.76,0,8,8,0,0,0,7.23,4.57H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM80,144a24,24,0,1,1,24,24A24,24,0,0,1,80,144Zm136,56H159.43a64.39,64.39,0,0,0-28.83-26.16,40,40,0,1,0-53.2,0A64.39,64.39,0,0,0,48.57,200H40V56H216ZM56,96V80a8,8,0,0,1,8-8H192a8,8,0,0,1,8,8v96a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h8V88H72v8a8,8,0,0,1-16,0Z" />
-    </svg>
+    (page
+      ? resolveSeoDescription({
+          title: heading(page),
+          excerpt: page.excerpt,
+          seoDescription: page.seoDescription,
+        })
+      : undefined) ?? SZAKEMBEREKNEK_DESCRIPTION
   )
 }
 
-/** Phosphor `book-open` (regular), MIT — a szakkönyv jele (forrás: fent). */
-function SzakkonyvIkon() {
-  return (
-    <svg {...ikonProps()}>
-      <path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z" />
-    </svg>
+/**
+ * A lap metaadata: cím, leírás, kulcsszavak és megosztási kép a CMS-oldalról
+ * (ha ki van töltve), kódtartalékkal. A canonical, og:url, og:image és robots
+ * a közös építőből jön (`buildStaticPageMetadata`). Előnézetben a válasz
+ * sosem indexelhető (`withDraftRobots`).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const { isEnabled: isDraft } = await draftMode()
+  const page = await pageOf(isDraft)
+  const image = page ? resolveOgImageUrl(page) : undefined
+  const keywords = (page?.seoKeywords ?? [])
+    .map((sor) => sor.phrase)
+    .filter((phrase): phrase is string => typeof phrase === 'string')
+  return withDraftRobots(
+    buildStaticPageMetadata({
+      title: pageDocumentTitle(page),
+      description: pageDescription(page),
+      path: SZAKEMBEREKNEK_PATH,
+      ...(keywords.length > 0 ? { keywords } : {}),
+      ...(image && page
+        ? { image: { url: image, alt: `${SZAKEMBEREKNEK_TITLE}: ${heading(page)}` } }
+        : {}),
+    }),
+    isDraft,
   )
 }
 
-export default function SzakembereknekPage() {
-  const kepzes = resolveKepzesCta()
-  const szakkonyv = resolveSzakkonyvCta()
+/** Az Oldalak listája az adminban (rekord nélkül ide visz a szalag). */
+const OLDALAK_ADMIN_HREF = '/admin/collections/pages'
 
-  return (
-    <Section aria-labelledby={CIM_ID} className="kc-szakemberek">
-      {/* Oldal-gráf: Organization + WebSite + WebPage + BreadcrumbList
-          (Kezdőlap → Szakembereknek), a /kurzusok mintájára. */}
-      <JsonLd
-        data={siteGraphJsonLd({
-          page: {
-            path: SZAKEMBEREKNEK_PATH,
-            name: SZAKEMBEREKNEK_TITLE,
-            description: SZAKEMBEREKNEK_DESCRIPTION,
+/**
+ * Piszkozatban, rekord nélkül vagy látható szekció nélkül: a lap egésze a
+ * kódból jön. A szalag kimondja, és megmondja, hogyan veheti át a CMS (NN/g,
+ * Visibility of System Status, https://www.nngroup.com/articles/visibility-system-status/;
+ * GOV.UK, Writing for user interfaces: mondd meg, mit tehet a felhasználó,
+ * https://www.gov.uk/service-manual/design/writing-for-user-interfaces).
+ */
+function kodbolJonSzalag(vanRekord: boolean): KodSzalag {
+  return kodSzalag({
+    cimke: `Szakembereknek oldal · ${KODBAN_VAN}`,
+    magyarazat: vanRekord
+      ? 'A „szakembereknek” oldalnak nincs látható szekciója, ezért a kártyák a weboldal kódjából jönnek. Ha a Szekciók közé felveszel egy látható szekciót, az veszi át a kártyák helyét.'
+      : 'Ez az oldal még a weboldal kódjából jön. Ha az Oldalak között létrehozol egy „szakembereknek” webcímű oldalt, az veszi át: a címét, a bevezetőjét és a szekcióit onnan szerkesztheted.',
+    linkek: vanRekord
+      ? []
+      : [
+          {
+            felirat: `${UGRAS_FELIRAT}: Oldalak`,
+            rejtettKontextus: ', új „szakembereknek” oldal',
+            href: OLDALAK_ADMIN_HREF,
           },
-          breadcrumbs: [
-            { name: 'Kezdőlap', path: '/' },
-            { name: SZAKEMBEREKNEK_TITLE, path: SZAKEMBEREKNEK_PATH },
-          ],
-        })}
+        ],
+  })
+}
+
+/** Piszkozatban: a lapfej felső felirata kódban van, a cím és a bevezető a rekordból. */
+function lapfejSzalag(): KodSzalag {
+  return kodSzalag({
+    cimke: `Lapfej · ${RESZBEN_KODBAN_VAN}`,
+    magyarazat: `A „${SZAKEMBEREKNEK_EYEBROW}” felső felirat a weboldal kódjában van. A lap címe az oldal Címe, a cím alatti szöveg a Rövid bevezetője; ha üresen hagyod, a kódbeli szöveg áll ott.`,
+    linkek: [],
+  })
+}
+
+export default async function SzakembereknekPage() {
+  const { isEnabled: isDraft } = await draftMode()
+  const [page, tudastarLathato, contactEmail] = await Promise.all([
+    pageOf(isDraft),
+    getTudastarLathato(),
+    getContactEmail(),
+  ])
+  // Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): kikapcsolt Tudástárnál a
+  // szekciósorból kikerül minden Tudástár-hivatkozás (a /kapcsolat mintája).
+  const rawLayout = page?.layout ?? []
+  const layout = tudastarLathato ? rawLayout : layoutTudastarLinkekNelkul(rawLayout)
+  const vanLathatoSzekcio = layout.some((block) => block.sectionSettings?.visible !== false)
+  const kodtartalek = page === null || !vanLathatoSzekcio
+  const appointment = kodtartalek ? null : await getAppointmentSectionContext(layout)
+  const cim = heading(page)
+  const bevezeto = lead(page)
+  const description = pageDescription(page)
+  // A „Szerkesztem” réteg CSAK piszkozat-előnézetben (modul-térkép A3), a
+  // MENTETT szekciósorból (rawLayout) és az eredeti sorindexből.
+  const szerkesztes = isDraft && page ? szerkesztoReteg({ lap: page, blokkok: pageBlocks }) : null
+
+  const lap = (
+    <>
+      <Section
+        aria-labelledby={CIM_ID}
+        className={kodtartalek ? 'kc-szakemberek' : 'kc-szakemberek kc-szakemberek--fej'}
+      >
+        {/* Oldal-gráf: Organization (a kapcsolati e-maillel) + WebSite +
+            WebPage + BreadcrumbList (Kezdőlap → Szakembereknek). A szekción
+            BELÜL áll, hogy a lapfej és az első szekció szomszédsága (CSS)
+            ne törjön meg. */}
+        <JsonLd
+          data={siteGraphJsonLd({
+            page: {
+              path: SZAKEMBEREKNEK_PATH,
+              name: cim,
+              description,
+              ...(page ? { dateModified: page.updatedAt } : {}),
+            },
+            breadcrumbs: [
+              { name: 'Kezdőlap', path: '/' },
+              { name: cim, path: SZAKEMBEREKNEK_PATH },
+            ],
+            contactEmail,
+          })}
+        />
+        <Container>
+          <header className="kc-szakemberek__head">
+            <p className="kc-eyebrow">{SZAKEMBEREKNEK_EYEBROW}</p>
+            <h1 className="kc-section-title" id={CIM_ID}>
+              {cim}
+            </h1>
+            <p className="kc-section-lead kc-szakemberek__lead">{bevezeto}</p>
+          </header>
+          {kodtartalek ? (
+            <OfferCards
+              beagyazott
+              block={szakembereknekAlapBlokk()}
+              idElotag={KODTARTALEK_ID_ELOTAG}
+            />
+          ) : null}
+        </Container>
+      </Section>
+
+      {/* A szekciósor: látható szekcióval mindig, piszkozatban a csupa rejtett
+          sor is (a rejtett szekciók szalagja így a szerkesztő elé kerül). */}
+      {!kodtartalek || (szerkesztes && layout.length > 0) ? (
+        <RenderBlocks
+          {...(appointment ? { appointment } : {})}
+          layout={layout}
+          posts={[]}
+          products={[]}
+          szerkesztes={szerkesztes}
+          testimonials={[]}
+        />
+      ) : null}
+    </>
+  )
+
+  // A látogató kimenete a réteg nélküli fa (nincs üres hely a gyerekek között).
+  if (!isDraft) {
+    return lap
+  }
+  return (
+    <>
+      <PreviewBar
+        path={SZAKEMBEREKNEK_PATH}
+        {...(page ? { szerkesztoHref: szekcioMelylink({ collection: 'pages', id: page.id }) } : {})}
       />
-      <Container>
-        <header className="kc-szakemberek__head">
-          <p className="kc-eyebrow">Gyógytornászoknak és terapeutáknak</p>
-          <h1 className="kc-section-title" id={CIM_ID}>
-            {SZAKEMBEREKNEK_TITLE}
-          </h1>
-          <p className="kc-section-lead kc-szakemberek__lead">
-            Ha gyógytornászként vagy terapeutaként dolgozol a kézzel, két úton mélyítheted a tudásod
-            nálunk. Válaszd a képzést, ha gyakorlatban tanulnál, vagy a szakkönyvet, ha a szakmai
-            hátteret a saját tempódban olvasnád át.
-          </p>
-        </header>
-
-        <ul className="kc-szakemberek__grid">
-          <li className="kc-szakemberek__cell">
-            <Card as="article" className="kc-szakemberek__card" padded={false}>
-              <div className="kc-szakemberek__body">
-                <span aria-hidden="true" className="kc-szakemberek__ikon">
-                  <KepzesIkon />
-                </span>
-                <p className="kc-szakemberek__kicker">Képzés</p>
-                <h2 className="kc-szakemberek__cim">Akkreditált kézrehabilitációs képzés</h2>
-                <p className="kc-szakemberek__szoveg">
-                  Tantermi képzés a kéz, a csukló- és a könyökízület rehabilitációjáról,
-                  gyógytornászoknak, orvosoknak, mozgásterapeutáknak és edzőknek, a ProBody
-                  Stúdióval együttműködve.
-                </p>
-                <ul className="kc-szakemberek__tenyek">
-                  <li>12 kreditpont (SZTK-A-33553/2024)</li>
-                  <li>Az időpontokat és a díjat a ProBody Stúdió oldalán találod</li>
-                </ul>
-              </div>
-              <div className="kc-szakemberek__lab">
-                <Button
-                  className="kc-szakemberek__gomb"
-                  describedBy={KEPZES_JEGYZET_ID}
-                  href={kepzes.href}
-                  openInNewTab={kepzes.external}
-                  variant="primary"
-                >
-                  {/* A felirat a JSX-ben, közvetlen `ctaLabel` hívással: a G-UI2 őr
-                      (cta-a-termekben.test.ts) így statikusan látja, hogy szótári
-                      alak; a `resolveKepzesCta().label` ugyanezt adja (őr-teszt). */}
-                  {ctaLabel('workshop-open')}
-                </Button>
-                <p className="kc-szakemberek__jegyzet" id={KEPZES_JEGYZET_ID}>
-                  <ExternalLinkIcon />
-                  Külső oldal, új lapon nyílik.
-                </p>
-              </div>
-            </Card>
-          </li>
-
-          <li className="kc-szakemberek__cell">
-            <Card as="article" className="kc-szakemberek__card" padded={false}>
-              <div className="kc-szakemberek__body">
-                <span aria-hidden="true" className="kc-szakemberek__ikon">
-                  <SzakkonyvIkon />
-                </span>
-                <p className="kc-szakemberek__kicker">Szakkönyv</p>
-                <h2 className="kc-szakemberek__cim">A Kineticare szakkönyve</h2>
-                <p className="kc-szakemberek__szoveg">
-                  A Kineticare gyógytornászainak szakkönyve a kézrehabilitációról, kollégáknak: a
-                  szakmai háttér, amit a saját tempódban olvashatsz át.
-                </p>
-                {SZAKKONYV_URL === null ? (
-                  <p className="kc-szakemberek__allapot">
-                    A vásárlás lehetőségét hamarosan közzétesszük. Addig kérdezz tőlünk, és szólunk,
-                    amint elérhető.
-                  </p>
-                ) : null}
-              </div>
-              <div className="kc-szakemberek__lab">
-                <Button
-                  className="kc-szakemberek__gomb"
-                  describedBy={SZAKKONYV_JEGYZET_ID}
-                  href={szakkonyv.href}
-                  openInNewTab={szakkonyv.external}
-                  variant="secondary"
-                >
-                  {SZAKKONYV_URL === null ? ctaLabel('book-inquiry') : ctaLabel('book-open')}
-                </Button>
-                {/* A jegyzet MINDIG áll: külső célnál a „új lapon nyílik" figyelmeztetés
-                    (SC 3.2.5), belső célnál a „hova jutok" válasz (UX-skill 5. pont,
-                    WCAG 2.2 SC 2.4.4). Így a két kártya lába egyforma magas, és a két
-                    gomb egy vonalban áll (mérve: enélkül 33 px-es eltolás 768 px felett). */}
-                <p className="kc-szakemberek__jegyzet" id={SZAKKONYV_JEGYZET_ID}>
-                  {szakkonyv.external ? (
-                    <>
-                      <ExternalLinkIcon />
-                      Külső oldal, új lapon nyílik.
-                    </>
-                  ) : (
-                    'A kapcsolat-oldalunkra visz.'
-                  )}
-                </p>
-              </div>
-            </Card>
-          </li>
-        </ul>
-      </Container>
-    </Section>
+      {szerkesztes ? <SzerkesztoOldalSzalag szalag={szerkesztes.oldal} /> : null}
+      {kodtartalek ? <SzerkesztoKodSzalag szalag={kodbolJonSzalag(page !== null)} /> : null}
+      <SzerkesztoKodSzalag szalag={lapfejSzalag()} />
+      {lap}
+    </>
   )
 }

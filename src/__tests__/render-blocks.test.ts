@@ -599,6 +599,63 @@ describe('RenderBlocks', () => {
     expect(html).toContain(FREE_SOS_COURSE_CTA_LABEL)
     expect(html).toContain('href="/kurzusok/sos-kezrelax-villamkurzus"')
   })
+
+  // H11 (A7): az Ajánlat-kártyák blokk a többi blokk `sectionProps` mintájára.
+  it('offerCards: a kártyák renderelnek, anchorId a szekció id-je, a hatter a háttérsáv', () => {
+    const html = renderBlocks(
+      layoutOf({
+        blockType: 'offerCards',
+        id: 'oc1',
+        title: 'Szakmai ajánlatok',
+        kartyak: [
+          { id: 'k1', cim: 'Képzés kollégáknak', szoveg: 'Tantermi képzés.', ikon: 'kepzes' },
+        ],
+        sectionSettings: { visible: true, anchorId: 'ajanlatok', hatter: 'tint' },
+      }),
+    )
+    expect(html).toContain('<h3 class="kc-ajanlat-kartyak__cim">Képzés kollégáknak</h3>')
+    expect(html).toContain('id="ajanlatok"')
+    expect(html).toContain('kc-section--tint')
+    expect(html).toContain('aria-labelledby="ajanlat-oc1-cim"')
+  })
+
+  it('offerCards: két blokk egy lapon sem ad ütköző id-t (a blokk kulcsa az előtag)', () => {
+    const kartya = {
+      cim: 'Ajánlat',
+      szoveg: 'Szöveg.',
+      felirat: 'Írj nekünk',
+      url: 'https://pelda.hu/',
+      ujAblakban: true,
+    }
+    const html = renderBlocks(
+      layoutOf(
+        { blockType: 'offerCards', id: 'a', title: 'Első', kartyak: [kartya], sectionSettings: {} },
+        {
+          blockType: 'offerCards',
+          id: 'b',
+          title: 'Második',
+          kartyak: [kartya],
+          sectionSettings: {},
+        },
+        { blockType: 'offerCards', title: 'Harmadik', kartyak: [kartya], sectionSettings: {} },
+      ),
+    )
+    const idk = [...html.matchAll(/\sid="([^"]+)"/g)].map((talalat) => talalat[1])
+    expect(idk.length).toBeGreaterThanOrEqual(6)
+    expect(new Set(idk).size).toBe(idk.length)
+  })
+
+  it('offerCards rejtve kimarad', () => {
+    const html = renderBlocks(
+      layoutOf({
+        blockType: 'offerCards',
+        id: 'oc2',
+        kartyak: [{ id: 'k1', cim: 'Rejtett ajánlat', szoveg: 'Szöveg.' }],
+        sectionSettings: { visible: false },
+      }),
+    )
+    expect(html).not.toContain('Rejtett ajánlat')
+  })
 })
 
 // ---------------------------------------------------------------------------

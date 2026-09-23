@@ -476,7 +476,7 @@ const HREF_UTKOZES_KIVETELEK: readonly {
     href: '/kapcsolat',
     feliratok: ['Írj nekünk', 'Érdeklődj a szakkönyvről'],
     indok:
-      'WP49 (2026-09-19): a /szakembereknek szakkönyv-kártyája a vásárlási cím megérkezéséig a kapcsolat-oldalra visz a §3.2 #43 felirattal, amely a TÁRGYAT (a szakkönyvet) is megnevezi; a #33 („Írj nekünk") az általános kapcsolatfelvétel. Két KÜLÖNBÖZŐ célú komponens, nem szinonima (W3C Understanding SC 3.2.4: „consistent", nem „identical"). A #43 megszűnik, amint a SZAKKONYV_URL kitöltődik (#42).',
+      'WP49 (2026-09-19): a /szakembereknek szakkönyv-kártyája a vásárlási cím megérkezéséig a kapcsolat-oldalra visz a §3.2 #43 felirattal, amely a TÁRGYAT (a szakkönyvet) is megnevezi; a #33 („Írj nekünk") az általános kapcsolatfelvétel. Két KÜLÖNBÖZŐ célú komponens, nem szinonima (W3C Understanding SC 3.2.4: „consistent", nem „identical"). A #43 megszűnik, amint a SZAKKONYV_URL kitöltődik (#42). 2026-09-23 (A7, H11): a kártya az Ajánlat-kártyák blokkal renderel; a felirat forrása a `resolveSzakkonyvCta` (lib/szakembereknek.ts, `ctaLabel`), ebből épül a kódtartalék és a „szakembereknek” Oldalak-rekord kezdő adata is (`szakembereknekAlapBlokk`), a CMS-felirat pedig az OfferCards dinamikus helye (lásd a 7. szakasz korlátját).',
   },
   {
     href: '/kurzusaim',
@@ -953,11 +953,18 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `RendeloiArlista.tsx`) felirata maga a CMS-ből jövő cím + a rejtett
     // „(Google Térkép, új lapon nyílik)" toldat: nem CTA, a cím a felirat
     // (ugyanaz az elbírálás, mint a `mailto:` sorok kivételeié).
+    // 82 (2026-09-23, A2/H18): a lábléc és a 404 mailto-címe a CMS-ből
+    // feloldott kapcsolati e-mail; nem CTA, a cím maga a felirat (az A2 kérése).
+    // 83 (2026-09-23, A7/H11): az Ajánlat-kártyák (`OfferCards.tsx`) gombjának
+    // felirata a kártya CMS-mezője („Felirat”), kódbeli tartalék nélkül, mint a
+    // `CtaBanner`-é: a blokk bármilyen ajánlatra mutathat, a hívóhely nem ismer
+    // `CtaAction`-t. A /szakembereknek kódtartalékának és kezdő rekordjának
+    // feliratai a `ctaLabel`-ből jönnek (lib/szakembereknek.ts).
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(80)
+    ).toBeLessThanOrEqual(83)
   })
 })

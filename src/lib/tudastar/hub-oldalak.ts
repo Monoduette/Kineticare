@@ -80,6 +80,8 @@ export const HUB_TILTOTT_SLUGOK: readonly string[] = [
   'kosar',
   'penztar',
   'de-quervain-szindroma',
+  // Dedikált route, a szekciósorát a „szakembereknek” Oldalak-rekord adja (H11).
+  'szakembereknek',
 ]
 
 const CIKKBOL_HUB: ReadonlyMap<string, string> = new Map(

@@ -86,6 +86,9 @@ describe('szerkesztoNezetCel: útvonal → előnézeti cél', () => {
     ['/rolunk/', { collection: 'pages', slug: 'rolunk' }],
     ['/szolgaltatasok', { collection: 'pages', slug: 'szolgaltatasok' }],
     ['/kapcsolat', { collection: 'pages', slug: 'kapcsolat' }],
+    // H11 (A7): a /szakembereknek a „szakembereknek” Oldalak-rekordból renderel,
+    // piszkozat-előnézettel, ezért a belépő ott is megjelenik.
+    ['/szakembereknek', { collection: 'pages', slug: 'szakembereknek' }],
     ['/keztoalagut-szindroma', { collection: 'pages', slug: 'keztoalagut-szindroma' }],
     ['/blog/gipszben-a-kezed', { collection: 'posts', slug: 'gipszben-a-kezed' }],
     [
@@ -110,7 +113,6 @@ describe('szerkesztoNezetCel: útvonal → előnézeti cél', () => {
     '/fiok',
     '/belepes',
     '/penztar',
-    '/szakembereknek',
     '/next/preview',
     '/rolunk/valami',
     '/a%2Fb',
@@ -138,6 +140,7 @@ describe('szerkesztoNezetCel: útvonal → előnézeti cél', () => {
       '/kezdolap',
       '/rolunk',
       '/rolunk/',
+      '/szakembereknek',
       '/ árlista',
       '/%20rolunk',
       '/%3Arolunk',

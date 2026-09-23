@@ -34,6 +34,7 @@ import { Appointment } from './Appointment'
 import { CtaBanner } from './CtaBanner'
 import { FaqBlock } from './FaqBlock'
 import { FilmHero } from './FilmHero'
+import { OfferCards } from './OfferCards'
 import { PressLogos } from './PressLogos'
 import { RendeloiArlista } from './RendeloiArlista'
 import { Services } from './Services'
@@ -239,6 +240,7 @@ export function RenderBlocks({
         const tartalom = (
           <BlockSwitch
             key={key}
+            blokkKulcs={key}
             freeSosHref={freeSosHref}
             freeSosAnchorIds={freeSosAnchorIds}
             {...{
@@ -288,8 +290,16 @@ function BlockSwitch({
   hubUtvonalak,
   ctaBannerMontazs,
   arlista,
+  blokkKulcs,
 }: {
   block: LayoutBlock
+  /**
+   * A blokk kulcsa a szekciósorban (az azonosítója, annak híján típus +
+   * sorindex): az Ajánlat-kártyák ebből képzik az id-jeiket, így két blokk
+   * egy lapon sem ütközik (a HTML-ben az id a dokumentumban egyedi, és az
+   * `aria-describedby` csak így mutat egyértelműen a jegyzetre).
+   */
+  blokkKulcs: string
   /** A típus ismételt példánya-e a lapon — az alap-horgony csak az elsőé. */
   isRepeat: boolean
   /** A megelőző látható blokk a filmsáv — az első About így alapítók-alak. */
@@ -391,6 +401,8 @@ function BlockSwitch({
     }
     case 'courseCards': {
       const { id, variant } = sectionProps(block)
+      // H22: a vízjel a blokk Háttérfelirata; üresen (vagy csupa szóközzel) a
+      // CourseShowcase beépített „Kurzusaink” felirata (COURSE_SHOWCASE_MARK).
       return (
         <Section
           className="kc-course-showcase-band"
@@ -403,6 +415,7 @@ function BlockSwitch({
               ctaLabel={block.ctaLabel ?? undefined}
               heading={block.heading ?? undefined}
               lead={block.lead ?? undefined}
+              mark={block.hatterFelirat?.trim() ? block.hatterFelirat : undefined}
               products={gridProducts}
               sceneMedia={[
                 block.scenePhotos?.left,
@@ -500,6 +513,13 @@ function BlockSwitch({
             <RichText content={block.content} />
           </Container>
         </Section>
+      )
+    }
+    case 'offerCards': {
+      // H11: Ajánlat-kártyák (a /szakembereknek lap kártyái CMS-ből).
+      const { id, variant } = sectionProps(block)
+      return (
+        <OfferCards block={block} id={id} idElotag={`ajanlat-${blokkKulcs}`} variant={variant} />
       )
     }
     default:
