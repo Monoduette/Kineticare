@@ -65,8 +65,14 @@ npm run seed                               # induló tartalom (idempotens)
 - A Payload dev-módú séma-push ki van kapcsolva (`push: false`), ezért a
   séma kizárólag migrációval jön létre. Sémaváltozásnál:
   `./node_modules/.bin/payload migrate:create`, majd `migrate`.
-- Az első regisztrált felhasználó `owner` szerepet kap; a többiek
-  `customer`-ként indulnak, adminhoz `staff`-ra kell állítani őket.
+- Az első felhasználó csak operátori bootstrappel lesz `owner`
+  (`promoteFirstUserToOwner`, `src/collections/Users.ts`): a
+  `FIRST_USER_BOOTSTRAP_TOKEN` környezeti változónak legalább 32 karakteresnek
+  kell lennie, és az első regisztrációs kérésnek (`/api/users/first-register`)
+  ugyanezt az értéket kell küldenie az `x-kineticare-bootstrap-token`
+  fejlécben. Hiányzó vagy túl rövid tokennél a kérés 503-at, eltérő fejlécnél
+  403-at kap. A későbbi felhasználók `customer`-ként indulnak, adminhoz
+  `staff`-ra kell állítani őket.
 - A `seed` többször futtatva sem duplikál, és a kezdőlap meglévő
   szekciósorát sosem írja felül. `SEED_SCOPE=kezdolap npm run seed`: csak a
   kezdőlap szekciósora és képei, élesben is futtatható.
@@ -95,6 +101,7 @@ indul. Titok soha nem kerül a repóba: helyben `.env` (gitignore-olt),
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Kötelező         | `DATABASE_URI`, `PAYLOAD_SECRET`, `NEXT_PUBLIC_SERVER_URL`, `BARION_API_URL`, `BARION_PAYEE_EMAIL`, `BARION_POSKEY_TEST` vagy (`BARION_ENVIRONMENT=prod` mellett) `BARION_POSKEY_PROD`                                               |
 | Élesben kötelező | `BARION_ENVIRONMENT`; ajánlott: `ENABLE_JOB_WORKERS=true` (nélküle nem fut a webhook-retry, az order-poll és a számlázás)                                                                                                            |
+| Első owner       | `FIRST_USER_BOOTSTRAP_TOKEN` (legalább 32 karakter, csak az első felhasználó létrehozásához; a kérés fejléce `x-kineticare-bootstrap-token`)                                                                                         |
 | Számlázás        | `SZAMLAZZ_AGENT_KEY`, `SZAMLAZZ_AFAKULCS` (`27` vagy `AAM`, hibás értékkel az app nem indul)                                                                                                                                         |
 | E-mail           | `RESEND_API_KEY` vagy `SMTP_HOST`, mellette kötelezően `EMAIL_FROM`; `CONTACT_STAFF_EMAILS` (űrlap-értesítők címzettjei)                                                                                                             |
 | Videó            | `BUNNY_STREAM_TOKEN_AUTH_KEY`, `BUNNY_STREAM_LIBRARY_API_KEY`, `BUNNY_STREAM_PUBLIC_LIBRARY_API_KEY`, `NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`, `NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID`, `NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST` |
@@ -293,8 +300,13 @@ Kód: `src/lib/szamlazz/`, `src/jobs/tasks/`; leírás: `docs/szamlazz-storno.md
 - **Visszajelzés-doboz** minden oldalon: a látogató jelezheti, ha valami
   nem működik, a jelzés PostHog-eseményként érkezik
   (`src/components/feedback/`, `src/lib/feedback/`).
-- **Süti-hozzájárulás:** a PostHog, a GA4 és a Barion Pixel csak
-  elfogadás után tölt be (`src/components/analytics/ConsentBanner.tsx`).
+- **Süti-hozzájárulás:** a PostHog és a GA4 csak elfogadás után tölt be
+  (`src/components/analytics/ConsentBanner.tsx`). A Barion Pixel alapszkriptje
+  ettől eltér: ha a `NEXT_PUBLIC_BARION_PIXEL_ID` be van állítva, minden
+  oldalon hozzájárulás nélkül betölt (a `<head>` első eleme,
+  `src/app/(frontend)/layout.tsx`), mert a Barion csalásmegelőzése ezt
+  megköveteli. A hozzájárulás a Pixel felhasználását szabályozza, a
+  `bp('consent', …)` hívásokkal.
 
 ### Admin
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { NotFoundView } from '@/components/error/NotFoundView'
-import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '@/lib/brand-logo'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL_TAGLINE } from '@/lib/brand-logo'
 
 import './(frontend)/styles.css'
 
@@ -49,9 +49,9 @@ export default function GlobalNotFound() {
                 <img
                   alt={BRAND_LOGO_ALT}
                   className="kc-site-header__logo"
-                  height={BRAND_LOGO_HORIZONTAL.height}
-                  src={BRAND_LOGO_HORIZONTAL.src}
-                  width={BRAND_LOGO_HORIZONTAL.width}
+                  height={BRAND_LOGO_HORIZONTAL_TAGLINE.height}
+                  src={BRAND_LOGO_HORIZONTAL_TAGLINE.src}
+                  width={BRAND_LOGO_HORIZONTAL_TAGLINE.width}
                 />
               </Link>
             </div>

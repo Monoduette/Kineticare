@@ -192,8 +192,9 @@
  * A korábbi szöveges „Kineti|care" wordmark (Tenor Sans, ritkított verzál,
  * fátyol-arányos akcent-tag) helyén a tulajdonosok új logója áll, sima <img>-
  * ként (src/lib/brand-logo.ts). A LINK a 44 px-es érintőcél (min-height), a
- * kép csak a rajz: 320–899 px-en 1,5rem (24 px) magas, 180,5 px széles;
- * 900 px-től 1,75rem (28 px), 210,5 px (a 383,44:50,99 viewBox-arány, 7,52).
+ * kép csak a rajz. A MAI méreteket (feliratos változat, 2026-09-23) a
+ * `.kc-site-header__logo` jegyzete vezeti le; az alábbi bekezdések a felirat
+ * nélküli, 24/28 px-es első bekötés (WP49) mérései.
  * A `width: auto` az img `width`/`height` attribútumából számolt arányt
  * követi, ezért a doboz a betöltés előtt is helyes (nincs CLS).
  *
@@ -228,15 +229,41 @@
   text-decoration: none;
 }
 
+/* FELIRATOS LOGÓ (2026-09-23, a tulajdonosok kérése): a fejléc a
+ * „KÉZREHABILITÁCIÓ” feliratos vízszintes változatot viseli (417,36:67,16,
+ * arány 6,21). A rajzban a „KINETICARE” betűmagassága ugyanannyi egység, mint
+ * a felirat nélküli változatban, a felirat nagybetűje a logómagasság 15,6%-a
+ * (src/lib/brand-logo.ts, mérve).
+ *
+ * MÉRET ÉS FORRÁS. Két szempont húz ellentétes irányba:
+ *  - A felirat olvashatósága: a Material 3 típusskála legkisebb felirata
+ *    11 px (labelSmall; Flutter TextTheme, M3 2021-es táblázat:
+ *    https://api.flutter.dev/flutter/material/TextTheme-class.html). A
+ *    logóban lévő szöveg a WCAG 2.2 szöveg-szabályai alól kivétel (SC 1.4.3,
+ *    1.4.5 „logotypes”), de a felirat attól még akkor ér valamit, ha
+ *    elolvasható.
+ *  - A vízszintes logó képernyős alsó mérethatára 30 px magasság (University
+ *    of Tennessee, https://brand.utk.edu/logos/; Washington University,
+ *    https://marcomm.washu.edu/official-logo-usage-guide/), és a logó a sáv
+ *    mérsékelt méretű eleme marad (NN/g, Logo Placement,
+ *    https://www.nngroup.com/articles/logo-placement/).
+ * Mobil (< 900 px): 2rem (32 px) magas, 199 px széles: a „KINETICARE” a mai
+ * mérete marad (a felirat nélküli 24 px-es logóéval azonos, 17,3 px), a
+ * felirat nagybetűje 5,0 px. Ennél nagyobb 320 px-en nem fér el: a sáv 272 px
+ * belső szélességéből a logó + 8 px köz + 44 px hamburger (+8 px túlnyúlás)
+ * 259 px-et kér, 13 px a tartalék (mérve, lásd a PR jegyzőkönyvét).
+ * Asztal (>= 900 px): 3rem (48 px) magas, 298 px széles a 4,5rem (72 px)
+ * magas sávban; a felirat nagybetűje 7,5 px, ami egy nagybetűs 11 px-es
+ * felirat nagybetű-magasságának felel meg (a Material 3 legkisebb címkéje). */
 .kc-site-header__logo {
   display: block;
   width: auto;
-  height: 1.5rem;
+  height: 2rem;
 }
 
 @media (min-width: 900px) {
   .kc-site-header__logo {
-    height: 1.75rem;
+    height: 3rem;
   }
 }
 
@@ -1301,15 +1328,23 @@
   }
 }
 
-/* Márkajel a láblécben (WP49): a fejléc logójának párja, 2rem (32 px) magas,
-   240,6 px széles — a 320 px-es sáv 272 px-es belső szélességén elfér
-   (header-responsive.browser.mjs mintájára mérve). A lábléc háttere a paper
-   (#f6f9fc): a sötétkék wordmark rajta 14,92:1, a világoskék kéz 2,13:1 (a
-   logotípia SC 1.4.11-kivétele, lásd a fejléc jegyzetét). */
+/* Márkajel a láblécben (WP49; 2026-09-23 óta a feliratos változat, lásd a
+   fejléc jegyzetét). Mobilon 2.625rem (42 px) magas, 261 px széles: a 320 px-es
+   sáv 272 px-es belső szélességén elfér, a felirat nagybetűje 6,6 px. Asztalon
+   3.5rem (56 px), 348 px széles, a felirat nagybetűje 8,8 px (a Material 3
+   11 px-es legkisebb címkéjénél nagyobb). A lábléc háttere a paper (#f6f9fc):
+   a sötétkék wordmark és felirat rajta 14,92:1, a felirat két vonala (#16233b)
+   14,86:1, a világoskék kéz 2,13:1 (a logotípia SC 1.4.11-kivétele). */
 .kc-site-footer__logo {
   display: block;
   width: auto;
-  height: 2rem;
+  height: 2.625rem;
+}
+
+@media (min-width: 900px) {
+  .kc-site-footer__logo {
+    height: 3.5rem;
+  }
 }
 
 .kc-site-footer__tagline {
