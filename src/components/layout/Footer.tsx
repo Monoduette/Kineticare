@@ -1,7 +1,7 @@
 import { ConsentSettingsButton } from '../analytics/ConsentSettingsButton'
 import { FeedbackTrigger } from '../feedback/FeedbackTrigger'
 import { Container } from '../ui/Container'
-import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL_TAGLINE } from '../../lib/brand-logo'
 import { KAPCSOLATI_EMAIL_TARTALEK } from '../../lib/contact-email'
 import { getContactEmail } from '../../lib/contact-email-server'
 
@@ -69,9 +69,9 @@ export function Footer({ kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK }: FooterPr
               <img
                 alt={BRAND_LOGO_ALT}
                 className="kc-site-footer__logo"
-                height={BRAND_LOGO_HORIZONTAL.height}
-                src={BRAND_LOGO_HORIZONTAL.src}
-                width={BRAND_LOGO_HORIZONTAL.width}
+                height={BRAND_LOGO_HORIZONTAL_TAGLINE.height}
+                src={BRAND_LOGO_HORIZONTAL_TAGLINE.src}
+                width={BRAND_LOGO_HORIZONTAL_TAGLINE.width}
               />
               <p className="kc-site-footer__tagline">Kézrehabilitációs online kurzusplatform</p>
             </div>

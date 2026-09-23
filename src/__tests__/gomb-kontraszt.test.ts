@@ -431,6 +431,17 @@ const PAROK: readonly Par[] = [
     4.5,
     '1.4.3',
   ),
+  // 2026-09-23: a feliratos logó „KÉZREHABILITÁCIÓ” felirata a wordmark
+  // színében (#11233d) áll, a két kísérő vonala #16233b; a legrosszabb
+  // háttér a filmsáv felső lejtője (veil 0).
+  p(
+    'kc-site-header__logo',
+    'logó-felirat vonala (#16233b) a filmen (veil 0)',
+    hexRgb('#16233b'),
+    filmFejlec(0),
+    3,
+    '1.4.11',
+  ),
   p(
     'kc-site-footer__logo',
     'logó-wordmark (#11233d) a lábléc paperjén',

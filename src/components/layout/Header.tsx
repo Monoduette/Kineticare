@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
 import { Container } from '../ui/Container'
-import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
+import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL_TAGLINE } from '../../lib/brand-logo'
 import { SzerkesztoNezetBelepo } from '../editor/frontend/SzerkesztoNezetBelepo'
 import { withCoursesNavItem } from '../../lib/menu-tree'
 import { getNavTree } from '../../lib/menus'
@@ -60,7 +60,8 @@ export async function Header() {
       <Container>
         <div className="kc-site-header__bar">
           {/* WP49 (2026-09-19): a tulajdonosok új, vízszintes logója a
-              korábbi szöveges „Kineti|care" wordmark helyén. Sima <img>, az
+              korábbi szöveges „Kineti|care" wordmark helyén; 2026-09-23 óta a
+              „KÉZREHABILITÁCIÓ” feliratos változata (méretek: layout.css). Sima <img>, az
               SVG változtatás nélkül (lásd src/lib/brand-logo.ts). A link
               hozzáférhető neve marad „Kineticare kezdőlap" (a 404-oldallal
               bitre azonos, WCAG 2.2 SC 3.2.4); a kép alt-ja a márkanév.
@@ -71,9 +72,9 @@ export async function Header() {
             <img
               alt={BRAND_LOGO_ALT}
               className="kc-site-header__logo"
-              height={BRAND_LOGO_HORIZONTAL.height}
-              src={BRAND_LOGO_HORIZONTAL.src}
-              width={BRAND_LOGO_HORIZONTAL.width}
+              height={BRAND_LOGO_HORIZONTAL_TAGLINE.height}
+              src={BRAND_LOGO_HORIZONTAL_TAGLINE.src}
+              width={BRAND_LOGO_HORIZONTAL_TAGLINE.width}
             />
           </Link>
           <DesktopNav items={items} />

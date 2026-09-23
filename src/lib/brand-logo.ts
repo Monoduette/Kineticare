@@ -39,6 +39,30 @@ export const BRAND_LOGO_HORIZONTAL_WHITE: BrandLogoAsset = {
   height: 51,
 }
 
+/**
+ * Vízszintes, színes logó „KÉZREHABILITÁCIÓ” felirattal (a csomag
+ * `04-Horizontal-Tagline/KINETICARE_Horizontal_Tagline_Colour_Default.svg`,
+ * bitre azonosan). A tulajdonosok kérése (2026-09-23): a fejléc, a lábléc és
+ * a 404-oldal ezt viseli a felirat nélküli változat helyett.
+ *
+ * Mérve (a rajz saját egységeiben, Chromium `getBBox`): a „KINETICARE”
+ * betűmagassága mindkét vízszintes rajzban 36,4 egység, a felirat nagybetűi
+ * 10,5 egység magasak; a teljes rajz 67,16 egység. A felirat nagybetűje tehát
+ * a megjelenített logómagasság 15,6%-a (a méretek levezetése: `layout.css`).
+ */
+export const BRAND_LOGO_HORIZONTAL_TAGLINE: BrandLogoAsset = {
+  src: '/assets/brand/kineticare-horizontal-tagline.svg',
+  width: 417,
+  height: 67,
+}
+
+/** A feliratos vízszintes logó fehér változata sötét felületre (tartalék). */
+export const BRAND_LOGO_HORIZONTAL_TAGLINE_WHITE: BrandLogoAsset = {
+  src: '/assets/brand/kineticare-horizontal-tagline-white.svg',
+  width: 417,
+  height: 67,
+}
+
 /** Csak a két kéz (az app-ikonok forrása). */
 export const BRAND_LOGO_ICON: BrandLogoAsset = {
   src: '/assets/brand/kineticare-icon.svg',
