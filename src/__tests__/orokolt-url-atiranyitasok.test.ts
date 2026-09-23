@@ -8,6 +8,7 @@ import {
   LEGACY_GONE_HTML,
   LEGACY_GONE_PATHS,
   LEGACY_REDIRECTS,
+  LEGACY_SEARCH_CONSOLE_PATHS,
   LEGACY_SITEMAP_PATHS,
   LEGACY_UNCHANGED_PATHS,
   SERVICES_RENDELOI_ANCHOR,
@@ -121,6 +122,7 @@ async function configuredRedirects() {
 const CANONICAL_DESTINATIONS = new Set([
   '/',
   '/kurzusok',
+  '/rolunk',
   COURSE_HOME_REHAB,
   COURSE_SOS_KEZRELAX,
   SERVICES_RENDELOI_ANCHOR,
@@ -236,7 +238,26 @@ describe('őr — a mért 25 régi sitemap-URL mindegyike kap sorsot', () => {
 
   it('a három lista együtt PONTOSAN a mért URL-halmazt fedi le (nincs kitalált sor)', () => {
     const covered = [...redirectSources, ...unchanged, ...gone].sort()
-    expect(covered).toEqual([...LEGACY_SITEMAP_PATHS].sort())
+    expect(covered).toEqual([...LEGACY_SITEMAP_PATHS, ...LEGACY_SEARCH_CONSOLE_PATHS].sort())
+  })
+
+  it('a Search Console 404-címei: külön lista, mind 308-at kap, átfedés nélkül', () => {
+    expect(new Set(LEGACY_SEARCH_CONSOLE_PATHS).size).toBe(LEGACY_SEARCH_CONSOLE_PATHS.length)
+    for (const path of LEGACY_SEARCH_CONSOLE_PATHS) {
+      expect(LEGACY_SITEMAP_PATHS, `${path} már a sitemap-mérésben is szerepel`).not.toContain(path)
+      expect(redirectSources.has(path), `${path} nem kapott 308-at`).toBe(true)
+      expect(unchanged.has(path) || gone.has(path), `${path} több sorsot kapott`).toBe(false)
+    }
+  })
+
+  it('a Search Console 404-címeinek célja (mérve 2026-09-23)', async () => {
+    const rules = await configuredRedirects()
+    const target = (source: string) => rules.find((rule) => rule.source === source)?.destination
+
+    expect(target('/kezrelax-penztar')).toBe(COURSE_SOS_KEZRELAX)
+    expect(target('/kiss-kata')).toBe('/rolunk')
+    expect(target('/home')).toBe('/')
+    expect(target('/en')).toBe('/')
   })
 
   it('a változatlan slugok NEM kapnak szabályt (a redirects a fájlrendszer előtt fut)', async () => {

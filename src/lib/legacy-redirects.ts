@@ -1,6 +1,7 @@
 /**
- * Örökölt kineticare.hu URL-ek — domain-átállításhoz. 25 URL; három sors: változatlan,
- * 308 (`LEGACY_REDIRECTS`), 410 spam (middleware). Változatlan útvonalra szabály tilos.
+ * Örökölt kineticare.hu URL-ek — domain-átállításhoz. 25 sitemap-URL + 4 Search Console
+ * 404-URL; három sors: változatlan, 308 (`LEGACY_REDIRECTS`), 410 spam (middleware).
+ * Változatlan útvonalra szabály tilos.
  */
 
 /** Egy örökölt forrás → mai kanonikus cél párosítás. */
@@ -57,6 +58,22 @@ export const LEGACY_SITEMAP_PATHS: readonly string[] = [
   '/kezrehab-akcio',
   '/kezrehab-akcio-penztar',
   '/typ-kezrehab-akcio',
+]
+
+/**
+ * A Search Console „Not found (404)” jelentéséből mért, a régi sitemapban NEM
+ * szereplő címek (mérve 2026-09-23, a domain-átállás éjszakáján). A Google
+ * ismeri őket (belső link, külső hivatkozás vagy régi megosztás), de a régi
+ * oldalon is 404-et adtak, és az új hoszton is 404-et adtak. Egy 404-es cím
+ * a rá mutató linkek értékét elveszíti; a legközelebbi mai tartalomra vivő
+ * 308 megtartja. A lista külön él a `LEGACY_SITEMAP_PATHS` mellett, mert az a
+ * 2026-08-16-i sitemap-mérés rögzített, 25 elemű lenyomata.
+ */
+export const LEGACY_SEARCH_CONSOLE_PATHS: readonly string[] = [
+  '/home',
+  '/en',
+  '/kezrelax-penztar',
+  '/kiss-kata',
 ]
 
 /**
@@ -154,6 +171,31 @@ export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
     destination: '/',
     reason:
       'Üres systeme.io-sablon, Kineticare-tartalom nélkül. Az új rendszerben nincs /search útvonal (mérve: 404), így a szabály nem nyel el valódi oldalt.',
+  },
+  // --- A Search Console 404-jelentéséből (LEGACY_SEARCH_CONSOLE_PATHS) ---
+  {
+    source: '/kezrelax-penztar',
+    destination: COURSE_SOS_KEZRELAX,
+    reason:
+      'Az ingyenes SOS KézRelax régi pénztára (a /kezrehab-penztar párja). SZÁNDÉKOSAN nem a /penztar: ugyanaz az indok, mint ott; a kurzusoldalról indul az igénylés.',
+  },
+  {
+    source: '/kiss-kata',
+    destination: '/rolunk',
+    reason:
+      'Kiss Kata régi bemutatkozó oldala. Önálló szakemberoldal ma nincs; a Rólunk oldal mutatja be mindkét gyógytornászt.',
+  },
+  {
+    source: '/home',
+    destination: '/',
+    reason:
+      'A régi oldal kezdőlapjának másodlagos címe. A kezdőlap mai CMS-slugja kezdolap, a /home útvonal nem létezik (mérve: 404).',
+  },
+  {
+    source: '/en',
+    destination: '/',
+    reason:
+      'A régi sablon angol nyelvi előtagja. Angol változat ma nincs, a magyar kezdőlap a legközelebbi valódi tartalom.',
   },
 ]
 
