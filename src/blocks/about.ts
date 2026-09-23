@@ -1,5 +1,6 @@
-import type { Block } from 'payload'
+import type { Block, UIField } from 'payload'
 
+import { frizHelyzetUtvonalbol, nemFrizHelyzetUtvonalbol } from '../lib/admin/friz-helyzet'
 import { FRIEZE_PHOTOS } from '../lib/foto-friz'
 import { KEP_CSERE_SUGO } from './kep-csere'
 import { sectionSettings } from './section-settings'
@@ -28,13 +29,87 @@ export const FRIZ_HELY_NEVEK: readonly string[] = [
   '4. kép: jobb lent',
 ]
 
+const ABOUT_LABELS = {
+  singular: 'Bemutatkozás és számok',
+  plural: 'Bemutatkozó szekciók',
+} as const
+
+/** A fotósor neve; a fríz-csoport címkéje és a feltételes jelzések is ezt mondják. */
+const FOTOSOR = 'Mozgó fotósor'
+
+/** A fríz-csoport címkéje. */
+export const FRIZ_CSOPORT_CIMKE = `${FOTOSOR} a kezdőlapon (négy kép)`
+
+const FOTOSOR_NEVE = FOTOSOR.toLocaleLowerCase('hu')
+
+/**
+ * A szövegmezők címkéi. A mezők `label`-je és a fríz szövegfeltétele is
+ * ezekből épül, hogy a jelzés pontosan azokat a neveket idézze, amelyeket a
+ * szerkesztő a mezők fölött lát (WCAG 2.2 SC 3.2.4 Consistent Identification).
+ * A lap a frízt csak akkor rajzolja, ha ezek közül legalább egy nem üres
+ * (src/components/blocks/About.tsx, `hasCopy`).
+ */
+export const ABOUT_SZOVEG_CIMKEK = {
+  eyebrow: 'Felső kis felirat',
+  title: 'Szekció címe',
+  paragraphs: 'Bekezdések',
+  feature: 'Kiemelt blokk',
+} as const
+
+const SZOVEGFELTETEL = `a „${ABOUT_SZOVEG_CIMKEK.eyebrow}”, a „${ABOUT_SZOVEG_CIMKEK.title}”, a „${ABOUT_SZOVEG_CIMKEK.paragraphs}” és a „${ABOUT_SZOVEG_CIMKEK.feature}” közül legalább egy ki van töltve`
+
+/**
+ * A fríz-helyzet feltételes jelzései (modul-térkép H12). UI-mezők, adatbázis-
+ * oszlop nélkül, a Payload saját FieldDescription-komponensével, így a többi
+ * mezőleírással azonos betűt és kontrasztot kapnak. A feltétel a blokk
+ * helyéből és szövegéből számol (src/lib/admin/friz-helyzet.ts, a
+ * RenderBlocks.tsx és az About.tsx tükre), ezért a mondat csak ott áll, ahol
+ * igaz. Források (megnyitva, 2026-09-23):
+ * - WCAG 2.2 SC 3.3.2 Labels or Instructions: „Labels or instructions are
+ *   provided when content requires user input”
+ *   (https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html);
+ * - NN/g, Progressive Disclosure: „Initially, show users only a few of the
+ *   most important options” (https://www.nngroup.com/articles/progressive-disclosure/):
+ *   a helyzethez nem tartozó magyarázat nem jelenik meg.
+ * A fotósor nevét a csoport címkéjéből idézzük (WCAG 2.2 SC 3.2.4
+ * Consistent Identification), a blokk nevét a blokk címkéjéből.
+ */
+export const CSAPATFOTO_FRIZ_JELZES = `Ebben a helyzetben a jobb oldalon a ${FOTOSOR_NEVE} látszik, ez a kép nem.`
+
+export const FRIZ_NEM_LATSZIK_JELZES = `Ebben a helyzetben a ${FOTOSOR_NEVE} nem látszik: csak akkor jelenik meg, ha ez az első látható „${ABOUT_LABELS.singular}” szekció, közvetlenül a nyitó videó után áll, és ${SZOVEGFELTETEL}.`
+
+const csapatfotoFrizJelzes: UIField = {
+  name: 'csapatfotoFrizJelzes',
+  type: 'ui',
+  admin: {
+    condition: (data, _siblingData, { path }) => frizHelyzetUtvonalbol(data, path),
+    components: {
+      Field: {
+        path: '@payloadcms/ui#FieldDescription',
+        clientProps: { description: CSAPATFOTO_FRIZ_JELZES, marginPlacement: 'bottom' },
+      },
+    },
+  },
+}
+
+const frizNemLatszikJelzes: UIField = {
+  name: 'frizNemLatszikJelzes',
+  type: 'ui',
+  admin: {
+    condition: (data, _siblingData, { path }) => nemFrizHelyzetUtvonalbol(data, path),
+    components: {
+      Field: {
+        path: '@payloadcms/ui#FieldDescription',
+        clientProps: { description: FRIZ_NEM_LATSZIK_JELZES, marginPlacement: 'bottom' },
+      },
+    },
+  },
+}
+
 export const about: Block = {
   slug: 'about',
   interfaceName: 'BlockAbout',
-  labels: {
-    singular: 'Bemutatkozás és számok',
-    plural: 'Bemutatkozó szekciók',
-  },
+  labels: ABOUT_LABELS,
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
   },
@@ -42,7 +117,7 @@ export const about: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Felső kis felirat',
+      label: ABOUT_SZOVEG_CIMKEK.eyebrow,
       admin: {
         description: 'A cím fölötti apró szöveg (pl. „Rólunk”). Nem kötelező.',
       },
@@ -50,7 +125,7 @@ export const about: Block = {
     {
       name: 'title',
       type: 'text',
-      label: 'Szekció címe',
+      label: ABOUT_SZOVEG_CIMKEK.title,
       admin: {
         description: 'A bemutatkozás címe (pl. „Kiss Kata és Kocsis Kata vagyunk”).',
       },
@@ -58,7 +133,7 @@ export const about: Block = {
     {
       name: 'paragraphs',
       type: 'array',
-      label: 'Bekezdések',
+      label: ABOUT_SZOVEG_CIMKEK.paragraphs,
       maxRows: 8,
       labels: { singular: 'Bekezdés', plural: 'Bekezdések' },
       admin: {
@@ -88,7 +163,7 @@ export const about: Block = {
     {
       name: 'feature',
       type: 'group',
-      label: 'Kiemelt blokk',
+      label: ABOUT_SZOVEG_CIMKEK.feature,
       admin: {
         description:
           'A bekezdések alatti, keretes kiemelés: egy fontos ígéret pár szóban. Ha mindkét mezőt üresen hagyod, nem jelenik meg.',
@@ -117,12 +192,14 @@ export const about: Block = {
         description: `A szekció melletti fénykép. A kezdőlapon, ha ez a szekció közvetlenül a nyitó videó után áll, helyette a lenti mozgó fotósor látszik. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
       },
     },
+    csapatfotoFrizJelzes,
+    frizNemLatszikJelzes,
     {
       // 2026-09-23: a fríz négy íve helyenként cserélhető (src/lib/kep-helyek.ts
       // fejkommentje: rögzített helyek, üresen a beépített fotó).
       name: 'frieze',
       type: 'group',
-      label: 'Mozgó fotósor a kezdőlapon (négy kép)',
+      label: FRIZ_CSOPORT_CIMKE,
       admin: {
         description: `Csak a kezdőlapon látszik, ha ez a szekció közvetlenül a nyitó videó után áll. Minden mező egy ívnek felel meg; ha üresen hagyod, ott a beépített fotó marad. A kivágást a kép fókuszpontja adja: a Képek közt arra a pontra állítsd, aminek mindig látszania kell. ${KEP_CSERE_SUGO}`,
       },

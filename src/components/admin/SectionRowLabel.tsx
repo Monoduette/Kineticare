@@ -6,11 +6,12 @@ import { useEffect, useState, type JSX } from 'react'
 
 import {
   arrayRowLabel,
-  describeSection,
+  describeSectionOnPage,
   ELVALASZTO,
   REJTVE_JEL,
+  sectionLabelTail,
   sectionRepeatOrdinals,
-  repeatMarker,
+  tipusValtozattal,
   type SectionDescription,
 } from '../../lib/section-row-label'
 
@@ -135,9 +136,10 @@ export function useSiblingRows(rowPath: string): unknown[] {
 
 /** A sorcímke megjelenítése (a render-teszt ezt hívja közvetlenül). */
 export function SectionRowLabelView({ leiras }: { leiras: SectionDescription }): JSX.Element {
-  const vege = [leiras.blokkNev ? `(${leiras.blokkNev})` : null, repeatMarker(leiras.ismetles)]
-    .filter((part): part is string => part !== null)
-    .join(' ')
+  // A szöveg sorrendje betűre a sectionRowLabelText-é (a frontend szalag és a
+  // szekció-másolatok azt írják ki): sorszám, [Rejtve], típus [elrendezés],
+  // kettőspont, cím, [jelek], [(blokknév)], [(N. ilyen)].
+  const vege = sectionLabelTail(leiras)
   return (
     <h3 className="kc-section-row-label row-label">
       <span className="kc-section-row-label__sorszam">{leiras.sorszam}</span>
@@ -148,7 +150,7 @@ export function SectionRowLabelView({ leiras }: { leiras: SectionDescription }):
           {ELVALASZTO}
         </>
       ) : null}
-      <span className="kc-section-row-label__tipus">{leiras.tipus}:</span>{' '}
+      <span className="kc-section-row-label__tipus">{tipusValtozattal(leiras)}:</span>{' '}
       <span className="kc-section-row-label__cim">{leiras.cimSzoveg}</span>
       {vege ? <span className="kc-section-row-label__jegyzet"> {vege}</span> : null}
     </h3>
@@ -160,9 +162,14 @@ export function SectionRowLabel({
   textFields = [],
 }: SectionRowLabelProps): JSX.Element {
   const { data, path, rowNumber } = useRowLabel<Record<string, unknown>>()
+  // Az oldal webcíme az oldalfüggő jelekhez (elrendezés, kötött ugrópont):
+  // ugyanaz az érték, amit a SectionSourceNotice a useFormFields-szel olvas
+  // (a `slug` mező űrlapállapota), de a sorcímke a useSiblingRows miatt már
+  // a teljes űrlapot figyeli, ezért innen olvassuk, külön feliratkozás nélkül.
+  const pageSlug = useWatchForm().fields.slug?.value
   const testverek = useSiblingRows(path)
   const index = typeof rowNumber === 'number' ? rowNumber : 0
-  const leiras = describeSection(data, index, blockLabel, textFields)
+  const leiras = describeSectionOnPage(data, index, blockLabel, textFields, pageSlug)
   const ismetles = sectionRepeatOrdinals(testverek)[index] ?? null
   return <SectionRowLabelView leiras={{ ...leiras, ismetles }} />
 }

@@ -25,6 +25,38 @@
  * `scroll-padding-top`-ja (base.css) görget; a szalag a filmsáv fölé kerül
  * (z-index), mert a filmsáv a fejléc alá húzódik (film-hero.css negatív margó).
  * 320 PX: a sor tördel (flex-wrap), vízszintes görgetés nincs (SC 1.4.10).
+ *
+ * „KÓDBAN VAN” VÁLTOZAT (--kod), BÖNGÉSZŐBEN MÉRVE (Chromium 1194, a valódi
+ * styles.css-sel, a SzerkesztoKodSzalag kimenetén; 2026-09-23, 320, 375,
+ * 768 és 1440 px széles nézetben, mind az öt szalagon):
+ *
+ *   | Mit                           | Érték (mért)                   | Küszöb            |
+ *   | ----------------------------- | ------------------------------ | ----------------- |
+ *   | címke és magyarázat (ink)     | 13,53:1 az info-felületen      | 4,5:1 (SC 1.4.3)  |
+ *   | link szövege (ink)            | 13,53:1; hoverben #275c87 a    | 4,5:1 (SC 1.4.3)  |
+ *   |                               | fehéren 7,08:1                 |                   |
+ *   | keret (ink-soft #33495f,      | 8,05:1 a saját felületén,      | 3:1 (SC 1.4.11)   |
+ *   | 2 px pontozott)               | 8,80:1 a paperen, 8,05:1 a     |                   |
+ *   |                               | tint-szekción; az előnézet-sáv |                   |
+ *   |                               | (ink) mellett a határt a       |                   |
+ *   |                               | felület adja: 13,53:1          |                   |
+ *   | fókuszgyűrű (3 px, #2f6e9f,   | 4,72:1 az info-felületen,      | 3:1 (SC 1.4.11,   |
+ *   | 2 px távolság)                | :focus-visible Tabra igaz      | 2.4.7)            |
+ *   | fókusz nem takart             | a fejléc-szalag a ragadós      | SC 2.4.11         |
+ *   |                               | fejléc FÖLÖTT, a folyamban:    |                   |
+ *   |                               | a fókuszált link teteje 320    |                   |
+ *   |                               | px-en 169,6 px, 1440-en 112,9  |                   |
+ *   | link érintési célja           | 44 px magas (két sorba tördelt | 24×24 (SC 2.5.8), |
+ *   |                               | felirattal 46,8), 265–357 px   | projekt: 44×44    |
+ *   |                               | széles                         |                   |
+ *   | vízszintes görgetés           | scrollWidth = clientWidth      | SC 1.4.10         |
+ *   |                               | 320/375/768/1440 px-en         |                   |
+ *   | magyarázat sorhossza          | 32–53 karakter (320–375 px),   | 45–85 (skill),    |
+ *   |                               | 58–75 karakter (768–1440 px)   | SC 1.4.8: ≤ 80    |
+ *   | betűméret                     | --kc-font-s (14–16 px)         | három token       |
+ *
+ * A mérőszkript és a képernyőképek: scratchpad a5-meres/ (meres.mjs,
+ * meres.json, szalagok-<szélesség>.png).
  */
 
 .kc-szerkeszto-szalag {
@@ -108,6 +140,43 @@
 .kc-szerkeszto-nezet__link:focus-visible {
   outline: 3px solid var(--kc-color-focus);
   outline-offset: 2px;
+}
+
+/*
+ * „KÓDBAN VAN” VÁLTOZAT (modul-térkép H09 1. pont, H21, H35, H18): a nem
+ * szekció modulok (fejléc, lábléc, kezdőlapi Barion-sáv, a /kurzusok és a
+ * /blog lapfeje) szalagja. Info-felület (--kc-color-info-surface) és
+ * pontozott, tinta-lágy keret: első pillantásra más, mint a fehér,
+ * szaggatott kék keretű „Szerkesztem” szalag, a jelentést pedig a címke
+ * szövege mondja ki (SC 1.4.1). A mért értékek a fejkomment táblázatában.
+ */
+.kc-szerkeszto-szalag--kod {
+  background-color: var(--kc-color-info-surface);
+  border-block: 2px dotted var(--kc-color-text-muted);
+}
+
+/* Egymás alatt: címke, magyarázat, link. A korlátozott szélességű magyarázat
+   sorban a címke mellé csúszna, a link pedig alájuk, és a szemnek
+   cikcakkban kellene olvasnia (mérve 1440 px-en); a sor itt az olvasási
+   sorrend (WCAG 2.2 SC 1.3.2 Meaningful Sequence). */
+.kc-szerkeszto-szalag--kod .kc-szerkeszto-szalag__belso {
+  display: grid;
+  justify-items: start;
+}
+
+/* Sorhossz: a magyarázat legfeljebb 55ch, mérve legfeljebb 75 karakter
+   soronként 768 és 1440 px-en (a termektervezes skill küszöbe 45–85; WCAG
+   2.2 SC 1.4.8 legfeljebb 80 karaktert ajánl,
+   https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html).
+   Korlát nélkül 1440 px-en 140 karakteres sorok lennének. */
+.kc-szerkeszto-szalag--kod .kc-szerkeszto-szalag__jelzes {
+  max-width: 55ch;
+}
+
+/* A hover-felület az info-felületen fehér: a --kc-color-surface-tint itt
+   megegyezne a szalag hátterével, és a hover nem látszana. */
+.kc-szerkeszto-szalag--kod .kc-szerkeszto-szalag__link:hover {
+  background-color: var(--kc-color-surface-raised);
 }
 
 /*

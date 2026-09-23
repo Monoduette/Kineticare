@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { draftMode } from 'next/headers'
 import { Suspense, type ReactNode } from 'react'
 
 import { BarionPixel, BarionPixelNoscript } from '@/components/analytics/BarionPixel'
@@ -6,10 +7,14 @@ import { ConsentBanner } from '@/components/analytics/ConsentBanner'
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics'
 import { PostHogPageView } from '@/components/analytics/PostHogPageView'
 import { PostHogProvider } from '@/components/analytics/PostHogProvider'
-import { Footer } from '@/components/layout/Footer'
+import { kapcsolatIdopontSzerkesztoHref } from '@/components/editor/frontend/szerkeszto-szalag'
+import { ElonezetKeretSzalag } from '@/components/editor/frontend/SzerkesztoSzalag'
+import { FeloldottFooter } from '@/components/layout/Footer'
 import { Header } from '@/components/layout/Header'
 import { AnchorScroll } from '@/components/motion/AnchorScroll'
 import { resolveServerUrl } from '@/env'
+import { getPageBySlug } from '@/lib/cms'
+import { KAPCSOLAT_OLDAL_WEBCIM } from '@/lib/contact-email'
 import { DEFAULT_OG_IMAGE, INDEX_ROBOTS, SITE_DESCRIPTION } from '@/lib/seo'
 
 import './styles.css'
@@ -79,7 +84,37 @@ export const viewport: Viewport = {
   themeColor: '#f6f9fc',
 }
 
-export default function FrontendLayout({ children }: { children: ReactNode }) {
+/**
+ * A lábléc-szalag e-mail-linkjének célja (modul-térkép H18): a Kapcsolat oldal
+ * LEGÚJABB piszkozatának első látható Időpontkérés szekciója. CSAK
+ * piszkozat-előnézetben fut (a hívó dönt), a látogató kérésében lekérdezés
+ * nincs. A `getPageBySlug` hibatűrő (hibánál null), ilyenkor a szalag az
+ * Oldalak listájára visz.
+ */
+async function lablecKapcsolatHref(): Promise<string | undefined> {
+  const lap = await getPageBySlug(KAPCSOLAT_OLDAL_WEBCIM, { draft: true })
+  return kapcsolatIdopontSzerkesztoHref({ lap })
+}
+
+export default async function FrontendLayout({ children }: { children: ReactNode }) {
+  // Piszkozat-előnézet: a sütit CSAK a staff/owner-kapus /next/preview adja.
+  // Ilyenkor a fejléc és a lábléc ELŐTT „Kódban van” szalag áll (H35, H18), a
+  // szekció-szalagok helyén és nyelvén: a modulja előtt, a folyamban, a
+  // tartalmat nem fedve (Sanity overlays: „only when draft mode is active”,
+  // https://www.sanity.io/docs/visual-editing/visual-editing-overlays; NN/g,
+  // Visibility of System Status,
+  // https://www.nngroup.com/articles/visibility-system-status/). A fejléc-
+  // szalag a ragadós fejléc FÖLÖTT áll, mint a publikált nézet
+  // szerkesztő-belépője (SzerkesztoNezetBelepo): így nem ragad, nem takar
+  // (WCAG 2.2 SC 2.4.11), és a fejléc mért szélesség-tartalékát sem fogyasztja.
+  // NEM piszkozatban a JSX PONTOSAN a korábbi (`<Header />`, lábléc), üres
+  // hely nélkül, így a látogató HTML-je és RSC-adata nem változik.
+  const { isEnabled: isDraft } = await draftMode()
+  const kapcsolatIdopontHref = isDraft ? await lablecKapcsolatHref() : undefined
+  // A lábléc a kapcsolati e-mail feloldójával (H18): a cím a /kapcsolat első
+  // látható Időpontkérés szekciójából jön, hiba esetén a kódtartalék
+  // (src/lib/contact-email-server.ts). Mai adatokkal a kimenet bájtra a régi.
+  const lablec = <FeloldottFooter />
   return (
     <html lang="hu">
       <head>
@@ -126,9 +161,27 @@ export default function FrontendLayout({ children }: { children: ReactNode }) {
           </Suspense>
           {/* GA4 consent-kapu: mérési azonosító nélkül és hozzájárulás előtt no-op. */}
           <GoogleAnalytics />
-          <Header />
+          {isDraft ? (
+            <>
+              <ElonezetKeretSzalag elonezet hely="fejlec" />
+              <Header />
+            </>
+          ) : (
+            <Header />
+          )}
           <main id="tartalom">{children}</main>
-          <Footer />
+          {isDraft ? (
+            <>
+              <ElonezetKeretSzalag
+                elonezet
+                hely="lablec"
+                {...(kapcsolatIdopontHref ? { kapcsolatIdopontHref } : {})}
+              />
+              {lablec}
+            </>
+          ) : (
+            lablec
+          )}
           {/* GDPR consent-sáv: csak 'unknown' állapotban látszik, a body végén, a többi elem fölött. */}
           <ConsentBanner />
         </PostHogProvider>

@@ -6,6 +6,8 @@ import {
   validateFilmCaptionBody,
   validateFilmCaptionTitle,
 } from '../lib/film-captions'
+import { COURSE_SOS_KEZRELAX, LEGACY_REDIRECTS } from '../lib/legacy-redirects'
+import { SOS_COURSE_FALLBACK_PATH } from '../lib/menu-seed'
 import { linkFields } from './link-fields'
 import { sectionSettings } from './section-settings'
 
@@ -52,6 +54,43 @@ import { sectionSettings } from './section-settings'
  * áll: a szerkesztő a lapon látott sorrendben halad (cím, bevezető, címkék,
  * gombok, majd a görgetés közbeni feliratok).
  */
+
+/**
+ * A feltételes gombok kimondása a „Gombok” súgójában (modul-térkép H38).
+ *
+ * A kód visszafejtve (src/components/blocks/FilmHero.tsx, `sosTarget` és a
+ * `ctas` szűrése; a propok forrása a RenderBlocks.tsx):
+ * - `course` cél: a saját oldal ingyenes SOS-kurzusa, azaz a
+ *   COURSE_SOS_KEZRELAX, a SOS_COURSE_FALLBACK_PATH, vagy egy régi cím, amely
+ *   a LEGACY_REDIRECTS szerint oda irányít. Ilyen gomb csak `hasFreeSos`
+ *   mellett marad, ez `freeProduct !== null`, vagyis az `isAvailableSosProduct`
+ *   szerinti kurzus a kurzuslistán közzétett, ingyenes és publikált.
+ * - `anchor` cél: a kezdőlap (`/`) `#ingyenes` horgonya, vagy bármely
+ *   Ingyenes villámkurzus sáv saját horgonya (`sosAnchors`). Ilyen gomb csak
+ *   akkor marad, ha van `freeSosHref`: van elérhető ingyenes kurzus, ÉS a
+ *   filmsáv UTÁN áll legalább egy nem rejtett Ingyenes villámkurzus sáv. A gomb
+ *   címe ilyenkor az első ilyen sáv horgonyára cserélődik.
+ * - A kiszűrés után a megmaradt első gomb lesz a hangsúlyos (`index === 0`).
+ *
+ * Források: NN/g, 10 Usability Heuristics, #1 Visibility of System Status
+ * (https://www.nngroup.com/articles/ten-usability-heuristics/); WCAG 2.2
+ * SC 3.3.2 Labels or Instructions
+ * (https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html);
+ * ATAG 2.0 A.4.2.2 Document All Features, (b) „Described in the Interface”
+ * (https://www.w3.org/TR/ATAG20/#sc_a422).
+ */
+const SOS_KURZUS_CIMEI = [
+  COURSE_SOS_KEZRELAX,
+  SOS_COURSE_FALLBACK_PATH,
+  ...LEGACY_REDIRECTS.filter((redirect) => redirect.destination === COURSE_SOS_KEZRELAX).map(
+    (redirect) => redirect.source,
+  ),
+]
+
+const felsorolas = (elemek: readonly string[]): string =>
+  elemek.length > 1 ? `${elemek.slice(0, -1).join(', ')} vagy ${elemek.at(-1)}` : elemek.join('')
+
+const GOMBOK_FELTETELE = `Az ingyenes kurzusra mutató gomb csak feltétellel jelenik meg. Ha az ingyenes SOS-kurzus oldalára visz (${felsorolas(SOS_KURZUS_CIMEI)}), csak akkor látszik, ha az ingyenes SOS Kézrelax villámkurzus közzétéve elérhető a Kurzusok között. Ha a kezdőlap ingyenes sávjára visz (/#ingyenes, vagy egy Ingyenes villámkurzus sáv saját horgonya), csak akkor látszik, ha a kurzus elérhető, és ezen a lapon a Nyitó videó alatt áll egy nem rejtett Ingyenes villámkurzus sáv. Ilyenkor a gomb az első ilyen sávra visz. Ha a feltétel nem teljesül, a gomb kimarad, és ha ez volt az első, a második gomb lép a helyére hangsúlyosként.`
 
 const KARAKTER_SZAMLALO = '/components/admin/KarakterSzamlalo#KarakterSzamlalo'
 
@@ -175,8 +214,7 @@ export const filmHero: Block = {
       maxRows: 2,
       labels: { singular: 'Gomb', plural: 'Gombok' },
       admin: {
-        description:
-          'Legfeljebb 2 gomb. Az első a hangsúlyos (ez vigyen a kurzusokhoz), a második visszafogottabb. Ha üresen hagyod, nem jelenik meg gomb.',
+        description: `Legfeljebb 2 gomb. Az első a hangsúlyos (ez vigyen a kurzusokhoz), a második visszafogottabb. Ha üresen hagyod, nem jelenik meg gomb. ${GOMBOK_FELTETELE}`,
         initCollapsed: true,
       },
       fields: linkFields({ labelRequired: true, urlRequired: true }),

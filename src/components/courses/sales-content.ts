@@ -45,6 +45,49 @@ export interface CourseSalesContent {
   body: LexicalDoc | null
 }
 
+/**
+ * Egy értékesítő szakasz FORRÁSA (modul-térkép H50/A19): honnan jön az, amit a
+ * kurzusoldal mutat. A szerkesztői előnézet forrás-szalagja
+ * (src/components/editor/frontend/kurzus-forras-szalag.ts) ebből mondja ki,
+ * melyik mezőt kell átírni, és oda is visz. A látogatói felület nem olvassa.
+ *
+ * - `mezo`: a Kurzusok szerkesztőjének mezőneve (src/plugins/ecommerce.ts),
+ *   ahonnan a tartalom jön, vagy ahová írni kell, ha a szakasz üres, illetve
+ *   a beépített tartalék látszik;
+ * - `cimsor`: ha a tartalmat a kód a Részletes leírás (longDescription) egy
+ *   kulcsszavas címsora alól vágta ki (`classifyHeading`), a címsor szövege;
+ *   különben null;
+ * - `tartalek`: igaz, ha nem a CMS szövege, hanem a kód beépített, tényadatból
+ *   épített tartaléka látszik (`factSteps`, `factHighlights`).
+ */
+export interface SalesForras {
+  mezo: string
+  cimsor: string | null
+  tartalek: boolean
+}
+
+/** A szakaszok forrásai (a `buildCourseSalesContent` kiegészítő kimenete). */
+export interface SalesForrasok {
+  /** „A kurzusról”: a leírás kiemelt szakaszok nélküli része. */
+  leiras: SalesForras
+  lepesek: SalesForras
+  kinekValo: SalesForras
+  kinekNem: SalesForras
+  garancia: SalesForras
+  gyik: SalesForras
+  /** A vásárlódoboz pipás sorai. `mezo: 'longDescription'` = a leírás első felsorolása. */
+  elonyok: SalesForras
+}
+
+/**
+ * A `buildCourseSalesContent` kimenete: a látogatói mezők VÁLTOZATLANUL, és
+ * mellettük a forrás-metaadat. Külön típus, hogy a `CourseSalesContent`-et
+ * váró fogyasztók (PromoCourseView, tesztfixtúrák) érintetlenek maradjanak.
+ */
+export interface CourseSalesContentForrassal extends CourseSalesContent {
+  forrasok: SalesForrasok
+}
+
 /** A vásárlódobozban legfeljebb ennyi pipás sor fér el olvashatóan. */
 export const MAX_HIGHLIGHTS = 4
 
@@ -400,7 +443,7 @@ export function factSteps(facts: CourseFactsInput): SalesStep[] {
 export function buildCourseSalesContent(
   product: SalesFields,
   facts: CourseFactsInput,
-): CourseSalesContent {
+): CourseSalesContentForrassal {
   const segments = segmentDocument(product.longDescription)
 
   const structuredFitFor = textRows(product.fitFor)
@@ -426,21 +469,35 @@ export function buildCourseSalesContent(
   let derivedNotFitFor: string[] = []
   let derivedFaq: SalesFaqItem[] = []
   let derivedGuarantee: SalesGuarantee | null = null
+  // A kinyert szakaszt nyitó címsor szövege (csak a forrás-metaadathoz).
+  const derivedHeading: Record<Exclude<SectionPart, 'body'>, string | null> = {
+    fitFor: null,
+    notFitFor: null,
+    faq: null,
+    guarantee: null,
+  }
+  const headingTextOf = (segment: Segment): string | null => {
+    const text = segment.heading === null ? '' : normalizeWhitespace(plainText(segment.heading))
+    return text.length > 0 ? text : null
+  }
 
   for (const segment of segments) {
     if (segment.part === 'fitFor' && derivedFitFor.length === 0) {
       derivedFitFor = bulletsOf(segment)
       derived.fitFor = derivedFitFor.length > 0
+      derivedHeading.fitFor = derived.fitFor ? headingTextOf(segment) : null
       continue
     }
     if (segment.part === 'notFitFor' && derivedNotFitFor.length === 0) {
       derivedNotFitFor = bulletsOf(segment)
       derived.notFitFor = derivedNotFitFor.length > 0
+      derivedHeading.notFitFor = derived.notFitFor ? headingTextOf(segment) : null
       continue
     }
     if (segment.part === 'faq' && derivedFaq.length === 0) {
       derivedFaq = faqPairsOf(segment)
       derived.faq = derivedFaq.length > 0
+      derivedHeading.faq = derived.faq ? headingTextOf(segment) : null
       continue
     }
     if (segment.part === 'guarantee' && derivedGuarantee === null) {
@@ -449,6 +506,7 @@ export function buildCourseSalesContent(
       if (title.length > 0 && text.length > 0) {
         derivedGuarantee = { title, text }
         derived.guarantee = true
+        derivedHeading.guarantee = title
       }
     }
   }
@@ -516,13 +574,18 @@ export function buildCourseSalesContent(
   // Előny-pipák: strukturált → a törzs ELSŐ felsorolása → tényadatok.
   const structuredHighlights = textRows(product.salesHighlights)
   let highlights = structuredHighlights.slice(0, MAX_HIGHLIGHTS)
+  let highlightsSource: SalesForras = { mezo: 'salesHighlights', cimsor: null, tartalek: false }
   if (highlights.length === 0) {
     const firstList = bodyNodes.find((node) => listItemTexts(node).length > 0)
     const fromBody = firstList === undefined ? [] : listItemTexts(firstList)
     highlights = fromBody.slice(0, 3).map((text) => shortenHighlight(text))
+    if (highlights.length > 0) {
+      highlightsSource = { mezo: 'longDescription', cimsor: null, tartalek: false }
+    }
   }
   if (highlights.length === 0) {
     highlights = factHighlights(facts)
+    highlightsSource = { mezo: 'salesHighlights', cimsor: null, tartalek: true }
   }
 
   const structuredSteps = (Array.isArray(product.howItWorks) ? product.howItWorks : [])
@@ -533,6 +596,34 @@ export function buildCourseSalesContent(
     .filter((row) => row.title.length > 0)
     .map((row) => ({ title: row.title, text: row.text.length > 0 ? row.text : null }))
 
+  /**
+   * A forrás: a strukturált mező, ha ő adta a tartalmat; a leírás címsora, ha
+   * onnan vágta ki a kód; különben a strukturált mező (üres szakasz: oda kell
+   * írni). Ugyanaz az elsőbbségi sor, mint a fenti értékeknél.
+   */
+  const listSource = (
+    mezo: string,
+    structuredUsed: boolean,
+    part: Exclude<SectionPart, 'body'>,
+  ): SalesForras =>
+    !structuredUsed && derived[part]
+      ? { mezo: 'longDescription', cimsor: derivedHeading[part], tartalek: false }
+      : { mezo, cimsor: null, tartalek: false }
+  const structuredGuaranteeUsed =
+    structuredGuaranteeTitle.length > 0 && structuredGuaranteeText.length > 0
+  const forrasok: SalesForrasok = {
+    leiras: { mezo: 'longDescription', cimsor: null, tartalek: false },
+    lepesek: { mezo: 'howItWorks', cimsor: null, tartalek: structuredSteps.length === 0 },
+    kinekValo: listSource('fitFor', structuredFitFor.length > 0, 'fitFor'),
+    kinekNem: listSource('notFitFor', structuredNotFitFor.length > 0, 'notFitFor'),
+    garancia:
+      facts.free || structuredGuaranteeUsed || guarantee === null
+        ? { mezo: 'guaranteeTitle', cimsor: null, tartalek: false }
+        : { mezo: 'longDescription', cimsor: derivedHeading.guarantee, tartalek: false },
+    gyik: listSource('faq', structuredFaq.length > 0, 'faq'),
+    elonyok: highlightsSource,
+  }
+
   return {
     highlights,
     steps: structuredSteps.length > 0 ? structuredSteps : factSteps(facts),
@@ -541,6 +632,7 @@ export function buildCourseSalesContent(
     guarantee,
     faq,
     body,
+    forrasok,
   }
 }
 

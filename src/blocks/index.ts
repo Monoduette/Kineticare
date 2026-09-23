@@ -1,5 +1,7 @@
 import type { ArrayField, Block, Field, UIField } from 'payload'
 
+import type { BlokkCimkeForras } from '../lib/admin/szekcio-masolatok'
+
 import { about } from './about'
 import { accordion } from './accordion'
 import { appointment } from './appointment'
@@ -11,6 +13,7 @@ import { filmHero } from './film-hero'
 import { freeSos } from './free-sos'
 import { howItWorks } from './how-it-works'
 import { knowledge } from './knowledge'
+import { offerCards } from './offer-cards'
 import { pressLogos } from './press-logos'
 import { richText } from './rich-text'
 import { services } from './services'
@@ -103,6 +106,20 @@ function szovegMezok(fields: readonly Field[]): string[] {
   return [...nevek].sort((a, b) => rang(a) - rang(b))
 }
 
+/**
+ * A blokk sorcímkéjének forrása: a típus neve (`labels.singular`) és a cím
+ * tartalék-mezői. EGYETLEN helyen számolva, mert két fogyasztója van, amelyek
+ * nem csúszhatnak el: a SectionRowLabel clientProps-a és az „ugyanaz máshol”
+ * jelzés helyfelirata (SZEKCIO_CIMKE_FORRASOK), amelynek betűre a cél sorcímkéjét
+ * kell mondania (WCAG 2.2 SC 3.2.4).
+ */
+function blokkCimkeForras(block: Block): BlokkCimkeForras {
+  return {
+    blockLabel: feliratSzovege(block.labels?.singular, block.slug),
+    textFields: szovegMezok(block.fields),
+  }
+}
+
 function elsoKepMezo(fields: readonly Field[]): string | undefined {
   const kep = kozvetlenMezok(fields).find((field) => field.type === 'upload')
   return kep && 'name' in kep ? kep.name : undefined
@@ -167,69 +184,23 @@ function tombSorCimkevel(field: ArrayField, blockSlug: string, utvonal: string):
   }
 }
 
-/**
- * Az oldalblokk admin-megjelenése, SÉMA-SEMLEGESEN (mezőnév, típus, validáció
- * és access változatlan; a G2 őr, src/__tests__/schema-config-sync.test.ts
- * bizonyítja):
- *
- * - `admin.components.Label`: beszédes sorcímke („05 · Szolgáltatás-sorok: Így
- *   tudunk segíteni”, rejtett szekciónál „Rejtve” jellel). A Payload BlockRow a
- *   Label-lel a teljes alapcímkét cseréli (sorszám, típus-pill, „Névtelen”
- *   input), @payloadcms/ui/dist/fields/Blocks/BlockRow.js:139-158.
- * - `admin.disableBlockName: true`: eltűnik a címke nélküli „Névtelen” input
- *   (a blockName oszlop a payload baseBlockFields része, marad; a már megadott
- *   név a sorcímkében zárójelben látszik).
- * - minden saját RowLabel nélküli tömb „1. Rendelői kezelések” alakú sorcímkét
- *   kap (a sor text/textarea mezőiből, képes sornál a kép leírásából);
- * - az ELSŐ mező egy `type: 'ui'` tájékoztató: „Megnézem az oldalon”, forrás és
- *   „Ugrás oda, ahol szerkeszted” link, rejtett szekciónál magyarázat.
- *
- * A blokkfájl saját Label-jét vagy RowLabel-jét nem írja felül. A slug és a
- * blokkok sorrendje nem változik.
- */
-export function withSectionAdmin(block: Block): Block {
-  const components = block.admin?.components ?? {}
-  const vanJelzes = block.fields.some(
-    (field) => 'name' in field && field.name === SECTION_SOURCE_FIELD_NAME,
-  )
-  const jelzes: UIField = {
-    name: SECTION_SOURCE_FIELD_NAME,
-    type: 'ui',
-    admin: { components: { Field: SECTION_SOURCE_NOTICE } },
-  }
-  return {
-    ...block,
-    admin: {
-      ...block.admin,
-      disableBlockName: true,
-      components: {
-        ...components,
-        Label: components.Label ?? {
-          path: SECTION_ROW_LABEL,
-          clientProps: {
-            blockLabel: feliratSzovege(block.labels?.singular, block.slug),
-            textFields: szovegMezok(block.fields),
-          },
-        },
-      },
-    },
-    fields: [...(vanJelzes ? [] : [jelzes]), ...tombSorCimkekkel(block.fields, block.slug, '')],
-  }
+/** A blokk közvetlen, adott nevű UI-mezője (a burkoló idempotenciájához). */
+function uiMezo(fields: readonly Field[], nev: string): UIField | undefined {
+  const mezo = fields.find((field) => 'name' in field && field.name === nev)
+  return mezo?.type === 'ui' ? mezo : undefined
 }
 
 /**
- * A szekció-rendszer blokk-katalógusa (docs/szekcio-rendszer-terv.md 2. pont).
- * A tömb SORRENDJE az admin „+ Blokk" választólistájának sorrendje. Szándékosan
- * a terv 4. pontja szerinti AJÁNLOTT kezdőlap-sorrendet követi (M1–M8 +
- * kinézet-blokkok), hogy a laikus szerkesztő fentről lefelé haladva építhessen
- * kezdőlapot. Az utolsó öt blokk (szakértő-kártyák, nyitható szekció,
- * időpontkérő, szabad szöveg, gombos sáv) nem kötődik kezdőlapi pozícióhoz,
- * ezért a „Bárhol használható” admin-csoportban áll.
- *
- * Minden elem a `withSectionAdmin` burkolón megy át (sorcímke, tömbsor-címkék,
- * tájékoztató). A nevesített exportok (lent) a nyers blokkok maradnak.
+ * A szekció-rendszer NYERS blokk-katalógusa (docs/szekcio-rendszer-terv.md 2.
+ * pont). A tömb SORRENDJE az admin „+ Blokk" választólistájának sorrendje.
+ * Szándékosan a terv 4. pontja szerinti AJÁNLOTT kezdőlap-sorrendet követi
+ * (M1–M8 + kinézet-blokkok), hogy a laikus szerkesztő fentről lefelé haladva
+ * építhessen kezdőlapot. Az utolsó hat blokk (szakértő-kártyák, nyitható
+ * szekció, időpontkérő, szabad szöveg, gombos sáv, ajánlat-kártyák) nem
+ * kötődik kezdőlapi pozícióhoz, ezért a „Bárhol használható” admin-csoportban
+ * áll.
  */
-export const pageBlocks: Block[] = [
+const nyersBlokkok: readonly Block[] = [
   filmHero,
   credsStrip,
   courseCards,
@@ -249,7 +220,90 @@ export const pageBlocks: Block[] = [
   appointment,
   richText,
   ctaBanner,
-].map(withSectionAdmin)
+  offerCards,
+]
+
+/**
+ * Blokktípus → sorcímke-forrás, a NYERS blokkokból (ugyanaz a számítás, amit a
+ * SectionRowLabel clientProps-a kap, blokkCimkeForras). Az „ugyanaz máshol”
+ * jelzés ebből nevezi meg a más oldalon álló szekciót, a teljes katalógusra,
+ * mert a hely bármilyen típusú sor lehet (a közös kép a Rólunk harmonikájában
+ * és a Kapcsolat szakember-kártyáján is állhat).
+ */
+export const SZEKCIO_CIMKE_FORRASOK: Readonly<Record<string, BlokkCimkeForras>> =
+  Object.fromEntries(nyersBlokkok.map((block) => [block.slug, blokkCimkeForras(block)]))
+
+/**
+ * Az oldalblokk admin-megjelenése, SÉMA-SEMLEGESEN (mezőnév, típus, validáció
+ * és access változatlan; a G2 őr, src/__tests__/schema-config-sync.test.ts
+ * bizonyítja):
+ *
+ * - `admin.components.Label`: beszédes sorcímke („05 · Szolgáltatás-sorok: Így
+ *   tudunk segíteni”, rejtett szekciónál „Rejtve” jellel). A Payload BlockRow a
+ *   Label-lel a teljes alapcímkét cseréli (sorszám, típus-pill, „Névtelen”
+ *   input), @payloadcms/ui/dist/fields/Blocks/BlockRow.js:139-158.
+ * - `admin.disableBlockName: true`: eltűnik a címke nélküli „Névtelen” input
+ *   (a blockName oszlop a payload baseBlockFields része, marad; a már megadott
+ *   név a sorcímkében zárójelben látszik).
+ * - minden saját RowLabel nélküli tömb „1. Rendelői kezelések” alakú sorcímkét
+ *   kap (a sor text/textarea mezőiből, képes sornál a kép leírásából);
+ * - az ELSŐ mező egy `type: 'ui'` tájékoztató: „Megnézem az oldalon”, forrás és
+ *   „Ugrás oda, ahol szerkeszted” link, rejtett szekciónál magyarázat;
+ * - a MÁSODIK mező az „ugyanaz máshol” jelzés (`type: 'ui'`, SectionCopies):
+ *   hasonló szekció más oldalon, közös telefonszám, e-mail-cím vagy kép, a
+ *   helyek linkjeivel (modul-térkép H10, H49). A `cimkek` a teljes katalógus
+ *   sorcímke-forrása; ha nincs megadva, a SZEKCIO_CIMKE_FORRASOK.
+ *
+ * Idempotens: a már meglévő két UI-mezőt nem teszi be újra. A blokkfájl saját
+ * Label-jét vagy RowLabel-jét nem írja felül. A slug és a blokkok sorrendje nem
+ * változik.
+ */
+export function withSectionAdmin(
+  block: Block,
+  cimkek: Readonly<Record<string, BlokkCimkeForras>> = SZEKCIO_CIMKE_FORRASOK,
+): Block {
+  const components = block.admin?.components ?? {}
+  const jelzes: UIField = uiMezo(block.fields, SECTION_SOURCE_FIELD_NAME) ?? {
+    name: SECTION_SOURCE_FIELD_NAME,
+    type: 'ui',
+    admin: { components: { Field: SECTION_SOURCE_NOTICE } },
+  }
+  const masolatok: UIField = uiMezo(block.fields, SECTION_COPIES_FIELD_NAME) ?? {
+    name: SECTION_COPIES_FIELD_NAME,
+    type: 'ui',
+    admin: { components: { Field: { path: SECTION_COPIES, clientProps: { cimkek } } } },
+  }
+  const tobbi = block.fields.filter(
+    (field) =>
+      !('name' in field) ||
+      (field.name !== SECTION_SOURCE_FIELD_NAME && field.name !== SECTION_COPIES_FIELD_NAME),
+  )
+  return {
+    ...block,
+    admin: {
+      ...block.admin,
+      disableBlockName: true,
+      components: {
+        ...components,
+        Label: components.Label ?? {
+          path: SECTION_ROW_LABEL,
+          clientProps: { ...blokkCimkeForras(block) },
+        },
+      },
+    },
+    fields: [jelzes, masolatok, ...tombSorCimkekkel(tobbi, block.slug, '')],
+  }
+}
+
+/**
+ * A szekció-rendszer blokk-katalógusa: a nyers blokkok (sorrendjük a fenti
+ * nyersBlokkok-nál) a `withSectionAdmin` burkolón átvezetve (sorcímke,
+ * tömbsor-címkék, tájékoztató, „ugyanaz máshol” jelzés). A nevesített
+ * exportok (lent) a nyers blokkok maradnak.
+ */
+export const pageBlocks: Block[] = nyersBlokkok.map((block) =>
+  withSectionAdmin(block, SZEKCIO_CIMKE_FORRASOK),
+)
 
 /** A katalógus blokk-azonosítói (renderelő és tesztek számára). */
 export const pageBlockSlugs: string[] = pageBlocks.map((block) => block.slug)
@@ -266,6 +320,7 @@ export {
   freeSos,
   howItWorks,
   knowledge,
+  offerCards,
   pressLogos,
   richText,
   services,

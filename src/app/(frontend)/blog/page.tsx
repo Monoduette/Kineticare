@@ -1,10 +1,14 @@
 import type { Metadata } from 'next'
+import { draftMode } from 'next/headers'
 
 import { BarionPageView } from '@/components/analytics/BarionPageView'
 import { JsonLd } from '@/components/content/JsonLd'
 import { PostCard } from '@/components/content/PostCard'
 import { PostListFilter } from '@/components/content/PostListFilter'
 import { PostsEmptyState } from '@/components/content/PostsEmptyState'
+import { listaFejSzalag } from '@/components/editor/frontend/szerkeszto-szalag'
+import { SzerkesztoKodSzalag } from '@/components/editor/frontend/SzerkesztoSzalag'
+import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
 import {
@@ -20,6 +24,7 @@ import {
   getPublishedPageSlugs,
   getPublishedProducts,
 } from '@/lib/cms'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { absoluteUrl, blogJsonLd, buildStaticPageMetadata, NOINDEX_ROBOTS } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { categoriesWithPosts, freeCourseHref } from '@/lib/tudastar'
@@ -82,11 +87,17 @@ export default async function BlogPage({ searchParams }: Props) {
   // kategória-váltás a kliensen történik, hálózati kör nélkül (WP35,
   // tulajdonosi kérés). A `?kategoria=` csak a KEZDŐ szűrőt adja; ismeretlen
   // értéknél a szűretlen lista jelenik meg (a canonical is oda mutat).
-  const [posts, categories, publikaltOldalak] = await Promise.all([
-    getPosts(),
-    getContentCategories(),
-    getPublishedPageSlugs(),
-  ])
+  // Piszkozat-előnézet (csak staff/owner): a lap elején az előnézet-sáv és a
+  // lapfej „Kódban van” szalagja (H21). A kapcsolati e-mail (H18, H46) a
+  // szervezet-csomópontba; a feloldó nem dob, hibánál a kódtartalék.
+  const [posts, categories, publikaltOldalak, { isEnabled: isDraft }, kapcsolatiEmail] =
+    await Promise.all([
+      getPosts(),
+      getContentCategories(),
+      getPublishedPageSlugs(),
+      draftMode(),
+      getContactEmail(),
+    ])
   const activeCategory = findCategory(categories, kategoria)
   const activeSlug = activeCategory?.slug ?? undefined
   // KANONIKUS belső link: ahol a cikknek PUBLIKÁLT gyökér-hubja van, oda
@@ -112,7 +123,7 @@ export default async function BlogPage({ searchParams }: Props) {
     filtered ||
     shouldShowCategoryFilter(categoriesWithPosts(categories, posts).length, posts.length)
 
-  return (
+  const lap = (
     <Section>
       {/* Barion Pixel `contentView` (contentType: 'Page'). A `list` kimarad: a
           bp.js kötött listájában nincs a Tudástárra illő érték, és a 'Misc'
@@ -144,6 +155,7 @@ export default async function BlogPage({ searchParams }: Props) {
                   { name: 'Kezdőlap', path: '/' },
                   { name: 'Tudástár', path: '/blog' },
                 ],
+                contactEmail: kapcsolatiEmail,
               })}
             />
             <JsonLd
@@ -196,5 +208,17 @@ export default async function BlogPage({ searchParams }: Props) {
         )}
       </Container>
     </Section>
+  )
+  // Nem piszkozatban PONTOSAN a korábbi elem, csomagoló nélkül: a látogató
+  // HTML-je és RSC-adata nem változik.
+  if (!isDraft) {
+    return lap
+  }
+  return (
+    <>
+      <PreviewBar path="/blog" />
+      <SzerkesztoKodSzalag szalag={listaFejSzalag('tudastar')} />
+      {lap}
+    </>
   )
 }

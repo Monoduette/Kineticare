@@ -334,18 +334,6 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok: 'Folyószövegbe ágyazott hivatkozás a globális hibaoldalon.',
   },
   {
-    felirat: 'info@kineticare.hu',
-    fajl: 'components/layout/Footer.tsx',
-    kategoria: 'nem-cta',
-    indok: 'E-mail-cím `mailto:` hivatkozásként — a cím maga a felirat, nem CTA.',
-  },
-  {
-    felirat: 'info@kineticare.hu',
-    fajl: 'components/error/NotFoundView.tsx',
-    kategoria: 'nem-cta',
-    indok: 'E-mail-cím `mailto:` hivatkozásként a 404-oldalon.',
-  },
-  {
     felirat: 'Általános szerződési feltételeket (új lapon nyílik)',
     fajl: 'components/checkout/CheckoutForm.tsx',
     kategoria: 'nem-cta',
@@ -424,8 +412,13 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * döntésre kikerült (a „Kapcsolat" menüpont fedi; NN/g Menu-Design
  * Checklist, WCAG 2.2 SC 3.2.3), a `lib/header-appointment.ts` törölve,
  * a sora a listából is kikerült. A korlát a szabály szerint LEFELÉ mozdult.
+ *
+ * 2026-09-23 (A2, H18/H46): 44 → 42. A lábléc és a 404 `mailto:` felirata már
+ * nem kódliterál, hanem a kapcsolati e-mail feloldójának értéke
+ * (src/lib/contact-email-server.ts); a két sor a futásidőben eldőlő helyek
+ * közé került át, a kivétel-listáról törölve.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 44
+const KIVETEL_LISTA_FELSO_KORLAT = 42
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -476,7 +469,7 @@ const HREF_UTKOZES_KIVETELEK: readonly {
     href: '/kapcsolat',
     feliratok: ['Írj nekünk', 'Érdeklődj a szakkönyvről'],
     indok:
-      'WP49 (2026-09-19): a /szakembereknek szakkönyv-kártyája a vásárlási cím megérkezéséig a kapcsolat-oldalra visz a §3.2 #43 felirattal, amely a TÁRGYAT (a szakkönyvet) is megnevezi; a #33 („Írj nekünk") az általános kapcsolatfelvétel. Két KÜLÖNBÖZŐ célú komponens, nem szinonima (W3C Understanding SC 3.2.4: „consistent", nem „identical"). A #43 megszűnik, amint a SZAKKONYV_URL kitöltődik (#42).',
+      'WP49 (2026-09-19): a /szakembereknek szakkönyv-kártyája a vásárlási cím megérkezéséig a kapcsolat-oldalra visz a §3.2 #43 felirattal, amely a TÁRGYAT (a szakkönyvet) is megnevezi; a #33 („Írj nekünk") az általános kapcsolatfelvétel. Két KÜLÖNBÖZŐ célú komponens, nem szinonima (W3C Understanding SC 3.2.4: „consistent", nem „identical"). A #43 megszűnik, amint a SZAKKONYV_URL kitöltődik (#42). 2026-09-23 (A7, H11): a kártya az Ajánlat-kártyák blokkal renderel; a felirat forrása a `resolveSzakkonyvCta` (lib/szakembereknek.ts, `ctaLabel`), ebből épül a kódtartalék és a „szakembereknek” Oldalak-rekord kezdő adata is (`szakembereknekAlapBlokk`), a CMS-felirat pedig az OfferCards dinamikus helye (lásd a 7. szakasz korlátját).',
   },
   {
     href: '/kurzusaim',
@@ -953,11 +946,19 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `RendeloiArlista.tsx`) felirata maga a CMS-ből jövő cím + a rejtett
     // „(Google Térkép, új lapon nyílik)" toldat: nem CTA, a cím a felirat
     // (ugyanaz az elbírálás, mint a `mailto:` sorok kivételeié).
+    // 82 (2026-09-23, A2): a lábléc és a 404 `mailto:` felirata a kapcsolati
+    // e-mail feloldójából jön (a /kapcsolat Időpontkérőjének CMS-mezője), nem
+    // kódliterál; a két sor a kivétel-listáról ide került át.
+    // 83 (2026-09-23, A7/H11): az Ajánlat-kártyák (`OfferCards.tsx`) gombjának
+    // felirata a kártya CMS-mezője („Felirat”), kódbeli tartalék nélkül, mint a
+    // `CtaBanner`-é: a blokk bármilyen ajánlatra mutathat, a hívóhely nem ismer
+    // `CtaAction`-t. A /szakembereknek kódtartalékának és kezdő rekordjának
+    // feliratai a `ctaLabel`-ből jönnek (lib/szakembereknek.ts).
     expect(
       dinamikusHelyek.length,
       `Futásidőben eldőlő feliratok: ${dinamikusHelyek.length}. Ha ez a szám ` +
         'megugrott, a felületről feliratok csúsztak át kódon kívülre — ' +
         'ellenőrizd, nem CMS-ből jön-e egy szótári cselekvés felirata.',
-    ).toBeLessThanOrEqual(80)
+    ).toBeLessThanOrEqual(83)
   })
 })

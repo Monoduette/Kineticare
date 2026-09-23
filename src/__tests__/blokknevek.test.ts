@@ -19,6 +19,7 @@ import * as indexModul from '../blocks/index'
 import * as kepCsereModul from '../blocks/kep-csere'
 import * as knowledgeModul from '../blocks/knowledge'
 import * as linkFieldsModul from '../blocks/link-fields'
+import * as offerCardsModul from '../blocks/offer-cards'
 import * as pressLogosModul from '../blocks/press-logos'
 import * as richTextModul from '../blocks/rich-text'
 import * as sectionSettingsModul from '../blocks/section-settings'
@@ -75,6 +76,7 @@ const MODULOK: Readonly<Record<string, Record<string, unknown>>> = {
   'kep-csere.ts': kepCsereModul,
   'knowledge.ts': knowledgeModul,
   'link-fields.ts': linkFieldsModul,
+  'offer-cards.ts': offerCardsModul,
   'press-logos.ts': pressLogosModul,
   'rich-text.ts': richTextModul,
   'section-settings.ts': sectionSettingsModul,

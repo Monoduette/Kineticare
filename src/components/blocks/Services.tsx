@@ -22,7 +22,14 @@ import '../../app/(frontend)/styles/blocks/services-sin.css'
  * ISC; WP51) MINDEN állapotban a tétel jele: inaktívan chrome a fehér körön,
  * aktívan fehér a sötét körön.
  * A /szolgaltatasok „Szolgáltatásaink" blokkja is ezt a sínt kapja (WP25), a
- * lap saját soraival: a döntést a `presentSzolgaltatasokLayout` hozza.
+ * lap saját soraival.
+ *
+ * ELRENDEZÉS (H15, A4): a komponens KIZÁRÓLAG a blokk `elrendezes` mezőjéből
+ * dönt (`sin` → sín, minden más → tábla); címet, URL-t nem néz. A sorok
+ * jelentése (`homeHelpDoorIndex`) csak az ajtó ikonját adja, elrendezést nem.
+ * A mező nélküli régi adatot a lap prezentere (src/lib/home-help-states.ts
+ * `presentHomeLayout`, `presentSzolgaltatasokLayout`) egészíti ki a
+ * felismeréssel, mielőtt ide ér.
  */
 export interface ServicesProps {
   block: BlockServices

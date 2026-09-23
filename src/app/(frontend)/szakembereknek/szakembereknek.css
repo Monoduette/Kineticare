@@ -1,41 +1,16 @@
 /**
- * /szakembereknek — a szakmai választó oldal stílusai (WP49, 2026-09-19).
+ * /szakembereknek — a szakmai választó oldal lapspecifikus stílusai (WP49,
+ * 2026-09-19; CMS-be költözve: modul-térkép H11, A7).
+ *
+ * A kártyák szabályai az Ajánlat-kártyák blokkal együtt a
+ * styles/blocks/offer-cards.css-be költöztek (értékre változatlanul). Itt
+ * csak a lapfej (felső felirat, H1, bevezető) és a lapfej meg az első szekció
+ * közti térköz maradt.
  *
  * A 5A-stílusok (tokens/base/ui/layout) módosítása TILOS: ez a lap saját
  * rétege, kizárólag a tokeneket (var(--kc-*)) és a közös primitíveket
- * (`kc-section`, `kc-eyebrow`, `kc-section-title`, `kc-section-lead`,
- * `kc-card`, `kc-button`) használja. Betűméret CSAK a három tokenről (L/M/S).
- *
- * ELRENDEZÉS. 320 px-től egy hasáb; 900 px-től (a fejléc/lábléc asztali
- * lépcsője) két EGYENLŐ hasáb (a két út egyenrangú, ezért egyforma szélesség
- * és egyforma kártya-anatómia: ikon, felvezető, cím, szöveg, tények, láb a
- * gombbal). A kártyák a rács-cellát teljes magasságban kitöltik, a láb az
- * aljára ül: a két gomb így egy vonalban áll, a tekintet egy sorban
- * hasonlítja össze őket.
- * MIÉRT 900 ÉS NEM 768 (mérve, Chromium): 768 px-en két hasábbal a kártya
- * szövege 278 px széles, azaz ~36 karakter soronként, a 45–85-ös olvashatósági
- * sáv ALATT (UX-skill 3. pont); egy hasábbal ugyanott ~70 karakter. 900 px-en
- * két hasábbal 44, 1024-en 51, 1440-en 54 karakter: a sávon belül.
- * - NN/g, Cards: Ul Design Patterns: egyforma szerkezet, pásztázható rács
- *   (https://www.nngroup.com/articles/cards-component/).
- * - Material 3, Cards, Layout: azonos kártyák egy rácsban, a cselekvés a
- *   kártya alján (https://m3.material.io/components/cards/guidelines).
- * - GOV.UK, Layout: a tartalom keskeny nézetben egy hasábra esik, szélesen
- *   kettőre (https://design-system.service.gov.uk/styles/layout/); a lépcső
- *   nálunk a repó 900 px-es asztali töréspontja (layout.css), hogy a kártya
- *   olvasható mértéke megmaradjon.
- * - Baymard, Line Length: 50–75 karakter az olvasható sor
- *   (https://baymard.com/blog/line-length-readability).
- *
- * KONTRASZT (mérve, WCAG 2.2; a kártya háttere a fehér `surface-raised`):
- *   cím + tények, ink #10243e a fehéren ................ 15,63:1 (1.4.3 ✓)
- *   szöveg + jegyzet, ink-soft #33495f a fehéren ......... 8,42:1 (1.4.3 ✓)
- *   felvezető, accent-deep #2f6e9f a fehéren ............. 5,45:1 (1.4.3 ✓)
- *   ikon, accent-deep a tint korongon (#e6f0f8) .......... 4,72:1 (1.4.11 ✓)
- *   állapot-sáv szövege, ink-soft a tinten ............... 7,32:1 (1.4.3 ✓)
- * Érintőcél: a gomb `min-height: 2.75rem` (44 px), 640 px alatt teljes
- * szélességű (Baymard, Mobile: a fő CTA legyen teljes szélességű a hüvelykujj
- * zónájában; https://baymard.com/blog/mobile-touch-targets-and-thumb-zones).
+ * (`kc-section`, `kc-eyebrow`, `kc-section-title`, `kc-section-lead`)
+ * használja. Betűméret CSAK a három tokenről (L/M/S).
  */
 
 /* 48ch, nem 40ch: a 40ch-s sapka (456 px 1440-en, mérve) a verzál, ritkított
@@ -59,184 +34,34 @@
   line-height: var(--kc-leading-body);
 }
 
-/* ---- Rács ------------------------------------------------------------ */
-
-.kc-szakemberek__grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--kc-space-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* ---- CMS-ből jövő szekciósor ------------------------------------------
+   Ha a lap szekciósora a „szakembereknek” Oldalak-rekordból jön, a lapfej
+   saját szekció (`kc-szakemberek--fej`), a szekciók utána állnak. A lapfej és
+   az első szekció közti térköz ilyenkor is a kódtartalékéval egyező 3rem
+   (48 px) marad: a lapfej alsó térköze a fejléc-margó helyett a szekció
+   alsó belső margója, és a közvetlenül utána álló, azonos hátterű
+   Ajánlat-kártyák felső belső margója nulla. Így a rekord közzététele nem
+   tolja lejjebb a kártyákat (a WP49 lap látványa marad). Színes hátterű
+   (tint, sötét) szekció a saját belső margójával kezdődik: ott a sávváltás
+   maga tagol. Piszkozat-előnézetben a szekció előtti szerkesztői szalag
+   közbeékelődik; a kártyák térköze ugyanaz marad, a szalag a lapfej alatt áll.
+   Gestalt-közelség: a lapfejhez tartozó kártyák közel, a következő szekció
+   távolabb. NN/g, Proximity Principle in Visual Design: „Items close
+   together are likely to be perceived as part of the same group”
+   (https://www.nngroup.com/articles/gestalt-proximity/); NN/g, Visual
+   Hierarchy in UX: a kisebb térköz összetartozást, a nagyobb elkülönülést
+   jelez (https://www.nngroup.com/articles/visual-hierarchy-ux-definition/). */
+.kc-section.kc-szakemberek--fej {
+  padding-bottom: var(--kc-space-7);
 }
 
-@media (min-width: 900px) {
-  .kc-szakemberek__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--kc-space-6);
-  }
+.kc-szakemberek--fej .kc-szakemberek__head {
+  margin-bottom: 0;
 }
 
-.kc-szakemberek__cell {
-  display: flex;
-  min-width: 0;
-}
-
-/* ---- Kártya ----------------------------------------------------------- */
-
-.kc-szakemberek__card {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.kc-szakemberek__body {
-  flex: 1;
-  padding: var(--kc-space-5);
-}
-
-@media (min-width: 640px) {
-  .kc-szakemberek__body {
-    padding: var(--kc-space-6);
-  }
-}
-
-/* Dekoratív ikon-korong: a Usps sorszám-korong és a Services-sín kézikonjának
-   nyelve (tint korong, benne a Phosphor glifa a korong 50%-án). */
-.kc-szakemberek__ikon {
-  display: flex;
-  width: 3.5rem;
-  height: 3.5rem;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--kc-space-5);
-  border-radius: var(--kc-radius-full);
-  background-color: var(--kc-color-surface-tint);
-  color: var(--kc-color-primary);
-}
-
-.kc-szakemberek__glifa {
-  width: 1.75rem;
-  height: 1.75rem;
-}
-
-/* Felvezető: az `.kc-eyebrow` nyelve, aláhúzó vonal nélkül (a kártyán belül
-   a cím közvetlenül követi, a vonal itt zavaró tagolás lenne). */
-.kc-szakemberek__kicker {
-  margin: 0 0 var(--kc-space-2);
-  font-size: var(--kc-font-s);
-  font-weight: var(--kc-font-weight-medium);
-  letter-spacing: var(--kc-tracking-eyebrow);
-  line-height: 1.3;
-  color: var(--kc-color-primary);
-  text-transform: uppercase;
-}
-
-/* Kártyacím: H2 a lap H1-e (L) alatt egy látható lépcsővel, a címsor-betűvel
-   M méreten. Méret nincs a három tokenen kívül (UX-skill 4. pont); a szintet
-   a betűcsalád és a pozíció adja (NN/g, Visual Hierarchy). */
-.kc-szakemberek__cim {
-  margin: 0 0 var(--kc-space-3);
-  font-family: var(--kc-font-heading);
-  font-size: var(--kc-font-m);
-  font-weight: var(--kc-font-weight-normal);
-  line-height: 1.3;
-  color: var(--kc-color-text);
-  text-wrap: balance;
-}
-
-.kc-szakemberek__szoveg {
-  margin: 0;
-  max-width: var(--kc-measure);
-  font-size: var(--kc-font-m);
-  line-height: var(--kc-leading-body);
-  color: var(--kc-color-text-muted);
-}
-
-/* Tény-sorok: a kurzuskártya pipás előny-sorainak halkabb rokona, jelölő
-   pöttyel (dekoráció, az akcent halk lépcsőjén). */
-.kc-szakemberek__tenyek {
-  margin: var(--kc-space-4) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.kc-szakemberek__tenyek li {
-  position: relative;
-  padding-left: var(--kc-space-5);
-  font-size: var(--kc-font-m);
-  line-height: var(--kc-leading-body);
-  color: var(--kc-color-text);
-}
-
-.kc-szakemberek__tenyek li + li {
-  margin-top: var(--kc-space-2);
-}
-
-.kc-szakemberek__tenyek li::before {
-  position: absolute;
-  top: 0.72em;
-  left: 0.25rem;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--kc-radius-full);
-  background-color: var(--kc-color-accent-quiet);
-  content: '';
-}
-
-/* Állapot-sáv („hamarosan"): az info-felület tintje, S méreten. */
-.kc-szakemberek__allapot {
-  margin: var(--kc-space-4) 0 0;
-  padding: var(--kc-space-3) var(--kc-space-4);
-  border-radius: var(--kc-radius-md);
-  background-color: var(--kc-color-info-surface);
-  font-size: var(--kc-font-s);
-  line-height: 1.5;
-  color: var(--kc-color-text-muted);
-}
-
-/* ---- Kártya-láb: hajszálvonal, gomb, jegyzet -------------------------- */
-
-.kc-szakemberek__lab {
-  display: flex;
-  flex-direction: column;
-  gap: var(--kc-space-3);
-  margin-top: auto;
-  padding: var(--kc-space-5);
-  border-top: 1px solid var(--kc-color-border);
-}
-
-@media (min-width: 640px) {
-  .kc-szakemberek__lab {
-    padding: var(--kc-space-5) var(--kc-space-6);
-  }
-}
-
-@media (max-width: 639px) {
-  .kc-szakemberek__gomb {
-    width: 100%;
-  }
-}
-
-@media (min-width: 640px) {
-  .kc-szakemberek__gomb {
-    align-self: flex-start;
-  }
-}
-
-.kc-szakemberek__jegyzet {
-  display: flex;
-  align-items: center;
-  gap: var(--kc-space-2);
-  margin: 0;
-  font-size: var(--kc-font-s);
-  line-height: 1.4;
-  color: var(--kc-color-text-muted);
-}
-
-.kc-szakemberek__jegyzet .kc-nav__external-icon {
-  width: 0.9em;
-  height: 0.9em;
-  opacity: 1;
+.kc-szakemberek--fej + .kc-ajanlat-kartyak:not(.kc-section--tint, .kc-section--dark),
+.kc-szakemberek--fej
+  + .kc-szerkeszto-szalag
+  + .kc-ajanlat-kartyak:not(.kc-section--tint, .kc-section--dark) {
+  padding-top: 0;
 }

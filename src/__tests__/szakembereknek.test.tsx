@@ -1,8 +1,7 @@
-import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import SzakembereknekPage, { metadata } from '../app/(frontend)/szakembereknek/page'
+import SzakembereknekPage, { generateMetadata } from '../app/(frontend)/szakembereknek/page'
 import { ctaLabel } from '../lib/cta-vocabulary'
 import { buildNavigationMenuPlan, PROFESSIONAL_TRAINING_URL } from '../lib/menu-seed'
 import { absoluteUrl } from '../lib/seo'
@@ -31,9 +30,25 @@ import { EM_DASH, EN_DASH } from './helpers/cta-mikroszoveg'
  *  5. a menü-seed „Szakembereknek" pontja pontosan erre az oldalra mutat.
  *
  * A tesztkörnyezet `node` (nincs jsdom): a SZERVER-RENDERELT kimenetet mérjük.
+ * A lap 2026-09-23 óta a „szakembereknek” Oldalak-rekordból renderel (H11); itt
+ * a rekord NÉLKÜLI kódtartalékot mérjük (a CMS-ágak őre:
+ * szakembereknek-cms.test.tsx). Adatbázis és hálózat nincs.
  */
 
-const html = renderToStaticMarkup(createElement(SzakembereknekPage))
+vi.mock('next/headers', () => ({ draftMode: async () => ({ isEnabled: false }) }))
+vi.mock('@/lib/cms', () => ({ getPageBySlug: async () => null }))
+vi.mock('@/lib/contact-email-server', () => ({ getContactEmail: async () => 'info@kineticare.hu' }))
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+vi.mock('payload', async (eredeti) => ({
+  ...(await eredeti<typeof import('payload')>()),
+  getPayload: async () => {
+    throw new Error('A tesztből nem indulhat Payload.')
+  },
+}))
+vi.mock('../payload.config', () => ({ default: {} }))
+
+const html = renderToStaticMarkup(await SzakembereknekPage())
+const metadata = await generateMetadata()
 
 function hrefs(markup: string): string[] {
   return [...markup.matchAll(/href="([^"]+)"/g)].map((match) => match[1]!)
@@ -66,7 +81,7 @@ describe('/szakembereknek — a lap renderel', () => {
   })
 
   it('két egyenrangú kártya: képzés és szakkönyv, mindkettő saját címmel', () => {
-    expect(html.match(/<article class="kc-card[^"]*kc-szakemberek__card"/g)).toHaveLength(2)
+    expect(html.match(/<article class="kc-card[^"]*kc-ajanlat-kartyak__card"/g)).toHaveLength(2)
     expect(html).toMatch(/<h2[^>]*>Akkreditált kézrehabilitációs képzés<\/h2>/)
     expect(html).toMatch(/<h2[^>]*>A Kineticare szakkönyve<\/h2>/)
     expect(text(html)).toContain('12 kreditpont (SZTK-A-33553/2024)')
@@ -77,9 +92,9 @@ describe('/szakembereknek — a lap renderel', () => {
     expect(tag).toContain(`href="${PROFESSIONAL_TRAINING_URL}"`)
     expect(tag).toContain('target="_blank"')
     expect(tag).toContain('rel="noopener noreferrer"')
-    expect(tag).toContain('aria-describedby="szakembereknek-kepzes-jegyzet"')
+    expect(tag).toContain('aria-describedby="szakembereknek-1-jegyzet"')
     expect(html).toMatch(
-      /<p class="kc-szakemberek__jegyzet" id="szakembereknek-kepzes-jegyzet">[\s\S]*?Külső oldal, új lapon nyílik\./,
+      /<p class="kc-ajanlat-kartyak__jegyzet" id="szakembereknek-1-jegyzet">[\s\S]*?Külső oldal, új lapon nyílik\./,
     )
     expect(tag).toContain('kc-button--primary')
   })

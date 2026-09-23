@@ -1,7 +1,9 @@
 import { SECTION_SETTINGS_LABEL, validateAnchorId } from '../blocks/section-settings'
-import { ervenyesBlokkId } from '../components/editor/szekcio-melylink'
+import { ervenyesBlokkId, szekcioMelylink } from '../components/editor/szekcio-melylink'
+import { HOME_PAGE_SLUG } from './content-slugs'
 import { ctaLabel } from './cta-vocabulary'
 import { FREE_SOS_NEUTRAL_TITLE, freeSosStripTitle } from './free-sos-title'
+import { kezdolapiSinE, presentHomeHelpServicesBlock, szolgaltatasokSinE } from './home-help-states'
 import { CLINIC_TREATMENTS_ANCHOR, SERVICES_PAGE_SLUG } from './menu-seed'
 import { PREVIEW_PATH, previewTargetPath } from './preview/preview-target'
 
@@ -215,7 +217,7 @@ export const SECTION_TITLE_SOURCES: Readonly<Record<string, readonly string[]>> 
   states: ['title', 'lead', 'cards.0.title'],
   services: ['title', 'eyebrow', 'lead', 'rows.0.title'],
   about: ['title', 'eyebrow', 'paragraphs.0.text', 'feature.label'],
-  howItWorks: ['title', 'steps.0.title'],
+  howItWorks: ['title'],
   testimonials: ['heading'],
   knowledge: ['heading'],
   faq: ['heading', 'items.0.question'],
@@ -224,13 +226,22 @@ export const SECTION_TITLE_SOURCES: Readonly<Record<string, readonly string[]>> 
   appointment: ['title', 'eyebrow', 'urlapCim'],
   richText: ['content'],
   ctaBanner: ['title', 'text'],
+  offerCards: ['title', 'eyebrow', 'kartyak.0.cim'],
 }
 
 /**
  * Üres saját cím mellett a lapon a komponens beépített címe látszik
  * (course-showcase.ts COURSE_SHOWCASE_HEADING, PressLogos.tsx DEFAULT_HEADING,
  * TestimonialsSection.tsx, KnowledgeSection.tsx, FreeSos.tsx
- * FREE_SOS_STRIP_TITLE), ezért itt nem „nincs címe”.
+ * FREE_SOS_STRIP_TITLE, HowItWorks.tsx:49 „Így működik az online kurzus”,
+ * CredentialsStrip.tsx `CREDENTIALS`: kitöltött tétel nélkül a beépített
+ * három tény), ezért itt nem „nincs címe”.
+ *
+ * A Számozott lépések címe üres Szekciócímnél NEM az első lépés címe: a lap
+ * ilyenkor a beépített címet mutatja, ezért a lépés-tartalék kikerült
+ * (modul-térkép H01, K15, WCAG 2.2 SC 3.2.4). A hitel-csík „címe” az első
+ * KITÖLTÖTT tétel, mert a lap az üres tételeket kihagyja (RenderBlocks.tsx
+ * credsStrip ág, `credsStripTitle`).
  *
  * Az SOS-sáv címét a lap, a sorcímke, a szerkesztői szalag és az
  * llms-full.txt ugyanazzal a feloldóval számolja (src/lib/free-sos-title.ts
@@ -240,7 +251,9 @@ export const SECTION_TITLE_SOURCES: Readonly<Record<string, readonly string[]>> 
  */
 export const BUILT_IN_TITLE_TYPES: ReadonlySet<string> = new Set([
   'courseCards',
+  'credsStrip',
   'freeSos',
+  'howItWorks',
   'pressLogos',
   'testimonials',
   'knowledge',
@@ -285,6 +298,22 @@ function freeSosCimUres(data: Adat): boolean {
 }
 
 /**
+ * A hitel-csík első kitöltött tételének szövege, vagy null. A lap ugyanígy
+ * dönt: a RenderBlocks.tsx credsStrip ága az üres tételeket kiszűri, és ha
+ * egy sem marad, a CredentialsStrip a beépített tényeket mutatja.
+ */
+function credsStripTitle(data: Adat): string | null {
+  const items = Array.isArray(data.items) ? data.items : []
+  for (const item of items) {
+    const text = isRecord(item) ? nonEmptyText(item.text) : null
+    if (text) {
+      return text
+    }
+  }
+  return null
+}
+
+/**
  * A szekció teljes (csonkítatlan) címe, vagy null.
  *
  * Az SOS-sávnál a lap feloldója adja (`freeSosStripTitle(data, true)`): az
@@ -302,6 +331,9 @@ export function sectionTitle(data: unknown, textFields: readonly string[] = []):
   const blockType = typeof data.blockType === 'string' ? data.blockType : ''
   if (blockType === 'freeSos') {
     return freeSosStripTitle(data, true)
+  }
+  if (blockType === 'credsStrip') {
+    return credsStripTitle(data)
   }
   for (const path of SECTION_TITLE_SOURCES[blockType] ?? []) {
     const text = textAtPath(data, path)
@@ -364,6 +396,14 @@ export interface SectionDescription {
   horgony: string | null
   /** Azonos típusú és tartalmú testvér esetén a sorszáma közöttük (1, 2, …), különben null. */
   ismetles: number | null
+  /**
+   * A lapon ténylegesen látszó elrendezés jele a típus után („(sín)”,
+   * „(tábla)”), vagy null (`sectionPageMarks`). Opcionális, mert a meglévő
+   * hívók (a frontend szalag, a szekció-másolatok) oldal nélkül építenek.
+   */
+  valtozat?: string | null
+  /** Oldalfüggő jelek a cím után, pl. „#rendeloi (erre visz a menü)” (`sectionPageMarks`). */
+  jelek?: readonly string[]
 }
 
 /**
@@ -442,21 +482,39 @@ export function repeatMarker(ismetles: number | null): string | null {
   return ismetles === null ? null : `(${String(ismetles)}. ilyen)`
 }
 
+/** A típus és a lapon látszó elrendezés jele, pl. „Képes lista vagy kártyák (sín)”. */
+export function tipusValtozattal(description: SectionDescription): string {
+  const valtozat = nonEmptyText(description.valtozat)
+  return valtozat ? `${description.tipus} ${valtozat}` : description.tipus
+}
+
 /**
- * A sorcímke teljes szövege, pl.
- * „11 · Rejtve · Rólunk + statisztikák: Megérdemled a profi törődést (2. ilyen)”.
+ * A cím utáni rész: az oldalfüggő jelek, a régi blokknév és az ismétlődés,
+ * ebben a sorrendben, szóközzel elválasztva; üresen null.
+ */
+export function sectionLabelTail(description: SectionDescription): string | null {
+  const vege = [
+    ...(description.jelek ?? []),
+    description.blokkNev ? `(${description.blokkNev})` : null,
+    repeatMarker(description.ismetles),
+  ]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(' ')
+  return vege.length > 0 ? vege : null
+}
+
+/**
+ * A sorcímke teljes szövege: sorszám, [Rejtve], típus [elrendezés],
+ * kettőspont, cím, [jelek], [(blokknév)], [(N. ilyen)], pl.
+ * „11 · Rejtve · Rólunk + statisztikák: Megérdemled a profi törődést (2. ilyen)”,
+ * „05 · Képes lista vagy kártyák (sín): Így tudunk segíteni”.
  */
 export function sectionRowLabelText(description: SectionDescription): string {
   const eleje = description.rejtett
     ? `${description.sorszam}${ELVALASZTO}${REJTVE_JEL}${ELVALASZTO}`
     : `${description.sorszam}${ELVALASZTO}`
-  const vege = [
-    description.blokkNev ? `(${description.blokkNev})` : null,
-    repeatMarker(description.ismetles),
-  ]
-    .filter((part): part is string => part !== null)
-    .join(' ')
-  return `${eleje}${description.tipus}: ${description.cimSzoveg}${vege ? ` ${vege}` : ''}`
+  const vege = sectionLabelTail(description)
+  return `${eleje}${tipusValtozattal(description)}: ${description.cimSzoveg}${vege ? ` ${vege}` : ''}`
 }
 
 /**
@@ -649,6 +707,12 @@ export interface SectionSourceInfo {
   cim: string
   /** Legfeljebb két rövid mondat. */
   szoveg: string
+  /**
+   * Külön bekezdés arról, HOL látszik még ugyanez a tartalom (legfeljebb két
+   * rövid mondat). Külön mező, mert más kérdésre felel, mint a `szoveg`
+   * (honnan jön), és így a doboz egy bekezdése sem nő két mondat fölé.
+   */
+  holLatszik?: string
   /** Hol szerkeszthető: az admin-útvonal az admin gyökere után (pl. `/collections/products`). */
   hova: { nev: string; adminPath: string } | null
 }
@@ -691,6 +755,13 @@ export function kapcsolatiUresLista(data: unknown, pageSlug: unknown): boolean {
   }
 }
 
+/** A CTA-sáv Kép mezője ki van-e töltve (azonosító vagy feloldott média). */
+function vanFeltoltottKep(kep: unknown): boolean {
+  if (typeof kep === 'number') return true
+  if (typeof kep === 'string') return kep.trim().length > 0
+  return isRecord(kep)
+}
+
 /**
  * A /kapcsolat oldal szekciói, amelyek ott másképp látszanak, mert a route a
  * listájukat üresen adja (`kapcsolatiUresLista`, és az SOS-sáv: termék nélkül
@@ -716,10 +787,14 @@ function kapcsolatiForras(data: Adat): SectionSourceInfo | null {
       return {
         cim: 'A Kapcsolat oldalon a kártyák nem jelennek meg',
         szoveg:
-          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
+          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a háttérfelirat, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
         hova: null,
       }
     case 'ctaBanner':
+      // A feltöltött kép (H28) a Kapcsolat oldalon is megjelenik.
+      if (vanFeltoltottKep(data.kep)) {
+        return null
+      }
       return {
         cim: 'A Kapcsolat oldalon a sáv kép nélkül jelenik meg',
         szoveg:
@@ -736,6 +811,22 @@ function kapcsolatiForras(data: Adat): SectionSourceInfo | null {
       return null
   }
 }
+
+/**
+ * A Vélemények szekció második bekezdése (modul-térkép H30, H43/5): hol látszik
+ * még ugyanez a három vélemény, és mi lesz a többivel.
+ *
+ * Mérve a kódban (2026-09-23): a `getTestimonials` két helyen fut, a kezdőlap
+ * route-jában (src/app/(frontend)/page.tsx:64) és a CMS-oldalak közös
+ * route-jában (src/app/(frontend)/[slug]/page.tsx:236), mindkettő ugyanazzal a
+ * lekérdezéssel (Látható és Kiemelt, Sorrend, legfeljebb 3); a /kapcsolat
+ * saját route-ja üres listát ad (`kapcsolatiForras`). A „Hol látszik” oszlopot
+ * a Vélemények listáján a B5 csomag vezeti be, a név onnan jön.
+ * A mondat „csak” és „minden oldal” nélkül áll: a Kapcsolat oldalt kiveszi,
+ * más kivétel a kódban nincs.
+ */
+export const VELEMENYEK_HOL_LATSZIK =
+  'Ugyanezeket a véleményeket mutatja bármelyik másik oldal Vélemények szekciója is, a Kapcsolat oldalét kivéve. Amelyik vélemény nem kerül az első háromba, az sehol nem jelenik meg; a Vélemények listájában a „Hol látszik” oszlop véleményenként mutatja.'
 
 /**
  * A más gyűjteményből vagy automatikusan töltődő szekciók jelzése.
@@ -789,7 +880,7 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
       return {
         cim: 'A kártyák a Kurzusokból töltődnek',
         szoveg:
-          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
+          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, háttérfeliratát, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
         hova: { nev: 'Kurzusok', adminPath: '/collections/products' },
       }
     case 'freeSos':
@@ -806,6 +897,7 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
         cim: 'Az idézetek a Véleményekből jönnek',
         szoveg:
           'A Kiemelt és Látható pipás vélemények közül a Sorrend szerinti első legfeljebb három látszik, a „Hány vélemény jelenjen meg” mezőben kevesebbet is kérhetsz. Ha a Rövid idézet ki van töltve, az látszik, különben a Teljes szöveg.',
+        holLatszik: VELEMENYEK_HOL_LATSZIK,
         hova: { nev: 'Vélemények', adminPath: '/collections/testimonials' },
       }
     case 'knowledge':
@@ -816,6 +908,12 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
         hova: { nev: 'Blogbejegyzések', adminPath: '/collections/posts' },
       }
     case 'ctaBanner': {
+      // H28 (A1): a Kép mezőbe feltöltött kép minden oldalon megelőzi a
+      // számított képet (cta-banner-course.ts ctaBannerFigura), ilyenkor a kép
+      // forrása maga ez a szekció, nincs mit jelezni.
+      if (vanFeltoltottKep(data.kep)) {
+        return null
+      }
       const cta = isRecord(data.cta) ? data.cta : null
       if (!isCourseTarget(cta?.url)) {
         return null
@@ -824,14 +922,14 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
         return {
           cim: 'A kép beépített montázs',
           szoveg:
-            'A Rólunk oldalon a sáv képe egy beépített montázs, ezt itt nem tudod cserélni. Ha a gomb nem kurzusra visz, a sáv kép nélkül jelenik meg.',
+            'A Rólunk oldalon a sáv képe egy beépített montázs, ha a Kép mező üres. Ha oda feltöltesz egy képet, az látszik helyette.',
           hova: null,
         }
       }
       return {
         cim: 'A kép a Kurzusokból jön',
         szoveg:
-          'Mivel a gomb egy kurzusra visz, a sávban a kurzus borítóképe látszik. A borítóképet a Kurzusoknál cseréled.',
+          'Mivel a gomb egy kurzusra visz és a Kép mező üres, a sávban a kurzus borítóképe látszik, amelyet a Kurzusoknál cserélsz. Ha a Kép mezőbe feltöltesz egy képet, az látszik helyette.',
         hova: { nev: 'Kurzusok', adminPath: '/collections/products' },
       }
     }
@@ -863,6 +961,11 @@ export interface KotottUgropont {
   mi: string
   /** Többes számú-e az alany (az „ezek” és az „ez” igeegyeztetéséhez). */
   tobb: boolean
+  /**
+   * A sorcímke rövid jele a horgony után, zárójelben, pl. „erre visz a menü”
+   * (`sectionPageMarks`, modul-térkép H48/4).
+   */
+  rovid: string
 }
 
 /**
@@ -878,8 +981,9 @@ export interface KotottUgropont {
  * - „idopontkeres” a Kapcsolat oldalon: a blogbejegyzések végén álló
  *   időpontkérő gomb célja (PostCourseCta.tsx `APPOINTMENT_HREF`, a cikk végi
  *   ajánló mindhárom változatában).
- * A „szakmai-hatter” nem kötött: a kód nem hivatkozik rá, csak CMS-linkek
- *   (a szakember-kártyák „Bővebben” linkjei) és egyszeri tartalom-szkriptek.
+ * A „szakmai-hatter” nem kódhoz kötött: a weboldal kódja nem hivatkozik rá,
+ *   CMS-linkek (a szakember-kártyák „Nézd meg a szakmai hátterét” linkjei) és
+ *   egyszeri tartalom-szkriptek igen; ezt a `CMS_KOTOTT_UGROPONTOK` jelzi.
  */
 export const KOTOTT_UGROPONTOK: readonly KotottUgropont[] = [
   {
@@ -887,12 +991,17 @@ export const KOTOTT_UGROPONTOK: readonly KotottUgropont[] = [
     ugropont: CLINIC_TREATMENTS_ANCHOR,
     mi: 'a menü „Rendelői kezelések” pontja és két régi webcím átirányítása',
     tobb: true,
+    rovid: 'erre visz a menü',
   },
   {
     oldal: KAPCSOLAT_OLDAL_SLUG,
     ugropont: 'idopontkeres',
     mi: `a blogbejegyzések végén álló „${ctaLabel('appointment-request-link')}” gomb`,
     tobb: false,
+    // A gomb felirata „Kérj időpontot üzenetben” (ctaLabel('appointment-request-link')),
+    // ezért „időpontgomb”; a „blogbejegyzések” szó a `mi` mondatéval és a
+    // gyűjtemény nevével egyezik (SC 3.2.4).
+    rovid: 'erre visz a blogbejegyzések időpontgombja',
   },
 ]
 
@@ -928,6 +1037,196 @@ export function kotottUgropont(data: unknown, pageSlug: unknown): string | null 
   return `Erre az ugrópontra („${kotott.ugropont}”) visz ${kotott.mi}, ezért ha átnevezed vagy törlöd, ${kovetkezmeny}${arlista}.`
 }
 
+/** A kötött ugrópont illesztése a sorcímkéhez: ugyanaz, mint a `kotottUgropont`-ban (oldal + horgony). */
+function kotottElem(data: unknown, pageSlug: unknown): KotottUgropont | null {
+  const horgony = sectionAnchor(data)
+  return (
+    KOTOTT_UGROPONTOK.find((elem) => elem.oldal === pageSlug && elem.ugropont === horgony) ?? null
+  )
+}
+
+/**
+ * Olyan ugrópont, amelyre nem a kód, hanem CMS-ben mentett linkek mutatnak
+ * (modul-térkép H48/3). Átnevezéskor a weboldal kódja nem romlik el, a linkek
+ * viszont már nem ide visznek, ezért ezt is kimondjuk, de más címmel, mint a
+ * kódhoz kötöttet.
+ */
+export interface CmsKotottUgropont {
+  /** Az oldal webcíme, amelyen az ugrópont áll. */
+  oldal: string
+  /** Az ugrópont neve (`sectionSettings.anchorId`). */
+  ugropont: string
+  /** A teljes mondat: mi visz ide, és mit kell átírni átnevezéskor. */
+  mondat: string
+}
+
+/**
+ * A CMS-linkekkel kötött ugrópontok. Mérve (az élő /api/pages, 2026-09-22,
+ * modul-térkép live-pages.json): a „Szakemberek kártyái” szekciókban négy
+ * link visz ide, mindegyik „Nézd meg a szakmai hátterét” felirattal: a
+ * Kapcsolat oldal két kártyájáról `/rolunk#szakmai-hatter`, a Rólunk oldal két
+ * kártyájáról `#szakmai-hatter`. A kártyákat a restore-legacy-content.ts
+ * építette így (:583 `SZAKMAI_HATTER_URL`, :1374 `hatterUrl`). A mezőnevek a
+ * team-members.ts („Hivatkozás”) és a link-fields.ts („Hová vigyen
+ * (webcím)”) címkéi (SC 3.2.4).
+ */
+export const CMS_KOTOTT_UGROPONTOK: readonly CmsKotottUgropont[] = [
+  {
+    oldal: 'rolunk',
+    ugropont: 'szakmai-hatter',
+    mondat:
+      'Erre az ugrópontra („szakmai-hatter”) a szakemberek kártyáin álló „Nézd meg a szakmai hátterét” linkek visznek, a Rólunk és a Kapcsolat oldalon. Ha átnevezed vagy törlöd, a kártyák „Hivatkozás” részében a „Hová vigyen (webcím)” mezőt is írd át, különben ezek a linkek már nem ide visznek.',
+  },
+]
+
+/** A CMS-linkekkel kötött ugrópont dobozának címe, ha más tartalom nincs a dobozban. */
+export const CMS_KOTOTT_CIM = 'Erre az ugrópontra linkek mutatnak'
+
+/** CMS-linkekkel kötött ugrópontnál a mondat (oldal + horgony illesztés), különben null. */
+export function cmsKotottUgropont(data: unknown, pageSlug: unknown): string | null {
+  const horgony = sectionAnchor(data)
+  const elem = CMS_KOTOTT_UGROPONTOK.find(
+    (kotott) => kotott.oldal === pageSlug && kotott.ugropont === horgony,
+  )
+  return elem ? elem.mondat : null
+}
+
+/* ------------------------------------------------------------------------ */
+/* Oldalfüggő jelek: amit a lap TÉNYLEGESEN mutat                            */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * A „Képes lista vagy kártyák” (services) blokk lapon látszó elrendezése.
+ *
+ * A lap a mentett „Elrendezés” mezőt követi (H15, A4, 2026-09-23); a route
+ * csak a mező NÉLKÜLI, régi adatot egészíti ki felismeréssel (modul-térkép
+ * H03):
+ * - a kezdőlapon a `presentHomeHelpServicesBlock` a `kezdolapiSinE` szerint
+ *   rajzol sínt: mentett „sin”, vagy mező nélkül a háromajtós felismerés
+ *   (home-help-states.ts; bekötve a HomeView-ban és a [slug]/page.tsx
+ *   `presentHomeLayout` ágában);
+ * - a Szolgáltatások oldalon a `presentSzolgaltatasokLayout` a
+ *   `szolgaltatasokSinE` szerint: mentett „sin”, vagy mező nélkül az
+ *   ajtó-felismerés; a mentett „tabla” érintetlen marad;
+ * - máshol a mező dönt: a lap (Services.tsx `isRail`) a „sin” értéket
+ *   rajzolja sínnek, minden mást, a hiányzót is, táblának (a services.ts
+ *   alapértéke is „tabla”).
+ * A két predikátum a home-help-states.ts-ből jön, nem másolat: ha a lap
+ * szabálya változik, a címke vele változik (WCAG 2.2 SC 3.2.4).
+ *
+ * @returns 'sin' vagy 'tabla', nem services blokknál null
+ */
+export function servicesTenylegesElrendezes(
+  data: unknown,
+  pageSlug: unknown,
+): 'sin' | 'tabla' | null {
+  if (!isRecord(data) || data.blockType !== 'services') {
+    return null
+  }
+  if (pageSlug === HOME_PAGE_SLUG) {
+    return kezdolapiSinE(data) ? 'sin' : 'tabla'
+  }
+  if (pageSlug === SERVICES_PAGE_SLUG) {
+    return szolgaltatasokSinE(data) ? 'sin' : 'tabla'
+  }
+  return data.elrendezes === 'sin' ? 'sin' : 'tabla'
+}
+
+/** Az elrendezés jele a sorcímkében, a típus után. */
+export const ELRENDEZES_JEL: Readonly<Record<'sin' | 'tabla', string>> = {
+  sin: '(sín)',
+  tabla: '(tábla)',
+}
+
+/**
+ * A sorcímke oldalfüggő jelei: a lapon látszó elrendezés („(sín)”,
+ * „(tábla)”) és a kódhoz kötött ugrópont („#rendeloi (erre visz a menü)”).
+ *
+ * Miért a címkében: a kezdőlapon és a /rolunk-on két, a /szolgaltatasok-on
+ * három Képes lista áll, és eddig csak a sorszám különböztette meg őket (H03).
+ * A hasonló kinézetű elemek összetévesztése a leírás-hasonlóság okozta csúszás
+ * (NN/g, Preventing User Errors: Avoiding Unconscious Slips: „Slips occur when
+ * users intend to perform one action, but end up doing another (often
+ * similar) action.”, https://www.nngroup.com/articles/slips/); a felismerést
+ * a látható jel segíti (NN/g, Memory Recognition and Recall in User
+ * Interfaces, https://www.nngroup.com/articles/recognition-and-recall/). A jel
+ * a lapon TÉNYLEGESEN látszó állapotot mondja, nem a mezőét (WCAG 2.2 SC 3.2.4
+ * Consistent Identification,
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
+ * és szövegként áll, nem színként (SC 1.4.1). A kötött ugrópont jele a
+ * következményre már a sorfejlécben figyelmeztet (NN/g, Visibility of System
+ * Status: „no action with consequences to users should be taken without
+ * informing them”, https://www.nngroup.com/articles/visibility-system-status/).
+ */
+export function sectionPageMarks(
+  data: unknown,
+  pageSlug: unknown,
+): { valtozat: string | null; jelek: string[] } {
+  const elrendezes = servicesTenylegesElrendezes(data, pageSlug)
+  const kotott = kotottElem(data, pageSlug)
+  return {
+    valtozat: elrendezes ? ELRENDEZES_JEL[elrendezes] : null,
+    jelek: kotott ? [`#${kotott.ugropont} (${kotott.rovid})`] : [],
+  }
+}
+
+/**
+ * Az oldal megjelenítési átalakítása által adott cím, ha az eltér a mentett
+ * Szekciócímtől, különben null.
+ *
+ * A 19 blokk renderelőjének és a route-ok átalakításainak átnézése szerint
+ * (2026-09-23) egy oldalfüggő eset van: a kezdőlap sínként rajzolt
+ * segítség-blokkja (`kezdolapiSinE`, ugyanaz a döntés, amellyel a
+ * `presentHomeHelpServicesBlock` átalakít). Az üres Szekciócímnél az
+ * „Így tudunk segíteni” címet adja, a régi zárt-kéz sínnél pedig mindig azt
+ * (home-help-states.ts). A címet a lap SAJÁT feloldója adja, nem másolat.
+ */
+export function sectionPageTitle(data: unknown, pageSlug: unknown): string | null {
+  if (
+    pageSlug !== HOME_PAGE_SLUG ||
+    !isRecord(data) ||
+    data.blockType !== 'services' ||
+    !kezdolapiSinE(data)
+  ) {
+    return null
+  }
+  // Az űrlapállapot a BlockServices alakját követi (minden mezője opcionális);
+  // a feloldó csak olvas, és új objektumot ad vissza.
+  const lapCim = nonEmptyText(
+    presentHomeHelpServicesBlock({ ...data, blockType: 'services' }).title,
+  )
+  return lapCim !== null && lapCim !== nonEmptyText(data.title) ? lapCim : null
+}
+
+/**
+ * A szekció-sor leírása az OLDAL ismeretében: a `describeSection`, a lapon
+ * látszó címmel (`sectionPageTitle`, a „(beépített cím)” jellel, mint az
+ * SOS-sávnál) és az oldalfüggő jelekkel (`sectionPageMarks`). Az admin
+ * sorcímkéje ezt hívja; ha a frontend szalag is ezt hívja, a kettő betűre
+ * ugyanazt mutatja (WCAG 2.2 SC 3.2.4).
+ */
+export function describeSectionOnPage(
+  data: unknown,
+  rowIndex: unknown,
+  blockLabel: string,
+  textFields: readonly string[],
+  pageSlug: unknown,
+): SectionDescription {
+  const leiras = describeSection(data, rowIndex, blockLabel, textFields)
+  const lapCim = sectionPageTitle(data, pageSlug)
+  const jelek = sectionPageMarks(data, pageSlug)
+  const cimmel: SectionDescription =
+    lapCim === null
+      ? leiras
+      : {
+          ...leiras,
+          cim: truncateAtWord(lapCim),
+          teljesCim: lapCim,
+          cimSzoveg: `${truncateAtWord(lapCim)} ${BEEPITETT_CIM}`,
+        }
+  return { ...cimmel, valtozat: jelek.valtozat, jelek: jelek.jelek }
+}
+
 export interface SectionNoticeModel {
   rejtett: boolean
   forras: SectionSourceInfo | null
@@ -947,6 +1246,43 @@ export interface SectionNoticeModel {
   iker: string | null
   /** Kötött ugrópontnál a figyelmeztető mondat (`kotottUgropont`), különben null. */
   kotott: string | null
+  /**
+   * CMS-linkekkel kötött ugrópontnál a mondat (`cmsKotottUgropont`), különben
+   * null. Opcionális, hogy a meglévő, kézzel épített modellek (tesztek,
+   * frontend szalag) változatlanul érvényesek maradjanak; a
+   * `sectionNoticeModel` mindig kitölti.
+   */
+  cmsKotott?: string | null
+  /**
+   * Rejtett sornál a látható iker: „A látható párja: 02 · <cím>”, a
+   * szerkesztőben az iker szekcióját nyitó mélylinkkel; érvényes dokumentum-
+   * és blokk-azonosító nélkül `href: null`, és a felirat link nélkül áll
+   * (modul-térkép H02). Opcionális, mint a `cmsKotott`.
+   */
+  ikerLink?: { felirat: string; href: string | null } | null
+}
+
+/** Az ikerlink feliratának eleje; utána a sorszám és a cím áll. */
+export const IKER_LINK_ELOTAG = 'A látható párja:'
+
+/** A rejtett sor látható ikrének sorindexe: azonos típus és cím (a blokknév nem számít), vagy -1. */
+function visibleTwinIndex(data: unknown, rowIndex: number, siblings: readonly unknown[]): number {
+  if (!isSectionHidden(data)) {
+    return -1
+  }
+  const blockType = isRecord(data) ? data.blockType : undefined
+  const cim = sectionTitle(data)?.toLocaleLowerCase('hu')
+  if (!cim) {
+    return -1
+  }
+  return siblings.findIndex(
+    (sibling, i) =>
+      i !== rowIndex &&
+      !isSectionHidden(sibling) &&
+      isRecord(sibling) &&
+      sibling.blockType === blockType &&
+      sectionTitle(sibling)?.toLocaleLowerCase('hu') === cim,
+  )
 }
 
 /** A rejtett sor látható ikre: azonos típus és cím (a blokknév nem számít). */
@@ -955,23 +1291,60 @@ export function visibleTwin(
   rowIndex: number,
   siblings: readonly unknown[],
 ): string | null {
-  if (!isSectionHidden(data)) {
+  const index = visibleTwinIndex(data, rowIndex, siblings)
+  return index === -1 ? null : sectionNumber(index)
+}
+
+/**
+ * A szerkesztő mélylinkje az iker szekciójára, vagy null. A `szekcioMelylink`
+ * hibás dokumentum-azonosítóra programhibaként dob; itt az űrlapból jövő
+ * értékkel hívjuk, ezért előbb ellenőrzünk, és a maradék hibát elnyeljük.
+ */
+function ikerMelylink(adminRoute: string, docId: unknown, blokkId: unknown): string | null {
+  const id =
+    typeof docId === 'number' && Number.isInteger(docId) && docId >= 0
+      ? docId
+      : typeof docId === 'string' && docId.trim().length > 0
+        ? docId.trim()
+        : null
+  if (id === null || !ervenyesBlokkId(blokkId)) {
     return null
   }
-  const blockType = isRecord(data) ? data.blockType : undefined
-  const cim = sectionTitle(data)?.toLocaleLowerCase('hu')
+  try {
+    return szekcioMelylink({ adminRoute, collection: 'pages', id, blokkId })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A rejtett sor ikerlinkje (modul-térkép H02): a látható iker sorszáma és
+ * címe, és a szerkesztőben az iker szekciójára nyíló mélylink
+ * (`?szekcio=<blokk-azonosító>`, amelyet a SzekcioMegnyito nyit ki).
+ */
+export function ikerLink({
+  data,
+  rowIndex,
+  siblings,
+  adminRoute,
+  docId,
+}: {
+  data: unknown
+  rowIndex: number
+  siblings: readonly unknown[]
+  adminRoute: string
+  docId?: number | string | null
+}): { felirat: string; href: string | null } | null {
+  const index = visibleTwinIndex(data, rowIndex, siblings)
+  const iker = index === -1 ? undefined : siblings[index]
+  const cim = sectionTitle(iker)
   if (!cim) {
     return null
   }
-  const index = siblings.findIndex(
-    (sibling, i) =>
-      i !== rowIndex &&
-      !isSectionHidden(sibling) &&
-      isRecord(sibling) &&
-      sibling.blockType === blockType &&
-      sectionTitle(sibling)?.toLocaleLowerCase('hu') === cim,
-  )
-  return index === -1 ? null : sectionNumber(index)
+  return {
+    felirat: `${IKER_LINK_ELOTAG} ${sectionNumber(index)}${ELVALASZTO}${truncateAtWord(cim)}`,
+    href: ikerMelylink(adminRoute, docId, isRecord(iker) ? iker.id : undefined),
+  }
 }
 
 /**
@@ -997,6 +1370,7 @@ export function hiddenHint(iker: string | null): string {
  *
  * @param siblings   a Szekciók-mező összes sorának adata, sorrendben
  * @param adminRoute az admin gyökere (a Payload `routes.admin`, pl. `/admin`)
+ * @param docId      a szerkesztett oldal azonosítója (az ikerlink mélylinkjéhez)
  */
 export function sectionNoticeModel({
   data,
@@ -1004,12 +1378,14 @@ export function sectionNoticeModel({
   rowIndex,
   siblings,
   adminRoute,
+  docId,
 }: {
   data: unknown
   pageSlug: unknown
   rowIndex: number
   siblings: readonly unknown[]
   adminRoute: string
+  docId?: number | string | null
 }): SectionNoticeModel {
   const rejtett = isSectionHidden(data)
   const forras = sectionSource(data, pageSlug)
@@ -1033,5 +1409,7 @@ export function sectionNoticeModel({
       : null,
     iker: visibleTwin(data, rowIndex, siblings),
     kotott: kotottUgropont(data, pageSlug),
+    cmsKotott: cmsKotottUgropont(data, pageSlug),
+    ikerLink: ikerLink({ data, rowIndex, siblings, adminRoute, docId }),
   }
 }

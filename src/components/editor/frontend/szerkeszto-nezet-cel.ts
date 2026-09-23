@@ -29,8 +29,9 @@ import { HOME_PAGE_SLUG } from '../../../lib/content-slugs'
 /**
  * Az egyszegmensű, KÓDBAN élő útvonalak (a src/app/(frontend) statikus
  * könyvtárai): ezeknek nincs Oldalak-rekordja, a belépő ott nem jelenhet meg.
- * A /kapcsolat kivétel: a szekciósorát a `kapcsolat` slugú oldal adja, és a
- * piszkozat-előnézetet támogatja. Őr: a teszt a könyvtárlistával veti össze.
+ * A /kapcsolat és a /szakembereknek kivétel (CMS_KODBELI_UTVONALAK): a
+ * szekciósorukat az azonos slugú oldal adja, és a piszkozat-előnézetet
+ * támogatják. Őr: a teszt a könyvtárlistával veti össze.
  */
 export const KODBELI_UTVONALAK: ReadonlySet<string> = new Set([
   'api',
@@ -49,11 +50,10 @@ export const KODBELI_UTVONALAK: ReadonlySet<string> = new Set([
   'regisztracio',
   'sikertelen',
   'styles',
-  'szakembereknek',
 ])
 
 /** A CMS-oldalból szekciósort kapó kódbeli útvonalak (a belépő itt is megjelenik). */
-export const CMS_KODBELI_UTVONALAK: ReadonlySet<string> = new Set(['kapcsolat'])
+export const CMS_KODBELI_UTVONALAK: ReadonlySet<string> = new Set(['kapcsolat', 'szakembereknek'])
 
 /** A blog és a kurzusok statikus alútvonalai (pl. /blog/kategoria/…): nem dokumentumok. */
 const STATIKUS_ALUTVONALAK: Readonly<Record<string, ReadonlySet<string>>> = {

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import { NotFoundView } from '@/components/error/NotFoundView'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 
 /**
@@ -27,5 +28,11 @@ export const metadata: Metadata = {
  * nem hibás lapok HTML-jéből is kiveszi a rejtett Tudástár linkjét.
  */
 export default async function NotFound() {
-  return <NotFoundView tudastarLathato={await getTudastarLathato()} />
+  // A kapcsolati e-mail a lábléccel közös, kérésenként egyszer futó feloldás
+  // (src/lib/contact-email-server.ts); hibánál a kódtartalék, kivétel nélkül.
+  const [tudastarLathato, kapcsolatiEmail] = await Promise.all([
+    getTudastarLathato(),
+    getContactEmail(),
+  ])
+  return <NotFoundView kapcsolatiEmail={kapcsolatiEmail} tudastarLathato={tudastarLathato} />
 }

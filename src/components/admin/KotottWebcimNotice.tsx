@@ -48,6 +48,22 @@ import { kotottWebcim, nevelo, type KotottWebcim } from '../../lib/admin/kotott-
  * A visszaállítás után a fókusz a Webcím mezőre kerül, hogy ne vesszen el
  * (a gomb eltűnik). A jelentést a szöveg mondja ki, a szín csak kiegészítő
  * (SC 1.4.1); stílus: a B1 `.kc-admin-notice` szerződése, saját szín nélkül.
+ *
+ * A KÖZZÉTÉTEL VISSZAVONÁSA (modul-térkép H48/6). Az Állapot mező rejtett, a
+ * visszavonás a „⋯” menü egy pontja, és a megerősítő ablaka csak annyit mond,
+ * hogy a látogatók nem látják többé a lapot. Kötött oldalnál ennél többet
+ * tör el (tartalék-kezdőlap, üres Kapcsolat, hibaoldalra mutató lábléc), ezért
+ * a mondat itt, a webcím mellett áll: nyugalmi állapotban külön bekezdésként,
+ * átírás közben a figyelmeztetés alatt. Csak közzétett dokumentumnál látszik,
+ * mert a menüpontot a Payload is csak ott kínálja (UnpublishButton
+ * `canUnpublish`: `hasPublishedDoc`). Források: NN/g, Visibility of System
+ * Status: „No action with consequences to users should be taken without
+ * informing them.” (https://www.nngroup.com/articles/visibility-system-status/);
+ * GOV.UK Design System, Warning text: „Use the warning text component when you
+ * need to warn users about something important, such as legal consequences of
+ * an action” (https://design-system.service.gov.uk/components/warning-text/).
+ * A menüpont nevét betűre idézzük, hogy a szerkesztő ráismerjen (WCAG 2.2 SC
+ * 3.2.4 Consistent Identification).
  */
 
 export type WebcimAllapot = 'nincs' | 'kotott' | 'atirva'
@@ -71,16 +87,32 @@ export interface WebcimSzoveg {
 
 export const NE_IRD_AT = 'A weboldal kódja erre a webcímre épít, ne írd át.'
 
+/**
+ * A szövegek bemenete: a kötés, a visszavonás mondata nélkül is (a régebbi
+ * hívók és tesztek csak a `mire` és `kovetkezmeny` mezőt adják).
+ */
+export type KotesSzoveghez = Pick<KotottWebcim, 'mire' | 'kovetkezmeny'> &
+  Partial<Pick<KotottWebcim, 'visszavonas'>>
+
+/** A visszavonás bekezdése: csak ha van mondat, és a dokumentum közzé van téve. */
+function visszavonasBekezdes(kotes: KotesSzoveghez, kozzeteve: boolean): string[] {
+  return kozzeteve && kotes.visszavonas ? [kotes.visszavonas] : []
+}
+
 /** A mentett, kötött webcím nyugalmi szövege. */
-export function kotottSzoveg(kotes: KotottWebcim): WebcimSzoveg {
-  return { cim: NE_IRD_AT, bekezdesek: [...kotes.mire] }
+export function kotottSzoveg(kotes: KotesSzoveghez, kozzeteve = true): WebcimSzoveg {
+  return {
+    cim: NE_IRD_AT,
+    bekezdesek: [...kotes.mire, ...visszavonasBekezdes(kotes, kozzeteve)],
+  }
 }
 
 /** Az átírt webcím figyelmeztetése: mi épít rá, mi lesz közzététel után, és hogy még nem késő. */
 export function atirtSzoveg(
-  kotes: KotottWebcim,
+  kotes: KotesSzoveghez,
   mentett: string,
   kozzeteszGomb: string,
+  kozzeteve = true,
 ): WebcimSzoveg {
   return {
     cim: `Átírtad a webcímet, pedig a weboldal kódja ${nevelo(mentett)} „${mentett}” webcímre épít.`,
@@ -88,6 +120,7 @@ export function atirtSzoveg(
       ...kotes.mire,
       ...kotes.kovetkezmeny,
       `Az automatikus mentés csak piszkozatot ír: a weboldal a „${kozzeteszGomb}” gombig a régi webcímet használja.`,
+      ...visszavonasBekezdes(kotes, kozzeteve),
     ],
   }
 }
@@ -144,6 +177,8 @@ export interface KotottWebcimNoticeViewProps {
   kozzeteszGomb: string
   bejelentes: string
   onVisszaallit: () => void
+  /** Közzé van-e téve a dokumentum (a visszavonás mondata csak ekkor látszik). Alapból igen. */
+  kozzeteve?: boolean
 }
 
 export function KotottWebcimNoticeView({
@@ -153,6 +188,7 @@ export function KotottWebcimNoticeView({
   kozzeteszGomb,
   bejelentes,
   onVisszaallit,
+  kozzeteve = true,
 }: KotottWebcimNoticeViewProps): JSX.Element {
   const kotes = mentett === null ? null : kotottWebcim(gyujtemeny, mentett)
   const allapot = webcimAllapot(gyujtemeny, mentett, urlapban)
@@ -167,7 +203,9 @@ export function KotottWebcimNoticeView({
     return <div className="kc-kotott-webcim">{elo}</div>
   }
   const szoveg =
-    allapot === 'atirva' ? atirtSzoveg(kotes, mentett, kozzeteszGomb) : kotottSzoveg(kotes)
+    allapot === 'atirva'
+      ? atirtSzoveg(kotes, mentett, kozzeteszGomb, kozzeteve)
+      : kotottSzoveg(kotes, kozzeteve)
   return (
     <div className="kc-kotott-webcim">
       <div
@@ -289,6 +327,7 @@ export function KotottWebcimNotice(): JSX.Element | null {
       bejelentes={bejelentes}
       gyujtemeny={collectionSlug}
       kozzeteszGomb={kozzeteszGomb}
+      kozzeteve={Boolean(hasPublishedDoc)}
       mentett={mentett}
       onVisszaallit={visszaallit}
       urlapban={urlapban}

@@ -15,6 +15,7 @@ import {
   getPublishedPageSlugs,
   getRelatedPosts,
 } from '@/lib/cms'
+import { getContactEmail } from '@/lib/contact-email-server'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import {
   absoluteUrl,
@@ -88,10 +89,11 @@ export default async function BlogPostPage({ params }: Props) {
   if (!post) notFound()
   // Az ingyenes belépő a cikk végi ajánló halk sora (PostCourseCta); hiba
   // vagy hiányzó ingyenes termék esetén null, a sor egyszerűen elmarad.
-  const [related, freeCourse, publikaltOldalak] = await Promise.all([
+  const [related, freeCourse, publikaltOldalak, contactEmail] = await Promise.all([
     getRelatedPosts(post),
     getFreeProduct(),
     getPublishedPageSlugs(),
+    getContactEmail(),
   ])
   // A kapcsolódó cikkek kártyái a KANONIKUS gyökér-címre mennek, ahol a hub
   // publikált — ez a lap maga is csak azért él, mert a SAJÁT hubja piszkozat
@@ -129,6 +131,7 @@ export default async function BlogPostPage({ params }: Props) {
             mainEntityId: `${absoluteUrl(`/blog/${slug}`)}#article`,
           },
           breadcrumbRef: true,
+          contactEmail,
         })}
       />
       <PostArticle

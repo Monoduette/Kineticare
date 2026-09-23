@@ -12,6 +12,21 @@
  * A kanonikus szöveg a seed és az üres CMS-mező pótléka. A kezdőlapon a
  * megjelenítés (`presentHomeHelpServicesBlock`) a CMS-ben mentett szöveget
  * mutatja, a konstansokkal csak az üresen hagyott mezőt tölti ki.
+ *
+ * ELRENDEZÉS (H15, A4, 2026-09-23): a sín vagy tábla döntése a blokk
+ * `elrendezes` mezőjéé (`mentettElrendezes`). A cím- és URL-alapú felismerés
+ * (`isConvertibleHomeHelpServices`, `isSzolgaltatasokAjtoBlock`) csak a mező
+ * nélküli, régi adatra tartalék. Korábban a kód a mezőtől függetlenül váltott,
+ * így az admin „Tábla” és „Fehér” értéket mutatott, a lapon pedig sín és
+ * világoskék állt. Ugyanaz a vezérlő ugyanazt jelentse (WCAG 2.2 SC 3.2.4
+ * Consistent Identification:
+ * https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html),
+ * és a rendszer állapota a vezérlőn látsszon (NN/g, 10 Usability Heuristics,
+ * #1 Visibility of System Status és #2 Match Between System and the Real
+ * World: https://www.nngroup.com/articles/ten-usability-heuristics/).
+ * ÉLESÍTÉS: ez a kódváltás CSAK ugyanabban a deployban mehet ki, mint a
+ * src/scripts/sin-elrendezes-kitoltes.ts szabály éles futtatása (az élő
+ * kezdőlap és /szolgaltatasok ajtó-blokkja ma „tabla” értéket visel).
  */
 
 import type { BlockServices, Media, Page } from '../payload-types'
@@ -293,11 +308,10 @@ export const LEGACY_HOME_HELP_ROWS = [
 ] as const
 
 /**
- * A C-sín panel-fotók publikus tartaléka. Az élő CMS `elrendezes` mezője a
- * 20260906-os migráció után is üres marad a kitöltött kezdőlapon
- * (`ensureHomeLayout` soha nem ír felül szerkesztői sort), ezért a sín
- * megjelenítés nem várhat Payload-média id-re. A fájlok a seed
- * `content/home-images/brand` másolatai.
+ * A C-sín panel-fotók publikus tartaléka. Az élő sín-sorok fotó-mezője
+ * üres lehet (a kitöltött kezdőlapot az `ensureHomeLayout` soha nem írja
+ * felül), ezért a sín megjelenítés nem várhat Payload-média id-re. A fájlok
+ * a seed `content/home-images/brand` másolatai.
  */
 export const HOME_HELP_PUBLIC_DIR = '/media/help-rail'
 
@@ -390,6 +404,31 @@ export const isConvertibleHomeHelpServices = (block: {
   )
 }
 
+/** A services blokk két elrendezése (src/blocks/services.ts `elrendezes`). */
+export type ServicesElrendezes = 'sin' | 'tabla'
+
+/**
+ * A blokkon MENTETT elrendezés. Hiányzó, null vagy ismeretlen értéknél null:
+ * ez a mező előtti, régi adat, ott a felismerés (heurisztika) a tartalék.
+ */
+export const mentettElrendezes = (value: unknown): ServicesElrendezes | null =>
+  value === 'sin' || value === 'tabla' ? value : null
+
+/**
+ * Kezdőlap: sínként jelenik-e meg a services blokk. A mentett `elrendezes`
+ * dönt; mező nélkül a háromajtós felismerés (`isConvertibleHomeHelpServices`).
+ */
+export const kezdolapiSinE = (block: {
+  blockType?: unknown
+  title?: unknown
+  rows?: unknown
+  elrendezes?: unknown
+}): boolean => {
+  if (block.blockType !== 'services') return false
+  const mentett = mentettElrendezes(block.elrendezes)
+  return mentett !== null ? mentett === 'sin' : isConvertibleHomeHelpServices(block)
+}
+
 /**
  * Melyik AJTÓ egy sín-sor: 0 = rendelő, 1 = otthoni program, 2 = szakmai
  * képzés. A sor JELENTÉSÉBŐL dől el (a címe vagy a CTA-célja alapján), NEM a
@@ -480,11 +519,13 @@ const presentClosedHandHomeHelpRow = (live: HomeHelpRow, index: number): HomeHel
 }
 
 /**
- * Kezdőlapi megjelenítés: a háromajtós segítség-blokk (régi háromoszlopos
- * tábla, zárt-kéz sín vagy kanonikus sín) a C-sín UI-t kapja, a szekció
- * indexe változatlan. A `/szolgaltatasok` tábla nem ezen a függvényen megy
- * át — azt a `presentSzolgaltatasokLayout` zárja. A kezdőlap: `HomeView` és
- * a `/kezdolap` slug a `[slug]` oldalon.
+ * Kezdőlapi megjelenítés: a sín-elrendezésű services blokk (`kezdolapiSinE`:
+ * mentett `sin`, vagy mező nélkül a háromajtós felismerés) a C-sín UI-t
+ * kapja, a szekció indexe változatlan. A mentett `tabla` blokk érintetlen
+ * marad, akkor is, ha a sorai a három ajtót viszik (H15: a mező nyer). A
+ * `/szolgaltatasok` blokkjai nem ezen a függvényen mennek át, azokat a
+ * `presentSzolgaltatasokLayout` zárja. A kezdőlap: `HomeView` és a
+ * `/kezdolap` slug a `[slug]` oldalon.
  *
  * Tartalom: a megjelenítés CSAK a formát állítja (sín elrendezés, tint
  * sáv); a szöveg a CMS-é. Kis felirat, cím, bevezető és a sorok minden
@@ -506,7 +547,7 @@ const presentClosedHandHomeHelpRow = (live: HomeHelpRow, index: number): HomeHel
  * https://www.gov.uk/guidance/content-design/writing-for-gov-uk
  */
 export const presentHomeHelpServicesBlock = (block: BlockServices): BlockServices => {
-  if (!isConvertibleHomeHelpServices(block)) return block
+  if (!kezdolapiSinE(block)) return block
   const settings = block.sectionSettings ?? {}
   const zartKezSin = isClosedHandHomeHelpRail(block.rows)
   return {
@@ -545,6 +586,20 @@ export const isSzolgaltatasokAjtoBlock = (block: {
 }
 
 /**
+ * /szolgaltatasok: sínként jelenik-e meg a services blokk. A mentett
+ * `elrendezes` dönt; mező nélkül az ajtó-felismerés (`isSzolgaltatasokAjtoBlock`).
+ */
+export const szolgaltatasokSinE = (block: {
+  blockType?: unknown
+  rows?: unknown
+  elrendezes?: unknown
+}): boolean => {
+  if (block.blockType !== 'services') return false
+  const mentett = mentettElrendezes(block.elrendezes)
+  return mentett !== null ? mentett === 'sin' : isSzolgaltatasokAjtoBlock(block)
+}
+
+/**
  * A /szolgaltatasok szekciósora (WP25, tulajdonosi kör 2026-09-07: „az »Így
  * segítünk / Szolgáltatásaink« doboz nagyon csúnya, abszolút nem illik a
  * stílusunkba"; és a 3. kör: „a miben segíthetünk és az így tudunk segíteni
@@ -570,14 +625,19 @@ export const isSzolgaltatasokAjtoBlock = (block: {
  * rendelői képével), a 2–3. ajtó a kezdőlapi sín tartalék-fotója. A blokk egyetlen tábla-fotója
  * (`image`) a sínen nem jelenik meg (a Services sín-ága nem használja).
  * Háttér: a sín-sáv help-paper a tint osztály mögött, mint a kezdőlapon; a
- * szerkesztő sötét választása marad.
+ * szerkesztő sötét választása marad. Szöveget itt a kód NEM pótol (a kezdőlap
+ * sínjével ellentétben): az üres összegzés és bevezető üresen marad.
+ *
+ * ELRENDEZÉS (H15): a mentett `elrendezes` dönt (`szolgaltatasokSinE`); a
+ * mentett `tabla` érintetlen marad, a függvény a mezőt többé nem írja át.
+ * Mező nélkül (régi adat) az ajtó-felismerés a tartalék.
  */
 export const presentSzolgaltatasokLayout = (
   layout: NonNullable<Page['layout']>,
 ): NonNullable<Page['layout']> =>
   layout.map((block) => {
     if (block.blockType !== 'services') return block
-    if (!isSzolgaltatasokAjtoBlock(block)) return { ...block, elrendezes: 'tabla' as const }
+    if (!szolgaltatasokSinE(block)) return block
     const settings = block.sectionSettings ?? {}
     return {
       ...block,

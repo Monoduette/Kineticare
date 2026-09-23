@@ -1,5 +1,5 @@
 import type { BlockCtaBanner } from '../../payload-types'
-import type { CtaBannerCourseCover } from '../../lib/cta-banner-course'
+import { ctaBannerFigura, type CtaBannerCourseCover } from '../../lib/cta-banner-course'
 import { MediaImage } from '../content/MediaImage'
 import { mediaAlt } from '../content/media-url'
 import { Button } from '../ui/Button'
@@ -29,6 +29,12 @@ import '../../app/(frontend)/styles/blocks/cta-banner.css'
  * Material 3, Cards: a média a tartalom kísérője, nem önálló cselekvés,
  * https://m3.material.io/components/cards/guidelines). Alt-szöveg: a média
  * saját alt-ja, hiányában „<kurzus címe> borítóképe" (WCAG 2.2 SC 1.1.1).
+ *
+ * FELTÖLTÖTT KÉP (H28, 2026-09-23): a blokk „Kép” mezője (`block.kep`)
+ * megelőzi a számított képet; a komponens maga olvassa, a RenderBlocks
+ * változatlanul a számított `courseCover`-t adja át. Üres mezőnél a kimenet
+ * bájtra a korábbi (src/__tests__/cta-sav-feltoltott-kep.test.tsx). A
+ * szabály és a forrásai: src/lib/cta-banner-course.ts `ctaBannerFigura`.
  */
 export interface CtaBannerProps {
   block: BlockCtaBanner
@@ -36,17 +42,26 @@ export interface CtaBannerProps {
   courseCover?: CtaBannerCourseCover | null
 }
 
-/** A borítókép alt-ja: a média alt-ja, hiányában a kurzus címéből képezve. */
+/**
+ * A sáv képének alt-ja: a média alt-ja, hiányában a kurzus címéből képezve.
+ * Feltöltött képnél csak a média saját alt-ja (üresen dekoratív), lásd
+ * `ctaBannerFigura`.
+ */
 export function ctaBannerCoverAlt(cover: CtaBannerCourseCover): string {
   const own = mediaAlt(cover.media).trim()
+  if (cover.feltoltott) {
+    return own
+  }
   return own.length > 0 ? own : `${cover.title} borítóképe`
 }
 
-export function CtaBanner({ block, courseCover = null }: CtaBannerProps) {
+export function CtaBanner({ block, courseCover: szamitott = null }: CtaBannerProps) {
   const title = block.title?.trim() ?? ''
   if (title.length === 0) {
     return null
   }
+  const courseCover = ctaBannerFigura(block.kep, szamitott)
+  const coverAlt = courseCover ? ctaBannerCoverAlt(courseCover) : ''
 
   const settings = block.sectionSettings
   const anchorId = settings?.anchorId?.trim() || undefined
@@ -75,7 +90,8 @@ export function CtaBanner({ block, courseCover = null }: CtaBannerProps) {
             <figure className="kc-cta-banner__figure">
               <MediaImage
                 className="kc-cta-banner__image"
-                media={{ ...courseCover.media, alt: ctaBannerCoverAlt(courseCover) }}
+                decorative={coverAlt.length === 0}
+                media={{ ...courseCover.media, alt: coverAlt }}
                 preferredSize="sm"
                 sizes="(max-width: 599px) 40vw, 240px"
               />

@@ -1,5 +1,5 @@
 import {
-  describeSection,
+  describeSectionOnPage,
   hiddenHint,
   REJTETT_CIM,
   REJTETT_MAGYARAZAT,
@@ -9,6 +9,7 @@ import {
   UGRAS_FELIRAT,
   visibleTwin,
 } from '../../../lib/section-row-label'
+import { COURSE_SHOWCASE_MARK } from '../../../lib/course-showcase'
 import { ervenyesBlokkId, szekcioMelylink } from '../szekcio-melylink'
 
 /**
@@ -263,7 +264,7 @@ export function szerkesztoReteg({
     const blockType = isRecord(sor) && typeof sor.blockType === 'string' ? sor.blockType : ''
     const forras = forrasok.get(blockType) ?? { blockLabel: blockType, textFields: [] }
     const leiras = {
-      ...describeSection(sor, index, forras.blockLabel, forras.textFields),
+      ...describeSectionOnPage(sor, index, forras.blockLabel, forras.textFields, lap.slug),
       ismetles: ismetlesek[index] ?? null,
     }
     const forrasInfo = sectionSource(sor, lap.slug)
@@ -296,6 +297,222 @@ export function szerkesztoReteg({
     }
   })
   return { oldal, szekciok }
+}
+
+// ---------------------------------------------------------------------------
+// „Kódban van” szalagok (modul-térkép H09 1. pont, H21, H35, H18)
+// ---------------------------------------------------------------------------
+
+/**
+ * A NEM szekció modulok szalagja: a lapon látható elem, amely nincs a
+ * Szekciók között (fejléc, lábléc, a kezdőlapi Barion-sáv, a /kurzusok és a
+ * /blog lapfeje). A szalag kimondja, honnan jön a modul, és ha van része,
+ * amely az adminban szerkeszthető, oda visz.
+ *
+ * MIÉRT KELL. A szerkesztő a piszkozat-előnézetben minden szekció fölött
+ * szalagot lát; ahol nincs, ott joggal hiszi, hogy a modul nem létezik az
+ * adminban, vagy hogy elrontott valamit. A rendszer mondja meg, mi történik
+ * (NN/g, Visibility of System Status: „The design should always keep users
+ * informed about what is going on”,
+ * https://www.nngroup.com/articles/visibility-system-status/). A Sanity
+ * vizuális szerkesztője is csak a CMS-ből jövő elemre tesz kattintható
+ * overlay-t, a kódbeli elem ott nem kínál szerkesztést
+ * (https://www.sanity.io/docs/visual-editing/visual-editing-overlays), a
+ * Drupal kontextuális linkje pedig mindig a tényleges szerkesztő helyre visz
+ * (https://www.drupal.org/docs/develop/user-interface-standards/contextual-links).
+ * Mi a kettőt összekötjük: a kódbeli részt szöveg mondja ki, a CMS-részre link visz.
+ *
+ * NINCS „Szerkesztem” LINK A KÓDBELI RÉSZEN. A felirat legyen igaz
+ * (termektervezes skill, 2. pont): kódbeli modulnál a „Szerkesztem” hamis
+ * ígéret volna. A más helyen szerkeszthető részre a meglévő forrás-link
+ * felirata visz, BETŰRE ugyanúgy, mint a szekció-szalagok második linkje
+ * (`Ugrás oda, ahol szerkeszted: Kurzusok`, section-row-label.ts
+ * UGRAS_FELIRAT): azonos célhoz azonos felirat (WCAG 2.2 SC 3.2.4
+ * Consistent Identification), a látható szöveg az akadálymentes név elején
+ * (SC 2.5.3 Label in Name), és ahol a felirat önmagában kevés, vizuálisan
+ * rejtett folytatás pontosít (SC 2.4.4 Link Purpose, C7 technika).
+ *
+ * A JELZÉS SZÖVEG, NEM SZÍN (SC 1.4.1): a címke a „Kódban van” vagy a
+ * „Részben kódban van” szóval zárul.
+ *
+ * MINDEN ÁLLÍTÁS A KÓDBÓL IGAZOLVA (a forrássorok a jelentésben):
+ * - Barion-sáv: src/components/checkout/BarionFizetesJelzes.tsx (a cím a
+ *   Barion elfogadóhelyi jóváhagyásának szó szerinti kérése, a logósort
+ *   „módosítás nélkül” kell kiszolgálni, az MNB-engedélyszám az ÁSZF-ből).
+ * - Fejléc: src/components/layout/Header.tsx (a logó kódban), a menü a
+ *   Menüpontokból (src/lib/menus.ts getNavTree). Ha a Menüpontok között
+ *   nincs `/kurzusok` célú gyökér-menüpont, a kód a lista elejére betesz egy
+ *   „Kurzusok” tételt; meglévő menüpontot nem helyez át (src/lib/menu-tree.ts
+ *   withCoursesNavItem). A fiók ikonja kódban van (AccountNav).
+ * - Lábléc: src/components/layout/Footer.tsx (a szlogen, a jogi linkek és a
+ *   felépítés kódban), a hírlevél-doboz címe és bevezetője a
+ *   NewsletterForm.tsx-ben (nem az Űrlapokban), a kapcsolati e-mail a
+ *   Kapcsolat oldal első látható Időpontkérés szekciójának E-mail-cím mezője,
+ *   a KÖZZÉTETT változatból (src/lib/contact-email-server.ts).
+ * - /kurzusok: a cím és a bevezető a route-ban, a kártyák fölötti cím, a
+ *   „Kurzusaink” felirat és a kártyák alatti mondat a course-showcase.ts
+ *   állandói (a route nem ad át CMS-szöveget), a kártyák a Kurzusokból.
+ * - /blog: a „Tudástár” cím és a bevezető a route-ban (LEAD), a cikkek a
+ *   Blogbejegyzésekből, a szűrő gombjai és a szűrt nézet címe a Kategóriákból
+ *   (PostListFilter.tsx).
+ */
+export interface KodSzalag {
+  /** Rövid címke: a modul neve és a „Kódban van” / „Részben kódban van” jelzés. */
+  cimke: string
+  /** Legfeljebb három rövid mondat: mi van kódban, és mit hol írsz át. */
+  magyarazat: string
+  /** A más helyen szerkeszthető részek linkjei; kódbeli modulnál üres. */
+  linkek: readonly SzalagLink[]
+}
+
+/** A teljesen kódbeli modul jelzése a címke végén. */
+export const KODBAN_VAN = 'Kódban van'
+
+/** A vegyes (kód + CMS) modul jelzése a címke végén. */
+export const RESZBEN_KODBAN_VAN = 'Részben kódban van'
+
+/** A Barion-sáv címe; betűre a BarionFizetesJelzes.tsx `BARION_CIM`-je (őr: kodban-van-szalag.test.tsx). */
+export const BARION_SAV_NEV = 'Bankkártyás fizetés Barionnal'
+
+/** A Kurzuskártyák blokk neve; betűre a src/blocks/course-cards.ts `labels.singular`-ja (őr a tesztben). */
+export const KURZUSKARTYAK_BLOKK_NEV = 'Kurzuskártyák (automatikus)'
+
+/** Az Időpontkérés blokk neve; betűre a src/blocks/appointment.ts `labels.singular`-ja (őr a tesztben). */
+export const IDOPONTKERES_BLOKK_NEV = 'Időpontkérés'
+
+/** A kapcsolati e-mail mezőjének címkéje a blokkban (src/blocks/appointment.ts `label`). */
+export const EMAIL_MEZO_NEV = 'E-mail-cím'
+
+function kodCimke(nev: string, jelzes: string): string {
+  return `${nev} · ${jelzes}`
+}
+
+/** Általános építő: a hívó adja a három részt. */
+export function kodSzalag({ cimke, magyarazat, linkek }: KodSzalag): KodSzalag {
+  return { cimke, magyarazat, linkek: [...linkek] }
+}
+
+/** A forrás-link a szekció-szalagok második linkjének feliratával (SC 3.2.4). */
+function forrasLink(nev: string, href: string, rejtettKontextus = ''): SzalagLink {
+  return { felirat: `${UGRAS_FELIRAT}: ${nev}`, rejtettKontextus, href }
+}
+
+/** A kezdőlapi Barion-sáv szalagja. Link nincs: a sáv minden része kódban van. */
+export function barionSavSzalag(): KodSzalag {
+  return kodSzalag({
+    cimke: kodCimke(BARION_SAV_NEV, KODBAN_VAN),
+    magyarazat:
+      'Ezt a sávot a weboldal kódja adja, az adminban nem szerkeszthető. A címét és a logósort a Barion elfogadóhelyi előírása köti, az engedélyszám az ÁSZF-fel egyezik. Ha változtatnál rajta, szólj a fejlesztőnek.',
+    linkek: [],
+  })
+}
+
+/** A fejléc szalagja: a menü a Menüpontokból, a többi a kódból. */
+export function fejlecSzalag({ adminRoute = '/admin' }: { adminRoute?: string } = {}): KodSzalag {
+  return kodSzalag({
+    cimke: kodCimke('Fejléc', RESZBEN_KODBAN_VAN),
+    magyarazat:
+      'A menüpontokat a Menüpontok között írod át. A logó és a fiók ikonja a weboldal kódjában van. Ha a menüben nincs a Kurzusok oldalra vivő főmenüpont, a kód maga tesz egyet az első helyre.',
+    linkek: [
+      forrasLink('Menüpontok', `${adminGyoker(adminRoute)}/collections/menus`, ', a fejléc menüje'),
+    ],
+  })
+}
+
+/**
+ * A lábléc szalagja. A kapcsolati e-mail link célja a hívótól jön
+ * (`kapcsolatIdopontSzerkesztoHref`); hiányában az Oldalak listája.
+ */
+export function lablecSzalag({
+  adminRoute = '/admin',
+  kapcsolatIdopontHref,
+}: { adminRoute?: string; kapcsolatIdopontHref?: string } = {}): KodSzalag {
+  const kontextus = `, ${IDOPONTKERES_BLOKK_NEV} szekció, ${EMAIL_MEZO_NEV} mező`
+  return kodSzalag({
+    cimke: kodCimke('Lábléc', RESZBEN_KODBAN_VAN),
+    magyarazat: `A kapcsolati e-mail-címet a Kapcsolat oldal ${IDOPONTKERES_BLOKK_NEV} szekciójában, az „${EMAIL_MEZO_NEV}” mezőben írod át, és a lábléc a közzététel után mutatja. A szlogen, a hírlevél-doboz szövege, a jogi linkek és a lábléc felépítése a weboldal kódjában van.`,
+    linkek: [
+      kapcsolatIdopontHref
+        ? forrasLink('Kapcsolat oldal', kapcsolatIdopontHref, kontextus)
+        : forrasLink(
+            'Oldalak',
+            `${adminGyoker(adminRoute)}/collections/pages`,
+            `, a Kapcsolat oldal${kontextus}`,
+          ),
+    ],
+  })
+}
+
+/** Melyik lista-oldal lapfeje. */
+export type ListaOldal = 'kurzusok' | 'tudastar'
+
+/** A /kurzusok és a /blog lapfejének szalagja. */
+export function listaFejSzalag(
+  melyik: ListaOldal,
+  { adminRoute = '/admin' }: { adminRoute?: string } = {},
+): KodSzalag {
+  const admin = adminGyoker(adminRoute)
+  if (melyik === 'kurzusok') {
+    return kodSzalag({
+      cimke: kodCimke('Kurzusok oldal', RESZBEN_KODBAN_VAN),
+      magyarazat: `A lap címe, a bevezető, a kártyák fölötti cím, a „${COURSE_SHOWCASE_MARK}” felirat és a kártyák alatti mondat a weboldal kódjában van, a kezdőlapi „${KURZUSKARTYAK_BLOKK_NEV}” szekció mezői ezt a lapot nem változtatják. A kurzus nevét, árát és borítóképét a Kurzusoknál írod át.`,
+      linkek: [forrasLink('Kurzusok', `${admin}/collections/products`)],
+    })
+  }
+  return kodSzalag({
+    cimke: kodCimke('Tudástár oldal', RESZBEN_KODBAN_VAN),
+    magyarazat:
+      'A „Tudástár” cím és a bevezető mondat a weboldal kódjában van. A cikkeket a Blogbejegyzéseknél írod át, a szűrő gombjai és a szűrt nézet címe a Kategóriákból jönnek.',
+    linkek: [forrasLink('Blogbejegyzések', `${admin}/collections/posts`)],
+  })
+}
+
+/**
+ * A Kapcsolat oldal ELSŐ LÁTHATÓ Időpontkérés blokkjának azonosítója, vagy
+ * null. Ugyanaz a szabály, mint a kapcsolati e-mail feloldójában
+ * (src/lib/contact-email.ts `kapcsolatiEmailLayoutbol`: az első
+ * `appointment` blokk, amelynek `sectionSettings.visible` nem `false`), így a
+ * link oda visz, ahonnan a lábléc a címet veszi.
+ */
+export function elsoLathatoIdopontkeresId(layout: unknown): string | null {
+  if (!Array.isArray(layout)) {
+    return null
+  }
+  for (const blokk of layout) {
+    if (!isRecord(blokk) || blokk.blockType !== 'appointment') {
+      continue
+    }
+    const beallitas = isRecord(blokk.sectionSettings) ? blokk.sectionSettings : null
+    if (beallitas && beallitas.visible === false) {
+      continue
+    }
+    return ervenyesBlokkId(blokk.id) ? blokk.id : null
+  }
+  return null
+}
+
+/**
+ * A lábléc e-mail-linkjének célja: a Kapcsolat oldal első látható
+ * Időpontkérés szekciója (mélylink); ha ilyen nincs, a Kapcsolat oldal
+ * szerkesztője; ha az oldal sincs meg, `undefined` (a lábléc-szalag ekkor az
+ * Oldalak listájára visz).
+ */
+export function kapcsolatIdopontSzerkesztoHref({
+  lap,
+  adminRoute = '/admin',
+}: {
+  lap: { id: number | string; layout?: readonly unknown[] | null } | null
+  adminRoute?: string
+}): string | undefined {
+  if (!lap) {
+    return undefined
+  }
+  return szekcioMelylink({
+    adminRoute,
+    collection: 'pages',
+    id: lap.id,
+    blokkId: elsoLathatoIdopontkeresId(lap.layout),
+  })
 }
 
 /** A szekció szalagja a réteg alapján, vagy null (nincs réteg, nincs azonosító, nincs ilyen sor). */

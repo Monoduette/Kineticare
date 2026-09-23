@@ -38,6 +38,13 @@ vi.mock('next/headers', () => ({
 // A route a Tudástár-kapcsolót is kérdezi; itt a bekapcsolt állapot a mérce
 // (a kikapcsolt ágat a tudastar-link-szuro.test.tsx méri).
 vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+// A kapcsolati e-mail feloldója (src/lib/contact-email-server.ts) itt a
+// kódtartalékot adja: tesztből valódi Payload-indítás és adatbázis-hívás nem
+// mehet ki (CLAUDE.md 15). Az eltérő CMS-címet a kapcsolati-email-feloldo.test.ts méri.
+vi.mock('@/lib/contact-email-server', async () => {
+  const { KAPCSOLATI_EMAIL_TARTALEK: tartalek } = await import('../lib/contact-email')
+  return { getContactEmail: async () => tartalek }
+})
 
 vi.mock('@/lib/cms', () => ({
   getPageBySlug: vi.fn(),

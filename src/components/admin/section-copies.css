@@ -1,0 +1,42 @@
+/*
+ * Az „ugyanaz máshol” jelzés (SectionCopies) elrendezése.
+ *
+ * A dobozt, a szöveg színét és a linkek aláhúzását, 24 px-es célfelületét
+ * (SC 2.5.8) és fókuszgyűrűjét a custom.scss .kc-admin-notice szerződése
+ * adja; itt nincs saját szín, csak a Payload tokenjei (--base). Mérve a
+ * colors.scss értékeiből: a szöveg (és a vele azonos színű link) a doboz
+ * alapján világos témán 12,13:1, sötéten 13,75:1, a figyelem-változaton
+ * 12,08:1 és 13,88:1 (SC 1.4.3, legalább 4,5:1).
+ *
+ * A helyek egymás ALATT állnak, nem egy sorban: a felirat hosszú („Rólunk ·
+ * 04 · Rólunk + statisztikák: Megérdemled a profi törődést”), egy sorba
+ * tördelve a határuk elveszne. GOV.UK Design System, Lists: „Use lists to make
+ * blocks of text easier to read, and to break information into manageable
+ * chunks.” (https://design-system.service.gov.uk/styles/lists/); a linkcél a
+ * link szövegéből kiderül (W3C G91, SC 2.4.4). 320 px-en a hosszú felirat
+ * tördelődik, vízszintes görgetés nincs (SC 1.4.10).
+ */
+.kc-section-copies__helyek {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.kc-section-copies__helyek li {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.kc-section-copies__tobbi {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.kc-section-copies__helyek + .kc-admin-notice__szoveg {
+  margin-top: calc(var(--base, 1rem) * 0.3);
+}
+
+.kc-section-copies__csoport + .kc-section-copies__csoport,
+.kc-section-copies__csoport + .kc-admin-notice__szoveg {
+  margin-top: calc(var(--base, 1rem) * 0.8);
+}

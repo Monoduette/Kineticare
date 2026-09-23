@@ -4,10 +4,10 @@ import { FeedbackTrigger } from '../feedback/FeedbackTrigger'
 import { Button } from '../ui/Button'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../lib/contact-email'
 
 import {
   NOT_FOUND_CHECKS,
-  NOT_FOUND_CONTACT_EMAIL,
   NOT_FOUND_DESTINATIONS_LABEL,
   NOT_FOUND_LEAD,
   NOT_FOUND_PRIMARY_ACTION,
@@ -23,13 +23,24 @@ export interface NotFoundViewProps {
    * Elhagyva látható: a nézet adatbázis nélkül is renderelhető marad.
    */
   tudastarLathato?: boolean
+  /**
+   * A kapcsolati e-mail (modul-térkép H18/A10). A (frontend) not-found határ
+   * a kérésidejű feloldást adja át (`getContactEmail`); a global-not-found
+   * statikusan előre renderelt könnyű lap, ott a prop elmarad, és a
+   * kódtartalék látszik. A nézet maga nem olvas adatbázist, így a
+   * szerveroldali feloldót sem importálja.
+   */
+  kapcsolatiEmail?: string
 }
 
 /**
  * A „nem található" oldal TÖRZSE. Egy komponens, két beépítési hely:
  * 2. `src/app/global-not-found.tsx` — ide fut minden NEM ILLESZKEDŐ URL
  */
-export function NotFoundView({ tudastarLathato = true }: NotFoundViewProps = {}) {
+export function NotFoundView({
+  tudastarLathato = true,
+  kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK,
+}: NotFoundViewProps = {}) {
   return (
     <Section>
       {/* Felvezető sor (eyebrow) SZÁNDÉKOSAN nincs: a régi lapon a nagy „404"
@@ -71,7 +82,7 @@ export function NotFoundView({ tudastarLathato = true }: NotFoundViewProps = {})
 
         <p className="kc-error-page__contact">
           Nem találod, amit kerestél? Írj a{' '}
-          <a href={`mailto:${NOT_FOUND_CONTACT_EMAIL}`}>{NOT_FOUND_CONTACT_EMAIL}</a> címre.
+          <a href={`mailto:${kapcsolatiEmail}`}>{kapcsolatiEmail}</a> címre.
         </p>
         {/* WP65 — hibajelzés a 404-ről is. A gomb NEM hivatkozás, tehát a lap
             cél-leltárát nem duplázza (őr: src/__tests__/hibaoldal.test.tsx),

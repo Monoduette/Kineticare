@@ -1,6 +1,7 @@
 import type { Block, CollectionConfig, Field } from 'payload'
 
 import { pageBlocks } from '../blocks'
+import { KEP_CSERE_SUGO } from '../blocks/kep-csere'
 import { SECTION_SETTINGS_LABEL } from '../blocks/section-settings'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { slugField } from '../fields/slug'
@@ -136,6 +137,24 @@ export const Pages: CollectionConfig = {
     // nem változik. Így a „kezdolap”, „rolunk”, „szolgaltatasok” keresés is
     // megtalálja az oldalt, nem csak a cím szavai.
     listSearchableFields: ['title', 'slug'],
+    // Lapozás (H08/1): a Payload alapból 10 sort mutat, így a kezdőlap a lista
+    // 2. oldalára került (admin-audit, admin-oldal.json). A lista alapból a
+    // LÉTREHOZÁS szerint rendez, a legújabb elöl (defaultSort nélkül
+    // '-createdAt': payload/dist/versions/drafts/getQueryDraftsSort.js), ezért
+    // a legrégebbi fő oldalak csúsznak hátra: élesben a 15 közzétett oldal
+    // közül a Kapcsolat a 9., a Szolgáltatások a 13., a Rólunk a 14., a
+    // kezdőlap a 15. (mérve 2026-09-23-án, a helyi példányon 16 oldalból a
+    // kezdőlap a 16.). 25 sorral mind az első lapon van. A választható értékek
+    // a Payload `admin.pagination.limits` opciója
+    // (https://payloadcms.com/docs/configuration/collections: „Defaults to 10.”).
+    // Források: NN/g, Users' Pagination Preferences and „View All” (Nielsen):
+    // „the choice between two numbers, say 10 and 50, where the second number
+    // is substantially bigger than the default”, és a felső határ „around 100
+    // items” (https://www.nngroup.com/articles/item-list-view-all/); NN/g,
+    // 10 Usability Heuristics, #6: „Minimize the user's memory load by making
+    // elements, actions, and options visible.”
+    // (https://www.nngroup.com/articles/ten-usability-heuristics/).
+    pagination: { defaultLimit: 25, limits: [10, 25, 50, 100] },
     description:
       'Önálló aloldalak (pl. Rólunk, Szolgáltatások). A kezdőlapot a listában a „kezdolap” webcímre keresve találod meg.',
     preview: (doc) => buildAdminPreviewUrl('pages', doc?.slug),
@@ -204,8 +223,8 @@ export const Pages: CollectionConfig = {
       relationTo: 'media',
       label: 'Fejléckép',
       admin: {
-        description:
-          'A legtöbb oldalon a lap tetején, a cím mellett vagy alatt álló kép. Ha a Megosztási kép üres, ez látszik a Facebook- és a Messenger-előnézetben; ha ez is üres, a Kineticare alapképe (csapatfotó). A Kapcsolat oldalon a lapon nem jelenik meg, a kezdőlapon sem, amíg annak vannak Szekciói.',
+        // A végén a képmezők közös súgója (H34, src/blocks/kep-csere.ts).
+        description: `A legtöbb oldalon a lap tetején, a cím mellett vagy alatt álló kép. Ha a Megosztási kép üres, ez látszik a Facebook- és a Messenger-előnézetben; ha ez is üres, a Kineticare alapképe (csapatfotó). A Kapcsolat oldalon a lapon nem jelenik meg, a kezdőlapon sem, amíg annak vannak Szekciói. ${KEP_CSERE_SUGO}`,
       },
     },
     {
@@ -271,8 +290,7 @@ export const Pages: CollectionConfig = {
       relationTo: 'media',
       label: 'Megosztási kép',
       admin: {
-        description:
-          'Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja az oldalt. Ha üres, a Fejléckép, annak híján a Kineticare alapképe (csapatfotó) látszik.',
+        description: `Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja az oldalt. Ha üres, a Fejléckép, annak híján a Kineticare alapképe (csapatfotó) látszik. ${KEP_CSERE_SUGO}`,
       },
     },
     {

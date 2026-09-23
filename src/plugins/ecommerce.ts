@@ -23,6 +23,7 @@ import {
 } from '../access'
 import { revalidateMenusCache } from '../collections/Menus'
 import { coursePackage } from '../blocks/CoursePackage'
+import { KEP_CSERE_SUGO } from '../blocks/kep-csere'
 import { preventCourseDeletionWithFiles } from '../access/courseFileDelete'
 import { courseModulesField } from '../fields/course-modules'
 import { seoKeywordsField } from '../fields/seo-keywords'
@@ -397,6 +398,83 @@ const withCourseFriendlyAdmin = (field: Field): Field => {
       ...(override.description === undefined ? {} : { description: override.description }),
     },
   } as Field
+}
+
+/**
+ * H13: a Kurzusok tömbjeinek beszédes sorcímkéje. Összecsukott állapotban a
+ * Payload „Kérdés 01”, „Sor 03” feliratot adna, és a sor tartalma csak
+ * kinyitva derülne ki; a közös ArrayRowLabel az első kitöltött cím-mezőt
+ * mutatja („1. Mennyi idő naponta?”), üres sornál „3. kérdés (még üres)”,
+ * képes sornál a kép leírását vagy fájlnevét (src/lib/section-row-label.ts,
+ * a Pages.ts `faq` mezőjének mintája).
+ *
+ * Források: WCAG 2.2 SC 2.4.6 Headings and Labels („Headings and labels
+ * describe topic or purpose”, https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels);
+ * NN/g, Accordions on Desktop: „Ensure that the heading accurately reflects
+ * the content within the panel.”
+ * (https://www.nngroup.com/articles/accordions-on-desktop/).
+ */
+const KURZUS_TOMB_SORCIMKE = '/components/admin/SectionRowLabel#ArrayRowLabel'
+
+const kurzusTombSorcimke = (
+  singular: string,
+  titleFields: readonly string[],
+  imageField?: string,
+) => ({
+  RowLabel: {
+    path: KURZUS_TOMB_SORCIMKE,
+    clientProps: {
+      singular,
+      titleFields: [...titleFields],
+      ...(imageField === undefined ? {} : { imageField }),
+    },
+  },
+})
+
+/**
+ * H24: a Részletes leírás kulcsszavas címsorainak hatása, a leírás alatt.
+ *
+ * A kurzusoldal a leírás egyes szakaszait kiemeli a folyószövegből
+ * (src/components/courses/sales-content.ts: classifyHeading, segmentDocument,
+ * buildCourseSalesContent). A szerkesztő erről eddig semmit nem látott: egy
+ * alcím átírása szakaszt tüntetett el vagy helyezett át. A mondat minden
+ * állítása a kódból van mérve:
+ *  - a címsor-minták: classifyHeading (részszó-egyezés, a tagadó ág dönt előbb);
+ *  - a szakasz a következő azonos vagy magasabb szintű címsorig tart;
+ *  - a kitöltött mező nyer, és a leírás kinyert szakasza ekkor sem kerül
+ *    vissza a szövegbe (a `derived` jelzőt a mező kitöltöttsége nem érinti);
+ *  - tartalom nélküli szakasz a helyén marad;
+ *  - ingyenes kurzuson a garancia-szakasz sehol nem jelenik meg (`facts.free`);
+ *  - üres Fő előnyöknél a törzs első felsorolásának első három sora lesz
+ *    pipás sor, és a törzsben is megmarad.
+ * A src/__tests__/kurzus-admin-sugok.test.ts minden idézett példacímsort a
+ * classifyHeading-hez köt, és minden idézett mezőnevet a mező címkéjéhez.
+ *
+ * Források: W3C ATAG 2.0 A.4.2.2 Document All Features, (b) Described in the
+ * Interface: „Use of the feature is explained in the authoring tool user
+ * interface” (https://www.w3.org/TR/ATAG20/#sc_a422); NN/g, 10 Usability Heuristics,
+ * #1 Visibility of System Status és #10 Help and Documentation
+ * (https://www.nngroup.com/articles/ten-usability-heuristics/). A Payload saját
+ * FieldDescription-komponense rajzolja (a src/blocks/film-hero.ts mintája),
+ * így a többi mezőleírással azonos betűt és kontrasztot kap.
+ */
+export const RESZLETES_LEIRAS_CIMSORAI_SUGO =
+  'Kulcsszavas címsorok a Részletes leírásban. A „Kinek nem való” vagy „Nem javasoljuk” típusú címsor alatti felsorolás a Kinek nem való listába kerül. A „Garancia” címsor és az alatta álló bekezdés a garancia-sávba kerül. A „Gyakori kérdések” vagy „GYIK” címsor alatt az alcímek a kérdések, az alattuk álló szöveg a válasz, és ezek a GYIK-be kerülnek. A „Kinek való”, „neked való” vagy „tökéletes számodra, ha” típusú címsor alatti felsorolás a Kinek való listába kerül. Elég, ha a címsor tartalmazza a kifejezést, például „30 napos kipróbálási garancia”. A szakasz a következő, vele azonos vagy magasabb szintű címsorig tart. Ha a megfelelő mező ki van töltve („Kinek nem való”, „Kinek való (pipás lista)”, „Gyakori kérdések (GYIK)”, a garanciánál a „Garancia címe” és a „Garancia szövege” együtt), a mező tartalma látszik, a leírás szakasza pedig sehol. Ha a szakaszból nem lesz tartalom (például nincs alatta felsorolás), a szöveg a helyén marad. Ingyenes kurzusnál a garancia-szakasz sehol nem jelenik meg. Ha a „Fő előnyök (pipás sorok)” mező üres, a leírásban maradó szöveg első felsorolásának első három sora pipás előny lesz, és a leírásban is megmarad. Egy ilyen címsor átírása ezért a szakaszt visszateheti a szövegbe, vagy kiveheti a sávból.'
+
+const reszletesLeirasCimsorai: Field = {
+  name: 'reszletesLeirasCimsorai',
+  type: 'ui',
+  admin: {
+    components: {
+      Field: {
+        path: '@payloadcms/ui#FieldDescription',
+        clientProps: {
+          description: RESZLETES_LEIRAS_CIMSORAI_SUGO,
+          marginPlacement: 'bottom',
+        },
+      },
+    },
+  },
 }
 
 /**
@@ -848,6 +926,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         // the Real World).
         description:
           'Ma sehol nem jelenik meg a weboldalon: a kurzuskártya a kezdőlapon és a Kurzusok oldalon a címet, a célközönséget, az árat és a gombot mutatja. A beírt sorok megmaradnak. A kurzusoldal pipás sorait a lenti „Fő előnyök (pipás sorok)” mezőben írod.',
+        components: kurzusTombSorcimke('Előny', ['text']),
       },
       fields: [
         {
@@ -873,9 +952,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         ],
       }),
       admin: {
-        description: 'A kurzus oldalán megjelenő teljes szöveg.',
+        description:
+          'A kurzusoldal „A kurzusról” szakaszának szövege. Egyes címsorok alatti részek innen külön sávba kerülnek, erről szól az alábbi leírás.',
       },
     },
+    reszletesLeirasCimsorai,
     /**
      * Kurzusoldal strukturált szakaszai (előnyök, lépések, GYIK stb.) — mind opcionális;
      * üres mezőnél fallback: `src/components/courses/sales-content.ts`.
@@ -889,6 +970,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         description:
           'Rövid, konkrét sorok a vásárlódobozban, pipával (pl. „Örökös hozzáférés”, „50+ videós gyakorlat”). Három sor a legjobb. Ha üresen hagyod, a sorok a Részletes leírás első felsorolásából, ennek hiányában a tananyag adataiból készülnek.',
+        components: kurzusTombSorcimke('Előny', ['text']),
       },
       fields: [
         {
@@ -908,6 +990,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         description:
           'Mi történik a vásárlás után, lépésről lépésre. Arra a kérdésre felel, hogy a vásárló mikor és hogyan éri el a kurzust. Ha üresen hagyod, a vásárlás három alaplépése jelenik meg.',
+        components: kurzusTombSorcimke('Lépés', ['title', 'text']),
       },
       fields: [
         {
@@ -931,6 +1014,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         description:
           'Az „Ez a program neked való, ha…” lista sorai, soronként egy állítás. Ha üresen hagyod, a Részletes leírás ilyen című szakaszának felsorolásából készül.',
+        components: kurzusTombSorcimke('Sor', ['text']),
       },
       fields: [
         {
@@ -949,6 +1033,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         description:
           'A „Nem javasoljuk, ha…” lista sorai. Az őszinte kizárás bizalmat épít, és megelőzi a csalódott vásárlást. Ha üresen hagyod, a Részletes leírás ilyen című szakaszából készül.',
+        components: kurzusTombSorcimke('Sor', ['text']),
       },
       fields: [
         {
@@ -984,6 +1069,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         description:
           'A kurzusoldal alján, összecsukható listában. Ide a vásárlás előtti kételyek valók (mennyi idő, kinek jó, meddig érem el). Ha üresen hagyod, a Részletes leírás kérdés-szakaszából képződik.',
+        components: kurzusTombSorcimke('Kérdés', ['question']),
       },
       fields: [
         {
@@ -1006,7 +1092,25 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       relationTo: 'media',
       label: 'Borítókép',
       admin: {
-        description: 'A kurzus kártyáján és az oldala tetején megjelenő kép.',
+        // H47 + H34: hol látszik (CourseShowcase, CourseCard, Kurzusaim; a
+        // kezdőlap alsó felhívás-sávja: a HomeView → RenderBlocks → CtaBanner
+        // montázs nélkül, a src/lib/cta-banner-course.ts resolveCtaBannerFigure
+        // a gomb céljához tartozó kurzus borítóját adja, /kurzusok célnál az
+        // első fizetős kurzusét; a kurzusoldal teteje: page.tsx previewFigure
+        // ?? cover, az akciós nézet hőse mindig a borítókép), és a megosztási
+        // tartaléklánc (src/lib/seo.ts productSeoDoc: heroImage = coverImage;
+        // resolveOgImage: ogImage → heroImage → DEFAULT_OG_IMAGE). A mondat a
+        // Posts.ts heroImage-súgójának mintája.
+        // Források: GOV.UK Design System, Text input, Hint text: „Use hint text
+        // for help that's relevant to the majority of users, like how their
+        // information will be used, or where to find it.”
+        // (https://design-system.service.gov.uk/components/text-input/), ezért
+        // a súgó azt mondja meg, hol jelenik meg a kép; NN/g, 10 Usability
+        // Heuristics, #10 Help and Documentation: „it may be necessary to
+        // provide documentation to help users understand how to complete their
+        // tasks.” (https://www.nngroup.com/articles/ten-usability-heuristics/),
+        // ezért a tartaléklánc a mező mellett áll, nem külön kézikönyvben.
+        description: `A kurzus kártyáján (kezdőlap, Kurzusok oldal, Kapcsolódó kurzusok, Kurzusaim), a kezdőlap alsó felhívás-sávjában és a kurzusoldal tetején látszik (az akciós megjelenésen kívül csak akkor, ha nincs Nyilvános előzetes videó). Ha a Megosztási kép üres, megosztáskor is ez látszik; ha ez is üres, a Kineticare alapképe (csapatfotó). ${KEP_CSERE_SUGO}`,
       },
     },
     {
@@ -1018,7 +1122,17 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         plural: 'Képek',
       },
       admin: {
-        description: 'További képek a kurzus oldalára (nem kötelező).',
+        // H23: a CourseGalleryFigure csak az ELSŐ feloldott képet rajzolja ki,
+        // a kurzusoldalon az „A kurzusról” (Részletes leírás) szakasz után
+        // (src/app/(frontend)/kurzusok/[slug]/page.tsx, firstGalleryMedia). A
+        // régi „További képek a kurzus oldalára” többet ígért, mint ami
+        // megjelenik (NN/g, Match Between the System and the Real World,
+        // https://www.nngroup.com/articles/match-system-real-world/; GOV.UK
+        // Design System, hint text: „how their information will be used”,
+        // https://design-system.service.gov.uk/components/text-input/).
+        description:
+          'Jelenleg csak az első kép jelenik meg, a kurzusoldalon a Részletes leírás után. A további képek megmaradnak, de nem látszanak. Nem kötelező.',
+        components: kurzusTombSorcimke('Kép', [], 'image'),
       },
       fields: [
         {
@@ -1026,6 +1140,9 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           type: 'upload',
           relationTo: 'media',
           label: 'Kép',
+          admin: {
+            description: KEP_CSERE_SUGO,
+          },
         },
       ],
     },
@@ -1057,8 +1174,19 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       relationTo: 'media',
       label: 'Megosztási kép',
       admin: {
-        description:
-          'Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a kurzust.',
+        // H47: a Pages.ts ogImage-súgójának mintája, a kurzus képtartalékával
+        // (src/lib/seo.ts productSeoDoc + resolveOgImage).
+        // Források: GOV.UK Design System, Text input, Hint text: „Use hint text
+        // for help that's relevant to the majority of users, like how their
+        // information will be used, or where to find it.”
+        // (https://design-system.service.gov.uk/components/text-input/), ezért
+        // a súgó kimondja, hol és mikor látszik a kép; NN/g, 10 Usability
+        // Heuristics, #2 Match Between the System and the Real World: „Use
+        // words, phrases, and concepts familiar to the user, rather than
+        // internal jargon.” (https://www.nngroup.com/articles/ten-usability-heuristics/),
+        // ezért a súgó a szerkesztő által látott mezőnevet (Borítókép) és a
+        // hétköznapi helyet (Facebook, Messenger) nevezi meg, nem az og:image-et.
+        description: `Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a kurzust. Ha üres, a Borítókép, annak híján a Kineticare alapképe (csapatfotó) látszik. ${KEP_CSERE_SUGO}`,
       },
     },
     {
@@ -1126,6 +1254,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
         },
         description:
           'A kurzus korábbi, modulok nélküli videólistája. Csak a régi kurzusokon látszik. Új leckét a fenti „Tananyag (modulok)” mezőben vegyél fel. Az itt lévő videókat nem kell átmozgatni, azok változatlanul működnek.',
+        components: kurzusTombSorcimke('Videó', ['title']),
       },
       fields: [
         {
@@ -1207,6 +1336,13 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       label: 'Akciós megjelenés',
       admin: {
         initCollapsed: false,
+        // H37 (B20): az akciós sablon állandó feliratai kódban vannak
+        // (src/components/courses/promo/PromoHero.tsx, PromoHighlights.tsx,
+        // PromoClosingCta.tsx). A komponenseket a configba NEM importáljuk (a
+        // payload CLI-t React-komponenssel terhelné): a szöveg literál, az
+        // egyezést a src/__tests__/kurzus-admin-sugok.test.ts őrzi.
+        description:
+          'Az akciós kurzusoldal állandó feliratai („Akciós ár”, „A kurzus fő előnyei”, „Kezdd el az akciós áron”) a weboldal kódjában vannak, itt nem írhatók át.',
       },
       fields: [
         {
@@ -1372,8 +1508,17 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       unique: true,
       label: 'Belső azonosító',
       admin: {
+        // H25, mérve: a rendelés LÉTREHOZÁSAKOR készül pillanatkép a sku-ról
+        // (order-integrity.ts: `item.titleSnapshot = product.sku`, csak
+        // create-kor), és a számla (szamlazz/invoice.ts), a visszaigazoló levél
+        // (order-paid.ts) és a Barion-tétel (checkout/start-checkout.ts) ezt
+        // olvassa; ezért igaz a „következő vásárlástól”. A weboldal a
+        // courseTitle láncát követi (displayTitle, különben sku). Források:
+        // NN/g, Match Between the System and the Real World
+        // (https://www.nngroup.com/articles/match-system-real-world/); GOV.UK
+        // Design System, hint text (https://design-system.service.gov.uk/components/text-input/).
         description:
-          'A kurzus egyedi azonosítója, két kurzusnak nem lehet ugyanaz. Ez áll a rendeléseken és a számlán. Ha a fenti „Kurzus címe” üres, a látogató is ezt látja.',
+          'A kurzus egyedi azonosítója, két kurzusnak nem lehet ugyanaz. Ez áll a számlán, a rendeléseken, a vásárlási visszaigazoló e-mailben és a Barion fizetőoldalán (egy módosítás a következő vásárlástól látszik). A weboldalon a fenti „Kurzus címe” látszik, ha ki van töltve, különben ez az azonosító.',
       },
     },
     {
@@ -1383,7 +1528,17 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       hasMany: true,
       label: 'Kapcsolódó kurzusok',
       admin: {
-        description: 'A kurzus oldalán ajánlott további kurzusok.',
+        // H37 (B20): a sáv címe és bevezetője a RelatedCourses.tsx
+        // konstansaiban él (RELATED_COURSES_HEADING, CROSS_SELL_HEADING,
+        // CROSS_SELL_LEAD*); a configba nem importáljuk (React-komponens), az
+        // egyezést a src/__tests__/kurzus-admin-sugok.test.ts őrzi. Csak a
+        // közzétett, nem rejtett kurzus látszik (isDiscoverableCourse).
+        // Források (ez és az Akciós megjelenés súgója): W3C ATAG 2.0 A.4.2.2
+        // (https://www.w3.org/TR/ATAG20/#sc_a422) és NN/g #10 Help and
+        // Documentation (https://www.nngroup.com/articles/ten-usability-heuristics/):
+        // a szerkesztő ott tudja meg, mit nem írhat át, ahol keresné.
+        description:
+          'A kurzusoldal alján ajánlott további kurzusok. Csak a közzétett, nem rejtett kurzusok látszanak. A sáv címe („Kapcsolódó kurzusok”, ingyenes kurzusnál „Mi jön az ingyenes kurzus után?”) és az ingyenes kurzusnál megjelenő bevezető szöveg a weboldal kódjában van, itt nem írható át.',
       },
     },
     {

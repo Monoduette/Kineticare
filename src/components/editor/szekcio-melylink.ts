@@ -27,10 +27,62 @@
  * ilyen alakú. A paraméter ezért csak erre a mintára illeszkedve kerül
  * összehasonlításra; HTML-be, URL-be vagy átirányításba sosem (nincs XSS,
  * nincs nyílt átirányítás).
+ *
+ * MEZŐ-MÉLYLINK (H06, H50/B26). A `?mezo=<mezőútvonal>` paraméter a mélylinket
+ * a szekción belül (vagy szekció nélküli dokumentumon) egy MEZŐIG viszi:
+ * - szekcióval: `?szekcio=<blokkId>&mezo=captions`: a mezőútvonal a szekción
+ *   (blokksoron) belüli, relatív útvonal;
+ * - szekció nélkül: `/admin/collections/products/12?mezo=howItWorks`: a
+ *   mezőútvonal a dokumentum gyökeréhez képest értendő (a névtelen fülek,
+ *   sorok és csukható dobozok nem részei az útvonalnak, a nevesített
+ *   csoportok és fülek igen, pl. `seo.title`).
+ * A mezőútvonal a Payload mezőneveiből áll (betűvel kezdődő azonosítók,
+ * ponttal tagolva), legfeljebb 128 karakter; sorindexet nem tartalmazhat.
+ * Ugyanaz a szabály érvényes rá, mint a szekció-azonosítóra: csak mintával
+ * ellenőrzött összehasonlításra és CSS.escape-pel képzett szelektorba kerül.
  */
 
 /** Az URL-paraméter neve: `?szekcio=<blokk-azonosító>`. */
 export const SZEKCIO_PARAM = 'szekcio'
+
+/** Az URL-paraméter neve: `?mezo=<mezőútvonal>`. */
+export const MEZO_PARAM = 'mezo'
+
+/**
+ * A mezőútvonal alakja: ponttal tagolt Payload-mezőnevek (pl. `captions`,
+ * `howItWorks`, `seo.title`). Minden tag betűvel kezdődik, utána betű, szám
+ * vagy aláhúzás állhat; az egész legfeljebb 128 karakter.
+ */
+export const MEZO_UTVONAL_MINTA = /^(?=.{1,128}$)[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/
+
+/** Érvényes-e a mezőútvonal (típusszűkítő). */
+export function ervenyesMezoUtvonal(ertek: unknown): ertek is string {
+  return typeof ertek === 'string' && MEZO_UTVONAL_MINTA.test(ertek)
+}
+
+/**
+ * A `?mezo=` paraméter értelmezése: az érvényes mezőútvonal, vagy null, ha a
+ * paraméter hiányzik vagy hibás alakú. Elfogad `URLSearchParams`-ot és
+ * keresőszöveget is (a vezető `?` elhagyható).
+ */
+export function mezoParameter(search: URLSearchParams | string): string | null {
+  const parameterek = typeof search === 'string' ? new URLSearchParams(search) : search
+  const ertek = parameterek.get(MEZO_PARAM)
+  return ervenyesMezoUtvonal(ertek) ? ertek : null
+}
+
+/**
+ * A Payload mező-dobozának (vagy beviteli elemének) DOM-azonosítója egy
+ * abszolút mezőútvonalhoz: `field-` előtag, a pontok helyén `__`
+ * (@payloadcms/ui/dist/utilities/generateFieldID.js:5, és ugyanígy
+ * fields/Group/index.js:72, fields/Array/index.js:293,
+ * fields/Blocks/index.js:304, fields/Text/Input.js:117,
+ * fields/Textarea/Input.js:81). Például `layout.0.captions` →
+ * `field-layout__0__captions`.
+ */
+export function mezoDomId(abszolutUtvonal: string): string {
+  return `field-${abszolutUtvonal.split('.').join('__')}`
+}
 
 /** A Payload blokk-azonosítójának alakja (bson ObjectId, 24 hex jegy). */
 export const BLOKK_ID_MINTA = /^[a-f0-9]{24}$/
@@ -64,22 +116,39 @@ export interface SzekcioMelylinkAdatok {
   id: number | string
   /** A megnyitandó szekció (blokk) azonosítója; hiányában a szerkesztő teteje nyílik. */
   blokkId?: string | null
+  /**
+   * A megnyitandó mező útvonala (MEZO_UTVONAL_MINTA). Ha a `blokkId` meg van
+   * adva (akár null is), a szekción belüli relatív útvonal; ha nincs megadva
+   * (undefined), a dokumentum gyökeréhez képest értendő.
+   */
+  mezo?: string | null
 }
 
 /**
- * A szerkesztő címe, érvényes blokk-azonosítónál a `?szekcio=` paraméterrel.
+ * A szerkesztő címe, érvényes blokk-azonosítónál a `?szekcio=` paraméterrel,
+ * megadott mezőnél a `?mezo=` paraméterrel.
  *
- * Hibás collection vagy dokumentum-azonosító programhiba, ezért dob:
- * a hívó adatbázisból kapott értékkel hívja, és hibás címet nem adhat ki.
- * A hiányzó vagy hibás alakú blokk-azonosító viszont nem hiba: ilyenkor a
- * szerkesztő paraméter nélkül nyílik, a lap tetején.
+ * Hibás collection, dokumentum-azonosító vagy mezőútvonal programhiba, ezért
+ * dob: a hívó adatbázisból kapott azonosítóval és kódkonstans mezőnévvel
+ * hívja, és hibás címet nem adhat ki. A hiányzó vagy hibás alakú
+ * blokk-azonosító viszont nem hiba (az adat elavulhat): ilyenkor a
+ * szerkesztő szekció nélkül nyílik, a lap tetején. Ha a hívó szekciót kért
+ * (a `blokkId` meg van adva), de az hibás vagy null, a szekcióhoz relatív
+ * mező is elmarad, mert szekció nélkül mást jelentene.
+ *
+ * A paramétereket az URLSearchParams kódolja (a mai `?szekcio=<24 hex>`
+ * kimenet ettől betűre változatlan: a hexadecimális jegyeket nem kódolja).
  */
 export function szekcioMelylink({
   adminRoute = '/admin',
   collection,
   id,
   blokkId,
+  mezo,
 }: SzekcioMelylinkAdatok): string {
+  if (mezo !== undefined && mezo !== null && !ervenyesMezoUtvonal(mezo)) {
+    throw new TypeError(`A szerkesztő címéhez adott mezőútvonal nem értelmezhető: ${mezo}`)
+  }
   if (!GYUJTEMENY_MINTA.test(collection)) {
     throw new TypeError(
       `A szerkesztő címéhez adott collection-slug nem értelmezhető: ${collection}`,
@@ -96,7 +165,17 @@ export function szekcioMelylink({
     )
   }
   const alap = `${adminElotag(adminRoute)}/collections/${collection}/${idSzoveg}`
-  return ervenyesBlokkId(blokkId) ? `${alap}?${SZEKCIO_PARAM}=${blokkId}` : alap
+  const parameterek = new URLSearchParams()
+  const szekcioKert = blokkId !== undefined
+  const szekcioErvenyes = ervenyesBlokkId(blokkId)
+  if (szekcioErvenyes) {
+    parameterek.set(SZEKCIO_PARAM, blokkId)
+  }
+  if (typeof mezo === 'string' && (szekcioErvenyes || !szekcioKert)) {
+    parameterek.set(MEZO_PARAM, mezo)
+  }
+  const kereso = parameterek.toString()
+  return kereso === '' ? alap : `${alap}?${kereso}`
 }
 
 export interface SzerkesztoUtvonal {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ find: vi.fn() }))
 vi.mock('payload', () => ({ getPayload: async () => ({ find: mocks.find }) }))
+vi.mock('next/headers', () => ({ draftMode: async () => ({ isEnabled: false }) }))
 vi.mock('../payload.config', () => ({ default: {} }))
 vi.mock('../components/analytics/BarionPageView', () => ({ BarionPageView: () => null }))
 

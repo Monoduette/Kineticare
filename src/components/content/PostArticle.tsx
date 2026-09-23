@@ -2,7 +2,12 @@ import Link from 'next/link'
 
 import type { Post } from '../../payload-types'
 import { estimateReadingMinutes } from '../../lib/reading-time'
-import { breadcrumbJsonLd, resolveOgImageUrl, resolveSeoKeywords } from '../../lib/seo'
+import {
+  breadcrumbJsonLd,
+  resolveOgImageUrl,
+  resolveSeoKeywords,
+  type SeoKeywordRow,
+} from '../../lib/seo'
 import { postArticleJsonLd } from '../../lib/seo-cikk'
 import { cikkUtvonal } from '../../lib/tudastar/hub-oldalak'
 import { kulcsszoFor } from '../../lib/tudastar/seo-kulcsszavak'
@@ -67,6 +72,13 @@ export interface PostArticleProps {
    * Elhagyva a mai `/blog/{slug}` viselkedés marad.
    */
   hubUtvonalak?: Readonly<Record<string, string>>
+  /**
+   * A gyökér tünet-hub közös kulcsszó-forrása (src/lib/hub-seo.ts,
+   * modul-térkép H05/A20): az Oldal SEO-kulcsszavai, üresen a cikkéi. Így az
+   * Article JSON-LD `keywords` ugyanaz, mint a hub `<meta name="keywords">`-je.
+   * Elhagyva (a `/blog/[slug]` útvonalon) a cikk saját mezője marad.
+   */
+  jsonLdKulcsszavak?: readonly SeoKeywordRow[] | null
 }
 
 /** Csak közzétett, sluggal rendelkező cikk jelenhet meg kapcsolódóként; max 3. */
@@ -84,6 +96,7 @@ export function PostArticle({
   freeCourse,
   path,
   hubUtvonalak,
+  jsonLdKulcsszavak,
 }: PostArticleProps) {
   const canonicalPath = path ?? `/blog/${post.slug}`
   const author = authorPersonOf(post)
@@ -99,6 +112,13 @@ export function PostArticle({
   // A keywords a CMS mezőből jön. Az `about` továbbra is a mért tábla
   // `targy` mezője (betegség-entitás, nem szerkesztői kulcsszó).
   const keywords = resolveSeoKeywords(post.seoKeywords)
+  // A hubon a közös lánc kulcsszavai (lásd a `jsonLdKulcsszavak` propot). Az
+  // Article `description`-je viszont MARAD a cikk kivonata: az a lapon látható
+  // bevezetőt írja le, és a strukturált adat a látható tartalmat írja le
+  // (Google Search Central, General structured data guidelines:
+  // https://developers.google.com/search/docs/appearance/structured-data/sd-policies).
+  const semaKulcsszavak =
+    jsonLdKulcsszavak === undefined ? keywords : resolveSeoKeywords(jsonLdKulcsszavak)
   const kulcsszoOf = typeof post.slug === 'string' ? kulcsszoFor(post.slug) : undefined
   const related = displayableRelated(relatedProp ?? post.relatedPosts)
   const heroMedia = post.heroImage && typeof post.heroImage === 'object' ? post.heroImage : null
@@ -154,7 +174,7 @@ export function PostArticle({
           imageUrl: resolveOgImageUrl(post),
           // Kulcsszó: CSAK a CMS mező. Üresen a séma-kulcs kimarad, a H1-et
           // nem töltjük bele. Az `about` a mért tábla tárgya marad.
-          ...(keywords !== undefined ? { keywords } : {}),
+          ...(semaKulcsszavak !== undefined ? { keywords: semaKulcsszavak } : {}),
           ...(kulcsszoOf === undefined ? {} : { about: kulcsszoOf.targy }),
         })}
       />

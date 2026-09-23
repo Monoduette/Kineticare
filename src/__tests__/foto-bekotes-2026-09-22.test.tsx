@@ -162,12 +162,13 @@ describe('a sín ajtónkénti fotói: bekötés', () => {
   it('a /szolgaltatasok 1. ajtaja is a sín rendelői képe (a WP54-es döntést a tulajdonos felülírta)', () => {
     expect(SZOLGALTATASOK_KEZELES_FOTO).toEqual(homeHelpFallbackMedia(0))
     // Az élő /szolgaltatasok ajtó-blokkja (mérve 2026-09-22): üres fotók, a
-    // 2. sor címe egyedi, az ajtót az URL-je azonosítja.
+    // 2. sor címe egyedi, az ajtót az URL-je azonosítja. H15 (2026-09-23): a
+    // sin-elrendezes-kitoltes szabály után a mező `sin`, a kód azt tiszteli.
     const elo = [
       {
         blockType: 'services',
         title: 'Így segítünk',
-        elrendezes: 'tabla',
+        elrendezes: 'sin',
         rows: [
           {
             title: 'Rendelői kezelések',
@@ -197,13 +198,15 @@ describe('a sín ajtónkénti fotói: bekötés', () => {
     ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
   })
 
-  it('a kezdőlap mentett táblás hármasa (üres fotók) sínként a három új képet kapja', () => {
+  // H15 (2026-09-23): a sin-elrendezes-kitoltes szabály után az élő hármas
+  // mezője `sin`; a mentett `tabla` már nem válik sínné.
+  it('a kezdőlap mentett hármasa (üres fotók) sínként a három új képet kapja', () => {
     const elo = [
       {
         id: 'help',
         blockType: 'services',
         title: HOME_HELP_TITLE,
-        elrendezes: 'tabla',
+        elrendezes: 'sin',
         rows: LEGACY_HOME_HELP_ROWS.map((sor) => ({ ...sor, photo: null })),
         sectionSettings: { visible: true },
       },

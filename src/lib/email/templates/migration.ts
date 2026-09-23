@@ -1,5 +1,5 @@
 import { ctaLabel } from '../../cta-vocabulary'
-import { CONTACT_EMAIL } from '../../seo'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../contact-email'
 import {
   MIGRATION_COURSES_NOTE,
   MIGRATION_EXISTING_PASSWORD_NOTE,
@@ -100,8 +100,14 @@ export function migrationNoticeLinkValiditySentence(): string {
 /** Az aláírás: a terv 4.1 és 4.2 leveleivel AZONOS (1. alapelv: egy hang). */
 export const MIGRATION_NOTICE_SIGNATURE = 'a Kineticare csapata'
 
-/** A válasz-cím: a kapcsolat-cím, ami a láblécben és a Kapcsolat oldalon is áll. */
-export const MIGRATION_NOTICE_REPLY_TO = CONTACT_EMAIL
+/**
+ * A válasz-cím TARTALÉKA. A valódi Reply-To a kapcsolat-cím, ami a láblécben
+ * és a Kapcsolat oldalon is áll: a kiküldő a futás elején EGYSZER feloldja
+ * (src/lib/contact-email-server.ts `kapcsolatiEmailPayloadbol`), és a
+ * sablonnak is ezt adja (`replyTo`), így a fejléc és a lábléc-mondat nem
+ * válhat szét.
+ */
+export const MIGRATION_NOTICE_REPLY_TO = KAPCSOLATI_EMAIL_TARTALEK
 
 export interface MigrationNoticeInput {
   /** A címzett neve; üres/hiányzó névnél semleges megszólítás megy ki. */
@@ -110,6 +116,11 @@ export interface MigrationNoticeInput {
   readonly email: string
   /** A NEXT_PUBLIC_SERVER_URL (záró perjel nélkül vagy azzal, mindegy). */
   readonly serverUrl: string
+  /**
+   * A feloldott kapcsolati e-mail: a lábléc-mondat ezt írja, és a kiküldő
+   * ugyanezt teszi a Reply-To fejlécbe. Elhagyva a kódtartalék.
+   */
+  readonly replyTo?: string
 }
 
 /** Az átállási céllap abszolút címe (e-mailben csak abszolút URL használható). */
@@ -129,6 +140,7 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
   const url = buildMigrationNoticeUrl(input.serverUrl)
   const email = input.email.trim()
   const account = accountEmailBlock(email)
+  const replyTo = input.replyTo?.trim() || MIGRATION_NOTICE_REPLY_TO
 
   const miert =
     'A Kineticare oldala megújult: a kurzusok új, saját felületre költöztek. ' +
@@ -186,7 +198,7 @@ export function migrationNoticeEmail(input: MigrationNoticeInput): EmailTemplate
         reason:
           `Ezt a levelet azért kapod, mert a(z) ${email} címmel fiókod van a Kineticare oldalán, ` +
           'és az új felületen történő belépéshez küldünk segítséget.',
-        replyNote: `Kérdésed van? Válaszolj erre a levélre, vagy írj a(z) ${MIGRATION_NOTICE_REPLY_TO} címre.`,
+        replyNote: `Kérdésed van? Válaszolj erre a levélre, vagy írj a(z) ${replyTo} címre.`,
       },
     }),
   }

@@ -57,6 +57,12 @@ export interface CtaBannerCourseCover {
   title: string
   /** A feloldott kurzus kanonikus címe (teszt és naplózás). */
   href: string
+  /**
+   * A kép a blokk saját „Kép” mezőjéből jön (H28), nem a kurzusból. Ekkor az
+   * alt kizárólag a média saját képleírása, a „<kurzus> borítóképe” tartalék
+   * nem jár (a feltöltött kép nem feltétlenül a borító). Elhagyva: számított kép.
+   */
+  feltoltott?: true
 }
 
 /**
@@ -89,18 +95,26 @@ function findCtaCourse(pathname: string, products: readonly Product[]): Product 
   )
 }
 
-/** A termék populált borítóképe, ha url-lel együtt megvan; különben null. */
-function populatedCover(product: Pick<Product, 'coverImage'>): Media | null {
-  const cover = product.coverImage
-  if (typeof cover !== 'object' || cover === null) {
+/**
+ * Populált média url-lel (a fő fájl vagy bármely méretváltozat); különben
+ * null. A nem populált reláció (csak az id, `depth: 0`) nem kép.
+ */
+function populatedMedia(value: unknown): Media | null {
+  if (typeof value !== 'object' || value === null) {
     return null
   }
+  const media = value as Partial<Media>
   const hasUrl =
-    (typeof cover.url === 'string' && cover.url.length > 0) ||
-    Object.values(cover.sizes ?? {}).some(
+    (typeof media.url === 'string' && media.url.length > 0) ||
+    Object.values(media.sizes ?? {}).some(
       (size) => typeof size?.url === 'string' && size.url.length > 0,
     )
-  return hasUrl ? cover : null
+  return hasUrl ? (value as Media) : null
+}
+
+/** A termék populált borítóképe, ha url-lel együtt megvan; különben null. */
+function populatedCover(product: Pick<Product, 'coverImage'>): Media | null {
+  return populatedMedia(product.coverImage)
 }
 
 /**
@@ -220,4 +234,47 @@ export function resolveCtaBannerFigure(
 /** Van-e a /kurzusok/<szegmens> címhez tartozó publikált kurzus (slug vagy régi id). */
 function ctaCourseExists(pathname: string, products: readonly Product[]): boolean {
   return findCtaCourse(pathname, products) !== undefined
+}
+
+/**
+ * A sáv végső képe (H28): a blokk „Kép” mezőjébe FELTÖLTÖTT kép nyer; ha a
+ * mező üres (vagy a reláció nincs populálva), a számított kép marad
+ * VÁLTOZATLANUL (`resolveCtaBannerFigure` eredménye: kurzus-borító, a
+ * /rolunk-on a montázs, más gombcélnál semmi). A szerkesztő kifejezett
+ * döntése így megelőzi a kitalált képet, üres mezőnél pedig a lap bájtra
+ * ugyanaz, mint a mező bevezetése előtt.
+ *
+ * Link-viselkedés: a feltöltött kép SEM link, ahogy a számított sem. A sáv
+ * egyetlen cselekvése a gomb; ugyanarra a célra mutató második, képes link
+ * a billentyűzetes és a képernyőolvasós látogatónak fölösleges tabulátor-
+ * lépés és ismétlődő linkszöveg (W3C, WCAG 2.2 SC 2.4.4 Link Purpose, H2
+ * technika: a szomszédos kép- és szöveglinket egy linkbe kell vonni,
+ * https://www.w3.org/WAI/WCAG22/Techniques/html/H2; Material 3, Cards: a
+ * média a tartalom kísérője, nem önálló cselekvés,
+ * https://m3.material.io/components/cards/guidelines).
+ *
+ * Alt-szöveg: a média saját képleírása (a Képek gyűjteményben kötelező
+ * mező). A „<kurzus címe> borítóképe” tartalék itt NEM jár, mert a feltöltött
+ * kép bármi lehet, és a kitalált leírás hamis információ volna (WCAG 2.2
+ * SC 1.1.1 Non-text Content,
+ * https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html; W3C WAI
+ * Images Tutorial, Informative images: a szöveges alternatíva a kép
+ * tartalmát adja át, https://www.w3.org/WAI/tutorials/images/informative/).
+ * Üres képleírású (régi) médiánál a kép dekoratív marad (`alt=""`): a sáv
+ * címe és szövege a teljes információ, a kép mellette kísérő.
+ */
+export function ctaBannerFigura(
+  kep: unknown,
+  szamitott: CtaBannerCourseCover | null,
+): CtaBannerCourseCover | null {
+  const media = populatedMedia(kep)
+  if (!media) {
+    return szamitott
+  }
+  return {
+    media,
+    title: szamitott?.title ?? '',
+    href: szamitott?.href ?? '',
+    feltoltott: true,
+  }
 }

@@ -1327,13 +1327,17 @@ describe('H35, H39: a kezdőlap nem szekció részei és a teljes törlés (nyit
       /async function onInit\(payload: Payload\)[\s\S]*?await ensureHomeBaseline\(payload\)/,
     )
     expect(config).toMatch(
-      /async function ensureHomeBaseline[\s\S]*?await ensureHomeLayout\(payload, mediaIds\)/,
+      /async function ensureHomeBaseline[\s\S]*?await ensureHomeLayoutFrissTelepitesen\(payload, mediaIds\)/,
     )
+    // A 2026-09-23-i A8 óta a seed csak teljesen üres Oldalak-gyűjteménynél ír:
+    // a törölt szekciók maguktól nem kerülnek vissza, ezt mondja a doboz is.
     const seed = forrasFajl('../lib/home-seed.ts')
-    expect(seed).toContain('if (Array.isArray(home.layout) && home.layout.length > 0) {')
-    expect(seed).toMatch(/const layout = buildHomeLayout\(media\)[\s\S]*?data: \{ layout \},/)
+    expect(seed).toMatch(
+      /ensureHomeLayoutFrissTelepitesen[\s\S]*?if \(oldalak > 0\) \{[\s\S]*?return/,
+    )
     expect(notice.MINDEN_SZEKCIO_TORLESE_PONT).toContain('közzéteszed')
-    expect(notice.MINDEN_SZEKCIO_TORLESE_PONT).toContain('a korábbi szerkesztések nélkül')
+    expect(notice.MINDEN_SZEKCIO_TORLESE_PONT).toContain('maguktól nem kerülnek vissza')
+    expect(notice.MINDEN_SZEKCIO_TORLESE_PONT).toContain('Verziók fülön')
   })
 
   it('renderelés: a nyitógomb a linksorban, aria-expanded="false", a rész rejtve, benne a Menüpontok link', () => {

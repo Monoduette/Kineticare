@@ -1,4 +1,5 @@
 import type { Media, Page } from '../payload-types'
+import { kapcsolatiEmailLayoutbol, KAPCSOLATI_EMAIL_TARTALEK } from './contact-email'
 import { mapsHref } from './maps-href'
 import { isSectionHidden } from './section-row-label'
 import {
@@ -84,6 +85,13 @@ export interface SiteGraphArgs {
   organization?: Record<string, unknown> | null
   /** Lapfüggő kiegészítő csomópontok (Person, Service, MedicalBusiness…). */
   nodes?: ReadonlyArray<Record<string, unknown>>
+  /**
+   * A feloldott kapcsolati e-mail (src/lib/contact-email-server.ts
+   * `getContactEmail`) az ALAP szervezet-csomóponthoz; elhagyva a
+   * kódtartalék. Ha a lap saját `organization`-t ad át, az abban álló e-mail
+   * számít (a hívó adja bele, pl. `contactOrganizationNode(contact, email)`).
+   */
+  contactEmail?: string
 }
 
 /** Egy csomópont `@context` nélkül (a gráf közös kontextusa alá). */
@@ -98,7 +106,10 @@ function withoutContext(node: Record<string, unknown>): Record<string, unknown> 
  */
 export function siteGraphJsonLd(args: SiteGraphArgs): Record<string, unknown> {
   const { page, breadcrumbs, breadcrumbRef, nodes } = args
-  const organization = args.organization === undefined ? organizationNode() : args.organization
+  const organization =
+    args.organization === undefined
+      ? organizationNode(args.contactEmail === undefined ? {} : { email: args.contactEmail })
+      : args.organization
   const hasBreadcrumb =
     (breadcrumbs !== undefined && breadcrumbs.length >= 2) || breadcrumbRef === true
   const webPage = withoutContext(
@@ -211,9 +222,13 @@ export function contactDataFromLayout(
         data.telephones.push(nev ? { name: nev, number: szam } : { number: szam })
       }
     }
-    const email = trimmed(block.email)
-    if (email && data.email === undefined) data.email = email
   }
+  // Az e-mail UGYANAZ a szabály, mint a lábléc és a szervezet címe
+  // (src/lib/contact-email.ts): az első látható Időpontkérő mezője, ha
+  // formailag e-mail-cím. Tartalék itt nincs: a rendelő-csomópont csak a
+  // CMS-ben ténylegesen kitöltött címet hirdeti.
+  const email = kapcsolatiEmailLayoutbol(layout)
+  if (email !== null) data.email = email
   return data
 }
 
@@ -264,11 +279,19 @@ export function medicalBusinessNodes(contact: ContactData): Record<string, unkno
 /**
  * A Kapcsolat-lap Organization csomópontja: az alap csomópont + a CMS-ből
  * jövő telefonok, telephelyek és személyenkénti ContactPoint-ok.
+ *
+ * Az e-mail: a lap saját Időpontkérőjének címe (`contact.email`, a lapon
+ * látható érték), ennek hiányában a feloldott kapcsolati e-mail (`email`,
+ * `getContactEmail`), végül a kódtartalék. Mai adatokkal mindhárom ugyanaz.
  */
-export function contactOrganizationNode(contact: ContactData): Record<string, unknown> {
+export function contactOrganizationNode(
+  contact: ContactData,
+  email?: string,
+): Record<string, unknown> {
   const base = organizationNode({
     telephone: contact.telephones.map((tel) => telephoneUri(tel.number)),
     location: medicalBusinessNodes(contact).map((node) => ({ '@id': node['@id'] })),
+    email: contact.email ?? email ?? KAPCSOLATI_EMAIL_TARTALEK,
   })
   const contactPoints = contact.telephones.map((tel) => ({
     '@type': 'ContactPoint',

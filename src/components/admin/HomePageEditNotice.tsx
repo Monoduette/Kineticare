@@ -52,10 +52,11 @@ import { ADMIN_UTAK } from './KezdolapCel'
  *   lábléc (Footer.tsx) és a „Bankkártyás fizetés Barionnal” sáv
  *   (HomeView.tsx `<BarionFizetesJelzes hely="kezdolap" />`) a kódban van;
  * - ha minden szekciót törölnek és közzéteszik, a HomeView a beépített
- *   alapváltozatot rajzolja (`if (layout.length > 0)` hamis ága), a következő
- *   induláskor pedig az onInit (payload.config.ts ensureHomeBaseline →
- *   home-seed.ts ensureHomeLayout) üres szekciósornál visszaírja az
- *   alapszekciókat (`data: { layout }`), a korábbi szerkesztések nélkül.
+ *   alapváltozatot rajzolja (`if (layout.length > 0)` hamis ága). Az onInit
+ *   (payload.config.ts ensureHomeBaseline → home-seed.ts
+ *   ensureHomeLayoutFrissTelepitesen) 2026-09-23 óta csak teljesen üres
+ *   Oldalak-gyűjteménynél ír, tehát a szekciók maguktól nem kerülnek vissza;
+ *   a korábbi állapot a Verziók fülön állítható vissza.
  *
  * Stílus: a B1 `.kc-admin-notice` szerződése, saját szín nélkül. A doboz
  * statikus, élő régió nélkül (mountkor nem szól be). GOV.UK Inset text: „Use
@@ -158,7 +159,7 @@ export const NEM_SZEKCIO_PONT = `A lap nem szekció részei: a fejléc menüjét
 
 /** Mi történik, ha a kezdőlap minden szekcióját törlik (H39). */
 export const MINDEN_SZEKCIO_TORLESE_PONT =
-  'Ha az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített alapváltozata jelenik meg, a weboldal következő indulásakor pedig az alapszekciók visszakerülnek, a korábbi szerkesztések nélkül.'
+  'Ha az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített alapváltozata jelenik meg, a szekciók pedig maguktól nem kerülnek vissza, a korábbi állapotot a Verziók fülön állíthatod vissza.'
 
 /** A Pages.ts-ben álló mezőcímkék, amelyeket a doboz idéz. */
 export interface MezoNevek {

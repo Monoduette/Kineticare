@@ -2,6 +2,8 @@ import { ConsentSettingsButton } from '../analytics/ConsentSettingsButton'
 import { FeedbackTrigger } from '../feedback/FeedbackTrigger'
 import { Container } from '../ui/Container'
 import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../lib/contact-email'
+import { getContactEmail } from '../../lib/contact-email-server'
 
 import { FooterPageLink } from './FooterPageLink'
 import { NewsletterSignup } from './NewsletterSignup'
@@ -27,9 +29,31 @@ export const FOOTER_LEGAL_LINKS = [
   { href: '/impresszum', label: 'Impresszum' },
 ] as const
 
-export const FOOTER_CONTACT_EMAIL = 'info@kineticare.hu'
+export interface FooterProps {
+  /**
+   * A kapcsolati e-mail (modul-térkép H18/A10): a /kapcsolat oldal első
+   * látható Időpontkérő szekciójának E-mail-cím mezője, a
+   * `getContactEmail()` feloldásával. Elhagyva a kódtartalék
+   * (src/lib/contact-email.ts); mai adatokkal a kettő ugyanaz.
+   */
+  kapcsolatiEmail?: string
+}
 
-export function Footer() {
+/**
+ * A lábléc MEGJELENÍTÉSE, szinkron: a cím kívülről jön. Szinkron marad, mert
+ * a komponenst adatbázis nélkül is renderelni kell (egységteszt,
+ * src/__tests__/nav-current.test.tsx), és egy aszinkron komponens a
+ * `renderToStaticMarkup` alatt nem renderelhető. A kérésidejű feloldást a
+ * `FeloldottFooter` végzi.
+ *
+ * A cím egy forrásból jön, így a lábléc, a Kapcsolat oldal, a 404 és a
+ * szervezet strukturált adata ugyanazt mondja (WCAG 2.2 SC 3.2.4 Consistent
+ * Identification: https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html;
+ * NN/g, Footers 101: a lábléc a kapcsolatfelvétel bevett helye,
+ * https://www.nngroup.com/articles/footers/). A megjelenés (elem, szöveg,
+ * link-alak) változatlan.
+ */
+export function Footer({ kapcsolatiEmail = KAPCSOLATI_EMAIL_TARTALEK }: FooterProps = {}) {
   const year = new Date().getFullYear()
 
   return (
@@ -82,7 +106,7 @@ export function Footer() {
                   <FeedbackTrigger />
                 </li>
                 <li className="kc-site-footer__contact">
-                  Kapcsolat: <a href={`mailto:${FOOTER_CONTACT_EMAIL}`}>{FOOTER_CONTACT_EMAIL}</a>
+                  Kapcsolat: <a href={`mailto:${kapcsolatiEmail}`}>{kapcsolatiEmail}</a>
                 </li>
               </ul>
             </nav>
@@ -92,4 +116,14 @@ export function Footer() {
       </Container>
     </footer>
   )
+}
+
+/**
+ * A lábléc a kérésidejű kapcsolati e-maillel (aszinkron szerver-komponens).
+ * A `getContactEmail` React `cache`-sel fut, így egy kérésben a 404-határral
+ * és a lap JSON-LD-jével együtt is legfeljebb egy lekérdezést indít; hiba
+ * esetén a kódtartalékot adja, kivételt nem dob.
+ */
+export async function FeloldottFooter() {
+  return <Footer kapcsolatiEmail={await getContactEmail()} />
 }

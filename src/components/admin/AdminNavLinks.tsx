@@ -5,6 +5,9 @@ import { usePathname } from 'next/navigation'
 import { useAuth, useConfig } from '@payloadcms/ui'
 
 import { hasStaffOrOwnerRole } from '../../access/roles'
+import { HOME_PAGE_SLUG } from '../../lib/content-slugs'
+import { SZERKESZTO_NEZET_FELIRAT } from '../editor/frontend/SzerkesztoNezetBelepo'
+import { szerkesztoNezetCel, szerkesztoNezetHref } from '../editor/frontend/szerkeszto-nezet-cel'
 import { ADMIN_UTAK, adminCim, type AdminUt } from './KezdolapCel'
 import './AdminNavLinks.css'
 
@@ -36,23 +39,83 @@ import './AdminNavLinks.css'
  * a helyzetet a képernyőolvasó és a szem is látja (NN/g 5. irányelv: „Indicate
  * the User's Current Location in the Menu”; docs/ui-sztenderdek.md N-4).
  *
+ * SZERKESZTŐ NÉZET (modul-térkép H08/3). A „Leggyakrabban használt” csoport
+ * harmadik linkje a kezdőlap piszkozat-előnézetét nyitja, ahol szekciónként
+ * „Szerkesztem” szalag áll. Eddig ez csak a weboldal fejlécéből volt elérhető
+ * (SzerkesztoNezetBelepo); az adminból a tulajdonos fő útja (a kezdőlap
+ * szövegei) így egy kattintás. A felirat és a cél UGYANAZ, mint a weboldal
+ * belépőjéé (SZERKESZTO_NEZET_FELIRAT, szerkesztoNezetHref): egy célra egy név
+ * (WCAG 2.2 SC 3.2.4 Consistent Identification).
+ * - Sima `<a>`, nem next/link: a /next/preview route draft-sütit állít, az
+ *   előtöltés ezt kérés nélkül is bekapcsolná (Next.js, draftMode: „you must
+ *   pass prefetch={false} to prevent accidentally deleting the cookie on
+ *   prefetch”, https://nextjs.org/docs/app/api-reference/functions/draft-mode;
+ *   lásd a SzerkesztoNezetBelepo fejkommentjét).
+ * - Új lapon nyílik, mert a szerkesztő az előnézetet az admin mellett nézi, és
+ *   ezt a látható szöveg előre mondja („(új lapon)”, a MEGNEZEM_FELIRAT
+ *   mintájára). NN/g, Opening Links in New Browser Windows and Tabs: az új lap
+ *   indokolt, ha a felhasználó egy folyamat közben nézne meg valamit, és „Use
+ *   contextual messaging … to let users know about it before they click.”
+ *   (https://www.nngroup.com/articles/new-browser-windows-and-tabs/); WCAG 2.2
+ *   G201 technika: „Giving users advanced warning when opening a new window”
+ *   (https://www.w3.org/WAI/WCAG22/Techniques/general/G201). A hozzáférhető név
+ *   a látható felirattal kezdődik (SC 2.5.3 Label in Name). `rel="noopener"`:
+ *   az új lap nem éri el ezt az ablakot (window.opener).
+ * - `aria-current` erre a linkre nem vonatkozik: a cél nem admin-nézet, az
+ *   oldalsáv sosem áll rajta.
+ *
  * CSAK MEGJELENÍTÉS. A linkek elrejtése kozmetika: a védelem a nézetekben
  * van (szerepkör-kapu a lekérdezés előtt, src/__tests__/admin-nezet-kapu-kotes
- * és admin-kezdolap-utak tesztek).
+ * és admin-kezdolap-utak tesztek); a Szerkesztő nézetét a /next/preview route
+ * staff/owner-kapuja védi.
  */
+
+/** Az adminon kívülre, új lapon nyíló menülink (pl. a szerkesztői előnézet). */
+export interface AdminKulsoLink {
+  felirat: string
+  href: string
+}
+
+/** Egy menüpont: saját admin-nézet vagy új lapon nyíló külső link. */
+export type AdminNavLink = AdminUt | AdminKulsoLink
+
+/** A külső link látható utótagja: a szöveg mondja ki, hogy új lapon nyílik. */
+export const UJ_LAPON = '(új lapon)'
+
+/** Új lapon nyíló link-e (a saját nézeteknek `utvonal`-a van, a külsőnek `href`-je). */
+export function kulsoLink(link: AdminNavLink): link is AdminKulsoLink {
+  return 'href' in link
+}
+
+/**
+ * A kezdőlap szerkesztői előnézete (`/next/preview?collection=pages&slug=kezdolap`),
+ * ugyanazzal a leképezéssel, amit a weboldal belépője a `/` útvonalon használ.
+ * A `/` leképezése rögzített (szerkeszto-nezet-cel.ts: `/` → pages / kezdolap),
+ * a `??` csak a típus miatt áll itt.
+ */
+function kezdolapSzerkesztoNezetHref(): string {
+  return szerkesztoNezetHref(
+    szerkesztoNezetCel('/') ?? { collection: 'pages', slug: HOME_PAGE_SLUG },
+  )
+}
+
+export const SZERKESZTO_NEZET_LINK: AdminKulsoLink = {
+  felirat: SZERKESZTO_NEZET_FELIRAT,
+  href: kezdolapSzerkesztoNezetHref(),
+}
 
 export interface AdminNavCsoport {
   /** A csoportcím DOM-azonosítója (a csoport `aria-labelledby`-ja). */
   id: string
   cim: string
-  linkek: readonly AdminUt[]
+  linkek: readonly AdminNavLink[]
 }
 
 export const ADMIN_NAV_CSOPORTOK: readonly AdminNavCsoport[] = [
   {
     id: 'kc-admin-nav-leggyakrabban',
     cim: 'Leggyakrabban használt',
-    linkek: [ADMIN_UTAK.kezdolap, ADMIN_UTAK.videoSzovegei],
+    linkek: [ADMIN_UTAK.kezdolap, ADMIN_UTAK.videoSzovegei, SZERKESZTO_NEZET_LINK],
   },
   {
     id: 'kc-admin-nav-kimutatasok',
@@ -89,6 +152,22 @@ export function AdminNavLinks() {
           </p>
           <ul className="kc-admin-nav__lista">
             {csoport.linkek.map((link) => {
+              if (kulsoLink(link)) {
+                return (
+                  <li className="kc-admin-nav__elem" key={link.href}>
+                    <a
+                      className="nav__link kc-admin-nav__link"
+                      href={link.href}
+                      rel="noopener"
+                      target="_blank"
+                    >
+                      <span className="nav__link-label">
+                        {link.felirat} <span className="kc-admin-nav__uj-lap">{UJ_LAPON}</span>
+                      </span>
+                    </a>
+                  </li>
+                )
+              }
               const href = adminCim(adminRoute, link.utvonal)
               const aktiv = aktivLink(pathname, href)
               return (
