@@ -56,6 +56,19 @@ describe('robots.txt', () => {
     }
   })
 
+  it('a nyilvános képeket (og:image) engedi, a többi API-t nem', () => {
+    // A megosztási előnézet képe a /api/media/file/ alól jön; ha a /api/
+    // tiltás ezt is lefedné, a robots.txt-t tisztelő botok kép nélküli
+    // kártyát mutatnának.
+    for (const rule of rules) {
+      const allow = rule.allow
+      const list = Array.isArray(allow) ? allow : allow ? [allow] : []
+      expect(list).toContain('/')
+      expect(list).toContain('/api/media/file/')
+      expect(list.filter((path) => path.startsWith('/api/'))).toEqual(['/api/media/file/'])
+    }
+  })
+
   it('hivatkozik a sitemapre', () => {
     expect(String(result.sitemap)).toMatch(/\/sitemap\.xml$/)
   })

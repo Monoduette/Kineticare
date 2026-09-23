@@ -54,6 +54,17 @@ const DISALLOWED_PATHS = [
  */
 
 /**
+ * Kifejezetten engedett útvonalak. A `/api/media/file/` a nyilvános képek
+ * (Media collection) kiszolgálója — a megosztási előnézet képe (og:image,
+ * twitter:image) és minden oldalkép innen jön. A `/api/` tiltás e nélkül ezeket
+ * is elzárná: a robots.txt-t tisztelő előnézet-botok (X/Twitter, LinkedIn,
+ * Slack, Google Képek) kép nélküli kártyát mutatnának. A leghosszabb egyező
+ * szabály nyer (RFC 9309), így ez az egy előtag felülírja a `/api/` tiltást,
+ * a többi API-út (pl. a védett `/api/course-files/`) tiltva marad.
+ */
+const ALLOWED_PATHS = ['/', '/api/media/file/']
+
+/**
  * AI-crawlerek és -ágensek, amelyeket kifejezetten engedünk.
  * Forrás-kategóriák: OpenAI, Anthropic, Perplexity, Common Crawl, Google AI,
  * valamint a felhasználó megbízásából cselekvő ágens-fetcher (Google-Agent).
@@ -80,12 +91,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: '/',
+        allow: ALLOWED_PATHS,
         disallow: DISALLOWED_PATHS,
       },
       ...AI_USER_AGENTS.map((userAgent) => ({
         userAgent,
-        allow: '/',
+        allow: ALLOWED_PATHS,
         disallow: DISALLOWED_PATHS,
       })),
     ],
