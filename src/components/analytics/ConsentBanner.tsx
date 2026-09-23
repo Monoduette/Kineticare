@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
+import { isMetaPixelConfigured } from '@/lib/analytics/meta-pixel'
 import { sendBarionConsent } from '@/lib/analytics/barion-consent'
 import {
   CONSENT_DENIED,
@@ -206,7 +207,11 @@ export function ConsentBanner() {
         <p className="kc-consent-banner__text">
           {jelenlegiBeallitas === null ? null : `${jelenlegiBeallitas} `}
           Sütiket használunk a felhasználói élmény javításához és a látogatottsági statisztikák
-          készítéséhez. Az analitika csak a hozzájárulásával kapcsol be. Részletek az{' '}
+          készítéséhez
+          {isMetaPixelConfigured()
+            ? ', valamint a Facebook- és Instagram-hirdetéseink méréséhez (Meta Pixel)'
+            : ''}
+          . Az analitika csak a hozzájárulásával kapcsol be. Részletek az{' '}
           <Link href="/adatvedelem">adatvédelmi tájékoztatóban</Link>.
         </p>
         {/* A KÉT FELIRAT A SZÓTÁRBÓL (§3.2 #18, 2026-08-18). A korábbi

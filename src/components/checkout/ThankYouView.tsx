@@ -12,6 +12,7 @@ import {
   type BarionCourseInput,
   type BarionSnapshotStorage,
 } from '@/lib/analytics/barion-events'
+import { trackMetaPurchase } from '@/lib/analytics/meta-events'
 import { captureAnalyticsEvent } from '@/lib/analytics/posthog'
 import { courseHref } from '../../lib/course-url'
 import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
@@ -43,6 +44,19 @@ export interface BarionPurchaseDeps {
 }
 
 /**
+ * A Barion `purchase` mellé a Meta Pixel `Purchase`-e (csak SIKERES fizetésnél,
+ * csak hozzájárulással, a rendelésszámmal deduplikálva). A visszatérési érték
+ * a Barion-küldésé marad: a meglévő szerződés nem változik.
+ */
+function trackPurchaseWithMeta(
+  course: BarionCourseInput,
+  input: { orderNumber: string | null; succeeded: boolean },
+): boolean {
+  trackMetaPurchase(course, input)
+  return trackPurchase(course, input)
+}
+
+/**
  * A `step` hordozza a kimenetelt: sikeres fizetésnél a lezáró lépés,
  * SIKERTELENNÉL `-1`. Enélkül a Barion a meghiúsult fizetést is bevételnek
  * látná — ez a fajta hiba néma, ezért van rá külön őr-teszt.
@@ -56,7 +70,7 @@ export function emitBarionPurchase(
   deps: BarionPurchaseDeps = {
     storage: browserSnapshotStorage,
     read: readCheckoutSnapshot,
-    track: trackPurchase,
+    track: trackPurchaseWithMeta,
     forget: forgetCheckoutSnapshot,
   },
 ): boolean {

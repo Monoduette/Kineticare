@@ -12,6 +12,7 @@ import {
   type BarionCourseInput,
   type BarionSnapshotStorage,
 } from '@/lib/analytics/barion-events'
+import { trackMetaInitiateCheckout } from '@/lib/analytics/meta-events'
 import {
   ANALYTICS_EVENTS,
   captureAnalyticsEvent,
@@ -327,14 +328,14 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
    * (`redirect`) érintetlen marad.
    */
   useEffect(() => {
-    trackInitiateCheckout(
-      checkoutBarionCourse({
-        id: product.id,
-        sku: product.sku,
-        priceHuf: product.priceHuf,
-        isFree: product.isFree,
-      }),
-    )
+    const course = checkoutBarionCourse({
+      id: product.id,
+      sku: product.sku,
+      priceHuf: product.priceHuf,
+      isFree: product.isFree,
+    })
+    trackInitiateCheckout(course)
+    trackMetaInitiateCheckout(course)
   }, [product.id, product.sku, product.priceHuf, product.isFree])
 
   const requiresWaiver = !product.isFree

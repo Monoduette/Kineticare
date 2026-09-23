@@ -14,6 +14,11 @@
 
 import { BARION_PIXEL_ORIGIN, getBarionPixelId } from '../analytics/barion-pixel'
 import { GA_TAG_MANAGER_ORIGIN, normalizeGaMeasurementId } from '../analytics/ga4'
+import {
+  META_PIXEL_COLLECT_ORIGIN,
+  META_PIXEL_SCRIPT_ORIGIN,
+  normalizeMetaPixelId,
+} from '../analytics/meta-pixel'
 import { POSTHOG_EMBED_ORIGIN, normalizePosthogEmbedUrl } from '../admin/web-analytics-config'
 
 /** A Bunny Stream lejátszó (iframe-embed) hostja — fix, nem env-függő. */
@@ -102,6 +107,10 @@ export function bunnyPullZoneSource(rawHost: string | undefined): string {
  *   a Webanalitika-nézet iframe-jét kirakja (web-analytics-config.ts), így a
  *   fejléc és az admin-oldal nem tud szétcsúszni. A host maga FIX (nem az
  *   env-értékből jön), tehát rossz env sem tud idegen hostot nyitni.
+ * @param adminVideoUploads az /admin fejléce: a Bunny TUS-feltöltés originje.
+ * @param metaPixelId a Meta Pixel azonosítója (env), ha be van állítva. A
+ *   Meta hostjai KIZÁRÓLAG érvényes azonosítóval nyílnak meg — ugyanaz a
+ *   normalizáló dönt, mint amelyik a Pixelt elindítja (meta-pixel.ts).
  */
 export function buildContentSecurityPolicy(
   bunnyPullZoneHost?: string,
@@ -109,6 +118,7 @@ export function buildContentSecurityPolicy(
   barionPixelId?: string,
   posthogSharedDashboardUrl?: string,
   adminVideoUploads = false,
+  metaPixelId?: string,
 ): string {
   const pullZone = bunnyPullZoneSource(bunnyPullZoneHost)
 
@@ -148,6 +158,15 @@ export function buildContentSecurityPolicy(
     ? ` ${GA_COLLECT_SOURCES.join(' ')} ${GA_TAG_MANAGER_ORIGIN}`
     : ''
 
+  // ═══ META PIXEL ═══
+  // script-src: connect.facebook.net (fbevents.js + a pixel-konfiguráció
+  // `signals/config/<id>` scriptje). img-src + connect-src: www.facebook.com
+  // (`/tr` végpont — kép-képpont, illetve sendBeacon/fetch). Csak érvényes
+  // azonosítóval, a Pixel pedig csak hozzájárulás után tölt be.
+  const metaEnabled = normalizeMetaPixelId(metaPixelId).length > 0
+  const metaScriptSource = metaEnabled ? ` ${META_PIXEL_SCRIPT_ORIGIN}` : ''
+  const metaCollectSource = metaEnabled ? ` ${META_PIXEL_COLLECT_ORIGIN}` : ''
+
   // A PostHog beágyazott dashboard (admin Webanalitika-nézet) iframe-je csak
   // akkor létezik, ha a megosztási link formailag érvényes — a frame-src is
   // pontosan ekkor nyílik, és mindig a FIX EU-cloud hostra, sosem az env-beli
@@ -165,7 +184,7 @@ export function buildContentSecurityPolicy(
     // 'unsafe-inline' kényszer: Next bootstrap + Payload admin inline script.
     // 'unsafe-eval' nincs. Bunny player.js: rögzített URL + SRI
     // (playerjs-loader.ts). pixel.barion.com: Barion Pixel, fizetési feltétel.
-    `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com ${BUNNY_PLAYERJS_SOURCE}${gaScriptSource}${barionPixelSource}`,
+    `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com ${BUNNY_PLAYERJS_SOURCE}${gaScriptSource}${barionPixelSource}${metaScriptSource}`,
 
     // Beágyazott keretek:
     //  - iframe.mediadelivery.net → a Bunny Stream lejátszó: publikus
@@ -188,7 +207,7 @@ export function buildContentSecurityPolicy(
     // képpont-kérés (a sendBeacon/fetch helyett), ezért a gyűjtőhostok a
     // Google dokumentációja szerint az img-src-be is kellenek. A
     // pixel.barion.com a JS nélküli tartalék-képpont (`/a.gif`) miatt kell.
-    `img-src 'self' data: ${pullZone}${gaImgSources}${barionPixelSource}`,
+    `img-src 'self' data: ${pullZone}${gaImgSources}${barionPixelSource}${metaCollectSource}`,
 
     // blob: KÖTELEZŐ — a kezdőlap filmsávja (ScrollScrub/FilmHero) a LOKÁLIS
     // klipet (public/media/film) fetch-csel tölti le, majd
@@ -209,7 +228,7 @@ export function buildContentSecurityPolicy(
     // GA4-azonosító mellett nyílnak meg.
     // TUS upload origin is opened only by the /admin header override.
     // https://docs.bunny.net/docs/stream/tus-resumable-uploads
-    `connect-src 'self'${gaConnectSources}${adminVideoUploads ? ' https://video.bunnycdn.com' : ''}`,
+    `connect-src 'self'${gaConnectSources}${metaCollectSource}${adminVideoUploads ? ' https://video.bunnycdn.com' : ''}`,
 
     // 'unsafe-inline' KÉNYSZER: a React inline `style={{…}}` attribútumai
     // (HeroVideo, ScrollScrub) és a Payload admin injektált <style> blokkjai
