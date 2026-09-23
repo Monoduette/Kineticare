@@ -132,13 +132,65 @@ export function oldalFajtaFelirat(slug: unknown): string {
   return OLDAL_FAJTA_FELIRAT[oldalFajta(slug)]
 }
 
-/** Mire épít a kód, és mi történik az átírás és a közzététel után. */
+/**
+ * A közzététel visszavonásának menüpontja az admin dokumentum-nézetének „⋯”
+ * menüjében (@payloadcms/ui UnpublishButton: `t('version:unpublish')`,
+ * elements/UnpublishButton/index.js:173; a menüt a DocumentControls rajzolja,
+ * :310-311). A src/lib/admin/hu-forditas.ts ezt a kulcsot nem írja felül, így
+ * a felület a Payload magyar nyelvfájljának értékét mutatja
+ * (@payloadcms/translations hu `version.unpublish`). Literál, mert ez a modul a
+ * kliensbe is bekerül; a kotott-oldal-visszavonas.test.ts a ténylegesen
+ * érvényes fordításhoz köti (a hu-forditas.ts rá fésülve), betűre.
+ */
+export const VISSZAVONAS_GOMB = 'Közzététel visszavonása'
+
+/** Mire épít a kód, és mi történik az átírás, a közzététel és a visszavonás után. */
 export interface KotottWebcim {
   /** Mondatok: mi épít erre a webcímre. */
   mire: string[]
   /** Mondatok: mi történik, ha átírják és közzéteszik. */
   kovetkezmeny: string[]
+  /**
+   * Egy mondat: mi történik a látogató oldalán, ha a közzétételt visszavonják
+   * (modul-térkép H48/6). Az Állapot mező rejtett (Pages.ts `status`,
+   * `hidden: true`), ezért a visszavonás hatásáról csak ez a mondat szól.
+   */
+  visszavonas: string
 }
+
+/**
+ * A visszavonás mondatai. Az állítások forrása (a kotott-oldal-visszavonas.test.ts
+ * köti őket a sorokhoz):
+ * - a visszavonás a FŐ dokumentum `_status`-át írja piszkozatra (UnpublishButton
+ *   PATCH `{ _status: 'draft' }`, `draft` kapcsoló nélkül, index.js:103-107), a
+ *   rejtett `status` ebből szinkronizálódik (publish-status.ts
+ *   syncStatusFromDraftStatus), a weboldal pedig csak `status: published`
+ *   rekordot olvas (cms.ts PUBLISHED_WHERE, getHomePage, getPageBySlug,
+ *   getPostBySlug);
+ * - kezdőlap: a getHomePage null-t ad, a HomeView az üres szekciósorral a
+ *   beépített kezdőlapot rajzolja (HomeView.tsx `presentHomeLayout(home?.layout
+ *   ?? [])`). Új kezdőlap NEM jön létre: az induláskori ensureHomeLayout
+ *   (home-seed.ts:798-804) állapotszűrő nélkül keres a webcímre, és a
+ *   visszavont oldalt is megtalálja; újat csak akkor hoz létre, ha nincs
+ *   ilyen webcímű oldal (:808, törlés vagy webcímváltás után);
+ * - Kapcsolat: a /kapcsolat route nem ad hibát, oldal nélkül a „Kapcsolat”
+ *   címet rajzolja szekciók nélkül (kapcsolat/page.tsx:66 contactHeading,
+ *   :129 rawLayout, :170 `layout.length > 0`); a blogbejegyzések végi
+ *   időpontkérő gombja ide visz (PostCourseCta.tsx APPOINTMENT_HREF);
+ * - jogi oldal és Tudástár-hub: a [slug] route oldal nélkül notFound()
+ *   ([slug]/page.tsx:126-127), a lábléc és a pénztár linkje ettől még ide
+ *   mutat (Footer.tsx FOOTER_LEGAL_LINKS, CheckoutForm.tsx TERMS_ASZF_PATH);
+ * - hub: a /blog/<cikk> csak közzétett hub-oldalnál irányít át
+ *   (blog/[slug]/page.tsx hubraIranyit, hub-oldalak.ts hubAtiranyitasCel),
+ *   így visszavonás után a blogbejegyzés újra a saját címén látszik, ha az
+ *   közzé van téve;
+ * - hub-blogbejegyzés: a hub-oldal a pár blogbejegyzést csak közzétettként
+ *   kéri ([slug]/page.tsx hubPostOf → getPostBySlug), nélküle az oldal saját
+ *   mezőit rajzolja; a /blog/<cikk> közzétett hubnál átirányít, különben
+ *   notFound() (blog/[slug]/page.tsx:86-88);
+ * - időpontkérős blogbejegyzés: a /blog/<webcím> notFound() (uo. :87-88).
+ */
+const VISSZAVONAS_UTAN = `A „${VISSZAVONAS_GOMB}” után`
 
 const JOGI_LINKEK: Readonly<Record<string, string>> = {
   aszf: 'A lábléc, a hibaoldal és a pénztár linkje erre a webcímre mutat.',
@@ -154,6 +206,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
       kovetkezmeny: [
         'Ha átírod és közzéteszed, a kezdőlapon a weboldal beépített tartalék-kezdőlapja jelenik meg, a weboldal következő indulásakor pedig egy új, alapszekciós kezdőlap jön létre az Oldalak között.',
       ],
+      visszavonas: `${VISSZAVONAS_UTAN} a kezdőlapon (/) a weboldal beépített tartalék-kezdőlapja jelenik meg, új kezdőlap nem jön létre, és az újbóli közzététellel ismét ez az oldal látszik.`,
     }
   }
   if (webcim === KAPCSOLAT_WEBCIM) {
@@ -164,6 +217,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
       kovetkezmeny: [
         'Ha átírod és közzéteszed, a /kapcsolat címen csak a „Kapcsolat” cím marad, szekciók nélkül; a szekciók az új webcímen jelennek meg.',
       ],
+      visszavonas: `${VISSZAVONAS_UTAN} a /kapcsolat címen csak a „Kapcsolat” cím marad, szekciók nélkül, és a blogbejegyzések végi időpontkérő gomb is erre a lapra visz.`,
     }
   }
   const jogi = JOGI_LINKEK[webcim]
@@ -173,6 +227,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
       kovetkezmeny: [
         'Ha átírod és közzéteszed, ezek a linkek „az oldal nem található” hibaoldalra visznek.',
       ],
+      visszavonas: `${VISSZAVONAS_UTAN} ${nevelo(webcim)} /${webcim} cím „az oldal nem található” hibát ad, és ezek a linkek is oda visznek.`,
     }
   }
   const hub = hubOldalbol(webcim)
@@ -184,6 +239,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
       kovetkezmeny: [
         `Ha átírod és közzéteszed, ${nevelo(hub.slug)} /${hub.slug} cím „az oldal nem található” hibát ad, a blogbejegyzés visszakerül a /blog/${hub.cikkSlug} címre, az új webcímen pedig ennek az oldalnak a saját mezői látszanak, a blogbejegyzés nélkül.`,
       ],
+      visszavonas: `${VISSZAVONAS_UTAN} ${nevelo(hub.slug)} /${hub.slug} cím „az oldal nem található” hibát ad, a blogbejegyzés pedig, ha közzé van téve, újra a /blog/${hub.cikkSlug} címen jelenik meg.`,
     }
   }
   return null
@@ -192,6 +248,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
 function blogbejegyzesKotes(webcim: string): KotottWebcim | null {
   const mire: string[] = []
   const kovetkezmeny: string[] = []
+  let visszavonas: string | null = null
   const hub = hubBlogbejegyzesbol(webcim)
   if (hub !== null) {
     mire.push(
@@ -200,14 +257,17 @@ function blogbejegyzesKotes(webcim: string): KotottWebcim | null {
     kovetkezmeny.push(
       `Ha átírod és közzéteszed, ${nevelo(hub.slug)} /${hub.slug} oldalon a blogbejegyzés helyett az ottani oldal saját mezői jelennek meg, a blogbejegyzés pedig az új /blog/… címre költözik.`,
     )
+    visszavonas = `${VISSZAVONAS_UTAN} a /blog/${webcim} cím nem mutatja többé a blogbejegyzést, ${nevelo(hub.slug)} /${hub.slug} oldalon pedig, ha az közzé van téve, a blogbejegyzés helyett az oldal saját mezői jelennek meg.`
   }
   if (IDOPONTKEROS_BLOGBEJEGYZESEK.includes(webcim)) {
     mire.push('A lap végén kurzusajánló helyett időpontkérés áll, ezt a webcím dönti el.')
     kovetkezmeny.push(
       'Ha átírod és közzéteszed, a lap végén az időpontkérés helyett a kurzusajánló jelenik meg.',
     )
+    // A hub-pár mondata (fent) az időpontkérős hub-bejegyzésre is igaz, és többet mond.
+    visszavonas ??= `${VISSZAVONAS_UTAN} a /blog/${webcim} cím „az oldal nem található” hibát ad.`
   }
-  return mire.length > 0 ? { mire, kovetkezmeny } : null
+  return mire.length > 0 && visszavonas !== null ? { mire, kovetkezmeny, visszavonas } : null
 }
 
 /** A webcím kódhoz kötött-e, és ha igen, mire épít a kód. Egyébként null. */

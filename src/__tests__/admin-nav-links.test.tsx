@@ -70,7 +70,11 @@ describe('csoportok és nevek', () => {
       'Leggyakrabban használt',
       'Kimutatások és kurzusvideók',
     ])
-    expect(ADMIN_NAV_CSOPORTOK[0]?.linkek).toEqual([ADMIN_UTAK.kezdolap, ADMIN_UTAK.videoSzovegei])
+    expect(ADMIN_NAV_CSOPORTOK[0]?.linkek).toEqual([
+      ADMIN_UTAK.kezdolap,
+      ADMIN_UTAK.videoSzovegei,
+      { felirat: 'Szerkesztő nézet', href: '/next/preview?collection=pages&slug=kezdolap' },
+    ])
     expect(ADMIN_NAV_CSOPORTOK[1]?.linkek).toEqual([
       ADMIN_UTAK.statisztika,
       ADMIN_UTAK.webanalitika,

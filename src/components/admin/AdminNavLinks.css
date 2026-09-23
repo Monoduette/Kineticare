@@ -56,3 +56,9 @@
     display: none;
   }
 }
+
+/* A külső link „(új lapon)” utótagja egyben törik (a felirat 27 karakter, az
+   oldalsávban két sorra is kerülhet): a jelzés így nem szakad el. */
+.kc-admin-nav__uj-lap {
+  white-space: nowrap;
+}

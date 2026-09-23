@@ -288,7 +288,11 @@ describe('a „mi épít rá” és a „mi történik” állítások a forrás
   it('minden szöveg tipográfiailag tiszta, és nem mond 404-et, horgonyt vagy slugot (§8.2)', () => {
     const szovegek = [...kotottWebcimek('pages').map((s) => kotottWebcim('pages', s))]
       .concat(kotottWebcimek('posts').map((s) => kotottWebcim('posts', s)))
-      .flatMap((k) => [...(k?.mire ?? []), ...(k?.kovetkezmeny ?? [])])
+      .flatMap((k) => [
+        ...(k?.mire ?? []),
+        ...(k?.kovetkezmeny ?? []),
+        ...(k ? [k.visszavonas] : []),
+      ])
     expect(szovegek.length).toBeGreaterThan(40)
     for (const sz of szovegek) {
       expect(tipografiaiHibak(sz), sz).toEqual([])
