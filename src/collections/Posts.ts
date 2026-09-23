@@ -1,5 +1,6 @@
 import type { CollectionConfig, Field } from 'payload'
 
+import { KEP_CSERE_SUGO } from '../blocks/kep-csere'
 import { seoKeywordsField } from '../fields/seo-keywords'
 import { slugField } from '../fields/slug'
 import { hubBlogbejegyzesbol } from '../lib/admin/kotott-cimek'
@@ -103,8 +104,8 @@ const blogbejegyzesFul: Field[] = [
     relationTo: 'media',
     label: 'Borítókép',
     admin: {
-      description:
-        'A blogbejegyzés fő képe a bloglistán és a lap tetején. Ha a Megosztási kép üres, megosztáskor is ez látszik; ha ez is üres, a Kineticare alapképe (csapatfotó).',
+      // A végén a képmezők közös súgója (H34, src/blocks/kep-csere.ts).
+      description: `A blogbejegyzés fő képe a bloglistán és a lap tetején. Ha a Megosztási kép üres, megosztáskor is ez látszik; ha ez is üres, a Kineticare alapképe (csapatfotó). ${KEP_CSERE_SUGO}`,
     },
   },
 ]
@@ -206,8 +207,7 @@ const keresoEsMegosztasFul: Field[] = [
     relationTo: 'media',
     label: 'Megosztási kép',
     admin: {
-      description:
-        'Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a blogbejegyzést. Ha üres, a Borítókép, annak híján a Kineticare alapképe (csapatfotó) látszik.',
+      description: `Ez a kép jelenik meg, ha valaki Facebookon vagy Messengeren megosztja a blogbejegyzést. Ha üres, a Borítókép, annak híján a Kineticare alapképe (csapatfotó) látszik. ${KEP_CSERE_SUGO}`,
     },
   },
 ]
