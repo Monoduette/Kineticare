@@ -96,6 +96,18 @@ describe('enableMetaPixel', () => {
     expect(runtime.globals.fbq).toBeUndefined()
   })
 
+  it('ismeretlen címmel (href null) nem indul el', () => {
+    const runtime = fakeRuntime(null)
+    expect(enableMetaPixel(runtime)).toBe(false)
+    expect(runtime.loaded).toEqual([])
+  })
+
+  it('az fbevents.js automatikus history-PageView-ja ki van kapcsolva', () => {
+    const runtime = fakeRuntime()
+    enableMetaPixel(runtime)
+    expect((runtime.globals.fbq as { disablePushState?: boolean }).disablePushState).toBe(true)
+  })
+
   it('kampány-paraméteres URL-en elindul', () => {
     const runtime = fakeRuntime('https://www.kineticare.hu/?utm_source=facebook#x')
     expect(enableMetaPixel(runtime)).toBe(true)
@@ -138,6 +150,18 @@ describe('trackMetaEvent', () => {
     const runtime = fakeRuntime()
     expect(trackMetaLead('idopontkeres', { runtime, consent: granted })).toBe(true)
     expect(queue(runtime).at(-1)).toEqual(['track', 'Lead', { content_name: 'idopontkeres' }])
+  })
+
+  it('elindult Pixel mellett sem küld jegyes (token) oldalon', () => {
+    const runtime = fakeRuntime()
+    expect(enableMetaPixel(runtime)).toBe(true)
+    const tokenPage = {
+      ...runtime,
+      href: 'https://www.kineticare.hu/jelszo-visszaallitas?token=titok',
+    }
+    const before = queue(runtime).length
+    expect(trackMetaPageView({ runtime: tokenPage, consent: granted })).toBe(false)
+    expect(queue(runtime)).toHaveLength(before)
   })
 
   it('az első PageView nem duplázódik', () => {

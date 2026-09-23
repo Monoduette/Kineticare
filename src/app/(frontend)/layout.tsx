@@ -162,8 +162,11 @@ export default async function FrontendLayout({ children }: { children: ReactNode
           </Suspense>
           {/* GA4 consent-kapu: mérési azonosító nélkül és hozzájárulás előtt no-op. */}
           <GoogleAnalytics />
-          {/* Meta Pixel consent-kapu: azonosító nélkül és hozzájárulás előtt no-op. */}
-          <MetaPixel />
+          {/* Meta Pixel consent-kapu: azonosító nélkül és hozzájárulás előtt no-op.
+              A useSearchParams miatt Suspense-határ kell (Next build-szabály). */}
+          <Suspense fallback={null}>
+            <MetaPixel />
+          </Suspense>
           {isDraft ? (
             <>
               <ElonezetKeretSzalag elonezet hely="fejlec" />

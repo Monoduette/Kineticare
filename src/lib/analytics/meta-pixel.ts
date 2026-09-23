@@ -104,6 +104,18 @@ type FbqFunction = ((...args: unknown[]) => void) & {
   push?: unknown
   loaded?: boolean
   version?: string
+  disablePushState?: boolean
+}
+
+/**
+ * Biztonságos-e a cím a Meta felé: nem hordoz jegyet (token), és ismert.
+ * Ismeretlen cím (null) NEM biztonságos: jobb nem mérni, mint jegyet küldeni.
+ */
+export function isMetaSafeUrl(href: string | null): boolean {
+  if (href === null || href.length === 0) {
+    return false
+  }
+  return sanitizeAnalyticsUrl(href) === stripHash(href)
 }
 
 /**
@@ -136,6 +148,10 @@ function ensureFbq(globals: MetaGlobalScope): FbqFunction {
   fbq.push = fbq
   fbq.loaded = true
   fbq.version = '2.0'
+  // Az fbevents.js magától PageView-t küldene minden history-váltásnál (a
+  // cím ellenőrzése nélkül). Ezt kikapcsoljuk: az SPA-navigáció PageView-ját
+  // a MetaPixel.tsx küldi, címellenőrzéssel.
+  fbq.disablePushState = true
   globals.fbq = fbq
   if (globals._fbq === undefined) {
     globals._fbq = fbq
@@ -180,8 +196,8 @@ export function enableMetaPixel(runtime?: MetaRuntime): boolean {
     return true
   }
 
-  // Jegyes URL-en nem indulunk: az fbevents.js a teljes címet küldené.
-  if (resolved.href !== null && sanitizeAnalyticsUrl(resolved.href) !== stripHash(resolved.href)) {
+  // Jegyes (vagy ismeretlen) címen nem indulunk: az fbevents.js a teljes címet küldené.
+  if (!isMetaSafeUrl(resolved.href)) {
     return false
   }
 
@@ -255,6 +271,11 @@ export function trackMetaEvent(
     }
     const consent = options.consent ?? (() => readConsent())
     if (consent() !== CONSENT_GRANTED) {
+      return false
+    }
+    // MINDEN küldés előtt: az fbevents.js az AKTUÁLIS címet csatolja, ezért
+    // jegyes oldalon (akár kliens-oldali navigáció után is) semmi nem megy ki.
+    if (!isMetaSafeUrl(runtime.href)) {
       return false
     }
     const wasStarted = pixelStarted
