@@ -88,15 +88,6 @@ type Doboz = Record<
   string
 >
 
-const URES_DOBOZ: Doboz = {
-  height: '0px',
-  paddingTop: '0px',
-  paddingBottom: '0px',
-  marginBottom: '0px',
-  borderTopWidth: '0px',
-  borderBottomWidth: '0px',
-}
-
 function dobozMeres(panel: HTMLElement, ablak: Window): Doboz {
   const stilus = ablak.getComputedStyle(panel)
   return {
@@ -117,6 +108,15 @@ export function elsoAtmenetMs(ertek: string): number {
     return 0
   }
   return elso.endsWith('ms') ? szam : szam * 1000
+}
+
+/** A fieldsetenként futó váltás leállítója (gyors ismételt koppintáshoz). */
+const aktivValtasok = new WeakMap<Element, () => void>()
+
+function azonosDoboz(a: Doboz, b: Doboz): boolean {
+  return (Object.keys(a) as (keyof Doboz)[]).every(
+    (kulcs) => Math.abs(Number.parseFloat(a[kulcs]) - Number.parseFloat(b[kulcs])) < 0.5,
+  )
 }
 
 /** A sín címkéinek osztálya (Services.tsx, services-sin.css). */
@@ -159,10 +159,18 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   const panelek = fieldset
     ? [...fieldset.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
     : []
-  const regiPanel = panelek[radiok.findIndex((elem) => elem.checked)]
   const ujPanel = panelek[radiok.indexOf(radio)]
   const mobil = ablak.matchMedia?.(SIN_MOBIL_MEDIA).matches === true
-  const regiDoboz = mobil && regiPanel ? dobozMeres(regiPanel, ablak) : null
+  // A kiinduló doboz a panelek PILLANATNYI mérete: ha egy korábbi váltás
+  // animációja még fut, onnan folytatjuk, ugrás nélkül.
+  const kezdoDobozok = mobil ? panelek.map((panel) => dobozMeres(panel, ablak)) : []
+  // Egy fieldsetben egyszerre egy váltás él: a gyors második koppintás
+  // leállítja az előző animációit és görgetéskövetését (a két követés
+  // különben egymás ellen görgetne).
+  if (fieldset) {
+    aktivValtasok.get(fieldset)?.()
+    aktivValtasok.delete(fieldset)
+  }
 
   radio.checked = true
   radio.dispatchEvent(new Event('input', { bubbles: true }))
@@ -175,7 +183,7 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
       ? elsoAtmenetMs(ablak.getComputedStyle(ujPanel).transitionDuration) > 0 &&
         ablak.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true
       : false
-  if (!ujPanel || !mozoghat || typeof ujPanel.animate !== 'function') {
+  if (!fieldset || !ujPanel || !mozoghat || typeof ujPanel.animate !== 'function') {
     igazit()
     ablak.requestAnimationFrame(igazit)
     return
@@ -187,18 +195,27 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   }
   const animaciok: Animation[] = []
   try {
-    animaciok.push(ujPanel.animate([URES_DOBOZ, dobozMeres(ujPanel, ablak)], idozites))
-    if (regiPanel && regiDoboz && regiPanel !== ujPanel) {
+    panelek.forEach((panel, index) => {
+      const kezdo = kezdoDobozok[index]
+      const veg = dobozMeres(panel, ablak)
+      if (!kezdo || azonosDoboz(kezdo, veg)) {
+        return
+      }
+      // A záródó panel a CSS szerint rögtön rejtett lenne: a mozgás idejére
+      // látható marad, hogy a zsugorodás látsszon.
+      const zarodik = Number.parseFloat(veg.height) === 0
       animaciok.push(
-        regiPanel.animate(
-          [
-            { ...regiDoboz, visibility: 'visible' },
-            { ...URES_DOBOZ, visibility: 'visible' },
-          ],
+        panel.animate(
+          zarodik
+            ? [
+                { ...kezdo, visibility: 'visible' },
+                { ...veg, visibility: 'visible' },
+              ]
+            : [kezdo, veg],
           idozites,
         ),
       )
-    }
+    })
   } catch {
     // Ha a böngésző nem tudja lejátszani, a váltás azonnali marad, de a
     // koppintott sor akkor is a helyén.
@@ -214,6 +231,16 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   const leall = () => {
     kovet = false
   }
+  const takarit = () => {
+    kovet = false
+    ablak.removeEventListener('touchstart', leall)
+    ablak.removeEventListener('wheel', leall)
+  }
+  const megszakit = () => {
+    takarit()
+    animaciok.forEach((animacio) => animacio.cancel())
+  }
+  aktivValtasok.set(fieldset, megszakit)
   ablak.addEventListener('touchstart', leall, { once: true, passive: true })
   ablak.addEventListener('wheel', leall, { once: true, passive: true })
   const lepes = () => {
@@ -225,14 +252,17 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   }
   lepes()
   void Promise.all(animaciok.map((animacio) => animacio.finished))
-    .catch(() => undefined)
-    .finally(() => {
+    .then(() => {
       if (kovet) {
         igazit()
       }
-      kovet = false
-      ablak.removeEventListener('touchstart', leall)
-      ablak.removeEventListener('wheel', leall)
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      takarit()
+      if (aktivValtasok.get(fieldset) === megszakit) {
+        aktivValtasok.delete(fieldset)
+      }
     })
 }
 

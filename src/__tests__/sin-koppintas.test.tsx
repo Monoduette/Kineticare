@@ -128,13 +128,8 @@ describe('mobil nyitás-zárás animáció', () => {
     expect(elsoAtmenetMs('')).toBe(0)
   })
 
-  it('mobilon a nyíló és a záródó panelt is animálja, a Carbon nagy kinyitás időzítésével', () => {
-    const { cimkek, radiok } = sinDom()
-    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
-    const cimke = cimkek[2]
-    const ujPanel = panelek[2]
-    const regiPanel = panelek[0]
-    if (!cimke || !ujPanel || !regiPanel) throw new Error('hiányzó sín-elem')
+  /** Mobil környezet: a mobil média igaz, a panel átmenete 0,35 s, 24 px-es paddinggel. */
+  function mobilKornyezet() {
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (query: string) => ({ matches: query.includes('max-width') }) as MediaQueryList,
     )
@@ -150,26 +145,72 @@ describe('mobil nyitás-zárás animáció', () => {
         }) as CSSStyleDeclaration,
     )
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
+  }
+
+  /** A panel magassága koppintás előtt, majd utána (happy-dom nem számol elrendezést). */
+  function magassag(panel: HTMLElement, elotte: number, utana: number) {
+    vi.spyOn(panel, 'getBoundingClientRect')
+      .mockReturnValueOnce({ height: elotte } as DOMRect)
+      .mockReturnValue({ height: utana } as DOMRect)
+  }
+
+  it('mobilon a nyíló és a záródó panelt is animálja, a Carbon nagy kinyitás időzítésével', () => {
+    const { cimkek, radiok } = sinDom()
+    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+    const [regiPanel, kozepso, ujPanel] = panelek
+    const cimke = cimkek[2]
+    if (!cimke || !ujPanel || !regiPanel || !kozepso) throw new Error('hiányzó sín-elem')
+    mobilKornyezet()
+    magassag(regiPanel, 800, 0)
+    magassag(kozepso, 0, 0)
+    magassag(ujPanel, 0, 700)
     const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
     const uj = vi.fn(() => kesz)
     const regi = vi.fn(() => kesz)
+    const kozep = vi.fn(() => kesz)
     Object.assign(ujPanel, { animate: uj })
     Object.assign(regiPanel, { animate: regi })
+    Object.assign(kozepso, { animate: kozep })
 
     sinCimkeKattintas(kattintas(cimke), window)
 
     expect(radiok[2]?.checked).toBe(true)
     expect(uj).toHaveBeenCalledTimes(1)
     expect(regi).toHaveBeenCalledTimes(1)
+    expect(kozep).not.toHaveBeenCalled()
     const [ujKockak, ujIdozites] = uj.mock.calls[0] as unknown as [
       Keyframe[],
       KeyframeAnimationOptions,
     ]
-    expect(ujKockak[0]).toMatchObject({ height: '0px', paddingTop: '0px' })
-    expect(ujKockak[1]).toMatchObject({ paddingTop: '24px', borderTopWidth: '1px' })
+    expect(ujKockak[0]).toMatchObject({ height: '0px' })
+    expect(ujKockak[1]).toMatchObject({ height: '700px', paddingTop: '24px' })
     expect(ujIdozites).toEqual({ duration: SIN_MAGASSAG_MS, easing: SIN_MAGASSAG_GORBE })
     const [regiKockak] = regi.mock.calls[0] as unknown as [Keyframe[]]
+    expect(regiKockak[0]).toMatchObject({ height: '800px', visibility: 'visible' })
     expect(regiKockak[1]).toMatchObject({ height: '0px', visibility: 'visible' })
+  })
+
+  it('a gyors második koppintás leállítja az előző váltás animációit', () => {
+    const { cimkek, radiok } = sinDom()
+    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+    const [elso, masodik, harmadik] = panelek
+    if (!elso || !masodik || !harmadik || !cimkek[1] || !cimkek[2]) {
+      throw new Error('hiányzó sín-elem')
+    }
+    mobilKornyezet()
+    magassag(elso, 800, 0)
+    magassag(harmadik, 0, 700)
+    magassag(masodik, 0, 0)
+    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
+    const animal = vi.fn(() => futo as unknown as Animation)
+    panelek.forEach((panel) => Object.assign(panel, { animate: animal }))
+
+    sinCimkeKattintas(kattintas(cimkek[2]), window)
+    expect(futo.cancel).not.toHaveBeenCalled()
+    sinCimkeKattintas(kattintas(cimkek[1]), window)
+
+    expect(futo.cancel).toHaveBeenCalled()
+    expect(radiok[1]?.checked).toBe(true)
   })
 
   it('csökkentett mozgásnál nem animál', () => {
