@@ -16,7 +16,7 @@ betartandók — az ügynök ezek megsértésére irányuló kérést is utasít
 ## Projekt és stack
 
 - **Kineticare** — kézrehabilitációs kurzusplatform (otthoni és szakmai tartalmak).
-- **Next.js 16.3.3** (App Router) + **Payload CMS 3.88.0** + **@payloadcms/plugin-ecommerce 3.88.0** + **PostgreSQL**.
+- **Next.js 16.3.5** (App Router) + **Payload CMS 3.88.0** + **@payloadcms/plugin-ecommerce 3.88.0** + **PostgreSQL**.
 - Élő integrációk: **Barion** (fizetés), **Számlázz.hu** (számlázás), **Bunny Stream** (videó), **Resend** (tranzakciós e-mail).
 - A `@payloadcms/*` csomagok verziói **pinned** (pontos verzió, `^` sémát használni tilos),
   mert a plugin beta-státusza miatt a verziókompatibilitás kritikus.

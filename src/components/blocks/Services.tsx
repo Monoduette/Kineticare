@@ -5,6 +5,7 @@ import type { BlockServices, Media } from '../../payload-types'
 import { homeHelpDoorIndex } from '../../lib/home-help-states'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
 import { MediaImage } from '../content/MediaImage'
+import { SinKoppintasIgazito } from './SinKoppintasIgazito'
 import { mediaDimensions } from '../content/media-url'
 import { Button } from '../ui/Button'
 import { Section } from '../ui/Section'
@@ -117,6 +118,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
   const title = block.title?.trim() ?? ''
   const intro = block.lead?.trim() ?? ''
   const groupName = radioGroupName(block.id)
+  const fieldsetId = `${groupName}-sin`
 
   return (
     <Section
@@ -126,7 +128,7 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
       variant={variant}
     >
       <div className="kc-board__inner">
-        <fieldset className="kc-services-sin">
+        <fieldset className="kc-services-sin" id={fieldsetId}>
           <legend className="kc-visually-hidden">Szolgáltatás</legend>
           {rows.map((row, index) => {
             const inputId = `${groupName}-${index}`
@@ -196,6 +198,9 @@ function ServicesRail({ block, rows }: { block: BlockServices; rows: ServiceRow[
             </div>
           </div>
         </fieldset>
+        {/* Koppintáskor a rádió görgetés nélkül kap fókuszt, a koppintott sor
+            helyben marad (SinKoppintasIgazito fejléc-kommentje, mérve). */}
+        <SinKoppintasIgazito fieldsetId={fieldsetId} />
       </div>
     </Section>
   )

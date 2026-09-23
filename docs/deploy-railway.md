@@ -1,24 +1,40 @@
-# Railway staging deploy — runbook
+# Railway deploy — runbook
 
-> **2026-08-29:** a merge-utáni deploy-kör csak a production **`Kineticare`**
-> appservice. A `Kineticare-demo` kivezetve: oda semmit nem deployolunk
-> (lásd `AGENTS.md`, `docs/demo-kornyezet.md`).
+> **Frissítve 2026-09-23.** A `main` branch a Railway **`Kineticare`**
+> szolgáltatására (production) deployol automatikusan. A merge-utáni kör csak
+> ez a szolgáltatás; a `Kineticare-demo` 2026-08-29-től kivezetve, oda semmit
+> nem deployolunk (`AGENTS.md`, `docs/demo-kornyezet.md`).
+>
+> A gyökérben lévő `railway.json` tartalmazza a build/start konfigurációt, és
+> kulcsonként felülírja a dashboard beállítását (`CLAUDE.md` 2. üzemeltetési
+> tanulság). Ezt kizárólag a már Config as Code-dal kezelt, meglévő
+> `Kineticare` szolgáltatás olvassa; új szolgáltatás már nem kapcsolható erre
+> a legacy konfigurációra.
 
-> **Cél:** a `main` branchből automatikusan deployolódó staging környezet
-> Railway-en, managed PostgreSQL-lel, privát hálózaton.
-> A gyökérben lévő `railway.json` tartalmazza a build/start konfigurációt —
-> ezt kizárólag a már Config as Code-dal kezelt, meglévő Kineticare service
-> olvassa. Új service már nem kapcsolható erre a legacy konfigurációra.
-
-> **2026-09-01 — Railway kivezetési határ:** a `railway.json` Config as Code
-> deprecated, de a már ezt használó Kineticare service-nél 2026-12-01-ig
-> továbbra is működik és az itt megadott kulcsokra felülírja a dashboardot.
+> **Railway kivezetési határ: 2026-12-01.** A `railway.json` Config as Code
+> deprecated, de a már ezt használó `Kineticare` szolgáltatásnál 2026-12-01-ig
+> továbbra is működik, és az itt megadott kulcsokra felülírja a dashboardot.
 > A hard cutoff előtt a live projekthez linkelt repóból előbb
 > `railway config migrate` előnézet, majd emberileg jóváhagyott
 > `railway config migrate --apply` kell: ez írja ki az IaC-fájlt és törli a
 > service Config File beállítását. Ezután a `railway config plan` legyen tiszta,
 > mielőtt a régi fájl törléséről külön döntés születik. A sima `config pull` +
-> `config plan` útvonal blokkolt, amíg ugyanazt a service-t a Config as Code kezeli.
+> `config plan` útvonal blokkolt, amíg ugyanazt a service-t a Config as Code
+> kezeli. A job-szolgáltatások (`railway.*-job.json`, lásd a 7. pontot) ugyanígy
+> config-fájlt használnak, velük ugyanez a döntés kell.
+
+## A projekt szolgáltatásai (2026-09-23)
+
+| Szolgáltatás      | Szerep                                                                 | Config-fájl                     | Szabály                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Kineticare`      | Production app (Next + Payload), `main` auto-deploy                    | `railway.json`                  | Minden merge után figyelni (5. pont).                                                                                    |
+| `Postgres-c8Rg`   | Az éles adatbázis, **kötettel** (hivatalos `postgres-ssl:18` template) | —                               | A `Kineticare` `DATABASE_URI`-ja `${{Postgres-c8Rg.DATABASE_URL}}` referencia.                                           |
+| `Postgres`        | A régi adatbázis, **kötet nélkül**, fagyasztott tartalék               | —                               | **Újraindítani, redeployolni, átkonfigurálni TILOS**: kötet híján bármelyik törli a tartalmát (`CLAUDE.md` 3. tanulság). |
+| `content-job`     | Tulajdonosi tartalom-javítások (`src/scripts/apply-owner-content.ts`)  | `railway.content-job.json`      | Lásd a 7.1 pontot.                                                                                                       |
+| `Kineticare-demo` | Kivezetve 2026-08-29-től, a forrás leválasztva (`repo: null`)          | `railway.demo.json` (történeti) | Semmi: nincs redeploy, nincs figyelés. A demo Postgres (`Postgres-UtWo`) is békén hagyandó.                              |
+
+A többi `railway.*-job.json` (seed, tudastar, email, import, legacy) egy-egy
+egyszeri job mintája; a szolgáltatás csak a futás idejére él (7.2 pont).
 
 ---
 
@@ -57,66 +73,86 @@
 
 ## 1. Meglévő projekt és adatbázis ellenőrzése
 
-1. Ez a runbook a meglévő production `Kineticare` appservice ellenőrzésére
-   szolgál. Új service-t csak Railway IaC-val hozz létre, és az első deploy
+1. Ez a runbook a meglévő production `Kineticare` szolgáltatás ellenőrzésére
+   szolgál. Új szolgáltatást csak Railway IaC-val hozz létre, és az első deploy
    előtt rögzítsd benne ugyanezt a build-, start- és healthcheck-szerződést;
-   a `railway.json` automatikus felismerésére új service-nél ne számíts.
-2. A meglévő projektben ellenőrizd, hogy a PostgreSQL service a projekt
-   **privát hálózatán** érhető el, és az appservice `DATABASE_URI` változója
-   erre a service-re hivatkozik.
-3. Az appservice **Settings → Source** részénél ellenőrizd: branch = `main`,
+   a `railway.json` automatikus felismerésére új szolgáltatásnál ne számíts.
+2. Az app `DATABASE_URI`-ja a kötetes **`Postgres-c8Rg`**-re mutasson
+   (`${{Postgres-c8Rg.DATABASE_URL}}`, a projekt **privát hálózatán**). A régi,
+   kötet nélküli `Postgres` szolgáltatáshoz ne nyúlj (lásd a táblát fent).
+3. A `Kineticare` **Settings → Source** részénél: branch = `main`,
    **Auto-deploy** bekapcsolva (minden main-push új deploy).
+4. A `pg` pool keepalive- és idle-timeout-hangolása, valamint a pool
+   `error`-eseményének kezelése kötelező a Railway privát hálózatán
+   (`CLAUDE.md` 7. tanulság); ne vedd ki a `src/payload.config.ts`-ből.
 
-## 2. Környezeti változók (appservice → Variables)
+## 2. Környezeti változók (`Kineticare` → Variables)
 
-| Változó                      | Staging érték / forrás                                                                                                                                                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URI`               | `${{Postgres.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference)                                                                                                                                                             |
-| `PAYLOAD_SECRET`             | frissen generált, pl. `openssl rand -hex 32` kimenete                                                                                                                                                                                       |
-| `NEXT_PUBLIC_SERVER_URL`     | a staging domain, pl. `https://kineticare-staging.up.railway.app` (lásd 3. pont)                                                                                                                                                            |
-| `BARION_ENVIRONMENT`         | `test`                                                                                                                                                                                                                                      |
-| `BARION_API_URL`             | `https://api.test.barion.com`                                                                                                                                                                                                               |
-| `BARION_POSKEY_TEST`         | sandbox POSKey — ld. `docs/barion-sandbox-setup.md`                                                                                                                                                                                         |
-| `BARION_PAYEE_EMAIL`         | a sandbox Barion-fiók e-mail-címe                                                                                                                                                                                                           |
-| `ENABLE_JOB_WORKERS`         | `true` (a callback retry-ladder így élőben is fut)                                                                                                                                                                                          |
-| `LOG_LEVEL`                  | `info`                                                                                                                                                                                                                                      |
-| `PAYLOAD_MEDIA_DIR`          | a csatolt **Volume mountpontja** (`/app/media`) — enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
-| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba                                            |
-| `SEED_OWNER_EMAIL`           | a már bootstrapelt owner címe az első seedhez, utána törölhető                                                                                                                                                                              |
-| `SEED_OWNER_PASSWORD`        | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban                                                                                                                                                                       |
+Értéket a repóba soha nem írunk; a kulcsok listája és magyarázata a
+`.env.example`-ben van. A `NEXT_PUBLIC_` kulcsokat a build **beégeti**, ezért
+módosításuk után valódi újrabuild kell (nem elég a restart vagy a redeploy).
+
+| Változó                      | Forrás / szabály                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URI`               | `${{Postgres-c8Rg.DATABASE_URL}}` (Railway referencia-változó, típusgomb: Reference)                                                                                                                                                       |
+| `PAYLOAD_SECRET`             | frissen generált, pl. `openssl rand -hex 32` kimenete                                                                                                                                                                                      |
+| `NEXT_PUBLIC_SERVER_URL`     | a nyilvános cím, https-szel, perjel nélkül. Ma a `https://kineticare-production.up.railway.app`, a domain-átállás után `https://www.kineticare.hu` (3. pont). A Barion visszatérő- és callback-címe ebből épül.                            |
+| `NEXT_PUBLIC_ALLOW_INDEXING` | `true` csak a domain-átállás után. Üresen minden válasz `X-Robots-Tag: noindex` (`src/middleware.ts`).                                                                                                                                     |
+| `EXTRA_ALLOWED_ORIGINS`      | a domain-átállás előtt: `https://kineticare.hu,https://www.kineticare.hu`                                                                                                                                                                  |
+| `BARION_ENVIRONMENT`         | `test` vagy `prod`; élesben kötelező megadni (`src/env.ts`). `prod` mellett a `BARION_POSKEY_PROD`, különben a `BARION_POSKEY_TEST` kötelező.                                                                                              |
+| `BARION_API_URL`             | a környezethez illő API-cím (`api.test.barion.com` vagy `api.barion.com`, lásd `.env.example`)                                                                                                                                             |
+| `BARION_PAYEE_EMAIL`         | a Barion-fiók e-mail-címe (sandboxhoz: `docs/barion-sandbox-setup.md`)                                                                                                                                                                     |
+| `ENABLE_JOB_WORKERS`         | `true` (a callback retry-ladder így élőben is fut)                                                                                                                                                                                         |
+| `LOG_LEVEL`                  | `info` (enélkül a `server_start` sor sem látszik, 5. pont)                                                                                                                                                                                 |
+| `PAYLOAD_MEDIA_DIR`          | a csatolt **Volume mountpontja** (`/app/media`). Enélkül minden deploynál elvesznek a feltöltött képek (a konténer fájlrendszere efemer; a DB-rekord marad, a fájl eltűnik, a `/api/media/file/...` 500-at ad). Részletek: `.env.example`. |
+| `FIRST_USER_BOOTSTRAP_TOKEN` | egyszer használatos, legalább 32 karakteres, nagy entrópiájú operátori titok az első owner létrehozásához; csak a bootstrap idejére állítsd be, értékét ne írd repóba, parancssorba vagy naplóba                                           |
+| `SEED_OWNER_EMAIL`           | a már bootstrapelt owner címe az első seedhez, utána törölhető                                                                                                                                                                             |
+| `SEED_OWNER_PASSWORD`        | bootstrap-alapú friss deploynál nem szükséges; hagyd unset állapotban                                                                                                                                                                      |
 
 > ⚠️ **Turnstile: a két kulcs CSAK PÁRBAN állítható be.** A Railway
 > `next start`-tal fut (`NODE_ENV=production`), és az induláskori ENV-assert
-> (`src/env.ts`, `turnstileEnvPair`) fél-lábas konfigurációnál — csak
-> `TURNSTILE_SITE_KEY` VAGY csak `TURNSTILE_SECRET_KEY` — MEGAKASZTJA az
+> (`src/env.ts`, `turnstileEnvPair`) fél-lábas konfigurációnál (csak
+> `TURNSTILE_SITE_KEY` VAGY csak `TURNSTILE_SECRET_KEY`) MEGAKASZTJA az
 > indulást: site key secret nélkül a widget látszana, de a szerver némán
 > mindent átengedne; secret site key nélkül minden beküldés elakadna. Amíg
 > egyik sincs beállítva, az app elindul, de a `server_start` után
 > `turnstile_kikapcsolva` warn jelzi, hogy a kapcsolat-űrlapot csak az
 > IP-keret védi. Egyik kulcs sem `NEXT_PUBLIC_`, tehát a beállításukhoz
-> újrabuild nem kell — a Turnstile élesítése tisztán env-művelet.
+> újrabuild nem kell: a Turnstile élesítése tisztán env-művelet. A
+> domain-átállásnál a widget hostnevei közé a `www.kineticare.hu` és a
+> `kineticare.hu` is kell.
 
-Később (amikor a funkció aktuális lesz): `BUNNY_STREAM_TOKEN_AUTH_KEY`,
-`NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID`,
-`NEXT_PUBLIC_BUNNY_STREAM_PUBLIC_LIBRARY_ID`,
-`NEXT_PUBLIC_BUNNY_STREAM_PULL_ZONE_HOST` (a `NEXT_PUBLIC_` kulcsok után
-ÚJRABUILD kell!), `EMAIL_FROM` + SMTP/Resend,
-`TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (CSAK párban — lásd a keretes
-figyelmeztetést), `SZAMLAZZ_AGENT_KEY`, `SZAMLAZZ_INVOICE_PREFIX`.
+További kulcsok (Bunny Stream, Resend/SMTP, Számlázz.hu, PostHog, GA4,
+Barion Pixel): a `.env.example` sorolja fel őket, a `NEXT_PUBLIC_` kulcsok után
+ÚJRABUILD kell.
 
-> ⛔ **Tilos stagingen:** `BARION_POSKEY_PROD`, éles Számlázz.hu-kulcs,
-> bármilyen éles titok. (CLAUDE.md: a staging soha nem mutathat éles fiókra.)
+> ⛔ **Teszt- és staging-környezetben tilos:** `BARION_POSKEY_PROD`, éles
+> Számlázz.hu-kulcs, bármilyen éles titok. A teszt-környezet soha nem mutathat
+> éles fiókra.
 
 ## 3. Domain
 
-1. Appservice → **Settings → Networking → Generate Domain** → kapsz egy
-   `*.up.railway.app` címet.
-2. Ezt írd be a `NEXT_PUBLIC_SERVER_URL` változóba (https-szel, perjel nélkül
-   a végén), majd **Redeploy** — a Barion redirect/callback URL-ek ebből épülnek.
+- **Ma:** a `Kineticare` szolgáltatásnak csak a Railway által generált
+  `kineticare-production.up.railway.app` címe van (belső port 8080), egyedi
+  domain nincs rajta (mérve 2026-09-23).
+- **Átállás a `www.kineticare.hu`-ra:** a lépések, a mért DNS-állapot és a
+  külső szolgáltatások listája a `docs/kineticare-hu-atallas.md` „Mért állapot
+  és menetrend (2026-09-23)” szakaszában. Röviden: custom domain a Railway-en,
+  csak a `www` CNAME változik a Tárhely.Eu-n, utána
+  `NEXT_PUBLIC_SERVER_URL=https://www.kineticare.hu` és
+  `NEXT_PUBLIC_ALLOW_INDEXING=true` valódi újrabuilddel.
+- **A Railway-domaint az átállás után se töröld:** az addig indított fizetések
+  Barion-callbackje oda érkezik.
 
-## 4. Első migráció és seed
+## 4. Első migráció és seed (csak friss, üres környezetben)
 
-A migráció a startCommandból automatikusan lefut az első sikeres deploynál.
+A migráció a startCommandból minden indulásnál lefut; új migráció az app
+indulása előtt érvényesül. A `payload migrate` a már lefutott migrációt nem
+futtatja újra, hiányzó táblát tehát nem pótol (`CLAUDE.md` 5. tanulság).
+Migrációt kézzel írni vagy szerkeszteni tilos (TILOS ZÓNÁK 3.).
+
+Az alábbi bootstrap és seed **csak új, üres adatbázisú környezethez** kell. A
+production `Kineticare`-en ezekre nincs szükség.
 
 ### 4.1 Első owner biztonságos bootstrapje
 
@@ -140,23 +176,18 @@ meg, és mindig `customer` szerepkört kap.
 
 ### 4.2 Seed
 
-Seed (egyszeri), két módon:
+A `npm run seed` a már bootstrapelt, `SEED_OWNER_EMAIL` című owner-felhasználót
+megtalálja, majd létrehozza a `DEMO-KEZREHAB-001` publikált demó-terméket,
+a `bemutatkozas` oldalt, a `kezrehabilitacio-alapok` bejegyzést és a demó
+menüfát. Idempotens, többször is lefuttatható.
 
-- **CLI-vel (javasolt):**
-  ```bash
-  npm i -g @railway/cli
-  railway login
-  railway link            # válaszd a staging projektet + appservice-et
-  railway run -- npm run seed
-  ```
-  A `railway run` a Railway-változókkal (DATABASE_URI stb.) futtatja lokálisan —
-  a seed idempotens, többször is lefuttatható.
-- **Vagy Railway shellben:** a service **⋯ → Shell** menüjéből `npm run seed`.
-
-A seed a már bootstrapelt, `SEED_OWNER_EMAIL` című owner-felhasználót
-megtalálja, majd létrehozza a
-`DEMO-KEZREHAB-001` publikált demó-terméket (19 990 Ft),
-`bemutatkozas` oldal, `kezrehabilitacio-alapok` bejegyzés, demó menüfa.
+- **Éles adatbázison a teljes seed tiltott** (`src/scripts/seed.ts`); élesben
+  csak a szűkített `SEED_SCOPE=kezdolap` futhat, a meglévő szekciósort nem írja
+  felül.
+- Az éles adatbázis a Railway privát hálózatán van, kívülről nem érhető el,
+  ezért a `railway run -- npm run seed` helyi gépről nem éri el. Adatbázison
+  dolgozó scriptet a Railway-en belül, job-szolgáltatásként futtatunk
+  (7. pont).
 
 ## 5. Deploy utáni ellenőrzőlista
 
@@ -172,46 +203,108 @@ megtalálja, majd létrehozza a
 - [ ] A build-logban a sorrend: egyetlen review-zott bootstrap → scriptmentes
       `npm ci` → verifier `OK` → jóváhagyott `npm rebuild` → lokális Next build;
       nincs Corepack bootstrap
-- [ ] Railway deploy zöld, healthcheck átment
+- [ ] A start-logban a migráció nyoma: `Migrating:` / `Migrated:` sorok, vagy
+      függő migráció nélkül `Reading migration files` + `Done.`
+- [ ] Railway deploy zöld, a healthcheck (`GET /admin`) átment
 - [ ] `https://<domain>/admin` → Payload login-oldal töltődik
-- [ ] Owner belép az adminba, látja a demó-terméket
-- [ ] `https://<domain>/kurzusok` → a demó-kurzus megjelenik
-- [ ] Regisztráció + checkout → átirányít a **test.barion.com** felületére
-- [ ] `https://<domain>/api/barion/callback` elérhető (POST; Barion hívja)
-- [ ] E2E-futtatás: `docs/e2e-staging-runbook.md`
+- [ ] `https://<domain>/kurzusok` → a kurzusok megjelennek
+- [ ] A `main` CI (`ci.yml` + `gitleaks.yml`) zöld a squash-commiton
+- [ ] Ha `WAITING` látszik snapshot és build-log nélkül: előbb a Railway MCP
+      lépés-eseményeit nézd meg, ne indíts vaktában új deployt (`CLAUDE.md` 12. tanulság). A `create-deployment` ÚJ szolgáltatást hoz létre, meglévő
+      újraindításához `redeploy` vagy `restart-service` való (13. tanulság).
+- [ ] `git clone failed with exit 128` a `SNAPSHOT_CODE` fázisban: a deploy
+      rövidített SHA-val indult. Teljes (40 karakteres) SHA-val vagy SHA
+      nélkül, a branch HEAD-jére indítsd újra (4. tanulság).
 
 ## 6. Rollback
 
-Appservice → **Deployments** → bármelyik korábbi zöld deploy → **Redeploy**.
-A Railway azonnali rollbacket ad (új build nélkül). DB-migráció visszagörgetése
-külön döntés — stagingen egyszerűbb a DB reset (Delete service → új Postgres →
-redeploy + seed).
+`Kineticare` → **Deployments** → a legutóbbi zöld deploy → **Redeploy**. A
+Railway új build nélkül a régi képet indítja. Két korlát:
 
-## 7. Ügynök-hozzáférés (railway.com/agents alapján)
+- A redeploy a régi `.next/`-et futtatja, tehát a `NEXT_PUBLIC_` értékek is a
+  régiek (a buildkor beégetettek).
+- **Az adatbázis-migráció nem görgethető vissza** a kóddal együtt: a régi kód
+  az új sémán indul. Migráció visszafordítása külön döntés, és csak a mentésből
+  (`docs/adatbazis-mentes.md`) történhet. Az adatbázis-szolgáltatást törölni,
+  újraindítani vagy újra létrehozni rollback címén tilos: a `Postgres-c8Rg` az
+  éles adat, a régi `Postgres` kötet nélküli tartalék.
+
+## 7. Job-szolgáltatások (egyszeri scriptek a Railway-en)
+
+Az éles adatbázis csak a Railway privát hálózatáról érhető el, ezért az
+adatbázison dolgozó scriptek külön szolgáltatásként futnak, ugyanarról a
+repóról. A config-fájl mindig felülírja a dashboard beállítását, ezért minden
+jobnak saját `railway.*-job.json` fájlja van, és a szolgáltatás **„Config file
+path”** beállítása erre mutat (`CLAUDE.md` 2. tanulság). Közös minta:
+
+- a build csak egy `echo`, a start a scriptet futtatja, a végén
+  `sleep 2147483647`, hogy a Railway ne indítsa újra, és a napló olvasható
+  maradjon;
+- a `DATABASE_URI` és a `PAYLOAD_SECRET` ugyanaz, mint a `Kineticare`-en
+  (`DATABASE_URI`: `${{Postgres-c8Rg.DATABASE_URL}}`);
+- a job **nem látja** az app kötetét (`PAYLOAD_MEDIA_DIR`): ha a script
+  Médiatár-rekordot hoz létre, a job után az appot újra kell indítani, hogy a
+  hiányzó fájlokat a manifestből visszatöltse (`docs/owner-content-2026-09-19.md`);
+- **csak teljes, 40 karakteres commit-SHA-val deployolj** (vagy SHA nélkül, a
+  `main` HEAD-jére). Rövid SHA-nál a `SNAPSHOT_CODE` `git clone … exit 128`-cal
+  bukik. A `redeploy` a meglévő snapshotot futtatja újra, vagyis a **régi
+  kódot**: új szabályhoz új deploy kell a friss SHA-ra.
+
+### 7.1 content-job (tulajdonosi tartalom-javítások)
+
+- Config-fájl: `railway.content-job.json`. A start:
+  `echo CONTENT_JOB_START; npx tsx src/scripts/apply-owner-content.ts && echo CONTENT_JOB_DONE; sleep …`
+  (újraindítás: `ON_FAILURE`, legfeljebb 1).
+- **Kapu:** `OWNER_CONTENT_CONFIRM`. Ha nem `igen`, a script **próbafutás**:
+  a naplóban „MÓDOSÍTANÁ” sorok, az adatbázisba semmi nem íródik. Írni csak
+  `OWNER_CONTENT_CONFIRM=igen` mellett ír.
+- Menet:
+  1. próbafutás a friss `main` teljes SHA-jára, a napló átnézése;
+  2. `OWNER_CONTENT_CONFIRM=igen`, új deploy ugyanarra a SHA-ra;
+  3. **azonnal vissza `OWNER_CONTENT_CONFIRM=nem`-re**, és egy második
+     próbafutás: minden érintett szabálynál „MÁR …” kihagyás jelzi, hogy nincs
+     több teendő (idempotencia);
+  4. ha a futás képet hozott létre, az app újraindítása, utána böngészős
+     ellenőrzés.
+- A kapu visszaállítása azért kötelező, mert egy későbbi automatikus deploy
+  különben újra élesben futna. Egyes szabályok egyszeriek: a sín Elrendezés-
+  kitöltése (#293) például egy szerkesztő későbbi, tudatos Tábla-választását
+  visszaírná Sínre (`src/scripts/apply-owner-content.ts` fejkommentje).
+- A szabályok leírása: `docs/owner-content-2026-09-19.md`,
+  `docs/owner-content-2026-09-22.md`, `docs/akcios-kurzus-2026-09-20.md`.
+
+### 7.2 A többi job-fájl
+
+| Fájl                        | Mit futtat                                       | Kapu, megjegyzés                                                                                                      |
+| --------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `railway.seed-job.json`     | `seed-menu.ts`, majd `restore-legacy-content.ts` | `MENU_SEED_DRY_RUN`, `LEGACY_RESTORE_CONFIRM` (`.env.example`)                                                        |
+| `railway.tudastar-job.json` | Tudástár-cikkek és tünet-oldalak betöltése       | `OWNER_TUDASTAR_CONFIRM`, `OWNER_TUDASTAR_PUBLISH`; a napló kiírja a commitot (`docs/tudastar-cikkek-betoltese.md`)   |
+| `railway.email-job.json`    | Átállási értesítő (`send-migration-notice.ts`)   | `MIGRATION_NOTICE_CONFIRM`, argumentumok az `EMAIL_JOB_ARGS`-ból; futás után ürítsd (`docs/vasarlo-migracio-terv.md`) |
+| `railway.import-job.json`   | Vevő-import (`scripts/import-job.sh`)            | `docs/vasarlo-migracio-terv.md`                                                                                       |
+| `railway.legacy-job.json`   | `restore-legacy-content.ts`                      | `LEGACY_RESTORE_CONFIRM`                                                                                              |
+| `railway.demo.json`         | —                                                | Történeti, a `Kineticare-demo` kivezetve. Ne használd.                                                                |
+
+Egyszeri job után a szolgáltatás törölhető (a `content-job` tartósan
+megmarad, a kapuja zárva).
+
+## 8. Ügynök-hozzáférés (railway.com/agents alapján)
 
 A Railway két hivatalos felületet ad ügynököknek:
 
-1. **Remote MCP szerver** (`https://mcp.railway.app/mcp`, OAuth-belépés) —
-   a helyi gépen futó ügynököknek (Claude Code / Kimi Code). Egy-egy ügynök
-   így terminálból tud deployolni, logot olvasni, változót állítani.
-2. **CLI + token** (`@railway/cli`, `RAILWAY_TOKEN`) — headless/CI ügynököknek.
+1. **Remote MCP szerver** (`https://mcp.railway.app/mcp`, OAuth-belépés):
+   terminálból deploy, log, változó.
+2. **CLI + token** (`@railway/cli`, `RAILWAY_TOKEN`): headless/CI ügynököknek.
 
-Beállítás a csapatnak:
+A token a **GitHub repo secretbe** kerül (Settings → Secrets → Actions),
+**soha nem a repóba, nem logba, nem kommentbe**. Ügynök-parancsokban csak
+környezeti változóként hivatkozható (`$RAILWAY_TOKEN`), képernyőre írni vagy
+naplózni tilos. Változó-listát kiolvasni csak akkor, ha a feladat tényleg
+megköveteli: a válasz titkokat tartalmaz.
 
-1. Railway projekt → **Settings → Tokens → New Project Token**
-   (projekt-scope, staging projektre!) → `RAILWAY_TOKEN`.
-2. A token a **GitHub repo secretbe** kerül (Settings → Secrets → Actions),
-   **soha nem a repóba, nem logba, nem kommentbe.**
-3. Ügynök-parancsokban a token csak környezeti változóként hivatkozható
-   (`$RAILWAY_TOKEN`), képernyőre írni/naplózni tilos.
-4. Prod környezethez később **külön projekt és külön token** készül —
-   a staging-token nem fér hozzá.
+## 9. Költség- és korlát-megjegyzések
 
-## 8. Költség- és korlát-megjegyzések
-
-- Hobby-csomag elegendő stagingre; a Next.js build memóriaigénye a legnagyobb
-  tétel (sharp miatt natív modul is épül — a Railpack builder kezeli; lásd a
-  runbook 0.1 pontját: a Nixpacks-említés régi állapot).
+- A Next.js build memóriaigénye a legnagyobb tétel (a `sharp` natív modul is
+  épül; a Railpack builder kezeli, lásd a 0. pontot).
 - `numReplicas: 1` szándékos: így a boot-time migráció nem futhat párhuzamosan
-  két példányban. Prod-skálázásnál a migrációt külön, deploy előtti lépésbe
-  tesszük (pre-deploy job), a startCommandból kikerül.
+  két példányban. Skálázásnál a migráció külön, deploy előtti lépésbe kerül
+  (pre-deploy job), a startCommandból kikerül.

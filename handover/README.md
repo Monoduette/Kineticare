@@ -6,8 +6,13 @@ maradnak a mérvadó tilos zónák. Itt a **hol-mi-van térkép** van,
 egyetlen könyvtárban, elküldhetően.
 
 A kanonikus példányok a repóban a helyükön maradtak (mutatók + CI-őr).
-Ez a mappa **másolat**. Az őrteszt (`src/__tests__/ugynok-kezikonyv.test.ts`)
-bukik, ha a kézikönyv itt és a `docs/` alatt szétcsúszik.
+Ez a mappa **másolat**. Az őrteszt (`src/__tests__/ugynok-kezikonyv.test.ts`,
+és ugyanennek a másolata itt, `handover/ugynok-kezikonyv.test.ts`)
+bukik, ha a kézikönyv vagy a Claude-indító itt és a `docs/` alatt
+szétcsúszik.
+
+Utolsó frissítés: 2026-09-23 (a `main` `d5c144d` állapota, a #293
+merge után).
 
 ## Mit másolj be a Claude-nak
 
@@ -23,20 +28,21 @@ bukik, ha a kézikönyv itt és a `docs/` alatt szétcsúszik.
 2. `ugynok-kezikonyv.md` — **0–4. szakasz mindig**, utána a tartomány,
    amihez nyúlsz.
 3. A repó gyökerében: `CLAUDE.md` (ellentmondásnál ez nyer), `AGENTS.md`.
-4. Admin / tartalom: `docs/szerkesztoi-utmutato.md`.
+4. Admin / tartalom: `docs/szerkesztoi-utmutato.md`, és hogy melyik
+   látott elem melyik mezőből jön: `docs/mi-hol-szerkesztheto.md`.
 5. Cikk-CTA / Ads zár: `docs/agent-feature-map.md`.
 6. Felületi munka előtt: `docs/ertekesitesi-ux-skill.md` +
    `.claude/skills/termektervezes/SKILL.md`.
 
 ## Mi van itt
 
-| Fájl | Mi ez |
-| --- | --- |
-| `claude-indito-prompt.md` | Bemásolható első üzenet a következő Claude-nak (másolat a `docs/`-ból) |
-| `ugynok-kezikonyv.md` | Teljes backend + frontend kézikönyv (másolat a `docs/`-ból) |
+| Fájl                       | Mi ez                                                                                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude-indito-prompt.md`  | Bemásolható első üzenet a következő Claude-nak (másolat a `docs/`-ból)                                                                  |
+| `ugynok-kezikonyv.md`      | Teljes backend + frontend kézikönyv (másolat a `docs/`-ból)                                                                             |
 | `ugynok-kezikonyv.test.ts` | Az őr, ami a mutatókat és a másolat egyezését védi. A repo-gyökeret felfelé keresi (`AGENTS.md`), ezért a `handover/`-ből is futtatható |
-| `env-kulcsok.example` | Az ebben a körben dokumentált env-kulcsnevek, **érték nélkül** |
-| `MUTATOK.md` | Hol mutat a repó erre a csomagra |
+| `env-kulcsok.example`      | A kézikönyvben külön magyarázott env-kulcsnevek, **érték nélkül** (a teljes lista a gyökér `.env.example`)                              |
+| `MUTATOK.md`               | Hol mutat a repó erre a csomagra                                                                                                        |
 
 Titkot, `.env` értéket, POSKey-t ebbe a mappába se tegyél.
 `.env*` fájlt ne olvass és ne másolj.
@@ -48,3 +54,7 @@ Titkot, `.env` értéket, POSKey-t ebbe a mappába se tegyél.
 - access-szabály átírás emberi review nélkül
 - pinned `@payloadcms/*` emelés
 - Ads Enable / spend ebből a csomagból
+- deploy a kivezetett `Kineticare-demo`-ra, vagy a régi, kötet nélküli
+  `Postgres` szolgáltatás újraindítása (az éles DB a `Postgres-c8Rg`)
+- DNS- vagy domain-lépés a `kineticare.hu` átállásból tulajdonosi kérés
+  nélkül
