@@ -171,7 +171,12 @@ A kész cikk itt jelenik meg:
 - a blog listaoldalán: `/blog`,
 - saját címén: `/blog/<webcím>`,
 - a kategóriaoldalán: `/blog/kategoria/<kategória webcíme>`,
-- és a kezdőlap „Tudástár" blokkjában a 3 legfrissebb cikk.
+- és a kezdőlap „Legfrissebb a tudástárból” szekciójában, ha a cikk a
+  legfrissebbek között van.
+
+Ha a Tudástár ki van kapcsolva (8. pont), a cikk közvetlen linkkel továbbra is
+megnyílik, de a Google nem veszi fel a találatai közé, és a kezdőlapon sem
+látszik.
 
 ---
 
@@ -222,6 +227,14 @@ Két dolog, amire figyelj:
   (7. pont).
 - **Az új oldal nem kerül automatikusan a menübe.** Ha szeretnéd, hogy a
   látogatók megtalálják, csinálj hozzá menüpontot (8. pont).
+- **A Szakembereknek oldal is Oldal.** A `/szakembereknek` lap a
+  **`szakembereknek`** webcímű Oldalból jön: a nagy cím az oldal Címe, alatta a
+  Rövid bevezető, lejjebb a Szekciók (jellemzően egy **Ajánlat-kártyák**
+  szekció a képzés és a szakkönyv kártyájával). A cím fölötti kis felirat
+  („Gyógytornászoknak és terapeutáknak”) a weboldal kódjában van. Ha az
+  oldalnak nincs látható szekciója, vagy nincs ilyen oldal, a lap a weboldal
+  beépített változatát mutatja. Az oldal webcímét ne írd át: a weboldal kódja
+  erre épít, a webcím mező alatt figyelmeztetés is áll.
 
 ---
 
@@ -241,7 +254,10 @@ sorrendjüket**. Programozó nem kell hozzá.
 > és a szekció címét, például „01 · Nyitó videó (kéznyitás): Hatékony és
 > biztonságos módszerek…”; a sorra kattintva nyílik ki. A nyitó videó
 > szövegeihez közvetlenül is eljutsz: **Leggyakrabban használt → Kezdőlapi videó
-> szövegei**.
+> szövegei**. Ez a szekciót nyitja meg a Fő cím mezőnél; ugyanitt, a **Beúszó
+> szövegek a videón** részben írod át a görgetés közben a videóra beúszó két
+> feliratot (a videó közepén és a végén). Üres mezőnél a beépített szöveg
+> látszik.
 
 ### Mit tudsz csinálni?
 
@@ -255,8 +271,15 @@ rövid leírással. A lista két csoportra oszlik:
 - **Kezdőlap (ajánlott sorrendben)** — a kezdőlap saját sávjai, abban a
   sorrendben felkínálva, ahogy a lapon ajánlott állniuk;
 - **Bárhol használható** — a **Szakemberek kártyái**, a **Nyitható sorok**, az
-  **Időpontkérés**, a **Szabad szöveg** és a **Gombos kiemelő sáv**, amit
-  bármelyik oldalon, bárhová beszúrhatsz.
+  **Időpontkérés**, a **Szabad szöveg**, a **Gombos kiemelő sáv** és az
+  **Ajánlat-kártyák**, amit bármelyik oldalon, bárhová beszúrhatsz.
+
+Az **Ajánlat-kártyák** egymás melletti kártyák (legfeljebb négy), mindegyiken
+ikon, kis felirat, cím, szöveg, tények felsorolása és egy gomb. A **Gomb
+súlya** alapból „Másodlagos (keretes)”; az „Elsődleges (kitöltött)” gomb a lap
+fő cselekvése, ezért egy lapon csak egy ilyen legyen. Ha az ajánlat még nem
+kapható, kapcsold be a **Még nem elérhető** pipát: alatta megjelenik a **Mikor
+lesz elérhető?** mező, és az abba írt mondat a kártyára kerül.
 
 **Sorrendet cserélni.** Minden szekciósor bal szélén van egy **fogantyú** (a
 pontokból álló kis ikon). Fogd meg az egérrel, húzd a helyére, engedd el — a
@@ -406,7 +429,45 @@ Amire figyelj:
   linknél kimásolhatod a cél közvetlen linkjét.
 - A `/blog` webcímű menüpont a Tudástár kapcsolója is: ha ott kiveszed a
   Látható pipát vagy bekapcsolod a Rejtett linket, a Tudástár az egész
-  weboldalon eltűnik.
+  weboldalon eltűnik. Részletek lent.
+
+### A Tudástár ki- és bekapcsolása
+
+A Tudástárat (a `/blog` listát, a blogbejegyzéseket és a nyolc tünet-oldalt)
+egyetlen menüponttal kapcsolod ki és be: a **`/blog` webcímű** menüponttal.
+Ennek a szerkesztőlapján felül ez a doboz áll: „Tudnivaló: ez a menüpont a
+Tudástár kapcsolója”.
+
+**Kikapcsolás.** Vedd ki a **Látható** pipát, vagy kapcsold be a **Rejtett
+link** pipát, majd **Mentés**. Mentés után:
+
+- a kezdőlapon eltűnik a „Legfrissebb a tudástárból” szekció, és a hibaoldal
+  sem ajánlja a Tudástárat;
+- a menüből kimaradnak a Tudástárra mutató menüpontok, a szekciókból pedig
+  azok a gombok és linkek, amelyeknek a „Hová vigyen (webcím)” mezője a
+  Tudástárra mutat, a feliratukkal együtt;
+- ha egy oldal, kurzus vagy lecke szövegébe Tudástárra mutató linket tettél, a
+  link szövege megmarad, csak nem kattintható;
+- a cikkek kimaradnak a Google-nek szóló oldaltérképből és a gépi olvasásnak
+  szóló fájlokból.
+
+A cikkek nem törlődnek. A `/blog`, a kategóriaoldalak, a blogbejegyzések és a
+tünet-oldalak közvetlen linkkel továbbra is megnyílnak, de a keresők nem
+veszik fel őket a találataik közé.
+
+**Visszakapcsolás.** Tedd vissza a Látható pipát (és vedd ki a Rejtett
+linket), majd **Mentés**. Minden visszajön, ugyanott, ahol korábban volt: a
+kezdőlapi szekció a helyén marad a Szekciók között, csak addig nem látszik.
+
+A változás a mentés után azonnal él, a következő oldalbetöltéskor már látszik;
+újraindítás vagy fejlesztő nem kell hozzá (kipróbálva 2026. szeptember 23-án).
+
+Amire figyelj:
+
+- A menüpont **törlése nem rejti el** a Tudástárat: ha nincs `/blog` webcímű
+  menüpont, a Tudástár látszik.
+- Ha több `/blog` webcímű menüpont is van, a Tudástár csak akkor tűnik el, ha
+  mindegyiknél ki van kapcsolva. A doboz ezt is jelzi.
 
 ---
 
@@ -502,12 +563,27 @@ ha üresen hagyod, a lapon a beépített fotó marad (a mező alatt olvasod, mel
   „Felső kis felirat”, a „Szekció címe”, a „Bekezdések” és a „Kiemelt blokk”
   közül legalább egy ki van töltve.”
 
-- **Kurzuskártyák (automatikus) → Fotók a „Kurzusaink” felirat alatt:** a
-  bal, a középső és a jobb oldali díszítő fotó a kártyák alatt.
+  A négy mező neve a helyét mondja: „1. kép: bal fent (telefonon nem
+  látszik)”, „2. kép: jobb fent”, „3. kép: bal lent”, „4. kép: jobb lent”.
+
+- **Kurzuskártyák (automatikus) → Fotók a „Kurzusaink” felirat alatt (három
+  kép):** a **Bal oldali kép**, a **Középső kép** és a **Jobb oldali kép**, a
+  díszítő fotók a kártyák alatt. Ugyanitt a **Háttérfelirat (a nagy és halvány
+  szó)** mező a kártyák alatti nagy, halvány szó: egy szó, nagy kezdőbetűvel,
+  legfeljebb 10 karakter (csupa nagybetűvel ennyi sem fér el). Üresen a
+  „Kurzusaink” marad. A Kurzusok listaoldalon (`/kurzusok`) ezek a mezők nem
+  hatnak.
 
 A kép kivágását a kép **fókuszpontja** adja. A **Tartalom → Képek** között
 nyisd meg a képet, és a fókuszpontot tedd arra a részre (arcra, kézre), aminek
 keskeny helyen is látszania kell.
+
+### A Gombos kiemelő sáv képe
+
+A **Gombos kiemelő sáv** szekciónak saját **Kép** mezője van. Ha feltöltesz
+képet, az látszik a sávban. Ha üresen hagyod, és a gomb egy kurzusra vagy a
+kurzuslistára visz, a kurzus borítóképe látszik (a Rólunk oldalon a beépített
+montázs); más gombcélnál a sáv kép nélkül jelenik meg.
 
 ---
 
@@ -727,9 +803,25 @@ A szalagon további jelzések is állhatnak:
   és **Szerkesztem az oldalt** (a keresőben megjelenő cím és leírás).
 
 A **Szerkesztő nézet** a kódban élő lapokon nem jelenik meg (például a
-Kurzusok listáján, a Tudástár listáján, a Szakembereknek oldalon, a fiók- és
-pénztároldalakon). A kurzusoldalak és a blogbejegyzések előnézetében csak az
-előnézet sávja áll, szekciónkénti szalag nincs.
+Kurzusok listáján, a Tudástár listáján, a fiók- és pénztároldalakon). A
+Kapcsolat és a Szakembereknek oldalon megjelenik, mert azok szekcióit egy
+Oldal adja. A blogbejegyzések előnézetében csak az előnézet sávja áll,
+szekciónkénti szalag nincs.
+
+**A kurzusoldal előnézetében** minden szakasz (A kurzusról, Hogyan működik?,
+Tananyag, Kinek való, és kinek nem?, Garancia, Gyakori kérdések) előtt egy
+szalag mondja meg, a kurzus melyik fülének melyik mezőjéből jön a szöveg. Ha
+a szakasz a Részletes leírás egy címsora alól jön, vagy a mező üres, és a
+weboldal beépített szövege látszik, azt is kimondja, és azt is, melyik mezőt
+kell kitöltened, hogy a saját szöveged látsszon. A szalag **Szerkesztem**
+linkje a kurzus szerkesztőjét a pontos fülön és mezőnél nyitja meg. Ha a
+kurzus élesben akciós elrendezésben jelenik meg, a lap tetején ez áll:
+„Akciós elrendezés: az előnézet nem mutatja”.
+
+A weboldal kódjában élő részeken (például a Kurzusok és a Tudástár
+listaoldalának fejléce, a Szakembereknek oldal felső kis felirata) az
+előnézetben „Kódban van” vagy „Részben kódban van” jelű szalag áll, és
+megmondja, mit írhatsz át az adminban, és mit nem.
 
 A bal oldali menü **Kezdőlapi videó szövegei** pontja ugyanígy működik: a
 kezdőlap szerkesztőjét a nyitó videó szekciójánál nyitja meg.
@@ -812,8 +904,10 @@ Szolgáltatások oldalon a Fejléckép a megosztási kép, a kurzusoknál a
 Borítókép. Ha a kezdőlap Fejlécképét cseréled, a Facebook-előnézet is változik,
 pedig a kép a kezdőlapon nem látszik.
 
-A kódban élő lapoknak (Kurzusok, Tudástár, Szakembereknek) nincs saját
-megosztási képük, náluk is az alapkép látszik.
+A kódban élő lapoknak (Kurzusok, Tudástár) nincs saját megosztási képük,
+náluk is az alapkép látszik. A Szakembereknek oldal úgy viselkedik, mint a
+többi Oldal: a `szakembereknek` webcímű Oldal Megosztási képe, üresen a
+Fejléckép, annak híján az alapkép.
 
 ### A Google-találat címe és leírása
 
@@ -825,7 +919,8 @@ megosztási képük, náluk is az alapkép látszik.
 | Blogbejegyzés                             | SEO-cím, üresen a Cím                                        | SEO-leírás, üresen a Rövid bevezető                                                             |
 | Tünet-oldal (a nyolc Tudástár-cikk tükre) | az Oldal SEO-címe, üresen az Oldal Címe                      | az Oldal SEO-leírása, üresen az Oldal Rövid bevezetője; a blogbejegyzés SEO-címe itt nem számít |
 | Kurzus                                    | SEO-cím, üresen a Kurzus címe, annak híján a Belső azonosító | SEO-leírás, üresen a Rövid leírás, annak híján egy beépített mondat a kurzus nevével            |
-| Kurzusok, Tudástár, Szakembereknek        | a weboldal kódjában van                                      | a weboldal kódjában van                                                                         |
+| Szakembereknek                            | SEO-cím, üresen a Cím, annak híján „Szakembereknek”          | SEO-leírás, üresen a Rövid bevezető, annak híján a weboldal beépített leírása                   |
+| Kurzusok, Tudástár                        | a weboldal kódjában van                                      | a weboldal kódjában van                                                                         |
 
 A böngészőfülön a cím után „| Kineticare” áll, ezt a rendszer teszi hozzá. Ha
 a SEO-cím végére magad írod ki a márkát, a rendszer nem ismétli meg; ha a cím

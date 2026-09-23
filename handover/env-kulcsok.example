@@ -1,5 +1,5 @@
 # ============================================================================
-# Kineticare – ebben a körben dokumentált env-kulcsnevek
+# Kineticare – a kézikönyvben külön magyarázott env-kulcsnevek (2026-09-23)
 # ----------------------------------------------------------------------------
 # TITOK SOHA nem kerül a repóba. Ez a fájl CSAK kulcsneveket ír, érték nélkül.
 # A kanonikus, teljes lista: a gyökér `.env.example`.
@@ -30,6 +30,13 @@ OWNER_BUNNY_CURRICULUM_CONFIRM=
 MIGRATION_NOTICE_CONFIRM=
 # railway.email-job.json script-argumentum. Futás után ürítsd.
 EMAIL_JOB_ARGS=
+# railway.import-job.json (scripts/import-job.sh) bemenete. Futás után ürítsd.
+# A gyökér .env.example még nem jelöli (maintainer-teendő).
+IMPORT_CUSTOMERS_CSV_GZ_B64=
+# Levélküldő (RESEND_API_KEY vagy SMTP_HOST) mellett kötelező, különben boot-hiba.
+EMAIL_FROM=
+# `true` = a cron workerek futnak. Élesben hiánya warn, nem boot-hiba.
+ENABLE_JOB_WORKERS=
 # `1` = seed:demo futhat. Éles Kineticare-en TILOS.
 DEMO_MODE=
 DEMO_COURSE_SKU=

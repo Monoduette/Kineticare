@@ -5,6 +5,8 @@
 
 > **Kinek szól:** a következő kódoló ügynöknek. Nem termékterv, nem architektúra-újraírás.
 > **Honnan a zár:** squash-merge `785a8ad` (PR 174), élő kód a `mainen`.
+> **Frissítve:** 2026-09-23 (`d5c144d`, #293): a tünet-hubok élő állapota és a
+> #292/#293 szerkesztői zárai (Tudástár-kapcsoló, fotóhelyek, szalagok).
 > **Őr-tesztek:** `src/__tests__/tudastar-cikkoldal.test.tsx` (pár, 900 px, váll),
 > `src/__tests__/belso-oldal-szekciok.test.tsx` (`/szolgaltatasok`),
 > `src/__tests__/craft-lane-zarak.test.tsx` (Craft-sáv: Szerkesztő / Design / Kutató),
@@ -28,6 +30,11 @@ kétoszlopos rács (`minmax(0, 1fr) minmax(0, 1fr)`). Forrás:
 nem ide tartozik.
 
 ### Két panel (kurzus + időpont)
+
+A lista blogbejegyzés-slugokat sorol. Ha a cikknek közzétett tünet-hubja van
+(`src/lib/tudastar/hub-oldalak.ts`, `HUB_OLDALAK`), a `/blog/<cikk>` cím 308-cal
+a hubra visz (pl. `/blog/miert-zsibbad-a-kezem` → `/kez-zsibbadas`), és a
+`.kc-post-cta` ott, a hubon renderelődik (`[slug]/page.tsx` → `PostArticle`).
 
 Csak ez a hét poszt:
 
@@ -54,22 +61,33 @@ A `.kc-post-cta` osztály és a `PostCourseCta` import csak a cikkoldalon él
 
 ## A-gyökér és Ads-lander (nem HTTP-invariáns)
 
-A cikk kanonikus címe ma `/blog/{slug}`. A gyökér hubok
-(`/inhuvelygyulladas`, `/keztoalagut-szindroma`, `/teniszkonyok`) élőben
-404-et adhatnak: ez **Ads-kapu** (ne hírdess 404-re), nem olyan szabály,
-amit CI-ben „örökre 404” tesztként kell őrizni. Ha ezek az oldalak
-később 200-zal megjelennek, a 404-őr hamis piros lenne, és az H-IH
-kampány feltételét is elrontaná.
+**Mérve 2026-09-23, a Railway-hoston:** a nyolc tünet-hub
+(`/keztoalagut-szindroma`, `/inhuvelygyulladas`, `/teniszkonyok`,
+`/csuklo-es-kezfajdalom`, `/kez-zsibbadas`, `/pattano-ujj`,
+`/csuklotores-utani-gyogytorna`, `/befagyott-vall`) közül a mért
+`/inhuvelygyulladas`, `/keztoalagut-szindroma`, `/teniszkonyok` és
+`/befagyott-vall` **200**-at ad, a `/blog/<cikk>` címük 308-cal viszi oda. A
+korábbi „élőben 404” állapot tehát megszűnt. Ezért volt helyes, hogy nem
+lett belőle „örökre 404” CI-őr: az most hamis piros lenne.
+
+A hub akkor 200, ha az Oldalak között a hub webcímű oldal közzé van téve; a
+visszavonás után 404 (`src/lib/admin/kotott-cimek.ts`). Ez tartalmi állapot,
+nem kódinvariáns: ne írj rá HTTP-státusz-tesztet egyik irányba sem.
 
 A Search-lock (`src/lib/tudastar/seo-kulcsszavak.ts`,
 `OLDAL_KULCSSZAVAK`) más szerződés: az A-gyökér slugok **nincsenek** a
 kulcsszó-importőr táblában. Az a kulcsszó-mező, nem HTTP-státusz. Ne
-bővítsd 404-őrrel, és ne találj ki Ads-fiókállapotot a hiányzó gyökérből.
+bővítsd státusz-őrrel, és ne találj ki Ads-fiókállapotot belőle.
 
 A kampányjegyzetek (`docs/monid-negyedik-kor.md`,
-`docs/h-ih-kulcsszavak-draft.md`) „lander 200” sora tervezet. Ne jelezd
-200-nak, amíg a gyökér nem az; ne írj tesztet, ami a 404-et állandónak
-teszi.
+`docs/h-ih-kulcsszavak-draft.md`) „lander 200” sora tervezet volt. A gyökér
+ma 200, de a hirdetés a domain-átállásig akkor sem indulhat
+(`docs/kineticare-hu-atallas.md`, `docs/adwords-kampany.md` 0.1).
+
+**Tudástár-kapcsoló:** ha a tulajdonos a `/blog` menüpontot kikapcsolja
+(2026-09-23-án élesben ki van kapcsolva), a hubok, a `/blog` és a cikkek
+közvetlen linkkel továbbra is 200-at adnak, de `noindex, follow` metát kapnak,
+és kimaradnak a sitemapből. Lásd lent.
 
 ## Craft-sáv tartalmi zárak
 
@@ -213,11 +231,81 @@ ne jelezze élő Ads-státusznak a kampánydoksi tervezői sorát.
   lehet; Search végső URL-nek, fizetett ajtónak ne tedd. Nincs Ads API
   a sitelink vs. Search megkülönböztetésére a fiókban — a térkép a
   szerződés.
-- **H-IH csak akkor,** ha a gyökér `/inhuvelygyulladas` **200**. A T1
-  kampány a doksiban „vár a cikkre”; a draft
-  (`docs/h-ih-kulcsszavak-draft.md`) spend 0. 404-es gyökérre ne
-  Enable-eld. A gyökér 200-ra váltása után a H-IH feltétele teljesülhet
-  — ezért a 404 **nem** CI-invariáns.
+- **H-IH csak akkor,** ha a gyökér `/inhuvelygyulladas` **200**, és a
+  domain már az új platformra mutat. A gyökér 2026-09-23-án 200 (mérve), a
+  domain-átállás viszont még nincs kész, tehát a draft
+  (`docs/h-ih-kulcsszavak-draft.md`) spend 0 marad. Kikapcsolt Tudástárnál
+  a hub `noindex`: arra sem hirdetünk. A státusz **nem** CI-invariáns.
+
+## Tudástár-kapcsoló, fotóhelyek, szerkesztői réteg (#292, #293)
+
+Ezek a szerkesztői funkciók szerződései. A szerkesztőnek szóló leírás:
+`docs/szerkesztoi-utmutato.md` és `docs/mi-hol-szerkesztheto.md`; a két
+dokumentum a felület feliratait betűre idézi, és ezt a
+`src/__tests__/szerkesztoi-utmutato-szovegek.test.ts` őrzi. Ha feliratot írsz
+át a kódban, a dokumentumot is írd át, különben a teszt bukik.
+
+### Tudástár-kapcsoló
+
+- A szabály egy helyen dől el: `src/lib/tudastar-kapcsolo.ts`
+  (`tudastarLathatoMenukbol`). A Tudástár KIKAPCSOLT, ha van `type='url'`,
+  `/blog` célú menüpont, és mindegyik ilyen `visible=false` vagy
+  `unlisted=true`. Menüpont nélkül és adatbázis-hibánál BEKAPCSOLT.
+- A szerveroldali kérdés `getTudastarLathato()`
+  (`src/lib/tudastar-lathatosag.ts`), `MENUS_CACHE_TAG` címkével; a menü
+  mentése azonnal üríti, ezért a kapcsolás a következő kérésnél látszik
+  (helyben, az admin API-n át mérve 2026-09-23).
+- Kikapcsolva: a kezdőlapi Tudástár-ajánló, a menüpontok, a szekciók
+  Tudástárra mutató link-mezős gombjai és linkjei, a sitemap- és llms-sorok
+  eltűnnek; a szövegszerkesztőbe írt Tudástár-link szövege marad, csak nem
+  kattintható (`src/lib/tudastar-link-szuro.ts`). A `/blog`, a kategóriák, a cikkek és a
+  hubok 200-zal elérhetők, `noindex, follow` metával. A `robots.txt`
+  szándékosan nem tiltja őket. Visszakapcsolva a szekció ugyanott jelenik
+  meg, mert a szekciósor nem változik.
+- Őrök: `tudastar-kapcsolo.test.ts`, `tudastar-lathatosag.test.ts`,
+  `tudastar-link-szuro.test.tsx`, `tudastar-sitemap.test.ts`,
+  `menu-tudastar-notice.test.tsx`.
+
+### Rögzített fotóhelyek
+
+- Fríz (Bemutatkozás és számok → `frieze.photo1`–`photo4`) és a „Kurzusaink”
+  jelenet (Kurzuskártyák → `scenePhotos.left/middle/right`): üres hely = a
+  beépített fotó, a kivágás a Media fókuszpontja (`src/lib/kep-helyek.ts`).
+  A `/kurzusok` lista a jelenetet fotók nélkül rajzolja
+  (`scenePhotos={false}`), ott a CMS-mezők nem hatnak.
+- Háttérfelirat (`hatterFelirat`): legfeljebb 10 karakter, mért korlát
+  (`src/blocks/course-cards.ts`, `HATTERFELIRAT_MAX_HOSSZ`).
+- Gombos kiemelő sáv `kep` mezője: kitöltve ez látszik. Üresen, ha a gomb
+  kurzusra vagy a kurzuslistára visz, a kurzus borítója (a Rólunk oldalon a
+  beépített montázs), más gombcélnál a sáv kép nélküli
+  (`src/blocks/cta-banner.ts`, `src/lib/cta-banner-course.ts`).
+- Őrök: `kep-helyek.test.tsx`, `kurzusaink-hatterfelirat*.test.ts(x)`,
+  `cta-sav-feltoltott-kep.test.tsx`.
+
+### /szakembereknek és az Ajánlat-kártyák
+
+- A `/szakembereknek` dedikált route a „szakembereknek” webcímű oldalt
+  rendereli (Cím, Rövid bevezető, Szekciók); rekord vagy látható szekció
+  nélkül a kódtartalék (`szakembereknekAlapBlokk`) áll. A felső kis felirat
+  kódban van. A webcím kötött (`kotott-cimek.ts`).
+- Az „Ajánlat-kártyák” (`offerCards`) blokk a „Bárhol használható” csoportban.
+- Őrök: `szakembereknek-cms.test.tsx`, `ajanlat-kartyak-*.test.ts(x)`.
+
+### Szerkesztői réteg
+
+- Előnézetben szekciónkénti „Szerkesztem” szalag, a kurzusoldalon
+  szakaszonkénti forrás-szalag a pontos mezőre (`?mezo=`), a kódban élő
+  részeken „Kódban van” szalag. A látogató kimenetébe semmi nem kerül belőle.
+- A „Szerkesztő nézet” belépő útvonal-szabálya:
+  `src/components/editor/frontend/szerkeszto-nezet-cel.ts`.
+- Őrök: `szerkeszto-szalag.test.tsx`, `kurzus-forras-szalag.test.tsx`,
+  `szekcio-melylink.test.ts`, `mezo-melylink.test.ts`.
+
+### Induláskori seed
+
+A kezdőlap és az induló vélemények 2026-09-23 óta csak üres gyűjteménynél
+jönnek létre (`src/lib/home-seed.ts`); az űrlapok és a kezdőlapi képek
+hiánya továbbra is pótlódik. Őr: `onit-seed-friss-telepites.test.ts`.
 
 ## Amit ez a kör nem kér
 

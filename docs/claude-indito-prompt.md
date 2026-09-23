@@ -41,9 +41,11 @@ Owner: Barna Norbert. Content and medical claims belong to Kocsis Kata
 and Kiss Kata. Typical incoming work is **small**: a new page, a copy
 change, a homepage section, an image, a menu item, or an article.
 
-Live store: the Railway `Kineticare` app service. The `kineticare.hu`
-domain cutover is a separate document. Do not touch DNS or any `.env*`
-file unless the owner explicitly asks.
+Live store: the Railway `Kineticare` app service, with its database in
+the `Postgres-c8Rg` service. The `kineticare.hu` domain cutover is still
+pending (`docs/kineticare-hu-atallas.md`); until then the new platform
+runs on the Railway host only. Do not touch DNS or any `.env*` file
+unless the owner explicitly asks.
 
 This is a course store, not a generic CMS starter. Guest checkout is
 allowed. The account is created on the paid path, with a password-setup
@@ -52,10 +54,11 @@ link. The usual buyer path is:
 article or homepage → `/kurzusok/{slug}` → `/penztar?termek={id}` →
 Barion → `/fizetes/koszonom` → `/kurzusaim/{id}`
 
-Pinned stack you must know: Next.js 16.3.3 App Router, React 19.2.8,
+Pinned stack you must know: Next.js 16.3.5 App Router, React 19.3.0,
 Payload CMS 3.88.0, `@payloadcms/plugin-ecommerce` 3.88.0 (beta),
-PostgreSQL, Node 24.20.0. Every `@payloadcms/*` version is exact.
-Caret ranges (`^`) are forbidden.
+PostgreSQL, Node 24.20.0. `package.json` is the source of truth for
+versions. Every `@payloadcms/*` version is exact. Caret ranges (`^`)
+are forbidden.
 
 ### Your job in this repository
 
@@ -174,8 +177,18 @@ Do not route around the rule.
   `/kezrelax` 308-redirects to the SOS course. SOS is not an Ads
   lander.
 - Homepage = the `pages` row with slug `kezdolap`, **Szekciók**.
-  Do not overwrite an existing section list with seed. A new page
-  does not appear in the menu by itself.
+  Do not overwrite an existing section list with seed. The boot-time
+  seed only writes on a fresh install (empty Pages / Testimonials). A
+  new page does not appear in the menu by itself.
+- Most visitor copy comes from the CMS, with a code fallback only for
+  an empty field: homepage video captions, photo slots,
+  `/szakembereknek`, the contact e-mail. Which field feeds which
+  visible element: `docs/mi-hol-szerkesztheto.md`.
+- The Tudástár (blog) is switched off by hiding every `/blog` menu
+  item (`src/lib/tudastar-kapcsolo.ts`). Do not add a second switch.
+- Never pass the incoming route request as `new Request(request, …)`
+  input: on Node 24 behind the Next 16 proxy it throws, and every
+  Payload REST write returns 500. Copy its fields instead.
 - Do not rename a live content slug. Hide or unpublish instead of
   deleting.
 - On an empty database, first-user bootstrap is fail-closed without
@@ -193,7 +206,8 @@ Do not route around the rule.
 
 ### Content request (the usual job)
 
-1. Read the matching section of `docs/szerkesztoi-utmutato.md`.
+1. Read the matching section of `docs/szerkesztoi-utmutato.md` and
+   `docs/mi-hol-szerkesztheto.md`.
 2. Make the change in Payload admin unless the handbook says the
    code owns that surface.
 3. Publish / draft / preview: editor guide, section 3.
