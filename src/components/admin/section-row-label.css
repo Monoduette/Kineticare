@@ -56,3 +56,34 @@
 .kc-section-source--csak-link .kc-admin-notice__linkek {
   margin-block-start: 0;
 }
+
+/*
+ * A rejtett doboz ikerlinkje („A látható párja: 02 · <cím>”, modul-térkép
+ * H02). Önálló sorban álló cél, nem mondat közbeni link, ezért ugyanaz a
+ * szerződés, mint a .kc-admin-notice__linkek-é: a doboz szövegszíne
+ * (--theme-elevation-800 a --theme-warning-50 hátterén; mérve a helyi
+ * adminban, Chromium, getComputedStyle, 2026-09-23: világos téma
+ * rgb(47,47,47) a rgb(249,242,237) hátterén 12,08:1, sötét téma
+ * rgb(235,235,235) a rgb(38,29,21) hátterén 13,88:1, SC 1.4.3; a link
+ * doboza 24 px magas), aláhúzás mint nem-szín jelzés (WCAG 2.2
+ * SC 1.4.1 Use of Color, GOV.UK Design System, Links: „Links should be
+ * underlined”), legalább 24 px magas célfelület (SC 2.5.8 Target Size
+ * (Minimum)) és a Payload fókuszgyűrűje (SC 2.4.7).
+ */
+.kc-section-source__iker a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-section-source__iker a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.kc-section-source__iker a:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
+}
