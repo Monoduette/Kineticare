@@ -263,6 +263,73 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
   })
 
+  /**
+   * Devin-review (#290): a zárt-kéz sín (REV C: Zárt / Nyíló / Nyitott) maga
+   * az elavult tartalom, ezért a CMS-elsőbbség nem hozhatja vissza a
+   * kézállapot-címkéket és -szövegeket. A szerkesztő feltöltött fotója marad.
+   */
+  it('a zárt-kéz sín szövegét egészében a kanonikus ajtó-szöveg váltja, a feltöltött fotó marad', () => {
+    const feltoltott = { id: 77, url: '/api/media/file/sajat-foto.webp', alt: 'Saját fotó' }
+    const rail = {
+      blockType: 'services' as const,
+      title: 'Régi cím',
+      lead: 'A kéz három állapota.',
+      eyebrow: 'Régi felirat',
+      rows: CLOSED_HAND_HOME_HELP_TITLES.map((title, index) => ({
+        title,
+        body: `Régi kézállapot-szöveg ${index + 1}.`,
+        felirat: 'Gomb',
+        url: LEGACY_HOME_HELP_URLS[index],
+        photo: index === 0 ? feltoltott : null,
+      })),
+    }
+    expect(isClosedHandHomeHelpRail(rail.rows)).toBe(true)
+    const presented = presentHomeHelpServicesBlock(rail as unknown as BlockServices)
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.title).toBe(HOME_HELP_TITLE)
+    expect(presented.lead).toBe(HOME_HELP_LEAD)
+    expect(presented.eyebrow).toBe('')
+    expect(presented.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+    expect(presented.rows?.map((row) => row.body)).toEqual(
+      HOME_HELP_STATES.map((state) => state.body),
+    )
+    expect(presented.rows?.map((row) => row.felirat)).toEqual(
+      HOME_HELP_STATES.map((state) => state.felirat),
+    )
+    expect(presented.rows?.map((row) => row.url)).toEqual(
+      HOME_HELP_STATES.map((state) => state.url),
+    )
+    expect(presented.rows?.[0]?.photo).toEqual(feltoltott)
+    expect(presented.rows?.[1]?.photo).toEqual(homeHelpFallbackMedia(1))
+  })
+
+  /**
+   * Devin-review (#291): a zárt-kéz sín sorai kézállapotot jelölnek, a régi
+   * URL-jük nem az ajtó jelentése. Egy `/szolgaltatasok` célú harmadik sor sem
+   * lehet a rendelői ajtó: a sorrend a pozícióé.
+   */
+  it('a zárt-kéz sínnél a pozíció dönt, a régi URL-ek sorrendje nem hoz két rendelői ajtót', () => {
+    const regiUrlek = ['/kurzusok/sos-kezrelax-villamkurzus', '/kurzusok', '/szolgaltatasok']
+    const rail = {
+      blockType: 'services' as const,
+      title: HOME_HELP_TITLE,
+      rows: CLOSED_HAND_HOME_HELP_TITLES.map((title, index) => ({
+        title,
+        felirat: 'Gomb',
+        url: regiUrlek[index],
+      })),
+    }
+    expect(isClosedHandHomeHelpRail(rail.rows)).toBe(true)
+    const presented = presentHomeHelpServicesBlock(rail as unknown as BlockServices)
+    expect(presented.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+    expect(presented.rows?.map((row) => row.url)).toEqual(
+      HOME_HELP_STATES.map((state) => state.url),
+    )
+    expect(presented.rows?.map((row) => row.photo)).toEqual(
+      ([0, 1, 2] as const).map((door) => homeHelpFallbackMedia(door)),
+    )
+  })
+
   it('üres layoutot üresen ad vissza, a többi blokk indexe változatlan', () => {
     expect(presentHomeLayout([])).toEqual([])
     const girls = { blockType: 'about' as const, title: 'A Kineticare alapítói' }

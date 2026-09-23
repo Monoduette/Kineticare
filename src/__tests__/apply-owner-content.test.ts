@@ -794,7 +794,9 @@ describe('alkalmazRolunkHeroKep', () => {
     expect(eredmeny.kihagyasok[0].indok).toContain('szerkesztői elsőbbség')
   })
 
-  it('ÜRES fejléc-kép mezőt a stúdiófotóval tölt ki', () => {
+  // Tulajdonosi döntés (2026-09-23): a /rolunk fejléc-képe élesben üres lett
+  // (a szerkesztő kivette), és üres marad. A script nem teszi vissza.
+  it('ÜRES fejléc-kép mezőt nem tölt ki, HANGOSAN kihagyja (szerkesztői döntés)', () => {
     for (const jelenlegi of [null, undefined]) {
       const eredmeny = alkalmazRolunkHeroKep({
         jelenlegi,
@@ -802,8 +804,11 @@ describe('alkalmazRolunkHeroKep', () => {
         ujMedia: studio(77),
       })
 
-      expect(eredmeny.heroImage).toBe(77)
-      expect(eredmeny.modositasok[0].uzenet).toContain('üres mező')
+      expect(eredmeny.heroImage).toBeNull()
+      expect(eredmeny.modositasok).toHaveLength(0)
+      expect(eredmeny.kihagyasok).toHaveLength(1)
+      expect(eredmeny.kihagyasok[0].hangos).toBe(true)
+      expect(eredmeny.kihagyasok[0].indok).toContain('szerkesztői döntés')
     }
   })
 
