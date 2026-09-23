@@ -203,16 +203,22 @@ describe('WP54/2: a kezdőlapi Kurzusaink jelenet középső cellája', () => {
 })
 
 describe('WP54/3: a /szolgaltatasok rendelői ajtó fotója', () => {
-  it('Kiss Kata csuklókezelés közben, álló, a manifest méretével', async () => {
-    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/treatment-wrist-smile-1600.webp')
-    expect(SZOLGALTATASOK_KEZELES_FOTO.alt).toBe('Kiss Kata csuklókezelés közben a rendelőben.')
-    const asset = teamAssets.find((item) => item.file === 'treatment-wrist-smile-1600.webp')
-    expect(asset?.alt).toBe(SZOLGALTATASOK_KEZELES_FOTO.alt)
-    expect(SZOLGALTATASOK_KEZELES_FOTO.width).toBe(asset?.width)
-    expect(SZOLGALTATASOK_KEZELES_FOTO.height).toBe(asset?.height)
+  // 2026-09-22: a tulajdonos „mindenhol" kérése a WP54-es kezelés közbeni
+  // fotót felülírta; az ajtó a kezdőlapi sín gumiszalagos képét kapja. A
+  // WP54-es fájl a manifestben és a lemezen marad (más szekció választhatja).
+  it('a sín rendelői képe (gumiszalagos kezelés), álló, a fájl valós méretével', async () => {
+    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/help-rail/help-rendelo-szalag.jpg')
+    expect(SZOLGALTATASOK_KEZELES_FOTO.alt).toBe(
+      'Gyógytornász kék gumiszalagot feszít a páciens csuklóján.',
+    )
     const meta = await sharp(join(REPO, 'public', SZOLGALTATASOK_KEZELES_FOTO.url ?? '')).metadata()
-    expect(meta.width).toBe(1067)
-    expect(meta.height).toBe(1600)
+    expect(meta.width).toBe(SZOLGALTATASOK_KEZELES_FOTO.width)
+    expect(meta.height).toBe(SZOLGALTATASOK_KEZELES_FOTO.height)
+    expect(meta.width).toBe(933)
+    expect(meta.height).toBe(1400)
+    const wp54 = teamAssets.find((item) => item.file === 'treatment-wrist-smile-1600.webp')
+    expect(wp54?.alt).toBe('Kiss Kata csuklókezelés közben a rendelőben.')
+    expect(existsSync(join(REPO, 'public/media/team/treatment-wrist-smile-1600.webp'))).toBe(true)
   })
 })
 

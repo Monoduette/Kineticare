@@ -35,6 +35,27 @@ function bodyTooLargeResponse(): Response {
 }
 
 /**
+ * Új kérés a korlátozottan beolvasott bájtokból, az eredeti URL-lel,
+ * metódussal, fejlécekkel és megszakítás-jelzővel.
+ *
+ * Az eredeti kérést szándékosan NEM adjuk a `Request` konstruktor
+ * `input`-jaként. A Next 16 a route handlernek Proxyba csomagolt NextRequest-et
+ * ad (next/dist/server/route-modules/app-route/module.js, `proxyNextRequest`),
+ * a Node 24 undici-ja pedig az `input` privát `#state` mezőjét olvassa, ami
+ * Proxyn TypeError („Cannot read private member #state”). Ugyanez a minta a
+ * `reset-password-route.ts`-ben és a Payload method-override ágában
+ * (`payload/dist/utilities/handleEndpoints.js`).
+ */
+function requestFromBoundedBytes(request: Request, bytes: Uint8Array<ArrayBuffer>): Request {
+  return new Request(request.url, {
+    method: request.method,
+    headers: new Headers(request.headers),
+    body: bytes,
+    signal: request.signal,
+  })
+}
+
+/**
  * A nem-multipart törzset legfeljebb `maxBytes` bájtig olvassa be; afölött
  * 413-at ad, és a kérés el sem jut a Payloadig. A beolvasott bájtokból új
  * `Request` készül, így a továbbiakban minden réteg (CSRF, rate limit, reset,
@@ -55,6 +76,6 @@ export function withPayloadRestBodyLimit<Args extends unknown[]>(
     if (bytes === null) {
       return bodyTooLargeResponse()
     }
-    return handler(new Request(request, { body: bytes }), ...args)
+    return handler(requestFromBoundedBytes(request, bytes), ...args)
   }
 }

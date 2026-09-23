@@ -10,7 +10,7 @@
  * köz a 12 px-es rács-lépcső (space-3). Az oszlop teljes magassága így
  * 2 × 272 + 12 = 556 px, ez adja a rács sorának magasságát, amit a bal
  * szöveghasáb kitölt (about.css, WP24: a keretvonal a fríz aljáig fut). Mobilon (< 900 px) EGY sor három csík, 18rem
- * (288 px), a fekvőbb páros portré elmarad (PhotoFrieze.tsx, mérés).
+ * (288 px), a nyitó páros kép elmarad (PhotoFrieze.tsx, mérés).
  *
  * ÍV. Desktopon a FELSŐ sor két csempéje félkör-tetejű (a két „ív" alatt
  * két „pillér": a szem egy kapuzatként olvassa a négyest, nem négy külön
@@ -85,12 +85,17 @@
   border-radius: var(--kc-frieze-arch) var(--kc-frieze-arch) 0 0;
 }
 
+/* A vágás ívenként a képhez tartozik (2026-09-22): a PhotoFrieze.tsx a csíkra
+   írja `--kc-frieze-focus`-ként, a lényeg mért helyéből (a goniométeres
+   felvételen pl. 78% 72%, mert a mérőkorong a kép jobb alsó részén van). A
+   tartalék a korábbi közös érték, 50% 20%: álló portrén a fej a kép felső
+   harmadában áll. */
 .kc-photo-frieze__img {
   display: block;
   width: 100%;
   height: 115%;
   object-fit: cover;
-  object-position: 50% 20%;
+  object-position: var(--kc-frieze-focus, 50% 20%);
 }
 
 /* ---- Belépő: a befogadó szekció `is-revealed` jelére --------------------- */
@@ -183,10 +188,10 @@
 }
 
 /* ---- Mobil: egy sor, három álló kép, a két szélső íves --------------------
-   A páros portré marad el (mérve: 100 px-es csíkban a kép 36%-a látszik,
-   a bal arc elvágva; 77 px-en arc nélkül — a PhotoFrieze.tsx
-   fotólistájánál). A maradó 2., 3., 4. csíkból a páros sorszámúak ívesek:
-   ív, egyenes, ív. */
+   A nyitó páros kép marad el (mérve: a 101 px-es csíkban a 4:5-ös kép
+   szélességének 38%-a látszik, a két arc együtt 68%-ot foglal, tehát
+   legalább az egyik elvágva; a PhotoFrieze.tsx fotólistájánál). A maradó
+   2., 3., 4. csíkból a páros sorszámúak ívesek: ív, egyenes, ív. */
 
 @media (max-width: 899px) {
   .kc-photo-frieze {

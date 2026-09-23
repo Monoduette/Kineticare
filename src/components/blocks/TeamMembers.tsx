@@ -230,7 +230,19 @@ function TeamMemberCard({
     <article className="kc-team__card">
       {photo ? (
         <figure className="kc-team__figure">
-          <MediaImage media={photo} preferredSize="sm" sizes="(max-width: 360px) 224px, 288px" />
+          {/* A forrás a Médiatár `md` mérete (legfeljebb 1280 px széles), nem
+              az `sm` (640 px). A keret 288 CSS px széles, ez DPR 3-as
+              telefonon 864 eszközpixel: a 640 px-es forrást a böngésző
+              1,35-szörösére nagyítaná (mérve 2026-09-22, 390 px, DPR 3). A
+              next/image a `sizes` alapján w-leírós srcsetet ad, és a böngésző
+              a slotnál nagyobb első jelöltet tölti, azt kicsinyíti
+              (https://nextjs.org/docs/app/api-reference/components/image#sizes,
+              https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Responsive_images:
+              a kis raszterkép „starts to look grainy when displayed larger than
+              its original size”). Az optimalizáló a forrásnál nagyobbat nem
+              készít, ezért a forrás mérete a plafon. Őr-teszt:
+              foto-bekotes-2026-09-22.test.tsx. */}
+          <MediaImage media={photo} preferredSize="md" sizes="(max-width: 360px) 224px, 288px" />
         </figure>
       ) : null}
       <div className="kc-team__body">

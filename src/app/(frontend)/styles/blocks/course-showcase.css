@@ -285,17 +285,18 @@
 
 /* A három fotó: egyforma cella, közös arány, vágott kitöltés; nincs dőlés,
    átfedés és mozgás. A háttérszín a betöltésig tartja a helyet.
-   `object-position: 25% 50%` (WP54, 2026-09-19): mindhárom fotó FEKVŐ
-   (1,59 / 1,50 / 1,50 arány), a 4/3-as cella tehát szélességben vág: a 3:2-es
-   fotónak 12,5 %-a, az 1,59-esnek 19,3 %-a marad ki. A középső fotón (kéz kis
-   labdán, home-exercise-ball-towel-800) az ujjhegyek a kép bal szélén, a
-   szélesség 4,1 %-ánál kezdődnek (sharp, bőrszín-oszlopok, mérve). Középre
-   zárt ablak (50 %) a 6,25 %-tól látszana, azaz levágná az ujjhegyeket; a
-   25 % ablaka a 3,1 %-tól 90,6 %-ig tart, így a kéz teljes, a jobb szélen
-   csak a másik könyök marad ki. A két alapítós fotón a 25 % (4,8–85,5 %, ill.
-   3,1–90,6 %) egyik arcot sem éri: a fejek a 22–84 % sávban vannak. A
-   korábbi 100 % az egykori álló középső fotóhoz tartozott, fekvő képen a
-   függőleges érték nem hat.
+   `object-position: 25% 50%` (WP54, 2026-09-19): mindhárom fotó FEKVŐ,
+   2026-09-22 óta mindhárom 800×533-as (1,50 arány), a 4/3-as cella tehát
+   szélességben vág: a kép 11,2 %-a marad ki (89 px), a 25 % ablaka mindhárom
+   képen x 22–733. A középső fotón (kéz kis labdán, home-exercise-ball-towel-800)
+   az ujjhegyek a kép bal szélén, a szélesség 4,1 %-ánál (x 33) kezdődnek
+   (sharp, bőrszín-oszlopok, mérve). Középre zárt ablak (50 %, x 44-től)
+   levágná az ujjhegyeket; a 25 %-os ablakban a kéz teljes, a jobb szélen
+   csak a másik könyök marad ki. A bal képen (showcase-kiss-kata-labda-800)
+   az ablakban a teniszlabdától Kiss Kata hajáig minden látszik; a jobb képen
+   (showcase-kocsis-kata-bogre-800) a plüssmaci, a bögre, Kocsis Kata arca
+   és a háttérben álló csontváz is (x ≤ 695). A korábbi 100 % az egykori álló
+   középső fotóhoz tartozott, fekvő képen a függőleges érték nem hat.
    Apple HIG, Images: ne vágj úgy, hogy a kép értelme elvesszen
    (https://developer.apple.com/design/human-interface-guidelines/images);
    NN/g, Photos as Web Content: a fotó akkor ér valamit, ha a lényeg

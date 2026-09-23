@@ -531,12 +531,20 @@
   background-color: var(--kc-color-surface-tint);
 }
 
+/* A vágás helye a kép fókuszpontja (2026-09-22): a Media `focalX`/`focalY`
+   mezője, amit a Services.tsx `--kc-services-image-focus`-ként ad át, mint a
+   tábla fotójánál (services.css). Álló, 2:3-as képből a 4:5-ös asztali keret
+   a magasság 83%-át, az 1:1-es mobil keret 67%-át mutatja, tehát a
+   függőleges pont dönti el, mi marad bent (a kódbeli tartalék képek mért
+   pontjai: src/lib/home-help-states.ts, HOME_HELP_PHOTOS). Fókuszpont nélkül
+   50% 50%, a korábbi `center`. W3C CSS Images 3, object-position:
+   https://www.w3.org/TR/css-images-3/#the-object-position */
 .kc-services-sin__photo img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: var(--kc-services-image-focus, 50% 50%);
 }
 
 .kc-services-sin__placeholder {

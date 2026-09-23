@@ -26,7 +26,7 @@ import {
   HOW_IT_WORKS_STEP1_FIXED,
   HOW_IT_WORKS_STEP1_LEFTOVER,
 } from '../lib/gondolatjel-leftover'
-import { buildHomeLayout } from '../lib/home-seed'
+import { buildHomeLayout, mediaCreateData } from '../lib/home-seed'
 import {
   JOGI_OLDALAK,
   jogiOldalTartalom,
@@ -35,7 +35,14 @@ import {
 } from '../lib/legal-content'
 import { formatPriceHuf } from '../lib/format-price'
 import { logger } from '../lib/logger'
-import { HOME_HELP_TITLE, isSzolgaltatasokAjtoBlock } from '../lib/home-help-states'
+import {
+  HOME_HELP_PHOTOS,
+  HOME_HELP_TITLE,
+  LEGACY_HOME_HELP_PHOTO_FILES,
+  homeHelpDoorIndex,
+  isConvertibleHomeHelpServices,
+  isSzolgaltatasokAjtoBlock,
+} from '../lib/home-help-states'
 import { LEGACY_IMAGES } from '../lib/legacy-images'
 import { LEGACY_DEMO_TITLES, isLegacyDemoTitle } from '../lib/legacy-noindex'
 import {
@@ -434,6 +441,9 @@ export type JavitasSzabaly =
   | 'akcios-kurzus-arszoveg'
   | 'akcios-ar-atallas'
   | 'demo-oldal-visszavonas'
+  | 'diagnozis-tagmondat'
+  | 'harom-ajto-fotok'
+  | 'kocsis-cv-foto'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -493,6 +503,12 @@ export interface MediaForras {
   filename: string
   filePath: string
   alt: string
+  /**
+   * A kivágás fókuszpontja (Media `focalX`/`focalY`, százalék), ha a kép
+   * lényege nem a közepén van. Csak létrehozáskor íródik be.
+   */
+  focalX?: number
+  focalY?: number
 }
 
 /**
@@ -3956,6 +3972,650 @@ export const payloadMediaAltTar = (payload: Payload): MediaAltTar => ({
 })
 
 /**
+ * 2026-09-22 — tulajdonosi kérés a „Rendelői kezelések" ajtó szövegéről:
+ * „ebből a szövegből mindenhol […] kivenném, hogy ez nem diagnózis a webről".
+ * A mondatot a sín kanonikus szövege (src/lib/home-help-states.ts) írta be a
+ * CMS-be; élesben a /rolunk „Így tudunk segíteni" szekciójában áll (mérve
+ * 2026-09-22 a /api/pages-en), a kezdőlap CMS-szövegében nem.
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - csak `services` blokk sorának törzsében, és csak a PONTOSAN ezzel a
+ *    mondattal betűre egyező részt cseréli (a mondat eleje megmarad, a
+ *    tagmondat helyére pont kerül); a szerkesztő által átírt szöveg érintetlen;
+ *  - a csere a naplóban betűhíven szerepel;
+ *  - ha a régi mondat sehol nincs, de az új igen: „MÁR" kihagyás; ha egyik
+ *    sincs: csendes, indokolt kihagyás (a szerkesztő másként fogalmazott).
+ */
+export const DIAGNOZIS_REGI_MONDAT =
+  'A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.'
+export const DIAGNOZIS_UJ_MONDAT = 'A pontos tervet vizsgálat után állítjuk össze.'
+
+export const alkalmazDiagnozisTagmondatTorles = (
+  layout: Page['layout'],
+  oldalCimke: string,
+): SzekciosorCsere => {
+  const szabaly: JavitasSzabaly = 'diagnozis-tagmondat'
+  const uzenet = `${oldalCimke}: a „nem diagnózis a webről" tagmondat`
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet, indok: 'a lapnak nincs szekciósora, nincs mit javítani' }],
+    }
+  }
+  const modositasok: JavitasLepes[] = []
+  let marJavitott = false
+  const ujLayout = layout.map((blokk, blokkIndex) => {
+    if (blokk.blockType !== 'services' || !Array.isArray(blokk.rows)) return blokk
+    let blokkValtozott = false
+    const ujSorok = blokk.rows.map((sor, sorIndex) => {
+      const torzs = typeof sor.body === 'string' ? sor.body : null
+      if (torzs === null) return sor
+      if (!torzs.includes(DIAGNOZIS_REGI_MONDAT)) {
+        if (torzs.includes(DIAGNOZIS_UJ_MONDAT)) marJavitott = true
+        return sor
+      }
+      blokkValtozott = true
+      modositasok.push({
+        szabaly,
+        uzenet: `${uzenet} (${blokkIndex + 1}. szekció, ${sorIndex + 1}. sor „${
+          typeof sor.title === 'string' ? sor.title : ''
+        }"): ${ertekCimke(DIAGNOZIS_REGI_MONDAT)} → ${ertekCimke(DIAGNOZIS_UJ_MONDAT)}`,
+        indok: null,
+      })
+      return { ...sor, body: torzs.split(DIAGNOZIS_REGI_MONDAT).join(DIAGNOZIS_UJ_MONDAT) }
+    })
+    return blokkValtozott ? { ...blokk, rows: ujSorok } : blokk
+  })
+  if (modositasok.length > 0) {
+    return { layout: ujLayout, modositasok, kihagyasok: [] }
+  }
+  return {
+    layout: null,
+    modositasok: [],
+    kihagyasok: [
+      {
+        szabaly,
+        uzenet,
+        indok: marJavitott
+          ? 'a szöveg MÁR a javított mondattal áll, nincs teendő'
+          : 'a tagmondat egyik szolgáltatás-sorban sem szerepel betűre egyezően (vagy sosem volt ott, vagy a szerkesztő átírta)',
+      },
+    ],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2026-09-22, tulajdonosi kérés: az új fotók „mindenhol”. A kódbeli tartalék
+// (a kezdőlap és a /szolgaltatasok üres fotó-mezős ajtói) az új képet magától
+// mutatja; a CMS-ben MENTETT régi képeket ez a két szabály cseréli: a
+// háromajtós sín sor-fotóit (élesben a /rolunk) és Kocsis Kata régi közeli
+// portréját a szakemberkártyán és az önéletrajz-harmonikában (a /rolunk, a
+// /kapcsolat és a /szolgaltatasok).
+// ---------------------------------------------------------------------------
+
+/**
+ * Egy fotócsere-szabály döntése. A `letrehozando` a forráslista azon
+ * indexei, amelyekhez a csere Médiatár-rekordot igényel, de még nincs: ilyenkor
+ * a `layout` `null`, a futtató (`futtatFotoCsere`) élesben létrehozza a
+ * rekordot a repó fájljából, és az azonosítóval újra dönt.
+ */
+export interface FotoCsere extends SzekciosorCsere {
+  letrehozando: readonly number[]
+}
+
+/**
+ * A háromajtós sín 2026-09-22 előtti, a seed és a /rolunk-visszaépítés által
+ * írt képeinek fájlnév-törzsei (help-zart-img-7541, help-nyilo-syl-9297,
+ * help-nyitott-syl-9260). KIZÁRÓLAG az ezekre (vagy a Payload `-N` utótagos
+ * változatukra) mutató sor-fotó cserélhető.
+ */
+export const HAROM_AJTO_KORABBI_TORZSEK: readonly string[] =
+  LEGACY_HOME_HELP_PHOTO_FILES.map(fajlnevTorzs)
+
+/**
+ * Az új képek AJTÓ szerint (0 rendelő, 1 otthoni program, 2 szakmai képzés,
+ * `homeHelpDoorIndex`). A fájl, az alt és a fókuszpont a sín kódbeli
+ * tartalékáé (`HOME_HELP_PHOTOS`), hogy a CMS-ből és a kódból kirajzolt ajtó
+ * ugyanazt mutassa. A forrás a seed-mappa fájlja: ebből hozza létre ugyanezt
+ * a rekordot az induláskori seed is (`ensureHomeImages`), és ebből tölti
+ * vissza a Volume-helyreállítás (`media-restore.ts`); a `public/media/help-rail`
+ * alatti tartalék-másolat bájtra azonos (őr-teszt). A Médiatár webp-re
+ * konvertál, ezért a rekord neve `.webp`.
+ */
+export const HAROM_AJTO_FOTO_FORRASOK: readonly MediaForras[] = HOME_HELP_PHOTOS.map((photo) => ({
+  filename: `${fajlnevTorzs(photo.file)}.webp`,
+  filePath: `content/home-images/brand/${photo.file}`,
+  alt: photo.alt,
+  focalX: photo.focalX,
+  focalY: photo.focalY,
+}))
+
+/** A háromajtós sín blokkja: a mentett `sin` elrendezés vagy a kezdőlapi, sínné alakított hármas. */
+const haromAjtoSinBlokk = (blokk: Szekciosor[number]): blokk is SzekcioTipus<'services'> =>
+  blokk.blockType === 'services' &&
+  Array.isArray(blokk.rows) &&
+  blokk.rows.length === 3 &&
+  (blokk.elrendezes === 'sin' || isConvertibleHomeHelpServices(blokk))
+
+/** A háromajtós sín(ek) sor-fotóinak média-azonosítói (a futtató ezek fájlnevét olvassa). */
+export const haromAjtoFotoAzonositok = (layout: Page['layout']): number[] =>
+  (Array.isArray(layout) ? layout : []).flatMap((blokk) =>
+    haromAjtoSinBlokk(blokk)
+      ? (blokk.rows ?? []).flatMap((sor) => {
+          const id = heroKepAzonosito(sor.photo ?? null)
+          return id === null ? [] : [id]
+        })
+      : [],
+  )
+
+/**
+ * 2026-09-22: a háromajtós sín sor-fotói. A régi, seed/script által írt kép
+ * helyére az ajtó új képe kerül (`HAROM_AJTO_FOTO_FORRASOK`).
+ *
+ * VÉDŐFELTÉTELEK (soronként):
+ *  - a blokk a háromajtós sín: `services`, pontosan három sor, `sin`
+ *    elrendezés vagy a kezdőlapi, sínné alakítható hármas;
+ *  - az új képet az AJTÓ JELENTÉSE választja (`homeHelpDoorIndex`: cím, majd
+ *    URL), nem a sor pozíciója, így átrendezett sorokon is a helyes kép jön;
+ *  - csere KIZÁRÓLAG akkor, ha a mai kép fájlneve a három régi törzs
+ *    valamelyike (`HAROM_AJTO_KORABBI_TORZSEK`, pontos törzs vagy `-N`
+ *    utótag);
+ *  - üres fotó-mezőt NEM tölt ki: ott a lap a kódbeli tartalékot mutatja, ami
+ *    már az új kép (csendes, indokolt kihagyás);
+ *  - ha a sor MÁR az új képet viseli: „MÁR” kihagyás (idempotencia);
+ *  - minden más kép a szerkesztőé, ahogy a nem található rekordra mutató mező
+ *    is: HANGOS kihagyás, a script nem ír felül és nem találgat;
+ *  - ha az új kép nincs a Médiatárban, és a repó-forrásfájl sem található:
+ *    HANGOS kihagyás.
+ */
+export const alkalmazHaromAjtoFotok = (input: {
+  layout: Page['layout']
+  /** Naplócímke (pl. „Rólunk oldal”). */
+  oldalCimke: string
+  /** A sorokban hivatkozott képek fájlneve azonosító szerint (a futtató oldja fel). */
+  ismertFajlnevek: ReadonlyMap<number, string>
+  /** Az ajtónkénti új kép állapota, a `HAROM_AJTO_FOTO_FORRASOK` sorrendjében. */
+  ujMediak: readonly UjMediaAllapot[]
+}): FotoCsere => {
+  const { layout, oldalCimke, ismertFajlnevek, ujMediak } = input
+  const szabaly: JavitasSzabaly = 'harom-ajto-fotok'
+  const uzenet = `${oldalCimke}: a háromajtós sín fotója`
+  const kihagyas = (indok: string, hangos = false): FotoCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet, indok, hangos }],
+    letrehozando: [],
+  })
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a lapnak nincs szekciósora, nincs mit cserélni')
+  }
+  if (!layout.some(haromAjtoSinBlokk)) {
+    return kihagyas('a lapon nincs háromajtós sín-blokk (services, három ajtó), nincs mit cserélni')
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  const letrehozando = new Set<number>()
+  const ujLayout: Szekciosor = layout.map((blokk, blokkIndex) => {
+    if (!haromAjtoSinBlokk(blokk)) return blokk
+    let valtozott = false
+    const sorok = (blokk.rows ?? []).map((sor, sorIndex) => {
+      const hol = `${uzenet} (${blokkIndex + 1}. szekció, ${sorIndex + 1}. sor, ${ertekCimke(
+        sor.title,
+      )})`
+      const lepes = (indok: string, hangos = false): typeof sor => {
+        kihagyasok.push({ szabaly, uzenet: hol, indok, hangos })
+        return sor
+      }
+      const jelenlegiId = heroKepAzonosito(sor.photo ?? null)
+      const ajto = homeHelpDoorIndex(sor, sorIndex)
+      const uj: UjMediaAllapot | undefined = ujMediak[ajto]
+      if (uj === undefined) {
+        return lepes(
+          `az ajtó (${ajto + 1}.) új képének állapota hiányzik: a kód és a javítás szétcsúszott`,
+          true,
+        )
+      }
+      if (jelenlegiId === null) {
+        return lepes(
+          'a fotó-mező üres: a lap a kódbeli tartalék-fotót mutatja, ami már az új kép; a script üres mezőt nem tölt ki',
+        )
+      }
+      const fajlnev = ismertFajlnevek.get(jelenlegiId)
+      if (fajlnev === undefined) {
+        return lepes(
+          `a fotó egy nem található média-rekordra mutat (azonosító: ${jelenlegiId}), kézi átnézés kell, a script nem találgat`,
+          true,
+        )
+      }
+      if (jelenlegiId === uj.id || fajlnev === uj.filename) {
+        return lepes(
+          `a sor MÁR az új képet viseli („${fajlnev}”, azonosító: ${jelenlegiId}), nincs teendő`,
+        )
+      }
+      if (!HAROM_AJTO_KORABBI_TORZSEK.some((torzs) => illeszkedikMediaFajlnev(torzs, fajlnev))) {
+        return lepes(
+          `a sor a szerkesztő által választott képet viseli („${fajlnev}”, azonosító: ${jelenlegiId}), nem a seed korábbi képét: szerkesztői elsőbbség, a script nem ír felül`,
+          true,
+        )
+      }
+      if (uj.id === null && !uj.forrasLetezik) {
+        return lepes(
+          `az új kép („${uj.filename}”) nincs a Médiatárban, és a repó-forrásfájl sem található, a sor érintetlen marad`,
+          true,
+        )
+      }
+      modositasok.push({
+        szabaly,
+        uzenet: `${hol}: „${fajlnev}” (azonosító: ${jelenlegiId}) → „${uj.filename}” (${
+          uj.id === null
+            ? 'a rekordot a script a repó fájljából hozza létre'
+            : `azonosító: ${uj.id}`
+        }). A régi kép a Médiatárban marad.`,
+        indok: null,
+      })
+      if (uj.id === null) {
+        letrehozando.add(ajto)
+        return sor
+      }
+      valtozott = true
+      return { ...sor, photo: uj.id }
+    })
+    return valtozott ? { ...blokk, rows: sorok } : blokk
+  })
+
+  return {
+    layout: modositasok.length > 0 && letrehozando.size === 0 ? ujLayout : null,
+    modositasok,
+    kihagyasok,
+    letrehozando: [...letrehozando].sort((a, b) => a - b),
+  }
+}
+
+/** A szakember neve, akinek a portréja cserélődik (kártya és önéletrajz-sor). */
+export const KOCSIS_KATA_NEV = 'Kocsis Kata'
+
+/**
+ * Kocsis Kata új CV-fotója (2026-09-22, a Drive `IMG_7288` eredetijéből):
+ * 3:4-es, 1500×2000-es WebP, a manifest `cv-kocsis-kata` szerepe (kezelt
+ * kép, eredetigazolással jön létre). A 3:4 a szakemberkártya keretét
+ * (288×384, `contain`) teljesen kitölti, és a fej a képmagasság ~21%-a, Kiss
+ * Kata kártyáján ~22%: a két kártya azonos léptékű (a teamMembers blokk
+ * admin-leírása is ezt kéri: „a legjobb, ha mindkét kép AZONOS képarányú és
+ * hasonló fejméretű”).
+ */
+export const KOCSIS_CV_FORRAS: MediaForras = {
+  filename: 'kocsis-kata-cv-1500.webp',
+  filePath: 'public/media/team/kocsis-kata-cv-1500.webp',
+  alt: 'Kocsis Kata gyógytornász sötét blézerben, karba tett kézzel.',
+}
+
+/** Név-összevetés: szélső és ismételt szóköz, kis- és nagybetű nem számít. */
+const nevKulcs = (nev: unknown): string =>
+  typeof nev === 'string' ? nev.trim().replace(/\s+/g, ' ').toLocaleLowerCase('hu') : ''
+
+const kocsisTag = (tag: { name?: unknown }): boolean =>
+  nevKulcs(tag.name) === nevKulcs(KOCSIS_KATA_NEV)
+
+/**
+ * Kocsis Kata önéletrajz-sora a „Részletes szakmai háttér” harmonikában
+ * (`accordion`): a sor címe a nevével kezdődik. A seed mai („Kocsis Kata
+ * szakmai önéletrajza”) és 2026-09-07 előtti címe is ilyen
+ * (restore-legacy-content.ts, `oneletrajzCim`, `oneletrajzRegiCim`). A név
+ * utáni szóköz miatt hasonló kezdetű más név (pl. „Kocsis Katalin”) nem
+ * illeszkedik, és Kiss Kata sora sem.
+ */
+const kocsisOneletrajzSor = (sor: { cim?: unknown }): boolean => {
+  const cim = nevKulcs(sor.cim)
+  const nev = nevKulcs(KOCSIS_KATA_NEV)
+  return cim === nev || cim.startsWith(`${nev} `)
+}
+
+const lexicalRekord = (ertek: unknown): ertek is Record<string, unknown> =>
+  typeof ertek === 'object' && ertek !== null && !Array.isArray(ertek)
+
+/**
+ * Egy Lexical upload-csomópont `value`-jának Médiatár-azonosítója: 0
+ * mélységű olvasásnál szám (élesben mérve 2026-09-22, /api/pages?depth=0),
+ * feloldott olvasásnál a rekord objektuma.
+ */
+const feltoltesAzonosito = (ertek: unknown): number | null => {
+  if (typeof ertek === 'number') return Number.isSafeInteger(ertek) && ertek > 0 ? ertek : null
+  if (!lexicalRekord(ertek)) return null
+  const id = ertek.id
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+/** Médiatár-képet hordozó upload-csomópont (a kurzusfájl-feltöltés nem az). */
+const mediaFeltoltes = (csomopont: Record<string, unknown>): boolean =>
+  csomopont.type === 'upload' && csomopont.relationTo === 'media'
+
+/**
+ * A Lexical-tartalom Médiatár-képeinek azonosítói a fa teljes bejárásával
+ * (a gyökér gyermekei és minden mélyebb `children`), dokumentum-sorrendben.
+ */
+export const lexicalKepAzonositok = (tartalom: unknown): number[] => {
+  const azonositok: number[] = []
+  const bejar = (csomopont: unknown): void => {
+    if (!lexicalRekord(csomopont)) return
+    if (mediaFeltoltes(csomopont)) {
+      const id = feltoltesAzonosito(csomopont.value)
+      if (id !== null) azonositok.push(id)
+    }
+    if (Array.isArray(csomopont.children)) csomopont.children.forEach(bejar)
+  }
+  if (lexicalRekord(tartalom)) bejar(tartalom.root)
+  return azonositok
+}
+
+/**
+ * A Lexical-tartalom Médiatár-képeinek cseréje. A `csere` minden képes
+ * upload-csomópontra dokumentum-sorrendben lefut a mai azonosítóval (üres
+ * `value`-nál `null`), és az új azonosítót adja, vagy `null`-t, ha a
+ * csomópont marad. A cserélt csomópont minden más mezője (azonosító,
+ * `fields`, formátum, verzió) megmarad; változás nélkül UGYANAZT a
+ * referenciát adja vissza (a hívó így ismeri fel, hogy nincs írnivaló).
+ */
+export const csereldLexicalKepeket = (
+  tartalom: unknown,
+  csere: (jelenlegiId: number | null) => number | null,
+): unknown => {
+  const atir = (csomopont: unknown): unknown => {
+    if (!lexicalRekord(csomopont)) return csomopont
+    let uj: Record<string, unknown> = csomopont
+    if (mediaFeltoltes(csomopont)) {
+      const ujId = csere(feltoltesAzonosito(csomopont.value))
+      if (ujId !== null) uj = { ...uj, value: ujId }
+    }
+    const gyermekek = csomopont.children
+    if (Array.isArray(gyermekek)) {
+      const ujGyermekek = gyermekek.map(atir)
+      if (ujGyermekek.some((gyermek, index) => gyermek !== gyermekek[index])) {
+        uj = { ...uj, children: ujGyermekek }
+      }
+    }
+    return uj
+  }
+  if (!lexicalRekord(tartalom)) return tartalom
+  const gyoker = atir(tartalom.root)
+  return gyoker === tartalom.root ? tartalom : { ...tartalom, root: gyoker }
+}
+
+/**
+ * Kocsis Kata portréinak média-azonosítói: a kártyája fotója, és az
+ * önéletrajz-sorának képe, valamint a sor tartalmában álló képek (a futtató
+ * ezek fájlnevét olvassa a Médiatárból). Ismétlés nélkül.
+ */
+export const kocsisFotoAzonositok = (layout: Page['layout']): number[] => {
+  const azonositok = (Array.isArray(layout) ? layout : []).flatMap((blokk): number[] => {
+    if (blokk.blockType === 'teamMembers') {
+      return (blokk.members ?? []).flatMap((tag) => {
+        if (!kocsisTag(tag)) return []
+        const id = heroKepAzonosito(tag.photo ?? null)
+        return id === null ? [] : [id]
+      })
+    }
+    if (blokk.blockType === 'accordion') {
+      return (blokk.items ?? []).flatMap((sor) => {
+        if (!kocsisOneletrajzSor(sor)) return []
+        const kep = heroKepAzonosito(sor.kep ?? null)
+        return [...(kep === null ? [] : [kep]), ...lexicalKepAzonositok(sor.tartalom)]
+      })
+    }
+    return []
+  })
+  return [...new Set(azonositok)]
+}
+
+/**
+ * 2026-09-22: Kocsis Kata portréja az új CV-fotóra, MINDEN helyen, ahol a lap
+ * a régi közeli portrét mutatja. Élesben (/rolunk, mérve 2026-09-22) ugyanaz a
+ * kép három helyen áll: a szakemberkártyán (`teamMembers`), az önéletrajz-sor
+ * kis kerek képén (`accordion` sor `kep` mezője) és a lenyitott önéletrajz
+ * tetején (a sor `tartalom` mezőjének upload-csomópontja). Ha csak a kártya
+ * cserélődne, ugyanazon a lapon két különböző arc állna ugyanahhoz a névhez,
+ * és a kártya „Nézd meg a szakmai hátterét” hivatkozása épp a régi képhez
+ * vinne; a seed is ezt az egységet tartja (restore-legacy-content.ts,
+ * `oneletrajzPortre`: „a harmonika és a kártya sose mutasson két különböző
+ * arcot ugyanahhoz a névhez”).
+ *
+ * VÉDŐFELTÉTELEK:
+ *  - kártyán csak a „Kocsis Kata” nevű tag fotóját, harmonikában csak az ő
+ *    önéletrajz-sorát nézi (a cím a nevével kezdődik); Kiss Kata kártyája és
+ *    sora érintetlen, akkor is, ha ugyanaz a kép áll náluk;
+ *  - csere KIZÁRÓLAG akkor, ha az adott helyen a régi közeli portré áll
+ *    (`KOCSIS_PORTRE_PREFIX`: pontos törzs vagy Payload `-N` utótag);
+ *  - ha a hely MÁR az új képet viseli: „MÁR” kihagyás (idempotencia);
+ *  - a kártyán és a sor kép-mezőjében álló más kép a szerkesztő döntése, ahogy
+ *    a nem található rekordra mutató mező is: HANGOS kihagyás, a script nem ír
+ *    felül és nem találgat;
+ *  - a sor tartalmában álló más kép (pl. egy oklevél fotója) nem portré-hely:
+ *    érintetlen marad, csendes kihagyással; a nem található rekordra mutató
+ *    tartalombeli kép viszont HANGOS, mert az akár a régi portré is lehetett;
+ *  - üres mezőt nem tölt ki: a kártya üres fotó-mezője HANGOS (a kártya kép
+ *    nélkül áll), a harmonika-sor üres kép-mezője csendes (a sor kép nélkül is
+ *    teljes, a seed is csak kérésre tölti, `LEGACY_ONELETRAJZ_KEP`);
+ *  - ha az új kép nincs a Médiatárban, és a repó-forrásfájl sem található:
+ *    HANGOS kihagyás.
+ */
+export const alkalmazKocsisCvFoto = (input: {
+  layout: Page['layout']
+  /** Naplócímke (pl. „Kapcsolat oldal”). */
+  oldalCimke: string
+  /** A portré-helyeken álló képek fájlneve azonosító szerint (a futtató oldja fel). */
+  ismertFajlnevek: ReadonlyMap<number, string>
+  /** Az új CV-fotó állapota (`KOCSIS_CV_FORRAS`). */
+  ujMedia: UjMediaAllapot
+}): FotoCsere => {
+  const { layout, oldalCimke, ismertFajlnevek, ujMedia } = input
+  const szabaly: JavitasSzabaly = 'kocsis-cv-foto'
+  const kihagyas = (indok: string): FotoCsere => ({
+    layout: null,
+    modositasok: [],
+    kihagyasok: [{ szabaly, uzenet: `${oldalCimke}: ${KOCSIS_KATA_NEV} portréja`, indok }],
+    letrehozando: [],
+  })
+  if (!Array.isArray(layout) || layout.length === 0) {
+    return kihagyas('a lapnak nincs szekciósora, nincs mit cserélni')
+  }
+  const vanHely = layout.some(
+    (blokk) =>
+      (blokk.blockType === 'teamMembers' && (blokk.members ?? []).some(kocsisTag)) ||
+      (blokk.blockType === 'accordion' && (blokk.items ?? []).some(kocsisOneletrajzSor)),
+  )
+  if (!vanHely) {
+    return kihagyas(
+      `a lapon nincs „${KOCSIS_KATA_NEV}” nevű szakember-kártya és önéletrajz-sor sem, nincs mit cserélni`,
+    )
+  }
+
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  let letrehozandoKell = false
+  const lepes = (hol: string, indok: string, hangos = false): void => {
+    kihagyasok.push({ szabaly, uzenet: hol, indok, hangos })
+  }
+
+  /**
+   * Egy kitöltött portré-hely döntése. Az új kép azonosítóját adja, ha a hely
+   * MOST cserélhető; `null`-t, ha marad, vagy ha a csere a még létrehozandó
+   * rekordra vár (ezt a `letrehozandoKell` jelzi a futtatónak).
+   */
+  const portreHely = (hol: string, jelenlegiId: number, portreMezo: boolean): number | null => {
+    const fajlnev = ismertFajlnevek.get(jelenlegiId)
+    if (fajlnev === undefined) {
+      lepes(
+        hol,
+        `a kép egy nem található média-rekordra mutat (azonosító: ${jelenlegiId}), kézi átnézés kell, a script nem találgat`,
+        true,
+      )
+      return null
+    }
+    if (jelenlegiId === ujMedia.id || fajlnev === ujMedia.filename) {
+      lepes(
+        hol,
+        `MÁR az új CV-fotó áll itt („${fajlnev}”, azonosító: ${jelenlegiId}), nincs teendő`,
+      )
+      return null
+    }
+    if (!illeszkedikMediaFajlnev(KOCSIS_PORTRE_PREFIX, fajlnev)) {
+      if (portreMezo) {
+        lepes(
+          hol,
+          `a szerkesztő által választott kép áll itt („${fajlnev}”, azonosító: ${jelenlegiId}), nem a régi közeli portré („${KOCSIS_PORTRE_PREFIX}…”): szerkesztői elsőbbség, a script nem ír felül`,
+          true,
+        )
+      } else {
+        lepes(
+          hol,
+          `a tartalomban más kép áll („${fajlnev}”, azonosító: ${jelenlegiId}), nem a régi közeli portré: érintetlen marad`,
+        )
+      }
+      return null
+    }
+    if (ujMedia.id === null && !ujMedia.forrasLetezik) {
+      lepes(
+        hol,
+        `az új CV-fotó („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${KOCSIS_CV_FORRAS.filePath}) sem található, a hely érintetlen marad`,
+        true,
+      )
+      return null
+    }
+    modositasok.push({
+      szabaly,
+      uzenet: `${hol}: „${fajlnev}” (azonosító: ${jelenlegiId}) → „${ujMedia.filename}” (${
+        ujMedia.id === null
+          ? 'a rekordot a script a repó fájljából hozza létre'
+          : `azonosító: ${ujMedia.id}`
+      }). A régi portré a Médiatárban marad.`,
+      indok: null,
+    })
+    if (ujMedia.id === null) {
+      letrehozandoKell = true
+      return null
+    }
+    return ujMedia.id
+  }
+
+  const ujLayout: Szekciosor = layout.map((blokk, blokkIndex) => {
+    const szekcio = `${blokkIndex + 1}. szekció`
+    if (blokk.blockType === 'teamMembers') {
+      let valtozott = false
+      const tagok = (blokk.members ?? []).map((tag) => {
+        if (!kocsisTag(tag)) return tag
+        const hol = `${oldalCimke}: ${KOCSIS_KATA_NEV} szakemberkártyájának fotója (${szekcio})`
+        const jelenlegiId = heroKepAzonosito(tag.photo ?? null)
+        if (jelenlegiId === null) {
+          lepes(
+            hol,
+            'a tag fotó-mezője üres: a kártya kép nélkül áll, a script üres mezőt nem tölt ki, nézd át az adminban',
+            true,
+          )
+          return tag
+        }
+        const ujId = portreHely(hol, jelenlegiId, true)
+        if (ujId === null) return tag
+        valtozott = true
+        return { ...tag, photo: ujId }
+      })
+      return valtozott ? { ...blokk, members: tagok } : blokk
+    }
+    if (blokk.blockType === 'accordion') {
+      let valtozott = false
+      const sorok = (blokk.items ?? []).map((sor) => {
+        if (!kocsisOneletrajzSor(sor)) return sor
+        const sorHelye = `${szekcio}, ${ertekCimke(sor.cim)} sor`
+        let ujSor = sor
+        const kepHol = `${oldalCimke}: ${KOCSIS_KATA_NEV} önéletrajz-sorának képe (${sorHelye})`
+        const kepId = heroKepAzonosito(sor.kep ?? null)
+        if (kepId === null) {
+          lepes(
+            kepHol,
+            'a sor kép-mezője üres: a harmonika-sor kép nélkül áll, a script üres mezőt nem tölt ki',
+          )
+        } else {
+          const ujKepId = portreHely(kepHol, kepId, true)
+          if (ujKepId !== null) ujSor = { ...ujSor, kep: ujKepId }
+        }
+        let kepSorszam = 0
+        const tartalom = csereldLexicalKepeket(sor.tartalom, (jelenlegiId) => {
+          kepSorszam += 1
+          if (jelenlegiId === null) return null
+          return portreHely(
+            `${oldalCimke}: ${KOCSIS_KATA_NEV} önéletrajzának ${kepSorszam}. tartalombeli képe (${sorHelye})`,
+            jelenlegiId,
+            false,
+          )
+        })
+        if (tartalom !== sor.tartalom) {
+          ujSor = { ...ujSor, tartalom: tartalom as typeof sor.tartalom }
+        }
+        if (ujSor !== sor) valtozott = true
+        return ujSor
+      })
+      return valtozott ? { ...blokk, items: sorok } : blokk
+    }
+    return blokk
+  })
+
+  return {
+    layout: modositasok.length > 0 && !letrehozandoKell ? ujLayout : null,
+    modositasok,
+    kihagyasok,
+    letrehozando: letrehozandoKell ? [0] : [],
+  }
+}
+
+/**
+ * A két fotócsere-szabály futtatója. Előbb OLVAS (a forrásképek Médiatár-
+ * állapota), és dönt; ha a döntés még nem létező rekordot igényel, élesben
+ * létrehozza a repó fájljából (`biztositMediaFajlbol`, kezelt képnél
+ * eredetigazolással), majd az azonosítókkal ÚJRA dönt, és annak a szekciósorát
+ * adja. Próbafutásban semmit nem hoz létre: a naplóban a tervezett csere és a
+ * tervezett létrehozás áll, a szekciósor `null` (nincs írás). A naplósorok az
+ * első döntésé (a második csak az azonosítókban tér el).
+ */
+export const futtatFotoCsere = async (input: {
+  /** A dönteshez tartozó forrásképek; a `letrehozando` indexei erre mutatnak. */
+  forrasok: readonly MediaForras[]
+  szabaly: JavitasSzabaly
+  dryRun: boolean
+  fuggosegek: MediaBiztositasFuggosegek
+  dontes: (ujMediak: readonly UjMediaAllapot[]) => FotoCsere
+}): Promise<SzekciosorCsere> => {
+  const { forrasok, szabaly, dryRun, fuggosegek, dontes } = input
+  const allapotok: UjMediaAllapot[] = []
+  for (const forras of forrasok) {
+    allapotok.push(await ujMediaAllapot(forras, fuggosegek))
+  }
+  const elso = dontes(allapotok)
+  if (elso.letrehozando.length === 0) {
+    return { layout: elso.layout, modositasok: elso.modositasok, kihagyasok: elso.kihagyasok }
+  }
+  const modositasok = [...elso.modositasok]
+  const kihagyasok = [...elso.kihagyasok]
+  for (const index of elso.letrehozando) {
+    const forras = forrasok[index]
+    const allapot = allapotok[index]
+    if (forras === undefined || allapot === undefined) continue
+    const media = await biztositMediaFajlbol({ forras, szabaly, dryRun, fuggosegek })
+    modositasok.push(...media.modositasok)
+    kihagyasok.push(...media.kihagyasok)
+    if (media.id !== null) allapotok[index] = { ...allapot, id: media.id }
+  }
+  if (dryRun) {
+    return { layout: null, modositasok, kihagyasok }
+  }
+  const masodik = dontes(allapotok)
+  return {
+    layout: masodik.letrehozando.length === 0 ? masodik.layout : null,
+    modositasok,
+    kihagyasok,
+  }
+}
+
+/**
  * WP52/4b — a /rolunk „Partnereink” logósáv ALATTI mondat törlése (tulajdonosi
  * kérés: „a Partnereink alatti szövegre nincs szükségünk”). A mondat a seed
  * `ROLUNK_TOVABBI_PARTNEREK` szövege egy önálló szabad-szöveg (richText)
@@ -4586,7 +5246,7 @@ export const payloadMediaFuggosegek = (
     }
     const created: Media = await payload.create({
       collection: 'media',
-      data: { alt: forras.alt },
+      data: mediaCreateData(forras),
       filePath: path.resolve(forras.filePath),
       overrideAccess: true,
     })
@@ -5150,6 +5810,41 @@ async function futtat(): Promise<void> {
   // ága kizárólag a `biztositMediaFajlbol` `!dryRun` döntésén át hívódik).
   const mediaFuggosegek = payloadMediaFuggosegek(payload, { dryRun })
 
+  // 2026-09-22: a két fotócsere-szabály (háromajtós sín, Kocsis Kata CV-fotója)
+  // lapfüggetlen lépése. A sorokban, kártyákon és önéletrajz-sorokban álló
+  // képek fájlnevét a Médiatárból OLVASSUK, a döntés tiszta; rekordot csak
+  // élesben és csak akkor hozunk létre, ha a döntés cserél (`futtatFotoCsere`).
+  const haromAjtoFotokLepes = async (
+    layout: Page['layout'],
+    oldalCimke: string,
+  ): Promise<SzekciosorCsere> => {
+    const ismertFajlnevek = await mediaFajlnevek(payload, haromAjtoFotoAzonositok(layout))
+    return futtatFotoCsere({
+      forrasok: HAROM_AJTO_FOTO_FORRASOK,
+      szabaly: 'harom-ajto-fotok',
+      dryRun,
+      fuggosegek: mediaFuggosegek,
+      dontes: (ujMediak) =>
+        alkalmazHaromAjtoFotok({ layout, oldalCimke, ismertFajlnevek, ujMediak }),
+    })
+  }
+  const kocsisCvFotoLepes = async (
+    layout: Page['layout'],
+    oldalCimke: string,
+  ): Promise<SzekciosorCsere> => {
+    const ismertFajlnevek = await mediaFajlnevek(payload, kocsisFotoAzonositok(layout))
+    return futtatFotoCsere({
+      forrasok: [KOCSIS_CV_FORRAS],
+      szabaly: 'kocsis-cv-foto',
+      dryRun,
+      fuggosegek: mediaFuggosegek,
+      dontes: ([ujMedia]) =>
+        ujMedia === undefined
+          ? { layout: null, modositasok: [], kihagyasok: [], letrehozando: [] }
+          : alkalmazKocsisCvFoto({ layout, oldalCimke, ismertFajlnevek, ujMedia }),
+    })
+  }
+
   logger.info(
     dryRun
       ? 'Tartalom-javítás: PRÓBAFUTÁS indul (OWNER_CONTENT_CONFIRM=igen nélkül semmi nem íródik).'
@@ -5233,6 +5928,11 @@ async function futtat(): Promise<void> {
     // --- WP52/2: szekció-sorrend — a sín a kártyák elé, a logósor az About alá
     kezdolapLepes(alkalmazKezdolapSegitsegSorrend(kezdolapLayout))
     kezdolapLepes(alkalmazKezdolapSajtologoSorrend(kezdolapLayout))
+    // --- 2026-09-22: a „nem diagnózis a webről" tagmondat törlése ------------
+    kezdolapLepes(alkalmazDiagnozisTagmondatTorles(kezdolapLayout, 'Kezdőlap'))
+    // --- 2026-09-22: a háromajtós sín mentett régi fotói az új képekre --------
+    // (élesben a kezdőlap sorai üresek, ott a kódbeli tartalék már az új kép)
+    kezdolapLepes(await haromAjtoFotokLepes(kezdolapLayout, 'Kezdőlap'))
 
     if (kezdolapValtozott && !dryRun) {
       const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kezdolap.id)
@@ -5413,6 +6113,39 @@ async function futtat(): Promise<void> {
     modositasokSzama += rolunkLogosavok.modositasok.length
     kihagyasokSzama += rolunkLogosavok.kihagyasok.length
 
+    // --- 2026-09-22: a „nem diagnózis a webről" tagmondat törlése (a lánc végén)
+    const rolunkDiagnozis = alkalmazDiagnozisTagmondatTorles(
+      rolunkLogosavok.layout ??
+        rolunkPartnerMondat.layout ??
+        rolunkKepLepes.layout ??
+        rolunkBemutatkozas.layout ??
+        rolunkBemutatkozasAlap,
+      'Rólunk oldal',
+    )
+    naplozdLepeseket(rolunkDiagnozis, dryRun)
+    modositasokSzama += rolunkDiagnozis.modositasok.length
+    kihagyasokSzama += rolunkDiagnozis.kihagyasok.length
+
+    // --- 2026-09-22: a sín régi fotói és Kocsis Kata portréja (a lánc végén) --
+    const rolunkFotoAlap =
+      rolunkDiagnozis.layout ??
+      rolunkLogosavok.layout ??
+      rolunkPartnerMondat.layout ??
+      rolunkKepLepes.layout ??
+      rolunkBemutatkozas.layout ??
+      rolunkBemutatkozasAlap
+    const rolunkAjtoFotok = await haromAjtoFotokLepes(rolunkFotoAlap, 'Rólunk oldal')
+    naplozdLepeseket(rolunkAjtoFotok, dryRun)
+    modositasokSzama += rolunkAjtoFotok.modositasok.length
+    kihagyasokSzama += rolunkAjtoFotok.kihagyasok.length
+    const rolunkCvFoto = await kocsisCvFotoLepes(
+      rolunkAjtoFotok.layout ?? rolunkFotoAlap,
+      'Rólunk oldal',
+    )
+    naplozdLepeseket(rolunkCvFoto, dryRun)
+    modositasokSzama += rolunkCvFoto.modositasok.length
+    kihagyasokSzama += rolunkCvFoto.kihagyasok.length
+
     // A javítások EGY frissítésben mennek ki (a heroImage és a layout külön
     // mező, nem ütköznek), így egyetlen piszkozat-ellenőrzés elég.
     const irando: { heroImage?: number; layout?: Szekciosor } = {}
@@ -5420,6 +6153,9 @@ async function futtat(): Promise<void> {
       irando.heroImage = ujHeroId
     }
     const rolunkVegsoLayout =
+      rolunkCvFoto.layout ??
+      rolunkAjtoFotok.layout ??
+      rolunkDiagnozis.layout ??
       rolunkLogosavok.layout ??
       rolunkPartnerMondat.layout ??
       rolunkKepLepes.layout ??
@@ -5796,6 +6532,13 @@ async function futtat(): Promise<void> {
       layoutValtozott = true
     }
 
+    // --- 2026-09-22: Kocsis Kata portréja az új CV-fotóra (a lánc végén) -----
+    // Élesben a lapon ma nincs szakemberkártya (csendes kihagyás), de a
+    // legacy-visszaépítő (`npm run seed:legacy`) a rendelői bejelentkezés
+    // szekcióját a régi portréval építi fel: a csere „mindenhol” így ott is
+    // érvényes, ahol a lapot a seed állította elő.
+    szolgaltatasokLepes(await kocsisCvFotoLepes(szolgaltatasokLayout, 'Szolgáltatások oldal'))
+
     // --- 12a. javítás (WP55): a fejléc-kép a kezelőasztalos fotóra -----------
     // A /rolunk 4. javításának mintája: a jelenlegi kép fájlnevét és az új kép
     // állapotát OLVASSUK; a rekord csak akkor (és csak élesben) jön létre, ha
@@ -5904,7 +6647,19 @@ async function futtat(): Promise<void> {
     modositasokSzama += kapcsolatEredmeny.modositasok.length
     kihagyasokSzama += kapcsolatEredmeny.kihagyasok.length
 
-    if (kapcsolatEredmeny.layout !== null && !dryRun) {
+    // --- 2026-09-22: Kocsis Kata portréja az új CV-fotóra --------------------
+    // A szakember-szekció beszúrása UTÁN fut, hogy egy most beszúrt (seedelt,
+    // régi portrés) kártyát is elérjen; egyetlen írás viszi mindkettőt.
+    const kapcsolatCvFoto = await kocsisCvFotoLepes(
+      kapcsolatEredmeny.layout ?? kapcsolat.layout,
+      'Kapcsolat oldal',
+    )
+    naplozdLepeseket(kapcsolatCvFoto, dryRun)
+    modositasokSzama += kapcsolatCvFoto.modositasok.length
+    kihagyasokSzama += kapcsolatCvFoto.kihagyasok.length
+    const kapcsolatVegsoLayout = kapcsolatCvFoto.layout ?? kapcsolatEredmeny.layout
+
+    if (kapcsolatVegsoLayout !== null && !dryRun) {
       const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kapcsolat.id)
       if (piszkozat === undefined) {
         hiba = true
@@ -5912,7 +6667,7 @@ async function futtat(): Promise<void> {
         await payload.update({
           collection: 'pages',
           id: kapcsolat.id,
-          data: { layout: kapcsolatEredmeny.layout },
+          data: { layout: kapcsolatVegsoLayout },
           depth: 0,
           overrideAccess: true,
         })

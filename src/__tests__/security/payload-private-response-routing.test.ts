@@ -43,6 +43,28 @@ describe('a tényleges Next route exportok a private API teljes válaszát védi
       if (method === 'HEAD') expect(await response.text()).toBe('')
     },
   )
+  it('a HEAD GET-párja megtartja az URL-t, a Range/Authorization fejlécet és a megszakítást', async () => {
+    fake.rest.mockResolvedValue(new Response('részlet', { status: 206 }))
+    const controller = new AbortController()
+    const response = await route.HEAD(
+      new Request('https://example.test/api/course-files/file/lecke.pdf?download=1', {
+        method: 'HEAD',
+        headers: { authorization: 'DUMMY-42', range: 'bytes=0-9' },
+        signal: controller.signal,
+      }),
+      { params: Promise.resolve({ slug: ['course-files', 'file', 'lecke.pdf'] }) },
+    )
+    const forwarded: Request | undefined = fake.rest.mock.calls[0]?.[0]
+    expect(response.status).toBe(206)
+    expect(await response.text()).toBe('')
+    expect(forwarded?.method).toBe('GET')
+    expect(forwarded?.url).toBe('https://example.test/api/course-files/file/lecke.pdf?download=1')
+    expect(forwarded?.headers.get('authorization')).toBe('DUMMY-42')
+    expect(forwarded?.headers.get('range')).toBe('bytes=0-9')
+    expect(forwarded?.signal.aborted).toBe(false)
+    controller.abort()
+    expect(forwarded?.signal.aborted).toBe(true)
+  })
   it('a public Media response identitása/cache fejléce változatlan', async () => {
     const original = new Response('Public image', {
       headers: { 'Cache-Control': 'public, max-age=600' },

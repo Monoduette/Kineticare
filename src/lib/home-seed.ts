@@ -14,6 +14,7 @@ import { HOW_IT_WORKS_STEP1_FIXED } from './gondolatjel-leftover'
 import {
   HOME_HELP_LEAD,
   HOME_HELP_PHOTO_FILES,
+  HOME_HELP_PHOTOS,
   HOME_HELP_TITLE,
   homeHelpRailRows,
 } from './home-help-states'
@@ -74,6 +75,14 @@ interface SeedImage {
   dir: 'brand' | 'site'
   /** Kötelező magyar képleírás (Media.alt) — képernyőolvasónak és a Google-nek. */
   alt: string
+  /**
+   * A kivágás fókuszpontja (Media `focalX`/`focalY`, százalék), ha a kép
+   * helye nem a közepén van. Csak a LÉTREHOZÁSKOR íródik be (meglévő képet a
+   * seed nem módosít); a Payload ebből vágja az `og` méretet, a megjelenítés
+   * pedig `object-position`-ként használja (Services.tsx, sín-panel).
+   */
+  focalX?: number
+  focalY?: number
 }
 
 /**
@@ -101,6 +110,9 @@ export const HOME_IMAGES = [
     dir: 'brand',
     alt: 'Teljesen nyitott, szabadon tartott tenyér',
   },
+  // A háromajtós sín 2026-09-22 ELŐTTI fotói (LEGACY_HOME_HELP_PHOTO_FILES).
+  // A kód már nem hivatkozik rájuk, de az élő /rolunk sín Médiatár-rekordjai
+  // ezekből készültek: a Volume-helyreállításnak (media-restore.ts) forrás kell.
   {
     file: 'help-zart-img-7541.jpg',
     dir: 'brand',
@@ -116,6 +128,17 @@ export const HOME_IMAGES = [
     dir: 'brand',
     alt: 'Mosolygó gyógytornász fehér ruhában kanapén ül, táblagéppel a kezében, mellettük kézcsont-modell',
   },
+  // A sín mai, ajtónkénti fotói (2026-09-22): fájl, alt és fókuszpont EGY
+  // helyen él, a `HOME_HELP_PHOTOS`-ban (src/lib/home-help-states.ts); a seed
+  // innen tölti fel őket, a /rolunk tartalomjob (`harom-ajto-fotok`) ugyanezt
+  // a rekordot keresi.
+  ...HOME_HELP_PHOTOS.map((photo) => ({
+    file: photo.file,
+    dir: 'brand' as const,
+    alt: photo.alt,
+    focalX: photo.focalX,
+    focalY: photo.focalY,
+  })),
   {
     file: 'services-hands.png',
     dir: 'brand',
@@ -254,6 +277,22 @@ export const LANDING_ASSETS_DIR = path.join(
 )
 
 /**
+ * Egy repó-fájlból létrehozott média-rekord mezői: az alt, és ha a forrás
+ * megadja, a fókuszpont. A Payload a `focalX`/`focalY` párból állítja be a
+ * feltöltés fókuszpontját (a vágott méretváltozat is ebből indul); pont
+ * nélkül a séma 50/50-e marad. A seed és a tartalomjob
+ * (src/scripts/apply-owner-content.ts) közös alakja.
+ */
+export const mediaCreateData = (source: {
+  alt: string
+  focalX?: number
+  focalY?: number
+}): { alt: string; focalX?: number; focalY?: number } =>
+  typeof source.focalX === 'number' && typeof source.focalY === 'number'
+    ? { alt: source.alt, focalX: source.focalX, focalY: source.focalY }
+    : { alt: source.alt }
+
+/**
  * Képek idempotens feltöltése.
  *
  * A dedup a kiterjesztés NÉLKÜLI alapnévre megy: a Média collection webp-re
@@ -292,7 +331,7 @@ export const ensureHomeImages = async (payload: Payload): Promise<HomeMediaIds> 
 
     const created = await payload.create({
       collection: 'media',
-      data: { alt: image.alt },
+      data: mediaCreateData(image),
       filePath,
       overrideAccess: true,
     })
@@ -618,8 +657,9 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
 
   // REV C sín + panel a drót idővonal-krómjával, tint sávon. A ProBody-sor a
   // /szolgaltatasok táblán és a menüben is él; itt a három szolgáltatás-ajtó
-  // áll. A panel-fotók a zárolt Drive-képek (IMG_7541, SYL_9297, SYL_9260),
-  // nem a Kata-csoportképek.
+  // áll. A panel-fotók ajtónként a saját tevékenységet mutatják (2026-09-22:
+  // gumiszalagos kezelés, a videókurzus stúdiója, kéz-anatómia táblagépen;
+  // HOME_HELP_PHOTOS).
   {
     blockType: 'services',
     title: HOME_HELP_TITLE,

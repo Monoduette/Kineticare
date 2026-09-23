@@ -8,6 +8,10 @@
  * `Tovább a kezelésekre` alakot hagyta jóvá; a szótár #40 M-7 szerint
  * `Nézd meg a kezeléseket` marad. A /szolgaltatasok ajtó-blokkja a SAJÁT
  * soraival kapja ugyanezt a sín-megjelenítést (`presentSzolgaltatasokLayout`).
+ *
+ * A kanonikus szöveg a seed és az üres CMS-mező pótléka. A kezdőlapon a
+ * megjelenítés (`presentHomeHelpServicesBlock`) a CMS-ben mentett szöveget
+ * mutatja, a konstansokkal csak az üresen hagyott mezőt tölti ki.
  */
 
 import type { BlockServices, Media, Page } from '../payload-types'
@@ -51,23 +55,114 @@ export interface HomeHelpStateRow {
 }
 
 /**
- * Zárolt sín-fotók a Drive-anyagból (IMG_7541, SYL_9297, SYL_9260).
- * Szándékosan nem a `katak-labdaval` / `katak-team` / Katakfeherbenhattal képek:
- * azok más szekciók portréi, a sín ajtónként saját felvételt kap.
- * A fájlnevek történeti (`help-zart-…`); a látogatói címke nem ezekből jön.
+ * A sín 2026-09-22 ELŐTTI fotói a Drive-anyagból (IMG_7541, SYL_9297,
+ * SYL_9260; a fájlnevek a REV C kézállapot-címkéit őrzik). Kódból már nem
+ * hivatkozunk rájuk, de a seed-mappában maradnak (`HOME_IMAGES`): a /rolunk
+ * sínjének élő Médiatár-rekordjai (help-zart-img-7541.webp és társai) ezekből
+ * készültek, és a Volume-helyreállításnak (src/lib/media-restore.ts) forrás
+ * kell hozzájuk. A tartalomjob `harom-ajto-fotok` szabálya KIZÁRÓLAG az ezekre
+ * mutató sor-fotókat cseréli az új képekre.
  */
-export const HOME_HELP_PHOTO_FILES = [
+export const LEGACY_HOME_HELP_PHOTO_FILES = [
   'help-zart-img-7541.jpg',
   'help-nyilo-syl-9297.jpg',
   'help-nyitott-syl-9260.jpg',
 ] as const
+
+/** Egy sín-ajtó fotója: fájl, alt, valós méret és a kivágás fókuszpontja. */
+export interface HomeHelpPhoto {
+  /** A fájl neve a `public/media/help-rail` és a `content/home-images/brand` mappában. */
+  readonly file: string
+  readonly alt: string
+  /** A fájl valós pixelmérete (sharp-pal mérve, őr-teszt védi). */
+  readonly width: number
+  readonly height: number
+  /**
+   * A kivágás fókuszpontja a Payload Media `focalX`/`focalY` mezőjének
+   * értelmében, százalékban. A panel a fotót `object-fit: cover`-rel vágja,
+   * és ezt a pontot `object-position`-ként kapja (Services.tsx).
+   */
+  readonly focalX: number
+  readonly focalY: number
+}
+
+/**
+ * A sín ajtónkénti fotói, AJTÓ szerinti sorrendben (0 rendelő, 1 otthoni
+ * program, 2 szakmai képzés; `homeHelpDoorIndex`).
+ *
+ * 2026-09-22, tulajdonosi kérés: a három ajtó a saját tevékenységét mutassa,
+ * „mindenhol" (kezdőlap, /rolunk, /szolgaltatasok). Mindhárom kép 933×1400-as,
+ * metaadat nélküli sRGB JPEG, felskálázás nélkül:
+ *  0. rendelő: gumiszalagos csuklókezelés, a fotózás `_MG_0362` felvétele;
+ *  1. otthoni program: Kocsis Kata és Kiss Kata a videókurzus stúdiójában
+ *     (a kurzusvideó képkockája, ugyanaz a stúdió és ugyanaz a két oktató,
+ *     mint a /kurzusok termékkártyáján);
+ *  2. szakmai képzés: a kéz anatómiája táblagépen, `_MG_0450`.
+ * Szándékosan nem a `katak-labdaval` / `katak-team` / Katakfeherbenhattal
+ * képek: azok más szekciók képei, a sín ajtónként saját felvételt kap.
+ * A tevékenységet mutató, valódi fotót a látogató megnézi, a díszítő képet
+ * átugorja (NN/g, Photos as Web Content:
+ * https://www.nngroup.com/articles/photos-as-web-content/), a link képe pedig
+ * a céloldal tartalmát ígérje (NN/g, Information Scent:
+ * https://www.nngroup.com/articles/information-scent/).
+ *
+ * FÓKUSZPONT (a kivágás helye). A panel-keret asztalon 4:5 (1440: 327×408,
+ * 1024: 204×255 CSS px), mobilon 1:1 (390: 276×276, 320: 206×206). A 2:3-as
+ * képből a 4:5 keret a magasság 83%-át, az 1:1 keret 67%-át mutatja; a
+ * függőleges fókusz dönti el, melyik sáv marad. Forráspixelben (1400 magas):
+ *  0. 50% 40%: 1:1-ben y 187–1120, benne a hüvelykujj hegye (y 258) és a
+ *     húzó ököl (y ≤ 1100); 4:5-ben y 93–1260;
+ *  1. 50% 20%: 1:1-ben y 93–1026, a fejek y ≈ 155-től indulnak, mindkét arc
+ *     egész; 50%-on (y 233-tól) a bal fej teteje levágódna;
+ *  2. 50% 15%: 1:1-ben y 70–1003, benne a tok felső sarka (y 108) és alja
+ *     (y 958); 50%-on a felső sarok levágódna.
+ * A pont a KÉPHEZ tartozik, nem az ajtóhoz: ezért a Media `focalX`/`focalY`
+ * mezője viszi (ugyanaz a mező, amit a szerkesztő az adminban a
+ * fókuszpont-választóval állít; Payload, Crop and Focal Point Selector:
+ * https://payloadcms.com/docs/upload/overview#crop-and-focal-point-selector),
+ * így egy szerkesztő által feltöltött másik képnél a saját pontja érvényes.
+ * Az `object-position` a képet a keretben igazítja, a százalék a
+ * `background-position` szerint oldódik fel (W3C CSS Images 3:
+ * https://www.w3.org/TR/css-images-3/#the-object-position; MDN:
+ * https://developer.mozilla.org/en-US/docs/Web/CSS/object-position).
+ */
+export const HOME_HELP_PHOTOS = [
+  {
+    file: 'help-rendelo-szalag.jpg',
+    alt: 'Gyógytornász kék gumiszalagot feszít a páciens csuklóján.',
+    width: 933,
+    height: 1400,
+    focalX: 50,
+    focalY: 40,
+  },
+  {
+    file: 'help-otthoni-video.jpg',
+    alt: 'Kocsis Kata és Kiss Kata a videókurzus stúdiójában.',
+    width: 933,
+    height: 1400,
+    focalX: 50,
+    focalY: 20,
+  },
+  {
+    file: 'help-szakmai-tablet.jpg',
+    alt: 'Táblagépen a kéz izmai, inai és idegei, a toll a csuklóra mutat.',
+    width: 933,
+    height: 1400,
+    focalX: 50,
+    focalY: 15,
+  },
+] as const satisfies readonly HomeHelpPhoto[]
+
+/** A sín fotóinak fájlnevei ajtó szerint (seed, /rolunk-visszaépítés, tartalék). */
+export const HOME_HELP_PHOTO_FILES: readonly (typeof HOME_HELP_PHOTOS)[number]['file'][] =
+  HOME_HELP_PHOTOS.map((photo) => photo.file)
 
 export const HOME_HELP_STATES: readonly HomeHelpStateRow[] = [
   {
     number: '1',
     title: 'Rendelői kezelések',
     osszefoglalo: 'Személyes kezelés a stúdióban.',
-    body: 'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.',
+    body: 'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze.',
     felirat: 'Tovább a kezelésekre',
     url: '/szolgaltatasok',
     ujAblakban: false,
@@ -206,17 +301,29 @@ export const LEGACY_HOME_HELP_ROWS = [
  */
 export const HOME_HELP_PUBLIC_DIR = '/media/help-rail'
 
-export const HOME_HELP_PHOTO_ALTS = [
-  'Mosolygó gyógytornász fehér garbóban, tornalabdának támaszkodva, mellettük fehér orchidea',
-  'Mosolygó gyógytornász világoskék ingben a padlón ül, mellettük kézcsont-modell és könyvek',
-  'Mosolygó gyógytornász fehér ruhában kanapén ül, táblagéppel a kezében, mellettük kézcsont-modell',
-] as const
-
-export const HOME_HELP_PHOTO_SIZE = [
-  { width: 876, height: 1400 },
-  { width: 933, height: 1400 },
-  { width: 933, height: 1400 },
-] as const
+/**
+ * Az ajtó (0–2) kódbeli tartalék-fotója Media alakban, a fókuszponttal együtt:
+ * ezt kapja a sor, ha a CMS-ben a fotó mezője üres.
+ */
+export const homeHelpFallbackMedia = (index: number): Media => {
+  const photo: HomeHelpPhoto | undefined = HOME_HELP_PHOTOS[index]
+  if (photo === undefined) {
+    throw new Error('A sín-tartalékfotó indexe a három ajtó képén kívül esik.')
+  }
+  return {
+    id: 87001 + index,
+    alt: photo.alt,
+    url: `${HOME_HELP_PUBLIC_DIR}/${photo.file}`,
+    filename: photo.file,
+    mimeType: 'image/jpeg',
+    width: photo.width,
+    height: photo.height,
+    focalX: photo.focalX,
+    focalY: photo.focalY,
+    createdAt: '',
+    updatedAt: '',
+  }
+}
 
 /**
  * A /szolgaltatasok 1. ajtajának (Rendelői kezelések) tartalék-fotója (WP51,
@@ -238,38 +345,18 @@ export const HOME_HELP_PHOTO_SIZE = [
  * WCAG 2.2 SC 1.1.1: az alt azt írja le, ami a képen van, névvel, ha a név a
  * tartalom része
  * (https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html).
+ *
+ * 2026-09-22 (tulajdonosi kérés, „mindenhol"): a WP54-es döntést a
+ * tulajdonos felülírta. A rendelői ajtó MINDEN lapon ugyanazt a képet
+ * mutatja, a kezdőlapi sín gumiszalagos kezelés-fotóját
+ * (`HOME_HELP_PHOTOS[0]`), ezért ez a konstans ma a sín 0. tartaléka. A
+ * kezelés közbeni `treatment-wrist-smile-1600.webp` a Médiatárban és a
+ * manifestben marad (más szekció választhatja), csak ez az ajtó nem
+ * hivatkozik rá. Ugyanaz az ajtó két lapon ugyanazzal a képpel: WCAG 2.2
+ * SC 3.2.4 Consistent Identification
+ * (https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html).
  */
-export const SZOLGALTATASOK_KEZELES_FOTO: Media = {
-  id: 87010,
-  alt: 'Kiss Kata csuklókezelés közben a rendelőben.',
-  url: '/media/team/treatment-wrist-smile-1600.webp',
-  filename: 'treatment-wrist-smile-1600.webp',
-  mimeType: 'image/webp',
-  width: 1067,
-  height: 1600,
-  createdAt: '',
-  updatedAt: '',
-}
-
-export const homeHelpFallbackMedia = (index: number): Media => {
-  const file = HOME_HELP_PHOTO_FILES[index]
-  const alt = HOME_HELP_PHOTO_ALTS[index]
-  const size = HOME_HELP_PHOTO_SIZE[index]
-  if (file === undefined || alt === undefined || size === undefined) {
-    throw new Error('A sín-tartalékfotó indexe a három zárolt képén kívül esik.')
-  }
-  return {
-    id: 87001 + index,
-    alt,
-    url: `${HOME_HELP_PUBLIC_DIR}/${file}`,
-    filename: file,
-    mimeType: 'image/jpeg',
-    width: size.width,
-    height: size.height,
-    createdAt: '',
-    updatedAt: '',
-  }
-}
+export const SZOLGALTATASOK_KEZELES_FOTO: Media = homeHelpFallbackMedia(0)
 
 const populatedHelpPhoto = (value: unknown): Media | undefined => {
   if (typeof value !== 'object' || value === null || !('url' in value)) return undefined
@@ -327,19 +414,56 @@ export const homeHelpDoorIndex = (
   return marad === 0 ? 0 : marad === 1 ? 1 : 2
 }
 
-const withFallbackHelpPhotos = (
-  rows: NonNullable<BlockServices['rows']>,
-): NonNullable<BlockServices['rows']> =>
-  rows.map((row, index) => ({
-    ...row,
-    photo: populatedHelpPhoto(row.photo) ?? homeHelpFallbackMedia(homeHelpDoorIndex(row, index)),
-  }))
+/** A CMS szöveges mezője, ha valóban ki van töltve (nem üres, nem csak szóköz). */
+const cmsSzoveg = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+type HomeHelpRow = NonNullable<BlockServices['rows']>[number]
 
 /**
- * Kezdőlapi megjelenítés: a régi háromoszlopos tábla a C-sín UI-t kapja,
- * a szekció indexe változatlan. A `/szolgaltatasok` tábla nem ezen a
- * függvényen megy át — azt a `presentSzolgaltatasokLayout` zárja.
- * A kezdőlap: `HomeView` és a `/kezdolap` slug a `[slug]` oldalon.
+ * Egy sín-sor megjelenítése: MINDEN szöveges mező a CMS-é, a kanonikus
+ * `HOME_HELP_STATES` csak az üresen hagyott mezőt pótolja (tulajdonosi
+ * hibajelentés, 2026-09-22: az adminban mentett „Akut sérülések…” törzs
+ * helyett a kódbeli „Akut panasz…” jelent meg). A pótlás az ajtó jelentése
+ * (`homeHelpDoorIndex`) szerint megy, nem a pozíció szerint, ugyanúgy, mint a fotónál.
+ * A CTA célja és az „új ablakban” jelző együtt jár: ha a CMS-ben van URL,
+ * a jelzőt is a CMS adja; üres URL-nél mindkettő a pótlásból jön.
+ */
+const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
+  const door = homeHelpDoorIndex(live, index)
+  const fallback = HOME_HELP_STATES[door]
+  const cmsUrl = cmsSzoveg(live.url)
+  return {
+    ...live,
+    number: cmsSzoveg(live.number) ?? String(index + 1),
+    title: cmsSzoveg(live.title) ?? fallback.title,
+    osszefoglalo: cmsSzoveg(live.osszefoglalo) ?? fallback.osszefoglalo,
+    body: cmsSzoveg(live.body) ?? fallback.body,
+    felirat: cmsSzoveg(live.felirat) ?? fallback.felirat,
+    url: cmsUrl ?? fallback.url,
+    ujAblakban: cmsUrl !== undefined ? live.ujAblakban === true : fallback.ujAblakban,
+    photo: populatedHelpPhoto(live.photo) ?? homeHelpFallbackMedia(door),
+  }
+}
+
+/**
+ * Kezdőlapi megjelenítés: a háromajtós segítség-blokk (régi háromoszlopos
+ * tábla, zárt-kéz sín vagy kanonikus sín) a C-sín UI-t kapja, a szekció
+ * indexe változatlan. A `/szolgaltatasok` tábla nem ezen a függvényen megy
+ * át — azt a `presentSzolgaltatasokLayout` zárja. A kezdőlap: `HomeView` és
+ * a `/kezdolap` slug a `[slug]` oldalon.
+ *
+ * Tartalom: a megjelenítés CSAK a formát állítja (sín elrendezés, tint
+ * sáv); a szöveg a CMS-é. Kis felirat, cím, bevezető és a sorok minden
+ * mezője (cím, összegzés, törzs, CTA-felirat, URL, új ablak, fotó) a
+ * szerkesztő mentett értéke; a kódbeli kanonikus szöveg csak üres mezőt
+ * pótol, hogy üres CMS mellett se essen szét a szekció. Korábban a régi
+ * táblát és a zárt-kéz sínt a kód teljes egészében a kanonikus szövegre
+ * cserélte, így az admin szerkesztései nem jelentek meg (tulajdonosi
+ * hibajelentés, 2026-09-22).
  *
  * Sorrend: WCAG 2.2 SC 1.3.2 (Meaningful Sequence) — a DOM-sorrend marad a
  * CMS sorrendje, a sín csak a régi 3-oszlopos helyén jelenik meg.
@@ -351,44 +475,18 @@ const withFallbackHelpPhotos = (
  */
 export const presentHomeHelpServicesBlock = (block: BlockServices): BlockServices => {
   if (!isConvertibleHomeHelpServices(block)) return block
-  const liveRows = block.rows ?? []
   const settings = block.sectionSettings ?? {}
-  const presentedSettings = {
-    ...settings,
-    hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
-  }
-
-  if (isHomeHelpRailRows(liveRows)) {
-    return {
-      ...block,
-      elrendezes: 'sin',
-      lead: block.lead?.trim() || HOME_HELP_LEAD,
-      sectionSettings: presentedSettings,
-      rows: withFallbackHelpPhotos(liveRows),
-    }
-  }
-
   return {
     ...block,
     elrendezes: 'sin',
-    title: HOME_HELP_TITLE,
-    lead: HOME_HELP_LEAD,
-    eyebrow: '',
-    sectionSettings: presentedSettings,
-    rows: HOME_HELP_STATES.map((state, index) => {
-      const live = liveRows[index]
-      return {
-        id: live?.id,
-        number: state.number,
-        title: state.title,
-        osszefoglalo: state.osszefoglalo,
-        body: state.body,
-        felirat: state.felirat,
-        url: state.url,
-        ujAblakban: state.ujAblakban,
-        photo: populatedHelpPhoto(live?.photo) ?? homeHelpFallbackMedia(index),
-      }
-    }),
+    eyebrow: cmsSzoveg(block.eyebrow) ?? '',
+    title: cmsSzoveg(block.title) ?? HOME_HELP_TITLE,
+    lead: cmsSzoveg(block.lead) ?? HOME_HELP_LEAD,
+    sectionSettings: {
+      ...settings,
+      hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
+    },
+    rows: (block.rows ?? []).map(presentHomeHelpRow),
   }
 }
 
@@ -434,9 +532,9 @@ export const isSzolgaltatasokAjtoBlock = (block: {
  * A (b) út (a táblát a panel kártya-nyelvére festeni) egy HARMADIK változatot
  * hozott volna létre ugyanarra a három ajtóra, ezért nem az.
  *
- * Fotó: a sorok CMS-fotója, ha van; különben az 1. ajtó a kezelés közbeni
- * felvétel (`SZOLGALTATASOK_KEZELES_FOTO`, WP51), a 2–3. ajtó a kezdőlapi
- * sín zárolt tartalék-fotója, a három ajtón túl a panel fotó-helykitöltője. A blokk egyetlen tábla-fotója
+ * Fotó: a sorok CMS-fotója, ha van; különben az 1. ajtó a
+ * `SZOLGALTATASOK_KEZELES_FOTO` (2026-09-22 óta azonos a kezdőlapi sín
+ * rendelői képével), a 2–3. ajtó a kezdőlapi sín tartalék-fotója. A blokk egyetlen tábla-fotója
  * (`image`) a sínen nem jelenik meg (a Services sín-ága nem használja).
  * Háttér: a sín-sáv help-paper a tint osztály mögött, mint a kezdőlapon; a
  * szerkesztő sötét választása marad.
@@ -458,8 +556,8 @@ export const presentSzolgaltatasokLayout = (
       rows: (block.rows ?? []).map((row, index) => {
         const photo = populatedHelpPhoto(row.photo)
         if (photo) return { ...row, photo }
-        // WP51: a rendelői ajtó kezelés közbeni fotót kap — a sor jelentése
-        // (cím/URL) szerint, nem a pozíciója szerint.
+        // A rendelői ajtó a saját tartalékát kapja (WP51, 2026-09-22 óta a
+        // sín képe): a sor jelentése (cím/URL) szerint, nem a pozíciója szerint.
         const ajto = homeHelpDoorIndex(row, index)
         if (ajto === 0) return { ...row, photo: SZOLGALTATASOK_KEZELES_FOTO }
         return { ...row, photo: homeHelpFallbackMedia(ajto) }

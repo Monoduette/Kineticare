@@ -54,14 +54,26 @@ const CIM_HOSSZ_HATAR = 24
  *    Alapérték 50% 50% (a séma alapértéke is ez).
  */
 function tablaMediaStyle(media: Media, imageRatio: number | undefined): CSSProperties {
-  const clamp = (value: number) => Math.min(100, Math.max(0, value))
-  const focalX = typeof media.focalX === 'number' ? media.focalX : 50
-  const focalY = typeof media.focalY === 'number' ? media.focalY : 50
   const hasRatio = imageRatio !== undefined && Number.isFinite(imageRatio)
   return {
     ...(hasRatio ? { '--kc-services-image-ratio': imageRatio } : {}),
-    '--kc-services-image-focus': `${clamp(focalX)}% ${clamp(focalY)}%`,
+    ...mediaFocusStyle(media),
   } as CSSProperties
+}
+
+/**
+ * A Media fókuszpontja `object-position`-ként (`--kc-services-image-focus`),
+ * 0–100% közé zárva; hiányzó mezőnél 50% 50% (a séma alapértéke). A tábla
+ * fotója és a sín panel-fotója is ezt olvassa (services.css,
+ * services-sin.css): a vágás helye a KÉPHEZ tartozik, a szerkesztő az admin
+ * fókuszpont-választójával állítja, a kódbeli sín-tartalék pedig a
+ * `HOME_HELP_PHOTOS` mért pontját viszi (src/lib/home-help-states.ts).
+ */
+function mediaFocusStyle(media: Media): CSSProperties {
+  const clamp = (value: number) => Math.min(100, Math.max(0, value))
+  const focalX = typeof media.focalX === 'number' ? media.focalX : 50
+  const focalY = typeof media.focalY === 'number' ? media.focalY : 50
+  return { '--kc-services-image-focus': `${clamp(focalX)}% ${clamp(focalY)}%` } as CSSProperties
 }
 
 const populatedMedia = (value: ServiceRow['photo'] | BlockServices['image']): Media | null =>
@@ -228,7 +240,7 @@ function RailPanel({
         ) : null}
       </div>
       {photo ? (
-        <span className="kc-services-sin__photo">
+        <span className="kc-services-sin__photo" style={mediaFocusStyle(photo)}>
           <MediaImage media={photo} preferredSize="lg" sizes="(max-width: 899px) 100vw, 30vw" />
         </span>
       ) : (

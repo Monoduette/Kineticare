@@ -11,6 +11,7 @@ import {
   HOME_HELP_STATES,
   HOME_HELP_TITLE,
   HOME_USPS_EYEBROW,
+  LEGACY_HOME_HELP_PHOTO_FILES,
   LEGACY_HOME_HELP_ROWS,
   LEGACY_HOME_HELP_URLS,
   homeHelpFallbackMedia,
@@ -82,13 +83,17 @@ describe('home-help-states — REV C felismerés', () => {
     expect(help.rows?.map((row) => row.ujAblakban)).toEqual([false, false, true])
   })
 
-  it('a sín fotói a zárolt Drive-képek, nem a Kata-csoportképek', () => {
+  // 2026-09-22 (tulajdonosi kérés, „mindenhol"): az ajtók a saját
+  // tevékenységüket mutatják; a 2026-09-06-os portrék (IMG_7541, SYL_9297,
+  // SYL_9260) csak történeti seed-forrásként maradnak.
+  it('a sín fotói ajtónként a tevékenység-képek, nem a régi portrék és nem a Kata-csoportképek', () => {
     expect([...HOME_HELP_PHOTO_FILES]).toEqual([
-      'help-zart-img-7541.jpg',
-      'help-nyilo-syl-9297.jpg',
-      'help-nyitott-syl-9260.jpg',
+      'help-rendelo-szalag.jpg',
+      'help-otthoni-video.jpg',
+      'help-szakmai-tablet.jpg',
     ])
     for (const tiltott of [
+      ...LEGACY_HOME_HELP_PHOTO_FILES,
       'katak-labdaval.jpg',
       'katak-team.jpg',
       '680a69d078306_Katakfeherbenhattal.png',
@@ -99,9 +104,12 @@ describe('home-help-states — REV C felismerés', () => {
       expect(HOME_HELP_PHOTO_FILES).not.toContain(tiltott)
     }
     const help = buildHomeLayout({
-      'help-zart-img-7541.jpg': 41,
-      'help-nyilo-syl-9297.jpg': 42,
-      'help-nyitott-syl-9260.jpg': 43,
+      'help-rendelo-szalag.jpg': 41,
+      'help-otthoni-video.jpg': 42,
+      'help-szakmai-tablet.jpg': 43,
+      'help-zart-img-7541.jpg': 91,
+      'help-nyilo-syl-9297.jpg': 92,
+      'help-nyitott-syl-9260.jpg': 93,
       'katak-labdaval.jpg': 99,
       'katak-team.jpg': 98,
       'state-zart.png': 4,
@@ -128,7 +136,7 @@ describe('home-help-states — REV C felismerés', () => {
       'Akkreditált kézkurzus szakembereknek.',
     ])
     expect(HOME_HELP_STATES.map((state) => state.body)).toEqual([
-      'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.',
+      'Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze.',
       'Ha otthon szeretnél gyakorolni, az Otthoni KézRehab Program lépésről lépésre visz. A teljes tartalom és az ár a kurzusoldalon van: ígéret és százalék nélkül.',
       'A ProBody Stúdióval együtt tartott tantermi kézkurzus a kéz, a csukló és a könyök rehabilitációs lehetőségeiről szól: gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.',
     ])
@@ -155,6 +163,17 @@ describe('home-help-states — REV C felismerés', () => {
     expect(copy).not.toMatch(/[\u2013\u2014]/)
     expect(copy).not.toMatch(/\b(Zárt|Nyíló|Nyitott)\b/)
   })
+
+  // Tulajdonosi kérés (2026-09-22): a rendelői ajtó törzséből kikerül a
+  // „; ez nem diagnózis a webről” tagmondat, a mondat ponttal zárul.
+  it('a rendelői ajtó tartalék-törzse ponttal zárul, a „diagnózis a webről” tagmondat nélkül', () => {
+    expect(
+      HOME_HELP_STATES[0]?.body.endsWith('A pontos tervet vizsgálat után állítjuk össze.'),
+    ).toBe(true)
+    for (const state of HOME_HELP_STATES) {
+      expect(state.body).not.toContain('diagnózis a webről')
+    }
+  })
 })
 
 const liveTablaRows = LEGACY_HOME_HELP_ROWS.map((row, index) =>
@@ -176,7 +195,15 @@ const tablaHelp = (rows: unknown = liveTablaRows): BlockServices =>
   }) as unknown as BlockServices
 
 describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => {
-  it('a régi háromoszlopos (H08-törzsű) táblát sínné alakítja, a sorszámot nem cseréli', () => {
+  /**
+   * A 2026-09-22-i javításig ez a teszt azt rögzítette, hogy a régi tábla
+   * MINDEN szövegét a kódbeli kanonikus szöveg váltja; emiatt az admin
+   * szerkesztései nem jelentek meg a kezdőlapon (tulajdonosi hibajelentés:
+   * az adminban „Akut sérülések…”, a lapon „Akut panasz…”). Most a sín csak
+   * a FORMÁT adja: a CMS törzse, felirata és URL-je marad, a kanonikus szöveg
+   * csak az üres mezőt pótolja (itt: bevezető, összegzés, kis felirat).
+   */
+  it('a régi háromoszlopos táblát sínné alakítja, a CMS szövegét megtartja, csak az üres mezőt pótolja', () => {
     expect(isConvertibleHomeHelpServices(tablaHelp())).toBe(true)
     const presented = presentHomeHelpServicesBlock(tablaHelp())
     expect(presented.elrendezes).toBe('sin')
@@ -185,6 +212,12 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(presented.eyebrow).toBe('')
     expect(presented.sectionSettings?.hatter).toBe('tint')
     expect(presented.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+    expect(presented.rows?.map((row) => row.body)).toEqual(liveTablaRows.map((row) => row.body))
+    expect(presented.rows?.map((row) => row.felirat)).toEqual(
+      liveTablaRows.map((row) => row.felirat),
+    )
+    expect(presented.rows?.map((row) => row.url)).toEqual(liveTablaRows.map((row) => row.url))
+    expect(presented.rows?.map((row) => row.number)).toEqual(['01', '02', '03'])
     expect(presented.rows?.map((row) => row.osszefoglalo)).toEqual(
       HOME_HELP_STATES.map((state) => state.osszefoglalo),
     )
@@ -300,16 +333,14 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(sin.rows?.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban])).toEqual(
       rows.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban]),
     )
-    // Fotó: CMS-fotó híján az 1. ajtó a kezelés közbeni felvételt kapja (WP51,
-    // manifest `services` szerep), a 2–3. ajtó a kezdőlapi sín tartalék-képeit.
+    // Fotó: CMS-fotó híján mindhárom ajtó a kezdőlapi sín tartalék-képét kapja;
+    // 2026-09-22 óta az 1. ajtóé is (a tulajdonos „mindenhol" kérése a WP54-es
+    // kezelés közbeni fotót felülírta).
     expect(
       sin.rows?.map((r) => (typeof r.photo === 'object' && r.photo ? r.photo.url : null)),
-    ).toEqual([
-      SZOLGALTATASOK_KEZELES_FOTO.url,
-      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[1]}`,
-      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[2]}`,
-    ])
-    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/treatment-wrist-smile-1600.webp')
+    ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
+    expect(SZOLGALTATASOK_KEZELES_FOTO).toEqual(homeHelpFallbackMedia(0))
+    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/help-rail/help-rendelo-szalag.jpg')
   })
 
   it('a /szolgaltatasok ajtó-blokkja a CMS-fotót tartja, a paper hátteret tintre, a sötétet békén hagyja', () => {
@@ -389,6 +420,158 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(services).toHaveLength(1)
     expect(services[0]).toMatchObject({ elrendezes: 'sin' })
     expect(presented.some((block) => block.blockType === 'usps')).toBe(true)
+  })
+})
+
+/**
+ * ŐR — a kezdőlapi „Így tudunk segíteni” a CMS-ben mentett szöveget mutatja
+ * (tulajdonosi hibajelentés, 2026-09-22: az adminban a rendelői ajtó törzse
+ * „Akut sérülések…” kezdetű volt, a lapon mégis a kódbeli „Akut panasz…”
+ * jelent meg). A kanonikus `HOME_HELP_STATES` szöveg csak az üres mezőt
+ * pótolja, hogy üres CMS mellett se essen szét a szekció.
+ */
+describe('presentHomeHelpServicesBlock — a CMS szövege nyer, a pótlás csak üres mezőre jár', () => {
+  const AKUT_SERULESEK =
+    'Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Az adminban mentett szöveg.'
+
+  const cmsRows = [
+    {
+      id: 'r0',
+      number: '01',
+      title: 'Rendelői kezelések',
+      osszefoglalo: 'Kezelés a budapesti stúdióban.',
+      body: AKUT_SERULESEK,
+      felirat: 'Megnézem a kezeléseket',
+      url: '/szolgaltatasok#rendeloi-kezelesek',
+      ujAblakban: false,
+    },
+    {
+      id: 'r1',
+      number: '02',
+      title: 'Otthoni program',
+      osszefoglalo: 'Online, a saját tempódban.',
+      body: 'Otthoni szerkesztett törzs.',
+      felirat: 'Megnézem a kurzusokat',
+      url: '/kurzusok',
+      ujAblakban: false,
+    },
+    {
+      id: 'r2',
+      number: '03',
+      title: 'Szakmai képzések',
+      osszefoglalo: 'Szakembereknek.',
+      body: 'Szakmai szerkesztett törzs.',
+      felirat: 'Megnézem a workshopot',
+      url: 'https://example.test/workshop',
+      ujAblakban: true,
+    },
+  ]
+
+  const cmsBlock = (overrides: Record<string, unknown> = {}): BlockServices =>
+    ({
+      id: 'help-cms',
+      blockType: 'services',
+      eyebrow: 'Szolgáltatásaink',
+      title: HOME_HELP_TITLE,
+      lead: 'A szerkesztő saját bevezetője.',
+      rows: cmsRows,
+      sectionSettings: { visible: true, hatter: 'feher' },
+      ...overrides,
+    }) as unknown as BlockServices
+
+  it('a kitöltött CMS-mezőket változatlanul adja tovább (cím, bevezető, kis felirat, minden sor-mező)', () => {
+    const presented = presentHomeHelpServicesBlock(cmsBlock())
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.eyebrow).toBe('Szolgáltatásaink')
+    expect(presented.title).toBe(HOME_HELP_TITLE)
+    expect(presented.lead).toBe('A szerkesztő saját bevezetője.')
+    expect(
+      presented.rows?.map((row) => [
+        row.id,
+        row.number,
+        row.title,
+        row.osszefoglalo,
+        row.body,
+        row.felirat,
+        row.url,
+        row.ujAblakban,
+      ]),
+    ).toEqual(
+      cmsRows.map((row) => [
+        row.id,
+        row.number,
+        row.title,
+        row.osszefoglalo,
+        row.body,
+        row.felirat,
+        row.url,
+        row.ujAblakban,
+      ]),
+    )
+    expect(presented.rows?.[0]?.body.startsWith('Akut sérülések')).toBe(true)
+    expect(presented.rows?.[0]?.body).not.toContain('Akut panasz')
+  })
+
+  it('az átnevezett szekciócímet is megtartja, ha a sorok a régi háromajtós felosztást viszik', () => {
+    const rows = LEGACY_HOME_HELP_ROWS.map((row) => ({ ...row }))
+    const presented = presentHomeHelpServicesBlock(cmsBlock({ title: 'Miben segíthetünk?', rows }))
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.title).toBe('Miben segíthetünk?')
+    expect(presented.rows?.[0]?.body).toBe(LEGACY_HOME_HELP_ROWS[0].body)
+  })
+
+  it('üres szekció-szintű mezőnél (kis felirat, cím, bevezető) a kanonikus pótlás jön', () => {
+    const rows = LEGACY_HOME_HELP_ROWS.map((row) => ({ ...row }))
+    const presented = presentHomeHelpServicesBlock(
+      cmsBlock({ eyebrow: null, title: '', lead: '   ', rows }),
+    )
+    expect(presented.elrendezes).toBe('sin')
+    expect(presented.eyebrow).toBe('')
+    expect(presented.title).toBe(HOME_HELP_TITLE)
+    expect(presented.lead).toBe(HOME_HELP_LEAD)
+    expect(presented.rows?.map((row) => row.body)).toEqual(
+      LEGACY_HOME_HELP_ROWS.map((row) => row.body),
+    )
+  })
+
+  it('csak az üres (hiányzó, null, üres vagy csak szóközös) sor-mezőt pótolja, az ajtó szerint', () => {
+    const rows = [
+      { number: '', title: 'Rendelői kezelések', body: '   ', osszefoglalo: null, url: '' },
+      { title: 'Otthoni program', body: 'Saját otthoni törzs.', felirat: '' },
+      {
+        title: 'Szakmai képzések',
+        body: '',
+        osszefoglalo: 'Saját szakmai összegzés.',
+        felirat: 'Saját workshop-felirat',
+      },
+    ]
+    const presented = presentHomeHelpServicesBlock(cmsBlock({ rows }))
+    const [rendelo, otthon, szakmai] = presented.rows ?? []
+    expect(rendelo?.body).toBe(HOME_HELP_STATES[0]?.body)
+    expect(rendelo?.osszefoglalo).toBe(HOME_HELP_STATES[0]?.osszefoglalo)
+    expect(rendelo?.felirat).toBe(HOME_HELP_STATES[0]?.felirat)
+    expect(rendelo?.url).toBe(HOME_HELP_STATES[0]?.url)
+    expect(rendelo?.ujAblakban).toBe(false)
+    expect(otthon?.body).toBe('Saját otthoni törzs.')
+    expect(otthon?.osszefoglalo).toBe(HOME_HELP_STATES[1]?.osszefoglalo)
+    expect(otthon?.felirat).toBe(HOME_HELP_STATES[1]?.felirat)
+    expect(otthon?.url).toBe(HOME_HELP_STATES[1]?.url)
+    expect(szakmai?.body).toBe(HOME_HELP_STATES[2]?.body)
+    expect(szakmai?.osszefoglalo).toBe('Saját szakmai összegzés.')
+    expect(szakmai?.felirat).toBe('Saját workshop-felirat')
+    // Üres URL-nél a cél ÉS az új-ablak jelző együtt jön a pótlásból.
+    expect(szakmai?.url).toBe(PROFESSIONAL_TRAINING_URL)
+    expect(szakmai?.ujAblakban).toBe(true)
+    expect(presented.rows?.map((row) => row.number)).toEqual(['1', '2', '3'])
+  })
+
+  it('kitöltött CMS-URL mellett az új-ablak jelzőt is a CMS adja', () => {
+    const rows = cmsRows.map((row, index) =>
+      index === 2 ? { ...row, url: 'https://example.test/sajat', ujAblakban: null } : row,
+    )
+    const presented = presentHomeHelpServicesBlock(cmsBlock({ rows }))
+    expect(presented.rows?.[2]?.url).toBe('https://example.test/sajat')
+    expect(presented.rows?.[2]?.ujAblakban).toBe(false)
   })
 })
 
