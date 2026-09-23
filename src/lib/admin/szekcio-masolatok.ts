@@ -1,7 +1,7 @@
 import { szekcioMelylink } from '../../components/editor/szekcio-melylink'
 import { HOME_PAGE_SLUG } from '../content-slugs'
 import {
-  describeSection,
+  describeSectionOnPage,
   ELVALASZTO,
   isSectionHidden,
   nevelo,
@@ -50,7 +50,7 @@ import {
  * - WCAG 2.2 SC 3.2.4 Consistent Identification: „Components that have the
  *   same functionality within a set of web pages are identified
  *   consistently.” A hely neve ezért BETŰRE a cél sorcímkéje
- *   (`describeSection`, `sectionRowLabelText`, a SectionRowLabel ugyanezt
+ *   (`describeSectionOnPage`, `sectionRowLabelText`, a SectionRowLabel ugyanezt
  *   rajzolja). https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
  *
  * A (b) MEZŐI a blokkok tényleges sémájából (src/blocks/*.ts), a
@@ -149,10 +149,18 @@ export const EMAIL_MEZOK: Readonly<Record<string, readonly string[]>> = {
   teamMembers: ['members.*.email'],
 }
 
-/** A képmezők (upload, Képek) blokktípusonként, tömbökben is. */
+/**
+ * A képmezők (upload, Képek) blokktípusonként, tömbökben és csoportokban is
+ * (a csoport mezője ponttal: `frieze.photo1`). A Rólunk-blokk mozgó fotósora
+ * (négy ív), a Kurzuskártyák jelenetének három fotója és a gombos sáv Kép
+ * mezője is képmező; a szekcio-masolatok.test.ts katalógus-őre a sémával betűre
+ * veti össze.
+ */
 export const KEP_MEZOK: Readonly<Record<string, readonly string[]>> = {
-  about: ['photo'],
+  about: ['photo', 'frieze.photo1', 'frieze.photo2', 'frieze.photo3', 'frieze.photo4'],
   accordion: ['items.*.kep'],
+  courseCards: ['scenePhotos.left', 'scenePhotos.middle', 'scenePhotos.right'],
+  ctaBanner: ['kep'],
   freeSos: ['backgroundImage'],
   pressLogos: ['logos.*.image'],
   services: ['image', 'rows.*.photo'],
@@ -325,22 +333,32 @@ interface IndexeltHely extends MasolatHely {
 }
 
 /**
- * A sorok sorcímkéi egy szekciósorra és címke-katalógusra, egyszer számolva: a
- * szerkesztő minden sora ugyanazt a sorlistát kapja (useSiblingRows), így a 15
- * jelzés egy számolást használ.
+ * A sorok sorcímkéi egy szekciósorra, címke-katalógusra és oldal-webcímre,
+ * egyszer számolva: a szerkesztő minden sora ugyanazt a sorlistát kapja
+ * (useSiblingRows), így a 15 jelzés egy számolást használ. A webcím is kulcs,
+ * mert a sorcímke oldalfüggő (describeSectionOnPage: a kezdőlapi sín címe, a
+ * „(sín)” / „(tábla)” jel), és a szerkesztő a webcímet a sorlista cseréje
+ * nélkül is átírhatja.
  */
-const cimkeTar = new WeakMap<readonly unknown[], WeakMap<object, string[]>>()
+const cimkeTar = new WeakMap<readonly unknown[], WeakMap<object, Map<string, string[]>>>()
 
 function sorCimkek(
   layout: readonly unknown[],
   cimkek: Readonly<Record<string, BlokkCimkeForras>>,
+  pageSlug: unknown,
 ): string[] {
   let tar = cimkeTar.get(layout)
   if (!tar) {
     tar = new WeakMap()
     cimkeTar.set(layout, tar)
   }
-  const meglevo = tar.get(cimkek)
+  let slugTar = tar.get(cimkek)
+  if (!slugTar) {
+    slugTar = new Map()
+    tar.set(cimkek, slugTar)
+  }
+  const slugKulcs = typeof pageSlug === 'string' ? pageSlug : ''
+  const meglevo = slugTar.get(slugKulcs)
   if (meglevo) {
     return meglevo
   }
@@ -349,15 +367,16 @@ function sorCimkek(
     const blockType =
       isRecord(szekcio) && typeof szekcio.blockType === 'string' ? szekcio.blockType : ''
     const forras = cimkek[blockType]
-    const leiras = describeSection(
+    const leiras = describeSectionOnPage(
       szekcio,
       index,
       forras?.blockLabel ?? blockType,
       forras?.textFields ?? [],
+      pageSlug,
     )
     return sectionRowLabelText({ ...leiras, ismetles: ismetlesek[index] ?? null })
   })
-  tar.set(cimkek, eredmeny)
+  slugTar.set(slugKulcs, eredmeny)
   return eredmeny
 }
 
@@ -395,7 +414,7 @@ function szekcioHely(
 ): IndexeltHely {
   const nev = oldalNev(oldal)
   const szekcio = oldal.layout[index]
-  const cimke = sorCimkek(oldal.layout, cimkek)[index] ?? ''
+  const cimke = sorCimkek(oldal.layout, cimkek, oldal.slug)[index] ?? ''
   return {
     kulcs: `oldal:${oldalKulcs(oldal)}:${String(index)}`,
     felirat: `${nev}${ELVALASZTO}${cimke}`,

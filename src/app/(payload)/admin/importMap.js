@@ -3,6 +3,7 @@ import { HubPageNotice as HubPageNotice_d9dda6e3046f41a8fe3de0c6ea19c136 } from 
 import { HomePageEditNotice as HomePageEditNotice_8ffe544f99d128701b8f8fff3c695f72 } from '../../../components/admin/HomePageEditNotice'
 import { KotottWebcimNotice as KotottWebcimNotice_059a106df0f95cc1cb1ede7f8c2925c1 } from '../../../components/admin/KotottWebcimNotice'
 import { SectionSourceNotice as SectionSourceNotice_75de0a7bdeb0897d5dbc10b011130b77 } from '../../../components/admin/SectionSourceNotice'
+import { SectionCopies as SectionCopies_072ef28027f3f11cefd27eebf315aa7b } from '../../../components/admin/SectionCopies'
 import { FieldDescription as FieldDescription_3817bf644402e67bfe6577f60ef982de } from '@payloadcms/ui'
 import { ArrayRowLabel as ArrayRowLabel_15e770b778de1c47eb40d901b569e5fa } from '../../../components/admin/SectionRowLabel'
 import { KarakterSzamlalo as KarakterSzamlalo_b8b1ea7f843c1b39c432f028d9028c0d } from '../../../components/admin/KarakterSzamlalo'
@@ -85,6 +86,7 @@ export const importMap = {
   "/components/admin/HomePageEditNotice#HomePageEditNotice": HomePageEditNotice_8ffe544f99d128701b8f8fff3c695f72,
   "/components/admin/KotottWebcimNotice#KotottWebcimNotice": KotottWebcimNotice_059a106df0f95cc1cb1ede7f8c2925c1,
   "/components/admin/SectionSourceNotice#SectionSourceNotice": SectionSourceNotice_75de0a7bdeb0897d5dbc10b011130b77,
+  "/components/admin/SectionCopies#SectionCopies": SectionCopies_072ef28027f3f11cefd27eebf315aa7b,
   "@payloadcms/ui#FieldDescription": FieldDescription_3817bf644402e67bfe6577f60ef982de,
   "/components/admin/SectionRowLabel#ArrayRowLabel": ArrayRowLabel_15e770b778de1c47eb40d901b569e5fa,
   "/components/admin/KarakterSzamlalo#KarakterSzamlalo": KarakterSzamlalo_b8b1ea7f843c1b39c432f028d9028c0d,

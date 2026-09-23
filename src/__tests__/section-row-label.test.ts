@@ -9,6 +9,7 @@ import {
   pageBlocks,
   pageBlockSlugs,
   pressLogos,
+  SECTION_COPIES_FIELD_NAME,
   SECTION_SOURCE_FIELD_NAME,
   services,
 } from '../blocks'
@@ -1217,11 +1218,13 @@ describe('a szekció-katalógus burkolója (séma-semleges admin-tulajdonságok)
     )
   })
 
-  it('a blokk mezőinek eredeti sorrendje és száma a UI-mező után változatlan', () => {
+  it('a blokk mezőinek eredeti sorrendje és száma a két UI-mező után változatlan', () => {
     for (const block of pageBlocks) {
+      const masodik = block.fields[1]
+      expect(masodik && 'name' in masodik ? masodik.name : null).toBe(SECTION_COPIES_FIELD_NAME)
       const nyers = [services, faq, about, pressLogos].find((raw) => raw.slug === block.slug)
       if (nyers) {
-        expect(block.fields.slice(1).map((f) => ('name' in f ? f.name : f.type))).toEqual(
+        expect(block.fields.slice(2).map((f) => ('name' in f ? f.name : f.type))).toEqual(
           nyers.fields.map((f) => ('name' in f ? f.name : f.type)),
         )
       }
