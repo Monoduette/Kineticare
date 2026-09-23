@@ -247,10 +247,11 @@ function itemLines(item: Record<string, unknown>): string[] {
  * nyers CMS-rekordot kapja. A kártya sorrendje a lapéval egyezik: cím
  * (`### `), szöveg, a tények felsorolásként, végül a gomb linkként.
  *
- * A gomb két alakját is olvassa: `gomb: { felirat, url }` csoport, vagy
- * lapos `gombFelirat` + `gombUrl` mező. Link csak akkor kerül ki, ha a
- * felirat és a biztonságos cél (src/lib/safe-url.ts `sanitizeCmsUrl`) is
- * megvan; a relatív cél abszolút lesz, ahogy a rich text linkjeinél.
+ * A gomb a kártya lapos link-mezőiből jön (`felirat`, `url`; a blokk a
+ * közös `linkFields`-et teríti ki a kártyán, src/blocks/link-fields.ts).
+ * Link csak akkor kerül ki, ha a felirat és a biztonságos cél
+ * (src/lib/safe-url.ts `sanitizeCmsUrl`) is megvan; a relatív cél abszolút
+ * lesz, ahogy a rich text linkjeinél.
  */
 function ajanlatKartyaSorai(kartya: Record<string, unknown>): string[] {
   const lines: string[] = []
@@ -262,9 +263,8 @@ function ajanlatKartyaSorai(kartya: Record<string, unknown>): string[] {
     .map((teny) => (isRecord(teny) ? trimmed(teny.szoveg) : undefined))
     .filter((teny): teny is string => teny !== undefined)
   if (tenyek.length > 0) lines.push(tenyek.map((teny) => `- ${clean(teny)}`).join('\n'))
-  const gomb = isRecord(kartya.gomb) ? kartya.gomb : {}
-  const felirat = trimmed(gomb.felirat) ?? trimmed(kartya.gombFelirat)
-  const cel = sanitizeCmsUrl(trimmed(gomb.url) ?? trimmed(kartya.gombUrl))
+  const felirat = trimmed(kartya.felirat)
+  const cel = sanitizeCmsUrl(trimmed(kartya.url))
   if (felirat && cel) {
     // Sémás cél (https:, mailto:, tel:) maradjon, a webhelyen belüli út abszolút lesz.
     const href = /^[a-z][a-z0-9+.-]*:/i.test(cel) ? cel : absoluteUrl(cel)

@@ -168,9 +168,12 @@ describe('H05: a hub-Oldal doboza mezőnként mondja, mi honnan jön (a route k�
     expect(route).toMatch(
       /const post = hub !== undefined \? await hubPostOf\(hub\.cikkSlug\) : null\s*if \(post\) \{[\s\S]*?const hubMetadata = buildPageMetadata\(page, `\/\$\{slug\}`/,
     )
-    // A lap: PostArticle a blogbejegyzéssel; a JSON-LD leírása és képe a blogbejegyzésé.
+    // A lap: PostArticle a blogbejegyzéssel. A WebPage JSON-LD leírása a közös
+    // hub-láncból jön (src/lib/hub-seo.ts, H05/A20: page.seoDescription →
+    // post.seoDescription → post.excerpt → page.excerpt), ugyanaz, mint a meta
+    // leírásé; a képe a blogbejegyzésé.
     expect(route).toMatch(
-      /description: resolveSeoDescription\(post\),\s*imageUrl: resolveOgImageUrl\(post\),/,
+      /description: seoForras\.description,\s*imageUrl: resolveOgImageUrl\(post\),/,
     )
     expect(route).toMatch(/<PostArticle[\s\S]*?post=\{post\}/)
     // A blogbejegyzés csak közzétéve számít (published-szűrt), különben az Oldal saját render-ága.

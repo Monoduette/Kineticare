@@ -334,18 +334,6 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
     indok: 'Folyószövegbe ágyazott hivatkozás a globális hibaoldalon.',
   },
   {
-    felirat: 'info@kineticare.hu',
-    fajl: 'components/layout/Footer.tsx',
-    kategoria: 'nem-cta',
-    indok: 'E-mail-cím `mailto:` hivatkozásként — a cím maga a felirat, nem CTA.',
-  },
-  {
-    felirat: 'info@kineticare.hu',
-    fajl: 'components/error/NotFoundView.tsx',
-    kategoria: 'nem-cta',
-    indok: 'E-mail-cím `mailto:` hivatkozásként a 404-oldalon.',
-  },
-  {
     felirat: 'Általános szerződési feltételeket (új lapon nyílik)',
     fajl: 'components/checkout/CheckoutForm.tsx',
     kategoria: 'nem-cta',
@@ -424,8 +412,13 @@ const FELIRAT_KIVETELEK: readonly FeliratKivetel[] = [
  * döntésre kikerült (a „Kapcsolat" menüpont fedi; NN/g Menu-Design
  * Checklist, WCAG 2.2 SC 3.2.3), a `lib/header-appointment.ts` törölve,
  * a sora a listából is kikerült. A korlát a szabály szerint LEFELÉ mozdult.
+ *
+ * 2026-09-23 (A2, H18/H46): 44 → 42. A lábléc és a 404 `mailto:` felirata már
+ * nem kódliterál, hanem a kapcsolati e-mail feloldójának értéke
+ * (src/lib/contact-email-server.ts); a két sor a futásidőben eldőlő helyek
+ * közé került át, a kivétel-listáról törölve.
  */
-const KIVETEL_LISTA_FELSO_KORLAT = 44
+const KIVETEL_LISTA_FELSO_KORLAT = 42
 
 /**
  * A „Tovább…"-tilalom (M-7) MAI sértései. SZŰK lista: az őr megköveteli, hogy
@@ -953,8 +946,9 @@ describe('G-UI2 — a bejáró vak foltjai kimondva', () => {
     // `RendeloiArlista.tsx`) felirata maga a CMS-ből jövő cím + a rejtett
     // „(Google Térkép, új lapon nyílik)" toldat: nem CTA, a cím a felirat
     // (ugyanaz az elbírálás, mint a `mailto:` sorok kivételeié).
-    // 82 (2026-09-23, A2/H18): a lábléc és a 404 mailto-címe a CMS-ből
-    // feloldott kapcsolati e-mail; nem CTA, a cím maga a felirat (az A2 kérése).
+    // 82 (2026-09-23, A2): a lábléc és a 404 `mailto:` felirata a kapcsolati
+    // e-mail feloldójából jön (a /kapcsolat Időpontkérőjének CMS-mezője), nem
+    // kódliterál; a két sor a kivétel-listáról ide került át.
     // 83 (2026-09-23, A7/H11): az Ajánlat-kártyák (`OfferCards.tsx`) gombjának
     // felirata a kártya CMS-mezője („Felirat”), kódbeli tartalék nélkül, mint a
     // `CtaBanner`-é: a blokk bármilyen ajánlatra mutathat, a hívóhely nem ismer

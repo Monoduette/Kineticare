@@ -17,11 +17,13 @@ import { describe, expect, it, vi } from 'vitest'
  * GOV.UK Design System, Links: a link szövege mondja meg, hova visz,
  * https://design-system.service.gov.uk/styles/links/).
  *
- * A négy kódpéldány: a lábléc (FOOTER_LEGAL_LINKS), a global-not-found
+ * A kódpéldányok: a lábléc (FOOTER_LEGAL_LINKS), a global-not-found
  * LEGAL_LINKS listája (forrás-olvasással: a lap szándékosan nem importálja a
  * láblécet), a pénztár elfogadó mondatának két linkje (forrás-olvasással a
- * CheckoutForm.tsx-ből, az érték a form-submission.ts szövegéből) és az
- * ingyenes kurzus hozzájárulási mondatának adatkezelési linkje.
+ * CheckoutForm.tsx-ből, az érték a form-submission.ts szövegéből), a
+ * CheckoutForm.tsx minden literál jogi linkje (`href="/aszf"` stb., például
+ * az Elállási jog bevezetője; forrás-olvasással, betűre) és az ingyenes
+ * kurzus hozzájárulási mondatának adatkezelési linkje.
  *
  * A pénztár mondata („Elfogadom az Általános szerződési feltételeket”)
  * tárgyesetben ragozza a címet; ott a felirat = a cím + tárgyrag (-t, -at,
@@ -108,6 +110,30 @@ describe('jogi linkfeliratok = a jogi oldalak címe', () => {
           felirat,
         ),
       ).toBe(true)
+    }
+  })
+
+  it('pénztár: minden literál jogi link felirata betűre a jogi oldal címe', () => {
+    const forras = olvas('../components/checkout/CheckoutForm.tsx')
+    // A literál `href="/aszf"` stb. linkek (pl. az Elállási jog bevezetője).
+    // A JSX a sortörést és a behúzást egy szóközzé vonja össze, ezért a
+    // felirat szóköz-normalizálva, egyébként betűre vetendő össze a címmel.
+    // Ha a linkszövegben kifejezés (`{…}`) vagy elem áll, az is eltérésként
+    // bukik, így egy literál link sem csúszhat át ellenőrzés nélkül.
+    const literalok = [
+      ...forras.matchAll(
+        /<a\b[^>]*\bhref="(\/(?:aszf|adatvedelem|impresszum))"[^>]*>([\s\S]*?)<\/a>/g,
+      ),
+    ]
+    expect(
+      literalok.map((talalat) => talalat[1]),
+      'src/components/checkout/CheckoutForm.tsx: nem található az Elállási jog bevezetőjének /aszf linkje',
+    ).toContain('/aszf')
+    for (const [, href, nyers] of literalok) {
+      const felirat = (nyers ?? '').replace(/\s+/g, ' ').trim()
+      expect(felirat, uzenet('src/components/checkout/CheckoutForm.tsx', href!, felirat)).toBe(
+        cimWebcimre(href!),
+      )
     }
   })
 

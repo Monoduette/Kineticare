@@ -58,6 +58,10 @@ function user(overrides: Partial<FakeUser> & { id: number; email: string }): Fak
 function fakePayload(db: FakeDb, pageSize = 200): Payload {
   const fake = {
     find: async (args: { collection: string; where?: unknown; page?: number; limit?: number }) => {
+      // A futás elején a Reply-To feloldója (src/lib/contact-email-server.ts)
+      // egyszer a /kapcsolat lapot kérdezi; üres találat = kódtartalék. E nélkül
+      // a lenti users-állítás ott dobna, és a feloldó a hibát némán elnyelné.
+      if (args.collection === 'pages') return { docs: [], hasNextPage: false }
       expect(args.collection).toBe('users')
       // A where alakja: { and: [{ role: { equals } }, { passwordSetupPending: { equals } }] }
       const conds = (args.where as { and: Record<string, { equals: unknown }>[] }).and
