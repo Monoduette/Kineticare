@@ -738,6 +738,19 @@ html:not([data-theme='dark']) .graphic-account--active .graphic-account__body {
   outline-offset: 1px;
 }
 
+/* A hibaüzenet-buborék (toast) Tabbal elérhető (tabindex=0), de a sonner
+   csak egy 20%-os árnyékkal jelöli a fókuszt (node_modules/sonner/dist/
+   styles.css: `:where([data-sonner-toast]:focus-visible)`, box-shadow
+   rgba(0,0,0,.2)): mérve világosban 1,61:1, sötétben 1,03:1, a 3:1-es
+   küszöb alatt (SC 1.4.11, SC 2.4.7; admin-kontraszt-0923 mérés). A
+   `:where()` nulla specifikusságú, így a többi elemmel azonos gyűrű
+   felülírja. */
+.payload-toast-container .payload-toast-item:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
 /* A morzsamenü, a fülsor és a többértékű választó címkéi görgető/levágó
    konténerben ülnek (overflow), ami a kifelé rajzolt gyűrű felső és alsó
    élét levágta (mérve: csak az oldalsó élek látszottak). Ezeken a gyűrű befelé kerül; a morzsalink 3 px-es
