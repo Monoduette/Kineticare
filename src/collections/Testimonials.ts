@@ -1,10 +1,17 @@
 import type { CollectionConfig } from 'payload'
 
+import { HOL_LATSZIK_OSZLOP } from '../lib/admin/velemeny-helye'
+
 /**
  * Vélemények (páciens-visszajelzések).
  *
- * A kezdőlap M6 modulja ebből a collectionből épül: legfeljebb 3 kiemelt
- * (`featured`) és látható (`visible`) vélemény jelenik meg, `order` szerint.
+ * A weboldal minden Vélemények szekciója (a kezdőlap M6 modulja és bármely
+ * oldal `testimonials` blokkja) ebből a collectionből épül: a kiemelt
+ * (`featured`) és látható (`visible`) vélemények közül a Sorrend szerinti első
+ * három, minden szekcióban ugyanaz (src/lib/cms.ts `getTestimonials`). A
+ * Kapcsolat oldal üres listát ad (kapcsolat/page.tsx). Hogy melyik vélemény
+ * hol látszik, a lista „Hol látszik” oszlopa mutatja
+ * (src/lib/admin/velemeny-helye.ts, modul-térkép H43).
  * Szándékosan EGYSZERŰ collection: nincs verziózás/piszkozat — egy vélemény
  * vagy látszik, vagy nem, ezt a `visible` pipa dönti el.
  *
@@ -18,7 +25,7 @@ import type { CollectionConfig } from 'payload'
  * esetében is.
  */
 
-/** A rövid változat felső határa — ennél hosszabb már nem „1–2 mondat". */
+/** A rövid változat felső határa: ennél hosszabb már nem „egy-két mondat”. */
 export const SHORT_QUOTE_MAX_LENGTH = 260
 
 /**
@@ -68,32 +75,45 @@ export const Testimonials: CollectionConfig = {
   admin: {
     useAsTitle: 'authorName',
     group: 'Tartalom',
-    defaultColumns: ['authorName', 'authorTitle', 'featured', 'order', 'visible'],
-    description:
-      'Páciensek valódi visszajelzései. A kezdőlapon legfeljebb 3 kiemelt vélemény jelenik meg.',
+    defaultColumns: ['authorName', 'holLatszik', 'authorTitle', 'featured', 'order', 'visible'],
+    // H43/1: a leírás azt mondja, amit a weboldal kódja tesz (cms.ts
+    // `getTestimonials`, kapcsolat/page.tsx), és megnevezi az oszlopot, amely
+    // soronként megmutatja. NN/g, Visibility of System Status,
+    // https://www.nngroup.com/articles/visibility-system-status/; NN/g, Match
+    // Between the System and the Real World (a szerkesztő szavaival: pipa,
+    // Sorrend, szekció), https://www.nngroup.com/articles/match-system-real-world/
+    description: `Páciensek valódi visszajelzései. A Kiemelt és Látható pipás vélemények közül a Sorrend szerinti első három jelenik meg, minden Vélemények szekcióban ugyanaz (a Kapcsolat oldal kivételével). Amelyik vélemény nem kerül az első háromba, az sehol nem jelenik meg. Hogy melyik vélemény hol látszik, a „${HOL_LATSZIK_OSZLOP}” oszlop mutatja.`,
   },
   fields: [
-    {
-      name: 'quote',
-      type: 'textarea',
-      required: true,
-      label: 'Teljes szöveg',
-      admin: {
-        description: 'A vélemény teljes, eredeti szövege, pontosan úgy, ahogy elhangzott.',
-      },
-    },
+    // H43/3: a Rövid idézet a Teljes szöveg ELŐTT áll, mert a weboldalon az
+    // látszik, ha ki van töltve: a szerkesztő azt látja elsőnek, ami kikerül.
+    // Csak admin-sorrend: a G2 (schema-config-sync) a mezőket név szerint
+    // veti össze, adatbázis-változás nincs. NN/g, Visual Hierarchy in UX,
+    // https://www.nngroup.com/articles/visual-hierarchy-ux-definition/; GOV.UK
+    // Design System, Question pages (a kérdések sorrendje a feladatot kövesse),
+    // https://design-system.service.gov.uk/patterns/question-pages/
     {
       name: 'shortQuote',
       type: 'textarea',
       label: 'Rövid idézet',
       admin: {
-        description: `Rövid, 1–2 mondatos változat a főoldalra (legfeljebb ${SHORT_QUOTE_MAX_LENGTH} karakter). Ha üresen hagyod, a kezdőlapon a Teljes szöveg jelenik meg, ezért hosszú véleménynél töltsd ki.`,
+        description: `Rövid, egy-két mondatos változat a weboldalra (legfeljebb ${SHORT_QUOTE_MAX_LENGTH} karakter). Ha üresen hagyod, a weboldalon a Teljes szöveg jelenik meg, ezért hosszú véleménynél töltsd ki.`,
       },
       validate: (value: string | null | undefined) => {
         if (typeof value === 'string' && value.trim().length > SHORT_QUOTE_MAX_LENGTH) {
           return `A rövid változat legfeljebb ${SHORT_QUOTE_MAX_LENGTH} karakter lehet (jelenleg ${value.trim().length}).`
         }
         return true
+      },
+    },
+    {
+      name: 'quote',
+      type: 'textarea',
+      required: true,
+      label: 'Teljes szöveg',
+      admin: {
+        description:
+          'A vélemény teljes, eredeti szövege, pontosan úgy, ahogy elhangzott. Ha a Rövid idézet ki van töltve, a weboldalon az látszik, ez nem.',
       },
     },
     {
@@ -110,7 +130,7 @@ export const Testimonials: CollectionConfig = {
       type: 'text',
       label: 'Titulus, foglalkozás',
       admin: {
-        description: 'Nem kötelező — pl. „zenész, műsorvezető".',
+        description: 'Nem kötelező, pl. „zenész, műsorvezető”.',
       },
     },
     {
@@ -120,7 +140,7 @@ export const Testimonials: CollectionConfig = {
       label: 'Kiemelt',
       admin: {
         description:
-          'Főoldalon megjelenik (a Sorrend szerinti első 3 kiemelt). Kiemeléshez rövid változat kell, vagy elég rövid teljes szöveg.',
+          'A Sorrend szerinti első három kiemelt vélemény jelenik meg a weboldal Vélemények szekcióiban. Kiemeléshez rövid változat kell, vagy elég rövid teljes szöveg.',
       },
       validate: (value: boolean | null | undefined, { siblingData }: { siblingData?: unknown }) =>
         validateFeaturedTestimonial(value, siblingData),
@@ -141,6 +161,21 @@ export const Testimonials: CollectionConfig = {
       label: 'Látható',
       admin: {
         description: 'Ha kiveszed a pipát, a vélemény sehol nem jelenik meg, de nem vész el.',
+      },
+    },
+    {
+      // H43/4: a lista „Hol látszik” oszlopa. Adata nincs: a szerveroldali
+      // cella a weboldal véleménylistájából és a közzétett oldalak
+      // szekciósorából számol (src/lib/admin/velemeny-helye.ts). A
+      // szerkesztőben nem rajzol semmit (ui-mező Field komponens nélkül),
+      // ugyanúgy, mint az Oldalak „Mi ez” oszlopa (Pages.ts `oldalFajta`).
+      name: 'holLatszik',
+      type: 'ui',
+      label: HOL_LATSZIK_OSZLOP,
+      admin: {
+        components: {
+          Cell: '/components/admin/TestimonialPlacementCell#TestimonialPlacementCell',
+        },
       },
     },
   ],
