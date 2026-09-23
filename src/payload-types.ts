@@ -230,6 +230,7 @@ export interface Page {
         | BlockAppointment
         | BlockRichText
         | BlockCtaBanner
+        | BlockOfferCards
       )[]
     | null;
   /**
@@ -526,6 +527,10 @@ export interface BlockCourseCards {
    * A cím alatti 1–2 mondat a kártyák előtt. Nem kötelező.
    */
   lead?: string | null;
+  /**
+   * A kártyák alatti nagy, halvány szó. Egy szó, nagy kezdőbetűvel, legfeljebb 10 karakter; csupa nagybetűvel ennyi sem fér el. Ha üresen hagyod, ez látszik: „Kurzusaink”.
+   */
+  hatterFelirat?: string | null;
   /**
    * A kurzuskártyák alján megjelenő gomb felirata. Nem kötelező: üresen a beépített, jóváhagyott felirat marad („Nyisd meg a kurzusoldalt”). A gomb csak jelzés, maga a kártya a link.
    */
@@ -1528,6 +1533,10 @@ export interface BlockCtaBanner {
    */
   text?: string | null;
   /**
+   * Nem kötelező. Ha feltöltesz képet, ez látszik a sávban. Ha üresen hagyod és a gomb egy kurzusra vagy a kurzuslistára visz, a kurzus borítója látszik (a Rólunk oldalon a kurzus-montázs); más gombcélnál a sáv kép nélkül jelenik meg. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+   */
+  kep?: (number | null) | Media;
+  /**
    * A sáv gombja. Felirat és cím nélkül a sáv gomb nélkül jelenik meg.
    */
   cta?: {
@@ -1561,6 +1570,105 @@ export interface BlockCtaBanner {
   id?: string | null;
   blockName?: string | null;
   blockType: 'ctaBanner';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "BlockOfferCards".
+ */
+export interface BlockOfferCards {
+  /**
+   * A cím fölötti rövid felirat (pl. „Gyógytornászoknak és terapeutáknak”). Nem kötelező: ha üresen hagyod, nem jelenik meg.
+   */
+  eyebrow?: string | null;
+  /**
+   * A kártyák fölötti cím (pl. „Szakembereknek”). Nem kötelező: ha üresen hagyod, a szekció cím nélkül jelenik meg.
+   */
+  title?: string | null;
+  /**
+   * A cím alatti 1–3 mondat a kártyák előtt. Nem kötelező: ha üresen hagyod, nem jelenik meg.
+   */
+  lead?: string | null;
+  /**
+   * Egy kártya egy ajánlat (pl. képzés vagy szakkönyv). Legalább 1, legfeljebb 4.
+   */
+  kartyak?:
+    | {
+        /**
+         * A kártya tetején álló kis rajz. Ha a „Nincs ikon” marad kiválasztva, a kártya ikon nélkül jelenik meg.
+         */
+        ikon?: ('kepzes' | 'szakkonyv' | 'nincs') | null;
+        /**
+         * A kártya címe fölötti egy-két szó (pl. „Képzés”). Nem kötelező: ha üresen hagyod, nem jelenik meg.
+         */
+        kicker?: string | null;
+        /**
+         * A kártya címe (pl. „Akkreditált kézrehabilitációs képzés”).
+         */
+        cim: string;
+        /**
+         * 2–3 mondat arról, kinek szól az ajánlat, és mit kap tőle.
+         */
+        szoveg: string;
+        /**
+         * Rövid, egysoros tények a szöveg alatt (pl. „12 kreditpont (SZTK-A-33553/2024)”). Legfeljebb 4. Ha üresen hagyod, a kártyán nincs felsorolás.
+         */
+        tenyek?:
+          | {
+              /**
+               * Egy tény egy sorban.
+               */
+              szoveg: string;
+              id?: string | null;
+            }[]
+          | null;
+        /**
+         * A kártya gombjának felirata. Nevezd meg, hova visz (pl. „Nézd meg a kézworkshopot” vagy „Érdeklődj a szakkönyvről”). Ha a felirat vagy a webcím üres, a kártya gomb nélkül jelenik meg.
+         */
+        felirat?: string | null;
+        /**
+         * Saját oldalra elég a perjellel kezdődő rész (pl. /kurzusok), másik weboldalra a teljes cím https://-sel kezdve.
+         */
+        url?: string | null;
+        /**
+         * Másik weboldalra mutató linknél szokás bekapcsolni, hogy a látogató ne hagyja el a Kineticare oldalát.
+         */
+        ujAblakban?: boolean | null;
+        /**
+         * Egy lapon egy elsődleges gomb legyen: az a fő cselekvés, a többi keretes. Ha nem választasz, a gomb keretes.
+         */
+        gombSuly?: ('elsodleges' | 'masodlagos') | null;
+        /**
+         * Egy rövid mondat a gomb alá arról, hova visz (pl. „A kapcsolat-oldalunkra visz.”). Ha üresen hagyod és a gomb új lapon nyílik, a lap magától kiírja: „Külső oldal, új lapon nyílik.” Más gombnál üresen nem jelenik meg jegyzet.
+         */
+        jegyzet?: string | null;
+        /**
+         * Kapcsold be, ha az ajánlat még nem kapható. Ekkor megjelenik alatta a „Mikor lesz elérhető?” mező, és a szövege a kártyára kerül.
+         */
+        hamarosan?: boolean | null;
+        /**
+         * Egy-két mondat arról, mikor és hogyan lesz elérhető (pl. „A vásárlás lehetőségét hamarosan közzétesszük. Addig kérdezz tőlünk, és szólunk, amint elérhető.”). Ha üresen hagyod, a kártyán nem jelenik meg ilyen szöveg.
+         */
+        allapotSzoveg?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  sectionSettings?: {
+    /**
+     * Kikapcsolva a szekció nem látszik, a tartalma megmarad.
+     */
+    visible?: boolean | null;
+    /**
+     * Nem kötelező. Pl. „kurzusok”: a webcím végére írt #kurzusok ide ugrik. Ékezet és szóköz nélkül.
+     */
+    anchorId?: string | null;
+    /**
+     * Váltogasd a fehéret és a világoskéket, hogy a szekciók elkülönüljenek. A sötétkék kiemelésre való.
+     */
+    hatter?: ('feher' | 'tint' | 'sotet') | null;
+  };
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'offerCards';
 }
 /**
  * Szerkesztők és vásárlók. A szerepkört csak tulajdonos állíthatja át; a megvásárolt kurzusokat munkatárs és tulajdonos szerkesztheti. A „Megvásárolt kurzusok" oszlopban a kurzus mellett a haladás is látszik: ez számított érték, ezért eszerint rendezni és szűrni nem lehet.
@@ -3088,6 +3196,7 @@ export interface PagesSelect<T extends boolean = true> {
         appointment?: T | BlockAppointmentSelect<T>;
         richText?: T | BlockRichTextSelect<T>;
         ctaBanner?: T | BlockCtaBannerSelect<T>;
+        offerCards?: T | BlockOfferCardsSelect<T>;
       };
   content?: T;
   seoTitle?: T;
@@ -3192,6 +3301,7 @@ export interface BlockCourseCardsSelect<T extends boolean = true> {
   eyebrow?: T;
   heading?: T;
   lead?: T;
+  hatterFelirat?: T;
   ctaLabel?: T;
   scenePhotos?:
     | T
@@ -3650,12 +3760,53 @@ export interface BlockRichTextSelect<T extends boolean = true> {
 export interface BlockCtaBannerSelect<T extends boolean = true> {
   title?: T;
   text?: T;
+  kep?: T;
   cta?:
     | T
     | {
         felirat?: T;
         url?: T;
         ujAblakban?: T;
+      };
+  sectionSettings?:
+    | T
+    | {
+        visible?: T;
+        anchorId?: T;
+        hatter?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "BlockOfferCards_select".
+ */
+export interface BlockOfferCardsSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  lead?: T;
+  kartyak?:
+    | T
+    | {
+        ikon?: T;
+        kicker?: T;
+        cim?: T;
+        szoveg?: T;
+        tenyek?:
+          | T
+          | {
+              szoveg?: T;
+              id?: T;
+            };
+        felirat?: T;
+        url?: T;
+        ujAblakban?: T;
+        gombSuly?: T;
+        jegyzet?: T;
+        hamarosan?: T;
+        allapotSzoveg?: T;
+        id?: T;
       };
   sectionSettings?:
     | T

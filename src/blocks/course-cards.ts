@@ -1,7 +1,60 @@
 import type { Block } from 'payload'
 
+import { COURSE_SHOWCASE_MARK } from '../lib/course-showcase'
 import { KEP_CSERE_SUGO } from './kep-csere'
 import { sectionSettings } from './section-settings'
+
+/**
+ * A „Háttérfelirat” (a „Kurzusaink” vízjel) mért karakter-korlátja (H22).
+ *
+ * MÉRÉS (2026-09-23, Chromium 141 headless, playwright-core; a repó valódi
+ * tokens.css, fonts.css, base.css, ui.css és course-showcase.css fájljával,
+ * Tenor Sans 400 betöltve, `document.fonts.check` igaz). A vízjel a
+ * `.kc-course-showcase__word`: L token (`--kc-font-l`, 32–40 px) egy sorban,
+ * `transform: scale(--kc-showcase-mark-scale)`, a színpad `overflow: clip`.
+ * Túlfutás = a szó skálázott szélessége nagyobb a színpadnál (ekkor a széle
+ * levágódik); csonkulás = a skálázatlan szó is szélesebb (ellipszis). Mért
+ * színpad-szélesség és skála:
+ *   320 px: 272 px, ×1,5 · 768 px: 720 px, ×2,8 · 1440 px: 1072 px, ×4,6;
+ *   a skála-lépcsők eleje a legszorosabb: 390 px: 342 px, ×1,8 ·
+ *   600 px: 552 px, ×2,8 · 900 px: 852 px, ×4 · 1100 px: 1052 px, ×4,6.
+ * A skálázott szó a színpad hány százaléka (320 / 768 / 1440 px, a
+ * legrosszabb lépcső zárójelben):
+ *   „Kurzusaink” (10): 92 / 71 / 89 % (90 %) · „Képzéseink” (10): 96 / 75 / 94 %
+ *   „Gyógytorna” (10): 98 / 76 / 95 % · „Kézterápia” (10): 90 / 70 / 88 %
+ *   „Módszerünk” (10): 104 / 80 / 101 % (túlfut) · „Szakkönyv” (9): 87 / 68 / 85 %
+ *   „Tanfolyamok” (11): 105 / 81 / 102 % (túlfut) · „Programjaink” (12): 110 %
+ *   „KURZUSOK” (8, csupa nagybetű): 101 / 79 / 99 % (320-on túlfut).
+ * Vegyes betűs magyar szónál a 10 karakter a legnagyobb hossz, amelyen a
+ * beépített szó és a mért szavak többsége minden szélességen elfér; 11
+ * karakternél a mért szavak nagyobb része már túlfut. A korlát ezért 10 (a
+ * beépített „Kurzusaink” hossza), és a súgó kimondja, hogy csupa nagybetűvel
+ * ennyi sem fér el. Vízszintes görgetés egyik esetben sincs (a dokumentum
+ * szélessége mérve = a nézetablak, a színpad vág), tehát a WCAG 2.2 SC 1.4.10
+ * Reflow teljesül (https://www.w3.org/WAI/WCAG22/Understanding/reflow.html);
+ * a korlát azt védi, hogy a dekoratív szó ne veszítse el a szélét. A mérő
+ * szkript: scratchpad A1-meres/szavak.mjs.
+ *
+ * A hibaüzenet utasít és számot mond: GOV.UK Design System, Character count:
+ * „Only use the character count component when there is a good reason for
+ * limiting the number of characters users can enter.” (itt a jó ok a mért
+ * hely)
+ * (https://design-system.service.gov.uk/components/character-count/); NN/g,
+ * Error-Message Guidelines: „offer some potential remedies”
+ * (https://www.nngroup.com/articles/error-message-guidelines/).
+ */
+export const HATTERFELIRAT_MAX_HOSSZ = 10
+
+/** A Háttérfelirat ellenőrzése: üresen jó (a beépített szó marad), fölötte magyar hiba. */
+export const validateHatterFelirat = (value: unknown): string | true => {
+  if (typeof value !== 'string') {
+    return true
+  }
+  if ([...value.trim()].length > HATTERFELIRAT_MAX_HOSSZ) {
+    return `Legfeljebb ${HATTERFELIRAT_MAX_HOSSZ} karakter fér el a háttérben.`
+  }
+  return true
+}
 
 /**
  * A „Kurzusaink” jelenet három helye és az üres helyen álló beépített fotó
@@ -65,6 +118,17 @@ export const courseCards: Block = {
       admin: {
         description: 'A cím alatti 1–2 mondat a kártyák előtt. Nem kötelező.',
       },
+    },
+    {
+      // H22: a vízjel szava. A beépített szót a course-showcase.ts adja, nem
+      // másolat: ha ott változik, a súgó vele változik.
+      name: 'hatterFelirat',
+      type: 'text',
+      label: 'Háttérfelirat (a nagy és halvány szó)',
+      admin: {
+        description: `A kártyák alatti nagy, halvány szó. Egy szó, nagy kezdőbetűvel, legfeljebb ${HATTERFELIRAT_MAX_HOSSZ} karakter; csupa nagybetűvel ennyi sem fér el. Ha üresen hagyod, ez látszik: „${COURSE_SHOWCASE_MARK}”.`,
+      },
+      validate: (value: string | null | undefined) => validateHatterFelirat(value),
     },
     {
       name: 'ctaLabel',

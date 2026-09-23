@@ -11,6 +11,7 @@ import { filmHero } from './film-hero'
 import { freeSos } from './free-sos'
 import { howItWorks } from './how-it-works'
 import { knowledge } from './knowledge'
+import { offerCards } from './offer-cards'
 import { pressLogos } from './press-logos'
 import { richText } from './rich-text'
 import { services } from './services'
@@ -222,9 +223,9 @@ export function withSectionAdmin(block: Block): Block {
  * A tömb SORRENDJE az admin „+ Blokk" választólistájának sorrendje. Szándékosan
  * a terv 4. pontja szerinti AJÁNLOTT kezdőlap-sorrendet követi (M1–M8 +
  * kinézet-blokkok), hogy a laikus szerkesztő fentről lefelé haladva építhessen
- * kezdőlapot. Az utolsó öt blokk (szakértő-kártyák, nyitható szekció,
- * időpontkérő, szabad szöveg, gombos sáv) nem kötődik kezdőlapi pozícióhoz,
- * ezért a „Bárhol használható” admin-csoportban áll.
+ * kezdőlapot. Az utolsó hat blokk (szakértő-kártyák, nyitható szekció,
+ * időpontkérő, szabad szöveg, gombos sáv, ajánlat-kártyák) nem kötődik
+ * kezdőlapi pozícióhoz, ezért a „Bárhol használható” admin-csoportban áll.
  *
  * Minden elem a `withSectionAdmin` burkolón megy át (sorcímke, tömbsor-címkék,
  * tájékoztató). A nevesített exportok (lent) a nyers blokkok maradnak.
@@ -249,6 +250,7 @@ export const pageBlocks: Block[] = [
   appointment,
   richText,
   ctaBanner,
+  offerCards,
 ].map(withSectionAdmin)
 
 /** A katalógus blokk-azonosítói (renderelő és tesztek számára). */
@@ -266,6 +268,7 @@ export {
   freeSos,
   howItWorks,
   knowledge,
+  offerCards,
   pressLogos,
   richText,
   services,
