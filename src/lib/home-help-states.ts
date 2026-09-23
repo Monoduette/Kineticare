@@ -450,6 +450,30 @@ const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
 }
 
 /**
+ * A zárt-kéz sín (REV C, `Zárt` / `Nyíló` / `Nyitott` címkékkel) sora. Ez az
+ * alak MAGA az elavult tartalom: a 2026-09-06-i terv kézállapot-szövege,
+ * amelyet az ajtó-sín váltott. Ezért itt a szöveg egészében a kanonikus
+ * ajtó-szöveg (`HOME_HELP_STATES`), ahogy a konverzió eredetileg is tette;
+ * csak a szerkesztő által feltöltött fotó marad. A mai ajtó-sorok és a régi,
+ * szerkesztett tábla szövege a CMS-é (`presentHomeHelpRow`).
+ */
+const presentClosedHandHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
+  const door = homeHelpDoorIndex(live, index)
+  const state = HOME_HELP_STATES[door]
+  return {
+    ...live,
+    number: state.number,
+    title: state.title,
+    osszefoglalo: state.osszefoglalo,
+    body: state.body,
+    felirat: state.felirat,
+    url: state.url,
+    ujAblakban: state.ujAblakban,
+    photo: populatedHelpPhoto(live.photo) ?? homeHelpFallbackMedia(door),
+  }
+}
+
+/**
  * Kezdőlapi megjelenítés: a háromajtós segítség-blokk (régi háromoszlopos
  * tábla, zárt-kéz sín vagy kanonikus sín) a C-sín UI-t kapja, a szekció
  * indexe változatlan. A `/szolgaltatasok` tábla nem ezen a függvényen megy
@@ -463,7 +487,9 @@ const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
  * pótol, hogy üres CMS mellett se essen szét a szekció. Korábban a régi
  * táblát és a zárt-kéz sínt a kód teljes egészében a kanonikus szövegre
  * cserélte, így az admin szerkesztései nem jelentek meg (tulajdonosi
- * hibajelentés, 2026-09-22).
+ * hibajelentés, 2026-09-22). Kivétel a zárt-kéz sín: az elavult alak, ezért
+ * annak a teljes szövege (szekciócím, bevezető, kis felirat és a sorok) a
+ * kanonikus marad (`presentClosedHandHomeHelpRow`).
  *
  * Sorrend: WCAG 2.2 SC 1.3.2 (Meaningful Sequence) — a DOM-sorrend marad a
  * CMS sorrendje, a sín csak a régi 3-oszlopos helyén jelenik meg.
@@ -476,17 +502,18 @@ const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
 export const presentHomeHelpServicesBlock = (block: BlockServices): BlockServices => {
   if (!isConvertibleHomeHelpServices(block)) return block
   const settings = block.sectionSettings ?? {}
+  const zartKezSin = isClosedHandHomeHelpRail(block.rows)
   return {
     ...block,
     elrendezes: 'sin',
-    eyebrow: cmsSzoveg(block.eyebrow) ?? '',
-    title: cmsSzoveg(block.title) ?? HOME_HELP_TITLE,
-    lead: cmsSzoveg(block.lead) ?? HOME_HELP_LEAD,
+    eyebrow: zartKezSin ? '' : (cmsSzoveg(block.eyebrow) ?? ''),
+    title: zartKezSin ? HOME_HELP_TITLE : (cmsSzoveg(block.title) ?? HOME_HELP_TITLE),
+    lead: zartKezSin ? HOME_HELP_LEAD : (cmsSzoveg(block.lead) ?? HOME_HELP_LEAD),
     sectionSettings: {
       ...settings,
       hatter: settings.hatter === 'sotet' ? ('sotet' as const) : ('tint' as const),
     },
-    rows: (block.rows ?? []).map(presentHomeHelpRow),
+    rows: (block.rows ?? []).map(zartKezSin ? presentClosedHandHomeHelpRow : presentHomeHelpRow),
   }
 }
 

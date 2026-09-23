@@ -73,16 +73,16 @@ describe('withPayloadRestBodyLimit a Next route-handler Proxyjával', () => {
     const response = await withPayloadRestBodyLimit(inner)(
       nextRouteRequest(`${ORIGIN}/api/users/login`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', cookie: 'payload-token=abc' },
-        body: JSON.stringify({ email: 'vevo@example.test', password: 'titkos' }),
+        headers: { 'content-type': 'application/json', cookie: 'payload-token=DUMMY-token' },
+        body: JSON.stringify({ email: 'vevo@example.test', password: 'DUMMY-jelszo' }),
       }),
     )
     expect(response.status).toBe(200)
     expect(inner).toHaveBeenCalledTimes(1)
     expect(await response.json()).toEqual({
-      body: { email: 'vevo@example.test', password: 'titkos' },
+      body: { email: 'vevo@example.test', password: 'DUMMY-jelszo' },
       contentType: 'application/json',
-      cookie: 'payload-token=abc',
+      cookie: 'payload-token=DUMMY-token',
       method: 'POST',
       url: `${ORIGIN}/api/users/login`,
     })
@@ -156,7 +156,7 @@ describe('withPrivateCourseFileResponse a Next route-handler Proxyjával', () =>
     const response = await route(
       nextRouteRequest(`${ORIGIN}/api/course-files/file/lecke.pdf`, {
         method: 'HEAD',
-        headers: { cookie: 'payload-token=abc', range: 'bytes=0-9' },
+        headers: { cookie: 'payload-token=DUMMY-token', range: 'bytes=0-9' },
       }),
       { params: Promise.resolve({ slug: ['course-files', 'file', 'lecke.pdf'] }) },
     )
@@ -166,7 +166,7 @@ describe('withPrivateCourseFileResponse a Next route-handler Proxyjával', () =>
     const forwarded = inner.mock.calls[0]?.[0]
     expect(forwarded?.method).toBe('GET')
     expect(forwarded?.url).toBe(`${ORIGIN}/api/course-files/file/lecke.pdf`)
-    expect(forwarded?.headers.get('cookie')).toBe('payload-token=abc')
+    expect(forwarded?.headers.get('cookie')).toBe('payload-token=DUMMY-token')
     expect(forwarded?.headers.get('range')).toBe('bytes=0-9')
   })
 })
