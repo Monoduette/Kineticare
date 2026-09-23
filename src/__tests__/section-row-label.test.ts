@@ -102,7 +102,7 @@ const ELO: Readonly<Record<string, EloLap>> = JSON.parse(
   ),
 ) as Record<string, EloLap>
 
-/** Mind a 19 blokktípus élő alakja, a várt címmel. */
+/** Mind a 20 blokktípus élő alakja, a várt címmel. */
 const FIXTURES: readonly { data: Record<string, unknown>; label: string; cim: string }[] = [
   {
     label: 'Film-hero (kéznyitás)',
@@ -361,9 +361,22 @@ const FIXTURES: readonly { data: Record<string, unknown>; label: string; cim: st
       sectionSettings: settings({ hatter: 'tint' }),
     },
   },
+  {
+    // A1 (H11): a /szakembereknek oldal ajánlat-kártyái.
+    label: 'Ajánlat-kártyák',
+    cim: 'Szakmai képzéseink',
+    data: {
+      blockType: 'offerCards',
+      eyebrow: 'Szakembereknek',
+      title: 'Szakmai képzéseink',
+      blockName: null,
+      kartyak: [{ cim: 'Kézterápiás alapképzés', szoveg: 'Gyógytornászoknak.' }],
+      sectionSettings: settings(),
+    },
+  },
 ]
 
-describe('sorcímke: mind a 19 blokktípus az élő adat alakjával', () => {
+describe('sorcímke: mind a 20 blokktípus az élő adat alakjával', () => {
   it('a fixture-ök lefedik a teljes katalógust, és a cím-térkép is', () => {
     const tipusok = FIXTURES.map((fixture) => fixture.data.blockType)
     expect([...tipusok].sort()).toEqual([...pageBlockSlugs].sort())
@@ -753,6 +766,14 @@ describe('forrás-jelzés: a más gyűjteményből vagy automatikusan töltődő
     expect(sectionSource(cta, 'kezdolap')?.hova?.adminPath).toBe('/collections/products')
     expect(sectionSource(cta, 'rolunk')?.hova).toBeNull()
     expect(sectionSource({ ...cta, cta: { url: '/kapcsolat' } }, 'kezdolap')).toBeNull()
+    // H28 (A1): a Kép mezőbe feltöltött kép minden oldalon nyer, ilyenkor
+    // nincs külső forrás, és a Kapcsolat oldalon sem marad kép nélkül.
+    for (const kep of [42, { id: 42, url: '/api/media/file/x.webp' }]) {
+      for (const slug of ['kezdolap', 'rolunk', 'kapcsolat']) {
+        expect(sectionSource({ ...cta, kep }, slug), `${slug} ${JSON.stringify(kep)}`).toBeNull()
+      }
+    }
+    expect(sectionSource({ ...cta, kep: null }, 'kezdolap')?.szoveg).toContain('a Kép mező üres')
     expect(isCourseTarget('/kurzusok/otthoni-kezrehab-program?x=1')).toBe(true)
     expect(isCourseTarget('/kurzusokat')).toBe(false)
     expect(isCourseTarget('https://kineticare.hu/kurzusok')).toBe(false)
@@ -820,7 +841,7 @@ describe('forrás-jelzés: a más gyűjteményből vagy automatikusan töltődő
   it('Kurzuskártyák: a blokk minden tartalmi mezőjét megnevezi, „csak” nélkül', () => {
     const szoveg = sectionSource(FIXTURES[2]!.data, 'kezdolap')?.szoveg ?? ''
     expect(szoveg).toBe(
-      'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
+      'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, háttérfeliratát, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
     )
     // Ha a course-cards.ts új tartalmi mezőt kap, a felsorolás hiányos lenne:
     // ez a teszt akkor bukik, és a szöveget bővíteni kell.
@@ -829,6 +850,7 @@ describe('forrás-jelzés: a más gyűjteményből vagy automatikusan töltődő
       heading: 'címét',
       lead: 'bevezetőjét',
       ctaLabel: 'gombfeliratát',
+      hatterFelirat: 'háttérfeliratát',
       scenePhotos: 'kártyák alatti fotókat',
     }
     const tartalmiMezok = courseCards.fields
@@ -956,14 +978,22 @@ describe('a Kapcsolat oldal: a route üres listáinál a mért látvány (a B ve
   it('Kurzuskártyák: üres sáv marad, a blokk minden tartalmi mezőjét megnevezi', () => {
     const forras = kapcsolati(FIXTURES[2]!.data)
     expect(forras?.szoveg).toBe(
-      'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
+      'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a háttérfelirat, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
     )
     expect(forras?.hova).toBeNull()
     // A gombfelirat a kártyán áll, a kártyák elmaradnak: a felsorolás teljes.
     const tartalmiMezok = courseCards.fields
       .filter((field) => 'name' in field && field.type !== 'ui')
       .map((field) => ('name' in field ? field.name : ''))
-    expect(tartalmiMezok.sort()).toEqual(['ctaLabel', 'eyebrow', 'heading', 'lead', 'scenePhotos'])
+    expect(tartalmiMezok.sort()).toEqual([
+      'ctaLabel',
+      'eyebrow',
+      'hatterFelirat',
+      'heading',
+      'lead',
+      'scenePhotos',
+    ])
+    expect(forras?.szoveg).toContain('a háttérfelirat')
     expect(forras?.szoveg).toContain('a fotók')
   })
 
@@ -1135,7 +1165,7 @@ const asRef = (value: unknown): ComponentRef => (value ?? {}) as ComponentRef
 
 describe('a szekció-katalógus burkolója (séma-semleges admin-tulajdonságok)', () => {
   it('minden blokk sorcímkét kap, a blockName-input eltűnik, a slugok változatlanok', () => {
-    expect(pageBlockSlugs).toHaveLength(19)
+    expect(pageBlockSlugs).toHaveLength(20)
     for (const block of pageBlocks) {
       expect(block.admin?.disableBlockName).toBe(true)
       const label = asRef(block.admin?.components?.Label)
@@ -1197,8 +1227,8 @@ describe('a szekció-katalógus burkolója (séma-semleges admin-tulajdonságok)
     expect((props('faq', 'items').titleFields as string[])[0]).toBe('question')
   })
 
-  it('a rejtett sor teendője igaz: mind a 19 blokk alján a „Megjelenés és elrejtés” rész áll, benne a Látható pipával', () => {
-    expect(pageBlocks).toHaveLength(19)
+  it('a rejtett sor teendője igaz: mind a 20 blokk alján a „Megjelenés és elrejtés” rész áll, benne a Látható pipával', () => {
+    expect(pageBlocks).toHaveLength(20)
     for (const block of pageBlocks) {
       const utolso = block.fields[block.fields.length - 1]
       expect(utolso?.type, block.slug).toBe('collapsible')

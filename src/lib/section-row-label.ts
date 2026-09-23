@@ -226,6 +226,7 @@ export const SECTION_TITLE_SOURCES: Readonly<Record<string, readonly string[]>> 
   appointment: ['title', 'eyebrow', 'urlapCim'],
   richText: ['content'],
   ctaBanner: ['title', 'text'],
+  offerCards: ['title', 'eyebrow', 'kartyak.0.cim'],
 }
 
 /**
@@ -754,6 +755,13 @@ export function kapcsolatiUresLista(data: unknown, pageSlug: unknown): boolean {
   }
 }
 
+/** A CTA-sáv Kép mezője ki van-e töltve (azonosító vagy feloldott média). */
+function vanFeltoltottKep(kep: unknown): boolean {
+  if (typeof kep === 'number') return true
+  if (typeof kep === 'string') return kep.trim().length > 0
+  return isRecord(kep)
+}
+
 /**
  * A /kapcsolat oldal szekciói, amelyek ott másképp látszanak, mert a route a
  * listájukat üresen adja (`kapcsolatiUresLista`, és az SOS-sáv: termék nélkül
@@ -779,10 +787,14 @@ function kapcsolatiForras(data: Adat): SectionSourceInfo | null {
       return {
         cim: 'A Kapcsolat oldalon a kártyák nem jelennek meg',
         szoveg:
-          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
+          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a háttérfelirat, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
         hova: null,
       }
     case 'ctaBanner':
+      // A feltöltött kép (H28) a Kapcsolat oldalon is megjelenik.
+      if (vanFeltoltottKep(data.kep)) {
+        return null
+      }
       return {
         cim: 'A Kapcsolat oldalon a sáv kép nélkül jelenik meg',
         szoveg:
@@ -868,7 +880,7 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
       return {
         cim: 'A kártyák a Kurzusokból töltődnek',
         szoveg:
-          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
+          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, háttérfeliratát, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
         hova: { nev: 'Kurzusok', adminPath: '/collections/products' },
       }
     case 'freeSos':
@@ -896,6 +908,12 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
         hova: { nev: 'Blogbejegyzések', adminPath: '/collections/posts' },
       }
     case 'ctaBanner': {
+      // H28 (A1): a Kép mezőbe feltöltött kép minden oldalon megelőzi a
+      // számított képet (cta-banner-course.ts ctaBannerFigura), ilyenkor a kép
+      // forrása maga ez a szekció, nincs mit jelezni.
+      if (vanFeltoltottKep(data.kep)) {
+        return null
+      }
       const cta = isRecord(data.cta) ? data.cta : null
       if (!isCourseTarget(cta?.url)) {
         return null
@@ -904,14 +922,14 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
         return {
           cim: 'A kép beépített montázs',
           szoveg:
-            'A Rólunk oldalon a sáv képe egy beépített montázs, ezt itt nem tudod cserélni. Ha a gomb nem kurzusra visz, a sáv kép nélkül jelenik meg.',
+            'A Rólunk oldalon a sáv képe egy beépített montázs, ha a Kép mező üres. Ha oda feltöltesz egy képet, az látszik helyette.',
           hova: null,
         }
       }
       return {
         cim: 'A kép a Kurzusokból jön',
         szoveg:
-          'Mivel a gomb egy kurzusra visz, a sávban a kurzus borítóképe látszik. A borítóképet a Kurzusoknál cseréled.',
+          'Mivel a gomb egy kurzusra visz és a Kép mező üres, a sávban a kurzus borítóképe látszik, amelyet a Kurzusoknál cserélsz. Ha a Kép mezőbe feltöltesz egy képet, az látszik helyette.',
         hova: { nev: 'Kurzusok', adminPath: '/collections/products' },
       }
     }
