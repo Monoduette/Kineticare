@@ -110,6 +110,13 @@ export function elsoAtmenetMs(ertek: string): number {
   return elso.endsWith('ms') ? szam : szam * 1000
 }
 
+/**
+ * A felhasználó saját görgető mozdulatai: bármelyik azonnal leállítja a
+ * görgetéskövetést, hogy a követés ne dolgozzon a felhasználó ellen
+ * (érintés, egérgörgő, billentyű: Page Down, szóköz, nyilak; mutató-lenyomás).
+ */
+const FELHASZNALOI_MOZDULATOK = ['touchstart', 'wheel', 'keydown', 'pointerdown'] as const
+
 /** A fieldsetenként futó váltás leállítója (gyors ismételt koppintáshoz). */
 const aktivValtasok = new WeakMap<Element, () => void>()
 
@@ -233,16 +240,18 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   }
   const takarit = () => {
     kovet = false
-    ablak.removeEventListener('touchstart', leall)
-    ablak.removeEventListener('wheel', leall)
+    for (const esemeny of FELHASZNALOI_MOZDULATOK) {
+      ablak.removeEventListener(esemeny, leall)
+    }
   }
   const megszakit = () => {
     takarit()
     animaciok.forEach((animacio) => animacio.cancel())
   }
   aktivValtasok.set(fieldset, megszakit)
-  ablak.addEventListener('touchstart', leall, { once: true, passive: true })
-  ablak.addEventListener('wheel', leall, { once: true, passive: true })
+  for (const esemeny of FELHASZNALOI_MOZDULATOK) {
+    ablak.addEventListener(esemeny, leall, { once: true, passive: true })
+  }
   const lepes = () => {
     if (!kovet) {
       return
@@ -274,7 +283,13 @@ export function SinKoppintasIgazito({ fieldsetId }: { fieldsetId: string }) {
     }
     const kezelo = (event: MouseEvent) => sinCimkeKattintas(event)
     fieldset.addEventListener('click', kezelo)
-    return () => fieldset.removeEventListener('click', kezelo)
+    return () => {
+      fieldset.removeEventListener('click', kezelo)
+      // Ha a komponens egy futó váltás közben tűnik el (navigáció), a
+      // görgetéskövetés és az animáció sem futhat tovább az új lapon.
+      aktivValtasok.get(fieldset)?.()
+      aktivValtasok.delete(fieldset)
+    }
   }, [fieldsetId])
   return null
 }

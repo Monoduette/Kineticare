@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +10,7 @@ import {
   SIN_CIMKE_OSZTALY,
   SIN_MAGASSAG_GORBE,
   SIN_MAGASSAG_MS,
+  SinKoppintasIgazito,
   elsoAtmenetMs,
   sinCimkeKattintas,
 } from '../components/blocks/SinKoppintasIgazito'
@@ -225,5 +228,67 @@ describe('mobil nyitás-zárás animáció', () => {
     Object.assign(ujPanel, { animate: animal })
     sinCimkeKattintas(kattintas(cimke), window)
     expect(animal).not.toHaveBeenCalled()
+  })
+
+  it('billentyű- vagy mutató-mozdulatra leáll a görgetéskövetés', () => {
+    const { cimkek } = sinDom()
+    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+    const [elso, masodik, harmadik] = panelek
+    const cimke = cimkek[2]
+    if (!elso || !masodik || !harmadik || !cimke) throw new Error('hiányzó sín-elem')
+    mobilKornyezet()
+    magassag(elso, 800, 0)
+    magassag(masodik, 0, 0)
+    magassag(harmadik, 0, 700)
+    const kepkockak: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((visszahivas) => {
+      kepkockak.push(visszahivas)
+      return kepkockak.length
+    })
+    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
+    panelek.forEach((panel) => Object.assign(panel, { animate: () => futo }))
+    vi.spyOn(cimke, 'getBoundingClientRect')
+      .mockReturnValueOnce({ top: 400 } as DOMRect)
+      .mockReturnValue({ top: 380 } as DOMRect)
+    const gorget = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
+
+    sinCimkeKattintas(kattintas(cimke), window)
+    const hivasokElotte = gorget.mock.calls.length
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown' }))
+    kepkockak.forEach((kepkocka) => kepkocka(0))
+
+    expect(gorget.mock.calls.length).toBe(hivasokElotte)
+  })
+
+  it('a komponens eltávolítása leállítja a futó váltást', async () => {
+    const { fieldset, cimkek } = sinDom()
+    const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+    const [elso, masodik, harmadik] = panelek
+    const cimke = cimkek[2]
+    if (!fieldset || !elso || !masodik || !harmadik || !cimke) {
+      throw new Error('hiányzó sín-elem')
+    }
+    mobilKornyezet()
+    magassag(elso, 800, 0)
+    magassag(masodik, 0, 0)
+    magassag(harmadik, 0, 700)
+    const futo = { finished: new Promise(() => undefined), cancel: vi.fn() }
+    panelek.forEach((panel) => Object.assign(panel, { animate: () => futo }))
+    const tarolo = document.createElement('div')
+    document.body.append(tarolo)
+    const gyoker = createRoot(tarolo)
+    await act(async () => {
+      gyoker.render(createElement(SinKoppintasIgazito, { fieldsetId: fieldset.id }))
+    })
+
+    // A happy-dom a címke alapviselkedését (a rádió bejelölését) a buborékoló
+    // kezelő ELŐTT futtatja, a böngészők utána; ezért a kezelőt közvetlenül hívjuk.
+    sinCimkeKattintas(kattintas(cimke), window)
+    expect(futo.cancel).not.toHaveBeenCalled()
+    await act(async () => {
+      gyoker.unmount()
+    })
+
+    expect(futo.cancel).toHaveBeenCalled()
   })
 })
