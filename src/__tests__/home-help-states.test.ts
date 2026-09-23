@@ -245,11 +245,12 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(presentHomeHelpServicesBlock(usps as unknown as BlockServices)).toEqual(usps)
   })
 
-  it('a kanonikus sín-sorokat megtartja, hiányzó leadet és fotót pótol', () => {
+  // H15 (2026-09-23): a mentett `tabla` már nem válik sínné; a heurisztika
+  // csak a mező NÉLKÜLI, régi adatra jár (sin-elrendezes-mezo.test.ts).
+  it('a mező nélküli kanonikus sín-sorokat megtartja, hiányzó leadet és fotót pótol', () => {
     const rail = {
       blockType: 'services' as const,
       title: HOME_HELP_TITLE,
-      elrendezes: 'tabla' as const,
       rows: homeHelpRailRows(),
     }
     const presented = presentHomeHelpServicesBlock(rail as unknown as BlockServices)
@@ -443,12 +444,14 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(sotet.sectionSettings?.hatter).toBe('sotet')
   })
 
-  it('a /szolgaltatasok NEM ajtó services-blokkja (CTA nélküli sorok, vagy nem három sor) tábla marad, sínről is', () => {
+  // H15 (2026-09-23): a prezenter a mentett mezőt többé nem írja át. Mező
+  // nélkül (régi adat) a nem-ajtó blokk érintetlenül, táblaként megy tovább;
+  // a mentett `sin` tiszteletét a sin-elrendezes-mezo.test.ts őrzi.
+  it('a /szolgaltatasok mező nélküli, NEM ajtó services-blokkja (CTA nélküli sorok, vagy nem három sor) tábla marad', () => {
     const layout = [
       {
         blockType: 'services' as const,
         title: 'Ezért fogod imádni',
-        elrendezes: 'sin' as const,
         rows: [
           { title: 'A kéz a szakterületünk', body: 'Szöveg.' },
           { title: 'A hétköznapokra készülünk', body: 'Szöveg.' },
@@ -457,7 +460,6 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
       {
         blockType: 'services' as const,
         title: 'Válaszd ki, hogyan segíthetünk neked a legjobban',
-        elrendezes: 'sin' as const,
         rows: [
           { title: 'Rendelői kezelések', body: 'Szöveg.', felirat: 'Gomb', url: '/a' },
           { title: 'Otthoni program', body: 'Szöveg.', felirat: 'Gomb', url: '/b' },
@@ -467,12 +469,11 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     ] as unknown as NonNullable<Page['layout']>
     const presented = presentSzolgaltatasokLayout(layout)
     expect(presented).toHaveLength(2)
-    expect(presented[0]).toMatchObject({
-      blockType: 'services',
-      elrendezes: 'tabla',
-      title: 'Ezért fogod imádni',
-    })
-    expect(presented[1]).toMatchObject({ blockType: 'services', elrendezes: 'tabla' })
+    expect(presented[0]).toBe(layout[0])
+    expect(presented[1]).toBe(layout[1])
+    for (const block of presented) {
+      expect(block.blockType === 'services' ? block.elrendezes : undefined).not.toBe('sin')
+    }
     expect(isSzolgaltatasokAjtoBlock(layout[0] as { blockType?: unknown; rows?: unknown })).toBe(
       false,
     )

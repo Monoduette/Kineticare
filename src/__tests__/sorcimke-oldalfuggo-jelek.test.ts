@@ -36,6 +36,7 @@ import {
   type SectionDescription,
 } from '../lib/section-row-label'
 import type { Page } from '../payload-types'
+import { sinElrendezesKitoltese } from '../scripts/sin-elrendezes-kitoltes'
 
 /**
  * A sorcímke oldalfüggő jelei és a kódbeli címtartalékok őre (modul-térkép
@@ -69,6 +70,18 @@ const lap = (slug: string): EloLap => {
     throw new Error(`Hiányzó élő lap a fixture-ben: ${slug}`)
   }
   return talalt
+}
+
+/**
+ * A lap szekciósora a sín-elrendezés előtöltése UTÁN (A3, H15). A mezőt
+ * tisztelő kód csak ugyanabban a deployban élesedik, mint a
+ * src/scripts/sin-elrendezes-kitoltes.ts szabály éles futtatása, ezért a
+ * lapon látszó állapotot az előtöltött szekciósor adja; a nyers fixture a
+ * szabály előtti mezőértékeket viseli.
+ */
+const kitoltott = (slug: 'kezdolap' | 'szolgaltatasok'): NonNullable<Page['layout']> => {
+  const eredmeny = sinElrendezesKitoltese(lap(slug).layout, slug).layout
+  return eredmeny === null ? lap(slug).layout : (eredmeny as NonNullable<Page['layout']>)
 }
 
 /** A blokk emberi neve a katalógusból (a sorcímke is ezt kapja clientProps-ként). */
@@ -200,8 +213,7 @@ describe('H01: üres Címnél a címke azt mondja, amit a lap', () => {
   })
 
   it('az élő kezdőlap segítség-sora kitöltött Címmel: nincs „(beépített cím)” jel', () => {
-    const kezdolap = lap('kezdolap')
-    expect(cimke(kezdolap.layout[4], 4, 'kezdolap')).toBe(
+    expect(cimke(kitoltott('kezdolap')[4], 4, 'kezdolap')).toBe(
       '05 · Képes lista vagy kártyák (sín): Így tudunk segíteni',
     )
   })
@@ -217,28 +229,43 @@ describe('H01: üres Címnél a címke azt mondja, amit a lap', () => {
 /* H03: a lapon TÉNYLEGESEN látszó elrendezés                                */
 /* ------------------------------------------------------------------------ */
 
-describe('H03: servicesTenylegesElrendezes a route átalakításai szerint', () => {
-  it('kezdőlap: az átalakítható blokk „tabla” mezővel is sín', () => {
-    const sor = lap('kezdolap').layout[4]
-    expect(sor?.blockType === 'services' ? sor.elrendezes : null).toBe('tabla')
+describe('H03: servicesTenylegesElrendezes a lap szabálya szerint (a mentett mező dönt)', () => {
+  it('kezdőlap: a mentett mező dönt, mező nélkül a háromajtós felismerés', () => {
+    const nyers = lap('kezdolap').layout[4]
+    expect(nyers?.blockType === 'services' ? nyers.elrendezes : null).toBe('tabla')
+    // A szabály előtti mentett „tabla” a lapon is tábla (A3: a mező nyer).
+    expect(servicesTenylegesElrendezes(nyers, 'kezdolap')).toBe('tabla')
+    // Az előtöltés után (deploy-feltétel) a mező „sin”, a lap is sín.
+    const sor = kitoltott('kezdolap')[4]
+    expect(sor?.blockType === 'services' ? sor.elrendezes : null).toBe('sin')
     expect(servicesTenylegesElrendezes(sor, 'kezdolap')).toBe('sin')
-    expect(servicesTenylegesElrendezes({ ...sor, elrendezes: 'tabla' }, 'kezdolap')).toBe('sin')
+    // Mező nélküli régi adat: a háromajtós felismerés a tartalék.
+    expect(servicesTenylegesElrendezes({ ...nyers, elrendezes: null }, 'kezdolap')).toBe('sin')
     // A kezdőlap nem átalakítható services sora a mezőt követi.
     const erre = lap('kezdolap').layout[9]
     expect(servicesTenylegesElrendezes(erre, 'kezdolap')).toBe('tabla')
     expect(servicesTenylegesElrendezes({ ...erre, elrendezes: 'sin' }, 'kezdolap')).toBe('sin')
+    expect(servicesTenylegesElrendezes({ ...erre, elrendezes: null }, 'kezdolap')).toBe('tabla')
   })
 
-  it('Szolgáltatások: a három CTA-s ajtó-blokk sín, a többi tábla, a mezőtől függetlenül', () => {
-    const sorok = lap('szolgaltatasok').layout
+  it('Szolgáltatások: a mentett mező dönt, mező nélkül az ajtó-felismerés', () => {
+    const nyers = lap('szolgaltatasok').layout
+    expect(servicesTenylegesElrendezes(nyers[1], 'szolgaltatasok')).toBe('tabla')
+    const sorok = kitoltott('szolgaltatasok')
     expect(servicesTenylegesElrendezes(sorok[1], 'szolgaltatasok')).toBe('sin')
     expect(
       servicesTenylegesElrendezes({ ...sorok[1], elrendezes: 'tabla' }, 'szolgaltatasok'),
-    ).toBe('sin')
+    ).toBe('tabla')
+    expect(servicesTenylegesElrendezes({ ...sorok[1], elrendezes: null }, 'szolgaltatasok')).toBe(
+      'sin',
+    )
     for (const index of [2, 4]) {
       expect(servicesTenylegesElrendezes(sorok[index], 'szolgaltatasok')).toBe('tabla')
       expect(
         servicesTenylegesElrendezes({ ...sorok[index], elrendezes: 'sin' }, 'szolgaltatasok'),
+      ).toBe('sin')
+      expect(
+        servicesTenylegesElrendezes({ ...sorok[index], elrendezes: null }, 'szolgaltatasok'),
       ).toBe('tabla')
     }
   })
@@ -259,11 +286,11 @@ describe('H03: servicesTenylegesElrendezes a route átalakításai szerint', () 
   })
 
   it('a címke: „05 · Képes lista vagy kártyák (sín): Így tudunk segíteni”', () => {
-    expect(sectionPageMarks(lap('kezdolap').layout[4], 'kezdolap').valtozat).toBe('(sín)')
+    expect(sectionPageMarks(kitoltott('kezdolap')[4], 'kezdolap').valtozat).toBe('(sín)')
     expect(cimke(lap('kezdolap').layout[9], 9, 'kezdolap')).toBe(
       '10 · Képes lista vagy kártyák (tábla): Erre számíthatsz velünk',
     )
-    expect(cimke(lap('szolgaltatasok').layout[1], 1, 'szolgaltatasok')).toBe(
+    expect(cimke(kitoltott('szolgaltatasok')[1], 1, 'szolgaltatasok')).toBe(
       '02 · Képes lista vagy kártyák (sín): Így segítünk',
     )
   })

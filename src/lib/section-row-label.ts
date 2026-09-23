@@ -3,11 +3,7 @@ import { ervenyesBlokkId, szekcioMelylink } from '../components/editor/szekcio-m
 import { HOME_PAGE_SLUG } from './content-slugs'
 import { ctaLabel } from './cta-vocabulary'
 import { FREE_SOS_NEUTRAL_TITLE, freeSosStripTitle } from './free-sos-title'
-import {
-  isConvertibleHomeHelpServices,
-  isSzolgaltatasokAjtoBlock,
-  presentHomeHelpServicesBlock,
-} from './home-help-states'
+import { kezdolapiSinE, presentHomeHelpServicesBlock, szolgaltatasokSinE } from './home-help-states'
 import { CLINIC_TREATMENTS_ANCHOR, SERVICES_PAGE_SLUG } from './menu-seed'
 import { PREVIEW_PATH, previewTargetPath } from './preview/preview-target'
 
@@ -1084,15 +1080,16 @@ export function cmsKotottUgropont(data: unknown, pageSlug: unknown): string | nu
 /**
  * A „Képes lista vagy kártyák” (services) blokk lapon látszó elrendezése.
  *
- * Az „Elrendezés” mező nem mindig igaz, mert a route megjelenítéskor
- * felülírja (modul-térkép H03):
- * - a kezdőlapon a `presentHomeHelpServicesBlock` minden átalakítható
- *   segítség-blokkot sínre állít (home-help-states.ts,
- *   `isConvertibleHomeHelpServices`; bekötve a HomeView-ban és a
- *   [slug]/page.tsx `presentHomeLayout` ágában);
- * - a Szolgáltatások oldalon a `presentSzolgaltatasokLayout` a három kitöltött
- *   gombú ajtó-blokkot sínre, minden mást táblára állít
- *   (`isSzolgaltatasokAjtoBlock`);
+ * A lap a mentett „Elrendezés” mezőt követi (H15, A4, 2026-09-23); a route
+ * csak a mező NÉLKÜLI, régi adatot egészíti ki felismeréssel (modul-térkép
+ * H03):
+ * - a kezdőlapon a `presentHomeHelpServicesBlock` a `kezdolapiSinE` szerint
+ *   rajzol sínt: mentett „sin”, vagy mező nélkül a háromajtós felismerés
+ *   (home-help-states.ts; bekötve a HomeView-ban és a [slug]/page.tsx
+ *   `presentHomeLayout` ágában);
+ * - a Szolgáltatások oldalon a `presentSzolgaltatasokLayout` a
+ *   `szolgaltatasokSinE` szerint: mentett „sin”, vagy mező nélkül az
+ *   ajtó-felismerés; a mentett „tabla” érintetlen marad;
  * - máshol a mező dönt: a lap (Services.tsx `isRail`) a „sin” értéket
  *   rajzolja sínnek, minden mást, a hiányzót is, táblának (a services.ts
  *   alapértéke is „tabla”).
@@ -1108,11 +1105,11 @@ export function servicesTenylegesElrendezes(
   if (!isRecord(data) || data.blockType !== 'services') {
     return null
   }
-  if (pageSlug === HOME_PAGE_SLUG && isConvertibleHomeHelpServices(data)) {
-    return 'sin'
+  if (pageSlug === HOME_PAGE_SLUG) {
+    return kezdolapiSinE(data) ? 'sin' : 'tabla'
   }
   if (pageSlug === SERVICES_PAGE_SLUG) {
-    return isSzolgaltatasokAjtoBlock(data) ? 'sin' : 'tabla'
+    return szolgaltatasokSinE(data) ? 'sin' : 'tabla'
   }
   return data.elrendezes === 'sin' ? 'sin' : 'tabla'
 }
@@ -1160,8 +1157,9 @@ export function sectionPageMarks(
  * Szekciócímtől, különben null.
  *
  * A 19 blokk renderelőjének és a route-ok átalakításainak átnézése szerint
- * (2026-09-23) egy oldalfüggő eset van: a kezdőlap átalakítható
- * segítség-blokkja. A `presentHomeHelpServicesBlock` üres Szekciócímnél az
+ * (2026-09-23) egy oldalfüggő eset van: a kezdőlap sínként rajzolt
+ * segítség-blokkja (`kezdolapiSinE`, ugyanaz a döntés, amellyel a
+ * `presentHomeHelpServicesBlock` átalakít). Az üres Szekciócímnél az
  * „Így tudunk segíteni” címet adja, a régi zárt-kéz sínnél pedig mindig azt
  * (home-help-states.ts). A címet a lap SAJÁT feloldója adja, nem másolat.
  */
@@ -1170,7 +1168,7 @@ export function sectionPageTitle(data: unknown, pageSlug: unknown): string | nul
     pageSlug !== HOME_PAGE_SLUG ||
     !isRecord(data) ||
     data.blockType !== 'services' ||
-    !isConvertibleHomeHelpServices(data)
+    !kezdolapiSinE(data)
   ) {
     return null
   }
