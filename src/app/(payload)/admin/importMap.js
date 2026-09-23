@@ -37,6 +37,7 @@ import { OldalGyikNotice as OldalGyikNotice_8ffe544f99d128701b8f8fff3c695f72 } f
 import { PageKindCell as PageKindCell_36190ca002dd55433658037e086a1a04 } from '../../../components/admin/PageKindCell'
 import { FoOldalakGyorslinkjei as FoOldalakGyorslinkjei_2c8af0de099fc982d22d5f70a8b9c0b2 } from '../../../components/admin/GyakoriTeendok'
 import { ElonezetGomb as ElonezetGomb_afc052f41b1e4ba07d6ad0b64af98aff } from '../../../components/admin/ElonezetGomb'
+import { TestimonialPlacementCell as TestimonialPlacementCell_ae5f9e90e574e22b6f086a0acd6d9708 } from '../../../components/admin/TestimonialPlacementCell'
 import { MenuTudastarNotice as MenuTudastarNotice_ea542c3ad68608cfe4069d7a3a46357a } from '../../../components/admin/MenuTudastarNotice'
 import { MenuChildrenNotice as MenuChildrenNotice_98f97366fd6879ecf3c76ada05b264b8 } from '../../../components/admin/MenuChildrenNotice'
 import { MenuLathatoCell as MenuLathatoCell_b353e67bd28460401c49d9c1749b9d76 } from '../../../components/admin/BooleanCell'
@@ -118,6 +119,7 @@ export const importMap = {
   "/components/admin/PageKindCell#PageKindCell": PageKindCell_36190ca002dd55433658037e086a1a04,
   "/components/admin/GyakoriTeendok#FoOldalakGyorslinkjei": FoOldalakGyorslinkjei_2c8af0de099fc982d22d5f70a8b9c0b2,
   "/components/admin/ElonezetGomb#ElonezetGomb": ElonezetGomb_afc052f41b1e4ba07d6ad0b64af98aff,
+  "/components/admin/TestimonialPlacementCell#TestimonialPlacementCell": TestimonialPlacementCell_ae5f9e90e574e22b6f086a0acd6d9708,
   "/components/admin/MenuTudastarNotice#MenuTudastarNotice": MenuTudastarNotice_ea542c3ad68608cfe4069d7a3a46357a,
   "/components/admin/MenuChildrenNotice#MenuChildrenNotice": MenuChildrenNotice_98f97366fd6879ecf3c76ada05b264b8,
   "/components/admin/BooleanCell#MenuLathatoCell": MenuLathatoCell_b353e67bd28460401c49d9c1749b9d76,
