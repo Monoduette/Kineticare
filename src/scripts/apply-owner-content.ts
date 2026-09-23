@@ -889,7 +889,9 @@ export const heroKepAzonosito = (ertek: Page['heroImage']): number | null => {
  *  - ha a mező MÁR az új képre mutat, nincs teendő (idempotencia);
  *  - ha az új kép nincs a Médiatárban ÉS a repó-forrásfájl is hiányzik, a
  *    lépés HANGOSAN kimarad;
- *  - üres mező vagy a script/seed korábbi képe (`korabbiPrefixek`) → csere;
+ *  - üres mező → csere, ha a hívó engedi (`uresMezotKitolt`); ha nem, az üres
+ *    mező szerkesztői döntés: HANGOS kihagyás;
+ *  - a script/seed korábbi képe (`korabbiPrefixek`) → csere;
  *  - minden más kép a szerkesztőé: HANGOS kihagyás (szerkesztői elsőbbség),
  *    ahogy a nem található média-rekordra mutató mező is.
  */
@@ -903,6 +905,11 @@ const alkalmazFejlecKep = (input: {
   forras: MediaForras
   /** A script/seed KORÁBBI képeinek fájlnév-prefixei — csak ezek cserélhetők. */
   korabbiPrefixek: readonly string[]
+  /**
+   * Kitöltheti-e az üres mezőt. `false`: az üres fejléc-kép szerkesztői döntés
+   * (a szerkesztő kivette a képet), a script nem teszi vissza.
+   */
+  uresMezotKitolt: boolean
   /** Az oldal jelenlegi `heroImage` értéke. */
   jelenlegi: Page['heroImage']
   /**
@@ -936,6 +943,13 @@ const alkalmazFejlecKep = (input: {
   if (ujMedia.id === null && !ujMedia.forrasLetezik) {
     return kihagyas(
       `a ${ujKepCimke} („${ujMedia.filename}”) nincs a Médiatárban, és a repó-forrásfájl (${forras.filePath}) sem található — a fejléc-kép érintetlen marad`,
+      true,
+    )
+  }
+
+  if (jelenlegiId === null && !input.uresMezotKitolt) {
+    return kihagyas(
+      `a fejléc-kép üres: ezt szerkesztői döntésnek tekintjük (a képet kivették), a script nem teszi vissza a ${ujKepCimke}t („${ujMedia.filename}”)`,
       true,
     )
   }
@@ -989,8 +1003,10 @@ export interface FejlecKepBemenet {
 /**
  * 4. javítás (WP54-től a stúdiófotóra) — a /rolunk fejléc-képe. A korábbi
  * célok (szóló portré, `katak-team` páros fotó) itt „korábbi” képek
- * (`ROLUNK_HERO_KORABBI_PREFIXEK`), nem külön szabály. A döntés:
- * `alkalmazFejlecKep`.
+ * (`ROLUNK_HERO_KORABBI_PREFIXEK`), nem külön szabály. Az ÜRES mezőt nem
+ * tölti ki: 2026-09-23-án a fejléc-kép élesben üres volt, pedig 09-21-én
+ * még ki volt töltve, vagyis a szerkesztő kivette; a tulajdonos döntése
+ * szerint üres marad. A döntés: `alkalmazFejlecKep`.
  */
 export const alkalmazRolunkHeroKep = (input: FejlecKepBemenet): HeroKepAtalakitas =>
   alkalmazFejlecKep({
@@ -1000,6 +1016,7 @@ export const alkalmazRolunkHeroKep = (input: FejlecKepBemenet): HeroKepAtalakita
     ujKepCimke: 'stúdiófotó',
     forras: ROLUNK_HERO_FORRAS,
     korabbiPrefixek: ROLUNK_HERO_KORABBI_PREFIXEK,
+    uresMezotKitolt: false,
   })
 
 /**
@@ -1018,6 +1035,7 @@ export const alkalmazSzolgaltatasokHeroKep = (input: FejlecKepBemenet): HeroKepA
     ujKepCimke: 'kezelőasztalos fotó',
     forras: SZOLGALTATASOK_HERO_FORRAS,
     korabbiPrefixek: [SZOLGALTATASOK_HERO_PREFIX],
+    uresMezotKitolt: true,
   })
 
 // ---------------------------------------------------------------------------
