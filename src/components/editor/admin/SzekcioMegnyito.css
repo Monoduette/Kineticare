@@ -18,6 +18,23 @@
   outline-offset: 4px;
 }
 
+/* MEZŐ-KIEMELÉS (?mezo=, H06, H50): ugyanaz a 3 px-es, 4 px-re álló
+   körvonal, de magán a mező dobozán (MEZO_KIEMELES_ATTR). A körvonal a
+   szekció tartalmának hátterére (--theme-elevation-0, a Payload
+   Collapsible/index.scss:150-154, belső margója var(--base), keskeny
+   nézetben var(--gutter-h), így a 7 px-es
+   kinyúlás nem vágódik le), illetve a dokumentum lapjára esik. Számolt
+   nem-szöveges kontraszt (WCAG 2.2 SC 1.4.11, relatív fénysűrűség-képlet,
+   2026-09-23), a custom.scss témánkénti --theme-success-500 értékével:
+   világos #0b6e99: #ffffff-en 5,67, #f5f5f5-ön 5,20, #ebebeb-n 4,76:1;
+   sötét #24a4df: #141414-en 6,54, #222222-n 5,64, #2f2f2f-en 4,75:1.
+   Mindegyik ≥ 3:1. Ez sem fókuszjelző: a fókusz a mező első beviteli
+   elemén áll, a saját fókuszgyűrűjével. */
+[data-kc-mezo-kiemelt] {
+  outline: 3px solid var(--theme-success-500);
+  outline-offset: 4px;
+}
+
 .kc-szekcio-megnyito--rejtett {
   position: absolute;
   width: 1px;
