@@ -26,7 +26,7 @@ export const WebhookEvents: CollectionConfig = {
     defaultColumns: ['provider', 'externalId', 'eventType', 'status', 'attempts', 'updatedAt'],
     group: 'Rendszer',
     description:
-      'A fizetési és videós szolgáltatók értesítései — hibakereséshez. Ide nem kell nyúlni.',
+      'A fizetési, számlázási és videós szolgáltatók értesítései, hibakereséshez. Ide nem kell nyúlnod.',
   },
   access: {
     read: isOwnerOrStaff,
@@ -70,9 +70,22 @@ export const WebhookEvents: CollectionConfig = {
       label: 'Esemény típusa',
     },
     {
+      // K01: a Payload json-szerkesztője (Monaco, CDN-ről) a CSP miatt 0 px
+      // magas maradt; az adatot csak olvasni kell, ezért formázott, görgethető
+      // szövegdoboz mutatja (src/components/admin/JsonReadOnlyField.tsx).
+      // A korábbi „Nyers üzenet” felirat nem volt igaz: a Barion-callback
+      // szándékosan csak a kinyert fizetésazonosítót tárolja, a nyers bodyt
+      // nem (src/lib/barion-callback/route-handler.ts).
       name: 'payload',
       type: 'json',
-      label: 'Nyers üzenet',
+      label: 'Az értesítés tárolt adatai',
+      admin: {
+        components: {
+          Field: '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+        },
+        description:
+          'Az értesítésből kinyert adatok, például a Barion fizetésazonosító. A teljes nyers üzenetet a rendszer szándékosan nem tárolja.',
+      },
     },
     {
       name: 'status',
@@ -112,8 +125,10 @@ export const WebhookEvents: CollectionConfig = {
       label: 'Feldolgozás időpontja',
       admin: {
         readOnly: true,
+        // K25: magyar, 24 órás alak (a globális admin.dateFormat mintája).
+        date: { displayFormat: 'yyyy. MM. dd. HH:mm', timeFormat: 'HH:mm' },
         description:
-          'A sikeres/végleges feldolgozás időpontja. Hiba (failed) esetén szándékosan üres — az esemény újrapróbálható marad.',
+          'A sikeres vagy végleges feldolgozás időpontja. Hiba esetén üres, így az esemény újrapróbálható.',
       },
     },
     {
@@ -122,16 +137,16 @@ export const WebhookEvents: CollectionConfig = {
       type: 'select',
       label: 'Üzleti kimenetel',
       options: [
-        { label: 'Fizetve (rendelés fizetve + jogosultság megadva)', value: 'paid' },
-        { label: 'Lemondva (rendelés lemondva)', value: 'cancelled' },
-        { label: 'Függő — újrakérdezésre vár', value: 'pending_repoll' },
-        { label: 'Átmenet elutasítva (állapotgép-védelem)', value: 'rejected' },
+        { label: 'Fizetve (a rendelés kifizetve, a hozzáférés megadva)', value: 'paid' },
+        { label: 'Lemondva (a rendelés lemondva)', value: 'cancelled' },
+        { label: 'Függőben (a rendszer később újra rákérdez)', value: 'pending_repoll' },
+        { label: 'Elutasítva (a rendelés már más állapotban volt)', value: 'rejected' },
         { label: 'Sikertelen feldolgozás (újrapróbálható)', value: 'failed' },
       ],
       admin: {
         readOnly: true,
         description:
-          'Az utolsó feldolgozás üzleti kimenetele. A „Függő" azt jelenti, hogy a fizetés még nem dőlt el: a rendszer később magától újra rákérdez a szolgáltatónál.',
+          'Az utolsó feldolgozás üzleti kimenetele. A „Függőben” azt jelenti, hogy a fizetés még nem dőlt el: a rendszer később magától újra rákérdez a szolgáltatónál.',
       },
     },
   ],

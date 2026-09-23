@@ -47,9 +47,23 @@ const BRAND_CSS = readFileSync(join(REPO, 'src', 'app', '(payload)', 'custom.scs
 
 /** A Payload admin mért geometriája (@payloadcms/ui app.scss + vars.scss). */
 const NAV_SZELESSEG = 275
+/**
+ * A 1024 px alatti gyökérméret: a Payload 12 px-e, HACSAK a custom.scss
+ * admin téma-rétege felül nem írja (admin-audit K31, 2026-09-22: 13 px).
+ * A VALÓDI custom.scss-ből olvassuk, hogy a modell ne térjen el attól, amit
+ * a böngésző rajzol.
+ */
+const KOZEPES_GYOKER = ((): number => {
+  const kommentNelkul = BRAND_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+  const felulirt = /@media \(max-width: 1024px\)\s*\{\s*html\s*\{\s*font-size:\s*(\d+)px/.exec(
+    kommentNelkul,
+  )?.[1]
+  return felulirt === undefined ? 12 : Number(felulirt)
+})()
 function payloadGyoker(nezetablak: number): number {
-  // html { font-size: 13px }, mid-break (max-width: 1024px) → 12px.
-  return nezetablak <= 1024 ? 12 : 13
+  // html { font-size: 13px }, mid-break (max-width: 1024px) → a Payloadban
+  // 12px, a custom.scss téma-rétegével 13px.
+  return nezetablak <= 1024 ? KOZEPES_GYOKER : 13
 }
 function payloadGutter(nezetablak: number): number {
   // --gutter-h: base(3) = 60px; mid-break → base(2) = 40px; small-break → base(0.8) = 16px.

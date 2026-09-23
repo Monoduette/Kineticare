@@ -38,7 +38,7 @@ export const linkFields = ({
   includeLabel = true,
   labelRequired = false,
   urlRequired = false,
-  labelDescription = 'Ez a szöveg jelenik meg a gombon (pl. „Kurzusok megtekintése").',
+  labelDescription = 'Ez a szöveg jelenik meg a gombon. Igével kezdd, és nevezd meg a célt (pl. „Nézd meg a kurzusokat”).',
   urlDescription = LINK_URL_DESCRIPTION,
 }: LinkFieldsOptions = {}): Field[] => {
   const fields: Field[] = []
@@ -104,7 +104,7 @@ export interface LinkGroupOptions extends LinkFieldsOptions {
 
 /**
  * Egyetlen link „csomagban" (group) — ott hasznos, ahol pontosan EGY gomb van
- * (pl. SOS-sáv, CTA-sáv, hitel-csík).
+ * (pl. SOS-sáv, gombos kiemelő sáv, szakmai háttér sáv).
  */
 export const linkGroup = ({ name, label, description, ...options }: LinkGroupOptions): Field => ({
   name,

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { FormState } from 'payload'
 import {
+  attachedVideoSummary,
   captureVideoTarget,
+  fieldLabelFallback,
   videoFieldPatch,
   parseVideo,
   validateVideoFile,
   pollDelay,
   videoPagination,
+  UNRECOGNIZED_VIDEO_ID_MESSAGE,
 } from '../components/admin/bunny-video-state'
 
 const guid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -137,5 +140,69 @@ describe('trusted detail and limits', () => {
     expect(pollDelay(0, 0)).toBe(5000)
     expect(pollDelay(20, 500000)).toBe(30000)
     expect(pollDelay(20, 600000)).toBeNull()
+  })
+})
+
+describe('K35: a csatolt videó sora és a tartalék felirat', () => {
+  it('a csatolt videó újratöltés után is „cím · hossz · állapot” sorként látszik', () => {
+    expect(attachedVideoSummary(guid, { ...detail, durationSec: 437 }, false)).toBe(
+      'Provider title · 7:17 · Kész',
+    )
+    expect(attachedVideoSummary(guid.toUpperCase(), detail, false)).toBe(
+      'Provider title · 2:03 · Kész',
+    )
+  })
+
+  it('betöltés közben, hibánál és üres mezőnél is kimondja, mi a helyzet', () => {
+    expect(attachedVideoSummary(guid, null, false)).toBe('Videó csatolva. Adatok betöltése…')
+    expect(attachedVideoSummary(guid, null, true)).toBe(
+      'Videó csatolva. Az adatai most nem tölthetők be.',
+    )
+    expect(attachedVideoSummary('', null, false)).toBe('Nincs videó kiválasztva.')
+    // Másik videó adatai sosem kerülnek a mező alá.
+    expect(
+      attachedVideoSummary(
+        guid,
+        { ...detail, guid: '11111111-2222-3333-4444-555555555555' },
+        false,
+      ),
+    ).toBe('Videó csatolva. Adatok betöltése…')
+  })
+
+  it('minden bemenetosztálynak igaz végállapota van: üres, GUID, nem GUID, sikertelen lekérés', () => {
+    // Üres mező.
+    expect(attachedVideoSummary('', null, false)).toBe('Nincs videó kiválasztva.')
+    expect(attachedVideoSummary('', null, true)).toBe('Nincs videó kiválasztva.')
+    // GUID, betöltött adatokkal.
+    expect(attachedVideoSummary(guid, detail, false)).toBe('Provider title · 2:03 · Kész')
+    // GUID, sikertelen lekérés.
+    expect(attachedVideoSummary(guid, null, true)).toBe(
+      'Videó csatolva. Az adatai most nem tölthetők be.',
+    )
+    // Nem GUID alakú érték: a mező el sem indítja a lekérést, ezért soha nem „betöltés…”.
+    for (const value of ['nem-guid-ertek', ' ' + guid, guid + 'x', 'aaaaaaaa-bbbb-cccc-dddd']) {
+      for (const failed of [false, true]) {
+        const text = attachedVideoSummary(value, null, failed)
+        expect(text).toBe(UNRECOGNIZED_VIDEO_ID_MESSAGE)
+        expect(text).not.toContain('betöltése')
+      }
+    }
+    expect(UNRECOGNIZED_VIDEO_ID_MESSAGE).toBe(
+      'Videó csatolva, de az azonosítója nem ismerhető fel. Válaszd ki újra a „Videó cseréje” gombbal.',
+    )
+  })
+
+  it('egységes szóhasználat: nyilvános előzetes, három pont helyett „…”', () => {
+    expect(fieldLabelFallback('public')).toBe('Nyilvános előzetes videó')
+    expect(fieldLabelFallback('protected')).toBe('Lecke videója')
+    for (const text of [
+      attachedVideoSummary(guid, null, false),
+      attachedVideoSummary(guid, null, true),
+      attachedVideoSummary('', null, false),
+      UNRECOGNIZED_VIDEO_ID_MESSAGE,
+    ]) {
+      expect(text).not.toContain('...')
+      expect(text).not.toMatch(/[–—]/)
+    }
   })
 })

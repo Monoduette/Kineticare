@@ -240,3 +240,89 @@ describe('buildNavTree', () => {
     expect(labels(tree[0].children)).toEqual(['Gyermek'])
   })
 })
+
+describe('buildNavTree — Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts)', () => {
+  const post = { id: 5, slug: 'pattano-ujj', status: 'published' } as Post
+  const postMenu = (id: number, overrides: Partial<Menu> = {}): Menu =>
+    menu({
+      id,
+      label: 'Cikk',
+      type: 'post',
+      ref: { relationTo: 'posts', value: post },
+      order: 3,
+      ...overrides,
+    })
+  const hubMenu = pageRefMenu(4, 'Kéztőalagút', publishedPage(20, 'keztoalagut-szindroma'), {
+    order: 4,
+  })
+  const alap = (tudastar: Partial<Menu>): Menu[] => [
+    urlMenu(1, 'Kurzusok', '/kurzusok', { order: 1 }),
+    urlMenu(2, 'Tudástár', '/blog', { order: 2, ...tudastar }),
+    postMenu(3),
+    hubMenu,
+    urlMenu(5, 'Kategória', '/blog/kategoria/kez-es-csuklo', { order: 5 }),
+    urlMenu(6, 'Kapcsolat', '/kapcsolat', { order: 6 }),
+    pageRefMenu(7, 'Rólunk', publishedPage(21, 'rolunk'), { order: 7 }),
+  ]
+  const hrefs = (items: NavItem[]): string[] =>
+    items.flatMap((item) => [item.href, ...item.children.map((child) => child.href)])
+
+  it('bekapcsolva minden Tudástár-menüpont a helyén van', () => {
+    expect(labels(buildNavTree(alap({})))).toEqual([
+      'Kurzusok',
+      'Tudástár',
+      'Cikk',
+      'Kéztőalagút',
+      'Kategória',
+      'Kapcsolat',
+      'Rólunk',
+    ])
+  })
+
+  it('visible=false: kiesik a cikk (post), a hub-oldal és a /blog… webcím is', () => {
+    const tree = buildNavTree(alap({ visible: false }))
+    expect(labels(tree)).toEqual(['Kurzusok', 'Kapcsolat', 'Rólunk'])
+    expect(hrefs(tree).filter((href) => href.startsWith('/blog'))).toEqual([])
+  })
+
+  it('unlisted=true (rejtett link): ugyanaz a kiesés', () => {
+    expect(labels(buildNavTree(alap({ unlisted: true })))).toEqual([
+      'Kurzusok',
+      'Kapcsolat',
+      'Rólunk',
+    ])
+  })
+
+  it('kapcsoló-menüpont nélkül a Tudástár bekapcsolt: a cikk-menüpont marad', () => {
+    const tree = buildNavTree([urlMenu(1, 'Kurzusok', '/kurzusok', { order: 1 }), postMenu(3)])
+    expect(labels(tree)).toEqual(['Kurzusok', 'Cikk'])
+  })
+
+  it('a saját abszolút /blog/ címe is kapcsoló, és kikapcsolva kiesik', () => {
+    const tree = buildNavTree([
+      urlMenu(1, 'Kurzusok', '/kurzusok', { order: 1 }),
+      urlMenu(2, 'Tudástár', 'https://www.kineticare.hu/blog/', { order: 2, visible: false }),
+      postMenu(3),
+    ])
+    expect(labels(tree)).toEqual(['Kurzusok'])
+  })
+
+  it('kikapcsolva a Tudástár-szülő NEM Tudástár gyermeke a meglévő szabály szerint gyökérré emelkedik', () => {
+    const tree = buildNavTree([
+      urlMenu(2, 'Tudástár', '/blog', { order: 2, unlisted: true }),
+      postMenu(3, { order: 3 }),
+      urlMenu(8, 'Ingyenes kurzus', '/kurzusok/sos', { parent: 3, order: 1 }),
+      urlMenu(9, 'Másik cikk', '/blog/teniszkonyok', { parent: 3, order: 2 }),
+    ])
+    expect(labels(tree)).toEqual(['Ingyenes kurzus'])
+    expect(hrefs(tree)).toEqual(['/kurzusok/sos'])
+  })
+
+  it('a /blogger webcím nem Tudástár-cél: kikapcsolva is marad', () => {
+    const tree = buildNavTree([
+      urlMenu(2, 'Tudástár', '/blog', { visible: false }),
+      urlMenu(3, 'Blogger', '/blogger', { order: 3 }),
+    ])
+    expect(labels(tree)).toEqual(['Blogger'])
+  })
+})

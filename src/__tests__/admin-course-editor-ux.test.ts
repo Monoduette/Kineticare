@@ -196,9 +196,11 @@ describe('courseVisibilityNotice — látszik-e a kurzus a weboldalon', () => {
   it('a KITÖLTETLEN mezőnél figyelmeztet, és megnevezi a félrevezető felső sávot', () => {
     const notice = courseVisibilityNotice(null, false)
     expect(notice.kind).toBe('figyelmeztetes')
-    expect(notice.title).toContain('MÉG NEM látszik')
+    expect(notice.title).toBe('Figyelem: ez a kurzus még nem látszik a weboldalon.')
     expect(notice.body).toContain('Állapot: Közzétett')
-    expect(notice.body).toContain('NEM a weboldali megjelenésre')
+    // K42: verzál helyett kiemelés (<strong>), a kiemelt részlet a szövegben áll.
+    expect(notice.emphasis).toBe('nem a weboldali megjelenésre')
+    expect(notice.body).toContain(notice.emphasis)
   })
 
   it('MUNKATÁRSNAK megmondja, hogy a tulajdonost kell megkérnie', () => {
@@ -216,19 +218,37 @@ describe('courseVisibilityNotice — látszik-e a kurzus a weboldalon', () => {
   it('archiváltnál is figyelmeztet — az sem látszik', () => {
     const notice = courseVisibilityNotice('archived', true)
     expect(notice.kind).toBe('figyelmeztetes')
-    expect(notice.title).toContain('ARCHIVÁLT')
+    expect(notice.title).toBe('Figyelem: ez a kurzus archivált, ezért nem látszik a weboldalon.')
   })
 
   it('közzétett kurzusnál megerősít, nem riogat', () => {
     const notice = courseVisibilityNotice('published', false)
     expect(notice.kind).toBe('rendben')
-    expect(notice.title).toContain('LÁTSZIK')
+    expect(notice.title).toBe('Ez a kurzus látszik a weboldalon.')
   })
 
   it('ismeretlen érték = nincs beállítva (sosem hazudik „látszik"-ot)', () => {
     for (const ertek of [undefined, '', 'Published', 'aktív', 42, {}, []]) {
       expect(normalizeVisibility(ertek)).toBeNull()
       expect(courseVisibilityNotice(ertek, true).kind).toBe('figyelmeztetes')
+    }
+  })
+
+  it('K42: a szövegekben nincs verzál szó, gondolatjel és ASCII idézőjel', () => {
+    const cases: Array<[unknown, boolean, unknown]> = [
+      ['published', true, false],
+      ['published', false, true],
+      ['draft', true, false],
+      ['draft', false, false],
+      ['archived', false, false],
+      [null, false, false],
+    ]
+    for (const [status, canEdit, unlisted] of cases) {
+      const notice = courseVisibilityNotice(status, canEdit, unlisted)
+      for (const text of [notice.title, notice.body]) {
+        expect(text).not.toMatch(/\b[A-ZÁÉÍÓÖŐÚÜŰ]{2,}\b/u)
+        expect(text).not.toMatch(/[–—"]/)
+      }
     }
   })
 })

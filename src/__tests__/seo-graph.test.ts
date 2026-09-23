@@ -418,3 +418,73 @@ describe('Szolgáltatások: Service csomópontok a services-blokkból', () => {
     assertNoEmptyValues(graph)
   })
 })
+
+/**
+ * H46: a rejtett szekció (`sectionSettings.visible === false`) a lapon nem
+ * látszik, ezért a strukturált adatba sem kerülhet. Google Search Central,
+ * General structured data guidelines: „Don't mark up content that is not
+ * visible to readers of the page.”
+ * https://developers.google.com/search/docs/appearance/structured-data/sd-policies
+ */
+describe('Rejtett szekció: a sémában sincs (H46)', () => {
+  const rejtve = <T extends object>(block: T): T & { sectionSettings: { visible: false } } => ({
+    ...block,
+    sectionSettings: { visible: false },
+  })
+  const [idopont, csapat] = KAPCSOLAT_LAYOUT
+  const [szolgaltatasok] = SZOLGALTATASOK_LAYOUT
+  const layout = (...blocks: unknown[]) => blocks as NonNullable<Page['layout']>
+
+  it('a rejtett időpontkérő címe, telefonja és e-mailje kimarad (MedicalBusiness sem lesz)', () => {
+    const contact = contactDataFromLayout(layout(rejtve(idopont!)))
+    expect(contact).toEqual({ addresses: [], telephones: [] })
+    expect(medicalBusinessNodes(contact)).toEqual([])
+  })
+
+  it('a rejtett csapat-blokk szakemberei kimaradnak (Person sem lesz)', () => {
+    expect(teamPersonsFromLayout(layout(rejtve(csapat!)))).toEqual([])
+  })
+
+  it('a rejtett szolgáltatás-blokk sorai kimaradnak (Service sem lesz)', () => {
+    expect(serviceNodesFromLayout(layout(rejtve(szolgaltatasok!)))).toEqual([])
+  })
+
+  it('a látható párja megmarad, a rejtett nem keveredik bele', () => {
+    const masikCsapat = {
+      blockType: 'teamMembers',
+      members: [{ name: 'Rejtett Szakember', role: 'Nem látszik a lapon' }],
+    }
+    const persons = teamPersonsFromLayout(layout(csapat, rejtve(masikCsapat)))
+    expect(persons.map((person) => person.name)).toEqual(['Kocsis Kata', 'Kiss Kata'])
+    const masikSor = {
+      blockType: 'services',
+      rows: [{ title: 'Rejtett szolgáltatás', body: 'Nem látszik.' }],
+    }
+    const nodes = serviceNodesFromLayout(layout(szolgaltatasok, rejtve(masikSor)))
+    expect(nodes.map((node) => node.name)).toEqual([
+      'Rendelői kezelések',
+      'Otthoni online program',
+      'Szakmai képzések',
+    ])
+    const masikIdopont = {
+      blockType: 'appointment',
+      helyszinek: [{ cim: '1000 Budapest, Rejtett utca 1.' }],
+      telefonszamok: [{ nev: 'Rejtett', szam: '+36 1 000 0000' }],
+      email: 'rejtett@example.invalid',
+    }
+    const contact = contactDataFromLayout(layout(rejtve(masikIdopont), idopont))
+    expect(contact.addresses).toEqual([
+      '1117 Budapest, Nádorliget u. 7/b',
+      '1114 Budapest, Fadrusz utca 15.',
+    ])
+    expect(contact.email).toBe('info@kineticare.hu')
+    expect(contact.telephones.map((tel) => tel.name)).toEqual(['Kocsis Kata', 'Kiss Kata'])
+  })
+
+  it('csak a kifejezett visible: false rejt: true, hiányzó és üres beállítás látható', () => {
+    for (const sectionSettings of [{ visible: true }, {}, undefined, { visible: null }]) {
+      const blokk = { ...csapat, sectionSettings }
+      expect(teamPersonsFromLayout(layout(blokk))).toHaveLength(2)
+    }
+  })
+})

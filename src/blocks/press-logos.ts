@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { linkFields } from './link-fields'
 import { sectionSettings } from './section-settings'
 
@@ -16,8 +17,8 @@ export const pressLogos: Block = {
   slug: 'pressLogos',
   interfaceName: 'BlockPressLogos',
   labels: {
-    singular: 'Sajtó-logósor',
-    plural: 'Sajtó-logósorok',
+    singular: 'Logósor',
+    plural: 'Logósorok',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -29,7 +30,7 @@ export const pressLogos: Block = {
       label: 'Felirat',
       admin: {
         description:
-          'A logók fölötti rövid szöveg. Üresen hagyva a beépített „Itt találkozhattál velünk" felirat jelenik meg.',
+          'A logók fölötti rövid szöveg. Üresen hagyva a beépített „Itt találkozhattál velünk” felirat jelenik meg.',
       },
     },
     {
@@ -51,7 +52,7 @@ export const pressLogos: Block = {
           relationTo: 'media',
           required: true,
           label: 'Logó képe',
-          admin: { description: 'A médium vagy szervezet logója.' },
+          admin: { description: `A médium vagy szervezet logója. ${KEP_CSERE_SUGO}` },
         },
         {
           name: 'alt',
@@ -59,7 +60,7 @@ export const pressLogos: Block = {
           label: 'Képleírás (alt) felülírása',
           admin: {
             description:
-              'Nem kötelező. Ha üresen hagyod, a Képek közt megadott képleírás jelenik meg — általában az a jó.',
+              'Nem kötelező. Ha üresen hagyod, a Képek közt megadott képleírás jelenik meg, és általában az a jó.',
           },
         },
         // A logó saját maga a „felirat", ezért itt nincs külön felirat-mező —

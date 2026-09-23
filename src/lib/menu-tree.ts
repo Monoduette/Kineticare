@@ -6,6 +6,7 @@ import { extractRelationshipId } from './menu-validation'
 import { sanitizeCmsUrl } from './safe-url'
 import { isStorefrontFreeSos } from './sos-offer'
 import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
+import { isTudastarHref, tudastarLathatoMenukbol } from './tudastar-kapcsolo'
 
 /**
  * Menüfa → NavItem fa (tiszta logika). Csak visible + NEM unlisted + published
@@ -18,6 +19,14 @@ import { SOS_FREE_MENU_LABEL, SOS_MENU_LABEL } from './sos-offer-copy'
  * sor. Tudatos következmény: az unlisted SZÜLŐ gyermeke gyökér-szintre
  * emelkedik (a „kiesett szülő" szabály), mert a gyermek maga nem rejtett, és
  * szülő nélkül nem lenne elérhető a menüből.
+ *
+ * Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): ha a /blog menüpont
+ * rejtett, a Tudástár kikapcsolt, és a navigációból kiesik minden
+ * Tudástár-cél is: a cikkre mutató (`post`) menüpont, a /blog… célú webcím és
+ * a tünet-hubra mutató oldal-menüpont. A döntés UGYANABBÓL a menülistából
+ * születik, második lekérdezés nélkül; a kieső szülő gyermekére a meglévő
+ * „kiesett szülő" szabály érvényes (ha a gyermek maga is Tudástár-cél, az is
+ * kiesik).
  */
 
 export interface NavItem {
@@ -198,12 +207,20 @@ export function buildNavTree(menus: Menu[]): NavItem[] {
   const orderById = new Map<number, number>(
     visible.map((menu) => [menu.id, typeof menu.order === 'number' ? menu.order : 0]),
   )
+  // A Tudástár-kapcsoló a TELJES listából dönt (a rejtett kapcsoló-sor is
+  // számít), a kiesés pedig a „nem renderelhető cél" úton történik: a sor
+  // nem kap href-et, így a gyermekeire a kiesett szülő szabálya érvényes.
+  const tudastarLathato = tudastarLathatoMenukbol(menus)
   const hrefById = new Map<number, string>()
   for (const menu of visible) {
     const href = resolveMenuHref(menu)
-    if (href !== null) {
-      hrefById.set(menu.id, href)
+    if (href === null) {
+      continue
     }
+    if (!tudastarLathato && (menu.type === 'post' || isTudastarHref(href))) {
+      continue
+    }
+    hrefById.set(menu.id, href)
   }
 
   const parentIdOf = (menu: Menu): number | null => {

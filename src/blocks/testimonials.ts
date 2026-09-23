@@ -26,9 +26,9 @@ export const testimonials: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Kis felső felirat',
+      label: 'Felső kis felirat',
       admin: {
-        description: 'A cím fölötti apró szöveg (pl. „Vélemények"). Nem kötelező.',
+        description: 'A cím fölötti apró szöveg (pl. „Vélemények”). Nem kötelező.',
       },
     },
     {
@@ -37,7 +37,7 @@ export const testimonials: Block = {
       label: 'Szekció címe',
       admin: {
         description:
-          'Nem kötelező. Ha üresen hagyod, a beépített cím marad („Pácienseink mondták").',
+          'Nem kötelező. Ha üresen hagyod, a beépített cím marad („Pácienseink mondták”).',
       },
     },
     {
@@ -49,7 +49,7 @@ export const testimonials: Block = {
       label: 'Hány vélemény jelenjen meg',
       admin: {
         description:
-          'Legfeljebb 3 — a kezdőlap nem lehet több képernyőnyi idézet. A megjelenő véleményeket a Tartalom → Vélemények alatt a „Kiemelt" pipa és a „Sorrend" dönti el.',
+          'Legfeljebb 3, hogy a kezdőlap ne legyen több képernyőnyi idézet. A megjelenő véleményeket a Tartalom → Vélemények alatt a „Kiemelt” pipa és a „Sorrend” dönti el.',
         step: 1,
       },
     },

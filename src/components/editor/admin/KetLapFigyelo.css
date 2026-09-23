@@ -1,0 +1,75 @@
+/* Két lapon nyitott szerkesztő figyelmeztetése (KetLapFigyelo.tsx).
+
+   SZÍN ÉS KERET. A doboz a B-1 stílusszerződését viseli
+   (.kc-admin-notice .kc-admin-notice--figyelem, custom.scss 9. szakasz): a
+   szöveg --theme-elevation-800 a --theme-warning-50 háttéren, a jelzősáv és
+   a keret --theme-warning-600. Itt csak a helyzet, a méret és a bezáró gomb
+   szerepel, saját szín nincs: mindkét témán a szerződés mért arányai
+   érvényesek (WCAG 2.2 SC 1.4.3, 1.4.11).
+
+   HELYZET. Rögzített, nem modális doboz a nézetablak jobb alsó sarkában,
+   16 px-re a szélektől; 320 CSS px-en a szélessége a nézetablak mínusz
+   2 × 16 px, nincs vízszintes görgetés (SC 1.4.10). Ha a SzekcioMegnyito
+   figyelmeztetése is látszik, a komponens fölé emeli (inline
+   inset-block-end). A mentés és közzététel sávja fent ragad, a doboz lent
+   áll, így azt nem takarja.
+
+   FÓKUSZ NEM TAKART (SC 2.4.11, WCAG-technika C43). Amíg a doboz látszik, a
+   gyökérelem jelzőt és a doboz sávjának magasságát kapja: a
+   scroll-padding a fókuszba kerülő elemet a doboz fölé görgeti, a lap végi
+   tartalék pedig az utolsó elemnek is helyet ad. */
+.kc-ket-lap-figyelo--rejtett {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.kc-admin-notice.kc-ket-lap-figyelo {
+  position: fixed;
+  z-index: 50;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  width: min(28rem, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: 0;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.kc-ket-lap-figyelo__bezaras {
+  min-width: 44px;
+  min-height: 32px;
+  margin: calc(var(--base) * 0.4) 0 0;
+  padding: 4px 12px;
+  border: 1px solid currentColor;
+  border-radius: var(--style-radius-s);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.kc-ket-lap-figyelo__bezaras:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-ket-lap-figyelo__bezaras:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
+}
+
+.kc-ket-lap-figyelo__tartalek {
+  block-size: var(--kc-ket-lap-savmagassag, 0px);
+}
+
+html[data-kc-ket-lap-figyelo] {
+  scroll-padding-block-end: var(--kc-ket-lap-savmagassag, 0px);
+}

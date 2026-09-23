@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import type { AdminViewServerProps } from 'payload'
 import Link from 'next/link'
 
-import { hasStaffOrOwnerRole } from '../../access/roles'
+import { hasOwnerRole, hasStaffOrOwnerRole } from '../../access/roles'
 import {
   EXTERNAL_ANALYTICS_LINKS,
   posthogEmbedUrl,
@@ -53,19 +53,43 @@ import {
 
 /**
  * A külső linkek sora. A célfelület legalább 44 px magas (a repó saját
- * célértéke, docs/ui-sztenderdek.md §3), a linkek új lapon nyílnak — az admin
- * munkamenetét nem hagyjuk el.
+ * célértéke, docs/ui-sztenderdek.md §3), a linkek új lapon nyílnak, így az
+ * admin munkamenetét nem hagyjuk el.
+ *
+ * K13 (admin-audit, 2026-09-22): a korábbi, aláhúzás nélküli linket csak egy
+ * 1,29:1-es (sötétben 1,42:1-es) keret jelezte. Most:
+ * - a szín, az aláhúzás és a hover-vastagodás a .kc-adminstat link-nyelvéből
+ *   jön (custom.scss), ezért inline szín nincs, különben a hover nem hatna;
+ * - a keret a --kc-as-hairline-strong token (világoson 3,91:1, sötéten
+ *   5,97:1 a mért jegyzőkönyv szerint, WCAG 2.2 SC 1.4.11);
+ * - a „(új lapon nyílik)” a link szövegének része (GOV.UK Links: „include the
+ *   words 'opens in new tab' as part of the link”,
+ *   https://design-system.service.gov.uk/styles/links/; NN/g: „let users
+ *   know about it before they click”,
+ *   https://www.nngroup.com/articles/new-browser-windows-and-tabs/).
  */
 const toolLinkStyle: CSSProperties = {
   alignItems: 'center',
-  border: '1px solid var(--theme-elevation-150)',
-  borderRadius: '4px',
-  color: 'var(--theme-text)',
+  border: '1px solid var(--kc-as-hairline-strong)',
+  borderRadius: 'var(--kc-as-radius-md)',
   display: 'inline-flex',
   minHeight: '44px',
   padding: '0 calc(var(--base) * 0.75)',
-  textDecoration: 'none',
 }
+
+/** A beágyazott kimutatás és a helyét jelző doboz dekoratív kerete. */
+const embedFrameStyle: CSSProperties = {
+  border: '1px solid var(--kc-as-hairline)',
+  borderRadius: 'var(--kc-as-radius-md)',
+}
+
+export const NEW_TAB_SUFFIX = '(új lapon nyílik)'
+
+/** A kimutatás helyét jelző doboz címe; a munkatársi bekezdés ezt NEM ismételheti. */
+export const EMBED_MISSING_TITLE = 'A beágyazott kimutatás még nincs bekötve'
+
+export const EMBED_MISSING_STAFF_MESSAGE =
+  'A bekötést a tulajdonos végzi. Szólj neki, ha szeretnéd itt látni a kimutatást.'
 
 export const WEB_ANALYTICS_ACCESS_DENIED_MESSAGE =
   'A Webanalitikát csak munkatárs vagy tulajdonos nézheti meg.'
@@ -76,8 +100,8 @@ export const WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE =
 /**
  * A hat kiemelt szám kiszámítása a Statisztika-lekérdezések jelentéseiből.
  *
- * A haladás-oszlopok kurzus-hozzáférést számolnak (egy vevő két kurzussal
- * kétszer számít) — ugyanígy összegez a Statisztika oldal kurzus-táblája is,
+ * A haladás-oszlopok kurzus-hozzáférést számolnak (egy vásárló két kurzussal
+ * kétszer számít); ugyanígy összegez a Statisztika oldal kurzus-táblája is,
  * a két felület tehát nem tud széttartani.
  */
 function dbSummaryStats(
@@ -100,7 +124,7 @@ function dbSummaryStats(
       completed += course.completed
     }
     stats.push(
-      { label: 'Kurzus-hozzáférés (vevő × kurzus)', value: String(enrolled) },
+      { label: 'Kurzus-hozzáférések száma', value: String(enrolled) },
       { label: 'Elkezdte a kurzust', value: String(started) },
       { label: 'Be is fejezte', value: String(completed) },
     )
@@ -144,6 +168,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   }
 
   const embedUrl = posthogEmbedUrl()
+  const owner = hasOwnerRole(req.user)
 
   return (
     <AdminChrome props={props} title="Webanalitika">
@@ -190,7 +215,7 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
             {EXTERNAL_ANALYTICS_LINKS.map((tool) => (
               <li key={tool.href}>
                 <a href={tool.href} rel="noopener noreferrer" style={toolLinkStyle} target="_blank">
-                  {tool.label}
+                  {tool.label} {NEW_TAB_SUFFIX}
                 </a>
               </li>
             ))}
@@ -199,30 +224,26 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
         {embedUrl ? (
           <iframe
             src={embedUrl}
-            style={{
-              border: '1px solid var(--theme-elevation-150)',
-              borderRadius: '4px',
-              height: '90rem',
-              width: '100%',
-            }}
-            title="Kineticare — látogatók és érdeklődés (PostHog dashboard)"
+            style={{ ...embedFrameStyle, height: '90rem', width: '100%' }}
+            title="Látogatói kimutatás (PostHog)"
           />
         ) : (
-          <div
-            style={{
-              border: '1px solid var(--theme-elevation-150)',
-              borderRadius: '4px',
-              maxWidth: '42rem',
-              padding: 'calc(var(--base) * 1)',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>A beágyazott dashboard még nincs bekötve</h3>
-            <p>
-              A PostHogban a „Kineticare — látogatók és érdeklődés” dashboardon kapcsold be a
-              megosztást (Share gomb), majd a kapott linket állítsd be a Railway-en a{' '}
-              <code>POSTHOG_SHARED_DASHBOARD_URL</code> változóba. A következő indulás után a
-              dashboard itt jelenik meg.
-            </p>
+          <div style={{ ...embedFrameStyle, maxWidth: '42rem', padding: 'calc(var(--base) * 1)' }}>
+            <h3 style={{ marginTop: 0 }}>{EMBED_MISSING_TITLE}</h3>
+            {/* K13: a bekötés lépései (és a környezeti változó neve) csak a
+                tulajdonosé; a munkatárs a teendőt kapja. Csak megjelenítés: a
+                nézet kapuja (hasStaffOrOwnerRole) változatlan. */}
+            {owner ? (
+              <p>
+                A PostHogban nyisd meg a Dashboards listát, és keresd meg azt a kimutatást, amelynek
+                a nevében a „látogatók és érdeklődés” szerepel. Kapcsold be a megosztását (Share
+                gomb), a kapott linket pedig állítsd be a Railway-en a{' '}
+                <code>POSTHOG_SHARED_DASHBOARD_URL</code> változóba. A következő indulás után a
+                kimutatás itt jelenik meg.
+              </p>
+            ) : (
+              <p>{EMBED_MISSING_STAFF_MESSAGE}</p>
+            )}
           </div>
         )}
       </div>

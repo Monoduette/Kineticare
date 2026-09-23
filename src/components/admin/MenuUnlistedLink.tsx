@@ -1,7 +1,7 @@
 'use client'
 
-import { useDocumentInfo, useFormFields } from '@payloadcms/ui'
-import { useCallback, useEffect, useState, type CSSProperties, type JSX } from 'react'
+import { Button, useDocumentInfo, useFormFields } from '@payloadcms/ui'
+import { useCallback, useEffect, useId, useState, type CSSProperties, type JSX } from 'react'
 
 import { buildMenuPublicUrl, type MenuPublicUrlResult } from '../../lib/menu-public-url'
 
@@ -25,9 +25,23 @@ import { buildMenuPublicUrl, type MenuPublicUrlResult } from '../../lib/menu-pub
  * „Kimásolva" 2 másodpercig, hibánál magyar üzenet, amely kézi másolásra
  * irányít (a vágólap-API biztonságos környezet és engedély nélkül elutasít).
  *
- * A stílus a Payload admin saját CSS-változóira épül (`--theme-elevation-*`,
- * `--style-radius-m`): a projekt `--kc-*` tokenjei a vevői felületé, az
- * adminban nincsenek betöltve (lásd CourseVisibilityNotice.tsx).
+ * A stílus a Payload admin CSS-változóira és a B1 stílusszerződésére épül
+ * (src/app/(payload)/custom.scss, 9. szakasz), K14 szerint:
+ * - a kimásolandó link mezőjének kerete a `--kc-admin-field-border` token
+ *   (mérve világosban 4,54:1, sötétben 4,29:1 a lap hátterén; WCAG 2.2 SC
+ *   1.4.11 Non-text Contrast, legalább 3:1). A `.kc-admin-input` osztályt
+ *   szándékosan NEM kapja: annak `[readonly]` állapota keret nélküli és
+ *   halvány („nem szerkeszthető” jelzés), ez a mező viszont kijelölhető,
+ *   másolható, tehát a keretének látszania kell;
+ * - a „Másolás” a Payload saját gombja (`Button`, `secondary`), ugyanaz, mint
+ *   az admin többi másodlagos gombja (WCAG 2.2 SC 3.2.4 Consistent
+ *   Identification), a mezővel azonos, legalább 40 CSS px magassággal (SC
+ *   2.5.8 Target Size: legalább 24 × 24 px);
+ * - a piszkozat-célra figyelmeztető doboz a `.kc-admin-notice--figyelem`, és
+ *   `role="status"`: a cél betöltése után jelenik meg, tehát állapotüzenet,
+ *   nem egy felhasználói művelet hibája (SC 4.1.3 Status Messages; a
+ *   `role="alert"` a sürgős, műveleti hibáé). A „404” szó zsargon, a
+ *   szövegben a hibaoldal látható címe áll (docs/ui-sztenderdek.md 8.2).
  */
 
 export const SAVE_FIRST_MESSAGE = 'Mentés után itt jelenik meg a link.'
@@ -40,8 +54,10 @@ export const LOADING_MESSAGE = 'A cél betöltése folyamatban.'
 export const LOAD_FAILED_MESSAGE =
   'A cél most nem tölthető be. Mentsd el a menüpontot, és nyisd meg újra.'
 
+export const DRAFT_TARGET_WARNING_TITLE = 'Figyelem:'
+
 export const DRAFT_TARGET_WARNING =
-  'A cél még nincs közzétéve, ezért ez a link 404-es hibaoldalt ad, amíg a célt közzé nem teszed.'
+  'A cél még nincs közzétéve, ezért ez a link „Az oldal nem található” hibaoldalt ad, amíg a célt közzé nem teszed.'
 
 export const UNLISTED_NOTE =
   'A menüpont nem jelenik meg a fejlécben és a mobil menüben. Aki ezt a linket megkapja, eléri a célt.'
@@ -162,18 +178,12 @@ const panelStyle: CSSProperties = {
 }
 
 const noteStyle: CSSProperties = {
-  color: 'var(--theme-elevation-650)',
+  color: 'var(--theme-elevation-800)',
   margin: 0,
 }
 
 const warningStyle: CSSProperties = {
-  border: '1px solid var(--theme-warning-500)',
-  background: 'var(--theme-warning-50)',
-  color: 'var(--theme-elevation-800)',
-  borderRadius: 'var(--style-radius-m, 6px)',
-  padding: '0.5rem 0.75rem',
   margin: 'calc(var(--base) * 0.5) 0 0',
-  lineHeight: 1.5,
 }
 
 const rowStyle: CSSProperties = {
@@ -184,28 +194,26 @@ const rowStyle: CSSProperties = {
   marginTop: 'calc(var(--base) * 0.5)',
 }
 
+/** A mező és a gomb közös magassága (a `.kc-admin-input` szerződésével egyező). */
+const CONTROL_MIN_HEIGHT = 'max(40px, calc(var(--base) * 2))'
+
 const inputStyle: CSSProperties = {
+  boxSizing: 'border-box',
   flex: '1 1 16rem',
   minWidth: 0,
+  minHeight: CONTROL_MIN_HEIGHT,
   font: 'inherit',
-  padding: '0.5rem 0.75rem',
-  border: '1px solid var(--theme-elevation-250)',
-  borderRadius: 'var(--style-radius-m, 6px)',
-  background: 'var(--theme-elevation-50)',
-  color: 'var(--theme-elevation-1000)',
+  lineHeight: 1.5,
+  padding: 'calc(var(--base) * 0.4) calc(var(--base) * 0.75)',
+  border: '1px solid var(--kc-admin-field-border, var(--theme-elevation-500))',
+  borderRadius: 'var(--style-radius-s, 4px)',
+  background: 'var(--theme-input-bg, var(--theme-elevation-0))',
+  color: 'var(--theme-elevation-800)',
 }
 
-const buttonStyle: CSSProperties = {
-  font: 'inherit',
-  // WCAG 2.2 SC 2.5.8 Target Size (Minimum): legalább 24×24 CSS px célfelület.
-  minHeight: '2.5rem',
-  padding: '0.5rem 1rem',
-  border: '1px solid var(--theme-elevation-400)',
-  borderRadius: 'var(--style-radius-m, 6px)',
-  background: 'var(--theme-elevation-100)',
-  color: 'var(--theme-elevation-1000)',
-  cursor: 'pointer',
-}
+const buttonProps = {
+  style: { minHeight: CONTROL_MIN_HEIGHT },
+} as const
 
 export interface MenuUnlistedLinkViewProps {
   state: MenuUnlistedLinkState
@@ -221,6 +229,7 @@ export function MenuUnlistedLinkView({
   copyError,
   onCopy,
 }: MenuUnlistedLinkViewProps): JSX.Element {
+  const noteId = useId()
   const messageFor: Record<Exclude<MenuUnlistedLinkState['kind'], 'ready'>, string> = {
     'save-first': SAVE_FIRST_MESSAGE,
     'no-target': NO_TARGET_MESSAGE,
@@ -230,7 +239,9 @@ export function MenuUnlistedLinkView({
 
   return (
     <div style={panelStyle}>
-      <p style={noteStyle}>{UNLISTED_NOTE}</p>
+      <p id={noteId} style={noteStyle}>
+        {UNLISTED_NOTE}
+      </p>
       {state.kind === 'ready' ? (
         <>
           <div style={rowStyle}>
@@ -239,21 +250,34 @@ export function MenuUnlistedLinkView({
               readOnly
               value={state.absoluteUrl}
               aria-label="Közvetlen link"
+              aria-describedby={noteId}
               style={inputStyle}
               onFocus={(event) => event.currentTarget.select()}
             />
-            <button type="button" style={buttonStyle} onClick={() => onCopy(state.absoluteUrl)}>
+            <Button
+              buttonStyle="secondary"
+              extraButtonProps={buttonProps}
+              margin={false}
+              onClick={() => onCopy(state.absoluteUrl)}
+              size="large"
+            >
               {copied ? COPIED_LABEL : COPY_LABEL}
-            </button>
+            </Button>
           </div>
           {/* A „Kimásolva" váltás a felolvasónak is szól, nem csak a gomb feliratán. */}
           <p role="status" aria-live="polite" style={{ ...noteStyle, marginTop: '0.25rem' }}>
             {copied ? COPIED_LABEL : copyError}
           </p>
           {state.targetPublished === false ? (
-            <p role="alert" style={warningStyle}>
-              {DRAFT_TARGET_WARNING}
-            </p>
+            <div
+              aria-live="polite"
+              className="kc-admin-notice kc-admin-notice--figyelem"
+              role="status"
+              style={warningStyle}
+            >
+              <p className="kc-admin-notice__cim">{DRAFT_TARGET_WARNING_TITLE}</p>
+              <p className="kc-admin-notice__szoveg">{DRAFT_TARGET_WARNING}</p>
+            </div>
           ) : null}
         </>
       ) : (

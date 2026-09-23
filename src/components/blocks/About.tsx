@@ -122,7 +122,16 @@ export function About({ block, frieze = false }: AboutProps) {
       variant={variant}
     >
       <div className="kc-board__inner kc-about__grid">
-        {founders ? <PhotoFrieze /> : null}
+        {founders ? (
+          <PhotoFrieze
+            photos={[
+              block.frieze?.photo1,
+              block.frieze?.photo2,
+              block.frieze?.photo3,
+              block.frieze?.photo4,
+            ]}
+          />
+        ) : null}
         {hasCopy ? (
           <div className="kc-about__copy">
             {eyebrow.length > 0 || title.length > 0 ? (

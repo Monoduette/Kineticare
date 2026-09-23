@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import GlobalError from '../app/global-error'
 import GlobalNotFound from '../app/global-not-found'
@@ -20,6 +20,11 @@ import {
 } from '../components/error/not-found-content'
 import { FOOTER_CONTACT_EMAIL, FOOTER_LEGAL_LINKS } from '../components/layout/Footer'
 
+// A (frontend) not-found a Tudástár-kapcsolót kérdezi (aszinkron szerver-
+// komponens); itt a bekapcsolt állapot a mérce. A kikapcsolt ágat a
+// tudastar-link-szuro.test.tsx méri.
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+
 /**
  * ŐR — HIBAOLDALAK (nem található + váratlan hiba).
  * Az élő 404-lap teljesen üres volt: `<body>` = `<div hidden>` + scriptek,
@@ -30,7 +35,7 @@ import { FOOTER_CONTACT_EMAIL, FOOTER_LEGAL_LINKS } from '../components/layout/F
 
 const REPO = fileURLToPath(new URL('..', import.meta.url))
 
-const notFoundMarkup = renderToStaticMarkup(<NotFound />)
+const notFoundMarkup = renderToStaticMarkup(await NotFound())
 const globalNotFoundMarkup = renderToStaticMarkup(<GlobalNotFound />)
 
 /** A `<a href="…">` célok kigyűjtése egy renderelt HTML-darabból. */

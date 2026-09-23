@@ -1,0 +1,156 @@
+/**
+ * A frontend szerkesztői rétege (modul-térkép A3): a piszkozat-előnézet
+ * szekció-szalagjai (SzerkesztoSzalag.tsx) és a publikált nézet fejléc-belépője
+ * (SzerkesztoNezetBelepo.tsx). Mindkettő csak staff/owner-nek renderelődik, a
+ * látogató HTML-jében nincs ilyen osztályú elem.
+ *
+ * VIZUÁLIS NYELV. A szerkesztői eszköz ne olvadjon bele a tartalomba: fehér
+ * (kiemelt) felület, szaggatott akcent-mély keret, a meglévő tokenekből. A
+ * WordPress eszköztára is a lapon kívüli sávként jelenik meg („an area of the
+ * screen just above the site”, https://wordpress.org/documentation/article/toolbar/).
+ * Csak a három betűméret-token (S) és a meglévő --kc-* színek.
+ *
+ * KONTRASZT (WCAG 2.2 relatív luminancia, a tokenek értékéből számolva; a
+ * böngészős mérés a jelentésben):
+ *   szöveg: ink #10243e a fehéren 15,63:1, a figyelmeztető felületen
+ *     (#fdf3e0) 14,19:1 (SC 1.4.3, 4,5:1);
+ *   keret: akcent-mély #2f6e9f a fehéren 5,45:1, a paperen 5,16:1, a tinten
+ *     4,72:1; figyelmeztető keret #8a5a00 a felületén 5,38:1, a paperen
+ *     5,61:1 (SC 1.4.11, 3:1);
+ *   fókuszgyűrű: akcent-mély a fehéren 5,45:1, a figyelmeztető felületen
+ *     4,95:1 (SC 1.4.11, 2.4.7).
+ * ÉRINTÉSI CÉL: a linkek legalább 2,75rem (44 px) magasak (SC 2.5.8: 24×24,
+ * a cél 44×44, Apple HIG).
+ * FÓKUSZ NEM TAKART (SC 2.4.11): a ragadós fejléc alatt a html
+ * `scroll-padding-top`-ja (base.css) görget; a szalag a filmsáv fölé kerül
+ * (z-index), mert a filmsáv a fejléc alá húzódik (film-hero.css negatív margó).
+ * 320 PX: a sor tördel (flex-wrap), vízszintes görgetés nincs (SC 1.4.10).
+ */
+
+.kc-szerkeszto-szalag {
+  position: relative;
+  /* A filmsáv (film-hero.css) a fejléc alá húzódik, rétegei 0–6-os z-indexűek:
+     a szalag fölöttük, a ragadós fejléc (50) alatt áll. */
+  z-index: 10;
+  background-color: var(--kc-color-surface-raised);
+  border-block: 2px dashed var(--kc-color-primary);
+  color: var(--kc-color-text);
+}
+
+.kc-szerkeszto-szalag--rejtett,
+.kc-szerkeszto-szalag--figyelem {
+  background-color: var(--kc-color-warning-surface);
+  border-block-color: var(--kc-color-warning);
+}
+
+.kc-szerkeszto-szalag__belso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--kc-space-4);
+  padding-block: var(--kc-space-1);
+}
+
+.kc-szerkeszto-szalag__cimke,
+.kc-szerkeszto-szalag__jelzes,
+.kc-szerkeszto-szalag__linkek {
+  margin: 0;
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+.kc-szerkeszto-szalag__cimke {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-weight: var(--kc-font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+.kc-szerkeszto-szalag__jelzes {
+  flex: 1 1 100%;
+}
+
+.kc-szerkeszto-szalag__linkek {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--kc-space-2);
+  /* A link belső térköze (a 44 px-es célhoz) ne tolja el a szöveget: a link
+     szövege a címkével egy vonalban kezdődik, illetve a konténer szélén végződik. */
+  margin-inline: calc(-1 * var(--kc-space-2));
+}
+
+.kc-szerkeszto-szalag__link,
+.kc-szerkeszto-nezet__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem; /* 44 px érintési cél */
+  padding-inline: var(--kc-space-2);
+  border-radius: var(--kc-radius-sm);
+  color: var(--kc-color-text);
+  font-size: var(--kc-font-s);
+  font-weight: var(--kc-font-weight-bold);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
+}
+
+.kc-szerkeszto-szalag__link--masodlagos {
+  font-weight: var(--kc-font-weight-medium);
+}
+
+.kc-szerkeszto-szalag__link:hover,
+.kc-szerkeszto-nezet__link:hover {
+  background-color: var(--kc-color-surface-tint);
+  color: var(--kc-color-primary-hover);
+}
+
+.kc-szerkeszto-szalag__link:focus-visible,
+.kc-szerkeszto-nezet__link:focus-visible {
+  outline: 3px solid var(--kc-color-focus);
+  outline-offset: 2px;
+}
+
+/*
+ * SZOMSZÉD-SZELEKTOROK TÜKRE. A szalag a szekciók KÖZÉ kerül, ezért az a
+ * szabály, amely két szekció közvetlen szomszédságára épül (`:has(+ …)`),
+ * piszkozatban nem illeszkedne. A services.css „szekcióhatár a sín előtt”
+ * szabályát ugyanazzal a törzzsel tükrözzük egy, illetve két közbeeső
+ * szalagra (a sín saját szalagja, előtte legfeljebb egy rejtett szekcióé).
+ * Őr: src/__tests__/szerkeszto-szalag.test.tsx (a két törzs egyezik).
+ */
+.kc-section.kc-board.kc-board--edge.kc-services--photo:has(
+    + .kc-szerkeszto-szalag + .kc-services--sin
+  ),
+.kc-section.kc-board.kc-board--edge.kc-services--photo:has(
+    + .kc-szerkeszto-szalag + .kc-szerkeszto-szalag + .kc-services--sin
+  ) {
+  padding-bottom: var(--kc-board-y);
+}
+
+/*
+ * FEJLÉC-BELÉPŐ (publikált nézet, csak staff/owner). A ragadós fejléc FÖLÖTT,
+ * a folyamban álló sáv: nem ragad, nem takar, és a fejléc-sáv mért
+ * szélesség-tartalékát (320 px-en 39,5 px, layout.css) sem fogyasztja.
+ */
+.kc-szerkeszto-nezet {
+  background-color: var(--kc-color-surface-raised);
+  border-bottom: 2px dashed var(--kc-color-primary);
+  color: var(--kc-color-text);
+}
+
+.kc-szerkeszto-nezet__belso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 var(--kc-space-4);
+  /* A fókuszgyűrű (3 px + 2 px távolság) a lap tetején se vágódjon le. */
+  padding-block: var(--kc-space-1);
+}
+
+.kc-szerkeszto-nezet__szoveg {
+  margin: 0;
+  color: var(--kc-color-text-muted);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}

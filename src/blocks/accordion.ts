@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { sectionSettings } from './section-settings'
 
 /**
@@ -11,8 +12,8 @@ export const accordion: Block = {
   slug: 'accordion',
   interfaceName: 'BlockAccordion',
   labels: {
-    singular: 'Nyitható szekció',
-    plural: 'Nyitható szekciók',
+    singular: 'Nyitható sorok',
+    plural: 'Nyitható soros szekciók',
   },
   admin: {
     // A blokk nem kötődik kezdőlapi pozícióhoz (elsősorban belső oldalak hosszú
@@ -24,9 +25,9 @@ export const accordion: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Kis felső felirat',
+      label: 'Felső kis felirat',
       admin: {
-        description: 'A cím fölötti apró szöveg (pl. „Szakmai háttér"). Nem kötelező.',
+        description: 'A cím fölötti apró szöveg (pl. „Szakmai háttér”). Nem kötelező.',
       },
     },
     {
@@ -34,7 +35,7 @@ export const accordion: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A nyitható sorok fölötti cím (pl. „Részletes szakmai háttér").',
+        description: 'A nyitható sorok fölötti cím (pl. „Részletes szakmai háttér”).',
       },
     },
     {
@@ -43,7 +44,7 @@ export const accordion: Block = {
       label: 'Bevezető szöveg',
       admin: {
         description:
-          'Egy-két mondat a nyitható sorok fölé — ez MINDIG látszik. Ide írd azt, amit senki nem hagyhat ki; a lenyitott részbe csak olyasmi kerüljön, ami elolvasás nélkül is érthetővé teszi az oldalt.',
+          'Egy-két mondat a nyitható sorok fölé, ez mindig látszik. Ide írd azt, amit senki nem hagyhat ki; a lenyitott részbe csak olyasmi kerüljön, ami nélkül is érthető az oldal.',
       },
     },
     {
@@ -55,7 +56,7 @@ export const accordion: Block = {
       labels: { singular: 'Nyitható sor', plural: 'Nyitható sorok' },
       admin: {
         description:
-          'Minden sor alapból ZÁRVA jelenik meg, a látogató kattintásra nyitja ki. Ezért ide csak MÁSODLAGOS, hosszú olvasnivaló való (pl. szakmai önéletrajz, médiamegjelenések). Árat, kedvezményt, garanciát és a fő gombot SOHA ne rejtsd lenyitó mögé — amit elrejtesz, azt sokan sosem olvassák el.',
+          'Minden sor alapból zárva jelenik meg, a látogató kattintásra nyitja ki. Ezért ide csak másodlagos, hosszú olvasnivaló való (pl. szakmai önéletrajz, médiamegjelenések). Árat, kedvezményt, garanciát és a fő gombot soha ne rejtsd lenyitó mögé: amit elrejtesz, azt sokan sosem olvassák el.',
         initCollapsed: true,
       },
       fields: [
@@ -73,8 +74,7 @@ export const accordion: Block = {
           relationTo: 'media',
           label: 'Kis portré a sor elején',
           admin: {
-            description:
-              'Nem kötelező. Akkor érdemes, ha a sor EGY személyről szól (pl. szakmai önéletrajz): a kép csukott állapotban is a név mellett áll, kicsi körben. Témához, listához (pl. „Médiamegjelenések") ne tegyél képet — üresen hagyva a sor kép nélkül jelenik meg. A képleírást (alt) a Képek közt add meg egyszer, ide nem kell újra.',
+            description: `Nem kötelező. Akkor érdemes, ha a sor egy személyről szól (pl. szakmai önéletrajz): a kép csukott állapotban is a név mellett áll, kicsi körben. Témához, listához (pl. „Médiamegjelenések”) ne tegyél képet, üresen hagyva a sor kép nélkül jelenik meg. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
           },
         },
         {
@@ -84,7 +84,7 @@ export const accordion: Block = {
           label: 'A sor címe',
           admin: {
             description:
-              'Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata szakmai önéletrajza").',
+              'Ez látszik csukott állapotban, erre kattint a látogató (pl. „Kocsis Kata szakmai önéletrajza”).',
           },
         },
         {
@@ -93,7 +93,7 @@ export const accordion: Block = {
           label: 'Rövid kivonat a cím mellé',
           admin: {
             description:
-              'Nem kötelező, de érdemes: csukott állapotban is megmutatja, mennyi és milyen tartalom van a sor mögött (pl. „31 tanfolyam · 8 konferencia"). Egy sornyi legyen.',
+              'Nem kötelező, de érdemes: csukott állapotban is megmutatja, mennyi és milyen tartalom van a sor mögött (pl. „31 tanfolyam · 8 konferencia”). Egy sornyi legyen.',
           },
         },
         {

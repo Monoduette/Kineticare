@@ -8,19 +8,28 @@ import { Section } from '../ui/Section'
 import {
   NOT_FOUND_CHECKS,
   NOT_FOUND_CONTACT_EMAIL,
-  NOT_FOUND_DESTINATIONS,
   NOT_FOUND_DESTINATIONS_LABEL,
   NOT_FOUND_LEAD,
   NOT_FOUND_PRIMARY_ACTION,
   NOT_FOUND_SECONDARY_ACTION,
   NOT_FOUND_TITLE,
+  notFoundDestinations,
 } from './not-found-content'
+
+export interface NotFoundViewProps {
+  /**
+   * A Tudástár-kapcsoló állapota (src/lib/tudastar-kapcsolo.ts). Hamis
+   * értéknél a „Vagy folytasd innen” listában nincs Tudástár-javaslat.
+   * Elhagyva látható: a nézet adatbázis nélkül is renderelhető marad.
+   */
+  tudastarLathato?: boolean
+}
 
 /**
  * A „nem található" oldal TÖRZSE. Egy komponens, két beépítési hely:
  * 2. `src/app/global-not-found.tsx` — ide fut minden NEM ILLESZKEDŐ URL
  */
-export function NotFoundView() {
+export function NotFoundView({ tudastarLathato = true }: NotFoundViewProps = {}) {
   return (
     <Section>
       {/* Felvezető sor (eyebrow) SZÁNDÉKOSAN nincs: a régi lapon a nagy „404"
@@ -49,7 +58,7 @@ export function NotFoundView() {
             {NOT_FOUND_DESTINATIONS_LABEL}
           </p>
           <ul className="kc-error-page__dest-list">
-            {NOT_FOUND_DESTINATIONS.map((destination) => (
+            {notFoundDestinations(tudastarLathato).map((destination) => (
               <li key={destination.href}>
                 <Link className="kc-error-page__dest-link" href={destination.href}>
                   <span className="kc-error-page__dest-label">{destination.label}</span>

@@ -5,7 +5,7 @@ import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 
 const importMapURL = new URL('../app/(payload)/admin/importMap.js', import.meta.url)
-const components = ['WebAnalyticsView', 'WebAnalyticsNavLink'] as const
+const components = ['WebAnalyticsView', 'AdminNavLinks'] as const
 
 function readGeneratedBindings() {
   // Parse only: importing the generated module would load real admin components.

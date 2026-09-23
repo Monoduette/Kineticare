@@ -1,7 +1,7 @@
 import { formatPriceHuf } from '../../lib/format-price'
 
 /**
- * A Rendelések admin-lista „Tételek" oszlopának TISZTA (mellékhatásmentes)
+ * A Rendelések admin-lista „Tételek” oszlopának TISZTA (mellékhatásmentes)
  * formázó segédfüggvénye.
  * Külön modulban él a kliens-komponenstől, hogy egységtesztelhető legyen
  * (az OrderItemsCell.tsx React-komponens; a @payloadcms/ui-s cellák
@@ -9,8 +9,29 @@ import { formatPriceHuf } from '../../lib/format-price'
  * A bemenet a cella `cellData`-ja: az orders `items` array-mezőjének sorai.
  */
 
-/** Üres/hiányzó tétellista és hibás tétel-sor közös helyőrzője. */
-export const ORDER_ITEMS_EMPTY_PLACEHOLDER = '—'
+/*
+ * A korábbi „—” (U+2014) helyőrző és elválasztó helyett kimondott szöveg és
+ * középpont áll. A kvirtmínusz magyar szövegben nem írásjel
+ * (docs/ui-sztenderdek.md §3.1.1), a puszta jel pedig a képernyőolvasóban néma
+ * vagy „em dash”, tehát az információ elvész (WCAG 2.2 SC 1.3.1). Ugyanez a
+ * minta áll a Felhasználók lista „Megvásárolt kurzusok” cellájában
+ * (purchases-cell.ts: PURCHASES_EMPTY_PLACEHOLDER, PROGRESS_SEPARATOR).
+ */
+
+/** Üres vagy hiányzó tétellista. */
+export const ORDER_ITEMS_EMPTY_PLACEHOLDER = 'Nincs tétel'
+
+/** Nem értelmezhető (nem objektum) tételsor. */
+export const ORDER_ITEM_INVALID_ROW = 'Olvashatatlan tétel'
+
+/** Sem megrendeléskori név, sem kurzus-azonosító nincs a soron. */
+export const ORDER_ITEM_UNKNOWN_TITLE = 'Ismeretlen kurzus'
+
+/** Hiányzó vagy hibás ár-snapshot (mondatközi alak, a sor végén áll). */
+export const ORDER_ITEM_UNKNOWN_PRICE = 'ár nem ismert'
+
+/** A tétel és az ára közti elválasztó: középpont, szóközök között. */
+export const ORDER_ITEM_SEPARATOR = '·'
 
 /** Egy tétel-sor szűkített, megjeleníthető alakja. */
 interface OrderItemLine {
@@ -45,7 +66,7 @@ function readTitle(record: Record<string, unknown>): string {
       return `#${id}`
     }
   }
-  return ORDER_ITEMS_EMPTY_PLACEHOLDER
+  return ORDER_ITEM_UNKNOWN_TITLE
 }
 
 /** A mennyiség: pozitív, véges szám; hibás/hiányzó értékre 1 (a mező defaultja). */
@@ -80,11 +101,11 @@ function readOrderItemLine(row: unknown): OrderItemLine | null {
 }
 
 /**
- * A cella megjelenítendő sorai.
+ * A cella megjelenítendő sorai („kurzus × db · tételár”).
  *
- * - nem tömb / üres tömb → egyetlen „—" sor,
- * - hibás (nem objektum) sor → „—" fallback-sor (némán, kivétel nélkül),
- * - hiányzó ár-snapshot → az ár helyén „—", a tétel többi része látszik.
+ * - nem tömb / üres tömb → egyetlen „Nincs tétel” sor,
+ * - hibás (nem objektum) sor → „Olvashatatlan tétel” (némán, kivétel nélkül),
+ * - hiányzó ár-snapshot → az ár helyén „ár nem ismert”, a tétel többi része látszik.
  */
 export function formatOrderItemsLines(cellData: unknown): string[] {
   if (!Array.isArray(cellData) || cellData.length === 0) {
@@ -93,10 +114,10 @@ export function formatOrderItemsLines(cellData: unknown): string[] {
   return cellData.map((row) => {
     const line = readOrderItemLine(row)
     if (!line) {
-      return ORDER_ITEMS_EMPTY_PLACEHOLDER
+      return ORDER_ITEM_INVALID_ROW
     }
     const price =
-      line.linePriceHuf === null ? ORDER_ITEMS_EMPTY_PLACEHOLDER : formatPriceHuf(line.linePriceHuf)
-    return `${line.title} × ${line.quantity} — ${price}`
+      line.linePriceHuf === null ? ORDER_ITEM_UNKNOWN_PRICE : formatPriceHuf(line.linePriceHuf)
+    return `${line.title} × ${line.quantity} ${ORDER_ITEM_SEPARATOR} ${price}`
   })
 }

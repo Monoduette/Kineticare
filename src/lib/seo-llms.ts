@@ -1,9 +1,16 @@
 import type { Page, Post, Product } from '../payload-types'
 import { isLegacyNoindexPage } from './legacy-noindex'
+import { isDiscoverableCourse } from './course-discovery'
 import { courseHref } from './course-url'
 import { courseTitle } from './courses'
+import { resolveFilmCaptions } from './film-captions'
+import { freeSosStripTitle } from './free-sos-title'
 import { rewriteVisitorDashLeftover } from './gondolatjel-leftover'
+import { presentHomeLayout } from './home-help-states'
 import { absoluteUrl, CONTACT_EMAIL, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from './seo'
+import { isAvailableSosProduct } from './sos-offer'
+import { isHubSlug } from './tudastar-kapcsolo'
+import { layoutTudastarLinkekNelkul, lexicalTudastarLinkekNelkul } from './tudastar-link-szuro'
 import { cikkUtvonal } from './tudastar/hub-oldalak'
 
 /**
@@ -25,6 +32,19 @@ import { cikkUtvonal } from './tudastar/hub-oldalak'
  * kizárólag a publikált CMS-rekordokból épül — ugyanaz a szöveg, ami a
  * lapokon látszik (a strukturált adat és a látható tartalom egyezésének
  * elve itt is áll).
+ *
+ * EGY MEZŐ, EGY FELOLDÓ (modul-térkép H46, terv 2. szakasz): ahol a lap mást
+ * mutat, mint a nyers CMS-mező, ott ez a fájl UGYANAZT a tiszta feloldót
+ * hívja, mint a komponens. Az SOS-sáv címe a `freeSosStripTitle`
+ * (src/lib/free-sos-title.ts, a FreeSos.tsx-szel közös), a nyitó videó két
+ * beúszó felirata a `resolveFilmCaptions` (src/lib/film-captions.ts, a
+ * FilmHero.tsx-szel közös), a kezdőlap szekciósora a `presentHomeLayout`
+ * (src/lib/home-help-states.ts, a HomeView-val közös). Így a gépi olvasó nem
+ * kap más nevet ugyanarra a szekcióra, mint a látogató (WCAG 2.2 SC 3.2.4;
+ * NN/g, Consistency and Standards: „Users should not have to wonder whether
+ * different words, situations, or actions mean the same thing.”
+ * https://www.nngroup.com/articles/consistency-and-standards/). Az őr:
+ * src/__tests__/gepi-olvasas-feloldok.test.ts.
  */
 
 /** A markdown-ban kiírt szöveg: töltelék gondolatjel nélkül, egy sorban. */
@@ -219,17 +239,61 @@ function itemLines(item: Record<string, unknown>): string[] {
 }
 
 /**
+ * Amit a lap a blokkon KÍVÜLRŐL dönt el, és a szekció szövegét változtatja.
+ * A RenderBlocks ugyanezt a két jelet számolja (`freeProduct`, `freeSosHref`,
+ * src/components/blocks/RenderBlocks.tsx).
+ */
+export interface BlokkKornyezet {
+  /** Van-e a lapon elérhető ingyenes SOS-kurzus (a RenderBlocks `freeProduct !== null`). */
+  ingyenesSos: boolean
+  /**
+   * A nyitó videó vég-leírásához: elérhető SOS-kurzus mellett van-e a blokk
+   * UTÁN látható SOS-sáv (a RenderBlocks `freeSosHref`-je nem null). Csak
+   * ilyenkor hivatkozhat a szöveg a „lentebb” álló ingyenes gyakorlatokra.
+   */
+  sosSavLentebb: boolean
+}
+
+/** Termék nélküli környezet: a lap is így renderel, ha nincs elérhető SOS-kurzus. */
+const SOS_NELKUL: BlokkKornyezet = { ingyenesSos: false, sosSavLentebb: false }
+
+/**
+ * Egy feloldó kimenete egy sorban. A feloldó szövege szó szerint az, amit a
+ * lap mutat, ezért itt a `clean` maradék-cseréje sem fut rá; csak a sortörés
+ * és a többszörös szóköz esik össze, ahogy a böngésző is összevonja.
+ */
+function egySorban(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/** A szekció H2-je: az SOS-sávnál a lap feloldója, máshol a Cím vagy a Címsor mező. */
+function blokkCim(record: Record<string, unknown>, kornyezet: BlokkKornyezet): string | undefined {
+  if (record.blockType === 'freeSos') {
+    return egySorban(freeSosStripTitle(record, kornyezet.ingyenesSos))
+  }
+  const title = trimmed(record.title) ?? trimmed(record.heading)
+  return title ? clean(title) : undefined
+}
+
+/**
  * Egy szekció-blokk markdownja: cím H2-ként, bevezető, majd a tételek. A
  * rejtett (`sectionSettings.visible === false`) blokk kimarad, ahogy a lapról
  * is hiányzik.
+ *
+ * A `kornyezet` a lap döntése arról, ami a blokkon kívül van (elérhető
+ * ingyenes SOS-kurzus, SOS-sáv lentebb). Elhagyva: termék nélkül, ahogy a lap
+ * is renderel, ha nincs elérhető SOS-kurzus.
  */
-export function layoutBlockToMarkdown(block: LayoutBlock): string {
+export function layoutBlockToMarkdown(
+  block: LayoutBlock,
+  kornyezet: BlokkKornyezet = SOS_NELKUL,
+): string {
   const record = block as unknown as Record<string, unknown>
   const settings = isRecord(record.sectionSettings) ? record.sectionSettings : {}
   if (settings.visible === false) return ''
   const lines: string[] = []
-  const title = trimmed(record.title) ?? trimmed(record.heading)
-  if (title) lines.push(`## ${clean(title)}`)
+  const title = blokkCim(record, kornyezet)
+  if (title) lines.push(`## ${title}`)
   for (const key of ['lead', 'text', 'magyarazat'] as const) {
     const value = trimmed(record[key])
     if (value) lines.push(clean(value))
@@ -246,6 +310,16 @@ export function layoutBlockToMarkdown(block: LayoutBlock): string {
       } else if (typeof entry === 'string' && entry.trim().length > 0) {
         lines.push(`- ${clean(entry)}`)
       }
+    }
+  }
+  if (record.blockType === 'filmHero') {
+    // A két beúszó felirat a lapon a jelenet szövege után, olvasási listában
+    // áll (scroll-scrub.tsx `scroll-scrub__reading-captions`: cím és leírás,
+    // két bekezdés). A szöveg a FilmHero feloldójából jön, a beépített
+    // tartalékkal együtt, így üres CMS-mezőnél is az kerül ide, ami a lapon.
+    const feliratok = resolveFilmCaptions(record, kornyezet.sosSavLentebb)
+    for (const felirat of [feliratok.mid, feliratok.end]) {
+      lines.push(egySorban(felirat.title), egySorban(felirat.body))
     }
   }
   return lines.join('\n\n')
@@ -284,6 +358,51 @@ export interface LlmsSource {
   products: ReadonlyArray<LlmsProduct>
   /** Poszt-slug → kanonikus útvonal (publikált gyökér-hub). */
   hubUtvonalak?: Readonly<Record<string, string>>
+  /**
+   * Van-e elérhető ingyenes SOS-kurzus (`vanElerhetoIngyenesSos`, a route a
+   * lapokkal azonos terméklistából számolja). Ettől függ az SOS-sáv címe és a
+   * nyitó videó vég-leírása. Elhagyva: nincs, ahogy a lap is renderel
+   * termék nélkül (az SOS-sáv címe „Kurzusaink”).
+   */
+  ingyenesSos?: boolean
+  /**
+   * A Tudástár-kapcsoló állapota (`getTudastarLathato`). Elhagyva: látható.
+   * Hamis értéknél a kimenetben nincs Tudástár: se szekció, se cikk, se
+   * tünet-hub, és a lapok, kurzusok szövegéből a Tudástár-linkek is kibomlanak.
+   */
+  tudastarLathato?: boolean
+}
+
+/**
+ * A forrás Tudástár nélkül (kikapcsolt kapcsolónál). A hub-oldalak is
+ * kimaradnak, mert a hub Tudástár-cikk (src/lib/tudastar-kapcsolo.ts); a
+ * szekciósorból a Tudástár-ajánló blokk is kiesik, mert a lapon sem látszik.
+ */
+function tudastarSzurtForras(source: LlmsSource): LlmsSource {
+  if (source.tudastarLathato !== false) return source
+  return {
+    ...source,
+    posts: [],
+    hubUtvonalak: {},
+    pages: source.pages
+      .filter((page) => !isHubSlug(page.slug))
+      .map((page) => ({
+        ...page,
+        ...(page.layout
+          ? {
+              layout: layoutTudastarLinkekNelkul(page.layout).filter(
+                (block) => block.blockType !== 'knowledge',
+              ),
+            }
+          : {}),
+        ...(page.content ? { content: lexicalTudastarLinkekNelkul(page.content) } : {}),
+      })),
+    products: source.products.map((product) =>
+      product.longDescription
+        ? { ...product, longDescription: lexicalTudastarLinkekNelkul(product.longDescription) }
+        : product,
+    ),
+  }
 }
 
 /** A kezdőlap CMS-slugja: a `/` címen él, nem `/kezdolap`-on. */
@@ -302,6 +421,44 @@ function pagePath(page: LlmsPage): string {
 }
 
 /**
+ * Van-e elérhető ingyenes SOS-kurzus: UGYANAZ a predikátum, amellyel a lap
+ * dönt. A RenderBlocks és a HomeView:
+ * `products.filter(isPubliclyVisibleProduct).find(isAvailableSosProduct)`,
+ * ahol az `isPubliclyVisibleProduct` maga az `isDiscoverableCourse`
+ * (src/components/content/ProductCard.tsx). A komponens-modul CSS-t és
+ * next/link-et húz be, ezért a két függvényt a forrásukból importáljuk.
+ */
+export function vanElerhetoIngyenesSos(products: ReadonlyArray<Product>): boolean {
+  return products.filter(isDiscoverableCourse).some((product) => isAvailableSosProduct(product))
+}
+
+/**
+ * Azok a lapok, amelyek a szekciósort termékek nélkül renderelik: a /kapcsolat
+ * route a RenderBlocks-nak üres terméklistát ad
+ * (src/app/(frontend)/kapcsolat/page.tsx, `products={[]}`), ezért ott egy
+ * SOS-sáv a semleges címet mutatná.
+ */
+const TERMEK_NELKULI_LAPOK: ReadonlySet<string> = new Set(['kapcsolat'])
+
+/**
+ * A lap szekciósora úgy, ahogy a lap megjeleníti: a kezdőlap a HomeView-val
+ * közös `presentHomeLayout`-on megy át (a segítség-sín üres mezőit a
+ * kódbeli szöveg pótolja). A /szolgaltatasok `presentSzolgaltatasokLayout`-ja
+ * csak elrendezést, hátteret és fotót állít, szöveget nem, ezért itt nem kell.
+ */
+function megjelenoSzekciosor(page: LlmsPage): NonNullable<Page['layout']> {
+  const layout = page.layout ?? []
+  return page.slug === HOME_SLUG ? presentHomeLayout(layout) : layout
+}
+
+/** A RenderBlocks `freeSosHref`-jének feltétele: látható SOS-sáv áll-e a blokk után. */
+function lathatoSosSavUtana(layout: NonNullable<Page['layout']>, index: number): boolean {
+  return layout
+    .slice(index + 1)
+    .some((block) => block.blockType === 'freeSos' && block.sectionSettings?.visible !== false)
+}
+
+/**
  * Slug nélküli (piszkozat, elrontott) rekord kimarad. Rejtett slug-lista
  * nincs (WP60): az egykori demólap (`akcios-kurzus`) kivezetése nem kódból,
  * hanem a CMS-ből történik (közzététel visszavonása, `demo-oldal-visszavonas`
@@ -315,7 +472,9 @@ function isPublicPage(page: LlmsPage): boolean {
 /**
  * `/llms.txt` — a webhely térképe az llmstxt.org alakjában.
  */
-export function buildLlmsTxt(source: LlmsSource): string {
+export function buildLlmsTxt(input: LlmsSource): string {
+  const source = tudastarSzurtForras(input)
+  const tudastarLathato = input.tudastarLathato !== false
   const pages = source.pages.filter(isPublicPage)
   // A publikált tünet-hubok (pages) a Tudástár szekcióban állnak, a cikkük
   // kanonikus címén — itt nem ismételjük őket, egy URL egyszer szerepel.
@@ -335,7 +494,7 @@ export function buildLlmsTxt(source: LlmsSource): string {
     '',
     `> ${SITE_DESCRIPTION}`,
     '',
-    `${SITE_NAME}: ${SITE_TAGLINE.toLowerCase()}. Két budapesti gyógytornász, Kocsis Kata és Kiss Kata kézrehabilitációs praxisa: rendelői kezelés, otthoni online videóprogram és akkreditált szakmai képzés. A cikkek és a kurzusok magyar nyelvűek. Kapcsolat: ${CONTACT_EMAIL}.`,
+    `${SITE_NAME}: ${SITE_TAGLINE.toLowerCase()}. Két budapesti gyógytornász, Kocsis Kata és Kiss Kata kézrehabilitációs praxisa: rendelői kezelés, otthoni online videóprogram és akkreditált szakmai képzés. ${tudastarLathato ? 'A cikkek és a kurzusok magyar nyelvűek.' : 'A kurzusok magyar nyelvűek.'} Kapcsolat: ${CONTACT_EMAIL}.`,
     '',
     'Fontos: a tartalom tájékoztató jellegű, nem helyettesíti az orvosi vizsgálatot; a gyakorlatokat a kezelőorvos jóváhagyásával érdemes végezni.',
     '',
@@ -370,21 +529,23 @@ export function buildLlmsTxt(source: LlmsSource): string {
       )
     }
   }
-  lines.push(
-    '',
-    '## Tudástár',
-    '',
-    linkLine('Tudástár', '/blog', 'Kézrehabilitációs cikkek gyógytornászoktól.'),
-  )
-  for (const post of source.posts) {
-    if (typeof post.slug !== 'string' || post.slug.length === 0) continue
+  if (tudastarLathato) {
     lines.push(
-      linkLine(
-        post.title,
-        cikkUtvonal(post.slug, source.hubUtvonalak),
-        post.seoDescription ?? post.excerpt,
-      ),
+      '',
+      '## Tudástár',
+      '',
+      linkLine('Tudástár', '/blog', 'Kézrehabilitációs cikkek gyógytornászoktól.'),
     )
+    for (const post of source.posts) {
+      if (typeof post.slug !== 'string' || post.slug.length === 0) continue
+      lines.push(
+        linkLine(
+          post.title,
+          cikkUtvonal(post.slug, source.hubUtvonalak),
+          post.seoDescription ?? post.excerpt,
+        ),
+      )
+    }
   }
   lines.push(
     '',
@@ -411,16 +572,21 @@ function dateLine(label: string, value: unknown): string | undefined {
   return text ? `${label}: ${text.slice(0, 10)}` : undefined
 }
 
-function pageMarkdown(page: LlmsPage): string {
+function pageMarkdown(page: LlmsPage, ingyenesSos: boolean): string {
   const parts: string[] = [`# ${clean(page.title)}`, `URL: ${absoluteUrl(pagePath(page))}`]
   const modified = dateLine('Frissítve', page.updatedAt)
   if (modified) parts.push(modified)
   const excerpt = trimmed(page.excerpt)
   if (excerpt) parts.push(clean(excerpt))
-  for (const block of page.layout ?? []) {
-    const md = layoutBlockToMarkdown(block)
+  const layout = megjelenoSzekciosor(page)
+  const sosALapon = ingyenesSos && !TERMEK_NELKULI_LAPOK.has(page.slug)
+  layout.forEach((block, index) => {
+    const md = layoutBlockToMarkdown(block, {
+      ingyenesSos: sosALapon,
+      sosSavLentebb: sosALapon && lathatoSosSavUtana(layout, index),
+    })
     if (md.length > 0) parts.push(md)
-  }
+  })
   const content = lexicalToMarkdown(page.content)
   if ((page.layout ?? []).length === 0 && content.length > 0) parts.push(content)
   return parts.join('\n\n')
@@ -459,7 +625,8 @@ function productMarkdown(product: LlmsProduct): string {
  * `pages`-ben élő tünet-gyökerek) a cikkük szövegét viszik, ahogy a lapon
  * is a cikk látszik; a cikk így egyszer szerepel, a kanonikus címén.
  */
-export function buildLlmsFullTxt(source: LlmsSource): string {
+export function buildLlmsFullTxt(input: LlmsSource): string {
+  const source = tudastarSzurtForras(input)
   const sections: string[] = [
     `# ${SITE_NAME}`,
     `> ${SITE_DESCRIPTION}`,
@@ -468,7 +635,7 @@ export function buildLlmsFullTxt(source: LlmsSource): string {
   const hubSlugs = hubSlugSet(source.hubUtvonalak)
   for (const page of source.pages.filter(isPublicPage)) {
     if (hubSlugs.has(page.slug)) continue
-    sections.push(pageMarkdown(page))
+    sections.push(pageMarkdown(page, source.ingyenesSos === true))
   }
   for (const product of source.products) {
     sections.push(productMarkdown(product))

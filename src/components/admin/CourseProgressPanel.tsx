@@ -435,7 +435,7 @@ export function CourseProgressPanel() {
       </p>
       <p style={noteStyle}>
         Ki kapott hozzáférést, ki kezdte el, és hol tart. A százalék ugyanabból a számításból
-        jön, amit a vevő is lát a lejátszóban.
+        jön, amit a vásárló is lát a lejátszóban.
       </p>
 
       <div style={rowStyle}>
@@ -499,6 +499,7 @@ export function CourseProgressPanel() {
                     Állapot
                   </label>
                   <select
+                    className="kc-admin-input"
                     id="kineticare-progress-status"
                     onChange={(event) => {
                       setStatusFilter(event.target.value as StudentStatusFilter)
@@ -519,6 +520,7 @@ export function CourseProgressPanel() {
                     Keresés (név vagy e-mail)
                   </label>
                   <input
+                    className="kc-admin-input"
                     id="kineticare-progress-search"
                     onChange={(event) => {
                       setQuery(event.target.value)
@@ -536,9 +538,15 @@ export function CourseProgressPanel() {
                   látogató saját, következménnyel járó cselekvése (letöltött fájl)
                   — docs/ui-sztenderdek.md §3.1.5, P-1a.
                 */}
+                {/*
+                  A gomb saját függőleges margója kikapcsolva: a szűrősor az
+                  aljához igazít (flex-end), a Payload-gomb alapértelmezett
+                  margója viszont a 40 px-es .kc-admin-input mezők fölé emelte.
+                */}
                 <Button
                   buttonStyle="secondary"
                   disabled={matchingStudents.length === 0}
+                  margin={false}
                   onClick={downloadCsv}
                   size="small"
                 >

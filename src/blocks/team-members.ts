@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { linkGroup } from './link-fields'
 import { sectionSettings } from './section-settings'
 
@@ -11,8 +12,8 @@ export const teamMembers: Block = {
   slug: 'teamMembers',
   interfaceName: 'BlockTeamMembers',
   labels: {
-    singular: 'Szakértő-kártyák',
-    plural: 'Szakértő-kártya szekciók',
+    singular: 'Szakemberek kártyái',
+    plural: 'Szakemberkártya-szekciók',
   },
   admin: {
     // A meglévő KÉT admin-csoport egyike (a másik a kezdőlapi sorrendé). A blokk
@@ -24,9 +25,9 @@ export const teamMembers: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Kis felső felirat',
+      label: 'Felső kis felirat',
       admin: {
-        description: 'A cím fölötti apró szöveg (pl. „A csapat"). Nem kötelező.',
+        description: 'A cím fölötti apró szöveg (pl. „A csapat”). Nem kötelező.',
       },
     },
     {
@@ -34,7 +35,7 @@ export const teamMembers: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A két bemutatkozás fölötti cím (pl. „Kik vagyunk?").',
+        description: 'A két bemutatkozás fölötti cím (pl. „Kik vagyunk?”).',
       },
     },
     {
@@ -49,8 +50,8 @@ export const teamMembers: Block = {
       name: 'bookingLink',
       label: 'Írásos időpontkérés',
       description:
-        'Nem kötelező, a szekció alján jelenik meg, a kártyák alatt. A telefonálás melletti MÁSIK út (pl. „Kérj időpontot üzenetben" a /kapcsolat oldalra). Sok páciens nem szívesen telefonál, ezért érdemes írásos utat is kínálni.',
-      labelDescription: 'Ez a szöveg jelenik meg a linken (pl. „Kérj időpontot üzenetben").',
+        'Nem kötelező, a szekció alján jelenik meg, a kártyák alatt. A telefonálás melletti másik út (pl. „Kérj időpontot üzenetben” a /kapcsolat oldalra). Sok páciens nem szívesen telefonál, ezért érdemes írásos utat is kínálni.',
+      labelDescription: 'Ez a szöveg jelenik meg a linken (pl. „Kérj időpontot üzenetben”).',
     }),
     {
       name: 'members',
@@ -61,7 +62,7 @@ export const teamMembers: Block = {
       labels: { singular: 'Szakember', plural: 'Szakemberek' },
       admin: {
         description:
-          'Pontosan két szakember fér ide, egymás mellett, egyenlő súllyal. A portrékat előbb töltsd fel a Tartalom → Képek közé; a legjobb, ha mindkét kép AZONOS képarányú és hasonló fejméretű (különben az egyik közelebbinek látszik).',
+          'Pontosan két szakember fér ide, egymás mellett, egyenlő súllyal. A portrékat előbb töltsd fel a Tartalom → Képek közé; a legjobb, ha mindkét kép azonos képarányú és hasonló fejméretű (különben az egyik közelebbinek látszik).',
         initCollapsed: true,
       },
       fields: [
@@ -71,8 +72,7 @@ export const teamMembers: Block = {
           relationTo: 'media',
           label: 'Portré',
           admin: {
-            description:
-              'Álló (3:4 vagy 4:5) portré a legjobb. A képleírást (alt) a Képek közt add meg egyszer — ide nem kell újra beírni.',
+            description: `Álló (3:4 vagy 4:5) portré a legjobb. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
           },
         },
         {
@@ -80,7 +80,7 @@ export const teamMembers: Block = {
           type: 'text',
           required: true,
           label: 'Név',
-          admin: { description: 'A szakember teljes neve (pl. „Kocsis Kata").' },
+          admin: { description: 'A szakember teljes neve (pl. „Kocsis Kata”).' },
         },
         {
           name: 'role',
@@ -88,7 +88,7 @@ export const teamMembers: Block = {
           label: 'Titulus',
           admin: {
             description:
-              'Rövid szakmai megnevezés (pl. „Gyógytornász, manuálterapeuta, sportrehabilitációs tréner").',
+              'Rövid szakmai megnevezés (pl. „Gyógytornász, manuálterapeuta, sportrehabilitációs tréner”).',
           },
         },
         {
@@ -97,7 +97,7 @@ export const teamMembers: Block = {
           label: 'Rövid bemutatkozás',
           admin: {
             description:
-              '2–4 mondat. A teljes szakmai életutat NE ide írd — arra valók lent a szakmai listák.',
+              '2–4 mondat. A teljes szakmai életutat ne ide írd, arra valók lent a szakmai listák.',
           },
         },
         {
@@ -118,7 +118,7 @@ export const teamMembers: Block = {
           label: 'Telefonszám',
           admin: {
             description:
-              'Nem kötelező. Nemzetközi alakban, csoportokra tagolva írd (pl. „+36 30 169 2263"): így külföldről is tárcsázható, és könnyen leolvasható. Mobilon kattintható hívás-linkké alakul.',
+              'Nem kötelező. Nemzetközi alakban, csoportokra tagolva írd (pl. „+36 30 169 2263”): így külföldről is tárcsázható, és könnyen leolvasható. Mobilon kattintható hívás-linkké alakul.',
           },
         },
         {
@@ -127,7 +127,7 @@ export const teamMembers: Block = {
           label: 'A hívás felirata',
           admin: {
             description:
-              'Nem kötelező. Rövid, cselekvő felirat a telefonszám fölé (pl. „Hívd Katát"). Ha üresen hagyod, csak a szám látszik. Telefonszám nélkül nincs hatása.',
+              'Nem kötelező. Rövid, cselekvő felirat a telefonszám fölé (pl. „Hívd Katát”). Ha üresen hagyod, csak a szám látszik. Telefonszám nélkül nincs hatása.',
           },
         },
         {
@@ -136,7 +136,7 @@ export const teamMembers: Block = {
           label: 'Mikor és hol érhető el',
           admin: {
             description:
-              'Nem kötelező, egyetlen sor a hívás alá (pl. „Hétfőtől péntekig, a budapesti rendelőben"). Azt mondja meg, mire számítson a látogató, ha telefonál.',
+              'Nem kötelező, egyetlen sor a hívás alá (pl. „Hétfőtől péntekig, a budapesti rendelőben”). Azt mondja meg, mire számítson a látogató, ha telefonál.',
           },
         },
         {
@@ -164,7 +164,7 @@ export const teamMembers: Block = {
               type: 'text',
               required: true,
               label: 'Lista címe',
-              admin: { description: 'Pl. „Tanfolyamok, továbbképzések".' },
+              admin: { description: 'Pl. „Tanfolyamok, továbbképzések”.' },
             },
             {
               name: 'items',
@@ -173,7 +173,7 @@ export const teamMembers: Block = {
               label: 'Tételek',
               admin: {
                 description:
-                  'SORONKÉNT EGY tétel (pl. egy tanfolyam, egy előadás). Az üres sorok kimaradnak, a tételek számát a rendszer maga írja ki a lista címe mellé.',
+                  'Soronként egy tétel (pl. egy tanfolyam, egy előadás). Az üres sorok kimaradnak, a tételek számát a rendszer maga írja ki a lista címe mellé.',
               },
             },
           ],
@@ -182,9 +182,9 @@ export const teamMembers: Block = {
           name: 'link',
           label: 'Hivatkozás',
           description:
-            'Nem kötelező. Pl. „Bővebben a szakmai hátterről" — a részletes önéletrajz horgonyára vagy egy aloldalra mutathat.',
+            'Nem kötelező. Pl. „Bővebben a szakmai hátterről”: a részletes önéletrajz ugrópontjára vagy egy aloldalra mutathat.',
           labelDescription:
-            'Ez a szöveg jelenik meg a linken (pl. „Bővebben a szakmai hátterről").',
+            'Ez a szöveg jelenik meg a linken (pl. „Bővebben a szakmai hátterről”).',
         }),
       ],
     },

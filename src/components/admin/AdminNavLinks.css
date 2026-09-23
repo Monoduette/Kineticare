@@ -1,0 +1,58 @@
+/* Az oldalsáv saját menücsoportjai (AdminNavLinks.tsx, beforeNavLinks).
+   A térközök a Payload saját csoportjaiéval egyeznek (@payloadcms/ui
+   NavGroup: a csoport alatt base(0.5), a csoportcím alatt base(0.25)), a
+   linkek a Payload `nav__link` osztályát kapják: így a saját és a beépített
+   menüpontok egy menünek látszanak, egyforma sorközzel (admin-audit K33:
+   korábban 30 és 40 px váltakozott).
+   A csoportcím színe a Payload csoportcíméé (--theme-elevation-400); a B1
+   témarétege (src/app/(payload)/custom.scss 1. szakasz) ezt a tokent mindkét
+   témán AA-ra állítja. A fókuszgyűrűt a témaréteg közös link-szabálya adja. */
+.kc-admin-nav {
+  width: 100%;
+}
+
+.kc-admin-nav__csoport {
+  width: 100%;
+  margin-bottom: calc(var(--base) * 0.5);
+}
+
+.kc-admin-nav__cim {
+  margin: 0 0 calc(var(--base) * 0.25);
+  color: var(--theme-elevation-400);
+  font: inherit;
+}
+
+.kc-admin-nav__lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-admin-nav__elem {
+  margin: 0;
+  padding: 0;
+}
+
+/* A videó szövegeinek fejléc-linkje (KezdolapVideoFejlecLink). Szövegszíne a
+   Payload törzsszövege (--theme-text), aláhúzással: a link nem csak színnel
+   különül el (SC 1.4.1). A célfelület legalább 24 CSS px magas (SC 2.5.8).
+   768 CSS px alatt rejtve (a Payload fejléc-akcióinak helye ott 150 px). */
+.kc-admin-fejlec-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--theme-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  white-space: nowrap;
+}
+
+.kc-admin-fejlec-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+@media (max-width: 768px) {
+  .kc-admin-fejlec-link {
+    display: none;
+  }
+}

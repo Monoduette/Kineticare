@@ -695,9 +695,15 @@ describe('StatisticsReport + RevenueChart — a számok a táblázatban is ott v
     // nézet a Payload-kinézetre esne vissza, ezért a jelenléte szerkezeti
     // követelmény.
     expect(html).toContain('class="kc-adminstat"')
-    // A h1 fölötti eyebrow a landing felvezető-nyelve; a DOM-szöveg
-    // mondatkezdő, a verzált a CSS adja (ui-sztenderdek §3.1 M-4).
+    // A h1 fölötti eyebrow a landing felvezető-nyelvének színét és vonalát
+    // viszi, de mondatkezdő írással: verzál és ritkított betűköz nélkül
+    // (admin-audit K31, 2026-09-22; admin-szótár: verzál helyett mondatkezdő
+    // írás).
     expect(html).toContain('Kimutatások')
+    const eyebrowStilus = /<p class="kc-adminstat__eyebrow" style="([^"]*)"/.exec(html)?.[1] ?? ''
+    expect(eyebrowStilus).not.toBe('')
+    expect(eyebrowStilus).not.toMatch(/text-transform/)
+    expect(eyebrowStilus).not.toMatch(/letter-spacing/)
     // Az inline stílusok a márka-tokenre hivatkoznak, Payload-tartalékkal.
     expect(html).toContain('--kc-as-')
     expect(html).toContain('--theme-')

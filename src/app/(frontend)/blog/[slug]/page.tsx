@@ -6,6 +6,7 @@ import { cache } from 'react'
 import { JsonLd } from '@/components/content/JsonLd'
 import { PostArticle } from '@/components/content/PostArticle'
 import { authorPersonOf } from '@/components/content/post-article'
+import { szekcioMelylink } from '@/components/editor/szekcio-melylink'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import {
   getFreeProduct,
@@ -15,8 +16,15 @@ import {
   getRelatedPosts,
 } from '@/lib/cms'
 import { withDraftRobots } from '@/lib/preview/draft-metadata'
-import { absoluteUrl, buildPageMetadata, resolveOgImageUrl, resolveSeoDescription } from '@/lib/seo'
+import {
+  absoluteUrl,
+  buildPageMetadata,
+  NOINDEX_ROBOTS,
+  resolveOgImageUrl,
+  resolveSeoDescription,
+} from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 import { hubSlugForPost, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 /**
@@ -50,14 +58,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // author (ogp.me article objektum, https://ogp.me/#type_article). A szerző
   // a látható byline neve; populálatlan szerzőnél nincs author-meta.
   const author = authorPersonOf(post)
+  const metadata = buildPageMetadata(post, `/blog/${slug}`, {
+    article: {
+      publishedTime: post.publishedAt,
+      modifiedTime: post.updatedAt,
+      ...(author !== null ? { authors: [author.name] } : {}),
+    },
+  })
+  // Tudástár-kapcsoló: rejtett /blog menüpontnál a cikk elérhető marad (200),
+  // de `noindex, follow` jelölést kap. Az előnézet robots-metája (draft) ezt
+  // is felülírja, ahogy eddig.
+  const tudastarLathato = await getTudastarLathato()
   return withDraftRobots(
-    buildPageMetadata(post, `/blog/${slug}`, {
-      article: {
-        publishedTime: post.publishedAt,
-        modifiedTime: post.updatedAt,
-        ...(author !== null ? { authors: [author.name] } : {}),
-      },
-    }),
+    tudastarLathato ? metadata : { ...metadata, robots: NOINDEX_ROBOTS },
     isDraft,
   )
 }
@@ -95,7 +108,12 @@ export default async function BlogPostPage({ params }: Props) {
   // jönniük — ott van egy helyen a kettő (docs/seo-geo-llm.md 1. fejezet).
   return (
     <>
-      {isDraft ? <PreviewBar path={`/blog/${slug}`} /> : null}
+      {isDraft ? (
+        <PreviewBar
+          path={`/blog/${slug}`}
+          szerkesztoHref={szekcioMelylink({ collection: 'posts', id: post.id })}
+        />
+      ) : null}
       {/* Oldal-gráf: Organization + WebSite + WebPage; a cikk-csomópontot
           (@id …#article) és a morzsát a PostArticle adja, a WebPage @id-vel
           hivatkozik rájuk (mainEntity, breadcrumb). */}

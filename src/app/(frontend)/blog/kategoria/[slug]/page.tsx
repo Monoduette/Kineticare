@@ -16,9 +16,10 @@ import {
   getPublishedPageSlugs,
   getPublishedProducts,
 } from '@/lib/cms'
-import { absoluteUrl, blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { absoluteUrl, blogJsonLd, buildStaticPageMetadata, NOINDEX_ROBOTS } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { freeCourseHref } from '@/lib/tudastar'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 import '../../../styles/blocks/tudastar-lista.css'
@@ -75,7 +76,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const category = await categoryOf(slug)
   if (!category) return {}
-  const posts = await postsOf(slug)
+  const [posts, tudastarLathato] = await Promise.all([postsOf(slug), getTudastarLathato()])
   return {
     // A cím kötőjel-halmozás nélkül, magyarul olvasható mondatrészként. A
     // korábbi „<téma> — Tudástár" alak kvirtmínuszt (U+2014) használt
@@ -89,6 +90,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // Üres témánál nem kérünk indexelést (soft 404 elkerülése), de a linkek
     // bejárását igen.
     ...(posts.length === 0 ? { robots: { index: false, follow: true } } : {}),
+    // Tudástár-kapcsoló: rejtett /blog menüpontnál a téma-lap elérhető marad
+    // (200), de nem kér indexelést; a robots.txt nem tiltja (lásd /blog).
+    ...(tudastarLathato ? {} : { robots: NOINDEX_ROBOTS }),
   }
 }
 

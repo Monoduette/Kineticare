@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
+import { formatPriceHuf } from '../lib/format-price'
+
 import {
+  REFUND_IRREVERSIBLE_SENTENCE,
   refundBlockedReason,
-  refundConfirmQuestion,
+  refundConfirmText,
   validateRefundAmount,
 } from '../components/admin/refund-amount'
 
@@ -82,20 +85,32 @@ describe('refundBlockedReason', () => {
     expect(refundBlockedReason('payment_pending')).toContain('nincs kifizetve')
     expect(refundBlockedReason('payment_failed')).toContain('nem sikerült')
     expect(refundBlockedReason('cancelled')).toContain('le lett mondva')
-    expect(refundBlockedReason(null)).toContain('paid')
+    expect(refundBlockedReason(null)).toBe('Csak kifizetett rendelés téríthető vissza.')
+    expect(refundBlockedReason('valami-uj-statusz')).not.toContain('paid')
   })
 })
 
-describe('refundConfirmQuestion', () => {
-  it('teljes visszatérítésnél a rendelésszám szerepel benne', () => {
-    const question = refundConfirmQuestion('KH-2026-000777', null)
-    expect(question).toContain('KH-2026-000777')
-    expect(question).toContain('TELJES')
+describe('refundConfirmText (a megerősítő ablak szövege)', () => {
+  it('teljes visszatérítésnél a rendelésszám és a teljes összeg, verzál nélkül', () => {
+    const text = refundConfirmText('KH-2026-000777', null)
+    expect(text.heading).toBe('Visszatéríted az összeget?')
+    expect(text.detail).toBe(
+      'KH-2026-000777 rendelés: a még vissza nem térített teljes összeg visszajár a vásárlónak a Barionon keresztül.',
+    )
+    expect(text.warning).toBe(REFUND_IRREVERSIBLE_SENTENCE)
   })
 
-  it('részösszegnél az összeg is szerepel benne', () => {
-    const question = refundConfirmQuestion('KH-2026-000777', 5000)
-    expect(question).toContain('KH-2026-000777')
-    expect(question).toContain('5')
+  it('részösszegnél a formázott összeg szerepel benne', () => {
+    const text = refundConfirmText('KH-2026-000777', 5000)
+    expect(text.detail).toBe(
+      `KH-2026-000777 rendelés: ${formatPriceHuf(5000)} jár vissza a vásárlónak a Barionon keresztül.`,
+    )
+  })
+
+  it('nincs benne gondolatjel, ASCII idézőjel, verzál szó és „Biztosan” kérdés (NN/g)', () => {
+    for (const amount of [null, 5000]) {
+      const all = Object.values(refundConfirmText('KH-2026-000777', amount)).join(' ')
+      expect(all).not.toMatch(/[–—"]|\b[A-ZÁÉÍÓÖŐÚÜŰ]{2,}\b(?!-)|Biztosan/u)
+    }
   })
 })

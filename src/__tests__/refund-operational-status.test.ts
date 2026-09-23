@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { readRefundOperationalStatus } from '../components/admin/refund-operational-status'
+import {
+  hasRefundHistory,
+  readRefundOperationalStatus,
+} from '../components/admin/refund-operational-status'
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,7 +26,7 @@ describe('saved refund operational status, presentation only', () => {
     ({ data }) => {
       const result = values(data)
       expect(result.local).toContain('a pénzmozgás ebből nem állapítható meg')
-      expect(result.provider).toContain('szolgáltatói ellenőrzés szükséges')
+      expect(result.provider).toContain('ellenőrizd a Barion felületén')
       expect(result.storno).toContain('Nincs értékelhető')
       expect(result.corrective).toContain('Nincs értékelhető')
     },
@@ -33,8 +36,8 @@ describe('saved refund operational status, presentation only', () => {
     'does not turn refunded plus missing history into provider confirmation: $refunds',
     ({ refunds }) => {
       const result = values({ status: 'refunded', refunds })
-      expect(result.local).toBe('Teljes visszatérítés van helyben rögzítve.')
-      expect(result.provider).toContain('Nincs értékelhető mentett eredmény')
+      expect(result.local).toBe('Teljes visszatérítés van rögzítve a rendelésen.')
+      expect(result.provider).toContain('Nincs mentett Barion-válasz')
       expect(JSON.stringify(result)).not.toContain('hozzáférések rendezve')
     },
   )
@@ -43,21 +46,25 @@ describe('saved refund operational status, presentation only', () => {
     'labels a saved supported result without claiming recovery: %s',
     (status) => {
       const result = values({ status: 'paid', refunds: [entry({ status })] })
-      expect(result.local).toBe('Visszatérítési bejegyzés van helyben rögzítve.')
-      expect(result.provider).toBe('A megjeleníthető bejegyzésekben sikeres eredmény van mentve.')
+      expect(result.local).toBe('Visszatérítési bejegyzés van rögzítve a rendelésen.')
+      expect(result.provider).toBe(
+        'A Barion a mentett bejegyzésekben sikeres visszatérítést jelzett.',
+      )
     },
   )
 
   it.each(['Unknown', 'Created', 'unrecognised', '', null, 7])(
     'does not confirm unknown or malformed saved provider values: %j',
     (status) => {
-      expect(values({ refunds: [entry({ status })] }).provider).toContain('ellenőrzés szükséges')
+      expect(values({ refunds: [entry({ status })] }).provider).toContain(
+        'ellenőrizd a Barion felületén',
+      )
     },
   )
 
   it('labels a saved rejection without inferring that no money moved', () => {
     expect(values({ refunds: [entry({ status: 'RefundFailed' })] }).provider).toBe(
-      'Elutasítás van mentve; szolgáltatói ellenőrzés szükséges.',
+      'A Barion elutasítást jelzett; ellenőrizd a Barion felületén.',
     )
   })
 
@@ -68,7 +75,9 @@ describe('saved refund operational status, presentation only', () => {
       [entry({ status: 'RefundFailed' }), entry()],
     ].map((refunds) => ({ refunds })),
   )('does not hide a mixed history behind its latest entry', ({ refunds }) => {
-    expect(values({ refunds }).provider).toBe('Vegyes mentett eredmények; ellenőrzés szükséges.')
+    expect(values({ refunds }).provider).toBe(
+      'A mentett Barion-válaszok eltérnek egymástól; ellenőrizd a Barion felületén.',
+    )
   })
 
   it.each(
@@ -85,8 +94,8 @@ describe('saved refund operational status, presentation only', () => {
     ].map((refunds) => ({ refunds })),
   )('keeps malformed history uncertain: $refunds', ({ refunds }) => {
     const result = values({ status: 'refunded', refunds })
-    expect(result.local).toBe('A helyi visszatérítési nyom hiányos vagy nem értelmezhető.')
-    expect(result.provider).toContain('ellenőrzés szükséges')
+    expect(result.local).toBe('A mentett visszatérítési adat hiányos vagy nem értelmezhető.')
+    expect(result.provider).toContain('ellenőrizd a Barion felületén')
   })
 
   it.each([
@@ -130,7 +139,7 @@ describe('saved refund operational status, presentation only', () => {
       correctiveInvoiceStatus: 'issued',
       correctiveInvoiceSeq: 2,
     })
-    expect(result.local).toContain('Teljes visszatérítés van helyben rögzítve')
+    expect(result.local).toContain('Teljes visszatérítés van rögzítve a rendelésen')
     expect(result.storno).toContain('a szükségesség ebből nem állapítható meg')
     expect(result.corrective).toContain('a korábbiak állapota ebből nem állapítható meg')
   })
@@ -191,14 +200,56 @@ describe('saved refund operational status, presentation only', () => {
     const before = JSON.stringify(data)
     const result = readRefundOperationalStatus(data)
     expect(result.map(({ label }) => label)).toEqual([
-      'Helyi visszatérítési nyom',
-      'Mentett szolgáltatói eredmény',
-      'Stornó mentett állapota',
-      'Legutóbbi helyesbítő mentett állapota',
+      'Visszatérítés a rendelésen',
+      'Barion visszaigazolása',
+      'Stornószámla',
+      'Legutóbbi helyesbítő számla',
       'Hozzáférések rendezése',
     ])
     expect(JSON.stringify(result)).not.toContain(canary)
     expect(JSON.stringify(result)).not.toContain('987654321')
     expect(JSON.stringify(data)).toBe(before)
+  })
+
+  it('a címkékben és az értékekben nincs zsargon és gondolatjel (K12)', () => {
+    const texts = readRefundOperationalStatus({
+      status: 'refunded',
+      refunds: [entry({ status: 'Unknown' })],
+      stornoStatus: 'failed',
+      correctiveInvoiceStatus: 'pending',
+    }).flatMap(({ label, value }) => [label, value])
+    const joined = texts.join(' ')
+    expect(joined).not.toMatch(/[–—]|\bnyom\b|szolgáltatói|helyben|\bpaid\b/)
+  })
+})
+
+describe('hasRefundHistory: mikor elég egyetlen mondat (K12)', () => {
+  it.each(
+    [
+      undefined,
+      null,
+      {},
+      { status: 'paid' },
+      { status: 'paid', refunds: null, stornoStatus: 'none', correctiveInvoiceStatus: 'none' },
+      { status: 'paid', refunds: [], stornoStatus: null, correctiveInvoiceStatus: undefined },
+    ].map((data) => ({ data })),
+  )('nincs mentett utóélet: $data', ({ data }) => {
+    expect(hasRefundHistory(data)).toBe(false)
+  })
+
+  it.each(
+    [
+      { status: 'refunded' },
+      { refunds: [entry()] },
+      { refunds: [null] },
+      { refunds: 'not-an-array' },
+      { refunds: {} },
+      { stornoStatus: 'pending' },
+      { stornoStatus: 'SYNTHETIC-UNKNOWN' },
+      { correctiveInvoiceStatus: 'failed' },
+      { correctiveInvoiceStatus: 8 },
+    ].map((data) => ({ data })),
+  )('bármilyen vagy ismeretlen mentett adatnál a lista marad: $data', ({ data }) => {
+    expect(hasRefundHistory(data)).toBe(true)
   })
 })

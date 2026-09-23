@@ -41,6 +41,9 @@ export const AuditLogs: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
       label: 'Ki csinálta',
+      admin: {
+        description: 'Ha üres, a műveletet a rendszer végezte, nem egy bejelentkezett felhasználó.',
+      },
     },
     {
       name: 'action',
@@ -48,12 +51,26 @@ export const AuditLogs: CollectionConfig = {
       required: true,
       index: true,
       label: 'Művelet',
+      admin: {
+        // K39: a tárolt kód (pl. „publish”) a listában magyarul látszik; a
+        // kereső és a szűrő továbbra is a kódra keres.
+        components: {
+          Cell: '/components/admin/AuditActionCell#AuditActionCell',
+          Description: '/components/admin/AuditActionCell#AuditActionDescription',
+        },
+      },
     },
     {
       name: 'entityType',
       type: 'text',
       index: true,
       label: 'Érintett típus',
+      admin: {
+        components: {
+          Cell: '/components/admin/AuditActionCell#AuditEntityTypeCell',
+          Description: '/components/admin/AuditActionCell#AuditEntityTypeDescription',
+        },
+      },
     },
     {
       name: 'entityId',
@@ -61,25 +78,47 @@ export const AuditLogs: CollectionConfig = {
       label: 'Érintett azonosító',
     },
     {
+      // K01: a Payload json-szerkesztője (Monaco, CDN-ről) a CSP miatt 0 px
+      // magas maradt; a napló amúgy is csak olvasható, ezért formázott,
+      // görgethető szövegdoboz mutatja (src/components/admin/JsonReadOnlyField.tsx).
       name: 'before',
       type: 'json',
       label: 'Előtte',
+      admin: {
+        components: {
+          Field: '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+        },
+        description: 'A módosítás előtti állapot. Jelszó, token és más titok nem kerül a naplóba.',
+      },
     },
     {
       name: 'after',
       type: 'json',
       label: 'Utána',
+      admin: {
+        components: {
+          Field: '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+        },
+        description: 'A módosítás utáni állapot, ugyanígy titkok nélkül.',
+      },
     },
     {
       name: 'requestId',
       type: 'text',
       label: 'Kérésazonosító',
+      admin: {
+        description:
+          'Hibakereséshez: ezzel az azonosítóval a szervernaplóban megtalálható a kérés.',
+      },
     },
     {
       // Lásd a GDPR-megjegyzést a fájl fejlécében: retention = későbbi cleanup-job.
       name: 'ipAddress',
       type: 'text',
       label: 'IP-cím',
+      admin: {
+        description: 'A műveletet indító gép IP-címe. Személyes adat, csak a tulajdonos látja.',
+      },
     },
   ],
 }

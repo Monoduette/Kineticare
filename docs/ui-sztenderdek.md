@@ -10,6 +10,10 @@
 > `src/lib/cta-vocabulary.ts` + a G-UI1 őr-teszt. Érintett szakaszok: 1.4/Ü5,
 > 3.1.4 (M-2, P-1), 3.2, 6.5, 7.5, 7.6 (új), A/5.
 
+> **Kiegészítés: 8. fejezet (2026-09-22).** Új, önálló **Admin-szótár** a
+> szerkesztői felület szavaira, tipográfiájára és blokkneveire (K44). A korábbi
+> fejezetek szövege nem változott.
+
 > **Mi ez?** Verziózott, hivatkozott sztenderd a gombokra, a CTA-szövegekre, a
 > navigációra és a magyar mikroszövegre. Ez a dokumentum **nem vélemény**: minden
 > szabály mögött megnevezett, nyilvánosan elérhető forrás áll (W3C, Nielsen
@@ -1284,6 +1288,297 @@ Ezek a tételek az Ü5-döntés utáni szótár-átíráshoz és a négy új sor
     ([NN/g – Jakob's Law](https://www.nngroup.com/videos/jakobs-law-internet-ux/)).
 
 ---
+
+## 8. Admin-szótár: a szerkesztői felület egységes szavai
+
+**Kiadva:** 2026-09-22 (K44, admin-audit) · **Státusz:** kötelező, minden
+szerkesztőnek szóló szövegre · **Források megnyitva:** 2026-09-22.
+
+Ez a fejezet az admin (a `/admin` felület) nyelvét rögzíti: mezőcímke,
+mezőleírás (súgó), blokk- és gyűjteménynév, validációs üzenet, tájékoztató
+doboz, oldalsáv-menüpont és a saját admin-komponensek szövege. A vevői felület
+szabályait a 3.1–3.2 adja; a tipográfia (8.3) a kettőben közös.
+
+**Miért kell külön szótár.** A 2026-09-22-i admin-audit (K44) ugyanarra a
+fogalomra több szót mért: vevő, vásárló, hallgató és ügyfél; bejegyzés, cikk és
+blogbejegyzés; közzététel és publikálás; modul és fejezet; előzetes és
+bemutató; „Kis felső felirat” és „Felvezető sor” (ez utóbbi egy másik blokkban
+egy másik mezőt jelöl). Aki az egyik szót megtanulta, a másikat új dolognak
+hiszi. Három forrás mondja ki, hogy ez hiba:
+
+- **NN/g, Match Between the System and the Real World (2. heurisztika):**
+  *„The system should speak the users' language, with words, phrases, and
+  concepts familiar to the user, rather than system-oriented terms.”*
+  https://www.nngroup.com/articles/match-system-real-world/
+- **WCAG 2.2 SC 3.2.4 Consistent Identification (AA):** *„Components that have
+  the same functionality within a set of web pages are identified
+  consistently.”* https://www.w3.org/WAI/WCAG22/Understanding/consistent-identification.html
+- **GOV.UK A to Z style guide:** *„All content on GOV.UK should be written in
+  plain English.”*, és a szakszavak helyett: *„you can generally replace them
+  by breaking the term into what you're actually doing”*.
+  https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/style-guides/a-to-z-style-guide/
+  (a régi `gov.uk/guidance/style-guide/a-to-z` cím ide irányít át)
+
+### 8.1 Egy fogalom, egy szó
+
+| Fogalom | Ezt írd | Ezt ne | Megjegyzés |
+|---|---|---|---|
+| aki kurzust vesz vagy kap | **vásárló** | vevő, ügyfél, hallgató, customer | Ajándékba kapott hozzáférésnél is ez a szó áll. A Felhasználók szerepköre is „Vásárló”. |
+| a Tudástár írásai | **blogbejegyzés** | bejegyzés, cikk, poszt | A gyűjtemény neve „Blogbejegyzések”. A „Tudástár” a látogatói felület neve, az adminban csak erre utalva írjuk. |
+| a `/` oldal | **kezdőlap** | főoldal, nyitóoldal, home | |
+| élesítés a látogatóknak | **közzététel**, **közzéteszed**, **közzétett** | publikálás, publikál, élesít | A Payload magyar felülete is ezt a szót használja. A szerkesztő közzétételi gombja „Módosítások közzététele” (`version:publishChanges`, `@payloadcms/ui/dist/elements/PublishButton/index.js:63`); a „Közzététel” felirat (`version:publish`) csak a lista tömeges műveleténél áll (`PublishMany/index.js:97`). Súgóban és doksiban a gombot a tényleges nevén írjuk. |
+| még nem közzétett változat | **piszkozat** | vázlat, draft | A Payload magyar felülete is így nevezi. |
+| a kurzus tananyagának egysége | **modul** (benne **lecke**) | fejezet | Az oldal részeire a „szekció” szó való, nem a „modul”. |
+| az oldal egy része az adminban | **szekció** | modul, blokk, section | A Payload saját hibaútvonala („Blokk 14”) upstream szöveg, azt nem írjuk át. |
+| a kurzus szabadon nézhető videója | **nyilvános előzetes** | bemutató, előzetes videó, trailer | |
+| a cím fölötti apró szöveg | **felső kis felirat** | kis felső felirat, felvezető sor, eyebrow | Minden blokkban ugyanez a címke. |
+| rövid átvezető mondat egy felsorolás előtt | **bevezető mondat** | felvezető sor | A cím alatti bekezdés neve „Bevezető szöveg”: az más mező, más szó. |
+| a kurzus látható neve ↔ a rendszer kódja | **a kurzus címe** ↔ **belső azonosító** | displayTitle, sku | A belső azonosítót a látogató sosem látja. |
+| a lap webcímének utolsó része | **webcím** | slug, URL-részlet | |
+| lapon belüli ugráshoz adott név | **ugrópont** (neve) | horgony, horgony azonosító, anchor | A mező, a leírása és a hibaüzenete is ezt a szót használja. |
+| a kép szöveges leírása | **képleírás** | alt szöveg, alternatív szöveg | Egyszer, zárójelben megadható: „képleírás (alt)”. |
+| a feltöltött képek gyűjteménye | **Képek** | Média, Médiatár | A menüpont neve „Képek”. |
+| adminba belépő, nem tulajdonos ember (szerepkör) | **munkatárs** | staff, admin | A szerepkör neve „Munkatárs”. |
+| megszólítás | **tegező** (E/2) a súgóban és az üzenetben | magázó | A saját cselekvést kimondó gombra a P-1 (3.1.5) vonatkozik. |
+
+### 8.2 Zsargon helyett köznyelv
+
+A szerkesztő nem fejlesztő. Az alábbi szavak a kódban maradhatnak (mezőnév,
+slug, komment), a felületre nem kerülhetnek:
+
+| Zsargon | Helyette |
+|---|---|
+| hero, film-hero | nyitó videó, nyitó szekció |
+| CTA, CTA-sáv | gomb, gombfelirat, gombos kiemelő sáv |
+| sín, tábla (elrendezés) | választható kártyák, lista (a K29 után az opciók neve is ez lesz) |
+| hitel-csík | szakmai háttér sáv |
+| slug | webcím |
+| sku | belső azonosító |
+| GUID | videóazonosító |
+| script | amit csinál: „betöltő program”, „parancs” |
+| staff | munkatárs |
+| 404 | „az oldal nem található” |
+| eyebrow | felső kis felirat |
+| horgony, anchor | ugrópont |
+
+### 8.3 Tipográfia a szerkesztői szövegben
+
+Ugyanaz a szabály, mint a 3.1-ben, mert a súgó példája lesz a szerkesztő
+mintája: amit a mezőleírás idéz, azt fogja a látogatói felületre írni.
+
+- **Idézőjel:** „…” (nyitó U+201E, záró U+201D), belül »…«. Az egyenes `"` és
+  az angol `“` záró idézőjel hiba, a TypeScript-stringben is (`'pl. „Rólunk”'`,
+  nem `'pl. „Rólunk"'`). *AkH. 240. j): „Az idézőjel lehet: „ ”
+  (macskaköröm) vagy » « (lúdlábidézőjel)… Alapformájában a kezdő idézőjel
+  mindig alsó, a berekesztő idézőjel felső helyzetű.”*
+- **Három pont:** … (U+2026), nem három külön pont (...). *AkH. 241. b).*
+- **Gondolatjel:** címkében, leírásban és validációs üzenetben **0 db**.
+  Helyette vessző, kettőspont vagy pont (3.1.3). Az AkH. 240. g) a
+  gondolatjelet közbevetésre adja, nem elválasztónak: *„A gondolatjel mindig
+  szóközzel kapcsolódik az előtte álló szó utolsó betűjéhez”*, és *„A
+  gondolatjel a közbevetések jelölőjeként páros használatú.”*
+- **Nagykötőjel:** csak szóköz nélkül, tartományban vagy viszonyban: `2–4
+  mondat`, `3–5 tétel`. *AkH. 240. l): „A nagykötőjel tapad az előtte és az
+  utána következő szóhoz vagy számjegyhez”.*
+- **Verzál:** csupa nagybetűs szó (TELJES, SOHA, NINCS, VALÓS) helyett
+  mondatkezdő írás. A hangsúlyt a szórend adja; a mezőleírás nem formázható,
+  ezért `<strong>` csak saját admin-komponensben jöhet szóba. *GOV.UK A to Z,
+  Capitals: „Always use sentence case, even in page titles and service
+  names.”, és „DO NOT USE BLOCK CAPITALS FOR LARGE AMOUNTS OF TEXT AS IT'S
+  QUITE HARD TO READ.”; AkH. 142.: „A közszavakat – meghatározott esetek
+  kivételével – kis kezdőbetűvel írjuk”.* A
+  bevett betűszó (GYIK, SOS, SEO, PNG) nem verzál szó.
+- **Címke:** mondatkezdő nagybetű, a többi kicsi: „Felső kis felirat”, nem
+  „Felső Kis Felirat”.
+
+### 8.4 Blokknevek a szekció-választóban és a sorcímkében
+
+A blokk neve (`labels.singular`) két helyen látszik: a „Szekció hozzáadása”
+választóban és a szekciósor címkéjében („05 · név: a szekció címe”, B2).
+Szabályok:
+
+1. **A név a blokk formáját mondja, nem egy szekció címét.** A „„Erre
+   számíthatsz” kártyák” név betűre egyezett a kezdőlap látható „Erre
+   számíthatsz velünk” szekciójával, pedig azt egy másik típus adja: aki a
+   látott címet kereste, rossz típust talált. A szekció saját címét a
+   sorcímke úgyis kiírja.
+2. **Rövid, mért név.** A Payload alapstílusa a választó kártyáján a
+   feliratot egy sorba teszi, és ami nem fér el, azt „…”-tal levágja
+   (`text-overflow: ellipsis`,
+   `@payloadcms/ui/dist/elements/ThumbnailCard/index.scss:14-19`). A
+   nevet ehhez az alapstílushoz mérjük: úgy választjuk, hogy 1280 px-nél
+   is kiférjen (nagyjából 22 karakter). A sorcímkében („05 · név: cím”)
+   ugyanez a név áll.
+   Mérve 2026-09-23-án (Chromium, a `pages/1` szerkesztőjében, a
+   „Szekció hozzáadása” választó mind a 19 feliratán, szelektor:
+   `.blocks-drawer__block .thumbnail-card__label`, a stíluslapba
+   visszakényszerített alapstílussal): a felirat doboza 1440 px-es
+   ablaknál 214 px, 1280 px-nél 182 px, 390 px-nél 139 px, 320 px-nél
+   104 px széles. Ebből 2 × 10 px a belső margó (padding), így a
+   szövegnek 194, 162, 119, illetve 84 px jut. A „Bemutatkozás és
+   számok” szövege 157,52 px, tehát 1280 px-nél 4,48 px tartalékkal fér
+   el. Az alapstílussal 1280 px-nél 4, 390 px-nél 12, 320 px-nél 17 név
+   csonkol a 19-ből. Az 1280 px-es négy név a 3. szabálynál áll.
+   A betű: a Payload a rendszerbetű-készlettel rajzol (-apple-system,
+   BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial,
+   sans-serif). A mérőgépen a felsoroltak közül egyik sincs telepítve
+   (`fc-list`: 0 találat). Az Arial helyett a fontconfig a
+   metrikakompatibilis Liberation Sanst tölti be (`fc-match Arial:bold`
+   → `LiberationSans-Bold.ttf`), és a CDP `CSS.getPlatformFontsForNode`
+   szerint ez rajzolta a 13 px-es félkövér feliratot. A Liberation Sans
+   nem tagja a készletnek. macOS-en és Windowson a készlet egy másik tagja
+   rajzol, ott a szélesség eltérhet, ezért a néhány px-es határeset nem
+   garancia.
+   A felületen ezt a `custom.scss` sortörése (B1) oldja meg. Mérve
+   2026-09-23-án ugyanitt, a sortöréssel: 1440, 1280, 390 és 320 px-en
+   mind a 19 felirat teljes (`scrollWidth ≤ clientWidth`, 0 csonkolás), a
+   feliratok 1440 px-en egy sorban állnak, 1280 és 390 px-en legfeljebb
+   2, 320 px-en legfeljebb 4 sorba törnek, és a lap nem görget
+   vízszintesen. A mérés 0 írással járt (a `pages/1`
+   `updatedAt`-je változatlan, dokumentumzár 0).
+3. **A tartalom forrása a névben:** ahol a kártyák máshonnan töltődnek, a név
+   végén „(automatikus)” áll. Ez tudatos kivétel a 2. szabály alól: a
+   végződés a legfontosabb tudnivalót mondja, ezért nem rövidítjük. Az
+   alapstílussal 1280 px-nél, a 162 px-es szövegterületen mind a 4
+   csonkolt név levágódik (mérve 2026-09-23-án, a fenti módon):
+   - Kurzuskártyák (automatikus): 178,45 px;
+   - Vélemények (automatikus): 164,02 px;
+   - Tudástár-ajánló (automatikus): 184,69 px;
+   - Ingyenes villámkurzus sáv: 164,03 px.
+
+   Az első három e szabály szerinti kivétel. A negyedik, az A sáv
+   „Ingyenes villámkurzus sáv” neve (`freeSos`, `src/blocks/free-sos.ts`)
+   nem az: ez sérti a 2. szabályt. A B vezető mérte, és 2026-09-23-án
+   jeleztük a gazdájának, mért rövidebb jelöltekkel. A név teljes
+   olvashatóságát addig a sortörés adja, nem a név csonkítása.
+4. **Csak a felirat változik, a slug nem:** a slug adatbázis-kulcs
+   (`blockType`), átnevezése migráció volna. A Payload szerint a `labels`
+   *„Customize the block labels that appear in the Admin dashboard”*
+   (https://payloadcms.com/docs/fields/blocks).
+5. **A névben nincs vessző.** A Payload közzétételi hibaértesítője a hibás
+   mezők útvonalait egyetlen szövegből bontja tételekre, vesszőnél vágva
+   (`@payloadcms/ui/dist/elements/Toasts/fieldErrors.js:37`,
+   `errorsString.split(',')`). A címkében álló vessző ezért egy tételt
+   kettévág, és a fejléc számlálója is hamis lesz. A próba (2026-09-23):
+   eldobható piszkozat-oldalt hozunk létre üresen hagyott Tartalom mezővel,
+   egy üres GYIK-sorral és egy hibás ugrópontú bemutatkozó szekcióval (pl.
+   „Rossz Ugropont”), majd a Módosítások közzététele gombra kattintunk.
+   Itt 4 valódi hiba van: a GYIK-sor kérdése és válasza, az ugrópont és a
+   Tartalom. A „Rólunk, számokkal” nevű szekció ugrópont-hibája két
+   tételre esett szét
+   („Szekciók → Blokk 2 (Rólunk” és „számokkal) → Megjelenés és elrejtés →
+   Ugrópont neve (haladó beállítás)”), közéjük egy GYIK-hiba került, a
+   fejléc pedig 5 hibát mondott a valódi 4 helyett. A „Bemutatkozás és
+   számok” névvel ugyanez a próba világos és sötét témán, 1440 és 390 px-en
+   is 4 tételt ad, és az ugrópont-hiba egyetlen tétel. Egy második próbában
+   sötét témán, 1280 és 390 px-en, egy harmadik hibás blokkal (üres
+   nyitható sor) a hibaértesítő 6 tételt mutatott, a számláló is 6-ot, és
+   egyik tétel sem tört ketté. A szabály minden címkére vonatkozik, amely a
+   hibaútvonalba kerül: blokknév, mezőcímke, tömb- és collapsible-címke (a
+   név nélküli collapsible-é is), fülnév. Őr:
+   `src/__tests__/blokknevek.test.ts`.
+
+A 2026-09-22-i nevek (K27, R1 #5):
+
+| Slug | Név | Korábban |
+|---|---|---|
+| `filmHero` | Nyitó videó (kéznyitás) | `Film-hero (kéznyitás)` |
+| `credsStrip` | Szakmai háttér sáv | `Hitel-csík (szöveges)` |
+| `courseCards` | Kurzuskártyák (automatikus) | változatlan |
+| `freeSos` | Ingyenes villámkurzus sáv | `Ingyenes SOS-sáv` |
+| `pressLogos` | Logósor | `Sajtó-logósor` |
+| `welcome` | Üdvözlés és gondok | `Üdvözlő / probléma-blokk` |
+| `usps` | Ígéretek kártyákon | `„Erre számíthatsz" kártyák` |
+| `states` | A kéz három állapota | `Három állapot` |
+| `services` | Képes lista vagy kártyák | `Szolgáltatás-sorok` |
+| `about` | Bemutatkozás és számok | `Rólunk + statisztikák` |
+| `howItWorks` | Számozott lépések | `Így működik (lépések)` |
+| `testimonials` | Vélemények (automatikus) | változatlan |
+| `knowledge` | Tudástár-ajánló (automatikus) | változatlan |
+| `faq` | GYIK (gyakori kérdések) | változatlan |
+| `teamMembers` | Szakemberek kártyái | `Szakértő-kártyák` |
+| `accordion` | Nyitható sorok | `Nyitható szekció` |
+| `appointment` | Időpontkérés | `Időpontkérő szekció` |
+| `richText` | Szabad szöveg | változatlan |
+| `ctaBanner` | Gombos kiemelő sáv | `CTA-sáv (gombos kiemelés)` |
+
+A `filmHero` és a `freeSos` nevét az A sáv adja (a saját blokkfájljában).
+Az `about` 2026-09-22-én a „Rólunk, számokkal” nevet kapta; ezt az 5. szabály
+miatt 2026-09-23-án „Bemutatkozás és számok”-ra cseréltük. A „Rólunk” szó a
+/rolunk oldal nevével is összetéveszthető volt, pedig ez a típus ott is áll.
+
+### 8.5 Mezőleírás és validációs üzenet
+
+- **Leírás:** mit írjon ide a szerkesztő, és egy példa „…” idézőjelben. A
+  beállítás-jellegű mezőknél (Megjelenés és elrejtés) egy leírás legfeljebb
+  150, a haladó beállításé legfeljebb 100 karakter. *GOV.UK Design System,
+  Text input: „Use hint text for help that's relevant to the majority of
+  users, like how their information will be used, or where to find it.”*
+  https://design-system.service.gov.uk/components/text-input/
+- **Ritkán kellő beállítás csukva:** a mindig nyitott beállítás a tartalom elől
+  veszi el a helyet. *NN/g, Progressive Disclosure: „Initially, show users only
+  a few of the most important options. Offer a larger set of specialized
+  options upon request.”* A csukott rész fejléce megmondja, mi van mögötte
+  („Megjelenés és elrejtés”). https://www.nngroup.com/articles/progressive-disclosure/
+- **Képmező:** minden blokk-képmező leírása ugyanazzal a mondattal zárul
+  (`src/blocks/kep-csere.ts`, `KEP_CSERE_SUGO`):
+
+  > Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új
+  > létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép
+  > adatait minden oldalon módosítja.
+
+  A két ikon felirat nélküli (upstream), a súgó mondja ki a különbséget.
+  *NN/g, Icon Usability: „a text label must be present alongside an icon to
+  clarify its meaning in that particular context.”*
+  https://www.nngroup.com/articles/icon-usability/ A súgó a gombokat a
+  felület tényleges nevén mondja. Az X után a mező üres állapotában két gomb
+  áll (`@payloadcms/ui/dist/fields/Upload/Input.js`): „Új létrehozása” (:571,
+  `general:createNew`, a core magyar fordítása) és „Válassz a meglévők közül”
+  (:582, `fields:chooseFromExisting`, a `src/lib/admin/hu-forditas.ts`
+  tegező alakja; a mondat közepén kis kezdőbetűvel). Mindkettőt a
+  `src/__tests__/blokknevek.test.ts` köti a fordítási forráshoz, így
+  fordításváltozásnál a teszt bukik.
+- **Validációs üzenet:** utasítás, nem címke, és ha a javítás egy gombbal
+  történik, a felület tényleges gombnevével. Példa (GYIK-sor):
+  „Írd be a kérdést, vagy töröld ezt a sort: a sor jobb szélén a ⋯ gomb, majd
+  Törlés.” *GOV.UK Design System, Error message: „use an instruction for empty
+  fields like 'Enter your name'”, és kerülendő a „please”, a „valid” és az
+  „invalid”* (https://design-system.service.gov.uk/components/error-message/);
+  *NN/g, Error-Message Guidelines: „Display the error message close to the
+  error's source” és „offer some potential remedies”*
+  (https://www.nngroup.com/articles/error-message-guidelines/). A tiltott
+  hibaszavakat (kérjük, érvénytelen) a 2.7 és a G-UI7 őr is kizárja.
+
+### 8.6 Ellenőrzés
+
+- A blokkfájlok szerkesztői szövegeit (label, singular, plural, description,
+  validációs üzenet, opciócímke) a TypeScript-AST-ből számoló szkript mérte
+  2026-09-22-én: a `src/blocks/*.ts` fájlokban **21 gondolatjel, 78 hibás
+  záró idézőjel és 13 verzál szó → 0, 0, 0**. A megmaradt „sín” és
+  „tábla” szó a `services.ts` elrendezés-opcióiban és hatásossági leírásaiban
+  áll, azokat a K29 írja át (a fotós munka után).
+- A tartós őr (K51): `src/__tests__/admin-szoveg-tipografia.test.ts`. A
+  `src/blocks`, `src/collections`, `src/fields` és `src/plugins` `.ts`
+  fájljait a TypeScript AST-jével olvassa. Szerkesztői szövegnek a
+  `label`, `singular`, `plural`, `description`, `placeholder` és `group`
+  kulcs értékét, a függvényből visszaadott szöveget (validációs üzenet)
+  és a nagybetűs nevű szövegkonstanst veszi; a komment, a naplóüzenet és
+  a kód-azonosító nem számít. Négy szabályt mér: gondolatjel (a szóközös
+  vagy elválasztó `–`, a `—` és a szóközök közti `-`), egyenes vagy angol
+  záró idézőjel (`"`, `“`) és pár nélküli „ vagy ”, három pont (`...`),
+  valamint a legalább 4 betűs verzál szó (kivétel a bevett betűszó,
+  indoklással a tesztben). A B-2 fájljai 0-n állnak; a többi csapat
+  fájljai mért alapszámon, amely csak csökkenhet (racsni).
+- A blokknevek őre: `src/__tests__/blokknevek.test.ts`. A név legfeljebb 32
+  karakter (a sorcímke határa, K27; a választóban 1280 px-nél ennél
+  kevesebb, nagyjából 22 karakter fér ki, lásd 8.4, 2. szabály), egyedi,
+  nincs benne vessző, gondolatjel, egyenes vagy angol
+  idézőjel, sem pár nélküli „ vagy ” jel, és nem utánozza a kezdőlap
+  „Erre számíthatsz velünk” szekciócímét. A blokkok minden hibaútvonalba
+  kerülő címkéje (mezőcímke, tömb- és collapsible-címke, fülnév) vessző
+  nélküli. A képmező-súgó két gombnevét a fordítási forráshoz köti.
+- Új admin-szövegnél előbb itt keresd a szót; ha nincs, vedd fel ide,
+  forrással.
 
 ## A. Függelék – amit a jelenlegi kód ma megsért
 

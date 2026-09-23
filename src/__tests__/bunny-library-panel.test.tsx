@@ -273,3 +273,37 @@ describe('Bunny panel — a szerepkör-kapu és az induló képernyő', () => {
     expect(html).not.toContain(LIBRARY_SWITCH_HINT)
   })
 })
+
+describe('Bunny panel (örökség) — K50: nincs elavult, kézi azonosító-utasítás', () => {
+  it('a panel a Videótárra és a lecke „Videó kiválasztása” gombjára utal', () => {
+    const html = render(BETOLTOTT_VEDETT)
+    expect(html).toContain('Videótárban tölthetsz fel')
+    expect(html).toContain('„Videó kiválasztása”')
+    expect(html).toContain('azonosítót nem kell kézzel beírni')
+    expect(html).not.toContain('illeszd a lecke')
+    expect(html).not.toContain('„Videó azonosítója” mezőjébe')
+    expect(html).not.toContain('másold ki onnan az azonosítót')
+  })
+})
+
+describe('Bunny panel (örökség): ismeretlen hossz szöveggel, nem jellel', () => {
+  it('nulla vagy hiányzó hossznál „Hossz még nem ismert” áll, mint a Videótárban', async () => {
+    const { UNKNOWN_DURATION_LABEL, durationLabel } =
+      await import('../components/admin/bunny-video-state')
+    for (const lengthSec of [null, 0]) {
+      const state = bunnyLibraryPanelReducer(initialBunnyLibraryPanelState, {
+        type: 'load-succeeded',
+        kind: 'protected',
+        videos: [{ ...video(VEDETT_GUID, 'Hossz nélküli lecke'), lengthSec }],
+        truncated: false,
+      })
+      const html = render(state)
+      expect(html).toContain(`>${UNKNOWN_DURATION_LABEL}</td>`)
+      expect(html).not.toMatch(/<td[^>]*>[–—-]<\/td>/)
+    }
+    expect(UNKNOWN_DURATION_LABEL).toBe(durationLabel(null))
+    expect(UNKNOWN_DURATION_LABEL).toBe('Hossz még nem ismert')
+    // Ismert hossznál változatlanul perc:másodperc.
+    expect(render(BETOLTOTT_VEDETT)).toContain('>1:30</td>')
+  })
+})

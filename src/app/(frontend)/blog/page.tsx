@@ -20,9 +20,10 @@ import {
   getPublishedPageSlugs,
   getPublishedProducts,
 } from '@/lib/cms'
-import { absoluteUrl, blogJsonLd, buildStaticPageMetadata } from '@/lib/seo'
+import { absoluteUrl, blogJsonLd, buildStaticPageMetadata, NOINDEX_ROBOTS } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
 import { categoriesWithPosts, freeCourseHref } from '@/lib/tudastar'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 import { cikkUtvonal, hubUtvonalTerkep } from '@/lib/tudastar/hub-oldalak'
 
 import '../styles/blocks/tudastar-lista.css'
@@ -61,12 +62,18 @@ async function canonicalPathFor(kategoria: string | undefined): Promise<string> 
 }
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const { kategoria } = await searchParams
-  return buildStaticPageMetadata({
+  const [{ kategoria }, tudastarLathato] = await Promise.all([searchParams, getTudastarLathato()])
+  const metadata = buildStaticPageMetadata({
     title: 'Tudástár',
     description: BLOG_DESCRIPTION,
     path: await canonicalPathFor(kategoria),
   })
+  // Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): rejtett /blog
+  // menüpontnál a lista közvetlen linkkel elérhető marad (200), de nem kér
+  // indexelést. A robots.txt szándékosan nem tiltja, különben a kereső a
+  // noindexet sem látná (Google Search Central, Block Search indexing with
+  // noindex: https://developers.google.com/search/docs/crawling-indexing/block-indexing).
+  return tudastarLathato ? metadata : { ...metadata, robots: NOINDEX_ROBOTS }
 }
 
 export default async function BlogPage({ searchParams }: Props) {

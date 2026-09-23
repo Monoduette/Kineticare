@@ -17,7 +17,9 @@
   font: inherit;
   color: var(--theme-text);
   background: var(--theme-input-bg, var(--theme-elevation-0));
-  border: 1px solid var(--theme-elevation-400);
+  /* Mezőhatár (SC 1.4.11): a custom.scss közös tokenje, világos 4,54:1,
+     sötét 4,29:1; tartalék nélküli környezetben a sötétebb 500-as szürke. */
+  border: 1px solid var(--kc-admin-field-border, var(--theme-elevation-500));
   border-radius: var(--style-radius-s, 4px);
   min-height: 44px;
   min-width: 44px;
@@ -35,7 +37,7 @@
 .bunny-video button:disabled {
   color: var(--theme-elevation-700);
   background: var(--theme-elevation-100);
-  border-color: var(--theme-elevation-400);
+  border-color: var(--kc-admin-field-border, var(--theme-elevation-500));
   cursor: not-allowed;
 }
 .bunny-video :focus-visible {
@@ -52,6 +54,14 @@
   font-weight: 600;
   margin: 0;
 }
+/* A párbeszédablak címe eddig akkora volt, mint a törzsszöveg; a cím a
+   hierarchia első szintje (NN/g, Visual Hierarchy:
+   https://www.nngroup.com/articles/visual-hierarchy-ux-definition/),
+   ezért a Payload --base-skáláján 16 px (0,8 × 20 px). */
+.bunny-video-dialog h2 {
+  font-size: calc(var(--base, 20px) * 0.8);
+  line-height: 1.25;
+}
 .bunny-video p {
   overflow-wrap: anywhere;
 }
@@ -63,7 +73,10 @@
   background: var(--theme-bg);
   border: 1px solid var(--theme-elevation-300);
   border-radius: 6px;
-  width: min(960px, calc(100% - 24px));
+  /* A modális dialógus a nézetablakhoz méreteződik: 320 px-en a 100%-os
+     alak 317 px-es dobozt adott (SC 1.4.10 Reflow), a vw-alak 296 px-et. */
+  width: min(960px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
   padding: 20px;
   overflow: auto;

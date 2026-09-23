@@ -15,6 +15,10 @@ import { absoluteUrl, DEFAULT_OG_IMAGE, NOINDEX_ROBOTS } from '../lib/seo'
  *   (https://www.w3.org/TR/appmanifest/).
  */
 
+// A sitemap a Tudástár-kapcsolót is kérdezi (src/lib/tudastar-lathatosag.ts);
+// itt a bekapcsolt állapot a mérce, a kapcsoló ágait a tudastar-sitemap teszt méri.
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+
 vi.mock('@/lib/cms', () => ({
   HOME_PAGE_SLUG: 'kezdolap',
   getAllPublishedPages: () =>

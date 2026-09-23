@@ -12,10 +12,10 @@ import {
 import { courseHref } from '../../../lib/course-url'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../../lib/courses'
-import { rewriteVisitorDashLeftover } from '../../../lib/gondolatjel-leftover'
 import type { Product } from '../../../payload-types'
 import { PriceTag } from '../../ui/PriceTag'
 import { CoursePromoBadge, promoAccessibleNamePrefix } from '../../courses/CoursePromoBadge'
+import { fokuszPozicio, kepHelyMedia } from '../../../lib/kep-helyek'
 import { MediaImage } from '../MediaImage'
 
 import '../../../app/(frontend)/styles/blocks/course-showcase.css'
@@ -38,6 +38,11 @@ export interface CourseShowcaseProps {
    * (takarítás, 2026-09-19).
    */
   scenePhotos?: boolean
+  /**
+   * A jelenet három helyének CMS-értéke (bal, közép, jobb; a blokk
+   * `scenePhotos` csoportja). Üres helyen a beépített fotó áll.
+   */
+  sceneMedia?: readonly unknown[]
 }
 
 function ArrowIcon() {
@@ -185,13 +190,23 @@ export function CourseShowcase({
   lead,
   mark = COURSE_SHOWCASE_MARK,
   scenePhotos = true,
+  sceneMedia = [],
 }: CourseShowcaseProps) {
   if (products.length === 0) {
     return null
   }
 
   const title = heading?.trim() || COURSE_SHOWCASE_HEADING
-  const leadText = rewriteVisitorDashLeftover(lead?.trim() || COURSE_SHOWCASE_LEAD)
+  // A lead a szerkesztő szövege, betűre (csak a szélső szóköz marad le, ahogy a
+  // címnél); üresen a beépített tartalék. Gondolatjel-csere
+  // (`rewriteVisitorDashLeftover`) itt NEM fut: a megjelenítés nem írhatja át a
+  // mentett CMS-szöveget, a szerkesztő azt lássa a lapon, amit beírt (NN/g,
+  // 10 Usability Heuristics, #1 Visibility of system status,
+  // https://www.nngroup.com/articles/ten-usability-heuristics/). Maradék jelet
+  // a mentett adaton kell javítani, tartalom-jobbal, pontos egyezésre. Az élő
+  // lead (2026-09-22) nem maradék-minta, a lap látványa ezért nem változik
+  // (src/__tests__/kurzusaink-sav-cms-szoveg.test.tsx).
+  const leadText = lead?.trim() || COURSE_SHOWCASE_LEAD
   const markText = mark === null ? '' : mark.trim() || COURSE_SHOWCASE_MARK
   const hasScene = markText.length > 0 || scenePhotos
 
@@ -210,19 +225,35 @@ export function CourseShowcase({
         <div aria-hidden="true" className="kc-course-showcase__scene">
           {markText.length > 0 ? <p className="kc-course-showcase__word">{markText}</p> : null}
           {scenePhotos
-            ? COURSE_SHOWCASE_SCENE_PHOTOS.map((image) => (
-                // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
-                <img
-                  alt=""
-                  className="kc-course-showcase__photo"
-                  decoding="async"
-                  height={image.height}
-                  key={image.src}
-                  loading="lazy"
-                  src={image.src}
-                  width={image.width}
-                />
-              ))
+            ? COURSE_SHOWCASE_SCENE_PHOTOS.map((image, index) => {
+                const media = kepHelyMedia(sceneMedia[index])
+                if (media) {
+                  return (
+                    <MediaImage
+                      className="kc-course-showcase__photo"
+                      decorative
+                      key={index}
+                      media={media}
+                      preferredSize="sm"
+                      sizes="(min-width: 1280px) 400px, 33vw"
+                      style={{ objectPosition: fokuszPozicio(media) }}
+                    />
+                  )
+                }
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
+                  <img
+                    alt=""
+                    className="kc-course-showcase__photo"
+                    decoding="async"
+                    height={image.height}
+                    key={index}
+                    loading="lazy"
+                    src={image.src}
+                    width={image.width}
+                  />
+                )
+              })
             : null}
         </div>
       ) : null}

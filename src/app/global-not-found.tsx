@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   other: { 'creator-url': 'https://www.barnanorbert.com/' },
   title: 'Ez az oldal nem található | Kineticare',
   description:
-    'A keresett oldal nem található a Kineticare oldalán. Innen tovább tudsz lépni a kurzusokra, a tudástárba vagy a kapcsolatfelvételhez.',
+    'A keresett oldal nem található a Kineticare oldalán. Innen tovább tudsz lépni a kurzusokra, a kezdőlapra vagy a kapcsolatfelvételhez.',
 }
 
 /**
@@ -58,7 +58,16 @@ export default function GlobalNotFound() {
           </div>
         </header>
         <main id="tartalom">
-          <NotFoundView />
+          {/* Tudástár-javaslat itt SZÁNDÉKOSAN nincs. Ez a lap a Next-build
+              során statikusan előre renderelődik (mérve: a production
+              buildben a `/_not-found` `compute: 'static'`, lejárat nélkül,
+              és ebből lesz a `pages/404.html` is), tehát a Tudástár-kapcsoló
+              (src/lib/tudastar-kapcsolo.ts) állapotát nem tudná követni: a
+              build pillanatának állapota ragadna be. A kapcsoló pedig azt
+              ígéri, hogy rejtett /blog menüpontnál a Tudástár sehol nem
+              jelenik meg. A gombok, a kapcsolati cél és az e-mail itt is
+              megmaradnak; a (frontend) not-found határ a kapcsolót követi. */}
+          <NotFoundView tudastarLathato={false} />
         </main>
         <footer className="kc-site-footer">
           <div className="kc-container">

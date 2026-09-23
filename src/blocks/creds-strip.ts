@@ -4,7 +4,8 @@ import { linkGroup } from './link-fields'
 import { sectionSettings } from './section-settings'
 
 /**
- * Hitel-csík — szöveges szakmai bizonyítéksáv (terv 2. blokk-katalógus, M2).
+ * Szakmai háttér sáv (slug: credsStrip, korábbi neve „Hitel-csík”): szöveges
+ * szakmai bizonyítéksáv (terv 2. blokk-katalógus, M2).
  *
  * A hero alatti visszafogott csík a legerősebb bizalmi érvekkel (szakmai
  * háttér, kikhez járnak, tagságok). Az értékesítési audit szerint ez keretezi a
@@ -16,8 +17,8 @@ export const credsStrip: Block = {
   slug: 'credsStrip',
   interfaceName: 'BlockCredsStrip',
   labels: {
-    singular: 'Hitel-csík (szöveges)',
-    plural: 'Hitel-csíkok',
+    singular: 'Szakmai háttér sáv',
+    plural: 'Szakmai háttér sávok',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -32,7 +33,7 @@ export const credsStrip: Block = {
       labels: { singular: 'Tétel', plural: 'Tételek' },
       admin: {
         description:
-          'Rövid, tényszerű állítások egymás mellett (pl. „Gyógytornász és manuálterapeuta szakmai háttér"). 2–4 tétel a legjobb; a hosszú mondatok itt elvesznek.',
+          'Rövid, tényszerű állítások egymás mellett (pl. „Gyógytornász és manuálterapeuta szakmai háttér”). 2–4 tétel a legjobb; a hosszú mondatok itt elvesznek.',
         initCollapsed: true,
       },
       fields: [
@@ -47,13 +48,13 @@ export const credsStrip: Block = {
     },
     linkGroup({
       name: 'link',
-      label: 'Link a csík végén',
+      label: 'Link a sáv végén',
       // A súgó a JÓVÁHAGYOTT alakot mutatja (§3.2 #34): a korábbi példa
       // („Bővebben a szakmai hátterünkről") a szerkesztőnek pontosan azt a
       // „Bővebben"-nel kezdődő, öt szavas alakot tanította, amit az M-3 és a
       // GOV.UK linkszöveg-útmutatója egyaránt kizár.
       description:
-        'Nem kötelező. Ide a Rólunk oldalra vivő hivatkozás kerül; a jóváhagyott felirat: „Ismerd meg a hátterünket".',
+        'Nem kötelező. Ide a Rólunk oldalra vivő hivatkozás kerül; a jóváhagyott felirat: „Ismerd meg a hátterünket”.',
     }),
     sectionSettings(),
   ],

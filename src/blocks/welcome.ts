@@ -13,8 +13,8 @@ export const welcome: Block = {
   slug: 'welcome',
   interfaceName: 'BlockWelcome',
   labels: {
-    singular: 'Üdvözlő / probléma-blokk',
-    plural: 'Üdvözlő blokkok',
+    singular: 'Üdvözlés és gondok',
+    plural: 'Üdvözlő szekciók',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -27,15 +27,15 @@ export const welcome: Block = {
       label: 'Cím',
       admin: {
         description:
-          'A szekció címe — jellemzően kérdés, ami a látogató helyzetét mondja ki (pl. „Szeretnél megszabadulni a fájdalomtól…?").',
+          'A szekció címe, jellemzően kérdés, ami a látogató helyzetét mondja ki (pl. „Szeretnél megszabadulni a fájdalomtól…?”).',
       },
     },
     {
       name: 'lead',
       type: 'text',
-      label: 'Felvezető sor',
+      label: 'Bevezető mondat',
       admin: {
-        description: 'Rövid átvezetés a felsorolás elé (pl. „Tudjuk, milyen, amikor:").',
+        description: 'Rövid átvezetés a felsorolás elé (pl. „Tudjuk, milyen, amikor:”).',
       },
     },
     {
@@ -46,7 +46,7 @@ export const welcome: Block = {
       labels: { singular: 'Felsorolás-tétel', plural: 'Felsorolás-tételek' },
       admin: {
         description:
-          'A látogató ismerős helyzetei, egy-egy mondatban. 3–5 tétel a legjobb — ennél több már hosszú lista.',
+          'A látogató ismerős helyzetei, egy-egy mondatban. 3–5 tétel a legjobb, ennél több már hosszú lista.',
         initCollapsed: true,
       },
       fields: [
@@ -66,7 +66,7 @@ export const welcome: Block = {
       labels: { singular: 'Bekezdés', plural: 'Bekezdések' },
       admin: {
         description:
-          'A felsorolás mellé kerülő szöveg: mit tudunk kezdeni ezzel a helyzettel. A lezáró, ígéretet megfogalmazó bekezdésnél kapcsold be a „Kiemelt" pipát.',
+          'A felsorolás mellé kerülő szöveg: mit tudunk kezdeni ezzel a helyzettel. A lezáró, ígéretet megfogalmazó bekezdésnél kapcsold be a „Kiemelt” pipát.',
         initCollapsed: true,
       },
       fields: [

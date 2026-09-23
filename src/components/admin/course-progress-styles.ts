@@ -175,7 +175,9 @@ export const sortButtonStyle: CSSProperties = {
  * GOV.UK Design System rendezhető táblája is
  */
 export const sortGlyphStyle: CSSProperties = {
-  fontSize: '0.85em',
+  /* 1em, nem 0,85em: a nyíl a rendezés EGYETLEN látható jele, a kicsinyített
+     változat a 13 px-es fejlécben ~11 px-es jel volt (admin-audit K31). */
+  fontSize: '1em',
   lineHeight: 1,
 }
 

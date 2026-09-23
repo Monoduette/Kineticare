@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import type { Field } from 'payload'
 import { createElement, Fragment, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -162,17 +163,53 @@ describe('appointment blokk-definíció', () => {
   })
 
   it('a szekció-beállítások ott vannak, és a háttér alapból világoskék', () => {
-    const settings = appointment.fields.find(
-      (field): field is Extract<typeof field, { fields: unknown[] }> =>
-        'name' in field && field.name === 'sectionSettings' && 'fields' in field,
-    )
+    const settings = adatMezo(appointment.fields, 'sectionSettings')
     expect(settings).toBeDefined()
-    const hatter = (settings?.fields ?? []).find(
-      (field) => 'name' in field && field.name === 'hatter',
-    )
+    expect(settings?.type).toBe('group')
+    const hatter =
+      settings && settings.type === 'group'
+        ? settings.fields.find((field) => 'name' in field && field.name === 'hatter')
+        : undefined
     expect(hatter).toMatchObject({ defaultValue: 'tint' })
   })
+
+  it('a szekció-beállítások az utolsó, alapból csukott „Megjelenés és elrejtés” részben állnak', () => {
+    const utolso = appointment.fields.at(-1)
+    expect(utolso?.type).toBe('collapsible')
+    expect(utolso && 'name' in utolso).toBe(false)
+    expect(utolso?.type === 'collapsible' ? utolso.label : null).toBe('Megjelenés és elrejtés')
+    expect(utolso?.type === 'collapsible' ? utolso.admin?.initCollapsed : null).toBe(true)
+  })
 })
+
+/**
+ * Mező keresése az ADATSZINTEN: a név nélküli elrendező mezőket (collapsible,
+ * row, név nélküli fül) bejárja, a nevesített group/array belsejébe nem lép.
+ * A találat így azt is bizonyítja, hogy az adatútvonal a blokk gyökerében
+ * maradt (pl. `sectionSettings.hatter`).
+ */
+function adatMezo(fields: readonly Field[], nev: string): Field | undefined {
+  for (const field of fields) {
+    if ('name' in field && field.name === nev) {
+      return field
+    }
+    if (field.type === 'collapsible' || field.type === 'row') {
+      const talalat = adatMezo(field.fields, nev)
+      if (talalat) {
+        return talalat
+      }
+    }
+    if (field.type === 'tabs') {
+      for (const tab of field.tabs) {
+        const talalat = 'name' in tab && tab.name ? undefined : adatMezo(tab.fields, nev)
+        if (talalat) {
+          return talalat
+        }
+      }
+    }
+  }
+  return undefined
+}
 
 // ---------------------------------------------------------------------------
 // 2. Renderelés

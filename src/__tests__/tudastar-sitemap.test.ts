@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { absoluteUrl } from '../lib/seo'
 import { categoriesWithPosts } from '../lib/tudastar'
@@ -26,6 +26,12 @@ import { categoriesWithPosts } from '../lib/tudastar'
  * adatbázist.
  */
 
+// Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): alapból bekapcsolt; a
+// kikapcsolt ágat a fájl végi blokk állítja át. A hívásszámláló azt méri, hogy
+// rejtett Tudástárnál a cikkek és a kategóriák lekérdezése sem fut.
+const kapcsolo = vi.hoisted(() => ({ lathato: true, cikkLekeres: 0, kategoriaLekeres: 0 }))
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => kapcsolo.lathato }))
+
 vi.mock('@/lib/cms', () => ({
   HOME_PAGE_SLUG: 'kezdolap',
   getAllPublishedPages: () =>
@@ -39,22 +45,28 @@ vi.mock('@/lib/cms', () => ({
       { slug: 'impresszum', updatedAt: '2026-08-06T10:00:00.000Z' },
       // Ütköző slug: a valódi `/kapcsolat` route elfedi ezt a CMS-oldalt.
       { slug: 'kapcsolat', updatedAt: '2026-08-07T10:00:00.000Z' },
+      // Publikált tünet-hub: Tudástár-cikk, a kapcsoló szerint kerül be.
+      { slug: 'pattano-ujj', updatedAt: '2026-08-08T10:00:00.000Z' },
     ]),
-  getSitemapPosts: () =>
-    Promise.resolve([
+  getSitemapPosts: () => {
+    kapcsolo.cikkLekeres += 1
+    return Promise.resolve([
       {
         id: 11,
         slug: 'gipsz-utan-mit-csinalj',
         updatedAt: '2026-08-10T10:00:00.000Z',
         categories: [{ id: 1, slug: 'kezrehabilitacio', title: 'Kézrehabilitáció' }],
       },
-    ]),
-  getContentCategories: () =>
-    Promise.resolve([
+    ])
+  },
+  getContentCategories: () => {
+    kapcsolo.kategoriaLekeres += 1
+    return Promise.resolve([
       { id: 1, slug: 'kezrehabilitacio', title: 'Kézrehabilitáció' },
       // ÜRES kategória: egyetlen poszt sem tartozik hozzá.
       { id: 2, slug: 'ures-tema', title: 'Üres téma' },
-    ]),
+    ])
+  },
   getSitemapProducts: () =>
     Promise.resolve([
       { id: 2, slug: 'sos-kezrelax-villamkurzus', updatedAt: '2026-08-11T10:00:00.000Z' },
@@ -216,5 +228,63 @@ describe('robots.txt — a Tudástár bejárható marad', () => {
 
   it('a sitemap-hivatkozás abszolút és a helyes címre mutat', () => {
     expect(String(result.sitemap)).toBe(absoluteUrl('/sitemap.xml'))
+  })
+})
+
+describe('sitemap — Tudástár-kapcsoló', () => {
+  beforeEach(() => {
+    kapcsolo.cikkLekeres = 0
+    kapcsolo.kategoriaLekeres = 0
+  })
+  afterEach(() => {
+    kapcsolo.lathato = true
+  })
+
+  it('bekapcsolva a /blog, a cikk, a nem üres kategória és a hub is benne van', async () => {
+    const list = await urls()
+    expect(list).toContain(absoluteUrl('/blog'))
+    expect(list).toContain(absoluteUrl('/blog/gipsz-utan-mit-csinalj'))
+    expect(list).toContain(absoluteUrl('/blog/kategoria/kezrehabilitacio'))
+    expect(list).toContain(absoluteUrl('/pattano-ujj'))
+  })
+
+  it('kikapcsolva 0 Tudástár-cím: se /blog, se cikk, se kategória, se hub', async () => {
+    kapcsolo.lathato = false
+    const list = await urls()
+    const tudastar = list.filter((url) => {
+      const path = url.replace(absoluteUrl('/'), '/')
+      return path === '/blog' || path.startsWith('/blog/') || path === '/pattano-ujj'
+    })
+    expect(tudastar).toEqual([])
+  })
+
+  it('kikapcsolva a többi lap változatlanul benne van', async () => {
+    const bekapcsolva = await urls()
+    kapcsolo.lathato = false
+    const kikapcsolva = await urls()
+    const tudastarNelkul = bekapcsolva.filter(
+      (url) =>
+        url !== absoluteUrl('/blog') &&
+        !url.startsWith(absoluteUrl('/blog/')) &&
+        url !== absoluteUrl('/pattano-ujj'),
+    )
+    expect(kikapcsolva).toEqual(tudastarNelkul)
+  })
+
+  it('kikapcsolva a cikkek és a kategóriák lekérdezése sem fut', async () => {
+    kapcsolo.lathato = false
+    await urls()
+    expect(kapcsolo.cikkLekeres).toBe(0)
+    expect(kapcsolo.kategoriaLekeres).toBe(0)
+  })
+
+  it('a robots.txt kikapcsolt Tudástárnál sem tiltja a /blog-ot (a noindex így látható)', () => {
+    kapcsolo.lathato = false
+    const result = robots()
+    const rules = Array.isArray(result.rules) ? result.rules : [result.rules]
+    for (const rule of rules) {
+      const disallow = Array.isArray(rule.disallow) ? rule.disallow : [rule.disallow ?? '']
+      expect(disallow.some((path) => path === '/blog' || path.startsWith('/blog/'))).toBe(false)
+    }
   })
 })

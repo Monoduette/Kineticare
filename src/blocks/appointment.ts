@@ -25,7 +25,7 @@ export const appointment: Block = {
   slug: 'appointment',
   interfaceName: 'BlockAppointment',
   labels: {
-    singular: 'Időpontkérő szekció',
+    singular: 'Időpontkérés',
     plural: 'Időpontkérő szekciók',
   },
   admin: {
@@ -37,9 +37,9 @@ export const appointment: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Kis felső felirat',
+      label: 'Felső kis felirat',
       admin: {
-        description: 'A cím fölötti apró szöveg (pl. „Rendelői kezelés"). Nem kötelező.',
+        description: 'A cím fölötti apró szöveg (pl. „Rendelői kezelés”). Nem kötelező.',
       },
     },
     {
@@ -47,7 +47,7 @@ export const appointment: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A szekció címe (pl. „Kérj időpontot a rendelőbe").',
+        description: 'A szekció címe (pl. „Kérj időpontot a rendelőbe”).',
       },
     },
     {
@@ -57,7 +57,7 @@ export const appointment: Block = {
       label: 'Legyen űrlap a szekcióban',
       admin: {
         description:
-          'Bekapcsolva a látogató űrlapon hagyja itt az elérhetőségét, és ti hívjátok vissza. Kikapcsolva a szekció csak a rendelő adatait mutatja, és a telefonszám lesz az egyetlen út — ezt válaszd, ha az időpontot telefonon egyeztetitek. Kikapcsolás után nézd át a bevezetőt és a „hogyan megy tovább" szöveget: ne hivatkozzanak űrlapra.',
+          'Bekapcsolva a látogató űrlapon hagyja itt az elérhetőségét, és ti hívjátok vissza. Kikapcsolva a szekció csak a rendelő adatait mutatja, és a telefonszám lesz az egyetlen út. Ezt válaszd, ha az időpontot telefonon egyeztetitek. Kikapcsolás után nézd át a bevezetőt és a „Hogyan megy tovább?” szöveget: ne hivatkozzanak űrlapra.',
       },
     },
     {
@@ -66,7 +66,7 @@ export const appointment: Block = {
       label: 'Bevezető szöveg',
       admin: {
         description:
-          'Egy-két mondat a cím alá: kinek való, mire számítson. Ez az a szöveg, ami eldönti, megkeres-e valaki. Ha nincs űrlap, itt már ne kérj adatot („hagyd itt az elérhetőséged"), mert nincs hova beírni.',
+          'Egy-két mondat a cím alá: kinek való, mire számítson. Ez az a szöveg, ami eldönti, megkeres-e valaki. Ha nincs űrlap, itt már ne kérj adatot („hagyd itt az elérhetőséged”), mert nincs hova beírni.',
       },
     },
     {
@@ -75,7 +75,7 @@ export const appointment: Block = {
       label: 'Hogyan megy tovább?',
       admin: {
         description:
-          'Írd le, hogyan jut a látogató időponthoz. Űrlappal: mennyi időn belül hívjátok vissza. Űrlap nélkül: hogy hívja a lenti számok egyikét, és ott rögtön egyeztettek. Fontos: naptár-foglalás NINCS a rendszerben, ezért itt se ígérj azonnali foglalást.',
+          'Írd le, hogyan jut a látogató időponthoz. Űrlappal: mennyi időn belül hívjátok vissza. Űrlap nélkül: hogy hívja a lenti számok egyikét, és ott rögtön egyeztettek. Fontos: naptáras foglalás nincs a rendszerben, ezért itt se ígérj azonnali foglalást.',
       },
     },
     {
@@ -84,7 +84,7 @@ export const appointment: Block = {
       label: 'Az űrlap címe',
       admin: {
         condition: urlapLatszik,
-        description: 'Az űrlapdoboz fölötti cím (pl. „Időpontkérés"). Nem kötelező.',
+        description: 'Az űrlapdoboz fölötti cím (pl. „Időpontkérés”). Nem kötelező.',
       },
     },
     {
@@ -94,7 +94,7 @@ export const appointment: Block = {
       admin: {
         condition: urlapLatszik,
         description:
-          'Az elküldő gomb felirata. Ige + tárgy alakban a legjobb (pl. „Időpontot kérek"). Üresen hagyva az alapértelmezett felirat jelenik meg.',
+          'Az elküldő gomb felirata. Ige + tárgy alakban a legjobb (pl. „Időpontot kérek”). Üresen hagyva az alapértelmezett felirat jelenik meg.',
       },
     },
     {
@@ -106,7 +106,7 @@ export const appointment: Block = {
       admin: {
         condition: urlapLatszik,
         description:
-          'Ezek közül jelölhet be a látogató, hogy MIKOR alkalmas neki. Csak olyan sávot vegyél fel, amit tényleg tudtok tartani (pl. „Hétköznap délelőtt"). Ha üresen hagyod, a kérdés egyszerűen kimarad az űrlapból.',
+          'Ezek közül jelölhet be a látogató, hogy mikor alkalmas neki. Csak olyan sávot vegyél fel, amit tényleg tudtok tartani (pl. „Hétköznap délelőtt”). Ha üresen hagyod, a kérdés egyszerűen kimarad az űrlapból.',
         initCollapsed: true,
       },
       fields: [
@@ -116,7 +116,7 @@ export const appointment: Block = {
           required: true,
           label: 'A sáv felirata',
           admin: {
-            description: 'Rövid, egysoros felirat (pl. „Hétköznap délelőtt").',
+            description: 'Rövid, egysoros felirat (pl. „Hétköznap délelőtt”).',
           },
         },
       ],
@@ -126,7 +126,7 @@ export const appointment: Block = {
       type: 'text',
       label: 'A helyszínek felirata',
       admin: {
-        description: 'A rendelő-címek fölötti szó (pl. „Rendelőink").',
+        description: 'A rendelő-címek fölötti szó (pl. „Rendelőink”).',
       },
     },
     {
@@ -146,14 +146,14 @@ export const appointment: Block = {
           type: 'text',
           required: true,
           label: 'Cím',
-          admin: { description: 'Teljes postai cím (pl. „1117 Budapest, Nádorliget u. 7/b").' },
+          admin: { description: 'Teljes postai cím (pl. „1117 Budapest, Nádorliget u. 7/b”).' },
         },
         {
           name: 'megjegyzes',
           type: 'text',
           label: 'Megjegyzés a címhez',
           admin: {
-            description: 'Nem kötelező, egysoros kiegészítés (pl. „bejárat az udvar felől").',
+            description: 'Nem kötelező, egysoros kiegészítés (pl. „bejárat az udvar felől”).',
           },
         },
       ],
@@ -162,7 +162,7 @@ export const appointment: Block = {
       name: 'telefonFelirat',
       type: 'text',
       label: 'A telefonszámok felirata',
-      admin: { description: 'A telefonszámok fölötti szó (pl. „Telefon").' },
+      admin: { description: 'A telefonszámok fölötti szó (pl. „Telefon”).' },
     },
     {
       name: 'telefonszamok',
@@ -180,7 +180,7 @@ export const appointment: Block = {
           name: 'nev',
           type: 'text',
           label: 'Kihez tartozik',
-          admin: { description: 'Nem kötelező (pl. „Kocsis Kata").' },
+          admin: { description: 'Nem kötelező (pl. „Kocsis Kata”).' },
         },
         {
           name: 'szam',
@@ -188,7 +188,8 @@ export const appointment: Block = {
           required: true,
           label: 'Telefonszám',
           admin: {
-            description: 'Tagoltan írd (pl. „+36 30 169 2263") — mobilon kattintható hívás-link lesz belőle.',
+            description:
+              'Tagoltan írd (pl. „+36 30 169 2263”). Mobilon kattintható hívás-link lesz belőle.',
           },
         },
       ],
@@ -197,7 +198,7 @@ export const appointment: Block = {
       name: 'emailFelirat',
       type: 'text',
       label: 'Az e-mail-cím felirata',
-      admin: { description: 'Az e-mail-cím fölötti szó (pl. „E-mail").' },
+      admin: { description: 'Az e-mail-cím fölötti szó (pl. „E-mail”).' },
     },
     {
       name: 'email',
@@ -214,7 +215,7 @@ export const appointment: Block = {
       admin: {
         condition: urlapLatszik,
         description:
-          'Ez jelenik meg az űrlap helyén a sikeres beküldés után (pl. „Megkaptuk az időpontkérésed"). Üresen hagyva az alapértelmezett szöveg jelenik meg.',
+          'Ez jelenik meg az űrlap helyén a sikeres beküldés után (pl. „Megkaptuk az időpontkérésed”). Üresen hagyva az alapértelmezett szöveg jelenik meg.',
       },
     },
     {
@@ -224,7 +225,7 @@ export const appointment: Block = {
       admin: {
         condition: urlapLatszik,
         description:
-          'Mi történik most, és mikor keresitek vissza a látogatót. Konkrét határidőt írj (pl. „két munkanapon belül"), mert a bizonytalanság új üzenetet szül.',
+          'Mi történik most, és mikor keresitek vissza a látogatót. Konkrét határidőt írj (pl. „két munkanapon belül”), mert a bizonytalanság új üzenetet szül.',
       },
     },
     sectionSettings({ defaultBackground: 'tint' }),

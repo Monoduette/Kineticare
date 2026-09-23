@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * ŐR — a Tudástár kategória-oldalának META-viselkedése.
@@ -15,6 +15,11 @@ import { describe, expect, it, vi } from 'vitest'
 // `categories` mező alapján maga szűri: a fixtúra ezért hordozza a
 // kategória-id-t (1 = kezrehabilitacio).
 const posts = vi.hoisted(() => ({ current: [] as Array<Record<string, unknown>> }))
+
+// Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): alapból bekapcsolt, a
+// fájl végi blokk kapcsolja ki.
+const kapcsolo = vi.hoisted(() => ({ lathato: true }))
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => kapcsolo.lathato }))
 
 vi.mock('@/lib/cms', () => ({
   getCategoryBySlug: (slug: string) =>
@@ -81,5 +86,31 @@ describe('bloglista metaadata — a duplikált cím kanonizálása', () => {
 
   it('ismeretlen kategória-értéknél a canonical a szűretlen lista', async () => {
     expect((await listaMeta('nincs-ilyen-tema')).alternates?.canonical).toBe('/blog')
+  })
+})
+
+describe('Tudástár-kapcsoló: kikapcsolva a lista és a téma-lap noindex, follow', () => {
+  afterEach(() => {
+    kapcsolo.lathato = true
+  })
+  const NOINDEX_FOLLOW = { index: false, follow: true, googleBot: { index: false, follow: true } }
+
+  it('a /blog lista noindex, follow, a canonical marad', async () => {
+    kapcsolo.lathato = false
+    const result = await listMetadata({ searchParams: Promise.resolve({}) })
+    expect(result.robots).toEqual(NOINDEX_FOLLOW)
+    expect(result.alternates?.canonical).toBe('/blog')
+  })
+
+  it('a cikkekkel teli téma-lap is noindex, follow', async () => {
+    kapcsolo.lathato = false
+    posts.current = [{ id: 11, slug: 'gipsz-utan', categories: [1] }]
+    const result = await meta('kezrehabilitacio')
+    expect(result.robots).toEqual(NOINDEX_FOLLOW)
+    expect(result.alternates?.canonical).toBe('/blog/kategoria/kezrehabilitacio')
+  })
+
+  it('bekapcsolva a lista robots-a változatlan (a keret indexelhető alapja)', async () => {
+    expect((await listMetadata({ searchParams: Promise.resolve({}) })).robots).toBeUndefined()
   })
 })

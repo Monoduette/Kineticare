@@ -1,0 +1,58 @@
+/*
+ * Az Oldalak „Szekciók” sorcímkéje és a szekció-tájékoztató linksora.
+ *
+ * Csak a Payload saját tokenjei (--theme-*): a sötét téma a skálát megfordítja
+ * (@payloadcms/ui/dist/scss/colors.scss), így ugyanaz a szabály mindkét témán
+ * olvasható (mindkét témán mérve: a címke és a „Rejtve” jel szövege legalább
+ * 4,5:1, a jel kerete legalább 3:1). A dobozt magát (.kc-admin-notice) a
+ * custom.scss közös stílusszerződése adja, itt csak a címke és a linkek
+ * elrendezése él.
+ */
+
+/* A sorcímke h3: a Payload címsor-stílusát visszaállítjuk a sorfejléc betűjére. */
+.kc-section-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.kc-section-row-label__sorszam {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A cím a sor megkülönböztető része, ezért ez a hangsúlyos (NN/g: a felismerés a látható jelből jön). */
+.kc-section-row-label__cim {
+  font-weight: 600;
+}
+
+/*
+ * A rejtettség jele: SZÖVEG („Rejtve”), a szín és a keret csak kiemeli
+ * (WCAG 2.2 SC 1.4.1). A figyelmeztető skála a sötét témán megfordul, így a
+ * világos alapon sötét, sötét alapon világos betű marad.
+ */
+.kc-section-row-label__rejtve {
+  display: inline-block;
+  padding: 0 0.4em;
+  border: 1px solid var(--theme-warning-650);
+  border-radius: var(--style-radius-s, 3px);
+  background: var(--theme-warning-100);
+  color: var(--theme-warning-900);
+  font-weight: 600;
+}
+
+/*
+ * A linkek aláhúzását, 24 px-es célfelületét (SC 2.5.8) és fókuszgyűrűjét a
+ * custom.scss .kc-admin-notice__linkek szerződése adja; a linksor a keret
+ * nélküli (csak linkes) változatban is ugyanazt az osztályt viseli.
+ */
+.kc-section-source--csak-link {
+  margin-block-end: var(--base, 1rem);
+}
+
+.kc-section-source--csak-link .kc-admin-notice__linkek {
+  margin-block-start: 0;
+}

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useAuth, useField, useForm } from '@payloadcms/ui'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { FieldDescription, FieldLabel, useAuth, useField, useForm } from '@payloadcms/ui'
 import type { TextFieldClientProps } from 'payload'
 import { hasStaffOrOwnerRole } from '../../access/roles'
 import { BunnyVideoDialog } from './BunnyVideoDialog'
@@ -9,18 +9,62 @@ import { BunnyVideoPicker, BunnyVideoPreview } from './BunnyVideoPicker'
 import { BunnyVideoUpload } from './BunnyVideoUpload'
 import { videoDetail } from './bunny-video-client'
 import {
+  attachedVideoSummary,
   captureVideoTarget,
-  durationLabel,
-  statusLabels,
+  fieldLabelFallback,
+  guidPattern,
   videoFieldPatch,
   type AdminVideo,
   type VideoLibrary,
   type VideoTarget,
 } from './bunny-video-state'
 
+/**
+ * Bunny-videó mező (nyilvános előzetes és lecke videója).
+ *
+ * K35 (admin-audit, 2026-09-22):
+ * - A mező a config címkéjét és leírását mutatja a Payload saját FieldLabel
+ *   és FieldDescription elemével (a korábbi beégetett felirat helyett), így a
+ *   név és a súgó egy helyen, a mezőnél él (WCAG 2.2 SC 3.3.2 Labels or
+ *   Instructions, https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html;
+ *   SC 1.3.1: a csoport neve a címke, role="group" + aria-labelledby).
+ * - Újratöltés után is látszik, melyik videó van a mezőn: a csatolt videó
+ *   adatai („cím · 7:17 · Kész”) a meglévő videoDetail kliensből jönnek (NN/g,
+ *   Visibility of System Status, https://www.nngroup.com/articles/visibility-system-status/;
+ *   Recognition rather than recall, https://www.nngroup.com/articles/recognition-and-recall/).
+ *   A lekérés csak akkor indul, amikor a mező láthatóvá válik (a csukott
+ *   lecke-sorok tartalma is fel van csatolva), és oldalanként gyorsítótárazott.
+ * - A kiválasztás, csere, leválasztás és megerősítés logikája változatlan.
+ */
+
+const readyDetailCache = new Map<string, Promise<AdminVideo>>()
+
+/** A csatolt videó adatai; a kész videóé a lap élete alatt újrahasznosul. */
+function attachedVideoDetail(guid: string, library: VideoLibrary): Promise<AdminVideo> {
+  const key = `${library}:${guid.toLowerCase()}`
+  const cached = readyDetailCache.get(key)
+  if (cached) return cached
+  const request = videoDetail(guid, library)
+  readyDetailCache.set(key, request)
+  request.then(
+    (video) => {
+      if (video.status !== 'ready') readyDetailCache.delete(key)
+    },
+    () => readyDetailCache.delete(key),
+  )
+  return request
+}
+
 function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }) {
-  const { library, path: stalePath, readOnly } = props
+  const { field: fieldConfig, library, path: stalePath, readOnly } = props
   const field = useField<string>({ potentiallyStalePath: stalePath })
+  const labelId = useId()
+  const descriptionId = useId()
+  const root = useRef<HTMLDivElement>(null)
+  const [attached, setAttached] = useState<{
+    guid: string
+    video: AdminVideo | null
+  } | null>(null)
   const form = useForm()
   const { user } = useAuth<{ id: number | string; role?: string | null }>()
   const [open, setOpen] = useState(false)
@@ -37,6 +81,38 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
   const target = useRef<VideoTarget | null>(null)
   const consumed = useRef(false)
   const disabled = !!readOnly || field.disabled || form.disabled || !hasStaffOrOwnerRole(user)
+  const canView = hasStaffOrOwnerRole(user)
+  const value = typeof field.value === 'string' ? field.value : ''
+  const selectedGuid = selected?.guid ?? null
+  useEffect(() => {
+    if (!canView || !guidPattern.test(value) || selectedGuid === value) return
+    let active = true
+    let observer: IntersectionObserver | null = null
+    const load = () => {
+      attachedVideoDetail(value, library).then(
+        (video) => {
+          if (active) setAttached({ guid: value, video })
+        },
+        () => {
+          if (active) setAttached({ guid: value, video: null })
+        },
+      )
+    }
+    const node = root.current
+    if (typeof IntersectionObserver === 'undefined' || !node) load()
+    else {
+      observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        observer?.disconnect()
+        load()
+      })
+      observer.observe(node)
+    }
+    return () => {
+      active = false
+      observer?.disconnect()
+    }
+  }, [canView, library, selectedGuid, value])
   const editable = useRef(!disabled)
   useLayoutEffect(() => {
     editable.current = !disabled
@@ -95,7 +171,7 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
     const current = form.getFields().previewVideoStreamId
     cancelUnlink()
     if (!current || current.value !== captured.initial) {
-      setError('Az előzetes közben megváltozott. Nyisd meg újra a leválasztást.')
+      setError('A nyilvános előzetes közben megváltozott. Nyisd meg újra a leválasztást.')
       return
     }
     form.dispatchFields({
@@ -123,7 +199,7 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
       return
     }
     consumed.current = true
-    // Egyetlen Payload reducer-akcio: nincs felkesz GUID/hossz/allapot kombinacio.
+    // Egyetlen Payload reducer-akció: nincs félkész GUID/hossz/állapot kombináció.
     form.dispatchFields({ type: 'UPDATE_MANY', formState: patch })
     form.setModified(true)
     setSelected(video)
@@ -165,12 +241,23 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
       }
     }
   }
-  if (!hasStaffOrOwnerRole(user)) return null
+  if (!canView) return null
   const current = selected?.guid === field.value ? selected : null
+  const shown = current ?? (attached?.guid === value ? attached.video : null)
+  const label = fieldConfig?.label || fieldLabelFallback(library)
+  const description = fieldConfig?.admin?.description
   return (
-    <div className="bunny-video bunny-video-field field-type">
+    <div
+      aria-describedby={description ? descriptionId : undefined}
+      aria-labelledby={labelId}
+      className="bunny-video bunny-video-field field-type"
+      ref={root}
+      role="group"
+    >
       <div className="bunny-video-toolbar">
-        <span>{library === 'public' ? 'Előzetes videó' : 'Lecke videója'}</span>
+        <div id={labelId}>
+          <FieldLabel as="span" label={label} path={field.path} required={fieldConfig?.required} />
+        </div>
         <div className="bunny-video-actions">
           <button type="button" disabled={disabled} onClick={launch}>
             {field.value ? 'Videó cseréje' : 'Videó kiválasztása'}
@@ -182,17 +269,18 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
           )}
           {library === 'public' && field.value && (
             <button type="button" disabled={disabled} onClick={launchUnlink}>
-              Előzetes leválasztása
+              Nyilvános előzetes leválasztása
             </button>
           )}
         </div>
       </div>
-      {current ? (
-        <p>
-          {current.title} · {durationLabel(current.durationSec)} · {statusLabels[current.status]}
-        </p>
-      ) : field.value ? (
-        <p>Videó csatolva</p>
+      <p>
+        {attachedVideoSummary(value, shown, attached?.guid === value && attached.video === null)}
+      </p>
+      {description ? (
+        <div id={descriptionId}>
+          <FieldDescription description={description} path={field.path} />
+        </div>
       ) : null}
       {(error || field.showError) && <p role="alert">{error || field.errorMessage}</p>}
       {open && (
@@ -237,7 +325,7 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
                   disabled={disabled || confirming}
                   onClick={() => void confirmReplacement()}
                 >
-                  {confirming ? 'Ellenőrzés...' : 'Videó cseréje'}
+                  {confirming ? 'Ellenőrzés…' : 'Videó cseréje'}
                 </button>
               </div>
             </BunnyVideoDialog>
@@ -248,14 +336,14 @@ function BunnyVideoField(props: TextFieldClientProps & { library: VideoLibrary }
         <BunnyVideoPreview guid={field.value} library={library} onClose={() => setPreview(false)} />
       )}
       {unlinkOpen && (
-        <BunnyVideoDialog title="Leválasztod az előzetest?" onClose={cancelUnlink}>
+        <BunnyVideoDialog title="Leválasztod a nyilvános előzetest?" onClose={cancelUnlink}>
           <p>A videó a videótárban marad.</p>
           <div className="bunny-video-actions">
             <button type="button" onClick={cancelUnlink}>
               Mégse
             </button>
             <button type="button" disabled={disabled} onClick={unlink}>
-              Előzetes leválasztása
+              Nyilvános előzetes leválasztása
             </button>
           </div>
         </BunnyVideoDialog>

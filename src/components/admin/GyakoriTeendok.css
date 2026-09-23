@@ -1,0 +1,170 @@
+/* „Gyakori teendők” panel az Irányítópult tetején (GyakoriTeendok.tsx).
+   A kártya a Payload saját gyűjtemény-kártyájának anyagát kapja (háttér
+   --theme-elevation-50, keret --theme-border-color, lekerekítés
+   --style-radius-m), hogy a panel az Irányítópult része legyen, ne idegen
+   betét. A rács 16rem-es oszlopokra tördel: 320 CSS px-en egy oszlop, nincs
+   vízszintes görgetés (WCAG 2.2 SC 1.4.10).
+   Kontraszt (mindkét témán mérve, scratchpad leadA/A3): a cím
+   --theme-text, a leírás --theme-elevation-800 a kártya hátterén (SC 1.4.3).
+   A teljes kártya kattintható: a cím linkjének ::after rétege fedi le (a
+   „block link” minta), így a célfelület a kártya teljes mérete (SC 2.5.8),
+   a link hozzáférhető neve pedig csak a cím marad. A fókuszgyűrű a kártyán
+   jelenik meg, a Payload saját --accessibility-outline-jával (SC 2.4.7). */
+.kc-gyakori-teendok {
+  margin: 0 0 calc(var(--base) * 1.5);
+}
+
+.kc-gyakori-teendok__cim {
+  margin: 0 0 calc(var(--base) * 0.5);
+}
+
+.kc-gyakori-teendok__lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: calc(var(--base) * 0.6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-gyakori-teendok__kartya {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 0;
+  padding: calc(var(--base) * 0.8);
+  border: 1px solid var(--theme-border-color);
+  border-radius: var(--style-radius-m);
+  background: var(--theme-elevation-50);
+  transition-property: border-color, box-shadow;
+  transition-duration: 0.1s;
+}
+
+.kc-gyakori-teendok__kartya:hover {
+  border-color: var(--theme-elevation-250);
+  box-shadow: 0 4px 8px -2px rgb(0 0 0 / 5%);
+}
+
+.kc-gyakori-teendok__kartya:has(.kc-gyakori-teendok__link:focus-visible) {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
+}
+
+.kc-gyakori-teendok__kartya-cim {
+  margin: 0 0 calc(var(--base) * 0.25);
+  font-family: inherit;
+  font-size: max(15px, calc(15 / 13 * 1rem));
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: normal;
+}
+
+.kc-gyakori-teendok__link {
+  color: var(--theme-text);
+  text-decoration: none;
+}
+
+.kc-gyakori-teendok__link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.kc-gyakori-teendok__kartya:hover .kc-gyakori-teendok__link {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-gyakori-teendok__link:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-gyakori-teendok__leiras {
+  margin: 0;
+  color: var(--theme-elevation-800);
+  font-size: max(14px, calc(14 / 13 * 1rem));
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kc-gyakori-teendok__kartya {
+    transition: none;
+  }
+}
+
+/* A fő oldalak gyorslinkje (FoOldalakGyorslinkjei, GyakoriTeendok.tsx).
+   Az Oldalak lista fölött a B-1 .kc-admin-notice doboza adja a keretet és a
+   szövegszínt (custom.scss, mért AA mindkét témán). Az Irányítópulton
+   (--panel) doboz és kártya nélkül áll a hat feladatkártya alatt, hogy a
+   kártyák maradjanak a legerősebb elemek (NN/g Homepage Design 4.2).
+   A lista függőleges, mert a mellékszöveg (az oldal Címe) hosszú lehet; a
+   név és a Cím egy sorban áll, ha elfér, keskeny nézeten tördel (SC 1.4.10).
+   A link a notice-szerződés linkjeivel azonos: aláhúzott (nem csak a szín
+   jelzi, SC 1.4.1), legalább 24 px magas doboz (SC 2.5.8), fókuszban a
+   Payload --accessibility-outline-ja (SC 2.4.7). A két osztályos szelektor
+   a custom.scss rétegen kívüli szabályai mellett is érvényes marad. */
+.kc-fo-oldalak--panel {
+  max-width: 38em;
+  margin: calc(var(--base) * 1) 0 0;
+  color: var(--theme-text);
+  font-size: max(14px, calc(14 / 13 * 1rem));
+  line-height: 1.5;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__cim {
+  margin: 0 0 calc(var(--base) * 0.25);
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: normal;
+  line-height: inherit;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__szoveg {
+  margin: 0;
+  color: var(--theme-elevation-800);
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__lista {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--base) * 0.2);
+  margin: calc(var(--base) * 0.4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__elem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.6em;
+  margin: 0;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__link:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
+}
+
+.kc-fo-oldalak .kc-fo-oldalak__oldalcim {
+  overflow-wrap: anywhere;
+}

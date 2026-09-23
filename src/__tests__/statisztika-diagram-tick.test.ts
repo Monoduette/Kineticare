@@ -9,11 +9,16 @@ import { RevenueChart } from '../components/admin/RevenueChart'
 import { aggregateMonthlyRevenue } from '../lib/statistics/revenue'
 
 /**
- * ŐR — A BEVÉTEL-DIAGRAM TICKJE EGYETLEN GYÖKÉRMÉRETEN SEM ESIK 12 px ALÁ.
+ * ŐR — A BEVÉTEL-DIAGRAM TICKJE EGYETLEN GYÖKÉRMÉRETEN SEM ESIK 13 px ALÁ.
  * A #126 (px→rem) a diagram `min-width`-ét `'720px'`-ről
  * `calc(720 * var(--kc-as-px, 1px))`-re cserélte. A `--kc-as-px` a
  * `calc(1rem / 13)` — a Payload-admin 13 px-es gyökeréhez igazítva. CSAKHOGY a
  * Payload 1024 px alatt 12 px-re viszi a gyökeret, ott tehát az egység
+ * kisebb, és a puszta rem-alak a viewBoxnál keskenyebbre rajzolná az SVG-t.
+ * A `max(720px, …)` alsó korlát ezt zárja ki; az őr a valódi forrásokból
+ * számolja ki a rajzolt tick-méretet mindkét gyökéren.
+ * A küszöb 2026-09-22-től 13 px (admin-audit K31: a 12 px-es tengelyfelirat
+ * a lap legkisebb szövege volt; a tervezési minimum 13 px).
  */
 
 const REPO = process.cwd()
@@ -21,8 +26,8 @@ const olvas = (...reszek: string[]): string => readFileSync(join(REPO, ...reszek
 
 const PAYLOAD_SCSS = ['node_modules', '@payloadcms', 'ui', 'dist', 'scss']
 
-/** A tervezett legkisebb tick-méret px-ben (a #125 mért alapállapota). */
-const TICK_MINIMUM_PX = 12
+/** A tervezett legkisebb tick-méret px-ben (K31, 2026-09-22; korábban 12). */
+const TICK_MINIMUM_PX = 13
 
 /**
  * A Payload-admin gyökér-betűméretei px-ben, a saját scss-éből kiolvasva:
@@ -141,7 +146,7 @@ function minWidthKifejezes(): string {
   return (talalat ?? '').trim()
 }
 
-describe('Bevétel-diagram: a tick MÉRT mérete minden Payload-gyökéren ≥ 12 px', () => {
+describe('Bevétel-diagram: a tick MÉRT mérete minden Payload-gyökéren ≥ 13 px', () => {
   it('a mérés bemenetei a VALÓDI forrásokból jönnek, nem a tesztből', () => {
     const gyokerek = payloadGyokerMeretek()
     const oszto = egysegOszto()
@@ -154,7 +159,7 @@ describe('Bevétel-diagram: a tick MÉRT mérete minden Payload-gyökéren ≥ 1
     expect(tickBetumeret).toBeGreaterThan(0)
   })
 
-  it('egyik gyökérméreten sem esik a tick 12 px alá', () => {
+  it('egyik gyökérméreten sem esik a tick 13 px alá', () => {
     const gyokerek = payloadGyokerMeretek()
     const oszto = egysegOszto()
     const { viewBoxSzelesseg, tickBetumeret } = diagramMeretek()

@@ -7,11 +7,15 @@ import {
   getContentCategories,
   getSitemapPosts,
   getSitemapProducts,
+  type SitemapPost,
 } from '@/lib/cms'
 import { courseHref } from '@/lib/course-url'
 import { absoluteUrl } from '@/lib/seo'
 import { categoriesWithPosts } from '@/lib/tudastar'
+import { isHubSlug, TUDASTAR_UTVONAL } from '@/lib/tudastar-kapcsolo'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
+import type { Category } from '@/payload-types'
 
 /**
  * sitemap.xml — a Next.js metadata-API generálja (`/sitemap.xml`).
@@ -22,6 +26,9 @@ import { hubAtiranyitasCel } from '@/lib/tudastar/hub-oldalak'
  * üres kategória-lapok, a kurzusok slugos címükön (borítóképpel).
  * NINCS BENNE: noindex/bejelentkezés mögötti/tranzakciós út (a robots.txt
  * tiltó listája és a `NOINDEX_ROBOTS`-os lapok), átirányító URL, piszkozat.
+ * Kikapcsolt Tudástárnál (rejtett /blog menüpont, src/lib/tudastar-kapcsolo.ts)
+ * a /blog, a cikkek, a kategóriák és a tünet-hubok sem: ezek a lapok ilyenkor
+ * `noindex`-esek, a sitemap pedig csak indexelendő címet sorolhat fel.
  * A Google a sitemapet a KANONIKUS, 200-as, indexelhető URL-ek listájaként
  * kezeli (Google Search Central, *Build and submit a sitemap*:
  * https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap);
@@ -80,12 +87,17 @@ function hasSlug(doc: { slug?: string | null }): boolean {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [pages, posts, categories, products] = await Promise.all([
+  // Rejtett Tudástárnál a cikkek és a kategóriák lekérdezése sem fut: üres
+  // listával a lenti ágak egyetlen Tudástár-címet sem írnak ki.
+  const tudastarLathato = await getTudastarLathato()
+  const [allPages, posts, categories, products] = await Promise.all([
     getAllPublishedPages(),
-    getSitemapPosts(500),
-    getContentCategories(),
+    tudastarLathato ? getSitemapPosts(500) : Promise.resolve<SitemapPost[]>([]),
+    tudastarLathato ? getContentCategories() : Promise.resolve<Category[]>([]),
     getSitemapProducts(500),
   ])
+  // A tünet-hub (pages) Tudástár-cikk: rejtett Tudástárnál kimarad.
+  const pages = tudastarLathato ? allPages : allPages.filter((page) => !isHubSlug(page.slug))
 
   // A statikus utak `lastModified`-ja a mögöttük álló CMS-tartalom VALÓS
   // módosítási ideje: a `/` és a `/kapcsolat` a saját CMS-oldaláé, a
@@ -101,7 +113,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/blog': latestDate(posts.map((post) => lastModified(post.updatedAt))),
   }
 
-  const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => {
+  const staticRoutes = tudastarLathato
+    ? STATIC_ROUTES
+    : STATIC_ROUTES.filter((route) => route.path !== TUDASTAR_UTVONAL)
+  const entries: MetadataRoute.Sitemap = staticRoutes.map((route) => {
     const modified = staticLastModified[route.path]
     return {
       url: absoluteUrl(route.path),

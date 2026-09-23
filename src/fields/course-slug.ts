@@ -134,10 +134,10 @@ export const courseSlugField: TextField = {
   type: 'text',
   unique: true,
   index: true,
-  label: 'Webcím (slug)',
+  label: 'Webcím',
   admin: {
     description:
-      'A kurzus webcíme (pl. kezrehabilitacio-otthon). Magától kitöltődik a kurzus címéből, ékezetek nélkül, kötőjelekkel; ha a webcím már foglalt, sorszám kerül a végére. Csak akkor írd át, ha tudod, mit csinálsz — a régi webcím ilyenkor megszűnik működni.',
+      'A kurzus linkjének vége, pl. a kineticare.hu/kurzusok/kezrehabilitacio-otthon címben a „kezrehabilitacio-otthon”. A kurzus címéből magától kitöltődik, ékezetek nélkül, kötőjelekkel; ha már foglalt, sorszám kerül a végére. Ha átírod, a régi link nem működik tovább.',
   },
   hooks: {
     beforeValidate: [generateCourseSlug],

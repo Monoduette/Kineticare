@@ -1,14 +1,20 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { formBuilderPlugin } from '@payloadcms/plugin-form-builder'
 import { FixedToolbarFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
-import { en } from '@payloadcms/translations/languages/en'
 import { hu } from '@payloadcms/translations/languages/hu'
 import path from 'node:path'
-import { APIError, buildConfig, type CollectionBeforeValidateHook, type Payload } from 'payload'
+import {
+  APIError,
+  buildConfig,
+  type CollectionBeforeValidateHook,
+  type Payload,
+  type Plugin,
+} from 'payload'
 import sharp from 'sharp'
 import { fileURLToPath } from 'node:url'
 
 import { isAdmin } from './access'
+import { ADMIN_UTAK } from './components/admin/KezdolapCel'
 import { AuditLogs } from './collections/AuditLogs'
 import { RefundIntents } from './collections/RefundIntents'
 import { ensureHomeImages, ensureHomeLayout, ensureHomeTestimonials } from './lib/home-seed'
@@ -50,6 +56,12 @@ import {
 } from './lib/email'
 import { NEWSLETTER_FORM_TITLE, ensureNewsletterForm } from './lib/newsletter/form'
 import { validateNewsletterSubmissionData } from './lib/newsletter/validation'
+import { huAdminForditasPlugin } from './lib/admin/hu-forditas'
+import {
+  CONTACT_FORM_TITLE,
+  URLAP_GYUJTEMENY_LEIRAS,
+  urlapMezokAdminnal,
+} from './lib/admin/urlap-admin'
 import { logger } from './lib/logger'
 import { adminGroups } from './plugins/admin-groups'
 import { audit } from './plugins/audit'
@@ -362,8 +374,6 @@ const notifyStaffOnSubmission = async ({
 // nincs rá migráció — az onInit gondoskodik róla, best-effort).
 // ---------------------------------------------------------------------------
 
-const CONTACT_FORM_TITLE = 'Kapcsolat'
-
 function contactFormData(): Record<string, unknown> {
   const confirmationText = 'Köszönjük az üzenetét! Munkatársunk hamarosan jelentkezik.'
   return {
@@ -543,55 +553,151 @@ async function onInit(payload: Payload): Promise<void> {
   }
 }
 
+/**
+ * A saját admin-nézetek címe (böngészőfül és megosztási előnézet). A Payload a
+ * saját nézetek og:title-jét „Payload”-ra állítja, ha a nézet nem ad sajátot
+ * (@payloadcms/next/dist/views/Root/generateCustomViewMetadata.js), ezért az
+ * og:title is a nézet neve, ugyanúgy, mint az Irányítópulton.
+ */
+function nezetMeta(cim: string): { title: string; openGraph: { title: string } } {
+  return { title: cim, openGraph: { title: cim } }
+}
+
+/**
+ * A gyűjtemények kulcsszó-meta címkéje. A Payload a szerkesztőnézetbe
+ * „<gyűjtemény>, Payload, CMS” kulcsszót ír (@payloadcms/next/dist/views/Edit/
+ * metadata.js), a listába üreset; mindkettőt csak a gyűjtemény saját
+ * admin.meta-ja írja felül, a globális admin.meta előttük áll. A null a
+ * címkét kiveszi, ahogy a globális admin.meta-ban is. Csak megjelenítés: a
+ * gyűjtemény mezői, access-e és hookjai érintetlenek. A plugin-lánc vége felé
+ * fut, hogy a pluginok gyűjteményeit (webshop, űrlapok) is elérje.
+ */
+const adminKulcsszoNelkul: Plugin = (config) => ({
+  ...config,
+  collections: (config.collections ?? []).map((gyujtemeny) => ({
+    ...gyujtemeny,
+    admin: { ...gyujtemeny.admin, meta: { ...gyujtemeny.admin?.meta, keywords: null } },
+  })),
+})
+
 export default buildConfig({
   admin: {
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
     },
-    // A böngészőfülön/megosztáskor látszó cím: „<oldal> – Kineticare admin".
+    // Az admin-lapok <head>-je a Payload alapértékei helyett (a forrás:
+    // @payloadcms/next/dist/utilities/meta.js és a views/*/metadata.js).
+    // - Cím: „<oldal> | Kineticare admin”. A Payload `${cím} ${utótag}`
+    //   alakban fűz, ezért az utótag szóközzel NEM kezdődhet (a régi
+    //   „ – Kineticare admin” dupla szóközt adott). Az elválasztó a frontend
+    //   `%s | Kineticare` mintája; a szóközös nagykötőjel elválasztóként
+    //   gondolatjel volna, ezt a docs/ui-sztenderdek.md 3.1.2 és 8.3 tiltja.
+    // - Leírás és megosztási előnézet (og:site_name, og:description; a
+    //   twitter:description ebből öröklődik): a Payload angol alapszövege
+    //   („Payload is a headless CMS…”, „Payload App”) helyett magyarul.
+    // - Kép: nincs. A 'dynamic' alapérték /api/og képet adott a Payload
+    //   leírásával, abszolút címe pedig a serverURL híján localhostra mutatott.
+    //   Az 'off' a /api/og végpontot is kikapcsolja (routes/rest/og/index.js).
+    // - Kulcsszó: nincs. A saját nézetek alapja „Payload” volt
+    //   (views/Root/generateCustomViewMetadata.js), a gyűjtemény-nézeteké
+    //   „<gyűjtemény>, Payload, CMS”: azt az adminKulcsszoNelkul veszi ki.
+    //   A saját nézetek og:title-je a nezetMeta-ból jön (a buildConfig előtt).
+    // - Ikon: a weboldal meglévő ikonjai (src/app/icon.svg, apple-icon.png) a
+    //   Payload saját favikonja helyett; a favicon.ico-t a Next maga teszi ki.
+    // - Robots: noindex, nofollow, mint eddig (a Payload alapértéke is ez).
     meta: {
-      titleSuffix: ' – Kineticare admin',
+      titleSuffix: '| Kineticare admin',
+      description: 'A Kineticare weboldal adminisztrációs felülete.',
+      keywords: null,
+      robots: 'noindex, nofollow',
+      defaultOGImageType: 'off',
+      openGraph: {
+        siteName: 'Kineticare admin',
+        description: 'A Kineticare weboldal adminisztrációs felülete.',
+        locale: 'hu_HU',
+      },
+      icons: [
+        { rel: 'icon', type: 'image/svg+xml', sizes: 'any', url: '/icon.svg' },
+        { rel: 'apple-touch-icon', type: 'image/png', sizes: '180x180', url: '/apple-icon.png' },
+      ],
     },
+    // K16 (admin-audit): a Payload alapértéke a Gravatar, amelyet a saját CSP
+    // (img-src) jogosan blokkol: minden nézeten törött kép és harmadik félnek
+    // szóló kérés volt. A beépített, helyben rajzolt fiókikon nem kér semmit.
+    avatar: 'default',
+    // K25: magyar dátumalak a listákban és a dokumentumsávban, 24 órás idővel
+    // (pl. „2026. 09. 22. 19:10”); a Payload alapértéke 12 órás, angol sorrendű
+    // (payload/dist/config/defaults.js). A nap-pontosságú mezők a saját
+    // displayFormat-jukat tartják (CourseProgress, Pages, ecommerce).
+    dateFormat: 'yyyy. MM. dd. HH:mm',
     components: {
+      // A kezdőlap és a videó szövegeinek menüpontja, valamint a saját
+      // nézetek linkjei az oldalsáv TETEJÉN, két csoportban (admin-audit K32,
+      // K33). A Payload a saját nézeteket nem teszi be a navigációba.
+      beforeNavLinks: ['/components/admin/AdminNavLinks#AdminNavLinks'],
+      // Ugyanez a videószöveg-link a fejlécben, minden nézeten: 1440 CSS px-ig a
+      // Payload betöltéskor becsukja az oldalsávot (részletek az
+      // AdminNavLinks.tsx KezdolapVideoFejlecLink kommentjében).
+      actions: ['/components/admin/AdminNavLinks#KezdolapVideoFejlecLink'],
+      // „Gyakori teendők”: feladat-belépési pontok az Irányítópult tetején (K32).
+      beforeDashboard: ['/components/admin/GyakoriTeendok#GyakoriTeendok'],
+      // A `?szekcio=<blokk-azonosító>` mélylink kezelője a teljes admin körül:
+      // kinyitja a szekciót, odagörget, és az első mezőre teszi a fókuszt
+      // (src/components/editor/admin/SzekcioMegnyito.tsx).
+      providers: ['/components/editor/admin/SzekcioMegnyito#SzekcioMegnyito'],
       views: {
         // T-013: havi bevétel otthoni/szakmai bontásban. A Payload 3.88.0 a
-        // custom view-t NYILVÁNOS admin-route-ként kezeli — a szerepkör-kapu
-        // a nézetben van (`canAccessStatistics`), nem itt.
+        // custom view-t NYILVÁNOS admin-route-ként kezeli, ezért a
+        // szerepkör-kapu a nézetben van (`canAccessStatistics`), nem itt.
         statisztika: {
           Component: '/components/admin/StatisticsView#StatisticsView',
-          path: '/statisztika',
+          path: ADMIN_UTAK.statisztika.utvonal,
           exact: true,
-          meta: { title: 'Statisztika' },
+          meta: nezetMeta(ADMIN_UTAK.statisztika.felirat),
         },
         videok: {
           Component: '/components/admin/BunnyLibraryView#BunnyLibraryView',
-          path: '/videok',
+          path: ADMIN_UTAK.videotar.utvonal,
           exact: true,
-          meta: { title: 'Videótár' },
+          meta: nezetMeta(ADMIN_UTAK.videotar.felirat),
         },
         // A látogatói viselkedés (PostHog beágyazott dashboard) és a külső
-        // elemző-felületek linkjei egy helyen — a kapu itt is a nézetben van
+        // elemző-felületek linkjei egy helyen; a kapu itt is a nézetben van
         // (hasStaffOrOwnerRole), mert a route nyilvános.
         webanalitika: {
           Component: '/components/admin/WebAnalyticsView#WebAnalyticsView',
-          path: '/webanalitika',
+          path: ADMIN_UTAK.webanalitika.utvonal,
           exact: true,
-          meta: { title: 'Webanalitika' },
+          meta: nezetMeta(ADMIN_UTAK.webanalitika.felirat),
+        },
+        // Stabil, beszédes cím a kezdőlap szerkesztőjéhez: slug alapján
+        // keresi meg az oldalt és átirányít. A kapu a nézetben van.
+        kezdolap: {
+          Component: '/components/admin/KezdolapNezet#KezdolapNezet',
+          path: ADMIN_UTAK.kezdolap.utvonal,
+          exact: true,
+          meta: nezetMeta(ADMIN_UTAK.kezdolap.felirat),
+        },
+        // A tulajdonos kérése: menüpont a videón lévő szövegekhez. A kezdőlap
+        // szerkesztőjébe visz, a nyitó videó szekció mélylinkjével.
+        kezdolapVideo: {
+          Component: '/components/admin/VideoSzovegeiNezet#VideoSzovegeiNezet',
+          path: ADMIN_UTAK.videoSzovegei.utvonal,
+          exact: true,
+          meta: nezetMeta(ADMIN_UTAK.videoSzovegei.felirat),
         },
       },
-      afterNavLinks: [
-        '/components/admin/StatisticsNavLink#StatisticsNavLink',
-        '/components/admin/BunnyLibraryNavLink#BunnyLibraryNavLink',
-        '/components/admin/WebAnalyticsNavLink#WebAnalyticsNavLink',
-      ],
     },
   },
-  // Magyar admin felület: a @payloadcms/translations `hu` nyelvfájlja a
-  // fallback, így a nem szerkesztett kulcsok is magyarul jelennek meg; az `en`
-  // választható marad (a Payload a felhasználó nyelvi beállítását tiszteletben tartja).
+  // Az admin CSAK magyar (vezetői döntés, admin-audit K25). Korábban az `en`
+  // is választható volt, és angol böngészőnyelvnél a Payload a felület
+  // nyelvét az Accept-Language fejlécből angolra váltotta, miközben a saját
+  // feliratok magyarok maradtak: vegyes nyelvű admin lett belőle. Egyetlen
+  // támogatott nyelvnél a Payload mindig ezt választja; a javított magyar
+  // szövegeket a plugin-lánc végén a huAdminForditasPlugin fésüli be.
   i18n: {
-    supportedLanguages: { en, hu },
+    supportedLanguages: { hu },
     fallbackLanguage: 'hu',
   },
   collections: [
@@ -712,9 +818,10 @@ export default buildConfig({
           singular: 'Űrlap',
           plural: 'Űrlapok',
         },
+        fields: ({ defaultFields }) => urlapMezokAdminnal(defaultFields),
         admin: {
           group: 'Űrlapok',
-          description: 'A weboldal űrlapjai (pl. Kapcsolat). A mezőket itt lehet átszabni.',
+          description: URLAP_GYUJTEMENY_LEIRAS,
         },
         access: {
           // M2: az űrlapok SZERKESZTÉSE staff+owner-jog. A plugin csak a
@@ -755,9 +862,11 @@ export default buildConfig({
             name: 'turnstileToken',
             type: 'text',
             admin: {
+              // K45: a szerkesztőnek nem mond semmit, ezért rejtett; a mező, a
+              // hookok és az adatbázis-oszlop változatlan (séma-semleges).
+              hidden: true,
               readOnly: true,
-              description:
-                'Cloudflare Turnstile spam-ellenőrző token — csak akkor kötelező, ha a TURNSTILE_SECRET_KEY be van állítva.',
+              description: 'A beküldés spam-ellenőrzésének jele. A rendszer tölti ki és ellenőrzi.',
             },
           },
         ],
@@ -776,9 +885,17 @@ export default buildConfig({
         },
       },
     }),
+    // A gyűjtemény-nézetek kulcsszó-címkéje „Payload” nélkül (a leírás a
+    // függvénynél); a webshop és az űrlapok pluginja után kell futnia.
+    adminKulcsszoNelkul,
     // Az admin oldalsáv csoport-sorrendje — a lánc VÉGÉN kell futnia, hogy a
     // plugin-collectionöket (webshop, űrlapok) is besorolja.
     adminGroups,
+    // A javított magyar admin-szövegek (K15, K24). A lánc LEGVÉGÉN kell
+    // állnia: az ecommerce plugin a saját fordítási névterét felülírja, így
+    // ami előtte kerül a configba, elveszik (részletek:
+    // src/lib/admin/hu-forditas.ts fejkommentje).
+    huAdminForditasPlugin,
   ],
   // A SZANITIZÁLÁS UTÁNI lépés (S2/c). A `jobs.scheduling` bekapcsolásával a
   // Payload maga tol be egy `payload-jobs-stats` globalt, access nélkül —

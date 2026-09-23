@@ -541,8 +541,9 @@ export const buildHomeLayout = (media: HomeMediaIds = {}): NonNullable<Page['lay
   // jóváhagyott szótárból jön: docs/ui-sztenderdek.md §3.2 #4.
   {
     blockType: 'freeSos',
-    // Kettőspont, nem gondolatjel (docs/ui-sztenderdek.md §3.1).
-    title: 'SOS Kézrelax: ingyenes villámkurzus',
+    // A tulajdonos 2026-09-07-i szó szerinti címe; a sáv 2026-09-22-től ezt a
+    // mezőt mutatja (src/lib/free-sos-title.ts).
+    title: 'Ingyenes villámkurzus',
     body: 'Ha előbb kipróbálnád a módszert: rövid, azonnal használható gyakorlatok hirtelen jelentkező kézfájdalomra.',
     cta: { felirat: 'Elindítom ingyen', ujAblakban: false },
     backgroundImage: media['sos-hands-board.jpg'],

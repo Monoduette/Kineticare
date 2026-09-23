@@ -222,6 +222,16 @@ tehát a 3a. pont nélkül üres lenne.
 `checkout_failed` idősor hibakategória szerint + a PostHog beépített
 `$exception` nézete (a `captureAnalyticsException` táplálja).
 
+A szerveroldali kivételek is ide futnak be: a route handlerből, renderből,
+server actionből vagy middleware-ből kiszökő hibát a Next az
+`src/instrumentation.ts` `onRequestError` hookjának adja át, az pedig
+(`src/lib/request-error.ts`) error szintű, request ID-s naplósort ír
+(`"msg":"request_error"`), és `$exception` eseményt küld szerverről
+(`kc_context = server:onRequestError`, person-profil és GeoIP nélkül). Query,
+fejléc, süti és kéréstörzs nem megy ki, az e-mail-címet maszkolja; ugyanaz a
+hibakulcs percenként legfeljebb egyszer kerül a PostHogba, a naplóba minden
+előfordulás.
+
 ## 6. Ellenőrzés
 
 1. Állítsd be a kulcsot + **építsd újra** az appot (lásd a 2. pont figyelmeztetését).

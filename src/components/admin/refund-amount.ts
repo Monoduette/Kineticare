@@ -5,8 +5,9 @@ import { formatPriceHuf } from '../../lib/format-price'
  * Külön modulban élnek a kliens-komponenstől, hogy egységtesztelhetők
  * legyenek (a RefundPanel.tsx a @payloadcms/ui hookjait importálja, ami
  * node-környezetű tesztben nem tölthető be).
- * FONTOS: ez KIZÁRÓLAG kényelmi, kliensoldali előszűrés — a forrás-igazság a
+ * FONTOS: ez KIZÁRÓLAG kényelmi, kliensoldali előszűrés. A forrás-igazság a
  * szerver (src/lib/refund/refund-order.ts), amely ugyanezeket a szabályokat
+ * újra ellenőrzi; a panel semmilyen pénzügyi döntést nem hoz.
  */
 
 /** Az összeg-mező kiértékelésének eredménye. */
@@ -80,13 +81,44 @@ export function refundBlockedReason(status: string | null): string | null {
     case 'cancelled':
       return 'A rendelés le lett mondva, ezért nincs mit visszatéríteni.'
     default:
-      return 'Csak kifizetett (paid) státuszú rendelés téríthető vissza.'
+      // K12: a nyers „paid” kód helyett a státusz magyar neve (NN/g, Match
+      // between the system and the real world).
+      return 'Csak kifizetett rendelés téríthető vissza.'
   }
 }
 
-/** A megerősítő kérdés szövege — rendelésszámmal és összeggel. */
-export function refundConfirmQuestion(orderNumber: string, amountHuf: number | null): string {
-  return amountHuf === null
-    ? `Biztosan elindítod a(z) ${orderNumber} rendelés TELJES visszatérítését? A művelet nem vonható vissza.`
-    : `Biztosan visszatérítesz ${formatPriceHuf(amountHuf)} összeget a(z) ${orderNumber} rendelésen? A művelet nem vonható vissza.`
+/** A megerősítő ablak szövege (a @payloadcms/ui ConfirmationModal tartalma). */
+export interface RefundConfirmText {
+  heading: string
+  /** A következmény konkrétan: melyik rendelés, mennyi jár vissza, kinek. */
+  detail: string
+  /** A visszavonhatatlanság kimondása, külön mondatban. */
+  warning: string
+}
+
+export const REFUND_IRREVERSIBLE_SENTENCE = 'A visszatérítés nem vonható vissza.'
+
+/**
+ * A megerősítő ablak szövege rendelésszámmal és összeggel.
+ *
+ * NN/g, Confirmation Dialogs: „Be specific and inform users about the
+ * consequence of their action. Do not ask Are you sure you want to do this?”
+ * (https://www.nngroup.com/articles/confirmation-dialog/). A rendelésszám
+ * névelő nélkül, a mondat elején áll, így nem kell az azonosító kiejtése
+ * szerint „a” vagy „az” névelőt választani. Teljes visszatérítésnél összeget nem írunk: egy korábbi
+ * részleges visszatérítés után a szerver a még vissza nem térített részt
+ * utalja, amit a kliens nem tud biztosan.
+ */
+export function refundConfirmText(
+  orderNumber: string,
+  amountHuf: number | null,
+): RefundConfirmText {
+  return {
+    heading: 'Visszatéríted az összeget?',
+    detail:
+      amountHuf === null
+        ? `${orderNumber} rendelés: a még vissza nem térített teljes összeg visszajár a vásárlónak a Barionon keresztül.`
+        : `${orderNumber} rendelés: ${formatPriceHuf(amountHuf)} jár vissza a vásárlónak a Barionon keresztül.`,
+    warning: REFUND_IRREVERSIBLE_SENTENCE,
+  }
 }

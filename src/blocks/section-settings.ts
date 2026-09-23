@@ -5,8 +5,28 @@ import type { Field } from 'payload'
  * Egyetlen forrásból (DRY) adja a három kapcsolót, amit a szerkesztő minden
  * szekciónál ugyanott, ugyanúgy talál meg:
  * - `visible`  — elrejtés törlés helyett (a tartalom megmarad),
- * - `anchorId` — lapon belüli hivatkozás (pl. /#kurzusok),
+ * - `anchorId` — lapon belüli hivatkozás (pl. /#kurzusok), a felületen „ugrópont”,
  * - `hatter`   — a szekció háttérsávja, ott, ahol értelmezett.
+ *
+ * Megjelenés (K28, 2026-09-22): a `sectionSettings` csoport egy NÉV NÉLKÜLI,
+ * alapból csukott „Megjelenés és elrejtés” collapsible-ben áll. A kezdőlap
+ * tizenöt szekciójánál a mindig nyitott beállításcsoport szekciónként három
+ * mezőt és 474 karakternyi leírást tett a tartalommezők közé. A ritkán kellő
+ * beállítás így csak kérésre nyílik ki (NN/g, Progressive Disclosure:
+ * „Initially, show users only a few of the most important options. Offer a
+ * larger set of specialized options upon request.”, és a fejléc mondja meg,
+ * mi van mögötte: „label the button or link in a way that sets clear
+ * expectations for what users will find”,
+ * https://www.nngroup.com/articles/progressive-disclosure/).
+ *
+ * SÉMA-SEMLEGES: a Payload szerint a collapsible „presentational-only and only
+ * affects the Admin Panel” (https://payloadcms.com/docs/fields/collapsible), a
+ * név nélküli mező nem kerül az adatútvonalba. A `sectionSettings.visible`,
+ * `.anchorId` és `.hatter` útvonal és a DB-oszlopok változatlanok; ezt a G2 őr
+ * (src/__tests__/schema-config-sync.test.ts) bizonyítja. A csoport `label:
+ * false`: a fejlécet a collapsible adja, így nincs két egymásba ágyazott cím.
+ * Hibánál a csukott fejléc is mutatja a hibajelzőt (a Payload Collapsible
+ * WatchChildErrors + ErrorPill, @payloadcms/ui/dist/fields/Collapsible).
  */
 
 /** A szekciók háttérsávjának lehetséges értékei. */
@@ -34,7 +54,7 @@ export const validateAnchorId = (value: unknown): string | true => {
     return true
   }
   if (!ANCHOR_ID_PATTERN.test(trimmed)) {
-    return 'A horgony azonosító csak ékezet nélküli kisbetűvel kezdődhet, és kisbetűt, számot vagy kötőjelet tartalmazhat (pl. „kurzusok"). A # jelet és a szóközt hagyd ki belőle.'
+    return 'Az ugrópont neve ékezet nélküli kisbetűvel kezdődjön, és csak kisbetű, szám vagy kötőjel legyen benne (pl. „kurzusok”). A # jelet és a szóközt hagyd ki.'
   }
   return true
 }
@@ -54,8 +74,12 @@ export interface SectionSettingsOptions {
   defaultBackground?: SectionBackground
 }
 
+/** A csukott csoport fejléce: a mögötte álló két fő dolgot nevezi meg. */
+export const SECTION_SETTINGS_LABEL = 'Megjelenés és elrejtés'
+
 /**
- * A blokkok végére kerülő „Szekció-beállítások" csoport.
+ * A blokkok végére kerülő „Megjelenés és elrejtés” rész (benne a
+ * `sectionSettings` csoport).
  *
  * Mindig az UTOLSÓ mező a blokkban: előbb a tartalom, aztán a technikai
  * kapcsolók — így a szerkesztő nem a beállításokon keresztül jut el a szövegig.
@@ -71,17 +95,16 @@ export const sectionSettings = ({
       defaultValue: true,
       label: 'Látható',
       admin: {
-        description:
-          'Ha kiveszed a pipát, a szekció eltűnik az oldalról, de a tartalma megmarad — bármikor visszakapcsolhatod.',
+        description: 'Kikapcsolva a szekció nem látszik, a tartalma megmarad.',
       },
     },
     {
       name: 'anchorId',
       type: 'text',
-      label: 'Horgony azonosító',
+      label: 'Ugrópont neve (haladó beállítás)',
       admin: {
         description:
-          'Nem kötelező. Rövid azonosító a lapon belüli ugráshoz (pl. „kurzusok"): ezután a szekcióra a webcím végére írt #kurzusok résszel lehet hivatkozni. Csak ékezet nélküli kisbetű, szám és kötőjel; a # jelet ne írd bele.',
+          'Nem kötelező. Pl. „kurzusok”: a webcím végére írt #kurzusok ide ugrik. Ékezet és szóköz nélkül.',
       },
       validate: (value: string | null | undefined) => validateAnchorId(value),
     },
@@ -100,18 +123,22 @@ export const sectionSettings = ({
       ],
       admin: {
         description:
-          'A szekció háttérsávja. Váltogasd a fehéret és a világoskéket, hogy az egymás alatti szekciók jól elkülönüljenek; a sötétkéket ritkán, kiemelésre használd.',
+          'Váltogasd a fehéret és a világoskéket, hogy a szekciók elkülönüljenek. A sötétkék kiemelésre való.',
       },
     })
   }
 
   return {
-    name: 'sectionSettings',
-    type: 'group',
-    label: 'Szekció-beállítások',
-    admin: {
-      description: 'Megjelenés és elrejtés — a szekció szövegét fölötte szerkesztheted.',
-    },
-    fields,
+    type: 'collapsible',
+    label: SECTION_SETTINGS_LABEL,
+    admin: { initCollapsed: true },
+    fields: [
+      {
+        name: 'sectionSettings',
+        type: 'group',
+        label: false,
+        fields,
+      },
+    ],
   }
 }

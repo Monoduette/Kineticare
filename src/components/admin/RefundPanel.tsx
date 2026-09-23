@@ -1,12 +1,34 @@
 'use client'
 
-import { Button, useAuth, useDocumentInfo, useRouteCache } from '@payloadcms/ui'
-import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import {
+  Button,
+  ConfirmationModal,
+  useAuth,
+  useDocumentInfo,
+  useModal,
+  useRouteCache,
+} from '@payloadcms/ui'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 
 import { hasOwnerRole } from '../../access/roles'
 import { formatPriceHuf } from '../../lib/format-price'
-import { refundBlockedReason, refundConfirmQuestion, validateRefundAmount } from './refund-amount'
-import { readRefundOperationalStatus } from './refund-operational-status'
+import {
+  refundBlockedReason,
+  refundConfirmText,
+  validateRefundAmount,
+  type RefundConfirmText,
+} from './refund-amount'
+import { useConfirmationDialogNames } from './confirmation-dialog-names'
+import { hasRefundHistory, readRefundOperationalStatus } from './refund-operational-status'
 import {
   clearRefundOperation,
   ensureRefundOperation,
@@ -31,10 +53,38 @@ import {
  * kész szolgáltatásban él (src/lib/refund/*), amelyet a panel a
  * POST /api/admin/orders/[orderNumber]/refund végponton hív. A komponens
  * semmilyen pénzügyi döntést nem hoz, és nem másol le szerver-oldali
- * szabályt — a kliensoldali ellenőrzések (paid státusz, pozitív egész összeg,
+ * szabályt: a kliensoldali ellenőrzések (kifizetett státusz, pozitív egész
+ * összeg) csak kényelmi előszűrések, a szerver mindent újra ellenőriz.
+ *
+ * K12 (admin-audit, 2026-09-22), megjelenítési döntések:
+ * - Élő régiók (WCAG 2.2 SC 4.1.3). A TARTÓS állapot (a mentett feldolgozási
+ *   állapot nem ellenőrizhető, rendezetlen korábbi művelet, kézi ellenőrzést
+ *   kérő mentett állapot) role="status": betöltéskor is megjelenhet, és az
+ *   MDN szerint „[the alert role] should not be used on HTML that the user
+ *   hasn't interacted with” (https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/alert_role);
+ *   a Carbon is udvarias élő régiót ajánl minden nem sürgős üzenetre
+ *   (https://carbondesignsystem.com/components/notification/accessibility/).
+ *   A role="alert" csak a gombnyomás EREDMÉNYÉNEK jár (hiba, bizonytalan
+ *   pénzügyi kimenet), a W3C Understanding 4.1.3 példája szerint
+ *   (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html).
+ * - A mező hozzáférhető neve a látható címke (SC 2.5.3, Label in Name): a
+ *   korábbi, eltérő aria-label felülírta volna
+ *   (https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html).
+ *   A kitöltési útmutató külön súgószöveg (SC 3.3.2; GOV.UK Error message
+ *   és hint minta: https://design-system.service.gov.uk/components/error-message/),
+ *   nem placeholder.
+ * - A megerősítés a Payload saját ConfirmationModal-ja (a core törlés-
+ *   megerősítésével azonos felület, SC 3.2.4), konkrét következménnyel és
+ *   külön visszavonhatatlansági mondattal (NN/g, Confirmation Dialogs:
+ *   https://www.nngroup.com/articles/confirmation-dialog/).
  */
 
 const REQUEST_TIMEOUT_MS = 30_000
+
+/** A megerősítő ablak azonosítója (a Payload modal-kezelőjében). */
+export const REFUND_CONFIRM_MODAL_SLUG = 'kineticare-visszaterites-megerositese'
+
+const AMOUNT_INPUT_ID = 'kineticare-refund-amount'
 
 const REFRESH_WARNING = `A rendelés nézetének frissítése nem sikerült. A visszatérítés fenti eredménye változatlan. ${REFUND_REVIEW_GUIDANCE}`
 const NAVIGATION_WARNING = `A válasz másik rendelés megnyitása után érkezett, ezért a nézet nem frissült. ${REFUND_REVIEW_GUIDANCE}`
@@ -113,10 +163,45 @@ const noteStyle: CSSProperties = {
   margin: 0,
 }
 
+const noticeSpacing: CSSProperties = { marginTop: 'calc(var(--base) * 0.75)', marginBottom: 0 }
+
+/**
+ * „Ellenőrzés szükséges” doboz. A stílus a B1 stílusszerződése
+ * (.kc-admin-notice--figyelem a custom.scss-ben, mindkét témán mért AA), a
+ * jelentést a cím szövege mondja ki, nem csak a szín (SC 1.4.1). A `role` a
+ * hívó döntése: tartós állapotnál status, gombnyomás eredményénél alert.
+ */
+function ReviewNotice({ role, children }: { role: 'alert' | 'status'; children: ReactNode }) {
+  return (
+    <div
+      className="kc-admin-notice kc-admin-notice--figyelem"
+      data-kc-uzenet="ellenorzes"
+      role={role}
+      style={noticeSpacing}
+    >
+      <p className="kc-admin-notice__cim">Ellenőrzés szükséges</p>
+      <p className="kc-admin-notice__szoveg">{children}</p>
+    </div>
+  )
+}
+
 export function RefundPanel() {
   const { data, isInitializing } = useDocumentInfo()
   const { user } = useAuth<{ id: number | string; role?: string | null }>()
   const { clearRouteCache } = useRouteCache()
+  const { closeModal, isModalOpen, openModal } = useModal()
+  const hintId = useId()
+  const errorId = useId()
+  const confirmHeadingId = useId()
+  const confirmBodyId = useId()
+  const [confirmText, setConfirmText] = useState<RefundConfirmText | null>(null)
+  const confirmOpen = isModalOpen(REFUND_CONFIRM_MODAL_SLUG)
+  useConfirmationDialogNames(
+    REFUND_CONFIRM_MODAL_SLUG,
+    confirmOpen,
+    confirmHeadingId,
+    confirmBodyId,
+  )
 
   const order = readOrderSummary(data)
   const { orderNumber, totalHuf } = order
@@ -141,6 +226,13 @@ export function RefundPanel() {
   const activeVisit = useRef<OrderVisit | null>(null)
   const latestAllowed = useRef(false)
   const busyOrders = useRef(new Set<string>())
+  // A megerősítő ablakban jóváhagyásra váró kérés. Ref, mert a jóváhagyás
+  // aszinkron: a pénzmozgás előtt MINDEN őrt újra ellenőrizni kell.
+  const pendingConfirmation = useRef<{
+    orderNumber: string
+    amountHuf: number | null
+    visit: OrderVisit
+  } | null>(null)
   const owner = hasOwnerRole(user)
 
   const updatePanel = useCallback((key: string, patch: Partial<PanelState>) => {
@@ -227,30 +319,63 @@ export function RefundPanel() {
     latestAllowed.current = allowed
   }, [allowed])
 
-  // Sima függvény (nem useCallback): a React Compiler maga memoizál, a kézi
+  // Rendelésváltáskor és a panel eltűnésekor a nyitva hagyott megerősítés
+  // is megszűnik: egy korábbi rendelés jóváhagyása sosem futhat le itt.
+  useEffect(
+    () => () => {
+      pendingConfirmation.current = null
+      closeModal(REFUND_CONFIRM_MODAL_SLUG)
+    },
+    [orderNumber, closeModal],
+  )
+
+  // Sima függvények (nem useCallback): a React Compiler maga memoizál, a kézi
   // memoizáció itt csak a `preserve-manual-memoization` szabályba ütközne, mert
   // a dependenciák egy helyben képzett objektumból (readOrderSummary) jönnek.
-  const startRefund = async (): Promise<void> => {
+  const canStartRefund = (visit: OrderVisit | null): visit is OrderVisit =>
+    !!orderNumber &&
+    visit?.orderNumber === orderNumber &&
+    latestAllowed.current &&
+    visit.status?.state === 'clear' &&
+    !(visit.operation && visit.status.operationState !== 'unseen') &&
+    !busyOrders.current.has(orderNumber) &&
+    !lockedOrders.current.has(orderNumber)
+
+  // 1. lépés: ellenőrzés, majd a megerősítő ablak. Pénz itt még nem mozdul.
+  const requestRefund = (): void => {
     const visit = activeVisit.current
-    if (
-      !orderNumber ||
-      visit?.orderNumber !== orderNumber ||
-      !latestAllowed.current ||
-      visit.status?.state !== 'clear' ||
-      (visit.operation && visit.status.operationState !== 'unseen') ||
-      busyOrders.current.has(orderNumber) ||
-      lockedOrders.current.has(orderNumber)
-    ) {
-      return
-    }
+    if (!orderNumber || !canStartRefund(visit)) return
     const check = validateRefundAmount(amountInput, totalHuf)
     if (!check.ok) {
       updatePanel(orderNumber, { successMessage: null, errorMessage: check.message })
       return
     }
-    if (!window.confirm(refundConfirmQuestion(orderNumber, check.amountHuf))) {
+    pendingConfirmation.current = { orderNumber, amountHuf: check.amountHuf, visit }
+    setConfirmText(refundConfirmText(orderNumber, check.amountHuf))
+    openModal(REFUND_CONFIRM_MODAL_SLUG)
+  }
+
+  const cancelRefund = (): void => {
+    pendingConfirmation.current = null
+  }
+
+  // 2. lépés: a jóváhagyás után az eredeti, változatlan folyamat. A várakozás
+  // közben megváltozott állapotot (másik rendelés, új mentett állapot, futó
+  // kérés) ugyanazok az őrök szűrik, mint a gombnyomást.
+  const startRefund = async (): Promise<void> => {
+    const pending = pendingConfirmation.current
+    pendingConfirmation.current = null
+    const visit = activeVisit.current
+    if (
+      !pending ||
+      !orderNumber ||
+      pending.orderNumber !== orderNumber ||
+      pending.visit !== visit ||
+      !canStartRefund(visit)
+    ) {
       return
     }
+    const check = { amountHuf: pending.amountHuf }
 
     let requestOperation: RefundOperation
     try {
@@ -518,46 +643,53 @@ export function RefundPanel() {
     )
   }
 
+  const history = hasRefundHistory(data)
+  const amountDisabled =
+    pending || locked || statusLoading || !!operation || recovery?.state !== 'clear'
+
   return (
     <div className="field-type" style={panelStyle}>
       <h3 style={{ marginTop: 0 }}>Visszatérítés</h3>
-      <dl
-        aria-label="Mentett visszatérítési állapotok"
-        aria-live="polite"
-        style={{ margin: 'var(--base) 0' }}
-      >
-        {readRefundOperationalStatus(data).map(({ key, label, value }) => (
-          <div key={key} style={{ marginBottom: 'calc(var(--base) * 0.5)' }}>
-            <dt style={{ fontWeight: 600 }}>{label}</dt>
-            <dd style={noteStyle}>{value}</dd>
-          </div>
-        ))}
-      </dl>
+      {/* Az élő régió a tárolóé, hogy a lista és az egysoros állapot közti
+          váltás (az első visszatérítés után) is elhangozzon. */}
+      <div aria-live="polite" style={{ margin: 'var(--base) 0' }}>
+        {history ? (
+          <dl aria-label="Mentett visszatérítési állapotok" style={{ margin: 0 }}>
+            {readRefundOperationalStatus(data).map(({ key, label, value }) => (
+              <div key={key} style={{ marginBottom: 'calc(var(--base) * 0.5)' }}>
+                <dt style={{ fontWeight: 600 }}>{label}</dt>
+                <dd style={{ ...noteStyle, marginInlineStart: 0 }}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p style={noteStyle}>Ezen a rendelésen még nem volt visszatérítés.</p>
+        )}
+      </div>
       {blockedReason ? (
         <p style={noteStyle}>{blockedReason}</p>
       ) : (
         <>
-          <p style={noteStyle}>
-            {totalHuf === null
-              ? 'Üresen hagyva a teljes összeg térül vissza.'
-              : `A rendelés végösszege ${formatPriceHuf(totalHuf)}. Üresen hagyva a teljes összeg térül vissza.`}
-          </p>
+          {totalHuf === null ? null : (
+            <p style={noteStyle}>A rendelés végösszege: {formatPriceHuf(totalHuf)}.</p>
+          )}
           <label
-            htmlFor="kineticare-refund-amount"
-            style={{ display: 'block', marginTop: 'calc(var(--base) * 0.5)' }}
+            htmlFor={AMOUNT_INPUT_ID}
+            style={{ display: 'block', fontWeight: 600, marginTop: 'calc(var(--base) * 0.5)' }}
           >
-            Visszatérítendő összeg (Ft) — üres = teljes visszatérítés
+            Visszatérítendő összeg (Ft)
           </label>
+          <p id={hintId} style={{ ...noteStyle, marginBottom: 'calc(var(--base) * 0.25)' }}>
+            Ha üresen hagyod, a teljes összeg visszajár.
+          </p>
           <input
-            aria-label="Visszatérítendő összeg forintban"
-            disabled={
-              pending || locked || statusLoading || !!operation || recovery?.state !== 'clear'
-            }
-            id="kineticare-refund-amount"
+            aria-describedby={errorMessage ? `${hintId} ${errorId}` : hintId}
+            className="kc-admin-input"
+            disabled={amountDisabled}
+            id={AMOUNT_INPUT_ID}
             inputMode="numeric"
             onChange={(event) => updatePanel(orderNumber, { amountInput: event.target.value })}
-            placeholder="teljes összeg"
-            style={{ maxWidth: '16rem' }}
+            style={{ width: '16rem' }}
             type="text"
             value={amountInput}
           />
@@ -571,9 +703,7 @@ export function RefundPanel() {
                 recovery?.state !== 'clear' ||
                 (!!operation && recovery.operationState !== 'unseen')
               }
-              onClick={() => {
-                void startRefund()
-              }}
+              onClick={requestRefund}
               size="medium"
             >
               {pending ? 'Visszatérítés folyamatban…' : 'Visszatérítés indítása'}
@@ -582,8 +712,10 @@ export function RefundPanel() {
         </>
       )}
       {statusLoading ? <p style={noteStyle}>Mentett feldolgozási állapot ellenőrzése…</p> : null}
-      {statusError ? <p role="alert">{STATUS_WARNING}</p> : null}
-      {operation && locked && !pending ? <p role="alert">{OPERATION_WARNING}</p> : null}
+      {statusError ? <ReviewNotice role="status">{STATUS_WARNING}</ReviewNotice> : null}
+      {operation && locked && !pending ? (
+        <ReviewNotice role="status">{OPERATION_WARNING}</ReviewNotice>
+      ) : null}
       {operation &&
       recovery?.state === 'clear' &&
       ['completed', 'no_effect'].includes(recovery.operationState ?? '') ? (
@@ -622,9 +754,9 @@ export function RefundPanel() {
         </Button>
       ) : null}
       {recovery && recovery.state !== 'clear' ? (
-        <p role="alert">
+        <ReviewNotice role="status">
           {recovery.message} {REFUND_REVIEW_GUIDANCE}
-        </p>
+        </ReviewNotice>
       ) : null}
       {recovery?.state === 'recoverable' ? (
         <>
@@ -642,24 +774,53 @@ export function RefundPanel() {
         </>
       ) : null}
       {warningMessage ? (
-        <p
-          role="alert"
-          style={{ borderLeft: '4px solid currentColor', paddingLeft: '0.75rem', marginBottom: 0 }}
-        >
-          <strong>Ellenőrzés szükséges. </strong>
+        // A rendezetlen korábbi művelet tartós állapot (betöltéskor is
+        // előállhat), minden más figyelmeztetés egy gombnyomás eredménye.
+        <ReviewNotice role={warningMessage === OPERATION_WARNING ? 'status' : 'alert'}>
           {warningMessage}
-        </p>
+        </ReviewNotice>
       ) : null}
       {errorMessage ? (
-        <p role="alert" style={{ color: 'var(--theme-error-500)', marginBottom: 0 }}>
+        <p
+          data-kc-uzenet="hiba"
+          id={errorId}
+          role="alert"
+          style={{ color: 'var(--theme-error-500)', marginBottom: 0 }}
+        >
           {errorMessage}
         </p>
       ) : null}
       {successMessage ? (
-        <p role="status" style={{ color: 'var(--theme-success-500)', marginBottom: 0 }}>
+        <p
+          data-kc-uzenet="siker"
+          role="status"
+          style={{ color: 'var(--theme-success-500)', marginBottom: 0 }}
+        >
           {successMessage}
         </p>
       ) : null}
+      <ConfirmationModal
+        body={
+          confirmText ? (
+            <div id={confirmBodyId}>
+              <p>{confirmText.detail}</p>
+              <p>
+                <strong>{confirmText.warning}</strong>
+              </p>
+            </div>
+          ) : null
+        }
+        cancelLabel="Mégse"
+        confirmLabel="Visszatérítés indítása"
+        heading={<h1 id={confirmHeadingId}>{confirmText?.heading ?? 'Visszatérítés'}</h1>}
+        modalSlug={REFUND_CONFIRM_MODAL_SLUG}
+        onCancel={cancelRefund}
+        onConfirm={() => {
+          // A megerősítő ablak azonnal bezárul; a folyamat állapotát a panel
+          // „Visszatérítés folyamatban…” gombja és az eredményüzenet mutatja.
+          void startRefund()
+        }}
+      />
     </div>
   )
 }

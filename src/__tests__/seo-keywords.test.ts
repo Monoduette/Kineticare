@@ -160,7 +160,8 @@ describe('seoKeywords mező a posts, pages és products kollekción', () => {
     expect(field.required).toBeUndefined()
     expect(field.maxRows).toBe(SEO_KEYWORDS_MAX_ROWS)
     expect(field.maxRows).toBe(48)
-    expect(field.label).toBe('SEO kulcsszavak')
+    // K40: kötőjellel, ahogy a mellette álló SEO-cím és SEO-leírás (egy fogalom, egy írásmód).
+    expect(field.label).toBe('SEO-kulcsszavak')
     const description = field.admin?.description
     expect(typeof description).toBe('string')
     expect(String(description)).toMatch(/forráskódba mennek/)
@@ -173,6 +174,24 @@ describe('seoKeywords mező a posts, pages és products kollekción', () => {
     )
     expect(phrase && 'maxLength' in phrase ? phrase.maxLength : undefined).toBe(80)
     expect(field.type).toBe('array')
+    // H13: beszédes sorcímke („1. kéztorna gyakorlatok”, üresen „3. kifejezés
+    // (még üres)”), a közös ArrayRowLabel-lel; a mező alakja nem változik.
+    expect(field.admin?.components?.RowLabel).toEqual({
+      path: '/components/admin/SectionRowLabel#ArrayRowLabel',
+      clientProps: { singular: 'Kifejezés', titleFields: ['phrase'] },
+    })
+    expect(field.labels?.singular).toBe('Kifejezés')
+  })
+
+  it('a sorcímke a kifejezést mutatja, üres sornál a sorszámot és a „(még üres)” jelet', async () => {
+    const { arrayRowLabel } = await import('../lib/section-row-label')
+    expect(arrayRowLabel({ phrase: 'kéztorna gyakorlatok' }, 0, 'Kifejezés', ['phrase'])).toBe(
+      '1. kéztorna gyakorlatok',
+    )
+    expect(arrayRowLabel({ phrase: '' }, 2, 'Kifejezés', ['phrase'])).toBe(
+      '3. kifejezés (még üres)',
+    )
+    expect(arrayRowLabel({}, 0, 'Kifejezés', ['phrase'])).not.toMatch(/Kifejezés 0?1/)
   })
 
   it('a products kollekción is a közös seoKeywordsField áll a seoDescription után', async () => {
@@ -328,7 +347,7 @@ describe('nyilvános HTML: forrásban benne, lapon nincs felhő', () => {
     expect(String(schema!.keywords)).toContain(nonce)
     expect(visible).not.toContain(nonce)
     expect(visible).not.toMatch(/kc-seo-keywords|kulcsszó-felhő|seo-keywords/i)
-    expect(html).not.toMatch(/<h[1-6][^>]*>\s*SEO kulcsszavak/)
+    expect(html).not.toMatch(/<h[1-6][^>]*>\s*SEO[- ]kulcsszavak/)
   })
 })
 

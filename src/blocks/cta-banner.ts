@@ -4,7 +4,8 @@ import { linkGroup } from './link-fields'
 import { sectionSettings } from './section-settings'
 
 /**
- * CTA-sáv — figyelemfelhívó sáv egyetlen gombbal (terv 2. blokk-katalógus).
+ * Gombos kiemelő sáv (slug: ctaBanner, korábbi neve „CTA-sáv”): figyelemfelhívó
+ * sáv egyetlen gombbal (terv 2. blokk-katalógus).
  *
  * Bárhová beszúrható „lezárás": egy mondat és egy gomb. Óvatosan használd —
  * több CTA-sáv egy oldalon gyengíti egymást (értékesítési UX-skill: egy oldalon
@@ -14,8 +15,8 @@ export const ctaBanner: Block = {
   slug: 'ctaBanner',
   interfaceName: 'BlockCtaBanner',
   labels: {
-    singular: 'CTA-sáv (gombos kiemelés)',
-    plural: 'CTA-sávok',
+    singular: 'Gombos kiemelő sáv',
+    plural: 'Gombos kiemelő sávok',
   },
   admin: {
     group: 'Bárhol használható',

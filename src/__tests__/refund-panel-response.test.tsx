@@ -3,8 +3,20 @@ import { act, createElement, type ReactNode } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { RefundPanel } from '../components/admin/RefundPanel'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+import { REFUND_CONFIRM_MODAL_SLUG, RefundPanel } from '../components/admin/RefundPanel'
 import { ensureRefundOperation, readRefundOperation } from '../components/admin/refund-operation'
+
+interface ModalProps {
+  heading: ReactNode
+  body: ReactNode
+  confirmLabel?: string
+  cancelLabel?: string
+  modalSlug: string
+  onConfirm: () => Promise<void> | void
+  onCancel?: () => void
+}
 
 const ui = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
@@ -12,12 +24,34 @@ const ui = vi.hoisted(() => ({
   initializing: false,
   refresh: vi.fn<() => void | Promise<void>>(),
   click: undefined as (() => void) | undefined,
+  modal: undefined as ModalProps | undefined,
+  closeModal: vi.fn<(slug: string) => void>(),
+  // A megerősítő ablak (ConfirmationModal) felhasználói döntését a
+  // confirmMock adja, ugyanúgy, ahogy korábban a window.confirm-ét.
+  decide: undefined as (() => boolean) | undefined,
 }))
 
 vi.mock('@payloadcms/ui', () => ({
   useDocumentInfo: () => ({ data: ui.data, isInitializing: ui.initializing }),
   useAuth: () => ({ user: ui.user }),
   useRouteCache: () => ({ clearRouteCache: ui.refresh }),
+  useModal: () => ({
+    closeModal: ui.closeModal,
+    isModalOpen: () => false,
+    openModal: () => {
+      const modal = ui.modal
+      if (!modal) throw new Error('Expected a mounted ConfirmationModal')
+      const decide = ui.decide
+      // decide nélkül az ablak nyitva marad (a döntést a teszt később hozza).
+      if (!decide) return
+      if (decide()) void modal.onConfirm()
+      else modal.onCancel?.()
+    },
+  }),
+  ConfirmationModal: (props: ModalProps) => {
+    ui.modal = props
+    return null
+  },
   Button: ({
     children,
     disabled,
@@ -96,10 +130,25 @@ async function submit() {
   })
 }
 
+/** A sikeres visszatérítés üzenete (role="status", egyedi jelöléssel). */
+function successMessage() {
+  return container.querySelector('[data-kc-uzenet="siker"]')
+}
+
+/**
+ * Kézi ellenőrzést kérő állapot. A tartós (betöltéskor is látható) állapot
+ * role="status", a gombnyomás eredménye role="alert" (WCAG 2.2 SC 4.1.3);
+ * az őr mindkettőt elfogadja, a szerep külön esetekben rögzített.
+ */
+function reviewNotices() {
+  return Array.from(container.querySelectorAll('[role="alert"], [role="status"]')).filter(
+    (element) => element.textContent?.includes('Ne indíts új'),
+  )
+}
+
 function expectReview() {
-  const alert = container.querySelector('[role="alert"]')
-  expect(alert?.textContent).toContain('Ne indíts új')
-  expect(container.querySelector('[role="status"]')).toBeNull()
+  expect(reviewNotices().length).toBeGreaterThan(0)
+  expect(successMessage()).toBeNull()
   expect(container.textContent).not.toContain('visszatérítés megtörtént')
   const submitButton = monetaryButton()
   if (submitButton) expect(submitButton.disabled).toBe(true)
@@ -111,6 +160,9 @@ beforeEach(async () => {
   ui.initializing = false
   ui.refresh.mockReset()
   ui.click = undefined
+  ui.modal = undefined
+  ui.closeModal.mockReset()
+  ui.decide = () => confirmMock()
   fetchMock.mockReset().mockImplementation(async () => {
     throw new Error('Unexpected unconfigured request in refund UI test')
   })
@@ -140,7 +192,13 @@ beforeEach(async () => {
   // Only the component transport is mocked; the external runner denies all network access.
   vi.stubGlobal('fetch', transportMock)
   confirmMock.mockReset().mockReturnValue(true)
-  Object.defineProperty(window, 'confirm', { value: confirmMock })
+  // A böngésző natív confirm-je már nem része a folyamatnak: ha mégis
+  // meghívná valami, a teszt hangosan bukjon.
+  Object.defineProperty(window, 'confirm', {
+    value: () => {
+      throw new Error('window.confirm must not be used by the refund panel')
+    },
+  })
   const { createRoot } = await import('react-dom/client')
   container = document.createElement('div')
   document.body.append(container)
@@ -177,9 +235,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
       operationKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
     })
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
-      'Teljes visszatérítés megtörtént',
-    )
+    expect(successMessage()?.textContent).toContain('Teljes visszatérítés megtörtént')
     expect(ui.refresh).toHaveBeenCalledTimes(1)
     expect(button().disabled).toBe(true)
   })
@@ -197,9 +253,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       ),
     )
     await submit()
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
-      'Részleges visszatérítés megtörtént',
-    )
+    expect(successMessage()?.textContent).toContain('Részleges visszatérítés megtörtént')
     expect(button().disabled).toBe(false)
   })
 
@@ -215,13 +269,13 @@ describe('RefundPanel response presentation and current-mount guards', () => {
     await submit()
     expect(ui.refresh).toHaveBeenCalledTimes(1)
     expect(container.querySelector('button')).toBeNull()
-    const confirmed = container.querySelector('[role="status"]')?.textContent
+    const confirmed = successMessage()?.textContent
     expect(confirmed).toContain('Teljes visszatérítés megtörtént')
 
     await act(async () => {
       refreshed.resolve(undefined)
     })
-    expect(container.querySelector('[role="status"]')?.textContent).toBe(confirmed)
+    expect(successMessage()?.textContent).toBe(confirmed)
     expect(container.querySelector('[role="alert"]')).toBeNull()
     expect(container.textContent).not.toContain('másik rendelés megnyitása')
     expect(container.textContent).toContain(
@@ -399,7 +453,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
         'Ellenőrizd a megadott összeget.',
       )
       expect(button().disabled).toBe(false)
-      expect(container.querySelector('[role="status"]')).toBeNull()
+      expect(successMessage()).toBeNull()
       await submit()
       expect(fetchMock).toHaveBeenCalledTimes(2)
       const first = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as {
@@ -501,9 +555,7 @@ describe('RefundPanel response presentation and current-mount guards', () => {
       })
       const callback = ui.click!
       await submit()
-      expect(container.querySelector('[role="status"]')?.textContent).toContain(
-        'Teljes visszatérítés megtörtént',
-      )
+      expect(successMessage()?.textContent).toContain('Teljes visszatérítés megtörtént')
       expect(container.querySelector('[role="alert"]')?.textContent).toContain('frissítése')
       expect(container.textContent).not.toContain('Nem sikerült elérni a szervert')
       expect(button().disabled).toBe(true)
@@ -679,7 +731,7 @@ describe('RefundPanel persisted recovery status', () => {
       expect(button().disabled).toBe(true)
       expect(readRefundOperation(ORDER_A)).toEqual(stored)
       expect(fetchMock).not.toHaveBeenCalled()
-      expect(container.querySelector('[role="status"]')).toBeNull()
+      expect(successMessage()).toBeNull()
       expect(container.textContent).not.toContain('visszatérítés megtörtént')
       expect(statusFetchMock.mock.calls.at(-1)![0]).not.toContain(stored.key)
       expect(
@@ -758,7 +810,7 @@ describe('RefundPanel persisted recovery status', () => {
     expect(acknowledgementButton()).toBeDefined()
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(container.textContent).toContain('A korábbi művelet feldolgozása lezárult.')
-    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(successMessage()).toBeNull()
   })
 
   it('retains a terminal key when acknowledgement cannot refresh the document', async () => {
@@ -814,7 +866,7 @@ describe('RefundPanel persisted recovery status', () => {
       reply.resolve(savedStatus('clear'))
     })
     expect(button().disabled).toBe(false)
-    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(successMessage()).toBeNull()
     const reads = statusFetchMock.mock.calls.length
     await render()
     await render()
@@ -927,9 +979,7 @@ describe('RefundPanel persisted recovery status', () => {
     )
     expect(confirmMock).not.toHaveBeenCalled()
     expect(statusFetchMock).toHaveBeenCalledTimes(reads + 1)
-    expect(container.querySelector('[role="status"]')?.textContent).toBe(
-      'A visszatérítés feldolgozása rendezve.',
-    )
+    expect(successMessage()?.textContent).toBe('A visszatérítés feldolgozása rendezve.')
     expect(container.textContent).not.toContain('visszatérítés megtörtént')
     expect(ui.refresh).toHaveBeenCalledTimes(1)
   })
@@ -1045,11 +1095,11 @@ describe('RefundPanel saved operational summary', () => {
     await render(savedOrder())
     expect(summary().querySelectorAll('dt')).toHaveLength(5)
     expect(summary().querySelectorAll('dd')).toHaveLength(5)
-    expect(summary().getAttribute('aria-live')).toBe('polite')
-    expect(summary().textContent).toContain('Teljes visszatérítés van helyben rögzítve')
-    expect(summary().textContent).toContain('ellenőrzés szükséges')
+    expect(summary().parentElement?.getAttribute('aria-live')).toBe('polite')
+    expect(summary().textContent).toContain('Teljes visszatérítés van rögzítve a rendelésen')
+    expect(summary().textContent).toContain('ellenőrizd a Barion felületén')
     expect(summary().textContent).toContain('legutóbbi helyesbítő sikertelen')
-    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(successMessage()).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(ui.refresh).not.toHaveBeenCalled()
   })
@@ -1083,16 +1133,18 @@ describe('RefundPanel saved operational summary', () => {
           label.nextElementSibling?.textContent,
         ]),
       )
-      expect(rows['Helyi visszatérítési nyom']).toBe('Teljes visszatérítés van helyben rögzítve.')
-      expect(rows['Mentett szolgáltatói eredmény']).toBe(
-        'A megjeleníthető bejegyzésekben sikeres eredmény van mentve.',
+      expect(rows['Visszatérítés a rendelésen']).toBe(
+        'Teljes visszatérítés van rögzítve a rendelésen.',
       )
-      expect(rows['Stornó mentett állapota']).toBe('Kiállított stornó van rögzítve.')
-      expect(rows['Legutóbbi helyesbítő mentett állapota']).toBe(
+      expect(rows['Barion visszaigazolása']).toBe(
+        'A Barion a mentett bejegyzésekben sikeres visszatérítést jelzett.',
+      )
+      expect(rows['Stornószámla']).toBe('Kiállított stornó van rögzítve.')
+      expect(rows['Legutóbbi helyesbítő számla']).toBe(
         'A legutóbbi helyesbítő kiállítása van rögzítve; a korábbiak állapota ebből nem állapítható meg.',
       )
       expect(rows['Hozzáférések rendezése']).toBe('A mentett rendelésadatokból nem igazolható.')
-      expect(container.querySelector('[role="status"]')).toBeNull()
+      expect(successMessage()).toBeNull()
       expect(fetchMock).not.toHaveBeenCalled()
       expect(ui.refresh).not.toHaveBeenCalled()
     }
@@ -1114,8 +1166,10 @@ describe('RefundPanel saved operational summary', () => {
       stornoStatus: null,
       correctiveInvoiceStatus: null,
     })
-    expect(summary().textContent).toContain('a pénzmozgás ebből nem állapítható meg')
-    expect(summary().textContent).not.toContain('Teljes visszatérítés van helyben rögzítve')
+    // K12: mentett visszatérítés és számla-utóélet nélkül egyetlen mondat áll.
+    expect(container.querySelector('dl')).toBeNull()
+    expect(container.textContent).toContain('Ezen a rendelésen még nem volt visszatérítés.')
+    expect(container.textContent).not.toContain('Teljes visszatérítés van rögzítve')
     expect(button().disabled).toBe(false)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -1154,7 +1208,101 @@ describe('RefundPanel saved operational summary', () => {
     ui.user = { id: 2, role }
     await render(savedOrder())
     expect(container.querySelector('dl')).toBeNull()
-    expect(container.textContent).not.toContain('Mentett szolgáltatói')
+    expect(container.textContent).not.toContain('Barion visszaigazolása')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('RefundPanel K12: hozzáférhető név, élő régiók, megerősítés', () => {
+  async function remountWith(statusBody: Record<string, unknown>) {
+    statusFetchMock.mockImplementation(async () =>
+      Response.json({ orderNumber: ORDER_A, message: 'Mentett állapot.', ...statusBody }),
+    )
+    await act(async () => {
+      root.unmount()
+    })
+    const { createRoot } = await import('react-dom/client')
+    root = createRoot(container)
+    await render()
+  }
+
+  it('a mező neve a látható címke, a súgó a mezőhöz kötött, placeholder és aria-label nincs', () => {
+    const input = container.querySelector('input') as HTMLInputElement
+    const label = container.querySelector(`label[for="${input.id}"]`)
+    expect(label?.textContent).toBe('Visszatérítendő összeg (Ft)')
+    expect(input.hasAttribute('aria-label')).toBe(false)
+    expect(input.hasAttribute('placeholder')).toBe(false)
+    expect(input.className).toBe('kc-admin-input')
+    const hint = document.getElementById(input.getAttribute('aria-describedby')!.split(' ')[0]!)
+    expect(hint?.textContent).toBe('Ha üresen hagyod, a teljes összeg visszajár.')
+    expect(container.textContent).not.toMatch(/[–—]/)
+  })
+
+  it('mentett visszatérítés nélkül egyetlen mondat áll az állapotlista helyett', () => {
+    expect(container.querySelector('dl')).toBeNull()
+    expect(container.textContent).toContain('Ezen a rendelésen még nem volt visszatérítés.')
+  })
+
+  it('betöltéskor a kézi ellenőrzést kérő mentett állapot role="status", nem alert', async () => {
+    await remountWith({ state: 'manual_review' })
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    const notice = container.querySelector('[role="status"]')
+    expect(notice?.textContent).toContain('Ellenőrzés szükséges')
+    expect(notice?.textContent).toContain('Ne indíts új')
+  })
+
+  it('betöltéskor a nem ellenőrizhető mentett állapot is role="status"', async () => {
+    statusFetchMock.mockRejectedValue(new TypeError('Synthetic network failure'))
+    await remountWith({})
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(reviewNotices().map((element) => element.getAttribute('role'))).toEqual(['status'])
+  })
+
+  it('a gombnyomás bizonytalan pénzügyi eredménye role="alert"', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Synthetic network failure'))
+    await submit()
+    expect(reviewNotices().some((element) => element.getAttribute('role') === 'alert')).toBe(true)
+  })
+
+  it('a megerősítő ablak konkrét következményt és visszavonhatatlansági mondatot mond', async () => {
+    ui.decide = () => false
+    await submit()
+    const modal = ui.modal!
+    expect(modal.modalSlug).toBe(REFUND_CONFIRM_MODAL_SLUG)
+    expect(modal.confirmLabel).toBe('Visszatérítés indítása')
+    expect(modal.cancelLabel).toBe('Mégse')
+    const heading = renderToStaticMarkup(createElement('div', null, modal.heading))
+    const body = renderToStaticMarkup(createElement('div', null, modal.body))
+    expect(heading).toContain('Visszatéríted az összeget?')
+    expect(body).toContain(`${ORDER_A} rendelés`)
+    expect(body).toContain('<strong>A visszatérítés nem vonható vissza.</strong>')
+    const text = `${heading}${body}`.replace(/<[^>]+>/g, ' ')
+    expect(text).not.toMatch(/[–—"]|TELJES|Biztosan/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a másik rendelésre váltás elveti a nyitva hagyott megerősítést', async () => {
+    ui.decide = undefined
+    await submit()
+    const staleConfirm = ui.modal!.onConfirm
+    await render(order(ORDER_B))
+    expect(ui.closeModal).toHaveBeenCalledWith(REFUND_CONFIRM_MODAL_SLUG)
+    await act(async () => {
+      await staleConfirm()
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(readRefundOperation(ORDER_A)).toBeNull()
+    expect(readRefundOperation(ORDER_B)).toBeNull()
+  })
+
+  it('a jóváhagyás előtt beérkező tiltó állapot a pénzmozgást megállítja', async () => {
+    ui.decide = undefined
+    await submit()
+    const heldConfirm = ui.modal!.onConfirm
+    await render(order(ORDER_A, 'refunded'))
+    await act(async () => {
+      await heldConfirm()
+    })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

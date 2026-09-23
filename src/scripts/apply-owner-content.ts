@@ -69,6 +69,9 @@ import {
 } from '../lib/rolunk-bemutatkozas'
 import config from '../payload.config'
 import type { Media, Menu, Page, Product } from '../payload-types'
+import { filmFeliratokKitoltese } from './film-feliratok-kitoltes'
+import { kitoltKurzusCimeket, type KurzusCimKitoltes } from './kurzus-cim-kitoltes'
+import { kitoltSosCim } from './sos-cim-kitoltes'
 // Mellékhatás-mentes import (a legacy-script futtatás-kapuval védett): a
 // szakmai-háttér csere és a /szolgaltatasok lap-tetejének cseréje a
 // seed-builderből veszi az ÚJ blokkokat, és az örökölt tartalommal veti össze
@@ -444,6 +447,9 @@ export type JavitasSzabaly =
   | 'diagnozis-tagmondat'
   | 'harom-ajto-fotok'
   | 'kocsis-cv-foto'
+  | 'sos-cim'
+  | 'film-feliratok'
+  | 'kurzus-cim'
 
 /** Egy elvégzett módosítás vagy egy indokolt kihagyás gépileg is vizsgálható leírása. */
 export interface JavitasLepes {
@@ -5681,6 +5687,126 @@ export const alkalmazAkciosEladoMezok = (input: {
 }
 
 // ---------------------------------------------------------------------------
+// 2026-09-23: a három előtöltő szabály (külön modulban, tiszta függvényként)
+// illesztése a futtató naplózó láncába. Maguk a döntések a modulokban élnek,
+// itt csak a naplósorok alakja változik.
+// ---------------------------------------------------------------------------
+
+/**
+ * A kezdőlapi SOS-sáv címe (src/scripts/sos-cim-kitoltes.ts): a régi,
+ * gondolatjeles vagy üres cím helyére „Ingyenes villámkurzus” kerül. A sáv
+ * 2026-09-22-től a CMS-címet mutatja, ezért ez a szabály ugyanabban a
+ * kiadásban fut, mint a kódváltás.
+ */
+export function alkalmazSosCim(layout: Szekciosor, oldalCimke: string): SzekciosorCsere {
+  const szabaly: JavitasSzabaly = 'sos-cim'
+  const eredmeny = kitoltSosCim(layout, oldalCimke)
+  if (eredmeny.allapot === 'NINCS_FREESOS') {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet: `${oldalCimke}: az SOS-sáv címe`,
+          indok: 'a szekciósorban nincs Ingyenes villámkurzus sáv',
+        },
+      ],
+    }
+  }
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  for (const sor of eredmeny.naplo) {
+    if (sor.allapot === 'KITOLTVE') {
+      modositasok.push({ szabaly, uzenet: sor.uzenet, indok: null })
+      continue
+    }
+    kihagyasok.push({
+      szabaly,
+      uzenet: sor.uzenet,
+      indok: sor.allapot === 'MAR' ? 'már javítva' : 'szerkesztői szöveg',
+    })
+  }
+  return { layout: eredmeny.layout as Szekciosor | null, modositasok, kihagyasok }
+}
+
+/**
+ * A nyitó videó beúszó feliratai (src/scripts/film-feliratok-kitoltes.ts): az
+ * üres mezőkbe a lapon ma látható beépített szöveg kerül, hogy az admin azt
+ * mutassa, ami a lapon van. A lap látványa nem változik.
+ */
+export function alkalmazFilmFeliratok(layout: Szekciosor, oldalCimke: string): SzekciosorCsere {
+  const szabaly: JavitasSzabaly = 'film-feliratok'
+  const eredmeny = filmFeliratokKitoltese(layout)
+  if (eredmeny.allapot === 'NINCS_FILMHERO') {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet: `${oldalCimke}: a nyitó videó feliratai`,
+          indok: 'a szekciósorban nincs nyitó videó blokk',
+        },
+      ],
+    }
+  }
+  if (eredmeny.allapot === 'MAR') {
+    return {
+      layout: null,
+      modositasok: [],
+      kihagyasok: [
+        {
+          szabaly,
+          uzenet: `${oldalCimke}: a nyitó videó feliratai`,
+          indok: 'minden feliratmező ki van töltve',
+        },
+      ],
+    }
+  }
+  return {
+    layout: eredmeny.layout as Szekciosor | null,
+    modositasok: eredmeny.kitoltottMezok.map((mezo) => ({
+      szabaly,
+      uzenet: `${oldalCimke}, ${mezo.index + 1}. szekció (nyitó videó): a(z) ${mezo.utvonal} üres mezőjébe a lapon látható szöveg került: „${mezo.ertek}”`,
+      indok: null,
+    })),
+    kihagyasok: [],
+  }
+}
+
+/**
+ * A kurzusok üres „Kurzus címe” mezője (src/scripts/kurzus-cim-kitoltes.ts):
+ * a naplósorok a futtató alakjában, a modul döntésével együtt.
+ */
+export function kurzusCimLepesek(eredmeny: KurzusCimKitoltes): {
+  modositasok: JavitasLepes[]
+  kihagyasok: JavitasLepes[]
+} {
+  const szabaly: JavitasSzabaly = 'kurzus-cim'
+  if (eredmeny.allapot === 'NINCS_TERMEK') {
+    return {
+      modositasok: [],
+      kihagyasok: [{ szabaly, uzenet: 'A kurzusok címe', indok: 'nincs egyetlen kurzus sem' }],
+    }
+  }
+  const modositasok: JavitasLepes[] = []
+  const kihagyasok: JavitasLepes[] = []
+  for (const sor of eredmeny.naplo) {
+    if (sor.allapot === 'KITOLTVE') {
+      modositasok.push({ szabaly, uzenet: sor.uzenet, indok: null })
+      continue
+    }
+    kihagyasok.push({
+      szabaly,
+      uzenet: sor.uzenet,
+      indok: sor.allapot === 'MAR' ? 'már kitöltve' : 'szerkesztői szöveg vagy hiányzó adat',
+    })
+  }
+  return { modositasok, kihagyasok }
+}
+
+// ---------------------------------------------------------------------------
 // Futtatás — a tiszta átalakításokat köti az adatbázishoz.
 // ---------------------------------------------------------------------------
 
@@ -5951,6 +6077,9 @@ async function futtat(): Promise<void> {
     // --- 2026-09-22: a háromajtós sín mentett régi fotói az új képekre --------
     // (élesben a kezdőlap sorai üresek, ott a kódbeli tartalék már az új kép)
     kezdolapLepes(await haromAjtoFotokLepes(kezdolapLayout, 'Kezdőlap'))
+    // --- 2026-09-23: az SOS-sáv címe és a nyitó videó feliratai a CMS-ben -----
+    kezdolapLepes(alkalmazSosCim(kezdolapLayout, 'Kezdőlap'))
+    kezdolapLepes(alkalmazFilmFeliratok(kezdolapLayout, 'Kezdőlap'))
 
     if (kezdolapValtozott && !dryRun) {
       const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', kezdolap.id)
@@ -6849,6 +6978,46 @@ async function futtat(): Promise<void> {
         depth: 0,
         overrideAccess: true,
       })
+    }
+  }
+
+  // --- 2026-09-23: a kurzusok üres „Kurzus címe” mezője ----------------------
+  // A korábbi lépések után olvasunk, hogy a naplóban a friss állapot álljon;
+  // az írás csak a `displayTitle`-t és a változatlan `slug`-ot küldi.
+  const kurzusokTalalat = await payload.find({
+    collection: 'products',
+    limit: 200,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const kurzusCimek = kitoltKurzusCimeket(kurzusokTalalat.docs)
+  const kurzusCimNaplo = kurzusCimLepesek(kurzusCimek)
+  naplozdLepeseket(kurzusCimNaplo, dryRun)
+  modositasokSzama += kurzusCimNaplo.modositasok.length
+  kihagyasokSzama += kurzusCimNaplo.kihagyasok.length
+  if (kurzusCimek.modositasok !== null && !dryRun) {
+    for (const modositas of kurzusCimek.modositasok) {
+      const kurzusId = Number(modositas.id)
+      if (!Number.isInteger(kurzusId)) {
+        logger.error(
+          `Tartalom-javítás: a kurzus azonosítója nem egész szám (${String(modositas.id)}), a Kurzus címe kitöltése kimaradt.`,
+        )
+        hiba = true
+        continue
+      }
+      const piszkozat = await olvasdLegutobbiVerziot(payload, 'products', kurzusId)
+      if (piszkozat === undefined) {
+        hiba = true
+        continue
+      }
+      await payload.update({
+        collection: 'products',
+        id: kurzusId,
+        data: modositas.data,
+        depth: 0,
+        overrideAccess: true,
+      })
+      figyelmeztessPiszkozatra(`kurzus (#${kurzusId})`, modositas.updatedAt, piszkozat?.updatedAt)
     }
   }
 

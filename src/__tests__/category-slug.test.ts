@@ -85,7 +85,8 @@ describe('Categories: a slug mező tulajdonságai', () => {
   })
 
   it('magyar label és laikusnak szóló leírás', () => {
-    expect(categorySlugField.label).toBe('Webcím (slug)')
+    // K40: a „slug” zsargon kikerült a címkéből (a közös slugField adja).
+    expect(categorySlugField.label).toBe('Webcím')
     expect(categorySlugField.admin?.description).toContain('magától kitöltődik')
   })
 

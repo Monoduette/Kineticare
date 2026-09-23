@@ -34,8 +34,11 @@ const {
   NO_PRICE_WARNING,
   NOT_PUBLISHED_WARNING,
   PROMO_OFF_MESSAGE,
-  PROMO_PRICE_WARNING,
   deriveCoursePromoStatus,
+  handwrittenPriceNotes,
+  lexicalPlainText,
+  pricesInText,
+  promoPriceWarning,
   withDaySuffix,
 } = await import('../components/admin/CoursePromoStatus')
 
@@ -46,7 +49,7 @@ const base = {
   status: 'published',
 }
 const NOW = new Date('2026-09-20T10:00:00Z')
-const NO_PROMO_PRICE_TAIL = ' Akciós ár nincs megadva, a vevő a rendes Árat fizeti.'
+const NO_PROMO_PRICE_TAIL = ' Akciós ár nincs megadva, a vásárló a rendes árat fizeti.'
 
 describe('withDaySuffix: a keltezés ragja hangrend szerint', () => {
   it('-án/-én, -tól/-től, -ig; az elseje kivétel', () => {
@@ -87,7 +90,7 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
     ).toBe(`Az akció most él, és nincs megadva a vége.${NO_PROMO_PRICE_TAIL}`)
   })
 
-  it('most él, akciós árral: kimondja, mit fizet a vevő, és mi lesz az ár utána', () => {
+  it('most él, akciós árral: kimondja, mit fizet a vásárló, és mi lesz az ár utána', () => {
     const status = deriveCoursePromoStatus(
       {
         ...base,
@@ -99,7 +102,7 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
       NOW,
     )
     expect(status.message).toBe(
-      `Az akció most él (szeptember 30-ig). A vevő most ${formatPriceHuf(14_900)}-ot fizet, az akció után magától ${formatPriceHuf(19_900)} lesz az ár.`,
+      `Az akció most él (szeptember 30-ig). A vásárló most ${formatPriceHuf(14_900)}-ot fizet, az akció után magától ${formatPriceHuf(19_900)} lesz az ár.`,
     )
     expect(status.warning).toBeNull()
     expect(status.reason).toBeNull()
@@ -126,12 +129,14 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
   it('figyelmeztet, ha az akciós ár nem kisebb az Árnál; ilyenkor a rendes árat mondja', () => {
     const on = { promoEnabled: true, promoStart: null, promoEnd: null }
     const equal = deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 19_900 }, NOW)
-    expect(equal.warning).toBe(PROMO_PRICE_WARNING)
+    expect(equal.warning).toBe(promoPriceWarning(19_900, 19_900))
     expect(equal.message).toBe(`Az akció most él, és nincs megadva a vége.${NO_PROMO_PRICE_TAIL}`)
     expect(deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 24_900 }, NOW).warning).toBe(
-      PROMO_PRICE_WARNING,
+      promoPriceWarning(24_900, 19_900),
     )
-    expect(deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 14_900 }, NOW).warning).toBeNull()
+    expect(
+      deriveCoursePromoStatus({ ...base, ...on, promoPriceHuf: 14_900 }, NOW).warning,
+    ).toBeNull()
     expect(deriveCoursePromoStatus({ ...base, ...on }, NOW).warning).toBeNull()
     // Lejárt akciónál is figyelmeztet a hibás akciós árra, hogy a következő akció előtt javítsák.
     expect(
@@ -141,7 +146,7 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
       ),
     ).toEqual({
       message: 'Az akció lejárt (szeptember 10-én).',
-      warning: PROMO_PRICE_WARNING,
+      warning: promoPriceWarning(24_900, 19_900),
       reason: 'lejart',
     })
   })
@@ -182,36 +187,102 @@ describe('deriveCoursePromoStatus: a négy állapot szövege', () => {
   })
 })
 
+describe('K21: az érvénytelen akciós ár figyelmeztetése a validátor párja', () => {
+  it('szó szerint: a megadott ár és a most fizetett ár, formázva', () => {
+    expect(promoPriceWarning(99_000, 79_500)).toBe(
+      `A megadott akciós ár (${formatPriceHuf(99_000)}) nem kisebb a rendes árnál, ezért a vásárló most ${formatPriceHuf(79_500)}-ot fizet.`,
+    )
+    expect(promoPriceWarning(99_000, 79_500)).toBe(
+      'A megadott akciós ár (99\u00a0000\u00a0Ft) nem kisebb a rendes árnál, ezért a vásárló most 79\u00a0500\u00a0Ft-ot fizet.',
+    )
+  })
+})
+
+describe('K42: kézzel írt ár a szabad szövegben', () => {
+  const lexical = (...paragraphs: string[][]) => ({
+    root: {
+      type: 'root',
+      children: paragraphs.map((texts) => ({
+        type: 'paragraph',
+        children: texts.map((text) => ({ type: 'text', text })),
+      })),
+    },
+  })
+
+  it('a Lexical szöveget bekezdésenként olvassa, a darabolt szövegrészeket összefűzi', () => {
+    expect(lexicalPlainText(lexical(['Most csak ', '79 500', ' Ft-ért.'], ['Második']))).toBe(
+      'Most csak 79 500 Ft-ért.\nMásodik',
+    )
+    expect(lexicalPlainText(null)).toBe('')
+    expect(lexicalPlainText('szöveg')).toBe('szöveg')
+  })
+
+  it('a magyar írásmódokat felismeri, és egységesen formázza', () => {
+    expect(
+      pricesInText('79 500 Ft, 79.500 Ft, 79500 Ft, 79\u00a0500,- Ft, 19 900 forint, 4500 HUF'),
+    ).toEqual([formatPriceHuf(79_500), formatPriceHuf(19_900), formatPriceHuf(4_500)])
+    expect(pricesInText('Nincs itt ár, csak 12 lecke és 2026.')).toEqual([])
+  })
+
+  it('mezőnként egy mondat, a brief szövege szerint', () => {
+    expect(
+      handwrittenPriceNotes({
+        longDescription: lexical(['A program 79 500 Ft-ért érhető el.']),
+        guaranteeTitle: 'Pénzvisszafizetési garancia',
+        guaranteeText: 'Ha nem válik be, visszakapod a 79 500 Ft-ot.',
+        faqText: 'Mennyibe kerül?\nCsak 59 900 Ft.',
+      }),
+    ).toEqual([
+      `A Részletes leírásban kézzel írt ár áll (${formatPriceHuf(79_500)}). Ellenőrizd, hogy az akció alatt is igaz-e.`,
+      `A Garancia szövegében kézzel írt ár áll (${formatPriceHuf(79_500)}). Ellenőrizd, hogy az akció alatt is igaz-e.`,
+      `A Gyakori kérdésekben (GYIK) kézzel írt ár áll (${formatPriceHuf(59_900)}). Ellenőrizd, hogy az akció alatt is igaz-e.`,
+    ])
+    expect(handwrittenPriceNotes({})).toEqual([])
+  })
+})
+
 describe('CoursePromoStatusView', () => {
-  it('az üzenet role="status" bekezdésben, a figyelmeztetés role="alert"-ben', () => {
+  it('a doboz egyetlen role="status" régió, a figyelmeztetés benne, alert nincs', () => {
     const html = renderToStaticMarkup(
       createElement(CoursePromoStatusView, {
         status: {
           message: 'Az akció most él (szeptember 30-ig).',
-          warning: PROMO_PRICE_WARNING,
+          warning: promoPriceWarning(99_000, 79_500),
           reason: null,
         },
+        priceNotes: ['A Részletes leírásban kézzel írt ár áll (79 500 Ft).'],
       }),
     )
-    expect(html).toContain('role="status"')
-    expect(html).toContain('aria-live="polite"')
+    expect(html.match(/role="status"/g)).toHaveLength(1)
+    expect(html).not.toContain('role="alert"')
     expect(html).toContain('Az akció most él (szeptember 30-ig).')
-    expect(html).toContain('role="alert"')
-    expect(html).toContain(PROMO_PRICE_WARNING)
+    expect(html).toContain('kc-admin-notice kc-admin-notice--figyelem')
+    expect(html).toContain('<p class="kc-admin-notice__cim">Figyelem</p>')
+    expect(html).toContain('Kézzel írt ár a kurzusoldalon')
   })
 
-  it('figyelmeztetés nélkül nincs alert', () => {
+  it('figyelmeztetés nélkül nincs figyelmeztető doboz', () => {
     const html = renderToStaticMarkup(
       createElement(CoursePromoStatusView, {
         status: { message: PROMO_OFF_MESSAGE, warning: null, reason: 'kikapcsolva' },
       }),
     )
     expect(html).not.toContain('role="alert"')
+    expect(html).not.toContain('kc-admin-notice')
   })
 
-  it('a felületi szövegekben nincs gondolatjel (tulajdonosi kikötés)', () => {
-    for (const text of [PROMO_OFF_MESSAGE, PROMO_PRICE_WARNING]) {
-      expect(text).not.toMatch(/[–—]/)
+  it('a felületi szövegekben nincs gondolatjel, ASCII idézőjel és verzál szó', () => {
+    for (const text of [
+      PROMO_OFF_MESSAGE,
+      promoPriceWarning(99_000, 79_500),
+      NOT_PUBLISHED_WARNING,
+      DRAFT_WARNING,
+      NO_PRICE_WARNING,
+      ...handwrittenPriceNotes({ guaranteeText: '79 500 Ft' }),
+    ]) {
+      expect(text).not.toMatch(/[–—"]/)
+      expect(text).not.toMatch(/\b[A-ZÁÉÍÓÖŐÚÜŰ]{2,}\b/u)
+      expect(text).not.toContain('vevő')
     }
   })
 })
@@ -228,7 +299,22 @@ describe('CoursePromoStatus (konténer, SSR)', () => {
     formFields.status = { value: 'published' }
     const html = renderToStaticMarkup(createElement(CoursePromoStatus))
     expect(html).toContain('Az akció most él (szeptember 30-ig).')
-    expect(html).toContain(PROMO_PRICE_WARNING)
+    expect(html).toContain(promoPriceWarning(25_000, 19_900))
+  })
+
+  it('a Kurzusoldal szabad szövegéből a kézzel írt árat is megnevezi', () => {
+    vi.useFakeTimers({ now: NOW })
+    formFields.promoEnabled = { value: true }
+    formFields.promoPriceHuf = { value: 14_900 }
+    formFields.guaranteeText = { value: 'A teljes ár 19 900 Ft.' }
+    formFields['faq.0.question'] = { value: 'Mennyibe kerül?' }
+    formFields['faq.0.answer'] = { value: 'Most 14 900 Ft.' }
+    const html = renderToStaticMarkup(createElement(CoursePromoStatus))
+    expect(html).toContain('A Garancia szövegében kézzel írt ár áll')
+    expect(html).toContain('A Gyakori kérdésekben (GYIK) kézzel írt ár áll')
+    delete formFields.guaranteeText
+    delete formFields['faq.0.question']
+    delete formFields['faq.0.answer']
   })
 
   it('az űrlap akciós árából a vevő mostani és akció utáni ára', () => {
@@ -241,7 +327,7 @@ describe('CoursePromoStatus (konténer, SSR)', () => {
     formFields.priceInHUFEnabled = { value: true }
     formFields.status = { value: 'published' }
     const html = renderToStaticMarkup(createElement(CoursePromoStatus))
-    expect(html).toContain(`A vevő most ${formatPriceHuf(14_900)}-ot fizet`)
+    expect(html).toContain(`A vásárló most ${formatPriceHuf(14_900)}-ot fizet`)
     expect(html).toContain(`magától ${formatPriceHuf(19_900)} lesz az ár.`)
     expect(html).not.toContain('role="alert"')
   })
