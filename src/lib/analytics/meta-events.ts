@@ -4,6 +4,11 @@ import { trackMetaEvent, type MetaEventParams, type MetaTrackOptions } from './m
  * Meta Pixel üzleti események — a Barion-tölcsér (barion-events.ts) és a
  * lead-mérés (lead-events.ts) pontjain, azokkal PÁRHUZAMOSAN hívva.
  *
+ * A `Purchase` SZÁNDÉKOSAN nincs itt: a köszönőoldal címe rendelés- és
+ * Barion-fizetésazonosítót hordoz, amit az fbevents.js a Metának küldene
+ * (lásd META_BLOCKED_PATH_PREFIXES). A vásárlás Meta-mérésének helye a
+ * szerveroldali Conversions API, a megerősített rendelésösszeggel.
+ *
  * Csak nem személyes adat megy ki: termék-azonosító, ár, pénznem, a lead
  * forrás-címkéje. A kurzus NEVE szándékosan nem: egészségügyi jellegű
  * terméknévre a Meta hirdetési szabályai érzékenyek, a riportokhoz az
@@ -43,7 +48,7 @@ export function metaCourseParams(course: MetaCourseInput): MetaEventParams | nul
 }
 
 function trackCourseEvent(
-  event: 'ViewContent' | 'InitiateCheckout' | 'Purchase',
+  event: 'ViewContent' | 'InitiateCheckout',
   course: MetaCourseInput,
   options?: MetaTrackOptions,
 ): boolean {
@@ -65,27 +70,6 @@ export function trackMetaInitiateCheckout(
   options?: MetaTrackOptions,
 ): boolean {
   return trackCourseEvent('InitiateCheckout', course, options)
-}
-
-/**
- * SIKERES vásárlás. Sikertelen fizetésnél NEM megy ki semmi (a Meta a
- * `Purchase`-t mindig bevételnek veszi). A rendelésszám a deduplikációs
- * `eventID`: a köszönőoldal újratöltése így sem duplázza a konverziót.
- */
-export function trackMetaPurchase(
-  course: MetaCourseInput,
-  input: { orderNumber: string | null; succeeded: boolean },
-  options: MetaTrackOptions = {},
-): boolean {
-  if (!input.succeeded) {
-    return false
-  }
-  return trackCourseEvent('Purchase', course, {
-    ...options,
-    ...(input.orderNumber !== null && input.orderNumber.length > 0
-      ? { eventId: `purchase-${input.orderNumber}` }
-      : {}),
-  })
 }
 
 /** Sikeres lead (időpontkérés, kapcsolat, hírlevél, ingyenes kurzus). */

@@ -53,8 +53,7 @@ export function isMetaPixelConfigured(): boolean {
 }
 
 /** A Meta szabványos eseményei, amelyeket küldünk. */
-export type MetaStandardEvent =
-  'PageView' | 'ViewContent' | 'InitiateCheckout' | 'Purchase' | 'Lead'
+export type MetaStandardEvent = 'PageView' | 'ViewContent' | 'InitiateCheckout' | 'Lead'
 
 /** Az események paraméterei (csak nem személyes adat). */
 export interface MetaEventParams {
@@ -108,14 +107,50 @@ type FbqFunction = ((...args: unknown[]) => void) & {
 }
 
 /**
- * Biztonságos-e a cím a Meta felé: nem hordoz jegyet (token), és ismert.
- * Ismeretlen cím (null) NEM biztonságos: jobb nem mérni, mint jegyet küldeni.
+ * Útvonalak, ahol a Meta Pixel SEMMIT nem küld. Az fbevents.js minden
+ * eseményhez a teljes document.location-t csatolja, ezek a lapok pedig
+ * tranzakció- vagy fiókazonosítót hordoznak a címükben: a Barion-visszatérés
+ * (`/fizetes/koszonom?order=…&paymentId=…`), a sikertelen fizetés, a
+ * jelszó-visszaállítás és az átállási belépés.
+ */
+export const META_BLOCKED_PATH_PREFIXES: readonly string[] = [
+  '/fizetes/',
+  '/sikertelen',
+  '/jelszo-visszaallitas',
+  '/belepes-atallas',
+]
+
+/** Query-paraméterek, amelyek jelenléte esetén a cím nem mehet a Metának. */
+const META_BLOCKED_QUERY_PARAMS: readonly string[] = ['order', 'paymentid']
+
+/**
+ * Biztonságos-e a cím a Meta felé: ismert, nem tiltott útvonal, és nem hordoz
+ * jegyet (token), rendelés- vagy fizetésazonosítót. Ismeretlen vagy nem
+ * értelmezhető cím NEM biztonságos: jobb nem mérni, mint azonosítót küldeni.
  */
 export function isMetaSafeUrl(href: string | null): boolean {
   if (href === null || href.length === 0) {
     return false
   }
-  return sanitizeAnalyticsUrl(href) === stripHash(href)
+  if (sanitizeAnalyticsUrl(href) !== stripHash(href)) {
+    return false
+  }
+  let url: URL
+  try {
+    url = new URL(href, 'https://www.kineticare.hu')
+  } catch {
+    return false
+  }
+  const path = url.pathname.toLowerCase()
+  if (META_BLOCKED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return false
+  }
+  for (const key of url.searchParams.keys()) {
+    if (META_BLOCKED_QUERY_PARAMS.includes(key.toLowerCase())) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
@@ -269,7 +304,11 @@ export function trackMetaEvent(
     if (!runtime || normalizeMetaPixelId(runtime.pixelId).length === 0) {
       return false
     }
-    const consent = options.consent ?? (() => readConsent())
+    // A tárolt döntés mellett az ebben a munkamenetben adott hozzájárulás is
+    // számít: ha a tároló nem írható, a ConsentBanner a döntést csak eseményben
+    // szórja, és a MetaPixel-figyelő ebből indította el a Pixelt.
+    const consent =
+      options.consent ?? ((): ConsentState => (pixelActive ? CONSENT_GRANTED : readConsent()))
     if (consent() !== CONSENT_GRANTED) {
       return false
     }

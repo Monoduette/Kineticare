@@ -4,7 +4,6 @@ import {
   metaCourseParams,
   trackMetaInitiateCheckout,
   trackMetaLead,
-  trackMetaPurchase,
   trackMetaViewContent,
 } from '../lib/analytics/meta-events'
 import {
@@ -12,6 +11,7 @@ import {
   applyConsentToMetaPixel,
   enableMetaPixel,
   isMetaPixelActive,
+  isMetaSafeUrl,
   normalizeMetaPixelId,
   resetMetaPixelForTests,
   trackMetaEvent,
@@ -164,6 +164,29 @@ describe('trackMetaEvent', () => {
     expect(queue(runtime)).toHaveLength(before)
   })
 
+  it('a Barion-visszatérés és más azonosítós címek nem mennek a Metának', () => {
+    for (const href of [
+      'https://www.kineticare.hu/fizetes/koszonom?order=KH-2026-000123&paymentId=abc',
+      'https://www.kineticare.hu/fizetes/koszonom',
+      'https://www.kineticare.hu/sikertelen?order=KH-2026-000123',
+      'https://www.kineticare.hu/belepes-atallas?email=x',
+      'https://www.kineticare.hu/barmi?ORDER=1',
+      'https://www.kineticare.hu/barmi?paymentId=1',
+    ]) {
+      expect(isMetaSafeUrl(href), href).toBe(false)
+    }
+    expect(isMetaSafeUrl('https://www.kineticare.hu/penztar?termek=7')).toBe(true)
+    expect(isMetaSafeUrl('https://www.kineticare.hu/kurzusok?utm_source=facebook')).toBe(true)
+  })
+
+  it('a munkamenetben adott hozzájárulás tároló nélkül is érvényes', () => {
+    const runtime = fakeRuntime()
+    applyConsentToMetaPixel('granted', runtime)
+    expect(trackMetaPageView({ runtime })).toBe(true)
+    applyConsentToMetaPixel('denied', runtime)
+    expect(trackMetaPageView({ runtime })).toBe(false)
+  })
+
   it('az első PageView nem duplázódik', () => {
     const runtime = fakeRuntime()
     expect(trackMetaPageView({ runtime, consent: granted })).toBe(true)
@@ -194,31 +217,6 @@ describe('Meta üzleti események', () => {
     trackMetaInitiateCheckout(course, { runtime, consent: granted })
     const events = queue(runtime).filter((entry) => entry[0] === 'track')
     expect(events.map((entry) => entry[1])).toEqual(['PageView', 'ViewContent', 'InitiateCheckout'])
-  })
-
-  it('sikeres Purchase a rendelésszámmal deduplikálva; sikertelen nem megy ki', () => {
-    const runtime = fakeRuntime()
-    expect(
-      trackMetaPurchase(
-        course,
-        { orderNumber: 'KC-1', succeeded: false },
-        { runtime, consent: granted },
-      ),
-    ).toBe(false)
-    expect(
-      trackMetaPurchase(
-        course,
-        { orderNumber: 'KC-1', succeeded: true },
-        { runtime, consent: granted },
-      ),
-    ).toBe(true)
-    expect(queue(runtime).at(-1)).toEqual([
-      'track',
-      'Purchase',
-      metaCourseParams(course),
-      { eventID: 'purchase-KC-1' },
-    ])
-    expect(queue(runtime).filter((entry) => entry[1] === 'Purchase')).toHaveLength(1)
   })
 })
 
