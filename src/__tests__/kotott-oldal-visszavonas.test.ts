@@ -115,8 +115,8 @@ describe('a menüpont neve betűre a magyar fordításból', () => {
 })
 
 describe('minden kötött webcímnek van visszavonás-mondata', () => {
-  it('13 oldal és 10 blogbejegyzés', () => {
-    expect(OSSZES).toHaveLength(23)
+  it('14 oldal és 10 blogbejegyzés', () => {
+    expect(OSSZES).toHaveLength(24)
   })
 
   it.each(OSSZES)(
@@ -177,9 +177,10 @@ describe('az állítások a forrássorhoz kötve', () => {
     const mondat = visszavonas('pages', 'kezdolap')
     expect(mondat).toContain('beépített tartalék-kezdőlapja jelenik meg')
     expect(mondat).toContain('új kezdőlap nem jön létre')
-    // Az átírás (webcímváltás) esete más: ott jön létre új kezdőlap.
+    // Webcímváltás után sem jön létre új kezdőlap (A8: az induláskori seed
+    // csak teljesen üres Oldalak-gyűjteménynél ír), a tartalék marad.
     expect(kotottWebcim('pages', 'kezdolap')?.kovetkezmeny.join(' ')).toContain(
-      'új, alapszekciós kezdőlap jön létre',
+      'amíg a webcímet vissza nem írod',
     )
   })
 

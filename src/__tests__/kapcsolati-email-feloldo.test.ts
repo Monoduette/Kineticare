@@ -399,7 +399,14 @@ describe('5. forrás-pásztázás: a tartalék-literál egyetlen helyen áll', (
    * Kivétel indoklással: a restore-legacy-content.ts az Időpontkérő
    * seed-ADATA (maga a CMS-érték, amit a feloldó olvas), nem kódtartalék.
    */
-  const ENGEDETT = new Set(['lib/contact-email.ts', 'scripts/restore-legacy-content.ts'])
+  // A payload-types.ts GENERÁLT fájl: az Időpontkérő E-mail-cím mezőjének
+  // súgóját JSDoc-ként másolja, a súgó pedig a KAPCSOLATI_EMAIL_TARTALEK-ot
+  // interpolálja (src/blocks/appointment.ts). Kódfogyasztó nincs benne.
+  const ENGEDETT = new Set([
+    'lib/contact-email.ts',
+    'scripts/restore-legacy-content.ts',
+    'payload-types.ts',
+  ])
 
   function fajlok(konyvtar: string): string[] {
     return readdirSync(konyvtar).flatMap((nev) => {
