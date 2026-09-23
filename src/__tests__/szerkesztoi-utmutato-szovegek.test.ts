@@ -302,8 +302,8 @@ describe('„Amit a rendszer induláskor visszahoz”: a leírt feltételek a k�
   it('az onInit a kezdőlapot, a véleményeket és a három űrlapot ellenőrzi', () => {
     const config = forras('payload.config.ts')
     for (const hivas of [
-      'await ensureHomeLayout(payload, mediaIds)',
-      'await ensureHomeTestimonials(payload)',
+      'await ensureHomeLayoutFrissTelepitesen(payload, mediaIds)',
+      'await ensureHomeTestimonialsFrissTelepitesen(payload)',
       'await ensureContactForm(payload)',
       'await ensureNewsletterForm(payload)',
       'await ensureAppointmentForm(payload)',
@@ -312,14 +312,14 @@ describe('„Amit a rendszer induláskor visszahoz”: a leírt feltételek a k�
     }
   })
 
-  it('a kezdőlap a webcíme szerint, közzétéve jön létre; szekciósor csak üres sornál', () => {
+  it('a kezdőlap és a vélemények csak üres gyűjteménynél (friss telepítésen) jönnek létre', () => {
     const seed = forras('lib/home-seed.ts')
-    vanBenne(seed, 'where: { slug: { equals: HOME_PAGE_SLUG } }')
-    vanBenne(seed, 'if (existing.docs.length === 0) {')
+    vanBenne(seed, 'export async function ensureHomeLayoutFrissTelepitesen(')
+    vanBenne(seed, 'if (oldalak > 0) {')
     vanBenne(seed, "_status: 'published'")
-    vanBenne(seed, 'if (Array.isArray(home.layout) && home.layout.length > 0) {')
-    vanBenne(UTMUTATO, 'Ha az Oldalak között nincs „kezdolap” webcímű oldal')
-    vanBenne(UTMUTATO, 'Egy új, azonnal közzétett kezdőlapot az alap-szekciósorral')
+    vanBenne(UTMUTATO, 'Csak ha az Oldalak között egyetlen oldal sincs')
+    vanBenne(UTMUTATO, 'Egy közzétett kezdőlapot az alap-szekciósorral')
+    vanBenne(UTMUTATO, 'Csak ha a Vélemények között egyetlen vélemény sincs')
   })
 
   it('a három induló véleményt név szerint keresi, és kiemelve hozza létre', () => {

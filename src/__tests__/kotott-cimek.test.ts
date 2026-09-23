@@ -185,7 +185,7 @@ describe('a „mi épít rá” és a „mi történik” állítások a forrás
     const k = kotottWebcim('pages', 'kezdolap')
     expect(k?.mire.join(' ')).toContain('A kezdőlap (/) ezt az oldalt tölti be.')
     expect(k?.kovetkezmeny.join(' ')).toContain('beépített tartalék-kezdőlapja')
-    expect(k?.kovetkezmeny.join(' ')).toContain('új, alapszekciós kezdőlap jön létre')
+    expect(k?.kovetkezmeny.join(' ')).toContain('amíg a webcímet vissza nem írod')
   })
 
   it('Kapcsolat: a /kapcsolat a kapcsolat oldal szekcióit rajzolja, oldal nélkül csak a címet', () => {

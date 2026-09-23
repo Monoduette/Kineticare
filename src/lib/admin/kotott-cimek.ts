@@ -17,9 +17,10 @@ import { HUB_OLDALAK, type HubOldal } from '../tudastar/hub-oldalak'
  * Minden állítás a kódból jön (a teszt köti őket a sorokhoz):
  * - kezdőlap: a `/` a `kezdolap` webcímű oldalt tölti (src/lib/cms.ts
  *   getHomePage, HOME_PAGE_SLUG). Ha nincs ilyen, a HomeView a beépített
- *   tartalék-kezdőlapot rajzolja, és a következő induláskor az onInit
- *   (src/payload.config.ts ensureHomeBaseline → src/lib/home-seed.ts
- *   ensureHomeLayout) új, közzétett kezdőlapot hoz létre ezen a webcímen;
+ *   tartalék-kezdőlapot rajzolja. Az onInit (src/payload.config.ts
+ *   ensureHomeBaseline → src/lib/home-seed.ts
+ *   ensureHomeLayoutFrissTelepitesen) csak teljesen üres Oldalak-gyűjteménynél
+ *   hoz létre kezdőlapot, webcímváltás után tehát NEM jön létre új;
  * - Kapcsolat: a /kapcsolat route a `kapcsolat` webcímű oldal szekcióit
  *   rajzolja (kapcsolat/page.tsx), oldal nélkül csak a „Kapcsolat” címet; a
  *   blogbejegyzések végi időpontkérő gombja ide visz (PostCourseCta.tsx
@@ -169,10 +170,9 @@ export interface KotottWebcim {
  *   getPostBySlug);
  * - kezdőlap: a getHomePage null-t ad, a HomeView az üres szekciósorral a
  *   beépített kezdőlapot rajzolja (HomeView.tsx `presentHomeLayout(home?.layout
- *   ?? [])`). Új kezdőlap NEM jön létre: az induláskori ensureHomeLayout
- *   (home-seed.ts:798-804) állapotszűrő nélkül keres a webcímre, és a
- *   visszavont oldalt is megtalálja; újat csak akkor hoz létre, ha nincs
- *   ilyen webcímű oldal (:808, törlés vagy webcímváltás után);
+ *   ?? [])`). Új kezdőlap NEM jön létre: az induláskori seed
+ *   (home-seed.ts ensureHomeLayoutFrissTelepitesen) csak teljesen üres
+ *   Oldalak-gyűjteménynél ír;
  * - Kapcsolat: a /kapcsolat route nem ad hibát, oldal nélkül a „Kapcsolat”
  *   címet rajzolja szekciók nélkül (kapcsolat/page.tsx:66 contactHeading,
  *   :129 rawLayout, :170 `layout.length > 0`); a blogbejegyzések végi
@@ -204,7 +204,7 @@ function oldalKotes(webcim: string): KotottWebcim | null {
     return {
       mire: ['A kezdőlap (/) ezt az oldalt tölti be.'],
       kovetkezmeny: [
-        'Ha átírod és közzéteszed, a kezdőlapon a weboldal beépített tartalék-kezdőlapja jelenik meg, a weboldal következő indulásakor pedig egy új, alapszekciós kezdőlap jön létre az Oldalak között.',
+        'Ha átírod és közzéteszed, a kezdőlapon a weboldal beépített tartalék-kezdőlapja jelenik meg, és ez így marad, amíg a webcímet vissza nem írod „kezdolap”-ra.',
       ],
       visszavonas: `${VISSZAVONAS_UTAN} a kezdőlapon (/) a weboldal beépített tartalék-kezdőlapja jelenik meg, új kezdőlap nem jön létre, és az újbóli közzététellel ismét ez az oldal látszik.`,
     }

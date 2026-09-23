@@ -1,5 +1,5 @@
 import {
-  describeSection,
+  describeSectionOnPage,
   hiddenHint,
   REJTETT_CIM,
   REJTETT_MAGYARAZAT,
@@ -264,7 +264,7 @@ export function szerkesztoReteg({
     const blockType = isRecord(sor) && typeof sor.blockType === 'string' ? sor.blockType : ''
     const forras = forrasok.get(blockType) ?? { blockLabel: blockType, textFields: [] }
     const leiras = {
-      ...describeSection(sor, index, forras.blockLabel, forras.textFields),
+      ...describeSectionOnPage(sor, index, forras.blockLabel, forras.textFields, lap.slug),
       ismetles: ismetlesek[index] ?? null,
     }
     const forrasInfo = sectionSource(sor, lap.slug)

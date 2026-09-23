@@ -324,7 +324,7 @@ Tudástár, GYIK), a többi oldal pedig a **Tartalom** mezőbe írt szöveget.
 A kezdőlapon azonban a törölt szekciók szövege elvész. A kezdőlap szerkesztőjének
 tetején ez áll:
 
-> Ha az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített alapváltozata jelenik meg, a weboldal következő indulásakor pedig az alapszekciók visszakerülnek, a korábbi szerkesztések nélkül.
+> Ha az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített alapváltozata jelenik meg, a szekciók pedig maguktól nem kerülnek vissza, a korábbi állapotot a Verziók fülön állíthatod vissza.
 
 Ha egy szekciót nem akarsz mutatni, rejtsd el (lásd fent), ne töröld. A
 részleteket a 16. pont írja le.
@@ -451,10 +451,10 @@ Ha új véleményt akarsz kitenni a kezdőlapra egy régi helyett: az újnál pi
 **Kiemelt**et és adj neki 1–3 közötti sorszámot, a leváltottnál pedig **vedd ki a
 Kiemelt pipát** (a vélemény megmarad, csak nem a kezdőlapon).
 
-A három induló véleményt (Garami Gábor, Kállai Dóra, Bagdal Szilvia) ne töröld,
-és a nevüket ne írd át: a weboldal induláskor név szerint keresi őket, és ha
-nem találja, újra létrehozza, kiemelve (16. pont). Ha valamelyiket nem akarod
-mutatni, vedd ki a Kiemelt vagy a Látható pipát.
+Egy véleményt nyugodtan törölhetsz vagy átnevezhetsz: a weboldal induláskor
+csak akkor tölti fel az induló véleményeket, ha a Vélemények között egyetlen
+vélemény sincs (16. pont). Ha valamelyiket csak nem akarod mutatni, vedd ki a
+Kiemelt vagy a Látható pipát.
 
 ---
 
@@ -892,25 +892,25 @@ rendelések és számlák a régi nevet őrzik.
 ## 16. Amit a rendszer induláskor visszahoz
 
 A weboldal minden indulásakor, vagyis minden élesítés után lefut néhány
-ellenőrzés. Ezek a meglévő tartalmat sosem írják felül, de ha valami hiányzik,
-újra létrehozzák. Ezért néhány dolgot ne törölj és ne nevezz át.
+ellenőrzés. A meglévő tartalmat sosem írják felül. A kezdőlapot és a
+véleményeket 2026. szeptember 23. óta csak egy teljesen új, üres rendszeren
+töltik fel, így a te döntésed (törlés, átnevezés, üres szekciósor) nem fordul
+vissza a következő indulásnál.
 
-| Mit néz                                                                           | Mikor hozza vissza                                                                                   | Mit hoz létre                                                                       |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| A kezdőlapot, a „kezdolap” webcím alapján                                         | Ha az Oldalak között nincs „kezdolap” webcímű oldal (például mert a webcímét átírták, vagy törölték) | Egy új, azonnal közzétett kezdőlapot az alap-szekciósorral                          |
-| A kezdőlap szekcióit                                                              | Ha van „kezdolap” webcímű oldal, de nincs egyetlen szekciója sem                                     | Az alap-szekciósort; ha a kezdőlapnak van legalább egy szekciója, semmihez nem nyúl |
-| A három induló véleményt, név szerint (Garami Gábor, Kállai Dóra, Bagdal Szilvia) | Ha nincs ilyen nevű vélemény (például törölték, vagy a nevét javították)                             | Egy új véleményt Kiemelt és Látható pipával, 1., 2., illetve 3. sorrenddel          |
-| A három űrlapot, pontos név szerint (Időpontkérés, Hírlevél, Kapcsolat)           | Ha nincs ilyen nevű űrlap (például törölték)                                                         | Egy új, alapmezős űrlapot ugyanezzel a névvel                                       |
-| A kezdőlap induló képeit, fájlnév szerint                                         | Ha a Képek között nincs ilyen nevű fájl (például törölték)                                           | A képet újra feltölti                                                               |
+| Mit néz                                                                 | Mikor hoz létre valamit                                    | Mit hoz létre                                                                                                    |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A kezdőlapot                                                            | Csak ha az Oldalak között egyetlen oldal sincs             | Egy közzétett kezdőlapot az alap-szekciósorral                                                                   |
+| Az induló véleményeket                                                  | Csak ha a Vélemények között egyetlen vélemény sincs        | A három induló véleményt (Garami Gábor, Kállai Dóra, Bagdal Szilvia) Kiemelt és Látható pipával, 1–3. sorrenddel |
+| A három űrlapot, pontos név szerint (Időpontkérés, Hírlevél, Kapcsolat) | Ha nincs ilyen nevű űrlap (például törölték)               | Egy új, alapmezős űrlapot ugyanezzel a névvel                                                                    |
+| A kezdőlap induló képeit, fájlnév szerint                               | Ha a Képek között nincs ilyen nevű fájl (például törölték) | A képet újra feltölti                                                                                            |
 
 Mit jelent ez a gyakorlatban:
 
 - **A kezdőlap webcímét ne írd át, és a kezdőlapot ne töröld.** A webcím
-  átírása után a `/` cím a weboldal beépített alapváltozatát mutatja, a
-  következő indulás pedig egy második, új kezdőlapot hoz létre: két hasonló
-  kezdőlap-dokumentum lesz, és a régin végzett munkád nem látszik. A webcím
-  mező alatt ez a figyelmeztetés is áll: „A weboldal kódja erre a webcímre
-  épít, ne írd át.”
+  átírása után a `/` cím a weboldal beépített alapváltozatát mutatja, és ez így
+  marad, amíg a webcímet vissza nem írod „kezdolap”-ra. Új kezdőlap nem jön
+  létre. A webcím mező alatt ez a figyelmeztetés is áll: „A weboldal kódja
+  erre a webcímre épít, ne írd át.”
 - **A kezdőlap közzétételét ne vond vissza.** Ezt a rendszer induláskor sem
   hozza helyre. Közzétett kezdőlapnál a webcím mező alatti doboz ezt is
   kimondja: „A „Közzététel visszavonása” után a kezdőlapon (/) a weboldal
@@ -918,13 +918,11 @@ Mit jelent ez a gyakorlatban:
   újbóli közzététellel ismét ez az oldal látszik.”
 - **A kezdőlap összes szekcióját ne töröld.** A szerkesztő tetején ez áll: „Ha
   az összes szekciót törlöd és közzéteszed, a kezdőlapon a weboldal beépített
-  alapváltozata jelenik meg, a weboldal következő indulásakor pedig az
-  alapszekciók visszakerülnek, a korábbi szerkesztések nélkül.” Egy szekció
-  helyett használd a Látható pipát (7. pont).
-- **A három induló véleményt ne töröld, és a nevüket ne írd át.** Ha egy ilyen
-  nevű vélemény megvan, a rendszer semmit nem ír át rajta, akkor sem, ha
-  kivetted a Kiemelt pipát. Ha nem akarod mutatni, a Kiemelt vagy a Látható
-  pipát vedd ki.
+  alapváltozata jelenik meg, a szekciók pedig maguktól nem kerülnek vissza, a korábbi állapotot a Verziók fülön állíthatod vissza.” Egy szekció helyett
+  használd a Látható pipát (7. pont).
+- **A véleményeket** szabadon törölheted és átnevezheted, a rendszer nem hozza
+  vissza őket, amíg legalább egy vélemény van. Ha csak nem akarod mutatni, a
+  Kiemelt vagy a Látható pipát vedd ki.
 - **A három űrlapot ne töröld.** Átnevezni nem is tudod őket: a mentés
   hibaüzenettel megáll. Törlés után az Időpontkérés szekció űrlapja letiltva
   jelenik meg, a láblécből eltűnik a hírlevél-feliratkozó, a következő indulás
