@@ -303,6 +303,33 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(presented.rows?.[1]?.photo).toEqual(homeHelpFallbackMedia(1))
   })
 
+  /**
+   * Devin-review (#291): a zárt-kéz sín sorai kézállapotot jelölnek, a régi
+   * URL-jük nem az ajtó jelentése. Egy `/szolgaltatasok` célú harmadik sor sem
+   * lehet a rendelői ajtó: a sorrend a pozícióé.
+   */
+  it('a zárt-kéz sínnél a pozíció dönt, a régi URL-ek sorrendje nem hoz két rendelői ajtót', () => {
+    const regiUrlek = ['/kurzusok/sos-kezrelax-villamkurzus', '/kurzusok', '/szolgaltatasok']
+    const rail = {
+      blockType: 'services' as const,
+      title: HOME_HELP_TITLE,
+      rows: CLOSED_HAND_HOME_HELP_TITLES.map((title, index) => ({
+        title,
+        felirat: 'Gomb',
+        url: regiUrlek[index],
+      })),
+    }
+    expect(isClosedHandHomeHelpRail(rail.rows)).toBe(true)
+    const presented = presentHomeHelpServicesBlock(rail as unknown as BlockServices)
+    expect(presented.rows?.map((row) => row.title)).toEqual([...HOME_HELP_STATE_TITLES])
+    expect(presented.rows?.map((row) => row.url)).toEqual(
+      HOME_HELP_STATES.map((state) => state.url),
+    )
+    expect(presented.rows?.map((row) => row.photo)).toEqual(
+      ([0, 1, 2] as const).map((door) => homeHelpFallbackMedia(door)),
+    )
+  })
+
   it('üres layoutot üresen ad vissza, a többi blokk indexe változatlan', () => {
     expect(presentHomeLayout([])).toEqual([])
     const girls = { blockType: 'about' as const, title: 'A Kineticare alapítói' }

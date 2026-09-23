@@ -456,9 +456,15 @@ const presentHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
  * ajtó-szöveg (`HOME_HELP_STATES`), ahogy a konverzió eredetileg is tette;
  * csak a szerkesztő által feltöltött fotó marad. A mai ajtó-sorok és a régi,
  * szerkesztett tábla szövege a CMS-é (`presentHomeHelpRow`).
+ *
+ * Az ajtót itt a POZÍCIÓ adja, nem a `homeHelpDoorIndex`: a sorok
+ * kézállapotot jelölnek, a régi URL-jük nem az új ajtó jelentése (egy
+ * `/szolgaltatasok` célú harmadik sorból így két rendelői ajtó lenne). A
+ * felismerő (`isClosedHandHomeHelpRail`) a pontos Zárt / Nyíló / Nyitott
+ * sorrendet követeli, tehát a pozíció egyértelmű.
  */
 const presentClosedHandHomeHelpRow = (live: HomeHelpRow, index: number): HomeHelpRow => {
-  const door = homeHelpDoorIndex(live, index)
+  const door = index === 0 ? 0 : index === 1 ? 1 : 2
   const state = HOME_HELP_STATES[door]
   return {
     ...live,
