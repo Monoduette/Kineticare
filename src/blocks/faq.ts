@@ -1,7 +1,34 @@
 import type { Block, TextareaFieldValidation, TextFieldSingleValidation } from 'payload'
 import { text as alapSzovegValidalas, textarea as alapTobbsorosValidalas } from 'payload/shared'
 
+import { SOS_COMPARISON_FAQ } from '../lib/sos-offer-copy'
+
 import { sectionSettings } from './section-settings'
+
+/**
+ * A feltételesen rejtett GYIK-pár kimondása a súgóban (modul-térkép H38).
+ *
+ * A kód visszafejtve: a FaqBlock (src/components/blocks/FaqBlock.tsx:23-30)
+ * azt a sort hagyja ki, amelynek kérdése ÉS válasza is betűre egyezik a
+ * `SOS_COMPARISON_FAQ`-val (src/lib/sos-offer-copy.ts), ha nincs
+ * `hasSosComparison`. Ez a RenderBlocks.tsx-ben (`case 'faq'`) akkor igaz, ha
+ * van elérhető ingyenes SOS (`isAvailableSosProduct`: a kanonikus
+ * sos-kezrelax-villamkurzus, a kurzuslistán közzétett, ingyenes és publikált)
+ * ÉS a látható fizetős kurzusok között ott a publikált
+ * otthoni-kezrehab-program. A két kurzus neve a Kurzusokban látható név
+ * (élő adat, 2026-09-23: displayTitle üres, a név a sku: „SOS Kézrelax
+ * villámkurzus”, „Otthoni KézRehab Program”). Átírt sorra a szűrés nem
+ * vonatkozik, azt a súgó is kimondja.
+ *
+ * Források: NN/g, 10 Usability Heuristics, #1 Visibility of System Status
+ * (a szerkesztő tudja, miért nem látja a lapon, amit beírt;
+ * https://www.nngroup.com/articles/ten-usability-heuristics/); WCAG 2.2
+ * SC 3.3.2 Labels or Instructions
+ * (https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html);
+ * ATAG 2.0 A.4.2.2 Document All Features, (b) „Described in the Interface”
+ * (https://www.w3.org/TR/ATAG20/#sc_a422).
+ */
+const SOS_OSSZEVETES_FELTETELE = `Egy kérdés feltétellel látszik. A „${SOS_COMPARISON_FAQ.question}” kérdés csak akkor jelenik meg, ha a Kurzusok között közzétéve elérhető az ingyenes SOS Kézrelax villámkurzus és a fizetős Otthoni KézRehab Program is, mert a válasz mindkettőre hivatkozik. Ez csak akkor érvényes, ha a kérdés és a válasz is betűre az eredeti; ha bármelyiket átírod, a pár mindig látszik.`
 
 /**
  * Az üresen hagyott GYIK-sor teendője (K20, 2026-09-22).
@@ -90,8 +117,7 @@ export const faq: Block = {
       maxRows: 20,
       labels: { singular: 'Kérdés', plural: 'Kérdések' },
       admin: {
-        description:
-          'A látogatók tényleges kérdései, a válasszal együtt. Ezekből készül a Google-nek szóló strukturált adat is, ezért ide csak sima szöveg kerüljön, formázás és link nélkül.',
+        description: `A látogatók tényleges kérdései, a válasszal együtt. Ezekből készül a Google-nek szóló strukturált adat is, ezért ide csak sima szöveg kerüljön, formázás és link nélkül. ${SOS_OSSZEVETES_FELTETELE}`,
         initCollapsed: true,
       },
       fields: [
