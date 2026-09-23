@@ -3,8 +3,8 @@
 import { formatOrderItemsLines } from './order-items-cell'
 
 /**
- * A Rendelések admin-lista „Tételek" oszlopának cella-komponense.
- * A megrendelő első admin-igénye („ki mit vett és mikor") a listaoldalon
+ * A Rendelések admin-lista „Tételek” oszlopának cella-komponense.
+ * A megrendelő első admin-igénye („ki mit vett és mikor”) a listaoldalon
  * lássa a rendelés tételeit. A komponens KIZÁRÓLAG a cella `cellData`-jából
  * dolgozik (az orders `items` array-mezőjének sorai: titleSnapshot,
  * priceHufSnapshot, quantity, product) — fetch TILOS a cellában, a lista

@@ -1,8 +1,15 @@
 import type { Payload } from 'payload'
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
+import { isAdmin } from '../access'
 import { buildOriginAllowlist } from '../env'
+import {
+  CONTACT_FORM_TITLE,
+  KOTOTT_URLAP_CIMEK,
+  URLAP_GYUJTEMENY_LEIRAS,
+  kotottCimHiba,
+} from '../lib/admin/urlap-admin'
 import configPromise from '../payload.config'
 
 /** A szanitált config típusa — a Payload `SanitizedConfig`-ja, importálás nélkül. */
@@ -259,26 +266,323 @@ describe('payload.config', () => {
   })
 
   /**
-   * Magyar admin felület: a staff („a lányok") nem szakember, ezért az admin
-   * alapnyelve magyar. A fallbackLanguage a döntő beállítás — a nem szerkesztett
-   * kulcsok is ezen a nyelven jelennek meg —, az `en` pedig választható marad.
-   * A teszt őrzi, hogy az i18n-blokk ne essen ki a configból.
+   * Magyar admin felület, KIZÁRÓLAG magyarul (vezetői döntés, admin-audit K25).
+   * Korábban az `en` is választható volt: angol böngészőnyelvnél a Payload az
+   * Accept-Language fejléc szerint angolra váltott, a saját feliratok magyarok
+   * maradtak, és vegyes nyelvű admin lett belőle (static-verify/lang.out.txt).
+   * Egyetlen támogatott nyelvnél a Payload mindig a magyart választja.
    */
-  it('az admin felület magyar (i18n fallback: hu, en választható)', async () => {
+  it('az admin felület csak magyar (supportedLanguages: hu, fallback: hu)', async () => {
     const config = await configPromise
 
     expect(config.i18n.fallbackLanguage).toBe('hu')
-
-    const supported = Object.keys(config.i18n.supportedLanguages ?? {})
-    expect(supported).toContain('hu')
-    expect(supported).toContain('en')
+    expect(Object.keys(config.i18n.supportedLanguages ?? {})).toEqual(['hu'])
   })
 
-  /** A böngészőfülön látszó cím-utótag (admin.meta) — szintén magyar felület. */
-  it('az admin cím-utótagja be van állítva', async () => {
+  /**
+   * K25: magyar dátumalak a listákban és a dokumentumsávban, 24 órás idővel
+   * („2026. 09. 22. 19:10”); a Payload alapértéke angol sorrendű, 12 órás.
+   */
+  it('a dátumformátum magyar, 24 órás (K25)', async () => {
     const config = await configPromise
 
-    expect(config.admin?.meta?.titleSuffix).toBe(' – Kineticare admin')
+    expect(config.admin?.dateFormat).toBe('yyyy. MM. dd. HH:mm')
+  })
+
+  /**
+   * K16: a Gravatar-alapértelmezés a saját CSP (img-src) miatt minden nézeten
+   * törött képet és harmadik félnek szóló kérést adott. A beépített ikon helyi.
+   */
+  it('a fiókkép a beépített ikon, nem Gravatar (K16)', async () => {
+    const config = await configPromise
+
+    expect(config.admin?.avatar).toBe('default')
+  })
+
+  /**
+   * A javított magyar admin-szövegek pluginja (A2, src/lib/admin/hu-forditas.ts)
+   * a plugin-lánc LEGVÉGÉN fut: az ecommerce a saját névterét felülírja, így
+   * ami előtte kerül a configba, elveszik. A két ellenőrzött kulcs egy-egy
+   * névtérből való: a törött „{{címke}}” helyőrző javítása (Irányítópult
+   * kártyalinkjei) és az ecommerce-névtér magyar szava.
+   */
+  it('a magyar fordítás-javítások a plugin-lánc végén érvényesülnek', async () => {
+    const config = await configPromise
+    const hu = config.i18n.translations?.hu as unknown as Record<string, Record<string, string>>
+
+    expect(hu.general?.showAllLabel).toBe('{{label}} listájának megnyitása')
+    expect(hu['plugin-ecommerce']?.customer).toBe('Vásárló')
+
+    // A forrásban is a lánc utolsó eleme, közvetlenül az adminGroups után.
+    const forras = readFileSync(new URL('../payload.config.ts', import.meta.url), 'utf8')
+    expect(forras).toMatch(
+      /\n {4}adminGroups,\n(?: {4}\/\/[^\n]*\n)* {4}huAdminForditasPlugin,\n {2}\],/,
+    )
+  })
+
+  /**
+   * K32, K33 és a tulajdonos kérése (a videón lévő szövegek menüpontja): a
+   * saját menüpontok az oldalsáv TETEJÉN (beforeNavLinks), a videószöveg-link
+   * a fejlécben is (actions), a „Gyakori teendők” az Irányítópulton
+   * (beforeDashboard), a mélylink-nyitó a teljes admin körül (providers). A
+   * régi, a „Rendszer” csoport alá tett afterNavLinks bejegyzések megszűntek.
+   */
+  it('a saját admin-belépési utak és a mélylink-nyitó be vannak kötve', async () => {
+    const config = await configPromise
+    const komponensek = config.admin?.components
+
+    expect(komponensek?.beforeNavLinks).toEqual(['/components/admin/AdminNavLinks#AdminNavLinks'])
+    expect(komponensek?.actions).toEqual([
+      '/components/admin/AdminNavLinks#KezdolapVideoFejlecLink',
+    ])
+    expect(komponensek?.beforeDashboard).toEqual([
+      '/components/admin/GyakoriTeendok#GyakoriTeendok',
+    ])
+    expect(komponensek?.providers).toEqual([
+      '/components/editor/admin/SzekcioMegnyito#SzekcioMegnyito',
+    ])
+    expect(komponensek?.afterNavLinks ?? []).toEqual([])
+
+    const nezetek = komponensek?.views as Record<
+      string,
+      { Component: string; path: string; exact?: boolean; meta?: { title?: string } }
+    >
+    expect(nezetek.kezdolap).toMatchObject({
+      Component: '/components/admin/KezdolapNezet#KezdolapNezet',
+      path: '/kezdolap',
+      exact: true,
+      meta: { title: 'Kezdőlap' },
+    })
+    expect(nezetek.kezdolapVideo).toMatchObject({
+      Component: '/components/admin/VideoSzovegeiNezet#VideoSzovegeiNezet',
+      path: '/kezdolap-video',
+      exact: true,
+      meta: { title: 'Kezdőlapi videó szövegei' },
+    })
+    expect(nezetek.statisztika?.path).toBe('/statisztika')
+    expect(nezetek.videok?.path).toBe('/videok')
+    expect(nezetek.webanalitika?.path).toBe('/webanalitika')
+  })
+
+  /**
+   * K45: az űrlapbeküldések technikai spam-ellenőrző mezője rejtett, a leírásban
+   * nincs környezeti változónév. A mező és a hookok maradnak (séma-semleges:
+   * az admin.hidden nem érinti az oszlopot, a G1/G2 őr ezt méri).
+   */
+  it('a turnstileToken mező rejtett, a leírása zsargon- és változónév-mentes (K45)', async () => {
+    const config = await configPromise
+    const bekuldesek = config.collections?.find((c) => c.slug === 'form-submissions')
+    const mezo = bekuldesek?.fields.find((f) => 'name' in f && f.name === 'turnstileToken') as {
+      type: string
+      admin?: { hidden?: boolean; readOnly?: boolean; description?: unknown }
+    }
+
+    expect(mezo?.type).toBe('text')
+    expect(mezo.admin?.hidden).toBe(true)
+    expect(mezo.admin?.readOnly).toBe(true)
+    const leiras = String(mezo.admin?.description ?? '')
+    expect(leiras).not.toMatch(/[A-Z]{2,}_[A-Z_]+/)
+    expect(leiras).not.toMatch(/Turnstile|token|Cloudflare/i)
+    expect(bekuldesek?.hooks?.beforeValidate).toHaveLength(2)
+  })
+
+  /**
+   * Az admin-lapok <head>-je (admin.meta) a Payload alapértékei helyett.
+   * Mérve 2026-09-23 a /admin/login és az /admin HTML-jében: „Bejelentkezés
+   *  – Kineticare admin” (két szóköz), og:description „Payload is a headless
+   * CMS…”, og:site_name „Payload App”, og:image /api/og?… a Payload
+   * leírásával, és a Payload saját favikonja.
+   *
+   * A Payload a címet `${cím} ${utótag}` alakban fűzi, az og:title-t
+   * join(' ')-nel (@payloadcms/next/dist/utilities/meta.js): az utótag ezért
+   * nem kezdődhet szóközzel. Az elválasztó a frontend `%s | Kineticare`
+   * mintája; szóközös nagykötőjel elválasztóként gondolatjel volna
+   * (docs/ui-sztenderdek.md 3.1.2, 8.3).
+   */
+  it('az admin cím-utótagja egy szóközzel fűződik, gondolatjel nélkül', async () => {
+    const config = await configPromise
+    const utotag = config.admin?.meta?.titleSuffix
+
+    expect(utotag).toBe('| Kineticare admin')
+    expect(`Bejelentkezés ${utotag}`).toBe('Bejelentkezés | Kineticare admin')
+    expect(`Irányítópult ${utotag}`).not.toMatch(/\s{2}/)
+    expect(utotag).not.toMatch(/^\s|\s$|[–—]/)
+
+    // A fűzés módja a Payload forrásában (ha változik, az utótagot is újra kell nézni).
+    const meta = readFileSync(
+      new URL('../../node_modules/@payloadcms/next/dist/utilities/meta.js', import.meta.url),
+      'utf8',
+    )
+    expect(meta).toContain('return `${title} ${suffix}`;')
+    expect(meta).toContain(".filter(Boolean).join(' ')")
+  })
+
+  it('az admin-meta saját: magyar leírás, saját site-név, „Payload” szó nélkül', async () => {
+    const config = await configPromise
+    const meta = config.admin?.meta
+
+    expect(meta?.description).toBe('A Kineticare weboldal adminisztrációs felülete.')
+    expect(meta?.openGraph).toEqual({
+      siteName: 'Kineticare admin',
+      description: 'A Kineticare weboldal adminisztrációs felülete.',
+      locale: 'hu_HU',
+    })
+    // A saját nézetek alapkulcsszava „Payload” volt
+    // (views/Root/generateCustomViewMetadata.js); a null kiveszi a címkét.
+    expect(meta?.keywords).toBeNull()
+    expect(meta?.robots).toBe('noindex, nofollow')
+    expect(JSON.stringify(meta)).not.toMatch(/payload/i)
+  })
+
+  /**
+   * A „Payload” szó a nézetek saját alapértékeiből is jönne: a gyűjtemény
+   * szerkesztőnézete „<gyűjtemény>, Payload, CMS” kulcsszót kap, a saját
+   * nézetek og:title-je „Payload” (mérve a /admin/collections/pages/1 és a
+   * /admin/statisztika HTML-jében). Az elsőt csak a gyűjtemény admin.meta-ja,
+   * a másodikat csak a nézet meta.openGraph-ja írja felül.
+   */
+  it('a gyűjtemény- és a saját nézetek meta-ja sem mond „Payload”-ot', async () => {
+    const config = await configPromise
+
+    for (const gyujtemeny of config.collections ?? []) {
+      if (gyujtemeny.slug.startsWith('payload-')) {
+        // A Payload belső gyűjteményei a pluginok után jönnek létre, és
+        // rejtettek: nincs admin-nézetük, így kulcsszavuk sem.
+        expect(gyujtemeny.admin?.hidden, gyujtemeny.slug).toBe(true)
+        continue
+      }
+      expect(gyujtemeny.admin?.meta?.keywords, gyujtemeny.slug).toBeNull()
+    }
+    const nezetek = config.admin?.components?.views as Record<
+      string,
+      { meta?: { title?: string; openGraph?: { title?: string } } }
+    >
+    const sajatNezetek = Object.entries(nezetek)
+    expect(sajatNezetek.length).toBeGreaterThanOrEqual(5)
+    for (const [kulcs, nezet] of sajatNezetek) {
+      expect(nezet.meta?.title, kulcs).toMatch(/\S/)
+      expect(nezet.meta?.openGraph?.title, kulcs).toBe(nezet.meta?.title)
+    }
+
+    const forras = (utvonal: string) =>
+      readFileSync(
+        new URL(`../../node_modules/@payloadcms/next/dist/${utvonal}`, import.meta.url),
+        'utf8',
+      )
+    expect(forras('views/Edit/metadata.js')).toContain('keywords: `${entityLabel}, Payload, CMS`')
+    expect(forras('views/Root/generateCustomViewMetadata.js')).toContain("title: 'Payload',")
+  })
+
+  /**
+   * Nincs Payload-féle megosztási kép: a 'dynamic' alapérték /api/og képet adott
+   * a Payload angol leírásával, és a serverURL híján localhost címmel. Az 'off'
+   * mellett a meta.js egyik képágat sem veszi fel, és a /api/og végpont 400-at
+   * ad (@payloadcms/next/dist/routes/rest/og/index.js).
+   */
+  it('a Payload dinamikus OG-képe ki van kapcsolva, a serverURL üres marad', async () => {
+    const config = await configPromise
+
+    expect(config.admin?.meta?.defaultOGImageType).toBe('off')
+    expect(config.admin?.meta?.openGraph).not.toHaveProperty('images')
+    expect(config.serverURL).toBe('')
+
+    const og = readFileSync(
+      new URL('../../node_modules/@payloadcms/next/dist/routes/rest/og/index.js', import.meta.url),
+      'utf8',
+    )
+    expect(og).toContain("if (config.admin.meta.defaultOGImageType === 'off') {")
+  })
+
+  /**
+   * A favikon a weboldal meglévő ikonja (src/app/icon.svg, apple-icon.png), nem
+   * a Payload-logó. A src/app/favicon.ico-t a Next maga teszi ki minden lapra;
+   * új képfájl nem készült.
+   */
+  it('az admin ikonjai a Kineticare meglévő ikonfájljaira mutatnak', async () => {
+    const config = await configPromise
+    const ikonok = config.admin?.meta?.icons as unknown as ReadonlyArray<{
+      rel?: string
+      url: string
+    }>
+
+    expect(ikonok.map((ikon) => [ikon.rel, ikon.url])).toEqual([
+      ['icon', '/icon.svg'],
+      ['apple-touch-icon', '/apple-icon.png'],
+    ])
+    for (const ikon of ikonok) {
+      expect(existsSync(new URL(`../app${ikon.url}`, import.meta.url)), ikon.url).toBe(true)
+    }
+  })
+
+  /**
+   * Az Űrlapok (form-builder plugin) admin-igazsága, modul-térkép H17 és H45
+   * (src/lib/admin/urlap-admin.ts, A2-2-4). A bekötés csak admin-kulcs és
+   * validátor: az access függvények a bekötés előttiek, a beküldések
+   * gyűjteménye érintetlen.
+   */
+  it('az Űrlapok gyűjtemény leírása, rejtett E-mailek listája és a kötött címek védelme be van kötve', async () => {
+    const config = await configPromise
+    const urlapok = config.collections?.find((c) => c.slug === 'forms')
+    expect(urlapok).toBeDefined()
+
+    expect(urlapok?.admin?.description).toBe(URLAP_GYUJTEMENY_LEIRAS)
+    // A csoport marad (a megjelenített nevét az admin-groups plugin adja): ugyanaz, mint a beküldéseké.
+    const bekuldesek = config.collections?.find((c) => c.slug === 'form-submissions')
+    expect(urlapok?.admin?.group).toBe(bekuldesek?.admin?.group)
+
+    const mezok = urlapok?.fields ?? []
+    const mezo = (nev: string) =>
+      mezok.find((f) => 'name' in f && f.name === nev) as
+        { name: string; admin?: { hidden?: boolean }; validate?: unknown } | undefined
+
+    // A tájékoztató UI-mező áll legelöl.
+    expect(mezok[0] && 'name' in mezok[0] ? mezok[0].name : null).toBe('urlapHelyeJelzes')
+    expect(mezo('emails')?.admin?.hidden).toBe(true)
+
+    // A cím validátora a kötött nevek átnevezését magyarul utasítja el.
+    const validate = mezo('title')?.validate as (
+      value: unknown,
+      options: Record<string, unknown>,
+    ) => unknown
+    expect(typeof validate).toBe('function')
+    const opciok = (previousValue: unknown) => ({
+      previousValue,
+      required: true,
+      req: { payload: { config: {} }, t: (kulcs: string) => kulcs },
+    })
+    // Ezek az ágak adatbázis nélkül döntenek (a validátor async lehet).
+    for (const cim of KOTOTT_URLAP_CIMEK) {
+      expect(await validate('Átnevezett űrlap', opciok(cim)), cim).toBe(kotottCimHiba(cim))
+      expect(await validate(cim, opciok(cim)), cim).toBe(true)
+    }
+    expect(await validate('Új űrlap', opciok(undefined))).toBe(true)
+    // Az üres cím a Payload megszokott kötelező-hibáját adja (a saját ellenőrzés előtt).
+    expect(await validate('', opciok('Hírlevél'))).toBe('validation:required')
+
+    // Az access a bekötés előtti: create/update/delete = isAdmin, read nyilvános.
+    expect(urlapok?.access?.create).toBe(isAdmin)
+    expect(urlapok?.access?.update).toBe(isAdmin)
+    expect(urlapok?.access?.delete).toBe(isAdmin)
+    const olvasas = urlapok?.access?.read as unknown as (args: unknown) => unknown
+    expect(olvasas({ req: { user: null } })).toBe(true)
+
+    // A „Kapcsolat” cím egyetlen forrása az urlap-admin.ts.
+    expect(CONTACT_FORM_TITLE).toBe('Kapcsolat')
+    const forras = readFileSync(new URL('../payload.config.ts', import.meta.url), 'utf8')
+    expect(forras).not.toMatch(/const CONTACT_FORM_TITLE/)
+  })
+
+  it('a beküldések gyűjteménye változatlan: access, rejtett token, hookok', async () => {
+    const config = await configPromise
+    const bekuldesek = config.collections?.find((c) => c.slug === 'form-submissions')
+
+    expect(bekuldesek?.access?.read).toBe(isAdmin)
+    expect(bekuldesek?.access?.update).toBe(isAdmin)
+    expect(bekuldesek?.access?.delete).toBe(isAdmin)
+    expect(bekuldesek?.admin?.description).toBe(
+      'A látogatók által beküldött üzenetek. Csak olvasásra való.',
+    )
+    expect(bekuldesek?.admin?.defaultColumns).toEqual(['form', 'createdAt', 'id'])
   })
 
   /**

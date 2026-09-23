@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { sectionSettings } from './section-settings'
 
 /**
@@ -12,8 +13,8 @@ export const states: Block = {
   slug: 'states',
   interfaceName: 'BlockStates',
   labels: {
-    singular: 'Három állapot',
-    plural: 'Három állapot szekciók',
+    singular: 'A kéz három állapota',
+    plural: 'Kézállapot-szekciók',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -24,7 +25,7 @@ export const states: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A kártyák fölötti cím (pl. „Három állapot, egy folyamat").',
+        description: 'A kártyák fölötti cím (pl. „Három állapot, egy folyamat”).',
       },
     },
     {
@@ -44,7 +45,7 @@ export const states: Block = {
       labels: { singular: 'Kártya', plural: 'Kártyák' },
       admin: {
         description:
-          'Három kártya: a zárt, a nyíló és a nyitott kéz — ebben a sorrendben. A képeket előbb töltsd fel a Tartalom → Képek közé.',
+          'Három kártya: a zárt, a nyíló és a nyitott kéz, ebben a sorrendben. A képeket előbb töltsd fel a Tartalom → Képek közé.',
         initCollapsed: true,
       },
       fields: [
@@ -54,7 +55,7 @@ export const states: Block = {
           relationTo: 'media',
           label: 'Kép',
           admin: {
-            description: 'A kártya képe. A képleírást (alt) a Képek közt add meg egyszer.',
+            description: `A kártya képe. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
           },
         },
         {
@@ -62,7 +63,7 @@ export const states: Block = {
           type: 'text',
           label: 'Sorszám',
           admin: {
-            description: 'Nem kötelező. Pl. „01". Ha üresen hagyod, a rendszer maga számoz.',
+            description: 'Nem kötelező. Pl. „01”. Ha üresen hagyod, a rendszer maga számoz.',
           },
         },
         {
@@ -70,7 +71,7 @@ export const states: Block = {
           type: 'text',
           required: true,
           label: 'Kártya címe',
-          admin: { description: 'Egy szó a legjobb (pl. „Zárt", „Nyíló", „Nyitott").' },
+          admin: { description: 'Egy szó a legjobb (pl. „Zárt”, „Nyíló”, „Nyitott”).' },
         },
         {
           name: 'text',

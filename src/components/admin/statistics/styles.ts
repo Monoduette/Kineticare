@@ -38,18 +38,20 @@ export const pageHeaderStyle: CSSProperties = {
  */
 const MEASURE = 'var(--kc-as-measure, calc(480 * var(--kc-as-px, 1px)))'
 
-/* Eyebrow a h1 fölé — a landing prémium felvezető-sora: verzál CSS-ből
-   (a DOM-szöveg mondatkezdő marad, ui-sztenderdek §3.1 M-4), 0.24em
-   betűköz, ink-soft (tokens.css; paperen 8,80:1). A 14 px az S lépcső
-   (NN/g törzs-padló, tokens.css --kc-font-s). */
+/* Eyebrow a h1 fölé: mondatkezdő írással, verzál és ritkított betűköz
+   NÉLKÜL. Az admin-szótár vezetői szabálya (2026-09-22, K31/K44): verzál
+   helyett mondatkezdő írás, a hangsúlyt a szín, a 600-as súly és a helyzet
+   adja. Ugyanez a GOV.UK stílus-útmutatójának alapszabálya is (mondatkezdő
+   írás, „DO NOT USE BLOCK CAPITALS … AS IT'S QUITE HARD TO READ”:
+   https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/style-guides/a-to-z-style-guide/).
+   Szín: akcent-mély, a paperen 5,16:1 (custom.scss jegyzőkönyv). A 14 px
+   az S lépcső (tokens.css --kc-font-s). */
 export const eyebrowStyle: CSSProperties = {
   color: 'var(--kc-as-eyebrow, var(--theme-elevation-650))',
   fontSize: 'calc(14 * var(--kc-as-px, 1px))',
   fontWeight: 600,
-  letterSpacing: 'var(--kc-as-tracking-eyebrow, 0.24em)',
   marginTop: 0,
   marginBottom: 'var(--kc-as-space-2, 0.5rem)',
-  textTransform: 'uppercase',
 }
 
 export const headingStyle: CSSProperties = {

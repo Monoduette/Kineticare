@@ -1,4 +1,5 @@
 import { courseHref } from '../../../lib/course-url'
+import { freeSosStripTitle } from '../../../lib/free-sos-title'
 import { isAvailableSosProduct } from '../../../lib/sos-offer'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { sanitizeCmsUrl } from '../../../lib/safe-url'
@@ -45,18 +46,37 @@ import '../../../app/(frontend)/styles/blocks/free-sos.css'
 export const COURSE_LIST_PATH = '/kurzusok'
 
 /**
- * A kompakt sáv címe, RÖGZÍTETT, nem a CMS-ből jön.
+ * A kompakt sáv címének TARTALÉKA (`FREE_SOS_STRIP_TITLE`): akkor áll, ha a
+ * blokk `title` mezője üres vagy csak szóköz (a mező kötelező, üresen csak
+ * piszkozatban maradhat). A konstans és a címszabály 2026-09-23 óta a közös,
+ * tiszta feloldóban él (`src/lib/free-sos-title.ts`, modul-térkép H07/H46):
+ * a lap, az admin sorcímkéje, a szerkesztői szalag és az llms-full.txt
+ * ugyanazt hívja (WCAG 2.2 SC 3.2.4). Innen változatlan néven továbbadjuk,
+ * hogy a meglévő importok ne változzanak.
  *
  * A tulajdonos 2026-09-07-i szava: „‚Ingyenes villámkurzus’ nagyon rövid
  * leírással”. A cím egyben az ÁR-TÉNY is (ingyenes), a sáv legnagyobb
- * szövegén, ezért nem kell külön tabletta. A CMS `title` mezője azért nem
- * kerül ide, mert (a) a sáv címét a tulajdonos szó szerint megadta, és (b) az
- * élő CMS-érték („SOS Kézrelax — ingyenes villámkurzus”) kvirtmínuszt
- * tartalmaz, amit a magyar tipográfia nem használ és a §3.1 tilt; a mező
- * tisztogatása helyett a sáv címe konstans, a KURZUS NEVÉT pedig a termék
- * adja a felvezető sorban (`productHeading`). Lásd `FreeSosProps.title`.
+ * szövegén, ezért nem kell külön tabletta. A KURZUS NEVÉT a termék adja a
+ * felvezető sorban (`productHeading`).
+ *
+ * WP26 (2026-09-07) óta ez a konstans volt a sáv RÖGZÍTETT címe: a CMS `title`
+ * mezőjét a komponens figyelmen kívül hagyta, mert (a) a sáv címét a
+ * tulajdonos szó szerint megadta, és (b) az élő CMS-érték („SOS Kézrelax —
+ * ingyenes villámkurzus”) kvirtmínuszt tartalmaz, amit a magyar tipográfia nem
+ * használ és a `docs/ui-sztenderdek.md` §3.1 tilt.
+ *
+ * 2026-09-22 óta a CMS-cím az elsődleges (admin-audit K18, modul-térkép H07):
+ * a kötelező, kitöltött mező hatástalan volt, a szerkesztő sikert látott,
+ * miközben a lapon semmi nem változott. NN/g, 10 Usability Heuristics, #1: „The
+ * design should always keep users informed about what is going on”
+ * (https://www.nngroup.com/articles/ten-usability-heuristics/); WCAG 2.2
+ * SC 3.3.2 Labels or Instructions: a mező felirata és leírása mondja meg, mit
+ * vár a rendszer (https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html).
+ * A tulajdonosi döntés látványa ettől nem változik: az élő címet az előtöltő
+ * szabály (`src/scripts/sos-cim-kitoltes.ts`) PONTOS egyezésre „Ingyenes
+ * villámkurzus”-ra állítja, így ez a konstans mostantól csak tartalék.
  */
-export const FREE_SOS_STRIP_TITLE = 'Ingyenes villámkurzus'
+export { FREE_SOS_STRIP_TITLE } from '../../../lib/free-sos-title'
 
 /**
  * A gomb felirata, ha a cél VALÓBAN az ingyenes kurzus oldala.
@@ -151,13 +171,16 @@ export interface FreeSosProps {
   /** A kanonikus, publikált és explicit ingyenes SOS-termék, ha elérhető. */
   freeProduct: Product | null
   /**
-   * Cím-felülírás a `freeSos` blokkból.
+   * A sáv címe a `freeSos` blokkból (CMS).
    *
-   * INAKTÍV, SZÁNDÉKOSAN (WP26): a kompakt sáv címe a rögzített
-   * `FREE_SOS_STRIP_TITLE`, a tulajdonos szó szerinti kérése szerint. A mező
-   * a típusban marad, mert a `RenderBlocks` továbbra is átadja, és az
-   * adatbázisban élő szerkesztői értéket nem dobjuk el, csak nem jelenítjük
-   * meg. (Indoklás a konstansnál.)
+   * ELSŐDLEGES (2026-09-22, K18): elérhető ingyenes terméknél a h2 ez a szöveg
+   * (trim után); üresen vagy csak szóközzel a `FREE_SOS_STRIP_TITLE` tartalék
+   * áll. Termék nélkül a sáv semleges „Kurzusaink” címet mutat, mert a
+   * szerkesztett SOS-cím ott elavult ígéret lenne.
+   *
+   * A WP26 indoklása (tulajdonos, 2026-09-07) a konstansnál olvasható: a
+   * rögzített cím mostantól tartalék, az élő értéket az előtöltő szabály
+   * (`src/scripts/sos-cim-kitoltes.ts`) állítja „Ingyenes villámkurzus”-ra.
    */
   title?: string
   /** Szöveg-felülírás a blokkból: egy–két mondat a leírás helyén. */
@@ -181,7 +204,14 @@ export interface FreeSosProps {
   variant?: 'default' | 'tint' | 'dark'
 }
 
-export function FreeSos({ freeProduct, body, cta, id = 'ingyenes', variant = 'tint' }: FreeSosProps) {
+export function FreeSos({
+  freeProduct,
+  title,
+  body,
+  cta,
+  id = 'ingyenes',
+  variant = 'tint',
+}: FreeSosProps) {
   const knownFree = isAvailableSosProduct(freeProduct)
   // A termék neve a displayTitle → sku lánc; ha MINDKETTŐ üres, a felvezető
   // sor elmarad (a courseTitle „Kurzus #id" fallbackja itt félrevinne).
@@ -191,9 +221,12 @@ export function FreeSos({ freeProduct, body, cta, id = 'ingyenes', variant = 'ti
   const productHeading = knownFree
     ? freeProduct.displayTitle?.trim() || freeProduct.sku?.trim() || ''
     : ''
-  // Termék nélkül a CMS-ben maradt SOS-szöveg is elavult ígéret lehet.
-  // Csak a megjelenítés vált semlegesre; a szerkesztett adatot nem módosítjuk.
-  const heading = knownFree ? FREE_SOS_STRIP_TITLE : 'Kurzusaink'
+  // A cím a szerkesztőé (K18), üresen a tulajdonosi tartalék. Termék nélkül a
+  // CMS-ben maradt SOS-szöveg elavult ígéret lehet: csak a megjelenítés vált
+  // semlegesre, a szerkesztett adatot nem módosítjuk. A szabály a közös
+  // feloldóé (src/lib/free-sos-title.ts), ugyanezt hívja az admin sorcímkéje
+  // és az llms-full.txt is.
+  const heading = freeSosStripTitle({ title }, knownFree)
   const text = knownFree
     ? body?.trim() ||
       freeProduct.shortDescription?.trim() ||

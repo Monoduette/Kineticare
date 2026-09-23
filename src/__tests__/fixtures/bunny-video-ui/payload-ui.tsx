@@ -50,3 +50,19 @@ export function useForm() {
     },
   }
 }
+/** K35: a mező a Payload FieldLabel és FieldDescription elemével írja ki a config szövegét. */
+export function FieldLabel({
+  label,
+}: {
+  label?: unknown
+  as?: string
+  path?: string
+  required?: boolean
+}) {
+  return <span className="field-label">{typeof label === 'string' ? label : ''}</span>
+}
+export function FieldDescription({ description }: { description?: unknown; path: string }) {
+  return (
+    <div className="field-description">{typeof description === 'string' ? description : ''}</div>
+  )
+}

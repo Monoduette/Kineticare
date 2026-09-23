@@ -1,5 +1,6 @@
 import type { Media, Page } from '../payload-types'
 import { mapsHref } from './maps-href'
+import { isSectionHidden } from './section-row-label'
 import {
   absoluteUrl,
   breadcrumbId,
@@ -32,6 +33,15 @@ import {
  * telefon, e-mail a Kapcsolat-lap időpontkérő blokkjából, a személyek a
  * csapat-blokkból; nyitvatartás, geokoordináta, közösségi profil NINCS a
  * CMS-ben, ezért a séma sem hirdeti (kitalálni tilos).
+ *
+ * REJTETT SZEKCIÓ NEM FORRÁS (modul-térkép H46): a szerkesztő által elrejtett
+ * (`sectionSettings.visible === false`) szekció a lapon nem renderelődik
+ * (RenderBlocks), ezért az időpontkérő, a csapat- és a szolgáltatás-blokk
+ * bejárása is átugorja. A döntés a sorcímkével és a lappal közös
+ * `isSectionHidden` (src/lib/section-row-label.ts). Google Search Central,
+ * General structured data guidelines, Quality guidelines, Content: „Don't mark
+ * up content that is not visible to readers of the page.”
+ * https://developers.google.com/search/docs/appearance/structured-data/sd-policies
  */
 
 /** Egy `@type` érték: egy vagy több típus (pl. `['WebPage', 'MedicalWebPage']`). */
@@ -181,14 +191,15 @@ export interface ContactData {
 
 /**
  * A `/kapcsolat` CMS-oldal `appointment` blokkjából a helyszínek, telefonok,
- * e-mail. Csak ami a CMS-ben ténylegesen ki van töltve.
+ * e-mail. Csak ami a CMS-ben ténylegesen ki van töltve, és csak látható
+ * szekcióból.
  */
 export function contactDataFromLayout(
   layout: ReadonlyArray<LayoutBlock> | null | undefined,
 ): ContactData {
   const data: ContactData = { addresses: [], telephones: [] }
   for (const block of layout ?? []) {
-    if (block.blockType !== 'appointment') continue
+    if (block.blockType !== 'appointment' || isSectionHidden(block)) continue
     for (const hely of block.helyszinek ?? []) {
       const cim = trimmed(hely.cim)
       if (cim && !data.addresses.includes(cim)) data.addresses.push(cim)
@@ -284,14 +295,15 @@ export interface TeamPerson {
 
 /**
  * A `/rolunk` (és bármely lap) `teamMembers` blokkjából a szakemberek.
- * Ugyanaz a név két blokkban (pl. Rólunk + Kapcsolat) egyszer szerepel.
+ * Ugyanaz a név két blokkban (pl. Rólunk + Kapcsolat) egyszer szerepel. A
+ * rejtett szekció kimarad.
  */
 export function teamPersonsFromLayout(
   layout: ReadonlyArray<LayoutBlock> | null | undefined,
 ): TeamPerson[] {
   const persons: TeamPerson[] = []
   for (const block of layout ?? []) {
-    if (block.blockType !== 'teamMembers') continue
+    if (block.blockType !== 'teamMembers' || isSectionHidden(block)) continue
     for (const member of block.members ?? []) {
       const name = trimmed(member.name)
       if (!name || persons.some((person) => person.name === name)) continue
@@ -348,7 +360,8 @@ export function personNodes(
  * strukturált mezőben, és a szövegből visszafejtett ár elavulhat — a
  * strukturált adat nem hirdethet olyat, ami nem mezőből jön
  * (`docs/seo-geo-llm.md` karbantartási szabály). A `Service` a schema.org
- * ajánlott típusa szolgáltatás-leírásra (https://schema.org/Service).
+ * ajánlott típusa szolgáltatás-leírásra (https://schema.org/Service). A
+ * rejtett szekció sorai kimaradnak.
  */
 export function serviceNodesFromLayout(
   layout: ReadonlyArray<LayoutBlock> | null | undefined,
@@ -356,7 +369,7 @@ export function serviceNodesFromLayout(
 ): Record<string, unknown>[] {
   const nodes: Record<string, unknown>[] = []
   for (const block of layout ?? []) {
-    if (block.blockType !== 'services') continue
+    if (block.blockType !== 'services' || isSectionHidden(block)) continue
     for (const row of block.rows ?? []) {
       const name = trimmed(row.title)
       if (!name) continue

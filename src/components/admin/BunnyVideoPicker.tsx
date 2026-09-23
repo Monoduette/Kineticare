@@ -81,7 +81,7 @@ export function BunnyVideoPreview({
           referrerPolicy="no-referrer"
         />
       ) : (
-        <p role="status">Betöltés...</p>
+        <p role="status">Betöltés…</p>
       )}
     </BunnyVideoDialog>
   )
@@ -219,16 +219,20 @@ export function BunnyVideoPicker({
           <span aria-hidden="true">↻</span>
         </button>
       </div>
-      {(error || loadError) && <p role="alert">{error || loadError}</p>}
+      {/* A kiválasztás hibája a gombnyomás eredménye (alert); a lista
+          betöltésének hibája a lap állapota, betöltéskor is előállhat, ezért
+          udvarias status (WCAG 2.2 SC 4.1.3; MDN, alert role:
+          https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/alert_role). */}
+      {error ? <p role="alert">{error}</p> : loadError ? <p role="status">{loadError}</p> : null}
       <div aria-busy={loading} className="bunny-video-results">
-        {loading && <p role="status">Betöltés...</p>}
+        {loading && <p role="status">Betöltés…</p>}
         {result?.videos.length === 0 && <p role="status">Nincs találat.</p>}
         <ul className="bunny-video-list">
           {result?.videos.map((video) => (
             <li key={video.guid} className="bunny-video-row">
               <div className="bunny-video-thumb">
                 {video.thumbnailUrl ? (
-                  // Provider-kepek: ne keruljenek a Next nyilvanos kepoptimalizalo cache-ebe.
+                  // Szolgáltatói képek: ne kerüljenek a Next nyilvános képoptimalizáló gyorsítótárába.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={video.thumbnailUrl}
@@ -256,7 +260,7 @@ export function BunnyVideoPicker({
                     disabled={disabled || selecting !== null || video.status !== 'ready'}
                     onClick={() => void select(video.guid)}
                   >
-                    {selecting === video.guid ? 'Ellenőrzés...' : 'Kiválasztás'}
+                    {selecting === video.guid ? 'Ellenőrzés…' : 'Kiválasztás'}
                   </button>
                 )}
               </div>

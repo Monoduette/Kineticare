@@ -24,15 +24,36 @@ import {
  * (src/lib/course-promo.ts resolveCoursePromo), így a szerkesztő sosem lát
  * mást, mint a látogató (WCAG 2.2 SC 3.2.4, Consistent Identification).
  *
- * A stílus a Payload admin saját CSS-változóira épül (MenuUnlistedLink.tsx
- * mintája): a projekt `--kc-*` tokenjei a vevői felületé, az adminban
- * nincsenek betöltve.
+ * A stílus a Payload admin saját CSS-változóira és a B1 stílusszerződésére
+ * (.kc-admin-notice a custom.scss-ben, mindkét témán mért AA) épül: a
+ * projekt `--kc-*` tokenjei a vevői felületé, az adminban nincsenek betöltve.
+ *
+ * K42 és K21 (admin-audit, 2026-09-22):
+ * - A doboz EGY udvarias élő régió (role="status"). A figyelmeztetés a mentett
+ *   állapotról szól, betöltéskor is látszik, ezért nem role="alert" (WCAG 2.2
+ *   SC 4.1.3; MDN: az alert „should not be used on HTML that the user hasn't
+ *   interacted with”, https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/alert_role).
+ * - A figyelmeztetés a következményt mondja ki, számmal (Atlassian, Warning
+ *   messages: „the reason for the warning … how someone should act”,
+ *   https://atlassian.design/foundations/content/designing-messages/warning-messages),
+ *   és karakterre egyezik a mező validátorának párjával
+ *   (src/plugins/ecommerce.ts promoPriceNotBelowRegularMessage).
+ * - A Részletes leírásban, a Garanciában és a GYIK-ben kézzel írt árat a doboz
+ *   megnevezi: akció alatt a kurzusoldal az akciós árat mutatja, a szabad
+ *   szöveg viszont nem változik magától (mért hiba: „59 900 Ft” fent,
+ *   „79 500 Ft-ért érhető el” a leírásban).
  */
 
 export const PROMO_OFF_MESSAGE = 'Az akciós megjelenés ki van kapcsolva.'
 
-export const PROMO_PRICE_WARNING =
-  'Az akciós ár nem kisebb az Árnál (vagy nem egész, pozitív összeg), ezért nem érvényes: a vevő a rendes Árat fizeti, és áthúzott ár nem jelenik meg.'
+/**
+ * Az érvénytelen (a rendes árnál nem kisebb) akciós ár figyelmeztetése. A
+ * két összeg a vásárlói ármegjelenítés formázójával készül (nem törhető
+ * szóköz, „Ft”), ahogy a mező validátoráé.
+ */
+export function promoPriceWarning(promoPriceHuf: number, payNowHuf: number): string {
+  return `A megadott akciós ár (${formatPriceHuf(promoPriceHuf)}) nem kisebb a rendes árnál, ezért a vásárló most ${formatPriceHuf(payNowHuf)}-ot fizet.`
+}
 
 /**
  * A magyar keltezés ragjai a nap sorszámához (AkH. 12. kiadás 297. pont):
@@ -62,7 +83,7 @@ export function withDaySuffix(dayLabel: string, suffix: DaySuffix): string {
 export interface CoursePromoStatusText {
   /** Az állapot egy mondatban. */
   message: string
-  /** Figyelmeztetés az áthúzott árról, vagy null. */
+  /** Figyelmeztetés (nem látszó akció, érvénytelen akciós ár), vagy null. */
   warning: string | null
   /** Az állapot kódja (a nézet ebből színez); 'nem-lathato': az időablak él, de a bolt nem mutatja. */
   reason: CoursePromo['reason'] | 'nem-lathato'
@@ -76,7 +97,7 @@ const HALF_DAY_MS = 12 * 60 * 60 * 1000
  * előtti nap, az első nap a kezdő pillanat napja.
  */
 export const NOT_PUBLISHED_WARNING =
-  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a Megjelenés a weboldalon mező nem Közzétéve.'
+  'A kurzus nincs közzétéve (piszkozat vagy archivált), ezért az akciós megjelenés és az Akció címke nem jelenik meg, amíg a „Megjelenés a weboldalon” mező nem „Közzétéve”.'
 
 export const DRAFT_WARNING =
   'A dokumentumnak nem közzétett módosításai vannak: az itteni beállítások közzététel után élnek.'
@@ -123,8 +144,11 @@ export function deriveCoursePromoStatus(
         ? DRAFT_WARNING
         : promo.enabled && !hasValidPrice
           ? NO_PRICE_WARNING
-          : promo.enabled && promoPriceWanted && promo.promoPriceHuf === null
-            ? PROMO_PRICE_WARNING
+          : promo.enabled &&
+              promoPriceWanted &&
+              promo.promoPriceHuf === null &&
+              promo.regularPriceHuf !== null
+            ? promoPriceWarning(fields.promoPriceHuf as number, promo.regularPriceHuf)
             : null
 
   if (promo.reason === 'kikapcsolva') {
@@ -160,14 +184,79 @@ export function deriveCoursePromoStatus(
     promo.end === null
       ? 'Az akció most él, és nincs megadva a vége.'
       : `Az akció most él (${withDaySuffix(promoDayLabel(new Date(promo.end.getTime() - 1)), 'ig')}).`
-  // WP63: kimondjuk, mit fizet MOST a vevő, és mi lesz az ár az akció után,
+  // WP63: kimondjuk, mit fizet MOST a vásárló, és mi lesz az ár az akció után,
   // hogy a szerkesztő ne csak a dátumot, az ár-váltást is lássa (NN/g,
   // Visibility of System Status).
   const price =
     promo.promoPriceHuf !== null && promo.regularPriceHuf !== null
-      ? ` A vevő most ${formatPriceHuf(promo.promoPriceHuf)}-ot fizet, az akció után magától ${formatPriceHuf(promo.regularPriceHuf)} lesz az ár.`
-      : ' Akciós ár nincs megadva, a vevő a rendes Árat fizeti.'
+      ? ` A vásárló most ${formatPriceHuf(promo.promoPriceHuf)}-ot fizet, az akció után magától ${formatPriceHuf(promo.regularPriceHuf)} lesz az ár.`
+      : ' Akciós ár nincs megadva, a vásárló a rendes árat fizeti.'
   return { message: `${head}${price}`, warning, reason: null }
+}
+
+/** A szabad szövegű mezők, amelyekben kézzel írt ár állhat, és a nevük a mondatban. */
+export interface PromoFreeTextFields {
+  longDescription?: unknown
+  guaranteeTitle?: unknown
+  guaranteeText?: unknown
+  /** A GYIK kérdései és válaszai egy szövegben. */
+  faqText?: unknown
+}
+
+const FREE_TEXT_PLACES: ReadonlyArray<readonly [keyof PromoFreeTextFields, string]> = [
+  ['longDescription', 'A Részletes leírásban'],
+  ['guaranteeTitle', 'A Garancia címében'],
+  ['guaranteeText', 'A Garancia szövegében'],
+  ['faqText', 'A Gyakori kérdésekben (GYIK)'],
+]
+
+/**
+ * Forintösszeg a szabad szövegben: „79 500 Ft”, „79.500 Ft”, „79500 Ft”,
+ * „79 500,- Ft”, „79 500 forint”, „19 900 Ft-ért”. A tagoló lehet sima,
+ * nem törhető vagy keskeny szóköz, illetve pont.
+ */
+const PRICE_IN_TEXT = /(\d{1,3}(?:[ \u00a0\u202f.]\d{3})+|\d+)\s?(?:,-\s?)?(?:Ft\b|HUF\b|forint)/giu
+
+/** A Lexical rich text JSON-jának szövege (bekezdésenként új sorral). */
+export function lexicalPlainText(value: unknown): string {
+  if (typeof value !== 'object' || value === null) {
+    return typeof value === 'string' ? value : ''
+  }
+  const node = value as { text?: unknown; children?: unknown; root?: unknown; type?: unknown }
+  if (node.root !== undefined) return lexicalPlainText(node.root)
+  if (typeof node.text === 'string') return node.text
+  if (!Array.isArray(node.children)) return ''
+  const separator = node.type === 'root' || node.type === 'list' ? '\n' : ''
+  return node.children.map(lexicalPlainText).join(separator)
+}
+
+/** A szövegben kézzel írt árak, formázva és ismétlés nélkül. */
+export function pricesInText(text: string): string[] {
+  const found: string[] = []
+  for (const match of text.matchAll(PRICE_IN_TEXT)) {
+    const amount = Number(match[1].replace(/\D/g, ''))
+    if (!Number.isSafeInteger(amount) || amount <= 0) continue
+    const label = formatPriceHuf(amount)
+    if (!found.includes(label)) found.push(label)
+  }
+  return found
+}
+
+/**
+ * K42: mezőnként egy mondat, ha a szabad szövegben kézzel írt ár áll
+ * (például: „A Részletes leírásban kézzel írt ár áll (79 500 Ft). Ellenőrizd,
+ * hogy az akció alatt is igaz-e.”).
+ */
+export function handwrittenPriceNotes(fields: PromoFreeTextFields): string[] {
+  const notes: string[] = []
+  for (const [key, place] of FREE_TEXT_PLACES) {
+    const prices = pricesInText(lexicalPlainText(fields[key]))
+    if (prices.length === 0) continue
+    notes.push(
+      `${place} kézzel írt ár áll (${prices.join(', ')}). Ellenőrizd, hogy az akció alatt is igaz-e.`,
+    )
+  }
+  return notes
 }
 
 const panelStyle: CSSProperties = {
@@ -189,35 +278,53 @@ const activeStyle: CSSProperties = {
   color: 'var(--theme-success-600, var(--theme-elevation-800))',
 }
 
-const warningStyle: CSSProperties = {
-  border: '1px solid var(--theme-warning-500)',
-  background: 'var(--theme-warning-50)',
-  color: 'var(--theme-elevation-800)',
-  borderRadius: 'var(--style-radius-m, 6px)',
-  padding: '0.5rem 0.75rem',
+const noticeStyle: CSSProperties = {
   margin: 'calc(var(--base) * 0.5) 0 0',
-  lineHeight: 1.5,
 }
 
 /** Megjelenítés (állapot-független, tesztelhető). */
-export function CoursePromoStatusView({ status }: { status: CoursePromoStatusText }): JSX.Element {
+export function CoursePromoStatusView({
+  status,
+  priceNotes = [],
+}: {
+  status: CoursePromoStatusText
+  priceNotes?: readonly string[]
+}): JSX.Element {
+  // Az állapot mentés nélkül változik, ezért a felolvasónak is szólnia kell:
+  // a teljes doboz egy udvarias élő régió (a figyelmeztetés is).
   return (
-    <div style={panelStyle}>
-      {/* Az állapot mentés nélkül változik, ezért a felolvasónak is szólnia kell. */}
-      <p
-        role="status"
-        aria-live="polite"
-        style={status.reason === null ? activeStyle : messageStyle}
-      >
-        {status.message}
-      </p>
+    <div role="status" style={panelStyle}>
+      <p style={status.reason === null ? activeStyle : messageStyle}>{status.message}</p>
       {status.warning !== null ? (
-        <p role="alert" style={warningStyle}>
-          {status.warning}
-        </p>
+        <div className="kc-admin-notice kc-admin-notice--figyelem" style={noticeStyle}>
+          <p className="kc-admin-notice__cim">Figyelem</p>
+          <p className="kc-admin-notice__szoveg">{status.warning}</p>
+        </div>
+      ) : null}
+      {priceNotes.length > 0 ? (
+        <div className="kc-admin-notice kc-admin-notice--figyelem" style={noticeStyle}>
+          <p className="kc-admin-notice__cim">Kézzel írt ár a kurzusoldalon</p>
+          {priceNotes.map((note) => (
+            <p className="kc-admin-notice__szoveg" key={note}>
+              {note}
+            </p>
+          ))}
+        </div>
       ) : null}
     </div>
   )
+}
+
+/** A GYIK sorainak kérdései és válaszai az űrlap-állapotból, egy szövegben. */
+function faqTextFromFormFields(fields: Record<string, { value?: unknown } | undefined>): string {
+  return Object.keys(fields)
+    .filter((key) => /^faq\.\d+\.(question|answer)$/.test(key))
+    .sort()
+    .map((key) => {
+      const value = fields[key]?.value
+      return typeof value === 'string' ? value : ''
+    })
+    .join('\n')
 }
 
 function readNumber(value: unknown): number | null {
@@ -240,6 +347,12 @@ export function CoursePromoStatus(): JSX.Element {
   const priceInHUFEnabled = useFormFields(([fields]) => fields?.priceInHUFEnabled?.value)
   const status = useFormFields(([fields]) => fields?.status?.value)
   const documentStatus = useFormFields(([fields]) => fields?._status?.value)
+  const longDescription = useFormFields(([fields]) => fields?.longDescription?.value)
+  const guaranteeTitle = useFormFields(([fields]) => fields?.guaranteeTitle?.value)
+  const guaranteeText = useFormFields(([fields]) => fields?.guaranteeText?.value)
+  // Szövegként választjuk ki: érték szerint hasonlítható, így csak a GYIK
+  // tényleges változása rajzolja újra a dobozt.
+  const faqText = useFormFields(([fields]) => (fields ? faqTextFromFormFields(fields) : ''))
 
   const values: CoursePromoFields & {
     priceInHUF: number | null
@@ -281,5 +394,15 @@ export function CoursePromoStatus(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, values.promoEnabled, values.promoStart, values.promoEnd])
 
-  return <CoursePromoStatusView status={deriveCoursePromoStatus(values)} />
+  return (
+    <CoursePromoStatusView
+      priceNotes={handwrittenPriceNotes({
+        longDescription,
+        guaranteeTitle,
+        guaranteeText,
+        faqText,
+      })}
+      status={deriveCoursePromoStatus(values)}
+    />
+  )
 }

@@ -22,6 +22,13 @@ function rootFields(fields: Field[], acc = new Map<string, Field>()): Map<string
     }
     if (field.type === 'row' || field.type === 'collapsible' || field.type === 'group') {
       rootFields(field.fields, acc)
+      continue
+    }
+    // A név nélküli fül csak megjelenítés: a mezői a gyökérszinten tárolódnak.
+    if (field.type === 'tabs') {
+      for (const tab of field.tabs) {
+        if (!('name' in tab) || !tab.name) rootFields(tab.fields, acc)
+      }
     }
   }
   return acc

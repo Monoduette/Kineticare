@@ -71,9 +71,41 @@ export function pollDelay(attempt: number, elapsed: number): number | null {
   if (elapsed >= 600000) return null
   return Math.min(30000, 5000 * (1 + attempt), 600000 - elapsed)
 }
+/** Ismeretlen videóhossz felirata; a Videótár és a régi Bunny-panel is ezt írja. */
+export const UNKNOWN_DURATION_LABEL = 'Hossz még nem ismert'
 export function durationLabel(value: number | null): string {
-  if (value === null) return 'Hossz még nem ismert'
+  if (value === null) return UNKNOWN_DURATION_LABEL
   return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`
+}
+
+/** A mező felirata, ha a config nem ad címkét (K35, egységes „nyilvános előzetes” szóhasználat). */
+export function fieldLabelFallback(library: VideoLibrary): string {
+  return library === 'public' ? 'Nyilvános előzetes videó' : 'Lecke videója'
+}
+
+/** K35: a nem GUID alakú mezőérték állapotsora. A gombnév a mező „Videó cseréje” gombja. */
+export const UNRECOGNIZED_VIDEO_ID_MESSAGE =
+  'Videó csatolva, de az azonosítója nem ismerhető fel. Válaszd ki újra a „Videó cseréje” gombbal.'
+
+/**
+ * K35: melyik videó van a mezőn, egy sorban („cím · 7:17 · Kész”), újratöltés
+ * után is. Amíg az adatok úton vannak, vagy nem tölthetők be, ezt mondja ki.
+ * Nem GUID alakú értékre a mező el sem indítja a lekérést, ezért ott nem
+ * állíthat betöltést: az állapotüzenetnek igaznak kell lennie (WCAG 2.2 SC 4.1.3).
+ */
+export function attachedVideoSummary(
+  value: string,
+  video: AdminVideo | null,
+  failed: boolean,
+): string {
+  if (!value) return 'Nincs videó kiválasztva.'
+  if (!guidPattern.test(value)) return UNRECOGNIZED_VIDEO_ID_MESSAGE
+  if (video && video.guid.toLowerCase() === value.toLowerCase()) {
+    return `${video.title} · ${durationLabel(video.durationSec)} · ${statusLabels[video.status]}`
+  }
+  return failed
+    ? 'Videó csatolva. Az adatai most nem tölthetők be.'
+    : 'Videó csatolva. Adatok betöltése…'
 }
 
 export function videoPagination(

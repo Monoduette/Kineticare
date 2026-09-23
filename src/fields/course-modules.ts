@@ -27,7 +27,7 @@ export const LESSON_DURATION_ADMIN_DESCRIPTION =
  * nevezi meg: egyetlen új lecke (GUID nélkül is) elrejti a régi Videók listát.
  */
 export const COURSE_MODULES_ADMIN_DESCRIPTION =
-  'A kurzus tananyaga fejezetekre bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen fejezetként. Ha felveszel legalább egy leckét egy új modulba, a régi lista elrejtődik. Régi videók átemelése csak a kurzus:videok-modulba paranccsal, különben a vevők haladása nullázódik.'
+  'A kurzus tananyaga modulokra bontva. A vásárló ebben a sorrendben látja a leckéket. Ha üresen hagyod, a lenti „Videók” lista jelenik meg egyetlen modulként. Ha egy új modulba legalább egy leckét felveszel, a régi lista elrejtődik. A régi videókat ne másold át kézzel, mert a vásárlók haladása elveszne: az átemelést a kurzus:videok-modulba parancs végzi.'
 
 /**
  * A videó-állapot opciói — SZÓ SZERINT a `products.videos.status` mezőé
@@ -66,6 +66,21 @@ const showForVideo = (_data: unknown, siblingData: unknown): boolean => {
 const showForLink = (_data: unknown, siblingData: unknown): boolean =>
   lessonKindOf(siblingData) === LESSON_KIND_LINK
 
+/**
+ * K46: a „Korábbi nyilvános fájl” csak azon a mellékletsoron látszik, amelyhez
+ * már tartozik ilyen fájl. Új sorban így nem kínál fel egy kivezetett
+ * lehetőséget (a videók mezőjének mintája, src/plugins/ecommerce.ts). A mező
+ * NEM kötelező, ezért a feltétel séma-semleges (a drizzle csak kötelező
+ * mezőnél veszi le a NOT NULL-t, és ez az oszlop amúgy is NULL-ozható); a
+ * G2 őr (schema-config-sync.test.ts) igazolja. Az üres mező értéke a
+ * form-állapotban megmarad, tehát a régi sorok adata sem vész el.
+ */
+export const hasLegacyAttachmentFile = (_data: unknown, siblingData: unknown): boolean => {
+  if (typeof siblingData !== 'object' || siblingData === null) return false
+  const file = (siblingData as { file?: unknown }).file
+  return file !== null && file !== undefined && file !== ''
+}
+
 /** Egy lecke mezői. */
 const lessonFields: Field[] = [
   {
@@ -90,7 +105,7 @@ const lessonFields: Field[] = [
     ],
     admin: {
       description:
-        'Videó = Bunny Stream felvétel. Szöveges lecke = csak írott anyag és/vagy letölthető fájl. Külső link = máshová vezet (pl. Facebook-csoport).',
+        'Videós leckénél a védett videótárból választasz felvételt. A szöveges lecke írott anyagot vagy letölthető fájlt tartalmaz. A külső link máshová visz, például egy Facebook-csoportba.',
     },
   },
   {
@@ -98,7 +113,7 @@ const lessonFields: Field[] = [
     type: 'textarea',
     label: 'Rövid összefoglaló',
     admin: {
-      description: '1–2 mondat a lecke alatt. Nem kötelező.',
+      description: 'Egy-két mondat a lecke címe alatt. Nem kötelező.',
     },
   },
   {
@@ -119,7 +134,7 @@ const lessonFields: Field[] = [
       // értéket kell a Bunny felületéről kimásolni — és rossz érték mellett a
       // videó némán nem indul el.
       description:
-        'A lecke felvétele a védett videótárból. A nyilvános bemutató külön, a Kurzusoldal fülön választható.',
+        'A lecke felvétele a védett videótárból. A nyilvános előzetes videót külön, a Kurzusoldal fülön választod ki.',
     },
   },
   {
@@ -168,7 +183,7 @@ const lessonFields: Field[] = [
     },
     admin: {
       description:
-        'A lecke alatt megjelenő írott anyag — videós leckénél jegyzet vagy gyakorlásleírás is lehet. Nem kötelező.',
+        'A lecke alatt megjelenő írott anyag. Videós leckénél jegyzet vagy a gyakorlat leírása is lehet. Nem kötelező.',
     },
   },
   {
@@ -204,7 +219,9 @@ const lessonFields: Field[] = [
         required: false,
         label: 'Korábbi nyilvános fájl',
         admin: {
-          description: 'Korábbi mellékletekhez. Új anyaghoz a védett kurzusfájlt használd.',
+          condition: hasLegacyAttachmentFile,
+          description:
+            'Régi melléklet, amely nyilvános webcímen is elérhető. Csak akkor látszik, ha a sorhoz már tartozik ilyen fájl. Új anyaghoz a védett kurzusfájlt használd.',
         },
       },
       {
@@ -215,7 +232,7 @@ const lessonFields: Field[] = [
         filterOptions: ({ id }) => (typeof id === 'number' ? { course: { equals: id } } : false),
         admin: {
           description:
-            'Előbb mentsd el a kurzust, majd tölts fel hozzá fájlt. A vevő a lecke publikálása után töltheti le.',
+            'Előbb mentsd el a kurzust, majd tölts fel hozzá fájlt. A vásárló a kurzus közzététele után töltheti le.',
         },
       },
     ],
@@ -256,7 +273,7 @@ export const courseModulesField: ArrayField = {
       required: true,
       label: 'Modul címe',
       admin: {
-        description: 'Pl. „1. ALAPOK — Így kezdj neki”.',
+        description: 'Például: „Alapok: így kezdj neki”.',
       },
     },
     {

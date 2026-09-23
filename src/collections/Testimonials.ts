@@ -77,17 +77,17 @@ export const Testimonials: CollectionConfig = {
       name: 'quote',
       type: 'textarea',
       required: true,
-      label: 'Vélemény szövege (teljes)',
+      label: 'Teljes szöveg',
       admin: {
-        description: 'A vélemény teljes, eredeti szövege — pontosan úgy, ahogy elhangzott.',
+        description: 'A vélemény teljes, eredeti szövege, pontosan úgy, ahogy elhangzott.',
       },
     },
     {
       name: 'shortQuote',
       type: 'textarea',
-      label: 'Vélemény szövege (rövid)',
+      label: 'Rövid idézet',
       admin: {
-        description: `Rövid, 1–2 mondatos változat a főoldalra (legfeljebb ${SHORT_QUOTE_MAX_LENGTH} karakter). Ha üresen hagyod, a kezdőlapon a TELJES szöveg jelenik meg — hosszú véleménynél ezért töltsd ki.`,
+        description: `Rövid, 1–2 mondatos változat a főoldalra (legfeljebb ${SHORT_QUOTE_MAX_LENGTH} karakter). Ha üresen hagyod, a kezdőlapon a Teljes szöveg jelenik meg, ezért hosszú véleménynél töltsd ki.`,
       },
       validate: (value: string | null | undefined) => {
         if (typeof value === 'string' && value.trim().length > SHORT_QUOTE_MAX_LENGTH) {

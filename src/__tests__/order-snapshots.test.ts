@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
+import type { CollectionConfig, Field } from 'payload'
+
+import { denyFieldWrite } from '../access'
 import { ORDER_NUMBER_PATTERN } from '../lib/order-number'
 import configPromise from '../payload.config'
+import { ORDER_BILLING_SYSTEM_LABEL } from '../plugins/ecommerce'
 import { isDatabaseAvailable } from './helpers/db-available'
 
 /**
@@ -244,5 +248,136 @@ describe.skipIf(!hasDb)('orders snapshot-hookok (DB)', () => {
 
     expect(item?.priceHufSnapshot).toBe(5000)
     expect(readBack.totalHufSnapshot).toBe(5000)
+  })
+})
+
+/**
+ * K34, K01, K25, R1 #8: a Rendelések admin-megjelenítése a végleges configban
+ * (DB nélkül). A számlázási mezők egy név nélküli, csukott csoportba kerültek,
+ * ezért a keresés REKURZÍV; az access, a típus és a mezőnév változatlan.
+ */
+describe('orders admin-megjelenítés (config)', () => {
+  const flatten = (fields: Field[]): Field[] =>
+    fields.flatMap((field) => [
+      field,
+      ...('fields' in field && Array.isArray(field.fields) ? flatten(field.fields as Field[]) : []),
+      ...(field.type === 'tabs' ? field.tabs.flatMap((tab) => flatten(tab.fields)) : []),
+    ])
+  const collection = async (slug: string): Promise<CollectionConfig> => {
+    const config = await configPromise
+    const found = (config.collections ?? []).find((c) => c.slug === slug)
+    if (!found) throw new Error(`nincs '${slug}' collection`)
+    return found
+  }
+  const find = (fields: Field[], name: string) =>
+    flatten(fields).find((field) => 'name' in field && field.name === name)
+  const admin = (field: Field | undefined) =>
+    (field?.admin ?? {}) as {
+      components?: Record<string, unknown>
+      hidden?: boolean
+      description?: unknown
+      date?: Record<string, unknown>
+    }
+
+  const BILLING = [
+    'invoiceNumber',
+    'invoicePdfUrl',
+    'invoiceStatus',
+    'invoiceAttempts',
+    'invoiceLastError',
+    'invoiceCompletionDate',
+    'stornoStatus',
+    'stornoNumber',
+    'stornoAttempts',
+    'stornoLastError',
+    'correctiveInvoiceStatus',
+    'correctiveInvoiceNumber',
+    'correctiveInvoiceSeq',
+    'correctiveInvoiceAttempts',
+    'correctiveInvoiceLastError',
+    'correctiveInvoiceAttemptsSeq',
+  ]
+
+  it('a számlázási és stornó rendszermezők egy név nélküli, alapból csukott csoportban állnak', async () => {
+    const orders = await collection('orders')
+    const topLevelNames = orders.fields.map((field) => ('name' in field ? field.name : undefined))
+    for (const name of BILLING) expect(topLevelNames, name).not.toContain(name)
+    const group = orders.fields.find(
+      (field) => field.type === 'collapsible' && field.label === ORDER_BILLING_SYSTEM_LABEL,
+    )
+    expect(group?.type).toBe('collapsible')
+    expect(group && 'name' in group).toBe(false)
+    expect((group?.admin as { initCollapsed?: boolean }).initCollapsed).toBe(true)
+    const inGroup =
+      group && 'fields' in group ? group.fields.map((f) => ('name' in f ? f.name : '')) : []
+    expect(inGroup).toEqual(BILLING)
+    // Az access változatlan: a rendszer írja, REST-en senki.
+    for (const name of BILLING) {
+      const field = find(orders.fields, name)
+      expect('access' in field! && field.access?.update, name).toBe(denyFieldWrite)
+    }
+    expect(admin(find(orders.fields, 'correctiveInvoiceSeq')).hidden).toBe(true)
+    expect(admin(find(orders.fields, 'correctiveInvoiceAttemptsSeq')).hidden).toBe(true)
+  })
+
+  it('a végösszeg-cella és a két json-mező saját, csak megjelenítő komponenst kap', async () => {
+    const orders = await collection('orders')
+    expect(admin(find(orders.fields, 'totalHufSnapshot')).components?.Cell).toBe(
+      '/components/admin/OrderTotalCell#OrderTotalCell',
+    )
+    for (const name of ['customerSnapshot', 'refunds']) {
+      const field = find(orders.fields, name)
+      expect(field?.type).toBe('json')
+      expect(admin(field).components?.Field).toBe(
+        '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+      )
+    }
+  })
+
+  it('a rendelés időpont-mezői magyar, 24 órás alakban látszanak', async () => {
+    const orders = await collection('orders')
+    for (const name of ['consentWithdrawalWaiverAt', 'refundedAt']) {
+      expect(admin(find(orders.fields, name)).date).toMatchObject({
+        displayFormat: 'yyyy. MM. dd. HH:mm',
+        timeFormat: 'HH:mm',
+      })
+    }
+  })
+
+  it('a Kosarak és a Tranzakciók rejtett, az access és a kapcsolatmező megmarad (R1 #8)', async () => {
+    for (const slug of ['carts', 'transactions']) {
+      const hidden = (await collection(slug)).admin?.hidden
+      expect(hidden, slug).toBe(true)
+      expect(typeof (await collection(slug)).access?.read, slug).toBe('function')
+    }
+    const orders = await collection('orders')
+    const transactions = find(orders.fields, 'transactions')
+    expect(transactions?.type).toBe('relationship')
+    expect(admin(transactions).hidden).toBe(true)
+    expect('access' in transactions! && transactions.access?.update).toBe(denyFieldWrite)
+    expect(find(orders.fields, 'customer')).toMatchObject({ label: 'Vásárló' })
+    expect(find(orders.fields, 'customerEmail')).toMatchObject({ label: 'Vásárló e-mail-címe' })
+  })
+
+  it('a rendelés feliratai és súgói: 0 gondolatjel, 0 verzál szó, 0 hibás záró idézőjel', async () => {
+    const orders = await collection('orders')
+    const texts: string[] = [String(orders.admin?.description ?? '')]
+    for (const field of flatten(orders.fields)) {
+      if ('label' in field && typeof field.label === 'string') texts.push(field.label)
+      if (typeof admin(field).description === 'string')
+        texts.push(admin(field).description as string)
+    }
+    for (const slug of ['carts', 'transactions'])
+      texts.push(String((await collection(slug)).admin?.description ?? ''))
+    expect(texts.length).toBeGreaterThan(30)
+    for (const text of texts) {
+      expect(text, text).not.toMatch(/[–—]/)
+      expect(text, text).not.toMatch(/„[^”]*"/)
+      // Rövidítés (PDF) megengedett, verzállal kiemelt szó nem.
+      const shouted = (text.match(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{3,}(?![\p{L}])/gu) ?? []).filter(
+        (word) => word !== 'PDF',
+      )
+      expect(shouted, text).toEqual([])
+    }
   })
 })

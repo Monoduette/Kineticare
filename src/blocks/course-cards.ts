@@ -24,10 +24,10 @@ export const courseCards: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Felvezető sor',
+      label: 'Felső kis felirat',
       admin: {
         description:
-          'A cím fölötti rövid, nagybetűs felirat. Nem kötelező — üresen a beépített felirat marad („Kurzusok").',
+          'A cím fölötti rövid, nagybetűs felirat. Nem kötelező: üresen a beépített felirat marad („Kurzusok”).',
       },
     },
     {
@@ -35,7 +35,7 @@ export const courseCards: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'Nem kötelező. Ha üresen hagyod, a beépített cím marad („Kurzusaink").',
+        description: 'Nem kötelező. Ha üresen hagyod, a beépített cím marad („Kurzusaink”).',
       },
     },
     {
@@ -55,7 +55,7 @@ export const courseCards: Block = {
         // „Megnézem a programot"-ot: a mezősúgó a szerkesztő mintája, tehát
         // amit itt írunk, azt fogja írni ő is.
         description:
-          'A kurzuskártyák alján megjelenő gomb felirata. Nem kötelező — üresen a beépített, jóváhagyott felirat marad („Nyisd meg a kurzusoldalt”). A gomb dekoratív: maga a KÁRTYA a link.',
+          'A kurzuskártyák alján megjelenő gomb felirata. Nem kötelező: üresen a beépített, jóváhagyott felirat marad („Nyisd meg a kurzusoldalt”). A gomb csak jelzés, maga a kártya a link.',
       },
     },
     sectionSettings(),

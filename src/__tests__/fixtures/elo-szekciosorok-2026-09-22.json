@@ -1,0 +1,1553 @@
+{
+  "kapcsolat": {
+    "id": 7,
+    "slug": "kapcsolat",
+    "title": "Kapcsolat",
+    "layout": [
+      {
+        "id": "6a82eaf91c307f002219b8a8",
+        "eyebrow": "Rendelői kezelés",
+        "title": "Kérj időpontot a rendelőbe",
+        "urlapMutatasa": true,
+        "lead": "Gyógytorna, manuálterápia és kiegészítő terápiák akut sérülésre, műtét utáni állapotra és krónikus fájdalomra. Hagyd itt az elérhetőséged, és megkeressük a neked megfelelő időpontot.",
+        "magyarazat": "Ez az űrlap nem foglalás. Miután elküldted, két munkanapon belül telefonon keresünk, és közösen egyeztetjük a pontos időpontot. Az első alkalom minden esetben 50 perces vizsgálattal kezdődik.",
+        "urlapCim": "Időpontkérés",
+        "gombFelirat": "Időpontot kérek",
+        "helyszinekFelirat": "Rendelőink",
+        "telefonFelirat": "Telefon",
+        "emailFelirat": "E-mail",
+        "email": "info@kineticare.hu",
+        "sikerCim": "Megkaptuk az időpontkérésed",
+        "sikerSzoveg": "Két munkanapon belül telefonon keresünk, és egyeztetjük a pontos időpontot. Ha addig megváltozna valami, hívj minket nyugodtan.",
+        "blockName": null,
+        "idopontSavok": [
+          {
+            "id": "6a82eaf91c307f002219b8a1",
+            "felirat": "Hétköznap délelőtt"
+          },
+          {
+            "id": "6a82eaf91c307f002219b8a2",
+            "felirat": "Hétköznap délután"
+          },
+          {
+            "id": "6a82eaf91c307f002219b8a3",
+            "felirat": "Rugalmas vagyok"
+          }
+        ],
+        "helyszinek": [
+          {
+            "id": "6a82eaf91c307f002219b8a4",
+            "cim": "1112 Budapest, Kánai út 3.",
+            "megjegyzes": null
+          },
+          {
+            "id": "6a82eaf91c307f002219b8a5",
+            "cim": "1136 Budapest, Balzac utca 9.",
+            "megjegyzes": null
+          }
+        ],
+        "telefonszamok": [
+          {
+            "id": "6a82eaf91c307f002219b8a6",
+            "nev": "Kocsis Kata",
+            "szam": "+36 30 169 2263"
+          },
+          {
+            "id": "6a82eaf91c307f002219b8a7",
+            "nev": "Kiss Kata",
+            "szam": "+36 20 357 3493"
+          }
+        ],
+        "blockType": "appointment",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "idopontkeres",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a82eaf91c307f002219b8ab",
+        "eyebrow": "Közvetlen elérhetőség",
+        "title": "Beszéljünk",
+        "lead": "Az időpontkérésre két munkanapon belül telefonálunk. Ha ennél gyorsabb választ szeretnél, hívj minket közvetlenül: alább látod, ki mivel foglalkozik, és melyik szám kié.",
+        "blockName": null,
+        "members": ["6a82eaf91c307f002219b8a9", "6a82eaf91c307f002219b8aa"],
+        "blockType": "teamMembers",
+        "bookingLink": {
+          "felirat": "Kérj időpontot üzenetben",
+          "url": "#idopontkeres",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "elerhetoseg",
+          "hatter": "feher"
+        }
+      }
+    ]
+  },
+  "szolgaltatasok": {
+    "id": 3,
+    "slug": "szolgaltatasok",
+    "title": "Szolgáltatások",
+    "layout": [
+      {
+        "id": "6a81bccb23c875002278e999",
+        "title": "Fáj a kezed, a csuklód, a könyököd vagy a vállad?",
+        "lead": "Segítünk megtalálni a következő lépést.",
+        "blockName": null,
+        "checklist": [
+          {
+            "id": "6a81bccb23c875002278e993",
+            "text": "Személyes kezelésen megvizsgálunk, és veled együtt határozzuk meg a célokat."
+          },
+          {
+            "id": "6a81bccb23c875002278e994",
+            "text": "Az otthoni gyakorláshoz videókurzust is választhatsz."
+          },
+          {
+            "id": "6a81bccb23c875002278e995",
+            "text": "Ha bizonytalan vagy, segítünk eligazodni a lehetőségek között."
+          }
+        ],
+        "sideParagraphs": [
+          {
+            "id": "6a81bccb23c875002278e996",
+            "text": "Tudjuk, mennyire megnehezíthetik a kézpanaszok a munkát, a sportot és a hétköznapi mozdulatokat.",
+            "emphasized": false
+          },
+          {
+            "id": "6a81bccb23c875002278e997",
+            "text": "Gyógytornával, manuálterápiával és otthoni gyakorlással támogatunk. A célokat és a terhelést személyes kezelésen hozzád igazítjuk.",
+            "emphasized": true
+          }
+        ],
+        "blockType": "welcome",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916ec",
+        "eyebrow": "Szolgáltatásaink",
+        "title": "Így segítünk",
+        "lead": null,
+        "elrendezes": "tabla",
+        "image": 12,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a81644079c56f0072e916e9",
+            "number": "01",
+            "title": "Rendelői kezelések",
+            "osszefoglalo": null,
+            "body": "Akut sérülés, műtét utáni állapot vagy krónikus fájdalom esetén: egyénre szabott gyógytorna, manuálterápia és kiegészítő terápiák. Két budapesti rendelőben (Kánai út 3., Balzac utca 9.), 50 vagy 20 perces alkalmakban. Ár: 18 000 Ft (50 perc), illetve 10 000 Ft (20 perc).",
+            "photo": null,
+            "felirat": "Időpontot kérek",
+            "url": "/kapcsolat",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916ea",
+            "number": "02",
+            "title": "Otthoni online program",
+            "osszefoglalo": null,
+            "body": "Otthoni videókurzusunkkal a saját tempódban gyakorolhatsz. A teljes program tartalmát és árát a kurzus oldalán találod.",
+            "photo": null,
+            "felirat": "Nézd meg a teljes kurzust",
+            "url": "/kurzusok/otthoni-kezrehab-program",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916eb",
+            "number": "03",
+            "title": "Szakmai képzések",
+            "osszefoglalo": null,
+            "body": "Gyógytornászoknak, orvosoknak, mozgásterapeutáknak és edzőknek: akkreditált tantermi képzés a kéz, a csukló- és könyökízület rehabilitációjáról, a ProBody Stúdióval együttműködve. 12 kreditpont (SZTK-A-33553/2024). A képzés időpontját és díját a ProBody Stúdió oldalán találod.",
+            "photo": null,
+            "felirat": "Nézd meg a kézworkshopot",
+            "url": "https://probodystudio.hu/kez-workshop/",
+            "ujAblakban": true
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "szolgaltatasaink",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6aaf0eb0325e7f002245b334",
+        "eyebrow": "Rendelői kezelések",
+        "title": "Amit a rendelőben kínálunk",
+        "lead": "Vizsgálat után ezekből állítjuk össze a kezelési tervedet. Minden alkalom a te panaszodhoz igazodik.",
+        "elrendezes": "tabla",
+        "image": 50,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6aaf0eb0325e7f002245b32f",
+            "number": "1",
+            "title": "Gyógytorna",
+            "osszefoglalo": null,
+            "body": "Akut sérülés, műtét utáni időszak és hosszú ideje tartó fájdalom esetén a mozgásterápia a gyógyulás alapja. Otthonra is kapsz gyakorlatokat.",
+            "photo": null,
+            "felirat": "",
+            "url": "",
+            "ujAblakban": false
+          },
+          {
+            "id": "6aaf0eb0325e7f002245b330",
+            "number": "2",
+            "title": "Manuálterápia",
+            "osszefoglalo": null,
+            "body": "Az ízületek és a lágyrészek célzott, kézzel végzett kezelése, hogy a mozgás újra szabad és fájdalommentes legyen.",
+            "photo": null,
+            "felirat": "",
+            "url": "",
+            "ujAblakban": false
+          },
+          {
+            "id": "6aaf0eb0325e7f002245b331",
+            "number": "3",
+            "title": "Kinesio Tape és Dynamic Tape",
+            "osszefoglalo": null,
+            "body": "Rugalmas szalag, amely tehermentesíti a fájó szakaszt és támogatja a mozgást a kezelések között.",
+            "photo": null,
+            "felirat": "",
+            "url": "",
+            "ujAblakban": false
+          },
+          {
+            "id": "6aaf0eb0325e7f002245b332",
+            "number": "4",
+            "title": "Flossing és köpölyterápia",
+            "osszefoglalo": null,
+            "body": "Gumiszalagos kompresszió és vákuumos kezelés: fellazítják a lágyrészeket, élénkítik a keringést és csökkentik a fájdalmat.",
+            "photo": null,
+            "felirat": "",
+            "url": "",
+            "ujAblakban": false
+          },
+          {
+            "id": "6aaf0eb0325e7f002245b333",
+            "number": "5",
+            "title": "Hegkezelés, fasciakés, NRX bandázs",
+            "osszefoglalo": null,
+            "body": "Műtéti és sérüléses hegek puhítása, eszközös lágyrész-mobilizáció a letapadt kötőszövetre, és rögzítő kötés, ha a kéznek átmenetileg nyugalom kell.",
+            "photo": null,
+            "felirat": "",
+            "url": "",
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "rendeloi-technikak",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916ed",
+        "content": {
+          "root": {
+            "type": "root",
+            "format": "",
+            "indent": 0,
+            "version": 1,
+            "children": [
+              {
+                "tag": "h2",
+                "type": "heading",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Rendelői kezelések",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null
+              },
+              {
+                "type": "paragraph",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Személyes vizsgálat után gyógytornával, manuálterápiával és szükség szerint kiegészítő technikákkal dolgozunk. A kezelési tervet a panaszaidhoz és a terhelhetőségedhez igazítjuk.",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "textStyle": "",
+                "textFormat": 0
+              },
+              {
+                "tag": "h3",
+                "type": "heading",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Árlista – gyógytorna / manuálterápia",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null
+              },
+              {
+                "tag": "ul",
+                "type": "list",
+                "start": 1,
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "type": "listitem",
+                    "value": 1,
+                    "format": "",
+                    "indent": 0,
+                    "version": 1,
+                    "children": [
+                      {
+                        "mode": "normal",
+                        "text": "50 perces alkalom – 18 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)",
+                        "type": "text",
+                        "style": "",
+                        "detail": 0,
+                        "format": 0,
+                        "version": 1
+                      }
+                    ],
+                    "direction": null
+                  },
+                  {
+                    "type": "listitem",
+                    "value": 2,
+                    "format": "",
+                    "indent": 0,
+                    "version": 1,
+                    "children": [
+                      {
+                        "mode": "normal",
+                        "text": "20 perces alkalom – 10 000 Ft (tartalmazza a szükség szerinti Kinesio Tape vagy Dynamic Tape® felhelyezését, flossing-, köpöly- és/vagy eszközös lágyrész-manuálterápiás kezeléseket)",
+                        "type": "text",
+                        "style": "",
+                        "detail": 0,
+                        "format": 0,
+                        "version": 1
+                      }
+                    ],
+                    "direction": null
+                  }
+                ],
+                "listType": "bullet",
+                "direction": null
+              },
+              {
+                "type": "paragraph",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Az első alkalom minden esetben 50 perces vizsgálatot foglal magába. Rendelőinkben készpénzes és átutalásos fizetésre van lehetőség.",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "textStyle": "",
+                "textFormat": 0
+              },
+              {
+                "type": "paragraph",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Helyszíneink: 1112 Budapest, Kánai út 3. • 1136 Budapest, Balzac utca 9.",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "textStyle": "",
+                "textFormat": 0
+              },
+              {
+                "type": "paragraph",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "Személyes kezelésre a kapcsolat oldalon tudsz jelentkezni: ",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  },
+                  {
+                    "type": "link",
+                    "fields": {
+                      "url": "/kapcsolat",
+                      "newTab": false,
+                      "linkType": "custom"
+                    },
+                    "format": "",
+                    "indent": 0,
+                    "version": 3,
+                    "children": [
+                      {
+                        "mode": "normal",
+                        "text": "időpontot kérek",
+                        "type": "text",
+                        "style": "",
+                        "detail": 0,
+                        "format": 0,
+                        "version": 1
+                      }
+                    ],
+                    "direction": null
+                  },
+                  {
+                    "mode": "normal",
+                    "text": ".",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null,
+                "textStyle": "",
+                "textFormat": 0
+              }
+            ],
+            "direction": null
+          }
+        },
+        "blockName": null,
+        "blockType": "richText",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "rendeloi",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a9c9118d73a76a3a4c168c7",
+        "eyebrow": null,
+        "title": "Ezért fogod imádni",
+        "lead": null,
+        "elrendezes": "tabla",
+        "image": 31,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a9c912ed73a76a3a4c168c8",
+            "number": "01",
+            "title": "A kéz a szakterületünk",
+            "osszefoglalo": null,
+            "body": "Évek óta foglalkozunk kézrehabilitációval. A szakmai kutatásokat és a rendelőben szerzett tapasztalatainkat együtt használjuk.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c9150d73a76a3a4c168c9",
+            "number": "02",
+            "title": "A hétköznapokra készülünk",
+            "osszefoglalo": null,
+            "body": "A célunk, hogy könnyebben menjenek a számodra fontos mozdulatok. A kezelések mellett az otthoni gyakorlásban is segítünk.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916f2",
+        "eyebrow": "Vélemények",
+        "heading": "Pácienseink mondták",
+        "maxItems": 3,
+        "blockName": null,
+        "blockType": "testimonials",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "velemenyek",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916f3",
+        "title": "Kezdd el otthon, a saját tempódban",
+        "text": "Az otthoni programunkkal a saját tempódban haladhatsz, bárhol, bármikor — a gyakorlatokat kézrehabilitációs gyógytornászok állították össze.",
+        "blockName": null,
+        "blockType": "ctaBanner",
+        "cta": {
+          "felirat": "Megnézem a kurzusokat",
+          "url": "/kurzusok",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "tint"
+        }
+      }
+    ]
+  },
+  "rolunk": {
+    "id": 2,
+    "slug": "rolunk",
+    "title": "A kéz a mindenünk",
+    "layout": [
+      {
+        "id": "6a81644079c56f0072e916c9",
+        "content": {
+          "root": {
+            "type": "root",
+            "format": "",
+            "indent": 0,
+            "version": 1,
+            "children": [
+              {
+                "type": "paragraph",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "mode": "normal",
+                    "text": "És igazából neked is. Akinek nem fáj a keze, talán bele sem gondol, hogy szinte minden ébren töltött percben használjuk a kezünket valamire.",
+                    "type": "text",
+                    "style": "",
+                    "detail": 0,
+                    "format": 0,
+                    "version": 1
+                  }
+                ],
+                "direction": null
+              }
+            ],
+            "direction": null
+          }
+        },
+        "blockName": null,
+        "blockType": "richText",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916d5",
+        "eyebrow": "Rólunk",
+        "title": "Így lett a kéz a szakterületünk",
+        "photo": 12,
+        "blockName": null,
+        "paragraphs": [
+          {
+            "id": "6a9fc9c10317390022deb9d5",
+            "text": "A Kineticare két gyógytornász közös praxisa, amely az évek alatt a kézrehabilitációra épült. A pácienseink nagy része makacs kéz-, csukló-, könyök- vagy vállfájdalommal érkezik hozzánk, ezért pontosan tudjuk, mennyire megkeseríti a mindennapokat.",
+            "emphasized": true
+          },
+          {
+            "id": "6a9fc9c10317390022deb9d6",
+            "text": "A legújabb kutatásokat, a külföldi irányelveket és a saját tapasztalatunkat együtt használjuk, hogy a felépülés biztonságos és a lehető leggyorsabb legyen. Folyamatosan képezzük magunkat nemzetközi kézterápiás kurzusokon. Amit tudunk, a ProBody Stúdióval közös, akkreditált képzésen adjuk tovább kollégáinknak (12 kreditpont, SZTK-A-33553/2024). A Semmelweis Egyetemen a jövő gyógytornászai az egyetemi képzésükön többek között a mi anyagunkból is tanulnak.",
+            "emphasized": false
+          },
+          {
+            "id": "6a9fc9c10317390022deb9d7",
+            "text": "Hisszük, hogy a kezed nem csak egy testrész: ezzel dolgozol, alkotsz és gondoskodsz. Lentebb megtalálod a részletes szakmai hátterünket, a pácienseink véleményét és a partnereinket; ha kérdésed van, a Kapcsolat oldalon elérsz minket.",
+            "emphasized": false
+          }
+        ],
+        "stats": [
+          {
+            "id": "6a81644079c56f0072e916d1",
+            "value": "10+",
+            "label": "év szakmai tapasztalat"
+          },
+          {
+            "id": "6a81644079c56f0072e916d2",
+            "value": "1000+",
+            "label": "elégedett páciens"
+          },
+          {
+            "id": "6a81644079c56f0072e916d3",
+            "value": "12",
+            "label": "kreditpont, akkreditált képzés (SZTK-A-33553/2024)"
+          },
+          {
+            "id": "6a81644079c56f0072e916d4",
+            "value": "2",
+            "label": "szakmai egyesületi tagság"
+          }
+        ],
+        "blockType": "about",
+        "feature": {
+          "label": "Szakmai egyesületi tagság",
+          "note": "A Magyar Sportrehabilitációs Egyesület alapító tagjai és Felső Végtagi Bizottságának társelnökei vagyunk, és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk."
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "rolunk",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a9c912a5c99b92e154f74bd",
+        "eyebrow": null,
+        "title": "Amiben mások vagyunk",
+        "lead": null,
+        "elrendezes": "tabla",
+        "image": 2,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a9c91395c99b92e154f74be",
+            "number": "01",
+            "title": "A kézre figyelünk",
+            "osszefoglalo": null,
+            "body": "A kéz rehabilitációja a szakterületünk. A kutatásokat és a gyakorlati tapasztalatainkat együtt használjuk a közös munkában.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c91605c99b92e154f74bf",
+            "number": "02",
+            "title": "Veled dolgozunk",
+            "osszefoglalo": null,
+            "body": "Személyes kezelésen megbeszéljük, mely mozdulatok fontosak neked, és ezekhez igazítjuk a célokat. Az otthoni gyakorláshoz is adunk kapaszkodót.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916e4",
+        "eyebrow": "",
+        "title": "Így tudunk segíteni",
+        "lead": "Három út, ahogy a kezeddel foglalkozunk: személyesen a stúdióban, otthon a saját tempódban, vagy szakmai képzésen.",
+        "elrendezes": "sin",
+        "image": 31,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a81644079c56f0072e916e1",
+            "number": "1",
+            "title": "Rendelői kezelések",
+            "osszefoglalo": "Személyes kezelés a stúdióban.",
+            "body": "Akut panasz, műtét utáni időszak vagy hosszú ideje tartó fájdalom esetén a stúdióban várunk: gyógytorna, manuálterápia és a hozzád igazított kiegészítő terápiák. A pontos tervet vizsgálat után állítjuk össze; ez nem diagnózis a webről.",
+            "photo": 36,
+            "felirat": "Tovább a kezelésekre",
+            "url": "/szolgaltatasok",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916e2",
+            "number": "2",
+            "title": "Otthoni program",
+            "osszefoglalo": "Videókurzus, a saját ritmusodban.",
+            "body": "Ha otthon szeretnél gyakorolni, az Otthoni KézRehab Program lépésről lépésre visz. A teljes tartalom és az ár a kurzusoldalon van: ígéret és százalék nélkül.",
+            "photo": 37,
+            "felirat": "Nézd meg a kurzusokat",
+            "url": "/kurzusok",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916e3",
+            "number": "3",
+            "title": "Szakmai képzések",
+            "osszefoglalo": "Akkreditált kézkurzus szakembereknek.",
+            "body": "A ProBody Stúdióval együtt tartott tantermi kézkurzus a kéz, a csukló és a könyök rehabilitációs lehetőségeiről szól: gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.",
+            "photo": 38,
+            "felirat": "Nézd meg a kézworkshopot",
+            "url": "https://probodystudio.hu/kez-workshop/",
+            "ujAblakban": true
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "szolgaltatasaink",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a9c91fc5c99b92e154f74c0",
+        "eyebrow": "Mi ketten",
+        "title": "Akik a kezeddel foglalkoznak",
+        "lead": "Ketten alapítottuk a Kineticare-t, és mindketten a kéz rehabilitációjára szakosodtunk. Itt röviden bemutatkozunk, a teljes szakmai utunkat a lap alján találod.",
+        "blockName": null,
+        "members": ["6a9c92175c99b92e154f74c1", "6a9c924d5c99b92e154f74c2"],
+        "blockType": "teamMembers",
+        "bookingLink": {
+          "felirat": "Kérj időpontot üzenetben",
+          "url": "/kapcsolat#idopontkeres",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "elerhetoseg",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a9ec067005de3007716a4cf",
+        "heading": "Partnereink",
+        "blockName": null,
+        "logos": [
+          {
+            "id": "6a9ec067005de3007716a4c4",
+            "image": 34,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4c5",
+            "image": 39,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4c6",
+            "image": 40,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4c7",
+            "image": 41,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4c8",
+            "image": 42,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4c9",
+            "image": 43,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4ca",
+            "image": 44,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4cb",
+            "image": 45,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4cc",
+            "image": 46,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4cd",
+            "image": 47,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4ce",
+            "image": 48,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "pressLogos",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "partnereink",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a8179cce82759002279dcda",
+        "eyebrow": "Szakmai háttér",
+        "title": "Részletes szakmai háttér",
+        "lead": "A teljes szakmai életutunk: tanulmányok, továbbképzések, publikációk, előadások és médiamegjelenések. Nyisd ki, amelyik érdekel.",
+        "blockName": null,
+        "items": [
+          {
+            "id": "6a8179cce82759002279dcd8",
+            "kep": 5,
+            "cim": "Kocsis Kata szakmai önéletrajza",
+            "osszefoglalo": "38 tanfolyam · 2 publikáció · 7 konferencia · 14 médiamegjelenés",
+            "tartalom": {
+              "root": {
+                "type": "root",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "type": "paragraph",
+                    "format": "",
+                    "indent": 0,
+                    "version": 1,
+                    "children": [
+                      {
+                        "mode": "normal",
+                        "text": "Gyógytornász, sportrehabilitációs tréner, gyógy- és sportmasszőr",
+                        "type": "text",
+                        "style": "",
+                        "detail": 0,
+                        "format": 0,
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "textStyle": "",
+                    "textFormat": 0
+                  }
+                ],
+                "direction": null
+              }
+            }
+          },
+          {
+            "id": "6a8179cce82759002279dcd9",
+            "kep": 6,
+            "cim": "Kiss Kata szakmai önéletrajza",
+            "osszefoglalo": "31 tanfolyam · 8 konferencia",
+            "tartalom": {
+              "root": {
+                "type": "root",
+                "format": "",
+                "indent": 0,
+                "version": 1,
+                "children": [
+                  {
+                    "type": "paragraph",
+                    "format": "",
+                    "indent": 0,
+                    "version": 1,
+                    "children": [
+                      {
+                        "mode": "normal",
+                        "text": "Gyógytornász, manuálterapeuta, sportrehabilitációs tréner",
+                        "type": "text",
+                        "style": "",
+                        "detail": 0,
+                        "format": 0,
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "textStyle": "",
+                    "textFormat": 0
+                  }
+                ],
+                "direction": null
+              }
+            }
+          }
+        ],
+        "blockType": "accordion",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "szakmai-hatter",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916e6",
+        "eyebrow": "Vélemények",
+        "heading": "Pácienseink mondták",
+        "maxItems": 3,
+        "blockName": null,
+        "blockType": "testimonials",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "velemenyek",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916dc",
+        "heading": "Itt találkozhattál velünk",
+        "blockName": null,
+        "logos": [
+          {
+            "id": "6a81644079c56f0072e916d6",
+            "image": 23,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916d7",
+            "image": 24,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916d8",
+            "image": 25,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916d9",
+            "image": 26,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916da",
+            "image": 27,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a81644079c56f0072e916db",
+            "image": 28,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4d1",
+            "image": 32,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4d2",
+            "image": 33,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4d3",
+            "image": 34,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9ec067005de3007716a4d4",
+            "image": 35,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "pressLogos",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81644079c56f0072e916e7",
+        "title": "Kezdd el otthon, a saját tempódban",
+        "text": "Ha nem tudsz eljutni hozzánk a rendelőbe, az otthoni kézrehabilitációs programunkkal bárhol, bármikor gyakorolhatsz.",
+        "blockName": null,
+        "blockType": "ctaBanner",
+        "cta": {
+          "felirat": "Megnézem a kurzusokat",
+          "url": "/kurzusok",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      }
+    ]
+  },
+  "kezdolap": {
+    "id": 1,
+    "slug": "kezdolap",
+    "title": "Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen",
+    "layout": [
+      {
+        "id": "6a77d01c912afa00500f9804",
+        "title": "Hatékony és biztonságos módszerek a kéz és a kar fájdalmai ellen",
+        "lead": "Professzionális, mégis emberközeli terápiás megoldásokkal kezeljük a különböző mozgásszervi problémákat, hogy te ismét önfeledten dolgozhass, sportolhass vagy gondoskodhass szeretteidről.",
+        "blockName": null,
+        "tags": [
+          {
+            "id": "6a77d01c912afa00500f97fe",
+            "label": "Kéz"
+          },
+          {
+            "id": "6a77d01c912afa00500f97ff",
+            "label": "Csukló"
+          },
+          {
+            "id": "6a77d01c912afa00500f9800",
+            "label": "Könyök"
+          },
+          {
+            "id": "6a77d01c912afa00500f9801",
+            "label": "Váll"
+          }
+        ],
+        "ctas": [
+          {
+            "id": "6a77d01c912afa00500f9802",
+            "felirat": "Nézd meg a kurzusokat",
+            "url": "/kurzusok",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f9803",
+            "felirat": "Ingyenes SOS gyakorlatok",
+            "url": "#ingyenes",
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "filmHero",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null
+        }
+      },
+      {
+        "id": "6a9c87851506dc83a6ad17c7",
+        "eyebrow": null,
+        "title": "Megérdemled a profi törődést",
+        "photo": 12,
+        "blockName": "Rövid bemutatkozás",
+        "paragraphs": [
+          {
+            "id": "6aaefa8332d7f20022ea3f6a",
+            "text": "Kocsis Kata és Kiss Kata vagyunk, kézrehabilitációra szakosodott gyógytornászok. Több mint tíz éve a kéz, a csukló és a könyök panaszaival foglalkozunk, két budapesti rendelőben és online.",
+            "emphasized": true
+          },
+          {
+            "id": "6aaefa8332d7f20022ea3f6b",
+            "text": "Kocsis Kata a Pécsi Tudományegyetemen, Kiss Kata pedig a Semmelweis Egyetemen diplomázott. Manuálterapeutaként és sportrehabilitációs trénerként is segítik a páciensek gyógyulását. Továbbá szakembereknek szóló akkreditált kézrehabilitációs képzés oktatói és az otthoni kézrehab programok megalkotói.",
+            "emphasized": false
+          },
+          {
+            "id": "6aaefa8332d7f20022ea3f6c",
+            "text": "Vizsgálat után a panaszaidhoz szabott tervet kapsz, otthonra pedig videókurzust a saját tempódban.",
+            "emphasized": false
+          }
+        ],
+        "stats": [],
+        "blockType": "about",
+        "feature": {
+          "label": "Szakmai egyesületi tagság",
+          "note": "A Magyar Sportrehabilitációs Egyesület és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk."
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9811",
+        "heading": "Itt találkozhattál velünk",
+        "blockName": null,
+        "logos": [
+          {
+            "id": "6a77d01c912afa00500f980b",
+            "image": 23,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f980c",
+            "image": 24,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f980d",
+            "image": 25,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f980e",
+            "image": 26,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f980f",
+            "image": 27,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f9810",
+            "image": 28,
+            "alt": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c957436937b2ea701128f",
+            "image": 32,
+            "alt": "A Kossuth Rádió logója",
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c95a136937b2ea7011290",
+            "image": 33,
+            "alt": "A TV2 logója",
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c95c136937b2ea7011291",
+            "image": 34,
+            "alt": "A Magyar Sportrehabilitációs Egyesület logója",
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c95ea36937b2ea7011292",
+            "image": 35,
+            "alt": "A Magyar Kézsebész Társaság logója",
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "pressLogos",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9808",
+        "blockName": null,
+        "items": [
+          {
+            "id": "6a77d01c912afa00500f9805",
+            "text": "Gyógytornász és manuálterapeuta szakmai háttér"
+          },
+          {
+            "id": "6a77d01c912afa00500f9806",
+            "text": "Sportolók és olimpikonok is fordulnak hozzánk"
+          },
+          {
+            "id": "6a77d01c912afa00500f9807",
+            "text": "Szakmai egyesületi tagság"
+          }
+        ],
+        "blockType": "credsStrip",
+        "link": {
+          "felirat": "Bővebben a szakmai hátterünkről",
+          "url": "/rolunk",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9823",
+        "eyebrow": "Szolgáltatásaink",
+        "title": "Így tudunk segíteni",
+        "lead": null,
+        "elrendezes": "tabla",
+        "image": 31,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a77d01c912afa00500f9820",
+            "number": "01",
+            "title": "Rendelői kezelések",
+            "osszefoglalo": null,
+            "body": "Akut sérülések, műtét utáni állapotok és krónikus fájdalmak esetén a mozgásterápia a gyógyulás alappillére. Gyógytornával, manuálterápiával és egy sor kiegészítő terápiával várunk a stúdiónkban.",
+            "photo": null,
+            "felirat": "Tovább a kezelésekre",
+            "url": "/szolgaltatasok",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f9821",
+            "number": "02",
+            "title": "Otthoni program",
+            "osszefoglalo": null,
+            "body": "Otthoni videókurzusunkkal a saját tempódban gyakorolhatsz. A teljes program tartalmát és árát a kurzus oldalán találod.",
+            "photo": null,
+            "felirat": "Nézd meg a kurzusokat",
+            "url": "/kurzusok",
+            "ujAblakban": false
+          },
+          {
+            "id": "6a77d01c912afa00500f9822",
+            "number": "03",
+            "title": "Szakmai képzések",
+            "osszefoglalo": null,
+            "body": "Akkreditált tantermi kézkurzusunkat a ProBody Stúdióval együttműködve hoztuk létre a kéz, a csukló- és könyökízület rehabilitációs lehetőségeiről gyógytornászoknak, orvosoknak, erőnléti és szakági edzőknek.",
+            "photo": null,
+            "felirat": "Nézd meg a kézworkshopot",
+            "url": "https://probodystudio.hu/kez-workshop/",
+            "ujAblakban": true
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9809",
+        "eyebrow": null,
+        "heading": "Kurzusaink",
+        "lead": "Online kézrehabilitációs kurzusaink lépésről lépésre vezetnek végig az otthoni felépülésen.",
+        "ctaLabel": null,
+        "blockName": null,
+        "blockType": "courseCards",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "kurzusok",
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f982f",
+        "title": "Így működik az online kurzus",
+        "blockName": null,
+        "steps": [
+          {
+            "id": "6a77d01c912afa00500f982c",
+            "title": "Kiválasztod a kurzust",
+            "text": "A panaszodhoz illő programot néhány kattintással megvásárolod, bankkártyával, biztonságosan."
+          },
+          {
+            "id": "6a77d01c912afa00500f982d",
+            "title": "Azonnal hozzáférsz",
+            "text": "A videós anyagokat a fiókodban éred el, saját tempódban, amikor neked megfelel."
+          },
+          {
+            "id": "6a77d01c912afa00500f982e",
+            "title": "Otthon gyakorolsz",
+            "text": "Kövesd a videók útmutatását, és gyakorolj a saját tempódban."
+          }
+        ],
+        "blockType": "howItWorks",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f980a",
+        "title": "SOS Kézrelax — ingyenes villámkurzus",
+        "body": "Ha előbb kipróbálnád a módszert: rövid, azonnal használható gyakorlatok hirtelen jelentkező kézfájdalomra.",
+        "backgroundImage": 31,
+        "blockName": null,
+        "blockType": "freeSos",
+        "cta": {
+          "felirat": "Elindítom az ingyenes kurzust",
+          "url": "/kurzusok",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "ingyenes",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9817",
+        "title": "Szeretnél megszabadulni a fájdalomtól, de hiába próbáltál ki (szinte) mindent?",
+        "lead": "Tudjuk, milyen, amikor:",
+        "blockName": null,
+        "checklist": [
+          {
+            "id": "6a77d01c912afa00500f9812",
+            "text": "Az ujjad vagy a csuklód már a nap közepén görcsöl, és esélyed sincs pihentetni"
+          },
+          {
+            "id": "6a77d01c912afa00500f9813",
+            "text": "Minden mozdulatnál attól tartasz, csak ne legyen rosszabb"
+          },
+          {
+            "id": "6a77d01c912afa00500f9814",
+            "text": "Egyre több kenőcsöt, borogatást és „csodaszert” halmozol fel, de a fájdalom újra és újra jelentkezik."
+          }
+        ],
+        "sideParagraphs": [
+          {
+            "id": "6a77d01c912afa00500f9815",
+            "text": "Ha eleged van abból, hogy már csak félgőzzel bírsz dolgozni vagy sportolni, mert félsz a fájdalomtól, vagy netán a fájdalomcsillapítókig fajult a helyzet, akkor a legjobb helyen jársz.",
+            "emphasized": false
+          },
+          {
+            "id": "6a77d01c912afa00500f9816",
+            "text": "Mozgásterápiás módszerekkel tudunk abban segíteni, hogy végre megszűnjön a kézfájdalmad, és újra teljes erőbedobással élhesd a mindennapjaid.",
+            "emphasized": true
+          }
+        ],
+        "blockType": "welcome",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a9c96a036937b2ea7011293",
+        "eyebrow": null,
+        "title": "Erre számíthatsz velünk",
+        "lead": null,
+        "elrendezes": "tabla",
+        "image": 12,
+        "blockName": null,
+        "rows": [
+          {
+            "id": "6a9c96b036937b2ea7011294",
+            "number": "01",
+            "title": "Szakmai figyelem",
+            "osszefoglalo": null,
+            "body": "A kutatásokat és a gyakorlati tapasztalatainkat együtt használjuk. Személyes kezelésen a terhelhetőségedhez igazítjuk a közös munkát.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          },
+          {
+            "id": "6a9c96cb36937b2ea7011295",
+            "number": "02",
+            "title": "Segítség a mindennapokhoz",
+            "osszefoglalo": null,
+            "body": "Rendelői kezeléssel és otthoni videókurzussal is támogatunk. Megmutatjuk, hogyan építheted be a gyakorlást a hétköznapjaidba.",
+            "photo": null,
+            "felirat": null,
+            "url": null,
+            "ujAblakban": false
+          }
+        ],
+        "blockType": "services",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f982b",
+        "eyebrow": "Rólunk",
+        "title": "Megérdemled a profi törődést",
+        "photo": 22,
+        "blockName": null,
+        "paragraphs": [
+          {
+            "id": "6a9edd8966c3b40022007e10",
+            "text": "A kéz rehabilitációja a szakterületünk. Gyógytornával, manuálterápiával és otthoni gyakorlással támogatunk a mindennapi mozgásban.",
+            "emphasized": true
+          },
+          {
+            "id": "6a9edd8966c3b40022007e11",
+            "text": "Személyes kezelésen a panaszaidhoz és a terhelhetőségedhez igazítjuk a közös munkát. Az online kurzus tartalmát előre megismerheted, és a saját tempódban haladhatsz vele.",
+            "emphasized": false
+          }
+        ],
+        "stats": [
+          {
+            "id": "6a77d01c912afa00500f9828",
+            "value": "10+",
+            "label": "év szakmai tapasztalat"
+          },
+          {
+            "id": "6a77d01c912afa00500f9829",
+            "value": "1000+",
+            "label": "elégedett páciens"
+          },
+          {
+            "id": "6a77d01c912afa00500f982a",
+            "value": "1",
+            "label": "közös cél: fájdalommentesség"
+          }
+        ],
+        "blockType": "about",
+        "feature": {
+          "label": "Szakmai egyesületi tagság",
+          "note": "A Magyar Sportrehabilitációs Egyesület és a Magyar Gyógytornász-Fizioterapeuták Társaságának munkájában is részt veszünk."
+        },
+        "sectionSettings": {
+          "visible": false,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9830",
+        "eyebrow": "Vélemények",
+        "heading": "Pácienseink mondták",
+        "maxItems": 3,
+        "blockName": null,
+        "blockType": "testimonials",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": "velemenyek",
+          "hatter": "tint"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9831",
+        "heading": "Legfrissebb a tudástárból",
+        "limit": 3,
+        "blockName": null,
+        "blockType": "knowledge",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a77d01c912afa00500f9836",
+        "heading": "Gyakori kérdések",
+        "blockName": null,
+        "items": [
+          {
+            "id": "6a77d01c912afa00500f9832",
+            "question": "Online kurzust vagy személyes kezelést válasszak?",
+            "answer": "A kurzus előre összeállított gyakorlatsorokat ad az otthoni mozgáshoz. Személyes kezelésen megvizsgálunk, és hozzád igazítjuk a kezelési tervet. Ha bizonytalan vagy, keress minket, és segítünk eligazodni."
+          },
+          {
+            "id": "6a77d01c912afa00500f9833",
+            "question": "Hogyan kérhetek időpontot személyes kezelésre?",
+            "answer": "A Kapcsolat oldalon megtalálod az időpontkérő űrlapot és az elérhetőségeinket. A rendelői alkalom részleteit közösen egyeztetjük."
+          },
+          {
+            "id": "6a77d01c912afa00500f9834",
+            "question": "Kérdezhetek, mielőtt választok?",
+            "answer": "Igen. A Kapcsolat oldalon elérsz minket, ha kérdésed van a kezelésekről vagy a kurzusokról. Segítünk átgondolni, melyik lehetőséggel érdemes továbbindulnod."
+          },
+          {
+            "id": "6a77d01c912afa00500f9835",
+            "question": "Mire figyeljek a gyakorlatok előtt és közben?",
+            "answer": "Műtét után mindig a kezelőorvosod vagy gyógytornászod jóváhagyásával kezdj bele. Éles fájdalom esetén hagyd abba, és kérj szakmai segítséget."
+          }
+        ],
+        "blockType": "faq",
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "feher"
+        }
+      },
+      {
+        "id": "6a81bcca23c875002278e992",
+        "title": "Kezdd el még ma",
+        "text": "Az otthoni kézrehabilitációs programmal a saját tempódban indulhatsz: a videós gyakorlatokat a vásárlás után azonnal eléred, és naponta néhány perc gyakorlás is visz előre. A programot kézrehabilitációval foglalkozó gyógytornászok állították össze.",
+        "blockName": null,
+        "blockType": "ctaBanner",
+        "cta": {
+          "felirat": "Nézd meg a kurzusokat",
+          "url": "/kurzusok",
+          "ujAblakban": false
+        },
+        "sectionSettings": {
+          "visible": true,
+          "anchorId": null,
+          "hatter": "tint"
+        }
+      }
+    ]
+  }
+}

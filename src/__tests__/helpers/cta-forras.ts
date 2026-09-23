@@ -45,6 +45,11 @@ export const KIHAGYOTT_RESZFAK: readonly { readonly eloTag: string; readonly ind
     indok: 'A Payload admin route-csoportja — nem vevői felület.',
   },
   {
+    eloTag: 'components/editor/',
+    indok:
+      'A szerkesztői réteg: a fejléc „Szerkesztő nézet” belépője, a piszkozat-előnézet „Szerkesztem” szalagjai és az admin mélylink-nyitója. Csak bejelentkezett staff/owner látja, a §3.2 vevői CTA-szótár nem rá szól (a components/preview/ párja).',
+  },
+  {
     eloTag: 'components/preview/',
     indok: 'Az élő előnézet szerkesztői sávja — csak bejelentkezett szerkesztő látja.',
   },

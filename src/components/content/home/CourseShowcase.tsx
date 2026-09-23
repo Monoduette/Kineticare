@@ -12,7 +12,6 @@ import {
 import { courseHref } from '../../../lib/course-url'
 import { ctaLabel } from '../../../lib/cta-vocabulary'
 import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../../lib/courses'
-import { rewriteVisitorDashLeftover } from '../../../lib/gondolatjel-leftover'
 import type { Product } from '../../../payload-types'
 import { PriceTag } from '../../ui/PriceTag'
 import { CoursePromoBadge, promoAccessibleNamePrefix } from '../../courses/CoursePromoBadge'
@@ -191,7 +190,16 @@ export function CourseShowcase({
   }
 
   const title = heading?.trim() || COURSE_SHOWCASE_HEADING
-  const leadText = rewriteVisitorDashLeftover(lead?.trim() || COURSE_SHOWCASE_LEAD)
+  // A lead a szerkesztő szövege, betűre (csak a szélső szóköz marad le, ahogy a
+  // címnél); üresen a beépített tartalék. Gondolatjel-csere
+  // (`rewriteVisitorDashLeftover`) itt NEM fut: a megjelenítés nem írhatja át a
+  // mentett CMS-szöveget, a szerkesztő azt lássa a lapon, amit beírt (NN/g,
+  // 10 Usability Heuristics, #1 Visibility of system status,
+  // https://www.nngroup.com/articles/ten-usability-heuristics/). Maradék jelet
+  // a mentett adaton kell javítani, tartalom-jobbal, pontos egyezésre. Az élő
+  // lead (2026-09-22) nem maradék-minta, a lap látványa ezért nem változik
+  // (src/__tests__/kurzusaink-sav-cms-szoveg.test.tsx).
+  const leadText = lead?.trim() || COURSE_SHOWCASE_LEAD
   const markText = mark === null ? '' : mark.trim() || COURSE_SHOWCASE_MARK
   const hasScene = markText.length > 0 || scenePhotos
 

@@ -59,6 +59,25 @@ export const NOT_FOUND_DESTINATIONS = [
 ] as const
 
 /**
+ * A Tudástár-javaslat célja a fenti listában.
+ *
+ * Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): rejtett /blog menüpontnál
+ * a Tudástár sehol nem jelenhet meg, a hibaoldalon sem. Ilyenkor a lista a
+ * többi, mindig élő célra szűkül. A modul maga szándékosan nem olvas
+ * adatbázist: az állapotot a beépítési hely adja át.
+ */
+export const NOT_FOUND_TUDASTAR_HREF = '/blog'
+
+/** A továbbvezető célok a Tudástár-kapcsoló állapota szerint. */
+export function notFoundDestinations(
+  tudastarLathato: boolean,
+): ReadonlyArray<(typeof NOT_FOUND_DESTINATIONS)[number]> {
+  return tudastarLathato
+    ? NOT_FOUND_DESTINATIONS
+    : NOT_FOUND_DESTINATIONS.filter((destination) => destination.href !== NOT_FOUND_TUDASTAR_HREF)
+}
+
+/**
  * Kapcsolatfelvételi e-mail.
  *
  * Szándékosan NEM a `Footer.tsx` konstansát importáljuk: a lábléc modulja

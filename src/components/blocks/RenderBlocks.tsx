@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+
 import type { Media, Page, Post, Product, Testimonial } from '../../payload-types'
 import {
   EMPTY_APPOINTMENT_CONTEXT,
@@ -7,7 +9,10 @@ import { showcaseGridProducts } from '../../lib/course-showcase'
 import { resolveCtaBannerFigure } from '../../lib/cta-banner-course'
 import { logger } from '../../lib/logger'
 import { CLINIC_TREATMENTS_ANCHOR } from '../../lib/menu-seed'
-import { felismerRendeloiArlista } from '../../lib/rendeloi-arlista'
+import {
+  felismerRendeloiArlista,
+  type RendeloiArlista as RendeloiArlistaModell,
+} from '../../lib/rendeloi-arlista'
 import { isAvailableSosProduct } from '../../lib/sos-offer'
 import { RichText } from '../lexical/RichText'
 import { hasLexicalContent } from '../lexical/serialize'
@@ -19,6 +24,8 @@ import { HowItWorks } from '../content/home/HowItWorks'
 import { KnowledgeSection } from '../content/home/KnowledgeSection'
 import { TestimonialsSection } from '../content/home/TestimonialsSection'
 import { isPubliclyVisibleProduct } from '../content/ProductCard'
+import { szekcioSzalagja, type SzerkesztoReteg } from '../editor/frontend/szerkeszto-szalag'
+import { SzerkesztoSzalag } from '../editor/frontend/SzerkesztoSzalag'
 import { Container } from '../ui/Container'
 import { Section } from '../ui/Section'
 import { About } from './About'
@@ -130,6 +137,31 @@ export interface RenderBlocksProps {
    * null: a sáv a kurzus-borítót oldja fel, ahogy a kezdőlapon.
    */
   ctaBannerMontazs?: Media | null
+  /**
+   * A frontend „Szerkesztem” réteg (modul-térkép A3). CSAK piszkozat-
+   * előnézetben adja át a route (`draftMode()`), a MENTETT szekciósorból
+   * számolva (src/components/editor/frontend/szerkeszto-szalag.ts). Ha
+   * hiányzik vagy null, a kimenet bájtra a réteg nélküli render: nincs új
+   * elem, burkoló vagy attribútum. Ha adott, minden szekció ELŐTT szalag áll,
+   * a rejtett szekció helyén pedig csak a „rejtett szekció” szalag.
+   */
+  szerkesztes?: SzerkesztoReteg | null
+}
+
+/**
+ * A rendelői árlista a szabad szövegből (WP58): csak a `rendeloi` horgonyú,
+ * nem üres szabad szövegen próbálkozunk. `undefined` = nem ilyen blokk; `null`
+ * = a felismerés nem sikerült (H29: a szalag ezt kimondja).
+ */
+function rendeloiArlistaFelismerese(block: LayoutBlock): RendeloiArlistaModell | null | undefined {
+  if (
+    block.blockType !== 'richText' ||
+    !hasLexicalContent(block.content) ||
+    sectionProps(block).id !== CLINIC_TREATMENTS_ANCHOR
+  ) {
+    return undefined
+  }
+  return felismerRendeloiArlista(block.content)
 }
 
 export function RenderBlocks({
@@ -140,6 +172,7 @@ export function RenderBlocks({
   appointment = EMPTY_APPOINTMENT_CONTEXT,
   hubUtvonalak,
   ctaBannerMontazs = null,
+  szerkesztes = null,
 }: RenderBlocksProps) {
   const visibleProducts = products.filter(isPubliclyVisibleProduct)
   // A fizetős halmaz a GYIK „SOS vs. teljes program” összevetéséhez kell.
@@ -172,12 +205,16 @@ export function RenderBlocks({
   return (
     <>
       {layout.map((block, index) => {
+        const key = block.id ?? `${block.blockType}-${index}`
+        // A szerkesztői szalag csak piszkozat-előnézetben létezik (szerkesztes).
+        const szalag = szekcioSzalagja(szerkesztes, block.id)
         if (block.sectionSettings?.visible === false) {
-          return null
+          // Rejtett szekció: a tartalom nem renderelődik, előnézetben csak a
+          // „rejtett szekció” szalag áll a helyén (modul-térkép H02).
+          return szalag ? <SzerkesztoSzalag key={key} szalag={szalag} /> : null
         }
         const isRepeat = seenTypes.has(block.blockType)
         seenTypes.add(block.blockType)
-        const key = block.id ?? `${block.blockType}-${index}`
         // WP11: a filmsáv UTÁN közvetlenül álló első About-blokk az
         // alapítók-alak (fotó-fríz a jobb hasábban). A jel a szekciósorból
         // jön, nem a lapból: a /rolunk-on nincs filmsáv, ott a blokk marad.
@@ -198,7 +235,8 @@ export function RenderBlocks({
                 : `ingyenes-${nextFreeSos.id ?? 'ismetelt'}`)
             }`
           : null
-        return (
+        const arlista = rendeloiArlistaFelismerese(block)
+        const tartalom = (
           <BlockSwitch
             key={key}
             freeSosHref={freeSosHref}
@@ -216,8 +254,18 @@ export function RenderBlocks({
               appointment,
               hubUtvonalak,
               ctaBannerMontazs,
+              arlista,
             }}
           />
+        )
+        if (!szalag) {
+          return tartalom
+        }
+        return (
+          <Fragment key={key}>
+            <SzerkesztoSzalag arlistaNemIsmerheto={arlista === null} szalag={szalag} />
+            {tartalom}
+          </Fragment>
         )
       })}
     </>
@@ -239,6 +287,7 @@ function BlockSwitch({
   appointment,
   hubUtvonalak,
   ctaBannerMontazs,
+  arlista,
 }: {
   block: LayoutBlock
   /** A típus ismételt példánya-e a lapon — az alap-horgony csak az elsőé. */
@@ -264,6 +313,8 @@ function BlockSwitch({
   hubUtvonalak: Readonly<Record<string, string>> | undefined
   /** A lap statikus CTA-sáv képe (a /rolunk montázsa), vagy null. */
   ctaBannerMontazs: Media | null
+  /** A rendelői árlista felismerésének eredménye (`rendeloiArlistaFelismerese`). */
+  arlista: RendeloiArlistaModell | null | undefined
 }) {
   switch (block.blockType) {
     case 'filmHero':
@@ -430,7 +481,6 @@ function BlockSwitch({
       // visszaesés naplózott, hogy a szerkesztői átírás után ne némán tűnjön
       // el az elrendezés.
       if (id === CLINIC_TREATMENTS_ANCHOR) {
-        const arlista = felismerRendeloiArlista(block.content)
         if (arlista) {
           return <RendeloiArlista blockId={block.id} id={id} modell={arlista} variant={variant} />
         }

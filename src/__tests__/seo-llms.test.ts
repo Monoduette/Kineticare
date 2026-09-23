@@ -6,10 +6,13 @@ import {
   buildLlmsTxt,
   layoutBlockToMarkdown,
   lexicalToMarkdown,
+  vanElerhetoIngyenesSos,
   type LlmsSource,
 } from '../lib/seo-llms'
+import { FILM_CAPTION_DEFAULTS } from '../lib/film-captions'
+import { FREE_SOS_NEUTRAL_TITLE, FREE_SOS_STRIP_TITLE } from '../lib/free-sos-title'
 import { COURSE_SHORT_DESCRIPTION_LEFTOVER } from '../lib/gondolatjel-leftover'
-import type { Page, Post } from '../payload-types'
+import type { Page, Post, Product } from '../payload-types'
 
 /**
  * Őr: az `/llms.txt` az llmstxt.org alakját követi (https://llmstxt.org/):
@@ -256,5 +259,190 @@ describe('lexicalToMarkdown', () => {
     expect(layoutBlockToMarkdown(block)).toBe(
       '## Ezért fogod imádni\n\n#### Gyors\n\nNapi 10 perc.',
     )
+  })
+})
+
+describe('Tudástár-kapcsoló: kikapcsolva nincs Tudástár az llms-fájlokban', () => {
+  const link = (url: string, label: string) => ({
+    type: 'link',
+    fields: { linkType: 'custom', url },
+    children: [text(label)],
+  })
+  const OFF_SOURCE: LlmsSource = {
+    ...SOURCE,
+    pages: [
+      ...SOURCE.pages,
+      {
+        title: 'Rólunk',
+        slug: 'rolunk',
+        excerpt: 'Két gyógytornász.',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+        layout: [
+          {
+            blockType: 'services',
+            title: 'Merre tovább?',
+            rows: [{ title: 'Olvass tovább', body: 'Cikkek.', url: '/blog', felirat: 'Tudástár' }],
+          },
+          { blockType: 'knowledge', heading: 'Legfrissebb a tudástárból' },
+          {
+            blockType: 'richText',
+            content: richText([
+              paragraph(
+                text('Bővebben a '),
+                link('/blog/pattano-ujj', 'pattanó ujjról'),
+                text('.'),
+              ),
+            ]),
+          },
+        ] as unknown as Page['layout'],
+      },
+    ],
+    products: [
+      {
+        ...SOURCE.products[0],
+        longDescription: richText([
+          paragraph(link('https://www.kineticare.hu/keztoalagut-szindroma', 'kéztőalagút')),
+        ]) as unknown as LlmsSource['products'][number]['longDescription'],
+      },
+    ],
+  }
+  const tudastarCim = /\/blog|keztoalagut-szindroma|pattano-ujj|miert-zsibbad/
+
+  it('bekapcsolva (alapértelmezés) a kimenet változatlan', () => {
+    expect(buildLlmsTxt({ ...SOURCE, tudastarLathato: true })).toBe(buildLlmsTxt(SOURCE))
+    expect(buildLlmsFullTxt({ ...SOURCE, tudastarLathato: true })).toBe(buildLlmsFullTxt(SOURCE))
+  })
+
+  it('llms.txt: nincs Tudástár-szekció, cikk és hub; a többi szekció marad', () => {
+    const body = buildLlmsTxt({ ...OFF_SOURCE, tudastarLathato: false })
+    expect(body).not.toContain('## Tudástár')
+    expect(body).not.toMatch(tudastarCim)
+    expect(body).toContain('A kurzusok magyar nyelvűek.')
+    expect(body).toContain('\n## Szolgáltatások és oldalak\n')
+    expect(body).toContain('\n## Kurzusok\n')
+    expect(body).toContain(`- [Rólunk](${absoluteUrl('/rolunk')})`)
+  })
+
+  it('llms-full.txt: nincs cikk, hub és Tudástár-link; a link szövege megmarad', () => {
+    const body = buildLlmsFullTxt({ ...OFF_SOURCE, tudastarLathato: false })
+    expect(body).not.toMatch(tudastarCim)
+    expect(body).not.toContain('Cikk-szöveg.')
+    expect(body).not.toContain('Legfrissebb a tudástárból')
+    expect(body).toContain('Bővebben a pattanó ujjról.')
+    expect(body).toContain('kéztőalagút')
+    expect(body).toContain('# Rólunk')
+  })
+
+  it('a bemenetet nem módosítja', () => {
+    const elotte = JSON.stringify(OFF_SOURCE)
+    buildLlmsFullTxt({ ...OFF_SOURCE, tudastarLathato: false })
+    expect(JSON.stringify(OFF_SOURCE)).toBe(elotte)
+  })
+})
+
+/**
+ * H46 („Egy mező, egy feloldó”): ahol a lap mást mutat, mint a nyers mező, az
+ * llms-full.txt a lap feloldóját hívja. A lap és a fájl egyezését végponttól
+ * végpontig a src/__tests__/gepi-olvasas-feloldok.test.ts méri; itt az
+ * építő saját ágai állnak.
+ */
+describe('llms-full.txt: a lap feloldói (H46)', () => {
+  type Blokk = NonNullable<Page['layout']>[number]
+  const sosSav = (title: string | null): Blokk => ({ blockType: 'freeSos', title }) as Blokk
+  const film = (captions?: Record<string, string | null>): Blokk =>
+    ({ blockType: 'filmHero', title: 'Nyitó film', ...(captions ? { captions } : {}) }) as Blokk
+  const kezdolap = (layout: Blokk[], ingyenesSos?: boolean): LlmsSource => ({
+    pages: [
+      { title: 'Kezdőlap', slug: 'kezdolap', excerpt: null, updatedAt: '2026-09-22', layout },
+    ],
+    posts: [],
+    products: [],
+    ...(ingyenesSos === undefined ? {} : { ingyenesSos }),
+  })
+
+  it('az SOS-sáv címe: CMS-cím, üresen a tartalék, SOS nélkül „Kurzusaink”', () => {
+    const sos = { ingyenesSos: true, sosSavLentebb: false }
+    expect(layoutBlockToMarkdown(sosSav('  Saját  cím  '), sos)).toBe('## Saját cím')
+    expect(layoutBlockToMarkdown(sosSav('   '), sos)).toBe(`## ${FREE_SOS_STRIP_TITLE}`)
+    expect(layoutBlockToMarkdown(sosSav('Saját cím'))).toBe(`## ${FREE_SOS_NEUTRAL_TITLE}`)
+    expect(buildLlmsFullTxt(kezdolap([sosSav('Saját cím')]))).toContain(
+      `\n## ${FREE_SOS_NEUTRAL_TITLE}\n`,
+    )
+    expect(buildLlmsFullTxt(kezdolap([sosSav('Saját cím')], true))).toContain('\n## Saját cím\n')
+  })
+
+  it('a gondolatjeles CMS-címet a gépi olvasás sem írja át (a lap sem)', () => {
+    const md = layoutBlockToMarkdown(sosSav('SOS Kézrelax \u2014 ingyenes villámkurzus'), {
+      ingyenesSos: true,
+      sosSavLentebb: false,
+    })
+    expect(md).toBe('## SOS Kézrelax \u2014 ingyenes villámkurzus')
+  })
+
+  it('a nyitó videó feliratai a beépített tartalékkal; a vég-leírás a lentebbi SOS-sávtól függ', () => {
+    const lentebb = buildLlmsFullTxt(kezdolap([film(), sosSav('Cím')], true))
+    expect(lentebb).toContain(
+      [
+        FILM_CAPTION_DEFAULTS.midTitle,
+        FILM_CAPTION_DEFAULTS.midBody,
+        FILM_CAPTION_DEFAULTS.endTitle,
+        FILM_CAPTION_DEFAULTS.endBody,
+      ].join('\n\n'),
+    )
+    for (const source of [
+      kezdolap([film(), sosSav('Cím')], false),
+      kezdolap([sosSav('Cím'), film()], true),
+      kezdolap([film()], true),
+    ]) {
+      const md = buildLlmsFullTxt(source)
+      expect(md).toContain(FILM_CAPTION_DEFAULTS.endBodyWithoutFreeSos)
+      expect(md).not.toContain(FILM_CAPTION_DEFAULTS.endBody)
+    }
+  })
+
+  it('a kitöltött felirat a CMS-é, a rejtett filmsáv feliratai sem kerülnek be', () => {
+    const sajat = { midTitle: ' Saját közép ', midBody: 'Közép leírás.', endTitle: null }
+    const md = layoutBlockToMarkdown(film(sajat))
+    expect(md).toContain('Saját közép\n\nKözép leírás.')
+    expect(md).toContain(FILM_CAPTION_DEFAULTS.endTitle)
+    const rejtett = { ...film(sajat), sectionSettings: { visible: false } } as Blokk
+    expect(layoutBlockToMarkdown(rejtett)).toBe('')
+  })
+
+  it('a /kapcsolat termék nélkül renderel, ott az SOS-sáv semleges', () => {
+    const source: LlmsSource = {
+      pages: [
+        {
+          title: 'Kapcsolat',
+          slug: 'kapcsolat',
+          excerpt: null,
+          updatedAt: '2026-09-22',
+          layout: [sosSav('Saját cím')],
+        },
+      ],
+      posts: [],
+      products: [],
+      ingyenesSos: true,
+    }
+    expect(buildLlmsFullTxt(source)).toContain(`\n## ${FREE_SOS_NEUTRAL_TITLE}\n`)
+  })
+
+  it('vanElerhetoIngyenesSos: a lap predikátuma (listázható és elérhető SOS-kurzus)', () => {
+    const sos = {
+      id: 3,
+      slug: 'sos-kezrelax-villamkurzus',
+      status: 'published',
+      _status: 'published',
+      priceInHUFEnabled: false,
+    } as Product
+    expect(vanElerhetoIngyenesSos([sos])).toBe(true)
+    expect(vanElerhetoIngyenesSos([])).toBe(false)
+    expect(vanElerhetoIngyenesSos([{ ...sos, unlisted: true }])).toBe(false)
+    expect(vanElerhetoIngyenesSos([{ ...sos, _status: 'draft' }])).toBe(false)
+    expect(vanElerhetoIngyenesSos([{ ...sos, status: 'archived' }])).toBe(false)
+    expect(vanElerhetoIngyenesSos([{ ...sos, priceInHUFEnabled: true, priceInHUF: 100 }])).toBe(
+      false,
+    )
+    expect(vanElerhetoIngyenesSos([{ ...sos, slug: 'masik-ingyenes' }])).toBe(false)
   })
 })

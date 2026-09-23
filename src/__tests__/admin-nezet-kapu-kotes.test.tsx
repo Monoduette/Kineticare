@@ -47,6 +47,8 @@ vi.mock('../components/admin/BunnyLibraryPanel', () => ({
 const { StatisticsView } = await import('../components/admin/StatisticsView')
 const { BunnyLibraryView } = await import('../components/admin/BunnyLibraryView')
 const {
+  EMBED_MISSING_STAFF_MESSAGE,
+  EMBED_MISSING_TITLE,
   WebAnalyticsView,
   WEB_ANALYTICS_ACCESS_DENIED_MESSAGE,
   WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE,
@@ -163,10 +165,18 @@ describe('Webanalitika nézet: ugyanaz a kapu-kötés', () => {
     expect(html).toContain(WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE)
     expect(html).toContain('Külső elemző-felületek')
     expect(html).toContain('https://analytics.google.com/')
-    // POSTHOG_SHARED_DASHBOARD_URL nincs beállítva a tesztben → nincs iframe,
-    // helyette a beüzemelés lépései.
+    // POSTHOG_SHARED_DASHBOARD_URL nincs beállítva a tesztben → nincs iframe.
+    // K13: a beüzemelés lépései (és a változó neve) csak a tulajdonosé, a
+    // munkatárs a teendőt kapja; a kapu ettől változatlan.
     expect(html).not.toContain('<iframe')
-    expect(html).toContain('POSTHOG_SHARED_DASHBOARD_URL')
+    expect(html).not.toContain('POSTHOG_SHARED_DASHBOARD_URL')
+    expect(html).toContain(EMBED_MISSING_STAFF_MESSAGE)
+    expect(html).toContain('Szólj neki')
+    // A doboz címe és a munkatársi bekezdés nem ugyanaz a mondat.
+    expect(html).toContain(`>${EMBED_MISSING_TITLE}</h3>`)
+    expect(EMBED_MISSING_STAFF_MESSAGE.toLowerCase()).not.toContain(
+      EMBED_MISSING_TITLE.toLowerCase(),
+    )
   })
 
   it('érvényes megosztási linkkel az iframe az embedded alakra normalizálva jelenik meg', async () => {

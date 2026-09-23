@@ -646,3 +646,78 @@ describe('buildCurriculum — hozzáférés nélkül a tartalom nem szivárog', 
     expect(curriculum.lessons[1]?.url).toBe('https://facebook.com/titkos-csoport')
   })
 })
+
+/**
+ * K46: a „Korábbi nyilvános fájl” csak ott látszik, ahol már van ilyen fájl.
+ * A mező nem kötelező, így a feltétel séma-semleges (a G2 őr igazolja); az
+ * üzenet a látható mezőkhöz igazodik.
+ */
+describe('mellékletsor: a korábbi nyilvános fájl feltételes megjelenítése (K46)', async () => {
+  const { courseModulesField, hasLegacyAttachmentFile } = await import('../fields/course-modules')
+  const {
+    ATTACHMENT_DOUBLE_FILE_MESSAGE,
+    ATTACHMENT_MISSING_FILE_MESSAGE,
+    validateCourseAttachments,
+  } = await import('../fields/course-attachments')
+
+  const lessons = courseModulesField.fields.find((f) => 'name' in f && f.name === 'lessons')
+  const lessonFields = lessons && 'fields' in lessons ? lessons.fields : []
+  const attachments = lessonFields.find((f) => 'name' in f && f.name === 'attachments')
+  const attachmentFields = attachments && 'fields' in attachments ? attachments.fields : []
+  const legacy = attachmentFields.find((f) => 'name' in f && f.name === 'file')
+
+  it('a mező nem kötelező, és a feltétele a hasLegacyAttachmentFile', () => {
+    expect(legacy?.type).toBe('upload')
+    expect(legacy && 'required' in legacy ? legacy.required : undefined).toBe(false)
+    expect(legacy?.admin?.condition).toBe(hasLegacyAttachmentFile)
+  })
+
+  it('csak meglévő fájlnál látszik, új vagy védett fájlos sorban nem', () => {
+    expect(hasLegacyAttachmentFile({}, { file: 71 })).toBe(true)
+    expect(hasLegacyAttachmentFile({}, { file: { id: 71 } })).toBe(true)
+    expect(hasLegacyAttachmentFile({}, {})).toBe(false)
+    expect(hasLegacyAttachmentFile({}, { file: null, protectedFile: 72 })).toBe(false)
+    expect(hasLegacyAttachmentFile({}, { file: '' })).toBe(false)
+    expect(hasLegacyAttachmentFile({}, null)).toBe(false)
+  })
+
+  it('az üzenet a látható mezőkről szól: üres sorban a védett fájlt kéri, kettősnél a régit törölteti', () => {
+    expect(validateCourseAttachments([{}])).toBe(ATTACHMENT_MISSING_FILE_MESSAGE)
+    expect(validateCourseAttachments([null])).toBe(ATTACHMENT_MISSING_FILE_MESSAGE)
+    expect(validateCourseAttachments([{ file: 71, protectedFile: 72 }])).toBe(
+      ATTACHMENT_DOUBLE_FILE_MESSAGE,
+    )
+    expect(validateCourseAttachments([{ file: 71 }, { protectedFile: 72 }])).toBe(true)
+    expect(ATTACHMENT_MISSING_FILE_MESSAGE).not.toMatch(/korábbi nyilvános/i)
+  })
+
+  it('a tananyag szövegeiben nincs gondolatjel, verzál szó, hibás idézőjel vagy „vevő”', () => {
+    const texts: string[] = []
+    const walk = (fields: readonly unknown[]) => {
+      for (const raw of fields) {
+        const field = raw as {
+          label?: unknown
+          admin?: { description?: unknown }
+          fields?: unknown[]
+          options?: unknown[]
+        }
+        if (typeof field.label === 'string') texts.push(field.label)
+        if (typeof field.admin?.description === 'string') texts.push(field.admin.description)
+        for (const option of field.options ?? [])
+          if (typeof option === 'object' && option !== null && 'label' in option)
+            texts.push(String((option as { label: unknown }).label))
+        if (Array.isArray(field.fields)) walk(field.fields)
+      }
+    }
+    walk([courseModulesField])
+    texts.push(ATTACHMENT_MISSING_FILE_MESSAGE, ATTACHMENT_DOUBLE_FILE_MESSAGE)
+    expect(texts.length).toBeGreaterThan(20)
+    for (const text of texts) {
+      expect(text).not.toMatch(/[–—]/)
+      expect(text).not.toMatch(/„[^”]*"/)
+      expect(text).not.toMatch(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{3,}(?![\p{L}])/u)
+      expect(text).not.toMatch(/\bvevő/)
+      expect(text).not.toMatch(/publikál/)
+    }
+  })
+})

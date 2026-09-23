@@ -1,10 +1,25 @@
 import type { Block } from 'payload'
 
+import { KEP_CSERE_SUGO } from './kep-csere'
 import { linkFields } from './link-fields'
 import { sectionSettings } from './section-settings'
 
 /**
- * Szolgáltatás-sorok — tábla (kép + számozott sorok) vagy sín + panel.
+ * Képes lista vagy kártyák (slug: services, korábbi neve
+ * „Szolgáltatás-sorok”): tábla (kép + számozott sorok) vagy sín + panel.
+ *
+ * A név a blokk FORMÁJÁT mondja, nem egy konkrét szekció címét: élőben ez a
+ * típus adja a kezdőlap „Így tudunk segíteni” és „Erre számíthatsz velünk”,
+ * a /rolunk „Amiben mások vagyunk” és a /szolgaltatasok „Ezért fogod imádni”
+ * szekcióját is (modul-térkép, live-pages.json). A régi „Szolgáltatás-sorok”
+ * és az usps blokk „„Erre számíthatsz” kártyák” neve ezért rossz típusra
+ * vitte azt, aki a látott címet kereste. A sorcímke (B2) a név mellé a
+ * szekció saját címét is kiírja.
+ *
+ * A mező-feltételek, az elrendezés opciói és a hatásosságot állító leírások
+ * (sín/tábla) a K29-hez tartoznak, és a zárolt Services.tsx fotós munkájára
+ * várnak (FŐ VEZETŐ); itt csak a név, a feliratok, a tipográfia és a képmezők
+ * közös súgója (K36) változott.
  *
  * A `/szolgaltatasok` tábla marad. A kezdőlap „Így tudunk segíteni" szekciója
  * sín-elrendezés: Rendelői kezelések / Otthoni program / Szakmai képzések,
@@ -14,8 +29,8 @@ export const services: Block = {
   slug: 'services',
   interfaceName: 'BlockServices',
   labels: {
-    singular: 'Szolgáltatás-sorok',
-    plural: 'Szolgáltatás-szekciók',
+    singular: 'Képes lista vagy kártyák',
+    plural: 'Képes listák és kártyák',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -24,9 +39,9 @@ export const services: Block = {
     {
       name: 'eyebrow',
       type: 'text',
-      label: 'Kis felső felirat',
+      label: 'Felső kis felirat',
       admin: {
-        description: 'A cím fölötti apró szöveg (pl. „Szolgáltatásaink"). Nem kötelező.',
+        description: 'A cím fölötti apró szöveg (pl. „Szolgáltatásaink”). Nem kötelező.',
       },
     },
     {
@@ -34,7 +49,7 @@ export const services: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A szekció nagybetűs címe (pl. „Így tudunk segíteni").',
+        description: 'A szekció nagybetűs címe (pl. „Így tudunk segíteni”).',
       },
     },
     {
@@ -66,8 +81,7 @@ export const services: Block = {
       relationTo: 'media',
       label: 'Kép',
       admin: {
-        description:
-          'A tábla sorai mellé kerülő kép (pl. terapeuta keze munka közben). Sín-elrendezésnél nem jelenik meg. Nem kötelező.',
+        description: `A tábla sorai mellé kerülő kép (pl. terapeuta keze munka közben). Sín-elrendezésnél nem jelenik meg. Nem kötelező. ${KEP_CSERE_SUGO}`,
       },
     },
     {
@@ -89,7 +103,7 @@ export const services: Block = {
           label: 'Sorszám',
           admin: {
             description:
-              'Nem kötelező. Pl. „01" vagy „1". Ha üresen hagyod, a rendszer maga számoz.',
+              'Nem kötelező. Pl. „01” vagy „1”. Ha üresen hagyod, a rendszer maga számoz.',
           },
         },
         {
@@ -98,8 +112,7 @@ export const services: Block = {
           required: true,
           label: 'Cím',
           admin: {
-            description:
-              'A szolgáltatás-ajtó neve (pl. „Rendelői kezelések", „Otthoni program").',
+            description: 'A szolgáltatás-ajtó neve (pl. „Rendelői kezelések”, „Otthoni program”).',
           },
         },
         {
@@ -108,7 +121,7 @@ export const services: Block = {
           label: 'Rövid összegzés',
           admin: {
             description:
-              'Sín-elrendezésnél a sín rövid másodlagos sora és a panel félkövér bevezetője (pl. „Személyes kezelés a stúdióban."). Táblánál nem jelenik meg. Nem kötelező.',
+              'Sín-elrendezésnél a sín rövid másodlagos sora és a panel félkövér bevezetője (pl. „Személyes kezelés a stúdióban.”). Táblánál nem jelenik meg. Nem kötelező.',
           },
         },
         {
@@ -124,22 +137,26 @@ export const services: Block = {
           relationTo: 'media',
           label: 'Panel fotója',
           admin: {
-            description:
-              'Sín-elrendezésnél a jobb oldali kép. Arckép csak a tulajdonos által kijelölt fotóból; üresen a felület helyőrzőt mutat, nem talál ki arcot. Táblánál nem jelenik meg.',
+            description: `Sín-elrendezésnél a jobb oldali kép. Arckép csak a tulajdonos által kijelölt fotóból; üresen a felület helyőrzőt mutat, nem talál ki arcot. Táblánál nem jelenik meg. ${KEP_CSERE_SUGO}`,
           },
         },
-        // A MEZŐSÚGÓ MAGA TANÍTOTTA A TILTOTT ALAKOT (2026-08-18-i javítás).
-        // A korábbi példa szó szerint „Tovább a kezelésekre" volt — vagyis a
-        // szerkesztő pontosan azt a puszta „Tovább…" kezdést kapta mintául,
-        // amit a `docs/ui-sztenderdek.md` §3.1.4 M-7 tilt. A súgó ezért most
-        // az igével kezdődő, célt megnevező alakot mutatja:
-        // GOV.UK, Add links — „If your link takes the user to a page where they
-        // can start a task, start your link with a verb", és „make it
-        // descriptive and avoid generic text like 'click here' or 'more'".
-        // https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/add-links/
+        // A felirat-súgó története (K27). 2026-08-18-ig a súgó példája a
+        // „Tovább a kezelésekre” volt; akkor igés, célt megnevező példára
+        // cserélték, és a súgó minden „Tovább…” kezdést tiltottnak mondott.
+        // Ez túllőtt: a docs/ui-sztenderdek.md §3.1.4 M-7 csak a PUSZTA, célt
+        // nem nevező „Tovább” szót tiltja, a rendelői ajtó élő „Tovább a
+        // kezelésekre” feliratát pedig a tulajdonos jóváhagyta
+        // (src/lib/home-help-states.ts fejkommentje, §3.2 #40). A súgó ezért
+        // mindkét elfogadott alakot mutatja, és csak az önmagában álló
+        // „Tovább” szót zárja ki. Források: GOV.UK, Add links: „make it
+        // descriptive and avoid generic text like 'click here' or 'more'”
+        // (https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/add-links/);
+        // NN/g, Better Link Labels: „A link's primary purpose is to communicate
+        // to users what they'll find on the other side of a click.”
+        // (https://www.nngroup.com/articles/better-link-labels/).
         ...linkFields({
           labelDescription:
-            'A sor végi hivatkozás szövege. Igével kezdd, és nevezd meg a célt (pl. „Nézd meg a kezeléseket"). A puszta „Tovább…" nem mondja meg, mi történik, ezért nem használható.',
+            'A sor végi hivatkozás szövege. Nevezd meg, hova visz (pl. „Tovább a kezelésekre” vagy „Nézd meg a kezeléseket”). Az önmagában álló „Tovább” nem mondja meg, mi történik.',
         }),
       ],
     },

@@ -12,6 +12,9 @@ import {
  * A számokat a táblázat hordozza; SVG role="img" + aria-label.
  * Otthoni/szakmai ág: szín + csíkozás (WCAG 1.4.1); tokenek: custom.scss.
  * min-width: max(720px, …) — Payload 1024 alatt 12px gyökér miatt kell.
+ * A tengelyfeliratok 13 viewBox-egységesek: a rajzolt szélesség sosem kisebb
+ * a viewBoxnál (720), tehát a felirat minden gyökéren ≥ 13 CSS px
+ * (őr: statisztika-diagram-tick.test.ts).
  */
 
 /* Diagram kártya: emelt felület, hairline-strong keret (WCAG 1.4.11). */
@@ -153,12 +156,22 @@ export function RevenueChart({ rows }: RevenueChartProps) {
             return (
               <g key={value}>
                 {value > 0 ? (
+                  /* Rácsvonal: a tick-érték csak vele együtt olvasható le az
+                     oszlopról („Axes, ticks, and the grid should help the reader
+                     understand the proportions and scale of the data”, IBM
+                     Carbon, Chart anatomy:
+                     https://v10.carbondesignsystem.com/data-visualization/chart-anatomy/),
+                     ezért ≥ 3:1 a kártya hátterén (WCAG 2.2 SC 1.4.11). A
+                     szaggatás a vonal súlyát csökkenti, a kontrasztját nem, így
+                     az oszlopok maradnak az elsődleges jel (ugyanott: „Avoid
+                     filling the chart frame with too many elements”). */
                   <line
                     x1={padLeft}
                     y1={y}
                     x2={padLeft + plotWidth}
                     y2={y}
-                    stroke="var(--kc-as-hairline, var(--theme-elevation-150))"
+                    stroke="var(--kc-as-hairline-strong, var(--theme-elevation-500))"
+                    strokeDasharray="2 4"
                     strokeWidth="1"
                   />
                 ) : null}
@@ -168,7 +181,7 @@ export function RevenueChart({ rows }: RevenueChartProps) {
                   textAnchor="end"
                   dominantBaseline="middle"
                   fill="var(--kc-as-text-muted, var(--theme-elevation-650))"
-                  fontSize="12"
+                  fontSize="13"
                 >
                   {tickLabelHuf(value)}
                 </text>
@@ -233,7 +246,7 @@ export function RevenueChart({ rows }: RevenueChartProps) {
                   y={baselineY + 18}
                   textAnchor="middle"
                   fill="var(--kc-as-text-muted, var(--theme-elevation-650))"
-                  fontSize="12"
+                  fontSize="13"
                 >
                   {formatMonthShort(row.month)}
                 </text>
@@ -243,7 +256,7 @@ export function RevenueChart({ rows }: RevenueChartProps) {
                     y={baselineY + 34}
                     textAnchor="middle"
                     fill="var(--kc-as-text, var(--theme-elevation-800))"
-                    fontSize="12"
+                    fontSize="13"
                     fontWeight="600"
                   >
                     {row.month.slice(0, 4)}

@@ -14,6 +14,8 @@ import { courseTitle, hasUserPurchased, parseCourseIdParam } from '@/lib/courses
 import { signInHref } from '@/lib/return-url'
 import type { Product, User } from '@/payload-types'
 import { buildPrivatePageMetadata } from '@/lib/seo'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
+import { lexicalTudastarLinkekNelkul } from '@/lib/tudastar-link-szuro'
 
 import config from '@payload-config'
 
@@ -41,6 +43,39 @@ const getCourseById = cache(async (id: number): Promise<Product | null> => {
     return null
   }
 })
+
+/**
+ * A leckék szövege Tudástár-linkek nélkül, KIKAPCSOLT Tudástárnál
+ * (src/lib/tudastar-kapcsolo.ts; a tulajdonos kérése: „sehol ne jelenjen meg”).
+ *
+ * A lecke szövege (`modules[].lessons[].content`, Lexical) a SZERVEREN kerül a
+ * tananyag-modellbe (buildCurriculum), onnan az RSC-adattal jut a kliens
+ * lejátszóhoz (CoursePlayer → LessonBody → RichText). A szűrés ezért itt, a
+ * modell építése ELŐTT történik: a kikapcsolt Tudástár linkje sem a HTML-be,
+ * sem az RSC-adatba nem kerül be. A link kibomlik, a szövege megmarad.
+ *
+ * A változatlan modul és lecke ugyanaz az objektum marad; ha semmi nem
+ * változott, a bemenet referenciája jön vissza (bekapcsolt Tudástárnál a
+ * kimenet így bájtra azonos). A régi `videos` listának nincs szövege.
+ */
+function leckekTudastarLinkekNelkul(product: Product): Product {
+  if (!Array.isArray(product.modules)) return product
+  let modulValtozott = false
+  const modules = product.modules.map((modul) => {
+    if (!Array.isArray(modul.lessons)) return modul
+    let leckeValtozott = false
+    const lessons = modul.lessons.map((lecke) => {
+      const content = lexicalTudastarLinkekNelkul(lecke.content)
+      if (content === lecke.content) return lecke
+      leckeValtozott = true
+      return { ...lecke, content }
+    })
+    if (!leckeValtozott) return modul
+    modulValtozott = true
+    return { ...modul, lessons }
+  })
+  return modulValtozott ? { ...product, modules } : product
+}
 
 async function getCurrentUser(): Promise<User | null> {
   try {
@@ -120,7 +155,12 @@ export default async function KurzusaimPlayerPage({ params }: KurzusaimPlayerPag
 
   const hasAccess = resolved.hasAccess
   const watchedRefs = hasAccess ? await getWatchedRefs(user.id, product.id) : []
-  const curriculum = buildCurriculum(product, hasAccess)
+  // A lecke szövege csak élő hozzáféréssel kerül a modellbe (buildCurriculum),
+  // ezért a Tudástár-kapcsolót is csak akkor kérdezzük. A getter
+  // gyorsítótárazott, hibánál a Tudástár látható marad.
+  const tananyagForras =
+    hasAccess && !(await getTudastarLathato()) ? leckekTudastarLinkekNelkul(product) : product
+  const curriculum = buildCurriculum(tananyagForras, hasAccess)
 
   return (
     <CoursePlayer

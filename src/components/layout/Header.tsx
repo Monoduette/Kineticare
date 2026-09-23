@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { BarionSessionSignUp } from '../analytics/BarionSessionSignUp'
 import { Container } from '../ui/Container'
 import { BRAND_LOGO_ALT, BRAND_LOGO_HORIZONTAL } from '../../lib/brand-logo'
+import { SzerkesztoNezetBelepo } from '../editor/frontend/SzerkesztoNezetBelepo'
 import { withCoursesNavItem } from '../../lib/menu-tree'
 import { getNavTree } from '../../lib/menus'
 import { AccountNav } from './AccountNav'
@@ -34,12 +35,20 @@ import { MobileNav } from './MobileNav'
  * - WCAG 2.2 SC 3.2.3 Consistent Navigation: a keret minden oldalon ugyanazt
  *   a rövid, azonos sorrendű navigációt adja.
  *   https://www.w3.org/WAI/WCAG22/Understanding/consistent-navigation.html
+ *
+ * SZERKESZTŐI BELÉPŐ (modul-térkép A3, 2. fázis). A bejelentkezett staff/owner
+ * a publikált nézetben a fejléc FÖLÖTT egy „Szerkesztő nézet” sávot kap
+ * (SzerkesztoNezetBelepo.tsx). A döntés a fenti, MÁR meglévő hitelesítési
+ * hívásból születik (`auth.szerkeszto`), és a komponens CSAK a jogosult ágban
+ * renderelődik: a látogató és a vásárló kimenete bájtra a belépő nélküli
+ * fejléc (nincs üres hely a fában, nincs hivatkozás a kliens-komponensre).
+ * Piszkozat-előnézetben a belépő elmarad, ott az előnézet-sáv visz vissza.
  */
 export async function Header() {
   const [cmsItems, auth] = await Promise.all([getNavTree(), getHeaderAuthState()])
   const items = withCoursesNavItem(cmsItems)
 
-  return (
+  const fejlec = (
     <header className="kc-site-header">
       <HeaderScrollFx />
       {/* Barion Pixel: az ÁLLANDÓ (megjegyzett) bejelentkezéssel érkező
@@ -75,5 +84,14 @@ export async function Header() {
         </div>
       </Container>
     </header>
+  )
+  if (!auth.szerkeszto || auth.elonezet) {
+    return fejlec
+  }
+  return (
+    <>
+      <SzerkesztoNezetBelepo />
+      {fejlec}
+    </>
   )
 }

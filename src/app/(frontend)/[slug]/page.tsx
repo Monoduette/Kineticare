@@ -4,6 +4,7 @@ import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 
+import { pageBlocks } from '@/blocks'
 import { RenderBlocks } from '@/components/blocks/RenderBlocks'
 import { JsonLd } from '@/components/content/JsonLd'
 import { PageEeat } from '@/components/content/PageEeat'
@@ -13,6 +14,9 @@ import { KNOWLEDGE_POSTS_FETCH_LIMIT } from '@/components/content/home/Knowledge
 import { hasLexicalContent } from '@/components/lexical/serialize'
 import { RichText } from '@/components/lexical/RichText'
 import { authorPersonOf } from '@/components/content/post-article'
+import { hubSzalag, szerkesztoReteg } from '@/components/editor/frontend/szerkeszto-szalag'
+import { SzerkesztoOldalSzalag } from '@/components/editor/frontend/SzerkesztoSzalag'
+import { szekcioMelylink } from '@/components/editor/szekcio-melylink'
 import { PreviewBar } from '@/components/preview/PreviewBar'
 import { Container } from '@/components/ui/Container'
 import { Section } from '@/components/ui/Section'
@@ -34,6 +38,7 @@ import { withDraftRobots } from '@/lib/preview/draft-metadata'
 import {
   absoluteUrl,
   buildPageMetadata,
+  NOINDEX_ROBOTS,
   organizationNode,
   resolveOgImageUrl,
   resolveSeoDescription,
@@ -44,6 +49,8 @@ import {
   siteGraphJsonLd,
   teamPersonsFromLayout,
 } from '@/lib/seo-graph'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
+import { layoutTudastarLinkekNelkul, lexicalTudastarLinkekNelkul } from '@/lib/tudastar-link-szuro'
 import type { Post, Product, Testimonial } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
@@ -64,21 +71,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // megosztási típusa `article` (published/modified time, szerző), ahogy a
   // `/blog/[slug]` útvonalon is (ogp.me article: https://ogp.me/#type_article).
   const hub = HUB_OLDALAK.find((jelolt) => jelolt.slug === slug)
+  // Tudástár-kapcsoló: a tünet-hub Tudástár-cikk. Kikapcsolt Tudástárnál a lap
+  // közvetlen linkkel elérhető marad (200), de `noindex, follow` jelölést kap;
+  // a robots.txt nem tiltja, különben a kereső a noindexet sem látná
+  // (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
+  // Az előnézet (draft) robots-metája ettől függetlenül felülír (withDraftRobots).
+  const hubRejtett = hub !== undefined && !(await getTudastarLathato())
   const post = hub !== undefined ? await hubPostOf(hub.cikkSlug) : null
   if (post) {
     const author = authorPersonOf(post)
+    const hubMetadata = buildPageMetadata(page, `/${slug}`, {
+      article: {
+        publishedTime: post.publishedAt,
+        modifiedTime: post.updatedAt,
+        ...(author !== null ? { authors: [author.name] } : {}),
+      },
+    })
     return withDraftRobots(
-      buildPageMetadata(page, `/${slug}`, {
-        article: {
-          publishedTime: post.publishedAt,
-          modifiedTime: post.updatedAt,
-          ...(author !== null ? { authors: [author.name] } : {}),
-        },
-      }),
+      hubRejtett ? { ...hubMetadata, robots: NOINDEX_ROBOTS } : hubMetadata,
       isDraft,
     )
   }
   const metadata = buildPageMetadata(page, `/${slug}`)
+  if (hubRejtett) {
+    return withDraftRobots({ ...metadata, robots: NOINDEX_ROBOTS }, isDraft)
+  }
   if (isLegacyNoindexPage({ slug, title: page.title })) {
     // Örökölt demólap: amíg a CMS-ben közzétett, kódszintű noindex védi
     // (src/lib/legacy-noindex.ts). A `follow: true` a belső linkeket meghagyja.
@@ -137,7 +154,17 @@ export default async function CmsPage({ params }: Props) {
       )
       return (
         <>
-          {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
+          {isDraft ? (
+            <>
+              <PreviewBar
+                path={`/${slug}`}
+                szerkesztoHref={szekcioMelylink({ collection: 'pages', id: page.id })}
+              />
+              {/* A hub két dokumentumból áll: a látható cikk a blogbejegyzés,
+                  a meta az oldal (modul-térkép H05), ezért két szerkesztő-link. */}
+              <SzerkesztoOldalSzalag szalag={hubSzalag({ lap: page, bejegyzes: post })} />
+            </>
+          ) : null}
           {/* Oldal-gráf: Organization + WebSite + WebPage. A cikk-csomópontot
               (Article + MedicalWebPage, @id …#article) és a morzsát a
               PostArticle rendereli — a WebPage `mainEntity`/`breadcrumb`
@@ -170,13 +197,27 @@ export default async function CmsPage({ params }: Props) {
     // esik vissza — ugyanaz a lektorált törzs, cikk-extrák nélkül.
   }
 
+  // Tudástár-kapcsoló (src/lib/tudastar-kapcsolo.ts): kikapcsolt Tudástárnál a
+  // lap szekciósorából és rich textjéből kikerül minden Tudástár-hivatkozás, a
+  // Tudástár-ajánló pedig üres posztlistát kap (így nem renderel, és a posztok
+  // lekérdezése sem fut). A szűrő a MEGJELENÍTÉS UTÁN fut, hogy egy kiürült
+  // link ne váltsa át a lap elrendezését (pl. a /szolgaltatasok ajtó-blokkja a
+  // három kitöltött CTA-ból ismeri fel magát).
+  // A hub (forrás-cikk nélküli tartalék-render) maga is Tudástár-felület: a
+  // belső hivatkozásai maradnak, csak a nem Tudástár lapokon szűrünk.
+  const tudastarLathato = await getTudastarLathato()
+  const linkSzures = !tudastarLathato && hub === undefined
+  const tudastarNelkul = (blocks: NonNullable<typeof page.layout>) =>
+    linkSzures ? layoutTudastarLinkekNelkul(blocks) : blocks
   const rawLayout = page.layout ?? []
-  const layout =
+  const layout = tudastarNelkul(
     slug === 'szolgaltatasok'
       ? presentSzolgaltatasokLayout(rawLayout)
       : slug === 'kezdolap'
         ? presentHomeLayout(rawLayout)
-        : rawLayout
+        : rawLayout,
+  )
+  const pageContent = linkSzures ? lexicalTudastarLinkekNelkul(page.content) : page.content
   const hasLayout = layout.length > 0
   // A film-hero saját h1-et renderel — ilyenkor a szöveges hero elmarad.
   const hasFilmHero = layout.some(
@@ -191,20 +232,22 @@ export default async function CmsPage({ params }: Props) {
   const [products, posts, testimonials]: [Product[], Post[], Testimonial[]] = hasLayout
     ? await Promise.all([
         getPublishedProducts(CTA_TERMEK_LEKERDEZES_LIMIT),
-        getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT),
+        tudastarLathato ? getLatestPosts(KNOWLEDGE_POSTS_FETCH_LIMIT) : Promise.resolve<Post[]>([]),
         getTestimonials(),
       ])
     : [[], [], []]
   // A knowledge blokk kártyáinak KANONIKUS célja (publikált gyökér-hubnál a
-  // gyökér-cím). Lekérdezés csak akkor fut, ha van egyáltalán szekciósor.
-  const hubUtvonalak = hasLayout
-    ? hubUtvonalTerkep(
-        posts
-          .map((post) => post.slug)
-          .filter((postSlug): postSlug is string => typeof postSlug === 'string'),
-        await getPublishedPageSlugs(),
-      )
-    : {}
+  // gyökér-cím). Lekérdezés csak akkor fut, ha van egyáltalán szekciósor, és
+  // a Tudástár látható.
+  const hubUtvonalak =
+    hasLayout && tudastarLathato
+      ? hubUtvonalTerkep(
+          posts
+            .map((post) => post.slug)
+            .filter((postSlug): postSlug is string => typeof postSlug === 'string'),
+          await getPublishedPageSlugs(),
+        )
+      : {}
 
   // Az időpontkérő szekció űrlapjához kell a form-azonosító és a Turnstile
   // site key. A lekérdezés CSAK akkor fut, ha van ilyen blokk a lapon
@@ -218,8 +261,12 @@ export default async function CmsPage({ params }: Props) {
   // AboutPage: https://schema.org/AboutPage); a /szolgaltatasok a services-
   // blokk sorait Service-ként hirdeti. A PageEeat MedicalWebPage-csomópontja
   // ugyanazt az @id-t viseli (…#webpage), így a két script EGY entitást ír le.
-  const persons = slug === 'rolunk' ? teamPersonsFromLayout(rawLayout) : []
-  const services = slug === 'szolgaltatasok' ? serviceNodesFromLayout(rawLayout, `/${slug}`) : []
+  // A strukturált adat is a Tudástár-szűrt sorból épül: a Service-csomópont
+  // `url`-je a sor CTA-céljából jön, és rejtett Tudástárnál az sem hirdethet
+  // /blog címet.
+  const semaLayout = tudastarNelkul(rawLayout)
+  const persons = slug === 'rolunk' ? teamPersonsFromLayout(semaLayout) : []
+  const services = slug === 'szolgaltatasok' ? serviceNodesFromLayout(semaLayout, `/${slug}`) : []
   const siteGraph = siteGraphJsonLd({
     page: {
       path: `/${slug}`,
@@ -249,9 +296,22 @@ export default async function CmsPage({ params }: Props) {
     nodes: [...personNodes(persons), ...services],
   })
 
+  // A „Szerkesztem” réteg CSAK piszkozat-előnézetben (modul-térkép A3), a
+  // MENTETT szekciósorból (rawLayout) és az eredeti sorindexből: a
+  // megjelenítésre átalakított vagy Tudástár-szűrt sor nem a címke forrása.
+  const szerkesztes = isDraft ? szerkesztoReteg({ lap: page, blokkok: pageBlocks }) : null
+
   return (
     <>
-      {isDraft ? <PreviewBar path={`/${slug}`} /> : null}
+      {szerkesztes ? (
+        <>
+          <PreviewBar
+            path={`/${slug}`}
+            szerkesztoHref={szekcioMelylink({ collection: 'pages', id: page.id })}
+          />
+          <SzerkesztoOldalSzalag szalag={szerkesztes.oldal} />
+        </>
+      ) : null}
       <JsonLd data={siteGraph} />
       <article className="kc-cms-page">
         {/* WP51/WP55: a /rolunk és a /szolgaltatasok fejléc-képe a cím MELLETT
@@ -276,12 +336,13 @@ export default async function CmsPage({ params }: Props) {
             layout={layout}
             posts={posts}
             products={products}
+            szerkesztes={szerkesztes}
             testimonials={testimonials}
           />
-        ) : hasLexicalContent(page.content) ? (
+        ) : hasLexicalContent(pageContent) ? (
           <Section>
             <Container size="narrow">
-              <RichText content={page.content} />
+              <RichText content={pageContent} />
             </Container>
           </Section>
         ) : null}

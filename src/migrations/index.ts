@@ -35,6 +35,7 @@ import * as migration_20260920_174501_menus_unlisted from './20260920_174501_men
 import * as migration_20260920_203756_products_promo from './20260920_203756_products_promo';
 import * as migration_20260921_070618_products_promo_price from './20260921_070618_products_promo_price';
 import * as migration_20260921_095507_products_unlisted from './20260921_095507_products_unlisted';
+import * as migration_20260922_225015_film_hero_feliratok from './20260922_225015_film_hero_feliratok';
 
 export const migrations = [
   {
@@ -220,6 +221,11 @@ export const migrations = [
   {
     up: migration_20260921_095507_products_unlisted.up,
     down: migration_20260921_095507_products_unlisted.down,
-    name: '20260921_095507_products_unlisted'
+    name: '20260921_095507_products_unlisted',
+  },
+  {
+    up: migration_20260922_225015_film_hero_feliratok.up,
+    down: migration_20260922_225015_film_hero_feliratok.down,
+    name: '20260922_225015_film_hero_feliratok'
   },
 ];

@@ -63,6 +63,8 @@ import {
   resolveSeoDescription,
 } from '@/lib/seo'
 import { siteGraphJsonLd } from '@/lib/seo-graph'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
+import { lexicalTudastarLinkekNelkul } from '@/lib/tudastar-link-szuro'
 import type { Product, User } from '@/payload-types'
 
 import config from '../../../../payload.config'
@@ -178,6 +180,28 @@ function relatedProductsOf(product: Product): Product[] {
   )
 }
 
+/**
+ * A kurzus Tudástár-linkek nélkül, KIKAPCSOLT Tudástárnál
+ * (src/lib/tudastar-kapcsolo.ts; a tulajdonos kérése: „sehol ne jelenjen meg”).
+ *
+ * A kurzusoldal egyetlen renderelt rich textje a `longDescription`: belőle
+ * épül a „A kurzusról” törzs (LexicalContent), az akciós nézet leírása és
+ * csomagja (CourseDescriptionContent), valamint a leírásból kinyert GYIK,
+ * „Kinek való” és garancia (sales-content.ts, sima szöveg). A szűrt kurzus
+ * ezért a lap MINDEN fogyasztójához eljut: a megjelenítőkhöz és a JSON-LD
+ * építőkhöz is (courseJsonLd, siteGraphJsonLd, faqPageJsonLd). A leckék
+ * szövege a nyilvános tananyagba nem kerül be (buildCurriculum(product,
+ * false)), azt a lejátszó szűri (kurzusaim/[id]/page.tsx).
+ *
+ * A link KIBOMLIK, a szövege a helyén marad (lexicalTudastarLinkekNelkul).
+ * Változatlan leírásnál a bemenet referenciája jön vissza, így bekapcsolt
+ * Tudástárnál (és link nélküli leírásnál) a lap kimenete bájtra azonos.
+ */
+function kurzusTudastarLinkekNelkul(product: Product): Product {
+  const longDescription = lexicalTudastarLinkekNelkul(product.longDescription)
+  return longDescription === product.longDescription ? product : { ...product, longDescription }
+}
+
 /** A vásárlódoboz horgonya (a másodlagos szöveglinkek és a JSON-LD miatt). */
 const BUYBOX_ID = 'kurzus-vasarlas'
 /**
@@ -213,16 +237,22 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
 
 export default async function CoursePage({ params, searchParams }: CoursePageProps) {
   const { slug } = await params
-  const { product, isPreview } = await getCourseView(slug)
+  const { product: betoltottKurzus, isPreview } = await getCourseView(slug)
   // Draft (és minden nem published/archived) termék nyilvánosan nem érhető el.
   if (
-    !product ||
+    !betoltottKurzus ||
     (!isPreview &&
-      (product._status === 'draft' ||
-        (product.status !== 'published' && product.status !== 'archived')))
+      (betoltottKurzus._status === 'draft' ||
+        (betoltottKurzus.status !== 'published' && betoltottKurzus.status !== 'archived')))
   ) {
     notFound()
   }
+  // Tudástár-kapcsoló: kikapcsolva a leírás Tudástár-linkjei kibomlanak (lásd
+  // kurzusTudastarLinkekNelkul). A getter gyorsítótárazott, hibánál a
+  // Tudástár látható marad (src/lib/tudastar-lathatosag.ts).
+  const product = (await getTudastarLathato())
+    ? betoltottKurzus
+    : kurzusTudastarLinkekNelkul(betoltottKurzus)
 
   // Régi, id-alapú (vagy nem kanonikus alakú) cím → TARTÓS átirányítás.
   // SZÁNDÉKOSAN a 404-ellenőrzés UTÁN: draft termék slugja így sem szivárog ki.

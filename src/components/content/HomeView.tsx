@@ -24,6 +24,7 @@ import { featuredTestimonials, TestimonialsSection } from './home/TestimonialsSe
 import { hasLexicalContent } from '../lexical/serialize'
 import { RichText } from '../lexical/RichText'
 import { presentHomeLayout } from '../../lib/home-help-states'
+import type { SzerkesztoReteg } from '../editor/frontend/szerkeszto-szalag'
 
 /**
  * HomeView — a kezdőlap prezentációs komponense (tiszta, fixture-ből tesztelhető).
@@ -52,6 +53,12 @@ export interface HomeViewProps {
    * (`docs/oldal-audit-b-tudastar-2026-09-07.md` 1. találat).
    */
   hubUtvonalak?: Readonly<Record<string, string>>
+  /**
+   * A frontend „Szerkesztem” réteg (csak piszkozat-előnézetben, a `/` route
+   * adja a MENTETT kezdolap-szekciósorból). A RenderBlocks-nak megy tovább;
+   * hiányában a kimenet a réteg nélküli render.
+   */
+  szerkesztes?: SzerkesztoReteg | null
 }
 
 function HeroSection({ home, hasFreeSos }: { home: Page | null; hasFreeSos: boolean }) {
@@ -98,6 +105,7 @@ export function HomeView({
   testimonials = [],
   appointment,
   hubUtvonalak,
+  szerkesztes = null,
 }: HomeViewProps) {
   // Szekció-rendszer: ha a kezdőlap CMS-oldalán VAN összeállított szekciósor
   // (Pages → Szekciók), azt rendereljük — a sorrend a szerkesztőé, a régi
@@ -120,6 +128,7 @@ export function HomeView({
           layout={layout}
           posts={posts}
           products={products}
+          szerkesztes={szerkesztes}
           testimonials={testimonials}
         />
         <BarionFizetesJelzes hely="kezdolap" />

@@ -328,3 +328,95 @@ describe('trustedForwardedForEntry — a lánc megbízható eleme', () => {
     expect(trustedForwardedForEntry(undefined, 1)).toBeUndefined()
   })
 })
+
+/**
+ * K01, K39, K49: a Műveletnapló és a Rendszeresemények admin-megjelenítése.
+ * Csak megjelenítés változott: az access, a mezőnevek, a típusok és az
+ * option-value-k változatlanok (TILOS ZÓNA 4).
+ */
+describe('Műveletnapló és Rendszeresemények admin-megjelenítése', async () => {
+  const { AuditLogs } = await import('../collections/AuditLogs')
+  const { WebhookEvents } = await import('../collections/WebhookEvents')
+  type AnyField = (typeof AuditLogs.fields)[number]
+  const byName = (fields: AnyField[], name: string) =>
+    fields.find((field) => 'name' in field && field.name === name)
+  const components = (field: AnyField | undefined): Record<string, unknown> =>
+    (field?.admin as { components?: Record<string, unknown> } | undefined)?.components ?? {}
+
+  it('a művelet és az entitástípus magyar cellát és jelentést kap, a tárolt kód marad', () => {
+    const action = byName(AuditLogs.fields, 'action')
+    expect(action?.type).toBe('text')
+    expect(components(action)).toEqual({
+      Cell: '/components/admin/AuditActionCell#AuditActionCell',
+      Description: '/components/admin/AuditActionCell#AuditActionDescription',
+    })
+    const entityType = byName(AuditLogs.fields, 'entityType')
+    expect(components(entityType)).toEqual({
+      Cell: '/components/admin/AuditActionCell#AuditEntityTypeCell',
+      Description: '/components/admin/AuditActionCell#AuditEntityTypeDescription',
+    })
+  })
+
+  it('az 5 rendszer-írta json-mezőből 3 itt van, mind a csak olvasható JSON-nézettel', () => {
+    for (const field of [
+      byName(AuditLogs.fields, 'before'),
+      byName(AuditLogs.fields, 'after'),
+      byName(WebhookEvents.fields, 'payload'),
+    ]) {
+      expect(field?.type).toBe('json')
+      expect(components(field).Field).toBe('/components/admin/JsonReadOnlyField#JsonReadOnlyField')
+    }
+  })
+
+  it('az access változatlan: owner olvas, API-n senki nem ír (Műveletnapló), owner+staff olvas (Rendszeresemények)', () => {
+    const req = (role: string | null) => ({ req: { user: role ? { role } : null } })
+    const auditAccess = AuditLogs.access as Record<string, (args: unknown) => unknown>
+    expect(auditAccess.read(req('owner'))).toBe(true)
+    expect(auditAccess.read(req('staff'))).toBe(false)
+    for (const op of ['create', 'update', 'delete'])
+      expect(auditAccess[op](req('owner'))).toBe(false)
+    const webhookAccess = WebhookEvents.access as Record<string, (args: unknown) => unknown>
+    expect(webhookAccess.read(req('staff'))).toBe(true)
+    expect(webhookAccess.read(req('customer'))).toBe(false)
+    for (const op of ['create', 'update', 'delete'])
+      expect(webhookAccess[op](req('owner'))).toBe(false)
+  })
+
+  it('K49: a kimenetel köznyelvi, az option-value-k változatlanok', () => {
+    const result = byName(WebhookEvents.fields, 'result')
+    const options = result && 'options' in result ? result.options : []
+    expect(options).toEqual([
+      { label: 'Fizetve (a rendelés kifizetve, a hozzáférés megadva)', value: 'paid' },
+      { label: 'Lemondva (a rendelés lemondva)', value: 'cancelled' },
+      { label: 'Függőben (a rendszer később újra rákérdez)', value: 'pending_repoll' },
+      { label: 'Elutasítva (a rendelés már más állapotban volt)', value: 'rejected' },
+      { label: 'Sikertelen feldolgozás (újrapróbálható)', value: 'failed' },
+    ])
+    const processedAt = byName(WebhookEvents.fields, 'processedAt')
+    expect((processedAt?.admin as { description?: string }).description).toContain(
+      'Hiba esetén üres, így az esemény újrapróbálható.',
+    )
+  })
+
+  it('a felhasználói szövegekben nincs gondolatjel, verzál szó vagy hibás záró idézőjel', () => {
+    const texts: string[] = []
+    for (const collection of [AuditLogs, WebhookEvents]) {
+      texts.push(String(collection.admin?.description ?? ''))
+      for (const field of collection.fields) {
+        if ('label' in field && typeof field.label === 'string') texts.push(field.label)
+        const description = (field.admin as { description?: unknown } | undefined)?.description
+        if (typeof description === 'string') texts.push(description)
+        if ('options' in field)
+          for (const option of field.options)
+            if (typeof option === 'object' && typeof option.label === 'string')
+              texts.push(option.label)
+      }
+    }
+    expect(texts.length).toBeGreaterThan(20)
+    for (const text of texts) {
+      expect(text).not.toMatch(/[–—]/)
+      expect(text).not.toMatch(/„[^”]*"/)
+      expect(text).not.toMatch(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{3,}(?![\p{L}])/u)
+    }
+  })
+})

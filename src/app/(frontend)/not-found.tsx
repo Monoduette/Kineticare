@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import { NotFoundView } from '@/components/error/NotFoundView'
+import { getTudastarLathato } from '@/lib/tudastar-lathatosag'
 
 /**
  * A `(frontend)` route-group „nem található" határa: ide fut minden SAJÁT
@@ -17,6 +18,14 @@ export const metadata: Metadata = {
   title: 'Ez az oldal nem található',
 }
 
-export default function NotFound() {
-  return <NotFoundView />
+/**
+ * Aszinkron szerver-komponens (a Next dokumentációja szerint a not-found.js
+ * adatot kérhet le: https://nextjs.org/docs/app/api-reference/file-conventions/not-found#data-fetching).
+ * A Tudástár-kapcsoló állapotát kérdezi, hogy rejtett /blog menüpontnál a
+ * hibaoldal se javasolja a Tudástárt. A lekérdezés gyorsítótárazott, és a
+ * határ a lap RSC-adatában minden oldalon benne van, ezért ez a döntés a
+ * nem hibás lapok HTML-jéből is kiveszi a rejtett Tudástár linkjét.
+ */
+export default async function NotFound() {
+  return <NotFoundView tudastarLathato={await getTudastarLathato()} />
 }

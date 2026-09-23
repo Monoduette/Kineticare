@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -19,6 +19,32 @@ const formFields: Record<string, { value: unknown }> = {}
 let documentId: number | undefined
 
 vi.mock('@payloadcms/ui', () => ({
+  // A Payload gyári gombja: a mock a kapott beállításokat adat-attribútumba
+  // írja, hogy a teszt lássa, a K14 szerinti Payload-gombot kapja-e a doboz.
+  Button: ({
+    buttonStyle,
+    children,
+    extraButtonProps,
+    margin,
+    size,
+  }: {
+    buttonStyle?: string
+    children?: ReactNode
+    extraButtonProps?: { style?: Record<string, string> }
+    margin?: boolean
+    size?: string
+  }) =>
+    createElement(
+      'button',
+      {
+        type: 'button',
+        'data-payload-button': buttonStyle,
+        'data-size': size,
+        'data-margin': String(margin),
+        style: extraButtonProps?.style,
+      },
+      children,
+    ),
   useDocumentInfo: () => ({ id: documentId }),
   useFormFields: (selector: (state: [Record<string, { value: unknown }>]) => unknown) =>
     selector([formFields]),
@@ -37,6 +63,7 @@ const {
   COPY_FAILED_MESSAGE,
   COPY_LABEL,
   DRAFT_TARGET_WARNING,
+  DRAFT_TARGET_WARNING_TITLE,
   LOAD_FAILED_MESSAGE,
   MenuUnlistedLink,
   MenuUnlistedLinkView,
@@ -129,12 +156,58 @@ describe('MenuUnlistedLinkView', () => {
     expect(html).not.toContain(DRAFT_TARGET_WARNING)
   })
 
-  it('piszkozat cél: figyelmeztetés, hogy a link 404-et ad a közzétételig', () => {
+  it('K14: a mező kerete a mezőhatár-token (≥ 3:1), a mező a megjegyzésre hivatkozik', () => {
+    const html = renderView({
+      state: { kind: 'ready', absoluteUrl: 'https://kineticare.hu/rolunk', targetPublished: true },
+    })
+    const input = html.match(/<input[^>]*>/)?.[0] ?? ''
+    expect(input).toContain(
+      'border:1px solid var(--kc-admin-field-border, var(--theme-elevation-500))',
+    )
+    // A régi, 1,62–2,55:1-es keret (elevation-250) nem maradhat.
+    expect(input).not.toContain('elevation-250')
+    const describedBy = input.match(/aria-describedby="([^"]+)"/)?.[1]
+    expect(describedBy).toBeDefined()
+    expect(html).toContain(`id="${describedBy ?? ''}"`)
+  })
+
+  it('K14: a „Másolás” a Payload másodlagos gombja, a mezővel azonos, legalább 40 px-es magassággal', () => {
+    const html = renderView({
+      state: { kind: 'ready', absoluteUrl: 'https://kineticare.hu/rolunk', targetPublished: true },
+    })
+    const button = html.match(/<button[^>]*>/)?.[0] ?? ''
+    expect(button).toContain('data-payload-button="secondary"')
+    expect(button).toContain('data-size="large"')
+    expect(button).toContain('data-margin="false"')
+    expect(button).toContain('min-height:max(40px, calc(var(--base) * 2))')
+  })
+
+  it('K14: piszkozat cél: „Figyelem:” doboz role="status"-szal, 404-zsargon és role="alert" nélkül', () => {
     const html = renderView({
       state: { kind: 'ready', absoluteUrl: 'https://kineticare.hu/vazlat', targetPublished: false },
     })
-    expect(html).toContain('role="alert"')
+    expect(html).toContain('class="kc-admin-notice kc-admin-notice--figyelem"')
+    expect(html).toContain(`>${DRAFT_TARGET_WARNING_TITLE}<`)
     expect(html).toContain(DRAFT_TARGET_WARNING)
+    expect(DRAFT_TARGET_WARNING).toContain('„Az oldal nem található”')
+    expect(html).not.toContain('404')
+    expect(html).not.toContain('role="alert"')
+    expect(html).toMatch(/role="status"[^>]*>\s*<p class="kc-admin-notice__cim">/)
+  })
+
+  it('K14: betöltéskor (mountkor) egyik állapot sem ad role="alert"-et', () => {
+    const allapotok = [
+      { kind: 'save-first' },
+      { kind: 'no-target' },
+      { kind: 'loading' },
+      { kind: 'load-failed' },
+      { kind: 'ready', absoluteUrl: 'https://kineticare.hu/x', targetPublished: false },
+      { kind: 'ready', absoluteUrl: 'https://kineticare.hu/x', targetPublished: true },
+      { kind: 'ready', absoluteUrl: 'https://kineticare.hu/x', targetPublished: null },
+    ] as const
+    for (const state of allapotok) {
+      expect(renderView({ state })).not.toContain('role="alert"')
+    }
   })
 
   it('másolás után „Kimásolva", hibánál a kézi másolásra irányító üzenet', () => {
@@ -163,6 +236,8 @@ describe('MenuUnlistedLinkView', () => {
       COPY_FAILED_MESSAGE,
     ]) {
       expect(text).not.toMatch(/[–—]/)
+      // Magyar idézőjel: a nyitó „ és a záró ” párban, egyenes " nélkül.
+      expect(text).not.toContain('"')
     }
   })
 })

@@ -175,3 +175,94 @@ describe('course editor presentation bindings', () => {
     expect('access' in field && field.access?.update).toBe(update)
   })
 })
+
+/**
+ * K34, K35, K25: a kurzus-szerkesztő feliratai. A plugin ár-mezőit a
+ * course-promo.test.ts mintájára egy név nélküli group → row adja.
+ */
+describe('course editor labels and texts (K34)', () => {
+  async function build() {
+    return runtime.override!({
+      defaultCollection: {
+        slug: 'products',
+        fields: [
+          {
+            type: 'group',
+            fields: [
+              {
+                type: 'row',
+                fields: [
+                  { type: 'checkbox', name: 'priceInHUFEnabled', label: 'HUF ár engedélyezése' },
+                  { type: 'number', name: 'priceInHUF', label: 'Ár (HUF)' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+  }
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
+  const description = (field: Field | undefined) =>
+    text((field?.admin as { description?: unknown } | undefined)?.description)
+
+  it('a plugin ár-mezői köznyelvi feliratot kapnak, az access változatlan', async () => {
+    const fields = paths((await build()).fields)
+    expect(fields.get('priceInHUF')).toMatchObject({ label: 'Ár (Ft)' })
+    expect(fields.get('priceInHUFEnabled')).toMatchObject({ label: 'Megvásárolható' })
+    for (const name of ['priceInHUF', 'priceInHUFEnabled']) {
+      const field = fields.get(name)!
+      expect('access' in field && field.access?.create).toBe(isOwnerFieldAccess)
+      expect('access' in field && field.access?.update).toBe(isOwnerFieldAccess)
+    }
+  })
+
+  it('a nyilvános előzetes videó, a „Kinek nem való” és a rejtett kurzus felirata', async () => {
+    const fields = paths((await build()).fields)
+    expect(fields.get('previewVideoStreamId')).toMatchObject({ label: 'Nyilvános előzetes videó' })
+    expect(fields.get('notFitFor')).toMatchObject({ label: 'Kinek nem való' })
+    expect(description(fields.get('unlisted'))!.length).toBeLessThanOrEqual(150)
+    expect(description(fields.get('modules.lessons.streamAssetId'))).toContain(
+      'nyilvános előzetes videót',
+    )
+  })
+
+  it('a Kiemelt előnyök súgója őszintén kimondja, hogy ma nem látszik a weboldalon', async () => {
+    const fields = paths((await build()).fields)
+    expect(description(fields.get('cardHighlights'))).toMatch(
+      /^Ma sehol nem jelenik meg a weboldalon/,
+    )
+  })
+
+  it('a kurzus minden felirata és súgója: 0 gondolatjel, 0 verzál szó, 0 hibás záró idézőjel, szótár szerint', async () => {
+    const texts: string[] = []
+    const walk = (fields: readonly Field[]) => {
+      for (const field of fields) {
+        const label = 'label' in field ? text(field.label) : undefined
+        if (label) texts.push(label)
+        const desc = description(field)
+        if (desc) texts.push(desc)
+        if ('options' in field)
+          for (const option of field.options)
+            if (typeof option === 'object' && typeof option.label === 'string')
+              texts.push(option.label)
+        if ('fields' in field) walk(field.fields)
+        if (field.type === 'tabs') for (const tab of field.tabs) walk(tab.fields)
+      }
+    }
+    const collection = await build()
+    walk(collection.fields)
+    texts.push(String(collection.admin?.description ?? ''))
+    expect(texts.length).toBeGreaterThan(60)
+    for (const value of texts) {
+      expect(value, value).not.toMatch(/[–—]/)
+      expect(value, value).not.toMatch(/„[^”]*"/)
+      // Rövidítés (GYIK, SEO, SOS) megengedett, verzállal kiemelt szó nem.
+      const shouted = (value.match(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{3,}(?![\p{L}])/gu) ?? []).filter(
+        (word) => !['GYIK', 'SEO', 'SOS'].includes(word),
+      )
+      expect(shouted, value).toEqual([])
+      expect(value, value).not.toMatch(/\bvevő|publikál|bemutató videó/)
+    }
+  })
+})

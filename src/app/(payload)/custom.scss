@@ -155,7 +155,6 @@ html {
   --kc-as-font-body: 'Nunito Sans', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   --kc-as-font-cim-1: calc(32 * var(--kc-as-px));
   --kc-as-font-cim-2: calc(18 * var(--kc-as-px));
-  --kc-as-tracking-eyebrow: 0.24em; /* landing eyebrow-nyelv (tokens.css 196. sor) */
 
   /* Térköz: 4px-rács (tokens.css 198–207. sor), rem-ben (--kc-as-px). */
   --kc-as-space-1: calc(4 * var(--kc-as-px));
@@ -286,13 +285,15 @@ html {
   }
 }
 
-/* Felvezető sor (eyebrow) — a landing `.kc-eyebrow` nyelve (content.css):
-   akcent-mély szín, 600-as súly, verzál + 0,24em betűköz, 1,3-as sortáv, és
-   alatta a rövid akcent-vonal. A DOM-szöveg mondatkezdő marad, a verzált a
-   CSS adja (ui-sztenderdek §3.1 M-4). A vonal `aria-hidden` természetű
-   (::after tartalom nélküli dekoráció), a jelentést a szöveg hordozza —
-   WCAG 2.2 SC 1.4.1. A szélessége és vastagsága a storefronté (3.75rem ×
-   1.5px a 16 px-es alapon = 60 × 1,5 tervezési px). */
+/* Felvezető sor (eyebrow) — a landing `.kc-eyebrow` nyelvéből (content.css)
+   az akcent-mély szín, a 600-as súly, az 1,3-as sortáv és alatta a rövid
+   akcent-vonal. Verzál és ritkított betűköz NÉLKÜL, mondatkezdő írással
+   (admin-audit K31, 2026-09-22: az admin-szótár szerint verzál helyett
+   mondatkezdő írás; a stílus a styles.ts eyebrowStyle-jában). A vonal
+   `aria-hidden` természetű (::after tartalom nélküli dekoráció), a
+   jelentést a szöveg hordozza (WCAG 2.2 SC 1.4.1). A szélessége és
+   vastagsága a storefronté (3.75rem × 1.5px a 16 px-es alapon = 60 × 1,5
+   tervezési px). */
 .kc-adminstat__eyebrow {
   color: var(--kc-as-eyebrow, var(--theme-elevation-650));
   line-height: 1.3;
@@ -448,4 +449,790 @@ html {
      #3d78aa az ink-földön SZÁMOLVA 3,32:1 — épp csak a nem-szöveges küszöb
      fölött, és nem az a szín, amit a storefront visz sötét sávon. */
   --kc-as-accent: #9ec4df;
+}
+
+/* =====================================================================
+   ADMIN TÉMA-RÉTEG: AA-kontraszt, fókusz, célméret és reflow az admin
+   TELJES felületén (oldalsáv-menü, irányítópult, listák, szerkesztők,
+   fülek, párbeszédablakok, egyedi nézetek, belépés), világos ÉS sötét
+   témában. Tulajdonosi kérés (2026-09-22): „az adminisztrációs rendszernek
+   a menüpontja és a teljes felületén kell megnézni a kontrasztot”.
+
+   MIÉRT ITT ÉS MIÉRT RÉTEGEN KÍVÜL: a Payload 3.88 admin-CSS-e a
+   `@layer payload-default` rétegben él (@payloadcms/ui dist/scss/app.scss
+   1. sor). A rétegen kívüli szerzői szabály a kaszkád szerint MINDEN
+   réteges szabályt megelőz, specifikusságtól függetlenül; a Payload saját
+   dokumentációja is ezt írja: „All Payload CSS is encapsulated inside CSS
+   layers under @layer payload-default. Any custom css will now have the
+   highest possible specificity.” (https://payloadcms.com/docs/admin/customizing-css).
+   Így sem a node_modules-hoz, sem a pinned verzióhoz nem kell nyúlni.
+   Kivétel, amit ez a módszer NEM ver: a réteges `!important` (erősebb a
+   rétegen kívüli !important-nál) és a react-select emotion-stílusa, ami
+   eleve rétegen kívüli (ott az !important kell, lásd lent). Az idézett
+   dokumentáció ellenére a lefordított core CSS-ben is maradt rétegen
+   kívüli szabály (a ui dist/styles.css-ben 24, pl. .no-results,
+   .drawer-action-header, .close-modal-button; a Lexical csomagja további
+   26-ot hoz): ezekkel szemben a specifikusság dönt. Ez a szakasz egyiküket
+   sem célozza, és placeholder-szabály nincs köztük (mérve 2026-09-23).
+
+   STRATÉGIA: TOKEN-szintű felülírás (a Payload a szürke szövegeket négy
+   tokenről festi), elem-szintű szabály csak ott, ahol nincs token:
+   mezőhatár, fókusz, átlátszóság, célméret, reflow.
+
+   Mércék (WCAG 2.2, a sikerkritériumok ténylegesen megnyitva 2026-09-22):
+   - SC 1.4.3 Contrast (Minimum): szöveg ≥ 4,5:1, nagy szöveg ≥ 3:1, és
+     „applies to … placeholder text”
+     (https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html);
+   - SC 1.4.11 Non-text Contrast: a komponens azonosításához és állapotához
+     szükséges vizuális jel ≥ 3:1, a letiltott komponens mentes
+     (https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html);
+   - SC 2.4.7 Focus Visible
+     (https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html);
+   - SC 2.5.8 Target Size (Minimum): 24 × 24 CSS px
+     (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html);
+   - SC 1.4.10 Reflow: 320 CSS px-en nincs kétirányú görgetés, az
+     adattábla kivétel (https://www.w3.org/WAI/WCAG22/Understanding/reflow.html);
+   - SC 1.4.12 Text Spacing: sormagasság ≥ 1,5
+     (https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html).
+   Mérés: Chromium + playwright-core + axe-core a helyi adminon, 65 nézet ×
+   világos/sötét × 1440/390/320 px; jegyzőkönyv és képpárok a B1-meres
+   munkamappában, őr-teszt: src/__tests__/admin-tema-kontraszt.test.ts.
+   ===================================================================== */
+
+/* ---- 1. Szürke szöveg-, hiba- és siker-tokenek témánként -----------------
+   A Payload sötétben a 400/450/550-es szürkét átképezi, az 500-ast NEM
+   (@payloadcms/ui dist/scss/colors.scss 190–206. sor), a success-500-at
+   pedig egyik témában sem; ezért minden érték témánként áll.
+   Háttér-referenciák: világos #ffffff (lap), #f5f5f5 (elevation-50, sor- és
+   keresősáv-háttér), #ebebeb (elevation-100, csak olvasható mező); sötét
+   #141414 (lap), #222222 (mező), #2f2f2f (csak olvasható mező).
+   Az --theme-elevation-150-et szándékosan NEM írjuk át: a core 18 helyen
+   háttérként használja, a mezőhatár ezért saját tokent kap. */
+html:not([data-theme='dark']) {
+  /* volt #9a9a9a (fehéren 2,81:1) → 5,49 / 5,04 / 4,61:1 */
+  --theme-elevation-400: #696969;
+  /* a lépcső monoton marad: 400 ≥ 450 ≥ 500 ≥ 550 ≥ 600 (#656565, core) */
+  --theme-elevation-450: #686868;
+  /* volt #808080 (3,95:1) → 5,66 / 5,19 / 4,74:1 */
+  --theme-elevation-500: #676767;
+  --theme-elevation-550: #666666;
+  /* volt #da4b48 (4,13:1): a kötelező-csillag és a hibaszöveg → 5,88 / 5,40 / 4,93:1 */
+  --theme-error-500: #b63636;
+  /* volt #1587ba (4,03:1): a paletta success-600-a → 5,67 / 5,20 / 4,76:1 */
+  --theme-success-500: #0b6e99;
+  /* Mezőhatár (SC 1.4.11): fehéren 4,54, #f5f5f5-ön 4,17, #ebebeb-n 3,81:1 */
+  --kc-admin-field-border: #767676;
+}
+
+html[data-theme='dark'] {
+  /* volt #8d8d8d (#2f2f2f-en 4,03:1) → #141414-en 6,55, #222-n 5,65, #2f2f2f-en 4,76:1 */
+  --theme-elevation-400: #9a9a9a;
+  /* volt #808080, sötétben nem átképezve (#222-n 4,03:1) → 7,75 / 6,69 / 5,63:1 */
+  --theme-elevation-500: #a8a8a8;
+  /* volt #da4b48 (#222-n 3,85:1) → 5,35 / 4,62:1 */
+  --theme-error-500: #ea5a56;
+  /* volt #1587ba (#222-n 3,94:1): a core sötét success-600-a (#24a4df) → 6,54 / 5,64 / 4,75:1 */
+  --theme-success-500: #24a4df;
+  /* #141414-en 4,29, #222-n 3,71, #2f2f2f-en 3,12:1 */
+  --kc-admin-field-border: #7a7a7a;
+}
+
+/* ---- 2. Placeholder (SC 1.4.3) -------------------------------------------
+   A Payload mezői a placeholdert az --theme-elevation-400-ról festik (a
+   fenti token javítja). A blokknév-mező (.section-title__input) és a saját
+   panelek natív mezői viszont a böngésző alapszínét kapták. A GOV.UK
+   szerint a böngésző alapértelmezett placeholder-színe „often do not meet
+   WCAG 2.2 success criterion 1.4.3”
+   (https://design-system.service.gov.uk/components/text-input/), az NN/g
+   szerint „the default light-grey color of placeholder text has poor color
+   contrast” (https://www.nngroup.com/articles/form-design-placeholders/).
+   A :where() nulla specifikusságú padló: bármely saját, rétegen kívüli
+   komponens-szabály felülírhatja; a Payload réteges szabályai nem. Az
+   opacity: 1 a Firefox 0,54-es alap-átlátszósága ellen kell. */
+:where(input, textarea)::placeholder {
+  color: var(--theme-elevation-400);
+  opacity: 1;
+}
+
+/* Sötét témában a stílus nélküli natív mező a böngésző #3b3b3b-s hátterét
+   kapja, azon a 400-as szürke csak 3,98:1 (mérve: a visszatérítés- és az
+   ajándékozás-panel mezői). Az 500-as (#a8a8a8) ott 4,71:1. A :where()
+   csak a saját, rétegen kívüli szabályainkhoz képest enged (így a
+   .kc-admin-input felülírhatja). A Payload @layer payload-default-os
+   placeholder-szabályát (vars.scss formInput) ez a szabály is veri, ezért
+   sötétben a Payload-mezők placeholdere is #a8a8a8 (a #222-es mezőháttéren
+   6,69:1). */
+:where(html[data-theme='dark']) :where(input, textarea)::placeholder {
+  color: var(--theme-elevation-500);
+}
+
+/* ---- 3. Mezőhatár (SC 1.4.11) ---------------------------------------------
+   A core a mezőt 1 px-es --theme-elevation-150 kerettel rajzolja: fehéren
+   1,36:1, a keresősáv 1,09:1, a Lexical-terület 1,00:1 — a szerkesztő nem
+   látja, hol kezdődik a mező. A mért szelektorlista kapja a saját tokent.
+   Kivételek, és miért:
+   - :disabled, .rs--is-disabled, --read-only: a csak olvasható mező
+     szándékosan KERET NÉLKÜLI, szürke hátterű (@payloadcms/ui vars.scss
+     @mixin readOnly); ez maga a „nem szerkeszthető” jelzés, és a letiltott
+     komponens az 1.4.11 alól mentes;
+   - :not(.error *) és társai: hibás mezőn a core piros kerete marad (a
+     rétegen kívüli szabály különben azt is felülírná);
+   - .section-title__input: a blokknév-mező címsorként néz ki, alul kap
+     külön aláhúzást (lásd lent). */
+.field-type
+  input:not([type='checkbox']):not([type='radio']):not(.section-title__input):not(:disabled):not(
+    .error *
+  ),
+.field-type textarea:not(:disabled):not(.error *),
+.react-select:not(.rs--is-disabled):not(.react-select--error) .rs__control:not(.error *),
+.checkbox-input:not(.checkbox-input--read-only) .checkbox-input__input:not(:disabled):not(.error *),
+.radio-group:not(.radio-group--read-only):not(.error) .radio-input__styled-radio,
+.condition-value-text:not(:disabled),
+.condition-value-number:not(:disabled),
+.block-search__input:not(:disabled),
+.item-search__input:not(:disabled),
+.date-time-picker
+  .react-datepicker__input-container
+  input:not(:disabled):not(.date-time-field--has-error *) {
+  border-color: var(--kc-admin-field-border);
+}
+
+/* Keresősáv a listák tetején: a mezőrész (.search-filter) kap keretet, nem
+   az egész sáv, mert mobilon a sáv második sorában az Oszlopok/Szűrők
+   gombok ülnek. A doboz border-box (a core `* { box-sizing }` szabálya),
+   tehát a sáv magassága nem változik. */
+.search-bar .search-filter {
+  border: 1px solid var(--kc-admin-field-border);
+}
+
+/* Lexical szövegszerkesztő: a core szándékosan keret nélküli „dokumentum”
+   felületet rajzol, egyetlen 1,19:1-es bal oldali vezetővonallal; a mező
+   így nem azonosítható (1.4.11). A felső eszköztár és a szerkesztőterület
+   együtt kap egy keretet (az eszköztár saját keretét erősítjük, a terület a
+   többi oldalát kapja), a jobb szélen térközzel, hogy a szöveg ne tapadjon
+   a vonalhoz. Csak olvasható és hibás állapotban a core rajzolata marad. */
+.rich-text-lexical:not(.rich-text-lexical--read-only):not(.error)
+  > .rich-text-lexical__wrap
+  > .fixed-toolbar {
+  border-color: var(--kc-admin-field-border);
+}
+
+.rich-text-lexical:not(.rich-text-lexical--read-only):not(.error)
+  > .rich-text-lexical__wrap
+  > .editor-container {
+  border: 1px solid var(--kc-admin-field-border);
+  border-radius: var(--style-radius-s);
+  padding-inline-end: calc(var(--base) * 0.5);
+}
+
+.rich-text-lexical:not(.rich-text-lexical--read-only):not(.error)
+  > .rich-text-lexical__wrap
+  > .fixed-toolbar
+  + .editor-container {
+  border-top-width: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.rich-text-lexical:not(.rich-text-lexical--read-only):not(.rich-text-lexical--show-gutter):not(
+    .error
+  )
+  > .rich-text-lexical__wrap
+  > .editor-container {
+  padding-inline-start: calc(var(--base) * 0.5);
+}
+
+/* A blokknév-mező („Névtelen” helyőrzővel) a szekciósor fejlécében
+   címsorként áll, keret nélkül: aláhúzás jelzi, hogy írható mező (a
+   Material 3 „filled” szövegmezőjének alsó vonala ugyanezt a szerepet
+   tölti be: https://m3.material.io/components/text-fields/specs). */
+.section-title__input:not(:disabled):not(:read-only) {
+  border-bottom: 1px solid var(--kc-admin-field-border);
+}
+
+.section-title__input::placeholder {
+  color: var(--theme-elevation-400);
+  opacity: 1;
+}
+
+/* A lapozó aktuális oldala: a core csak 1,19:1-es háttérrel jelzi, pedig ez
+   állapotjelzés (1.4.11: „visual information required to identify … states”).
+   A keret ≥ 3:1; a doboz border-box, a mérete nem változik. */
+.paginator__page--is-current {
+  border: 1px solid var(--kc-admin-field-border);
+}
+
+/* Az oldalsáv-csoport lenyitásjelző nyila (állapotjelző ikon, 1.4.11):
+   a core elevation-200-zal festi (fehéren 1,54:1). */
+.nav-group__indicator svg .stroke {
+  stroke: var(--theme-elevation-500);
+}
+
+/* A fejléc „Fiók” linkje ikon-link: a jobb felső sziluett az EGYETLEN jel,
+   amely azonosítja (1.4.11). A core alapgrafikája (graphic-account, a Gravatar
+   kikapcsolása óta ez látszik) elevation-200-as sziluettet és keretet rajzol:
+   a kör kerete a fejlécen mérve fehéren 1,54:1, sötéten 2,08:1, a sziluett
+   a kör kitöltésén még halványabb (1,41 / 1,80:1). Nyugalmi állapotban a
+   sziluett a szöveg-szürkét, a kör kerete a mezőhatár-tokent kapja
+   (világos 5,19 és 4,54:1, sötét 6,69 és 4,29:1); az egérrel kiemelt és az
+   aktív (a fiókoldalon álló) állapot rajzolata a core-é marad. */
+.graphic-account:not(.graphic-account--active):not(:hover) .graphic-account__bg {
+  stroke: var(--kc-admin-field-border);
+}
+
+.graphic-account:not(.graphic-account--active):not(:hover) .graphic-account__head,
+.graphic-account:not(.graphic-account--active):not(:hover) .graphic-account__body {
+  fill: var(--theme-elevation-500);
+}
+
+/* Az aktív állapot sötétben a --theme-elevation-500-at KITÖLTÉSKÉNT használja
+   fehér sziluett alatt (a core-ban az egyetlen ilyen hely a naptár mellett).
+   A fenti, világosabb sötét 500-as tokennel a sziluett 2,38:1 lenne, ezért
+   itt a core eredeti színe marad (--color-base-500 = #808080: fehér rajta
+   3,95:1, a kör a #141414-es lapon 4,66:1). */
+html[data-theme='dark'] .graphic-account--active .graphic-account__bg {
+  fill: var(--color-base-500);
+}
+
+/* Világosban az aktív állapot a core-ban elevation-600-as sziluett az
+   elevation-300-as körön: mérve 2,84:1 (a fiókoldalon). A sziluett a
+   törzsszöveg színét kapja (#2f2f2f a #b5b5b5-ön 6,53:1). */
+html:not([data-theme='dark']) .graphic-account--active .graphic-account__head,
+html:not([data-theme='dark']) .graphic-account--active .graphic-account__body {
+  fill: var(--theme-elevation-800);
+}
+
+/* ---- 4. Fókuszjelző (SC 2.4.7 + 1.4.11) -----------------------------------
+   A core a linkekről (app.scss: `a:focus { outline: none }`), az
+   oldalsáv-csoportcímről, a mobil menü bezáró gombjáról, a mezőkről (`outline: 0`, csak a keret színe
+   vált, 2,07:1), a dátumtörlőről és a react-selectről is leveszi a
+   gyűrűt. Egységesen a Payload saját --accessibility-outline-ja jár nekik
+   (2 px, --theme-text: fehéren 13,39:1, sötéten 18,42:1).
+   A step-nav kezdőlap-ikonja és a fiók-link szándékosan ::after kerettel
+   jelez (a szülő overflow: hidden levágná a gyűrűt), ezért kimaradnak.
+   A jelölőnégyzet és a keresőmező :has(:focus-visible)-t kap, hogy
+   egérkattintásra ne, billentyűzetre viszont megjelenjen a gyűrű.
+   A link-szabály :where()-rel nulla specifikusságú (csak a :focus-visible
+   számít): rétegen kívül így is minden Payload-szabályt ver, de a saját
+   komponensek szándékos fókuszgyűrűje (a Statisztika .kc-adminstat
+   linkjei, a videótár, a .kc-admin-notice linkjei) érintetlen marad. */
+:where(a:not(.step-nav__home):not(.app-header__account)):focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 1px;
+}
+
+.nav-group__toggle:focus-visible,
+.nav__mobile-close:focus-visible,
+.field-type input:not([type='checkbox']):not([type='radio']):focus-visible,
+.field-type textarea:focus-visible,
+.checkbox-input:has(input:focus-visible) .checkbox-input__input,
+.search-bar .search-filter:has(input:focus-visible),
+.rich-text-lexical .editor-container:focus-within,
+.date-time-picker__clear-button:focus-visible,
+.condition-value-text:focus-visible,
+.condition-value-number:focus-visible,
+.block-search__input:focus-visible,
+.item-search__input:focus-visible,
+.date-time-picker .react-datepicker__input-container input:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 1px;
+}
+
+/* A morzsamenü, a fülsor és a többértékű választó címkéi görgető/levágó
+   konténerben ülnek (overflow), ami a kifelé rajzolt gyűrű felső és alsó
+   élét levágta (mérve: csak az oldalsó élek látszottak). Ezeken a gyűrű befelé kerül; a morzsalink 3 px-es
+   belső térköze negatív margóval kiegyenlítve, a sor nem mozdul. */
+.step-nav a:not(.step-nav__home) {
+  padding-inline: 3px;
+  margin-inline: -3px;
+}
+
+.step-nav a:not(.step-nav__home):focus-visible,
+.tabs-field__tab-button:focus-visible,
+.react-select .rs__multi-value:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: -2px;
+}
+
+/* A react-select (emotion) `outline: 0 !important`-ot tesz a vezérlőre,
+   rétegen kívül: csak !important-tal írható felül. Ez a szakasz EGYETLEN
+   !important-ja. */
+.react-select .rs__control--is-focused {
+  outline: var(--accessibility-outline) !important;
+  outline-offset: 1px;
+}
+
+/* A naptár fókuszált napja a core-ban --theme-elevation-400 hátteret kap
+   (DatePicker/index.scss 240. sor), a nap száma --theme-elevation-1000.
+   A sötétebb 400-as tokennel ez világosban 3,83:1 lenne, sötétben már a
+   core is 3,32:1. Helyette a billentyűvel kijelölt nap core-mintája jár
+   (DatePicker/index.scss 255–259. sor: elevation-150 háttér + 1 px-es
+   belső és külső --theme-elevation-800 keret). Arányok világos / sötét
+   témában: a nap száma (elevation-1000) 15,46 / 11,03:1, a kiválasztott
+   napé (elevation-800) 9,86 / 9,25:1; a keret a nap hátterén 9,86 /
+   9,25:1, a naptár hátterén 13,39 / 13,35:1. A kiválasztott nap értékeit
+   és a keretet a products/5 dátummezőjén mérve is igazoltuk. */
+.date-time-picker .react-datepicker__day:focus {
+  background: var(--theme-elevation-150);
+  box-shadow:
+    inset 0 0 0 1px var(--theme-elevation-800),
+    0 0 0 1px var(--theme-elevation-800);
+}
+
+/* ---- 5. Átlátszósággal halványított vezérlők -----------------------------
+   Fülek (core Tabs/Tab/index.scss: opacity 0.5 → 2,92:1): az inaktív fül
+   teljes fedettségű, a színét az --theme-elevation-500 adja (világosban
+   5,66, sötétben 7,75:1); a hibát jelző fül színe a core-é marad. Egér
+   alatt a szöveg-szín jelzi a rámutatást. */
+.tabs-field__tab-button:not(.tabs-field__tab-button--active) {
+  opacity: 1;
+}
+
+.tabs-field__tab-button:not(.tabs-field__tab-button--active):not(
+    .tabs-field__tab-button--has-error
+  ) {
+  color: var(--theme-elevation-500);
+}
+
+.tabs-field__tab-button:not(.tabs-field__tab-button--active):not(
+    .tabs-field__tab-button--has-error
+  ):hover {
+  color: var(--theme-text);
+}
+
+/* Rendező nyilak (core 0,3 → 2,11:1) és a sorfogantyú (0,5 → 2,85:1).
+   Az aktív rendező nyíl a core szerint teljes fedettségű marad. */
+.sort-column__button:not(.sort-column--active) {
+  opacity: 0.6;
+}
+
+.sort-column__button:not(.sort-column--active):hover {
+  opacity: 0.85;
+}
+
+.collapsible__drag {
+  opacity: 0.8;
+}
+
+/* A mobil fejléc menügombja nyitott menünél a core-ban 0,5-ös átlátszóságot
+   kap (AppHeader/index.scss), így a bezáró „X” ikon fehéren 2,92:1 volt
+   (mérve 390 px-en). A gomb nyitott menü mellett is működik (bezárja a
+   menüt), tehát nem letiltott vezérlő: teljes fedettség jár neki (1.4.11). */
+.app-header__mobile-nav-toggler.nav-toggler--is-open {
+  opacity: 1;
+}
+
+/* ---- 6. Mezőleírás olvashatósága (SC 1.4.12 + sorhossz) ------------------
+   A core 13 px-es, max-width nélküli leírása asztalon 179 karakteres
+   sorokat adott (medián 105). 14 px, 1,5-ös sormagasság, 34em-es mérték:
+   a magyar szöveg ~73 karakter/sor (Baymard 50–75:
+   https://baymard.com/blog/line-length-readability; a repó tűrése 45–85).
+   A max() alsó korlátja a Payload 1024 px alatti 12 px-es gyökere miatt
+   kell: a leírás ott is 14 CSS px marad.
+   A webshop-bővítmény ármezője a saját, rétegen kívüli CSS-ében
+   (plugin-ecommerce ui/PriceInput/index.css) 46rem-es mértéket ad a
+   leírásnak, (0,2,0)-s szelektorral: ezt csak erősebb szelektor írja felül
+   (mérve: a kurzus árának leírása 96 karakteres sor volt). */
+.field-description,
+.custom-view-description,
+.field-type.formattedPrice .formattedPriceDescription {
+  font-size: max(14px, calc(14 / 13 * 1rem));
+  line-height: 1.5;
+  max-width: 34em;
+}
+
+/* A Payload 1024 px alatt 12 px-re viszi a gyökeret (@payloadcms/ui
+   app.scss: `html { @include mid-break { font-size: 12px } }`), így mobilon
+   a leggyakoribb betűméret 12 px volt (3789 elem). A 13 px-es gyökér minden
+   rem-alapú méretet 8,3%-kal növel, a desktopos arányokat adja vissza.
+   Bevezetés előtt MÉRVE (15 nézet, 12 px-es és 13 px-es gyökérrel
+   párhuzamosan, B1-meres/json/light-*-r12 és -r13): 320, 390 és 768 px-en
+   nincs új reflow-hiba, a célméret-hibák száma nem nő, mobilon a 12 px-es
+   szövegek 13 px-esek lettek; a --kc-as-px-re épülő statisztika-őrök
+   zöldek. A böngésző betűméret-beállítása ettől még nem jut el ide (a
+   Payload fix px-es gyökere), a nagyítás viszont működik. */
+@media (max-width: 1024px) {
+  html {
+    font-size: 13px;
+  }
+}
+
+/* A többértékű kapcsolatmező címkéje (pl. a kurzus kategóriái) a core-ban
+   fix 12 px, a lap legkisebb szövege volt; a törzsszöveggel egyező 1rem. */
+.relationship--multi-value-label__text {
+  font-size: 1rem;
+}
+
+/* ---- 7. Érintőcél (SC 2.5.8) ---------------------------------------------
+   A Payload ikon-gombjai 16–22 px-esek (mobilon 913/4460 cél bukott). A
+   doboz legalább 24 × 24 CSS px; a látható ikon mérete nem változik, a
+   hozzáadott terület kattintható. */
+.react-select .rs__indicators .dropdown-indicator,
+.react-select .rs__indicators .clear-indicator,
+.collapsible__drag,
+.array-actions__button,
+.popup-button--default,
+.upload-relationship-details__edit,
+.upload-relationship-details__remove,
+.date-time-picker__clear-button,
+.multi-value-remove,
+.relationship--multi-value-label__drawer-toggler,
+.sort-column__button,
+.card__actions .btn--icon,
+.payload-toast-container .payload-toast-close-button {
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* A react-select 3,6 px-es beírómezőjének NEM jár külön szabály: nem önálló
+   cél, a választó a vezérlő teljes felületén (.rs__control, mérve ≥ 40 px
+   magas) fogadja a koppintást, és a beírómezőre teszi a fókuszt. */
+
+/* ---- 8. Reflow (SC 1.4.10) ------------------------------------------------
+   320 px-en 52/65 nézetben lógott ki elem a lapból (a body overflow-x:
+   hidden levágta). A morzsamenü, a kijelölés-sáv, a fájlnév és a
+   blokkfejléc zsugorodhat vagy törhet; a dokumentumsáv meta-sora 768 px
+   alatt görgetés helyett tördel (a görgethető, de fókuszálhatatlan
+   konténer billentyűzettel elérhetetlen volt: axe scrollable-region-focusable).
+   KIVÉTEL az Irányítópult morzsamenüje: ott az „Irányítópult” lenyíló
+   választó (Műszerfal szerkesztése, Alaphelyzet visszaállítása) ül, amelynek
+   menüjét a levágás láthatatlanná tette (mérve 1440 px-en: a menü megnyílt,
+   de a helyén a mögötte álló kártya kapta a kattintást). A core ugyanezért
+   veszi le itt a csonkolást (@payloadcms/ui StepNav/index.scss: „don't
+   truncate modular dashboard elements”); a rövid morzsa a 320 px-be
+   levágás nélkül is belefér. */
+.app-header__step-nav-wrapper:not(
+  :has(.dashboard-breadcrumb-select, .dashboard-breadcrumb-dropdown__editing)
+) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.step-nav {
+  min-width: 0;
+}
+
+/* A kezdőlap-ikon a zsugorodó morzsamenüben sem szűkülhet (mérve: a
+   verziólistán 2,9 px szélesre préselődött). */
+.step-nav__home {
+  flex-shrink: 0;
+}
+
+.step-nav__last:not(:has(.dashboard-breadcrumb-select, .dashboard-breadcrumb-dropdown__editing)) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header__account {
+  flex-shrink: 0;
+}
+
+/* A feltöltött fájl neve és adatai a core-ban egy sorba kényszerítve,
+   „…”-tal csonkolva álltak (320 px-en a név nagy része elveszett: az 1.4.10
+   „without loss of information” feltétele sérült). Tördelhetők. */
+.upload-relationship-details__filename,
+.upload-relationship-details__meta {
+  white-space: normal;
+  text-wrap: wrap;
+}
+
+.upload-relationship-details__filename a {
+  overflow-wrap: anywhere;
+}
+
+.blocks-field__block-header .section-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* A „Szekció hozzáadása” választó kártyáin a blokk neve a core-ban egy
+   sorba kényszerítve, „…”-tal csonkolva állt (ThumbnailCard/index.scss).
+   Mérve (a 19 blokknévből): 1280 px-en 4, 390 px-en 12, 320 px-en 17 név
+   csonkolódott, így a szerkesztő nem tudta, melyik szekciót választja
+   (SC 1.4.10: tartalomvesztés nélkül). A felirat tördel; szót csak akkor
+   tör, ha egy szó egymagában sem fér el. Hogy a kétsoros felirat mellett
+   a kártyák egy rácssorban azonos magasak maradjanak, a kártya kitölti a
+   rács által nyújtott cellát. */
+.blocks-drawer__block .thumbnail-card__label {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
+}
+
+.blocks-drawer__block > .thumbnail-card {
+  height: 100%;
+}
+
+/* 768 px alatt (a Payload small-break-je, ahol a navigáció rátakar):
+   - a dokumentumsáv meta-sora (Állapot, Utoljára módosítva, Létrehozva)
+     tördel, az értéke is törhet; a jobb szélső áttűnés csak a vízszintes
+     görgetést jelezte, ezért eltűnik;
+   - a mobilos kijelölés-sáv (position: fixed) a statikus helyéről, a
+     gutter-től indult, és 100%-os szélességével 16 px-re kilógott: a
+     nézetablak bal szélétől indul, a gutter belső térközként jár neki. */
+@media (max-width: 768px) {
+  .doc-controls__content {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .doc-controls__meta {
+    flex-wrap: wrap;
+    row-gap: calc(var(--base) * 0.25);
+  }
+
+  .doc-controls__meta::after {
+    display: none;
+  }
+
+  .doc-controls__list-item,
+  .doc-controls__value-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .doc-controls__value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* A core mobilon az egész dokumentumsávot ragasztja, -56 px-es felső
+     eltolással: így csak a gombsor marad a képernyőn, az egysoros meta
+     kigördül. A tördelt meta viszont 85–110 px magas (mérve 390 px-en), ezért
+     görgetéskor 30–54 px-nyi meta a gombsor fölött ragadt. A sáv és a
+     burkoló doboza itt eltűnik az elrendezésből (display: contents, a
+     gyerekeik az űrlap közvetlen gyerekeivé válnak), és CSAK a gombsor
+     ragad: a meta magasságától függetlenül úgy, ahogy a core szánta. Az
+     alsó vonalat a gombsor saját kerete adja (a sáv abszolút helyzetű
+     elválasztója doboz nélkül rossz helyre kerülne). */
+  .doc-controls,
+  .doc-controls__wrapper {
+    display: contents;
+  }
+
+  /* A sáv homályosító rétege (a core blur-bg mixinjének abszolút ::before és
+     ::after eleme) doboz nélkül a legközelebbi pozicionált ősig nőne, és az
+     egész űrlapot elhomályosítaná (mérve). Mobilon a gombsor saját,
+     átlátszatlan hátteret kap a core-tól, a réteg itt nem kell. */
+  .doc-controls::before,
+  .doc-controls::after,
+  .doc-controls__divider {
+    display: none;
+  }
+
+  /* A gombsor fix magasságú, vízszintesen görgethető sáv volt: 320 px-en a
+     „Módosítások közzététele” gomb felirata a jobb szélen levágódott (a
+     mellette álló Előnézet gombbal 344 px kellett a 262 px-es sávban). A
+     gombok tördelhetnek, így minden cselekvés és a teljes felirat látszik
+     (SC 1.4.10: a két irányban görgetés és a tartalomvesztés kerülendő). */
+  .doc-controls__controls-wrapper {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: auto;
+    min-height: var(--doc-controls-height);
+    border-bottom: 1px solid var(--theme-elevation-100);
+  }
+
+  .doc-controls__controls {
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: calc(var(--base) * 0.4);
+    padding-block: calc(var(--base) * 0.3);
+  }
+
+  .doc-controls__controls::after {
+    display: none;
+  }
+
+  .collection-list__list-selection {
+    left: 0;
+    padding-inline: var(--gutter-h);
+  }
+
+  /* A nyitott mobil-menü a teljes szélességet elfoglalja, a tartalmat pedig
+     a Payload a nézetablakon túlra tolja (mérve 320 px-en: a dokumentum
+     522 px széles lett). A clip levágja a kitolt, amúgy is takart részt,
+     de nem hoz létre görgetőkonténert, így a sticky fejléc és a
+     dokumentumsáv továbbra is a nézetablakhoz tapad. */
+  .template-default {
+    overflow-x: clip;
+  }
+
+  /* A mobil-menü fejsávja 100vw széles, de a menü belső margójától indul,
+     így 16 px-re a nézetablakon túl ért (a menü overflow: hidden-je
+     levágta, de a dokumentum szélességébe beszámított). */
+  .nav__header {
+    max-width: calc(100vw - 2 * var(--gutter-h));
+  }
+}
+
+/* ---- 8b. Mezőhiba-buborék (SC 3.3.1 és 3.3.3) ------------------------------
+   A Payload a mező hibaüzenetét egysoros, levágott buborékban mutatja
+   (@payloadcms/ui: .tooltip { white-space: nowrap }, .tooltip-content
+   { overflow: hidden; text-overflow: ellipsis }, a buborék legfeljebb a
+   mező 75%-a). Nyitott oldalsávval 1025 és 1180 px között a teendőt mondó
+   üzenetek vége levágódott (mérve 2026-09-23-án az Űrlapok átnevezés-
+   hibáján: 606 px-es üzenet, 457 px hely). A buborék itt tördel, így a
+   teljes üzenet olvasható; a szó nélküli hosszú értéket (webcím) is törheti.
+   A buborék a címke fölött áll, és lefelé nőne: kétsoros üzenetnél 7 px-szel
+   rálógott a beviteli mezőre (mérve). Ezért felfelé nő: az egysoros magasság
+   (15 px sormagasság + 2 × 4 px belső margó) fölötti rész felfelé tolódik,
+   az alja ott marad, ahol az egysoros buboréké. */
+.field-error.tooltip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transform: translateY(calc(-100% + 23px - var(--caret-size)));
+}
+
+.field-error.tooltip .tooltip-content {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* ---- 9. STÍLUSSZERZŐDÉS a saját admin-komponenseknek ----------------------
+   Ezeket a neveket más feladatok (panelek, tájékoztató dobozok) saját
+   színezés nélkül használják; a név és a jelentés kötött, az értékek a
+   fenti tokenekből jönnek, így mindkét témán mérve AA-sak.
+
+   (1) --kc-admin-field-border: mezőhatár-szín (fent, témánként).
+
+   (2) .kc-admin-input: natív <input>, <select>, <textarea> a Payload
+   mezőivel azonos megjelenéssel (@payloadcms/ui vars.scss @mixin formInput
+   méretei). A magasság legalább 40 CSS px a 12 px-es gyökéren is (a
+   calc(var(--base) * 2) ott csak 36,9 px lenne). Szöveg: elevation-800
+   (világos 13,39:1, sötét 13,35:1 a mező hátterén); placeholder:
+   elevation-400 (5,49 / 5,65:1); keret: a mezőhatár-token (4,54 / 3,71:1).
+   Letiltva halvány háttér, keret nélkül: ugyanaz a „nem szerkeszthető”
+   jelzés, mint a core csak olvasható mezőin. */
+.kc-admin-input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: max(40px, calc(var(--base) * 2));
+  padding: calc(var(--base) * 0.4) calc(var(--base) * 0.75);
+  border: 1px solid var(--kc-admin-field-border);
+  border-radius: var(--style-radius-s);
+  background: var(--theme-input-bg);
+  color: var(--theme-elevation-800);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.kc-admin-input::placeholder {
+  color: var(--theme-elevation-400);
+  opacity: 1;
+}
+
+.kc-admin-input:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 1px;
+}
+
+.kc-admin-input:disabled,
+.kc-admin-input[readonly] {
+  border-color: transparent;
+  background: var(--theme-elevation-100);
+  color: var(--theme-elevation-400);
+  cursor: not-allowed;
+}
+
+/* (3) .kc-admin-notice: tájékoztató doboz a szerkesztőfelületen, és a
+   .kc-admin-notice--figyelem változata. Minta: a GOV.UK Inset text (bal
+   oldali jelzősáv a kiegészítő információhoz,
+   https://design-system.service.gov.uk/components/inset-text/) és a
+   Notification banner (a doboz saját kerete, címsor, amely a jelentést
+   szövegben is kimondja, hogy ne csak a szín hordozza: „so that you're not
+   relying on colour alone … 1.4.1”,
+   https://design-system.service.gov.uk/components/notification-banner/);
+   az Atlassian Section message ugyanígy képernyő-szakaszhoz kötött,
+   címmel és cselekvés-linkekkel
+   (https://atlassian.design/components/section-message/usage). Az NN/g
+   első heurisztikája szerint a rendszer „should always keep users informed
+   about what is going on” (https://www.nngroup.com/articles/visibility-system-status/).
+   Role-t az osztály NEM ad: élő régió (status/alert) csak ott kell, ahol a
+   tartalom menet közben változik; ezt a komponens dönti el.
+   A jelentést a __cim szövege mondja ki („Figyelem:”, „Tudnivaló:”), a
+   szín csak kiegészítő jel (SC 1.4.1).
+   Mért arányok (szöveg: elevation-800 a doboz hátterén; határ: a jelzőszín
+   a doboz hátterén és a két lapháttéren, --theme-elevation-0 és -50, a
+   legrosszabb):
+   - tájékoztató, világos: szöveg 12,13:1; határ #0b6e99 → 5,14:1
+   - tájékoztató, sötét:   szöveg 13,75:1; határ #24a4df → 5,64:1
+   - figyelem, világos:    szöveg 12,08:1; határ #96570b → 5,17:1
+   - figyelem, sötét:      szöveg 13,88:1; határ #df8411 → 5,64:1
+   A jelzőszín a Payload success-600 / warning-600 tokenje, amelyet a core
+   sötétben maga képez át a világosabb 400-asra. */
+.kc-admin-notice {
+  --kc-admin-notice-accent: var(--theme-success-600);
+  --kc-admin-notice-bg: var(--theme-success-50);
+
+  box-sizing: border-box;
+  max-width: 38em;
+  margin: 0 0 var(--base);
+  padding: calc(var(--base) * 0.6) calc(var(--base) * 0.8);
+  border: 1px solid var(--kc-admin-notice-accent);
+  border-inline-start-width: 4px;
+  border-radius: var(--style-radius-s);
+  background: var(--kc-admin-notice-bg);
+  color: var(--theme-elevation-800);
+  font-size: max(14px, calc(14 / 13 * 1rem));
+  line-height: 1.5;
+}
+
+.kc-admin-notice--figyelem {
+  --kc-admin-notice-accent: var(--theme-warning-600);
+  --kc-admin-notice-bg: var(--theme-warning-50);
+}
+
+.kc-admin-notice__cim {
+  margin: 0 0 calc(var(--base) * 0.25);
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: normal;
+  line-height: inherit;
+}
+
+.kc-admin-notice__szoveg {
+  margin: 0;
+}
+
+.kc-admin-notice__szoveg + .kc-admin-notice__szoveg {
+  margin-top: 0.5em;
+}
+
+.kc-admin-notice__linkek {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 calc(var(--base) * 0.8);
+  margin: calc(var(--base) * 0.3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A linkek egymás melletti célok, nem mondat közbeni linkek, ezért jár
+   nekik a 24 px-es doboz (SC 2.5.8); aláhúzás a nem-szín jelzés (1.4.1). */
+.kc-admin-notice__linkek a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.kc-admin-notice__linkek a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.kc-admin-notice__linkek a:focus-visible {
+  outline: var(--accessibility-outline);
+  outline-offset: 2px;
 }

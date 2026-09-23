@@ -38,6 +38,9 @@ vi.mock('@/lib/cms', () => ({
   getFreeProduct: vi.fn(async () => null),
 }))
 vi.mock('@/lib/appointment/section', () => ({ getAppointmentSectionContext: mocks.appointment }))
+// A route-ok a Tudástár-kapcsolót is kérdezik; itt a bekapcsolt állapot a
+// mérce (a kikapcsolt ágat a tudastar-link-szuro.test.tsx méri).
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
 vi.mock('@/components/blocks/RenderBlocks', () => ({
   RenderBlocks: (props: RenderBlocksProps) => {
     mocks.blocks(props)

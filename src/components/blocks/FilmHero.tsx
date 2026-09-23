@@ -1,6 +1,7 @@
 import type { BlockFilmHero } from '../../payload-types'
 import { buildOriginAllowlist } from '../../env'
 import { COURSE_BASE_PATH, parseCourseRouteParam } from '../../lib/course-url'
+import { resolveFilmCaptions } from '../../lib/film-captions'
 import { COURSE_SOS_KEZRELAX, LEGACY_REDIRECTS } from '../../lib/legacy-redirects'
 import { SOS_COURSE_FALLBACK_PATH } from '../../lib/menu-seed'
 import { sanitizeCmsUrl } from '../../lib/safe-url'
@@ -16,8 +17,12 @@ import type {
 import '../../app/(frontend)/styles/blocks/film-hero.css'
 
 /**
- * FilmHero — a kezdőlap nyitó filmsávja (szekció-rendszer terv 2. és 3.3, M1).
+ * FilmHero: a kezdőlap nyitó filmsávja, az adminban „Nyitó videó (kéznyitás)”
+ * (szekció-rendszer terv 2. és 3.3, M1). A cím, a bevezető, a címkék, a gombok
+ * és a két beúszó felirat a blokk CMS-mezőiből jön; a film és a poszterek
+ * statikus assetek.
  * A `sectionSettings.visible` szűrése NEM itt történik: a blokk-renderelő
+ * (RenderBlocks) hagyja ki a rejtett szekciókat.
  */
 
 /** A jóváhagyott egykezes film verziózott desktop/mobil klipje és posztere. */
@@ -103,20 +108,19 @@ export const PINNED = (FILM_SCROLL - 1) / FILM_SCROLL
 export const CAPTION_MID = { from: 0.44 * PINNED, to: 0.63 * PINNED } as const
 export const CAPTION_END = { from: 0.85 * PINNED, to: 1 } as const
 
-/**
- * A 2. és 3. állás SZÖVEGE — kódban rögzített érték.
- * A filmsáv feliratai szándékosan NEM CMS-mezők: a blokk sémája nem bővült,
+/*
+ * A 2. és 3. állás SZÖVEGE (cím + leírás) 2026-09-22 óta CMS-mező: a blokk
+ * „Beúszó szövegek a videón” csoportja (src/blocks/film-hero.ts). Üres, NULL
+ * vagy csak szóközből álló mezőnél a beépített szöveg látszik; a beépített
+ * szövegek, a 60/120 karakteres korlát és a feloldó egyetlen forrása a
+ * src/lib/film-captions.ts. A két álláson mindig van cím ÉS alatta leírás
+ * (a tulajdonos 2026-08-17-i kérése; őr: filmsav-feliratok.test.tsx).
  */
-const CAPTION_MID_TEXT = 'Minden alkalommal egy mozdulattal több'
-const CAPTION_MID_BODY =
-  'Napi néhány perc otthon, a saját tempódban. A gyakorlatok lépésről lépésre épülnek egymásra, ahogy a kéz bírja.'
-const CAPTION_END_TEXT = 'A következő mozdulat a tiéd'
-const CAPTION_END_BODY =
-  'Lentebb megtalálod a kurzusokat és a rendelői kezeléseket. Ha előbb kipróbálnád, ott vannak az ingyenes SOS gyakorlatok.'
-const CAPTION_END_BODY_WITHOUT_FREE_SOS =
-  'Ismerd meg a kurzusainkat és a rendelői kezeléseinket. Válaszd ki a neked megfelelő segítséget.'
 
-/** A fejezet-navigáció felirata — egyetlen jelenetnél nem is jelenik meg. */
+/**
+ * A fejezet-navigáció felirata. Egyetlen jelenetnél nem jelenik meg, ezért
+ * szándékosan nem CMS-mező (R1 6. vezetői döntés).
+ */
 const FILM_LABEL = 'A kéz nyílása'
 
 /*
@@ -227,29 +231,27 @@ export function FilmHero({
 
   const anchorId = block.sectionSettings?.anchorId?.trim()
 
-  // Üres szövegnél NEM renderelünk helykitöltőt: az adott állás egyszerűen
-  // kimarad. (A szövegek kódban élnek — lásd CAPTION_*_TEXT.)
-  const captions: ScrollScrubCaption[] = []
-  const midText = CAPTION_MID_TEXT.trim()
-  if (midText) {
-    captions.push({
+  // A két felirat szövege a CMS-ből jön, üres mezőnél a beépített szöveggel,
+  // így mindkét állás mindig megjelenik. A vég-leírás változatát a
+  // freeSosHref választja: az ingyenes gyakorlatokra csak akkor hivatkozik,
+  // ha a sávjuk tényleg kint van a lapon.
+  const feliratok = resolveFilmCaptions(block, Boolean(freeSosHref))
+  const captions: ScrollScrubCaption[] = [
+    {
       align: 'right',
-      body: CAPTION_MID_BODY.trim() || undefined,
+      body: feliratok.mid.body,
       id: 'film-scrub-kozep',
-      text: midText,
+      text: feliratok.mid.title,
       ...CAPTION_MID,
-    })
-  }
-  const endText = CAPTION_END_TEXT.trim()
-  if (endText) {
-    captions.push({
+    },
+    {
       align: 'center',
-      body: freeSosHref ? CAPTION_END_BODY : CAPTION_END_BODY_WITHOUT_FREE_SOS,
+      body: feliratok.end.body,
       id: 'film-scrub-vege',
-      text: endText,
+      text: feliratok.end.title,
       ...CAPTION_END,
-    })
-  }
+    },
+  ]
 
   const scene: ScrollScrubScene = {
     actions,

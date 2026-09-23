@@ -1,7 +1,12 @@
 /**
  * A kurzus-haladás panel SAJÁT márka-rétege (`.kc-course-progress`).
- * (src/app/(payload)/custom.scss). Az a scope ezen a panelen NEM fut, ezért
- * hiányzó réteg NEM bukást okoz, csak elveszti a színkódolást. Az üzenet
+ * A Statisztika nézet `.kc-adminstat` tokenjei
+ * (src/app/(payload)/custom.scss) ezen a panelen NEM futnak, ezért a panel
+ * a saját két színtokenjét itt kapja. Ha ez a réteg hiányzik, az nem okoz
+ * bukást, csak elvész a színkódolás: az üzenet szövege a Payload
+ * szövegszínével (bőven AA) akkor is olvasható, és a jelentést a szöveg
+ * hordozza, nem a szín (WCAG 2.2 SC 1.4.1). A natív szűrőmezők a
+ * custom.scss közös `.kc-admin-input` osztályát viselik.
  */
 
 .kc-course-progress {

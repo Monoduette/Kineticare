@@ -8,6 +8,7 @@ import type {
   Field,
   FieldAccess,
   NumberFieldSingleValidation,
+  PayloadRequest,
 } from 'payload'
 
 import {
@@ -28,6 +29,7 @@ import { seoKeywordsField } from '../fields/seo-keywords'
 import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/cleanup'
 import { courseSlugField } from '../fields/course-slug'
 import { budapestDateString } from '../lib/date/budapest'
+import { formatPriceHuf } from '../lib/format-price'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
 import { withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
@@ -177,12 +179,109 @@ export const validatePromoEnd: DateFieldValidation = (value, { siblingData }) =>
 export const PROMO_PRICE_MESSAGE =
   'Az akciós ár csak pozitív egész forintösszeg lehet, vagy hagyd üresen.'
 
-/** WP63: az akciós ár egész, pozitív forint (a HUF-nak nincs tizedese). */
-export const validatePromoPriceHuf: NumberFieldSingleValidation = (value) => {
-  if (value === null || value === undefined || (Number.isSafeInteger(value) && value > 0)) {
+/**
+ * K21: a rendes árnál nem kisebb akciós ár üzenete. A kurzus-szerkesztő
+ * állapotdoboza (src/components/admin/CoursePromoStatus.tsx) ugyanezt a
+ * helyzetet a vásárló szemszögéből írja le, a két szöveg párban áll.
+ *
+ * Az üzenet megmondja, mi a baj és hogyan javítható (NN/g, Error-Message
+ * Guidelines: „Offer constructive advice”,
+ * https://www.nngroup.com/articles/error-message-guidelines/; GOV.UK Design
+ * System, Error message: „tell someone what has happened and how to fix it”,
+ * https://design-system.service.gov.uk/components/error-message/; WCAG 2.2
+ * SC 3.3.3 Error Suggestion). Az ár a vásárlói felület formázójával áll
+ * („79 500 Ft”), hogy a szerkesztő ugyanazt a számot lássa, mint a vásárló.
+ */
+export function promoPriceNotBelowRegularMessage(regularPriceHuf: number): string {
+  return `Az akciós ár legyen kisebb a rendes árnál (${formatPriceHuf(regularPriceHuf)}). Írj be kisebb összeget, vagy hagyd üresen.`
+}
+
+/**
+ * A rendes ár a `resolveCoursePromo` szabálya szerint (src/lib/course-promo.ts):
+ * csak bekapcsolt „Megvásárolható” mellett, pozitív összegként létezik. Ha
+ * nincs rendes ár, az akciós árnak nincs mihez képest kisebbnek lennie.
+ */
+export function regularPriceHufFrom(source: unknown): number | null {
+  if (typeof source !== 'object' || source === null) return null
+  const record = source as { priceInHUF?: unknown; priceInHUFEnabled?: unknown }
+  if (record.priceInHUFEnabled !== true) return null
+  const price = record.priceInHUF
+  return typeof price === 'number' && Number.isFinite(price) && price > 0 ? Math.round(price) : null
+}
+
+/**
+ * A KÖZZÉTETT (fő táblában álló) akciós ár. A products autosave-es piszkozatot
+ * használ, ezért a Payload `previousValue`-ja a legutóbbi PISZKOZAT értéke
+ * (payload/dist/collections/operations/utilities/update.js: originalDoc =
+ * getLatestCollectionVersion). Ha a tulajdonos beír egy hibás árat, az
+ * autosave validálás nélkül elmenti a piszkozatba, és közzétételkor a
+ * `previousValue` már ezt a hibás árat mutatná „változatlannak”. A közzétett
+ * érték dönti el, hogy az ár valóban régi-e. Hiba esetén `undefined`
+ * (fail-closed: az ár ilyenkor új értéknek számít).
+ */
+async function publishedPromoPriceHuf(
+  req: PayloadRequest | undefined,
+  id: number | string | undefined,
+): Promise<unknown> {
+  if (id === undefined || typeof req?.payload?.findByID !== 'function') return undefined
+  try {
+    const published = await req.payload.findByID({
+      collection: 'products',
+      id,
+      depth: 0,
+      draft: false,
+      overrideAccess: true,
+      req,
+      select: { promoPriceHuf: true },
+    })
+    return published.promoPriceHuf
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * WP63 + K21: az akciós ár egész, pozitív forint (a HUF-nak nincs tizedese),
+ * és kisebb a rendes árnál (a resolveCoursePromo az egyenlő vagy nagyobb árat
+ * úgyis figyelmen kívül hagyja, de korábban erre „Sikeresen frissítve.” jött).
+ *
+ * ZÁRÁS ELLENI VÉDELEM: más mező mentése nem bukhat el egy régi, érvénytelen
+ * akciós áron.
+ * - Akinek nincs írásjoga a mezőre (a field access owner-only), annak a
+ *   beküldött értékét a Payload amúgy is eldobja, és a tárolt értéket teszi a
+ *   helyére (payload/dist/fields/hooks/beforeValidate/promise.js, access →
+ *   getFallbackValue), tehát nem ő változtatta meg: nincs hiba.
+ * - Tulajdonosnál a változatlan, már közzétett érték átmegy (previousValue ÉS
+ *   a közzétett érték egyezik); a frissen beírt vagy csak piszkozatban álló
+ *   hibás érték viszont hibát ad. Így a rendes ár későbbi csökkentése sem zárja
+ *   ki a mentést; ezt a helyzetet az állapotdoboz jelzi.
+ */
+export const validatePromoPriceHuf: NumberFieldSingleValidation = async (value, options) => {
+  if (value === null || value === undefined) {
     return true
   }
-  return PROMO_PRICE_MESSAGE
+  const { data, siblingData, previousValue, operation, req, id, overrideAccess } = options
+  const regular = regularPriceHufFrom(siblingData) ?? regularPriceHufFrom(data)
+  const message = !(Number.isSafeInteger(value) && value > 0)
+    ? PROMO_PRICE_MESSAGE
+    : regular !== null && value >= regular
+      ? promoPriceNotBelowRegularMessage(regular)
+      : null
+  if (message === null) {
+    return true
+  }
+  if (overrideAccess !== true && req !== undefined) {
+    const canWrite = await isOwnerFieldAccess({ req, data, siblingData, id })
+    if (!canWrite) {
+      return true
+    }
+  }
+  if (operation === 'update' && value === previousValue) {
+    if ((await publishedPromoPriceHuf(req, id)) === value) {
+      return true
+    }
+  }
+  return message
 }
 
 /**
@@ -260,13 +359,25 @@ const withOwnerOnlyPriceAccess = (field: Field): Field => {
  * A mezőket nem távolítjuk el (a plugin sémájához tartoznak) — csak az
  * ADMIN-megjelenítésüket javítjuk, ami sem adatra, sem sémára nincs hatással.
  */
-const courseFieldAdminOverrides: Record<string, { description?: string; hidden?: boolean }> = {
+/*
+ * K34: a plugin gyári feliratai („Ár (HUF)”, „HUF ár engedélyezése”) a lap
+ * többi „(Ft)” feliratával keveredtek; a szerkesztő a forintot „Ft”-nak hívja
+ * (NN/g, Match Between the System and the Real World,
+ * https://www.nngroup.com/articles/match-system-real-world/; WCAG 2.2 SC 3.2.4:
+ * egy fogalom, egy név).
+ */
+const courseFieldAdminOverrides: Record<
+  string,
+  { description?: string; hidden?: boolean; label?: string }
+> = {
   inventory: { hidden: true },
   priceInHUF: {
+    label: 'Ár (Ft)',
     description:
-      'A kurzus bruttó ára forintban — ennyit fizet a vásárló a pénztárnál. Csak tulajdonos állíthatja.',
+      'A kurzus rendes, bruttó ára forintban. Ennyit fizet a vásárló a pénztárnál, ha nincs élő akció. Csak a tulajdonos állíthatja.',
   },
   priceInHUFEnabled: {
+    label: 'Megvásárolható',
     description: 'Kikapcsolva a kurzus nem vásárolható meg.',
   },
 }
@@ -279,6 +390,7 @@ const withCourseFriendlyAdmin = (field: Field): Field => {
   }
   return {
     ...named,
+    ...(override.label === undefined ? {} : { label: override.label }),
     admin: {
       ...(named as { admin?: Record<string, unknown> }).admin,
       ...(override.hidden === undefined ? {} : { hidden: override.hidden }),
@@ -296,7 +408,7 @@ const orderItemSnapshotFields: Field[] = [
   {
     name: 'titleSnapshot',
     type: 'text',
-    label: 'Kurzus neve a megrendeléskor',
+    label: 'A kurzus belső azonosítója a vásárláskor',
     access: {
       create: () => false,
       update: () => false,
@@ -304,20 +416,20 @@ const orderItemSnapshotFields: Field[] = [
     admin: {
       readOnly: true,
       description:
-        'A termék azonosító-neve (sku) a megrendeléskor. SZÁNDÉKOSAN a sku, nem a kurzuscím (displayTitle): a rendelés- és számlasoron a stabil azonosító a hasznos, a marketingcím változhat.',
+        'A kurzus belső azonosítója a vásárlás pillanatában. Nem változik, ha a kurzus címét később átírják.',
     },
   },
   {
     name: 'priceHufSnapshot',
     type: 'number',
-    label: 'Ár a megrendeléskor (Ft)',
+    label: 'Ár a vásárláskor (Ft)',
     access: {
       create: () => false,
       update: () => false,
     },
     admin: {
       readOnly: true,
-      description: 'A termék priceInHUF értéke a megrendeléskor (szerver-oldali forrás).',
+      description: 'A kurzus ára a vásárlás pillanatában, forintban. Élő akciónál ez az akciós ár.',
     },
   },
 ]
@@ -449,6 +561,107 @@ const withSystemOwnedOrderWriteAccess = (field: Field): Field => {
   } as Field
 }
 
+/*
+ * K34 + K44 (admin-szótár: vásárló, nem „ügyfél”): a plugin gyári mezőinek
+ * felirata. R1 #8: a `transactions` kapcsolat mindig üres (a paymentMethods
+ * üres, a plugin tranzakciót nem hoz létre), és a Tranzakciók gyűjtemény
+ * rejtett, ezért a mező sem látszik. Csak megjelenítés: a mező a sémában és a
+ * form-állapotban megmarad (Payload admin.hidden: „Its value will still
+ * submit … but the field itself will not be visible”,
+ * https://payloadcms.com/docs/fields/overview).
+ */
+const orderPluginFieldAdmin: Record<string, { label?: string; hidden?: boolean }> = {
+  customer: { label: 'Vásárló' },
+  customerEmail: { label: 'Vásárló e-mail-címe' },
+  transactions: { hidden: true },
+}
+
+const withOrderFriendlyAdmin = (field: Field): Field => {
+  const named = namedField(field)
+  const override = named === null ? undefined : orderPluginFieldAdmin[named.name]
+  if (named === null || override === undefined) {
+    return field
+  }
+  return {
+    ...named,
+    ...(override.label === undefined ? {} : { label: override.label }),
+    admin: {
+      ...(named as { admin?: Record<string, unknown> }).admin,
+      ...(override.hidden === undefined ? {} : { hidden: override.hidden }),
+    },
+  } as Field
+}
+
+/**
+ * K34: a számlázás, a stornó- és a helyesbítő számla 16 rendszermezője
+ * (mérve: a rendelés fő hasábjában 18 rendszermező állt nyitva, a két
+ * Barion-azonosítóval együtt) egy alapból csukott, név nélküli csoportba
+ * kerül. A csoport NÉV NÉLKÜLI collapsible, ezért a tárolt útvonal és a séma
+ * nem változik (a G2 őr, schema-config-sync.test.ts igazolja).
+ *
+ * Progresszív feltárás: a ritkán kellő adat egy kattintásnyira van, a
+ * gyakori (rendelésszám, végösszeg, állapot, tételek) elöl marad (NN/g,
+ * Progressive Disclosure: „disclose everything that users frequently need up
+ * front”, https://www.nngroup.com/articles/progressive-disclosure/; GOV.UK
+ * Design System, Details: „information that only some users will need”,
+ * https://design-system.service.gov.uk/components/details/).
+ *
+ * A mezők definíciója a helyén marad (access, hook, típus érintetlen); ez a
+ * függvény csak a sorrendet rendezi: a csoport az első számlázási mező helyére
+ * kerül.
+ */
+export const ORDER_BILLING_SYSTEM_LABEL = 'Számlázás és visszatérítés: rendszeradatok'
+
+const orderBillingSystemFieldNames: ReadonlySet<string> = new Set([
+  'invoiceNumber',
+  'invoicePdfUrl',
+  'invoiceStatus',
+  'invoiceAttempts',
+  'invoiceLastError',
+  'invoiceCompletionDate',
+  'stornoStatus',
+  'stornoNumber',
+  'stornoAttempts',
+  'stornoLastError',
+  'correctiveInvoiceStatus',
+  'correctiveInvoiceNumber',
+  'correctiveInvoiceSeq',
+  'correctiveInvoiceAttempts',
+  'correctiveInvoiceLastError',
+  'correctiveInvoiceAttemptsSeq',
+])
+
+const isOrderBillingSystemField = (field: Field): boolean => {
+  const named = namedField(field)
+  return named !== null && orderBillingSystemFieldNames.has(named.name)
+}
+
+export function withOrderBillingCollapsible(fields: Field[]): Field[] {
+  const billing = fields.filter(isOrderBillingSystemField)
+  if (billing.length === 0) {
+    return fields
+  }
+  const group: Field = {
+    type: 'collapsible',
+    label: ORDER_BILLING_SYSTEM_LABEL,
+    admin: {
+      initCollapsed: true,
+      description:
+        'A számla, a stornószámla és a helyesbítő számla adatai. A rendszer tölti ki őket, kézzel nem módosíthatók. Hibakereséshez nyisd le.',
+    },
+    fields: billing,
+  }
+  const result: Field[] = []
+  for (const field of fields) {
+    if (!isOrderBillingSystemField(field)) {
+      result.push(field)
+    } else if (field === billing[0]) {
+      result.push(group)
+    }
+  }
+  return result
+}
+
 const visitOrderFields = (field: Field): Field =>
   withSystemOwnedOrderWriteAccess(
     withOrderStatusStateMachine(withOrderItemsCell(withOrderItemSnapshots(field))),
@@ -537,7 +750,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     useAsTitle: 'sku',
     group: WEBSHOP_GROUP,
     description:
-      'A megvásárolható kurzusok. Az árat és a közzétételt csak tulajdonos állíthatja. Az előnézet a mentett kurzusoldalt mutatja, tananyag-hozzáférést nem ad.',
+      'A megvásárolható kurzusok. Az árat és a közzétételt csak a tulajdonos állíthatja. Az előnézet a mentett kurzusoldalt mutatja, tananyag-hozzáférést nem ad.',
     // KÖTELEZŐ felülírás: a plugin `defaultColumns: ['prices']`-t állít be
     // (createProductsCollection), DE nincs `prices` nevű mező — a pricesField
     // egy NÉVTELEN group → row alá teszi a `priceInHUFEnabled` + `priceInHUF`
@@ -598,7 +811,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       label: 'Kurzus címe',
       admin: {
         description:
-          'A kurzus címe, ahogy a látogató látja (pl. „Kéztorna otthon — 8 hetes program"). Ebből készül a webcím is. Ha üresen hagyod, a lenti „Kurzus neve (azonosító)" jelenik meg.',
+          'A kurzus címe, ahogy a látogató látja (pl. „Kéztorna otthon: 8 hetes program”). Ebből készül a webcím is. Ha üresen hagyod, a lenti „Belső azonosító” jelenik meg helyette.',
       },
     },
     courseSlugField,
@@ -607,7 +820,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       type: 'textarea',
       label: 'Rövid leírás',
       admin: {
-        description: '1–3 mondat. A kurzuskártyákon és a kezdőlapon ez látszik.',
+        description:
+          'Egy-három mondat. A kurzusoldal tetején, a kosárban, a Kapcsolódó kurzusok kártyáin és a blogbejegyzések kurzusajánlójában látszik. Az ingyenes kurzusnál a kezdőlapi sáv szövege is ez, ha ott nem írsz sajátot.',
       },
     },
     {
@@ -619,15 +833,21 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       // a negyedik sor már folyószöveggé olvadna.
       name: 'cardHighlights',
       type: 'array',
-      label: 'Kiemelt előnyök (a kurzuskártyán)',
+      label: 'Kiemelt előnyök a kurzuskártyához',
       maxRows: 3,
       labels: {
         singular: 'Előny',
         plural: 'Előnyök',
       },
       admin: {
+        // K34: a modul-térkép szerint ezt a mezőt ma semmi nem rajzolja ki. A
+        // kezdőlapi és a Kurzusok oldali kártya (CourseShowcase.tsx) csak a
+        // címet, a célközönséget, az árat és a gombot mutatja; a sorokat
+        // kirajzoló ProductCard a használaton kívüli CourseCards-ból hívódik.
+        // A súgó ezt őszintén kimondja (NN/g, Match Between the System and
+        // the Real World).
         description:
-          'Legfeljebb 3 rövid, pipával jelölt állítás a kezdőlapi kurzuskártyán (pl. „50+ videós gyakorlat”). Tényszerű, ellenőrizhető állítást írj — ígéretet ne. Ha üresen hagyod, a kártyán egyszerűen nem jelenik meg ez a rész.',
+          'Ma sehol nem jelenik meg a weboldalon: a kurzuskártya a kezdőlapon és a Kurzusok oldalon a címet, a célközönséget, az árat és a gombot mutatja. A beírt sorok megmaradnak. A kurzusoldal pipás sorait a lenti „Fő előnyök (pipás sorok)” mezőben írod.',
       },
       fields: [
         {
@@ -637,7 +857,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           required: true,
           maxLength: 80,
           admin: {
-            description: 'Egy tömör állítás, legfeljebb 80 karakter — a kártyán egy sor.',
+            description: 'Egy tömör, tényszerű állítás, legfeljebb 80 karakter.',
           },
         },
       ],
@@ -668,7 +888,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       maxRows: 5,
       admin: {
         description:
-          'Rövid, konkrét sorok a vásárlódobozban, pipával (pl. „Örökös hozzáférés”, „50+ videós gyakorlat”). Három sor a legjobb. Ha üresen hagyod, a Részletes leírás első felsorolásából — annak hiányában a tananyag adataiból — képződik.',
+          'Rövid, konkrét sorok a vásárlódobozban, pipával (pl. „Örökös hozzáférés”, „50+ videós gyakorlat”). Három sor a legjobb. Ha üresen hagyod, a sorok a Részletes leírás első felsorolásából, ennek hiányában a tananyag adataiból készülnek.',
       },
       fields: [
         {
@@ -687,7 +907,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       maxRows: 4,
       admin: {
         description:
-          'Mi történik a vásárlás után, lépésről lépésre. Ez az ellenérv-csökkentő szakasz („mikor és hogyan érem el?”). Ha üresen hagyod, a vásárlási folyamat három tényszerű lépése jelenik meg.',
+          'Mi történik a vásárlás után, lépésről lépésre. Arra a kérdésre felel, hogy a vásárló mikor és hogyan éri el a kurzust. Ha üresen hagyod, a vásárlás három alaplépése jelenik meg.',
       },
       fields: [
         {
@@ -710,7 +930,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       labels: { singular: 'Sor', plural: 'Sorok' },
       admin: {
         description:
-          '„Ez a program neked való, ha…” — soronként egy állítás. Ha üresen hagyod, a Részletes leírás ilyen című szakaszának felsorolásából képződik.',
+          'Az „Ez a program neked való, ha…” lista sorai, soronként egy állítás. Ha üresen hagyod, a Részletes leírás ilyen című szakaszának felsorolásából készül.',
       },
       fields: [
         {
@@ -724,11 +944,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
     {
       name: 'notFitFor',
       type: 'array',
-      label: 'Kinek NEM való',
+      label: 'Kinek nem való',
       labels: { singular: 'Sor', plural: 'Sorok' },
       admin: {
         description:
-          '„Nem javasoljuk, ha…” — az őszinte kizárás bizalmat épít, és megelőzi a csalódott vásárlást. Ha üresen hagyod, a Részletes leírás ilyen című szakaszából képződik.',
+          'A „Nem javasoljuk, ha…” lista sorai. Az őszinte kizárás bizalmat épít, és megelőzi a csalódott vásárlást. Ha üresen hagyod, a Részletes leírás ilyen című szakaszából készül.',
       },
       fields: [
         {
@@ -753,7 +973,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       type: 'textarea',
       label: 'Garancia szövege',
       admin: {
-        description: '1–3 mondat arról, mit ígérünk és hogyan lehet élni vele.',
+        description: 'Egy-három mondat arról, mit vállalunk, és hogyan lehet élni vele.',
       },
     },
     {
@@ -867,13 +1087,13 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       admin: {
         position: 'sidebar',
         description:
-          'Ez dönti el, hogy a Kurzusok oldalon melyik sávban jelenik meg: „Otthoni gyakorlóknak" vagy „Szakembereknek". Ha üresen marad, az otthoni sávba kerül.',
+          'Ez dönti el, melyik célközönség felirata áll a kurzuskártyán és a kurzusoldalon: „Otthoni gyakorlóknak” vagy „Szakembereknek”. A Statisztika is e szerint csoportosít. Ha üresen marad, az otthoni csoportba kerül.',
       },
     },
     {
       name: 'previewVideoStreamId',
       type: 'text',
-      label: 'Nyilvános bemutató videó',
+      label: 'Nyilvános előzetes videó',
       admin: {
         components: { Field: '/components/admin/BunnyVideoField#PublicBunnyVideoField' },
         description:
@@ -905,7 +1125,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           return Array.isArray(videos) && videos.length > 0
         },
         description:
-          'A kurzus fejezetek nélküli, RÉGI videólistája — csak a korábbi kurzusokon látszik. Új leckét a fenti „Tananyag (modulok)” mezőben vegyél fel. Az itt lévő videókat nem kell átmozgatni: azok változatlanul működnek.',
+          'A kurzus korábbi, modulok nélküli videólistája. Csak a régi kurzusokon látszik. Új leckét a fenti „Tananyag (modulok)” mezőben vegyél fel. Az itt lévő videókat nem kell átmozgatni, azok változatlanul működnek.',
       },
       fields: [
         {
@@ -920,7 +1140,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           admin: {
             components: { Field: '/components/admin/BunnyVideoField#ProtectedBunnyVideoField' },
             description:
-              'A korábbi lecke felvétele a védett videótárból. A lista és a vevők haladása megmarad.',
+              'A korábbi lecke felvétele a védett videótárból. A lista és a vásárlók haladása megmarad.',
           },
           // S2/b: a fizetős tartalom kulcsa nem kerülhet ki a nyilvános REST
           // API-n. Staff/owner és a terméket MEGVÁSÁRLÓ vevő olvassa; anonim és
@@ -1000,7 +1220,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           access: promoWindowFieldAccess,
           admin: {
             description:
-              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vevő a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár érvényes újra. Csak tulajdonos állíthatja.',
+              'Bekapcsolva a megadott időablakban a kurzusoldal az akciós megjelenést kapja, a kurzuskártyán Akció címke jelenik meg, és a vásárló a lenti Akciós árat fizeti. Az akció végén magától a fenti Ár (Ft) érvényes újra. Csak a tulajdonos állíthatja.',
           },
         },
         {
@@ -1009,11 +1229,18 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           label: 'Akció kezdete',
           access: promoWindowFieldAccess,
           admin: {
-            description: 'Ettől a naptól él az akció. Ha üresen hagyod, azonnal érvényes.',
+            description:
+              'Az akció első napja, például 2026. 12. 20. Ha üresen hagyod, az akció azonnal érvényes.',
             // Csak NAP, óra nélkül (a Posts.ts reviewedAt mintája): a szerkesztő
             // napban gondolkodik, az órának itt nincs jelentése. Az oszlop
             // timestamp marad, a feloldó a Budapest szerinti napra vetít.
-            date: { pickerAppearance: 'dayOnly' },
+            // K25: számjegyes magyar keltezés, évvel kezdve (A magyar
+            // helyesírás szabályai, 12. kiadás, 295. pont, pl. „2026. 09. 22.”).
+            // A Payload 3.88 DatePicker a hu locale-t csak useEffect-ben
+            // regisztrálja (node_modules/@payloadcms/ui/dist/elements/DatePicker/DatePicker.js:108-129),
+            // ezért az első render angol (mérve: products/5 „2026. September 20.”).
+            // Hónapnevet adó token (MMM, MMMM, LLL, EEE) ezért tilos.
+            date: { pickerAppearance: 'dayOnly', displayFormat: 'yyyy. MM. dd.' },
           },
         },
         {
@@ -1024,8 +1251,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           validate: validatePromoEnd,
           admin: {
             description:
-              'A megadott nap végéig él az akció. Ha üresen hagyod, az akciónak nincs vége.',
-            date: { pickerAppearance: 'dayOnly' },
+              'Az akció utolsó napja, például 2026. 12. 31. Az akció a megadott nap végéig, éjfélig él. Ha üresen hagyod, az akciónak nincs vége.',
+            date: { pickerAppearance: 'dayOnly', displayFormat: 'yyyy. MM. dd.' },
           },
         },
         {
@@ -1045,7 +1272,7 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           admin: {
             step: 1,
             description:
-              'Ezt fizeti a vevő az akció ideje alatt. A fenti Ár áthúzva jelenik meg mellette. Kisebbnek kell lennie az Árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak tulajdonos állíthatja.',
+              'Ezt fizeti a vásárló az akció ideje alatt, a fenti Ár (Ft) áthúzva jelenik meg mellette. Kisebbnek kell lennie a rendes árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak a tulajdonos állíthatja.',
           },
         },
         {
@@ -1089,8 +1316,10 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       },
       admin: {
         position: 'sidebar',
+        // K34: legfeljebb 150 karakter, hogy az oldalsáv keskeny hasábjában is
+        // átlátható maradjon (a részletek: docs/course-unlisted.md).
         description:
-          'Bekapcsolva a kurzus kimarad a nyilvános kurzuslistából, ajánlókból és a kurzusra hivatkozó menüpontokból. Közzétett állapotban a közvetlen linkkel továbbra is megnyitható és megvásárolható; a vásárlók Kurzusaim listájában megmarad. Ez nem hozzáférés-védelem. Csak tulajdonos állíthatja.',
+          'Kimarad a listákból, ajánlókból és menükből, de linkkel megnyitható és megvásárolható. Ez nem hozzáférés-védelem. Csak a tulajdonos állíthatja.',
       },
     },
     {
@@ -1109,8 +1338,8 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
        * (CourseVisibilityNotice) pedig a lap tetején cáfolja a téves üzenetet.
        */
       label: 'Megjelenés a weboldalon',
-      // Alapérték, hogy a mező SOSE maradjon jelöletlen: a „Válasszon ki egy
-      // értéket" üres select volt a csapda egyik fele.
+      // Alapérték, hogy a mező SOSE maradjon jelöletlen: az üres select („Válassz
+      // egy értéket”, korábban „Válasszon ki egy értéket”) volt a csapda egyik fele.
       defaultValue: 'draft',
       // A Payload a drafts `_status` mezőnek ugyanazt az enum-nevet generálná
       // (toSnakeCase('_status') === 'status'), így az alapértelmezett névütközés
@@ -1119,16 +1348,16 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       // API-mezőnév változatlanul `status` marad.
       enumName: ({ tableName }) => `enum_${tableName}_product_status`,
       options: [
-        { label: 'Piszkozat — még nem látszik', value: 'draft' },
-        { label: 'Közzétéve — látszik az oldalon', value: 'published' },
-        { label: 'Archivált — levéve az oldalról', value: 'archived' },
+        { label: 'Piszkozat (még nem látszik)', value: 'draft' },
+        { label: 'Közzétéve (látszik az oldalon)', value: 'published' },
+        { label: 'Archivált (levéve az oldalról)', value: 'archived' },
       ],
       admin: {
         // Az oldalsávban, a közzététel-gomb MELLETT a helye — nem az űrlap
         // közepén, 3000 px-rel lejjebb, ahol az audit szerint sosem találták meg.
         position: 'sidebar',
         description:
-          'Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak tulajdonos állíthatja.',
+          'Ez dönti el, hogy a kurzus látszik-e a weboldalon. A lap tetején lévő „Állapot” a szerkesztői változatra vonatkozik, nem erre. Csak a tulajdonos állíthatja.',
       },
       // T-011: a publikálás/archiválás (status create/update) kizárólag owneri
       // döntés — a staff draftot készíthet, de nem publikálhat.
@@ -1141,10 +1370,10 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       name: 'sku',
       type: 'text',
       unique: true,
-      label: 'Kurzus neve (azonosító)',
+      label: 'Belső azonosító',
       admin: {
         description:
-          'A kurzus egyedi azonosítója — két kurzusnak nem lehet ugyanaz. Ez jelenik meg a rendeléseken és a számlán. Ha a fenti „Kurzus címe" üres, a látogató is ezt látja.',
+          'A kurzus egyedi azonosítója, két kurzusnak nem lehet ugyanaz. Ez áll a rendeléseken és a számlán. Ha a fenti „Kurzus címe” üres, a látogató is ezt látja.',
       },
     },
     {
@@ -1211,7 +1440,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
     ...defaultCollection.admin,
     group: WEBSHOP_GROUP,
     description:
-      'A leadott rendelések és a fizetésük állapota. A rendeléseket a rendszer kezeli — kézzel ne módosítsd őket.',
+      'A leadott rendelések és a fizetésük állapota. A rendeléseket a rendszer kezeli, kézzel ne módosítsd őket.',
     // A plugin `useAsTitle: 'createdAt'`-ot állít be. A lista keresőmezője a
     // useAsTitle mezőre tesz ILIKE-ot, egy timestamptz oszlopon viszont nincs
     // ilyen operátor: a keresés Postgres-hibára fut ("operator does not exist:
@@ -1236,8 +1465,11 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
     // csak az elsőt fedné.
     listSearchableFields: ['orderNumber', 'customerEmail'],
   },
-  fields: [
-    ...mapFieldsDeep(defaultCollection.fields, visitOrderFields),
+  fields: withOrderBillingCollapsible([
+    ...mapFieldsDeep(
+      mapFieldsDeep(defaultCollection.fields, visitOrderFields),
+      withOrderFriendlyAdmin,
+    ),
     {
       name: 'orderNumber',
       type: 'text',
@@ -1252,7 +1484,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       admin: {
         readOnly: true,
         description:
-          'Szerver-oldalon generált rendelésszám (KH-<év>-<6 jegyű sorszám>); create-kor töltődik, update-kor sosem számolódik újra.',
+          'A rendszer adja a rendelés leadásakor, például KH-2026-000001 (év és hatjegyű sorszám). Később nem változik.',
       },
     },
     {
@@ -1265,8 +1497,12 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       },
       admin: {
         readOnly: true,
+        // K34: a listában „79 500 Ft” alakban, mint a Tételek oszlopban.
+        components: {
+          Cell: '/components/admin/OrderTotalCell#OrderTotalCell',
+        },
         description:
-          'A rendelés végösszege a megrendeléskor (az item-snapshotok ár × mennyiség összege). A plugin amount mezője ugyanezt tükrözi.',
+          'A rendelés végösszege a vásárlás pillanatában: a tételek ára szorozva a darabszámmal. A jobb oldali Összeg mező ugyanezt mutatja.',
       },
     },
     {
@@ -1282,7 +1518,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
-        description: 'A Barion oldali fizetés azonosítója — hibakereséshez.',
+        description:
+          'A fizetés azonosítója a Barionnál. Akkor kell, ha a Barionnal egyeztetsz egy fizetésről.',
       },
     },
     {
@@ -1329,7 +1566,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
-        description: 'A számlázás állapota. A rendszer állítja — ne írd át.',
+        description: 'A számla állapota. A rendszer állítja be, kézzel nem módosítható.',
         readOnly: true,
       },
     },
@@ -1340,7 +1577,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'invoiceAttempts',
       type: 'number',
       defaultValue: 0,
-      label: 'Számla-kísérletek száma',
+      label: 'Számlakiállítási próbálkozások',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
@@ -1348,7 +1585,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       admin: {
         readOnly: true,
         description:
-          'A számlakiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.',
+          'Hányszor próbálta a rendszer kiállítani a számlát. Legfeljebb ötször próbálkozik, utána kézzel kell rendezni.',
       },
     },
     {
@@ -1361,7 +1598,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       },
       admin: {
         readOnly: true,
-        description: 'Az utolsó sikertelen számlakiállítási kísérlet hibaüzenete — hibakereséshez.',
+        description: 'Az utolsó sikertelen számlakiállítás hibaüzenete, hibakereséshez.',
       },
     },
     {
@@ -1379,7 +1616,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       admin: {
         readOnly: true,
         description:
-          'Az eredeti számla teljesítési dátuma (ÉÉÉÉ-HH-NN) — a helyesbítő számla ezt ismétli meg. A rendszer állítja.',
+          'Az eredeti számla teljesítési dátuma, például 2026-01-16. A helyesbítő számla ugyanezt a dátumot kapja. A rendszer állítja be.',
       },
     },
     {
@@ -1390,7 +1627,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'stornoStatus',
       type: 'select',
       defaultValue: 'none',
-      label: 'Stornó-számla állapota',
+      label: 'Stornószámla állapota',
       options: [
         { label: 'Nincs', value: 'none' },
         { label: 'Függőben', value: 'pending' },
@@ -1402,7 +1639,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
-        description: 'A stornó-számla állapota. A rendszer állítja — ne írd át.',
+        description: 'A stornószámla állapota. A rendszer állítja be, kézzel nem módosítható.',
         readOnly: true,
       },
     },
@@ -1411,7 +1648,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       // mezőszintű olvasás-védelemmel (pénzügyi bizonylatazonosító).
       name: 'stornoNumber',
       type: 'text',
-      label: 'Stornó-számla sorszáma',
+      label: 'Stornószámla sorszáma',
       access: {
         read: isOwnerFieldAccess,
         create: denyFieldWrite,
@@ -1422,7 +1659,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'stornoAttempts',
       type: 'number',
       defaultValue: 0,
-      label: 'Stornó-kísérletek száma',
+      label: 'Stornózási próbálkozások',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
@@ -1430,7 +1667,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       admin: {
         readOnly: true,
         description:
-          'A stornó-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.',
+          'Hányszor próbálta a rendszer kiállítani a stornószámlát. Legfeljebb ötször próbálkozik, utána kézzel kell rendezni.',
       },
     },
     {
@@ -1443,7 +1680,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       },
       admin: {
         readOnly: true,
-        description: 'Az utolsó sikertelen stornó-kísérlet hibaüzenete — hibakereséshez.',
+        description: 'Az utolsó sikertelen stornózás hibaüzenete, hibakereséshez.',
       },
     },
     {
@@ -1465,7 +1702,8 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
-        description: 'A helyesbítő (módosító) számla állapota. A rendszer állítja — ne írd át.',
+        description:
+          'A részleges visszatérítéskor kiállított helyesbítő számla állapota. A rendszer állítja be, kézzel nem módosítható.',
         readOnly: true,
       },
     },
@@ -1489,15 +1727,17 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'correctiveInvoiceSeq',
       type: 'number',
       defaultValue: 0,
-      label: 'Helyesbített visszatérítés sorszáma',
+      label: 'Helyesbítő számla visszatérítési sorszáma',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
       },
       admin: {
+        // K34: belső sorszám, a szerkesztőnek nincs vele teendője.
+        hidden: true,
         readOnly: true,
         description:
-          'A refunds-nyom hányadik bejegyzéséhez tartozik a legutóbbi helyesbítő számla (idempotencia). A rendszer állítja.',
+          'Belső sorszám: a visszatérítések közül melyikhez tartozik a legutóbbi helyesbítő számla. A rendszer állítja be.',
       },
     },
     {
@@ -1505,7 +1745,7 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'correctiveInvoiceAttempts',
       type: 'number',
       defaultValue: 0,
-      label: 'Helyesbítő-kísérletek száma',
+      label: 'Helyesbítő számla próbálkozásai',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
@@ -1513,20 +1753,20 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       admin: {
         readOnly: true,
         description:
-          'A helyesbítő-kiállítási kísérletek száma (legfeljebb 5, utána emberi beavatkozás kell). A rendszer állítja.',
+          'Hányszor próbálta a rendszer kiállítani a helyesbítő számlát. Legfeljebb ötször próbálkozik, utána kézzel kell rendezni.',
       },
     },
     {
       name: 'correctiveInvoiceLastError',
       type: 'text',
-      label: 'Helyesbítő utolsó hibája',
+      label: 'Helyesbítő számla utolsó hibája',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
       },
       admin: {
         readOnly: true,
-        description: 'Az utolsó sikertelen helyesbítő-kísérlet hibaüzenete — hibakereséshez.',
+        description: 'Az utolsó sikertelen helyesbítő számla hibaüzenete, hibakereséshez.',
       },
     },
     {
@@ -1537,15 +1777,17 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       name: 'correctiveInvoiceAttemptsSeq',
       type: 'number',
       defaultValue: 0,
-      label: 'Helyesbítő-kísérletek refund-sorszáma',
+      label: 'Helyesbítő számla próbálkozásainak sorszáma',
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
       },
       admin: {
+        // K34: belső sorszám, a szerkesztőnek nincs vele teendője.
+        hidden: true,
         readOnly: true,
         description:
-          'Melyik refund-sorszámú helyesbítőhöz tartozik a kísérletszámláló. A rendszer állítja.',
+          'Belső sorszám: melyik visszatérítés helyesbítő számlájához tartozik a próbálkozások száma. A rendszer állítja be.',
       },
     },
     {
@@ -1558,6 +1800,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
+        // K01: csak olvasható JSON-nézet a CSP-tiltott Monaco-szerkesztő helyett.
+        components: {
+          Field: '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+        },
         description: 'A számlázási adatok mentett másolata a rendelés idejéből.',
       },
     },
@@ -1582,6 +1828,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       access: {
         create: denyFieldWrite,
         update: denyFieldWrite,
+      },
+      admin: {
+        // K25: magyar, 24 órás alak (a globális admin.dateFormat mintája).
+        date: { displayFormat: 'yyyy. MM. dd. HH:mm', timeFormat: 'HH:mm' },
       },
     },
     {
@@ -1615,6 +1865,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         create: denyFieldWrite,
         update: denyFieldWrite,
       },
+      admin: {
+        // K25: magyar, 24 órás alak (a globális admin.dateFormat mintája).
+        date: { displayFormat: 'yyyy. MM. dd. HH:mm', timeFormat: 'HH:mm' },
+      },
     },
     {
       // Refund-nyom (pénzügyi audit): minden visszatérítés egy bejegyzés —
@@ -1636,8 +1890,12 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
       },
       admin: {
         readOnly: true,
+        // K01: csak olvasható JSON-nézet a CSP-tiltott Monaco-szerkesztő helyett.
+        components: {
+          Field: '/components/admin/JsonReadOnlyField#JsonReadOnlyField',
+        },
         description:
-          'Visszatérítési nyom: tranzakciós refund-bejegyzések (transactionId, összeg, Barion-státusz, időpont, típus).',
+          'Az eddigi visszatérítések listája: összeg, a Barion válasza, időpont és típus (teljes vagy részleges). A rendszer írja.',
       },
     },
     {
@@ -1650,10 +1908,10 @@ const ordersCollectionOverride: CollectionOverride = ({ defaultCollection }) => 
         update: denyFieldWrite,
       },
       admin: {
-        description: 'A megrendelés IP-címe — csalásgyanús eset kivizsgálásához.',
+        description: 'A megrendelő gép IP-címe, csalásgyanús eset kivizsgálásához.',
       },
     },
-  ],
+  ]),
   hooks: {
     ...defaultCollection.hooks,
     beforeChange: [...(defaultCollection.hooks?.beforeChange ?? []), orderIntegrityBeforeChange],
@@ -1707,7 +1965,15 @@ export const ecommerce = async (config: Config): Promise<Config> => {
         admin: {
           ...defaultCollection.admin,
           group: WEBSHOP_GROUP,
-          description: 'A vásárlók félbehagyott kosarai. Automatikusan keletkezik — ne szerkeszd.',
+          // R1 vezetői döntés #4: a kosármentes pénztár (POST /api/checkout/start)
+          // mellett ide semmi nem ír, ezért a menüpont halott. Csak az admin
+          // felületről tűnik el (Payload: „exclude this Collection from
+          // navigation and admin routing”,
+          // https://payloadcms.com/docs/configuration/collections); a REST API,
+          // az access és a plugin-beállítás változatlan.
+          hidden: true,
+          description:
+            'A vásárlók félbehagyott kosarai. Automatikusan keletkeznek, ne szerkeszd őket.',
           // Ugyanaz a hiba, mint az ordersnél: a plugin `useAsTitle: 'createdAt'`-ja
           // miatt a lista keresője ILIKE-ot futtatna egy timestamptz oszlopon.
           // A kosárnak nincs ember által olvasható azonosítója, ezért az `id` —
@@ -1743,7 +2009,11 @@ export const ecommerce = async (config: Config): Promise<Config> => {
         admin: {
           ...defaultCollection.admin,
           group: WEBSHOP_GROUP,
-          description: 'A fizetési tranzakciók nyoma. Csak a rendszer írja — ne szerkeszd.',
+          // R1 vezetői döntés #4: a paymentMethods üres (lásd lent), ezért a
+          // plugin tranzakciót sosem hoz létre; a menüpont halott. Csak az
+          // admin felületről tűnik el, az API és az access változatlan.
+          hidden: true,
+          description: 'A fizetési tranzakciók nyoma. Csak a rendszer írja, ne szerkeszd.',
         },
       }),
     },

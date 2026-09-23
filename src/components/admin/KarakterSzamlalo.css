@@ -1,0 +1,50 @@
+/*
+ * Élő karakterszámláló a mező alatt (KarakterSzamlalo.tsx).
+ *
+ * Színek: a Payload témaváltozói, mindkét témában önmaguktól átfordulnak
+ * (@payloadcms/ui dist/scss/colors.scss). Számolt arányok a Payload
+ * mezőhátterein (fehér és #f5f5f5, sötétben #141414 és #222222):
+ * - alap: --theme-elevation-650, világosban #575757 (7,23 és 6,63:1),
+ *   sötétben #c3c3c3 (10,45 és 9,03:1);
+ * - túllépés: --theme-error-750, világosban #7b2927 (9,59 és 8,80:1),
+ *   sötétben #fdb1aa (10,57 és 9,13:1).
+ * Mindegyik jóval az AA 4,5:1 felett (WCAG 2.2 SC 1.4.3), és nem a B1 által
+ * felülírt 400–550-es lépcsőre épül, tehát attól függetlenül is áll. A
+ * böngészőben mért értékek a feladat jelentésében.
+ *
+ * A túllépést szöveg, félkövér súly és szín együtt jelzi (SC 1.4.1).
+ *
+ * Betűméret: ugyanaz, mint a mezőleírásé (custom.scss 6. szakasz, a B1
+ * olvashatósági rétege: 14 px, 1,5-ös sormagasság), mert a számláló is a
+ * mező súgószövege; a GOV.UK mintájában a számláló és a súgó azonos méretű.
+ */
+.kc-karakter-szamlalo {
+  margin-top: calc(var(--base) / 4);
+  color: var(--theme-elevation-650);
+  font-size: max(14px, calc(14 / 13 * 1rem));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.kc-karakter-szamlalo__szoveg {
+  margin: 0;
+}
+
+.kc-karakter-szamlalo--tul {
+  color: var(--theme-error-750);
+  font-weight: 600;
+}
+
+/* Vizuálisan rejtett, de a képernyőolvasó számára elérhető élő régió. */
+.kc-karakter-szamlalo__bejelentes {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}

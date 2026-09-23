@@ -35,8 +35,15 @@ vi.mock('@payloadcms/plugin-ecommerce', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }))
 
-const { ecommerce, coursePromoFieldNames, validatePromoEnd, validatePromoPriceHuf } =
-  await import('../plugins/ecommerce')
+const {
+  ecommerce,
+  coursePromoFieldNames,
+  PROMO_PRICE_MESSAGE,
+  promoPriceNotBelowRegularMessage,
+  regularPriceHufFrom,
+  validatePromoEnd,
+  validatePromoPriceHuf,
+} = await import('../plugins/ecommerce')
 
 beforeAll(async () => {
   await ecommerce({ collections: [] } as unknown as Config)
@@ -326,14 +333,133 @@ describe('validatePromoEnd és validatePromoPriceHuf', () => {
     expect(validatePromoEnd(new Date('2026-09-30T12:00:00.000Z'), opts(null))).toBe(true)
   })
 
-  it('az akciós ár pozitív egész vagy üres', () => {
+  it('az akciós ár pozitív egész vagy üres', async () => {
     const numberOpts = {} as unknown as Parameters<typeof validatePromoPriceHuf>[1]
-    expect(validatePromoPriceHuf(14_900, numberOpts)).toBe(true)
-    expect(validatePromoPriceHuf(null, numberOpts)).toBe(true)
-    expect(validatePromoPriceHuf(undefined, numberOpts)).toBe(true)
-    expect(validatePromoPriceHuf(0, numberOpts)).toMatch(/pozitív egész/)
-    expect(validatePromoPriceHuf(-1, numberOpts)).toMatch(/pozitív egész/)
-    expect(validatePromoPriceHuf(19.5, numberOpts)).toMatch(/pozitív egész/)
+    expect(await validatePromoPriceHuf(14_900, numberOpts)).toBe(true)
+    expect(await validatePromoPriceHuf(null, numberOpts)).toBe(true)
+    expect(await validatePromoPriceHuf(undefined, numberOpts)).toBe(true)
+    expect(await validatePromoPriceHuf(0, numberOpts)).toMatch(/pozitív egész/)
+    expect(await validatePromoPriceHuf(-1, numberOpts)).toMatch(/pozitív egész/)
+    expect(await validatePromoPriceHuf(19.5, numberOpts)).toMatch(/pozitív egész/)
+  })
+})
+
+/**
+ * K21: az akciós ár kisebb a rendes árnál, és a validátor nem zár ki. A
+ * `req.payload.findByID` stub a KÖZZÉTETT (fő táblás) értéket adja; ha hívás
+ * nem várható, hangosan dob (CLAUDE.md, 15. üzemeltetési tanulság).
+ */
+describe('validatePromoPriceHuf: kisebb a rendes árnál, zárás elleni védelemmel (K21)', () => {
+  type Opts = Parameters<typeof validatePromoPriceHuf>[1]
+  const NBSP = '\u00a0'
+  const EXPECTED = `Az akciós ár legyen kisebb a rendes árnál (79${NBSP}500${NBSP}Ft). Írj be kisebb összeget, vagy hagyd üresen.`
+  const regular = { priceInHUF: 79_500, priceInHUFEnabled: true }
+
+  function reqFor(role: 'owner' | 'staff', published?: unknown) {
+    const findByID = vi.fn(async () => {
+      if (published === undefined)
+        throw new Error('Ebben az esetben nem kellene a közzétett értéket olvasni.')
+      return { id: 2, promoPriceHuf: published }
+    })
+    return { req: { user: { id: 1, role }, payload: { findByID } }, findByID }
+  }
+  const opts = (extra: Record<string, unknown>): Opts =>
+    ({
+      data: regular,
+      siblingData: regular,
+      operation: 'update',
+      id: 2,
+      ...extra,
+    }) as unknown as Opts
+
+  it('99 000 a 79 500-as rendes ár mellett: pontosan a magyar üzenet; 59 900 és üres: rendben', async () => {
+    const { req } = reqFor('owner')
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: null }))).toBe(EXPECTED)
+    expect(await validatePromoPriceHuf(79_500, opts({ req, previousValue: null }))).toBe(EXPECTED)
+    expect(await validatePromoPriceHuf(59_900, opts({ req, previousValue: null }))).toBe(true)
+    expect(await validatePromoPriceHuf(null, opts({ req, previousValue: 99_000 }))).toBe(true)
+    expect(await validatePromoPriceHuf(undefined, opts({ req }))).toBe(true)
+    expect(promoPriceNotBelowRegularMessage(79_500)).toBe(EXPECTED)
+    expect(EXPECTED).not.toMatch(/[–—]/)
+  })
+
+  it('új kurzuson (create) is hibát ad, a rendes árat a siblingData vagy a data adja', async () => {
+    const { req } = reqFor('owner')
+    expect(
+      await validatePromoPriceHuf(
+        99_000,
+        opts({ req, operation: 'create', id: undefined, siblingData: {} }),
+      ),
+    ).toBe(EXPECTED)
+  })
+
+  it('nincs rendes ár (kikapcsolt Megvásárolható vagy hiányzó Ár): nincs mihez hasonlítani', async () => {
+    const { req } = reqFor('owner')
+    const off = { priceInHUF: 79_500, priceInHUFEnabled: false }
+    expect(await validatePromoPriceHuf(99_000, opts({ req, data: off, siblingData: off }))).toBe(
+      true,
+    )
+    const noPrice = { priceInHUF: null, priceInHUFEnabled: true }
+    expect(
+      await validatePromoPriceHuf(99_000, opts({ req, data: noPrice, siblingData: noPrice })),
+    ).toBe(true)
+    expect(regularPriceHufFrom({ priceInHUF: 79_500.4, priceInHUFEnabled: true })).toBe(79_500)
+    expect(regularPriceHufFrom(null)).toBeNull()
+  })
+
+  it('írásjog nélküli felhasználó (munkatárs): más mező mentése nem bukik el, a DB-t sem olvassa', async () => {
+    const { req, findByID } = reqFor('staff')
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(true)
+    // A Payload a munkatárs beküldött értékét eldobja és a tároltat teszi a helyére;
+    // a validátor akkor sem zár ki, ha a tárolt érték eltér az előzőtől.
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 12_345 }))).toBe(true)
+    expect(findByID).not.toHaveBeenCalled()
+  })
+
+  it('tulajdonos, változatlan és közzétett régi érték: átmegy (más mező mentése nem bukik el)', async () => {
+    const { req, findByID } = reqFor('owner', 99_000)
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(true)
+    expect(findByID).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'products',
+        id: 2,
+        draft: false,
+        overrideAccess: true,
+      }),
+    )
+  })
+
+  it('autosave-csapda: a piszkozatban álló, még nem közzétett hibás ár nem megy át', async () => {
+    const { req } = reqFor('owner', null)
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(EXPECTED)
+  })
+
+  it('ha a közzétett érték nem olvasható, fail-closed: hibát ad', async () => {
+    const req = {
+      user: { id: 1, role: 'owner' },
+      payload: {
+        findByID: vi.fn(async () => {
+          throw new Error('DB-hiba')
+        }),
+      },
+    }
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(EXPECTED)
+  })
+
+  it('overrideAccess (rendszerfolyamat) mellett is validál, a jogosultság-kaput kihagyja', async () => {
+    const { req } = reqFor('staff', null)
+    expect(
+      await validatePromoPriceHuf(99_000, opts({ req, overrideAccess: true, previousValue: null })),
+    ).toBe(EXPECTED)
+  })
+
+  it('régi, nem pozitív egész érték változatlanul és közzétéve szintén nem zár ki', async () => {
+    const { req } = reqFor('owner', 0)
+    expect(await validatePromoPriceHuf(0, opts({ req, previousValue: 0 }))).toBe(true)
+    const fresh = reqFor('owner')
+    expect(await validatePromoPriceHuf(0, opts({ req: fresh.req, previousValue: null }))).toBe(
+      PROMO_PRICE_MESSAGE,
+    )
   })
 })
 
@@ -401,6 +527,15 @@ describe('products collection: az „Akciós megjelenés” csoport', () => {
       expect(field?.type).toBe('date')
       expect(field?.type === 'date' ? field.admin?.date?.pickerAppearance : undefined).toBe(
         'dayOnly',
+      )
+      // K25: számjegyes magyar keltezés évvel kezdve, a leírásban példával.
+      // A Payload 3.88 DatePicker a hu locale-t csak useEffect-ben regisztrálja,
+      // így hónapnevet adó token (MMM, MMMM, LLL, EEE) az első renderen angol.
+      const displayFormat = field?.type === 'date' ? field.admin?.date?.displayFormat : undefined
+      expect(displayFormat).toBe('yyyy. MM. dd.')
+      expect(displayFormat).not.toMatch(/M{3,}|L{3,}|E{3,}/)
+      expect(field === undefined ? undefined : descriptionOf(field)).toMatch(
+        /például 20\d\d\. \d\d\. \d\d\./,
       )
     }
     const end = byName.get('promoEnd')

@@ -363,7 +363,9 @@ describe('/kapcsolat route — MELYIK űrlap van a lapon', () => {
      * szabad úgy) — enélkül ez az őr HAMISAN bukna a helyes kódon is.
      */
     const kod = forras.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '').replace(/^\s*\/\/.*$/gm, '')
-    expect(kod).toContain('<h1>Kapcsolat</h1>')
+    // A H1 szövege 2026-09-23 óta a rekord Címéből jön, „Kapcsolat” tartalékkal
+    // (modul-térkép H26; a tartalékot a kapcsolat-oldal-cms.test.tsx rendereli).
+    expect(kod).toContain('<h1>{contactHeading(page)}</h1>')
     expect(kod).not.toContain('narrow')
   })
 

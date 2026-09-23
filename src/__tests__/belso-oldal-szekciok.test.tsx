@@ -35,6 +35,10 @@ vi.mock('next/headers', () => ({
   draftMode: vi.fn(async () => ({ isEnabled: false })),
 }))
 
+// A route a Tudástár-kapcsolót is kérdezi; itt a bekapcsolt állapot a mérce
+// (a kikapcsolt ágat a tudastar-link-szuro.test.tsx méri).
+vi.mock('@/lib/tudastar-lathatosag', () => ({ getTudastarLathato: async () => true }))
+
 vi.mock('@/lib/cms', () => ({
   getPageBySlug: vi.fn(),
   getPublishedProducts: vi.fn(async () => []),

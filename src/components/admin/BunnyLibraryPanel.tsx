@@ -8,14 +8,17 @@ import type { BunnyLibraryKind, BunnyLibraryVideo } from '../../lib/stream/bunny
 import { BunnyVideoPicker } from './BunnyVideoPicker'
 import { BunnyVideoUpload } from './BunnyVideoUpload'
 import { BunnyVideoDialog } from './BunnyVideoDialog'
+import { UNKNOWN_DURATION_LABEL } from './bunny-video-state'
 
 /**
- * Bunny videótár panel a kurzus szerkesztőlapján (UI-mező, nem tárol adatot).
- * A feltöltés a Bunny dashboardon történik. Itt a libraryből behúzott lista
- * látszik: cím, hossz, állapot, GUID — a GUID a vágólapra másolható, és a
- * lecke „Videó azonosítója” mezőjébe illesztendő. A lejátszás a meglévő
- * tokenes embeden megy, vásárlónak és ingyenes kurzus nézőjének egyaránt.
- * A panel egyetlen célja, hogy a HELYES azonosító kerüljön a leckébe, ezért a
+ * ÖRÖKSÉG: a korábbi, kurzusszerkesztőbe kötött Bunny-lista panel
+ * (BunnyLibraryPanel, BunnyLibraryPanelView és a reducere). Ma egyetlen
+ * mezőhöz sincs bekötve (course-editor-bindings.test.ts őrzi); a fájlból
+ * élesben csak a lenti `BunnyVideoLibrary` fut, azt a Videótár nézet
+ * (BunnyLibraryView.tsx) importálja. K50: a törlés külön kör, addig a
+ * panel szövege sem utasíthat elavult, kézi azonosító-másolásra: a lecke
+ * videóját ma a lecke „Videó kiválasztása” gombja választja ki, új videót a
+ * Videótárban lehet feltölteni.
  */
 
 const REQUEST_TIMEOUT_MS = 20_000
@@ -78,9 +81,10 @@ function readVideos(body: unknown): {
   return { videos, error: null, truncated: record.truncated === true }
 }
 
+/** Ismeretlen hossznál ugyanaz a szöveg, mint a Videótárban (durationLabel), nem jel. */
 function formatLength(lengthSec: number | null): string {
   if (lengthSec === null || lengthSec <= 0) {
-    return '—'
+    return UNKNOWN_DURATION_LABEL
   }
   const minutes = Math.floor(lengthSec / 60)
   const seconds = lengthSec % 60
@@ -215,10 +219,9 @@ export function BunnyLibraryPanelView({
     <div className="field-type" style={panelStyle}>
       <Heading style={{ marginTop: 0 }}>Videók a Bunny tárból</Heading>
       <p style={noteStyle}>
-        A feltöltés a Bunny felületén történik. Itt a tárban lévő felvételek listája látszik. Másold
-        ki a videó azonosítóját, illeszd a lecke „Videó azonosítója” mezőjébe, írd be a hosszt
-        másodpercben, és állítsd „Kész”-re. Ettől a vásárló (és az ingyenes kurzus nézője) a meglévő
-        lejátszón látja.
+        Itt a tárban lévő felvételek listája látszik. Új videót a Videótárban tölthetsz fel. A lecke
+        videóját a lecke „Videó kiválasztása” gombjával választod ki: a videó hossza és állapota
+        magától kitöltődik, azonosítót nem kell kézzel beírni.
       </p>
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
         <label>
@@ -249,8 +252,8 @@ export function BunnyLibraryPanelView({
       ) : null}
       {state.truncated ? (
         <p style={{ ...noteStyle, marginTop: '0.75rem' }}>
-          A lista csonka: a tárban több videó van, mint amennyit egyben megjelenítünk. Keresd a
-          Bunny felületén a hiányzó címet, és másold ki onnan az azonosítót.
+          A lista csonka: a tárban több videó van, mint amennyit egyben megjelenítünk. A hiányzó
+          címet a Videótár keresőjével találod meg.
         </p>
       ) : null}
       {state.loaded && state.videos.length === 0 && state.error === null ? (
@@ -361,7 +364,7 @@ export function BunnyLibraryPanel({
 
 export default BunnyLibraryPanel
 
-/** Onallo nezet; a regi panel exportjai az atmeneti mezo-bekotesekhez maradnak. */
+/** Önálló nézet; a régi panel exportjai az átmeneti mező-bekötésekhez maradnak. */
 export function BunnyVideoLibrary() {
   const { user } = useAuth<{ id: number | string; role?: string | null }>()
   const [library, setLibrary] = useState<BunnyLibraryKind>('protected')

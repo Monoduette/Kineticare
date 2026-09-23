@@ -261,7 +261,7 @@ describe('Kezdőlap: egy cél = egy felirat (WCAG 2.2 SC 3.2.4)', () => {
 // 2. Az ingyenes CTA: a felirat és a cél sosem mond ellent egymásnak
 // ---------------------------------------------------------------------------
 
-describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
+describe('Ingyenes villámkurzus sáv: a gomb felirata és célja együtt mozog', () => {
   it('van ingyenes termék: a gomb a kurzus oldalára visz, indítást ígérve', () => {
     const cta = resolveFreeSosCta(freeProduct())
     expect(cta.href).toBe('/kurzusok/sos-kezrelax-villamkurzus')
@@ -345,7 +345,7 @@ describe('Ingyenes SOS-sáv: a gomb felirata és célja együtt mozog', () => {
 // ---------------------------------------------------------------------------
 
 describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradnak', () => {
-  it('a freeSos blokk SZÖVEGE a szerkesztőé, a rögzített cím és a szótári CTA-felirat a kódé', () => {
+  it('a freeSos blokk CÍME és SZÖVEGE a szerkesztőé, a szótári CTA-felirat a kódé', () => {
     const layout = [
       {
         blockType: 'freeSos' as const,
@@ -364,10 +364,10 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
         testimonials: [],
       }),
     )
-    // WP26 (tulajdonos, 2026-09-07): a kompakt sáv címe rögzített, a CMS-cím
-    // inaktív (FreeSos.tsx, `FREE_SOS_STRIP_TITLE`); a szöveg a szerkesztőé.
-    expect(html).not.toContain('Saját cím a szerkesztőtől')
-    expect(html).toContain(`>${FREE_SOS_STRIP_TITLE}</h2>`)
+    // 2026-09-22 (K18): a sáv címe a CMS-é, a `FREE_SOS_STRIP_TITLE` csak üres
+    // címnél áll (FreeSos.tsx); a szöveg is a szerkesztőé.
+    expect(html).toContain('>Saját cím a szerkesztőtől</h2>')
+    expect(html).not.toContain(FREE_SOS_STRIP_TITLE)
     expect(html).toContain('Saját szöveg.')
     // 2026-08-18: a szerkesztő a TARTALMAT írja, a szótári CTA-feliratot nem.
     expect(html).not.toContain('Kipróbálom ingyen')
@@ -422,9 +422,8 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
         home: homePage([
           {
             blockType: 'freeSos',
-            // WP26: a sáv címe rögzített (`FREE_SOS_STRIP_TITLE`), a CMS a
-            // SZÖVEGET adja — a felülírás tényét a body bizonyítja.
-            title: 'Ez a cím nem jelenik meg',
+            // A CMS-szekciósor a sáv címét és szövegét is adja (K18).
+            title: 'Csak ez a sáv címe',
             body: 'Csak ez a szekció legyen',
             sectionSettings: { visible: true },
           },
@@ -434,8 +433,8 @@ describe('A szekciónkénti CTA-k és szövegek CMS-ből felülírhatók maradna
       }),
     )
     expect(html).toContain('Csak ez a szekció legyen')
-    expect(html).toContain(FREE_SOS_STRIP_TITLE)
-    expect(html).not.toContain('Ez a cím nem jelenik meg')
+    expect(html).toContain('>Csak ez a sáv címe</h2>')
+    expect(html).not.toContain(FREE_SOS_STRIP_TITLE)
     expect(html).not.toContain('Így működik az online kurzus')
   })
 })
@@ -464,7 +463,7 @@ describe('Kezdőlapi mikroszöveg', () => {
     }
   })
 
-  it('az ingyenes sáv rögzített címében nincs gondolatjel (a CMS-cím inaktív)', () => {
+  it('az ingyenes sáv tartalék címében nincs gondolatjel (CMS-szekciósor nélkül)', () => {
     const html = render(
       createElement(HomeView, {
         home: null,

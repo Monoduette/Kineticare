@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import type { Field } from 'payload'
 import { createElement, Fragment, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -123,10 +124,20 @@ describe('teamMembers blokk-definíció', () => {
         `a(z) ${optional} mező nem lehet kötelező`,
       ).toBe(false)
     }
-    // A szekció-beállítások (elrejtés, horgony, háttér) minden blokkon ott vannak.
+    // A szekció-beállítások (elrejtés, horgony, háttér) minden blokkon ott vannak,
+    // az adatszinten (a név nélküli, csukott „Megjelenés és elrejtés” rész
+    // nem kerül az útvonalba), a blokk utolsó mezőjében.
+    const settings = adatMezo(teamMembers.fields, 'sectionSettings')
+    expect(settings?.type).toBe('group')
     expect(
-      teamMembers.fields.some((field) => 'name' in field && field.name === 'sectionSettings'),
-    ).toBe(true)
+      settings && settings.type === 'group'
+        ? settings.fields.flatMap((field) => ('name' in field ? [field.name] : []))
+        : [],
+    ).toEqual(['visible', 'anchorId', 'hatter'])
+    const utolso = teamMembers.fields.at(-1)
+    expect(utolso?.type).toBe('collapsible')
+    expect(utolso?.type === 'collapsible' ? utolso.label : null).toBe('Megjelenés és elrejtés')
+    expect(utolso?.type === 'collapsible' ? utolso.admin?.initCollapsed : null).toBe(true)
   })
 
   it('van szekció-szintű, ÍRÁSOS időpontkérési út (`bookingLink`), a közös link-mezőkkel', () => {
@@ -145,6 +156,35 @@ describe('teamMembers blokk-definíció', () => {
     expect(nevek).toEqual(['felirat', 'url', 'ujAblakban'])
   })
 })
+
+/**
+ * Mező keresése az ADATSZINTEN: a név nélküli elrendező mezőket (collapsible,
+ * row, név nélküli fül) bejárja, a nevesített group/array belsejébe nem lép.
+ * A találat így azt is bizonyítja, hogy az adatútvonal a blokk gyökerében
+ * maradt (pl. `sectionSettings.visible`).
+ */
+function adatMezo(fields: readonly Field[], nev: string): Field | undefined {
+  for (const field of fields) {
+    if ('name' in field && field.name === nev) {
+      return field
+    }
+    if (field.type === 'collapsible' || field.type === 'row') {
+      const talalat = adatMezo(field.fields, nev)
+      if (talalat) {
+        return talalat
+      }
+    }
+    if (field.type === 'tabs') {
+      for (const tab of field.tabs) {
+        const talalat = 'name' in tab && tab.name ? undefined : adatMezo(tab.fields, nev)
+        if (talalat) {
+          return talalat
+        }
+      }
+    }
+  }
+  return undefined
+}
 
 // ---------------------------------------------------------------------------
 // 2. Renderelés

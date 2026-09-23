@@ -370,12 +370,12 @@ jelennek meg.
 > visszajelzés tilos.
 
 1. **Tartalom → Vélemények → Új létrehozása**.
-2. **Vélemény szövege (teljes)** — kötelező. A teljes, eredeti szöveg, pontosan
+2. **Teljes szöveg**: kötelező. A teljes, eredeti szöveg, pontosan
    úgy, ahogy elhangzott.
-3. **Vélemény szövege (rövid)** — nem kötelező, de a kezdőlapra ez való: 1–2
+3. **Rövid idézet**: nem kötelező, de a kezdőlapra ez való: 1–2
    mondat, **legfeljebb 260 karakter**. Ha hosszabbat írsz, a mentés magyar
    hibaüzenettel figyelmeztet. A kezdőlapon ez a rövid szöveg jelenik meg; ha
-   üresen hagyod, a teljes szöveg kerül ki.
+   üresen hagyod, a Teljes szöveg kerül ki.
 4. **Név** — aki mondta (pl. „Garami Gábor" vagy „P. Benjámin", ha csak
    keresztnévvel vállalta).
 5. **Titulus, foglalkozás** — nem kötelező, pl. „zenész / műsorvezető".

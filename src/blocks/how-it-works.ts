@@ -12,8 +12,8 @@ export const howItWorks: Block = {
   slug: 'howItWorks',
   interfaceName: 'BlockHowItWorks',
   labels: {
-    singular: 'Így működik (lépések)',
-    plural: 'Így működik szekciók',
+    singular: 'Számozott lépések',
+    plural: 'Lépés-szekciók',
   },
   admin: {
     group: 'Kezdőlap (ajánlott sorrendben)',
@@ -24,7 +24,7 @@ export const howItWorks: Block = {
       type: 'text',
       label: 'Szekció címe',
       admin: {
-        description: 'A lépések fölötti cím (pl. „Így működik az online kurzus").',
+        description: 'A lépések fölötti cím (pl. „Így működik az online kurzus”).',
       },
     },
     {
@@ -36,7 +36,7 @@ export const howItWorks: Block = {
       labels: { singular: 'Lépés', plural: 'Lépések' },
       admin: {
         description:
-          'A folyamat lépései sorrendben — 3 lépés a legérthetőbb. A sorszámokat a rendszer teszi ki.',
+          'A folyamat lépései sorrendben. Három lépés a legérthetőbb. A sorszámokat a rendszer teszi ki.',
         initCollapsed: true,
       },
       fields: [
@@ -45,7 +45,7 @@ export const howItWorks: Block = {
           type: 'text',
           required: true,
           label: 'Lépés címe',
-          admin: { description: 'Rövid, cselekvő megfogalmazás (pl. „Kiválasztod a kurzust").' },
+          admin: { description: 'Rövid, cselekvő megfogalmazás (pl. „Kiválasztod a kurzust”).' },
         },
         {
           name: 'text',

@@ -137,7 +137,7 @@ export function BunnyVideoUpload({
         retryDelays: null,
         onShouldRetry: () => false,
         onBeforeRequest: (request) => {
-          // Ne kerulhessen alairas egy atiranyitott, idegen TUS-eroforrasra.
+          // Ne kerülhessen aláírás egy átirányított, idegen TUS-erőforrásra.
           const url = new URL(request.getURL())
           if (url.origin !== 'https://video.bunnycdn.com' || !url.pathname.startsWith('/tusupload'))
             throw new Error('A feltöltés címe nem engedélyezett.')
@@ -320,13 +320,13 @@ export function BunnyVideoUpload({
       {phase !== 'idle' && (
         <p role="status">
           {phase === 'creating'
-            ? 'Feltöltés előkészítése...'
+            ? 'Feltöltés előkészítése…'
             : phase === 'uploading'
               ? `Feltöltés: ${progress}%`
               : phase === 'paused'
                 ? 'Szüneteltetve'
                 : phase === 'pausing'
-                  ? 'Várakozás...'
+                  ? 'Várakozás…'
                   : phase === 'expired'
                     ? 'A feltöltési engedély már nem használható.'
                     : phase === 'uncertain'
