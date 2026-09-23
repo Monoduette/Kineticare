@@ -819,7 +819,7 @@ describe('forrás-jelzés: a más gyűjteményből vagy automatikusan töltődő
   it('Kurzuskártyák: a blokk minden tartalmi mezőjét megnevezi, „csak” nélkül', () => {
     const szoveg = sectionSource(FIXTURES[2]!.data, 'kezdolap')?.szoveg ?? ''
     expect(szoveg).toBe(
-      'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét és a kártyák gombfeliratát szerkeszted.',
+      'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
     )
     // Ha a course-cards.ts új tartalmi mezőt kap, a felsorolás hiányos lenne:
     // ez a teszt akkor bukik, és a szöveget bővíteni kell.
@@ -828,6 +828,7 @@ describe('forrás-jelzés: a más gyűjteményből vagy automatikusan töltődő
       heading: 'címét',
       lead: 'bevezetőjét',
       ctaLabel: 'gombfeliratát',
+      scenePhotos: 'kártyák alatti fotókat',
     }
     const tartalmiMezok = courseCards.fields
       .filter((field) => 'name' in field && field.type !== 'ui')
@@ -954,14 +955,15 @@ describe('a Kapcsolat oldal: a route üres listáinál a mért látvány (a B ve
   it('Kurzuskártyák: üres sáv marad, a blokk minden tartalmi mezőjét megnevezi', () => {
     const forras = kapcsolati(FIXTURES[2]!.data)
     expect(forras?.szoveg).toBe(
-      'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető és a kártyák sem látszanak. A szekció helyén egy üres sáv marad.',
+      'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
     )
     expect(forras?.hova).toBeNull()
     // A gombfelirat a kártyán áll, a kártyák elmaradnak: a felsorolás teljes.
     const tartalmiMezok = courseCards.fields
       .filter((field) => 'name' in field && field.type !== 'ui')
       .map((field) => ('name' in field ? field.name : ''))
-    expect(tartalmiMezok.sort()).toEqual(['ctaLabel', 'eyebrow', 'heading', 'lead'])
+    expect(tartalmiMezok.sort()).toEqual(['ctaLabel', 'eyebrow', 'heading', 'lead', 'scenePhotos'])
+    expect(forras?.szoveg).toContain('a fotók')
   })
 
   it('kurzusra vivő gombos sáv: kép nélkül; más célú gombnál nincs Kapcsolat-mondat', () => {

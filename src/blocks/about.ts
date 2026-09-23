@@ -1,5 +1,6 @@
 import type { Block } from 'payload'
 
+import { FRIEZE_PHOTOS } from '../lib/foto-friz'
 import { KEP_CSERE_SUGO } from './kep-csere'
 import { sectionSettings } from './section-settings'
 
@@ -16,6 +17,17 @@ import { sectionSettings } from './section-settings'
  * csapatfotó és néhány szám (évek, páciensek). A számok VALÓS adatok legyenek —
  * kitalált statisztika fogyasztóvédelmi kockázat.
  */
+/**
+ * A fríz négy helyének neve az asztali 2×2-es rács szerint; 900 px alatt az
+ * 1. ív elmarad (photo-frieze.css), ezt a név kimondja.
+ */
+export const FRIZ_HELY_NEVEK: readonly string[] = [
+  '1. kép: bal fent (telefonon nem látszik)',
+  '2. kép: jobb fent',
+  '3. kép: bal lent',
+  '4. kép: jobb lent',
+]
+
 export const about: Block = {
   slug: 'about',
   interfaceName: 'BlockAbout',
@@ -102,8 +114,27 @@ export const about: Block = {
       relationTo: 'media',
       label: 'Csapatfotó',
       admin: {
-        description: `A szekció melletti fénykép. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
+        description: `A szekció melletti fénykép. A kezdőlapon, ha ez a szekció közvetlenül a nyitó videó után áll, helyette a lenti mozgó fotósor látszik. A képleírást (alt) a Képek közt add meg egyszer. ${KEP_CSERE_SUGO}`,
       },
+    },
+    {
+      // 2026-09-23: a fríz négy íve helyenként cserélhető (src/lib/kep-helyek.ts
+      // fejkommentje: rögzített helyek, üresen a beépített fotó).
+      name: 'frieze',
+      type: 'group',
+      label: 'Mozgó fotósor a kezdőlapon (négy kép)',
+      admin: {
+        description: `Csak a kezdőlapon látszik, ha ez a szekció közvetlenül a nyitó videó után áll. Minden mező egy ívnek felel meg; ha üresen hagyod, ott a beépített fotó marad. A kivágást a kép fókuszpontja adja: a Képek közt arra a pontra állítsd, aminek mindig látszania kell. ${KEP_CSERE_SUGO}`,
+      },
+      fields: FRIEZE_PHOTOS.map((foto, index) => ({
+        name: `photo${index + 1}`,
+        type: 'upload' as const,
+        relationTo: 'media' as const,
+        label: FRIZ_HELY_NEVEK[index] ?? `${index + 1}. kép`,
+        admin: {
+          description: `Ha üresen hagyod, a beépített fotó látszik: ${foto.alt}`,
+        },
+      })),
     },
     {
       name: 'stats',

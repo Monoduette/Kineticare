@@ -716,7 +716,7 @@ function kapcsolatiForras(data: Adat): SectionSourceInfo | null {
       return {
         cim: 'A Kapcsolat oldalon a kártyák nem jelennek meg',
         szoveg:
-          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető és a kártyák sem látszanak. A szekció helyén egy üres sáv marad.',
+          'Ez az oldal nem tölti be a kurzusokat, ezért itt a felső kis felirat, a cím, a bevezető, a kártyák és a fotók sem látszanak. A szekció helyén egy üres sáv marad.',
         hova: null,
       }
     case 'ctaBanner':
@@ -789,7 +789,7 @@ export function sectionSource(data: unknown, pageSlug: unknown): SectionSourceIn
       return {
         cim: 'A kártyák a Kurzusokból töltődnek',
         szoveg:
-          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét és a kártyák gombfeliratát szerkeszted.',
+          'A kurzus nevét, árát és borítóképét a Kurzusoknál írod át. Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
         hova: { nev: 'Kurzusok', adminPath: '/collections/products' },
       }
     case 'freeSos':

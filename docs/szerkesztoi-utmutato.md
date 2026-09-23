@@ -419,6 +419,22 @@ Amit tudni érdemes:
 - **Egy kép többször is használható:** ami egyszer fent van, azt bármelyik
   oldalról ki tudod választani, nem kell újra feltölteni.
 
+### A kezdőlap rögzített fotóhelyei
+
+Két kezdőlapi szekcióban a fotók helyekhez kötöttek. Minden hely külön mező, és
+ha üresen hagyod, a lapon a beépített fotó marad (a mező alatt olvasod, melyik).
+
+- **Bemutatkozás és számok → Mozgó fotósor a kezdőlapon (négy kép):** a
+  nyitó videó alatti négy íves fotó. Az 1. kép telefonon nem látszik. Ez a
+  sor csak akkor jelenik meg, ha a szekció közvetlenül a nyitó videó után áll;
+  ilyenkor a **Csapatfotó** mező képe nem látszik a kezdőlapon.
+- **Kurzuskártyák (automatikus) → Fotók a „Kurzusaink” felirat alatt:** a
+  bal, a középső és a jobb oldali díszítő fotó a kártyák alatt.
+
+A kép kivágását a kép **fókuszpontja** adja. A **Tartalom → Képek** között
+nyisd meg a képet, és a fókuszpontot tedd arra a részre (arcra, kézre), aminek
+keskeny helyen is látszania kell.
+
 ---
 
 ## 11. Mi történik közzétételkor?

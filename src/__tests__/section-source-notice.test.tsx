@@ -171,7 +171,7 @@ describe('SectionSourceNotice: forrás-jelzés és linkek', () => {
     )
     const kurzusDoboz = renderNotice(1)
     expect(kurzusDoboz).toContain(
-      'Itt a szekció felső kis feliratát, címét, bevezetőjét és a kártyák gombfeliratát szerkeszted.',
+      'Itt a szekció felső kis feliratát, címét, bevezetőjét, a kártyák gombfeliratát és a kártyák alatti fotókat szerkeszted.',
     )
     expect(kurzusDoboz).not.toMatch(/(?<!\p{L})csak(?!\p{L})/iu)
   })

@@ -15,6 +15,7 @@ import { coursePriceBadgeKind, coursePriceHuf, courseTitle } from '../../../lib/
 import type { Product } from '../../../payload-types'
 import { PriceTag } from '../../ui/PriceTag'
 import { CoursePromoBadge, promoAccessibleNamePrefix } from '../../courses/CoursePromoBadge'
+import { fokuszPozicio, kepHelyMedia } from '../../../lib/kep-helyek'
 import { MediaImage } from '../MediaImage'
 
 import '../../../app/(frontend)/styles/blocks/course-showcase.css'
@@ -37,6 +38,11 @@ export interface CourseShowcaseProps {
    * (takarítás, 2026-09-19).
    */
   scenePhotos?: boolean
+  /**
+   * A jelenet három helyének CMS-értéke (bal, közép, jobb; a blokk
+   * `scenePhotos` csoportja). Üres helyen a beépített fotó áll.
+   */
+  sceneMedia?: readonly unknown[]
 }
 
 function ArrowIcon() {
@@ -184,6 +190,7 @@ export function CourseShowcase({
   lead,
   mark = COURSE_SHOWCASE_MARK,
   scenePhotos = true,
+  sceneMedia = [],
 }: CourseShowcaseProps) {
   if (products.length === 0) {
     return null
@@ -218,19 +225,35 @@ export function CourseShowcase({
         <div aria-hidden="true" className="kc-course-showcase__scene">
           {markText.length > 0 ? <p className="kc-course-showcase__word">{markText}</p> : null}
           {scenePhotos
-            ? COURSE_SHOWCASE_SCENE_PHOTOS.map((image) => (
-                // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
-                <img
-                  alt=""
-                  className="kc-course-showcase__photo"
-                  decoding="async"
-                  height={image.height}
-                  key={image.src}
-                  loading="lazy"
-                  src={image.src}
-                  width={image.width}
-                />
-              ))
+            ? COURSE_SHOWCASE_SCENE_PHOTOS.map((image, index) => {
+                const media = kepHelyMedia(sceneMedia[index])
+                if (media) {
+                  return (
+                    <MediaImage
+                      className="kc-course-showcase__photo"
+                      decorative
+                      key={index}
+                      media={media}
+                      preferredSize="sm"
+                      sizes="(min-width: 1280px) 400px, 33vw"
+                      style={{ objectPosition: fokuszPozicio(media) }}
+                    />
+                  )
+                }
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element -- dekoratív, statikus csapatkép
+                  <img
+                    alt=""
+                    className="kc-course-showcase__photo"
+                    decoding="async"
+                    height={image.height}
+                    key={index}
+                    loading="lazy"
+                    src={image.src}
+                    width={image.width}
+                  />
+                )
+              })
             : null}
         </div>
       ) : null}

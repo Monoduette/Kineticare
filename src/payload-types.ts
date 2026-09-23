@@ -530,6 +530,23 @@ export interface BlockCourseCards {
    * A kurzuskártyák alján megjelenő gomb felirata. Nem kötelező: üresen a beépített, jóváhagyott felirat marad („Nyisd meg a kurzusoldalt”). A gomb csak jelzés, maga a kártya a link.
    */
   ctaLabel?: string | null;
+  /**
+   * Díszítő fotók a kártyák alatt. Ha egy mezőt üresen hagysz, ott a beépített fotó marad. A kivágást a kép fókuszpontja adja: a Képek közt arra a pontra állítsd, aminek mindig látszania kell. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+   */
+  scenePhotos?: {
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: Kiss Kata kis labdán gyakorol a tenyerével.
+     */
+    left?: (number | null) | Media;
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: Otthoni gyakorlás labdával és törölközővel.
+     */
+    middle?: (number | null) | Media;
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: Kocsis Kata bögrével a fotelben.
+     */
+    right?: (number | null) | Media;
+  };
   sectionSettings?: {
     /**
      * Kikapcsolva a szekció nem látszik, a tartalma megmarad.
@@ -929,9 +946,30 @@ export interface BlockAbout {
     note?: string | null;
   };
   /**
-   * A szekció melletti fénykép. A képleírást (alt) a Képek közt add meg egyszer. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+   * A szekció melletti fénykép. A kezdőlapon, ha ez a szekció közvetlenül a nyitó videó után áll, helyette a lenti mozgó fotósor látszik. A képleírást (alt) a Képek közt add meg egyszer. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
    */
   photo?: (number | null) | Media;
+  /**
+   * Csak a kezdőlapon látszik, ha ez a szekció közvetlenül a nyitó videó után áll. Minden mező egy ívnek felel meg; ha üresen hagyod, ott a beépített fotó marad. A kivágást a kép fókuszpontja adja: a Képek közt arra a pontra állítsd, aminek mindig látszania kell. Cseréhez az X-szel vedd ki a képet, aztán tölts fel újat az „Új létrehozása” gombbal, vagy válassz a meglévők közül. A ceruza a kép adatait minden oldalon módosítja.
+   */
+  frieze?: {
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: Kiss Kata és Kocsis Kata fehér garbóban.
+     */
+    photo1?: (number | null) | Media;
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: Az alkar izmai táblagépen, a gyógytornász tollal mutat rájuk.
+     */
+    photo2?: (number | null) | Media;
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: A gyógytornász goniométerrel méri a fekvő páciens könyökének mozgástartományát.
+     */
+    photo3?: (number | null) | Media;
+    /**
+     * Ha üresen hagyod, a beépített fotó látszik: A Kineticare alapítói együtt dolgoznak egy laptopnál.
+     */
+    photo4?: (number | null) | Media;
+  };
   /**
    * Rövid, valós adatok (pl. „10+ év szakmai tapasztalat”). Kitalált számot ne írj ide.
    */
@@ -3155,6 +3193,13 @@ export interface BlockCourseCardsSelect<T extends boolean = true> {
   heading?: T;
   lead?: T;
   ctaLabel?: T;
+  scenePhotos?:
+    | T
+    | {
+        left?: T;
+        middle?: T;
+        right?: T;
+      };
   sectionSettings?:
     | T
     | {
@@ -3349,6 +3394,14 @@ export interface BlockAboutSelect<T extends boolean = true> {
         note?: T;
       };
   photo?: T;
+  frieze?:
+    | T
+    | {
+        photo1?: T;
+        photo2?: T;
+        photo3?: T;
+        photo4?: T;
+      };
   stats?:
     | T
     | {

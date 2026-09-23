@@ -36,6 +36,7 @@ import * as migration_20260920_203756_products_promo from './20260920_203756_pro
 import * as migration_20260921_070618_products_promo_price from './20260921_070618_products_promo_price';
 import * as migration_20260921_095507_products_unlisted from './20260921_095507_products_unlisted';
 import * as migration_20260922_225015_film_hero_feliratok from './20260922_225015_film_hero_feliratok';
+import * as migration_20260923_073659_kep_helyek from './20260923_073659_kep_helyek';
 
 export const migrations = [
   {
@@ -226,6 +227,11 @@ export const migrations = [
   {
     up: migration_20260922_225015_film_hero_feliratok.up,
     down: migration_20260922_225015_film_hero_feliratok.down,
-    name: '20260922_225015_film_hero_feliratok'
+    name: '20260922_225015_film_hero_feliratok',
+  },
+  {
+    up: migration_20260923_073659_kep_helyek.up,
+    down: migration_20260923_073659_kep_helyek.down,
+    name: '20260923_073659_kep_helyek'
   },
 ];

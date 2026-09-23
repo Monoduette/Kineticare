@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import Image from 'next/image'
 
 import {
@@ -25,6 +26,8 @@ export interface MediaImageProps {
   className?: string
   /** Tudatosan dekoratív kép: `alt=""`, figyelmeztetés nélkül. */
   decorative?: boolean
+  /** Inline stílus a képen (pl. a fókuszpont szerinti `object-position`). */
+  style?: CSSProperties
 }
 
 export function MediaImage({
@@ -34,6 +37,7 @@ export function MediaImage({
   sizes,
   className,
   decorative = false,
+  style,
 }: MediaImageProps) {
   const src = pickMediaUrl(media, preferredSize)
   if (!src) {
@@ -63,6 +67,7 @@ export function MediaImage({
       sizes={sizes}
       priority={priority}
       className={className}
+      {...(style ? { style } : {})}
       {...(srcSet ? { srcSet } : {})}
     />
   )

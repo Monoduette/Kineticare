@@ -404,6 +404,11 @@ function BlockSwitch({
               heading={block.heading ?? undefined}
               lead={block.lead ?? undefined}
               products={gridProducts}
+              sceneMedia={[
+                block.scenePhotos?.left,
+                block.scenePhotos?.middle,
+                block.scenePhotos?.right,
+              ]}
             />
           </Container>
         </Section>
