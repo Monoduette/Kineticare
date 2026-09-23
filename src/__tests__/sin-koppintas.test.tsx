@@ -1,5 +1,8 @@
 // @vitest-environment happy-dom
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -8,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Services } from '../components/blocks/Services'
 import {
   SIN_CIMKE_OSZTALY,
+  SIN_KILEPO_GORBE,
   SIN_MAGASSAG_GORBE,
   SIN_MAGASSAG_MS,
   SinKoppintasIgazito,
@@ -191,6 +195,79 @@ describe('mobil nyitás-zárás animáció', () => {
     const [regiKockak] = regi.mock.calls[0] as unknown as [Keyframe[]]
     expect(regiKockak[0]).toMatchObject({ height: '800px', visibility: 'visible' })
     expect(regiKockak[1]).toMatchObject({ height: '0px', visibility: 'visible' })
+  })
+
+  describe('a képernyő alja alá kicsúszó sorok (nyitott 3. sorból az 1.-re)', () => {
+    const eredetiMagassag = window.innerHeight
+    afterEach(() => {
+      Object.defineProperty(window, 'innerHeight', { value: eredetiMagassag, configurable: true })
+    })
+
+    /** Élő mérés (390×844): a 2. és 3. sor 304 / 419 px-ről 1139 / 1254 px-re csúszik. */
+    function felfeleKoppintas(harmadikVege: number) {
+      Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
+      const { cimkek, radiok } = sinDom()
+      const panelek = [...document.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
+      const [elso, masodik, harmadik] = panelek
+      const [koppintott, cimke2, cimke3] = cimkek
+      if (radiok[2]) radiok[2].checked = true
+      if (!elso || !masodik || !harmadik || !koppintott || !cimke2 || !cimke3) {
+        throw new Error('hiányzó sín-elem')
+      }
+      mobilKornyezet()
+      magassag(elso, 0, 812)
+      magassag(masodik, 0, 0)
+      magassag(harmadik, 858, 0)
+      vi.spyOn(koppintott, 'getBoundingClientRect').mockReturnValue({ top: 200 } as DOMRect)
+      vi.spyOn(cimke2, 'getBoundingClientRect')
+        .mockReturnValueOnce({ top: 304, bottom: 419 } as DOMRect)
+        .mockReturnValue({ top: 1139, bottom: 1254 } as DOMRect)
+      vi.spyOn(cimke3, 'getBoundingClientRect')
+        .mockReturnValueOnce({ top: 419, bottom: 534 } as DOMRect)
+        .mockReturnValue({ top: harmadikVege, bottom: harmadikVege + 115 } as DOMRect)
+      const kesz = { finished: Promise.resolve(), cancel: vi.fn() } as unknown as Animation
+      panelek.forEach((panel) => Object.assign(panel, { animate: vi.fn(() => kesz) }))
+      const halvanyit2 = vi.fn(() => kesz)
+      const halvanyit3 = vi.fn(() => kesz)
+      Object.assign(cimke2, { animate: halvanyit2 })
+      Object.assign(cimke3, { animate: halvanyit3 })
+      Object.assign(koppintott, { animate: vi.fn(() => kesz) })
+      sinCimkeKattintas(kattintas(koppintott), window)
+      return { halvanyit2, halvanyit3, koppintott }
+    }
+
+    it('a kicsúszó sor a záródó panel idejével és görbéjével halványul, a végén visszakapja az átlátszatlanságot', () => {
+      const { halvanyit2, halvanyit3, koppintott } = felfeleKoppintas(1254)
+      expect(halvanyit2).toHaveBeenCalledTimes(1)
+      expect(halvanyit3).toHaveBeenCalledTimes(1)
+      expect(koppintott.animate).not.toHaveBeenCalled()
+      const [kockak, idozites] = halvanyit2.mock.calls[0] as unknown as [
+        Keyframe[],
+        KeyframeAnimationOptions,
+      ]
+      // 350 ms (a panel átmenete) a 400 ms-ból: 0,875-nél már 0.
+      expect(kockak).toEqual([
+        { opacity: 1, easing: SIN_KILEPO_GORBE },
+        { opacity: 0, offset: 350 / SIN_MAGASSAG_MS },
+        { opacity: 0 },
+      ])
+      expect(idozites).toEqual({ duration: SIN_MAGASSAG_MS })
+      expect(idozites).not.toHaveProperty('fill')
+    })
+
+    it('a képernyőn maradó sor nem halványul', () => {
+      const { halvanyit2, halvanyit3 } = felfeleKoppintas(700)
+      expect(halvanyit2).toHaveBeenCalledTimes(1)
+      expect(halvanyit3).not.toHaveBeenCalled()
+    })
+  })
+
+  it('a kicsúszó sor görbéje a tokens.css --kc-ease-out tokenje', () => {
+    const tokens = readFileSync(
+      join(process.cwd(), 'src', 'app', '(frontend)', 'styles', 'tokens.css'),
+      'utf8',
+    )
+    expect(tokens).toContain(`--kc-ease-out: ${SIN_KILEPO_GORBE};`)
   })
 
   it('a gyors második koppintás leállítja az előző váltás animációit', () => {

@@ -63,6 +63,30 @@ import { useEffect } from 'react'
  * https://www.nngroup.com/articles/animation-duration/; Material 3, Easing
  * and duration, https://m3.material.io/styles/motion/easing-and-duration/tokens-specs.
  * A panel tartalmának áttűnése a sín meglévő tokenjein marad (CSS).
+ *
+ * A KÉT IRÁNY UGYANAZT A KOREOGRÁFIÁT KAPJA (2026-09-23, tulajdonosi kör:
+ * „amikor fölfelé kellene nyíljon … mintha szaggatna”). Képkockánként mérve
+ * (390×844, 60 Hz, a koppintott sorhoz viszonyítva): nyitott 1. sorból a
+ * 3.-ra koppintva a képernyőn látható, átlátszatlan elemek legfeljebb 25 px-t
+ * ugrottak képkockánként, mert a fölötte záródó panel a CSS-áttűnéssel
+ * (350 ms, `--kc-ease-out`) már elhalványult, mire gyorsan mozdult volna, a
+ * beérkező sor pedig a lassuló szakaszban ért a helyére. Nyitott 3. sorból
+ * az 1.-re koppintva viszont a lenyíló panel alatti 2. és 3. sor teljesen
+ * látható maradt, és a mozgás leggyorsabb részében csúszott ki a képernyő
+ * alján: 5–8 képkockán át 30–77 px-es ugrás, ez a szaggatás. A helyüket
+ * változtató elemek bármilyen sebességnél erősebben vonzzák a figyelmet,
+ * mint a halványulók (NN/g, Animation for Attention and Comprehension:
+ * https://www.nngroup.com/articles/animation-usability/), és az átmenet alatt
+ * zavaró elem az átmenet idejére eltűnhet, majd utána visszatér (Material
+ * Design, Choreography: „Some elements may disappear during the transition
+ * but reappear once the transition completes, if they are too distracting
+ * during the transition itself”, https://m1.material.io/motion/choreography.html).
+ * Ezért az a sor, amely koppintáskor látszott, de a mozgás végén a képernyő
+ * alja alá kerül, ugyanazzal az idővel és görbével halványul el, mint a
+ * záródó panel, és az átmenet végén (már a képernyőn kívül) visszakapja a
+ * teljes átlátszatlanságot. A képernyőn maradó sor nem halványul: az a
+ * helyére érkezik, a lassuló szakaszban.
+ *
  * Csökkentett mozgásnál (`prefers-reduced-motion`, a CSS a tokent 0-ra zárja)
  * és asztalon (ott a panelek egy cellában rétegződnek, magasságváltás
  * nincs) nincs animáció, a váltás azonnali (WCAG 2.2 SC 2.3.3).
@@ -73,6 +97,13 @@ export const SIN_MAGASSAG_MS = 400
 
 /** A panel magasság-animációjának görbéje (IBM Carbon „standard, expressive”). */
 export const SIN_MAGASSAG_GORBE = 'cubic-bezier(0.4, 0.14, 0.3, 1)'
+
+/**
+ * A képernyőről kicsúszó sor halványulásának görbéje: a tokens.css
+ * `--kc-ease-out` tokenje, ugyanaz, amivel a záródó panel halványul
+ * (services-sin.css). Az egyezést őr-teszt védi.
+ */
+export const SIN_KILEPO_GORBE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 /** A mobil accordion töréspontja (services-sin.css `max-width: 899px`). */
 export const SIN_MOBIL_MEDIA = '(max-width: 899px)'
@@ -167,10 +198,17 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
     ? [...fieldset.querySelectorAll<HTMLElement>('.kc-services-sin__panel')]
     : []
   const ujPanel = panelek[radiok.indexOf(radio)]
+  const cimkek = fieldset
+    ? [...fieldset.querySelectorAll<HTMLElement>(`label.${SIN_CIMKE_OSZTALY}`)]
+    : []
   const mobil = ablak.matchMedia?.(SIN_MOBIL_MEDIA).matches === true
   // A kiinduló doboz a panelek PILLANATNYI mérete: ha egy korábbi váltás
   // animációja még fut, onnan folytatjuk, ugrás nélkül.
   const kezdoDobozok = mobil ? panelek.map((panel) => dobozMeres(panel, ablak)) : []
+  // A többi sor koppintáskori helye (a koppintott sor helye az `elotte`).
+  const kezdoCimkek = mobil
+    ? cimkek.map((masik) => (masik === cimke ? null : masik.getBoundingClientRect()))
+    : []
   // Egy fieldsetben egyszerre egy váltás él: a gyors második koppintás
   // leállítja az előző animációit és görgetéskövetését (a két követés
   // különben egymás ellen görgetne).
@@ -185,16 +223,31 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   radio.focus({ preventScroll: true })
 
   // A csökkentett mozgást a CSS jelzi: reduce alatt a panel átmenete 0 s.
+  // A panel halványulásának ideje (services-sin.css, `--kc-services-motion-cross`).
+  const athalvanyulasMs =
+    mobil && ujPanel ? elsoAtmenetMs(ablak.getComputedStyle(ujPanel).transitionDuration) : 0
   const mozoghat =
-    mobil && ujPanel
-      ? elsoAtmenetMs(ablak.getComputedStyle(ujPanel).transitionDuration) > 0 &&
-        ablak.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true
-      : false
+    athalvanyulasMs > 0 && ablak.matchMedia?.('(prefers-reduced-motion: reduce)').matches !== true
   if (!fieldset || !ujPanel || !mozoghat || typeof ujPanel.animate !== 'function') {
     igazit()
     ablak.requestAnimationFrame(igazit)
     return
   }
+
+  // A végső elrendezés, még az animációk előtt mérve (az animáció már a
+  // köztes méretet adná). A koppintott sor a helyén marad, tehát minden elem
+  // végső képernyő-helye a mostani helye, a sor elmozdulásával kiegyenlítve.
+  const vegDobozok = panelek.map((panel) => dobozMeres(panel, ablak))
+  const kiegyenlites = elotte - cimke.getBoundingClientRect().top
+  const kepernyoAlja = ablak.innerHeight
+  const kilepoCimkek = cimkek.filter((masik, index) => {
+    const kezdo = kezdoCimkek[index]
+    if (!kezdo) {
+      return false
+    }
+    const latszott = kezdo.bottom > 0 && kezdo.top < kepernyoAlja
+    return latszott && masik.getBoundingClientRect().top + kiegyenlites >= kepernyoAlja
+  })
 
   const idozites: KeyframeAnimationOptions = {
     duration: SIN_MAGASSAG_MS,
@@ -204,8 +257,8 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
   try {
     panelek.forEach((panel, index) => {
       const kezdo = kezdoDobozok[index]
-      const veg = dobozMeres(panel, ablak)
-      if (!kezdo || azonosDoboz(kezdo, veg)) {
+      const veg = vegDobozok[index]
+      if (!kezdo || !veg || azonosDoboz(kezdo, veg)) {
         return
       }
       // A záródó panel a CSS szerint rögtön rejtett lenne: a mozgás idejére
@@ -220,6 +273,21 @@ export function sinCimkeKattintas(event: MouseEvent, ablak: Window = window): vo
               ]
             : [kezdo, veg],
           idozites,
+        ),
+      )
+    })
+    // A képernyő alja alá kicsúszó sor a záródó panellel együtt halványul el,
+    // és az átmenet végén, már a képernyőn kívül, újra teljesen látszik.
+    const kilepoVege = Math.min(1, athalvanyulasMs / SIN_MAGASSAG_MS)
+    kilepoCimkek.forEach((masik) => {
+      animaciok.push(
+        masik.animate(
+          [
+            { opacity: 1, easing: SIN_KILEPO_GORBE },
+            { opacity: 0, offset: kilepoVege },
+            { opacity: 0 },
+          ],
+          { duration: SIN_MAGASSAG_MS },
         ),
       )
     })
