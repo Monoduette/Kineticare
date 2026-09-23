@@ -65,12 +65,26 @@ export const COURSE_SHOWCASE_FALLBACKS: readonly CourseShowcaseFallbackImage[] =
  * (https://developer.apple.com/design/human-interface-guidelines/images).
  * (Korábbi neve COURSE_SHOWCASE_DRIFT, a WP50 előtti görgetésre úszó
  * kompozíció után; a jelenet ma statikus.)
+ *
+ * 2026-09-22 (tulajdonosi kérés): a bal és a jobb cella is gyakorlat közbeni
+ * képet kap a két alapítós portré helyett, a középső marad. Bal: Kiss Kata
+ * az asztalon fekvő kis labdán gyakorol a tenyerével (manifest
+ * `showcase-left-ball`); jobb: Kocsis Kata bögrével a fotelben, mellette
+ * plüssmaci, háttérben csontváz (`showcase-right-mug`). Mindkettő a
+ * tulajdonos által adott, videós stúdióban készült képből vágott 3:2-es,
+ * 800×533-as WebP, felskálázás nélkül (a vágás valódi részlete ~1100 px,
+ * ezért szélesebb változat nem adna élesebb képet). A három cella így egy
+ * témát mutat, az otthoni gyakorlást, ami a Kurzusaink szekció tárgya (NN/g,
+ * Photos as Web Content, lásd fent). A cellák `aria-hidden` jelenetben
+ * állnak, az `alt` ezért üres (CourseShowcase.tsx; W3C WAI, Decorative
+ * Images: https://www.w3.org/WAI/tutorials/images/decorative/); a leírás a
+ * manifestben él, a CMS-nek.
  */
 export const COURSE_SHOWCASE_SCENE_PHOTOS: readonly CourseShowcaseFallbackImage[] = [
   {
-    src: '/media/team/founders-shared-laugh-800.webp',
+    src: '/media/team/showcase-kiss-kata-labda-800.webp',
     width: 800,
-    height: 503,
+    height: 533,
   },
   {
     src: '/media/team/home-exercise-ball-towel-800.webp',
@@ -78,9 +92,9 @@ export const COURSE_SHOWCASE_SCENE_PHOTOS: readonly CourseShowcaseFallbackImage[
     height: 533,
   },
   {
-    src: '/media/team/founders-intro-white-800.webp',
+    src: '/media/team/showcase-kocsis-kata-bogre-800.webp',
     width: 800,
-    height: 534,
+    height: 533,
   },
 ]
 

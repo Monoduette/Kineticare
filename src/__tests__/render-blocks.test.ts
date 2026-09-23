@@ -241,7 +241,13 @@ describe('HomeView layout-elágazás', () => {
     const helpHtml = html.slice(helpStart, laterAbout)
     expect(helpHtml).toContain('kc-services--sin')
     expect(helpHtml).not.toContain('kc-services__num')
-    expect(helpHtml).toContain('help-zart-img-7541.jpg')
+    // 2026-09-22: az ajtók üres CMS-fotónál a saját tevékenység-képüket kapják,
+    // a kép mért fókuszpontjával (a rendelői ajtón 50% 40%).
+    expect(helpHtml).toContain('help-rendelo-szalag.jpg')
+    expect(helpHtml).toContain('help-otthoni-video.jpg')
+    expect(helpHtml).toContain('help-szakmai-tablet.jpg')
+    expect(helpHtml).not.toContain('help-zart-img-7541')
+    expect(helpHtml).toContain('style="--kc-services-image-focus:50% 40%"')
     // Tulajdonosi hibajelentés (2026-09-22): a sín a CMS-ben mentett szöveget
     // mutatja, nem a kódbeli kanonikusat. Az adminban „Akut sérülések…”
     // kezdetű törzs van, a lapon is ennek kell állnia, nem „Akut panasz…”-nak.

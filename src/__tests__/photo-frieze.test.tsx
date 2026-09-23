@@ -39,7 +39,19 @@ const kommentNelkul = (forras: string): string => forras.replace(/\/\*[\s\S]*?\*
 const markup = renderToStaticMarkup(<PhotoFrieze />)
 const kepek = [...markup.matchAll(/<img\b[^>]*>/g)].map((talalat) => talalat[0])
 
+/** 2026-09-22 (tulajdonosi kérés): a két alapító, két szakmai felvétel, a két alapító munka közben. */
 const VART_FAJLOK = [
+  'founders-white-turtleneck-1600.webp',
+  'tablet-forearm-anatomy-1600.webp',
+  'goniometer-elbow-measure-1388.webp',
+  'founders-working-laptop-1600.webp',
+]
+
+/** Ívenkénti vágás (object-position), a PhotoFrieze.tsx mért értékei. */
+const VART_VAGASOK = ['50% 20%', '50% 20%', '78% 72%', '55% 20%']
+
+/** A 2026-09-22 előtti négyes: egyik sem térhet vissza a frízbe. */
+const REGI_FAJLOK = [
   'founders-standing-blazers-1600.webp',
   'portrait-standing-navy-portrait-1600.webp',
   'hand-treatment-detail-1600.webp',
@@ -82,6 +94,9 @@ describe('fotó-fríz — szerkezet és tartalom', () => {
         encodeURIComponent(`/media/team/${fajl}`),
       )
     }
+    for (const regi of REGI_FAJLOK) {
+      expect(markup).not.toContain(encodeURIComponent(`/media/team/${regi}`))
+    }
   })
 
   it('minden alt a manifest ellenőrzött szövege, és a width/height a manifesté', () => {
@@ -115,9 +130,18 @@ describe('fotó-fríz — szerkezet és tartalom', () => {
     expect(markup).not.toContain('<figcaption')
   })
 
-  it('a csíkok index-változót kapnak a lépcsőzött belépőhöz', () => {
-    for (const index of [0, 1, 2, 3]) {
-      expect(markup).toContain(`style="--kc-frieze-i:${index}"`)
+  it('a csíkok index-változót kapnak a lépcsőzött belépőhöz, és ívenként saját vágást', () => {
+    for (const [index, vagas] of VART_VAGASOK.entries()) {
+      expect(markup).toContain(`style="--kc-frieze-i:${index};--kc-frieze-focus:${vagas}"`)
+    }
+  })
+
+  it('mobilon a kép kirajzolt szélességét kéri (magasságra illesztett cover), nem a keskeny csíkét', () => {
+    // 18rem × 115% × 2/3 = 13,8rem: a 2:3-as kép tartalma ennyi széles a csíkban.
+    for (const kep of kepek) {
+      expect(kep).toContain(
+        'sizes="(min-width: 1200px) 320px, (min-width: 900px) 24vw, max(33vw, 13.8rem)"',
+      )
     }
   })
 
@@ -190,8 +214,13 @@ describe('fotó-fríz — CSS-őr', () => {
     expect(blokk).toMatch(/:nth-child\(2n\)\s*\{\s*border-radius: var\(--kc-frieze-arch\)/)
   })
 
-  it('a nyitó páros portré külön vágat nélkül fér ki; a CMS páros fotója nem ismétlődik', () => {
-    expect(kepek[0]).not.toContain('object-position')
+  it('a vágás a csík változójából jön (a kép nem visz inline vágást); a CMS páros fotója nem ismétlődik', () => {
+    for (const kep of kepek) {
+      expect(kep).not.toContain('object-position')
+    }
+    expect(tiszta).toMatch(
+      /\.kc-photo-frieze__img\s*\{[^}]*object-position: var\(--kc-frieze-focus, 50% 20%\);/,
+    )
     expect(markup).not.toContain('founders-intro-white')
   })
 })
@@ -211,9 +240,11 @@ describe('fotó-fríz — bekötés az alapítók-szekcióba (About), nem a film
     expect(html).not.toContain('kc-photo-frieze')
     // A hero egyetlen csapatfotót sem visz (a WP50 szerző-sor 2026-09-19-én
     // tulajdonosi döntésre kikerült): a fríz fotói csak a fríz régiójában.
+    for (const fajl of VART_FAJLOK) {
+      expect(html).not.toContain(fajl.replace(/\.webp$/, ''))
+    }
     expect(html).not.toContain('founders-standing-blazers')
     expect(html).not.toContain('portrait-standing')
-    expect(html).not.toContain('hand-treatment-detail')
     expect(html).not.toContain('kc-film-hero__founders')
   })
 

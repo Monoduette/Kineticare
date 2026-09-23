@@ -179,6 +179,66 @@
       "width": 1600,
       "height": 1067,
       "alt": "Csuklókezelés a Kineticare rendelőjében: a gyógytornász két kézzel mobilizálja a csuklót."
+    },
+    {
+      "role": "frieze-founders-turtleneck",
+      "file": "founders-white-turtleneck-1600.webp",
+      "sourceId": "1ik31ec2v18pYvKJT-H4ioU4djWbFoSvh",
+      "sourceName": "SYL_9147.jpg",
+      "sha256": "718ebc685815246b1b56da1c38876e7e7b21958453262d6ab8178732db3d5b33",
+      "width": 1600,
+      "height": 2000,
+      "alt": "Kiss Kata és Kocsis Kata fehér garbóban."
+    },
+    {
+      "role": "frieze-forearm-anatomy",
+      "file": "tablet-forearm-anatomy-1600.webp",
+      "sourceId": "1t3UJlxJxqGUhaDH481XlK1oRqDnwtWo5",
+      "sourceName": "_MG_0443.png",
+      "sha256": "517ce8f68e3c39b8b7d7b19247e42042a2a9b0f1d97bb0ff1c678e81d3d29996",
+      "width": 1600,
+      "height": 2400,
+      "alt": "Az alkar izmai táblagépen, a gyógytornász tollal mutat rájuk."
+    },
+    {
+      "role": "frieze-goniometer",
+      "file": "goniometer-elbow-measure-1388.webp",
+      "sourceId": "1xedstd7O94bUyvRle4WyO4lTvfuKMMxb",
+      "sourceName": "_MG_0041.png",
+      "sha256": "702df06f25751e06dcf29c34049f8a9298c134b0e064c1ad96de480d7db6d26a",
+      "width": 1388,
+      "height": 2082,
+      "alt": "A gyógytornász goniométerrel méri a fekvő páciens könyökének mozgástartományát."
+    },
+    {
+      "role": "showcase-left-ball",
+      "file": "showcase-kiss-kata-labda-800.webp",
+      "sourceId": "owner-upload:b16ebcce-image.png",
+      "sourceName": "b16ebcce-image.png",
+      "sha256": "f2e7abd746b7576774f0c2580cdc415e957500f1e6bd2dd9f3fed0541dbe8e7b",
+      "width": 800,
+      "height": 533,
+      "alt": "Kiss Kata az asztalon fekvő kis labdán gyakorol a tenyerével, mellette teniszlabda."
+    },
+    {
+      "role": "showcase-right-mug",
+      "file": "showcase-kocsis-kata-bogre-800.webp",
+      "sourceId": "owner-upload:5462953e-image.png",
+      "sourceName": "5462953e-image.png",
+      "sha256": "7e4bda5d856aad4244d218c2746d68d6eeffce33d7b6ac1c8d79328b671d586a",
+      "width": 800,
+      "height": 533,
+      "alt": "Kocsis Kata bögrével a kezében fotelben ül, mellette plüssmaci, háttérben csontváz."
+    },
+    {
+      "role": "cv-kocsis-kata",
+      "file": "kocsis-kata-cv-1500.webp",
+      "sourceId": "1RMRFwTaaF62I1VkPT0336UCNNSMFjhAv",
+      "sourceName": "IMG_7288.JPG",
+      "sha256": "6d3ac36b44d01a85f6ac4a9af2c2b872d51504a2232bb0802afe1814088be301",
+      "width": 1500,
+      "height": 2000,
+      "alt": "Kocsis Kata gyógytornász sötét blézerben, karba tett kézzel."
     }
   ]
 }

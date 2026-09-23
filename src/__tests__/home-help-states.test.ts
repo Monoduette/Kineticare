@@ -11,6 +11,7 @@ import {
   HOME_HELP_STATES,
   HOME_HELP_TITLE,
   HOME_USPS_EYEBROW,
+  LEGACY_HOME_HELP_PHOTO_FILES,
   LEGACY_HOME_HELP_ROWS,
   LEGACY_HOME_HELP_URLS,
   homeHelpFallbackMedia,
@@ -82,13 +83,17 @@ describe('home-help-states — REV C felismerés', () => {
     expect(help.rows?.map((row) => row.ujAblakban)).toEqual([false, false, true])
   })
 
-  it('a sín fotói a zárolt Drive-képek, nem a Kata-csoportképek', () => {
+  // 2026-09-22 (tulajdonosi kérés, „mindenhol"): az ajtók a saját
+  // tevékenységüket mutatják; a 2026-09-06-os portrék (IMG_7541, SYL_9297,
+  // SYL_9260) csak történeti seed-forrásként maradnak.
+  it('a sín fotói ajtónként a tevékenység-képek, nem a régi portrék és nem a Kata-csoportképek', () => {
     expect([...HOME_HELP_PHOTO_FILES]).toEqual([
-      'help-zart-img-7541.jpg',
-      'help-nyilo-syl-9297.jpg',
-      'help-nyitott-syl-9260.jpg',
+      'help-rendelo-szalag.jpg',
+      'help-otthoni-video.jpg',
+      'help-szakmai-tablet.jpg',
     ])
     for (const tiltott of [
+      ...LEGACY_HOME_HELP_PHOTO_FILES,
       'katak-labdaval.jpg',
       'katak-team.jpg',
       '680a69d078306_Katakfeherbenhattal.png',
@@ -99,9 +104,12 @@ describe('home-help-states — REV C felismerés', () => {
       expect(HOME_HELP_PHOTO_FILES).not.toContain(tiltott)
     }
     const help = buildHomeLayout({
-      'help-zart-img-7541.jpg': 41,
-      'help-nyilo-syl-9297.jpg': 42,
-      'help-nyitott-syl-9260.jpg': 43,
+      'help-rendelo-szalag.jpg': 41,
+      'help-otthoni-video.jpg': 42,
+      'help-szakmai-tablet.jpg': 43,
+      'help-zart-img-7541.jpg': 91,
+      'help-nyilo-syl-9297.jpg': 92,
+      'help-nyitott-syl-9260.jpg': 93,
       'katak-labdaval.jpg': 99,
       'katak-team.jpg': 98,
       'state-zart.png': 4,
@@ -325,16 +333,14 @@ describe('presentHomeLayout — élő tábla → C-sín, index nélkül', () => 
     expect(sin.rows?.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban])).toEqual(
       rows.map((r) => [r.title, r.body, r.felirat, r.url, r.ujAblakban]),
     )
-    // Fotó: CMS-fotó híján az 1. ajtó a kezelés közbeni felvételt kapja (WP51,
-    // manifest `services` szerep), a 2–3. ajtó a kezdőlapi sín tartalék-képeit.
+    // Fotó: CMS-fotó híján mindhárom ajtó a kezdőlapi sín tartalék-képét kapja;
+    // 2026-09-22 óta az 1. ajtóé is (a tulajdonos „mindenhol" kérése a WP54-es
+    // kezelés közbeni fotót felülírta).
     expect(
       sin.rows?.map((r) => (typeof r.photo === 'object' && r.photo ? r.photo.url : null)),
-    ).toEqual([
-      SZOLGALTATASOK_KEZELES_FOTO.url,
-      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[1]}`,
-      `${HOME_HELP_PUBLIC_DIR}/${HOME_HELP_PHOTO_FILES[2]}`,
-    ])
-    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/team/treatment-wrist-smile-1600.webp')
+    ).toEqual(HOME_HELP_PHOTO_FILES.map((file) => `${HOME_HELP_PUBLIC_DIR}/${file}`))
+    expect(SZOLGALTATASOK_KEZELES_FOTO).toEqual(homeHelpFallbackMedia(0))
+    expect(SZOLGALTATASOK_KEZELES_FOTO.url).toBe('/media/help-rail/help-rendelo-szalag.jpg')
   })
 
   it('a /szolgaltatasok ajtó-blokkja a CMS-fotót tartja, a paper hátteret tintre, a sötétet békén hagyja', () => {
