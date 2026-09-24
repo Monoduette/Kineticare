@@ -121,8 +121,11 @@ required when FELADAT enters that domain.
 8. Before any UI work: `docs/ertekesitesi-ux-skill.md` **and**
    `.claude/skills/termektervezes/SKILL.md`. Designing UI from memory
    is forbidden.
-9. The handbook chapter that matches FELADAT, from section 5 onward,
-   plus the single-topic file in `docs/`.
+9. Before writing, changing or reviewing any test:
+   `.claude/skills/teszt-audit/SKILL.md` (authoring gate, counter-check on
+   the pre-fix code, retention bar).
+10. The handbook chapter that matches FELADAT, from section 5 onward,
+    plus the single-topic file in `docs/`.
 
 Until items 1–6 are done, write no code and “fix” nothing.
 

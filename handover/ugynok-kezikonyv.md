@@ -29,6 +29,7 @@ feloldó, `/szakembereknek` CMS-ből, friss telepítésre szűkített onInit).
 | `docs/mi-hol-szerkesztheto.md`              | Oldalanként: melyik látott elem melyik mezőből (vagy kódból) jön   |
 | `docs/ertekesitesi-ux-skill.md`             | Felületi munka előtt kötelező                                      |
 | `.claude/skills/termektervezes/SKILL.md`    | Felületi munka előtt kötelező skill                                |
+| `.claude/skills/teszt-audit/SKILL.md`       | Teszt írása, módosítása, átnézése előtt kötelező skill             |
 | `.cursor/skills/verify-kineticare/SKILL.md` | Élő storefront GET-ellenőrzés                                      |
 
 ---
@@ -456,6 +457,9 @@ További scriptek: lásd a 11. szakaszt.
   hangosan dobó mock.
 - Komponens: `renderToStaticMarkup` (oxc automatic JSX, pragma nélkül).
 - Új viselkedéshez fókuszált teszt.
+- Teszt írása, módosítása, átnézése vagy átfésülése előtt:
+  `.claude/skills/teszt-audit/SKILL.md` (írási kapu, ellenpróba,
+  megtartási mérce; alrendszer-kampányhoz a `CAMPAIGN.md`).
 
 ### 4.4 Felületi munka kötelező menete
 

@@ -70,6 +70,7 @@ const REQUIRED_SOURCE_PATHS = [
   'docs/szerkesztoi-utmutato.md',
   'docs/claude-indito-prompt.md',
   '.claude/skills/termektervezes/SKILL.md',
+  '.claude/skills/teszt-audit/SKILL.md',
 ]
 
 function readRepoFile(relativePath: string): string {
