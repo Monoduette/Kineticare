@@ -8,16 +8,24 @@ import {
   GUEST_ACTIVATION_TOKEN_TTL_MS,
 } from './security/activation-token'
 import { durationDaysFromProduct } from './access-grants'
+import { shouldEmitThrottledAlert } from './alert-throttle'
 import { auditLogStore, writeAuditLog, type AuditLogStore } from './audit'
+import { KAPCSOLATI_EMAIL_TARTALEK } from './contact-email'
+import { kapcsolatiEmailPayloadbol } from './contact-email-server'
 import { sendMail, type SendResult } from './email'
-import { maskEmail } from './email/mask'
+import { maskEmail, maskEmailsInText } from './email/mask'
 import { isUsableReplyToAddress } from './email/reply-to'
 import {
   orderConfirmationEmail,
   ORDER_CONFIRMATION_TEMPLATE_VERSION,
   type OrderConfirmationAccount,
 } from './email/templates/order'
-import { loadOrderLegalInfo, type OrderLegalInfo } from './email/templates/order-legal'
+import {
+  ASZF_OLDAL_WEBCIM,
+  loadOrderLegalInfo,
+  orderLegalInfoFromAszfPage,
+  type OrderLegalInfo,
+} from './email/templates/order-legal'
 import type { MailAttachment } from './email/types'
 import { logger as rootLogger, type Logger } from './logger'
 import { buildPasswordResetUrl } from './password-reset-url'
@@ -36,10 +44,24 @@ import { postAuthLibraryOrPlayerHref, productIdsFromOrderItems } from './courses
  *   időtúllépett kérés valójában célba ért;
  * - ha végül nem megy ki, `error`-szintű RIASZTÁS jelzi (a rendelés
  *   azonosítójával), hogy a stáb kézzel pótolhassa;
+ * - ha a szolgáltató a mellékletes levelet VÉGLEG elutasítja (pl. a
+ *   mellékletet kifogásolja), a levél egyszer melléklet nélkül, csak az ÁSZF
+ *   linkjével megy ki, SAJÁT idempotencia-kulccsal (ugyanazzal a kulccsal
+ *   más tartalmat a Resend elutasítana), és RIASZTÁS kéri az ÁSZF kézi
+ *   megküldését;
  * - a sikeres küldés bizonyítéka (időpont, szolgáltatói üzenet-azonosító,
- *   sablon- és ÁSZF-változat) a megváltoztathatatlan műveletnaplóba kerül
- *   (audit-logs), mert a tájékoztatás bizonyítása a vállalkozást terheli
- *   (45/2014. Korm. rendelet 11. § (7)).
+ *   sablon- és ÁSZF-változat, az ÁSZF forrása) a megváltoztathatatlan
+ *   műveletnaplóba kerül (audit-logs), mert a tájékoztatás bizonyítása a
+ *   vállalkozást terheli (45/2014. Korm. rendelet 11. § (7)).
+ *
+ * Az ÁSZF és a szolgáltató adatai a KÖZZÉTETT /aszf oldalból jönnek (azt
+ * fogadta el a vevő), a repó aszf.txt-je csak tartalék (lásd
+ * src/lib/email/templates/order-legal.ts). A kérdésekre és panaszokra szolgáló
+ * cím (válaszcím, lábléc) a weboldal kapcsolati címe (tulajdonosi döntés K14).
+ *
+ * A szolgáltatói hibaszöveg a naplóba MASZKOLVA kerül (`maskEmailsInText`):
+ * egy SMTP-elutasítás szó szerint megismételheti a vevő címét, a napló pedig
+ * a címet csak maszkolva hordozhatja (src/lib/logger.ts).
  */
 
 /** A műveletnapló-bejegyzés kódja a visszaigazoló levél elküldéséről. */
@@ -151,8 +173,22 @@ export interface OnOrderPaidDeps {
     serverUrl: string
     returnUrl: string
   }) => Promise<string | null>
-  /** Injektálható ÁSZF- és szolgáltatóadat-betöltő (teszteléshez); alapból az aszf.txt. */
+  /**
+   * Injektálható olvasó a KÖZZÉTETT /aszf oldalhoz (teszteléshez); alapból a
+   * pages collection. `null` = nincs közzétett ÁSZF-oldal; olvasási hibánál
+   * dob.
+   */
+  loadPublishedAszf?: () => Promise<{ content: unknown } | null>
+  /**
+   * Injektálható TARTALÉK ÁSZF-betöltő (teszteléshez); alapból a repó
+   * aszf.txt-je. Csak akkor fut, ha a közzétett oldal nem használható.
+   */
   loadLegalInfo?: () => OrderLegalInfo
+  /**
+   * Injektálható kapcsolati cím (teszteléshez); alapból a Kapcsolat oldal
+   * feloldott címe (src/lib/contact-email-server.ts), hibánál a kódtartalék.
+   */
+  loadSupportEmail?: () => Promise<string>
   /**
    * Injektálható hozzáférés-hossz lekérdezés termékazonosítónként (teszteléshez);
    * alapból a products collection `accessDurationDays` mezője. Érték: napok
@@ -255,30 +291,189 @@ async function resolveAccessDurations(
   return durations
 }
 
+/** Honnan jött az ÁSZF, illetve a szolgáltató adatai (a műveletnaplóba kerül). */
+export type OrderLegalSource = 'cms' | 'repo'
+
+interface ResolvedLegalInfo {
+  legal: OrderLegalInfo | null
+  aszfSource: OrderLegalSource | null
+  sellerSource: OrderLegalSource | null
+}
+
+/** A közzétett /aszf oldal tartalma; `null`, ha nincs közzétett oldal. */
+async function defaultPublishedAszf(payload: Payload): Promise<{ content: unknown } | null> {
+  // Ugyanaz a szűrő, mint a /aszf oldalon (src/lib/cms.ts getPageBySlug:
+  // `status: published` + `draft: false`): pontosan azt a szöveget olvassuk,
+  // amit a vevő a pénztár ÁSZF-linkjén látott, piszkozatot soha.
+  const { docs } = await payload.find({
+    collection: 'pages',
+    where: {
+      and: [{ slug: { equals: ASZF_OLDAL_WEBCIM } }, { status: { equals: 'published' } }],
+    },
+    draft: false,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    select: { content: true },
+  })
+  const oldal = docs[0]
+  return oldal === undefined ? null : { content: oldal.content }
+}
+
 /**
- * Az ÁSZF és a szolgáltató adatai. A hiba nem állítja meg a levelet (a
- * nyilatkozatok visszaigazolása és a rendelés adatai ettől még kimennek), de
- * RIASZTÁST ad, mert így a levélből hiányzik a kötelező tájékoztatás egy része.
+ * Rendszerszintű (nem rendelésenkénti) RIASZTÁS fojtva: a hiányzó vagy hibás
+ * ÁSZF-oldal minden rendelést érint, a riasztás értéke a felszínre hozás, a
+ * rendelésenkénti ismétlés csak zaj (src/lib/alert-throttle.ts). A fojtott
+ * ismétlés warn-szinten, a rendelés azonosítójával megmarad a naplóban, és a
+ * műveletnapló is rögzíti rendelésenként az ÁSZF forrását.
  */
-function resolveLegalInfo(deps: OnOrderPaidDeps, log: Logger): OrderLegalInfo | null {
-  try {
-    const legal = (deps.loadLegalInfo ?? (() => loadOrderLegalInfo()))()
-    if (legal.seller === null) {
-      log.error(
-        'RIASZTÁS: az ÁSZF „KINETICARE adatai" blokkja hiányos vagy nem értelmezhető, ezért ' +
-          'a visszaigazoló levélből kimaradnak a szolgáltató adatai. Ellenőrizd a ' +
-          'src/lib/legal-source/aszf.txt fájlt, és küldd el kézzel a hiányzó adatokat a vevőnek.',
-      )
-    }
-    return legal
-  } catch (error) {
-    log.error(
-      'RIASZTÁS: az ÁSZF nem olvasható, ezért a visszaigazoló levél ÁSZF-melléklet és ' +
-        'szolgáltatói adatok nélkül megy ki. Küldd el kézzel az ÁSZF-et a vevőnek.',
-      { error: error instanceof Error ? error.message : String(error) },
-    )
-    return null
+function throttledLegalAlert(
+  log: Logger,
+  kulcs: string,
+  uzenet: string,
+  ismetles: string,
+  context?: Record<string, unknown>,
+): void {
+  if (shouldEmitThrottledAlert(`order-legal:${kulcs}`)) {
+    log.error(uzenet, context)
+  } else {
+    log.warn(ismetles, context)
   }
+}
+
+/**
+ * Az ÁSZF és a szolgáltató adatai, abból az ÁSZF-ből, amit a vevő elfogadott.
+ *
+ * 1. A KÖZZÉTETT /aszf oldal (lásd order-legal.ts). Ha az oldal adatblokkja
+ *    nem értelmezhető, a melléklet akkor is az elfogadott szöveg marad, a
+ *    szolgáltató adatai pedig a repó szövegéből jönnek, fojtott RIASZTÁSSAL.
+ * 2. Ha az oldal hiányzik, nem olvasható vagy nincs benne szöveg: a repó
+ *    aszf.txt-je, fojtott RIASZTÁSSAL (a melléklet eltérhet az elfogadottól).
+ *
+ * A hiba nem állítja meg a levelet (a nyilatkozatok visszaigazolása és a
+ * rendelés adatai ettől még kimennek); ha végül se ÁSZF, se szolgáltatói adat
+ * nincs, rendelésenkénti RIASZTÁS kéri a kézi pótlást.
+ */
+async function resolveLegalInfo(deps: OnOrderPaidDeps, log: Logger): Promise<ResolvedLegalInfo> {
+  let oldalCsomag: OrderLegalInfo | null = null
+  let oldalHiba: { kod: 'hianyzik' | 'nem-olvashato' | 'nem-ertelmezheto'; error?: string } | null =
+    null
+  try {
+    const load = deps.loadPublishedAszf ?? (() => defaultPublishedAszf(deps.payload))
+    const oldal = await load()
+    if (oldal === null) {
+      oldalHiba = { kod: 'hianyzik' }
+    } else {
+      oldalCsomag = orderLegalInfoFromAszfPage(oldal.content)
+      if (oldalCsomag === null) {
+        oldalHiba = { kod: 'nem-ertelmezheto' }
+      }
+    }
+  } catch (error) {
+    oldalHiba = {
+      kod: 'nem-olvashato',
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+
+  const tartalek = (): OrderLegalInfo | null => {
+    try {
+      return (deps.loadLegalInfo ?? (() => loadOrderLegalInfo()))()
+    } catch (error) {
+      log.error(
+        'RIASZTÁS: az ÁSZF nem olvasható, ezért a visszaigazoló levél ÁSZF-melléklet és ' +
+          'szolgáltatói adatok nélkül megy ki. Küldd el kézzel az ÁSZF-et a vevőnek.',
+        { error: error instanceof Error ? error.message : String(error) },
+      )
+      return null
+    }
+  }
+  const szolgaltatoNelkul = (): void => {
+    log.error(
+      'RIASZTÁS: az ÁSZF „KINETICARE adatai" blokkja hiányos vagy nem értelmezhető (a ' +
+        'közzétett /aszf oldalon és a repó aszf.txt-jében is), ezért a visszaigazoló levélből ' +
+        'kimaradnak a szolgáltató adatai. Javítsd az ÁSZF adatblokkját (soronként egy adat, ' +
+        '„Címke: érték" alakban), és küldd el kézzel a hiányzó adatokat a vevőnek.',
+    )
+  }
+
+  if (oldalCsomag !== null) {
+    if (oldalCsomag.seller !== null) {
+      return { legal: oldalCsomag, aszfSource: 'cms', sellerSource: 'cms' }
+    }
+    throttledLegalAlert(
+      log,
+      'aszf-oldal-adatblokk',
+      'RIASZTÁS: a közzétett ÁSZF (/aszf) „KINETICARE adatai" blokkja hiányos vagy nem ' +
+        'értelmezhető. A visszaigazoló levél melléklete az elfogadott ÁSZF, de a szolgáltató ' +
+        'adatait a repó aszf.txt-jéből vettük, és azok eltérhetnek. Javítsd az adminban az ' +
+        'ÁSZF adatblokkját: soronként egy adat, „Címke: érték" alakban (Székhely, ' +
+        'Cégjegyzékszám, Adószám, E-mail, Telefonszám).',
+      'a közzétett ÁSZF adatblokkja továbbra sem értelmezhető, a szolgáltató adatai a repó ' +
+        'szövegéből jönnek (a riasztás fojtva, lásd a korábbi RIASZTÁS-sort)',
+    )
+    const repoCsomag = tartalek()
+    if (repoCsomag?.seller) {
+      return {
+        legal: { ...oldalCsomag, seller: repoCsomag.seller },
+        aszfSource: 'cms',
+        sellerSource: 'repo',
+      }
+    }
+    szolgaltatoNelkul()
+    return { legal: oldalCsomag, aszfSource: 'cms', sellerSource: null }
+  }
+
+  const ok =
+    oldalHiba?.kod === 'hianyzik'
+      ? 'nincs közzétett ÁSZF-oldal (webcím: aszf)'
+      : oldalHiba?.kod === 'nem-ertelmezheto'
+        ? 'a közzétett ÁSZF-oldal tartalma üres vagy nem értelmezhető'
+        : 'a közzétett ÁSZF-oldal nem olvasható'
+  throttledLegalAlert(
+    log,
+    `aszf-oldal-${oldalHiba?.kod ?? 'ismeretlen'}`,
+    `RIASZTÁS: ${ok}, ezért a visszaigazoló levél a repó ÁSZF-szövegét (aszf.txt) mellékeli. ` +
+      'Ez eltérhet attól, amit a vevő a pénztárban elfogadott. Ellenőrizd az adminban a ' +
+      'Tartalom → Oldalak → ÁSZF oldalt (közzétett-e), és ha eltérés volt, küldd el kézzel ' +
+      'az elfogadott ÁSZF-et az érintett vevőknek.',
+    `a visszaigazoló levél a repó ÁSZF-szövegével megy (${ok}; a riasztás fojtva, lásd a ` +
+      'korábbi RIASZTÁS-sort)',
+    oldalHiba?.error === undefined ? undefined : { error: oldalHiba.error },
+  )
+  const repoCsomag = tartalek()
+  if (repoCsomag === null) {
+    return { legal: null, aszfSource: null, sellerSource: null }
+  }
+  if (repoCsomag.seller === null) {
+    szolgaltatoNelkul()
+  }
+  return {
+    legal: repoCsomag,
+    aszfSource: 'repo',
+    sellerSource: repoCsomag.seller === null ? null : 'repo',
+  }
+}
+
+/**
+ * A vevő kérdéseinek és panaszainak címe (K14): a weboldal kapcsolati címe.
+ * Sosem dob; hibánál a kódtartalék.
+ */
+async function resolveSupportEmail(deps: OnOrderPaidDeps, log: Logger): Promise<string> {
+  try {
+    const load = deps.loadSupportEmail ?? (() => kapcsolatiEmailPayloadbol(deps.payload))
+    return (await load()).trim() || KAPCSOLATI_EMAIL_TARTALEK
+  } catch (error) {
+    log.warn('a kapcsolati cím nem oldható fel, a levél a kódtartalékot adja meg', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return KAPCSOLATI_EMAIL_TARTALEK
+  }
+}
+
+/** A szolgáltatói hibaszöveg naplózható alakja: a benne álló címek maszkolva. */
+function maskedError(error: string | undefined): string | undefined {
+  return error === undefined ? undefined : maskEmailsInText(error)
 }
 
 /** A friss paid-átmenet mellékhatásai — sosem dob, minden hiba naplózva. */
@@ -383,12 +578,14 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       log.warn('az elállási nyilatkozat időpontja hiányzik, a levél időpont nélkül igazol vissza')
     }
 
-    const legal = resolveLegalInfo(deps, log)
+    const { legal, aszfSource, sellerSource } = await resolveLegalInfo(deps, log)
     const seller = legal?.seller ?? null
     const attachment = legal?.aszf.attachment ?? null
     const orderNumber = deps.order.orderNumber ?? `#${deps.order.id}`
+    const supportEmail = await resolveSupportEmail(deps, log)
+    const termsUrl = `${serverUrl}/${ASZF_OLDAL_WEBCIM}`
 
-    const template = orderConfirmationEmail({
+    const templateInput: Parameters<typeof orderConfirmationEmail>[0] = {
       orderNumber,
       buyerName: snapshotString(snapshot, 'name') || null,
       items,
@@ -397,12 +594,15 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       // `isSzamlazzEnabled()` — a levél sorsa ne függjön a számlázási konfig dobásától.
       invoiceNote: isSzamlazzEnabled(),
       ...(account ? { account } : {}),
-      withdrawalWaiverAt: waiverGiven ? (waiverAt ?? '') : null,
+      withdrawalWaiver: { given: waiverGiven, at: waiverAt },
       seller,
-      terms: { url: `${serverUrl}/aszf`, attachment },
-    })
+      terms: { url: termsUrl, attachment },
+      supportEmail,
+    }
+    const template = orderConfirmationEmail(templateInput)
 
-    const replyTo = seller && isUsableReplyToAddress(seller.email) ? seller.email : undefined
+    // K14: a válaszcím a kapcsolati cím, nem az ÁSZF-ben álló cég-e-mail.
+    const replyTo = isUsableReplyToAddress(supportEmail) ? supportEmail : undefined
     const message: ConfirmationMailInput = {
       to: recipient,
       ...template,
@@ -425,9 +625,35 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       log.warn('visszaigazoló e-mail küldése sikertelen, újrapróbálom', {
         attempt: attempts,
         retryable: result.retryable,
-        error: result.error,
+        error: maskedError(result.error),
       })
       await sleep(CONFIRMATION_RETRY_DELAYS_MS[attempts - 1])
+    }
+
+    // Végleges elutasítás mellékletes levélnél: a hiba oka lehet maga a
+    // melléklet. A visszaigazolás többi része (nyilatkozatok, szolgáltató,
+    // panaszkezelés) nem múlhat rajta, ezért egyszer melléklet nélkül, az ÁSZF
+    // linkjével küldjük. SAJÁT kulccsal: ugyanazzal a kulccsal eltérő
+    // tartalmat a Resend 409-cel elutasítana
+    // (https://resend.com/docs/dashboard/emails/idempotency-keys).
+    let attachmentDropped = false
+    if (!result.ok && result.retryable === false && (message.attachments?.length ?? 0) > 0) {
+      log.warn(
+        'a szolgáltató végleg elutasította a mellékletes visszaigazolót, melléklet nélkül újraküldöm',
+        { attempts, error: maskedError(result.error) },
+      )
+      const linkOnly = orderConfirmationEmail({
+        ...templateInput,
+        terms: { url: termsUrl, attachment: null },
+      })
+      attempts += 1
+      attachmentDropped = true
+      result = await send({
+        to: recipient,
+        ...linkOnly,
+        ...(replyTo ? { replyTo } : {}),
+        idempotencyKey: `kineticare-order-confirmation-${deps.order.id}-link`,
+      })
     }
 
     if (!result.ok) {
@@ -435,7 +661,12 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
         'RIASZTÁS: a kötelező visszaigazoló e-mail NEM ment ki (45/2014. Korm. rendelet 18. §). ' +
           'Amíg nem pótolod, az elállási jog kizárása erre a rendelésre nem érvényes. Küldd el ' +
           'kézzel a visszaigazolást, vagy javítsd az e-mail-szolgáltató beállítását.',
-        { attempts, retryable: result.retryable, error: result.error },
+        {
+          attempts,
+          retryable: result.retryable,
+          error: maskedError(result.error),
+          ...(attachmentDropped ? { attachmentDropped } : {}),
+        },
       )
       return
     }
@@ -454,6 +685,15 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       return
     }
 
+    if (attachmentDropped) {
+      log.error(
+        'RIASZTÁS: a visszaigazoló e-mail ÁSZF-melléklet NÉLKÜL ment ki, mert az e-mail-szolgáltató ' +
+          'a mellékletes változatot végleg elutasította. A link nem tartós adathordozó: küldd el ' +
+          'kézzel az ÁSZF-et a vevőnek (45/2014. Korm. rendelet 18. §), a rendelésszámmal.',
+        { provider: result.provider, providerMessageId: result.id ?? null },
+      )
+    }
+
     const recorded = await writeAuditLog({
       store: deps.auditStore ?? auditLogStore(deps.payload),
       action: ORDER_CONFIRMATION_AUDIT_ACTION,
@@ -470,9 +710,13 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
         withdrawalWaiverConfirmed: waiverGiven,
         withdrawalWaiverAt: waiverGiven ? waiverAt : null,
         sellerIncluded: seller !== null,
-        aszfAttached: attachment !== null,
+        sellerSource,
+        aszfAttached: attachment !== null && !attachmentDropped,
+        aszfAttachmentDropped: attachmentDropped,
+        aszfSource,
         aszfSha256: legal?.aszf.sha256 ?? null,
         aszfKelt: legal?.aszf.kelt ?? null,
+        replyTo: replyTo ?? null,
       },
     })
     if (recorded) {

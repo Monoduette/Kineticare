@@ -1,29 +1,43 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import type { Payload } from 'payload'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import type { AuditLogStore } from '../lib/audit'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
+import { EMAIL_SZINEK, escapeHtml, inlineLinkHtml } from '../lib/email/templates/layout'
 import {
   ORDER_CONFIRMATION_TEMPLATE_VERSION,
   WAIVER_LOSS_STATEMENT,
   WAIVER_START_STATEMENT,
+  hatarozottNevelo,
   orderConfirmationEmail,
 } from '../lib/email/templates/order'
 import {
   ASZF_MELLEKLET_FAJLNEV,
   loadOrderLegalInfo,
   orderLegalInfoFromAszf,
+  orderLegalInfoFromAszfPage,
   type OrderLegalInfo,
+  type SellerIdentity,
 } from '../lib/email/templates/order-legal'
 import type { SendResult } from '../lib/email/types'
+import {
+  JOGI_OLDALAK,
+  jogiOldalTartalom,
+  jogiRichText,
+  parseJogiForras,
+} from '../lib/legal-content'
 import type { LogContext, Logger } from '../lib/logger'
 import {
   CONFIRMATION_RETRY_DELAYS_MS,
   ORDER_CONFIRMATION_AUDIT_ACTION,
   onOrderPaid,
   type ConfirmationMailInput,
+  type OnOrderPaidDeps,
 } from '../lib/order-paid'
 import type { Order } from '../payload-types'
 
@@ -50,6 +64,31 @@ const WAIVER_AT_BUDAPEST = '2026. 09. 24. 14:05'
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 const ASZF = readFileSync(`${REPO_ROOT}src/lib/legal-source/aszf.txt`, 'utf8')
 const LEGAL: OrderLegalInfo = orderLegalInfoFromAszf(ASZF)
+
+/**
+ * A közzétett /aszf oldal tartalma, ahogy a tartalom-job létrehozza
+ * (src/lib/legal-content.ts): a levél ALAPBÓL ebből épül (H10).
+ */
+const ASZF_LEIRAS = JOGI_OLDALAK.find((oldal) => oldal.slug === 'aszf')
+if (ASZF_LEIRAS === undefined) {
+  throw new Error('TESZT: nincs ÁSZF a JOGI_OLDALAK-ban')
+}
+const PUBLIKALT_ASZF = jogiOldalTartalom(ASZF_LEIRAS)
+/** A közzétett oldalból épült jogi csomag (lustán: a modul betöltése ne múljon rajta). */
+const oldalLegal = (): OrderLegalInfo | null => orderLegalInfoFromAszfPage(PUBLIKALT_ASZF)
+
+/**
+ * Az onOrderPaid a mai éles állapottal: közzétett ÁSZF-oldal és a kapcsolati
+ * cím (K14) injektálva. A tesztek így a levél tartalmát és a küldést mérik,
+ * nem a hiányzó adatbázis tartalék-ágát (azt külön tesztek fedik).
+ */
+function futtasd(deps: OnOrderPaidDeps): Promise<void> {
+  return onOrderPaid({
+    loadPublishedAszf: async () => ({ content: PUBLIKALT_ASZF }),
+    loadSupportEmail: async () => KAPCSOLATI_EMAIL_TARTALEK,
+    ...deps,
+  })
+}
 
 function createOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -130,6 +169,10 @@ const nemVarhat = async (): Promise<void> => {
   throw new Error('TESZT: ezen az ágon NEM szabad újrapróbálni')
 }
 
+beforeEach(() => {
+  resetAlertThrottle()
+})
+
 afterEach(() => {
   vi.unstubAllEnvs()
 })
@@ -150,9 +193,10 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
     totalHuf: 70980,
     coursesUrl: 'https://pelda.hu/kurzusaim',
     invoiceNote: true,
-    withdrawalWaiverAt: WAIVER_AT,
+    withdrawalWaiver: { given: true, at: WAIVER_AT },
     seller: LEGAL.seller,
     terms: { url: 'https://pelda.hu/aszf', attachment: LEGAL.aszf.attachment },
+    supportEmail: KAPCSOLATI_EMAIL_TARTALEK,
   })
   const text = level.text.replace(/ /g, ' ')
 
@@ -177,7 +221,10 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
 
   it('panaszkezelés: hova, milyen határidővel, és a békéltető testület', () => {
     expect(text).toContain('Ha panaszod van:')
-    expect(text).toContain('a székhelyünk egyben a panaszügyintézés helye is')
+    // K14: az e-mailes panasz a kapcsolati címre megy, a postai a székhelyre.
+    expect(text).toContain(
+      `írd meg nekünk e-mailben az ${KAPCSOLATI_EMAIL_TARTALEK} címre, vagy postai levélben a fenti székhelyünkre, amely egyben a panaszügyintézés helye is.`,
+    )
     expect(text).toContain('Legkésőbb 30 napon belül írásban válaszolunk.')
     expect(text).toContain('békéltető testülethez')
     expect(text).toContain('www.bekeltetes.hu')
@@ -190,8 +237,13 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
     expect(text).toContain('Google Chrome vagy a Safari')
   })
 
-  it('bruttó végösszeg és tételenként a hozzáférés hossza, ha ismert', () => {
-    expect(text).toContain('Végösszeg (bruttó): 70 980 Ft')
+  it('fizetendő végösszeg (az ÁSZF szavával, áfa-utalás nélkül) és tételenként a hozzáférés hossza', () => {
+    // H16: AAM mellett a „bruttó” áfa-tartalmat sugallna; az ÁSZF szava a
+    // „fizetendő végösszeg”, ami áfás számlázásnál is igaz marad.
+    expect(text).toContain('Fizetendő végösszeg: 70 980 Ft')
+    expect(level.html).toContain('Fizetendő végösszeg')
+    expect(text).not.toMatch(/bruttó/iu)
+    expect(level.html).not.toMatch(/bruttó/iu)
     expect(text).toContain('Otthoni KézRehab, 1 db, a hozzáférés nem jár le, 19 990 Ft')
     expect(text).toContain('Szakmai kurzus, 1 db, 90 napos hozzáférés, 49 990 Ft')
     // Ismeretlen hossznál a levél nem állít semmit. (A négyjegyű összeget a
@@ -213,16 +265,105 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
       contentType: 'text/plain; charset=utf-8',
     })
     expect(level.attachments?.[0].content).toContain('Általános Szerződési Feltételei')
-    expect(text).toContain(`mellékeltük ehhez a levélhez (${ASZF_MELLEKLET_FAJLNEV})`)
-    expect(text).toContain('https://pelda.hu/aszf')
+    expect(text).toContain(
+      `a teljes szövegét mellékeltük ehhez a levélhez (${ASZF_MELLEKLET_FAJLNEV}), így bármikor újra elolvashatod. A weboldalon is megtalálod: https://pelda.hu/aszf`,
+    )
+    expect(text).not.toContain('hogy később is meglegyen')
   })
 
-  it('megválaszolható: a lábléc a szolgáltató címére terel, nem „ne válaszolj"', () => {
-    expect(text).toContain(
-      'Válaszolj erre a levélre, vagy írj a(z) egeszsegmozgastamogatas@gmail.com címre.',
+  it('a HTML-ben az ÁSZF webcíme kattintható, kiírt link (GOV.UK, WCAG 2.2 SC 2.4.4)', () => {
+    expect(level.html).toContain(
+      'A weboldalon is megtalálod: <a href="https://pelda.hu/aszf" style="color:#2f6e9f;text-decoration:underline;word-break:break-all;">https://pelda.hu/aszf</a>',
     )
+  })
+
+  it('a link színe fehéren ≥ 4,5:1, a szövegtől színben < 3:1, ezért aláhúzott (SC 1.4.3, 1.4.1)', () => {
+    const csatorna = (ertek: number): number => {
+      const c = ertek / 255
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    const fenyesseg = (hex: string): number => {
+      const [r, g, b] = [1, 3, 5].map((i) => csatorna(Number.parseInt(hex.slice(i, i + 2), 16)))
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const arany = (a: string, b: string): number => {
+      const [vilagos, sotet] = [fenyesseg(a), fenyesseg(b)].sort((x, y) => y - x)
+      return (vilagos + 0.05) / (sotet + 0.05)
+    }
+    expect(arany(EMAIL_SZINEK.akcent, EMAIL_SZINEK.feher)).toBeGreaterThanOrEqual(4.5)
+    expect(arany(EMAIL_SZINEK.akcent, EMAIL_SZINEK.inkHalk)).toBeLessThan(3)
+    expect(inlineLinkHtml('https://pelda.hu/aszf')).toContain('text-decoration:underline')
+  })
+
+  it('megválaszolható: a lábléc a kapcsolati címre terel (K14), nem „ne válaszolj"', () => {
+    expect(text).toContain(
+      `Válaszolj erre a levélre, vagy írj az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`,
+    )
+    expect(text).not.toContain('a(z) info@')
     expect(text).toContain(`rendelésszám: ${ORDER_NUMBER}`)
     expect(text).not.toContain('ne válaszolj')
+  })
+
+  it('a szolgáltató adatai az ÁSZF-et követik (jogi azonosítás), a kapcsolati cím ettől független', () => {
+    expect(text).toContain('E-mail: egeszsegmozgastamogatas@gmail.com')
+    expect(text).not.toContain('írj az egeszsegmozgastamogatas@gmail.com')
+    expect(text).not.toContain('írj a egeszsegmozgastamogatas@gmail.com')
+  })
+
+  it('a számla-mondat a gomb UTÁN, de a hosszú jogi rész ELŐTT áll (NN/g)', () => {
+    for (const valtozat of [text, level.html]) {
+      const cta = valtozat.indexOf('https://pelda.hu/kurzusaim')
+      const szamla = valtozat.indexOf(
+        'A számlát a Számlázz.hu rendszeréből külön e-mailben küldjük el.',
+      )
+      const jogi = valtozat.indexOf('Az elállási jogodról')
+      expect(cta).toBeGreaterThan(0)
+      expect(szamla).toBeGreaterThan(cta)
+      expect(jogi).toBeGreaterThan(szamla)
+    }
+    expect(text).toContain(
+      'A számlát a Számlázz.hu rendszeréből külön e-mailben küldjük el.\n\nAz elállási jogodról:',
+    )
+  })
+
+  /**
+   * H12: a vevők levelezője a HTML-részt mutatja. Ha a HTML-ből egy jogi sor
+   * kimaradna (a szöveges rész ép marad), a 18. § szerinti visszaigazolás
+   * hiányos lenne, és ezt semmi nem jelezné. A teszt a szöveges rész minden
+   * sorát a számla-mondattól a lábléc végéig a HTML-ben is megköveteli.
+   */
+  it('a HTML-rész minden jogi sort hordoz, amit a szöveges rész (paritás)', () => {
+    const htmlSzoveg = level.html
+      .replace(/<br \/>/g, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/ /g, ' ')
+    const eleje = text.indexOf('A számlát a Számlázz.hu')
+    expect(eleje).toBeGreaterThan(0)
+    const sorok = text
+      .slice(eleje)
+      .split('\n')
+      .map((sor) => sor.trim())
+      .filter((sor) => sor.length > 0)
+    expect(sorok.length).toBeGreaterThanOrEqual(14)
+    expect(sorok.some((sor) => sor.includes(WAIVER_START_STATEMENT))).toBe(true)
+    expect(sorok.some((sor) => sor.startsWith('Ezt a levelet azért kapod'))).toBe(true)
+    for (const sor of sorok) {
+      expect(htmlSzoveg, sor).toContain(sor)
+    }
+    for (const cimke of [
+      'Az elállási jogodról',
+      'A kurzusról',
+      'Általános szerződési feltételek (ÁSZF)',
+      'A szolgáltató adatai',
+      'Ha panaszod van',
+    ]) {
+      expect(level.html).toContain(`<strong>${escapeHtml(cimke)}:</strong>`)
+    }
   })
 
   it('a jogi rész a gomb UTÁN áll (elöl a rendelés és a hozzáférés, NN/g)', () => {
@@ -245,7 +386,8 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
       totalHuf: 0,
       coursesUrl: 'https://pelda.hu/kurzusaim',
       invoiceNote: false,
-      withdrawalWaiverAt: null,
+      // Az időpont a nyilatkozat NÉLKÜL sem vezethet visszaigazoláshoz.
+      withdrawalWaiver: { given: false, at: WAIVER_AT },
       seller: LEGAL.seller,
       terms: { url: 'https://pelda.hu/aszf', attachment: LEGAL.aszf.attachment },
     })
@@ -260,9 +402,23 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
       totalHuf: 0,
       coursesUrl: 'https://pelda.hu/kurzusaim',
       invoiceNote: false,
-      withdrawalWaiverAt: 'nem-datum',
+      withdrawalWaiver: { given: true, at: 'nem-datum' },
     })
     expect(hibas.text).toContain(
+      'Az elállási jogodról: a rendelésed leadásakor két nyilatkozatot tettél.',
+    )
+  })
+
+  it('megtett nyilatkozat rögzítetlen időponttal: időpont nélkül igazol vissza (nincs üres-szöveg jel)', () => {
+    const idoNelkul = orderConfirmationEmail({
+      orderNumber: ORDER_NUMBER,
+      items: [],
+      totalHuf: 0,
+      coursesUrl: 'https://pelda.hu/kurzusaim',
+      invoiceNote: false,
+      withdrawalWaiver: { given: true, at: null },
+    })
+    expect(idoNelkul.text).toContain(
       'Az elállási jogodról: a rendelésed leadásakor két nyilatkozatot tettél.',
     )
   })
@@ -283,7 +439,7 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
     expect(linkkel.text).not.toContain('mellékeltük')
   })
 
-  it('szolgáltatói adatok nélkül a lábléc a megszokott „ne válaszolj" sor marad', () => {
+  it('kapcsolati cím nélkül a lábléc a megszokott „ne válaszolj" sor marad', () => {
     const regi = orderConfirmationEmail({
       orderNumber: ORDER_NUMBER,
       items: [],
@@ -293,6 +449,134 @@ describe('orderConfirmationEmail: a 18. § szerinti visszaigazolás tartalma', (
     })
     expect(regi.text).toContain('ne válaszolj')
     expect(regi.text).not.toContain('A szolgáltató adatai')
+  })
+
+  it('a kapcsolati cím a szolgáltatói adatoktól függetlenül megválaszolhatóvá teszi a levelet (K14)', () => {
+    const adatNelkul = orderConfirmationEmail({
+      orderNumber: ORDER_NUMBER,
+      items: [],
+      totalHuf: 0,
+      coursesUrl: 'https://pelda.hu/kurzusaim',
+      invoiceNote: false,
+      seller: null,
+      supportEmail: KAPCSOLATI_EMAIL_TARTALEK,
+    })
+    expect(adatNelkul.text).toContain(`írj az ${KAPCSOLATI_EMAIL_TARTALEK} címre`)
+    expect(adatNelkul.text).not.toContain('ne válaszolj')
+  })
+})
+
+describe('hatarozottNevelo: a/az a kapcsolati cím előtt', () => {
+  it.each([
+    ['info@kineticare.hu', 'az'],
+    ['Info@kineticare.hu', 'az'],
+    ['ügyfél@pelda.hu', 'az'],
+    ['orvos@pelda.hu', 'az'],
+    ['1rendelo@pelda.hu', 'az'],
+    ['5let@pelda.hu', 'az'],
+    ['kapcsolat@pelda.hu', 'a'],
+    ['segitseg@pelda.hu', 'a'],
+    ['2rendelo@pelda.hu', 'a'],
+  ])('%s → %s', (cim, nevelo) => {
+    expect(hatarozottNevelo(cim)).toBe(nevelo)
+  })
+
+  it('más kapcsolati címnél a lábléc és a panasz-sor a helyes névelőt kapja', () => {
+    const level = orderConfirmationEmail({
+      orderNumber: ORDER_NUMBER,
+      items: [],
+      totalHuf: 0,
+      coursesUrl: 'https://pelda.hu/kurzusaim',
+      invoiceNote: false,
+      seller: LEGAL.seller,
+      supportEmail: 'kapcsolat@pelda.hu',
+    })
+    expect(level.text).toContain('vagy írj a kapcsolat@pelda.hu címre.')
+    expect(level.text).toContain('e-mailben a kapcsolat@pelda.hu címre')
+  })
+})
+
+/**
+ * ŐR: a sablonváltozat a renderelt szöveghez kötve. A műveletnapló a
+ * `templateVersion`-ből bizonyítja, melyik szövegű levél ment ki; ha a szöveg
+ * változik, de a változat nem lép, a bizonyíték hamis lenne. A bemenet
+ * SZÁNDÉKOSAN kitalált (nem az aszf.txt): az ÁSZF változása nem a sablon
+ * változása, annak saját ujjlenyomata van (aszfSha256).
+ *
+ * Ha ez a teszt bukik: léptesd az ORDER_CONFIRMATION_TEMPLATE_VERSION-t
+ * (src/lib/email/templates/order.ts), és vedd fel az új változatot az új
+ * ujjlenyomattal. Régi sort ne írj át.
+ */
+describe('sablonváltozat: a renderelt szöveg ujjlenyomatához kötve', () => {
+  const UJJLENYOMATOK: Readonly<Record<string, string>> = {
+    '2026-09-24.2': '84d807355613a580f487f03e2159ee6166ae5fe89a8a55f842a95ce24ce3c82a',
+  }
+
+  const szolgaltato: SellerIdentity = {
+    name: 'Minta Kft.',
+    seat: '1000 Budapest, Minta utca 1.',
+    companyRegistrationNumber: '01-09-000000',
+    registryCourt: 'Fővárosi Törvényszék Cégbírósága',
+    taxNumber: '00000000-1-00',
+    email: 'ceg@pelda.hu',
+    phone: '+36301234567',
+    complaintHandledAtSeat: true,
+  }
+  const melleklet = { filename: 'Minta.txt', content: 'x', contentType: 'text/plain' }
+
+  const szovegek = (): string =>
+    [
+      orderConfirmationEmail({
+        orderNumber: 'MINTA-1',
+        buyerName: 'Minta Anna',
+        items: [{ title: 'Minta kurzus', quantity: 1, totalHuf: 1000, accessDurationDays: null }],
+        totalHuf: 1000,
+        coursesUrl: 'https://pelda.hu/kurzusaim',
+        invoiceNote: true,
+        account: {
+          kind: 'password-setup',
+          activationUrl: 'https://pelda.hu/aktivalas',
+          expiresInDays: 7,
+          email: 'anna@pelda.hu',
+        },
+        withdrawalWaiver: { given: true, at: WAIVER_AT },
+        seller: szolgaltato,
+        terms: { url: 'https://pelda.hu/aszf', attachment: melleklet },
+        supportEmail: 'info@pelda.hu',
+      }).text,
+      orderConfirmationEmail({
+        orderNumber: 'MINTA-2',
+        items: [{ title: 'Minta kurzus', quantity: 2, totalHuf: 2000, accessDurationDays: 30 }],
+        totalHuf: 2000,
+        coursesUrl: 'https://pelda.hu/kurzusaim',
+        invoiceNote: false,
+        account: { kind: 'login', loginUrl: 'https://pelda.hu/belepes', email: 'anna@pelda.hu' },
+        withdrawalWaiver: { given: false, at: null },
+        seller: szolgaltato,
+        terms: { url: 'https://pelda.hu/aszf', attachment: null },
+        supportEmail: 'kapcsolat@pelda.hu',
+      }).text,
+      orderConfirmationEmail({
+        orderNumber: 'MINTA-3',
+        items: [],
+        totalHuf: 0,
+        coursesUrl: 'https://pelda.hu/kurzusaim/1',
+        invoiceNote: false,
+      }).text,
+    ].join('\n=====\n')
+
+  it('a mostani változat ujjlenyomata egyezik a renderelt szövegével', () => {
+    const ujjlenyomat = createHash('sha256').update(szovegek(), 'utf8').digest('hex')
+    expect(ORDER_CONFIRMATION_TEMPLATE_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/u)
+    expect(
+      UJJLENYOMATOK[ORDER_CONFIRMATION_TEMPLATE_VERSION],
+      'A levél szövege változott: léptesd az ORDER_CONFIRMATION_TEMPLATE_VERSION-t, és vedd fel az új ujjlenyomatot.',
+    ).toBe(ujjlenyomat)
+  })
+
+  it('minden rögzített változat ujjlenyomata különböző (egy szöveg, egy változat)', () => {
+    const ertekek = Object.values(UJJLENYOMATOK)
+    expect(new Set(ertekek).size).toBe(ertekek.length)
   })
 })
 
@@ -323,7 +607,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -337,7 +621,8 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(calls).toHaveLength(1)
     const message = calls[0]
     expect(message.to).toBe('anna@example.test')
-    expect(message.replyTo).toBe('egeszsegmozgastamogatas@gmail.com')
+    // K14: a válaszcím a kapcsolati cím, nem az ÁSZF-ben álló cég-e-mail.
+    expect(message.replyTo).toBe(KAPCSOLATI_EMAIL_TARTALEK)
     expect(message.idempotencyKey).toBe('kineticare-order-confirmation-777')
     expect(message.attachments?.[0]?.filename).toBe(ASZF_MELLEKLET_FAJLNEV)
     expect(message.text).toContain(`„${WAIVER_START_STATEMENT}”`)
@@ -360,9 +645,14 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
         withdrawalWaiverConfirmed: true,
         withdrawalWaiverAt: WAIVER_AT,
         sellerIncluded: true,
+        sellerSource: 'cms',
         aszfAttached: true,
-        aszfSha256: LEGAL.aszf.sha256,
+        aszfAttachmentDropped: false,
+        aszfSource: 'cms',
+        // A TÉNYLEGESEN felhasznált szöveg (a közzétett oldalé) ujjlenyomata.
+        aszfSha256: oldalLegal()?.aszf.sha256,
         aszfKelt: '2025. 07.05.',
+        replyTo: KAPCSOLATI_EMAIL_TARTALEK,
       },
     })
     const after = created[0].after as Record<string, unknown>
@@ -375,7 +665,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { send, calls } = createSender()
     const { store, created } = createAuditStore()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder({ consentWithdrawalWaiver: false, consentWithdrawalWaiverAt: null }),
       logger: createCapturingLogger().log,
@@ -402,7 +692,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { log, entries } = createCapturingLogger()
     const waits: number[] = []
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -423,14 +713,16 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(errorsOf(entries)).toHaveLength(0)
   })
 
-  it('végleges hiba (retryable: false): nem próbálja újra, RIASZT, és nem rögzít küldést', async () => {
+  it('végleges hiba (retryable: false): ugyanazt nem próbálja újra, RIASZT, és nem rögzít küldést', async () => {
+    // A mellékletes levél végleges elutasítása után EGY melléklet nélküli
+    // próba jár (lásd order-paid-aszf-forras.test.ts); itt az is elbukik.
     const { send, calls } = createSender([
       { ok: false, provider: 'resend', retryable: false, error: 'HTTP 422' },
     ])
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -441,13 +733,17 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
       sleep: nemVarhat,
     })
 
-    expect(calls).toHaveLength(1)
+    expect(
+      calls.filter((call) => call.idempotencyKey === 'kineticare-order-confirmation-777'),
+    ).toHaveLength(1)
+    expect(calls).toHaveLength(2)
+    expect(calls[1].attachments).toBeUndefined()
     expect(created).toHaveLength(0)
     const alerts = errorsOf(entries)
     expect(alerts).toHaveLength(1)
     expect(alerts[0].msg).toContain('RIASZTÁS')
     expect(alerts[0].msg).toContain('18. §')
-    expect(alerts[0].context).toMatchObject({ attempts: 1, retryable: false })
+    expect(alerts[0].context).toMatchObject({ attempts: 2, retryable: false })
   })
 
   it('minden kísérlet elbukik: 3 próba után egyetlen RIASZTÁS, küldés nincs rögzítve', async () => {
@@ -457,7 +753,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -481,7 +777,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -503,7 +799,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -518,12 +814,12 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(errorsOf(entries)).toHaveLength(0)
   })
 
-  it('olvashatatlan ÁSZF: a levél kimegy (nyilatkozatokkal), de melléklet nélkül, és RIASZT', async () => {
+  it('olvashatatlan ÁSZF (oldal és tartalék is): a levél kimegy (nyilatkozatokkal), de melléklet nélkül, és RIASZT', async () => {
     const { send, calls } = createSender()
     const { store, created } = createAuditStore()
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -531,6 +827,9 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
       send,
       auditStore: store,
       loadAccessDurations: async () => new Map(),
+      loadPublishedAszf: async () => {
+        throw new Error('DB nem elérhető')
+      },
       loadLegalInfo: () => {
         throw new Error('ENOENT: aszf.txt')
       },
@@ -539,22 +838,32 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
 
     expect(calls).toHaveLength(1)
     expect(calls[0].attachments).toBeUndefined()
-    expect(calls[0].replyTo).toBeUndefined()
+    // A válaszcím (K14) nem az ÁSZF-ből jön, ezért ilyenkor is megvan.
+    expect(calls[0].replyTo).toBe(KAPCSOLATI_EMAIL_TARTALEK)
     expect(calls[0].text).toContain('Az elállási jogodról')
     expect(created[0]).toMatchObject({
-      after: { aszfAttached: false, sellerIncluded: false, aszfSha256: null },
+      after: {
+        aszfAttached: false,
+        sellerIncluded: false,
+        aszfSha256: null,
+        aszfSource: null,
+        sellerSource: null,
+      },
     })
     const alerts = errorsOf(entries)
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0].msg).toContain('az ÁSZF nem olvasható')
+    expect(alerts.map((alert) => alert.msg)).toEqual([
+      expect.stringContaining('a közzétett ÁSZF-oldal nem olvasható'),
+      expect.stringContaining('az ÁSZF nem olvasható'),
+    ])
   })
 
-  it('hiányos ÁSZF-adatblokk: a szolgáltatói blokk kimarad (nem találunk ki adatot), és RIASZT', async () => {
+  it('hiányos ÁSZF-adatblokk (oldalon és tartalékban is): a szolgáltatói blokk kimarad, és RIASZT', async () => {
     const { send, calls } = createSender()
     const { store } = createAuditStore()
     const { log, entries } = createCapturingLogger()
+    const adoszamNelkul = ASZF.replace(/Adószám:[^\n]*\n/u, '')
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -562,15 +871,18 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
       send,
       auditStore: store,
       loadAccessDurations: async () => new Map(),
-      loadLegalInfo: () => orderLegalInfoFromAszf(ASZF.replace(/Adószám:[^\n]*\n/u, '')),
+      loadPublishedAszf: async () => ({ content: jogiRichText(parseJogiForras(adoszamNelkul)) }),
+      loadLegalInfo: () => orderLegalInfoFromAszf(adoszamNelkul),
       sleep: nemVarhat,
     })
 
     expect(calls[0].text).not.toContain('A szolgáltató adatai')
     expect(calls[0].attachments).toHaveLength(1)
     const alerts = errorsOf(entries)
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0].msg).toContain('KINETICARE adatai')
+    expect(alerts).toHaveLength(2)
+    expect(alerts[0].msg).toContain('a közzétett ÁSZF (/aszf) „KINETICARE adatai" blokkja')
+    expect(alerts[1].msg).toContain('KINETICARE adatai')
+    expect(alerts[1].msg).toContain('kimaradnak a szolgáltató adatai')
   })
 
   it('ha a bizonyíték nem kerül a műveletnaplóba, az is RIASZTÁS (a levél ettől kiment)', async () => {
@@ -579,7 +891,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { log, entries } = createCapturingLogger()
     vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,
@@ -602,7 +914,7 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     const { log, entries } = createCapturingLogger()
 
     await expect(
-      onOrderPaid({
+      futtasd({
         payload: {} as unknown as Payload,
         order: createOrder(),
         logger: log,
@@ -627,7 +939,7 @@ describe('onOrderPaid: a hozzáférés hossza a termékből', () => {
     const find = vi.fn(async () => ({ docs: [{ id: 42, accessDurationDays: 30 }] }))
     const { send, calls } = createSender([{ ok: true, provider: 'noop' }])
 
-    await onOrderPaid({
+    await futtasd({
       payload: { find } as unknown as Payload,
       order: createOrder(),
       logger: createCapturingLogger().log,
@@ -652,7 +964,7 @@ describe('onOrderPaid: a hozzáférés hossza a termékből', () => {
     const { send, calls } = createSender([{ ok: true, provider: 'noop' }])
     const load = vi.fn(async () => new Map<number, number | null>())
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder({
         items: [
@@ -679,7 +991,7 @@ describe('onOrderPaid: a hozzáférés hossza a termékből', () => {
     const { send, calls } = createSender([{ ok: true, provider: 'noop' }])
     const { log, entries } = createCapturingLogger()
 
-    await onOrderPaid({
+    await futtasd({
       payload: {} as unknown as Payload,
       order: createOrder(),
       logger: log,

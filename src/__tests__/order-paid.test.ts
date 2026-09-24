@@ -1,12 +1,35 @@
 import type { Payload } from 'payload'
 import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 import { orderConfirmationEmail } from '../lib/email/templates/order'
+import { JOGI_OLDALAK, jogiOldalTartalom } from '../lib/legal-content'
 import { GUEST_ACTIVATION_TOKEN_TTL_MS } from '../lib/security/activation-token'
 import type { LogContext, Logger } from '../lib/logger'
-import { onOrderPaid, queueInvoiceIssueJob } from '../lib/order-paid'
+import {
+  onOrderPaid as onOrderPaidEredeti,
+  queueInvoiceIssueJob,
+  type OnOrderPaidDeps,
+} from '../lib/order-paid'
 import { getSzamlazzConfig, isSzamlazzEnabled } from '../lib/szamlazz'
 import type { Order } from '../payload-types'
+
+/**
+ * A levél az ÁSZF-et a KÖZZÉTETT /aszf oldalból, a válaszcímet a Kapcsolat
+ * oldalból olvassa (H10, K14). Ezek a tesztek nem erről szólnak, ezért a mai
+ * éles állapotot injektálják: így a hiányzó adatbázis tartalék-ágának (fojtott)
+ * riasztása nem keveredik a mért riasztások közé, és a tesztek sorrendje sem
+ * számít.
+ */
+const PUBLIKALT_ASZF = jogiOldalTartalom(
+  JOGI_OLDALAK.find((oldal) => oldal.slug === 'aszf') ?? JOGI_OLDALAK[0],
+)
+const onOrderPaid = (deps: OnOrderPaidDeps): Promise<void> =>
+  onOrderPaidEredeti({
+    loadPublishedAszf: async () => ({ content: PUBLIKALT_ASZF }),
+    loadSupportEmail: async () => KAPCSOLATI_EMAIL_TARTALEK,
+    ...deps,
+  })
 
 /**
  * W4-03 visszaigazoló e-mail + a friss paid-átmenet mellékhatásainak tesztjei.

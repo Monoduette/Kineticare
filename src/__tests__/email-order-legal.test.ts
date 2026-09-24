@@ -12,14 +12,17 @@ import {
   aszfMellekletSzoveg,
   formatHungarianPhone,
   orderLegalInfoFromAszf,
+  orderLegalInfoFromAszfPage,
   parseSellerIdentity,
 } from '../lib/email/templates/order-legal'
+import { jogiRichText, lexicalToJogiForras, parseJogiForras } from '../lib/legal-content'
 
 /**
- * A vásárlás-visszaigazoló jogi adatainak EGYETLEN forrása az ÁSZF
- * (src/lib/legal-source/aszf.txt). Ezek a tesztek azt őrzik, hogy a
- * szolgáltató adatai valóban onnan jönnek, hibás forrásból nem lesz kitalált
- * adat, és a melléklet szó szerint az ÁSZF szövegét hordozza.
+ * A vásárlás-visszaigazoló jogi adatainak EGYETLEN forrása az ÁSZF: élesben a
+ * közzétett /aszf oldal, tartalékként a src/lib/legal-source/aszf.txt. Ezek a
+ * tesztek azt őrzik, hogy a szolgáltató adatai valóban onnan jönnek, hibás
+ * forrásból nem lesz kitalált adat, és a melléklet szó szerint az ÁSZF
+ * szövegét hordozza.
  */
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
@@ -83,6 +86,65 @@ describe('parseSellerIdentity: hibás forrásból nem lesz kitalált adat', () =
 
   it('CRLF sorvégű forrást is ért', () => {
     expect(parseSellerIdentity(ASZF.replace(/\n/g, '\r\n'))?.name).toBe('KINETICARE Kft.')
+  })
+
+  it('jelölő nélküli fejezetcímeknél is a blokk végén megáll: hiányzó cég-e-mail helyett nem veszi fel a békéltető testületét', () => {
+    // Az adminban a címsor sima bekezdés is lehet (nincs `# `), és ha a cég
+    // e-mail-sorát átírják, a blokkból kifutó keresés a békéltető testület
+    // „E-mail:" sorát vette fel a cég címeként. A hiányos blokk null.
+    const lapos = ASZF.replace(/^#{1,2} /gmu, '').replace(
+      'E-mail: \tegeszsegmozgastamogatas@gmail.com',
+      'E-mail cím: egeszsegmozgastamogatas@gmail.com',
+    )
+    expect(lapos).toMatch(/E-mail:\s+bekelteto\.testulet@bkik\.hu/u)
+    expect(parseSellerIdentity(lapos)).toBeNull()
+  })
+
+  it('jelölő nélküli fejezetcímeknél is ugyanazt olvassa ki, ha a blokk ép', () => {
+    expect(parseSellerIdentity(ASZF.replace(/^#{1,2} /gmu, ''))).toEqual(parseSellerIdentity(ASZF))
+  })
+
+  it('a blokkon belüli ismeretlen címkés sor (pl. Weboldal, Képviselő) nem zárja le a blokkot', () => {
+    const bovitett = ASZF.replace(
+      'Telefonszám: +36203573493',
+      'Ügyfélszolgálat: hétköznap 9 és 16 óra között\nTelefonszám: +36203573493',
+    )
+    expect(parseSellerIdentity(bovitett)?.phone).toBe('+36203573493')
+  })
+})
+
+describe('orderLegalInfoFromAszfPage: a közzétett /aszf oldalból', () => {
+  const oldal = jogiRichText(parseJogiForras(ASZF))
+
+  it('a tartalom-job által épített oldalból ugyanaz a szolgáltató, a „Kelt" és a melléklet minden sora', () => {
+    const legal = orderLegalInfoFromAszfPage(oldal)
+    expect(legal).not.toBeNull()
+    expect(legal?.seller).toEqual(parseSellerIdentity(ASZF))
+    expect(legal?.aszf.kelt).toBe(aszfKelt(ASZF))
+    const nemUresSorok = (melleklet: string): string[] =>
+      melleklet
+        .replace(/^﻿/u, '')
+        .split('\r\n')
+        .filter((sor) => sor.trim() !== '')
+    expect(nemUresSorok(String(legal?.aszf.attachment.content))).toEqual(
+      nemUresSorok(aszfMellekletSzoveg(ASZF)),
+    )
+  })
+
+  it('az ujjlenyomat a ténylegesen felhasznált (visszaalakított) forrásszövegé', () => {
+    const legal = orderLegalInfoFromAszfPage(oldal)
+    expect(legal?.aszf.sha256).toBe(
+      createHash('sha256').update(lexicalToJogiForras(oldal), 'utf8').digest('hex'),
+    )
+  })
+
+  it('üres vagy nem Lexical-tartalomra null (a hívó a tartalékra esik vissza)', () => {
+    expect(orderLegalInfoFromAszfPage(null)).toBeNull()
+    expect(orderLegalInfoFromAszfPage('szöveg')).toBeNull()
+    expect(orderLegalInfoFromAszfPage({ root: { children: [] } })).toBeNull()
+    expect(
+      orderLegalInfoFromAszfPage({ root: { children: [{ type: 'paragraph', children: [] }] } }),
+    ).toBeNull()
   })
 })
 

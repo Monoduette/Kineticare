@@ -3,14 +3,25 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { MailAttachment } from '../types'
+import { lexicalToJogiForras } from './aszf-forras'
 
 /**
- * A vásárlás-visszaigazoló jogi adatai EGYETLEN forrásból: az ÁSZF szó szerinti
- * szövegéből (`src/lib/legal-source/aszf.txt`, ugyanebből épül a /aszf oldal
- * is, lásd src/lib/legal-content.ts). A szolgáltató adatait az ÁSZF
- * „KINETICARE adatai" blokkjából olvassuk ki, nem a kódba írjuk: ha a jogász a
- * szöveget módosítja, a levél vele együtt változik, és kitalált adat nem
- * kerülhet a levélbe.
+ * A vásárlás-visszaigazoló jogi adatai EGYETLEN forrásból: abból az ÁSZF-ből,
+ * amelyet a vevő a pénztárban elfogadott. Ez a KÖZZÉTETT /aszf oldal
+ * (Oldalak, webcím: `aszf`): a pénztár ÁSZF-linkje (CheckoutForm) és a
+ * lábléc is erre mutat, és az oldalt az adminban szerkesztik. A levél
+ * küldésekor az oldal tartalmát a forrásfájlok jelölős formátumára
+ * alakítjuk (aszf-forras.ts), és abból épül a melléklet és a szolgáltatói
+ * blokk (`orderLegalInfoFromAszfPage`). A szolgáltató adatait az ÁSZF
+ * „KINETICARE adatai" blokkjából olvassuk ki, nem a kódba írjuk: ha az ÁSZF-et
+ * az adminban átírják, a következő levél már az új szöveget viszi, és
+ * kitalált adat nem kerülhet a levélbe.
+ *
+ * A repó `src/lib/legal-source/aszf.txt` fájlja (ebből jön létre egy friss
+ * telepítésen az /aszf oldal, lásd src/lib/legal-content.ts) csak TARTALÉK:
+ * ha a közzétett oldal hiányzik, nem olvasható vagy nem értelmezhető, a levél
+ * ebből épül, és a küldő (src/lib/order-paid.ts) RIASZT, mert a melléklet
+ * ilyenkor eltérhet attól, amit a vevő elfogadott.
  *
  * MIÉRT KELL: a 45/2014. (II. 26.) Korm. rendelet 18. §-a szerint a szerződés
  * megkötése után tartós adathordozón kell visszaigazolni a 11. § (1)
@@ -20,6 +31,15 @@ import type { MailAttachment } from '../types'
  * weboldalra mutató link NEM tartós adathordozó (C-49/11 Content Services),
  * ezért az ÁSZF teljes szövege mellékletként megy a levéllel.
  */
+
+/**
+ * Az ÁSZF-oldal webcíme (Pages.slug). Egyezik a src/lib/legal-content.ts
+ * `JOGI_OLDALAK` ÁSZF-sorával és a pénztár, valamint a lábléc linkjével; az
+ * egyezést teszt őrzi (src/__tests__/legal-content.test.ts). Itt külön
+ * konstans, mert a legal-content.ts a levél futásidejéből nem importálható
+ * (lásd aszf-forras.ts).
+ */
+export const ASZF_OLDAL_WEBCIM = 'aszf'
 
 /** A melléklet fájlneve (ASCII, hogy minden levelezőben és fejlécben ép maradjon). */
 export const ASZF_MELLEKLET_FAJLNEV = 'Kineticare-ASZF.txt'
@@ -93,10 +113,26 @@ function tomorit(ertek: string): string {
 }
 
 /**
+ * Egy adatsor címkéjének legnagyobb hossza. A leghosszabb valódi címke a
+ * „Bejegyző bíróság" (16 karakter); a határ bőven fölötte van, de egy
+ * mondatközi kettőspont (pl. „…, hogy a Vásárló: …") már nem címke.
+ */
+const CIMKE_MAX_HOSSZ = 40
+
+/**
  * A szolgáltató adatai az ÁSZF szövegéből. `null`, ha az adatblokk hiányzik,
  * vagy bármelyik kötelező adat (név, székhely, cégjegyzékszám, adószám,
  * e-mail, telefon) hiányzik vagy alakilag hibás. Ilyenkor a hívó RIASZT, és
  * a levél szolgáltatói blokk nélkül megy: rossz adatot nem küldünk ki.
+ *
+ * Az adatblokk a „KINETICARE adatai:" sor után a következő fejezetcímig (`# `)
+ * tart, VAGY az első olyan sorig, amely se a cégnév, se „Címke: érték" alakú
+ * adatsor, se a panaszügyintézés helyéről szóló mondat. Ez a második határ
+ * azért kell, mert az adminban szerkesztett oldalon a fejezetcím sima
+ * (félkövér) bekezdés is lehet, jelölő nélkül: enélkül a keresés a blokkból
+ * kifutva egy későbbi fejezet azonos címkéjű sorát venné fel (pl. a békéltető
+ * testület „E-mail:" sorát a cég e-mail-címeként). Így a hiányos blokk
+ * `null`-t ad és riaszt, sosem kölcsönöz adatot máshonnan.
  */
 export function parseSellerIdentity(aszf: string): SellerIdentity | null {
   const sorok = normalizaltSorok(aszf)
@@ -115,12 +151,17 @@ export function parseSellerIdentity(aszf: string): SellerIdentity | null {
       continue
     }
     const kettospont = tiszta.indexOf(':')
-    if (kettospont < 0) {
-      // Az adatblokk első címke nélküli sora a cégnév.
-      if (nev === null && !PANASZ_HELYE.test(tiszta)) {
-        nev = tiszta
+    if (kettospont <= 0 || kettospont > CIMKE_MAX_HOSSZ) {
+      if (PANASZ_HELYE.test(tiszta)) {
+        continue
       }
-      continue
+      // Az adatblokk első címke nélküli sora a cégnév; minden további ilyen
+      // sor már a blokk utáni szöveg.
+      if (nev === null) {
+        nev = tiszta
+        continue
+      }
+      break
     }
     const mezo = ADAT_CIMKEK[tiszta.slice(0, kettospont).trim()]
     const ertek = tiszta.slice(kettospont + 1).trim()
@@ -237,6 +278,24 @@ export function orderLegalInfoFromAszf(aszf: string): OrderLegalInfo {
 }
 
 /**
+ * A KÖZZÉTETT /aszf oldal tartalmából (Pages.content, Lexical) a teljes jogi
+ * adatcsomag. `null`, ha a tartalom nem értelmezhető: nem Lexical-fa, vagy
+ * nincs benne szöveg. Ilyenkor a hívó a repó szövegére (aszf.txt) esik
+ * vissza, és riaszt.
+ *
+ * Az ujjlenyomat (`sha256`) a TÉNYLEGESEN felhasznált, jelölős forrásszövegé,
+ * így a műveletnapló azt a változatot azonosítja, amelyből a melléklet és a
+ * szolgáltatói blokk készült.
+ */
+export function orderLegalInfoFromAszfPage(tartalom: unknown): OrderLegalInfo | null {
+  const forras = lexicalToJogiForras(tartalom)
+  if (forras.trim().length === 0) {
+    return null
+  }
+  return orderLegalInfoFromAszf(forras)
+}
+
+/**
  * Az ÁSZF forrásfájljának útja FUTÁSIDŐBEN.
  *
  * A `process.cwd()` a repó gyökere: az éles indítás a gyökérből futtatja a
@@ -251,9 +310,10 @@ export function aszfForrasUtvonal(gyoker: string = process.cwd()): string {
 }
 
 /**
- * Beolvassa az ÁSZF-et, és előállítja a jogi adatcsomagot. HIBÁNÁL DOB (pl.
- * hiányzó fájl): a hívó (`onOrderPaid`) riaszt, és a levelet ettől még
- * kiküldi, mert a visszaigazolás többi része ettől független.
+ * Beolvassa a repó ÁSZF-szövegét (TARTALÉK, lásd a fájl fejlécét), és
+ * előállítja a jogi adatcsomagot. HIBÁNÁL DOB (pl. hiányzó fájl): a hívó
+ * (`onOrderPaid`) riaszt, és a levelet ettől még kiküldi, mert a
+ * visszaigazolás többi része ettől független.
  */
 export function loadOrderLegalInfo(
   olvas: (utvonal: string) => string = (utvonal) => readFileSync(utvonal, 'utf8'),
