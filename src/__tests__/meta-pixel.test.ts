@@ -187,6 +187,15 @@ describe('trackMetaEvent', () => {
     expect(trackMetaPageView({ runtime })).toBe(false)
   })
 
+  it('tiltott oldalon adott hozzájárulás a következő oldalon érvényes', () => {
+    const blocked = fakeRuntime('https://www.kineticare.hu/fizetes/koszonom?order=KH-1')
+    applyConsentToMetaPixel('granted', blocked)
+    expect(isMetaPixelActive()).toBe(false)
+    const next = { ...blocked, href: 'https://www.kineticare.hu/kurzusok' }
+    expect(trackMetaPageView({ runtime: next })).toBe(true)
+    expect(blocked.loaded).toEqual([META_PIXEL_SCRIPT_SRC])
+  })
+
   it('az első PageView nem duplázódik', () => {
     const runtime = fakeRuntime()
     expect(trackMetaPageView({ runtime, consent: granted })).toBe(true)

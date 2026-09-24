@@ -198,6 +198,12 @@ function ensureFbq(globals: MetaGlobalScope): FbqFunction {
 let pixelStarted = false
 /** Él-e most a mérés (granted és nem visszavont). */
 let pixelActive = false
+/**
+ * Az ebben a munkamenetben kapott döntés (a ConsentBanner eseményéből). Akkor
+ * is számít, ha a tároló nem írható, és akkor is, ha a Pixel a döntés
+ * pillanatában tiltott oldalon volt, ezért nem indulhatott el.
+ */
+let sessionConsent: ConsentState | null = null
 
 /** Tesztelési és diagnosztikai segéd. */
 export function isMetaPixelActive(): boolean {
@@ -269,6 +275,9 @@ export function disableMetaPixel(runtime?: MetaRuntime): void {
 
 /** A consent-állapotgép becsatlakozási pontja: granted → be, denied → ki. */
 export function applyConsentToMetaPixel(state: ConsentState, runtime?: MetaRuntime): void {
+  if (state === CONSENT_GRANTED || state === CONSENT_DENIED) {
+    sessionConsent = state
+  }
   if (state === CONSENT_GRANTED) {
     enableMetaPixel(runtime)
     return
@@ -307,8 +316,7 @@ export function trackMetaEvent(
     // A tárolt döntés mellett az ebben a munkamenetben adott hozzájárulás is
     // számít: ha a tároló nem írható, a ConsentBanner a döntést csak eseményben
     // szórja, és a MetaPixel-figyelő ebből indította el a Pixelt.
-    const consent =
-      options.consent ?? ((): ConsentState => (pixelActive ? CONSENT_GRANTED : readConsent()))
+    const consent = options.consent ?? ((): ConsentState => sessionConsent ?? readConsent())
     if (consent() !== CONSENT_GRANTED) {
       return false
     }
@@ -350,4 +358,5 @@ export function trackMetaPageView(options: MetaTrackOptions = {}): boolean {
 export function resetMetaPixelForTests(): void {
   pixelStarted = false
   pixelActive = false
+  sessionConsent = null
 }
