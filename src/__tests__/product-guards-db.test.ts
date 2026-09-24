@@ -674,6 +674,61 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     }
   }, 240_000)
 
+  it('rev3 (BRK-RACE): a párhuzamos visszavonás és munkatársi visszaállítás nem hagy élő, ingyenes sort', async () => {
+    // A két admin-kérés sorrendjét egy külső kapcsolat sorzára rögzíti: a
+    // tulajdonos visszavonása áll be elsőnek a sorra, a munkatárs
+    // visszaállítása másodiknak. READ COMMITTED mellett a visszaállítás
+    // ellenőrzése zár nélkül még az élő sort látta, az írása pedig a
+    // visszavonás után `_status: 'published'`-et tett a tulajdonos kivett
+    // pipája mellé (mérve a7acf0b-n: élő, ingyenes, 79 500 Ft-os kurzus).
+    const pg = await import('pg')
+    const client = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await client.connect()
+    try {
+      const id = await createPublished('race')
+      await autosave(id, owner, { priceInHUFEnabled: false })
+      const versionId = await publishedVersionId(id)
+
+      const waitingOnLocks = async (): Promise<number> => {
+        const result = await client.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+           WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )
+        return result.rows[0].n
+      }
+      const untilWaiting = async (count: number): Promise<void> => {
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+          if ((await waitingOnLocks()) >= count) return
+          await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        throw new Error(`Nem várakozik ${count} kérés a soron.`)
+      }
+
+      await client.query('BEGIN')
+      await client.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
+      const unpublish = save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })
+      await untilWaiting(1)
+      const restore = restoreVersion(versionId, staff).then(
+        () => 'OK',
+        (error: unknown) => String(error),
+      )
+      await untilWaiting(2)
+      await client.query('COMMIT')
+
+      expect(await unpublish).toBe('OK')
+      expect(await restore).toBe('OK')
+      const row = await mainRow(id)
+      expect({ _status: row._status, priceInHUFEnabled: row.priceInHUFEnabled }).toEqual({
+        _status: 'draft',
+        priceInHUFEnabled: false,
+      })
+      expect((await claimAsStranger(id, 'race')).status).toBe('course-not-available')
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined)
+      await client.end()
+    }
+  }, 120_000)
+
   it('rev2 (BRK-R2a): a munkatárs verzió-visszaállítása nem élesíti a tulajdonos 5 Ft-os ár-piszkozatát', async () => {
     const id = await createPublished('rv-5ft')
     await autosave(id, owner, { priceInHUF: 5 })

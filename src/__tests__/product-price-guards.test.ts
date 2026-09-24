@@ -47,6 +47,7 @@ vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }))
 const {
   ecommerce,
   PROMO_PRICE_MESSAGE,
+  restoreVersionByNonOwnerStaysDraft,
   validatePriceInHUF,
   validatePriceInHUFEnabled,
   validatePromoEnd,
@@ -679,6 +680,23 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
         checkboxOpts({ req: noCount.req, siblingData: { priceInHUFEnabled: false } }),
       ),
     ).toBe(FREE_COURSE_GUARD_MESSAGE)
+  })
+})
+
+describe('restoreVersionByNonOwnerStaysDraft: a munkatárs verzió-visszaállítása', () => {
+  it('rev3: kérés-tranzakció nélkül (a fő sor nem zárolható) élő kurzuson is piszkozat marad', async () => {
+    // A zár nélküli olvasás egy párhuzamos visszavonás mellett elavult élő
+    // sort láthat (BRK-RACE, a DB-teszt méri); tranzakció nélkül a zár nem
+    // tartana a mentésig, ezért a döntés fail-closed.
+    const { req } = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+    const hook = restoreVersionByNonOwnerStaysDraft as unknown as (args: unknown) => unknown
+    const result = await hook({
+      data: { _status: 'published', shortDescription: 'Régi leírás.' },
+      operation: 'update',
+      originalDoc: { id: 1 },
+      req: { ...req, context: { isRestoringVersion: true } },
+    })
+    expect(result).toEqual({ _status: 'draft', shortDescription: 'Régi leírás.' })
   })
 })
 

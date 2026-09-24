@@ -1,3 +1,4 @@
+import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
 import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 import { BlocksFeature, lexicalEditor } from '@payloadcms/richtext-lexical'
 import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/types'
@@ -49,6 +50,7 @@ import { deleteCourseProgressOnParentDelete } from '../lib/course-progress/clean
 import { courseSlugField } from '../fields/course-slug'
 import { budapestDateString } from '../lib/date/budapest'
 import { formatPriceHuf } from '../lib/format-price'
+import { logger } from '../lib/logger'
 import { orderIntegrityBeforeChange } from '../lib/order-integrity'
 import { withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buildAdminPreviewUrl } from '../lib/preview/preview-target'
@@ -679,7 +681,11 @@ async function countPaidOrRefundedOrders(
  * „Már ingyenes” csak a valóban közzétett, lomtáron kívüli fő sor lehet (a
  * napló pillanatképe itt csak a munkatársat engedi tovább, a tulajdonost nem
  * mentesíti az „ára van / rendelése van” kérdés alól: egy téves „már ingyenes”
- * visszavonhatatlan hozzáféréseket adna). A lomtárba helyezés, a lomtárból
+ * visszavonhatatlan hozzáféréseket adna). Az aszimmetria szándékos: a
+ * munkatárs nem tud megerősíteni, a pillanatkép nélkül a visszavont ingyenes
+ * kurzust sem tehetné újra közzé; a tulajdonosnak a kérdés egy jelölőnégyzet,
+ * és az ár-maradékot (pl. 79 500 Ft kivett pipa mellett) ő látja és dönti el.
+ * A lomtárba helyezés, a lomtárból
  * `_status: 'published'` nélküli visszaállítás és a közzététel visszavonása
  * validálás nélkül a legutóbbi (akár autosave-es) piszkozatot írja a fő sorba
  * (update.js: skipValidation), így ott a kivett pipa ez az őr nélkül is a fő sorba
@@ -1376,6 +1382,56 @@ export const unpublishAndRestoreWritesStayDraft: CollectionBeforeOperationHook =
   return { ...args, data: { ...data, _status: 'draft' } }
 }
 
+/** A Payload postgres-adapterének a kérés-tranzakcióhoz szükséges felülete. */
+interface RequestTransactionAdapter {
+  execute: (args: { db: unknown; sql: SQL }) => Promise<unknown>
+  sessions?: Record<string, { db?: unknown } | undefined>
+}
+
+function isRequestTransactionAdapter(value: unknown): value is RequestTransactionAdapter {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { execute?: unknown }).execute === 'function'
+  )
+}
+
+/**
+ * rev3: a kurzus fő sorának zárolása (`SELECT … FOR UPDATE`) a kérés saját
+ * tranzakciójában; a zár a tranzakció végéig, tehát a visszaállítás
+ * `db.updateOne`-jáig és commitjáig tart. A kapcsolat `statement_timeout`-ja
+ * (payload.config.ts) korlátozza a várakozást: egy beragadt tranzakció mögött
+ * a visszaállítás hibával leáll, és nem ír (CLAUDE.md 6. tanulság).
+ *
+ * Visszatérés: `false`, ha nincs kérés-tranzakció vagy az adapter nem futtat
+ * SQL-t (a hívó ilyenkor piszkozatot hagy). Az SQL-hiba nem nyelhető el: a
+ * megszakadt tranzakcióban a mentés úgysem folytatható, a visszaállítás
+ * hibával áll le.
+ */
+async function lockProductRowForRestore(
+  req: PayloadRequest,
+  id: number | string,
+): Promise<boolean> {
+  const transactionID = await req.transactionID
+  const adapter: unknown = req.payload?.db
+  const transaction =
+    transactionID === undefined || transactionID === null || !isRequestTransactionAdapter(adapter)
+      ? undefined
+      : adapter.sessions?.[String(transactionID)]?.db
+  if (transaction === undefined || transaction === null || !isRequestTransactionAdapter(adapter)) {
+    logger.warn(
+      'A munkatárs verzió-visszaállítása piszkozat marad: a kurzus sora nem zárolható (nincs kérés-tranzakció)',
+      { productId: id },
+    )
+    return false
+  }
+  await adapter.execute({
+    db: transaction,
+    sql: sql`SELECT id FROM "products" WHERE id = ${id} FOR UPDATE`,
+  })
+  return true
+}
+
 /**
  * r2-termekor (rev2): a munkatárs verzió-visszaállítása nem élesítheti a
  * tulajdonos piszkozatát.
@@ -1399,6 +1455,15 @@ export const unpublishAndRestoreWritesStayDraft: CollectionBeforeOperationHook =
  * tulajdonos visszaállítása validál (minden mezőt ír), azt nem érinti.
  * Felhasználó nélküli (rendszer-)visszaállításnál sem tudjuk, ki a szereplő:
  * ott is a fő sor dönt (fail-closed). Olvasási hiba: piszkozat.
+ *
+ * rev3 (BRK-RACE): a fő sort a kérés tranzakciójában zároljuk, MIELŐTT
+ * elolvassuk (lockProductRowForRestore). READ COMMITTED mellett a zár nélküli
+ * olvasás még az élő sort láthatta, miközben egy párhuzamos visszavonás vagy
+ * lomtár már a tulajdonos piszkozatát írta a fő sorba; a visszaállítás
+ * `_status: 'published'`-je aztán erre került (mérve: élő, ingyenes,
+ * 79 500 Ft-os kurzus). A zárral a párhuzamos írás vagy előbb commitol (akkor
+ * a friss olvasás már piszkozatot lát), vagy megvárja ezt a tranzakciót.
+ * Tranzakció nélkül a zár nem tartana a mentésig: ilyenkor piszkozat marad.
  */
 export const restoreVersionByNonOwnerStaysDraft: CollectionBeforeChangeHook = async ({
   data,
@@ -1420,6 +1485,9 @@ export const restoreVersionByNonOwnerStaysDraft: CollectionBeforeChangeHook = as
   }
   if (await ownerMayWrite({ req, data, id })) {
     return data
+  }
+  if (!(await lockProductRowForRestore(req, id))) {
+    return { ...data, _status: 'draft' }
   }
   const row = await readProductRow(req, id)
   return isLivePublishedRow(row) ? data : { ...data, _status: 'draft' }
