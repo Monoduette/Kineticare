@@ -18,6 +18,8 @@ import { logger as rootLogger, type Logger } from '../lib/logger'
  * ütemezünk, ha van élő job is, nem), lezárni (`processing: false`,
  * `hasError: true`, `error`) viszont csak a `STALE_JOB_RELEASE_AFTER_MS`-nél
  * régebbit szabad, feltételes írással; a lezárásról EGY fojtott riasztás megy.
+ * Ha a lezárás hibára fut, tulajdonosi riasztás csak a korlátnál régebbi,
+ * biztosan elhalt sorról szól, és nem állítja, hogy bármit lezárt.
  * `meta.scheduled` szűrés szándékosan nincs.
  */
 
@@ -68,9 +70,16 @@ export const STALE_SCHEDULED_JOB_MS = 15 * 60 * 1000
  *   elutasított fizetésnél egy Refund POST, legfeljebb 35 s. 70 × 38 s ≈ 44 perc.
  * - A futás vége (számla-resweep, napi összesítő, életjel-ping): ≈ 1 perc.
  * Ez ≈ 63 perc; a webhook-retry (25 esemény × (15 s + 38 s)) ≈ 22 perc. A 2 óra
- * ennek közel kétszerese: a tartalék az adatbázis-időt fedi (utasításonként
- * legfeljebb 30 s, statement_timeout), amit a számítás nem tartalmaz. Ha a
- * batch-méret, a pótlapok száma vagy egy timeout nő, ezt is emelni kell.
+ * ennek közel kétszerese. A tartalék azt fedi, amit a számítás kihagy: a
+ * rendelésenkénti advisory-zárra és a többi adatbázis-utasításra várakozást
+ * (mindegyiket csak a 30 s-os statement_timeout korlátozza), valamint a
+ * paid-reject ág Refund POST-on túli lépéseit (visszatérítési szándék és
+ * nyugták írása). Ez tehát modell, nem kemény korlát: kemény korlátot csak a
+ * pollPendingOrders falióra-kerete adna (ilyen még nincs). Ha a batch-méret, a
+ * pótlapok száma vagy egy timeout nő, ezt is emelni kell. Egy téves lezárás
+ * következménye kozmetikai: a még futó sor `hasError` jelölést kap, és egy
+ * fojtott riasztás megy róla, de a futás nem szakad meg (az `error` nem
+ * `cancelled`, így a Payload nem dob JobCancelledError-t).
  *
  * Az ára: egy újraindítás által megölt futás sora legfeljebb 2 óráig
  * `processing: true` marad. Az ütemezést ez nem akasztja meg (lásd
@@ -201,6 +210,15 @@ async function releaseDeadJobs(
 }
 
 /**
+ * A beragadt-job téma fojtási kulcsa. A lezárásról és a lezárás hibájáról
+ * szóló riasztás ugyanezen osztozik: egy queue+task párról 6 óránként egy
+ * levél megy, akármelyik eset történt.
+ */
+function stuckJobAlertKey(queue: string, taskSlug: string): string {
+  return `beragadt-job:${queue}:${taskSlug}`
+}
+
+/**
  * EGY fojtott riasztás a lezárásról. A lezárás után a sor nem blokkol, tehát
  * a riasztás nem ismétlődik minden tickben; a fojtás a sorozatos újraindítások
  * idejére is egy levélre korlátoz. A szöveg olyan helyet nevez meg, amit a
@@ -226,7 +244,7 @@ function reportReleasedJobs(
   }
   if (
     shouldEmitThrottledAlert(
-      `beragadt-job:${facts.queue}:${facts.taskSlug}`,
+      stuckJobAlertKey(facts.queue, facts.taskSlug),
       STUCK_JOB_ALERT_COOLDOWN_MS,
       facts.nowMs,
     )
@@ -242,6 +260,68 @@ function reportReleasedJobs(
     return
   }
   log.warn('beragadt job lezárva (a riasztás a fojtási időn belül már kiment)', context)
+}
+
+/**
+ * A lezárás hibára futott, tehát semmit nem zárt le: „zárt le" riasztás nem
+ * mehet. A lezárási korlátnál fiatalabb sor mögött élő futás lehet, róla csak
+ * a hívó figyelmeztetése szól. Tulajdonosi riasztás akkor megy, ha van a
+ * korlátnál régebbi, tehát biztosan elhalt sor, és azt sem sikerült lezárni:
+ * ez a lezárás tartós hibájának jele lehet (például elromlott a lezáró SQL).
+ * Ennek a számolásnak a hibája sem állíthatja meg az ütemezést.
+ */
+async function reportFailedRelease(
+  req: PayloadRequest,
+  log: Logger,
+  facts: {
+    queue: string
+    taskSlug: string
+    stuckJobs: number
+    liveJobs: number
+    nowMs: number
+    releaseBeforeIso: string
+    error: string
+  },
+): Promise<void> {
+  let overdueJobs: number
+  try {
+    overdueJobs = await countJobs(
+      req,
+      staleWhere(facts.queue, facts.taskSlug, facts.releaseBeforeIso),
+    )
+  } catch (error) {
+    log.warn('a lezárási korlátnál régebbi job-sorok száma nem olvasható', {
+      queue: facts.queue,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return
+  }
+  if (
+    overdueJobs === 0 ||
+    !shouldEmitThrottledAlert(
+      stuckJobAlertKey(facts.queue, facts.taskSlug),
+      STUCK_JOB_ALERT_COOLDOWN_MS,
+      facts.nowMs,
+    )
+  ) {
+    return
+  }
+  emitAlert(
+    log,
+    ALERT_CODES.beragadtJobLezarasSikertelen,
+    'RIASZTÁS: egy beragadt háttérfeladat lezárása nem sikerült. Az ütemezés ettől még ' +
+      'működik, a rendszer a következő körökben ismét megpróbálja a lezárást. Teendő csak ' +
+      'akkor van, ha ez a riasztás újra megjön: ilyenkor szólj a fejlesztőnek, a Railway ' +
+      'naplójában (@alertCode:beragadt-job-lezaras-sikertelen) látszik, mi akadályozza.',
+    {
+      queue: facts.queue,
+      stuckJobs: facts.stuckJobs,
+      overdueJobs,
+      runnableOrActiveJobs: facts.stuckJobs + facts.liveJobs,
+      releaseAfterMs: STALE_JOB_RELEASE_AFTER_MS,
+      error: facts.error,
+    },
+  )
 }
 
 /**
@@ -359,21 +439,27 @@ export function createStaleAwareBeforeSchedule(
             // és a riasztás sem ismétlődik minden tickben (a-callback-2).
             const releaseBeforeIso = new Date(nowMs - STALE_JOB_RELEASE_AFTER_MS).toISOString()
             let released = 0
-            let releaseFailed = false
+            let releaseError: string | undefined
             try {
               released = await releaseDeadJobs(req, queue, taskSlug, releaseBeforeIso, nowMs)
             } catch (error) {
               // A lezárás hibája nem állíthatja meg az ütemezést: a sorba
               // állítás a beragadt sor mellett így is megtörténik.
-              releaseFailed = true
+              releaseError = error instanceof Error ? error.message : String(error)
               log.warn('a beragadt job-sor lezárása nem sikerült, a következő tick újrapróbálja', {
                 queue,
-                error: error instanceof Error ? error.message : String(error),
+                error: releaseError,
               })
             }
             const facts = { queue, taskSlug, stuckJobs: stale, liveJobs: blocking - stale, nowMs }
-            if (released > 0 || releaseFailed) {
+            if (released > 0) {
               reportReleasedJobs(log, { ...facts, releasedJobs: released })
+            } else if (releaseError !== undefined) {
+              await reportFailedRelease(req, log, {
+                ...facts,
+                releaseBeforeIso,
+                error: releaseError,
+              })
             } else {
               reportLongRunningJobs(log, facts)
             }

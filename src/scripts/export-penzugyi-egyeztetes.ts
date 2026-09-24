@@ -17,8 +17,9 @@
  * rendelés egy korábbi hónapban jött létre). Oszlopok: rendelésszám,
  * létrehozás és fizetés ideje (Budapest), állapot, bruttó összeg,
  * számla/stornó/helyesbítő száma és állapota, teljesítési dátum, a HÓNAPBAN
- * visszatérített összeg és időpontjai, a hónap végéig halmozott
- * visszatérítés, Barion PaymentId. A fizetés ideje a hozzáférés-óra
+ * visszatérített összeg és tételei (tételenként összeg és időpont, hogy
+ * minden Barion-visszatérítés külön párosítható legyen), a hónap végéig
+ * halmozott visszatérítés, Barion PaymentId. A fizetés ideje a hozzáférés-óra
  * (`users.accessGrants` `grantedAt`, `sourceOrder` = a rendelés); az orders
  * sémában nincs `paidAt`. Az `allapot` a futtatás pillanatának állapota.
  *
@@ -73,7 +74,7 @@ export const CSV_FEJLEC = [
   'helyesbito_szama',
   'helyesbito_allapota',
   'visszaterites_honapban_huf',
-  'visszaterites_honapban_datumai',
+  'visszaterites_honapban_tetelei',
   'visszaterites_halmozott_huf',
   'barion_payment_id',
 ] as const
@@ -183,15 +184,17 @@ function visszateritesiTetelek(
  * A hónap visszatérítései és a hónap végéig halmozott összeg. A korábbi
  * hónapok visszatérítése csak a halmozottba számít, a hónap utáni egyikbe
  * sem. A dátum nélküli tétel (az éles út mindig ír dátumot) a halmozottba
- * kerül, hogy a pénzmozgás ne tűnjön el a fájlból.
+ * kerül, hogy a pénzmozgás ne tűnjön el a fájlból. A hónap tételei egyenként,
+ * összeggel is megjelennek: egy rendelés több visszatérítése több
+ * Barion-sort és több helyesbítőt ad, a havi összegből ezek nem párosíthatók.
  */
 function visszateritesek(
   refunds: unknown,
   honap: HonapHatarai,
-): { honapban: number; honapbanDatumok: string[]; halmozott: number } {
+): { honapban: number; honapbanTetelek: string[]; halmozott: number } {
   let honapban = 0
   let halmozott = 0
-  const honapbanDatumok: string[] = []
+  const honapbanTetelek: string[] = []
   for (const { amountHuf, refundedAt } of visszateritesiTetelek(refunds)) {
     if (typeof amountHuf !== 'number' || !Number.isFinite(amountHuf) || amountHuf <= 0) {
       continue
@@ -203,10 +206,10 @@ function visszateritesek(
     halmozott += amountHuf
     if (typeof refundedAt === 'string' && honapba(refundedAt, honap)) {
       honapban += amountHuf
-      honapbanDatumok.push(budapestIdo(refundedAt))
+      honapbanTetelek.push(`${String(amountHuf)} Ft (${budapestIdo(refundedAt)})`)
     }
   }
-  return { honapban, honapbanDatumok, halmozott }
+  return { honapban, honapbanTetelek, halmozott }
 }
 
 /** A rendelés a hónapban jött létre, vagy a hónapban kapott (bármilyen) visszatérítést. */
@@ -224,7 +227,7 @@ export function exportSor(
   fizetveIso: string | undefined,
   honap: HonapHatarai,
 ): CsvSor {
-  const { honapban, honapbanDatumok, halmozott } = visszateritesek(order.refunds, honap)
+  const { honapban, honapbanTetelek, halmozott } = visszateritesek(order.refunds, honap)
   return {
     rendelesszam: order.orderNumber ?? `#${String(order.id)}`,
     letrehozva_budapest: budapestIdo(order.createdAt),
@@ -240,7 +243,7 @@ export function exportSor(
     helyesbito_szama: order.correctiveInvoiceNumber ?? '',
     helyesbito_allapota: order.correctiveInvoiceStatus ?? '',
     visszaterites_honapban_huf: honapban > 0 ? String(honapban) : '',
-    visszaterites_honapban_datumai: honapbanDatumok.join(' | '),
+    visszaterites_honapban_tetelei: honapbanTetelek.join(' | '),
     visszaterites_halmozott_huf: halmozott > 0 ? String(halmozott) : '',
     barion_payment_id: order.barionPaymentId ?? '',
   }

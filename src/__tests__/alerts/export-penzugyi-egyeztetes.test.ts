@@ -125,7 +125,7 @@ describe('export — CSV', () => {
         'KC-2026-8',
         'issued',
         '20000',
-        '2026. 09. 10. 10:00',
+        '20000 Ft (2026. 09. 10. 10:00)',
         '20000',
         'abc123',
       ].join(';'),
@@ -182,14 +182,15 @@ describe('export — a hónap visszatérítései (valódi where-kiértékelésse
   const orders = [
     // Októberben jött létre, visszatérítés nélkül.
     rendeles(1, { createdAt: '2026-10-03T08:00:00.000Z', updatedAt: '2026-10-03T08:05:00.000Z' }),
-    // Szeptemberi rendelés: szeptemberi és októberi RÉSZLEGES visszatérítés,
-    // a felső szintű refundedAt üres, az állapot paid marad.
+    // Szeptemberi rendelés: egy szeptemberi és két októberi RÉSZLEGES
+    // visszatérítés, a felső szintű refundedAt üres, az állapot paid marad.
     rendeles(2, {
       createdAt: '2026-09-20T08:00:00.000Z',
-      updatedAt: '2026-10-05T09:00:01.000Z',
+      updatedAt: '2026-10-20T09:00:01.000Z',
       refunds: [
         { type: 'partial', amountHuf: 10_000, refundedAt: '2026-09-25T08:00:00.000Z' },
         { type: 'partial', amountHuf: 20_000, refundedAt: '2026-10-05T09:00:00.000Z' },
+        { type: 'partial', amountHuf: 5_000, refundedAt: '2026-10-20T09:00:00.000Z' },
       ],
     }),
     // Októberi részleges, majd novemberi teljes visszatérítés: a refundedAt
@@ -247,27 +248,30 @@ describe('export — a hónap visszatérítései (valódi where-kiértékelésse
     expect(sorok).toBe(4)
   })
 
-  it('a havi oszlop csak a hónap visszatérítését mutatja, a halmozott a hónap végéig összegez', async () => {
+  it('a havi oszlopok csak a hónap visszatérítéseit mutatják, tételenként összeggel; a halmozott a hónap végéig összegez', async () => {
     const { payload } = createMemoryPayload({ orders, users: [] })
 
     const sorLista = csvSorok((await penzugyiExport(payload as never, '2026-10')).csv)
     const szerint = new Map(sorLista.map((sor) => [sor.rendelesszam, sor]))
 
+    // Két októberi visszatérítés: a Barion-sorok (-20 000 és -5 000) és a két
+    // helyesbítő tételenként párosítható, a havi összeg ezek összege.
     expect(szerint.get('KH-2026-000002')).toMatchObject({
       allapot: 'paid',
-      visszaterites_honapban_huf: '20000',
-      visszaterites_honapban_datumai: '2026. 10. 05. 11:00',
-      visszaterites_halmozott_huf: '30000',
+      visszaterites_honapban_huf: '25000',
+      visszaterites_honapban_tetelei:
+        '20000 Ft (2026. 10. 05. 11:00) | 5000 Ft (2026. 10. 20. 11:00)',
+      visszaterites_halmozott_huf: '35000',
     })
     // A novemberi teljes visszatérítés az októberi sor egyik oszlopába sem számít.
     expect(szerint.get('KH-2026-000003')).toMatchObject({
       allapot: 'refunded',
       visszaterites_honapban_huf: '20000',
-      visszaterites_honapban_datumai: '2026. 10. 06. 11:00',
+      visszaterites_honapban_tetelei: '20000 Ft (2026. 10. 06. 11:00)',
       visszaterites_halmozott_huf: '20000',
     })
     expect(szerint.get('KH-2026-000004')).toMatchObject({
-      visszaterites_honapban_datumai: '2026. 10. 01. 00:30',
+      visszaterites_honapban_tetelei: '1000 Ft (2026. 10. 01. 00:30)',
     })
     expect(szerint.get('KH-2026-000001')).toMatchObject({
       visszaterites_honapban_huf: '',

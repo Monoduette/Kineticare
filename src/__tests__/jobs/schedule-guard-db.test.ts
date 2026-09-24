@@ -11,6 +11,7 @@ import {
 import { resetAlertThrottle } from '../../lib/alert-throttle'
 import { BARION_GET_TIMEOUT_MS } from '../../lib/barion/client'
 import type { LogContext, Logger } from '../../lib/logger'
+import { CONFIRMATION_RETRY_DELAYS_MS } from '../../lib/order-paid'
 import {
   LATE_SUCCESS_BATCH_SIZE,
   LATE_SUCCESS_REFILL_PAGES,
@@ -43,11 +44,23 @@ const hasDb = await isDatabaseAvailable()
  * nem nyúlnak.
  */
 
-/** Egy order-poll futás GetState-ideje, ha mind a 70 hívás lassú, de sikeres. */
-const GETSTATE_CEILING_MS =
+/** A Resend-hívás időkorlátja (src/lib/email/resend.ts, RESEND_TIMEOUT_MS). */
+const RESEND_TIMEOUT_MS = 10_000
+
+/**
+ * Az order-poll dokumentált legrosszabb futásideje (a STALE_JOB_RELEASE_AFTER_MS
+ * leírásának modellje, ugyanazokból az állandókból): 70 lassú, de sikeres
+ * GetState, mindegyik után a leghosszabb mellékhatás (a visszaigazoló levél
+ * minden próbálkozása időtúllépéssel, a várakozásokkal együtt), plusz egy perc
+ * a futás végére. ≈ 63 perc.
+ */
+const DOCUMENTED_WORST_CASE_MS =
   (ORDER_POLL_BATCH_SIZE * (1 + ORDER_POLL_REFILL_PAGES) +
     LATE_SUCCESS_BATCH_SIZE * (1 + LATE_SUCCESS_REFILL_PAGES)) *
-  BARION_GET_TIMEOUT_MS
+    (BARION_GET_TIMEOUT_MS +
+      (1 + CONFIRMATION_RETRY_DELAYS_MS.length) * RESEND_TIMEOUT_MS +
+      CONFIRMATION_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0)) +
+  60_000
 
 interface LogEntry {
   level: 'debug' | 'error' | 'info' | 'warn'
@@ -179,9 +192,9 @@ describe.skipIf(!hasDb)('schedule-guard lezárás (valódi PostgreSQL)', () => {
     throw new Error('a guard 5 mp alatt sem futott le, és sorzárra sem várt')
   }
 
-  it('a 70 lassú GetState idejéig futó order-poll sorába nem ír, de mellette új futást állít sorba', async () => {
+  it('a dokumentált legrosszabb futásidőig (~63 perc) futó order-poll sorába nem ír, de mellette új futást állít sorba', async () => {
     const nowMs = Date.now()
-    const id = await insertRunningJob(nowMs - GETSTATE_CEILING_MS - 60_000)
+    const id = await insertRunningJob(nowMs - DOCUMENTED_WORST_CASE_MS)
 
     const { entries, done } = runGuard(nowMs)
     await done
