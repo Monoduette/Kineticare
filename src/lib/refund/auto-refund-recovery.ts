@@ -81,12 +81,25 @@ function verifyOrder(order: Order, entry: OrderRefundEntry): boolean {
   )
 }
 
-/** Call only inside order:mutate:<id>. Acknowledged proof permits local completion, never another POST. */
+/** Az a lezárás, amelyet EZ a hívás végzett el (a vevői értesítő bemenete). */
+export interface AutomaticRefundCommit {
+  order: Order
+  intent: RefundIntent
+  entry: OrderRefundEntry
+}
+
+/**
+ * Call only inside order:mutate:<id>. Acknowledged proof permits local completion, never another POST.
+ * Visszatérési érték: a lezárás adatai, ha EZ a hívás vitte a kísérletet
+ * committed állapotba; különben null. A committed átmenet egyetlen feltételes
+ * írás, ezért a vevői értesítőt (refund-notice.ts) pontosan egy hívó küldi, a
+ * zár elengedése után.
+ */
 export async function commitAutomaticRefund(
   payload: Payload,
   order: Order,
   intent: RefundIntent,
-): Promise<void> {
+): Promise<AutomaticRefundCommit | null> {
   const entry = await evidence(payload, order, intent)
   const history: unknown = order.refunds
   if (
@@ -94,6 +107,7 @@ export async function commitAutomaticRefund(
     (!Array.isArray(history) || (history.length > 0 && !isDeepStrictEqual(history, [entry])))
   )
     throw new Error('automatic refund recovery: historical conflict')
+  let current = order
   if (!verifyOrder(order, entry)) {
     if (intent.state === 'committed' || !isNeverPaidRefundCandidate(order))
       throw new Error('automatic refund recovery: order state conflict')
@@ -116,6 +130,7 @@ export async function commitAutomaticRefund(
     })
     if (!verifyOrder(fresh, entry))
       throw new Error('automatic refund recovery: unacknowledged order write')
+    current = fresh
   }
   await writeReceipt(payload, intent, 'order-refund', {
     version: 2,
@@ -125,8 +140,9 @@ export async function commitAutomaticRefund(
     status: entry.status,
     completed: true,
   })
-  if (intent.state === 'provider_succeeded')
-    await transitionRefundIntent(payload, intent, 'committed')
+  if (intent.state !== 'provider_succeeded') return null
+  const committed = await transitionRefundIntent(payload, intent, 'committed')
+  return { order: current, intent: committed, entry }
 }
 
 /** Pure readback for operational GETs and already-refunded callbacks. */

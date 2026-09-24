@@ -1420,3 +1420,71 @@ describe('RefundPanel K12: hozzáférhető név, élő régiók, megerősítés'
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('RefundPanel: számla-kapu, a fizetés óta eltelt napok és a belső indok', () => {
+  async function remountWithPanel(panel: Record<string, unknown>) {
+    statusFetchMock.mockImplementation(async (url, options) =>
+      Response.json({
+        orderNumber: decodeURIComponent(String(url).split('/').at(-2)!),
+        state: 'clear',
+        message: 'Nincs rendezetlen feldolgozás.',
+        ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+          ? { operationState: 'unseen' }
+          : {}),
+        panel,
+      }),
+    )
+    await act(async () => {
+      root.unmount()
+    })
+    const { createRoot } = await import('react-dom/client')
+    root = createRoot(container)
+    await render()
+  }
+
+  const GATE = 'A számla még nem készült el, ezért a visszatérítés még nem indítható.'
+
+  it('K12: a számla-kapu okát kiírja, a mezőhöz köti, és a gomb nem indít visszatérítést', async () => {
+    await remountWithPanel({ refundGate: GATE, paidDate: null, daysSincePayment: null })
+    const amount = container.querySelector('#kineticare-refund-amount') as HTMLInputElement
+    const reason = Array.from(container.querySelectorAll('[role="status"]')).find(
+      (element) => element.textContent === GATE,
+    )
+    expect(reason).toBeDefined()
+    expect(amount.disabled).toBe(true)
+    expect(amount.getAttribute('aria-describedby')?.split(' ')).toContain(reason!.id)
+    expect(button().disabled).toBe(true)
+    ui.click?.()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a fizetés napját és az azóta eltelt napokat mutatja (K3: a garancia-döntés bemenete)', async () => {
+    await remountWithPanel({ refundGate: null, paidDate: '2026-09-05', daysSincePayment: 19 })
+    expect(container.textContent).toContain('A fizetés napja: 2026. 09. 05. (19 napja).')
+    expect(button().disabled).toBe(false)
+  })
+
+  it('a belső indokot a kérésben küldi, a mező címkéje és súgója látható', async () => {
+    const note = container.querySelector('#kineticare-refund-note') as HTMLInputElement
+    expect(container.querySelector(`label[for="${note.id}"]`)?.textContent).toBe(
+      'Belső indok (nem kötelező)',
+    )
+    expect(document.getElementById(note.getAttribute('aria-describedby')!)?.textContent).toContain(
+      'a vásárló nem látja',
+    )
+    const setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )!.set!
+    await act(async () => {
+      setValue.call(note, '  elállás  ')
+      note.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    fetchMock.mockResolvedValue(Response.json(success()))
+    await submit()
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      note: 'elállás',
+      operationKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+    })
+  })
+})

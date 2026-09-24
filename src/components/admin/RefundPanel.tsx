@@ -29,6 +29,12 @@ import {
   type RefundConfirmText,
 } from './refund-amount'
 import { useConfirmationDialogNames } from './confirmation-dialog-names'
+import {
+  EMPTY_REFUND_PANEL_INFO,
+  parseRefundPanelInfo,
+  refundPaymentAgeText,
+  type RefundPanelInfo,
+} from './refund-panel-context'
 import { hasRefundHistory, readRefundOperationalStatus } from './refund-operational-status'
 import {
   clearRefundOperation,
@@ -86,6 +92,9 @@ const REQUEST_TIMEOUT_MS = 30_000
 export const REFUND_CONFIRM_MODAL_SLUG = 'kineticare-visszaterites-megerositese'
 
 const AMOUNT_INPUT_ID = 'kineticare-refund-amount'
+const NOTE_INPUT_ID = 'kineticare-refund-note'
+/** A szerver szabálya (normalizeRefundReason): legfeljebb 1000 karakter. */
+const NOTE_MAX_LENGTH = 1000
 
 const REFRESH_WARNING = `A rendelés nézetének frissítése nem sikerült. A visszatérítés fenti eredménye változatlan. ${REFUND_REVIEW_GUIDANCE}`
 const NAVIGATION_WARNING = `A válasz másik rendelés megnyitása után érkezett, ezért a nézet nem frissült. ${REFUND_REVIEW_GUIDANCE}`
@@ -101,6 +110,8 @@ interface OrderVisit {
 
 interface PanelState {
   amountInput: string
+  noteInput: string
+  info: RefundPanelInfo
   pending: boolean
   locked: boolean
   errorMessage: string | null
@@ -115,6 +126,8 @@ interface PanelState {
 
 const EMPTY_PANEL: PanelState = {
   amountInput: '',
+  noteInput: '',
+  info: EMPTY_REFUND_PANEL_INFO,
   pending: false,
   locked: false,
   errorMessage: null,
@@ -211,6 +224,8 @@ export function RefundPanel() {
   const [panels, setPanels] = useState(() => new Map<string, PanelState>())
   const {
     amountInput,
+    noteInput,
+    info,
     pending,
     locked,
     errorMessage,
@@ -232,6 +247,8 @@ export function RefundPanel() {
   const pendingConfirmation = useRef<{
     orderNumber: string
     amountHuf: number | null
+    /** A belső indok (csak a műveletnaplóba kerül); üres szöveg = nincs. */
+    note: string
     visit: OrderVisit
   } | null>(null)
   const owner = hasOwnerRole(user)
@@ -254,6 +271,7 @@ export function RefundPanel() {
       visit.status = null
       updatePanel(key, { statusLoading: true, statusError: false, recovery: null })
       let status: RefundRecoveryStatus | null = null
+      let panelInfo: RefundPanelInfo = EMPTY_REFUND_PANEL_INFO
       try {
         const stored = readRefundOperation(key)
         if (visit.operation && stored?.key !== visit.operation.key)
@@ -267,7 +285,9 @@ export function RefundPanel() {
           ...(stored ? { headers: { 'X-Refund-Operation-Key': stored.key } } : {}),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
         })
-        status = parseRefundRecoveryStatus(response.status, await response.json(), key, !!stored)
+        const body: unknown = await response.json()
+        status = parseRefundRecoveryStatus(response.status, body, key, !!stored)
+        if (status) panelInfo = parseRefundPanelInfo(body)
       } catch {
         status = null
       }
@@ -303,6 +323,7 @@ export function RefundPanel() {
       updatePanel(key, {
         ...initialState,
         ...autoCleared,
+        info: panelInfo,
         recovery: status,
         statusLoading: false,
         statusError: !status,
@@ -361,6 +382,7 @@ export function RefundPanel() {
     visit?.orderNumber === orderNumber &&
     latestAllowed.current &&
     visit.status?.state === 'clear' &&
+    !info.refundGate &&
     !(visit.operation && visit.status.operationState !== 'unseen') &&
     !busyOrders.current.has(orderNumber) &&
     !lockedOrders.current.has(orderNumber)
@@ -374,7 +396,12 @@ export function RefundPanel() {
       updatePanel(orderNumber, { successMessage: null, errorMessage: check.message })
       return
     }
-    pendingConfirmation.current = { orderNumber, amountHuf: check.amountHuf, visit }
+    pendingConfirmation.current = {
+      orderNumber,
+      amountHuf: check.amountHuf,
+      note: noteInput.trim(),
+      visit,
+    }
     setConfirmText(refundConfirmText(orderNumber, check.amountHuf))
     openModal(REFUND_CONFIRM_MODAL_SLUG)
   }
@@ -399,7 +426,7 @@ export function RefundPanel() {
     ) {
       return
     }
-    const check = { amountHuf: pending.amountHuf }
+    const check = { amountHuf: pending.amountHuf, note: pending.note }
 
     let requestOperation: RefundOperation
     try {
@@ -432,6 +459,7 @@ export function RefundPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(check.amountHuf === null ? {} : { amountHuf: check.amountHuf }),
+          ...(check.note ? { note: check.note } : {}),
           operationKey: requestOperation.key,
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -476,7 +504,7 @@ export function RefundPanel() {
       })
       return
     }
-    updatePanel(orderNumber, { amountInput: '', successMessage: result.message })
+    updatePanel(orderNumber, { amountInput: '', noteInput: '', successMessage: result.message })
     if (!isCurrentVisit()) {
       updatePanel(orderNumber, { pending: false, warningMessage: NAVIGATION_WARNING })
       return
@@ -669,8 +697,18 @@ export function RefundPanel() {
   }
 
   const history = hasRefundHistory(data)
+  // A számla-kapu (K12) csak rendezett mentett állapotnál számít: másképp a
+  // mentett állapot szövege mondja meg a teendőt.
+  const invoiceGate = recovery?.state === 'clear' ? info.refundGate : null
   const amountDisabled =
-    pending || locked || statusLoading || !!operation || recovery?.state !== 'clear'
+    pending ||
+    locked ||
+    statusLoading ||
+    !!operation ||
+    recovery?.state !== 'clear' ||
+    !!invoiceGate
+  const paymentAge = refundPaymentAgeText(info)
+  const gateId = `${hintId}-szamla`
 
   return (
     <div className="field-type" style={panelStyle}>
@@ -698,6 +736,18 @@ export function RefundPanel() {
           {totalHuf === null ? null : (
             <p style={noteStyle}>A rendelés végösszege: {formatPriceHuf(totalHuf)}.</p>
           )}
+          {paymentAge ? <p style={noteStyle}>{paymentAge}</p> : null}
+          {invoiceGate ? (
+            // A letiltott mező és gomb mellé a szöveges ok (docs/ui-sztenderdek.md
+            // 2.3; WCAG 2.2 SC 3.3.2), a mezőhöz aria-describedby-jal kötve.
+            <p
+              id={gateId}
+              role="status"
+              style={{ ...noteStyle, marginTop: 'calc(var(--base) * 0.5)' }}
+            >
+              {invoiceGate}
+            </p>
+          ) : null}
           <label
             htmlFor={AMOUNT_INPUT_ID}
             style={{ display: 'block', fontWeight: 600, marginTop: 'calc(var(--base) * 0.5)' }}
@@ -708,7 +758,9 @@ export function RefundPanel() {
             Ha üresen hagyod, a teljes összeg visszajár.
           </p>
           <input
-            aria-describedby={errorMessage ? `${hintId} ${errorId}` : hintId}
+            aria-describedby={[hintId, invoiceGate ? gateId : null, errorMessage ? errorId : null]
+              .filter(Boolean)
+              .join(' ')}
             className="kc-admin-input"
             disabled={amountDisabled}
             id={AMOUNT_INPUT_ID}
@@ -718,6 +770,30 @@ export function RefundPanel() {
             type="text"
             value={amountInput}
           />
+          <label
+            htmlFor={NOTE_INPUT_ID}
+            style={{ display: 'block', fontWeight: 600, marginTop: 'calc(var(--base) * 0.5)' }}
+          >
+            Belső indok (nem kötelező)
+          </label>
+          <p
+            id={`${hintId}-indok`}
+            style={{ ...noteStyle, marginBottom: 'calc(var(--base) * 0.25)' }}
+          >
+            Csak a műveletnaplóba kerül, a vásárló nem látja. Például: elállás, hibás tartalom,
+            méltányosság.
+          </p>
+          <input
+            aria-describedby={`${hintId}-indok`}
+            className="kc-admin-input"
+            disabled={amountDisabled}
+            id={NOTE_INPUT_ID}
+            maxLength={NOTE_MAX_LENGTH}
+            onChange={(event) => updatePanel(orderNumber, { noteInput: event.target.value })}
+            style={{ width: '100%', maxWidth: '32rem' }}
+            type="text"
+            value={noteInput}
+          />
           <div style={{ marginTop: 'calc(var(--base) * 0.5)' }}>
             <Button
               buttonStyle="secondary"
@@ -726,6 +802,7 @@ export function RefundPanel() {
                 locked ||
                 statusLoading ||
                 recovery?.state !== 'clear' ||
+                !!invoiceGate ||
                 (!!operation && recovery.operationState !== 'unseen')
               }
               onClick={requestRefund}

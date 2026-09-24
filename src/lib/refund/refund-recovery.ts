@@ -3,7 +3,13 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Order, RefundIntent, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { withUserPurchasesLock } from '../user-purchases-lock'
-import { applyRefundAccessCleanup, type RefundAccessBaseline } from './access-store'
+import {
+  applyRefundAccessCleanup,
+  type RefundAccessBaseline,
+  type RefundAccessCleanupResult,
+} from './access-store'
+import { courseTitle } from '../courses'
+import { hatarozottNevelo } from '../email/templates/order'
 import { logger, type Logger } from '../logger'
 import {
   canRecoverAutomaticRefund,
@@ -27,7 +33,12 @@ import {
   type AutomaticRetryDecision,
 } from './automatic-retry'
 import { rejectionCodesFromReference } from './barion-refund-evidence'
-import { issueStornoForOrder, issueCorrectiveInvoiceForOrder } from '../szamlazz'
+import {
+  isRetryableCorrectiveError,
+  issueCorrectiveInvoiceForOrder,
+  issueStornoForOrder,
+  queueCorrectiveInvoiceJob,
+} from '../szamlazz'
 import { fetchPaymentState, type BarionPaymentStateResponse } from '../barion'
 import { formatPriceHuf } from '../format-price'
 import {
@@ -48,6 +59,7 @@ import {
   readReceipt,
   readProviderReceipt,
   RECEIPTS,
+  REFUND_INVOICE_RETRY_QUEUED_ACTION,
   relationId,
   writeReceipt,
 } from './recovery-receipts'
@@ -58,6 +70,7 @@ import {
   type OrderRefundEntry,
   type RefundOrderOptions,
 } from './refund-order'
+import { sendRefundNotice } from './refund-notice'
 import { REFUND_RECOVERY_ACTION_LABEL } from './recovery-action-label'
 
 /**
@@ -76,6 +89,9 @@ const UNREADABLE =
 const INTERRUPTED = `A feldolgozás most nem fejeződött be, új pénzvisszatérítés nem indult. Frissítsd az oldalt, és ha a ${RECOVER} gomb ismét látszik, pár perc múlva próbáld újra. Ha ez ismétlődik, jelezd az üzemeltetőnek.`
 const LOCAL_BLOCKED =
   'A Barion visszaigazolta a visszatérítést, de a helyi feldolgozás (hozzáférés vagy számla) elakadt, és automatikusan nem folytatható. Ne indíts új pénzvisszatérítést, és jelezd az üzemeltetőnek a rendelésszámmal együtt.'
+const LOCAL_BLOCKED_LEAD =
+  'A Barion visszaigazolta a visszatérítést, és a rendelésen rögzítve van, de a helyi feldolgozás elakadt.'
+const NO_NEW_REFUND = 'Ne indíts új pénzvisszatérítést.'
 const CONTINUE =
   'A Barion sikeres eredménye rögzítve van. A hozzáférések, a napló és a bizonylat feldolgozása folytatható új pénzvisszatérítés nélkül.'
 const COMPLETE = 'A visszatérítés helyi feldolgozása befejeződött.'
@@ -399,8 +415,19 @@ async function cleanup(
   intent: RefundIntent,
   entry: OrderRefundEntry,
 ): Promise<boolean> {
-  const manual = async () => {
-    await writeReceipt(payload, intent, RECEIPTS.cleanupManual, { version: 1, manual: true })
+  // A kézi eset nyugtája a kurzust és az okot is hordozza (access-store.ts),
+  // hogy a tulajdonosi üzenet megnevezhesse. Az első nyugta marad: egy
+  // későbbi, más okú elakadás nem írja felül (a nyugta megváltoztathatatlan).
+  const manual = async (result?: RefundAccessCleanupResult) => {
+    if (!(await readReceipt(payload, intent, RECEIPTS.cleanupManual))) {
+      const detail = result?.status === 'manual_review' ? result : undefined
+      await writeReceipt(payload, intent, RECEIPTS.cleanupManual, {
+        version: 1,
+        manual: true,
+        ...(detail?.detail ? { detail: detail.detail } : {}),
+        ...(detail?.productId ? { productId: detail.productId } : {}),
+      })
+    }
     return false
   }
   const done = await readReceipt(payload, intent, RECEIPTS.cleanupDone)
@@ -432,7 +459,7 @@ async function cleanup(
   return withUserPurchasesLock(payload, customerId, async () => {
     // The access store atomically deletes only proven relation incarnations and writes the done receipt.
     // A separate read after its transaction is the commit evidence, never the returned update value.
-    await applyRefundAccessCleanup(payload, {
+    const result = await applyRefundAccessCleanup(payload, {
       intent,
       baseline: prepared.accessBaseline as unknown as RefundAccessBaseline,
       productIds: productIds(order),
@@ -444,8 +471,132 @@ async function cleanup(
       ['sql-access-v1', 'sql-access-v2'].includes(String(verified.cleanupKind))
     )
       return true
-    return manual()
+    return manual(result)
   })
+}
+
+/** A rendelés kurzusainak neve azonosítónként; a hiányzót a rendelés pillanatképe pótolja. */
+async function orderCourseTitles(payload: Payload, order: Order): Promise<Map<number, string>> {
+  const titles = new Map<number, string>()
+  for (const item of order.items ?? []) {
+    const id = relationId(item.product)
+    if (id !== null) titles.set(id, item.titleSnapshot?.trim() || `Kurzus #${id}`)
+  }
+  if (titles.size === 0) return titles
+  try {
+    const found = await payload.find({
+      collection: 'products',
+      where: { id: { in: [...titles.keys()] } },
+      depth: 0,
+      limit: titles.size,
+      pagination: false,
+      overrideAccess: true,
+      select: { displayTitle: true, sku: true },
+    })
+    for (const product of found.docs) titles.set(product.id, courseTitle(product))
+  } catch {
+    // A pillanatkép neve marad: az üzenet ettől még megnevezi a kurzust.
+  }
+  return titles
+}
+
+function quotedCourse(title: string): string {
+  return `${hatarozottNevelo(title)} „${title}” kurzus`
+}
+
+/**
+ * A hozzáférés kézi rendezését kérő mondat: melyik kurzus, miért, mi a
+ * következő lépés (a-refund-10). A vásárló hozzáférését a rendszer nem vette
+ * el (a tranzakció visszagördült), és a tulajdonos az adminban sem tudja
+ * levenni (a purchases mező írása zárt), ezért a lépés az üzemeltető felé megy.
+ */
+async function cleanupBlockedSentence(
+  payload: Payload,
+  order: Order,
+  receipt: Record<string, unknown>,
+): Promise<string> {
+  const titles = await orderCourseTitles(payload, order)
+  const productId = typeof receipt.productId === 'number' ? receipt.productId : null
+  const named =
+    productId !== null && titles.has(productId)
+      ? quotedCourse(titles.get(productId)!)
+      : titles.size > 0
+        ? [...titles.values()].map(quotedCourse).join(' és ')
+        : 'a kurzus'
+  const subject = `${named.charAt(0).toUpperCase()}${named.slice(1)} hozzáférését a rendszer`
+  const why =
+    receipt.detail === 'grant-provenance'
+      ? `${subject} nem vonta vissza, mert a vásárló hozzáférése nem ehhez a rendeléshez van kötve (például korábbi, kézzel adott vagy az átállásból hozott hozzáférés), így a hozzáférés egyelőre megmaradt.`
+      : receipt.detail === 'access-changed'
+        ? `${subject} nem vonta vissza, mert a vásárló hozzáférései a visszatérítés indítása óta megváltozhattak (például új vásárlás vagy kézzel adott hozzáférés miatt), így a hozzáférés egyelőre megmaradt.`
+        : `${subject} nem tudta automatikusan visszavonni, így a hozzáférés egyelőre megmaradt.`
+  return `${why} Következő lépés: jelezd az üzemeltetőnek a rendelésszámmal és a kurzus nevével együtt, ő rendezi a hozzáférést.`
+}
+
+/** A bizonylat elakadásának mondata: mi történt, újrapróbálja-e a rendszer, mi a teendő (a-refund-4). */
+async function invoiceBlockedSentence(
+  payload: Payload,
+  order: Order,
+  intent: RefundIntent,
+  entry: OrderRefundEntry,
+): Promise<string | null> {
+  if (invoiceRecorded(order, intent, entry)) return null
+  const invoiceNumber = order.invoiceNumber?.trim()
+  if (!invoiceNumber)
+    return 'A rendeléshez nem tartozik kiállított számla, ezért stornó vagy helyesbítő számla nem készíthető. Jelezd az üzemeltetőnek a rendelésszámmal együtt.'
+  const storno = entry.type === 'full' && intent.refundSequence === 1
+  const started = await readReceipt(payload, intent, RECEIPTS.invoiceStarted)
+  if (storno) {
+    const submitted = !!started || (order.stornoAttempts ?? 0) > 0
+    if (!submitted && order.stornoStatus !== 'failed') return null
+    const lastError = order.stornoLastError?.trim()
+    const detail = lastError ? ` A Számlázz.hu utolsó hibaüzenete: ${lastError}` : ''
+    // Stornót a rendszer beküldés után nem küld újra (F3, storno.ts): egy
+    // elveszett válasz mögött már létező stornó lehet, a második dupla
+    // érvénytelenítés volna. A kézi rögzítés külön, jóváhagyott lépés (H2).
+    return submitted
+      ? `A stornószámla nem készült el biztosan: a kérés elment a Számlázz.hu-nak, de a rendelésen nincs rögzített stornó.${detail} Nézd meg a Számlázz.hu-fiókodban, készült-e stornó a(z) ${invoiceNumber} számú számlához, és jelezd az üzemeltetőnek a rendelésszámmal együtt. A rendszer a stornót nem küldi be újra.`
+      : `A stornószámla nem készült el, a Számlázz.hu-nak nem ment kérés.${detail} Jelezd az üzemeltetőnek a rendelésszámmal együtt.`
+  }
+  const attempted =
+    started ||
+    (order.correctiveInvoiceAttemptsSeq === intent.refundSequence &&
+      (order.correctiveInvoiceAttempts ?? 0) > 0) ||
+    order.correctiveInvoiceStatus === 'failed'
+  if (!attempted) return null
+  const lastError = order.correctiveInvoiceLastError?.trim()
+  const detail = lastError ? ` A Számlázz.hu utolsó hibaüzenete: ${lastError}` : ''
+  // A sorba állított job a beküldés előtt a Számlázz.hu-ban keresi a
+  // helyesbítőt (corrective.ts), és ha megvan, rögzíti a számát; ezután a
+  // panel újra a folytatás gombját mutatja (storageRecoveryStatus).
+  if (await readReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION))
+    return `A helyesbítő számla kiállítása átmeneti hibába futott.${detail} A rendszer a háttérben megnézi a Számlázz.hu-ban, elkészült-e, és ha igen, rögzíti a számát. Nézz vissza később: ha megjelenik a ${RECOVER} gomb, azzal fejezd be a feldolgozást. Ha egy nap múlva is ezt látod, jelezd az üzemeltetőnek a rendelésszámmal együtt.`
+  return `A helyesbítő számla nem készült el.${detail} Jelezd az üzemeltetőnek a rendelésszámmal együtt; a rendszer nem küldi be újra.`
+}
+
+/**
+ * Az elakadt helyi feldolgozás tulajdonosi üzenete: a hozzáférés és a
+ * bizonylat konkrét állapota, a következő lépéssel (GOV.UK Error message:
+ * „say what has happened and how to fix it”). Ha egyik sem ismerhető fel, a
+ * közös, általános szöveg marad.
+ */
+async function localBlockedMessage(
+  payload: Payload,
+  order: Order,
+  intent: RefundIntent,
+  entry: OrderRefundEntry,
+): Promise<string> {
+  try {
+    const parts: string[] = []
+    const manual = await readReceipt(payload, intent, RECEIPTS.cleanupManual)
+    if (manual) parts.push(await cleanupBlockedSentence(payload, order, manual))
+    const invoice = await invoiceBlockedSentence(payload, order, intent, entry)
+    if (invoice) parts.push(invoice)
+    if (parts.length === 0) return LOCAL_BLOCKED
+    return `${LOCAL_BLOCKED_LEAD} ${parts.join(' ')} ${NO_NEW_REFUND}`
+  } catch {
+    return LOCAL_BLOCKED
+  }
 }
 
 function invoiceRecorded(
@@ -496,21 +647,51 @@ async function invoice(
           (order.correctiveInvoiceSeq ?? 0) >= intent.refundSequence
     )
       return false
-    // Existing helpers own their invoice locks and provider guards. No automatic retry job is queued.
-    if (storno)
+    // Existing helpers own their invoice locks and provider guards. A tulajdonos
+    // indoka (intent.reason) a műveletnaplóé és a rendelésé, a bizonylatra nem
+    // kerül: a stornó és a helyesbítő megjegyzése a vevőnek is látszik.
+    if (storno) {
+      // Stornó: automatikus újrapróbálás TILOS (F3, storno.ts): egy beküldés
+      // után az állapot bizonytalan, a vak ismétlés dupla stornót okozhat.
       await (options.issueStorno ?? issueStornoForOrder)(order, {
         payload,
         logger: options.logger,
-        ...(intent.reason ? { reason: intent.reason } : {}),
       })
-    else
-      await (options.issueCorrective ?? issueCorrectiveInvoiceForOrder)(order, {
-        payload,
-        logger: options.logger,
-        refundSeq: intent.refundSequence,
-        amountHuf: intent.requestedAmountHuf,
-        ...(intent.reason ? { reason: intent.reason } : {}),
-      })
+    } else {
+      try {
+        await (options.issueCorrective ?? issueCorrectiveInvoiceForOrder)(order, {
+          payload,
+          logger: options.logger,
+          refundSeq: intent.refundSequence,
+          amountHuf: intent.requestedAmountHuf,
+        })
+      } catch (error) {
+        // Helyesbítő: az újrapróbálható hiba (időtúllépés, hálózat, 5xx,
+        // szlahu_down) a corrective-invoice-issue jobhoz megy (a-refund-4). A
+        // job minden beküldés ELŐTT szamlaKulsoAzon-lekérdezéssel ellenőrzi,
+        // létezik-e már a bizonylat, ezért a sorba állítás nem duplikál; a
+        // kimenetét a rendelésen megjelenő szám alapján ez a feldolgozás veszi
+        // át (invoiceRecorded). Új beküldést a job ma nem tesz: a
+        // claimManagedRefundDocument az első kísérlet után nem ad engedélyt,
+        // így a job a már létrejött bizonylatot veszi át. A jelzés a panelnek
+        // szól: a rendszer a háttérben még keresi a bizonylatot.
+        if (isRetryableCorrectiveError(error)) {
+          const queued = await queueCorrectiveInvoiceJob(
+            payload,
+            order.id,
+            intent.refundSequence,
+            options.logger,
+          )
+          if (queued)
+            await writeReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION, {
+              version: 1,
+              kind: 'corrective',
+              sequence: intent.refundSequence,
+            })
+        }
+        throw error
+      }
+    }
     const fresh = await findRecoveryOrder(payload, options.orderNumber)
     number = fresh ? invoiceRecorded(fresh, intent, entry) : null
   }
@@ -656,8 +837,8 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             const order = await findRecoveryOrder(payload, orderNumber)
             if (!intent || !order || intent.state !== 'provider_succeeded') return null
             if (isAutomaticRefundIntent(intent)) {
-              await commitAutomaticRefund(payload, order, intent)
-              return { automatic: true as const }
+              const commit = await commitAutomaticRefund(payload, order, intent)
+              return { automatic: true as const, commit }
             }
             return {
               automatic: false as const,
@@ -673,8 +854,18 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             ? { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
             : { orderNumber, recoveryStatus: 'manual_review' as const, message: status.message }
         }
-        if (financial.automatic)
+        if (financial.automatic) {
+          // A vevői értesítő a rendelés-záron kívül, csak a lezárást végző hívótól.
+          if (financial.commit)
+            await sendRefundNotice({
+              payload,
+              ...financial.commit,
+              kind: 'order-not-accepted',
+              document: 'none',
+              logger: log,
+            })
           return { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
+        }
         const { order, intent, entry } = financial
         const phase = async (name: string, run: () => Promise<boolean>): Promise<boolean> => {
           try {
@@ -722,9 +913,15 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
           const fresh = await findRecoveryOrder(payload, orderNumber)
           return fresh ? invoice(options, fresh, intent, entry) : false
         })
-        if (!cleaned || !audited || !invoiced)
-          return { orderNumber, recoveryStatus: 'manual_review' as const, message: LOCAL_BLOCKED }
-        await withAdvisoryLock(
+        if (!cleaned || !audited || !invoiced) {
+          const current = (await findRecoveryOrder(payload, orderNumber)) ?? order
+          return {
+            orderNumber,
+            recoveryStatus: 'manual_review' as const,
+            message: await localBlockedMessage(payload, current, intent, entry),
+          }
+        }
+        const committed = await withAdvisoryLock(
           payload,
           refundLockKey(order.id),
           async () => {
@@ -747,10 +944,24 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
             )
               throw new Error('refund recovery: completion unverified')
             await ensureFinancialEntry(payload, verified, fresh)
-            await transitionRefundIntent(payload, fresh, 'committed')
+            return {
+              order: verified,
+              intent: await transitionRefundIntent(payload, fresh, 'committed'),
+            }
           },
           log,
         )
+        // A vevői értesítő a lezárás UTÁN, a rendelés-záron kívül (HTTP a zár
+        // alatt tilos); a committed CAS miatt pontosan egyszer (refund-notice.ts).
+        await sendRefundNotice({
+          payload,
+          order: committed.order,
+          intent: committed.intent,
+          entry,
+          kind: entry.type,
+          document: entry.type === 'full' && intent.refundSequence === 1 ? 'storno' : 'corrective',
+          logger: log,
+        })
         return { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
       },
       log,
@@ -831,7 +1042,11 @@ async function storageRecoveryStatus({
       const ready = cleanupDone?.completed === true && !!auditDone && !!invoiceDone
       return canCleanup || !auditDone || canInvoice || ready
         ? { orderNumber, state: 'recoverable', message: CONTINUE }
-        : { orderNumber, state: 'manual_review', message: LOCAL_BLOCKED }
+        : {
+            orderNumber,
+            state: 'manual_review',
+            message: await localBlockedMessage(payload, order, intent, entry),
+          }
     }
     if (isNeverPaidRefundCandidate(order)) {
       // A soha ki nem fizetett rendelésen csak automatikus visszatérítés lehet.

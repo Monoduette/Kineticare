@@ -67,6 +67,15 @@ describe('owner refund response proof runtime binding', () => {
       ],
     })
     await f.start({ amountHuf: 5000 })
+    // A GetState az első visszatérítést a forrásra mutató tranzakcióként mutatja.
+    f.barionRefunds.push({
+      TransactionId: refundId,
+      POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
+      TransactionType: 'RefundToBankCard',
+      Status: 'Succeeded',
+      Total: 5000,
+      RelatedId: 'SYNTHETIC-TX',
+    })
     await expect(
       f.start({ amountHuf: 5000, operationKey: Buffer.alloc(32, 2).toString('base64url') }),
     ).rejects.toMatchObject({ status: 503 })
@@ -102,6 +111,28 @@ describe('owner refund response proof runtime binding', () => {
       ],
     })
     await f.start({ amountHuf: 5000 })
+    // A válasz a forrás azonosítóját visszhangozza, a GetState viszont a
+    // visszatérítést saját tranzakcióként, a forrásra mutatva listázza.
+    provider.state.mockResolvedValue({
+      PaymentId: f.order.barionPaymentId,
+      Transactions: [
+        {
+          TransactionId: source,
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
+          Status: 'Succeeded',
+          TransactionType: 'CardPayment',
+          Total: 20000,
+        },
+        {
+          TransactionId: 'bbbbbbbb-bbbb-cccc-dddd-000000000001',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
+          Status: 'Succeeded',
+          TransactionType: 'RefundToBankCard',
+          Total: 5000,
+          RelatedId: source,
+        },
+      ],
+    })
     await f.start({ amountHuf: 5000, operationKey: Buffer.alloc(32, 2).toString('base64url') })
     expect(store.intents.get(f.payload)?.state).toBe('committed')
     expect(f.order.refunds).toHaveLength(2)

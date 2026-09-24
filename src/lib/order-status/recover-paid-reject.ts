@@ -13,13 +13,21 @@ import {
   loadRefundIntentsForOrder,
   transitionRefundIntent,
 } from '../refund/intent-store'
-import { assertUnusedRefundTransaction, RECEIPTS, writeReceipt } from '../refund/recovery-receipts'
+import {
+  assertUnusedRefundTransaction,
+  RECEIPTS,
+  relationId,
+  writeReceipt,
+} from '../refund/recovery-receipts'
 import {
   commitAutomaticRefund,
   isAutomaticRefundIntent,
   isNeverPaidRefundCandidate,
   verifyAutomaticRefundCompletion,
+  type AutomaticRefundCommit,
 } from '../refund/auto-refund-recovery'
+import { recordRefundAttemptOutcome } from '../refund/attempt-audit'
+import { sendRefundNotice } from '../refund/refund-notice'
 import {
   classifyRefundRejection,
   expectedPosTransactionId,
@@ -46,6 +54,7 @@ import {
   RECONCILABLE_LAUNCHED_STATES,
   releaseNeverLaunchedIntent,
 } from '../refund/provider-reconciliation'
+import { BarionApiError } from '../barion'
 import type { Logger } from '../logger'
 import { refundLockKey } from '../refund/refund-order'
 
@@ -282,6 +291,43 @@ interface RunContext {
   log: Logger
   source: RecoverPaidRejectSource
   now: Date
+  /**
+   * A zár alatt EZ a futás által lezárt visszatérítés. A vevői értesítő a zár
+   * elengedése után megy ki (HTTP a rendelés-zár alatt tilos).
+   */
+  committed: AutomaticRefundCommit | null
+}
+
+/**
+ * Egy kimenet nélküli (bizonytalan) automatikus kísérlet riasztása és
+ * műveletnapló-sora (a-riasztas-5, a-refund-9). A kísérlet blokkoló marad;
+ * a következő futás a GetState-ből egyezteti, új pénz-POST nélkül. A
+ * kérésazonosító a hívó loggerének kötéseiből kerül a naplósorba.
+ */
+async function reportUnknownAutomaticAttempt(
+  payload: Payload,
+  intent: RefundIntent,
+  context: RunContext,
+  detail: { errorKind: string; providerErrorCodes: readonly string[]; httpStatus: number | null },
+): Promise<void> {
+  context.log.error(
+    'RIASZTÁS: az automatikus visszatérítés kimenete nem dönthető el a Barion válaszából; a kísérlet blokkol, a fizetés-ellenőrzés a Barion adataiból egyezteti, új visszatérítés addig nem indul',
+    {
+      alertCode: 'automatikus-visszaterites-kimenete-ismeretlen',
+      orderId: relationId(intent.order),
+      source: context.source,
+      amountHuf: intent.requestedAmountHuf,
+      ...detail,
+    },
+  )
+  await recordRefundAttemptOutcome(payload, {
+    intent,
+    outcome: 'unknown',
+    providerErrorCodes: detail.providerErrorCodes,
+    errorKind: detail.errorKind,
+    httpStatus: detail.httpStatus,
+    source: context.source,
+  })
 }
 
 /**
@@ -331,7 +377,7 @@ async function settleActiveAutomaticIntent(
   const { now } = context
   if (!isAutomaticRefundIntent(active)) return PENDING
   if (active.state === 'provider_succeeded') {
-    await commitAutomaticRefund(payload, order, active)
+    context.committed = await commitAutomaticRefund(payload, order, active)
     return { action: 'refunded', detail: 'local-recovery-completed' }
   }
   // A záron belül látott prepared kísérlet indítója már nem fut (ő is ezt a zárat tartja).
@@ -353,7 +399,7 @@ async function settleActiveAutomaticIntent(
     return PENDING
   }
   if (settlement.kind === 'succeeded') {
-    await commitAutomaticRefund(payload, order, settlement.intent)
+    context.committed = await commitAutomaticRefund(payload, order, settlement.intent)
     return { action: 'refunded', detail: 'provider-reconciled' }
   }
   if (settlement.kind === 'no_effect') return afterAutomaticNoEffect(payload, order, context)
@@ -371,8 +417,9 @@ export async function recoverRejectedSucceededPayment(
   if (reason === null && !reconciliationOnly)
     return { action: 'skipped', detail: 'reason-not-refundable' }
   let providerClaimed = false
+  const context: RunContext = { log, source: input.source, now, committed: null }
   try {
-    return await withAdvisoryLock(
+    const result = await withAdvisoryLock<PaidRejectRecoveryResult>(
       payload,
       refundLockKey(input.order.id),
       async () => {
@@ -382,7 +429,6 @@ export async function recoverRejectedSucceededPayment(
           depth: 0,
           overrideAccess: true,
         })
-        const context: RunContext = { log, source: input.source, now }
         const active = await loadActiveRefundIntent(payload, order.id)
         if (active) return settleActiveAutomaticIntent(payload, order, active, state, context)
         const history = await loadRefundIntentsForOrder(payload, order.id)
@@ -521,7 +567,18 @@ export async function recoverRejectedSucceededPayment(
           })
         } catch (error) {
           const rejection = classifyRefundRejection(error)
+          const httpStatus = error instanceof BarionApiError ? (error.httpStatus ?? null) : null
           if (!rejection) {
+            await reportUnknownAutomaticAttempt(payload, intent, context, {
+              errorKind: error instanceof BarionApiError ? error.kind : 'unknown',
+              providerErrorCodes:
+                error instanceof BarionApiError && Array.isArray(error.providerErrors)
+                  ? error.providerErrors
+                      .map((item) => item?.ErrorCode)
+                      .filter((code): code is string => typeof code === 'string')
+                  : [],
+              httpStatus,
+            })
             try {
               await transitionRefundIntent(payload, intent, 'provider_unknown')
             } catch {
@@ -529,6 +586,16 @@ export async function recoverRejectedSucceededPayment(
             }
             return PENDING
           }
+          // Az elutasítás minden kísérletnél a műveletnaplóba kerül (vita,
+          // visszaterhelés); a riasztást a sorozat-szabály fojtja (fent).
+          await recordRefundAttemptOutcome(payload, {
+            intent,
+            outcome: 'rejected',
+            providerErrorCodes: rejection.codes,
+            errorKind: error instanceof BarionApiError ? error.kind : 'unknown',
+            httpStatus,
+            source: input.source,
+          })
           let failed: RefundIntent
           try {
             failed = await transitionRefundIntent(
@@ -563,7 +630,16 @@ export async function recoverRejectedSucceededPayment(
           amountHuf: intent.requestedAmountHuf,
         })
         if (!proof) {
-          await transitionRefundIntent(payload, intent, 'provider_unknown')
+          await reportUnknownAutomaticAttempt(payload, intent, context, {
+            errorKind: 'unprovable-response',
+            providerErrorCodes: [],
+            httpStatus: null,
+          })
+          try {
+            await transitionRefundIntent(payload, intent, 'provider_unknown')
+          } catch {
+            /* The launch claim remains blocking. */
+          }
           return PENDING
         }
         await assertUnusedRefundTransaction(payload, intent, proof.refundTransactionId)
@@ -579,17 +655,41 @@ export async function recoverRejectedSucceededPayment(
           type: 'full',
         })
         intent = await transitionRefundIntent(payload, intent, 'provider_succeeded')
-        await commitAutomaticRefund(payload, order, intent)
+        context.committed = await commitAutomaticRefund(payload, order, intent)
         return { action: 'refunded' as const }
       },
       log,
     )
+    // A vevői értesítő a zár elengedése után, csak a lezárást végző futástól
+    // (a committed átmenet egyetlen feltételes írás). Sosem dob.
+    if (context.committed)
+      await sendRefundNotice({
+        payload,
+        ...context.committed,
+        kind: 'order-not-accepted',
+        document: 'none',
+        logger: log,
+      })
+    return result
   } catch {
-    log.warn('paid-reject recovery: tartós állapot ellenőrzése szükséges', {
-      orderId: input.order.id,
-      source: input.source,
-      reason: input.reason,
-    })
+    // A Barion-kérés elindítása után a pénz sorsa a tartós kísérleten múlik:
+    // ez riasztás, a következő futás a GetState-ből egyeztet.
+    if (providerClaimed)
+      log.error(
+        'RIASZTÁS: az automatikus visszatérítés a Barion-kérés után megszakadt, a kimenet rögzítése nem fejeződött be; a fizetés-ellenőrzés a Barion adataiból egyezteti',
+        {
+          alertCode: 'automatikus-visszaterites-kimenete-ismeretlen',
+          orderId: input.order.id,
+          source: input.source,
+          reason: input.reason,
+        },
+      )
+    else
+      log.warn('paid-reject recovery: tartós állapot ellenőrzése szükséges', {
+        orderId: input.order.id,
+        source: input.source,
+        reason: input.reason,
+      })
     return {
       action: 'failed',
       detail: providerClaimed ? 'refund-pending-reconciliation' : 'refund-reconciliation-required',

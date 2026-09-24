@@ -106,7 +106,11 @@ function chunked(chunks: Uint8Array[]) {
     if (next === undefined) controller.close()
     else controller.enqueue(next)
   })
-  return { stream: new ReadableStream<Uint8Array>({ pull, cancel }, { highWaterMark: 0 }), pull, cancel }
+  return {
+    stream: new ReadableStream<Uint8Array>({ pull, cancel }, { highWaterMark: 0 }),
+    pull,
+    cancel,
+  }
 }
 
 describe('refund route bounded input contract', () => {
@@ -174,7 +178,10 @@ describe('refund route bounded input contract', () => {
     const bytes = encoder.encode(body)
     const split = bytes.indexOf(0xc3) + 1
     const source = chunked([bytes.slice(0, split), bytes.slice(split, 20000), bytes.slice(20000)])
-    await expectAccepted(request(source.stream, { 'transfer-encoding': 'chunked' }), JSON.parse(body))
+    await expectAccepted(
+      request(source.stream, { 'transfer-encoding': 'chunked' }),
+      JSON.parse(body),
+    )
     expect(source.cancel).not.toHaveBeenCalled()
   })
 
@@ -267,5 +274,25 @@ describe('refund route bounded input contract', () => {
     expect(text).not.toHaveBeenCalled()
     expect(body).not.toHaveBeenCalled()
     expect(service.run).not.toHaveBeenCalled()
+  })
+})
+
+describe('refund route request identity (a-refund-9)', () => {
+  it('a bejövő kérésazonosítót és a kliens IP-címét a szolgáltatásnak adja a műveletnapló-sorhoz', async () => {
+    service.run.mockResolvedValue(result as unknown as RefundOrderResult)
+    const response = await fixture().run(
+      request('{}', { 'x-request-id': 'SYNTHETIC-REQ-0042', 'x-forwarded-for': '203.0.113.9' }),
+    )
+    expect(response.status).toBe(200)
+    expect(service.run.mock.calls[0]?.[0]).toMatchObject({
+      requestId: 'SYNTHETIC-REQ-0042',
+      ipAddress: '203.0.113.9',
+    })
+  })
+
+  it('azonosító nélküli kérésnél is ad kérésazonosítót', async () => {
+    service.run.mockResolvedValue(result as unknown as RefundOrderResult)
+    await fixture().run(request('{}'))
+    expect(service.run.mock.calls[0]?.[0].requestId).toMatch(/^[A-Za-z0-9._-]{1,128}$/u)
   })
 })

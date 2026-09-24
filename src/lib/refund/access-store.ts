@@ -29,7 +29,33 @@ interface GrantVersion {
   sourceOrder?: number | null
 }
 
-export type RefundAccessCleanupResult = { status: 'completed' | 'manual_review' }
+/**
+ * Miért nem vonható vissza automatikusan egy kurzus hozzáférése (a-refund-10).
+ * - grant-provenance: a vevőnek nincs ehhez a rendeléshez kötött
+ *   hozzáférés-sora a kurzusra, vagy eredet nélküli (örökölt, átállásból
+ *   jött) sora is van: a rendelés nem bizonyítja, hogy a hozzáférés tőle
+ *   származik, ezért a rendszer nem vesz el semmit.
+ * - access-changed: a vevő hozzáférései a visszatérítés előkészítése óta
+ *   megváltoztak (új vásárlás, ajándék, kézi módosítás), vagy a változatlanság
+ *   nem bizonyítható (a tranzakció-azonosító ablakon kívüli megfigyelés).
+ * A tulajdonosi üzenet (refund-recovery.ts) ebből nevezi meg a kurzust és a
+ * következő lépést. A jogosultság-szabály maga nem változik.
+ */
+export type RefundAccessCleanupDetail = 'grant-provenance' | 'access-changed'
+
+export type RefundAccessCleanupResult =
+  | { status: 'completed' }
+  | { status: 'manual_review'; detail?: RefundAccessCleanupDetail; productId?: number }
+
+class AccessCleanupFailure extends Error {
+  constructor(
+    readonly detail: RefundAccessCleanupDetail,
+    readonly productId: number,
+  ) {
+    super(`Refund access cleanup: ${detail}`)
+    this.name = 'AccessCleanupFailure'
+  }
+}
 
 interface Executor {
   execute(query: SQL): Promise<unknown>
@@ -482,10 +508,12 @@ export async function applyRefundAccessCleanup(
           ) ||
           relevant.some((grant) => grant.sourceKind == null)
         )
-          fail()
-        if (!unchangedGrants(baseline, current, product)) fail()
+          throw new AccessCleanupFailure('grant-provenance', product)
+        if (!unchangedGrants(baseline, current, product))
+          throw new AccessCleanupFailure('access-changed', product)
         const original = baseline.purchases.filter((row) => row.productId === product)
-        if (!isDeepStrictEqual(existing, original)) fail()
+        if (!isDeepStrictEqual(existing, original))
+          throw new AccessCleanupFailure('access-changed', product)
         deleted.push(...existing)
       }
       if (deleted.length) {
@@ -537,7 +565,11 @@ export async function applyRefundAccessCleanup(
         fail()
       return COMPLETED
     })
-  } catch {
-    return MANUAL
+  } catch (error) {
+    // A tranzakció visszagördült: hozzáférés nem veszett el. A kurzus és az ok
+    // a tulajdonosi üzenethez megy; minden más hiba részlet nélküli kézi eset.
+    return error instanceof AccessCleanupFailure
+      ? { status: 'manual_review', detail: error.detail, productId: error.productId }
+      : MANUAL
   }
 }

@@ -19,6 +19,14 @@ export const RECEIPTS = {
   invoiceDone: 'refund-invoice-done',
 } as const
 
+/**
+ * A helyesbítő újrapróbáló jobja sorba állt (a-refund-4): a panel ebből tudja,
+ * hogy a rendszer a háttérben még keresi a bizonylatot. Tájékoztató jelzés,
+ * nem bizonyíték: a kísérlet lezárását nem befolyásolja, ezért nincs a
+ * lezárást hordozó RECEIPTS között.
+ */
+export const REFUND_INVOICE_RETRY_QUEUED_ACTION = 'refund-invoice-retry-queued'
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

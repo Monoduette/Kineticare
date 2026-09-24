@@ -1,4 +1,4 @@
-import { fixture, store } from '../refund-fixture'
+import { fixture, locks, mail, store } from '../refund-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -1219,6 +1219,8 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
             now,
           })
         const alerts = () => calls.error.filter((message) => message.startsWith('RIASZTÁS'))
+        // A leállás riasztása; a bizonytalan kimenetű kísérletről külön riasztás szól.
+        const stopAlerts = () => alerts().filter((message) => message.includes('leállt'))
         if (kind === 'stuck-prepared') {
           await intentStore.createRefundIntent(
             f.payload,
@@ -1245,7 +1247,8 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
           // Az ablakon belül elindult kísérlet válasza elveszett.
           await run(at(1))
           expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
-          expect(alerts()).toEqual([])
+          // a-riasztas-5: a kimenet nélküli kísérlet azonnal riaszt, leállást nem mond.
+          expect(alerts()).toEqual([expect.stringContaining('kimenete nem dönthető el')])
         }
         // Ez a futás zárja le az utolsó kísérletet: a következő ideje (+1 óra)
         // az ablak utánra esne, és utána nem jön futás, amely riaszthatna.
@@ -1258,8 +1261,8 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
           state: 'provider_failed',
           activeOrderKey: null,
         })
-        expect(alerts()).toEqual([expect.stringContaining('leállt')])
-        expect(alerts()[0]).not.toContain('újrapróbálja')
+        expect(stopAlerts()).toEqual([expect.stringContaining('leállt')])
+        expect(stopAlerts()[0]).not.toContain('újrapróbálja')
         const posts = refund.mock.calls.length
         expect(await run(at(60 * 24 * 3))).toEqual({
           action: 'failed',
@@ -1303,9 +1306,13 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
           action: 'failed',
           detail: 'automatic-refund-window-closed',
         })
-        expect(alerts()).toEqual([expect.stringContaining('leállt')])
-        expect(alerts()[0]).toContain('egy héttel már nem nézi')
-        expect(alerts()[0]).not.toContain('újrapróbálja')
+        // Az első a kimenet nélküli kísérleté (a-riasztas-5), a második a leállásé.
+        expect(alerts()).toEqual([
+          expect.stringContaining('kimenete nem dönthető el'),
+          expect.stringContaining('leállt'),
+        ])
+        expect(alerts()[1]).toContain('egy héttel már nem nézi')
+        expect(alerts()[1]).not.toContain('újrapróbálja')
         expect(refund).toHaveBeenCalledTimes(1)
       })
     })
@@ -1584,5 +1591,159 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
       kind: 'stop',
       detail: 'automatic-refund-rejected',
     })
+  })
+})
+
+describe('automatikus visszatérítés: riasztás, műveletnapló és vevői értesítő (a-riasztas-5, a-refund-9, a-refund-6)', () => {
+  const REFUND_ID = 'dddddddd-eeee-ffff-0000-222222222222'
+
+  function spy() {
+    const errors: Array<{ message: string; context: Record<string, unknown> }> = []
+    const log: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: (message, context) => {
+        errors.push({ message, context: (context ?? {}) as Record<string, unknown> })
+      },
+      child: () => log,
+    }
+    return { log, alerts: () => errors.filter((entry) => entry.message.startsWith('RIASZTÁS')) }
+  }
+
+  function setup(refund: ReturnType<typeof vi.fn>) {
+    const order = createOrder({ customerEmail: 'vasarlo@example.test' })
+    const f = fixture(order)
+    const { log, alerts } = spy()
+    const run = (now: Date) =>
+      recoverRejectedSucceededPayment({
+        payload: f.payload,
+        order,
+        state: createState(),
+        reason: 'duplicate-paid-order',
+        log,
+        source: 'callback',
+        refundPayment: refund as never,
+        now,
+      })
+    return { order, f, run, alerts }
+  }
+
+  it('értékelhetetlen Barion-válasz: azonnali RIASZTÁS a kóddal, „unknown” műveletnapló-sor, új POST nincs', async () => {
+    const refund = vi.fn().mockRejectedValue(
+      new BarionApiError({
+        kind: 'http',
+        message: 'SYNTHETIC',
+        endpoint: 'POST /v2/Payment/Refund',
+        httpStatus: 500,
+        providerErrors: [{ ErrorCode: 'InternalServerError', Title: 'S', Description: 'S' }],
+      }),
+    )
+    const { f, run, alerts } = setup(refund)
+    expect(await run(at(1))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
+    expect(alerts()).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          source: 'callback',
+          providerErrorCodes: ['InternalServerError'],
+          httpStatus: 500,
+          amountHuf: ORDER_TOTAL_HUF,
+        }),
+      }),
+    ])
+    expect(f.audits.filter((row) => row.action === 'refund-provider-unknown')).toEqual([
+      expect.objectContaining({
+        after: expect.objectContaining({
+          outcome: 'unknown',
+          actorKind: 'system',
+          systemActor: 'paid-reject-recovery',
+          source: 'callback',
+          providerErrorCodes: ['InternalServerError'],
+          amountHuf: ORDER_TOTAL_HUF,
+        }),
+      }),
+    ])
+    await run(at(2))
+    expect(refund).toHaveBeenCalledTimes(1)
+  })
+
+  it('végleges elutasítás: minden kísérlet műveletnapló-sort kap a hibakóddal', async () => {
+    const refund = vi.fn().mockRejectedValue(
+      new BarionApiError({
+        kind: 'http',
+        message: 'SYNTHETIC',
+        endpoint: 'POST /v2/Payment/Refund',
+        httpStatus: 400,
+        providerErrors: [{ ErrorCode: 'TooLowBalanceToMakeRefund', Title: 'S', Description: 'S' }],
+      }),
+    )
+    const { f, run } = setup(refund)
+    await run(at(1))
+    expect(f.audits.filter((row) => row.action === 'refund-provider-rejected')).toEqual([
+      expect.objectContaining({
+        after: expect.objectContaining({
+          outcome: 'rejected',
+          providerErrorCodes: ['TooLowBalanceToMakeRefund'],
+          amountHuf: ORDER_TOTAL_HUF,
+          source: 'callback',
+        }),
+      }),
+    ])
+  })
+
+  it('sikeres automatikus visszatérítés: egy vevői értesítő a rendelés-záron kívül, ismételt futásnál nem', async () => {
+    const refund = vi.fn().mockResolvedValue({
+      PaymentId: PAYMENT_ID,
+      RefundedTransactions: [
+        {
+          TransactionId: REFUND_ID,
+          POSTransactionId: POS_TRANSACTION_ID,
+          Total: ORDER_TOTAL_HUF,
+          Status: 'Succeeded',
+        },
+      ],
+    })
+    const { order, f, run } = setup(refund)
+    const heldAtSend: string[][] = []
+    mail.send.mockImplementation(async () => {
+      heldAtSend.push([...locks.held])
+      return { ok: true, provider: 'resend', id: 'SYNTHETIC-MSG-AUTO' }
+    })
+    expect(await run(at(1))).toEqual({ action: 'refunded' })
+    const intent = store.intents.get(f.payload)!
+    expect(intent.state).toBe('committed')
+    expect(mail.send).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        to: 'vasarlo@example.test',
+        idempotencyKey: `refund:${intent.id}`,
+        text: expect.stringContaining('nem tudtuk teljesíteni'),
+      }),
+    )
+    expect(heldAtSend[0]).not.toContain(`order:mutate:${order.id}`)
+    expect(await run(at(2))).toEqual({ action: 'refunded', detail: 'already-refunded' })
+    expect(mail.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('a K12 számla-kapu az automatikus visszatérítést nem érinti', async () => {
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
+    try {
+      const refund = vi.fn().mockResolvedValue({
+        PaymentId: PAYMENT_ID,
+        RefundedTransactions: [
+          {
+            TransactionId: REFUND_ID,
+            POSTransactionId: POS_TRANSACTION_ID,
+            Total: ORDER_TOTAL_HUF,
+            Status: 'Succeeded',
+          },
+        ],
+      })
+      const { run } = setup(refund)
+      expect(await run(at(1))).toEqual({ action: 'refunded' })
+      expect(refund).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

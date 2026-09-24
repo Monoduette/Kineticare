@@ -231,7 +231,13 @@ describe('bounded SQL refund access cleanup', () => {
       const baseline = await db.prepare()
       expect(
         await applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
-      ).toEqual({ status: 'manual_review' })
+      ).toEqual(
+        // a-refund-10: a kurzus és az ok a tulajdonosi üzenetnek szól; az
+        // ismeretlen rendelésre mutató eredet az általános ellenőrzésen bukik.
+        kind === 'unrelated'
+          ? { status: 'manual_review' }
+          : { status: 'manual_review', detail: 'grant-provenance', productId: 5 },
+      )
       expect(db.state.purchases).toContainEqual({ id: 101, productId: 5 })
       expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
     },
@@ -345,7 +351,7 @@ describe('bounded SQL refund access cleanup', () => {
     db.state.purchases[0] = { id: 201, productId: 5 }
     await expect(
       applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
-    ).resolves.toEqual({ status: 'manual_review' })
+    ).resolves.toEqual({ status: 'manual_review', detail: 'access-changed', productId: 5 })
     expect(db.state.purchases).toContainEqual({ id: 201, productId: 5 })
     expect(db.queries.some((query) => query.sql.startsWith('DELETE'))).toBe(false)
   })
@@ -360,7 +366,7 @@ describe('bounded SQL refund access cleanup', () => {
       db.state.grants = phase === 'baseline' ? [] : [grant]
       await expect(
         applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
-      ).resolves.toEqual({ status: 'manual_review' })
+      ).resolves.toEqual({ status: 'manual_review', detail: 'grant-provenance', productId: 5 })
       expect(db.state.purchases).toContainEqual({ id: 101, productId: 5 })
     },
   )
@@ -473,7 +479,7 @@ describe('bounded SQL refund access cleanup', () => {
       })
       await expect(
         applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
-      ).resolves.toEqual({ status: 'manual_review' })
+      ).resolves.toEqual({ status: 'manual_review', detail: 'access-changed', productId: 5 })
       expect(db.state.purchases).toHaveLength(2)
       expect(db.state.receipts['refund-cleanup-done']).toBeUndefined()
     },
@@ -501,7 +507,12 @@ describe('bounded SQL refund access cleanup', () => {
     db.state.xidCeiling = ceiling
     await expect(
       applyRefundAccessCleanup(db.payload, { intent, baseline, productIds: [5] }),
-    ).resolves.toEqual({ status: 'manual_review' })
+    ).resolves.toEqual(
+      // Az összefüggéstelen minta már a zárolt olvasásnál bukik, részlet nélkül.
+      full === '1100' && ceiling === '1099'
+        ? { status: 'manual_review' }
+        : { status: 'manual_review', detail: 'access-changed', productId: 5 },
+    )
     expect(db.state.purchases).toHaveLength(2)
   })
 
