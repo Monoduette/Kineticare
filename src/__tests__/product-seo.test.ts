@@ -210,7 +210,7 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(jsonLd.description).toBe('Nyolc hetes otthoni kézrehabilitációs program.')
     expect(jsonLd.image).toEqual([absoluteUrl('/media/borito.webp')])
     // A sku szóköz és ékezet nélküli gépi azonosító (Google: whitespace tilos).
-    expect(jsonLd.sku).toBe(`Kez-rehab-alapprogram-${doc.id}`)
+    expect(jsonLd.sku).toBe(`KC-${doc.id}`)
     expect(jsonLd.brand).toEqual({ '@type': 'Brand', name: 'Kineticare' })
     expect(jsonLd.url).toBe(absoluteUrl('/kurzusok/7'))
     expect(jsonLd.inLanguage).toBe('hu-HU')
@@ -345,7 +345,7 @@ describe('slugos kurzus-URL a SEO-rétegben', () => {
     })
     const jsonLd = jsonLdFor(named)
     expect(jsonLd.name).toBe('Kéztorna otthon — 8 hetes program')
-    expect(jsonLd.sku).toBe('KURZUS-001')
+    expect(jsonLd.sku).toBe(`KC-${named.id}`)
     expect(resolveSeoTitle(productSeoDoc(named))).toBe('Kéztorna otthon — 8 hetes program')
   })
 })
@@ -355,13 +355,13 @@ describe('structuredDataSku', () => {
     expect(structuredDataSku('Otthoni KézRehab Program')).toBe('Otthoni-KezRehab-Program')
     expect(structuredDataSku('SOS Kézrelax villámkurzus')).toBe('SOS-Kezrelax-villamkurzus')
     expect(structuredDataSku('KURZUS-001')).toBe('KURZUS-001')
-    expect(structuredDataSku('KURZUS-001', 7)).toBe('KURZUS-001')
   })
 
-  it('veszteséges átalakításnál a termék-id is bekerül (egyedi marad)', () => {
-    expect(structuredDataSku('A B', 1)).toBe('A-B-1')
-    expect(structuredDataSku('A-B', 2)).toBe('A-B')
-    expect(structuredDataSku('Otthoni KézRehab Program', 12)).toBe('Otthoni-KezRehab-Program-12')
+  it('ismert termék-id mellett KC-<id> (ütközésmentes, stabil)', () => {
+    expect(structuredDataSku('A B', 1)).toBe('KC-1')
+    expect(structuredDataSku('A-B-1', 2)).toBe('KC-2')
+    expect(structuredDataSku('Otthoni KézRehab Program', 12)).toBe('KC-12')
+    expect(structuredDataSku('', 12)).toBeUndefined()
     expect(structuredDataSku('  Kéztorna otthon — 8 hetes  ')).toBe('Keztorna-otthon-8-hetes')
   })
 

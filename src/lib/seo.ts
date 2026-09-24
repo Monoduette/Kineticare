@@ -896,28 +896,31 @@ export function breadcrumbJsonLd(
  * A Google termék-strukturált adatában a `sku` NEM tartalmazhat szóközt, és
  * ASCII ajánlott (Search Central, Merchant listing: „The sku value must not
  * contain any whitespace characters”). A CMS `sku` mezőjébe viszont emberi
- * név kerül (pl. „Otthoni KézRehab Program”), ezért itt gépi azonosítóvá
- * alakítjuk: ékezet le, minden nem [A-Za-z0-9._-] jel-sorozat helyett `-`.
- * Ha az átalakítás VESZTESÉGES volt (két különböző CMS-érték, pl. „A B” és
- * „A-B” ugyanarra képződne), a termék azonosítója is a végére kerül, így az
- * eredmény termékenként egyedi marad. A CMS-adat NEM változik; üres
- * eredménynél a mező kimarad.
+ * név kerül (pl. „Otthoni KézRehab Program”).
+ *
+ * Ha a termék adatbázis-azonosítója ismert, a sku `KC-<id>`: szabályos,
+ * stabil és ütközésmentes (az id egyedi, a CMS-sku normalizálása viszont
+ * két különböző értéket is azonos alakra hozhatna). Ugyanezt az azonosítót
+ * használja a Barion és a Meta Pixel is (`content_ids`). Id nélkül a CMS-érték
+ * gépi alakja megy ki (ékezet le, nem [A-Za-z0-9._-] jelek helyett `-`).
+ * Üres CMS-sku esetén a mező kimarad. A CMS-adat NEM változik.
  */
 export function structuredDataSku(
   raw: string | null | undefined,
   productId?: number | string,
 ): string | undefined {
-  if (typeof raw !== 'string') return undefined
-  const trimmed = raw.trim()
-  const ascii = trimmed
+  if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+  if (productId !== undefined && String(productId).length > 0) {
+    return `KC-${String(productId)}`
+  }
+  const ascii = raw
+    .trim()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
-  if (ascii.length === 0) return undefined
-  if (ascii === trimmed || productId === undefined) return ascii
-  return `${ascii}-${String(productId)}`
+  return ascii.length > 0 ? ascii : undefined
 }
 
 /**
