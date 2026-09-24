@@ -114,10 +114,28 @@ function allowedCallbackSourceIps(): readonly string[] {
 
 /**
  * Egy már paid-re zárt fizetésre érkező újabb callback visszatérítés-egyeztetést
- * indít, de PaymentId-nként legfeljebb ennyi időnként: az ismert PaymentId-t
- * bárki újraküldheti, és minden egyeztetés egy PaymentState-hívás.
+ * indít. Időablakos fojtás NINCS: egy korábbi kézbesítés nem nyelheti el a
+ * pár perccel később, a Barion felületén indított visszatérítés callbackjét
+ * (annak jelzése különben elveszne, mert később semmi nem venné fel). A
+ * PaymentState-terhelést a fetchPaymentState PaymentId-nkénti kapuja korlátozza
+ * (legfeljebb egy hívás 5,5 s-onként); itt csak az egyidejű kézbesítések
+ * vonódnak össze: amíg egy egyeztetés függőben van vagy fut, az újabb
+ * kézbesítés csak megjelöli, és a futó egyeztetés a végén (a kapun át) még
+ * egyszer lefut. Így PaymentId-nként egyszerre legfeljebb egy egyeztetés él, és
+ * jelzés nem vész el. A nyilvántartás a handler-példányé (az útvonal modulja
+ * egyetlen példányt hoz létre, tehát folyamatszintű).
  */
-export const PAID_RECONCILIATION_COOLDOWN_MS = 10 * 60 * 1000
+interface PaidReconciliationSlot {
+  /** Mióta áll fenn (egy beragadt bejegyzés ne tiltsa örökre az egyeztetést). */
+  since: number
+  /** Futás közben érkezett újabb kézbesítés: a futás végén még egy kör kell. */
+  dirty: boolean
+}
+/**
+ * Ennél régebbi bejegyzés beragadtnak számít (egy egyeztetés a kapuval, a 429
+ * utáni várakozással és két 15 s-os timeouttal is jóval rövidebb).
+ */
+const PAID_RECONCILIATION_STALE_MS = 5 * 60 * 1000
 /** Lezárt (cancelled) fizetés újraellenőrzése: csak ennél fiatalabb rendelésre (r-barion-7). */
 export const CANCELLED_RECHECK_MAX_ORDER_AGE_MS = 24 * 60 * 60 * 1000
 /** A lezárt fizetés újraellenőrzésének fojtása PaymentId-nként. */
@@ -227,6 +245,7 @@ function guarded(log: Logger, what: string, task: () => Promise<void>): () => Pr
 
 export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
   const schedule = deps.schedule ?? ((task: () => Promise<void>) => after(task))
+  const paidReconciliationSlots = new Map<string, PaidReconciliationSlot>()
 
   return async function POST(request: Request): Promise<Response> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
@@ -337,25 +356,41 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
           // a-callback-6, a-refund-7: a paid lezárás után érkező callback a
           // Barion szerint egy újabb tranzakció (tipikusan visszatérítés, akár a
           // Barion felületén indított). Könnyű egyeztetés a háttérben, állapot-
-          // és pénzmozgás nélkül; PaymentId-nként fojtva.
-          const reconcile = shouldEmitThrottledAlert(
-            `callback-refund-reconciliation:${paymentId}`,
-            PAID_RECONCILIATION_COOLDOWN_MS,
-          )
+          // és pénzmozgás nélkül; az egyidejű kézbesítések összevonva (lásd
+          // paidReconciliationSlots).
+          const nowMs = Date.now()
+          const slot = paidReconciliationSlots.get(paymentId)
+          const pending = slot !== undefined && nowMs - slot.since < PAID_RECONCILIATION_STALE_MS
           eventLog.info('barion-callback: kézbesítés egy már paid eseményre — no-op 200', {
-            refundReconciliation: reconcile ? 'utemezve' : 'fojtva',
+            refundReconciliation: pending ? 'osszevonva' : 'utemezve',
           })
-          if (reconcile) {
+          if (pending) {
+            slot.dirty = true
+          } else {
+            const ownSlot: PaidReconciliationSlot = { since: nowMs, dirty: false }
+            paidReconciliationSlots.set(paymentId, ownSlot)
             schedule(
               guarded(eventLog, 'a visszatérítés-egyeztetés', async () => {
-                const order = await findOrderByPaymentId(payload, paymentId)
-                if (order) {
-                  await runRefundReconciliation({
-                    payload,
-                    order,
-                    trigger: 'callback',
-                    logger: eventLog,
-                  })
+                try {
+                  // A futás ELŐTT érkezett kézbesítéseket ez a futás már látja
+                  // (a GetState utánuk megy ki); csak a futás KÖZBEN érkezők
+                  // kérnek még egy kört.
+                  do {
+                    ownSlot.dirty = false
+                    const order = await findOrderByPaymentId(payload, paymentId)
+                    if (order) {
+                      await runRefundReconciliation({
+                        payload,
+                        order,
+                        trigger: 'callback',
+                        logger: eventLog,
+                      })
+                    }
+                  } while (ownSlot.dirty)
+                } finally {
+                  if (paidReconciliationSlots.get(paymentId) === ownSlot) {
+                    paidReconciliationSlots.delete(paymentId)
+                  }
                 }
               }),
             )

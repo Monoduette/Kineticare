@@ -13,6 +13,7 @@ import {
   ORDER_POLL_BATCH_SIZE,
   ORPHAN_ORDER_GRACE_MS,
   pollPendingOrders,
+  REFUND_RECHECK_BATCH_SIZE,
   RUN_LEVEL_ALERT_COOLDOWN_MS,
   STUCK_ORDER_WARN_MS,
   UNKNOWN_PAYMENT_CANCEL_AFTER_MS,
@@ -4787,6 +4788,41 @@ describe('paid-reject végleges leállása: igaz szöveg, fojtott RIASZTÁS, for
     },
   )
 
+  // Lead (d): a nem végleges ok (a következő futás valóban újra ellenőrzi)
+  // korábban minden 5 perces futásban új RIASZTÁS-sort írt ugyanarra az ügyre.
+  it('nem végleges ok (historical-refund-reconciliation-required): 3 futás alatt 1 RIASZTÁS, a recovery minden futásban lefut', async () => {
+    const clock = { now: NOW }
+    const row = pendingRow(2202, 1)
+    const payload = ordersTable([row], clock)
+    const { log, errors } = timedLog(clock)
+    const recoverRejectedPaid = vi.fn(async () => ({
+      action: 'failed' as const,
+      detail: 'historical-refund-reconciliation-required',
+    }))
+
+    for (let run = 0; run < 3; run += 1) {
+      clock.now = NOW + run * POLL_INTERVAL_MS
+      await pollPendingOrders({
+        payload: payload as never,
+        fetchState: async (paymentId: string) =>
+          getStateResponse('Succeeded', { PaymentId: paymentId }),
+        applyTransition: (async () => ({
+          action: 'rejected' as const,
+          reason: 'duplicate-paid-order',
+        })) as never,
+        recoverRejectedPaid,
+        now: clock.now,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(3)
+    const alerts = errors.filter((entry) => entry.message.includes('paid-reject recovery'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toContain('a következő futás újra ellenőrzi')
+  })
+
   it('lezárt sornál a végleges leállás lezárja az ellenőrzési pontot: a következő futás nem hív GetState-et', async () => {
     const clock = { now: NOW }
     const row = dueLateRow(2201)
@@ -4888,6 +4924,31 @@ describe('a-callback-9: árva rendelés lezárása előtt a gazdátlan Barion-ca
     })
 
     expect(fetchState).not.toHaveBeenCalled()
+    expect(summary.orphaned).toBe(1)
+  })
+
+  // Breaker BRK-3: a Barion definitív „nincs ilyen fizetés” válasza (hamis GUID,
+  // a másik Barion-környezet fizetése) korábban „nem ellenőrizhető”-nek számított,
+  // és 48 óráig tartotta függőben az árva rendelést.
+  it('a gazdátlan eseményre a Barion NotExistingPaymentId-t ad → nem jelölt, a 25 órás árva rendelés lezárul', async () => {
+    const order = orphan(25)
+    const f = setup({
+      pending: [order],
+      webhookEvents: [{ id: 1, externalId: ORPHAN_PAYMENT_ID, result: 'rejected' }],
+    })
+    const fetchState = vi.fn(async () => {
+      throw notExistingPaymentId()
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledWith(ORPHAN_PAYMENT_ID)
+    expect(order.status).toBe('cancelled')
     expect(summary.orphaned).toBe(1)
   })
 
@@ -5014,5 +5075,105 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
     })
 
     expect(fetchState).not.toHaveBeenCalled()
+  })
+
+  // Breaker BRK-4: a részleges visszatérítés a rendelést paid-en hagyja, a
+  // rendelés refundedAt-je üres, csak a refunds[].refundedAt hordozza az időt.
+  it('részleges visszatérítés (a rendelés paid, refundedAt üres) 7,5 nap után is újra egyeztetve: a sztornó RIASZTÁS-t ad', async () => {
+    const refundedIso = new Date(NOW - 7.5 * 24 * HOUR_MS).toISOString()
+    const order = createPendingOrder({
+      id: 2401,
+      status: 'paid',
+      invoiceStatus: 'issued',
+      refunds: [
+        {
+          transactionId: SOURCE_TX_ID,
+          amountHuf: 5000,
+          status: 'Succeeded',
+          refundedAt: refundedIso,
+          type: 'partial',
+        },
+      ],
+    } as Partial<Order>)
+    expect(order.refundedAt ?? null).toBeNull()
+    const f = setup({ pending: [], paidResweep: [order] })
+    const fetchState = vi.fn(async () =>
+      getStateResponse('Succeeded', {
+        Total: ORDER_TOTAL_HUF - 5000,
+        Transactions: [
+          {
+            TransactionId: SOURCE_TX_ID,
+            POSTransactionId: `${ORDER_NUMBER}-1`,
+            TransactionType: 'CardPayment',
+            Status: 'Succeeded',
+            Total: ORDER_TOTAL_HUF,
+          },
+          {
+            TransactionId: 'abababab-0000-4000-8000-000000000002',
+            TransactionType: 'RefundToBankCard',
+            Status: 'Succeeded',
+            Total: 5000,
+            RelatedId: SOURCE_TX_ID,
+          },
+          {
+            TransactionId: 'abababab-0000-4000-8000-000000000003',
+            TransactionType: 'StornoUnSuccessfulRefundToBankCard',
+            Status: 'Succeeded',
+            Total: 5000,
+            RelatedId: SOURCE_TX_ID,
+          },
+        ],
+      }),
+    )
+    const { log, errors } = contextLog()
+
+    await pollPendingOrders({
+      ...f,
+      payload: withLedger(f, order.id),
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    const alert = errors.find((entry) =>
+      entry.message.startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({ findings: ['refund-reversal'] })
+  })
+
+  // Lead (a): a sáv első 5 (már ellenőrzött, fojtott) sora korábban minden
+  // futásban újra az 5-ös lapot töltötte ki, a 6. visszatérítés sosem került sorra.
+  it('hat visszatérítés ugyanabban a sávban: futásonként legfeljebb 5 GetState, a 6. a következő futásban kerül sorra', async () => {
+    const orders = [2410, 2411, 2412, 2413, 2414, 2415].map((id, index) => {
+      const order = refundedOrder(7.1 + index * 0.1)
+      order.id = id
+      return order
+    })
+    const f = setup({ pending: [], paidResweep: orders })
+    const payload = {
+      ...(f.payload as unknown as Record<string, unknown>),
+      db: { drizzle: emptyRefundLedger(orders.map((order) => order.id)) },
+    } as unknown as Payload
+    const fetchState = vi.fn(async () => reversedState())
+
+    await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState,
+      now: NOW,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState).toHaveBeenCalledTimes(REFUND_RECHECK_BATCH_SIZE)
+
+    await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState,
+      now: NOW + POLL_INTERVAL_MS,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState).toHaveBeenCalledTimes(6)
   })
 })

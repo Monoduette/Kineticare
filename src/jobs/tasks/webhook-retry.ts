@@ -29,6 +29,13 @@ import { createStaleAwareBeforeSchedule } from '../schedule-guard'
  * egyidejű callbackkel két feldolgozás és két PaymentState versenyzett. A zár
  * session-szintű (dedikált kapcsolat, nincs tétlen tranzakció), mert a
  * feldolgozás a záron belül HTTP-t is hív (GetState, visszaigazoló levél).
+ * Eltérés a route-tól: a route a runBarionCallbackEvent-et futtatja (GetState a
+ * zár ELŐTT, onOrderPaid a zár UTÁN), a retry viszont a regisztrált
+ * feldolgozót, így itt a GetState és a levél a záron BELÜL fut, és a dedikált
+ * kapcsolat a HTTP idejére (legrosszabb esetben kb. 40 s: kapu + 429-várakozás
+ * + két 15 s-os timeout) foglalt. Egy közben érkező route-feldolgozás a zár
+ * 30 s-os várakozási korlátján elbukhat; az esemény ilyenkor failed marad, és a
+ * következő retry viszi (adatvesztés nincs).
  */
 const RETRY_BATCH_SIZE = 25
 

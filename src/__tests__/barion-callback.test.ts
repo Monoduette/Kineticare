@@ -6,6 +6,7 @@ import { resetAlertThrottle } from '../lib/alert-throttle'
 import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
 import { compareRefundsWithPaymentState } from '../lib/barion-callback/refund-reconciliation'
 import {
+  CANCELLED_RECHECK_COOLDOWN_MS,
   CANCELLED_RECHECK_MAX_ORDER_AGE_MS,
   createBarionCallbackHandler,
 } from '../lib/barion-callback/route-handler'
@@ -1735,6 +1736,14 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
     Status: 'Succeeded',
     Total: ORDER_TOTAL_HUF,
   }
+  /** A Barion felületén indított, nálunk nem rögzített visszatérítés. */
+  const FOREIGN_REFUND_TX = {
+    TransactionId: 'aaaaaaaa-0000-4000-8000-000000000002',
+    TransactionType: 'RefundToBankCard',
+    Status: 'Succeeded',
+    Total: -5000,
+    RelatedId: SOURCE_TX.TransactionId,
+  }
 
   it('a Barion felületén indított (nálunk nem rögzített) visszatérítés: RIASZTÁS, írás és pénzmozgás nélkül', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -1821,7 +1830,7 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
     expect(String(alert?.msg)).toContain('StornoUnSuccessfulRefundToBankCard')
   })
 
-  it('egyező adatok: nincs riasztás; az egyeztetés PaymentId-nként 10 percig fojtott (egy GetState)', async () => {
+  it('egyező adatok: nincs riasztás; a futás előtt érkezett két kézbesítés egy egyeztetésbe (egy GetState) vonódik össze', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { POST, capture } = setup({
       order: createOrder({ status: 'paid' }),
@@ -1835,6 +1844,64 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(logOutput(logSpy)).not.toContain('RIASZTÁS')
+  })
+
+  // Breaker BRK-2: a korábbi 10 perces PaymentId-fojtás a pár perccel későbbi,
+  // a Barion felületén indított visszatérítés callbackjét nyomtalanul eldobta.
+  it('egy korábbi kézbesítés után 2 perccel érkező idegen visszatérítés-callback is egyeztetődik (RIASZTÁS)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup({
+      order: createOrder({ status: 'paid' }),
+      initialEvents: [PAID_EVENT],
+    })
+    fetchMock.mockResolvedValueOnce(stateWithTransactions([SOURCE_TX]))
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    vi.advanceTimersByTime(2 * 60 * 1000)
+    fetchMock.mockResolvedValue(stateWithTransactions([SOURCE_TX, FOREIGN_REFUND_TX]))
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const alert = logEntries(logSpy).find((entry) =>
+      String(entry.msg).startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({ findings: ['foreign-refund'] })
+  })
+
+  it('futó egyeztetés KÖZBEN érkező kézbesítés nem vész el: a futás végén még egy kör fut a kapun át', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup({
+      order: createOrder({ status: 'paid' }),
+      initialEvents: [PAID_EVENT],
+    })
+    let releaseFirst: (response: Response) => void = () => {}
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseFirst = resolve
+        }),
+    )
+    fetchMock.mockResolvedValueOnce(stateWithTransactions([SOURCE_TX, FOREIGN_REFUND_TX]))
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    const running = capture.runAll()
+    while (fetchMock.mock.calls.length === 0) {
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    // Az első GetState még függ: a most érkező kézbesítés csak megjelöli a futót.
+    const second = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await second.json()).toEqual({ ok: true, status: 'duplicate' })
+    expect(capture.tasks).toHaveLength(0)
+    releaseFirst(stateWithTransactions([SOURCE_TX]))
+    await running
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const alert = logEntries(logSpy).find((entry) =>
+      String(entry.msg).startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({ findings: ['foreign-refund'] })
   })
 })
 
@@ -1867,6 +1934,45 @@ describe('r-barion-7 — lezárt (cancelled) fizetésre érkező callback', () =
     await capture.runAll()
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(order?.status).toBe('paid')
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+    expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
+  })
+
+  // Breaker BRK-1 + lead (major): egy átmeneti GetState-hiba korábban a lezárt
+  // esemény result-ját failed-re írta; a rekord processed+failed alakban
+  // „kész duplikátum” lett, így a késői Succeeded callback sosem futott le.
+  it('az újraellenőrzés átmeneti GetState-hibája (503) nem írja át a lezárt eseményt; a 60 s utáni Succeeded callback paid-re viszi', async () => {
+    const { POST, capture, order, docs } = setup({
+      order: cancelledOrder(2 * 60 * 60 * 1000),
+      initialEvents: [{ ...CANCELLED_EVENT }],
+    })
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ Errors: [] }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    const first = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await first.json()).toEqual({ ok: true, status: 'received' })
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(docs[0]).toMatchObject({
+      status: 'processed',
+      result: 'cancelled',
+      processedAt: CANCELLED_EVENT.processedAt,
+    })
+    expect(order?.status).toBe('cancelled')
+
+    vi.advanceTimersByTime(CANCELLED_RECHECK_COOLDOWN_MS + 1_000)
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+    const second = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await second.json()).toEqual({ ok: true, status: 'received' })
+    await capture.runAll()
+
     expect(order?.status).toBe('paid')
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
     expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)

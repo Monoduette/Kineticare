@@ -32,6 +32,7 @@ import {
   type PaidRejectRecoveryResult,
 } from '../order-status/recover-paid-reject'
 import { getSzamlazzConfig } from '../szamlazz'
+import { paymentWindowToMs } from '../checkout/start-checkout'
 
 /**
  * order-poll — payment_pending utánpollolás GetState v4-gyel (callback mentőháló).
@@ -107,7 +108,7 @@ export const LATE_SUCCESS_REFILL_PAGES = 1
  */
 export const LATE_SUCCESS_CANDIDATE_LIMIT = 500
 /** A Barion PaymentWindow (a checkout ezzel indítja a fizetést, start.ts). */
-export const LATE_SUCCESS_PAYMENT_WINDOW_MS = paymentWindowMs(BARION_DEFAULT_PAYMENT_WINDOW)
+export const LATE_SUCCESS_PAYMENT_WINDOW_MS = paymentWindowToMs(BARION_DEFAULT_PAYMENT_WINDOW)
 /**
  * A két ellenőrzési pont a fizetési ablak vége után. A Barion ajánlása: „the
  * PaymentState API should be called approximately 15 minutes after the payment
@@ -121,14 +122,27 @@ export const LATE_SUCCESS_PAYMENT_WINDOW_MS = paymentWindowMs(BARION_DEFAULT_PAY
 export const LATE_SUCCESS_FIRST_CHECK_AFTER_WINDOW_MS = 15 * 60 * 1000
 export const LATE_SUCCESS_FINAL_CHECK_AFTER_WINDOW_MS = 60 * 60 * 1000
 
-/** 'hh:mm:ss' → ms (a Barion PaymentWindow formátuma); hibás alaknál 30 perc. */
-function paymentWindowMs(window: string): number {
-  const match = /^(\d{2}):(\d{2}):(\d{2})$/.exec(window)
-  if (!match) {
-    return 30 * 60 * 1000
+/**
+ * A rendelés sávba eső legutóbbi visszatérítési időpontja (ms): a rendelés
+ * `refundedAt`-je (teljes visszatérítés) és a `refunds[].refundedAt` elemek
+ * (részleges is) közül; null, ha egyik sem esik a [sinceMs, untilMs] sávba.
+ */
+function latestRefundTimeInBand(order: Order, sinceMs: number, untilMs: number): number | null {
+  const candidates: unknown[] = [order.refundedAt]
+  const entries: unknown[] = Array.isArray(order.refunds) ? order.refunds : []
+  for (const entry of entries) {
+    if (typeof entry === 'object' && entry !== null) {
+      candidates.push((entry as { refundedAt?: unknown }).refundedAt)
+    }
   }
-  const [, hours, minutes, seconds] = match
-  return (Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds)) * 1000
+  let latest: number | null = null
+  for (const raw of candidates) {
+    if (typeof raw !== 'string') continue
+    const ms = Date.parse(raw)
+    if (!Number.isFinite(ms) || ms < sinceMs || ms > untilMs) continue
+    if (latest === null || ms > latest) latest = ms
+  }
+  return latest
 }
 
 /**
@@ -208,8 +222,15 @@ export const ORPHAN_UNVERIFIED_HOLD_MS = 48 * 60 * 60 * 1000
 export const REFUND_RECHECK_AFTER_MS = 7 * 24 * 60 * 60 * 1000
 /** Az újraellenőrzés sávja: a visszatérítés után 7 és 8 nap között. */
 export const REFUND_RECHECK_BAND_MS = 24 * 60 * 60 * 1000
-/** Futásonként legfeljebb ennyi visszatérítés újraellenőrzése. */
+/** Futásonként legfeljebb ennyi visszatérítés újraellenőrzése (GetState-hívás). */
 export const REFUND_RECHECK_BATCH_SIZE = 5
+/**
+ * Ennyi jelöltet olvasunk be futásonként (csak DB-olvasás). A már ellenőrzött
+ * (fojtott) sorok nem fogyasztják a GetState-keretet, így a sáv 6. és további
+ * visszatérítése is sorra kerül a következő futásokban; csak egy napon belüli,
+ * ennél több visszatérítésnél maradhat ki sor.
+ */
+export const REFUND_RECHECK_CANDIDATE_LIMIT = 100
 /**
  * A late-success scan két futásszintű RIASZTÁS-a (a mennyezet és az
  * útvonal-gyanú) ugyanazt az állapotot jelzi: a lezárt sorok GetState-je
@@ -781,10 +802,23 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
               )
             }
           } else if (recoveryFailed) {
-            orderLog.error(
-              'RIASZTÁS: paid-reject recovery sikertelen — a következő futás újra ellenőrzi',
-              recoveryCtx,
-            )
+            // A következő futás valóban újra ellenőrzi, de a riasztás
+            // rendelésenként és okonként fojtott: egy tartós ok (pl.
+            // historical-refund-reconciliation-required) különben 5 percenként
+            // új error-sort írna ugyanarra a nyitott ügyre.
+            if (
+              shouldEmitThrottledAlert(`paid-reject-failed:${order.id}:${detail}`, undefined, now)
+            ) {
+              orderLog.error(
+                'RIASZTÁS: paid-reject recovery sikertelen — a következő futás újra ellenőrzi',
+                recoveryCtx,
+              )
+            } else {
+              orderLog.warn(
+                'paid-reject recovery továbbra is sikertelen (a riasztás fojtva) — a következő futás újra ellenőrzi',
+                recoveryCtx,
+              )
+            }
           } else if (shouldEmitThrottledAlert(`refund-reconcile:${order.id}`, undefined, now)) {
             // A tartós refund-egyeztetés állapota futásról futásra ugyanaz: a
             // riasztás FOJTOTT (mint a 24 órás beragadásé), különben 5
@@ -916,6 +950,13 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       try {
         state = await fetchState(paymentId)
       } catch (error) {
+        // A Barion szerint NINCS ilyen fizetés (ismert not-found kód, pl.
+        // NotExistingPaymentId: hamis GUID, vagy a másik Barion-környezet
+        // fizetése): ehhez a rendeléshez biztosan nem tartozhat, a jelölt
+        // kiesik, a lezárás nem vár miatta.
+        if (error instanceof BarionApiError && isPaymentDefinitelyNotFound(error)) {
+          continue
+        }
         unverifiable = true
         orderLog.warn('árva rendelés: egy gazdátlan Barion-esemény GetState-je hibát adott', {
           paymentId,
@@ -1607,9 +1648,12 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
    * újra egyeztetünk a Barionnal (runRefundReconciliation): egy kártyás
    * visszatérítés később is meghiúsulhat (StornoUnSuccessfulRefundToBankCard).
    * Csak jelez, pénzt nem mozgat. A visszatérítés ideje a meglévő
-   * `refundedAt` (a legutóbbi visszatérítésé); rendelésenként és időpontonként
-   * egyszer fut a sávban (a fojtás-kulcs a folyamatban él: újraindulás után
-   * legfeljebb egy ismételt hívás).
+   * `refundedAt` (a teljes visszatérítésé) VAGY a `refunds[].refundedAt` (a
+   * részleges visszatérítés a rendelést paid-en hagyja, a rendelés
+   * `refundedAt`-je ilyenkor üres); a sávba eső legutóbbi időpont számít.
+   * Rendelésenként és időpontonként egyszer fut a sávban (a fojtás-kulcs a
+   * folyamatban él: újraindulás után legfeljebb egy ismételt hívás). A már
+   * ellenőrzött sorok nem fogyasztják a futásonkénti GetState-keretet.
    */
   const recheckRefundsAfterWeek = async (): Promise<void> => {
     if (barionAborted) {
@@ -1626,12 +1670,34 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             and: [
               { status: { in: ['paid', 'refunded'] } },
               { barionPaymentId: { exists: true } },
-              { refundedAt: { greater_than_equal: new Date(sinceMs).toISOString() } },
-              { refundedAt: { less_than_equal: new Date(untilMs).toISOString() } },
+              {
+                or: [
+                  {
+                    and: [
+                      { refundedAt: { greater_than_equal: new Date(sinceMs).toISOString() } },
+                      { refundedAt: { less_than_equal: new Date(untilMs).toISOString() } },
+                    ],
+                  },
+                  {
+                    and: [
+                      {
+                        'refunds.refundedAt': {
+                          greater_than_equal: new Date(sinceMs).toISOString(),
+                        },
+                      },
+                      {
+                        'refunds.refundedAt': {
+                          less_than_equal: new Date(untilMs).toISOString(),
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
             ],
           },
           sort: 'refundedAt',
-          limit: REFUND_RECHECK_BATCH_SIZE,
+          limit: REFUND_RECHECK_CANDIDATE_LIMIT,
           depth: 0,
           overrideAccess: true,
         } as unknown as Parameters<Payload['find']>[0])
@@ -1642,9 +1708,13 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       })
       return
     }
+    let checked = 0
     for (const order of candidates) {
-      const refundedAtMs = Date.parse(order.refundedAt ?? '')
-      if (!Number.isFinite(refundedAtMs) || refundedAtMs < sinceMs || refundedAtMs > untilMs) {
+      if (checked >= REFUND_RECHECK_BATCH_SIZE) {
+        break
+      }
+      const refundedAtMs = latestRefundTimeInBand(order, sinceMs, untilMs)
+      if (refundedAtMs === null) {
         continue
       }
       if (
@@ -1656,6 +1726,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       ) {
         continue
       }
+      checked += 1
       await runRefundReconciliation({
         payload: deps.payload,
         order,
