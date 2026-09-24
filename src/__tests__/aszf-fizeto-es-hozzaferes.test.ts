@@ -1,5 +1,7 @@
 /**
- * 18. tartalom-javítás — az ÉLŐ ÁSZF két ténybeli hibája.
+ * 18. tartalom-javítás — az ÉLŐ ÁSZF ténybeli hibái. A harmadik csere
+ * (tulajdonosi döntés, 2026-09-24) a 27%-os áfa-mondatot írja át alanyi
+ * adómentesre; annak fókuszált tesztjei az `aszf-afa-aam.test.ts`-ben vannak.
  * A javítás a Barion elfogadóhely-jóváhagyás miatt sürgős és önálló
  * kockázatú: az élő ÁSZF egy MÁSIK fizetési szolgáltatót (STRIPE) nevez meg,
  * miközben a fizetés a Barion Smart Gateway-en megy — a bíráló pedig az ÉLŐ
@@ -10,6 +12,8 @@ import { describe, expect, it } from 'vitest'
 
 import { JOGI_OLDALAK, jogiOldalTartalom, richTextSzoveg } from '../lib/legal-content'
 import {
+  ASZF_AFA_REGI_KEZDET,
+  ASZF_AFA_UJ_KEZDET,
   ASZF_BEKEZDES_CSEREK,
   ASZF_FIZETO_REGI_KEZDET,
   ASZF_FIZETO_UJ_KEZDET,
@@ -43,24 +47,33 @@ const ELO_FIZETO_BEKEZDES =
   'A fizetés titkosított csatornán megy végbe, a Weboldaltól függetlenül, a STRIPE fizetési felületén. '
 
 /**
- * A 27%-os áfáról szóló mondat — a tulajdonos KIFEJEZETTEN kikötötte, hogy
- * maradjon (az AAM/27 kérdés még nem dőlt el). Egyik csere sem érintheti.
+ * Az élő, RÉGI áfa-bekezdés BETŰRE (27%-os mondattal, záró szóközzel). A
+ * tulajdonos 2026-09-24-i döntése óta (a KINETICARE Kft. alanyi adómentes) a
+ * 18. javítás harmadik cseréje írja át.
  */
-const AFA_BEKEZDES =
+const ELO_AFA_BEKEZDES =
   'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A Vásárló elfogadja, hogy a számlát/nyugtát a KINETICARE Kft állítja ki 27%-os áfatartalommal. '
+
+/**
+ * Az ÁSZF MÁSIK, szintén „A fizetést követően a Vásárló” kezdetű bekezdése
+ * (a válasz email elolvasásáról). Egyik csere sem érintheti.
+ */
+const VALASZ_EMAIL_BEKEZDES =
+  'A fizetést követően a Vásárló a köteles a válasz emailt elolvasni és aszerint eljárni, ha a spam mappába kerül a levél vagy kézbesíthetetlen üzenet érkezik vissza, azért a KINETICARE nem vállal felelősséget. KINETICARE fenntartja magának a jogot, hogy a beérkezett fizetési kérelmet indoklás nélkül elutasítsa, a hozzáférést megszakítsa és a pénzt visszautalja a bankkártyájára, erről az érintettet a megadott emailen tájékoztatja, aki köteles 72 órán belül elküldeni bankszámlaszámát a visszautaláshoz, amennyiben ezt a KINETICARE kéri.'
 
 /** Rich-text tartalom bekezdés-szövegekből. */
 const tartalom = (bekezdesek: readonly string[]): unknown =>
   richText(bekezdesek.map((szoveg) => para(szoveg)))
 
-/** Az élő ÁSZF mai, javítatlan alakja — a két hibás bekezdéssel. */
+/** Az élő ÁSZF javítatlan alakja — a három hibás bekezdéssel. */
 const eloAszf = (): unknown =>
   tartalom([
     'A Vásárló kizárólag 18. életévét betöltött személy lehet. ',
     ELO_HOZZAFERES_BEKEZDES,
     'Részletfizetés nem lehetséges.',
     ELO_FIZETO_BEKEZDES,
-    AFA_BEKEZDES,
+    VALASZ_EMAIL_BEKEZDES,
+    ELO_AFA_BEKEZDES,
   ])
 
 /** A csomópontok listája egy rich-text tartalomból (referencia-összevetéshez). */
@@ -113,15 +126,15 @@ describe('alkalmazAszfBekezdesCserek — a hozzáférés időtartama', () => {
 })
 
 describe('alkalmazAszfBekezdesCserek — amihez NEM szabad hozzányúlni', () => {
-  it('a 27%-os áfáról szóló mondat sértetlen, sőt a csomópont UGYANAZ marad', () => {
+  it('a válasz emailről szóló, szintén „A fizetést követően” kezdetű bekezdés sértetlen, a csomópont UGYANAZ marad', () => {
     const eredeti = eloAszf()
     const eredmeny = alkalmazAszfBekezdesCserek(eredeti)
     const szoveg = richTextSzoveg(eredmeny.content)
 
-    // 6. cáfolható állítás: az áfa-mondat szövege és a csomópont-referenciája is
-    // változatlan — a script hozzá sem ér (tulajdonosi kikötés: az AAM/27
-    // kérdés még nem dőlt el).
-    expect(szoveg).toContain('27%-os áfatartalommal')
+    // 6. cáfolható állítás: az áfa-csere a TELJES két mondatos régi kezdetre
+    // illeszt, ezért a közös szavakkal induló másik bekezdés szövege és
+    // csomópont-referenciája is változatlan — a script hozzá sem ér.
+    expect(szoveg).toContain(VALASZ_EMAIL_BEKEZDES)
     expect(gyerekek(eredmeny.content)[4]).toBe(gyerekek(eredeti)[4])
   })
 
@@ -133,15 +146,17 @@ describe('alkalmazAszfBekezdesCserek — amihez NEM szabad hozzányúlni', () =>
 
     expect(uj[0]).toBe(regi[0])
     expect(uj[2]).toBe(regi[2])
+    expect(uj[4]).toBe(regi[4])
     expect(uj[1]).not.toBe(regi[1])
     expect(uj[3]).not.toBe(regi[3])
+    expect(uj[5]).not.toBe(regi[5])
   })
 })
 
 describe('alkalmazAszfBekezdesCserek — idempotencia', () => {
   it('másodszor futva SEMMIT nem ír, és nem is kiabál', () => {
     const elso = alkalmazAszfBekezdesCserek(eloAszf())
-    expect(elso.modositasok).toHaveLength(2)
+    expect(elso.modositasok).toHaveLength(ASZF_BEKEZDES_CSEREK.length)
 
     const masodik = alkalmazAszfBekezdesCserek(elso.content)
 
@@ -149,7 +164,7 @@ describe('alkalmazAszfBekezdesCserek — idempotencia', () => {
     // keletkezne — és az élő oldalon minden futás új verziót gyártana.
     expect(masodik.modositasok).toHaveLength(0)
     expect(masodik.content).toBeNull()
-    expect(masodik.kihagyasok).toHaveLength(2)
+    expect(masodik.kihagyasok).toHaveLength(ASZF_BEKEZDES_CSEREK.length)
     for (const kihagyas of masodik.kihagyasok) {
       expect(kihagyas.indok).toContain('MÁR a javított szöveggel kezdődik')
       // HALK kihagyás: ez a legjobb lehetséges kimenet, nem hiba.
@@ -186,19 +201,26 @@ describe('alkalmazAszfBekezdesCserek — a szerkesztő szövegének védelme', (
     expect(fizeto?.indok).toContain('a bankunk fizetési felületén')
   })
 
-  it('egy rossz bekezdés NEM blokkolja a másik javítását', () => {
+  it('egy rossz bekezdés NEM blokkolja a többi javítását', () => {
     const eredmeny = alkalmazAszfBekezdesCserek(
-      tartalom(['Teljesen más fizetési mondat áll itt.', ELO_HOZZAFERES_BEKEZDES]),
+      tartalom([
+        'Teljesen más fizetési mondat áll itt.',
+        ELO_HOZZAFERES_BEKEZDES,
+        ELO_AFA_BEKEZDES,
+      ]),
     )
 
-    // 8. cáfolható állítás: a két csere FÜGGETLEN — az egyik hangos kihagyása
-    // mellett a másik lefut.
-    expect(eredmeny.modositasok).toHaveLength(1)
-    expect(eredmeny.modositasok[0].szabaly).toBe('aszf-hozzaferes-idotartam')
+    // 8. cáfolható állítás: a cserék FÜGGETLENEK — az egyik hangos kihagyása
+    // mellett a többi lefut.
+    expect(eredmeny.modositasok.map((lepes) => lepes.szabaly)).toEqual([
+      'aszf-hozzaferes-idotartam',
+      'aszf-afa-aam',
+    ])
     expect(eredmeny.kihagyasok).toHaveLength(1)
     expect(eredmeny.kihagyasok[0].szabaly).toBe('aszf-fizetesi-szolgaltato')
     expect(eredmeny.kihagyasok[0].hangos).toBe(true)
     expect(richTextSzoveg(eredmeny.content)).toContain(ASZF_HOZZAFERES_UJ_KEZDET)
+    expect(richTextSzoveg(eredmeny.content)).toContain(ASZF_AFA_UJ_KEZDET)
   })
 
   it('TÖBB egyforma bekezdésnél nem dönt maga', () => {
@@ -213,7 +235,7 @@ describe('alkalmazAszfBekezdesCserek — a szerkesztő szövegének védelme', (
     expect(richTextSzoveg(eredmeny.content ?? tartalom([ELO_FIZETO_BEKEZDES]))).toContain('STRIPE')
   })
 
-  it('idegen szerkezetnél MINDKÉT szabály hangosan kihagy', () => {
+  it('idegen szerkezetnél MINDEN szabály hangosan kihagy', () => {
     const eredmeny = alkalmazAszfBekezdesCserek({ nem: 'richtext' })
     expect(eredmeny.content).toBeNull()
     expect(eredmeny.kihagyasok).toHaveLength(ASZF_BEKEZDES_CSEREK.length)
@@ -236,8 +258,10 @@ describe('a kódbeli mondatok és a jogi forrásfájl összhangja', () => {
     const szoveg = richTextSzoveg(jogiOldalTartalom(aszfLeiras()))
     expect(szoveg).toContain(ASZF_FIZETO_UJ_KEZDET)
     expect(szoveg).toContain(ASZF_HOZZAFERES_UJ_KEZDET)
+    expect(szoveg).toContain(ASZF_AFA_UJ_KEZDET)
     expect(szoveg).not.toContain(ASZF_FIZETO_REGI_KEZDET)
     expect(szoveg).not.toContain(ASZF_HOZZAFERES_REGI_KEZDET)
+    expect(szoveg).not.toContain(ASZF_AFA_REGI_KEZDET)
     expect(szoveg).not.toContain('STRIPE')
   })
 
@@ -261,22 +285,31 @@ describe('a kódbeli mondatok és a jogi forrásfájl összhangja', () => {
     // bennmarad — ezért itt a LITERÁL fixtúrához mérjük, nem önmagához.
     expect(ELO_FIZETO_BEKEZDES.startsWith(ASZF_FIZETO_REGI_KEZDET)).toBe(true)
     expect(ELO_HOZZAFERES_BEKEZDES.startsWith(ASZF_HOZZAFERES_REGI_KEZDET)).toBe(true)
+    expect(ELO_AFA_BEKEZDES.startsWith(ASZF_AFA_REGI_KEZDET)).toBe(true)
     // A régi kezdet a TELJES cserélendő rész: a maradék már a megtartandó
-    // mondat (illetve a fizetés-bekezdésnél csak a záró szóköz).
+    // mondat (illetve a fizetés- és az áfa-bekezdésnél csak a záró szóköz).
     expect(ELO_FIZETO_BEKEZDES.slice(ASZF_FIZETO_REGI_KEZDET.length)).toBe(' ')
-    expect(ELO_HOZZAFERES_BEKEZDES.slice(ASZF_HOZZAFERES_REGI_KEZDET.length)).toBe(
-      MASOLAS_TILALMA,
-    )
+    expect(ELO_AFA_BEKEZDES.slice(ASZF_AFA_REGI_KEZDET.length)).toBe(' ')
+    expect(ELO_HOZZAFERES_BEKEZDES.slice(ASZF_HOZZAFERES_REGI_KEZDET.length)).toBe(MASOLAS_TILALMA)
   })
 
-  it('a 27%-os áfa-mondat egyik csere hatókörébe sem esik', () => {
-    // Tulajdonosi kikötés: az áfa-kérdés (AAM/27) még nem dőlt el.
+  it('az áfa-mondat a 2026-09-24-i AAM-döntést követi, a 27% sehol nem marad', () => {
+    // Tulajdonosi döntés: a KINETICARE Kft. alanyi adómentes, a számlák AAM
+    // kulccsal mennek ki. A 27%-ot csak az áfa-csere RÉGI kezdete említheti.
     for (const csere of ASZF_BEKEZDES_CSEREK) {
-      expect(csere.regiKezdet).not.toContain('27%')
       expect(csere.ujKezdet).not.toContain('27%')
       expect(csere.nyom).not.toContain('27%')
+      if (csere.szabaly !== 'aszf-afa-aam') {
+        expect(csere.regiKezdet).not.toContain('27%')
+      }
     }
+    const afaCsere = ASZF_BEKEZDES_CSEREK.find((csere) => csere.szabaly === 'aszf-afa-aam')
+    expect(afaCsere?.regiKezdet).toBe(ASZF_AFA_REGI_KEZDET)
+    expect(afaCsere?.ujKezdet).toBe(ASZF_AFA_UJ_KEZDET)
+
     const szoveg = richTextSzoveg(jogiOldalTartalom(aszfLeiras()))
-    expect(szoveg).toContain('27%-os áfatartalommal')
+    expect(szoveg).toContain('alanyi adómentes, ezért a számla áfát nem tartalmaz')
+    expect(szoveg).not.toContain('27%')
+    expect(szoveg).not.toContain('áfatartalommal')
   })
 })

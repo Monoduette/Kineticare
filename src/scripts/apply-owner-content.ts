@@ -438,6 +438,7 @@ export type JavitasSzabaly =
   | 'aszf-adatvedelem-link'
   | 'aszf-fizetesi-szolgaltato'
   | 'aszf-hozzaferes-idotartam'
+  | 'aszf-afa-aam'
   | 'aszf-barion-es-teljesites'
   | 'kapcsolat-szakemberek'
   | 'sos-kapcsolodo-kurzus'
@@ -1494,8 +1495,9 @@ const bekezdesSzovegCsere = (csomopont: unknown, ujSzoveg: string): unknown => {
 }
 
 // ---------------------------------------------------------------------------
-// 18. javítás — az élő ÁSZF két ténybeli hibája (fizetési szolgáltató neve,
-// a hozzáférés időtartama).
+// 18. javítás — az élő ÁSZF három ténybeli hibája (fizetési szolgáltató neve,
+// a hozzáférés időtartama, és a 2026-09-24-i tulajdonosi döntés óta az
+// áfa-mondat: 27% helyett alanyi adómentesség).
 // ---------------------------------------------------------------------------
 
 /**
@@ -1527,6 +1529,37 @@ export const ASZF_HOZZAFERES_REGI_KEZDET =
 export const ASZF_HOZZAFERES_UJ_KEZDET =
   'A szolgáltatás egyszeri fizetéssel jár, a megvásárolt tartalom pedig időbeli korlátozás nélkül, véglegesen elérhető marad a Vásárló számára a felhasználói fiókjában.'
 
+/**
+ * Az áfáról szóló bekezdés RÉGI kezdete — KÉT mondat (élesben ma ez áll).
+ *
+ * A második mondat 27%-os áfát ígér, holott a tulajdonos 2026-09-24-i döntése
+ * szerint a KINETICARE Kft. alanyi adómentes („AAM minden ár”), és a számlák
+ * élesben is így mennek ki (`SZAMLAZZ_AFAKULCS=AAM`: nettó = bruttó, áfa = 0).
+ * Az ÁSZF nem ígérhet mást, mint ami a számlán áll. A bekezdés maradéka (a
+ * záró szóköz) érintetlen.
+ *
+ * Szándékosan a TELJES két mondat: egy MÁSIK ÁSZF-bekezdés is „A fizetést
+ * követően a Vásárló” szavakkal kezdődik (a válasz email elolvasásáról szóló),
+ * ahhoz a csere nem nyúlhat.
+ */
+export const ASZF_AFA_REGI_KEZDET =
+  'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A Vásárló elfogadja, hogy a számlát/nyugtát a KINETICARE Kft állítja ki 27%-os áfatartalommal.'
+
+/**
+ * Az áfáról szóló bekezdés jóváhagyott ÚJ kezdete (tulajdonosi döntés,
+ * 2026-09-24).
+ *
+ * Jogalap: az általános forgalmi adóról szóló 2007. évi CXXVII. törvény XIII.
+ * fejezete (187–196. §) szabályozza az alanyi adómentességet, és a 187. § (2)
+ * c) pontja szerint az alanyi adómentes adóalany kizárólag olyan számlát
+ * bocsáthat ki, amelyben áthárított adó nem szerepel
+ * (https://mkogy.jogtar.hu/jogszabaly?docid=a0700127.TV&pagenum=3). A mondat
+ * szándékosan nem hivatkozik szakaszszámra, így egy átszámozás sem teszi
+ * pontatlanná.
+ */
+export const ASZF_AFA_UJ_KEZDET =
+  'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A számlát a KINETICARE Kft. állítja ki. A KINETICARE Kft. az általános forgalmi adóról szóló 2007. évi CXXVII. törvény szerint alanyi adómentes, ezért a számla áfát nem tartalmaz. A Weboldalon feltüntetett ár a fizetendő végösszeg.'
+
 /** Egy jóváhagyott bekezdés-eleji (prefix) csere leírása. */
 export interface AszfBekezdesCsere {
   /** Melyik szabály naplózza — javításonként külön, hogy külön is elbírálható legyen. */
@@ -1551,7 +1584,10 @@ export interface AszfBekezdesCsere {
   nyom: string
 }
 
-/** A 18. javítás két, egymástól függetlenül elbírált bekezdés-cseréje. */
+/**
+ * A 18. javítás három, egymástól függetlenül elbírált bekezdés-cseréje; a
+ * harmadik (áfa-mondat) a 2026-09-24-i AAM-döntésé.
+ */
 export const ASZF_BEKEZDES_CSEREK: readonly AszfBekezdesCsere[] = [
   {
     szabaly: 'aszf-fizetesi-szolgaltato',
@@ -1567,6 +1603,13 @@ export const ASZF_BEKEZDES_CSEREK: readonly AszfBekezdesCsere[] = [
     ujKezdet: ASZF_HOZZAFERES_UJ_KEZDET,
     nyom: 'A szolgáltatás egyszeri fizetéssel jár',
   },
+  {
+    szabaly: 'aszf-afa-aam',
+    cimke: 'Az ÁSZF áfa-mondata',
+    regiKezdet: ASZF_AFA_REGI_KEZDET,
+    ujKezdet: ASZF_AFA_UJ_KEZDET,
+    nyom: 'a Számlázz.hu rendszerén keresztül',
+  },
 ]
 
 /** Naplóba írható, rövidített idézet egy élő bekezdésből. */
@@ -1576,7 +1619,7 @@ const roviditettIdezet = (szoveg: string, hossz = 160): string => {
 }
 
 /**
- * ÁSZF: Stripe→Barion és hozzáférési mondat prefix-csere. Forrás: legal-source/aszf.txt.
+ * ÁSZF: Stripe→Barion, hozzáférési és áfa-mondat (27%→AAM) prefix-csere. Forrás: legal-source/aszf.txt.
  * Bekezdés-eleji illesztés; szerkesztett szövegnél hangos kihagyás.
  */
 export const alkalmazAszfBekezdesCserek = (

@@ -41,10 +41,16 @@ const gyerekek = (content: unknown): unknown[] =>
   (content as { root: { children: unknown[] } }).root.children
 
 /**
- * A 27%-os áfáról szóló mondat — a tulajdonos KIFEJEZETTEN kikötötte, hogy
- * maradjon (az AAM/27 kérdés még nem dőlt el). A beszúrás nem érintheti.
+ * Az áfáról szóló bekezdés a 18. javítás UTÁN (tulajdonosi döntés,
+ * 2026-09-24: a KINETICARE Kft. alanyi adómentes). A beszúrás nem érintheti.
+ *
+ * SZÁNDÉKOSAN LITERÁL, nem a konstansból származtatott.
  */
 const AFA_BEKEZDES =
+  'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A számlát a KINETICARE Kft. állítja ki. A KINETICARE Kft. az általános forgalmi adóról szóló 2007. évi CXXVII. törvény szerint alanyi adómentes, ezért a számla áfát nem tartalmaz. A Weboldalon feltüntetett ár a fizetendő végösszeg. '
+
+/** Ugyanez a bekezdés a 18. javítás ELŐTT (27%-os mondattal, az élő oldal mért alakja). */
+const AFA_BEKEZDES_27 =
   'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A Vásárló elfogadja, hogy a számlát/nyugtát a KINETICARE Kft állítja ki 27%-os áfatartalommal. '
 
 /**
@@ -107,7 +113,9 @@ describe('a Barion jóváhagyási lista kötelező elemei az ÁSZF forrásában'
     // 3. cáfolható állítás: a javítás előtt a lapon SEHOL nem állt, mikor kapja
     // meg a Vásárló a hozzáférést; a „teljesítés” szó végig jogi értelemben
     // (hibás teljesítés, kellékszavatosság) szerepelt.
-    expect(szoveg).toContain('A megrendelés teljesítésének, azaz a hozzáférés megnyitásának átlagos ideje')
+    expect(szoveg).toContain(
+      'A megrendelés teljesítésének, azaz a hozzáférés megnyitásának átlagos ideje',
+    )
     // Digitális terméknél a „kiszállítás” félrevezető — ezt ki KELL mondani.
     expect(szoveg).toContain('postai kiszállítás nincs')
     // A tényleges teljesítés: azonnali hozzáférés a felhasználói fiókban.
@@ -119,9 +127,7 @@ describe('a Barion jóváhagyási lista kötelező elemei az ÁSZF forrásában'
 
   it('az ÁSZF elfogadása a vásárlás előfeltételeként szerepel', () => {
     // A lista első pontja („elfogadása a vásárlás előfeltétele”) szöveges fele.
-    expect(forrasSzoveg()).toContain(
-      'bejelöli az Általános Szerződési feltételek elfogadására',
-    )
+    expect(forrasSzoveg()).toContain('bejelöli az Általános Szerződési feltételek elfogadására')
   })
 })
 
@@ -142,9 +148,7 @@ describe('alkalmazAszfBarionKiegeszites — a hiányzó bekezdések beszúrása'
     const horgonyIndex = sorok.indexOf(ELO_FIZETO_BEKEZDES_JAVITVA)
     expect(horgonyIndex).toBeGreaterThanOrEqual(0)
     // A három új bekezdés PONTOSAN a horgony után, ebben a sorrendben áll.
-    expect(sorok.slice(horgonyIndex + 1, horgonyIndex + 4)).toEqual([
-      ...ASZF_BARION_UJ_BEKEZDESEK,
-    ])
+    expect(sorok.slice(horgonyIndex + 1, horgonyIndex + 4)).toEqual([...ASZF_BARION_UJ_BEKEZDESEK])
   })
 
   it('a meglévő bekezdéseket NEM módosítja (csomópont-referencia szerint sem)', () => {
@@ -154,14 +158,14 @@ describe('alkalmazAszfBarionKiegeszites — a hiányzó bekezdések beszúrása'
     const uj = gyerekek(eredmeny.content)
 
     // 7. cáfolható állítás: a lépés CSAK BESZÚR. Ha bármelyik meglévé
-    // csomópontot újraépítené, ezek az azonosságok elbuknának — és a 27%-os
-    // áfa-mondat (tulajdonosi kikötés) sem volna bizonyítottan érintetlen.
+    // csomópontot újraépítené, ezek az azonosságok elbuknának — és az
+    // áfa-mondat (a 18. javítás kimenete) sem volna bizonyítottan érintetlen.
     expect(uj).toHaveLength(regi.length + ASZF_BARION_UJ_BEKEZDESEK.length)
     expect(uj[0]).toBe(regi[0])
     expect(uj[1]).toBe(regi[1])
     expect(uj[2]).toBe(regi[2])
     expect(uj[uj.length - 1]).toBe(regi[regi.length - 1])
-    expect(richTextSzoveg(eredmeny.content)).toContain('27%-os áfatartalommal')
+    expect(richTextSzoveg(eredmeny.content).split('\n')).toContain(AFA_BEKEZDES)
   })
 
   it('másodszor futva SEMMIT nem ír, és nem is kiabál', () => {
@@ -272,7 +276,7 @@ describe('a kódbeli bekezdések és a jogi forrásfájl összhangja', () => {
     const eloMa = tartalom([
       'A Vásárló kizárólag 18. életévét betöltött személy lehet. ',
       ELO_FIZETO_BEKEZDES_STRIPE,
-      AFA_BEKEZDES,
+      AFA_BEKEZDES_27,
     ])
 
     const tenyek = alkalmazAszfBekezdesCserek(eloMa)
@@ -285,11 +289,14 @@ describe('a kódbeli bekezdések és a jogi forrásfájl összhangja', () => {
     expect(szoveg).not.toContain('STRIPE')
     expect(szoveg).toContain('H-EN-I-1064/2013')
     expect(szoveg).toContain('postai kiszállítás nincs')
-    expect(szoveg).toContain('27%-os áfatartalommal')
+    // A 2026-09-24-i AAM-döntés óta a 18. javítás az áfa-mondatot is átírja.
+    expect(szoveg.split('\n')).toContain(AFA_BEKEZDES)
+    expect(szoveg).not.toContain('27%')
   })
 
-  it('egyik új bekezdés sem nyúl a 27%-os áfa kérdéséhez', () => {
-    // Tulajdonosi kikötés: az AAM/27 kérdés még nem dőlt el.
+  it('a 19. javítás új bekezdései nem beszélnek áfáról (azt a 18. javítás áfa-mondata rendezi)', () => {
+    // Az áfáról EGYETLEN bekezdés szól (a 18. javítás AAM-mondata); egy
+    // második, eltérő megfogalmazás ellentmondást vihetne a jogi szövegbe.
     for (const bekezdes of ASZF_BARION_UJ_BEKEZDESEK) {
       expect(bekezdes).not.toContain('27%')
       expect(bekezdes).not.toContain('áfa')
