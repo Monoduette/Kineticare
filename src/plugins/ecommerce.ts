@@ -677,17 +677,20 @@ async function countPaidOrRefundedOrders(
  * a rendelések nem olvashatók, fail-closed: megerősítést kér.
  *
  * „Már ingyenes” csak a valóban közzétett, lomtáron kívüli fő sor lehet (a
- * napló pillanatképe itt nem számít: egy téves „már ingyenes” visszavonhatatlan
- * hozzáféréseket adna). A lomtárba helyezés, a lomtárból `_status: 'published'`
- * nélküli visszaállítás és a közzététel visszavonása validálás nélkül a
- * legutóbbi (akár autosave-es) piszkozatot írja a fő sorba (update.js:
- * skipValidation), így ott a kivett pipa ez az őr nélkül is a fő sorba
+ * napló pillanatképe itt csak a munkatársat engedi tovább, a tulajdonost nem
+ * mentesíti az „ára van / rendelése van” kérdés alól: egy téves „már ingyenes”
+ * visszavonhatatlan hozzáféréseket adna). A lomtárba helyezés, a lomtárból
+ * `_status: 'published'` nélküli visszaállítás és a közzététel visszavonása
+ * validálás nélkül a legutóbbi (akár autosave-es) piszkozatot írja a fő sorba
+ * (update.js: skipValidation), így ott a kivett pipa ez az őr nélkül is a fő sorba
  * kerülhet. Ezek az írások ezért mindig piszkozat-sort hagynak, a kérés
  * `_status`-ától függetlenül (unpublishAndRestoreWritesStayDraft,
  * trashWritesStayDraft), az ingyenes kurzust kiadó utak
  * (src/lib/free-course/request-access.ts, src/lib/free-course-grant.ts) pedig
  * a piszkozat-sort nem tekintik élőnek (H4). Élő sor csak validált mentésből
- * lesz: a közzététel és a „visszaállítás közzétettként” ezen az őrön megy át.
+ * lesz: a közzététel és a „visszaállítás közzétettként” ezen az őrön megy át,
+ * a munkatárs verzió-visszaállítása pedig, amely a tulajdonosi mezőket nem
+ * validálja, nem élő fő sornál piszkozat marad (restoreVersionByNonOwnerStaysDraft).
  *
  * Új kurzuson (create) nincs vásárló, ott a tulajdonostól nem kérdez. Munkatárs
  * viszont a pipát maga nem állíthatja (T-011), így a create-nél kivett pipa csak
@@ -695,6 +698,21 @@ async function countPaidOrRefundedOrders(
  * autosave-es piszkozatából tölti: payload/dist/duplicateDocument, fallback);
  * ha ez közzétett másolat lenne, a tulajdonos meg nem erősített „ingyenes”
  * döntése egy új, élő kurzuson jelenne meg a fizetős kurzus tartalmával.
+ *
+ * rev2: a munkatárs a kivett pipát csak akkor teheti közzé, ha a kurzus
+ * legutóbb közzétett állapota is ingyenes volt (élő ingyenes sor, vagy a
+ * visszavonás előtti pillanatkép a naplóban). A munkatárs értéke mindig a
+ * legutóbbi verzióé, és az „ár nélkül, rendelés nélkül” kivétel nála a
+ * tulajdonos meg nem erősített piszkozatát engedte élesbe: az admin Másolás
+ * gombja (piszkozat-másolat, saját közzétett múlt és rendelés nélkül) és egy
+ * közzététel ingyenes, élő másolatot adott a fizetős kurzus tartalmával, ha a
+ * tulajdonos piszkozatában a pipa és az ár is üres volt (mérve valódi Payload +
+ * Postgres mellett). Soha nem közzétett kurzus első ingyenes közzététele ezért
+ * a tulajdonosé.
+ *
+ * Az „ára van” a legutóbb közzétett árat is nézi: a közzététel visszavonása a
+ * piszkozatot írja a fő sorba, így ott az ár már üres lehet, és a még rendelés
+ * nélküli, 79 500 Ft-os kurzus megerősítés nélkül lett volna ingyenes.
  */
 export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, options) => {
   if (value !== false) {
@@ -709,19 +727,24 @@ export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, 
   if ((await ownerConfirmations(options)).freeCourse === true) {
     return true
   }
-  const row = await readProductRow(options.req, options.id)
+  const reference = await productReference(options)
+  const row = reference?.row
   if (isLivePublishedRow(row) && row.priceInHUFEnabled === false) {
     return true
+  }
+  if (!(await ownerMayWrite(options))) {
+    return reference?.lastPublished?.priceInHUFEnabled === false ? true : OWNER_ONLY_CHANGE_MESSAGE
   }
   const sibling = options.siblingData as { priceInHUF?: unknown } | undefined
   const hasPrice =
     positivePriceOrNull(sibling?.priceInHUF) !== null ||
-    positivePriceOrNull(row?.priceInHUF) !== null
+    positivePriceOrNull(row?.priceInHUF) !== null ||
+    positivePriceOrNull(reference?.lastPublished?.priceInHUF) !== null
   const orders = await countPaidOrRefundedOrders(options.req, options.id)
   if (!hasPrice && orders === 0 && row !== undefined) {
     return true
   }
-  return refusalFor(options, FREE_COURSE_GUARD_MESSAGE)
+  return FREE_COURSE_GUARD_MESSAGE
 }
 
 /**
@@ -1319,11 +1342,18 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
  * adatból számolja:
  * - a visszavonás jelzője és a visszaállítás a nyers kérésből derül ki, ezért a
  *   művelet elején (beforeOperation) állítjuk a kérés `_status`-át 'draft'-ra.
- *   Lomtárban álló sort csak `trash: true` mellett lehet menteni (enélkül a
- *   Payload nem is találja meg), így a `trash: true`, 'published' nélküli
- *   mentés lefedi a visszaállítást; élő sornál ez a kérés közzététel-visszavonás
- *   lesz, ami biztonságos irány. A Payload a visszavonás jelzőjét szövegként
- *   is elfogadja (REST: `?unpublishAllLocales=true`), csak a 'true' számít.
+ *   A Payload a lomtár-szűrőt a LEGUTÓBBI VERZIÓ `deletedAt`-jére alkalmazza,
+ *   nem a fő soréra (getLatestCollectionVersion): lomtárban álló sort, amelynek
+ *   legutóbbi verziója is lomtárban van, csak `trash: true` mellett lehet
+ *   menteni, így a `trash: true`, 'published' nélküli mentés lefedi a
+ *   visszaállítást. Ha a legutóbbi verzió már nincs lomtárban (például egy
+ *   `?draft=true&trash=true` mentés csak verziót írt), a Payload a sort nem
+ *   tekinti lomtárban lévőnek, és `trash` nélkül is menti: ilyenkor viszont a
+ *   `isRestoringDraftFromTrash` is ugyanebből a verzióból számol, tehát a
+ *   mentés vagy validál, vagy piszkozat (mérve). Élő sornál a `trash: true`,
+ *   'published' nélküli kérés közzététel-visszavonás lesz, ami biztonságos
+ *   irány. A Payload a visszavonás jelzőjét szövegként is elfogadja (REST:
+ *   `?unpublishAllLocales=true`), csak a 'true' számít.
  * - a `deletedAt` az összefésült adatból derül ki, ezért a kollekció
  *   beforeChange hookjában (az a validálás kihagyásakor is lefut, és a fő sor
  *   meg a verzió írása előtt).
@@ -1344,6 +1374,55 @@ export const unpublishAndRestoreWritesStayDraft: CollectionBeforeOperationHook =
     return args
   }
   return { ...args, data: { ...data, _status: 'draft' } }
+}
+
+/**
+ * r2-termekor (rev2): a munkatárs verzió-visszaállítása nem élesítheti a
+ * tulajdonos piszkozatát.
+ *
+ * A Payload verzió-visszaállítása (restoreVersionOperation, az admin
+ * „Visszaállítás” gombja alapból `?draft=false`) a `req.context.isRestoringVersion`
+ * jelzőt állítja, és a mező-szintű beforeValidate ilyenkor a munkatárs által
+ * nem írható mezőket (ár, „Fizetős kurzus”, akció) törli, de NEM tölti vissza
+ * (payload/dist/fields/hooks/beforeValidate/promise.js). Az ár-őrök így
+ * `undefined`-ot kapnak és átengednek, a `db.updateOne` pedig a hiányzó
+ * oszlopokat nem írja: a fő sorban marad, ami ott állt, a visszaállított
+ * verzió viszont `_status: 'published'`-et ír. Élő fő sornál ez rendben van
+ * (ott validált, közzétett értékek állnak); közzététel-visszavonás vagy
+ * lomtár után viszont a fő sorban a tulajdonos meg nem erősített piszkozata
+ * áll, és az élesedett volna (mérve valódi Payload + Postgres mellett:
+ * ingyenes 79 500 Ft-os kurzus, 5 Ft-os ár).
+ *
+ * Ezért a nem tulajdonos közzétett visszaállítása nem élő fő sornál piszkozat
+ * marad; a kurzust utána a szokásos Közzététel gomb viszi ki, amely az ár-őrökön
+ * megy át. Csak a `_status`-t normalizálja, a jogosultságot nem érinti. A
+ * tulajdonos visszaállítása validál (minden mezőt ír), azt nem érinti.
+ * Felhasználó nélküli (rendszer-)visszaállításnál sem tudjuk, ki a szereplő:
+ * ott is a fő sor dönt (fail-closed). Olvasási hiba: piszkozat.
+ */
+export const restoreVersionByNonOwnerStaysDraft: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (
+    operation !== 'update' ||
+    req.context?.isRestoringVersion !== true ||
+    !isPlainRecord(data) ||
+    data._status !== 'published'
+  ) {
+    return data
+  }
+  const id = isPlainRecord(originalDoc) ? originalDoc.id : undefined
+  if (typeof id !== 'number' && typeof id !== 'string') {
+    return { ...data, _status: 'draft' }
+  }
+  if (await ownerMayWrite({ req, data, id })) {
+    return data
+  }
+  const row = await readProductRow(req, id)
+  return isLivePublishedRow(row) ? data : { ...data, _status: 'draft' }
 }
 
 /** A lomtárba helyezés és a lomtárban álló sor mentése (lásd fent). */
@@ -1406,7 +1485,11 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
       ...(defaultCollection.hooks?.beforeOperation ?? []),
       unpublishAndRestoreWritesStayDraft,
     ],
-    beforeChange: [trashWritesStayDraft, ...(defaultCollection.hooks?.beforeChange ?? [])],
+    beforeChange: [
+      trashWritesStayDraft,
+      restoreVersionByNonOwnerStaysDraft,
+      ...(defaultCollection.hooks?.beforeChange ?? []),
+    ],
     // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
     afterChange: [
       ...(defaultCollection.hooks?.afterChange ?? []),

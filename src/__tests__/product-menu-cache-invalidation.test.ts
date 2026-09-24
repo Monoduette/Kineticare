@@ -73,10 +73,11 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     expect(products.hooks?.beforeDelete?.[0]).toBe(preventCourseDeletionWithFiles)
     expect(products.hooks?.beforeDelete?.[1]).toBe(beforeDelete)
     expect(hooks.beforeDelete).toEqual([beforeDelete])
-    // r2-termekor (rev1): a validálás nélküli írást piszkozattá tevő hook a
-    // gyáriak ELÉ kerül (beforeChange), illetve mögéjük (beforeOperation).
-    expect(products.hooks?.beforeChange).toHaveLength(2)
-    expect(products.hooks?.beforeChange?.slice(1)).toEqual(hooks.beforeChange)
+    // r2-termekor (rev1, rev2): a validálás nélküli írást és a munkatárs
+    // verzió-visszaállítását piszkozattá tevő hookok a gyáriak ELÉ kerülnek
+    // (beforeChange), illetve mögéjük (beforeOperation).
+    expect(products.hooks?.beforeChange).toHaveLength(3)
+    expect(products.hooks?.beforeChange?.slice(2)).toEqual(hooks.beforeChange)
     expect(products.hooks?.beforeOperation).toHaveLength(2)
     expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
     expect(hooks.beforeChange).toEqual([beforeChange])

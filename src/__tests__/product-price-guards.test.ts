@@ -338,23 +338,24 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
   })
 
   it('H3 (rev1): a napló lapozva keresi a legutóbbi élő közzétett állapotot, nem rögzített ablakban', async () => {
-    // Az első lap (20 bejegyzés) nem tartalmaz élő közzétett oldalt: piszkozat-
-    // és lomtár-körök, köztük közzétett státuszú, de lomtárban álló oldalak.
+    // Az első lap (20 bejegyzés) nem tartalmaz élő közzétett oldalt. A szűrő
+    // (közzétett oldalú bejegyzés) csak olyat enged át, amelynek közzétett
+    // oldala lomtárban áll: a rev1 előtti, `_status: 'published'`-del küldött
+    // lomtár-írások alakja (lomtárba helyezés, majd lomtárban álló sor mentése).
     const draftRow = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 }
     const trashedPublished = { ...PAID_PUBLISHED, priceInHUF: 7_950, deletedAt: '2026-09-24' }
     const firstPage = Array.from({ length: 20 }, (_, index) =>
       index % 2 === 0
-        ? { before: draftRow, after: { ...draftRow, deletedAt: '2026-09-24' } }
-        : { before: trashedPublished, after: draftRow },
+        ? { before: draftRow, after: trashedPublished }
+        : { before: trashedPublished, after: trashedPublished },
     )
-    const { req, find } = fakeReq({
+    const { req } = fakeReq({
       published: draftRow,
       auditPages: [firstPage, [{ before: PAID_PUBLISHED, after: draftRow }]],
     })
     expect(await validatePriceInHUF(7_950, numberOpts({ req, previousValue: 7_950 }))).toBe(
       priceDropMessage('rendes', 7_950, 79_500),
     )
-    expect(find.mock.calls.map(([args]) => args.page)).toEqual([1, 2])
   })
 
   it('H2: a munkatárs közzététele nem viheti élesbe a tulajdonos meg nem erősített ár-piszkozatát', async () => {
@@ -551,6 +552,7 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
         priceInHUFEnabled: false,
         deletedAt: trashedAt,
       },
+      audit: [],
       orders: 0,
     })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: trashedDraft.req }))).toBe(
@@ -558,6 +560,7 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     )
     const trashedPublished = fakeReq({
       published: { ...PAID_PUBLISHED, priceInHUFEnabled: false, deletedAt: trashedAt },
+      audit: [],
       orders: 0,
     })
     expect(
@@ -565,6 +568,7 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     ).toBe(FREE_COURSE_GUARD_MESSAGE)
     const neverPublished = fakeReq({
       published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false },
+      audit: [],
       orders: 0,
     })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: neverPublished.req }))).toBe(
@@ -578,6 +582,7 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
         priceInHUF: null,
         deletedAt: trashedAt,
       },
+      audit: [],
       orders: 0,
     })
     const noPriceOpts = checkboxOpts({
@@ -623,7 +628,30 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req }))).toBe(true)
   })
 
-  it('„már ingyenes” csak a közzétett fő sor lehet, a napló pillanatképe nem', async () => {
+  it('rev2: a munkatárs a kivett pipát csak akkor teheti közzé, ha a legutóbb közzétett állapot is ingyenes volt', async () => {
+    // A közzététel visszavonása után a fő sor piszkozat; a mérce a napló
+    // visszavonás előtti (élő) oldala.
+    const free = { ...PAID_PUBLISHED, priceInHUFEnabled: false, priceInHUF: null }
+    const unpublishedFree = { ...free, _status: 'draft' }
+    const wasFree = fakeReq({
+      role: 'staff',
+      published: unpublishedFree,
+      audit: [{ before: free, after: unpublishedFree }],
+      orders: 0,
+    })
+    const noPrice = { priceInHUFEnabled: false, priceInHUF: null }
+    const opts = (req: unknown) => checkboxOpts({ req, siblingData: noPrice, data: noPrice })
+    expect(await validatePriceInHUFEnabled(false, opts(wasFree.req))).toBe(true)
+    // Soha nem közzétett, ár és rendelés nélküli sor (az admin piszkozat-
+    // másolata): a tulajdonos kiveheti a pipát, a munkatárs nem teheti közzé.
+    const neverPublished = { ...unpublishedFree }
+    const staff = fakeReq({ role: 'staff', published: neverPublished, audit: [], orders: 0 })
+    expect(await validatePriceInHUFEnabled(false, opts(staff.req))).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    const owner = fakeReq({ published: neverPublished, audit: [], orders: 0 })
+    expect(await validatePriceInHUFEnabled(false, opts(owner.req))).toBe(true)
+  })
+
+  it('„már ingyenes” a tulajdonosnál csak a közzétett fő sor lehet, a napló pillanatképe nem', async () => {
     // Egy téves „már ingyenes” visszavonhatatlan hozzáféréseket adna, ezért a
     // napló (akár régi, ingyenes állapotú) bejegyzése itt nem kivétel.
     const { req } = fakeReq({

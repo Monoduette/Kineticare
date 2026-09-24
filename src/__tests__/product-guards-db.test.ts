@@ -2,6 +2,7 @@ import { getPayload, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
+  FREE_COURSE_GUARD_MESSAGE,
   OWNER_ONLY_CHANGE_MESSAGE,
   PRODUCT_CONFIRMATIONS_KEY,
   priceDropMessage,
@@ -166,6 +167,38 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       email: `db-guard-latogato-${tag}-${stamp}@example.test`,
       serverUrl: null,
       env: {},
+    })
+  }
+
+  /** A kurzus közzétett verziója, ahogy az admin „Verziók” fülén látszik. */
+  async function publishedVersionId(id: number): Promise<number | string> {
+    const { docs } = await payload.findVersions({
+      collection: 'products',
+      where: { parent: { equals: id } },
+      sort: 'createdAt',
+      depth: 0,
+      limit: 100,
+      overrideAccess: true,
+    })
+    const published = docs.find(
+      (entry) => (entry.version as { _status?: unknown })._status === 'published',
+    )
+    if (published === undefined) throw new Error(`Nincs közzétett verzió: ${id}`)
+    return published.id
+  }
+
+  /**
+   * Az admin „Visszaállítás” gombja (@payloadcms/ui Restore: POST
+   * `/api/products/versions/<id>?draft=false`): a verzió-visszaállítás
+   * közzétettként.
+   */
+  async function restoreVersion(versionId: number | string, user: Doc): Promise<void> {
+    await payload.restoreVersion({
+      collection: 'products',
+      id: versionId as never,
+      draft: false,
+      overrideAccess: false,
+      user: asUser(user),
     })
   }
 
@@ -539,10 +572,11 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
   }, 120_000)
 
-  it('rev1 (a napló lapozása): sok lomtár + piszkozatként visszaállítás kör után is a legutóbb közzétett ár a mérce', async () => {
+  it('rev1 (a napló szűrője): sok lomtár + piszkozatként visszaállítás kör után is a legutóbb közzétett ár a mérce', async () => {
     // Minden kör két, közzétett oldal nélküli naplóbejegyzést ír; 11 kör (22
     // bejegyzés) kitolta a korábbi, 20-as ablakból a visszavonás bejegyzését, és
-    // a mérce az elütött árat hordozó piszkozat-sor lett.
+    // a mérce az elütött árat hordozó piszkozat-sor lett. A lekérdezés szűrője
+    // (csak közzétett oldalú bejegyzés) ezeket eleve kihagyja.
     const id = await createPublished('lookback')
     expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
     await autosave(id, owner, { priceInHUF: 7_950 })
@@ -560,7 +594,174 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
   }, 180_000)
 
-  it('rev1 (duplikálás): a munkatárs közzétett másolata nem viszi élesbe a tulajdonos kivett pipáját', async () => {
+  it('rev2 (a napló lapozása): 20-nál több, lomtárban álló közzétett oldalú bejegyzés mögött is megtalálja a közzétett árat', async () => {
+    // A rev1 előtti, `_status: 'published'`-del küldött lomtár-írások alakja: a
+    // bejegyzés közzétett oldala lomtárban áll (a szűrő átengedi, mérce nem
+    // lehet). 21 ilyen bejegyzés az első lapra nem fér, a visszavonás előtti
+    // közzétett sor a második lapon van.
+    // Az elütött ár autosave-je a visszavonás ELŐTT: a visszavonás a
+    // piszkozatot (7 950) írja a fő sorba, így a napló nélkül nincs mihez mérni.
+    const id = await createPublished('paging')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    expect((await mainRow(id)).priceInHUF).toBe(7_950)
+    const poisoned = {
+      _status: 'published',
+      priceInHUFEnabled: true,
+      priceInHUF: 7_950,
+      deletedAt: new Date().toISOString(),
+    }
+    for (let index = 0; index < 21; index += 1) {
+      await payload.create({
+        collection: 'audit-logs',
+        data: {
+          action: 'trash',
+          entityType: 'products',
+          entityId: String(id),
+          before: { ...poisoned, _status: 'draft', deletedAt: null },
+          after: poisoned,
+        },
+        overrideAccess: true,
+      })
+    }
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: priceDropMessage('rendes', 7_950, 79_500),
+    })
+  }, 180_000)
+
+  /*
+   * rev2: a verzió-visszaállítás (restoreVersion) a munkatárs által nem
+   * írható mezőket nem validálja és nem írja; a fő sorban marad, ami ott állt.
+   * Visszavonás vagy lomtár után ez a tulajdonos meg nem erősített piszkozata.
+   */
+  it('rev2 (BRK-R1, R1b, R1c): a munkatárs verzió-visszaállítása nem élesíti a tulajdonos kivett pipáját', async () => {
+    const cases: Array<[string, (id: number) => Promise<void>]> = [
+      [
+        'rv-staff-unpub',
+        async (id) => {
+          expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe(
+            'OK',
+          )
+        },
+      ],
+      [
+        'rv-trash',
+        async (id) => {
+          expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+          expect(
+            await saveWhere(id, staff, { deletedAt: null, _status: 'draft' }, { trashed: true }),
+          ).toBe('OK')
+        },
+      ],
+      [
+        'rv-owner-unpub',
+        async (id) => {
+          expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe(
+            'OK',
+          )
+        },
+      ],
+    ]
+    for (const [key, takeDown] of cases) {
+      const id = await createPublished(key)
+      await autosave(id, owner, { priceInHUFEnabled: false })
+      await takeDown(id)
+      await restoreVersion(await publishedVersionId(id), staff)
+      const row = await mainRow(id)
+      expect({ key, _status: row._status }).toEqual({ key, _status: 'draft' })
+      expect((await claimAsStranger(id, key)).status, key).toBe('course-not-available')
+    }
+  }, 240_000)
+
+  it('rev2 (BRK-R2a): a munkatárs verzió-visszaállítása nem élesíti a tulajdonos 5 Ft-os ár-piszkozatát', async () => {
+    const id = await createPublished('rv-5ft')
+    await autosave(id, owner, { priceInHUF: 5 })
+    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await restoreVersion(await publishedVersionId(id), staff)
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'draft',
+      priceInHUF: 5,
+    })
+    // A piszkozatot a szokásos közzététel sem viheti ki a tulajdonos nélkül.
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+  }, 120_000)
+
+  it('zárás elleni védelem (rev2): a tulajdonos visszaállítása validál és élesít; a munkatársé élő kurzuson is közzétesz', async () => {
+    // A tulajdonos a visszavonás után a közzétett verziót állítja vissza: a
+    // verzió értékei (pipa bent, 79 500 Ft) validálva élesednek.
+    const id = await createPublished('rv-owner')
+    await autosave(id, owner, { priceInHUFEnabled: false })
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await restoreVersion(await publishedVersionId(id), owner)
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUFEnabled: row.priceInHUFEnabled }).toEqual({
+      _status: 'published',
+      priceInHUFEnabled: true,
+    })
+
+    // Élő kurzuson a munkatárs egy korábbi szöveg-verziót állít vissza: élő marad.
+    const live = await createPublished('rv-staff-live')
+    const versionId = await publishedVersionId(live)
+    expect(await save(live, staff, { shortDescription: 'Új leírás.', _status: 'published' })).toBe(
+      'OK',
+    )
+    await restoreVersion(versionId, staff)
+    const liveRow = await mainRow(live)
+    expect({ _status: liveRow._status, priceInHUF: liveRow.priceInHUF }).toEqual({
+      _status: 'published',
+      priceInHUF: 79_500,
+    })
+  }, 120_000)
+
+  it('rev2 (BRK-U1): visszavonás után a rendelés nélküli fizetős kurzus nem lesz ingyenes megerősítés nélkül', async () => {
+    const id = await createPublished('unpub-noorders')
+    await autosave(id, owner, { priceInHUFEnabled: false, priceInHUF: null })
+    expect(await save(id, owner, { _status: 'published' })).not.toBe('OK')
+    expect(await save(id, staff, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    // A tulajdonosnak is megerősítést kér: a legutóbb közzétett ár 79 500 Ft volt.
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: FREE_COURSE_GUARD_MESSAGE,
+    })
+    expect((await claimAsStranger(id, 'unpub-noorders')).status).toBe('course-not-available')
+  }, 120_000)
+
+  it('rev2 (BRK-D1): az admin piszkozat-másolata a munkatárs közzétételével sem lesz ingyenes, élő kurzus', async () => {
+    // A tulajdonos piszkozatában a pipa és az ár is üres; a másolatnak nincs
+    // közzétett múltja és rendelése, így az „ár és vásárló nélkül” kivétel a
+    // munkatársnál ingyenes, élő másolatot adott.
+    const id = await createPublished('dup2-source')
+    await autosave(id, owner, { priceInHUFEnabled: false, priceInHUF: null })
+    expect(await save(id, owner, { _status: 'published' })).not.toBe('OK')
+    const copy = (await payload.duplicate({
+      collection: 'products',
+      id,
+      draft: true,
+      data: { _status: 'draft' },
+      overrideAccess: false,
+      user: asUser(staff),
+    })) as unknown as Doc
+    productIds.push(copy.id)
+
+    expect(await save(copy.id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect((await mainRow(copy.id))._status).toBe('draft')
+    expect((await claimAsStranger(copy.id, 'dup2')).status).toBe('course-not-available')
+  }, 120_000)
+
+  it('rev1 (duplikálás, `?draft=false`): a munkatárs azonnal közzétett másolata nem viszi élesbe a tulajdonos kivett pipáját', async () => {
     // A duplikálás a munkatárs által nem írható mezőt a forrás legutóbbi
     // verziójából (a tulajdonos piszkozatából) tölti; `?draft=false` +
     // `_status: 'published'` mellett a másolat azonnal élő, ingyenes kurzus lett
