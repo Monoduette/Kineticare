@@ -8,7 +8,6 @@ import { verifyTurnstileToken } from '../free-course/route-handler'
 import { logger, type Logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
 import {
-  RATE_LIMIT_MESSAGE,
   SlidingWindowRateLimiter,
   resolveRateLimitIp,
   type RateLimitRule,
@@ -22,11 +21,12 @@ import { parseWithdrawalRequestBody } from './validation'
  * POST /api/elallas: az elállási funkció végpontja.
  *
  * Sorrend: eredet-ellenőrzés → korlátos törzs → validáció → honeypot →
- * IP- és címkeret → Turnstile → feldolgozás (src/lib/withdrawal/service.ts).
- * Ugyanaz a kapu, mint az ingyenes kurzus igénylésén
- * (src/lib/free-course/route-handler.ts): a végpont minden sikeres hívása
- * levelet küld a MEGADOTT címre, tehát keret nélkül levélbombázásra lehetne
- * használni. Bejelentkezés nem kell (NKFH-tájékoztató, 2026. 07. 17.).
+ * IP-keret → Turnstile → címkeret → feldolgozás
+ * (src/lib/withdrawal/service.ts). Ugyanazok a kapuk, mint az ingyenes kurzus
+ * igénylésén (src/lib/free-course/route-handler.ts), mert a végpont minden
+ * sikeres hívása levelet küld a MEGADOTT címre, tehát keret nélkül
+ * levélbombázásra lehetne használni. A címkeret viszont a Turnstile UTÁN áll
+ * (indokát lásd lent). Bejelentkezés nem kell (NKFH-tájékoztató, 2026. 07. 17.).
  *
  * Minden elutasító üzenet megmondja a másik utat is: az elállás e-mailben is
  * közölhető (22. § (1) b)), ezért egy spam-ellenőrzési vagy szerverhiba nem
@@ -50,6 +50,8 @@ export const WITHDRAWAL_BODY_ERROR =
   'A nyilatkozat nem küldhető el: a kérés adatai nem értelmezhetők. Frissítsd az oldalt, és próbáld újra.'
 export const WITHDRAWAL_TURNSTILE_ERROR = `A spam-ellenőrzés nem sikerült. Töltsd újra az oldalt, és próbáld meg még egyszer, vagy ${EMAIL_ALTERNATIVE}.`
 export const WITHDRAWAL_UNAVAILABLE_ERROR = `A nyilatkozatot most nem tudtuk fogadni. Próbáld újra néhány perc múlva, vagy ${EMAIL_ALTERNATIVE}.`
+/** A keret-túllépés üzenete: a közös 429-es szöveg, kiegészítve az e-mailes úttal. */
+export const WITHDRAWAL_RATE_LIMIT_ERROR = `Túl sok próbálkozás. Próbáld újra pár perc múlva, vagy ${EMAIL_ALTERNATIVE}.`
 
 export interface WithdrawalHandlerDeps {
   getPayload: () => Promise<Payload>
@@ -67,6 +69,27 @@ export interface WithdrawalSuccessBody {
   reference: string
   receivedAt: string
   receiptSent: boolean
+}
+
+/** Egy keret ellenőrzése; túllépésnél a kész 429-es válasz, különben `null`. */
+function checkLimit(
+  limiter: SlidingWindowRateLimiter,
+  log: Logger,
+  subject: 'ip' | 'email',
+  identifier: string,
+  rule: RateLimitRule,
+): NextResponse | null {
+  const decision = limiter.check(`elallas:${subject}:${identifier}`, rule)
+  if (decision.allowed) return null
+  log.warn('elállás: a kérés túllépte a keretet (429)', {
+    subject,
+    identifier: subject === 'email' ? maskEmail(identifier) : identifier,
+    retryAfterSeconds: decision.retryAfterSeconds,
+  })
+  return NextResponse.json(
+    { error: WITHDRAWAL_RATE_LIMIT_ERROR },
+    { status: 429, headers: { 'Retry-After': String(decision.retryAfterSeconds) } },
+  )
 }
 
 export function createWithdrawalHandler(
@@ -106,24 +129,14 @@ export function createWithdrawalHandler(
       return NextResponse.json(fake, { status: 200 })
     }
 
+    // Sorrend: IP-keret → Turnstile → címkeret. A címkeret a Turnstile UTÁN
+    // számol, különben bárki, aki ismeri a vevő címét, három elbukó
+    // (Turnstile nélküli) kéréssel tíz percre kizárhatná a vevőt a törvényes
+    // funkcióból. Az IP-keret marad elöl: az a támadó saját keretét fogyasztja,
+    // és a Turnstile-ellenőrzés hívásait is korlátozza.
     const ip = resolveRateLimitIp(request.headers)
-    for (const [subject, identifier, rule] of [
-      ['ip', ip, WITHDRAWAL_IP_RULE],
-      ['email', body.email.toLowerCase(), WITHDRAWAL_EMAIL_RULE],
-    ] as const) {
-      const decision = limiter.check(`elallas:${subject}:${identifier}`, rule)
-      if (!decision.allowed) {
-        log.warn('elállás: a kérés túllépte a keretet (429)', {
-          subject,
-          identifier: subject === 'email' ? maskEmail(identifier) : identifier,
-          retryAfterSeconds: decision.retryAfterSeconds,
-        })
-        return NextResponse.json(
-          { error: RATE_LIMIT_MESSAGE },
-          { status: 429, headers: { 'Retry-After': String(decision.retryAfterSeconds) } },
-        )
-      }
-    }
+    const ipLimited = checkLimit(limiter, log, 'ip', ip, WITHDRAWAL_IP_RULE)
+    if (ipLimited) return ipLimited
 
     const secret = env.TURNSTILE_SECRET_KEY
     if (typeof secret === 'string' && secret.length > 0) {
@@ -136,6 +149,15 @@ export function createWithdrawalHandler(
         return NextResponse.json({ error: WITHDRAWAL_TURNSTILE_ERROR }, { status: 400 })
       }
     }
+
+    const emailLimited = checkLimit(
+      limiter,
+      log,
+      'email',
+      body.email.toLowerCase(),
+      WITHDRAWAL_EMAIL_RULE,
+    )
+    if (emailLimited) return emailLimited
 
     try {
       const payload = await deps.getPayload()

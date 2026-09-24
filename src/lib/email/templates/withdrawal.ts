@@ -98,6 +98,42 @@ export function withdrawalReceiptEmail(
   }
 }
 
+/**
+ * Az átvételi elismervény sorsa a stáb szemével.
+ * - `sent`: kiment.
+ * - `failed`: biztosan nem ment ki (elutasítás, kivétel, élesben noop).
+ * - `uncertain`: az SMTP a levél tartalmának átadása UTÁN szakadt meg, a levél
+ *   célba érhetett; vak kézi pótlás kettőzné (src/lib/email/retry.ts).
+ */
+export type WithdrawalReceiptDelivery = 'sent' | 'failed' | 'uncertain'
+
+/**
+ * A rendelés állapota a stábnak, az admin feliratával (src/plugins/ecommerce.ts
+ * `orderStatusStateMachineOptions`), hogy a levél és az admin ugyanazt a szót
+ * mutassa. Ismeretlen kódnál a kód maga áll (inkább nyers, mint hamis).
+ */
+const ORDER_STATUS_LABELS: Readonly<Record<string, string>> = {
+  created: 'Létrehozva',
+  payment_pending: 'Fizetésre vár',
+  paid: 'Fizetve',
+  payment_failed: 'Sikertelen fizetés',
+  cancelled: 'Lemondva',
+  refunded: 'Visszatérítve',
+}
+
+function orderStatusLabel(status: string | null): string {
+  if (status === null) return 'ismeretlen'
+  return ORDER_STATUS_LABELS[status] ?? status
+}
+
+const RECEIPT_LINES: Readonly<Record<WithdrawalReceiptDelivery, string>> = {
+  sent: 'Az átvételi elismervény kiment a vevőnek.',
+  failed: 'Az átvételi elismervényt NEM sikerült elküldeni a vevőnek: küldd el kézzel, még ma.',
+  uncertain:
+    'Az átvételi elismervény kézbesítése bizonytalan, a levél célba érhetett: nézd meg a ' +
+    'küldési naplóban, és csak akkor küldd el kézzel, ha nem ért célba.',
+}
+
 export function withdrawalStaffEmail(
   input: WithdrawalMailInput & {
     /**
@@ -108,19 +144,17 @@ export function withdrawalStaffEmail(
     refundDeadline: string
     /** A rendelés, ha a rendelésszám alapján megtaláltuk. */
     order: { orderNumber: string; status: string | null; emailMatches: boolean } | null
-    /** Kiment-e az elismervény a vevőnek. */
-    receiptSent: boolean
+    /** Az átvételi elismervény sorsa. */
+    receipt: WithdrawalReceiptDelivery
   },
 ): EmailTemplate {
   const orderLine = input.order
-    ? `A rendelés megvan: ${input.order.orderNumber}, állapota: ${input.order.status ?? 'ismeretlen'}. ` +
+    ? `A rendelés megvan: ${input.order.orderNumber}, állapota: ${orderStatusLabel(input.order.status)}. ` +
       (input.order.emailMatches
         ? 'A megadott e-mail-cím egyezik a rendelésével.'
         : 'A megadott e-mail-cím NEM egyezik a rendelésével, ellenőrizd, ki küldte.')
     : 'A megadott adat alapján a rendelést nem találtuk meg automatikusan, keresd meg kézzel.'
-  const receiptLine = input.receiptSent
-    ? 'Az átvételi elismervény kiment a vevőnek.'
-    : 'Az átvételi elismervényt NEM sikerült elküldeni a vevőnek: küldd el kézzel, még ma.'
+  const receiptLine = RECEIPT_LINES[input.receipt]
   const todo =
     `Teendő: ha az elállás érvényes, a visszatérítést legkésőbb ${input.refundDeadline}-ig ` +
     'indítsd el a Kineticare adminból (45/2014. Korm. rendelet 23. § (1)). Ha nem érvényes, ' +

@@ -199,10 +199,33 @@ describe('submitWithdrawal: rögzítés, átvételi elismervény, stáb-értesí
     expect(stab.idempotencyKey).toBe('withdrawal-staff:0123abcd-4567-89ef-0123-456789abcdef')
     // 23. § (1): 14 nap a beérkezéstől, budapesti naptár szerint (09. 25. + 14).
     expect(stab.text).toContain('legkésőbb 2026. 10. 09-ig')
-    expect(stab.text).toContain('A rendelés megvan: KH-2026-000501')
+    // Az állapot az admin feliratával, nem a belső kóddal („paid”).
+    expect(stab.text).toContain('A rendelés megvan: KH-2026-000501, állapota: Fizetve.')
     expect(stab.text).toContain('Az átvételi elismervény kiment a vevőnek.')
     expect(riasztasok(sorok)).toEqual([])
   })
+
+  // 23. § (1): 14 NAPTÁRI nap a budapesti beérkezési naptól, nem 14 × 24 óra.
+  // Az óraátállítás hetében a 336 óra egy nappal elcsúszik: tavasszal a
+  // 23:00–23:59 között beérkezett nyilatkozat határideje egy nappal KÉSŐBBI
+  // lenne a törvényesnél (a stáb elkésne), ősszel a 00:00–00:59 közöttié
+  // egy nappal korábbi.
+  it.each([
+    // 2027. 03. 15. 23:30 CET, az óraátállítás (03. 28.) a 14 napon belül.
+    { beerkezes: '2027-03-15T22:30:00.000Z', hatarido: '2027. 03. 29' },
+    { beerkezes: '2027-03-20T22:30:00.000Z', hatarido: '2027. 04. 03' },
+    // 2026. 10. 12. 00:30 CEST, a visszaállítás (10. 25.) a 14 napon belül.
+    { beerkezes: '2026-10-11T22:30:00.000Z', hatarido: '2026. 10. 26' },
+    { beerkezes: '2026-10-19T22:30:00.000Z', hatarido: '2026. 11. 03' },
+  ])(
+    'óraátállításon át is a budapesti naptár szerint: $beerkezes -> $hatarido',
+    async ({ beerkezes, hatarido }) => {
+      const { eredmeny, hivasok } = futtat({ now: () => new Date(beerkezes) })
+      await eredmeny
+      const stab = hivasok.find((h) => h.idempotencyKey.startsWith('withdrawal-staff:'))
+      expect(stab?.text).toContain(`legkésőbb ${hatarido}-ig`)
+    },
+  )
 
   it('átmeneti hibánál az elismervényt ugyanazzal a kulccsal újrapróbálja (1 és 3 mp)', async () => {
     const { send, hivasok } = kuldo([
@@ -238,10 +261,24 @@ describe('submitWithdrawal: rögzítés, átvételi elismervény, stáb-értesí
     expect(hivasok.filter((h) => h.idempotencyKey.startsWith('withdrawal-receipt:'))).toHaveLength(
       1,
     )
-    expect(hivasok[1].text).toContain('NEM sikerült elküldeni')
+    // A levél célba érhetett: a stáb előbb ellenőrizzen, ne pótoljon vakon
+    // (az kettőzné), és a riasztás se kérjen feltétlen kézi küldést.
+    expect(hivasok[1].text).toContain('kézbesítése bizonytalan')
+    expect(hivasok[1].text).toContain('csak akkor küldd el kézzel, ha nem ért célba')
+    expect(hivasok[1].text).not.toContain('NEM sikerült elküldeni')
     const [riasztas] = riasztasok(sorok)
     expect(riasztas.msg).toContain('22. § (1c)')
-    expect(riasztas.msg).toContain('bizonytalan')
+    expect(riasztas.msg).toContain('csak akkor küldd el kézzel, ha nem ért célba')
+  })
+
+  it('biztosan elbukott elismervénynél a stáb-levél kézi pótlást kér', async () => {
+    const { send, hivasok } = kuldo([
+      { ok: false, provider: 'resend', retryable: false, error: 'HTTP 422' },
+      { ok: true, provider: 'resend', id: 're_stab' },
+    ])
+    const { eredmeny } = futtat({ send })
+    expect(await eredmeny).toMatchObject({ receiptSent: false, staffNotified: true })
+    expect(hivasok[1].text).toContain('NEM sikerült elküldeni a vevőnek: küldd el kézzel, még ma.')
   })
 
   it('élesben a noop-szolgáltató nem elküldés: sem elismervény, sem stáb-levél nem számít kimentnek', async () => {
@@ -423,6 +460,37 @@ describe('POST /api/elallas: a végpont kapui', () => {
     }
     expect(statuszok).toEqual([200, 200, 200, 429])
     expect(submit).toHaveBeenCalledTimes(3)
+  })
+
+  it('a 429-es válasz is megadja az e-mailes utat (a jog gyakorlása nem várhat a keretre)', async () => {
+    const { handler } = vegpont()
+    let utolso: Response | null = null
+    for (let i = 0; i < 4; i += 1) {
+      utolso = await handler(keres(ERTEKEK, { 'x-forwarded-for': `203.0.113.${i}` }))
+    }
+    expect(utolso?.status).toBe(429)
+    expect(((await utolso?.json()) as { error: string }).error).toContain(
+      'e-mailben az info@kineticare.hu címre',
+    )
+  })
+
+  it('a Turnstile-on elbukó kérések nem fogyasztják a vevő címkeretét (nem zárható ki idegen kérésekkel)', async () => {
+    const { handler, submit } = vegpont({
+      env: { TURNSTILE_SECRET_KEY: 'DUMMY-NEM-VALODI-TITOK' },
+      verifyTurnstile: async (token) => token === 'valodi',
+    })
+    // Három idegen kérés a vevő címével, három különböző IP-ről, hamis tokennel.
+    for (let i = 0; i < 3; i += 1) {
+      const tamado = await handler(
+        keres({ ...ERTEKEK, turnstileToken: 'hamis' }, { 'x-forwarded-for': `198.51.100.${i}` }),
+      )
+      expect(tamado.status).toBe(400)
+    }
+    const valasz = await handler(
+      keres({ ...ERTEKEK, turnstileToken: 'valodi' }, { 'x-forwarded-for': '203.0.113.9' }),
+    )
+    expect(valasz.status).toBe(200)
+    expect(submit).toHaveBeenCalledTimes(1)
   })
 
   it('Turnstile-secret mellett elutasított token: 400, és a hibaüzenet megadja az e-mailes utat', async () => {

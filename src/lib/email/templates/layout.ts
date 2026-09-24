@@ -110,14 +110,14 @@ export interface LayoutInput {
   /** Halk záró megjegyzés a kártyán belül, a gomb alatt. Sima szöveg. */
   note?: string
   /**
-   * A lábléc két sora, ha a levél NEM „ne válaszolj" típusú. Sima szöveg,
-   * escape-elve.
+   * A levél saját, kétsoros lábléce. Sima szöveg, escape-elve.
    * - `reason`: miért kapja a címzett (Postmark: „Clearly identify the
    *   source/reason the recipient is receiving the email").
    * - `replyNote`: hova válaszolhat (GOV.UK: „include contact details for your
    *   service if the user might need to contact you",
    *   https://www.gov.uk/service-manual/design/sending-emails-and-text-messages).
-   * Elhagyva a váz a megszokott „automatikus üzenet, ne válaszolj" sort adja.
+   * Elhagyva a váz a `DEFAULT_FOOTER_TEXT`-et adja: automatikus üzenet, amely a
+   * hivatalos kapcsolati címet nevezi meg, és megválaszolható (K14).
    */
   footer?: { reason: string; replyNote: string }
 }

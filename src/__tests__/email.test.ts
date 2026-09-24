@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { maskEmail, parseFromAddress } from '../lib/email/mask'
 import { resolveEmailProvider, sendMail } from '../lib/email/provider'
+import { sendWithRetry, type RetryableMailInput } from '../lib/email/retry'
 import {
   contactStaffEmail,
   resetPasswordEmail,
@@ -11,6 +12,7 @@ import {
 } from '../lib/email/templates/auth'
 import { escapeHtml, renderLayout } from '../lib/email/templates/layout'
 import { usersAuthEmails } from '../lib/email/users-auth'
+import type { SendResult } from '../lib/email/types'
 import { PASSWORD_RESET_PATH, buildPasswordResetUrl } from '../lib/password-reset-url'
 
 describe('resolveEmailProvider', () => {
@@ -285,5 +287,40 @@ describe('usersAuthEmails plugin', () => {
     const config = (await usersAuthEmails(baseConfig())) as Config
     const media = (config.collections ?? []).find((collection) => collection.slug === 'media')
     expect(media?.auth).toBeUndefined()
+  })
+})
+
+describe('sendWithRetry: automatikus újraküldés csak ott, ahol nem kettőzhet', () => {
+  const LEVEL: RetryableMailInput = {
+    to: 'vevo@example.test',
+    subject: 'Teszt',
+    html: '<p>Teszt</p>',
+    text: 'Teszt',
+    idempotencyKey: 'teszt:1',
+  }
+
+  // A bizonytalan kézbesítés (a levél célba érhetett) akkor sem ismételhető,
+  // ha egy szolgáltató mellé `retryable: true`-t is ad: az ismétlés második
+  // levél lenne. Az első sor a kontroll: ugyanaz `deliveryUncertain` nélkül
+  // újrapróbál.
+  it.each([
+    { eset: 'átmeneti hiba', eredmeny: { retryable: true }, kiserletek: 3 },
+    {
+      eset: 'átmeneti, de bizonytalan kézbesítés',
+      eredmeny: { retryable: true, deliveryUncertain: true },
+      kiserletek: 1,
+    },
+  ])('$eset: $kiserletek kísérlet', async ({ eredmeny, kiserletek }) => {
+    const hivasok: RetryableMailInput[] = []
+    const kimenet = await sendWithRetry(
+      async (input: RetryableMailInput): Promise<SendResult> => {
+        hivasok.push(input)
+        return { ok: false, provider: 'smtp', error: 'x', ...eredmeny }
+      },
+      LEVEL,
+      { delaysMs: [1, 1], sleep: async () => {} },
+    )
+    expect(hivasok).toHaveLength(kiserletek)
+    expect(kimenet.attempts).toBe(kiserletek)
   })
 })

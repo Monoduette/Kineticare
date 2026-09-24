@@ -313,7 +313,8 @@ export function orderConfirmationEmail(input: {
   /**
    * A vevő kérdéseinek és panaszainak hivatalos címe (K14; lásd a fájl
    * fejlécét). Megadva a lábléc erre a címre terel, és a hívó ezt teszi a
-   * levél válaszcímébe; hiányában a lábléc a megszokott „ne válaszolj” sor.
+   * levél válaszcímébe; hiányában a váz alapértelmezett lábléce áll
+   * (`DEFAULT_FOOTER_TEXT`, a kódbeli tartalékcímmel, K14).
    */
   supportEmail?: string | null
 }): EmailTemplate {

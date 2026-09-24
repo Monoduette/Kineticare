@@ -639,43 +639,21 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
     let attempts = sent.attempts
     let result: SendResult = sent.result
 
-    if (!result.ok && result.deliveryUncertain === true) {
-      // A levél célba érhetett: sem újrapróba, sem melléklet nélküli pótlevél
-      // (az is második levél lenne). A stáb egyeztet, mielőtt kézzel pótol.
-      log.error(
-        'RIASZTÁS: a kötelező visszaigazoló e-mail kézbesítése BIZONYTALAN: az SMTP-kapcsolat a ' +
-          'levél tartalmának átadása után megszakadt, a szerver átvehette. Automatikus ' +
-          'újraküldés nincs, mert kettőzné a levelet. Nézd meg az SMTP-szolgáltató naplójában ' +
-          '(vagy kérdezd meg a vevőt), megérkezett-e; ha nem, küldd el kézzel a visszaigazolást ' +
-          '(45/2014. Korm. rendelet 18. §).',
-        { attempts, error: maskedError(result.error) },
-      )
-      await writeAuditLog({
-        store: deps.auditStore ?? auditLogStore(deps.payload),
-        action: ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION,
-        entityType: 'orders',
-        entityId: deps.order.id,
-        after: {
-          orderNumber,
-          attemptedAt: new Date().toISOString(),
-          recipient,
-          provider: result.provider,
-          attempts,
-          templateVersion: ORDER_CONFIRMATION_TEMPLATE_VERSION,
-          error: maskedError(result.error) ?? null,
-        },
-      })
-      return
-    }
-
     // Végleges elutasítás mellékletes levélnél: a hiba oka lehet maga a
     // melléklet. A visszaigazolás többi része (nyilatkozatok, szolgáltató,
     // panaszkezelés) nem múlhat rajta, ezért egyszer melléklet nélkül, az ÁSZF
     // linkjével küldjük. SAJÁT kulccsal: ugyanazzal a kulccsal eltérő
     // tartalmat a Resend 409-cel elutasítana
     // (https://resend.com/docs/dashboard/emails/idempotency-keys).
+    // Bizonytalan kézbesítésnél (az is `retryable: false`) NINCS pótlevél: az
+    // első levél célba érhetett, a pótlevél kettőzné.
     let attachmentDropped = false
-    if (!result.ok && result.retryable === false && (message.attachments?.length ?? 0) > 0) {
+    if (
+      !result.ok &&
+      result.retryable === false &&
+      result.deliveryUncertain !== true &&
+      (message.attachments?.length ?? 0) > 0
+    ) {
       log.warn(
         'a szolgáltató végleg elutasította a mellékletes visszaigazolót, melléklet nélkül újraküldöm',
         { attempts, error: maskedError(result.error) },
@@ -692,6 +670,41 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
         ...(replyTo ? { replyTo } : {}),
         idempotencyKey: `kineticare-order-confirmation-${deps.order.id}-link`,
       })
+    }
+
+    if (!result.ok && result.deliveryUncertain === true) {
+      // A levél célba érhetett: sem újrapróba, sem (újabb) pótlevél, mert az
+      // második levél lenne. Az első küldésre és a melléklet nélküli pótlevélre
+      // egyaránt áll. A stáb egyeztet, mielőtt kézzel pótol.
+      log.error(
+        'RIASZTÁS: a kötelező visszaigazoló e-mail kézbesítése BIZONYTALAN: az SMTP-kapcsolat a ' +
+          'levél tartalmának átadása után megszakadt, a szerver átvehette. Automatikus ' +
+          'újraküldés nincs, mert kettőzné a levelet. Nézd meg az SMTP-szolgáltató naplójában ' +
+          '(vagy kérdezd meg a vevőt), megérkezett-e; ha nem, küldd el kézzel a visszaigazolást ' +
+          '(45/2014. Korm. rendelet 18. §).',
+        {
+          attempts,
+          error: maskedError(result.error),
+          ...(attachmentDropped ? { attachmentDropped } : {}),
+        },
+      )
+      await writeAuditLog({
+        store: deps.auditStore ?? auditLogStore(deps.payload),
+        action: ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION,
+        entityType: 'orders',
+        entityId: deps.order.id,
+        after: {
+          orderNumber,
+          attemptedAt: new Date().toISOString(),
+          recipient,
+          provider: result.provider,
+          attempts,
+          templateVersion: ORDER_CONFIRMATION_TEMPLATE_VERSION,
+          attachmentDropped,
+          error: maskedError(result.error) ?? null,
+        },
+      })
+      return
     }
 
     if (!result.ok) {

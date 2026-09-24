@@ -5,12 +5,16 @@ import type { Payload } from 'payload'
 import { auditLogStore, writeAuditLog, type AuditLogStore } from '../audit'
 import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
 import { kapcsolatiEmailPayloadbol } from '../contact-email-server'
-import { budapestDateTimeString } from '../date/budapest'
+import { budapestDateString, budapestDateTimeString } from '../date/budapest'
 import { sendMail } from '../email'
 import { maskEmail, maskEmailsInText } from '../email/mask'
 import { isUsableReplyToAddress } from '../email/reply-to'
 import { realSleep, sendWithRetry, type RetryableMailInput } from '../email/retry'
-import { withdrawalReceiptEmail, withdrawalStaffEmail } from '../email/templates/withdrawal'
+import {
+  withdrawalReceiptEmail,
+  withdrawalStaffEmail,
+  type WithdrawalReceiptDelivery,
+} from '../email/templates/withdrawal'
 import type { SendResult } from '../email/types'
 import type { Logger } from '../logger'
 import { normalizeOrderNumber, type WithdrawalFormValues } from './validation'
@@ -50,8 +54,6 @@ export const WITHDRAWAL_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000]
 
 /** A 23. § (1) szerinti visszatérítési határidő napokban. */
 export const WITHDRAWAL_REFUND_DAYS = 14
-
-const DAY_MS = 24 * 60 * 60 * 1000
 
 export interface WithdrawalOrderMatch {
   id: number | string
@@ -117,16 +119,21 @@ async function defaultFindOrder(
   }
 }
 
-/** „2026. 10. 08” (záró pont nélkül, a „-ig” rag elé), budapesti naptár szerint. */
-function deadlineDay(date: Date): string {
-  return new Intl.DateTimeFormat('hu-HU', {
-    timeZone: 'Europe/Budapest',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-    .format(date)
-    .replace(/\.$/u, '')
+/**
+ * A beérkezés budapesti NAPTÁRI napjához adott `days` nap, „2026. 10. 08”
+ * alakban (záró pont nélkül, a „-ig” rag elé).
+ *
+ * Naptári napot adunk hozzá, nem 14 × 24 órát: az óraátállítás hetében a 336
+ * óra egy nappal elcsúszik (márciusban 23:00 és 23:59 között beérkezett
+ * nyilatkozatnál a határidő egy nappal KÉSŐBBI lenne a törvényesnél, 23. § (1)).
+ * A budapesti nap Y-M-D-jét UTC-ben léptetjük, ott nincs óraátállítás.
+ */
+function deadlineDay(received: Date, days: number): string {
+  const [year, month, day] = budapestDateString(received).split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10)
+    .replace(/-/g, '. ')
 }
 
 function isDelivered(result: SendResult, production: boolean): boolean {
@@ -204,8 +211,11 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
     reference,
   }
 
-  // 2. Átvételi elismervény.
+  // 2. Átvételi elismervény. A stáb-levélnek három állapot kell: a bizonytalan
+  // (SMTP a tartalom átadása után szakadt meg) kézbesítésnél a levél célba
+  // érhetett, ezért ott nem vakon pótolni kell, hanem előbb ellenőrizni.
   let receiptSent = false
+  let receiptDelivery: WithdrawalReceiptDelivery = 'failed'
   try {
     const template = withdrawalReceiptEmail({
       ...mailBase,
@@ -233,6 +243,11 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
       },
     )
     receiptSent = isDelivered(result, production)
+    receiptDelivery = receiptSent
+      ? 'sent'
+      : !result.ok && result.deliveryUncertain === true
+        ? 'uncertain'
+        : 'failed'
     if (receiptSent) {
       const receiptRecorded = await writeAuditLog({
         store: deps.auditStore ?? auditLogStore(deps.payload),
@@ -256,13 +271,15 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
       }
     } else {
       log.error(
-        'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény NEM ment ki' +
-          (result.deliveryUncertain === true
-            ? ' (a kézbesítés bizonytalan, a levél célba érhetett). '
-            : '. ') +
-          'A 45/2014. Korm. rendelet 22. § (1c) szerint haladéktalanul el kell küldeni: küldd el ' +
-          'kézzel a nyilatkozat tartalmával és a küldés időpontjával. A nyilatkozat a ' +
-          'Műveletnaplóban van, a hivatkozási számával.',
+        (receiptDelivery === 'uncertain'
+          ? 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
+            'kézbesítése bizonytalan: az SMTP-kapcsolat a levél tartalmának átadása után ' +
+            'megszakadt, a levél célba érhetett. Nézd meg az SMTP-szolgáltató küldési naplójában, ' +
+            'és csak akkor küldd el kézzel, ha nem ért célba. '
+          : 'RIASZTÁS: elállási nyilatkozat érkezett, de a vevőnek járó átvételi elismervény ' +
+            'NEM ment ki: küldd el kézzel a nyilatkozat tartalmával és a küldés időpontjával. ') +
+          'A 45/2014. Korm. rendelet 22. § (1c) szerint az elismervény haladéktalanul jár. A ' +
+          'nyilatkozat a Műveletnaplóban van, a hivatkozási számával.',
         {
           attempts,
           provider: result.provider,
@@ -296,11 +313,11 @@ export async function submitWithdrawal(deps: SubmitWithdrawalDeps): Promise<With
     try {
       const template = withdrawalStaffEmail({
         ...mailBase,
-        refundDeadline: deadlineDay(new Date(received.getTime() + WITHDRAWAL_REFUND_DAYS * DAY_MS)),
+        refundDeadline: deadlineDay(received, WITHDRAWAL_REFUND_DAYS),
         order: order
           ? { orderNumber: order.orderNumber, status: order.status, emailMatches }
           : null,
-        receiptSent,
+        receipt: receiptDelivery,
       })
       const { result } = await sendWithRetry(
         send,

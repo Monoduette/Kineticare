@@ -779,6 +779,49 @@ describe('onOrderPaid: a jogi visszaigazoló levél kiküldése', () => {
     expect(alerts[0].context).toMatchObject({ attempts: 2, retryable: false })
   })
 
+  it('a melléklet nélküli pótlevél BIZONYTALAN kézbesítése is bizonytalan: nincs „NEM ment ki”, van egyeztetési bejegyzés', async () => {
+    // A mellékletes levelet a szerver végleg elutasítja (pl. SMTP 552, méret),
+    // a pótlevélnél viszont a kapcsolat a tartalom átadása UTÁN szakad meg: a
+    // pótlevél célba érhetett. A „küldd el kézzel” riasztás kettőzést kérne.
+    const { send, calls } = createSender([
+      { ok: false, provider: 'smtp', retryable: false, error: 'SMTP 552: túl nagy levél' },
+      {
+        ok: false,
+        provider: 'smtp',
+        retryable: false,
+        deliveryUncertain: true,
+        error: 'SMTP: a levél tartalmának átadása után megszakadt a kapcsolat',
+      },
+    ])
+    const { store, created } = createAuditStore()
+    const { log, entries } = createCapturingLogger()
+
+    await futtasd({
+      payload: {} as unknown as Payload,
+      order: createOrder(),
+      logger: log,
+      queueInvoice: async () => true,
+      send,
+      auditStore: store,
+      loadAccessDurations: async () => new Map(),
+      sleep: nemVarhat,
+    })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0].attachments).toHaveLength(1)
+    expect(calls[1].attachments).toBeUndefined()
+    expect(created).toEqual([
+      expect.objectContaining({
+        action: 'order-confirmation-email-uncertain',
+        after: expect.objectContaining({ attempts: 2, attachmentDropped: true }),
+      }),
+    ])
+    const alerts = errorsOf(entries)
+    expect(alerts.map((alert) => alert.msg)).toEqual([
+      expect.stringContaining('kézbesítése BIZONYTALAN'),
+    ])
+  })
+
   it('minden kísérlet elbukik: 3 próba után egyetlen RIASZTÁS, küldés nincs rögzítve', async () => {
     const { send, calls } = createSender([
       { ok: false, provider: 'resend', retryable: true, error: 'HTTP 500' },
