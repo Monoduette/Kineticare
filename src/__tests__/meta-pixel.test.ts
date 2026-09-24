@@ -172,6 +172,8 @@ describe('trackMetaEvent', () => {
       'https://www.kineticare.hu/belepes-atallas?email=x',
       'https://www.kineticare.hu/barmi?ORDER=1',
       'https://www.kineticare.hu/barmi?paymentId=1',
+      'https://www.kineticare.hu/kurzusaim/7',
+      'https://www.kineticare.hu/fiok',
     ]) {
       expect(isMetaSafeUrl(href), href).toBe(false)
     }

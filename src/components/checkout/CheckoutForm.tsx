@@ -335,8 +335,12 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
       isFree: product.isFree,
     })
     trackInitiateCheckout(course)
-    trackMetaInitiateCheckout(course)
-  }, [product.id, product.sku, product.priceHuf, product.isFree])
+    // Már megvett kurzusnál a pénztár nem indítható (a gomb a lejátszóra
+    // visz): ez nem valódi tölcsérbelépés, a Metának nem jelezzük.
+    if (!alreadyPurchased) {
+      trackMetaInitiateCheckout(course)
+    }
+  }, [product.id, product.sku, product.priceHuf, product.isFree, alreadyPurchased])
 
   const requiresWaiver = !product.isFree
   const waiverComplete = !requiresWaiver || (waiverStart && waiverLoss)
@@ -444,8 +448,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         a CheckoutErrorRegion fejkommentje írja le.
       */}
       <CheckoutErrorRegion error={error} />
-      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ||
-      error === CHECKOUT_REFUNDED_PRIVILEGED ? (
+      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT || error === CHECKOUT_REFUNDED_PRIVILEGED ? (
         <p className="kc-checkout-form__block-hint">
           <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
             {ctaLabel('sign-in')}

@@ -109,15 +109,23 @@ type FbqFunction = ((...args: unknown[]) => void) & {
 /**
  * Útvonalak, ahol a Meta Pixel SEMMIT nem küld. Az fbevents.js minden
  * eseményhez a teljes document.location-t csatolja, ezek a lapok pedig
- * tranzakció- vagy fiókazonosítót hordoznak a címükben: a Barion-visszatérés
- * (`/fizetes/koszonom?order=…&paymentId=…`), a sikertelen fizetés, a
- * jelszó-visszaállítás és az átállási belépés.
+ * - tranzakció- vagy fiókazonosítót hordoznak a címükben: a Barion-visszatérés
+ *   (`/fizetes/koszonom?order=…&paymentId=…`), a sikertelen fizetés, a
+ *   jelszó-visszaállítás és az átállási belépés;
+ * - vagy a BELÉPETT vevő saját területei: a `/kurzusaim` (a megvásárolt
+ *   rehabilitációs kurzus lejátszója) és a `/fiok`. Ezek címe azt árulná el,
+ *   hogy az adott ember melyik kezelési programot vette meg.
+ * A nyilvános kurzusoldalak (`/kurzusok/…`) mérhetők: ugyanazt a tartalmat
+ * bárki megnézheti, a hirdetések is oda visznek, a megtekintés nem jelent
+ * vásárlást vagy állapotot.
  */
 export const META_BLOCKED_PATH_PREFIXES: readonly string[] = [
   '/fizetes/',
   '/sikertelen',
   '/jelszo-visszaallitas',
   '/belepes-atallas',
+  '/kurzusaim',
+  '/fiok',
 ]
 
 /** Query-paraméterek, amelyek jelenléte esetén a cím nem mehet a Metának. */
