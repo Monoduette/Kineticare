@@ -1,7 +1,9 @@
 import type { CheckoutSubmitInput, CheckoutSubmitResult } from '../checkout-submit'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
 import {
   BILLING_FIELD_ORDER,
   billingErrorMap,
+  type CheckoutBillingInput,
   billingSummaryMessage,
   toBillingPayload,
   validateBilling,
@@ -247,6 +249,68 @@ export const WAIVER_START_INPUT_ID = 'waiver-start'
 export const WAIVER_LOSS_INPUT_ID = 'waiver-loss'
 
 /**
+ * A jelölőnégyzetek SAJÁT, a négyzet alatt megjelenő hibaüzenetei (a-ux-10).
+ *
+ * Korábban a kipipálatlan négyzet csak egy fókuszgyűrűt kapott, szöveget nem:
+ * a hibarégió 1500 px-re volt tőle. A GOV.UK a hibát a mező mellett ÉS az
+ * összefoglalóban ugyanazzal a szöveggel kéri („Use the same message next to
+ * the field and in the Error summary component so they look, sound and mean
+ * the same", https://design-system.service.gov.uk/components/error-message/),
+ * a WCAG 2.2 SC 3.3.1 pedig szöveges azonosítást
+ * (https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html).
+ * A szöveg a teendőt mondja meg (GOV.UK: „Describe what has happened and tell
+ * them how to fix it."), a GOV.UK jelölőnégyzetes mintája szerint
+ * felszólítással („Select if…", magyarul „Pipáld ki, hogy…").
+ */
+export const WAIVER_START_REQUIRED_ERROR = 'Pipáld ki, hogy kéred az azonnali hozzáférést.'
+export const WAIVER_LOSS_REQUIRED_ERROR =
+  'Pipáld ki, hogy tudomásul veszed az elállási jog elvesztését.'
+
+/** A jelölőnégyzetes nyilatkozatok kulcsai (a mezőhibák mintájára). */
+export type CheckoutCheckboxName = 'waiverStart' | 'waiverLoss' | 'terms'
+
+/** Jelölőnégyzet → a négyzet alatt megjelenő hibaüzenet. */
+export type CheckoutCheckboxErrors = Partial<Record<CheckoutCheckboxName, string>>
+
+/** A jelölőnégyzet input-azonosítója (az összefoglaló linkje és a label `for` ide mutat). */
+export const CHECKBOX_INPUT_ID: Record<CheckoutCheckboxName, string> = {
+  waiverStart: WAIVER_START_INPUT_ID,
+  waiverLoss: WAIVER_LOSS_INPUT_ID,
+  terms: TERMS_INPUT_ID,
+}
+
+/** A négyzet alatti hibaüzenet elem-azonosítója (`aria-describedby`). */
+export function checkboxErrorId(name: CheckoutCheckboxName): string {
+  return `${CHECKBOX_INPUT_ID[name]}-hiba`
+}
+
+/** Az összefoglaló egy sora: a hibaüzenet és a hibás elem azonosítója (a link célja). */
+export interface CheckoutErrorItem {
+  targetId: string
+  message: string
+}
+
+/**
+ * Az összefoglaló címe. A GOV.UK „There is a problem" címének magyar,
+ * teendőt mondó megfelelője, a hibák számával: a képernyőolvasó így előre
+ * tudja, hány sor következik.
+ */
+export function checkoutErrorSummaryTitle(count: number): string {
+  return count <= 1
+    ? 'A fizetés előtt javítsd a következőt:'
+    : `A fizetés előtt javítsd a következő ${count} dolgot:`
+}
+
+/** Az EGYMENETES ellenőrzés teljes eredménye (lásd `collectCheckoutErrors`). */
+export interface CheckoutErrorSummary {
+  title: string
+  items: CheckoutErrorItem[]
+  fieldErrors: BillingFieldErrors
+  guestErrors: GuestFieldErrors
+  checkboxErrors: CheckoutCheckboxErrors
+}
+
+/**
  * A profil KIZÁRÓLAG előkitöltés: innentől a form-állapot az igazság, és a
  * beküldésbe a (esetleg felülírt) állapot megy — nem a profil.
  */
@@ -344,14 +408,72 @@ export interface CheckoutSubmissionContext {
   termsAccepted: boolean
   billing: BillingFormValues
   /**
+   * „Cégként vásárolok" (K11). A hálózati törzsben a `billing.companyPurchase`
+   * mezőn megy ki (w1-checkout-backend szerződése), és a szerver ekkor
+   * kötelezővé teszi a magyar adószámot. Hiánya = magánszemély (akinek az
+   * adószám a szerver szerint is opcionális).
+   */
+  companyPurchase?: boolean
+  /**
    * VENDÉG-VÁSÁRLÁS: az azonosító mezők állapota. Bejelentkezett vásárlásnál
    * hiányzik (a vevőt a munkamenet azonosítja), és a törzsbe sem kerül bele.
    */
   guest?: GuestFormValues
+  /**
+   * A láthatatlan Turnstile-ellenőrzés állapota (a-checkout-9). Hiánya vagy
+   * `required: false` = nincs ellenőrzés (a site key nincs beállítva, a
+   * szerver ilyenkor a secret hiányában maga sem ellenőriz).
+   */
+  turnstile?: CheckoutTurnstileState
+}
+
+/** A pénztári Turnstile-ellenőrzés kliens-oldali állapota. */
+export interface CheckoutTurnstileState {
+  required: boolean
+  /** Az egyszer használható token, vagy `null`, amíg nincs (vagy lejárt). */
+  token: string | null
+  /** A szkript nem töltődött be, vagy az ellenőrzés hibát jelzett. */
+  failed: boolean
+}
+
+/**
+ * A spam-ellenőrzés még nem adott tokent (a láthatatlan ellenőrzés
+ * jellemzően egy-két másodperc). A vevő tudja, mi történik, és mit tegyen.
+ */
+export const CHECKOUT_TURNSTILE_PENDING_ERROR =
+  'A biztonsági ellenőrzés még fut. Várj néhány másodpercet, és nyomd meg újra a gombot.'
+
+/**
+ * A Turnstile szkriptje nem töltődött be (reklámblokkoló, hálózat), vagy az
+ * ellenőrzés hibát jelzett. Nem blokkolunk szó nélkül: a vevő megtudja az
+ * okot, a teendőt, és azt is, hová fordulhat (K14). Forrás: NN/g,
+ * Error-Message Guidelines („offer some potential remedies",
+ * https://www.nngroup.com/articles/error-message-guidelines/); GOV.UK,
+ * There is a problem with the service (a mintában: „Try again later." és
+ * elérhetőség,
+ * https://design-system.service.gov.uk/patterns/problem-with-the-service-pages/).
+ */
+export const CHECKOUT_TURNSTILE_FAILED_ERROR =
+  'A fizetés előtti biztonsági ellenőrzés nem töltődött be, ezért most nem tudjuk elindítani a fizetést. Frissítsd az oldalt, és próbáld újra. Ha reklámblokkolót használsz, engedélyezd benne a challenges.cloudflare.com címet. ' +
+  `Ha így sem megy, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
+
+/**
+ * A hálózati törzs: a közös `CheckoutSubmitInput` a két új mezővel. A
+ * `companyPurchase` a számlázási blokkban, a `turnstileToken` a gyökérben
+ * (a route-handler a szolgáltatás hívása ELŐTT leválasztja róla).
+ */
+export type CheckoutRequestBody = Omit<CheckoutSubmitInput, 'billing'> & {
+  billing: CheckoutBillingInput & { companyPurchase?: boolean }
+  turnstileToken?: string
 }
 
 export type CheckoutSubmissionPlan =
-  /** A beküldés meg sem indulhat (már megvette / hiányzó nyilatkozat). */
+  /**
+   * A beküldés meg sem indulhat (már megvette / hiányzó nyilatkozat / a
+   * biztonsági ellenőrzés nem kész). A `focusElementId` az ELSŐ hiányzó
+   * elem; a beküldés-kezelő hiányzó nyilatkozatnál ettől függetlenül a
+   * teljes hiba-összefoglalót mutatja (`collectCheckoutErrors`).
+   */
   | { kind: 'blocked'; message: string; focusElementId: string | null }
   /** A megadott adatok hibásak — mezőhibák + összefoglaló + fókuszcél. */
   | {
@@ -363,12 +485,102 @@ export type CheckoutSubmissionPlan =
       focusElementId: string
     }
   /** Mehet: ez a törzs megy ki a POST /api/checkout/start végpontra. */
-  | { kind: 'send'; body: CheckoutSubmitInput }
+  | { kind: 'send'; body: CheckoutRequestBody }
+
+/**
+ * A számlázási blokk validálandó alakja. Céges vásárlásnál a jelölés is
+ * átmegy, így a KÖZÖS validátor (billing.ts, w1-checkout-backend) a kliensen
+ * is kötelezővé teszi az adószámot, ugyanazzal a szöveggel, mint a szerver.
+ */
+function billingValidationInput(context: CheckoutSubmissionContext): Record<string, unknown> {
+  return context.companyPurchase === true
+    ? { ...context.billing, companyPurchase: true }
+    : context.billing
+}
+
+/**
+ * EGYMENETES ellenőrzés (a-ux-10): a vendég-mezők, a számlázási mezők, a két
+ * elállási nyilatkozat és az ÁSZF-elfogadás hibái EGYSZERRE, az űrlap
+ * sorrendjében. `null`, ha nincs hiba.
+ *
+ * MIÉRT: korábban a beküldés először csak a nyilatkozatot, a következő
+ * nyomásra az ÁSZF-et, a harmadikra a mezőket kérte számon, és a fókusz
+ * közben a 4000 px-es lap két vége között ugrált. A GOV.UK egyetlen
+ * összefoglalót kér minden hibával („Always show an error summary when there
+ * is a validation error, even if there's only one", a link a mezőre, illetve
+ * jelölőnégyzetnél az első négyzetre mutat:
+ * https://design-system.service.gov.uk/components/error-summary/); WCAG 2.2
+ * SC 3.3.1 Error Identification.
+ */
+export function collectCheckoutErrors(
+  context: CheckoutSubmissionContext,
+): CheckoutErrorSummary | null {
+  const items: CheckoutErrorItem[] = []
+
+  const guestErrors: GuestFieldErrors = {}
+  if (context.guest !== undefined) {
+    const guestResult = validateGuest(context.guest)
+    if (!guestResult.ok) {
+      Object.assign(guestErrors, guestErrorMap(guestResult.errors))
+      for (const field of GUEST_FIELD_ORDER) {
+        const message = guestErrors[field]
+        if (message !== undefined) {
+          items.push({ targetId: guestInputId(field), message })
+        }
+      }
+    }
+  }
+
+  const billingResult = validateBilling(billingValidationInput(context))
+  const fieldErrors: BillingFieldErrors = billingResult.ok
+    ? {}
+    : billingErrorMap(billingResult.errors)
+  for (const field of BILLING_FIELD_ORDER) {
+    const message = fieldErrors[field]
+    if (message !== undefined) {
+      items.push({ targetId: billingInputId(field), message })
+    }
+  }
+
+  const checkboxErrors: CheckoutCheckboxErrors = {}
+  if (context.waiverRequired) {
+    if (!context.waiverStartAccepted) {
+      checkboxErrors.waiverStart = WAIVER_START_REQUIRED_ERROR
+    }
+    if (!context.waiverLossAccepted) {
+      checkboxErrors.waiverLoss = WAIVER_LOSS_REQUIRED_ERROR
+    }
+  }
+  if (!context.termsAccepted) {
+    checkboxErrors.terms = CHECKOUT_TERMS_ERROR
+  }
+  for (const name of ['waiverStart', 'waiverLoss', 'terms'] as const) {
+    const message = checkboxErrors[name]
+    if (message !== undefined) {
+      items.push({ targetId: CHECKBOX_INPUT_ID[name], message })
+    }
+  }
+
+  if (items.length === 0) {
+    return null
+  }
+  return {
+    title: checkoutErrorSummaryTitle(items.length),
+    items,
+    fieldErrors,
+    guestErrors,
+    checkboxErrors,
+  }
+}
 
 /**
  * Az űrlapállapotból a beküldési terv. A `send` ág törzse a MEZŐK AKTUÁLIS
  * állapotából épül (normalizálva) — a profil-előkitöltésnek itt már nyoma
  * sincs, tehát a felülírt érték kerül a rendelésre és a számlára.
+ *
+ * A terv a KATEGÓRIÁT és az első hiányzó elemet adja (ebből dolgozik a
+ * pénztári hibamérés is); a vevőnek mutatott, minden hibát egyszerre felsoroló
+ * összefoglalót a `collectCheckoutErrors` állítja elő.
  */
 export function planCheckoutSubmission(context: CheckoutSubmissionContext): CheckoutSubmissionPlan {
   if (context.alreadyPurchased) {
@@ -386,10 +598,9 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
     }
   }
   /**
-   * ÁSZF-ELFOGADÁS — a waiver UTÁN ellenőrizve, mert az űrlapon is utána áll:
-   * a fókusz így mindig az ELSŐ hiányzó jelölőnégyzetre kerül, nem egy
-   * feljebb/lejjebb lévőre. Az ág ingyenes terméken is fut (nincs
-   * `termsRequired` kapcsoló — a konzisztens viselkedés maga a döntés).
+   * ÁSZF-ELFOGADÁS — a waiver UTÁN ellenőrizve, mert az űrlapon is utána áll.
+   * Az ág ingyenes terméken is fut (nincs `termsRequired` kapcsoló — a
+   * konzisztens viselkedés maga a döntés).
    */
   if (!context.termsAccepted) {
     return {
@@ -401,14 +612,13 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
 
   /**
    * A VENDÉG-MEZŐK ELŐBB: a beküldési űrlapon ezek állnak legelöl, és ha
-   * hiányoznak, a szerver úgyis 400-zal utasítana el. A fókusz így az első
-   * tényleg hibás mezőre kerül, nem a lejjebb lévő számlázási blokkra.
+   * hiányoznak, a szerver úgyis 400-zal utasítana el.
    */
   const guestResult = context.guest === undefined ? null : validateGuest(context.guest)
   const guestErrors =
     guestResult !== null && !guestResult.ok ? guestErrorMap(guestResult.errors) : {}
 
-  const result = validateBilling(context.billing)
+  const result = validateBilling(billingValidationInput(context))
   const fieldErrors = result.ok ? {} : billingErrorMap(result.errors)
 
   if (guestResult !== null && !guestResult.ok) {
@@ -416,8 +626,6 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
       GUEST_FIELD_ORDER.find((field) => guestErrors[field] !== undefined) ?? 'email'
     return {
       kind: 'invalid',
-      // Ha a számlázási blokk is hibás, az összefoglaló a vendég-mezőkről szól:
-      // a felhasználó a fókuszált (első) hibát javítja, a többi a mezőknél látszik.
       message: guestSummaryMessage(guestResult.errors),
       fieldErrors,
       guestErrors,
@@ -437,6 +645,28 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
     }
   }
 
+  /**
+   * A BIZTONSÁGI ELLENŐRZÉS az adatok UTÁN: a vevő előbb a saját hibáit
+   * látja, és csak kész űrlapnál kap szót a még futó (vagy be sem töltött)
+   * ellenőrzés. Token nélkül nem küldünk: a szerver úgyis 400-at adna, és a
+   * vevő nem tudná, miért.
+   */
+  const turnstile = context.turnstile
+  const turnstileToken =
+    turnstile?.required === true && typeof turnstile.token === 'string' && turnstile.token !== ''
+      ? turnstile.token
+      : null
+  if (turnstile?.required === true && turnstileToken === null) {
+    return {
+      kind: 'blocked',
+      message: turnstile.failed
+        ? CHECKOUT_TURNSTILE_FAILED_ERROR
+        : CHECKOUT_TURNSTILE_PENDING_ERROR,
+      focusElementId: CHECKOUT_ERROR_REGION_ID,
+    }
+  }
+
+  const billing = toBillingPayload(result.value)
   return {
     kind: 'send',
     body: {
@@ -451,10 +681,13 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
       // `true` itt TÉNYÁLLÍTÁS. A szerver ettől függetlenül újra ellenőrzi
       // (start-checkout.ts): a kliens megkerülhető.
       consentTerms: true,
-      billing: toBillingPayload(result.value),
+      // A céges jelölés a számlázási blokkban megy (w1-checkout-backend
+      // szerződése: `billing.companyPurchase`, szó szerinti `true`).
+      billing: context.companyPurchase === true ? { ...billing, companyPurchase: true } : billing,
       // A vendég-blokk KIZÁRÓLAG bejelentkezés nélkül megy ki (belépve a
       // szerver úgyis figyelmen kívül hagyná).
       ...(guestResult !== null && guestResult.ok ? { guest: guestResult.value } : {}),
+      ...(turnstileToken !== null ? { turnstileToken } : {}),
     },
   }
 }
@@ -476,32 +709,51 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
 export interface CheckoutSubmitHandlerDeps {
   /** A beküldés pillanatában érvényes űrlapállapot (a React-state olvasása). */
   readContext: () => CheckoutSubmissionContext
+  /** A hibarégió fő szövege (szerverhiba, vagy az összefoglaló címe). */
   setError: (message: string | null) => void
+  /** Az összefoglaló linkes sorai (szerverhibánál és sikernél üres lista). */
+  setErrorItems: (items: readonly CheckoutErrorItem[]) => void
   setBillingErrors: (errors: BillingFieldErrors) => void
   /** A vendég-mezők hibáinak beállítása (bejelentkezve mindig üres map). */
   setGuestErrors: (errors: GuestFieldErrors) => void
+  /** A jelölőnégyzetek alatti hibaüzenetek. */
+  setCheckboxErrors: (errors: CheckoutCheckboxErrors) => void
   setSubmitting: (value: boolean) => void
   /** `null` esetén nincs fókuszálandó elem (a hívó ilyenkor ne csináljon semmit). */
   focusElement: (elementId: string | null) => void
-  submit: (body: CheckoutSubmitInput) => Promise<CheckoutSubmitResult>
+  submit: (body: CheckoutRequestBody) => Promise<CheckoutSubmitResult>
   /** Sikeres indítás után a fizetési átjáróra navigálás. */
   redirect: (gatewayUrl: string) => void
+  /**
+   * Sikertelen beküldés után (szerverhiba vagy kivétel). A Turnstile-token
+   * egyszer használható, és a szerver már elhasználta: újat kell kérni, mert
+   * a következő nyomás a régivel biztosan elbukna.
+   */
+  afterFailedSubmit?: () => void
 }
 
 export function createCheckoutSubmitHandler(deps: CheckoutSubmitHandlerDeps): () => Promise<void> {
   return async () => {
     deps.setError(null)
+    deps.setErrorItems([])
 
-    const plan = planCheckoutSubmission(deps.readContext())
+    const context = deps.readContext()
+    const plan = planCheckoutSubmission(context)
 
-    if (plan.kind === 'blocked') {
-      deps.setError(plan.message)
-      deps.focusElement(plan.focusElementId)
-      return
-    }
-    if (plan.kind === 'invalid') {
-      deps.setBillingErrors(plan.fieldErrors)
-      deps.setGuestErrors(plan.guestErrors)
+    if (plan.kind === 'blocked' || plan.kind === 'invalid') {
+      // A már megvett kurzus nem űrlaphiba: ott a mezők javítása nem segít.
+      const summary = context.alreadyPurchased ? null : collectCheckoutErrors(context)
+      if (summary !== null) {
+        deps.setBillingErrors(summary.fieldErrors)
+        deps.setGuestErrors(summary.guestErrors)
+        deps.setCheckboxErrors(summary.checkboxErrors)
+        deps.setError(summary.title)
+        deps.setErrorItems(summary.items)
+        // GOV.UK: „Move keyboard focus to the error summary" — a böngésző az
+        // összefoglalót a képernyőre görgeti, onnan minden hiba egy linkre van.
+        deps.focusElement(CHECKOUT_ERROR_REGION_ID)
+        return
+      }
       deps.setError(plan.message)
       deps.focusElement(plan.focusElementId)
       return
@@ -509,13 +761,22 @@ export function createCheckoutSubmitHandler(deps: CheckoutSubmitHandlerDeps): ()
 
     deps.setBillingErrors({})
     deps.setGuestErrors({})
+    deps.setCheckboxErrors({})
     deps.setSubmitting(true)
-    // A `submit` saját hibakezelése miatt itt nem dobhat; a `finally` mégis
-    // kell, hogy egy váratlan kivétel se hagyja a gombot „Feldolgozás…"-ban.
+    /**
+     * SIKERES átirányítás után a gomb „Feldolgozás…" állapotban MARAD
+     * (a-ux-15): a böngésző még a Barion felé navigál, és a korábbi
+     * visszaállítás a gombot újra nyomhatóvá tette, így egy türelmetlen
+     * második koppintás még egy POST-ot küldött. Visszaállítás CSAK hibánál és
+     * váratlan kivételnél. A „vissza" gombbal (bfcache) visszatérő lapot a
+     * `CheckoutForm` `pageshow`-kezelője oldja fel.
+     */
+    let redirected = false
     try {
       const result = await deps.submit(plan.body)
       if (result.ok) {
         deps.redirect(result.gatewayUrl)
+        redirected = true
         return
       }
       // A hibaüzenet ONNAN kap fókuszt, ahol a felhasználó látja is: enélkül a
@@ -523,7 +784,10 @@ export function createCheckoutSubmitHandler(deps: CheckoutSubmitHandlerDeps): ()
       deps.setError(result.message)
       deps.focusElement(CHECKOUT_ERROR_REGION_ID)
     } finally {
-      deps.setSubmitting(false)
+      if (!redirected) {
+        deps.setSubmitting(false)
+        deps.afterFailedSubmit?.()
+      }
     }
   }
 }

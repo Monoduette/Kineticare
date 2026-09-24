@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from 'react'
 
 import {
   browserSnapshotStorage,
@@ -19,14 +19,18 @@ import {
   captureAnalyticsException,
 } from '@/lib/analytics/posthog'
 import { BarionFizetesJelzes } from '@/components/checkout/BarionFizetesJelzes'
+import { CheckoutTurnstile } from '@/components/checkout/CheckoutTurnstile'
+import { readCheckoutTurnstileSiteKey } from '@/components/checkout/checkout-turnstile-key'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Field } from '@/components/ui/Field'
 import { PriceTag } from '@/components/ui/PriceTag'
 import type { BillingFieldName } from '../../lib/checkout/billing'
 import type { GuestFieldName } from '../../lib/checkout/guest'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../lib/contact-email'
 import { CTA_PROGRESS_LABELS, ctaLabel } from '../../lib/cta-vocabulary'
 import { checkoutHref, myCoursePlayerHref } from '../../lib/courses'
+import { formatPriceHuf } from '../../lib/format-price'
 import { signInHref } from '../../lib/return-url'
 import {
   BILLING_INPUT_NAME,
@@ -41,6 +45,7 @@ import {
   TERMS_PRIVACY_PATH,
   WAIVER_LOSS_INPUT_ID,
   WAIVER_START_INPUT_ID,
+  checkboxErrorId,
   createCheckoutSubmitHandler,
   planCheckoutSubmission,
   CHECKOUT_ALREADY_PURCHASED_ERROR,
@@ -56,6 +61,9 @@ import {
   withoutBillingError,
   withoutGuestError,
   type BillingFieldErrors,
+  type CheckoutCheckboxErrors,
+  type CheckoutCheckboxName,
+  type CheckoutErrorItem,
   type CheckoutSubmissionContext,
   type CheckoutSubmissionPlan,
   type GuestFieldErrors,
@@ -88,7 +96,61 @@ export interface CheckoutFormProps {
    */
   user: CheckoutUser | null
   alreadyPurchased: boolean
+  /**
+   * A Turnstile site key, ha a szerver-oldali szülő átadja (`null` = nincs
+   * ellenőrzés). Hiányában (`undefined`) a komponens a
+   * `readCheckoutTurnstileSiteKey` szerver-akcióval kéri el.
+   */
+  turnstileSiteKey?: string | null
 }
+
+/**
+ * A fizetőgomb fölötti összegzés szövegei (a-ux-6, 45/2014. 15. § (1)): a
+ * lényeges feltételek „közvetlenül a fogyasztó szerződési nyilatkozatának
+ * megtétele előtt". Az áfa-mondat a tulajdonos K1-es döntését követi (alanyi
+ * adómentes, AAM; ugyanígy fogalmaz az ÁSZF jóváhagyott mondata is), a
+ * hozzáférés a K13-as döntést (nem jár le; a kurzusoldal
+ * „A hozzáférésed nem jár le" mondatával egyező tartalommal).
+ */
+export const CHECKOUT_FINAL_SUMMARY_HEADING = 'A rendelésed'
+export const CHECKOUT_FINAL_FEE_TEXT = 'egyszeri díj, nem előfizetés'
+export const CHECKOUT_FINAL_ACCESS_TEXT = 'nem jár le'
+export const CHECKOUT_FINAL_TAX_TEXT =
+  'A feltüntetett ár a fizetendő végösszeg. A KINETICARE Kft. alanyi adómentes, ezért a számla áfát nem tartalmaz.'
+
+/** A beírt e-mail-cím visszaírása a gomb fölött (a-checkout-14, a-ux-4). */
+export function checkoutEmailEcho(isGuest: boolean, email: string): string | null {
+  const trimmed = email.trim()
+  if (trimmed === '') {
+    return null
+  }
+  return isGuest
+    ? `Erre a címre küldjük a hozzáférést: ${trimmed}`
+    : `A visszaigazolást erre a címre küldjük: ${trimmed}`
+}
+
+/**
+ * Az elállási blokk szövegei (a-ux-7, r-legal-7). A korábbi súgó („Ha nem
+ * járulsz hozzá az azonnali hozzáféréshez, a kurzust 14 nap elteltével éred
+ * el.") olyan lehetőséget ígért, amit a rendszer nem ad: a két nyilatkozat
+ * nélkül a vásárlás nem indul el. A tulajdonos és a jogász által választott
+ * alapértelmezett, igaz szöveg: online a kurzus csak azonnali hozzáféréssel
+ * vehető meg, más kérés a kapcsolati címen (K14). A bevezető mondat az ÁSZF
+ * létező pontjára mutat („Elállási jog kizárása"), nem a 14 napos elállás
+ * nem létező „szabályaira".
+ */
+export const CHECKOUT_WAIVER_START_HINT =
+  'Online vásárlásnál a kurzus csak azonnali hozzáféréssel vehető meg. ' +
+  `Ha ezt nem szeretnéd, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
+
+/** K11: számlát egyelőre csak magyarországi címre állítunk ki. */
+export const CHECKOUT_BILLING_HU_ONLY_TEXT =
+  'Számlát jelenleg csak magyarországi címre állítunk ki.'
+
+/** K11: a céges vásárlás jelölése (a mező neve a szerveren `billing.companyPurchase`). */
+export const CHECKOUT_COMPANY_PURCHASE_LABEL = 'Cégként vásárolok'
+export const CHECKOUT_COMPANY_PURCHASE_HINT =
+  'Egyéni vállalkozóként is ezt válaszd. A számla a megadott adószámmal készül.'
 
 /**
  * Navigálás a fizetési átjáróra. MODUL-szinten van, nem a komponensben: a
@@ -279,7 +341,20 @@ export function trackedSubmitCheckout(
  * A `data-visible` ezért NEM a létezést kapcsolja, csak a MEGJELENÉST: üres
  * állapotban a checkout.css a `.kc-visually-hidden` technikájával tünteti el a
  */
-export function CheckoutErrorRegion({ error }: { error: string | null }) {
+export function CheckoutErrorRegion({
+  error,
+  items = [],
+  onItemClick,
+}: {
+  error: string | null
+  /**
+   * Az összefoglaló linkes sorai (a-ux-10). Minden hiba egy sor, a link a
+   * hibás mezőre (jelölőnégyzetnél a négyzetre) mutat — GOV.UK Error summary.
+   */
+  items?: readonly CheckoutErrorItem[]
+  /** A link kattintása: a fókuszt a célmezőre viszi (a puszta horgony nem fókuszál). */
+  onItemClick?: (targetId: string, event: MouseEvent<HTMLAnchorElement>) => void
+}) {
   return (
     <div
       aria-live="assertive"
@@ -291,12 +366,67 @@ export function CheckoutErrorRegion({ error }: { error: string | null }) {
       // fókuszt (a Tab-sorrendbe így sem kerül be). Enélkül a `focus()` no-op.
       tabIndex={-1}
     >
-      {error}
+      {error !== null && items.length > 0 ? (
+        <>
+          <p className="kc-checkout-form__error-title">{error}</p>
+          <ul className="kc-checkout-form__error-list">
+            {items.map((item) => (
+              <li key={item.targetId}>
+                <a
+                  href={`#${item.targetId}`}
+                  onClick={(event) => onItemClick?.(item.targetId, event)}
+                >
+                  {item.message}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        error
+      )}
     </div>
   )
 }
 
-export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormProps) {
+/**
+ * A kipipálatlan kötelező jelölőnégyzet SAJÁT hibaüzenete, közvetlenül a
+ * négyzet alatt (a-ux-10; WCAG 2.2 SC 3.3.1). Ugyanaz az osztály, mint a
+ * `Field` mezőhibájáé, hogy a két hibafajta egyformán nézzen ki.
+ */
+function CheckboxError({
+  name,
+  errors,
+}: {
+  name: CheckoutCheckboxName
+  errors: CheckoutCheckboxErrors
+}) {
+  const message = errors[name]
+  if (message === undefined) {
+    return null
+  }
+  return (
+    <p className="kc-field__error" id={checkboxErrorId(name)}>
+      {message}
+    </p>
+  )
+}
+
+/** A jelölőnégyzet `aria-describedby` értéke: a hibaüzenet (ha van) és a súgó. */
+function checkboxDescribedBy(
+  name: CheckoutCheckboxName,
+  errors: CheckoutCheckboxErrors,
+  hintId: string,
+): string {
+  return errors[name] === undefined ? hintId : `${checkboxErrorId(name)} ${hintId}`
+}
+
+export function CheckoutForm({
+  product,
+  user,
+  alreadyPurchased,
+  turnstileSiteKey,
+}: CheckoutFormProps) {
   const [waiverStart, setWaiverStart] = useState(false)
   const [waiverLoss, setWaiverLoss] = useState(false)
   /**
@@ -309,10 +439,76 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorItems, setErrorItems] = useState<readonly CheckoutErrorItem[]>([])
+  const [checkboxErrors, setCheckboxErrors] = useState<CheckoutCheckboxErrors>({})
   // A profil mezői kizárólag ELŐKITÖLTÉSKÉNT szolgálnak: innentől a state az
   // igazság, és a beküldött (esetleg felülírt) érték kerül a rendelésre.
   const [billing, setBilling] = useState(() => prefillBillingForm(user ?? {}))
   const [billingErrors, setBillingErrors] = useState<BillingFieldErrors>({})
+  // K11: „Cégként vásárolok". Alapból üres (előre bejelölt négyzet nincs a
+  // pénztárban); a jelölés az adószámot kötelezővé teszi.
+  const [companyPurchase, setCompanyPurchase] = useState(false)
+
+  /**
+   * LÁTHATATLAN TURNSTILE (a-checkout-9). A site key vagy propból jön, vagy a
+   * szerver-akcióból (`undefined` = még töltődik). Ha az akció maga hibázik,
+   * NEM blokkolunk: token nélkül küldünk, és a szerver dönt (ha ott be van
+   * kapcsolva az ellenőrzés, érthető 400-at ad; ha nincs, a vásárlás megy).
+   */
+  const [resolvedSiteKey, setResolvedSiteKey] = useState<string | null | undefined>(
+    turnstileSiteKey,
+  )
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileFailed, setTurnstileFailed] = useState(false)
+  const [turnstileReset, setTurnstileReset] = useState(0)
+  useEffect(() => {
+    if (turnstileSiteKey !== undefined) {
+      return
+    }
+    let cancelled = false
+    readCheckoutTurnstileSiteKey()
+      .then((key) => {
+        if (!cancelled) {
+          setResolvedSiteKey(key)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedSiteKey(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [turnstileSiteKey])
+  const turnstileRequired = resolvedSiteKey !== null
+  const handleTurnstileToken = useCallback((token: string | null) => {
+    setTurnstileToken(token)
+    if (token !== null) {
+      setTurnstileFailed(false)
+    }
+  }, [])
+  const handleTurnstileError = useCallback(() => setTurnstileFailed(true), [])
+
+  /**
+   * „VISSZA" A BARIONRÓL (bfcache). Sikeres indítás után a gomb szándékosan
+   * „Feldolgozás…" állapotban marad (a-ux-15). Ha a vevő a böngésző Vissza
+   * gombjával tér vissza, a lap a gyorsítótárból, a MEGFAGYOTT állapottal
+   * éled újra: a gomb letiltva maradna, a Turnstile-token pedig már
+   * elhasznált. A `pageshow` `persisted` jelzése pontosan ezt az esetet
+   * azonosítja (https://developer.mozilla.org/en-US/docs/Web/API/PageTransitionEvent/persisted,
+   * web.dev: Back/forward cache, https://web.dev/articles/bfcache).
+   */
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) {
+        setSubmitting(false)
+        setTurnstileReset((previous) => previous + 1)
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [])
   // Vendég-vásárlás: az azonosító mezők. Bejelentkezve nincs ilyen állapot —
   // a törzsbe sem kerül `guest` blokk (a szerver a munkamenetből dolgozik).
   const isGuest = user === null
@@ -402,19 +598,70 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
     waiverLossAccepted: waiverLoss,
     termsAccepted,
     billing,
+    companyPurchase,
     ...(isGuest ? { guest } : {}),
+    turnstile: {
+      required: turnstileRequired,
+      token: turnstileToken,
+      failed: turnstileFailed,
+    },
   })
 
   const runSubmit = createCheckoutSubmitHandler({
     readContext: readCheckoutContext,
     setError,
+    setErrorItems,
     setBillingErrors,
     setGuestErrors,
+    setCheckboxErrors,
     setSubmitting,
     focusElement,
     submit: trackedSubmitCheckout(product),
     redirect: redirectToGateway,
+    // A token egyszer használható: sikertelen beküldés után új ellenőrzés.
+    afterFailedSubmit: () => {
+      if (turnstileRequired) {
+        setTurnstileReset((previous) => previous + 1)
+      }
+    },
   })
+
+  /**
+   * Az összefoglaló linkje a hibás mezőre viszi a fókuszt, nem csak görget:
+   * a puszta horgony a böngészők többségében nem fókuszál (a GOV.UK
+   * összefoglalója ugyanezt a JavaScript-pótlást végzi).
+   */
+  const handleErrorItemClick = (targetId: string, event: MouseEvent<HTMLAnchorElement>): void => {
+    const target = typeof document === 'undefined' ? null : document.getElementById(targetId)
+    if (target === null) {
+      return
+    }
+    event.preventDefault()
+    target.focus()
+  }
+
+  const setCheckbox = (name: CheckoutCheckboxName, checked: boolean): void => {
+    if (name === 'waiverStart') {
+      setWaiverStart(checked)
+    } else if (name === 'waiverLoss') {
+      setWaiverLoss(checked)
+    } else {
+      setTermsAccepted(checked)
+    }
+    // A kipipált négyzet hibája eltűnik (a mezőhibák mintájára).
+    if (checked) {
+      setCheckboxErrors((previous) => {
+        if (previous[name] === undefined) {
+          return previous
+        }
+        const next = { ...previous }
+        delete next[name]
+        return next
+      })
+    }
+  }
+
+  const emailEcho = checkoutEmailEcho(isGuest, isGuest ? guest.email : (user?.email ?? ''))
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -447,7 +694,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         Az élő régió szerződését (mindig a DOM-ban, üresen vizuálisan nyomtalan)
         a CheckoutErrorRegion fejkommentje írja le.
       */}
-      <CheckoutErrorRegion error={error} />
+      <CheckoutErrorRegion error={error} items={errorItems} onItemClick={handleErrorItemClick} />
       {error === CHECKOUT_GUEST_EXISTING_ACCOUNT || error === CHECKOUT_REFUNDED_PRIVILEGED ? (
         <p className="kc-checkout-form__block-hint">
           <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
@@ -538,7 +785,17 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         <p className="kc-field__hint">
           {isGuest
             ? 'A számla ezekkel az adatokkal készül, a rendelésre az itt megadott adat kerül.'
-            : 'A számla ezekkel az adatokkal készül. Ha a profilodban máshogy szerepelnek, itt felülírhatod őket. A rendelésre az itt megadott adat kerül.'}
+            : 'A számla ezekkel az adatokkal készül. Ha a profilodban máshogy szerepelnek, itt felülírhatod őket. A rendelésre az itt megadott adat kerül.'}{' '}
+          {/*
+            K11 (tulajdonosi döntés, 2026-09-24): a korlátot a kitöltés ELŐTT
+            mondjuk ki, nem csak hibaüzenetben. GOV.UK Question pages: „Use
+            hint text to show information that helps the majority of users
+            answer the question"
+            (https://design-system.service.gov.uk/patterns/question-pages/);
+            WCAG 2.2 SC 3.3.2 Labels or Instructions
+            (https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html).
+          */}
+          {CHECKOUT_BILLING_HU_ONLY_TEXT}
         </p>
         <Field
           autoComplete="billing name"
@@ -551,17 +808,20 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         />
         <div className="kc-checkout-billing__grid">
           {/*
-            Egyszerű szövegmező, `inputMode`, `maxLength` és `pattern` nélkül.
-            K11 óta csak magyar irányítószám megy át (négy számjegy, opcionális
-            `H-` előtaggal); a döntést a közös `billing.ts` hozza, és a hibás
-            alakra (elgépelés vagy külföldi cím) az a mezőhöz kötött, a
-            négyjegyű alakot kérő üzenetet adja. A számbillentyűzet bevezetése
-            külön, mérést igénylő felületi döntés
-            (docs/oldal-audit-c-ertekesites-2026-09-07.md, P3-1).
+            K11 óta a mező KIZÁRÓLAG a négyjegyű magyar irányítószámot fogadja
+            el (billing.ts), ezért mobilon a szám-billentyűzet a helyes
+            (GOV.UK, Text input: „set the inputmode attribute to numeric to
+            use the numeric keypad on devices with on-screen keyboards",
+            https://design-system.service.gov.uk/components/text-input/).
+            A `H-` előtag opcionális, így az, hogy a szám-billentyűzeten nem
+            írható, nem zár ki senkit. A hibás alakra (elgépelés vagy külföldi
+            cím) a közös `billing.ts` a mezőhöz kötött, a négyjegyű alakot kérő
+            üzenetet adja; `maxLength` és `pattern` nincs.
           */}
           <Field
             autoComplete="billing postal-code"
             error={billingErrors.zip}
+            inputMode="numeric"
             label="Irányítószám"
             name={BILLING_INPUT_NAME.zip}
             onChange={(event) => updateBilling('zip', event.target.value)}
@@ -588,16 +848,48 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
           value={billing.street}
         />
         {/*
+          K11 + r-ado-13: „Cégként vásárolok" jelölés, amely KÖTELEZŐVÉ teszi
+          az adószámot (a szerveren is, billing.ts). Alapból NINCS bejelölve:
+          a GOV.UK a jelölőnégyzetet nem jelöli elő („Do not pre-select
+          checkbox options", https://design-system.service.gov.uk/components/checkboxes/).
+          Az adószám mező magánszemélynek továbbra is opcionális és látható
+          (a szerver szerződése szerint), a jelölés csak kötelezővé teszi, és a
+          felirata a cégre vált. A céges vevő így nem kaphat adószám nélküli,
+          elszámolhatatlan számlát.
+        */}
+        <div className="kc-checkout-waiver__item">
+          <input
+            aria-describedby="kc-checkout-company-hint"
+            checked={companyPurchase}
+            id="kc-checkout-company"
+            name="companyPurchase"
+            onChange={(event) => {
+              setCompanyPurchase(event.target.checked)
+              setBillingErrors((previous) => withoutBillingError(previous, 'taxNumber'))
+            }}
+            type="checkbox"
+          />
+          <label htmlFor="kc-checkout-company">{CHECKOUT_COMPANY_PURCHASE_LABEL}</label>
+        </div>
+        <p className="kc-field__hint" id="kc-checkout-company-hint">
+          {CHECKOUT_COMPANY_PURCHASE_HINT}
+        </p>
+        {/*
           Az adószámra nincs szabványos autofill-token, és a böngésző
           amúgy is rossz mezőt (telefonszám, kártyaszám) kínálna fel.
         */}
         <Field
           autoComplete="off"
           error={billingErrors.taxNumber}
-          hint="Csak céges vásárlás esetén."
-          label="Adószám (céges vásárlásnál)"
+          hint={
+            companyPurchase
+              ? 'Céges vásárlásnál kötelező: 11 számjegy, például 12345676-1-42.'
+              : 'Csak céges vásárlás esetén.'
+          }
+          label={companyPurchase ? 'A cég adószáma' : 'Adószám (céges vásárlásnál)'}
           name={BILLING_INPUT_NAME.taxNumber}
           onChange={(event) => updateBilling('taxNumber', event.target.value)}
+          required={companyPurchase}
           value={billing.taxNumber}
         />
       </Card>
@@ -605,22 +897,32 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
       {requiresWaiver ? (
         <Card className="kc-checkout-waiver">
           <h2>Elállási jog</h2>
+          {/*
+            A bevezető az ÁSZF LÉTEZŐ pontjára mutat (r-legal-7): az ÁSZF az
+            elállási jog kizárását rögzíti („Elállási jog kizárása"), a 14 napos
+            elállás „szabályait" nem tartalmazza.
+          */}
           <p className="kc-checkout-waiver__lead">
-            A digitális tartalom (a kurzusvideók) azonnali hozzáféréséről az alábbiakban
-            nyilatkoznod kell. A 14 napos elállási jog szabályairól az{' '}
+            A kurzusvideókat a fizetés után azonnal megnyitjuk. Ehhez a két alábbi nyilatkozat
+            szükséges. Az elállási jog kizárásáról az{' '}
             <a href="/aszf" target="_blank" rel="noopener noreferrer">
               Általános szerződési feltételek
             </a>{' '}
-            tájékoztat.
+            „Elállási jog kizárása” pontja szól.
           </p>
 
           <div className="kc-checkout-waiver__item">
             <input
-              aria-describedby="waiver-start-hint"
+              aria-describedby={checkboxDescribedBy(
+                'waiverStart',
+                checkboxErrors,
+                'waiver-start-hint',
+              )}
+              aria-invalid={checkboxErrors.waiverStart === undefined ? undefined : true}
               checked={waiverStart}
               id={WAIVER_START_INPUT_ID}
               name="waiverStart"
-              onChange={(event) => setWaiverStart(event.target.checked)}
+              onChange={(event) => setCheckbox('waiverStart', event.target.checked)}
               required
               type="checkbox"
             />
@@ -628,17 +930,23 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
               Kifejezetten kérem, hogy a digitális tartalomhoz a hozzáférés azonnal megkezdődjön.
             </label>
           </div>
+          <CheckboxError errors={checkboxErrors} name="waiverStart" />
           <p className="kc-field__hint" id="waiver-start-hint">
-            Ha nem járulsz hozzá az azonnali hozzáféréshez, a kurzust 14 nap elteltével éred el.
+            {CHECKOUT_WAIVER_START_HINT}
           </p>
 
           <div className="kc-checkout-waiver__item">
             <input
-              aria-describedby="waiver-loss-hint"
+              aria-describedby={checkboxDescribedBy(
+                'waiverLoss',
+                checkboxErrors,
+                'waiver-loss-hint',
+              )}
+              aria-invalid={checkboxErrors.waiverLoss === undefined ? undefined : true}
               checked={waiverLoss}
               id={WAIVER_LOSS_INPUT_ID}
               name="waiverLoss"
-              onChange={(event) => setWaiverLoss(event.target.checked)}
+              onChange={(event) => setCheckbox('waiverLoss', event.target.checked)}
               required
               type="checkbox"
             />
@@ -647,6 +955,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
               jogomat.
             </label>
           </div>
+          <CheckboxError errors={checkboxErrors} name="waiverLoss" />
           <p className="kc-field__hint" id="waiver-loss-hint">
             A hozzájárulásodat a rendszer a rendelésen időbélyeggel rögzíti.
           </p>
@@ -681,12 +990,13 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         <h2>{CHECKOUT_TERMS_HEADING}</h2>
         <div className="kc-checkout-terms__row">
           <input
-            aria-describedby={TERMS_HINT_ID}
+            aria-describedby={checkboxDescribedBy('terms', checkboxErrors, TERMS_HINT_ID)}
+            aria-invalid={checkboxErrors.terms === undefined ? undefined : true}
             checked={termsAccepted}
             className="kc-checkout-terms__checkbox"
             id={TERMS_INPUT_ID}
             name="consentTerms"
-            onChange={(event) => setTermsAccepted(event.target.checked)}
+            onChange={(event) => setCheckbox('terms', event.target.checked)}
             required
             type="checkbox"
           />
@@ -704,6 +1014,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
             {CHECKOUT_TERMS_LABEL.after}
           </label>
         </div>
+        <CheckboxError errors={checkboxErrors} name="terms" />
         <p className="kc-field__hint" id={TERMS_HINT_ID}>
           {CHECKOUT_TERMS_HINT}
         </p>
@@ -711,6 +1022,48 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
 
       {/* Barion jelzés a fizetőgomb fölött; ingyenes ágon kimarad. */}
       {product.isFree ? null : <BarionFizetesJelzes hely="penztar" />}
+
+      {/*
+        ÖSSZEGZÉS KÖZVETLENÜL A FIZETŐGOMB FÖLÖTT (a-ux-6). A 45/2014. Korm.
+        rendelet 15. § (1) a lényeges feltételeket (a teljes ár adóval együtt,
+        az időtartam) „közvetlenül a fogyasztó szerződési nyilatkozatának
+        megtétele előtt" kéri; mérve korábban az ár 3,64 képernyőnyire volt a
+        gombtól 320×740-en. GOV.UK Check answers: „Show a single check answers
+        page immediately before the confirmation screen"
+        (https://design-system.service.gov.uk/patterns/check-answers/). A
+        felső kártya megmarad. A beírt e-mail visszaírása ugyanennek a
+        mintának az érve: „reduce error rates as users are given a second
+        chance to notice and correct errors before submitting data"
+        (a-checkout-14, a-ux-4); NN/g, Visibility of System Status
+        (https://www.nngroup.com/articles/visibility-system-status/).
+      */}
+      {product.isFree || alreadyPurchased || product.priceHuf === null ? null : (
+        <section aria-labelledby="kc-checkout-final-cim" className="kc-checkout-final">
+          <h2 className="kc-checkout-final__heading" id="kc-checkout-final-cim">
+            {CHECKOUT_FINAL_SUMMARY_HEADING}
+          </h2>
+          <dl className="kc-checkout-final__list">
+            <div className="kc-checkout-final__row">
+              <dt>Kurzus</dt>
+              <dd>{product.sku}</dd>
+            </div>
+            <div className="kc-checkout-final__row">
+              <dt>Díj</dt>
+              <dd>{CHECKOUT_FINAL_FEE_TEXT}</dd>
+            </div>
+            <div className="kc-checkout-final__row">
+              <dt>Hozzáférés</dt>
+              <dd>{CHECKOUT_FINAL_ACCESS_TEXT}</dd>
+            </div>
+            <div className="kc-checkout-final__row kc-checkout-final__row--total">
+              <dt>Fizetendő</dt>
+              <dd>{formatPriceHuf(product.priceHuf)}</dd>
+            </div>
+          </dl>
+          <p className="kc-checkout-final__note">{CHECKOUT_FINAL_TAX_TEXT}</p>
+          {emailEcho === null ? null : <p className="kc-checkout-final__email">{emailEcho}</p>}
+        </section>
+      )}
 
       {/*
         Fizetőgomb csak beküldés közben disabled (dupla küldés ellen).
@@ -748,6 +1101,19 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
           <p className="kc-checkout-form__block-hint" id={CHECKOUT_BLOCK_HINT_ID}>
             {blockReason}
           </p>
+        )}
+        {/*
+          A láthatatlan ellenőrzés helye: csak akkor jelenik meg, ha a
+          Cloudflare interakciót kér (appearance: interaction-only). Már
+          megvett kurzusnál nincs beküldés, ezért nincs ellenőrzés sem.
+        */}
+        {alreadyPurchased || typeof resolvedSiteKey !== 'string' ? null : (
+          <CheckoutTurnstile
+            onError={handleTurnstileError}
+            onToken={handleTurnstileToken}
+            resetKey={turnstileReset}
+            siteKey={resolvedSiteKey}
+          />
         )}
       </div>
     </form>
