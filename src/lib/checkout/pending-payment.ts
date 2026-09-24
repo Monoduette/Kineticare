@@ -16,7 +16,7 @@ export const CHECKOUT_PAYMENT_STATE_UNAVAILABLE =
  * A Barion a korábbi függő fizetésre „nincs ilyen fizetés" jelzés nélküli
  * HTTP 404-et ad. Itt az azonnali újrapróbálás NEM segít: ugyanez a válasz
  * jön, amíg az order-poll le nem zárja a sort (24 óránál régebbi sor, ha a
- * futásban egy másik fizetés lekérdezése sikeres, lásd
+ * futásban egy másik fizetés lekérdezése vagy az útvonal-próba sikeres, lásd
  * UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS). Ezért a szöveg nem ígér „egy perc
  * múlva" megoldást, hanem megmondja, meddig tart jellemzően, és hová írhat a
  * vevő, ha sürgős (GOV.UK, There is a problem with the service: a vevő kapjon

@@ -64,11 +64,13 @@ interface OrderLookupResult {
  * - `NotExistingPaymentId`: a Barion egyetlen DOKUMENTÁLT, ismeretlen fizetésre
  *   utaló kódja („The specified payment id is invalid.", docs.barion.com
  *   Error_codes_notifications, Wayback 20241014080026). A dokumentáció a
- *   Payment/Refund résznél sorolja fel, de nem csak ott fordul elő: a
- *   nyilvános go-barion kliens (github.com/miklosn/go-barion,
- *   pkg/barion/client_test.go) rögzített Barion-hibaválasza a v2
- *   GetPaymentState-végpontról ugyanezt adja („The given payment id is
- *   invalid"). A refund-ág már végleges kódnak veszi
+ *   Payment/Refund résznél sorolja fel, de a kód nem csak ott fordul elő: a
+ *   nyilvános go-barion kliens tesztje (github.com/miklosn/go-barion,
+ *   pkg/barion/client_test.go, TestPaymentRequestError) egy Barion-hibatörzset
+ *   használ, amelynek EndPoint mezője a v2 GetPaymentState-végpont, a kódja
+ *   ugyanez („The given payment id is invalid"). Ez a törzs a HTTP-státuszra
+ *   NEM bizonyíték: a teszt kézzel mockolt HTTP 501-es választ ad vele a
+ *   Payment/Start-ra. A refund-ág már végleges kódnak veszi
  *   (refund/barion-refund-evidence.ts).
  * - `PaymentNotFound`: a repo korábbi teszt-fixtúrájának kódja (bb49a36). Élő
  *   forrása nincs; a korábbi viselkedés megőrzése miatt marad a listán.
@@ -97,9 +99,15 @@ export const BARION_PAYMENT_NOT_FOUND_ERROR_CODES: readonly string[] = [
  * rendelések callbackje terminálisan elutasítódna, a függők pedig lezárulnának.
  *
  * Minden más hiba (timeout, hálózat, 5xx, hitelesítés, ismeretlen kód, puszta
- * 404) NEM terminális: azokra a webhook-retry újrapróbálása értelmes.
+ * 404) NEM terminális: azokra a webhook-retry újrapróbálása értelmes. Az 5xx
+ * akkor sem definitív, ha a törzsében not-found kód áll: szerverhibánál a
+ * törzs nem megbízható, és így mindhárom hívó (callback, pénztár, order-poll
+ * „transport") ugyanúgy, átmeneti hibaként kezeli.
  */
 export function isPaymentDefinitelyNotFound(error: BarionApiError): boolean {
+  if ((error.httpStatus ?? 0) >= 500) {
+    return false
+  }
   return error.providerErrors.some((providerError) =>
     BARION_PAYMENT_NOT_FOUND_ERROR_CODES.some(
       (code) => code.toLowerCase() === providerError.ErrorCode.toLowerCase(),
@@ -112,8 +120,10 @@ export function isPaymentDefinitelyNotFound(error: BarionApiError): boolean {
  * fizetés nem létezik (útvonal- vagy verzióváltás, közbülső 404, azonosító-
  * formátum hiba). A hívók újrapróbálható, riasztandó hibaként kezelik. Egyetlen
  * kivétel: az order-poll a 24 óránál régebbi függő sort lezárja, ha ugyanabban
- * a futásban egy MÁSIK GetState sikeres volt (az útvonal tehát működik, a 404
- * csak erre a fizetésre vonatkozik; lásd order-poll/service.ts).
+ * a futásban egy MÁSIK GetState sikeres volt, vagy (csendes boltban) a futás
+ * végi útvonal-próba, azaz a legutóbb frissült paid rendelés GetState-je
+ * sikeres. Mindkettő azt bizonyítja, hogy az útvonal és a POSKey működik, a
+ * 404 tehát csak erre a fizetésre vonatkozik (lásd order-poll/service.ts).
  */
 export function isUnverifiedNotFound(error: BarionApiError): boolean {
   return error.httpStatus === 404 && !isPaymentDefinitelyNotFound(error)

@@ -285,18 +285,23 @@ Elveszett callback:
   order-poll task, 5 percenként, ugyanaz a v4 + állapotgép
   + árva-rendelés-lejárat + számla-resweep
   + a Barion által KIFEJEZETT not-found kóddal (NotExistingPaymentId,
-    PaymentNotFound; bármilyen HTTP-státusszal) jelzett, 1 óránál régebbi
-    payment_pending sor → cancelled (#260); a callback erre terminális rejected
+    PaymentNotFound; 5xx kivételével bármilyen HTTP-státusszal) jelzett,
+    1 óránál régebbi payment_pending sor → cancelled (#260); a callback
+    erre terminális rejected
   + a puszta HTTP 404 (Errors tömb nélkül, vagy ismeretlen kóddal)
-    'unverified-404': fojtott RIASZTÁS + forgatás, önmagában SOSEM zár le;
+    'unverified-404': forgatás, függő sornál fojtott RIASZTÁS (a
+    late-success scan lezárt soránál csak warn), önmagában SOSEM zár le;
     a callback újrapróbálható marad, a pénztár saját szövegű 503-at ad
     (CHECKOUT_PAYMENT_STATE_UNVERIFIED); a 24 óránál régebbi ilyen
     payment_pending sort az order-poll CSAK akkor zárja le (RIASZTÁS), ha
     ugyanabban a futásban egy MÁSIK GetState sikeres volt, vagy sikeres az
-    útvonal-próba (a legutóbbi paid rendelés GetState-je)
+    útvonal-próba (a legutóbb frissült paid rendelés GetState-je); egy
+    késői Succeeded-et a late-success scan csak a létrehozástól számított
+    7 napon belül vesz fel
   + a futás eleji mennyezet (MAX_LEADING_FAILURES) csak a függő lapokat
-    állítja meg; a late-success scan saját kerettel fut; auth/transport
-    megszakítás után kimarad
+    állítja meg; a late-success scan saját kerettel fut (a mennyezete csak
+    warn, ha a függő lapoké ugyanabban a futásban már riasztott);
+    auth/transport megszakítás után kimarad
 ```
 
 Ár a checkoutban: a pénztár elküldi a **megjelenített** árat

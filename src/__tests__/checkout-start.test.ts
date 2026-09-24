@@ -1828,6 +1828,37 @@ describe('startCheckout — Barion-hibaág', () => {
     })
   })
 
+  /**
+   * fix-404 rev1: az elutasított Start „az eladás áll" állapot. Az
+   * alapértelmezett 6 órás fojtás mellett egy megoldott, majd pár órán belül
+   * visszatérő ugyanilyen hiba csak warn-sort kapott; a fojtás ezért egy óra.
+   */
+  it('elutasított Start: ugyanaz a hibakód egy óra után újra riaszt', async () => {
+    const { log, errors } = captureLogger()
+    const t0 = Date.parse('2026-09-24T10:00:00Z')
+
+    for (const offsetMinutes of [0, 59, 61]) {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(401, {
+          Errors: [{ ErrorCode: 'AuthenticationFailed', Title: 'x', Description: 'x' }],
+        }),
+      )
+      const { payload } = statefulSetup()
+      await checkoutErrorFrom(
+        startCheckout({
+          payload,
+          user: mockUser,
+          input: happyInput,
+          logger: log,
+          now: new Date(t0 + offsetMinutes * 60_000),
+        }),
+      )
+    }
+
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts).toHaveLength(2)
+  })
+
   it.each([
     [
       'HTTP 400 ModelValidationError',

@@ -85,6 +85,14 @@ export {
 export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
 
 /**
+ * Az elutasított Barion Start riasztásának fojtása hibakódonként. Rövidebb az
+ * alapértelmezett 6 óránál: az elutasítás „az eladás áll" állapot, amelyről
+ * óránként kell új riasztás, és egy megoldott, majd órákon belül visszatérő
+ * ugyanilyen hiba se maradjon warn-sor.
+ */
+export const CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS = 60 * 60 * 1000 // 1 óra
+
+/**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
  * forrás. Duplavásárlás-blokk + rendelés-létrehozás egy zárban; Barion Start
  * a záron kívül. `paid` csak a callback/poll állapotgépen. Vendég: guest
@@ -1224,9 +1232,10 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     // össze, tehát az elutasítás konfigurációs vagy integrációs hiba, ami
     // minden vevőt érint (AuthenticationFailed, ModelValidationError,
     // InvalidUser, UserCantReceiveEMoney, ShopIsClosed …). Épp ezért a
-    // riasztás hibakódonként FOJTOTT: egy rossz POSKey mellett minden vevő
-    // minden próbálkozása ugyanazt jelezné. Az ismétlés warn-sorként, a
-    // rendelés adataival megmarad a naplóban.
+    // riasztás hibakódonként, óránként FOJTOTT (lásd
+    // CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS): egy rossz POSKey mellett
+    // minden vevő minden próbálkozása ugyanazt jelezné. Az ismétlés
+    // warn-sorként, a rendelés adataival megmarad a naplóban.
     const rejectionContext = {
       orderId: order.id,
       orderNumber,
@@ -1238,7 +1247,9 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     const rejectionAlertKey = `checkout-start-rejected:${
       failure.errorCodes[0] ?? `http-${failure.httpStatus ?? 'ismeretlen'}`
     }`
-    if (shouldEmitThrottledAlert(rejectionAlertKey, undefined, nowMs)) {
+    if (
+      shouldEmitThrottledAlert(rejectionAlertKey, CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS, nowMs)
+    ) {
       log.error(
         'RIASZTÁS: a Barion elutasította a fizetésindítást — fizetés nem jött létre, a rendelés payment_failed lesz',
         rejectionContext,

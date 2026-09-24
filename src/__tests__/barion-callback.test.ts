@@ -1154,23 +1154,37 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     },
   )
 
-  it('HTTP 503 GetState → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)', async () => {
-    const { POST, docs, capture } = setup({ order: null })
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ Errors: [] }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+  /**
+   * fix-404 rev1: az 5xx szerverhiba, akkor sem definitív, ha a törzsében
+   * not-found kód áll. Az order-poll ezt eddig is átmeneti („transport")
+   * hibának vette, a callback viszont terminálisan elutasította.
+   */
+  it.each([
+    ['üres Errors tömbbel', []],
+    [
+      'NotExistingPaymentId-vel a törzsben',
+      [{ ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' }],
+    ],
+  ])(
+    'HTTP 503 GetState (%s) → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)',
+    async (_label, errors) => {
+      const { POST, docs, capture } = setup({ order: null })
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ Errors: errors }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
 
-    const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
-    expect(response.status).toBe(200)
-    await capture.runAll()
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
 
-    expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
-    expect(docs[0]?.processedAt ?? null).toBeNull()
-    expect(docs[0]?.lastError).toBeTruthy()
-  })
+      expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
+      expect(docs[0]?.processedAt ?? null).toBeNull()
+      expect(docs[0]?.lastError).toBeTruthy()
+    },
+  )
 })
 
 describe('(f) GetState-hiba — újrapróbálható', () => {
