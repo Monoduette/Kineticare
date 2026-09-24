@@ -1,3 +1,4 @@
+import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
 import type { PayloadRequest, TaskConfig, Where } from 'payload'
 
 import { withAdvisoryLock } from '../lib/advisory-lock'
@@ -12,10 +13,12 @@ import { logger as rootLogger, type Logger } from '../lib/logger'
  *
  * A számolás + `jobs.queue` advisory-zár alatt fut; a Payload felé mindig
  * `shouldSchedule: false` megy vissza (különben a handleSchedules még egyszer
- * sorba állítana). A beragadt (stale) sort lezárjuk (`processing: false`,
- * `hasError: true`, `error`), és EGY fojtott riasztás megy róla; ha csak
- * beragadt job blokkolt, ütemezünk, ha van élő job is, nem. `meta.scheduled`
- * szűrés szándékosan nincs.
+ * sorba állítana). Két küszöb van: a `STALE_SCHEDULED_JOB_MS`-nél régebbi
+ * `processing` sor már nem akadályozza az új futást (ha csak ilyen blokkolt,
+ * ütemezünk, ha van élő job is, nem), lezárni (`processing: false`,
+ * `hasError: true`, `error`) viszont csak a `STALE_JOB_RELEASE_AFTER_MS`-nél
+ * régebbit szabad, feltételes írással; a lezárásról EGY fojtott riasztás megy.
+ * `meta.scheduled` szűrés szándékosan nincs.
  */
 
 type ScheduleEntry = NonNullable<TaskConfig['schedule']>[number]
@@ -25,21 +28,64 @@ type BeforeScheduleHook = NonNullable<NonNullable<ScheduleEntry['hooks']>['befor
 const JOBS_COLLECTION_SLUG = 'payload-jobs'
 
 /**
- * Ennyi tétlenség után tekintünk egy `processing: true` jobot beragadtnak.
+ * Ennyi idő után már nem várunk egy `processing: true` sorra: ha más élő vagy
+ * várakozó job nincs, mellette új futás kerül sorba. A sort ez még NEM zárja
+ * le (lásd `STALE_JOB_RELEASE_AFTER_MS`), tehát élő futásba nem ír bele.
  *
- * 15 perc: a leghosszabb futású periodikus task (order-poll) legrosszabb esetben
- * 25 Barion-hívást végez, egyenként max. 15 mp-es timeouttal (BARION_TIMEOUT_MS
- * alapértelmezése), tehát ~6 perc a felső korlátja; a webhook-retry ennél
- * nagyságrenddel rövidebb. A 15 perc így bő kétszeres tartalék: élő futást nem
- * minősít beragadtnak, de egy elhalt sor legkésőbb 15 perc múlva feloldódik.
+ * A 15 perc csak folyamatok közötti heurisztika, nem biztonsági korlát. Egy
+ * folyamaton belül az élő futást a Payload autoRun-cronja védi: a
+ * `handleSchedules` és a `jobs.run` ugyanabban a croner-callbackben fut
+ * `protect: true` mellett (payload/dist/index.js, `_initializeCrons`), így az
+ * őr a saját folyamata futó jobját sosem látja. Élő sort egy másik futtatás
+ * akkor láthat, ha (1) deploy közben a régi és az új konténer átfed, (2) a
+ * stáb a /api/payload-jobs/run vagy /handle-schedules végpontot hívja (a
+ * kérésen belül fut, croner-védelem nélkül), (3) a numReplicas 1 fölé megy.
+ * Az order-poll 15 percnél tovább is futhat (lásd lent), ilyenkor két futás
+ * mehet egymás mellett. Ez biztonságos: a fizetés-átmenet, a státuszírás és a
+ * visszatérítés rendelésenkénti advisory-zár alatt, feltételes írással fut,
+ * tehát egy rendelés csak egyszer vált állapotot. A 15 perc azt adja, hogy egy
+ * újraindítás által megölt futás után az ütemezés legfeljebb ennyi ideig (és
+ * a következő cron-tickig) álljon.
  */
 export const STALE_SCHEDULED_JOB_MS = 15 * 60 * 1000
+
+/**
+ * Egy `processing: true` sort csak ennyivel a futás kezdete után zárunk le.
+ * A Payload a sort a felvételkor írja (`processing: true` + `updatedAt`),
+ * futás közben nem frissíti (a task-napló `$push`-a `updatedAt: null`-lal
+ * megy, payload/dist/queues/operations/runJobs/runJob/getRunTaskFunction.js),
+ * a végén pedig `completedAt`-et ír. Az `updatedAt` tehát a futás kezdete.
+ *
+ * A korlát a leghosszabb ütemezett task, az order-poll legrosszabb
+ * futásidejéből jön, minden külső hívást a saját időkorlátjával számolva:
+ * - GetState: legfeljebb 25 × 2 függő (ORDER_POLL_BATCH_SIZE, egy pótlap) és
+ *   10 × 2 késői-siker rendelés (LATE_SUCCESS_BATCH_SIZE, egy pótlap), azaz 70
+ *   hívás × 15 s (BARION_GET_TIMEOUT_MS; a GET-et ez korlátozza, nem a 35 s-os
+ *   BARION_TIMEOUT_MS) = 17,5 perc. A lassú, de sikeres válasz nullázza a
+ *   hibaféket, tehát mind a 70 lefuthat.
+ * - Rendelésenként legfeljebb egy mellékhatás: paid-átmenetnél a visszaigazoló
+ *   levél 3 próbálkozás × 10 s Resend-timeout + 2 s + 6 s várakozás = 38 s,
+ *   elutasított fizetésnél egy Refund POST, legfeljebb 35 s. 70 × 38 s ≈ 44 perc.
+ * - A futás vége (számla-resweep, napi összesítő, életjel-ping): ≈ 1 perc.
+ * Ez ≈ 63 perc; a webhook-retry (25 esemény × (15 s + 38 s)) ≈ 22 perc. A 2 óra
+ * ennek közel kétszerese: a tartalék az adatbázis-időt fedi (utasításonként
+ * legfeljebb 30 s, statement_timeout), amit a számítás nem tartalmaz. Ha a
+ * batch-méret, a pótlapok száma vagy egy timeout nő, ezt is emelni kell.
+ *
+ * Az ára: egy újraindítás által megölt futás sora legfeljebb 2 óráig
+ * `processing: true` marad. Az ütemezést ez nem akasztja meg (lásd
+ * `STALE_SCHEDULED_JOB_MS`), csak a lezárás és a róla szóló riasztás késik.
+ */
+export const STALE_JOB_RELEASE_AFTER_MS = 2 * 60 * 60 * 1000
 
 /** A beragadt-job riasztás fojtása queue+task párra (6 óra). */
 export const STUCK_JOB_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000
 
 /** Az ütemezés-ellenőrzés hibájának riasztás-fojtása (1 óra). */
 export const SCHEDULE_CHECK_ALERT_COOLDOWN_MS = 60 * 60 * 1000
+
+/** A régóta futó, még le nem zárható sorról szóló figyelmeztetés fojtása (1 óra). */
+const LONG_RUNNING_JOB_WARN_COOLDOWN_MS = 60 * 60 * 1000
 
 /** Egy tickben legfeljebb ennyi beragadt sort zárunk le. */
 export const MAX_RELEASED_JOBS_PER_TICK = 10
@@ -52,7 +98,7 @@ export const STALE_JOB_RELEASE_MESSAGE =
 export interface StaleAwareBeforeScheduleOptions {
   /** A task slugja — csak az ehhez tartozó jobokat számoljuk. */
   taskSlug: string
-  /** Beragadási küszöb (teszthez felülírható). */
+  /** Az ütemezési küszöb (teszthez felülírható); a lezárási korlát nem az. */
   staleAfterMs?: number
   /** Injektálható logger (teszthez); alapból a projekt gyökér-loggere. */
   logger?: Logger
@@ -92,36 +138,66 @@ async function countJobs(req: PayloadRequest, where: Where): Promise<number> {
   return result.totalDocs
 }
 
+/** A Payload postgres-adapterének drizzle-példánya (`payload.db.drizzle`). */
+interface SqlExecutor {
+  execute(query: SQL): Promise<unknown>
+}
+
+function resolveExecutor(req: PayloadRequest): SqlExecutor {
+  const candidate = (req.payload.db as unknown as { drizzle?: unknown } | undefined)?.drizzle
+  if (
+    typeof candidate !== 'object' ||
+    candidate === null ||
+    typeof (candidate as { execute?: unknown }).execute !== 'function'
+  ) {
+    throw new Error('a payload.db.drizzle nem érhető el, a beragadt sor nem zárható le')
+  }
+  return candidate as SqlExecutor
+}
+
 /**
- * A beragadt sorok lezárása ugyanazzal a DB-hívással, amellyel a Payload a
- * saját job-sorait írja (`payload.db.updateJobs`, lásd
- * payload/dist/queues/utilities/updateJob.js). A `hasError: true` sort a
- * Payload nem futtatja újra („If hasError is true this job will not be
- * retried", a jobs-collection mezőleírása), az `error` pedig kiveszi a
- * blokkoló-számlálásból.
+ * A legrosszabb futásidőnél régebben felvett sorok lezárása EGYETLEN
+ * feltételes UPDATE-tel.
+ *
+ * A Payload saját `db.updateJobs`-a nem feltételes írás: előbb kiválaszt,
+ * majd azonosító szerint ír. Ha a sor a kettő között befejeződik, a
+ * `hasError: true` a már kész sorra kerülne. Itt a jelölt sorokat a
+ * `FOR UPDATE SKIP LOCKED` zárolja: a Postgres a zárolt sor legfrissebb
+ * változatán újraértékeli a feltételt, a más által épp írt sort pedig
+ * kihagyja (az a futó munka jele, és nem várunk rá). Ami közben befejeződött
+ * (`completed_at`), elvesztette a `processing`-et vagy hibát kapott, azt a
+ * feltétel kizárja. A `hasError: true` sort a Payload nem futtatja újra, az
+ * `error` pedig kiveszi a blokkoló-számlálásból.
  */
-async function releaseStaleJobs(
+async function releaseDeadJobs(
   req: PayloadRequest,
   queue: string,
   taskSlug: string,
-  staleBeforeIso: string,
+  releaseBeforeIso: string,
   nowMs: number,
 ): Promise<number> {
-  const updated = await req.payload.db.updateJobs({
-    where: staleWhere(queue, taskSlug, staleBeforeIso),
-    data: {
-      processing: false,
-      hasError: true,
-      error: {
-        message: STALE_JOB_RELEASE_MESSAGE,
-        releasedBy: 'schedule-guard',
-        releasedAt: new Date(nowMs).toISOString(),
-      },
-    },
-    limit: MAX_RELEASED_JOBS_PER_TICK,
-    req,
+  const nowIso = new Date(nowMs).toISOString()
+  const error = JSON.stringify({
+    message: STALE_JOB_RELEASE_MESSAGE,
+    releasedBy: 'schedule-guard',
+    releasedAt: nowIso,
   })
-  return Array.isArray(updated) ? updated.length : 0
+  const result = await resolveExecutor(req).execute(sql`UPDATE "payload_jobs"
+    SET "processing" = false, "has_error" = true, "error" = ${error}::jsonb,
+      "updated_at" = ${nowIso}
+    WHERE "id" IN (
+      SELECT "id" FROM "payload_jobs"
+      WHERE "queue" = ${queue} AND "task_slug"::text = ${taskSlug}
+        AND "processing" = true AND "completed_at" IS NULL AND "error" IS NULL
+        AND "updated_at" < ${releaseBeforeIso}
+      ORDER BY "updated_at"
+      LIMIT ${MAX_RELEASED_JOBS_PER_TICK}
+      FOR UPDATE SKIP LOCKED
+    )
+      AND "processing" = true AND "completed_at" IS NULL AND "error" IS NULL
+    RETURNING "id"`)
+  const rows = (result as { rows?: unknown } | null)?.rows
+  return Array.isArray(rows) ? rows.length : 0
 }
 
 /**
@@ -146,6 +222,7 @@ function reportReleasedJobs(
     stuckJobs: facts.stuckJobs,
     releasedJobs: facts.releasedJobs,
     runnableOrActiveJobs: facts.stuckJobs + facts.liveJobs,
+    releaseAfterMs: STALE_JOB_RELEASE_AFTER_MS,
   }
   if (
     shouldEmitThrottledAlert(
@@ -165,6 +242,35 @@ function reportReleasedJobs(
     return
   }
   log.warn('beragadt job lezárva (a riasztás a fojtási időn belül már kiment)', context)
+}
+
+/**
+ * A régi, de a lezárási korlátnál még fiatalabb sor: lehet élő futás, ezért
+ * nem nyúlunk hozzá, és a tulajdonosnak sem riasztunk. Fojtott figyelmeztetés,
+ * mert a sor a lezárásig minden tickben látszik.
+ */
+function reportLongRunningJobs(
+  log: Logger,
+  facts: { queue: string; taskSlug: string; stuckJobs: number; liveJobs: number; nowMs: number },
+): void {
+  if (
+    !shouldEmitThrottledAlert(
+      `hosszan-futo-job:${facts.queue}:${facts.taskSlug}`,
+      LONG_RUNNING_JOB_WARN_COOLDOWN_MS,
+      facts.nowMs,
+    )
+  ) {
+    return
+  }
+  log.warn(
+    'régóta futó vagy elhalt job: a sort még nem zárjuk le, mert futhat; az ütemezést nem akasztja meg',
+    {
+      queue: facts.queue,
+      stuckJobs: facts.stuckJobs,
+      runnableOrActiveJobs: facts.stuckJobs + facts.liveJobs,
+      releaseAfterMs: STALE_JOB_RELEASE_AFTER_MS,
+    },
+  )
 }
 
 /** A schedule-zár kulcsa: egy queue+task párra egy zár (K4). */
@@ -237,7 +343,8 @@ export function createStaleAwareBeforeSchedule(
         async () => {
           const blocking = await countJobs(req, runnableOrActiveWhere(queue, taskSlug))
           if (blocking > 0) {
-            const staleBeforeIso = new Date(now() - staleAfterMs).toISOString()
+            const nowMs = now()
+            const staleBeforeIso = new Date(nowMs - staleAfterMs).toISOString()
             const stale = await countJobs(req, staleWhere(queue, taskSlug, staleBeforeIso))
             if (stale === 0) {
               // Élő job — ez a helyes duplikátum-védelem (a zár miatt a
@@ -246,28 +353,30 @@ export function createStaleAwareBeforeSchedule(
             }
             // A beragadt sort a Payload soha nem veszi fel újra (csak
             // `processing: false` jobot futtat), tehát magától sosem tűnik el.
-            // Lezárjuk: `processing: false` + `hasError: true` + `error`, így a
-            // következő tick már nem látja blokkolónak, és a riasztás sem
-            // ismétlődik minden tickben (a-callback-2).
+            // Lezárni (`processing: false` + `hasError: true` + `error`) csak
+            // a legrosszabb futásidőn túlit szabad: a fiatalabb mögött még élő
+            // futás lehet. A lezárt sor a következő tickben már nem blokkol,
+            // és a riasztás sem ismétlődik minden tickben (a-callback-2).
+            const releaseBeforeIso = new Date(nowMs - STALE_JOB_RELEASE_AFTER_MS).toISOString()
             let released = 0
+            let releaseFailed = false
             try {
-              released = await releaseStaleJobs(req, queue, taskSlug, staleBeforeIso, now())
+              released = await releaseDeadJobs(req, queue, taskSlug, releaseBeforeIso, nowMs)
             } catch (error) {
-              // A lezárás hibája nem állíthatja meg az ütemezést: a régi
-              // viselkedés (sorba állítás a beragadt sor mellett) marad.
+              // A lezárás hibája nem állíthatja meg az ütemezést: a sorba
+              // állítás a beragadt sor mellett így is megtörténik.
+              releaseFailed = true
               log.warn('a beragadt job-sor lezárása nem sikerült, a következő tick újrapróbálja', {
                 queue,
                 error: error instanceof Error ? error.message : String(error),
               })
             }
-            reportReleasedJobs(log, {
-              queue,
-              taskSlug,
-              stuckJobs: stale,
-              releasedJobs: released,
-              liveJobs: blocking - stale,
-              nowMs: now(),
-            })
+            const facts = { queue, taskSlug, stuckJobs: stale, liveJobs: blocking - stale, nowMs }
+            if (released > 0 || releaseFailed) {
+              reportReleasedJobs(log, { ...facts, releasedJobs: released })
+            } else {
+              reportLongRunningJobs(log, facts)
+            }
             if (stale < blocking) {
               // Él mellette egy futás is: az viszi tovább a munkát.
               return skip

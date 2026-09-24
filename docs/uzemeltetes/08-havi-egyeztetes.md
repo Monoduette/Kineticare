@@ -28,17 +28,33 @@ bizonylataiból és a Barion havi kivonatából kell.
    ```
 
    A fájlban minden rendelés benne van, amely a hónapban jött létre vagy a
-   hónapban kapott visszatérítést: rendelésszám, létrehozás és fizetés ideje
-   (magyar idő), állapot, bruttó összeg, számla, stornó és helyesbítő száma és
-   állapota, teljesítés dátuma, visszatérítések összege és ideje, Barion
-   PaymentId. Vevő neve és e-mail-címe nincs benne. A szkript csak olvas.
-   A fejlesztő a lenti A–G ellenőrző lekérdezéseket is futtassa le.
+   hónapban kapott visszatérítést. A részleges visszatérítés is ide tartozik,
+   akkor is, ha a rendelés egy korábbi hónapban jött létre. Oszlopok:
+   rendelésszám, létrehozás és fizetés ideje (magyar idő), állapot, bruttó
+   összeg, számla, stornó és helyesbítő száma és állapota, teljesítés dátuma,
+   visszatérítések, Barion PaymentId. Vevő neve és e-mail-címe nincs benne. A
+   szkript csak olvas. A fejlesztő a lenti A–G ellenőrző lekérdezéseket is
+   futtassa le.
+
+   A visszatérítésnek három oszlopa van:
+   - `visszaterites_honapban_huf` és `visszaterites_honapban_datumai`: csak a
+     hónapban visszautalt összeg és az időpontjai. A hónap
+     Barion-visszatérítéseit, stornóit és helyesbítőit ezzel párosítsd;
+   - `visszaterites_halmozott_huf`: a hónap végéig összesen visszautalt
+     összeg, a korábbi hónapokéval együtt. Ebből látszik, hogy a rendelés
+     árából mennyi maradt a cégnél. A hónap utáni visszatérítés egyik oszlopba
+     sem kerül.
+
+   Az `allapot` oszlop a futtatás pillanatának állapota: egy októberben
+   részben, novemberben teljesen visszatérített rendelés az októberi fájlban
+   is „refunded”, a havi oszlopa viszont csak az októberi összeget mutatja.
 
 4. **Párosítás rendelésszám szerint:**
    - minden Barion „Succeeded” fizetéshez pontosan egy számla tartozik,
      ugyanazzal a bruttó összeggel;
    - minden Barion-visszatérítéshez stornó (teljes) vagy helyesbítő (részleges)
-     tartozik, ugyanazzal az összeggel;
+     tartozik, ugyanazzal az összeggel, és a Kineticare-sor havi
+     visszatérítési oszlopa is ezt az összeget mutatja;
    - minden számla mögött élő Barion-fizetés áll; teszt- vagy próbavásárlás nem
      viselhet számlát;
    - a Barion „Unsuccessful” visszatérítése azt jelenti, hogy a vevő nem kapta
@@ -161,7 +177,9 @@ ORDER BY updated_at DESC;
 
 A `schedule-guard` által lezárt, beragadt futások is itt látszanak (az `error`
 mezőben `releasedBy: schedule-guard`); ezek egyenként nem teendők, csak ha
-sűrűn fordulnak elő.
+sűrűn fordulnak elő. A rendszer egy futást csak két órával az indulása után
+zár le, mert addig még élhet; az új futásokat egy ilyen sor 15 perc után már
+nem tartja fel.
 
 ## Kérdések a könyvelőnek (egyszer, írásban)
 

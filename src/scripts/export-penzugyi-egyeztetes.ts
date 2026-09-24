@@ -13,11 +13,24 @@
  * docs/uzemeltetes/08-havi-egyeztetes.md.
  *
  * MIT TARTALMAZ: minden rendelést, amely a hónapban jött létre VAGY a
- * hónapban kapott visszatérítést. Oszlopok: rendelésszám, létrehozás és
- * fizetés ideje (Budapest), állapot, bruttó összeg, számla/stornó/helyesbítő
- * száma és állapota, teljesítési dátum, visszatérítés összesen és dátumai,
- * Barion PaymentId. A fizetés ideje a hozzáférés-óra (`users.accessGrants`
- * `grantedAt`, `sourceOrder` = a rendelés); az orders sémában nincs `paidAt`.
+ * hónapban kapott visszatérítést (teljeset vagy részlegeset, akkor is, ha a
+ * rendelés egy korábbi hónapban jött létre). Oszlopok: rendelésszám,
+ * létrehozás és fizetés ideje (Budapest), állapot, bruttó összeg,
+ * számla/stornó/helyesbítő száma és állapota, teljesítési dátum, a HÓNAPBAN
+ * visszatérített összeg és időpontjai, a hónap végéig halmozott
+ * visszatérítés, Barion PaymentId. A fizetés ideje a hozzáférés-óra
+ * (`users.accessGrants` `grantedAt`, `sourceOrder` = a rendelés); az orders
+ * sémában nincs `paidAt`. Az `allapot` a futtatás pillanatának állapota.
+ *
+ * MIÉRT NEM ELÉG A `refundedAt`-re szűrni: a rendelés felső szintű
+ * `refundedAt` mezőjét csak a TELJES visszatérítés írja (refund-recovery,
+ * auto-refund-recovery); a részleges visszatérítés ideje kizárólag a
+ * `refunds[].refundedAt` JSON-tételben él. Ezért a lekérdezés bővebb halmazt
+ * kér (`updatedAt` >= a hónap eleje: a visszatérítési tételt író mentés a
+ * tétel `refundedAt`-je után, ugyanazon a szerver-órán történik, a későbbi
+ * mentések pedig csak növelik az `updatedAt`-et), és a pontos hónap-szűrés
+ * JS-ben fut a `createdAt`, a `refundedAt` és minden `refunds[].refundedAt`
+ * alapján.
  *
  * ADATVÉDELEM: vevőnév, e-mail, cím, IP NEM kerül a fájlba; a könyvelő a
  * rendelésszámmal párosít. A fájl mégis pénzügyi adat: ne küldd nyílt
@@ -59,8 +72,9 @@ export const CSV_FEJLEC = [
   'storno_allapota',
   'helyesbito_szama',
   'helyesbito_allapota',
-  'visszaterites_osszesen_huf',
-  'visszaterites_datumai',
+  'visszaterites_honapban_huf',
+  'visszaterites_honapban_datumai',
+  'visszaterites_halmozott_huf',
   'barion_payment_id',
 ] as const
 
@@ -78,14 +92,21 @@ export interface ExportOrder {
   stornoStatus?: string | null
   correctiveInvoiceNumber?: string | null
   correctiveInvoiceStatus?: string | null
+  refundedAt?: string | null
   refunds?: unknown
   barionPaymentId?: string | null
 }
 
 export type CsvSor = Record<(typeof CSV_FEJLEC)[number], string>
 
+/** A hónap határai UTC-ben: [kezdet, vég). */
+export interface HonapHatarai {
+  kezdet: Date
+  veg: Date
+}
+
 /** A hónap (ÉÉÉÉ-HH) Budapest szerinti határai UTC-ben: [kezdet, vég). */
-export function budapestHonapHatarai(honap: string): { kezdet: Date; veg: Date } {
+export function budapestHonapHatarai(honap: string): HonapHatarai {
   const match = /^(\d{4})-(\d{2})$/.exec(honap)
   const ev = Number(match?.[1])
   const ho = Number(match?.[2])
@@ -139,30 +160,71 @@ function budapestIdo(iso: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '' : budapestDateTimeString(date)
 }
 
-function visszateritesek(refunds: unknown): { osszeg: number; datumok: string[] } {
+/** Az időpont a [kezdet, vég) hónapba esik-e (érvénytelen vagy hiányzó idő: nem). */
+function honapba(iso: unknown, { kezdet, veg }: HonapHatarai): boolean {
+  const ms = typeof iso === 'string' ? Date.parse(iso) : Number.NaN
+  return Number.isFinite(ms) && ms >= kezdet.getTime() && ms < veg.getTime()
+}
+
+/** A `refunds` JSON tételei (a nem objektum elemek kimaradnak). */
+function visszateritesiTetelek(
+  refunds: unknown,
+): Array<{ amountHuf?: unknown; refundedAt?: unknown }> {
   if (!Array.isArray(refunds)) {
-    return { osszeg: 0, datumok: [] }
+    return []
   }
-  let osszeg = 0
-  const datumok: string[] = []
-  for (const entry of refunds) {
-    if (typeof entry !== 'object' || entry === null) {
+  return refunds.filter(
+    (entry): entry is { amountHuf?: unknown; refundedAt?: unknown } =>
+      typeof entry === 'object' && entry !== null,
+  )
+}
+
+/**
+ * A hónap visszatérítései és a hónap végéig halmozott összeg. A korábbi
+ * hónapok visszatérítése csak a halmozottba számít, a hónap utáni egyikbe
+ * sem. A dátum nélküli tétel (az éles út mindig ír dátumot) a halmozottba
+ * kerül, hogy a pénzmozgás ne tűnjön el a fájlból.
+ */
+function visszateritesek(
+  refunds: unknown,
+  honap: HonapHatarai,
+): { honapban: number; honapbanDatumok: string[]; halmozott: number } {
+  let honapban = 0
+  let halmozott = 0
+  const honapbanDatumok: string[] = []
+  for (const { amountHuf, refundedAt } of visszateritesiTetelek(refunds)) {
+    if (typeof amountHuf !== 'number' || !Number.isFinite(amountHuf) || amountHuf <= 0) {
       continue
     }
-    const { amountHuf, refundedAt } = entry as { amountHuf?: unknown; refundedAt?: unknown }
-    if (typeof amountHuf === 'number' && Number.isFinite(amountHuf) && amountHuf > 0) {
-      osszeg += amountHuf
-      if (typeof refundedAt === 'string') {
-        datumok.push(budapestIdo(refundedAt))
-      }
+    const ms = typeof refundedAt === 'string' ? Date.parse(refundedAt) : Number.NaN
+    if (Number.isFinite(ms) && ms >= honap.veg.getTime()) {
+      continue
+    }
+    halmozott += amountHuf
+    if (typeof refundedAt === 'string' && honapba(refundedAt, honap)) {
+      honapban += amountHuf
+      honapbanDatumok.push(budapestIdo(refundedAt))
     }
   }
-  return { osszeg, datumok }
+  return { honapban, honapbanDatumok, halmozott }
+}
+
+/** A rendelés a hónapban jött létre, vagy a hónapban kapott (bármilyen) visszatérítést. */
+function honapbanErintett(order: ExportOrder, honap: HonapHatarai): boolean {
+  return (
+    honapba(order.createdAt, honap) ||
+    honapba(order.refundedAt, honap) ||
+    visszateritesiTetelek(order.refunds).some((entry) => honapba(entry.refundedAt, honap))
+  )
 }
 
 /** Egy rendelés CSV-sora. A `fizetve` a hozzáférés-óra ideje, ha ismert. */
-export function exportSor(order: ExportOrder, fizetveIso: string | undefined): CsvSor {
-  const { osszeg, datumok } = visszateritesek(order.refunds)
+export function exportSor(
+  order: ExportOrder,
+  fizetveIso: string | undefined,
+  honap: HonapHatarai,
+): CsvSor {
+  const { honapban, honapbanDatumok, halmozott } = visszateritesek(order.refunds, honap)
   return {
     rendelesszam: order.orderNumber ?? `#${String(order.id)}`,
     letrehozva_budapest: budapestIdo(order.createdAt),
@@ -177,8 +239,9 @@ export function exportSor(order: ExportOrder, fizetveIso: string | undefined): C
     storno_allapota: order.stornoStatus ?? '',
     helyesbito_szama: order.correctiveInvoiceNumber ?? '',
     helyesbito_allapota: order.correctiveInvoiceStatus ?? '',
-    visszaterites_osszesen_huf: osszeg > 0 ? String(osszeg) : '',
-    visszaterites_datumai: datumok.join(' | '),
+    visszaterites_honapban_huf: honapban > 0 ? String(honapban) : '',
+    visszaterites_honapban_datumai: honapbanDatumok.join(' | '),
+    visszaterites_halmozott_huf: halmozott > 0 ? String(halmozott) : '',
     barion_payment_id: order.barionPaymentId ?? '',
   }
 }
@@ -237,6 +300,7 @@ const ORDER_SELECT = {
   stornoStatus: true,
   correctiveInvoiceNumber: true,
   correctiveInvoiceStatus: true,
+  refundedAt: true,
   refunds: true,
   barionPaymentId: true,
 } as const
@@ -252,7 +316,9 @@ async function osszesOldal<T>(
       return eredmeny
     }
   }
-  throw new Error(`Több mint ${String(PAGE_SIZE * MAX_PAGES)} sor: szűkítsd a hónapot.`)
+  throw new Error(
+    `Több mint ${String(PAGE_SIZE * MAX_PAGES)} sor: az export lapozási korlátja betelt.`,
+  )
 }
 
 /** A hónap rendelései és a CSV. Csak `find`-et hív. */
@@ -260,19 +326,30 @@ export async function penzugyiExport(
   payload: Pick<Payload, 'find'>,
   honap: string,
 ): Promise<{ csv: string; sorok: number }> {
-  const { kezdet, veg } = budapestHonapHatarai(honap)
+  const hatarok = budapestHonapHatarai(honap)
+  const { kezdet, veg } = hatarok
   const idoszak = (mezo: string): Where => ({
     and: [
       { [mezo]: { greater_than_equal: kezdet.toISOString() } },
       { [mezo]: { less_than: veg.toISOString() } },
     ],
   })
-  const orders = await osszesOldal<ExportOrder>(
+  // Bővebb halmaz (lásd a fájl fejlécét): a részleges visszatérítés csak a
+  // `refunds` JSON-ban él, arra SQL-szűrés nincs, de az írása az `updatedAt`-et
+  // a tétel ideje fölé emeli. A pontos hónap-szűrés lent, JS-ben fut.
+  const jeloltek = await osszesOldal<ExportOrder>(
     (page) =>
       payload.find({
         collection: 'orders',
-        where: { or: [idoszak('createdAt'), idoszak('refundedAt')] },
-        sort: 'createdAt',
+        where: {
+          or: [
+            idoszak('createdAt'),
+            idoszak('refundedAt'),
+            { updatedAt: { greater_than_equal: kezdet.toISOString() } },
+          ],
+        },
+        // Az id a holtversenyt dönti el, hogy a lapozás determinisztikus legyen.
+        sort: ['createdAt', 'id'],
         page,
         limit: PAGE_SIZE,
         depth: 0,
@@ -283,6 +360,13 @@ export async function penzugyiExport(
         hasNextPage?: boolean
       }>,
   )
+  const egyedi = new Map<number, ExportOrder>()
+  for (const order of jeloltek) {
+    if (!egyedi.has(order.id) && honapbanErintett(order, hatarok)) {
+      egyedi.set(order.id, order)
+    }
+  }
+  const orders = [...egyedi.values()]
   const ids = orders.map((order) => order.id)
   const users =
     ids.length === 0
@@ -303,7 +387,7 @@ export async function penzugyiExport(
             }>,
         )
   const idok = fizetesiIdok(users)
-  const sorok = orders.map((order) => exportSor(order, idok.get(order.id)))
+  const sorok = orders.map((order) => exportSor(order, idok.get(order.id), hatarok))
   return { csv: csvSzoveg(sorok), sorok: sorok.length }
 }
 
