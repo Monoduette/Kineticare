@@ -45,7 +45,9 @@ export function MetaPixel(): null {
     // Másik lapon hozott döntés: a tároló változik, a saját esemény nem jön át.
     const onStorage = (event: StorageEvent): void => {
       if (event.key === CONSENT_STORAGE_KEY || event.key === null) {
-        applyConsentToMetaPixel(readConsent())
+        // Törölt döntés (removeItem / clear) = nincs hozzájárulás: a Pixel leáll.
+        const stored = readConsent()
+        applyConsentToMetaPixel(stored === 'granted' ? stored : 'denied')
       }
     }
     window.addEventListener(CONSENT_EVENT, onConsent)
