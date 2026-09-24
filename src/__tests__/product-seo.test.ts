@@ -11,6 +11,7 @@ import {
   resolveOgImageUrl,
   resolveSeoDescription,
   resolveSeoTitle,
+  structuredDataSku,
 } from '../lib/seo'
 import type { Media, Product } from '../payload-types'
 
@@ -208,7 +209,8 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(jsonLd.name).toBe('Kéz-rehab alapprogram')
     expect(jsonLd.description).toBe('Nyolc hetes otthoni kézrehabilitációs program.')
     expect(jsonLd.image).toEqual([absoluteUrl('/media/borito.webp')])
-    expect(jsonLd.sku).toBe('Kéz-rehab alapprogram')
+    // A sku szóköz és ékezet nélküli gépi azonosító (Google: whitespace tilos).
+    expect(jsonLd.sku).toBe(`KC-${doc.id}`)
     expect(jsonLd.brand).toEqual({ '@type': 'Brand', name: 'Kineticare' })
     expect(jsonLd.url).toBe(absoluteUrl('/kurzusok/7'))
     expect(jsonLd.inLanguage).toBe('hu-HU')
@@ -230,10 +232,27 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     )
   })
 
-  it('ingyenes kurzusnál (nincs ár) NEM közöl offers-t', () => {
-    // A 0 Ft-os vagy hiányzó ár félrevezető strukturált adat lenne.
+  it('ingyenes kurzusnál (nincs ár) NEM közöl offers-t, és nem Product', () => {
+    // A 0 Ft-os vagy hiányzó ár félrevezető strukturált adat lenne. Offers
+    // nélküli Product viszont kritikus hiba a Google termék-jelentésében
+    // („Either 'offers', 'review' or 'aggregateRating' should be specified”),
+    // ezért az ingyenes kurzus csak Course.
     const free = jsonLdFor(product({ priceInHUFEnabled: false, priceInHUF: null }))
     expect(free.offers).toBeUndefined()
+    expect(free['@type']).toBe('Course')
+    expect(free.sku).toBeUndefined()
+    expect(free.brand).toBeUndefined()
+  })
+
+  it('az Offer digitális szállítást közöl (0 Ft, HU), határidő és visszaküldési szabály nélkül', () => {
+    expect(offers.shippingDetails).toEqual({
+      '@type': 'OfferShippingDetails',
+      shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
+      shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
+    })
+    // A kurzusoldal 30 napos garanciája és az ÁSZF ellentmond egymásnak:
+    // amíg ez nincs rendezve, a strukturált adat egyiket sem állítja.
+    expect(offers.hasMerchantReturnPolicy).toBeUndefined()
   })
 
   it('kitalált értékelést SOSEM közöl (nincs értékelés-adat a kurzusokon)', () => {
@@ -326,7 +345,30 @@ describe('slugos kurzus-URL a SEO-rétegben', () => {
     })
     const jsonLd = jsonLdFor(named)
     expect(jsonLd.name).toBe('Kéztorna otthon — 8 hetes program')
-    expect(jsonLd.sku).toBe('KURZUS-001')
+    expect(jsonLd.sku).toBe(`KC-${named.id}`)
     expect(resolveSeoTitle(productSeoDoc(named))).toBe('Kéztorna otthon — 8 hetes program')
+  })
+})
+
+describe('structuredDataSku', () => {
+  it('szóköz és ékezet nélküli, ASCII azonosítót ad', () => {
+    expect(structuredDataSku('Otthoni KézRehab Program')).toBe('Otthoni-KezRehab-Program')
+    expect(structuredDataSku('SOS Kézrelax villámkurzus')).toBe('SOS-Kezrelax-villamkurzus')
+    expect(structuredDataSku('KURZUS-001')).toBe('KURZUS-001')
+  })
+
+  it('ismert termék-id mellett KC-<id> (ütközésmentes, stabil)', () => {
+    expect(structuredDataSku('A B', 1)).toBe('KC-1')
+    expect(structuredDataSku('A-B-1', 2)).toBe('KC-2')
+    expect(structuredDataSku('Otthoni KézRehab Program', 12)).toBe('KC-12')
+    expect(structuredDataSku('', 12)).toBeUndefined()
+    expect(structuredDataSku('  Kéztorna otthon — 8 hetes  ')).toBe('Keztorna-otthon-8-hetes')
+  })
+
+  it('üres vagy hiányzó értékre nincs sku', () => {
+    expect(structuredDataSku('')).toBeUndefined()
+    expect(structuredDataSku('  — ')).toBeUndefined()
+    expect(structuredDataSku(null)).toBeUndefined()
+    expect(structuredDataSku(undefined)).toBeUndefined()
   })
 })
