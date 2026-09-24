@@ -1795,15 +1795,15 @@ export interface Product {
    */
   sku?: string | null;
   /**
-   * Kikapcsolva a kurzus nem vásárolható meg.
+   * Bepipálva a vásárló az Ár (Ft) mezőben megadott összeget fizeti. Pipa nélkül a kurzus ingyenes: bárki megkapja, aki megadja a nevét és az e-mail-címét, és a hozzáférése akkor is megmarad, ha a pipát később visszateszed. Az eladás leállítása nem ez, hanem a „Megjelenés a weboldalon” mező „Archivált” értéke (a „Piszkozat” a vásárlóktól is elveszi a videókat). Csak a tulajdonos állíthatja.
    */
   priceInHUFEnabled?: boolean | null;
   /**
-   * A kurzus rendes, bruttó ára forintban. Ennyit fizet a vásárló a pénztárnál, ha nincs élő akció. Csak a tulajdonos állíthatja.
+   * A kurzus rendes, bruttó ára egész forintban, legalább 10 Ft. Ennyit fizet a vásárló a pénztárnál, ha nincs élő akció. Ezres tagolónak szóközt vagy pontot is írhatsz (79 500 vagy 79.500), a mező alatt látod, hogyan jelenik meg. Csak a tulajdonos állíthatja.
    */
   priceInHUF?: number | null;
   /**
-   * Hány napig érvényes a hozzáférés vásárlás után. Hagyd üresen, ha a hozzáférés soha nem jár le.
+   * Hány napig érvényes a hozzáférés a vásárlástól számítva. Hagyd üresen, ha a hozzáférés soha nem jár le. Figyelem: a módosítás a korábbi vásárlókra is érvényes, mert a rendszer a hozzáférést mindig ebből a mezőből számolja. Ha például 365 napra állítod, aki egy évnél régebben vásárolt, azonnal elveszíti a hozzáférést, pedig a kurzusoldal lejárat nélküli hozzáférést ígérhetett neki. Csak a tulajdonos állíthatja.
    */
   accessDurationDays?: number | null;
   /**
@@ -1815,11 +1815,11 @@ export interface Product {
    */
   promoStart?: string | null;
   /**
-   * Az akció utolsó napja, például 2026. 12. 31. Az akció a megadott nap végéig, éjfélig él. Ha üresen hagyod, az akciónak nincs vége.
+   * Az akció utolsó napja, például 2026. 12. 31. Az akció a megadott nap végéig, éjfélig él. Bekapcsolt akciónál kötelező; egy korábban vég nélkül közzétett akció addig marad így, amíg meg nem adod a végét.
    */
   promoEnd?: string | null;
   /**
-   * Ezt fizeti a vásárló az akció ideje alatt, a fenti Ár (Ft) áthúzva jelenik meg mellette. Kisebbnek kell lennie a rendes árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak a tulajdonos állíthatja.
+   * Ezt fizeti a vásárló az akció ideje alatt, a fenti Ár (Ft) áthúzva jelenik meg mellette. Egész forint, legalább 10 Ft, és kisebb a rendes árnál. Ha üresen hagyod, az akció csak a megjelenést változtatja, az ár marad. Csak a tulajdonos állíthatja.
    */
   promoPriceHuf?: number | null;
   promoOriginalPriceHuf?: number | null;

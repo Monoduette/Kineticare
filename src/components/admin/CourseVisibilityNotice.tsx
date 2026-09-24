@@ -5,6 +5,7 @@ import type { JSX } from 'react'
 
 import { hasOwnerRole } from '../../access/roles'
 import { courseVisibilityNotice, type CourseVisibilityNotice as Notice } from './course-visibility'
+import { FREE_COURSE_NOTICE_BODY, FREE_COURSE_NOTICE_TITLE } from './huf-price'
 
 /** A törzsszöveg; a kiemelendő részlet <strong> (verzál helyett). */
 function NoticeBody({ notice }: { notice: Notice }): JSX.Element {
@@ -40,25 +41,44 @@ function NoticeBody({ notice }: { notice: Notice }): JSX.Element {
  *   https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/alert_role).
  * - A stílus a B1 stílusszerződése (.kc-admin-notice, figyelmeztetésnél
  *   --figyelem, a custom.scss-ben mindkét témán mért AA), saját szín nélkül.
+ *
+ * r2-termekor (a-cms-1): ha a „Fizetős kurzus” pipa nincs bent, a lap tetején
+ * egy második sáv kimondja, hogy a kurzus ingyenes, és bárki megkapja. Eddig ezt
+ * semmi nem jelezte, csak egy pipa hiánya (NN/g, 10 Usability Heuristics, #1
+ * Visibility of System Status, https://www.nngroup.com/articles/ten-usability-heuristics/).
+ * Semleges sáv, nem figyelmeztetés: az ingyenes kurzus (például az SOS) rendes
+ * állapot; a fizetős kurzus kikapcsolását a pipa alatti megerősítés védi
+ * (src/components/admin/HufPriceField.tsx).
  */
 export function CourseVisibilityNotice(): JSX.Element | null {
   const { user } = useAuth<{ id: number | string; role?: string | null }>()
   const status = useFormFields(([fields]) => fields?.status?.value)
   const unlisted = useFormFields(([fields]) => fields?.unlisted?.value)
+  const priceInHUFEnabled = useFormFields(([fields]) => fields?.priceInHUFEnabled?.value)
 
   const notice = courseVisibilityNotice(status, hasOwnerRole(user), unlisted)
   const figyelmeztet = notice.kind === 'figyelmeztetes'
 
   return (
-    <div
-      className={figyelmeztet ? 'kc-admin-notice kc-admin-notice--figyelem' : 'kc-admin-notice'}
-      role="status"
-      style={{ marginBottom: '1.5rem' }}
-    >
-      <p className="kc-admin-notice__cim">
-        <strong>{notice.title}</strong>
-      </p>
-      <NoticeBody notice={notice} />
-    </div>
+    <>
+      <div
+        className={figyelmeztet ? 'kc-admin-notice kc-admin-notice--figyelem' : 'kc-admin-notice'}
+        role="status"
+        style={{ marginBottom: '1.5rem' }}
+      >
+        <p className="kc-admin-notice__cim">
+          <strong>{notice.title}</strong>
+        </p>
+        <NoticeBody notice={notice} />
+      </div>
+      {priceInHUFEnabled === false ? (
+        <div className="kc-admin-notice" role="status" style={{ marginBottom: '1.5rem' }}>
+          <p className="kc-admin-notice__cim">
+            <strong>{FREE_COURSE_NOTICE_TITLE}</strong>
+          </p>
+          <p className="kc-admin-notice__szoveg">{FREE_COURSE_NOTICE_BODY}</p>
+        </div>
+      ) : null}
+    </>
   )
 }
