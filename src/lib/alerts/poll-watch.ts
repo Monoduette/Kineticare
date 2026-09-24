@@ -28,8 +28,27 @@ import { runDailyDigestIfDue, type DigestOutcome, type DigestState } from './dig
 import { emitAlert } from './emit'
 import { pingHeartbeat, type HeartbeatResult } from './heartbeat'
 
-/** Egy futásban legfeljebb ennyi régi függő rendelésről riasztunk. */
+/** Egy futásban legfeljebb ennyi régi függő rendelésről riasztunk (és ennyi a lapméret). */
 export const STUCK_PENDING_ALERT_BATCH = 25
+
+/**
+ * Egy futásban legfeljebb ennyi lapot olvasunk. A fojtott (6 órán belül már
+ * riasztott) sorok nem fogyasztják a riasztási keretet, de lapot igen: a korlát
+ * a futás lekérdezés-számát tartja kordában egy nagy háttérlista mellett is.
+ */
+export const STUCK_PENDING_MAX_PAGES_PER_RUN = 8
+
+/**
+ * Hol folytatja a következő futás a lapozást (PR #305, Codex P2). A rögzített
+ * „első 25” lekérdezés 25-nél több régi függő rendelésnél minden futásban
+ * ugyanazt a legrégebbi 25-öt olvasta: azok fojtva kimaradtak, a 26.-tól
+ * kezdve pedig egyik rendelés sem kapott riasztást. A lapozás a fojtott sorokon
+ * túllép, a kurzor pedig körbeforog, így a lapkorlátnál hosszabb lista végére
+ * is sor kerül. Folyamaton belüli állapot, mint maga a fojtás
+ * (src/lib/alert-throttle.ts): újraindulás után az első lapról indul, és a
+ * friss folyamat úgyis újra riaszt.
+ */
+let nextStuckPendingPage = 1
 
 export interface AfterOrderPollDeps {
   readonly payload: Pick<Payload, 'count' | 'find'>
@@ -60,48 +79,83 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** 1. lépés: a 24 óránál régebbi függő rendelések riasztása (fojtva). */
+/**
+ * 1. lépés: a 24 óránál régebbi függő rendelések riasztása (fojtva). Egy
+ * futás legfeljebb STUCK_PENDING_ALERT_BATCH riasztást ad és legfeljebb
+ * STUCK_PENDING_MAX_PAGES_PER_RUN lapot olvas; a fojtott sorokon továbblapoz,
+ * és a következő futás ott folytatja, ahol ez abbahagyta (a lista végén
+ * körbefordul).
+ */
 export async function alertStuckPendingPayments(
   deps: Pick<AfterOrderPollDeps, 'payload' | 'logger' | 'nowMs'>,
 ): Promise<number> {
-  const result = await deps.payload.find({
-    collection: 'orders',
-    where: {
-      and: [
-        { status: { equals: 'payment_pending' } },
-        {
-          createdAt: {
-            less_than: new Date(deps.nowMs - PENDING_PAYMENT_ALERT_AFTER_MS).toISOString(),
-          },
-        },
-      ],
-    },
-    sort: 'createdAt',
-    limit: STUCK_PENDING_ALERT_BATCH,
-    depth: 0,
-    select: { orderNumber: true, createdAt: true },
-    overrideAccess: true,
-  } as unknown as Parameters<Payload['find']>[0])
-
+  const olderThan = new Date(deps.nowMs - PENDING_PAYMENT_ALERT_AFTER_MS).toISOString()
+  const startPage = nextStuckPendingPage
+  let page = startPage
+  let wrapped = false
   let alerted = 0
-  for (const order of result.docs as unknown as StuckPendingOrder[]) {
-    if (!shouldEmitThrottledAlert(`stuck-order:${String(order.id)}`, undefined, deps.nowMs)) {
-      continue
+  for (let read = 0; read < STUCK_PENDING_MAX_PAGES_PER_RUN; read += 1) {
+    const result = await deps.payload.find({
+      collection: 'orders',
+      where: {
+        and: [{ status: { equals: 'payment_pending' } }, { createdAt: { less_than: olderThan } }],
+      },
+      sort: ['createdAt', 'id'],
+      limit: STUCK_PENDING_ALERT_BATCH,
+      page,
+      depth: 0,
+      select: { orderNumber: true, createdAt: true },
+      overrideAccess: true,
+    } as unknown as Parameters<Payload['find']>[0])
+
+    for (const order of result.docs as unknown as StuckPendingOrder[]) {
+      if (alerted >= STUCK_PENDING_ALERT_BATCH) break
+      if (alertStuckOrder(deps, order)) alerted += 1
     }
-    const createdAtMs = Date.parse(order.createdAt ?? '')
-    const ageHours = Number.isFinite(createdAtMs)
-      ? Math.floor((deps.nowMs - createdAtMs) / (60 * 60 * 1000))
-      : null
-    emitAlert(
-      deps.logger.child({ orderId: order.id, orderNumber: order.orderNumber ?? null }),
-      ALERT_CODES.fuggoFizetes24Ora,
-      'RIASZTÁS: a rendelés egy napja függő fizetésben áll. A Barion-állapot nem zárult le, ' +
-        'vagy nem olvasható ki. Nézd meg a fizetést a Barion-fiókban.',
-      { ageHours },
-    )
-    alerted += 1
+    if (alerted >= STUCK_PENDING_ALERT_BATCH) {
+      // A lap maradéka még riasztatlan lehet: a következő futás itt folytatja.
+      nextStuckPendingPage = page
+      return alerted
+    }
+    if (result.hasNextPage === true) {
+      page += 1
+    } else if (startPage > 1 && !wrapped) {
+      wrapped = true
+      page = 1
+    } else {
+      nextStuckPendingPage = 1
+      return alerted
+    }
+    if (wrapped && page >= startPage) {
+      // Körbeértünk: a teljes listát láttuk ebben a futásban.
+      nextStuckPendingPage = startPage
+      return alerted
+    }
   }
+  nextStuckPendingPage = page
   return alerted
+}
+
+/** Egy régi függő rendelés riasztása; false, ha a fojtás (6 óra) elnyelte. */
+function alertStuckOrder(
+  deps: Pick<AfterOrderPollDeps, 'logger' | 'nowMs'>,
+  order: StuckPendingOrder,
+): boolean {
+  if (!shouldEmitThrottledAlert(`stuck-order:${String(order.id)}`, undefined, deps.nowMs)) {
+    return false
+  }
+  const createdAtMs = Date.parse(order.createdAt ?? '')
+  const ageHours = Number.isFinite(createdAtMs)
+    ? Math.floor((deps.nowMs - createdAtMs) / (60 * 60 * 1000))
+    : null
+  emitAlert(
+    deps.logger.child({ orderId: order.id, orderNumber: order.orderNumber ?? null }),
+    ALERT_CODES.fuggoFizetes24Ora,
+    'RIASZTÁS: a rendelés egy napja függő fizetésben áll. A Barion-állapot nem zárult le, ' +
+      'vagy nem olvasható ki. Nézd meg a fizetést a Barion-fiókban.',
+    { ageHours },
+  )
+  return true
 }
 
 export async function afterOrderPoll(deps: AfterOrderPollDeps): Promise<AfterOrderPollResult> {

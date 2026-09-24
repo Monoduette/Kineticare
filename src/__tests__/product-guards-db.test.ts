@@ -13,6 +13,7 @@ import { grantFreeCoursesToUser } from '../lib/free-course-grant'
 import { requestFreeCourseAccess } from '../lib/free-course/request-access'
 import { FIRST_USER_BOOTSTRAP_HEADER, FIRST_USER_BOOTSTRAP_TOKEN_ENV } from '../collections/Users'
 import configPromise from '../payload.config'
+import { unknownPriceReferenceMessage } from '../plugins/ecommerce'
 import { isDatabaseAvailable } from './helpers/db-available'
 
 /**
@@ -973,5 +974,100 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
     // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik.
     expect(await duplicateAsStaff(true)).toBe('OK')
+  }, 120_000)
+  /**
+   * PR #305 (Codex P1): a legutóbb közzétett ár ismeretlen. A tulajdonos a
+   * 79 500 Ft-os élő kurzuson elüt egy 7 950 Ft-os árat (autosave, piszkozat),
+   * majd visszavonja a közzétételt: a fő sorba a piszkozat kerül, benne a
+   * 7 950 Ft. Ha a visszavonás előtti közzétett állapot a naplóból nem
+   * olvasható ki, a piszkozat-sor önmagához mérve „nem csökkent”, és a hibás ár
+   * megerősítés nélkül ment volna élesbe.
+   */
+  async function unpublishWithMistypedPrice(key: string): Promise<number> {
+    const id = await createPublished(key)
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'draft',
+      priceInHUF: 7_950,
+    })
+    return id
+  }
+
+  async function expectConfirmationRequired(id: number): Promise<void> {
+    expect(await save(id, staff, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: unknownPriceReferenceMessage('rendes', 7_950),
+    })
+    expect((await mainRow(id))._status).toBe('draft')
+    expect(
+      await save(id, owner, {
+        _status: 'published',
+        [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 7_950 },
+      }),
+    ).toBe('OK')
+    const row = await mainRow(id)
+    expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+      _status: 'published',
+      priceInHUF: 7_950,
+    })
+  }
+
+  it('PR #305 (Codex P1): napló nélküli régi kurzus visszavonás után az elütött árat csak a tulajdonos megerősítésével teszi közzé', async () => {
+    const id = await unpublishWithMistypedPrice('legacy-no-audit')
+    // A régi kurzus alakja: a műveletnapló kurzus-bejegyzései előtt készült és
+    // vonták vissza, így róla semmilyen bejegyzés nincs.
+    await payload.db.deleteMany({
+      collection: 'audit-logs',
+      where: {
+        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
+      },
+    })
+    await expectConfirmationRequired(id)
+  }, 120_000)
+
+  it('PR #305 (Codex P1): ha a napló olvasása elbukik, a piszkozat-sor nem mérce', async () => {
+    const id = await unpublishWithMistypedPrice('audit-read-failure')
+    const originalFind = payload.find.bind(payload)
+    const findSpy = vi.spyOn(payload, 'find').mockImplementation(((
+      args: Parameters<Payload['find']>[0],
+    ) => {
+      if (args.collection === 'audit-logs') {
+        return Promise.reject(new Error('a napló átmenetileg nem olvasható'))
+      }
+      return originalFind(args)
+    }) as Payload['find'])
+    try {
+      await expectConfirmationRequired(id)
+    } finally {
+      findSpy.mockRestore()
+    }
+  }, 120_000)
+
+  it('kontroll (PR #305): a soha nem közzétett, új kurzus a tulajdonos közzétételével megerősítés nélkül élesedik', async () => {
+    const created = (await payload.create({
+      collection: 'products',
+      data: {
+        sku: `DB-GUARD fresh ${stamp}`,
+        category: categoryId,
+        status: 'published',
+        _status: 'draft',
+        priceInHUFEnabled: true,
+        priceInHUF: 79_500,
+      },
+      draft: true,
+      overrideAccess: false,
+      user: asUser(owner),
+    })) as unknown as Doc
+    productIds.push(created.id)
+    expect((await mainRow(created.id))._status).toBe('draft')
+
+    expect(await save(created.id, owner, { _status: 'published' })).toBe('OK')
+    expect((await mainRow(created.id))._status).toBe('published')
   }, 120_000)
 })
