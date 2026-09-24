@@ -125,6 +125,38 @@ describe('CSS-geometria: explicit viewportmagasság', () => {
   })
 })
 
+describe('CSS-geometria: @container (a tároló szélessége, nem a nézetablaké)', () => {
+  it('a blokk-irányú törzs validálva, de nem kerül a nézetablak-kaszkádba', () => {
+    vi.mocked(readFileSync).mockReturnValue(
+      `.hely { min-height: 65px; }
+      @container (max-width: 299.98px) { .hely { min-height: 140px; } }`,
+    )
+    const lap = stilusLapNezetablakra(['meresi-fixture.css'], 320, 640)
+    expect(lap.map((s) => s.deklaraciok.get('min-height'))).toEqual(['65px'])
+  })
+
+  it.each(['width: 400px', 'max-width: 100%', 'padding: 0 24px', 'display: none'])(
+    'szélességre ható deklarációt nem nyel el: %s',
+    (deklaracio) => {
+      expect(() =>
+        mediaErtek(`@container (max-width: 299.98px) { .hely { ${deklaracio}; } }`, 390, 844),
+      ).toThrow(/@container törzsében nem blokk-irányú/)
+    },
+  )
+
+  it('a törzsbe ágyazott ismeretlen media sem kerülheti meg az őrt', () => {
+    expect(() =>
+      mediaErtek(
+        `@container (max-width: 1px) {
+      @media (unknown-feature: 1) { .hely { min-height: 1px; } }
+    }`,
+        390,
+        844,
+      ),
+    ).toThrow(/ismeretlen média-jellemző/)
+  })
+})
+
 describe('CSS media: initial font size, independent of authored root styles', () => {
   for (const unit of ['em', 'rem']) {
     for (const dimension of ['width', 'height']) {

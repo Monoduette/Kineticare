@@ -102,10 +102,20 @@ function mediaErvenyes(
     .some(Boolean)
 }
 
+/** A `@container` törzsében megengedett, csak blokk-irányú (magassági) tulajdonságok. */
+const CONTAINER_ENGEDETT: ReadonlySet<string> = new Set([
+  'min-height',
+  'height',
+  'max-height',
+  'min-block-size',
+  'block-size',
+  'max-block-size',
+])
+
 /**
  * At-szabályok kilapítása adott nézetablakra: az érvényes `@media` és a
  * `@supports` TÖRZSE a lapba kerül, a nem érvényes `@media`, a `@font-face` és
- * a `@keyframes` kimarad. Enélkül a szabály-olvasó a média-blokkokba zárt
+ * a `@keyframes` kimarad. A `@container` törzse validálva, de kaszkád nélkül. Enélkül a szabály-olvasó a média-blokkokba zárt
  * deklarációkat feltétel nélkül érvényesnek venné.
  */
 function lapit(
@@ -151,6 +161,20 @@ function lapit(
       if (ervenyes) ki += belso
     } else if (nev === 'supports' || nev === 'layer') {
       ki += lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx)
+    } else if (nev === 'container') {
+      // A konténer-lekérdezés a TÁROLÓ szélességétől függ, amit a nézetablak-
+      // modell nem ismer: a törzse nem kerül a kaszkádba. Hogy ez ne rejthessen
+      // el szélességet (reflow), a törzsben csak blokk-irányú méret állhat.
+      const belso = szabalyok(lapit(torzs, nezetablakPx, magassagPx, kezdoBetumeretPx))
+      for (const szabaly of belso) {
+        for (const kulcs of szabaly.deklaraciok.keys()) {
+          if (!CONTAINER_ENGEDETT.has(kulcs)) {
+            throw new Error(
+              `@container törzsében nem blokk-irányú deklaráció: ${kulcs} — az őr nem tudja mérni`,
+            )
+          }
+        }
+      }
     } else if (nev !== 'font-face' && nev !== 'keyframes' && nev !== 'page' && nev !== 'property') {
       throw new Error(`ismeretlen at-szabály: @${nev} — az őr nem tudja, érvényes-e`)
     }
