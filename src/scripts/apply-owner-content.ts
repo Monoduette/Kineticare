@@ -438,6 +438,7 @@ export type JavitasSzabaly =
   | 'aszf-adatvedelem-link'
   | 'aszf-fizetesi-szolgaltato'
   | 'aszf-hozzaferes-idotartam'
+  | 'aszf-afa-aam'
   | 'aszf-barion-es-teljesites'
   | 'kapcsolat-szakemberek'
   | 'sos-kapcsolodo-kurzus'
@@ -1494,8 +1495,9 @@ const bekezdesSzovegCsere = (csomopont: unknown, ujSzoveg: string): unknown => {
 }
 
 // ---------------------------------------------------------------------------
-// 18. javítás — az élő ÁSZF két ténybeli hibája (fizetési szolgáltató neve,
-// a hozzáférés időtartama).
+// 18. javítás — az élő ÁSZF három ténybeli hibája (fizetési szolgáltató neve,
+// a hozzáférés időtartama, és a 2026-09-24-i tulajdonosi döntés óta az
+// áfa-mondat: 27% helyett alanyi adómentesség).
 // ---------------------------------------------------------------------------
 
 /**
@@ -1527,6 +1529,37 @@ export const ASZF_HOZZAFERES_REGI_KEZDET =
 export const ASZF_HOZZAFERES_UJ_KEZDET =
   'A szolgáltatás egyszeri fizetéssel jár, a megvásárolt tartalom pedig időbeli korlátozás nélkül, véglegesen elérhető marad a Vásárló számára a felhasználói fiókjában.'
 
+/**
+ * Az áfáról szóló bekezdés RÉGI kezdete — KÉT mondat (élesben ma ez áll).
+ *
+ * A második mondat 27%-os áfát ígér, holott a tulajdonos 2026-09-24-i döntése
+ * szerint a KINETICARE Kft. alanyi adómentes („AAM minden ár”), és a számlák
+ * élesben is így mennek ki (`SZAMLAZZ_AFAKULCS=AAM`: nettó = bruttó, áfa = 0).
+ * Az ÁSZF nem ígérhet mást, mint ami a számlán áll. A bekezdés maradéka (a
+ * záró szóköz) érintetlen.
+ *
+ * Szándékosan a TELJES két mondat: egy MÁSIK ÁSZF-bekezdés is „A fizetést
+ * követően a Vásárló” szavakkal kezdődik (a válasz email elolvasásáról szóló),
+ * ahhoz a csere nem nyúlhat.
+ */
+export const ASZF_AFA_REGI_KEZDET =
+  'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A Vásárló elfogadja, hogy a számlát/nyugtát a KINETICARE Kft állítja ki 27%-os áfatartalommal.'
+
+/**
+ * Az áfáról szóló bekezdés jóváhagyott ÚJ kezdete (tulajdonosi döntés,
+ * 2026-09-24).
+ *
+ * Jogalap: az általános forgalmi adóról szóló 2007. évi CXXVII. törvény XIII.
+ * fejezete (187–196. §) szabályozza az alanyi adómentességet, és a 187. § (2)
+ * c) pontja szerint az alanyi adómentes adóalany kizárólag olyan számlát
+ * bocsáthat ki, amelyben áthárított adó nem szerepel
+ * (https://mkogy.jogtar.hu/jogszabaly?docid=a0700127.TV&pagenum=3). A mondat
+ * szándékosan nem hivatkozik szakaszszámra, így egy átszámozás sem teszi
+ * pontatlanná.
+ */
+export const ASZF_AFA_UJ_KEZDET =
+  'A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A számlát a KINETICARE Kft. állítja ki. A KINETICARE Kft. az általános forgalmi adóról szóló 2007. évi CXXVII. törvény szerint alanyi adómentes, ezért a számla áfát nem tartalmaz. A Weboldalon feltüntetett ár a fizetendő végösszeg.'
+
 /** Egy jóváhagyott bekezdés-eleji (prefix) csere leírása. */
 export interface AszfBekezdesCsere {
   /** Melyik szabály naplózza — javításonként külön, hogy külön is elbírálható legyen. */
@@ -1546,12 +1579,16 @@ export interface AszfBekezdesCsere {
   /**
    * Rövid, jellemző szófordulat a bekezdés AZONOSÍTÁSÁHOZ, ha se a régi, se az
    * új alak nem található. Csak a HANGOS kihagyás naplósorába kerül, hogy az
-   * üzemeltető lássa, mi áll ma a helyén — döntést sosem alapozunk rá.
+   * üzemeltető lássa, mi áll ma a helyén — döntést sosem alapozunk rá. Az
+   * ÁSZF-cseréknél a bekezdés ELEJE (a naplósor „…” kezdetű bekezdést ír).
    */
   nyom: string
 }
 
-/** A 18. javítás két, egymástól függetlenül elbírált bekezdés-cseréje. */
+/**
+ * A 18. javítás három, egymástól függetlenül elbírált bekezdés-cseréje; a
+ * harmadik (áfa-mondat) a 2026-09-24-i AAM-döntésé.
+ */
 export const ASZF_BEKEZDES_CSEREK: readonly AszfBekezdesCsere[] = [
   {
     szabaly: 'aszf-fizetesi-szolgaltato',
@@ -1567,6 +1604,17 @@ export const ASZF_BEKEZDES_CSEREK: readonly AszfBekezdesCsere[] = [
     ujKezdet: ASZF_HOZZAFERES_UJ_KEZDET,
     nyom: 'A szolgáltatás egyszeri fizetéssel jár',
   },
+  {
+    szabaly: 'aszf-afa-aam',
+    cimke: 'Az ÁSZF áfa-mondata',
+    regiKezdet: ASZF_AFA_REGI_KEZDET,
+    ujKezdet: ASZF_AFA_UJ_KEZDET,
+    // A bekezdés ELEJE, nem egy mondatközi fordulat: a hangos kihagyás
+    // naplósora „…” KEZDETŰ bekezdést keres, és a szerkesztő a Számlázz.hu
+    // említését akár ki is veheti a mondatból. A válasz email-bekezdés
+    // („A fizetést követően a Vásárló a köteles…”) erre nem illeszkedik.
+    nyom: 'A fizetést követően a Vásárló a számlát',
+  },
 ]
 
 /** Naplóba írható, rövidített idézet egy élő bekezdésből. */
@@ -1575,8 +1623,33 @@ const roviditettIdezet = (szoveg: string, hossz = 160): string => {
   return egysoros.length <= hossz ? `„${egysoros}”` : `„${egysoros.slice(0, hossz)}…”`
 }
 
+/** Az eltérő végek idézetének felső korlátja (a leghosszabb mai csere ~230 karakter). */
+const ELTERO_VEG_MAX_HOSSZ = 400
+
 /**
- * ÁSZF: Stripe→Barion és hozzáférési mondat prefix-csere. Forrás: legal-source/aszf.txt.
+ * A régi és az új szöveg EGYMÁSTÓL ELTÉRŐ vége, a közös eleje nélkül.
+ *
+ * Miért kell: a csere naplósora korábban mindkét szöveg első 160 karakterét
+ * idézte. Az áfa-mondatnál a két szöveg első ~120 karaktere azonos, a lényeg
+ * („27%-os áfatartalommal” → „alanyi adómentes”) a levágott részbe esett, így
+ * a próbafutás naplójából nem látszott, MIT ír át a script. Most a közös
+ * elejét elhagyjuk (a mondat elejéig visszalépve, hogy az idézet olvasható
+ * legyen), és a különböző részt idézzük.
+ */
+export const elteroVegek = (regi: string, uj: string): { regi: string; uj: string } => {
+  let kozos = 0
+  while (kozos < regi.length && kozos < uj.length && regi[kozos] === uj[kozos]) {
+    kozos += 1
+  }
+  const mondatHatar = regi.lastIndexOf('. ', kozos - 1)
+  const szoHatar = regi.lastIndexOf(' ', kozos - 1)
+  const vagas = mondatHatar >= 0 ? mondatHatar + 2 : szoHatar >= 0 ? szoHatar + 1 : 0
+  const jelolo = vagas > 0 ? '…' : ''
+  return { regi: `${jelolo}${regi.slice(vagas)}`, uj: `${jelolo}${uj.slice(vagas)}` }
+}
+
+/**
+ * ÁSZF: Stripe→Barion, hozzáférési és áfa-mondat (27%→AAM) prefix-csere. Forrás: legal-source/aszf.txt.
  * Bekezdés-eleji illesztés; szerkesztett szövegnél hangos kihagyás.
  */
 export const alkalmazAszfBekezdesCserek = (
@@ -1669,11 +1742,13 @@ export const alkalmazAszfBekezdesCserek = (
       i === index ? bekezdesSzovegCsere(csomopont, `${csere.ujKezdet}${maradek}`) : csomopont,
     )
     voltIras = true
+    const vegek = elteroVegek(kezdet, csere.ujKezdet)
     modositasok.push({
       szabaly: csere.szabaly,
-      uzenet: `${csere.cimke}: ${roviditettIdezet(kezdet)} → ${roviditettIdezet(
-        csere.ujKezdet,
-      )}. A bekezdés maradéka (${
+      uzenet: `${csere.cimke}: ${roviditettIdezet(
+        vegek.regi,
+        ELTERO_VEG_MAX_HOSSZ,
+      )} → ${roviditettIdezet(vegek.uj, ELTERO_VEG_MAX_HOSSZ)}. A bekezdés maradéka (${
         maradek.trim().length === 0 ? 'nincs ilyen' : roviditettIdezet(maradek, 60)
       }) változatlan.`,
       indok: null,
@@ -6023,10 +6098,10 @@ const mediaFajlnevek = async (
  * hiba nem „nincs piszkozat”, hanem valódi adatbázis- vagy kapcsolathiba.
  */
 async function olvasdLegutobbiVerziot(
-  payload: Payload,
+  payload: Pick<Payload, 'findByID'>,
   collection: 'pages' | 'products',
   id: number,
-): Promise<{ updatedAt?: string | null } | undefined> {
+): Promise<{ updatedAt?: string | null; _status?: string | null } | undefined> {
   try {
     return await payload.findByID({ collection, id, depth: 0, draft: true, overrideAccess: true })
   } catch (error) {
@@ -6053,6 +6128,126 @@ const figyelmeztessPiszkozatra = (
       { publikalt: publikaltFrissitve, piszkozat: piszkozatFrissitve },
     )
   }
+}
+
+/** Az ÁSZF-javításhoz szükséges Payload-felület (a teszt ezt adja meg csonkkal). */
+export type AszfJavitoPayload = Pick<Payload, 'find' | 'findByID' | 'update'>
+
+/** Az ÁSZF-javítás összesítője a fő futásnak. */
+export interface AszfJavitasEredmeny {
+  modositasok: number
+  kihagyasok: number
+  /** true: valami kimaradt vagy hibázott, a futás nem nullás kóddal zár. */
+  hiba: boolean
+  /** true: a közzétett ÁSZF-be írás történt. */
+  irt: boolean
+}
+
+/**
+ * A 14. + 18. + 19. javítás a KÖZZÉTETT ÁSZF-en (webcím: `aszf`).
+ *
+ * MIÉRT ÍGY (Payload 3.88, valódi adatbázison mérve 2026-09-24): az oldalak
+ * automatikusan mentett piszkozattal futnak (Pages.ts `versions.drafts`).
+ * 1. A `draft: true` lekérdezés a LEGUTÓBBI verziót adja, ami egy félkész
+ *    admin-piszkozat is lehet. Ha a lánc arra épülne, a script a piszkozat
+ *    szövegét javítaná, és a közzétett oldalon a hibás mondat maradna. Ezért
+ *    a lánc a KÖZZÉTETT fő rekord tartalmán dolgozik (`draft` nélkül).
+ * 2. A draft nélküli `payload.update` a hiányzó mezőket (cím, `_status`) a
+ *    LEGUTÓBBI verzióból tölti ki. Publikálatlan piszkozat mellett így a
+ *    piszkozat címe és piszkozat-állapota kerülne a fő rekordba: az /aszf
+ *    404-re váltana, és a pénztár ÁSZF-linkje is megszakadna. Ezért ha a
+ *    legutóbbi verzió nem a közzétett, az írás KIMARAD, a futás hibával zár
+ *    (próbafutásban is jelezve), és a naplósor megmondja, mit kell tenni.
+ * 3. A piszkozat-figyelmeztetés a KÖZZÉTETT és a legutóbbi verzió dátumát
+ *    veti össze (korábban a piszkozatot önmagával, így sosem szólt).
+ */
+export async function javitsdAKozzetettAszfet(
+  payload: AszfJavitoPayload,
+  dryRun: boolean,
+): Promise<AszfJavitasEredmeny> {
+  const eredmeny: AszfJavitasEredmeny = { modositasok: 0, kihagyasok: 0, hiba: false, irt: false }
+
+  const talalat = await payload.find({
+    collection: 'pages',
+    where: { slug: { equals: 'aszf' } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+  })
+  const publikalt = talalat.docs[0]
+  if (publikalt === undefined) {
+    logger.error(
+      'Tartalom-javítás: az ÁSZF-oldal fő rekordja nem olvasható, az ÁSZF javítása kimaradt. Nézd meg az adminban a Tartalom → Oldalak → ÁSZF oldalt.',
+    )
+    eredmeny.hiba = true
+    return eredmeny
+  }
+
+  const link = alkalmazAszfAdatvedelemLink(publikalt.content)
+  const tenyek = alkalmazAszfBekezdesCserek(link.content ?? publikalt.content)
+  const barion = alkalmazAszfBarionKiegeszites(tenyek.content ?? link.content ?? publikalt.content)
+  const vegsoTartalom = barion.content ?? tenyek.content ?? link.content
+
+  const legutobbi = await olvasdLegutobbiVerziot(payload, 'pages', publikalt.id)
+  const kozzetett =
+    legutobbi !== undefined &&
+    publikalt._status === 'published' &&
+    legutobbi._status === 'published'
+
+  // A lépések naplója az ÍRÁSI döntés után: ha az írás kimarad, az éles
+  // futás sem állíthatja, hogy „MÓDOSÍTVA”, és a módosítás nem számít bele
+  // az összesítőbe (próbafutásban a „MÓDOSÍTANÁ” sor és a számlálás marad).
+  const irasKimarad = vegsoTartalom !== null && !kozzetett
+  for (const lepes of [link, tenyek, barion]) {
+    naplozdLepeseket(lepes, dryRun || irasKimarad)
+    eredmeny.kihagyasok += lepes.kihagyasok.length
+    if (dryRun || !irasKimarad) {
+      eredmeny.modositasok += lepes.modositasok.length
+    }
+  }
+
+  if (legutobbi === undefined) {
+    eredmeny.hiba = true
+    return eredmeny
+  }
+
+  if (vegsoTartalom === null) {
+    // Nincs mit írni: a közzétett szöveg már javított. Egy frissebb piszkozat
+    // közzététele viszont visszahozhatja a régi mondatot, ezt jelezzük.
+    figyelmeztessPiszkozatra('ÁSZF', publikalt.updatedAt, legutobbi.updatedAt)
+    return eredmeny
+  }
+
+  if (!kozzetett) {
+    logger.error(
+      `Tartalom-javítás: az ÁSZF-oldalnak közzé nem tett (automatikusan mentett) piszkozata van, vagy maga az oldal nincs közzétéve. Ha a script most írna, a Payload a piszkozat címét és állapotát is a közzétett oldalra írná, és az /aszf elérhetetlenné válna. Az ÁSZF javítása ${
+        dryRun ? 'éles futásban KIMARADNA' : 'KIMARADT'
+      }: az adminban (Tartalom → Oldalak → ÁSZF → Verziók) előbb tedd közzé vagy vesd el a piszkozatot, majd futtasd újra.`,
+      {
+        publikaltAllapot: publikalt._status ?? null,
+        legutobbiAllapot: legutobbi._status ?? null,
+        legutobbiFrissitve: legutobbi.updatedAt ?? null,
+      },
+    )
+    eredmeny.hiba = true
+    return eredmeny
+  }
+
+  if (!dryRun) {
+    await payload.update({
+      collection: 'pages',
+      id: publikalt.id,
+      // A `_status: 'published'` a fenti ellenőrzés után nem változtat semmin,
+      // de ha az ellenőrzés és az írás közé mégis becsúszna egy automatikus
+      // mentés, az oldal akkor se kerüljön piszkozat-állapotba (404).
+      data: { content: vegsoTartalom as typeof publikalt.content, _status: 'published' },
+      draft: false,
+      depth: 0,
+      overrideAccess: true,
+    })
+    eredmeny.irt = true
+  }
+  return eredmeny
 }
 
 async function futtat(): Promise<void> {
@@ -6485,41 +6680,16 @@ async function futtat(): Promise<void> {
   // A SORREND KÖTÖTT: a 19. javítás horgonya a 18. javítás ÚJ, Barion-os
   // mondata, ezért a 18. javításnak előbb kell lefutnia — különben egy még
   // javítatlan (STRIPE-os) élő oldalon a beszúrásnak nem lenne horgonya.
-  const aszfOldal = jogiTalalat.docs.find((doc) => doc.slug === 'aszf')
-  if (aszfOldal !== undefined) {
-    const aszfEredmeny = alkalmazAszfAdatvedelemLink(aszfOldal.content)
-    naplozdLepeseket(aszfEredmeny, dryRun)
-    modositasokSzama += aszfEredmeny.modositasok.length
-    kihagyasokSzama += aszfEredmeny.kihagyasok.length
-
-    const aszfTenyek = alkalmazAszfBekezdesCserek(aszfEredmeny.content ?? aszfOldal.content)
-    naplozdLepeseket(aszfTenyek, dryRun)
-    modositasokSzama += aszfTenyek.modositasok.length
-    kihagyasokSzama += aszfTenyek.kihagyasok.length
-
-    const aszfBarion = alkalmazAszfBarionKiegeszites(
-      aszfTenyek.content ?? aszfEredmeny.content ?? aszfOldal.content,
-    )
-    naplozdLepeseket(aszfBarion, dryRun)
-    modositasokSzama += aszfBarion.modositasok.length
-    kihagyasokSzama += aszfBarion.kihagyasok.length
-
-    const aszfVegsoTartalom = aszfBarion.content ?? aszfTenyek.content ?? aszfEredmeny.content
-
-    if (aszfVegsoTartalom !== null && !dryRun) {
-      const piszkozat = await olvasdLegutobbiVerziot(payload, 'pages', aszfOldal.id)
-      if (piszkozat === undefined) {
-        hiba = true
-      } else {
-        await payload.update({
-          collection: 'pages',
-          id: aszfOldal.id,
-          data: { content: aszfVegsoTartalom as typeof aszfOldal.content },
-          depth: 0,
-          overrideAccess: true,
-        })
-        figyelmeztessPiszkozatra('ÁSZF', aszfOldal.updatedAt, piszkozat?.updatedAt)
-      }
+  //
+  // A létezés-ellenőrzés (`jogiTalalat`) SZÁNDÉKOSAN `draft: true`-val fut, a
+  // javítás viszont a KÖZZÉTETT fő rekordon dolgozik, és publikálatlan
+  // piszkozat mellett NEM ír (lásd `javitsdAKozzetettAszfet`).
+  if (jogiTalalat.docs.some((doc) => doc.slug === 'aszf')) {
+    const aszf = await javitsdAKozzetettAszfet(payload, dryRun)
+    modositasokSzama += aszf.modositasok
+    kihagyasokSzama += aszf.kihagyasok
+    if (aszf.hiba) {
+      hiba = true
     }
   }
 

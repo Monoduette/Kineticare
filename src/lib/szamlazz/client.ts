@@ -28,18 +28,48 @@ export const SZAMLAZZ_DEFAULT_TIMEOUT_MS = 15_000
 export const SZAMLAZZ_DEFAULT_INVOICE_PREFIX = 'KIN'
 
 /**
- * Hivatalos hibakód-osztályozás (docs.szamlazz.hu/agent/basics/error-handling):
- * - '1' — rendszerkarbantartás: az EGYETLEN explicit újrapróbálhatóként
- *   dokumentált kód (pár perc múlva). Minden más agent-kód végleges: auth/fiók
- *   (3, 135, 136, 164), kérésformátum (53, 57), e-számla-beállítás (54, 55),
- *   előtag (202), tétel-matematika (259–264) — ezekre az újraküldés ugyanazt
- *   a hibát adná, a max. 5 beküldés keretét pedig feleslegesen égetné.
+ * Hivatalos hibakód-osztályozás (docs.szamlazz.hu/hu/agent/basics/error-handling):
+ * - '1' — rendszerkarbantartás: pár perc múlva újrapróbálható.
+ * - '55' — „E-számla aláírása sikertelen … az időbélyegző szerverhez nem
+ *   lehetett kapcsolódni": a szolgáltató oldali kiesés a tudástár szerint
+ *   („sikertelen-szamlakeszites-kezelese") egy idő után magától megszűnik,
+ *   ezért ÚJRAPRÓBÁLHATÓ. Ha mégis a lejárt tanúsítvány az ok, a perzisztens
+ *   5-ös beküldési plafon állítja meg (utána RIASZTÁS és kézi rendezés).
+ * - Minden más agent-kód végleges: auth/fiók (3, 135, 136, 164), kérésformátum
+ *   (53, 57), e-számla-engedély (54), előtag (202), tétel-matematika
+ *   (259–264). Ezekre az újraküldés ugyanazt a hibát adná, a max. 5 beküldés
+ *   keretét pedig feleslegesen égetné.
  * - '71'/'152' — „Már létező rendelésszám": nem hiba, hanem idempotencia-
  *   találat (kind: 'duplicate') — a hívó a szamlaKulsoAzon-lekérdezéssel veszi
  *   át a meglévő bizonylat számát.
+ * - '56' — a számlaértesítő e-mail kézbesítése sikertelen: lásd
+ *   SZAMLAZZ_NOTIFICATION_FAILED_CODE.
  */
-export const SZAMLAZZ_RETRYABLE_AGENT_CODES: ReadonlySet<string> = new Set(['1'])
+export const SZAMLAZZ_RETRYABLE_AGENT_CODES: ReadonlySet<string> = new Set(['1', '55'])
 export const SZAMLAZZ_DUPLICATE_AGENT_CODES: ReadonlySet<string> = new Set(['71', '152'])
+
+/**
+ * 56 — „a számlaértesítő kézbesítése sikertelen". A hivatalos PHP SDK
+ * (PHPApiAgent 2.12.4, InvoiceResponse::isError) szerint ha a válasz
+ * számlaszámot is hoz, „akkor a számla kiállítása sikeres": a bizonylat
+ * létezik és a NAV-hoz is bejelentésre került, csak a vevő nem kapta meg a
+ * levelet. Ilyenkor SIKERként kezeljük (a hívó RIASZTÁST ír a kézi
+ * újraküldéshez). Számlaszám NÉLKÜL a kimenet bizonytalan: újrapróbálható
+ * hiba, és a következő kísérlet a beküldés ELŐTTI szamlaKulsoAzon-lekérdezéssel
+ * veszi át a bizonylatot, ha az mégis elkészült.
+ */
+export const SZAMLAZZ_NOTIFICATION_FAILED_CODE = '56'
+
+/**
+ * Átmeneti HTTP-státuszok: 408 (kérés-időtúllépés), 425 (túl korai), 429
+ * (sebességkorlát; a hivatalos hálózati oldal szerinti bejövő címtartományok
+ * egy CDN-szolgáltató publikus tartományai, amely sebességkorlátnál 429-et
+ * ad) és minden 5xx. Ezekre az újrapróbálás a helyes válasz; minden más 4xx
+ * végleges.
+ */
+export function isTransientHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
 
 /** 71/152 — a Számlázz.hu duplikátum-jelzése (idempotencia-találat, nem hiba). */
 export function isDuplicateOrderError(error: unknown): error is SzamlazzApiError {
@@ -201,20 +231,117 @@ export function getSzamlazzConfig(env: SzamlazzEnv = process.env): SzamlazzClien
 // Válasz-értelmezés (valaszVerzio=2 XML + szlahu_* fejlécek)
 // ---------------------------------------------------------------------------
 
+const XML_NAMED_ENTITIES: Readonly<Record<string, string>> = {
+  lt: '<',
+  gt: '>',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+}
+
+/** Az XML-entitások (nevesített és numerikus) feloldása egy szövegrészben. */
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (match, entity: string) => {
+    const named = XML_NAMED_ENTITIES[entity]
+    if (named !== undefined) {
+      return named
+    }
+    if (!entity.startsWith('#')) {
+      return match
+    }
+    const codePoint = entity.startsWith('#x')
+      ? Number.parseInt(entity.slice(2), 16)
+      : Number.parseInt(entity.slice(1), 10)
+    return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : match
+  })
+}
+
+/**
+ * Egy elem belsejének SZÖVEGES értéke: a CDATA-szakaszok tartalma betű
+ * szerint, a többi rész entitás-feloldva.
+ *
+ * MIÉRT KELL: a valódi Agent-válaszok a vevői fiók URL-jét és a hibaüzenetet
+ * CDATA-ba csomagolják (`<vevoifiokurl><![CDATA[https://…]]></vevoifiokurl>`,
+ * a hivatalos hibaminta `<hibauzenet><![CDATA[…]]></hibauzenet>`). Nyers
+ * belső szöveggel a link a `<![CDATA[` jelöléssel együtt került volna az
+ * allowlist elé (és bukott el), egy CDATA-s `7`-es hibakódot pedig a
+ * lekérdezés nem ismert volna fel „nincs találat"-ként.
+ */
+function xmlText(inner: string): string {
+  let result = ''
+  let cursor = 0
+  for (const match of inner.matchAll(/<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+    result += decodeXmlEntities(inner.slice(cursor, match.index)) + (match[1] ?? '')
+    cursor = match.index + match[0].length
+  }
+  result += decodeXmlEntities(inner.slice(cursor))
+  return result.trim()
+}
+
+/**
+ * Egy XML-tag összes előfordulásának szöveges értéke, dokumentum-sorrendben.
+ * Az elem attribútumot is hordozhat; az önzáró alak (`<tag/>`) üres érték. A
+ * záró taget CDATA-n KÍVÜL keressük, így a CDATA-ban álló `</tag>` sem zárja
+ * le idő előtt az elemet. Lineáris bejárás, visszalépő regex nélkül: egy
+ * lezáratlan elemet tartalmazó, sérült válasz sem okozhat elszálló futásidőt.
+ */
+function tagValues(xml: string, tag: string): string[] {
+  const values: string[] = []
+  const open = new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'g')
+  const close = new RegExp(`</${tag}\\s*>`, 'g')
+  let opening = open.exec(xml)
+  while (opening !== null) {
+    if (opening[0].endsWith('/>')) {
+      values.push('')
+      opening = open.exec(xml)
+      continue
+    }
+    const start = opening.index + opening[0].length
+    let cursor = start
+    let end = -1
+    for (;;) {
+      close.lastIndex = cursor
+      const closing = close.exec(xml)
+      if (!closing) {
+        break
+      }
+      const cdata = xml.indexOf('<![CDATA[', cursor)
+      if (cdata >= 0 && cdata < closing.index) {
+        const cdataEnd = xml.indexOf(']]>', cdata + 9)
+        if (cdataEnd < 0) {
+          break
+        }
+        cursor = cdataEnd + 3
+        continue
+      }
+      end = closing.index
+      open.lastIndex = closing.index + closing[0].length
+      break
+    }
+    if (end < 0) {
+      break
+    }
+    values.push(xmlText(xml.slice(start, end)))
+    opening = open.exec(xml)
+  }
+  return values
+}
+
 /** Egy XML-tag értékének kinyerése (első előfordulás). */
 function tagValue(xml: string, tag: string): string | undefined {
-  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml)
-  return match?.[1]?.trim()
+  return tagValues(xml, tag)[0]
 }
 
 /** Összes hibakod/hibauzenet pár kinyerése — <hiba>-blokkonként vagy laposan. */
 function extractAgentErrors(xml: string): SzamlazzAgentError[] {
   const errors: SzamlazzAgentError[] = []
-  const hibaBlocks = xml.match(/<hiba>[\s\S]*?<\/hiba>/g)
+  const hibaBlocks = xml.match(/<hiba(?:\s[^>]*)?>[\s\S]*?<\/hiba\s*>/g)
   if (hibaBlocks && hibaBlocks.length > 0) {
     for (const block of hibaBlocks) {
       errors.push({
-        code: tagValue(block, 'hibakod') ?? 'Ismeretlen',
+        code: tagValue(block, 'hibakod') || 'Ismeretlen',
         message: tagValue(block, 'hibauzenet') ?? '',
       })
     }
@@ -223,13 +350,31 @@ function extractAgentErrors(xml: string): SzamlazzAgentError[] {
   // Lapos forma: közvetlen <hibakod>/<hibauzenet> a gyökérben.
   const flatCode = tagValue(xml, 'hibakod')
   if (flatCode !== undefined) {
-    errors.push({ code: flatCode, message: tagValue(xml, 'hibauzenet') ?? '' })
+    errors.push({ code: flatCode || 'Ismeretlen', message: tagValue(xml, 'hibauzenet') ?? '' })
   }
   return errors
 }
 
+/** Az azonos (kód + üzenet) hibapárok kiszűrése, az első előfordulás sorrendjében. */
+function uniqueAgentErrors(errors: SzamlazzAgentError[]): SzamlazzAgentError[] {
+  const seen = new Set<string>()
+  return errors.filter((entry) => {
+    const key = `${entry.code.trim()}\u0000${entry.message}`
+    if (seen.has(key)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
+}
+
 function isTruthyHeader(value: string | null): value is string {
-  return value !== null && value !== '' && value !== '0' && value.toLowerCase() !== 'false'
+  return (
+    value !== null &&
+    value.trim() !== '' &&
+    value.trim() !== '0' &&
+    value.trim().toLowerCase() !== 'false'
+  )
 }
 
 /**
@@ -248,9 +393,23 @@ function decodeHeaderValue(value: string): string {
 }
 
 /**
+ * URL-értékű fejléc dekódolása (`szlahu_vevoifiokurl`). A hivatalos PHP SDK
+ * `rawurldecode`-dal olvassa: a `+` itt NEM szóköz (egy URL query-stringjében
+ * jelentése van), ezért a `decodeHeaderValue` szabálya nem alkalmazható.
+ */
+function decodeUrlHeaderValue(value: string): string {
+  try {
+    return decodeURIComponent(value.trim())
+  } catch {
+    return value.trim()
+  }
+}
+
+/**
  * Agent-hiba a hibakódok hivatalos osztályozásával: 71/152 → 'duplicate'
- * (idempotencia-találat, a hívó lekérdezéssel oldja fel); '1' → retryable
- * (karbantartás); minden más végleges 'agent' hiba.
+ * (idempotencia-találat, a hívó lekérdezéssel oldja fel); '1' és '55' →
+ * retryable (karbantartás, időbélyeg-szolgáltatás); minden más végleges
+ * 'agent' hiba.
  */
 function agentErrorFromCodes(message: string, agentErrors: SzamlazzAgentError[]): SzamlazzApiError {
   const codes = agentErrors.map((entry) => entry.code.trim())
@@ -264,18 +423,69 @@ function agentErrorFromCodes(message: string, agentErrors: SzamlazzAgentError[])
   })
 }
 
+/**
+ * Bizonytalan kimenetű válasz: a bizonylat vagy elkészült, vagy nem, a
+ * válaszból ez nem dönthető el. ÚJRAPRÓBÁLHATÓ — a számla- és a
+ * helyesbítő-ág a következő beküldés ELŐTT szamlaKulsoAzon-lekérdezéssel
+ * nézi meg, létezik-e már a bizonylat, a beküldéseket pedig a perzisztens
+ * 5-ös plafon fogja. (A stornó-ág retryable hibán RIASZTÁST ír és nem küld
+ * újra — ott ez a kézi ellenőrzés jelzése.)
+ */
+function uncertainResponseError(
+  message: string,
+  agentErrors: SzamlazzAgentError[] = [],
+): SzamlazzApiError {
+  return new SzamlazzApiError({ message, kind: 'invalid_response', agentErrors, retryable: true })
+}
+
+/**
+ * Bizonylatszám-alak ellenőrzése: nem üres, nincs benne jelölő- vagy
+ * vezérlőkarakter, és ésszerű hosszú. Egy sérült vagy manipulált válasz így
+ * nem kerülhet számlaszámként a rendelésre.
+ */
+function isPlausibleDocumentNumber(value: string): boolean {
+  return value.length > 0 && value.length <= 100 && !/[<>\u0000-\u001f]/.test(value)
+}
+
 export interface SzamlazzParsedSuccess {
   szamlaszam: string
   /** Vevői fiók URL (ha a Számlázz.hu adja) — a rendelés invoicePdfUrl mezőjéhez. */
   vevoifiokUrl?: string
+  /**
+   * 56-os jelzés: a bizonylat KIÁLLT, de a számlaértesítő e-mail nem ment ki a
+   * vevőnek. A hívó RIASZTÁST ír, hogy a levelet kézzel újra lehessen küldeni.
+   */
+  notificationError?: SzamlazzAgentError
 }
 
 /**
  * A Számla Agent válasz értelmezése. Siker esetén a számlaszám (és a vevői
  * fiók URL, ha adott); minden hibaág strukturált SzamlazzApiError.
  *
- * Sorrend: szlahu_down (karbantartás, retryable) → szlahu_error fejléc →
- * XML <sikeres>false</sikeres> → <sikeres>true</sikeres> → egyéb: invalid_response.
+ * Sorrend:
+ * 1. szlahu_down (karbantartás) → retryable;
+ * 2. hibajelzés (szlahu_error / szlahu_error_code fejléc, illetve
+ *    <sikeres>false</sikeres> a törzsben): a fejléc és a törzs hibakódjainak
+ *    UNIÓJA számít. Ha az unió KIZÁRÓLAG 56-os (értesítő-hiba) kódokból áll
+ *    és van egyértelmű számlaszám → SIKER `notificationError`-ral; 56 szám
+ *    nélkül → bizonytalan (retryable); minden más a hivatalos
+ *    kód-osztályozással, az unió MINDEN kódjára: duplikátum-kód (71/152)
+ *    esetén 'duplicate', különben ha BÁRMELY kód újrapróbálható (1, 55), a
+ *    hiba újrapróbálható (így egy ellentmondó 57-es fejléc + 55-ös törzs is
+ *    az, amit az 5-ös plafon és a beküldés előtti lekérdezés fékez). A
+ *    lekérdezésnél (pdf.ts) az unió bármely 7-es kódja „nincs ilyen
+ *    bizonylat";
+ * 3. <sikeres>true</sikeres> → a számlaszám a törzsből, hiányában a
+ *    `szlahu_szamlaszam` fejlécből; a vevői fiók URL a törzsből, hiányában a
+ *    `szlahu_vevoifiokurl` fejlécből;
+ * 4. <sikeres> nélkül, de hibamentes fejlécekkel és `szlahu_szamlaszam`-mal →
+ *    SIKER (a hivatalos PHP SDK is a fejlécből olvassa a számot);
+ * 5. minden más (pl. HTML-karbantartási oldal 200-zal) → bizonytalan
+ *    'invalid_response', retryable.
+ *
+ * Ha a törzs és a fejléc KÜLÖNBÖZŐ számlaszámot mond (vagy a törzsben több
+ * eltérő szám áll), a válasz bizonytalan: egy rossz szám átvétele egy másik
+ * bizonylatot kötne a rendeléshez.
  */
 export function parseAgentResponse(body: string, headers: Headers): SzamlazzParsedSuccess {
   if (isTruthyHeader(headers.get('szlahu_down'))) {
@@ -286,43 +496,186 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
     })
   }
 
-  const headerError = headers.get('szlahu_error')
-  if (isTruthyHeader(headerError)) {
-    const headerCode = headers.get('szlahu_error_code') ?? 'Ismeretlen'
-    const decodedError = decodeHeaderValue(headerError)
-    throw agentErrorFromCodes(`Számla Agent hiba (fejléc): ${headerCode} — ${decodedError}`, [
-      { code: headerCode, message: decodedError },
-    ])
+  const headerErrorRaw = headers.get('szlahu_error')
+  const headerCodeRaw = headers.get('szlahu_error_code')
+  const headerErrors: SzamlazzAgentError[] =
+    isTruthyHeader(headerErrorRaw) || isTruthyHeader(headerCodeRaw)
+      ? [
+          {
+            code: isTruthyHeader(headerCodeRaw) ? headerCodeRaw.trim() : 'Ismeretlen',
+            message: isTruthyHeader(headerErrorRaw) ? decodeHeaderValue(headerErrorRaw) : '',
+          },
+        ]
+      : []
+
+  // xs:boolean: a 'true'/'false' mellett az '1'/'0' is érvényes alak.
+  const sikeresRaw = tagValue(body, 'sikeres')?.toLowerCase()
+  const sikeres = sikeresRaw === '1' ? 'true' : sikeresRaw === '0' ? 'false' : sikeresRaw
+  const bodyErrors = extractAgentErrors(body)
+  const headerNumberRaw = headers.get('szlahu_szamlaszam')
+  const headerNumber = headerNumberRaw?.trim() ? decodeUrlHeaderValue(headerNumberRaw) : undefined
+  const numbers = new Set(
+    [...tagValues(body, 'szamlaszam'), ...(headerNumber ? [headerNumber] : [])].filter(
+      (value) => value.length > 0,
+    ),
+  )
+  /** Az egyértelmű, ép bizonylatszám — vagy null, ha nincs / ellentmondásos. */
+  const resolveNumber = (): { number: string | null; conflict: boolean } => {
+    if (numbers.size === 0) {
+      return { number: null, conflict: false }
+    }
+    const [only] = [...numbers]
+    if (numbers.size > 1 || only === undefined || !isPlausibleDocumentNumber(only)) {
+      return { number: null, conflict: true }
+    }
+    return { number: only, conflict: false }
+  }
+  const vevoifiokUrl = (): string | undefined => {
+    const fromBody = tagValue(body, 'vevoifiokurl')
+    if (fromBody) {
+      return fromBody
+    }
+    const fromHeader = headers.get('szlahu_vevoifiokurl')
+    return fromHeader?.trim() ? decodeUrlHeaderValue(fromHeader) : undefined
   }
 
-  const sikeres = tagValue(body, 'sikeres')
-  if (sikeres === 'true') {
-    const szamlaszam = tagValue(body, 'szamlaszam')
-    if (!szamlaszam) {
-      throw new SzamlazzApiError({
-        message: 'A Számlázz.hu sikerválasza nem tartalmaz számlaszámot.',
-        kind: 'invalid_response',
-        retryable: false,
-      })
+  // Hibajelzésnél a fejléc és a törzs hibakódjainak UNIÓJA dönt: egy 56-os
+  // fejléc mellett a törzsben álló 57-es (vagy bármely más) kód sem tűnhet el,
+  // különben egy el sem készült bizonylatot vennénk át „értesítő-hibás
+  // sikerként". Az ismétlődő (azonos kód + üzenet) párok egyszer számítanak.
+  const reportedErrors =
+    headerErrors.length > 0
+      ? uniqueAgentErrors([...headerErrors, ...bodyErrors])
+      : sikeres === 'true'
+        ? []
+        : bodyErrors
+  if (reportedErrors.length > 0 || sikeres === 'false') {
+    const onlyNotificationFailure =
+      reportedErrors.length > 0 &&
+      reportedErrors.every((entry) => entry.code.trim() === SZAMLAZZ_NOTIFICATION_FAILED_CODE)
+    if (onlyNotificationFailure) {
+      const { number } = resolveNumber()
+      if (number) {
+        const url = vevoifiokUrl()
+        return {
+          szamlaszam: number,
+          ...(url ? { vevoifiokUrl: url } : {}),
+          notificationError: reportedErrors[0] ?? {
+            code: SZAMLAZZ_NOTIFICATION_FAILED_CODE,
+            message: '',
+          },
+        }
+      }
+      throw uncertainResponseError(
+        'A Számlázz.hu 56-os jelzést adott (a számlaértesítő nem ment ki), de egyértelmű ' +
+          'számlaszám nélkül: nem dönthető el, hogy a bizonylat elkészült-e. Az újrapróbálás ' +
+          'előtt lekérdezés dönt.',
+        reportedErrors,
+      )
     }
-    const vevoifiokUrl = tagValue(body, 'vevoifiokurl')
-    return { szamlaszam, ...(vevoifiokUrl ? { vevoifiokUrl } : {}) }
-  }
-  if (sikeres === 'false') {
-    const agentErrors = extractAgentErrors(body)
+    const fromHeader = headerErrors.length > 0
+    const channel = reportedErrors.length > headerErrors.length ? 'fejléc és törzs' : 'fejléc'
     throw agentErrorFromCodes(
-      `Számla Agent elutasította a számlakiállítást: ${
-        agentErrors.map((error) => `${error.code} — ${error.message}`).join('; ') || 'ismeretlen hiba'
-      }`,
-      agentErrors,
+      fromHeader
+        ? `Számla Agent hiba (${channel}): ${reportedErrors
+            .map((error) => `${error.code} — ${error.message}`)
+            .join('; ')}`
+        : `Számla Agent elutasította a kérést: ${
+            reportedErrors.map((error) => `${error.code} — ${error.message}`).join('; ') ||
+            'ismeretlen hiba'
+          }`,
+      reportedErrors,
     )
   }
 
-  throw new SzamlazzApiError({
-    message: 'A Számlázz.hu válasza nem értelmezhető (nincs <sikeres> elem).',
-    kind: 'invalid_response',
-    retryable: false,
-  })
+  if (sikeres === 'true' || (sikeres === undefined && headerNumber !== undefined)) {
+    const { number, conflict } = resolveNumber()
+    if (!number) {
+      throw uncertainResponseError(
+        conflict
+          ? 'A Számlázz.hu sikerválasza nem egyértelmű számlaszámot tartalmaz (a törzs és a fejléc eltér, vagy a szám sérült).'
+          : 'A Számlázz.hu sikerválasza nem tartalmaz számlaszámot.',
+      )
+    }
+    const url = vevoifiokUrl()
+    const notification = bodyErrors.find(
+      (entry) => entry.code.trim() === SZAMLAZZ_NOTIFICATION_FAILED_CODE,
+    )
+    return {
+      szamlaszam: number,
+      ...(url ? { vevoifiokUrl: url } : {}),
+      ...(notification ? { notificationError: notification } : {}),
+    }
+  }
+
+  throw uncertainResponseError('A Számlázz.hu válasza nem értelmezhető (nincs <sikeres> elem).')
+}
+
+/**
+ * A HTTP-válasz olvasása és értelmezése — a három Agent-hívás (kiállítás,
+ * stornó, lekérdezés) KÖZÖS útja.
+ *
+ * - 2xx: a törzs a parseAgentResponse szabályai szerint.
+ * - Nem-2xx: a törzset és a szlahu_* fejléceket IS kiolvassuk, mert a hibakód
+ *   ott is megjöhet (korábban a státusz alapján, olvasás nélkül dobtunk, és a
+ *   kód elveszett). Agent-hibakódnál a hivatalos osztályozás érvényes, de az
+ *   átmeneti státusz (408/425/429/5xx) önmagában is újrapróbálhatóvá teszi;
+ *   kód nélkül a státusz dönt.
+ * - A törzs olvasása közbeni hiba (timeout, TCP-vágás) osztályozott,
+ *   újrapróbálható hibává válik (bodyReadError).
+ *
+ * A `context` a magyar hibaüzenetben nevezi meg a hívó ágát.
+ */
+export async function readAgentResponse(
+  response: Pick<Response, 'ok' | 'status' | 'headers' | 'text'>,
+  timeoutMs: number,
+  context?: string,
+): Promise<SzamlazzParsedSuccess> {
+  const suffix = context ? ` (${context})` : ''
+  const httpError = (): SzamlazzApiError =>
+    new SzamlazzApiError({
+      message: `Számlázz.hu HTTP-hiba (${response.status})${suffix}.`,
+      kind: 'http',
+      httpStatus: response.status,
+      retryable: isTransientHttpStatus(response.status),
+    })
+
+  let body: string
+  try {
+    body = await response.text()
+  } catch (error) {
+    if (!response.ok) {
+      throw httpError()
+    }
+    throw bodyReadError(error, timeoutMs, context)
+  }
+
+  if (response.ok) {
+    return parseAgentResponse(body, response.headers)
+  }
+
+  try {
+    return parseAgentResponse(body, response.headers)
+  } catch (error) {
+    if (!(error instanceof SzamlazzApiError)) {
+      throw error
+    }
+    if (error.kind === 'agent' || error.kind === 'duplicate') {
+      throw new SzamlazzApiError({
+        message: `${error.message} (HTTP ${response.status})`,
+        kind: error.kind,
+        httpStatus: response.status,
+        agentErrors: error.agentErrors,
+        retryable: error.retryable || isTransientHttpStatus(response.status),
+      })
+    }
+    if (error.kind === 'http' || error.agentErrors.length > 0) {
+      // szlahu_down, illetve a számlaszám nélküli 56-os (bizonytalan) jelzés:
+      // mindkettő újrapróbálható, a státusztól függetlenül.
+      throw error
+    }
+    throw httpError()
+  }
 }
 
 /** Timeout/abort eredetű hiba-e (AbortSignal.timeout, fetch-megszakítás). */
@@ -427,37 +780,33 @@ export async function postInvoiceXml(
   const durationMs = Date.now() - startedAt
   if (!response.ok) {
     logger.error('Számlázz.hu HTTP-hiba', { endpoint, httpStatus: response.status, durationMs })
-    throw new SzamlazzApiError({
-      message: `Számlázz.hu HTTP-hiba (${response.status}).`,
-      kind: 'http',
-      httpStatus: response.status,
-      retryable: response.status >= 500,
-    })
   }
 
-  // A törzs-olvasás és az értelmezés EGY védett blokkban: a stream félbeszakadása
-  // (timeout a fejlécek után, TCP-vágás) osztályozott, retryable hibává válik,
-  // a parseAgentResponse saját — már strukturált — hibái viszont változatlanul
-  // mennek tovább (különben a duplicate/agent besorolás veszne el).
+  // A törzs-olvasás és az értelmezés a közös readAgentResponse-ban: a stream
+  // félbeszakadása (timeout a fejlécek után, TCP-vágás) osztályozott, retryable
+  // hibává válik, a nem-2xx válasz hibakódja sem vész el, a parseAgentResponse
+  // strukturált hibái (duplicate/agent) pedig változatlanul mennek tovább.
   let result: SzamlazzParsedSuccess
   try {
-    const body = await response.text()
-    result = parseAgentResponse(body, response.headers)
+    result = await readAgentResponse(response, resolved.timeoutMs)
   } catch (error) {
-    if (error instanceof SzamlazzApiError) {
-      throw error
+    if (
+      error instanceof SzamlazzApiError &&
+      (error.kind === 'timeout' || error.kind === 'network')
+    ) {
+      logger.error('Számlázz.hu válasz-törzs olvasási hiba', {
+        endpoint,
+        durationMs: Date.now() - startedAt,
+        errorMessage: error.message,
+      })
     }
-    logger.error('Számlázz.hu válasz-törzs olvasási hiba', {
-      endpoint,
-      durationMs: Date.now() - startedAt,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    })
-    throw bodyReadError(error, resolved.timeoutMs)
+    throw error
   }
   logger.info('Számlázz.hu számla kiállítva', {
     endpoint,
     durationMs,
     szamlaszam: result.szamlaszam,
+    ...(result.notificationError ? { ertesitoKezbesitesSikertelen: true } : {}),
   })
   return result
 }

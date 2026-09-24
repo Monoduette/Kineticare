@@ -12,8 +12,10 @@ import type { BarionPaymentStateResponse } from './types'
  *
  * A hívás GET, a POSKey az x-pos-key headerben utazik (lásd client.ts).
  *
- * Az útvonalba a KÖTŐJEL NÉLKÜLI azonosító megy: kötőjelesre a Barion 404-et
- * ad, amit a hívók „nem létező fizetésnek" vesznek (lásd guid.ts). A válasz
+ * Az útvonalba a KÖTŐJEL NÉLKÜLI azonosító megy: kötőjelesre a Barion
+ * Errors tömb nélküli 404-et ad (útvonal-eltérés, lásd guid.ts). Ezt a hívók
+ * NEM veszik „nem létező fizetésnek", hanem újrapróbálható, riasztandó hibának
+ * (barion-callback/process-callback.ts isUnverifiedNotFound). A válasz
  * azonosítói kanonikus (kisbetűs, kötőjeles) alakban jutnak tovább, így a
  * tárolt `barionPaymentId`-vel és a refund-intent adataival pontos egyezéssel
  * összevethetők.

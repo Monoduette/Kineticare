@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import type { Order, RefundIntent } from '../../payload-types'
 import { loadRefundIntentsForOrder } from '../refund/intent-store'
+import { isRefundIntentUnresolved } from '../refund/refund-intent'
 import {
   isRecord,
   readReceipt,
@@ -20,6 +21,28 @@ const REQUIRED =
   'Refund document requires verified reconciliation; automatic submission is blocked.'
 const SUCCESS = new Set(['Succeeded', 'Refunded', 'PartiallyRefunded'])
 
+/**
+ * Igazoltan hatás nélküli (no-effect) sikertelen kísérlet: provider_failed,
+ * érvényes egyeztetési bizonyítékkal. A bizonyíték érvényességét ugyanaz a
+ * szabály dönti el, mint az intent-tárolóét (isRefundIntentUnresolved): ami
+ * bizonyíték nélküli vagy hibás, az továbbra is feloldatlannak, tehát
+ * blokkolónak számít.
+ */
+function isProviderNoEffectFailure(intent: RefundIntent): boolean {
+  if (
+    intent.state !== 'provider_failed' ||
+    typeof intent.reconciliationCheckedAt !== 'string' ||
+    typeof intent.reconciliationReference !== 'string'
+  ) {
+    return false
+  }
+  return !isRefundIntentUnresolved('provider_failed', {
+    kind: 'provider_confirmed_no_effect',
+    confirmedAt: intent.reconciliationCheckedAt,
+    reference: intent.reconciliationReference,
+  })
+}
+
 /** Called under the existing document lock by every issuer, including jobs. */
 export async function managedRefundDocument(
   payload: Payload,
@@ -28,7 +51,13 @@ export async function managedRefundDocument(
   sequence = 1,
   amountHuf?: number,
 ): Promise<ManagedRefundDocument | null> {
-  const intents = await loadRefundIntentsForOrder(payload, order.id)
+  // A Barion által igazoltan HATÁS NÉLKÜL lezárt kísérlet (provider_failed +
+  // egyeztetési bizonyíték) nem mozgatott pénzt, tehát bizonylatot sem
+  // igényel: a döntésből kimarad. Ha csak ilyenek vannak, a rendelés a
+  // hagyományos (nem intent-kezelt) úton megy, ahogy intent nélkül is.
+  const intents = (await loadRefundIntentsForOrder(payload, order.id)).filter(
+    (intent) => !isProviderNoEffectFailure(intent),
+  )
   if (intents.length === 0) return null
   const matching = intents.filter(
     (intent) =>

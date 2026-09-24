@@ -6,6 +6,7 @@ import {
   queryInvoiceByKulsoAzon,
   SZAMLAZZ_NOT_FOUND_CODE,
 } from '../../lib/szamlazz/pdf'
+import { postStornoXml } from '../../lib/szamlazz/storno'
 import { SzamlazzApiError } from '../../lib/szamlazz/types'
 
 /**
@@ -324,6 +325,123 @@ describe('törzs-olvasási hiba osztályozása (F6)', () => {
     const error = await apiErrorOf(postInvoiceXml('<xmlszamla/>', ENABLED_CONFIG))
     expect(error.kind).toBe('duplicate')
     expect(error.retryable).toBe(false)
+  })
+})
+
+/**
+ * Nem-2xx válaszok (r-szamlazz-13): a hibakód a szlahu_* fejlécből és a
+ * törzsből is kiolvasandó, és az átmeneti státusz (408/425/429/5xx)
+ * újrapróbálható. Korábban minden nem-2xx válasz OLVASÁS NÉLKÜL, csak a
+ * státusz alapján dobott, és a 408/429 végleges 'failed' számlát okozott.
+ */
+describe('nem-2xx válaszok: a hibakód nem vész el, az átmeneti státusz retryable', () => {
+  it('429 (sebességkorlát) és 408, 425: retryable http-hiba — lekérdezésnél és beküldésnél is', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    for (const status of [408, 425, 429]) {
+      calls.length = 0
+      vi.unstubAllGlobals()
+      stubFetch(() => agentResponse('<html>Too Many Requests</html>', { status }))
+      const lookupError = await apiErrorOf(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG))
+      expect(lookupError.kind, String(status)).toBe('http')
+      expect(lookupError.httpStatus, String(status)).toBe(status)
+      expect(lookupError.retryable, String(status)).toBe(true)
+
+      const postError = await apiErrorOf(postInvoiceXml('<xmlszamla/>', ENABLED_CONFIG))
+      expect(postError.retryable, String(status)).toBe(true)
+
+      const stornoError = await apiErrorOf(postStornoXml('<xmlszamlast/>', ENABLED_CONFIG))
+      expect(stornoError.retryable, String(status)).toBe(true)
+    }
+  })
+
+  it('403 (tiltás) HTML-törzzsel: végleges http-hiba', async () => {
+    stubFetch(() => agentResponse('<html>Forbidden</html>', { status: 403 }))
+    const error = await apiErrorOf(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG))
+    expect(error.kind).toBe('http')
+    expect(error.retryable).toBe(false)
+  })
+
+  it('400 + szlahu_error_code fejléc: a hivatalos kód-osztályozás él, a kód NEM vész el', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    stubFetch(() =>
+      agentResponse('', {
+        status: 400,
+        headers: { szlahu_error_code: '3', szlahu_error: 'Sikertelen+bejelentkez%C3%A9s' },
+      }),
+    )
+    const error = await apiErrorOf(postInvoiceXml('<xmlszamla/>', ENABLED_CONFIG))
+    expect(error.kind).toBe('agent')
+    expect(error.httpStatus).toBe(400)
+    expect(error.agentErrors).toEqual([{ code: '3', message: 'Sikertelen bejelentkezés' }])
+    expect(error.retryable).toBe(false)
+  })
+
+  it('503 + végleges agent-kód a törzsben: agent-hiba a kóddal, de az 5xx miatt RETRYABLE', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    stubFetch(() => agentResponse(errorBody('57', 'XML beolvasási hiba'), { status: 503 }))
+    const error = await apiErrorOf(postInvoiceXml('<xmlszamla/>', ENABLED_CONFIG))
+    expect(error.kind).toBe('agent')
+    expect(error.httpStatus).toBe(503)
+    expect(error.agentErrors[0]?.code).toBe('57')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('404 + 7-es kód a törzsben: a lekérdezés „nincs találat"-ot ad (null), nem hibát', async () => {
+    stubFetch(() =>
+      agentResponse(errorBody(SZAMLAZZ_NOT_FOUND_CODE, 'Nincs ilyen bizonylat.'), { status: 404 }),
+    )
+    await expect(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG)).resolves.toBeNull()
+  })
+
+  it('nem-2xx válasz olvashatatlan törzzsel: a státusz dönt (500 → retryable)', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new TypeError('terminated'))
+      },
+    })
+    stubFetch(() => new Response(stream, { status: 500 }))
+    const error = await apiErrorOf(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG))
+    expect(error.kind).toBe('http')
+    expect(error.httpStatus).toBe(500)
+    expect(error.retryable).toBe(true)
+  })
+})
+
+/**
+ * CDATA a lekérdezés válaszában (a-szamlazz-8): a hivatalos hibaminta a
+ * hibaüzenetet CDATA-ba teszi; ha a kód is abban jön (és nincs fejléc), a
+ * 7-es „nincs találat" nem bukhat el — különben MINDEN számla a legelső
+ * beküldés előtti lekérdezésen akadna el.
+ */
+describe('queryInvoiceByKulsoAzon — CDATA és értelmezhetetlen 200-as törzs', () => {
+  it('CDATA-ba csomagolt 7-es kód fejléc nélkül: null (nincs találat)', async () => {
+    stubFetch(() =>
+      agentResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><xmlszamlavalasz><sikeres>false</sikeres>' +
+          '<hibakod><![CDATA[7]]></hibakod><hibauzenet><![CDATA[Nincs ilyen bizonylat.]]></hibauzenet>' +
+          '</xmlszamlavalasz>',
+      ),
+    )
+    await expect(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG)).resolves.toBeNull()
+  })
+
+  it('CDATA-s számlaszám a találatban: a jelölés nélküli szám jön vissza', async () => {
+    stubFetch(() =>
+      agentResponse(
+        '<xmlszamlavalasz><sikeres>true</sikeres>' +
+          `<szamlaszam><![CDATA[${FOUND_INVOICE_NUMBER}]]></szamlaszam></xmlszamlavalasz>`,
+      ),
+    )
+    await expect(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG)).resolves.toEqual({
+      szamlaszam: FOUND_INVOICE_NUMBER,
+    })
+  })
+
+  it('200-as HTML-karbantartási oldal: bizonytalan, RETRYABLE (nem végleges)', async () => {
+    stubFetch(() => agentResponse('<html><body>Karbantartás</body></html>'))
+    const error = await apiErrorOf(queryInvoiceByKulsoAzon(ORDER_NUMBER, ENABLED_CONFIG))
+    expect(error.kind).toBe('invalid_response')
+    expect(error.retryable).toBe(true)
   })
 })
 

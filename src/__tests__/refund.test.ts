@@ -34,8 +34,9 @@ describe('owner refund route with durable recovery', () => {
       transactionsToRefund: [
         {
           transactionId: 'SYNTHETIC-TX',
-          posTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          posTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           amountToRefund: 20000,
+          comment: 'Kineticare visszatérítés SYNTHETIC-RECOVERY-11',
         },
       ],
     })

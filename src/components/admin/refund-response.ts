@@ -1,6 +1,15 @@
 import { formatPriceHuf } from '../../lib/format-price'
 import type { RefundOrderResult } from '../../lib/refund/refund-order'
 
+/**
+ * Általános útmutató a KLIENS saját, bizonytalan kimenetű üzeneteihez (nincs
+ * szerverszöveg, vagy az nem értelmezhető). A szerver kézi ellenőrzést kérő
+ * szövegei (5xx `error`, mentett állapot, helyreállítás) önmagukban teljesek,
+ * melléjük nem fűzzük: a konkrét teendőnek („Feldolgozás folytatása”)
+ * ellentmondana (GOV.UK Error message: „say what has happened and how to fix
+ * it”, https://design-system.service.gov.uk/components/error-message/; NN/g,
+ * Error-Message Guidelines: https://www.nngroup.com/articles/error-message-guidelines/).
+ */
 export const REFUND_REVIEW_GUIDANCE =
   'Ne indíts új visszatérítést ehhez a rendeléshez. Ellenőrizd a rendelést és a Barion tranzakcióit, majd egyeztesd az eltérést az üzemeltetővel.'
 
@@ -49,10 +58,7 @@ export function presentRefundResponse(
       : null
   const error = record && nonEmptyString(record.error) ? record.error : null
   if (record?.manualReviewRequired === true) {
-    return {
-      kind: 'warning',
-      message: error ? `${error} ${REFUND_REVIEW_GUIDANCE}` : REFUND_UNCERTAIN_MESSAGE,
-    }
+    return { kind: 'warning', message: error ?? REFUND_UNCERTAIN_MESSAGE }
   }
   if (status >= 400 && status < 500 && error) {
     return { kind: 'error', message: error }

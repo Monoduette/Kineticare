@@ -7,6 +7,7 @@ import { issueStornoForOrder } from '../../lib/szamlazz/storno'
 import type { InvoiceLookupResult } from '../../lib/szamlazz/pdf'
 import { RECEIPTS, writeReceipt } from '../../lib/refund/recovery-receipts'
 import { claimManagedRefundDocument } from '../../lib/szamlazz/refund-guard'
+import type { RefundIntent } from '../../payload-types'
 
 const config = getSzamlazzConfig({
   SZAMLAZZ_AGENT_KEY: 'DUMMY-REFUND-GUARD-AGENT-KEY',
@@ -223,5 +224,123 @@ describe('intent-managed refunds through real invoice helpers', () => {
     })
     expect(f.query).toHaveBeenCalledTimes(before)
     expect(f.post).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * A Barion által igazoltan HATÁS NÉLKÜL lezárt kísérlet (provider_failed +
+ * egyeztetési bizonyíték, pl. TooLowBalanceToMakeRefund) nem mozgatott pénzt,
+ * ezért nem teheti „intent-kezeltté" a rendelés bizonylatát. Korábban egyetlen
+ * ilyen sor is elég volt ahhoz, hogy a stornó/helyesbítő a „verified
+ * reconciliation" hiányával MINDIG elbukjon (az intent nélküli, hagyományos út
+ * helyett).
+ */
+describe('refund-guard — a hatás nélküli provider_failed kísérlet nem blokkol', () => {
+  function legacyRefundedOrder() {
+    const f = fixture()
+    Object.assign(f.order, {
+      status: 'refunded',
+      refundedAt: '2026-09-06T10:00:00.000Z',
+      refunds: [
+        {
+          transactionId: 'SYNTHETIC-LEGACY-REFUND-TX',
+          amountHuf: 20000,
+          status: 'Succeeded',
+          refundedAt: '2026-09-06T10:00:00.000Z',
+          type: 'full',
+        },
+      ],
+      customerSnapshot: { email: 'synthetic@example.test' },
+    })
+    const post = vi.fn(async () => ({ szamlaszam: 'SYNTHETIC-STORNO-1' }))
+    return { ...f, post }
+  }
+
+  function failedIntent(overrides: Partial<RefundIntent> = {}): RefundIntent {
+    return {
+      id: 81,
+      order: 11,
+      actor: 1,
+      requestedAmountHuf: 20000,
+      provider: 'barion',
+      providerPaymentId: 'SYNTHETIC-PAYMENT',
+      providerTransactionId: 'SYNTHETIC-TX',
+      state: 'provider_failed',
+      requestHash: 'a'.repeat(64),
+      idempotencyKeyHash: 'b'.repeat(64),
+      activeOrderKey: null,
+      schemaVersion: 1,
+      refundSequence: 1,
+      currency: 'HUF',
+      reason: null,
+      providerStartedAt: '2026-09-05T10:00:01.000Z',
+      providerResolvedAt: '2026-09-05T10:00:05.000Z',
+      committedAt: null,
+      reconciliationCheckedAt: '2026-09-05T10:00:05.000Z',
+      reconciliationReference: 'SYNTHETIC-GETSTATE-NO-EFFECT',
+      createdAt: '2026-09-05T10:00:00.000Z',
+      updatedAt: '2026-09-05T10:00:05.000Z',
+      ...overrides,
+    } as unknown as RefundIntent
+  }
+
+  it('csak no-effect provider_failed előzmény: a stornó a hagyományos úton kiáll', async () => {
+    const f = legacyRefundedOrder()
+    store.intents.set(f.payload, failedIntent())
+
+    await expect(
+      issueStornoForOrder(f.order, { payload: f.payload, config, postXml: f.post }),
+    ).resolves.toEqual({ outcome: 'storned', stornoNumber: 'SYNTHETIC-STORNO-1' })
+    expect(f.post).toHaveBeenCalledTimes(1)
+    expect(f.order.stornoStatus).toBe('storned')
+  })
+
+  it('bizonyíték NÉLKÜLI provider_failed továbbra is blokkol (fail-closed), POST nélkül', async () => {
+    const f = legacyRefundedOrder()
+    store.intents.set(
+      f.payload,
+      failedIntent({ reconciliationCheckedAt: null, reconciliationReference: null }),
+    )
+
+    await expect(
+      issueStornoForOrder(f.order, { payload: f.payload, config, postXml: f.post }),
+    ).rejects.toThrow('verified reconciliation')
+    expect(f.post).not.toHaveBeenCalled()
+  })
+
+  it('feloldatlan (provider_unknown) kísérlet mellett a no-effect sor sem nyit utat: blokkol, POST nélkül', async () => {
+    const f = legacyRefundedOrder()
+    store.history.set(f.payload, [failedIntent()])
+    store.intents.set(
+      f.payload,
+      failedIntent({
+        id: 82,
+        state: 'provider_unknown',
+        providerResolvedAt: null,
+        reconciliationCheckedAt: null,
+        reconciliationReference: null,
+      }),
+    )
+
+    await expect(
+      issueStornoForOrder(f.order, { payload: f.payload, config, postXml: f.post }),
+    ).rejects.toThrow('verified reconciliation')
+    expect(f.post).not.toHaveBeenCalled()
+  })
+
+  it('no-effect sor + sikeres intent ugyanarra a sorszámra: a sikeres intent dönt (kezelt út, igazolás kell)', async () => {
+    const f = realDocuments()
+    documents.storno.mockRejectedValue(new Error('SYNTHETIC pause before invoicing'))
+    await expect(f.start()).rejects.toThrow()
+    const succeeded = store.intents.get(f.payload)!
+    store.history.set(f.payload, [failedIntent({ id: 70 }), succeeded])
+    const post = vi.fn(async () => ({ szamlaszam: 'SYNTHETIC-STORNO-2' }))
+
+    await expect(
+      issueStornoForOrder(f.order, { payload: f.payload, config, postXml: post }),
+    ).resolves.toEqual({ outcome: 'storned', stornoNumber: 'SYNTHETIC-STORNO-2' })
+    expect(post).toHaveBeenCalledTimes(1)
+    // A kezelt út a saját indítási nyugtáját is rögzítette (claim).
+    expect(f.audits.some((entry) => entry.action === RECEIPTS.invoiceStarted)).toBe(true)
   })
 })

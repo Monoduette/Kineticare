@@ -29,6 +29,7 @@ feloldó, `/szakembereknek` CMS-ből, friss telepítésre szűkített onInit).
 | `docs/mi-hol-szerkesztheto.md`              | Oldalanként: melyik látott elem melyik mezőből (vagy kódból) jön   |
 | `docs/ertekesitesi-ux-skill.md`             | Felületi munka előtt kötelező                                      |
 | `.claude/skills/termektervezes/SKILL.md`    | Felületi munka előtt kötelező skill                                |
+| `.claude/skills/teszt-audit/SKILL.md`       | Teszt írása, módosítása, átnézése előtt kötelező skill             |
 | `.cursor/skills/verify-kineticare/SKILL.md` | Élő storefront GET-ellenőrzés                                      |
 
 ---
@@ -283,8 +284,35 @@ POST /api/barion/callback
 Elveszett callback:
   order-poll task, 5 percenként, ugyanaz a v4 + állapotgép
   + árva-rendelés-lejárat + számla-resweep
-  + a Barion által definitíven nem ismert (404 / PaymentNotFound),
-    1 óránál régebbi payment_pending sor → cancelled (#260)
+  + a Barion által KIFEJEZETT not-found kóddal (NotExistingPaymentId,
+    PaymentNotFound; 5xx és 401/403 / auth-kód kivételével bármilyen
+    HTTP-státusszal) jelzett, 1 óránál régebbi payment_pending sor →
+    cancelled (#260); a callback erre terminális rejected; fék: ha a
+    futásban egyetlen GetState sem sikerült, az útvonal-próba dönt (a
+    legutóbb frissült, Barion-azonosítós paid rendelés GetState-je,
+    futásonként legfeljebb egy hívás): sikeres → lezár; elbukik, vagy
+    nincs jelölt, de legalább MAX_LEADING_FAILURES ilyen sor jött → egyik
+    sem zárul le (fojtott RIASZTÁS: BARION_ENVIRONMENT / POSKey); nincs
+    jelölt és kevesebb sor → lezár; auth/transport megszakítás vagy
+    olvashatatlan jelölt → a következő futás dönt
+  + a puszta HTTP 404 (Errors tömb nélkül, vagy ismeretlen kóddal)
+    'unverified-404': forgatás, függő sornál fojtott RIASZTÁS (a
+    late-success scan lezárt soránál csak warn), önmagában SOSEM zár le;
+    a callback újrapróbálható marad, a pénztár saját szövegű 503-at ad
+    (CHECKOUT_PAYMENT_STATE_UNVERIFIED); a 24 óránál régebbi ilyen
+    payment_pending sort az order-poll CSAK akkor zárja le (RIASZTÁS), ha
+    ugyanabban a futásban egy MÁSIK GetState sikeres volt, vagy sikeres az
+    útvonal-próba; egy késői Succeeded-et a late-success scan csak a
+    létrehozástól számított 7 napon belül vesz fel
+  + a futás eleji mennyezet (MAX_LEADING_FAILURES) csak a függő lapokat
+    állítja meg; a late-success scan saját kerettel fut; auth/transport
+    megszakítás után kimarad. A mennyezet-RIASZTÁS futásszintű, óránként
+    egy (RUN_LEVEL_ALERT_COOLDOWN_MS, közben warn); a late-success scané
+    csak warn, ha a függő lapoké ugyanabban a futásban már döntött, vagy
+    ha az útvonal-próba sikeres (a hibák a lezárt sorokra szólnak)
+  + csendes bolt, néhány lezárt sor puszta 404-gyel, semmi nem sikerül (a
+    mennyezet nem ér el): ha az útvonal-próba is elbukik, óránként egy
+    útvonal-gyanú RIASZTÁS (BARION_API_URL / BARION_ENVIRONMENT / POSKey)
 ```
 
 Ár a checkoutban: a pénztár elküldi a **megjelenített** árat
@@ -456,6 +484,9 @@ További scriptek: lásd a 11. szakaszt.
   hangosan dobó mock.
 - Komponens: `renderToStaticMarkup` (oxc automatic JSX, pragma nélkül).
 - Új viselkedéshez fókuszált teszt.
+- Teszt írása, módosítása, átnézése vagy átfésülése előtt:
+  `.claude/skills/teszt-audit/SKILL.md` (írási kapu, ellenpróba,
+  megtartási mérce; alrendszer-kampányhoz a `CAMPAIGN.md`).
 
 ### 4.4 Felületi munka kötelező menete
 
@@ -659,9 +690,12 @@ vásárolható"; ingyenes → `FREE_COURSE_NOT_CHECKOUT_TEXT`; nem fizetős →
 `UNAVAILABLE_COURSE_NOTE`. Submit: kötelező `billing` + két 45/2014
 lemondó pipa + ÁSZF (`src/lib/checkout/form-submission.ts`). Függő
 fizetés: `decidePendingCheckout` (`resume` / `already-paid` /
-`cancel-and-restart` / `wait-no-payment-id` / `barion-unavailable`);
-a definitív PaymentNotFound és az eltérő ár- vagy számlázási snapshot
-`cancel-and-restart`.
+`cancel-and-restart` / `wait-no-payment-id` / `wait-not-found` /
+`unverified-not-found` / `barion-unavailable`); a definitív not-found
+kód (NotExistingPaymentId, PaymentNotFound) a fizetési ablakon túl és az
+eltérő ár- vagy számlázási snapshot `cancel-and-restart`; a puszta 404
+`unverified-not-found` (503, „legfeljebb egy nap" + info@kineticare.hu,
+a sort az order-poll zárja le).
 
 ---
 

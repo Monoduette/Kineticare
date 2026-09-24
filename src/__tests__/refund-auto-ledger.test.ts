@@ -3,6 +3,7 @@ import { fixture, provider, store, documents, access } from './refund-fixture'
 import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
 import { createLogger } from '../lib/logger'
 import type { BarionPaymentStateResponse } from '../lib/barion'
+import { NO_PROVIDER_REQUEST_REFERENCE } from '../lib/refund/refund-intent'
 
 const sourceId = '11111111-2222-3333-4444-555555555555'
 const refundId = 'aaaaaaaa-bbbb-cccc-dddd-123456789012'
@@ -18,7 +19,7 @@ function setup() {
     Transactions: [
       {
         TransactionId: sourceId,
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: `${f.order.orderNumber}-1`,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: 20000,
@@ -30,13 +31,13 @@ function setup() {
     RefundedTransactions: [
       {
         TransactionId: refundId,
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: `${f.order.orderNumber}-1`,
         Total: 20000,
         Status: 'Succeeded',
       },
     ],
   })
-  const run = () =>
+  const run = (now?: Date) =>
     recoverRejectedSucceededPayment({
       payload: f.payload,
       order: structuredClone(f.order),
@@ -45,6 +46,7 @@ function setup() {
       source: 'callback',
       log: createLogger({}),
       refundPayment: provider.refund,
+      ...(now ? { now } : {}),
     })
   return { ...f, state, run }
 }
@@ -77,8 +79,10 @@ describe('automatic paid-reject durable ledger runtime', () => {
   it('keeps a timed-out submission unresolved across repeat calls with no financial replay', async () => {
     const f = setup()
     provider.refund.mockRejectedValue(new Error('SYNTHETIC provider response loss'))
-    expect((await f.run()).action).toBe('failed')
-    expect((await f.run()).action).toBe('failed')
+    // A fixture 10:00:01-re rögzíti az indítást; negyedórán belül nincs GetState-alapú nullhatás.
+    const soon = new Date('2026-09-05T10:05:00.000Z')
+    expect((await f.run(soon)).action).toBe('failed')
+    expect((await f.run(soon)).action).toBe('failed')
     expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
     expect(provider.refund).toHaveBeenCalledTimes(1)
     expect(f.order).toMatchObject({ status: 'payment_pending', refunds: [] })
@@ -93,7 +97,7 @@ describe('automatic paid-reject durable ledger runtime', () => {
         RefundedTransactions: [
           {
             TransactionId: refundId,
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: `${f.order.orderNumber}-1`,
             Total: 20000,
             Status: status,
           },
@@ -151,22 +155,30 @@ describe('automatic paid-reject durable ledger runtime', () => {
     f.failures.receipt = 'refund-prepared'
     f.failures.receiptAfterWrite = true
     expect((await f.run()).action).toBe('failed')
-    expect(store.intents.get(f.payload)?.state).toBe('prepared')
+    // Indítási engedély nélkül Barion-kérés nem ment: a kísérlet igazoltan hatástalan.
+    expect(store.intents.get(f.payload)).toMatchObject({
+      state: 'provider_failed',
+      activeOrderKey: null,
+      reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE,
+    })
     f.failures.receipt = ''
+    // Az újrapróbálás csak a várakozási idő után jön, addig nincs POST.
     expect((await f.run()).action).toBe('failed')
     expect(provider.refund).not.toHaveBeenCalled()
   })
 
-  it('does not replay after lost provider-proof acknowledgement', async () => {
+  it('completes locally after a lost provider-proof acknowledgement, without a second POST', async () => {
     const f = setup()
     f.failures.receipt = 'refund-provider-succeeded'
     f.failures.receiptAfterWrite = true
     expect((await f.run()).action).toBe('failed')
     expect(store.intents.get(f.payload)?.state).toBe('provider_started')
     f.failures.receipt = ''
-    expect((await f.run()).action).toBe('failed')
+    // A tartósan rögzített, korrelált Barion-siker bizonyíték: helyi lezárás, új pénzmozgás nélkül.
+    expect(await f.run()).toMatchObject({ action: 'refunded', detail: 'provider-reconciled' })
     expect(provider.refund).toHaveBeenCalledTimes(1)
-    expect(f.order.refunds).toEqual([])
+    expect(f.order).toMatchObject({ status: 'refunded', refunds: [{ amountHuf: 20000 }] })
+    expect(store.intents.get(f.payload)?.state).toBe('committed')
   })
 
   it.each(['payment', 'currency', 'amount', 'source-status', 'source-duplicate', 'pos'])(

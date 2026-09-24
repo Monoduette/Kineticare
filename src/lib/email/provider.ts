@@ -2,7 +2,13 @@ import { formatFromAddress, maskEmail, parseFromAddress } from './mask'
 import { logger } from '../logger'
 import { sendViaResend } from './resend'
 import { sendViaSmtp } from './smtp'
-import { EmailSendError, type EmailProviderName, type MailMessage, type SendResult } from './types'
+import {
+  EmailSendError,
+  type EmailProviderName,
+  type MailAttachment,
+  type MailMessage,
+  type SendResult,
+} from './types'
 
 /**
  * Provider-választás és küldés (T-018).
@@ -92,6 +98,8 @@ export interface SendMailInput {
   replyTo?: string
   /** Szolgáltató-oldali idempotencia-kulcs; lásd `MailMessage.idempotencyKey`. */
   idempotencyKey?: string
+  /** Mellékletek; lásd `MailMessage.attachments`. */
+  attachments?: MailAttachment[]
 }
 
 export async function sendMail(input: SendMailInput): Promise<SendResult> {
@@ -103,6 +111,9 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
     text: input.text,
     ...(input.replyTo ? { replyTo: input.replyTo } : {}),
     ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+    ...(input.attachments && input.attachments.length > 0
+      ? { attachments: input.attachments }
+      : {}),
   }
   const maskedTo = message.to.map(maskEmail)
   // A tárgy és a provider nyers hiba/azonosító szövege is tartalmazhat
@@ -112,6 +123,8 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
     provider: provider.name,
     to: maskedTo,
     recipientCount: message.to.length,
+    // A mellékletnek csak a DARABSZÁMA kerül a naplóba, a neve és a tartalma nem.
+    ...(message.attachments ? { attachmentCount: message.attachments.length } : {}),
   }
 
   if (message.to.length === 0) {

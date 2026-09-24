@@ -226,9 +226,11 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
 ## Tesztelés
 
 - `npm run test` → **vitest run**, node environment, include:
-  `src/**/*.test.ts` / `src/**/*.test.tsx` (a többség `src/__tests__/`-ben él;
-  2026-08-10-én 102 tesztfájl, 1653 teszt — ebből 11 skipped). Alias: `@/*` →
-  `src/*` (a vitest.config.ts és a tsconfig paths szerint is).
+  `src/**/*.test.ts`, `src/**/*.test.tsx` és `handover/**/*.test.ts` (a
+  többség `src/__tests__/`-ben él; 2026-09-24-én kb. 500 tesztfájl). Alias:
+  `@/*` → `src/*` (a vitest.config.ts és a tsconfig paths szerint is). A
+  DB-kapus fájlok helyben, adatbázis nélkül némán kimaradnak, CI-ben dobnak
+  (`src/__tests__/helpers/db-available.ts`).
 - **Tesztből SOSEM mehet ki valódi hálózati hívás.** A folyamat-tesztek
   injektálják a HTTP-hívókat (pl. Számlázznál `postXml`, `queryByKulsoAzon`);
   a `fetch`-eseket `vi.stubGlobal('fetch', …)` + `afterEach(vi.unstubAllGlobals)`
@@ -237,6 +239,12 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
 'automatic'` miatt, pragma nélkül).
 - Új viselkedéshez fókuszált teszt vagy legalább reprodukálható ellenőrzési
   lépés kell (PR-elvárás).
+- Teszt írása, módosítása, átnézése vagy átfésülése előtt kötelező elolvasni
+  a `.claude/skills/teszt-audit/SKILL.md`-t. Fő pontjai:
+  - írási kapu és szemét-minták;
+  - ellenpróba a javítás előtti kódon;
+  - megtartási mérce;
+  - alrendszer-kampányhoz a `CAMPAIGN.md`.
 
 ## CI és PR-elvárások
 

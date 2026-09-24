@@ -116,6 +116,25 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
+/**
+ * Folyószövegbe illesztett, kattintható webcím: a látható szöveg maga a cím
+ * (GOV.UK: „spell out any web addresses (URLs) in full”), ugyanazzal a
+ * stílussal, mint a gomb alatti tartalék-link. A szín az akcent (#2f6e9f),
+ * fehér kártyán 5,4:1 (WCAG 2.2 SC 1.4.3, ≥ 4,5:1). A környező szövegtől
+ * (#33495f) színben csak 1,7:1-re tér el, ez kevés ahhoz, hogy a link csak a
+ * színéről felismerhető legyen (SC 1.4.1, a G183 technika 3:1-et kér), ezért
+ * az aláhúzás KIFEJEZETTEN be van állítva, nem a levelező alapértelmezésére
+ * bízva. Mindkét arányt a src/__tests__/order-paid-visszaigazolas.test.ts
+ * számolja.
+ */
+export function inlineLinkHtml(url: string): string {
+  const cim = escapeHtml(url)
+  return `<a href="${cim}" style="color:${SZIN.akcent};text-decoration:underline;word-break:break-all;">${cim}</a>`
+}
+
+/** A levélváz színtokenjei (az őr-teszt kontrasztszámításához). */
+export const EMAIL_SZINEK: Readonly<Record<keyof typeof SZIN, string>> = SZIN
+
 /** A cím a levélben azonosítja a fiókot; sosem kerül a CTA tokenje helyére. */
 export function accountEmailBlock(email: string): Pick<EmailTemplate, 'html' | 'text'> {
   const address = email.trim()

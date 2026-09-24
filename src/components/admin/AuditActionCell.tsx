@@ -24,7 +24,9 @@ import type { JSX } from 'react'
  * - src/lib/customer-import/execute.ts: customer-import.legacy-purchase;
  * - src/lib/media-recovery-provenance.ts: media.recovery.provenance.v1;
  * - src/lib/refund/recovery-receipts.ts és refund-recovery.ts: a refund-*
- *   nyugták, valamint order-refund és order-partial-refund.
+ *   nyugták, valamint order-refund és order-partial-refund;
+ * - src/lib/order-paid.ts: order-confirmation-email (a vásárlás-visszaigazoló
+ *   levél elküldésének bizonyítéka, 45/2014. Korm. rendelet 18. §).
  * Az entitástípus a collection slugja; a feliratok a collectionök magyar
  * egyes számú címkéi.
  */
@@ -48,6 +50,8 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'refund-invoice-done': 'Stornó vagy helyesbítő számla kiállítása',
   'order-refund': 'Teljes visszatérítés',
   'order-partial-refund': 'Részleges visszatérítés',
+  'order-confirmation-email': 'Visszaigazoló e-mail elküldése',
+  'automatic-refund-blocked': 'Automatikus visszatérítés tartósan leállt',
 }
 
 export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {

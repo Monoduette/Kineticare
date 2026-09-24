@@ -1034,14 +1034,16 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('HTTP 404 GetState → szintén TERMINÁLIS rejected (hamis GUID = 1 hívás + 1 riasztás)', async () => {
+  it('HTTP 404 + PaymentNotFound → szintén TERMINÁLIS rejected (hamis GUID = 1 hívás + 1 riasztás)', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { POST, docs, capture } = setup({ order: null })
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ Errors: [] }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({
+          Errors: [{ ErrorCode: 'PaymentNotFound', Title: 'DUMMY', Description: 'DUMMY' }],
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } },
+      ),
     )
 
     const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
@@ -1053,23 +1055,141 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     expect(logOutput(logSpy)).toContain('RIASZTÁS')
   })
 
-  it('HTTP 503 GetState → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)', async () => {
-    const { POST, docs, capture } = setup({ order: null })
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ Errors: [] }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+  /**
+   * fix-404 (H0): a NotExistingPaymentId a Barion egyetlen DOKUMENTÁLT
+   * „ismeretlen fizetés" kódja (Error_codes_notifications; a go-barion
+   * GetPaymentState-fixtúrája is ezt adja). Eddig csak a repo saját
+   * PaymentNotFound-ja volt definitív, így ez a válasz sosem zárt: a
+   * webhook-retry 404-nél minden percben újrahívta a Bariont, amíg ki nem merült.
+   */
+  it.each([404, 400, 200])(
+    'HTTP %i + NotExistingPaymentId → TERMINÁLIS rejected, a rendelés érintetlen, a retry NEM viszi újra',
+    async (httpStatus) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const { POST, docs, capture, store, payload, order } = setup()
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Errors: [
+              {
+                ErrorCode: 'NotExistingPaymentId',
+                Title: 'DUMMY The given payment id is invalid',
+                Description: 'DUMMY',
+              },
+            ],
+          }),
+          { status: httpStatus, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
 
-    const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
-    expect(response.status).toBe(200)
-    await capture.runAll()
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
 
-    expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
-    expect(docs[0]?.processedAt ?? null).toBeNull()
-    expect(docs[0]?.lastError).toBeTruthy()
-  })
+      expect(docs[0]).toMatchObject({ status: 'processed', result: 'rejected', attempts: 1 })
+      expect(typeof docs[0]?.processedAt).toBe('string')
+      expect(order?.status).toBe('payment_pending')
+      const logs = logOutput(logSpy)
+      expect(logs).toContain('RIASZTÁS')
+      expect(logs).toContain('terminálisan elutasítva')
+
+      const retry = await processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      })
+      expect(retry.kind).toBe('already-processed')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  /**
+   * Cáfolható állítás (a-callback-5 / r-barion-11): a puszta 404 (útvonal-
+   * eltérés: „No HTTP resource was found…", Errors tömb nélkül) eddig
+   * terminálisan elutasította az eseményt, így a fizetett rendelés későbbi
+   * Succeeded callbackjét a dedup eldobta. Most újrapróbálható + riasztás.
+   */
+  it.each([
+    [
+      'Errors tömb nélkül',
+      JSON.stringify({ Message: 'No HTTP resource was found that matches the request URI' }),
+    ],
+    ['üres Errors tömbbel', JSON.stringify({ Errors: [] })],
+    ['közbülső proxy HTML-oldalával', '<html><body>404 Not Found</body></html>'],
+  ])(
+    'puszta HTTP 404 (%s) → NEM terminális: failed + processedAt NULL + RIASZTÁS, a retry sikerül',
+    async (_label, body) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const { POST, docs, capture, store, payload, order } = setup()
+      fetchMock.mockResolvedValueOnce(
+        new Response(body, {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
+
+      expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
+      expect(docs[0]?.processedAt ?? null).toBeNull()
+      expect(order?.status).toBe('payment_pending')
+      const logs = logOutput(logSpy)
+      expect(logs).toContain('RIASZTÁS')
+      expect(logs).toContain('HTTP 404')
+
+      // Az útvonal helyreállása után a retry-job ugyanezt az eseményt paid-re viszi.
+      fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
+      const retry = await processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      })
+      expect(retry.kind).toBe('processed')
+      expect(order?.status).toBe('paid')
+      expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 2 })
+    },
+  )
+
+  /**
+   * fix-404 rev1: az 5xx szerverhiba, akkor sem definitív, ha a törzsében
+   * not-found kód áll. Az order-poll ezt eddig is átmeneti („transport")
+   * hibának vette, a callback viszont terminálisan elutasította.
+   * fix-404 rev2 (X4): ugyanez a hitelesítési hibára (HTTP 401/403): az
+   * order-poll „auth"-nak veszi és megszakít, egy elutasított kulcs pedig
+   * semmit nem mond arról, hogy a fizetés létezik-e.
+   */
+  const notExistingPaymentIdBody = [
+    { ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' },
+  ]
+  it.each([
+    [503, 'üres Errors tömbbel', []],
+    [503, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
+    [401, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
+    [403, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
+  ])(
+    'HTTP %i GetState (%s) → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)',
+    async (httpStatus, _label, errors) => {
+      const { POST, docs, capture } = setup({ order: null })
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ Errors: errors }), {
+          status: httpStatus,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
+
+      expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
+      expect(docs[0]?.processedAt ?? null).toBeNull()
+      expect(docs[0]?.lastError).toBeTruthy()
+    },
+  )
 })
 
 describe('(f) GetState-hiba — újrapróbálható', () => {

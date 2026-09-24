@@ -65,7 +65,11 @@ import { budapestDateString, isIsoDateString } from './xml'
  * refund-sorszámhoz kulcsolt (correctiveInvoiceAttempts +
  * correctiveInvoiceAttemptsSeq). Rendelés-szintű számlálóval több részrefund
  * után a KÉSŐBBI bizonylat jogtalanul „kimerült"-re futna. A previousAttempts
- * CSAK a plafonhoz kell — a lekérdezés ettől függetlenül mindig lefut.
+ * CSAK a plafonhoz kell: a lekérdezés ettől függetlenül mindig lefut, a
+ * kimerült keretnél is, és a plafon csak a lekérdezés után dönt (H3). A
+ * kimerült keretnél üres találat és lekérdezés-hiba egyaránt azonnal végleges
+ * 'failed' + RIASZTÁS (a helyesbítőt semmi nem sweepeli vissza), a szöveg a
+ * kézi kiállítás előtti keresést kéri.
  */
 
 export const CORRECTIVE_KULSO_AZON_INFIX = '-HELYESBITO-'
@@ -330,24 +334,14 @@ async function performCorrectiveInvoiceForOrder(
   // BIZONYLAT-szinten. A számláló csak akkor a mienk, ha ugyanahhoz a
   // refund-sorszámhoz tartozik; új seq friss számlálóval indul (különben egy
   // korábbi bizonylat kimerült kerete blokkolná a következőt). A
-  // previousAttempts CSAK a plafonhoz kell — a lekérdezés ettől függetlenül
-  // mindig lefut (K4: más seq-es maradék job anti-duplikáció kapuja).
+  // previousAttempts CSAK a plafonhoz kell, és a plafon a beküldés előtti
+  // lekérdezés UTÁN dönt (H3, lásd a try-blokkot): a lekérdezés a kimerült
+  // keretnél is lefut (K4: más seq-es maradék job anti-duplikáció kapuja, és
+  // az 5. bizonytalan beküldés bizonylata is átvehető).
   const attemptsSeq = order.correctiveInvoiceAttemptsSeq ?? 0
   const previousAttempts =
     attemptsSeq === deps.refundSeq ? (order.correctiveInvoiceAttempts ?? 0) : 0
-  if (previousAttempts >= MAX_CORRECTIVE_ATTEMPTS) {
-    const reason = `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS})`
-    log.error(
-      'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek — emberi beavatkozás kell (Számlázz.hu-szabály: max. 5 beküldés)',
-      { attempts: previousAttempts, lastError: order.correctiveInvoiceLastError ?? null },
-    )
-    await saveStateBestEffort({
-      correctiveInvoiceStatus: 'failed',
-      correctiveInvoiceAttemptsSeq: deps.refundSeq,
-      correctiveInvoiceLastError: reason,
-    })
-    return { outcome: 'failed', reason }
-  }
+  const capReached = previousAttempts >= MAX_CORRECTIVE_ATTEMPTS
 
   const issueDate = deps.issueDate ?? budapestDateString()
   // B4 (NAV-dátumszabály): a helyesbítő teljesítési dátuma az EREDETI számláét
@@ -414,18 +408,47 @@ async function performCorrectiveInvoiceForOrder(
     return { outcome: 'issued', correctiveInvoiceNumber: szamlaszam }
   }
 
+  /** Igaz, amíg a beküldés ELŐTTI lekérdezés fut (a plafonnál ennek a hibája végleges). */
+  let lookupPhase = false
   try {
-    // K4: a lekérdezés MINDIG lefut a beküldés (attempts-növelés / POST)
-    // előtt — nem csak ugyanazon seq újrapróbálásakor. A „kérés elment,
-    // válasz elveszett" mellett ez a kapu a más seq-es maradék jobot is
-    // megfogja (pl. seq=1 retry, miután a seq=2 már kiállt): találatnál
-    // átvesszük a meglévő bizonylatot, vak POST nincs. A previousAttempts
-    // csak a plafonhoz kell. A lekérdezés hibája szándékosan propagál
-    // (bizonytalan állapotban nem szabad vakon újra beküldeni), és NEM
-    // növeli a kísérletszámot (F10).
+    // K4 + H3: a lekérdezés MINDIG lefut a beküldés (attempts-növelés / POST)
+    // előtt, a kimerült plafonnál is, nem csak ugyanazon seq
+    // újrapróbálásakor. A „kérés elment, válasz elveszett" mellett ez a kapu
+    // a más seq-es maradék jobot is megfogja (pl. seq=1 retry, miután a seq=2
+    // már kiállt): találatnál átvesszük a meglévő bizonylatot, vak POST
+    // nincs. A lekérdezés hibája szándékosan propagál (bizonytalan állapotban
+    // nem szabad vakon újra beküldeni), és NEM növeli a kísérletszámot (F10).
+    lookupPhase = true
     const found = await lookup(kulsoAzon, config)
+    lookupPhase = false
     if (found) {
-      return await adoptExisting(found.szamlaszam, 'bekuldes-elotti lekerdezes')
+      return await adoptExisting(
+        found.szamlaszam,
+        capReached ? 'plafon-utani lekerdezes' : 'bekuldes-elotti lekerdezes',
+      )
+    }
+
+    // A14 + H3: a plafon a NEGATÍV lekérdezés után dönt; kimerült keretnél
+    // beküldés nincs, az eredmény végleges 'failed' + RIASZTÁS.
+    if (capReached) {
+      // Az 5. beküldés bizonytalan kimenetű lehetett, és a bizonylat a fiókban
+      // később is megjelenhet: a szöveg a kézi kiállítás ELŐTTI keresést kéri,
+      // a korábbi hibával együtt.
+      const previousError = order.correctiveInvoiceLastError?.trim()
+      const reason =
+        `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS}), és a záró lekérdezés sem talált bizonylatot. ` +
+        `Az utolsó beküldés ennek ellenére létrehozhatta a helyesbítőt, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${kulsoAzon} külső azonosítójú bizonylatot.` +
+        (previousError ? ` A korábbi hiba: ${previousError}` : '')
+      log.error(
+        'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek, és a záró lekérdezés sem talált bizonylatot. Emberi beavatkozás kell (Számlázz.hu-szabály: legfeljebb 5 beküldés); kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a helyesbítő külső azonosítójú bizonylatát.',
+        { attempts: previousAttempts, lastError: order.correctiveInvoiceLastError ?? null },
+      )
+      await saveStateBestEffort({
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceAttemptsSeq: deps.refundSeq,
+        correctiveInvoiceLastError: reason,
+      })
+      return { outcome: 'failed', reason }
     }
 
     if (payload && managed) await claimManagedRefundDocument(payload, managed, previousAttempts)
@@ -458,8 +481,45 @@ async function performCorrectiveInvoiceForOrder(
       attempts,
       persisted: payload !== undefined,
     })
+    if (result.notificationError) {
+      // 56: a helyesbítő kiállt, csak az értesítő levél nem ment ki. Az üzenet
+      // szövegét nem naplózzuk (a vevő e-mail-címét tartalmazhatja).
+      log.error(
+        'RIASZTÁS: a helyesbítő számla kiállt, de a számlaértesítő e-mail NEM ment ki a vevőnek (56-os kód) — küldd ki kézzel a Számlázz.hu-fiókból',
+        {
+          correctiveInvoiceNumber: result.szamlaszam,
+          agentErrorCode: result.notificationError.code,
+        },
+      )
+    }
     return { outcome: 'issued', correctiveInvoiceNumber: result.szamlaszam }
   } catch (error) {
+    // H3: a kimerült plafonnál a lekérdezés hibája VÉGLEGES. Beküldés úgysem
+    // mehet ki, a dobás pedig csak a plafon-riasztást nyelné el (a helyesbítőt
+    // semmi nem sweepeli vissza). A bizonylat az 5. beküldésből létezhet, ezért
+    // a riasztás a kézi kiállítás előtti ellenőrzést kéri.
+    if (lookupPhase && capReached) {
+      const detail = error instanceof Error ? error.message : String(error)
+      const previousError = order.correctiveInvoiceLastError?.trim()
+      const reason =
+        `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS}), és a záró lekérdezés hibát adott (${detail}). ` +
+        `Egy korábbi beküldés létrehozhatta a helyesbítőt, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${kulsoAzon} külső azonosítójú bizonylatot.` +
+        (previousError ? ` A korábbi hiba: ${previousError}` : '')
+      log.error(
+        'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek, és a záró lekérdezés hibát adott. A bizonylat létezhet: kézi kiállítás előtt ellenőrizd a Számlázz.hu-fiókot.',
+        {
+          attempts: previousAttempts,
+          lastError: order.correctiveInvoiceLastError ?? null,
+          lookupError: detail,
+        },
+      )
+      await saveStateBestEffort({
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceAttemptsSeq: deps.refundSeq,
+        correctiveInvoiceLastError: reason,
+      })
+      return { outcome: 'failed', reason }
+    }
     // 71/152 — duplikátum-jelzés: a meglévő helyesbítő átvétele lekérdezéssel.
     if (isDuplicateOrderError(error)) {
       log.info(

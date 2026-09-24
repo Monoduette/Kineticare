@@ -16,8 +16,18 @@ import {
   type RichTextContent,
 } from '../scripts/restore-legacy-content'
 
+/**
+ * A `jogiRichText` inverze (Lexical → jelölős forrásszöveg). A függőség nélküli
+ * megvalósítás a levélküldő oldalon él, mert ezt a modult a levél futásideje
+ * nem importálhatja (indoklás: src/lib/email/templates/aszf-forras.ts).
+ */
+export { lexicalToJogiForras } from './email/templates/aszf-forras'
+
 /** A szó szerinti forrásfájlok könyvtára (a modul mellett). */
-export const JOGI_FORRAS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'legal-source')
+export const JOGI_FORRAS_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'legal-source',
+)
 
 // ---------------------------------------------------------------------------
 // Forrás-elemzés

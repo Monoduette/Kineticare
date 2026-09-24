@@ -176,7 +176,12 @@ function createStatefulPayload(options: { createFailures?: Error[] } = {}) {
         orderNumber: ORDER_NUMBER,
         totalHufSnapshot: 5000,
         items: [
-          { product: stored.productId, quantity: 1, titleSnapshot: 'KURZUS-ALAP', priceHufSnapshot: 5000 },
+          {
+            product: stored.productId,
+            quantity: 1,
+            titleSnapshot: 'KURZUS-ALAP',
+            priceHufSnapshot: 5000,
+          },
         ],
       } as unknown as Order
     }),
@@ -263,7 +268,7 @@ describe('checkout-zár — sorosítás (TOCTOU)', () => {
     const reason = (rejected[0] as PromiseRejectedResult).reason as CheckoutError
     expect(reason).toBeInstanceOf(CheckoutError)
     expect(reason.status).toBe(409)
-    expect(reason.message).toContain('folyamatban van egy fizetés')
+    expect(reason.message).toContain('nemrég már indult egy fizetés')
   })
 
   it('a zár kulcsa felhasználó–termék páronkénti (más termék nem várakozik)', async () => {
@@ -337,7 +342,7 @@ describe('checkout-zár — VENDÉG (fiók nélküli) vásárlás', () => {
     const reason = (rejected[0] as PromiseRejectedResult).reason as CheckoutError
     expect(reason).toBeInstanceOf(CheckoutError)
     expect(reason.status).toBe(409)
-    expect(reason.message).toContain('folyamatban van egy fizetés')
+    expect(reason.message).toContain('nemrég már indult egy fizetés')
     // Csak az EGYETLEN sikeres rendeléshez indult Barion-fizetés.
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -399,10 +404,13 @@ describe('checkout — rendelésszám-ütközés (23505) újrapróbálása', () 
   })
 
   it('MÁS unique-ütközés (nem a rendelésszámé) NEM próbálkozik újra — azonnal felszínre kerül', async () => {
-    const foreignConflict = Object.assign(new Error('duplicate key value violates unique constraint'), {
-      code: '23505',
-      constraint: 'orders_barion_payment_id_idx',
-    })
+    const foreignConflict = Object.assign(
+      new Error('duplicate key value violates unique constraint'),
+      {
+        code: '23505',
+        constraint: 'orders_barion_payment_id_idx',
+      },
+    )
     const { payload, calls } = createStatefulPayload({ createFailures: [foreignConflict] })
 
     await expect(

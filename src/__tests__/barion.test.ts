@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   BARION_DEFAULT_TIMEOUT_MS,
+  BARION_GET_TIMEOUT_MS,
   BARION_MAX_TIMEOUT_MS,
+  describeBarionPosKeyShapeProblem,
   getBarionConfig,
   type BarionClientConfig,
 } from '../lib/barion/client'
@@ -26,8 +28,9 @@ import { BarionApiError } from '../lib/barion/types'
 
 // DUMMY érték, egyértelműen jelölve — NEM valódi Barion POSKey.
 const DUMMY_POS_KEY = 'DUMMY-POSKEY-NEM-VALODI-TITOK'
-// DUMMY érték, egyértelműen jelölve — NEM valódi Barion POSKey.
-const DUMMY_PROD_POS_KEY = 'DUMMY-PROD-POSKEY-NEM-VALODI-TITOK'
+// DUMMY érték: az éles környezet a POSKey GUID-ALAKJÁT is ellenőrzi, ezért ez
+// GUID-alakú, de csupa nulla, tehát nyilvánvalóan NEM valódi Barion POSKey.
+const DUMMY_PROD_POS_KEY = '00000000-0000-0000-0000-000000000000'
 
 const DUMMY_PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
 const DUMMY_TRANSACTION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -187,7 +190,23 @@ describe('getBarionConfig (env-assert)', () => {
       BARION_TIMEOUT_MS: '120000',
     } as NodeJS.ProcessEnv)
     expect(config.timeoutMs).toBe(BARION_MAX_TIMEOUT_MS)
-    expect(BARION_MAX_TIMEOUT_MS).toBe(30_000)
+    expect(BARION_MAX_TIMEOUT_MS).toBe(35_000)
+    // A zár-tranzakciót a Postgres 60 s tétlenség után bontja (payload.config.ts).
+    expect(BARION_MAX_TIMEOUT_MS).toBeLessThan(60_000)
+  })
+
+  /**
+   * A Barion egy kérést legfeljebb 30 s-ig futtat (docs.barion.com/Calling_the_API).
+   * A régi 15 s-os alapértelmezés egy lassú, de sikeres Startot is elvágott;
+   * az új alapérték a 30 s fölött van, de a plafonon belül marad.
+   */
+  it('az alapértelmezett timeout a Barion 30 s-os szerverkorlátja fölött, a plafonon belül van', () => {
+    const config = getBarionConfig({ ...validEnv } as NodeJS.ProcessEnv)
+    expect(config.timeoutMs).toBe(35_000)
+    expect(BARION_DEFAULT_TIMEOUT_MS).toBeGreaterThan(30_000)
+    expect(BARION_DEFAULT_TIMEOUT_MS).toBeLessThanOrEqual(BARION_MAX_TIMEOUT_MS)
+    // A GET (PaymentState) rövid marad: ismételhető, és a callback 15 s-os ablakába kell férnie.
+    expect(BARION_GET_TIMEOUT_MS).toBe(15_000)
   })
 
   /**
@@ -233,6 +252,92 @@ describe('getBarionConfig (env-assert)', () => {
         BARION_API_URL: 'https://api.barion.com',
       } as NodeJS.ProcessEnv).apiUrl,
     ).toBe('https://api.barion.com')
+  })
+})
+
+/**
+ * A POSKey ALAKJA. A Barion a kulcsot Guid-ként várja (Payment-Start-v2); egy
+ * idézőjellel, szóközzel vagy csonkán bemásolt kulcsra minden hívás
+ * AuthenticationFailed-del bukik, és ez eddig csak az első vásárlónál derült ki.
+ * Élesben és az éles Barion-környezetben ezért a konfig-feloldás bukik el, a
+ * hibaüzenet a változó NEVÉVEL, de az érték nélkül.
+ */
+describe('getBarionConfig: a POSKey alakja', () => {
+  const prodEnv = {
+    ...validEnv,
+    BARION_ENVIRONMENT: 'prod',
+    BARION_API_URL: 'https://api.barion.com',
+  } as NodeJS.ProcessEnv
+  // Csupa nulla, tehát nyilvánvalóan nem valódi kulcs; a hibás változatok ebből képződnek.
+  const dashedGuid = '00000000-0000-0000-0000-000000000000'
+  const plainGuid = '0'.repeat(32)
+
+  function thrownMessage(env: NodeJS.ProcessEnv): string {
+    try {
+      getBarionConfig(env)
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+    throw new Error('A getBarionConfig nem dobott hibát.')
+  }
+
+  it('kötőjeles és kötőjel nélküli GUID, kis- és nagybetűvel is elfogadott (körülötte szóköz levágva)', () => {
+    for (const value of [dashedGuid, plainGuid, 'ABCDEF'.padEnd(32, '0'), `  ${dashedGuid}\n`]) {
+      const config = getBarionConfig({ ...prodEnv, BARION_POSKEY_PROD: value } as NodeJS.ProcessEnv)
+      expect(config.posKey, JSON.stringify(value)).toBe(value.trim())
+    }
+  })
+
+  it.each([
+    ['egyenes idézőjelek között', `"${dashedGuid}"`, /idézőjelet/],
+    ['tipográfiai idézőjelek között', `„${dashedGuid}”`, /idézőjelet/],
+    ['belső szóközzel', `${dashedGuid.slice(0, 18)} ${dashedGuid.slice(18)}`, /szóközt/],
+    ['belső sortöréssel', `${plainGuid.slice(0, 16)}\n${plainGuid.slice(16)}`, /sortörést/],
+    ['csonkán', dashedGuid.slice(0, 30), /nem GUID-alakú.*30 karakter/],
+    ['nem hexadecimális karakterrel', 'g'.repeat(32), /nem GUID-alakú/],
+  ])('éles környezetben a %s bemásolt kulcs indulási hiba', (_label, value, reason) => {
+    const message = thrownMessage({ ...prodEnv, BARION_POSKEY_PROD: value } as NodeJS.ProcessEnv)
+    expect(message).toMatch(/BARION_POSKEY_PROD/)
+    expect(message).toMatch(reason)
+    expect(message).toMatch(/nem indulhat el/)
+    expect(message).toMatch(/secure\.barion\.com/)
+    // Az érték (és a nem-nulla része) sosem kerülhet a hibaüzenetbe.
+    expect(message).not.toContain(value)
+    expect(message).not.toContain(value.trim())
+    expect(message).not.toContain('0000000')
+    expect(message).not.toContain('gggg')
+  })
+
+  it('NODE_ENV=production mellett a teszt-környezet kulcsát is ellenőrzi', () => {
+    const message = thrownMessage({
+      ...validEnv,
+      NODE_ENV: 'production',
+      BARION_POSKEY_TEST: DUMMY_POS_KEY,
+    } as NodeJS.ProcessEnv)
+    expect(message).toMatch(/BARION_POSKEY_TEST/)
+    expect(message).toMatch(/secure\.test\.barion\.com/)
+    expect(message).not.toContain(DUMMY_POS_KEY)
+    expect(
+      getBarionConfig({
+        ...validEnv,
+        NODE_ENV: 'production',
+        BARION_POSKEY_TEST: plainGuid,
+      } as NodeJS.ProcessEnv).posKey,
+    ).toBe(plainGuid)
+  })
+
+  it('helyi fejlesztésben, teszt-környezettel a jelölt álkulcs változatlanul átmegy', () => {
+    for (const nodeEnv of ['development', 'test']) {
+      const config = getBarionConfig({ ...validEnv, NODE_ENV: nodeEnv } as NodeJS.ProcessEnv)
+      expect(config.posKey, nodeEnv).toBe(DUMMY_POS_KEY)
+    }
+  })
+
+  it('a leíró függvény érték nélkül fogalmaz, és a helyes alakra null', () => {
+    expect(describeBarionPosKeyShapeProblem(dashedGuid)).toBeNull()
+    expect(describeBarionPosKeyShapeProblem(plainGuid.toUpperCase())).toBeNull()
+    expect(describeBarionPosKeyShapeProblem(`{${dashedGuid}}`)).toMatch(/nem GUID-alakú/)
+    expect(describeBarionPosKeyShapeProblem(`'${dashedGuid}'`)).toBe('idézőjelet tartalmaz')
   })
 })
 
@@ -874,17 +979,203 @@ describe('titokvédelem: a POSKey sosem kerül a naplóba', () => {
     }
   })
 
-  it('a kimenő kérés URL-je és fejlécei sem tartalmazzák a POSKey-t (POST)', async () => {
+  /**
+   * A dokumentált hitelesítés az x-pos-key fejléc (Barion_Shop_Authentication);
+   * a hivatalos barion-web-php kliens (BarionClient.php, PostToBarion) POST-nál
+   * a fejlécet ÉS a body POSKey mezőjét is küldi. Mi is így teszünk, így a
+   * hitelesítés nem múlik azon, hogy a Barion a body-t hibátlanul értelmezi-e.
+   */
+  it('POST: a POSKey az x-pos-key fejlécben és a body-ban megy, az URL-ben sosem', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Prepared', Errors: [] }),
     )
     await startPayment(startParams, testConfig)
 
     const request = lastRequest()
+    expect(request.init.method).toBe('POST')
     expect(request.url).not.toContain(DUMMY_POS_KEY)
     const headers = new Headers(request.init.headers)
-    for (const value of headers.values()) {
-      expect(value).not.toContain(DUMMY_POS_KEY)
+    expect(headers.get('x-pos-key')).toBe(DUMMY_POS_KEY)
+    expect(headers.get('content-type')).toBe('application/json')
+    expect(request.body.POSKey).toBe(DUMMY_POS_KEY)
+    // Más fejlécben nem utazik a kulcs.
+    for (const [name, value] of headers.entries()) {
+      if (name !== 'x-pos-key') {
+        expect(value, name).not.toContain(DUMMY_POS_KEY)
+      }
     }
+  })
+
+  it('POST (Refund): ugyanúgy fejlécben és body-ban megy a POSKey', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PaymentId: DUMMY_PAYMENT_ID,
+        RefundedTransactions: [
+          {
+            TransactionId: DUMMY_TRANSACTION_ID,
+            POSTransactionId: 'KH-2026-000123-1',
+            Total: 1000,
+            Status: 'PartiallyRefunded',
+          },
+        ],
+      }),
+    )
+    await refundPayment(
+      {
+        paymentId: DUMMY_PAYMENT_ID,
+        transactionsToRefund: [
+          {
+            transactionId: DUMMY_TRANSACTION_ID,
+            posTransactionId: 'KH-2026-000123-1',
+            amountToRefund: 1000,
+          },
+        ],
+      },
+      testConfig,
+    )
+
+    const request = lastRequest()
+    expect(request.url).toBe('https://api.test.barion.com/v2/Payment/Refund')
+    expect(new Headers(request.init.headers).get('x-pos-key')).toBe(DUMMY_POS_KEY)
+    expect(request.body.POSKey).toBe(DUMMY_POS_KEY)
+  })
+
+  it('a fetch hibaüzenetébe került POSKey-t kitakarja a naplóból és a hibából', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    // A Node fetch a hibás fejlécértéket szó szerint az üzenetbe írja (mérve: Node 22).
+    fetchMock.mockRejectedValueOnce(
+      new TypeError(`Headers.append: "${DUMMY_POS_KEY}" is an invalid header value.`),
+    )
+
+    const error = await startPayment(startParams, testConfig).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(BarionApiError)
+    expect(error).toMatchObject({ kind: 'network' })
+    const message = error instanceof Error ? error.message : ''
+    expect(message).toContain('[REDACTED]')
+    expect(message).not.toContain(DUMMY_POS_KEY)
+    const allLogOutput = logSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(allLogOutput).toContain('Barion API hálózati hiba')
+    expect(allLogOutput).not.toContain(DUMMY_POS_KEY)
+  })
+})
+
+/**
+ * Diagnosztika: a 2026-09-24-i 401 (AuthenticationFailed) naplósorából nem
+ * derült ki, melyik Barion-környezet és hoszt felé ment a hívás. Mostantól
+ * minden hibasorban ott van (a kulcs soha).
+ */
+describe('Barion-kliens: környezet és hoszt a hibanaplóban', () => {
+  function logEntries(logSpy: { mock: { calls: unknown[][] } }): Record<string, unknown>[] {
+    return logSpy.mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+  }
+
+  it('HTTP 401 AuthenticationFailed: a napló a környezetet és az API-hosztot is mutatja', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          Errors: [
+            {
+              ErrorCode: 'AuthenticationFailed',
+              Title: 'User authentication failed.',
+              Description: 'invalid',
+            },
+          ],
+        },
+        401,
+      ),
+    )
+    const prodConfig: BarionClientConfig = {
+      ...testConfig,
+      environment: 'prod',
+      apiUrl: 'https://api.barion.com',
+      posKey: DUMMY_PROD_POS_KEY,
+    }
+
+    await expect(startPayment(startParams, prodConfig)).rejects.toMatchObject({
+      kind: 'http',
+      httpStatus: 401,
+    })
+
+    const entry = logEntries(logSpy).find((item) => item.msg === 'Barion API HTTP-hiba')
+    expect(entry?.context).toMatchObject({
+      endpoint: 'POST /v2/Payment/Start',
+      barionEnvironment: 'prod',
+      apiHost: 'api.barion.com',
+      httpStatus: 401,
+      providerErrorCodes: ['AuthenticationFailed'],
+    })
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(DUMMY_PROD_POS_KEY)
+  })
+
+  it('timeout és provider-hiba sora is hordozza a környezetet és a hosztot', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ Errors: [{ ErrorCode: 'ShopIsClosed', Title: 'closed', Description: '' }] }),
+    )
+    await expect(startPayment(startParams, testConfig)).rejects.toMatchObject({
+      kind: 'provider',
+    })
+    fetchMock.mockImplementationOnce(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('This operation was aborted', 'AbortError'))
+          })
+        }),
+    )
+    await expect(startPayment(startParams, { ...testConfig, timeoutMs: 20 })).rejects.toMatchObject(
+      { kind: 'timeout' },
+    )
+
+    const entries = logEntries(logSpy)
+    for (const msg of ['Barion provider-hiba', 'Barion API hívás timeout']) {
+      expect(entries.find((item) => item.msg === msg)?.context, msg).toMatchObject({
+        barionEnvironment: 'test',
+        apiHost: 'api.test.barion.com',
+      })
+    }
+  })
+})
+
+/**
+ * Timeout: POST-nál (Start, Refund) a konfigurált érték (alapból 35 s, a
+ * Barion 30 s-os szerverkorlátja fölött), GET-nél (PaymentState) legfeljebb
+ * 15 s, mert az ismételhető, és a callback 15 s-os ablakába kell férnie.
+ */
+describe('Barion-kliens: timeout módszerenként', () => {
+  it('a Start az alapértelmezett 35 s-ot kapja, a PaymentState legfeljebb 15 s-ot', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    const config = getBarionConfig({ ...validEnv } as NodeJS.ProcessEnv)
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Prepared', Errors: [] }),
+    )
+    await startPayment(startParams, config)
+    expect(timeoutSpy).toHaveBeenLastCalledWith(35_000)
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Succeeded', Transactions: [] }),
+    )
+    await fetchPaymentState(DUMMY_PAYMENT_ID, config)
+    expect(timeoutSpy).toHaveBeenLastCalledWith(BARION_GET_TIMEOUT_MS)
+  })
+
+  it('a BARION_TIMEOUT_MS csökkentése mindkét módszerre érvényes', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    const config = getBarionConfig({ ...validEnv, BARION_TIMEOUT_MS: '8000' } as NodeJS.ProcessEnv)
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Prepared', Errors: [] }),
+    )
+    await startPayment(startParams, config)
+    expect(timeoutSpy).toHaveBeenLastCalledWith(8000)
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ PaymentId: DUMMY_PAYMENT_ID, Status: 'Succeeded', Transactions: [] }),
+    )
+    await fetchPaymentState(DUMMY_PAYMENT_ID, config)
+    expect(timeoutSpy).toHaveBeenLastCalledWith(8000)
   })
 })

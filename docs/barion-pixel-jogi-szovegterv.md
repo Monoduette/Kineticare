@@ -29,11 +29,11 @@ Minden alábbi állítás a repó élő forrásfájljaiból származik, fájl- �
 
 A három jogi oldal szövege szó szerinti szövegfájlokból épül fel, nem az adatbázisból:
 
-| Élő útvonal | Oldal címe | Forrásfájl | Terjedelem |
-| --- | --- | --- | --- |
-| `/aszf` | Általános szerződési feltételek | `src/lib/legal-source/aszf.txt` | 136 sor |
-| `/adatvedelem` | Adatkezelési és adatvédelmi szabályzat | `src/lib/legal-source/adatkezeles.txt` | 162 sor |
-| `/impresszum` | Impresszum | `src/lib/legal-source/impresszum.txt` | 27 sor |
+| Élő útvonal    | Oldal címe                             | Forrásfájl                             | Terjedelem |
+| -------------- | -------------------------------------- | -------------------------------------- | ---------- |
+| `/aszf`        | Általános szerződési feltételek        | `src/lib/legal-source/aszf.txt`        | 136 sor    |
+| `/adatvedelem` | Adatkezelési és adatvédelmi szabályzat | `src/lib/legal-source/adatkezeles.txt` | 162 sor    |
+| `/impresszum`  | Impresszum                             | `src/lib/legal-source/impresszum.txt`  | 27 sor     |
 
 Az összerendelés forrása: `src/lib/legal-content.ts:233-253`. Ebből következik, hogy a jóváhagyott szöveg beillesztése egyszerű: a fenti `.txt` fájlok szerkesztésével a szöveg szó szerint jelenik meg az élő oldalon.
 
@@ -48,6 +48,7 @@ Ugyanígy 0 találat a `posthog`, `google analytics`, `ga4`, `meta`, `facebook` 
 A süti-fejezet az `adatkezeles.txt:138-153` sorokon található, „Sütik kezeléséről" címmel. Tartalma kizárólag általános kategória-leírás, négy bekezdésben: „Feltétlenül szükséges sütik" (145. sor), „Funkcionális sütik" (147. sor), „Teljesítményt növelő sütik" (149. sor), „Speciális, ún. targeting sütik" (151. sor).
 
 Amit ez a fejezet **nem** tartalmaz:
+
 - egyetlen süti nevét sem,
 - egyetlen tárolási időtartamot sem,
 - egyetlen jogalap-megjelölést sem sütinként,
@@ -60,15 +61,15 @@ Az adatfeldolgozókat felsoroló rész (`adatkezeles.txt:104-105`) szintén nem 
 
 A süti-sáv a `src/components/analytics/ConsentBanner.tsx` fájlban él. Mért jellemzői:
 
-| Jellemző | Mai állapot | Forrás |
-| --- | --- | --- |
-| Választható kategóriák | Nincsenek. Egyetlen, mindent lefedő döntés. | `ConsentBanner.tsx:164-179` (két gomb: „Elfogadom", „Elutasítom") |
-| „További beállítások" út | Nincs. | ugyanott |
-| Visszavonási út | Van: a lábléc „Süti-beállítások" gombja újranyitja a sávot döntés után is. | `ConsentBanner.tsx:88`, `src/lib/analytics/consent.ts:29-33` |
-| A döntés tárolása | `localStorage`, kulcs: `kc_analytics_consent`. | `consent.ts:22` |
-| Időbélyeg a döntés mellett | Kiinduláskor nem volt. A párhuzamos munkapéldányban már van: külön `kc_analytics_consent_at` kulcs tárolja a döntés időpontját. | `consent.ts`, `CONSENT_TIMESTAMP_KEY` |
-| Időszakos újrakérdezés | Kiinduláskor nem volt megvalósítható. A munkapéldányban 365 napra van állítva, tehát a Barion 13 hónapos felső korlátján belül. | `consent.ts`, `CONSENT_MAX_AGE_DAYS = 365` |
-| Megszólítás | Magázó: „Az analitika csak a hozzájárulásával kapcsol be." | `ConsentBanner.tsx:162` |
+| Jellemző                   | Mai állapot                                                                                                                     | Forrás                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Választható kategóriák     | Nincsenek. Egyetlen, mindent lefedő döntés.                                                                                     | `ConsentBanner.tsx:164-179` (két gomb: „Elfogadom", „Elutasítom") |
+| „További beállítások" út   | Nincs.                                                                                                                          | ugyanott                                                          |
+| Visszavonási út            | Van: a lábléc „Süti-beállítások" gombja újranyitja a sávot döntés után is.                                                      | `ConsentBanner.tsx:88`, `src/lib/analytics/consent.ts:29-33`      |
+| A döntés tárolása          | `localStorage`, kulcs: `kc_analytics_consent`.                                                                                  | `consent.ts:22`                                                   |
+| Időbélyeg a döntés mellett | Kiinduláskor nem volt. A párhuzamos munkapéldányban már van: külön `kc_analytics_consent_at` kulcs tárolja a döntés időpontját. | `consent.ts`, `CONSENT_TIMESTAMP_KEY`                             |
+| Időszakos újrakérdezés     | Kiinduláskor nem volt megvalósítható. A munkapéldányban 365 napra van állítva, tehát a Barion 13 hónapos felső korlátján belül. | `consent.ts`, `CONSENT_MAX_AGE_DAYS = 365`                        |
+| Megszólítás                | Magázó: „Az analitika csak a hozzájárulásával kapcsol be."                                                                      | `ConsentBanner.tsx:162`                                           |
 
 A megszólítás önmagában is eltér az oldal többi részétől, ami tegez. Példa a mai tegező hangra a vásárlás-visszaigazoló levélben: „Köszönjük a vásárlásod! A fizetésed sikeres, a kurzushozzáférésed aktív." (`src/lib/email/templates/order.ts:76`).
 
@@ -106,12 +107,12 @@ A fizetési integráció ettől függetlenül régóta él: a vásárló a Bario
 
 **Kitöltendő az ügyvédnek:** a Barion Payment Zrt. hatályos székhelyét és cégadatait a Barion hivatalos közleményéből vagy a cégnyilvántartásból kell átvenni. A jelen dokumentum forrásanyaga ezt nem tartalmazta, ezért szándékosan nem írtuk be emlékezetből.
 
-| Süti neve | Célja | Szolgáltató | Tárolási idő | Jogalap |
-| --- | --- | --- | --- | --- |
-| `ba_vid` | A bankkártyás csalások kiszűrése a Barion Smart Gateway használata során, az eszköz digitális ujjlenyomata és a böngészési szokások alapján. Biztosítja, hogy az így gyűjtött adatokról meg lehessen állapítani: ugyanattól a felhasználótól származnak. | Barion Payment Zrt. | Az utolsó frissüléstől számított 1,5 év | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
-| `ba_vid.xxx` | Ugyanaz a cél, mint a `ba_vid` esetében: a böngészési szokások követése két munkamenet között ezen a honlapon. Gyűjtött adatok: a `ba_vid` azonosító, a felhasználóhoz kapcsolódó azonosító (a böngésző tulajdonságaiból képzett hash), az első, a mostani és az utolsó látogatás időbélyege, az aktuális munkamenet azonosítója, valamint a harmadik feles sütikre adott engedély ténye. | Barion Payment Zrt. | 1,5 év | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
-| `ba_sid` | A munkamenet azonosítása honlapokon átívelően. | Barion Payment Zrt. | 30 perc | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
-| `ba_sid.xxx` | A böngésző munkamenetének azonosítása ezen a honlapon belül. | Barion Payment Zrt. | 30 perc | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
+| Süti neve    | Célja                                                                                                                                                                                                                                                                                                                                                                                     | Szolgáltató         | Tárolási idő                            | Jogalap                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `ba_vid`     | A bankkártyás csalások kiszűrése a Barion Smart Gateway használata során, az eszköz digitális ujjlenyomata és a böngészési szokások alapján. Biztosítja, hogy az így gyűjtött adatokról meg lehessen állapítani: ugyanattól a felhasználótól származnak.                                                                                                                                  | Barion Payment Zrt. | Az utolsó frissüléstől számított 1,5 év | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
+| `ba_vid.xxx` | Ugyanaz a cél, mint a `ba_vid` esetében: a böngészési szokások követése két munkamenet között ezen a honlapon. Gyűjtött adatok: a `ba_vid` azonosító, a felhasználóhoz kapcsolódó azonosító (a böngésző tulajdonságaiból képzett hash), az első, a mostani és az utolsó látogatás időbélyege, az aktuális munkamenet azonosítója, valamint a harmadik feles sütikre adott engedély ténye. | Barion Payment Zrt. | 1,5 év                                  | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
+| `ba_sid`     | A munkamenet azonosítása honlapokon átívelően.                                                                                                                                                                                                                                                                                                                                            | Barion Payment Zrt. | 30 perc                                 | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
+| `ba_sid.xxx` | A böngésző munkamenetének azonosítása ezen a honlapon belül.                                                                                                                                                                                                                                                                                                                              | Barion Payment Zrt. | 30 perc                                 | A Barion Payment Zrt. jogos érdeke a csalásmegelőzéshez (GDPR 6. cikk (1) bekezdés f) pont) |
 
 > A fenti sütik lejárati ideje a használat során meghosszabbodhat. Az ebből eredő adatgyűjtés nem igényel külön hozzájárulást.
 >
@@ -121,10 +122,10 @@ A fizetési integráció ettől függetlenül régóta él: a vásárló a Bario
 >
 > Ezeket a sütiket kizárólag akkor helyezzük el, ha ehhez a süti-kezelő sávban hozzájárulsz. A hozzájárulásodat bármikor módosíthatod vagy visszavonhatod a lábléc „Süti-beállítások" pontjában, és a visszavonás nem érinti a visszavonás előtti adatkezelés jogszerűségét.
 
-| Süti neve | Célja | Szolgáltató | Tárolási idő | Jogalap |
-| --- | --- | --- | --- | --- |
-| `BarionMarketingConsent.xxx` | Annak tárolása, hogy hozzájárultál-e ahhoz, hogy a böngészési szokásaidból származó adatokat gyűjtsék, és a vásárlási szokásaidat személyre szabott hirdetések céljából vizsgálják. | Barion Payment Zrt. | 1,5 év | A Te hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont) |
-| A Barion média- és hirdetőpartnereinek sütijei | A Barion és az adott partner felhasználói azonosítóinak szinkronizálása, azaz egymáshoz párosítása. | Barion Payment Zrt. és a 6.2/b. pontban felsorolt partnerei | A partner saját tájékoztatója szerint | A Te hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont) |
+| Süti neve                                      | Célja                                                                                                                                                                               | Szolgáltató                                                 | Tárolási idő                          | Jogalap                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------- |
+| `BarionMarketingConsent.xxx`                   | Annak tárolása, hogy hozzájárultál-e ahhoz, hogy a böngészési szokásaidból származó adatokat gyűjtsék, és a vásárlási szokásaidat személyre szabott hirdetések céljából vizsgálják. | Barion Payment Zrt.                                         | 1,5 év                                | A Te hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont) |
+| A Barion média- és hirdetőpartnereinek sütijei | A Barion és az adott partner felhasználói azonosítóinak szinkronizálása, azaz egymáshoz párosítása.                                                                                 | Barion Payment Zrt. és a 6.2/b. pontban felsorolt partnerei | A partner saját tájékoztatója szerint | A Te hozzájárulásod (GDPR 6. cikk (1) bekezdés a) pont) |
 
 **Jelölés az ügyvédnek:** a Barion közlése a partneri sütik nevét és tárolási idejét nem adta meg tételesen. A táblázat utolsó sora ezért gyűjtő sor. Ha az ügyvéd tételes felsorolást tart szükségesnek, azt a Barionnál kell megkérdezni (lásd a 6. fejezet K3 kérdését).
 
@@ -140,11 +141,11 @@ A fizetési integráció ettől függetlenül régóta él: a vásárló a Bario
 >
 > Ha hozzájárulsz a marketingsütik használatához, a Barion Payment Zrt. a Barion Marketing Cloud, illetve a Barion Pixel szolgáltatás működtetéséhez az alábbi adatfeldolgozókat veszi igénybe:
 >
-> | Adatfeldolgozó | Székhely |
-> | --- | --- |
-> | DataMe Kft. | 1118 Budapest, Ugron Gábor utca 35. |
-> | Dentsu Hungary Kft. | 1027 Budapest, Kacsa utca 15-23. |
-> | Sales Contact Kft. | 1115 Budapest, Halmi utca 61. |
+> | Adatfeldolgozó         | Székhely                                            |
+> | ---------------------- | --------------------------------------------------- |
+> | DataMe Kft.            | 1118 Budapest, Ugron Gábor utca 35.                 |
+> | Dentsu Hungary Kft.    | 1027 Budapest, Kacsa utca 15-23.                    |
+> | Sales Contact Kft.     | 1115 Budapest, Halmi utca 61.                       |
 > | WPP Media Hungary Kft. | 1123 Budapest, Alkotás utca 53. C. épület 2. emelet |
 
 **Jelölés az ügyvédnek:** a fenti négy cég a Barion adatfeldolgozója, nem a KINETICARE Kft.-é. A megfogalmazás ezt igyekszik pontosan visszaadni. Ha az ügyvéd szerint a kereskedő és a Barion viszonya közös adatkezelés, nem pedig önálló adatkezelés, a bevezető mondat átfogalmazandó (lásd a 6. fejezet K2 kérdését).
@@ -169,16 +170,16 @@ A Barion útmutatása szerint az aláhúzott, itt csúcsos zárójelbe tett rés
 
 ### 5.3. Miben tér el a javaslat a Barion eredetijétől, és miért
 
-| Eltérés | Barion eredetije | A javaslat | Indok |
-| --- | --- | --- | --- |
-| Mondattagolás | Egy hosszú, négy célt egybefűző mondat. | Kettéosztva: célok kettősponttal felsorolva, az adatmegosztás külön mondatban. | Az eredeti mondat egy szuszra öt fogalmat visz, és a végére az olvasó elveszti a fonalat. A tartalom nem változott, csak a tagolás. |
-| „más technológiát" | „más technológiát" | „hasonló technológiákat" | Az „és más technológiát" magyarul befejezetlenül hat. A „hasonló technológiák" a bevett magyar jogi fordulat ugyanerre a körre. |
-| „a weboldal működéséhez, statisztikához" | főnévi felsorolás | „hogy az oldal működjön, hogy statisztikát készítsünk" | Igei szerkezet. A magyar szöveg így természetesebb és konkrétabb, ugyanazt a két célt nevezi meg. |
-| „Partnereink ezeket kombinálhatják más adatokkal is." | önálló mondat, alany nélkül folytatva | „…akik ezeket saját adataikkal is összekapcsolhatják" | A „kombinál" idegen szó, az „összekapcsol" magyar megfelelője pontosabb is. A „saját adataikkal" egyértelműsíti, kinek az adatairól van szó. |
-| Gombnevek | `<Elfogadom>`, `<További beállítások>` | Ugyanezek, félkövéren szedve. | A csúcsos zárójel helykitöltő volt a Barion sablonjában. A gombnevek szó szerint megegyeznek, hogy a sávon látható felirat és a szöveg egybeessen. |
-| Visszavonási út | „amit bármikor módosíthatsz" | „bármikor módosíthatod a lábléc »Süti-beállítások« pontjában" | Az eredeti nem mondja meg, hol. A mi oldalunkon ez a lábléc „Süti-beállítások" gombja, ami már ma is működik (`ConsentBanner.tsx:88`). A konkrét hely megnevezése a visszavonást ténylegesen gyakorolhatóvá teszi. |
-| Záró hivatkozás | „Részletes süti tájékoztató és adatvédelmi tájékoztató." | Két külön hivatkozás, teljes mondatban. | Az eredeti mondat állítmány nélküli. Nálunk mindkét szöveg ugyanazon az oldalon van, ezért a süti-hivatkozás a fejezetre mutat. |
-| Megszólítás | Tegező. | Tegező. | Nincs eltérés. A mai sávunk viszont magázó (`ConsentBanner.tsx:162`), tehát a javaslat a mai szöveghez képest változtat, a Barion eredetijéhez képest nem. |
+| Eltérés                                               | Barion eredetije                                         | A javaslat                                                                     | Indok                                                                                                                                                                                                              |
+| ----------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mondattagolás                                         | Egy hosszú, négy célt egybefűző mondat.                  | Kettéosztva: célok kettősponttal felsorolva, az adatmegosztás külön mondatban. | Az eredeti mondat egy szuszra öt fogalmat visz, és a végére az olvasó elveszti a fonalat. A tartalom nem változott, csak a tagolás.                                                                                |
+| „más technológiát"                                    | „más technológiát"                                       | „hasonló technológiákat"                                                       | Az „és más technológiát" magyarul befejezetlenül hat. A „hasonló technológiák" a bevett magyar jogi fordulat ugyanerre a körre.                                                                                    |
+| „a weboldal működéséhez, statisztikához"              | főnévi felsorolás                                        | „hogy az oldal működjön, hogy statisztikát készítsünk"                         | Igei szerkezet. A magyar szöveg így természetesebb és konkrétabb, ugyanazt a két célt nevezi meg.                                                                                                                  |
+| „Partnereink ezeket kombinálhatják más adatokkal is." | önálló mondat, alany nélkül folytatva                    | „…akik ezeket saját adataikkal is összekapcsolhatják"                          | A „kombinál" idegen szó, az „összekapcsol" magyar megfelelője pontosabb is. A „saját adataikkal" egyértelműsíti, kinek az adatairól van szó.                                                                       |
+| Gombnevek                                             | `<Elfogadom>`, `<További beállítások>`                   | Ugyanezek, félkövéren szedve.                                                  | A csúcsos zárójel helykitöltő volt a Barion sablonjában. A gombnevek szó szerint megegyeznek, hogy a sávon látható felirat és a szöveg egybeessen.                                                                 |
+| Visszavonási út                                       | „amit bármikor módosíthatsz"                             | „bármikor módosíthatod a lábléc »Süti-beállítások« pontjában"                  | Az eredeti nem mondja meg, hol. A mi oldalunkon ez a lábléc „Süti-beállítások" gombja, ami már ma is működik (`ConsentBanner.tsx:88`). A konkrét hely megnevezése a visszavonást ténylegesen gyakorolhatóvá teszi. |
+| Záró hivatkozás                                       | „Részletes süti tájékoztató és adatvédelmi tájékoztató." | Két külön hivatkozás, teljes mondatban.                                        | Az eredeti mondat állítmány nélküli. Nálunk mindkét szöveg ugyanazon az oldalon van, ezért a süti-hivatkozás a fejezetre mutat.                                                                                    |
+| Megszólítás                                           | Tegező.                                                  | Tegező.                                                                        | Nincs eltérés. A mai sávunk viszont magázó (`ConsentBanner.tsx:162`), tehát a javaslat a mai szöveghez képest változtat, a Barion eredetijéhez képest nem.                                                         |
 
 Amit szándékosan **nem** változtattam: az adatmegosztás tényét, a partnerek körét, a személyre szabás említését és a hozzájárulás gombhoz kötését. Ezek a Barion követelményének érdemi elemei.
 
@@ -247,7 +248,7 @@ Ugyanezt erősíti `aszf.txt:25`: „határozott időtartamú hozzáférést biz
 
 **Az ellentmondás.** Az ÁSZF 27 százalékos áfát ígér a vásárlónak, miközben az adószám alanyi adómentességet jelöl, és a rendszer ennek megfelelően állítható be. A vásárló így olyan tartalmú számlát fogad el az ÁSZF-ben, amilyet nem kap meg.
 
-**Döntést igényel:** az `aszf.txt:53` mondat átfogalmazása az adójogi valóságnak megfelelően. Az áfastátusz megállapítása könyvelői és ügyvédi kérdés, a fejlesztői oldal ebben nem foglal állást.
+**Döntés (2026-09-24, tulajdonos):** a KINETICARE Kft. alanyi adómentes, minden számla AAM kulccsal megy ki (`SZAMLAZZ_AFAKULCS=AAM`: nettó = bruttó, áfa = 0). Az ÁSZF mondata ennek megfelelően megváltozott: „A számlát a KINETICARE Kft. állítja ki. A KINETICARE Kft. az általános forgalmi adóról szóló 2007. évi CXXVII. törvény szerint alanyi adómentes, ezért a számla áfát nem tartalmaz. A Weboldalon feltüntetett ár a fizetendő végösszeg.” (`src/lib/legal-source/aszf.txt`; az élő oldalon a tartalom-job `aszf-afa-aam` szabálya cseréli). A vásárlás-visszaigazoló levél összeg-sora ugyanezt a szót használja: „Fizetendő végösszeg”. A fenti 27 százalékos idézet a döntés előtti állapotot rögzíti.
 
 ### 7.3. Az ÁSZF a STRIPE-ot nevezi meg fizetési szolgáltatóként
 

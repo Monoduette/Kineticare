@@ -159,10 +159,11 @@ describe('vásárlás-visszaigazoló', () => {
   it('a tételek táblában állnak, végösszeggel', () => {
     expect(level.html).toContain('Otthoni KézRehab')
     expect(level.html).toContain('2 db')
-    expect(level.html).toContain('Végösszeg')
+    // H16: az ÁSZF szava („fizetendő végösszeg”), áfa-utalás nélkül.
+    expect(level.html).toContain('Fizetendő végösszeg')
   })
 
-  it('a számla-mondat a ZÁRÓ jegyzetben van, nem a rendelés adatai előtt', () => {
+  it('a számla-mondat a gomb után áll, nem a rendelés adatai előtt', () => {
     const szamlaIndex = level.html.indexOf('Számlázz.hu')
     const tetelIndex = level.html.indexOf('Otthoni KézRehab')
     expect(szamlaIndex).toBeGreaterThan(tetelIndex)

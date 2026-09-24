@@ -12,6 +12,22 @@ export function maskEmail(address: string): string {
   return `${local.slice(0, 1)}***@${domain}`
 }
 
+/**
+ * Minden e-mail-cím maszkolása egy SZABAD szövegben, a szöveg többi része
+ * változatlan. A szolgáltatói hibaszöveg (pl. az SMTP-kiszolgáló RCPT-válasza:
+ * „450 4.1.2 <anna@pelda.hu>: Recipient address rejected”) szó szerint
+ * megismételheti a címzett címét; a diagnosztikához a kód és az ok kell, a
+ * teljes cím nem. Pl. „SMTP 450: 450 4.1.2 <anna@pelda.hu>: …” →
+ * „SMTP 450: 450 4.1.2 <a***@pelda.hu>: …”.
+ *
+ * A cím határai: szóköz, csúcsos és szögletes zárójel, idézőjel, aposztróf,
+ * kerek zárójel, vessző, pontosvessző és kettőspont; ezek egyike sem állhat
+ * egy közönséges címben, a szolgáltatói szövegekben viszont ezek veszik körül.
+ */
+export function maskEmailsInText(text: string): string {
+  return text.replace(/[^\s<>@"'(),;:[\]]+@[^\s<>@"'(),;:[\]]+/gu, (cim) => maskEmail(cim))
+}
+
 /** "Név <email@cim.hu>" és puszta "email@cim.hu" formátum feldolgozása. */
 export function parseFromAddress(raw: string | undefined): { name: string; address: string } {
   const fallback = { name: 'Kineticare', address: 'noreply@localhost' }

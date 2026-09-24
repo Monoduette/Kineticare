@@ -197,6 +197,41 @@ export async function assertUnusedRefundTransaction(
   }
 }
 
+/**
+ * A rendelés többi kísérletének már rögzített Barion refund-tranzakciói. A
+ * GetState-egyeztetés ezeket zárja ki, hogy egy korábbi visszatérítést ne
+ * tulajdonítson a mostani kísérletnek. Null (nem bizonyítható), ha egy sikeres
+ * kísérlet bizonyítékából hiányzik a saját refund-azonosító, vagy az csak a
+ * forrás-tranzakció visszhangja: ilyenkor a korábbi visszatérítés nem
+ * azonosítható a Barion-adatokban.
+ */
+export async function consumedRefundTransactionIds(
+  payload: Payload,
+  intent: RefundIntent,
+): Promise<string[] | null> {
+  const orderId = relationId(intent.order)
+  if (orderId === null) return null
+  const ids: string[] = []
+  for (const prior of await loadRefundIntentsForOrder(payload, orderId)) {
+    if (prior.id === intent.id) continue
+    const receipt = await readReceipt(payload, prior, RECEIPTS.provider)
+    if (!receipt) {
+      if (prior.state === 'provider_succeeded' || prior.state === 'committed') return null
+      continue
+    }
+    const refundId = receipt.refundTransactionId
+    if (
+      typeof refundId !== 'string' ||
+      !refundId.trim() ||
+      refundId.replaceAll('-', '').toLowerCase() ===
+        prior.providerTransactionId.replaceAll('-', '').toLowerCase()
+    )
+      return null
+    ids.push(refundId)
+  }
+  return ids
+}
+
 /** A V2 receipt records both provider identities; V1 owner receipts retain their original contract. */
 export async function readProviderReceipt(
   payload: Payload,

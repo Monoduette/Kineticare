@@ -158,7 +158,9 @@ afterAll(() => {
 
 describe('validateGuest — a vendég azonosító adatai', () => {
   it('érvényes adat → kisbetűsített e-mail és normalizált név', () => {
-    expect(validateGuest({ email: '  Vendeg.Vevo@Example.TEST ', name: '  Vendég   Vevő ' })).toEqual({
+    expect(
+      validateGuest({ email: '  Vendeg.Vevo@Example.TEST ', name: '  Vendég   Vevő ' }),
+    ).toEqual({
       ok: true,
       value: { email: 'vendeg.vevo@example.test', name: 'Vendég Vevő' },
     })
@@ -278,7 +280,12 @@ describe('startCheckout — vendég-vásárlás', () => {
     await expect(
       startCheckout({
         payload,
-        input: { productId: 42, consentWithdrawalWaiver: true, consentTerms: true, billing: BILLING },
+        input: {
+          productId: 42,
+          consentWithdrawalWaiver: true,
+          consentTerms: true,
+          billing: BILLING,
+        },
       }),
     ).rejects.toMatchObject({ status: 400 })
     expect(calls.create).toHaveLength(0)
@@ -413,18 +420,26 @@ describe('startCheckout — vendég-vásárlás', () => {
       findOrders: (where) => {
         const query = orderQuery(where)
         seenWhere.push(query.text)
-        return query.wantsPending ? { docs: [{ id: 77 }], totalDocs: 1 } : { docs: [], totalDocs: 0 }
+        return query.wantsPending
+          ? { docs: [{ id: 77 }], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 }
       },
     })
 
     const promise = startCheckout({
       payload,
-      input: { productId: 42, consentWithdrawalWaiver: true, consentTerms: true, billing: BILLING, guest: GUEST },
+      input: {
+        productId: 42,
+        consentWithdrawalWaiver: true,
+        consentTerms: true,
+        billing: BILLING,
+        guest: GUEST,
+      },
     })
 
     await expect(promise).rejects.toBeInstanceOf(CheckoutError)
     await expect(promise).rejects.toMatchObject({ status: 409 })
-    await expect(promise).rejects.toThrowError(/folyamatban van egy fizetés/)
+    await expect(promise).rejects.toThrowError(/nemrég már indult egy fizetés/)
 
     // Se rendelés, se Barion-hívás: a blokk a pénz levonása ELŐTT áll meg.
     expect(calls.create).toHaveLength(0)
@@ -466,7 +481,7 @@ describe('startCheckout — vendég-vásárlás', () => {
 
     await expect(promise).rejects.toBeInstanceOf(CheckoutError)
     await expect(promise).rejects.toMatchObject({ status: 409 })
-    await expect(promise).rejects.toThrowError(/folyamatban van egy fizetés/)
+    await expect(promise).rejects.toThrowError(/nemrég már indult egy fizetés/)
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -480,12 +495,20 @@ describe('startCheckout — vendég-vásárlás', () => {
     const { payload, calls } = createMockPayload({
       existingUser: null,
       findOrders: (where) =>
-        orderQuery(where).wantsPaid ? { docs: [{ id: 55 }], totalDocs: 1 } : { docs: [], totalDocs: 0 },
+        orderQuery(where).wantsPaid
+          ? { docs: [{ id: 55 }], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
     })
 
     const promise = startCheckout({
       payload,
-      input: { productId: 42, consentWithdrawalWaiver: true, consentTerms: true, billing: BILLING, guest: GUEST },
+      input: {
+        productId: 42,
+        consentWithdrawalWaiver: true,
+        consentTerms: true,
+        billing: BILLING,
+        guest: GUEST,
+      },
     })
 
     await expect(promise).rejects.toMatchObject({ status: 409 })
@@ -510,7 +533,13 @@ describe('startCheckout — vendég-vásárlás', () => {
 
     const result = await startCheckout({
       payload,
-      input: { productId: 42, consentWithdrawalWaiver: true, consentTerms: true, billing: BILLING, guest: GUEST },
+      input: {
+        productId: 42,
+        consentWithdrawalWaiver: true,
+        consentTerms: true,
+        billing: BILLING,
+        guest: GUEST,
+      },
     })
 
     expect(result.orderNumber).toBe(ORDER_NUMBER)
@@ -537,7 +566,13 @@ describe('startCheckout — vendég-vásárlás', () => {
 
     await startCheckout({
       payload,
-      input: { productId: 42, consentWithdrawalWaiver: true, consentTerms: true, billing: BILLING, guest: GUEST },
+      input: {
+        productId: 42,
+        consentWithdrawalWaiver: true,
+        consentTerms: true,
+        billing: BILLING,
+        guest: GUEST,
+      },
     })
 
     const pendingQuery = seenWhere.find((text) => text.includes('"payment_pending"'))

@@ -2,7 +2,7 @@ import { fixture as refundFixture } from './refund-fixture'
 import type { Payload } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { resetAlertThrottle } from '../lib/alert-throttle'
+import { DEFAULT_ALERT_COOLDOWN_MS, resetAlertThrottle } from '../lib/alert-throttle'
 import { BarionApiError, type BarionPaymentStateResponse } from '../lib/barion'
 import {
   classifyBarionFailure,
@@ -13,8 +13,10 @@ import {
   ORDER_POLL_BATCH_SIZE,
   ORPHAN_ORDER_GRACE_MS,
   pollPendingOrders,
+  RUN_LEVEL_ALERT_COOLDOWN_MS,
   STUCK_ORDER_WARN_MS,
   UNKNOWN_PAYMENT_CANCEL_AFTER_MS,
+  UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS,
 } from '../lib/order-poll/service'
 import { applyBarionStateTransition } from '../lib/order-status/apply-barion-state'
 import { recoverRejectedSucceededPayment } from '../lib/order-status/recover-paid-reject'
@@ -205,8 +207,17 @@ function setup(options: SetupOptions = {}) {
         const excluded = new Set(notIn.map(String))
         docs = docs.filter((order) => !excluded.has(String(order.id)))
       }
+      // A valódi DB a `barionPaymentId: { exists: true }` szűrőt is alkalmazza
+      // (late-success lap, útvonal-próba jelöltje).
+      if (json.includes('"barionPaymentId":{"exists":true}')) {
+        docs = docs.filter(
+          (order) => order.barionPaymentId !== null && order.barionPaymentId !== undefined,
+        )
+      }
       if (sort === 'updatedAt') {
         docs.sort((a, b) => Date.parse(a.updatedAt ?? '') - Date.parse(b.updatedAt ?? ''))
+      } else if (sort === '-updatedAt') {
+        docs.sort((a, b) => Date.parse(b.updatedAt ?? '') - Date.parse(a.updatedAt ?? ''))
       } else if (sort === 'createdAt') {
         docs.sort((a, b) => Date.parse(a.createdAt ?? '') - Date.parse(b.createdAt ?? ''))
       }
@@ -872,25 +883,215 @@ describe('order-poll — hibaosztályozás (classifyBarionFailure)', () => {
     expect(classifyBarionFailure(error)).toBe('transport')
   })
 
-  it('404 → order; a nem BarionApiError kimenete továbbra ismeretlen', () => {
+  /**
+   * Cáfolható állítás (a-callback-5 / r-barion-11): eddig MINDEN 404 `order`
+   * volt, tehát egy útvonal-eltérés („No HTTP resource was found…", Errors
+   * tömb nélkül) egy óra után lezárta az élő függő rendelést. Most csak a
+   * kifejezett not-found kód definitív, bármilyen HTTP-státusszal.
+   */
+  it('csak a PaymentNotFound kód → order; a puszta 404 → unverified-404', () => {
     expect(
       classifyBarionFailure(
         new BarionApiError({ message: '404', kind: 'http', endpoint: 'GET x', httpStatus: 404 }),
       ),
-    ).toBe('order')
+    ).toBe('unverified-404')
+    expect(
+      classifyBarionFailure(
+        new BarionApiError({
+          message: '404 + idegen kód',
+          kind: 'http',
+          endpoint: 'GET x',
+          httpStatus: 404,
+          providerErrors: [{ ErrorCode: 'SomethingElse', Title: 'DUMMY', Description: '' }],
+        }),
+      ),
+    ).toBe('unverified-404')
+    for (const [kind, httpStatus] of [
+      ['http', 404],
+      ['http', 400],
+      ['provider', 200],
+    ] as const) {
+      expect(
+        classifyBarionFailure(
+          new BarionApiError({
+            message: 'DUMMY not found',
+            kind,
+            endpoint: 'GET x',
+            httpStatus,
+            providerErrors: [{ ErrorCode: 'PaymentNotFound', Title: 'DUMMY', Description: '' }],
+          }),
+        ),
+      ).toBe('order')
+    }
     expect(classifyBarionFailure(new Error('fetch failed'))).toBe('unknown')
     expect(classifyBarionFailure(undefined)).toBe('unknown')
   })
 })
 
-describe('order-poll — a Barion által nem ismert függő fizetés (404)', () => {
-  const notFound = () =>
-    new BarionApiError({
-      message: 'DUMMY payment not found',
-      kind: 'http',
-      endpoint: 'GET state',
-      httpStatus: 404,
+/** A Barion kifejezett „nincs ilyen fizetés" válasza (repo-fixtúra kódja, lásd process-callback.ts). */
+function definitiveNotFound(): BarionApiError {
+  return new BarionApiError({
+    message: 'DUMMY payment not found',
+    kind: 'http',
+    endpoint: 'GET state',
+    httpStatus: 404,
+    providerErrors: [
+      { ErrorCode: 'PaymentNotFound', Title: 'DUMMY not found', Description: 'DUMMY' },
+    ],
+  })
+}
+
+/** Útvonal-eltérés alakú válasz: HTTP 404, Barion Errors tömb nélkül. */
+function bareNotFound(): BarionApiError {
+  return new BarionApiError({
+    message: 'Barion API hiba (HTTP 404, GET /v4/Payment/…/PaymentState).',
+    kind: 'http',
+    endpoint: 'GET state',
+    httpStatus: 404,
+  })
+}
+
+function errorLog() {
+  const errors: string[] = []
+  const nothing = (): void => undefined
+  const log = {
+    child: () => log,
+    debug: nothing,
+    info: nothing,
+    warn: nothing,
+    error: (message: string) => errors.push(message),
+  }
+  return { log, errors }
+}
+
+describe('order-poll — puszta 404 (Barion-hibajelzés nélkül) önmagában nem zár le', () => {
+  it('a türelmi időnél régebbi függő rendelés is payment_pending marad, fojtott RIASZTÁS, forgatás', async () => {
+    const stale = createPendingOrder({
+      createdAt: new Date(NOW - UNKNOWN_PAYMENT_CANCEL_AFTER_MS - 60_000).toISOString(),
     })
+    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [stale],
+      stateError: bareNotFound(),
+    })
+    const { log, errors } = errorLog()
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stale.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+    expect(summary.failed).toBe(1)
+    expect(orderUpdates).toEqual([{ status: 'payment_pending' }])
+    expect(errors.filter((message) => message.includes('HTTP 404'))).toHaveLength(1)
+    expect(errors[0]).toContain('RIASZTÁS')
+
+    // Ugyanarra a rendelésre a következő futás a cooldown alatt nem ír új riasztást.
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW + 300_000,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(errors.filter((message) => message.includes('HTTP 404'))).toHaveLength(1)
+    expect(stale.status).toBe('payment_pending')
+  })
+
+  /**
+   * fix-404 rev1 (B1): a late-success scan csak lezárt sort néz, ezért a
+   * függő sorokra szóló „most NEM zárjuk le … a poll lezárja" RIASZTÁS itt
+   * hamis volt: a poll által lezárt régi sorra a 7 napos ablak végéig 6
+   * óránként újra kiment. A lezárt sorra jövő puszta 404 most csak forgat.
+   */
+  it('a late-success scan puszta 404-re nem ír státuszt és nem riaszt, csak forgat', async () => {
+    const cancelled = createPendingOrder({
+      id: 610,
+      status: 'cancelled',
+      updatedAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, paidCalls, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateError: bareNotFound(),
+    })
+    const { log, errors } = errorLog()
+
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(cancelled.status).toBe('cancelled')
+    expect(paidCalls).toHaveLength(0)
+    expect(errors).toEqual([])
+    // A cím „forgat" állítása (H13): státusz-változatlan touch, a sor a végére kerül.
+    expect(orderUpdates).toEqual([{ status: 'cancelled' }])
+    expect(cancelled.updatedAt).toBe(new Date(NOW).toISOString())
+  })
+
+  /**
+   * A globális útvonal-eltérés MINDEN hívást 404-re visz: ez a futás eleji
+   * mennyezetbe számít, a futás megáll. A forgatás miatt viszont nem lesz
+   * sorfej-blokkoló: a következő futás a többi sorral kezd.
+   */
+  it('öt puszta 404 a futás elején megszakít, a következő futás a hatodikkal kezd és lezárja', async () => {
+    const pending = Array.from({ length: 6 }, (_, index) =>
+      createPendingOrder({
+        id: 700 + index,
+        barionPaymentId: `DUMMY-bare-${index}`,
+        createdAt: isoHoursAgo(0.5),
+        updatedAt: new Date(NOW - (6 - index) * 60_000).toISOString(),
+      }),
+    )
+    const f = setup({ pending })
+    const { log, errors } = errorLog()
+    const fetchState = vi.fn(async (paymentId: string) => {
+      if (paymentId !== pending[5].barionPaymentId) throw bareNotFound()
+      return getStateResponse('Succeeded', { PaymentId: paymentId })
+    })
+
+    const first = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES)
+    expect(first.skipped).toBe(1)
+    expect(pending[5].status).toBe('payment_pending')
+    expect(errors.some((message) => message.includes('tisztázatlan Barion-hiba'))).toBe(true)
+
+    fetchState.mockClear()
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW + 300_000,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState.mock.calls[0]?.[0]).toBe(pending[5].barionPaymentId)
+    expect(pending[5].status).toBe('paid')
+    expect(pending.slice(0, 5).every((order) => order.status === 'payment_pending')).toBe(true)
+  })
+})
+
+describe('order-poll — a Barion által nem ismert függő fizetés (not-found kód)', () => {
+  const notFound = definitiveNotFound
 
   it('a türelmi időnél régebbi függő rendelés → cancelled (a vevő újrakezdheti)', async () => {
     // Cáfolható állítás: eddig a 404 csak „forgatta" a sort, ami örökre
@@ -926,13 +1127,9 @@ describe('order-poll — a Barion által nem ismert függő fizetés (404)', () 
 })
 
 describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
-  const missing = () =>
-    new BarionApiError({
-      message: 'DUMMY payment not found',
-      kind: 'http',
-      endpoint: 'GET state',
-      httpStatus: 404,
-    })
+  // A definitív „nincs ilyen fizetés" a kifejezett not-found kód; a puszta 404
+  // forgatását a „puszta 404" describe fedi.
+  const missing = definitiveNotFound
   const timeout = () =>
     new BarionApiError({
       message: 'DUMMY timeout',
@@ -967,7 +1164,7 @@ describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
         Transactions: [
           {
             TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-            POSTransactionId: `SYNTHETIC-${paymentId}`,
+            POSTransactionId: `${ORDER_NUMBER}-1`,
             TransactionType: 'CardPayment',
             Status: 'Succeeded',
             Total: ORDER_TOTAL_HUF,
@@ -1254,25 +1451,39 @@ describe('order-poll — megszakítás és sorfej-blokkolás', () => {
   })
 
   /**
-   * A 404 EGY fizetésre vonatkozik (nincs ilyen PaymentId), nem az egész
-   * integrációra. Nem növeli a szállítási számlálót, tehát 25 ilyen rekord sem
-   * tudja megszakítani a futást — különben egyetlen hibás rendelés
-   * befagyasztaná az egész mentőhálót.
+   * A kifejezett not-found kód EGY fizetésre vonatkozik (nincs ilyen
+   * PaymentId), nem az egész integrációra. Nem növeli a szállítási számlálót,
+   * és a futás eleji mennyezetbe sem számít, tehát sok ilyen rekord sem tudja
+   * megszakítani a futást — különben egyetlen hibás rendelés befagyasztaná az
+   * egész mentőhálót.
    */
-  it('csupa HTTP 404 → SOHA nem szakít meg, minden rendelés sorra kerül', async () => {
-    const notFound = (): BarionApiError =>
-      new BarionApiError({ message: '404', kind: 'http', endpoint: 'GET x', httpStatus: 404 })
-    const { calls, summary } = await runWithFailures(pendingBatch(5), [
-      notFound(),
-      notFound(),
-      notFound(),
-      notFound(),
-      notFound(),
-    ])
+  it('csupa kifejezett not-found → SOHA nem szakít meg, minden rendelés sorra kerül', async () => {
+    const orders = pendingBatch(MAX_LEADING_FAILURES + 2)
+    const { calls, summary } = await runWithFailures(
+      orders,
+      orders.map(() => definitiveNotFound()),
+    )
 
-    expect(calls).toBe(5)
-    expect(summary.failed).toBe(5)
+    expect(calls).toBe(orders.length)
+    expect(summary.failed).toBe(orders.length)
     expect(summary.skipped).toBe(0)
+  })
+
+  /**
+   * A puszta 404 viszont (Barion-hibajelzés nélkül) útvonal- vagy
+   * verzióváltásra utal, ami minden hívást érint: a futás eleji mennyezet
+   * megállítja, mint bármely tisztázatlan hibát.
+   */
+  it('csupa puszta 404 → a futás eleji mennyezet után megszakít', async () => {
+    const orders = pendingBatch(MAX_LEADING_FAILURES + 2)
+    const { calls, summary } = await runWithFailures(
+      orders,
+      orders.map(() => bareNotFound()),
+    )
+
+    expect(calls).toBe(MAX_LEADING_FAILURES)
+    expect(summary.failed).toBe(MAX_LEADING_FAILURES)
+    expect(summary.skipped).toBe(2)
   })
 })
 
@@ -1738,7 +1949,7 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     RefundedTransactions: [
       {
         TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-        POSTransactionId: 'DUMMY-P0-ORIGINAL-SHOP-TRANSACTION',
+        POSTransactionId: `${ORDER_NUMBER}-1`,
         Total: ORDER_TOTAL_HUF,
         Status: 'Succeeded',
       },
@@ -1749,7 +1960,7 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     Transactions: [
       {
         TransactionId: 'tx-p0',
-        POSTransactionId: 'DUMMY-P0-ORIGINAL-SHOP-TRANSACTION',
+        POSTransactionId: `${ORDER_NUMBER}-1`,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: ORDER_TOTAL_HUF,
@@ -2214,4 +2425,1506 @@ describe('order-poll — late-success sor forgatása függő Barion-státusznál
     expect(orderUpdates.some((row) => row.status === 'payment_failed')).toBe(true)
     expect(failed.status).toBe('payment_failed')
   })
+})
+
+// ---------------------------------------------------------------------------
+// fix-404 — a tartósan 404-es függő sorok és a futás eleji mennyezet
+// ---------------------------------------------------------------------------
+
+/** Kontextust is rögzítő napló: a RIASZTÁS-sorok audit-mezőinek ellenőrzéséhez. */
+function contextLog() {
+  const errors: Array<{ message: string; context: Record<string, unknown> }> = []
+  const warns: string[] = []
+  const infos: string[] = []
+  const log = {
+    child: () => log,
+    debug: (): void => undefined,
+    info: (message: string) => {
+      infos.push(message)
+    },
+    warn: (message: string) => {
+      warns.push(message)
+    },
+    error: (message: string, context?: Record<string, unknown>) => {
+      errors.push({ message, context: context ?? {} })
+    },
+  }
+  return { log, errors, warns, infos }
+}
+
+/** A Barion dokumentált „ismeretlen fizetés" válasza (Error_codes_notifications). */
+function notExistingPaymentId(httpStatus = 404): BarionApiError {
+  return new BarionApiError({
+    message: `Barion API hiba (HTTP ${httpStatus}): NotExistingPaymentId`,
+    kind: httpStatus === 200 ? 'provider' : 'http',
+    endpoint: 'GET state',
+    httpStatus,
+    providerErrors: [
+      {
+        ErrorCode: 'NotExistingPaymentId',
+        Title: 'DUMMY The given payment id is invalid',
+        Description: 'DUMMY',
+      },
+    ],
+  })
+}
+
+const STUCK_PAYMENT_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+const LIVE_PAYMENT_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+const PROBE_PAYMENT_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+
+/** 24 óránál régebbi függő sor, amelyre a Barion tartósan 404-et ad. */
+function stuckPendingOrder(overrides: Partial<Order> = {}): Order {
+  return createPendingOrder({
+    id: 3101,
+    orderNumber: 'KH-2026-003101',
+    barionPaymentId: STUCK_PAYMENT_ID,
+    createdAt: isoHoursAgo(24 * 30),
+    updatedAt: isoHoursAgo(24 * 30),
+    ...overrides,
+  })
+}
+
+/** Friss, élő függő sor: a GetState-je sikeres (Prepared), tehát az útvonal működik. */
+function livePendingOrder(overrides: Partial<Order> = {}): Order {
+  return createPendingOrder({
+    id: 3102,
+    orderNumber: 'KH-2026-003102',
+    barionPaymentId: LIVE_PAYMENT_ID,
+    createdAt: isoHoursAgo(0.2),
+    updatedAt: isoHoursAgo(0.2),
+    ...overrides,
+  })
+}
+
+describe('fix-404 — NotExistingPaymentId: a Barion dokumentált not-found kódja definitív', () => {
+  it.each([404, 400, 200])(
+    'HTTP %i + NotExistingPaymentId → order (bármilyen státusszal)',
+    (status) => {
+      expect(classifyBarionFailure(notExistingPaymentId(status))).toBe('order')
+    },
+  )
+
+  it('a kódegyezés kis-nagybetűt nem néz, de pontos (nincs részleges egyezés)', () => {
+    const withCode = (ErrorCode: string) =>
+      new BarionApiError({
+        message: 'x',
+        kind: 'http',
+        endpoint: 'GET state',
+        httpStatus: 404,
+        providerErrors: [{ ErrorCode, Title: 'DUMMY', Description: 'DUMMY' }],
+      })
+    expect(classifyBarionFailure(withCode('notexistingpaymentid'))).toBe('order')
+    expect(classifyBarionFailure(withCode('NotExistingPaymentIdX'))).toBe('unverified-404')
+    expect(classifyBarionFailure(bareNotFound())).toBe('unverified-404')
+  })
+
+  /**
+   * A HUNT-teszt fordítottja: a 30 napos, NotExistingPaymentId-vel
+   * megválaszolt függő sor eddig 10 napi futás után is payment_pending maradt.
+   */
+  it('30 napos függő sor + 404 NotExistingPaymentId → az első futásban cancelled, útvonal-bizonyíték nélkül is', async () => {
+    const stuck = stuckPendingOrder()
+    const f = setup({ pending: [stuck] })
+    const fetchState = vi.fn(async () => {
+      throw notExistingPaymentId(404)
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stuck.status).toBe('cancelled')
+    expect(summary.cancelled).toBe(1)
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    expect(f.paidCalls).toHaveLength(0)
+  })
+})
+
+describe('fix-404 — 24 óránál régebbi, puszta 404-es függő sor: lezárás CSAK útvonal-bizonyítékkal', () => {
+  const byPaymentId =
+    (responses: Record<string, () => BarionPaymentStateResponse>) =>
+    async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      const respond = responses[paymentId]
+      if (!respond) {
+        throw bareNotFound()
+      }
+      return respond()
+    }
+
+  it('egy MÁSIK függő sor GetState-je sikeres → a régi sor cancelled, RIASZTÁS rendelésszámmal, pénzmozgás nincs', async () => {
+    const stuck = stuckPendingOrder()
+    const live = livePendingOrder()
+    const f = setup({ pending: [stuck, live] })
+    const { log, errors } = contextLog()
+    const recoverRejectedPaid = vi.fn(async () => {
+      throw new Error('TESZT: pénzmozgás nem indulhat')
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState: byPaymentId({
+        [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+      }),
+      recoverRejectedPaid,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stuck.status).toBe('cancelled')
+    expect(live.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(1)
+    expect(recoverRejectedPaid).not.toHaveBeenCalled()
+    expect(f.paidCalls).toHaveLength(0)
+    const closure = errors.find((entry) => entry.message.includes('lezárva (cancelled)'))
+    expect(closure?.message).toMatch(/^RIASZTÁS/)
+    expect(closure?.context).toMatchObject({
+      orderNumber: 'KH-2026-003101',
+      routeProof: 'getstate',
+      httpStatus: 404,
+    })
+    // A lezárt sorra nem íródik mellé a „NEM zárjuk le" riasztás.
+    expect(errors.some((entry) => entry.message.includes('most NEM zárjuk le'))).toBe(false)
+  })
+
+  it('a sorrend mindegy: a régi sor előbb kerül sorra, a bizonyító siker utána jön', async () => {
+    const stuck = stuckPendingOrder({ updatedAt: isoHoursAgo(24 * 40) })
+    const live = livePendingOrder({ updatedAt: isoHoursAgo(0.1) })
+    const f = setup({ pending: [live, stuck] })
+    const calls: string[] = []
+    const fetchState = async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      calls.push(paymentId)
+      if (paymentId === STUCK_PAYMENT_ID) {
+        throw bareNotFound()
+      }
+      return getStateResponse('Prepared', { PaymentId: paymentId })
+    }
+
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(calls).toEqual([STUCK_PAYMENT_ID, LIVE_PAYMENT_ID])
+    expect(stuck.status).toBe('cancelled')
+  })
+
+  it('bizonyíték nélkül (egyetlen sikeres GetState sincs, nincs paid rendelés) → marad, fojtott riasztás', async () => {
+    const stuck = stuckPendingOrder()
+    const f = setup({ pending: [stuck] })
+    const { log, errors } = contextLog()
+    const fetchState = vi.fn(async () => {
+      throw bareNotFound()
+    })
+
+    for (const offset of [0, 300_000]) {
+      const summary = await pollPendingOrders({
+        ...f,
+        fetchState,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+      expect(summary.cancelled).toBe(0)
+    }
+
+    expect(stuck.status).toBe('payment_pending')
+    // Útvonal-próba nem futott (nincs paid jelölt): futásonként egyetlen hívás.
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    const alerts = errors.filter((entry) => entry.message.includes('most NEM zárjuk le'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS/)
+  })
+
+  it('csendes bolt: a sikeres útvonal-próba (legutóbbi paid rendelés GetState-je) bizonyít → cancelled', async () => {
+    const stuck = stuckPendingOrder()
+    const paid = createPendingOrder({
+      id: 3103,
+      status: 'paid',
+      barionPaymentId: PROBE_PAYMENT_ID,
+      invoiceStatus: 'issued',
+    } as Partial<Order>)
+    const f = setup({ pending: [stuck], paidResweep: [paid] })
+    const { log, errors } = contextLog()
+    const fetchState = vi.fn(
+      byPaymentId({
+        [PROBE_PAYMENT_ID]: () => getStateResponse('Succeeded', { PaymentId: PROBE_PAYMENT_ID }),
+      }),
+    )
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState.mock.calls.map(([id]) => id)).toEqual([STUCK_PAYMENT_ID, PROBE_PAYMENT_ID])
+    expect(stuck.status).toBe('cancelled')
+    expect(summary.cancelled).toBe(1)
+    // A próba csak olvas: a paid rendelésre nem ír, és mellékhatást sem indít.
+    expect(paid.status).toBe('paid')
+    expect(f.paidCalls).toHaveLength(0)
+    expect(f.orderUpdateCalls.some((call) => String(call.id ?? call.where?.id) === '3103')).toBe(
+      false,
+    )
+    const closure = errors.find((entry) => entry.message.includes('lezárva (cancelled)'))
+    expect(closure?.context).toMatchObject({ routeProof: 'probe' })
+  })
+
+  it('az útvonal-próba is 404 (globális útvonalhiba) → semmi nem zárul le', async () => {
+    const stuck = stuckPendingOrder()
+    const paid = createPendingOrder({
+      id: 3103,
+      status: 'paid',
+      barionPaymentId: PROBE_PAYMENT_ID,
+    })
+    const f = setup({ pending: [stuck], paidResweep: [paid] })
+    const fetchState = vi.fn(async () => {
+      throw bareNotFound()
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    expect(stuck.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+  })
+
+  it.each([
+    ['24 óra mínusz 1 perc', UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS - 60_000, 'payment_pending'],
+    ['pontosan 24 óra', UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS, 'cancelled'],
+  ] as const)('életkor: %s → %s', async (_label, ageMs, expected) => {
+    const stuck = stuckPendingOrder({ createdAt: new Date(NOW - ageMs).toISOString() })
+    const f = setup({ pending: [stuck, livePendingOrder()] })
+
+    await pollPendingOrders({
+      ...f,
+      fetchState: byPaymentId({
+        [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+      }),
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stuck.status).toBe(expected)
+  })
+
+  it('hiányzó vagy értelmezhetetlen createdAt → sosem zárul le (az életkor nem bizonyított)', async () => {
+    const noDate = stuckPendingOrder({ createdAt: 'nem dátum' })
+    const f = setup({ pending: [noDate, livePendingOrder()] })
+
+    await pollPendingOrders({
+      ...f,
+      fetchState: byPaymentId({
+        [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+      }),
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(noDate.status).toBe('payment_pending')
+  })
+
+  it('verseny: a sor a futás közben paid lett (párhuzamos callback) → a lezárás NEM írja felül', async () => {
+    const stuck = stuckPendingOrder()
+    const live = livePendingOrder()
+    const f = setup({ pending: [stuck, live] })
+    const { log, warns } = contextLog()
+    const fetchState = async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      if (paymentId === STUCK_PAYMENT_ID) {
+        throw bareNotFound()
+      }
+      // A forgatás UTÁN, a lezárás ELŐTT egy callback paid-re állítja a sort.
+      stuck.status = 'paid'
+      return getStateResponse('Prepared', { PaymentId: paymentId })
+    }
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stuck.status).toBe('paid')
+    expect(summary.cancelled).toBe(0)
+    expect(warns.some((message) => message.includes('már nem payment_pending'))).toBe(true)
+  })
+
+  it('hitelesítési megszakítás a futásban → nincs útvonal-próba és nincs lezárás', async () => {
+    const stuck = stuckPendingOrder({ updatedAt: isoHoursAgo(24 * 40) })
+    const other = livePendingOrder()
+    const paid = createPendingOrder({ id: 3103, status: 'paid', barionPaymentId: PROBE_PAYMENT_ID })
+    const f = setup({ pending: [stuck, other], paidResweep: [paid] })
+    const fetchState = vi.fn(async (paymentId: string) => {
+      if (paymentId === STUCK_PAYMENT_ID) {
+        throw bareNotFound()
+      }
+      if (paymentId === PROBE_PAYMENT_ID) {
+        return getStateResponse('Succeeded', { PaymentId: PROBE_PAYMENT_ID })
+      }
+      throw new BarionApiError({
+        message: 'Barion API hiba (HTTP 401).',
+        kind: 'http',
+        endpoint: 'GET state',
+        httpStatus: 401,
+      })
+    })
+
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState.mock.calls.map(([id]) => id)).toEqual([STUCK_PAYMENT_ID, LIVE_PAYMENT_ID])
+    expect(stuck.status).toBe('payment_pending')
+  })
+
+  it('a lezárt sor késői Succeeded-je: a late-success scan a következő futásban paid-re viszi', async () => {
+    // 25 órás sor: a 7 napos late-success ablakon belül van.
+    const stuck = stuckPendingOrder({ createdAt: isoHoursAgo(25), updatedAt: isoHoursAgo(25) })
+    const first = setup({ pending: [stuck, livePendingOrder()] })
+
+    await pollPendingOrders({
+      ...first,
+      fetchState: byPaymentId({
+        [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+      }),
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(stuck.status).toBe('cancelled')
+
+    // Pl. a Barion-környezet visszaváltása után a fizetés Succeeded-nek látszik.
+    const second = setup({ pending: [], lateSuccess: [stuck] })
+    const summary = await pollPendingOrders({
+      ...second,
+      fetchState: byPaymentId({
+        [STUCK_PAYMENT_ID]: () => getStateResponse('Succeeded', { PaymentId: STUCK_PAYMENT_ID }),
+      }),
+      now: NOW + 300_000,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stuck.status).toBe('paid')
+    expect(summary.transitionedPaid).toBe(1)
+    expect(second.paidCalls).toEqual([3101])
+  })
+
+  it('öt régi, 404-es sor a sor elején: az 1. futás mennyezetet ér, a 2. futás (élő sor elöl) mind az ötöt lezárja', async () => {
+    const stuck = Array.from({ length: MAX_LEADING_FAILURES }, (_, index) =>
+      stuckPendingOrder({
+        id: 3200 + index,
+        orderNumber: `KH-2026-00${3200 + index}`,
+        barionPaymentId: `dddddddd-dddd-dddd-dddd-00000000000${index}`,
+        updatedAt: new Date(NOW - (40 - index) * 3600_000).toISOString(),
+      }),
+    )
+    const live = livePendingOrder({ updatedAt: isoHoursAgo(0.1) })
+    const f = setup({ pending: [...stuck, live] })
+    const fetchState = byPaymentId({
+      [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+    })
+
+    const firstRun = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(firstRun.cancelled).toBe(0)
+    expect(stuck.every((order) => order.status === 'payment_pending')).toBe(true)
+
+    const secondRun = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW + 300_000,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(secondRun.cancelled).toBe(MAX_LEADING_FAILURES)
+    expect(stuck.every((order) => order.status === 'cancelled')).toBe(true)
+    expect(live.status).toBe('payment_pending')
+  })
+})
+
+describe('fix-404 — a futás eleji mennyezet csak a függő lapokat állítja meg (H1)', () => {
+  /**
+   * A HUNT-teszt fordítottja: öt tartósan 404-es függő sor minden futásban
+   * kiütötte a mennyezetet, a late-success scan kimaradt, és a cancelled, a
+   * Barionnál Succeeded rendelés 20 futás után sem lett paid.
+   */
+  it.each([
+    ['puszta 404, régi sorok', () => bareNotFound(), 24 * 10],
+    ['puszta 404, friss sorok', () => bareNotFound(), 1],
+    ['404 + ismeretlen kód', () => notFoundWithUnknownCode('SomethingElse'), 24 * 10],
+  ] as const)(
+    '%s: a cancelled, Succeeded rendelés már az első futásban paid',
+    async (_label, failure, ageHours) => {
+      const stuck = Array.from({ length: MAX_LEADING_FAILURES }, (_, index) =>
+        createPendingOrder({
+          id: 3300 + index,
+          barionPaymentId: `eeeeeeee-eeee-eeee-eeee-00000000000${index}`,
+          createdAt: isoHoursAgo(ageHours),
+          updatedAt: isoHoursAgo(ageHours - index * 0.01),
+        }),
+      )
+      const lateOrder = createPendingOrder({
+        id: 3390,
+        status: 'cancelled',
+        barionPaymentId: PAYMENT_ID,
+        createdAt: isoHoursAgo(2),
+        updatedAt: isoHoursAgo(2),
+      })
+      const f = setup({ pending: stuck, lateSuccess: [lateOrder] })
+      const fetchState = vi.fn(async (paymentId: string) => {
+        if (paymentId !== PAYMENT_ID) {
+          throw failure()
+        }
+        return getStateResponse('Succeeded')
+      })
+      const { log, errors } = contextLog()
+
+      await pollPendingOrders({
+        ...f,
+        fetchState,
+        now: NOW,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES + 1)
+      expect(lateOrder.status).toBe('paid')
+      expect(f.paidCalls).toEqual([3390])
+      expect(errors.some((entry) => entry.message.includes('tisztázatlan Barion-hiba'))).toBe(true)
+      // A régi sorokat a late-success siker (útvonal-bizonyíték) le is zárja;
+      // a 24 óránál fiatalabbak maradnak.
+      const expected = ageHours >= 24 ? 'cancelled' : 'payment_pending'
+      expect(stuck.every((order) => order.status === expected)).toBe(true)
+    },
+  )
+
+  /**
+   * A late-success scan SAJÁT keretet kap: ha a mennyezet után a késői sorok
+   * között is áll néhány tartósan 404-es cancelled sor a Succeeded előtt, az
+   * első újabb hiba nem állíthatja meg (különben csendes boltban futásonként
+   * csak egy késői sor kerülne sorra).
+   */
+  it('mennyezet után a late-success scan saját kerettel a 404-es késői sorokon át is eléri a Succeeded-et', async () => {
+    const stuck = Array.from({ length: MAX_LEADING_FAILURES }, (_, index) =>
+      createPendingOrder({
+        id: 3350 + index,
+        barionPaymentId: `edededed-eded-eded-eded-00000000000${index}`,
+        createdAt: isoHoursAgo(1),
+        updatedAt: isoHoursAgo(1 - index * 0.01),
+      }),
+    )
+    const lateBare = Array.from({ length: 2 }, (_, index) =>
+      createPendingOrder({
+        id: 3380 + index,
+        status: 'cancelled',
+        barionPaymentId: `edededed-eded-eded-eded-00000000010${index}`,
+        createdAt: isoHoursAgo(5),
+        updatedAt: isoHoursAgo(5 - index * 0.01),
+      }),
+    )
+    const lateOrder = createPendingOrder({
+      id: 3389,
+      status: 'cancelled',
+      barionPaymentId: PAYMENT_ID,
+      createdAt: isoHoursAgo(2),
+      updatedAt: isoHoursAgo(2),
+    })
+    const f = setup({ pending: stuck, lateSuccess: [...lateBare, lateOrder] })
+    const fetchState = vi.fn(async (paymentId: string) => {
+      if (paymentId !== PAYMENT_ID) {
+        throw bareNotFound()
+      }
+      return getStateResponse('Succeeded')
+    })
+
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES + 3)
+    expect(lateOrder.status).toBe('paid')
+    expect(f.paidCalls).toEqual([3389])
+  })
+
+  it('globális 404: a futás legfeljebb 2 × MAX_LEADING_FAILURES GetState-et tesz', async () => {
+    const pending = Array.from({ length: MAX_LEADING_FAILURES + 2 }, (_, index) =>
+      createPendingOrder({
+        id: 3400 + index,
+        barionPaymentId: `ffffffff-ffff-ffff-ffff-00000000000${index}`,
+      }),
+    )
+    const late = Array.from({ length: LATE_SUCCESS_BATCH_SIZE }, (_, index) =>
+      createPendingOrder({
+        id: 3450 + index,
+        status: 'cancelled',
+        barionPaymentId: `ffffffff-ffff-ffff-ffff-00000000010${index}`,
+        createdAt: isoHoursAgo(2),
+      }),
+    )
+    const f = setup({ pending, lateSuccess: late })
+    const fetchState = vi.fn(async () => {
+      throw bareNotFound()
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(2 * MAX_LEADING_FAILURES)
+    expect(summary.cancelled).toBe(0)
+    expect(pending.every((order) => order.status === 'payment_pending')).toBe(true)
+    expect(late.every((order) => order.status === 'cancelled')).toBe(true)
+  })
+
+  it('globális 404 régi sorokkal: + egyetlen (sikertelen) útvonal-próba, lezárás nincs', async () => {
+    const pending = Array.from({ length: MAX_LEADING_FAILURES + 2 }, (_, index) =>
+      createPendingOrder({
+        id: 3500 + index,
+        barionPaymentId: `abababab-abab-abab-abab-00000000000${index}`,
+        createdAt: isoHoursAgo(24 * 3),
+      }),
+    )
+    const paid = createPendingOrder({ id: 3599, status: 'paid', barionPaymentId: PROBE_PAYMENT_ID })
+    const f = setup({ pending, paidResweep: [paid] })
+    const fetchState = vi.fn<(paymentId: string) => Promise<BarionPaymentStateResponse>>(
+      async () => {
+        throw bareNotFound()
+      },
+    )
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES + 1)
+    expect(fetchState.mock.calls.at(-1)?.[0]).toBe(PROBE_PAYMENT_ID)
+    expect(summary.cancelled).toBe(0)
+    expect(pending.every((order) => order.status === 'payment_pending')).toBe(true)
+  })
+
+  it('hitelesítési hiba továbbra is kihagyja a late-success scant', async () => {
+    const lateOrder = createPendingOrder({
+      id: 3690,
+      status: 'cancelled',
+      barionPaymentId: PAYMENT_ID,
+      createdAt: isoHoursAgo(2),
+    })
+    const f = setup({
+      pending: [createPendingOrder({ id: 3601, barionPaymentId: LIVE_PAYMENT_ID })],
+      lateSuccess: [lateOrder],
+    })
+    const fetchState = vi.fn(async (paymentId: string) => {
+      if (paymentId === PAYMENT_ID) {
+        return getStateResponse('Succeeded')
+      }
+      throw new BarionApiError({
+        message: 'Barion API hiba (HTTP 401).',
+        kind: 'http',
+        endpoint: 'GET state',
+        httpStatus: 401,
+      })
+    })
+
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState).toHaveBeenCalledTimes(1)
+    expect(lateOrder.status).toBe('cancelled')
+  })
+})
+
+/** 404 + nem ismert provider-kód: ugyanúgy unverified-404, mint a puszta 404. */
+function notFoundWithUnknownCode(ErrorCode: string): BarionApiError {
+  return new BarionApiError({
+    message: `Barion API hiba (HTTP 404): ${ErrorCode}`,
+    kind: 'http',
+    endpoint: 'GET state',
+    httpStatus: 404,
+    providerErrors: [{ ErrorCode, Title: 'DUMMY', Description: 'DUMMY' }],
+  })
+}
+
+describe('ti-proposed: late-success scan — puszta 404: forgatás és futás eleji mennyezet (H13)', () => {
+  it('a cancelled sort a puszta 404 után a sor végére forgatja (updatedAt-touch, státusz változatlan)', async () => {
+    const cancelled = createPendingOrder({
+      id: 611,
+      status: 'cancelled',
+      updatedAt: isoHoursAgo(2),
+    })
+    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateError: bareNotFound(),
+    })
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW,
+      logger: errorLog().log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(cancelled.status).toBe('cancelled')
+    expect(orderUpdates).toEqual([{ status: 'cancelled' }])
+    expect(cancelled.updatedAt).toBe(new Date(NOW).toISOString())
+  })
+
+  it('csupa puszta 404 a late-success scanben → a futás eleji mennyezet után megszakít', async () => {
+    const cancelledOrders = Array.from({ length: MAX_LEADING_FAILURES + 2 }, (_, index) =>
+      createPendingOrder({
+        id: 800 + index,
+        status: 'cancelled',
+        barionPaymentId: `DUMMY-late-bare-${index}`,
+        updatedAt: new Date(NOW - (10 - index) * 60_000).toISOString(),
+      }),
+    )
+    const f = setup({ pending: [], lateSuccess: cancelledOrders })
+    const fetchState = vi.fn(async () => {
+      throw bareNotFound()
+    })
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: errorLog().log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES)
+    expect(summary.skipped).toBe(2)
+  })
+})
+
+describe('fix-404 — a tartós refund-egyeztetés riasztása fojtott', () => {
+  it('„tartós refund ellenőrzésre vár": egy RIASZTÁS a cooldown alatt, a lejárta után újra', async () => {
+    const order = createPendingOrder({ id: 3701, barionPaymentId: LIVE_PAYMENT_ID })
+    const f = setup({ pending: [order] })
+    const { log, errors } = contextLog()
+    const applyTransition: typeof applyBarionStateTransition = async () => ({
+      action: 'rejected' as const,
+      reason: 'refund-pending-reconciliation',
+    })
+    const recoverRejectedPaid = vi.fn(async () => ({
+      action: 'failed' as const,
+      detail: 'refund-pending-reconciliation',
+    }))
+    const run = (offset: number) =>
+      pollPendingOrders({
+        ...f,
+        fetchState: async () => getStateResponse('Succeeded', { PaymentId: LIVE_PAYMENT_ID }),
+        applyTransition,
+        recoverRejectedPaid,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    const reconcileAlerts = () =>
+      errors.filter((entry) => entry.message.includes('tartós refund ellenőrzésre vár'))
+
+    await run(0)
+    await run(300_000)
+    await run(600_000)
+    expect(recoverRejectedPaid).toHaveBeenCalledTimes(3)
+    expect(reconcileAlerts()).toHaveLength(1)
+    expect(reconcileAlerts()[0]?.message).toMatch(/^RIASZTÁS/)
+
+    await run(DEFAULT_ALERT_COOLDOWN_MS + 1)
+    expect(reconcileAlerts()).toHaveLength(2)
+  })
+})
+
+describe('fix-404 rev1 — mennyezet-riasztás, útvonal-próba jelöltje, lezárási írás hibája', () => {
+  const respondFor =
+    (responses: Record<string, () => BarionPaymentStateResponse>) =>
+    async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      const respond = responses[paymentId]
+      if (!respond) {
+        throw bareNotFound()
+      }
+      return respond()
+    }
+
+  /**
+   * B2: globális útvonalhibánál (minden GetState puszta 404) a függő lapok és
+   * a late-success scan is eléri a mennyezetet. Eddig futásonként két
+   * mennyezet-RIASZTÁS ment ki, és a late-success scan minden lezárt sorra
+   * külön rendelésenkénti riasztást írt. Futásonként egy mennyezet-RIASZTÁS
+   * elég; a late-success scan mennyezete csak akkor RIASZTÁS, ha a függő
+   * lapoknál nem ment ki.
+   */
+  it.each([
+    ['a függő lapok is elérik a mennyezetet', MAX_LEADING_FAILURES],
+    ['nincs függő sor', 0],
+  ] as const)(
+    'globális puszta 404 (%s): egy mennyezet-RIASZTÁS, lezárt sorra nincs rendelésenkénti riasztás',
+    async (_label, pendingCount) => {
+      const pending = Array.from({ length: pendingCount }, (_, index) =>
+        createPendingOrder({
+          id: 3800 + index,
+          barionPaymentId: `acacacac-acac-acac-acac-00000000000${index}`,
+          updatedAt: new Date(NOW - (20 - index) * 60_000).toISOString(),
+        }),
+      )
+      const late = Array.from({ length: MAX_LEADING_FAILURES + 2 }, (_, index) =>
+        createPendingOrder({
+          id: 3850 + index,
+          status: 'cancelled',
+          barionPaymentId: `bcbcbcbc-bcbc-bcbc-bcbc-00000000000${index}`,
+          createdAt: isoHoursAgo(30),
+          updatedAt: new Date(NOW - (10 - index) * 60_000).toISOString(),
+        }),
+      )
+      const f = setup({ pending, lateSuccess: late })
+      const { log, errors } = contextLog()
+      const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+        throw bareNotFound()
+      })
+
+      await pollPendingOrders({
+        ...f,
+        fetchState,
+        now: NOW,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+
+      // A late-success scan mennyezete továbbra is megállít (a warn-ág is kilép).
+      expect(fetchState).toHaveBeenCalledTimes(pendingCount + MAX_LEADING_FAILURES)
+      const ceilingAlerts = errors.filter((entry) =>
+        entry.message.includes('tisztázatlan Barion-hiba'),
+      )
+      expect(ceilingAlerts).toHaveLength(1)
+      // Rendelésenkénti riasztás csak a FÜGGŐ sorokra megy.
+      const perOrderAlerts = errors.filter((entry) => entry.message.includes('most NEM zárjuk le'))
+      expect(perOrderAlerts).toHaveLength(pendingCount)
+    },
+  )
+
+  /**
+   * B3: az útvonal-próba a LEGUTÓBB frissült, Barion-azonosítós paid rendelést
+   * kérdezi. A legrégebbi paid rendelés a legvalószínűbb, hogy a másik
+   * Barion-környezetből való (a próba elbukna, a beígért lezárás elmaradna), az
+   * azonosító nélküli pedig nem is kérdezhető.
+   */
+  it('az útvonal-próba jelöltje a legutóbb frissült, Barion-azonosítós paid rendelés', async () => {
+    const stuck = stuckPendingOrder()
+    const oldPaid = createPendingOrder({
+      id: 3811,
+      status: 'paid',
+      barionPaymentId: 'dededede-dede-dede-dede-dededededede',
+      updatedAt: isoHoursAgo(24 * 60),
+    })
+    const newPaid = createPendingOrder({
+      id: 3812,
+      status: 'paid',
+      barionPaymentId: PROBE_PAYMENT_ID,
+      updatedAt: isoHoursAgo(2),
+    })
+    const noPaymentId = createPendingOrder({
+      id: 3813,
+      status: 'paid',
+      barionPaymentId: null,
+      updatedAt: isoHoursAgo(1),
+    })
+    const f = setup({ pending: [stuck], paidResweep: [oldPaid, newPaid, noPaymentId] })
+    const fetchState = vi.fn(
+      respondFor({
+        [PROBE_PAYMENT_ID]: () => getStateResponse('Succeeded', { PaymentId: PROBE_PAYMENT_ID }),
+      }),
+    )
+
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: contextLog().log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(fetchState.mock.calls.map(([id]) => id)).toEqual([STUCK_PAYMENT_ID, PROBE_PAYMENT_ID])
+    expect(stuck.status).toBe('cancelled')
+  })
+
+  it('a lezárási írás DB-hibája nem állítja meg a futást: a sor marad, a számla-resweep lefut', async () => {
+    const stuck = stuckPendingOrder()
+    const unbilled = createPendingOrder({
+      id: 3821,
+      status: 'paid',
+      invoiceStatus: 'none',
+    } as Partial<Order>)
+    const f = setup({ pending: [stuck, livePendingOrder()], paidResweep: [unbilled] })
+    const original = f.payload as unknown as {
+      update(args: { data: Record<string, unknown> }): Promise<unknown>
+    }
+    const payload = {
+      ...(f.payload as unknown as Record<string, unknown>),
+      update: async (args: { data: Record<string, unknown> }) => {
+        if (args.data.status === 'cancelled') throw new Error('DUMMY DB write failure')
+        return original.update(args)
+      },
+    } as unknown as Payload
+    const { log, warns } = contextLog()
+
+    const summary = await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState: respondFor({
+        [LIVE_PAYMENT_ID]: () => getStateResponse('Prepared', { PaymentId: LIVE_PAYMENT_ID }),
+      }),
+      now: NOW,
+      logger: log as never,
+    })
+
+    expect(stuck.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+    expect(f.queuedInvoices).toEqual([3821])
+    expect(summary.invoiceResweep).toBe('done')
+    expect(warns.some((message) => message.includes('cancelled írás sikertelen'))).toBe(true)
+  })
+})
+
+describe('fix-404 rev1 — tömeges „nincs ilyen fizetés" útvonal-bizonyíték nélkül (B4)', () => {
+  const notExistingPaymentId400 = (): BarionApiError =>
+    new BarionApiError({
+      message: 'Barion API hiba (HTTP 400): NotExistingPaymentId',
+      kind: 'http',
+      endpoint: 'GET state',
+      httpStatus: 400,
+      providerErrors: [{ ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' }],
+    })
+  /** 1 óránál régebbi függő sorok, a legrégebben érintett elöl. */
+  const agedBatch = (count: number): Order[] =>
+    Array.from({ length: count }, (_, index) =>
+      createPendingOrder({
+        id: 3900 + index,
+        orderNumber: `KH-2026-00${3900 + index}`,
+        barionPaymentId: `fafafafa-fafa-fafa-fafa-0000000000${String(index).padStart(2, '0')}`,
+        createdAt: isoHoursAgo(2),
+        updatedAt: new Date(NOW - (60 - index) * 60_000).toISOString(),
+      }),
+    )
+
+  /**
+   * A NotExistingPaymentId definitív (#260: 1 óra után lezár). Ha viszont a
+   * Barion MINDEN fizetésre ezt adja (BARION_ENVIRONMENT-tévesztés, idegen
+   * POSKey), egy futás eddig minden 1 óránál régebbi függő sort lezárt.
+   */
+  it('20 régi sor, mind NotExistingPaymentId, egyetlen sikeres GetState sincs → nincs lezárás, egy RIASZTÁS', async () => {
+    const pending = agedBatch(20)
+    const f = setup({ pending })
+    const { log, errors } = contextLog()
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw notExistingPaymentId400()
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(summary.cancelled).toBe(0)
+    expect(pending.every((order) => order.status === 'payment_pending')).toBe(true)
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toContain('BARION_ENVIRONMENT')
+    expect(alerts[0]?.context).toMatchObject({
+      count: 20,
+      providerErrorCodes: ['NotExistingPaymentId'],
+    })
+  })
+
+  it.each([
+    ['egy másik függő sor GetState-je sikeres', 'getstate'],
+    ['az útvonal-próba (legutóbbi paid rendelés) sikeres', 'probe'],
+  ] as const)(
+    'ugyanez MAX_LEADING_FAILURES sorral, de %s → mind lezárul',
+    async (_label, proof) => {
+      const pending = agedBatch(MAX_LEADING_FAILURES)
+      const live = livePendingOrder({ updatedAt: isoHoursAgo(0.01) })
+      const paid = createPendingOrder({
+        id: 3990,
+        status: 'paid',
+        barionPaymentId: PROBE_PAYMENT_ID,
+      })
+      const f =
+        proof === 'getstate'
+          ? setup({ pending: [...pending, live] })
+          : setup({ pending, paidResweep: [paid] })
+      const fetchState = vi.fn(async (paymentId: string) => {
+        if (paymentId === LIVE_PAYMENT_ID || paymentId === PROBE_PAYMENT_ID) {
+          return getStateResponse(proof === 'getstate' ? 'Prepared' : 'Succeeded', {
+            PaymentId: paymentId,
+          })
+        }
+        throw notExistingPaymentId400()
+      })
+
+      const summary = await pollPendingOrders({
+        ...f,
+        fetchState,
+        now: NOW,
+        logger: contextLog().log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(summary.cancelled).toBe(MAX_LEADING_FAILURES)
+      expect(pending.every((order) => order.status === 'cancelled')).toBe(true)
+      expect(paid.status).toBe('paid')
+    },
+  )
+})
+
+// ---------------------------------------------------------------------------
+// fix-404 rev2 — több egymást követő futás: memóriabeli rendelés-tábla
+// ---------------------------------------------------------------------------
+
+/**
+ * Memóriabeli orders-tábla egymást követő futásokhoz. A where-t (and, equals,
+ * in, not_in, exists, greater_than_equal), a rendezést és a limitet úgy
+ * alkalmazza, mint a DB, az update pedig bökí az updatedAt-et. A setup() mockja
+ * a függő listát státusztól függetlenül adja vissza, ezért az olyan
+ * forgatókönyvhöz, ahol a poll lezár egy sort, és az a következő futásokban a
+ * late-success scanbe kerül, nem alkalmas.
+ */
+function ordersTable(rows: Order[], clock: { now: number }) {
+  const field = (row: Order, name: string): unknown =>
+    (row as unknown as Record<string, unknown>)[name]
+  const matches = (row: Order, where: unknown): boolean => {
+    if (!where || typeof where !== 'object') {
+      return true
+    }
+    const record = where as Record<string, unknown>
+    if (Array.isArray(record.and)) {
+      return record.and.every((entry) => matches(row, entry))
+    }
+    return Object.entries(record).every(([name, condition]) => {
+      const c = condition as Record<string, unknown>
+      const value = field(row, name)
+      if ('equals' in c) return value === c.equals
+      if ('in' in c) return (c.in as unknown[]).includes(value)
+      if ('not_in' in c) return !(c.not_in as unknown[]).map(String).includes(String(value))
+      if ('exists' in c) return (value !== null && value !== undefined) === c.exists
+      if ('greater_than_equal' in c) return String(value) >= String(c.greater_than_equal)
+      throw new Error(`teszthiba: ismeretlen feltétel ${JSON.stringify(c)}`)
+    })
+  }
+  const byId = (id: number | string): Order => {
+    const found = rows.find((row) => String(row.id) === String(id))
+    if (!found) {
+      throw new Error(`teszthiba: nincs ilyen rendelés: ${id}`)
+    }
+    return found
+  }
+  return {
+    find: async ({ where, sort, limit }: { where?: unknown; sort?: string; limit?: number }) => {
+      let docs = rows.filter((row) => matches(row, where))
+      if (sort) {
+        const descending = sort.startsWith('-')
+        const name = descending ? sort.slice(1) : sort
+        docs = [...docs].sort((a, b) => {
+          const diff = Date.parse(String(field(a, name))) - Date.parse(String(field(b, name)))
+          return descending ? -diff : diff
+        })
+      }
+      if (typeof limit === 'number') {
+        docs = docs.slice(0, limit)
+      }
+      return { docs: docs.map((row) => ({ ...row })), totalDocs: docs.length }
+    },
+    findByID: async ({ collection, id }: { collection: string; id: number }) => {
+      if (collection !== 'orders') {
+        throw new Error(`teszthiba: váratlan findByID (${collection})`)
+      }
+      return { ...byId(id) }
+    },
+    update: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const target = byId(id)
+      Object.assign(target, data)
+      target.updatedAt = new Date(clock.now).toISOString()
+      return { ...target }
+    },
+  }
+}
+
+/** Időbélyeget is rögzítő napló: melyik futásban íródott a sor. */
+function timedLog(clock: { now: number }) {
+  type Entry = { message: string; context: Record<string, unknown>; at: number }
+  const errors: Entry[] = []
+  const warns: Entry[] = []
+  const log = {
+    child: () => log,
+    debug: (): void => undefined,
+    info: (): void => undefined,
+    warn: (message: string, context?: Record<string, unknown>) => {
+      warns.push({ message, context: context ?? {}, at: clock.now })
+    },
+    error: (message: string, context?: Record<string, unknown>) => {
+      errors.push({ message, context: context ?? {}, at: clock.now })
+    },
+  }
+  return { log, errors, warns }
+}
+
+const POLL_INTERVAL_MS = 5 * 60_000
+
+/** Egymást követő, 5 percenkénti futások (a cron ütemezése szerint). */
+async function pollEveryFiveMinutes(input: {
+  payload: unknown
+  fetchState: (paymentId: string) => Promise<BarionPaymentStateResponse>
+  log: unknown
+  clock: { now: number }
+  runs: number
+  startAt?: number
+}): Promise<void> {
+  for (let run = 0; run < input.runs; run += 1) {
+    input.clock.now = (input.startAt ?? NOW) + run * POLL_INTERVAL_MS
+    await pollPendingOrders({
+      payload: input.payload as never,
+      fetchState: input.fetchState,
+      now: input.clock.now,
+      logger: input.log as never,
+      invoicingEnabled: () => false,
+    })
+  }
+}
+
+const ceilingAlertPrefix = `RIASZTÁS: ${MAX_LEADING_FAILURES} tisztázatlan Barion-hiba`
+
+describe('fix-404 rev2 — a futás eleji mennyezet riasztása: útvonal-próba és fojtás', () => {
+  /**
+   * Breaker X1: a poll a sikeres útvonal-próbával lezár hat, a másik
+   * környezetből maradt, puszta 404-es függő sort. Ezek a 7 napos ablakban a
+   * late-success scanbe kerülnek, tartósan 404-et kapnak, és csendes boltban
+   * minden futás eléri velük a mennyezetet. Eddig ez 5 percenként „Ellenőrizd a
+   * Barion-környezetet, a POSKey-t" RIASZTÁS-t írt, miközben ugyanaz a futás
+   * épp bizonyította, hogy az útvonal és a POSKey működik.
+   */
+  it('a poll által lezárt ≥5 puszta-404-es sor: sikeres útvonal-próba mellett a late-success mennyezet nem riaszt, a próba futásonként egyszer fut', async () => {
+    const clock = { now: NOW }
+    const stuck = Array.from({ length: MAX_LEADING_FAILURES + 1 }, (_, index) =>
+      createPendingOrder({
+        id: 4000 + index,
+        orderNumber: `KH-2026-00${4000 + index}`,
+        barionPaymentId: `a1a1a1a1-a1a1-a1a1-a1a1-00000000000${index}`,
+        createdAt: isoHoursAgo(30),
+        updatedAt: new Date(NOW - 30 * 3600_000 + index).toISOString(),
+      }),
+    )
+    const paid = createPendingOrder({
+      id: 4090,
+      status: 'paid',
+      barionPaymentId: PROBE_PAYMENT_ID,
+      createdAt: isoHoursAgo(24 * 20),
+      updatedAt: isoHoursAgo(24 * 19),
+    })
+    const payload = ordersTable([...stuck, paid], clock)
+    const probeCallsAt: number[] = []
+    const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+      if (paymentId === PROBE_PAYMENT_ID) {
+        probeCallsAt.push(clock.now)
+        return getStateResponse('Succeeded', { PaymentId: paymentId })
+      }
+      throw bareNotFound()
+    })
+    const { log, errors } = timedLog(clock)
+
+    await pollEveryFiveMinutes({ payload, fetchState, log, clock, runs: 24 })
+
+    expect(stuck.every((order) => order.status === 'cancelled')).toBe(true)
+    const lastClosureAt = Math.max(
+      ...errors
+        .filter((entry) => entry.message.includes('lezárva (cancelled)'))
+        .map((entry) => entry.at),
+    )
+    expect(lastClosureAt).toBe(NOW + POLL_INTERVAL_MS)
+    const ceilingAfterClosure = errors.filter(
+      (entry) => entry.at > lastClosureAt && entry.message.startsWith(ceilingAlertPrefix),
+    )
+    expect(ceilingAfterClosure).toEqual([])
+    // A mennyezet és a futás végi lezárás ugyanazt a próbát használja: egy
+    // futásban legfeljebb egy próba-hívás (a 2. futásban mindkettőnek kell).
+    expect(probeCallsAt).toHaveLength(24)
+    expect(new Set(probeCallsAt).size).toBe(probeCallsAt.length)
+  })
+
+  /**
+   * Vezetői review: a mennyezet-RIASZTÁS futásszintű állapotot jelez, és
+   * tartós oknál (a próba nem bizonyít, pl. nincs Barion-azonosítós paid
+   * rendelés) 5 percenként ismétlődött. Óránként egy RIASZTÁS, közben warn.
+   */
+  it.each([
+    ['a függő lapok', 'payment_pending', 'a függő rendelések feldolgozása megszakadt'],
+    ['a late-success scan', 'cancelled', 'a late-success scan megszakadt'],
+  ] as const)(
+    '%s mennyezet-RIASZTÁS-a óránként egy, a közbeeső futások warn-t kapnak, a hívás-plafon marad',
+    async (_label, status, marker) => {
+      const clock = { now: NOW }
+      const rows = Array.from({ length: MAX_LEADING_FAILURES }, (_, index) =>
+        createPendingOrder({
+          id: 4100 + index,
+          status,
+          barionPaymentId: `b2b2b2b2-b2b2-b2b2-b2b2-00000000000${index}`,
+          createdAt: isoHoursAgo(2),
+          updatedAt: new Date(NOW - (60 - index) * 60_000).toISOString(),
+        }),
+      )
+      const payload = ordersTable(rows, clock)
+      const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+        throw bareNotFound()
+      })
+      const { log, errors, warns } = timedLog(clock)
+      const ceilingAlerts = () =>
+        errors.filter((entry) => entry.message.startsWith(ceilingAlertPrefix))
+
+      await pollEveryFiveMinutes({ payload, fetchState, log, clock, runs: 12 })
+
+      expect(ceilingAlerts()).toHaveLength(1)
+      expect(ceilingAlerts()[0]?.message).toContain(marker)
+      const throttled = warns.filter(
+        (entry) => entry.message.includes('mennyezet') && entry.message.includes('RIASZTÁS fojtva'),
+      )
+      expect(throttled).toHaveLength(11)
+      expect(fetchState).toHaveBeenCalledTimes(12 * MAX_LEADING_FAILURES)
+
+      await pollEveryFiveMinutes({
+        payload,
+        fetchState,
+        log,
+        clock,
+        runs: 1,
+        startAt: NOW + RUN_LEVEL_ALERT_COOLDOWN_MS,
+      })
+      expect(ceilingAlerts()).toHaveLength(2)
+    },
+  )
+})
+
+describe('fix-404 rev2 — csendes bolt, globális útvonalhiba: a late-success scan útvonal-gyanúja (X3)', () => {
+  /**
+   * Breaker X3: nincs függő sor, a late-success scan három lezárt sorára puszta
+   * 404 jön, és a futásban semmi nem sikerül. A mennyezet (5) nem ér el, a
+   * lezárt sorokra rendelésenként szándékosan nem riasztunk (B1), így eddig
+   * senki nem vette észre, hogy egyetlen GetState sem működik. Az útvonal-próba
+   * dönt: ha egy paid rendelés GetState-je is elbukik, óránként egy RIASZTÁS;
+   * ha sikeres, a 404 sor-specifikus, és nincs riasztás.
+   */
+  it.each([
+    ['elbukik (globális útvonalhiba)', 1, false],
+    ['sikeres (sor-specifikus 404)', 0, true],
+  ] as const)(
+    'az útvonal-próba %s → egy óra alatt %i útvonal-gyanú RIASZTÁS, futásonként egy próba',
+    async (_label, expectedAlerts, probeSucceeds) => {
+      const clock = { now: NOW }
+      const late = Array.from({ length: 3 }, (_, index) =>
+        createPendingOrder({
+          id: 4200 + index,
+          status: 'cancelled',
+          barionPaymentId: `c3c3c3c3-c3c3-c3c3-c3c3-00000000000${index}`,
+          createdAt: isoHoursAgo(3),
+          updatedAt: new Date(NOW - 2 * 3600_000 + index).toISOString(),
+        }),
+      )
+      const paid = createPendingOrder({
+        id: 4290,
+        status: 'paid',
+        barionPaymentId: PROBE_PAYMENT_ID,
+        createdAt: isoHoursAgo(48),
+        updatedAt: isoHoursAgo(48),
+      })
+      const payload = ordersTable([...late, paid], clock)
+      const fetchState = vi.fn(async (paymentId: string): Promise<BarionPaymentStateResponse> => {
+        if (probeSucceeds && paymentId === PROBE_PAYMENT_ID) {
+          return getStateResponse('Succeeded', { PaymentId: paymentId })
+        }
+        throw bareNotFound()
+      })
+      const { log, errors } = timedLog(clock)
+
+      await pollEveryFiveMinutes({ payload, fetchState, log, clock, runs: 12 })
+
+      const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+      expect(alerts).toHaveLength(expectedAlerts)
+      expect(alerts.every((entry) => entry.message.includes('BARION_API_URL'))).toBe(true)
+      expect(alerts.map((entry) => entry.context)).toEqual(
+        Array.from({ length: expectedAlerts }, () =>
+          expect.objectContaining({ lateUnverifiedNotFound: 3, routeProbe: 'failed' }),
+        ),
+      )
+      expect(fetchState).toHaveBeenCalledTimes(12 * (late.length + 1))
+      expect(late.every((order) => order.status === 'cancelled')).toBe(true)
+    },
+  )
+})
+
+describe('fix-404 rev2 — a not-found fék az útvonal-próbán múlik (X2)', () => {
+  /**
+   * Breaker X2: a B4-fék eddig csak az EGY futásban összegyűlt, 1 óránál
+   * régebbi sorokat számolta. Globális félrekonfigurálásnál (minden fizetésre
+   * NotExistingPaymentId, a paid rendelésére is) a szétszórt korú sorok
+   * futásonként kis csomagokban lépték át az 1 órát, és mind lezárult, egyetlen
+   * sikeres GetState nélkül.
+   */
+  it('szétszórt korú függő sorok, globális NotExistingPaymentId, a próba is elbukik → egy óra alatt semmi nem zárul le, egy RIASZTÁS, a visszatartott sor forog', async () => {
+    const clock = { now: NOW }
+    const ages = [3, 2.5, 2, 1.5, 0.9, 0.7, 0.5, 0.2]
+    const rows = ages.map((ageHours, index) =>
+      createPendingOrder({
+        id: 4300 + index,
+        orderNumber: `KH-2026-00${4300 + index}`,
+        barionPaymentId: `d4d4d4d4-d4d4-d4d4-d4d4-00000000000${index}`,
+        createdAt: isoHoursAgo(ageHours),
+        updatedAt: isoHoursAgo(ageHours),
+      }),
+    )
+    const paid = createPendingOrder({
+      id: 4390,
+      status: 'paid',
+      barionPaymentId: PROBE_PAYMENT_ID,
+      createdAt: isoHoursAgo(24 * 5),
+      updatedAt: isoHoursAgo(24 * 5),
+    })
+    const payload = ordersTable([...rows, paid], clock)
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw notExistingPaymentId(404)
+    })
+    const { log, errors } = timedLog(clock)
+
+    await pollEveryFiveMinutes({ payload, fetchState, log, clock, runs: 12 })
+
+    expect(rows.map((order) => order.status)).toEqual(ages.map(() => 'payment_pending'))
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toContain('BARION_ENVIRONMENT')
+    expect(alerts[0]?.context).toMatchObject({
+      count: 4,
+      routeProbe: 'failed',
+      probeOrderId: 4390,
+      providerErrorCodes: ['NotExistingPaymentId'],
+    })
+    // A visszatartott sor minden futásban a sor végére forog (nem ragad a
+    // függő lap elején, és nem éhezteti az élő sorokat).
+    expect(rows[0]?.updatedAt).toBe(new Date(clock.now).toISOString())
+  })
+
+  it('a fék RIASZTÁS-a fojtott: a cooldown alatt egy, a lejárta után újra', async () => {
+    const pending = Array.from({ length: MAX_LEADING_FAILURES }, (_, index) =>
+      createPendingOrder({
+        id: 4400 + index,
+        barionPaymentId: `e5e5e5e5-e5e5-e5e5-e5e5-00000000000${index}`,
+        createdAt: isoHoursAgo(2),
+      }),
+    )
+    const f = setup({ pending })
+    const { log, errors } = contextLog()
+    const run = (at: number) =>
+      pollPendingOrders({
+        ...f,
+        fetchState: async () => {
+          throw notExistingPaymentId(404)
+        },
+        now: at,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    const brakeAlerts = () =>
+      errors.filter(
+        (entry) =>
+          entry.message.startsWith('RIASZTÁS') && entry.message.includes('BARION_ENVIRONMENT'),
+      )
+
+    await run(NOW)
+    await run(NOW + POLL_INTERVAL_MS)
+    expect(brakeAlerts()).toHaveLength(1)
+
+    await run(NOW + DEFAULT_ALERT_COOLDOWN_MS)
+    expect(brakeAlerts()).toHaveLength(2)
+    expect(pending.every((order) => order.status === 'payment_pending')).toBe(true)
+  })
+
+  /**
+   * Ha a próba nem tud dönteni (auth-megszakítás a futásban, vagy a jelölt nem
+   * olvasható), a not-found kódú sor marad, és a következő futás dönt. Eddig a
+   * MAX_LEADING_FAILURES-nél kevesebb ilyen sor ilyenkor is bizonyíték nélkül
+   * lezárult.
+   */
+  it.each([['hitelesítési megszakítás a futásban'], ['a próba jelöltje nem olvasható (DB-hiba)']])(
+    '%s → az egyetlen not-found kódú sor sem zárul le, fék-RIASZTÁS nincs',
+    async (label) => {
+      const authAbort = label.startsWith('hitelesítési')
+      const definitive = createPendingOrder({
+        id: 4501,
+        barionPaymentId: STUCK_PAYMENT_ID,
+        createdAt: isoHoursAgo(3),
+        updatedAt: isoHoursAgo(3),
+      })
+      const other = livePendingOrder({ updatedAt: isoHoursAgo(0.1) })
+      const f = setup({ pending: authAbort ? [definitive, other] : [definitive] })
+      const findWithBrokenProbe = async (args: { sort?: string }) => {
+        if (args.sort === '-updatedAt') {
+          throw new Error('DUMMY DB read failure')
+        }
+        return (f.payload as unknown as { find(a: unknown): Promise<unknown> }).find(args)
+      }
+      const payload = authAbort
+        ? f.payload
+        : ({
+            ...(f.payload as unknown as Record<string, unknown>),
+            find: findWithBrokenProbe,
+          } as unknown as Payload)
+      const { log, errors, warns } = contextLog()
+
+      await pollPendingOrders({
+        ...f,
+        payload,
+        fetchState: async (paymentId: string) => {
+          if (paymentId === STUCK_PAYMENT_ID) {
+            throw notExistingPaymentId(404)
+          }
+          throw new BarionApiError({
+            message: 'Barion API hiba (HTTP 401).',
+            kind: 'http',
+            endpoint: 'GET state',
+            httpStatus: 401,
+          })
+        },
+        now: NOW,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(definitive.status).toBe('payment_pending')
+      expect(errors.some((entry) => entry.message.includes('BARION_ENVIRONMENT-et'))).toBe(false)
+      expect(warns.some((message) => message.includes('a lezárás a következő futásra marad'))).toBe(
+        true,
+      )
+    },
+  )
+})
+
+describe('fix-404 rev2 — lezárási részletek (DB-hiba, lateSuccessRecoverable)', () => {
+  it('a not-found kódú sor lezárási írásának DB-hibája nem állítja meg a futást: a sor marad, a számla-resweep lefut', async () => {
+    const definitive = createPendingOrder({
+      id: 4601,
+      barionPaymentId: STUCK_PAYMENT_ID,
+      createdAt: isoHoursAgo(3),
+    })
+    const unbilled = createPendingOrder({
+      id: 4602,
+      status: 'paid',
+      barionPaymentId: null,
+      invoiceStatus: 'none',
+    } as Partial<Order>)
+    const f = setup({ pending: [definitive], paidResweep: [unbilled] })
+    const original = f.payload as unknown as {
+      update(args: { data: Record<string, unknown> }): Promise<unknown>
+    }
+    const payload = {
+      ...(f.payload as unknown as Record<string, unknown>),
+      update: async (args: { data: Record<string, unknown> }) => {
+        if (args.data.status === 'cancelled') throw new Error('DUMMY DB write failure')
+        return original.update(args)
+      },
+    } as unknown as Payload
+    const { log, warns } = contextLog()
+
+    const summary = await pollPendingOrders({
+      ...f,
+      payload,
+      fetchState: async () => {
+        throw notExistingPaymentId(404)
+      },
+      now: NOW,
+      logger: log as never,
+    })
+
+    expect(definitive.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+    expect(f.queuedInvoices).toEqual([4602])
+    expect(warns.some((message) => message.includes('ismeretlen fizetés: a cancelled írás'))).toBe(
+      true,
+    )
+  })
+
+  it.each([
+    ['30 órás', true, 30],
+    ['30 napos', false, 24 * 30],
+  ] as const)(
+    'a puszta 404-es %s sor lezárási RIASZTÁS-a: lateSuccessRecoverable = %s',
+    async (_label, recoverable, ageHours) => {
+      const stuck = stuckPendingOrder({
+        createdAt: isoHoursAgo(ageHours),
+        updatedAt: isoHoursAgo(ageHours),
+      })
+      const f = setup({ pending: [stuck, livePendingOrder()] })
+      const { log, errors } = contextLog()
+
+      await pollPendingOrders({
+        ...f,
+        fetchState: async (paymentId: string) => {
+          if (paymentId === LIVE_PAYMENT_ID) {
+            return getStateResponse('Prepared', { PaymentId: paymentId })
+          }
+          throw bareNotFound()
+        },
+        now: NOW,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(stuck.status).toBe('cancelled')
+      const closure = errors.find((entry) => entry.message.includes('lezárva (cancelled)'))
+      expect(closure?.context).toMatchObject({ lateSuccessRecoverable: recoverable })
+    },
+  )
 })

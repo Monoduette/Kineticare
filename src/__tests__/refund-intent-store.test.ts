@@ -7,11 +7,13 @@ import {
   createRefundIntent,
   loadActiveRefundIntent,
   loadRefundIntentForOperation,
+  loadRefundIntentsForOrder,
   transitionRefundIntent,
   type RefundIntent,
 } from '@/lib/refund/intent-store'
 import {
   activeRefundOrderKey,
+  NO_PROVIDER_REQUEST_REFERENCE,
   digestRefundIdempotencyKey,
   hashRefundIntentRequestV1,
   hashRefundIntentRequest,
@@ -546,6 +548,56 @@ describe('refund intent SQL storage', () => {
     })
     expect(committed.committedAt).toBeTruthy()
     await expect(loadActiveRefundIntent(db.payload(), 1)).resolves.toBeNull()
+  })
+
+  it('releases a never-launched prepared attempt without a start time, and only with that evidence', async () => {
+    const db = fakeDatabase([fixture('prepared')])
+    await expect(
+      transitionRefundIntent(db.payload(), fixture('prepared'), 'provider_failed', {
+        kind: 'provider_confirmed_no_effect',
+        confirmedAt: time,
+        reference: 'DUMMY-confirmed-no-effect',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_transition' })
+    const released = await transitionRefundIntent(
+      db.payload(),
+      fixture('prepared'),
+      'provider_failed',
+      {
+        kind: 'provider_confirmed_no_effect',
+        confirmedAt: time,
+        reference: NO_PROVIDER_REQUEST_REFERENCE,
+      },
+    )
+    expect(released).toMatchObject({
+      state: 'provider_failed',
+      activeOrderKey: null,
+      providerStartedAt: null,
+      reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE,
+    })
+    expect(released.providerResolvedAt).toBeTruthy()
+    await expect(loadActiveRefundIntent(db.payload(), 1)).resolves.toBeNull()
+    await expect(createRefundIntent(db.payload(), request, anotherKey)).resolves.toMatchObject({
+      state: 'prepared',
+    })
+  })
+
+  it.each([
+    { providerStartedAt: null, reconciliationReference: 'DUMMY-confirmed-no-effect' },
+    { providerStartedAt: time, reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE },
+  ])('rejects a failed record whose start time contradicts its evidence %j', async (patch) => {
+    const failed = {
+      ...fixture('provider_started'),
+      state: 'provider_failed',
+      activeOrderKey: null,
+      providerResolvedAt: time,
+      reconciliationCheckedAt: time,
+      ...patch,
+    } as RefundIntent
+    const db = fakeDatabase([failed])
+    await expect(loadRefundIntentsForOrder(db.payload(), 1)).rejects.toMatchObject({
+      code: 'invalid_record',
+    })
   })
 
   it('keeps ambiguity blocking until structured no-effect evidence is saved atomically', async () => {

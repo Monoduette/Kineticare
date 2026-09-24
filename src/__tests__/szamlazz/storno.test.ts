@@ -48,7 +48,9 @@ function createOrder(overrides: Record<string, unknown> = {}): Order {
     invoiceNumber: ORIGINAL_INVOICE_NUMBER,
     customerEmail: 'anna@example.test',
     totalHufSnapshot: 19990,
-    items: [{ product: 42, quantity: 1, titleSnapshot: 'DEMO-KEZREHAB-001', priceHufSnapshot: 19990 }],
+    items: [
+      { product: 42, quantity: 1, titleSnapshot: 'DEMO-KEZREHAB-001', priceHufSnapshot: 19990 },
+    ],
     customerSnapshot: {
       name: 'Teszt Anna',
       email: 'anna@example.test',
@@ -158,7 +160,9 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
       originalInvoiceNumber: ORIGINAL_INVOICE_NUMBER,
       orderNumber: ORDER_NUMBER,
     })
-    expect(withoutReason).toContain(`<megjegyzes>Visszatérítés (refund) — rendelés: ${ORDER_NUMBER}</megjegyzes>`)
+    expect(withoutReason).toContain(
+      `<megjegyzes>Visszatérítés (refund) — rendelés: ${ORDER_NUMBER}</megjegyzes>`,
+    )
   })
 
   it('XML-escape: az indokban a < jel entitás', () => {
@@ -428,6 +432,27 @@ describe('issueStornoForOrder — állapot a rendelésen (C4)', () => {
     })
     expect(result.outcome).toBe('already-storned')
     expect(updates).toHaveLength(0)
+  })
+})
+
+describe('issueStornoForOrder — 56-os jelzés (a stornó kiállt, az értesítő nem ment ki)', () => {
+  it('storned + stornószám rögzítve, és error-szintű RIASZTÁS a kézi újraküldéshez', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, errors } = createCapturingLogger()
+    const result = await issueStornoForOrder(order, {
+      payload,
+      config: ENABLED_CONFIG,
+      logger,
+      postXml: async () => ({
+        szamlaszam: 'KIN-2026-8',
+        notificationError: { code: '56', message: 'A számlaértesítő kézbesítése sikertelen.' },
+      }),
+    })
+    expect(result).toEqual({ outcome: 'storned', stornoNumber: 'KIN-2026-8' })
+    expect(order.stornoNumber).toBe('KIN-2026-8')
+    expect(order.stornoStatus).toBe('storned')
+    const alert = errors.find((message) => message.includes('számlaértesítő e-mail NEM ment ki'))
+    expect(alert?.startsWith('RIASZTÁS:')).toBe(true)
   })
 })
 

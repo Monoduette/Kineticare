@@ -2,7 +2,11 @@ import type { Payload } from 'payload'
 
 import type { Order, Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
-import { isPaymentDefinitelyNotFound } from '../barion-callback/process-callback'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
+import {
+  isPaymentDefinitelyNotFound,
+  isUnverifiedNotFound,
+} from '../barion-callback/process-callback'
 import {
   BARION_DEFAULT_PAYMENT_WINDOW,
   BarionApiError,
@@ -10,6 +14,7 @@ import {
   getBarionConfig,
   mapBarionPaymentStatus,
   startPayment,
+  type BarionClientConfig,
   type BarionEnvironment,
   type BarionPaymentStateResponse,
 } from '../barion'
@@ -17,6 +22,7 @@ import { canonicalBarionGuid } from '../barion/guid'
 import { coursePriceHuf } from '../courses'
 import { durationDaysFromProduct } from '../access-grants'
 import { resolveSingleCourseAccess } from '../course-access-lookup'
+import { formatPriceHuf } from '../format-price'
 import { logger, type Logger } from '../logger'
 import { onOrderPaid } from '../order-paid'
 import { applyBarionStateTransition } from '../order-status/apply-barion-state'
@@ -29,10 +35,14 @@ import {
 } from '../order-status/recover-paid-reject'
 import type { OrderCustomerResolution } from '../order-status/resolve-order-customer'
 import {
-  CHECKOUT_PAYMENT_IN_PROGRESS,
   CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
+  CHECKOUT_PAYMENT_STATE_UNVERIFIED,
   barionPayUrl,
+  checkoutPaymentInProgressMessage,
+  checkoutStartRejectedWaitMessage,
+  checkoutStartUncertainMessage,
   decidePendingCheckout,
+  minutesLeftInWindow,
   pendingOrderMatchesRequest,
   type PendingResumeExpectation,
 } from './pending-payment'
@@ -43,8 +53,13 @@ import {
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
   CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
   CHECKOUT_PAID_UNDER_REVIEW,
+  CHECKOUT_PAYEE_EMAIL_ACCOUNT,
+  CHECKOUT_PAYEE_EMAIL_GUEST,
+  CHECKOUT_PAYMENT_CONFIG_UNAVAILABLE,
   CHECKOUT_REFUNDED_PRIVILEGED,
   CHECKOUT_REFUNDED_RETRY,
+  CHECKOUT_START_REJECTED,
+  CHECKOUT_TERMS_ERROR,
 } from './form-submission'
 import {
   GUEST_SUMMARY_MISSING,
@@ -52,6 +67,7 @@ import {
   validateGuest,
   type NormalizedGuest,
 } from './guest'
+import { classifyStartFailure } from './start-failure'
 
 export {
   CHECKOUT_GUEST_EXISTING_ACCOUNT,
@@ -67,6 +83,14 @@ export {
  * lépés, nem egy meg nem nevezett „fiók”.
  */
 export const CHECKOUT_ALREADY_PURCHASED = CHECKOUT_ALREADY_PURCHASED_ERROR
+
+/**
+ * Az elutasított Barion Start riasztásának fojtása hibakódonként. Rövidebb az
+ * alapértelmezett 6 óránál: az elutasítás „az eladás áll" állapot, amelyről
+ * óránként kell új riasztás, és egy megoldott, majd órákon belül visszatérő
+ * ugyanilyen hiba se maradjon warn-sor.
+ */
+export const CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS = 60 * 60 * 1000 // 1 óra
 
 /**
  * POST /api/checkout/start. Ár csak szerveroldali snapshot; kliens-ár nem
@@ -209,19 +233,17 @@ function parseInput(input: CheckoutStartInput, hasSession: boolean): ParsedInput
   if (input.consentWithdrawalWaiver !== true) {
     throw new CheckoutError(
       400,
-      'A vásárláshoz el kell fogadnod, hogy a tartalom azonnali megnyitásával lemondasz az elállási jogodról (consentWithdrawalWaiver).',
+      'A vásárláshoz el kell fogadnod, hogy a tartalom azonnali megnyitásával lemondasz az elállási jogodról.',
     )
   }
 
   // Az ÁSZF elfogadása (és az adatkezelési tájékoztató megismerése) — a
   // szerződés ettől jön létre (ÁSZF 22. bekezdés), ezért a kliens-oldali
   // jelölőnégyzet mellett a SZERVER is kikényszeríti. A mezőt a
-  // `buildCustomerSnapshot` időbélyeggel rögzíti a rendelésre.
+  // `buildCustomerSnapshot` időbélyeggel rögzíti a rendelésre. A szöveg
+  // ugyanaz, mint a pénztár kliensoldali hibája: ugyanarra a hiányra egy mondat.
   if (input.consentTerms !== true) {
-    throw new CheckoutError(
-      400,
-      'A vásárláshoz el kell fogadnod az Általános szerződési feltételeket, és jelölnöd kell, hogy az Adatkezelési és adatvédelmi szabályzatot megismerted (consentTerms).',
-    )
+    throw new CheckoutError(400, CHECKOUT_TERMS_ERROR)
   }
 
   // Számlázási adatok: csak a kérésből, profil-tartalék nélkül (kliens megkerülhető).
@@ -253,7 +275,8 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
       productStatus: product.status,
       reason: 'archived',
     })
-    throw new CheckoutError(400, 'Ez a termék már nem megvásárolható (archivált).')
+    // Ugyanaz a mondat, amit a pénztár archivált kurzusnál mutat (penztar/page.tsx).
+    throw new CheckoutError(400, 'Ez a kurzus jelenleg nem vásárolható meg.')
   }
   if (product.status !== 'published') {
     log.warn('checkout-start: vásárlás elutasítva — a termék státusza nem publikált', {
@@ -265,7 +288,8 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
   }
   // Ár-kapu: csak pozitív ár (`coursePriceHuf`); 0 Ft = hiányzó konfig, nem ingyenes út.
   const price = product.priceInHUF
-  if (coursePriceHuf(product) === null) {
+  const serverPriceHuf = coursePriceHuf(product)
+  if (serverPriceHuf === null) {
     log.warn('checkout-start: vásárlás elutasítva — a termékhez nincs érvényes ár', {
       productId: product.id,
       productStatus: product.status,
@@ -282,7 +306,6 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
   // WP63: a szerver ára a MOST fizetendő ár (akcióban az akciós ár); ha az
   // akció a lapnyitás és a fizetés között járt le, az eltérés 400, a vevő a
   // friss árat látja újratöltés után.
-  const serverPriceHuf = coursePriceHuf(product)
   if (priceHuf !== undefined && priceHuf !== serverPriceHuf) {
     log.warn('checkout-start: vásárlás elutasítva — a kliens ára eltér a szerver árától', {
       productId: product.id,
@@ -291,9 +314,13 @@ function assertPurchasable(product: Product, log: Logger, priceHuf?: number): vo
       serverPriceHuf,
       reason: 'client-price-mismatch',
     })
+    // A vevő a mostani árat is megkapja, és azt is, hogy a frissítés a beírt
+    // adatait elviszi (a pénztár nem tárol űrlapállapotot). GOV.UK: mondd meg,
+    // megmaradtak-e a válaszai (problem-with-the-service-pages).
     throw new CheckoutError(
       400,
-      'A megadott ár eltér a termék aktuális árától. Frissítsd az oldalt, és próbáld újra.',
+      `A kurzus ára időközben megváltozott, a mostani ár ${formatPriceHuf(serverPriceHuf)}. ` +
+        'Frissítsd az oldalt, és indítsd újra a fizetést. A frissítés után a beírt adatokat újra meg kell adnod.',
     )
   }
 }
@@ -340,15 +367,66 @@ function purchaseIdsFromUser(user: User | null | undefined): Set<number> {
   return ids
 }
 
-function resolveBarionEnvironment(explicit: BarionEnvironment | undefined): BarionEnvironment {
-  if (explicit === 'test' || explicit === 'prod') {
-    return explicit
-  }
+interface BarionCheckoutConfig {
+  config: BarionClientConfig
+  /** A Pay-URL környezete: a tesztben injektált érték, különben a konfiguráció. */
+  environment: BarionEnvironment
+}
+
+/**
+ * A Barion-konfiguráció feloldása a rendelés létrehozása ELŐTT. Hibás
+ * konfigurációval egyetlen fizetés sem indulhat; ez üzemeltetői hiba, nem a
+ * vevőé, ezért saját üzenetet és RIASZTÁS-t kap (korábban a „fizetés
+ * állapotát nem tudtuk ellenőrizni" 503-ba és egy warn-sorba olvadt bele).
+ * A hibaszöveg a változók NEVÉT és a nem titkos értékeket tartalmazza, kulcsot
+ * soha (client.ts getBarionConfig).
+ */
+function resolveBarionCheckoutConfig(
+  explicit: BarionEnvironment | undefined,
+  log: Logger,
+): BarionCheckoutConfig {
+  let config: BarionClientConfig
   try {
-    return getBarionConfig().environment
-  } catch {
-    throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    config = getBarionConfig()
+  } catch (error) {
+    log.error(
+      'RIASZTÁS: a Barion-konfiguráció hibás — egyetlen fizetés sem indítható. Ellenőrizd a BARION_* környezeti változókat.',
+      { error: error instanceof Error ? error.message : String(error) },
+    )
+    throw new CheckoutError(503, CHECKOUT_PAYMENT_CONFIG_UNAVAILABLE)
   }
+  return {
+    config,
+    environment: explicit === 'test' || explicit === 'prod' ? explicit : config.environment,
+  }
+}
+
+/**
+ * A vevő e-mail-címe nem lehet a bolt Barion-fiókjáé (BARION_PAYEE_EMAIL): a
+ * Barion a saját boltban fizetést elutasítja (docs.barion.com Troubleshooting,
+ * „Paying in your own shop": „You cannot pay in your own shop."; Responsive
+ * web payment: „Do not try to pay with the account that owns the shop!").
+ * A rendelés létrehozása ELŐTT utasítjuk el, így nem marad függő rendelés.
+ * A PayerHint csak előkitöltés: a Barion-oldalon begépelt címet ez nem fogja,
+ * ezért a tulajdonosi próbavásárláshoz másik e-mail és kártya kell.
+ */
+function assertBuyerIsNotPayee(
+  buyerEmail: string,
+  loggedIn: boolean,
+  payeeEmail: string,
+  log: Logger,
+): void {
+  if (buyerEmail.trim().toLowerCase() !== payeeEmail.trim().toLowerCase()) {
+    return
+  }
+  // Az e-mail-cím személyes adat: a naplóba csak a tény kerül.
+  log.warn('checkout-start: a vevő e-mail-címe a Barion-kedvezményezetté — fizetés nem indul', {
+    loggedIn,
+    reason: 'payer-is-payee',
+  })
+  throw loggedIn
+    ? new CheckoutError(409, CHECKOUT_PAYEE_EMAIL_ACCOUNT)
+    : new CheckoutError(400, CHECKOUT_PAYEE_EMAIL_GUEST)
 }
 
 interface DuplicateCheckContext {
@@ -404,8 +482,14 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
       typeof pending.barionPaymentId === 'string' && pending.barionPaymentId.trim().length > 0
         ? pending.barionPaymentId.trim()
         : null
-    let mappedState: 'paid' | 'cancelled' | 'payment_pending' | 'unavailable' | 'not-found' | null =
-      null
+    let mappedState:
+      | 'paid'
+      | 'cancelled'
+      | 'payment_pending'
+      | 'unavailable'
+      | 'not-found'
+      | 'unverified-not-found'
+      | null = null
     let rawState: BarionPaymentStateResponse | null = null
     if (paymentId !== null) {
       try {
@@ -413,14 +497,52 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         mappedState = mapBarionPaymentStatus(rawState.Status)
       } catch (error) {
         if (error instanceof BarionApiError && isPaymentDefinitelyNotFound(error)) {
-          // A Barion nem ismeri a PaymentId-t (pl. teszt-környezetben indított
-          // fizetés az éles kulccsal): a függő sor sosem zárulna le, a vevő
-          // erre a termékre örökre 503-at kapna. Lezárjuk, új Start mehet.
-          ctx.log.warn('checkout-start: a Barion nem ismeri a függő fizetést — a sor lezárul', {
+          // A Barion kifejezett hibajelzéssel nem ismeri a PaymentId-t (pl.
+          // teszt-környezetben indított fizetés az éles kulccsal): a függő sor
+          // sosem zárulna le, a vevő erre a termékre örökre 503-at kapna. A
+          // fizetési ablak lejárta után lezárjuk, és új Start mehet.
+          ctx.log.warn(
+            'checkout-start: a Barion kifejezetten jelzi, hogy nem ismeri a függő fizetést',
+            {
+              orderId: pending.id,
+              httpStatus: error.httpStatus ?? null,
+              providerErrorCodes: error.providerErrors.map(
+                (providerError) => providerError.ErrorCode,
+              ),
+            },
+          )
+          mappedState = 'not-found'
+        } else if (error instanceof BarionApiError && isUnverifiedNotFound(error)) {
+          // Puszta 404: útvonal- vagy verzióváltás, közbülső 404 is lehet. Ha
+          // ezt „nincs ilyen fizetés"-nek vennénk, egy élő (akár már kifizetett)
+          // fizetés mellé második indulna. Fail-closed 503 + riasztás. A
+          // riasztás rendelésenként FOJTOTT: a vevő minden próbálkozása
+          // ugyanezt látja, a nyitott ügyről elég egy error-sor a cooldown alatt.
+          const alertContext = {
             orderId: pending.id,
             httpStatus: error.httpStatus ?? null,
-          })
-          mappedState = 'not-found'
+            providerErrorCodes: error.providerErrors.map(
+              (providerError) => providerError.ErrorCode,
+            ),
+          }
+          if (
+            shouldEmitThrottledAlert(`checkout-unverified-404:${pending.id}`, undefined, ctx.nowMs)
+          ) {
+            ctx.log.error(
+              'RIASZTÁS: a Barion PaymentState HTTP 404-et adott „nincs ilyen fizetés" jelzés nélkül — ' +
+                'a függő fizetést nem zárjuk le, új fizetés nem indul. Ha minden fizetésnél ez jön, ' +
+                'ellenőrizd a BARION_API_URL-t és a PaymentState-útvonalat. Ha csak ennél, a fizetés ' +
+                'valószínűleg a másik Barion-környezetben indult: a 24 óránál régebbi sort az ' +
+                'order-poll lezárja, amint egy másik GetState vagy az útvonal-próba sikeres.',
+              alertContext,
+            )
+          } else {
+            ctx.log.warn(
+              'checkout-start: a függő fizetésre ismét puszta HTTP 404 jött (a riasztás fojtva)',
+              alertContext,
+            )
+          }
+          mappedState = 'unverified-not-found'
         } else {
           ctx.log.warn('checkout-start: a Barion fizetésállapot nem kérdezhető le', {
             orderId: pending.id,
@@ -442,8 +564,11 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     if (decision.kind === 'barion-unavailable') {
       throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
     }
-    if (decision.kind === 'wait-no-payment-id') {
-      throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
+    if (decision.kind === 'unverified-not-found') {
+      throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNVERIFIED)
+    }
+    if (decision.kind === 'wait-no-payment-id' || decision.kind === 'wait-not-found') {
+      throw new CheckoutError(409, checkoutPaymentInProgressMessage(decision.minutesLeft))
     }
     const resumeMatches =
       decision.kind === 'resume' && pendingOrderMatchesRequest(pending, ctx.resumeExpectation)
@@ -459,7 +584,16 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
     if (decision.kind === 'resume' && resumeMatches) {
       const orderNumber = pending.orderNumber
       if (typeof orderNumber !== 'string' || orderNumber.length === 0) {
-        throw new CheckoutError(409, CHECKOUT_PAYMENT_IN_PROGRESS)
+        throw new CheckoutError(
+          409,
+          checkoutPaymentInProgressMessage(
+            minutesLeftInWindow(
+              typeof pending.createdAt === 'string' ? pending.createdAt : null,
+              ctx.nowMs,
+              paymentWindowToMs(),
+            ),
+          ),
+        )
       }
       return {
         kind: 'resume',
@@ -761,9 +895,11 @@ async function resolveBuyer(
 }
 
 /**
- * A checkout-start teljes folyamata. Hiba esetén CheckoutError-t dob
- * (Barion Start-hibánál a rendelés `payment_pending` marad: a Start
- * nem fut újra a fizetési ablak végéig).
+ * A checkout-start teljes folyamata. Hiba esetén CheckoutError-t dob. Ha a
+ * Barion hibajelzéssel elutasítja a Startot, a rendelés payment_failed lesz
+ * (fizetés nem jött létre, a vevő újrapróbálhatja); bizonytalan kimenetnél
+ * (timeout, hálózat, 5xx, értelmezhetetlen válasz) payment_pending marad, és
+ * a Start nem fut újra a fizetési ablak végéig.
  */
 export async function startCheckout(options: CheckoutStartOptions): Promise<CheckoutStartResult> {
   const { payload } = options
@@ -792,6 +928,8 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
   assertPurchasable(product, log, priceHuf)
 
   const buyer = await resolveBuyer(payload, user, guest, log)
+  const barion = resolveBarionCheckoutConfig(options.barionEnvironment, log)
+  assertBuyerIsNotPayee(buyer.email, user !== null, barion.config.payeeEmail, log)
 
   // Rendelés létrehozása: az árakat és a rendelésszámot az orders
   // beforeChange-hookja tölti szerver-oldali (DB) forrásból — a kliens
@@ -857,7 +995,7 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
 
       const paidMessage =
         user !== null ? CHECKOUT_ALREADY_PURCHASED : CHECKOUT_GUEST_FINISH_AFTER_LOGIN
-      const barionEnvironment = resolveBarionEnvironment(options.barionEnvironment)
+      const barionEnvironment = barion.environment
       const duplicateCtx = {
         payload,
         product,
@@ -1004,46 +1142,55 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
   )
 
   /**
-   * Barion Start-hibánál a rendelés payment_pending marad. A fail-closed
-   * `wait-no-payment-id` ág (decidePendingCheckout) nem indít második Startot
-   * a fizetési ablak végéig. payment_failed-re állítás új Startot engedne.
+   * Barion Start-hiba két fajtája (start-failure.ts):
+   * - ELUTASÍTOTT (4xx vagy 200 + Errors tömb): fizetés nem jött létre. A
+   *   rendelés payment_failed lesz, így a vevő újrapróbálkozását nem fogja meg
+   *   a „már folyamatban van egy fizetés" várakoztatás (a-checkout-2: a 401
+   *   AuthenticationFailed eddig 30 percre kizárta a vevőt).
+   * - BIZONYTALAN (timeout, hálózat, 5xx, értelmezhetetlen válasz): a Barion
+   *   létrehozhatta a fizetést. A rendelés payment_pending marad, és a
+   *   fail-closed `wait-no-payment-id` ág (decidePendingCheckout) nem indít
+   *   második Startot a fizetési ablak végéig; a vevő megtudja, hány percig.
    */
   let gatewayUrl: string
   let barionPaymentId: string
   let barionPaymentRequestId: string
   try {
-    const startResponse = await startPayment({
-      // PaymentRequestId = orderNumber → Barion-oldali idempotencia.
-      paymentRequestId: orderNumber,
-      // A köszönőoldal a RENDELÉSSZÁMBÓL poll-ozza a státuszt (`?order=…`).
-      // Enélkül minden fizető vevő a „Hiányzik a rendelésszám" nézetet kapná —
-      // a Barion-visszatérés ugyanis nem hordoz más azonosítót, amit az oldal
-      // használni tudna.
-      redirectUrl: `${serverUrl}/fizetes/koszonom?order=${encodeURIComponent(orderNumber)}`,
-      callbackUrl: `${serverUrl}/api/barion/callback`,
-      payerHint: buyer.email || undefined,
-      cardHolderNameHint: buyer.name ?? undefined,
-      transactions: [
-        {
-          posTransactionId: `${orderNumber}-1`,
-          total: totalHuf,
-          comment: `Kineticare rendelés ${orderNumber}`,
-          items: snapshotItems.map((item) => {
-            const itemQuantity = item.quantity ?? 1
-            const unitPrice = item.priceHufSnapshot ?? 0
-            return {
-              name: item.titleSnapshot ?? product.sku ?? `Termék #${productId}`,
-              description: product.shortDescription ?? '',
-              quantity: itemQuantity,
-              unit: 'db',
-              unitPrice,
-              itemTotal: unitPrice * itemQuantity,
-              ...(product.sku ? { sku: product.sku } : {}),
-            }
-          }),
-        },
-      ],
-    })
+    const startResponse = await startPayment(
+      {
+        // PaymentRequestId = orderNumber → Barion-oldali idempotencia.
+        paymentRequestId: orderNumber,
+        // A köszönőoldal a RENDELÉSSZÁMBÓL poll-ozza a státuszt (`?order=…`).
+        // Enélkül minden fizető vevő a „Hiányzik a rendelésszám" nézetet kapná —
+        // a Barion-visszatérés ugyanis nem hordoz más azonosítót, amit az oldal
+        // használni tudna.
+        redirectUrl: `${serverUrl}/fizetes/koszonom?order=${encodeURIComponent(orderNumber)}`,
+        callbackUrl: `${serverUrl}/api/barion/callback`,
+        payerHint: buyer.email || undefined,
+        cardHolderNameHint: buyer.name ?? undefined,
+        transactions: [
+          {
+            posTransactionId: `${orderNumber}-1`,
+            total: totalHuf,
+            comment: `Kineticare rendelés ${orderNumber}`,
+            items: snapshotItems.map((item) => {
+              const itemQuantity = item.quantity ?? 1
+              const unitPrice = item.priceHufSnapshot ?? 0
+              return {
+                name: item.titleSnapshot ?? product.sku ?? `Termék #${productId}`,
+                description: product.shortDescription ?? '',
+                quantity: itemQuantity,
+                unit: 'db',
+                unitPrice,
+                itemTotal: unitPrice * itemQuantity,
+                ...(product.sku ? { sku: product.sku } : {}),
+              }
+            }),
+          },
+        ],
+      },
+      barion.config,
+    )
     if (!startResponse.GatewayUrl) {
       throw new BarionApiError({
         message: 'A Barion Start-válasz nem tartalmaz GatewayUrl-t.',
@@ -1066,15 +1213,84 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
     barionPaymentId = canonicalPaymentId
     barionPaymentRequestId = startResponse.PaymentRequestId ?? orderNumber
   } catch (error) {
-    log.error('checkout-start: Barion fizetésindítás sikertelen', {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const minutesLeft = minutesLeftInWindow(
+      typeof order.createdAt === 'string' ? order.createdAt : null,
+      nowMs,
+      paymentWindowToMs(),
+    )
+    const failure = classifyStartFailure(error)
+    if (failure.kind === 'uncertain') {
+      log.error(
+        'checkout-start: Barion fizetésindítás sikertelen, a kimenet bizonytalan — a rendelés payment_pending marad a fizetési ablak végéig',
+        { orderId: order.id, orderNumber, error: errorMessage },
+      )
+      throw new CheckoutError(502, checkoutStartUncertainMessage(minutesLeft))
+    }
+
+    // A RIASZTÁS minden elutasításfajtára jár: a Start-kérést mi állítjuk
+    // össze, tehát az elutasítás konfigurációs vagy integrációs hiba, ami
+    // minden vevőt érint (AuthenticationFailed, ModelValidationError,
+    // InvalidUser, UserCantReceiveEMoney, ShopIsClosed …). Épp ezért a
+    // riasztás hibakódonként, óránként FOJTOTT (lásd
+    // CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS): egy rossz POSKey mellett
+    // minden vevő minden próbálkozása ugyanazt jelezné. Az ismétlés
+    // warn-sorként, a rendelés adataival megmarad a naplóban.
+    const rejectionContext = {
       orderId: order.id,
       orderNumber,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    throw new CheckoutError(
-      502,
-      'A fizetés indítása most nem sikerült. Próbáld újra néhány perc múlva.',
-    )
+      httpStatus: failure.httpStatus,
+      providerErrorCodes: failure.errorCodes,
+      operatorHint: failure.operatorHint,
+      error: errorMessage,
+    }
+    const rejectionAlertKey = `checkout-start-rejected:${
+      failure.errorCodes[0] ?? `http-${failure.httpStatus ?? 'ismeretlen'}`
+    }`
+    if (
+      shouldEmitThrottledAlert(rejectionAlertKey, CHECKOUT_START_REJECTED_ALERT_COOLDOWN_MS, nowMs)
+    ) {
+      log.error(
+        'RIASZTÁS: a Barion elutasította a fizetésindítást — fizetés nem jött létre, a rendelés payment_failed lesz',
+        rejectionContext,
+      )
+    } else {
+      log.warn(
+        'checkout-start: a Barion ismét elutasította a fizetésindítást (a riasztás fojtva) — a rendelés payment_failed lesz',
+        rejectionContext,
+      )
+    }
+    let markedFailed: boolean
+    try {
+      markedFailed = await updateOrderStatusIfCurrent({
+        payload,
+        orderId: order.id,
+        expected: 'payment_pending',
+        next: 'payment_failed',
+      })
+    } catch (updateError) {
+      // A sor payment_pending marad: a vevő új próbálkozását a várakoztató ág
+      // fogja meg, ezért a várakozási időt kell közölni, nem az azonnali újrát.
+      log.error(
+        'checkout-start: a payment_failed írása sikertelen — a rendelés payment_pending marad a fizetési ablak végéig',
+        {
+          orderId: order.id,
+          orderNumber,
+          error: updateError instanceof Error ? updateError.message : String(updateError),
+        },
+      )
+      throw new CheckoutError(502, checkoutStartRejectedWaitMessage(minutesLeft))
+    }
+    if (!markedFailed) {
+      log.warn(
+        'checkout-start: a rendelés már nem payment_pending — a payment_failed írás kimarad',
+        {
+          orderId: order.id,
+          orderNumber,
+        },
+      )
+    }
+    throw new CheckoutError(502, CHECKOUT_START_REJECTED)
   }
 
   const persistBarionIds = async (): Promise<boolean> => {

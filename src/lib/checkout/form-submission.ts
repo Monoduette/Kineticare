@@ -98,8 +98,47 @@ export const CHECKOUT_GUEST_EXISTING_ACCOUNT =
  * Vendég, nincs aktivált fiók, de van paid rendelés az e-mailre. W4: ne
  * mondjuk, hogy „már megvásároltad”. A pénztár-űrlap a Belépés gombot ehhez
  * a szöveghez köti; a cél a lejátszó (új pénztár 409 lenne), nem a checkout.
+ *
+ * Ez a vevő jellemzően még NEM állított be jelszót (a vendég-kötéshez
+ * passwordSetupPending kell, guest-bindable-account.ts), tehát a puszta
+ * „jelentkezz be" zsákutca volt. A szöveg megnevezi a belépési oldal
+ * jelszó-beállító linkjét a felületen használt felirattal (§3.2 #37,
+ * WCAG 2.2 · 3.2.4), és azt, hogy mit kap tőle (ugyanaz a szó, mint a
+ * köszönőoldalon: „jelszó-beállító link").
  */
-export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN = 'Ezt a lépést bejelentkezés után tudod befejezni.'
+export const CHECKOUT_GUEST_FINISH_AFTER_LOGIN =
+  'Ezzel az e-mail-címmel bejelentkezés után tudsz továbblépni. Ha még nincs jelszavad, a belépési oldalon válaszd az „Elfelejtetted a jelszavad?” lehetőséget, és küldünk jelszó-beállító linket.'
+
+/**
+ * A Barion hibajelzéssel elutasította a fizetés indítását: fizetés nem jött
+ * létre, a rendelés payment_failed, a vevő újrapróbálhatja. Az ok a mi
+ * oldalunkon van (konfiguráció, integráció), ezért a vevőtől nem kérünk
+ * javítást, csak azt mondjuk meg, hogy pénzt nem vontunk le, és hová
+ * fordulhat (GOV.UK, There is a problem with the service: „Try again later",
+ * elérhetőség; NN/g Error Message Guidelines: pontos leírás, megoldás).
+ */
+export const CHECKOUT_START_REJECTED =
+  'A fizetési oldal nem nyílt meg, mert a Barion nem fogadta el a fizetés indítását. Pénzt nem vontunk le. Próbáld újra később. Ha a hiba ismétlődik, írj nekünk a Kapcsolat oldalon.'
+
+/**
+ * Hibás Barion-beállítás (hiányzó vagy ellentmondó BARION_* változó): egyetlen
+ * fizetés sem indulhat, rendelés sem jön létre. Üzemeltetői hiba, amelyet a
+ * szerver RIASZTÁS-sal naplóz.
+ */
+export const CHECKOUT_PAYMENT_CONFIG_UNAVAILABLE =
+  'A fizetés most nem indítható el, mert a fizetési rendszer beállításában hiba van nálunk. Pénzt nem vontunk le. Próbáld újra később. Ha sürgős, írj nekünk a Kapcsolat oldalon.'
+
+/**
+ * A vevő e-mail-címe a bolt saját Barion-fiókjáé: a Barion a saját boltban
+ * fizetést nem enged (docs.barion.com Troubleshooting: „You cannot pay in your
+ * own shop."). Vendégként a mezőt kell átírni, bejelentkezve a fiók címe
+ * kötött, ezért ott a kijelentkezés a kiút.
+ */
+export const CHECKOUT_PAYEE_EMAIL_GUEST =
+  'Ezzel az e-mail-címmel nem lehet fizetni, mert ez a bolt Barion-fiókjának címe. Adj meg másik e-mail-címet.'
+
+export const CHECKOUT_PAYEE_EMAIL_ACCOUNT =
+  'Ezzel a fiókkal nem lehet fizetni, mert az e-mail-címe a bolt Barion-fiókjának címe. Jelentkezz ki, és vendégként adj meg másik e-mail-címet.'
 
 export const CHECKOUT_REFUNDED_RETRY =
   'A fizetésed teljes összegét visszatérítettük, mert az összeg nem egyezett a rendeléssel. Hozzáférés nem jött létre. Indítsd újra a vásárlást.'

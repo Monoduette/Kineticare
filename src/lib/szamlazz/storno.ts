@@ -4,21 +4,16 @@ import type { Order } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { logger as rootLogger, type Logger } from '../logger'
 import {
-  bodyReadError,
   getSzamlazzConfig,
   isAbortError,
   isDuplicateOrderError,
-  parseAgentResponse,
+  readAgentResponse,
   type SzamlazzParsedSuccess,
 } from './client'
 import { escapeXml } from './invoice'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
 import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
-import {
-  SzamlazzApiError,
-  type IssueStornoResult,
-  type SzamlazzClientConfig,
-} from './types'
+import { SzamlazzApiError, type IssueStornoResult, type SzamlazzClientConfig } from './types'
 
 /**
  * Stornó-számla (xmlszamlast). Automatikus retry tilos — bizonytalan állapotban
@@ -52,10 +47,14 @@ export interface BuildStornoXmlInput {
  *
  * DÁTUMOK SZÁNDÉKOSAN KIHAGYVA: a stornó számlán a teljesítési dátumnak az
  * EREDETI számláéval azonosnak KELL lennie (tudastar/gyik/szamla-sztornozasa).
- * A keltDatum/teljesitesDatum az Agent-kérésben opcionális — kihagyva a
- * Számlázz.hu tölti ki őket, várhatóan az eredetivel egyezően; explicit
- * (esetleg eltérő) érték küldése csak kockázat volna. (Teszt-fiókos
- * ellenőrzés még hátravan — lásd docs/szamlazz-megfeleles.md, C6.)
+ * A keltDatum/teljesitesDatum az Agent-kérésben opcionális. Független,
+ * teszt-fiókos mérés (sagikazarmark/szamlazz-rs,
+ * docs/szamlazz-hu-behaviour.md, P48-P1/P5, 2026-09-06) szerint kihagyott
+ * teljesitesDatum mellett a stornó az EREDETI számla teljesítési dátumát
+ * kapja, a kelte pedig a mai nap. Explicit, eltérő teljesítési dátumot az
+ * Agent szó nélkül elfogad (P48-P3), a nem mai keltDatumot pedig 352-es
+ * hibával utasítja el — ezért egyiket sem küldjük. (Saját fiókos
+ * megerősítés: docs/szamlazz-megfeleles.md, C6 / T11.)
  *
  * szamlaKulsoAzon SZÁNDÉKOSAN NINCS a kérésben — lásd a modul-docblockot (F3).
  */
@@ -135,31 +134,13 @@ export async function postStornoXml(
   }
 
   const durationMs = Date.now() - startedAt
-  if (!response.ok) {
-    throw new SzamlazzApiError({
-      message: `Számlázz.hu HTTP-hiba (${response.status}).`,
-      kind: 'http',
-      httpStatus: response.status,
-      retryable: response.status >= 500,
-    })
-  }
-
   // F6: a törzs OLVASÁSA is megszakadhat (streamelés közbeni timeout,
-  // TCP-vágás). Ha ez nyers TypeError-ként lépne ki, elveszne a retryable
-  // osztályozás: a hívó nem tudná, hogy a POST már elindult, és a
-  // bizonytalan állapot RIASZTÁS nélkül maradna. A parseAgentResponse
-  // saját (már osztályozott) SzamlazzApiError-jait változatlanul engedjük
-  // tovább.
-  let result: SzamlazzParsedSuccess
-  try {
-    const body = await response.text()
-    result = parseAgentResponse(body, response.headers)
-  } catch (error) {
-    if (error instanceof SzamlazzApiError) {
-      throw error
-    }
-    throw bodyReadError(error, resolved.timeoutMs, 'stornó')
-  }
+  // TCP-vágás). A közös readAgentResponse ezt retryable hibává osztályozza —
+  // nyers TypeError-ként a hívó nem tudná, hogy a POST már elindult, és a
+  // bizonytalan állapot RIASZTÁS nélkül maradna. A nem-2xx válasz hibakódját
+  // is kiolvassa; a parseAgentResponse már osztályozott hibái változatlanul
+  // mennek tovább.
+  const result = await readAgentResponse(response, resolved.timeoutMs, 'stornó')
   const log = rootLogger.child({ module: 'szamlazz-storno' })
   log.info('Számlázz.hu stornó-számla kiállítva', {
     endpoint,
@@ -301,10 +282,13 @@ export async function issueStornoForOrder(
     const previousAttempts = currentOrder.stornoAttempts ?? 0
     if (previousAttempts >= MAX_STORNO_ATTEMPTS) {
       const reason = `a stornó-kísérletek száma kimerült (${previousAttempts}/${MAX_STORNO_ATTEMPTS})`
-      log.error('RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell', {
-        attempts: previousAttempts,
-        lastError: currentOrder.stornoLastError ?? null,
-      })
+      log.error(
+        'RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell',
+        {
+          attempts: previousAttempts,
+          lastError: currentOrder.stornoLastError ?? null,
+        },
+      )
       await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
       return { outcome: 'failed', reason }
     }
@@ -353,6 +337,14 @@ export async function issueStornoForOrder(
         attempts,
         persisted: payload !== undefined,
       })
+      if (result.notificationError) {
+        // 56: a stornó kiállt, csak az értesítő levél nem ment ki. Az üzenet
+        // szövegét nem naplózzuk (a vevő e-mail-címét tartalmazhatja).
+        log.error(
+          'RIASZTÁS: a stornó-számla kiállt, de a számlaértesítő e-mail NEM ment ki a vevőnek (56-os kód) — küldd ki kézzel a Számlázz.hu-fiókból',
+          { stornoNumber: result.szamlaszam, agentErrorCode: result.notificationError.code },
+        )
+      }
       return { outcome: 'storned', stornoNumber: result.szamlaszam }
     } catch (error) {
       // 71/152 — duplikátum-jelzés. A stornó ágon NINCS visszakereső kulcsunk

@@ -71,8 +71,7 @@ export interface BillingFieldError {
 }
 
 export type BillingValidationResult =
-  | { ok: true; value: NormalizedBilling }
-  | { ok: false; errors: BillingFieldError[] }
+  { ok: true; value: NormalizedBilling } | { ok: false; errors: BillingFieldError[] }
 
 /** A szabad szöveges mezők hosszkorlátai (alsó = elgépelés-szűrő, felső = épesz-határ). */
 export const BILLING_LIMITS = {
@@ -131,15 +130,15 @@ export const BILLING_ZIP_ERROR =
 export const BILLING_TAX_NUMBER_ERROR =
   'Az adószám 11 számjegyből áll (például 12345676-1-42). Magánszemélyként hagyd üresen.'
 export const BILLING_TAX_NUMBER_STRUCTURE_ERROR =
-  'Ez az adószám nem érvényes — ellenőrizd a számjegyeket. Magánszemélyként hagyd üresen.'
+  'Ez az adószám elírásnak tűnik: ellenőrizd a számjegyeket. Magánszemélyként hagyd üresen.'
 export const BILLING_TAX_NUMBER_EU_ERROR =
   'A közösségi adószám (HU + 8 számjegy) helyett a teljes, 11 jegyű magyar adószámot add meg (például 12345676-1-42).'
 
 /** Összefoglaló üzenetek — a `billingSummaryMessage` a hibahalmazból választ. */
 export const BILLING_SUMMARY_MISSING =
-  'A számlázási adatok hiányosak — a számla kiállításához minden csillagozott mezőt ki kell tölteni.'
+  'A számlázási adatok hiányosak. A számlához töltsd ki az összes csillagozott mezőt.'
 export const BILLING_SUMMARY_TOO_LONG =
-  'A megadott számlázási adat túl hosszú — rövidítsd a pirossal jelölt mezőt.'
+  'A megadott számlázási adat túl hosszú. Rövidítsd a pirossal jelölt mezőt.'
 export const BILLING_SUMMARY_MIXED = 'Ellenőrizd a pirossal jelölt számlázási mezőket.'
 
 /**
@@ -169,6 +168,14 @@ const TAX_NUMBER_COUNTY_CODES: ReadonlySet<string> = new Set([
  * ezzel szemben SZÓKÖZZÉ alakulnak, hogy a sortöréssel elválasztott szavak ne
  * tapadjanak össze. Végül: a whitespace-sorozatok egy szóközre, majd trim.
  *
+ * A Unicode-nemkarakterek (`\p{Noncharacter_Code_Point}`: U+FFFE, U+FFFF,
+ * U+FDD0–U+FDEF és a síkok utolsó két kódpontja) és a magányos surrogate-ek
+ * (`\p{Cs}`) szintén NYOMTALANUL kiesnek: a számla-XML-ben tiltottak (a Számla
+ * Agent 57-es hibával utasítaná el a kérést), és a HOSSZELLENŐRZÉS ELŐTT kell
+ * eltűnniük, hogy egy csak ilyenekből álló mező „hiányzó"-ként bukjon el, ne
+ * üres `nev`-ként a számlán. Szándékosan nem a teljes `\p{Cn}`: az a Node
+ * ICU-jánál újabb Unicode-verzió valódi karaktereit is törölné.
+ *
  * EXPORTÁLT, mert a vendég-vásárlás azonosító mezői (`./guest.ts`) ugyanezt a
  * normalizálást igénylik — a szabály MÁSOLÁSA két helyre azt kockáztatná, hogy
  * a két oldal észrevétlenül szétcsúszik (a láthatatlan karakteres „név"
@@ -180,6 +187,7 @@ export function normalizeText(value: unknown): string {
   }
   return value
     .replace(/\p{Cf}/gu, '')
+    .replace(/\p{Noncharacter_Code_Point}|\p{Cs}/gu, '')
     .replace(/\p{Cc}/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()

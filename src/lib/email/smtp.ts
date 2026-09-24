@@ -9,7 +9,8 @@ import { EmailSendError, type MailMessage } from './types'
  * A repo szabályai szerint nem adható hozzá új dependency (pl. nodemailer),
  * ezért a tranzakciós e-mailekhez szükséges SMTP-részhalmaz itt van
  * implementálva: implicit TLS (465) vagy STARTTLS (587/25), AUTH LOGIN,
- * multipart/alternative (text+html) üzenet UTF-8 kódolással.
+ * multipart/alternative (text+html) üzenet UTF-8 kódolással, melléklet esetén
+ * multipart/mixed burokban.
  *
  * Retry-szabály: az SMTP 4xx válaszkódok átmenetiek (újrapróbálható), az 5xx
  * végleges; a hálózati hibák/timeout újrapróbálhatók.
@@ -120,11 +121,33 @@ export function formatFromHeader(from: string): string {
   return name.length > 0 ? `${encodeWord(name)} <${address}>` : `<${address}>`
 }
 
-/** A tesztek miatt exportált üzenet-összeállító (multipart/alternative, base64). */
+/**
+ * A melléklet fájlneve a fejlécben: csak ASCII betű, szám, pont, kötőjel és
+ * aláhúzás maradhat. Így idézőjel, sortörés vagy nem-ASCII karakter nem
+ * törheti meg a `Content-Disposition` fejlécet (RFC 2183), és RFC 2231
+ * szerinti kódolás sem kell.
+ */
+export function safeAttachmentFilename(filename: string): string {
+  const safe = filename.replace(/[^A-Za-z0-9._-]/g, '_')
+  return safe.length > 0 ? safe : 'melleklet'
+}
+
+/**
+ * A tesztek miatt exportált üzenet-összeállító (base64 részekkel).
+ *
+ * Melléklet nélkül multipart/alternative (text+html), pontosan a korábbi
+ * alakban. Melléklettel multipart/mixed (RFC 2046, 5.1.3): az első része a
+ * változatlan text+html alternatíva, utána a mellékletek.
+ */
 export function buildMessage(config: SmtpConfig, message: MailMessage): string {
-  const boundary = `----kineticare-${Date.now().toString(36)}`
+  const stamp = Date.now().toString(36)
+  const boundary = `----kineticare-${stamp}`
+  // A két határoló egyike sem előtagja a másiknak (RFC 2046, 5.1.1).
+  const mixedBoundary = `----kineticare-m-${stamp}`
+  const attachments = message.attachments ?? []
   const textPart = encodeMimeBody(message.text)
   const htmlPart = encodeMimeBody(message.html)
+  const alternativeContentType = `Content-Type: multipart/alternative; boundary="${boundary}"`
   const headers = [
     foldHeader('From', formatFromHeader(config.from)),
     foldHeader('To', message.to.map(stripHeaderBreaks).join(', ')),
@@ -132,11 +155,11 @@ export function buildMessage(config: SmtpConfig, message: MailMessage): string {
     ...(message.replyTo ? [foldHeader('Reply-To', stripHeaderBreaks(message.replyTo))] : []),
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    attachments.length > 0
+      ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
+      : alternativeContentType,
   ]
-  return [
-    ...headers,
-    '',
+  const alternativeBody = [
     `--${boundary}`,
     'Content-Type: text/plain; charset="utf-8"',
     'Content-Transfer-Encoding: base64',
@@ -148,6 +171,30 @@ export function buildMessage(config: SmtpConfig, message: MailMessage): string {
     '',
     htmlPart,
     `--${boundary}--`,
+  ]
+  if (attachments.length === 0) {
+    return [...headers, '', ...alternativeBody, ''].join('\r\n')
+  }
+  const attachmentParts = attachments.flatMap((attachment) => {
+    const filename = safeAttachmentFilename(attachment.filename)
+    return [
+      `--${mixedBoundary}`,
+      `Content-Type: ${stripHeaderBreaks(attachment.contentType)}; name="${filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      '',
+      encodeMimeBody(attachment.content),
+    ]
+  })
+  return [
+    ...headers,
+    '',
+    `--${mixedBoundary}`,
+    alternativeContentType,
+    '',
+    ...alternativeBody,
+    ...attachmentParts,
+    `--${mixedBoundary}--`,
     '',
   ].join('\r\n')
 }

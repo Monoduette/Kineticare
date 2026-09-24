@@ -1,3 +1,5 @@
+import { sameBarionGuid } from './guid'
+
 export interface RefundResponseExpected {
   readonly paymentId: string
   readonly sourceTransactionId: string
@@ -56,7 +58,9 @@ export function validateRefundResponseProof(
     Array.isArray(transactions) && transactions.length === 1 ? transactions[0] : null
   if (
     !isRecord(transaction) ||
-    response.PaymentId !== expected.paymentId ||
+    // A Barion a GUID-ot kötőjellel és anélkül is használja (guid.ts); a tárolt alak eltérhet.
+    (response.PaymentId !== expected.paymentId &&
+      !sameBarionGuid(response.PaymentId, expected.paymentId)) ||
     !(
       response.Errors === undefined ||
       (Array.isArray(response.Errors) && response.Errors.length === 0)

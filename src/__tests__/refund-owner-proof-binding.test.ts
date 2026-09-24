@@ -10,7 +10,7 @@ describe('owner refund response proof runtime binding', () => {
       RefundedTransactions: [
         {
           TransactionId: refundId,
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 5000,
           Status: 'Succeeded',
         },
@@ -30,7 +30,7 @@ describe('owner refund response proof runtime binding', () => {
       version: 2,
       transactionId: 'SYNTHETIC-TX',
       refundTransactionId: refundId,
-      posTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+      posTransactionId: 'SYNTHETIC-RECOVERY-11-1',
     })
   })
 
@@ -60,7 +60,7 @@ describe('owner refund response proof runtime binding', () => {
       RefundedTransactions: [
         {
           TransactionId: refundId,
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 5000,
           Status: 'Succeeded',
         },
@@ -83,7 +83,7 @@ describe('owner refund response proof runtime binding', () => {
       Transactions: [
         {
           TransactionId: source,
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Status: 'Succeeded',
           TransactionType: 'CardPayment',
           Total: 20000,
@@ -95,7 +95,7 @@ describe('owner refund response proof runtime binding', () => {
       RefundedTransactions: [
         {
           TransactionId: source,
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 5000,
           Status: 'Succeeded',
         },

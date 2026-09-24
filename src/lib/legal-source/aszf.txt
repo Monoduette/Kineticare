@@ -53,7 +53,7 @@ A megrendelés teljesítésének, azaz a hozzáférés megnyitásának átlagos 
 A jelentkezésnél a látogató által megadott adatoknak valódinak és hiánytalannak kell lenniük, erről a látogató nyilatkozik, hogy az így megadott adatok hiánytalanul és valósan vannak megadva. Ezen szerződés elfogadásával a Vásárló hozzájárul ahhoz, hogy a KINETICARE a teljesítést a szerződés megkötését követően megkezdje.
 A fizetést követően a Vásárló a köteles a válasz emailt elolvasni és aszerint eljárni, ha a spam mappába kerül a levél vagy kézbesíthetetlen üzenet érkezik vissza, azért a KINETICARE nem vállal felelősséget. KINETICARE fenntartja magának a jogot, hogy a beérkezett fizetési kérelmet indoklás nélkül elutasítsa, a hozzáférést megszakítsa és a pénzt visszautalja a bankkártyájára, erről az érintettet a megadott emailen tájékoztatja, aki köteles 72 órán belül elküldeni bankszámlaszámát a visszautaláshoz, amennyiben ezt a KINETICARE kéri.
 A szolgáltatás ára a Weboldalon feltüntetett ár online ismeretterjesztő anyagonként. 
-A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A Vásárló elfogadja, hogy a számlát/nyugtát a KINETICARE Kft állítja ki 27%-os áfatartalommal. 
+A fizetést követően a Vásárló a számlát emailben kapja meg link formájában, a Számlázz.hu rendszerén keresztül. A számlát a KINETICARE Kft. állítja ki. A KINETICARE Kft. az általános forgalmi adóról szóló 2007. évi CXXVII. törvény szerint alanyi adómentes, ezért a számla áfát nem tartalmaz. A Weboldalon feltüntetett ár a fizetendő végösszeg. 
 
 # KINETICARE jogai és felelőssége
 

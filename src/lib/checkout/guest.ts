@@ -50,8 +50,7 @@ export interface GuestFieldError {
 }
 
 export type GuestValidationResult =
-  | { ok: true; value: NormalizedGuest }
-  | { ok: false; errors: GuestFieldError[] }
+  { ok: true; value: NormalizedGuest } | { ok: false; errors: GuestFieldError[] }
 
 /**
  * Hosszkorlátok. A 254 karakteres e-mail-plafon az RFC 5321 szerinti teljes
@@ -82,7 +81,7 @@ const EMAIL_PATTERN =
   /^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i
 
 export const GUEST_EMAIL_MISSING_ERROR =
-  'Add meg az e-mail-címed — ide küldjük a hozzáférést és a számlát.'
+  'Add meg az e-mail-címed. Ide küldjük a hozzáférést és a számlát.'
 export const GUEST_EMAIL_INVALID_ERROR =
   'Ez az e-mail-cím nem érvényes. Ellenőrizd (például: nev@pelda.hu).'
 export const GUEST_EMAIL_TOO_LONG_ERROR = `Az e-mail-cím legfeljebb ${GUEST_LIMITS.email.max} karakter lehet.`
@@ -91,7 +90,7 @@ export const GUEST_NAME_TOO_LONG_ERROR = `A név legfeljebb ${GUEST_LIMITS.name.
 
 /** Összefoglaló üzenet — a `guestSummaryMessage` a hibahalmazból választ. */
 export const GUEST_SUMMARY_MISSING =
-  'A vásárláshoz add meg az e-mail-címed és a neved — ezekkel készül a fiókod.'
+  'A vásárláshoz add meg az e-mail-címed és a neved, ezekkel hozzuk létre a fiókodat.'
 export const GUEST_SUMMARY_MIXED = 'Ellenőrizd a pirossal jelölt mezőket.'
 
 function sourceRecord(input: unknown): Record<string, unknown> {

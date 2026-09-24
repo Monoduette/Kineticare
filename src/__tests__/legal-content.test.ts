@@ -11,6 +11,7 @@ import {
   jogiOldalTartalom,
   jogiRichText,
   jogiSzoveg,
+  lexicalToJogiForras,
   parseJogiForras,
   richTextSzoveg,
 } from '../lib/legal-content'
@@ -196,5 +197,118 @@ describe('richTextSzoveg', () => {
     expect(richTextSzoveg(null)).toBe('')
     expect(richTextSzoveg({})).toBe('')
     expect(richTextSzoveg({ root: { children: 'nem tömb' } })).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lexicalToJogiForras: a jogiRichText inverze (H10)
+// ---------------------------------------------------------------------------
+
+describe('lexicalToJogiForras — a jogiRichText inverze', () => {
+  it.each(JOGI_OLDALAK.map((oldal) => [oldal.slug, oldal] as const))(
+    '/%s: forrás → Lexical → forrás ugyanazt az elemsort adja (jelölőkkel együtt)',
+    (_slug, oldal) => {
+      const elemek = parseJogiForras(jogiForrasSzoveg(oldal))
+      const vissza = lexicalToJogiForras(jogiRichText(elemek))
+      expect(parseJogiForras(vissza)).toEqual(elemek)
+      // A címsor-jelölők megmaradnak (a `richTextSzoveg` ezeket eldobja).
+      expect(vissza.split('\n').filter((sor) => sor.startsWith('# ')).length).toBe(
+        elemek.filter((elem) => elem.tipus === 'cim').length,
+      )
+    },
+  )
+
+  it('a szerkezeti fordítás: címsorszintek, felsorolás, számozott és beágyazott lista, sortörés, link', () => {
+    const szoveg = (text: string) => ({ type: 'text', text })
+    const tartalom = {
+      root: {
+        children: [
+          { type: 'heading', tag: 'h1', children: [szoveg('Első')] },
+          { type: 'heading', tag: 'h2', children: [szoveg('Fejezet')] },
+          {
+            type: 'heading',
+            tag: 'h4',
+            children: [szoveg('Al'), { type: 'linebreak' }, szoveg('cím')],
+          },
+          {
+            type: 'paragraph',
+            children: [
+              szoveg('Székhely:'),
+              { type: 'tab' },
+              szoveg('Keszthely'),
+              { type: 'linebreak' },
+              szoveg('Adószám: 1'),
+            ],
+          },
+          {
+            type: 'list',
+            listType: 'bullet',
+            children: [
+              { type: 'listitem', children: [szoveg('a')] },
+              {
+                type: 'listitem',
+                children: [
+                  {
+                    type: 'list',
+                    listType: 'number',
+                    children: [
+                      { type: 'listitem', value: 1, children: [szoveg('a1')] },
+                      { type: 'listitem', value: 2, children: [szoveg('a2')] },
+                    ],
+                  },
+                ],
+              },
+              { type: 'listitem', children: [szoveg('b')] },
+            ],
+          },
+          {
+            type: 'paragraph',
+            children: [
+              szoveg('Lásd: '),
+              {
+                type: 'link',
+                fields: { url: 'https://www.bekeltetes.hu' },
+                children: [szoveg('a testületek listája')],
+              },
+              szoveg(', '),
+              {
+                type: 'link',
+                fields: { url: 'https://www.kineticare.hu/adatvedelem' },
+                children: [szoveg('https://www.kineticare.hu/adatvedelem')],
+              },
+              szoveg(', '),
+              { type: 'autolink', url: 'mailto:info@pelda.hu', children: [szoveg('írj nekünk')] },
+              szoveg(', '),
+              { type: 'link', fields: { url: '/aszf' }, children: [szoveg('ÁSZF')] },
+            ],
+          },
+          { type: 'horizontalrule' },
+          { type: 'paragraph', children: [] },
+          { type: 'upload', value: 12 },
+        ],
+      },
+    }
+    expect(lexicalToJogiForras(tartalom).split('\n')).toEqual([
+      '# Első',
+      '# Fejezet',
+      '## Al cím',
+      'Székhely:\tKeszthely',
+      'Adószám: 1',
+      '- a',
+      '  1. a1',
+      '  2. a2',
+      '- b',
+      'Lásd: a testületek listája (https://www.bekeltetes.hu), https://www.kineticare.hu/adatvedelem, írj nekünk (info@pelda.hu), ÁSZF',
+      '',
+      '',
+    ])
+  })
+
+  it('rossz alakú bemenetre üres szöveget ad, nem dob', () => {
+    expect(lexicalToJogiForras(null)).toBe('')
+    expect(lexicalToJogiForras('szöveg')).toBe('')
+    expect(lexicalToJogiForras({})).toBe('')
+    expect(lexicalToJogiForras({ root: { children: 'nem tömb' } })).toBe('')
+    expect(lexicalToJogiForras({ root: { children: [null, 3, { type: 'text' }] } })).toBe('')
   })
 })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fixture, provider, documents, store, claimInvoice, access } from './refund-fixture'
 import { getRefundRecoveryStatus } from '../lib/refund/refund-recovery'
 import type { RefundAccessBaseline } from '../lib/refund/access-store'
+import { NO_PROVIDER_REQUEST_REFERENCE } from '../lib/refund/refund-intent'
 
 describe('durable refund recovery integration', () => {
   it('preserves the bounded row-version baseline through audit storage and recovery', async () => {
@@ -79,14 +80,32 @@ describe('durable refund recovery integration', () => {
     expect(await f.status()).toMatchObject({ state: 'clear' })
   })
   it.each([false, true])(
-    'never launches after baseline receipt failure (lost ack: %s)',
+    'never launches after baseline receipt failure, and releases the attempt (lost ack: %s)',
     async (lostAck) => {
       const f = fixture()
       f.failures.receipt = 'refund-prepared'
       f.failures.receiptAfterWrite = lostAck
-      await expect(f.start()).rejects.toThrow()
+      await expect(f.start()).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('a Barionnak nem ment kérés'),
+      })
       expect(provider.refund).not.toHaveBeenCalled()
-      expect(store.intents.get(f.payload)?.state).toBe('prepared')
+      // Az indítási engedély (provider_started) sosem született meg: igazolt nullhatás.
+      expect(store.intents.get(f.payload)).toMatchObject({
+        state: 'provider_failed',
+        activeOrderKey: null,
+        reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE,
+      })
+      expect(store.intents.get(f.payload)?.providerStartedAt).toBeUndefined()
+      expect(await f.status()).toMatchObject({ state: 'clear' })
+      expect(
+        await getRefundRecoveryStatus({ ...f.options, operationKey: 'A'.repeat(43) }),
+      ).toMatchObject({ state: 'clear', operationState: 'no_effect' })
+      f.failures.receipt = ''
+      await expect(f.start({ operationKey: 'B'.repeat(42) + 'A' })).resolves.toMatchObject({
+        refundStatusOutcome: 'succeeded',
+      })
+      expect(provider.refund).toHaveBeenCalledTimes(1)
     },
   )
   it('reconstructs a failed financial write without re-sending money', async () => {
@@ -136,8 +155,17 @@ describe('durable refund recovery integration', () => {
       RefundedTransactions: [{ TransactionId: 'SYNTHETIC-TX', Status: 'Refunded' }],
     })
     await expect(f.start()).rejects.toThrow()
-    expect(await f.status()).toMatchObject({ state: 'manual_review' })
-    expect(await f.recover()).toMatchObject({ recoveryStatus: 'manual_review' })
+    // Az egyeztetés (GetState-olvasás) felajánlható, új pénzvisszatérítés nélkül.
+    expect(await f.status()).toMatchObject({
+      state: 'recoverable',
+      message: expect.stringContaining('új pénzvisszatérítést nem indít'),
+    })
+    // A GetState nem igazol sem sikert, sem nullhatást (Total hiányzik): kézi egyeztetés.
+    expect(await f.recover()).toMatchObject({
+      recoveryStatus: 'manual_review',
+      message: expect.stringContaining('kézi egyeztetést'),
+    })
+    expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
     expect(f.order.refunds).toEqual([])
     expect(documents.storno).not.toHaveBeenCalled()
     expect(provider.refund).toHaveBeenCalledTimes(1)

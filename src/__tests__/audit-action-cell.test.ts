@@ -36,6 +36,10 @@ describe('auditActionLabel', () => {
     expect(auditActionLabel('customer-import.legacy-purchase')).toBe('Régi vásárlás átvétele')
     expect(auditActionLabel('order-partial-refund')).toBe('Részleges visszatérítés')
     expect(auditActionLabel('refund-invoice-done')).toBe('Stornó vagy helyesbítő számla kiállítása')
+    expect(auditActionLabel('order-confirmation-email')).toBe('Visszaigazoló e-mail elküldése')
+    expect(auditActionLabel('automatic-refund-blocked')).toBe(
+      'Automatikus visszatérítés tartósan leállt',
+    )
   })
 
   it('a vesszővel összefűzött kódot tagonként fordítja, a második tagtól kisbetűvel', () => {
@@ -58,10 +62,14 @@ describe('auditActionLabel', () => {
     const { RECEIPTS } = await import('../lib/refund/recovery-receipts')
     const { MEDIA_RECOVERY_ACTION } = await import('../lib/media-recovery-provenance')
     const { LEGACY_PURCHASE_AUDIT_ACTION } = await import('../lib/customer-import/execute')
+    const { ORDER_CONFIRMATION_AUDIT_ACTION } = await import('../lib/order-paid')
+    const { AUTOMATIC_REFUND_BLOCKED_ACTION } = await import('../lib/refund/automatic-block')
     const codes = [
       ...Object.values(RECEIPTS),
       MEDIA_RECOVERY_ACTION,
       LEGACY_PURCHASE_AUDIT_ACTION,
+      ORDER_CONFIRMATION_AUDIT_ACTION,
+      AUTOMATIC_REFUND_BLOCKED_ACTION,
       'order-refund',
       'order-partial-refund',
       'grant-purchase',

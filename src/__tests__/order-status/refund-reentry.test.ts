@@ -22,7 +22,7 @@ function setup() {
     Transactions: [
       {
         TransactionId: '11111111-2222-3333-4444-555555555555',
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: 20000,

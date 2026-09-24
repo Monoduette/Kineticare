@@ -5,12 +5,15 @@ export {
   getSzamlazzConfig,
   isDuplicateOrderError,
   isSzamlazzEnabled,
+  isTransientHttpStatus,
   parseAgentResponse,
   postInvoiceXml,
+  readAgentResponse,
   SZAMLAZZ_DEFAULT_API_URL,
   SZAMLAZZ_DEFAULT_INVOICE_PREFIX,
   SZAMLAZZ_DEFAULT_TIMEOUT_MS,
   SZAMLAZZ_DUPLICATE_AGENT_CODES,
+  SZAMLAZZ_NOTIFICATION_FAILED_CODE,
   SZAMLAZZ_RETRYABLE_AGENT_CODES,
   type SzamlazzEnv,
   type SzamlazzParsedSuccess,
@@ -58,6 +61,7 @@ export {
   type BuildCorrectiveInvoiceXmlInput,
   type IssueCorrectiveInvoiceDeps,
 } from './corrective'
+export { earliestOrderGrantMoment, resolveOrderPaidMoment, type OrderPaidMoment } from './paid-date'
 export { queueCorrectiveInvoiceJob, queueStornoIssueJob } from './queue'
 export { writeOrderInvoicingState } from './order-state'
 // Közös dátum-segédek: a kelt-dátum zóna-tudatos képzése (Europe/Budapest) és

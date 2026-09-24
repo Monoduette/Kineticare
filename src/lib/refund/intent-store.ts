@@ -10,6 +10,7 @@ import {
   digestRefundIdempotencyKey,
   hashRefundIntentRequest,
   isRefundIntentState,
+  NO_PROVIDER_REQUEST_REFERENCE,
   validateRefundIntentRequest,
   parseRefundIntentActorIdentity,
   type CanonicalRefundIntentRequest,
@@ -176,7 +177,15 @@ function parseIntent(value: unknown): RefundIntent {
     refundSequence: request.refundSequence,
     currency: request.currency,
     reason: request.reason,
-    providerStartedAt: timestamp(value.providerStartedAt, value.state !== 'prepared'),
+    // Csak a sosem indított (prepared → provider_failed) kísérletnek nincs indítási ideje.
+    providerStartedAt: timestamp(
+      value.providerStartedAt,
+      value.state !== 'prepared' &&
+        !(
+          value.state === 'provider_failed' &&
+          value.reconciliationReference === NO_PROVIDER_REQUEST_REFERENCE
+        ),
+    ),
     providerResolvedAt: timestamp(
       value.providerResolvedAt,
       ['provider_failed', 'provider_succeeded', 'committed'].includes(value.state),
@@ -199,7 +208,11 @@ function parseIntent(value: unknown): RefundIntent {
     (intent.state !== 'provider_failed' &&
       (intent.reconciliationCheckedAt !== null || intent.reconciliationReference !== null)) ||
     (intent.state === 'provider_failed' &&
-      !decideRefundIntentTransition('provider_started', 'provider_failed', evidence).allowed) ||
+      !decideRefundIntentTransition(
+        intent.providerStartedAt === null ? 'prepared' : 'provider_started',
+        'provider_failed',
+        evidence,
+      ).allowed) ||
     intent.activeOrderKey !== activeRefundOrderKey(String(order), intent.state, evidence)
   ) {
     throw new RefundIntentStoreError('invalid_record')
