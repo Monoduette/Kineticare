@@ -21,6 +21,7 @@ import {
 
 import { hasOwnerRole } from '../../access/roles'
 import { formatPriceHuf } from '../../lib/format-price'
+import { REFUND_RECOVERY_ACTION_LABEL } from '../../lib/refund/recovery-action-label'
 import {
   refundBlockedReason,
   refundConfirmText,
@@ -277,8 +278,31 @@ export function RefundPanel() {
       )
         return
       visit.status = status
+      // Igazoltan hatástalan korábbi művelet (a szerver szerint a kísérlet
+      // provider_failed, pénz nem mozdult, és nincs rendezetlen állapot): a
+      // kulcsa nem használható újra, a nyugtázás csak felesleges kattintás
+      // lenne. Futó kérés mellett (busy) nem nyúlunk hozzá.
+      const autoCleared: Partial<PanelState> = {}
+      const settled = visit.operation
+      if (
+        settled &&
+        status?.state === 'clear' &&
+        status.operationState === 'no_effect' &&
+        !busyOrders.current.has(key)
+      ) {
+        try {
+          clearRefundOperation(key, settled.key)
+          visit.operation = null
+          lockedOrders.current.delete(key)
+          Object.assign(autoCleared, { operation: null, locked: false })
+        } catch {
+          lockedOrders.current.add(key)
+          Object.assign(autoCleared, { locked: true, warningMessage: OPERATION_WARNING })
+        }
+      }
       updatePanel(key, {
         ...initialState,
+        ...autoCleared,
         recovery: status,
         statusLoading: false,
         statusError: !status,
@@ -600,8 +624,11 @@ export function RefundPanel() {
     busyOrders.current.delete(orderNumber)
     updatePanel(orderNumber, { pending: false, recovering: false })
     if (activeVisit.current !== visit) return
+    // A szerver szövege önmagában teljes (mi történt, mi a teendő), ezért
+    // változatlanul jelenik meg; a lezárt, hatástalan kísérletnél is ez mondja
+    // meg, hogy pénz nem mozdult, és indítható-e új visszatérítés.
     if (result?.recoveryStatus === 'completed') {
-      updatePanel(orderNumber, { successMessage: 'A visszatérítés feldolgozása rendezve.' })
+      updatePanel(orderNumber, { successMessage: result.message })
       try {
         await clearRouteCache()
       } catch {
@@ -609,9 +636,7 @@ export function RefundPanel() {
           updatePanel(orderNumber, { warningMessage: REFRESH_WARNING })
       }
     } else {
-      updatePanel(orderNumber, {
-        warningMessage: result ? `${result.message} ${REFUND_REVIEW_GUIDANCE}` : STATUS_WARNING,
-      })
+      updatePanel(orderNumber, { warningMessage: result ? result.message : STATUS_WARNING })
     }
     if (activeVisit.current === visit) await loadStatus(visit)
   }
@@ -754,9 +779,10 @@ export function RefundPanel() {
         </Button>
       ) : null}
       {recovery && recovery.state !== 'clear' ? (
-        <ReviewNotice role="status">
-          {recovery.message} {REFUND_REVIEW_GUIDANCE}
-        </ReviewNotice>
+        // A mentett állapot szövege a szerveré, és kimondja a teendőt is
+        // (src/lib/refund/refund-recovery.ts); általános útmutató nem kerül
+        // mellé, mert az a konkrét teendőnek ellentmondhatna.
+        <ReviewNotice role="status">{recovery.message}</ReviewNotice>
       ) : null}
       {recovery?.state === 'recoverable' ? (
         <>
@@ -769,7 +795,7 @@ export function RefundPanel() {
             }}
             size="medium"
           >
-            {recovering ? 'Feldolgozás folytatása…' : 'Feldolgozás folytatása'}
+            {recovering ? `${REFUND_RECOVERY_ACTION_LABEL}…` : REFUND_RECOVERY_ACTION_LABEL}
           </Button>
         </>
       ) : null}

@@ -3,7 +3,9 @@ import type { Payload } from 'payload'
 
 import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
-import { loadActiveRefundIntent } from '../refund/intent-store'
+import type { RefundIntent } from '../../payload-types'
+import { isNeverPaidRefundCandidate } from '../refund/auto-refund-recovery'
+import { loadActiveRefundIntent, loadRefundIntentsForOrder } from '../refund/intent-store'
 
 /**
  * GET /api/orders/[orderNumber]/status — read-only rendelés-státusz (a
@@ -38,6 +40,11 @@ function readOrderTotal(value: unknown): number | null {
  */
 function readCurrency(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim().toUpperCase() : null
+}
+
+/** A paid-reject automatikus visszatérítés (rendszer-eredetű, V2) kísérlete. */
+function isSystemRefundIntent(intent: RefundIntent | null | undefined): boolean {
+  return intent?.schemaVersion === 2 && intent.actorKind === 'system'
 }
 
 export interface OrderStatusHandlerDeps {
@@ -106,8 +113,15 @@ export function createOrderStatusHandler(
       // Authentication and customer ownership precede this lookup. Storage uncertainty is an error,
       // never a false success; only a customer-facing flag crosses the response boundary.
       const activeRefund = await loadActiveRefundIntent(payload, order.id)
+      // Két kísérlet között (pl. a Barion elutasította, a rendszer később
+      // újrapróbálja) nincs aktív kísérlet, de a vásárló pénze még nincs
+      // visszautalva: a köszönőoldal ilyenkor sem mutathat sima „függő” fizetést.
       const paymentReviewRequired =
-        activeRefund?.schemaVersion === 2 && activeRefund.actorKind === 'system'
+        isSystemRefundIntent(activeRefund) ||
+        (isNeverPaidRefundCandidate(order) &&
+          (await loadRefundIntentsForOrder(payload, order.id)).some(
+            (intent) => intent.state === 'provider_failed' && isSystemRefundIntent(intent),
+          ))
 
       return NextResponse.json(
         {

@@ -43,6 +43,7 @@ import {
   validatedRefundHistory,
 } from './refund-recovery'
 import { digestRefundIdempotencyKey } from './refund-intent'
+import { REFUND_RECOVERY_ACTION_LABEL } from './recovery-action-label'
 
 /**
  * Owner-only rendelés-visszatérítés. Check-then-act → advisory-zár
@@ -494,7 +495,7 @@ async function resolveBarionTransactionId(
 
 /** Pénzmozgás nélküli akadályok (4xx): a kérés javítás után megismételhető. */
 const MISSING_CUSTOMER =
-  'A rendeléshez nem tartozik vásárlói fiók, ezért a hozzáférés visszavonása nem követhető, és a visszatérítés nem indult el. Pénzmozgás nem történt. Jelezd az üzemeltetőnek.'
+  'A rendeléshez nem tartozik vásárlói fiók, ezért a hozzáférés nem vonható vissza, és a visszatérítés nem indult el. Pénzmozgás nem történt. Jelezd az üzemeltetőnek.'
 const MISSING_PRODUCT =
   'A rendelés egyik terméke már nem található, ezért a visszatérítés nem indult el. Pénzmozgás nem történt. Jelezd az üzemeltetőnek.'
 const BARION_UNAVAILABLE =
@@ -504,21 +505,18 @@ const NO_REFUNDABLE_TRANSACTION =
 const ORDER_CHANGED =
   'A rendelés visszatérítési adatai közben megváltoztak, ezért a visszatérítés nem indult el. Pénzmozgás nem történt. Frissítsd az oldalt, és nézd meg az aktuális állapotot.'
 const INTENT_NOT_CREATED =
-  'A visszatérítési kísérlet nem jött létre, a Barionnak nem ment kérés. Pénzmozgás nem történt. Frissítsd az oldalt, és nézd meg az aktuális állapotot.'
+  'A visszatérítés nem indult el, a Barionnak nem ment kérés. Pénzmozgás nem történt. Frissítsd az oldalt, és nézd meg az aktuális állapotot.'
 const PREPARATION_FAILED =
   'A visszatérítés előkészítése nem sikerült, a Barionnak nem ment kérés. Pénzmozgás nem történt. Próbáld újra néhány perc múlva, és ha ismét ez történik, jelezd az üzemeltetőnek.'
 
-/** Lezáratlan kimenet vagy feldolgozás (503): új pénzvisszatérítés tilos. */
+/** Lezáratlan kimenet vagy feldolgozás (503): új pénzvisszatérítés tilos. A gombra a panel tényleges feliratával hivatkozunk. */
+const RECOVER = `„${REFUND_RECOVERY_ACTION_LABEL}”`
 const REFUND_PENDING =
   'Ennél a rendelésnél egy korábbi visszatérítés feldolgozása még nem zárult le. Ne indíts új pénzvisszatérítést, amíg az le nem zárul.'
-const PREPARATION_UNRELEASED =
-  'A visszatérítés előkészítése megszakadt, a Barionnak nem ment kérés. Ne indíts új pénzvisszatérítést: a „Feldolgozás folytatása” gomb lezárja ezt a kísérletet.'
-const PROVIDER_UNCERTAIN =
-  'A Barion nem adott értékelhető választ, ezért nem tudni, megtörtént-e a visszatérítés. Ne indíts új pénzvisszatérítést: a „Feldolgozás folytatása” gomb lekérdezi az eredményt a Barionból.'
-const REJECTION_UNRECORDED =
-  'A Barion elutasította a visszatérítést, de az elutasítás rögzítése nem sikerült. Ne indíts új pénzvisszatérítést: a „Feldolgozás folytatása” gomb a Barion adatai alapján lezárja a kísérletet.'
-const PROVIDER_SUCCEEDED_UNRECORDED =
-  'A Barion visszaigazolta a visszatérítést, de a rögzítése nem fejeződött be. Ne indíts új pénzvisszatérítést: a „Feldolgozás folytatása” gomb a Barion adatai alapján befejezi.'
+const PREPARATION_UNRELEASED = `A visszatérítés előkészítése megszakadt, a Barionnak nem ment kérés. Ne indíts új pénzvisszatérítést: a ${RECOVER} gomb lezárja ezt a kísérletet.`
+const PROVIDER_UNCERTAIN = `A Barion nem adott értékelhető választ, ezért nem tudni, megtörtént-e a visszatérítés. Ne indíts új pénzvisszatérítést: a ${RECOVER} gomb lekérdezi az eredményt a Barionból.`
+const REJECTION_UNRECORDED = `A Barion elutasította a visszatérítést, de az elutasítás rögzítése nem sikerült. Ne indíts új pénzvisszatérítést: a ${RECOVER} gomb a Barion adatai alapján lezárja a kísérletet.`
+const PROVIDER_SUCCEEDED_UNRECORDED = `A Barion visszaigazolta a visszatérítést, de a rögzítése nem fejeződött be. Ne indíts új pénzvisszatérítést: a ${RECOVER} gomb a Barion adatai alapján befejezi.`
 const LOCAL_PROCESSING_INCOMPLETE =
   'A Barion visszaigazolta a visszatérítést, de a helyi feldolgozás (hozzáférés, számla) nem fejeződött be. Ne indíts új pénzvisszatérítést.'
 

@@ -96,9 +96,16 @@ export async function reconcileLaunchedIntent(input: {
   state: BarionPaymentStateResponse
   ownerLedger?: { totalHuf: number; alreadyRefundedHuf: number } | null
   now?: Date
+  /**
+   * A GetState-lekérdezés indításának ideje. A negyedórás nullhatás-szabály
+   * ehhez mér, nem a (zárra várás utáni) feldolgozáshoz: a késve feldolgozott
+   * régi pillanatkép így nem igazolhat nullhatást. Alapértelmezés: `now`.
+   */
+  stateObservedAt?: Date
 }): Promise<IntentSettlement> {
   const { payload, order, intent, state } = input
   const now = input.now ?? new Date()
+  const observedAt = input.stateObservedAt ?? now
   if (!RECONCILABLE_LAUNCHED_STATES.has(intent.state))
     throw new Error('refund reconciliation: unsupported intent state')
 
@@ -127,7 +134,7 @@ export async function reconcileLaunchedIntent(input: {
     consumedRefundTransactionIds: await consumedRefundTransactionIds(payload, intent),
     expectedRemainingHuf,
     providerStartedAt: intent.providerStartedAt,
-    now: now.getTime(),
+    now: observedAt.getTime(),
   })
 
   if (evidence.kind === 'succeeded') {

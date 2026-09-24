@@ -9,6 +9,7 @@ import {
   classifyRefundRejection,
   DEFINITIVE_REFUND_REJECTION_CODES,
   expectedPosTransactionId,
+  hasRelatedRefundActivity,
   PROVIDER_SETTLE_DELAY_MS,
   refundComment,
   refundEvidenceFromPaymentState,
@@ -273,10 +274,56 @@ describe('refundEvidenceFromPaymentState (GetState-egyeztetés)', () => {
         },
       ]),
     ],
+    [
+      'idegen kereskedői azonosítójú visszatérítés',
+      state([{ ...refundTx(REFUND, 5000), POSTransactionId: 'MAS-RENDSZER-POS-9' }], 15_000),
+    ],
     ['idegen fizetés', { ...state(), PaymentId: '99999999-2222-3333-4444-555555555555' }],
     ['nem Succeeded fizetés', { ...state(), Status: 'Canceled' as const }],
   ])('%s → nem bizonyítható', (_label, paymentState) => {
     expect(input(paymentState)).toEqual({ kind: 'unprovable' })
+  })
+
+  it('kereskedői azonosító nélküli refund-tranzakció elfogadható, a forrás azonosítójával', () => {
+    expect(input(state([{ ...refundTx(REFUND, 5000), POSTransactionId: '' }], 15_000))).toEqual({
+      kind: 'succeeded',
+      refundTransactionId: REFUND,
+      posTransactionId: POS,
+    })
+  })
+
+  it('a forrásra kapcsolódó sikeres, folyamatban lévő vagy sztornózott visszatérítés „aktivitás”', () => {
+    expect(hasRelatedRefundActivity(state(), SOURCE)).toBe(false)
+    expect(hasRelatedRefundActivity(state([refundTx(REFUND, 5000)]), SOURCE)).toBe(true)
+    expect(hasRelatedRefundActivity(state([refundTx(REFUND, 5000, 'Started')]), SOURCE)).toBe(true)
+    expect(
+      hasRelatedRefundActivity(
+        state([
+          {
+            ...refundTx(REFUND, 5000, 'Failed'),
+            TransactionType: 'StornoUnSuccessfulRefundToBankCard',
+          },
+        ]),
+        SOURCE,
+      ),
+    ).toBe(true)
+    // Az elutasított visszatérítés pénzt nem mozgatott; más forráshoz kötött sem számít.
+    expect(hasRelatedRefundActivity(state([refundTx(REFUND, 5000, 'Rejected')]), SOURCE)).toBe(
+      false,
+    )
+    expect(
+      hasRelatedRefundActivity(
+        state([{ ...refundTx(REFUND, 5000), RelatedId: 'cccccccc-0000-0000-0000-000000000009' }]),
+        SOURCE,
+      ),
+    ).toBe(false)
+    // Ugyanaz a GUID más alakban is ugyanaz a forrás.
+    expect(
+      hasRelatedRefundActivity(
+        state([refundTx(REFUND, 5000)]),
+        SOURCE.replaceAll('-', '').toUpperCase(),
+      ),
+    ).toBe(true)
   })
 
   it('nem bizonyítható, ha egy rögzített korábbi visszatérítés nem látszik, vagy a lista hiányos', () => {

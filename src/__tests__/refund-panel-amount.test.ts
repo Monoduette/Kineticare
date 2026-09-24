@@ -81,12 +81,31 @@ describe('refundBlockedReason', () => {
     expect(refundBlockedReason('refunded')).toBe(
       'A rendelésen már teljes visszatérítés van rögzítve. Itt új visszatérítés nem indítható.',
     )
-    expect(refundBlockedReason('created')).toContain('nincs kifizetve')
-    expect(refundBlockedReason('payment_pending')).toContain('nincs kifizetve')
-    expect(refundBlockedReason('payment_failed')).toContain('nem sikerült')
-    expect(refundBlockedReason('cancelled')).toContain('le lett mondva')
+    expect(refundBlockedReason('created')).toBe(
+      'A rendelés fizetése nem zárult le, ezért itt nem indítható visszatérítés.',
+    )
+    expect(refundBlockedReason('payment_pending')).toBe(
+      'A rendelés fizetése nem zárult le, ezért itt nem indítható visszatérítés.',
+    )
+    expect(refundBlockedReason('payment_failed')).toBe(
+      'A rendelés sikertelen fizetésként van rögzítve, ezért itt nem indítható visszatérítés.',
+    )
+    expect(refundBlockedReason('cancelled')).toBe(
+      'A rendelés le lett mondva, ezért itt nem indítható visszatérítés.',
+    )
     expect(refundBlockedReason(null)).toBe('Csak kifizetett rendelés téríthető vissza.')
     expect(refundBlockedReason('valami-uj-statusz')).not.toContain('paid')
+  })
+
+  it('nem kifizetett rendelésnél sem állítja, hogy nincs mit visszatéríteni (a Barion-fizetés sikerülhetett)', () => {
+    // Dupla vásárlásnál vagy késői fizetésnél a pénz a boltnál van, és az
+    // automatikus visszatérítés küldi vissza; a panel ennek nem mondhat ellent.
+    for (const status of ['created', 'payment_pending', 'payment_failed', 'cancelled']) {
+      const text = refundBlockedReason(status)
+      expect(text).not.toMatch(/nincs mit visszatéríteni|nincs kifizetve/)
+      expect(text).toContain('itt nem indítható visszatérítés')
+      expect(text).not.toMatch(/[–—]/)
+    }
   })
 })
 

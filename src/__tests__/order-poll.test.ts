@@ -1142,7 +1142,7 @@ describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
         Transactions: [
           {
             TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-            POSTransactionId: `SYNTHETIC-${paymentId}`,
+            POSTransactionId: `${ORDER_NUMBER}-1`,
             TransactionType: 'CardPayment',
             Status: 'Succeeded',
             Total: ORDER_TOTAL_HUF,
@@ -1927,7 +1927,7 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     RefundedTransactions: [
       {
         TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-        POSTransactionId: 'DUMMY-P0-ORIGINAL-SHOP-TRANSACTION',
+        POSTransactionId: `${ORDER_NUMBER}-1`,
         Total: ORDER_TOTAL_HUF,
         Status: 'Succeeded',
       },
@@ -1938,7 +1938,7 @@ describe('P0 — a poll nem írhatja vissza a refunded rendelést', () => {
     Transactions: [
       {
         TransactionId: 'tx-p0',
-        POSTransactionId: 'DUMMY-P0-ORIGINAL-SHOP-TRANSACTION',
+        POSTransactionId: `${ORDER_NUMBER}-1`,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: ORDER_TOTAL_HUF,

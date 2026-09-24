@@ -66,6 +66,17 @@ export function validateRefundAmount(raw: string, maxHuf: number | null): Refund
  *
  * `null` = visszatéríthető (paid státusz). A státusz-lista az orders
  * állapotgépét tükrözi (src/plugins/ecommerce.ts).
+ *
+ * A nem kifizetett státuszoknál a szöveg a rendelés állapotát és a panel
+ * korlátját mondja ki, nem azt, hogy „nincs mit visszatéríteni”: egy ilyen
+ * rendelésnél a Barion-fizetés sikerülhetett úgy, hogy a rendszer nem fogadta
+ * el (dupla vásárlás, késői fizetés), és a pénzt automatikus visszatérítés
+ * küldi vissza. Ennek állapotát a szerver mentett állapot-üzenete mondja el
+ * (src/lib/refund/refund-recovery.ts), így a kettő nem mond ellent egymásnak
+ * (NN/g, Match between the system and the real world:
+ * https://www.nngroup.com/articles/match-system-real-world/; GOV.UK Error
+ * message, „say what has happened”:
+ * https://design-system.service.gov.uk/components/error-message/).
  */
 export function refundBlockedReason(status: string | null): string | null {
   switch (status) {
@@ -75,11 +86,11 @@ export function refundBlockedReason(status: string | null): string | null {
       return 'A rendelésen már teljes visszatérítés van rögzítve. Itt új visszatérítés nem indítható.'
     case 'created':
     case 'payment_pending':
-      return 'A rendelés még nincs kifizetve, ezért nincs mit visszatéríteni.'
+      return 'A rendelés fizetése nem zárult le, ezért itt nem indítható visszatérítés.'
     case 'payment_failed':
-      return 'A fizetés nem sikerült, ezért nincs mit visszatéríteni.'
+      return 'A rendelés sikertelen fizetésként van rögzítve, ezért itt nem indítható visszatérítés.'
     case 'cancelled':
-      return 'A rendelés le lett mondva, ezért nincs mit visszatéríteni.'
+      return 'A rendelés le lett mondva, ezért itt nem indítható visszatérítés.'
     default:
       // K12: a nyers „paid” kód helyett a státusz magyar neve (NN/g, Match
       // between the system and the real world).

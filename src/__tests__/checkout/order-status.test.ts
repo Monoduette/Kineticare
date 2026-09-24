@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const refundState = vi.hoisted(() => ({ active: vi.fn() }))
-vi.mock('../../lib/refund/intent-store', () => ({ loadActiveRefundIntent: refundState.active }))
+const refundState = vi.hoisted(() => ({ active: vi.fn(), history: vi.fn() }))
+vi.mock('../../lib/refund/intent-store', () => ({
+  loadActiveRefundIntent: refundState.active,
+  loadRefundIntentsForOrder: refundState.history,
+}))
 beforeEach(() => {
   refundState.active.mockReset().mockResolvedValue(null)
+  refundState.history.mockReset().mockResolvedValue([])
 })
 
 import { createOrderStatusHandler } from '../../lib/checkout/order-status-handler'
@@ -91,6 +95,70 @@ describe('GET /api/orders/[orderNumber]/status', () => {
     expect(refundState.active).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the review flag between automatic attempts (a resolved no-effect attempt, money not yet returned)', async () => {
+    refundState.history.mockResolvedValue([
+      {
+        id: 88,
+        schemaVersion: 2,
+        actorKind: 'system',
+        systemActor: 'paid-reject-recovery',
+        state: 'provider_failed',
+        activeOrderKey: null,
+        reconciliationReference: 'barion:refund-rejected:TooLowBalanceToMakeRefund',
+        requestHash: 'PRIVATE',
+      },
+    ])
+    for (const status of ['payment_pending', 'cancelled', 'payment_failed']) {
+      const handler = createOrderStatusHandler({
+        getPayload: async () => payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status }]) as never,
+      })
+      const [req, ctx] = request()
+      const response = await handler(req as never, ctx)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({
+        status,
+        productId: 42,
+        totalHufSnapshot: null,
+        currency: null,
+        paymentReviewRequired: true,
+      })
+    }
+    expect(refundState.history).toHaveBeenCalledWith(expect.anything(), OWN_ORDER.id)
+  })
+
+  it('does not flag a paid order or an owner attempt, and does not read history for a paid order', async () => {
+    refundState.history.mockResolvedValue([
+      { id: 89, schemaVersion: 1, actor: 1, state: 'provider_failed', activeOrderKey: null },
+    ])
+    const pending = createOrderStatusHandler({
+      getPayload: async () =>
+        payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status: 'payment_pending' }]) as never,
+    })
+    const [req, ctx] = request()
+    expect(await (await pending(req as never, ctx)).json()).not.toHaveProperty(
+      'paymentReviewRequired',
+    )
+    refundState.history.mockClear()
+    const paid = createOrderStatusHandler({
+      getPayload: async () => payloadWithUser({ id: 7 }, [OWN_ORDER]) as never,
+    })
+    const [req2, ctx2] = request()
+    expect(await (await paid(req2 as never, ctx2)).json()).not.toHaveProperty(
+      'paymentReviewRequired',
+    )
+    expect(refundState.history).not.toHaveBeenCalled()
+  })
+
+  it('does not answer a pending order as plain pending when the refund history is unreadable', async () => {
+    refundState.history.mockRejectedValue(new Error('DUMMY storage unavailable'))
+    const handler = createOrderStatusHandler({
+      getPayload: async () =>
+        payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status: 'payment_pending' }]) as never,
+    })
+    const [req, ctx] = request()
+    expect((await handler(req as never, ctx)).status).toBe(500)
+  })
+
   it('does not inspect refund state before authentication and ownership have passed', async () => {
     const [req, ctx] = request()
     for (const user of [null, { id: 8 }]) {
@@ -100,6 +168,7 @@ describe('GET /api/orders/[orderNumber]/status', () => {
       expect((await handler(req as never, ctx)).status).toBe(user ? 404 : 401)
     }
     expect(refundState.active).not.toHaveBeenCalled()
+    expect(refundState.history).not.toHaveBeenCalled()
   })
 
   it('does not conflate an ordinary owner partial-refund intent with a rejected payment', async () => {

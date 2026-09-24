@@ -7,6 +7,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { REFUND_CONFIRM_MODAL_SLUG, RefundPanel } from '../components/admin/RefundPanel'
 import { ensureRefundOperation, readRefundOperation } from '../components/admin/refund-operation'
+import { REFUND_REVIEW_GUIDANCE } from '../components/admin/refund-response'
+import { REFUND_RECOVERY_ACTION_LABEL } from '../lib/refund/recovery-action-label'
 
 interface ModalProps {
   heading: ReactNode
@@ -136,13 +138,18 @@ function successMessage() {
 }
 
 /**
- * Kézi ellenőrzést kérő állapot. A tartós (betöltéskor is látható) állapot
- * role="status", a gombnyomás eredménye role="alert" (WCAG 2.2 SC 4.1.3);
- * az őr mindkettőt elfogadja, a szerep külön esetekben rögzített.
+ * Kézi ellenőrzést kérő állapot („Ellenőrzés szükséges” doboz). A tartós
+ * (betöltéskor is látható) állapot role="status", a gombnyomás eredménye
+ * role="alert" (WCAG 2.2 SC 4.1.3); az őr mindkettőt elfogadja, a szerep külön
+ * esetekben rögzített. A doboz szövege a szerveré, ha van (az önmagában
+ * teljes, a panel nem fűz hozzá általános útmutatót); a kliens saját,
+ * bizonytalan kimenetű szövegei az általános útmutatót hordozzák.
  */
 function reviewNotices() {
-  return Array.from(container.querySelectorAll('[role="alert"], [role="status"]')).filter(
-    (element) => element.textContent?.includes('Ne indíts új'),
+  return Array.from(
+    container.querySelectorAll(
+      '[data-kc-uzenet="ellenorzes"][role="alert"], [data-kc-uzenet="ellenorzes"][role="status"]',
+    ),
   )
 }
 
@@ -713,7 +720,7 @@ describe('RefundPanel persisted recovery status', () => {
     },
   )
 
-  it.each(['completed', 'no_effect'])(
+  it.each(['completed'])(
     'reloads keyed %s but clears nothing and sends no POST before explicit acknowledged refresh',
     async (operationState) => {
       const stored = ensureRefundOperation(ORDER_A, 5000)
@@ -760,6 +767,62 @@ describe('RefundPanel persisted recovery status', () => {
       expect(next.operationKey).not.toBe(stored.key)
     },
   )
+
+  it('az igazoltan hatástalan (no_effect) korábbi műveletet nyugtázás nélkül törli, és új kulccsal enged tovább', async () => {
+    const stored = ensureRefundOperation(ORDER_A, 5000)
+    statusFetchMock.mockImplementation(async (url, options) =>
+      Response.json({
+        orderNumber: ORDER_A,
+        state: 'clear',
+        message: 'Mentett eredmény.',
+        ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+          ? { operationState: 'no_effect' }
+          : {}),
+      }),
+    )
+    await remount()
+    expect(readRefundOperation(ORDER_A)).toBeNull()
+    expect(acknowledgementButton()).toBeUndefined()
+    expect(button().disabled).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(successMessage()).toBeNull()
+    expect(
+      new Headers(statusFetchMock.mock.calls.at(-1)![1]!.headers).get('X-Refund-Operation-Key'),
+    ).toBe(stored.key)
+    fetchMock.mockResolvedValue(Response.json(success()))
+    await submit()
+    const next = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { operationKey: string }
+    expect(next.operationKey).not.toBe(stored.key)
+  })
+
+  it('a Barion végleges elutasítása (4xx, no_effect) után nyugtázás nélkül újrapróbálható, az ok látható marad', async () => {
+    const error =
+      'A Barion elutasította a visszatérítést, mert a Barion-tárcádban nincs elég egyenleg. Pénzmozgás nem történt.'
+    fetchMock.mockResolvedValueOnce(Response.json({ error }, { status: 409 }))
+    statusFetchMock.mockImplementation(async (url, options) =>
+      Response.json({
+        orderNumber: ORDER_A,
+        state: 'clear',
+        message: 'Mentett eredmény.',
+        ...(new Headers(options?.headers).has('X-Refund-Operation-Key')
+          ? { operationState: 'no_effect' }
+          : {}),
+      }),
+    )
+    await submit()
+    const first = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as { operationKey: string }
+    expect(container.textContent).toContain(error)
+    expect(readRefundOperation(ORDER_A)).toBeNull()
+    expect(acknowledgementButton()).toBeUndefined()
+    expect(button().disabled).toBe(false)
+    fetchMock.mockResolvedValueOnce(Response.json(success()))
+    await submit()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const second = JSON.parse(String(fetchMock.mock.calls[1]![1]!.body)) as {
+      operationKey: string
+    }
+    expect(second.operationKey).not.toBe(first.operationKey)
+  })
 
   it.each([
     { operationState: 'pending' },
@@ -979,7 +1042,9 @@ describe('RefundPanel persisted recovery status', () => {
     )
     expect(confirmMock).not.toHaveBeenCalled()
     expect(statusFetchMock).toHaveBeenCalledTimes(reads + 1)
-    expect(successMessage()?.textContent).toBe('A visszatérítés feldolgozása rendezve.')
+    // A szerver üzenete jelenik meg (pl. hogy a hatástalan kísérlet lezárult,
+    // és indítható-e új visszatérítés), nem egy általános „rendezve”.
+    expect(successMessage()?.textContent).toBe('Synthetic completion')
     expect(container.textContent).not.toContain('visszatérítés megtörtént')
     expect(ui.refresh).toHaveBeenCalledTimes(1)
   })
@@ -1248,7 +1313,53 @@ describe('RefundPanel K12: hozzáférhető név, élő régiók, megerősítés'
     expect(container.querySelector('[role="alert"]')).toBeNull()
     const notice = container.querySelector('[role="status"]')
     expect(notice?.textContent).toContain('Ellenőrzés szükséges')
-    expect(notice?.textContent).toContain('Ne indíts új')
+    expect(notice?.textContent).toContain('Mentett állapot.')
+  })
+
+  it.each(['manual_review', 'recoverable'])(
+    'a %s mentett állapot szövege a szerveré, általános útmutató nem kerül mellé',
+    async (state) => {
+      const message = `A „${REFUND_RECOVERY_ACTION_LABEL}” lekérdezi az eredményt a Barionból, új pénzvisszatérítést nem indít.`
+      await remountWith({ state, message })
+      const notice = container.querySelector('[data-kc-uzenet="ellenorzes"]')
+      expect(notice?.textContent).toBe(`Ellenőrzés szükséges${message}`)
+      expect(container.textContent).not.toContain(REFUND_REVIEW_GUIDANCE)
+      expect(container.textContent).not.toContain('egyeztesd az eltérést')
+    },
+  )
+
+  it('a helyreállító gomb felirata az, amire a szerver szövegei hivatkoznak', async () => {
+    await remountWith({ state: 'recoverable' })
+    const labels = Array.from(container.querySelectorAll('button')).map((item) => item.textContent)
+    expect(labels).toContain(REFUND_RECOVERY_ACTION_LABEL)
+  })
+
+  it('a helyreállítás kézi ellenőrzést kérő válasza a szerver szövegével, útmutató nélkül jelenik meg', async () => {
+    await remountWith({ state: 'recoverable' })
+    const message =
+      'A feldolgozás most nem fejeződött be, új pénzvisszatérítés nem indult. Frissítsd az oldalt.'
+    fetchMock.mockResolvedValue(
+      Response.json({ orderNumber: ORDER_A, recoveryStatus: 'manual_review', message }),
+    )
+    const recover = Array.from(container.querySelectorAll('button')).find(
+      (item) => item.textContent === REFUND_RECOVERY_ACTION_LABEL,
+    )!
+    await act(async () => {
+      recover.click()
+    })
+    const alert = container.querySelector('[data-kc-uzenet="ellenorzes"][role="alert"]')
+    expect(alert?.textContent).toBe(`Ellenőrzés szükséges${message}`)
+    expect(container.textContent).not.toContain(REFUND_REVIEW_GUIDANCE)
+  })
+
+  it('a szerver kézi ellenőrzést kérő 5xx szövege önmagában jelenik meg', async () => {
+    const error = `A Barion nem adott értékelhető választ. Ne indíts új pénzvisszatérítést: a „${REFUND_RECOVERY_ACTION_LABEL}” gomb lekérdezi az eredményt a Barionból.`
+    fetchMock.mockResolvedValue(
+      Response.json({ error, manualReviewRequired: true }, { status: 503 }),
+    )
+    await submit()
+    const alert = container.querySelector('[data-kc-uzenet="ellenorzes"][role="alert"]')
+    expect(alert?.textContent).toBe(`Ellenőrzés szükséges${error}`)
   })
 
   it('betöltéskor a nem ellenőrizhető mentett állapot is role="status"', async () => {

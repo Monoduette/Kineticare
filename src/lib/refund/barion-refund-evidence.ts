@@ -54,6 +54,33 @@ const REFUND_REVERSAL_TYPES: ReadonlySet<string> = new Set([
 /** Folyamatban lévő tranzakció-státuszok (TransactionStatus: Prepared, Started). */
 const IN_PROGRESS_STATUSES: ReadonlySet<string> = new Set(['Prepared', 'Started'])
 
+/**
+ * Van-e a GetState-ben a forrástranzakcióhoz kapcsolódó (RelatedId) sikeres
+ * vagy folyamatban lévő visszatérítés, illetve sikertelen visszatérítés
+ * sztornója. Ilyenkor automatikus visszatérítés nem indulhat: a pénz egy része
+ * vagy egésze már visszament (például a Barion felületén indított
+ * visszatérítéssel, K17), vagy egy korábbi kimenet nem egyértelmű. A sikertelen
+ * (pl. elutasított) visszatérítés-tranzakció nem számít, mert az pénzt nem mozgatott.
+ */
+export function hasRelatedRefundActivity(
+  state: BarionPaymentStateResponse,
+  sourceTransactionId: string,
+): boolean {
+  const transactions: unknown[] = Array.isArray(state.Transactions) ? state.Transactions : []
+  return transactions.some((item) => {
+    if (typeof item !== 'object' || item === null) return false
+    const tx = item as BarionDetailedTransaction
+    if (!sameBarionId(tx.RelatedId, sourceTransactionId)) return false
+    const type = String(tx.TransactionType)
+    if (REFUND_REVERSAL_TYPES.has(type)) return true
+    return (
+      REFUND_TRANSACTION_TYPES.has(type) &&
+      (tx.Status === 'Succeeded' ||
+        (typeof tx.Status === 'string' && IN_PROGRESS_STATUSES.has(tx.Status)))
+    )
+  })
+}
+
 /** A checkout egyetlen fizetési tranzakciójának kereskedői azonosítója (start-checkout.ts). */
 export function expectedPosTransactionId(orderNumber: string | null | undefined): string | null {
   return typeof orderNumber === 'string' && orderNumber.trim().length > 0

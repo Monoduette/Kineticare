@@ -58,3 +58,46 @@ tilos. Visszaállításkor csak az alkalmazáskódot szabad visszavonni; a tábl
 az adatok megmaradnak. A főkönyv eltávolítása külön emberi jóváhagyást,
 archiválási és megőrzési bizonyítékot, lezárt reconciliationt, valamint új,
 előrefelé generált Payload-migrációt igényel.
+
+## Nullhatás-bizonyítékok és a `prepared → provider_failed` él (PR #304)
+
+A `provider_failed` állapot a tartós `reconciliationReference` mezőben mindig
+megnevezi, mi bizonyítja, hogy pénz nem mozdult. Három hivatkozás létezik, más
+nem fogadható el:
+
+| Hivatkozás                                  | Mikor                                                                                                          | Honnan                               | Kód                                                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `barion:refund-rejected:<kód>[+<kód>…]`     | A Barion a Payment/Refund kérésre dokumentált, végleges hibakóddal válaszolt (pl. `TooLowBalanceToMakeRefund`) | `provider_started`                   | `src/lib/refund/barion-refund-evidence.ts` (`classifyRefundRejection`, `rejectionReference`)      |
+| `barion:paymentstate:no-refund-transaction` | Bizonytalan kimenet után a friss GetState-ben nincs új, a forrástranzakcióhoz kapcsolódó visszatérítés         | `provider_unknown` / `manual_review` | `refundEvidenceFromPaymentState`, `src/lib/refund/provider-reconciliation.ts`                     |
+| `kineticare:no-provider-request`            | A kísérlet a `provider_started` CAS előtt megszakadt, tehát a Barionnak kérés sem mehetett                     | `prepared`                           | `NO_PROVIDER_REQUEST_REFERENCE` (`src/lib/refund/refund-intent.ts`), `releaseNeverLaunchedIntent` |
+
+**A `prepared → provider_failed` él.** Csak a `kineticare:no-provider-request`
+hivatkozással léphető, és ez a hivatkozás fordítva is kötött: elindított
+(`provider_started` utáni) kísérletre nem használható, így a
+`providerStartedAt` nélküli `provider_failed` sor mindig ezt hordozza
+(`decideRefundIntentTransition`, a tároló `parseIntent`-je is ellenőrzi). Az
+átmenet SQL CAS a `state = 'prepared'` feltétellel: egy közben mégis elindított
+kísérletet nem írhat felül. Lezárja a tulajdonos „Feldolgozás folytatása”
+gombja (`reconcileStuckIntent`), és az automatikus út következő futása is
+(`settleActiveAutomaticIntent`, `recover-paid-reject.ts`).
+
+**A negyedórás GetState-szabály.** Hiányzó visszatérítésből csak akkor lesz
+nullhatás, ha a GetState-lekérdezés INDÍTÁSA legalább
+`PROVIDER_SETTLE_DELAY_MS` (15 perc) a `providerStartedAt` után történt (a
+Barion egy kérést legfeljebb 30 másodpercig dolgoz fel, Calling_the_API), a
+fizetés `Total` értéke a helyi nyilvántartás szerinti maradék, minden korábban
+rögzített visszatérítés pontosan egyszer látszik, és nincs sikertelen
+visszatérítés sztornója. A mérés a lekérdezés indításához kötött
+(`stateObservedAt`), nem a zárra várás utáni feldolgozáshoz: a késve
+feldolgozott régi pillanatkép így nem igazolhat nullhatást. Negyedórán belül
+az eredmény `too_early`, a kísérlet blokkoló marad.
+
+**Az automatikus (paid-reject) visszatérítés újrapróbálása.** A szabály és az
+indoklása a `src/lib/refund/automatic-retry.ts` fejlécében áll, röviden: nem
+javítható Barion-kód azonnal és véglegesen leállít; a tulajdonos által
+javítható kód (pl. `TooLowBalanceToMakeRefund`) darabszám-korlát nélkül,
+legfeljebb naponta újrapróbál (K6: nincs tartalék a tárcában); a kód nélküli
+nullhatásból (a fenti második és harmadik hivatkozás) legfeljebb 8 lehet. Új
+kísérlet csak akkor indul, ha minden korábbi automatikus kísérlet igazoltan
+hatástalan, és a friss GetState-ben a `${orderNumber}-1` forrástranzakció a
+fizetés teljes összegével áll, kapcsolódó visszatérítés nélkül.

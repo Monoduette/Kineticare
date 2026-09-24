@@ -9,13 +9,23 @@ import {
   canRecoverAutomaticRefund,
   commitAutomaticRefund,
   isAutomaticRefundIntent,
+  isNeverPaidRefundCandidate,
   verifyAutomaticRefundCompletion,
 } from './auto-refund-recovery'
+import {
+  decideAutomaticRetry,
+  isResolvedAutomaticFailure,
+  latestAutomaticFailure,
+  nonFixableRejectionCode,
+} from './automatic-retry'
+import { rejectionCodesFromReference } from './barion-refund-evidence'
 import { issueStornoForOrder, issueCorrectiveInvoiceForOrder } from '../szamlazz'
 import { fetchPaymentState, type BarionPaymentStateResponse } from '../barion'
+import { formatPriceHuf } from '../format-price'
 import {
   loadActiveRefundIntent,
   loadRefundIntentForOperation,
+  loadRefundIntentsForOrder,
   transitionRefundIntent,
 } from './intent-store'
 import {
@@ -40,41 +50,93 @@ import {
   type OrderRefundEntry,
   type RefundOrderOptions,
 } from './refund-order'
+import { REFUND_RECOVERY_ACTION_LABEL } from './recovery-action-label'
 
 /**
  * A tulajdonosnak szóló állapotüzenetek: mi a helyzet, és mi a következő lépés
  * (GOV.UK Error message: „say what has happened and how to fix it”; NN/g
- * Error-Message Guidelines). A panel a nem rendezett állapotok mellé a saját
- * általános útmutatóját is kiírja (src/components/admin/refund-response.ts).
+ * Error-Message Guidelines: „offer … remedies”). Minden nem rendezett
+ * állapot szövege önmagában teljes, a panel nem fűz hozzá általános
+ * útmutatót (src/components/admin/RefundPanel.tsx). A gombra a tényleges
+ * nevével hivatkozunk (recovery-action-label.ts, WCAG 2.2 SC 3.2.4).
  */
+const RECOVER = `„${REFUND_RECOVERY_ACTION_LABEL}”`
 const MANUAL =
-  'A visszatérítés mentett adatai nem egyeznek a rendeléssel, ezért ez kézi ellenőrzést igényel.'
+  'A visszatérítés mentett adatai nem egyeznek a rendeléssel, ezért ez kézi ellenőrzést igényel. Ne indíts új pénzvisszatérítést, és jelezd az üzemeltetőnek a rendelésszámmal együtt.'
 const UNREADABLE =
-  'A visszatérítés mentett állapota most nem olvasható. Frissítsd az oldalt pár perc múlva, és ha ez marad, jelezd az üzemeltetőnek.'
+  'A visszatérítés mentett állapota most nem olvasható, ezért új pénzvisszatérítést most ne indíts. Frissítsd az oldalt pár perc múlva, és ha ez marad, jelezd az üzemeltetőnek.'
+const INTERRUPTED = `A feldolgozás most nem fejeződött be, új pénzvisszatérítés nem indult. Frissítsd az oldalt, és ha a ${RECOVER} gomb ismét látszik, pár perc múlva próbáld újra. Ha ez ismétlődik, jelezd az üzemeltetőnek.`
 const LOCAL_BLOCKED =
-  'A Barion visszaigazolta a visszatérítést, de a helyi feldolgozás (hozzáférés vagy számla) elakadt, és automatikusan nem folytatható. Ez kézi ellenőrzést igényel.'
+  'A Barion visszaigazolta a visszatérítést, de a helyi feldolgozás (hozzáférés vagy számla) elakadt, és automatikusan nem folytatható. Ne indíts új pénzvisszatérítést, és jelezd az üzemeltetőnek a rendelésszámmal együtt.'
 const CONTINUE =
   'A Barion sikeres eredménye rögzítve van. A hozzáférések, a napló és a bizonylat feldolgozása folytatható új pénzvisszatérítés nélkül.'
 const COMPLETE = 'A visszatérítés helyi feldolgozása befejeződött.'
-const STUCK_PREPARED =
-  'Egy korábbi visszatérítés előkészítése megszakadt, a Barionnak nem ment kérés, pénzmozgás nem történt. A „Feldolgozás folytatása” lezárja ezt a kísérletet, utána új visszatérítés indítható.'
+const STUCK_PREPARED = `Egy korábbi visszatérítés előkészítése megszakadt, a Barionnak nem ment kérés, pénzmozgás nem történt. A ${RECOVER} lezárja ezt a kísérletet, utána új visszatérítés indítható.`
+const STUCK_PREPARED_AUTOMATIC = `Az automatikus visszatérítés egyik kísérlete az előkészítésnél megszakadt, a Barionnak nem ment kérés, pénzmozgás nem történt. A ${RECOVER} lezárja ezt a kísérletet. A további kísérletekről a fizetés-ellenőrzés gondoskodik, itt nem kell visszatérítést indítanod.`
 const IN_FLIGHT =
   'A visszatérítési kérés most megy a Barionhoz, vagy épp most jött meg rá a válasz. Várj egy percet, majd frissítsd az oldalt.'
-const UNKNOWN_OUTCOME =
-  'A Barion válaszából nem derült ki biztosan, megtörtént-e a visszatérítés. A „Feldolgozás folytatása” lekérdezi az eredményt a Barionból, új pénzvisszatérítést nem indít.'
+const UNKNOWN_OUTCOME = `A Barion válaszából nem derült ki biztosan, megtörtént-e a visszatérítés. A ${RECOVER} lekérdezi az eredményt a Barionból, új pénzvisszatérítést nem indít.`
 const NEVER_LAUNCHED_CLOSED =
   'A megszakadt kísérlet lezárva, a Barionnak nem ment kérés, pénzmozgás nem történt. A rendelésen új visszatérítés indítható.'
 const NO_EFFECT_CLOSED =
   'A Barion adatai szerint ez a visszatérítés nem történt meg, pénzmozgás nem volt. A kísérlet lezárva, a rendelésen új visszatérítés indítható.'
 const AUTOMATIC_ATTEMPT_CLOSED =
   'Az automatikus visszatérítés kísérlete lezárva: a Barion adatai szerint pénzmozgás nem történt. A további kísérletekről a fizetés-ellenőrzés gondoskodik.'
+const AUTOMATIC_NEVER_LAUNCHED_CLOSED =
+  'Az automatikus visszatérítés megszakadt kísérlete lezárva, a Barionnak nem ment kérés, pénzmozgás nem történt. A további kísérletekről a fizetés-ellenőrzés gondoskodik.'
 const RECONCILE_UNAVAILABLE =
   'A Barion most nem érhető el, ezért a visszatérítés eredménye nem kérdezhető le. Próbáld újra néhány perc múlva.'
 const RECONCILE_CHANGED = 'A visszatérítés állapota közben megváltozott. Frissítsd az oldalt.'
 const RECONCILE_IN_PROGRESS =
   'A Barion még feldolgozza a visszatérítést. Nézz vissza néhány perc múlva, és folytasd újra a feldolgozást.'
 const RECONCILE_UNPROVABLE =
-  'A Barion adataiból nem dönthető el egyértelműen, mi történt ezzel a visszatérítéssel (például a Barion felületén is indult visszatérítés). Ez kézi egyeztetést igényel az üzemeltetővel.'
+  'A Barion adataiból nem dönthető el egyértelműen, mi történt ezzel a visszatérítéssel (például a Barion felületén is indult visszatérítés). Ne indíts új pénzvisszatérítést, ez kézi egyeztetést igényel az üzemeltetővel.'
+
+/**
+ * Soha ki nem fizetett rendelés automatikus visszatérítése (paid-reject): a
+ * vásárló fizetése a Barionban sikerült, de a rendelést a rendszer nem fogadta
+ * el. A szöveg a közös újrapróbálási szabályból (automatic-retry.ts) mondja
+ * meg, mi lesz a következő lépés; a tulajdonosnak csak ott van teendője, ahol
+ * az ok a Barion-fiókjában van (K6: TooLowBalanceToMakeRefund).
+ */
+const AUTOMATIC_CONTEXT =
+  'A vásárló fizetése a Barionban sikerült, de a rendelést a rendszer nem fogadta el (például dupla vásárlás miatt), ezért az összeget automatikusan visszatéríti.'
+const NO_BARION_UI_REFUND = 'A Barion felületén ne indíts visszatérítést.'
+
+const BUDAPEST_DATE_TIME = new Intl.DateTimeFormat('hu-HU', {
+  timeZone: 'Europe/Budapest',
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+function automaticRefundMessage(failures: readonly RefundIntent[], now: Date): string {
+  const decision = decideAutomaticRetry(failures, now)
+  if (decision.kind === 'stop') {
+    const stopped =
+      decision.detail === 'automatic-refund-attempts-exhausted'
+        ? 'Az automatikus visszatérítés több sikertelen kísérlet után leállt, mert a Barion adataiból nem derült ki, miért nem sikerül.'
+        : nonFixableRejectionCode(failures) === 'AmountToRefundIsGreaterThanTransactionAmount'
+          ? 'Az automatikus visszatérítés leállt, mert a Barion szerint ebből a fizetésből ennyi már nem téríthető vissza (például a Barion felületén már visszatérítették).'
+          : 'Az automatikus visszatérítés leállt, mert a Barion olyan okkal utasította el, amelyet a rendszer magától nem tud megoldani.'
+    return `${AUTOMATIC_CONTEXT} ${stopped} A rendszer nem mozgatott pénzt. Jelezd az üzemeltetőnek a rendelésszámmal együtt. ${NO_BARION_UI_REFUND}`
+  }
+  const when =
+    decision.kind === 'wait'
+      ? `${BUDAPEST_DATE_TIME.format(Date.parse(decision.notBefore))} után`
+      : 'hamarosan'
+  const retry = `A rendszer ${when} újra megpróbálja, és naponta próbálkozik, amíg sikerül.`
+  const last = latestAutomaticFailure(failures)
+  const codes = rejectionCodesFromReference(last?.reconciliationReference)
+  if (codes.includes('TooLowBalanceToMakeRefund'))
+    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a Barion-tárcádban nincs elég egyenleg, pénzmozgás nem történt. ${retry} A visszatérítéshez legalább ${formatPriceHuf(last?.requestedAmountHuf ?? 0)} kell a tárcában, ezt egy feltöltés vagy a következő eladások biztosítják. ${NO_BARION_UI_REFUND}`
+  if (codes.includes('AuthenticationFailed'))
+    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert nem fogadta el a bolt azonosító kulcsát, pénzmozgás nem történt. Jelezd az üzemeltetőnek, hogy ellenőrizze a Barion-beállításokat. ${retry} ${NO_BARION_UI_REFUND}`
+  if (codes.length > 0)
+    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a fiókod most nem jogosult visszatérítésre, pénzmozgás nem történt. Vedd fel a kapcsolatot a Barion ügyfélszolgálatával. ${retry} ${NO_BARION_UI_REFUND}`
+  return `${AUTOMATIC_CONTEXT} A legutóbbi kísérlet pénzmozgás nélkül lezárult. ${retry} Itt nincs teendőd. ${NO_BARION_UI_REFUND}`
+}
 
 /** Ennyi ideig egy provider_started kísérletnek még futhat az indítója (2 × Barion-plafon + tartalék). */
 const IN_FLIGHT_WINDOW_MS = 2 * 60_000
@@ -102,7 +164,13 @@ function stuckIntentStatus(
   intent: RefundIntent,
   now: number,
 ): { state: 'manual_review' | 'recoverable'; message: string } {
-  if (intent.state === 'prepared') return { state: 'recoverable', message: STUCK_PREPARED }
+  if (intent.state === 'prepared')
+    return {
+      state: 'recoverable',
+      // Az automatikus kísérlet soha ki nem fizetett rendelésen áll: ott a
+      // tulajdonos nem indít visszatérítést, a következőt a rendszer indítja.
+      message: isAutomaticRefundIntent(intent) ? STUCK_PREPARED_AUTOMATIC : STUCK_PREPARED,
+    }
   if (!RECONCILABLE_LAUNCHED_STATES.has(intent.state))
     return { state: 'manual_review', message: MANUAL }
   const startedAt = intent.providerStartedAt ? Date.parse(intent.providerStartedAt) : NaN
@@ -428,6 +496,9 @@ async function reconcileStuckIntent(
   const seen = await loadActiveRefundIntent(payload, orderId)
   if (!seen || seen.state === 'provider_succeeded') return { kind: 'none' }
   let state: BarionPaymentStateResponse | null = null
+  // A negyedórás nullhatás-szabály a lekérdezés INDÍTÁSÁHOZ mér: a Barion
+  // pillanatképe legalább ilyen friss, a zárra várás ideje nem számít bele.
+  const stateObservedAt = options.now ?? new Date()
   if (RECONCILABLE_LAUNCHED_STATES.has(seen.state)) {
     try {
       state = await fetchPaymentState(seen.providerPaymentId)
@@ -459,6 +530,7 @@ async function reconcileStuckIntent(
         state,
         ownerLedger: automatic ? null : ownerLedger(order, intent),
         now: options.now,
+        stateObservedAt,
       })
       log.info('refund recovery: a Barion-allapot egyeztetve', {
         orderId,
@@ -498,13 +570,17 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
         if (settled.kind === 'pending')
           return { orderNumber, recoveryStatus: 'manual_review' as const, message: settled.message }
         if (settled.kind === 'no_effect') {
-          const status = await getRefundRecoveryStatus({ payload, orderNumber })
-          return status.state === 'clear'
+          const status = await storageRecoveryStatus({ payload, orderNumber, now: options.now })
+          // Az automatikus kísérlet lezárása után a rendelés a következő
+          // automatikus kísérletre vár: ez rendezett állapot, nem kézi eset.
+          return status.state === 'clear' || (settled.automatic && status.automaticRetry)
             ? {
                 orderNumber,
                 recoveryStatus: 'completed' as const,
                 message: settled.automatic
-                  ? AUTOMATIC_ATTEMPT_CLOSED
+                  ? settled.neverLaunched
+                    ? AUTOMATIC_NEVER_LAUNCHED_CLOSED
+                    : AUTOMATIC_ATTEMPT_CLOSED
                   : settled.neverLaunched
                     ? NEVER_LAUNCHED_CLOSED
                     : NO_EFFECT_CLOSED,
@@ -531,7 +607,7 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
           log,
         )
         if (!financial) {
-          const status = await getRefundRecoveryStatus({ payload, orderNumber })
+          const status = await getRefundRecoveryStatus({ payload, orderNumber, now: options.now })
           return status.state === 'clear'
             ? { orderNumber, recoveryStatus: 'completed' as const, message: COMPLETE }
             : { orderNumber, recoveryStatus: 'manual_review' as const, message: status.message }
@@ -619,22 +695,37 @@ export async function recoverRefundOrder(options: RecoveryOptions): Promise<{
       log,
     )
   } catch {
+    // Átmeneti hiba (tároló, kapcsolat, zár) és valódi ütközés is ide fut. A
+    // szöveget a tartós állapot dönti el: valódi eltérésnél ugyanazt mondja,
+    // amit a panel állapota; folytatható vagy rendezett állapotnál nem állít
+    // eltérést, csak újrapróbálást kér (a getRefundRecoveryStatus nem dob).
     log.warn('refund recovery: tartos allapot ellenorzese szukseges', { orderNumber })
-    return manual
+    const status = await getRefundRecoveryStatus({ payload, orderNumber, now: options.now })
+    return {
+      orderNumber,
+      recoveryStatus: 'manual_review' as const,
+      message: status.state === 'manual_review' ? status.message : INTERRUPTED,
+    }
   }
+}
+
+interface StorageRecoveryStatus {
+  orderNumber: string
+  state: 'clear' | 'manual_review' | 'recoverable'
+  message: string
+  /** Belső jelzés: soha ki nem fizetett rendelés, a következő automatikus kísérletre vár. */
+  automaticRetry?: true
 }
 
 async function storageRecoveryStatus({
   payload,
   orderNumber,
+  now = new Date(),
 }: {
   payload: Payload
   orderNumber: string
-}): Promise<{
-  orderNumber: string
-  state: 'clear' | 'manual_review' | 'recoverable'
-  message: string
-}> {
+  now?: Date
+}): Promise<StorageRecoveryStatus> {
   try {
     const order = await findRecoveryOrder(payload, orderNumber)
     if (!order) return { orderNumber, state: 'manual_review', message: MANUAL }
@@ -642,7 +733,7 @@ async function storageRecoveryStatus({
     if (intent) {
       // Elakadt kísérlet: a „Feldolgozás folytatása” bizonyítékból zárja le (reconcileStuckIntent).
       if (intent.state !== 'provider_succeeded')
-        return { orderNumber, ...stuckIntentStatus(intent, Date.now()) }
+        return { orderNumber, ...stuckIntentStatus(intent, now.getTime()) }
       if (isAutomaticRefundIntent(intent)) {
         return (await canRecoverAutomaticRefund(payload, order, intent))
           ? {
@@ -680,6 +771,19 @@ async function storageRecoveryStatus({
       return canCleanup || !auditDone || canInvoice || ready
         ? { orderNumber, state: 'recoverable', message: CONTINUE }
         : { orderNumber, state: 'manual_review', message: LOCAL_BLOCKED }
+    }
+    if (isNeverPaidRefundCandidate(order)) {
+      // A soha ki nem fizetett rendelésen csak automatikus visszatérítés lehet.
+      // Lezárt, hatástalan kísérletek után a panel nem mondhatja, hogy nincs
+      // mit visszatéríteni: a vásárló pénze még a boltnál van.
+      const history = await loadRefundIntentsForOrder(payload, order.id)
+      if (history.length === 0) return { orderNumber, state: 'clear', message: COMPLETE }
+      if (!history.every(isResolvedAutomaticFailure))
+        return { orderNumber, state: 'manual_review', message: MANUAL }
+      const message = automaticRefundMessage(history, now)
+      return decideAutomaticRetry(history, now).kind === 'stop'
+        ? { orderNumber, state: 'manual_review', message }
+        : { orderNumber, state: 'manual_review', message, automaticRetry: true }
     }
     const entries = validatedRefundHistory(order)
     if (entries.length > 0 || order.status === 'refunded') {
@@ -745,13 +849,17 @@ export async function getRefundRecoveryStatus(options: {
   payload: Payload
   orderNumber: string
   operationKey?: string
+  /** Injektálható idő (teszteléshez); alapból a pillanatnyi idő. */
+  now?: Date
 }): Promise<{
   orderNumber: string
   state: 'clear' | 'manual_review' | 'recoverable'
   message: string
   operationState?: 'unseen' | 'pending' | 'completed' | 'no_effect'
 }> {
-  const status = await storageRecoveryStatus(options)
+  const stored = await storageRecoveryStatus(options)
+  // A belső jelzés nem része a válasznak.
+  const status = { orderNumber: stored.orderNumber, state: stored.state, message: stored.message }
   if (options.operationKey === undefined) return status
   try {
     const order = await findRecoveryOrder(options.payload, options.orderNumber)

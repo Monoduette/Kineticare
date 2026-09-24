@@ -19,7 +19,7 @@ function setup() {
     Transactions: [
       {
         TransactionId: sourceId,
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: `${f.order.orderNumber}-1`,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: 20000,
@@ -31,7 +31,7 @@ function setup() {
     RefundedTransactions: [
       {
         TransactionId: refundId,
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: `${f.order.orderNumber}-1`,
         Total: 20000,
         Status: 'Succeeded',
       },
@@ -97,7 +97,7 @@ describe('automatic paid-reject durable ledger runtime', () => {
         RefundedTransactions: [
           {
             TransactionId: refundId,
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: `${f.order.orderNumber}-1`,
             Total: 20000,
             Status: status,
           },
