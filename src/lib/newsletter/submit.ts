@@ -33,8 +33,16 @@ export const NEWSLETTER_GENERIC_ERROR =
   'A feliratkozás most nem sikerült. Próbáld újra néhány perc múlva.'
 
 /** Sikerüzenet — a beküldés után az élő régióban (role="status") jelenik meg. */
-export const NEWSLETTER_SUCCESS_MESSAGE =
-  'Köszönjük, feliratkoztál! Hamarosan jelentkezünk az első hírlevéllel.'
+/**
+ * A lábléc zöld sikerdobozának címe és szövege. A cím kimondja, mi történt,
+ * így a jelentést nem egyedül a zöld szín hordozza (GOV.UK Design System,
+ * Notification banner: https://design-system.service.gov.uk/components/notification-banner/;
+ * WCAG 2.2 SC 1.4.1 Use of Color). A megfogalmazás a kapcsolat-oldali
+ * időpontkérés sikerdobozát követi („Megkaptuk az időpontkérésed").
+ */
+export const NEWSLETTER_SUCCESS_TITLE = 'Feliratkoztál a hírlevélre'
+
+export const NEWSLETTER_SUCCESS_MESSAGE = 'Köszönjük! Hamarosan jelentkezünk az első hírlevéllel.'
 
 /** Turnstile-kulcs mellett, még token nélküli állapotban ez az üzenet megy ki. */
 export const NEWSLETTER_TURNSTILE_PENDING_ERROR =

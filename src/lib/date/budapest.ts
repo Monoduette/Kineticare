@@ -38,6 +38,27 @@ export function budapestDateString(now: Date = new Date()): string {
 }
 
 /**
+ * A megadott pillanat magyar dátum-időként, Europe/Budapest zónában, 24 órás
+ * formában: „2026. 09. 15. 08:35".
+ *
+ * MIÉRT: az éles szerver UTC-ben fut, így a zóna nélküli
+ * `toLocaleString('hu-HU')` nyáron két, télen egy órával korábbi időt írna a
+ * stáb-értesítőbe. Érvénytelen `Date`-re ugyanúgy `RangeError`-t dob, mint a
+ * `budapestDateString`.
+ */
+export function budapestDateTimeString(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(now)
+}
+
+/**
  * Érvényes YYYY-MM-DD — alak és naptár (lehetetlen hónap/nap elbukik; statisztika + számla).
  */
 export function isIsoDateString(value: string): boolean {

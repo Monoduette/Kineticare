@@ -1473,12 +1473,95 @@
   color: var(--kc-footer-accent);
 }
 
-/* Élő régió (role="status"): mindig a DOM-ban van, üresen NEM foglal helyet. */
-.kc-newsletter__status:not(:empty) {
+/* Élő régió (role="status"): mindig a DOM-ban és az akadálymentességi fában
+   van (NEM display: none — annak megjelenő tartalmát a képernyőolvasók nem
+   mindig olvassák fel); üresen nincs magassága. */
+
+/* Sikeres feliratkozás: UGYANAZ a zöld doboz, mint a kapcsolat-oldali
+   időpontkérésé (blocks/appointment.css `.kc-appointment__success`), azonos
+   tokenekkel — a tulajdonos kérése (2026-09-24): egy siker, egy látvány.
+   A dobozt a keret rajzolja ki: a halványzöld kitöltés a lábléc #f6f9fc
+   hátterén 1,06:1 (szemre alig), a #166534 keret 6,75:1 (WCAG 2.2 SC 1.4.11
+   ≥ 3:1). Szöveg a kitöltésen: cím #166534 6,35:1, törzs #10243e 13,92:1
+   (SC 1.4.3 ≥ 4,5:1). A cím kimondja az eredményt, így nem egyedül a szín
+   hordozza (SC 1.4.1; GOV.UK Notification banner). */
+.kc-newsletter__success {
+  display: grid;
+  gap: var(--kc-space-3);
+  max-width: 36rem;
+  padding: var(--kc-space-5);
+  border: 1px solid var(--kc-color-success);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-success-surface);
+  color: var(--kc-color-text);
+}
+
+.kc-newsletter__success-title {
+  margin: 0;
+  font-family: var(--kc-font-heading);
+  font-size: var(--kc-font-m);
+  font-weight: var(--kc-font-weight-normal);
+  line-height: var(--kc-leading-heading);
+  color: var(--kc-color-success);
+}
+
+/* A cím programozott fókuszt kap (a mezők eltűnnek); a gyűrű a doboz saját
+   színével rajzolódik, mint az időpontkérés hibadobozán. */
+.kc-newsletter__success-title:focus-visible {
+  outline: 2px solid var(--kc-color-success);
+  outline-offset: 2px;
+}
+
+.kc-newsletter__success-text {
+  margin: 0;
   font-size: var(--kc-font-s);
-  font-weight: var(--kc-font-weight-medium);
   line-height: var(--kc-leading-body);
-  color: var(--kc-footer-ink);
+}
+
+/* Szerver- vagy spam-ellenőrzési hiba: az időpontkérés hibadobozának
+   (`.kc-appointment__summary`) tokenjei. */
+.kc-newsletter__error {
+  max-width: 36rem;
+  margin: 0;
+  padding: var(--kc-space-3) var(--kc-space-4);
+  border: 1px solid var(--kc-color-danger);
+  border-radius: var(--kc-radius-md);
+  background-color: var(--kc-color-danger-surface);
+  color: var(--kc-color-danger);
+  font-size: var(--kc-font-s);
+  line-height: var(--kc-leading-body);
+}
+
+/* Turnstile-widget tárolója (lábléc-hírlevél, időpontkérés, ingyenes kurzus):
+   a szélessége a rendelkezésre álló helyből jön, NEM a benne lévő, fix
+   300 px-es widgetből (`container-type: inline-size`, ami inline-size
+   elszigetelést is ad). Enélkül a tároló a widgettel
+   együtt 300 px-en ragadt, így keskenyebb nézetben (elforgatás, 320 px) a
+   komponens nem észlelte a határ átlépését, és vízszintes görgetés maradt
+   (mérve: 374 px-es dokumentum 320 px-es nézetben; WCAG 2.2 SC 1.4.10).
+   https://developer.mozilla.org/en-US/docs/Web/CSS/container-type */
+.kc-contact-form__turnstile {
+  container-type: inline-size;
+  max-width: 100%;
+}
+
+/* Helyfoglalás a kirajzolás ELŐTT (CLS ellen): a normál widget 300×65, a
+   kompakt 150×140 (Cloudflare, Widget sizes:
+   https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/#widget-sizes).
+   300 px-nél keskenyebb tárolóban a komponens a kompaktot rajzolja, ezért a
+   konténer-lekérdezés ugyanennél a határnál 140 px-et foglal. */
+/* `line-height: 0`: a widget iframe-je sorközi elem, a szöveg sormagassága
+   alatta 9–11 px-es ékezetrést hagyott (mérve: 76 / 149 px a 65 / 140 px-es
+   widgetre), és a gomb ennyit ugrott a kirajzoláskor. */
+.kc-contact-form__turnstile-hely {
+  min-height: 65px;
+  line-height: 0;
+}
+
+@container (max-width: 299.98px) {
+  .kc-contact-form__turnstile-hely {
+    min-height: 140px;
+  }
 }
 
 /* Honeypot: sem szemmel, sem billentyűzettel nem elérhető (a `display: none`

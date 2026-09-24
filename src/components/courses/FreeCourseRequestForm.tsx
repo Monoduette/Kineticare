@@ -11,7 +11,10 @@ import {
   type RefObject,
 } from 'react'
 
-import { TurnstileWidget } from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
+import {
+  TURNSTILE_UNAVAILABLE_ERROR,
+  TurnstileWidget,
+} from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { withLeadTracking, type LeadTrackers } from '@/lib/analytics/lead-events'
@@ -203,6 +206,9 @@ export function FreeCourseRequestForm({
   } | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  // A Turnstile-token egyszer használható: sikertelen beküldés után új kell.
+  const [turnstileReset, setTurnstileReset] = useState(0)
+  const [turnstileFailed, setTurnstileFailed] = useState(false)
   const [honeypot, setHoneypot] = useState('')
   const [failedAttempts, setFailedAttempts] = useState(0)
 
@@ -256,7 +262,9 @@ export function FreeCourseRequestForm({
     }
 
     if (turnstileEnabled && !turnstileToken) {
-      setSubmitError(FREE_COURSE_TURNSTILE_PENDING_ERROR)
+      setSubmitError(
+        turnstileFailed ? TURNSTILE_UNAVAILABLE_ERROR : FREE_COURSE_TURNSTILE_PENDING_ERROR,
+      )
       setFailedAttempts((previous) => previous + 1)
       return
     }
@@ -273,6 +281,12 @@ export function FreeCourseRequestForm({
     }
     setSubmitError(result.message)
     setFailedAttempts((previous) => previous + 1)
+    if (turnstileEnabled) {
+      // Új ellenőrzés indul: a korábbi hibát csak a végleges betöltési hiba
+      // jelzi újra (TurnstileWidget).
+      setTurnstileFailed(false)
+      setTurnstileReset((previous) => previous + 1)
+    }
   }
 
   if (succeeded && success !== null) {
@@ -391,7 +405,17 @@ export function FreeCourseRequestForm({
 
       {turnstileEnabled ? (
         <div className="kc-free-course__turnstile">
-          <TurnstileWidget onToken={setTurnstileToken} siteKey={turnstileSiteKey as string} />
+          <TurnstileWidget
+            onError={() => setTurnstileFailed(true)}
+            onToken={(token) => {
+              setTurnstileToken(token)
+              if (token) {
+                setTurnstileFailed(false)
+              }
+            }}
+            resetKey={turnstileReset}
+            siteKey={turnstileSiteKey as string}
+          />
         </div>
       ) : null}
 
