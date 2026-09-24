@@ -175,7 +175,8 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   rendelésre, új beküldés nélkül — ez oldja fel a „kérés elment, válasz
   elveszett" esetet. A lekérdezés **nem fogyaszt** a kísérlet-keretből, a hibája
   viszont szándékosan propagál: bizonytalan állapotban nem szabad vakon újra
-  beküldeni.
+  beküldeni. A számla-ágon a tartós lekérdezés-hibát időkorlát zárja le: a
+  fizetés után 24 órával a számla `failed` + `RIASZTÁS:` (2026-09-24, H4).
 - **A stornó-ágon NINCS lekérdezés, helyette ESZKALÁCIÓ.** Mivel a stornó a
   kérésben küldött azonosítóval nem kereshető vissza igazoltan, a „nincs
   találat" (7-es) válasz nem bizonyítaná stornó hiányát — a vak újraküldés
@@ -210,7 +211,10 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   `correctiveInvoiceAttemptsSeq` mezőhöz kötött, ezért egy kimerült
   részrefund-bizonylat nem blokkolja a következő refund helyesbítőjét (új
   sorszámnál a számlálás nulláról indul). Kimerüléskor a bizonylat `failed`
-  marad — hálózati hívás nélkül —, és error-szintű owner-jelzés kerül a naplóba.
+  marad, beküldés nélkül, és error-szintű owner-jelzés kerül a naplóba. A számla-
+  és a helyesbítő-ágon előtte még EGY záró lekérdezés fut (2026-09-24, H3): ha az
+  5. (bizonytalan kimenetű) beküldés mégis létrehozta a bizonylatot, azt a
+  rendszer átveszi; a stornó-ágon a kimerülés hálózati hívás nélküli.
   A számlálók írása olvasás-módosítás-írás mintával, zár nélkül történik: ez
   ismert és elfogadott korlát, az indoklás a `docs/szamlazz-megfeleles.md`
   üzemeltetési jegyzetében.

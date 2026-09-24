@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { normalizeText } from '../../lib/checkout/billing'
 import { buildCorrectiveInvoiceXml } from '../../lib/szamlazz/corrective'
 import { buildInvoiceXml, type BuildInvoiceXmlInput } from '../../lib/szamlazz/invoice'
 import { buildInvoiceLookupXml } from '../../lib/szamlazz/pdf'
@@ -25,9 +26,13 @@ import { compileSchema, validateXml, type CompiledSchema } from './xsd-subset-va
  * másolatot frissíteni kell — egy új, támogatatlan séma-szerkezetre a
  * validátor hangosan dob.
  *
- * Kettős ellenőrzés: a függőség nélküli részhalmaz-validátor MINDIG fut (CI-n
- * is); ahol az `xmllint` elérhető, a teljes libxml2-es sémavalidáció is lefut
- * ugyanazokon a mintákon, és a két ítéletnek egyeznie kell.
+ * Kettős ellenőrzés: a függőség nélküli részhalmaz-validátor MINDIG fut; ahol
+ * az `xmllint` elérhető (helyi gépen), a teljes libxml2-es sémavalidáció is
+ * lefut ugyanazokon a mintákon (`--nonet`: hálózat nélkül), és a két ítéletnek
+ * egyeznie kell. A GitHub CI futtatóján az `xmllint` NINCS telepítve (a PR
+ * #304 futásán a 18 xmllint-teszt kihagyva), ott kizárólag a
+ * részhalmaz-validátor véd: ezért ellenőrzi a jólformáltságot is (tiltott
+ * XML-karakter, csupasz &, hibás karakterhivatkozás), nem csak a sémát.
  *
  * DUMMY érték, egyértelműen jelölve — NEM valódi Számla Agent kulcs.
  */
@@ -52,7 +57,7 @@ const XMLLINT_AVAILABLE = spawnSync('xmllint', ['--version']).status === 0
 
 /** libxml2-es sémavalidáció (csak ahol az xmllint elérhető). */
 function xmllintValid(xml: string, xsdPath: string): { valid: boolean; output: string } {
-  const result = spawnSync('xmllint', ['--noout', '--schema', xsdPath, '-'], {
+  const result = spawnSync('xmllint', ['--nonet', '--noout', '--schema', xsdPath, '-'], {
     input: xml,
     encoding: 'utf8',
   })
@@ -140,6 +145,61 @@ const SAMPLES: Array<{ name: string; xsd: keyof typeof XSD; xml: string }> = [
     xsd: 'lekerdezes',
     xml: buildInvoiceLookupXml({ agentKey: DUMMY_AGENT_KEY, kulsoAzon: 'KH-2026-000123' }),
   },
+  // H5: XML 1.0-ban tiltott karakterek (U+FFFF, U+FFFE, U+000B, U+0000,
+  // magányos surrogate) a vevőadatban, a tételnévben és a visszatérítési
+  // indokban. Az escapeXml elhagyja őket, a kérés így is jól formált és
+  // XSD-érvényes marad (korábban 57-es hibával végleges 'failed' lett volna).
+  {
+    name: 'számla — tiltott XML-karakterek a vevőadatban és a tételnévben',
+    xsd: 'szamla',
+    xml: buildInvoiceXml({
+      ...BASE,
+      buyer: {
+        nev: 'Kovács\uFFFFÉva',
+        irsz: '1111',
+        telepules: 'Buda\uFFFEpest',
+        cim: 'Fő utca\u000B1.\u0000',
+        email: 'anna@example.test',
+      },
+      items: [{ megnevezes: 'Kurzus\uD800 otthon', mennyiseg: 1, bruttoEgysegar: 19990 }],
+    }),
+  },
+  {
+    name: 'helyesbítő — tiltott XML-karakter a vevőadatban és az indokban',
+    xsd: 'szamla',
+    xml: buildCorrectiveInvoiceXml({
+      agentKey: DUMMY_AGENT_KEY,
+      originalInvoiceNumber: 'KIN-2026-7',
+      orderNumber: 'KH-2026-000123',
+      invoicePrefix: 'KIN',
+      refundSeq: 1,
+      amountHuf: 5000,
+      issueDate: '2026-10-05',
+      vatMode: 'AAM',
+      buyer: { ...BUYER_MAGANSZEMELY, nev: 'Kovács\uFFFFÉva' },
+      reason: 'Részleges\uFFFF visszatérítés\u000B',
+    }),
+  },
+  {
+    name: 'stornó — tiltott XML-karakter az indokban',
+    xsd: 'storno',
+    xml: buildStornoXml({
+      agentKey: DUMMY_AGENT_KEY,
+      originalInvoiceNumber: 'KIN-2026-7',
+      orderNumber: 'KH-2026-000123',
+      reason: 'Teljes\uFFFF visszatérítés\u000B\uFFFE',
+      buyerEmail: 'anna@example.test',
+    }),
+  },
+  {
+    name: 'számla — a pénztári normalizálás (normalizeText) után, U+FFFF-es névvel',
+    xsd: 'szamla',
+    xml: buildInvoiceXml({
+      ...BASE,
+      vatMode: 'AAM',
+      buyer: { ...BUYER_MAGANSZEMELY, nev: normalizeText('Kovács\uFFFFÉva') },
+    }),
+  },
 ]
 
 describe('XSD-őr — minden kimenő Számla Agent kérés érvényes az élő séma szerint', () => {
@@ -213,6 +273,51 @@ describe('XSD-őr — a validátor a valódi sémasértéseket megfogja', () => 
       name: 'nem deklarált attribútum (a tudástár cvc-complex-type.3.2.2 esete)',
       xml: valid.replace('<xmlszamla xmlns=', '<xmlszamla xsi="x" xmlns='),
       expected: /nem megengedett attribútum 'xsi'/,
+    },
+    // H6: jólformáltsági hibák. A GitHub CI-on csak a részhalmaz-validátor
+    // fut, ezért ezeket NEKI kell megfognia (korábban mind átment).
+    {
+      name: "csupasz '&' a <nev>-ben (elmaradt escape)",
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Kovács & Társa Bt.</nev>'),
+      expected: /nem jólformált XML: Csupasz & jel/,
+    },
+    {
+      name: "pontosvessző nélküli '&' a <megnevezes>-ben",
+      xml: valid.replace(
+        '<megnevezes>Kézrehabilitáció otthon</megnevezes>',
+        '<megnevezes>Kéz &amp rehabilitáció</megnevezes>',
+      ),
+      expected: /nem jólformált XML: Csupasz & jel/,
+    },
+    {
+      name: 'U+FFFF (nem-karakter) nyersen a <nev>-ben',
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Teszt\uFFFFAnna</nev>'),
+      expected: /nem jólformált XML: Nem XML 1\.0 karakter a dokumentumban: U\+FFFF/,
+    },
+    {
+      name: 'U+000B (függőleges tabulátor) nyersen a <nev>-ben',
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Teszt\u000BAnna</nev>'),
+      expected: /nem jólformált XML: Nem XML 1\.0 karakter a dokumentumban: U\+000B/,
+    },
+    {
+      name: 'U+0000 nyersen az <irsz>-ben',
+      xml: valid.replace('<irsz>1111</irsz>', '<irsz>11\u000011</irsz>'),
+      expected: /nem jólformált XML: Nem XML 1\.0 karakter a dokumentumban: U\+0000/,
+    },
+    {
+      name: '&#0; karakterhivatkozás',
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Teszt&#0;Anna</nev>'),
+      expected: /nem jólformált XML: Nem XML-karakterre mutató hivatkozás: &#0;/,
+    },
+    {
+      name: '&#xFFFF; karakterhivatkozás',
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Teszt&#xFFFF;Anna</nev>'),
+      expected: /nem jólformált XML: Nem XML-karakterre mutató hivatkozás: &#xFFFF;/,
+    },
+    {
+      name: "']]>' a szöveges tartalomban",
+      xml: valid.replace('<nev>Teszt Anna</nev>', '<nev>Teszt ]]> Anna</nev>'),
+      expected: /nem jólformált XML: ']]>' a szöveges tartalomban/,
     },
   ]
 

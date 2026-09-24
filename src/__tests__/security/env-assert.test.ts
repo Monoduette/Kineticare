@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.stubEnv(SITE_KEY_ENV, undefined)
   vi.stubEnv(SECRET_KEY_ENV, undefined)
   vi.stubEnv('SZAMLAZZ_AFAKULCS', undefined)
+  vi.stubEnv('SZAMLAZZ_AGENT_KEY', undefined)
   // Élesben az induláskori Barion-összefoglaló info-sort ír; a tesztkimenetet ne szemetelje.
   vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -178,7 +179,8 @@ describe('assertRequiredEnv — Turnstile-kulcspár konzisztenciája', () => {
 })
 
 /**
- * SZAMLAZZ_AFAKULCS (F16) — OPCIONÁLIS kulcs szigorú értékkészlettel.
+ * SZAMLAZZ_AFAKULCS (F16) — szigorú értékkészlet; bekapcsolt számlázásnál
+ * (van SZAMLAZZ_AGENT_KEY) kötelező, kikapcsolt számlázásnál elhagyható.
  *
  * A `getSzamlazzConfig` csak LUSTÁN, az első számlázási művelet közben fut le,
  * ahol a hiba a jobban vagy a rendelés-visszaigazoló e-mail try/catch-ében
@@ -188,10 +190,69 @@ describe('assertRequiredEnv — Turnstile-kulcspár konzisztenciája', () => {
  * stagingen egyaránt súlyos.
  */
 describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', () => {
-  it('nincs beállítva → nem dob (alapértelmezés: 27)', () => {
+  it('nincs beállítva, KIKAPCSOLT számlázásnál (nincs agent-kulcs) → nem dob, riasztás sincs', () => {
     vi.stubEnv('NODE_ENV', 'test')
+    const alert = vi.fn()
+
+    expect(() => assertRequiredEnv(undefined, alert)).not.toThrow()
+    expect(alert).not.toHaveBeenCalled()
+  })
+
+  it('BEKAPCSOLT számlázás (van agent-kulcs) áfakulcs nélkül: elindul, de induláskor RIASZTÁS megy', () => {
+    // A getSzamlazzConfig ilyenkor minden számlázási műveletnél dob: egyetlen
+    // számla sem állna ki. A boltot nem állítjuk meg, de a hiba már induláskor
+    // error-szintű riasztás, a kulcs ÉRTÉKE nélkül.
+    const DUMMY_AGENT_KEY = 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK'
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', DUMMY_AGENT_KEY)
+    for (const nodeEnv of ['development', 'test', 'production']) {
+      vi.stubEnv('NODE_ENV', nodeEnv)
+      if (nodeEnv === 'production') {
+        vi.stubEnv('BARION_ENVIRONMENT', 'test')
+        vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+      }
+      for (const empty of [undefined, '', '   ']) {
+        vi.stubEnv('SZAMLAZZ_AFAKULCS', empty)
+        const alert = vi.fn()
+        expect(() => assertRequiredEnv(() => undefined, alert), nodeEnv).not.toThrow()
+        expect(alert, `${nodeEnv}/${String(empty)}`).toHaveBeenCalledTimes(1)
+        const [message, context] = alert.mock.calls[0] as [string, Record<string, unknown>]
+        expect(message).toMatch(/^RIASZTÁS: a SZAMLAZZ_AFAKULCS nincs beállítva/)
+        expect(message).toContain('kötelező')
+        expect(message).toContain("'27' vagy 'AAM'")
+        expect(message).not.toContain(DUMMY_AGENT_KEY)
+        expect(JSON.stringify(context)).not.toContain(DUMMY_AGENT_KEY)
+      }
+    }
+  })
+
+  it('bekapcsolt számlázás megadott áfakulccsal: nincs riasztás', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
+    for (const mode of szamlazzVatModes) {
+      vi.stubEnv('SZAMLAZZ_AFAKULCS', mode)
+      const alert = vi.fn()
+      assertRequiredEnv(undefined, alert)
+      expect(alert, mode).not.toHaveBeenCalled()
+    }
+  })
+
+  it('az alapértelmezett riasztás-kimenet error-szintű, RIASZTÁS-előtagú strukturált naplósor', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('LOG_LEVEL', 'debug')
+    vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
+    const written = vi.mocked(console.log)
+    written.mockClear()
 
     expect(() => assertRequiredEnv()).not.toThrow()
+
+    const lines = written.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes('SZAMLAZZ_AFAKULCS'))
+    expect(lines).toHaveLength(1)
+    const entry = JSON.parse(lines[0] ?? '{}') as { level?: string; msg?: string }
+    expect(entry.level).toBe('error')
+    expect(entry.msg).toMatch(/^RIASZTÁS: /)
+    expect(lines[0]).not.toContain('DUMMY-AGENT-KULCS-NEM-VALODI-TITOK')
   })
 
   it('üres/whitespace érték → nem dob (hiánynak számít)', () => {
@@ -218,6 +279,15 @@ describe('assertRequiredEnv — SZAMLAZZ_AFAKULCS induláskori ellenőrzése', (
     expect(() => assertRequiredEnv()).toThrowError(/nem indulhat el/)
     // A hibás érték szerepel az üzenetben (nem titok — adóügyi kód).
     expect(() => assertRequiredEnv()).toThrowError(/TAM/)
+  })
+
+  it('a hibaüzenet NEM javasolja az üresen hagyást: bekapcsolt számlázásnál a kulcs kötelező', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('SZAMLAZZ_AFAKULCS', '0')
+
+    expect(() => assertRequiredEnv()).toThrowError(/kötelező/)
+    expect(() => assertRequiredEnv()).not.toThrowError(/hagyd üresen/)
+    expect(() => assertRequiredEnv()).not.toThrowError(/alapértelmezés: 27/)
   })
 
   it('MINDEN környezetben dob (nem csak élesben)', () => {

@@ -355,6 +355,19 @@ function extractAgentErrors(xml: string): SzamlazzAgentError[] {
   return errors
 }
 
+/** Az azonos (kód + üzenet) hibapárok kiszűrése, az első előfordulás sorrendjében. */
+function uniqueAgentErrors(errors: SzamlazzAgentError[]): SzamlazzAgentError[] {
+  const seen = new Set<string>()
+  return errors.filter((entry) => {
+    const key = `${entry.code.trim()}\u0000${entry.message}`
+    if (seen.has(key)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
+}
+
 function isTruthyHeader(value: string | null): value is string {
   return (
     value !== null &&
@@ -452,7 +465,8 @@ export interface SzamlazzParsedSuccess {
  * Sorrend:
  * 1. szlahu_down (karbantartás) → retryable;
  * 2. hibajelzés (szlahu_error / szlahu_error_code fejléc, illetve
- *    <sikeres>false</sikeres> a törzsben): ha KIZÁRÓLAG 56-os (értesítő-hiba)
+ *    <sikeres>false</sikeres> a törzsben): a fejléc és a törzs hibakódjainak
+ *    UNIÓJA számít. Ha az unió KIZÁRÓLAG 56-os (értesítő-hiba) kódokból áll
  *    és van egyértelmű számlaszám → SIKER `notificationError`-ral; 56 szám
  *    nélkül → bizonytalan (retryable); minden más a hivatalos
  *    kód-osztályozással;
@@ -520,8 +534,16 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
     return fromHeader?.trim() ? decodeUrlHeaderValue(fromHeader) : undefined
   }
 
+  // Hibajelzésnél a fejléc és a törzs hibakódjainak UNIÓJA dönt: egy 56-os
+  // fejléc mellett a törzsben álló 57-es (vagy bármely más) kód sem tűnhet el,
+  // különben egy el sem készült bizonylatot vennénk át „értesítő-hibás
+  // sikerként". Az ismétlődő (azonos kód + üzenet) párok egyszer számítanak.
   const reportedErrors =
-    headerErrors.length > 0 ? headerErrors : sikeres === 'true' ? [] : bodyErrors
+    headerErrors.length > 0
+      ? uniqueAgentErrors([...headerErrors, ...bodyErrors])
+      : sikeres === 'true'
+        ? []
+        : bodyErrors
   if (reportedErrors.length > 0 || sikeres === 'false') {
     const onlyNotificationFailure =
       reportedErrors.length > 0 &&
@@ -547,9 +569,10 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
       )
     }
     const fromHeader = headerErrors.length > 0
+    const channel = reportedErrors.length > headerErrors.length ? 'fejléc és törzs' : 'fejléc'
     throw agentErrorFromCodes(
       fromHeader
-        ? `Számla Agent hiba (fejléc): ${reportedErrors
+        ? `Számla Agent hiba (${channel}): ${reportedErrors
             .map((error) => `${error.code} — ${error.message}`)
             .join('; ')}`
         : `Számla Agent elutasította a kérést: ${

@@ -189,6 +189,35 @@ describe('validateBilling — elutasított, hiányos adatok', () => {
     })
   })
 
+  it('H5: a csak Unicode-nemkarakterekből (U+FFFE, U+FFFF) álló név NEM megy át', () => {
+    // A két nemkarakter XML 1.0-ban tiltott: a számla-XML escape-je elhagyná
+    // őket, és üres <nev> menne ki. Ezért már a hosszellenőrzés ELŐTT kiesnek.
+    expect(errorFields({ ...VALID, name: '￿￿' })).toEqual(['name'])
+    expect(errorFields({ ...VALID, name: '￾￿﷐' })).toEqual(['name'])
+    expect(errorFields({ ...VALID, city: 'A￿' })).toEqual(['city'])
+  })
+
+  it('H5: a nemkarakter és a magányos surrogate kiesik, a látható szöveg és az emoji marad', () => {
+    expect(
+      validateBilling({
+        ...VALID,
+        name: 'Kovács￿Éva',
+        city: 'Buda￾pest\uD800',
+        street: 'Fő utca﷐ 1. \u{1FFFE}\u{1F600}',
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { name: 'KovácsÉva', city: 'Budapest', street: 'Fő utca 1. \u{1F600}' },
+    })
+  })
+
+  it('H5: a függőleges tabulátor (U+000B) szóközzé válik, nem kerül a számlára', () => {
+    expect(validateBilling({ ...VALID, street: 'Fő utca\u000B1.' })).toMatchObject({
+      ok: true,
+      value: { street: 'Fő utca 1.' },
+    })
+  })
+
   it.each([
     ['üres', ''],
     ['egyjegyű', '1'],

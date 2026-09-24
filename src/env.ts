@@ -14,6 +14,7 @@
  */
 
 import { barionPosKeyEnvName, getBarionConfig, logBarionConfigSummary } from './lib/barion/client'
+import { createLogger } from './lib/logger'
 import type { SzamlazzVatMode } from './lib/szamlazz/types'
 
 // Barion-kliens: a BARION_API_URL és BARION_PAYEE_EMAIL minden környezetben
@@ -178,23 +179,29 @@ export function buildOriginAllowlist(
 export const turnstileEnvPair = ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'] as const
 
 /**
- * Számlázz.hu tétel-áfakulcs (`SZAMLAZZ_AFAKULCS`) — OPCIONÁLIS kulcs, de ha
- * meg van adva, csak ezek az értékek érvényesek.
+ * Számlázz.hu tétel-áfakulcs (`SZAMLAZZ_AFAKULCS`). Bekapcsolt számlázásnál
+ * (van `SZAMLAZZ_AGENT_KEY`) KÖTELEZŐ, alapértelmezés nélkül; ha meg van adva,
+ * csak ezek az értékek érvényesek.
  *
  * Ez a tömb a `SzamlazzVatMode` (src/lib/szamlazz/types.ts) union futásidejű
  * párja — a `satisfies` fordításkor őrzi, hogy a kettő ne csúszhasson szét. Az
  * értékkészlet EGY helyen él: a Számlázz-kliens (src/lib/szamlazz/client.ts)
  * innen olvassa, nem másolja.
  *
- * - `'27'` — általános 27%-os áfa (ez az alapértelmezés a kulcs HIÁNYÁBAN is);
+ * - `'27'` — általános 27%-os áfa;
  * - `'AAM'` — alanyi adómentes eladó (belföldön kizárólag ez a kulcs jogszerű).
+ *
+ * A kulcs hiánya csak KIKAPCSOLT számlázásnál (agent-kulcs nélkül) rendben van:
+ * ott bizonylat sem készül, a kliens belső '27'-e nem kerül számlára.
  *
  * Miért induláskori assert: a `getSzamlazzConfig` csak LUSTÁN, az első
  * számlázási művelet közben futna le, ott pedig a hiba a jobban vagy a
  * rendelés-visszaigazoló e-mail try/catch-ében nyelődne el — egy elgépelt
  * áfakulcs így akár hetekig észrevétlen maradhatna, miközben egyetlen számla
  * sem készül el. Ezért a hibás érték MÁR INDULÁSKOR megállítja az appot,
- * minden környezetben. A kulcs hiánya változatlanul rendben van.
+ * minden környezetben. A HIÁNYZÓ kulcs bekapcsolt számlázás mellett nem állítja
+ * meg az indulást (a bolt és a fizetés menjen tovább), de induláskor
+ * error-szintű RIASZTÁS-t ír: enélkül egyetlen számla sem állna ki.
  */
 export const szamlazzVatModes = ['27', 'AAM'] as const satisfies readonly SzamlazzVatMode[]
 
@@ -313,8 +320,16 @@ function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === 'production'
 }
 
+/** Induláskori, error-szintű riasztás-kimenet (RIASZTÁS-sor). */
+export type BootAlert = (message: string, context?: Record<string, unknown>) => void
+
+/** Alapértelmezés: a strukturált logger error-szintje (a riasztási lánc ezt figyeli). */
+const logBootAlert: BootAlert = (message, context) =>
+  createLogger({ module: 'env' }).error(message, context)
+
 export function assertRequiredEnv(
   warn?: (message: string, context?: Record<string, unknown>) => void,
+  alert: BootAlert = logBootAlert,
 ): void {
   const missing: string[] = requiredEnvVars.filter((key) => !isEnvSet(key))
 
@@ -346,14 +361,29 @@ export function assertRequiredEnv(
     )
   }
 
-  // SZAMLAZZ_AFAKULCS: opcionális, de ha meg van adva, MOST kell hangosan
-  // buknia — nem az első számlázási művelet mélyén, a job/e-mail try/catch-ében.
+  // SZAMLAZZ_AFAKULCS: ha meg van adva, MOST kell hangosan buknia — nem az
+  // első számlázási művelet mélyén, a job/e-mail try/catch-ében.
   const vatMode = process.env.SZAMLAZZ_AFAKULCS?.trim()
+  const vatModeList = szamlazzVatModes.map((mode) => `'${mode}'`).join(' vagy ')
   if (vatMode !== undefined && vatMode !== '' && !isSzamlazzVatMode(vatMode)) {
     throw new Error(
       `Az alkalmazás nem indulhat el. Érvénytelen SZAMLAZZ_AFAKULCS ('${vatMode}'): csak ` +
-        `${szamlazzVatModes.map((mode) => `'${mode}'`).join(' vagy ')} lehet. Alanyi adómentes ` +
-        `eladóként az 'AAM' a jogszerű; általános esetben hagyd üresen (alapértelmezés: 27).`,
+        `${vatModeList} lehet. Bekapcsolt számlázásnál (van SZAMLAZZ_AGENT_KEY) a kulcs ` +
+        `kötelező, alapértelmezés nélkül. Alanyi adómentes eladóként az 'AAM' a jogszerű, ` +
+        `általános áfás eladóként a '27'.`,
+    )
+  }
+  // Bekapcsolt számlázás hiányzó áfakulccsal: a getSzamlazzConfig minden
+  // számlázási műveletnél dob, tehát egyetlen számla sem állna ki. Az indulást
+  // SZÁNDÉKOSAN nem állítjuk meg (a bolt és a fizetés menjen), de a hiba már
+  // induláskor error-szintű RIASZTÁS, nem csak az első számlajob naplójában.
+  // Az agent-kulcs ÉRTÉKE sosem kerül az üzenetbe, csak a megléte számít.
+  if ((vatMode === undefined || vatMode === '') && isEnvSet('SZAMLAZZ_AGENT_KEY')) {
+    alert(
+      'RIASZTÁS: a SZAMLAZZ_AFAKULCS nincs beállítva, pedig a számlázás be van kapcsolva ' +
+        `(van SZAMLAZZ_AGENT_KEY). Ilyenkor a kulcs kötelező: ${vatModeList}. Amíg nincs ` +
+        'megadva, egyetlen számla sem áll ki. Alanyi adómentes eladóként az AAM a jogszerű.',
+      { valtozo: 'SZAMLAZZ_AFAKULCS' },
     )
   }
 

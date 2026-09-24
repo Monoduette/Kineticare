@@ -168,6 +168,14 @@ const TAX_NUMBER_COUNTY_CODES: ReadonlySet<string> = new Set([
  * ezzel szemben SZÓKÖZZÉ alakulnak, hogy a sortöréssel elválasztott szavak ne
  * tapadjanak össze. Végül: a whitespace-sorozatok egy szóközre, majd trim.
  *
+ * A Unicode-nemkarakterek (`\p{Noncharacter_Code_Point}`: U+FFFE, U+FFFF,
+ * U+FDD0–U+FDEF és a síkok utolsó két kódpontja) és a magányos surrogate-ek
+ * (`\p{Cs}`) szintén NYOMTALANUL kiesnek: a számla-XML-ben tiltottak (a Számla
+ * Agent 57-es hibával utasítaná el a kérést), és a HOSSZELLENŐRZÉS ELŐTT kell
+ * eltűnniük, hogy egy csak ilyenekből álló mező „hiányzó"-ként bukjon el, ne
+ * üres `nev`-ként a számlán. Szándékosan nem a teljes `\p{Cn}`: az a Node
+ * ICU-jánál újabb Unicode-verzió valódi karaktereit is törölné.
+ *
  * EXPORTÁLT, mert a vendég-vásárlás azonosító mezői (`./guest.ts`) ugyanezt a
  * normalizálást igénylik — a szabály MÁSOLÁSA két helyre azt kockáztatná, hogy
  * a két oldal észrevétlenül szétcsúszik (a láthatatlan karakteres „név"
@@ -179,6 +187,7 @@ export function normalizeText(value: unknown): string {
   }
   return value
     .replace(/\p{Cf}/gu, '')
+    .replace(/\p{Noncharacter_Code_Point}|\p{Cs}/gu, '')
     .replace(/\p{Cc}/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()

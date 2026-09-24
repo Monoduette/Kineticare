@@ -15,8 +15,17 @@
  * felsorolás, a gyökér névtere, és hogy attribútum csak a gyökéren, a
  * névtér-deklarációkban (xmlns, xsi:…) állhat.
  *
+ * Jólformáltság (XML 1.0): az XML 1.0 `Char` produkción kívüli karakter
+ * (pl. U+000B, U+FFFF, magányos surrogate), a csupasz vagy ismeretlen `&`, a
+ * nem XML-karakterre mutató karakterhivatkozás (`&#0;`, `&#xFFFF;`), a
+ * szövegben álló `]]>` és az attribútumértékben álló `<` elutasítást ad. Ezek
+ * mind a Számla Agent 57-es „XML beolvasási hibájához" vezetnének.
+ *
  * A teszt, ahol `xmllint` elérhető, ugyanezeket a mintákat vele is lefuttatja,
- * és ellenőrzi, hogy a két validátor ítélete egyezik.
+ * és ellenőrzi, hogy a két validátor ítélete egyezik. A GitHub CI futtatóján
+ * az `xmllint` NINCS telepítve (a ci.yml nem teszi fel a libxml2-utils
+ * csomagot), ott tehát kizárólag ez a validátor fut: ezért kell a
+ * jólformáltságot is magának ellenőriznie.
  */
 
 export interface XmlElement {
@@ -34,27 +43,55 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   apos: "'",
 }
 
+/** Az XML 1.0 `Char` produkción kívüli kódpont (escape-pel sem menthető). */
+const NON_XML_CHAR = /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u
+
+/** Karakterhivatkozás feloldása: csak XML 1.0-karakterre mutathat. */
+function charFromReference(codePoint: number, match: string): string {
+  if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    throw new Error(`Nem XML-karakterre mutató hivatkozás: ${match}`)
+  }
+  const char = String.fromCodePoint(codePoint)
+  if (NON_XML_CHAR.test(char)) {
+    throw new Error(`Nem XML-karakterre mutató hivatkozás: ${match}`)
+  }
+  return char
+}
+
 function decodeEntities(value: string): string {
+  if (/&(?!(?:#x[0-9a-fA-F]+|#[0-9]+|[A-Za-z]+);)/.test(value)) {
+    throw new Error('Csupasz & jel (nem entitás- és nem karakterhivatkozás)')
+  }
   return value.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[A-Za-z]+);/g, (match, entity: string) => {
     const named = NAMED_ENTITIES[entity]
     if (named !== undefined) {
       return named
     }
     if (entity.startsWith('#x')) {
-      return String.fromCodePoint(Number.parseInt(entity.slice(2), 16))
+      return charFromReference(Number.parseInt(entity.slice(2), 16), match)
     }
     if (entity.startsWith('#')) {
-      return String.fromCodePoint(Number.parseInt(entity.slice(1), 10))
+      return charFromReference(Number.parseInt(entity.slice(1), 10), match)
     }
     throw new Error(`Ismeretlen XML-entitás: ${match}`)
   })
 }
 
-/** Minimális, jólformáltságot ellenőrző XML-elemző (deklaráció, komment, CDATA). */
+/**
+ * Minimális, jólformáltságot ellenőrző XML-elemző (deklaráció, komment, CDATA,
+ * XML 1.0-karakterkészlet, entitás- és karakterhivatkozások).
+ */
 export function parseXml(source: string): XmlElement {
   const stack: XmlElement[] = []
   let root: XmlElement | null = null
   let index = source.charCodeAt(0) === 0xfeff ? 1 : 0
+  const illegal = NON_XML_CHAR.exec(source.slice(index))
+  if (illegal) {
+    const codePoint = illegal[0].codePointAt(0) ?? 0
+    throw new Error(
+      `Nem XML 1.0 karakter a dokumentumban: U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`,
+    )
+  }
 
   while (index < source.length) {
     if (source.startsWith('<?', index)) {
@@ -118,7 +155,9 @@ export function parseXml(source: string): XmlElement {
       const attributePattern = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
       const leftover = rest.replace(attributePattern, (_match, key: string, dq, sq) => {
         if (element.attributes.has(key)) throw new Error(`Ismétlődő attribútum: ${key}`)
-        element.attributes.set(key, decodeEntities(String(dq ?? sq ?? '')))
+        const rawValue = String(dq ?? sq ?? '')
+        if (rawValue.includes('<')) throw new Error(`'<' az attribútumértékben: ${key}`)
+        element.attributes.set(key, decodeEntities(rawValue))
         return ''
       })
       if (leftover.trim() !== '') throw new Error(`Érvénytelen attribútum-szintaxis: ${raw}`)
@@ -136,6 +175,7 @@ export function parseXml(source: string): XmlElement {
     }
     const next = source.indexOf('<', index)
     const chunk = source.slice(index, next < 0 ? source.length : next)
+    if (chunk.includes(']]>')) throw new Error("']]>' a szöveges tartalomban")
     const top = stack[stack.length - 1]
     if (top) {
       top.text += decodeEntities(chunk)

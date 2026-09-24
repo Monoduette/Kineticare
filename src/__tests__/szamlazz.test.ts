@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import {
   getSzamlazzConfig,
   isDuplicateOrderError,
@@ -13,11 +14,14 @@ import {
   isTrustedInvoicePdfUrl,
   issueInvoiceForOrder,
   itemsFromOrder,
+  LOOKUP_FAILURE_ALERT_AFTER_MS,
+  LOOKUP_FAILURE_ESCALATION_MS,
   MAX_INVOICE_ATTEMPTS,
   VAT_RATE_PERCENT,
   type InvoiceLineAmounts,
 } from '../lib/szamlazz/invoice'
-import type { InvoiceLookupResult } from '../lib/szamlazz/pdf'
+import type { OrderPaidMoment } from '../lib/szamlazz/paid-date'
+import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from '../lib/szamlazz/pdf'
 import { SzamlazzApiError } from '../lib/szamlazz/types'
 import { budapestDateString, isIsoDateString } from '../lib/szamlazz/xml'
 import type { Order } from '../payload-types'
@@ -537,6 +541,19 @@ describe('escapeXml', () => {
   it('mind az 5 XML-entitást cseréli', () => {
     expect(escapeXml(`<&>"'`)).toBe('&lt;&amp;&gt;&quot;&apos;')
   })
+
+  it('H5: az XML 1.0-ban tiltott karaktereket elhagyja (U+FFFF, U+FFFE, U+000B, U+0000, magányos surrogate)', () => {
+    // Escape-pel ezek nem menthetők: a Számla Agent 57-tel utasítaná el a kérést.
+    expect(escapeXml('Kovács￿Éva')).toBe('KovácsÉva')
+    expect(escapeXml('a\u000Bb\uD800c￾d\u0000e\u001Ff')).toBe('abcdef')
+    // Az elhagyás az escape ELŐTT fut, a maradék szöveg escape-je változatlan.
+    expect(escapeXml('Kovács\u000B & <Társa>')).toBe('Kovács &amp; &lt;Társa&gt;')
+  })
+
+  it('H5: a megengedett karakterek maradnak (TAB, LF, CR, ékezet, emoji, U+FFFD)', () => {
+    const allowed = 'a\tb\nc\rd Árvíztűrő \u{1F600} �  \u{10FFFD}'
+    expect(escapeXml(allowed)).toBe(allowed)
+  })
 })
 
 describe('parseAgentResponse', () => {
@@ -844,6 +861,57 @@ describe('parseAgentResponse — CDATA, fejléc-tartalék és 56-os jelzés', ()
     )
     expect(error.kind).toBe('agent')
     expect(error.retryable).toBe(false)
+  })
+
+  it('ELLENTMONDÁS — 56 a FEJLÉCBEN, 57 a TÖRZSBEN: a két csatorna uniója dönt, nem „értesítő-hibás siker"', () => {
+    // Korábban a fejléc-hiba mellett a törzs kódjai elvesztek: az 56-os fejléc
+    // + szlahu_szamlaszam SIKERKÉNT ment át, és egy el sem készült (57-tel
+    // elutasított) bizonylat száma került volna a rendelésre.
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>57</hibakod>' +
+          '<hibauzenet>XML beolvasási hiba</hibauzenet></xmlszamlavalasz>',
+        new Headers({
+          szlahu_error_code: '56',
+          szlahu_error:
+            'A+sz%C3%A1mla%C3%A9rtes%C3%ADt%C5%91+k%C3%A9zbes%C3%ADt%C3%A9se+sikertelen',
+          szlahu_szamlaszam: 'KIN-2026-8',
+        }),
+      ),
+    )
+    expect(error.kind).toBe('agent')
+    expect(error.retryable).toBe(false)
+    expect(error.agentErrors.map((entry) => entry.code)).toEqual(['56', '57'])
+    expect(error.message).toContain('fejléc és törzs')
+    expect(error.message).toContain('57')
+  })
+
+  it('az unió a besorolásban is számít: 56-os fejléc + 55-ös törzs → újrapróbálható agent-hiba', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>55</hibakod>' +
+          '<hibauzenet>E-számla aláírása sikertelen.</hibauzenet></xmlszamlavalasz>',
+        new Headers({ szlahu_error_code: '56', szlahu_szamlaszam: 'KIN-2026-8' }),
+      ),
+    )
+    expect(error.kind).toBe('agent')
+    expect(error.retryable).toBe(true)
+    expect(error.agentErrors.map((entry) => entry.code)).toEqual(['56', '55'])
+  })
+
+  it('56 a fejlécben ÉS a törzsben (azonos jelzés), számlaszámmal: továbbra is SIKER', () => {
+    const result = parseAgentResponse(
+      '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>56</hibakod>' +
+        '<hibauzenet>A számlaértesítő kézbesítése sikertelen</hibauzenet>' +
+        '<szamlaszam>KIN-2026-8</szamlaszam></xmlszamlavalasz>',
+      new Headers({
+        szlahu_error_code: '56',
+        szlahu_error: 'A+sz%C3%A1mla%C3%A9rtes%C3%ADt%C5%91+k%C3%A9zbes%C3%ADt%C3%A9se+sikertelen',
+        szlahu_szamlaszam: 'KIN-2026-8',
+      }),
+    )
+    expect(result.szamlaszam).toBe('KIN-2026-8')
+    expect(result.notificationError?.code).toBe('56')
   })
 
   it('csak a szlahu_error_code fejléc (üzenet nélkül) is hibának számít', () => {
@@ -1354,16 +1422,21 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
     expect(order?.invoiceAttempts).toBe(1)
   })
 
-  it('kísérlet-plafon (5): failed, SE lekérdezés SE beküldés nem fut', async () => {
+  it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS', async () => {
+    // H3: a plafon a lekérdezés UTÁN dönt (az 5. bizonytalan beküldés
+    // bizonylata is átvehető legyen). Üres találatnál a kimenet változatlanul
+    // végleges failed + RIASZTÁS, POST nélkül.
     const { payload, order } = createMockPayload(
       createOrder({ invoiceStatus: 'failed', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
     )
+    const { logger, logged } = captureLogs()
     let lookups = 0
     let posts = 0
     const result = await issueInvoiceForOrder({
       payload,
       orderId: 101,
       config: ENABLED_CONFIG,
+      logger,
       queryByKulsoAzon: async () => {
         lookups += 1
         return null
@@ -1376,10 +1449,38 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
     expect(result.outcome).toBe('failed')
     expect(result.reason).toContain('kimerült')
-    expect(lookups).toBe(0)
+    expect(lookups).toBe(1)
     expect(posts).toBe(0)
     expect(order?.invoiceStatus).toBe('failed')
     expect(order?.invoiceLastError).toContain('kimerült')
+    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számlakiállítás beküldései kimerültek/)
+  })
+
+  it('H3 — kísérlet-plafon (5) + lekérdezés-TALÁLAT: a meglévő számla átvéve, beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+    )
+    let posts = 0
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      queryByKulsoAzon: async () => ({ szamlaszam: 'E-KIN-2026-42' }),
+      postXml: async () => {
+        posts += 1
+        return { szamlaszam: 'MASODIK-SZAMLA' }
+      },
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'E-KIN-2026-42' })
+    expect(posts).toBe(0)
+    expect(order?.invoiceStatus).toBe('issued')
+    expect(order?.invoiceNumber).toBe('E-KIN-2026-42')
+    expect(order?.invoiceLastError).toBeNull()
+    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
   })
 
   it('sikeres kiállítás: a megadott issueDate teljesítési dátumként a rendelésre íródik', async () => {
@@ -1757,5 +1858,346 @@ describe('issueInvoiceForOrder — teljesítési dátum a fizetés napjából', 
     ).rejects.toThrow('55')
     expect(order?.invoiceStatus).toBe('pending')
     expect(order?.invoiceLastError).toContain('55')
+  })
+})
+
+/** Szint + üzenet naplórögzítő (a RIASZTÁS-sorok ellenőrzéséhez). */
+function captureLogs() {
+  const logged: Array<{ level: 'debug' | 'info' | 'warn' | 'error'; message: string }> = []
+  const logger = {
+    debug: (message: string) => logged.push({ level: 'debug', message }),
+    info: (message: string) => logged.push({ level: 'info', message }),
+    warn: (message: string) => logged.push({ level: 'warn', message }),
+    error: (message: string) => logged.push({ level: 'error', message }),
+    child: () => logger,
+  }
+  return { logger, logged }
+}
+
+const HOUR_MS = 60 * 60 * 1000
+
+/** A fizetés pillanata `hoursAgo` órával ezelőtt. */
+function paidHoursAgo(hoursAgo: number): () => Promise<OrderPaidMoment> {
+  const paidAt = new Date(Date.now() - hoursAgo * HOUR_MS)
+  return async () => ({ paidAt, paidDate: budapestDateString(paidAt) })
+}
+
+/**
+ * H3 — a vadász-reprodukció: a Számlázz.hu időbélyeg-kiesése alatt az 1–4.
+ * beküldés 55-öt kap (újrapróbálható, bizonylat nem készül), az 5. beküldés a
+ * mi oldalunkon timeoutol, de a szerver KIÁLLÍTJA a számlát (NAV-hoz is
+ * bejelenti). A régi kód a 6. futásban a plafont a lekérdezés ELŐTT nézte:
+ * lekérdezés nélkül 'failed' lett, szám nélkül, és a RIASZTÁS kézi (DUPLA)
+ * kiállítás felé tolta a tulajdonost.
+ */
+describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata átvehető', () => {
+  it('4 × 55, majd timeoutoló, de létrejött 5. beküldés: a 6. futás lekérdezéssel ÁTVESZI a számlát', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    let posts = 0
+    let createdAtProvider: string | null = null
+    const lookups: string[] = []
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-10-01',
+        resolvePaidMoment: paidHoursAgo(1),
+        queryByKulsoAzon: async (kulsoAzon) => {
+          lookups.push(kulsoAzon)
+          return createdAtProvider ? { szamlaszam: createdAtProvider } : null
+        },
+        postXml: async () => {
+          posts += 1
+          if (posts <= 4) {
+            return parseAgentResponse(
+              '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>55</hibakod>' +
+                '<hibauzenet>E-számla aláírása sikertelen.</hibauzenet></xmlszamlavalasz>',
+              new Headers(),
+            )
+          }
+          createdAtProvider = 'E-KIN-2026-42'
+          throw new SzamlazzApiError({
+            message: 'A Számlázz.hu nem válaszolt 15000 ms-en belül.',
+            kind: 'timeout',
+            retryable: true,
+          })
+        },
+      })
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await expect(run()).rejects.toBeInstanceOf(SzamlazzApiError)
+      expect(order?.invoiceStatus).toBe('pending')
+    }
+    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
+
+    const lookupsBefore = lookups.length
+    const sixth = await run()
+    expect(sixth).toEqual({ outcome: 'issued', invoiceNumber: 'E-KIN-2026-42' })
+    expect(lookups.length - lookupsBefore).toBe(1)
+    expect(posts).toBe(MAX_INVOICE_ATTEMPTS)
+    expect(order?.invoiceStatus).toBe('issued')
+    expect(order?.invoiceNumber).toBe('E-KIN-2026-42')
+  })
+
+  it('plafonnál újrapróbálható lekérdezés-hiba FRISS fizetésnél: pending + THROW, beküldés nélkül (a resweep még átveheti)', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+    )
+    const { logger, logged } = captureLogs()
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paidHoursAgo(1),
+        queryByKulsoAzon: async () => {
+          throw new SzamlazzApiError({
+            message: 'A Számlázz.hu nem válaszolt 15000 ms-en belül (bizonylat-lekérdezés).',
+            kind: 'timeout',
+            retryable: true,
+          })
+        },
+        postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
+      }),
+    ).rejects.toThrow('bizonylat-lekérdezés')
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
+    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
+  })
+
+  it('plafonnál a lekérdezés a fizetés után 24 órával is hibás: failed + RIASZTÁS, dobás és beküldés NÉLKÜL', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+    )
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      resolvePaidMoment: paidHoursAgo(25),
+      queryByKulsoAzon: async () => {
+        throw new SzamlazzApiError({
+          message: 'Számlázz.hu HTTP-hiba (503) (bizonylat-lekérdezés).',
+          kind: 'http',
+          httpStatus: 503,
+          retryable: true,
+        })
+      },
+      postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
+    })
+    expect(result.outcome).toBe('failed')
+    expect(order?.invoiceStatus).toBe('failed')
+    // A korábbi beküldések miatt a bizonylat létezhet: a szöveg a kézi
+    // kiállítás ELŐTTI ellenőrzést kéri, a külső azonosítóval.
+    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(order?.invoiceLastError).toBe(result.reason)
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: /)
+  })
+
+  it('plafonnál VÉGLEGES lekérdezés-hiba: failed + RIASZTÁS (a bizonylat létezhet), beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+    )
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      resolvePaidMoment: paidHoursAgo(1),
+      queryByKulsoAzon: async () => {
+        throw new SzamlazzApiError({
+          message: 'Számla Agent elutasította a kérést: 3 — Sikertelen bejelentkezés',
+          kind: 'agent',
+          agentErrors: [{ code: '3', message: 'Sikertelen bejelentkezés' }],
+          retryable: false,
+        })
+      },
+      postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
+    })
+    expect(result.outcome).toBe('failed')
+    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(order?.invoiceStatus).toBe('failed')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: /)
+  })
+})
+
+/**
+ * H4 — a beküldés ELŐTTI lekérdezés hibái nem fogyasztanak kísérletet (F10),
+ * ezért a plafon nem fékezi őket: a fék IDŐALAPÚ. A lekérdezés itt a VALÓDI
+ * queryInvoiceByKulsoAzon, mockolt fetch-csel (valódi hálózat nincs): a
+ * válasz egy 200-as HTML-oldal, amit egy elgépelt SZAMLAZZ_API_URL (a
+ * nyitóoldal) tartósan ad. Az invalid_response SZÁNDÉKOSAN újrapróbálható
+ * marad (egy átmeneti karbantartási oldal ne tegye véglegessé a hibát).
+ */
+describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () => {
+  let fetchCalls = 0
+
+  beforeEach(() => {
+    fetchCalls = 0
+    resetAlertThrottle()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        fetchCalls += 1
+        return new Response('<!doctype html><html><body>Számlázz.hu</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        })
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetAlertThrottle()
+  })
+
+  const loudPost = async (): Promise<never> => {
+    throw new Error('TESZT-HIBA: a lekérdezés hibája után POST nem mehet ki')
+  }
+
+  it('a konstansok: 2 óra után riasztás, 24 óra után végleges hiba', () => {
+    expect(LOOKUP_FAILURE_ALERT_AFTER_MS).toBe(2 * HOUR_MS)
+    expect(LOOKUP_FAILURE_ESCALATION_MS).toBe(24 * HOUR_MS)
+  })
+
+  it('a fizetés után 25 órával HTML-t adó lekérdezés: failed + EGY RIASZTÁS, dobás és beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(createOrder({ invoiceStatus: 'pending' }))
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      resolvePaidMoment: paidHoursAgo(25),
+      queryByKulsoAzon: queryInvoiceByKulsoAzon,
+      postXml: loudPost,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(fetchCalls).toBe(1)
+    expect(order?.invoiceStatus).toBe('failed')
+    expect(order?.invoiceAttempts).toBeUndefined()
+    expect(result.reason).toContain('SZAMLAZZ_API_URL')
+    expect(result.reason).toContain('25 órával')
+    // Első kísérlet (0 beküldés): bizonylat nem létezhet, nincs rá utaló mondat.
+    expect(result.reason).not.toContain('külső azonosítójú')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számla előtti bizonylat-lekérdezés/)
+  })
+
+  it('a fizetés után 1 órával: pending + THROW (a resweep újrapróbálja), riasztás nélkül', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paidHoursAgo(1),
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: loudPost,
+      }),
+    ).rejects.toMatchObject({ kind: 'invalid_response', retryable: true })
+
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceAttempts).toBeUndefined()
+    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
+    expect(logged.some((entry) => entry.level === 'warn')).toBe(true)
+  })
+
+  it('2 és 24 óra között: pending + THROW, és a RIASZTÁS rendelésenként EGYSZER megy ki (fojtva)', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    for (let run = 0; run < 3; run += 1) {
+      await expect(
+        issueInvoiceForOrder({
+          payload,
+          orderId: 101,
+          config: ENABLED_CONFIG,
+          logger,
+          resolvePaidMoment: paidHoursAgo(3),
+          queryByKulsoAzon: queryInvoiceByKulsoAzon,
+          postXml: loudPost,
+        }),
+      ).rejects.toMatchObject({ retryable: true })
+    }
+
+    expect(fetchCalls).toBe(3)
+    expect(order?.invoiceStatus).toBe('pending')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számla előtti bizonylat-lekérdezés/)
+  })
+
+  it('ismeretlen fizetési pillanat: a rendelés létrehozása az időalap (25 órás rendelés → failed)', async () => {
+    const createdAt = new Date(Date.now() - 25 * HOUR_MS).toISOString()
+    const { payload, order } = createMockPayload(createOrder({ createdAt }))
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      resolvePaidMoment: async () => null,
+      queryByKulsoAzon: queryInvoiceByKulsoAzon,
+      postXml: loudPost,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(result.reason).toContain('a rendelés után 25 órával')
+    expect(order?.invoiceStatus).toBe('failed')
+  })
+
+  it('az időkorlát CSAK a lekérdezés hibájára él: a 25 órás rendelés POST-timeoutja pending + THROW marad', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        resolvePaidMoment: paidHoursAgo(25),
+        queryByKulsoAzon: silentLookup,
+        postXml: async () => {
+          throw new SzamlazzApiError({ message: 'timeout', kind: 'timeout', retryable: true })
+        },
+      }),
+    ).rejects.toThrow('timeout')
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceAttempts).toBe(1)
+  })
+
+  it('a lekérdezés sikere után a 25 órás rendelés számlája normálisan kiáll (nincs indokolatlan leállás)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        fetchCalls += 1
+        return new Response(
+          '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>7</hibakod>' +
+            '<hibauzenet>Nincs ilyen bizonylat</hibauzenet></xmlszamlavalasz>',
+          { status: 200 },
+        )
+      }),
+    )
+    const { payload, order } = createMockPayload(createOrder())
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-10-01',
+      resolvePaidMoment: paidHoursAgo(25),
+      queryByKulsoAzon: queryInvoiceByKulsoAzon,
+      postXml: async () => ({ szamlaszam: 'KIN-2026-77' }),
+    })
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-77' })
+    expect(order?.invoiceStatus).toBe('issued')
   })
 })
