@@ -48,7 +48,8 @@ interface FieldState {
 
 const form = vi.hoisted(() => ({
   fields: {} as Record<string, FieldState>,
-  setValue: vi.fn<(path: string, value: unknown) => void>(),
+  /** A Payload setValue második argumentuma (disableModifyingForm) csak akkor, ha a hívó megadta. */
+  setValue: vi.fn<(path: string, value: unknown, disableModifyingForm?: boolean) => void>(),
   validators: {} as Record<string, () => unknown>,
   user: { id: 1, role: 'owner' } as { id: number; role: string } | null,
 }))
@@ -71,7 +72,10 @@ vi.mock('@payloadcms/ui', async () => {
         errorMessage: field.errorMessage,
         showError: field.showError ?? field.errorMessage !== undefined,
         disabled: false,
-        setValue: (value: unknown) => form.setValue(path, value),
+        setValue: (value: unknown, disableModifyingForm?: boolean) =>
+          disableModifyingForm === undefined
+            ? form.setValue(path, value)
+            : form.setValue(path, value, disableModifyingForm),
       }
     },
     useFormFields: (selector: (state: [Record<string, FieldState>]) => unknown) =>
@@ -98,8 +102,14 @@ vi.mock('@payloadcms/ui', async () => {
         h('input', { checked: Boolean(checked), id, onChange: onToggle, type: 'checkbox' }),
         label,
       ),
-    CheckboxField: ({ field }: { field: { label?: ReactNode } }) =>
-      h('div', { className: 'gyari-pipa' }, field.label),
+    // A Payload CheckboxField-je: a pipa `input`-ja a mező útját kapja névként.
+    CheckboxField: ({ field, path }: { field: { label?: ReactNode }; path: string }) =>
+      h(
+        'div',
+        { className: 'gyari-pipa' },
+        h('input', { name: path, readOnly: true, type: 'checkbox' }),
+        field.label,
+      ),
   }
 })
 
@@ -416,7 +426,9 @@ describe('HufPriceField gépelés közben (happy-dom)', () => {
     form.fields.priceInHUF = { value: 79_500, initialValue: 79_500 }
     form.fields['kcMegerositesek.priceInHUF'] = { value: 80 }
     act(() => root.render(createElement(HufPriceField, priceProps)))
-    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.priceInHUF', null)
+    // A törlés nem jelöli módosítottnak az űrlapot (nincs autosave, nincs
+    // „nem mentett változás” kérdés): setValue(null, true).
+    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.priceInHUF', null, true)
   })
 
   it('H5: az épp megadott, a mező értékére szóló megerősítés megmarad', () => {
@@ -481,12 +493,13 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
     document.body.appendChild(container)
     const root = createRoot(container)
     act(() => root.render(createElement(PaidCourseField, paidProps)))
-    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+    const confirmSelector = '#field-priceInHUFEnabled-megerosites'
+    const checkbox = container.querySelector(confirmSelector) as HTMLInputElement
     act(() => checkbox.click())
     expect(form.setValue).toHaveBeenLastCalledWith('kcMegerositesek.freeCourse', true)
     form.fields['kcMegerositesek.freeCourse'] = { value: true }
     act(() => root.render(createElement(PaidCourseField, { ...paidProps })))
-    act(() => (container.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+    act(() => (container.querySelector(confirmSelector) as HTMLInputElement).click())
     expect(form.setValue).toHaveBeenLastCalledWith('kcMegerositesek.freeCourse', null)
     act(() => root.unmount())
     container.remove()
@@ -498,7 +511,7 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
       initialValue: false,
       errorMessage: OWNER_ONLY_CHANGE_MESSAGE,
     }
-    const render = (narrow: boolean): string | null => {
+    const render = (narrow: boolean) => {
       vi.stubGlobal('matchMedia', (query: string) => ({
         matches: narrow && query === '(max-width: 1024px)',
         addEventListener: () => undefined,
@@ -509,13 +522,20 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
       const root = createRoot(container)
       act(() => root.render(createElement(PaidCourseField, paidProps)))
       const text = container.querySelector('#field-priceInHUFEnabled-hiba')?.textContent ?? null
+      // A hibaszöveg a pipához kötve: a képernyőolvasó a pipán felolvassa.
+      const describedBy = container
+        .querySelector('input[name="priceInHUFEnabled"]')
+        ?.getAttribute('aria-describedby')
       act(() => root.unmount())
       container.remove()
-      return text
+      return { text, describedBy: describedBy ?? null }
     }
-    expect(render(true)).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    expect(render(true)).toEqual({
+      text: OWNER_ONLY_CHANGE_MESSAGE,
+      describedBy: 'field-priceInHUFEnabled-hiba',
+    })
     // Szélesebb nézetben a Payload buboréka mondja ki, nem ismétlődik.
-    expect(render(false)).toBeNull()
+    expect(render(false)).toEqual({ text: null, describedBy: null })
   })
 
   it('H5: a pipa visszatételekor a korábbi „ingyenes legyen” megerősítés törlődik', () => {
@@ -528,7 +548,7 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
     document.body.appendChild(container)
     const root = createRoot(container)
     act(() => root.render(createElement(PaidCourseField, paidProps)))
-    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.freeCourse', null)
+    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.freeCourse', null, true)
 
     // Kivett pipánál (az autosave a kezdőértéket is mozgatja) a friss megerősítés marad.
     form.setValue.mockReset()

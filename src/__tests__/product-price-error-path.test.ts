@@ -83,6 +83,34 @@ describe('a kurzus ár-őreinek hibaútvonala magyar (H6)', () => {
     expect(price?.label).toBe('Ár és hozzáférés > Ár (Ft)')
   })
 
+  it('a plugin angol csoport-súgója nem kerül a kurzus-szerkesztőbe', async () => {
+    // A névtelen ár-csoport gyári súgója („Prices for this product in different
+    // currencies.”) a fül tetején állt; a felületi szöveg magyar (CLAUDE.md).
+    const config = await configPromise
+    const products = config.collections.find((collection) => collection.slug === 'products')
+    const descriptions: string[] = []
+    const walk = (fields: readonly unknown[]): void => {
+      for (const field of fields) {
+        if (typeof field !== 'object' || field === null) continue
+        const {
+          admin,
+          fields: children,
+          tabs,
+        } = field as {
+          admin?: { description?: unknown }
+          fields?: unknown[]
+          tabs?: Array<{ fields?: unknown[] }>
+        }
+        if (typeof admin?.description === 'string') descriptions.push(admin.description)
+        if (Array.isArray(children)) walk(children)
+        for (const tab of tabs ?? []) walk(tab.fields ?? [])
+      }
+    }
+    walk(products?.fields ?? [])
+    expect(descriptions.length).toBeGreaterThan(0)
+    expect(descriptions.join('\n')).not.toContain('Prices for this product')
+  })
+
   it('Fizetős kurzus: „Ár és hozzáférés > Fizetős kurzus”', async () => {
     const errors = await errorsFor('update', { priceInHUFEnabled: false, priceInHUF: 79_500 })
     const paid = errors.find((error) => error.path === 'priceInHUFEnabled')

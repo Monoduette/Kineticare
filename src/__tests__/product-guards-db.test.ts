@@ -97,12 +97,18 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     })
   }
 
+  /**
+   * A közzététel visszavonásának jelzője: a Local API boolean-t, a REST a
+   * lekérdezés szövegét adja át (`?unpublishAllLocales=true`: 'true').
+   */
+  type UnpublishFlag = { unpublishAllLocales?: boolean | 'true' }
+
   /** A mentés eredménye: 'OK', vagy a Payload ValidationError mezőhibái. */
   async function save(
     id: number,
     user: Doc,
     data: Record<string, unknown>,
-    extra: { unpublishAllLocales?: boolean } = {},
+    extra: UnpublishFlag = {},
   ): Promise<'OK' | ErrorEntry[]> {
     try {
       await payload.update({
@@ -111,7 +117,7 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         data,
         overrideAccess: false,
         user: asUser(user),
-        ...extra,
+        ...(extra as { unpublishAllLocales?: boolean }),
       })
       return 'OK'
     } catch (error) {
@@ -119,6 +125,48 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
       if (!Array.isArray(errors)) throw error
       return errors.map(({ path, message }) => ({ path, message }))
     }
+  }
+
+  /**
+   * Tömeges (where-es) mentés, ahogy a REST `PATCH /api/products?where…` és az
+   * admin „visszaállítás” gombja küldi (@payloadcms/ui RestoreButton:
+   * `?trash=true`, a `deletedAt exists` szűrővel). A tömeges mentés nem dob:
+   * a dokumentumonkénti hibát az `errors` tömbben adja.
+   */
+  async function saveWhere(
+    id: number,
+    user: Doc,
+    data: Record<string, unknown>,
+    options: UnpublishFlag & { trashed?: boolean } = {},
+  ): Promise<'OK' | string[]> {
+    const { trashed = false, ...flag } = options
+    const result = await payload.update({
+      collection: 'products',
+      where: trashed
+        ? { and: [{ id: { equals: id } }, { deletedAt: { exists: true } }] }
+        : { id: { equals: id } },
+      data,
+      trash: trashed,
+      overrideAccess: false,
+      user: asUser(user),
+      ...(flag as { unpublishAllLocales?: boolean }),
+    })
+    const errors = result.errors.map((entry) => String(entry.message))
+    if (errors.length > 0) return errors
+    // A 0 találat nem „siker”: a szűrő nem az elvárt sort érte el.
+    return result.docs.length === 1 ? 'OK' : [`${result.docs.length} dokumentum módosult`]
+  }
+
+  /** Egy idegen, névtelen látogató ingyenes igénylése (a nyilvános végpont útja). */
+  function claimAsStranger(id: number, tag: string) {
+    return requestFreeCourseAccess({
+      payload,
+      productId: id,
+      name: 'Idegen Látogató',
+      email: `db-guard-latogato-${tag}-${stamp}@example.test`,
+      serverUrl: null,
+      env: {},
+    })
   }
 
   async function createUser(role: 'owner' | 'staff'): Promise<Doc> {
@@ -309,5 +357,241 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
         productId: id,
       }),
     ).toEqual({ grantedProductIds: [], freeProductCount: 0 })
+  }, 120_000)
+
+  /*
+   * rev1: a Payload validálás nélkül írja a fő sort a közzététel
+   * visszavonásakor, a lomtárba helyezéskor és a `_status: 'published'`
+   * nélküli visszaállításkor (payload/dist/collections/operations/utilities/
+   * update.js, skipValidation). Az admin ezeket `_status: 'draft'`-tal vagy
+   * `_status` nélkül küldi; a munkatárs kézzel összerakott kérése viszont
+   * `_status: 'published'`-et is küldhet. Egyik alak sem hagyhat élő sort.
+   */
+  it('rev1 (PROBE1, BRK-1a/1b): a visszavonás jelzőjével küldött `_status: published` piszkozat marad', async () => {
+    const cases = [
+      {
+        key: 'unpub-free',
+        draft: { priceInHUFEnabled: false },
+        send: (id: number) =>
+          save(id, staff, { _status: 'published' }, { unpublishAllLocales: true }),
+      },
+      {
+        // A REST a `?unpublishAllLocales=true` lekérdezést szövegként adja át.
+        key: 'unpub-price-promo',
+        draft: { priceInHUF: 5, promoEnabled: true, promoPriceHuf: 39_500 },
+        send: (id: number) =>
+          save(id, staff, { _status: 'published' }, { unpublishAllLocales: 'true' }),
+      },
+      {
+        key: 'unpub-bulk-free',
+        draft: { priceInHUFEnabled: false },
+        send: (id: number) =>
+          saveWhere(id, staff, { _status: 'published' }, { unpublishAllLocales: 'true' }),
+      },
+    ]
+    for (const { key, draft, send } of cases) {
+      const id = await createPublished(key)
+      await autosave(id, owner, draft)
+      expect(await send(id), key).toBe('OK')
+      expect((await mainRow(id))._status, key).toBe('draft')
+      if (draft.priceInHUFEnabled === false) {
+        expect((await claimAsStranger(id, key)).status, key).toBe('course-not-available')
+      }
+    }
+  }, 180_000)
+
+  it('rev1 (PROBE2/3, BRK-2a/2b): a `_status: published`-del küldött lomtár után a közzétett visszaállítás az őrökön akad fenn', async () => {
+    // A lomtárban álló sor `_status: 'published'`-es mentése is validálás
+    // nélküli: a Payload a hiányzó `deletedAt`-et a legutóbbi verzióból tölti.
+    const craftedTrash = (id: number) =>
+      save(id, staff, { deletedAt: new Date().toISOString(), _status: 'published' })
+    const publishWhileTrashed = async (id: number) => {
+      expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+      return saveWhere(id, staff, { _status: 'published' }, { trashed: true })
+    }
+    const cases = [
+      { key: 'trash-pub-5', draft: { priceInHUF: 5 }, field: 'Ár (Ft)', trash: craftedTrash },
+      {
+        key: 'trash-pub-ar-2',
+        draft: { priceInHUF: 7_950 },
+        field: 'Ár (Ft)',
+        trash: craftedTrash,
+      },
+      {
+        key: 'trash-pub-promo',
+        draft: { promoEnabled: true, promoPriceHuf: 39_500 },
+        field: 'Akció vége',
+        trash: craftedTrash,
+      },
+      {
+        key: 'kukaban-kozzeteve',
+        draft: { priceInHUF: 7_950 },
+        field: 'Ár (Ft)',
+        trash: publishWhileTrashed,
+      },
+    ]
+    for (const { key, draft, field, trash } of cases) {
+      const id = await createPublished(key)
+      await autosave(id, owner, draft)
+      expect(await trash(id), key).toBe('OK')
+      expect((await mainRow(id))._status, key).toBe('draft')
+
+      const restored = await saveWhere(
+        id,
+        staff,
+        { deletedAt: null, _status: 'published' },
+        { trashed: true },
+      )
+      expect(restored, key).toEqual([expect.stringContaining(field)])
+      const row = await mainRow(id)
+      expect({ key, trashed: Boolean(row.deletedAt) }).toEqual({ key, trashed: true })
+    }
+  }, 180_000)
+
+  it('rev1 (PROBE4, BRK-2c; PROBE5 kontroll): lomtár, majd `_status` nélküli visszaállítás után a kurzus piszkozat, nem igényelhető ingyen', async () => {
+    async function trashAfterUntick(key: string, extra: Record<string, unknown>) {
+      const id = await createPublished(key)
+      await autosave(id, owner, { priceInHUFEnabled: false })
+      expect(await save(id, staff, { deletedAt: new Date().toISOString(), ...extra }), key).toBe(
+        'OK',
+      )
+      return id
+    }
+    const trashed: Array<[string, () => Promise<number>]> = [
+      ['restore-crafted', () => trashAfterUntick('restore-crafted', { _status: 'published' })],
+      ['restore-admin', () => trashAfterUntick('restore-admin', {})],
+      [
+        // A javítás előtt így lomtárba tett sor: közzétett státusz, a kivett
+        // pipa, verzió nélkül (a Payload ilyenkor a fő sort veszi legutóbbinak).
+        'restore-legacy',
+        async () => {
+          const legacy = (await payload.db.create({
+            collection: 'products',
+            data: {
+              sku: `DB-GUARD restore-legacy ${stamp}`,
+              category: categoryId,
+              status: 'published',
+              _status: 'published',
+              priceInHUFEnabled: false,
+              priceInHUF: 79_500,
+              deletedAt: new Date().toISOString(),
+            },
+          })) as unknown as Doc
+          productIds.push(legacy.id)
+          return legacy.id
+        },
+      ],
+    ]
+    for (const [key, prepare] of trashed) {
+      const id = await prepare()
+      expect(await saveWhere(id, staff, { deletedAt: null }, { trashed: true }), key).toBe('OK')
+      const row = await mainRow(id)
+      expect({ key, _status: row._status, deletedAt: row.deletedAt ?? null }).toEqual({
+        key,
+        _status: 'draft',
+        deletedAt: null,
+      })
+      expect((await claimAsStranger(id, key)).status, key).toBe('course-not-available')
+    }
+  }, 180_000)
+
+  it('zárás elleni védelem (rev1): lomtár után a változatlan kurzus, a régi vég nélküli akcióval is, közzétettként visszaállítható', async () => {
+    // A lomtár mostantól mindig piszkozat-sort hagy, így a „visszaállítás
+    // közzétettként” a napló lomtár előtti sorához mér (az élő 4. kurzus alakja).
+    const legacy = (await payload.db.create({
+      collection: 'products',
+      data: {
+        sku: `DB-GUARD trash-endless ${stamp}`,
+        category: categoryId,
+        status: 'published',
+        _status: 'published',
+        priceInHUFEnabled: true,
+        priceInHUF: 79_500,
+        promoEnabled: true,
+        promoEnd: null,
+        promoPriceHuf: 39_500,
+      },
+    })) as unknown as Doc
+    productIds.push(legacy.id)
+
+    expect(await save(legacy.id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+    expect(
+      await saveWhere(
+        legacy.id,
+        staff,
+        { deletedAt: null, _status: 'published' },
+        { trashed: true },
+      ),
+    ).toBe('OK')
+    const row = await mainRow(legacy.id)
+    expect({
+      _status: row._status,
+      deletedAt: row.deletedAt ?? null,
+      priceInHUF: row.priceInHUF,
+      promoEnabled: row.promoEnabled,
+      promoEnd: row.promoEnd ?? null,
+    }).toEqual({
+      _status: 'published',
+      deletedAt: null,
+      priceInHUF: 79_500,
+      promoEnabled: true,
+      promoEnd: null,
+    })
+  }, 120_000)
+
+  it('rev1 (a napló lapozása): sok lomtár + piszkozatként visszaállítás kör után is a legutóbb közzétett ár a mérce', async () => {
+    // Minden kör két, közzétett oldal nélküli naplóbejegyzést ír; 11 kör (22
+    // bejegyzés) kitolta a korábbi, 20-as ablakból a visszavonás bejegyzését, és
+    // a mérce az elütött árat hordozó piszkozat-sor lett.
+    const id = await createPublished('lookback')
+    expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe('OK')
+    await autosave(id, owner, { priceInHUF: 7_950 })
+    for (let round = 0; round < 11; round += 1) {
+      expect(await save(id, staff, { deletedAt: new Date().toISOString() })).toBe('OK')
+      expect(
+        await saveWhere(id, staff, { deletedAt: null, _status: 'draft' }, { trashed: true }),
+      ).toBe('OK')
+    }
+    expect((await mainRow(id)).priceInHUF).toBe(7_950)
+
+    expect(await save(id, owner, { _status: 'published' })).toContainEqual({
+      path: 'priceInHUF',
+      message: priceDropMessage('rendes', 7_950, 79_500),
+    })
+  }, 180_000)
+
+  it('rev1 (duplikálás): a munkatárs közzétett másolata nem viszi élesbe a tulajdonos kivett pipáját', async () => {
+    // A duplikálás a munkatárs által nem írható mezőt a forrás legutóbbi
+    // verziójából (a tulajdonos piszkozatából) tölti; `?draft=false` +
+    // `_status: 'published'` mellett a másolat azonnal élő, ingyenes kurzus lett
+    // volna a fizetős kurzus tartalmával.
+    const id = await createPublished('dup-source')
+    await autosave(id, owner, { priceInHUFEnabled: false })
+
+    async function duplicateAsStaff(draft: boolean): Promise<'OK' | ErrorEntry[]> {
+      try {
+        const copy = (await payload.duplicate({
+          collection: 'products',
+          id,
+          draft,
+          data: { _status: draft ? 'draft' : 'published' },
+          overrideAccess: false,
+          user: asUser(staff),
+        })) as unknown as Doc
+        productIds.push(copy.id)
+        return 'OK'
+      } catch (error) {
+        const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
+        if (!Array.isArray(errors)) throw error
+        return errors.map(({ path, message }) => ({ path, message }))
+      }
+    }
+
+    expect(await duplicateAsStaff(false)).toContainEqual({
+      path: 'priceInHUFEnabled',
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    })
+    // Az admin Másolás gombja (piszkozat-másolat) a munkatársnak is működik.
+    expect(await duplicateAsStaff(true)).toBe('OK')
   }, 120_000)
 })

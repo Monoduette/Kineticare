@@ -59,26 +59,32 @@ beforeAll(async () => {
 
 type Role = 'owner' | 'staff'
 
+type AuditEntry = { before?: unknown; after?: unknown }
+
 /** A közzétett (fő táblás) sor, ahogy a findByID adja; `undefined`: olvasás nem várható. */
 function fakeReq(
   options: {
     role?: Role
     published?: Record<string, unknown> | 'hiba'
     orders?: number | 'hiba'
-    /** A műveletnapló bejegyzései a legújabbal kezdve (src/plugins/audit.ts). */
-    audit?: Array<{ before?: unknown; after?: unknown }>
+    /** A műveletnapló bejegyzései a legújabbal kezdve (src/plugins/audit.ts), egy lapon. */
+    audit?: AuditEntry[]
+    /** Több lap: a find `page` paramétere szerint (1-től), a Payload lapozásának alakjában. */
+    auditPages?: AuditEntry[][]
     context?: Record<string, unknown>
   } = {},
 ) {
-  const { role = 'owner', published, orders, audit, context = {} } = options
+  const { role = 'owner', published, orders, audit, auditPages, context = {} } = options
   const findByID = vi.fn(async () => {
     if (published === undefined) throw new Error('Ebben az esetben nem kellene olvasni.')
     if (published === 'hiba') throw new Error('DB-hiba')
     return { id: 1, ...published }
   })
-  const find = vi.fn(async () => {
-    if (audit === undefined) throw new Error('Ebben az esetben nem kellene naplót olvasni.')
-    return { docs: audit }
+  const pages = auditPages ?? (audit === undefined ? undefined : [audit])
+  const find = vi.fn(async (args: { page?: number }) => {
+    if (pages === undefined) throw new Error('Ebben az esetben nem kellene naplót olvasni.')
+    const index = typeof args.page === 'number' ? args.page - 1 : 0
+    return { docs: pages[index] ?? [], hasNextPage: index + 1 < pages.length }
   })
   const count = vi.fn(async () => {
     if (orders === undefined) throw new Error('Ebben az esetben nem kellene rendelést számolni.')
@@ -251,8 +257,20 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     expect(find).toHaveBeenCalledWith(
       expect.objectContaining({
         collection: 'audit-logs',
-        where: { and: [{ entityType: { equals: 'products' } }, { entityId: { equals: '1' } }] },
+        where: {
+          and: [
+            { entityType: { equals: 'products' } },
+            { entityId: { equals: '1' } },
+            {
+              or: [
+                { 'after._status': { equals: 'published' } },
+                { 'before._status': { equals: 'published' } },
+              ],
+            },
+          ],
+        },
         sort: '-createdAt',
+        page: 1,
         overrideAccess: true,
       }),
     )
@@ -277,6 +295,66 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     expect(await validatePriceInHUF(45_000, numberOpts({ req }))).toBe(
       priceDropMessage('rendes', 45_000, 99_000),
     )
+  })
+
+  it('H3: egy bejegyzésen belül az „after” az újabb állapot', async () => {
+    // Közzétett árváltás 99 000-ről 49 000-re, utána visszavonás: a mérce 49 000.
+    const { req } = fakeReq({
+      published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 24_000 },
+      audit: [
+        {
+          before: { ...PAID_PUBLISHED, priceInHUF: 99_000 },
+          after: { ...PAID_PUBLISHED, priceInHUF: 49_000 },
+        },
+      ],
+    })
+    expect(await validatePriceInHUF(24_000, numberOpts({ req, previousValue: 24_000 }))).toBe(
+      priceDropMessage('rendes', 24_000, 49_000),
+    )
+  })
+
+  it('rev1: lomtárban álló sor és naplóoldal sosem mérce, akkor sem, ha közzétett státuszú', async () => {
+    // A lomtár írását a Payload nem validálja: a kézzel összerakott
+    // `{ deletedAt, _status: 'published' }` után a fő sorban és a bejegyzés
+    // „after” oldalán a tulajdonos meg nem erősített 5 Ft-os piszkozata állt.
+    const poisoned = { ...PAID_PUBLISHED, priceInHUF: 5, deletedAt: '2026-09-24T10:00:00.000Z' }
+    const trashEntry = { before: PAID_PUBLISHED, after: poisoned }
+    const rows = [
+      ['közzétett státuszú lomtár-sor', poisoned],
+      ['piszkozat lomtár-sor, mérgezett naplóoldallal', { ...poisoned, _status: 'draft' }],
+    ] as const
+    for (const [label, row] of rows) {
+      const staff = fakeReq({ role: 'staff', published: row, audit: [trashEntry] })
+      expect(
+        await validatePriceInHUF(5, numberOpts({ req: staff.req, previousValue: 5 })),
+        label,
+      ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+      const owner = fakeReq({ published: row, audit: [trashEntry] })
+      expect(
+        await validatePriceInHUF(5, numberOpts({ req: owner.req, previousValue: 5 })),
+        label,
+      ).toBe(PRICE_MESSAGE)
+    }
+  })
+
+  it('H3 (rev1): a napló lapozva keresi a legutóbbi élő közzétett állapotot, nem rögzített ablakban', async () => {
+    // Az első lap (20 bejegyzés) nem tartalmaz élő közzétett oldalt: piszkozat-
+    // és lomtár-körök, köztük közzétett státuszú, de lomtárban álló oldalak.
+    const draftRow = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 }
+    const trashedPublished = { ...PAID_PUBLISHED, priceInHUF: 7_950, deletedAt: '2026-09-24' }
+    const firstPage = Array.from({ length: 20 }, (_, index) =>
+      index % 2 === 0
+        ? { before: draftRow, after: { ...draftRow, deletedAt: '2026-09-24' } }
+        : { before: trashedPublished, after: draftRow },
+    )
+    const { req, find } = fakeReq({
+      published: draftRow,
+      auditPages: [firstPage, [{ before: PAID_PUBLISHED, after: draftRow }]],
+    })
+    expect(await validatePriceInHUF(7_950, numberOpts({ req, previousValue: 7_950 }))).toBe(
+      priceDropMessage('rendes', 7_950, 79_500),
+    )
+    expect(find.mock.calls.map(([args]) => args.page)).toEqual([1, 2])
   })
 
   it('H2: a munkatárs közzététele nem viheti élesbe a tulajdonos meg nem erősített ár-piszkozatát', async () => {

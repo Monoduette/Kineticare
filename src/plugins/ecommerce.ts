@@ -4,6 +4,8 @@ import type { CollectionOverride, Currency } from '@payloadcms/plugin-ecommerce/
 import type { JSONSchema4 } from 'json-schema'
 import type {
   CheckboxFieldValidation,
+  CollectionBeforeChangeHook,
+  CollectionBeforeOperationHook,
   Config,
   DateFieldValidation,
   Field,
@@ -284,6 +286,9 @@ async function readProductRow(
  * helyezés (a PATCH a legutóbbi autosave-es piszkozatot írja a fő sorba,
  * update.js skipValidation) és a közzététel visszavonása. Az ilyen sor értékét
  * egyik őr sem tekintheti a vásárló által látott, már elfogadott állapotnak.
+ * Hogy a validálás nélküli írás `_status: 'published'`-et se hagyhasson a fő
+ * sorban, azt a unpublishAndRestoreWritesStayDraft és a trashWritesStayDraft
+ * hook biztosítja (lásd ott).
  */
 function isPublishedRow(
   published: PublishedProduct | null | undefined,
@@ -296,8 +301,23 @@ function isTrashedRow(published: PublishedProduct): boolean {
   return published.deletedAt !== null && published.deletedAt !== undefined
 }
 
-/** Ennyi legutóbbi naplóbejegyzést néz át a pillanatkép keresése (kurzusonként). */
-const LAST_PUBLISHED_LOOKBACK = 20
+/**
+ * Élő, a vásárló által látott (vagy a visszavonás előtt látott) állapot:
+ * közzétett és nem lomtárban lévő sor. A lomtárba tett sor soha nem
+ * viszonyítási alap, akkor sem, ha `_status`-a 'published': a lomtár írását
+ * a Payload nem validálja, így abban a sorban (és a naplóbejegyzés „after”
+ * oldalán) meg nem erősített piszkozat-érték is állhat (mérve: a kézzel
+ * összerakott `{ deletedAt, _status: 'published' }` után a visszaállítás a
+ * piszkozat 5 Ft-os árát „változatlan, közzétett” értéknek vette).
+ */
+function isLivePublishedRow(
+  published: PublishedProduct | null | undefined,
+): published is PublishedProduct {
+  return isPublishedRow(published) && !isTrashedRow(published)
+}
+
+/** A pillanatkép-keresés lapmérete (a napló csak közzétett oldalú bejegyzéseit lapozza). */
+const LAST_PUBLISHED_PAGE_SIZE = 20
 
 const asRecord = (value: unknown): PublishedProduct | null =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -317,11 +337,19 @@ const asRecord = (value: unknown): PublishedProduct | null =>
  * A műveletnapló igen: a közzétételt, a visszavonást és a lomtárba helyezést a
  * fő sor előtte/utána állapotával naplózzuk (src/plugins/audit.ts, a-cms-12),
  * a bejegyzést csak a rendszer írhatja (src/collections/AuditLogs.ts). A
- * legfrissebb bejegyzés, amelynek egyik oldala közzétett sor, a legutóbb
- * közzétett állapot: az utolsó közzététel utáni sor („after”), vagy a
- * visszavonás, lomtárba helyezés előtti („before”). A másolatnak és a soha
- * nem közzétett kurzusnak nincs ilyen bejegyzése. Hiány vagy olvasási hiba:
- * null, és a hívó ilyenkor nem ad kivételt.
+ * legfrissebb bejegyzés, amelynek egyik oldala élő (közzétett, nem lomtárban
+ * lévő) sor, a legutóbb közzétett állapot: az utolsó közzététel utáni sor
+ * („after”, a bejegyzésen belül ez az újabb), vagy a visszavonás, lomtárba
+ * helyezés előtti („before”). A másolatnak és a soha nem közzétett kurzusnak
+ * nincs ilyen bejegyzése. Hiány vagy olvasási hiba: null, és a hívó ilyenkor
+ * nem ad kivételt.
+ *
+ * A lekérdezés eleve csak a közzétett oldalú bejegyzéseket kéri (JSON-útvonal
+ * a `before`/`after` mezőn), és addig lapoz, amíg élő oldalt nem talál. Rögzített
+ * ablak nem jó: minden lomtár + „visszaállítás piszkozatként” kör két, közzétett
+ * oldal nélküli bejegyzést ír, és néhány ilyen kör kitolná az ablakból a
+ * közzétett állapotot (a mérce ekkor a piszkozat-sor lenne, és az elütött ár
+ * megerősítés nélkül mehetne ki).
  */
 async function readLastPublishedSnapshot(
   req: PayloadRequest | undefined,
@@ -329,26 +357,37 @@ async function readLastPublishedSnapshot(
 ): Promise<PublishedProduct | null> {
   if (typeof req?.payload?.find !== 'function') return null
   try {
-    const { docs } = await req.payload.find({
-      collection: 'audit-logs',
-      where: {
-        and: [{ entityType: { equals: 'products' } }, { entityId: { equals: String(id) } }],
-      },
-      sort: '-createdAt',
-      limit: LAST_PUBLISHED_LOOKBACK,
-      depth: 0,
-      overrideAccess: true,
-      pagination: false,
-      req,
-      select: { before: true, after: true },
-    })
-    for (const entry of docs) {
-      for (const side of [entry.after, entry.before]) {
-        const snapshot = asRecord(side)
-        if (isPublishedRow(snapshot)) return snapshot
+    for (let page = 1; ; page += 1) {
+      const result = await req.payload.find({
+        collection: 'audit-logs',
+        where: {
+          and: [
+            { entityType: { equals: 'products' } },
+            { entityId: { equals: String(id) } },
+            {
+              or: [
+                { 'after._status': { equals: 'published' } },
+                { 'before._status': { equals: 'published' } },
+              ],
+            },
+          ],
+        },
+        sort: '-createdAt',
+        limit: LAST_PUBLISHED_PAGE_SIZE,
+        page,
+        depth: 0,
+        overrideAccess: true,
+        req,
+        select: { before: true, after: true },
+      })
+      for (const entry of result.docs) {
+        for (const side of [entry.after, entry.before]) {
+          const snapshot = asRecord(side)
+          if (isLivePublishedRow(snapshot)) return snapshot
+        }
       }
+      if (result.hasNextPage !== true) return null
     }
-    return null
   } catch {
     return null
   }
@@ -358,8 +397,9 @@ async function readLastPublishedSnapshot(
  * A mentés viszonyítási alapja frissítésnél (új kurzusnál, create: null, ott
  * nincs vásárló és nincs mihez mérni).
  * - `row`: a fő sor, ahogy most áll; `undefined`, ha nem olvasható.
- * - `lastPublished`: a legutóbb közzétett állapot: a közzétett fő sor, ha az
- *   most is közzétett, különben a napló pillanatképe; null, ha nincs.
+ * - `lastPublished`: a legutóbb közzétett állapot: a fő sor, ha az most is
+ *   élő (közzétett és nem lomtárban lévő), különben a napló pillanatképe;
+ *   null, ha nincs.
  */
 interface ProductReference {
   row: PublishedProduct | undefined
@@ -370,7 +410,7 @@ async function productReference(options: GuardOptions): Promise<ProductReference
   if (options.operation !== 'update' || options.id === undefined) return null
   const row = await readProductRow(options.req, options.id)
   if (row === undefined) return { row, lastPublished: null }
-  if (isPublishedRow(row)) return { row, lastPublished: row }
+  if (isLivePublishedRow(row)) return { row, lastPublished: row }
   return { row, lastPublished: await readLastPublishedSnapshot(options.req, options.id) }
 }
 
@@ -638,23 +678,39 @@ async function countPaidOrRefundedOrders(
  *
  * „Már ingyenes” csak a valóban közzétett, lomtáron kívüli fő sor lehet (a
  * napló pillanatképe itt nem számít: egy téves „már ingyenes” visszavonhatatlan
- * hozzáféréseket adna). A lomtárba helyezés és a „visszaállítás
- * piszkozatként” validálás nélkül a legutóbbi autosave-es piszkozatot írja a
- * fő sorba (update.js: skipValidation), így ott a kivett pipa ez az őr nélkül
- * is a fő sorba kerülhet, `_status: 'draft'`-tal. Ezért az ingyenes kurzust
- * kiadó utak (src/lib/free-course/request-access.ts,
- * src/lib/free-course-grant.ts) a piszkozat-sort nem tekintik élőnek (H4); a
- * „visszaállítás közzétettként” validál, és ezen az őrön megy át.
+ * hozzáféréseket adna). A lomtárba helyezés, a lomtárból `_status: 'published'`
+ * nélküli visszaállítás és a közzététel visszavonása validálás nélkül a
+ * legutóbbi (akár autosave-es) piszkozatot írja a fő sorba (update.js:
+ * skipValidation), így ott a kivett pipa ez az őr nélkül is a fő sorba
+ * kerülhet. Ezek az írások ezért mindig piszkozat-sort hagynak, a kérés
+ * `_status`-ától függetlenül (unpublishAndRestoreWritesStayDraft,
+ * trashWritesStayDraft), az ingyenes kurzust kiadó utak
+ * (src/lib/free-course/request-access.ts, src/lib/free-course-grant.ts) pedig
+ * a piszkozat-sort nem tekintik élőnek (H4). Élő sor csak validált mentésből
+ * lesz: a közzététel és a „visszaállítás közzétettként” ezen az őrön megy át.
+ *
+ * Új kurzuson (create) nincs vásárló, ott a tulajdonostól nem kérdez. Munkatárs
+ * viszont a pipát maga nem állíthatja (T-011), így a create-nél kivett pipa csak
+ * egy másik kurzus legutóbbi verziójából jöhet (a duplikálás a mezőt a forrás
+ * autosave-es piszkozatából tölti: payload/dist/duplicateDocument, fallback);
+ * ha ez közzétett másolat lenne, a tulajdonos meg nem erősített „ingyenes”
+ * döntése egy új, élő kurzuson jelenne meg a fizetős kurzus tartalmával.
  */
 export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, options) => {
-  if (value !== false || options.operation !== 'update' || options.id === undefined) {
+  if (value !== false) {
+    return true
+  }
+  if (options.operation === 'create') {
+    return (await ownerMayWrite(options)) ? true : OWNER_ONLY_CHANGE_MESSAGE
+  }
+  if (options.operation !== 'update' || options.id === undefined) {
     return true
   }
   if ((await ownerConfirmations(options)).freeCourse === true) {
     return true
   }
   const row = await readProductRow(options.req, options.id)
-  if (isPublishedRow(row) && !isTrashedRow(row) && row.priceInHUFEnabled === false) {
+  if (isLivePublishedRow(row) && row.priceInHUFEnabled === false) {
     return true
   }
   const sibling = options.siblingData as { priceInHUF?: unknown } | undefined
@@ -1229,6 +1285,75 @@ const visitOrderFields = (field: Field): Field =>
  */
 const WEBSHOP_GROUP = 'Webshop'
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * r2-termekor (rev1): a validálás nélküli írás nem hagyhat élő fő sort.
+ *
+ * A Payload 3.88 a kurzus fő sorát három írás-alaknál validálás NÉLKÜL írja
+ * (payload/dist/collections/operations/utilities/update.js, `skipValidation`):
+ * - a közzététel visszavonásánál (`unpublishAllLocales`);
+ * - a lomtárból visszaállításnál, ha a KÉRÉS `_status`-a nem 'published'
+ *   (`isRestoringDraftFromTrash`, a kérés nyers adatából számolva);
+ * - ha a mentendő adatban `deletedAt` áll: a lomtárba helyezésnél, és a
+ *   lomtárban álló sor minden olyan mentésénél, amely a `deletedAt`-et nem
+ *   törli (a mező-szintű beforeValidate a hiányzó mezőt a legutóbbi verzióból
+ *   tölti, és a Payload ezt az összefésült adatot nézi).
+ * A `_status`-t ilyenkor a kérés adataiból, ennek híján a legutóbbi verzióból
+ * írja. Egy kézzel összerakott kérés (visszavonás `_status: 'published'`-del,
+ * lomtár `{ deletedAt, _status: 'published' }`-del, majd `_status` nélküli
+ * visszaállítás) így az ár-őrök megkerülésével élesítette a tulajdonos
+ * autosave-es, meg nem erősített piszkozatát: ingyenes 79 500 Ft-os kurzus,
+ * 5 Ft-os ár, vég nélküli akció (mérve valódi Payload + Postgres mellett,
+ * munkatársi fiókkal).
+ *
+ * Ezért ezek az írások mindig piszkozat-sort hagynak, bárki végzi; élő sor
+ * csak validált mentésből lesz, ott pedig az ár-őrök döntenek. Az admin
+ * kérései érdemben nem változnak: a visszavonás és a „visszaállítás
+ * piszkozatként” eddig is 'draft'-ot küldött, a lomtárba tett sor láthatatlan,
+ * a „visszaállítás közzétettként” pedig validál, és a legutóbb közzétett
+ * állapothoz mér (readLastPublishedSnapshot: a lomtár előtti sor).
+ *
+ * Két helyen kell beavatkozni, mert a Payload a két feltételt különböző
+ * adatból számolja:
+ * - a visszavonás jelzője és a visszaállítás a nyers kérésből derül ki, ezért a
+ *   művelet elején (beforeOperation) állítjuk a kérés `_status`-át 'draft'-ra.
+ *   Lomtárban álló sort csak `trash: true` mellett lehet menteni (enélkül a
+ *   Payload nem is találja meg), így a `trash: true`, 'published' nélküli
+ *   mentés lefedi a visszaállítást; élő sornál ez a kérés közzététel-visszavonás
+ *   lesz, ami biztonságos irány. A Payload a visszavonás jelzőjét szövegként
+ *   is elfogadja (REST: `?unpublishAllLocales=true`), csak a 'true' számít.
+ * - a `deletedAt` az összefésült adatból derül ki, ezért a kollekció
+ *   beforeChange hookjában (az a validálás kihagyásakor is lefut, és a fő sor
+ *   meg a verzió írása előtt).
+ */
+export const unpublishAndRestoreWritesStayDraft: CollectionBeforeOperationHook = ({
+  args,
+  operation,
+}) => {
+  if (operation !== 'update' || !isPlainRecord(args)) {
+    return args
+  }
+  const rawData: unknown = args.data
+  const data: Record<string, unknown> = isPlainRecord(rawData) ? rawData : {}
+  const flag = args.unpublishAllLocales
+  const unpublishing = typeof flag === 'string' ? flag === 'true' : Boolean(flag)
+  const restoringWithoutPublish = args.trash === true && data._status !== 'published'
+  if (!unpublishing && !restoringWithoutPublish) {
+    return args
+  }
+  return { ...args, data: { ...data, _status: 'draft' } }
+}
+
+/** A lomtárba helyezés és a lomtárban álló sor mentése (lásd fent). */
+export const trashWritesStayDraft: CollectionBeforeChangeHook = ({ data, operation }) => {
+  if (operation !== 'update' || !isPlainRecord(data) || !data.deletedAt) {
+    return data
+  }
+  return { ...data, _status: 'draft' }
+}
+
 /**
  * Products override: a plugin gyári mezői (inventory, priceInHUF…) megmaradnak,
  * a kurzus-specifikus mezők mögéjük kerülnek.
@@ -1275,6 +1400,13 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
   },
   hooks: {
     ...defaultCollection.hooks,
+    // r2-termekor (rev1): validálás nélküli írás nem hagyhat élő fő sort (a
+    // közzétett sort csak validált mentés írhatja, ott döntenek az ár-őrök).
+    beforeOperation: [
+      ...(defaultCollection.hooks?.beforeOperation ?? []),
+      unpublishAndRestoreWritesStayDraft,
+    ],
+    beforeChange: [trashWritesStayDraft, ...(defaultCollection.hooks?.beforeChange ?? [])],
     // A menü szövege az ártól és a publikációtól is függ; mentés és törlés után újraépítendő.
     afterChange: [
       ...(defaultCollection.hooks?.afterChange ?? []),

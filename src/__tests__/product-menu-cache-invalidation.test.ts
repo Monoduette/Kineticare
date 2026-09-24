@@ -56,11 +56,13 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     const secondDelete = vi.fn()
     const beforeDelete = vi.fn()
     const beforeChange = vi.fn()
+    const beforeOperation = vi.fn()
     const hooks = {
       afterChange: [firstChange, secondChange],
       afterDelete: [firstDelete, secondDelete],
       beforeDelete: [beforeDelete],
       beforeChange: [beforeChange],
+      beforeOperation: [beforeOperation],
     }
     const products = await registeredProducts(hooks)
     expect(products.hooks?.afterChange).toHaveLength(3)
@@ -71,7 +73,14 @@ describe('A regisztrált termékhookok érvénytelenítik a navigáció gyorsít
     expect(products.hooks?.beforeDelete?.[0]).toBe(preventCourseDeletionWithFiles)
     expect(products.hooks?.beforeDelete?.[1]).toBe(beforeDelete)
     expect(hooks.beforeDelete).toEqual([beforeDelete])
-    expect(products.hooks?.beforeChange).toBe(hooks.beforeChange)
+    // r2-termekor (rev1): a validálás nélküli írást piszkozattá tevő hook a
+    // gyáriak ELÉ kerül (beforeChange), illetve mögéjük (beforeOperation).
+    expect(products.hooks?.beforeChange).toHaveLength(2)
+    expect(products.hooks?.beforeChange?.slice(1)).toEqual(hooks.beforeChange)
+    expect(products.hooks?.beforeOperation).toHaveLength(2)
+    expect(products.hooks?.beforeOperation?.slice(0, 1)).toEqual(hooks.beforeOperation)
+    expect(hooks.beforeChange).toEqual([beforeChange])
+    expect(hooks.beforeOperation).toEqual([beforeOperation])
     expect(hooks.afterChange).toHaveLength(2)
     expect(hooks.afterDelete).toHaveLength(2)
   })

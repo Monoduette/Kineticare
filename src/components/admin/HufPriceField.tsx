@@ -496,6 +496,23 @@ export function PaidCourseField(props: CheckboxFieldClientProps): JSX.Element {
   const confirmation = useField<boolean | null>({ path: confirmationPath('freeCourse') })
   const show = showFreeCoursePrompt({ value, initialValue, errorMessage })
   const confirmId = `field-${path.replace(/\./g, '__')}-megerosites`
+  const errorId = `field-${path.replace(/\./g, '__')}-hiba`
+
+  // A folyamba tett hibaszöveg a pipához kötve, hogy a képernyőolvasó a pipára
+  // lépve felolvassa (WCAG 2.2 SC 1.3.1 és 3.3.1, technika: ARIA1; GOV.UK
+  // Design System, Error message: a hibát `aria-describedby` köti a mezőhöz,
+  // https://design-system.service.gov.uk/components/error-message/). A pipa a
+  // Payload CheckboxField-jének `input`-ja, amely `aria-describedby`-t nem
+  // fogad, ezért a kapcsolatot itt tesszük rá, és a hiba eltűnésekor levesszük.
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const input = Array.from(
+      wrapperRef.current?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [],
+    ).find((candidate) => candidate.name === path)
+    if (input === undefined || narrowError === null) return
+    input.setAttribute('aria-describedby', errorId)
+    return () => input.removeAttribute('aria-describedby')
+  }, [errorId, narrowError, path])
 
   // H5: az „ingyenes legyen” megerősítés csak a kivett pipára szól. Ha a pipa
   // visszakerül, a megerősítés törlődik; különben (a Payload a mentés után a
@@ -511,9 +528,9 @@ export function PaidCourseField(props: CheckboxFieldClientProps): JSX.Element {
   }, [confirmedFree, setConfirmation, value])
 
   return (
-    <div style={paidCourseStyle}>
+    <div ref={wrapperRef} style={paidCourseStyle}>
       {narrowError !== null ? (
-        <p id={`field-${path.replace(/\./g, '__')}-hiba`} style={fieldErrorStyle}>
+        <p id={errorId} style={fieldErrorStyle}>
           {narrowError}
         </p>
       ) : null}
