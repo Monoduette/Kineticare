@@ -136,8 +136,15 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
         if (window.turnstile) {
           renderWidget()
         }
-        if (widgetIdRef.current !== null || Date.now() - kezdet > TURNSTILE_WAIT_MS) {
+        if (widgetIdRef.current !== null) {
           clearInterval(varakozas)
+        } else if (Date.now() - kezdet > TURNSTILE_WAIT_MS) {
+          // Se betöltés, se hibaesemény (elakadt kérés, bővítmény): a widget
+          // elérhetetlen, az űrlap ne mondja tovább, hogy az ellenőrzés fut.
+          clearInterval(varakozas)
+          setScriptFailed(true)
+          onTokenRef.current(null)
+          onErrorRef.current?.()
         }
       }, TURNSTILE_POLL_MS)
     }

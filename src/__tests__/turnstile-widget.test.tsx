@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   TURNSTILE_NORMAL_WIDTH_PX,
   TURNSTILE_POLL_MS,
+  TURNSTILE_WAIT_MS,
   TurnstileWidget,
   turnstileSize,
 } from '../app/(frontend)/kapcsolat/_components/TurnstileWidget'
@@ -122,6 +123,40 @@ describe('TurnstileWidget', () => {
         vi.advanceTimersByTime(TURNSTILE_POLL_MS * 5)
       })
       expect(turnstile.render).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ha az API a várakozási időn belül sem érkezik meg, hibát jelez (nem „fut" örökké)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      Reflect.deleteProperty(window, 'turnstile')
+      const onToken = vi.fn()
+      const onError = vi.fn()
+      await mount({ siteKey: 'kulcs', onToken, onError }).render()
+
+      await act(async () => {
+        vi.advanceTimersByTime(TURNSTILE_WAIT_MS - TURNSTILE_POLL_MS)
+      })
+      expect(onError).not.toHaveBeenCalled()
+
+      await act(async () => {
+        vi.advanceTimersByTime(TURNSTILE_POLL_MS * 2)
+      })
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onToken).toHaveBeenLastCalledWith(null)
+      expect(document.querySelector('[role="alert"]')?.textContent).toMatch(
+        /spam-ellenőrzés betöltése nem sikerült/,
+      )
+
+      // A késve érkező API már nem rajzol az eltűnt helyre, és nincs újabb jelzés.
+      Object.assign(window, { turnstile })
+      await act(async () => {
+        vi.advanceTimersByTime(TURNSTILE_POLL_MS * 5)
+      })
+      expect(turnstile.render).not.toHaveBeenCalled()
+      expect(onError).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }

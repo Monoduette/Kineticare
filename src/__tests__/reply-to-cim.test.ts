@@ -23,11 +23,36 @@ describe('isUsableReplyToAddress', () => {
     expect(isUsableReplyToAddress(cim)).toBe(false)
   })
 
-  it('a hosszt oktettben méri (ékezetes helyi rész)', () => {
-    // 33 × „é” = 66 oktett UTF-8-ban, bár csak 33 karakter.
-    expect(isUsableReplyToAddress(`${'é'.repeat(33)}@pelda.hu`)).toBe(false)
-    expect(isUsableReplyToAddress(`${'é'.repeat(32)}@pelda.hu`)).toBe(true)
+  it('nem ASCII címet nem ad át (a szolgáltató SMTPUTF8 nélkül elutasíthatja)', () => {
+    expect(isUsableReplyToAddress(`${'é'.repeat(32)}@pelda.hu`)).toBe(false)
+    expect(isUsableReplyToAddress('anna@példa.hu')).toBe(false)
+    expect(isUsableReplyToAddress('anna@xn--plda-bpa.hu')).toBe(true)
   })
+
+  it.each([
+    'a..b@example.com',
+    '.a@example.com',
+    'a.@example.com',
+    'a,@example.com',
+    'a@-example.com',
+    'a@example-.com',
+    'a@example..com',
+    'a@example.c',
+    'a@example.123',
+    'a@localhost',
+    'a b@example.com',
+    'a@b@example.com',
+    `a@${'d'.repeat(64)}.hu`,
+  ])('formailag érvénytelen címet elutasít: %s', (cim) => {
+    expect(isUsableReplyToAddress(cim)).toBe(false)
+  })
+
+  it.each(["o'brien+rendeles@pelda.hu", 'kata.kocsis@mail.pelda.co.uk', 'a_b-c@x1.hu'])(
+    'szabályos dot-atom címet elfogad: %s',
+    (cim) => {
+      expect(isUsableReplyToAddress(cim)).toBe(true)
+    },
+  )
 
   it('254 oktettnél hosszabb címet és 253 feletti domaint elutasít', () => {
     const hosszuDomain = `${'d'.repeat(60)}.`.repeat(5) + 'hu'
