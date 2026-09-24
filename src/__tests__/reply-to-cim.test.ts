@@ -43,16 +43,20 @@ describe('isUsableReplyToAddress', () => {
     'a b@example.com',
     'a@b@example.com',
     `a@${'d'.repeat(64)}.hu`,
+    'a@example.xn--abc-',
+    'a@example.xn--',
   ])('formailag érvénytelen címet elutasít: %s', (cim) => {
     expect(isUsableReplyToAddress(cim)).toBe(false)
   })
 
-  it.each(["o'brien+rendeles@pelda.hu", 'kata.kocsis@mail.pelda.co.uk', 'a_b-c@x1.hu'])(
-    'szabályos dot-atom címet elfogad: %s',
-    (cim) => {
-      expect(isUsableReplyToAddress(cim)).toBe(true)
-    },
-  )
+  it.each([
+    "o'brien+rendeles@pelda.hu",
+    'a@pelda.xn--p1ai',
+    'kata.kocsis@mail.pelda.co.uk',
+    'a_b-c@x1.hu',
+  ])('szabályos dot-atom címet elfogad: %s', (cim) => {
+    expect(isUsableReplyToAddress(cim)).toBe(true)
+  })
 
   it('254 oktettnél hosszabb címet és 253 feletti domaint elutasít', () => {
     const hosszuDomain = `${'d'.repeat(60)}.`.repeat(5) + 'hu'

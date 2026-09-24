@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { APPOINTMENT_GENERIC_ERROR } from '../lib/appointment/submit'
-import { NEWSLETTER_GENERIC_ERROR } from '../lib/newsletter/submit'
-import { extractPayloadErrorMessage } from '../lib/payload-rest-error'
+import { submitContactForm } from '../app/(frontend)/kapcsolat/_lib/submit'
+import { APPOINTMENT_GENERIC_ERROR, submitAppointmentForm } from '../lib/appointment/submit'
+import { NEWSLETTER_GENERIC_ERROR, submitNewsletterForm } from '../lib/newsletter/submit'
+import {
+  DUPLICATE_SUBMISSION_STATUS,
+  extractPayloadErrorMessage,
+  isSubmissionAccepted,
+} from '../lib/payload-rest-error'
 
 /**
  * A Payload REST hibaválaszának fordítása látogatói üzenetre. A Payload a nem
@@ -75,5 +80,32 @@ describe('extractPayloadErrorMessage', () => {
       const valasz = jsonValasz({ errors: [{ message: 'Something went wrong.' }] }, 500)
       await expect(extractPayloadErrorMessage(valasz, tartalek)).resolves.toBe(tartalek)
     }
+  })
+})
+
+describe('ismételt beküldés (409) a klienseken: sikerként', () => {
+  const ismetles = async () =>
+    Response.json(
+      { errors: [{ message: 'Ezt a beküldést már megkaptuk, köszönjük.' }] },
+      { status: DUPLICATE_SUBMISSION_STATUS },
+    )
+
+  it('isSubmissionAccepted: 2xx és 409 igen, más hiba nem', () => {
+    expect(isSubmissionAccepted(new Response(null, { status: 201 }))).toBe(true)
+    expect(isSubmissionAccepted(new Response(null, { status: 409 }))).toBe(true)
+    expect(isSubmissionAccepted(new Response(null, { status: 400 }))).toBe(false)
+    expect(isSubmissionAccepted(new Response(null, { status: 503 }))).toBe(false)
+  })
+
+  it('kapcsolat, hírlevél és időpontkérés: a 409 { ok: true }', async () => {
+    await expect(submitContactForm({ form: '1', submissionData: [] }, ismetles)).resolves.toEqual({
+      ok: true,
+    })
+    await expect(
+      submitNewsletterForm({ form: '1', submissionData: [] }, ismetles),
+    ).resolves.toEqual({ ok: true })
+    await expect(
+      submitAppointmentForm({ form: '1', submissionData: [] }, ismetles),
+    ).resolves.toEqual({ ok: true })
   })
 })

@@ -1,4 +1,4 @@
-import { extractPayloadErrorMessage } from '../payload-rest-error'
+import { extractPayloadErrorMessage, isSubmissionAccepted } from '../payload-rest-error'
 
 import {
   APPOINTMENT_AVAILABILITY_FIELD,
@@ -92,7 +92,7 @@ export async function submitAppointmentForm(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!response.ok) {
+    if (!isSubmissionAccepted(response)) {
       return {
         ok: false,
         message: await extractPayloadErrorMessage(response, APPOINTMENT_GENERIC_ERROR),

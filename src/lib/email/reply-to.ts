@@ -12,7 +12,7 @@
  * Szóközt és sortörést nem enged, így fejléc-injektálásra sem alkalmas.
  */
 const STAFF_REPLY_TO_EMAIL_PATTERN =
-  /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$/
+  /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,63}|xn--(?:[A-Za-z0-9-]{0,58}[A-Za-z0-9]))$/
 
 /**
  * Az SMTP (RFC 5321, 4.5.3.1) hosszkorlátai oktettben: a teljes cím 254, a
