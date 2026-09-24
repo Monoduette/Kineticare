@@ -1413,12 +1413,13 @@ async function lockProductRowForRestore(
   id: number | string,
 ): Promise<boolean> {
   const transactionID = await req.transactionID
-  const adapter: unknown = req.payload?.db
+  const rawAdapter: unknown = req.payload?.db
+  const adapter = isRequestTransactionAdapter(rawAdapter) ? rawAdapter : undefined
   const transaction =
-    transactionID === undefined || transactionID === null || !isRequestTransactionAdapter(adapter)
+    adapter === undefined || transactionID === undefined || transactionID === null
       ? undefined
       : adapter.sessions?.[String(transactionID)]?.db
-  if (transaction === undefined || transaction === null || !isRequestTransactionAdapter(adapter)) {
+  if (adapter === undefined || transaction === undefined || transaction === null) {
     logger.warn(
       'A munkatárs verzió-visszaállítása piszkozat marad: a kurzus sora nem zárolható (nincs kérés-tranzakció)',
       { productId: id },

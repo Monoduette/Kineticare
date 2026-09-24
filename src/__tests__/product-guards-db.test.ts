@@ -1,4 +1,6 @@
+import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
 import { getPayload, type Payload } from 'payload'
+import type { Client as PgClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -37,6 +39,58 @@ type Doc = Record<string, unknown> & { id: number }
 interface ErrorEntry {
   path?: string
   message?: string
+}
+
+/** A postgres-adapter kérés-tranzakciós felülete (a rev4 visszaállítás-kapcsolatához). */
+interface SqlAdapter {
+  execute: (args: { db: unknown; sql: SQL }) => Promise<{ rows: Array<Record<string, unknown>> }>
+  sessions: Record<string, { db: unknown } | undefined>
+}
+
+async function backendPid(client: PgClient): Promise<number> {
+  const result = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')
+  return result.rows[0].pid
+}
+
+/**
+ * Hány kérés vár a `holderPid` kapcsolat zárja mögött: közvetlenül, vagy egy
+ * ugyanerre a zárra előtte várakozó kérés mögött (a második sorzár-várakozót
+ * a Postgres az elsőhöz köti, nem a tartóhoz). Csak ezt a láncot számolja, így
+ * egy párhuzamosan futó DB-teszt zárvárakozása nem teljesítheti idő előtt.
+ *
+ * Az `observer` külön, tranzakción kívüli kapcsolat legyen: a Postgres a
+ * `pg_stat_activity` tartalmát tranzakciónként egyszer olvassa be, így a
+ * zárat tartó tranzakcióból nézve a később nyílt kapcsolatok nem látszanának.
+ */
+async function waitersBehind(observer: PgClient, holderPid: number): Promise<number> {
+  const result = await observer.query<{ n: number }>(
+    `WITH RECURSIVE behind(pid) AS (
+       SELECT pid FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))
+       UNION
+       SELECT a.pid FROM pg_stat_activity a JOIN behind b ON b.pid = ANY(pg_blocking_pids(a.pid))
+     )
+     SELECT count(*)::int AS n FROM behind`,
+    [holderPid],
+  )
+  return result.rows[0].n
+}
+
+/**
+ * Megvárja, hogy legalább `count` kérés várjon a `holderPid` mögött. `false`,
+ * ha közben a `gaveUp` igazzá vált (a várt kérés várakozás nélkül lefutott).
+ */
+async function untilWaitersBehind(
+  observer: PgClient,
+  holderPid: number,
+  count: number,
+  gaveUp: () => boolean = () => false,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if ((await waitersBehind(observer, holderPid)) >= count) return true
+    if (gaveUp()) return false
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error(`Nem várakozik ${count} kérés a(z) ${holderPid} kapcsolat zárja mögött.`)
 }
 
 describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
@@ -683,36 +737,24 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     // pipája mellé (mérve a7acf0b-n: élő, ingyenes, 79 500 Ft-os kurzus).
     const pg = await import('pg')
     const client = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
     await client.connect()
+    await observer.connect()
     try {
       const id = await createPublished('race')
       await autosave(id, owner, { priceInHUFEnabled: false })
       const versionId = await publishedVersionId(id)
-
-      const waitingOnLocks = async (): Promise<number> => {
-        const result = await client.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM pg_stat_activity
-           WHERE datname = current_database() AND wait_event_type = 'Lock'`,
-        )
-        return result.rows[0].n
-      }
-      const untilWaiting = async (count: number): Promise<void> => {
-        for (let attempt = 0; attempt < 400; attempt += 1) {
-          if ((await waitingOnLocks()) >= count) return
-          await new Promise((resolve) => setTimeout(resolve, 25))
-        }
-        throw new Error(`Nem várakozik ${count} kérés a soron.`)
-      }
+      const holderPid = await backendPid(client)
 
       await client.query('BEGIN')
       await client.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id])
       const unpublish = save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })
-      await untilWaiting(1)
+      expect(await untilWaitersBehind(observer, holderPid, 1)).toBe(true)
       const restore = restoreVersion(versionId, staff).then(
         () => 'OK',
         (error: unknown) => String(error),
       )
-      await untilWaiting(2)
+      expect(await untilWaitersBehind(observer, holderPid, 2)).toBe(true)
       await client.query('COMMIT')
 
       expect(await unpublish).toBe('OK')
@@ -726,6 +768,88 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     } finally {
       await client.query('ROLLBACK').catch(() => undefined)
       await client.end()
+      await observer.end()
+    }
+  }, 120_000)
+
+  it('rev4 (BRK-RACE, fordított sorrend): a munkatárs visszaállításának sorzárja a commitjáig tart, a visszavonás kivárja', async () => {
+    // A munkatárs visszaállítása zárol elsőnek, és még az élő sort olvassa.
+    // Ha a zár nem a visszaállítás tranzakciójában tartana, a tulajdonos
+    // visszavonása a zárolás és a visszaállítás írása között commitolna, és a
+    // visszaállítás `_status: 'published'`-je a kivett pipa mellé kerülne
+    // (élő, ingyenes kurzus). A visszaállítást a fő sor írása ELŐTT tartjuk
+    // fel: ekkor a sort csak a hook `SELECT … FOR UPDATE`-je zárolhatja, tehát
+    // a visszavonás csak arra várhat.
+    const pg = await import('pg')
+    const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+    await observer.connect()
+    const adapter = payload.db as unknown as SqlAdapter
+    const updateOne = payload.db.updateOne
+    let releaseRestore: () => void = () => undefined
+    const restoreMayWrite = new Promise<void>((resolve) => {
+      releaseRestore = resolve
+    })
+    let reportRestorePid: (pid: number) => void = () => undefined
+    const restorePid = new Promise<number>((resolve) => {
+      reportRestorePid = resolve
+    })
+    const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
+      if (args.collection === 'products' && args.req?.context?.isRestoringVersion === true) {
+        const session = adapter.sessions[String(await args.req.transactionID)]
+        const { rows } = await adapter.execute({
+          db: session?.db,
+          sql: sql`SELECT pg_backend_pid() AS pid`,
+        })
+        reportRestorePid(Number(rows[0]?.pid))
+        await restoreMayWrite
+      }
+      return updateOne.call(payload.db, args)
+    })
+    let restore: Promise<string> | undefined
+    let unpublish: Promise<'OK' | ErrorEntry[] | string> | undefined
+    try {
+      const id = await createPublished('race-reverse')
+      await autosave(id, owner, { priceInHUFEnabled: false })
+      const versionId = await publishedVersionId(id)
+
+      restore = restoreVersion(versionId, staff).then(
+        () => 'OK',
+        (error: unknown) => String(error),
+      )
+      const holderPid = await Promise.race([
+        restorePid,
+        restore.then((outcome) => {
+          throw new Error(`A visszaállítás a fő sor írása előtt véget ért: ${outcome}`)
+        }),
+      ])
+      let unpublishSettled = false
+      unpublish = save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true }).then(
+        (outcome) => outcome,
+        (error: unknown) => String(error),
+      )
+      void unpublish.then(() => {
+        unpublishSettled = true
+      })
+      expect(
+        await untilWaitersBehind(observer, holderPid, 1, () => unpublishSettled),
+        'a tulajdonos visszavonása nem várta meg a visszaállítás sorzárját',
+      ).toBe(true)
+
+      releaseRestore()
+      expect(await restore).toBe('OK')
+      expect(await unpublish).toBe('OK')
+      const row = await mainRow(id)
+      expect({ _status: row._status, priceInHUFEnabled: row.priceInHUFEnabled }).toEqual({
+        _status: 'draft',
+        priceInHUFEnabled: false,
+      })
+      expect((await claimAsStranger(id, 'race-reverse')).status).toBe('course-not-available')
+    } finally {
+      releaseRestore()
+      await restore
+      await unpublish
+      spy.mockRestore()
+      await observer.end()
     }
   }, 120_000)
 

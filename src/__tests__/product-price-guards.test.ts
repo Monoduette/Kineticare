@@ -688,14 +688,20 @@ describe('restoreVersionByNonOwnerStaysDraft: a munkatárs verzió-visszaállít
     // A zár nélküli olvasás egy párhuzamos visszavonás mellett elavult élő
     // sort láthat (BRK-RACE, a DB-teszt méri); tranzakció nélkül a zár nem
     // tartana a mentésig, ezért a döntés fail-closed.
+    // Az adapter futtatna SQL-t, és van nyitott tranzakciója is, de a kérés
+    // nem az övé (nincs `transactionID`): a zár nem a mentés tranzakciójában
+    // futna, ezért nem is futhat.
     const { req } = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+    const execute = vi.fn(async () => ({ rows: [] }))
+    const db = { execute, sessions: { '1': { db: {} } } }
     const hook = restoreVersionByNonOwnerStaysDraft as unknown as (args: unknown) => unknown
     const result = await hook({
       data: { _status: 'published', shortDescription: 'Régi leírás.' },
       operation: 'update',
       originalDoc: { id: 1 },
-      req: { ...req, context: { isRestoringVersion: true } },
+      req: { ...req, payload: { ...req.payload, db }, context: { isRestoringVersion: true } },
     })
+    expect(execute).not.toHaveBeenCalled()
     expect(result).toEqual({ _status: 'draft', shortDescription: 'Régi leírás.' })
   })
 })
