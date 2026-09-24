@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
+  CHECKOUT_PAYMENT_STATE_UNVERIFIED,
   barionPayUrl,
   checkoutPaymentInProgressMessage,
   checkoutStartRejectedWaitMessage,
@@ -55,6 +57,26 @@ describe('decidePendingCheckout', () => {
       }),
     ).toEqual({ kind: 'barion-unavailable' })
   })
+
+  /**
+   * fix-404 (H0): a puszta 404 nem átmeneti hiba, a vevő az „egy perc múlva"
+   * ígéretet kapta. Saját döntés, saját (503-as) szöveggel; lezárás és új
+   * Start továbbra sincs, életkortól függetlenül (a lezárás az order-poll dolga).
+   */
+  it.each(['2026-08-23T11:55:00.000Z', '2026-07-23T12:00:00.000Z'])(
+    'puszta 404 (unverified-not-found, createdAt %s) → saját fail-closed döntés, nincs lezárás',
+    (createdAt) => {
+      expect(
+        decidePendingCheckout({
+          barionPaymentId: 'pay-1',
+          createdAt,
+          mappedState: 'unverified-not-found',
+          nowMs: NOW,
+          windowMs: WINDOW_MS,
+        }),
+      ).toEqual({ kind: 'unverified-not-found' })
+    },
+  )
 
   it('a Barion kifejezetten nem ismeri a PaymentId-t, az ablak lejárt → helyi lezárás és új Start', () => {
     // Cáfolható állítás: eddig minden GetState-hiba „unavailable" volt, így a
@@ -153,10 +175,34 @@ describe('a várakoztató üzenetek', () => {
   })
 
   it('magyar mikroszöveg-szabály: nincs töltelék gondolatjel, „Kérjük", „Sajnos"', () => {
-    for (const message of messages) {
+    for (const message of [...messages, CHECKOUT_PAYMENT_STATE_UNVERIFIED]) {
       expect(message).not.toMatch(/[–—]/)
       expect(message).not.toContain('Kérjük')
       expect(message).not.toContain('Sajnos')
     }
+  })
+
+  /**
+   * fix-404 (ismert review-tétel): a „mert a Barion nem válaszolt rendben"
+   * a partnert hibáztatta, a csonka „újat" pedig csak második olvasásra
+   * érthető. A tárgy („új fizetést") minden várakoztató szövegben ki van írva.
+   */
+  it('nem hibáztatnak senkit, és a tárgyat kiírják („új fizetést", nem „újat")', () => {
+    for (const message of messages) {
+      // A \b a JS-ben csak ASCII-szóhatár, az „ú" előtt nem működne.
+      expect(message).not.toMatch(/(^|[\s,])újat([\s.,]|$)/)
+      expect(message).toContain('új fizetést')
+    }
+    expect(checkoutStartUncertainMessage(17)).not.toContain('Barion')
+  })
+})
+
+describe('CHECKOUT_PAYMENT_STATE_UNVERIFIED (puszta 404 a függő fizetésre)', () => {
+  it('nem ígér azonnali újrapróbálást, megmondja a jellemző időt és a kapcsolati címet', () => {
+    expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).not.toContain('egy perc múlva')
+    expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).not.toContain('Próbáld újra')
+    expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).toContain('legfeljebb egy napig')
+    expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).toContain('info@kineticare.hu')
+    expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).not.toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
   })
 })

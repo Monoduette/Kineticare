@@ -244,7 +244,7 @@ export function getBarionConfig(env: NodeJS.ProcessEnv = process.env): BarionCli
     : null
   if (posKeyProblem !== null) {
     throw new Error(
-      `Barion-konfigurációs hiba: a ${posKeyEnvName} értéke nem használható POSKey, mert ` +
+      `Barion-konfigurációs hiba: a ${posKeyEnvName} értéke nem használható POSKey-ként, mert ` +
         `${posKeyProblem}. Az alkalmazás így nem indulhat el. Másold be újra a bolt titkos ` +
         `kulcsát a ${BARION_SECURE_HOSTS[environment]} oldalról (Shops → Actions → Details, ` +
         'Secret key), idézőjelek és szóközök nélkül. A nyilvános kulcs (Public key) nem jó. ' +

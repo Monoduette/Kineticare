@@ -43,6 +43,7 @@ describe('a pénztár vevői üzenetei', () => {
         'CHECKOUT_PAYEE_EMAIL_GUEST',
         'CHECKOUT_PAYEE_EMAIL_ACCOUNT',
         'CHECKOUT_GUEST_FINISH_AFTER_LOGIN',
+        'CHECKOUT_PAYMENT_STATE_UNVERIFIED',
       ]),
     )
   })

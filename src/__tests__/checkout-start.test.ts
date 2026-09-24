@@ -21,7 +21,11 @@ import {
   CHECKOUT_START_REJECTED,
   CHECKOUT_TERMS_ERROR,
 } from '../lib/checkout/form-submission'
-import { CHECKOUT_PAYMENT_STATE_UNAVAILABLE } from '../lib/checkout/pending-payment'
+import {
+  CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
+  CHECKOUT_PAYMENT_STATE_UNVERIFIED,
+} from '../lib/checkout/pending-payment'
+import { resetAlertThrottle } from '../lib/alert-throttle'
 import { formatPriceHuf } from '../lib/format-price'
 import type { Logger } from '../lib/logger'
 import type { PaidRejectRecoveryResult } from '../lib/order-status/recover-paid-reject'
@@ -189,6 +193,8 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.unstubAllGlobals()
+  // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
+  resetAlertThrottle()
 })
 
 function barionStartSuccess(): Response {
@@ -1069,7 +1075,9 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     )
 
     expect(error.status).toBe(503)
-    expect(error.message).toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    // fix-404 (H0): itt az „egy perc múlva" újrapróbálás nem segít, ezért a
+    // saját, őszinte szöveg jár (meddig tart, hová írhat a vevő).
+    expect(error.message).toBe(CHECKOUT_PAYMENT_STATE_UNVERIFIED)
     expect(row.status).toBe('payment_pending')
     expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(false)
     expect(calls.create).toHaveLength(0)
@@ -1077,6 +1085,145 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(
       errors.some((entry) => entry.message.startsWith('RIASZTÁS') && entry.message.includes('404')),
     ).toBe(true)
+  })
+
+  /**
+   * fix-404 (H0): a Barion egyetlen dokumentált „ismeretlen fizetés" kódja a
+   * NotExistingPaymentId. Eddig ez puszta 404-ként 503-at adott, életkortól
+   * függetlenül, minden próbálkozásra: a 30 napos, a másik Barion-környezetből
+   * maradt függő sor a vevőt erre a kurzusra örökre kizárta.
+   */
+  const notExistingPaymentId = (httpStatus: number) =>
+    new BarionApiError({
+      message: `Barion API hiba (HTTP ${httpStatus}): NotExistingPaymentId`,
+      kind: 'http',
+      endpoint: 'GET /v4/Payment/{id}/PaymentState',
+      httpStatus,
+      providerErrors: [
+        {
+          ErrorCode: 'NotExistingPaymentId',
+          Title: 'DUMMY The given payment id is invalid',
+          Description: 'DUMMY',
+        },
+      ],
+    })
+
+  const bareNotFound = () =>
+    new BarionApiError({
+      message: 'Barion API hiba (HTTP 404, GET /v4/Payment/…/PaymentState).',
+      kind: 'http',
+      endpoint: 'GET /v4/Payment/{id}/PaymentState',
+      httpStatus: 404,
+    })
+
+  const thirtyDaysAgo = () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  it.each([404, 400])(
+    '30 napos függő sor + HTTP %i NotExistingPaymentId: a sor cancelled, új Start indul (nincs örökös 503)',
+    async (httpStatus) => {
+      fetchMock.mockResolvedValueOnce(barionStartSuccess())
+      const { payload, calls, row } = unknownPendingSetup(thirtyDaysAgo())
+
+      const result = await startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        fetchPaymentState: async () => {
+          throw notExistingPaymentId(httpStatus)
+        },
+      })
+
+      expect(row.status).toBe('cancelled')
+      expect(calls.create).toHaveLength(1)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(result.orderNumber).toBe(ORDER_NUMBER)
+    },
+  )
+
+  it('FRISS függő sor + 404 NotExistingPaymentId: 409 várakozás, nincs lezárás, nincs Start', async () => {
+    const { payload, calls, row } = unknownPendingSetup(new Date().toISOString())
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        fetchPaymentState: async () => {
+          throw notExistingPaymentId(404)
+        },
+      }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toMatch(/perc múlva indíthatsz/)
+    expect(row.status).toBe('payment_pending')
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('puszta 404: a vevői szöveg nem ígér „egy perc múlva" megoldást, és megadja a kapcsolati címet', async () => {
+    const { payload } = unknownPendingSetup(thirtyDaysAgo())
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        fetchPaymentState: async () => {
+          throw bareNotFound()
+        },
+      }),
+    )
+
+    expect(error.status).toBe(503)
+    expect(error.message).not.toContain('egy perc múlva')
+    expect(error.message).toContain('legfeljebb egy nap')
+    expect(error.message).toContain('info@kineticare.hu')
+  })
+
+  it('átmeneti GetState-hiba (timeout): a régi szöveg marad, ott az egy perc múlva újrapróbálás értelmes', async () => {
+    const { payload } = unknownPendingSetup(thirtyDaysAgo())
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        fetchPaymentState: async () => {
+          throw new BarionApiError({ message: 'timeout', kind: 'timeout', endpoint: 'GET x' })
+        },
+      }),
+    )
+
+    expect(error.status).toBe(503)
+    expect(error.message).toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+  })
+
+  it('puszta 404: a RIASZTÁS rendelésenként fojtott, az ismétlés warn-sor marad', async () => {
+    const { payload } = unknownPendingSetup(thirtyDaysAgo())
+    const { log, errors, warns } = captureLogger()
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const error = await checkoutErrorFrom(
+        startCheckout({
+          payload,
+          user: mockUser,
+          input: happyInput,
+          logger: log,
+          fetchPaymentState: async () => {
+            throw bareNotFound()
+          },
+        }),
+      )
+      expect(error.status).toBe(503)
+    }
+
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.context).toMatchObject({ orderId: 78, httpStatus: 404 })
+    const repeats = warns.filter((entry) => entry.message.includes('fojtva'))
+    expect(repeats).toHaveLength(2)
+    expect(repeats[0]?.context).toMatchObject({ orderId: 78 })
   })
 
   it('Succeeded függő rendelés: paid-átmenet, új Start 409', async () => {
@@ -1642,6 +1789,43 @@ describe('startCheckout — Barion-hibaág', () => {
     const retry = await startCheckout({ payload, user: mockUser, input: happyInput })
     expect(retry).toEqual({ orderNumber: ORDER_NUMBER, gatewayUrl: GATEWAY_URL })
     expect(calls.create).toHaveLength(2)
+  })
+
+  /**
+   * fix-404 (ismert review-tétel): a Start-elutasítás konfigurációs hiba, ami
+   * minden vevőt érint; egy rossz POSKey mellett minden próbálkozás új
+   * RIASZTÁS-sort írt. Most hibakódonként fojtott, az ismétlés warn-sor.
+   */
+  it('elutasított Start: a RIASZTÁS hibakódonként fojtott, új kód újra riaszt', async () => {
+    const { log, errors, warns } = captureLogger()
+    const rejectOnce = (errorCode: string): void => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(401, { Errors: [{ ErrorCode: errorCode, Title: 'x', Description: 'x' }] }),
+      )
+    }
+
+    for (const errorCode of ['AuthenticationFailed', 'AuthenticationFailed', 'ShopIsClosed']) {
+      rejectOnce(errorCode)
+      const { payload, row } = statefulSetup()
+      const error = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+      expect(error.status).toBe(502)
+      expect(error.message).toBe(CHECKOUT_START_REJECTED)
+      expect(row.status).toBe('payment_failed')
+    }
+
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts.map((entry) => entry.context.providerErrorCodes)).toEqual([
+      ['AuthenticationFailed'],
+      ['ShopIsClosed'],
+    ])
+    const repeats = warns.filter((entry) => entry.message.includes('fojtva'))
+    expect(repeats).toHaveLength(1)
+    expect(repeats[0]?.context).toMatchObject({
+      orderId: 101,
+      providerErrorCodes: ['AuthenticationFailed'],
+    })
   })
 
   it.each([

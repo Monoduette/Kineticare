@@ -284,8 +284,19 @@ POST /api/barion/callback
 Elveszett callback:
   order-poll task, 5 percenként, ugyanaz a v4 + állapotgép
   + árva-rendelés-lejárat + számla-resweep
-  + a Barion által definitíven nem ismert (404 / PaymentNotFound),
-    1 óránál régebbi payment_pending sor → cancelled (#260)
+  + a Barion által KIFEJEZETT not-found kóddal (NotExistingPaymentId,
+    PaymentNotFound; bármilyen HTTP-státusszal) jelzett, 1 óránál régebbi
+    payment_pending sor → cancelled (#260); a callback erre terminális rejected
+  + a puszta HTTP 404 (Errors tömb nélkül, vagy ismeretlen kóddal)
+    'unverified-404': fojtott RIASZTÁS + forgatás, önmagában SOSEM zár le;
+    a callback újrapróbálható marad, a pénztár saját szövegű 503-at ad
+    (CHECKOUT_PAYMENT_STATE_UNVERIFIED); a 24 óránál régebbi ilyen
+    payment_pending sort az order-poll CSAK akkor zárja le (RIASZTÁS), ha
+    ugyanabban a futásban egy MÁSIK GetState sikeres volt, vagy sikeres az
+    útvonal-próba (a legutóbbi paid rendelés GetState-je)
+  + a futás eleji mennyezet (MAX_LEADING_FAILURES) csak a függő lapokat
+    állítja meg; a late-success scan saját kerettel fut; auth/transport
+    megszakítás után kimarad
 ```
 
 Ár a checkoutban: a pénztár elküldi a **megjelenített** árat
@@ -663,9 +674,12 @@ vásárolható"; ingyenes → `FREE_COURSE_NOT_CHECKOUT_TEXT`; nem fizetős →
 `UNAVAILABLE_COURSE_NOTE`. Submit: kötelező `billing` + két 45/2014
 lemondó pipa + ÁSZF (`src/lib/checkout/form-submission.ts`). Függő
 fizetés: `decidePendingCheckout` (`resume` / `already-paid` /
-`cancel-and-restart` / `wait-no-payment-id` / `barion-unavailable`);
-a definitív PaymentNotFound és az eltérő ár- vagy számlázási snapshot
-`cancel-and-restart`.
+`cancel-and-restart` / `wait-no-payment-id` / `wait-not-found` /
+`unverified-not-found` / `barion-unavailable`); a definitív not-found
+kód (NotExistingPaymentId, PaymentNotFound) a fizetési ablakon túl és az
+eltérő ár- vagy számlázási snapshot `cancel-and-restart`; a puszta 404
+`unverified-not-found` (503, „legfeljebb egy nap" + info@kineticare.hu,
+a sort az order-poll zárja le).
 
 ---
 

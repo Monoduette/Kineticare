@@ -2,6 +2,7 @@ import type { Payload } from 'payload'
 
 import type { Order, Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
 import {
   isPaymentDefinitelyNotFound,
   isUnverifiedNotFound,
@@ -35,6 +36,7 @@ import {
 import type { OrderCustomerResolution } from '../order-status/resolve-order-customer'
 import {
   CHECKOUT_PAYMENT_STATE_UNAVAILABLE,
+  CHECKOUT_PAYMENT_STATE_UNVERIFIED,
   barionPayUrl,
   checkoutPaymentInProgressMessage,
   checkoutStartRejectedWaitMessage,
@@ -472,8 +474,14 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
       typeof pending.barionPaymentId === 'string' && pending.barionPaymentId.trim().length > 0
         ? pending.barionPaymentId.trim()
         : null
-    let mappedState: 'paid' | 'cancelled' | 'payment_pending' | 'unavailable' | 'not-found' | null =
-      null
+    let mappedState:
+      | 'paid'
+      | 'cancelled'
+      | 'payment_pending'
+      | 'unavailable'
+      | 'not-found'
+      | 'unverified-not-found'
+      | null = null
     let rawState: BarionPaymentStateResponse | null = null
     if (paymentId !== null) {
       try {
@@ -499,19 +507,34 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
         } else if (error instanceof BarionApiError && isUnverifiedNotFound(error)) {
           // Puszta 404: útvonal- vagy verzióváltás, közbülső 404 is lehet. Ha
           // ezt „nincs ilyen fizetés"-nek vennénk, egy élő (akár már kifizetett)
-          // fizetés mellé második indulna. Fail-closed 503 + riasztás.
-          ctx.log.error(
-            'RIASZTÁS: a Barion PaymentState HTTP 404-et adott „nincs ilyen fizetés" jelzés nélkül — ' +
-              'a függő fizetést nem zárjuk le, új fizetés nem indul. Ellenőrizd a BARION_API_URL-t és a PaymentState-útvonalat.',
-            {
-              orderId: pending.id,
-              httpStatus: error.httpStatus ?? null,
-              providerErrorCodes: error.providerErrors.map(
-                (providerError) => providerError.ErrorCode,
-              ),
-            },
-          )
-          mappedState = 'unavailable'
+          // fizetés mellé második indulna. Fail-closed 503 + riasztás. A
+          // riasztás rendelésenként FOJTOTT: a vevő minden próbálkozása
+          // ugyanezt látja, a nyitott ügyről elég egy error-sor a cooldown alatt.
+          const alertContext = {
+            orderId: pending.id,
+            httpStatus: error.httpStatus ?? null,
+            providerErrorCodes: error.providerErrors.map(
+              (providerError) => providerError.ErrorCode,
+            ),
+          }
+          if (
+            shouldEmitThrottledAlert(`checkout-unverified-404:${pending.id}`, undefined, ctx.nowMs)
+          ) {
+            ctx.log.error(
+              'RIASZTÁS: a Barion PaymentState HTTP 404-et adott „nincs ilyen fizetés" jelzés nélkül — ' +
+                'a függő fizetést nem zárjuk le, új fizetés nem indul. Ha minden fizetésnél ez jön, ' +
+                'ellenőrizd a BARION_API_URL-t és a PaymentState-útvonalat. Ha csak ennél, a fizetés ' +
+                'valószínűleg a másik Barion-környezetben indult: a 24 óránál régebbi sort az ' +
+                'order-poll lezárja, amint egy másik GetState sikeres.',
+              alertContext,
+            )
+          } else {
+            ctx.log.warn(
+              'checkout-start: a függő fizetésre ismét puszta HTTP 404 jött (a riasztás fojtva)',
+              alertContext,
+            )
+          }
+          mappedState = 'unverified-not-found'
         } else {
           ctx.log.warn('checkout-start: a Barion fizetésállapot nem kérdezhető le', {
             orderId: pending.id,
@@ -532,6 +555,9 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
 
     if (decision.kind === 'barion-unavailable') {
       throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    }
+    if (decision.kind === 'unverified-not-found') {
+      throw new CheckoutError(503, CHECKOUT_PAYMENT_STATE_UNVERIFIED)
     }
     if (decision.kind === 'wait-no-payment-id' || decision.kind === 'wait-not-found') {
       throw new CheckoutError(409, checkoutPaymentInProgressMessage(decision.minutesLeft))
@@ -1194,21 +1220,35 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       throw new CheckoutError(502, checkoutStartUncertainMessage(minutesLeft))
     }
 
-    // A RIASZTÁS minden elutasításra jár: a Start-kérést mi állítjuk össze,
-    // tehát az elutasítás konfigurációs vagy integrációs hiba, ami minden
-    // vevőt érint (AuthenticationFailed, ModelValidationError, InvalidUser,
-    // UserCantReceiveEMoney, ShopIsClosed …).
-    log.error(
-      'RIASZTÁS: a Barion elutasította a fizetésindítást — fizetés nem jött létre, a rendelés payment_failed lesz',
-      {
-        orderId: order.id,
-        orderNumber,
-        httpStatus: failure.httpStatus,
-        providerErrorCodes: failure.errorCodes,
-        operatorHint: failure.operatorHint,
-        error: errorMessage,
-      },
-    )
+    // A RIASZTÁS minden elutasításfajtára jár: a Start-kérést mi állítjuk
+    // össze, tehát az elutasítás konfigurációs vagy integrációs hiba, ami
+    // minden vevőt érint (AuthenticationFailed, ModelValidationError,
+    // InvalidUser, UserCantReceiveEMoney, ShopIsClosed …). Épp ezért a
+    // riasztás hibakódonként FOJTOTT: egy rossz POSKey mellett minden vevő
+    // minden próbálkozása ugyanazt jelezné. Az ismétlés warn-sorként, a
+    // rendelés adataival megmarad a naplóban.
+    const rejectionContext = {
+      orderId: order.id,
+      orderNumber,
+      httpStatus: failure.httpStatus,
+      providerErrorCodes: failure.errorCodes,
+      operatorHint: failure.operatorHint,
+      error: errorMessage,
+    }
+    const rejectionAlertKey = `checkout-start-rejected:${
+      failure.errorCodes[0] ?? `http-${failure.httpStatus ?? 'ismeretlen'}`
+    }`
+    if (shouldEmitThrottledAlert(rejectionAlertKey, undefined, nowMs)) {
+      log.error(
+        'RIASZTÁS: a Barion elutasította a fizetésindítást — fizetés nem jött létre, a rendelés payment_failed lesz',
+        rejectionContext,
+      )
+    } else {
+      log.warn(
+        'checkout-start: a Barion ismét elutasította a fizetésindítást (a riasztás fojtva) — a rendelés payment_failed lesz',
+        rejectionContext,
+      )
+    }
     let markedFailed: boolean
     try {
       markedFailed = await updateOrderStatusIfCurrent({

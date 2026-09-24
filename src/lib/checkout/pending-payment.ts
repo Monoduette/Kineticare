@@ -1,11 +1,38 @@
 import type { OrderPaymentState } from '../barion'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
 
 /**
  * Függő Barion-fizetés: élő fizetés → resume; Succeeded → paid helyben; GetState hiba → fail-closed.
  */
 
+/**
+ * Átmeneti hiba (timeout, hálózat, 5xx) a függő fizetés ellenőrzésekor: egy
+ * perc múlva az újrapróbálás valóban segíthet.
+ */
 export const CHECKOUT_PAYMENT_STATE_UNAVAILABLE =
   'A fizetés állapotát most nem tudtuk ellenőrizni. Új fizetést nem indítunk, hogy ne vonjunk le kétszer. Próbáld újra egy perc múlva.'
+
+/**
+ * A Barion a korábbi függő fizetésre „nincs ilyen fizetés" jelzés nélküli
+ * HTTP 404-et ad. Itt az azonnali újrapróbálás NEM segít: ugyanez a válasz
+ * jön, amíg az order-poll le nem zárja a sort (24 óránál régebbi sor, ha a
+ * futásban egy másik fizetés lekérdezése sikeres, lásd
+ * UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS). Ezért a szöveg nem ígér „egy perc
+ * múlva" megoldást, hanem megmondja, meddig tart jellemzően, és hová írhat a
+ * vevő, ha sürgős (GOV.UK, There is a problem with the service: a vevő kapjon
+ * elérhetőséget, és ne ígérjünk időpontot, ha nem tudjuk, mi történt,
+ * https://design-system.service.gov.uk/patterns/problem-with-the-service-pages/ ;
+ * NN/g, Error-Message Guidelines: pontos leírás, konstruktív tanács, ne
+ * hibáztasd a felhasználót, https://www.nngroup.com/articles/error-message-guidelines/).
+ * Az „általában" ezért szándékos: globális Barion-hibánál a lezárás nem indul
+ * el. A cím a K14 döntés szerinti egyetlen hivatalos ügyfélszolgálati cím; a
+ * literál egyetlen forrása a contact-email.ts (őr: kapcsolati-email-feloldo.test.ts).
+ */
+export const CHECKOUT_PAYMENT_STATE_UNVERIFIED =
+  'Ehhez a kurzushoz korábban már indult egy fizetés, de az állapotát most nem tudjuk ellenőrizni. ' +
+  'Hogy ne vonjunk le kétszer, új fizetést csak akkor indíthatsz, ha ezt tisztáztuk. ' +
+  'Ez általában legfeljebb egy napig tart. ' +
+  `Ha sürgős, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 
 /**
  * A várakoztató 409 szövege: ugyanahhoz a kurzushoz nemrég indult egy fizetés,
@@ -18,11 +45,13 @@ export const CHECKOUT_PAYMENT_STATE_UNAVAILABLE =
  * https://www.nngroup.com/articles/error-message-guidelines/ ; GOV.UK, There is
  * a problem with the service: mondd meg, mikor próbálkozhat újra,
  * https://design-system.service.gov.uk/patterns/problem-with-the-service-pages/).
+ * A tárgy („új fizetést") ki van írva: a hiányos „újat" a mondat elejére
+ * visszautal, és csak második olvasásra érthető.
  */
 export function checkoutPaymentInProgressMessage(minutesLeft: number): string {
   return (
     'Ehhez a kurzushoz nemrég már indult egy fizetés, és az eredményét még nem látjuk. ' +
-    `Hogy ne vonjunk le kétszer, újat ${minutesLeft} perc múlva indíthatsz. ` +
+    `Hogy ne vonjunk le kétszer, új fizetést ${minutesLeft} perc múlva indíthatsz. ` +
     'Ha addig visszaigazoló e-mailt kapsz, nincs több teendőd.'
   )
 }
@@ -32,13 +61,14 @@ export function checkoutPaymentInProgressMessage(minutesLeft: number): string {
  * válasz): a Barion létrehozhatta a fizetést, csak a válasza nem ért el
  * hozzánk. A vevő a fizetési oldalra nem jutott el, tehát pénzt nem vontunk le;
  * ezt és a várakozás okát, hosszát is megmondjuk (GOV.UK: mondd meg, mi lett a
- * megkezdett ügyével; NN/g: pontos leírás és megoldás).
+ * megkezdett ügyével; NN/g: pontos leírás és megoldás). A szöveg nem hibáztat
+ * senkit (a bizonytalanság oka a vevőnek nem teendő), és a tárgyat kiírja.
  */
 export function checkoutStartUncertainMessage(minutesLeft: number): string {
   return (
-    'A fizetési oldal nem nyílt meg, mert a Barion nem válaszolt rendben, így pénzt nem vontunk le. ' +
-    'Mivel nem tudjuk biztosan, hogy a Barion rögzítette-e a fizetést, ' +
-    `erre a kurzusra ${minutesLeft} perc múlva indíthatsz újat.`
+    'A fizetési oldal nem nyílt meg, és pénzt nem vontunk le. ' +
+    'Mivel nem tudjuk biztosan, hogy a fizetés elindult-e, ' +
+    `erre a kurzusra ${minutesLeft} perc múlva indíthatsz új fizetést.`
   )
 }
 
@@ -83,6 +113,12 @@ export function barionPayUrl(paymentId: string, environment: 'test' | 'prod'): s
 
 export type PendingCheckoutDecision =
   | { kind: 'barion-unavailable' }
+  /**
+   * Puszta (vagy ismeretlen kódú) HTTP 404 a függő fizetésre: fail-closed, de
+   * nem átmeneti hiba. A sort az order-poll zárja le (24 óra + útvonal-bizonyíték),
+   * addig 503 a saját, őszinte szövegével.
+   */
+  | { kind: 'unverified-not-found' }
   | { kind: 'already-paid' }
   | { kind: 'resume'; paymentId: string }
   | { kind: 'cancel-and-restart' }
@@ -100,13 +136,16 @@ export function decidePendingCheckout(input: {
   createdAt: string | null | undefined
   /**
    * `'not-found'`: a Barion KIFEJEZETT hibajelzéssel mondja, hogy nem ismeri a
-   * PaymentId-t (isPaymentDefinitelyNotFound; a puszta HTTP 404 ide NEM
-   * tartozik, az `'unavailable'`). Tipikus ok: más Barion-környezetben indított
-   * fizetés. A sor csak a fizetési ablak lejárta után zárul le, és csak utána
-   * mehet új Start; egy késői Succeeded a late-success ágon (R-03) ettől
-   * függetlenül paid-dé válik.
+   * PaymentId-t (isPaymentDefinitelyNotFound, pl. 404 + NotExistingPaymentId).
+   * Tipikus ok: más Barion-környezetben indított fizetés. A sor csak a
+   * fizetési ablak lejárta után zárul le, és csak utána mehet új Start; egy
+   * késői Succeeded a late-success ágon (R-03) ettől függetlenül paid-dé válik.
+   *
+   * `'unverified-not-found'`: HTTP 404 ismert not-found kód nélkül
+   * (isUnverifiedNotFound). Útvonalhiba is lehet, ezért a pénztár nem zár le
+   * és nem indít második fizetést; a lezárás az order-poll dolga.
    */
-  mappedState: OrderPaymentState | 'unavailable' | 'not-found' | null
+  mappedState: OrderPaymentState | 'unavailable' | 'not-found' | 'unverified-not-found' | null
   nowMs: number
   windowMs: number
 }): PendingCheckoutDecision {
@@ -127,6 +166,9 @@ export function decidePendingCheckout(input: {
 
   if (input.mappedState === 'unavailable' || input.mappedState === null) {
     return { kind: 'barion-unavailable' }
+  }
+  if (input.mappedState === 'unverified-not-found') {
+    return { kind: 'unverified-not-found' }
   }
   if (input.mappedState === 'not-found') {
     return insideWindow ? { kind: 'wait-not-found', minutesLeft } : { kind: 'cancel-and-restart' }

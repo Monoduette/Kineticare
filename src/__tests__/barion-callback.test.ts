@@ -1056,6 +1056,55 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
   })
 
   /**
+   * fix-404 (H0): a NotExistingPaymentId a Barion egyetlen DOKUMENTÁLT
+   * „ismeretlen fizetés" kódja (Error_codes_notifications; a go-barion
+   * GetPaymentState-fixtúrája is ezt adja). Eddig csak a repo saját
+   * PaymentNotFound-ja volt definitív, így ez a válasz sosem zárt: a
+   * webhook-retry 404-nél minden percben újrahívta a Bariont, amíg ki nem merült.
+   */
+  it.each([404, 400, 200])(
+    'HTTP %i + NotExistingPaymentId → TERMINÁLIS rejected, a rendelés érintetlen, a retry NEM viszi újra',
+    async (httpStatus) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const { POST, docs, capture, store, payload, order } = setup()
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Errors: [
+              {
+                ErrorCode: 'NotExistingPaymentId',
+                Title: 'DUMMY The given payment id is invalid',
+                Description: 'DUMMY',
+              },
+            ],
+          }),
+          { status: httpStatus, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
+
+      expect(docs[0]).toMatchObject({ status: 'processed', result: 'rejected', attempts: 1 })
+      expect(typeof docs[0]?.processedAt).toBe('string')
+      expect(order?.status).toBe('payment_pending')
+      const logs = logOutput(logSpy)
+      expect(logs).toContain('RIASZTÁS')
+      expect(logs).toContain('terminálisan elutasítva')
+
+      const retry = await processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      })
+      expect(retry.kind).toBe('already-processed')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  /**
    * Cáfolható állítás (a-callback-5 / r-barion-11): a puszta 404 (útvonal-
    * eltérés: „No HTTP resource was found…", Errors tömb nélkül) eddig
    * terminálisan elutasította az eseményt, így a fizetett rendelés későbbi

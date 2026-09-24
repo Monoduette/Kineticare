@@ -485,4 +485,82 @@ describe('webhook-retry handler — M6 terminális rejected ág (valódi Barion-
     expect(second.output.scanned).toBe(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  /**
+   * fix-404 (H0): a Barion dokumentált „ismeretlen fizetés" kódja
+   * (NotExistingPaymentId) is terminális. Eddig ez puszta 404-ként futott, és
+   * a retry-job a kimerülésig minden körben újra lekérdezte a Bariont.
+   */
+  it('404 + NotExistingPaymentId az újrapróbáláson → rejected VÉGLEGES lezárás, nincs további Barion-hívás', async () => {
+    const event = createEvent({ externalId: PAYMENT_ID, attempts: 1 })
+    const { store, docs } = createWebhookStore([event])
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            Errors: [
+              {
+                ErrorCode: 'NotExistingPaymentId',
+                Title: 'DUMMY The given payment id is invalid',
+                Description: 'DUMMY',
+              },
+            ],
+          }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    registerWebhookProcessor(
+      'barion',
+      createBarionCallbackProcessor({ payload: {} as unknown as Payload, store }),
+    )
+
+    const first = await runHandler(store)
+
+    expect(first.output).toMatchObject({ retried: 1, succeeded: 1, failed: 0, exhausted: 0 })
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'rejected', attempts: 2 })
+    expect(typeof docs[0]?.processedAt).toBe('string')
+
+    const second = await runHandler(store)
+    expect(second.output.scanned).toBe(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * A puszta 404 (Errors tömb nélkül) továbbra sem terminális: útvonal- vagy
+   * verzióváltás is lehet, és a callback-úton heurisztikára nem zárunk le.
+   */
+  it('puszta 404 az újrapróbáláson → failed marad (processedAt NULL), a backoff után újra sorra kerül', async () => {
+    const event = createEvent({ externalId: PAYMENT_ID, attempts: 1 })
+    const { store, docs } = createWebhookStore([event])
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ Message: 'No HTTP resource was found that matches the request URI' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    registerWebhookProcessor(
+      'barion',
+      createBarionCallbackProcessor({ payload: {} as unknown as Payload, store }),
+    )
+
+    const first = await runHandler(store)
+
+    expect(first.output).toMatchObject({ retried: 1, succeeded: 0, failed: 1, exhausted: 0 })
+    expect(docs[0]).toMatchObject({ status: 'failed', attempts: 2 })
+    expect(docs[0]?.processedAt ?? null).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // A backoff letelte után (régi updatedAt) a következő kör ismét lekérdez.
+    const stored = docs[0]
+    if (!stored) {
+      throw new Error('teszthiba: hiányzó esemény')
+    }
+    stored.updatedAt = hoursAgoIso(2)
+    const second = await runHandler(store)
+    expect(second.output).toMatchObject({ retried: 1, failed: 1 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })

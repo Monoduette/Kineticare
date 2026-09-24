@@ -123,7 +123,7 @@ export default async function PenztarPage({ searchParams }: PenztarPageProps) {
   }
 
   // Archivált terméknél az űrlap helyett tiszta tájékoztató állapot: a beküldés
-  // úgyis 400-zal hasalna el („Ez a termék már nem megvásárolható (archivált)."),
+  // úgyis 400-zal hasalna el („Ez a kurzus jelenleg nem vásárolható meg."),
   // a díszlet-űrlap pedig a néma hiba kínosabbik fajtája.
   if (product.status === 'archived') {
     return (

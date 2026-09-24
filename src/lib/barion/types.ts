@@ -56,7 +56,8 @@ export interface BarionPaymentTransaction {
 /**
  * Payment/Start v2 kérés-body. A fix üzleti értékeket (Immediate, GuestCheckOut,
  * FundingSources: All, hu-HU, HUF) a start.ts állítja be; a POSKey-t a client
- * injektálja a body-ba (sosem az URL-be — így nem kerülhet access logba).
+ * teszi bele: az x-pos-key fejlécbe ÉS a body POSKey mezőjébe (lásd client.ts
+ * barionRequest). URL-be sosem kerül, így access logba sem.
  */
 export interface BarionPaymentStartRequest {
   POSKey: string
