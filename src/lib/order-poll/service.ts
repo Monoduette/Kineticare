@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
-import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { releaseThrottledAlert, shouldEmitThrottledAlert } from '../alert-throttle'
 import {
   BARION_DEFAULT_PAYMENT_WINDOW,
   BarionApiError,
@@ -950,11 +950,29 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       try {
         state = await fetchState(paymentId)
       } catch (error) {
-        // A Barion szerint NINCS ilyen fizetés (ismert not-found kód, pl.
-        // NotExistingPaymentId: hamis GUID, vagy a másik Barion-környezet
-        // fizetése): ehhez a rendeléshez biztosan nem tartozhat, a jelölt
-        // kiesik, a lezárás nem vár miatta.
+        // A Barion a JELENLEGI konfigurációval nem ismeri a fizetést (ismert
+        // not-found kód, pl. NotExistingPaymentId): hamis GUID, vagy egy másik
+        // Barion-környezet fizetése. Utóbbi egy BARION_ENVIRONMENT-váltás után
+        // akár épp ennek az árva rendelésnek a fizetése is lehet, ezt a
+        // jelenlegi konfigurációval nem tudjuk eldönteni. A jelölt kiesik, a
+        // lezárás nem vár miatta (a callback útja az esemény elutasításakor
+        // már RIASZTÁS-t adott); a warn-sor a kihagyás nyoma a kézi
+        // egyeztetéshez, rendelésenként és fizetésenként naponta egyszer.
         if (error instanceof BarionApiError && isPaymentDefinitelyNotFound(error)) {
+          if (
+            shouldEmitThrottledAlert(
+              `orphan-candidate-not-found:${order.id}:${paymentId}`,
+              24 * 60 * 60 * 1000,
+              now,
+            )
+          ) {
+            orderLog.warn(
+              'árva rendelés: egy gazdátlan Barion-eseményt a Barion a jelenlegi ' +
+                'környezetben nem ismer — a jelölt kimarad (környezetváltás után a másik ' +
+                'környezet fizetése is lehet)',
+              { paymentId, failureClass: classifyBarionFailure(error) },
+            )
+          }
           continue
         }
         unverifiable = true
@@ -1651,9 +1669,11 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
    * `refundedAt` (a teljes visszatérítésé) VAGY a `refunds[].refundedAt` (a
    * részleges visszatérítés a rendelést paid-en hagyja, a rendelés
    * `refundedAt`-je ilyenkor üres); a sávba eső legutóbbi időpont számít.
-   * Rendelésenként és időpontonként egyszer fut a sávban (a fojtás-kulcs a
-   * folyamatban él: újraindulás után legfeljebb egy ismételt hívás). A már
-   * ellenőrzött sorok nem fogyasztják a futásonkénti GetState-keretet.
+   * Rendelésenként és időpontonként egyszer fut le sikeresen a sávban (a
+   * fojtás-kulcs a folyamatban él: újraindulás után legfeljebb egy ismételt
+   * hívás; hibás egyeztetés után a kulcs felszabadul, a következő futás újra
+   * próbálja). A már ellenőrzött sorok nem fogyasztják a futásonkénti
+   * GetState-keretet.
    */
   const recheckRefundsAfterWeek = async (): Promise<void> => {
     if (barionAborted) {
@@ -1661,6 +1681,21 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     }
     const untilMs = now - REFUND_RECHECK_AFTER_MS
     const sinceMs = untilMs - REFUND_RECHECK_BAND_MS
+    // A részleges visszatérítés ideje a `refunds` JSON-oszlopban él. A Payload
+    // postgres JSON-lekérdezése (createJSONQuery) csak az equals, in, like,
+    // contains, exists és not_* operátorokat ismeri: a greater_than_equal és a
+    // less_than_equal érvénytelen jsonpath-t ad, a Postgres elutasítja, és az
+    // EGÉSZ jelöltlekérdezés dob (valódi Postgresen bizonyítva). Ezért a JSON-ágon
+    // a sáv UTC-napjaira szűrünk (`like` → like_regex, a nap-előtag az ISO-
+    // időbélyeg elején áll), a pontos [sinceMs, untilMs] sávot pedig a
+    // latestRefundTimeInBand dönti el memóriában. A 24 órás sáv legfeljebb két
+    // UTC-napra esik. A `refunds[].refundedAt`-et minden író a szándék
+    // providerResolvedAt-jéből veszi (refund-recovery, auto-refund-recovery),
+    // amelyet az intent-store mindig toISOString()-gel (UTC, `Z`) normalizál;
+    // más alakú (pl. kézzel írt, eltolásos) időbélyeg a JSON-ágon kimaradhat.
+    const refundBandUtcDays = [
+      ...new Set([sinceMs, untilMs].map((ms) => new Date(ms).toISOString().slice(0, 10))),
+    ]
     let candidates: Order[]
     try {
       candidates = (
@@ -1679,18 +1714,9 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
                     ],
                   },
                   {
-                    and: [
-                      {
-                        'refunds.refundedAt': {
-                          greater_than_equal: new Date(sinceMs).toISOString(),
-                        },
-                      },
-                      {
-                        'refunds.refundedAt': {
-                          less_than_equal: new Date(untilMs).toISOString(),
-                        },
-                      },
-                    ],
+                    or: refundBandUtcDays.map((day) => ({
+                      'refunds.refundedAt': { like: day },
+                    })),
                   },
                 ],
               },
@@ -1717,17 +1743,12 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       if (refundedAtMs === null) {
         continue
       }
-      if (
-        !shouldEmitThrottledAlert(
-          `refund-week-recheck:${order.id}:${refundedAtMs}`,
-          2 * REFUND_RECHECK_BAND_MS,
-          now,
-        )
-      ) {
+      const recheckKey = `refund-week-recheck:${order.id}:${refundedAtMs}`
+      if (!shouldEmitThrottledAlert(recheckKey, 2 * REFUND_RECHECK_BAND_MS, now)) {
         continue
       }
       checked += 1
-      await runRefundReconciliation({
+      const recheckOutcome = await runRefundReconciliation({
         payload: deps.payload,
         order,
         trigger: 'order-poll',
@@ -1735,6 +1756,14 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         fetchState,
         now,
       })
+      // BRK-R2-1: ha az egyeztetés nem futott le (GetState-hiba, 429, a szándék
+      // vagy a rendelés nem olvasható), a kulcsot elengedjük, és a következő
+      // futás a sávon belül újra megpróbálja. Enélkül egyetlen átmeneti hiba
+      // végleg elnyelné az egyetlen sztornó-érzékelést (a sáv után a sort többé
+      // nem választjuk ki).
+      if (recheckOutcome === 'error') {
+        releaseThrottledAlert(recheckKey)
+      }
     }
   }
 

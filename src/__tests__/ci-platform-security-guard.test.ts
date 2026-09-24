@@ -46,7 +46,7 @@ const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
   '21f637b063faed841da7bac1468859549470e5d52ffb65ac9ac5ff060fefb542'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
   '7bb683ff32299f0b6d063d0c50785ddd0ba4484b53994b97b26e1cb1518fb4a3'
-const EXPECTED_RAILWAY_SHA256 = 'b8066a7c7bf334a8916f3beb075e86109e7a5d8006002fa71a9d30705ea213e9'
+const EXPECTED_RAILWAY_SHA256 = '9a8708fa3ea6a3cba99f5fe3fd2a5c3603c9e2ed340a35883ceca464d176703d'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
   'dc91bfecd80be1e5ff7d4aed76c2f8148165cc4edb8aea2bff4e3555838b6003'
@@ -1239,8 +1239,8 @@ describe('CI/platform supply-chain guard', () => {
       build?: { buildCommand?: string }
       deploy?: {
         startCommand?: string
-        drainingSeconds?: string
-        overlapSeconds?: string
+        drainingSeconds?: unknown
+        overlapSeconds?: unknown
         restartPolicyType?: string
         restartPolicyMaxRetries?: number
         numReplicas?: number
@@ -1256,8 +1256,10 @@ describe('CI/platform supply-chain guard', () => {
     // (overlapSeconds) szándékosan nincs: két konténer egyszerre futtatná a
     // cronokat. Config-as-code kulcs: docs.railway.com/config-as-code/reference
     // („Draining seconds … between when the previous deploy is sent a SIGTERM
-    // to the time it is sent a SIGKILL”).
-    expect(railway.deploy?.drainingSeconds).toBe('60')
+    // to the time it is sent a SIGKILL”). Szám, nem szöveg: a hivatalos séma
+    // (https://railway.com/railway.schema.json) a deploy.drainingSeconds-ot
+    // `number | null`-ként (minimum 0) írja le; a "60" szöveg a sémának nem felel meg.
+    expect(railway.deploy?.drainingSeconds).toBe(60)
     expect(railway.deploy?.overlapSeconds).toBeUndefined()
     expect(railway.deploy?.restartPolicyType).toBe('ON_FAILURE')
     expect(railway.deploy?.restartPolicyMaxRetries).toBe(10)

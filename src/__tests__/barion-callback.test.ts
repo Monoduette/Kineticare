@@ -48,6 +48,30 @@ vi.mock('../lib/order-paid', async (importOriginal) => {
 })
 
 /**
+ * A saját (admin) visszatérítési szándék DB-olvasása. Alapból a valódi
+ * loadActiveRefundIntent fut (a fixtúra üres refund-nyilvántartásán át); a
+ * BRK-R2-2 teszt a szándék-tároló válaszát lépteti, hogy a refundOrder
+ * rögzítés közbeni állapotát a GetState ideje alatt modellezze.
+ */
+const intentOverride = vi.hoisted(() => ({ active: null as null | (() => boolean) }))
+
+vi.mock('../lib/refund/intent-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/refund/intent-store')>()
+  return {
+    ...actual,
+    loadActiveRefundIntent: async (
+      ...args: Parameters<typeof actual.loadActiveRefundIntent>
+    ): ReturnType<typeof actual.loadActiveRefundIntent> => {
+      const override = intentOverride.active
+      if (override === null) return actual.loadActiveRefundIntent(...args)
+      return override()
+        ? ({ id: 1 } as unknown as Awaited<ReturnType<typeof actual.loadActiveRefundIntent>>)
+        : null
+    },
+  }
+})
+
+/**
  * T-022 Barion-callback egységtesztek — mockolt fetch-csel (GetState), mockolt
  * Payload local API-val és állapottartó in-memory webhook-events tárhelylyel
  * (az idempotency.test.ts és checkout-start.test.ts mintáját követve).
@@ -131,6 +155,7 @@ afterEach(() => {
   orderPaidSpy.onOrderPaid.mockImplementation(async () => {})
   // A riasztás-fojtás folyamat-szintű állapota nem szivároghat át tesztek között.
   resetAlertThrottle()
+  intentOverride.active = null
 })
 
 /** Állapottartó in-memory webhook-events tárhely (unique-kényszerrel) — idempotency.test.ts minta. */
@@ -1903,6 +1928,77 @@ describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid es
     )
     expect(alert?.context).toMatchObject({ findings: ['foreign-refund'] })
   })
+
+  // Breaker BRK-R2-2: a saját admin-visszatérítésre is jön callback. Ha az
+  // egyeztetés a rögzítés KÖZBEN olvasta a rendelést (a szándék még aktív, a
+  // refunds-nyom még üres), a GetState pedig a kapu miatt várt, a refundOrder
+  // közben rögzített és elengedte a szándékot: a régi pillanatkép + a GetState
+  // UTÁNI szándék-olvasás hamis „idegen visszatérítés” RIASZTÁS-t adott.
+  // A második eset: a teljes saját visszatérítés a GetState várakozása alatt
+  // indul és zárul, így aktív szándékot egyik olvasás sem lát; csak a friss
+  // rendelés-olvasás mutatja a rögzített összeget.
+  it.each([
+    ['a szándék a GetState előtt még aktív, utána már lezárt', true],
+    ['a visszatérítés a GetState várakozása alatt indul és zárul', false],
+  ] as const)(
+    'a rögzítés közben érkező saját admin-visszatérítés callbackje nem ad hamis „idegen visszatérítés” RIASZTÁS-t (%s)',
+    async (_label, intentActiveBefore) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      // Az „adatbázis” egyetlen rendelése; minden olvasás friss másolatot kap.
+      const dbOrder = createOrder({ status: 'paid' })
+      Object.assign(dbOrder, { refunds: [] })
+      let intentActive: boolean = intentActiveBefore
+      intentOverride.active = () => intentActive
+      const payload = {
+        find: vi.fn(async ({ collection, where }: { collection: string; where?: unknown }) => {
+          const json = JSON.stringify(where ?? {})
+          const matches =
+            collection === 'orders' &&
+            (json.includes(PAYMENT_ID) || json.includes(`"id":{"equals":${dbOrder.id}}`))
+          return matches
+            ? { docs: [structuredClone(dbOrder)], totalDocs: 1 }
+            : { docs: [], totalDocs: 0 }
+        }),
+      } as unknown as Payload
+      const { store } = createWebhookStore([PAID_EVENT])
+      const capture = createScheduleCapture()
+      const POST = createBarionCallbackHandler({
+        getPayload: async () => payload,
+        schedule: capture.schedule,
+        store,
+        rateLimit: { limiter: new SlidingWindowRateLimiter() },
+      })
+      // A GetState ideje alatt (kapu-várakozás + HTTP) a refundOrder rögzíti a
+      // visszatérítést, majd elengedi a szándékot (committed).
+      fetchMock.mockImplementation(async () => {
+        Object.assign(dbOrder, {
+          refunds: [
+            {
+              transactionId: SOURCE_TX.TransactionId,
+              amountHuf: 5000,
+              status: 'Succeeded',
+              refundedAt: new Date().toISOString(),
+              type: 'partial',
+            },
+          ],
+        })
+        intentActive = false
+        return stateWithTransactions([SOURCE_TX, FOREIGN_REFUND_TX], ORDER_TOTAL_HUF - 5000)
+      })
+
+      const response = await POST(makeBarionRequest(PAYMENT_ID))
+      expect(await response.json()).toEqual({ ok: true, status: 'duplicate' })
+      await capture.runAll()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(logOutput(logSpy)).not.toContain('RIASZTÁS')
+      // Az egyeztetés lefutott, és a friss rendeléssel egyezést talált.
+      const matched = logEntries(logSpy).find(
+        (entry) => entry.msg === 'visszatérítés-egyeztetés: a Barion és a rendelés adatai egyeznek',
+      )
+      expect(matched?.context).toMatchObject({ barionRefundedHuf: 5000, recordedRefundedHuf: 5000 })
+    },
+  )
 })
 
 describe('r-barion-7 — lezárt (cancelled) fizetésre érkező callback', () => {

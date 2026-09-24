@@ -4930,7 +4930,7 @@ describe('a-callback-9: árva rendelés lezárása előtt a gazdátlan Barion-ca
   // Breaker BRK-3: a Barion definitív „nincs ilyen fizetés” válasza (hamis GUID,
   // a másik Barion-környezet fizetése) korábban „nem ellenőrizhető”-nek számított,
   // és 48 óráig tartotta függőben az árva rendelést.
-  it('a gazdátlan eseményre a Barion NotExistingPaymentId-t ad → nem jelölt, a 25 órás árva rendelés lezárul', async () => {
+  it('a gazdátlan eseményre a Barion NotExistingPaymentId-t ad → nem jelölt, a 25 órás árva rendelés lezárul, a kihagyás warn-nyomot hagy', async () => {
     const order = orphan(25)
     const f = setup({
       pending: [order],
@@ -4939,17 +4939,26 @@ describe('a-callback-9: árva rendelés lezárása előtt a gazdátlan Barion-ca
     const fetchState = vi.fn(async () => {
       throw notExistingPaymentId()
     })
+    const { log, warns } = contextLog()
 
     const summary = await pollPendingOrders({
       ...f,
       fetchState,
       now: NOW,
+      logger: log as never,
       invoicingEnabled: () => false,
     })
 
     expect(fetchState).toHaveBeenCalledWith(ORPHAN_PAYMENT_ID)
     expect(order.status).toBe('cancelled')
     expect(summary.orphaned).toBe(1)
+    // Környezetváltás után ez akár épp ennek a rendelésnek a fizetése is lehet:
+    // a kihagyásnak nyoma marad a kézi egyeztetéshez.
+    expect(
+      warns.filter((message) =>
+        message.startsWith('árva rendelés: egy gazdátlan Barion-eseményt a Barion a jelenlegi'),
+      ),
+    ).toHaveLength(1)
   })
 
   it.each([
@@ -5175,5 +5184,42 @@ describe('r-barion-8: minden visszatérítés egy héttel később egyszer újra
       invoicingEnabled: () => false,
     })
     expect(fetchState).toHaveBeenCalledTimes(6)
+  })
+
+  it('BRK-R2-1: a sávbeli újraellenőrzés átmeneti GetState-hibája (503) után a következő futás újra ellenőriz', async () => {
+    const order = refundedOrder(7.5)
+    const f = setup({ pending: [], paidResweep: [order] })
+    const payload = withLedger(f, order.id)
+    let calls = 0
+    const fetchState = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        throw new BarionApiError({
+          message: '503',
+          kind: 'http',
+          endpoint: 'GET x',
+          httpStatus: 503,
+        })
+      }
+      return reversedState()
+    })
+    const { log, errors } = contextLog()
+
+    for (const offset of [0, POLL_INTERVAL_MS]) {
+      await pollPendingOrders({
+        ...f,
+        payload,
+        fetchState,
+        now: NOW + offset,
+        logger: log as never,
+        invoicingEnabled: () => false,
+      })
+    }
+
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    const alert = errors.find((entry) =>
+      entry.message.startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({ findings: ['refund-reversal'] })
   })
 })

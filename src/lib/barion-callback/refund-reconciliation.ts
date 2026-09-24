@@ -220,14 +220,35 @@ export async function runRefundReconciliation(
   const fetchState =
     params.fetchState ?? ((id: string) => fetchPaymentState(id, undefined, { logger: log }))
 
+  // Olvasási sorrend (BRK-R2-2): a saját admin-visszatérítésre is jön Barion-
+  // callback, és a GetState a PaymentId-kapu miatt másodpercekig várhat. Ezalatt
+  // a refundOrder rögzítheti a visszatérítést és elengedheti a szándékot. A
+  // hívó rendelés-pillanatképe ezért elavult lehet: a szándékot a GetState
+  // ELŐTT és UTÁN is olvassuk (bármelyik aktív → saját, folyamatban lévő
+  // visszatérítés), a rendelést pedig a második szándék-olvasás UTÁN frissen.
+  // A szándék csak azután zárul (committed), hogy a rendelés refunds-nyoma
+  // már rögzítve van (refund-recovery), így ha a második olvasás már nem lát
+  // aktív szándékot, a friss rendelés a rögzített visszatérítést is mutatja.
   let state: BarionPaymentStateResponse
   let activeRefundIntent: boolean
+  let current: Order = order
   try {
+    const activeBefore = (await loadActiveRefundIntent(params.payload, order.id)) !== null
     state = await fetchState(paymentId)
-    activeRefundIntent = (await loadActiveRefundIntent(params.payload, order.id)) !== null
+    const activeAfter = (await loadActiveRefundIntent(params.payload, order.id)) !== null
+    activeRefundIntent = activeBefore || activeAfter
+    const fresh = await params.payload.find({
+      collection: 'orders',
+      where: { id: { equals: order.id } },
+      limit: 1,
+      depth: 0,
+      overrideAccess: true,
+    })
+    const freshOrder = fresh.docs[0] as Order | undefined
+    if (freshOrder && freshOrder.id === order.id) current = freshOrder
   } catch (error) {
     log.warn(
-      'visszatérítés-egyeztetés: a PaymentState vagy a visszatérítési szándék nem olvasható — később újra',
+      'visszatérítés-egyeztetés: a PaymentState, a visszatérítési szándék vagy a rendelés nem olvasható — később újra',
       {
         error: error instanceof Error ? error.message : String(error),
       },
@@ -235,7 +256,7 @@ export async function runRefundReconciliation(
     return 'error'
   }
 
-  const comparison = compareRefundsWithPaymentState(order, state, { activeRefundIntent })
+  const comparison = compareRefundsWithPaymentState(current, state, { activeRefundIntent })
   const context = {
     barionStatus: state.Status,
     barionRefundedHuf: comparison.barionRefundedHuf,
@@ -243,7 +264,7 @@ export async function runRefundReconciliation(
     failedRefundCount: comparison.failedRefundCount,
     reversalCount: comparison.reversalCount,
     barionTotal: comparison.barionTotal,
-    totalHufSnapshot: order.totalHufSnapshot ?? null,
+    totalHufSnapshot: current.totalHufSnapshot ?? null,
     activeRefundIntent,
   }
   if (comparison.findings.length === 0) {
