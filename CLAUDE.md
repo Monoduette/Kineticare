@@ -102,6 +102,24 @@ gomb-gráf), `docs/gomb-inventar.md` (CTA-szótár), `docs/gomb-kontraszt-audit.
 `docs/regi-oldal-osszehasonlitas.md`, `docs/ertekesitesi-ux-skill.md`
 (cél-hierarchia M1–M8, sticky-nav, tipográfiai skála), `docs/ux-hierarchia-audit.md`.
 
+## Tesztírás és teszt-audit
+
+**KÖTELEZŐ SKILL: `.claude/skills/test-audit/SKILL.md`** — bármely teszt
+írása, módosítása, átnézése vagy söprése előtt be kell tölteni.
+
+- Írási kapu: négy kérdés, mielőtt egy teszt bekerül (mit véd, milyen
+  regresszió buktatja, miért nem fogja meg a meglévő lefedettség, kell-e hozzá
+  csak tesztnek szóló éles varrat).
+- Szemét-minták listája.
+- Ellenpróba: a regressziós teszt a javítás előtti kódon a szándékolt okból
+  bukik.
+- Megtartási mérce: pénz, NAV-számla, jogi szöveg, tilos zónák.
+- Egy alrendszer teljes tesztfelületének rendbetétele: `CAMPAIGN.md`
+  ugyanabban a mappában.
+
+Forrás: az OpenClaw `test-audit` skillje (MIT), 2026-09-24-én a Kineticare-re
+szabva.
+
 ## Branch-konvenció
 
 - Formátum: `feat/<ticket-id>-<rovid-nev>` — pl. `feat/KIN-12-barion-callback`.

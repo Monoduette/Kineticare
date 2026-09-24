@@ -237,6 +237,12 @@ mert megkerülte volna a jelszó-politikát és a rate-limitet (indoklás a
 'automatic'` miatt, pragma nélkül).
 - Új viselkedéshez fókuszált teszt vagy legalább reprodukálható ellenőrzési
   lépés kell (PR-elvárás).
+- Teszt írása, módosítása, átnézése vagy söprése előtt kötelező a
+  `.claude/skills/test-audit/SKILL.md`:
+  - írási kapu és szemét-minták;
+  - ellenpróba a javítás előtti kódon;
+  - megtartási mérce;
+  - alrendszer-kampányhoz a `CAMPAIGN.md`.
 
 ## CI és PR-elvárások
 
