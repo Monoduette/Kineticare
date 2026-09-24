@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   FREE_COURSE_CONFIRM_LABEL,
+  FREE_COURSE_GUARD_MESSAGE,
   FREE_COURSE_NOTICE_TITLE,
   FREE_COURSE_WARNING,
   HUF_INPUT_DECIMAL_MESSAGE,
+  OWNER_ONLY_CHANGE_MESSAGE,
+  PRICE_MESSAGE,
   PROMO_END_MISSING_NOTE,
   formatHufInput,
-  freeCourseGuardMessage,
   priceDropConfirmLabel,
   priceDropMessage,
   priceDropWarning,
@@ -35,6 +37,13 @@ interface FieldState {
   value?: unknown
   initialValue?: unknown
   errorMessage?: string
+  /**
+   * A Payload useField `showError`-ja (`valid === false && submitted`).
+   * Alapból a hibaüzenet jelenléte; a valódi Payload viszont a kijavított,
+   * érvényes mező mellett is az állapotban hagyja a régi üzenetet
+   * (showError: false), ezt a tesztek így állítják be.
+   */
+  showError?: boolean
 }
 
 const form = vi.hoisted(() => ({
@@ -60,7 +69,7 @@ vi.mock('@payloadcms/ui', async () => {
         value: field.value,
         initialValue: field.initialValue,
         errorMessage: field.errorMessage,
-        showError: field.errorMessage !== undefined,
+        showError: field.showError ?? field.errorMessage !== undefined,
         disabled: false,
         setValue: (value: unknown) => form.setValue(path, value),
       }
@@ -70,8 +79,6 @@ vi.mock('@payloadcms/ui', async () => {
     useAuth: () => ({ user: form.user }),
     FieldLabel: ({ label, htmlFor }: { label?: ReactNode; htmlFor?: string }) =>
       h('label', { htmlFor }, label),
-    FieldError: ({ message, showError }: { message?: string; showError?: boolean }) =>
-      showError ? h('span', { className: 'mezo-hiba' }, message ?? 'szerver-hiba') : null,
     FieldDescription: ({ description }: { description?: ReactNode }) =>
       h('div', { className: 'mezo-leiras' }, description),
     CheckboxInput: ({
@@ -162,18 +169,73 @@ describe('HufPriceField (SSR): a tárolt ár formázva, előnézettel', () => {
     expect(renderToStaticMarkup(createElement(HufPriceField, priceProps))).toContain('checked=""')
   })
 
-  it('ha a mentés hibaüzenete kér megerősítést (a piszkozatban már az új ár állt), a jelölőnégyzet megjelenik', () => {
+  it('H7: a piszkozatban álló 80 Ft elutasításakor a doboz kimondja az okot, a közzétett árral (minden szélességen)', () => {
+    // A piszkozat már a hibás árat hordozza, így a kliens nem lát csökkenést;
+    // az ok csak a mentés üzenetéből derül ki. A Payload hibabuboréka 1024 px
+    // alatt rejtve van, ezért az üzenetnek a dobozban kell állnia.
+    const refused = priceDropMessage('rendes', 80, 79_500)
+    form.fields.priceInHUF = { value: 80, initialValue: 80, errorMessage: refused }
+    const html = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+    expect(html).toContain(
+      `<p class="kc-admin-notice__szoveg" id="field-priceInHUF-figyelmeztetes">${refused}</p>`,
+    )
+    expect(html).toContain(priceDropConfirmLabel('rendes', 80))
+    // Nem ismétlődik a mező fölött, és a felolvasó a mezőn a doboz szövegét hallja.
+    expect(html.split(refused)).toHaveLength(2)
+    expect(html).toContain(
+      'aria-describedby="field-priceInHUF-figyelmeztetes field-priceInHUF-elonezet field-priceInHUF-sugo"',
+    )
+  })
+
+  it('H9: a kijavított ár mellett bent maradt régi elutasítás (80 Ft) nem hoz dobozt', () => {
     form.fields.priceInHUF = {
-      value: 7_950,
-      initialValue: 7_950,
-      errorMessage: priceDropMessage('rendes', 7_950, 79_500),
+      value: 79_500,
+      initialValue: 80,
+      errorMessage: priceDropMessage('rendes', 80, 79_500),
+      showError: false,
     }
     const html = renderToStaticMarkup(createElement(HufPriceField, priceProps))
-    expect(html).toContain(priceDropConfirmLabel('rendes', 7_950))
-    // A hibaüzenetet a Payload FieldError-ja mutatja (az űrlap-állapotból);
-    // a doboz nem ismétli meg.
-    expect(html).toContain('mezo-hiba')
-    expect(html).not.toContain(priceDropWarning('rendes', 7_950, 7_950))
+    expect(html).not.toContain('role="status"')
+    expect(html).not.toContain(priceDropConfirmLabel('rendes', 79_500))
+    expect(html).not.toContain('aria-invalid')
+  })
+
+  it('H9: élő elutasításnál a doboz a közzétett árat nevezi meg, nem a piszkozat „eddigi” árát', () => {
+    // A piszkozatban 7 950 állt, a tulajdonos 80-at írt, a mentés a
+    // közzétett 79 500 Ft-hoz mérve utasította el.
+    form.fields.priceInHUF = {
+      value: 80,
+      initialValue: 7_950,
+      errorMessage: priceDropMessage('rendes', 80, 79_500),
+    }
+    const html = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+    expect(html).toContain(priceDropMessage('rendes', 80, 79_500))
+    expect(html).not.toContain(priceDropWarning('rendes', 80, 7_950))
+  })
+
+  it('H9: a pipa után a Payload újravalidál (a mező érvényes), a doboz és az ok a pipa alatt marad', () => {
+    form.fields.priceInHUF = {
+      value: 80,
+      initialValue: 80,
+      errorMessage: priceDropMessage('rendes', 80, 79_500),
+      showError: false,
+    }
+    form.fields['kcMegerositesek.priceInHUF'] = { value: 80 }
+    const html = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+    expect(html).toContain(priceDropMessage('rendes', 80, 79_500))
+    expect(html).toContain('checked=""')
+    expect(html).not.toContain('aria-invalid')
+  })
+
+  it('a többi hibaüzenet (alsó határ, munkatárs) a mező fölött, a folyamban áll, nem buborékban', () => {
+    for (const message of [PRICE_MESSAGE, OWNER_ONLY_CHANGE_MESSAGE]) {
+      form.fields.priceInHUF = { value: 5, initialValue: 5, errorMessage: message }
+      const html = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+      expect(html, message).toMatch(/<p id="field-priceInHUF-hiba" style="[^"]*">/)
+      expect(html, message).toContain(`${message}</p>`)
+      expect(html).not.toContain('tooltip')
+      expect(html).not.toContain('role="status"')
+    }
   })
 
   it('a felolvasó a mezőn hallja az előnézetet és a súgót; hibánál a hibát is, aria-invalid mellett', () => {
@@ -184,17 +246,13 @@ describe('HufPriceField (SSR): a tárolt ár formázva, előnézettel', () => {
     expect(clean).toMatch(/<div id="field-priceInHUF-sugo"><div class="mezo-leiras">Rendes ár\.</)
     expect(clean).toMatch(/<p id="field-priceInHUF-elonezet"[^>]*>Így jelenik meg/)
 
-    form.fields.priceInHUF = {
-      value: 7_950,
-      initialValue: 7_950,
-      errorMessage: priceDropMessage('rendes', 7_950, 79_500),
-    }
+    form.fields.priceInHUF = { value: 5, initialValue: 5, errorMessage: PRICE_MESSAGE }
     const withError = renderToStaticMarkup(createElement(HufPriceField, priceProps))
     expect(withError).toContain(
       'aria-describedby="field-priceInHUF-hiba field-priceInHUF-elonezet field-priceInHUF-sugo"',
     )
     expect(withError).toContain('aria-invalid="true"')
-    expect(withError).toMatch(/<div id="field-priceInHUF-hiba"><span class="mezo-hiba">/)
+    expect(withError).toMatch(/<p id="field-priceInHUF-hiba" style="[^"]*">Az ár csak egész/)
   })
 
   it('súgó és érték nélkül nincs aria-describedby; a hivatkozott azonosítók mind léteznek', () => {
@@ -273,15 +331,28 @@ describe('derivePriceDropPrompt és clientPriceReference (tiszta logika)', () =>
 
   it('üres érték vagy a határon belüli ár: nincs megerősítés', () => {
     const reference = { price: 79_500, kind: 'rendes' as const }
-    expect(
-      derivePriceDropPrompt({ kind: 'rendes', value: null, reference, errorMessage: undefined }),
-    ).toEqual({
-      show: false,
-      warning: null,
+    const quiet = { errorMessage: undefined, showError: false, confirmed: false, parseError: null }
+    const none = { show: false, warning: null, fromServer: false }
+    expect(derivePriceDropPrompt({ kind: 'rendes', value: null, reference, ...quiet })).toEqual(
+      none,
+    )
+    expect(derivePriceDropPrompt({ kind: 'rendes', value: 39_750, reference, ...quiet })).toEqual(
+      none,
+    )
+  })
+
+  it('H9: csak a most beírt összegre szóló üzenet számít, nem részszöveg-egyezés', () => {
+    // A „79 500 Ft” üzenetében az „500 Ft” is benne van.
+    const prompt = derivePriceDropPrompt({
+      kind: 'rendes',
+      value: 500,
+      reference: null,
+      errorMessage: priceDropMessage('rendes', 79_500, 200_000),
+      showError: true,
+      confirmed: false,
+      parseError: null,
     })
-    expect(
-      derivePriceDropPrompt({ kind: 'rendes', value: 39_750, reference, errorMessage: undefined }),
-    ).toEqual({ show: false, warning: null })
+    expect(prompt.show).toBe(false)
   })
 })
 
@@ -324,8 +395,35 @@ describe('HufPriceField gépelés közben (happy-dom)', () => {
     act(() => root.render(createElement(HufPriceField, priceProps)))
     type('79,5')
     expect(form.setValue).not.toHaveBeenCalled()
-    expect(container.textContent).toContain(HUF_INPUT_DECIMAL_MESSAGE)
+    expect(container.querySelector('#field-priceInHUF-hiba')?.textContent).toBe(
+      HUF_INPUT_DECIMAL_MESSAGE,
+    )
     expect(form.validators.priceInHUF?.()).toBe(HUF_INPUT_DECIMAL_MESSAGE)
+  })
+
+  it('H9: hibás beírás közben nincs árcsökkenés-doboz (az űrlapban a régi szám áll)', () => {
+    // Karakterenként gépelve az űrlap értéke 79 maradt, miközben a mezőben
+    // „79,500” állt; a doboz eddig „Igen, az új ár valóban 79 Ft.”-ot kért.
+    form.fields.priceInHUF = { value: 79, initialValue: 79_500 }
+    act(() => root.render(createElement(HufPriceField, priceProps)))
+    type('79,500')
+    expect(container.textContent).toContain(HUF_INPUT_DECIMAL_MESSAGE)
+    expect(container.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('H5: a más összegre szóló, bent ragadt megerősítés törlődik', () => {
+    // Korábban 80-at erősített meg, azóta 79 500 áll a mezőben.
+    form.fields.priceInHUF = { value: 79_500, initialValue: 79_500 }
+    form.fields['kcMegerositesek.priceInHUF'] = { value: 80 }
+    act(() => root.render(createElement(HufPriceField, priceProps)))
+    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.priceInHUF', null)
+  })
+
+  it('H5: az épp megadott, a mező értékére szóló megerősítés megmarad', () => {
+    form.fields.priceInHUF = { value: 80, initialValue: 80 }
+    form.fields['kcMegerositesek.priceInHUF'] = { value: 80 }
+    act(() => root.render(createElement(HufPriceField, priceProps)))
+    expect(form.setValue).not.toHaveBeenCalled()
   })
 
   it('kiürítve az ár null lesz (nem 0)', () => {
@@ -370,7 +468,7 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
     form.fields.priceInHUFEnabled = {
       value: false,
       initialValue: null,
-      errorMessage: freeCourseGuardMessage(true),
+      errorMessage: FREE_COURSE_GUARD_MESSAGE,
     }
     expect(renderToStaticMarkup(createElement(PaidCourseField, paidProps))).toContain(
       FREE_COURSE_CONFIRM_LABEL,
@@ -390,6 +488,53 @@ describe('PaidCourseField: a pipa kivétele figyelmeztet és megerősítést ké
     act(() => root.render(createElement(PaidCourseField, { ...paidProps })))
     act(() => (container.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
     expect(form.setValue).toHaveBeenLastCalledWith('kcMegerositesek.freeCourse', null)
+    act(() => root.unmount())
+    container.remove()
+  })
+
+  it('H2: 1024 px-en és keskenyebben a pipa hibája szövegként a pipa fölött áll (ott a Payload buboréka rejtett)', () => {
+    form.fields.priceInHUFEnabled = {
+      value: false,
+      initialValue: false,
+      errorMessage: OWNER_ONLY_CHANGE_MESSAGE,
+    }
+    const render = (narrow: boolean): string | null => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: narrow && query === '(max-width: 1024px)',
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }))
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      act(() => root.render(createElement(PaidCourseField, paidProps)))
+      const text = container.querySelector('#field-priceInHUFEnabled-hiba')?.textContent ?? null
+      act(() => root.unmount())
+      container.remove()
+      return text
+    }
+    expect(render(true)).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    // Szélesebb nézetben a Payload buboréka mondja ki, nem ismétlődik.
+    expect(render(false)).toBeNull()
+  })
+
+  it('H5: a pipa visszatételekor a korábbi „ingyenes legyen” megerősítés törlődik', () => {
+    // A tulajdonos megerősítette az ingyenességet, majd meggondolta magát. A
+    // Payload a sémán kívüli utat mentés után is megtartja; törlés nélkül egy
+    // későbbi véletlen kivétel már bepipált megerősítéssel ment volna át.
+    form.fields.priceInHUFEnabled = { value: true, initialValue: false }
+    form.fields['kcMegerositesek.freeCourse'] = { value: true }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    act(() => root.render(createElement(PaidCourseField, paidProps)))
+    expect(form.setValue).toHaveBeenCalledWith('kcMegerositesek.freeCourse', null)
+
+    // Kivett pipánál (az autosave a kezdőértéket is mozgatja) a friss megerősítés marad.
+    form.setValue.mockReset()
+    form.fields.priceInHUFEnabled = { value: false, initialValue: false }
+    act(() => root.render(createElement(PaidCourseField, { ...paidProps })))
+    expect(form.setValue).not.toHaveBeenCalled()
     act(() => root.unmount())
     container.remove()
   })

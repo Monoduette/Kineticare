@@ -1,6 +1,6 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import type { User } from '../payload-types'
+import type { Product, User } from '../payload-types'
 import {
   accessGrantsForWrite,
   grantRowsFromUnknown,
@@ -8,6 +8,7 @@ import {
   validateAccessGrantRows,
   withUpsertedAccessGrant,
 } from './access-grants'
+import { isFreeCourse } from './courses'
 import { logger as rootLogger, type Logger } from './logger'
 import { withUserPurchasesLock } from './user-purchases-lock'
 
@@ -52,6 +53,36 @@ export interface GrantFreeCoursesResult {
   freeProductCount: number
 }
 
+/**
+ * Élő, ingyenesen igényelhető kurzus-e a fő táblában álló sor.
+ *
+ * - `status === 'published'`: a kurzus megjelenése (a bolt ezt a mezőt nézi,
+ *   src/lib/courses.ts).
+ * - `_status !== 'draft'`: a kurzusoldal a piszkozat-sort nem mutatja
+ *   (src/app/(frontend)/kurzusok/[slug]/page.tsx, 404). A Payload a lomtárba
+ *   helyezéskor és a „visszaállítás piszkozatként”-kor validálás nélkül a
+ *   legutóbbi autosave-es piszkozatot írja a fő sorba `_status: 'draft'`-tal
+ *   (payload/dist/collections/operations/utilities/update.js, skipValidation),
+ *   így egy meg nem erősített, piszkozatban kivett „Fizetős kurzus” pipa a
+ *   „Fizetős kurzus” őr (src/plugins/ecommerce.ts validatePriceInHUFEnabled)
+ *   megkerülésével került a fő sorba, és a kurzus ingyen igényelhető lett
+ *   (r2-termekor H4, mérve valódi Postgresen). A közzététel visszavonása és a
+ *   duplikálás is piszkozat-sort ír. A NULL `_status` (drafts előtti régi sor)
+ *   nem piszkozat: a kurzusoldal is élőnek veszi.
+ * - `priceInHUFEnabled === false`: az egyetlen ingyenes-definíció (isFreeCourse).
+ */
+export function isLiveFreeCourse(
+  product: Pick<Product, '_status' | 'status' | 'priceInHUFEnabled'> | null | undefined,
+): boolean {
+  return (
+    product !== null &&
+    product !== undefined &&
+    product._status !== 'draft' &&
+    product.status === 'published' &&
+    isFreeCourse(product)
+  )
+}
+
 /** A users.purchases bejegyzéseinek id-listája (nyers id vagy populate-olt dokumentum). */
 function userPurchaseIds(user: Pick<User, 'purchases'>): number[] {
   const purchases = user.purchases ?? []
@@ -85,8 +116,11 @@ export async function grantFreeCoursesToUser(
     overrideAccess: true,
   } as unknown as Parameters<Payload['find']>[0])
 
-  const requested = freeProducts.docs[0]
-  if (!requested) {
+  const requested = freeProducts.docs[0] as Product | undefined
+  // A piszkozat-sor (`_status: 'draft'`) nem élő kurzus (isLiveFreeCourse).
+  // JS-ben szűrünk, nem SQL-ben: a `not_equals` a NULL `_status`-ú régi sort
+  // is kizárná.
+  if (!requested || !isLiveFreeCourse(requested)) {
     return { grantedProductIds: [], freeProductCount: 0 }
   }
 

@@ -6,13 +6,13 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { isOwnerFieldAccess } from '../access'
 import {
-  FREE_COURSE_EFFECT,
+  FREE_COURSE_GUARD_MESSAGE,
   MIN_PRICE_HUF,
+  OWNER_ONLY_CHANGE_MESSAGE,
   PRICE_MESSAGE,
   PRODUCT_CONFIRMATIONS_KEY,
   PROMO_END_REQUIRED_MESSAGE,
   formatHufInput,
-  freeCourseGuardMessage,
   isFreeCourseGuardMessage,
   isPriceDrop,
   isPriceDropMessage,
@@ -26,9 +26,10 @@ import { formatPriceHuf } from '../lib/format-price'
  * r2-termekor (PR-A, termékvédelem): a kurzus ár-mezőinek szerver-oldali őrei
  * (src/plugins/ecommerce.ts) és a forintos bevitel szabályai
  * (src/components/admin/huf-price.ts). DB és hálózat nélkül: a Payload
- * `req.payload.findByID` (a KÖZZÉTETT sor) és `count` (a rendelések) stub; ha
- * egy ágon olvasás nem várható, a stub hangosan dob, és a teszt ellenőrzi, hogy
- * nem hívódott (CLAUDE.md, 15. üzemeltetési tanulság).
+ * `req.payload.findByID` (a fő tábla sora), `find` (a műveletnapló, a
+ * legutóbb közzétett állapot) és `count` (a rendelések) stub; ha egy ágon
+ * olvasás nem várható, a stub hangosan dob, és a teszt ellenőrzi, hogy nem
+ * hívódott (CLAUDE.md, 15. üzemeltetési tanulság).
  *
  * A mért élő állapot (GET /api/products, 2026-09-24): az 1. és a 4. kurzus
  * fizetős, 79 500 Ft; a 4.-en közzétett, vég nélküli akció 39 500 Ft-tal.
@@ -64,21 +65,32 @@ function fakeReq(
     role?: Role
     published?: Record<string, unknown> | 'hiba'
     orders?: number | 'hiba'
+    /** A műveletnapló bejegyzései a legújabbal kezdve (src/plugins/audit.ts). */
+    audit?: Array<{ before?: unknown; after?: unknown }>
     context?: Record<string, unknown>
   } = {},
 ) {
-  const { role = 'owner', published, orders, context = {} } = options
+  const { role = 'owner', published, orders, audit, context = {} } = options
   const findByID = vi.fn(async () => {
     if (published === undefined) throw new Error('Ebben az esetben nem kellene olvasni.')
     if (published === 'hiba') throw new Error('DB-hiba')
     return { id: 1, ...published }
+  })
+  const find = vi.fn(async () => {
+    if (audit === undefined) throw new Error('Ebben az esetben nem kellene naplót olvasni.')
+    return { docs: audit }
   })
   const count = vi.fn(async () => {
     if (orders === undefined) throw new Error('Ebben az esetben nem kellene rendelést számolni.')
     if (orders === 'hiba') throw new Error('DB-hiba')
     return { totalDocs: orders }
   })
-  return { req: { user: { id: 7, role }, payload: { findByID, count }, context }, findByID, count }
+  return {
+    req: { user: { id: 7, role }, payload: { findByID, find, count }, context },
+    findByID,
+    find,
+    count,
+  }
 }
 
 const PAID_PUBLISHED = {
@@ -200,7 +212,7 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     expect(findByID).not.toHaveBeenCalled()
   })
 
-  it('új kurzus (create) és nem közzétett kurzus: nincs mihez mérni a csökkenést', async () => {
+  it('új kurzus (create) és ár nélkül mentett, soha nem közzétett kurzus: nincs mihez mérni', async () => {
     const created = fakeReq()
     expect(
       await validatePriceInHUF(
@@ -209,15 +221,91 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
       ),
     ).toBe(true)
     expect(created.findByID).not.toHaveBeenCalled()
-    const draft = fakeReq({ published: { ...PAID_PUBLISHED, _status: 'draft' } })
+    const draft = fakeReq({ published: { _status: 'draft', priceInHUF: null }, audit: [] })
     expect(await validatePriceInHUF(80, numberOpts({ req: draft.req }))).toBe(true)
   })
 
-  it('zárás elleni védelem: a munkatárs mentése nem bukik el, és a DB-t sem olvassa', async () => {
-    const { req, findByID } = fakeReq({ role: 'staff' })
-    expect(await validatePriceInHUF(5, numberOpts({ req, previousValue: 5 }))).toBe(true)
-    expect(await validatePriceInHUF(80, numberOpts({ req }))).toBe(true)
-    expect(findByID).not.toHaveBeenCalled()
+  it('H3: közzétételi állapot nélküli piszkozat-sornál (másolat) az eddig mentett árhoz mér', async () => {
+    // Csak megerősítést kérhet, átengedni semmit nem enged; a mondat nem
+    // állítja, hogy ez az ár közzé volt téve.
+    const copy = fakeReq({ published: { ...PAID_PUBLISHED, _status: 'draft' }, audit: [] })
+    expect(await validatePriceInHUF(7_950, numberOpts({ req: copy.req }))).toBe(
+      priceDropMessage('rendes', 7_950, 79_500, 'rendes', 'eddigi'),
+    )
+    expect(priceDropMessage('rendes', 7_950, 79_500, 'rendes', 'eddigi')).toContain(
+      'mint az eddigi ár (79 500 Ft) fele',
+    )
+  })
+
+  it('H3: a közzététel visszavonása után a napló szerinti utolsó közzétett árhoz mér', async () => {
+    // A visszavonás a fő sorba a piszkozatot írta (benne már az elütött 7 950),
+    // a napló „before” oldala a visszavonás előtti közzétett sor.
+    const unpublished = { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 7_950 }
+    const { req, find } = fakeReq({
+      published: unpublished,
+      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
+    })
+    expect(await validatePriceInHUF(7_950, numberOpts({ req, previousValue: 7_950 }))).toBe(
+      priceDropMessage('rendes', 7_950, 79_500),
+    )
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'audit-logs',
+        where: { and: [{ entityType: { equals: 'products' } }, { entityId: { equals: '1' } }] },
+        sort: '-createdAt',
+        overrideAccess: true,
+      }),
+    )
+    const confirmed = fakeReq({
+      published: unpublished,
+      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
+    })
+    const data = { [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 7_950 } }
+    expect(await validatePriceInHUF(7_950, numberOpts({ req: confirmed.req, data }))).toBe(true)
+  })
+
+  it('H3: a legfrissebb közzétett pillanatkép számít, a régebbi nem', async () => {
+    const draftRow = { ...PAID_PUBLISHED, _status: 'draft' }
+    const { req } = fakeReq({
+      published: draftRow,
+      audit: [
+        { before: draftRow, after: { ...draftRow, deletedAt: '2026-09-24T10:00:00.000Z' } },
+        { before: { ...PAID_PUBLISHED, priceInHUF: 99_000 }, after: draftRow },
+        { before: undefined, after: PAID_PUBLISHED },
+      ],
+    })
+    expect(await validatePriceInHUF(45_000, numberOpts({ req }))).toBe(
+      priceDropMessage('rendes', 45_000, 99_000),
+    )
+  })
+
+  it('H2: a munkatárs közzététele nem viheti élesbe a tulajdonos meg nem erősített ár-piszkozatát', async () => {
+    // A munkatárs értékét a Payload a legutóbbi verzióval (a tulajdonos
+    // autosave-es piszkozatával) cseréli: value === previousValue.
+    for (const value of [80, 5]) {
+      const { req } = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+      expect(
+        await validatePriceInHUF(value, numberOpts({ req, previousValue: value })),
+        String(value),
+      ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    }
+    // A munkatárs által beküldött megerősítés nem számít.
+    const forged = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+    const data = { [PRODUCT_CONFIRMATIONS_KEY]: { priceInHUF: 80 } }
+    expect(
+      await validatePriceInHUF(80, numberOpts({ req: forged.req, data, previousValue: 80 })),
+    ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+  })
+
+  it('zárás elleni védelem: a munkatárs a változatlan, közzétett (akár régi, hibás) árral is közzétehet', async () => {
+    const legacy = fakeReq({ role: 'staff', published: { ...PAID_PUBLISHED, priceInHUF: 5 } })
+    expect(await validatePriceInHUF(5, numberOpts({ req: legacy.req, previousValue: 5 }))).toBe(
+      true,
+    )
+    const clean = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+    expect(
+      await validatePriceInHUF(79_500, numberOpts({ req: clean.req, previousValue: 79_500 })),
+    ).toBe(true)
   })
 
   it('régi, változatlan és közzétett érvénytelen ár nem zárja ki más mező mentését', async () => {
@@ -331,15 +419,14 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     } as unknown as CheckboxOpts
   }
 
-  it('a 79 500 Ft-os kurzus „szüneteltetése” a pipa kivételével: hiba, az Archivált út megnevezésével', async () => {
+  it('a 79 500 Ft-os kurzus „szüneteltetése” a pipa kivételével: rövid hiba, amely a pipa alatti megerősítéshez vezet', async () => {
     const { req, count } = fakeReq({ published: PAID_PUBLISHED, orders: 0 })
     const message = await validatePriceInHUFEnabled(false, checkboxOpts({ req }))
-    expect(message).toBe(freeCourseGuardMessage(false))
-    expect(message).toContain(FREE_COURSE_EFFECT)
-    expect(message).toContain('„Archivált”')
-    expect(message).toContain('„Piszkozat”')
-    expect(message).not.toContain('rendelése')
+    expect(message).toBe(FREE_COURSE_GUARD_MESSAGE)
     expect(isFreeCourseGuardMessage(message)).toBe(true)
+    // H8: a buborék egy sor marad (1280 px-en az 547 karakteres változat a
+    // teljes fülsort takarta); a részletek a Figyelem dobozban és a súgóban.
+    expect(FREE_COURSE_GUARD_MESSAGE.length).toBeLessThanOrEqual(100)
     expect(count).toHaveBeenCalledWith(
       expect.objectContaining({
         collection: 'orders',
@@ -351,12 +438,10 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     )
   })
 
-  it('fizetett vagy visszatérített rendelésnél ár nélkül is hiba, és ezt ki is mondja', async () => {
+  it('fizetett vagy visszatérített rendelésnél ár nélkül is hiba', async () => {
     const { req } = fakeReq({ published: { ...PAID_PUBLISHED, priceInHUF: null }, orders: 3 })
     const opts = checkboxOpts({ req, siblingData: { priceInHUFEnabled: false, priceInHUF: null } })
-    const message = await validatePriceInHUFEnabled(false, opts)
-    expect(message).toBe(freeCourseGuardMessage(true))
-    expect(message).toContain('Ennek a kurzusnak már van fizetett vagy visszatérített rendelése.')
+    expect(await validatePriceInHUFEnabled(false, opts)).toBe(FREE_COURSE_GUARD_MESSAGE)
   })
 
   it('kifejezett megerősítéssel átmegy, és ekkor semmit nem olvas', async () => {
@@ -391,7 +476,7 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
       orders: 0,
     })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: trashedDraft.req }))).toBe(
-      freeCourseGuardMessage(false),
+      FREE_COURSE_GUARD_MESSAGE,
     )
     const trashedPublished = fakeReq({
       published: { ...PAID_PUBLISHED, priceInHUFEnabled: false, deletedAt: trashedAt },
@@ -399,13 +484,13 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     })
     expect(
       await validatePriceInHUFEnabled(false, checkboxOpts({ req: trashedPublished.req })),
-    ).toBe(freeCourseGuardMessage(false))
+    ).toBe(FREE_COURSE_GUARD_MESSAGE)
     const neverPublished = fakeReq({
       published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false },
       orders: 0,
     })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: neverPublished.req }))).toBe(
-      freeCourseGuardMessage(false),
+      FREE_COURSE_GUARD_MESSAGE,
     )
     // Ár és vásárló nélkül a lomtárból visszaállított ingyenes kurzus közzétehető.
     const freeNoPrice = fakeReq({
@@ -437,10 +522,40 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     ).toBe(true)
   })
 
-  it('munkatársnál nem zár ki (a mezőt úgysem írhatja), és nem olvas', async () => {
-    const { req, findByID } = fakeReq({ role: 'staff' })
+  it('H2: a munkatárs közzététele nem teheti ingyenessé a tulajdonos piszkozatban kivett pipájával', async () => {
+    // A munkatárs értéke a legutóbbi verzió, vagyis a tulajdonos autosave-es,
+    // meg nem erősített piszkozata (priceInHUFEnabled: false).
+    const { req } = fakeReq({ role: 'staff', published: PAID_PUBLISHED, orders: 3 })
+    expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req }))).toBe(
+      OWNER_ONLY_CHANGE_MESSAGE,
+    )
+    // A munkatárs által beküldött megerősítés nem számít.
+    const forged = fakeReq({ role: 'staff', published: PAID_PUBLISHED, orders: 3 })
+    const data = { [PRODUCT_CONFIRMATIONS_KEY]: { freeCourse: true } }
+    expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: forged.req, data }))).toBe(
+      OWNER_ONLY_CHANGE_MESSAGE,
+    )
+  })
+
+  it('zárás elleni védelem: a munkatárs a már közzétett ingyenes kurzust szabadon közzéteheti', async () => {
+    const { req } = fakeReq({
+      role: 'staff',
+      published: { ...PAID_PUBLISHED, priceInHUFEnabled: false },
+    })
     expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req }))).toBe(true)
-    expect(findByID).not.toHaveBeenCalled()
+  })
+
+  it('„már ingyenes” csak a közzétett fő sor lehet, a napló pillanatképe nem', async () => {
+    // Egy téves „már ingyenes” visszavonhatatlan hozzáféréseket adna, ezért a
+    // napló (akár régi, ingyenes állapotú) bejegyzése itt nem kivétel.
+    const { req } = fakeReq({
+      published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false },
+      audit: [{ after: { ...PAID_PUBLISHED, priceInHUFEnabled: false } }],
+      orders: 0,
+    })
+    expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req }))).toBe(
+      FREE_COURSE_GUARD_MESSAGE,
+    )
   })
 
   it('fail-closed: olvashatatlan közzétett sor vagy rendelésszám mellett megerősítést kér', async () => {
@@ -450,14 +565,14 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
         false,
         checkboxOpts({ req: unreadable.req, siblingData: { priceInHUFEnabled: false } }),
       ),
-    ).toBe(freeCourseGuardMessage(false))
+    ).toBe(FREE_COURSE_GUARD_MESSAGE)
     const noCount = fakeReq({ published: { ...PAID_PUBLISHED, priceInHUF: null }, orders: 'hiba' })
     expect(
       await validatePriceInHUFEnabled(
         false,
         checkboxOpts({ req: noCount.req, siblingData: { priceInHUFEnabled: false } }),
       ),
-    ).toBe(freeCourseGuardMessage(false))
+    ).toBe(FREE_COURSE_GUARD_MESSAGE)
   })
 })
 
@@ -501,15 +616,15 @@ describe('validatePromoEnd: új akciót csak záró nappal (a-cms-9)', () => {
     expect(await validatePromoEnd(null, dateOpts({ req: bare.req }, { promoEnabled: true }))).toBe(
       PROMO_END_REQUIRED_MESSAGE,
     )
-    const copyOfProduct4 = fakeReq({
-      published: {
-        ...PAID_PUBLISHED,
-        _status: 'draft',
-        promoEnabled: true,
-        promoEnd: null,
-        promoPriceHuf: 39_500,
-      },
-    })
+    const copyRow = {
+      ...PAID_PUBLISHED,
+      _status: 'draft',
+      promoEnabled: true,
+      promoEnd: null,
+      promoPriceHuf: 39_500,
+    }
+    // A másolatnak csak a létrehozás naplóbejegyzése van, közzétett állapot nélkül.
+    const copyOfProduct4 = fakeReq({ published: copyRow, audit: [{ after: copyRow }] })
     expect(
       await validatePromoEnd(null, dateOpts({ req: copyOfProduct4.req }, { promoEnabled: true })),
     ).toBe(PROMO_END_REQUIRED_MESSAGE)
@@ -522,7 +637,7 @@ describe('validatePromoEnd: új akciót csak záró nappal (a-cms-9)', () => {
     expect(await validatePromoEnd(null, dateOpts({ req }, { promoEnabled: true }))).toBe(true)
   })
 
-  it('megadott vég, kikapcsolt akció és munkatárs: nincs hiba és nincs olvasás', async () => {
+  it('megadott vég és kikapcsolt akció: nincs hiba és nincs olvasás', async () => {
     const { req, findByID } = fakeReq()
     expect(
       validatePromoEnd(
@@ -531,12 +646,44 @@ describe('validatePromoEnd: új akciót csak záró nappal (a-cms-9)', () => {
       ),
     ).toBe(true)
     expect(validatePromoEnd(null, dateOpts({ req }, { promoEnabled: false }))).toBe(true)
-    const staff = fakeReq({ role: 'staff' })
-    expect(await validatePromoEnd(null, dateOpts({ req: staff.req }, { promoEnabled: true }))).toBe(
+    expect(findByID).not.toHaveBeenCalled()
+  })
+
+  it('H2: a munkatárs a tulajdonos vég nélküli akció-piszkozatát nem teheti közzé, a meglévőt igen', async () => {
+    const draftOnly = fakeReq({ role: 'staff', published: PAID_PUBLISHED })
+    expect(
+      await validatePromoEnd(null, dateOpts({ req: draftOnly.req }, { promoEnabled: true })),
+    ).toBe(OWNER_ONLY_CHANGE_MESSAGE)
+    const live = fakeReq({
+      role: 'staff',
+      published: { ...PAID_PUBLISHED, promoEnabled: true, promoEnd: null, promoPriceHuf: 39_500 },
+    })
+    expect(await validatePromoEnd(null, dateOpts({ req: live.req }, { promoEnabled: true }))).toBe(
       true,
     )
-    expect(findByID).not.toHaveBeenCalled()
-    expect(staff.findByID).not.toHaveBeenCalled()
+  })
+
+  it('H3: a közzététel visszavonása után a meglévő, vég nélküli akció újra közzétehető', async () => {
+    const product4 = {
+      ...PAID_PUBLISHED,
+      promoEnabled: true,
+      promoEnd: null,
+      promoPriceHuf: 39_500,
+    }
+    const unpublished = { ...product4, _status: 'draft' }
+    const { req } = fakeReq({
+      published: unpublished,
+      audit: [{ before: product4, after: unpublished }],
+    })
+    expect(await validatePromoEnd(null, dateOpts({ req }, { promoEnabled: true }))).toBe(true)
+    // Ha az utolsó közzétett állapotban nem volt vég nélküli akció, ez új akció.
+    const added = fakeReq({
+      published: unpublished,
+      audit: [{ before: PAID_PUBLISHED, after: unpublished }],
+    })
+    expect(await validatePromoEnd(null, dateOpts({ req: added.req }, { promoEnabled: true }))).toBe(
+      PROMO_END_REQUIRED_MESSAGE,
+    )
   })
 
   it('olvasási hiba: fail-closed, hibát ad', async () => {
@@ -672,8 +819,10 @@ describe('products collection: a plugin ár-mezőinek bekötése', () => {
       PRICE_MESSAGE,
       PROMO_PRICE_MESSAGE,
       PROMO_END_REQUIRED_MESSAGE,
-      freeCourseGuardMessage(true),
+      FREE_COURSE_GUARD_MESSAGE,
+      OWNER_ONLY_CHANGE_MESSAGE,
       priceDropMessage('akcios', 3_950, 39_500),
+      priceDropMessage('rendes', 7_950, 79_500, 'rendes', 'eddigi'),
     ]) {
       expect(text).not.toMatch(/[–—"]/)
       expect(text).not.toMatch(/(?<![\p{L}])[A-ZÁÉÍÓÖŐÚÜŰ]{2,}(?![\p{L}])/u)

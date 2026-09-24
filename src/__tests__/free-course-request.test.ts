@@ -79,6 +79,7 @@ interface ProductRow {
   sku: string
   displayTitle?: string
   status: string
+  _status?: string | null
   priceInHUFEnabled: boolean | null
   priceInHUF?: number | null
 }
@@ -400,6 +401,50 @@ describe('igénylés ÚJ e-mail-címmel', () => {
       expect(result.status, `productId=${productId}`).toBe('course-not-available')
       expect(mock.created).toHaveLength(0)
       expect(mock.sent).toHaveLength(0)
+    }
+  })
+
+  it('H4: a piszkozat-sor (lomtárból piszkozatként visszaállított fizetős kurzus) NEM igényelhető', async () => {
+    // A Payload a lomtárba helyezéskor és a „visszaállítás piszkozatként”-kor
+    // validálás nélkül a tulajdonos autosave-es piszkozatát (kivett „Fizetős
+    // kurzus” pipa) írja a fő sorba, `_status: 'draft'`-tal; a `status` mező
+    // közben „published” marad. Mérve valódi Postgresen (r2-termekor H4).
+    const restoredAsDraft: ProductRow = {
+      ...PAID_COURSE,
+      _status: 'draft',
+      priceInHUFEnabled: false,
+    }
+    const mock = createMockPayload({ products: [restoredAsDraft], users: [MEGLEVO_VEVO] })
+    const { log } = createLogger()
+    const result = await requestFreeCourseAccess({
+      payload: mock.payload,
+      productId: restoredAsDraft.id,
+      name: 'Idegen Látogató',
+      email: 'idegen@pelda.hu',
+      serverUrl: 'https://pelda.kineticare.hu',
+      env: ENV_WITH_EMAIL,
+      logger: log,
+    })
+    expect(result.status).toBe('course-not-available')
+    expect(mock.created).toHaveLength(0)
+    expect(mock.sent).toHaveLength(0)
+
+    // A közzétett (és a drafts előtti, NULL `_status`-ú) ingyenes sor továbbra is igényelhető.
+    for (const liveStatus of ['published', null] as const) {
+      const live = createMockPayload({
+        products: [{ ...FREE_COURSE, _status: liveStatus }],
+        users: [MEGLEVO_VEVO],
+      })
+      const ok = await requestFreeCourseAccess({
+        payload: live.payload,
+        productId: FREE_COURSE.id,
+        name: 'Kis Piroska',
+        email: 'piroska@pelda.hu',
+        serverUrl: 'https://pelda.kineticare.hu',
+        env: ENV_WITH_EMAIL,
+        logger: createLogger().log,
+      })
+      expect(ok.status, String(liveStatus)).toBe('ok')
     }
   })
 

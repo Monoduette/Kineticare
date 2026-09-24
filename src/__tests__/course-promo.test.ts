@@ -3,7 +3,7 @@ import type { Config, Field } from 'payload'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { isOwnerFieldAccess } from '../access'
-import { MIN_PRICE_HUF } from '../components/admin/huf-price'
+import { MIN_PRICE_HUF, OWNER_ONLY_CHANGE_MESSAGE } from '../components/admin/huf-price'
 import {
   effectiveCoursePriceHuf,
   isCoursePromoActive,
@@ -412,13 +412,18 @@ describe('validatePromoPriceHuf: kisebb a rendes árnál, zárás elleni védele
     expect(regularPriceHufFrom(null)).toBeNull()
   })
 
-  it('írásjog nélküli felhasználó (munkatárs): más mező mentése nem bukik el, a DB-t sem olvassa', async () => {
-    const { req, findByID } = reqFor('staff')
+  it('írásjog nélküli felhasználó (munkatárs): a változatlan, közzétett régi érték nem zárja ki', async () => {
+    const { req } = reqFor('staff', 99_000)
     expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(true)
-    // A Payload a munkatárs beküldött értékét eldobja és a tároltat teszi a helyére;
-    // a validátor akkor sem zár ki, ha a tárolt érték eltér az előzőtől.
-    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 12_345 }))).toBe(true)
-    expect(findByID).not.toHaveBeenCalled()
+  })
+
+  it('H2: a munkatárs közzététele nem viheti élesbe a tulajdonos hibás, csak piszkozatban álló akciós árát', async () => {
+    // A Payload a munkatárs értékét a legutóbbi verzióval (a tulajdonos
+    // piszkozatával) cseréli; a közzétett sorban más akciós ár áll.
+    const { req } = reqFor('staff', 59_900)
+    expect(await validatePromoPriceHuf(99_000, opts({ req, previousValue: 99_000 }))).toBe(
+      OWNER_ONLY_CHANGE_MESSAGE,
+    )
   })
 
   it('tulajdonos, változatlan és közzétett régi érték: átmegy (más mező mentése nem bukik el)', async () => {

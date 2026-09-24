@@ -3,10 +3,10 @@ import type { Payload } from 'payload'
 import type { Product, User } from '../../payload-types'
 import { withAdvisoryLock } from '../advisory-lock'
 import { courseCtaHref } from '../course-url'
-import { isFreeCourse, courseTitle, hasUserPurchased, myCoursePlayerHref } from '../courses'
+import { courseTitle, hasUserPurchased, myCoursePlayerHref } from '../courses'
 import { maskEmail } from '../email/mask'
 import { resolveEmailProvider, type EmailEnv } from '../email/provider'
-import { grantFreeCoursesToUser } from '../free-course-grant'
+import { grantFreeCoursesToUser, isLiveFreeCourse } from '../free-course-grant'
 import { logger as rootLogger, type Logger } from '../logger'
 import { buildPasswordResetUrl } from '../password-reset-url'
 import { forgotPasswordHref, signInHref } from '../return-url'
@@ -17,7 +17,8 @@ import type { FreeCourseUiNext } from './ui-text'
 /**
  * Ingyenes kurzus igénylése — transportfüggetlen szolgáltatás (név + e-mail → hozzáférés + belépő link).
  *
- * Published + `isFreeCourse` kapu; advisory-zár alatt fiók; `grantFreeCoursesToUser`; Payload
+ * Élő (published, nem piszkozat-sor) + `isFreeCourse` kapu (`isLiveFreeCourse`); advisory-zár
+ * alatt fiók; `grantFreeCoursesToUser`; Payload
  * forgotPassword token. Aktivált vevőnél/owner-staffnál nem ír kurzust (belépés/jelszó út).
  * 200-as válasz nem szivárogtat fiók-létrejöttet; idempotens hozzáférés-adás.
  */
@@ -119,10 +120,7 @@ export function resolveFreeCourseRequestActions(input: {
   return { grant: false, issueSetPasswordToken: false }
 }
 
-function actorOwnsSession(input: {
-  actorUserId?: number | null
-  userId?: number
-}): boolean {
+function actorOwnsSession(input: { actorUserId?: number | null; userId?: number }): boolean {
   return (
     input.actorUserId != null &&
     input.userId != null &&
@@ -224,7 +222,7 @@ async function resolveFreeProduct(payload: Payload, productId: number): Promise<
     // „nincs ilyen kurzus", ezért nyeljük el és a hívó 400-at ad.
     return null
   }
-  if (product === null || product.status !== 'published' || !isFreeCourse(product)) {
+  if (!isLiveFreeCourse(product)) {
     return null
   }
   return product

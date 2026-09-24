@@ -163,9 +163,18 @@ const PRICE_DROP_LEAD: Record<PriceFieldKind, string> = {
 }
 
 /**
+ * Honnan jön a mentés hivatkozási ára: a legutóbb KÖZZÉTETT állapotból (a
+ * vásárló ezt látta utoljára), vagy ha a kurzus még sosem volt közzétéve, a
+ * fő táblában álló, eddig mentett sorból (másolat, új kurzus).
+ */
+export type PriceReferenceSource = 'kozzetett' | 'eddigi'
+
+/**
  * Az 50 %-nál nagyobb árcsökkenés hibaüzenete a mentéskor. A hivatkozás a
- * KÖZZÉTETT ár (a vásárló ezt látja most); akciós árnál, ha még nem volt
- * közzétett akciós ár, a közzétett rendes ár.
+ * legutóbb KÖZZÉTETT ár (a vásárló ezt látja most, vagy a közzététel
+ * visszavonása előtt ezt látta); akciós árnál, ha még nem volt közzétett
+ * akciós ár, a közzétett rendes ár. Soha nem közzétett kurzusnál az eddig
+ * mentett ár („az eddigi ár”).
  *
  * Megerősítés WCAG 2.2 SC 3.3.4 (Error Prevention: Legal, Financial, Data)
  * szerint: a pénzügyi következményű beküldés „checked … or confirmed”. NN/g,
@@ -180,8 +189,10 @@ export function priceDropMessage(
   value: number,
   reference: number,
   referenceKind: PriceFieldKind = kind,
+  source: PriceReferenceSource = 'kozzetett',
 ): string {
-  return `${PRICE_DROP_LEAD[kind]}${formatPriceHuf(value)}) kevesebb, mint a közzétett ${PRICE_NOUN[referenceKind]} (${formatPriceHuf(reference)}) fele. Ha elírás, javítsd. Ha szándékos, jelöld be a mező alatti megerősítést.`
+  const referenceWord = source === 'kozzetett' ? 'a közzétett' : 'az eddigi'
+  return `${PRICE_DROP_LEAD[kind]}${formatPriceHuf(value)}) kevesebb, mint ${referenceWord} ${PRICE_NOUN[referenceKind]} (${formatPriceHuf(reference)}) fele. Ha elírás, javítsd. Ha szándékos, jelöld be a mező alatti megerősítést.`
 }
 
 /**
@@ -203,13 +214,47 @@ export function priceDropConfirmLabel(kind: PriceFieldKind, value: number): stri
 }
 
 /** A mentés hibaüzenete árcsökkenés miatti megerősítést kér-e (a mező ekkor a pipát is mutatja). */
-export function isPriceDropMessage(message: unknown): boolean {
+export function isPriceDropMessage(message: unknown): message is string {
   return (
     typeof message === 'string' &&
     Object.values(PRICE_DROP_LEAD).some((lead) => message.startsWith(lead)) &&
     message.includes(' fele. Ha elírás')
   )
 }
+
+/**
+ * A mentés árcsökkenés-üzenete PONTOSAN erről a mezőről és erről az összegről
+ * szól-e. A Payload a szerver hibaüzenetét a javított érték mellett is az
+ * űrlap-állapotban hagyja (@payloadcms/ui useField: a kliens-validátor csak a
+ * saját előző eredményéhez méri magát), ezért a mező csak a most beírt
+ * összegre szóló üzenetet veheti figyelembe. A teljes nyitó rész egyezik, nem
+ * részszöveg: a „79 500 Ft” üzenetében a „500 Ft” is benne volna.
+ */
+export function isPriceDropMessageFor(
+  kind: PriceFieldKind,
+  value: number,
+  message: unknown,
+): message is string {
+  return (
+    isPriceDropMessage(message) &&
+    message.startsWith(`${PRICE_DROP_LEAD[kind]}${formatPriceHuf(value)})`)
+  )
+}
+
+/**
+ * A kurzus ár-, ingyenesség- és akció-mezőit csak a tulajdonos írhatja
+ * (T-011). Ha a piszkozatban a tulajdonos olyan értéke áll, amely
+ * közzétételkor megerősítést kér (vagy javítani kell), a munkatárs
+ * közzététele nem viheti élesbe: ő a megerősítést nem adhatja meg, és a
+ * mezőt nem írhatja át. Az üzenet megmondja, mi a teendő (NN/g, Error-Message
+ * Guidelines: „Offer constructive advice”,
+ * https://www.nngroup.com/articles/error-message-guidelines/; GOV.UK Design
+ * System, Error message: „tell someone what has happened and how to fix it”,
+ * https://design-system.service.gov.uk/components/error-message/), és egy
+ * sorban elfér, hogy a hibabuborék ne takarja a lap füleit.
+ */
+export const OWNER_ONLY_CHANGE_MESSAGE =
+  'A mező piszkozatban álló értékét csak a tulajdonos teheti közzé. Szólj neki, hogy nézze át.'
 
 /* „Fizetős kurzus” pipa */
 
@@ -234,19 +279,26 @@ export const STOP_SALES_HINT =
 
 export const FREE_COURSE_CONFIRM_LABEL = 'Igen, a kurzus legyen ingyenes.'
 
-/** A mentés hibaüzenete, ha egy fizetős kurzusból megerősítés nélkül lenne ingyenes. */
-export function freeCourseGuardMessage(hasPaidOrders: boolean): string {
-  const orders = hasPaidOrders
-    ? ' Ennek a kurzusnak már van fizetett vagy visszatérített rendelése.'
-    : ''
-  return `${FREE_COURSE_EFFECT}${orders} ${STOP_SALES_HINT} Ha a kurzust valóban ingyenessé teszed, jelöld be a pipa alatti megerősítést.`
-}
+/**
+ * A mentés hibaüzenete, ha egy fizetős kurzusból megerősítés nélkül lenne
+ * ingyenes. Egy sor: a „Fizetős kurzus” a fül első mezője, és a Payload a
+ * pipa hibabuborékát a pipa fölé, felfelé növeszti (custom.scss 8b). Az
+ * 547 karakteres, ötsoros változat 1280 px-en a teljes fülsort eltakarta, és
+ * elnyelte a fülekre adott kattintást (mérve, Chromium). A részletek (mit
+ * jelent az ingyenesség, hogyan állítható le az eladás) a pipa alatti
+ * Figyelem dobozban és a mező súgójában állnak. NN/g, Error-Message
+ * Guidelines: „Be concise”, „Offer constructive advice”
+ * (https://www.nngroup.com/articles/error-message-guidelines/); WCAG 2.2
+ * SC 2.4.11 Focus Not Obscured (a buborék alá került fülek fókusza).
+ */
+export const FREE_COURSE_GUARD_MESSAGE =
+  'Pipa nélkül a kurzus ingyenes lesz. Ha ezt szeretnéd, jelöld be a pipa alatti megerősítést.'
 
 /** A pipa alatti figyelmeztetés mentés előtt. */
 export const FREE_COURSE_WARNING = `${FREE_COURSE_EFFECT} ${STOP_SALES_HINT}`
 
 export function isFreeCourseGuardMessage(message: unknown): boolean {
-  return typeof message === 'string' && message.startsWith(FREE_COURSE_EFFECT)
+  return message === FREE_COURSE_GUARD_MESSAGE
 }
 
 /**
