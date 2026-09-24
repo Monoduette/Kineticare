@@ -111,7 +111,8 @@ type FbqFunction = ((...args: unknown[]) => void) & {
  * eseményhez a teljes document.location-t csatolja, ezek a lapok pedig
  * - tranzakció- vagy fiókazonosítót hordoznak a címükben: a Barion-visszatérés
  *   (`/fizetes/koszonom?order=…&paymentId=…`), a sikertelen fizetés, a
- *   jelszó-visszaállítás és az átállási belépés;
+ *   jelszó-visszaállítás, a belépés és a regisztráció (a `returnUrl` a védett
+ *   célt hordozza);
  * - vagy a BELÉPETT vevő saját területei: a `/kurzusaim` (a megvásárolt
  *   rehabilitációs kurzus lejátszója) és a `/fiok`. Ezek címe azt árulná el,
  *   hogy az adott ember melyik kezelési programot vette meg.
@@ -123,13 +124,17 @@ export const META_BLOCKED_PATH_PREFIXES: readonly string[] = [
   '/fizetes/',
   '/sikertelen',
   '/jelszo-visszaallitas',
-  '/belepes-atallas',
+  '/elfelejtett-jelszo',
+  // A /belepes a /belepes-atallas-t is lefedi. A belépő- és regisztrációs lap
+  // `returnUrl`-je a védett célt (pl. /kurzusaim/7) hordozza.
+  '/belepes',
+  '/regisztracio',
   '/kurzusaim',
   '/fiok',
 ]
 
 /** Query-paraméterek, amelyek jelenléte esetén a cím nem mehet a Metának. */
-const META_BLOCKED_QUERY_PARAMS: readonly string[] = ['order', 'paymentid']
+const META_BLOCKED_QUERY_PARAMS: readonly string[] = ['order', 'paymentid', 'returnurl', 'vissza']
 
 /**
  * Biztonságos-e a cím a Meta felé: ismert, nem tiltott útvonal, és nem hordoz

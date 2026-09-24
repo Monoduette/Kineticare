@@ -120,7 +120,7 @@ const nextConfig: NextConfig = {
               process.env.NEXT_PUBLIC_BARION_PIXEL_ID,
               process.env.POSTHOG_SHARED_DASHBOARD_URL,
               true,
-              process.env.NEXT_PUBLIC_META_PIXEL_ID,
+              // A Meta Pixel csak a vevői felületen fut: az admin CSP-je nem nyílik meg.
             ),
           },
         ],

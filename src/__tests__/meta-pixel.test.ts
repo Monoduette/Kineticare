@@ -174,6 +174,9 @@ describe('trackMetaEvent', () => {
       'https://www.kineticare.hu/barmi?paymentId=1',
       'https://www.kineticare.hu/kurzusaim/7',
       'https://www.kineticare.hu/fiok',
+      'https://www.kineticare.hu/belepes?returnUrl=%2Fkurzusaim%2F7',
+      'https://www.kineticare.hu/regisztracio?returnUrl=%2Fpenztar%3Ftermek%3D7',
+      'https://www.kineticare.hu/barmi?returnUrl=%2Fkurzusaim%2F7',
     ]) {
       expect(isMetaSafeUrl(href), href).toBe(false)
     }
