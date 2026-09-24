@@ -54,10 +54,79 @@ export interface BarionPaymentTransaction {
 }
 
 /**
+ * 3DS: számlázási cím (BillingAddress struktúra). A mezőnevek és a korlátok a
+ * docs.barion.com/BillingAddress oldalról (Wayback 20241110122232: Country
+ * „Required, Exactly 2 characters … If you are not able to provide the billing
+ * address, send ZZ as the country code"; City, Zip „Maximum 50/16
+ * characters"; Street/Street2/Street3 „Maximum 50 characters") és a
+ * barion-web-php Models/ThreeDSecure/BillingAddressModel-ből (Country, Region,
+ * City, Zip, Street, Street2, Street3). A Region nem megy ki.
+ */
+export interface BarionBillingAddress {
+  Country: 'HU' | 'ZZ'
+  City?: string
+  Zip?: string
+  Street?: string
+  Street2?: string
+  Street3?: string
+}
+
+/**
+ * 3DS: a vásárlás adatai (PurchaseInformation struktúra, minden mező
+ * opcionális). Az enum-értékek a docs.barion.com DeliveryTimeframeType,
+ * ShippingAddressIndicator és PurchaseType oldalairól és a barion-web-php
+ * Enumerations/ThreeDSecure enumjaiból: digitális kurzusra `ElectronicDelivery`
+ * („The goods can be downloaded immediately."), `DigitalGoods`,
+ * `GoodsAndServicePurchase`. A PurchaseDate „In UTC Expected format:
+ * "2019-06-27T07:15:51.327"".
+ */
+export interface BarionPurchaseInformation {
+  DeliveryTimeframe: 'ElectronicDelivery'
+  DeliveryEmailAddress?: string
+  ShippingAddressIndicator: 'DigitalGoods'
+  PurchaseType: 'GoodsAndServicePurchase'
+  PurchaseDate: string
+}
+
+/** 3DS: a fiók kora (AccountCreationIndicator enum, barion-web-php). */
+export type BarionAccountCreationIndicator =
+  | 'NoAccount'
+  | 'CreatedDuringThisTransaction'
+  | 'LessThan30Days'
+  | 'Between30And60Days'
+  | 'MoreThan60Days'
+
+/**
+ * 3DS: a vevő fiókja a bolt rendszerében (PayerAccountInformation struktúra,
+ * docs.barion.com/PayerAccountInformation, minden mező opcionális). Az
+ * AccountId „Max length 64 characters", az AccountCreated „In UTC Expected
+ * format: "2019-06-27T07:15:51.327"".
+ */
+export interface BarionPayerAccountInformation {
+  AccountId?: string
+  AccountCreated?: string
+  AccountCreationIndicator?: BarionAccountCreationIndicator
+}
+
+/**
+ * 3DS: a kereskedő challenge-preferenciája. Csak a `NoPreference` megengedett:
+ * a `NoChallengeNeeded` mellett a docs szerint (ChallengePreference, Wayback
+ * 20260122020254) „the liability is on the merchant", a `ChallengeRequired`
+ * pedig minden vevőt kihívásra kényszerítene.
+ */
+export type BarionChallengePreference = 'NoPreference'
+
+/**
  * Payment/Start v2 kérés-body. A fix üzleti értékeket (Immediate, GuestCheckOut,
  * FundingSources: All, hu-HU, HUF) a start.ts állítja be; a POSKey-t a client
  * teszi bele: az x-pos-key fejlécbe ÉS a body POSKey mezőjébe (lásd client.ts
  * barionRequest). URL-be sosem kerül, így access logba sem.
+ *
+ * Az OrderNumber opcionális; a 3DS-blokkok (BillingAddress,
+ * PurchaseInformation, PayerAccountInformation, ChallengePreference) a
+ * Payment-Start-v2 oldalon „Required for 3DS" jelölésűek, de „if the merchant
+ * does not provide 3DS-related properties, it doesn't mean that the payment
+ * will fail"; a start.ts a BARION_SEND_3DS kapcsolóval hagyja ki őket.
  */
 export interface BarionPaymentStartRequest {
   POSKey: string
@@ -68,11 +137,17 @@ export interface BarionPaymentStartRequest {
   Currency: 'HUF'
   PaymentWindow: string
   PaymentRequestId: string
+  /** A bolt rendelésszáma (max 100 karakter); a havi kivonaton és az exportban is megjelenik. */
+  OrderNumber?: string
   PayerHint?: string
   CardHolderNameHint?: string
   RedirectUrl: string
   CallbackUrl: string
   Transactions: BarionPaymentTransaction[]
+  BillingAddress?: BarionBillingAddress
+  PurchaseInformation?: BarionPurchaseInformation
+  PayerAccountInformation?: BarionPayerAccountInformation
+  ChallengePreference?: BarionChallengePreference
   /** Recurring-előkészítés: csak feature-flag mellett kerül a kérésbe (lásd start.ts). */
   InitiateRecurrence?: boolean
   RecurrenceId?: string

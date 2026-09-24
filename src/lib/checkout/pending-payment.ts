@@ -195,6 +195,8 @@ export interface PendingResumeExpectation {
     city: string
     street: string
     taxNumber: string | null
+    /** „Cégként vásárolok" (K11); a korábbi, jelölés nélküli snapshot magánszemélyes. */
+    companyPurchase: boolean
   }
 }
 
@@ -211,8 +213,8 @@ function snapshotString(snapshot: Record<string, unknown>, key: string): string 
  * mostani kéréssel:
  * - az ár: az akció a két kérés között indulhatott vagy járhatott le, és a
  *   vevő nem fizethet mást, mint amit most a pénztárban lát;
- * - a vevő neve és a számlázási adatok: a számla a rendelés snapshotjából
- *   készül. E nélkül bárki indíthatna vendégként rendelést más e-mail-címével
+ * - a vevő neve és a számlázási adatok (a céges jelöléssel együtt): a számla
+ *   a rendelés snapshotjából készül. E nélkül bárki indíthatna vendégként rendelést más e-mail-címével
  *   és a saját számlázási adataival, és a cím valódi gazdája ebbe a rendelésbe
  *   futna bele, a számla pedig idegen névre szólna.
  *
@@ -238,6 +240,7 @@ export function pendingOrderMatchesRequest(
     snapshotString(record, 'billingZip') === expected.billing.zip &&
     snapshotString(record, 'billingCity') === expected.billing.city &&
     snapshotString(record, 'billingStreet') === expected.billing.street &&
-    (taxNumber === undefined ? null : taxNumber) === expected.billing.taxNumber
+    (taxNumber === undefined ? null : taxNumber) === expected.billing.taxNumber &&
+    (record.companyPurchase === true) === expected.billing.companyPurchase
   )
 }

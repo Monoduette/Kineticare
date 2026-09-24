@@ -9,6 +9,7 @@ import {
   checkoutStartUncertainMessage,
   decidePendingCheckout,
   minutesLeftInWindow,
+  pendingOrderMatchesRequest,
 } from '../lib/checkout/pending-payment'
 
 const WINDOW_MS = 30 * 60 * 1000
@@ -204,5 +205,48 @@ describe('CHECKOUT_PAYMENT_STATE_UNVERIFIED (puszta 404 a függő fizetésre)', 
     expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).toContain('legfeljebb egy napig')
     expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).toContain('info@kineticare.hu')
     expect(CHECKOUT_PAYMENT_STATE_UNVERIFIED).not.toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+  })
+})
+
+/**
+ * K11: a „Cégként vásárolok" jelölés a számla vevőblokkját is meghatározhatja,
+ * tehát a függő fizetés csak azonos jelöléssel folytatható. A jelölés előtti
+ * (kulcs nélküli) snapshot magánszemélyes.
+ */
+describe('pendingOrderMatchesRequest — céges jelölés', () => {
+  const billing = {
+    name: 'Példa Kft.',
+    zip: '9700',
+    city: 'Szombathely',
+    street: 'Fő tér 2/A',
+    taxNumber: '12345676-1-42',
+  }
+  const snapshot = {
+    name: 'Minta Mari',
+    billingName: billing.name,
+    billingZip: billing.zip,
+    billingCity: billing.city,
+    billingStreet: billing.street,
+    taxNumber: billing.taxNumber,
+  }
+  const expectation = (companyPurchase: boolean) => ({
+    priceHuf: 5000,
+    buyerName: 'Minta Mari',
+    billing: { ...billing, companyPurchase },
+  })
+
+  it('azonos jelölésnél folytatható, eltérőnél nem', () => {
+    const companyOrder = {
+      totalHufSnapshot: 5000,
+      customerSnapshot: { ...snapshot, companyPurchase: true },
+    }
+    expect(pendingOrderMatchesRequest(companyOrder, expectation(true))).toBe(true)
+    expect(pendingOrderMatchesRequest(companyOrder, expectation(false))).toBe(false)
+  })
+
+  it('a jelölés nélküli (régi) snapshot magánszemélyes kéréssel folytatható, céges kéréssel nem', () => {
+    const legacyOrder = { totalHufSnapshot: 5000, customerSnapshot: snapshot }
+    expect(pendingOrderMatchesRequest(legacyOrder, expectation(false))).toBe(true)
+    expect(pendingOrderMatchesRequest(legacyOrder, expectation(true))).toBe(false)
   })
 })
