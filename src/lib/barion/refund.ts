@@ -21,6 +21,20 @@ export interface RefundTransactionInput {
   posTransactionId: string
   /** Visszatérítendő összeg HUF-ban; lehet a tranzakció teljes összege vagy annál kisebb. */
   amountToRefund: number
+  /**
+   * Opcionális megjegyzés, amelyet a Barion az eredeti fizetőnek megmutat
+   * (docs.barion.com/TransactionToRefund: „A comment associated with the refund.
+   * This is shown to the original payer.”). Üres szöveg nem kerül a kérésbe.
+   */
+  comment?: string
+}
+
+/** A TransactionToRefund hivatalos, opcionális Comment mezőjével kiegészítve. */
+export type TransactionToRefundWire = BarionTransactionToRefund & { Comment?: string }
+
+/** A Refund-kérés törzse a POSKey nélkül (azt a kliens injektálja). */
+export type RefundRequestBody = Omit<BarionRefundRequest, 'POSKey' | 'TransactionsToRefund'> & {
+  TransactionsToRefund: TransactionToRefundWire[]
 }
 
 export interface RefundPaymentParams {
@@ -29,9 +43,7 @@ export interface RefundPaymentParams {
 }
 
 /** A Refund-kérés body-építése külön, tisztán tesztelhető függvényben. */
-export function buildRefundRequest(
-  params: RefundPaymentParams,
-): Omit<BarionRefundRequest, 'POSKey'> {
+export function buildRefundRequest(params: RefundPaymentParams): RefundRequestBody {
   if (params.transactionsToRefund.length === 0) {
     throw new Error('Barion Payment/Refund: legalább egy visszatérítendő tranzakció kötelező.')
   }
@@ -46,11 +58,14 @@ export function buildRefundRequest(
     }
   }
 
-  const transactionsToRefund: BarionTransactionToRefund[] = params.transactionsToRefund.map(
+  const transactionsToRefund: TransactionToRefundWire[] = params.transactionsToRefund.map(
     (transaction) => ({
       TransactionId: transaction.transactionId,
       POSTransactionId: transaction.posTransactionId,
       AmountToRefund: transaction.amountToRefund,
+      ...(typeof transaction.comment === 'string' && transaction.comment.trim()
+        ? { Comment: transaction.comment.trim() }
+        : {}),
     }),
   )
 

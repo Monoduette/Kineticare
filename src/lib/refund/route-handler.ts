@@ -23,7 +23,11 @@ export interface RefundRouteContext {
 const MANUAL_REVIEW_ERROR =
   'A visszatérítés eredménye nem igazolt. Ne indíts új pénzvisszatérítést. Kézi ellenőrzés és egyeztetés szükséges a Barionban és a rendelésnél.'
 
-/** BarionApiError → HTTP-státusz; a hiba nem bizonyítja a pénzmozgás hiányát. */
+/**
+ * BarionApiError → HTTP-státusz; a hiba nem bizonyítja a pénzmozgás hiányát.
+ * Tartalék ág: a refundOrder a saját Barion-hibáit már üzleti RefundError-rá
+ * alakítja (GetState: 424, végleges elutasítás: 409, bizonytalan kimenet: 503).
+ */
 function mapBarionError(error: BarionApiError): { status: number; message: string } {
   if (error.kind === 'timeout') {
     return {
@@ -143,16 +147,16 @@ export function createRefundHandler(
       return Response.json(result, { status: 200 })
     } catch (error) {
       if (error instanceof RefundError) {
+        // A RefundError üzenete mindig a szolgáltatás saját, okot és teendőt
+        // megnevező szövege (nyers provider- vagy tárhibát nem tartalmaz),
+        // ezért változatlanul megy tovább; az 5xx a panel számára bizonytalan kimenet.
         if (error.status >= 500) {
           log.error('refund: kézi ellenőrzést igénylő szolgáltatáshiba', {
             status: error.status,
             errorKind: 'refund-service',
           })
           return Response.json(
-            {
-              error: error.status === 503 ? error.message : MANUAL_REVIEW_ERROR,
-              manualReviewRequired: true,
-            },
+            { error: error.message, manualReviewRequired: true },
             { status: error.status },
           )
         }

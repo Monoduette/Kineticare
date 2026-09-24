@@ -102,12 +102,17 @@ describe('refund route manual-review contract', () => {
     },
   )
 
-  it.each([500, 502, 504, 599])(
-    'normalizes service RefundError %i as manual review',
+  it.each([500, 502, 503, 504, 599])(
+    'passes the service-authored RefundError %i text through as manual review, without logging it',
     async (status) => {
-      service.run.mockRejectedValue(new RefundError(status, DUMMY_RAW_ERROR))
-      await expectManualReview(await handler()(request(), context()), status)
-      expect(logs.join('\n')).not.toContain(DUMMY_RAW_ERROR)
+      // A RefundError szövegét mindig a szolgáltatás írja (okkal és teendővel), ezért
+      // a panel változatlanul kapja; a naplóba csak a státusz kerül.
+      const message = 'Szintetikus szolgáltatási üzenet. Ne indíts új pénzvisszatérítést.'
+      service.run.mockRejectedValue(new RefundError(status, message))
+      const response = await handler()(request(), context())
+      expect(response.status).toBe(status)
+      expect(await response.json()).toEqual({ error: message, manualReviewRequired: true })
+      expect(logs.join('\n')).not.toContain(message)
     },
   )
 
@@ -129,7 +134,7 @@ describe('refund route manual-review contract', () => {
     },
   )
 
-  it.each([400, 401, 403, 404, 409])('preserves service %i JSON exactly', async (status) => {
+  it.each([400, 401, 403, 404, 409, 424])('preserves service %i JSON exactly', async (status) => {
     service.run.mockRejectedValue(new RefundError(status, 'synthetic-business-error'))
     const response = await handler()(request(), context())
     expect(response.status).toBe(status)

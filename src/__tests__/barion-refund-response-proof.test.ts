@@ -175,6 +175,19 @@ describe('Barion közvetlen refund-válasz: dokumentált, szigorúan kötött bi
     },
   )
 
+  it('ugyanazt a PaymentId-t kötőjellel, nagybetűvel is a tárolt fizetéshez köti (guid.ts), mást nem', () => {
+    const dashedUpper = '11111111-1111-1111-1111-111111111111'.toUpperCase()
+    expect(validateRefundResponseProof(response({}, { PaymentId: dashedUpper }), expected)).toEqual(
+      { refundTransactionId: newRefundId, status: 'Succeeded' },
+    )
+    expect(
+      validateRefundResponseProof(
+        response({}, { PaymentId: '11111111-1111-1111-1111-111111111112' }),
+        expected,
+      ),
+    ).toBeNull()
+  })
+
   it('a bemenetet nem módosítja és a bizonyíték nem tartalmaz nyers provider payloadot', () => {
     const value = response()
     const before = JSON.stringify(value)

@@ -1,15 +1,22 @@
 import { fixture, store } from '../refund-fixture'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { BarionPaymentStateResponse, BarionRefundResponse } from '../../lib/barion'
+import {
+  BarionApiError,
+  type BarionPaymentStateResponse,
+  type BarionRefundResponse,
+} from '../../lib/barion'
 import { createLogger } from '../../lib/logger'
 import {
   AUTO_REFUND_REJECT_REASONS,
+  automaticRefundRetryDelayMs,
   hungarianAutoRefundReason,
   isAutoRefundRejectReason,
-  pickRefundableTransaction,
+  MAX_AUTOMATIC_REFUND_ATTEMPTS,
   recoverRejectedSucceededPayment,
 } from '../../lib/order-status/recover-paid-reject'
+import { selectRefundSourceTransaction } from '../../lib/refund/barion-refund-evidence'
+import { NO_PROVIDER_REQUEST_REFERENCE } from '../../lib/refund/refund-intent'
 import type { Order } from '../../payload-types'
 
 // CLAUDE.md 15.: tesztből SOSEM mehet ki valódi hálózati hívás.
@@ -27,6 +34,10 @@ const PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
 const TRANSACTION_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 const POS_TRANSACTION_ID = 'DUMMY-ORIGINAL-SHOP-TRANSACTION'
 const ORDER_TOTAL_HUF = 19990
+const REFUND_COMMENT = 'Kineticare visszatérítés KH-2026-000123'
+/** A közös fixture a Barion-kérés indítását 2026-09-05T10:00:01Z-re rögzíti. */
+const STARTED_AT = Date.parse('2026-09-05T10:00:01.000Z')
+const at = (minutes: number) => new Date(STARTED_AT + minutes * 60_000)
 
 function createOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -95,50 +106,89 @@ describe('isAutoRefundRejectReason', () => {
   })
 })
 
-describe('pickRefundableTransaction', () => {
+describe('selectRefundSourceTransaction (a kézi és az automatikus visszatérítés közös választója)', () => {
   it('üres Transactions → null (nincs HTTP)', () => {
-    expect(pickRefundableTransaction(createState({ Transactions: [] }))).toBeNull()
+    expect(selectRefundSourceTransaction(createState({ Transactions: [] }))).toBeNull()
   })
 
-  it('Succeeded CardPayment → TransactionId + Barion összeg', () => {
-    expect(pickRefundableTransaction(createState())).toEqual({
+  it('Succeeded CardPayment → TransactionId, kereskedői azonosító és Barion-összeg', () => {
+    expect(selectRefundSourceTransaction(createState())).toEqual({
       transactionId: TRANSACTION_ID,
-      amountHuf: ORDER_TOTAL_HUF,
-      alreadyRefunded: false,
-      alreadyPartiallyRefunded: false,
+      posTransactionId: POS_TRANSACTION_ID,
+      totalHuf: ORDER_TOTAL_HUF,
     })
   })
 
-  it('már Refunded tranzakció → alreadyRefunded, PartiallyRefunded NEM teljes', () => {
-    expect(
-      pickRefundableTransaction(
-        createState({
-          Transactions: [
-            {
-              TransactionId: TRANSACTION_ID,
-              TransactionType: 'CardPayment',
-              Status: 'Refunded',
-              Total: ORDER_TOTAL_HUF,
-            },
-          ],
-        }),
-      ),
-    ).toMatchObject({ alreadyRefunded: true, alreadyPartiallyRefunded: false })
+  it('díj-tranzakciót akkor sem választ, ha az áll elöl és Succeeded (r-barion-8, a-refund-13)', () => {
+    const state = createState()
+    state.Transactions.unshift(
+      {
+        TransactionId: 'fee00000-0000-0000-0000-000000000001',
+        POSTransactionId: POS_TRANSACTION_ID,
+        TransactionType: 'GatewayFee',
+        Status: 'Succeeded',
+        Total: 100,
+      },
+      {
+        TransactionId: 'fee00000-0000-0000-0000-000000000002',
+        POSTransactionId: '',
+        TransactionType: 'CardProcessingFee',
+        Status: 'Succeeded',
+        Total: 298,
+      },
+    )
+    expect(selectRefundSourceTransaction(state)?.transactionId).toBe(TRANSACTION_ID)
+  })
 
+  it.each(['Shop', 'BankTransferPayment'])(
+    'a dokumentáltan visszatéríthető %s típust is elfogadja',
+    (type) => {
+      const state = createState()
+      state.Transactions[0]!.TransactionType = type
+      expect(selectRefundSourceTransaction(state)?.transactionId).toBe(TRANSACTION_ID)
+    },
+  )
+
+  it.each(['Refunded', 'PartiallyRefunded', 'Prepared', undefined])(
+    'nem Succeeded (%s) forrás nem választható',
+    (status) => {
+      const state = createState()
+      state.Transactions[0]!.Status = status
+      expect(selectRefundSourceTransaction(state)).toBeNull()
+    },
+  )
+
+  it('korábbi visszatérítés (RefundToBankCard, azonos kereskedői azonosítóval) nem forrás', () => {
+    const state = createState()
+    state.Transactions.push({
+      TransactionId: 'bbbbbbbb-0000-0000-0000-000000000001',
+      POSTransactionId: POS_TRANSACTION_ID,
+      TransactionType: 'RefundToBankCard',
+      Status: 'Succeeded',
+      Total: 5000,
+      RelatedId: TRANSACTION_ID,
+    })
+    expect(selectRefundSourceTransaction(state)?.transactionId).toBe(TRANSACTION_ID)
+  })
+
+  it('a várt kereskedői azonosítót (`${orderNumber}-1`) megadva csak arra illő forrást ad', () => {
     expect(
-      pickRefundableTransaction(
-        createState({
-          Transactions: [
-            {
-              TransactionId: TRANSACTION_ID,
-              TransactionType: 'CardPayment',
-              Status: 'PartiallyRefunded',
-              Total: ORDER_TOTAL_HUF,
-            },
-          ],
-        }),
-      ),
-    ).toMatchObject({ alreadyRefunded: false, alreadyPartiallyRefunded: true })
+      selectRefundSourceTransaction(createState(), { posTransactionId: 'KH-2026-000123-1' }),
+    ).toBeNull()
+    const state = createState()
+    state.Transactions[0]!.POSTransactionId = 'KH-2026-000123-1'
+    expect(
+      selectRefundSourceTransaction(state, { posTransactionId: 'KH-2026-000123-1' }),
+    ).toMatchObject({ transactionId: TRANSACTION_ID, posTransactionId: 'KH-2026-000123-1' })
+  })
+
+  it('két visszatéríthető jelölt esetén nem választ', () => {
+    const state = createState()
+    state.Transactions.push({
+      ...state.Transactions[0]!,
+      TransactionId: 'cccccccc-0000-0000-0000-000000000001',
+    })
+    expect(selectRefundSourceTransaction(state)).toBeNull()
   })
 })
 
@@ -230,6 +280,7 @@ describe('recoverRejectedSucceededPayment', () => {
           transactionId: TRANSACTION_ID,
           posTransactionId: POS_TRANSACTION_ID,
           amountToRefund: ORDER_TOTAL_HUF,
+          comment: REFUND_COMMENT,
         },
       ],
     })
@@ -333,6 +384,7 @@ describe('recoverRejectedSucceededPayment', () => {
           transactionId: TRANSACTION_ID,
           posTransactionId: POS_TRANSACTION_ID,
           amountToRefund: ORDER_TOTAL_HUF,
+          comment: REFUND_COMMENT,
         },
       ],
     })
@@ -424,7 +476,12 @@ describe('recoverRejectedSucceededPayment', () => {
     expect(refund).toHaveBeenCalledWith({
       paymentId: PAYMENT_ID,
       transactionsToRefund: [
-        { transactionId: TRANSACTION_ID, posTransactionId: POS_TRANSACTION_ID, amountToRefund: 1 },
+        {
+          transactionId: TRANSACTION_ID,
+          posTransactionId: POS_TRANSACTION_ID,
+          amountToRefund: 1,
+          comment: REFUND_COMMENT,
+        },
       ],
     })
   })
@@ -586,6 +643,8 @@ describe('recoverRejectedSucceededPayment', () => {
       log: createLogger(),
       source: 'checkout-start',
       refundPayment: refund,
+      // A Barion egy kérést legfeljebb 30 mp-ig dolgoz fel; negyedórán belül nincs nullhatás-döntés.
+      now: at(5),
     })
 
     expect(first).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
@@ -594,5 +653,246 @@ describe('recoverRejectedSucceededPayment', () => {
     expect(order.status).toBe('payment_pending')
     expect(order.refunds).toEqual([])
     expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+  })
+})
+
+describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztetés, korlátozott újrapróbálás', () => {
+  const REFUND_ID = 'dddddddd-eeee-ffff-0000-111111111111'
+
+  function rejection(code: string, httpStatus = 400) {
+    return new BarionApiError({
+      kind: 'http',
+      message: 'SYNTHETIC',
+      endpoint: 'POST /v2/Payment/Refund',
+      httpStatus,
+      providerErrors: [{ ErrorCode: code, Title: 'SYNTHETIC', Description: 'SYNTHETIC' }],
+    })
+  }
+
+  const succeeded = async (): Promise<BarionRefundResponse> => ({
+    PaymentId: PAYMENT_ID,
+    RefundedTransactions: [
+      {
+        TransactionId: REFUND_ID,
+        POSTransactionId: POS_TRANSACTION_ID,
+        Total: ORDER_TOTAL_HUF,
+        Status: 'Succeeded',
+      },
+    ],
+  })
+
+  function setup(refund: ReturnType<typeof vi.fn>) {
+    const order = createOrder()
+    const { payload } = createMockPayload(order)
+    const run = (now: Date, state = createState()) =>
+      recoverRejectedSucceededPayment({
+        payload,
+        order,
+        state,
+        reason: 'duplicate-paid-order',
+        log: createLogger(),
+        source: 'order-poll',
+        refundPayment: refund as never,
+        now,
+      })
+    return { order, payload, run }
+  }
+
+  it('TooLowBalanceToMakeRefund: igazolt nullhatás, a kísérlet lezárul, és feltöltés után új kísérlet sikerül', async () => {
+    const refund = vi.fn().mockRejectedValueOnce(rejection('TooLowBalanceToMakeRefund'))
+    refund.mockImplementation(succeeded)
+    const { order, payload, run } = setup(refund)
+
+    expect(await run(at(1))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(store.intents.get(payload)).toMatchObject({
+      state: 'provider_failed',
+      activeOrderKey: null,
+      reconciliationReference: 'barion:refund-rejected:TooLowBalanceToMakeRefund',
+    })
+    expect(order.status).toBe('payment_pending')
+    expect(order.refunds).toEqual([])
+
+    // A várakozási időn belül nincs új pénz-POST.
+    expect(await run(at(30))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(refund).toHaveBeenCalledTimes(1)
+
+    // Egy óra múlva új kísérlet, új műveletazonosítóval.
+    expect(await run(at(1 + 61))).toEqual({ action: 'refunded' })
+    expect(refund).toHaveBeenCalledTimes(2)
+    expect(order.status).toBe('refunded')
+    expect(order.refunds).toHaveLength(1)
+    expect(store.history.get(payload)?.map((intent) => intent.state)).toEqual([
+      'provider_failed',
+      'committed',
+    ])
+    expect(store.keys.get(payload)?.size).toBe(2)
+
+    // A lezárt, egyszer sikeres visszatérítés későbbi jelzésre sem indít újat.
+    expect(await run(at(200))).toEqual({ action: 'refunded', detail: 'already-refunded' })
+    expect(refund).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['PaymentStatusNotValid', 'AmountToRefundIsGreaterThanTransactionAmount'])(
+    'a tulajdonos által nem javítható %s leállítja az automatikát',
+    async (code) => {
+      const refund = vi.fn().mockRejectedValue(rejection(code))
+      const { payload, run } = setup(refund)
+      expect(await run(at(1))).toEqual({ action: 'failed', detail: 'automatic-refund-rejected' })
+      expect(store.intents.get(payload)?.state).toBe('provider_failed')
+      expect(await run(at(60 * 24 * 7))).toEqual({
+        action: 'failed',
+        detail: 'automatic-refund-rejected',
+      })
+      expect(refund).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('a kísérletek száma korlátos, a várakozás kísérletenként nő', async () => {
+    const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
+    const { run } = setup(refund)
+    let clock = at(1).getTime()
+    for (let attempt = 1; attempt <= MAX_AUTOMATIC_REFUND_ATTEMPTS; attempt += 1) {
+      await run(new Date(clock))
+      expect(refund).toHaveBeenCalledTimes(attempt)
+      clock += automaticRefundRetryDelayMs(attempt) + 60_000
+    }
+    expect(await run(new Date(clock))).toEqual({
+      action: 'failed',
+      detail: 'automatic-refund-attempts-exhausted',
+    })
+    expect(refund).toHaveBeenCalledTimes(MAX_AUTOMATIC_REFUND_ATTEMPTS)
+    expect([1, 2, 3, 6, 9].map(automaticRefundRetryDelayMs)).toEqual(
+      [1, 2, 4, 24, 24].map((hours) => hours * 3_600_000),
+    )
+  })
+
+  it.each([
+    ['timeout', undefined],
+    ['network', undefined],
+    ['http', 500],
+    ['http', 400],
+    ['invalid_response', 200],
+  ] as const)(
+    'ismeretlen kimenet (%s %s) nem lesz nullhatás, a kísérlet blokkol',
+    async (kind, httpStatus) => {
+      const refund = vi.fn().mockRejectedValue(
+        new BarionApiError({
+          kind,
+          message: 'SYNTHETIC',
+          endpoint: 'POST /v2/Payment/Refund',
+          httpStatus,
+          providerErrors:
+            kind === 'http' && httpStatus === 400
+              ? [{ ErrorCode: 'InternalServerError', Title: '', Description: '' }]
+              : [],
+        }),
+      )
+      const { payload, run } = setup(refund)
+      expect(await run(at(1))).toEqual({
+        action: 'failed',
+        detail: 'refund-pending-reconciliation',
+      })
+      expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+      expect(await run(at(10))).toEqual({
+        action: 'failed',
+        detail: 'refund-pending-reconciliation',
+      })
+      expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+      expect(refund).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('ismeretlen kimenet után a GetState-ben látszó sikeres visszatérítést új POST nélkül rögzíti', async () => {
+    const refund = vi.fn().mockRejectedValue(new Error('SYNTHETIC response loss'))
+    const { order, payload, run } = setup(refund)
+    await run(at(1))
+    expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+    const after = createState({ Total: 0 })
+    after.Transactions.push({
+      TransactionId: REFUND_ID,
+      POSTransactionId: POS_TRANSACTION_ID,
+      TransactionType: 'RefundToBankCard',
+      Status: 'Succeeded',
+      Total: ORDER_TOTAL_HUF,
+      RelatedId: TRANSACTION_ID,
+    })
+    expect(await run(at(3), after)).toEqual({ action: 'refunded', detail: 'provider-reconciled' })
+    expect(refund).toHaveBeenCalledTimes(1)
+    expect(order.status).toBe('refunded')
+    expect(store.intents.get(payload)?.state).toBe('committed')
+  })
+
+  it('ismeretlen kimenet után csak a várakozási idő leteltével lesz GetState-alapú nullhatás', async () => {
+    const refund = vi.fn().mockRejectedValueOnce(new Error('SYNTHETIC response loss'))
+    refund.mockImplementation(succeeded)
+    const { order, payload, run } = setup(refund)
+    await run(at(1))
+    expect(await run(at(14))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+    expect(await run(at(16))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(store.intents.get(payload)).toMatchObject({
+      state: 'provider_failed',
+      reconciliationReference: 'barion:paymentstate:no-refund-transaction',
+    })
+    expect(refund).toHaveBeenCalledTimes(1)
+    expect(await run(at(16 + 61))).toEqual({ action: 'refunded' })
+    expect(refund).toHaveBeenCalledTimes(2)
+    expect(order.status).toBe('refunded')
+  })
+
+  it('eltérő Barion-összeg (pl. a Barion felületén indított visszatérítés) mellett nincs nullhatás-döntés', async () => {
+    const refund = vi.fn().mockRejectedValue(new Error('SYNTHETIC response loss'))
+    const { payload, run } = setup(refund)
+    await run(at(1))
+    expect(await run(at(60), createState({ Total: 9990 }))).toEqual({
+      action: 'failed',
+      detail: 'refund-pending-reconciliation',
+    })
+    expect(store.intents.get(payload)?.state).toBe('provider_unknown')
+  })
+
+  it('előkészítés közben elakadt kísérletet Barion-hívás nélkül lezárja', async () => {
+    const refund = vi.fn(succeeded)
+    const order = createOrder()
+    const f = fixture(order)
+    f.failures.receipt = 'refund-prepared'
+    const run = (now: Date) =>
+      recoverRejectedSucceededPayment({
+        payload: f.payload,
+        order,
+        state: createState(),
+        reason: 'duplicate-paid-order',
+        log: createLogger(),
+        source: 'callback',
+        refundPayment: refund,
+        now,
+      })
+    expect(await run(at(1))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(store.intents.get(f.payload)).toMatchObject({
+      state: 'provider_failed',
+      reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE,
+    })
+    expect(store.intents.get(f.payload)?.providerStartedAt).toBeUndefined()
+    expect(refund).not.toHaveBeenCalled()
+    f.failures.receipt = ''
+    expect(await run(at(62))).toEqual({ action: 'refunded' })
+    expect(refund).toHaveBeenCalledTimes(1)
+  })
+
+  it('Barion-egyenlegből fizetett (Shop) dupla vásárlást is visszatérít', async () => {
+    const refund = vi.fn(succeeded)
+    const { order, run } = setup(refund)
+    const state = createState()
+    state.Transactions[0]!.TransactionType = 'Shop'
+    expect(await run(at(1), state)).toEqual({ action: 'refunded' })
+    expect(order.status).toBe('refunded')
+  })
+
+  it('kötőjel nélküli, nagybetűs Barion PaymentId-vel is korrelál (PR #303 kanonikus alak)', async () => {
+    const refund = vi.fn(succeeded)
+    const { order, run } = setup(refund)
+    const state = createState({ PaymentId: PAYMENT_ID.replaceAll('-', '').toUpperCase() })
+    expect(await run(at(1), state)).toEqual({ action: 'refunded' })
+    expect(order.status).toBe('refunded')
   })
 })

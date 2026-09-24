@@ -5,6 +5,10 @@ import { refundOrder } from '../lib/refund/refund-order'
 import { getRefundRecoveryStatus, recoverRefundOrder } from '../lib/refund/refund-recovery'
 import type { RefundAccessBaseline } from '../lib/refund/access-store'
 import { RECEIPTS, readReceipt, writeReceipt } from '../lib/refund/recovery-receipts'
+import {
+  decideRefundIntentTransition,
+  type RefundIntentProviderNoEffectEvidence,
+} from '../lib/refund/refund-intent'
 
 const store = vi.hoisted(() => ({
   intents: new Map<unknown, RefundIntent>(),
@@ -37,7 +41,11 @@ vi.mock('../lib/refund/intent-store', () => ({
     request: Record<string, unknown>,
     operationKey: string,
   ) => {
-    if (store.intents.get(payload)?.activeOrderKey) throw new Error('active intent')
+    const previous = store.intents.get(payload)
+    if (previous?.activeOrderKey) throw new Error('active intent')
+    // A feloldott (pl. provider_failed) kísérlet az előzmények része marad.
+    if (previous && !(store.history.get(payload) ?? []).some((item) => item.id === previous.id))
+      store.history.set(payload, [...(store.history.get(payload) ?? []), structuredClone(previous)])
     const keys = store.keys.get(payload) ?? new Set<string>()
     if (keys.has(operationKey)) throw new Error('operation key replay')
     keys.add(operationKey)
@@ -63,15 +71,23 @@ vi.mock('../lib/refund/intent-store', () => ({
     payload: unknown,
     expected: RefundIntent,
     state: RefundIntent['state'],
+    evidence?: RefundIntentProviderNoEffectEvidence,
   ) => {
     const current = store.intents.get(payload)!
     if (current.state !== expected.state) throw new Error('CAS conflict')
+    // Ugyanaz az átmenet-szabály, mint a valódi tárolóban (bizonyíték nélkül nincs provider_failed).
+    const decision = decideRefundIntentTransition(current.state, state, evidence)
+    if (!decision.allowed) throw new Error('invalid transition')
     const intent = {
       ...current,
       state,
-      activeOrderKey: state === 'committed' ? null : current.activeOrderKey,
+      activeOrderKey:
+        state === 'committed' || state === 'provider_failed' ? null : current.activeOrderKey,
       ...(state === 'provider_started' ? { providerStartedAt: '2026-09-05T10:00:01.000Z' } : {}),
       ...(state === 'provider_succeeded' ? { providerResolvedAt: '2026-09-05T10:00:02.000Z' } : {}),
+      ...(state === 'provider_failed'
+        ? { providerResolvedAt: evidence?.confirmedAt, ...decision.persistence }
+        : {}),
     }
     store.intents.set(payload, intent)
     if (state === 'committed')
@@ -194,7 +210,13 @@ export function fixture(orderInput?: Order) {
         where?: { and?: Array<Record<string, { equals?: unknown }>> }
       }) => {
         if (args.collection === 'refund-intents') {
-          const docs = store.history.get(payload) ?? []
+          const docs = (store.history.get(payload) ?? []).filter((intent) =>
+            (args.where?.and ?? []).every((condition) =>
+              Object.entries(condition).every(
+                ([key, value]) => intent[key as keyof RefundIntent] === value.equals,
+              ),
+            ),
+          )
           return { docs: structuredClone(docs), totalDocs: docs.length, hasNextPage: false }
         }
         if (args.collection === 'audit-logs') {
@@ -329,31 +351,32 @@ export function fixture(orderInput?: Order) {
     },
   )
   const actor = { id: 1, role: 'owner' } as User
-  provider.state.mockResolvedValue({
+  // A checkout a rendelés egyetlen tranzakciójának `${orderNumber}-1` kereskedői azonosítót ad.
+  provider.state.mockImplementation(async () => ({
     PaymentId: order.barionPaymentId,
     Transactions: [
       {
         TransactionId: 'SYNTHETIC-TX',
-        POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+        POSTransactionId: `${order.orderNumber}-1`,
         TransactionType: 'CardPayment',
         Status: 'Succeeded',
         Total: 20000,
       },
     ],
-  })
+  }))
   provider.refund.mockImplementation(
     async (input: {
       transactionsToRefund: Array<{ amountToRefund: number; posTransactionId: string }>
     }) => {
       expect(store.intents.get(payload)?.state).toBe('provider_started')
-      expect(input.transactionsToRefund[0].posTransactionId).toBe('SYNTHETIC-ORIGINAL-POS')
+      expect(input.transactionsToRefund[0].posTransactionId).toBe(`${order.orderNumber}-1`)
       expect(audits.some((audit) => audit.action === 'refund-prepared')).toBe(true)
       return {
         PaymentId: order.barionPaymentId,
         RefundedTransactions: [
           {
             TransactionId: `aaaaaaaa-bbbb-cccc-dddd-${String(store.intents.get(payload)!.refundSequence).padStart(12, '0')}`,
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: `${order.orderNumber}-1`,
             Total: input.transactionsToRefund[0].amountToRefund,
             Status: 'Succeeded',
           },

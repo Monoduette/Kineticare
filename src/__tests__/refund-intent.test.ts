@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
+import { createHash } from 'node:crypto'
+
 import {
+  NO_PROVIDER_REQUEST_REFERENCE,
   REFUND_INTENT_STATES,
   activeRefundOrderKey,
+  autoRefundOperationKey,
   canonicalRefundIntentRequestTuple,
   decideRefundIntentCreation,
   decideRefundIntentTransition,
@@ -271,6 +275,78 @@ describe('refund intent transition graph', () => {
     })
     expect(activeRefundOrderKey('order-1', 'provider_failed')).toMatch(/^v1:/u)
     expect(activeRefundOrderKey('order-1', 'provider_failed', providerNoEffectEvidence)).toBeNull()
+  })
+})
+
+describe('never-launched attempt (prepared → provider_failed)', () => {
+  const noRequest = { ...providerNoEffectEvidence, reference: NO_PROVIDER_REQUEST_REFERENCE }
+
+  it('closes a prepared attempt only with the no-provider-request evidence, never as a launch', () => {
+    expect(decideRefundIntentTransition('prepared', 'provider_failed', noRequest)).toEqual({
+      allowed: true,
+      launchAllowed: false,
+      action: 'transition',
+      persistence: {
+        reconciliationCheckedAt: noRequest.confirmedAt,
+        reconciliationReference: NO_PROVIDER_REQUEST_REFERENCE,
+      },
+    })
+    expect(decideRefundIntentTransition('prepared', 'provider_failed')).toMatchObject({
+      allowed: false,
+      reason: 'provider_no_effect_evidence_required',
+    })
+    expect(
+      decideRefundIntentTransition('prepared', 'provider_failed', providerNoEffectEvidence),
+    ).toMatchObject({ allowed: false })
+    expect(activeRefundOrderKey('order-1', 'provider_failed', noRequest)).toBeNull()
+  })
+
+  it.each(['provider_started', 'manual_review'] as const)(
+    'a launched (%s) attempt cannot claim that no provider request was sent',
+    (from) => {
+      expect(decideRefundIntentTransition(from, 'provider_failed', noRequest)).toMatchObject({
+        allowed: false,
+        launchAllowed: false,
+      })
+    },
+  )
+
+  it('no path through the new edge authorizes a provider launch', () => {
+    for (const next of REFUND_INTENT_STATES) {
+      expect(decideRefundIntentTransition('provider_failed', next, noRequest).allowed).toBe(false)
+    }
+  })
+})
+
+describe('automatic refund operation key per attempt', () => {
+  const input = {
+    orderId: 7,
+    paymentId: '11111111-2222-3333-4444-555555555555',
+    transactionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    reason: 'duplicate-paid-order',
+  }
+
+  it('keeps the first attempt byte-identical to the legacy key and separates later attempts', () => {
+    const legacy = createHash('sha256')
+      .update(
+        JSON.stringify([
+          'kineticare/paid-reject-recovery/operation/v2',
+          input.orderId,
+          input.paymentId,
+          input.transactionId,
+          input.reason,
+        ]),
+      )
+      .digest('base64url')
+    expect(autoRefundOperationKey(input)).toBe(legacy)
+    expect(autoRefundOperationKey({ ...input, attempt: 1 })).toBe(legacy)
+    const second = autoRefundOperationKey({ ...input, attempt: 2 })
+    expect(second).not.toBe(legacy)
+    expect(autoRefundOperationKey({ ...input, attempt: 3 })).not.toBe(second)
+    expect(() => digestRefundIdempotencyKey(second)).not.toThrow()
+    for (const attempt of [0, -1, 1.5]) {
+      expect(() => autoRefundOperationKey({ ...input, attempt })).toThrow(TypeError)
+    }
   })
 })
 

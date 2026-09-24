@@ -70,7 +70,7 @@ describe('provider response evidence', () => {
         RefundedTransactions: [
           {
             TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
             Total: 20000,
             Status,
           },
@@ -92,7 +92,7 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'OTHER',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 20000,
           Status: 'Succeeded',
         },
@@ -102,7 +102,7 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 1,
           Status: 'Succeeded',
         },
@@ -112,7 +112,7 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           AmountToRefund: 20000,
           Status: 'Succeeded',
         },
@@ -122,13 +122,13 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 20000,
           Status: 'Succeeded',
         },
         {
           TransactionId: 'OTHER',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 20000,
           Status: 'Succeeded',
         },
@@ -141,7 +141,7 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 20000,
           Status: 'Succeeded',
         },
@@ -158,7 +158,7 @@ describe('provider response evidence', () => {
       RefundedTransactions: [
         {
           TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           Total: 20000,
           Status: 'Succeeded',
         },

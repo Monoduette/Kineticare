@@ -42,6 +42,15 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u
 const BASE64URL_32_BYTES = /^[A-Za-z0-9_-]{43}$/u
 const PROVIDER_NO_EFFECT_EVIDENCE_KEYS = new Set(['kind', 'confirmedAt', 'reference'])
 
+/**
+ * A prepared → provider_failed él egyetlen megengedett bizonyítéka: a
+ * provider_started CAS (az indítási engedély) sosem futott le, tehát a
+ * Barionnak kérés sem mehetett. Fordítva is kötött: elindított kísérletre ez a
+ * hivatkozás nem használható, így a providerStartedAt nélküli provider_failed
+ * sor mindig ezt a hivatkozást hordozza.
+ */
+export const NO_PROVIDER_REQUEST_REFERENCE = 'kineticare:no-provider-request' as const
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const prototype = Object.getPrototypeOf(value)
@@ -381,13 +390,19 @@ export function hashRefundIntentRequest(input: unknown): string {
   )
 }
 
-/** Application identity only: Barion does not promise provider idempotency for this key. */
+/**
+ * Application identity only: Barion does not promise provider idempotency for this key.
+ * Az első kísérlet kulcsa változatlan (a korábbi sorokkal bájtra egyező); egy
+ * igazoltan hatástalan kísérlet után az újabb kísérlet a sorszámától kap új kulcsot.
+ */
 export function autoRefundOperationKey(input: {
   orderId: number
   paymentId: string
   transactionId: string
   reason: string
+  attempt?: number
 }): string {
+  const attempt = input.attempt === undefined ? 1 : positiveSafeInteger(input.attempt, 'attempt')
   return createHash('sha256')
     .update(
       JSON.stringify([
@@ -396,6 +411,7 @@ export function autoRefundOperationKey(input: {
         strictIdentifier(input.paymentId, 'paymentId'),
         strictIdentifier(input.transactionId, 'transactionId'),
         strictIdentifier(input.reason, 'reason'),
+        ...(attempt === 1 ? [] : [attempt]),
       ]),
     )
     .digest('base64url')
@@ -439,7 +455,7 @@ export function activeRefundOrderKey(
 }
 
 const ALLOWED_TRANSITIONS: Readonly<Record<RefundIntentState, readonly RefundIntentState[]>> = {
-  prepared: ['provider_started'],
+  prepared: ['provider_started', 'provider_failed'],
   provider_started: ['provider_failed', 'provider_unknown', 'provider_succeeded'],
   provider_failed: [],
   provider_unknown: ['manual_review'],
@@ -471,7 +487,11 @@ export function decideRefundIntentTransition(
   }
   if (to === 'provider_failed') {
     const persistence = providerNoEffectPersistence(providerNoEffectEvidence)
-    if (!persistence) {
+    if (
+      !persistence ||
+      (from === 'prepared') !==
+        (persistence.reconciliationReference === NO_PROVIDER_REQUEST_REFERENCE)
+    ) {
       return {
         allowed: false,
         launchAllowed: false,

@@ -20,7 +20,7 @@ async function transportFixture() {
         Transactions: [
           {
             TransactionId: 'SYNTHETIC-TX',
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
             TransactionType: 'CardPayment',
             Status: 'Succeeded',
             Total: 20000,
@@ -38,7 +38,7 @@ async function transportFixture() {
         RefundedTransactions: [
           {
             TransactionId: 'aaaaaaaa-bbbb-cccc-dddd-123456789012',
-            POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+            POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
             Total: 5000,
             Status: 'Succeeded',
           },
@@ -79,8 +79,10 @@ describe('refund route through the real Barion transport contract', () => {
       TransactionsToRefund: [
         {
           TransactionId: 'SYNTHETIC-TX',
-          POSTransactionId: 'SYNTHETIC-ORIGINAL-POS',
+          POSTransactionId: 'SYNTHETIC-RECOVERY-11-1',
           AmountToRefund: 5000,
+          // A Barion ezt a megjegyzést mutatja meg a fizetőnek (TransactionToRefund.Comment).
+          Comment: 'Kineticare visszatérítés SYNTHETIC-RECOVERY-11',
         },
       ],
     })
@@ -93,20 +95,81 @@ describe('refund route through the real Barion transport contract', () => {
     ).toHaveLength(1)
   })
 
+  it.each(['network', 'timeout'] as const)(
+    'a GetState %s hibája még kísérlet előtt: 424, pénzmozgás nélkül, újrapróbálható üzenettel',
+    async (kind) => {
+      const f = await transportFixture()
+      const error = new Error('DUMMY-PRIVATE-TRANSPORT-ERROR')
+      if (kind === 'timeout') error.name = 'TimeoutError'
+      f.wire.mockRejectedValue(error)
+      const response = await f.request()
+      expect(response.status).toBe(424)
+      expect(store.intents.get(f.payload)).toBeUndefined()
+      expect(provider.refund).not.toHaveBeenCalled()
+      const body = await response.json()
+      expect(body).toEqual({ error: expect.stringContaining('Pénzmozgás nem történt.') })
+      expect(body.error).toContain('Próbáld újra néhány perc múlva.')
+      expect(JSON.stringify(body)).not.toContain(error.message)
+    },
+  )
+
   it.each([
-    ['network', 502],
-    ['timeout', 504],
-  ] as const)('preserves GetState %s mapping before any monetary claim', async (kind, status) => {
-    const f = await transportFixture()
-    const error = new Error('DUMMY-PRIVATE-TRANSPORT-ERROR')
-    if (kind === 'timeout') error.name = 'TimeoutError'
-    f.wire.mockRejectedValue(error)
-    const response = await f.request()
-    expect(response.status).toBe(status)
-    expect(store.intents.get(f.payload)).toBeUndefined()
-    expect(provider.refund).not.toHaveBeenCalled()
-    expect(JSON.stringify(await response.json())).not.toContain(error.message)
-  })
+    ['HTTP 400', 400],
+    ['HTTP 200 + Errors', 200],
+  ] as const)(
+    'végleges TooLowBalanceToMakeRefund (%s): nincs zár, ok és teendő, feltöltés után új kísérlet sikerül',
+    async (_label, httpStatus) => {
+      const f = await transportFixture()
+      const original = f.wire.getMockImplementation()!
+      let balanceTooLow = true
+      f.wire.mockImplementation(async (url, init) => {
+        if (String(url).endsWith('/Payment/Refund') && balanceTooLow) {
+          return Response.json(
+            {
+              Errors: [
+                {
+                  ErrorCode: 'TooLowBalanceToMakeRefund',
+                  Title: 'There are not enough funds to fulfill the refund request.',
+                  Description: '',
+                },
+              ],
+            },
+            { status: httpStatus },
+          )
+        }
+        return original(url, init)
+      })
+      const response = await f.request()
+      expect(response.status).toBe(409)
+      const body = await response.json()
+      expect(body).not.toHaveProperty('manualReviewRequired')
+      expect(body.error).toContain('nincs elég egyenleg')
+      expect(body.error).toContain('Pénzmozgás nem történt.')
+      expect(body.error).toMatch(/legalább 5000\sFt legyen a tárcában/u)
+      expect(store.intents.get(f.payload)).toMatchObject({
+        state: 'provider_failed',
+        activeOrderKey: null,
+        reconciliationReference: 'barion:refund-rejected:TooLowBalanceToMakeRefund',
+      })
+      expect(f.order).toMatchObject({ status: 'paid', refunds: [] })
+      expect(await f.status()).toMatchObject({ state: 'clear' })
+
+      balanceTooLow = false
+      const retry = await createRefundHandler({ getPayload: async () => f.payload })(
+        new Request(`https://shop.example.test/api/admin/orders/${f.order.orderNumber}/refund`, {
+          method: 'POST',
+          headers: { origin: 'https://shop.example.test', 'content-type': 'application/json' },
+          body: JSON.stringify({ operationKey: 'B'.repeat(42) + 'A', amountHuf: 5000 }),
+        }),
+        { params: Promise.resolve({ orderNumber: f.order.orderNumber! }) },
+      )
+      expect(retry.status).toBe(200)
+      expect(f.order.refunds).toHaveLength(1)
+      expect(
+        f.wire.mock.calls.filter(([url]) => String(url).endsWith('/Payment/Refund')),
+      ).toHaveLength(2)
+    },
+  )
 
   it('retains an uncertain provider attempt without exposing credentials in output', async () => {
     const f = await transportFixture()
