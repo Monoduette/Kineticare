@@ -9,6 +9,7 @@ import {
   useField,
   useFormFields,
 } from '@payloadcms/ui'
+import { mergeFieldStyles } from '@payloadcms/ui/shared'
 import type { CheckboxFieldClientProps, NumberFieldClientProps } from 'payload'
 import {
   useCallback,
@@ -72,7 +73,20 @@ import {
  * A megerősítés az űrlap-állapot `kcMegerositesek.*` útján megy a mentéssel
  * (nem séma-mező, nem tárolódik; src/components/admin/huf-price.ts). A stílus a
  * Payload saját mezőosztályaira és a B1 stílusszerződés .kc-admin-notice
- * dobozára épül (custom.scss, mindkét témán mért AA), saját szín nélkül.
+ * dobozára épül (custom.scss, mindkét témán mért AA), saját szín nélkül; a
+ * szélesség a Payload mezőstílusa (mergeFieldStyles: `--field-width` vagy
+ * rugalmas kitöltés a sorban), mint a gyári mezőknél.
+ *
+ * A beviteli mező `aria-describedby`-ja a hibaüzenetre, az előnézetre és a
+ * súgóra mutat, hibánál `aria-invalid` is áll: a felolvasó a mezőre lépve
+ * hallja, mi a baj és mi a teendő (WCAG 2.2 SC 3.3.1 Error Identification,
+ * Technique ARIA21: „Displays an error message which is programmatically
+ * connected to the relevant form field using the aria-describedby attribute”,
+ * https://www.w3.org/WAI/WCAG22/Techniques/aria/ARIA21; a GOV.UK Design System
+ * Error message példáiban a mező `aria-describedby`-ja a súgóra és a hibára is
+ * mutat, https://design-system.service.gov.uk/components/error-message/). A
+ * Payload FieldError és FieldDescription nem ad azonosítót, ezért egy-egy
+ * azonosítós doboz veszi körül őket.
  */
 
 type HufPriceFieldProps = NumberFieldClientProps & { kind?: PriceFieldKind }
@@ -166,6 +180,22 @@ const noticeStyle: CSSProperties = {
   margin: 'calc(var(--base) * 0.5) 0',
 }
 
+/**
+ * A beviteli mező `aria-describedby` értéke a képernyőn látható sorrendben:
+ * hiba (a mező fölötti buborék), előnézet, súgó; ha egyik sincs, nincs
+ * attribútum.
+ */
+export function describedByIds(ids: {
+  errorId: string | null
+  previewId: string | null
+  descriptionId: string | null
+}): string | undefined {
+  const list = [ids.errorId, ids.previewId, ids.descriptionId].filter(
+    (id): id is string => id !== null,
+  )
+  return list.length === 0 ? undefined : list.join(' ')
+}
+
 /** A beírt szöveg hibaüzenete, vagy null (a tárolt érték mutatásakor nincs hiba). */
 function typedParseError(typed: string | null): string | null {
   if (typed === null) return null
@@ -230,24 +260,41 @@ export function HufPriceField(props: HufPriceFieldProps): JSX.Element {
 
   const inputId = `field-${path.replace(/\./g, '__')}`
   const previewId = `${inputId}-elonezet`
+  const errorId = `${inputId}-hiba`
+  const descriptionId = `${inputId}-sugo`
   const showAnyError = parseError !== null || showError
   const locked = Boolean(readOnly) || disabled
+  const describedBy = describedByIds({
+    errorId: showAnyError ? errorId : null,
+    previewId: parsed.kind === 'ertek' ? previewId : null,
+    descriptionId: field.admin?.description ? descriptionId : null,
+  })
 
   return (
     <div
-      className={['field-type', 'number', showAnyError ? 'error' : null].filter(Boolean).join(' ')}
-      style={field.admin?.style}
+      className={[
+        'field-type',
+        'number',
+        showAnyError ? 'error' : null,
+        locked ? 'read-only' : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={mergeFieldStyles(field)}
     >
       <FieldLabel htmlFor={inputId} label={field.label} path={path} required={field.required} />
       <div className="field-type__wrap">
-        <FieldError
-          path={path}
-          showError={showAnyError}
-          {...(parseError === null ? {} : { message: parseError })}
-        />
+        <div id={errorId}>
+          <FieldError
+            path={path}
+            showError={showAnyError}
+            {...(parseError === null ? {} : { message: parseError })}
+          />
+        </div>
         <div style={inputRowStyle}>
           <input
-            aria-describedby={parsed.kind === 'ertek' ? previewId : undefined}
+            aria-describedby={describedBy}
+            aria-invalid={showAnyError ? true : undefined}
             autoComplete="off"
             disabled={locked}
             id={inputId}
@@ -289,7 +336,9 @@ export function HufPriceField(props: HufPriceFieldProps): JSX.Element {
             />
           </div>
         ) : null}
-        <FieldDescription description={field.admin?.description} path={path} />
+        <div id={descriptionId}>
+          <FieldDescription description={field.admin?.description} path={path} />
+        </div>
       </div>
     </div>
   )

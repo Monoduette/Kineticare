@@ -230,6 +230,12 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
     )
   })
 
+  it('a csak piszkozat-sorban álló hibás ár (másolat, soha nem közzétett kurzus) nem „régi közzétett”', async () => {
+    // A duplikálás és a lomtár validálás nélkül ír a fő sorba, _status: 'draft'-tal.
+    const { req } = fakeReq({ published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUF: 5 } })
+    expect(await validatePriceInHUF(5, numberOpts({ req, previousValue: 5 }))).toBe(PRICE_MESSAGE)
+  })
+
   it('a közzétett sort draft:false, overrideAccess és trash:true mellett olvassa', async () => {
     const { req, findByID } = fakeReq({ published: PAID_PUBLISHED })
     await validatePriceInHUF(80, numberOpts({ req }))
@@ -240,6 +246,7 @@ describe('validatePriceInHUF: egész forint, legalább 10 Ft, megerősítés a f
         draft: false,
         overrideAccess: true,
         trash: true,
+        select: expect.objectContaining({ _status: true, deletedAt: true }),
       }),
     )
   })
@@ -297,6 +304,18 @@ describe('validatePromoPriceHuf: 10 Ft-os alsó határ és megerősítés (a-cms
     expect(await validatePromoPriceHuf(39_500, promoOpts({ req, previousValue: 39_500 }))).toBe(
       true,
     )
+  })
+
+  it('a csak piszkozat-sorban álló hibás akciós ár nem „régi közzétett”', async () => {
+    const draftRow = { ...PAID_PUBLISHED, _status: 'draft', promoEnabled: true, promoPriceHuf: 5 }
+    const { req } = fakeReq({ published: draftRow })
+    expect(await validatePromoPriceHuf(5, promoOpts({ req, previousValue: 5 }))).toBe(
+      PROMO_PRICE_MESSAGE,
+    )
+    const published = fakeReq({ published: { ...draftRow, _status: 'published' } })
+    expect(
+      await validatePromoPriceHuf(5, promoOpts({ req: published.req, previousValue: 5 })),
+    ).toBe(true)
   })
 })
 
@@ -356,6 +375,53 @@ describe('validatePriceInHUFEnabled: a „Fizetős kurzus” pipa kivétele ingy
     expect(await validatePriceInHUFEnabled(true, checkboxOpts({ req: on.req }))).toBe(true)
     expect(await validatePriceInHUFEnabled(null, checkboxOpts({ req: on.req }))).toBe(true)
     expect(on.findByID).not.toHaveBeenCalled()
+  })
+
+  it('a piszkozat- vagy lomtár-sorban kivett pipa nem „már ingyenes” (visszaállítás közzétettként, másolat)', async () => {
+    const trashedAt = '2026-09-24T10:00:00.000Z'
+    // A lomtárba helyezés validálás nélkül a legutóbbi autosave-es piszkozatot
+    // írja a fő sorba (_status: 'draft'); a visszaállítás közzétettként validál.
+    const trashedDraft = fakeReq({
+      published: {
+        ...PAID_PUBLISHED,
+        _status: 'draft',
+        priceInHUFEnabled: false,
+        deletedAt: trashedAt,
+      },
+      orders: 0,
+    })
+    expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: trashedDraft.req }))).toBe(
+      freeCourseGuardMessage(false),
+    )
+    const trashedPublished = fakeReq({
+      published: { ...PAID_PUBLISHED, priceInHUFEnabled: false, deletedAt: trashedAt },
+      orders: 0,
+    })
+    expect(
+      await validatePriceInHUFEnabled(false, checkboxOpts({ req: trashedPublished.req })),
+    ).toBe(freeCourseGuardMessage(false))
+    const neverPublished = fakeReq({
+      published: { ...PAID_PUBLISHED, _status: 'draft', priceInHUFEnabled: false },
+      orders: 0,
+    })
+    expect(await validatePriceInHUFEnabled(false, checkboxOpts({ req: neverPublished.req }))).toBe(
+      freeCourseGuardMessage(false),
+    )
+    // Ár és vásárló nélkül a lomtárból visszaállított ingyenes kurzus közzétehető.
+    const freeNoPrice = fakeReq({
+      published: {
+        ...PAID_PUBLISHED,
+        priceInHUFEnabled: false,
+        priceInHUF: null,
+        deletedAt: trashedAt,
+      },
+      orders: 0,
+    })
+    const noPriceOpts = checkboxOpts({
+      req: freeNoPrice.req,
+      siblingData: { priceInHUFEnabled: false, priceInHUF: null },
+    })
+    expect(await validatePriceInHUFEnabled(false, noPriceOpts)).toBe(true)
   })
 
   it('ár és vásárló nélküli kurzus ingyenessé tehető; új kurzuson nem kérdez', async () => {
@@ -427,6 +493,26 @@ describe('validatePromoEnd: új akciót csak záró nappal (a-cms-9)', () => {
     expect(await validatePromoEnd(null, dateOpts({ req: ended.req }, { promoEnabled: true }))).toBe(
       PROMO_END_REQUIRED_MESSAGE,
     )
+  })
+
+  it('egy élő, vég nélküli akciós kurzus másolata (piszkozat-sor) közzétételkor véget kér', async () => {
+    // A Payload duplikálása a fő sorba ír, _status: 'draft'-tal, validálás nélkül.
+    const bare = fakeReq({ published: { _status: 'draft', promoEnabled: true, promoEnd: null } })
+    expect(await validatePromoEnd(null, dateOpts({ req: bare.req }, { promoEnabled: true }))).toBe(
+      PROMO_END_REQUIRED_MESSAGE,
+    )
+    const copyOfProduct4 = fakeReq({
+      published: {
+        ...PAID_PUBLISHED,
+        _status: 'draft',
+        promoEnabled: true,
+        promoEnd: null,
+        promoPriceHuf: 39_500,
+      },
+    })
+    expect(
+      await validatePromoEnd(null, dateOpts({ req: copyOfProduct4.req }, { promoEnabled: true })),
+    ).toBe(PROMO_END_REQUIRED_MESSAGE)
   })
 
   it('a már közzétett, vég nélküli akció (az élő 4. kurzus) más mező mentésekor átmegy', async () => {

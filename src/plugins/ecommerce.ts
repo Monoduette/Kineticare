@@ -239,6 +239,7 @@ async function readPublishedProduct(
       trash: true,
       select: {
         _status: true,
+        deletedAt: true,
         priceInHUF: true,
         priceInHUFEnabled: true,
         promoEnabled: true,
@@ -250,6 +251,26 @@ async function readPublishedProduct(
   } catch {
     return undefined
   }
+}
+
+/**
+ * A fő tábla sora csak `_status === 'published'` mellett közzétett érték. A
+ * fő táblába validálás nélkül is kerül adat, `_status: 'draft'`-tal: a
+ * duplikálás (a Payload duplicate végpontja alapból draft=true, a
+ * createOperation a másolatot a fő táblába írja, create.js) és a lomtárba
+ * helyezés (a PATCH a legutóbbi autosave-es piszkozatot írja a fő sorba,
+ * update.js skipValidation). Az ilyen sor értékét egyik őr sem tekintheti a
+ * vásárló által látott, már elfogadott állapotnak.
+ */
+function isPublishedRow(
+  published: PublishedProduct | null | undefined,
+): published is PublishedProduct {
+  return published?._status === 'published'
+}
+
+/** A sor a lomtárban van (a Payload trash `deletedAt` mezője ki van töltve). */
+function isTrashedRow(published: PublishedProduct): boolean {
+  return published.deletedAt !== null && published.deletedAt !== undefined
 }
 
 /** Frissítésnél a közzétett kurzus; új kurzusnál (create) nincs ilyen: null. */
@@ -288,6 +309,12 @@ function productConfirmations(options: GuardOptions): ProductChangeConfirmations
  * állapot) nem zárja ki a kurzus többi mezőjének mentését: az ilyen akció
  * addig marad, amíg a tulajdonos meg nem adja a végét. Csak ez az ág olvas
  * adatbázist, ezért a többi eset szinkron marad.
+ *
+ * A kivétel csak valóban közzétett sorra él (isPublishedRow). Egy élő kurzus
+ * másolata (a 4. kurzus is így készült, docs/akcios-kurzus-2026-09-20.md) a
+ * vég nélküli akciót piszkozat-sorként örökli; ha a kivétel ezt is elfogadná,
+ * a másolat első közzétételével egy új termék menne élesbe vég nélküli
+ * akcióval.
  */
 export const validatePromoEnd: DateFieldValidation = (value, options) => {
   const sibling = options.siblingData as
@@ -309,8 +336,7 @@ async function validatePromoEndRequired(options: GuardOptions): Promise<string |
   }
   const published = await publishedForUpdate(options)
   if (
-    published !== null &&
-    published !== undefined &&
+    isPublishedRow(published) &&
     published.promoEnabled === true &&
     (published.promoEnd === null || published.promoEnd === undefined)
   ) {
@@ -353,7 +379,7 @@ export function regularPriceHufFrom(source: unknown): number | null {
 
 /** A közzétett rendes ár, ha a kurzus közzétett (a vásárló ezt látja most). */
 function publishedRegularPrice(published: PublishedProduct | null | undefined): number | null {
-  return published?._status === 'published' ? regularPriceHufFrom(published) : null
+  return isPublishedRow(published) ? regularPriceHufFrom(published) : null
 }
 
 /**
@@ -364,14 +390,18 @@ function publishedRegularPrice(published: PublishedProduct | null | undefined): 
 function publishedPromoReference(
   published: PublishedProduct | null | undefined,
 ): { reference: number; kind: PriceFieldKind } | null {
-  if (published?._status !== 'published') return null
+  if (!isPublishedRow(published)) return null
   const promo = positivePriceOrNull(published.promoPriceHuf)
   if (promo !== null) return { reference: promo, kind: 'akcios' }
   const regular = regularPriceHufFrom(published)
   return regular === null ? null : { reference: regular, kind: 'rendes' }
 }
 
-/** Változatlan, már közzétett érték: régi sor más mezőjének mentése nem bukhat el rajta. */
+/**
+ * Változatlan, már közzétett érték: régi sor más mezőjének mentése nem bukhat
+ * el rajta. Csak valóban közzétett sorra (isPublishedRow): a másolat vagy a
+ * soha nem közzétett kurzus piszkozat-sorában álló hibás ár nem „régi”.
+ */
 function unchangedPublishedValue(
   options: GuardOptions,
   value: unknown,
@@ -381,8 +411,7 @@ function unchangedPublishedValue(
   return (
     options.operation === 'update' &&
     value === options.previousValue &&
-    published !== null &&
-    published !== undefined &&
+    isPublishedRow(published) &&
     published[field] === value
   )
 }
@@ -500,6 +529,13 @@ async function countPaidOrRefundedOrders(
  * már ingyenes kurzus (a közzétett érték is kikapcsolt) szabadon menthető. Új
  * kurzuson (create) nincs vásárló, ott nem kérdez. Ha a közzétett állapot vagy
  * a rendelések nem olvashatók, fail-closed: megerősítést kér.
+ *
+ * „Már ingyenes” csak a valóban közzétett, lomtáron kívüli sor lehet. A
+ * lomtárba helyezés validálás nélkül a legutóbbi autosave-es piszkozatot írja
+ * a fő sorba; ha abban a pipa megerősítés nélkül ki volt véve, a „visszaállítás
+ * közzétettként” e nélkül átcsúszna. Ilyenkor az ár és a rendelések döntenek;
+ * ha kell, a kurzus piszkozatként állítható vissza, és a szerkesztőben a
+ * megerősítéssel tehető közzé.
  */
 export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, options) => {
   if (value !== false || options.operation !== 'update' || options.id === undefined) {
@@ -512,7 +548,11 @@ export const validatePriceInHUFEnabled: CheckboxFieldValidation = async (value, 
     return true
   }
   const published = await readPublishedProduct(options.req, options.id)
-  if (published !== undefined && published.priceInHUFEnabled === false) {
+  if (
+    isPublishedRow(published) &&
+    !isTrashedRow(published) &&
+    published.priceInHUFEnabled === false
+  ) {
     return true
   }
   const sibling = options.siblingData as { priceInHUF?: unknown } | undefined
@@ -1705,7 +1745,9 @@ const productsCollectionOverride: CollectionOverride = ({ defaultCollection }) =
           name: 'promoPriceHuf',
           type: 'number',
           label: 'Akciós ár (Ft)',
-          min: 1,
+          // A tényleges alsó határt a validatePromoPriceHuf kényszeríti ki;
+          // a `min` ugyanazt mondja, hogy a konfiguráció ne állítson mást.
+          min: MIN_PRICE_HUF,
           // Fizetendő ár, ezért az Ár mezővel azonos owner-only írás védi
           // (T-011). Az `ownerOnlyProductFieldNames` bejárása csak a plugin
           // gyári mezőit éri el, ezért itt közvetlenül áll (őr:

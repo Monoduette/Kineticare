@@ -96,8 +96,13 @@ vi.mock('@payloadcms/ui', async () => {
   }
 })
 
-const { HufPriceField, PaidCourseField, clientPriceReference, derivePriceDropPrompt } =
-  await import('../components/admin/HufPriceField')
+const {
+  HufPriceField,
+  PaidCourseField,
+  clientPriceReference,
+  derivePriceDropPrompt,
+  describedByIds,
+} = await import('../components/admin/HufPriceField')
 const { CourseVisibilityNotice } = await import('../components/admin/CourseVisibilityNotice')
 const { CoursePromoStatus, CoursePromoStatusView, promoEndNote } =
   await import('../components/admin/CoursePromoStatus')
@@ -169,6 +174,54 @@ describe('HufPriceField (SSR): a tárolt ár formázva, előnézettel', () => {
     // a doboz nem ismétli meg.
     expect(html).toContain('mezo-hiba')
     expect(html).not.toContain(priceDropWarning('rendes', 7_950, 7_950))
+  })
+
+  it('a felolvasó a mezőn hallja az előnézetet és a súgót; hibánál a hibát is, aria-invalid mellett', () => {
+    form.fields.priceInHUF = { value: 79_500, initialValue: 79_500 }
+    const clean = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+    expect(clean).toContain('aria-describedby="field-priceInHUF-elonezet field-priceInHUF-sugo"')
+    expect(clean).not.toContain('aria-invalid')
+    expect(clean).toMatch(/<div id="field-priceInHUF-sugo"><div class="mezo-leiras">Rendes ár\.</)
+    expect(clean).toMatch(/<p id="field-priceInHUF-elonezet"[^>]*>Így jelenik meg/)
+
+    form.fields.priceInHUF = {
+      value: 7_950,
+      initialValue: 7_950,
+      errorMessage: priceDropMessage('rendes', 7_950, 79_500),
+    }
+    const withError = renderToStaticMarkup(createElement(HufPriceField, priceProps))
+    expect(withError).toContain(
+      'aria-describedby="field-priceInHUF-hiba field-priceInHUF-elonezet field-priceInHUF-sugo"',
+    )
+    expect(withError).toContain('aria-invalid="true"')
+    expect(withError).toMatch(/<div id="field-priceInHUF-hiba"><span class="mezo-hiba">/)
+  })
+
+  it('súgó és érték nélkül nincs aria-describedby; a hivatkozott azonosítók mind léteznek', () => {
+    form.fields.promoPriceHuf = { value: null, initialValue: null }
+    const html = renderToStaticMarkup(createElement(HufPriceField, promoProps))
+    expect(html).not.toContain('aria-describedby')
+    expect(describedByIds({ errorId: null, previewId: null, descriptionId: null })).toBeUndefined()
+    expect(describedByIds({ errorId: 'h', previewId: null, descriptionId: 's' })).toBe('h s')
+  })
+
+  it('a Payload mezőstílusa: sorban rugalmas kitöltés, megadott szélességnél --field-width; zárt mezőn read-only osztály', () => {
+    form.fields.priceInHUF = { value: 79_500, initialValue: 79_500 }
+    expect(renderToStaticMarkup(createElement(HufPriceField, priceProps))).toContain(
+      'style="flex:1 1 auto"',
+    )
+    const withWidth = {
+      ...priceProps,
+      field: { ...priceProps.field, admin: { width: '50%' } },
+    } as unknown as Parameters<typeof HufPriceField>[0]
+    expect(renderToStaticMarkup(createElement(HufPriceField, withWidth))).toContain(
+      'style="--field-width:50%"',
+    )
+    const locked = renderToStaticMarkup(
+      createElement(HufPriceField, { ...priceProps, readOnly: true }),
+    )
+    expect(locked).toContain('class="field-type number read-only"')
+    expect(locked).toContain('disabled=""')
   })
 
   it('új akciós ár: a bekapcsolt rendes árhoz mér, és azt nevezi meg', () => {
