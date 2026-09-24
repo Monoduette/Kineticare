@@ -412,12 +412,11 @@ async function performCorrectiveInvoiceForOrder(
   // maradék jobja previousAttempts=0-val fut, pedig a seq=1 bizonytalan
   // kimenetű beküldése a régi kulcson létezhet (breaker, rev1). A régi
   // kulcson talált bizonylatot csak egyező bruttó és egyező hivatkozott
-  // számlaszám mellett vesszük át (mismatchOf), tehát egy idegen rendelés
-  // helyesbítője nem kerülhet át.
+  // számlaszám mellett vesszük át (resolveExisting), tehát egy idegen
+  // rendelés helyesbítője nem kerülhet át. (A previousAttempts > 0 eset a
+  // correctiveInvoiceAttempts > 0 része.)
   const anyCorrectiveSubmitted =
-    previousAttempts > 0 ||
-    (order.correctiveInvoiceAttempts ?? 0) > 0 ||
-    (order.correctiveInvoiceSeq ?? 0) > 0
+    (order.correctiveInvoiceAttempts ?? 0) > 0 || (order.correctiveInvoiceSeq ?? 0) > 0
   const lookupKeys = correctiveLookupKeys(
     orderNumber,
     order,
@@ -452,23 +451,12 @@ async function performCorrectiveInvoiceForOrder(
     key: string
     legacy: boolean
   }
-  /** A bizonylat keresése a kulcsokon, sorrendben; az első találat dönt. */
-  const findExisting = async (): Promise<LookupHit | null> => {
-    for (const [index, key] of lookupKeys.entries()) {
-      const found = await lookup(key, budget.forQuery())
-      if (found) {
-        return { found, key, legacy: index > 0 }
-      }
-    }
-    return null
+  interface ResolvedHit {
+    hit: LookupHit
+    /** Null, ha a bizonylat ez a helyesbítő (átvehető); különben az eltérés oka. */
+    mismatch: string | null
   }
-  /**
-   * Átvétel előtti egyeztetés: a talált bizonylat ez a helyesbítő-e. Null, ha
-   * igen; különben az eltérés oka. A régi kulcson talált bizonylatnál a
-   * számlaadat-lekérdezés azt is igazolja, hogy a mi számlánkra hivatkozik
-   * (`alap/hivszamlaszam`). A lekérdezés hibája dob.
-   */
-  const mismatchOf = async (hit: LookupHit): Promise<string | null> => {
+  const bruttoMismatchOf = (hit: LookupHit): string | null => {
     const brutto = hit.found.szamlabrutto
     if (brutto === undefined) {
       return 'a lekérdezés válasza nem hordoz bruttó végösszeget (szamlabrutto), így a bizonylat nem egyeztethető'
@@ -476,12 +464,62 @@ async function performCorrectiveInvoiceForOrder(
     if (brutto !== expectedBrutto) {
       return `a bizonylat bruttó végösszege ${brutto} Ft, a helyesbítésé ${expectedBrutto} Ft`
     }
-    if (!hit.legacy) {
-      return null
-    }
-    const data = await queryInvoiceData(hit.found.szamlaszam, budget.forQuery())
-    if (data.hivatkozottSzamlaszam !== originalInvoiceNumber) {
-      return `a régi (rendelésszám-alapú) kulcson talált bizonylat nem a(z) ${originalInvoiceNumber} számú számlára hivatkozik`
+    return null
+  }
+  const foreignReferenceMismatch = `a régi (rendelésszám-alapú) kulcson talált bizonylat nem a(z) ${originalInvoiceNumber} számú számlára hivatkozik`
+  /**
+   * A bizonylat keresése a kulcsokon, sorrendben, átvétel előtti
+   * egyeztetéssel. Az új kulcson az egyező (negatív) bruttó elég. A régi
+   * (rendelésszám-alapú) kulcson a számlaadat-lekérdezés azt is igazolja, hogy
+   * a mi számlánkra hivatkozik (`alap/hivszamlaszam`).
+   *
+   * Rendelésszám-újrahasznosítás (breaker, rev2): ha ehhez a seq-hez még
+   * nem volt beküldés, a régi kulcson talált, igazoltan MÁS számlára hivatkozó
+   * bizonylat egy korábbi, azonos rendelésszámú rendelésé (a mi helyesbítőnk
+   * mindig a mi számlánkra hivatkozik): figyelmeztetéssel átlépjük, és a
+   * keresés a következő kulccsal, majd a beküldéssel folytatódik. Minden más
+   * eltérés (hiányzó hivatkozás, egyező hivatkozás rossz bruttóval, vagy ehhez
+   * a seq-hez már volt beküldés) zártan hibázik. A lekérdezések hibája dob.
+   */
+  const resolveExisting = async (): Promise<ResolvedHit | null> => {
+    for (const [index, key] of lookupKeys.entries()) {
+      const found = await lookup(key, budget.forQuery())
+      if (!found) continue
+      const hit: LookupHit = { found, key, legacy: index > 0 }
+      if (!hit.legacy) {
+        return { hit, mismatch: bruttoMismatchOf(hit) }
+      }
+      if (previousAttempts === 0) {
+        const data = await queryInvoiceData(found.szamlaszam, budget.forQuery())
+        const reference = data.hivatkozottSzamlaszam
+        if (reference && reference !== originalInvoiceNumber) {
+          log.warn(
+            'a régi (rendelésszám-alapú) kulcson talált bizonylat igazoltan más számlára hivatkozik (korábbi, azonos rendelésszámú rendelésé) — átlépve',
+            {
+              orderNumber,
+              foundInvoiceNumber: found.szamlaszam,
+              kulsoAzon: key,
+              referencedInvoiceNumber: reference,
+            },
+          )
+          continue
+        }
+        return {
+          hit,
+          mismatch:
+            reference === originalInvoiceNumber ? bruttoMismatchOf(hit) : foreignReferenceMismatch,
+        }
+      }
+      const bruttoMismatch = bruttoMismatchOf(hit)
+      if (bruttoMismatch !== null) {
+        return { hit, mismatch: bruttoMismatch }
+      }
+      const data = await queryInvoiceData(found.szamlaszam, budget.forQuery())
+      return {
+        hit,
+        mismatch:
+          data.hivatkozottSzamlaszam === originalInvoiceNumber ? null : foreignReferenceMismatch,
+      }
     }
     return null
   }
@@ -553,9 +591,11 @@ async function performCorrectiveInvoiceForOrder(
    *
    * Újrapróbálható (átmeneti) olvasási hibánál NINCS megtagadás: sem 'failed'
    * írás, sem „kézi rendezés kell" RIASZTÁS, csak figyelmeztetés, és a hiba
-   * továbbmegy. Igénylés és beküldés nem történt, a job vagy a refund-
-   * helyreállítás automatikusan újrapróbálja; egy kézi kiállításra felszólító
-   * riasztás mellett az automatikus újrapróbálás dupla helyesbítőt adna.
+   * továbbmegy. Igénylés és beküldés nem történt. Automatikus újrapróbálás
+   * nincs: a visszatérítési panel „Feldolgozás folytatása" gombja (vagy egy
+   * kézzel sorba állított corrective-invoice-issue job) próbálja újra. Egy
+   * kézi kiállításra felszólító riasztás mellett ez az újrapróbálás dupla
+   * helyesbítőt adna.
    */
   const checkOriginalVatKey = async (
     originalNumber: string,
@@ -587,7 +627,7 @@ async function performCorrectiveInvoiceForOrder(
       const message = error instanceof Error ? error.message : String(error)
       if (error instanceof SzamlazzApiError && error.retryable) {
         log.warn(
-          'az eredeti számla adatai átmeneti hiba miatt nem olvashatók ki — a helyesbítő most nem megy ki, a rendszer automatikusan újrapróbálja (kézzel NE állítsd ki)',
+          'az eredeti számla adatai átmeneti hiba miatt nem olvashatók ki — a helyesbítő most nem ment ki; a visszatérítési panel »Feldolgozás folytatása« gombjával újrapróbálható (kézzel NE állítsd ki)',
           {
             orderNumber,
             refundSeq: deps.refundSeq,
@@ -619,6 +659,12 @@ async function performCorrectiveInvoiceForOrder(
 
   /** Igaz, amíg a beküldés ELŐTTI lekérdezés fut (a plafonnál ennek a hibája végleges). */
   let lookupPhase = false
+  /** Igaz, ha ebben a futásban megkezdődött a beküldés előkészítése (igénylés / pending-írás). */
+  let submissionPrepared = false
+  /** Igaz, ha ebben a futásban rögzült az igénylés-nyugta (intent-kezelt visszatérítés). */
+  let managedClaimed = false
+  /** Igaz, ha ebben a futásban a beküldés (POST) elindult. */
+  let postStarted = false
   try {
     // K4 + H3: a lekérdezés MINDIG lefut a beküldés (attempts-növelés / POST)
     // előtt, a kimerült plafonnál is, nem csak ugyanazon seq
@@ -628,15 +674,14 @@ async function performCorrectiveInvoiceForOrder(
     // nincs. A lekérdezés hibája szándékosan propagál (bizonytalan állapotban
     // nem szabad vakon újra beküldeni), és NEM növeli a kísérletszámot (F10).
     lookupPhase = true
-    const hit = await findExisting()
-    const mismatch = hit ? await mismatchOf(hit) : null
+    const existing = await resolveExisting()
     lookupPhase = false
     const via = capReached ? 'plafon-utani lekerdezes' : 'bekuldes-elotti lekerdezes'
-    if (hit && mismatch !== null) {
-      return await refuseForeign(hit, mismatch, via)
+    if (existing && existing.mismatch !== null) {
+      return await refuseForeign(existing.hit, existing.mismatch, via)
     }
-    if (hit) {
-      return await adoptExisting(hit.found.szamlaszam, via)
+    if (existing) {
+      return await adoptExisting(existing.hit.found.szamlaszam, via)
     }
 
     // A14 + H3: a plafon a NEGATÍV lekérdezés után dönt; kimerült keretnél
@@ -671,10 +716,15 @@ async function performCorrectiveInvoiceForOrder(
     }
 
     // A beküldés csak akkor indul, ha a teljes timeoutja a zár időkeretébe
-    // fér (lock-budget.ts); különben újrapróbálható hiba, igénylés és
+    // fér (lock-budget.ts). Korai ellenőrzés az igénylés és a pending-írás
+    // előtt (tartalékkal): különben újrapróbálható hiba, igénylés és
     // kísérlet-növelés NÉLKÜL.
-    const postConfig = budget.forPost()
-    if (payload && managed) await claimManagedRefundDocument(payload, managed, previousAttempts)
+    budget.reservePost()
+    submissionPrepared = true
+    if (payload && managed) {
+      await claimManagedRefundDocument(payload, managed, previousAttempts)
+      managedClaimed = true
+    }
     attempts = previousAttempts + 1
     await saveState({
       correctiveInvoiceStatus: 'pending',
@@ -682,6 +732,12 @@ async function performCorrectiveInvoiceForOrder(
       correctiveInvoiceAttemptsSeq: deps.refundSeq,
     })
     const postXml = deps.postXml ?? postInvoiceXml
+    // Késői ellenőrzés a beküldés pillanatában (breaker, rev2): az igénylés és
+    // a pending-írás megakadhatott (sorzár, pool; CLAUDE.md 6–7.), és a zár
+    // tranzakcióját a 60 s-os tétlenségi korlát beküldés közben leölné. Ha a
+    // teljes timeout már nem fér a keretbe, a POST NEM indul.
+    const postConfig = budget.forPost()
+    postStarted = true
     const result = await postXml(xml, postConfig)
     // Ha egy KORÁBBI seq elmaradt bizonylata készült el utólag (retry), a
     // rendelésen rögzített legutóbbi szám/sorszám nem íródhat vissza egy
@@ -755,13 +811,12 @@ async function performCorrectiveInvoiceForOrder(
         { agentErrorCodes: error.agentErrors.map((entry) => entry.code) },
       )
       try {
-        const hit = await findExisting()
-        const mismatch = hit ? await mismatchOf(hit) : null
-        if (hit && mismatch !== null) {
-          return await refuseForeign(hit, mismatch, 'duplikatum-feloldas')
+        const existing = await resolveExisting()
+        if (existing && existing.mismatch !== null) {
+          return await refuseForeign(existing.hit, existing.mismatch, 'duplikatum-feloldas')
         }
-        if (hit) {
-          return await adoptExisting(hit.found.szamlaszam, 'duplikatum-feloldas')
+        if (existing) {
+          return await adoptExisting(existing.hit.found.szamlaszam, 'duplikatum-feloldas')
         }
         const reason =
           'a Számlázz.hu duplikátumot jelzett (71/152), de a szamlaKulsoAzon-lekérdezés nem talál bizonylatot — kézi egyeztetés szükséges'
@@ -795,6 +850,42 @@ async function performCorrectiveInvoiceForOrder(
       }
     }
     const message = error instanceof Error ? error.message : String(error)
+    // Beküldés ELŐTTI átmeneti hiba (lekérdezés, időkeret): a helyesbítő nem
+    // ment ki, és ebben a futásban semmi nem rögzült. A státusz marad (mint az
+    // átmeneti áfakulcs-olvasásnál), csak a hibaüzenet íródik; a
+    // helyreállítás és egy kézi job ugyanúgy újrapróbálhatja.
+    if (!submissionPrepared && error instanceof SzamlazzApiError && error.retryable) {
+      await saveStateBestEffort({ correctiveInvoiceLastError: message })
+      log.warn('helyesbítő számla kiállítás sikertelen a beküldés előtt (újrapróbálható)', {
+        orderNumber,
+        refundSeq: deps.refundSeq,
+        kind: error.kind,
+        attempts,
+        error: message,
+      })
+      throw error
+    }
+    // Az igénylés-nyugta rögzült, de a beküldés NEM indult el (jellemzően a
+    // zár időkerete a beküldés előtti írások alatt elfogyott, vagy a
+    // pending-írás hibázott). Az igénylés után a
+    // rendszer nem küld be újra (refund-guard: bizonytalan állapot), tehát
+    // automatikus újrapróbálás nincs; ez RIASZTÁS. A Számlázz.hu-ba ebből a
+    // futásból nem ment kérés, és ehhez a visszatérítéshez korábban sem
+    // (az igénylés csak kísérlet nélkül rögzülhet).
+    if (managedClaimed && !postStarted) {
+      const reason =
+        `a helyesbítő beküldése nem indult el, de a bizonylat-igénylés már rögzült, ezért a rendszer nem próbálja újra (ok: ${message}). ` +
+        `A Számlázz.hu-ba nem ment kérés: kézi kiállítás előtt a(z) ${kulsoAzon} külső azonosítóra keresve ellenőrizd, hogy nincs-e már helyesbítő.`
+      log.error(
+        'RIASZTÁS: a helyesbítő beküldése az igénylés rögzítése után nem indult el (például elfogyott a zár időkerete) — a helyesbítő NEM készült el, automatikus újrapróbálás nincs, kézi rendezés kell',
+        { orderNumber, refundSeq: deps.refundSeq, attempts, error: message },
+      )
+      await saveStateBestEffort({
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceLastError: reason,
+      })
+      return { outcome: 'failed', reason }
+    }
     await saveStateBestEffort({
       correctiveInvoiceStatus: 'failed',
       correctiveInvoiceLastError: message,

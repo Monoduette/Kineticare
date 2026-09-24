@@ -1390,8 +1390,9 @@ export async function issueInvoiceForOrder(
         }
 
         // A beküldés csak teljes timeouttal, a zár időkeretén belül indulhat
-        // (lock-budget.ts); különben újrapróbálható hiba, kísérlet-növelés NÉLKÜL.
-        const postConfig = budget.forPost()
+        // (lock-budget.ts). Korai ellenőrzés a pending-írás előtt (tartalékkal):
+        // különben újrapróbálható hiba, kísérlet-növelés NÉLKÜL.
+        budget.reservePost()
         attempts = previousAttempts + 1
         // H4: a sikeres lekérdezés lezárta a lekérdezési hibasorozatot, az
         // előtag kikerül (az üzenet a beküldés eredményéig marad).
@@ -1408,7 +1409,11 @@ export async function issueInvoiceForOrder(
         })
 
         const postXml = deps.postXml ?? postInvoiceXml
-        const result = await postXml(xml, postConfig)
+        // Késői ellenőrzés a beküldés pillanatában: a pending-írás megakadhatott
+        // (sorzár, pool; CLAUDE.md 6–7.). Ha a teljes timeout már nem fér a
+        // keretbe, a POST nem indul (újrapróbálható hiba; a státusz pending
+        // marad, a következő futás a beküldés előtti lekérdezéssel kezd).
+        const result = await postXml(xml, budget.forPost())
         // A vevői fiók URL-jét CSAK allowlist után mentjük — a link a vásárló
         // fiók-oldalán kattintható. Nem megfelelő URL: nem mentjük (a számla maga
         // ettől még kiállt), és riasztunk, mert ilyet a Számlázz.hu nem küldhet.

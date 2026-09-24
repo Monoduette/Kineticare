@@ -164,6 +164,56 @@ describe('intent-managed refunds through real invoice helpers', () => {
     expect(f.post).toHaveBeenCalledTimes(1)
   })
 
+  // rev2 (breaker): a zár időkerete az igénylés-nyugta írása alatt elfogyott.
+  // Korábban a POST ekkor is elindult a teljes timeouttal (a kereten túl, a zár
+  // tétlenségi korlátja közben). Most a beküldés nem indul; az igénylés után
+  // automatikus újrapróbálás nincs, ezért ez 'failed' + RIASZTÁS, dobás nélkül.
+  it('a claim write that stalls past the lock budget stops before the POST with a RIASZTÁS, and recovery does not submit', async () => {
+    const f = realDocuments()
+    documents.corrective.mockRejectedValue(new Error('SYNTHETIC pause before invoicing'))
+    await expect(f.start({ amountHuf: 5000 })).rejects.toThrow()
+    documents.corrective.mockImplementation((order, options) =>
+      issueCorrectiveInvoiceForOrder(order, {
+        ...options,
+        config,
+        postXml: f.post,
+        queryByKulsoAzon: f.query,
+      }),
+    )
+    const create = vi.mocked(f.payload.create)
+    const plainCreate = create.getMockImplementation()!
+    create.mockImplementation(async (args) => {
+      const data = (args as unknown as { data: { action?: string } }).data
+      if (data.action === RECEIPTS.invoiceStarted) vi.setSystemTime(Date.now() + 31_000)
+      return plainCreate(args)
+    })
+    const errors: string[] = []
+    const logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: (message: string) => errors.push(message),
+      child: () => logger,
+    }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      await expect(
+        issueCorrectiveInvoiceForOrder(f.order, { ...f.deps, logger }),
+      ).resolves.toMatchObject({ outcome: 'failed' })
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(f.post).not.toHaveBeenCalled()
+    expect(f.audits.some((entry) => entry.action === RECEIPTS.invoiceStarted)).toBe(true)
+    expect(f.order.correctiveInvoiceStatus).toBe('failed')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(
+      /^RIASZTÁS: a helyesbítő beküldése az igénylés rögzítése után nem indult el/,
+    )
+    expect(await f.recover()).toMatchObject({ recoveryStatus: 'manual_review' })
+    expect(f.post).not.toHaveBeenCalled()
+  })
+
   it('a standalone claim made before recovery prevents the recovery path from submitting', async () => {
     const f = realDocuments()
     documents.corrective.mockImplementation(async (order, options) => {

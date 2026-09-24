@@ -94,9 +94,14 @@ mezőbe a rövid `<rendelésszám>-HELYESBITO-<seq>` megy, hogy a fiókban a sz�
 külön sorként, a rendelésszámmal kereshető legyen (a hosszú egyedi kulcs csak a
 `szamlaKulsoAzon`-ban utazik). A záron belüli Számlázz.hu-hívások közös, 45 s-os
 időkeretben futnak (`lock-budget.ts`): a beküldés csak akkor indul, ha a teljes
-timeoutja belefér, különben újrapróbálható hiba, beküldés nélkül. Így a zár
-tranzakcióját a Postgres 60 s-os tétlenségi korlátja nem öli le beküldés
-közben. Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
+timeoutja belefér, különben újrapróbálható hiba, beküldés nélkül. Az ellenőrzés
+kétszer fut: a beküldés előtti írások (igénylés-nyugta, pending-írás) előtt,
+az írásokra 5 s tartalékkal, majd a beküldés pillanatában is, mert ezek az
+írások is megakadhatnak (sorzár, pool-várakozás). Így a zár tranzakcióját a
+Postgres 60 s-os tétlenségi korlátja nem öli le beküldés közben. Ha a késői
+ellenőrzés egy visszatérítési igénylés rögzítése után bukik, a helyesbítő nem
+ment ki, és automatikus újrapróbálás nincs: `failed` + `RIASZTÁS:` (kézi
+rendezés; a Számlázz.hu-ba nem ment kérés). Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
 
 **Dátumszabály (NAV).** A helyesbítő teljesítési dátumának naptári hónapja nem
 térhet el az eredeti számláétól, ezért a kiállításkor küldött teljesítési
@@ -128,8 +133,12 @@ kiállítás az előző napra csúszott volna).
      pótlás kell);
    - helyesbítőnél nem igazolható áfakulcs (lásd fent) → `failed` +
      `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál csak
-     figyelmeztetés és újrapróbálható dobás, a státusz marad (kézi kiállítás
-     ilyenkor TILOS, a rendszer újrapróbálja);
+     figyelmeztetés és újrapróbálható dobás, a státusz marad. Automatikus
+     újrapróbálás nincs: a visszatérítési panel „Feldolgozás folytatása"
+     gombjával próbálható újra (kézi kiállítás ilyenkor TILOS);
+   - helyesbítőnél a beküldés előtti egyéb átmeneti hiba (lekérdezés,
+     elfogyott időkeret) → újrapróbálható dobás; a státusz marad, csak a
+     hibaüzenet (`correctiveInvoiceLastError`) íródik;
    - a beküldés előtti lekérdezés olyan bizonylatot talál, amelynek bruttója
      nem a helyesbítendő összeg (negatívan) → `failed` + `RIASZTÁS:`, átvétel
      és beküldés nélkül;
@@ -195,7 +204,12 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   válasz `szamlabrutto`-ja egyezik (számlánál a rendelés végösszegével,
   helyesbítőnél a negatív helyesbített összeggel), és a régi kulcson talált
   bizonylat a számlaadat-lekérdezés szerint is a miénk. Eltérésnél `failed` +
-  `RIASZTÁS:`, beküldés nélkül. A 7-es „nincs ilyen bizonylat" csak végleges
+  `RIASZTÁS:`, beküldés nélkül. Kivétel (rendelésszám-újrahasznosítás): ha a
+  helyesbítő adott sorszámához még nem volt beküldés, a régi kulcson talált,
+  igazoltan MÁS számlára hivatkozó helyesbítő egy korábbi, azonos
+  rendelésszámú rendelésé; ezt figyelmeztetéssel átlépjük, és a keresés, majd a
+  beküldés folytatódik. Hiányzó hivatkozásnál vagy egyező hivatkozás mellett
+  eltérő bruttónál továbbra is `failed` + `RIASZTÁS:`. A 7-es „nincs ilyen bizonylat" csak végleges
   (2xx) válaszban jelent hiányt; átmeneti státusz mellett újrapróbálható hiba.
   Ez oldja fel a „kérés elment, válasz elveszett" esetet. A lekérdezés **nem fogyaszt** a kísérlet-keretből, a hibája
   viszont szándékosan propagál: bizonytalan állapotban nem szabad vakon újra

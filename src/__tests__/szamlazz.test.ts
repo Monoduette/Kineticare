@@ -47,6 +47,7 @@ import {
   VAT_RATE_PERCENT,
   type InvoiceLineAmounts,
 } from '../lib/szamlazz/invoice'
+import { LOCKED_SECTION_HTTP_BUDGET_MS } from '../lib/szamlazz/lock-budget'
 import type { OrderPaidMoment } from '../lib/szamlazz/paid-date'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from '../lib/szamlazz/pdf'
 import { SzamlazzApiError, type IssueInvoiceResult } from '../lib/szamlazz/types'
@@ -3104,5 +3105,57 @@ describe('issueInvoiceForOrder — a zár alatti hívások közös időkerete', 
     expect(order?.invoiceAttempts ?? 0).toBe(0)
     expect(order?.invoiceStatus).toBe('pending')
     expect(order?.invoiceLastError).toContain('időkeret')
+  })
+
+  // rev2 (breaker): a keret-ellenőrzés a beküldés előtti pending-írás ELŐTT
+  // futott, a beküldés pedig a korábban kapott konfigurációval indult. Ha a
+  // pending-írás megakadt (sorzár, CLAUDE.md 6.), a POST a teljes 15 s-os
+  // timeouttal a 45 s-os kereten túl is elindult.
+  it('a korai ellenőrzés után 20 s-ig álló pending-írás mellett a beküldés NEM indul (a POST pillanatában is ellenőriz)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-24T10:00:00Z'))
+    const lockStart = Date.now()
+    const order = createOrder()
+    const payload = {
+      findByID: async () => order,
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        if (data.invoiceStatus === 'pending') vi.setSystemTime(Date.now() + 20_000)
+        Object.assign(order, data)
+        return order
+      },
+    } as never
+    const postOffsets: number[] = []
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-09-24',
+        // 24 s akadás + 1 s lekérdezés: a korai ellenőrzés (15 s timeout + 5 s
+        // tartalék) még átengedi, a pending-írás után a keret elfogy.
+        resolvePaidMoment: async () => {
+          vi.setSystemTime(Date.now() + 24_000)
+          return null
+        },
+        queryByKulsoAzon: async () => {
+          vi.setSystemTime(Date.now() + 1_000)
+          return null
+        },
+        postXml: async () => {
+          postOffsets.push(Date.now() - lockStart)
+          return { szamlaszam: 'KIN-2026-KESO' }
+        },
+      }),
+    ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
+
+    // Invariáns (lock-budget.ts): beküldés csak teljes timeouttal, a keretben.
+    for (const offset of postOffsets) {
+      expect(offset + ENABLED_CONFIG.timeoutMs).toBeLessThanOrEqual(LOCKED_SECTION_HTTP_BUDGET_MS)
+    }
+    expect(postOffsets).toHaveLength(0)
+    // A pending-írás megtörtént (a kísérlet rögzült); a státusz pending marad,
+    // így a resweep a beküldés előtti lekérdezéssel folytatja.
+    expect(order.invoiceAttempts).toBe(1)
+    expect(order.invoiceStatus).toBe('pending')
   })
 })

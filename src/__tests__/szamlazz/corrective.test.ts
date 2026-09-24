@@ -38,6 +38,7 @@ import {
   MAX_CORRECTIVE_ATTEMPTS,
 } from '../../lib/szamlazz/corrective'
 import { computeLineAmounts, VAT_RATE_PERCENT } from '../../lib/szamlazz/invoice'
+import { LOCKED_SECTION_HTTP_BUDGET_MS } from '../../lib/szamlazz/lock-budget'
 import type { InvoiceLookupResult } from '../../lib/szamlazz/pdf'
 import { SzamlazzApiError } from '../../lib/szamlazz/types'
 import type { Order } from '../../payload-types'
@@ -731,7 +732,9 @@ describe('issueCorrectiveInvoiceForOrder — idempotencia-feloldás és kísérl
     expect(order.correctiveInvoiceAttempts).toBe(1)
   })
 
-  it('F10 — a lekérdezés HIBÁJA sem fogyaszt kísérletet (csak a tényleges POST)', async () => {
+  // rev2: a beküldés előtti átmeneti hiba a státuszt sem írja át (mint az
+  // átmeneti áfakulcs-olvasás), csak a hibaüzenetet; korábban 'failed' lett.
+  it('F10 — a lekérdezés HIBÁJA sem kísérletet nem fogyaszt, sem a státuszt nem írja át (csak a hibaüzenetet)', async () => {
     const order = createOrder({
       correctiveInvoiceAttempts: 1,
       correctiveInvoiceAttemptsSeq: 1,
@@ -760,8 +763,12 @@ describe('issueCorrectiveInvoiceForOrder — idempotencia-feloldás és kísérl
 
     expect(posts).toBe(0)
     expect(order.correctiveInvoiceAttempts).toBe(1)
-    // Pending-írás sem történt: az egyetlen írás a hibaállapot rögzítése.
-    expect(updates.some((data) => data.correctiveInvoiceStatus === 'pending')).toBe(false)
+    // Az egyetlen írás a hibaüzenet rögzítése; státusz-írás (pending vagy
+    // failed) nem történt.
+    expect(updates).toEqual([
+      { correctiveInvoiceLastError: 'A Számlázz.hu elérhetetlen (bizonylat-lekérdezés).' },
+    ])
+    expect(order.correctiveInvoiceStatus).toBe('none')
   })
 
   it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS a kézi kiállítás előtti kereséssel', async () => {
@@ -1116,7 +1123,10 @@ describe('issueCorrectiveInvoiceForOrder — az eredeti számla áfakulcsa (a-sz
       (entry) => entry.level === 'warn' && entry.message.includes('átmeneti hiba'),
     )
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]?.message).toContain('automatikusan újrapróbálja')
+    // rev2: automatikus újrapróbálás nincs (a corrective jobot semmi nem
+    // állítja sorba); a valódi út a visszatérítési panel gombja.
+    expect(warnings[0]?.message).toContain('»Feldolgozás folytatása« gombjával újrapróbálható')
+    expect(warnings[0]?.message).not.toContain('automatikusan')
     expect(warnings[0]?.message).toContain('kézzel NE állítsd ki')
   })
 })
@@ -1178,40 +1188,176 @@ describe('issueCorrectiveInvoiceForOrder — átvétel csak egyeztetett bizonyla
   // keresni kell. PR #304 alatt a seq=1 beküldése elveszett válasszal (de
   // valójában kiállt) a régi kulcson; utána a seq=2 kiállt, így a seq=1
   // maradék jobja previousAttempts=0-val fut. Csak az új kulcsot keresve
-  // második NAV-helyesbítőt küldött volna be a seq=1-hez.
-  it('a seq=1 régi kulcson (PR #304) kiállt, bizonytalan helyesbítőjét a seq=2 után futó retry sem küldi be újra', async () => {
-    const order = createOrder({
-      correctiveInvoiceStatus: 'issued',
-      correctiveInvoiceNumber: 'KIN-2026-HE-2',
-      correctiveInvoiceSeq: 2,
-      correctiveInvoiceAttempts: 1,
-      correctiveInvoiceAttemptsSeq: 2,
-    })
-    const { payload } = createMockPayload(order)
-    invoiceData.query.mockImplementation(async (szamlaszam) => ({
-      szamlaszam,
-      vatKeys: ['27'],
-      sztornozott: false,
-      hivatkozottSzamlaszam: ORIGINAL_INVOICE_NUMBER,
-    }))
-    const posts: string[] = []
-    const result = await issueCorrectiveInvoiceForOrder(order, {
-      payload,
-      config: ENABLED_CONFIG,
-      refundSeq: 1,
-      amountHuf: REFUND_HUF,
-      queryByKulsoAzon: async (kulsoAzon) =>
-        kulsoAzon === 'KH-2026-000123-HELYESBITO-1' ? ownCorrective('KIN-2026-HE-1') : null,
-      postXml: async (xml) => {
-        posts.push(xml)
-        return { szamlaszam: 'KIN-2026-HE-DUPLA' }
+  // második NAV-helyesbítőt küldött volna be a seq=1-hez. rev2: a
+  // „bármely beküldés" feltétel két ágát külön sor rögzíti (csak a rögzített
+  // seq=2, illetve csak a seq=2 kísérlet-számlálója).
+  it.each([
+    {
+      eset: 'a seq=2 kiállt, saját kísérlettel',
+      state: {
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceNumber: 'KIN-2026-HE-2',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceAttempts: 1,
+        correctiveInvoiceAttemptsSeq: 2,
       },
+      recorded: { number: 'KIN-2026-HE-2', seq: 2 },
+    },
+    {
+      eset: 'csak a rögzített seq=2 (átvett bizonylat, kísérlet nélkül)',
+      state: {
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceNumber: 'KIN-2026-HE-2',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceAttempts: 0,
+        correctiveInvoiceAttemptsSeq: 0,
+      },
+      recorded: { number: 'KIN-2026-HE-2', seq: 2 },
+    },
+    {
+      eset: 'csak a seq=2 kísérlet-számlálója (bizonytalan beküldés, rögzített szám nélkül)',
+      state: {
+        correctiveInvoiceStatus: 'pending',
+        correctiveInvoiceSeq: 0,
+        correctiveInvoiceAttempts: 1,
+        correctiveInvoiceAttemptsSeq: 2,
+      },
+      recorded: { number: 'KIN-2026-HE-1', seq: 1 },
+    },
+  ])(
+    'a seq=1 régi kulcson (PR #304) kiállt helyesbítőjét a későbbi retry sem küldi be újra — $eset',
+    async ({ state, recorded }) => {
+      const order = createOrder(state)
+      const { payload } = createMockPayload(order)
+      invoiceData.query.mockImplementation(async (szamlaszam) => ({
+        szamlaszam,
+        vatKeys: ['27'],
+        sztornozott: false,
+        hivatkozottSzamlaszam: ORIGINAL_INVOICE_NUMBER,
+      }))
+      const posts: string[] = []
+      const result = await issueCorrectiveInvoiceForOrder(order, {
+        payload,
+        config: ENABLED_CONFIG,
+        refundSeq: 1,
+        amountHuf: REFUND_HUF,
+        queryByKulsoAzon: async (kulsoAzon) =>
+          kulsoAzon === 'KH-2026-000123-HELYESBITO-1' ? ownCorrective('KIN-2026-HE-1') : null,
+        postXml: async (xml) => {
+          posts.push(xml)
+          return { szamlaszam: 'KIN-2026-HE-DUPLA' }
+        },
+      })
+      expect(posts).toHaveLength(0)
+      expect(result).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'KIN-2026-HE-1' })
+      // A későbbi seq=2 rögzített száma nem íródik vissza a régebbire.
+      expect(order.correctiveInvoiceNumber).toBe(recorded.number)
+      expect(order.correctiveInvoiceSeq).toBe(recorded.seq)
+    },
+  )
+
+  // rev2 (breaker): rendelésszám-újrahasznosítás. Egy törölt, azonos
+  // rendelésszámú rendelés PR #304-es helyesbítője a régi
+  // `<rendelésszám>-HELYESBITO-2` kulcson ül, és MÁS számlára hivatkozik. A
+  // rev1 ezt minden későbbi seq-nél zártan elutasította, így a második
+  // visszatérítés helyesbítője véglegesen elakadt.
+  describe('rendelésszám-újrahasznosítás: a régi kulcson talált idegen bizonylat (ehhez a seq-hez még nem volt beküldés)', () => {
+    const seq1IssuedOnNewKey = {
+      correctiveInvoiceStatus: 'issued',
+      correctiveInvoiceNumber: 'KIN-2026-HE-1',
+      correctiveInvoiceSeq: 1,
+      correctiveInvoiceAttempts: 1,
+      correctiveInvoiceAttemptsSeq: 1,
+    }
+    const SECOND_REFUND_HUF = 3000
+
+    it('igazoltan más számlára hivatkozik: átlépve, a seq=2 helyesbítő kimegy', async () => {
+      invoiceData.query.mockImplementation(async (szamlaszam) =>
+        szamlaszam === 'IDEGEN-HE-2'
+          ? {
+              szamlaszam,
+              vatKeys: ['27'],
+              sztornozott: false,
+              hivatkozottSzamlaszam: 'KIN-2025-99',
+            }
+          : { szamlaszam, vatKeys: ['27'], sztornozott: false },
+      )
+      const order = createOrder(seq1IssuedOnNewKey)
+      const { payload } = createMockPayload(order)
+      const { logger, logged, alerts } = captureLevels()
+      const lookups: string[] = []
+      const posts: string[] = []
+      const result = await issueCorrectiveInvoiceForOrder(order, {
+        payload,
+        logger,
+        config: ENABLED_CONFIG,
+        refundSeq: 2,
+        amountHuf: SECOND_REFUND_HUF,
+        queryByKulsoAzon: async (kulsoAzon) => {
+          lookups.push(kulsoAzon)
+          return kulsoAzon === legacyCorrectiveKey(2)
+            ? { szamlaszam: 'IDEGEN-HE-2', szamlabrutto: -7000 }
+            : null
+        },
+        postXml: async (xml) => {
+          posts.push(xml)
+          return { szamlaszam: 'KIN-2026-HE-2' }
+        },
+      })
+      expect(result).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'KIN-2026-HE-2' })
+      expect(posts).toHaveLength(1)
+      expect(lookups).toEqual([correctiveKey(2), legacyCorrectiveKey(2)])
+      expect(alerts()).toEqual([])
+      expect(
+        logged.some(
+          (entry) => entry.level === 'warn' && entry.message.includes('más számlára hivatkozik'),
+        ),
+      ).toBe(true)
     })
-    expect(posts).toHaveLength(0)
-    expect(result).toEqual({ outcome: 'issued', correctiveInvoiceNumber: 'KIN-2026-HE-1' })
-    // A későbbi seq=2 rögzített száma nem íródik vissza a régebbire.
-    expect(order.correctiveInvoiceNumber).toBe('KIN-2026-HE-2')
-    expect(order.correctiveInvoiceSeq).toBe(2)
+
+    // A kivétel szűk: csak az IGAZOLTAN idegen hivatkozás léphető át.
+    it.each([
+      {
+        eset: 'a hivatkozás hiányzik',
+        found: { szamlaszam: 'KERDESES-HE-2', szamlabrutto: -SECOND_REFUND_HUF },
+        reference: undefined,
+        mismatch: `nem a(z) ${ORIGINAL_INVOICE_NUMBER} számú számlára hivatkozik`,
+      },
+      {
+        eset: 'a mi számlánkra hivatkozik, de a bruttó eltér',
+        found: { szamlaszam: 'KERDESES-HE-2', szamlabrutto: -7000 },
+        reference: ORIGINAL_INVOICE_NUMBER,
+        mismatch: 'bruttó végösszege -7000 Ft',
+      },
+    ])(
+      '$eset: zártan elutasítva (failed + RIASZTÁS, beküldés nélkül)',
+      async ({ found, reference, mismatch }) => {
+        invoiceData.query.mockImplementation(async (szamlaszam) => ({
+          szamlaszam,
+          vatKeys: ['27'],
+          sztornozott: false,
+          ...(reference ? { hivatkozottSzamlaszam: reference } : {}),
+        }))
+        const order = createOrder(seq1IssuedOnNewKey)
+        const { payload } = createMockPayload(order)
+        const { logger, alerts } = captureLevels()
+        const result = await issueCorrectiveInvoiceForOrder(order, {
+          payload,
+          logger,
+          config: ENABLED_CONFIG,
+          refundSeq: 2,
+          amountHuf: SECOND_REFUND_HUF,
+          queryByKulsoAzon: async (kulsoAzon) =>
+            kulsoAzon === legacyCorrectiveKey(2) ? found : null,
+          postXml: forbiddenPost,
+        })
+        expect(result.outcome).toBe('failed')
+        expect(order.correctiveInvoiceStatus).toBe('failed')
+        expect(alerts()).toHaveLength(1)
+        expect(alerts()[0]?.context).toMatchObject({ foundInvoiceNumber: 'KERDESES-HE-2' })
+        expect(String(alerts()[0]?.context?.mismatch)).toContain(mismatch)
+      },
+    )
   })
 
   it('a régi kulcson talált helyesbítő MÁS számlára hivatkozik: failed + RIASZTÁS, beküldés nélkül', async () => {
@@ -1294,6 +1440,81 @@ describe('issueCorrectiveInvoiceForOrder — a zár alatti hívások közös id�
     expect(callTimeouts).toEqual([15_000, 15_000, 15_000])
     expect(posts).toHaveLength(0)
     expect(order.correctiveInvoiceAttempts).toBe(1)
+  })
+
+  // rev2 (breaker): a keret-ellenőrzés a pending-írás ELŐTT futott, a POST a
+  // korábban kapott konfigurációval indult. Egy megakadt pending-írás (sorzár,
+  // CLAUDE.md 6.) után a POST a teljes 15 s-os timeouttal a kereten túl indult,
+  // a zárat pedig a 60 s-os tétlenségi korlát beküldés közben elengedte.
+  it('a korai ellenőrzés után 20 s-ig álló pending-írás mellett a beküldés NEM indul (a POST pillanatában is ellenőriz)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-24T10:00:00Z'))
+    const lockStart = Date.now()
+    const order = createOrder()
+    const payload = {
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        if (data.correctiveInvoiceStatus === 'pending') vi.setSystemTime(Date.now() + 20_000)
+        Object.assign(order, data)
+        return order
+      },
+    } as unknown as Payload
+    // 15 s lekérdezés + 5 s áfakulcs-olvasás: a korai ellenőrzés (15 s
+    // timeout + 5 s tartalék) még átengedi, a pending-írás után a keret elfogy.
+    invoiceData.query.mockImplementation(async (szamlaszam) => {
+      vi.setSystemTime(Date.now() + 5_000)
+      return { szamlaszam, vatKeys: ['27'], sztornozott: false }
+    })
+    const postOffsets: number[] = []
+    await expect(
+      issueCorrectiveInvoiceForOrder(order, {
+        payload,
+        config: ENABLED_CONFIG,
+        refundSeq: 1,
+        amountHuf: REFUND_HUF,
+        queryByKulsoAzon: async () => {
+          vi.setSystemTime(Date.now() + 15_000)
+          return null
+        },
+        postXml: async () => {
+          postOffsets.push(Date.now() - lockStart)
+          return { szamlaszam: 'KIN-2026-HE-KESO' }
+        },
+      }),
+    ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
+
+    // Invariáns (lock-budget.ts): beküldés csak teljes timeouttal, a keretben.
+    for (const offset of postOffsets) {
+      expect(offset + ENABLED_CONFIG.timeoutMs).toBeLessThanOrEqual(LOCKED_SECTION_HTTP_BUDGET_MS)
+    }
+    expect(postOffsets).toHaveLength(0)
+    expect(order.correctiveInvoiceAttempts).toBe(1)
+  })
+
+  it('1 s-nál kevesebb hátralévő keretnél lekérdezés sem indul (a régi kulcsú keresés elmarad)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-24T10:00:00Z'))
+    const order = createOrder({
+      correctiveInvoiceStatus: 'pending',
+      correctiveInvoiceAttempts: 1,
+      correctiveInvoiceAttemptsSeq: 1,
+    })
+    const { payload } = createMockPayload(order)
+    const lookups: string[] = []
+    await expect(
+      issueCorrectiveInvoiceForOrder(order, {
+        payload,
+        config: ENABLED_CONFIG,
+        refundSeq: 1,
+        amountHuf: REFUND_HUF,
+        queryByKulsoAzon: async (kulsoAzon) => {
+          lookups.push(kulsoAzon)
+          vi.setSystemTime(Date.now() + 44_500)
+          return null
+        },
+        postXml: forbiddenPost,
+      }),
+    ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
+    expect(lookups).toEqual([correctiveKey(1)])
   })
 })
 
