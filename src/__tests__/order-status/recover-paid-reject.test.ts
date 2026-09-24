@@ -706,6 +706,22 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
     return { order, payload, run }
   }
 
+  function spyLogger() {
+    const calls = { error: [] as string[], warn: [] as string[] }
+    const log: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (message) => {
+        calls.warn.push(message)
+      },
+      error: (message) => {
+        calls.error.push(message)
+      },
+      child: () => log,
+    }
+    return { log, calls }
+  }
+
   it('TooLowBalanceToMakeRefund: igazolt nullhatás, a kísérlet lezárul, és feltöltés után új kísérlet sikerül', async () => {
     const refund = vi.fn().mockRejectedValueOnce(rejection('TooLowBalanceToMakeRefund'))
     refund.mockImplementation(succeeded)
@@ -1044,11 +1060,29 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
     },
   )
 
-  it('egy elutasított (pénzt nem mozgató) visszatérítés-tranzakció nem akadálya az új kísérletnek', async () => {
-    const refund = vi.fn(succeeded)
-    const { order, run } = setup(refund)
-    const state = createState()
-    state.Transactions.push({
+  it('ismeretlen értelmű (Rejected) kapcsolódó visszatérítés-tranzakció mellett nincs új POST: egyszer rögzített, tartós leállás, fojtott riasztás', async () => {
+    const refund = vi.fn().mockRejectedValueOnce(rejection('TooLowBalanceToMakeRefund'))
+    refund.mockImplementation(succeeded)
+    const order = createOrder()
+    const f = fixture(order)
+    const { log, calls } = spyLogger()
+    const run = (now: Date, state: BarionPaymentStateResponse) =>
+      recoverRejectedSucceededPayment({
+        payload: f.payload,
+        order,
+        state,
+        reason: 'duplicate-paid-order',
+        log,
+        source: 'order-poll',
+        refundPayment: refund as never,
+        now,
+      })
+    expect(await run(at(1), createState())).toEqual({
+      action: 'failed',
+      detail: 'refund-pending-reconciliation',
+    })
+    const leftover = createState()
+    leftover.Transactions.push({
       TransactionId: REFUND_ID,
       POSTransactionId: POS_TRANSACTION_ID,
       TransactionType: 'RefundToBankCard',
@@ -1056,28 +1090,29 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
       Total: ORDER_TOTAL_HUF,
       RelatedId: TRANSACTION_ID,
     })
-    expect(await run(at(1), state)).toEqual({ action: 'refunded' })
+    // A várakozás után az 5 perces poll többször is ugyanezt látja.
+    for (const minutes of [62, 67, 72, 60 * 24 * 2])
+      expect(await run(at(minutes), leftover)).toEqual({
+        action: 'failed',
+        detail: 'foreign-refund-detected',
+      })
     expect(refund).toHaveBeenCalledTimes(1)
-    expect(order.status).toBe('refunded')
+    expect(order.status).toBe('payment_pending')
+    expect(f.audits.filter((audit) => audit.action === 'automatic-refund-blocked')).toEqual([
+      expect.objectContaining({
+        entityType: 'orders',
+        entityId: String(order.id),
+        after: { version: 1, detail: 'foreign-refund-detected', observedAt: at(62).toISOString() },
+      }),
+    ])
+    // Azonnal, majd naponta legfeljebb egyszer (a +67/+72 perces futás fojtva).
+    expect(calls.error.filter((message) => message.startsWith('RIASZTÁS'))).toEqual([
+      expect.stringContaining('már van visszatérítés ehhez a fizetéshez'),
+      expect.stringContaining('már van visszatérítés ehhez a fizetéshez'),
+    ])
   })
 
   describe('RIASZTÁS: sorozat-küszöb és fojtás rendelésenként', () => {
-    function spyLogger() {
-      const calls = { error: [] as string[], warn: [] as string[] }
-      const log: Logger = {
-        debug: () => {},
-        info: () => {},
-        warn: (message) => {
-          calls.warn.push(message)
-        },
-        error: (message) => {
-          calls.error.push(message)
-        },
-        child: () => log,
-      }
-      return { log, calls }
-    }
-
     it('javítható elutasításnál a 3. kísérlettől riaszt, utána naponta legfeljebb egyszer', async () => {
       const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
       const order = createOrder()
@@ -1097,21 +1132,23 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
       const alerts = () => calls.error.filter((message) => message.startsWith('RIASZTÁS'))
       let clock = at(1).getTime()
       const attemptAt: number[] = []
+      const alertsAfter: number[] = []
       for (let attempt = 1; attempt <= 7; attempt += 1) {
         attemptAt.push(clock)
         await run(new Date(clock))
         // Az 5 perces poll a várakozás alatt sem ismétli a riasztást.
         await run(new Date(clock + 5 * 60_000))
+        alertsAfter.push(alerts().length)
+        if (attempt === 2) expect(calls.warn.length).toBeGreaterThanOrEqual(2)
         clock += automaticRefundRetryDelayMs(attempt) + 60_000
       }
       expect(refund).toHaveBeenCalledTimes(7)
       // 1. és 2. kísérlet: csak figyelmeztetés; 3. (≈ +3 óra): riasztás; 4–5. (+7,
       // +15 óra): a napi fojtáson belül; 6. (+31 óra): újra; 7. (+55 óra): újra.
-      expect(calls.warn.length).toBeGreaterThanOrEqual(4)
-      expect(alerts()).toHaveLength(3)
+      expect(alertsAfter).toEqual([0, 0, 1, 1, 1, 2, 3])
       for (const message of alerts()) {
         expect(message).toContain('nincs elég egyenleg a Barion-tárcában')
-        expect(message).toContain('Tölts fel legalább 19 990 Ft')
+        expect(message).toContain('legalább 19 990 Ft egyenleg kell a tárcában')
       }
       expect(attemptAt[5]! - attemptAt[2]!).toBeGreaterThanOrEqual(24 * 3_600_000)
     })
@@ -1321,6 +1358,24 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
     expect(decideAutomaticRetry(mixed, new Date(T0 + 365 * 86_400_000)).kind).toBe('launch')
     const exhausted = [...mixed, failure(40, NO_REFUND)]
     expect(decideAutomaticRetry(exhausted, new Date(T0 + 365 * 86_400_000))).toEqual({
+      kind: 'stop',
+      detail: 'automatic-refund-attempts-exhausted',
+    })
+  })
+
+  it('a kód nélküli keret az egymás utáni sorozatra vonatkozik: egy javítható, kódolt elutasítás lezárja', () => {
+    const unexplained = (from: number, count: number) =>
+      Array.from({ length: count }, (_, index) => failure(from + index, NO_REFUND))
+    const limit = MAX_UNEXPLAINED_AUTOMATIC_REFUND_ATTEMPTS
+    // Hónapokig tartó TooLowBalance közben szórványos időtúllépések (kód nélküli nullhatás).
+    const interrupted = [
+      ...unexplained(0, limit - 1),
+      failure(10, LOW),
+      ...unexplained(20, limit - 1),
+    ]
+    const later = new Date(T0 + 365 * 86_400_000)
+    expect(decideAutomaticRetry(interrupted, later).kind).toBe('launch')
+    expect(decideAutomaticRetry([...interrupted, failure(40, NO_REFUND)], later)).toEqual({
       kind: 'stop',
       detail: 'automatic-refund-attempts-exhausted',
     })

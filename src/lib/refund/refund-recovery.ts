@@ -13,9 +13,16 @@ import {
   verifyAutomaticRefundCompletion,
 } from './auto-refund-recovery'
 import {
+  isCurrentAutomaticRefundBlock,
+  readLatestAutomaticRefundBlock,
+  type AutomaticRefundBlockDetail,
+} from './automatic-block'
+import {
+  AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
   decideAutomaticRetry,
   isResolvedAutomaticFailure,
   latestAutomaticFailure,
+  MAX_UNEXPLAINED_AUTOMATIC_REFUND_ATTEMPTS,
   nonFixableRejectionCode,
 } from './automatic-retry'
 import { rejectionCodesFromReference } from './barion-refund-evidence'
@@ -95,13 +102,30 @@ const RECONCILE_UNPROVABLE =
 /**
  * Soha ki nem fizetett rendelés automatikus visszatérítése (paid-reject): a
  * vásárló fizetése a Barionban sikerült, de a rendelést a rendszer nem fogadta
- * el. A szöveg a közös újrapróbálási szabályból (automatic-retry.ts) mondja
- * meg, mi lesz a következő lépés; a tulajdonosnak csak ott van teendője, ahol
- * az ok a Barion-fiókjában van (K6: TooLowBalanceToMakeRefund).
+ * el. A szöveg a közös újrapróbálási szabályból (automatic-retry.ts) és a
+ * tartós leállás-jelzésből (automatic-block.ts) mondja meg, mi lesz a
+ * következő lépés, és csak azt ígéri, amit a rendszer valóban megtesz. A
+ * tulajdonosnak ott van teendője, ahol az ok a Barion-fiókjában van (K6:
+ * TooLowBalanceToMakeRefund), vagy ahol a rendszer leállt. A panel ezt az
+ * „Ellenőrzés szükséges” doboz alatt mutatja, ezért a szöveg nem mondhatja,
+ * hogy nincs teendő (NN/g 10 heuristics, #4 Consistency and standards:
+ * https://www.nngroup.com/articles/ten-usability-heuristics/; GOV.UK Error
+ * message, „say what has happened and how to fix it”:
+ * https://design-system.service.gov.uk/components/error-message/).
  */
 const AUTOMATIC_CONTEXT =
   'A vásárló fizetése a Barionban sikerült, de a rendelést a rendszer nem fogadta el (például dupla vásárlás miatt), ezért az összeget automatikusan visszatéríti.'
 const NO_BARION_UI_REFUND = 'A Barion felületén ne indíts visszatérítést.'
+const AUTOMATIC_STOPPED_TAIL = `A rendszer nem mozgatott pénzt. Jelezd az üzemeltetőnek a rendelésszámmal együtt. ${NO_BARION_UI_REFUND}`
+
+const AUTOMATIC_BLOCK_REASONS: Record<AutomaticRefundBlockDetail, string> = {
+  'foreign-refund-detected':
+    'Az automatikus visszatérítés leállt, mert a Barionban már van visszatérítés ehhez a fizetéshez (például a Barion felületén indították).',
+  'source-transaction-unproven':
+    'Az automatikus visszatérítés leállt, mert a fizetés adatai a Barionban már nem egyeznek a rendeléssel (például a Barion felületén részben visszatérítették).',
+  'payment-state-unproven':
+    'Az automatikus visszatérítés leállt, mert a fizetés adatai a Barionban nem egyeznek a rendeléssel.',
+}
 
 const BUDAPEST_DATE_TIME = new Intl.DateTimeFormat('hu-HU', {
   timeZone: 'Europe/Budapest',
@@ -111,31 +135,80 @@ const BUDAPEST_DATE_TIME = new Intl.DateTimeFormat('hu-HU', {
   minute: '2-digit',
 })
 
-function automaticRefundMessage(failures: readonly RefundIntent[], now: Date): string {
+/**
+ * Meddig indít a fizetés-ellenőrzés (order-poll) új kísérletet ezen a
+ * rendelésen. A függő (payment_pending) rendelést korlát nélkül nézi; a
+ * lemondott és a sikertelen fizetésű rendelést csak a létrehozása után egy
+ * hétig (AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS); más állapotút egyáltalán nem.
+ * null = korlát nélkül.
+ */
+function automaticRetryDeadline(order: Order): number | null {
+  if (order.status === 'payment_pending') return null
+  if (order.status !== 'cancelled' && order.status !== 'payment_failed')
+    return Number.NEGATIVE_INFINITY
+  const createdAt = Date.parse(String(order.createdAt))
+  return Number.isFinite(createdAt)
+    ? createdAt + AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS
+    : Number.NEGATIVE_INFINITY
+}
+
+/** A soha ki nem fizetett rendelés automatikus visszatérítésének állapota és szövege. */
+function automaticRefundStatus(
+  order: Order,
+  failures: readonly RefundIntent[],
+  now: Date,
+): { message: string; retrying: boolean } {
+  const stopped = (reason: string) => ({
+    message: `${AUTOMATIC_CONTEXT} ${reason} ${AUTOMATIC_STOPPED_TAIL}`,
+    retrying: false,
+  })
   const decision = decideAutomaticRetry(failures, now)
-  if (decision.kind === 'stop') {
-    const stopped =
+  if (decision.kind === 'stop')
+    return stopped(
       decision.detail === 'automatic-refund-attempts-exhausted'
         ? 'Az automatikus visszatérítés több sikertelen kísérlet után leállt, mert a Barion adataiból nem derült ki, miért nem sikerül.'
         : nonFixableRejectionCode(failures) === 'AmountToRefundIsGreaterThanTransactionAmount'
           ? 'Az automatikus visszatérítés leállt, mert a Barion szerint ebből a fizetésből ennyi már nem téríthető vissza (például a Barion felületén már visszatérítették).'
-          : 'Az automatikus visszatérítés leállt, mert a Barion olyan okkal utasította el, amelyet a rendszer magától nem tud megoldani.'
-    return `${AUTOMATIC_CONTEXT} ${stopped} A rendszer nem mozgatott pénzt. Jelezd az üzemeltetőnek a rendelésszámmal együtt. ${NO_BARION_UI_REFUND}`
-  }
-  const when =
-    decision.kind === 'wait'
-      ? `${BUDAPEST_DATE_TIME.format(Date.parse(decision.notBefore))} után`
-      : 'hamarosan'
-  const retry = `A rendszer ${when} újra megpróbálja, és naponta próbálkozik, amíg sikerül.`
+          : 'Az automatikus visszatérítés leállt, mert a Barion olyan okkal utasította el, amelyet a rendszer magától nem tud megoldani.',
+    )
+  const next = decision.kind === 'wait' ? Date.parse(decision.notBefore) : now.getTime()
+  const deadline = automaticRetryDeadline(order)
+  if (deadline !== null && next > deadline)
+    return stopped(
+      'Az automatikus visszatérítés leállt, mert a rendszer ezt a rendelést már nem ellenőrzi újra magától, így új kísérletet sem indít.',
+    )
+  const when = decision.kind === 'wait' ? `${BUDAPEST_DATE_TIME.format(next)} után` : 'hamarosan'
+  const until =
+    deadline === null
+      ? ''
+      : ` Ennél a rendelésnél ${BUDAPEST_DATE_TIME.format(deadline)} után már nem próbálkozik; ha addig nem sikerül, jelezd az üzemeltetőnek a rendelésszámmal együtt.`
+  // Javítható ok: a rendszer addig próbálkozik, amíg sikerül (vagy a fenti határig).
+  const retry =
+    deadline === null
+      ? `A rendszer ${when} újra megpróbálja, és naponta próbálkozik, amíg sikerül.`
+      : `A rendszer ${when} újra megpróbálja, és naponta próbálkozik.${until}`
   const last = latestAutomaticFailure(failures)
   const codes = rejectionCodesFromReference(last?.reconciliationReference)
   if (codes.includes('TooLowBalanceToMakeRefund'))
-    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a Barion-tárcádban nincs elég egyenleg, pénzmozgás nem történt. ${retry} A visszatérítéshez legalább ${formatPriceHuf(last?.requestedAmountHuf ?? 0)} kell a tárcában, ezt egy feltöltés vagy a következő eladások biztosítják. ${NO_BARION_UI_REFUND}`
+    return {
+      message: `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a Barion-tárcádban nincs elég egyenleg, pénzmozgás nem történt. ${retry} A visszatérítéshez legalább ${formatPriceHuf(last?.requestedAmountHuf ?? 0)} kell a tárcában, ezt egy feltöltés vagy a következő eladások biztosítják. ${NO_BARION_UI_REFUND}`,
+      retrying: true,
+    }
   if (codes.includes('AuthenticationFailed'))
-    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert nem fogadta el a bolt azonosító kulcsát, pénzmozgás nem történt. Jelezd az üzemeltetőnek, hogy ellenőrizze a Barion-beállításokat. ${retry} ${NO_BARION_UI_REFUND}`
+    return {
+      message: `${AUTOMATIC_CONTEXT} A Barion elutasította, mert nem fogadta el a bolt azonosító kulcsát, pénzmozgás nem történt. Jelezd az üzemeltetőnek, hogy ellenőrizze a Barion-beállításokat. ${retry} ${NO_BARION_UI_REFUND}`,
+      retrying: true,
+    }
   if (codes.length > 0)
-    return `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a fiókod most nem jogosult visszatérítésre, pénzmozgás nem történt. Vedd fel a kapcsolatot a Barion ügyfélszolgálatával. ${retry} ${NO_BARION_UI_REFUND}`
-  return `${AUTOMATIC_CONTEXT} A legutóbbi kísérlet pénzmozgás nélkül lezárult. ${retry} Itt nincs teendőd. ${NO_BARION_UI_REFUND}`
+    return {
+      message: `${AUTOMATIC_CONTEXT} A Barion elutasította, mert a fiókod most nem jogosult visszatérítésre, pénzmozgás nem történt. Vedd fel a kapcsolatot a Barion ügyfélszolgálatával. ${retry} ${NO_BARION_UI_REFUND}`,
+      retrying: true,
+    }
+  // Ismeretlen ok: a kísérletek száma korlátos (automatic-retry.ts), ezt a szöveg is kimondja.
+  return {
+    message: `${AUTOMATIC_CONTEXT} A legutóbbi kísérlet pénzmozgás nélkül lezárult, az oka nem ismert. A rendszer ${when} újra megpróbálja. Ha egymás után ${MAX_UNEXPLAINED_AUTOMATIC_REFUND_ATTEMPTS} kísérlet végződik így, a rendszer leáll, és ezen a panelen jelzi, mi a teendő.${until} ${NO_BARION_UI_REFUND}`,
+    retrying: true,
+  }
 }
 
 /** Ennyi ideig egy provider_started kísérletnek még futhat az indítója (2 × Barion-plafon + tartalék). */
@@ -777,13 +850,22 @@ async function storageRecoveryStatus({
       // Lezárt, hatástalan kísérletek után a panel nem mondhatja, hogy nincs
       // mit visszatéríteni: a vásárló pénze még a boltnál van.
       const history = await loadRefundIntentsForOrder(payload, order.id)
-      if (history.length === 0) return { orderNumber, state: 'clear', message: COMPLETE }
       if (!history.every(isResolvedAutomaticFailure))
         return { orderNumber, state: 'manual_review', message: MANUAL }
-      const message = automaticRefundMessage(history, now)
-      return decideAutomaticRetry(history, now).kind === 'stop'
-        ? { orderNumber, state: 'manual_review', message }
-        : { orderNumber, state: 'manual_review', message, automaticRetry: true }
+      // Kísérlet előtti, tartós leállás (idegen visszatérítés, megváltozott
+      // fizetés): az előzmény ezt nem mutatja, a jelzés igen.
+      const block = await readLatestAutomaticRefundBlock(payload, order.id)
+      if (isCurrentAutomaticRefundBlock(block, history))
+        return {
+          orderNumber,
+          state: 'manual_review',
+          message: `${AUTOMATIC_CONTEXT} ${AUTOMATIC_BLOCK_REASONS[block.detail]} ${AUTOMATIC_STOPPED_TAIL}`,
+        }
+      if (history.length === 0) return { orderNumber, state: 'clear', message: COMPLETE }
+      const automatic = automaticRefundStatus(order, history, now)
+      return automatic.retrying
+        ? { orderNumber, state: 'manual_review', message: automatic.message, automaticRetry: true }
+        : { orderNumber, state: 'manual_review', message: automatic.message }
     }
     const entries = validatedRefundHistory(order)
     if (entries.length > 0 || order.status === 'refunded') {

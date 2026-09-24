@@ -832,6 +832,9 @@ describe('RefundPanel persisted recovery status', () => {
     { operationState: 'completed', orderNumber: ORDER_B },
     { operationState: 'completed', state: 'manual_review' },
     { operationState: 'unseen', state: 'recoverable' },
+    // Hatástalan kísérlet, de a rendelés nem rendezett: a kulcs nem törlődhet magától.
+    { operationState: 'no_effect', state: 'manual_review' },
+    { operationState: 'no_effect', state: 'recoverable' },
   ])(
     'keeps a reloaded key locked for unconfirmed or globally blocked outcome: %j',
     async (overrides) => {

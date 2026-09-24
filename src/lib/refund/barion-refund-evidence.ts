@@ -55,30 +55,66 @@ const REFUND_REVERSAL_TYPES: ReadonlySet<string> = new Set([
 const IN_PROGRESS_STATUSES: ReadonlySet<string> = new Set(['Prepared', 'Started'])
 
 /**
- * Van-e a GetState-ben a forrástranzakcióhoz kapcsolódó (RelatedId) sikeres
- * vagy folyamatban lévő visszatérítés, illetve sikertelen visszatérítés
- * sztornója. Ilyenkor automatikus visszatérítés nem indulhat: a pénz egy része
- * vagy egésze már visszament (például a Barion felületén indított
- * visszatérítéssel, K17), vagy egy korábbi kimenet nem egyértelmű. A sikertelen
- * (pl. elutasított) visszatérítés-tranzakció nem számít, mert az pénzt nem mozgatott.
+ * A forrástranzakcióhoz (RelatedId) kapcsolódó visszatérítési tranzakciók
+ * EGYETLEN, közös besorolása. Az automatikus indítás őre
+ * (hasRelatedRefundActivity) és a GetState-egyeztetés
+ * (refundEvidenceFromPaymentState) is ezt használja, így ami az egyiknek
+ * „nem mozgatott pénzt”, a másiknak sem lehet bizonytalan, és fordítva.
+ *
+ * Minden kapcsolódó visszatérítési tranzakció számít, a státuszától
+ * függetlenül (csak a hívó által már rögzített, saját visszatérítés nem). A
+ * Barion dokumentációja egy visszatérítés-tranzakció kudarcát nem státusszal,
+ * hanem sztornó-tranzakcióval írja le (TransactionType, oldid 4445:
+ * „StornoUnSuccessfulRefundToBankCard: Cancellation of an unsuccessful refund
+ * to a bank card”), a TransactionStatus lap (oldid 2547) „Rejected: The user
+ * rejected the transaction.” és „RejectedByShop: The transaction was cancelled
+ * by the shop.” leírása pedig nem mondja meg, mi lett egy visszatérítés
+ * pénzével. A dokumentált elutasítás (pl. TooLowBalanceToMakeRefund) a
+ * válasz Errors tömbjében jön (Calling_the_API: „If this array is empty then
+ * the request was processed successfully”), tranzakciót nem hagy. Egy
+ * ismeretlen értelmű, kapcsolódó tranzakció mellett ezért sem új
+ * visszatérítés nem indul, sem nullhatás nem mondható ki: kézi egyeztetés kell.
+ */
+function relatedRefundTransactions(
+  records: readonly BarionDetailedTransaction[],
+  sourceTransactionId: string,
+  consumedRefundTransactionIds: readonly string[] = [],
+): { reversals: BarionDetailedTransaction[]; refunds: BarionDetailedTransaction[] } {
+  const related = records.filter((tx) => sameBarionId(tx.RelatedId, sourceTransactionId))
+  return {
+    reversals: related.filter((tx) => REFUND_REVERSAL_TYPES.has(String(tx.TransactionType))),
+    refunds: related.filter(
+      (tx) =>
+        REFUND_TRANSACTION_TYPES.has(String(tx.TransactionType)) &&
+        !consumedRefundTransactionIds.some((id) => sameBarionId(id, tx.TransactionId)),
+    ),
+  }
+}
+
+function transactionRecords(state: BarionPaymentStateResponse): BarionDetailedTransaction[] {
+  const transactions: unknown[] = Array.isArray(state.Transactions) ? state.Transactions : []
+  return transactions.filter(
+    (item): item is BarionDetailedTransaction => typeof item === 'object' && item !== null,
+  )
+}
+
+/**
+ * Van-e a GetState-ben a forrástranzakcióhoz kapcsolódó visszatérítés vagy
+ * sztornó (relatedRefundTransactions). Ilyenkor automatikus visszatérítés nem
+ * indulhat: a pénz egy része vagy egésze már visszamehetett (például a Barion
+ * felületén indított visszatérítéssel, K17), vagy egy korábbi kimenet nem
+ * egyértelmű. Az automatikus út előzménye csak igazoltan hatástalan
+ * kísérletekből áll, rögzített saját visszatérítése nincs.
  */
 export function hasRelatedRefundActivity(
   state: BarionPaymentStateResponse,
   sourceTransactionId: string,
 ): boolean {
-  const transactions: unknown[] = Array.isArray(state.Transactions) ? state.Transactions : []
-  return transactions.some((item) => {
-    if (typeof item !== 'object' || item === null) return false
-    const tx = item as BarionDetailedTransaction
-    if (!sameBarionId(tx.RelatedId, sourceTransactionId)) return false
-    const type = String(tx.TransactionType)
-    if (REFUND_REVERSAL_TYPES.has(type)) return true
-    return (
-      REFUND_TRANSACTION_TYPES.has(type) &&
-      (tx.Status === 'Succeeded' ||
-        (typeof tx.Status === 'string' && IN_PROGRESS_STATUSES.has(tx.Status)))
-    )
-  })
+  const { reversals, refunds } = relatedRefundTransactions(
+    transactionRecords(state),
+    sourceTransactionId,
+  )
+  return reversals.length > 0 || refunds.length > 0
 }
 
 /** A checkout egyetlen fizetési tranzakciójának kereskedői azonosítója (start-checkout.ts). */
@@ -329,24 +365,24 @@ export function refundEvidenceFromPaymentState(input: {
     !Array.isArray(state.Transactions)
   )
     return { kind: 'unprovable' }
-  const records = (state.Transactions as unknown[]).filter(
-    (item): item is BarionDetailedTransaction => typeof item === 'object' && item !== null,
-  )
+  const records = transactionRecords(state)
   const sources = records.filter((tx) => sameBarionId(tx.TransactionId, input.sourceTransactionId))
   if (sources.length !== 1 || !nonEmpty(sources[0].POSTransactionId)) return { kind: 'unprovable' }
   const posTransactionId = sources[0].POSTransactionId
-  const related = records.filter((tx) => sameBarionId(tx.RelatedId, input.sourceTransactionId))
-  if (related.some((tx) => REFUND_REVERSAL_TYPES.has(String(tx.TransactionType))))
-    return { kind: 'unprovable' }
   const consumed = input.consumedRefundTransactionIds
-  const refunds = related.filter((tx) => REFUND_TRANSACTION_TYPES.has(String(tx.TransactionType)))
+  const all = relatedRefundTransactions(records, input.sourceTransactionId)
+  if (all.reversals.length > 0) return { kind: 'unprovable' }
   // Minden korábban rögzített visszatérítésnek pontosan egyszer látszania kell,
   // különben a Barion-adat és a helyi nyilvántartás nem vethető össze.
   if (
-    !consumed.every((id) => refunds.filter((tx) => sameBarionId(tx.TransactionId, id)).length === 1)
+    !consumed.every(
+      (id) => all.refunds.filter((tx) => sameBarionId(tx.TransactionId, id)).length === 1,
+    )
   )
     return { kind: 'unprovable' }
-  const fresh = refunds.filter((tx) => !consumed.some((id) => sameBarionId(id, tx.TransactionId)))
+  // Ugyanaz a besorolás, mint az indítás őrénél: minden más kapcsolódó
+  // visszatérítés friss, státusztól függetlenül.
+  const fresh = relatedRefundTransactions(records, input.sourceTransactionId, consumed).refunds
   if (fresh.length > 1) return { kind: 'unprovable' }
   if (fresh.length === 1) {
     const [refund] = fresh

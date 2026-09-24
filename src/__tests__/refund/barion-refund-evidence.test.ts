@@ -307,10 +307,7 @@ describe('refundEvidenceFromPaymentState (GetState-egyeztetés)', () => {
         SOURCE,
       ),
     ).toBe(true)
-    // Az elutasított visszatérítés pénzt nem mozgatott; más forráshoz kötött sem számít.
-    expect(hasRelatedRefundActivity(state([refundTx(REFUND, 5000, 'Rejected')]), SOURCE)).toBe(
-      false,
-    )
+    // Más forráshoz kötött visszatérítés nem számít.
     expect(
       hasRelatedRefundActivity(
         state([{ ...refundTx(REFUND, 5000), RelatedId: 'cccccccc-0000-0000-0000-000000000009' }]),
@@ -325,6 +322,18 @@ describe('refundEvidenceFromPaymentState (GetState-egyeztetés)', () => {
       ),
     ).toBe(true)
   })
+
+  // A Barion dokumentációja ezeknek a státuszoknak a jelentését visszatérítésre
+  // nem adja meg (TransactionStatus, oldid 2547): az indítás őre és az
+  // egyeztetés közös besorolása egyaránt „nem hatástalannak” veszi őket.
+  it.each(['Rejected', 'RejectedByShop', 'Failed', 'Timeout', 'Expired', 'Unknown'])(
+    'ismeretlen értelmű (%s) kapcsolódó visszatérítés: új indítást blokkol, és nullhatás sem mondható ki',
+    (status) => {
+      const paymentState = state([refundTx(REFUND, 5000, status)])
+      expect(hasRelatedRefundActivity(paymentState, SOURCE)).toBe(true)
+      expect(input(paymentState)).toEqual({ kind: 'unprovable' })
+    },
+  )
 
   it('nem bizonyítható, ha egy rögzített korábbi visszatérítés nem látszik, vagy a lista hiányos', () => {
     expect(input(state(), { consumedRefundTransactionIds: [EARLIER_REFUND] })).toEqual({
