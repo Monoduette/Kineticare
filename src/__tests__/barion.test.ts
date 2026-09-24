@@ -10,6 +10,7 @@ import {
   BARION_DEFAULT_PAYMENT_WINDOW,
   buildPaymentStartRequest,
   startPayment,
+  type StartPaymentItemInput,
   type StartPaymentParams,
 } from '../lib/barion/start'
 import { fetchPaymentState, mapBarionPaymentStatus } from '../lib/barion/state'
@@ -232,6 +233,48 @@ describe('getBarionConfig (env-assert)', () => {
         BARION_API_URL: 'https://api.barion.com',
       } as NodeJS.ProcessEnv).apiUrl,
     ).toBe('https://api.barion.com')
+  })
+})
+
+describe('buildPaymentStartRequest: a Barion mezőkorlátai', () => {
+  const withItem = (item: Partial<StartPaymentItemInput>, hint?: string): StartPaymentParams => ({
+    ...startParams,
+    cardHolderNameHint: hint,
+    transactions: [
+      {
+        ...startParams.transactions[0]!,
+        items: [{ ...startParams.transactions[0]!.items[0]!, ...item }],
+      },
+    ],
+  })
+
+  it('CardHolderNameHint: 45 karakterre vágva, 2 karakter alatt kimarad (docs: 2–45)', () => {
+    const hosszu = `Árvíztűrő Tükörfúrógép ${'Kovács-'.repeat(10)}Anna`
+    const request = buildPaymentStartRequest(withItem({}, hosszu), testConfig)
+    expect(Array.from(request.CardHolderNameHint ?? '')).toHaveLength(45)
+    expect(hosszu.startsWith(request.CardHolderNameHint ?? '')).toBe(true)
+
+    expect(buildPaymentStartRequest(withItem({}, ' A '), testConfig)).not.toHaveProperty(
+      'CardHolderNameHint',
+    )
+    expect(
+      buildPaymentStartRequest(withItem({}, '  Minta   Mari '), testConfig).CardHolderNameHint,
+    ).toBe('Minta Mari')
+  })
+
+  it('Item: üres leírás helyett a név megy; túl hosszú név, leírás és SKU óvatosan vágva', () => {
+    const ures = buildPaymentStartRequest(withItem({ description: '  ' }), testConfig)
+    expect(ures.Transactions[0]?.Items[0]?.Description).toBe('Kézrehabilitációs alapkurs')
+
+    const hosszu = buildPaymentStartRequest(
+      withItem({ name: 'N'.repeat(300), description: 'L\n'.repeat(400), sku: 'S'.repeat(150) }),
+      testConfig,
+    )
+    const item = hosszu.Transactions[0]?.Items[0]
+    expect(item?.Name).toHaveLength(250)
+    expect(Array.from(item?.Description ?? '').length).toBeLessThanOrEqual(500)
+    expect(item?.Description).not.toContain('\n')
+    expect(item?.SKU).toHaveLength(100)
   })
 })
 
