@@ -24,6 +24,8 @@
 import type { Payload, Where } from 'payload'
 
 import { budapestDateString } from '../date/budapest'
+import { logger } from '../logger'
+import { emitAlert } from './emit'
 
 /** Ellenőrzött értékhatárok évenként (Áfa tv. 188. § (2), 378. § (1)). */
 export const AAM_LIMIT_BY_YEAR: Readonly<Record<number, number>> = {
@@ -51,6 +53,7 @@ export interface AamOrderInput {
   readonly invoiceStatus?: string | null
   readonly invoiceCompletionDate?: string | null
   readonly stornoStatus?: string | null
+  /** Tájékoztató: a levonást NEM befolyásolja (lásd `evidencedCorrectiveRefund`). */
   readonly correctiveInvoiceStatus?: string | null
   /** A LEGUTÓBB kiállított helyesbítő refund-sorszáma (1-alapú, a `refunds` indexe + 1). */
   readonly correctiveInvoiceSeq?: number | null
@@ -81,34 +84,37 @@ export function aamLimitForYear(year: number): { limitHuf: number; verified: boo
  * Az a visszatérítés-összeg, amelynek a SAJÁT helyesbítő számlája a rendelés
  * adatai szerint igazoltan kiállt (0, ha ilyen nincs).
  *
- * MIÉRT CSAK EGY BEJEGYZÉS? A rendelésen a helyesbítő állapota EGYETLEN érték
- * (`correctiveInvoiceStatus` + `correctiveInvoiceNumber` +
- * `correctiveInvoiceSeq`), nem bejegyzésenkénti nyilvántartás:
- *  - a `correctiveInvoiceSeq` a LEGUTÓBB kiállított helyesbítő refund-sorszáma
- *    (src/lib/szamlazz/corrective.ts: a szám és a sorszám csak
- *    `refundSeq >= recordedSeq` mellett íródik), a `refunds[seq - 1]`
- *    bejegyzéshez tartozik (a corrective-invoice-issue job és a
- *    refund-guard is így olvassa);
- *  - a kiállítás nem feltétlenül sorrendi: egy korábbi sorszám újrapróbálása
- *    a későbbi után is lefuthat, és a státusz ilyenkor „issued” lesz, a
- *    sorszám viszont a későbbié marad. A korábbi bejegyzések bizonylatát tehát
- *    a rendelés NEM igazolja, és a státusz egy későbbi, még függő vagy
- *    sikertelen helyesbítőnél sem „issued”;
+ * A BIZONYÍTÉK a tárolt (`correctiveInvoiceSeq`, `correctiveInvoiceNumber`)
+ * pár, a pillanatnyi `correctiveInvoiceStatus` NEM számít:
+ *  - a pár a `refunds[seq - 1]` bejegyzés helyesbítőjéhez tartozik (a
+ *    corrective-invoice-issue job és a refund-guard is így olvassa);
+ *  - src/lib/szamlazz/corrective.ts a számot és a sorszámot KIZÁRÓLAG a
+ *    sikeres kiállítás ágain írja, egy mentésben, és csak
+ *    `refundSeq >= recordedSeq` mellett; a függő és a sikertelen ág csak az
+ *    állapotot és a kísérlet-számlálót írja, a párt sosem törli. A mezők
+ *    rendszer-írásúak (a mezőszintű `create`/`update` tiltott), kézzel sem
+ *    írhatók. Ugyanezt a párt használja a helyesbítő-kiállítás
+ *    „already-issued” rövidzára is (szám + pontos sorszám-egyezés, állapot
+ *    nélkül);
+ *  - a státusz ezért egy KÉSŐBBI sorszám függő vagy sikertelen helyesbítőjét
+ *    is jelentheti (azonos sorszám újrapróbálása a rövidzár miatt el sem jut
+ *    az állapot-írásig), a korábbi, már kiállt bizonylatot viszont nem
+ *    vonja vissza. Ha a levonást a státuszhoz kötnénk, egy későbbi hiba
+ *    visszaírná a keretbe a már igazolt csökkentést;
+ *  - a pár mindig csak EGY bejegyzést igazol: a kiállítás nem feltétlenül
+ *    sorrendi (egy korábbi sorszám újrapróbálása a későbbi után is lefuthat,
+ *    ilyenkor a pár a későbbié marad), tehát a többi bejegyzés bizonylatát a
+ *    rendelés nem igazolja;
  *  - a bejegyzésenkénti `refund-invoice-done` nyugta (audit-logs) csak az
  *    intent-kezelt visszatérítéseknél létezik, a régieknél nincs, ezért a
  *    keret-becslés nem építhet rá.
- * Így csak a `correctiveInvoiceSeq` bejegyzése vonható le, és csak ha a
- * státusz „issued” és a szám is ki van töltve (ugyanaz a feltétel, amellyel a
- * helyesbítő-kiállítás az „already-issued” döntést hozza). A többi
- * visszatérítés a keretben marad: az AAM adóhatár, a túlbecslés a biztonságos
- * irány. Helyesbítőt a részleges és a rendelést lezáró, nem első teljes
- * bejegyzés kap (refund-order.ts: „részrefund és záró rész: helyesbítő”); az
- * első, teljes visszatérítés stornót kap, azt a `stornoStatus` kezeli.
+ * A többi visszatérítés a keretben marad: az AAM adóhatár, a túlbecslés a
+ * biztonságos irány. Helyesbítőt a részleges és a rendelést lezáró, nem első
+ * teljes bejegyzés kap (refund-order.ts: „részrefund és záró rész:
+ * helyesbítő”); az első, teljes visszatérítés stornót kap, azt a
+ * `stornoStatus` kezeli.
  */
 function evidencedCorrectiveRefund(order: AamOrderInput): number {
-  if (order.correctiveInvoiceStatus !== 'issued') {
-    return 0
-  }
   const number = order.correctiveInvoiceNumber
   if (typeof number !== 'string' || number.trim() === '') {
     return 0
@@ -175,11 +181,41 @@ export type AamFindFn = (args: {
 const AAM_PAGE_SIZE = 500
 const AAM_MAX_PAGES = 40
 
+/** A riasztás kódja, ha a tárgyév rendelései nem olvashatók be teljesen. */
+export const AAM_INCOMPLETE_ALERT_CODE = 'aam-keret-nem-teljes'
+
+/**
+ * A tárgyév rendelései nem olvashatók be teljesen (a lapozás a korlátnál úgy
+ * állt meg, hogy lehet még adat). Részösszegből keret-szintet számolni TILOS,
+ * mert az adóhatár-használatot alábecsülné: a hívó hibát kap, nem állapotot.
+ */
+export class AamIncompleteError extends Error {
+  readonly pagesRead: number
+  readonly ordersRead: number
+
+  constructor(pagesRead: number, ordersRead: number) {
+    super(
+      `Az alanyi adómentes keret számítása nem teljes: ${String(pagesRead)} oldal (${String(ordersRead)} rendelés) után is volna még adat, keret-szint nem számolható.`,
+    )
+    this.name = 'AamIncompleteError'
+    this.pagesRead = pagesRead
+    this.ordersRead = ordersRead
+  }
+}
+
 /**
  * A tárgyév kiállított számlás rendelései. A teljesítési dátum szöveges
  * mező, ezért a szűrés a `createdAt`-re megy (az előző év decemberétől, mert
  * az év végi rendelés teljesítése átcsúszhat), a pontos évet a
  * `computeAamStatus` dönti el.
+ *
+ * TELJESSÉG: az eredmény csak akkor épül, ha a lapozás igazoltan a végére ért
+ * (rövid oldal vagy `hasNextPage === false`). Ha az `AAM_MAX_PAGES` korlát
+ * úgy fogy el, hogy az utolsó oldal tele volt és nem zárta le a listát, a
+ * függvény RIASZTÁST ír és `AamIncompleteError`-t dob: a részösszeg nem
+ * jelenhet meg az év összegeként, és szint sem számolható belőle. A hívók a
+ * dobást látható hibaként kezelik (a napi összesítőnél a poll-watch
+ * riasztása, a Figyelmet igényel blokkban a betöltési hiba szövege).
  */
 export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<AamStatus> {
   const year = budapestYear(nowMs)
@@ -190,26 +226,38 @@ export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<Aa
     ],
   }
   const orders: AamOrderInput[] = []
+  let complete = false
+  let pagesRead = 0
   for (let page = 1; page <= AAM_MAX_PAGES; page += 1) {
     const result = await find({ where, page, limit: AAM_PAGE_SIZE })
+    pagesRead = page
     orders.push(...result.docs)
     if (result.docs.length < AAM_PAGE_SIZE || result.hasNextPage === false) {
+      complete = true
       break
     }
+  }
+  if (!complete) {
+    emitAlert(
+      logger,
+      AAM_INCOMPLETE_ALERT_CODE,
+      'RIASZTÁS: az alanyi adómentes keret felhasználása nem számolható, mert a tárgyév számlás rendelései nem férnek bele a lekérdezés korlátjába. A keret-szint ezért nem látszik. Egyeztesd a keretet a könyvelővel, és szólj a fejlesztőnek.',
+      { module: 'alerts/aam', year, pagesRead, ordersRead: orders.length },
+    )
+    throw new AamIncompleteError(pagesRead, orders.length)
   }
   return computeAamStatus(orders, year)
 }
 
 /**
  * A `find`-hez kért mezők: a helyesbítős levonáshoz a `refunds`, a helyesbítő
- * állapota, sorszáma és száma is kell (lásd `evidencedCorrectiveRefund`).
+ * sorszáma és száma kell (lásd `evidencedCorrectiveRefund`).
  */
 export const AAM_ORDER_SELECT = {
   totalHufSnapshot: true,
   invoiceStatus: true,
   invoiceCompletionDate: true,
   stornoStatus: true,
-  correctiveInvoiceStatus: true,
   correctiveInvoiceSeq: true,
   correctiveInvoiceNumber: true,
   refunds: true,
