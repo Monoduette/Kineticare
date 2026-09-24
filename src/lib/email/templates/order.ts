@@ -1,18 +1,61 @@
 import { ctaLabel } from '../../cta-vocabulary'
 import { isMyCoursePlayerUrl } from '../../courses'
-import type { EmailTemplate } from '../types'
+import { budapestDateTimeString } from '../../date/budapest'
+import type { EmailTemplate, MailAttachment } from '../types'
 import { formatPriceHuf } from '../../format-price'
 import { accountEmailBlock, escapeHtml, renderLayout } from './layout'
+import { formatHungarianPhone, type SellerIdentity } from './order-legal'
 
 /**
  * Vásárlás-visszaigazoló sablon (paid után). Fiók-változatok: bejelentkezett,
  * password-setup (aktiváló link titok), login. Generált jelszó sosem a levélben.
+ *
+ * JOGI SZEREP: ez a levél a 45/2014. (II. 26.) Korm. rendelet 18. §-a szerinti
+ * tartós adathordozón adott visszaigazolás. Tartalmazza a vevő két, a
+ * pénztárban tett nyilatkozatának visszaigazolását (18. § b), a 29. § (1) m)
+ * feltétele), a 11. § (1) szerinti fő adatokat (a kurzus, a bruttó ár, a
+ * hozzáférés hossza, a szolgáltató adatai, a panaszkezelés), az ÁSZF teljes
+ * szövegét pedig mellékletként viszi. A szöveg jogászi jóváhagyásra vár.
  */
+
+/**
+ * A sablon változata: a küldés bizonyítékaként a műveletnaplóba kerül, így
+ * utólag is látszik, melyik szövegű levél ment ki. Érdemi szövegváltozásnál
+ * léptetni kell.
+ */
+export const ORDER_CONFIRMATION_TEMPLATE_VERSION = '2026-09-24.1'
+
+/**
+ * A pénztár két jelölőnégyzetének SZÓ SZERINTI szövege
+ * (src/components/checkout/CheckoutForm.tsx, „Elállási jog" kártya). A levél
+ * pontosan ezt idézi vissza; az egyezést őr-teszt köti a pénztár forrásához
+ * (src/__tests__/order-paid-visszaigazolas.test.ts), hogy a kettő ne
+ * csúszhasson szét.
+ */
+export const WAIVER_START_STATEMENT =
+  'Kifejezetten kérem, hogy a digitális tartalomhoz a hozzáférés azonnal megkezdődjön.'
+export const WAIVER_LOSS_STATEMENT =
+  'Tudomásul veszem, hogy a teljesítés megkezdésével elveszítem a 14 napos elállási jogomat.'
+
 export interface OrderConfirmationItem {
   title: string
   quantity: number
   /** Tétel bruttó végösszege (egységár × mennyiség). */
   totalHuf: number
+  /**
+   * A hozzáférés hossza napokban (a termék `accessDurationDays` mezőjéből):
+   * `null` = nem jár le. Hiányában (`undefined`) a hossz nem ismert, és a
+   * levél nem állít róla semmit.
+   */
+  accessDurationDays?: number | null
+}
+
+/** Az ÁSZF a levélben: a melléklet és a weboldali címe. */
+export interface OrderConfirmationTerms {
+  /** A mellékelt ÁSZF-szöveg; hiányában csak a link megy (a hívó ilyenkor riaszt). */
+  attachment?: MailAttachment | null
+  /** A /aszf oldal abszolút címe. */
+  url: string
 }
 
 export type OrderConfirmationAccount =
@@ -32,6 +75,140 @@ export type OrderConfirmationAccount =
       email: string
     }
 
+/**
+ * A tétel másodlagos sora: darabszám és, ha ismert, a hozzáférés hossza. A
+ * megfogalmazás a kurzusoldal tényadat-soraival egyezik
+ * (src/components/courses/sales-content.ts: `factHighlights` „N napos
+ * hozzáférés", `factSteps` „A hozzáférésed nem jár le"), hogy a vevő ugyanazt
+ * olvassa a levélben, amit vásárláskor látott.
+ */
+function itemMeta(item: OrderConfirmationItem): string {
+  const quantity = `${item.quantity} db`
+  if (item.accessDurationDays === undefined) {
+    return quantity
+  }
+  if (item.accessDurationDays === null || item.accessDurationDays <= 0) {
+    return `${quantity}, a hozzáférés nem jár le`
+  }
+  return `${quantity}, ${item.accessDurationDays} napos hozzáférés`
+}
+
+/** A nyilatkozat időpontja magyar alakban; hibás időbélyegnél null. */
+function statementTime(iso: string): string | null {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? null : budapestDateTimeString(date)
+}
+
+/** Egy címkés jogi bekezdés: félkövér címke kettősponttal, utána a szöveg. */
+interface LabeledParagraph {
+  label: string
+  /** Sima szöveg (escape-elve kerül a HTML-be). */
+  body: string
+}
+
+function labeledHtml(paragraph: LabeledParagraph): string {
+  return `<strong>${escapeHtml(paragraph.label)}:</strong> ${escapeHtml(paragraph.body)}`
+}
+
+function labeledText(paragraph: LabeledParagraph): string {
+  return `${paragraph.label}: ${paragraph.body}`
+}
+
+/**
+ * A levél jogi része a gomb UTÁN, a kártyán belül (záró bekezdések). NN/g,
+ * Transactional and Confirmation Email: „start with the information that
+ * matters most to users", a „what to do if things go wrong" jellegű tudnivaló
+ * lejjebb kerül (https://www.nngroup.com/articles/transactional-and-confirmation-email/).
+ * GOV.UK: a levél adja meg a hivatkozási számot és az elérhetőséget
+ * (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages).
+ * Minden bekezdés félkövér címkével indul, hogy a hosszabb rész is átfutható
+ * legyen.
+ */
+function legalParagraphs(input: {
+  withdrawalWaiverAt?: string | null
+  seller?: SellerIdentity | null
+  terms?: OrderConfirmationTerms | null
+}): { html: string[]; text: string[] } {
+  const html: string[] = []
+  const text: string[] = []
+  const push = (paragraph: LabeledParagraph): void => {
+    html.push(labeledHtml(paragraph))
+    text.push(labeledText(paragraph))
+  }
+
+  if (typeof input.withdrawalWaiverAt === 'string') {
+    const time = statementTime(input.withdrawalWaiverAt)
+    const when = time ? `a rendelésed leadásakor (${time})` : 'a rendelésed leadásakor'
+    // Mindkét nyilatkozat kettősponttal bevezetett, szó szerinti idézet: nagy
+    // kezdőbetűvel, a saját záró pontjával az idézőjelen belül (AkH. 12.
+    // kiadás, 256. a); https://hu.wikisource.org/wiki/A_magyar_helyes%C3%ADr%C3%A1s_szab%C3%A1lyai/Az_%C3%ADr%C3%A1sjelek).
+    push({
+      label: 'Az elállási jogodról',
+      body:
+        `${when} két nyilatkozatot tettél. Az első: „${WAIVER_START_STATEMENT}” ` +
+        `A második: „${WAIVER_LOSS_STATEMENT}” Ezzel a levéllel mindkét nyilatkozatodat ` +
+        'visszaigazoljuk. A hozzáférést a kérésednek megfelelően azonnal megnyitottuk.',
+    })
+  }
+
+  push({
+    label: 'A kurzusról',
+    body:
+      'online videókurzust vásároltál, vagyis nem tárgyi adathordozón nyújtott digitális ' +
+      'tartalmat. Belépés után a fiókodban, böngészőből nézheted meg asztali gépen, ' +
+      'laptopon vagy mobileszközön. Stabil internetkapcsolat kell hozzá, a lejátszáshoz a ' +
+      'Google Chrome vagy a Safari böngészőt javasoljuk. A videók lementése és másolása tilos.',
+  })
+
+  if (input.terms) {
+    push({
+      label: 'Általános szerződési feltételek (ÁSZF)',
+      body: input.terms.attachment
+        ? `a teljes szövegét mellékeltük ehhez a levélhez (${input.terms.attachment.filename}), ` +
+          `hogy később is meglegyen. A weboldalon is elolvashatod: ${input.terms.url}`
+        : `a teljes szövegét a weboldalon olvashatod: ${input.terms.url}`,
+    })
+  }
+
+  const seller = input.seller
+  if (seller) {
+    const court = seller.registryCourt ? ` (${seller.registryCourt})` : ''
+    const lines = [
+      seller.name,
+      `Székhely: ${seller.seat}`,
+      `Cégjegyzékszám: ${seller.companyRegistrationNumber}${court}`,
+      `Adószám: ${seller.taxNumber}`,
+      `E-mail: ${seller.email}`,
+      `Telefon: ${formatHungarianPhone(seller.phone)}`,
+    ]
+    html.push(
+      `<strong>A szolgáltató adatai:</strong><br />${lines.map((line) => escapeHtml(line)).join('<br />')}`,
+    )
+    text.push(['A szolgáltató adatai:', ...lines].join('\n'))
+
+    const place = seller.complaintHandledAtSeat
+      ? ' (a székhelyünk egyben a panaszügyintézés helye is)'
+      : ''
+    push({
+      label: 'Ha panaszod van',
+      body:
+        `írd meg nekünk e-mailben vagy postai levélben a fenti elérhetőségeken${place}. ` +
+        'Legkésőbb 30 napon belül írásban válaszolunk. Ha nem sikerül megegyeznünk, ingyenesen ' +
+        'fordulhatsz a lakóhelyed vagy a tartózkodási helyed szerinti békéltető testülethez ' +
+        '(elérhetőségük: www.bekeltetes.hu). A panaszkezelés részleteit, a további ' +
+        'jogérvényesítési lehetőségeidet és a hibás teljesítés esetén járó kellékszavatossági ' +
+        'jogaidat az ÁSZF írja le.',
+    })
+  }
+
+  // A szöveges változatban üres sor választja el a bekezdéseket: a jogi rész
+  // hosszabb, egybefolyva nem lenne átfutható.
+  return {
+    html,
+    text: text.flatMap((paragraph, index) => (index === 0 ? [paragraph] : ['', paragraph])),
+  }
+}
+
 export function orderConfirmationEmail(input: {
   orderNumber: string
   buyerName?: string | null
@@ -42,6 +219,17 @@ export function orderConfirmationEmail(input: {
   invoiceNote: boolean
   /** A fiók állapotából adódó változat (lásd a fájl fejlécét). */
   account?: OrderConfirmationAccount
+  /**
+   * A két elállási nyilatkozat időpontja (ISO, a rendelés
+   * `consentWithdrawalWaiverAt` mezője). CSAK akkor adható át, ha a vevő a
+   * nyilatkozatokat ténylegesen megtette; hiányában a levél nem igazol vissza
+   * olyat, ami nem történt meg.
+   */
+  withdrawalWaiverAt?: string | null
+  /** A szolgáltató adatai az ÁSZF-ből (lásd order-legal.ts). */
+  seller?: SellerIdentity | null
+  /** Az ÁSZF melléklete és címe. */
+  terms?: OrderConfirmationTerms | null
 }): EmailTemplate {
   const greeting = input.buyerName?.trim() ? `Kedves ${input.buyerName.trim()}!` : 'Szia!'
 
@@ -72,10 +260,11 @@ export function orderConfirmationEmail(input: {
     title: 'Amit megvettél',
     rows: input.items.map((item) => ({
       title: item.title,
-      meta: `${item.quantity} db`,
+      meta: itemMeta(item),
       amount: formatPriceHuf(item.totalHuf),
     })),
-    totalLabel: 'Végösszeg',
+    // 45/2014. Korm. rendelet 11. § (1) e): az adóval megnövelt teljes összeg.
+    totalLabel: 'Végösszeg (bruttó)',
     totalValue: formatPriceHuf(input.totalHuf),
   }
 
@@ -124,8 +313,16 @@ export function orderConfirmationEmail(input: {
     cta = { label: ctaLabel('sign-in'), url: account.loginUrl }
   }
 
+  const legal = legalParagraphs({
+    withdrawalWaiverAt: input.withdrawalWaiverAt,
+    seller: input.seller,
+    terms: input.terms,
+  })
+  const attachment = input.terms?.attachment ?? null
+
   return {
     subject: `Sikeres vásárlás: ${input.orderNumber}`,
+    ...(attachment ? { attachments: [attachment] } : {}),
     ...renderLayout({
       // Az előnézeti szöveg a postaláda LISTÁJÁBAN áll a tárgy mellett. Enélkül
       // a kliens a levél első szavait húzná be, ami itt a wordmark lenne.
@@ -137,7 +334,21 @@ export function orderConfirmationEmail(input: {
       summary,
       items,
       cta,
+      closingParagraphsHtml: legal.html,
+      closingParagraphsText: legal.text,
       ...(note ? { note } : {}),
+      // A szolgáltató adataival a levél megválaszolható: a Reply-To a
+      // szolgáltató e-mail-címe (a hívó teszi a fejlécbe), ezért a lábléc sem
+      // mondhatja, hogy ne válaszolj (GOV.UK: „contact details for your
+      // service if the user might need to contact you").
+      ...(input.seller
+        ? {
+            footer: {
+              reason: `Ezt a levelet azért kapod, mert a Kineticare oldalán vásároltál (rendelésszám: ${input.orderNumber}).`,
+              replyNote: `Kérdésed vagy panaszod van? Válaszolj erre a levélre, vagy írj a(z) ${input.seller.email} címre.`,
+            },
+          }
+        : {}),
     }),
   }
 }

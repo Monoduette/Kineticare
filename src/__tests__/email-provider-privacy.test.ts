@@ -115,3 +115,39 @@ describe('provider logger: a teljes tárgy és a tartalom egyik ágon sem kerül
     },
   )
 })
+
+describe('provider: melléklet átadása napló-szivárgás nélkül', () => {
+  const attachment = {
+    filename: 'DUMMY_PRIVATE_FILENAME.txt',
+    content: `${markers[2]} melléklet-tartalom`,
+    contentType: 'text/plain; charset=utf-8',
+  }
+
+  for (const provider of ['smtp', 'resend'] as const) {
+    it(`${provider}: a melléklet változatlanul jut el, a naplóba csak a darabszáma kerül`, async () => {
+      if (provider === 'smtp') vi.stubEnv('SMTP_HOST', 'smtp.example.test')
+      if (provider === 'resend') vi.stubEnv('RESEND_API_KEY', 'DUMMY-NOT-A-REAL-KEY')
+      const { sendMail } = await import('../lib/email/provider')
+      const result = await sendMail({
+        to: 'vevo@example.test',
+        ...templates[0],
+        attachments: [attachment],
+      })
+      expect(result).toMatchObject({ ok: true, provider })
+      const message =
+        provider === 'smtp' ? transport.smtp.mock.calls[0][1] : transport.resend.mock.calls[0][2]
+      expect(message.attachments).toEqual([attachment])
+      const output = lines.join('\n')
+      expect(output).toContain('"attachmentCount":1')
+      expect(output).not.toContain('DUMMY_PRIVATE_FILENAME')
+      expect(output).not.toContain('melléklet-tartalom')
+    })
+  }
+
+  it('üres melléklet-listánál a MailMessage-ben nincs attachments kulcs', async () => {
+    vi.stubEnv('RESEND_API_KEY', 'DUMMY-NOT-A-REAL-KEY')
+    const { sendMail } = await import('../lib/email/provider')
+    await sendMail({ to: 'vevo@example.test', ...templates[0], attachments: [] })
+    expect(transport.resend.mock.calls[0][2]).not.toHaveProperty('attachments')
+  })
+})

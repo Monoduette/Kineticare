@@ -87,6 +87,59 @@ describe('sendViaResend', () => {
     expect((error as EmailSendError).retryable).toBe(true)
   })
 
+  it('melléklet: base64 tartalom, kifejezett MIME-típus a Resend alakjában', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: 'email-att' }))
+    const content = '﻿Általános Szerződési Feltételek\r\nŐrizd meg.\r\n'
+
+    await sendViaResend(DUMMY_API_KEY, 'a@b.hu', {
+      ...MESSAGE,
+      attachments: [
+        { filename: 'Kineticare-ASZF.txt', content, contentType: 'text/plain; charset=utf-8' },
+      ],
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as {
+      attachments?: Array<{ filename: string; content: string; content_type: string }>
+    }
+    expect(body.attachments).toEqual([
+      {
+        filename: 'Kineticare-ASZF.txt',
+        content: Buffer.from(content, 'utf8').toString('base64'),
+        content_type: 'text/plain; charset=utf-8',
+      },
+    ])
+    expect(Buffer.from(body.attachments?.[0].content ?? '', 'base64').toString('utf8')).toBe(
+      content,
+    )
+  })
+
+  it('melléklet nélkül a kérés törzsében nincs attachments kulcs', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: 'email-plain' }))
+    await sendViaResend(DUMMY_API_KEY, 'a@b.hu', MESSAGE)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).not.toHaveProperty('attachments')
+  })
+
+  it('409 concurrent_idempotent_requests ÚJRAPRÓBÁLHATÓ, más 409 végleges', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(409, { name: 'concurrent_idempotent_requests', message: 'in progress' }),
+    )
+    const concurrent = (await sendViaResend(DUMMY_API_KEY, 'a@b.hu', MESSAGE).catch(
+      (caught: unknown) => caught,
+    )) as EmailSendError
+    expect(concurrent).toBeInstanceOf(EmailSendError)
+    expect(concurrent.retryable).toBe(true)
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(409, { name: 'invalid_idempotent_request', message: 'different payload' }),
+    )
+    const mismatch = (await sendViaResend(DUMMY_API_KEY, 'a@b.hu', MESSAGE).catch(
+      (caught: unknown) => caught,
+    )) as EmailSendError
+    expect(mismatch.retryable).toBe(false)
+  })
+
   it('a hibaüzenet törzse 200 karakterre vágva', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500, 'x'.repeat(500)))
     const error = (await sendViaResend(DUMMY_API_KEY, 'a@b.hu', MESSAGE).catch(

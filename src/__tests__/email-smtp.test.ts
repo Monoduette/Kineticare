@@ -5,6 +5,7 @@ import {
   dotStuff,
   encodeWord,
   formatFromHeader,
+  safeAttachmentFilename,
   stripHeaderBreaks,
 } from '../lib/email/smtp'
 
@@ -66,6 +67,71 @@ describe('buildMessage', () => {
     // CRLF-sorvégek mindenhol (SMTP-követelmény): a \r\n-párokat eltávolítva
     // nem maradhat magányos \r vagy \n:
     expect(raw.replaceAll('\r\n', '')).not.toMatch(/[\r\n]/)
+  })
+
+  it('melléklettel multipart/mixed: elöl a változatlan text+html alternatíva, utána a fájl', () => {
+    const content = '﻿Általános Szerződési Feltételek\r\n'.repeat(40)
+    const raw = buildMessage(config, {
+      to: ['a@example.test'],
+      subject: 'Sikeres vásárlás',
+      text: 'Szöveges változat',
+      html: '<p>HTML változat</p>',
+      attachments: [
+        { filename: 'Kineticare-ASZF.txt', content, contentType: 'text/plain; charset=utf-8' },
+      ],
+    })
+
+    const mixed = /multipart\/mixed; boundary="([^"]+)"/.exec(raw)?.[1]
+    const alternative = /multipart\/alternative; boundary="([^"]+)"/.exec(raw)?.[1]
+    expect(mixed).toBeDefined()
+    expect(alternative).toBeDefined()
+    // Egyik határoló sem előtagja a másiknak (RFC 2046, 5.1.1).
+    expect(mixed?.startsWith(alternative ?? '')).toBe(false)
+    expect(alternative?.startsWith(mixed ?? '')).toBe(false)
+
+    const parts = raw.split(`--${mixed}`)
+    // preambulum, alternatíva, melléklet, záró
+    expect(parts).toHaveLength(4)
+    expect(parts[1]).toContain(`Content-Type: multipart/alternative; boundary="${alternative}"`)
+    expect(parts[1]).toContain(Buffer.from('Szöveges változat', 'utf8').toString('base64'))
+    expect(parts[2]).toContain(
+      'Content-Type: text/plain; charset=utf-8; name="Kineticare-ASZF.txt"',
+    )
+    expect(parts[2]).toContain('Content-Disposition: attachment; filename="Kineticare-ASZF.txt"')
+    const encoded = parts[2].split('\r\n\r\n')[1].replace(/\r\n/g, '')
+    expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(content)
+    expect(parts[2].split('\r\n').every((line) => line.length <= 76)).toBe(true)
+    expect(parts[3].startsWith('--')).toBe(true)
+    expect(raw.replaceAll('\r\n', '')).not.toMatch(/[\r\n]/)
+  })
+
+  it('melléklet nélkül NINCS multipart/mixed burok (a korábbi alak változatlan)', () => {
+    const raw = buildMessage(config, {
+      to: ['a@example.test'],
+      subject: 'Teszt',
+      text: 'törzs',
+      html: '<b>törzs</b>',
+      attachments: [],
+    })
+    expect(raw).not.toContain('multipart/mixed')
+    expect(raw).not.toContain('Content-Disposition')
+  })
+
+  it('a melléklet nevébe rejtett fejléc-injekció és idézőjel nem jut ki', () => {
+    expect(safeAttachmentFilename('ÁSZF "x".txt\r\nBcc: rossz@example.test')).toBe(
+      '_SZF__x_.txt__Bcc__rossz_example.test',
+    )
+    expect(safeAttachmentFilename('')).toBe('melleklet')
+    const raw = buildMessage(config, {
+      to: ['a@example.test'],
+      subject: 'Teszt',
+      text: 'törzs',
+      html: '<b>törzs</b>',
+      attachments: [
+        { filename: 'a"\r\nBcc: rossz@example.test', content: 'x', contentType: 'text/plain' },
+      ],
+    })
+    expect(raw.split('\r\n').some((line) => line.startsWith('Bcc:'))).toBe(false)
   })
 
   it('a jelszó NEM kerül az üzenetbe', () => {

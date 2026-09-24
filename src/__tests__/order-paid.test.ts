@@ -122,20 +122,29 @@ describe('onOrderPaid', () => {
     expect(sent).toEqual(['anna@example.test'])
   })
 
-  it('e-mail-küldési hiba (ok:false) is csak naplózás — nem dob', async () => {
+  it('e-mail-küldési hiba (ok:false): újrapróbálja, végül RIASZT, de nem dob', async () => {
+    const { log, entries } = createCapturingLogger()
+    const send = vi.fn(async () => ({
+      ok: false,
+      provider: 'smtp' as const,
+      retryable: true,
+      error: 'SMTP down',
+    }))
     await expect(
       onOrderPaid({
         payload: {} as never,
         order: createOrder(),
+        logger: log,
         queueInvoice: async () => true,
-        send: async () => ({
-          ok: false,
-          provider: 'smtp' as const,
-          retryable: true,
-          error: 'SMTP down',
-        }),
+        send,
+        sleep: async () => {},
       }),
     ).resolves.toBeUndefined()
+    expect(send).toHaveBeenCalledTimes(3)
+    const alerts = entries.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].msg).toContain('RIASZTÁS')
+    expect(alerts[0].msg).toContain('visszaigazoló e-mail NEM ment ki')
   })
 
   it('címzett nélküli rendelésnél az e-mail kimarad (a job ettől megy)', async () => {
