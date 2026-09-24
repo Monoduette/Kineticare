@@ -14,6 +14,16 @@ import {
   paymentWindowToMs,
   startCheckout,
 } from '../lib/checkout/start-checkout'
+import {
+  CHECKOUT_PAYEE_EMAIL_ACCOUNT,
+  CHECKOUT_PAYEE_EMAIL_GUEST,
+  CHECKOUT_PAYMENT_CONFIG_UNAVAILABLE,
+  CHECKOUT_START_REJECTED,
+  CHECKOUT_TERMS_ERROR,
+} from '../lib/checkout/form-submission'
+import { CHECKOUT_PAYMENT_STATE_UNAVAILABLE } from '../lib/checkout/pending-payment'
+import { formatPriceHuf } from '../lib/format-price'
+import type { Logger } from '../lib/logger'
 import type { PaidRejectRecoveryResult } from '../lib/order-status/recover-paid-reject'
 import { barionPaymentAdapter, withoutPluginPaymentEndpoints } from '../lib/payments/barion-adapter'
 import { buyerFromOrder } from '../lib/szamlazz/invoice'
@@ -78,6 +88,8 @@ interface MockPayloadOptions {
   authUser?: User | null
   /** A Barion-azonosító mentése dobjon (persist-hiba ág). */
   persistBarionIdsFails?: boolean
+  /** Ennek a státusznak az írása dobjon (adatbázis-hiba az állapotváltáskor). */
+  failStatusWrite?: string
   orderRows?: OrderRow[]
 }
 
@@ -155,6 +167,9 @@ function createMockPayload(options: MockPayloadOptions = {}) {
         if (options.persistBarionIdsFails === true && 'barionPaymentId' in data) {
           throw new Error('db write failed')
         }
+        if (options.failStatusWrite !== undefined && data.status === options.failStatusWrite) {
+          throw new Error('db status write failed')
+        }
         const row = orderRows.get(Number(id))
         if (row) {
           Object.assign(row, data)
@@ -205,6 +220,30 @@ async function checkoutErrorFrom(promise: Promise<unknown>): Promise<CheckoutErr
     throw error
   }
   throw new Error('TESZT: a hívás nem dobott CheckoutError-t')
+}
+
+interface CapturedLogEntry {
+  message: string
+  context: Record<string, unknown>
+}
+
+/** Naplót rögzítő logger: a RIASZTÁS-sorok és a kontextus ellenőrzéséhez. */
+function captureLogger(): { log: Logger; errors: CapturedLogEntry[]; warns: CapturedLogEntry[] } {
+  const errors: CapturedLogEntry[] = []
+  const warns: CapturedLogEntry[] = []
+  const nothing = (): void => undefined
+  const log: Logger = {
+    debug: nothing,
+    info: nothing,
+    warn: (message, context) => {
+      warns.push({ message, context: context ?? {} })
+    },
+    error: (message, context) => {
+      errors.push({ message, context: context ?? {} })
+    },
+    child: () => log,
+  }
+  return { log, errors, warns }
 }
 
 const savedEnv: Record<string, string | undefined> = {}
@@ -543,7 +582,11 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
 
     await expect(promise).rejects.toBeInstanceOf(CheckoutError)
     await expect(promise).rejects.toMatchObject({ status: 400 })
-    await expect(promise).rejects.toThrowError(/eltér a termék aktuális árától/)
+    // a-checkout-12/6: a vevő a mostani árat is megkapja, és azt is, hogy a
+    // frissítés után a beírt adatokat újra meg kell adnia.
+    await expect(promise).rejects.toThrowError(/ára időközben megváltozott/)
+    await expect(promise).rejects.toThrowError(`a mostani ár ${formatPriceHuf(5000)}.`)
+    await expect(promise).rejects.toThrowError(/beírt adatokat újra meg kell adnod/)
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -578,8 +621,39 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const promise = startCheckout({ payload, user: mockUser, input: happyInput })
     await expect(promise).rejects.toMatchObject({ status: 409 })
-    await expect(promise).rejects.toThrowError(/folyamatban van egy fizetés/)
+    await expect(promise).rejects.toThrowError(/nemrég már indult egy fizetés/)
+    // Ismeretlen létrehozási idő: a teljes fizetési ablakot mondjuk (a-checkout-12/1).
+    await expect(promise).rejects.toThrowError(/30 perc múlva/)
     expect(calls.create).toHaveLength(0)
+  })
+
+  it('PaymentId nélküli függő sor: a 409 a HÁTRALÉVŐ perceket mondja', async () => {
+    const now = new Date('2026-09-24T10:30:00.000Z')
+    const { payload, calls } = createMockPayload({
+      findOrders: (where) =>
+        whereMentions(where, 'payment_pending')
+          ? {
+              docs: [
+                {
+                  id: 57,
+                  status: 'payment_pending',
+                  barionPaymentId: null,
+                  createdAt: '2026-09-24T10:21:14.000Z',
+                },
+              ],
+              totalDocs: 1,
+            }
+          : { docs: [], totalDocs: 0 },
+    })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, now }),
+    )
+    expect(error.status).toBe(409)
+    // 10:21:14 + 30 perc = 10:51:14 → 10:30-kor 21 perc 14 mp, felfelé kerekítve 22.
+    expect(error.message).toContain('22 perc múlva')
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('bejelentkezve, korábbi vendég payment_pending ugyanarra az e-mailre → 409, nincs második rendelés', async () => {
@@ -607,7 +681,7 @@ describe('startCheckout — duplavásárlás-blokk', () => {
 
     const promise = startCheckout({ payload, user: mockUser, input: happyInput })
     await expect(promise).rejects.toMatchObject({ status: 409 })
-    await expect(promise).rejects.toThrowError(/folyamatban van egy fizetés/)
+    await expect(promise).rejects.toThrowError(/nemrég már indult egy fizetés/)
     expect(calls.create).toHaveLength(0)
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -879,42 +953,57 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('a Barion nem ismeri a függő fizetést (404): a sor cancelled, új Start mehet', async () => {
-    // Cáfolható állítás: a 404 eddig „unavailable"-ként 503-at adott, és a
+  const unknownPendingSetup = (createdAt: string) => {
+    const row: OrderRow = { id: 78, status: 'payment_pending', orderNumber: 'KH-ISMERETLEN' }
+    return {
+      ...createMockPayload({
+        orderRows: [row],
+        findOrders: (where) =>
+          whereMentions(where, 'payment_pending')
+            ? {
+                docs: [
+                  {
+                    id: 78,
+                    status: 'payment_pending',
+                    createdAt,
+                    barionPaymentId: 'pay-ismeretlen',
+                    orderNumber: 'KH-ISMERETLEN',
+                  },
+                ],
+                totalDocs: 1,
+              }
+            : { docs: [], totalDocs: 0 },
+      }),
+      row,
+    }
+  }
+
+  const paymentNotFound = () =>
+    new BarionApiError({
+      message: 'DUMMY payment not found',
+      kind: 'http',
+      endpoint: 'GET /v4/Payment/{id}/PaymentState',
+      httpStatus: 404,
+      providerErrors: [
+        { ErrorCode: 'PaymentNotFound', Title: 'DUMMY not found', Description: 'DUMMY' },
+      ],
+    })
+
+  it('a Barion kifejezetten nem ismeri a függő fizetést, az ablak lejárt: a sor cancelled, új Start mehet', async () => {
+    // Cáfolható állítás: a not-found eddig „unavailable"-ként 503-at adott, és a
     // vevő erre a termékre örökre kizárta magát (pl. teszt-környezetben indított
     // fizetés az éles kulcs alatt).
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
-    const row: OrderRow = { id: 78, status: 'payment_pending', orderNumber: 'KH-ISMERETLEN' }
-    const { payload, calls } = createMockPayload({
-      orderRows: [row],
-      findOrders: (where) =>
-        whereMentions(where, 'payment_pending')
-          ? {
-              docs: [
-                {
-                  id: 78,
-                  status: 'payment_pending',
-                  createdAt: new Date().toISOString(),
-                  barionPaymentId: 'pay-ismeretlen',
-                  orderNumber: 'KH-ISMERETLEN',
-                },
-              ],
-              totalDocs: 1,
-            }
-          : { docs: [], totalDocs: 0 },
-    })
+    const { payload, calls, row } = unknownPendingSetup(
+      new Date(Date.now() - paymentWindowToMs() - 60_000).toISOString(),
+    )
 
     const result = await startCheckout({
       payload,
       user: mockUser,
       input: happyInput,
       fetchPaymentState: async () => {
-        throw new BarionApiError({
-          message: 'DUMMY payment not found',
-          kind: 'http',
-          endpoint: 'GET /v4/Payment/{id}/PaymentState',
-          httpStatus: 404,
-        })
+        throw paymentNotFound()
       },
     })
 
@@ -922,6 +1011,72 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(true)
     expect(calls.create).toHaveLength(1)
     expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+
+  /**
+   * Cáfolható állítás (a-callback-5): a „nem ismerem" válasz eddig életkortól
+   * függetlenül lezárta a sort, és egy frissen indított (akár élő) fizetés
+   * mellé második Start indult.
+   */
+  it('a Barion kifejezetten nem ismeri a FRISS függő fizetést: 409 várakozás, nincs lezárás, nincs Start', async () => {
+    const { payload, calls, row } = unknownPendingSetup(new Date().toISOString())
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        fetchPaymentState: async () => {
+          throw paymentNotFound()
+        },
+      }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toMatch(/perc múlva/)
+    expect(row.status).toBe('payment_pending')
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Cáfolható állítás (a-checkout-10): a puszta 404 (útvonal-eltérés, Errors
+   * tömb nélkül) eddig „nincs ilyen fizetés" volt: a függő sor azonnal
+   * lezárult, és egy élő fizetés mellé második Start indult. Most 503
+   * fail-closed + RIASZTÁS, még a fizetési ablakon túl is.
+   */
+  it('puszta 404 (Barion-hibajelzés nélkül): 503, RIASZTÁS, nincs lezárás, nincs Start', async () => {
+    const { payload, calls, row } = unknownPendingSetup(
+      new Date(Date.now() - 3 * paymentWindowToMs()).toISOString(),
+    )
+    const { log, errors } = captureLogger()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: happyInput,
+        logger: log,
+        fetchPaymentState: async () => {
+          throw new BarionApiError({
+            message: 'Barion API hiba (HTTP 404, GET /v4/Payment/…/PaymentState).',
+            kind: 'http',
+            endpoint: 'GET /v4/Payment/{id}/PaymentState',
+            httpStatus: 404,
+          })
+        },
+      }),
+    )
+
+    expect(error.status).toBe(503)
+    expect(error.message).toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+    expect(row.status).toBe('payment_pending')
+    expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(false)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(
+      errors.some((entry) => entry.message.startsWith('RIASZTÁS') && entry.message.includes('404')),
+    ).toBe(true)
   })
 
   it('Succeeded függő rendelés: paid-átmenet, új Start 409', async () => {
@@ -1250,7 +1405,10 @@ describe('startCheckout — termék- és inputellenőrzés', () => {
     })
     const promise = startCheckout({ payload, user: mockUser, input: happyInput })
     await expect(promise).rejects.toMatchObject({ status: 400 })
-    await expect(promise).rejects.toThrowError(/archivált/)
+    // a-checkout-12/5: az „(archivált)" belső szakszó volt; a pénztár
+    // archivált kurzusnál ugyanezt a mondatot mutatja.
+    await expect(promise).rejects.toThrowError('Ez a kurzus jelenleg nem vásárolható meg.')
+    await expect(promise).rejects.not.toThrowError(/archivált/)
     expect(calls.create).toHaveLength(0)
   })
 
@@ -1342,6 +1500,23 @@ describe('startCheckout — termék- és inputellenőrzés', () => {
     })
     await expect(promise).rejects.toMatchObject({ status: 400 })
     await expect(promise).rejects.toThrowError(/elállási jog/)
+    // a-checkout-12/4: API-mezőnév nem kerülhet a vevő elé.
+    await expect(promise).rejects.not.toThrowError(/consent/)
+    expect(calls.create).toHaveLength(0)
+  })
+
+  it('hiányzó ÁSZF-elfogadás → 400, ugyanazzal a mondattal, mint a pénztár kliensoldali hibája', async () => {
+    const { payload, calls } = createMockPayload()
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: mockUser,
+        input: { ...happyInput, consentTerms: false },
+      }),
+    )
+    expect(error.status).toBe(400)
+    expect(error.message).toBe(CHECKOUT_TERMS_ERROR)
+    expect(error.message).not.toMatch(/consent/)
     expect(calls.create).toHaveLength(0)
   })
 
@@ -1389,26 +1564,174 @@ describe('startCheckout — piszkozat-regresszió (átadás-doksi 3. szakasz 3. 
 })
 
 describe('startCheckout — Barion-hibaág', () => {
-  it('Barion Start-hiba esetén a rendelés payment_pending marad és 502 jelzés megy vissza', async () => {
+  const jsonResponse = (status: number, body: unknown): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  /**
+   * Állapottartó rendelés-tár: a függő-rendelés keresés a tárolt sorok
+   * MOSTANI státuszát látja, így a második kérés azt kapja, amit az első
+   * hagyott maga után (mint az éles adatbázisban).
+   */
+  const statefulSetup = (options: Pick<MockPayloadOptions, 'failStatusWrite'> = {}) => {
+    // A sor a create-tel születik (előtte nincs függő rendelés).
+    const row: OrderRow = { id: 101, status: 'nincs-meg', orderNumber: ORDER_NUMBER }
+    const mock = createMockPayload({
+      ...options,
+      orderRows: [row],
+      findOrders: (where) =>
+        JSON.stringify(where ?? {}).includes('payment_pending') && row.status === 'payment_pending'
+          ? { docs: [{ ...row }], totalDocs: 1 }
+          : { docs: [], totalDocs: 0 },
+    })
+    const payloadWithCreate = mock.payload as unknown as {
+      create: (args: { data: Record<string, unknown> }) => Promise<unknown>
+    }
+    const originalCreate = payloadWithCreate.create
+    payloadWithCreate.create = async (args) => {
+      Object.assign(row, {
+        status: 'payment_pending',
+        createdAt: new Date().toISOString(),
+        barionPaymentId: null,
+      })
+      return originalCreate(args)
+    }
+    return { ...mock, row }
+  }
+
+  /**
+   * Cáfolható állítás (a-checkout-2, élesben 2026-09-24 10:21:14Z, KH-2026-000003):
+   * a 401 AuthenticationFailed után a rendelés payment_pending maradt, és a
+   * vevő újrapróbálkozása 30 percig hamis „folyamatban van egy fizetés" 409-et
+   * kapott, pedig Barion-fizetés nem jött létre.
+   */
+  it('401 AuthenticationFailed: a rendelés payment_failed, 502, RIASZTÁS, és az újrapróbálás azonnal mehet', async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          Errors: [{ ErrorCode: 'AuthenticationFailed', Title: 'auth failed', Description: 'x' }],
-        }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } },
-      ),
+      jsonResponse(401, {
+        Errors: [
+          {
+            ErrorCode: 'AuthenticationFailed',
+            Title: 'User authentication failed.',
+            Description: 'x',
+          },
+        ],
+      }),
     )
-    const { payload, calls } = createMockPayload()
+    const { payload, calls, row } = statefulSetup()
+    const { log, errors } = captureLogger()
 
-    const promise = startCheckout({ payload, user: mockUser, input: happyInput })
-    await expect(promise).rejects.toBeInstanceOf(CheckoutError)
-    await expect(promise).rejects.toMatchObject({ status: 502 })
-    await expect(promise).rejects.toThrowError(/fizetés indítása most nem sikerült/)
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+    )
 
-    expect(calls.update).toHaveLength(0)
-    expect(
-      calls.update.every((call) => (call.data as { status?: string }).status !== 'payment_failed'),
-    ).toBe(true)
+    expect(error.status).toBe(502)
+    expect(error.message).toBe(CHECKOUT_START_REJECTED)
+    expect(row.status).toBe('payment_failed')
+    const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alert?.context).toMatchObject({
+      orderId: 101,
+      httpStatus: 401,
+      providerErrorCodes: ['AuthenticationFailed'],
+    })
+    expect(String(alert?.context.operatorHint)).toContain('POSKey')
+
+    // Az újrapróbálás (javított kulccsal) nem ütközik a 30 perces várakoztatásba.
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const retry = await startCheckout({ payload, user: mockUser, input: happyInput })
+    expect(retry).toEqual({ orderNumber: ORDER_NUMBER, gatewayUrl: GATEWAY_URL })
+    expect(calls.create).toHaveLength(2)
+  })
+
+  it.each([
+    [
+      'HTTP 400 ModelValidationError',
+      400,
+      [{ ErrorCode: 'ModelValidationError', Title: 'x', Description: 'x' }],
+    ],
+    ['HTTP 403', 403, [{ ErrorCode: 'Forbidden', Title: 'x', Description: 'x' }]],
+    ['HTTP 422 InvalidUser', 422, [{ ErrorCode: 'InvalidUser', Title: 'x', Description: 'x' }]],
+    [
+      'HTTP 200 + Errors (UserCantReceiveEMoney)',
+      200,
+      [{ ErrorCode: 'UserCantReceiveEMoney', Title: 'x', Description: 'x' }],
+    ],
+  ])('%s → végleges elutasítás: payment_failed, 502', async (_label, status, providerErrors) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(status, { Errors: providerErrors }))
+    const { payload, row } = statefulSetup()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(502)
+    expect(error.message).toBe(CHECKOUT_START_REJECTED)
+    expect(row.status).toBe('payment_failed')
+  })
+
+  /**
+   * Bizonytalan kimenet: a Barion létrehozhatta a fizetést. A fail-closed
+   * várakozás marad, de a vevő megtudja, hány percig (a-checkout-2).
+   */
+  it.each([
+    ['HTTP 503 Errors nélkül', () => jsonResponse(503, { Errors: [] })],
+    ['HTTP 400 Errors nélkül (közbülső réteg)', () => jsonResponse(400, {})],
+    ['értelmezhetetlen válasz', () => new Response('<html>502</html>', { status: 502 })],
+  ])('%s → payment_pending marad, 502 a várakozási idővel', async (_label, response) => {
+    fetchMock.mockResolvedValueOnce(response())
+    const { payload, row } = statefulSetup()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(502)
+    expect(error.message).toContain('pénzt nem vontunk le')
+    expect(error.message).toContain('30 perc múlva')
+    expect(row.status).toBe('payment_pending')
+
+    // A második próbálkozás a fizetési ablakon belül 409, Start nélkül.
+    fetchMock.mockClear()
+    const second = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+    expect(second.status).toBe(409)
+    expect(second.message).toMatch(/perc múlva indíthatsz/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('timeout → payment_pending marad, 502 a várakozási idővel', async () => {
+    fetchMock.mockRejectedValueOnce(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    )
+    const { payload, row } = statefulSetup()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(502)
+    expect(error.message).toContain('30 perc múlva')
+    expect(row.status).toBe('payment_pending')
+  })
+
+  it('elutasított Start, de a payment_failed írása elbukik → a vevő a várakozási időt kapja', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, {
+        Errors: [{ ErrorCode: 'AuthenticationFailed', Title: 'x', Description: 'x' }],
+      }),
+    )
+    const { payload, row } = statefulSetup({ failStatusWrite: 'payment_failed' })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: mockUser, input: happyInput }),
+    )
+
+    expect(error.status).toBe(502)
+    expect(error.message).toContain('nem fogadta el')
+    expect(error.message).toContain('30 perc múlva')
+    expect(row.status).toBe('payment_pending')
   })
 
   it('Barion Start siker + persist-hiba: a rendelés pending marad, a gateway URL visszamegy', async () => {
@@ -1421,6 +1744,90 @@ describe('startCheckout — Barion-hibaág', () => {
     expect(
       calls.update.every((call) => (call.data as { status?: string }).status !== 'payment_failed'),
     ).toBe(true)
+  })
+})
+
+/**
+ * a-checkout-8 / r-barion-12: a Barion a saját boltban fizetést nem enged
+ * (Troubleshooting: „You cannot pay in your own shop."). A tulajdonosi
+ * próbavásárlás a kedvezményezett címével eddig rendelést hozott létre, és a
+ * Barion-oldalon hasalt el.
+ */
+describe('startCheckout — a vevő címe nem lehet a Barion-kedvezményezetté', () => {
+  it('vendég a kedvezményezett címével (kis-nagybetű mindegy) → 400, rendelés és Start NÉLKÜL', async () => {
+    const { payload, calls } = createMockPayload({ authUser: null })
+
+    const error = await checkoutErrorFrom(
+      startCheckout({
+        payload,
+        user: null,
+        input: { ...happyInput, guest: { email: 'Payee@Example.TEST', name: 'Bolt Tulajdonos' } },
+      }),
+    )
+
+    expect(error.status).toBe(400)
+    expect(error.message).toBe(CHECKOUT_PAYEE_EMAIL_GUEST)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('bejelentkezett fiók a kedvezményezett címével → 409 a kijelentkezés útjával', async () => {
+    const owner = { ...mockUser, email: 'PAYEE@example.test' } as User
+    const { payload, calls } = createMockPayload()
+
+    const error = await checkoutErrorFrom(
+      startCheckout({ payload, user: owner, input: happyInput }),
+    )
+
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(CHECKOUT_PAYEE_EMAIL_ACCOUNT)
+    expect(calls.create).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('más cím → a fizetés normálisan indul (az őr nem túl tág)', async () => {
+    fetchMock.mockResolvedValueOnce(barionStartSuccess())
+    const { payload } = createMockPayload({ authUser: null })
+
+    const result = await startCheckout({
+      payload,
+      user: null,
+      input: { ...happyInput, guest: { email: 'payee.baratja@example.test', name: 'Vendég Vevő' } },
+    })
+
+    expect(result.orderNumber).toBe(ORDER_NUMBER)
+  })
+})
+
+/**
+ * a-checkout-12/3: a hibás Barion-konfiguráció eddig a „fizetés állapotát
+ * nem tudtuk ellenőrizni" 503-at adta minden vevőnek, és csak warn-ként
+ * látszott. Most saját üzenet, RIASZTÁS, és rendelés sem jön létre.
+ */
+describe('startCheckout — hibás Barion-konfiguráció', () => {
+  it('hiányzó BARION_API_URL → 503 saját üzenettel, RIASZTÁS, rendelés és Start NÉLKÜL', async () => {
+    const saved = process.env.BARION_API_URL
+    delete process.env.BARION_API_URL
+    try {
+      const { payload, calls } = createMockPayload()
+      const { log, errors } = captureLogger()
+
+      const error = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+
+      expect(error.status).toBe(503)
+      expect(error.message).toBe(CHECKOUT_PAYMENT_CONFIG_UNAVAILABLE)
+      expect(error.message).not.toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+      const alert = errors.find((entry) => entry.message.startsWith('RIASZTÁS'))
+      expect(String(alert?.context.error)).toContain('BARION_API_URL')
+      // A naplóba kulcs nem kerülhet.
+      expect(JSON.stringify(errors)).not.toContain(DUMMY_POS_KEY)
+    } finally {
+      process.env.BARION_API_URL = saved
+    }
   })
 })
 

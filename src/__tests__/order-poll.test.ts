@@ -872,25 +872,204 @@ describe('order-poll — hibaosztályozás (classifyBarionFailure)', () => {
     expect(classifyBarionFailure(error)).toBe('transport')
   })
 
-  it('404 → order; a nem BarionApiError kimenete továbbra ismeretlen', () => {
+  /**
+   * Cáfolható állítás (a-callback-5 / r-barion-11): eddig MINDEN 404 `order`
+   * volt, tehát egy útvonal-eltérés („No HTTP resource was found…", Errors
+   * tömb nélkül) egy óra után lezárta az élő függő rendelést. Most csak a
+   * kifejezett not-found kód definitív, bármilyen HTTP-státusszal.
+   */
+  it('csak a PaymentNotFound kód → order; a puszta 404 → unverified-404', () => {
     expect(
       classifyBarionFailure(
         new BarionApiError({ message: '404', kind: 'http', endpoint: 'GET x', httpStatus: 404 }),
       ),
-    ).toBe('order')
+    ).toBe('unverified-404')
+    expect(
+      classifyBarionFailure(
+        new BarionApiError({
+          message: '404 + idegen kód',
+          kind: 'http',
+          endpoint: 'GET x',
+          httpStatus: 404,
+          providerErrors: [{ ErrorCode: 'SomethingElse', Title: 'DUMMY', Description: '' }],
+        }),
+      ),
+    ).toBe('unverified-404')
+    for (const [kind, httpStatus] of [
+      ['http', 404],
+      ['http', 400],
+      ['provider', 200],
+    ] as const) {
+      expect(
+        classifyBarionFailure(
+          new BarionApiError({
+            message: 'DUMMY not found',
+            kind,
+            endpoint: 'GET x',
+            httpStatus,
+            providerErrors: [{ ErrorCode: 'PaymentNotFound', Title: 'DUMMY', Description: '' }],
+          }),
+        ),
+      ).toBe('order')
+    }
     expect(classifyBarionFailure(new Error('fetch failed'))).toBe('unknown')
     expect(classifyBarionFailure(undefined)).toBe('unknown')
   })
 })
 
-describe('order-poll — a Barion által nem ismert függő fizetés (404)', () => {
-  const notFound = () =>
-    new BarionApiError({
-      message: 'DUMMY payment not found',
-      kind: 'http',
-      endpoint: 'GET state',
-      httpStatus: 404,
+/** A Barion kifejezett „nincs ilyen fizetés" válasza (repo-fixtúra kódja, lásd process-callback.ts). */
+function definitiveNotFound(): BarionApiError {
+  return new BarionApiError({
+    message: 'DUMMY payment not found',
+    kind: 'http',
+    endpoint: 'GET state',
+    httpStatus: 404,
+    providerErrors: [
+      { ErrorCode: 'PaymentNotFound', Title: 'DUMMY not found', Description: 'DUMMY' },
+    ],
+  })
+}
+
+/** Útvonal-eltérés alakú válasz: HTTP 404, Barion Errors tömb nélkül. */
+function bareNotFound(): BarionApiError {
+  return new BarionApiError({
+    message: 'Barion API hiba (HTTP 404, GET /v4/Payment/…/PaymentState).',
+    kind: 'http',
+    endpoint: 'GET state',
+    httpStatus: 404,
+  })
+}
+
+function errorLog() {
+  const errors: string[] = []
+  const nothing = (): void => undefined
+  const log = {
+    child: () => log,
+    debug: nothing,
+    info: nothing,
+    warn: nothing,
+    error: (message: string) => errors.push(message),
+  }
+  return { log, errors }
+}
+
+describe('order-poll — puszta 404 (Barion-hibajelzés nélkül) sosem zár le', () => {
+  it('a türelmi időnél régebbi függő rendelés is payment_pending marad, fojtott RIASZTÁS, forgatás', async () => {
+    const stale = createPendingOrder({
+      createdAt: new Date(NOW - UNKNOWN_PAYMENT_CANCEL_AFTER_MS - 60_000).toISOString(),
     })
+    const { payload, fetchState, onPaid, queueInvoice, orderUpdates } = setup({
+      pending: [stale],
+      stateError: bareNotFound(),
+    })
+    const { log, errors } = errorLog()
+
+    const summary = await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(stale.status).toBe('payment_pending')
+    expect(summary.cancelled).toBe(0)
+    expect(summary.failed).toBe(1)
+    expect(orderUpdates).toEqual([{ status: 'payment_pending' }])
+    expect(errors.filter((message) => message.includes('HTTP 404'))).toHaveLength(1)
+    expect(errors[0]).toContain('RIASZTÁS')
+
+    // Ugyanarra a rendelésre a következő futás a cooldown alatt nem ír új riasztást.
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW + 300_000,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(errors.filter((message) => message.includes('HTTP 404'))).toHaveLength(1)
+    expect(stale.status).toBe('payment_pending')
+  })
+
+  it('a late-success scan puszta 404-re sem ír semmit, csak forgat és riaszt', async () => {
+    const cancelled = createPendingOrder({ id: 610, status: 'cancelled' })
+    const { payload, fetchState, onPaid, queueInvoice, paidCalls } = setup({
+      pending: [],
+      lateSuccess: [cancelled],
+      stateError: bareNotFound(),
+    })
+    const { log, errors } = errorLog()
+
+    await pollPendingOrders({
+      payload,
+      fetchState,
+      onPaid,
+      queueInvoice,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(cancelled.status).toBe('cancelled')
+    expect(paidCalls).toHaveLength(0)
+    expect(errors.some((message) => message.includes('RIASZTÁS') && message.includes('404'))).toBe(
+      true,
+    )
+  })
+
+  /**
+   * A globális útvonal-eltérés MINDEN hívást 404-re visz: ez a futás eleji
+   * mennyezetbe számít, a futás megáll. A forgatás miatt viszont nem lesz
+   * sorfej-blokkoló: a következő futás a többi sorral kezd.
+   */
+  it('öt puszta 404 a futás elején megszakít, a következő futás a hatodikkal kezd és lezárja', async () => {
+    const pending = Array.from({ length: 6 }, (_, index) =>
+      createPendingOrder({
+        id: 700 + index,
+        barionPaymentId: `DUMMY-bare-${index}`,
+        createdAt: isoHoursAgo(0.5),
+        updatedAt: new Date(NOW - (6 - index) * 60_000).toISOString(),
+      }),
+    )
+    const f = setup({ pending })
+    const { log, errors } = errorLog()
+    const fetchState = vi.fn(async (paymentId: string) => {
+      if (paymentId !== pending[5].barionPaymentId) throw bareNotFound()
+      return getStateResponse('Succeeded', { PaymentId: paymentId })
+    })
+
+    const first = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState).toHaveBeenCalledTimes(MAX_LEADING_FAILURES)
+    expect(first.skipped).toBe(1)
+    expect(pending[5].status).toBe('payment_pending')
+    expect(errors.some((message) => message.includes('tisztázatlan Barion-hiba'))).toBe(true)
+
+    fetchState.mockClear()
+    await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW + 300_000,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+    expect(fetchState.mock.calls[0]?.[0]).toBe(pending[5].barionPaymentId)
+    expect(pending[5].status).toBe('paid')
+    expect(pending.slice(0, 5).every((order) => order.status === 'payment_pending')).toBe(true)
+  })
+})
+
+describe('order-poll — a Barion által nem ismert függő fizetés (not-found kód)', () => {
+  const notFound = definitiveNotFound
 
   it('a türelmi időnél régebbi függő rendelés → cancelled (a vevő újrakezdheti)', async () => {
     // Cáfolható állítás: eddig a 404 csak „forgatta" a sort, ami örökre
@@ -926,13 +1105,9 @@ describe('order-poll — a Barion által nem ismert függő fizetés (404)', () 
 })
 
 describe('order-poll — definitív hibák forgatása (PAY-POLL)', () => {
-  const missing = () =>
-    new BarionApiError({
-      message: 'DUMMY payment not found',
-      kind: 'http',
-      endpoint: 'GET state',
-      httpStatus: 404,
-    })
+  // A definitív „nincs ilyen fizetés" a kifejezett not-found kód; a puszta 404
+  // forgatását a „puszta 404" describe fedi.
+  const missing = definitiveNotFound
   const timeout = () =>
     new BarionApiError({
       message: 'DUMMY timeout',
@@ -1254,25 +1429,39 @@ describe('order-poll — megszakítás és sorfej-blokkolás', () => {
   })
 
   /**
-   * A 404 EGY fizetésre vonatkozik (nincs ilyen PaymentId), nem az egész
-   * integrációra. Nem növeli a szállítási számlálót, tehát 25 ilyen rekord sem
-   * tudja megszakítani a futást — különben egyetlen hibás rendelés
-   * befagyasztaná az egész mentőhálót.
+   * A kifejezett not-found kód EGY fizetésre vonatkozik (nincs ilyen
+   * PaymentId), nem az egész integrációra. Nem növeli a szállítási számlálót,
+   * és a futás eleji mennyezetbe sem számít, tehát sok ilyen rekord sem tudja
+   * megszakítani a futást — különben egyetlen hibás rendelés befagyasztaná az
+   * egész mentőhálót.
    */
-  it('csupa HTTP 404 → SOHA nem szakít meg, minden rendelés sorra kerül', async () => {
-    const notFound = (): BarionApiError =>
-      new BarionApiError({ message: '404', kind: 'http', endpoint: 'GET x', httpStatus: 404 })
-    const { calls, summary } = await runWithFailures(pendingBatch(5), [
-      notFound(),
-      notFound(),
-      notFound(),
-      notFound(),
-      notFound(),
-    ])
+  it('csupa kifejezett not-found → SOHA nem szakít meg, minden rendelés sorra kerül', async () => {
+    const orders = pendingBatch(MAX_LEADING_FAILURES + 2)
+    const { calls, summary } = await runWithFailures(
+      orders,
+      orders.map(() => definitiveNotFound()),
+    )
 
-    expect(calls).toBe(5)
-    expect(summary.failed).toBe(5)
+    expect(calls).toBe(orders.length)
+    expect(summary.failed).toBe(orders.length)
     expect(summary.skipped).toBe(0)
+  })
+
+  /**
+   * A puszta 404 viszont (Barion-hibajelzés nélkül) útvonal- vagy
+   * verzióváltásra utal, ami minden hívást érint: a futás eleji mennyezet
+   * megállítja, mint bármely tisztázatlan hibát.
+   */
+  it('csupa puszta 404 → a futás eleji mennyezet után megszakít', async () => {
+    const orders = pendingBatch(MAX_LEADING_FAILURES + 2)
+    const { calls, summary } = await runWithFailures(
+      orders,
+      orders.map(() => bareNotFound()),
+    )
+
+    expect(calls).toBe(MAX_LEADING_FAILURES)
+    expect(summary.failed).toBe(MAX_LEADING_FAILURES)
+    expect(summary.skipped).toBe(2)
   })
 })
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { barionPayUrl, decidePendingCheckout } from '../lib/checkout/pending-payment'
+import {
+  barionPayUrl,
+  checkoutPaymentInProgressMessage,
+  checkoutStartRejectedWaitMessage,
+  checkoutStartUncertainMessage,
+  decidePendingCheckout,
+  minutesLeftInWindow,
+} from '../lib/checkout/pending-payment'
 
 const WINDOW_MS = 30 * 60 * 1000
 const NOW = Date.parse('2026-08-23T12:00:00.000Z')
@@ -13,7 +20,7 @@ describe('barionPayUrl', () => {
 })
 
 describe('decidePendingCheckout', () => {
-  it('PaymentId nélkül, ablakon belül → várakozás, nincs második Start', () => {
+  it('PaymentId nélkül, ablakon belül → várakozás a hátralévő percekkel, nincs második Start', () => {
     expect(
       decidePendingCheckout({
         barionPaymentId: null,
@@ -22,7 +29,7 @@ describe('decidePendingCheckout', () => {
         nowMs: NOW,
         windowMs: WINDOW_MS,
       }),
-    ).toEqual({ kind: 'wait-no-payment-id' })
+    ).toEqual({ kind: 'wait-no-payment-id', minutesLeft: 20 })
   })
 
   it('PaymentId nélkül, ablakon kívül → helyi lezárás és új Start', () => {
@@ -49,7 +56,7 @@ describe('decidePendingCheckout', () => {
     ).toEqual({ kind: 'barion-unavailable' })
   })
 
-  it('a Barion nem ismeri a PaymentId-t (404 / PaymentNotFound) → helyi lezárás és új Start', () => {
+  it('a Barion kifejezetten nem ismeri a PaymentId-t, az ablak lejárt → helyi lezárás és új Start', () => {
     // Cáfolható állítás: eddig minden GetState-hiba „unavailable" volt, így a
     // más Barion-környezetben indított függő rendelés örökre 503-at adott.
     expect(
@@ -61,6 +68,23 @@ describe('decidePendingCheckout', () => {
         windowMs: WINDOW_MS,
       }),
     ).toEqual({ kind: 'cancel-and-restart' })
+  })
+
+  /**
+   * Cáfolható állítás (a-callback-5): eddig a „nem ismerem" válasz életkortól
+   * függetlenül azonnal lezárta a függő sort, és második fizetés indult egy
+   * frissen indított (akár élő) fizetés mellé.
+   */
+  it('a Barion kifejezetten nem ismeri a PaymentId-t, de az ablakon belül vagyunk → várakozás', () => {
+    expect(
+      decidePendingCheckout({
+        barionPaymentId: 'pay-1',
+        createdAt: '2026-08-23T11:55:00.000Z',
+        mappedState: 'not-found',
+        nowMs: NOW,
+        windowMs: WINDOW_MS,
+      }),
+    ).toEqual({ kind: 'wait-not-found', minutesLeft: 25 })
   })
 
   it('Succeeded → already-paid, payment_pending → resume, Failed → új Start', () => {
@@ -91,5 +115,48 @@ describe('decidePendingCheckout', () => {
         windowMs: WINDOW_MS,
       }),
     ).toEqual({ kind: 'cancel-and-restart' })
+  })
+})
+
+describe('minutesLeftInWindow', () => {
+  it('felfelé kerekít, és 1 és az ablak hossza közé szorít', () => {
+    expect(minutesLeftInWindow('2026-08-23T11:50:00.000Z', NOW, WINDOW_MS)).toBe(20)
+    expect(minutesLeftInWindow('2026-08-23T11:50:30.000Z', NOW, WINDOW_MS)).toBe(21)
+    expect(minutesLeftInWindow('2026-08-23T11:29:59.000Z', NOW, WINDOW_MS)).toBe(1)
+    expect(minutesLeftInWindow('2026-08-23T10:00:00.000Z', NOW, WINDOW_MS)).toBe(1)
+    // Óraeltérés (jövőbeli createdAt) sem ígérhet az ablaknál hosszabb várakozást.
+    expect(minutesLeftInWindow('2026-08-23T12:10:00.000Z', NOW, WINDOW_MS)).toBe(30)
+  })
+
+  it('ismeretlen létrehozási időnél a teljes ablak', () => {
+    expect(minutesLeftInWindow(null, NOW, WINDOW_MS)).toBe(30)
+    expect(minutesLeftInWindow('nem dátum', NOW, WINDOW_MS)).toBe(30)
+  })
+})
+
+describe('a várakoztató üzenetek', () => {
+  const messages = [
+    checkoutPaymentInProgressMessage(17),
+    checkoutStartUncertainMessage(17),
+    checkoutStartRejectedWaitMessage(17),
+  ]
+
+  it('megmondják, hány perc múlva indítható új fizetés', () => {
+    for (const message of messages) {
+      expect(message).toContain('17 perc múlva')
+    }
+  })
+
+  it('a bizonytalan Start nem állít „folyamatban lévő" fizetést, és kimondja, hogy nem volt levonás', () => {
+    expect(checkoutStartUncertainMessage(30)).toContain('pénzt nem vontunk le')
+    expect(checkoutStartUncertainMessage(30)).not.toContain('folyamatban')
+  })
+
+  it('magyar mikroszöveg-szabály: nincs töltelék gondolatjel, „Kérjük", „Sajnos"', () => {
+    for (const message of messages) {
+      expect(message).not.toMatch(/[–—]/)
+      expect(message).not.toContain('Kérjük')
+      expect(message).not.toContain('Sajnos')
+    }
   })
 })

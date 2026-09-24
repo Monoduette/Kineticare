@@ -1034,14 +1034,16 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('HTTP 404 GetState → szintén TERMINÁLIS rejected (hamis GUID = 1 hívás + 1 riasztás)', async () => {
+  it('HTTP 404 + PaymentNotFound → szintén TERMINÁLIS rejected (hamis GUID = 1 hívás + 1 riasztás)', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { POST, docs, capture } = setup({ order: null })
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ Errors: [] }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({
+          Errors: [{ ErrorCode: 'PaymentNotFound', Title: 'DUMMY', Description: 'DUMMY' }],
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } },
+      ),
     )
 
     const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
@@ -1052,6 +1054,56 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     expect(typeof docs[0]?.processedAt).toBe('string')
     expect(logOutput(logSpy)).toContain('RIASZTÁS')
   })
+
+  /**
+   * Cáfolható állítás (a-callback-5 / r-barion-11): a puszta 404 (útvonal-
+   * eltérés: „No HTTP resource was found…", Errors tömb nélkül) eddig
+   * terminálisan elutasította az eseményt, így a fizetett rendelés későbbi
+   * Succeeded callbackjét a dedup eldobta. Most újrapróbálható + riasztás.
+   */
+  it.each([
+    [
+      'Errors tömb nélkül',
+      JSON.stringify({ Message: 'No HTTP resource was found that matches the request URI' }),
+    ],
+    ['üres Errors tömbbel', JSON.stringify({ Errors: [] })],
+    ['közbülső proxy HTML-oldalával', '<html><body>404 Not Found</body></html>'],
+  ])(
+    'puszta HTTP 404 (%s) → NEM terminális: failed + processedAt NULL + RIASZTÁS, a retry sikerül',
+    async (_label, body) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const { POST, docs, capture, store, payload, order } = setup()
+      fetchMock.mockResolvedValueOnce(
+        new Response(body, {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      const response = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
+      expect(response.status).toBe(200)
+      await capture.runAll()
+
+      expect(docs[0]).toMatchObject({ status: 'failed', result: 'failed', attempts: 1 })
+      expect(docs[0]?.processedAt ?? null).toBeNull()
+      expect(order?.status).toBe('payment_pending')
+      const logs = logOutput(logSpy)
+      expect(logs).toContain('RIASZTÁS')
+      expect(logs).toContain('HTTP 404')
+
+      // Az útvonal helyreállása után a retry-job ugyanezt az eseményt paid-re viszi.
+      fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
+      const retry = await processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      })
+      expect(retry.kind).toBe('processed')
+      expect(order?.status).toBe('paid')
+      expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 2 })
+    },
+  )
 
   it('HTTP 503 GetState → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)', async () => {
     const { POST, docs, capture } = setup({ order: null })

@@ -8,7 +8,10 @@ import {
   mapBarionPaymentStatus,
   type BarionPaymentStateResponse,
 } from '../barion'
-import { isPaymentDefinitelyNotFound } from '../barion-callback/process-callback'
+import {
+  isPaymentDefinitelyNotFound,
+  isUnverifiedNotFound,
+} from '../barion-callback/process-callback'
 import { logger as rootLogger, type Logger } from '../logger'
 import { onOrderPaid, queueInvoiceIssueJob, type OrderPaidAccount } from '../order-paid'
 import {
@@ -45,10 +48,11 @@ export const ORPHAN_ORDER_GRACE_MS = 24 * 60 * 60 * 1000 // 24 óra
 export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
 /**
  * Ennyi idő után zárjuk le azt a függő rendelést, amelynek PaymentId-jét a
- * Barion DEFINITÍVEN nem ismeri (404 / PaymentNotFound). Tipikus ok: a fizetés
+ * Barion KIFEJEZETTEN nem ismeri (ismert not-found kód, lásd
+ * isPaymentDefinitelyNotFound; a puszta 404 ide nem tartozik). Tipikus ok: a fizetés
  * a másik Barion-környezetben indult (teszt-kulcs ↔ éles kulcs váltás). A
  * 30 perces PaymentWindow kétszerese: egy frissen indított fizetés átmeneti
- * 404-e (ha egyáltalán előfordul) belefér, a végleg ismeretlen viszont nem
+ * „nem ismerem" válasza (ha egyáltalán előfordul) belefér, a végleg ismeretlen viszont nem
  * marad örökre payment_pending — a checkout ugyanerre azonnal új Startot enged.
  */
 export const UNKNOWN_PAYMENT_CANCEL_AFTER_MS = 60 * 60 * 1000 // 1 óra
@@ -126,8 +130,19 @@ export interface OrderPollDeps {
 /** Ismert Barion auth-hibakódok (pontos egyezés — ne regex, poison pill ellen). */
 export const BARION_AUTH_ERROR_CODES: readonly string[] = ['AuthenticationFailed']
 
-/** A definitív rendelés-hiba forgatható; az ismeretlen hiba nem egészségbizonyíték. */
-export type BarionFailureClass = 'auth' | 'order' | 'transport' | 'unknown'
+/**
+ * A definitív rendelés-hiba forgatható; az ismeretlen hiba nem egészségbizonyíték.
+ *
+ * - `order`: a Barion kifejezett not-found kóddal jelzi, hogy nem ismeri a
+ *   fizetést (isPaymentDefinitelyNotFound). Forgatható, a türelmi idő után a
+ *   függő sor lezárható.
+ * - `unverified-404`: HTTP 404 not-found kód nélkül. NEM bizonyítja, hogy a
+ *   fizetés nem létezik (útvonal- vagy verzióváltás, közbülső 404), ezért
+ *   sosem zárunk le rá semmit. A sort forgatjuk, hogy ne legyen sorfej-blokkoló,
+ *   riasztunk (fojtva), és a futás eleji mennyezetbe beszámít: ha a futás
+ *   minden hívása ilyen, az globális útvonalhiba, és a futás megáll.
+ */
+export type BarionFailureClass = 'auth' | 'order' | 'unverified-404' | 'transport' | 'unknown'
 
 export function classifyBarionFailure(error: unknown): BarionFailureClass {
   if (!(error instanceof BarionApiError)) {
@@ -151,7 +166,10 @@ export function classifyBarionFailure(error: unknown): BarionFailureClass {
   if ((error.httpStatus ?? 0) >= 500) {
     return 'transport'
   }
-  return error.httpStatus === 404 ? 'order' : 'unknown'
+  if (isPaymentDefinitelyNotFound(error)) {
+    return 'order'
+  }
+  return isUnverifiedNotFound(error) ? 'unverified-404' : 'unknown'
 }
 
 /**
@@ -335,7 +353,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
   /**
    * Egymást követő szállítási hibák (timeout / hálózat / 5xx) száma. SIKERES
-   * GetState-re vagy definitív rendelésválaszra (404) nullázódik. Egy ilyen
+   * GetState-re vagy definitív rendelésválaszra (not-found kód) nullázódik. Egy ilyen
    * válasz megszakítja a szállítási hibák egymásutánját.
    */
   let consecutiveTransportFailures = 0
@@ -350,6 +368,30 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
 
   const seenIds = new Set<number>()
   let rotationFailures = 0
+
+  /**
+   * Puszta 404 (not-found kód nélkül): rendelésenként FOJTOTT riasztás. Az
+   * 5 percenkénti futás a cooldown alatt ugyanarra a sorra nem ír új
+   * error-sort; a sor lezárását ez a válasz sosem indokolja.
+   */
+  const alertUnverifiedNotFound = (order: Order, orderLog: Logger, error: unknown): void => {
+    if (!shouldEmitThrottledAlert(`barion-unverified-404:${order.id}`, undefined, now)) {
+      return
+    }
+    orderLog.error(
+      'RIASZTÁS: a Barion PaymentState HTTP 404-et adott „nincs ilyen fizetés" jelzés nélkül — ' +
+        'a rendelést NEM zárjuk le, a következő futás újrapróbálja. Ellenőrizd a BARION_API_URL-t ' +
+        'és a PaymentState-útvonalat.',
+      {
+        orderStatus: order.status ?? null,
+        httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
+        providerErrorCodes:
+          error instanceof BarionApiError
+            ? error.providerErrors.map((providerError) => providerError.ErrorCode)
+            : [],
+      },
+    )
+  }
 
   // Az updatedAt a meglévő sorforgatási óra. Egy sikertelen touch nem lehet
   // új globális fék; egyetlen összegző figyelmeztetés jelzi a futás végén.
@@ -575,8 +617,9 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             if (cancelledWritten) {
               summary.cancelled += 1
               orderLog.warn(
-                'a Barion nem ismeri a függő fizetést (404) és a PaymentWindow rég lejárt — cancelled; ' +
-                  'a vevő újrakezdheti a vásárlást (tipikus ok: teszt-környezetben indított fizetés)',
+                'a Barion kifejezetten jelzi, hogy nem ismeri a függő fizetést, és a PaymentWindow rég ' +
+                  'lejárt — cancelled; a vevő újrakezdheti a vásárlást (tipikus ok: teszt-környezetben ' +
+                  'indított fizetés)',
                 { ageMs: now - createdAtMs, httpStatus },
               )
             } else {
@@ -589,7 +632,15 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
           }
         }
 
-        if (!hadSuccessfulCall && failureClass === 'unknown') {
+        if (failureClass === 'unverified-404') {
+          alertUnverifiedNotFound(order, orderLog, error)
+          await rotateOrder(order)
+        }
+
+        if (
+          !hadSuccessfulCall &&
+          (failureClass === 'unknown' || failureClass === 'unverified-404')
+        ) {
           leadingFailures += 1
           if (leadingFailures >= MAX_LEADING_FAILURES) {
             summary.skipped += remaining
@@ -713,7 +764,14 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             consecutiveTransportFailures = 0
             await rotateOrder(order)
           }
-          if (!hadSuccessfulCall && failureClass === 'unknown') {
+          if (failureClass === 'unverified-404') {
+            alertUnverifiedNotFound(order, orderLog, error)
+            await rotateOrder(order)
+          }
+          if (
+            !hadSuccessfulCall &&
+            (failureClass === 'unknown' || failureClass === 'unverified-404')
+          ) {
             leadingFailures += 1
             if (leadingFailures >= MAX_LEADING_FAILURES) {
               summary.skipped += remaining
