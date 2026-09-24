@@ -115,7 +115,11 @@ function createWebhookStore(initial: WebhookEventDoc[] = []) {
 
   const store: WebhookEventStore = {
     find: async ({ where, sort, limit }) => {
-      finds.push({ ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(limit ? { limit } : {}) })
+      finds.push({
+        ...(where ? { where } : {}),
+        ...(sort ? { sort } : {}),
+        ...(limit ? { limit } : {}),
+      })
       let matched = docs.filter((doc) => (where ? matches(doc, where) : true))
       if (sort === 'updatedAt') {
         matched = [...matched].sort(
@@ -208,10 +212,7 @@ describe('webhook-retry handler — scan-szűrő (K3 szerződés)', () => {
       and: [
         { status: { in: ['received', 'failed'] } },
         {
-          or: [
-            { attempts: { less_than: MAX_WEBHOOK_ATTEMPTS } },
-            { attempts: { exists: false } },
-          ],
+          or: [{ attempts: { less_than: MAX_WEBHOOK_ATTEMPTS } }, { attempts: { exists: false } }],
         },
       ],
     })
@@ -273,7 +274,11 @@ describe('webhook-retry handler — retry-kimenetelek', () => {
     const result = await runHandler(store)
 
     expect(result.output).toMatchObject({ retried: 1, succeeded: 0, failed: 1, exhausted: 0 })
-    expect(docs[0]).toMatchObject({ status: 'failed', attempts: 2, lastError: 'átmeneti provider-hiba' })
+    expect(docs[0]).toMatchObject({
+      status: 'failed',
+      attempts: 2,
+      lastError: 'átmeneti provider-hiba',
+    })
     const logs = logSpy.mock.calls.map((call) => String(call[0])).join('\n')
     expect(logs).not.toContain('kimerültek')
   })
@@ -446,15 +451,20 @@ describe('webhook-retry handler — K8 per-esemény hibaizoláció', () => {
 })
 
 describe('webhook-retry handler — M6 terminális rejected ág (valódi Barion-processzor)', () => {
-  it('404-es GetState az újrapróbáláson → rejected VÉGLEGES lezárás, 0 további újrapróba és Barion-hívás', async () => {
+  it('404 + PaymentNotFound az újrapróbáláson → rejected VÉGLEGES lezárás, 0 további újrapróba és Barion-hívás', async () => {
     const event = createEvent({ externalId: PAYMENT_ID, attempts: 1 })
     const { store, docs } = createWebhookStore([event])
-    // A VALÓDI Barion callback-processzor fut — a fetch egy előkészített 404.
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ Errors: [] }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    // A VALÓDI Barion callback-processzor fut — a fetch egy előkészített, kifejezett
+    // not-found válasz. A puszta 404 (Errors tömb nélkül) már NEM terminális
+    // (process-callback.ts isPaymentDefinitelyNotFound, a-callback-5).
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            Errors: [{ ErrorCode: 'PaymentNotFound', Title: 'DUMMY', Description: 'DUMMY' }],
+          }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        ),
     )
     vi.stubGlobal('fetch', fetchMock)
     registerWebhookProcessor(
