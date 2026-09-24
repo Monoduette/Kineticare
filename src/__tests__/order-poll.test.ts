@@ -3329,3 +3329,97 @@ describe('fix-404 rev1 — mennyezet-riasztás, útvonal-próba jelöltje, lezá
     expect(warns.some((message) => message.includes('cancelled írás sikertelen'))).toBe(true)
   })
 })
+
+describe('fix-404 rev1 — tömeges „nincs ilyen fizetés" útvonal-bizonyíték nélkül (B4)', () => {
+  const notExistingPaymentId400 = (): BarionApiError =>
+    new BarionApiError({
+      message: 'Barion API hiba (HTTP 400): NotExistingPaymentId',
+      kind: 'http',
+      endpoint: 'GET state',
+      httpStatus: 400,
+      providerErrors: [{ ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' }],
+    })
+  /** 1 óránál régebbi függő sorok, a legrégebben érintett elöl. */
+  const agedBatch = (count: number): Order[] =>
+    Array.from({ length: count }, (_, index) =>
+      createPendingOrder({
+        id: 3900 + index,
+        orderNumber: `KH-2026-00${3900 + index}`,
+        barionPaymentId: `fafafafa-fafa-fafa-fafa-0000000000${String(index).padStart(2, '0')}`,
+        createdAt: isoHoursAgo(2),
+        updatedAt: new Date(NOW - (60 - index) * 60_000).toISOString(),
+      }),
+    )
+
+  /**
+   * A NotExistingPaymentId definitív (#260: 1 óra után lezár). Ha viszont a
+   * Barion MINDEN fizetésre ezt adja (BARION_ENVIRONMENT-tévesztés, idegen
+   * POSKey), egy futás eddig minden 1 óránál régebbi függő sort lezárt.
+   */
+  it('20 régi sor, mind NotExistingPaymentId, egyetlen sikeres GetState sincs → nincs lezárás, egy RIASZTÁS', async () => {
+    const pending = agedBatch(20)
+    const f = setup({ pending })
+    const { log, errors } = contextLog()
+    const fetchState = vi.fn(async (): Promise<BarionPaymentStateResponse> => {
+      throw notExistingPaymentId400()
+    })
+
+    const summary = await pollPendingOrders({
+      ...f,
+      fetchState,
+      now: NOW,
+      logger: log as never,
+      invoicingEnabled: () => false,
+    })
+
+    expect(summary.cancelled).toBe(0)
+    expect(pending.every((order) => order.status === 'payment_pending')).toBe(true)
+    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toContain('BARION_ENVIRONMENT')
+    expect(alerts[0]?.context).toMatchObject({
+      count: 20,
+      providerErrorCodes: ['NotExistingPaymentId'],
+    })
+  })
+
+  it.each([
+    ['egy másik függő sor GetState-je sikeres', 'getstate'],
+    ['az útvonal-próba (legutóbbi paid rendelés) sikeres', 'probe'],
+  ] as const)(
+    'ugyanez MAX_LEADING_FAILURES sorral, de %s → mind lezárul',
+    async (_label, proof) => {
+      const pending = agedBatch(MAX_LEADING_FAILURES)
+      const live = livePendingOrder({ updatedAt: isoHoursAgo(0.01) })
+      const paid = createPendingOrder({
+        id: 3990,
+        status: 'paid',
+        barionPaymentId: PROBE_PAYMENT_ID,
+      })
+      const f =
+        proof === 'getstate'
+          ? setup({ pending: [...pending, live] })
+          : setup({ pending, paidResweep: [paid] })
+      const fetchState = vi.fn(async (paymentId: string) => {
+        if (paymentId === LIVE_PAYMENT_ID || paymentId === PROBE_PAYMENT_ID) {
+          return getStateResponse(proof === 'getstate' ? 'Prepared' : 'Succeeded', {
+            PaymentId: paymentId,
+          })
+        }
+        throw notExistingPaymentId400()
+      })
+
+      const summary = await pollPendingOrders({
+        ...f,
+        fetchState,
+        now: NOW,
+        logger: contextLog().log as never,
+        invoicingEnabled: () => false,
+      })
+
+      expect(summary.cancelled).toBe(MAX_LEADING_FAILURES)
+      expect(pending.every((order) => order.status === 'cancelled')).toBe(true)
+      expect(paid.status).toBe('paid')
+    },
+  )
+})

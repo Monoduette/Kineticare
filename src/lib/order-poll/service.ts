@@ -54,6 +54,9 @@ export const STUCK_ORDER_WARN_MS = 24 * 60 * 60 * 1000 // 24 óra
  * 30 perces PaymentWindow kétszerese: egy frissen indított fizetés átmeneti
  * „nem ismerem" válasza (ha egyáltalán előfordul) belefér, a végleg ismeretlen viszont nem
  * marad örökre payment_pending — a checkout ugyanerre azonnal új Startot enged.
+ * Fék: ha egy futásban MAX_LEADING_FAILURES vagy több ilyen sor jön, és egyetlen
+ * GetState (az útvonal-próba) sem sikerül, egyik sem zárul le (lásd
+ * closeDeferredNotFound a pollPendingOrders-ben).
  */
 export const UNKNOWN_PAYMENT_CANCEL_AFTER_MS = 60 * 60 * 1000 // 1 óra
 /**
@@ -154,7 +157,8 @@ export const BARION_AUTH_ERROR_CODES: readonly string[] = ['AuthenticationFailed
  *
  * - `order`: a Barion kifejezett not-found kóddal jelzi, hogy nem ismeri a
  *   fizetést (isPaymentDefinitelyNotFound). Forgatható, a türelmi idő után a
- *   függő sor lezárható.
+ *   függő sor lezárható (tömeges, bizonyíték nélküli esetben nem, lásd
+ *   UNKNOWN_PAYMENT_CANCEL_AFTER_MS). A futás eleji mennyezetbe nem számít.
  * - `unverified-404`: HTTP 404 not-found kód nélkül. Önmagában NEM bizonyítja,
  *   hogy a fizetés nem létezik (útvonal- vagy verzióváltás, közbülső 404),
  *   ezért erre az egy válaszra nem zárunk le semmit. A sort forgatjuk, hogy ne
@@ -335,8 +339,11 @@ function lateSuccessOrdersWhere(
  */
 type PendingPageDecision = 'continue' | 'abort' | 'ceiling'
 
-/** Régi függő sor, amelyre a futásban puszta 404 jött: a futás végén dől el a sorsa. */
-interface AgedUnverifiedNotFound {
+/**
+ * Régi függő sor, amelyre a futásban „nincs ilyen fizetés" jött (puszta 404,
+ * vagy not-found kód még sikeres GetState előtt): a futás végén dől el a sorsa.
+ */
+interface DeferredNotFound {
   order: Order
   orderLog: Logger
   error: unknown
@@ -425,7 +432,15 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
    */
   let barionAborted = false
   /** A futásban puszta 404-et kapott, 24 óránál régebbi függő sorok. */
-  const agedUnverifiedNotFound: AgedUnverifiedNotFound[] = []
+  const agedUnverifiedNotFound: DeferredNotFound[] = []
+  /**
+   * Not-found kódot (NotExistingPaymentId, PaymentNotFound) kapott, 1 óránál
+   * régebbi függő sorok, amelyekre a válasz MÉG sikeres GetState előtt jött.
+   * Lásd closeDeferredNotFound: globális félrekonfigurálásnál (másik
+   * Barion-környezet, idegen POSKey) minden fizetésre ez jön, és egy futás
+   * minden függő sort lezárna.
+   */
+  const deferredDefinitiveNotFound: DeferredNotFound[] = []
 
   const providerErrorCodesOf = (error: unknown): string[] =>
     error instanceof BarionApiError
@@ -590,6 +605,39 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     }
   }
 
+  /**
+   * A Barion által kifejezetten nem ismert, 1 óránál régebbi függő sor
+   * lezárása (#260, UNKNOWN_PAYMENT_CANCEL_AFTER_MS). Feltételes írás: a
+   * közben paid-dé vált sort nem írja felül. Pénzmozgás nincs.
+   */
+  const cancelDefinitelyUnknown = async (
+    order: Order,
+    orderLog: Logger,
+    error: unknown,
+    ageMs: number,
+  ): Promise<void> => {
+    const cancelledWritten = await updateOrderStatusIfCurrent({
+      payload: deps.payload,
+      orderId: order.id,
+      expected: 'payment_pending',
+      next: 'cancelled',
+    })
+    if (!cancelledWritten) {
+      orderLog.warn('ismeretlen fizetés: a sor már nem payment_pending — a cancelled írás kimarad')
+      return
+    }
+    summary.cancelled += 1
+    orderLog.warn(
+      'a Barion kifejezetten jelzi, hogy nem ismeri a függő fizetést, és a PaymentWindow rég ' +
+        'lejárt — cancelled; a vevő újrakezdheti a vásárlást (tipikus ok: teszt-környezetben ' +
+        'indított fizetés)',
+      {
+        ageMs,
+        httpStatus: error instanceof BarionApiError ? (error.httpStatus ?? null) : null,
+      },
+    )
+  }
+
   const processPendingPage = async (pendingOrders: Order[]): Promise<PendingPageDecision> => {
     for (let index = 0; index < pendingOrders.length; index += 1) {
       const order = pendingOrders[index]
@@ -676,32 +724,22 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
         if (failureClass === 'order') {
           consecutiveTransportFailures = 0
           const createdAtMs = Date.parse(order.createdAt ?? '')
+          const ageMs = now - createdAtMs
           const definitelyUnknown =
             order.status === 'payment_pending' &&
             error instanceof BarionApiError &&
             isPaymentDefinitelyNotFound(error) &&
             Number.isFinite(createdAtMs) &&
-            now - createdAtMs >= UNKNOWN_PAYMENT_CANCEL_AFTER_MS
-          if (definitelyUnknown) {
-            const cancelledWritten = await updateOrderStatusIfCurrent({
-              payload: deps.payload,
-              orderId: order.id,
-              expected: 'payment_pending',
-              next: 'cancelled',
-            })
-            if (cancelledWritten) {
-              summary.cancelled += 1
-              orderLog.warn(
-                'a Barion kifejezetten jelzi, hogy nem ismeri a függő fizetést, és a PaymentWindow rég ' +
-                  'lejárt — cancelled; a vevő újrakezdheti a vásárlást (tipikus ok: teszt-környezetben ' +
-                  'indított fizetés)',
-                { ageMs: now - createdAtMs, httpStatus },
-              )
-            } else {
-              orderLog.warn(
-                'ismeretlen fizetés: a sor már nem payment_pending — a cancelled írás kimarad',
-              )
-            }
+            ageMs >= UNKNOWN_PAYMENT_CANCEL_AFTER_MS
+          if (definitelyUnknown && hadSuccessfulCall) {
+            // Egy másik GetState már sikeres volt: az útvonal, a környezet és a
+            // POSKey működik, a válasz tehát erre az egy fizetésre szól.
+            await cancelDefinitelyUnknown(order, orderLog, error, ageMs)
+          } else if (definitelyUnknown) {
+            // Sikeres GetState még nem volt: a sorsa a futás végén dől el
+            // (closeDeferredNotFound).
+            deferredDefinitiveNotFound.push({ order, orderLog, error, ageMs })
+            await rotateOrder(order)
           } else {
             await rotateOrder(order)
           }
@@ -715,7 +753,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
             Number.isFinite(createdAtMs) &&
             ageMs >= UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS
           ) {
-            // A sorsa a futás végén dől el (closeAgedUnverifiedNotFound): a
+            // A sorsa a futás végén dől el (closeDeferredNotFound): a
             // bizonyító sikeres GetState a sorrendben később is jöhet.
             agedUnverifiedNotFound.push({ order, orderLog, error, ageMs })
           } else {
@@ -795,7 +833,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       return true
     } catch (error) {
       log.warn(
-        'order-poll: útvonal-próba sikertelen — a régi, puszta 404-es függő sorok maradnak',
+        'order-poll: útvonal-próba sikertelen — a lezárásra váró régi függő sorok maradnak',
         {
           probeOrderId: probeOrder.id,
           failureClass: classifyBarionFailure(error),
@@ -807,21 +845,79 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
   }
 
   /**
-   * A futásban puszta 404-et kapott, 24 óránál régebbi függő sorok lezárása
-   * (UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS). CSAK akkor, ha ugyanebben a
-   * futásban egy MÁSIK GetState sikeres volt (a sorrend mindegy, ezért fut a
-   * két scan UTÁN), vagy ha az útvonal-próba sikeres. Bizonyíték nélkül a sor
-   * marad, és a szokásos fojtott riasztást kapja. Pénzmozgás nincs: csak a
-   * státusz íródik, feltételesen (a közben paid-dé vált sort nem írja felül).
+   * A futás végén eldőlő lezárások. A sorrend mindegy (a bizonyító sikeres
+   * GetState a sorban később is jöhet), ezért fut a két scan UTÁN.
+   * Pénzmozgás nincs: csak a státusz íródik, feltételesen (a közben paid-dé
+   * vált sort nem írja felül).
+   *
+   * 1. Not-found kód sikeres GetState előtt (deferredDefinitiveNotFound): ha
+   *    MAX_LEADING_FAILURES-nél kevesebb ilyen sor van, útvonal-bizonyíték
+   *    nélkül is lezárul (#260: egy-egy, a másik környezetből maradt fizetés).
+   *    Ha legalább ennyi, és a futásban semmi nem sikerült (az útvonal-próba
+   *    sem), az inkább globális félrekonfigurálás (BARION_ENVIRONMENT, idegen
+   *    POSKey): ilyenkor egyik sem zárul le, egy (fojtott) RIASZTÁS megy.
+   *    Az ilyen hibák a mennyezetbe szándékosan nem számítanak (egy-egy
+   *    ismeretlen fizetés nem állíthatja meg a mentőhálót), ez a fék tehát
+   *    csak a lezárást tartja vissza, a lekérdezést nem.
+   * 2. Puszta 404, 24 óránál régebbi sor (agedUnverifiedNotFound,
+   *    UNVERIFIED_NOT_FOUND_CANCEL_AFTER_MS): CSAK útvonal-bizonyítékkal
+   *    (másik sikeres GetState vagy sikeres útvonal-próba); nélküle a sor marad,
+   *    és a szokásos fojtott riasztást kapja.
    */
-  const closeAgedUnverifiedNotFound = async (): Promise<void> => {
-    if (agedUnverifiedNotFound.length === 0) {
+  const closeDeferredNotFound = async (): Promise<void> => {
+    const definitiveNeedsProof = deferredDefinitiveNotFound.length >= MAX_LEADING_FAILURES
+    if (agedUnverifiedNotFound.length === 0 && deferredDefinitiveNotFound.length === 0) {
       return
     }
     let routeProof: 'getstate' | 'probe' | null = hadSuccessfulCall ? 'getstate' : null
-    if (routeProof === null && !barionAborted && (await probeBarionRoute())) {
+    const proofMatters = agedUnverifiedNotFound.length > 0 || definitiveNeedsProof
+    if (routeProof === null && proofMatters && !barionAborted && (await probeBarionRoute())) {
       routeProof = 'probe'
     }
+
+    if (routeProof !== null || !definitiveNeedsProof) {
+      for (const { order, orderLog, error, ageMs } of deferredDefinitiveNotFound) {
+        try {
+          await cancelDefinitelyUnknown(order, orderLog, error, ageMs)
+        } catch (writeError) {
+          orderLog.warn(
+            'ismeretlen fizetés: a cancelled írás sikertelen — a következő futás újrapróbálja',
+            { error: writeError instanceof Error ? writeError.message : String(writeError) },
+          )
+        }
+      }
+    } else {
+      const unprovenContext = {
+        count: deferredDefinitiveNotFound.length,
+        orderNumbers: deferredDefinitiveNotFound
+          .slice(0, 10)
+          .map(({ order }) => order.orderNumber ?? null),
+        providerErrorCodes: [
+          ...new Set(
+            deferredDefinitiveNotFound.flatMap(({ error }) => providerErrorCodesOf(error)),
+          ),
+        ],
+      }
+      if (shouldEmitThrottledAlert('barion-not-found-unproven', undefined, now)) {
+        log.error(
+          `RIASZTÁS: ebben a futásban ${deferredDefinitiveNotFound.length} függő rendelésre a ` +
+            'Barion azt válaszolta, hogy nem ismeri a fizetést, és egyetlen más GetState sem ' +
+            'sikerült. Ez inkább konfigurációs hiba, mint ennyi valóban ismeretlen fizetés, ezért ' +
+            'a rendeléseket most NEM zárjuk le. Ellenőrizd a BARION_ENVIRONMENT-et és a ' +
+            'POSKey-t (abban a környezetben és azzal a bolttal indultak-e a fizetések); ha ' +
+            'rendben vannak, a sorok az első olyan futásban lezárulnak, amelyben egy másik ' +
+            'GetState sikeres.',
+          unprovenContext,
+        )
+      } else {
+        log.warn(
+          'order-poll: tömeges „nincs ilyen fizetés" útvonal-bizonyíték nélkül — lezárás nincs ' +
+            '(a riasztás fojtva)',
+          unprovenContext,
+        )
+      }
+    }
+
     for (const { order, orderLog, error, ageMs } of agedUnverifiedNotFound) {
       if (routeProof === null) {
         alertUnverifiedNotFound(order, orderLog, error)
@@ -913,7 +1009,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
       // Saját, friss keret: globális hibánál (minden hívás tisztázatlan) a
       // late-success scan is legfeljebb MAX_LEADING_FAILURES hívás után megáll,
       // egy futás tehát legfeljebb 2 × MAX_LEADING_FAILURES hívást tesz (plusz
-      // legfeljebb egy útvonal-próbát, lásd closeAgedUnverifiedNotFound).
+      // legfeljebb egy útvonal-próbát, lásd closeDeferredNotFound).
       leadingFailures = 0
     }
     const sinceIso = new Date(now - LATE_SUCCESS_LOOKBACK_MS).toISOString()
@@ -1043,7 +1139,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     }
   }
 
-  await closeAgedUnverifiedNotFound()
+  await closeDeferredNotFound()
 
   await resweepInvoices(deps, log, summary)
 

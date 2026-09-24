@@ -287,7 +287,10 @@ Elveszett callback:
   + a Barion által KIFEJEZETT not-found kóddal (NotExistingPaymentId,
     PaymentNotFound; 5xx kivételével bármilyen HTTP-státusszal) jelzett,
     1 óránál régebbi payment_pending sor → cancelled (#260); a callback
-    erre terminális rejected
+    erre terminális rejected; fék: ha egy futásban legalább
+    MAX_LEADING_FAILURES ilyen sor jön, és egyetlen GetState (az
+    útvonal-próba) sem sikerül, egyik sem zárul le (RIASZTÁS:
+    BARION_ENVIRONMENT / POSKey)
   + a puszta HTTP 404 (Errors tömb nélkül, vagy ismeretlen kóddal)
     'unverified-404': forgatás, függő sornál fojtott RIASZTÁS (a
     late-success scan lezárt soránál csak warn), önmagában SOSEM zár le;
