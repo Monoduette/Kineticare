@@ -1725,6 +1725,27 @@ describe('automatikus visszatérítés: riasztás, műveletnapló és vevői ér
     expect(mail.send).toHaveBeenCalledTimes(1)
   })
 
+  it('a Barion-siker rögzítése előtt megszakadt futás: egy RIASZTÁS, a kísérlet egyeztetésre vár, új POST nélkül', async () => {
+    const refund = vi.fn().mockResolvedValue({
+      PaymentId: PAYMENT_ID,
+      RefundedTransactions: [
+        {
+          TransactionId: REFUND_ID,
+          POSTransactionId: POS_TRANSACTION_ID,
+          Total: ORDER_TOTAL_HUF,
+          Status: 'Succeeded',
+        },
+      ],
+    })
+    const { f, run, alerts } = setup(refund)
+    f.failures.receipt = 'refund-provider-succeeded'
+    expect(await run(at(1))).toEqual({ action: 'failed', detail: 'refund-pending-reconciliation' })
+    expect(refund).toHaveBeenCalledTimes(1)
+    expect(store.intents.get(f.payload)?.state).toBe('provider_started')
+    expect(alerts().filter((entry) => entry.message.includes('megszakadt'))).toHaveLength(1)
+    expect(mail.send).not.toHaveBeenCalled()
+  })
+
   it('a K12 számla-kapu az automatikus visszatérítést nem érinti', async () => {
     vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
     try {

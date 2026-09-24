@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 // A közös tároló-, zár- és Barion-mockokat a szolgáltatás importja előtt kell regisztrálni.
 import { access, claimInvoice, documents, fixture, provider, store } from '../refund-fixture'
+import { claimManagedRefundDocument } from '../../lib/szamlazz/refund-guard'
 import { SzamlazzApiError } from '../../lib/szamlazz/types'
 import type { Order } from '../../payload-types'
 
@@ -85,18 +86,65 @@ describe('a-refund-4: a helyesbítő újrapróbálható hibája a meglévő jobh
     // A job a beküldés előtti lekérdezéssel megtalálta és rögzítette a bizonylatot.
     Object.assign(f.order, {
       correctiveInvoiceStatus: 'issued',
-      correctiveInvoiceNumber: 'SYNTHETIC-HE-JOB',
+      correctiveInvoiceNumber: 'KIN-2026-10',
       correctiveInvoiceSeq: 1,
     })
     expect((await f.status()).state).toBe('recoverable')
     expect(await f.recover()).toMatchObject({ recoveryStatus: 'completed' })
     expect(store.intents.get(f.payload)?.state).toBe('committed')
     expect(f.audits.find((row) => row.action === 'refund-invoice-done')?.after).toMatchObject({
-      number: 'SYNTHETIC-HE-JOB',
+      number: 'KIN-2026-10',
     })
     expect(documents.corrective).toHaveBeenCalledTimes(1)
     expect(provider.refund).toHaveBeenCalledTimes(1)
   })
+
+  // A job (corrective.ts) negatív lekérdezés után a valódi refund-őrt hívja;
+  // az első kísérlet után az őr megtagadja a beküldést, és a helyesbítő a
+  // dobott (angol, belső) szöveget a rendelés utolsó hibájaként menti. Ez nem
+  // a Számlázz.hu üzenete, a panel nem mutathatja annak.
+  it.each([
+    [
+      'a sorba állítás jelzése megvan',
+      '',
+      'A rendszer a háttérben megnézte a Számlázz.hu-ban, de ehhez a visszatérítéshez nem talált helyesbítő számlát, és nem küldi be újra.',
+    ],
+    [
+      'a sorba állítás jelzése elveszett',
+      'refund-invoice-retry-queued',
+      'Jelezd az üzemeltetőnek a rendelésszámmal együtt; a rendszer nem küldi be újra.',
+    ],
+  ] as const)(
+    'a job negatív ága (%s): a refund-őr elutasítása nem Számlázz.hu-hibaüzenet, és a panel nem ígér háttérbeli ellenőrzést',
+    async (_label, lostReceipt, expected) => {
+      const f = fixture()
+      failCorrectiveOnce(f, true)
+      documents.queue.mockResolvedValue(true)
+      f.failures.receipt = lostReceipt
+      await expect(f.start({ amountHuf: 5000 })).rejects.toMatchObject({ status: 503 })
+      f.failures.receipt = ''
+      const intent = store.intents.get(f.payload)!
+      const refusal = await claimManagedRefundDocument(
+        f.payload,
+        { intent, kind: 'corrective', number: null },
+        f.order.correctiveInvoiceAttempts ?? 0,
+      ).catch((error: unknown) => error)
+      expect(refusal).toBeInstanceOf(Error)
+      Object.assign(f.order, {
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceLastError: (refusal as Error).message,
+      })
+      const status = await f.status()
+      expect(status.state).toBe('manual_review')
+      expect(status.message).toContain('A helyesbítő számla nem készült el.')
+      expect(status.message).toContain(expected)
+      expect(status.message).not.toContain('A Számlázz.hu utolsó hibaüzenete')
+      expect(status.message).not.toContain((refusal as Error).message)
+      expect(status.message).not.toContain('A rendszer a háttérben megnézi')
+      expect(documents.queue).toHaveBeenCalledTimes(1)
+      expect(documents.corrective).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('nem újrapróbálható hibánál nem állít sorba jobot, és a kézi teendőt mondja', async () => {
     const f = fixture()

@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 // A közös tároló-, zár- és Barion-mockokat a szolgáltatás importja előtt kell regisztrálni.
-import { fixture, locks, mail, store } from '../refund-fixture'
+import { access, fixture, locks, mail, store } from '../refund-fixture'
 import type { Logger } from '../../lib/logger'
 import { refundNoticeEmail, type RefundNoticeInput } from '../../lib/email/templates/refund'
 import { refundOrder } from '../../lib/refund/refund-order'
@@ -64,6 +64,63 @@ describe('a visszatérítési értesítő sablonja', () => {
     expect(text).toContain('nem tudtuk teljesíteni')
     expect(text).toContain('az változatlanul megmarad')
     expect(text).not.toContain('Számlázz.hu')
+  })
+
+  // Az élő fő termék neve magánhangzóval kezdődik (restore-legacy-content.ts):
+  // „Az „Otthoni…”, nem „A „Otthoni…”. Név nélkül nincs kettőzött névelő.
+  it.each([
+    [
+      'partial',
+      undefined,
+      ['Otthoni KézRehab Program'],
+      'Az „Otthoni KézRehab Program” kurzushoz tartozó hozzáférésed megmarad.',
+    ],
+    [
+      'full',
+      'kept',
+      ['Otthoni KézRehab Program'],
+      'Az „Otthoni KézRehab Program” kurzushoz tartozó hozzáférésed megmarad, mert',
+    ],
+    [
+      'full',
+      'revoked',
+      ['Otthoni KézRehab Program'],
+      'Az „Otthoni KézRehab Program” kurzushoz tartozó hozzáférésed a visszatérítéssel megszűnt.',
+    ],
+    [
+      'full',
+      'revoked',
+      ['Kézterápia alapok'],
+      'A „Kézterápia alapok” kurzushoz tartozó hozzáférésed a visszatérítéssel megszűnt.',
+    ],
+    ['partial', undefined, [''], 'A kurzushoz tartozó hozzáférésed megmarad.'],
+    ['full', 'revoked', [], 'A kurzushoz tartozó hozzáférésed a visszatérítéssel megszűnt.'],
+  ] as const)(
+    '%s/%s, %j: a névelő a kurzusnévhez igazodik a szövegben és a HTML-ben is',
+    (kind, accessState, courseTitles, expected) => {
+      const email = refundNoticeEmail({
+        ...BASE,
+        kind,
+        access: accessState,
+        courseTitles,
+        document: kind === 'partial' ? 'corrective' : 'storno',
+      })
+      for (const part of [email.text, email.html]) {
+        expect(part).toContain(expected)
+        expect(part).not.toMatch(/A „[AÁEÉIÍOÓÖŐUÚÜŰ]|A a kurzushoz/u)
+      }
+    },
+  )
+
+  it('a részleges utáni, maradékot lezáró visszatérítés összegét nem a rendelés árának mondja', () => {
+    const closing = refundNoticeEmail({ ...BASE, amountHuf: 15000, remainderAfterPartial: true })
+    for (const part of [closing.text, closing.html]) {
+      expect(part).toMatch(/rendelésedből a fennmaradó 15(?:\s|&nbsp;)000(?:\s|&nbsp;)Ft összeget/u)
+      expect(part).toContain('Visszatérítettük a fennmaradó összeget')
+      expect(part).not.toMatch(/rendelésed 15(?:\s|&nbsp;)000/u)
+    }
+    // Az első, teljes visszatérítés szövege változatlan.
+    expect(refundNoticeEmail(BASE).text).toMatch(/rendelésed 79\s500\sFt összegét/u)
   })
 
   it('a más jogon megmaradó hozzáférést nem nevezi megszűntnek', () => {
@@ -132,6 +189,92 @@ describe('a visszatérítési értesítő kiküldése a lezárás után', () => 
     const { text } = mail.send.mock.calls[0]![0] as { text: string }
     expect(text).toContain('helyesbítő számlát')
     expect(text).toContain('hozzáférésed megmarad')
+  })
+
+  it('a részleges után a maradékot lezáró visszatérítés levele a fennmaradó összeget mondja', async () => {
+    const f = fixture()
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    await f.start({ amountHuf: 5000 })
+    await refundOrder({ ...f.options, input: { operationKey: 'E'.repeat(43) } })
+    expect(mail.send).toHaveBeenCalledTimes(2)
+    const first = mail.send.mock.calls[0]![0] as { text: string }
+    const closing = mail.send.mock.calls[1]![0] as { text: string }
+    expect(first.text).toMatch(/rendelésedből 5000\sFt összeget/u)
+    expect(closing.text).toMatch(/rendelésedből a fennmaradó 15\s000\sFt összeget/u)
+    expect(closing.text).not.toMatch(/rendelésed 15\s000\sFt összegét/u)
+  })
+
+  // A hozzáférés sorsát a rendezés nyugtája (access-store.ts
+  // preservedProductIds) dönti el; a mock csak ezt a mezőt teszi a fixtúra
+  // valódi nyugtájára, ahogy az access-store írja.
+  it.each([
+    ['minden kurzus más jogon megmarad', [42, 99], 'hozzáférésed megmarad, mert', 'megszűnt'],
+    [
+      'csak egy kurzus marad meg',
+      [99],
+      'A rendeléshez kötött kurzushozzáférésed a visszatérítéssel megszűnt; ami más',
+      'mert az más vásárlásod',
+    ],
+    [
+      'semmi nem marad meg',
+      [],
+      'Az „Otthoni KézRehab Program” és „Kézterápia alapok” kurzushoz tartozó hozzáférésed a visszatérítéssel megszűnt.',
+      'megmarad',
+    ],
+  ] as const)(
+    'teljes visszatérítés, %s: a levél a rendezés nyugtája szerint beszél a hozzáférésről',
+    async (_name, preserved, expected, absent) => {
+      const f = fixture()
+      Object.assign(f.order, {
+        customerEmail: 'vasarlo@example.test',
+        items: [
+          { product: 42, quantity: 1, titleSnapshot: 'Otthoni KézRehab Program' },
+          { product: 99, quantity: 1, titleSnapshot: 'Kézterápia alapok' },
+        ],
+      })
+      const apply = access.apply.getMockImplementation()!
+      access.apply.mockImplementationOnce(async (...args: Parameters<typeof apply>) => {
+        const result = await apply(...args)
+        const rows = f.audits.filter((row) => row.action === 'refund-cleanup-done')
+        const done = rows[rows.length - 1]!
+        Object.assign(done.after as Record<string, unknown>, { preservedProductIds: preserved })
+        return result
+      })
+      await expect(f.start()).resolves.toMatchObject({ type: 'full' })
+      expect(mail.send).toHaveBeenCalledTimes(1)
+      const { text } = mail.send.mock.calls[0]![0] as { text: string }
+      expect(text).toContain(expected)
+      expect(text).not.toContain(absent)
+    },
+  )
+
+  it('éles környezetben a beállítatlan e-mail-szolgáltató (noop) RIASZTÁS, a visszatérítés lezárul', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const f = fixture()
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    const { log, errors } = spyLogger()
+    await expect(
+      refundOrder({ ...f.options, input: { operationKey: 'A'.repeat(43) }, logger: log }),
+    ).resolves.toMatchObject({ type: 'full' })
+    expect(store.intents.get(f.payload)?.state).toBe('committed')
+    expect(mail.send).toHaveBeenCalledTimes(1)
+    expect(
+      errors.filter(
+        (message) => message.startsWith('RIASZTÁS') && message.includes('e-mail-szolgáltató'),
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('nem éles környezetben a noop szolgáltató nem riaszt', async () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    const f = fixture()
+    Object.assign(f.order, { customerEmail: 'vasarlo@example.test' })
+    const { log, errors } = spyLogger()
+    await expect(
+      refundOrder({ ...f.options, input: { operationKey: 'A'.repeat(43) }, logger: log }),
+    ).resolves.toMatchObject({ type: 'full' })
+    expect(mail.send).toHaveBeenCalledTimes(1)
+    expect(errors).toEqual([])
   })
 
   it('a sikertelen küldés nem változtat a visszatérítés eredményén, és RIASZTÁS-t ad', async () => {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // A közös tároló-, zár- és Barion-mockokat a szolgáltatás importja előtt kell regisztrálni.
 import { documents, fixture, provider, store } from '../refund-fixture'
-import { BarionApiError } from '../../lib/barion'
+import { BarionApiError, type BarionPaymentStateResponse } from '../../lib/barion'
 import type { Logger } from '../../lib/logger'
 import { refundOrder } from '../../lib/refund/refund-order'
 
@@ -65,13 +65,13 @@ function rejection(code: string) {
 
 describe('K12: bekapcsolt számlázásnál tulajdonosi visszatérítés csak kiállított számla után', () => {
   it.each([
-    ['none', null, INVOICE_PENDING],
-    ['pending', null, INVOICE_PENDING],
-    ['issued', '   ', INVOICE_PENDING],
-    ['failed', null, INVOICE_FAILED],
+    ['none', 'none', null, INVOICE_PENDING],
+    ['pending', 'pending', null, INVOICE_PENDING],
+    ['issued, de üres számlaszámmal', 'issued', '   ', INVOICE_PENDING],
+    ['failed', 'failed', null, INVOICE_FAILED],
   ] as const)(
-    'számla %s állapotban: 409 a teendővel, GetState, kísérlet és Barion-kérés nélkül',
-    async (invoiceStatus, invoiceNumber, message) => {
+    'számla %s: 409 a teendővel, GetState, kísérlet és Barion-kérés nélkül',
+    async (_label, invoiceStatus, invoiceNumber, message) => {
       vi.stubEnv('SZAMLAZZ_AGENT_KEY', 'DUMMY-agent-key')
       const f = fixture()
       Object.assign(f.order, { invoiceStatus, invoiceNumber })
@@ -152,6 +152,29 @@ describe('K17, r-barion-8: a Barion szerint visszatérített összeg egyezzen a 
       ])
     },
   )
+})
+
+describe('K17: két fül, a zár előtti GetState közben elavul', () => {
+  // A zár előtti összevetés az elavult GetState-tel egyezik (0 = 0); csak a
+  // zár alatti, friss nyilvántartással való újra-összevetés veszi észre, hogy
+  // közben egy másik fül visszatérítése lezárult. Nélküle a második
+  // részvisszatérítés is pénzt küldene a Barionnak.
+  it('a közben lezárult másik részvisszatérítés után 409, második pénz-POST nélkül', async () => {
+    const f = fixture()
+    const stale = (await provider.state('SYNTHETIC')) as BarionPaymentStateResponse
+    const current = provider.state.getMockImplementation()!
+    provider.state.mockClear()
+    provider.state.mockImplementationOnce(async () => {
+      provider.state.mockImplementation(current)
+      await refundOrder({ ...f.options, input: { operationKey: 'E'.repeat(43), amountHuf: 5000 } })
+      return structuredClone(stale)
+    })
+    const error = await start(f, { amountHuf: 5000 }).catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ status: 409 })
+    expect((error as Error).message).toContain('közben megváltoztak')
+    expect(provider.refund).toHaveBeenCalledTimes(1)
+    expect(store.intents.get(f.payload)).toMatchObject({ refundSequence: 1, state: 'committed' })
+  })
 })
 
 describe('a-refund-9, a-riasztas-5: a Barion-válasz nyoma a műveletnaplóban és riasztással', () => {
@@ -247,6 +270,40 @@ describe('a-refund-9, a-riasztas-5: a Barion-válasz nyoma a műveletnaplóban �
       activeOrderKey: null,
     })
   })
+
+  it.each([
+    [
+      'a siker rögzítése',
+      'visszaterites-rogzitese-elakadt',
+      'provider_started',
+      (f: ReturnType<typeof fixture>) => {
+        f.failures.receipt = 'refund-provider-succeeded'
+      },
+    ],
+    [
+      'a helyi feldolgozás (stornó)',
+      'visszaterites-feldolgozasa-elakadt',
+      'provider_succeeded',
+      () => {
+        documents.storno.mockRejectedValueOnce(new Error('SYNTHETIC storno failure'))
+      },
+    ],
+  ] as const)(
+    'Barion-siker után elakadt %s: egy error-szintű RIASZTÁS a kérés azonosítójával, új pénz-POST nélkül',
+    async (_label, alertCode, state, breakIt) => {
+      const f = fixture()
+      breakIt(f)
+      const { log, alerts } = spyLogger()
+      await expect(start(f, {}, log)).rejects.toMatchObject({ status: 503 })
+      expect(provider.refund).toHaveBeenCalledTimes(1)
+      expect(store.intents.get(f.payload)?.state).toBe(state)
+      expect(alerts()).toEqual([
+        expect.objectContaining({
+          context: expect.objectContaining({ alertCode, requestId: REQUEST_ID }),
+        }),
+      ])
+    },
+  )
 
   it('a szabálytalan belső indok 400, GetState nélkül', async () => {
     const f = fixture()

@@ -60,7 +60,13 @@ function snapshotString(order: Order, key: 'name' | 'email'): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-/** A rendelés kurzusainak a vevőnek látható neve; a hiányzót a rendelés pillanatképe pótolja. */
+/**
+ * A rendelés kurzusainak a vevőnek látható neve; a hiányzót a rendelés
+ * pillanatképe pótolja. Ha valamelyik tételnek így sincs neve (törölt kurzus,
+ * üres pillanatkép), üres listát ad: a levél ilyenkor név nélkül, általánosan
+ * fogalmaz, mert egy részleges névsor a többi kurzust elhallgatná, egy
+ * kitalált cím („Kineticare online kurzus” kurzushoz) pedig hamis és esetlen.
+ */
 async function resolveCourseTitles(payload: Payload, order: Order, log: Logger): Promise<string[]> {
   const items = order.items ?? []
   const ids = items
@@ -85,14 +91,12 @@ async function resolveCourseTitles(payload: Payload, order: Order, log: Logger):
       })
     }
   }
-  return items.map((item) => {
+  const resolved = items.map((item) => {
     const id = relationId(item.product)
-    return (
-      (id !== null ? titles.get(id) : undefined) ??
-      item.titleSnapshot?.trim() ??
-      'Kineticare online kurzus'
-    )
+    // `||`: az üres pillanatkép sem név (a `??` átengedné).
+    return ((id !== null ? titles.get(id) : undefined) || item.titleSnapshot || '').trim()
   })
+  return resolved.every((title) => title.length > 0) ? resolved : []
 }
 
 /**
@@ -151,6 +155,9 @@ export async function sendRefundNotice(input: SendRefundNoticeInput): Promise<vo
       kind: input.kind,
       access,
       courseTitles: await resolveCourseTitles(payload, order, log),
+      // A teljes visszatérítés 1-nél nagyobb sorszámmal egy korábbi részleges
+      // utáni maradékot zár le (refund-order.ts: a rendelés refund-nyoma).
+      remainderAfterPartial: input.kind === 'full' && intent.refundSequence > 1,
       document: input.document,
       supportEmail,
     })

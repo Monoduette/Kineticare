@@ -34,7 +34,7 @@ import { hatarozottNevelo } from './order'
  * A sablon változata a küldés bizonyítékához (műveletnapló). Érdemi
  * szövegváltozásnál léptetni kell.
  */
-export const REFUND_NOTICE_TEMPLATE_VERSION = '2026-09-24.1'
+export const REFUND_NOTICE_TEMPLATE_VERSION = '2026-09-24.2'
 
 /** A visszatérítés fajtája a vevő szemszögéből. */
 export type RefundNoticeKind =
@@ -65,8 +65,17 @@ export interface RefundNoticeInput {
   kind: RefundNoticeKind
   /** Teljes visszatérítésnél a hozzáférés sorsa; más fajtánál nem számít. */
   access?: RefundNoticeAccess
-  /** A rendelés kurzusainak neve (a vevőnek látható cím). */
+  /**
+   * A rendelés kurzusainak neve (a vevőnek látható cím). Üres lista vagy üres
+   * cím esetén a levél név nélkül, általánosan fogalmaz („A kurzushoz …”).
+   */
   courseTitles: readonly string[]
+  /**
+   * Teljes visszatérítésnél igaz, ha egy korábbi részleges visszatérítés után
+   * a MARADÉKOT térítjük vissza: ilyenkor az összeg nem a rendelés ára, és a
+   * levél ezt ki is mondja („a fennmaradó … összeget”).
+   */
+  remainderAfterPartial?: boolean
   document: RefundNoticeDocument
   /** A vevő kérdéseinek hivatalos címe (K14); a hívó a válaszcímbe is teszi. */
   supportEmail: string
@@ -87,12 +96,26 @@ function courseList(titles: readonly string[]): string {
   return `${quoted.slice(0, -1).join(', ')} és ${quoted[quoted.length - 1]}`
 }
 
+/**
+ * A mondatkezdő névelő a kurzusnévhez igazodik: magánhangzó előtt „Az”
+ * („Az „Otthoni KézRehab Program” kurzushoz”), mássalhangzó előtt „A”. A
+ * szabály ugyanaz, mint a rendelési visszaigazolásé (order.ts
+ * hatarozottNevelo). Név nélkül a levél általánosan fogalmaz, kettőzött
+ * névelő nélkül („A kurzushoz”).
+ */
+function namedCourses(titles: readonly string[]): string {
+  const first = titles[0]
+  if (first === undefined) return 'A kurzushoz'
+  const article = hatarozottNevelo(first) === 'az' ? 'Az' : 'A'
+  return `${article} ${courseList(titles)} kurzushoz`
+}
+
 function accessSentence(input: RefundNoticeInput): string | null {
   const titles = input.courseTitles.filter((title) => title.trim().length > 0)
-  const named = titles.length > 0 ? `${courseList(titles)} kurzushoz` : 'a kurzushoz'
+  const named = namedCourses(titles)
   switch (input.kind) {
     case 'partial':
-      return `A ${named} tartozó hozzáférésed megmarad.`
+      return `${named} tartozó hozzáférésed megmarad.`
     case 'order-not-accepted':
       return 'Ebből a rendelésből nem jött létre kurzushozzáférés. Ha egy korábbi vásárlásodból már van hozzáférésed, az változatlanul megmarad.'
     default:
@@ -100,11 +123,11 @@ function accessSentence(input: RefundNoticeInput): string | null {
   }
   switch (input.access ?? 'revoked') {
     case 'kept':
-      return `A ${named} tartozó hozzáférésed megmarad, mert az más vásárlásod vagy jogosultságod alapján jár.`
+      return `${named} tartozó hozzáférésed megmarad, mert az más vásárlásod vagy jogosultságod alapján jár.`
     case 'mixed':
       return `A rendeléshez kötött kurzushozzáférésed a visszatérítéssel megszűnt; ami más vásárlásod vagy jogosultságod alapján jár, az megmarad.`
     default:
-      return `A ${named} tartozó hozzáférésed a visszatérítéssel megszűnt.`
+      return `${named} tartozó hozzáférésed a visszatérítéssel megszűnt.`
   }
 }
 
@@ -126,12 +149,17 @@ export function refundNoticeEmail(input: RefundNoticeInput): EmailTemplate {
   const when = day ? ` ${day} napon` : ''
   const support = input.supportEmail.trim()
 
+  // A részleges után a maradékot lezáró visszatérítés összege nem a rendelés
+  // ára: a „rendelésed … összegét” itt hamisan a teljes árnak mutatná.
+  const remainder = input.kind === 'full' && input.remainderAfterPartial === true
   const lead =
     input.kind === 'order-not-accepted'
       ? `A ${input.orderNumber} rendelésedet nem tudtuk teljesíteni, ezért a kifizetett ${amount} összeget${when} visszatérítettük.`
       : input.kind === 'partial'
         ? `A ${input.orderNumber} rendelésedből ${amount} összeget${when} visszatérítettünk.`
-        : `A ${input.orderNumber} rendelésed ${amount} összegét${when} visszatérítettük.`
+        : remainder
+          ? `A ${input.orderNumber} rendelésedből a fennmaradó ${amount} összeget${when} visszatérítettük.`
+          : `A ${input.orderNumber} rendelésed ${amount} összegét${when} visszatérítettük.`
   // A pénz útja: a Barion arra a fizetési eszközre írja jóvá, amellyel a vevő
   // fizetett (Payment-Refund-v2). A bank jóváírási idejét nem ígérjük.
   const route =
@@ -157,7 +185,11 @@ export function refundNoticeEmail(input: RefundNoticeInput): EmailTemplate {
       preheader: `A ${input.orderNumber} rendeléshez ${amount} összeget visszatérítettünk.`,
       eyebrow: 'Visszatérítés',
       heading:
-        input.kind === 'partial' ? 'Részleges visszatérítés' : 'Visszatérítettük az összeget',
+        input.kind === 'partial'
+          ? 'Részleges visszatérítés'
+          : remainder
+            ? 'Visszatérítettük a fennmaradó összeget'
+            : 'Visszatérítettük az összeget',
       paragraphsHtml: paragraphs.map(escapeHtml),
       paragraphsText: paragraphs,
       summary,

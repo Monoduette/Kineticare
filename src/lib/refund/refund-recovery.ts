@@ -533,6 +533,29 @@ async function cleanupBlockedSentence(
   return `${why} Következő lépés: jelezd az üzemeltetőnek a rendelésszámmal és a kurzus nevével együtt, ő rendezi a hozzáférést.`
 }
 
+/**
+ * A szamlazz refund-őr (refund-guard.ts claimManagedRefundDocument) angol
+ * elutasító szövege. Ez NEM a Számlázz.hu válasza, hanem a saját őrünk
+ * döntése: beküldés után a bizonylatot a rendszer nem küldi be újra. A
+ * helyesbítő-kiállítás (corrective.ts) a dobott szöveget a rendelés
+ * utolsó hibájaként menti, ezért a panel nem mutathatja „a Számlázz.hu
+ * utolsó hibaüzeneteként”. A szöveg a szamlazz csomagé; a tipizált
+ * elutasítás exportja ott követő feladat.
+ */
+const REFUND_GUARD_REFUSAL_PREFIX = 'Refund document requires verified reconciliation'
+
+function isRefundGuardRefusal(text: string | null | undefined): boolean {
+  return !!text?.trim().startsWith(REFUND_GUARD_REFUSAL_PREFIX)
+}
+
+/** A Számlázz.hu utolsó hibaüzenete a panel mondatába; a saját őr elutasítása nem az. */
+function szamlazzErrorDetail(text: string | null | undefined): string {
+  const lastError = text?.trim()
+  return lastError && !isRefundGuardRefusal(lastError)
+    ? ` A Számlázz.hu utolsó hibaüzenete: ${lastError}`
+    : ''
+}
+
 /** A bizonylat elakadásának mondata: mi történt, újrapróbálja-e a rendszer, mi a teendő (a-refund-4). */
 async function invoiceBlockedSentence(
   payload: Payload,
@@ -549,8 +572,7 @@ async function invoiceBlockedSentence(
   if (storno) {
     const submitted = !!started || (order.stornoAttempts ?? 0) > 0
     if (!submitted && order.stornoStatus !== 'failed') return null
-    const lastError = order.stornoLastError?.trim()
-    const detail = lastError ? ` A Számlázz.hu utolsó hibaüzenete: ${lastError}` : ''
+    const detail = szamlazzErrorDetail(order.stornoLastError)
     // Stornót a rendszer beküldés után nem küld újra (F3, storno.ts): egy
     // elveszett válasz mögött már létező stornó lehet, a második dupla
     // érvénytelenítés volna. A kézi rögzítés külön, jóváhagyott lépés (H2).
@@ -564,12 +586,21 @@ async function invoiceBlockedSentence(
       (order.correctiveInvoiceAttempts ?? 0) > 0) ||
     order.correctiveInvoiceStatus === 'failed'
   if (!attempted) return null
-  const lastError = order.correctiveInvoiceLastError?.trim()
-  const detail = lastError ? ` A Számlázz.hu utolsó hibaüzenete: ${lastError}` : ''
+  const detail = szamlazzErrorDetail(order.correctiveInvoiceLastError)
   // A sorba állított job a beküldés előtt a Számlázz.hu-ban keresi a
   // helyesbítőt (corrective.ts), és ha megvan, rögzíti a számát; ezután a
   // panel újra a folytatás gombját mutatja (storageRecoveryStatus).
-  if (await readReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION))
+  const retryQueued = await readReceipt(payload, intent, REFUND_INVOICE_RETRY_QUEUED_ACTION)
+  // Negatív ág: a job lefutott, a lekérdezés nem talált bizonylatot, és a
+  // refund-őr az új beküldést megtagadta (az utolsó hiba az őr szövege). A
+  // háttérbeli ellenőrzés tehát véget ért; ígérni már nem szabad.
+  if (
+    retryQueued &&
+    order.correctiveInvoiceStatus === 'failed' &&
+    isRefundGuardRefusal(order.correctiveInvoiceLastError)
+  )
+    return 'A helyesbítő számla nem készült el. A rendszer a háttérben megnézte a Számlázz.hu-ban, de ehhez a visszatérítéshez nem talált helyesbítő számlát, és nem küldi be újra. Jelezd az üzemeltetőnek a rendelésszámmal együtt.'
+  if (retryQueued)
     return `A helyesbítő számla kiállítása átmeneti hibába futott.${detail} A rendszer a háttérben megnézi a Számlázz.hu-ban, elkészült-e, és ha igen, rögzíti a számát. Nézz vissza később: ha megjelenik a ${RECOVER} gomb, azzal fejezd be a feldolgozást. Ha egy nap múlva is ezt látod, jelezd az üzemeltetőnek a rendelésszámmal együtt.`
   return `A helyesbítő számla nem készült el.${detail} Jelezd az üzemeltetőnek a rendelésszámmal együtt; a rendszer nem küldi be újra.`
 }
