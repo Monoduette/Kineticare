@@ -88,6 +88,13 @@ describe('getSzamlazzConfig', () => {
     expect(config.vatMode).toBe('27')
   })
 
+  it('a-szamlazz-11 + a-refund-14: a SZAMLAZZ_TIMEOUT_MS felső korlátja 15 s (a zár-tranzakció és a refund-panel határideje miatt)', () => {
+    const base = { SZAMLAZZ_AGENT_KEY: DUMMY_AGENT_KEY, SZAMLAZZ_AFAKULCS: 'AAM' }
+    expect(getSzamlazzConfig({ ...base, SZAMLAZZ_TIMEOUT_MS: '60000' }).timeoutMs).toBe(15000)
+    expect(getSzamlazzConfig({ ...base, SZAMLAZZ_TIMEOUT_MS: '15001' }).timeoutMs).toBe(15000)
+    expect(getSzamlazzConfig({ ...base, SZAMLAZZ_TIMEOUT_MS: '8000' }).timeoutMs).toBe(8000)
+  })
+
   it('kulccsal enabled; prefix és timeout felülírható', () => {
     const config = getSzamlazzConfig({
       SZAMLAZZ_AGENT_KEY: DUMMY_AGENT_KEY,
@@ -363,6 +370,30 @@ describe('buildInvoiceXml — áfakulcs és teljesítési dátum', () => {
     expect(xml).toContain('<afaErtek>0</afaErtek>')
     expect(xml).toContain('<nettoErtek>19990</nettoErtek>')
     expect(xml).toContain('<bruttoErtek>19990</bruttoErtek>')
+  })
+
+  it('r-ado-10 + a-szamlazz-15: AAM-számlán a fejléc-megjegyzés az adómentesség jogszabályi utalását EGYSZER hordozza, a fizetési mód semleges', () => {
+    const aam = buildInvoiceXml({ ...BASE, vatMode: 'AAM' })
+    expect(aam).toContain(
+      `<megjegyzes>Kineticare online kurzus, rendelésszám: ${ORDER_NUMBER} (Barion, online fizetés). Alanyi adómentes (Áfa tv. XIII. fejezet).</megjegyzes>`,
+    )
+    expect(aam.split('Alanyi adómentes (Áfa tv. XIII. fejezet).')).toHaveLength(2)
+    // A felülírt (helyesbítő) megjegyzés is megkapja az utalást.
+    const override = buildInvoiceXml({ ...BASE, vatMode: 'AAM', megjegyzes: 'Egyedi szöveg.' })
+    expect(override).toContain(
+      '<megjegyzes>Egyedi szöveg. Alanyi adómentes (Áfa tv. XIII. fejezet).</megjegyzes>',
+    )
+    const vat27 = buildInvoiceXml({ ...BASE, vatMode: '27' })
+    expect(vat27).toContain(
+      `<megjegyzes>Kineticare online kurzus, rendelésszám: ${ORDER_NUMBER} (Barion, online fizetés).</megjegyzes>`,
+    )
+    expect(vat27).not.toContain('Alanyi adómentes')
+    expect(vat27).not.toContain('bankkártya')
+  })
+
+  it('K11 + a-szamlazz-10: a vevő országa Magyarország, az élő XSD szerint a <nev> után', () => {
+    const xml = buildInvoiceXml(BASE)
+    expect(xml).toMatch(/<nev>[^<]*<\/nev>\s*<orszag>Magyarország<\/orszag>\s*<irsz>/)
   })
 
   it('teljesitesDatum megadva: eltér a kelt-dátumtól (a kelt marad az issueDate)', () => {
@@ -968,10 +999,27 @@ describe('parseAgentResponse — CDATA, fejléc-tartalék és 56-os jelzés', ()
 // issueInvoiceForOrder — a folyamat mockolt payloaddal + injektált postXml-lel
 // ---------------------------------------------------------------------------
 
+/** A fixtúra-rendelés létrehozásának pillanata (Payload ISO-alakban írja). */
+const ORDER_CREATED_AT = '2026-09-20T10:00:00.000Z'
+/**
+ * A 101-es fixtúra-rendelés globálisan egyedi külső azonosítója, kézzel
+ * kiszámolva: rendelésszám - rendelés-id - createdAt unix másodpercben
+ * (2026-09-20T10:00:00Z = 1789898400).
+ */
+const INVOICE_KULSO_AZON = 'KH-2026-000123-101-1789898400'
+/** A fixtúra-rendelés végösszege (totalHufSnapshot). */
+const ORDER_TOTAL_HUF = 19990
+
+/** Lekérdezés-találat a rendelés végösszegével egyező bruttóval (a mi számlánk). */
+function ownInvoice(szamlaszam: string): InvoiceLookupResult {
+  return { szamlaszam, szamlabrutto: ORDER_TOTAL_HUF }
+}
+
 function createOrder(overrides: Partial<Order> = {}): Order {
   return {
     id: 101,
     orderNumber: ORDER_NUMBER,
+    createdAt: ORDER_CREATED_AT,
     status: 'paid',
     invoiceStatus: 'none',
     customerEmail: 'anna@example.test',
@@ -1082,7 +1130,7 @@ describe('isTrustedInvoicePdfUrl — a számlalink allowlistje', () => {
 })
 
 describe('issueInvoiceForOrder', () => {
-  it('boldog út: pending → issued + invoiceNumber + invoicePdfUrl, a küldött XML szamlaKulsoAzon-ja az orderNumber', async () => {
+  it('boldog út: pending → issued + invoiceNumber + invoicePdfUrl; a küldött XML szamlaKulsoAzon-ja globálisan egyedi, a rendelesSzam a rendelésszám', async () => {
     const { payload, order, updates } = createMockPayload(createOrder())
     const sentXml: string[] = []
     const result = await issueInvoiceForOrder({
@@ -1112,17 +1160,19 @@ describe('issueInvoiceForOrder', () => {
       invoiceCompletionDate: '2026-08-04',
     })
     expect(sentXml).toHaveLength(1)
-    expect(sentXml[0]).toContain(`<szamlaKulsoAzon>${ORDER_NUMBER}</szamlaKulsoAzon>`)
+    // a-szamlazz-5: a külső azonosító nem újrahasznosítható (id + létrehozás
+    // pillanata), a fiókbeli duplikátum-tiltás kulcsa (rendelesSzam) viszont
+    // a puszta rendelésszám marad.
+    expect(sentXml[0]).toContain(`<szamlaKulsoAzon>${INVOICE_KULSO_AZON}</szamlaKulsoAzon>`)
+    expect(sentXml[0]).toContain(`<rendelesSzam>${ORDER_NUMBER}</rendelesSzam>`)
   })
 
   it('nem-paid rendelésre a kiállítás KIHAGYÓDIK (skipped) — számla nem készül, provider-hívás nincs', async () => {
-    for (const status of [
-      'created',
-      'payment_pending',
-      'payment_failed',
-      'cancelled',
-      'refunded',
-    ] as Array<Order['status']>) {
+    // A 'refunded' külön ág (a-egyeztetes-13, K12): lásd a „visszatérítés a
+    // számla előtt" blokkot.
+    for (const status of ['created', 'payment_pending', 'payment_failed', 'cancelled'] as Array<
+      Order['status']
+    >) {
       const { payload, order, updates } = createMockPayload(createOrder({ status }))
       const result = await issueInvoiceForOrder({
         payload,
@@ -1351,7 +1401,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
         lookups.push(kulsoAzon)
         // Az első (POST előtti) lookup üres — a 71 a POST után jön, a második
         // lookup veszi át a meglévő bizonylatot.
-        return lookups.length === 1 ? null : { szamlaszam: 'KIN-2026-7' }
+        return lookups.length === 1 ? null : ownInvoice('KIN-2026-7')
       },
       postXml: async () => {
         posts += 1
@@ -1361,7 +1411,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
     expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-7' })
     expect(posts).toBe(1)
-    expect(lookups).toEqual([ORDER_NUMBER, ORDER_NUMBER])
+    expect(lookups).toEqual([INVOICE_KULSO_AZON, INVOICE_KULSO_AZON])
     expect(order?.invoiceStatus).toBe('issued')
     expect(order?.invoiceNumber).toBe('KIN-2026-7')
     expect(updates[1]).toEqual({
@@ -1407,7 +1457,9 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
     })
 
     expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-7' })
-    expect(lookups).toEqual([ORDER_NUMBER])
+    // Beküldés még nem volt: a régi (rendelésszám) kulcson talált bizonylat
+    // csak idegen lehetne, ezért ott nem keres.
+    expect(lookups).toEqual([INVOICE_KULSO_AZON])
   })
 
   it('retry ELŐTTI lekérdezés: találatnál a beküldés elmarad (a bizonylat már létezik)', async () => {
@@ -1423,7 +1475,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
       issueDate: '2026-08-04',
       queryByKulsoAzon: async (kulsoAzon) => {
         lookups.push(kulsoAzon)
-        return { szamlaszam: 'KIN-2026-7' }
+        return ownInvoice('KIN-2026-7')
       },
       postXml: async () => {
         posts += 1
@@ -1432,7 +1484,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
     })
 
     expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-7' })
-    expect(lookups).toEqual([ORDER_NUMBER])
+    expect(lookups).toEqual([INVOICE_KULSO_AZON])
     expect(posts).toBe(0)
     expect(order?.invoiceNumber).toBe('KIN-2026-7')
     // F10: a LEKÉRDEZÉS nem fogyaszt beküldési kísérletet — a hivatalos 5-ös
@@ -1455,7 +1507,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
       }),
     )
     const { logger, logged } = captureLogs()
-    let lookups = 0
+    const lookups: string[] = []
     let posts = 0
     const run = () =>
       issueInvoiceForOrder({
@@ -1463,8 +1515,8 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
         orderId: 101,
         config: ENABLED_CONFIG,
         logger,
-        queryByKulsoAzon: async () => {
-          lookups += 1
+        queryByKulsoAzon: async (kulsoAzon) => {
+          lookups.push(kulsoAzon)
           return null
         },
         postXml: async () => {
@@ -1476,9 +1528,11 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
     expect(result.outcome).toBe('failed')
     expect(result.reason).toContain('kimerült')
-    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(result.reason).toContain(`${ORDER_NUMBER} rendelésszámú bizonylatot`)
     expect(result.reason).toContain(lastSubmissionError)
-    expect(lookups).toBe(1)
+    // Korábbi beküldések után az egyedi ÉS a régi (PR #304-es, rendelésszám)
+    // kulcson is keres: a régi kóddal beküldött számla is előkerüljön.
+    expect(lookups).toEqual([INVOICE_KULSO_AZON, ORDER_NUMBER])
     expect(posts).toBe(0)
     expect(order?.invoiceStatus).toBe('failed')
     expect(order?.invoiceLastError).toBe(result.reason)
@@ -1489,7 +1543,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
 
     // Egy még sorban álló job: sem lekérdezés, sem beküldés, sem új riasztás.
     await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
-    expect(lookups).toBe(1)
+    expect(lookups).toHaveLength(2)
     expect(posts).toBe(0)
     expect(logged.filter((entry) => entry.level === 'error')).toHaveLength(1)
   })
@@ -1503,7 +1557,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
       payload,
       orderId: 101,
       config: ENABLED_CONFIG,
-      queryByKulsoAzon: async () => ({ szamlaszam: 'E-KIN-2026-42' }),
+      queryByKulsoAzon: async () => ownInvoice('E-KIN-2026-42'),
       postXml: async () => {
         posts += 1
         return { szamlaszam: 'MASODIK-SZAMLA' }
@@ -1576,7 +1630,7 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
  * refunded lett.
  */
 describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', () => {
-  it('a beküldés előtti újraolvasás refunded: skipped, POST nincs', async () => {
+  it('a beküldés előtti újraolvasás refunded: POST nincs, failed + K12-RIASZTÁS (utólagos számla + stornó nem megy ki)', async () => {
     const paid = createOrder({ status: 'paid' })
     const refunded = createOrder({ status: 'refunded' })
     let finds = 0
@@ -1604,10 +1658,10 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
       },
     })
 
-    expect(result.outcome).toBe('skipped')
-    expect(result.reason).toContain('nem paid')
+    expect(result.outcome).toBe('failed')
+    expect(result.reason).toContain('visszatérítették')
     expect(posts).toBe(0)
-    expect(updates).toHaveLength(0)
+    expect(updates).toEqual([{ invoiceStatus: 'failed', invoiceLastError: result.reason }])
   })
 
   it('kiállítás után refunded, stornó nélkül: inline stornó, a számla issued marad', async () => {
@@ -2007,7 +2061,10 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
         resolvePaidMoment: paidHoursAgo(1),
         queryByKulsoAzon: async (kulsoAzon) => {
           lookups.push(kulsoAzon)
-          return createdAtProvider ? { szamlaszam: createdAtProvider } : null
+          // A létrejött bizonylat a beküldött, egyedi külső azonosítón kereshető.
+          return createdAtProvider && kulsoAzon === INVOICE_KULSO_AZON
+            ? ownInvoice(createdAtProvider)
+            : null
         },
         postXml: async () => {
           posts += 1
@@ -2113,7 +2170,7 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
     expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
     // A korábbi beküldések miatt a bizonylat létezhet: a szöveg a kézi
     // kiállítás ELŐTTI keresést kéri, a külső azonosítóval.
-    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(result.reason).toContain(`${ORDER_NUMBER} rendelésszámú bizonylatot`)
     expect(order?.invoiceLastError).toBe(result.reason)
     expect(logged.filter((entry) => entry.level === 'error').map((entry) => entry.message)).toEqual(
       [
@@ -2146,7 +2203,7 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
     })
     expect(result.outcome).toBe('failed')
     expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
-    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(result.reason).toContain(`${ORDER_NUMBER} rendelésszámú bizonylatot`)
     expect(order?.invoiceStatus).toBe('failed')
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)
@@ -2278,7 +2335,7 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
     expect(result.reason).toContain('SZAMLAZZ_API_URL')
     // Beküldés még nem volt: bizonylat nem létezhet, keresésre nincs szükség.
     expect(result.reason).toContain('Beküldés még nem történt')
-    expect(result.reason).not.toContain('külső azonosítójú')
+    expect(result.reason).not.toContain('rendelésszámú bizonylatot')
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)
     expect(alerts[0]?.message).toMatch(
@@ -2476,7 +2533,7 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
     expect(posts).toBe(1)
     expect(result.outcome).toBe('failed')
     expect(result.reason).toContain('MÁR LÉTEZIK (71/152): ne állítsd ki kézzel')
-    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(result.reason).toContain(`${ORDER_NUMBER} rendelésszámú bizonylatot`)
     const stopAlert = logged.find(
       (entry) => entry.level === 'error' && entry.message.includes('automatikus kiállítása leállt'),
     )
@@ -2516,5 +2573,455 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
     })
     expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-77' })
     expect(order?.invoiceStatus).toBe('issued')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// w1-szamlazz: végleges hibák riasztása, biztonságos átvétel, visszatérítés a
+// számla előtt, lekérdezési fék
+// ---------------------------------------------------------------------------
+
+/** A 7-es („nincs ilyen bizonylat") xmlszamlavalasz-törzs. */
+const NOT_FOUND_BODY =
+  '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>7</hibakod>' +
+  '<hibauzenet>Hiányzó adat: számla xml (ismeretlen számlaszám, rendelésszám vagy külső azonosító).</hibauzenet></xmlszamlavalasz>'
+
+/** Hangos POST-mock: azokon az ágakon, ahol beküldésnek nem szabad futnia. */
+const forbiddenPost = async (): Promise<never> => {
+  throw new Error('TESZT-HIBA: ezen az ágon POST nem mehet ki')
+}
+
+describe('issueInvoiceForOrder — végleges hibák RIASZTÁS-a (a-szamlazz-6, a-riasztas-2)', () => {
+  it('végleges agent-hiba (54 — e-számla nincs engedélyezve): failed, error-szintű RIASZTÁS a rendelésszámmal és a hibakóddal, dobás nélkül', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: silentLookup,
+      postXml: async () =>
+        parseAgentResponse(
+          '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>54</hibakod>' +
+            '<hibauzenet>E-számla készítés nincs engedélyezve.</hibauzenet></xmlszamlavalasz>',
+          new Headers(),
+        ),
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(order?.invoiceStatus).toBe('failed')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számla kiállítása végleges hibával leállt/)
+    expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER, agentErrorCode: '54' })
+  })
+
+  it('váratlan (nem Számlázz.hu-) hiba: RIASZTÁS a rendelésszámmal, és a hiba továbbmegy', async () => {
+    const { payload } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        issueDate: '2026-08-04',
+        queryByKulsoAzon: silentLookup,
+        postXml: async () => {
+          throw new TypeError('TESZT: váratlan programhiba')
+        },
+      }),
+    ).rejects.toThrow('váratlan programhiba')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számlakiállítás váratlan hibával állt le/)
+    expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER })
+  })
+})
+
+describe('issueInvoiceForOrder — a lekérdezés nem vesz át idegen bizonylatot (a-szamlazz-5, r-szamlazz-11)', () => {
+  it('újrahasznosított rendelésszám: a régi kulcson ülő IDEGEN számlát az első kísérlet nem is keresi, saját számla áll ki', async () => {
+    // A törölt (vagy mentésből visszaállított) rendelés ugyanezzel a
+    // rendelésszámmal és ugyanakkora összeggel számlát kapott a PR #304-es
+    // kóddal, amely a rendelésszámot küldte külső azonosítóként.
+    const { payload, order } = createMockPayload(createOrder())
+    const lookups: string[] = []
+    let posts = 0
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: async (kulsoAzon) => {
+        lookups.push(kulsoAzon)
+        return kulsoAzon === ORDER_NUMBER ? ownInvoice('IDEGEN-KIN-2026-1') : null
+      },
+      postXml: async () => {
+        posts += 1
+        return { szamlaszam: 'KIN-2026-SAJAT' }
+      },
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-SAJAT' })
+    expect(order?.invoiceNumber).toBe('KIN-2026-SAJAT')
+    expect(lookups).toEqual([INVOICE_KULSO_AZON])
+    expect(posts).toBe(1)
+  })
+
+  it.each([
+    ['eltérő bruttó végösszeg', { szamlaszam: 'IDEGEN-1', szamlabrutto: 5000 }],
+    ['sztornó (negatív) végösszeg', { szamlaszam: 'IDEGEN-2', szamlabrutto: -ORDER_TOTAL_HUF }],
+    ['hiányzó bruttó végösszeg', { szamlaszam: 'IDEGEN-3' }],
+  ])(
+    'a talált bizonylat nem egyeztethető (%s): failed + RIASZTÁS, átvétel és beküldés NÉLKÜL; egy később futó job sem küld be',
+    async (_label, found: InvoiceLookupResult) => {
+      const { payload, order } = createMockPayload(createOrder({ invoiceAttempts: 1 }))
+      const { logger, logged } = captureLogs()
+      let lookups = 0
+      const run = () =>
+        issueInvoiceForOrder({
+          payload,
+          orderId: 101,
+          config: ENABLED_CONFIG,
+          logger,
+          issueDate: '2026-08-04',
+          queryByKulsoAzon: async () => {
+            lookups += 1
+            return found
+          },
+          postXml: forbiddenPost,
+        })
+
+      const result = await run()
+      expect(result.outcome).toBe('failed')
+      expect(result.reason).toContain(found.szamlaszam)
+      expect(order?.invoiceStatus).toBe('failed')
+      expect(order?.invoiceNumber).toBeUndefined()
+      const alerts = logged.filter((entry) => entry.level === 'error')
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.message).toMatch(
+        /^RIASZTÁS: a bizonylat-lekérdezés olyan bizonylatot talált/,
+      )
+      expect(alerts[0]?.context).toMatchObject({
+        orderNumber: ORDER_NUMBER,
+        foundInvoiceNumber: found.szamlaszam,
+      })
+
+      await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
+      expect(lookups).toBe(1)
+    },
+  )
+
+  it('visszafelé kompatibilitás: korábbi beküldés után a RÉGI (rendelésszám) kulcson talált, egyeztetett számla átvéve', async () => {
+    // A PR #304-es kód a rendelésszámot küldte külső azonosítóként; a válasz
+    // elveszett, a számla ott létezik.
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: 1 }),
+    )
+    const lookups: string[] = []
+    const dataQueries: string[] = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: async (kulsoAzon) => {
+        lookups.push(kulsoAzon)
+        return kulsoAzon === ORDER_NUMBER ? ownInvoice('KIN-2026-REGI') : null
+      },
+      queryInvoiceData: async (szamlaszam) => {
+        dataQueries.push(szamlaszam)
+        return { szamlaszam, vatKeys: ['27'], sztornozott: false, vevoNev: '  teszt  ANNA ' }
+      },
+      postXml: forbiddenPost,
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-REGI' })
+    expect(lookups).toEqual([INVOICE_KULSO_AZON, ORDER_NUMBER])
+    expect(dataQueries).toEqual(['KIN-2026-REGI'])
+    expect(order?.invoiceNumber).toBe('KIN-2026-REGI')
+  })
+
+  it.each([
+    ['már sztornózott', { sztornozott: true, vevoNev: 'Teszt Anna' }],
+    ['más vevőé', { sztornozott: false, vevoNev: 'Idegen Béla' }],
+    ['vevőnév nélküli', { sztornozott: false }],
+  ])(
+    'a régi kulcson talált, egyező összegű számla %s: NEM vesszük át, failed + RIASZTÁS, beküldés nélkül',
+    async (_label, data: { sztornozott: boolean; vevoNev?: string }) => {
+      const { payload, order } = createMockPayload(
+        createOrder({ invoiceStatus: 'pending', invoiceAttempts: 1 }),
+      )
+      const { logger, logged } = captureLogs()
+      const result = await issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        issueDate: '2026-08-04',
+        queryByKulsoAzon: async (kulsoAzon) =>
+          kulsoAzon === ORDER_NUMBER ? ownInvoice('IDEGEN-REGI') : null,
+        queryInvoiceData: async (szamlaszam) => ({ szamlaszam, vatKeys: ['27'], ...data }),
+        postXml: forbiddenPost,
+      })
+
+      expect(result.outcome).toBe('failed')
+      expect(order?.invoiceNumber).toBeUndefined()
+      expect(order?.invoiceStatus).toBe('failed')
+      expect(logged.filter((entry) => entry.level === 'error')[0]?.message).toMatch(/^RIASZTÁS: /)
+    },
+  )
+})
+
+describe('issueInvoiceForOrder — visszatérítés a számla előtt (a-egyeztetes-13, a-szamlazz-12, K12)', () => {
+  it('visszatérített rendelés, korábbi beküldéssel: a lekérdezés a státusz-kapu ELŐTT fut, a meglévő számlát átveszi és sztornózza', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ status: 'refunded', invoiceStatus: 'pending', invoiceAttempts: 1 }),
+    )
+    const stornoFor: Array<string | null | undefined> = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: async (kulsoAzon) =>
+        kulsoAzon === INVOICE_KULSO_AZON ? ownInvoice('KIN-2026-ELVESZETT') : null,
+      postXml: forbiddenPost,
+      issueStorno: async (stornoOrder) => {
+        stornoFor.push(stornoOrder.invoiceNumber)
+        return { outcome: 'storned', stornoNumber: 'ST-1' }
+      },
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-ELVESZETT' })
+    expect(order?.invoiceNumber).toBe('KIN-2026-ELVESZETT')
+    expect(stornoFor).toEqual(['KIN-2026-ELVESZETT'])
+  })
+
+  it('visszatérített, még sosem beküldött rendelés: NEM állít ki számlát + stornót, lekérdezés nélkül failed + K12-RIASZTÁS', async () => {
+    const { payload, order } = createMockPayload(createOrder({ status: 'refunded' }))
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      queryByKulsoAzon: noLookup,
+      postXml: forbiddenPost,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(order?.invoiceStatus).toBe('failed')
+    expect(order?.invoiceLastError).toMatch(/^A számla automatikus kiállítása leállt: /)
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a rendelést a számla kiállítása előtt visszatérítették/,
+    )
+    expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER })
+  })
+
+  it('visszatérített rendelés, korábbi beküldés, de a lekérdezés nem talál számlát: failed + K12-RIASZTÁS, beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ status: 'refunded', invoiceStatus: 'pending', invoiceAttempts: 2 }),
+    )
+    const { logger, logged } = captureLogs()
+    const lookups: string[] = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      queryByKulsoAzon: async (kulsoAzon) => {
+        lookups.push(kulsoAzon)
+        return null
+      },
+      postXml: forbiddenPost,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(lookups).toEqual([INVOICE_KULSO_AZON, ORDER_NUMBER])
+    expect(order?.invoiceStatus).toBe('failed')
+    expect(logged.filter((entry) => entry.level === 'error')[0]?.message).toMatch(
+      /^RIASZTÁS: a rendelést a számla kiállítása előtt visszatérítették/,
+    )
+  })
+
+  it('részleges visszatérítés a számla ELŐTT: a számla kiáll, és RIASZTÁS kéri a helyesbítőt', async () => {
+    const { payload } = createMockPayload(
+      createOrder({
+        refunds: [
+          {
+            transactionId: 'TESZT-REFUND-1',
+            amountHuf: 5000,
+            status: 'Succeeded',
+            type: 'partial',
+            refundedAt: '2026-08-03T10:00:00.000Z',
+          },
+        ],
+      } as Partial<Order>),
+    )
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: silentLookup,
+      postXml: async () => ({ szamlaszam: 'KIN-2026-TELJES' }),
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-TELJES' })
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a számla kiállt, de a rendelésen a számla ELŐTT részleges visszatérítés történt/,
+    )
+  })
+})
+
+describe('issueInvoiceForOrder — a 7-es kód csak VÉGLEGES válasznál jelent „nincs számlát" (Codex, PR #304)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it.each([503, 429])(
+    '%i + 7-es kód a lekérdezésben: újrapróbálható hiba, a számla pending marad, beküldés NINCS',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(NOT_FOUND_BODY, { status })),
+      )
+      const { payload, order } = createMockPayload(
+        createOrder({ invoiceStatus: 'pending', invoiceAttempts: 1 }),
+      )
+      await expect(
+        issueInvoiceForOrder({
+          payload,
+          orderId: 101,
+          config: ENABLED_CONFIG,
+          issueDate: '2026-08-04',
+          resolvePaidMoment: paidHoursAgo(1),
+          queryByKulsoAzon: queryInvoiceByKulsoAzon,
+          postXml: forbiddenPost,
+        }),
+      ).rejects.toMatchObject({ retryable: true })
+      expect(order?.invoiceStatus).toBe('pending')
+      expect(order?.invoiceAttempts).toBe(1)
+    },
+  )
+
+  it('200 + 7-es kód: végleges „nincs ilyen bizonylat", a beküldés mehet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(NOT_FOUND_BODY, { status: 200 })),
+    )
+    const { payload } = createMockPayload(createOrder())
+    let posts = 0
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-08-04',
+      queryByKulsoAzon: queryInvoiceByKulsoAzon,
+      postXml: async () => {
+        posts += 1
+        return { szamlaszam: 'KIN-2026-200' }
+      },
+    })
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-200' })
+    expect(posts).toBe(1)
+  })
+})
+
+describe('issueInvoiceForOrder — a lekérdezések gyakorisági féke (a-szamlazz-15)', () => {
+  useFrozenClock()
+
+  beforeEach(() => {
+    resetAlertThrottle()
+  })
+
+  it('a hibasorozat 3. sikertelen lekérdezése után óránként legfeljebb egy lekérdezés megy ki; a közbeeső futás hálózat nélkül zár', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    let lookups = 0
+    let healthy = false
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-10-01',
+        resolvePaidMoment: paidHoursAgo(1),
+        queryByKulsoAzon: async () => {
+          lookups += 1
+          if (!healthy) {
+            throw lookupTimeout()
+          }
+          return null
+        },
+        postXml: async () => ({ szamlaszam: 'KIN-2026-FEK' }),
+      })
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await expect(run()).rejects.toMatchObject({ retryable: true })
+      advanceClock(10 * 60 * 1000)
+    }
+    expect(lookups).toBe(3)
+    expect(order?.invoiceStatus).toBe('pending')
+
+    // 10 perccel a 3. hiba után: nincs lekérdezés, nincs állapotírás.
+    const lastErrorBefore = order?.invoiceLastError
+    await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
+    expect(lookups).toBe(3)
+    expect(order?.invoiceLastError).toBe(lastErrorBefore)
+
+    // Egy órával a 3. hiba után ismét lekérdez, és a helyreállt szolgáltatásnál kiállít.
+    // 59 perccel a 3. hiba után még szünetel, egy perccel később már nem.
+    advanceClock(49 * 60 * 1000)
+    await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
+    expect(lookups).toBe(3)
+    advanceClock(60 * 1000)
+    healthy = true
+    await expect(run()).resolves.toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-FEK' })
+    expect(lookups).toBe(4)
+  })
+
+  it('a 24. egymást követő sikertelen lekérdezés után a számla automatikus kiállítása leáll: failed + RIASZTÁS, a H4-időkorláttól függetlenül', async () => {
+    // A fizetés óta csak 5 óra telt el, tehát a H4-időkorlát (24 óra) még nem
+    // állítaná le; a sorozat viszont már 23 sikertelen lekérdezésnél tart.
+    const startedAt = new Date(Date.now() - 4 * HOUR_MS).toISOString()
+    const lastAt = new Date(Date.now() - 2 * HOUR_MS).toISOString()
+    const { payload, order } = createMockPayload(
+      createOrder({
+        invoiceStatus: 'pending',
+        invoiceLastError: `[lekérdezési hiba ${startedAt} óta, 23 sikertelen lekérdezés, utolsó: ${lastAt}] ${LOOKUP_TIMEOUT_MESSAGE}`,
+      }),
+    )
+    const { logger, logged } = captureLogs()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      resolvePaidMoment: paidHoursAgo(5),
+      queryByKulsoAzon: async () => {
+        throw lookupTimeout()
+      },
+      postXml: forbiddenPost,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(order?.invoiceStatus).toBe('failed')
+    expect(order?.invoiceLastError).toMatch(
+      /^A számla automatikus kiállítása leállt: .*24 alkalommal/,
+    )
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a számla előtti bizonylat-lekérdezés 24 alkalommal/,
+    )
   })
 })

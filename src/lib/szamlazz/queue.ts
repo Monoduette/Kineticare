@@ -6,10 +6,12 @@ import { logger as rootLogger, type Logger } from '../logger'
 /**
  * A Számlázz.hu-jobok sorba állítása (C4/C5).
  *
- * A helyesbítő számla (C5) automatikus újrapróbálása: ha az inline kísérlet
+ * A helyesbítő számla (C5) újrapróbálása: ha az inline kísérlet
  * ÚJRAPRÓBÁLHATÓ hibába fut (timeout/hálózat/5xx/szlahu_down), a
- * queueCorrectiveInvoiceJob állítja sorba a corrective-invoice-issue taskot
- * (a queueInvoiceIssueJob mintájára, src/lib/order-paid.ts).
+ * queueCorrectiveInvoiceJob állíthatja sorba a corrective-invoice-issue
+ * taskot (a queueInvoiceIssueJob mintájára, src/lib/order-paid.ts). A
+ * sorba állítás a HÍVÓ (refund-helyreállítás) döntése; a beküldés előtti
+ * lekérdezés miatt az újrapróbálás biztonságos.
  *
  * A stornó (C4) NEM automatikus újrapróbálás: egy inline POST után az állapot
  * bizonytalan (F3), a vak retry dupla stornót okozhat. A queueStornoIssueJob

@@ -31,6 +31,13 @@ const DUMMY_AGENT_KEY = 'DUMMY-AGENT-KULCS-NEM-VALODI-TITOK'
 
 const ORDER_NUMBER = 'KH-2026-000123'
 const ORIGINAL_INVOICE_NUMBER = 'KIN-2026-7'
+/** A fixtúra-rendelés létrehozásának pillanata (Payload ISO-alakban írja). */
+const ORDER_CREATED_AT = '2026-09-20T10:00:00.000Z'
+/**
+ * A stornó saját külső azonosítója, kézzel kiszámolva: a számla egyedi kulcsa
+ * (rendelésszám - id 101 - createdAt unix mp 1789898400) + `-STORNO`.
+ */
+const STORNO_KULSO_AZON = 'KH-2026-000123-101-1789898400-STORNO'
 
 // Az áfakulcs 2026-08-17 óta KÖTELEZŐ bekapcsolt számlázásnál (a csendes '27'
 // alapértelmezés megszűnt) — a fixtúra ezért kimondja.
@@ -42,6 +49,7 @@ const ENABLED_CONFIG = getSzamlazzConfig({
 function createOrder(overrides: Record<string, unknown> = {}): Order {
   return {
     id: 101,
+    createdAt: ORDER_CREATED_AT,
     orderNumber: ORDER_NUMBER,
     status: 'refunded',
     invoiceStatus: 'issued',
@@ -98,6 +106,7 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
     agentKey: DUMMY_AGENT_KEY,
     originalInvoiceNumber: ORIGINAL_INVOICE_NUMBER,
     orderNumber: ORDER_NUMBER,
+    kulsoAzon: STORNO_KULSO_AZON,
     reason: 'Elállás a vásárlástól',
     buyerEmail: 'anna@example.test',
   })
@@ -133,13 +142,13 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
     expect(xml).toContain('<valaszVerzio>2</valaszVerzio>')
   })
 
-  it('F3 — szamlaKulsoAzon NINCS a stornó-kérésben (a hivatkozás a fejlec.szamlaszam)', () => {
-    // A C3 szerint az xmlszamlast szamlaKulsoAzon mezője a SZTORNÓZANDÓ számlát
-    // hivatkozza, NEM ad azonosítót a létrejövő stornónak — a rá épített
-    // visszakeresés semmit nem bizonyítana, a vak újraküldés dupla stornót
-    // okozhatna (C5: már nem javítható).
-    expect(xml).not.toContain('<szamlaKulsoAzon>')
-    expect(xml).not.toContain('-STORNO')
+  it('r-szamlazz-17 — a stornó SAJÁT, -STORNO toldalékos külső azonosítót kap a beallitasok végén', () => {
+    // A kulcs a létrejövő stornóhoz tapad; az eredeti számla kulcsát küldve a
+    // stornó lenne a kulcs legújabb birtokosa, és az eredeti azon már nem volna
+    // elérhető. Az élő xmlszamlast XSD a valaszVerzio UTÁN engedi.
+    expect(xml).toContain(
+      `<valaszVerzio>2</valaszVerzio>\n    <szamlaKulsoAzon>${STORNO_KULSO_AZON}</szamlaKulsoAzon>\n  </beallitasok>`,
+    )
   })
 
   it('a stornó XML NEM tartalmaz tétel-/összegblokkot (a Számlázz.hu az eredeti számlából generál)', () => {
@@ -148,8 +157,10 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
     }
   })
 
-  it('a megjegyzes a stornó indoka; a vevő csak e-mailt kap', () => {
-    expect(xml).toContain('<megjegyzes>Elállás a vásárlástól</megjegyzes>')
+  it('a megjegyzes a rendelésszám ÉS a stornó indoka (a-egyeztetes-14); a vevő csak e-mailt kap', () => {
+    expect(xml).toContain(
+      `<megjegyzes>Visszatérítés miatti sztornó, rendelésszám: ${ORDER_NUMBER}. Indok: Elállás a vásárlástól</megjegyzes>`,
+    )
     expect(xml).toContain('<email>anna@example.test</email>')
     expect(xml).not.toContain('<nev>')
   })
@@ -159,9 +170,10 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: ORIGINAL_INVOICE_NUMBER,
       orderNumber: ORDER_NUMBER,
+      kulsoAzon: STORNO_KULSO_AZON,
     })
     expect(withoutReason).toContain(
-      `<megjegyzes>Visszatérítés (refund) — rendelés: ${ORDER_NUMBER}</megjegyzes>`,
+      `<megjegyzes>Visszatérítés miatti sztornó, rendelésszám: ${ORDER_NUMBER}.</megjegyzes>`,
     )
   })
 
@@ -170,6 +182,7 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
       agentKey: DUMMY_AGENT_KEY,
       originalInvoiceNumber: ORIGINAL_INVOICE_NUMBER,
       orderNumber: ORDER_NUMBER,
+      kulsoAzon: STORNO_KULSO_AZON,
       reason: 'Ár <eltérés> & "jelölés"',
     })
     expect(escaped).toContain('Ár &lt;eltérés&gt; &amp; &quot;jelölés&quot;')
@@ -177,7 +190,7 @@ describe('buildStornoXml — hivatalos Számla Agent sztornó séma (xmlszamlast
 })
 
 describe('issueStornoForOrder', () => {
-  it('boldog út: storned + stornoNumber; a küldött XML az eredeti számlára hivatkozik', async () => {
+  it('boldog út: storned + stornoNumber; a küldött XML az eredeti számlára hivatkozik, a rendelés saját -STORNO kulcsával', async () => {
     const sentXml: string[] = []
     const result = await issueStornoForOrder(createOrder(), {
       config: ENABLED_CONFIG,
@@ -191,7 +204,7 @@ describe('issueStornoForOrder', () => {
     expect(result).toEqual({ outcome: 'storned', stornoNumber: 'KIN-2026-8' })
     expect(sentXml).toHaveLength(1)
     expect(sentXml[0]).toContain(`<szamlaszam>${ORIGINAL_INVOICE_NUMBER}</szamlaszam>`)
-    expect(sentXml[0]).not.toContain('<szamlaKulsoAzon>')
+    expect(sentXml[0]).toContain(`<szamlaKulsoAzon>${STORNO_KULSO_AZON}</szamlaKulsoAzon>`)
     expect(sentXml[0]).toContain('<tipus>SS</tipus>')
   })
 
@@ -308,9 +321,9 @@ describe('issueStornoForOrder — állapot a rendelésen (C4)', () => {
   })
 
   it('F3 — korábbi beküldés után NINCS vak újraküldés: failed + RIASZTÁS, kézi ellenőrzés', async () => {
-    // A stornó nem kereshető vissza saját kulccsal (a szamlaKulsoAzon a
-    // SZTORNÓZANDÓ számlát hivatkozná), ezért bizonytalan állapotban a
-    // szolgáltatás megáll — a vak újraküldés dupla stornót okozhatna.
+    // A stornó saját kulcsos visszakeresése a T10 teszt-fiókos próbáig nincs
+    // bekapcsolva, ezért bizonytalan állapotban a szolgáltatás megáll — a vak
+    // újraküldés dupla stornót okozhatna.
     const { payload, order } = createMockPayload(createOrder({ stornoAttempts: 1 }))
     const { logger, errors } = createCapturingLogger()
     let posts = 0
@@ -521,5 +534,82 @@ describe('postStornoXml — a törzs-olvasás hibája is osztályozott (F6)', ()
     expect(error).toBeInstanceOf(SzamlazzApiError)
     expect((error as SzamlazzApiError).kind).toBe('agent')
     expect((error as SzamlazzApiError).retryable).toBe(false)
+  })
+})
+
+describe('issueStornoForOrder — végleges és bizonytalan kimenet RIASZTÁS-a (a-riasztas-2)', () => {
+  /** Szint + üzenet + kontextus naplórögzítő. */
+  function captureLevels() {
+    const logged: Array<{ level: string; message: string; context?: Record<string, unknown> }> = []
+    const logger = {
+      debug: () => undefined,
+      info: (message: string) => logged.push({ level: 'info', message }),
+      warn: (message: string) => logged.push({ level: 'warn', message }),
+      error: (message: string, context?: Record<string, unknown>) =>
+        logged.push({ level: 'error', message, ...(context ? { context } : {}) }),
+      child: () => logger,
+    }
+    return { logger: logger as unknown as Logger, logged }
+  }
+
+  it.each([
+    [
+      'végleges agent-hiba (136)',
+      new SzamlazzApiError({
+        message: 'Számla Agent hiba: 136',
+        kind: 'agent',
+        agentErrors: [{ code: '136', message: 'Az előfizetés lejárt.' }],
+        retryable: false,
+      }),
+      /^RIASZTÁS: a stornó kiállítása végleges hibával leállt/,
+      { agentErrorCode: '136' },
+    ],
+    [
+      'bizonytalan kimenet (timeout a POST után)',
+      new SzamlazzApiError({ message: 'időtúllépés', kind: 'timeout', retryable: true }),
+      /^RIASZTÁS: a stornó beküldésének kimenete bizonytalan/,
+      {},
+    ],
+  ])(
+    '%s: error-szintű RIASZTÁS a rendelésszámmal',
+    async (_label, failure, pattern, extraContext) => {
+      const { payload, order } = createMockPayload(createOrder())
+      const { logger, logged } = captureLevels()
+      const run = issueStornoForOrder(order, {
+        payload,
+        logger,
+        config: ENABLED_CONFIG,
+        postXml: async () => {
+          throw failure
+        },
+      })
+      if (failure.retryable) {
+        await expect(run).rejects.toBe(failure)
+      } else {
+        await expect(run).resolves.toMatchObject({ outcome: 'failed' })
+      }
+      const alerts = logged.filter((entry) => entry.level === 'error')
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.message).toMatch(pattern)
+      expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER, ...extraContext })
+    },
+  )
+
+  it('eredeti számlaszám nélkül: failed + error-szintű RIASZTÁS, beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(createOrder({ invoiceNumber: null }))
+    const { logger, logged } = captureLevels()
+    const result = await issueStornoForOrder(order, {
+      payload,
+      logger,
+      config: ENABLED_CONFIG,
+      postXml: async () => {
+        throw new Error('TESZT-HIBA: számla nélkül nem mehet ki stornó')
+      },
+    })
+    expect(result.outcome).toBe('failed')
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a rendeléshez nem tartozik kiállított számla/)
+    expect(alerts[0]?.context).toMatchObject({ orderNumber: ORDER_NUMBER })
   })
 })

@@ -7,10 +7,15 @@
  * - A válasz valaszVerzio=2 mellett XML (xmlszamlavalasz): <sikeres>,
  *   <szamlaszam>, hiba esetén <hibakod>/<hibauzenet>. Egyes hibák csak a
  *   szlahu_* HTTP-válaszfejlécekből derülnek ki (pl. szlahu_down).
- * - A <szamlaKulsoAzon> a harmadik fél rendszerének azonosítója — mi az
- *   orderNumber-t küldjük. Ez a bizonylat VISSZAKERESÉSI kulcsa (pdf.ts); a
- *   duplikátum-védelmet a <rendelesSzam> + a fiókban bekapcsolt
- *   rendelésszám-ismétlés-tiltás adja (lásd invoice.ts).
+ * - A <szamlaKulsoAzon> a harmadik fél rendszerének azonosítója — mi
+ *   bizonylatonként globálisan egyedi kulcsot küldünk (kulso-azon.ts). Ez a
+ *   bizonylat VISSZAKERESÉSI kulcsa (pdf.ts), NEM idempotencia-horgony: a
+ *   Számlázz.hu azonos kulcsra is kiállít újabb bizonylatot (a lekérdezés a
+ *   legújabb birtokost adja). A SZÁMLA duplikátum-védelmét a <rendelesSzam> +
+ *   a fiókban bekapcsolt rendelésszám-ismétlés-tiltás adja (71/152); a stornó
+ *   és a helyesbítő a hivatalos rendelésszám-oldal szerint kivétel ez alól,
+ *   ott a beküldés előtti lekérdezés és az advisory-zár véd (lásd invoice.ts,
+ *   corrective.ts).
  */
 
 export type SzamlazzErrorKind =
@@ -20,9 +25,9 @@ export type SzamlazzErrorKind =
   | 'agent'
   /**
    * 71/152-es hibakód: „Már létező rendelésszám". NEM valódi hiba, hanem a
-   * hivatalos idempotencia-jelzés (a fiókban bekapcsolt rendelésszám-ismétlés
-   * tiltás fogta meg az ismételt kérést) — a hívó a szamlaKulsoAzon-alapú
-   * lekérdezéssel oldja fel (a meglévő bizonylat számát veszi át).
+   * fiókban bekapcsolt rendelésszám-ismétlés-tiltás jelzése (számlán) — a
+   * hívó a szamlaKulsoAzon-alapú lekérdezéssel oldja fel, és a talált
+   * bizonylatot csak egyeztetés után veszi át (idegen bizonylat is lehet).
    */
   | 'duplicate'
   | 'invalid_response'

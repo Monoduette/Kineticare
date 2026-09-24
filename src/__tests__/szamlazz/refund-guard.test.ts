@@ -9,6 +9,16 @@ import { RECEIPTS, writeReceipt } from '../../lib/refund/recovery-receipts'
 import { claimManagedRefundDocument } from '../../lib/szamlazz/refund-guard'
 import type { RefundIntent } from '../../payload-types'
 
+// Az eredeti számla adat-lekérdezése (áfakulcs-ellenőrzés, a-szamlazz-13):
+// egy 27%-os, élő eredeti számla, hogy valódi hálózati hívás ne mehessen ki.
+vi.mock('../../lib/szamlazz/invoice-data', () => ({
+  queryInvoiceData: async (szamlaszam: string) => ({
+    szamlaszam,
+    vatKeys: ['27'],
+    sztornozott: false,
+  }),
+}))
+
 const config = getSzamlazzConfig({
   SZAMLAZZ_AGENT_KEY: 'DUMMY-REFUND-GUARD-AGENT-KEY',
   SZAMLAZZ_AFAKULCS: '27',
@@ -145,7 +155,9 @@ describe('intent-managed refunds through real invoice helpers', () => {
     })
     await expect(f.start({ amountHuf: 5000 })).rejects.toThrow()
     await expect(issueCorrectiveInvoiceForOrder(f.order, f.deps)).rejects.toThrow()
-    expect(f.query).toHaveBeenCalledTimes(2)
+    // First run: the unique key only; the retry after a submission also checks
+    // the legacy (PR #304) key, so three negative lookups in total.
+    expect(f.query).toHaveBeenCalledTimes(3)
     expect(f.post).toHaveBeenCalledTimes(1)
     expect(f.order.correctiveInvoiceAttempts).toBe(1)
     expect(await f.recover()).toMatchObject({ recoveryStatus: 'manual_review' })
@@ -185,7 +197,7 @@ describe('intent-managed refunds through real invoice helpers', () => {
     const f = realDocuments()
     f.post.mockRejectedValue(new Error('SYNTHETIC timeout'))
     await expect(f.start({ amountHuf: 5000 })).rejects.toThrow()
-    f.query.mockResolvedValue({ szamlaszam: 'SYNTHETIC-ADOPTED-CREDIT' })
+    f.query.mockResolvedValue({ szamlaszam: 'SYNTHETIC-ADOPTED-CREDIT', szamlabrutto: -5000 })
     await expect(issueCorrectiveInvoiceForOrder(f.order, f.deps)).resolves.toMatchObject({
       outcome: 'issued',
       correctiveInvoiceNumber: 'SYNTHETIC-ADOPTED-CREDIT',

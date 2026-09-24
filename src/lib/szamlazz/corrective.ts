@@ -10,6 +10,8 @@ import {
   type SzamlazzParsedSuccess,
 } from './client'
 import { buildInvoiceXml, buyerFromOrder } from './invoice'
+import { queryInvoiceData, type InvoiceDataResult } from './invoice-data'
+import { correctiveKulsoAzon, correctiveLookupKeys } from './kulso-azon'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
 import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
@@ -41,7 +43,7 @@ import { budapestDateString, isIsoDateString } from './xml'
  *   validálja — ezért a computeLineAmounts abszolút értéken számol és utána
  *   előjelet vált, így a kerekítés pontosan tükrözi az eredeti tételt).
  *
- * Duplikáció-védelem — HÁROM réteg, eltérő szereppel (F14):
+ * Duplikáció-védelem — rétegek, eltérő szereppel (F14, r-szamlazz-12):
  * 1. Alkalmazás-oldal (ELSŐDLEGES): a rendelés correctiveInvoiceSeq mezője azt
  *    tárolja, hányadik refund-bejegyzéshez készült el a legutóbbi helyesbítő.
  *    Ha ez PONTOSAN a kért sorszám (és van correctiveInvoiceNumber), a
@@ -50,16 +52,25 @@ import { budapestDateString, isIsoDateString } from './xml'
  *    egy korábbi seq job-újrapróbálása (retry-queue) AZUTÁN fut le, hogy egy
  *    későbbi seq inline már kiállt, a recordedSeq nagyobb a kértnél, de a
  *    korábbi refund bizonylata MÉG NEM készült el, ezért a kérés továbbmegy.
- * 2. Provider-oldal: a bizonylat-egyedi <rendelesSzam> + a fiókban bekapcsolt
- *    rendelésszám-ismétlés tiltása. Ez az, ami a Számlázz.hu-nál ténylegesen
- *    megfogja az ismételt beküldést (71/152-es hibakóddal).
- * 3. szamlaKulsoAzon = `${orderNumber}-HELYESBITO-<refund-sorszám>`: ez a
- *    VISSZAKERESÉS kulcsa (xmlszamlapdf-lekérdezés), NEM önálló duplikáció-
- *    védelem — a hivatalos dokumentáció ilyen hatást nem ígér. A beküldés
- *    ELŐTTI lekérdezés (K4) a duplikáció-kapu: nemcsak ugyanazon seq
- *    újrapróbálását fogja, hanem a más seq-es maradék jobot is (pl. seq=1
- *    retry, miután a seq=2 már kiállt). A 71/152 utáni feloldás ugyanezzel
- *    a kulccsal dönti el, létezik-e már a bizonylat.
+ * 2. A beküldés ELŐTTI lekérdezés (K4) a globálisan egyedi szamlaKulsoAzon-on
+ *    (kulso-azon.ts: rendelésszám + rendelés-id + létrehozás pillanata +
+ *    `-HELYESBITO-<refund-sorszám>`), az advisory-zár alatt. Ez a
+ *    duplikáció-kapu: nemcsak ugyanazon seq újrapróbálását fogja, hanem a más
+ *    seq-es maradék jobot is (pl. seq=1 retry, miután a seq=2 már kiállt). A
+ *    talált bizonylatot csak egyező (negatív) bruttó végösszegnél vesszük át.
+ * 3. A Számlázz.hu rendelésszám-ismétlés-tiltása (71/152) a helyesbítőre NEM
+ *    vonatkozik: a hivatalos rendelésszám-oldal szerint „A sztornó és a
+ *    helyesbítő számla kivétel az ellenőrzés alól" (docs.szamlazz.hu/hu/agent/
+ *    generating_invoice/settings_and_rules/order-number). Provider-oldali
+ *    duplikátum-védelem tehát NINCS; ha mégis 71/152 jön, a feloldás
+ *    ugyanazzal a lekérdezéssel dönti el, létezik-e már a bizonylat.
+ *
+ * Áfakulcs (a-szamlazz-13, r-szamlazz-7): a helyesbítő az eredeti számlával
+ * EGYÜTT írja le a gazdasági eseményt, tehát az eredeti áfakulcsát kell
+ * hordoznia. A rendelés a kiállításkori kulcsot nem tárolja (H8a), ezért a
+ * beküldés előtt a Számlázz.hu-tól kérdezzük le az eredeti számlát
+ * (invoice-data.ts); ha a kulcs nem olvasható, vagy eltér a
+ * SZAMLAZZ_AFAKULCS-tól, a helyesbítő RIASZTÁS-sal megáll, nem találgat.
  *
  * Kísérlet-plafon (A14/F1): a beküldés-számláló BIZONYLAT-szintű, azaz a
  * refund-sorszámhoz kulcsolt (correctiveInvoiceAttempts +
@@ -72,8 +83,6 @@ import { budapestDateString, isIsoDateString } from './xml'
  * kézi kiállítás előtti keresést kéri.
  */
 
-export const CORRECTIVE_KULSO_AZON_INFIX = '-HELYESBITO-'
-
 /**
  * A14: a helyesbítő-beküldések perzisztens plafonja (Számlázz.hu-szabály:
  * ugyanaz a kérés legfeljebb ötször, utána emberi beavatkozás). A számláló
@@ -81,11 +90,6 @@ export const CORRECTIVE_KULSO_AZON_INFIX = '-HELYESBITO-'
  * refund-sorszámhoz tartozik (F1).
  */
 export const MAX_CORRECTIVE_ATTEMPTS = 5
-
-/** A helyesbítő visszakeresési kulcsa (szamlaKulsoAzon) egy refund-sorszámhoz. */
-export function correctiveKulsoAzon(orderNumber: string, refundSeq: number): string {
-  return `${orderNumber}${CORRECTIVE_KULSO_AZON_INFIX}${refundSeq}`
-}
 
 /** A helyesbítő-kiállítás sorosító advisory-zárának kulcsa (rendelés + refund-sorszám). */
 export function correctiveLockKey(orderId: number | string, refundSeq: number): string {
@@ -97,9 +101,12 @@ export interface BuildCorrectiveInvoiceXmlInput {
   /** Az eredeti (helyesbítendő) számla száma. */
   originalInvoiceNumber: string
   orderNumber: string
+  /**
+   * A helyesbítő globálisan egyedi külső azonosítója (correctiveKulsoAzon,
+   * kulso-azon.ts): <szamlaKulsoAzon> és <rendelesSzam>.
+   */
+  kulsoAzon: string
   invoicePrefix: string
-  /** A refunds-nyom 1-alapú sorszáma — az idempotencia-horgony része. */
-  refundSeq: number
   /** A visszatérített (helyesbítendő) BRUTTÓ összeg, HUF — pozitív egész. */
   amountHuf: number
   /** Kiállítás dátuma (YYYY-MM-DD). */
@@ -109,7 +116,11 @@ export interface BuildCorrectiveInvoiceXmlInput {
    * ismétli meg (NAV-szabály: a hónap nem térhet el). Elhagyva = issueDate.
    */
   teljesitesDatum?: string
-  /** Áfakulcs — az eredeti számláéval egyezően ('27' | 'AAM'). */
+  /**
+   * Áfakulcs — az eredeti számláéval egyezően ('27' | 'AAM'). A kiállító
+   * (issueCorrectiveInvoiceForOrder) a beküldés előtt a Számlázz.hu-tól
+   * kiolvasott eredeti kulccsal veti össze, és eltérésnél nem állít ki.
+   */
   vatMode?: SzamlazzVatMode
   buyer: Parameters<typeof buildInvoiceXml>[0]['buyer']
   /** A visszatérítés indoka — a fejléc-megjegyzésbe kerül. */
@@ -139,7 +150,7 @@ export function buildCorrectiveInvoiceXml(input: BuildCorrectiveInvoiceXmlInput)
     ],
     corrective: {
       originalInvoiceNumber: input.originalInvoiceNumber,
-      kulsoAzon: correctiveKulsoAzon(input.orderNumber, input.refundSeq),
+      kulsoAzon: input.kulsoAzon,
     },
     megjegyzes:
       `Helyesbítő számla a(z) ${input.originalInvoiceNumber} számú számlához — ` +
@@ -180,6 +191,16 @@ export interface IssueCorrectiveInvoiceDeps {
     kulsoAzon: string,
     config: SzamlazzClientConfig,
   ) => Promise<InvoiceLookupResult | null>
+  /**
+   * Injektálható számlaadat-lekérdező (teszteléshez); alapból a valódi
+   * queryInvoiceData. A beküldés ELŐTT az EREDETI számla áfakulcsát olvassa
+   * ki (a-szamlazz-13), és a régi kulcson talált helyesbítőnél azt, hogy a
+   * talált bizonylat valóban erre a számlára hivatkozik-e.
+   */
+  queryInvoiceData?: (
+    szamlaszam: string,
+    config: SzamlazzClientConfig,
+  ) => Promise<InvoiceDataResult>
   /** A kelt-dátum felülírása (teszteléshez); alapból a mai dátum. */
   issueDate?: string
 }
@@ -280,7 +301,8 @@ async function performCorrectiveInvoiceForOrder(
   if (managed?.number) return { outcome: 'already-issued', correctiveInvoiceNumber: managed.number }
 
   if (!Number.isInteger(deps.refundSeq) || deps.refundSeq < 1) {
-    log.error('érvénytelen refund-sorszám — helyesbítő nem állítható ki', {
+    log.error('RIASZTÁS: érvénytelen refund-sorszám — helyesbítő nem állítható ki', {
+      orderNumber: order.orderNumber ?? null,
       refundSeq: deps.refundSeq,
     })
     return { outcome: 'failed', reason: 'érvénytelen refund-sorszám' }
@@ -290,8 +312,9 @@ async function performCorrectiveInvoiceForOrder(
   // helyesbítő? KIZÁRÓLAG pontos seq-egyezésnél no-op: recordedSeq > refundSeq
   // esetén egy KORÁBBI refund elmaradt bizonylatának újrapróbálása fut (a
   // retry-queue megtöri a sorrendi kiállítást), ezért a kérést TOVÁBB kell
-  // engedni — a duplikáció ellen ilyenkor a bizonylat-egyedi rendelesSzam +
-  // a fiókbeállítás (71/152) és a beküldés előtti lekérdezés véd.
+  // engedni — a duplikáció ellen ilyenkor a beküldés előtti, bizonylat-egyedi
+  // kulcsú lekérdezés és az advisory-zár véd (a 71/152-es fiókbeállítás a
+  // helyesbítőre nem vonatkozik).
   const recordedNumber = order.correctiveInvoiceNumber?.trim()
   const recordedSeq = order.correctiveInvoiceSeq ?? 0
   if (recordedNumber && recordedSeq === deps.refundSeq) {
@@ -307,16 +330,21 @@ async function performCorrectiveInvoiceForOrder(
     return fail('hiányzó rendelésszám')
   }
 
+  const orderNumber = order.orderNumber
   const originalInvoiceNumber = order.invoiceNumber?.trim()
   if (!originalInvoiceNumber) {
-    log.warn(
-      'a rendeléshez nem tartozik kiállított számla (invoiceNumber) — helyesbítő NEM állítható ki',
+    // Végleges: számla nélkül nincs mit helyesbíteni (a részleges
+    // visszatérítés a számla előtt történt, a-szamlazz-12). Emberi rendezés kell.
+    log.error(
+      'RIASZTÁS: a rendeléshez nem tartozik kiállított számla (invoiceNumber) — a részleges visszatérítés helyesbítő számlája NEM állítható ki, kézi rendezés kell',
+      { orderNumber, refundSeq: deps.refundSeq, amountHuf: deps.amountHuf },
     )
     return fail('hiányzó eredeti számlaszám (invoiceNumber)')
   }
 
   if (!Number.isInteger(deps.amountHuf) || deps.amountHuf <= 0) {
-    log.error('érvénytelen helyesbítendő összeg — helyesbítő nem állítható ki', {
+    log.error('RIASZTÁS: érvénytelen helyesbítendő összeg — helyesbítő nem állítható ki', {
+      orderNumber,
       amountHuf: deps.amountHuf,
     })
     return fail('érvénytelen helyesbítendő összeg')
@@ -324,8 +352,9 @@ async function performCorrectiveInvoiceForOrder(
 
   const buyer = buyerFromOrder(order)
   if (!buyer) {
-    log.warn(
-      'hiányos vevő-számlázási adatok (név/irsz/település/cím) — helyesbítő NEM állítható ki, emberi pótlás szükséges',
+    log.error(
+      'RIASZTÁS: hiányos vevő-számlázási adatok (név/irsz/település/cím) — helyesbítő NEM állítható ki, emberi pótlás szükséges',
+      { orderNumber, refundSeq: deps.refundSeq },
     )
     return fail('hiányos vevő-számlázási adatok')
   }
@@ -364,12 +393,18 @@ async function performCorrectiveInvoiceForOrder(
       'az eredeti számla teljesítési dátuma nem YYYY-MM-DD alakú — a helyesbítő a kiállítás napját használja; kézi ellenőrzés szükséges',
     )
   }
+  const kulsoAzon = correctiveKulsoAzon(orderNumber, order, deps.refundSeq)
+  // Visszafelé kompatibilitás: a PR #304 a `<rendelésszám>-HELYESBITO-<seq>`
+  // alakot küldte. Ugyanennek a seq-nek a korábbi beküldése után a régi
+  // alakon is keresünk; beküldés nélkül a régi kulcson talált bizonylat csak
+  // idegen lehetne.
+  const lookupKeys = correctiveLookupKeys(orderNumber, order, deps.refundSeq, previousAttempts > 0)
   const xml = buildCorrectiveInvoiceXml({
     agentKey: config.agentKey as string,
     originalInvoiceNumber,
-    orderNumber: order.orderNumber,
+    orderNumber,
+    kulsoAzon,
     invoicePrefix: config.invoicePrefix,
-    refundSeq: deps.refundSeq,
     amountHuf: deps.amountHuf,
     issueDate,
     ...(originalCompletionDate ? { teljesitesDatum: originalCompletionDate } : {}),
@@ -378,8 +413,76 @@ async function performCorrectiveInvoiceForOrder(
     ...(deps.reason ? { reason: deps.reason } : {}),
   })
 
-  const kulsoAzon = correctiveKulsoAzon(order.orderNumber, deps.refundSeq)
   const lookup = deps.queryByKulsoAzon ?? queryInvoiceByKulsoAzon
+  const readInvoiceData = deps.queryInvoiceData ?? queryInvoiceData
+  /** A talált helyesbítő várt bruttó végösszege: a visszatérített összeg, negatívan. */
+  const expectedBrutto = -Math.abs(deps.amountHuf)
+  interface LookupHit {
+    found: InvoiceLookupResult
+    key: string
+    legacy: boolean
+  }
+  /** A bizonylat keresése a kulcsokon, sorrendben; az első találat dönt. */
+  const findExisting = async (): Promise<LookupHit | null> => {
+    for (const [index, key] of lookupKeys.entries()) {
+      const found = await lookup(key, config)
+      if (found) {
+        return { found, key, legacy: index > 0 }
+      }
+    }
+    return null
+  }
+  /**
+   * Átvétel előtti egyeztetés: a talált bizonylat ez a helyesbítő-e. Null, ha
+   * igen; különben az eltérés oka. A régi kulcson talált bizonylatnál a
+   * számlaadat-lekérdezés azt is igazolja, hogy a mi számlánkra hivatkozik
+   * (`alap/hivszamlaszam`). A lekérdezés hibája dob.
+   */
+  const mismatchOf = async (hit: LookupHit): Promise<string | null> => {
+    const brutto = hit.found.szamlabrutto
+    if (brutto === undefined) {
+      return 'a lekérdezés válasza nem hordoz bruttó végösszeget (szamlabrutto), így a bizonylat nem egyeztethető'
+    }
+    if (brutto !== expectedBrutto) {
+      return `a bizonylat bruttó végösszege ${brutto} Ft, a helyesbítésé ${expectedBrutto} Ft`
+    }
+    if (!hit.legacy) {
+      return null
+    }
+    const data = await readInvoiceData(hit.found.szamlaszam, config)
+    if (data.hivatkozottSzamlaszam !== originalInvoiceNumber) {
+      return `a régi (rendelésszám-alapú) kulcson talált bizonylat nem a(z) ${originalInvoiceNumber} számú számlára hivatkozik`
+    }
+    return null
+  }
+  /** Idegen (vagy nem egyeztethető) bizonylat: nem vesszük át, és nem küldünk be. */
+  const refuseForeign = async (
+    hit: LookupHit,
+    mismatch: string,
+    via: string,
+  ): Promise<IssueCorrectiveInvoiceResult> => {
+    const reason =
+      `a(z) ${hit.key} külső azonosítón talált ${hit.found.szamlaszam} számú bizonylat nem egyeztethető ezzel a helyesbítéssel (${mismatch}). ` +
+      'A rendszer nem veszi át, és új helyesbítőt sem küld be: ellenőrizd a Számlázz.hu-fiókban.'
+    log.error(
+      'RIASZTÁS: a helyesbítő előtti bizonylat-lekérdezés olyan bizonylatot talált, amely nem egyeztethető ezzel a helyesbítéssel — a helyesbítő nem készült el, kézi ellenőrzés kell.',
+      {
+        orderNumber,
+        foundInvoiceNumber: hit.found.szamlaszam,
+        kulsoAzon: hit.key,
+        legacyKey: hit.legacy,
+        szamlabrutto: hit.found.szamlabrutto ?? null,
+        expectedBrutto,
+        mismatch,
+        via,
+      },
+    )
+    await saveStateBestEffort({
+      correctiveInvoiceStatus: 'failed',
+      correctiveInvoiceLastError: reason,
+    })
+    return { outcome: 'failed', reason }
+  }
   /**
    * A ténylegesen BEKÜLDÖTT kísérletek száma. A lekérdezés (F10) nem fogyaszt
    * keretet, ezért a számláló csak a POST előtt, a pending-írással együtt nő.
@@ -408,6 +511,63 @@ async function performCorrectiveInvoiceForOrder(
     return { outcome: 'issued', correctiveInvoiceNumber: szamlaszam }
   }
 
+  /**
+   * Az eredeti számla áfakulcsának ellenőrzése (a-szamlazz-13). Null, ha a
+   * kulcs egyértelműen kiolvasható és egyezik a konfigurált kulccsal; különben
+   * a megtagadás eredménye (RIASZTÁS + 'failed'). Újrapróbálható olvasási
+   * hibánál a hibát tovább dobja (a hívó / a corrective-invoice-issue job
+   * később újrapróbálhatja, beküldés addig nincs).
+   */
+  const checkOriginalVatKey = async (
+    originalNumber: string,
+  ): Promise<IssueCorrectiveInvoiceResult | null> => {
+    const refuse = async (detail: string): Promise<IssueCorrectiveInvoiceResult> => {
+      const reason =
+        `a helyesbítő nem állítható ki biztonságosan: ${detail}. ` +
+        'A helyesbítőnek az eredeti számla áfakulcsát kell hordoznia; a rendszer nem találgat, kézi rendezés kell.'
+      log.error(
+        'RIASZTÁS: az eredeti számla áfakulcsa nem igazolható (nem olvasható ki, vagy eltér a SZAMLAZZ_AFAKULCS-tól) — a helyesbítő NEM készült el, kézi rendezés kell',
+        {
+          orderNumber,
+          refundSeq: deps.refundSeq,
+          originalInvoiceNumber: originalNumber,
+          configuredVatMode: config.vatMode,
+          detail,
+        },
+      )
+      await saveStateBestEffort({
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceLastError: reason,
+      })
+      return { outcome: 'failed', reason }
+    }
+    let original: InvoiceDataResult
+    try {
+      original = await readInvoiceData(originalNumber, config)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const refusal = await refuse(`az eredeti számla adatai nem olvashatók ki (${message})`)
+      if (error instanceof SzamlazzApiError && error.retryable) {
+        throw error
+      }
+      return refusal
+    }
+    if (original.szamlaszam !== originalNumber) {
+      return refuse(
+        `a számlaadat-lekérdezés más bizonylatot adott vissza (${original.szamlaszam}) a(z) ${originalNumber} helyett`,
+      )
+    }
+    if (original.sztornozott) {
+      return refuse(`a(z) ${originalNumber} számú eredeti számlát már sztornózták`)
+    }
+    if (original.vatKeys.length !== 1 || original.vatKeys[0] !== config.vatMode) {
+      return refuse(
+        `az eredeti számla áfakulcsa (${original.vatKeys.join(', ') || 'nincs tétel'}) nem egyezik a beállított ${config.vatMode ?? 'hiányzó'} kulccsal`,
+      )
+    }
+    return null
+  }
+
   /** Igaz, amíg a beküldés ELŐTTI lekérdezés fut (a plafonnál ennek a hibája végleges). */
   let lookupPhase = false
   try {
@@ -419,13 +579,15 @@ async function performCorrectiveInvoiceForOrder(
     // nincs. A lekérdezés hibája szándékosan propagál (bizonytalan állapotban
     // nem szabad vakon újra beküldeni), és NEM növeli a kísérletszámot (F10).
     lookupPhase = true
-    const found = await lookup(kulsoAzon, config)
+    const hit = await findExisting()
+    const mismatch = hit ? await mismatchOf(hit) : null
     lookupPhase = false
-    if (found) {
-      return await adoptExisting(
-        found.szamlaszam,
-        capReached ? 'plafon-utani lekerdezes' : 'bekuldes-elotti lekerdezes',
-      )
+    const via = capReached ? 'plafon-utani lekerdezes' : 'bekuldes-elotti lekerdezes'
+    if (hit && mismatch !== null) {
+      return await refuseForeign(hit, mismatch, via)
+    }
+    if (hit) {
+      return await adoptExisting(hit.found.szamlaszam, via)
     }
 
     // A14 + H3: a plafon a NEGATÍV lekérdezés után dönt; kimerült keretnél
@@ -449,6 +611,14 @@ async function performCorrectiveInvoiceForOrder(
         correctiveInvoiceLastError: reason,
       })
       return { outcome: 'failed', reason }
+    }
+
+    // a-szamlazz-13: az eredeti számla áfakulcsa a Számlázz.hu-ból, a
+    // beküldés (és a refund-igénylés rögzítése) ELŐTT. Nem olvasható vagy
+    // eltérő kulcsnál nincs találgatás: RIASZTÁS, helyesbítő nem megy ki.
+    const vatRefusal = await checkOriginalVatKey(originalInvoiceNumber)
+    if (vatRefusal) {
+      return vatRefusal
     }
 
     if (payload && managed) await claimManagedRefundDocument(payload, managed, previousAttempts)
@@ -527,13 +697,20 @@ async function performCorrectiveInvoiceForOrder(
         { agentErrorCodes: error.agentErrors.map((entry) => entry.code) },
       )
       try {
-        const found = await lookup(kulsoAzon, config)
-        if (found) {
-          return await adoptExisting(found.szamlaszam, 'duplikatum-feloldas')
+        const hit = await findExisting()
+        const mismatch = hit ? await mismatchOf(hit) : null
+        if (hit && mismatch !== null) {
+          return await refuseForeign(hit, mismatch, 'duplikatum-feloldas')
+        }
+        if (hit) {
+          return await adoptExisting(hit.found.szamlaszam, 'duplikatum-feloldas')
         }
         const reason =
           'a Számlázz.hu duplikátumot jelzett (71/152), de a szamlaKulsoAzon-lekérdezés nem talál bizonylatot — kézi egyeztetés szükséges'
-        log.error(`RIASZTÁS: ${reason}`)
+        log.error(`RIASZTÁS: ${reason}`, {
+          orderNumber,
+          agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+        })
         await saveStateBestEffort({
           correctiveInvoiceStatus: 'failed',
           correctiveInvoiceLastError: reason,
@@ -565,23 +742,34 @@ async function performCorrectiveInvoiceForOrder(
       correctiveInvoiceLastError: message,
     })
     if (error instanceof SzamlazzApiError) {
-      log.warn('helyesbítő számla kiállítás sikertelen', {
+      const agentErrorCodes = error.agentErrors.map((entry) => entry.code)
+      const context = {
+        orderNumber,
+        refundSeq: deps.refundSeq,
         kind: error.kind,
         retryable: error.retryable,
         attempts,
-        agentErrorCodes: error.agentErrors.map((entry) => entry.code),
+        agentErrorCode: agentErrorCodes[0] ?? null,
+        agentErrorCodes,
         error: error.message,
-      })
+      }
       if (error.retryable) {
         // A corrective-invoice-issue job újrapróbálja: a következő futás a
         // beküldés ELŐTT kulsoAzon-lekérdezéssel ellenőrzi, létezik-e már a
         // bizonylat, a beküldések számát pedig a bizonylat-szintű
         // correctiveInvoiceAttempts plafon fogja.
+        log.warn('helyesbítő számla kiállítás sikertelen (újrapróbálható)', context)
         throw error
       }
+      log.error(
+        `RIASZTÁS: a helyesbítő számla kiállítása végleges hibával leállt (a Számlázz.hu válasza: ${agentErrorCodes.join(', ') || 'kód nélkül'}) — a helyesbítő NEM készült el, kézi rendezés kell`,
+        context,
+      )
       return { outcome: 'failed', reason: error.message }
     }
-    log.error('helyesbítő számla kiállítás váratlan hibával állt le', {
+    log.error('RIASZTÁS: a helyesbítő számla kiállítása váratlan hibával állt le', {
+      orderNumber,
+      refundSeq: deps.refundSeq,
       attempts,
       error: message,
     })

@@ -6,11 +6,11 @@ Visszatérítéskor a Kineticare automatikusan bizonylatot állít ki a
 Számlázz.hu Számla Agenten keresztül. A bizonylat típusát nem önmagában a
 visszatérítés összege, hanem a **bizonylat-történet** dönti el:
 
-| Refund | Bizonylat | Miért |
-|---|---|---|
-| **Teljes, és még nem volt korábbi refund** | **stornó** (`xmlszamlast`, `tipus=SS`) | az eredeti számla teljes érvénytelenítése |
-| **Részleges** | **helyesbítő (módosító) számla** (`xmlszamla`, `helyesbitoszamla=true`) | az eredeti számla érvényben marad, csak a visszatérített összeg korrigálódik |
-| **A maradékot lezáró teljes refund** (volt már részrefund) | **helyesbítő** | a korábbi részrefundhoz már készült helyesbítő; a teljes stornó a részösszeget másodszor is jóváírná. A már helyesbített számla amúgy sem stornózható. |
+| Refund                                                     | Bizonylat                                                               | Miért                                                                                                                                                  |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Teljes, és még nem volt korábbi refund**                 | **stornó** (`xmlszamlast`, `tipus=SS`)                                  | az eredeti számla teljes érvénytelenítése                                                                                                              |
+| **Részleges**                                              | **helyesbítő (módosító) számla** (`xmlszamla`, `helyesbitoszamla=true`) | az eredeti számla érvényben marad, csak a visszatérített összeg korrigálódik                                                                           |
+| **A maradékot lezáró teljes refund** (volt már részrefund) | **helyesbítő**                                                          | a korábbi részrefundhoz már készült helyesbítő; a teljes stornó a részösszeget másodszor is jóváírná. A már helyesbített számla amúgy sem stornózható. |
 
 A döntés helye: `src/lib/refund/refund-order.ts` (10. lépés) — a feltétel
 `type === 'full' && alreadyRefunded === 0`. A `type: 'full' | 'partial'`, amely a
@@ -24,18 +24,18 @@ A stornónak **dedikált XML-művelete** van — NEM a sima számla-XML
 `helyesbitoszamla`/`helyesbitettSzamlaszam` a helyesbítő okirat, az nem
 stornó).
 
-| Elem | Érték |
-|---|---|
-| Végpont | `POST https://www.szamlazz.hu/szamla/` (multipart/form-data) |
-| Form-mező | `action-szamla_agent_st` |
-| XML-gyökér | `<xmlszamlast xmlns="http://www.szamlazz.hu/xmlszamlast">` |
-| XSD | `https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd` |
-| Hivatkozás az eredeti számlára | `<fejlec><szamlaszam>` (KÖTELEZŐ) |
-| Bizonylattípus | `<fejlec><tipus>SS</tipus>` (sztornó) |
-| Sztornó oka | `<fejlec><megjegyzes>` (szabad szöveg) |
-| Dátumok | **nincsenek a kérésben** (sem `keltDatum`, sem `teljesitesDatum`) |
-| Külső azonosító | **nincs a kérésben** (`<beallitasok><szamlaKulsoAzon>` kihagyva) |
-| Válasz | ugyanaz az `xmlszamlavalasz` (valaszVerzio=2), mint a számlakiállításnál |
+| Elem                           | Érték                                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Végpont                        | `POST https://www.szamlazz.hu/szamla/` (multipart/form-data)                                                                                                              |
+| Form-mező                      | `action-szamla_agent_st`                                                                                                                                                  |
+| XML-gyökér                     | `<xmlszamlast xmlns="http://www.szamlazz.hu/xmlszamlast">`                                                                                                                |
+| XSD                            | `https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd`                                                                                                        |
+| Hivatkozás az eredeti számlára | `<fejlec><szamlaszam>` (KÖTELEZŐ)                                                                                                                                         |
+| Bizonylattípus                 | `<fejlec><tipus>SS</tipus>` (sztornó)                                                                                                                                     |
+| Megjegyzés                     | `<fejlec><megjegyzes>`: „Visszatérítés miatti sztornó, rendelésszám: <rendelésszám>." + „ Indok: <a refund indoka>", ha van (a rendelésszám az indok mellett is megmarad) |
+| Dátumok                        | **nincsenek a kérésben** (sem `keltDatum`, sem `teljesitesDatum`)                                                                                                         |
+| Külső azonosító                | a stornó **saját** kulcsa: `<beallitasok><szamlaKulsoAzon>` = `<a számla egyedi kulcsa>-STORNO` (a `valaszVerzio` után, az élő XSD szerint)                               |
+| Válasz                         | ugyanaz az `xmlszamlavalasz` (valaszVerzio=2), mint a számlakiállításnál                                                                                                  |
 
 A stornó XML-ben **nincs tétel-/összegblokk**: a Számlázz.hu az eredeti
 számlából generálja a negatív bizonylatot.
@@ -52,44 +52,46 @@ egy előző havi teljesítésű számlát a következő hónapban stornózva a s
 teljesítési dátuma az eredetit veszi-e át. Ha nem, a `teljesitesDatum` visszakerül
 a `buildStornoXml()`-be az `order.invoiceCompletionDate`-ből.
 
-**A külső azonosító kikerült a stornó-kérésből.** A hivatalos leírás szerint az
-`xmlszamlast` `beallitasok`-beli `szamlaKulsoAzon` mezője a **sztornózandó**
-számla hivatkozására szolgál (ha az a kiállításkor be volt állítva) — arról
-nincs hivatalos állítás, hogy a **létrejövő stornó** a kérésben küldött
-azonosítón visszakereshető lenne. A korábbi `${orderNumber}-STORNO` érték tehát
-nem adott horgonyt a stornónak, viszont ütközést okozhatott volna; a `fejlec`-beli
-`szamlaszam` az egyértelmű és kötelező hivatkozás. A visszakereshetőség
-tisztázása: **T10** — ha a lekérdezés bizonyíthatóan a stornót adja vissza, a
-beküldés előtti lekérdezés visszahozható a stornó-ágra.
+**A stornó saját külső azonosítót kap (2026-09-24).** A hivatalos stornó-minta
+szerint a kérés `szamlaKulsoAzon`-ja alapján „később ezzel a kulccsal le lehet
+kérdezni a számlát", a független, teszt-fiókos mérés szerint pedig a kulcs a
+**létrejövő stornóhoz** tapad. Ezért a stornó a számla egyedi kulcsából képzett,
+`-STORNO` végű kulcsot kap; az **eredeti** számla kulcsát szándékosan nem
+küldjük, mert akkor a stornó lenne a kulcs legújabb birtokosa, és az eredeti
+számla azon már nem volna elérhető. A kulcsot most csak **rögzítjük**: a
+beküldés előtti stornó-lekérdezés (és vele a bizonytalan állapot automatikus
+feloldása) csak azután kapcsolható be, hogy ember a saját teszt-fiókon
+lefuttatta a **T10** próbát (`docs/szamlazz-megfeleles.md`). Addig a bizonytalan
+stornó-állapot kézi ellenőrzést kér.
 
 ## A helyesbítő (módosító) számla séma-tényei
 
 A helyesbítő **ugyanaz az `xmlszamla` művelet** (`action-xmlagentxmlfile`),
 két eltéréssel:
 
-| Elem | Érték |
-|---|---|
-| `<fejlec><helyesbitoszamla>` | `true` |
-| `<fejlec><helyesbitettSzamlaszam>` | az EREDETI számla száma (`order.invoiceNumber`) |
-| Tételek | EGY korrekciós tétel a visszatérített összegre, **negatív** `nettoEgysegar` / `nettoErtek` / `afaErtek` / `bruttoErtek` értékkel |
-| `<fejlec><teljesitesDatum>` | az EREDETI számla teljesítési dátuma (`order.invoiceCompletionDate`) |
-| `<fejlec><rendelesSzam>` | **a helyesbítő saját, bizonylat-egyedi kulcsa** (= a `szamlaKulsoAzon` értéke), NEM az eredeti rendelésszám |
-| `<beallitasok><szamlaKulsoAzon>` | `${orderNumber}-HELYESBITO-<refund-sorszám>` |
+| Elem                               | Érték                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<fejlec><helyesbitoszamla>`       | `true`                                                                                                                                                                                                                                                                 |
+| `<fejlec><helyesbitettSzamlaszam>` | az EREDETI számla száma (`order.invoiceNumber`)                                                                                                                                                                                                                        |
+| Tételek                            | EGY korrekciós tétel a visszatérített összegre, **negatív** `nettoEgysegar` / `nettoErtek` / `afaErtek` / `bruttoErtek` értékkel                                                                                                                                       |
+| `<fejlec><teljesitesDatum>`        | az EREDETI számla teljesítési dátuma (`order.invoiceCompletionDate`)                                                                                                                                                                                                   |
+| `<fejlec><rendelesSzam>`           | **a helyesbítő saját, bizonylat-egyedi kulcsa** (= a `szamlaKulsoAzon` értéke), NEM az eredeti rendelésszám                                                                                                                                                            |
+| `<beallitasok><szamlaKulsoAzon>`   | `<a számla egyedi kulcsa>-HELYESBITO-<refund-sorszám>` (a számla egyedi kulcsa: `<rendelésszám>-<rendelés-id>-<létrehozás unix mp>`, `kulso-azon.ts`)                                                                                                                  |
+| Áfakulcs                           | az EREDETI számla kulcsa: a beküldés előtt a Számlázz.hu számlaadat-lekérdezése (`xmlszamlaxml`) olvassa ki; ha nem olvasható, vegyes, vagy eltér a `SZAMLAZZ_AFAKULCS`-tól, illetve az eredeti már sztornózott, a helyesbítő **nem megy ki** (`failed` + `RIASZTÁS:`) |
 
 A tétel-matematikát a Számlázz.hu validálja (57, 259–264 hibakódok), ezért a
 `computeLineAmounts` a korrekciós tételt az **abszolút értéken** számolja, és
 utána vált előjelet — így a kerekítés pontosan tükrözi az eredeti számla
 tételét (teljes összegű helyesbítés esetén a két bizonylat nullára összegződik).
 
-**A helyesbítő rendelésszáma bizonylat-egyedi.** A `rendelesSzam` mezőbe a
-helyesbítő saját külső azonosítója megy (`${orderNumber}-HELYESBITO-<seq>`), nem
-az eredeti rendelésszám. Ok: a fiókban **bekapcsolt** rendelésszám-ismétlés-tiltás
-mellett az eredetivel azonos rendelésszám minden helyesbítőt 71/152-be futtatna,
-a 2 napos „azonos adat" ablakban pedig a rendszer a MÁSODIK helyesbítőre az
-elsőt adhatná vissza sikerként — vagyis a második bizonylat némán elmaradna. A
-bizonylat-egyedi kulccsal a 71/152 pontosan azt jelenti, hogy **ez a helyesbítő**
-már létezik, és a duplikátum-feloldó lekérdezés a helyes bizonylatszámot veszi
-át. Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
+**A helyesbítőnek nincs provider-oldali duplikátum-védelme.** A hivatalos
+rendelésszám-oldal szerint „A sztornó és a helyesbítő számla kivétel az ellenőrzés
+alól", tehát a fiókbeli rendelésszám-ismétlés-tiltás (71/152) helyesbítőre nem
+vonatkozik: egy ismételt helyesbítő-kérést a Számlázz.hu újra kiállítana. A
+duplikátum ellen kizárólag a beküldés előtti, bizonylat-egyedi kulcsú
+lekérdezés és a `corrective:<orderId>:<seq>` advisory-zár véd. A `rendelesSzam`
+mezőbe a helyesbítő saját kulcsa megy, hogy a fiókban a számlától külön sorként
+legyen kereshető. Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
 
 **Dátumszabály (NAV).** A helyesbítő teljesítési dátumának naptári hónapja nem
 térhet el az eredeti számláétól, ezért a kiállításkor küldött teljesítési
@@ -117,21 +119,32 @@ kiállítás az előző napra csúszott volna).
    - a rendelésen már rögzített bizonylat → `already-storned` /
      `already-issued` no-op;
    - hiányzó eredeti számlaszám (`invoiceNumber`), hiányos vevőadat,
-     érvénytelen összeg → `failed` (nem dob: emberi pótlás kell);
+     érvénytelen összeg → `failed` + error-szintű `RIASZTÁS:` (nem dob: emberi
+     pótlás kell);
+   - helyesbítőnél nem igazolható áfakulcs (lásd fent) → `failed` +
+     `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál dob;
+   - a beküldés előtti lekérdezés olyan bizonylatot talál, amelynek bruttója
+     nem a helyesbítendő összeg (negatívan) → `failed` + `RIASZTÁS:`, átvétel
+     és beküldés nélkül;
    - **stornónál** bizonytalan állapot (nem az első kísérlet, vagy 71/152-es
      duplikátum-jelzés) → `failed` + error-szintű riasztás, **új beküldés
      nélkül** (kézi ellenőrzés a Számlázz.hu-fiókban);
    - siker → a bizonylat száma a rendelésre kerül, strukturált naplózással; az
      56-os jelzés (a bizonylat kiállt, csak az értesítő e-mail nem ment ki) is
      siker, `RIASZTÁS:`-sal a levél kézi újraküldéséhez;
+   - végleges agent-hiba → `failed` + error-szintű `RIASZTÁS:` a hibakóddal;
    - retryable provider-hiba (timeout/hálózat, HTTP 408/425/429/5xx,
      `szlahu_down`, 1-es és 55-ös agent-kód, illetve bizonytalan kimenetű
      válasz: értelmezhetetlen törzs, számlaszám nélküli siker vagy 56) → **dob**.
-4. A dobott, **újrapróbálható** hibát a refund-bekötés elkapja, és sorba
-   állítja a megfelelő jobot az `order-maintenance` queue-ban:
-   `storno-issue` (input: `orderId`), illetve `corrective-invoice-issue`
-   (input: `orderId` + `refundSeq`). Mindkét task `retries: 3` — az
-   `invoice-issue` mintája.
+     Stornónál ez `RIASZTÁS:` is, mert a stornó létrejöhetett.
+4. A dobott hibát a refund-helyreállítás elkapja, **újrapróbálást nem állít
+   sorba**: egy kísérlet után (vagy `invoiceStarted` nyugta mellett) a
+   helyreállítás `manual_review`-ra áll. A `queueStornoIssueJob` és a
+   `queueCorrectiveInvoiceJob` exportálva van, de 2026-09-24-én semmi nem hívja
+   őket automatikusan. Stornónál az újrasorbaállítás egyébként is csapda volna:
+   a `storno-issue` job a `stornoAttempts > 0` miatt az F3-ágon `RIASZTÁS:`-sal
+   megállna. A helyesbítő újrapróbálása a beküldés előtti lekérdezés miatt
+   biztonságos, a bekötése a refund-oldal feladata.
 5. A bizonylat hibája **soha nem befolyásolja** a már sikeres refundot:
    a bekötés minden ágat try/catch-ben tart, strukturált loggal
    (`src/lib/logger.ts`).
@@ -141,46 +154,49 @@ kiállítás az előző napra csúszott volna).
 Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
 írja (`overrideAccess`), az adminban readOnly/leíró:
 
-| Mező | Érték |
-|---|---|
-| `stornoStatus` | `none` \| `pending` \| `storned` \| `failed` |
-| `stornoNumber` | a kiállított stornó-számla száma (owner-only olvasás) |
-| `stornoAttempts` | kísérletszámláló (`MAX_STORNO_ATTEMPTS` = 5) |
-| `stornoLastError` | az utolsó sikertelen kísérlet hibaüzenete |
-| `correctiveInvoiceStatus` | `none` \| `pending` \| `issued` \| `failed` |
-| `correctiveInvoiceNumber` | a LEGUTÓBBI helyesbítő számla száma (owner-only olvasás) |
-| `correctiveInvoiceSeq` | melyik refund-bejegyzéshez tartozik a legutóbbi helyesbítő |
-| `correctiveInvoiceAttempts` | kísérletszámláló (`MAX_CORRECTIVE_ATTEMPTS` = 5) — **bizonylat-szintű** |
+| Mező                           | Érték                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `stornoStatus`                 | `none` \| `pending` \| `storned` \| `failed`                                                            |
+| `stornoNumber`                 | a kiállított stornó-számla száma (owner-only olvasás)                                                   |
+| `stornoAttempts`               | kísérletszámláló (`MAX_STORNO_ATTEMPTS` = 5)                                                            |
+| `stornoLastError`              | az utolsó sikertelen kísérlet hibaüzenete                                                               |
+| `correctiveInvoiceStatus`      | `none` \| `pending` \| `issued` \| `failed`                                                             |
+| `correctiveInvoiceNumber`      | a LEGUTÓBBI helyesbítő számla száma (owner-only olvasás)                                                |
+| `correctiveInvoiceSeq`         | melyik refund-bejegyzéshez tartozik a legutóbbi helyesbítő                                              |
+| `correctiveInvoiceAttempts`    | kísérletszámláló (`MAX_CORRECTIVE_ATTEMPTS` = 5) — **bizonylat-szintű**                                 |
 | `correctiveInvoiceAttemptsSeq` | melyik refund-sorszámhoz tartozik a fenti számláló-állás (eltérő sorszámnál a számlálás nulláról indul) |
-| `correctiveInvoiceLastError` | az utolsó sikertelen kísérlet hibaüzenete |
+| `correctiveInvoiceLastError`   | az utolsó sikertelen kísérlet hibaüzenete                                                               |
 
 ## Idempotencia
 
-- **Provider-oldali horgony (az itt tárgyalt két bizonylat közül CSAK a
-  helyesbítőnél; a számlakiállításnál a horgony az `orderNumber`):** `szamlaKulsoAzon` =
-  `${orderNumber}-HELYESBITO-<refund-sorszám>`, bizonylatonként egyedi értékkel;
-  ugyanez megy a `rendelesSzam` mezőbe is. A külső azonosító a **visszakeresés**
-  kulcsa: a hivatalos dokumentáció NEM állítja, hogy azonos `szamlaKulsoAzon`-nal
-  ismételt kérést a rendszer elutasítana. A tényleges duplikátum-védelem a
-  `rendelesSzam`-ra épül, és a fiókban **bekapcsolt** „rendelésszám-ismétlés
-  tiltása" beállítást igényli; ekkor az azonos ismételt kérés 2 napon belül a
-  korábbi bizonylatot adja vissza, eltérő adatnál pedig 71/152-es kódot.
-  Részletek és a fiók-oldali teendők: `docs/szamlazz-megfeleles.md`.
-  **A stornó-kérés külső azonosítót NEM tartalmaz** (lásd fent: a mező a
-  sztornózandó számlát hivatkozza, nem a létrejövő stornót).
-- **Beküldés előtti lekérdezés (számla és helyesbítő):** ha ez már nem az első
-  kísérlet (`attempts > 0`), a kérés MEGISMÉTLÉSE ELŐTT lekérdezés fut a
-  `szamlaKulsoAzon`-ra (`queryInvoiceByKulsoAzon`, `src/lib/szamlazz/pdf.ts`,
-  `action-szamla_agent_pdf`). Találat esetén a meglévő bizonylat száma kerül a
-  rendelésre, új beküldés nélkül — ez oldja fel a „kérés elment, válasz
-  elveszett" esetet. A lekérdezés **nem fogyaszt** a kísérlet-keretből, a hibája
+- **Külső azonosítók (visszakeresési kulcsok, nem duplikátum-védelem):**
+  bizonylatonként globálisan egyedi értékek (`kulso-azon.ts`): a számláé
+  `<rendelésszám>-<rendelés-id>-<létrehozás unix mp>`, a helyesbítőé ehhez
+  `-HELYESBITO-<refund-sorszám>`, a stornóé `-STORNO` toldalékot fűz. A
+  Számlázz.hu a külső azonosító egyediségét nem kényszeríti ki, és azonos
+  kulcsra a legújabb birtokost adja vissza; a rendelésszám pedig egy törölt
+  utolsó rendelés vagy DB-visszaállítás után újra kiosztható. A SZÁMLA
+  provider-oldali duplikátum-védelme a `rendelesSzam` (= rendelésszám) + a
+  fiókban **bekapcsolt** „rendelésszám-ismétlés tiltása" (71/152); a stornó és
+  a helyesbítő ez alól kivétel. Részletek: `docs/szamlazz-megfeleles.md`.
+- **Beküldés előtti lekérdezés (számla és helyesbítő):** MINDEN beküldés előtt
+  lekérdezés fut a `szamlaKulsoAzon`-ra (`queryInvoiceByKulsoAzon`,
+  `src/lib/szamlazz/pdf.ts`, `action-szamla_agent_pdf`); korábbi beküldés után
+  a PR #304-es, rendelésszám-alapú régi kulcson is. Találat esetén a meglévő
+  bizonylat száma kerül a rendelésre, új beküldés nélkül — de csak ha a
+  válasz `szamlabrutto`-ja egyezik (számlánál a rendelés végösszegével,
+  helyesbítőnél a negatív helyesbített összeggel), és a régi kulcson talált
+  bizonylat a számlaadat-lekérdezés szerint is a miénk. Eltérésnél `failed` +
+  `RIASZTÁS:`, beküldés nélkül. A 7-es „nincs ilyen bizonylat" csak végleges
+  (2xx) válaszban jelent hiányt; átmeneti státusz mellett újrapróbálható hiba.
+  Ez oldja fel a „kérés elment, válasz elveszett" esetet. A lekérdezés **nem fogyaszt** a kísérlet-keretből, a hibája
   viszont szándékosan propagál: bizonytalan állapotban nem szabad vakon újra
   beküldeni. A számla-ágon a tartós lekérdezés-hibát időkorlát zárja le: ha a
   lekérdezés legalább 2 órája folyamatosan hibás, és a fizetés óta több mint
   24 óra telt el, a számla `failed` + `RIASZTÁS:` (2026-09-24, H4).
-- **A stornó-ágon NINCS lekérdezés, helyette ESZKALÁCIÓ.** Mivel a stornó a
-  kérésben küldött azonosítóval nem kereshető vissza igazoltan, a „nincs
-  találat" (7-es) válasz nem bizonyítaná stornó hiányát — a vak újraküldés
+- **A stornó-ágon NINCS lekérdezés, helyette ESZKALÁCIÓ.** Amíg a stornó saját
+  kulcsos visszakereshetősége a saját teszt-fiókon (T10) nincs igazolva, a
+  „nincs találat" (7-es) válasz nem bizonyítaná stornó hiányát — a vak újraküldés
   pedig **dupla stornót** okozhatna, amit a hivatalos szabály szerint sem
   stornóval, sem helyesbítővel nem lehet visszavonni (csak új, helyreállító
   számlával). Ezért ha a stornó állapota bizonytalan (nem az első kísérlet,
@@ -189,8 +205,9 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   stornó állapotát kézzel kell ellenőrizni a Számlázz.hu-fiókban. Az
   alkalmazás-oldali no-op (lásd lent) marad az elsődleges védelem.
 - **Duplikátum-feloldás (számla és helyesbítő):** a 71/152-es válasz nem hiba,
-  hanem idempotencia-találat (`SzamlazzApiError.kind = 'duplicate'`) — a kód
-  ilyenkor ugyanazzal a lekérdezéssel veszi át a meglévő bizonylat számát. Ha a
+  hanem duplikátum-jelzés (`SzamlazzApiError.kind = 'duplicate'`) — a kód
+  ilyenkor ugyanazzal a lekérdezéssel (és ugyanazzal az egyeztetéssel) veszi át
+  a meglévő bizonylat számát. Ha a
   lekérdezés mégsem talál semmit vagy maga hibázik, a bizonylat `failed` marad,
   `RIASZTÁS:` naplóbejegyzéssel (kézi egyeztetés kell). Ilyenkor a hibaüzenet
   **fűzött**: a „71/152 — a bizonylat a Számlázz.hu szerint már létezik" tény és
@@ -218,24 +235,26 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   átveszi. A záró lekérdezés hibájánál a helyesbítő-ág azonnal `failed` (a
   szöveg a kézi kiállítás előtti keresést kéri), a számla-ág a H4-időkorlátig
   ismétli a lekérdezést. A stornó-ágon a kimerülés hálózati hívás nélküli.
-  A számlálók írása olvasás-módosítás-írás mintával, zár nélkül történik: ez
-  ismert és elfogadott korlát, az indoklás a `docs/szamlazz-megfeleles.md`
-  üzemeltetési jegyzetében.
+  A számlálók írása a bizonylatonkénti advisory-zár alatt történik
+  (`storno:<orderId>`, `corrective:<orderId>:<seq>`), tehát két párhuzamos
+  futás nem olvashatja ugyanazt az induló értéket.
 
 ## Hibakezelés
 
-| Hibaág | Viselkedés |
-|---|---|
-| `SZAMLAZZ_AGENT_KEY` hiányzik | `disabled` no-op — a refund ettől teljes |
-| Nincs `invoiceNumber` a rendelésen | `failed` + warn log + `failed` státusz (emberi pótlás) |
-| Hiányos vevő-számlázási adat (helyesbítő) | `failed` + warn log |
-| Agent-elutasítás (`<sikeres>false</sikeres>`) | `failed` + warn log, nem retryable (a hivatalos kódok közül csak az `1` — karbantartás — retryable) |
-| Duplikátum-jelzés (71/152) — **helyesbítő** | NEM hiba: lekérdezés a `szamlaKulsoAzon`-ra, és a meglévő bizonylat átvétele. Sikertelen lekérdezésnél `failed` + `RIASZTÁS:`, **fűzött** hibaüzenettel |
-| Duplikátum-jelzés (71/152) — **stornó** | `failed` + error-szintű `RIASZTÁS:` (nincs lekérdezés, nincs újraküldés): a stornó állapotát kézzel kell ellenőrizni a fiókban |
-| Bizonytalan stornó-állapot (nem az első kísérlet) | `failed` + error-szintű `RIASZTÁS:` — a vak újraküldés dupla stornót okozhatna, ami nem javítható |
-| Timeout / hálózat / HTTP 5xx / `szlahu_down` | `SzamlazzApiError` (retryable) dob → a refund-bekötés jobot állít sorba. A válasz-**törzs** olvasása közbeni megszakadás is ide sorolódik (nem nyers `TypeError`) |
-| Kimerült kísérletszám (5) | Stornó: `failed`, hálózati hívás nélkül. Helyesbítő: egy záró lekérdezés (találatnál a meglévő bizonylat átvétele), különben `failed`, a kézi kiállítás előtti keresés kérésével. Mindkettő error-szintű owner-jelzéssel |
-| Bármely váratlan hiba | elkapva, error log — a refund HTTP-válasza változatlan |
+| Hibaág                                            | Viselkedés                                                                                                                                                                                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SZAMLAZZ_AGENT_KEY` hiányzik                     | `disabled` no-op — a refund ettől teljes                                                                                                                                                                                                                |
+| Nincs `invoiceNumber` a rendelésen                | `failed` + error-szintű `RIASZTÁS:` + `failed` státusz (emberi pótlás)                                                                                                                                                                                  |
+| Hiányos vevő-számlázási adat (helyesbítő)         | `failed` + `RIASZTÁS:`                                                                                                                                                                                                                                  |
+| Nem igazolható áfakulcs (helyesbítő)              | `failed` + `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál dob                                                                                                                                                                                  |
+| Nem egyeztethető lekérdezés-találat (helyesbítő)  | `failed` + `RIASZTÁS:`, átvétel és beküldés nélkül                                                                                                                                                                                                      |
+| Agent-elutasítás (`<sikeres>false</sikeres>`)     | `failed` + error-szintű `RIASZTÁS:` a hibakóddal, nem retryable (a hivatalos kódok közül csak az `1` — karbantartás — és az `55` retryable)                                                                                                             |
+| Duplikátum-jelzés (71/152) — **helyesbítő**       | NEM hiba: lekérdezés a `szamlaKulsoAzon`-ra, és a meglévő bizonylat átvétele. Sikertelen lekérdezésnél `failed` + `RIASZTÁS:`, **fűzött** hibaüzenettel                                                                                                 |
+| Duplikátum-jelzés (71/152) — **stornó**           | `failed` + error-szintű `RIASZTÁS:` (nincs lekérdezés, nincs újraküldés): a stornó állapotát kézzel kell ellenőrizni a fiókban                                                                                                                          |
+| Bizonytalan stornó-állapot (nem az első kísérlet) | `failed` + error-szintű `RIASZTÁS:` — a vak újraküldés dupla stornót okozhatna, ami nem javítható                                                                                                                                                       |
+| Timeout / hálózat / HTTP 5xx / `szlahu_down`      | `SzamlazzApiError` (retryable) dob; a refund-helyreállítás nem állít sorba újrapróbálást (`manual_review`). Stornónál `RIASZTÁS:` is (a stornó létrejöhetett). A válasz-**törzs** olvasása közbeni megszakadás is ide sorolódik (nem nyers `TypeError`) |
+| Kimerült kísérletszám (5)                         | Stornó: `failed`, hálózati hívás nélkül. Helyesbítő: egy záró lekérdezés (találatnál a meglévő bizonylat átvétele), különben `failed`, a kézi kiállítás előtti keresés kérésével. Mindkettő error-szintű owner-jelzéssel                                |
+| Bármely váratlan hiba                             | `RIASZTÁS:` error log, továbbdobva — a refund-helyreállítás elkapja, a refund HTTP-válasza változatlan                                                                                                                                                  |
 
 A stornó HTTP-hívás (`postStornoXml`) a `postInvoiceXml`-lel azonos
 hibaosztályokat használja (`SzamlazzApiError.kind`: timeout / network /
@@ -255,10 +274,14 @@ utazik, a napló titokmentes.
    el sem indul (a többi kulcs hibája csak az első számlázási művelet
    futásakor derül ki).
 3. A job-workerek (`ENABLE_JOB_WORKERS=true`) futása szükséges ahhoz, hogy a
-   sorba állított `storno-issue` / `corrective-invoice-issue` taskok
-   ténylegesen lefussanak; enélkül a bizonylat a naplóból és a rendelés
-   `stornoStatus`/`correctiveInvoiceStatus` mezőjéből pótolható kézzel.
-4. Fiók-oldali előfeltételek (rendelésszám-ismétlés tiltása, előtag felvétele,
+   (kézzel) sorba állított `storno-issue` / `corrective-invoice-issue` taskok
+   ténylegesen lefussanak. Kézi rendezésnél a bizonylatot a Számlázz.hu-felületen
+   kell kiállítani; a számát a H2-es admin-művelet elkészültéig nem lehet a
+   rendelésre visszavezetni (a mezők írásvédettek), lásd a
+   `docs/szamlazz-megfeleles.md` kézi rendezési lépéseit.
+4. `SZAMLAZZ_TIMEOUT_MS` legfeljebb 15 000 (a nagyobb értéket a konfiguráció
+   levágja).
+5. Fiók-oldali előfeltételek (rendelésszám-ismétlés tiltása, előtag felvétele,
    e-számla engedélyezés, NAV-bekötés, vevői fiók be/ki):
    `docs/szamlazz-megfeleles.md` — „Fiók-oldali előfeltételek" checklist.
 
@@ -271,6 +294,10 @@ utazik, a napló titokmentes.
 - XSD: https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd
 - Bizonylat-lekérdezés XSD (idempotencia-feloldás):
   https://www.szamlazz.hu/szamla/docs/xsds/agentpdf/xmlszamlapdf.xsd
+- Számlaadat-lekérdezés XSD (a helyesbítő előtti áfakulcs-ellenőrzés):
+  https://www.szamlazz.hu/szamla/docs/xsds/agentxml/xmlszamlaxml.xsd
+- Rendelésszám-szabály (a stornó és a helyesbítő kivétel):
+  https://docs.szamlazz.hu/hu/agent/generating_invoice/settings_and_rules/order-number
 - Mezőnév-tábla (melyik form-mező melyik művelet):
   https://docs.szamlazz.hu/hu/agent/basics/send-xml
 - Hibakódok: https://docs.szamlazz.hu/agent/basics/error-handling
