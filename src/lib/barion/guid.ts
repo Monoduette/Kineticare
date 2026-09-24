@@ -16,8 +16,11 @@
  * alakot illeszti. Mérve 2026-09-24, élesben és a teszt-környezetben is,
  * érvénytelen kulccsal: 32 hex → 401 AuthenticationFailed (az útvonal
  * illeszkedett), kötőjeles → 404 „No HTTP resource was found that matches the
- * request URI". A 404-et a kód „nem létező fizetésnek" veszi, tehát kötőjeles
- * útvonallal egy kifizetett rendelés lemondódna.
+ * request URI". Ez a 404 NEM bizonyítja, hogy a fizetés nem létezik (lásd
+ * isPaymentDefinitelyNotFound / isUnverifiedNotFound a
+ * barion-callback/process-callback.ts-ben): a kód újrapróbálható, riasztandó
+ * hibaként kezeli, de kötőjeles útvonallal egyetlen rendelés állapota sem
+ * frissülne.
  *
  * A fizetőoldal (`/Pay?id=`) és a Payment/Refund v2 törzse mindkét alakot
  * elfogadja (ugyanaz a mérés).

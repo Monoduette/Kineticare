@@ -1090,7 +1090,7 @@ export async function pollPendingOrders(deps: OrderPollDeps): Promise<OrderPollS
     if (shouldEmitThrottledAlert('late-scan-route', RUN_LEVEL_ALERT_COOLDOWN_MS, now)) {
       log.error(
         `RIASZTÁS: a late-success scan ${lateUnverifiedNotFound} lezárt rendelésére a Barion ` +
-          'PaymentState HTTP 404-et adott, és a futásban egyetlen GetState sem sikerült: a ' +
+          'PaymentState HTTP 404-et adott, és egyetlen GetState sem sikerült: a ' +
           'legutóbb frissült fizetett rendelés GetState-je (útvonal-próba) is hibát adott. Ez ' +
           'globális útvonal- vagy konfigurációs hibára utal. Amíg tart, a poll egyetlen ' +
           'fizetés állapotát sem tudja ellenőrizni, így az a sikeres fizetés sem kerül paid-re, ' +
