@@ -686,9 +686,10 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
     await run(at(1))
     const within = await status(at(2))
     expect(within.state).toBe('manual_review')
-    // 10:01:01 UTC + 1 óra = 13:01; a rendelés 09:55 UTC + 7 nap = szeptember 12. 11:55 (Budapest).
+    // 10:01:01 UTC + 1 óra = 13:01; a rendelés 09:55 UTC + 7 nap, egy óra
+    // tartalékkal rövidítve = szeptember 12. 10:55 (Budapest).
     expect(within.message).toContain('szeptember 5. 13:01 után újra megpróbálja')
-    expect(within.message).toContain('szeptember 12. 11:55 után már nem próbálkozik')
+    expect(within.message).toContain('szeptember 12. 10:55 után már nem próbálkozik')
     expect(within.message).not.toContain('amíg sikerül')
     const after = await status(new Date('2026-09-12T10:00:00.000Z'))
     expect(after.state).toBe('manual_review')

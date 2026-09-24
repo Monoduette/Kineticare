@@ -18,6 +18,7 @@ import {
 } from '../../lib/order-status/recover-paid-reject'
 import {
   AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
+  AUTOMATIC_RETRY_DEADLINE_MARGIN_MS,
   automaticRetryDeadline,
   decideAutomaticRetry,
 } from '../../lib/refund/automatic-retry'
@@ -1189,9 +1190,12 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
 
     describe('lemondott rendelés: a fizetés-ellenőrzés ablakában utolsó kísérlet lezárása mondja ki a leállást', () => {
       // A fizetés-ellenőrzés a lemondott rendelést a létrehozása után egy hétig
-      // nézi; itt az ablak at(30)-kor zárul, a következő kísérlet ideje már utána lenne.
+      // nézi; itt a tartalékkal csökkentett határ at(30)-kor jár le, a következő
+      // kísérlet ideje már utána lenne.
       const createdAt = new Date(
-        at(30).getTime() - AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
+        at(30).getTime() +
+          AUTOMATIC_RETRY_DEADLINE_MARGIN_MS -
+          AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
       ).toISOString()
 
       it.each([
@@ -1263,6 +1267,46 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
         })
         expect(refund).toHaveBeenCalledTimes(posts)
         expect(order.status).toBe('cancelled')
+      })
+
+      it('a következő kísérlet még az ablakba férne, de a tartalékba esik: a leállás már most kimondva, riasztással', async () => {
+        // A poll 5 percenként fut, és ki is maradhat: ha a következő kísérlet a
+        // határ előtti utolsó órába esne, az utolsó ablakon belüli futásnak kell
+        // riasztania, mert a következő már nem biztos, hogy jön.
+        const nextAttemptAt = at(17 + 60) // az at(17)-kor lezárt kísérlet + 1 óra várakozás
+        const order = createOrder({
+          status: 'cancelled',
+          createdAt: new Date(
+            nextAttemptAt.getTime() + 30 * 60_000 - AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
+          ).toISOString(),
+        })
+        const f = fixture(order)
+        const { log, calls } = spyLogger()
+        const refund = vi.fn().mockRejectedValue(new Error('SYNTHETIC response loss'))
+        const run = (now: Date) =>
+          recoverRejectedSucceededPayment({
+            payload: f.payload,
+            order,
+            state: createState(),
+            reason: 'duplicate-paid-order',
+            log,
+            source: 'order-poll',
+            refundPayment: refund as never,
+            now,
+          })
+        const alerts = () => calls.error.filter((message) => message.startsWith('RIASZTÁS'))
+        await run(at(1))
+        expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
+        // Az ablak a következő kísérlet után 30 perccel zárulna: tartalék nélkül
+        // ez „várakozás” lenne, és a leállás riasztás nélkül maradna.
+        expect(await run(at(17))).toEqual({
+          action: 'failed',
+          detail: 'automatic-refund-window-closed',
+        })
+        expect(alerts()).toEqual([expect.stringContaining('leállt')])
+        expect(alerts()[0]).toContain('egy héttel már nem nézi')
+        expect(alerts()[0]).not.toContain('újrapróbálja')
+        expect(refund).toHaveBeenCalledTimes(1)
       })
     })
   })
@@ -1470,8 +1514,10 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
 
   it.each([
     ['payment_pending', '2026-09-01T00:00:00.000Z', null],
-    ['cancelled', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-08T00:00:00.000Z')],
-    ['payment_failed', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-08T00:00:00.000Z')],
+    // Egy hét, a tartalékkal (egy óra) rövidítve: a következő kísérletnek
+    // biztosan bele kell férnie a fizetés-ellenőrzés ablakába.
+    ['cancelled', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-07T23:00:00.000Z')],
+    ['payment_failed', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-07T23:00:00.000Z')],
     ['cancelled', 'nem dátum', Number.NEGATIVE_INFINITY],
     ['created', '2026-09-01T00:00:00.000Z', Number.NEGATIVE_INFINITY],
     ['paid', '2026-09-01T00:00:00.000Z', Number.NEGATIVE_INFINITY],

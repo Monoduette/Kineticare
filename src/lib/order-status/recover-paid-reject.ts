@@ -162,14 +162,26 @@ function shouldAlert(
 }
 
 /** A végleges leállás riasztása: kézi egyeztetés kell, a pénz a vásárlónál hiányzik. */
+/** A tartós leállás oka magyarul, hogy a riasztásból is kiderüljön, miért nem jön több kísérlet. */
+const AUTOMATIC_STOP_REASON_HU: Readonly<Record<string, string>> = {
+  'automatic-refund-window-closed':
+    'a fizetés-ellenőrzés ezt a rendelést a létrehozása után egy héttel már nem nézi, újabb kísérlet nem indul',
+  'automatic-refund-rejected':
+    'a Barion olyan hibával utasította el, amelyet az ismétlés nem old meg',
+  'automatic-refund-attempts-exhausted':
+    'sok egymás utáni, ismeretlen okú hatástalan kísérlet után az ismétlés nem segít',
+}
+
 function alertAutomaticStop(
   log: Logger,
   now: Date,
   context: { orderId: number; source: RecoverPaidRejectSource; detail: string },
 ): void {
   if (!shouldAlert('stop', context.orderId, now)) return
+  const reason = AUTOMATIC_STOP_REASON_HU[context.detail]
   log.error(
-    'RIASZTÁS: az automatikus visszatérítés leállt, kézi egyeztetés szükséges; pénzmozgás nem történt, a vásárló pénze még nincs visszautalva',
+    'RIASZTÁS: az automatikus visszatérítés leállt, kézi egyeztetés szükséges; pénzmozgás nem történt, a vásárló pénze még nincs visszautalva' +
+      (reason ? `; ok: ${reason}` : ''),
     context,
   )
 }

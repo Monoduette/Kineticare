@@ -137,9 +137,9 @@ previously completed payment, this can be lower than at payment creation
 time”), így egy teljes, a Barion felületén indított visszatérítés (`Total` 0)
 is `foreign-refund-detected`, nem „eltérő összeg”. A vásárlói köszönőoldal
 (`GET /api/orders/[orderNumber]/status`) a bejelentkezés és a saját rendelés
-ellenőrzése után ezt a jelzést is nézi, ha a rendelésnek még nincs
-automatikus kísérlete: ilyenkor `paymentReviewRequired: true`, nem sima
-függő fizetés. Olvasási hibánál 500 (nem hamis „függő”).
+ellenőrzése után ezt a jelzést is nézi, ha a rendelésnek sem aktív, sem
+lezárt (`provider_failed`) automatikus kísérlete nincs: ilyenkor
+`paymentReviewRequired: true`, nem sima függő fizetés. Olvasási hibánál 500 (nem hamis „függő”).
 
 **Lemondott és sikertelen fizetésű rendelés.** Ezeket a fizetés-ellenőrzés a
 létrehozásuk után csak egy hétig nézi (`LATE_SUCCESS_LOOKBACK_MS`,
@@ -147,7 +147,11 @@ létrehozásuk után csak egy hétig nézi (`LATE_SUCCESS_LOOKBACK_MS`,
 (`automaticRetryDeadline`, `AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS`, az
 egyezést teszt őrzi) a közös `decideAutomaticRetry` része: ha a következő
 kísérlet ideje a határ utánra esne, vagy a határ már elmúlt, a döntés
-`automatic-refund-window-closed` leállás. A kísérletet indító futás és a panel
+`automatic-refund-window-closed` leállás. A határ a tartalékkal
+(`AUTOMATIC_RETRY_DEADLINE_MARGIN_MS`, egy óra) rövidebb az ablaknál, mert a
+poll 5 percenként fut, és ki is maradhat: a következő kísérletnek biztosan
+bele kell férnie, különben a leállás riasztás nélkül maradna. A leállás
+riasztása az okot is megnevezi. A kísérletet indító futás és a panel
 ugyanebből dönt, ezért az utolsó, ablakon belüli kísérletet lezáró futás
 (kódolt elutasítás, kód nélküli GetState-nullhatás vagy a Barionhoz el sem
 jutott kísérlet lezárása) azonnal „leállt” RIASZTÁST ad, nem napi

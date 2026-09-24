@@ -218,6 +218,29 @@ describe('GET /api/orders/[orderNumber]/status', () => {
       'paymentReviewRequired',
     )
     expect(collectionsRead(paid)).toEqual(['orders'])
+    // Lezárt rendszer-kísérlet mellett a kísérletek döntenek: a leállás-jelzést
+    // (audit-logs) már nem olvassuk, a jelző mégis igaz.
+    refundState.history.mockResolvedValue([
+      {
+        schemaVersion: 2,
+        actorKind: 'system',
+        systemActor: 'paid-reject-recovery',
+        state: 'provider_failed',
+        activeOrderKey: null,
+      },
+    ])
+    const settled = payloadWithUser(
+      { id: 7 },
+      [{ ...OWN_ORDER, status: 'payment_pending' }],
+      [blockRecord(OWN_ORDER.id)],
+    )
+    const settledHandler = createOrderStatusHandler({ getPayload: async () => settled as never })
+    const [req1, ctx1] = request()
+    expect(await (await settledHandler(req1 as never, ctx1)).json()).toMatchObject({
+      paymentReviewRequired: true,
+    })
+    expect(collectionsRead(settled)).toEqual(['orders'])
+    refundState.history.mockResolvedValue([])
     // Olvashatatlan leállás-jelzés mellett nem mondhatunk sima függő fizetést.
     const broken = payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status: 'payment_pending' }])
     const find = broken.find.getMockImplementation()!

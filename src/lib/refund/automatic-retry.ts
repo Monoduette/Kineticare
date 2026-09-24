@@ -60,11 +60,22 @@ export const AUTOMATIC_REFUND_RETRY_MAX_MS = 24 * 60 * 60_000
 export const AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS = 7 * 24 * 60 * 60_000
 
 /**
+ * Tartalék az ablak vége előtt. A fizetés-ellenőrzés 5 percenként fut, de egy
+ * futás ki is maradhat (deploy, schedule-guard, Barion-kiesés), a kód nélküli
+ * nullhatás csak 15 perc várakozás után dönthető el, és a schedule-guard
+ * további 15 percet adhat. A következő kísérletnek ennyivel a határ előtt kell
+ * beleférnie; különben az utolsó, ablakon belüli futás még várakozást mondana,
+ * a következő futás pedig már nem jönne, és a leállás riasztás nélkül maradna.
+ */
+export const AUTOMATIC_RETRY_DEADLINE_MARGIN_MS = 60 * 60_000
+
+/**
  * Meddig indít a fizetés-ellenőrzés (order-poll) új kísérletet ezen a
  * rendelésen (epoch ms, a határ még belefér). A függő (payment_pending)
  * rendelést korlát nélkül nézi (null); a lemondott és a sikertelen fizetésű
  * rendelést a létrehozása után AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS-ig (a
- * poll feltétele createdAt >= most - ablak); más állapotút, köztük a
+ * poll feltétele createdAt >= most - ablak), a tartalékkal
+ * (AUTOMATIC_RETRY_DEADLINE_MARGIN_MS) csökkentve; más állapotút, köztük a
  * 'created' rendelést, egyáltalán nem (-Infinity). Olvashatatlan createdAt
  * mellett nem ígér újrapróbálást (-Infinity).
  */
@@ -74,7 +85,7 @@ export function automaticRetryDeadline(order: Pick<Order, 'status' | 'createdAt'
     return Number.NEGATIVE_INFINITY
   const createdAt = Date.parse(String(order.createdAt))
   return Number.isFinite(createdAt)
-    ? createdAt + AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS
+    ? createdAt + AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS - AUTOMATIC_RETRY_DEADLINE_MARGIN_MS
     : Number.NEGATIVE_INFINITY
 }
 

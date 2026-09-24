@@ -51,6 +51,7 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'order-refund': 'Teljes visszatérítés',
   'order-partial-refund': 'Részleges visszatérítés',
   'order-confirmation-email': 'Visszaigazoló e-mail elküldése',
+  'automatic-refund-blocked': 'Automatikus visszatérítés tartósan leállt',
 }
 
 export const AUDIT_ENTITY_LABELS: Readonly<Record<string, string>> = {
