@@ -32,23 +32,59 @@ type MockOrder = {
   items?: Array<{ product: number | { id: number } | null }>
 }
 
-function payloadWithUser(user: { id: number } | null, orders: MockOrder[]) {
+/** Az automatikus visszatérítés tartós leállás-jelzése (automatic-block.ts), ahogy az audit-log tárolja. */
+function blockRecord(orderId: number) {
+  return {
+    id: 501,
+    action: 'automatic-refund-blocked',
+    entityType: 'orders',
+    entityId: String(orderId),
+    after: {
+      version: 1,
+      detail: 'foreign-refund-detected',
+      observedAt: '2026-09-05T10:01:01.000Z',
+    },
+  }
+}
+
+function payloadWithUser(
+  user: { id: number } | null,
+  orders: MockOrder[],
+  auditLogs: Array<ReturnType<typeof blockRecord>> = [],
+) {
   return {
     auth: vi.fn().mockResolvedValue({ user }),
-    find: vi.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {
-      const customerId = (where as { and: Array<{ customer: { equals: number } }> }).and.find(
-        (clause) => 'customer' in clause,
-      )!.customer.equals
-      const orderNumber = (where as { and: Array<{ orderNumber: { equals: string } }> }).and.find(
-        (clause) => 'orderNumber' in clause,
-      )!.orderNumber.equals
-      return Promise.resolve({
-        docs: orders.filter(
-          (order) => order.customer === customerId && order.orderNumber === orderNumber,
-        ),
-      })
-    }),
+    find: vi
+      .fn()
+      .mockImplementation(
+        ({ collection, where }: { collection: string; where: Record<string, unknown> }) => {
+          if (collection === 'audit-logs')
+            return Promise.resolve({
+              docs: auditLogs,
+              totalDocs: auditLogs.length,
+              hasNextPage: false,
+            })
+          const customerId = (where as { and: Array<{ customer: { equals: number } }> }).and.find(
+            (clause) => 'customer' in clause,
+          )!.customer.equals
+          const orderNumber = (
+            where as { and: Array<{ orderNumber: { equals: string } }> }
+          ).and.find((clause) => 'orderNumber' in clause)!.orderNumber.equals
+          return Promise.resolve({
+            docs: orders.filter(
+              (order) => order.customer === customerId && order.orderNumber === orderNumber,
+            ),
+          })
+        },
+      ),
   }
+}
+
+/** A handler által olvasott collectionök, sorrendben. */
+function collectionsRead(payload: ReturnType<typeof payloadWithUser>): string[] {
+  return payload.find.mock.calls.map(
+    (call: unknown[]) => (call[0] as { collection: string }).collection,
+  )
 }
 
 function request(orderNumber?: string): [Request, { params: Promise<{ orderNumber: string }> }] {
@@ -161,14 +197,38 @@ describe('GET /api/orders/[orderNumber]/status', () => {
 
   it('does not inspect refund state before authentication and ownership have passed', async () => {
     const [req, ctx] = request()
+    const pending = { ...OWN_ORDER, status: 'payment_pending' }
     for (const user of [null, { id: 8 }]) {
-      const handler = createOrderStatusHandler({
-        getPayload: async () => payloadWithUser(user, [OWN_ORDER]) as never,
-      })
+      const payload = payloadWithUser(user, [pending], [blockRecord(pending.id)])
+      const handler = createOrderStatusHandler({ getPayload: async () => payload as never })
       expect((await handler(req as never, ctx)).status).toBe(user ? 404 : 401)
+      // Anonim vagy más vevő: a leállás-jelzést sem olvassuk (csak a rendelés-keresés, ha az is).
+      expect(collectionsRead(payload)).toEqual(user ? ['orders'] : [])
     }
     expect(refundState.active).not.toHaveBeenCalled()
     expect(refundState.history).not.toHaveBeenCalled()
+  })
+
+  it('reads the automatic-refund stop record only for a never-paid order without a system attempt, and fails closed when it cannot', async () => {
+    // Kifizetett rendelésnél nincs mit olvasni.
+    const paid = payloadWithUser({ id: 7 }, [OWN_ORDER], [blockRecord(OWN_ORDER.id)])
+    const paidHandler = createOrderStatusHandler({ getPayload: async () => paid as never })
+    const [req, ctx] = request()
+    expect(await (await paidHandler(req as never, ctx)).json()).not.toHaveProperty(
+      'paymentReviewRequired',
+    )
+    expect(collectionsRead(paid)).toEqual(['orders'])
+    // Olvashatatlan leállás-jelzés mellett nem mondhatunk sima függő fizetést.
+    const broken = payloadWithUser({ id: 7 }, [{ ...OWN_ORDER, status: 'payment_pending' }])
+    const find = broken.find.getMockImplementation()!
+    broken.find.mockImplementation((args: { collection: string }) =>
+      args.collection === 'audit-logs'
+        ? Promise.reject(new Error('DUMMY storage unavailable'))
+        : find(args),
+    )
+    const brokenHandler = createOrderStatusHandler({ getPayload: async () => broken as never })
+    const [req2, ctx2] = request()
+    expect((await brokenHandler(req2 as never, ctx2)).status).toBe(500)
   })
 
   it('does not conflate an ordinary owner partial-refund intent with a rejected payment', async () => {

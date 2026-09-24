@@ -16,7 +16,11 @@ import {
   MAX_UNEXPLAINED_AUTOMATIC_REFUND_ATTEMPTS,
   recoverRejectedSucceededPayment,
 } from '../../lib/order-status/recover-paid-reject'
-import { decideAutomaticRetry } from '../../lib/refund/automatic-retry'
+import {
+  AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
+  automaticRetryDeadline,
+  decideAutomaticRetry,
+} from '../../lib/refund/automatic-retry'
 import { selectRefundSourceTransaction } from '../../lib/refund/barion-refund-evidence'
 import * as intentStore from '../../lib/refund/intent-store'
 import { NO_PROVIDER_REQUEST_REFERENCE } from '../../lib/refund/refund-intent'
@@ -1107,8 +1111,8 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
     ])
     // Azonnal, majd naponta legfeljebb egyszer (a +67/+72 perces futás fojtva).
     expect(calls.error.filter((message) => message.startsWith('RIASZTÁS'))).toEqual([
-      expect.stringContaining('már van visszatérítés ehhez a fizetéshez'),
-      expect.stringContaining('már van visszatérítés ehhez a fizetéshez'),
+      expect.stringContaining('ehhez a fizetéshez már van visszatérítési tranzakció'),
+      expect.stringContaining('ehhez a fizetéshez már van visszatérítési tranzakció'),
     ])
   })
 
@@ -1181,6 +1185,85 @@ describe('automatikus visszatérítés: végleges Barion-elutasítás, egyeztet�
       expect(alerts()).toHaveLength(2)
       expect(alerts()[1]).toContain('leállt')
       expect(refund).toHaveBeenCalledTimes(1)
+    })
+
+    describe('lemondott rendelés: a fizetés-ellenőrzés ablakában utolsó kísérlet lezárása mondja ki a leállást', () => {
+      // A fizetés-ellenőrzés a lemondott rendelést a létrehozása után egy hétig
+      // nézi; itt az ablak at(30)-kor zárul, a következő kísérlet ideje már utána lenne.
+      const createdAt = new Date(
+        at(30).getTime() - AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS,
+      ).toISOString()
+
+      it.each([
+        ['kód nélküli nullhatás (a GetState-ben nincs visszatérítés)', 'response-loss'],
+        ['a Barionhoz el sem jutott, előkészítésnél elakadt kísérlet', 'stuck-prepared'],
+        ['ugyanabban a futásban lezárt, el sem indult kísérlet', 'inline-release'],
+      ] as const)('%s: azonnali RIASZTÁS a leállásról, utána sincs POST', async (_label, kind) => {
+        const order = createOrder({ status: 'cancelled', createdAt })
+        const f = fixture(order)
+        const { log, calls } = spyLogger()
+        const refund = vi.fn().mockRejectedValue(new Error('SYNTHETIC response loss'))
+        const run = (now: Date) =>
+          recoverRejectedSucceededPayment({
+            payload: f.payload,
+            order,
+            state: createState(),
+            reason: 'duplicate-paid-order',
+            log,
+            source: 'order-poll',
+            refundPayment: refund as never,
+            now,
+          })
+        const alerts = () => calls.error.filter((message) => message.startsWith('RIASZTÁS'))
+        if (kind === 'stuck-prepared') {
+          await intentStore.createRefundIntent(
+            f.payload,
+            {
+              schemaVersion: 2,
+              actorId: null,
+              actorKind: 'system',
+              systemActor: 'paid-reject-recovery',
+              orderId: String(order.id),
+              provider: 'barion',
+              providerPaymentId: PAYMENT_ID,
+              providerTransactionId: TRANSACTION_ID,
+              refundSequence: 1,
+              requestedAmountHuf: ORDER_TOTAL_HUF,
+              currency: 'HUF',
+              reason: 'SYNTHETIC',
+            },
+            'SYNTHETIC-STUCK-PREPARED',
+          )
+        } else if (kind === 'inline-release') {
+          // Az előkészítés nyugtája nem íródik ki: a kísérlet Barion-hívás nélkül zárul.
+          f.failures.receipt = 'refund-prepared'
+        } else {
+          // Az ablakon belül elindult kísérlet válasza elveszett.
+          await run(at(1))
+          expect(store.intents.get(f.payload)?.state).toBe('provider_unknown')
+          expect(alerts()).toEqual([])
+        }
+        // Ez a futás zárja le az utolsó kísérletet: a következő ideje (+1 óra)
+        // az ablak utánra esne, és utána nem jön futás, amely riaszthatna.
+        const settledAt = kind === 'response-loss' ? at(17) : at(1)
+        expect(await run(settledAt)).toEqual({
+          action: 'failed',
+          detail: 'automatic-refund-window-closed',
+        })
+        expect(store.intents.get(f.payload)).toMatchObject({
+          state: 'provider_failed',
+          activeOrderKey: null,
+        })
+        expect(alerts()).toEqual([expect.stringContaining('leállt')])
+        expect(alerts()[0]).not.toContain('újrapróbálja')
+        const posts = refund.mock.calls.length
+        expect(await run(at(60 * 24 * 3))).toEqual({
+          action: 'failed',
+          detail: 'automatic-refund-window-closed',
+        })
+        expect(refund).toHaveBeenCalledTimes(posts)
+        expect(order.status).toBe('cancelled')
+      })
     })
   })
 
@@ -1335,14 +1418,79 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
     }) as unknown as RefundIntent
   const LOW = 'barion:refund-rejected:TooLowBalanceToMakeRefund'
   const NO_REFUND = 'barion:paymentstate:no-refund-transaction'
+  /** Függő (payment_pending) rendelés: a fizetés-ellenőrzés korlát nélkül visszajön. */
+  const OPEN = { retryDeadlineMs: null }
+  const HOUR = 3_600_000
+
+  it.each([
+    // [eset, előzmény, határ (T0-hoz képest, óra), most (óra), elvárt döntés]
+    [
+      'a határ még belefér (a várakozás vége pont a határ)',
+      [failure(0, LOW)],
+      1,
+      0.5,
+      { kind: 'wait', notBefore: new Date(T0 + HOUR).toISOString() },
+    ],
+    ['a határon még indít', [failure(0, LOW)], 1, 1, { kind: 'launch', attempt: 2 }],
+    [
+      'a következő kísérlet ideje a határ utánra esne, most még a határ előtt vagyunk',
+      [failure(0, LOW)],
+      0.99,
+      0.5,
+      { kind: 'stop', detail: 'automatic-refund-window-closed' },
+    ],
+    [
+      'a várakozás a határ előtt lejárt, de a határ is elmúlt (a poll már nem jön vissza)',
+      [failure(0, LOW)],
+      2,
+      3,
+      { kind: 'stop', detail: 'automatic-refund-window-closed' },
+    ],
+    [
+      'soha vissza nem térő fizetés-ellenőrzés (pl. created rendelés) egy kísérlet után',
+      [failure(0, LOW)],
+      Number.NEGATIVE_INFINITY,
+      2,
+      { kind: 'stop', detail: 'automatic-refund-window-closed' },
+    ],
+    [
+      'az első kísérletet a határtól függetlenül az éppen futó hívó indítja',
+      [],
+      Number.NEGATIVE_INFINITY,
+      2,
+      { kind: 'launch', attempt: 1 },
+    ],
+  ] as const)('határidő: %s', (_label, failures, deadlineHours, nowHours, expected) => {
+    expect(
+      decideAutomaticRetry(failures, new Date(T0 + nowHours * HOUR), {
+        retryDeadlineMs: T0 + deadlineHours * HOUR,
+      }),
+    ).toEqual(expected)
+  })
+
+  it.each([
+    ['payment_pending', '2026-09-01T00:00:00.000Z', null],
+    ['cancelled', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-08T00:00:00.000Z')],
+    ['payment_failed', '2026-09-01T00:00:00.000Z', Date.parse('2026-09-08T00:00:00.000Z')],
+    ['cancelled', 'nem dátum', Number.NEGATIVE_INFINITY],
+    ['created', '2026-09-01T00:00:00.000Z', Number.NEGATIVE_INFINITY],
+    ['paid', '2026-09-01T00:00:00.000Z', Number.NEGATIVE_INFINITY],
+  ] as const)(
+    'automaticRetryDeadline: %s rendelés (%s) → a fizetés-ellenőrzés ablaka',
+    (status, createdAt, expected) => {
+      expect(automaticRetryDeadline({ status, createdAt })).toBe(expected)
+    },
+  )
 
   it('20 egymás utáni TooLowBalance után is naponta új kísérlet jár', () => {
     const failures = Array.from({ length: 20 }, (_, index) => failure(index * 24, LOW))
-    expect(decideAutomaticRetry(failures, new Date(T0 + (19 * 24 + 23) * 3_600_000))).toEqual({
-      kind: 'wait',
-      notBefore: new Date(T0 + 20 * 24 * 3_600_000).toISOString(),
-    })
-    expect(decideAutomaticRetry(failures, new Date(T0 + 20 * 24 * 3_600_000))).toEqual({
+    expect(decideAutomaticRetry(failures, new Date(T0 + (19 * 24 + 23) * 3_600_000), OPEN)).toEqual(
+      {
+        kind: 'wait',
+        notBefore: new Date(T0 + 20 * 24 * 3_600_000).toISOString(),
+      },
+    )
+    expect(decideAutomaticRetry(failures, new Date(T0 + 20 * 24 * 3_600_000), OPEN)).toEqual({
       kind: 'launch',
       attempt: 21,
     })
@@ -1355,9 +1503,9 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
         failure(20 + index, index % 2 ? NO_REFUND : NO_PROVIDER_REQUEST_REFERENCE),
       ),
     ]
-    expect(decideAutomaticRetry(mixed, new Date(T0 + 365 * 86_400_000)).kind).toBe('launch')
+    expect(decideAutomaticRetry(mixed, new Date(T0 + 365 * 86_400_000), OPEN).kind).toBe('launch')
     const exhausted = [...mixed, failure(40, NO_REFUND)]
-    expect(decideAutomaticRetry(exhausted, new Date(T0 + 365 * 86_400_000))).toEqual({
+    expect(decideAutomaticRetry(exhausted, new Date(T0 + 365 * 86_400_000), OPEN)).toEqual({
       kind: 'stop',
       detail: 'automatic-refund-attempts-exhausted',
     })
@@ -1374,8 +1522,8 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
       ...unexplained(20, limit - 1),
     ]
     const later = new Date(T0 + 365 * 86_400_000)
-    expect(decideAutomaticRetry(interrupted, later).kind).toBe('launch')
-    expect(decideAutomaticRetry([...interrupted, failure(40, NO_REFUND)], later)).toEqual({
+    expect(decideAutomaticRetry(interrupted, later, OPEN).kind).toBe('launch')
+    expect(decideAutomaticRetry([...interrupted, failure(40, NO_REFUND)], later, OPEN)).toEqual({
       kind: 'stop',
       detail: 'automatic-refund-attempts-exhausted',
     })
@@ -1386,7 +1534,7 @@ describe('decideAutomaticRetry (a közös újrapróbálási szabály)', () => {
       failure(0, 'barion:refund-rejected:AmountToRefundIsGreaterThanTransactionAmount'),
       failure(1, LOW),
     ]
-    expect(decideAutomaticRetry(failures, new Date(T0 + 365 * 86_400_000))).toEqual({
+    expect(decideAutomaticRetry(failures, new Date(T0 + 365 * 86_400_000), OPEN)).toEqual({
       kind: 'stop',
       detail: 'automatic-refund-rejected',
     })

@@ -96,7 +96,8 @@ az eredmény `too_early`, a kísérlet blokkoló marad.
 indoklása a `src/lib/refund/automatic-retry.ts` fejlécében áll, röviden: nem
 javítható Barion-kód azonnal és véglegesen leállít; a tulajdonos által
 javítható kód (pl. `TooLowBalanceToMakeRefund`) darabszám-korlát nélkül,
-legfeljebb naponta újrapróbál (K6: nincs tartalék a tárcában); a kód nélküli
+legalább naponta újrapróbál (1, 2, 4, 8, 16, majd 24 óra várakozás; K6: nincs
+tartalék a tárcában); a kód nélküli
 nullhatásból (a fenti második és harmadik hivatkozás) legfeljebb 8 jöhet
 egymás után (egy kódolt, javítható elutasítás a sorozatot lezárja). Új
 kísérlet csak akkor indul, ha minden korábbi automatikus kísérlet igazoltan
@@ -127,11 +128,28 @@ szereplő, `after: { version: 1, detail, observedAt }`;
 a legutóbbi lezárt kísérlet után csak egy bejegyzés keletkezik. A tulajdonosi
 panel ebből tudja, hogy a rendszer nem próbálkozik tovább, ezért nem ígér
 újrapróbálást vagy tárca-feltöltést, hanem a leállást és a teendőt mondja. A
-jelzést egy később valóban elindult kísérlet kimenete felülírja. Migráció nem
-kell: az audit-log `action` mezője szöveg.
+jelzést egy később valóban elindult kísérlet kimenete felülírja; egy újabb,
+más okú leállás új bejegyzést kap, és mindig a legújabb számít. Migráció nem
+kell: az audit-log `action` mezője szöveg. Az idegen visszatérítést az őr az
+összegek ELŐTT nézi: a Barion a visszatérítés után a fizetés `Total` értékét
+csökkenti (Payment-PaymentState-v4: „if the transaction is a refund of a
+previously completed payment, this can be lower than at payment creation
+time”), így egy teljes, a Barion felületén indított visszatérítés (`Total` 0)
+is `foreign-refund-detected`, nem „eltérő összeg”. A vásárlói köszönőoldal
+(`GET /api/orders/[orderNumber]/status`) a bejelentkezés és a saját rendelés
+ellenőrzése után ezt a jelzést is nézi, ha a rendelésnek még nincs
+automatikus kísérlete: ilyenkor `paymentReviewRequired: true`, nem sima
+függő fizetés. Olvasási hibánál 500 (nem hamis „függő”).
 
 **Lemondott és sikertelen fizetésű rendelés.** Ezeket a fizetés-ellenőrzés a
 létrehozásuk után csak egy hétig nézi (`LATE_SUCCESS_LOOKBACK_MS`,
-`src/lib/order-poll/service.ts`; a panel ugyanezt a határt használja,
-`AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS`). A panel ezért ezeken csak eddig ígér
-napi újrapróbálást, utána a leállást mondja.
+`src/lib/order-poll/service.ts`), a `created` rendelést soha. A határ
+(`automaticRetryDeadline`, `AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS`, az
+egyezést teszt őrzi) a közös `decideAutomaticRetry` része: ha a következő
+kísérlet ideje a határ utánra esne, vagy a határ már elmúlt, a döntés
+`automatic-refund-window-closed` leállás. A kísérletet indító futás és a panel
+ugyanebből dönt, ezért az utolsó, ablakon belüli kísérletet lezáró futás
+(kódolt elutasítás, kód nélküli GetState-nullhatás vagy a Barionhoz el sem
+jutott kísérlet lezárása) azonnal „leállt” RIASZTÁST ad, nem napi
+újrapróbálást ígér, és a panel is már a határ előtt a leállást mondja. Az első
+kísérletre a határ nem vonatkozik: azt az éppen futó hívó indítja.

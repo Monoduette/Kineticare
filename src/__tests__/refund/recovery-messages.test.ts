@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { documents, fixture, provider, store } from '../refund-fixture'
 import { resetAlertThrottle } from '../../lib/alert-throttle'
 import { BarionApiError, type BarionPaymentStateResponse } from '../../lib/barion'
-import { createLogger } from '../../lib/logger'
+import { createOrderStatusHandler } from '../../lib/checkout/order-status-handler'
+import { createLogger, type Logger } from '../../lib/logger'
 import { LATE_SUCCESS_LOOKBACK_MS } from '../../lib/order-poll/service'
 import { recoverRejectedSucceededPayment } from '../../lib/order-status/recover-paid-reject'
 import {
@@ -12,6 +13,7 @@ import {
   automaticRefundRetryDelayMs,
   MAX_UNEXPLAINED_AUTOMATIC_REFUND_ATTEMPTS,
 } from '../../lib/refund/automatic-retry'
+import { AUTOMATIC_REFUND_BLOCKED_ACTION } from '../../lib/refund/automatic-block'
 import { createRefundIntent } from '../../lib/refund/intent-store'
 import { releaseNeverLaunchedIntent } from '../../lib/refund/provider-reconciliation'
 import { REFUND_RECOVERY_ACTION_LABEL } from '../../lib/refund/recovery-action-label'
@@ -227,7 +229,24 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
     })
   }
 
-  function automatic(order: Order, refund: ReturnType<typeof vi.fn>) {
+  function spyLogger() {
+    const calls = { error: [] as string[], warn: [] as string[] }
+    const log: Logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (message) => {
+        calls.warn.push(message)
+      },
+      error: (message) => {
+        calls.error.push(message)
+      },
+      child: () => log,
+    }
+    const alerts = () => calls.error.filter((message) => message.startsWith('RIASZTÁS'))
+    return { log, calls, alerts }
+  }
+
+  function automatic(order: Order, refund: ReturnType<typeof vi.fn>, log = createLogger()) {
     const f = fixture(order)
     const run = (now: Date, state = paymentState()) =>
       recoverRejectedSucceededPayment({
@@ -235,14 +254,16 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
         order,
         state,
         reason: 'duplicate-paid-order',
-        log: createLogger(),
+        log,
         source: 'order-poll',
         refundPayment: refund as never,
         now,
       })
     const status = (now: Date) =>
       getRefundRecoveryStatus({ payload: f.payload, orderNumber: order.orderNumber!, now })
-    return { f, run, status }
+    const blocks = () =>
+      f.audits.filter((audit) => audit.action === AUTOMATIC_REFUND_BLOCKED_ACTION)
+    return { f, run, status, blocks }
   }
 
   it('TooLowBalance után a panel kimondja, mi történt, mikor jön az újabb kísérlet, és mennyi kell a tárcába', async () => {
@@ -282,7 +303,7 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
     const saved = await status(new Date(clock))
     expect(saved.state).toBe('manual_review')
     expect(saved.message).toContain('A rendszer hamarosan újra megpróbálja')
-    expect(saved.message).toContain('naponta próbálkozik, amíg sikerül')
+    expect(saved.message).toContain('legalább naponta próbálkozik, amíg sikerül')
   })
 
   it.each([
@@ -439,8 +460,14 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
 
   describe('kísérlet előtti, tartós leállás (idegen visszatérítés, megváltozott fizetés)', () => {
     const FOREIGN_REFUND = 'dddddddd-eeee-ffff-0000-000000000009'
+    const FOREIGN = 'ehhez a fizetéshez már van visszatérítési tranzakció'
 
-    /** A forrásra kapcsolódó, a Barion felületén indított visszatérítés (K17). */
+    /**
+     * A forrásra kapcsolódó, a Barion felületén indított visszatérítés (K17). A
+     * Barion a fizetés Total értékét a visszatérített összeggel csökkenti
+     * (Payment-PaymentState-v4: „if the transaction is a refund of a previously
+     * completed payment, this can be lower than at payment creation time”).
+     */
     function withBarionUiRefund(refundHuf: number, total: number): BarionPaymentStateResponse {
       const state = paymentState()
       state.Total = total
@@ -457,26 +484,53 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
 
     it.each([
       [
+        'teljes visszatérítés (a Total 0-ra csökken)',
+        () => withBarionUiRefund(TOTAL, 0),
+        'foreign-refund-detected',
+        `a Barionban ${FOREIGN}`,
+        FOREIGN,
+      ],
+      [
         'teljes visszatérítés, változatlan Total',
         () => withBarionUiRefund(TOTAL, TOTAL),
         'foreign-refund-detected',
-        'a Barionban már van visszatérítés ehhez a fizetéshez',
+        `a Barionban ${FOREIGN}`,
+        FOREIGN,
       ],
       [
-        'részleges visszatérítés, csökkent Total',
+        'részleges visszatérítés (csökkent Total)',
         () => withBarionUiRefund(9990, TOTAL - 9990),
+        'foreign-refund-detected',
+        `a Barionban ${FOREIGN}`,
+        FOREIGN,
+      ],
+      [
+        'hiányzik a rendelés fizetési tranzakciója',
+        () => ({ ...paymentState(), Transactions: [] }),
         'source-transaction-unproven',
-        'a fizetés adatai a Barionban már nem egyeznek a rendeléssel',
+        'a fizetés tranzakciói a Barionban nem egyeznek a rendeléssel',
+        'tranzakciói nem egyeznek a rendeléssel',
+      ],
+      [
+        'nulla összegű fizetés, visszatérítés nélkül',
+        () => ({ ...paymentState(), Total: 0 }),
+        'payment-state-unproven',
+        'a fizetés adatai a Barionban nem egyeznek a rendeléssel',
+        'adatai nem egyeznek a rendeléssel',
       ],
     ])(
-      '%s: a panel a leállást mondja, nem ígér napi újrapróbálást és feltöltést',
-      async (_label, blocked, detail, reason) => {
+      '%s: a panel és a RIASZTÁS a leállást mondja, nem ígér napi újrapróbálást és feltöltést',
+      async (_label, blocked, detail, reason, alert) => {
         const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
-        const { f, run, status } = automatic(automaticOrder(), refund)
+        const { log, alerts } = spyLogger()
+        const { f, run, status } = automatic(automaticOrder(), refund, log)
         await run(at(1))
         for (const minutes of [62, 60 * 24 * 2, 60 * 24 * 30])
           expect(await run(at(minutes), blocked())).toEqual({ action: 'failed', detail })
         expect(refund).toHaveBeenCalledTimes(1)
+        // Az 1. elutasítás még csak figyelmeztetés; minden riasztás a leállásról szól.
+        expect(alerts()).toHaveLength(3)
+        for (const message of alerts()) expect(message).toContain(alert)
         const saved = await status(at(60 * 24 * 30))
         expect(saved.state).toBe('manual_review')
         expect(saved.message).toContain(reason)
@@ -493,22 +547,24 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
       },
     )
 
-    it('az első kísérlet előtti leállás után sem „rendezett” a panel', async () => {
+    it('az első kísérlet előtti teljes Barion-felületi visszatérítés (Total 0) idegen visszatérítésként áll le, és a panel sem „rendezett” (K17)', async () => {
       const refund = vi.fn()
-      const { run, status } = automatic(automaticOrder(), refund)
-      expect(await run(at(1), withBarionUiRefund(TOTAL, TOTAL))).toEqual({
+      const { log, alerts } = spyLogger()
+      const { run, status } = automatic(automaticOrder(), refund, log)
+      expect(await run(at(1), withBarionUiRefund(TOTAL, 0))).toEqual({
         action: 'failed',
         detail: 'foreign-refund-detected',
       })
       expect(refund).not.toHaveBeenCalled()
+      expect(alerts()).toEqual([expect.stringContaining(FOREIGN)])
       const saved = await status(at(2))
       expect(saved.state).toBe('manual_review')
-      expect(saved.message).toContain('a Barionban már van visszatérítés ehhez a fizetéshez')
+      expect(saved.message).toContain(`a Barionban ${FOREIGN}`)
     })
 
-    it('egy később valóban elindult kísérlet kimenete felülírja a leállás-jelzést', async () => {
+    it('egy később valóban elindult kísérlet felülírja a leállás-jelzést, egy újabb leállás pedig ismét a legújabbat mutatja', async () => {
       const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
-      const { run, status } = automatic(automaticOrder(), refund)
+      const { run, status, blocks } = automatic(automaticOrder(), refund)
       expect(await run(at(1), { ...paymentState(), Transactions: [] })).toEqual({
         action: 'failed',
         detail: 'source-transaction-unproven',
@@ -516,9 +572,111 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
       expect((await status(at(2))).message).toContain('leállt')
       await run(at(7))
       expect(refund).toHaveBeenCalledTimes(1)
-      const saved = await status(at(8))
-      expect(saved.message).toContain('nincs elég egyenleg')
-      expect(saved.message).toContain('naponta próbálkozik, amíg sikerül')
+      const retrying = await status(at(8))
+      expect(retrying.message).toContain('nincs elég egyenleg')
+      expect(retrying.message).toContain('naponta próbálkozik, amíg sikerül')
+      // A várakozás után a Barion felületén közben visszatérítették: új leállás.
+      expect(await run(at(7 + 61), withBarionUiRefund(TOTAL, 0))).toEqual({
+        action: 'failed',
+        detail: 'foreign-refund-detected',
+      })
+      expect(refund).toHaveBeenCalledTimes(1)
+      expect(blocks()).toHaveLength(2)
+      const stopped = await status(at(7 + 62))
+      expect(stopped.state).toBe('manual_review')
+      expect(stopped.message).toContain(`a Barionban ${FOREIGN}`)
+      expect(stopped.message).toContain('leállt')
+      expect(stopped.message).not.toContain('naponta próbálkozik')
+      expect(stopped.message).not.toContain('feltöltés')
+    })
+
+    it('eltérő okú, egymás utáni leállás új bejegyzést kap, a panel a legújabb okot mondja; azonos ok nem szaporít', async () => {
+      const refund = vi.fn()
+      const { run, status, blocks } = automatic(automaticOrder(), refund)
+      expect(await run(at(1), { ...paymentState(), Transactions: [] })).toEqual({
+        action: 'failed',
+        detail: 'source-transaction-unproven',
+      })
+      expect(await run(at(6), withBarionUiRefund(TOTAL, 0))).toEqual({
+        action: 'failed',
+        detail: 'foreign-refund-detected',
+      })
+      expect(await run(at(11), withBarionUiRefund(TOTAL, 0))).toEqual({
+        action: 'failed',
+        detail: 'foreign-refund-detected',
+      })
+      expect(blocks().map((audit) => (audit.after as { detail: string }).detail)).toEqual([
+        'source-transaction-unproven',
+        'foreign-refund-detected',
+      ])
+      expect((await status(at(12))).message).toContain(`a Barionban ${FOREIGN}`)
+      expect(refund).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['olvasása', 'read'],
+      ['írása', 'write'],
+    ] as const)(
+      'a leállás-jelzés %s elbukik: a döntés és a RIASZTÁS ugyanaz, nincs POST, a következő futás pótolja',
+      async (_label, failing) => {
+        const refund = vi.fn()
+        const { log, calls, alerts } = spyLogger()
+        const { f, run, status, blocks } = automatic(automaticOrder(), refund, log)
+        if (failing === 'read')
+          vi.mocked(f.payload.find).mockRejectedValueOnce(new Error('SYNTHETIC connection lost'))
+        else f.failures.receipt = AUTOMATIC_REFUND_BLOCKED_ACTION
+        expect(await run(at(1), withBarionUiRefund(TOTAL, 0))).toEqual({
+          action: 'failed',
+          detail: 'foreign-refund-detected',
+        })
+        expect(refund).not.toHaveBeenCalled()
+        expect(alerts()).toEqual([expect.stringContaining(FOREIGN)])
+        expect(blocks()).toEqual([])
+        if (failing === 'read')
+          expect(calls.warn).toContain(
+            'automatikus visszatérítés: a leállás rögzítése nem sikerült',
+          )
+        f.failures.receipt = ''
+        expect(await run(at(6), withBarionUiRefund(TOTAL, 0))).toEqual({
+          action: 'failed',
+          detail: 'foreign-refund-detected',
+        })
+        expect(blocks()).toHaveLength(1)
+        expect((await status(at(7))).message).toContain(`a Barionban ${FOREIGN}`)
+        expect(refund).not.toHaveBeenCalled()
+      },
+    )
+
+    it('vásárlói köszönőoldal: a kísérlet előtti tartós leállás után sem sima függő fizetés', async () => {
+      const order = {
+        ...automaticOrder(),
+        customer: 7,
+        items: [{ product: 42 }],
+      } as unknown as Order
+      const { f, run } = automatic(order, vi.fn())
+      expect(await run(at(1), withBarionUiRefund(9990, TOTAL))).toEqual({
+        action: 'failed',
+        detail: 'foreign-refund-detected',
+      })
+      // A köszönőoldal a bejelentkezett vevő saját rendelését kérdezi (customer = user.id).
+      const payload = {
+        ...f.payload,
+        auth: async () => ({ user: { id: 7 } }),
+        find: async (args: { collection: string }) =>
+          args.collection === 'orders'
+            ? { docs: [structuredClone(order)], totalDocs: 1, hasNextPage: false }
+            : f.payload.find(args as never),
+      }
+      const handler = createOrderStatusHandler({ getPayload: async () => payload as never })
+      const response = await handler(
+        new Request('http://localhost/api/orders/KH-2026-000123/status') as never,
+        { params: Promise.resolve({ orderNumber: 'KH-2026-000123' }) },
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        status: 'payment_pending',
+        paymentReviewRequired: true,
+      })
     })
   })
 
@@ -538,6 +696,52 @@ describe('soha ki nem fizetett rendelés automatikus visszatérítése a tulajdo
     expect(after.message).not.toContain('újra megpróbálja')
     // A határ a fizetés-ellenőrzés tényleges keresési ablaka.
     expect(AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS).toBe(LATE_SUCCESS_LOOKBACK_MS)
+  })
+
+  it('lemondott rendelés: az ablak utolsó kísérlete után a RIASZTÁS és a panel is a leállást mondja, már a határ előtt (K6)', async () => {
+    const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
+    const order = automaticOrder('cancelled')
+    const { log, alerts } = spyLogger()
+    const { run, status } = automatic(order, refund, log)
+    // A fizetés-ellenőrzés 5 percenként, amíg a rendelés a késői sikerek ablakában van.
+    const deadline = Date.parse(String(order.createdAt)) + LATE_SUCCESS_LOOKBACK_MS
+    let lastPostAt = 0
+    for (let clock = at(1).getTime(); clock <= deadline; clock += 5 * 60_000) {
+      const posts = refund.mock.calls.length
+      await run(new Date(clock))
+      if (refund.mock.calls.length > posts) lastPostAt = clock
+    }
+    // Kísérletek +0, 1, 3, 7, 15, 31, 55, 79, 103, 127 és 151 óránál; a
+    // következő (+175 óra) már az ablak (≈ +168 óra) utánra esne.
+    expect(refund).toHaveBeenCalledTimes(11)
+    expect(lastPostAt).toBe(at(1 + 151 * 60).getTime())
+    const last = alerts().at(-1)
+    expect(last).toContain('leállt')
+    expect(last).not.toContain('újrapróbálja')
+    expect(alerts().filter((message) => message.includes('leállt'))).toHaveLength(1)
+    // A panel az utolsó kísérlet után, még a határ előtt sem ígér újabbat.
+    expect(lastPostAt + 60_000).toBeLessThan(deadline)
+    const before = await status(new Date(lastPostAt + 60_000))
+    expect(before.state).toBe('manual_review')
+    expect(before.message).toContain('már nem ellenőrzi újra magától')
+    expect(before.message).not.toMatch(/újra megpróbálja|naponta próbálkozik/)
+  })
+
+  it("'created' rendelésnél egy kísérlet után leáll: ezt a rendelést a fizetés-ellenőrzés nem nézi", async () => {
+    const refund = vi.fn().mockRejectedValue(rejection('TooLowBalanceToMakeRefund'))
+    const { log, alerts } = spyLogger()
+    const { run, status } = automatic(automaticOrder('created'), refund, log)
+    expect(await run(at(1))).toEqual({ action: 'failed', detail: 'automatic-refund-window-closed' })
+    expect(alerts()).toEqual([expect.stringContaining('leállt')])
+    const saved = await status(at(2))
+    expect(saved.state).toBe('manual_review')
+    expect(saved.message).toContain('leállt')
+    expect(saved.message).not.toContain('újra megpróbálja')
+    expect(await run(at(60 * 24))).toEqual({
+      action: 'failed',
+      detail: 'automatic-refund-window-closed',
+    })
+    expect(refund).toHaveBeenCalledTimes(1)
   })
 
   it('előzmény nélküli, nem kifizetett rendelés továbbra is rendezett (nincs teendő)', async () => {

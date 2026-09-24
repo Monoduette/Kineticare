@@ -5,6 +5,7 @@ import { logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
 import type { RefundIntent } from '../../payload-types'
 import { isNeverPaidRefundCandidate } from '../refund/auto-refund-recovery'
+import { readLatestAutomaticRefundBlock } from '../refund/automatic-block'
 import { loadActiveRefundIntent, loadRefundIntentsForOrder } from '../refund/intent-store'
 
 /**
@@ -116,12 +117,17 @@ export function createOrderStatusHandler(
       // Két kísérlet között (pl. a Barion elutasította, a rendszer később
       // újrapróbálja) nincs aktív kísérlet, de a vásárló pénze még nincs
       // visszautalva: a köszönőoldal ilyenkor sem mutathat sima „függő” fizetést.
+      // Ugyanez áll, ha az automatika már az első kísérlet előtt tartósan
+      // leállt (automatic-block.ts: idegen visszatérítés, eltérő fizetés):
+      // ilyenkor kísérlet nincs, csak a leállás-jelzés. Ezt csak akkor olvassuk,
+      // ha a kísérletek már nem döntöttek (a köszönőoldal pollja olcsó marad).
       const paymentReviewRequired =
         isSystemRefundIntent(activeRefund) ||
         (isNeverPaidRefundCandidate(order) &&
-          (await loadRefundIntentsForOrder(payload, order.id)).some(
+          ((await loadRefundIntentsForOrder(payload, order.id)).some(
             (intent) => intent.state === 'provider_failed' && isSystemRefundIntent(intent),
-          ))
+          ) ||
+            (await readLatestAutomaticRefundBlock(payload, order.id)) !== null))
 
       return NextResponse.json(
         {

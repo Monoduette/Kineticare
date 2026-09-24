@@ -32,6 +32,7 @@ import {
   type RefundRejection,
 } from '../refund/barion-refund-evidence'
 import {
+  automaticRetryDeadline,
   decideAutomaticRetry,
   isResolvedAutomaticFailure,
   type AutomaticRetryDecision,
@@ -60,8 +61,9 @@ export {
  * Uncertain results remain active; acknowledged successes allow local recovery.
  * A Barion végleges elutasítása (pl. TooLowBalanceToMakeRefund) igazolt
  * nullhatás: provider_failed. A tulajdonos által javítható okoknál a rendszer
- * legfeljebb naponta, darabszám-korlát nélkül újrapróbál; a szabály és az
- * indoklása a src/lib/refund/automatic-retry.ts fejlécében áll. */
+ * legalább naponta, darabszám-korlát nélkül újrapróbál, a lemondott és a
+ * sikertelen fizetésű rendelésen a fizetés-ellenőrzés egyhetes ablakáig; a
+ * szabály és az indoklása a src/lib/refund/automatic-retry.ts fejlécében áll. */
 
 export const AUTO_REFUND_REJECT_REASONS = [
   'duplicate-paid-order',
@@ -140,7 +142,9 @@ const PENDING: PaidRejectRecoveryResult = {
  * elutasítási sorozat a harmadik kísérlettől riaszt (az első kettő után egy-két
  * órán belül gyakran egy új eladás már fedezi), utána naponta egyszer; a
  * végleges leállás és a kísérlet előtti leállás (idegen visszatérítés,
- * megváltozott fizetés) azonnal, majd naponta.
+ * megváltozott fizetés) azonnal, majd naponta. A végleges leállást az a futás
+ * mondja ki, amelyik az utolsó kísérletet lezárja: lemondott rendelésnél az
+ * ablak után már nem jön futás, amely riaszthatna.
  */
 const AUTOMATIC_REFUND_ALERT_COOLDOWN_MS = 24 * 60 * 60_000
 const AUTOMATIC_REFUND_ALERT_FROM_ATTEMPT = 3
@@ -213,17 +217,17 @@ function logAutomaticRejection(
   }
   log.error(
     rejection.codes.includes('TooLowBalanceToMakeRefund')
-      ? `RIASZTÁS: az automatikus visszatérítéshez nincs elég egyenleg a Barion-tárcában, pénzmozgás nem történt. A visszatérítéshez legalább ${formatPriceHuf(input.amountHuf)} egyenleg kell a tárcában (feltöltéssel vagy a következő eladásokkal); a rendszer naponta újrapróbálja.`
-      : 'RIASZTÁS: a Barion ismét elutasította az automatikus visszatérítést (a Barion-fiókban javítható ok), pénzmozgás nem történt; a rendszer naponta újrapróbálja',
+      ? `RIASZTÁS: az automatikus visszatérítéshez nincs elég egyenleg a Barion-tárcában, pénzmozgás nem történt. A visszatérítéshez legalább ${formatPriceHuf(input.amountHuf)} egyenleg kell a tárcában (feltöltéssel vagy a következő eladásokkal); a rendszer legalább naponta újrapróbálja.`
+      : 'RIASZTÁS: a Barion ismét elutasította az automatikus visszatérítést (a Barion-fiókban javítható ok), pénzmozgás nem történt; a rendszer legalább naponta újrapróbálja',
     context,
   )
 }
 
 const BLOCK_ALERTS: Record<AutomaticRefundBlockDetail, string> = {
   'foreign-refund-detected':
-    'RIASZTÁS: a Barionban már van visszatérítés ehhez a fizetéshez (például a Barion felületén indították), automatikus visszatérítés nem indul; kézi egyeztetés szükséges',
+    'RIASZTÁS: a Barionban ehhez a fizetéshez már van visszatérítési tranzakció (például a Barion felületén indítottak visszatérítést), automatikus visszatérítés nem indul; kézi egyeztetés szükséges',
   'source-transaction-unproven':
-    'RIASZTÁS: a Barion-fizetés tranzakciói nem egyeznek a rendeléssel (például a Barion felületén részben visszatérítették), automatikus visszatérítés nem indul; kézi egyeztetés szükséges',
+    'RIASZTÁS: a Barion-fizetés tranzakciói nem egyeznek a rendeléssel (például hiányzik a rendelés fizetési tranzakciója, vagy más az összege), automatikus visszatérítés nem indul; kézi egyeztetés szükséges',
   'payment-state-unproven':
     'RIASZTÁS: a Barion-fizetés adatai nem egyeznek a rendeléssel, automatikus visszatérítés nem indul; kézi egyeztetés szükséges',
 }
@@ -262,6 +266,45 @@ async function blockAutomaticRefund(
   return { action: 'failed', detail: input.detail }
 }
 
+interface RunContext {
+  log: Logger
+  source: RecoverPaidRejectSource
+  now: Date
+}
+
+/**
+ * Egy kísérlet igazolt nullhatása után (kód nélküli GetState-egyeztetés vagy a
+ * Barionhoz el sem jutott kísérlet lezárása) a közös szabály dönt a
+ * folytatásról. Ha ez leállás, most kell riasztani: a leállás után nem jön
+ * futás, amely kimondaná (lemondott rendelésnél az ablak után a poll sem).
+ * A döntés olvasási hibája nem változtat semmin: pénz ebben az ágban nem mozdul,
+ * és a következő futás a leállás ágán riaszt.
+ */
+async function afterAutomaticNoEffect(
+  payload: Payload,
+  order: Order,
+  context: RunContext,
+): Promise<PaidRejectRecoveryResult> {
+  let next: AutomaticRetryDecision
+  try {
+    const history = await loadRefundIntentsForOrder(payload, order.id)
+    if (!isNeverPaidRefundCandidate(order) || !history.every(isResolvedAutomaticFailure))
+      return PENDING
+    next = decideAutomaticRetry(history, context.now, {
+      retryDeadlineMs: automaticRetryDeadline(order),
+    })
+  } catch {
+    return PENDING
+  }
+  if (next.kind !== 'stop') return PENDING
+  alertAutomaticStop(context.log, context.now, {
+    orderId: order.id,
+    source: context.source,
+    detail: next.detail,
+  })
+  return { action: 'failed', detail: next.detail }
+}
+
 /**
  * Aktív (le nem zárt) automatikus kísérlet a közös rendelés-zár alatt. A
  * hívó friss GetState-je az egyetlen bizonyítékforrás; új pénz-POST nincs.
@@ -271,8 +314,9 @@ async function settleActiveAutomaticIntent(
   order: Order,
   active: RefundIntent,
   state: BarionPaymentStateResponse,
-  now: Date,
+  context: RunContext,
 ): Promise<PaidRejectRecoveryResult> {
+  const { now } = context
   if (!isAutomaticRefundIntent(active)) return PENDING
   if (active.state === 'provider_succeeded') {
     await commitAutomaticRefund(payload, order, active)
@@ -283,9 +327,10 @@ async function settleActiveAutomaticIntent(
     try {
       await releaseNeverLaunchedIntent(payload, active, now)
     } catch {
-      /* The unreleased claim remains blocking until the next run. */
+      // The unreleased claim remains blocking until the next run.
+      return PENDING
     }
-    return PENDING
+    return afterAutomaticNoEffect(payload, order, context)
   }
   if (!RECONCILABLE_LAUNCHED_STATES.has(active.state)) return PENDING
   let settlement
@@ -299,6 +344,7 @@ async function settleActiveAutomaticIntent(
     await commitAutomaticRefund(payload, order, settlement.intent)
     return { action: 'refunded', detail: 'provider-reconciled' }
   }
+  if (settlement.kind === 'no_effect') return afterAutomaticNoEffect(payload, order, context)
   return PENDING
 }
 
@@ -324,8 +370,9 @@ export async function recoverRejectedSucceededPayment(
           depth: 0,
           overrideAccess: true,
         })
+        const context: RunContext = { log, source: input.source, now }
         const active = await loadActiveRefundIntent(payload, order.id)
-        if (active) return settleActiveAutomaticIntent(payload, order, active, state, now)
+        if (active) return settleActiveAutomaticIntent(payload, order, active, state, context)
         const history = await loadRefundIntentsForOrder(payload, order.id)
         if (order.status === 'refunded') {
           const committed = history.filter((intent) => intent.state === 'committed')
@@ -345,7 +392,10 @@ export async function recoverRejectedSucceededPayment(
         if (reconciliationOnly || reason === null) return PENDING
         if (!isNeverPaidRefundCandidate(order) || !history.every(isResolvedAutomaticFailure))
           return { action: 'failed' as const, detail: 'order-state-reconciliation-required' }
-        const retry = decideAutomaticRetry(history, now)
+        // A lemondott / sikertelen fizetésű rendelésen a fizetés-ellenőrzés csak
+        // egy hétig jön vissza: a panel és ez a futás ugyanazzal a határral dönt.
+        const retryDeadlineMs = automaticRetryDeadline(order)
+        const retry = decideAutomaticRetry(history, now, { retryDeadlineMs })
         if (retry.kind === 'stop') {
           alertAutomaticStop(log, now, {
             orderId: order.id,
@@ -368,24 +418,33 @@ export async function recoverRejectedSucceededPayment(
           !sameBarionId(state.PaymentId, order.barionPaymentId) ||
           state.Status !== 'Succeeded' ||
           state.Currency !== 'HUF' ||
-          typeof state.Total !== 'number' ||
-          !Number.isSafeInteger(state.Total) ||
-          state.Total <= 0 ||
           !Array.isArray(state.Transactions)
         )
           return block('payment-state-unproven')
         // Egyetlen visszatéríthető (kártyás, Barion-egyenleges vagy átutalásos)
         // fizetési tranzakció, a checkout által adott `${orderNumber}-1`
-        // kereskedői azonosítóval és a fizetés teljes összegével; díj-tranzakció
-        // és más rendszer tranzakciója soha (ugyanaz a választó, mint a kézi úton).
+        // kereskedői azonosítóval; díj-tranzakció és más rendszer tranzakciója
+        // soha (ugyanaz a választó, mint a kézi úton).
         const source = selectRefundSourceTransaction(state, {
           posTransactionId: expectedPosTransactionId(order.orderNumber) ?? '',
         })
-        if (!source || source.totalHuf !== state.Total) return block('source-transaction-unproven')
         // A korlátlan napi újrapróbálás védőkorlátja: a forrásra már van (pl. a
-        // Barion felületén indított, K17) visszatérítés, új nem rakható rá.
-        if (hasRelatedRefundActivity(state, source.transactionId))
+        // Barion felületén indított, K17) visszatérítés, új nem rakható rá. Az
+        // összegek előtt nézzük: a visszatérítés csökkenti a fizetés Total
+        // értékét (Payment-PaymentState-v4: „if the transaction is a refund of a
+        // previously completed payment, this can be lower than at payment
+        // creation time”), így egy teljes visszatérítés után a Total 0, és a
+        // leállás oka akkor is az idegen visszatérítés, nem az eltérő összeg.
+        if (source && hasRelatedRefundActivity(state, source.transactionId))
           return block('foreign-refund-detected')
+        if (
+          typeof state.Total !== 'number' ||
+          !Number.isSafeInteger(state.Total) ||
+          state.Total <= 0
+        )
+          return block('payment-state-unproven')
+        // A kísérlet tárgya a fizetés teljes összege, ami a forrástranzakcióé.
+        if (!source || source.totalHuf !== state.Total) return block('source-transaction-unproven')
         const intentReason = hungarianAutoRefundReason(reason)
         let intent = await createRefundIntent(
           payload,
@@ -429,9 +488,10 @@ export async function recoverRejectedSucceededPayment(
           try {
             await releaseNeverLaunchedIntent(payload, intent, now)
           } catch {
-            /* The unreleased claim remains blocking. */
+            // The unreleased claim remains blocking.
+            return PENDING
           }
-          return PENDING
+          return afterAutomaticNoEffect(payload, order, context)
         }
         providerClaimed = true
         let response
@@ -473,7 +533,7 @@ export async function recoverRejectedSucceededPayment(
             }
             return PENDING
           }
-          const next = decideAutomaticRetry([...history, failed], now)
+          const next = decideAutomaticRetry([...history, failed], now, { retryDeadlineMs })
           logAutomaticRejection(log, now, {
             orderId: order.id,
             source: input.source,

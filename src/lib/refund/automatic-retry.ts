@@ -1,4 +1,4 @@
-import type { RefundIntent } from '../../payload-types'
+import type { Order, RefundIntent } from '../../payload-types'
 import { isAutomaticRefundIntent } from './auto-refund-recovery'
 import {
   OWNER_FIXABLE_REJECTION_CODES,
@@ -36,6 +36,14 @@ import {
  *   végleg a keretet: a sorozatot a legutóbbi kódolt elutasítás lezárja.
  * - Várakozás az n-edik igazoltan hatástalan kísérlet után (minden kísérlet
  *   számít): 1, 2, 4, 8, 16, majd 24 óra.
+ * - Határidő (automaticRetryDeadline): a következő kísérletet a
+ *   fizetés-ellenőrzés (order-poll) indítja, a lemondott és a sikertelen
+ *   fizetésű rendelést azonban csak a létrehozása után egy hétig nézi, a
+ *   'created' rendelést soha. Ha a következő kísérlet ideje ezen túl esne,
+ *   vagy a határ már elmúlt, a döntés leállás
+ *   (automatic-refund-window-closed): utána nem jön futás, amely
+ *   próbálkozna vagy riasztana, ezért a riasztás és a panel is most mondja ki.
+ *   Az első kísérletre ez nem vonatkozik: azt az éppen futó hívó indítja.
  */
 
 /** Ennyi egymás utáni, kód nélküli (okát nem ismert) hatástalan kísérlet után áll le az automatika. */
@@ -50,6 +58,25 @@ export const AUTOMATIC_REFUND_RETRY_MAX_MS = 24 * 60 * 60_000
  * (src/lib/order-poll/service.ts); az egyezést teszt őrzi.
  */
 export const AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS = 7 * 24 * 60 * 60_000
+
+/**
+ * Meddig indít a fizetés-ellenőrzés (order-poll) új kísérletet ezen a
+ * rendelésen (epoch ms, a határ még belefér). A függő (payment_pending)
+ * rendelést korlát nélkül nézi (null); a lemondott és a sikertelen fizetésű
+ * rendelést a létrehozása után AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS-ig (a
+ * poll feltétele createdAt >= most - ablak); más állapotút, köztük a
+ * 'created' rendelést, egyáltalán nem (-Infinity). Olvashatatlan createdAt
+ * mellett nem ígér újrapróbálást (-Infinity).
+ */
+export function automaticRetryDeadline(order: Pick<Order, 'status' | 'createdAt'>): number | null {
+  if (order.status === 'payment_pending') return null
+  if (order.status !== 'cancelled' && order.status !== 'payment_failed')
+    return Number.NEGATIVE_INFINITY
+  const createdAt = Date.parse(String(order.createdAt))
+  return Number.isFinite(createdAt)
+    ? createdAt + AUTOMATIC_RETRY_CLOSED_ORDER_WINDOW_MS
+    : Number.NEGATIVE_INFINITY
+}
 
 /** Várakozás az n-edik igazoltan hatástalan kísérlet után: 1, 2, 4, 8, 16, majd 24 óra. */
 export function automaticRefundRetryDelayMs(failedAttempts: number): number {
@@ -73,7 +100,13 @@ export function isResolvedAutomaticFailure(intent: RefundIntent): boolean {
 export type AutomaticRetryDecision =
   | { kind: 'launch'; attempt: number }
   | { kind: 'wait'; notBefore: string }
-  | { kind: 'stop'; detail: 'automatic-refund-rejected' | 'automatic-refund-attempts-exhausted' }
+  | {
+      kind: 'stop'
+      detail:
+        | 'automatic-refund-rejected'
+        | 'automatic-refund-attempts-exhausted'
+        | 'automatic-refund-window-closed'
+    }
 
 function isUnexplained(intent: RefundIntent): boolean {
   return rejectionCodesFromReference(intent.reconciliationReference).length === 0
@@ -112,10 +145,15 @@ export function nonFixableRejectionCode(
   return null
 }
 
-/** Új kísérlet csak igazoltan hatástalan előzmények után indulhat (lásd a modul fejlécét). */
+/**
+ * Új kísérlet csak igazoltan hatástalan előzmények után indulhat (lásd a modul
+ * fejlécét). `retryDeadlineMs` az automaticRetryDeadline(order) értéke: a
+ * kísérletet indító futás és a tulajdonosi panel ugyanazzal a határral dönt.
+ */
 export function decideAutomaticRetry(
   failures: readonly RefundIntent[],
   now: Date,
+  options: { retryDeadlineMs: number | null },
 ): AutomaticRetryDecision {
   const last = latestAutomaticFailure(failures)
   if (!last) return { kind: 'launch', attempt: 1 }
@@ -126,6 +164,13 @@ export function decideAutomaticRetry(
   const notBefore =
     Date.parse(String(last.providerResolvedAt)) + automaticRefundRetryDelayMs(failures.length)
   if (!Number.isFinite(notBefore)) return { kind: 'stop', detail: 'automatic-refund-rejected' }
+  // A következő kísérlet legkorábban most, vagy a várakozás végén lehet; ha ez
+  // a határ után van, a fizetés-ellenőrzés már nem jön vissza érte.
+  if (
+    options.retryDeadlineMs !== null &&
+    Math.max(notBefore, now.getTime()) > options.retryDeadlineMs
+  )
+    return { kind: 'stop', detail: 'automatic-refund-window-closed' }
   if (now.getTime() < notBefore)
     return { kind: 'wait', notBefore: new Date(notBefore).toISOString() }
   return { kind: 'launch', attempt: failures.length + 1 }
