@@ -49,6 +49,21 @@ describe('extractPayloadErrorMessage', () => {
     await expect(extractPayloadErrorMessage(jsonValasz({}), TARTALEK)).resolves.toBe(TARTALEK)
   })
 
+  it('üres első hiba után a felső szintű, megjeleníthető message jön', async () => {
+    await expect(
+      extractPayloadErrorMessage(
+        jsonValasz({ errors: [{ message: '' }], message: 'Ellenőrizd az e-mail-címet.' }),
+        TARTALEK,
+      ),
+    ).resolves.toBe('Ellenőrizd az e-mail-címet.')
+    await expect(
+      extractPayloadErrorMessage(
+        jsonValasz({ errors: [{ message: 'Something went wrong.' }, { message: 'Pontos hiba.' }] }),
+        TARTALEK,
+      ),
+    ).resolves.toBe('Pontos hiba.')
+  })
+
   it('nem JSON válasznál a tartalék jön', async () => {
     await expect(
       extractPayloadErrorMessage(new Response('<html>502</html>', { status: 502 }), TARTALEK),

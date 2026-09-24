@@ -39,9 +39,11 @@ export async function extractPayloadErrorMessage(
       errors?: Array<{ message?: string }>
       message?: string
     }
-    const first = body.errors?.find((entry) => typeof entry.message === 'string')
-    if (first !== undefined) {
-      return isDisplayableMessage(first.message) ? first.message : fallback
+    // Az első MEGJELENÍTHETŐ hiba; üres vagy maszkolt szöveg után a felső
+    // szintű `message` következik, és csak mindkettő hiányában a tartalék.
+    const first = body.errors?.find((entry) => isDisplayableMessage(entry.message))
+    if (first?.message !== undefined) {
+      return first.message
     }
     if (isDisplayableMessage(body.message)) {
       return body.message

@@ -153,6 +153,9 @@ describe('Turnstile-ellenőrzés a form-submissions beforeValidate-láncában', 
     ],
     ['nem 2xx válasz', async () => new Response('Bad Gateway', { status: 502 })],
     ['nem JSON törzs', async () => new Response('<html>hiba</html>', { status: 200 })],
+    ['üres objektum (success nélkül)', async () => Response.json({}, { status: 200 })],
+    ['tömb törzs', async () => Response.json([], { status: 200 })],
+    ['nem logikai success', async () => Response.json({ success: 'true' }, { status: 200 })],
   ]
 
   it.each(elerhetetlenEsetek)(

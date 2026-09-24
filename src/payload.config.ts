@@ -142,11 +142,17 @@ async function callTurnstileSiteverify(
   } catch {
     body = undefined
   }
-  if (typeof body !== 'object' || body === null) {
+  // A szabályos válasz objektum, logikai `success` mezővel. Minden más (`{}`,
+  // `[]`, hiányzó mező) szolgáltatói hiba, nem „rossz token" (503, nem 400).
+  const success =
+    typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? (body as { success?: unknown }).success
+      : undefined
+  if (typeof success !== 'boolean') {
     logger.warn('Turnstile siteverify nem érhető el', { reason: 'invalid-body' })
     throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
   }
-  return body as { success?: boolean }
+  return { success }
 }
 
 /**

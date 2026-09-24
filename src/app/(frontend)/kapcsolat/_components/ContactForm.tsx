@@ -24,7 +24,7 @@ import {
   type ContactFormErrors,
   type ContactFormValues,
 } from '../_lib/validation'
-import { TurnstileWidget } from './TurnstileWidget'
+import { TURNSTILE_UNAVAILABLE_ERROR, TurnstileWidget } from './TurnstileWidget'
 
 /**
  * ContactForm — a /kapcsolat oldal űrlapja (T-016 form-submissions beküldés).
@@ -71,6 +71,9 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
   const [succeeded, setSucceeded] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  // A Turnstile-token egyszer használható: sikertelen beküldés után új kell.
+  const [turnstileReset, setTurnstileReset] = useState(0)
+  const [turnstileFailed, setTurnstileFailed] = useState(false)
   const [honeypot, setHoneypot] = useState('')
 
   const errorSummaryRef = useRef<HTMLDivElement>(null)
@@ -85,21 +88,18 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
     }
   }, [succeeded])
 
-  const updateValue = useCallback(
-    (key: keyof ContactFormValues, value: string | boolean) => {
-      setValues((previous) => ({ ...previous, [key]: value }))
-      // A javított mező hibája azonnal törlődik — a többi marad a submit-ig.
-      setErrors((previous) => {
-        if (!(key in previous)) {
-          return previous
-        }
-        const next = { ...previous }
-        delete next[key]
-        return next
-      })
-    },
-    [],
-  )
+  const updateValue = useCallback((key: keyof ContactFormValues, value: string | boolean) => {
+    setValues((previous) => ({ ...previous, [key]: value }))
+    // A javított mező hibája azonnal törlődik — a többi marad a submit-ig.
+    setErrors((previous) => {
+      if (!(key in previous)) {
+        return previous
+      }
+      const next = { ...previous }
+      delete next[key]
+      return next
+    })
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -119,7 +119,11 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
     }
 
     if (turnstileEnabled && !turnstileToken) {
-      setSubmitError('Pipáld ki a spam-ellenőrzést, utána küldheted el az üzenetet.')
+      setSubmitError(
+        turnstileFailed
+          ? TURNSTILE_UNAVAILABLE_ERROR
+          : 'Pipáld ki a spam-ellenőrzést, utána küldheted el az üzenetet.',
+      )
       errorSummaryRef.current?.focus()
       return
     }
@@ -140,6 +144,9 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
       return
     }
     setSubmitError(result.message)
+    if (turnstileEnabled) {
+      setTurnstileReset((previous) => previous + 1)
+    }
     errorSummaryRef.current?.focus()
   }
 
@@ -150,8 +157,8 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
           Üzeneted megérkezett
         </h2>
         <p>
-          Köszönjük, hogy írtál nekünk! Hamarosan válaszolunk a megadott e-mail-címen. Ha sürgős
-          a kérdésed, a láblécben találod közvetlen elérhetőségünket.
+          Köszönjük, hogy írtál nekünk! Hamarosan válaszolunk a megadott e-mail-címen. Ha sürgős a
+          kérdésed, a láblécben találod közvetlen elérhetőségünket.
         </p>
         <Button href="/" variant="secondary">
           Vissza a kezdőlapra
@@ -273,10 +280,9 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
             type="checkbox"
           />
           <label className="kc-contact-form__consent-label" htmlFor="kc-consent">
-            Hozzájárulok, hogy az űrlapon megadott adataimat az üzenetem megválaszolása céljából
-            az{' '}
-            <Link href="/adatvedelem">Adatkezelési és adatvédelmi szabályzatban</Link>{' '}
-            foglaltak szerint kezeljük.{' '}
+            Hozzájárulok, hogy az űrlapon megadott adataimat az üzenetem megválaszolása céljából az{' '}
+            <Link href="/adatvedelem">Adatkezelési és adatvédelmi szabályzatban</Link> foglaltak
+            szerint kezeljük.{' '}
             <span aria-hidden="true" className="kc-field__required">
               *
             </span>
@@ -294,13 +300,23 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
       </div>
 
       {turnstileEnabled ? (
-        <TurnstileWidget onToken={setTurnstileToken} siteKey={turnstileSiteKey as string} />
+        <TurnstileWidget
+          onError={() => setTurnstileFailed(true)}
+          onToken={(token) => {
+            setTurnstileToken(token)
+            if (token) {
+              setTurnstileFailed(false)
+            }
+          }}
+          resetKey={turnstileReset}
+          siteKey={turnstileSiteKey as string}
+        />
       ) : null}
 
       {!formAvailable ? (
         <p className="kc-contact-form__unavailable" role="alert">
-          Az űrlap most nem érhető el. Próbáld újra később, vagy írj nekünk közvetlenül e-mailben:
-          a címünket a láblécben találod.
+          Az űrlap most nem érhető el. Próbáld újra később, vagy írj nekünk közvetlenül e-mailben: a
+          címünket a láblécben találod.
         </p>
       ) : null}
 
