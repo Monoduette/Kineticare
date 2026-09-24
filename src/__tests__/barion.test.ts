@@ -337,8 +337,9 @@ describe('buildPaymentStartRequest (Start payload-szabályok)', () => {
   })
 
   it('üres Transactions tömb hibát dob', () => {
-    expect(() => buildPaymentStartRequest({ ...startParams, transactions: [] }, testConfig))
-      .toThrowError(/tranzakció/)
+    expect(() =>
+      buildPaymentStartRequest({ ...startParams, transactions: [] }, testConfig),
+    ).toThrowError(/tranzakció/)
   })
 })
 
@@ -351,7 +352,9 @@ describe('startPayment (Payment/Start v2)', () => {
         Status: 'Prepared',
         GatewayUrl: 'https://secure.test.barion.com/Pay?id=' + DUMMY_PAYMENT_ID,
         QRUrl: 'https://api.test.barion.com/qr/x',
-        Transactions: [{ TransactionId: DUMMY_TRANSACTION_ID, POSTransactionId: 'KH-2026-000123-1' }],
+        Transactions: [
+          { TransactionId: DUMMY_TRANSACTION_ID, POSTransactionId: 'KH-2026-000123-1' },
+        ],
         Errors: [],
       }),
     )
@@ -501,8 +504,10 @@ describe('fetchPaymentState (Payment/PaymentState v4)', () => {
     expect(mapBarionPaymentStatus(response.Status)).toBe('paid')
 
     const request = lastRequest()
+    // Az útvonalba a KÖTŐJEL NÉLKÜLI alak megy: kötőjelesre a Barion 404-et ad
+    // (mérve 2026-09-24, élesben és teszt-környezetben; lib/barion/guid.ts).
     expect(request.url).toBe(
-      `https://api.test.barion.com/v4/Payment/${DUMMY_PAYMENT_ID}/PaymentState`,
+      `https://api.test.barion.com/v4/Payment/${DUMMY_PAYMENT_ID.replace(/-/g, '')}/PaymentState`,
     )
     // A v2-es deprecated útvonal SOHA nem hívódhat.
     expect(request.url).not.toContain('/v2/')
@@ -511,6 +516,98 @@ describe('fetchPaymentState (Payment/PaymentState v4)', () => {
     expect(headers.get('x-pos-key')).toBe(DUMMY_POS_KEY)
     expect(request.url).not.toContain(DUMMY_POS_KEY)
     expect(request.init.body).toBeUndefined()
+  })
+
+  it('a kötőjel nélküli (és nagybetűs) válasz-azonosítók kanonikus, kötőjeles alakba kerülnek', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PaymentId: DUMMY_PAYMENT_ID.replace(/-/g, '').toUpperCase(),
+        Status: 'Succeeded',
+        Transactions: [
+          {
+            TransactionId: DUMMY_TRANSACTION_ID.replace(/-/g, ''),
+            TransactionType: 'CardPayment',
+            RelatedId: DUMMY_PAYMENT_ID.replace(/-/g, ''),
+          },
+          { TransactionId: 'nem-guid', TransactionType: 'Fee' },
+        ],
+      }),
+    )
+
+    // A hívó kötőjeles vagy kötőjel nélküli alakot is adhat: az útvonal mindkét esetben azonos.
+    const response = await fetchPaymentState(DUMMY_PAYMENT_ID.replace(/-/g, ''), testConfig)
+
+    expect(lastRequest().url).toBe(
+      `https://api.test.barion.com/v4/Payment/${DUMMY_PAYMENT_ID.replace(/-/g, '')}/PaymentState`,
+    )
+    expect(response.PaymentId).toBe(DUMMY_PAYMENT_ID)
+    expect(response.Transactions[0]?.TransactionId).toBe(DUMMY_TRANSACTION_ID)
+    expect(response.Transactions[0]?.RelatedId).toBe(DUMMY_PAYMENT_ID)
+    // Nem GUID-alakú érték változatlan marad (a hívó ellenőrzői döntenek róla).
+    expect(response.Transactions[1]?.TransactionId).toBe('nem-guid')
+  })
+})
+
+describe('Barion-azonosítók a Start- és a Refund-válaszban', () => {
+  it('Start: a kötőjel nélküli PaymentId és TransactionId kanonikus alakba kerül', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PaymentId: DUMMY_PAYMENT_ID.replace(/-/g, ''),
+        Status: 'Prepared',
+        GatewayUrl: 'https://secure.test.barion.com/Pay?id=x',
+        Transactions: [{ TransactionId: DUMMY_TRANSACTION_ID.replace(/-/g, '').toUpperCase() }],
+      }),
+    )
+
+    const response = await startPayment(startParams, testConfig)
+
+    expect(response.PaymentId).toBe(DUMMY_PAYMENT_ID)
+    expect(response.Transactions?.[0]?.TransactionId).toBe(DUMMY_TRANSACTION_ID)
+  })
+
+  it('Start: GUID nélküli PaymentId érvénytelen válasz (a fizetés nem követhető)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ PaymentId: 'nem-guid', Status: 'Prepared', GatewayUrl: 'https://x' }),
+    )
+
+    await expect(startPayment(startParams, testConfig)).rejects.toMatchObject({
+      name: 'BarionApiError',
+      kind: 'invalid_response',
+    })
+  })
+
+  it('Refund: a kötőjel nélküli PaymentId és TransactionId kanonikus alakba kerül', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PaymentId: DUMMY_PAYMENT_ID.replace(/-/g, ''),
+        RefundedTransactions: [
+          {
+            TransactionId: DUMMY_TRANSACTION_ID.replace(/-/g, ''),
+            POSTransactionId: 'KH-2026-000123-1',
+            Total: 100,
+            Status: 'Succeeded',
+          },
+        ],
+      }),
+    )
+
+    const response = await refundPayment(
+      {
+        paymentId: DUMMY_PAYMENT_ID,
+        transactionsToRefund: [
+          {
+            transactionId: DUMMY_TRANSACTION_ID,
+            posTransactionId: 'KH-2026-000123-1',
+            amountToRefund: 100,
+          },
+        ],
+      },
+      testConfig,
+    )
+
+    expect(response.PaymentId).toBe(DUMMY_PAYMENT_ID)
+    expect(response.RefundedTransactions[0]?.TransactionId).toBe(DUMMY_TRANSACTION_ID)
+    expect(response.RefundedTransactions[0]?.Status).toBe('Succeeded')
   })
 })
 

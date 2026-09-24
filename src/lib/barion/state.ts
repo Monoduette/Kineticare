@@ -1,5 +1,6 @@
 import { createLogger } from '../logger'
 import { barionGet, getBarionConfig, type BarionClientConfig } from './client'
+import { barionGuidForPath, canonicalizeBarionGuid } from './guid'
 import type { BarionPaymentStateResponse } from './types'
 
 /**
@@ -10,6 +11,12 @@ import type { BarionPaymentStateResponse } from './types'
  * állapotgép is ezt fogja hívni a jóváhagyáskor — külön ticket).
  *
  * A hívás GET, a POSKey az x-pos-key headerben utazik (lásd client.ts).
+ *
+ * Az útvonalba a KÖTŐJEL NÉLKÜLI azonosító megy: kötőjelesre a Barion 404-et
+ * ad, amit a hívók „nem létező fizetésnek" vesznek (lásd guid.ts). A válasz
+ * azonosítói kanonikus (kisbetűs, kötőjeles) alakban jutnak tovább, így a
+ * tárolt `barionPaymentId`-vel és a refund-intent adataival pontos egyezéssel
+ * összevethetők.
  */
 
 const stateLog = createLogger({ module: 'barion-state' })
@@ -115,8 +122,28 @@ export async function fetchPaymentState(
   config?: BarionClientConfig,
 ): Promise<BarionPaymentStateResponse> {
   const resolvedConfig = config ?? getBarionConfig()
-  return barionGet<BarionPaymentStateResponse>(
-    `/v4/Payment/${encodeURIComponent(paymentId)}/PaymentState`,
+  const response = await barionGet<BarionPaymentStateResponse>(
+    `/v4/Payment/${encodeURIComponent(barionGuidForPath(paymentId))}/PaymentState`,
     resolvedConfig,
   )
+  return normalizePaymentStateIds(response)
+}
+
+/** A v4 válasz Barion-azonosítói kanonikus alakban (a többi mező változatlan). */
+export function normalizePaymentStateIds(
+  response: BarionPaymentStateResponse,
+): BarionPaymentStateResponse {
+  return {
+    ...response,
+    PaymentId: canonicalizeBarionGuid(response.PaymentId),
+    Transactions: Array.isArray(response.Transactions)
+      ? response.Transactions.map((transaction) => ({
+          ...transaction,
+          TransactionId: canonicalizeBarionGuid(transaction.TransactionId),
+          ...(typeof transaction.RelatedId === 'string'
+            ? { RelatedId: canonicalizeBarionGuid(transaction.RelatedId) }
+            : {}),
+        }))
+      : response.Transactions,
+  }
 }

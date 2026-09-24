@@ -1,9 +1,11 @@
 import { barionPost, getBarionConfig, type BarionClientConfig } from './client'
-import type {
-  BarionItem,
-  BarionPaymentStartRequest,
-  BarionPaymentStartResponse,
-  BarionPaymentTransaction,
+import { canonicalBarionGuid, canonicalizeBarionGuid } from './guid'
+import {
+  BarionApiError,
+  type BarionItem,
+  type BarionPaymentStartRequest,
+  type BarionPaymentStartResponse,
+  type BarionPaymentTransaction,
 } from './types'
 
 /**
@@ -155,5 +157,32 @@ export async function startPayment(
 ): Promise<BarionPaymentStartResponse> {
   const resolvedConfig = config ?? getBarionConfig()
   const request = buildPaymentStartRequest(params, resolvedConfig)
-  return barionPost<BarionPaymentStartResponse>('/v2/Payment/Start', request, resolvedConfig)
+  const response = await barionPost<BarionPaymentStartResponse>(
+    '/v2/Payment/Start',
+    request,
+    resolvedConfig,
+  )
+  // A PaymentId a Barionban kötőjeles és kötőjel nélküli alakban is előfordul;
+  // a rendelésre a kanonikus alak kerül (guid.ts). GUID nélkül a fizetés nem
+  // követhető, ezért ez érvénytelen válasz.
+  const paymentId = canonicalBarionGuid(response.PaymentId)
+  if (paymentId === null) {
+    throw new BarionApiError({
+      message: 'A Barion Start-válasz nem tartalmaz érvényes PaymentId-t.',
+      kind: 'invalid_response',
+      endpoint: 'POST /v2/Payment/Start',
+    })
+  }
+  return {
+    ...response,
+    PaymentId: paymentId,
+    ...(Array.isArray(response.Transactions)
+      ? {
+          Transactions: response.Transactions.map((transaction) => ({
+            ...transaction,
+            TransactionId: canonicalizeBarionGuid(transaction.TransactionId),
+          })),
+        }
+      : {}),
+  }
 }

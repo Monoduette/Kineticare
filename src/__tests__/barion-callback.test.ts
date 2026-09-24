@@ -424,7 +424,10 @@ describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
       '../../etc/passwd',
       '11111111-2222-3333-4444-55555555555',
       '11111111-2222-3333-4444-5555555555555',
-      '11111111222233334444555555555555',
+      // Kötőjel nélküli alak, de nem 32 hex (a 32 hexes alak ÉRVÉNYES, lásd lent).
+      '1111111122223333444455555555555',
+      '111111112222333344445555555555555',
+      '1111111122223333444455555555555g',
       '11111111-2222-3333-4444-55555555555g',
       '<script>alert(1)</script>',
     ]) {
@@ -487,6 +490,43 @@ describe('B1 — a PaymentId a QUERY STRINGBŐL is feloldódik (valódi Barion-a
     expect(order?.status).toBe('paid')
     expect(user.purchases).toEqual([42])
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+  })
+
+  it('a Barion kötőjel nélküli (32 hex) azonosítója: elfogadva, kanonikus alakban rögzül, a fizetés lezárul', async () => {
+    const { POST, docs, order, user, capture } = setup()
+    const compact = PAYMENT_ID.replace(/-/g, '')
+    // A GetState is a kötőjel nélküli alakot adja vissza (docs.barion.com v4 példája).
+    fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded', { paymentId: compact }))
+
+    const response = await POST(makeBarionRequest(compact.toUpperCase()))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    // A dedup-kulcs a kanonikus alak: ugyanaz, mint a kötőjeles kézbesítésé.
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.externalId).toBe(PAYMENT_ID)
+
+    await capture.runAll()
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      `https://api.test.barion.com/v4/Payment/${compact}/PaymentState`,
+    )
+    // A tárolt (kötőjeles) barionPaymentId-vel nincs hamis ütközés: a rendelés fizetett.
+    expect(order?.status).toBe('paid')
+    expect(user.purchases).toEqual([42])
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+  })
+
+  it('ugyanaz a fizetés kötőjellel és anélkül: EGY esemény (dedup alaktól függetlenül)', async () => {
+    const { POST, docs } = setup()
+
+    const first = await POST(makeBarionRequest(PAYMENT_ID))
+    const second = await POST(makeBarionRequest(PAYMENT_ID.replace(/-/g, '')))
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.externalId).toBe(PAYMENT_ID)
   })
 
   it('a nagybetűs query-kulcs (PaymentId) is elfogadott', async () => {
@@ -593,9 +633,12 @@ describe('(a) boldog út — paid', () => {
     expect(response.status).toBe(200)
     await capture.runAll()
 
-    // GetState a v4-es útvonalon, szerver-szerver.
+    // GetState a v4-es útvonalon, szerver-szerver, KÖTŐJEL NÉLKÜLI azonosítóval
+    // (kötőjelesre a Barion 404-et ad; lib/barion/guid.ts).
     const url = String(fetchMock.mock.calls[0]?.[0])
-    expect(url).toBe(`https://api.test.barion.com/v4/Payment/${PAYMENT_ID}/PaymentState`)
+    expect(url).toBe(
+      `https://api.test.barion.com/v4/Payment/${PAYMENT_ID.replace(/-/g, '')}/PaymentState`,
+    )
 
     // Rendelés: payment_pending → paid (pontosan egy átmenet).
     const orderUpdates = calls.update.filter((call) => call.collection === 'orders')

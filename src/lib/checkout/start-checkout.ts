@@ -13,6 +13,7 @@ import {
   type BarionEnvironment,
   type BarionPaymentStateResponse,
 } from '../barion'
+import { canonicalBarionGuid } from '../barion/guid'
 import { coursePriceHuf } from '../courses'
 import { durationDaysFromProduct } from '../access-grants'
 import { resolveSingleCourseAccess } from '../course-access-lookup'
@@ -1051,10 +1052,18 @@ export async function startCheckout(options: CheckoutStartOptions): Promise<Chec
       })
     }
     gatewayUrl = startResponse.GatewayUrl
-    // KANONIKUS (kisbetűs) alak az ÍRÁSHELYEN is: a callback-út a kisbetűs
-    // alakkal keres (route-handler normalizePaymentId) — a Barion megfigyelt
-    // viselkedése kisbetűs GUID, de ez itt garancia, nem feltételezés.
-    barionPaymentId = startResponse.PaymentId.toLowerCase()
+    // KANONIKUS (kisbetűs, kötőjeles) alak az ÍRÁSHELYEN is: a callback-út
+    // ugyanezzel az alakkal keres (route-handler normalizePaymentId), a Barion
+    // viszont kötőjeles és kötőjel nélküli alakot is küld (lib/barion/guid.ts).
+    const canonicalPaymentId = canonicalBarionGuid(startResponse.PaymentId)
+    if (canonicalPaymentId === null) {
+      throw new BarionApiError({
+        message: 'A Barion Start-válasz nem tartalmaz érvényes PaymentId-t.',
+        kind: 'invalid_response',
+        endpoint: 'POST /v2/Payment/Start',
+      })
+    }
+    barionPaymentId = canonicalPaymentId
     barionPaymentRequestId = startResponse.PaymentRequestId ?? orderNumber
   } catch (error) {
     log.error('checkout-start: Barion fizetésindítás sikertelen', {
