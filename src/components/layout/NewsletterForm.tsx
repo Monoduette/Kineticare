@@ -158,6 +158,9 @@ export function NewsletterForm({ formId, turnstileSiteKey }: NewsletterFormProps
     }
     setStatusMessage(result.message)
     if (turnstileEnabled) {
+      // Új ellenőrzés indul: a korábbi hibát csak a végleges betöltési hiba
+      // jelzi újra (TurnstileWidget).
+      setTurnstileFailed(false)
       setTurnstileReset((previous) => previous + 1)
     }
   }

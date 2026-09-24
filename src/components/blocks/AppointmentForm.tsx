@@ -207,6 +207,9 @@ export function AppointmentForm({
     setSubmitError(result.message)
     setHibasKiserlet((elozo) => elozo + 1)
     if (turnstileEnabled) {
+      // Új ellenőrzés indul: a korábbi hibát csak a végleges betöltési hiba
+      // jelzi újra (TurnstileWidget).
+      setTurnstileFailed(false)
       setTurnstileReset((elozo) => elozo + 1)
     }
   }

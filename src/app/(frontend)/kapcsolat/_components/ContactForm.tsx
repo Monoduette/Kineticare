@@ -145,6 +145,9 @@ export function ContactForm({ formId, turnstileSiteKey }: ContactFormProps) {
     }
     setSubmitError(result.message)
     if (turnstileEnabled) {
+      // Új ellenőrzés indul: a korábbi hibát csak a végleges betöltési hiba
+      // jelzi újra (TurnstileWidget).
+      setTurnstileFailed(false)
       setTurnstileReset((previous) => previous + 1)
     }
     errorSummaryRef.current?.focus()

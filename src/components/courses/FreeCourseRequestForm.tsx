@@ -282,6 +282,9 @@ export function FreeCourseRequestForm({
     setSubmitError(result.message)
     setFailedAttempts((previous) => previous + 1)
     if (turnstileEnabled) {
+      // Új ellenőrzés indul: a korábbi hibát csak a végleges betöltési hiba
+      // jelzi újra (TurnstileWidget).
+      setTurnstileFailed(false)
       setTurnstileReset((previous) => previous + 1)
     }
   }

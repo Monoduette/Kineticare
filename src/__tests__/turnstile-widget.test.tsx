@@ -134,7 +134,8 @@ describe('TurnstileWidget', () => {
       Reflect.deleteProperty(window, 'turnstile')
       const onToken = vi.fn()
       const onError = vi.fn()
-      await mount({ siteKey: 'kulcs', onToken, onError }).render()
+      const widget = mount({ siteKey: 'kulcs', onToken, onError, resetKey: 0 })
+      await widget.render()
 
       await act(async () => {
         vi.advanceTimersByTime(TURNSTILE_WAIT_MS - TURNSTILE_POLL_MS)
@@ -157,6 +158,11 @@ describe('TurnstileWidget', () => {
       })
       expect(turnstile.render).not.toHaveBeenCalled()
       expect(onError).toHaveBeenCalledTimes(1)
+
+      // Sikertelen beküldés utáni újraindítás: a végleges hibát újra jelzi,
+      // mert a szülő ilyenkor törli a hibajelzőjét.
+      await widget.render({ siteKey: 'kulcs', onToken, onError, resetKey: 1 })
+      expect(onError).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }
@@ -225,6 +231,19 @@ describe('TurnstileWidget', () => {
     opciok['expired-callback']()
     expect(onToken).toHaveBeenLastCalledWith(null)
     opciok['error-callback']()
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it('challenge-hiba után az újraindítás nem jelez újra hibát (az új ellenőrzés fut)', async () => {
+    const onError = vi.fn()
+    const widget = mount({ siteKey: 'kulcs', onToken: vi.fn(), onError, resetKey: 0 })
+    await widget.render()
+    const opciok = turnstile.render.mock.calls[0]?.[1] as { 'error-callback': () => void }
+    opciok['error-callback']()
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    await widget.render({ siteKey: 'kulcs', onToken: vi.fn(), onError, resetKey: 1 })
+    expect(turnstile.reset).toHaveBeenCalledWith('w1')
     expect(onError).toHaveBeenCalledTimes(1)
   })
 

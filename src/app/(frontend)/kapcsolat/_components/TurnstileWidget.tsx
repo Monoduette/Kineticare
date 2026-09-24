@@ -92,6 +92,9 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
   const widgetIdRef = useRef<string | null>(null)
   const sizeRef = useRef<'normal' | 'compact' | null>(null)
   const [scriptFailed, setScriptFailed] = useState(false)
+  // A végleges betöltési hiba (a challenge-hibával szemben) újraindítással sem
+  // javul: a resetKey-effekt ebből tudja, hogy a hibát újra jeleznie kell.
+  const scriptFailedRef = useRef(false)
 
   // A legfrissebb visszahívások ref-ben: a widget egyszer rajzolódik, de a
   // szülő új függvényt adhat minden renderben.
@@ -142,6 +145,7 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
           // Se betöltés, se hibaesemény (elakadt kérés, bővítmény): a widget
           // elérhetetlen, az űrlap ne mondja tovább, hogy az ellenőrzés fut.
           clearInterval(varakozas)
+          scriptFailedRef.current = true
           setScriptFailed(true)
           onTokenRef.current(null)
           onErrorRef.current?.()
@@ -200,6 +204,12 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
     }
     elozoResetKey.current = resetKey
     onTokenRef.current(null)
+    // A szülő az újraindításkor törli a hibajelzőjét; a végleges betöltési
+    // hibát ezért itt újra jelezzük, különben az űrlap „még fut"-at mondana.
+    if (scriptFailedRef.current) {
+      onErrorRef.current?.()
+      return
+    }
     const widgetId = widgetIdRef.current
     if (widgetId !== null) {
       window.turnstile?.reset(widgetId)
@@ -218,6 +228,7 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
     <>
       <Script
         onError={() => {
+          scriptFailedRef.current = true
           setScriptFailed(true)
           onTokenRef.current(null)
           onErrorRef.current?.()
