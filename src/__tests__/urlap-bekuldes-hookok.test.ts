@@ -325,6 +325,29 @@ describe('stáb-értesítő (form-submissions afterChange)', () => {
     expect(naplo).not.toContain('Kovács')
   })
 
+  it('üres CONTACT_STAFF_EMAILS élesben: a figyelmeztetés a kérés request ID-jével megy', async () => {
+    vi.stubEnv('CONTACT_STAFF_EMAILS', '')
+    vi.stubEnv('NODE_ENV', 'production')
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const { stabErtesito } = await bekuldesHookok()
+    const requestId = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+
+    await stabErtesito({
+      doc: { submissionData: [sor('name', 'Teszt Anna')] },
+      operation: 'create',
+      req: {
+        context: { kineticareFormKind: 'appointment' },
+        headers: new Headers({ 'x-request-id': requestId }),
+      },
+    } as unknown as Parameters<CollectionAfterChangeHook>[0])
+
+    const sor1 = naplo.mock.calls
+      .map(([sorSzoveg]) => String(sorSzoveg))
+      .find((sorSzoveg) => sorSzoveg.includes('CONTACT_STAFF_EMAILS'))
+    expect(sor1).toContain(requestId)
+    expect(sor1).not.toContain('Teszt Anna')
+  })
+
   it('üres CONTACT_STAFF_EMAILS fejlesztésben nem warn (megszokott állapot)', async () => {
     vi.stubEnv('CONTACT_STAFF_EMAILS', '')
     vi.stubEnv('NODE_ENV', 'development')

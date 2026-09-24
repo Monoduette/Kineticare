@@ -102,6 +102,15 @@ const csrfAllowlist = buildOriginAllowlist(
 
 const TURNSTILE_SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 const TURNSTILE_TIMEOUT_MS = 8_000
+/**
+ * A kéréshez kötött logger: a middleware által kiosztott `x-request-id`-vel
+ * (CLAUDE.md: technikai hiba request ID-vel), anélkül a globális logger.
+ */
+function requestScopedLogger(headers?: Headers): Logger {
+  const requestId = headers ? getRequestId(headers) : undefined
+  return requestId ? logger.child({ requestId }) : logger
+}
+
 const TURNSTILE_UNAVAILABLE_MESSAGE =
   'A spam-ellenőrzés most nem érhető el. Próbáld újra néhány perc múlva, vagy hívj minket telefonon.'
 
@@ -201,9 +210,7 @@ const verifyTurnstile = async (
       400,
     )
   }
-  const requestId = headers ? getRequestId(headers) : undefined
-  const log = requestId ? logger.child({ requestId }) : logger
-  const result = await callTurnstileSiteverify(secret, token, log)
+  const result = await callTurnstileSiteverify(secret, token, requestScopedLogger(headers))
   if (result.success !== true) {
     throw new APIError(
       'A spam-ellenőrzés nem sikerült. Frissítsd az oldalt, és küldd el újra az űrlapot.',
@@ -363,16 +370,20 @@ const notifyStaffOnSubmission = async ({
   doc,
   operation,
   formKind,
+  headers,
 }: {
   doc: unknown
   operation: string
   formKind: unknown
+  /** A beküldő kérés fejlécei: a napló request ID-jéhez. */
+  headers?: Headers
 }): Promise<unknown> => {
+  const log = requestScopedLogger(headers)
   if (operation !== 'create') {
     return doc
   }
   if (formKind === 'newsletter') {
-    logger.debug('hírlevél-feliratkozás — staff-értesítő kihagyva')
+    log.debug('hírlevél-feliratkozás — staff-értesítő kihagyva')
     return doc
   }
   const recipients = (process.env.CONTACT_STAFF_EMAILS ?? '')
@@ -384,11 +395,11 @@ const notifyStaffOnSubmission = async ({
     // ezért warn; fejlesztésben a hiányzó címlista megszokott, ott debug.
     // Személyes adat (név, e-mail, telefon) nem kerül a naplóba.
     if (process.env.NODE_ENV === 'production') {
-      logger.warn('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva, a beküldés mentve', {
+      log.warn('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva, a beküldés mentve', {
         formKind: typeof formKind === 'string' ? formKind : 'ismeretlen',
       })
     } else {
-      logger.debug('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva')
+      log.debug('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva')
     }
     return doc
   }
@@ -432,7 +443,7 @@ const notifyStaffOnSubmission = async ({
           })
     const result = await sendMail({ to: recipients, ...template, ...(replyTo ? { replyTo } : {}) })
     if (!result.ok) {
-      logger.warn('staff-értesítő küldése sikertelen', {
+      log.warn('staff-értesítő küldése sikertelen', {
         retryable: result.retryable,
         error: result.error,
       })
@@ -460,14 +471,14 @@ const notifyStaffOnSubmission = async ({
       })
       const vissza = await sendMail({ to: beküldőEmail, ...visszaigazolas })
       if (!vissza.ok) {
-        logger.warn('időpontkérés-visszaigazoló küldése sikertelen (best-effort)', {
+        log.warn('időpontkérés-visszaigazoló küldése sikertelen (best-effort)', {
           retryable: vissza.retryable,
           error: vissza.error,
         })
       }
     }
   } catch (error) {
-    logger.warn('staff-értesítő feldolgozása sikertelen (best-effort)', {
+    log.warn('staff-értesítő feldolgozása sikertelen (best-effort)', {
       error: error instanceof Error ? error.message : String(error),
     })
   }
@@ -994,6 +1005,7 @@ export default buildConfig({
                 doc,
                 operation,
                 formKind: req.context[FORM_KIND_CONTEXT_KEY],
+                headers: req.headers,
               }),
           ],
         },

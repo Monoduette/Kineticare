@@ -1532,6 +1532,18 @@
   line-height: var(--kc-leading-body);
 }
 
+/* Turnstile-widget tárolója (lábléc-hírlevél, időpontkérés, ingyenes kurzus):
+   a szélessége a rendelkezésre álló helyből jön, NEM a benne lévő, fix
+   300 px-es widgetből (`contain: inline-size`). Enélkül a tároló a widgettel
+   együtt 300 px-en ragadt, így keskenyebb nézetben (elforgatás, 320 px) a
+   komponens nem észlelte a határ átlépését, és vízszintes görgetés maradt
+   (mérve: 374 px-es dokumentum 320 px-es nézetben; WCAG 2.2 SC 1.4.10).
+   https://developer.mozilla.org/en-US/docs/Web/CSS/contain#inline-size */
+.kc-contact-form__turnstile {
+  contain: inline-size;
+  max-width: 100%;
+}
+
 /* Honeypot: sem szemmel, sem billentyűzettel nem elérhető (a `display: none`
    helyett eltolás — több bot kitölti, ha a mező „létezik"). */
 .kc-newsletter__hp {

@@ -127,6 +127,50 @@ describe('TurnstileWidget', () => {
     }
   })
 
+  it('a 300 px-es határ átlépésekor (elforgatás) a megfelelő méretben újrarajzol, a régi tokent törli', async () => {
+    let visszahivas: (() => void) | null = null
+    class FigyeloMock {
+      constructor(cb: () => void) {
+        visszahivas = cb
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', FigyeloMock)
+    let szelesseg = 342
+    const onToken = vi.fn()
+    const widget = mount({ siteKey: 'kulcs', onToken })
+    const proto = HTMLElement.prototype
+    const eredeti = Object.getOwnPropertyDescriptor(proto, 'clientWidth')
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => szelesseg })
+    try {
+      await widget.render()
+      expect(turnstile.render).toHaveBeenCalledTimes(1)
+      expect(turnstile.render.mock.calls[0]?.[1]).toMatchObject({ size: 'normal' })
+
+      // Méretváltozás a határon belül: nincs újrarajzolás.
+      szelesseg = 320
+      await act(async () => {
+        visszahivas?.()
+      })
+      expect(turnstile.render).toHaveBeenCalledTimes(1)
+
+      // Keskenyebb 300 px-nél: kompakt, a régi widget eltávolítva, token törölve.
+      szelesseg = 288
+      await act(async () => {
+        visszahivas?.()
+      })
+      expect(turnstile.remove).toHaveBeenCalledWith('w1')
+      expect(onToken).toHaveBeenLastCalledWith(null)
+      expect(turnstile.render).toHaveBeenCalledTimes(2)
+      expect(turnstile.render.mock.calls[1]?.[1]).toMatchObject({ size: 'compact' })
+    } finally {
+      if (eredeti) {
+        Object.defineProperty(proto, 'clientWidth', eredeti)
+      }
+    }
+  })
+
   it('a token a szülőhöz jut, lejárat és hiba után null, hibánál onError is', async () => {
     const onToken = vi.fn()
     const onError = vi.fn()

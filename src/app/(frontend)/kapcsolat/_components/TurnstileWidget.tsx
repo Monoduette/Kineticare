@@ -90,6 +90,7 @@ export interface TurnstileWidgetProps {
 export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | null>(null)
+  const sizeRef = useRef<'normal' | 'compact' | null>(null)
   const [scriptFailed, setScriptFailed] = useState(false)
 
   // A legfrissebb visszahívások ref-ben: a widget egyszer rajzolódik, de a
@@ -106,6 +107,8 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
     if (!container || !window.turnstile || widgetIdRef.current !== null) {
       return
     }
+    const size = turnstileSize(container.clientWidth)
+    sizeRef.current = size
     widgetIdRef.current = window.turnstile.render(container, {
       sitekey: siteKey,
       callback: (token) => onTokenRef.current(token),
@@ -115,7 +118,7 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
         onErrorRef.current?.()
       },
       language: 'hu',
-      size: turnstileSize(container.clientWidth),
+      size,
     })
   }, [siteKey])
 
@@ -138,7 +141,35 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
         }
       }, TURNSTILE_POLL_MS)
     }
+    // Ha a tároló szélessége utólag lépi át a 300 px-es határt (elforgatás,
+    // ablakméretezés), a widget a megfelelő méretben újrarajzolódik; a régi
+    // token ilyenkor elvész, a látogató új ellenőrzést kap.
+    const container = containerRef.current
+    const figyelo =
+      container && typeof ResizeObserver === 'function'
+        ? new ResizeObserver(() => {
+            const widgetId = widgetIdRef.current
+            if (widgetId === null || !window.turnstile) {
+              return
+            }
+            if (turnstileSize(container.clientWidth) === sizeRef.current) {
+              return
+            }
+            try {
+              window.turnstile.remove(widgetId)
+            } catch {
+              // A már eltávolított widget nem hiba.
+            }
+            widgetIdRef.current = null
+            onTokenRef.current(null)
+            renderWidget()
+          })
+        : null
+    if (figyelo && container) {
+      figyelo.observe(container)
+    }
     return () => {
+      figyelo?.disconnect()
       if (varakozas !== undefined) {
         clearInterval(varakozas)
       }
