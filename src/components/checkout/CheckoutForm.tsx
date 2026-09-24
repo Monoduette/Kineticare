@@ -12,6 +12,7 @@ import {
   type BarionCourseInput,
   type BarionSnapshotStorage,
 } from '@/lib/analytics/barion-events'
+import { trackMetaInitiateCheckout } from '@/lib/analytics/meta-events'
 import {
   ANALYTICS_EVENTS,
   captureAnalyticsEvent,
@@ -327,15 +328,19 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
    * (`redirect`) érintetlen marad.
    */
   useEffect(() => {
-    trackInitiateCheckout(
-      checkoutBarionCourse({
-        id: product.id,
-        sku: product.sku,
-        priceHuf: product.priceHuf,
-        isFree: product.isFree,
-      }),
-    )
-  }, [product.id, product.sku, product.priceHuf, product.isFree])
+    const course = checkoutBarionCourse({
+      id: product.id,
+      sku: product.sku,
+      priceHuf: product.priceHuf,
+      isFree: product.isFree,
+    })
+    trackInitiateCheckout(course)
+    // Már megvett kurzusnál a pénztár nem indítható (a gomb a lejátszóra
+    // visz): ez nem valódi tölcsérbelépés, a Metának nem jelezzük.
+    if (!alreadyPurchased) {
+      trackMetaInitiateCheckout(course)
+    }
+  }, [product.id, product.sku, product.priceHuf, product.isFree, alreadyPurchased])
 
   const requiresWaiver = !product.isFree
   const waiverComplete = !requiresWaiver || (waiverStart && waiverLoss)
@@ -443,8 +448,7 @@ export function CheckoutForm({ product, user, alreadyPurchased }: CheckoutFormPr
         a CheckoutErrorRegion fejkommentje írja le.
       */}
       <CheckoutErrorRegion error={error} />
-      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT ||
-      error === CHECKOUT_REFUNDED_PRIVILEGED ? (
+      {error === CHECKOUT_GUEST_EXISTING_ACCOUNT || error === CHECKOUT_REFUNDED_PRIVILEGED ? (
         <p className="kc-checkout-form__block-hint">
           <Button href={signInHref(checkoutHref(product.id))} size="sm" variant="secondary">
             {ctaLabel('sign-in')}

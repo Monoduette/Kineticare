@@ -1,3 +1,4 @@
+import { trackMetaLead } from './meta-events'
 import { ANALYTICS_EVENTS, captureAnalyticsEvent } from './posthog'
 
 /**
@@ -50,6 +51,8 @@ export function trackLeadSubmitted(forras: LeadForras, extra?: LeadEventExtra): 
 /** A szerver VISSZAIGAZOLTA a beküldést (a lead ténylegesen létrejött). */
 export function trackLeadSucceeded(forras: LeadForras, extra?: LeadEventExtra): void {
   captureAnalyticsEvent(ANALYTICS_EVENTS.leadSucceeded, leadProps(forras, extra))
+  // Meta Pixel `Lead`: csak a forrás-címke megy ki, és csak hozzájárulással.
+  trackMetaLead(forras)
 }
 
 /**

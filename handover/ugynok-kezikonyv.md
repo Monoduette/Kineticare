@@ -1360,6 +1360,7 @@ További, kódban élő, az example-ben is jelölt vagy jelölendő kulcsok:
 | `EXTRA_ALLOWED_ORIGINS`                       | DNS-cutover CORS                                                                                                                                           |
 | `NEXT_PUBLIC_ALLOW_INDEXING`                  | `true` = nincs noindex-kapu                                                                                                                                |
 | `NEXT_PUBLIC_BARION_PIXEL_ID`                 | BP-…-.. ; BPT- **nem** Pixel                                                                                                                               |
+| `NEXT_PUBLIC_META_PIXEL_ID`                   | Meta Pixel (csak számjegy); csak consent után tölt, üresen a CSP sem nyílik                                                                                |
 | `FIRST_USER_BOOTSTRAP_TOKEN`                  | első owner, min. 32; hiány/rövid = 503, rossz header = 403, fiók nincs                                                                                     |
 | `TRUST_CF_CONNECTING_IP`                      | Cloudflare IP-hitelesség                                                                                                                                   |
 | `SEED_SCOPE`                                  | `kezdolap` = szűkített **írás** (éles URL-en is). Üres + nem-éles URL = teljes seed **ír**                                                                 |

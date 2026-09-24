@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 import { trackContentView, type BarionCourseInput } from '@/lib/analytics/barion-events'
+import { trackMetaViewContent } from '@/lib/analytics/meta-events'
 
 /**
  * CourseBarionView — a kurzus-oldal Barion Pixel `contentView` eseménye.
@@ -30,6 +31,7 @@ export function CourseBarionView({ course }: CourseBarionViewProps): null {
       },
       { list: 'ProductPage' },
     )
+    trackMetaViewContent({ id, priceHuf })
     // A mount-egyszeri küldés a cél: útvonalváltásnál a komponens újra mountol,
     // ugyanazon az oldalon maradva viszont nem küldünk újabb megtekintést.
   }, [id, name, priceHuf, category, imageUrl])
