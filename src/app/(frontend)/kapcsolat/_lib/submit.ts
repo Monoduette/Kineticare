@@ -1,4 +1,4 @@
-import { extractPayloadErrorMessage, isSubmissionAccepted } from '@/lib/payload-rest-error'
+import { extractPayloadErrorMessage } from '@/lib/payload-rest-error'
 import type { ContactFormValues } from './validation'
 
 /**
@@ -69,7 +69,7 @@ export async function submitContactForm(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!isSubmissionAccepted(response)) {
+    if (!response.ok) {
       return {
         ok: false,
         message: await extractPayloadErrorMessage(response, GENERIC_SUBMIT_ERROR),

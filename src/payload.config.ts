@@ -70,7 +70,6 @@ import {
 import { logger, type Logger } from './lib/logger'
 import { getRequestId } from './lib/request-id'
 import { isUsableReplyToAddress } from './lib/email/reply-to'
-import { DUPLICATE_SUBMISSION_STATUS } from './lib/payload-rest-error'
 import { adminGroups } from './plugins/admin-groups'
 import { audit } from './plugins/audit'
 import { ecommerce } from './plugins/ecommerce'
@@ -241,91 +240,6 @@ const verifyTurnstile = async (
       'A spam-ellenőrzés nem sikerült. Frissítsd az oldalt, és küldd el újra az űrlapot.',
       400,
     )
-  }
-  return data
-}
-
-/** Ennyi időn belül az azonos tartalmú beküldés ismétlésnek számít. */
-const DUPLICATE_SUBMISSION_WINDOW_MS = 10 * 60_000
-/** Legfeljebb ennyi friss beküldéssel vetjük össze (egy indexelt lekérdezés). */
-const DUPLICATE_SUBMISSION_SCAN_LIMIT = 50
-const DUPLICATE_SUBMISSION_MESSAGE = 'Ezt a beküldést már megkaptuk, köszönjük.'
-
-/** A beküldött mezők sorrendfüggetlen ujjlenyomata (form-builder `submissionData`). */
-function submissionFingerprint(submissionData: unknown): string | null {
-  if (!Array.isArray(submissionData) || submissionData.length === 0) {
-    return null
-  }
-  const pairs = submissionData.map((row) => {
-    const record = typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {}
-    return [String(record.field ?? ''), String(record.value ?? '')]
-  })
-  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  return JSON.stringify(pairs)
-}
-
-/**
- * Ismételt beküldés kiszűrése. Ha a POST mentése sikerült, de a válasz
- * elveszett (hálózat), az űrlap hibát lát, új Turnstile-tokent kér, és a
- * látogató újraküldi: e nélkül a beküldés kétszer mentődne, és a stáb két
- * értesítőt kapna. Az ugyanarra az űrlapra az utóbbi 10 percben érkezett,
- * mezőről mezőre azonos beküldést 409-cel utasítjuk el; a kliensek ezt
- * sikerként kezelik (a kérés már nálunk van).
- *
- * A Turnstile UTÁN fut, így ellenőrzés nélkül nem kérdezhető le. Best-effort:
- * ha a lekérdezés hibázik, a beküldés átmegy (inkább egy duplikátum, mint egy
- * elveszett időpontkérés).
- */
-const rejectDuplicateSubmission = async (
-  data: unknown,
-  operation: string,
-  req: HookRequest | undefined,
-): Promise<unknown> => {
-  if (operation !== 'create' || typeof req?.payload?.find !== 'function') {
-    return data
-  }
-  const record = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}
-  const form = record.form
-  const fingerprint = submissionFingerprint(record.submissionData)
-  if (fingerprint === null || (typeof form !== 'string' && typeof form !== 'number')) {
-    return data
-  }
-  const log = requestScopedLogger(req.headers)
-  let recent: unknown[]
-  try {
-    const result = await req.payload.find({
-      // A form-builder collectionje nincs a payload-types-ban (lásd fent).
-      collection: 'form-submissions' as 'pages',
-      where: {
-        and: [
-          { form: { equals: form } },
-          {
-            createdAt: {
-              greater_than: new Date(Date.now() - DUPLICATE_SUBMISSION_WINDOW_MS).toISOString(),
-            },
-          },
-        ],
-      },
-      sort: '-createdAt',
-      limit: DUPLICATE_SUBMISSION_SCAN_LIMIT,
-      depth: 0,
-      overrideAccess: true,
-      req,
-    })
-    recent = result.docs
-  } catch (error) {
-    log.warn('az ismételt beküldés ellenőrzése nem futott le — a beküldés átmegy', {
-      errorName: error instanceof Error ? error.name : typeof error,
-    })
-    return data
-  }
-  const duplicate = recent.some(
-    (doc) =>
-      submissionFingerprint((doc as { submissionData?: unknown }).submissionData) === fingerprint,
-  )
-  if (duplicate) {
-    log.info('ismételt űrlap-beküldés kiszűrve', { form: String(form) })
-    throw new APIError(DUPLICATE_SUBMISSION_MESSAGE, DUPLICATE_SUBMISSION_STATUS)
   }
   return data
 }
@@ -1090,12 +1004,10 @@ export default buildConfig({
         ],
         hooks: {
           // A sorrend számít: előbb a helyi mező-/consent-ellenőrzés (K2),
-          // utána a külső Turnstile-hívás, végül az ismétlés-szűrő (csak
-          // ellenőrzött beküldés kérdezheti le a friss beküldéseket).
+          // utána a külső Turnstile-hívás.
           beforeValidate: [
             validateContactSubmission,
             async ({ data, operation, req }) => verifyTurnstile(data, operation, req.headers),
-            async ({ data, operation, req }) => rejectDuplicateSubmission(data, operation, req),
           ],
           afterChange: [
             async ({ doc, operation, req }) =>

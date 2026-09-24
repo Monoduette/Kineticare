@@ -383,8 +383,7 @@ describe('payload.config', () => {
     const leiras = String(mezo.admin?.description ?? '')
     expect(leiras).not.toMatch(/[A-Z]{2,}_[A-Z_]+/)
     expect(leiras).not.toMatch(/Turnstile|token|Cloudflare/i)
-    // Mező-/consent-ellenőrzés, Turnstile, ismétlés-szűrő (urlap-bekuldes-hookok.test.ts).
-    expect(bekuldesek?.hooks?.beforeValidate).toHaveLength(3)
+    expect(bekuldesek?.hooks?.beforeValidate).toHaveLength(2)
   })
 
   /**

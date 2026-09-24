@@ -39,18 +39,16 @@ const ELERHETETLEN_UZENET =
 
 async function bekuldesHookok(): Promise<{
   turnstile: CollectionBeforeValidateHook
-  ismetlesSzuro: CollectionBeforeValidateHook
   stabErtesito: CollectionAfterChangeHook
 }> {
   const config = await configPromise
   const gyujtemeny = (config.collections ?? []).find((c) => c.slug === 'form-submissions')
   const beforeValidate = gyujtemeny?.hooks?.beforeValidate ?? []
   const afterChange = gyujtemeny?.hooks?.afterChange ?? []
-  expect(beforeValidate).toHaveLength(3)
+  expect(beforeValidate).toHaveLength(2)
   expect(afterChange.length).toBeGreaterThanOrEqual(1)
   return {
     turnstile: beforeValidate[1],
-    ismetlesSzuro: beforeValidate[2],
     stabErtesito: afterChange[afterChange.length - 1],
   }
 }
@@ -240,71 +238,6 @@ describe('Turnstile-hibanapló request ID-vel', () => {
     const turnstileSor = sorok.find((sor) => sor.includes('Turnstile siteverify'))
     expect(turnstileSor).toContain(requestId)
     expect(turnstileSor).not.toContain(TESZT_TOKEN)
-  })
-})
-
-describe('ismételt beküldés szűrése (elveszett válasz utáni újraküldés)', () => {
-  const bekuldes = [
-    { field: 'name', value: 'Teszt Anna' },
-    { field: 'phone', value: '+36301234567' },
-  ]
-
-  function szuroArgs(
-    data: unknown,
-    operation: 'create' | 'update',
-    find: (...args: unknown[]) => Promise<{ docs: unknown[] }>,
-  ) {
-    return {
-      data,
-      operation,
-      req: { headers: new Headers(), payload: { find } },
-    } as unknown as Parameters<CollectionBeforeValidateHook>[0]
-  }
-
-  it('azonos tartalmú friss beküldésre 409 (a mezősorrend nem számít)', async () => {
-    const find = vi.fn(async () => ({
-      docs: [{ submissionData: [...bekuldes].reverse() }],
-    }))
-    const { ismetlesSzuro } = await bekuldesHookok()
-    const hiba = await hibaja(async () =>
-      ismetlesSzuro(szuroArgs({ form: 7, submissionData: bekuldes }, 'create', find)),
-    )
-    expect((hiba as APIError).status).toBe(409)
-    expect((hiba as APIError).isPublic).toBe(true)
-    const [lekerdezes] = find.mock.calls[0] as unknown as [
-      { collection: string; where: { and: Array<Record<string, unknown>> } },
-    ]
-    expect(lekerdezes.collection).toBe('form-submissions')
-    expect(lekerdezes.where.and[0]).toEqual({ form: { equals: 7 } })
-    expect(lekerdezes.where.and[1]).toHaveProperty('createdAt.greater_than')
-  })
-
-  it('eltérő tartalomnál átenged', async () => {
-    const find = vi.fn(async () => ({
-      docs: [{ submissionData: [{ field: 'name', value: 'Más Név' }, bekuldes[1]] }],
-    }))
-    const { ismetlesSzuro } = await bekuldesHookok()
-    const data = { form: 7, submissionData: bekuldes }
-    await expect(ismetlesSzuro(szuroArgs(data, 'create', find))).resolves.toBe(data)
-  })
-
-  it('lekérdezési hibánál átenged (inkább duplikátum, mint elveszett kérés)', async () => {
-    const find = vi.fn(async () => {
-      throw new Error('adatbázis nem elérhető')
-    })
-    const warnSpy = vi.spyOn(logger, 'warn')
-    const { ismetlesSzuro } = await bekuldesHookok()
-    const data = { form: 7, submissionData: bekuldes }
-    await expect(ismetlesSzuro(szuroArgs(data, 'create', find))).resolves.toBe(data)
-    expect(warnSpy).toHaveBeenCalledTimes(1)
-  })
-
-  it('update-en nem kérdez le', async () => {
-    const find = vi.fn(async () => ({ docs: [] }))
-    const { ismetlesSzuro } = await bekuldesHookok()
-    const data = { form: 7, submissionData: bekuldes }
-    await expect(ismetlesSzuro(szuroArgs(data, 'update', find))).resolves.toBe(data)
-    expect(find).not.toHaveBeenCalled()
   })
 })
 

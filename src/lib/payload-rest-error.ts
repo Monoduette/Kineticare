@@ -13,18 +13,6 @@
  * értené, ezért ilyenkor is a hívó magyar általános üzenete jelenik meg.
  */
 
-/**
- * Az űrlap-beküldés ismétlését jelző státusz (src/payload.config.ts,
- * `rejectDuplicateSubmission`): ugyanez a beküldés már nálunk van, a kliens
- * sikerként kezeli (elveszett válasz utáni újraküldés).
- */
-export const DUPLICATE_SUBMISSION_STATUS = 409
-
-/** A beküldést a szerver megkapta-e (új mentés vagy már meglévő ismétlése). */
-export function isSubmissionAccepted(response: Response): boolean {
-  return response.ok || response.status === DUPLICATE_SUBMISSION_STATUS
-}
-
 /** A Payload maszkolt belső hibájának szövege (pont nélkül is). */
 const PAYLOAD_GENERIC_ERROR_PATTERN = /^something went wrong\.?$/i
 

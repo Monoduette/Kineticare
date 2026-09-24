@@ -1,4 +1,4 @@
-import { extractPayloadErrorMessage, isSubmissionAccepted } from '../payload-rest-error'
+import { extractPayloadErrorMessage } from '../payload-rest-error'
 
 import {
   NEWSLETTER_CONSENT_FIELD,
@@ -90,7 +90,7 @@ export async function submitNewsletterForm(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!isSubmissionAccepted(response)) {
+    if (!response.ok) {
       return {
         ok: false,
         message: await extractPayloadErrorMessage(response, NEWSLETTER_GENERIC_ERROR),
