@@ -31,6 +31,15 @@ import {
 const DUMMY_ENV_VALUE = 'DUMMY-42'
 /** A NEXT_PUBLIC_SERVER_URL-nek az ALAKJA is ellenőrzött, ezért valódi URL kell. */
 const DUMMY_SERVER_URL = 'https://dummy.example'
+/**
+ * Élesben a Barion-konfiguráció induláskor teljesen feloldódik (API-hoszt,
+ * POSKey-alak), ezért ide érvényes ALAKÚ, de nyilvánvalóan nem valódi értékek
+ * kellenek: a csupa nulla GUID nem lehet valódi POSKey.
+ */
+const DUMMY_BARION_TEST_API_URL = 'https://api.test.barion.com'
+const DUMMY_BARION_PROD_API_URL = 'https://api.barion.com'
+const DUMMY_BARION_PAYEE = 'penztar@dummy.example'
+const DUMMY_GUID_POS_KEY = '00000000-0000-0000-0000-000000000000'
 const [SITE_KEY_ENV, SECRET_KEY_ENV] = turnstileEnvPair
 
 beforeEach(() => {
@@ -40,16 +49,21 @@ beforeEach(() => {
     vi.stubEnv(key, DUMMY_ENV_VALUE)
   }
   vi.stubEnv('NEXT_PUBLIC_SERVER_URL', DUMMY_SERVER_URL)
+  vi.stubEnv('BARION_API_URL', DUMMY_BARION_TEST_API_URL)
+  vi.stubEnv('BARION_PAYEE_EMAIL', DUMMY_BARION_PAYEE)
   vi.stubEnv('BARION_ENVIRONMENT', undefined)
-  vi.stubEnv('BARION_POSKEY_TEST', DUMMY_ENV_VALUE)
+  vi.stubEnv('BARION_POSKEY_TEST', DUMMY_GUID_POS_KEY)
   vi.stubEnv('BARION_POSKEY_PROD', undefined)
   vi.stubEnv(SITE_KEY_ENV, undefined)
   vi.stubEnv(SECRET_KEY_ENV, undefined)
   vi.stubEnv('SZAMLAZZ_AFAKULCS', undefined)
+  // Élesben az induláskori Barion-összefoglaló info-sort ír; a tesztkimenetet ne szemetelje.
+  vi.spyOn(console, 'log').mockImplementation(() => {})
 })
 
 afterEach(() => {
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
 })
 
 /**
@@ -274,7 +288,8 @@ describe('assertRequiredEnv — BARION_ENVIRONMENT élesben kötelező (B3)', ()
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
     vi.stubEnv('BARION_ENVIRONMENT', 'prod')
-    vi.stubEnv('BARION_POSKEY_PROD', DUMMY_ENV_VALUE)
+    vi.stubEnv('BARION_API_URL', DUMMY_BARION_PROD_API_URL)
+    vi.stubEnv('BARION_POSKEY_PROD', DUMMY_GUID_POS_KEY)
 
     expect(() => assertRequiredEnv()).not.toThrow()
   })
@@ -284,6 +299,139 @@ describe('assertRequiredEnv — BARION_ENVIRONMENT élesben kötelező (B3)', ()
       vi.stubEnv('NODE_ENV', nodeEnv)
       expect(() => assertRequiredEnv(), nodeEnv).not.toThrow()
     }
+  })
+})
+
+/**
+ * A BARION_ENVIRONMENT-et az env-assert is levágva (trim) hasonlítja, ahogy a
+ * Barion-kliens. Korábban egy ' prod ' érték mellett az assert a TESZT-kulcsot
+ * követelte meg, a kliens viszont az ÉLES kulcsot használta volna.
+ */
+describe('assertRequiredEnv — a BARION_ENVIRONMENT levágva számít', () => {
+  it("' prod ' (szóközzel) mellett az éles kulcs kell, nem a teszt-kulcs", () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('BARION_ENVIRONMENT', ' prod ')
+
+    expect(() => assertRequiredEnv()).toThrowError(/BARION_POSKEY_PROD/)
+  })
+})
+
+/**
+ * Élesben a Barion-konfiguráció induláskor TELJESEN feloldódik: a környezet
+ * és az API-hoszt összeillése és a POSKey alakja már itt bukik el, nem az első
+ * vásárlónál. Az aktív környezet és hoszt egyszer, titokmentesen naplózódik.
+ */
+describe('assertRequiredEnv — a Barion-konfiguráció induláskori ellenőrzése élesben', () => {
+  function stubLiveBarion(): void {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+    vi.stubEnv('BARION_ENVIRONMENT', 'prod')
+    vi.stubEnv('BARION_API_URL', DUMMY_BARION_PROD_API_URL)
+    vi.stubEnv('BARION_POSKEY_PROD', DUMMY_GUID_POS_KEY)
+  }
+
+  function logLines(): Record<string, unknown>[] {
+    const spy = vi.mocked(console.log)
+    return spy.mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+  }
+
+  it('induláskor egyszer naplózza a környezetet, a hosztot és a kulcs VÁLTOZÓNEVÉT, a kulcsot soha', () => {
+    stubLiveBarion()
+
+    assertRequiredEnv()
+
+    const summaries = logLines().filter((line) => line.msg === 'barion_konfiguracio')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.context).toEqual({
+      barionEnvironment: 'prod',
+      apiHost: 'api.barion.com',
+      posKeyEnvName: 'BARION_POSKEY_PROD',
+      payee: 'p***@dummy.example',
+      postTimeoutMs: 35_000,
+      getTimeoutMs: 15_000,
+    })
+    const output = JSON.stringify(vi.mocked(console.log).mock.calls)
+    expect(output).not.toContain(DUMMY_GUID_POS_KEY)
+    expect(output).not.toContain(DUMMY_BARION_PAYEE)
+  })
+
+  it("'prod' környezet + teszt API-hoszt → nem indul (a vásárló a sandboxban fizetne)", () => {
+    stubLiveBarion()
+    vi.stubEnv('BARION_API_URL', DUMMY_BARION_TEST_API_URL)
+
+    expect(() => assertRequiredEnv()).toThrowError(/BARION_API_URL/)
+    expect(() => assertRequiredEnv()).toThrowError(/nem indulhat el/)
+  })
+
+  it('hibás alakú POSKey → nem indul; az üzenet a változót nevezi meg, az értéket nem', () => {
+    stubLiveBarion()
+    const quotedKey = `"${DUMMY_GUID_POS_KEY}"`
+    vi.stubEnv('BARION_POSKEY_PROD', quotedKey)
+
+    let message = ''
+    try {
+      assertRequiredEnv()
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    expect(message).toMatch(/BARION_POSKEY_PROD/)
+    expect(message).toMatch(/idézőjelet/)
+    expect(message).toMatch(/nem indulhat el/)
+    expect(message).not.toContain(DUMMY_GUID_POS_KEY)
+  })
+
+  it('érvénytelen BARION_ENVIRONMENT érték → nem indul', () => {
+    stubLiveBarion()
+    vi.stubEnv('BARION_ENVIRONMENT', 'staging')
+
+    expect(() => assertRequiredEnv()).toThrowError(/BARION_ENVIRONMENT/)
+  })
+
+  it('az éles oldal címén futó teszt-Barion → warn-riasztás (de elindul)', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+    vi.stubEnv('BARION_ENVIRONMENT', 'test')
+    const warn = vi.fn()
+
+    for (const liveUrl of ['https://www.kineticare.hu', 'https://kineticare.hu/']) {
+      warn.mockClear()
+      vi.stubEnv('NEXT_PUBLIC_SERVER_URL', liveUrl)
+      expect(() => assertRequiredEnv(warn), liveUrl).not.toThrow()
+      expect(
+        warn.mock.calls.map((call) => call[0]),
+        liveUrl,
+      ).toContain('barion_teszt_kornyezet_az_eles_oldalon')
+    }
+  })
+
+  it('nem éles címen a teszt-Barion rendben van, és éles Barionnál sincs ilyen riasztás', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ENABLE_JOB_WORKERS', 'true')
+    vi.stubEnv('BARION_ENVIRONMENT', 'test')
+    const warn = vi.fn()
+
+    assertRequiredEnv(warn)
+    expect(warn.mock.calls.map((call) => call[0])).not.toContain(
+      'barion_teszt_kornyezet_az_eles_oldalon',
+    )
+
+    stubLiveBarion()
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://www.kineticare.hu')
+    warn.mockClear()
+    assertRequiredEnv(warn)
+    expect(warn.mock.calls.map((call) => call[0])).not.toContain(
+      'barion_teszt_kornyezet_az_eles_oldalon',
+    )
+  })
+
+  it('NEM production: a részletes Barion-ellenőrzés elmarad (álértékekkel is indul, napló nélkül)', () => {
+    for (const nodeEnv of ['development', 'test']) {
+      vi.stubEnv('NODE_ENV', nodeEnv)
+      vi.stubEnv('BARION_API_URL', DUMMY_ENV_VALUE)
+      vi.stubEnv('BARION_POSKEY_TEST', DUMMY_ENV_VALUE)
+      expect(() => assertRequiredEnv(), nodeEnv).not.toThrow()
+    }
+    expect(logLines().filter((line) => line.msg === 'barion_konfiguracio')).toHaveLength(0)
   })
 })
 

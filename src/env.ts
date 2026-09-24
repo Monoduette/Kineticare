@@ -13,10 +13,12 @@
  * az áfakulcs nem titok, hanem közzétett adóügyi kód.)
  */
 
+import { barionPosKeyEnvName, getBarionConfig, logBarionConfigSummary } from './lib/barion/client'
 import type { SzamlazzVatMode } from './lib/szamlazz/types'
 
 // Barion-kliens: a BARION_API_URL és BARION_PAYEE_EMAIL minden környezetben
-// kötelező (a kliens részletes, környezetfüggő assertja az src/lib/barion/client.ts-ben él).
+// kötelező (a kliens részletes, környezetfüggő assertja az src/lib/barion/client.ts-ben él,
+// élesben az assertRequiredEnv induláskor le is futtatja).
 export const requiredEnvVars = [
   'DATABASE_URI',
   'PAYLOAD_SECRET',
@@ -281,9 +283,19 @@ export const optionalOriginEnvVars = ['EXTRA_ALLOWED_ORIGINS'] as const
  * hiánylistába, tehát a `prod` környezet + hiányzó BARION_POSKEY_PROD páros
  * beszédes indulási hibát ad (és élesben a BARION_ENVIRONMENT megléte is
  * kötelező — lásd assertRequiredEnv).
+ *
+ * Az értéket ugyanúgy levágva (trim) hasonlítjuk, mint a Barion-kliens
+ * (src/lib/barion/client.ts). Enélkül egy ' prod ' érték mellett itt a
+ * TESZT-kulcsot követelnénk meg, a kliens viszont az ÉLES kulcsot használná.
  */
 function requiredBarionPosKeyEnv(): string {
-  return process.env.BARION_ENVIRONMENT === 'prod' ? 'BARION_POSKEY_PROD' : 'BARION_POSKEY_TEST'
+  return barionPosKeyEnvName(process.env.BARION_ENVIRONMENT?.trim() === 'prod' ? 'prod' : 'test')
+}
+
+/** A publikus szerver-URL az éles oldal (kineticare.hu vagy www.kineticare.hu) címe-e. */
+function isLiveSiteUrl(rawValue: string | undefined): boolean {
+  const normalized = normalizeServerUrl(rawValue)
+  return normalized !== null && LIVE_SITE_HOSTS.has(new URL(normalized).hostname)
 }
 
 /** Ki van-e töltve (nem üres) a környezeti változó? */
@@ -370,6 +382,22 @@ export function assertRequiredEnv(
           'meg. Állítsd be a változót (éles boltnál: prod) a BARION_API_URL-lel összhangban ' +
           '(prod → https://api.barion.com), majd indítsd újra a szervert.',
       )
+    }
+
+    // A Barion-konfiguráció teljes feloldása már induláskor: a környezet és az
+    // API-hoszt összeillése és a POSKey alakja itt bukik el hangosan, nem az
+    // első vásárlónál (ott a pénztár csak általános hibát mutatna). A hibaüzenet
+    // a kulcs értékét soha nem tartalmazza (src/lib/barion/client.ts).
+    const barionConfig = getBarionConfig(process.env)
+    logBarionConfigSummary(barionConfig)
+    if (barionConfig.environment === 'test' && isLiveSiteUrl(rawServerUrl)) {
+      warn?.('barion_teszt_kornyezet_az_eles_oldalon', {
+        reszletek:
+          'Az oldal az éles címen fut (NEXT_PUBLIC_SERVER_URL), de a BARION_ENVIRONMENT értéke ' +
+          'test: a vásárlók a Barion teszt-környezetében fizetnek, valódi pénz nem érkezik. ' +
+          'Élesítés: BARION_ENVIRONMENT=prod, BARION_API_URL=https://api.barion.com és a bolt ' +
+          'titkos kulcsa a BARION_POSKEY_PROD változóban.',
+      })
     }
 
     // ENABLE_JOB_WORKERS nélkül nincs webhook-retry / order-poll — figyelmeztetés, nem boot-hiba.

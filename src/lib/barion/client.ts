@@ -1,9 +1,11 @@
-import { createLogger } from '../logger'
+import { maskEmail } from '../email/mask'
+import { createLogger, type Logger } from '../logger'
 import { BarionApiError, type BarionError } from './types'
 
 /**
  * Barion API-kliens: env-feloldás, timeoutos HTTP, titokmentes naplózás.
- * Refund a rendelés-zár alatt fut — `BARION_TIMEOUT_MS` plafonja ezért 30 s.
+ * Refund a rendelés-zár alatt fut, ezért a `BARION_TIMEOUT_MS` plafonja 35 s
+ * (a zár-tranzakció 60 s-os idle_in_transaction_session_timeoutja alatt).
  */
 
 export type BarionEnvironment = 'test' | 'prod'
@@ -15,14 +17,40 @@ export interface BarionClientConfig {
   /** Az AKTÍV környezet POSKey-e. Soha ne naplózd! */
   posKey: string
   payeeEmail: string
+  /** A POST-hívások timeoutja. A GET ugyanezt kapja, de legfeljebb BARION_GET_TIMEOUT_MS-et. */
   timeoutMs: number
   recurringEnabled: boolean
 }
 
-export const BARION_DEFAULT_TIMEOUT_MS = 15_000
+/**
+ * Alapértelmezett timeout (POST: Payment/Start, Payment/Refund).
+ *
+ * A Barion egy kérést legfeljebb 30 másodpercig futtat, utána maga állítja le
+ * („The maximum duration for an HTTP request is 30 seconds. After that the
+ * server stops the request.” docs.barion.com/Calling_the_API, 2024-01-15).
+ * A korábbi 15 s egy lassú, de sikeres Startot is elvágott: a fizetés a
+ * Barionnál létrejött, mi viszont timeoutot láttunk. A 35 s a szerveroldali
+ * 30 s plusz 5 s hálózati tartalék, így a Barion saját válasza (siker vagy
+ * hiba) mindig előbb ér ide, mint ahogy mi feladnánk.
+ */
+export const BARION_DEFAULT_TIMEOUT_MS = 35_000
 
-/** BARION_TIMEOUT_MS plafon — refund rendelés-zár alatt fut, hosszú timeout sorzár-t kockáztat. */
-export const BARION_MAX_TIMEOUT_MS = 30_000
+/**
+ * BARION_TIMEOUT_MS plafon. A refund rendelés-zár (nyitott tranzakció) alatt
+ * fut, amit a Postgres 60 s tétlenség után bont: a Barion-hívásnak jóval ez
+ * alatt kell maradnia. 35 s fölött várni amúgy sem érdemes, mert a Barion 30 s
+ * után maga állítja le a kérést. Az env tehát csak csökkentheti a timeoutot.
+ */
+export const BARION_MAX_TIMEOUT_MS = 35_000
+
+/**
+ * GET-hívások (PaymentState v4) timeout-plafonja. Az állapotlekérdezés
+ * ismételhető, ezért itt a rövid timeout a helyes: a callbackre a Barion 15 s-on
+ * belül vár választ (Callback_mechanism), az order-poll futásideje pedig
+ * (src/jobs/schedule-guard.ts, 15 perces beragadási küszöb) hívásonként
+ * 15 s-mal számol.
+ */
+export const BARION_GET_TIMEOUT_MS = 15_000
 
 /** Az AKTÍV környezethez tartozó, elvárt Barion API-hoszt. */
 export const BARION_API_HOSTS: Record<BarionEnvironment, string> = {
@@ -30,7 +58,74 @@ export const BARION_API_HOSTS: Record<BarionEnvironment, string> = {
   prod: 'api.barion.com',
 }
 
-const logger = createLogger({ module: 'barion' })
+/** A Barion titkos kulcsot kiadó felülete környezetenként (hibaüzenetekhez). */
+const BARION_SECURE_HOSTS: Record<BarionEnvironment, string> = {
+  test: 'secure.test.barion.com',
+  prod: 'secure.barion.com',
+}
+
+/**
+ * A POSKey elvárt alakja: GUID, kötőjelekkel (8-4-4-4-12) vagy anélkül
+ * (32 hexadecimális karakter). A Barion a mezőt Guid típusúnak írja le
+ * (Payment-Start-v2: „POSKey | Guid | Required”).
+ */
+const POS_KEY_PATTERN =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+
+/** Egyenes és tipográfiai idézőjelek, amelyek másoláskor a kulcs elé-mögé kerülhetnek. */
+const QUOTE_CHARACTERS = /["'`‘’‚“”„]/
+
+let moduleLogger: Logger | undefined
+
+/**
+ * A modul loggere, első használatkor létrehozva. A modult az src/env.ts is
+ * importálja (induláskori assert), az env.ts-t pedig sok más modul: az
+ * importnak ezért nem lehet mellékhatása.
+ */
+function barionLogger(): Logger {
+  moduleLogger ??= createLogger({ module: 'barion' })
+  return moduleLogger
+}
+
+/** Az adott Barion-környezet POSKey-ét tartalmazó környezeti változó NEVE. */
+export function barionPosKeyEnvName(environment: BarionEnvironment): string {
+  return environment === 'prod' ? 'BARION_POSKEY_PROD' : 'BARION_POSKEY_TEST'
+}
+
+/**
+ * A POSKey alakjának ellenőrzése a már levágott (trim) értéken. `null`, ha az
+ * alak rendben van; különben a hiba magyar leírása. A leírás sem az értéket,
+ * sem annak egyetlen részletét nem tartalmazza, legfeljebb a hosszát.
+ */
+export function describeBarionPosKeyShapeProblem(posKey: string): string | null {
+  if (POS_KEY_PATTERN.test(posKey)) {
+    return null
+  }
+  if (QUOTE_CHARACTERS.test(posKey)) {
+    return 'idézőjelet tartalmaz'
+  }
+  if (/\s/.test(posKey)) {
+    return 'szóközt vagy sortörést tartalmaz'
+  }
+  return (
+    'nem GUID-alakú: 32 hexadecimális karakter kell, kötőjelekkel vagy anélkül ' +
+    `(a megadott érték ${posKey.length} karakter hosszú)`
+  )
+}
+
+/** Az API-URL hosztja naplózáshoz; hibás URL-nél sem dob. */
+function apiHostOf(apiUrl: string): string {
+  try {
+    return new URL(apiUrl).host
+  } catch {
+    return 'ismeretlen'
+  }
+}
+
+/** A POSKey kiszedése egy szövegből (pl. a fetch hibaüzenetéből), mielőtt naplóba vagy hibába kerül. */
+function withoutPosKey(text: string, posKey: string): string {
+  return posKey.length > 0 ? text.split(posKey).join('[REDACTED]') : text
+}
 
 function readEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key]
@@ -48,7 +143,7 @@ function parseTimeoutMs(raw: string | undefined): number {
   if (parsed > BARION_MAX_TIMEOUT_MS) {
     // NEM dobunk: egy túl nagyra állított timeout ne akassza meg az indulást —
     // de a plafon némán sem érvényesülhet, mert a beállító mást vár.
-    logger.warn('BARION_TIMEOUT_MS a megengedett plafon fölött — a plafon érvényesül', {
+    barionLogger().warn('BARION_TIMEOUT_MS a megengedett plafon fölött — a plafon érvényesül', {
       requestedMs: parsed,
       appliedMs: BARION_MAX_TIMEOUT_MS,
     })
@@ -73,7 +168,7 @@ export function getBarionConfig(env: NodeJS.ProcessEnv = process.env): BarionCli
   }
   const environment: BarionEnvironment = rawEnvironment
 
-  const posKeyEnvName = environment === 'prod' ? 'BARION_POSKEY_PROD' : 'BARION_POSKEY_TEST'
+  const posKeyEnvName = barionPosKeyEnvName(environment)
 
   const missing: string[] = []
   const apiUrl = readEnv(env, 'BARION_API_URL')
@@ -135,6 +230,28 @@ export function getBarionConfig(env: NodeJS.ProcessEnv = process.env): BarionCli
     )
   }
 
+  /**
+   * A POSKey ALAKJA. Egy idézőjellel, szóközzel vagy csonkán bemásolt kulcsra a
+   * Barion minden hívásra AuthenticationFailed-et ad, és ez csak az első
+   * vásárlónál derülne ki. Élesben (NODE_ENV=production) és az éles
+   * Barion-környezetben ezért itt bukik el. Helyi fejlesztésben, teszt-
+   * környezettel az ellenőrzés elmarad, mert ott jelölt álkulcs is lehet
+   * (pl. .cursor/start.sh). Az üzenet az értéket soha nem tartalmazza.
+   */
+  const requireRealPosKey = environment === 'prod' || readEnv(env, 'NODE_ENV') === 'production'
+  const posKeyProblem = requireRealPosKey
+    ? describeBarionPosKeyShapeProblem(posKey as string)
+    : null
+  if (posKeyProblem !== null) {
+    throw new Error(
+      `Barion-konfigurációs hiba: a ${posKeyEnvName} értéke nem használható POSKey, mert ` +
+        `${posKeyProblem}. Az alkalmazás így nem indulhat el. Másold be újra a bolt titkos ` +
+        `kulcsát a ${BARION_SECURE_HOSTS[environment]} oldalról (Shops → Actions → Details, ` +
+        'Secret key), idézőjelek és szóközök nélkül. A nyilvános kulcs (Public key) nem jó. ' +
+        'Az érték biztonsági okból nem szerepel ebben az üzenetben.',
+    )
+  }
+
   return {
     environment,
     apiUrl: normalizedApiUrl,
@@ -145,8 +262,28 @@ export function getBarionConfig(env: NodeJS.ProcessEnv = process.env): BarionCli
   }
 }
 
+/**
+ * Az aktív Barion-konfiguráció titokmentes naplózása, induláskor egyszer
+ * (src/env.ts assertRequiredEnv). Így a deploy-logból mindig kiderül, melyik
+ * Barion-világban fut a bolt. A POSKey-ből csak a változó NEVE kerül a naplóba,
+ * a kedvezményezett címe maszkolva.
+ */
+export function logBarionConfigSummary(config: BarionClientConfig): void {
+  barionLogger().info('barion_konfiguracio', {
+    barionEnvironment: config.environment,
+    apiHost: apiHostOf(config.apiUrl),
+    posKeyEnvName: barionPosKeyEnvName(config.environment),
+    payee: maskEmail(config.payeeEmail),
+    postTimeoutMs: config.timeoutMs,
+    getTimeoutMs: Math.min(config.timeoutMs, BARION_GET_TIMEOUT_MS),
+  })
+}
+
 /** Válasz-body JSON-parse, egységes 'invalid_response' hibával. */
-async function parseJsonBody(response: Response, endpoint: string): Promise<Record<string, unknown>> {
+async function parseJsonBody(
+  response: Response,
+  endpoint: string,
+): Promise<Record<string, unknown>> {
   const text = await response.text().catch(() => '')
   if (text.length === 0) {
     return {}
@@ -205,28 +342,39 @@ interface BarionRequestOptions {
 /**
  * Közös, timeoutos Barion HTTP-hívás.
  *
- * - POSKey: POST esetén a body-ba, GET esetén az x-pos-key headerbe kerül
- *   (URL-be sosem — így proxy-/access-logban sem jelenhet meg).
- * - Minden hívás AbortSignal.timeout-tal fut (default 15 s, BARION_TIMEOUT_MS).
+ * - POSKey: minden hívásnál az x-pos-key fejlécben megy (Barion_Shop_Authentication:
+ *   „pass your Barion shop's POS key as the x-pos-key header parameter”), POST
+ *   esetén a body POSKey mezőjében is, pontosan úgy, mint a hivatalos
+ *   barion-web-php kliens (BarionClient.php, PostToBarion). URL-be sosem kerül,
+ *   így proxy- és access-logban sem jelenhet meg.
+ * - Timeout: POST-nál config.timeoutMs (alapból 35 s), GET-nél legfeljebb
+ *   BARION_GET_TIMEOUT_MS (15 s).
  * - A Barion hibaválaszait (akár HTTP 200 mellett is jöhet Errors tömbbel)
  *   strukturált BarionApiError-é alakítja, a provider-mezők megőrzésével.
- * - Naplózás titokmentesen: endpoint, method, httpStatus, durationMs,
- *   provider-hibakódok — body és POSKey sosem.
+ * - Naplózás titokmentesen: endpoint, Barion-környezet, API-hoszt, httpStatus,
+ *   durationMs, provider-hibakódok. Body és POSKey sosem.
  */
 async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<TResponse> {
   const config = options.config ?? getBarionConfig()
   const endpoint = `${options.method} ${options.path}`
   const url = `${config.apiUrl}${options.path}`
+  const timeoutMs =
+    options.method === 'GET' ? Math.min(config.timeoutMs, BARION_GET_TIMEOUT_MS) : config.timeoutMs
+  // Minden naplósorba: melyik környezet és hoszt felé ment a hívás (a kulcs soha).
+  const logContext = {
+    endpoint,
+    barionEnvironment: config.environment,
+    apiHost: apiHostOf(config.apiUrl),
+  }
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    'x-pos-key': config.posKey,
   }
   let body: string | undefined
   if (options.method === 'POST') {
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify({ ...options.body, POSKey: config.posKey })
-  } else {
-    headers['x-pos-key'] = config.posKey
   }
 
   const startedAt = Date.now()
@@ -236,25 +384,28 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
       method: options.method,
       headers,
       body,
-      signal: AbortSignal.timeout(config.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (error) {
     const durationMs = Date.now() - startedAt
     if (isAbortError(error)) {
-      logger.error('Barion API hívás timeout', { endpoint, timeoutMs: config.timeoutMs, durationMs })
+      barionLogger().error('Barion API hívás timeout', { ...logContext, timeoutMs, durationMs })
       throw new BarionApiError({
-        message: `A Barion API nem válaszolt ${config.timeoutMs} ms-en belül (${endpoint}).`,
+        message: `A Barion API nem válaszolt ${timeoutMs} ms-en belül (${endpoint}).`,
         kind: 'timeout',
         endpoint,
       })
     }
-    logger.error('Barion API hálózati hiba', {
-      endpoint,
-      durationMs,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    })
+    // A fetch a hibás fejlécértéket szó szerint beleírja az üzenetébe
+    // („Headers.append: "…" is an invalid header value."), ezért a kulcsot
+    // kivesszük belőle, mielőtt naplóba vagy hibaüzenetbe kerülne.
+    const errorMessage = withoutPosKey(
+      error instanceof Error ? error.message : String(error),
+      config.posKey,
+    )
+    barionLogger().error('Barion API hálózati hiba', { ...logContext, durationMs, errorMessage })
     throw new BarionApiError({
-      message: `A Barion API elérhetetlen (${endpoint}): ${error instanceof Error ? error.message : String(error)}`,
+      message: `A Barion API elérhetetlen (${endpoint}): ${errorMessage}`,
       kind: 'network',
       endpoint,
     })
@@ -265,8 +416,8 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
   const providerErrors = extractProviderErrors(parsed)
 
   if (!response.ok) {
-    logger.error('Barion API HTTP-hiba', {
-      endpoint,
+    barionLogger().error('Barion API HTTP-hiba', {
+      ...logContext,
       httpStatus: response.status,
       durationMs,
       providerErrorCodes: providerErrors.map((e) => e.ErrorCode),
@@ -287,8 +438,8 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
 
   if (providerErrors.length > 0) {
     // A Barion bizonyos hibákat HTTP 200-zal, Errors tömbben jelez vissza.
-    logger.error('Barion provider-hiba', {
-      endpoint,
+    barionLogger().error('Barion provider-hiba', {
+      ...logContext,
       durationMs,
       providerErrorCodes: providerErrors.map((e) => e.ErrorCode),
     })
@@ -303,11 +454,15 @@ async function barionRequest<TResponse>(options: BarionRequestOptions): Promise<
     })
   }
 
-  logger.debug('Barion API hívás kész', { endpoint, httpStatus: response.status, durationMs })
+  barionLogger().debug('Barion API hívás kész', {
+    ...logContext,
+    httpStatus: response.status,
+    durationMs,
+  })
   return parsed as unknown as TResponse
 }
 
-/** POST-hívás a Barion API felé (a POSKey-t a body-ba injektálja). */
+/** POST-hívás a Barion API felé (a POSKey az x-pos-key fejlécbe és a body-ba is bekerül). */
 export function barionPost<TResponse>(
   path: string,
   body: Record<string, unknown>,
@@ -317,6 +472,9 @@ export function barionPost<TResponse>(
 }
 
 /** GET-hívás a Barion API felé (a POSKey-t az x-pos-key headerbe teszi). */
-export function barionGet<TResponse>(path: string, config?: BarionClientConfig): Promise<TResponse> {
+export function barionGet<TResponse>(
+  path: string,
+  config?: BarionClientConfig,
+): Promise<TResponse> {
   return barionRequest<TResponse>({ method: 'GET', path, config })
 }
