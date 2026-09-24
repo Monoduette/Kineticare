@@ -62,12 +62,15 @@ describe('NewsletterForm — lábléc-űrlap kezdő állapota', () => {
   it('a visszajelzésnek élő régiója van (role="status"), kezdetben üresen', () => {
     expect(html).toContain('role="status"')
     expect(html).toContain('aria-live="polite"')
-    expect(html).toContain('<p aria-live="polite" class="kc-newsletter__status" role="status">')
+    expect(html).toContain(
+      '<div aria-live="polite" class="kc-newsletter__status" role="status"></div>',
+    )
   })
 
   it('kezdetben nincs hibaüzenet és nincs sikerüzenet a jelölésben', () => {
     expect(html).not.toContain('role="alert"')
-    expect(html).not.toContain('Köszönjük, feliratkoztál')
+    expect(html).not.toContain('kc-newsletter__success')
+    expect(html).not.toContain('kc-newsletter__error')
   })
 
   it('a honeypot mező rejtett (aria-hidden, tabIndex=-1)', () => {

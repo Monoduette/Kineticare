@@ -3,7 +3,10 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
-import { TurnstileWidget } from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
+import {
+  TURNSTILE_UNAVAILABLE_ERROR,
+  TurnstileWidget,
+} from '@/app/(frontend)/kapcsolat/_components/TurnstileWidget'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { withLeadTracking, type LeadTrackers } from '@/lib/analytics/lead-events'
@@ -96,6 +99,9 @@ export function AppointmentForm({
   const [succeeded, setSucceeded] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  // A Turnstile-token egyszer használható: sikertelen beküldés után új kell.
+  const [turnstileReset, setTurnstileReset] = useState(0)
+  const [turnstileFailed, setTurnstileFailed] = useState(false)
   const [honeypot, setHoneypot] = useState('')
 
   /**
@@ -148,17 +154,14 @@ export function AppointmentForm({
     [],
   )
 
-  const toggleSav = useCallback(
-    (felirat: string, checked: boolean) => {
-      setValues((previous) => ({
-        ...previous,
-        availability: checked
-          ? [...previous.availability, felirat]
-          : previous.availability.filter((item) => item !== felirat),
-      }))
-    },
-    [],
-  )
+  const toggleSav = useCallback((felirat: string, checked: boolean) => {
+    setValues((previous) => ({
+      ...previous,
+      availability: checked
+        ? [...previous.availability, felirat]
+        : previous.availability.filter((item) => item !== felirat),
+    }))
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -178,7 +181,9 @@ export function AppointmentForm({
     }
 
     if (turnstileEnabled && !turnstileToken) {
-      setSubmitError(APPOINTMENT_TURNSTILE_PENDING_ERROR)
+      setSubmitError(
+        turnstileFailed ? TURNSTILE_UNAVAILABLE_ERROR : APPOINTMENT_TURNSTILE_PENDING_ERROR,
+      )
       setHibasKiserlet((elozo) => elozo + 1)
       return
     }
@@ -201,6 +206,9 @@ export function AppointmentForm({
     }
     setSubmitError(result.message)
     setHibasKiserlet((elozo) => elozo + 1)
+    if (turnstileEnabled) {
+      setTurnstileReset((elozo) => elozo + 1)
+    }
   }
 
   if (succeeded) {
@@ -291,7 +299,11 @@ export function AppointmentForm({
             errors.reason ? 'kc-appointment-reason-error' : 'kc-appointment-reason-hint'
           }
           aria-invalid={errors.reason ? true : undefined}
-          className={['kc-field__input', 'kc-appointment__textarea', errors.reason ? 'kc-field__input--error' : '']
+          className={[
+            'kc-field__input',
+            'kc-appointment__textarea',
+            errors.reason ? 'kc-field__input--error' : '',
+          ]
             .filter(Boolean)
             .join(' ')}
           disabled={disabled}
@@ -384,9 +396,7 @@ export function AppointmentForm({
           />
           <label className="kc-appointment__consent-label" htmlFor="kc-appointment-consent">
             {APPOINTMENT_CONSENT_TEXT.before}
-            <Link href={APPOINTMENT_PRIVACY_POLICY_PATH}>
-              {APPOINTMENT_CONSENT_TEXT.linkLabel}
-            </Link>
+            <Link href={APPOINTMENT_PRIVACY_POLICY_PATH}>{APPOINTMENT_CONSENT_TEXT.linkLabel}</Link>
             {APPOINTMENT_CONSENT_TEXT.after}{' '}
             <span aria-hidden="true" className="kc-field__required">
               *
@@ -402,7 +412,17 @@ export function AppointmentForm({
       </div>
 
       {turnstileEnabled ? (
-        <TurnstileWidget onToken={setTurnstileToken} siteKey={turnstileSiteKey as string} />
+        <TurnstileWidget
+          onError={() => setTurnstileFailed(true)}
+          onToken={(token) => {
+            setTurnstileToken(token)
+            if (token) {
+              setTurnstileFailed(false)
+            }
+          }}
+          resetKey={turnstileReset}
+          siteKey={turnstileSiteKey as string}
+        />
       ) : null}
 
       {!formAvailable ? (
