@@ -898,51 +898,53 @@ export function breadcrumbJsonLd(
  * contain any whitespace characters”). A CMS `sku` mezőjébe viszont emberi
  * név kerül (pl. „Otthoni KézRehab Program”), ezért itt gépi azonosítóvá
  * alakítjuk: ékezet le, minden nem [A-Za-z0-9._-] jel-sorozat helyett `-`.
- * A CMS-adat NEM változik; üres eredménynél a mező kimarad.
+ * Ha az átalakítás VESZTESÉGES volt (két különböző CMS-érték, pl. „A B” és
+ * „A-B” ugyanarra képződne), a termék azonosítója is a végére kerül, így az
+ * eredmény termékenként egyedi marad. A CMS-adat NEM változik; üres
+ * eredménynél a mező kimarad.
  */
-export function structuredDataSku(raw: string | null | undefined): string | undefined {
+export function structuredDataSku(
+  raw: string | null | undefined,
+  productId?: number | string,
+): string | undefined {
   if (typeof raw !== 'string') return undefined
-  const ascii = raw
+  const trimmed = raw.trim()
+  const ascii = trimmed
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
-  return ascii.length > 0 ? ascii : undefined
+  if (ascii.length === 0) return undefined
+  if (ascii === trimmed || productId === undefined) return ascii
+  return `${ascii}-${String(productId)}`
 }
 
 /**
- * Az Offer szállítási és visszaküldési adatai. A kurzus DIGITÁLIS tartalom:
- * postai kiszállítás nincs, a hozzáférés a fizetés után azonnal megnyílik
- * (ÁSZF, „A megrendelés teljesítése”), ezért 0 Ft és 0 nap. Elállás a
- * teljesítés megkezdése után nincs (ÁSZF, „Elállási jog kizárása”, 45/2014.
- * Korm. rendelet 29. §), ezért MerchantReturnNotPermitted, az ÁSZF linkjével.
- * A Search Console „Merchant listings” jelentése ezeket a mezőket kéri.
+ * Az Offer szállítási adata. A kurzus DIGITÁLIS tartalom, postai kiszállítás
+ * nincs (ÁSZF, „A megrendelés teljesítése”), ezért a szállítási díj 0 Ft.
+ * A `deliveryTime` SZÁNDÉKOSAN hiányzik: az ÁSZF technikai hiba esetére
+ * 24 óra + következő munkanap határidőt enged, ezt egy fix napszám félrevezető
+ * ígéret lenne.
+ *
+ * A `hasMerchantReturnPolicy` SZÁNDÉKOSAN hiányzik: a kurzusoldal 30 napos,
+ * kérdés nélküli visszafizetési garanciát hirdet, az ÁSZF viszont kizárja a
+ * pénzvisszafizetést. Amíg a kettő nincs összhangban, a strukturált adat
+ * egyiket sem állítja (a Search Console-ban ez csak nem kritikus figyelmeztetés).
  */
-function digitalOfferPolicies(): Record<string, unknown> {
-  const zeroDays = { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' }
+function digitalOfferShipping(): Record<string, unknown> {
   return {
     shippingDetails: {
       '@type': 'OfferShippingDetails',
       shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
-      deliveryTime: {
-        '@type': 'ShippingDeliveryTime',
-        handlingTime: zeroDays,
-        transitTime: zeroDays,
-      },
-    },
-    hasMerchantReturnPolicy: {
-      '@type': 'MerchantReturnPolicy',
-      applicableCountry: 'HU',
-      returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
-      merchantReturnLink: absoluteUrl('/aszf'),
     },
   }
 }
 
 export function courseJsonLd(args: {
-  product: Pick<Product, 'shortDescription' | 'status' | 'sku' | 'seoKeywords'>
+  product: Pick<Product, 'shortDescription' | 'status' | 'sku' | 'seoKeywords'> &
+    Partial<Pick<Product, 'id'>>
   name: string
   path: string
   priceHuf: number | null
@@ -961,7 +963,7 @@ export function courseJsonLd(args: {
     typeof product.shortDescription === 'string' && product.shortDescription.trim().length > 0
       ? rewriteVisitorDashLeftover(product.shortDescription).trim()
       : undefined
-  const sku = structuredDataSku(product.sku)
+  const sku = structuredDataSku(product.sku, product.id)
   const keywords = resolveSeoKeywords(product.seoKeywords)
   const organization = {
     '@type': 'Organization',
@@ -1014,7 +1016,7 @@ export function courseJsonLd(args: {
                 ? 'https://schema.org/InStock'
                 : 'https://schema.org/Discontinued',
             seller: organization,
-            ...digitalOfferPolicies(),
+            ...digitalOfferShipping(),
           },
         }
       : {}),

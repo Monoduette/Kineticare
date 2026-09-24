@@ -210,7 +210,7 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(jsonLd.description).toBe('Nyolc hetes otthoni kézrehabilitációs program.')
     expect(jsonLd.image).toEqual([absoluteUrl('/media/borito.webp')])
     // A sku szóköz és ékezet nélküli gépi azonosító (Google: whitespace tilos).
-    expect(jsonLd.sku).toBe('Kez-rehab-alapprogram')
+    expect(jsonLd.sku).toBe(`Kez-rehab-alapprogram-${doc.id}`)
     expect(jsonLd.brand).toEqual({ '@type': 'Brand', name: 'Kineticare' })
     expect(jsonLd.url).toBe(absoluteUrl('/kurzusok/7'))
     expect(jsonLd.inLanguage).toBe('hu-HU')
@@ -244,20 +244,15 @@ describe('Product + Offer JSON-LD a kurzusoldalon', () => {
     expect(free.brand).toBeUndefined()
   })
 
-  it('az Offer digitális szállítást (0 Ft, 0 nap, HU) és ÁSZF szerinti visszaküldést közöl', () => {
-    const shipping = offers.shippingDetails as Record<string, unknown>
-    expect(shipping['@type']).toBe('OfferShippingDetails')
-    expect(shipping.shippingRate).toEqual({ '@type': 'MonetaryAmount', value: 0, currency: 'HUF' })
-    expect(shipping.shippingDestination).toEqual({ '@type': 'DefinedRegion', addressCountry: 'HU' })
-    const delivery = shipping.deliveryTime as Record<string, Record<string, unknown>>
-    expect(delivery.handlingTime.maxValue).toBe(0)
-    expect(delivery.transitTime.maxValue).toBe(0)
-    expect(offers.hasMerchantReturnPolicy).toEqual({
-      '@type': 'MerchantReturnPolicy',
-      applicableCountry: 'HU',
-      returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
-      merchantReturnLink: absoluteUrl('/aszf'),
+  it('az Offer digitális szállítást közöl (0 Ft, HU), határidő és visszaküldési szabály nélkül', () => {
+    expect(offers.shippingDetails).toEqual({
+      '@type': 'OfferShippingDetails',
+      shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'HUF' },
+      shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'HU' },
     })
+    // A kurzusoldal 30 napos garanciája és az ÁSZF ellentmond egymásnak:
+    // amíg ez nincs rendezve, a strukturált adat egyiket sem állítja.
+    expect(offers.hasMerchantReturnPolicy).toBeUndefined()
   })
 
   it('kitalált értékelést SOSEM közöl (nincs értékelés-adat a kurzusokon)', () => {
@@ -360,6 +355,13 @@ describe('structuredDataSku', () => {
     expect(structuredDataSku('Otthoni KézRehab Program')).toBe('Otthoni-KezRehab-Program')
     expect(structuredDataSku('SOS Kézrelax villámkurzus')).toBe('SOS-Kezrelax-villamkurzus')
     expect(structuredDataSku('KURZUS-001')).toBe('KURZUS-001')
+    expect(structuredDataSku('KURZUS-001', 7)).toBe('KURZUS-001')
+  })
+
+  it('veszteséges átalakításnál a termék-id is bekerül (egyedi marad)', () => {
+    expect(structuredDataSku('A B', 1)).toBe('A-B-1')
+    expect(structuredDataSku('A-B', 2)).toBe('A-B')
+    expect(structuredDataSku('Otthoni KézRehab Program', 12)).toBe('Otthoni-KezRehab-Program-12')
     expect(structuredDataSku('  Kéztorna otthon — 8 hetes  ')).toBe('Keztorna-otthon-8-hetes')
   })
 
