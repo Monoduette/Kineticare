@@ -37,7 +37,10 @@ export const ALERT_CODES = {
   fuggoFizetes24Ora: 'fuggo-fizetes-24-ora',
   /** Beragadt `processing` job-sor, amelyet a schedule-guard feloldott. */
   beragadtJob: 'beragadt-job',
-  /** Biztosan elhalt job-sor, amelynek a lezárása a schedule-guardban hibára futott. */
+  /**
+   * A lezárási korlát szerint elhaltnak tekintett job-sor, amelynek a lezárása
+   * a schedule-guardban hibára futott.
+   */
   beragadtJobLezarasSikertelen: 'beragadt-job-lezaras-sikertelen',
   /** A job-ütemezés duplikátum-ellenőrzése nem futott le (DB-hiba). */
   utemezesEllenorzesHiba: 'utemezes-ellenorzes-hiba',

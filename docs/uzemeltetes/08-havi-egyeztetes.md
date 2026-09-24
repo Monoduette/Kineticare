@@ -54,12 +54,23 @@ bizonylataiból és a Barion havi kivonatából kell.
    „refunded”, ha a fájl a novemberi visszatérítés után készül; a havi oszlopai
    ettől még csak az októberi visszatérítést mutatják.
 
+   A stornó és a helyesbítő száma és állapota szintén a futtatás pillanatát
+   mutatja, a helyesbítőből pedig csak a legutóbbit. Ha a rendelésnek a
+   hónapban több helyesbítője van, vagy a hónap után újabb készült, a többit a
+   Számlázz.hu-ban párosítsd: az eredeti számla (`szamla_szama`) helyesbítői
+   közül azt, amelyik ugyanekkora, mint a `visszaterites_honapban_tetelei`
+   egyik tétele. A helyesbítő külső azonosítójának végén álló sorszám
+   (`KH-…-HELYESBITO-<sorszám>`) azt mutatja, hányadik visszatérítése ez a
+   rendelésnek.
+
 4. **Párosítás rendelésszám szerint:**
    - minden Barion „Succeeded” fizetéshez pontosan egy számla tartozik,
      ugyanazzal a bruttó összeggel;
-   - minden Barion-visszatérítéshez stornó (teljes) vagy helyesbítő (részleges)
-     tartozik, ugyanazzal az összeggel, és a Kineticare-sor havi tételei között
-     is ott van egy ugyanekkora tétel;
+   - minden Barion-visszatérítéshez stornó vagy helyesbítő tartozik, ugyanazzal
+     az összeggel, és a Kineticare-sor havi tételei között is ott van egy
+     ugyanekkora tétel. Stornó csak akkor készül, ha a teljes összeget egyszerre
+     térítettük vissza; egy részleges visszatérítés után a maradék visszautalása
+     is helyesbítőt kap;
    - minden számla mögött élő Barion-fizetés áll; teszt- vagy próbavásárlás nem
      viselhet számlát;
    - a Barion „Unsuccessful” visszatérítése azt jelenti, hogy a vevő nem kapta
@@ -176,17 +187,23 @@ Ezeket a rendelésszámokat egyenként keresd meg a Barion-exportban.
 SELECT id, task_slug, created_at, updated_at, error
 FROM payload_jobs
 WHERE has_error
-  AND task_slug::text IN ('invoice-issue', 'storno-issue', 'corrective-invoice-issue', 'order-poll')
+  AND task_slug::text IN ('invoice-issue', 'storno-issue', 'corrective-invoice-issue',
+                          'order-poll', 'webhook-retry')
 ORDER BY updated_at DESC;
 ```
 
-A `schedule-guard` által lezárt, beragadt futások is itt látszanak (az `error`
-mezőben `releasedBy: schedule-guard`); ezek egyenként nem teendők, csak ha
-sűrűn fordulnak elő. A rendszer egy futást csak két órával az indulása után
-zár le, mert addig még élhet; az új futásokat egy ilyen sor 15 perc után már
-nem tartja fel. Ha a lezárás hibára fut, a sor ebben a listában nem jelenik
-meg (a `has_error` hamis marad), helyette `beragadt-job-lezaras-sikertelen`
-kódú riasztás szól róla.
+A `schedule-guard` által lezárt, beragadt futások (`order-poll`,
+`webhook-retry`) is itt látszanak (az `error` mezőben
+`releasedBy: schedule-guard`); ezek egyenként nem teendők, csak ha sűrűn
+fordulnak elő. A rendszer egy futást csak két órával az indulása után zár le,
+mert addig még élhet; az új futásokat egy ilyen sor 15 perc után már nem
+tartja fel. Ha a lezárás hibára fut, a sor ebben a listában nem jelenik meg (a
+`has_error` hamis marad). Ilyenkor `beragadt-job-lezaras-sikertelen` kódú
+riasztás jön, de csak a két óránál régebbi sorról, és feladatonként legfeljebb
+hatóránként egyszer. Ezen a hat órán a `beragadt-job` riasztással osztozik: ha
+az egyik kiment, a másik hat órán belül nem jön. Ha ugyanabban a körben az új
+futás sorba állítása is elbukik, egyik sem jön, helyette az
+`utemezes-ellenorzes-hiba` riasztás szól.
 
 ## Kérdések a könyvelőnek (egyszer, írásban)
 

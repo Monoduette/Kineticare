@@ -18,8 +18,10 @@ import { logger as rootLogger, type Logger } from '../lib/logger'
  * ütemezünk, ha van élő job is, nem), lezárni (`processing: false`,
  * `hasError: true`, `error`) viszont csak a `STALE_JOB_RELEASE_AFTER_MS`-nél
  * régebbit szabad, feltételes írással; a lezárásról EGY fojtott riasztás megy.
- * Ha a lezárás hibára fut, tulajdonosi riasztás csak a korlátnál régebbi,
- * biztosan elhalt sorról szól, és nem állítja, hogy bármit lezárt.
+ * Ha a lezárás hibára fut, tulajdonosi riasztás csak a korlát szerint
+ * elhaltnak tekintett sorról szól, és nem állítja, hogy bármit lezárt. Mindkét
+ * riasztás azt is mondja, hogy az ütemezés működik, ezért csak a sikeres
+ * sorba állítás után, vagy egy élő futás mellett mehet ki.
  * `meta.scheduled` szűrés szándékosan nincs.
  */
 
@@ -266,8 +268,10 @@ function reportReleasedJobs(
  * A lezárás hibára futott, tehát semmit nem zárt le: „zárt le" riasztás nem
  * mehet. A lezárási korlátnál fiatalabb sor mögött élő futás lehet, róla csak
  * a hívó figyelmeztetése szól. Tulajdonosi riasztás akkor megy, ha van a
- * korlátnál régebbi, tehát biztosan elhalt sor, és azt sem sikerült lezárni:
- * ez a lezárás tartós hibájának jele lehet (például elromlott a lezáró SQL).
+ * korlátnál régebbi, tehát a korlát szerint elhaltnak tekintett sor, és azt
+ * sem sikerült lezárni: ez a lezárás tartós hibájának jele lehet (például
+ * elromlott a lezáró SQL). A hívó csak a sikeres sorba állítás után, vagy élő
+ * futás mellett hívja, mert a szöveg azt mondja, hogy az ütemezés működik.
  * Ennek a számolásnak a hibája sem állíthatja meg az ütemezést.
  */
 async function reportFailedRelease(
@@ -311,8 +315,9 @@ async function reportFailedRelease(
     ALERT_CODES.beragadtJobLezarasSikertelen,
     'RIASZTÁS: egy beragadt háttérfeladat lezárása nem sikerült. Az ütemezés ettől még ' +
       'működik, a rendszer a következő körökben ismét megpróbálja a lezárást. Teendő csak ' +
-      'akkor van, ha ez a riasztás újra megjön: ilyenkor szólj a fejlesztőnek, a Railway ' +
-      'naplójában (@alertCode:beragadt-job-lezaras-sikertelen) látszik, mi akadályozza.',
+      'akkor van, ha ez a riasztás újra megjön: ilyenkor szólj a fejlesztőnek. A Railway ' +
+      'naplójában (@alertCode:beragadt-job-lezaras-sikertelen) látszik, mi akadályozza a ' +
+      'lezárást.',
     {
       queue: facts.queue,
       stuckJobs: facts.stuckJobs,
@@ -422,6 +427,12 @@ export function createStaleAwareBeforeSchedule(
         scheduleLockKey(queue, taskSlug),
         async () => {
           const blocking = await countJobs(req, runnableOrActiveWhere(queue, taskSlug))
+          // A lezárásról és a lezárás hibájáról szóló riasztás azt is mondja,
+          // hogy az ütemezés működik. Ezért csak a sikeres sorba állítás után,
+          // vagy egy élő futás mellett mehet ki: ha a sorba állítás elbukik, a
+          // tulajdonos csak az ütemezés hibájáról kap riasztást (lent).
+          let reportAfterScheduling: (() => Promise<void>) | undefined
+          let released = 0
           if (blocking > 0) {
             const nowMs = now()
             const staleBeforeIso = new Date(nowMs - staleAfterMs).toISOString()
@@ -438,7 +449,6 @@ export function createStaleAwareBeforeSchedule(
             // futás lehet. A lezárt sor a következő tickben már nem blokkol,
             // és a riasztás sem ismétlődik minden tickben (a-callback-2).
             const releaseBeforeIso = new Date(nowMs - STALE_JOB_RELEASE_AFTER_MS).toISOString()
-            let released = 0
             let releaseError: string | undefined
             try {
               released = await releaseDeadJobs(req, queue, taskSlug, releaseBeforeIso, nowMs)
@@ -453,26 +463,40 @@ export function createStaleAwareBeforeSchedule(
             }
             const facts = { queue, taskSlug, stuckJobs: stale, liveJobs: blocking - stale, nowMs }
             if (released > 0) {
-              reportReleasedJobs(log, { ...facts, releasedJobs: released })
+              const releasedJobs = released
+              reportAfterScheduling = async () =>
+                reportReleasedJobs(log, { ...facts, releasedJobs })
             } else if (releaseError !== undefined) {
-              await reportFailedRelease(req, log, {
-                ...facts,
-                releaseBeforeIso,
-                error: releaseError,
-              })
+              const failure = releaseError
+              reportAfterScheduling = () =>
+                reportFailedRelease(req, log, { ...facts, releaseBeforeIso, error: failure })
             } else {
               reportLongRunningJobs(log, facts)
             }
             if (stale < blocking) {
               // Él mellette egy futás is: az viszi tovább a munkát.
+              await reportAfterScheduling?.()
               return skip
             }
           }
 
           // A sorba állítás A ZÁRON BELÜL történik: a versenyző példány a zárra
           // vár, és a fenti számlálásnál már ezt a jobot is látja → kiszáll.
-          await queueScheduledJob(req, queue, taskSlug, queueable.waitUntil)
+          try {
+            await queueScheduledJob(req, queue, taskSlug, queueable.waitUntil)
+          } catch (error) {
+            // A lezárás megtörtént, de a riasztása nem mehet ki (az ütemezés
+            // nem állt helyre); a napló így is megőrzi.
+            if (released > 0) {
+              log.warn('beragadt job lezárva, de az új futás sorba állítása nem sikerült', {
+                queue,
+                releasedJobs: released,
+              })
+            }
+            throw error
+          }
           log.info('ütemezett job sorba állítva (schedule-zár alatt)', { queue })
+          await reportAfterScheduling?.()
           return skip
         },
         log,
