@@ -1140,6 +1140,54 @@ describe('startCheckout — duplavásárlás-blokk', () => {
     },
   )
 
+  /**
+   * fix-404 rev2 (X4): hitelesítési hiba mellett a not-found kód nem
+   * bizonyíték (az order-poll ugyanezt „auth"-nak veszi és megszakít). Eddig
+   * a pénztár a 401/403 + NotExistingPaymentId-re lezárta a sort és új Startot
+   * indított, a 404 + AuthenticationFailed-re pedig az „egy napon belül"
+   * szöveget adta: egy elutasított kulcsnál egyik sem igaz.
+   */
+  it.each([
+    ['HTTP 401 + NotExistingPaymentId', () => notExistingPaymentId(401)],
+    ['HTTP 403 + NotExistingPaymentId', () => notExistingPaymentId(403)],
+    [
+      'HTTP 404 + AuthenticationFailed',
+      () =>
+        new BarionApiError({
+          message: 'Barion API hiba (HTTP 404): AuthenticationFailed',
+          kind: 'http',
+          endpoint: 'GET /v4/Payment/{id}/PaymentState',
+          httpStatus: 404,
+          providerErrors: [
+            { ErrorCode: 'AuthenticationFailed', Title: 'DUMMY', Description: 'DUMMY' },
+          ],
+        }),
+    ],
+  ] as const)(
+    '30 napos függő sor + %s: átmeneti 503, nincs lezárás, nincs Start',
+    async (_label, failure) => {
+      const { payload, calls, row } = unknownPendingSetup(thirtyDaysAgo())
+
+      const error = await checkoutErrorFrom(
+        startCheckout({
+          payload,
+          user: mockUser,
+          input: happyInput,
+          fetchPaymentState: async () => {
+            throw failure()
+          },
+        }),
+      )
+
+      expect(error.status).toBe(503)
+      expect(error.message).toBe(CHECKOUT_PAYMENT_STATE_UNAVAILABLE)
+      expect(row.status).toBe('payment_pending')
+      expect(calls.update.some((entry) => entry.data.status === 'cancelled')).toBe(false)
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
   it('FRISS függő sor + 404 NotExistingPaymentId: 409 várakozás, nincs lezárás, nincs Start', async () => {
     const { payload, calls, row } = unknownPendingSetup(new Date().toISOString())
 

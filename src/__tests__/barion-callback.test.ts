@@ -1158,20 +1158,25 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
    * fix-404 rev1: az 5xx szerverhiba, akkor sem definitív, ha a törzsében
    * not-found kód áll. Az order-poll ezt eddig is átmeneti („transport")
    * hibának vette, a callback viszont terminálisan elutasította.
+   * fix-404 rev2 (X4): ugyanez a hitelesítési hibára (HTTP 401/403): az
+   * order-poll „auth"-nak veszi és megszakít, egy elutasított kulcs pedig
+   * semmit nem mond arról, hogy a fizetés létezik-e.
    */
+  const notExistingPaymentIdBody = [
+    { ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' },
+  ]
   it.each([
-    ['üres Errors tömbbel', []],
-    [
-      'NotExistingPaymentId-vel a törzsben',
-      [{ ErrorCode: 'NotExistingPaymentId', Title: 'DUMMY', Description: 'DUMMY' }],
-    ],
+    [503, 'üres Errors tömbbel', []],
+    [503, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
+    [401, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
+    [403, 'NotExistingPaymentId-vel a törzsben', notExistingPaymentIdBody],
   ])(
-    'HTTP 503 GetState (%s) → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)',
-    async (_label, errors) => {
+    'HTTP %i GetState (%s) → NEM terminális: failed + processedAt NULL (a retry-job újrapróbálja)',
+    async (httpStatus, _label, errors) => {
       const { POST, docs, capture } = setup({ order: null })
       fetchMock.mockResolvedValueOnce(
         new Response(JSON.stringify({ Errors: errors }), {
-          status: 503,
+          status: httpStatus,
           headers: { 'Content-Type': 'application/json' },
         }),
       )

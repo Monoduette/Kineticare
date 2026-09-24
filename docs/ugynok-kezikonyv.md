@@ -285,12 +285,16 @@ Elveszett callback:
   order-poll task, 5 percenként, ugyanaz a v4 + állapotgép
   + árva-rendelés-lejárat + számla-resweep
   + a Barion által KIFEJEZETT not-found kóddal (NotExistingPaymentId,
-    PaymentNotFound; 5xx kivételével bármilyen HTTP-státusszal) jelzett,
-    1 óránál régebbi payment_pending sor → cancelled (#260); a callback
-    erre terminális rejected; fék: ha egy futásban legalább
-    MAX_LEADING_FAILURES ilyen sor jön, és egyetlen GetState (az
-    útvonal-próba) sem sikerül, egyik sem zárul le (RIASZTÁS:
-    BARION_ENVIRONMENT / POSKey)
+    PaymentNotFound; 5xx és 401/403 / auth-kód kivételével bármilyen
+    HTTP-státusszal) jelzett, 1 óránál régebbi payment_pending sor →
+    cancelled (#260); a callback erre terminális rejected; fék: ha a
+    futásban egyetlen GetState sem sikerült, az útvonal-próba dönt (a
+    legutóbb frissült, Barion-azonosítós paid rendelés GetState-je,
+    futásonként legfeljebb egy hívás): sikeres → lezár; elbukik, vagy
+    nincs jelölt, de legalább MAX_LEADING_FAILURES ilyen sor jött → egyik
+    sem zárul le (fojtott RIASZTÁS: BARION_ENVIRONMENT / POSKey); nincs
+    jelölt és kevesebb sor → lezár; auth/transport megszakítás vagy
+    olvashatatlan jelölt → a következő futás dönt
   + a puszta HTTP 404 (Errors tömb nélkül, vagy ismeretlen kóddal)
     'unverified-404': forgatás, függő sornál fojtott RIASZTÁS (a
     late-success scan lezárt soránál csak warn), önmagában SOSEM zár le;
@@ -298,13 +302,17 @@ Elveszett callback:
     (CHECKOUT_PAYMENT_STATE_UNVERIFIED); a 24 óránál régebbi ilyen
     payment_pending sort az order-poll CSAK akkor zárja le (RIASZTÁS), ha
     ugyanabban a futásban egy MÁSIK GetState sikeres volt, vagy sikeres az
-    útvonal-próba (a legutóbb frissült paid rendelés GetState-je); egy
-    késői Succeeded-et a late-success scan csak a létrehozástól számított
-    7 napon belül vesz fel
+    útvonal-próba; egy késői Succeeded-et a late-success scan csak a
+    létrehozástól számított 7 napon belül vesz fel
   + a futás eleji mennyezet (MAX_LEADING_FAILURES) csak a függő lapokat
-    állítja meg; a late-success scan saját kerettel fut (a mennyezete csak
-    warn, ha a függő lapoké ugyanabban a futásban már riasztott);
-    auth/transport megszakítás után kimarad
+    állítja meg; a late-success scan saját kerettel fut; auth/transport
+    megszakítás után kimarad. A mennyezet-RIASZTÁS futásszintű, óránként
+    egy (RUN_LEVEL_ALERT_COOLDOWN_MS, közben warn); a late-success scané
+    csak warn, ha a függő lapoké ugyanabban a futásban már döntött, vagy
+    ha az útvonal-próba sikeres (a hibák a lezárt sorokra szólnak)
+  + csendes bolt, néhány lezárt sor puszta 404-gyel, semmi nem sikerül (a
+    mennyezet nem ér el): ha az útvonal-próba is elbukik, óránként egy
+    útvonal-gyanú RIASZTÁS (BARION_API_URL / BARION_ENVIRONMENT / POSKey)
 ```
 
 Ár a checkoutban: a pénztár elküldi a **megjelenített** árat

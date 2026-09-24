@@ -54,6 +54,26 @@ interface OrderLookupResult {
   foundByOrderNumber: boolean
 }
 
+/** Ismert Barion auth-hibakódok (pontos egyezés — ne regex, poison pill ellen). */
+export const BARION_AUTH_ERROR_CODES: readonly string[] = ['AuthenticationFailed']
+
+/**
+ * Hitelesítési hiba-e a Barion-válasz: HTTP 401/403, vagy ismert auth-hibakód
+ * (akár HTTP 200-as Errors tömbben). Az order-poll ilyenkor az egész futást
+ * megszakítja (classifyBarionFailure 'auth'), ezért a callback és a pénztár
+ * sem vonhat le belőle semmit a fizetés létezéséről.
+ */
+export function isBarionAuthFailure(error: BarionApiError): boolean {
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return true
+  }
+  return error.providerErrors.some((providerError) =>
+    BARION_AUTH_ERROR_CODES.some(
+      (code) => code.toLowerCase() === providerError.ErrorCode.toLowerCase(),
+    ),
+  )
+}
+
 /**
  * Barion provider-hibakódok, amelyek BIZTOSAN azt jelentik: nincs ilyen fizetés.
  *
@@ -100,12 +120,14 @@ export const BARION_PAYMENT_NOT_FOUND_ERROR_CODES: readonly string[] = [
  *
  * Minden más hiba (timeout, hálózat, 5xx, hitelesítés, ismeretlen kód, puszta
  * 404) NEM terminális: azokra a webhook-retry újrapróbálása értelmes. Az 5xx
+ * és a hitelesítési hiba (HTTP 401/403 vagy auth-hibakód, isBarionAuthFailure)
  * akkor sem definitív, ha a törzsében not-found kód áll: szerverhibánál a
- * törzs nem megbízható, és így mindhárom hívó (callback, pénztár, order-poll
- * „transport") ugyanúgy, átmeneti hibaként kezeli.
+ * törzs nem megbízható, egy elutasított kulcs pedig semmit nem mond arról,
+ * hogy a fizetés létezik-e. Így mindhárom hívó (callback, pénztár, order-poll
+ * „transport" / „auth") ugyanúgy, átmeneti hibaként kezeli.
  */
 export function isPaymentDefinitelyNotFound(error: BarionApiError): boolean {
-  if ((error.httpStatus ?? 0) >= 500) {
+  if ((error.httpStatus ?? 0) >= 500 || isBarionAuthFailure(error)) {
     return false
   }
   return error.providerErrors.some((providerError) =>
@@ -124,9 +146,13 @@ export function isPaymentDefinitelyNotFound(error: BarionApiError): boolean {
  * végi útvonal-próba, azaz a legutóbb frissült paid rendelés GetState-je
  * sikeres. Mindkettő azt bizonyítja, hogy az útvonal és a POSKey működik, a
  * 404 tehát csak erre a fizetésre vonatkozik (lásd order-poll/service.ts).
+ * Auth-hibakóddal jött 404 nem ide tartozik: az hitelesítési hiba
+ * (isBarionAuthFailure), mint az order-pollban.
  */
 export function isUnverifiedNotFound(error: BarionApiError): boolean {
-  return error.httpStatus === 404 && !isPaymentDefinitelyNotFound(error)
+  return (
+    error.httpStatus === 404 && !isPaymentDefinitelyNotFound(error) && !isBarionAuthFailure(error)
+  )
 }
 
 async function findOrderForPayment(

@@ -533,7 +533,7 @@ async function resolveDuplicatePurchase(ctx: DuplicateCheckContext): Promise<Dup
                 'a függő fizetést nem zárjuk le, új fizetés nem indul. Ha minden fizetésnél ez jön, ' +
                 'ellenőrizd a BARION_API_URL-t és a PaymentState-útvonalat. Ha csak ennél, a fizetés ' +
                 'valószínűleg a másik Barion-környezetben indult: a 24 óránál régebbi sort az ' +
-                'order-poll lezárja, amint egy másik GetState sikeres.',
+                'order-poll lezárja, amint egy másik GetState vagy az útvonal-próba sikeres.',
               alertContext,
             )
           } else {
