@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   TURNSTILE_NORMAL_WIDTH_PX,
+  TURNSTILE_POLL_MS,
   TurnstileWidget,
   turnstileSize,
 } from '../app/(frontend)/kapcsolat/_components/TurnstileWidget'
@@ -100,6 +101,30 @@ describe('TurnstileWidget', () => {
     await mount({ siteKey: 'kulcs', onToken: vi.fn() }).render()
     await mount({ siteKey: 'kulcs', onToken: vi.fn() }).render()
     expect(turnstile.render).toHaveBeenCalledTimes(2)
+  })
+
+  it('a még töltődő közös api.js mellett mountolt két widget is kirajzolódik, amint az API megérkezik', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      Reflect.deleteProperty(window, 'turnstile')
+      await mount({ siteKey: 'kulcs', onToken: vi.fn() }).render()
+      await mount({ siteKey: 'kulcs', onToken: vi.fn() }).render()
+      expect(turnstile.render).not.toHaveBeenCalled()
+
+      Object.assign(window, { turnstile })
+      await act(async () => {
+        vi.advanceTimersByTime(TURNSTILE_POLL_MS)
+      })
+      expect(turnstile.render).toHaveBeenCalledTimes(2)
+
+      // Kirajzolás után a figyelés leáll: nincs újabb render.
+      await act(async () => {
+        vi.advanceTimersByTime(TURNSTILE_POLL_MS * 5)
+      })
+      expect(turnstile.render).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a token a szülőhöz jut, lejárat és hiba után null, hibánál onError is', async () => {

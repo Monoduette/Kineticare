@@ -67,7 +67,8 @@ import {
   URLAP_GYUJTEMENY_LEIRAS,
   urlapMezokAdminnal,
 } from './lib/admin/urlap-admin'
-import { logger } from './lib/logger'
+import { logger, type Logger } from './lib/logger'
+import { getRequestId } from './lib/request-id'
 import { adminGroups } from './plugins/admin-groups'
 import { audit } from './plugins/audit'
 import { ecommerce } from './plugins/ecommerce'
@@ -108,11 +109,13 @@ const TURNSTILE_UNAVAILABLE_MESSAGE =
  * A Cloudflare siteverify hívása. Hálózati hiba, időtúllépés, nem 2xx vagy nem
  * JSON válasz esetén 503-as APIError, magyar üzenettel: kezeletlen hibánál a
  * Payload a nem nyilvános 500-ast „Something went wrong." szövegre cserélné.
- * A naplóba sem a token, sem személyes adat nem kerül.
+ * A naplóba sem a token, sem személyes adat nem kerül; a request ID-t a hívó
+ * kéréshez kötött loggere hordozza (CLAUDE.md: technikai hiba request ID-vel).
  */
 async function callTurnstileSiteverify(
   secret: string,
   token: string,
+  log: Logger,
 ): Promise<{ success?: boolean }> {
   let response: Response
   try {
@@ -123,14 +126,14 @@ async function callTurnstileSiteverify(
       signal: AbortSignal.timeout(TURNSTILE_TIMEOUT_MS),
     })
   } catch (error) {
-    logger.warn('Turnstile siteverify nem érhető el', {
+    log.warn('Turnstile siteverify nem érhető el', {
       reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network',
       errorName: error instanceof Error ? error.name : typeof error,
     })
     throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
   }
   if (!response.ok) {
-    logger.warn('Turnstile siteverify nem érhető el', {
+    log.warn('Turnstile siteverify nem érhető el', {
       reason: 'http-status',
       status: response.status,
     })
@@ -149,7 +152,7 @@ async function callTurnstileSiteverify(
       ? (body as { success?: unknown }).success
       : undefined
   if (typeof success !== 'boolean') {
-    logger.warn('Turnstile siteverify nem érhető el', { reason: 'invalid-body' })
+    log.warn('Turnstile siteverify nem érhető el', { reason: 'invalid-body' })
     throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
   }
   return { success }
@@ -176,7 +179,11 @@ async function callTurnstileSiteverify(
  * Ha a siteverify nem érhető el, 503-as APIError megy a kliensnek magyar
  * üzenettel (lásd `callTurnstileSiteverify`).
  */
-const verifyTurnstile = async (data: unknown, operation: string): Promise<unknown> => {
+const verifyTurnstile = async (
+  data: unknown,
+  operation: string,
+  headers?: Headers,
+): Promise<unknown> => {
   if (operation !== 'create') {
     return data
   }
@@ -194,7 +201,9 @@ const verifyTurnstile = async (data: unknown, operation: string): Promise<unknow
       400,
     )
   }
-  const result = await callTurnstileSiteverify(secret, token)
+  const requestId = headers ? getRequestId(headers) : undefined
+  const log = requestId ? logger.child({ requestId }) : logger
+  const result = await callTurnstileSiteverify(secret, token, log)
   if (result.success !== true) {
     throw new APIError(
       'A spam-ellenőrzés nem sikerült. Frissítsd az oldalt, és küldd el újra az űrlapot.',
@@ -329,6 +338,7 @@ const validateContactSubmission: CollectionBeforeValidateHook = async ({
  * nem enged, így fejléc-injektálásra sem alkalmas.
  */
 const STAFF_REPLY_TO_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const STAFF_REPLY_TO_MAX_LENGTH = 254
 
 /**
  * Staff-értesítő űrlap-beküldéskor (T-018 sablonok).
@@ -397,7 +407,13 @@ const notifyStaffOnSubmission = async ({
     const submitterEmail = (
       formKind === 'appointment' ? fieldValue(APPOINTMENT_EMAIL_FIELD) : fieldValue('email')
     ).trim()
-    const replyTo = STAFF_REPLY_TO_EMAIL_PATTERN.test(submitterEmail) ? submitterEmail : undefined
+    // Az RFC 5321 legfeljebb 254 karaktert enged; hosszabb címnél a Resend
+    // az egész levelet elutasítaná, ezért ilyenkor Reply-To nélkül megy.
+    const replyTo =
+      submitterEmail.length <= STAFF_REPLY_TO_MAX_LENGTH &&
+      STAFF_REPLY_TO_EMAIL_PATTERN.test(submitterEmail)
+        ? submitterEmail
+        : undefined
     const template =
       formKind === 'appointment'
         ? appointmentStaffEmail({
@@ -970,7 +986,7 @@ export default buildConfig({
           // utána a külső Turnstile-hívás.
           beforeValidate: [
             validateContactSubmission,
-            async ({ data, operation }) => verifyTurnstile(data, operation),
+            async ({ data, operation, req }) => verifyTurnstile(data, operation, req.headers),
           ],
           afterChange: [
             async ({ doc, operation, req }) =>

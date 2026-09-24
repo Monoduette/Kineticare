@@ -54,7 +54,11 @@ async function bekuldesHookok(): Promise<{
 }
 
 const validateArgs = (data: unknown, operation: 'create' | 'update') =>
-  ({ data, operation }) as unknown as Parameters<CollectionBeforeValidateHook>[0]
+  ({
+    data,
+    operation,
+    req: { headers: new Headers() },
+  }) as unknown as Parameters<CollectionBeforeValidateHook>[0]
 
 const afterChangeArgs = (doc: unknown, formKind: string) =>
   ({
@@ -180,6 +184,33 @@ describe('Turnstile-ellenőrzés a form-submissions beforeValidate-láncában', 
   )
 })
 
+describe('Turnstile-hibanapló request ID-vel', () => {
+  it('a siteverify-hiba naplósora hordozza a kérés x-request-id-jét, token nélkül', async () => {
+    vi.stubEnv('TURNSTILE_SECRET_KEY', 'teszt-titok-nem-valodi')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('Bad Gateway', { status: 502 })),
+    )
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const { turnstile } = await bekuldesHookok()
+    const requestId = '0f8fad5b-d9cb-469f-a165-70867728950e'
+
+    const hiba = await hibaja(async () =>
+      turnstile({
+        data: { turnstileToken: TESZT_TOKEN },
+        operation: 'create',
+        req: { headers: new Headers({ 'x-request-id': requestId }) },
+      } as unknown as Parameters<CollectionBeforeValidateHook>[0]),
+    )
+
+    expect((hiba as APIError).status).toBe(503)
+    const sorok = naplo.mock.calls.map(([sor]) => String(sor))
+    const turnstileSor = sorok.find((sor) => sor.includes('Turnstile siteverify'))
+    expect(turnstileSor).toContain(requestId)
+    expect(turnstileSor).not.toContain(TESZT_TOKEN)
+  })
+})
+
 describe('budapestDateTimeString', () => {
   it('nyári időben az UTC-hez két órát ad (06:35Z → 08:35)', () => {
     expect(budapestDateTimeString(new Date('2026-09-15T06:35:00Z'))).toBe('2026. 09. 15. 08:35')
@@ -242,6 +273,18 @@ describe('stáb-értesítő (form-submissions afterChange)', () => {
 
     expect(sendMailMock).toHaveBeenCalledTimes(1)
     expect(elsoLevel().replyTo).toBe('peter@pelda.hu')
+  })
+
+  it('254 karakternél hosszabb beküldői címnél nincs Reply-To (a Resend elutasítaná a levelet)', async () => {
+    vi.stubEnv('CONTACT_STAFF_EMAILS', STAB_CIM)
+    const { stabErtesito } = await bekuldesHookok()
+    const hosszu = `${'a'.repeat(250)}@pelda.hu`
+    expect(hosszu.length).toBeGreaterThan(254)
+
+    await stabErtesito(afterChangeArgs({ submissionData: [sor('email', hosszu)] }, 'contact'))
+
+    expect(sendMailMock).toHaveBeenCalledTimes(1)
+    expect(sendMailMock.mock.calls[0]?.[0]).not.toHaveProperty('replyTo')
   })
 
   it('érvénytelen vagy hiányzó beküldői címnél nincs Reply-To', async () => {

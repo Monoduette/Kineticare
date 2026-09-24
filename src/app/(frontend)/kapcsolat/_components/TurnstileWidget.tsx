@@ -65,6 +65,10 @@ export const TURNSTILE_UNAVAILABLE_ERROR =
 export const TURNSTILE_SCRIPT_SRC =
   'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
+/** A betöltés alatt álló közös api.js figyelése: időköz és felső korlát. */
+export const TURNSTILE_POLL_MS = 200
+export const TURNSTILE_WAIT_MS = 30_000
+
 /** A tároló szélességéhez illő widget-méret. */
 export function turnstileSize(containerWidth: number): 'normal' | 'compact' {
   return containerWidth > 0 && containerWidth < TURNSTILE_NORMAL_WIDTH_PX ? 'compact' : 'normal'
@@ -116,10 +120,28 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
   }, [siteKey])
 
   // Ha az API már betöltődött (másik űrlap vagy korábbi lap tette be), a
-  // szkript onReady-je mellett a mount is azonnal rajzol; unmountkor takarít.
+  // mount azonnal rajzol. Ha a közös api.js még ÉPP töltődik (egy másik widget
+  // indította), a next/script a várakozó példányt nem az onReady-vel értesíti:
+  // ilyenkor rövid időközönként figyeljük az API megjelenését (legfeljebb
+  // TURNSTILE_WAIT_MS-ig). Unmountkor takarít.
   useEffect(() => {
     renderWidget()
+    let varakozas: ReturnType<typeof setInterval> | undefined
+    if (widgetIdRef.current === null) {
+      const kezdet = Date.now()
+      varakozas = setInterval(() => {
+        if (window.turnstile) {
+          renderWidget()
+        }
+        if (widgetIdRef.current !== null || Date.now() - kezdet > TURNSTILE_WAIT_MS) {
+          clearInterval(varakozas)
+        }
+      }, TURNSTILE_POLL_MS)
+    }
     return () => {
+      if (varakozas !== undefined) {
+        clearInterval(varakozas)
+      }
       const widgetId = widgetIdRef.current
       widgetIdRef.current = null
       if (widgetId !== null) {
@@ -162,6 +184,7 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
           onTokenRef.current(null)
           onErrorRef.current?.()
         }}
+        onLoad={renderWidget}
         onReady={renderWidget}
         src={TURNSTILE_SCRIPT_SRC}
         strategy="afterInteractive"
