@@ -717,13 +717,17 @@ describe('issueCorrectiveInvoiceForOrder — idempotencia-feloldás és kísérl
     expect(updates.some((data) => data.correctiveInvoiceStatus === 'pending')).toBe(false)
   })
 
-  it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS', async () => {
+  it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS a kézi kiállítás előtti kereséssel', async () => {
     // H3: a plafon a lekérdezés UTÁN dönt (a modul-docblock ígérete szerint a
     // lekérdezés mindig lefut). Üres találatnál végleges failed, POST nélkül.
+    // Az 5. beküldés bizonytalan kimenete miatt a helyesbítő később is
+    // megjelenhet: a szöveg a keresést kéri, és az utolsó hibát is megtartja.
+    const lastSubmissionError = 'A Számlázz.hu nem válaszolt 15000 ms-en belül.'
     const order = createOrder({
       correctiveInvoiceStatus: 'failed',
       correctiveInvoiceAttempts: MAX_CORRECTIVE_ATTEMPTS,
       correctiveInvoiceAttemptsSeq: 1,
+      correctiveInvoiceLastError: lastSubmissionError,
     })
     const { payload } = createMockPayload(order)
     const { logger, logged } = captureLogs()
@@ -747,10 +751,14 @@ describe('issueCorrectiveInvoiceForOrder — idempotencia-feloldás és kísérl
 
     expect(result.outcome).toBe('failed')
     expect(result.reason).toContain('kimerült')
+    expect(result.reason).toContain(
+      `${correctiveKulsoAzon(ORDER_NUMBER, 1)} külső azonosítójú bizonylatot`,
+    )
+    expect(result.reason).toContain(lastSubmissionError)
     expect(lookups).toEqual([correctiveKulsoAzon(ORDER_NUMBER, 1)])
     expect(posts).toBe(0)
     expect(order.correctiveInvoiceStatus).toBe('failed')
-    expect(order.correctiveInvoiceLastError).toContain('kimerült')
+    expect(order.correctiveInvoiceLastError).toBe(result.reason)
     expect(order.correctiveInvoiceAttempts).toBe(MAX_CORRECTIVE_ATTEMPTS)
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)

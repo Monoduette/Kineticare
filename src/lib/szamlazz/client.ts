@@ -469,7 +469,12 @@ export interface SzamlazzParsedSuccess {
  *    UNIÓJA számít. Ha az unió KIZÁRÓLAG 56-os (értesítő-hiba) kódokból áll
  *    és van egyértelmű számlaszám → SIKER `notificationError`-ral; 56 szám
  *    nélkül → bizonytalan (retryable); minden más a hivatalos
- *    kód-osztályozással;
+ *    kód-osztályozással, az unió MINDEN kódjára: duplikátum-kód (71/152)
+ *    esetén 'duplicate', különben ha BÁRMELY kód újrapróbálható (1, 55), a
+ *    hiba újrapróbálható (így egy ellentmondó 57-es fejléc + 55-ös törzs is
+ *    az, amit az 5-ös plafon és a beküldés előtti lekérdezés fékez). A
+ *    lekérdezésnél (pdf.ts) az unió bármely 7-es kódja „nincs ilyen
+ *    bizonylat";
  * 3. <sikeres>true</sikeres> → a számlaszám a törzsből, hiányában a
  *    `szlahu_szamlaszam` fejlécből; a vevői fiók URL a törzsből, hiányában a
  *    `szlahu_vevoifiokurl` fejlécből;

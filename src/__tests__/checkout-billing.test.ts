@@ -167,10 +167,16 @@ describe('validateBilling — elutasított, hiányos adatok', () => {
     expect(errorFields([VALID])).toHaveLength(4)
   })
 
-  it('csak szóközből álló mező is hiányzónak számít', () => {
-    expect(errorFields({ ...VALID, city: '   ' })).toEqual(['city'])
-    expect(errorFields({ ...VALID, name: '\n\t ' })).toEqual(['name'])
-  })
+  it.each([
+    ['city', 'szóköz', '   '],
+    ['name', 'sortörés és tabulátor', '\n\t '],
+    ['street', 'függőleges tabulátor', '\u000B'],
+  ] as const)(
+    'csak szóközjellegű karakterből álló mező is hiányzónak számít (%s: %s)',
+    (field, _label, blank) => {
+      expect(errorFields({ ...VALID, [field]: blank })).toEqual([field])
+    },
+  )
 
   it('a csak ZERO-WIDTH karakterekből álló név NEM megy át', () => {
     // A trim() ezeket nem vágja le, mégsem látszanak: a számlára üres `nev`
@@ -192,29 +198,22 @@ describe('validateBilling — elutasított, hiányos adatok', () => {
   it('H5: a csak Unicode-nemkarakterekből (U+FFFE, U+FFFF) álló név NEM megy át', () => {
     // A két nemkarakter XML 1.0-ban tiltott: a számla-XML escape-je elhagyná
     // őket, és üres <nev> menne ki. Ezért már a hosszellenőrzés ELŐTT kiesnek.
-    expect(errorFields({ ...VALID, name: '￿￿' })).toEqual(['name'])
-    expect(errorFields({ ...VALID, name: '￾￿﷐' })).toEqual(['name'])
-    expect(errorFields({ ...VALID, city: 'A￿' })).toEqual(['city'])
+    expect(errorFields({ ...VALID, name: '\uFFFF\uFFFF' })).toEqual(['name'])
+    expect(errorFields({ ...VALID, name: '\uFFFE\uFFFF\uFDD0' })).toEqual(['name'])
+    expect(errorFields({ ...VALID, city: 'A\uFFFF' })).toEqual(['city'])
   })
 
   it('H5: a nemkarakter és a magányos surrogate kiesik, a látható szöveg és az emoji marad', () => {
     expect(
       validateBilling({
         ...VALID,
-        name: 'Kovács￿Éva',
-        city: 'Buda￾pest\uD800',
-        street: 'Fő utca﷐ 1. \u{1FFFE}\u{1F600}',
+        name: 'Kovács\uFFFFÉva',
+        city: 'Buda\uFFFEpest\uD800',
+        street: 'Fő utca\uFDD0 1. \u{1FFFE}\u{1F600}',
       }),
     ).toMatchObject({
       ok: true,
       value: { name: 'KovácsÉva', city: 'Budapest', street: 'Fő utca 1. \u{1F600}' },
-    })
-  })
-
-  it('H5: a függőleges tabulátor (U+000B) szóközzé válik, nem kerül a számlára', () => {
-    expect(validateBilling({ ...VALID, street: 'Fő utca\u000B1.' })).toMatchObject({
-      ok: true,
-      value: { street: 'Fő utca 1.' },
     })
   })
 

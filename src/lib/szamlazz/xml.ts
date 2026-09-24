@@ -12,7 +12,18 @@
  * Agent XML-elemzője 57-es „XML beolvasási hibával" utasítja el, és a
  * számla végleges `failed`-be fut.
  */
-const XML_1_0_ILLEGAL_CHARS = /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/gu
+const XML_1_0_ILLEGAL_CHARS =
+  /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu
+
+/**
+ * Az XML 1.0-ban tiltott karakterek elhagyása (escape nélkül). A vevőadat
+ * üresség-ellenőrzése is ezt használja (invoice.ts, buyerFromOrder): egy csak
+ * ilyen karakterekből álló, még a pénztári szűrés előtt mentett név különben
+ * üres <nev>-vel menne ki.
+ */
+export function stripXmlIllegalChars(value: string): string {
+  return value.replace(XML_1_0_ILLEGAL_CHARS, '')
+}
 
 /**
  * XML-escape a dinamikus értékekhez.
@@ -26,8 +37,7 @@ const XML_1_0_ILLEGAL_CHARS = /[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FF
  * név ne jusson át a hosszellenőrzésen, és ne üres <nev> menjen ki.
  */
 export function escapeXml(value: string): string {
-  return value
-    .replace(XML_1_0_ILLEGAL_CHARS, '')
+  return stripXmlIllegalChars(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

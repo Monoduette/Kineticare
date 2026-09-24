@@ -22,7 +22,7 @@ import {
 } from '../lib/szamlazz/invoice'
 import type { OrderPaidMoment } from '../lib/szamlazz/paid-date'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from '../lib/szamlazz/pdf'
-import { SzamlazzApiError } from '../lib/szamlazz/types'
+import { SzamlazzApiError, type IssueInvoiceResult } from '../lib/szamlazz/types'
 import { budapestDateString, isIsoDateString } from '../lib/szamlazz/xml'
 import type { Order } from '../payload-types'
 
@@ -544,14 +544,14 @@ describe('escapeXml', () => {
 
   it('H5: az XML 1.0-ban tiltott karaktereket elhagyja (U+FFFF, U+FFFE, U+000B, U+0000, magányos surrogate)', () => {
     // Escape-pel ezek nem menthetők: a Számla Agent 57-tel utasítaná el a kérést.
-    expect(escapeXml('Kovács￿Éva')).toBe('KovácsÉva')
-    expect(escapeXml('a\u000Bb\uD800c￾d\u0000e\u001Ff')).toBe('abcdef')
+    expect(escapeXml('Kovács\uFFFFÉva')).toBe('KovácsÉva')
+    expect(escapeXml('a\u000Bb\uD800c\uFFFEd\u0000e\u001Ff')).toBe('abcdef')
     // Az elhagyás az escape ELŐTT fut, a maradék szöveg escape-je változatlan.
     expect(escapeXml('Kovács\u000B & <Társa>')).toBe('Kovács &amp; &lt;Társa&gt;')
   })
 
   it('H5: a megengedett karakterek maradnak (TAB, LF, CR, ékezet, emoji, U+FFFD)', () => {
-    const allowed = 'a\tb\nc\rd Árvíztűrő \u{1F600} �  \u{10FFFD}'
+    const allowed = 'a\tb\nc\rd Árvíztűrő \u{1F600} \uFFFD \uE000 \u{10FFFD}'
     expect(escapeXml(allowed)).toBe(allowed)
   })
 })
@@ -1206,44 +1206,62 @@ describe('issueInvoiceForOrder', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('hiányos vevő-adatnál invoiceStatus=failed, NEM dob (a job nem próbálja újra), és RIASZTÁS megy a naplóba', async () => {
-    const order = createOrder()
-    order.customerSnapshot = { name: 'Teszt Anna' }
-    const { payload } = createMockPayload(order)
-    let calls = 0
-    // Ez VÉGLEGES vesztés-ág: a rendelés kifizetve, számla soha nem áll ki, és
-    // a hívó nem dob, tehát nincs újrapróbálás. Ezért itt `error` + `RIASZTÁS:`
-    // kell (a szomszédos, ugyanilyen ágak konvenciója) — `warn` mellett a
-    // rendelés NÉMÁN veszne el.
-    const logged: Array<{ level: 'warn' | 'error'; message: string }> = []
-    const recordingLogger = {
-      debug: () => undefined,
-      info: () => undefined,
-      warn: (message: string) => logged.push({ level: 'warn', message }),
-      error: (message: string) => logged.push({ level: 'error', message }),
-      child: () => recordingLogger,
-    }
-
-    const result = await issueInvoiceForOrder({
-      payload,
-      orderId: 101,
-      config: ENABLED_CONFIG,
-      logger: recordingLogger,
-      queryByKulsoAzon: noLookup,
-      postXml: async () => {
-        calls += 1
-        return { szamlaszam: 'X' }
+  it.each([
+    ['hiányzó számlázási mezők', { name: 'Teszt Anna' }],
+    [
+      // A pénztári szűrés ELŐTT mentett rendelés: az escapeXml a tiltott
+      // karaktereket elhagyná, és üres <nev> menne ki.
+      'csak XML-ben tiltott karakterekből álló név',
+      {
+        name: String.fromCodePoint(0xffff),
+        email: 'anna@example.test',
+        billingName: String.fromCodePoint(0xfffe, 0xffff),
+        billingZip: '1111',
+        billingCity: 'Budapest',
+        billingStreet: 'Példa utca 1.',
       },
-    })
-    expect(result.outcome).toBe('failed')
-    expect(order.invoiceStatus).toBe('failed')
-    expect(calls).toBe(0)
+    ],
+  ])(
+    'hiányos vevő-adatnál (%s) invoiceStatus=failed, NEM dob (a job nem próbálja újra), és RIASZTÁS megy a naplóba',
+    async (_label, customerSnapshot) => {
+      const order = createOrder()
+      order.customerSnapshot = customerSnapshot
+      const { payload } = createMockPayload(order)
+      let calls = 0
+      // Ez VÉGLEGES vesztés-ág: a rendelés kifizetve, számla soha nem áll ki, és
+      // a hívó nem dob, tehát nincs újrapróbálás. Ezért itt `error` + `RIASZTÁS:`
+      // kell (a szomszédos, ugyanilyen ágak konvenciója) — `warn` mellett a
+      // rendelés NÉMÁN veszne el.
+      const logged: Array<{ level: 'warn' | 'error'; message: string }> = []
+      const recordingLogger = {
+        debug: () => undefined,
+        info: () => undefined,
+        warn: (message: string) => logged.push({ level: 'warn', message }),
+        error: (message: string) => logged.push({ level: 'error', message }),
+        child: () => recordingLogger,
+      }
 
-    const alert = logged.find((entry) => entry.message.includes('hiányos vevő-számlázási adatok'))
-    expect(alert).toBeDefined()
-    expect(alert?.level).toBe('error')
-    expect(alert?.message.startsWith('RIASZTÁS:')).toBe(true)
-  })
+      const result = await issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger: recordingLogger,
+        queryByKulsoAzon: noLookup,
+        postXml: async () => {
+          calls += 1
+          return { szamlaszam: 'X' }
+        },
+      })
+      expect(result.outcome).toBe('failed')
+      expect(order.invoiceStatus).toBe('failed')
+      expect(calls).toBe(0)
+
+      const alert = logged.find((entry) => entry.message.includes('hiányos vevő-számlázási adatok'))
+      expect(alert).toBeDefined()
+      expect(alert?.level).toBe('error')
+      expect(alert?.message.startsWith('RIASZTÁS:')).toBe(true)
+    },
+  )
 
   it('agent-elutasításnál invoiceStatus=failed, nem dob (üzleti hiba, nem retryable)', async () => {
     const { payload, order } = createMockPayload(createOrder())
@@ -1422,41 +1440,58 @@ describe('issueInvoiceForOrder — idempotencia-feloldás és kísérlet-plafon'
     expect(order?.invoiceAttempts).toBe(1)
   })
 
-  it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS', async () => {
+  it('kísérlet-plafon (5): EGY záró lekérdezés, beküldés NINCS, failed + RIASZTÁS a kézi kiállítás előtti kereséssel; egy később futó job már nem kérdez le', async () => {
     // H3: a plafon a lekérdezés UTÁN dönt (az 5. bizonytalan beküldés
-    // bizonylata is átvehető legyen). Üres találatnál a kimenet változatlanul
-    // végleges failed + RIASZTÁS, POST nélkül.
+    // bizonylata is átvehető legyen). Üres találatnál a kimenet végleges
+    // failed + RIASZTÁS, POST nélkül. Az 5. beküldés timeoutja miatt a
+    // bizonylat később is megjelenhet: a szöveg a keresést kéri, és az utolsó
+    // hibát is megtartja.
+    const lastSubmissionError = 'A Számlázz.hu nem válaszolt 15000 ms-en belül.'
     const { payload, order } = createMockPayload(
-      createOrder({ invoiceStatus: 'failed', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+      createOrder({
+        invoiceStatus: 'failed',
+        invoiceAttempts: MAX_INVOICE_ATTEMPTS,
+        invoiceLastError: lastSubmissionError,
+      }),
     )
     const { logger, logged } = captureLogs()
     let lookups = 0
     let posts = 0
-    const result = await issueInvoiceForOrder({
-      payload,
-      orderId: 101,
-      config: ENABLED_CONFIG,
-      logger,
-      queryByKulsoAzon: async () => {
-        lookups += 1
-        return null
-      },
-      postXml: async () => {
-        posts += 1
-        return { szamlaszam: 'X' }
-      },
-    })
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        queryByKulsoAzon: async () => {
+          lookups += 1
+          return null
+        },
+        postXml: async () => {
+          posts += 1
+          return { szamlaszam: 'X' }
+        },
+      })
+    const result = await run()
 
     expect(result.outcome).toBe('failed')
     expect(result.reason).toContain('kimerült')
+    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    expect(result.reason).toContain(lastSubmissionError)
     expect(lookups).toBe(1)
     expect(posts).toBe(0)
     expect(order?.invoiceStatus).toBe('failed')
-    expect(order?.invoiceLastError).toContain('kimerült')
+    expect(order?.invoiceLastError).toBe(result.reason)
     expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)
     expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számlakiállítás beküldései kimerültek/)
+
+    // Egy még sorban álló job: sem lekérdezés, sem beküldés, sem új riasztás.
+    await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
+    expect(lookups).toBe(1)
+    expect(posts).toBe(0)
+    expect(logged.filter((entry) => entry.level === 'error')).toHaveLength(1)
   })
 
   it('H3 — kísérlet-plafon (5) + lekérdezés-TALÁLAT: a meglévő számla átvéve, beküldés nélkül', async () => {
@@ -1861,14 +1896,19 @@ describe('issueInvoiceForOrder — teljesítési dátum a fizetés napjából', 
   })
 })
 
-/** Szint + üzenet naplórögzítő (a RIASZTÁS-sorok ellenőrzéséhez). */
+/** Szint + üzenet (+ kontextus) naplórögzítő (a RIASZTÁS-sorok ellenőrzéséhez). */
 function captureLogs() {
-  const logged: Array<{ level: 'debug' | 'info' | 'warn' | 'error'; message: string }> = []
+  const logged: Array<{
+    level: 'debug' | 'info' | 'warn' | 'error'
+    message: string
+    context?: Record<string, unknown>
+  }> = []
   const logger = {
     debug: (message: string) => logged.push({ level: 'debug', message }),
     info: (message: string) => logged.push({ level: 'info', message }),
     warn: (message: string) => logged.push({ level: 'warn', message }),
-    error: (message: string) => logged.push({ level: 'error', message }),
+    error: (message: string, context?: Record<string, unknown>) =>
+      logged.push({ level: 'error', message, ...(context ? { context } : {}) }),
     child: () => logger,
   }
   return { logger, logged }
@@ -1876,10 +1916,62 @@ function captureLogs() {
 
 const HOUR_MS = 60 * 60 * 1000
 
-/** A fizetés pillanata `hoursAgo` órával ezelőtt. */
+/** A fizetés pillanata `hoursAgo` órával a HÍVÁS pillanata előtt (rögzített érték). */
 function paidHoursAgo(hoursAgo: number): () => Promise<OrderPaidMoment> {
   const paidAt = new Date(Date.now() - hoursAgo * HOUR_MS)
   return async () => ({ paidAt, paidDate: budapestDateString(paidAt) })
+}
+
+/**
+ * Rögzített óra a H3/H4-tesztekhez: csak a Date hamis, így a lekérdezési
+ * hibasorozat órái pontosan léptethetők, a fetch-mock és az AbortSignal
+ * viszont valódi időzítőn fut.
+ */
+function useFrozenClock(): void {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-10-01T08:00:00.000Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+}
+
+function advanceClock(ms: number): void {
+  vi.setSystemTime(Date.now() + ms)
+}
+
+/** A riasztási/leállási küszöbnél (2 órás hibasorozat) egy perccel hosszabb lépés. */
+const PAST_STREAK_THRESHOLD_MS = LOOKUP_FAILURE_ALERT_AFTER_MS + 60 * 1000
+
+/**
+ * A job-újrapróbálás és a resweep modellje: a futást addig ismétli (közben a
+ * hibasorozat küszöbén túlra lépteti az órát), amíg a kimenet nem
+ * újrapróbálható dobás. Minden más hiba (pl. a tesztben hangosan dobó POST)
+ * azonnal továbbmegy.
+ */
+async function runUntilSettled(
+  run: () => Promise<IssueInvoiceResult>,
+  maxRuns = 4,
+): Promise<IssueInvoiceResult> {
+  for (let attempt = 1; attempt < maxRuns; attempt += 1) {
+    try {
+      return await run()
+    } catch (error) {
+      if (!(error instanceof SzamlazzApiError) || !error.retryable) {
+        throw error
+      }
+      advanceClock(PAST_STREAK_THRESHOLD_MS)
+    }
+  }
+  return run()
+}
+
+const LOOKUP_TIMEOUT_MESSAGE =
+  'A Számlázz.hu nem válaszolt 15000 ms-en belül (bizonylat-lekérdezés).'
+
+function lookupTimeout(): SzamlazzApiError {
+  return new SzamlazzApiError({ message: LOOKUP_TIMEOUT_MESSAGE, kind: 'timeout', retryable: true })
 }
 
 /**
@@ -1891,6 +1983,16 @@ function paidHoursAgo(hoursAgo: number): () => Promise<OrderPaidMoment> {
  * kiállítás felé tolta a tulajdonost.
  */
 describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata átvehető', () => {
+  useFrozenClock()
+
+  beforeEach(() => {
+    resetAlertThrottle()
+  })
+
+  afterEach(() => {
+    resetAlertThrottle()
+  })
+
   it('4 × 55, majd timeoutoló, de létrejött 5. beküldés: a 6. futás lekérdezéssel ÁTVESZI a számlát', async () => {
     const { payload, order } = createMockPayload(createOrder())
     let posts = 0
@@ -1940,63 +2042,85 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
     expect(order?.invoiceNumber).toBe('E-KIN-2026-42')
   })
 
-  it('plafonnál újrapróbálható lekérdezés-hiba FRISS fizetésnél: pending + THROW, beküldés nélkül (a resweep még átveheti)', async () => {
+  it('plafonnál újrapróbálható lekérdezés-hiba: AZONNALI, fojtott plafon-RIASZTÁS, pending + THROW; a lekérdezés ismétlődik, beküldés nincs', async () => {
     const { payload, order } = createMockPayload(
       createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
     )
     const { logger, logged } = captureLogs()
-    await expect(
+    let lookups = 0
+    const paid = paidHoursAgo(1)
+    for (let run = 0; run < 3; run += 1) {
+      await expect(
+        issueInvoiceForOrder({
+          payload,
+          orderId: 101,
+          config: ENABLED_CONFIG,
+          logger,
+          resolvePaidMoment: paid,
+          queryByKulsoAzon: async () => {
+            lookups += 1
+            throw lookupTimeout()
+          },
+          postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
+        }),
+      ).rejects.toThrow('bizonylat-lekérdezés')
+      advanceClock(10 * 60 * 1000)
+    }
+
+    expect(lookups).toBe(3)
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
+    const alerts = logged.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a számlakiállítás beküldései kimerültek, és a záró bizonylat-lekérdezés hibát adott/,
+    )
+    expect(alerts[0]?.message).toContain('keresd meg a Számlázz.hu-fiókban')
+  })
+
+  it('plafonnál a legalább 2 órás lekérdezési hibasorozat a fizetés után 24 órán túl: failed + RIASZTÁS, dobás és beküldés NÉLKÜL', async () => {
+    const { payload, order } = createMockPayload(
+      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
+    )
+    const { logger, logged } = captureLogs()
+    const paid = paidHoursAgo(25)
+    const run = () =>
       issueInvoiceForOrder({
         payload,
         orderId: 101,
         config: ENABLED_CONFIG,
         logger,
-        resolvePaidMoment: paidHoursAgo(1),
+        resolvePaidMoment: paid,
         queryByKulsoAzon: async () => {
           throw new SzamlazzApiError({
-            message: 'A Számlázz.hu nem válaszolt 15000 ms-en belül (bizonylat-lekérdezés).',
-            kind: 'timeout',
+            message: 'Számlázz.hu HTTP-hiba (503) (bizonylat-lekérdezés).',
+            kind: 'http',
+            httpStatus: 503,
             retryable: true,
           })
         },
         postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
-      }),
-    ).rejects.toThrow('bizonylat-lekérdezés')
-    expect(order?.invoiceStatus).toBe('pending')
-    expect(order?.invoiceAttempts).toBe(MAX_INVOICE_ATTEMPTS)
-    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
-  })
+      })
 
-  it('plafonnál a lekérdezés a fizetés után 24 órával is hibás: failed + RIASZTÁS, dobás és beküldés NÉLKÜL', async () => {
-    const { payload, order } = createMockPayload(
-      createOrder({ invoiceStatus: 'pending', invoiceAttempts: MAX_INVOICE_ATTEMPTS }),
-    )
-    const { logger, logged } = captureLogs()
-    const result = await issueInvoiceForOrder({
-      payload,
-      orderId: 101,
-      config: ENABLED_CONFIG,
-      logger,
-      resolvePaidMoment: paidHoursAgo(25),
-      queryByKulsoAzon: async () => {
-        throw new SzamlazzApiError({
-          message: 'Számlázz.hu HTTP-hiba (503) (bizonylat-lekérdezés).',
-          kind: 'http',
-          httpStatus: 503,
-          retryable: true,
-        })
-      },
-      postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
-    })
+    // Az első hiba csak elindítja a hibasorozatot: még nem végleges.
+    await expect(run()).rejects.toMatchObject({ retryable: true })
+    expect(order?.invoiceStatus).toBe('pending')
+
+    advanceClock(PAST_STREAK_THRESHOLD_MS)
+    const result = await run()
     expect(result.outcome).toBe('failed')
     expect(order?.invoiceStatus).toBe('failed')
+    expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
     // A korábbi beküldések miatt a bizonylat létezhet: a szöveg a kézi
-    // kiállítás ELŐTTI ellenőrzést kéri, a külső azonosítóval.
+    // kiállítás ELŐTTI keresést kéri, a külső azonosítóval.
     expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
     expect(order?.invoiceLastError).toBe(result.reason)
-    const alerts = logged.filter((entry) => entry.level === 'error')
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: /)
+    expect(logged.filter((entry) => entry.level === 'error').map((entry) => entry.message)).toEqual(
+      [
+        expect.stringMatching(/^RIASZTÁS: a számlakiállítás beküldései kimerültek/),
+        expect.stringMatching(/^RIASZTÁS: .*automatikus kiállítása leállt/),
+      ],
+    )
   })
 
   it('plafonnál VÉGLEGES lekérdezés-hiba: failed + RIASZTÁS (a bizonylat létezhet), beküldés nélkül', async () => {
@@ -2021,6 +2145,7 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
       postXml: async () => expect.unreachable('a plafonnál POST nem mehet ki'),
     })
     expect(result.outcome).toBe('failed')
+    expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
     expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
     expect(order?.invoiceStatus).toBe('failed')
     const alerts = logged.filter((entry) => entry.level === 'error')
@@ -2031,26 +2156,39 @@ describe('issueInvoiceForOrder — H3: az 5. bizonytalan beküldés bizonylata �
 
 /**
  * H4 — a beküldés ELŐTTI lekérdezés hibái nem fogyasztanak kísérletet (F10),
- * ezért a plafon nem fékezi őket: a fék IDŐALAPÚ. A lekérdezés itt a VALÓDI
- * queryInvoiceByKulsoAzon, mockolt fetch-csel (valódi hálózat nincs): a
- * válasz egy 200-as HTML-oldal, amit egy elgépelt SZAMLAZZ_API_URL (a
+ * ezért a plafon nem fékezi őket: a fék a folyamatos HIBASOROZAT hossza és a
+ * fizetés óta eltelt idő együtt. A lekérdezés itt a VALÓDI
+ * queryInvoiceByKulsoAzon, mockolt fetch-csel (valódi hálózat nincs): az
+ * alapválasz egy 200-as HTML-oldal, amit egy elgépelt SZAMLAZZ_API_URL (a
  * nyitóoldal) tartósan ad. Az invalid_response SZÁNDÉKOSAN újrapróbálható
  * marad (egy átmeneti karbantartási oldal ne tegye véglegessé a hibát).
  */
 describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () => {
+  useFrozenClock()
+
   let fetchCalls = 0
+  /** true: a lekérdezés sikeres („nincs ilyen bizonylat", 7-es kód). */
+  let lookupHealthy = false
+
+  const HTML_PAGE = '<!doctype html><html><body>Számlázz.hu</body></html>'
+  const NOT_FOUND_XML =
+    '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>7</hibakod>' +
+    '<hibauzenet>Nincs ilyen bizonylat</hibauzenet></xmlszamlavalasz>'
 
   beforeEach(() => {
     fetchCalls = 0
+    lookupHealthy = false
     resetAlertThrottle()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
         fetchCalls += 1
-        return new Response('<!doctype html><html><body>Számlázz.hu</body></html>', {
-          status: 200,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
-        })
+        return lookupHealthy
+          ? new Response(NOT_FOUND_XML, { status: 200 })
+          : new Response(HTML_PAGE, {
+              status: 200,
+              headers: { 'content-type': 'text/html; charset=utf-8' },
+            })
       }),
     )
   })
@@ -2064,35 +2202,126 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
     throw new Error('TESZT-HIBA: a lekérdezés hibája után POST nem mehet ki')
   }
 
-  it('a konstansok: 2 óra után riasztás, 24 óra után végleges hiba', () => {
+  it('a konstansok: 2 órás hibasorozat után riasztás, a fizetés után 24 órán túl végleges hiba', () => {
     expect(LOOKUP_FAILURE_ALERT_AFTER_MS).toBe(2 * HOUR_MS)
     expect(LOOKUP_FAILURE_ESCALATION_MS).toBe(24 * HOUR_MS)
   })
 
-  it('a fizetés után 25 órával HTML-t adó lekérdezés: failed + EGY RIASZTÁS, dobás és beküldés nélkül', async () => {
-    const { payload, order } = createMockPayload(createOrder({ invoiceStatus: 'pending' }))
+  it('egyetlen átmeneti lekérdezés-hiba egy 72 órája fizetett, ki nem állított számlánál NEM végleges: pending + THROW, a következő futás kiállítja', async () => {
+    // Kiesés utáni lemaradás: az első kiállítási kísérlet a fizetés után több
+    // mint 24 órával fut, és a lekérdezés egyszer 503-at kap.
+    let call = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        call += 1
+        return call === 1
+          ? new Response('<html>Service Unavailable</html>', { status: 503 })
+          : new Response(NOT_FOUND_XML, { status: 200 })
+      }),
+    )
+    const { payload, order } = createMockPayload(createOrder({ invoiceStatus: 'none' }))
     const { logger, logged } = captureLogs()
-    const result = await issueInvoiceForOrder({
-      payload,
-      orderId: 101,
-      config: ENABLED_CONFIG,
-      logger,
-      resolvePaidMoment: paidHoursAgo(25),
-      queryByKulsoAzon: queryInvoiceByKulsoAzon,
-      postXml: loudPost,
-    })
+    let posts = 0
+    const paid = paidHoursAgo(72)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: async () => {
+          posts += 1
+          return { szamlaszam: 'E-KIN-2026-1' }
+        },
+      })
 
+    await expect(run()).rejects.toMatchObject({ retryable: true })
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
+
+    advanceClock(10 * 60 * 1000)
+    await expect(run()).resolves.toEqual({ outcome: 'issued', invoiceNumber: 'E-KIN-2026-1' })
+    expect(posts).toBe(1)
+    expect(order?.invoiceStatus).toBe('issued')
+    expect(order?.invoiceLastError).toBeNull()
+  })
+
+  it('legalább 2 órás hibasorozat a fizetés után 24 órán túl: failed + EGY RIASZTÁS, dobás és beküldés nélkül', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    const paid = paidHoursAgo(72)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: loudPost,
+      })
+
+    await expect(run()).rejects.toMatchObject({ kind: 'invalid_response', retryable: true })
+    expect(order?.invoiceStatus).toBe('pending')
+
+    advanceClock(PAST_STREAK_THRESHOLD_MS)
+    const result = await run()
     expect(result.outcome).toBe('failed')
-    expect(fetchCalls).toBe(1)
+    expect(fetchCalls).toBe(2)
     expect(order?.invoiceStatus).toBe('failed')
     expect(order?.invoiceAttempts).toBeUndefined()
+    expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
+    expect(result.reason).toContain('2 órája folyamatosan sikertelen')
     expect(result.reason).toContain('SZAMLAZZ_API_URL')
-    expect(result.reason).toContain('25 órával')
-    // Első kísérlet (0 beküldés): bizonylat nem létezhet, nincs rá utaló mondat.
+    // Beküldés még nem volt: bizonylat nem létezhet, keresésre nincs szükség.
+    expect(result.reason).toContain('Beküldés még nem történt')
     expect(result.reason).not.toContain('külső azonosítójú')
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)
-    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számla előtti bizonylat-lekérdezés/)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a számla előtti bizonylat-lekérdezés legalább 2 órája folyamatosan sikertelen, és a fizetés óta több mint 24 óra telt el/,
+    )
+  })
+
+  it('egy sikeres lekérdezés lezárja a hibasorozatot: a későbbi hiba ÚJ sorozatot indít, nem végleges', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    const paid = paidHoursAgo(72)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: async () => {
+          throw new SzamlazzApiError({
+            message: 'A Számlázz.hu nem válaszolt 15000 ms-en belül.',
+            kind: 'timeout',
+            retryable: true,
+          })
+        },
+      })
+
+    // T0: a lekérdezés hibás, a sorozat elindul.
+    await expect(run()).rejects.toMatchObject({ kind: 'invalid_response' })
+    // T0 + 1 óra: a lekérdezés sikeres („nincs ilyen bizonylat"), a beküldés timeoutol.
+    advanceClock(HOUR_MS)
+    lookupHealthy = true
+    await expect(run()).rejects.toMatchObject({ kind: 'timeout' })
+    expect(order?.invoiceAttempts).toBe(1)
+    // T0 + 2 óra 1 perc: újra hibás lekérdezés. A T0-s sorozat lezárult, ez
+    // egy friss sorozat első hibája.
+    advanceClock(PAST_STREAK_THRESHOLD_MS - HOUR_MS)
+    lookupHealthy = false
+    await expect(run()).rejects.toMatchObject({ kind: 'invalid_response' })
+
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
   })
 
   it('a fizetés után 1 órával: pending + THROW (a resweep újrapróbálja), riasztás nélkül', async () => {
@@ -2116,45 +2345,143 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
     expect(logged.some((entry) => entry.level === 'warn')).toBe(true)
   })
 
-  it('2 és 24 óra között: pending + THROW, és a RIASZTÁS rendelésenként EGYSZER megy ki (fojtva)', async () => {
+  it('2 órás hibasorozat a fizetés utáni 24 órán belül: pending + THROW, és a RIASZTÁS rendelésenként EGYSZER megy ki (fojtva)', async () => {
     const { payload, order } = createMockPayload(createOrder())
     const { logger, logged } = captureLogs()
-    for (let run = 0; run < 3; run += 1) {
-      await expect(
-        issueInvoiceForOrder({
-          payload,
-          orderId: 101,
-          config: ENABLED_CONFIG,
-          logger,
-          resolvePaidMoment: paidHoursAgo(3),
-          queryByKulsoAzon: queryInvoiceByKulsoAzon,
-          postXml: loudPost,
-        }),
-      ).rejects.toMatchObject({ retryable: true })
-    }
+    const paid = paidHoursAgo(1)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: loudPost,
+      })
+
+    await expect(run()).rejects.toMatchObject({ retryable: true })
+    expect(logged.filter((entry) => entry.level === 'error')).toEqual([])
+    advanceClock(PAST_STREAK_THRESHOLD_MS)
+    await expect(run()).rejects.toMatchObject({ retryable: true })
+    advanceClock(10 * 60 * 1000)
+    await expect(run()).rejects.toMatchObject({ retryable: true })
 
     expect(fetchCalls).toBe(3)
     expect(order?.invoiceStatus).toBe('pending')
     const alerts = logged.filter((entry) => entry.level === 'error')
     expect(alerts).toHaveLength(1)
-    expect(alerts[0]?.message).toMatch(/^RIASZTÁS: a számla előtti bizonylat-lekérdezés/)
+    expect(alerts[0]?.message).toMatch(
+      /^RIASZTÁS: a számla előtti bizonylat-lekérdezés legalább 2 órája folyamatosan sikertelen\. Ha a hiba a fizetés után 24 órával is fennáll/,
+    )
   })
 
-  it('ismeretlen fizetési pillanat: a rendelés létrehozása az időalap (25 órás rendelés → failed)', async () => {
+  it('ismeretlen fizetési pillanat: a rendelés létrehozása az időalap, és ezt mondja az ok ÉS a RIASZTÁS is', async () => {
     const createdAt = new Date(Date.now() - 25 * HOUR_MS).toISOString()
     const { payload, order } = createMockPayload(createOrder({ createdAt }))
-    const result = await issueInvoiceForOrder({
-      payload,
-      orderId: 101,
-      config: ENABLED_CONFIG,
-      resolvePaidMoment: async () => null,
-      queryByKulsoAzon: queryInvoiceByKulsoAzon,
-      postXml: loudPost,
-    })
+    const { logger, logged } = captureLogs()
+    const result = await runUntilSettled(() =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: async () => null,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: loudPost,
+      }),
+    )
 
     expect(result.outcome).toBe('failed')
-    expect(result.reason).toContain('a rendelés után 25 órával')
     expect(order?.invoiceStatus).toBe('failed')
+    expect(result.reason).toContain('a rendelés óta')
+    expect(result.reason).not.toContain('a fizetés')
+    const alert = logged.find((entry) => entry.level === 'error')
+    expect(alert?.message).toContain('a rendelés óta több mint 24 óra')
+    expect(alert?.message).not.toContain('a fizetés')
+  })
+
+  it('a leállás VÉGLEGES: egy még sorban álló job akkor sem kérdez le és nem küld be, ha a lekérdezés közben helyreállt', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    let posts = 0
+    const paid = paidHoursAgo(30)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: queryInvoiceByKulsoAzon,
+        postXml: async () => {
+          posts += 1
+          return { szamlaszam: 'E-KIN-2026-1' }
+        },
+      })
+
+    const stopped = await runUntilSettled(run)
+    expect(stopped.outcome).toBe('failed')
+    expect(logged.find((entry) => entry.level === 'error')?.message).toContain(
+      'automatikus kiállítása leállt',
+    )
+
+    // A tulajdonos a riasztás után kézzel rendez; közben a Számlázz.hu
+    // helyreáll, és lefut egy korábban sorba állított job.
+    const fetchCallsAtStop = fetchCalls
+    lookupHealthy = true
+    advanceClock(5 * 60 * 1000)
+    await expect(run()).resolves.toMatchObject({ outcome: 'skipped' })
+    expect(posts).toBe(0)
+    expect(fetchCalls).toBe(fetchCallsAtStop)
+    expect(order?.invoiceStatus).toBe('failed')
+    expect(order?.invoiceLastError).toBe(stopped.reason)
+  })
+
+  it('71/152 után a „már létezik" tény a lekérdezési hibasorozaton át a leállás okáig és a RIASZTÁS kontextusáig megmarad', async () => {
+    const { payload } = createMockPayload(createOrder())
+    const { logger, logged } = captureLogs()
+    let lookups = 0
+    let posts = 0
+    const paid = paidHoursAgo(30)
+    const run = () =>
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        logger,
+        resolvePaidMoment: paid,
+        queryByKulsoAzon: async () => {
+          lookups += 1
+          // Az első beküldés előtti lekérdezés sikeres; utána (a 71/152
+          // feloldásánál és a későbbi futásokban) timeoutol.
+          if (lookups === 1) {
+            return null
+          }
+          throw lookupTimeout()
+        },
+        postXml: async () => {
+          posts += 1
+          throw new SzamlazzApiError({
+            message: 'Számla Agent hiba: 152 — Már létező rendelésszám.',
+            kind: 'duplicate',
+            agentErrors: [{ code: '152', message: 'Már létező rendelésszám.' }],
+            retryable: false,
+          })
+        },
+      })
+
+    const result = await runUntilSettled(run)
+
+    expect(posts).toBe(1)
+    expect(result.outcome).toBe('failed')
+    expect(result.reason).toContain('MÁR LÉTEZIK (71/152): ne állítsd ki kézzel')
+    expect(result.reason).toContain(`${ORDER_NUMBER} külső azonosítójú bizonylatot`)
+    const stopAlert = logged.find(
+      (entry) => entry.level === 'error' && entry.message.includes('automatikus kiállítása leállt'),
+    )
+    expect(String(stopAlert?.context?.lastError)).toContain('már létezik')
+    expect(result.reason).toMatch(/^A számla automatikus kiállítása leállt: /)
   })
 
   it('az időkorlát CSAK a lekérdezés hibájára él: a 25 órás rendelés POST-timeoutja pending + THROW marad', async () => {
@@ -2176,17 +2503,7 @@ describe('issueInvoiceForOrder — H4: a lekérdezés-hibák időkorlátja', () 
   })
 
   it('a lekérdezés sikere után a 25 órás rendelés számlája normálisan kiáll (nincs indokolatlan leállás)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        fetchCalls += 1
-        return new Response(
-          '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>7</hibakod>' +
-            '<hibauzenet>Nincs ilyen bizonylat</hibauzenet></xmlszamlavalasz>',
-          { status: 200 },
-        )
-      }),
-    )
+    lookupHealthy = true
     const { payload, order } = createMockPayload(createOrder())
     const result = await issueInvoiceForOrder({
       payload,

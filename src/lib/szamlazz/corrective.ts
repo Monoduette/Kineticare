@@ -66,7 +66,10 @@ import { budapestDateString, isIsoDateString } from './xml'
  * correctiveInvoiceAttemptsSeq). Rendelés-szintű számlálóval több részrefund
  * után a KÉSŐBBI bizonylat jogtalanul „kimerült"-re futna. A previousAttempts
  * CSAK a plafonhoz kell: a lekérdezés ettől függetlenül mindig lefut, a
- * kimerült keretnél is, és a plafon csak a negatív lekérdezés után dönt (H3).
+ * kimerült keretnél is, és a plafon csak a lekérdezés után dönt (H3). A
+ * kimerült keretnél üres találat és lekérdezés-hiba egyaránt azonnal végleges
+ * 'failed' + RIASZTÁS (a helyesbítőt semmi nem sweepeli vissza), a szöveg a
+ * kézi kiállítás előtti keresést kéri.
  */
 
 export const CORRECTIVE_KULSO_AZON_INFIX = '-HELYESBITO-'
@@ -428,9 +431,16 @@ async function performCorrectiveInvoiceForOrder(
     // A14 + H3: a plafon a NEGATÍV lekérdezés után dönt; kimerült keretnél
     // beküldés nincs, az eredmény végleges 'failed' + RIASZTÁS.
     if (capReached) {
-      const reason = `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS}), és a záró lekérdezés sem talált bizonylatot: a helyesbítő számlát kézzel kell kiállítani`
+      // Az 5. beküldés bizonytalan kimenetű lehetett, és a bizonylat a fiókban
+      // később is megjelenhet: a szöveg a kézi kiállítás ELŐTTI keresést kéri,
+      // a korábbi hibával együtt.
+      const previousError = order.correctiveInvoiceLastError?.trim()
+      const reason =
+        `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS}), és a záró lekérdezés sem talált bizonylatot. ` +
+        `Az utolsó beküldés ennek ellenére létrehozhatta a helyesbítőt, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${kulsoAzon} külső azonosítójú bizonylatot.` +
+        (previousError ? ` A korábbi hiba: ${previousError}` : '')
       log.error(
-        'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek, és a záró lekérdezés sem talált bizonylatot. Emberi beavatkozás kell (Számlázz.hu-szabály: legfeljebb 5 beküldés).',
+        'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek, és a záró lekérdezés sem talált bizonylatot. Emberi beavatkozás kell (Számlázz.hu-szabály: legfeljebb 5 beküldés); kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a helyesbítő külső azonosítójú bizonylatát.',
         { attempts: previousAttempts, lastError: order.correctiveInvoiceLastError ?? null },
       )
       await saveStateBestEffort({
@@ -490,9 +500,11 @@ async function performCorrectiveInvoiceForOrder(
     // a riasztás a kézi kiállítás előtti ellenőrzést kéri.
     if (lookupPhase && capReached) {
       const detail = error instanceof Error ? error.message : String(error)
+      const previousError = order.correctiveInvoiceLastError?.trim()
       const reason =
         `a helyesbítő-kiállítási kísérletek száma kimerült (${previousAttempts}/${MAX_CORRECTIVE_ATTEMPTS}), és a záró lekérdezés hibát adott (${detail}). ` +
-        `Egy korábbi beküldés létrehozhatta a helyesbítőt, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${kulsoAzon} külső azonosítójú bizonylatot.`
+        `Egy korábbi beküldés létrehozhatta a helyesbítőt, ezért kézi kiállítás előtt keresd meg a Számlázz.hu-fiókban a(z) ${kulsoAzon} külső azonosítójú bizonylatot.` +
+        (previousError ? ` A korábbi hiba: ${previousError}` : '')
       log.error(
         'RIASZTÁS: a helyesbítő-kiállítás beküldései kimerültek, és a záró lekérdezés hibát adott. A bizonylat létezhet: kézi kiállítás előtt ellenőrizd a Számlázz.hu-fiókot.',
         {

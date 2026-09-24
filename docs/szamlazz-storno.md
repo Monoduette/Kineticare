@@ -175,8 +175,9 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   rendelésre, új beküldés nélkül — ez oldja fel a „kérés elment, válasz
   elveszett" esetet. A lekérdezés **nem fogyaszt** a kísérlet-keretből, a hibája
   viszont szándékosan propagál: bizonytalan állapotban nem szabad vakon újra
-  beküldeni. A számla-ágon a tartós lekérdezés-hibát időkorlát zárja le: a
-  fizetés után 24 órával a számla `failed` + `RIASZTÁS:` (2026-09-24, H4).
+  beküldeni. A számla-ágon a tartós lekérdezés-hibát időkorlát zárja le: ha a
+  lekérdezés legalább 2 órája folyamatosan hibás, és a fizetés óta több mint
+  24 óra telt el, a számla `failed` + `RIASZTÁS:` (2026-09-24, H4).
 - **A stornó-ágon NINCS lekérdezés, helyette ESZKALÁCIÓ.** Mivel a stornó a
   kérésben küldött azonosítóval nem kereshető vissza igazoltan, a „nincs
   találat" (7-es) válasz nem bizonyítaná stornó hiányát — a vak újraküldés
@@ -212,9 +213,11 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
   részrefund-bizonylat nem blokkolja a következő refund helyesbítőjét (új
   sorszámnál a számlálás nulláról indul). Kimerüléskor a bizonylat `failed`
   marad, beküldés nélkül, és error-szintű owner-jelzés kerül a naplóba. A számla-
-  és a helyesbítő-ágon előtte még EGY záró lekérdezés fut (2026-09-24, H3): ha az
-  5. (bizonytalan kimenetű) beküldés mégis létrehozta a bizonylatot, azt a
-  rendszer átveszi; a stornó-ágon a kimerülés hálózati hívás nélküli.
+  és a helyesbítő-ágon előtte lekérdezés fut (2026-09-24, H3): ha az 5.
+  (bizonytalan kimenetű) beküldés mégis létrehozta a bizonylatot, azt a rendszer
+  átveszi. A záró lekérdezés hibájánál a helyesbítő-ág azonnal `failed` (a
+  szöveg a kézi kiállítás előtti keresést kéri), a számla-ág a H4-időkorlátig
+  ismétli a lekérdezést. A stornó-ágon a kimerülés hálózati hívás nélküli.
   A számlálók írása olvasás-módosítás-írás mintával, zár nélkül történik: ez
   ismert és elfogadott korlát, az indoklás a `docs/szamlazz-megfeleles.md`
   üzemeltetési jegyzetében.
@@ -231,7 +234,7 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
 | Duplikátum-jelzés (71/152) — **stornó** | `failed` + error-szintű `RIASZTÁS:` (nincs lekérdezés, nincs újraküldés): a stornó állapotát kézzel kell ellenőrizni a fiókban |
 | Bizonytalan stornó-állapot (nem az első kísérlet) | `failed` + error-szintű `RIASZTÁS:` — a vak újraküldés dupla stornót okozhatna, ami nem javítható |
 | Timeout / hálózat / HTTP 5xx / `szlahu_down` | `SzamlazzApiError` (retryable) dob → a refund-bekötés jobot állít sorba. A válasz-**törzs** olvasása közbeni megszakadás is ide sorolódik (nem nyers `TypeError`) |
-| Kimerült kísérletszám (5) | `failed`, hálózati hívás nélkül, error-szintű owner-jelzés |
+| Kimerült kísérletszám (5) | Stornó: `failed`, hálózati hívás nélkül. Helyesbítő: egy záró lekérdezés (találatnál a meglévő bizonylat átvétele), különben `failed`, a kézi kiállítás előtti keresés kérésével. Mindkettő error-szintű owner-jelzéssel |
 | Bármely váratlan hiba | elkapva, error log — a refund HTTP-válasza változatlan |
 
 A stornó HTTP-hívás (`postStornoXml`) a `postInvoiceXml`-lel azonos
