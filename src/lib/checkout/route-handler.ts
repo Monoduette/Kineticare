@@ -24,8 +24,6 @@ export interface CheckoutStartHandlerDeps {
   getPayload: () => Promise<Payload>
   /** Kérés-korlátozó felülírása (teszthez); alapból a közös, folyamaton belüli számláló. */
   rateLimit?: CheckRequestRateLimitOptions
-  /** Környezet (TURNSTILE_SECRET_KEY); alapból a `process.env`. */
-  env?: Readonly<Record<string, string | undefined>>
 }
 
 /**
@@ -52,6 +50,12 @@ export const CHECKOUT_TURNSTILE_UNAVAILABLE_ERROR =
   'A fizetés előtti biztonsági ellenőrzés most nem érhető el, ezért a fizetés nem indult el. Pénzt nem vontunk le. Próbáld újra néhány perc múlva. ' +
   `Ha sürgős, írj nekünk az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 
+/**
+ * A Turnstile-token felső hossza a Cloudflare szerint („Maximum length: 2048
+ * characters", https://developers.cloudflare.com/turnstile/get-started/server-side-validation/).
+ */
+export const TURNSTILE_TOKEN_MAX_LENGTH = 2048
+
 /** A Turnstile-kiesés RIASZTÁS-ának fojtása: kiesés alatt ne minden vevő kattintása riasszon. */
 export const TURNSTILE_OUTAGE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 
@@ -61,7 +65,6 @@ export function createCheckoutStartHandler(
   return async function POST(request: NextRequest): Promise<NextResponse> {
     const requestId = getRequestId(request.headers) ?? generateRequestId()
     const log = logger.child({ requestId, route: 'checkout-start' })
-    const env = deps.env ?? process.env
 
     const originCheck = assertSameOrigin(request)
     if (!originCheck.ok) {
@@ -112,11 +115,19 @@ export function createCheckoutStartHandler(
      * az induláskori assert (`turnstileEnvPair`, src/env.ts) a kulcsPÁRT
      * követeli meg, tehát fél-lábas beállítás nem indulhat el.
      */
-    const secret = env.TURNSTILE_SECRET_KEY
+    const secret = process.env.TURNSTILE_SECRET_KEY
     if (typeof secret === 'string' && secret.length > 0) {
       if (typeof turnstileToken !== 'string' || turnstileToken.length === 0) {
         log.warn('checkout-start: hiányzó Turnstile-token — 400')
         return NextResponse.json({ error: CHECKOUT_TURNSTILE_MISSING_ERROR }, { status: 400 })
+      }
+      if (turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH) {
+        // Túl hosszú token: a Cloudflare szerint érvénytelen, a siteverify
+        // pedig kéréshibával felelhetne, amit a szolgáltatás kiesésének
+        // (503 + RIASZTÁS) kellene vennünk. Egy névtelen kérés így riasztást
+        // gyárthatna, ezért helyben utasítjuk el.
+        log.warn('checkout-start: túl hosszú Turnstile-token — 400')
+        return NextResponse.json({ error: CHECKOUT_TURNSTILE_REJECTED_ERROR }, { status: 400 })
       }
       const verdict = await verifyTurnstile({
         secret,

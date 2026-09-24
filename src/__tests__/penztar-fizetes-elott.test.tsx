@@ -4,12 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  CHECKOUT_FINAL_TAX_TEXT,
+  CHECKOUT_BLOCK_HINT_ID,
   CheckoutForm,
   type CheckoutFormProps,
 } from '../components/checkout/CheckoutForm'
 import {
   CHECKOUT_ERROR_REGION_ID,
+  CHECKOUT_TURNSTILE_CONTAINER_ID,
   CHECKOUT_TURNSTILE_FAILED_ERROR,
   WAIVER_START_INPUT_ID,
   checkboxErrorId,
@@ -71,7 +72,11 @@ describe('összegzés közvetlenül a fizetőgomb fölött (a-ux-6)', () => {
     expect(blokk).toContain('egyszeri díj')
     expect(blokk).toContain('nem jár le')
     expect(blokk).toContain(formatPriceHuf(79500))
-    expect(blokk).toContain(CHECKOUT_FINAL_TAX_TEXT)
+    // K1: a tulajdonos által jóváhagyott mondat, szó szerint (nem a komponens
+    // saját konstansából: egy átírt vagy kiürített szöveg itt bukik).
+    expect(blokk).toContain(
+      'A feltüntetett ár a fizetendő végösszeg. A KINETICARE Kft. alanyi adómentes, ezért a számla áfát nem tartalmaz.',
+    )
     expect(blokk).not.toMatch(/[–—]/)
   })
 
@@ -263,6 +268,8 @@ describe('egy nyomásra minden hiba (a-ux-10)', () => {
 interface RenderOptions {
   callback: (token: string) => void
   'error-callback'?: () => void
+  'before-interactive-callback'?: () => void
+  'after-interactive-callback'?: () => void
   appearance?: string
 }
 
@@ -329,6 +336,51 @@ describe('láthatatlan Turnstile a pénztárban (a-checkout-9)', () => {
       expect(body.turnstileToken).toBe('DUMMY-TURNSTILE-TOKEN')
       // A szerver 409-et adott: a token elhasználódott, új ellenőrzés indul.
       expect(reset).toHaveBeenCalledWith('widget-1')
+    } finally {
+      await ui.close()
+    }
+  })
+  /**
+   * REGRESSZIÓ (breaker, 6a5cd61): interakció-kérésnél (a widget a gomb alatt
+   * láthatóvá vált) a vevő a „még fut, várj" üzenetet kapta, és a fókusz a
+   * lap tetejére ugrott, pedig a teendő a gomb alatti négyzet kipipálása. A
+   * bázison: „expected 'A biztonsági ellenőrzés még fut. Várj…' not to be …".
+   */
+  it('interaktív kihívásnál a gomb alatti súgó mondja meg a teendőt, és a gomb a widgetre visz, nem a lap tetejére', async () => {
+    let widgetOptions: RenderOptions | undefined
+    const render = vi.fn((_container: unknown, options: RenderOptions) => {
+      widgetOptions = options
+      options['before-interactive-callback']?.()
+      return 'widget-1'
+    })
+    const ui = await openBrowser({
+      siteKey: 'DUMMY-SITEKEY',
+      turnstile: { render, reset: vi.fn(), remove: vi.fn() },
+    })
+    try {
+      await fillValidForm(ui)
+      const sugo = ui.container.querySelector(`#${CHECKOUT_BLOCK_HINT_ID}`)
+      expect(sugo?.textContent).toBe(
+        'A fizetéshez pipáld ki a gomb alatti biztonsági ellenőrzés négyzetét.',
+      )
+      expect(
+        ui.container.querySelector('button[type="submit"]')?.getAttribute('aria-describedby'),
+      ).toBe(CHECKOUT_BLOCK_HINT_ID)
+
+      await ui.click('button[type="submit"]')
+
+      expect(ui.fetchMock).not.toHaveBeenCalled()
+      expect(ui.container.querySelector(`#${CHECKOUT_ERROR_REGION_ID}`)?.textContent).toBe('')
+      expect(ui.browser.document.activeElement?.id).toBe(CHECKOUT_TURNSTILE_CONTAINER_ID)
+
+      // A vevő kipipálja: a kihívás kilép az interaktív módból, token jön, a súgó eltűnik, a beküldés megy.
+      await act(async () => {
+        widgetOptions?.['after-interactive-callback']?.()
+        widgetOptions?.callback('DUMMY-TURNSTILE-TOKEN')
+      })
+      expect(ui.container.querySelector(`#${CHECKOUT_BLOCK_HINT_ID}`)).toBeNull()
+      await ui.click('button[type="submit"]')
+      expect(ui.fetchMock).toHaveBeenCalledTimes(1)
     } finally {
       await ui.close()
     }

@@ -54,6 +54,7 @@ import {
   CHECKOUT_GUEST_FINISH_AFTER_LOGIN,
   CHECKOUT_PAID_UNDER_REVIEW,
   CHECKOUT_REFUNDED_PRIVILEGED,
+  CHECKOUT_TURNSTILE_INTERACTIVE_HINT,
   emptyGuestForm,
   prefillBillingForm,
   withBillingValue,
@@ -460,6 +461,8 @@ export function CheckoutForm({
   )
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [turnstileFailed, setTurnstileFailed] = useState(false)
+  // A Cloudflare interakciót kér (a widget a gomb alatt láthatóvá vált).
+  const [turnstileInteractive, setTurnstileInteractive] = useState(false)
   const [turnstileReset, setTurnstileReset] = useState(0)
   useEffect(() => {
     if (turnstileSiteKey !== undefined) {
@@ -486,6 +489,7 @@ export function CheckoutForm({
     setTurnstileToken(token)
     if (token !== null) {
       setTurnstileFailed(false)
+      setTurnstileInteractive(false)
     }
   }, [])
   const handleTurnstileError = useCallback(() => setTurnstileFailed(true), [])
@@ -555,7 +559,11 @@ export function CheckoutForm({
         // ugyanaz a sorrend, amit a `planCheckoutSubmission` fókuszcélja visz.
         !termsAccepted
         ? `A vásárláshoz pipáld ki a nyilatkozatot a „${CHECKOUT_TERMS_HEADING}” résznél.`
-        : null
+        : // A gomb ALATT megjelent ellenőrzés az utolsó akadály (lásd
+          // CHECKOUT_TURNSTILE_INTERACTIVE_HINT).
+          turnstileRequired && turnstileInteractive && !turnstileFailed && turnstileToken === null
+          ? CHECKOUT_TURNSTILE_INTERACTIVE_HINT
+          : null
 
   const updateBilling = (field: BillingFieldName, value: string): void => {
     setBilling((previous) => withBillingValue(previous, field, value))
@@ -604,6 +612,7 @@ export function CheckoutForm({
       required: turnstileRequired,
       token: turnstileToken,
       failed: turnstileFailed,
+      interactive: turnstileInteractive,
     },
   })
 
@@ -1109,7 +1118,9 @@ export function CheckoutForm({
         */}
         {alreadyPurchased || typeof resolvedSiteKey !== 'string' ? null : (
           <CheckoutTurnstile
+            describedBy={blockReason === null ? undefined : CHECKOUT_BLOCK_HINT_ID}
             onError={handleTurnstileError}
+            onInteractiveChange={setTurnstileInteractive}
             onToken={handleTurnstileToken}
             resetKey={turnstileReset}
             siteKey={resolvedSiteKey}

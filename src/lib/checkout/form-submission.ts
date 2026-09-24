@@ -434,7 +434,35 @@ export interface CheckoutTurnstileState {
   token: string | null
   /** A szkript nem töltődött be, vagy az ellenőrzés hibát jelzett. */
   failed: boolean
+  /**
+   * A Cloudflare interakciót kér (a widget láthatóvá vált a gomb alatt, és a
+   * látogatónak ki kell pipálnia). Ilyenkor a várakozás nem segít, tehát a
+   * „még fut" üzenet félrevezetne.
+   */
+  interactive?: boolean
 }
+
+/**
+ * A pénztári Turnstile-widget tárolójának azonosítója: interakció-kérésnél a
+ * gomb megnyomása IDE viszi a fókuszt (a gomb alatt, nem a lap tetején).
+ */
+export const CHECKOUT_TURNSTILE_CONTAINER_ID = 'kc-checkout-turnstile'
+
+/**
+ * A Cloudflare interakciót kér: a teendő a gomb ALATT megjelent ellenőrzés
+ * kipipálása. A szöveg a gomb alatti akadály-súgóban áll (a gomb
+ * `aria-describedby`-ja), a gomb megnyomása pedig a widgetre viszi a
+ * fókuszt, nem a lap tetején álló hibarégióra (a-ux-10 tanulsága: a távoli
+ * fókuszugrás mobilon elveszti a vevőt). Mintája a meglévő nyilatkozat-súgó
+ * („A fizetéshez pipáld ki mindkét nyilatkozatot…"). Források: GOV.UK Error
+ * message („Say how to fix it",
+ * https://design-system.service.gov.uk/components/error-message/); WCAG 2.2
+ * SC 3.3.3 Error Suggestion; Cloudflare Turnstile, before-interactive-callback
+ * („invoked before the challenge enters interactive mode",
+ * https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/).
+ */
+export const CHECKOUT_TURNSTILE_INTERACTIVE_HINT =
+  'A fizetéshez pipáld ki a gomb alatti biztonsági ellenőrzés négyzetét.'
 
 /**
  * A spam-ellenőrzés még nem adott tokent (a láthatatlan ellenőrzés
@@ -474,7 +502,16 @@ export type CheckoutSubmissionPlan =
    * elem; a beküldés-kezelő hiányzó nyilatkozatnál ettől függetlenül a
    * teljes hiba-összefoglalót mutatja (`collectCheckoutErrors`).
    */
-  | { kind: 'blocked'; message: string; focusElementId: string | null }
+  | {
+      kind: 'blocked'
+      message: string
+      focusElementId: string | null
+      /**
+       * `true`: az üzenet a gomb alatti súgóban már látszik, a hibarégió
+       * (a lap tetején) üres marad, csak a fókusz mozdul.
+       */
+      hintOnly?: true
+    }
   /** A megadott adatok hibásak — mezőhibák + összefoglaló + fókuszcél. */
   | {
       kind: 'invalid'
@@ -657,6 +694,14 @@ export function planCheckoutSubmission(context: CheckoutSubmissionContext): Chec
       ? turnstile.token
       : null
   if (turnstile?.required === true && turnstileToken === null) {
+    if (!turnstile.failed && turnstile.interactive === true) {
+      return {
+        kind: 'blocked',
+        message: CHECKOUT_TURNSTILE_INTERACTIVE_HINT,
+        focusElementId: CHECKOUT_TURNSTILE_CONTAINER_ID,
+        hintOnly: true,
+      }
+    }
     return {
       kind: 'blocked',
       message: turnstile.failed
@@ -752,6 +797,10 @@ export function createCheckoutSubmitHandler(deps: CheckoutSubmitHandlerDeps): ()
         // GOV.UK: „Move keyboard focus to the error summary" — a böngésző az
         // összefoglalót a képernyőre görgeti, onnan minden hiba egy linkre van.
         deps.focusElement(CHECKOUT_ERROR_REGION_ID)
+        return
+      }
+      if (plan.kind === 'blocked' && plan.hintOnly === true) {
+        deps.focusElement(plan.focusElementId)
         return
       }
       deps.setError(plan.message)

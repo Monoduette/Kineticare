@@ -7,8 +7,10 @@ import {
   CHECKOUT_TURNSTILE_MISSING_ERROR,
   CHECKOUT_TURNSTILE_REJECTED_ERROR,
   CHECKOUT_TURNSTILE_UNAVAILABLE_ERROR,
+  TURNSTILE_TOKEN_MAX_LENGTH,
   createCheckoutStartHandler,
 } from '../lib/checkout/route-handler'
+import { startCheckout } from '../lib/checkout/start-checkout'
 import { TURNSTILE_SITEVERIFY_URL } from '../lib/security/turnstile-verify'
 import { SlidingWindowRateLimiter } from '../lib/security/rate-limit'
 
@@ -28,18 +30,30 @@ import { SlidingWindowRateLimiter } from '../lib/security/rate-limit'
  * fut (CLAUDE.md 15.).
  */
 
-const SECRET_ENV = { TURNSTILE_SECRET_KEY: 'DUMMY-TURNSTILE-SECRET-NEM-VALODI' }
+/**
+ * A szolgáltatás a VALÓDI `startCheckout`, csak megfigyelve: így látszik, mi
+ * jut el hozzá a kérés törzséből (a token nem juthat).
+ */
+vi.mock('../lib/checkout/start-checkout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/checkout/start-checkout')>()
+  return { ...actual, startCheckout: vi.fn(actual.startCheckout) }
+})
+
+const SECRET = 'DUMMY-TURNSTILE-SECRET-NEM-VALODI'
 const TOKEN = 'DUMMY-TURNSTILE-TOKEN-0123456789'
 
 const fetchMock = vi.fn()
 
 beforeEach(() => {
   fetchMock.mockReset()
+  vi.mocked(startCheckout).mockClear()
   vi.stubGlobal('fetch', fetchMock)
+  vi.stubEnv('TURNSTILE_SECRET_KEY', SECRET)
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
   resetAlertThrottle()
 })
@@ -61,7 +75,7 @@ const INPUT = {
 }
 
 /** A Payload-betöltés kéme: ha a Turnstile megállít, ide el sem juthat a kérés. */
-function handler(env: Record<string, string | undefined> = SECRET_ENV) {
+function handler() {
   const getPayload = vi.fn(async () => {
     // Vendég, `guest` blokk nélkül: a szolgáltatás magyar 400-zal áll meg,
     // tehát a továbbengedett kérés sem indít Barion-hívást.
@@ -69,7 +83,6 @@ function handler(env: Record<string, string | undefined> = SECRET_ENV) {
   })
   const POST = createCheckoutStartHandler({
     getPayload,
-    env,
     rateLimit: { limiter: new SlidingWindowRateLimiter() },
   })
   return { POST, getPayload }
@@ -144,13 +157,19 @@ describe('POST /api/checkout/start — Turnstile a Payload-auth ELŐTT', () => {
     },
   )
 
-  it('elfogadott tokennél a kérés továbbmegy a szolgáltatáshoz', async () => {
+  it('elfogadott tokennél a kérés továbbmegy a szolgáltatáshoz, a token nélkül', async () => {
     fetchMock.mockResolvedValueOnce(siteverify({ success: true }))
     const { POST, getPayload } = handler()
 
     const response = await POST(request({ ...INPUT, turnstileToken: TOKEN }))
 
     expect(getPayload).toHaveBeenCalledTimes(1)
+    // A token csak az ellenőrzéshez kell: a szolgáltatás bemenetébe (és így a
+    // rendelésre, a naplóba) nem jut el, a többi mező viszont változatlanul igen.
+    expect(startCheckout).toHaveBeenCalledTimes(1)
+    const input = vi.mocked(startCheckout).mock.calls[0][0].input
+    expect(input).not.toHaveProperty('turnstileToken')
+    expect(input).toEqual(INPUT)
     // Vendég-adat nélkül a szolgáltatás a saját 400-ját adja: a kérés tehát a
     // Turnstile-kapun túljutott, és Barion-hívás sem indult.
     expect(response.status).toBe(400)
@@ -160,8 +179,31 @@ describe('POST /api/checkout/start — Turnstile a Payload-auth ELŐTT', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('túl hosszú (a Cloudflare 2048 karakteres korlátja feletti) token 400, siteverify és RIASZTÁS nélkül', async () => {
+    // Ha mégis kimenne, a siteverify kéréshibát adhatna, amit a pénztár a
+    // szolgáltatás kiesésének (503 + RIASZTÁS) venne.
+    fetchMock.mockResolvedValue(siteverify({ success: false, 'error-codes': ['bad-request'] }))
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { POST, getPayload } = handler()
+
+    const response = await POST(
+      request({ ...INPUT, turnstileToken: 'x'.repeat(TURNSTILE_TOKEN_MAX_LENGTH + 1) }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as { error: string }).error).toBe(
+      CHECKOUT_TURNSTILE_REJECTED_ERROR,
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(getPayload).not.toHaveBeenCalled()
+    const naplo = [...logSpy.mock.calls, ...errorSpy.mock.calls].flat().map(String).join('\n')
+    expect(naplo).not.toContain('RIASZTÁS')
+  })
+
   it('secret nélkül (az ellenőrzés kikapcsolva) nincs siteverify-hívás, a kérés továbbmegy', async () => {
-    const { POST, getPayload } = handler({})
+    vi.stubEnv('TURNSTILE_SECRET_KEY', '')
+    const { POST, getPayload } = handler()
 
     await POST(request(INPUT))
 

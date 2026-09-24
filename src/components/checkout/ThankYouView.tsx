@@ -539,7 +539,10 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
   }, [orderNumber])
 
   // A vendég-nézet késleltetett jelszó-beállító kérése (a-ux-5): az időzítő
-  // attól indul, hogy a 401-es nézet megjelent.
+  // attól indul, hogy a 401-es nézet megjelent, és minden betöltéskor elölről
+  // indul (tárolt állapot nincs). Aki a lapot tíz perc előtt bezárja, annak a
+  // másik út a Belépés lap „Elfelejtetted a jelszavad?" linkje, amely ugyanezt a
+  // jelszó-beállító levelet kéri.
   const [resetLinkVisible, setResetLinkVisible] = useState(false)
   const unauthorized = state.kind === 'unauthorized'
   useEffect(() => {
@@ -567,6 +570,13 @@ export function ThankYouView({ orderNumber }: ThankYouViewProps) {
  * (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html). Ezért
  * a régió itt áll, és csak a GYEREKEI cserélődnek. Ugyanez az elv, amit a
  * pénztár hibarégiója (CheckoutForm.tsx) is követ.
+ *
+ * VÁLLALT KOMPROMISSZUM: a sikertelen fizetés nézete korábban saját
+ * `role="alert"` (assertive) dobozt kapott; most ugyanebben az udvarias
+ * (polite) régióban jelenik meg. Egy közös régió nem lehet egyszerre polite
+ * és assertive, és a régió cseréje pontosan a fenti bejelentési hibát hozná
+ * vissza. Az udvarias bejelentés is elhangzik, csak az épp futó felolvasás
+ * után; a fizetés kimenetele itt nem sürgősebb, mint a sikeres ág.
  */
 export const THANK_YOU_LIVE_REGION_ID = 'kc-thankyou-allapot'
 

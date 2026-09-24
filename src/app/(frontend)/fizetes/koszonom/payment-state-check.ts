@@ -2,14 +2,15 @@ import { after } from 'next/server'
 import { getPayload, type Payload } from 'payload'
 
 import { withAdvisoryLock } from '@/lib/advisory-lock'
+import { fetchPaymentState, mapBarionPaymentStatus } from '@/lib/barion'
 import { canonicalBarionGuid } from '@/lib/barion/guid'
 import { createBarionCallbackProcessor } from '@/lib/barion-callback/process-callback'
 import { callbackLockKey } from '@/lib/barion-callback/route-handler'
 import {
   isTerminallyProcessed,
-  MAX_WEBHOOK_ATTEMPTS,
   processWebhook,
   webhookEventStore,
+  type WebhookEventDoc,
   type WebhookEventStore,
 } from '@/lib/idempotency'
 import { logger as rootLogger, type Logger } from '@/lib/logger'
@@ -31,12 +32,13 @@ import config from '../../../../payload.config'
  * függőben maradt.
  *
  * HOGYAN. A lap szerveroldali renderje a válasz UTÁN (`after`) egyszer
- * elindítja ugyanazt a feldolgozót, amit a callback-út és a webhook-retry is
- * futtat: callback-zár (`callbackLockKey`) → `processWebhook` →
- * `createBarionCallbackProcessor` (GetState + a közös állapotgép, soha nem a
- * plugin `confirmOrder`-je). A PaymentId-nkénti hívás-fojtás a
- * `fetchPaymentState` saját kapuja (w1-barion-platform); itt nincs külön
- * fojtó.
+ * lekéri a fizetés állapotát, és ha az VÉGLEGES, elindítja ugyanazt a
+ * feldolgozót, amit a callback-út és a webhook-retry is futtat: callback-zár
+ * (`callbackLockKey`) → `processWebhook` → `createBarionCallbackProcessor`
+ * (GetState + a közös állapotgép, soha nem a plugin `confirmOrder`-je). A
+ * Barion-hívások PaymentId-nkénti fojtása a `fetchPaymentState` saját kapuja
+ * (w1-barion-platform); az alábbi hűtés ettől független: azt korlátozza,
+ * hányszor indíthatja a LAP ezt a munkát.
  *
  * AMIBEN NEM BÍZUNK:
  *  - a URL-ben érkező `paymentId`-ben SOHA: csak a rendelésszám választja ki
@@ -47,20 +49,112 @@ import config from '../../../../payload.config'
  *    callback úgyis kiváltana; a lap semmit nem árul el belőle (a munka a
  *    válasz után fut, a renderelt tartalom és az időzítés nem függ tőle).
  *
- * KORLÁTOK (visszaélés és ismétlés ellen):
+ * KORLÁTOK (visszaélés és ismétlés ellen; a rendelésszám kitalálható, a lapot
+ * bárki, bármennyiszer, párhuzamosan is letöltheti):
  *  - csak `payment_pending` rendelésre, tárolt PaymentId-vel;
  *  - csak friss rendelésre (`THANK_YOU_STATE_CHECK_MAX_ORDER_AGE_MS`): a
  *    visszatérés a fizetési ablakon (30 perc) belül történik, a régebbi
  *    függő sort az order-poll viszi;
- *  - a webhook-esemény kísérletszámát ez az út SOHA nem viszi a kimerülésig
- *    (`MAX_WEBHOOK_ATTEMPTS - 1`-nél megáll): a kimerülés riasztást ad és a
- *    retry-jobból kivenné az eseményt, azt pedig egy oldal-újratöltés nem
- *    okozhatja. Ez egyben felső korlát is: egy PaymentId-re ezen az úton
- *    legfeljebb néhány GetState megy, bárhányszor töltik újra a lapot.
+ *  - FOLYAMATON BELÜLI HŰTÉS PaymentId-nként
+ *    (`THANK_YOU_STATE_CHECK_COOLDOWN_MS`): egy letöltés-sorozat vagy
+ *    párhuzamos letöltés ugyanarra a fizetésre egy replikán egyetlen
+ *    ellenőrzést indít, a többi azonnal kilép. Így a lap sem GetState-vihart,
+ *    sem advisory-zárra várakozó (és addig pool-kapcsolatot foglaló)
+ *    tranzakció-sort nem gyárthat;
+ *  - ELŐZETES GetState, a webhook-események érintése NÉLKÜL: amíg a Barion
+ *    a fizetést függőnek mondja (a vevő még a Barion-oldalon van, vagy
+ *    elhagyta), a lap SEMMIT nem ír. Enélkül egyetlen névtelen letöltés egy
+ *    `pending_repoll` eseményt hozna létre, amit a webhook-retry job a
+ *    fizetési ablakon belül kimerítene, és a tulajdonos hamis RIASZTÁS-t kapna
+ *    egy egyszerű elhagyott kosárra. Csak VÉGLEGES állapot (paid, cancelled)
+ *    megy tovább a callback-feldolgozóhoz;
+ *  - kísérlet-keret (`THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS`): a lap csak
+ *    akkor futtatja a feldolgozót, ha még nincs esemény, vagy a meglévő
+ *    nem terminális és 2-nél kevesebb kísérletnél tart. A keret jóval a
+ *    kimerülési riasztás (`MAX_WEBHOOK_ATTEMPTS`) és a közeledési
+ *    figyelmeztetés alatt van, tehát ez az út egyiket sem válthatja ki;
+ *  - az őrt a callback-zár ALATT újra olvassuk: a zár előtti olvasás a zárra
+ *    várakozás közben elavulhat (egy másik replika vagy a callback közben
+ *    feldolgozta, illetve kísérletet használt).
+ *
+ * A végleges ágon a feldolgozó saját GetState-je a második hívás ugyanarra a
+ * PaymentId-re. A PaymentId-nkénti Barion-fojtás (5 s) a `fetchPaymentState`
+ * kapujában él (w1-barion-platform); a harvestnél ez az ág a platform
+ * `runBarionCallbackEvent`-jére vált, az előzetes állapotot átadva.
  */
 
 /** A visszatérés-ellenőrzés csak ennél fiatalabb rendelésre fut (a fizetési ablak 30 perc). */
 export const THANK_YOU_STATE_CHECK_MAX_ORDER_AGE_MS = 2 * 60 * 60 * 1000
+
+/**
+ * Ugyanarra a PaymentId-re egy replikán ennyi időn belül csak egy ellenőrzés
+ * indul. A Barion PaymentState-fojtása 5 s PaymentId-nként (Callback_mechanism);
+ * a 30 s egy teljes újratöltés-sorozatot lefed, a valódi visszatérőnek pedig
+ * az első letöltés ellenőrzése elég (utána a lap pollja és a callback visz).
+ */
+export const THANK_YOU_STATE_CHECK_COOLDOWN_MS = 30_000
+
+/** A lap csak ennél kevesebb kísérletnél futtatja a callback-feldolgozót. */
+export const THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS = 2
+
+/** A hűtési tábla mérete fölött a lejárt bejegyzéseket kitakarítjuk. */
+const COOLDOWN_PRUNE_THRESHOLD = 500
+
+/** PaymentId → az utolsó indított ellenőrzés ideje (ms). Replikánként külön. */
+const lastCheckStartedAt = new Map<string, number>()
+
+/**
+ * Szinkron „ellenőriz és beállít": a JavaScript egyszálú, tehát két párhuzamos
+ * kérés közül csak az egyik kaphat `true`-t. A visszafelé ugró óra (negatív
+ * különbség) nem zárolhat örökre: az ilyen bejegyzést lejártnak vesszük.
+ */
+function claimCooldown(paymentId: string, now: number): boolean {
+  const last = lastCheckStartedAt.get(paymentId)
+  if (last !== undefined && now - last >= 0 && now - last < THANK_YOU_STATE_CHECK_COOLDOWN_MS) {
+    return false
+  }
+  if (lastCheckStartedAt.size >= COOLDOWN_PRUNE_THRESHOLD) {
+    for (const [key, startedAt] of lastCheckStartedAt) {
+      if (now - startedAt >= THANK_YOU_STATE_CHECK_COOLDOWN_MS || now - startedAt < 0) {
+        lastCheckStartedAt.delete(key)
+      }
+    }
+  }
+  lastCheckStartedAt.delete(paymentId)
+  lastCheckStartedAt.set(paymentId, now)
+  return true
+}
+
+/** A lap futtathatja-e a feldolgozót erre az eseményre (a zár előtt és alatt is). */
+function eventBlocksCheck(
+  record: WebhookEventDoc | undefined,
+): 'already-processed' | 'attempts-reserved' | null {
+  if (record === undefined) {
+    return null
+  }
+  if (isTerminallyProcessed(record)) {
+    return 'already-processed'
+  }
+  if ((record.attempts ?? 0) >= THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS) {
+    return 'attempts-reserved'
+  }
+  return null
+}
+
+async function findBarionEvent(
+  store: WebhookEventStore,
+  paymentId: string,
+): Promise<WebhookEventDoc | undefined> {
+  const existing = await store.find({
+    collection: 'webhook-events',
+    where: {
+      and: [{ provider: { equals: 'barion' } }, { externalId: { equals: paymentId } }],
+    },
+    limit: 1,
+    overrideAccess: true,
+  })
+  return existing.docs[0]
+}
 
 export type ThankYouStateCheckOutcome =
   | 'invalid-order-number'
@@ -68,6 +162,8 @@ export type ThankYouStateCheckOutcome =
   | 'not-pending'
   | 'no-payment-id'
   | 'too-old'
+  | 'cooldown'
+  | 'still-pending'
   | 'already-processed'
   | 'attempts-reserved'
   | 'processed'
@@ -126,36 +222,47 @@ export async function runThankYouPaymentStateCheck(
       return 'too-old'
     }
 
-    const store = input.store ?? webhookEventStore(input.payload)
-    const existing = await store.find({
-      collection: 'webhook-events',
-      where: {
-        and: [{ provider: { equals: 'barion' } }, { externalId: { equals: paymentId } }],
-      },
-      limit: 1,
-      overrideAccess: true,
-    })
-    const record = existing.docs[0]
-    if (record !== undefined && isTerminallyProcessed(record)) {
-      return 'already-processed'
+    if (!claimCooldown(paymentId, now)) {
+      return 'cooldown'
     }
-    if (record !== undefined && (record.attempts ?? 0) >= MAX_WEBHOOK_ATTEMPTS - 1) {
-      return 'attempts-reserved'
+
+    const store = input.store ?? webhookEventStore(input.payload)
+    const blocked = eventBlocksCheck(await findBarionEvent(store, paymentId))
+    if (blocked !== null) {
+      return blocked
     }
 
     const paymentLog = log.child({ paymentId })
+    // Előzetes GetState, zár és esemény-írás nélkül: függő fizetésnél a lap
+    // nem nyúl a webhook-eseményekhez (lásd a fejkomment KORLÁTOK pontját).
+    const probe = await fetchPaymentState(paymentId)
+    if (mapBarionPaymentStatus(probe.Status) === 'payment_pending') {
+      return 'still-pending'
+    }
+
     const outcome = await withAdvisoryLock(
       input.payload,
       callbackLockKey(paymentId),
-      () =>
-        processWebhook({
+      async () => {
+        // Az őr a ZÁR ALATT újra: a zárra várva egy másik futás (callback,
+        // retry-job, másik replika) lezárhatta az eseményt vagy kísérletet
+        // használhatott.
+        const lockedBlock = eventBlocksCheck(await findBarionEvent(store, paymentId))
+        if (lockedBlock !== null) {
+          return lockedBlock
+        }
+        return processWebhook({
           store,
           provider: 'barion',
           externalId: paymentId,
           handler: createBarionCallbackProcessor({ payload: input.payload, store }),
-        }),
+        })
+      },
       paymentLog,
     )
+    if (typeof outcome === 'string') {
+      return outcome
+    }
     if (outcome.kind === 'failed') {
       paymentLog.warn(
         'köszönőoldal: a PaymentState-ellenőrzés nem sikerült (a retry-job és az order-poll folytatja)',

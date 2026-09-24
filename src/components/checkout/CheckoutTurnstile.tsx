@@ -3,6 +3,7 @@
 import Script from 'next/script'
 import { useCallback, useEffect, useRef } from 'react'
 
+import { CHECKOUT_TURNSTILE_CONTAINER_ID } from '@/lib/checkout/form-submission'
 import {
   TURNSTILE_POLL_MS,
   TURNSTILE_SCRIPT_SRC,
@@ -33,24 +34,45 @@ import {
  * ellenőrzés hibát jelez, az `onError` szól; a pénztár ilyenkor a gomb
  * megnyomásakor érthető magyar üzenetet ad (form-submission.ts
  * CHECKOUT_TURNSTILE_FAILED_ERROR), nem hallgat.
+ *
+ * INTERAKCIÓ: ha a Cloudflare a látogatótól kattintást kér, a widget a gomb
+ * alatt láthatóvá válik, és addig nincs token. Ezt a
+ * `before-interactive-callback` / `after-interactive-callback` párral
+ * jelezzük (`onInteractiveChange`), mert enélkül a pénztár a „még fut, várj"
+ * üzenetet adná, pedig a várakozás itt sosem segít. A tároló fókuszálható
+ * (`tabIndex=-1`), hogy a gomb megnyomása ide, a teendő helyére vigye a
+ * fókuszt.
  */
 export interface CheckoutTurnstileProps {
   siteKey: string
   onToken: (token: string | null) => void
   onError: () => void
+  /** `true`, amikor a kihívás interaktív módba lép; `false`, amikor kilép belőle. */
+  onInteractiveChange?: (interactive: boolean) => void
+  /** A tároló `aria-describedby`-ja (a gomb alatti súgó, ha éppen látszik). */
+  describedBy?: string
   /** Minden változása új ellenőrzést kér (az első render kivételével). */
   resetKey: number
 }
 
-export function CheckoutTurnstile({ siteKey, onToken, onError, resetKey }: CheckoutTurnstileProps) {
+export function CheckoutTurnstile({
+  siteKey,
+  onToken,
+  onError,
+  onInteractiveChange,
+  describedBy,
+  resetKey,
+}: CheckoutTurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | null>(null)
   const onTokenRef = useRef(onToken)
   const onErrorRef = useRef(onError)
+  const onInteractiveChangeRef = useRef(onInteractiveChange)
   useEffect(() => {
     onTokenRef.current = onToken
     onErrorRef.current = onError
-  }, [onToken, onError])
+    onInteractiveChangeRef.current = onInteractiveChange
+  }, [onToken, onError, onInteractiveChange])
 
   const renderWidget = useCallback(() => {
     const container = containerRef.current
@@ -63,6 +85,8 @@ export function CheckoutTurnstile({ siteKey, onToken, onError, resetKey }: Check
       sitekey: siteKey,
       callback: (token: string) => onTokenRef.current(token),
       'expired-callback': () => onTokenRef.current(null),
+      'before-interactive-callback': () => onInteractiveChangeRef.current?.(true),
+      'after-interactive-callback': () => onInteractiveChangeRef.current?.(false),
       'error-callback': () => {
         onTokenRef.current(null)
         onErrorRef.current()
@@ -118,6 +142,7 @@ export function CheckoutTurnstile({ siteKey, onToken, onError, resetKey }: Check
     }
     elozoResetKey.current = resetKey
     onTokenRef.current(null)
+    onInteractiveChangeRef.current?.(false)
     const widgetId = widgetIdRef.current
     if (widgetId !== null) {
       window.turnstile?.reset(widgetId)
@@ -136,7 +161,15 @@ export function CheckoutTurnstile({ siteKey, onToken, onError, resetKey }: Check
         src={TURNSTILE_SCRIPT_SRC}
         strategy="afterInteractive"
       />
-      <div className="kc-checkout-turnstile" ref={containerRef} />
+      <div
+        aria-describedby={describedBy}
+        aria-label="Biztonsági ellenőrzés"
+        className="kc-checkout-turnstile"
+        id={CHECKOUT_TURNSTILE_CONTAINER_ID}
+        ref={containerRef}
+        role="group"
+        tabIndex={-1}
+      />
     </>
   )
 }

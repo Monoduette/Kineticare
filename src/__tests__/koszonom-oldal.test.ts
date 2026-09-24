@@ -8,14 +8,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import KoszonjukPage, { metadata } from '../app/(frontend)/fizetes/koszonom/page'
 import {
+  THANK_YOU_STATE_CHECK_COOLDOWN_MS,
+  THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS,
   THANK_YOU_STATE_CHECK_MAX_ORDER_AGE_MS,
   runThankYouPaymentStateCheck,
 } from '../app/(frontend)/fizetes/koszonom/payment-state-check'
+import { webhookRetryTask } from '../jobs/tasks/webhook-retry'
+import { resetAlertThrottle } from '../lib/alert-throttle'
+import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
 import {
   MAX_WEBHOOK_ATTEMPTS,
+  registerWebhookProcessor,
   type WebhookEventDoc,
   type WebhookEventStore,
 } from '../lib/idempotency'
+import { setAlertSink, type AlertLogEntry } from '../lib/logger'
 import {
   ThankYouFailed,
   ThankYouMissingOrder,
@@ -672,7 +679,6 @@ describe('köszönőoldal — címsor 320 px-en', () => {
  */
 describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () => {
   const ORDER_NUMBER = 'KH-2026-000123'
-  const STORED_PAYMENT_ID = '11111111-2222-3333-4444-555555555555'
   const NOW = Date.parse('2026-09-24T10:00:00.000Z')
   const envKeys = [
     'BARION_API_URL',
@@ -682,6 +688,14 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
   ]
   const savedEnv: Record<string, string | undefined> = {}
   const fetchMock = vi.fn()
+  const alerts: AlertLogEntry[] = []
+  /**
+   * Tesztenként ÚJ PaymentId: a lap-ellenőrzés hűtése folyamaton belüli,
+   * PaymentId-nkénti állapot (egy replika memóriája), tehát a tesztek így nem
+   * látják egymás ellenőrzéseit.
+   */
+  let paymentSeq = 0
+  let STORED_PAYMENT_ID = ''
 
   beforeEach(() => {
     for (const key of envKeys) {
@@ -695,6 +709,9 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
     afterSpy.after.mockReset()
+    paymentSeq += 1
+    STORED_PAYMENT_ID = `11111111-2222-3333-4444-${String(paymentSeq).padStart(12, '0')}`
+    setAlertSink((entry) => alerts.push(entry))
   })
 
   afterEach(() => {
@@ -705,10 +722,13 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
         process.env[key] = savedEnv[key]
       }
     }
+    setAlertSink(undefined)
+    alerts.length = 0
+    resetAlertThrottle()
     vi.unstubAllGlobals()
   })
 
-  function order(overrides: Record<string, unknown> = {}) {
+  function order(overrides: Record<string, unknown> = {}, now = NOW) {
     return {
       id: 101,
       orderNumber: ORDER_NUMBER,
@@ -716,13 +736,13 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
       barionPaymentId: STORED_PAYMENT_ID,
       currency: 'HUF',
       totalHufSnapshot: 19990,
-      createdAt: new Date(NOW - 5 * 60 * 1000).toISOString(),
+      createdAt: new Date(now - 5 * 60 * 1000).toISOString(),
       items: [{ product: 42, quantity: 1 }],
       ...overrides,
     }
   }
 
-  function fakePayload(doc: Record<string, unknown> | null) {
+  function fakePayload(doc: Record<string, unknown> | null, extra: Record<string, unknown> = {}) {
     const find = vi.fn(async ({ where }: { where?: unknown }) => {
       const json = JSON.stringify(where ?? {})
       if (doc === null) return { docs: [], totalDocs: 0 }
@@ -734,39 +754,83 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
       }
       return { docs: [], totalDocs: 0 }
     })
+    const findByID = vi.fn(async () => doc)
     const update = vi.fn(async () => ({}))
-    return { payload: { find, update } as unknown as Payload, find, update }
+    return { payload: { find, findByID, update, ...extra } as unknown as Payload, find, update }
   }
 
+  /** Memóriás webhook-events tár a valódi tábla (provider, externalId) egyedi kulcsával. */
   function memoryStore(initial: WebhookEventDoc[] = []) {
     const docs = [...initial]
     const store: WebhookEventStore = {
       find: async ({ where }) => {
-        const match = /"externalId":\{"equals":"([^"]+)"\}/.exec(JSON.stringify(where ?? {}))
-        const found = docs.filter((doc) => !match || doc.externalId === match[1])
-        return { docs: found, totalDocs: found.length }
+        const json = JSON.stringify(where ?? {})
+        const match = /"externalId":\{"equals":"([^"]+)"\}/.exec(json)
+        const found = docs.filter(
+          (doc) =>
+            (!match || doc.externalId === match[1]) &&
+            // A webhook-retry scan-szűrői (status in, attempts < MAX).
+            (!json.includes('"status":{"in"') || ['received', 'failed'].includes(doc.status)) &&
+            (!json.includes('less_than') || (doc.attempts ?? 0) < MAX_WEBHOOK_ATTEMPTS),
+        )
+        return { docs: found.map((doc) => ({ ...doc })), totalDocs: found.length }
       },
       create: async ({ data }) => {
+        if (docs.some((doc) => doc.externalId === data.externalId)) {
+          throw Object.assign(new Error('duplicate key'), { code: '23505' })
+        }
         const doc = { id: docs.length + 1, ...data } as unknown as WebhookEventDoc
         docs.push(doc)
-        return doc
+        return { ...doc }
       },
       update: async ({ id, data }) => {
         const doc = docs.find((candidate) => candidate.id === id)
         if (!doc) throw new Error(`nincs ilyen rekord: ${id}`)
         Object.assign(doc, data)
-        return doc
+        return { ...doc }
       },
     }
     return { store, docs }
   }
 
-  function preparedState(): Response {
+  /**
+   * Sorosító advisory-zár (a pg_advisory_xact_lock viselkedése): a hívások
+   * egymás után futnak.
+   */
+  function serialLock() {
+    let tail: Promise<unknown> = Promise.resolve()
+    return {
+      transaction: <T>(fn: (tx: { execute: () => Promise<void> }) => Promise<T>): Promise<T> => {
+        const run = tail.then(() => fn({ execute: async () => undefined }))
+        tail = run.catch(() => undefined)
+        return run
+      },
+    }
+  }
+
+  /**
+   * Zár, amelynek megszerzése ELŐTT (a várakozás alatt) egyszer lefut egy
+   * idegen futás hatása (callback, retry-job, másik replika).
+   */
+  function lockAfterForeignRun(foreignRun: () => void) {
+    let ran = false
+    return {
+      transaction: <T>(fn: (tx: { execute: () => Promise<void> }) => Promise<T>): Promise<T> => {
+        if (!ran) {
+          ran = true
+          foreignRun()
+        }
+        return fn({ execute: async () => undefined })
+      },
+    }
+  }
+
+  function barionState(status: string): Response {
     return new Response(
       JSON.stringify({
         PaymentId: STORED_PAYMENT_ID,
         PaymentRequestId: ORDER_NUMBER,
-        Status: 'Prepared',
+        Status: status,
         Total: 19990,
         Currency: 'HUF',
         Transactions: [],
@@ -776,6 +840,8 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     )
   }
 
+  const riasztasok = () => alerts.filter((a) => a.msg.startsWith('RIASZTÁS')).map((a) => a.msg)
+
   it('a lap rendelésszám mellett a válasz UTÁN ütemez egy ellenőrzést, rendelésszám nélkül nem', async () => {
     await KoszonjukPage({ searchParams: Promise.resolve({ order: ORDER_NUMBER }) })
     expect(afterSpy.after).toHaveBeenCalledTimes(1)
@@ -784,8 +850,8 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
     expect(afterSpy.after).not.toHaveBeenCalled()
   })
 
-  it('függő, friss rendelésnél a TÁROLT PaymentId-re kér GetState-et a callback-feldolgozón át, a URL-es paymentId-t figyelmen kívül hagyva', async () => {
-    fetchMock.mockResolvedValueOnce(preparedState())
+  it('függő, friss rendelésnél a TÁROLT PaymentId-re kér GetState-et, a URL-es paymentId-t figyelmen kívül hagyva, és függő fizetésnél eseményt sem ír', async () => {
+    fetchMock.mockImplementation(async () => barionState('Prepared'))
     const { payload } = fakePayload(order())
     const { store, docs } = memoryStore()
 
@@ -806,31 +872,93 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
       now: NOW,
     })
 
-    expect(outcome).toBe('processed')
+    expect(outcome).toBe('still-pending')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/v4/Payment/')
     expect(url.toLowerCase().replace(/-/g, '')).toContain(STORED_PAYMENT_ID.replace(/-/g, ''))
     expect(url).not.toContain('99999999')
-    // A callback-út eseménye jött létre (ugyanaz a dedup-kulcs), és a függő
-    // kimenetel nem zárja le: a későbbi valódi callback még feldolgozható.
+    // A vevő még a Barion-oldalon lehet: a lap semmit nem ír, tehát a
+    // webhook-retry sem kezd GetState-körözést erre a fizetésre.
+    expect(docs).toHaveLength(0)
+  })
+
+  /**
+   * REGRESSZIÓ (breaker, 6a5cd61): egyetlen névtelen letöltés egy elhagyott
+   * kosárra `pending_repoll` eseményt hozott létre, amit a percenkénti
+   * webhook-retry a fizetési ablakon belül kimerített, és a tulajdonos
+   * RIASZTÁS-t kapott. A bázison: „expected [ 'RIASZTÁS: a pending_repoll
+   * újrapróbálásai kimerültek…' ] to deeply equal []".
+   */
+  it('egy névtelen letöltés után a retry-job nem riaszthat a tulajdonosnak egy függő (Prepared) fizetésre', async () => {
+    fetchMock.mockImplementation(async () => barionState('Prepared'))
+    const current = order({}, Date.now())
+    const { store } = memoryStore()
+    const payload = {
+      find: async (args: { collection: string; where?: unknown }) =>
+        args.collection === 'webhook-events'
+          ? store.find(args as Parameters<WebhookEventStore['find']>[0])
+          : { docs: [current], totalDocs: 1 },
+      create: (args: Parameters<WebhookEventStore['create']>[0]) => store.create(args),
+      update: async (args: { collection: string }) =>
+        args.collection === 'webhook-events'
+          ? store.update(args as Parameters<WebhookEventStore['update']>[0])
+          : {},
+    } as unknown as Payload
+
+    await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store })
+    expect(fetchMock).toHaveBeenCalled()
+
+    registerWebhookProcessor('barion', createBarionCallbackProcessor({ payload, store }))
+    const { handler } = webhookRetryTask
+    if (typeof handler !== 'function') {
+      throw new Error('a webhook-retry handlere nem függvény')
+    }
+    // A percenkénti retry-job a fizetési ablakon belül ennyiszer futhat.
+    for (let run = 0; run < MAX_WEBHOOK_ATTEMPTS; run += 1) {
+      await (handler as (args: unknown) => Promise<unknown>)({ req: { payload } })
+    }
+
+    expect(riasztasok()).toEqual([])
+  })
+
+  it('végleges (megszakított) fizetésnél a callback-feldolgozón át lezárja a rendelést és az eseményt', async () => {
+    fetchMock.mockImplementation(async () => barionState('Canceled'))
+    const { payload, update } = fakePayload(order())
+    const { store, docs } = memoryStore()
+
+    expect(
+      await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
+    ).toBe('processed')
+
     expect(docs).toHaveLength(1)
-    expect(docs[0]).toMatchObject({ externalId: STORED_PAYMENT_ID, status: 'received' })
+    expect(docs[0]).toMatchObject({
+      externalId: STORED_PAYMENT_ID,
+      status: 'processed',
+      result: 'cancelled',
+    })
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'orders',
+        data: expect.objectContaining({ status: 'cancelled' }),
+      }),
+    )
   })
 
   it.each([
-    ['nem függő (már paid)', order({ status: 'paid' }), 'not-pending'],
-    ['nincs tárolt PaymentId', order({ barionPaymentId: null }), 'no-payment-id'],
+    ['nem függő (már paid)', () => order({ status: 'paid' }), 'not-pending'],
+    ['nincs tárolt PaymentId', () => order({ barionPaymentId: null }), 'no-payment-id'],
     [
       'régi rendelés (az order-poll viszi)',
-      order({
-        createdAt: new Date(NOW - THANK_YOU_STATE_CHECK_MAX_ORDER_AGE_MS - 1000).toISOString(),
-      }),
+      () =>
+        order({
+          createdAt: new Date(NOW - THANK_YOU_STATE_CHECK_MAX_ORDER_AGE_MS - 1000).toISOString(),
+        }),
       'too-old',
     ],
-    ['nem létező rendelés', null, 'not-found'],
+    ['nem létező rendelés', () => null, 'not-found'],
   ])('%s: nincs GetState', async (_nev, doc, vart) => {
-    const { payload } = fakePayload(doc)
+    const { payload } = fakePayload(doc())
     const { store } = memoryStore()
     expect(
       await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
@@ -867,35 +995,96 @@ describe('köszönőoldal — PaymentState-ellenőrzés a visszatéréskor', () 
   })
 
   /**
-   * Oldal-újratöltésekkel nem lehet a callback-eseményt kimeríteni: a
-   * kimerülés riasztást ad és a retry-jobból kivenné az eseményt. Ez az út a
-   * kimerülés ELŐTTI utolsó kísérletet a valódi callbacknek hagyja.
+   * A lap kísérlet-kerete (2) jóval a kimerülési riasztás (5) alatt van: egy
+   * már kétszer próbált eseményt a lap nem visz tovább, azt a retry-job és a
+   * callback kezeli.
    */
-  it('a kimerülés előtti utolsó kísérletet nem használja el', async () => {
+  it('a keretét elérő (kétszer próbált) eseménynél nem kísérel és nem hív Bariont', async () => {
     const { payload } = fakePayload(order())
     const { store, docs } = memoryStore([
       {
         id: 1,
         provider: 'barion',
         externalId: STORED_PAYMENT_ID,
-        status: 'received',
-        attempts: MAX_WEBHOOK_ATTEMPTS - 1,
-        result: 'pending_repoll',
+        status: 'failed',
+        attempts: THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS,
       } as unknown as WebhookEventDoc,
     ])
     expect(
       await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
     ).toBe('attempts-reserved')
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(docs[0].attempts).toBe(MAX_WEBHOOK_ATTEMPTS - 1)
+    expect(docs[0].attempts).toBe(THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS)
   })
 
-  it('a Barion hibája nem dob a hívóra (a válasz után fut), és a kimenetel „failed"', async () => {
-    fetchMock.mockRejectedValueOnce(new Error('hálózati hiba'))
+  /**
+   * REGRESSZIÓ (breaker, 6a5cd61): párhuzamos letöltések mind átjutottak a
+   * zár ELŐTTI őrön, majd a zár alatt sorban mind lefutott. A bázison:
+   * „expected 8 to be less than or equal to 4" (8 GetState, attempts=8,
+   * RIASZTÁS a köszönőoldalról).
+   */
+  it('8 párhuzamos letöltés egyetlen ellenőrzést indít: nincs GetState-vihar, esemény-kísérlet és RIASZTÁS', async () => {
+    fetchMock.mockImplementation(async () => barionState('Started'))
+    const { payload } = fakePayload(order(), { db: { drizzle: serialLock() } })
+    const { store, docs } = memoryStore()
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
+      ),
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(outcomes.filter((outcome) => outcome === 'cooldown')).toHaveLength(7)
+    expect(docs.map((doc) => doc.attempts ?? 0)).toEqual([])
+    expect(riasztasok()).toEqual([])
+
+    // A hűtés lejár: egy későbbi visszatérés újra ellenőriz.
+    await runThankYouPaymentStateCheck({
+      payload,
+      orderNumber: ORDER_NUMBER,
+      store,
+      now: NOW + THANK_YOU_STATE_CHECK_COOLDOWN_MS,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  /**
+   * REGRESSZIÓ (breaker, 6a5cd61): az őr a zár ELŐTT olvasott. Amíg ez a
+   * futás a callback-zárra várt, egy másik (itt: a retry-job egy sikertelen
+   * kísérlete) a keretig vitte az eseményt; a zár alatt ezt újra kell
+   * olvasni, különben a lap még egy kísérletet használ el.
+   */
+  it('a zárra várva megváltozott eseményt a zár ALATT újraolvassa, és nem kísérel', async () => {
+    fetchMock.mockImplementation(async () => barionState('Canceled'))
+    const { store, docs } = memoryStore([
+      {
+        id: 1,
+        provider: 'barion',
+        externalId: STORED_PAYMENT_ID,
+        status: 'failed',
+        attempts: 1,
+      } as unknown as WebhookEventDoc,
+    ])
+    const lock = lockAfterForeignRun(() => {
+      docs[0].attempts = THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS
+    })
+    const { payload, update } = fakePayload(order(), { db: { drizzle: lock } })
+
+    expect(
+      await runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
+    ).toBe('attempts-reserved')
+    expect(docs[0].attempts).toBe(THANK_YOU_STATE_CHECK_MAX_EVENT_ATTEMPTS)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('a Barion hibája nem dob a hívóra (a válasz után fut), a kimenetel „failed", és eseményt sem ír', async () => {
+    fetchMock.mockRejectedValue(new Error('hálózati hiba'))
     const { payload } = fakePayload(order())
-    const { store } = memoryStore()
+    const { store, docs } = memoryStore()
     await expect(
       runThankYouPaymentStateCheck({ payload, orderNumber: ORDER_NUMBER, store, now: NOW }),
     ).resolves.toBe('failed')
+    expect(docs).toHaveLength(0)
   })
 })
