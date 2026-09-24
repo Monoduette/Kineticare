@@ -1,4 +1,5 @@
 import { barionPost, getBarionConfig, type BarionClientConfig } from './client'
+import { canonicalizeBarionGuid } from './guid'
 import type { BarionRefundRequest, BarionRefundResponse, BarionTransactionToRefund } from './types'
 
 /**
@@ -61,7 +62,10 @@ export function buildRefundRequest(
 
 /**
  * Visszatérítés végrehajtása (Payment/Refund v2). A válasz
- * RefundedTransactions elemeit (TransactionId + Status) változatlanul adja vissza.
+ * RefundedTransactions elemeit (TransactionId + Status) változatlanul adja
+ * vissza; csak a Barion-azonosítók kerülnek kanonikus (kisbetűs, kötőjeles)
+ * alakba, hogy a tárolt PaymentId-vel pontos egyezéssel összevethetők legyenek
+ * (a Barion mindkét alakot használja, lásd guid.ts).
  */
 export async function refundPayment(
   params: RefundPaymentParams,
@@ -69,5 +73,19 @@ export async function refundPayment(
 ): Promise<BarionRefundResponse> {
   const resolvedConfig = config ?? getBarionConfig()
   const request = buildRefundRequest(params)
-  return barionPost<BarionRefundResponse>('/v2/Payment/Refund', request, resolvedConfig)
+  const response = await barionPost<BarionRefundResponse>(
+    '/v2/Payment/Refund',
+    request,
+    resolvedConfig,
+  )
+  return {
+    ...response,
+    PaymentId: canonicalizeBarionGuid(response.PaymentId),
+    RefundedTransactions: Array.isArray(response.RefundedTransactions)
+      ? response.RefundedTransactions.map((transaction) => ({
+          ...transaction,
+          TransactionId: canonicalizeBarionGuid(transaction.TransactionId),
+        }))
+      : response.RefundedTransactions,
+  }
 }

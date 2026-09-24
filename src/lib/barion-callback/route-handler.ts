@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 
 import { withAdvisoryLock } from '../advisory-lock'
 import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { BARION_GUID_MAX_LENGTH, canonicalBarionGuid } from '../barion/guid'
 import {
   isNonTerminalWebhookResult,
   isTerminallyProcessed,
@@ -45,15 +46,14 @@ export interface BarionCallbackHandlerDeps {
 }
 
 /**
- * A Barion PaymentId GUID (UUID) alakú — a Barion API-dokumentáció és a
- * gyakorlatban kapott értékek szerint is `8-4-4-4-12` hexadecimális csoport.
- * Kis- és nagybetűs hexet is elfogadunk (a Barion kisbetűset küld, de a
- * GUID-alak önmagában nem kis-nagybetű-érzékeny).
+ * A Barion PaymentId GUID, de két alakban érkezhet: kötőjel nélkül (32 hex,
+ * a callback `paymentId` paraméterének dokumentált alakja) vagy kötőjelesen
+ * (8-4-4-4-12). Mindkettőt elfogadjuk, kis- és nagybetűvel is; az alakot a
+ * közös `canonicalBarionGuid` ellenőrzi (lib/barion/guid.ts).
  */
-const PAYMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Egy GUID pontosan ennyi karakter — a mintaillesztés előtti olcsó kapu. */
-export const MAX_PAYMENT_ID_LENGTH = 36
+/** A kötőjeles GUID a leghosszabb elfogadott alak — a mintaillesztés előtti olcsó kapu. */
+export const MAX_PAYMENT_ID_LENGTH = BARION_GUID_MAX_LENGTH
 
 /**
  * A JSON-törzs tartalék-csatorna felső bájtkorlátja. A valódi Barion-callback
@@ -71,16 +71,17 @@ export function callbackLockKey(paymentId: string): string {
 
 /**
  * Egy nyers érték ALAK-ellenőrzése — hiányzó, üres, túl hosszú vagy nem
- * GUID-alakú érték esetén null. A visszaadott érték KANONIKUS (kisbetűs).
+ * GUID-alakú érték esetén null. A visszaadott érték KANONIKUS (kisbetűs,
+ * kötőjeles).
  *
- * Miért kisbetűs: a Barion GUID kis-nagybetű-érzéketlen, a Postgres `equals`
- * és a (provider, externalId) unique kulcs viszont érzékeny. Kanonizálás
- * nélkül ugyanaz a fizetés KÉT alias alatt élhetne: a dedup nem találná a
- * másik alak rekordját, az advisory-zár kulcsa szétválna (párhuzamos
- * GetState), az orders-lookup nem találná a rendelést, a processzor
- * orderNumber-fallbackje pedig hamis `payment-id-conflict`-tal terminálisan
- * elutasítaná az ÉRVÉNYES fizetést. A checkout a Barion kisbetűs alakját
- * tárolja, tehát a kisbetűs kanonikus alak a meglévő adattal kompatibilis.
+ * Miért kanonikus: a Barion GUID kis-nagybetű- és kötőjel-független, a
+ * Postgres `equals` és a (provider, externalId) unique kulcs viszont
+ * pontos egyezést néz. Kanonizálás nélkül ugyanaz a fizetés KÉT alias alatt
+ * élhetne: a dedup nem találná a másik alak rekordját, az advisory-zár
+ * kulcsa szétválna (párhuzamos GetState), az orders-lookup nem találná a
+ * rendelést, a processzor orderNumber-fallbackje pedig hamis
+ * `payment-id-conflict`-tal terminálisan elutasítaná az ÉRVÉNYES fizetést.
+ * A checkout ugyanezt a kanonikus alakot tárolja (lib/barion/start.ts).
  */
 function normalizePaymentId(raw: unknown): string | null {
   if (typeof raw !== 'string') {
@@ -91,7 +92,7 @@ function normalizePaymentId(raw: unknown): string | null {
   if (trimmed.length === 0 || trimmed.length > MAX_PAYMENT_ID_LENGTH) {
     return null
   }
-  return PAYMENT_ID_PATTERN.test(trimmed) ? trimmed.toLowerCase() : null
+  return canonicalBarionGuid(trimmed)
 }
 
 /**

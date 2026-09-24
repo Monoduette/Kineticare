@@ -1,9 +1,11 @@
 import { barionPost, getBarionConfig, type BarionClientConfig } from './client'
-import type {
-  BarionItem,
-  BarionPaymentStartRequest,
-  BarionPaymentStartResponse,
-  BarionPaymentTransaction,
+import { canonicalBarionGuid, canonicalizeBarionGuid } from './guid'
+import {
+  BarionApiError,
+  type BarionItem,
+  type BarionPaymentStartRequest,
+  type BarionPaymentStartResponse,
+  type BarionPaymentTransaction,
 } from './types'
 
 /**
@@ -73,15 +75,47 @@ export interface StartPaymentParams {
   recurring?: StartPaymentRecurringInput
 }
 
+/**
+ * A Barion mezőkorlátai. A CardHolderNameHint „Between 2 and 45 characters"
+ * (docs.barion.com/Payment-Start-v2). Az Item-mezők korlátja a
+ * docs.barion.com/Item oldalon van, amely ellenőrizhetően nem volt elérhető;
+ * ezért óvatos felső korlátot alkalmazunk (név 250, leírás 500, SKU 100
+ * karakter), és üres leírás helyett a tétel nevét küldjük. A korláton túli
+ * mező miatt a Barion az egész fizetésindítást elutasítaná.
+ */
+export const BARION_CARD_HOLDER_NAME_MIN = 2
+export const BARION_CARD_HOLDER_NAME_MAX = 45
+export const BARION_ITEM_NAME_MAX = 250
+export const BARION_ITEM_DESCRIPTION_MAX = 500
+export const BARION_ITEM_SKU_MAX = 100
+
+/** Egysoros, összevont szóközű szöveg, legfeljebb `max` karakter (Unicode-karakterben mérve). */
+function fitText(value: string, max: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  const chars = Array.from(normalized)
+  return chars.length <= max ? normalized : chars.slice(0, max).join('').trimEnd()
+}
+
+/** A kártyabirtokos-név javaslata a Barion 2–45 karakteres korlátján belül; rövidebbre nincs javaslat. */
+export function cardHolderNameHintFor(name: string | undefined): string | undefined {
+  if (name === undefined) {
+    return undefined
+  }
+  const hint = fitText(name, BARION_CARD_HOLDER_NAME_MAX)
+  return Array.from(hint).length < BARION_CARD_HOLDER_NAME_MIN ? undefined : hint
+}
+
 function mapItem(item: StartPaymentItemInput): BarionItem {
+  const name = fitText(item.name, BARION_ITEM_NAME_MAX)
+  const description = fitText(item.description, BARION_ITEM_DESCRIPTION_MAX)
   return {
-    Name: item.name,
-    Description: item.description,
+    Name: name,
+    Description: description.length > 0 ? description : fitText(name, BARION_ITEM_DESCRIPTION_MAX),
     Quantity: item.quantity,
     Unit: item.unit,
     UnitPrice: item.unitPrice,
     ItemTotal: item.itemTotal,
-    ...(item.sku !== undefined ? { SKU: item.sku } : {}),
+    ...(item.sku !== undefined ? { SKU: fitText(item.sku, BARION_ITEM_SKU_MAX) } : {}),
   }
 }
 
@@ -122,6 +156,8 @@ export function buildPaymentStartRequest(
     }
   }
 
+  const cardHolderNameHint = cardHolderNameHintFor(params.cardHolderNameHint)
+
   return {
     PaymentType: 'Immediate',
     GuestCheckOut: true,
@@ -131,9 +167,7 @@ export function buildPaymentStartRequest(
     PaymentWindow: params.paymentWindow ?? BARION_DEFAULT_PAYMENT_WINDOW,
     PaymentRequestId: params.paymentRequestId,
     ...(params.payerHint !== undefined ? { PayerHint: params.payerHint } : {}),
-    ...(params.cardHolderNameHint !== undefined
-      ? { CardHolderNameHint: params.cardHolderNameHint }
-      : {}),
+    ...(cardHolderNameHint !== undefined ? { CardHolderNameHint: cardHolderNameHint } : {}),
     RedirectUrl: params.redirectUrl,
     CallbackUrl: params.callbackUrl,
     Transactions: params.transactions.map((transaction) =>
@@ -155,5 +189,32 @@ export async function startPayment(
 ): Promise<BarionPaymentStartResponse> {
   const resolvedConfig = config ?? getBarionConfig()
   const request = buildPaymentStartRequest(params, resolvedConfig)
-  return barionPost<BarionPaymentStartResponse>('/v2/Payment/Start', request, resolvedConfig)
+  const response = await barionPost<BarionPaymentStartResponse>(
+    '/v2/Payment/Start',
+    request,
+    resolvedConfig,
+  )
+  // A PaymentId a Barionban kötőjeles és kötőjel nélküli alakban is előfordul;
+  // a rendelésre a kanonikus alak kerül (guid.ts). GUID nélkül a fizetés nem
+  // követhető, ezért ez érvénytelen válasz.
+  const paymentId = canonicalBarionGuid(response.PaymentId)
+  if (paymentId === null) {
+    throw new BarionApiError({
+      message: 'A Barion Start-válasz nem tartalmaz érvényes PaymentId-t.',
+      kind: 'invalid_response',
+      endpoint: 'POST /v2/Payment/Start',
+    })
+  }
+  return {
+    ...response,
+    PaymentId: paymentId,
+    ...(Array.isArray(response.Transactions)
+      ? {
+          Transactions: response.Transactions.map((transaction) => ({
+            ...transaction,
+            TransactionId: canonicalizeBarionGuid(transaction.TransactionId),
+          })),
+        }
+      : {}),
+  }
 }

@@ -2,6 +2,7 @@ import type { Payload } from 'payload'
 
 import type { Order } from '../../payload-types'
 import { BarionApiError, fetchPaymentState, mapBarionPaymentStatus } from '../barion'
+import { canonicalBarionGuid, sameBarionGuid } from '../barion/guid'
 import {
   registerWebhookProcessor,
   webhookEventStore,
@@ -160,12 +161,12 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
   const recoverRejectedPaid = deps.recoverRejectedPaid ?? recoverRejectedSucceededPayment
 
   return async function processBarionCallbackEvent(event: WebhookEventDoc): Promise<unknown> {
-    // KANONIKUS (kisbetűs) alak: a Barion GUID kis-nagybetű-érzéketlen, a
-    // Postgres `equals` nem. A route-handler már kanonizál, de a KORÁBBAN
-    // (kanonizálás előtt) tárolt webhook-events sorok externalId-ja nagybetűs
-    // is lehet — kanonizálás nélkül a rendelés-lookup nem találna, a
+    // KANONIKUS (kisbetűs, kötőjeles) alak: a Barion GUID kis-nagybetű- és
+    // kötőjel-független, a Postgres `equals` nem. A route-handler már
+    // kanonizál, de a KORÁBBAN tárolt webhook-events sorok externalId-ja más
+    // alakú is lehet — kanonizálás nélkül a rendelés-lookup nem találna, a
     // barionPaymentId-összevetés pedig hamis alias-konfliktust jelezne.
-    const paymentId = event.externalId.toLowerCase()
+    const paymentId = canonicalBarionGuid(event.externalId) ?? event.externalId.toLowerCase()
     const eventLog = log.child({ paymentId, eventId: event.id })
 
     try {
@@ -215,7 +216,11 @@ export function createBarionCallbackProcessor(deps: BarionCallbackProcessorDeps)
           await closeEvent(store, event, 'rejected')
           return { status: 'rejected', reason: 'total-mismatch', orderId: order.id }
         }
-        if (order.barionPaymentId && order.barionPaymentId.toLowerCase() !== paymentId) {
+        if (
+          order.barionPaymentId &&
+          order.barionPaymentId.toLowerCase() !== paymentId &&
+          !sameBarionGuid(order.barionPaymentId, paymentId)
+        ) {
           // A rendeléshez MÁS fizetés van kötve: a felülírás elszakítaná a
           // valódi fizetéstől. Nem írunk, riasztunk.
           eventLog.error(
