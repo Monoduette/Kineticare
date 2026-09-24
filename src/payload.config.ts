@@ -69,6 +69,7 @@ import {
 } from './lib/admin/urlap-admin'
 import { logger, type Logger } from './lib/logger'
 import { getRequestId } from './lib/request-id'
+import { isUsableReplyToAddress } from './lib/email/reply-to'
 import { adminGroups } from './plugins/admin-groups'
 import { audit } from './plugins/audit'
 import { ecommerce } from './plugins/ecommerce'
@@ -340,14 +341,6 @@ const validateContactSubmission: CollectionBeforeValidateHook = async ({
 }
 
 /**
- * A Reply-To cím formai ellenőrzése: az űrlap-validátorok
- * (contact-submission, appointment/validation) mintája. Szóközt és sortörést
- * nem enged, így fejléc-injektálásra sem alkalmas.
- */
-const STAFF_REPLY_TO_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const STAFF_REPLY_TO_MAX_LENGTH = 254
-
-/**
  * Staff-értesítő űrlap-beküldéskor (T-018 sablonok).
  * A címzettlista a CONTACT_STAFF_EMAILS env-ből jön (vessző-szeparált); üres
  * env = nincs értesítés, a beküldés ettől függetlenül mentődik. Best-effort:
@@ -418,13 +411,7 @@ const notifyStaffOnSubmission = async ({
     const submitterEmail = (
       formKind === 'appointment' ? fieldValue(APPOINTMENT_EMAIL_FIELD) : fieldValue('email')
     ).trim()
-    // Az RFC 5321 legfeljebb 254 karaktert enged; hosszabb címnél a Resend
-    // az egész levelet elutasítaná, ezért ilyenkor Reply-To nélkül megy.
-    const replyTo =
-      submitterEmail.length <= STAFF_REPLY_TO_MAX_LENGTH &&
-      STAFF_REPLY_TO_EMAIL_PATTERN.test(submitterEmail)
-        ? submitterEmail
-        : undefined
+    const replyTo = isUsableReplyToAddress(submitterEmail) ? submitterEmail : undefined
     const template =
       formKind === 'appointment'
         ? appointmentStaffEmail({

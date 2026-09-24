@@ -220,7 +220,12 @@ export function TurnstileWidget({ siteKey, onToken, resetKey = 0, onError }: Tur
         src={TURNSTILE_SCRIPT_SRC}
         strategy="afterInteractive"
       />
-      <div className="kc-contact-form__turnstile" ref={containerRef} />
+      {/* Külső: CSS-konténer (a szélessége a rendelkezésre álló hely); belső: a
+          rajzolási hely, amely 300 px alatt a kompakt widget 140 px-ét foglalja
+          le már a kirajzolás előtt (layout.css, CLS ellen). */}
+      <div className="kc-contact-form__turnstile">
+        <div className="kc-contact-form__turnstile-hely" ref={containerRef} />
+      </div>
     </>
   )
 }
