@@ -1,19 +1,18 @@
 import { after } from 'next/server'
 import type { Payload } from 'payload'
 
-import { withAdvisoryLock } from '../advisory-lock'
+import type { Order } from '../../payload-types'
 import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { getBarionConfig, type BarionEnvironment } from '../barion/client'
 import { BARION_GUID_MAX_LENGTH, canonicalBarionGuid } from '../barion/guid'
 import {
-  isNonTerminalWebhookResult,
   isTerminallyProcessed,
   isUniqueViolation,
   MAX_WEBHOOK_ATTEMPTS,
-  processWebhook,
   webhookEventStore,
   type WebhookEventStore,
 } from '../idempotency'
-import { logger } from '../logger'
+import { logger, type Logger } from '../logger'
 import { generateRequestId, getRequestId } from '../request-id'
 import { readBodyWithCap } from '../security/request-body'
 import {
@@ -21,7 +20,8 @@ import {
   resolveRateLimitIp,
   type CheckRequestRateLimitOptions,
 } from '../security/rate-limit'
-import { createBarionCallbackProcessor } from './process-callback'
+import { callbackLockKey, runBarionCallbackEvent } from './process-callback'
+import { runRefundReconciliation } from './refund-reconciliation'
 
 /**
  * POST /api/barion/callback. PaymentId a query-ben (a törzs üres). Dedup +
@@ -64,10 +64,64 @@ export const MAX_PAYMENT_ID_LENGTH = BARION_GUID_MAX_LENGTH
  */
 export const MAX_CALLBACK_BODY_BYTES = 16 * 1024
 
-/** A callback-feldolgozás (GetState) sorosító advisory-zárának kulcsa egy PaymentId-re. */
-export function callbackLockKey(paymentId: string): string {
-  return `barion-callback:${paymentId}`
+export { callbackLockKey }
+
+/**
+ * A Barion dokumentált callback-forrás IP-címei környezetenként
+ * (docs.barion.com/Callback_mechanism: „it's strongly recommended to allowlist
+ * the Barion API IP addresses, and blocklist all other IPs”; éles 40.113.73.229,
+ * teszt 20.223.214.216). Ismeretlen PaymentId-t CSAK innen dolgozunk fel
+ * (a-callback-7): a GetState úgyis bizonyít, de egy idegen IP-kről jövő
+ * ismeretlen-GUID-áradat sort írna és kimenő hívást kényszerítene. Az ISMERT
+ * PaymentId bármely IP-ről feldolgozható (a rendelés a miénk, a GetState dönt).
+ */
+export const BARION_CALLBACK_SOURCE_IPS: Readonly<Record<BarionEnvironment, readonly string[]>> = {
+  prod: ['40.113.73.229'],
+  test: ['20.223.214.216'],
 }
+
+/**
+ * A kérés valódi forrás-IP-je a forrás-ellenőrzéshez. A Railway éle az
+ * `X-Real-IP` fejlécbe írja a kliens címét („X-Real-IP for identifying
+ * client's remote IP”, docs.railway.com/networking/public-networking/specs-and-limits),
+ * az `X-Forwarded-For` lánc elejét viszont a kliens maga írhatja: azt itt
+ * SOSEM olvassuk. Cloudflare-proxy mögött (TRUST_CF_CONNECTING_IP=true, mint
+ * az audit-naplónál) a `cf-connecting-ip` a forrás.
+ */
+export function barionCallbackSourceIp(headers: Headers): string | null {
+  const raw =
+    process.env.TRUST_CF_CONNECTING_IP?.trim().toLowerCase() === 'true'
+      ? headers.get('cf-connecting-ip')
+      : headers.get('x-real-ip')
+  if (typeof raw !== 'string') {
+    return null
+  }
+  const trimmed = raw.trim().toLowerCase()
+  if (trimmed.length === 0 || trimmed.includes(',')) {
+    return null
+  }
+  return trimmed.startsWith('::ffff:') ? trimmed.slice('::ffff:'.length) : trimmed
+}
+
+/** Az aktív Barion-környezet callback-IP-i; hibás konfignál mindkét környezeté (a feldolgozás úgyis elbukna). */
+function allowedCallbackSourceIps(): readonly string[] {
+  try {
+    return BARION_CALLBACK_SOURCE_IPS[getBarionConfig().environment]
+  } catch {
+    return [...BARION_CALLBACK_SOURCE_IPS.prod, ...BARION_CALLBACK_SOURCE_IPS.test]
+  }
+}
+
+/**
+ * Egy már paid-re zárt fizetésre érkező újabb callback visszatérítés-egyeztetést
+ * indít, de PaymentId-nként legfeljebb ennyi időnként: az ismert PaymentId-t
+ * bárki újraküldheti, és minden egyeztetés egy PaymentState-hívás.
+ */
+export const PAID_RECONCILIATION_COOLDOWN_MS = 10 * 60 * 1000
+/** Lezárt (cancelled) fizetés újraellenőrzése: csak ennél fiatalabb rendelésre (r-barion-7). */
+export const CANCELLED_RECHECK_MAX_ORDER_AGE_MS = 24 * 60 * 60 * 1000
+/** A lezárt fizetés újraellenőrzésének fojtása PaymentId-nként. */
+export const CANCELLED_RECHECK_COOLDOWN_MS = 60 * 1000
 
 /**
  * Egy nyers érték ALAK-ellenőrzése — hiányzó, üres, túl hosszú vagy nem
@@ -143,7 +197,7 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
  * Utóbbi egy unknown-vödörhelyet fogyaszt, de a keret alatt átmegy; a
  * mentőháló az order-poll (és a processzor orderNumber-fallbackje).
  */
-async function isKnownBarionPaymentId(payload: Payload, paymentId: string): Promise<boolean> {
+async function findOrderByPaymentId(payload: Payload, paymentId: string): Promise<Order | null> {
   const found = await payload.find({
     collection: 'orders',
     where: { barionPaymentId: { equals: paymentId } },
@@ -151,7 +205,24 @@ async function isKnownBarionPaymentId(payload: Payload, paymentId: string): Prom
     depth: 0,
     overrideAccess: true,
   })
-  return found.docs.length > 0
+  return (found.docs[0] as Order | undefined) ?? null
+}
+
+async function isKnownBarionPaymentId(payload: Payload, paymentId: string): Promise<boolean> {
+  return (await findOrderByPaymentId(payload, paymentId)) !== null
+}
+
+/** Egy háttérfeladat, amely a saját hibáját strukturált naplósorba fogja (a-callback-13). */
+function guarded(log: Logger, what: string, task: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    try {
+      await task()
+    } catch (error) {
+      log.error(`barion-callback: ${what} váratlan hibával állt le`, {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 }
 
 export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
@@ -194,53 +265,53 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
     const payload = await deps.getPayload()
     const store = deps.store ?? webhookEventStore(payload)
 
-    const runProcessing = async (): Promise<void> => {
-      // SEC-006: a feldolgozás (GetState) PaymentId-re szabott advisory-zár
-      // alatt fut — párhuzamos/egyszerre kézbesített ismétlések nem indítanak
-      // egyidejű GetState-vihart. Az első futás után a rekord terminális lesz,
-      // a záron várakozó ismétlés friss olvasáson már no-opot lát (processWebhook
-      // isTerminallyProcessed), tehát nem hív újabb GetState-et.
-      const outcome = await withAdvisoryLock(
-        payload,
-        callbackLockKey(paymentId),
-        () =>
-          processWebhook({
-            store,
-            provider: 'barion',
-            externalId: paymentId,
-            requestId,
-            handler: createBarionCallbackProcessor({ payload, store }),
-          }),
-        eventLog,
-      )
-      if (outcome.kind === 'failed') {
-        if (!outcome.retryable) {
-          // Ez volt az utolsó megengedett kísérlet: a webhook-retry MÁR NEM
-          // viszi tovább — az owner-riasztás itt, a kimerülés pillanatában megy.
-          // W13 után egy ISMERT+kimerült rekordot a Barion minden ismételt
-          // kézbesítése újra feldolgoztat: a már felszínre hozott ügy riasztása
-          // fojtva ismétlődik (alert-throttle), nem kézbesítésenként.
-          // Külön kulcs-előtag, mint a pending_repoll-kimerülésé (idempotency.ts):
-          // a két ág KÜLÖN incidens — közös kulccsal az egyik elnyelné a másik
-          // első riasztását a cooldownon belül.
-          if (shouldEmitThrottledAlert(`webhook-exhausted-failed:barion:${paymentId}`)) {
-            eventLog.error(
-              'webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
+    const runProcessing = guarded(
+      eventLog,
+      'a háttér-feldolgozás (a webhook-retry újrapróbálja)',
+      async (): Promise<void> => {
+        // SEC-006 + a-callback-7: a GetState a zár ELŐTT megy ki, a feldolgozás
+        // PaymentId-re szabott session-zár alatt fut (runBarionCallbackEvent),
+        // a paid-mellékhatás a zár után. Párhuzamos ismétlés a záron vár, majd
+        // friss olvasáson no-opot lát.
+        const outcome = await runBarionCallbackEvent({
+          payload,
+          store,
+          paymentId,
+          requestId,
+          logger: eventLog,
+        })
+        if (outcome.kind === 'failed') {
+          if (!outcome.retryable) {
+            // Ez volt az utolsó megengedett kísérlet: a webhook-retry MÁR NEM
+            // viszi tovább — az owner-riasztás itt, a kimerülés pillanatában megy.
+            // W13 után egy ISMERT+kimerült rekordot a Barion minden ismételt
+            // kézbesítése újra feldolgoztat: a már felszínre hozott ügy riasztása
+            // fojtva ismétlődik (alert-throttle), nem kézbesítésenként.
+            // Külön kulcs-előtag, mint a pending_repoll-kimerülésé (idempotency.ts):
+            // a két ág KÜLÖN incidens — közös kulccsal az egyik elnyelné a másik
+            // első riasztását a cooldownon belül.
+            if (shouldEmitThrottledAlert(`webhook-exhausted-failed:barion:${paymentId}`)) {
+              eventLog.error(
+                'RIASZTÁS: webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
+                {
+                  attempts: outcome.attempts,
+                  error: outcome.error,
+                },
+              )
+            }
+          } else {
+            eventLog.warn(
+              'barion-callback: aszinkron feldolgozás sikertelen (retry-job folytatja)',
               {
                 attempts: outcome.attempts,
+                retryable: outcome.retryable,
                 error: outcome.error,
               },
             )
           }
-        } else {
-          eventLog.warn('barion-callback: aszinkron feldolgozás sikertelen (retry-job folytatja)', {
-            attempts: outcome.attempts,
-            retryable: outcome.retryable,
-            error: outcome.error,
-          })
         }
-      }
-    }
+      },
+    )
 
     // 1. AZONNALI DEDUP — a feldolgozást NEM várjuk meg.
     try {
@@ -262,6 +333,73 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
         // ezt info-szintű "duplikátum" sorral fedte el, és a Barion ismételt
         // kézbesítése nyomtalanul tűnt el. A warn felszínre hozza, hogy egy
         // lezárt-elutasított fizetésre még mindig érkezik callback.
+        if (record.result === 'paid') {
+          // a-callback-6, a-refund-7: a paid lezárás után érkező callback a
+          // Barion szerint egy újabb tranzakció (tipikusan visszatérítés, akár a
+          // Barion felületén indított). Könnyű egyeztetés a háttérben, állapot-
+          // és pénzmozgás nélkül; PaymentId-nként fojtva.
+          const reconcile = shouldEmitThrottledAlert(
+            `callback-refund-reconciliation:${paymentId}`,
+            PAID_RECONCILIATION_COOLDOWN_MS,
+          )
+          eventLog.info('barion-callback: kézbesítés egy már paid eseményre — no-op 200', {
+            refundReconciliation: reconcile ? 'utemezve' : 'fojtva',
+          })
+          if (reconcile) {
+            schedule(
+              guarded(eventLog, 'a visszatérítés-egyeztetés', async () => {
+                const order = await findOrderByPaymentId(payload, paymentId)
+                if (order) {
+                  await runRefundReconciliation({
+                    payload,
+                    order,
+                    trigger: 'callback',
+                    logger: eventLog,
+                  })
+                }
+              }),
+            )
+          }
+          return jsonResponse({ ok: true, status: 'duplicate' })
+        }
+        if (record.result === 'cancelled') {
+          // r-barion-7: egy lezárt (cancelled) fizetésre érkező újabb callback a
+          // késői sikert hozhatja („the payment process may still be completed
+          // by the customer, even if the window has officially closed”,
+          // Callback_mechanism). 24 óránál fiatalabb, még le nem zárt-fizetett
+          // rendelésnél a GetState újra fut, PaymentId-nként fojtva.
+          const order = await findOrderByPaymentId(payload, paymentId)
+          const createdAtMs = Date.parse(order?.createdAt ?? '')
+          const young =
+            order !== null &&
+            (order.status === 'cancelled' || order.status === 'payment_failed') &&
+            Number.isFinite(createdAtMs) &&
+            Date.now() - createdAtMs < CANCELLED_RECHECK_MAX_ORDER_AGE_MS
+          if (
+            young &&
+            shouldEmitThrottledAlert(
+              `callback-cancelled-recheck:${paymentId}`,
+              CANCELLED_RECHECK_COOLDOWN_MS,
+            )
+          ) {
+            eventLog.info('barion-callback: lezárt fizetésre érkező callback — a GetState újra fut')
+            schedule(
+              guarded(eventLog, 'a lezárt fizetés újraellenőrzése', async () => {
+                await runBarionCallbackEvent({
+                  payload,
+                  store,
+                  paymentId,
+                  requestId,
+                  logger: eventLog,
+                  mode: 'recheck-cancelled',
+                })
+              }),
+            )
+            return jsonResponse({ ok: true, status: 'received' })
+          }
+          eventLog.info('barion-callback: duplikált kézbesítés — már feldolgozva, no-op 200')
+          return jsonResponse({ ok: true, status: 'duplicate' })
+        }
         if (record.result === 'rejected') {
           // Fojtva: a dedup-gyorsút a rate-limit ELŐTT fut (örökölt sorrend),
           // egy ismert-elutasított PaymentId ismételgetésével tehát HTTP-ütemű
@@ -298,13 +436,16 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
           // kell futnia; processed-re itt nem zárjuk.
         }
 
-        // 'received' + még nincs eredmény = a feldolgozás ütemezve/fut;
+        // Minden nem terminális rekord újra ütemeződik (a-callback-8):
         // 'failed' = a Barion retry-lépcső újra kézbesítette → azonnali újrapróbálás;
         // nem terminális eredmény (pending_repoll) = a fizetés korábban még függő
-        // volt, EZ a kézbesítés hozza a végleges státuszt → újra feldolgozzuk (B4).
-        if (record.status === 'failed' || isNonTerminalWebhookResult(record.result)) {
-          schedule(runProcessing)
-        }
+        // volt, EZ a kézbesítés hozza a végleges státuszt (B4);
+        // 'received' eredmény nélkül = egy feldolgozás épp fut. Korábban ezt nem
+        // ütemeztük, így ha a futó feldolgozás még a KORÁBBI (függő) állapotot
+        // látta, a most jelzett végleges állapot csak a percenkénti retryvel
+        // érkezett meg. A callback-zár sorba állítja a kettőt, a második friss
+        // olvasással no-op, ha az első már lezárta.
+        schedule(runProcessing)
         return jsonResponse({ ok: true, status: 'received' })
       }
 
@@ -313,6 +454,19 @@ export function createBarionCallbackHandler(deps: BarionCallbackHandlerDeps) {
       // de a keret alatt átmegy — mentőháló: order-poll).
       const known = await isKnownBarionPaymentId(payload, paymentId)
       if (!known) {
+        const sourceIp = barionCallbackSourceIp(request.headers)
+        if (sourceIp === null || !allowedCallbackSourceIps().includes(sourceIp)) {
+          // Nem a Barion dokumentált callback-címéről jött ismeretlen GUID:
+          // 200 (ne legyen visszajelzés a próbálkozónak), rekord és GetState
+          // nélkül. A naplósor IP-nként fojtott.
+          if (shouldEmitThrottledAlert(`callback-foreign-source:${sourceIp ?? 'ismeretlen'}`)) {
+            eventLog.warn(
+              'barion-callback: ismeretlen PaymentId nem a Barion callback-címéről — 200 no-op, nincs GetState',
+              { sourceIp },
+            )
+          }
+          return jsonResponse({ ok: true, status: 'ignored' })
+        }
         const rejection = checkIpRateLimit({
           request,
           routeClass: 'barion-callback-unknown',

@@ -4,10 +4,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInst
 import { emptyRefundLedger } from './empty-refund-ledger'
 import { resetAlertThrottle } from '../lib/alert-throttle'
 import { createBarionCallbackProcessor } from '../lib/barion-callback/process-callback'
-import { createBarionCallbackHandler } from '../lib/barion-callback/route-handler'
+import { compareRefundsWithPaymentState } from '../lib/barion-callback/refund-reconciliation'
+import {
+  CANCELLED_RECHECK_MAX_ORDER_AGE_MS,
+  createBarionCallbackHandler,
+} from '../lib/barion-callback/route-handler'
+import { webhookRetryTask } from '../jobs/tasks/webhook-retry'
 import {
   MAX_WEBHOOK_ATTEMPTS,
   processWebhook,
+  registerWebhookProcessor,
   type WebhookEventDoc,
   type WebhookEventStore,
 } from '../lib/idempotency'
@@ -65,6 +71,26 @@ const ORDER_TOTAL_HUF = 19990
 const fetchMock = vi.fn()
 vi.stubGlobal('fetch', fetchMock)
 
+/**
+ * A PaymentState-kapu (lib/barion/state.ts) ugyanarra a PaymentId-re két hívás
+ * közt 5,5 s-ot vár; a kaput a barion.test.ts a saját határán bizonyítja. Itt
+ * a fájl egészére hamis óra (Date + setTimeout) szól, és a feldolgozást a
+ * `settle` az órát léptetve várja meg — a folyamat-tesztek így is a valódi
+ * kapun mennek át, valós várakozás nélkül.
+ */
+async function settle<T>(promise: Promise<T>): Promise<T> {
+  let done = false
+  const tracked = promise.finally(() => {
+    done = true
+  })
+  while (!done) {
+    await vi.advanceTimersByTimeAsync(1_000)
+  }
+  return tracked
+}
+/** A Barion teszt-környezetének dokumentált callback-címe (Callback_mechanism). */
+const BARION_SANDBOX_CALLBACK_IP = '20.223.214.216'
+
 const savedEnv: Record<string, string | undefined> = {}
 
 beforeAll(() => {
@@ -84,6 +110,15 @@ afterAll(() => {
       process.env[key] = value
     }
   }
+})
+
+// A hamis óra a fájl egészére szól, hogy tesztről tesztre csak előre haladjon
+// (a kapu utolsó időbélyege a modulban él).
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+})
+afterAll(() => {
+  vi.useRealTimers()
 })
 
 afterEach(() => {
@@ -288,7 +323,7 @@ function createScheduleCapture() {
     },
     runAll: async () => {
       for (const task of tasks.splice(0)) {
-        await task()
+        await settle(task())
       }
     },
   }
@@ -296,12 +331,31 @@ function createScheduleCapture() {
 
 const CALLBACK_URL = 'https://shop.example.test/api/barion/callback'
 
-/** JSON-törzses kézbesítés (TARTALÉK csatorna — a Barion ma nem ilyet küld). */
-function makeRequest(body: unknown, options: { ip?: string } = {}): Request {
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
+/**
+ * A kérés forrás-IP-je: alapból a Barion teszt-környezetének callback-címe az
+ * `X-Real-IP`-ben (a Railway éle ide írja a kliens címét). Az `ip` opció a
+ * rate-limit vödör kulcsát adó `X-Forwarded-For`-t állítja, a `realIp` a
+ * forrás-ellenőrzését (null: a fejléc hiányzik).
+ */
+interface SourceOptions {
+  ip?: string
+  realIp?: string | null
+}
+
+function applySource(headers: Headers, options: SourceOptions): void {
   if (options.ip) {
-    headers['x-forwarded-for'] = options.ip
+    headers.set('x-forwarded-for', options.ip)
   }
+  const realIp = options.realIp === undefined ? BARION_SANDBOX_CALLBACK_IP : options.realIp
+  if (realIp !== null) {
+    headers.set('x-real-ip', realIp)
+  }
+}
+
+/** JSON-törzses kézbesítés (TARTALÉK csatorna — a Barion ma nem ilyet küld). */
+function makeRequest(body: unknown, options: SourceOptions = {}): Request {
+  const headers = new Headers({ 'content-type': 'application/json' })
+  applySource(headers, options)
   return new Request(CALLBACK_URL, {
     method: 'POST',
     headers,
@@ -315,13 +369,11 @@ function makeRequest(body: unknown, options: { ip?: string } = {}): Request {
  */
 function makeBarionRequest(
   paymentId: string,
-  options: { queryKey?: 'paymentId' | 'PaymentId'; body?: string; ip?: string } = {},
+  options: { queryKey?: 'paymentId' | 'PaymentId'; body?: string } & SourceOptions = {},
 ): Request {
   const url = `${CALLBACK_URL}?${options.queryKey ?? 'paymentId'}=${encodeURIComponent(paymentId)}`
   const headers = new Headers()
-  if (options.ip) {
-    headers.set('x-forwarded-for', options.ip)
-  }
+  applySource(headers, options)
   return new Request(url, {
     method: 'POST',
     headers,
@@ -362,6 +414,17 @@ function guidFromIndex(index: number): string {
 
 const logOutput = (spy: MockInstance<(...args: unknown[]) => void>): string =>
   spy.mock.calls.map((call) => call.map((arg) => String(arg)).join(' ')).join('\n')
+
+/** A strukturált logger JSON-sorai (egy sor = egy console.log-hívás). */
+function logEntries(spy: MockInstance<(...args: unknown[]) => void>): Record<string, unknown>[] {
+  return spy.mock.calls.flatMap((call) => {
+    try {
+      return [JSON.parse(String(call[0])) as Record<string, unknown>]
+    } catch {
+      return []
+    }
+  })
+}
 
 describe('POST /api/barion/callback — bemenet-ellenőrzés', () => {
   it('hiányzó PaymentId → 400, naplózva', async () => {
@@ -684,7 +747,9 @@ describe('(a) boldog út — paid', () => {
 })
 
 describe('(b) duplikált callback — EXACTLY ONCE', () => {
-  it('második azonos PaymentId → 200 no-op; egy paid átmenet, egy purchases bejegyzés, egy GetState', async () => {
+  // a-callback-6: a második kézbesítés egy CSAK OLVASÓ visszatérítés-egyeztetést
+  // indít (második GetState), átmenetet és mellékhatást nem.
+  it('második azonos PaymentId → 200 no-op; egy paid átmenet, egy purchases bejegyzés, a második GetState csak egyeztetés', async () => {
     const { POST, docs, calls, order, user, capture } = setup()
     fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
 
@@ -697,8 +762,9 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     expect(await second.json()).toEqual({ ok: true, status: 'duplicate' })
     await capture.runAll()
 
-    // EGY GetState-hívás, EGY paid átmenet, EGY purchases-írás, EGY webhook-rekord.
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Két GetState (feldolgozás + egyeztetés), EGY paid átmenet, EGY
+    // purchases-írás, EGY webhook-rekord.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(1)
     const userWrites = calls.update.filter((call) => call.collection === 'users')
     expect(userWrites).toHaveLength(2)
@@ -715,9 +781,11 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
   })
 
-  it('feldolgozás alatt érkező ismétlés (received) → 200, újabb ütemezés nélkül', async () => {
-    const { POST, capture } = setup()
-    fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
+  // a-callback-8: a még futó (received) eseményre érkező kézbesítés is ütemez;
+  // a callback-zár sorba állítja, a második futás friss olvasáson no-op.
+  it('feldolgozás alatt érkező ismétlés (received) → 200, újra ütemez, a második futás no-op', async () => {
+    const { POST, capture, calls, docs } = setup()
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
 
     const first = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
     const second = await POST(makeRequest({ PaymentId: PAYMENT_ID }))
@@ -725,9 +793,14 @@ describe('(b) duplikált callback — EXACTLY ONCE', () => {
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
     expect(await second.json()).toEqual({ ok: true, status: 'received' })
-    // Csak az első kézbesítés ütemezett feldolgozást.
-    expect(capture.tasks).toHaveLength(1)
-    capture.tasks.length = 0
+    expect(capture.tasks).toHaveLength(2)
+
+    await capture.runAll()
+
+    expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(1)
+    expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 1 })
   })
 
   /**
@@ -825,12 +898,14 @@ describe('(b2) PaymentId-kanonizálás — a kis-nagybetűs alias nem kettőzi a
     const { payload, order } = createMockPayload({})
     fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
 
-    const outcome = await processWebhook({
-      store,
-      provider: 'barion',
-      externalId: legacyEvent.externalId,
-      handler: createBarionCallbackProcessor({ payload, store }),
-    })
+    const outcome = await settle(
+      processWebhook({
+        store,
+        provider: 'barion',
+        externalId: legacyEvent.externalId,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      }),
+    )
 
     expect(outcome.kind).toBe('processed')
     // NEM 'rejected' (payment-id-conflict): a kanonizált lookup megtalálta a
@@ -974,19 +1049,21 @@ describe('B4 — függő callback UTÁN a végleges callback is feldolgozódik',
     expect(docs[0]).toMatchObject({ status: 'received', result: 'pending_repoll' })
 
     fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
-    const retry = await processWebhook({
-      store,
-      provider: 'barion',
-      externalId: PAYMENT_ID,
-      handler: createBarionCallbackProcessor({ payload, store }),
-    })
+    const retry = await settle(
+      processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      }),
+    )
 
     expect(retry.kind).toBe('processed')
     expect(order?.status).toBe('paid')
     expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
   })
 
-  it('a TERMINÁLIS lezárás (paid) után a következő kézbesítés változatlanul duplikátum', async () => {
+  it('a TERMINÁLIS lezárás (paid) után a következő kézbesítés duplikátum: új átmenet nincs, csak egyeztető GetState', async () => {
     const { POST, calls, capture } = setup()
     fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
 
@@ -997,8 +1074,9 @@ describe('B4 — függő callback UTÁN a végleges callback is feldolgozódik',
     expect(await second.json()).toEqual({ ok: true, status: 'duplicate' })
     await capture.runAll()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(calls.update.filter((call) => call.collection === 'orders')).toHaveLength(1)
+    expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -1023,12 +1101,14 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
     expect(logs).toContain('terminálisan elutasítva')
 
     // Amit a webhook-retry tenne: semmit — a processed esemény no-op.
-    const retry = await processWebhook({
-      store,
-      provider: 'barion',
-      externalId: PAYMENT_ID,
-      handler: createBarionCallbackProcessor({ payload, store }),
-    })
+    const retry = await settle(
+      processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      }),
+    )
     expect(retry.kind).toBe('already-processed')
     // Nem indult újabb kimenő Barion-hívás sem.
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1093,12 +1173,14 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
       expect(logs).toContain('RIASZTÁS')
       expect(logs).toContain('terminálisan elutasítva')
 
-      const retry = await processWebhook({
-        store,
-        provider: 'barion',
-        externalId: PAYMENT_ID,
-        handler: createBarionCallbackProcessor({ payload, store }),
-      })
+      const retry = await settle(
+        processWebhook({
+          store,
+          provider: 'barion',
+          externalId: PAYMENT_ID,
+          handler: createBarionCallbackProcessor({ payload, store }),
+        }),
+      )
       expect(retry.kind).toBe('already-processed')
       expect(fetchMock).toHaveBeenCalledTimes(1)
     },
@@ -1142,12 +1224,14 @@ describe('(e) hamis/ismeretlen PaymentId — M6 terminális elutasítás', () =>
 
       // Az útvonal helyreállása után a retry-job ugyanezt az eseményt paid-re viszi.
       fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
-      const retry = await processWebhook({
-        store,
-        provider: 'barion',
-        externalId: PAYMENT_ID,
-        handler: createBarionCallbackProcessor({ payload, store }),
-      })
+      const retry = await settle(
+        processWebhook({
+          store,
+          provider: 'barion',
+          externalId: PAYMENT_ID,
+          handler: createBarionCallbackProcessor({ payload, store }),
+        }),
+      )
       expect(retry.kind).toBe('processed')
       expect(order?.status).toBe('paid')
       expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid', attempts: 2 })
@@ -1209,12 +1293,14 @@ describe('(f) GetState-hiba — újrapróbálható', () => {
 
     // Újrapróbálás (a webhook-retry job ugyanezt hívja): sikeres GetState mellett paid lesz.
     fetchMock.mockResolvedValueOnce(getStateResponse('Succeeded'))
-    const retry = await processWebhook({
-      store,
-      provider: 'barion',
-      externalId: PAYMENT_ID,
-      handler: createBarionCallbackProcessor({ payload, store }),
-    })
+    const retry = await settle(
+      processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store }),
+      }),
+    )
 
     expect(retry.kind).toBe('processed')
     expect(order?.status).toBe('paid')
@@ -1331,12 +1417,14 @@ describe('orderNumber-fallback és titokvédelem', () => {
       return { action: 'failed' as const, detail: 'barion-refund-error' }
     })
 
-    const result = await processWebhook({
-      store,
-      provider: 'barion',
-      externalId: PAYMENT_ID,
-      handler: createBarionCallbackProcessor({ payload, store, recoverRejectedPaid }),
-    })
+    const result = await settle(
+      processWebhook({
+        store,
+        provider: 'barion',
+        externalId: PAYMENT_ID,
+        handler: createBarionCallbackProcessor({ payload, store, recoverRejectedPaid }),
+      }),
+    )
 
     expect(result.kind).toBe('failed')
     expect(result).toMatchObject({ retryable: true })
@@ -1508,5 +1596,500 @@ describe('W12 — ismeretlen PaymentId IP-kerete', () => {
       status: 'failed',
       attempts: MAX_WEBHOOK_ATTEMPTS,
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// w1-barion-platform: zár-sorrend, egyeztetés, újraellenőrzés, forrás-IP
+// ---------------------------------------------------------------------------
+
+/**
+ * Session-zár a Payload pooljára akasztva: minden lépést egy közös
+ * eseménynaplóba ír, hogy a GetState / zár / mellékhatás SORRENDJE
+ * ellenőrizhető legyen (a-callback-7).
+ */
+function attachLockPool(payload: Payload, events: string[]) {
+  const listeners = new Set<(error: Error) => void>()
+  const client = {
+    query: vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('pg_try_advisory_lock')) {
+        events.push(`lock:${String(values?.[0])}`)
+        return { rows: [{ locked: true }] }
+      }
+      events.push(`unlock:${String(values?.[0])}`)
+      return { rows: [{ unlocked: true }] }
+    }),
+    on: (_event: 'error', listener: (error: Error) => void) => listeners.add(listener),
+    removeListener: (_event: 'error', listener: (error: Error) => void) =>
+      listeners.delete(listener),
+    release: vi.fn(),
+  }
+  Object.assign((payload as unknown as { db: Record<string, unknown> }).db, {
+    pool: { connect: async () => client },
+  })
+  return client
+}
+
+describe('a-callback-7 — kimenő HTTP a callback-záron KÍVÜL', () => {
+  it('a GetState a zár ELŐTT, az onOrderPaid a zár elengedése UTÁN fut', async () => {
+    const events: string[] = []
+    const { POST, payload, capture, order } = setup()
+    attachLockPool(payload, events)
+    fetchMock.mockImplementation(async () => {
+      events.push('getstate')
+      return getStateResponse('Succeeded')
+    })
+    orderPaidSpy.onOrderPaid.mockImplementation(async () => {
+      events.push('onOrderPaid')
+    })
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(order?.status).toBe('paid')
+    const key = `barion-callback:${PAYMENT_ID}`
+    expect(events).toEqual(['getstate', `lock:${key}`, `unlock:${key}`, 'onOrderPaid'])
+  })
+
+  it('a webhook-retry a Barion-eseményt ugyanazon a callback-záron futtatja', async () => {
+    const events: string[] = []
+    const { payload, store, docs } = setup({
+      initialEvents: [
+        {
+          id: 1,
+          provider: 'barion',
+          externalId: PAYMENT_ID,
+          status: 'failed',
+          attempts: 1,
+          updatedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+        },
+      ],
+    })
+    attachLockPool(payload, events)
+    registerWebhookProcessor('barion', async (event) => {
+      events.push('processor')
+      return createBarionCallbackProcessor({ payload, store })(event)
+    })
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+    // A retry-task a Payload-példányt használja tárként: a webhook-events hívások
+    // az in-memory tárhoz, a többi a mockolt Payloadhoz megy.
+    const base = payload as unknown as Record<
+      'find' | 'update',
+      (args: { collection: string }) => Promise<unknown>
+    >
+    const baseFind = base.find
+    const baseUpdate = base.update
+    Object.assign(payload, {
+      find: async (args: { collection: string }) =>
+        args.collection === 'webhook-events'
+          ? store.find(args as Parameters<WebhookEventStore['find']>[0])
+          : baseFind(args),
+      update: async (args: { collection: string }) =>
+        args.collection === 'webhook-events'
+          ? store.update(args as Parameters<WebhookEventStore['update']>[0])
+          : baseUpdate(args),
+    })
+    const { handler } = webhookRetryTask
+    if (typeof handler !== 'function') {
+      throw new Error('a webhook-retry handlere nem függvény')
+    }
+
+    await settle((handler as (args: unknown) => Promise<unknown>)({ req: { payload } }))
+
+    const key = `barion-callback:${PAYMENT_ID}`
+    expect(events).toEqual([`lock:${key}`, 'processor', `unlock:${key}`])
+    expect(docs[0]?.attempts).toBe(2)
+  })
+})
+
+describe('a-callback-6 / a-egyeztetes-2 — visszatérítés-egyeztetés paid eseményre érkező callbacknél', () => {
+  const PAID_EVENT: WebhookEventDoc = {
+    id: 1,
+    provider: 'barion',
+    externalId: PAYMENT_ID,
+    status: 'processed',
+    result: 'paid',
+    processedAt: '2026-09-20T10:00:00.000Z',
+    attempts: 1,
+  }
+
+  function stateWithTransactions(transactions: unknown[], total = ORDER_TOTAL_HUF): Response {
+    return new Response(
+      JSON.stringify({
+        PaymentId: PAYMENT_ID,
+        PaymentRequestId: ORDER_NUMBER,
+        Status: 'Succeeded',
+        Total: total,
+        Currency: 'HUF',
+        Transactions: transactions,
+        Errors: [],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
+  const SOURCE_TX = {
+    TransactionId: 'aaaaaaaa-0000-4000-8000-000000000001',
+    POSTransactionId: `${ORDER_NUMBER}-1`,
+    TransactionType: 'CardPayment',
+    Status: 'Succeeded',
+    Total: ORDER_TOTAL_HUF,
+  }
+
+  it('a Barion felületén indított (nálunk nem rögzített) visszatérítés: RIASZTÁS, írás és pénzmozgás nélkül', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture, calls } = setup({
+      order: createOrder({ status: 'paid' }),
+      initialEvents: [PAID_EVENT],
+    })
+    fetchMock.mockResolvedValue(
+      stateWithTransactions([
+        SOURCE_TX,
+        {
+          TransactionId: 'aaaaaaaa-0000-4000-8000-000000000002',
+          TransactionType: 'RefundToBankCard',
+          Status: 'Succeeded',
+          Total: -5000,
+          RelatedId: SOURCE_TX.TransactionId,
+        },
+      ]),
+    )
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID, { realIp: '198.51.100.7' }))
+    expect(await response.json()).toEqual({ ok: true, status: 'duplicate' })
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(calls.update).toHaveLength(0)
+    expect(orderPaidSpy.onOrderPaid).not.toHaveBeenCalled()
+    const alert = logEntries(logSpy).find((entry) =>
+      String(entry.msg).startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({
+      findings: ['foreign-refund'],
+      barionRefundedHuf: 5000,
+      recordedRefundedHuf: 0,
+    })
+  })
+
+  it('sztornózott kártyás visszatérítés (StornoUnSuccessfulRefundToBankCard): RIASZTÁS a rögzített visszatérítés mellett is', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const order = createOrder({ status: 'refunded' })
+    Object.assign(order, {
+      refunds: [
+        {
+          transactionId: SOURCE_TX.TransactionId,
+          amountHuf: ORDER_TOTAL_HUF,
+          status: 'Succeeded',
+          refundedAt: '2026-09-20T10:00:00.000Z',
+          type: 'full',
+        },
+      ],
+    })
+    const { POST, capture, calls } = setup({ order, initialEvents: [PAID_EVENT] })
+    fetchMock.mockResolvedValue(
+      stateWithTransactions(
+        [
+          SOURCE_TX,
+          {
+            TransactionId: 'aaaaaaaa-0000-4000-8000-000000000003',
+            TransactionType: 'RefundToBankCard',
+            Status: 'Succeeded',
+            Total: ORDER_TOTAL_HUF,
+            RelatedId: SOURCE_TX.TransactionId,
+          },
+          {
+            TransactionId: 'aaaaaaaa-0000-4000-8000-000000000004',
+            TransactionType: 'StornoUnSuccessfulRefundToBankCard',
+            Status: 'Succeeded',
+            Total: ORDER_TOTAL_HUF,
+            RelatedId: SOURCE_TX.TransactionId,
+          },
+        ],
+        0,
+      ),
+    )
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(calls.update).toHaveLength(0)
+    const alert = logEntries(logSpy).find((entry) =>
+      String(entry.msg).startsWith('RIASZTÁS: a Barion visszatérítései nem egyeznek'),
+    )
+    expect(alert?.context).toMatchObject({ findings: ['refund-reversal'] })
+    expect(String(alert?.msg)).toContain('StornoUnSuccessfulRefundToBankCard')
+  })
+
+  it('egyező adatok: nincs riasztás; az egyeztetés PaymentId-nként 10 percig fojtott (egy GetState)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup({
+      order: createOrder({ status: 'paid' }),
+      initialEvents: [PAID_EVENT],
+    })
+    fetchMock.mockResolvedValue(stateWithTransactions([SOURCE_TX]))
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(logOutput(logSpy)).not.toContain('RIASZTÁS')
+  })
+})
+
+describe('r-barion-7 — lezárt (cancelled) fizetésre érkező callback', () => {
+  const CANCELLED_EVENT: WebhookEventDoc = {
+    id: 1,
+    provider: 'barion',
+    externalId: PAYMENT_ID,
+    status: 'processed',
+    result: 'cancelled',
+    processedAt: '2026-09-24T10:00:00.000Z',
+    attempts: 1,
+  }
+
+  function cancelledOrder(ageMs: number): Order {
+    const order = createOrder({ status: 'cancelled' })
+    Object.assign(order, { createdAt: new Date(Date.now() - ageMs).toISOString() })
+    return order
+  }
+
+  it('24 óránál fiatalabb rendelés: a GetState újra fut, a késői Succeeded paid-re viszi', async () => {
+    const { POST, capture, order, docs } = setup({
+      order: cancelledOrder(2 * 60 * 60 * 1000),
+      initialEvents: [{ ...CANCELLED_EVENT }],
+    })
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await response.json()).toEqual({ ok: true, status: 'received' })
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(order?.status).toBe('paid')
+    expect(docs[0]).toMatchObject({ status: 'processed', result: 'paid' })
+    expect(orderPaidSpy.onOrderPaid).toHaveBeenCalledTimes(1)
+  })
+
+  it('24 óránál régebbi rendelés: duplikátum, GetState nélkül', async () => {
+    const { POST, capture, order } = setup({
+      order: cancelledOrder(CANCELLED_RECHECK_MAX_ORDER_AGE_MS + 60_000),
+      initialEvents: [{ ...CANCELLED_EVENT }],
+    })
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID))
+    expect(await response.json()).toEqual({ ok: true, status: 'duplicate' })
+    await capture.runAll()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(order?.status).toBe('cancelled')
+  })
+})
+
+describe('a-callback-7 — ismeretlen PaymentId csak a Barion callback-címéről', () => {
+  const UNKNOWN_ID = '99999999-8888-4777-8666-555555555555'
+
+  it('idegen X-Real-IP: 200 ignored, rekord és GetState nélkül', async () => {
+    const { POST, docs, capture } = setup({ order: null })
+
+    const response = await POST(makeBarionRequest(UNKNOWN_ID, { realIp: '198.51.100.7' }))
+
+    expect(await response.json()).toEqual({ ok: true, status: 'ignored' })
+    expect(docs).toHaveLength(0)
+    expect(capture.tasks).toHaveLength(0)
+  })
+
+  it('a kliens által írt X-Forwarded-For nem hamisíthatja a Barion címét', async () => {
+    const { POST, docs } = setup({ order: null })
+
+    const response = await POST(
+      makeBarionRequest(UNKNOWN_ID, {
+        ip: `${BARION_SANDBOX_CALLBACK_IP}, 198.51.100.7`,
+        realIp: '198.51.100.7',
+      }),
+    )
+    const noRealIp = await POST(
+      makeBarionRequest(UNKNOWN_ID, { ip: BARION_SANDBOX_CALLBACK_IP, realIp: null }),
+    )
+
+    expect(await response.json()).toEqual({ ok: true, status: 'ignored' })
+    expect(await noRealIp.json()).toEqual({ ok: true, status: 'ignored' })
+    expect(docs).toHaveLength(0)
+  })
+
+  it('a Barion (teszt-környezeti) címéről az ismeretlen PaymentId feldolgozásra kerül', async () => {
+    const { POST, docs, capture } = setup({ order: null })
+
+    const response = await POST(
+      makeBarionRequest(UNKNOWN_ID, { realIp: BARION_SANDBOX_CALLBACK_IP }),
+    )
+
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    expect(docs).toHaveLength(1)
+    expect(capture.tasks).toHaveLength(1)
+    capture.tasks.length = 0
+  })
+
+  it('éles Barion-környezetben a teszt-környezet címe nem elég', async () => {
+    vi.stubEnv('BARION_ENVIRONMENT', 'prod')
+    vi.stubEnv('BARION_API_URL', 'https://api.barion.com')
+    vi.stubEnv('BARION_POSKEY_PROD', '00000000-0000-0000-0000-000000000000')
+    try {
+      const { POST, docs } = setup({ order: null })
+      const fromSandbox = await POST(
+        makeBarionRequest(UNKNOWN_ID, { realIp: BARION_SANDBOX_CALLBACK_IP }),
+      )
+      expect(await fromSandbox.json()).toEqual({ ok: true, status: 'ignored' })
+      const fromProd = await POST(makeBarionRequest(UNKNOWN_ID, { realIp: '40.113.73.229' }))
+      expect(await fromProd.json()).toEqual({ ok: true, status: 'accepted' })
+      expect(docs).toHaveLength(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('ISMERT PaymentId bármely IP-ről feldolgozásra kerül', async () => {
+    const { POST, docs, capture } = setup()
+
+    const response = await POST(makeBarionRequest(PAYMENT_ID, { realIp: '198.51.100.7' }))
+
+    expect(await response.json()).toEqual({ ok: true, status: 'accepted' })
+    expect(docs).toHaveLength(1)
+    expect(capture.tasks).toHaveLength(1)
+    capture.tasks.length = 0
+  })
+})
+
+describe('a-callback-13 / a-riasztas-8 — napló és hibakezelés a háttérfeldolgozásban', () => {
+  it('a feldolgozó sorai a kérés requestId-jét viszik', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup()
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+
+    const request = makeBarionRequest(PAYMENT_ID)
+    request.headers.set('x-request-id', 'req-callback-proc-1')
+    await POST(request)
+    await capture.runAll()
+
+    const verified = logEntries(logSpy).find(
+      (entry) => entry.msg === 'barion-callback: fizetésállapot verifikálva',
+    )
+    expect(verified?.requestId).toBe('req-callback-proc-1')
+  })
+
+  it('a háttérfeldolgozás váratlan hibája strukturált, requestId-s error-sor, a task nem dob', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture, store } = setup()
+    fetchMock.mockResolvedValue(getStateResponse('Succeeded'))
+
+    const request = makeBarionRequest(PAYMENT_ID)
+    request.headers.set('x-request-id', 'req-callback-proc-2')
+    await POST(request)
+    store.find = async () => {
+      throw new Error('DB elérhetetlen')
+    }
+    await expect(capture.runAll()).resolves.toBeUndefined()
+
+    const failure = logEntries(logSpy).find((entry) =>
+      String(entry.msg).includes('háttér-feldolgozás'),
+    )
+    expect(failure).toMatchObject({ level: 'error', requestId: 'req-callback-proc-2' })
+    expect(JSON.stringify(failure?.context)).toContain('DB elérhetetlen')
+  })
+
+  it('a kimerülés RIASZTÁS-előtaggal naplózódik', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture } = setup({
+      initialEvents: [
+        {
+          id: 1,
+          provider: 'barion',
+          externalId: PAYMENT_ID,
+          status: 'failed',
+          attempts: MAX_WEBHOOK_ATTEMPTS - 1,
+        },
+      ],
+    })
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'))
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(
+      logEntries(logSpy).some(
+        (entry) =>
+          entry.msg ===
+          'RIASZTÁS: webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
+      ),
+    ).toBe(true)
+  })
+
+  it('HTTP 429 (a kapu újrapróbálása után is): újrapróbálható failed, RIASZTÁS nélkül', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { POST, capture, docs } = setup()
+    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }))
+
+    await POST(makeBarionRequest(PAYMENT_ID))
+    await capture.runAll()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(docs[0]).toMatchObject({ status: 'failed', attempts: 1 })
+    expect(docs[0]?.processedAt ?? null).toBeNull()
+    expect(logOutput(logSpy)).not.toContain('RIASZTÁS')
+    expect(logOutput(logSpy)).toContain('HTTP 429')
+  })
+})
+
+describe('visszatérítés-egyeztetés: saját, folyamatban lévő visszatérítés mellett', () => {
+  const source = {
+    TransactionId: 'bbbbbbbb-0000-4000-8000-000000000001',
+    POSTransactionId: `${ORDER_NUMBER}-1`,
+    TransactionType: 'CardPayment',
+    Status: 'Succeeded',
+    Total: ORDER_TOTAL_HUF,
+  }
+  const refund = {
+    TransactionId: 'bbbbbbbb-0000-4000-8000-000000000002',
+    TransactionType: 'RefundToBankCard',
+    Status: 'Succeeded',
+    Total: 5000,
+    RelatedId: source.TransactionId,
+  }
+  const order = { orderNumber: ORDER_NUMBER, refunds: [], totalHufSnapshot: ORDER_TOTAL_HUF }
+  const state = {
+    PaymentId: PAYMENT_ID,
+    Status: 'Succeeded' as const,
+    Total: ORDER_TOTAL_HUF - 5000,
+    Transactions: [source, refund],
+  }
+
+  it('aktív visszatérítési szándéknál a még nem rögzített összeg NEM riaszt, szándék nélkül igen', () => {
+    expect(
+      compareRefundsWithPaymentState(order, state, { activeRefundIntent: true }).findings,
+    ).toEqual([])
+    expect(
+      compareRefundsWithPaymentState(order, state, { activeRefundIntent: false }).findings,
+    ).toEqual(['foreign-refund'])
+  })
+
+  it('aktív szándék mellett is riaszt a sikertelen és a sztornózott visszatérítésre', () => {
+    const failing = {
+      ...state,
+      Transactions: [
+        source,
+        { ...refund, Status: 'Failed' },
+        {
+          TransactionId: 'bbbbbbbb-0000-4000-8000-000000000003',
+          TransactionType: 'StornoUnSuccessfulRefundToBankCard',
+          Status: 'Succeeded',
+          Total: 5000,
+          RelatedId: source.TransactionId,
+        },
+      ],
+    }
+    expect(
+      compareRefundsWithPaymentState(order, failing, { activeRefundIntent: true }).findings,
+    ).toEqual(['refund-reversal', 'failed-refund'])
   })
 })

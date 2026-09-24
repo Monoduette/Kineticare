@@ -1,6 +1,9 @@
 import type { TaskConfig } from 'payload'
 
 import { shouldEmitThrottledAlert } from '../../lib/alert-throttle'
+import { withSessionAdvisoryLock } from '../../lib/advisory-lock'
+import { callbackLockKey } from '../../lib/barion-callback/process-callback'
+import { canonicalBarionGuid } from '../../lib/barion/guid'
 import {
   getWebhookProcessor,
   isRetryDue,
@@ -21,6 +24,11 @@ import { createStaleAwareBeforeSchedule } from '../schedule-guard'
  * K8: a batch per-esemény hibaizolációval fut — egyetlen mérgezett rekord
  * (státuszgépen kívüli throw) nem állíthatja le a futást és nem éheztetheti
  * ki a mögötte álló érvényes fizetéseket.
+ * a-callback-8: a Barion-esemény UGYANAZON a PaymentId-nkénti callback-záron
+ * fut, mint a route (callbackLockKey). Korábban zár nélkül futott, így egy
+ * egyidejű callbackkel két feldolgozás és két PaymentState versenyzett. A zár
+ * session-szintű (dedikált kapcsolat, nincs tétlen tranzakció), mert a
+ * feldolgozás a záron belül HTTP-t is hív (GetState, visszaigazoló levél).
  */
 const RETRY_BATCH_SIZE = 25
 
@@ -119,12 +127,25 @@ export const webhookRetryTask: TaskConfig<WebhookRetryJobIO> = {
       // az újrafeldolgozás idempotens no-opként processed-re gyógyítja.
       let outcome: ProcessWebhookOutcome
       try {
-        outcome = await processWebhook({
-          store,
-          provider: event.provider,
-          externalId: event.externalId,
-          handler: processor,
-        })
+        const retry = () =>
+          processWebhook({
+            store,
+            provider: event.provider,
+            externalId: event.externalId,
+            handler: processor,
+          })
+        outcome =
+          event.provider === 'barion'
+            ? await withSessionAdvisoryLock(
+                req.payload,
+                // A route a kanonikus alakot zárja: a régi, más alakú sor is ugyanazt a kulcsot kapja.
+                callbackLockKey(
+                  canonicalBarionGuid(event.externalId) ?? event.externalId.toLowerCase(),
+                ),
+                retry,
+                logger.child({ provider: event.provider, eventId: event.id }),
+              )
+            : await retry()
       } catch (error) {
         failed += 1
         const attempts = (event.attempts ?? 0) + 1
@@ -141,7 +162,7 @@ export const webhookRetryTask: TaskConfig<WebhookRetryJobIO> = {
           exhausted += 1
           if (shouldEmitThrottledAlert(`webhook-retry-crash:${event.provider}:${event.id}`)) {
             logger.error(
-              'webhook-esemény újrapróbálása a státuszgépen kívül hibázott és a kísérletek kimerültek — owner beavatkozás szükséges',
+              'RIASZTÁS: webhook-esemény újrapróbálása a státuszgépen kívül hibázott és a kísérletek kimerültek — owner beavatkozás szükséges',
               {
                 provider: event.provider,
                 externalId: event.externalId,
@@ -186,13 +207,16 @@ export const webhookRetryTask: TaskConfig<WebhookRetryJobIO> = {
           // owner-riasztás ITT, egyszer, error-szinten megy ki.
           exhausted += 1
           failed += 1
-          logger.error('webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges', {
-            provider: event.provider,
-            externalId: event.externalId,
-            eventId: event.id,
-            attempts: outcome.attempts,
-            error: outcome.error,
-          })
+          logger.error(
+            'RIASZTÁS: webhook-esemény újrapróbálásai kimerültek — owner beavatkozás szükséges',
+            {
+              provider: event.provider,
+              externalId: event.externalId,
+              eventId: event.id,
+              attempts: outcome.attempts,
+              error: outcome.error,
+            },
+          )
         } else {
           failed += 1
           logger.warn('webhook-esemény újrapróbálása sikertelen', {

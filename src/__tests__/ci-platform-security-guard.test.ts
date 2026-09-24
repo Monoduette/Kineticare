@@ -46,7 +46,7 @@ const EXPECTED_INSTALL_VERIFIER_CHECKSUM_SHA256 =
   '21f637b063faed841da7bac1468859549470e5d52ffb65ac9ac5ff060fefb542'
 const EXPECTED_REVIEWED_INSTALLER_SHA256 =
   '7bb683ff32299f0b6d063d0c50785ddd0ba4484b53994b97b26e1cb1518fb4a3'
-const EXPECTED_RAILWAY_SHA256 = '022685c41dba4b05b923da71a81b0a1ba59caa2efd8369bdf6af962fbf39021f'
+const EXPECTED_RAILWAY_SHA256 = 'b8066a7c7bf334a8916f3beb075e86109e7a5d8006002fa71a9d30705ea213e9'
 const EXPECTED_RAILPACK_SHA256 = 'c452a63293e7a5b23377b4eb41ac4f5923b9d5235e3d9ff7c1262c578f8a10cf'
 const EXPECTED_RAILPACK_PLAN_SHA256 =
   'dc91bfecd80be1e5ff7d4aed76c2f8148165cc4edb8aea2bff4e3555838b6003'
@@ -1237,12 +1237,31 @@ describe('CI/platform supply-chain guard', () => {
     expect(sha256(readFileSync(join(REPO, 'railpack.json')))).toBe(EXPECTED_RAILPACK_SHA256)
     const railway = readJson<{
       build?: { buildCommand?: string }
-      deploy?: { startCommand?: string }
+      deploy?: {
+        startCommand?: string
+        drainingSeconds?: string
+        overlapSeconds?: string
+        restartPolicyType?: string
+        restartPolicyMaxRetries?: number
+        numReplicas?: number
+      }
     }>(join(REPO, 'railway.json'))
     expect(railway.build?.buildCommand).toBe('node ./node_modules/next/dist/bin/next build')
     expect(railway.deploy?.startCommand).toBe(
       'node ./node_modules/payload/bin.js migrate && exec node ./node_modules/next/dist/bin/next start',
     )
+    // H9 (a-callback-2): SIGTERM és SIGKILL között 60 s, hogy a futó after()-
+    // callback és Payload-job befejeződhessen (instrumentation.ts leállási
+    // kezelője 45 s-ig vár rájuk). A Railway alapértéke 0. Átfedés
+    // (overlapSeconds) szándékosan nincs: két konténer egyszerre futtatná a
+    // cronokat. Config-as-code kulcs: docs.railway.com/config-as-code/reference
+    // („Draining seconds … between when the previous deploy is sent a SIGTERM
+    // to the time it is sent a SIGKILL”).
+    expect(railway.deploy?.drainingSeconds).toBe('60')
+    expect(railway.deploy?.overlapSeconds).toBeUndefined()
+    expect(railway.deploy?.restartPolicyType).toBe('ON_FAILURE')
+    expect(railway.deploy?.restartPolicyMaxRetries).toBe(10)
+    expect(railway.deploy?.numReplicas).toBe(1)
     for (const [name, version] of Object.entries(dependencies)) {
       expect(version, `${name} csak exact verzióval engedélyezett`).toMatch(/^\d+\.\d+\.\d+$/)
     }
