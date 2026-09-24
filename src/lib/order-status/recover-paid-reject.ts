@@ -161,7 +161,6 @@ function shouldAlert(
   )
 }
 
-/** A végleges leállás riasztása: kézi egyeztetés kell, a pénz a vásárlónál hiányzik. */
 /** A tartós leállás oka magyarul, hogy a riasztásból is kiderüljön, miért nem jön több kísérlet. */
 const AUTOMATIC_STOP_REASON_HU: Readonly<Record<string, string>> = {
   'automatic-refund-window-closed':
@@ -172,6 +171,7 @@ const AUTOMATIC_STOP_REASON_HU: Readonly<Record<string, string>> = {
     'sok egymás utáni, ismeretlen okú hatástalan kísérlet után az ismétlés nem segít',
 }
 
+/** A végleges leállás riasztása: kézi egyeztetés kell, a pénz a vásárlónál hiányzik. */
 function alertAutomaticStop(
   log: Logger,
   now: Date,
