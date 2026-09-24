@@ -312,7 +312,8 @@ export function parseAgentResponse(body: string, headers: Headers): SzamlazzPars
     const agentErrors = extractAgentErrors(body)
     throw agentErrorFromCodes(
       `Számla Agent elutasította a számlakiállítást: ${
-        agentErrors.map((error) => `${error.code} — ${error.message}`).join('; ') || 'ismeretlen hiba'
+        agentErrors.map((error) => `${error.code} — ${error.message}`).join('; ') ||
+        'ismeretlen hiba'
       }`,
       agentErrors,
     )

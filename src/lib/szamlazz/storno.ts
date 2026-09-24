@@ -14,11 +14,7 @@ import {
 import { escapeXml } from './invoice'
 import { writeOrderInvoicingState, writeOrderInvoicingStateBestEffort } from './order-state'
 import { claimManagedRefundDocument, managedRefundDocument } from './refund-guard'
-import {
-  SzamlazzApiError,
-  type IssueStornoResult,
-  type SzamlazzClientConfig,
-} from './types'
+import { SzamlazzApiError, type IssueStornoResult, type SzamlazzClientConfig } from './types'
 
 /**
  * Stornó-számla (xmlszamlast). Automatikus retry tilos — bizonytalan állapotban
@@ -301,10 +297,13 @@ export async function issueStornoForOrder(
     const previousAttempts = currentOrder.stornoAttempts ?? 0
     if (previousAttempts >= MAX_STORNO_ATTEMPTS) {
       const reason = `a stornó-kísérletek száma kimerült (${previousAttempts}/${MAX_STORNO_ATTEMPTS})`
-      log.error('RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell', {
-        attempts: previousAttempts,
-        lastError: currentOrder.stornoLastError ?? null,
-      })
+      log.error(
+        'RIASZTÁS: a stornó-kiállítás újrapróbálásai kimerültek — emberi beavatkozás kell',
+        {
+          attempts: previousAttempts,
+          lastError: currentOrder.stornoLastError ?? null,
+        },
+      )
       await saveStateBestEffort({ stornoStatus: 'failed', stornoLastError: reason })
       return { outcome: 'failed', reason }
     }
