@@ -187,7 +187,19 @@ describe('alanyi adómentes keret', () => {
     }
     // Helyesbítő nélkül a levonás nem érvényes (Áfa tv. 153/B. §): a teljes összeg számít.
     expect(aamContribution(partial, 2026)).toBe(79_500)
-    expect(aamContribution({ ...partial, correctiveInvoiceStatus: 'issued' }, 2026)).toBe(59_500)
+    // A levonáshoz a refund SAJÁT helyesbítője kell: állapot, sorszám és szám
+    // (a több részrefundos esetek: aam.test.ts).
+    expect(
+      aamContribution(
+        {
+          ...partial,
+          correctiveInvoiceStatus: 'issued',
+          correctiveInvoiceSeq: 1,
+          correctiveInvoiceNumber: 'E-KIN-2026-41',
+        },
+        2026,
+      ),
+    ).toBe(59_500)
   })
 
   it('70, 90 és 100% fölött jelez; a 2026-os keret 20 millió, a 2027-es 22 millió', () => {

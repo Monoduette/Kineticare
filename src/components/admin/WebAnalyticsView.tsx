@@ -3,10 +3,7 @@ import type { AdminViewServerProps } from 'payload'
 import Link from 'next/link'
 
 import { hasOwnerRole, hasStaffOrOwnerRole } from '../../access/roles'
-import {
-  EXTERNAL_ANALYTICS_LINKS,
-  posthogEmbedUrl,
-} from '../../lib/admin/web-analytics-config'
+import { EXTERNAL_ANALYTICS_LINKS, posthogEmbedUrl } from '../../lib/admin/web-analytics-config'
 import { logger } from '../../lib/logger'
 import { queryCourseEngagement } from '../../lib/statistics/engagement-query'
 import type { CourseEngagementReport } from '../../lib/statistics/engagement'
@@ -14,6 +11,7 @@ import { queryRevenueReport } from '../../lib/statistics/query'
 import { formatHuf, type RevenueReport } from '../../lib/statistics/revenue'
 import { AdminChrome, AdminViewFrame } from './AdminChrome'
 import { StatCard } from './statistics/StatCard'
+import { RESZLEGES_LEVONVA, RESZLEGES_NINCS_LEVONVA } from './statistics/TotalsCards'
 import {
   cardRowStyle,
   headingStyle,
@@ -145,13 +143,17 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
     )
   }
 
+  // A részleges visszatérítés levonása ugyanúgy csak a tulajdonosnak jár, mint
+  // a Statisztika oldalon (a `refunds` mező tulajdonosi olvasású), így a két
+  // oldal ugyanarra a szerepkörre ugyanazt a számot adja.
+  const owner = hasOwnerRole(req.user)
   // A számok hibája nem döntheti el az oldalt: a viselkedés-rész (linkek +
   // dashboard) ilyenkor is megjelenik, a szekció helyén magyar magyarázat áll
   // (a StatisticsView hibakezelési mintája).
   let report: RevenueReport | null = null
   let engagement: CourseEngagementReport | null = null
   try {
-    report = await queryRevenueReport({ payload: req.payload })
+    report = await queryRevenueReport({ payload: req.payload, includePartialRefunds: owner })
   } catch (error) {
     logger.error('webanalitika-nézet: a bevétel-lekérdezés nem sikerült', {
       error: error instanceof Error ? error.message : String(error),
@@ -168,7 +170,6 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
   }
 
   const embedUrl = posthogEmbedUrl()
-  const owner = hasOwnerRole(req.user)
 
   return (
     <AdminChrome props={props} title="Webanalitika">
@@ -182,16 +183,33 @@ export async function WebAnalyticsView(props: AdminViewServerProps) {
           </Link>{' '}
           oldalon él: ott is, itt is az adatbázis a forrás.
         </p>
-        <section aria-label="Eladások és kurzushaladás" style={{ ...sectionStyle, ...sectionTopStyle }}>
+        <section
+          aria-label="Eladások és kurzushaladás"
+          style={{ ...sectionStyle, ...sectionTopStyle }}
+        >
           <h2 style={headingStyle}>Eladások és kurzushaladás</h2>
           {report === null ? (
             <p style={leadInSectionStyle}>{WEB_ANALYTICS_DB_UNAVAILABLE_MESSAGE}</p>
           ) : (
-            <div style={cardRowStyle}>
-              {dbSummaryStats(report, engagement).map((stat) => (
-                <StatCard key={stat.label} label={stat.label} value={stat.value} />
-              ))}
-            </div>
+            <>
+              <div style={cardRowStyle}>
+                {dbSummaryStats(report, engagement).map((stat) => (
+                  <StatCard key={stat.label} label={stat.label} value={stat.value} />
+                ))}
+              </div>
+              {/* A havi bevétel tulajdonosnál a részleges visszatérítés után,
+                  munkatársnál bruttó: ugyanaz a mondat mondja ki, mint a
+                  Statisztika oldalon (WCAG 2.2 SC 3.2.4, azonos jelentés
+                  azonos szóval). */}
+              <p
+                style={{
+                  ...noticeStyle,
+                  marginTop: 'var(--kc-as-space-3, calc(var(--base) * 0.75))',
+                }}
+              >
+                {report.refundsDeducted === true ? RESZLEGES_LEVONVA : RESZLEGES_NINCS_LEVONVA}
+              </p>
+            </>
           )}
           {report !== null && engagement === null ? (
             <p style={noticeStyle}>
