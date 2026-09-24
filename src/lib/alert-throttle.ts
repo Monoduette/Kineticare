@@ -53,6 +53,15 @@ export function shouldEmitThrottledAlert(
   return true
 }
 
+/**
+ * A kulcs elnyomásának feloldása: a következő előfordulás újra átmegy. A
+ * riasztás-levél használja, ha a küldés maga bukott el — így egy kiesett
+ * levél nem némítja el a kulcsot egy teljes cooldownra.
+ */
+export function releaseThrottledAlert(key: string): void {
+  lastAlertAtByKey.delete(key)
+}
+
 /** Tesztek közötti izolációhoz — élesben nincs hívója. */
 export function resetAlertThrottle(): void {
   lastAlertAtByKey.clear()

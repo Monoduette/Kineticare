@@ -1,6 +1,13 @@
 /**
- * Havi bevétel-aggregátor — tiszta, DB- és React-mentes mag.
+ * Havi befizetés-aggregátor — tiszta, DB- és React-mentes mag.
  * Csak `paid`; hónap: invoiceCompletionDate vagy createdAt (Budapest); tétel-szintű ág-bontás.
+ *
+ * TÁJÉKOZTATÓ SZÁM, NEM KÖNYVELÉS (a-egyeztetes-8): bruttó (áfás) összeg, a
+ * teljes visszatérítés a rendelést utólag kiveszi az eredeti hónapjából, a
+ * díjakat nem ismeri. A részleges visszatérítést a visszatérítés hónapjában
+ * vonja le, de CSAK ha a hívó átadja (`partialRefunds`): a `refunds` mező
+ * tulajdonosi olvasású, munkatársi nézetben nem kérdezhető le. A könyvelés
+ * forrása a Számlázz.hu és a Barion havi kivonata.
  */
 
 import { hasStaffOrOwnerRole, type RoleUser } from '../../access/roles'
@@ -17,18 +24,35 @@ export interface RevenueOrderItemInput {
   displayTitle?: string | null
 }
 
+/** Egy részleges visszatérítés: csak az összeg és az időpont (azonosító nélkül). */
+export interface RevenuePartialRefundInput {
+  amountHuf: number
+  refundedAt: string
+}
+
 export interface RevenueOrderInput {
   status: string
   createdAt: string
   invoiceCompletionDate?: string | null
   totalHuf: number | null
   items: RevenueOrderItemInput[]
+  /** Részleges visszatérítések; csak tulajdonosi lekérdezésnél van kitöltve. */
+  partialRefunds?: readonly RevenuePartialRefundInput[]
 }
 
 export interface MonthlyRevenueRow {
   month: string
+  /** Az otthoni ág bruttó befizetése (visszatérítés levonása nélkül). */
   laikusHuf: number
+  /** A szakmai ág bruttó befizetése (visszatérítés levonása nélkül). */
   szakemberHuf: number
+  /**
+   * A hónapban levont részleges visszatérítések összege. Az aggregátor mindig
+   * kitölti; opcionális, hogy a kézzel épített (teszt-)sorok is érvényesek
+   * maradjanak.
+   */
+  refundHuf?: number
+  /** Otthoni + szakmai − részleges visszatérítés. */
   totalHuf: number
   orderCount: number
 }
@@ -61,8 +85,12 @@ export interface OrderFunnelCounts {
 export interface RevenueTotals {
   laikusHuf: number
   szakemberHuf: number
+  /** A levont részleges visszatérítések összege (lásd `MonthlyRevenueRow`). */
+  refundHuf?: number
   totalHuf: number
   orderCount: number
+  /** Igaz, ha a részleges visszatérítések adata elérhető volt és levontuk. */
+  refundsDeducted?: boolean
 }
 
 export interface RevenueReport {
@@ -72,6 +100,8 @@ export interface RevenueReport {
   funnel: OrderFunnelCounts
   /** Igaz, ha a fizetett rendelések lapozása elérte a plafont (a tölcsér count-tal teljes). */
   truncated: boolean
+  /** Igaz, ha a részleges visszatérítéseket levontuk (tulajdonosi lekérdezés). */
+  refundsDeducted?: boolean
 }
 
 const DEFAULT_MONTHS = 12
@@ -148,7 +178,37 @@ function listMonthKeys(now: Date, months: number): string[] {
 }
 
 function emptyRow(month: string): MonthlyRevenueRow {
-  return { month, laikusHuf: 0, szakemberHuf: 0, totalHuf: 0, orderCount: 0 }
+  return { month, laikusHuf: 0, szakemberHuf: 0, refundHuf: 0, totalHuf: 0, orderCount: 0 }
+}
+
+/**
+ * A részleges visszatérítések levonása a visszatérítés Budapest szerinti
+ * hónapjában — akkor is, ha maga a rendelés az ablakon kívüli hónapban volt.
+ * Csak `paid` rendelésé: a teljesen visszatérített (`refunded`) rendelés
+ * eleve kimarad.
+ */
+function deductPartialRefunds(
+  orders: readonly RevenueOrderInput[],
+  byMonth: ReadonlyMap<string, MonthlyRevenueRow>,
+): void {
+  for (const order of orders) {
+    if (order.status !== 'paid' || !Array.isArray(order.partialRefunds)) {
+      continue
+    }
+    for (const refund of order.partialRefunds) {
+      const amount = finiteNumber(refund.amountHuf)
+      if (amount === null || amount <= 0) {
+        continue
+      }
+      const month = monthKeyFromCreatedAt(refund.refundedAt)
+      const row = month === null ? undefined : byMonth.get(month)
+      if (row === undefined) {
+        continue
+      }
+      row.refundHuf = (row.refundHuf ?? 0) + amount
+      row.totalHuf -= amount
+    }
+  }
 }
 
 function itemRevenue(item: RevenueOrderItemInput): number {
@@ -247,18 +307,31 @@ export function aggregateMonthlyRevenue(
     }
   }
 
+  deductPartialRefunds(orders, byMonth)
+
   return windowKeys.map((key) => byMonth.get(key) ?? emptyRow(key))
 }
 
-export function sumRevenueTotals(rows: readonly MonthlyRevenueRow[]): RevenueTotals {
-  const totals: RevenueTotals = { laikusHuf: 0, szakemberHuf: 0, totalHuf: 0, orderCount: 0 }
+export function sumRevenueTotals(
+  rows: readonly MonthlyRevenueRow[],
+  refundsDeducted = false,
+): RevenueTotals {
+  let refundHuf = 0
+  const totals: RevenueTotals = {
+    laikusHuf: 0,
+    szakemberHuf: 0,
+    totalHuf: 0,
+    orderCount: 0,
+    refundsDeducted,
+  }
   for (const row of rows) {
     totals.laikusHuf += row.laikusHuf
     totals.szakemberHuf += row.szakemberHuf
+    refundHuf += row.refundHuf ?? 0
     totals.totalHuf += row.totalHuf
     totals.orderCount += row.orderCount
   }
-  return totals
+  return { ...totals, refundHuf }
 }
 
 function ordersInMonthWindow(
@@ -474,13 +547,14 @@ export function formatMonthShort(monthKey: string): string {
 export function buildRevenueReport(
   orders: readonly RevenueOrderInput[],
   funnel: OrderFunnelCounts,
-  options?: { months?: number; now?: Date; truncated?: boolean },
+  options?: { months?: number; now?: Date; truncated?: boolean; refundsDeducted?: boolean },
 ): RevenueReport {
   const monthOptions = { months: options?.months ?? DEFAULT_MONTHS, now: options?.now }
   const months = aggregateMonthlyRevenue(orders, monthOptions)
+  const refundsDeducted = options?.refundsDeducted === true
   return {
     months,
-    totals: sumRevenueTotals(months),
+    totals: sumRevenueTotals(months, refundsDeducted),
     // A kurzus-tábla ugyanarra az ablakra vonatkozik, mint a havi összeg.
     // A tölcsér szándékosan teljes állomány: a nyitott/sikertelen fizetés
     // operatív jelzés, nem 12 havi bevétel.
@@ -488,5 +562,6 @@ export function buildRevenueReport(
     // Másolat, nem hivatkozás: a jelentés ne aliasolja a hívó objektumát.
     funnel: { ...funnel },
     truncated: options?.truncated === true,
+    refundsDeducted,
   }
 }

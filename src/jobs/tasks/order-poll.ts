@@ -1,11 +1,25 @@
 import type { TaskConfig } from 'payload'
 
+import { resolveServerUrl } from '../../env'
+import { installAlertSink } from '../../lib/alerts/install'
+import { parseAlertRecipients } from '../../lib/alerts/mail'
+import { afterOrderPoll } from '../../lib/alerts/poll-watch'
+import { sendMail } from '../../lib/email'
 import { type InvoiceResweepStatus, pollPendingOrders } from '../../lib/order-poll/service'
 import { logger } from '../../lib/logger'
 import { ORDER_MAINTENANCE_CRON, ORDER_MAINTENANCE_QUEUE } from '../queues'
 import { createStaleAwareBeforeSchedule } from '../schedule-guard'
 
-/** order-poll: callback-mentőháló + számla-resweep; ütemezés cron-ból (ENABLE_JOB_WORKERS). */
+/**
+ * order-poll: callback-mentőháló + számla-resweep; ütemezés cron-ból (ENABLE_JOB_WORKERS).
+ * A futás után: 24 órás függő-fizetés riasztás, reggeli napi összesítő és életjel
+ * (`src/lib/alerts/poll-watch.ts`).
+ *
+ * A riasztás-csatorna (e-mail + PostHog a RIASZTÁS-sorokra) itt kapcsol be: ezt
+ * a modult a Payload-config minden szerverfolyamatban betölti (jobs/index.ts),
+ * a bekötés pedig csak a Next szerveren él (`src/lib/alerts/install.ts`).
+ */
+installAlertSink()
 
 interface OrderPollJobIO {
   input: Record<string, never>
@@ -50,6 +64,16 @@ export const orderPollTask: TaskConfig<OrderPollJobIO> = {
   handler: async ({ req }) => {
     const summary = await pollPendingOrders({ payload: req.payload })
     logger.info('order-poll task lefutott', { ...summary })
+    await afterOrderPoll({
+      payload: req.payload,
+      logger,
+      nowMs: Date.now(),
+      sendMail,
+      recipients: () => parseAlertRecipients(process.env.OWNER_ALERT_EMAILS),
+      serverUrl: resolveServerUrl(),
+      heartbeatUrl: process.env.HEALTHCHECK_PING_URL,
+      vatMode: process.env.SZAMLAZZ_AFAKULCS,
+    })
     return { output: { ...summary } }
   },
 }

@@ -1,13 +1,21 @@
 import type { PayloadRequest, Where } from 'payload'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   createStaleAwareBeforeSchedule,
+  MAX_RELEASED_JOBS_PER_TICK,
   scheduleLockKey,
+  STALE_JOB_RELEASE_MESSAGE,
   STALE_SCHEDULED_JOB_MS,
+  STUCK_JOB_ALERT_COOLDOWN_MS,
 } from '../../jobs/schedule-guard'
 import { ORDER_MAINTENANCE_QUEUE } from '../../jobs/queues'
+import { resetAlertThrottle } from '../../lib/alert-throttle'
 import type { LogContext, Logger } from '../../lib/logger'
+
+afterEach(() => {
+  resetAlertThrottle()
+})
 
 /**
  * A beragadás-tűrő ÉS versenyhelyzet-biztos ütemezés-őr EGYSÉGTESZTJE.
@@ -92,6 +100,13 @@ interface Scenario {
   stale: number
   staleAfterMs?: number
   countThrows?: boolean
+  updateThrows?: boolean
+}
+
+interface UpdateJobsCall {
+  where?: Where
+  data: Record<string, unknown>
+  limit?: number
 }
 
 const NOW = Date.parse('2026-08-10T12:00:00Z')
@@ -102,10 +117,11 @@ function isStaleCountQuery(where: Where): boolean {
   return conditions.some((condition) => 'processing' in condition)
 }
 
-function createHarness(scenario: Scenario) {
+function createHarness(scenario: Scenario, clock: { now: number } = { now: NOW }) {
   const entries: LogEntry[] = []
   const seenWheres: Where[] = []
   const queueCalls: QueueCall[] = []
+  const updateJobsCalls: UpdateJobsCall[] = []
   const { drizzle, lockParams } = createSerializingDrizzle()
 
   const payload = {
@@ -125,6 +141,14 @@ function createHarness(scenario: Scenario) {
             : scenario.runnableOrActive + queueCalls.length,
         }
       },
+      // A beragadt sorok lezárása (a Payload saját job-író hívása).
+      updateJobs: async (args: UpdateJobsCall) => {
+        updateJobsCalls.push(args)
+        if (scenario.updateThrows) {
+          throw new Error('írás elutasítva')
+        }
+        return Array.from({ length: scenario.stale }, (_, index) => ({ id: index + 1 }))
+      },
     },
     jobs: {
       queue: async (args: QueueCall) => {
@@ -138,7 +162,7 @@ function createHarness(scenario: Scenario) {
   const beforeSchedule = createStaleAwareBeforeSchedule({
     taskSlug: TASK_SLUG,
     logger: createRecordingLogger(entries),
-    now: () => NOW,
+    now: () => clock.now,
     ...(scenario.staleAfterMs === undefined ? {} : { staleAfterMs: scenario.staleAfterMs }),
   })
 
@@ -153,7 +177,7 @@ function createHarness(scenario: Scenario) {
       req,
     })
 
-  return { entries, seenWheres, queueCalls, lockParams, waitUntil, run }
+  return { entries, seenWheres, queueCalls, updateJobsCalls, lockParams, waitUntil, run }
 }
 
 describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt történik)', () => {
@@ -195,31 +219,90 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(entries).toHaveLength(0)
   })
 
-  it('csak BERAGADT job → sorba állítás + RIASZTÁS', async () => {
-    const { run, queueCalls, entries } = createHarness({ runnableOrActive: 1, stale: 1 })
+  it('csak BERAGADT job → a sort lezárja, sorba állít, EGY riasztás kóddal', async () => {
+    const { run, queueCalls, entries, updateJobsCalls } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+    })
 
     const result = await run()
 
     expect(result.shouldSchedule).toBe(false)
     expect(queueCalls).toHaveLength(1)
-    expect(entries.some((entry) => entry.level === 'error' && entry.msg.includes('RIASZTÁS'))).toBe(
-      true,
-    )
-    const alert = entries.find((entry) => entry.level === 'error')
-    expect(alert?.msg).toContain('beragadt job')
-    expect(alert?.context).toMatchObject({ queue: ORDER_MAINTENANCE_QUEUE, stuckJobs: 1 })
+    // A beragadt sor lezárása: processing: false + hasError + error, csak a
+    // beragadt sorokra szűrve, tickenként korlátozva.
+    expect(updateJobsCalls).toHaveLength(1)
+    expect(updateJobsCalls[0]?.data).toMatchObject({
+      processing: false,
+      hasError: true,
+      error: { message: STALE_JOB_RELEASE_MESSAGE, releasedBy: 'schedule-guard' },
+    })
+    expect(updateJobsCalls[0]?.limit).toBe(MAX_RELEASED_JOBS_PER_TICK)
+    expect(isStaleCountQuery(updateJobsCalls[0]?.where ?? {})).toBe(true)
+    const alerts = entries.filter((entry) => entry.level === 'error')
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]?.msg).toContain('RIASZTÁS')
+    expect(alerts[0]?.msg).toContain('beragadt')
+    // Elérhető helyet nevez meg (a payload-jobs lista az adminban rejtett).
+    expect(alerts[0]?.msg).not.toContain('payload-jobs')
+    expect(alerts[0]?.msg).toContain('@alertCode:beragadt-job')
+    expect(alerts[0]?.context).toMatchObject({
+      alert: true,
+      alertCode: 'beragadt-job',
+      queue: ORDER_MAINTENANCE_QUEUE,
+      stuckJobs: 1,
+      releasedJobs: 1,
+    })
   })
 
-  it('beragadt ÉS élő job → nincs sorba állítás, de figyelmeztet a beragadtra', async () => {
-    const { run, queueCalls, entries } = createHarness({ runnableOrActive: 2, stale: 1 })
+  it('ha a lezárás elbukik, az ütemezés akkor is helyreáll (sorba állít), és szól róla', async () => {
+    const { run, queueCalls, entries } = createHarness({
+      runnableOrActive: 1,
+      stale: 1,
+      updateThrows: true,
+    })
+
+    await run()
+
+    expect(queueCalls).toHaveLength(1)
+    expect(entries.some((entry) => entry.level === 'warn' && entry.msg.includes('lezárása'))).toBe(
+      true,
+    )
+    expect(entries.find((entry) => entry.level === 'error')?.context).toMatchObject({
+      alertCode: 'beragadt-job',
+      releasedJobs: 0,
+    })
+  })
+
+  it('beragadt ÉS élő job → a beragadtat lezárja, nincs sorba állítás', async () => {
+    const { run, queueCalls, entries, updateJobsCalls } = createHarness({
+      runnableOrActive: 2,
+      stale: 1,
+    })
 
     const result = await run()
 
     expect(result.shouldSchedule).toBe(false)
     expect(queueCalls).toHaveLength(0)
+    expect(updateJobsCalls).toHaveLength(1)
     expect(entries).toHaveLength(1)
-    expect(entries[0].level).toBe('warn')
-    expect(entries[0].context).toMatchObject({ stuckJobs: 1, runnableOrActiveJobs: 2 })
+    expect(entries[0]?.level).toBe('error')
+    expect(entries[0]?.context).toMatchObject({ stuckJobs: 1, runnableOrActiveJobs: 2 })
+  })
+
+  it('a beragadt-riasztás FOJTOTT: a cooldownon belüli újabb lezárás csak warn, utána újra riaszt', async () => {
+    const clock = { now: NOW }
+    const harness = createHarness({ runnableOrActive: 1, stale: 1 }, clock)
+
+    await harness.run()
+    clock.now = NOW + 60_000
+    await harness.run()
+    clock.now = NOW + STUCK_JOB_ALERT_COOLDOWN_MS
+    await harness.run()
+
+    expect(harness.entries.filter((entry) => entry.level === 'error')).toHaveLength(2)
+    expect(harness.entries.filter((entry) => entry.level === 'warn')).toHaveLength(1)
+    expect(harness.updateJobsCalls).toHaveLength(3)
   })
 
   /**
@@ -241,6 +324,16 @@ describe('schedule-guard — döntés (a sorba állítás a hookban, zár alatt 
     expect(entries).toHaveLength(1)
     expect(entries[0].level).toBe('error')
     expect(entries[0].msg).toContain('RIASZTÁS')
+    expect(entries[0].context).toMatchObject({ alert: true, alertCode: 'utemezes-ellenorzes-hiba' })
+  })
+
+  it('a számolás ismételt hibája a fojtási időn belül csak warn (nem percenkénti riasztás)', async () => {
+    const harness = createHarness({ runnableOrActive: 0, stale: 0, countThrows: true })
+
+    await harness.run()
+    await harness.run()
+
+    expect(harness.entries.map((entry) => entry.level)).toEqual(['error', 'warn'])
   })
 })
 

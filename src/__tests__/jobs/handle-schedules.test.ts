@@ -36,6 +36,8 @@ interface Harness {
   queueCalls: QueueCall[]
   countedWheres: Where[]
   globalWrites: string[]
+  /** A beragadt sorok lezárásának feltételei (`db.updateJobs`). */
+  releasedWheres: Where[]
 }
 
 /**
@@ -52,12 +54,15 @@ function createHarness(config: SanitizedConfig, options: FakeDbOptions = {}): Ha
   const queueCalls: QueueCall[] = []
   const countedWheres: Where[] = []
   const globalWrites: string[] = []
+  const releasedWheres: Where[] = []
 
   const db = {
     count: async ({ where }: { where: Where }) => {
       countedWheres.push(where)
       return {
-        totalDocs: isStaleCountQuery(where) ? (options.stale ?? 0) : (options.runnableOrActive ?? 0),
+        totalDocs: isStaleCountQuery(where)
+          ? (options.stale ?? 0)
+          : (options.runnableOrActive ?? 0),
       }
     },
     createGlobal: async ({ slug }: { slug: string }) => {
@@ -71,6 +76,10 @@ function createHarness(config: SanitizedConfig, options: FakeDbOptions = {}): Ha
     updateGlobal: async ({ slug }: { slug: string }) => {
       globalWrites.push(slug)
       return {}
+    },
+    updateJobs: async ({ where }: { where: Where }) => {
+      releasedWheres.push(where)
+      return Array.from({ length: options.stale ?? 0 }, (_, index) => ({ id: index + 1 }))
     },
   }
 
@@ -88,6 +97,7 @@ function createHarness(config: SanitizedConfig, options: FakeDbOptions = {}): Ha
     queueCalls,
     countedWheres,
     globalWrites,
+    releasedWheres,
   }
 }
 
@@ -214,6 +224,9 @@ describe('handleSchedules — beragadt job (a néma leállás elleni védelem)',
     expect(result.skipped).toHaveLength(1)
     // Az őr tényleg megnézte a beragadást (második, `processing`-re szűrt számolás).
     expect(harness.countedWheres.filter(isStaleCountQuery)).toHaveLength(1)
+    // …és a beragadt sort le is zárta, csak a beragadtakra szűrve (a-callback-2).
+    expect(harness.releasedWheres).toHaveLength(1)
+    expect(isStaleCountQuery(harness.releasedWheres[0] ?? {})).toBe(true)
   })
 
   /**

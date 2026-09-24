@@ -42,20 +42,27 @@ Kilépni jobbra fent, a fiókodnál található **Kijelentkezés** ponttal tudsz
 Belépés után bal oldalon látod a menüt. A tételek csoportokba vannak rendezve,
 felül a leggyakrabban használt, alul a legritkábban kellő dolgokkal:
 
-| Csoport                         | Mi van benne                                                                 | Kell-e neked?                                                                                                                                             |
-| ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Leggyakrabban használt**      | Kezdőlap, Kezdőlapi videó szövegei, Szerkesztő nézet (új lapon)              | Igen: egy kattintással a kezdőlap szerkesztője, illetve a nyitó videó szövegei. A Szerkesztő nézet új lapon a kezdőlap piszkozatát nyitja meg (14. pont). |
-| **Kimutatások és kurzusvideók** | Statisztika, Webanalitika, Videótár                                          | A Videótár a kurzusok videóit tartja, a kezdőlapi videóét nem.                                                                                            |
-| **Tartalom**                    | Oldalak, Blogbejegyzések, Képek, Vélemények, Kategóriák, Védett kurzusfájlok | Igen, ez a napi munkád.                                                                                                                                   |
-| **Navigáció**                   | Menüpontok                                                                   | Igen, az oldal tetején látszó menü.                                                                                                                       |
-| **Webshop**                     | Kurzusok, Rendelések, Kurzus-haladás                                         | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (19. pont).                                                                    |
-| **Űrlapok és beküldések**       | Űrlapok, Űrlapbeküldések                                                     | A beérkezett üzenetek az Űrlapbeküldések között vannak.                                                                                                   |
-| **Fiókok**                      | Felhasználók                                                                 | Csak óvatosan. Lásd a 19. pontot.                                                                                                                         |
-| **Rendszer**                    | Rendszeresemények, Műveletnapló, Visszatérítési szándékok                    | Nem a tiéd, csak technikai napló.                                                                                                                         |
+| Csoport                         | Mi van benne                                                                 | Kell-e neked?                                                                                                                                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Leggyakrabban használt**      | Kezdőlap, Kezdőlapi videó szövegei, Szerkesztő nézet (új lapon)              | Igen: egy kattintással a kezdőlap szerkesztője, illetve a nyitó videó szövegei. A Szerkesztő nézet új lapon a kezdőlap piszkozatát nyitja meg (14. pont).                                                            |
+| **Kimutatások és kurzusvideók** | Statisztika, Webanalitika, Videótár                                          | A Videótár a kurzusok videóit tartja, a kezdőlapi videóét nem.                                                                                                                                                       |
+| **Tartalom**                    | Oldalak, Blogbejegyzések, Képek, Vélemények, Kategóriák, Védett kurzusfájlok | Igen, ez a napi munkád.                                                                                                                                                                                              |
+| **Navigáció**                   | Menüpontok                                                                   | Igen, az oldal tetején látszó menü.                                                                                                                                                                                  |
+| **Webshop**                     | Kurzusok, Rendelések, Kurzus-haladás                                         | A kurzus tananyagát itt állítod össze (12. pont); a rendelésekhez ne nyúlj (19. pont).                                                                                                                               |
+| **Űrlapok és beküldések**       | Űrlapok, Űrlapbeküldések                                                     | A beérkezett üzenetek az Űrlapbeküldések között vannak.                                                                                                                                                              |
+| **Fiókok**                      | Felhasználók                                                                 | Csak óvatosan. Lásd a 19. pontot.                                                                                                                                                                                    |
+| **Rendszer**                    | Rendszeresemények, Műveletnapló, Visszatérítési szándékok                    | A Rendszeresemények és a Műveletnapló technikai napló, nem kell hozzányúlnod. A Visszatérítési szándékokat csak a tulajdonos látja: egy elakadt visszatérítést ott ellenőriz (docs/uzemeltetes/06-visszaterites.md). |
 
 Az Irányítópulton a „Gyakori teendők” kártyái ugyanezekre a helyekre visznek
 (Kezdőlap, Kezdőlapi videó szövegei, Kurzusok és árak, Menüpontok,
 Űrlapbeküldések, Statisztika).
+
+A tulajdonos a kártyák fölött a „Figyelmet igényel” blokkot is látja: ott
+áll, hány fizetett rendelésnél hiányzik a számla, hány fizetés függ egy
+óránál régebben, és van-e sikertelen bizonylat, elakadt visszatérítés vagy
+hibás fizetési értesítés. A szám a szűrt listára visz. Ugyanezek a számok
+reggelente e-mailben is megérkeznek, ha van teendő
+(docs/uzemeltetes/01-napi-ellenorzes.md).
 
 Egy csoportra kattintva megkapod a listát (pl. az összes blogbejegyzést). A lista
 jobb felső sarkában van az **Új létrehozása** gomb, a listaelemre kattintva pedig
@@ -1126,10 +1133,11 @@ látogatóknak vagy a vásárlóknak fáj, ha elromlik.
   Ajándékot a **Kurzus ajándékozása** panellel adj: az írja be a hozzáférés
   hosszának kezdőpontját is. A pipa önmagában örök hozzáférést adna.
 
-**Rendszer csoport (Rendszeresemények, Műveletnapló)**
+**Rendszer csoport (Rendszeresemények, Műveletnapló, Visszatérítési szándékok)**
 
 - Ez technikai napló a hibakereséshez. Nézni szabad, írni/törölni nem kell benne
-  semmit.
+  semmit. A Visszatérítési szándékokat csak a tulajdonos látja; egy elakadt
+  visszatérítés teendőit a docs/uzemeltetes/06-visszaterites.md írja le.
 
 **Általános óvatosság**
 

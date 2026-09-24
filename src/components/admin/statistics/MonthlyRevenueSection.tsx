@@ -17,14 +17,20 @@ import {
 } from './styles'
 
 /**
- * „Havi bevétel" szekció: oszlopdiagram + havi táblázat. A kettő UGYANAZT az
- * adatot mutatja — a diagram a trendhez, a táblázat a pontos értékekhez és a
- * képernyőolvasónak (a diagram `role="img"`, a számok itt olvashatók fel).
+ * „Havi befizetések" szekció: oszlopdiagram + havi táblázat. A diagram a két
+ * ág bruttó befizetését mutatja a trendhez, a táblázat a pontos értékeket és
+ * a képernyőolvasónak (a diagram `role="img"`, a számok itt olvashatók fel).
+ * A címke tájékoztató, bruttó számot mond (a-egyeztetes-8), nem könyvelési
+ * bevételt. Ha a hónapban részleges visszatérítést vontunk le, a táblázat
+ * külön oszlopban mutatja, és az Összesen már a levonás utáni szám.
  */
+export const HAVI_BEFIZETES_CIM = 'Havi befizetések (tájékoztató)'
+
 export function MonthlyRevenueSection({ rows }: { rows: readonly MonthlyRevenueRow[] }) {
+  const vanLevonas = rows.some((row) => (row.refundHuf ?? 0) > 0)
   return (
     <section style={sectionStyle}>
-      <h2>Havi bevétel</h2>
+      <h2>{HAVI_BEFIZETES_CIM}</h2>
       {/* A diagram a saját természetes szélességén áll meg, a TÁBLÁZAT viszont
           teljes szélességű: az idősoros oszlopdiagramot a nyújtás nem teszi
           olvashatóbbá, a sok oszlopos adattáblát viszont igen (indoklás és
@@ -45,7 +51,7 @@ export function MonthlyRevenueSection({ rows }: { rows: readonly MonthlyRevenueR
       >
         <table style={tableStyle}>
           <caption style={captionStyle} id="kc-stat-havi-bevetel-cim">
-            Havi bevétel otthoni és szakmai bontásban, forintban
+            Havi bruttó befizetések otthoni és szakmai bontásban, forintban
           </caption>
           <thead>
             <tr>
@@ -58,6 +64,11 @@ export function MonthlyRevenueSection({ rows }: { rows: readonly MonthlyRevenueR
               <th style={thNumericStyle} scope="col">
                 Szakmai
               </th>
+              {vanLevonas ? (
+                <th style={thNumericStyle} scope="col">
+                  Részleges visszatérítés
+                </th>
+              ) : null}
               <th style={thNumericStyle} scope="col">
                 Összesen
               </th>
@@ -74,6 +85,11 @@ export function MonthlyRevenueSection({ rows }: { rows: readonly MonthlyRevenueR
                 </th>
                 <td style={numericStyle}>{formatHuf(row.laikusHuf)}</td>
                 <td style={numericStyle}>{formatHuf(row.szakemberHuf)}</td>
+                {vanLevonas ? (
+                  <td style={numericStyle}>
+                    {(row.refundHuf ?? 0) > 0 ? `−${formatHuf(row.refundHuf ?? 0)}` : formatHuf(0)}
+                  </td>
+                ) : null}
                 <td style={numericStyle}>{formatHuf(row.totalHuf)}</td>
                 <td style={numericStyle}>{row.orderCount.toLocaleString('hu-HU')}</td>
               </tr>

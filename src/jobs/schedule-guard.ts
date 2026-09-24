@@ -1,6 +1,9 @@
 import type { PayloadRequest, TaskConfig, Where } from 'payload'
 
 import { withAdvisoryLock } from '../lib/advisory-lock'
+import { shouldEmitThrottledAlert } from '../lib/alert-throttle'
+import { ALERT_CODES } from '../lib/alerts/classify'
+import { emitAlert } from '../lib/alerts/emit'
 import { logger as rootLogger, type Logger } from '../lib/logger'
 
 /**
@@ -9,8 +12,10 @@ import { logger as rootLogger, type Logger } from '../lib/logger'
  *
  * A számolás + `jobs.queue` advisory-zár alatt fut; a Payload felé mindig
  * `shouldSchedule: false` megy vissza (különben a handleSchedules még egyszer
- * sorba állítana). Ha minden blocking job stale, ütemezünk + error riasztás;
- * ha van élő job is, nem. `meta.scheduled` szűrés szándékosan nincs.
+ * sorba állítana). A beragadt (stale) sort lezárjuk (`processing: false`,
+ * `hasError: true`, `error`), és EGY fojtott riasztás megy róla; ha csak
+ * beragadt job blokkolt, ütemezünk, ha van élő job is, nem. `meta.scheduled`
+ * szűrés szándékosan nincs.
  */
 
 type ScheduleEntry = NonNullable<TaskConfig['schedule']>[number]
@@ -29,6 +34,20 @@ const JOBS_COLLECTION_SLUG = 'payload-jobs'
  * minősít beragadtnak, de egy elhalt sor legkésőbb 15 perc múlva feloldódik.
  */
 export const STALE_SCHEDULED_JOB_MS = 15 * 60 * 1000
+
+/** A beragadt-job riasztás fojtása queue+task párra (6 óra). */
+export const STUCK_JOB_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000
+
+/** Az ütemezés-ellenőrzés hibájának riasztás-fojtása (1 óra). */
+export const SCHEDULE_CHECK_ALERT_COOLDOWN_MS = 60 * 60 * 1000
+
+/** Egy tickben legfeljebb ennyi beragadt sort zárunk le. */
+export const MAX_RELEASED_JOBS_PER_TICK = 10
+
+/** A lezárt sor `error` mezőjének üzenete (a job-sorban olvasható). */
+export const STALE_JOB_RELEASE_MESSAGE =
+  'A futás beragadt (processing: true, régóta nem frissült, jellemzően egy újraindítás ' +
+  'szakította meg). A schedule-guard lezárta, hogy az ütemezés helyreálljon.'
 
 export interface StaleAwareBeforeScheduleOptions {
   /** A task slugja — csak az ehhez tartozó jobokat számoljuk. */
@@ -71,6 +90,81 @@ async function countJobs(req: PayloadRequest, where: Where): Promise<number> {
     where,
   })
   return result.totalDocs
+}
+
+/**
+ * A beragadt sorok lezárása ugyanazzal a DB-hívással, amellyel a Payload a
+ * saját job-sorait írja (`payload.db.updateJobs`, lásd
+ * payload/dist/queues/utilities/updateJob.js). A `hasError: true` sort a
+ * Payload nem futtatja újra („If hasError is true this job will not be
+ * retried", a jobs-collection mezőleírása), az `error` pedig kiveszi a
+ * blokkoló-számlálásból.
+ */
+async function releaseStaleJobs(
+  req: PayloadRequest,
+  queue: string,
+  taskSlug: string,
+  staleBeforeIso: string,
+  nowMs: number,
+): Promise<number> {
+  const updated = await req.payload.db.updateJobs({
+    where: staleWhere(queue, taskSlug, staleBeforeIso),
+    data: {
+      processing: false,
+      hasError: true,
+      error: {
+        message: STALE_JOB_RELEASE_MESSAGE,
+        releasedBy: 'schedule-guard',
+        releasedAt: new Date(nowMs).toISOString(),
+      },
+    },
+    limit: MAX_RELEASED_JOBS_PER_TICK,
+    req,
+  })
+  return Array.isArray(updated) ? updated.length : 0
+}
+
+/**
+ * EGY fojtott riasztás a lezárásról. A lezárás után a sor nem blokkol, tehát
+ * a riasztás nem ismétlődik minden tickben; a fojtás a sorozatos újraindítások
+ * idejére is egy levélre korlátoz. A szöveg olyan helyet nevez meg, amit a
+ * tulajdonos el is ér (a payload-jobs lista az adminban rejtett).
+ */
+function reportReleasedJobs(
+  log: Logger,
+  facts: {
+    queue: string
+    taskSlug: string
+    stuckJobs: number
+    releasedJobs: number
+    liveJobs: number
+    nowMs: number
+  },
+): void {
+  const context = {
+    queue: facts.queue,
+    stuckJobs: facts.stuckJobs,
+    releasedJobs: facts.releasedJobs,
+    runnableOrActiveJobs: facts.stuckJobs + facts.liveJobs,
+  }
+  if (
+    shouldEmitThrottledAlert(
+      `beragadt-job:${facts.queue}:${facts.taskSlug}`,
+      STUCK_JOB_ALERT_COOLDOWN_MS,
+      facts.nowMs,
+    )
+  ) {
+    emitAlert(
+      log,
+      ALERT_CODES.beragadtJob,
+      'RIASZTÁS: beragadt háttérfeladatot zárt le a rendszer, az ütemezés helyreállt. Teendő ' +
+        'csak akkor van, ha ez naponta többször előfordul: ilyenkor a Railway naplójában ' +
+        '(@alertCode:beragadt-job) látszik, melyik feladat akadt el, és szólj a fejlesztőnek.',
+      context,
+    )
+    return
+  }
+  log.warn('beragadt job lezárva (a riasztás a fojtási időn belül már kiment)', context)
 }
 
 /** A schedule-zár kulcsa: egy queue+task párra egy zár (K4). */
@@ -150,20 +244,34 @@ export function createStaleAwareBeforeSchedule(
               // számlálás a PÁRHUZAMOS példány sorba állítását is látja).
               return skip
             }
+            // A beragadt sort a Payload soha nem veszi fel újra (csak
+            // `processing: false` jobot futtat), tehát magától sosem tűnik el.
+            // Lezárjuk: `processing: false` + `hasError: true` + `error`, így a
+            // következő tick már nem látja blokkolónak, és a riasztás sem
+            // ismétlődik minden tickben (a-callback-2).
+            let released = 0
+            try {
+              released = await releaseStaleJobs(req, queue, taskSlug, staleBeforeIso, now())
+            } catch (error) {
+              // A lezárás hibája nem állíthatja meg az ütemezést: a régi
+              // viselkedés (sorba állítás a beragadt sor mellett) marad.
+              log.warn('a beragadt job-sor lezárása nem sikerült, a következő tick újrapróbálja', {
+                queue,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+            reportReleasedJobs(log, {
+              queue,
+              taskSlug,
+              stuckJobs: stale,
+              releasedJobs: released,
+              liveJobs: blocking - stale,
+              nowMs: now(),
+            })
             if (stale < blocking) {
-              log.warn(
-                'Beragadt job az ütemezett queue-ban (most nem blokkol, mert fut élő job is) — érdemes ' +
-                  'ránézni a payload-jobs listára.',
-                { queue, stuckJobs: stale, runnableOrActiveJobs: blocking },
-              )
+              // Él mellette egy futás is: az viszi tovább a munkát.
               return skip
             }
-            log.error(
-              'RIASZTÁS: beragadt job blokkolta az ütemezést — feloldva, az új futás elindul. A ' +
-                'beragadt sor (processing: true, régóta nem frissült) az adatbázisban marad, kézi ' +
-                'ellenőrzés szükséges a payload-jobs listán.',
-              { queue, stuckJobs: stale, staleAfterMs },
-            )
           }
 
           // A sorba állítás A ZÁRON BELÜL történik: a versenyző példány a zárra
@@ -176,12 +284,30 @@ export function createStaleAwareBeforeSchedule(
       )
     } catch (error) {
       // Zárt irányba tévedünk: inkább kimarad egy kör, mint hogy duplikátum
-      // keletkezzen. A következő cron-tick úgyis újrapróbálja.
-      log.error(
-        'RIASZTÁS: a job-ütemezés duplikátum-ellenőrzése nem futott le — ebben a körben nem ' +
-          'állítunk sorba jobot. Ha ez ismétlődik, az adatbázis-kapcsolatot kell megnézni.',
-        { queue, error: error instanceof Error ? error.message : String(error) },
-      )
+      // keletkezzen. A következő cron-tick úgyis újrapróbálja. A riasztás
+      // fojtott: egy adatbázis-kimaradás alatt percenként ismétlődne.
+      const context = { queue, error: error instanceof Error ? error.message : String(error) }
+      if (
+        shouldEmitThrottledAlert(
+          `utemezes-ellenorzes-hiba:${queue}:${taskSlug}`,
+          SCHEDULE_CHECK_ALERT_COOLDOWN_MS,
+          now(),
+        )
+      ) {
+        emitAlert(
+          log,
+          ALERT_CODES.utemezesEllenorzesHiba,
+          'RIASZTÁS: a job-ütemezés duplikátum-ellenőrzése nem futott le, ebben a körben nem ' +
+            'indul új futás. Ha óránál tovább tart, az adatbázis-kapcsolatot kell megnézni ' +
+            '(Railway, Postgres-c8Rg szolgáltatás).',
+          context,
+        )
+      } else {
+        log.warn(
+          'a job-ütemezés duplikátum-ellenőrzése most sem futott le (a riasztás már kiment)',
+          context,
+        )
+      }
       return skip
     }
   }

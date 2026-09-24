@@ -9,9 +9,12 @@ import { cardRowStyle, leadInSectionStyle, noticeStyle, sectionStyle } from './s
  * `src/lib/refund/refund-order.ts` csak a TELJES refundnál írja át a rendelést
  * `refunded` státuszra; részlegesnél a státusz `paid` MARAD (és a vevő
  * hozzáférése is megmarad, mert a részrefund tipikusan kártérítés, nem a
+ * visszavásárlás). Hogy a részleges visszatérítés levonódik-e, az a nézőtől
+ * függ (a `refunds` mező tulajdonosi olvasású), ezért azt a felső kártyák
+ * alatti mondat mondja ki (TotalsCards), itt csak a teljes visszatérítés áll.
  */
 const VISSZATERITES_MEGJEGYZES =
-  'A teljesen visszatérített rendelés nem számít bevételnek. A részlegesen visszatérített viszont fizetettnek marad, ezért a bevételben a teljes összegével szerepel.'
+  'A teljesen visszatérített rendelés nem számít bele a befizetésekbe. A részleges visszatérítés kezelését a felső összesítő alatti mondat írja le.'
 
 /**
  * „Rendelések állapota" szekció: a rendelés-tölcsér operatív oldala.

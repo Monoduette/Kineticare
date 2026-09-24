@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 
 import { hasStaffOrOwnerRole, type RoleUser } from '../../access/roles'
 import { logger } from '../../lib/logger'
+import { FigyelmetIgenyel } from './FigyelmetIgenyel'
 import { ADMIN_UTAK, adminCim, KEZDOLAP_SLUG } from './KezdolapCel'
 import './GyakoriTeendok.css'
 
@@ -48,7 +49,8 @@ import './GyakoriTeendok.css'
  * SZEREPKÖR: a panel csak munkatársnak és tulajdonosnak jelenik meg, és csak
  * azokat a feladatokat mutatja, amelyek gyűjteményét a felhasználó olvashatja
  * (a Payload szanitált jogosultságai). Ez megjelenítés; a védelem a
- * gyűjteményekben és a nézetekben van.
+ * gyűjteményekben és a nézetekben van. A tulajdonos a kártyák előtt a
+ * „Figyelmet igényel" blokkot is látja (`FigyelmetIgenyel.tsx`).
  *
  * A kártyák alatt a panel a fő oldalak gyorslinkjeit is mutatja
  * (`FoOldalakGyorslinkjei`, lent); ugyanez a komponens áll az Oldalak lista
@@ -448,12 +450,26 @@ export async function FoOldalakGyorslinkjei({
   )
 }
 
+/**
+ * A Payload a teljes Local API-t adja át; a panel típusa csak a `find`-et
+ * követeli (a tesztek szűk mockkal hívják). A „Figyelmet igényel" blokknak a
+ * `count` is kell, ezt itt szűkítjük.
+ */
+function vanCount(
+  payload: GyakoriTeendokProps['payload'],
+): payload is GyakoriTeendokProps['payload'] & Pick<Payload, 'count'> {
+  return typeof (payload as { count?: unknown }).count === 'function'
+}
+
 export async function GyakoriTeendok({ payload, permissions, user }: GyakoriTeendokProps) {
   const teendok = lathatoTeendok(user, permissions)
   if (teendok.length === 0) {
     return null
   }
   const adminRoute = payload.config.routes.admin
+  // A tulajdonosi „Figyelmet igényel" blokk a kártyák ELÉ kerül: a beragadt
+  // pénz fontosabb a szerkesztői feladatoknál (FigyelmetIgenyel.tsx).
+  const figyelmet = vanCount(payload) ? await FigyelmetIgenyel({ payload, user }) : null
   const foOldalak = await FoOldalakGyorslinkjei({
     payload,
     permissions,
@@ -461,34 +477,37 @@ export async function GyakoriTeendok({ payload, permissions, user }: GyakoriTeen
     elhelyezes: 'panel',
   })
   return (
-    <section aria-labelledby="kc-gyakori-teendok-cim" className="kc-gyakori-teendok">
-      <h2 className="kc-gyakori-teendok__cim" id="kc-gyakori-teendok-cim">
-        {GYAKORI_TEENDOK_CIM}
-      </h2>
-      <ul className="kc-gyakori-teendok__lista">
-        {teendok.map((teendo) => {
-          const leirasId = `kc-gyakori-teendo-${teendo.kulcs}`
-          return (
-            <li className="kc-gyakori-teendok__kartya" key={teendo.kulcs}>
-              <h3 className="kc-gyakori-teendok__kartya-cim">
-                <Link
-                  aria-describedby={leirasId}
-                  className="kc-gyakori-teendok__link"
-                  href={adminCim(adminRoute, teendo.utvonal)}
-                  prefetch={false}
-                >
-                  {teendoCime(teendo, payload.config.collections)}
-                </Link>
-              </h3>
-              <p className="kc-gyakori-teendok__leiras" id={leirasId}>
-                {teendo.leiras}
-              </p>
-            </li>
-          )
-        })}
-      </ul>
-      {foOldalak}
-    </section>
+    <>
+      {figyelmet}
+      <section aria-labelledby="kc-gyakori-teendok-cim" className="kc-gyakori-teendok">
+        <h2 className="kc-gyakori-teendok__cim" id="kc-gyakori-teendok-cim">
+          {GYAKORI_TEENDOK_CIM}
+        </h2>
+        <ul className="kc-gyakori-teendok__lista">
+          {teendok.map((teendo) => {
+            const leirasId = `kc-gyakori-teendo-${teendo.kulcs}`
+            return (
+              <li className="kc-gyakori-teendok__kartya" key={teendo.kulcs}>
+                <h3 className="kc-gyakori-teendok__kartya-cim">
+                  <Link
+                    aria-describedby={leirasId}
+                    className="kc-gyakori-teendok__link"
+                    href={adminCim(adminRoute, teendo.utvonal)}
+                    prefetch={false}
+                  >
+                    {teendoCime(teendo, payload.config.collections)}
+                  </Link>
+                </h3>
+                <p className="kc-gyakori-teendok__leiras" id={leirasId}>
+                  {teendo.leiras}
+                </p>
+              </li>
+            )
+          })}
+        </ul>
+        {foOldalak}
+      </section>
+    </>
   )
 }
 
