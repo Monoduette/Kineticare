@@ -50,6 +50,7 @@ import {
   validateAppointmentSubmissionData,
 } from './lib/appointment/validation'
 import { validateContactSubmissionData } from './lib/contact-submission'
+import { budapestDateTimeString } from './lib/date/budapest'
 import {
   appointmentCustomerEmail,
   appointmentStaffEmail,
@@ -98,6 +99,56 @@ const csrfAllowlist = buildOriginAllowlist(
 // T-016: kapcsolat űrlap — beküldés-kezelés (spam-védelem + staff-értesítő)
 // ---------------------------------------------------------------------------
 
+const TURNSTILE_SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+const TURNSTILE_TIMEOUT_MS = 8_000
+const TURNSTILE_UNAVAILABLE_MESSAGE =
+  'A spam-ellenőrzés most nem érhető el. Próbáld újra néhány perc múlva, vagy hívj minket telefonon.'
+
+/**
+ * A Cloudflare siteverify hívása. Hálózati hiba, időtúllépés, nem 2xx vagy nem
+ * JSON válasz esetén 503-as APIError, magyar üzenettel: kezeletlen hibánál a
+ * Payload a nem nyilvános 500-ast „Something went wrong." szövegre cserélné.
+ * A naplóba sem a token, sem személyes adat nem kerül.
+ */
+async function callTurnstileSiteverify(
+  secret: string,
+  token: string,
+): Promise<{ success?: boolean }> {
+  let response: Response
+  try {
+    response = await fetch(TURNSTILE_SITEVERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token }),
+      signal: AbortSignal.timeout(TURNSTILE_TIMEOUT_MS),
+    })
+  } catch (error) {
+    logger.warn('Turnstile siteverify nem érhető el', {
+      reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'network',
+      errorName: error instanceof Error ? error.name : typeof error,
+    })
+    throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
+  }
+  if (!response.ok) {
+    logger.warn('Turnstile siteverify nem érhető el', {
+      reason: 'http-status',
+      status: response.status,
+    })
+    throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
+  }
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    body = undefined
+  }
+  if (typeof body !== 'object' || body === null) {
+    logger.warn('Turnstile siteverify nem érhető el', { reason: 'invalid-body' })
+    throw new APIError(TURNSTILE_UNAVAILABLE_MESSAGE, 503)
+  }
+  return body as { success?: boolean }
+}
+
 /**
  * Turnstile-előkészítés: a form-submissions rekord opcionális turnstileToken
  * mezőjét a TURNSTILE_SECRET_KEY jelenléte kapcsolja be — env nélkül a
@@ -110,8 +161,19 @@ const csrfAllowlist = buildOriginAllowlist(
  * konfigurációval (csak site key VAGY csak secret) az app el sem indul,
  * teljes hiánynál pedig induláskori warn jelzi, hogy a védelem kikapcsolt —
  * csendben fél-védett állapot tehát élesben nem létezhet.
+ *
+ * Csak CREATE-en fut. A token egyszer használatos (a Cloudflare a második
+ * ellenőrzést elutasítja), így ha update-en is futna, a stáb minden admin-
+ * módosítása a tárolt, már elhasznált tokenen bukna el. A nyilvános felület
+ * kizárólag a create; az update staff+owner jogosultságú.
+ *
+ * Ha a siteverify nem érhető el, 503-as APIError megy a kliensnek magyar
+ * üzenettel (lásd `callTurnstileSiteverify`).
  */
-const verifyTurnstile = async (data: unknown): Promise<unknown> => {
+const verifyTurnstile = async (data: unknown, operation: string): Promise<unknown> => {
+  if (operation !== 'create') {
+    return data
+  }
   const secret = process.env.TURNSTILE_SECRET_KEY
   if (!secret) {
     return data
@@ -126,14 +188,8 @@ const verifyTurnstile = async (data: unknown): Promise<unknown> => {
       400,
     )
   }
-  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ secret, response: token }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  const result = (await response.json().catch(() => ({}))) as { success?: boolean }
-  if (!result.success) {
+  const result = await callTurnstileSiteverify(secret, token)
+  if (result.success !== true) {
     throw new APIError(
       'A spam-ellenőrzés nem sikerült. Frissítsd az oldalt, és küldd el újra az űrlapot.',
       400,
@@ -262,6 +318,13 @@ const validateContactSubmission: CollectionBeforeValidateHook = async ({
 }
 
 /**
+ * A Reply-To cím formai ellenőrzése: az űrlap-validátorok
+ * (contact-submission, appointment/validation) mintája. Szóközt és sortörést
+ * nem enged, így fejléc-injektálásra sem alkalmas.
+ */
+const STAFF_REPLY_TO_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
  * Staff-értesítő űrlap-beküldéskor (T-018 sablonok).
  * A címzettlista a CONTACT_STAFF_EMAILS env-ből jön (vessző-szeparált); üres
  * env = nincs értesítés, a beküldés ettől függetlenül mentődik. Best-effort:
@@ -301,7 +364,16 @@ const notifyStaffOnSubmission = async ({
     .map((email) => email.trim())
     .filter((email) => email.length > 0)
   if (recipients.length === 0) {
-    logger.debug('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva')
+    // Élesben ez elveszett megkeresést jelent (a stáb nem tud a beküldésről),
+    // ezért warn; fejlesztésben a hiányzó címlista megszokott, ott debug.
+    // Személyes adat (név, e-mail, telefon) nem kerül a naplóba.
+    if (process.env.NODE_ENV === 'production') {
+      logger.warn('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva, a beküldés mentve', {
+        formKind: typeof formKind === 'string' ? formKind : 'ismeretlen',
+      })
+    } else {
+      logger.debug('CONTACT_STAFF_EMAILS üres — staff-értesítő kihagyva')
+    }
     return doc
   }
   try {
@@ -312,7 +384,14 @@ const notifyStaffOnSubmission = async ({
         : undefined
     const fieldValue = (name: string): string =>
       submissionData?.find((entry) => entry.field === name)?.value ?? ''
-    const submittedAt = new Date().toLocaleString('hu-HU')
+    // Az éles szerver UTC-ben fut: a stáb a budapesti időt várja.
+    const submittedAt = budapestDateTimeString(new Date())
+    // Reply-To a beküldő címére, hogy a stáb a „Válasz" gombbal neki írjon.
+    // Csak formailag érvényes, egysoros címet teszünk a fejlécbe.
+    const submitterEmail = (
+      formKind === 'appointment' ? fieldValue(APPOINTMENT_EMAIL_FIELD) : fieldValue('email')
+    ).trim()
+    const replyTo = STAFF_REPLY_TO_EMAIL_PATTERN.test(submitterEmail) ? submitterEmail : undefined
     const template =
       formKind === 'appointment'
         ? appointmentStaffEmail({
@@ -329,7 +408,7 @@ const notifyStaffOnSubmission = async ({
             message: fieldValue('message'),
             submittedAt,
           })
-    const result = await sendMail({ to: recipients, ...template })
+    const result = await sendMail({ to: recipients, ...template, ...(replyTo ? { replyTo } : {}) })
     if (!result.ok) {
       logger.warn('staff-értesítő küldése sikertelen', {
         retryable: result.retryable,
@@ -883,7 +962,10 @@ export default buildConfig({
         hooks: {
           // A sorrend számít: előbb a helyi mező-/consent-ellenőrzés (K2),
           // utána a külső Turnstile-hívás.
-          beforeValidate: [validateContactSubmission, async ({ data }) => verifyTurnstile(data)],
+          beforeValidate: [
+            validateContactSubmission,
+            async ({ data, operation }) => verifyTurnstile(data, operation),
+          ],
           afterChange: [
             async ({ doc, operation, req }) =>
               notifyStaffOnSubmission({

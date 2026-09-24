@@ -7,15 +7,28 @@
  * azokat SZÓ SZERINT jelenítjük meg. Ha a válasz nem értelmezhető (nem JSON,
  * üres törzs, proxy-hibaoldal), a hívó által adott általános üzenet marad.
  *
- * Megjegyzés a duplikációról: a kapcsolat-űrlap `_lib/submit.ts`-e ma saját,
- * azonos működésű privát segédet tartalmaz (`extractErrorMessage`). Ez a modul
- * annak a KÖZÖS változata; a kapcsolat-űrlap ráállítása külön, fókuszált
- * lépés (a párhuzamos ügynök-munka miatt itt nem nyúlunk idegen fájlhoz).
+ * A Payload a NEM nyilvános (500-as) hibák szövegét a saját angol
+ * „Something went wrong." üzenetére cseréli
+ * (node_modules/payload/dist/utilities/routeError.js). Ezt a látogató nem
+ * értené, ezért ilyenkor is a hívó magyar általános üzenete jelenik meg.
  */
+
+/** A Payload maszkolt belső hibájának szövege (pont nélkül is). */
+const PAYLOAD_GENERIC_ERROR_PATTERN = /^something went wrong\.?$/i
+
+/** Megjeleníthető-e a szerver által küldött üzenet a látogatónak. */
+function isDisplayableMessage(message: unknown): message is string {
+  if (typeof message !== 'string') {
+    return false
+  }
+  const trimmed = message.trim()
+  return trimmed.length > 0 && !PAYLOAD_GENERIC_ERROR_PATTERN.test(trimmed)
+}
 
 /**
  * @param response a sikertelen (nem `ok`) válasz
- * @param fallback általános magyar üzenet, ha a törzsből nem nyerhető ki hiba
+ * @param fallback általános magyar üzenet, ha a törzsből nem nyerhető ki
+ *   megjeleníthető hiba
  */
 export async function extractPayloadErrorMessage(
   response: Response,
@@ -27,10 +40,10 @@ export async function extractPayloadErrorMessage(
       message?: string
     }
     const first = body.errors?.find((entry) => typeof entry.message === 'string')
-    if (first?.message) {
-      return first.message
+    if (first !== undefined) {
+      return isDisplayableMessage(first.message) ? first.message : fallback
     }
-    if (typeof body.message === 'string' && body.message.length > 0) {
+    if (isDisplayableMessage(body.message)) {
       return body.message
     }
   } catch {

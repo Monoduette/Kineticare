@@ -157,6 +157,15 @@ describe('submitContactForm (mockolt API)', () => {
     expect(result).toEqual({ ok: false, message: GENERIC_SUBMIT_ERROR })
   })
 
+  it('a Payload maszkolt angol 500-asa („Something went wrong.") helyett magyar üzenetet ad', async () => {
+    const mockFetch = async () =>
+      new Response(JSON.stringify({ errors: [{ message: 'Something went wrong.' }] }), {
+        status: 500,
+      })
+    const result = await submitContactForm(buildSubmissionPayload(validValues(), '42'), mockFetch)
+    expect(result).toEqual({ ok: false, message: GENERIC_SUBMIT_ERROR })
+  })
+
   it('hálózati hibára (fetch dob) általános magyar hibaüzenetet ad', async () => {
     const mockFetch = async () => {
       throw new Error('network down')

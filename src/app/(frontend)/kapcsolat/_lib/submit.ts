@@ -1,3 +1,4 @@
+import { extractPayloadErrorMessage } from '@/lib/payload-rest-error'
 import type { ContactFormValues } from './validation'
 
 /**
@@ -20,9 +21,7 @@ export interface FormSubmissionPayload {
   turnstileToken?: string
 }
 
-export type SubmitResult =
-  | { ok: true }
-  | { ok: false; message: string }
+export type SubmitResult = { ok: true } | { ok: false; message: string }
 
 /** Általános, felhasználóbarát hibaüzenet — a szerver-válasz felülírhatja. */
 export const GENERIC_SUBMIT_ERROR =
@@ -60,30 +59,6 @@ export function buildSubmissionPayload(
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
-/**
- * A Payload/form-builder hibaválaszából emberi üzenet. A T-016
- * Turnstile-hibák (beforeValidate APIError) már magyarul érkeznek —
- * azokat változatlanul megjelenítjük.
- */
-async function extractErrorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as {
-      errors?: Array<{ message?: string }>
-      message?: string
-    }
-    const first = body.errors?.find((entry) => typeof entry.message === 'string')
-    if (first?.message) {
-      return first.message
-    }
-    if (typeof body.message === 'string' && body.message.length > 0) {
-      return body.message
-    }
-  } catch {
-    // Nem JSON-válasz — marad az általános üzenet.
-  }
-  return GENERIC_SUBMIT_ERROR
-}
-
 export async function submitContactForm(
   payload: FormSubmissionPayload,
   fetchImpl: FetchLike = fetch,
@@ -95,7 +70,10 @@ export async function submitContactForm(
       body: JSON.stringify(payload),
     })
     if (!response.ok) {
-      return { ok: false, message: await extractErrorMessage(response) }
+      return {
+        ok: false,
+        message: await extractPayloadErrorMessage(response, GENERIC_SUBMIT_ERROR),
+      }
     }
     return { ok: true }
   } catch {
