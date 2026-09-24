@@ -261,15 +261,38 @@ describe('buildInvoiceXml — hivatalos Számla Agent séma', () => {
       expect(index, tag).toBeGreaterThan(previousIndex)
       previousIndex = index
     }
-    // Üresen is jelen lévő kötelező tagok.
+    // Üresen is jelen lévő, SZÖVEGES (xs:string) váz-tagok.
     for (const tag of [
-      '<arfolyamBank></arfolyamBank>',
       '<bankszamlaszam></bankszamlaszam>',
       '<postazasiNev></postazasiNev>',
       '<azonosito></azonosito>',
     ]) {
       expect(xml).toContain(tag)
     }
+  })
+
+  it('forint-számlán NINCS <arfolyam>/<arfolyamBank> (az üres xs:double 57-es XSD-hiba volna)', () => {
+    // Az élő XSD: <element name="arfolyam" type="double" minOccurs="0"> — az
+    // üres érték érvénytelen, a HUF-számlán pedig nincs is jelentése.
+    expect(xml).not.toContain('<arfolyam>')
+    expect(xml).not.toContain('<arfolyam/>')
+    expect(xml).not.toContain('<arfolyamBank>')
+    // Semmilyen típusos tag nem mehet ki üresen (a szöveges váz-tagok igen).
+    for (const typed of ['arfolyam', 'fizetve', 'adoalany', 'keltDatum', 'teljesitesDatum']) {
+      expect(xml, typed).not.toContain(`<${typed}></${typed}>`)
+    }
+  })
+
+  it('fejlec: <fizetve>true</fizetve> a szamlaszamElotag UTÁN (XSD-sorrend), kártyával kifizetett rendelés', () => {
+    expect(xml).toMatch(
+      /<szamlaszamElotag>KIN<\/szamlaszamElotag>\s*<fizetve>true<\/fizetve>\s*<\/fejlec>/,
+    )
+  })
+
+  it('vevő: adószámmal <adoalany>1</adoalany>, a sendEmail és az adoszam között', () => {
+    expect(xml).toMatch(
+      /<sendEmail>true<\/sendEmail>\s*<adoalany>1<\/adoalany>\s*<adoszam>12345678-1-42<\/adoszam>/,
+    )
   })
 
   it('beallitasok: agent-kulcs, eszamla, valaszVerzio 2, szamlaKulsoAzon = orderNumber', () => {
@@ -350,6 +373,33 @@ describe('buildInvoiceXml — áfakulcs és teljesítési dátum', () => {
   it('teljesitesDatum nélkül a teljesítés a kiállítás napja', () => {
     const xml = buildInvoiceXml(BASE)
     expect(xml).toContain('<teljesitesDatum>2026-08-04</teljesitesDatum>')
+  })
+
+  it('adószám nélkül (magánszemély) <adoalany>-1</adoalany> és üres adoszam', () => {
+    // tudastar.szamlazz.hu/gyik/vevo-adoszama-szamlan: „Magánszemély vásárlása
+    // esetén ezért az adóalanyiságnál a nincs adószáma értéket kell átadni."
+    const xml = buildInvoiceXml(BASE)
+    expect(xml).toMatch(/<adoalany>-1<\/adoalany>\s*<adoszam><\/adoszam>/)
+    expect(xml).not.toContain('<adoalany>1</adoalany>')
+  })
+
+  it('csupa szóközből álló adószám magánszemélynek számít (-1), nem 1-nek', () => {
+    const xml = buildInvoiceXml({ ...BASE, buyer: { ...BASE.buyer, adoszam: '   ' } })
+    expect(xml).toContain('<adoalany>-1</adoalany>')
+    expect(xml).toContain('<adoszam></adoszam>')
+  })
+
+  it('helyesbítőn is kimegy a <fizetve>true</fizetve> (a visszatérítést a Barion már kifizette)', () => {
+    const xml = buildInvoiceXml({
+      ...BASE,
+      items: [{ megnevezes: 'Helyesbítés', mennyiseg: 1, bruttoEgysegar: -5000 }],
+      corrective: {
+        originalInvoiceNumber: 'KIN-2026-7',
+        kulsoAzon: `${ORDER_NUMBER}-HELYESBITO-1`,
+      },
+    })
+    expect(xml).toContain('<fizetve>true</fizetve>')
+    expect(xml).toContain('<helyesbitoszamla>true</helyesbitoszamla>')
   })
 
   /**
@@ -556,14 +606,18 @@ describe('parseAgentResponse', () => {
     }
   })
 
-  it('értelmezhetetlen válasz: invalid_response, nem retryable', () => {
+  it('értelmezhetetlen válasz: invalid_response, RETRYABLE (bizonytalan kimenet, a következő kísérlet lekérdezéssel indul)', () => {
+    // Pl. egy 200-as HTML-karbantartási oldal: a bizonylat sorsa ebből nem
+    // dönthető el. Végleges 'failed' helyett újrapróbálás — a számla- és a
+    // helyesbítő-ág a beküldés ELŐTT szamlaKulsoAzon-lekérdezéssel indul, a
+    // beküldéseket pedig az 5-ös plafon fogja.
     try {
       parseAgentResponse('<html>500 oldal</html>', new Headers())
       expect.unreachable()
     } catch (error) {
       const apiError = error as SzamlazzApiError
       expect(apiError.kind).toBe('invalid_response')
-      expect(apiError.retryable).toBe(false)
+      expect(apiError.retryable).toBe(true)
     }
   })
 })
@@ -618,6 +672,227 @@ describe('parseAgentResponse — hibakód-osztályozás (retry / duplikátum / v
     expect(error.kind).toBe('agent')
     expect(error.retryable).toBe(false)
     expect(isDuplicateOrderError(error)).toBe(false)
+  })
+
+  it('55 (e-számla aláírás / időbélyeg-szerver): RETRYABLE — a szolgáltatói kiesés magától megszűnik', () => {
+    // Hivatalos hibatábla: „A tanúsítvány lejárt vagy az időbélyegző szerverhez
+    // nem lehetett kapcsolódni." Végleges 'failed' helyett újrapróbálás; a
+    // lejárt tanúsítványt az 5-ös beküldési plafon állítja meg.
+    const error = agentErrorOf('55')
+    expect(error.kind).toBe('agent')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('136 (lejárt előfizetés) továbbra is VÉGLEGES — magától nem javul, a keretet ne égesse', () => {
+    expect(agentErrorOf('136').retryable).toBe(false)
+  })
+})
+
+/**
+ * Válasz-értelmezés a valódi Agent-válaszok alakjaival: CDATA-ba csomagolt
+ * értékek, a szlahu_* fejlécek mint tartalék forrás, és az 56-os
+ * („számla kiállt, csak az értesítő nem ment ki") jelzés.
+ */
+describe('parseAgentResponse — CDATA, fejléc-tartalék és 56-os jelzés', () => {
+  const VALASZ_NS = 'xmlns="http://www.szamlazz.hu/xmlszamlavalasz"'
+
+  function apiErrorOf(fn: () => unknown): SzamlazzApiError {
+    let captured: unknown
+    try {
+      fn()
+    } catch (error) {
+      captured = error
+    }
+    expect(captured).toBeInstanceOf(SzamlazzApiError)
+    if (!(captured instanceof SzamlazzApiError)) {
+      throw new Error('TESZT-HIBA: nem SzamlazzApiError érkezett')
+    }
+    return captured
+  }
+
+  it('CDATA-s vevoifiokurl: a link a jelölés NÉLKÜL jön ki, és átmegy az allowlisten', () => {
+    // A valódi válaszok így hozzák a linket (rollethu/noe kazetta, pretix-szamlazz).
+    const result = parseAgentResponse(
+      `<?xml version="1.0" encoding="UTF-8"?><xmlszamlavalasz ${VALASZ_NS}>` +
+        '<sikeres>true</sikeres><szamlaszam>KIN-2026-7</szamlaszam>' +
+        '<vevoifiokurl><![CDATA[https://www.szamlazz.hu/szamla/?page=vevoifiokpay&partguid=abc]]></vevoifiokurl>' +
+        '</xmlszamlavalasz>',
+      new Headers(),
+    )
+    expect(result.vevoifiokUrl).toBe(
+      'https://www.szamlazz.hu/szamla/?page=vevoifiokpay&partguid=abc',
+    )
+    expect(isTrustedInvoicePdfUrl(result.vevoifiokUrl ?? '')).toBe(true)
+  })
+
+  it('entitás-kódolt vevoifiokurl (&amp;) is dekódolva jön ki', () => {
+    const result = parseAgentResponse(
+      '<xmlszamlavalasz><sikeres>true</sikeres><szamlaszam>KIN-2026-7</szamlaszam>' +
+        '<vevoifiokurl>https://www.szamlazz.hu/szamla/?page=vevoifiokpay&amp;partguid=abc</vevoifiokurl>' +
+        '</xmlszamlavalasz>',
+      new Headers(),
+    )
+    expect(result.vevoifiokUrl).toBe(
+      'https://www.szamlazz.hu/szamla/?page=vevoifiokpay&partguid=abc',
+    )
+  })
+
+  it('CDATA-s hibakód és hibaüzenet (a hivatalos hibaminta alakja) nyersen értelmezve', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        `<xmlszamlavalasz ${VALASZ_NS}><sikeres>false</sikeres>` +
+          '<hibakod><![CDATA[57]]></hibakod>' +
+          '<hibauzenet><![CDATA[XML beolvasási hiba. cvc-datatype-valid: <arfolyam> & társai]]></hibauzenet>' +
+          '</xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.agentErrors).toEqual([
+      { code: '57', message: 'XML beolvasási hiba. cvc-datatype-valid: <arfolyam> & társai' },
+    ])
+    expect(error.message).not.toContain('CDATA')
+  })
+
+  it('sikeres=true, de a törzsből hiányzó számlaszám a szlahu_szamlaszam fejlécből jön', () => {
+    // A hivatalos PHP SDK a számot a fejlécből olvassa (InvoiceResponse::parseData).
+    const result = parseAgentResponse(
+      '<xmlszamlavalasz><sikeres>true</sikeres></xmlszamlavalasz>',
+      new Headers({
+        szlahu_szamlaszam: 'KIN-2026-9',
+        szlahu_vevoifiokurl:
+          'https%3A%2F%2Fwww.szamlazz.hu%2Fszamla%2F%3Fpage%3Dvevoifiokpay%26partguid%3Da%2Bb',
+      }),
+    )
+    // A '+' az URL-ben NEM szóköz (rawurldecode-szabály).
+    expect(result).toEqual({
+      szamlaszam: 'KIN-2026-9',
+      vevoifiokUrl: 'https://www.szamlazz.hu/szamla/?page=vevoifiokpay&partguid=a+b',
+    })
+  })
+
+  it('a törzs és a fejléc ELTÉRŐ számlaszáma: bizonytalan (retryable), NEM vesszük át egyiket sem', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>true</sikeres><szamlaszam>KIN-2026-7</szamlaszam></xmlszamlavalasz>',
+        new Headers({ szlahu_szamlaszam: 'KIN-2026-8' }),
+      ),
+    )
+    expect(error.kind).toBe('invalid_response')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('sikeres=true számlaszám nélkül: bizonytalan (retryable) — a lekérdezés veszi át a bizonylatot', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>true</sikeres></xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.kind).toBe('invalid_response')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('56 + számlaszám a TÖRZSBEN: SIKER, az értesítő-hiba jelzésével (a hivatalos SDK szabálya)', () => {
+    const result = parseAgentResponse(
+      `<xmlszamlavalasz ${VALASZ_NS}><sikeres>false</sikeres><hibakod>56</hibakod>` +
+        '<hibauzenet><![CDATA[A számlaértesítő kézbesítése sikertelen.]]></hibauzenet>' +
+        '<szamlaszam>KIN-2026-8</szamlaszam></xmlszamlavalasz>',
+      new Headers(),
+    )
+    expect(result.szamlaszam).toBe('KIN-2026-8')
+    expect(result.notificationError).toEqual({
+      code: '56',
+      message: 'A számlaértesítő kézbesítése sikertelen.',
+    })
+  })
+
+  it('56 a FEJLÉCBEN + szlahu_szamlaszam: SIKER (a számla kiállt és a NAV-hoz is ment)', () => {
+    const result = parseAgentResponse(
+      '',
+      new Headers({
+        szlahu_error_code: '56',
+        szlahu_error: 'A+sz%C3%A1mla%C3%A9rtes%C3%ADt%C5%91+k%C3%A9zbes%C3%ADt%C3%A9se+sikertelen',
+        szlahu_szamlaszam: 'KIN-2026-8',
+      }),
+    )
+    expect(result.szamlaszam).toBe('KIN-2026-8')
+    expect(result.notificationError?.code).toBe('56')
+    expect(result.notificationError?.message).toBe('A számlaértesítő kézbesítése sikertelen')
+  })
+
+  it('56 számlaszám NÉLKÜL: bizonytalan, RETRYABLE (nem végleges failed)', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>56</hibakod></xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.kind).toBe('invalid_response')
+    expect(error.retryable).toBe(true)
+    expect(error.agentErrors[0]?.code).toBe('56')
+  })
+
+  it('56 MÁS hibakóddal együtt: a másik kód dönt (itt 57 → végleges agent-hiba)', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>false</sikeres><hibak>' +
+          '<hiba><hibakod>56</hibakod><hibauzenet>értesítő</hibauzenet></hiba>' +
+          '<hiba><hibakod>57</hibakod><hibauzenet>XML</hibauzenet></hiba>' +
+          '</hibak><szamlaszam>KIN-2026-8</szamlaszam></xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.kind).toBe('agent')
+    expect(error.retryable).toBe(false)
+  })
+
+  it('csak a szlahu_error_code fejléc (üzenet nélkül) is hibának számít', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>true</sikeres><szamlaszam>X</szamlaszam></xmlszamlavalasz>',
+        new Headers({ szlahu_error_code: '3' }),
+      ),
+    )
+    expect(error.kind).toBe('agent')
+    expect(error.agentErrors[0]?.code).toBe('3')
+  })
+
+  it('a CDATA-ban álló záró tag NEM zárja le idő előtt az elemet', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>57</hibakod>' +
+          '<hibauzenet><![CDATA[hiba a </hibauzenet> körül]]></hibauzenet></xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.agentErrors).toEqual([{ code: '57', message: 'hiba a </hibauzenet> körül' }])
+  })
+
+  it('lezáratlan elem sok CDATA-szakasszal: gyorsan, bizonytalan hibával áll meg (nincs elszálló regex)', () => {
+    const body =
+      '<xmlszamlavalasz><sikeres>true</sikeres><szamlaszam>' + '<![CDATA[x]]>'.repeat(20_000)
+    const startedAt = Date.now()
+    const error = apiErrorOf(() => parseAgentResponse(body, new Headers()))
+    expect(error.kind).toBe('invalid_response')
+    expect(Date.now() - startedAt).toBeLessThan(2_000)
+  })
+
+  it('xs:boolean "1" alakú sikeres is siker', () => {
+    const result = parseAgentResponse(
+      '<xmlszamlavalasz><sikeres>1</sikeres><szamlaszam>KIN-2026-7</szamlaszam></xmlszamlavalasz>',
+      new Headers(),
+    )
+    expect(result.szamlaszam).toBe('KIN-2026-7')
+  })
+
+  it('jelölőkaraktert tartalmazó „számlaszám" nem vehető át (sérült válasz)', () => {
+    const error = apiErrorOf(() =>
+      parseAgentResponse(
+        '<xmlszamlavalasz><sikeres>true</sikeres><szamlaszam><![CDATA[KIN<b>7]]></szamlaszam></xmlszamlavalasz>',
+        new Headers(),
+      ),
+    )
+    expect(error.kind).toBe('invalid_response')
   })
 })
 
@@ -1239,5 +1514,248 @@ describe('issueInvoiceForOrder — refund-verseny a beküldés körül (W7)', ()
     expect(stornoOrders).toHaveLength(1)
     expect(stornoOrders[0]?.invoiceNumber).toBe('KIN-2026-7')
     expect(stornoOrders[0]?.status).toBe('refunded')
+  })
+})
+
+/**
+ * A teljesítési dátum a FIZETÉS (hozzáférés-nyitás) budapesti napja, nem a
+ * job futásáé (Áfa tv. 55. § (1)). A kelt és a fizetési határidő a
+ * kiállítás napja marad: a Számlázz.hu-ban a határidő nem lehet korábbi a
+ * keltnél, a teljesítés igen.
+ */
+describe('issueInvoiceForOrder — teljesítési dátum a fizetés napjából', () => {
+  /** A felvett naplósorok (szint + üzenet) — a figyelmeztetések ellenőrzéséhez. */
+  function recordingLogger() {
+    const logged: Array<{ level: 'info' | 'warn' | 'error'; message: string }> = []
+    const logger = {
+      debug: () => undefined,
+      info: (message: string) => logged.push({ level: 'info', message }),
+      warn: (message: string) => logged.push({ level: 'warn', message }),
+      error: (message: string) => logged.push({ level: 'error', message }),
+      child: () => logger,
+    }
+    return { logger, logged }
+  }
+
+  it('23:58-as (Budapest) fizetés, éjfél utáni kiállítás: a teljesítés a FIZETÉS napja', async () => {
+    // 2026-09-30T23:58 magyar idő = 2026-09-30T21:58Z; a job 10-01-jén fut.
+    const { payload, order, updates } = createMockPayload(createOrder())
+    const sentXml: string[] = []
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-10-01',
+      resolvePaidMoment: async () => ({
+        paidAt: new Date('2026-09-30T21:58:00Z'),
+        paidDate: budapestDateString(new Date('2026-09-30T21:58:00Z')),
+      }),
+      queryByKulsoAzon: silentLookup,
+      postXml: async (xml) => {
+        sentXml.push(xml)
+        return { szamlaszam: 'KIN-2026-10' }
+      },
+    })
+
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-10' })
+    expect(sentXml[0]).toContain('<keltDatum>2026-10-01</keltDatum>')
+    expect(sentXml[0]).toContain('<teljesitesDatum>2026-09-30</teljesitesDatum>')
+    // A fizetési határidő NEM lehet korábbi a keltnél (Számlázz.hu-szabály).
+    expect(sentXml[0]).toContain('<fizetesiHataridoDatum>2026-10-01</fizetesiHataridoDatum>')
+    // A helyesbítő (B4) ezt a ténylegesen kiküldött dátumot ismétli.
+    expect(updates[0]).toMatchObject({ invoiceCompletionDate: '2026-09-30' })
+    expect(order?.invoiceCompletionDate).toBe('2026-09-30')
+  })
+
+  it('kiesés utáni, napokkal későbbi újrafuttatás: a teljesítés továbbra is a fizetés napja', async () => {
+    const { payload, order } = createMockPayload(createOrder({ invoiceAttempts: 2 }))
+    const sentXml: string[] = []
+    await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-10-09',
+      resolvePaidMoment: async () => ({
+        paidAt: new Date('2026-10-02T08:00:00Z'),
+        paidDate: '2026-10-02',
+      }),
+      queryByKulsoAzon: silentLookup,
+      postXml: async (xml) => {
+        sentXml.push(xml)
+        return { szamlaszam: 'KIN-2026-11' }
+      },
+    })
+    expect(sentXml[0]).toContain('<teljesitesDatum>2026-10-02</teljesitesDatum>')
+    expect(sentXml[0]).toContain('<keltDatum>2026-10-09</keltDatum>')
+    expect(order?.invoiceCompletionDate).toBe('2026-10-02')
+  })
+
+  it('nincs fizetési időpont: a teljesítés a kiállítás napja, FIGYELMEZTETÉSSEL', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = recordingLogger()
+    const sentXml: string[] = []
+    await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      issueDate: '2026-10-01',
+      resolvePaidMoment: async () => null,
+      queryByKulsoAzon: silentLookup,
+      postXml: async (xml) => {
+        sentXml.push(xml)
+        return { szamlaszam: 'KIN-2026-12' }
+      },
+    })
+    expect(sentXml[0]).toContain('<teljesitesDatum>2026-10-01</teljesitesDatum>')
+    expect(order?.invoiceCompletionDate).toBe('2026-10-01')
+    const warning = logged.find((entry) => entry.message.includes('a fizetés napja nem található'))
+    expect(warning?.level).toBe('warn')
+  })
+
+  it('a kiállításnál KÉSŐBBI fizetési nap (óraeltérés) nem kerül a számlára: a kiállítás napja marad', async () => {
+    const { payload } = createMockPayload(createOrder())
+    const { logger, logged } = recordingLogger()
+    const sentXml: string[] = []
+    await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      issueDate: '2026-10-01',
+      resolvePaidMoment: async () => ({
+        paidAt: new Date('2026-10-02T10:00:00Z'),
+        paidDate: '2026-10-02',
+      }),
+      queryByKulsoAzon: silentLookup,
+      postXml: async (xml) => {
+        sentXml.push(xml)
+        return { szamlaszam: 'KIN-2026-13' }
+      },
+    })
+    expect(sentXml[0]).toContain('<teljesitesDatum>2026-10-01</teljesitesDatum>')
+    expect(
+      logged.some((entry) => entry.level === 'warn' && entry.message.includes('későbbi')),
+    ).toBe(true)
+  })
+
+  it('a fizetési időpont olvasásának hibája DOB, állapotírás és beküldés NÉLKÜL (a job újrapróbálja)', async () => {
+    const { payload, updates } = createMockPayload(createOrder())
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-10-01',
+        resolvePaidMoment: async () => {
+          throw new Error('adatbázis-kapcsolat megszakadt')
+        },
+        queryByKulsoAzon: noLookup,
+        postXml: async () => {
+          throw new Error('TESZT-HIBA: olvasási hiba után nem mehet ki számlakérés')
+        },
+      }),
+    ).rejects.toThrow('adatbázis-kapcsolat megszakadt')
+    // Az invoiceStatus érintetlen (none): az order-poll resweep újra felveszi.
+    expect(updates).toHaveLength(0)
+  })
+
+  it('ALAPÉRTELMEZETT feloldó: a vevő accessGrants-sorából (sourceOrder = rendelés) olvas', async () => {
+    const order = createOrder({ customer: 7 })
+    const reads: string[] = []
+    const payload = {
+      findByID: async ({ collection, id }: { collection: string; id: number }) => {
+        reads.push(`${collection}:${id}`)
+        if (collection === 'users') {
+          return {
+            id: 7,
+            accessGrants: [
+              // Másik rendelés (más óra) — nem számít.
+              {
+                product: 42,
+                grantedAt: '2026-08-01T10:00:00.000Z',
+                sourceKind: 'order',
+                sourceOrder: 55,
+              },
+              // EZ a rendelés: 2026-09-30 23:58 Budapest.
+              {
+                product: 42,
+                grantedAt: '2026-09-30T21:58:00.000Z',
+                sourceKind: 'order',
+                sourceOrder: 101,
+              },
+            ],
+          }
+        }
+        return order
+      },
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        Object.assign(order, data)
+        return order
+      },
+    }
+    const sentXml: string[] = []
+    await issueInvoiceForOrder({
+      payload: payload as never,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      issueDate: '2026-10-01',
+      queryByKulsoAzon: silentLookup,
+      postXml: async (xml) => {
+        sentXml.push(xml)
+        return { szamlaszam: 'KIN-2026-14' }
+      },
+    })
+    expect(reads).toContain('users:7')
+    expect(sentXml[0]).toContain('<teljesitesDatum>2026-09-30</teljesitesDatum>')
+    expect(order.invoiceCompletionDate).toBe('2026-09-30')
+  })
+
+  it('56 (az értesítő nem ment ki, de a számla kiállt): issued + számlaszám + RIASZTÁS', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    const { logger, logged } = recordingLogger()
+    const result = await issueInvoiceForOrder({
+      payload,
+      orderId: 101,
+      config: ENABLED_CONFIG,
+      logger,
+      issueDate: '2026-10-01',
+      resolvePaidMoment: async () => null,
+      queryByKulsoAzon: silentLookup,
+      postXml: async () => ({
+        szamlaszam: 'KIN-2026-15',
+        notificationError: { code: '56', message: 'A számlaértesítő kézbesítése sikertelen.' },
+      }),
+    })
+    expect(result).toEqual({ outcome: 'issued', invoiceNumber: 'KIN-2026-15' })
+    expect(order?.invoiceStatus).toBe('issued')
+    expect(order?.invoiceNumber).toBe('KIN-2026-15')
+    const alert = logged.find((entry) =>
+      entry.message.includes('számlaértesítő e-mail NEM ment ki'),
+    )
+    expect(alert?.level).toBe('error')
+    expect(alert?.message.startsWith('RIASZTÁS:')).toBe(true)
+  })
+
+  it('55 (időbélyeg-szerver) a beküldésnél: pending marad + THROW, nem végleges failed', async () => {
+    const { payload, order } = createMockPayload(createOrder())
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-10-01',
+        resolvePaidMoment: async () => null,
+        queryByKulsoAzon: silentLookup,
+        postXml: async () =>
+          parseAgentResponse(
+            '<xmlszamlavalasz><sikeres>false</sikeres><hibakod>55</hibakod>' +
+              '<hibauzenet>E-számla aláírása sikertelen.</hibauzenet></xmlszamlavalasz>',
+            new Headers(),
+          ),
+      }),
+    ).rejects.toThrow('55')
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceLastError).toContain('55')
   })
 })

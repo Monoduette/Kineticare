@@ -8,8 +8,9 @@
  *   <szamlaszam>, hiba esetén <hibakod>/<hibauzenet>. Egyes hibák csak a
  *   szlahu_* HTTP-válaszfejlécekből derülnek ki (pl. szlahu_down).
  * - A <szamlaKulsoAzon> a harmadik fél rendszerének azonosítója — mi az
- *   orderNumber-t küldjük (idempotencia-horgony: ugyanazzal a kulccsal a
- *   Számlázz.hu nem állít ki újabb számlát, hanem a meglévőt adja vissza).
+ *   orderNumber-t küldjük. Ez a bizonylat VISSZAKERESÉSI kulcsa (pdf.ts); a
+ *   duplikátum-védelmet a <rendelesSzam> + a fiókban bekapcsolt
+ *   rendelésszám-ismétlés-tiltás adja (lásd invoice.ts).
  */
 
 export type SzamlazzErrorKind =
@@ -59,11 +60,13 @@ export class SzamlazzApiError extends Error {
 /**
  * A számla tételeinek áfakulcsa. A Számlázz.hu numerikus kulcsokat ÉS
  * speciális kódokat is fogad — a mi két esetünk:
- * - '27': általános 27%-os áfa (alapértelmezés);
+ * - '27': általános 27%-os áfa;
  * - 'AAM': alanyi adómentes eladó — belföldön KIZÁRÓLAG ez a kulcs jogszerű
  *   (a TAM és a 0% nem), afaErtek=0 és bruttoErtek=nettoErtek mellett.
- * A kulcsot a SZAMLAZZ_AFAKULCS env-változó választja ki; a szám-only típus
- * szándékosan kerülve (a 27 és az 'AAM' közös, szűkített unionban él).
+ * A kulcsot a SZAMLAZZ_AFAKULCS env-változó választja ki — bekapcsolt
+ * számlázásnál KÖTELEZŐEN, alapértelmezés nélkül (lásd getSzamlazzConfig); a
+ * szám-only típus szándékosan kerülve (a 27 és az 'AAM' közös, szűkített
+ * unionban él).
  */
 export type SzamlazzVatMode = '27' | 'AAM'
 
@@ -80,7 +83,11 @@ export interface SzamlazzClientConfig {
   agentKey?: string
   /** Számlaszám-előtag (a Számlázz.hu felületen beállított Előtagok egyike). */
   invoicePrefix: string
-  /** A tételek áfakulcsa (SZAMLAZZ_AFAKULCS env; default '27'). */
+  /**
+   * A tételek áfakulcsa (SZAMLAZZ_AFAKULCS env). Bekapcsolt számlázásnál
+   * kötelező, hiánya konfigurációs hiba; '27' csak KIKAPCSOLT számlázásnál
+   * (agent-kulcs nélkül) áll be, ahol bizonylat sem készül.
+   */
   vatMode: SzamlazzVatMode
   timeoutMs: number
 }

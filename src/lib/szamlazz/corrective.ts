@@ -458,6 +458,17 @@ async function performCorrectiveInvoiceForOrder(
       attempts,
       persisted: payload !== undefined,
     })
+    if (result.notificationError) {
+      // 56: a helyesbítő kiállt, csak az értesítő levél nem ment ki. Az üzenet
+      // szövegét nem naplózzuk (a vevő e-mail-címét tartalmazhatja).
+      log.error(
+        'RIASZTÁS: a helyesbítő számla kiállt, de a számlaértesítő e-mail NEM ment ki a vevőnek (56-os kód) — küldd ki kézzel a Számlázz.hu-fiókból',
+        {
+          correctiveInvoiceNumber: result.szamlaszam,
+          agentErrorCode: result.notificationError.code,
+        },
+      )
+    }
     return { outcome: 'issued', correctiveInvoiceNumber: result.szamlaszam }
   } catch (error) {
     // 71/152 — duplikátum-jelzés: a meglévő helyesbítő átvétele lekérdezéssel.

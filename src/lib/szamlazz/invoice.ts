@@ -12,6 +12,7 @@ import {
 import { isTrustedInvoicePdfUrl } from './invoice-url'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState } from './order-state'
+import { resolveOrderPaidMoment, type OrderPaidMoment } from './paid-date'
 import {
   SzamlazzApiError,
   type IssueInvoiceResult,
@@ -24,20 +25,46 @@ import type { IssueStornoForOrderDeps } from './storno'
 /**
  * Számla-XML építés és számlakiállítás a paid rendeléshez (T-024/W4-01).
  *
- * Szabályok (a hivatalos Számla Agent minta alapján):
- * - A mezők SORRENDJE KÖTÖTT; a mintában szereplő tag-eknek jelen kell lenniük
- *   (értékük üres is lehet) — ezért a builder a teljes vázat mindig kiírja.
+ * Szabályok (a hivatalos Számla Agent minta és az élő XSD alapján —
+ * https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd):
+ * - A mezők SORRENDJE KÖTÖTT (xs:sequence). A szöveges (xs:string) váz-tagok
+ *   üresen is kimehetnek, a TÍPUSOS tagok (double, date, int, boolean) viszont
+ *   NEM: az üres érték XSD-hiba, amit a szerver 57-es „XML beolvasási hibával"
+ *   utasít el. Ezért az opcionális típusos tagot (pl. <arfolyam>) vagy
+ *   érvényes értékkel küldjük, vagy egyáltalán nem. A kimenetet a tesztsor az
+ *   élő XSD repóba vendorolt másolatával ellenőrzi
+ *   (src/__tests__/szamlazz/xsd-validation.test.ts).
+ * - Forint-számla: az <arfolyamBank>/<arfolyam> pár KIMARAD (mindkettő
+ *   minOccurs=0, és csak devizás számlán van jelentésük — a hivatalos PHP SDK
+ *   és a WooCommerce-bővítmény is így küldi).
+ * - <fizetve>true</fizetve>: a számla egy MÁR KIFIZETETT (Barion, bankkártya)
+ *   rendelésről szól, a helyesbítő pedig egy már visszautalt összegről.
+ *   Nélküle a Számlázz.hu csak a készpénzes számlát tartja kiegyenlítettnek,
+ *   minden mást kintlévőségként, lejárat után fizetési felszólítással
+ *   (tudastar.szamlazz.hu/gyik/szamla-kiegyenlitett-hogyan). A kifizetettség
+ *   kezelése előfizetéses (#start+) csomagot kíván — ugyanazt, amit az
+ *   <eszamla>true</eszamla> amúgy is megkövetel.
+ * - <vevo><adoalany>: 1, ha van (a checkoutban ellenőrzött, magyar) adószám,
+ *   különben -1 (magánszemély). A tudástár (vevo-adoszama-szamlan) szerint a
+ *   hiánya partnertörzs-ütközésnél hibát okozhat, és az értéknek pontosan az
+ *   adószám meglétével kell egyeznie.
  * - A Számlázz.hu NEM számol: minden tételösszeg (nettoErtek, afaErtek,
  *   bruttoErtek) és a nettoEgysegar kötelezően megadott; az Agent a tétel-
  *   matematikát validálja (57, 259–264 hibakódok).
  * - Bruttó áraink vannak (fogyasztói ár, HUF); az áfakulcs a konfigurációból
- *   jön: '27' (alapértelmezés) vagy 'AAM' (alanyi adómentes eladó). A
+ *   jön: '27' vagy 'AAM' (alanyi adómentes eladó). A
  *   tételszámítás HIBRID (bruttó tétel-érték + 2 tizedes nettó egységár) —
  *   a pontos képlet és a három hivatalos egyenlet toleranciája a
  *   `computeLineAmounts` docblockjában.
  * - Minden dátum (keltDatum / teljesitesDatum / fizetesiHataridoDatum) kötelező
  *   YYYY-MM-DD alakú: a builder kapun vezeti át őket (`isIsoDateString`), mert
  *   a teljesítési dátum forrása egy szabad szöveges DB-mező.
+ * - Kelt = fizetési határidő = a kiállítás napja; a teljesítés a fizetés
+ *   (hozzáférés-nyitás) budapesti napja, ha a hívó megadja. A fizetési
+ *   határidő SZÁNDÉKOSAN nem korábbi a keltnél: a Számlázz.hu modelljében a
+ *   határidő „csak a keltezés napjára vagy annál később" állítható, a
+ *   teljesítés viszont „akár korábbi is lehet"
+ *   (tudastar.szamlazz.hu/gyik/ismetlodo-szamlazas-utemezese).
  * - szamlaKulsoAzon: a bizonylat VISSZAKERESÉSI kulcsa (számla: orderNumber,
  *   helyesbítő: saját, seq-kulcsolt azonosító). A hivatalos dokumentáció NEM
  *   állítja, hogy azonos külső azonosítóval a Számlázz.hu megtagadná az újabb
@@ -102,14 +129,19 @@ export interface BuildInvoiceXmlInput {
   /** Kiállítás dátuma (YYYY-MM-DD) — kelt és fizetési határidő. */
   issueDate: string
   /**
-   * Teljesítési dátum (YYYY-MM-DD); elhagyva = issueDate. Helyesbítőnél az
-   * EREDETI számla teljesítési dátuma megy ide (NAV-szabály: a helyesbítő
-   * teljesítési dátumának naptári hónapja nem térhet el az eredetiétől).
+   * Teljesítési dátum (YYYY-MM-DD); elhagyva = issueDate. Normál számlán a
+   * fizetés (hozzáférés-nyitás) budapesti napja; helyesbítőnél az EREDETI
+   * számla teljesítési dátuma (NAV-szabály: a helyesbítő teljesítési
+   * dátumának naptári hónapja nem térhet el az eredetiétől).
    */
   teljesitesDatum?: string
   buyer: InvoiceBuyerInput
   items: InvoiceItemInput[]
-  /** Áfakulcs: '27' (alapértelmezés) vagy 'AAM' (alanyi adómentes). */
+  /**
+   * Áfakulcs: '27' vagy 'AAM' (alanyi adómentes). A builder elhagyva '27'-tel
+   * számol; éles úton a hívó MINDIG a konfigurációból adja (a SZAMLAZZ_AFAKULCS
+   * bekapcsolt számlázásnál kötelező, alapértelmezés nélkül).
+   */
   vatMode?: SzamlazzVatMode
   /**
    * Helyesbítő számla esetén az eredeti számla hivatkozása + a helyesbítő
@@ -279,6 +311,10 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
     .join('\n')
 
   const sendEmail = input.buyer.email.trim().length > 0
+  const adoszam = input.buyer.adoszam?.trim() ?? ''
+  // Az adóalanyiság SZIGORÚAN az adószám meglétéből képződik (a checkout csak
+  // ellenőrzött magyar adószámot fogad): 1 = van magyar adószáma, -1 = nincs.
+  const adoalany = adoszam.length > 0 ? 1 : -1
   const megjegyzes =
     input.megjegyzes ??
     `Kineticare online kurzus — rendelés: ${input.orderNumber} (Barion, bankkártya)`
@@ -308,8 +344,6 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
     <penznem>HUF</penznem>
     <szamlaNyelve>hu</szamlaNyelve>
     <megjegyzes>${esc(megjegyzes)}</megjegyzes>
-    <arfolyamBank></arfolyamBank>
-    <arfolyam></arfolyam>
     <rendelesSzam>${esc(rendelesSzam)}</rendelesSzam>
     <dijbekeroSzamlaszam></dijbekeroSzamlaszam>
     <elolegszamla>false</elolegszamla>
@@ -318,6 +352,7 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
     <helyesbitettSzamlaszam>${corrective ? esc(corrective.originalInvoiceNumber) : ''}</helyesbitettSzamlaszam>
     <dijbekero>false</dijbekero>
     <szamlaszamElotag>${esc(input.invoicePrefix)}</szamlaszamElotag>
+    <fizetve>true</fizetve>
   </fejlec>
   <elado>
     <bank></bank>
@@ -333,7 +368,8 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
     <cim>${esc(input.buyer.cim)}</cim>
     <email>${esc(input.buyer.email)}</email>
     <sendEmail>${sendEmail}</sendEmail>
-    <adoszam>${esc(input.buyer.adoszam ?? '')}</adoszam>
+    <adoalany>${adoalany}</adoalany>
+    <adoszam>${esc(adoszam)}</adoszam>
     <postazasiNev></postazasiNev>
     <postazasiIrsz></postazasiIrsz>
     <postazasiTelepules></postazasiTelepules>
@@ -457,6 +493,12 @@ export interface IssueInvoiceForOrderDeps {
   ) => Promise<InvoiceLookupResult | null>
   /** A kelt-dátum felülírása (teszteléshez); alapból a mai dátum. */
   issueDate?: string
+  /**
+   * Injektálható fizetési-pillanat feloldó (teszteléshez); alapból a valódi
+   * resolveOrderPaidMoment (a vevő accessGrants-sora a rendeléshez). Ebből
+   * képződik a teljesítési dátum.
+   */
+  resolvePaidMoment?: (order: Order) => Promise<OrderPaidMoment | null>
   /**
    * Injektálható stornó-kiállítás (teszteléshez); alapból a valódi
    * issueStornoForOrder. A refund-verseny (W7) utáni inline stornóhoz kell:
@@ -589,11 +631,35 @@ export async function issueInvoiceForOrder(
       // szerint 00:00–02:00 között az előző napra (adott esetben az előző
       // áfa-időszakra) állna ki a számla.
       const issueDate = deps.issueDate ?? budapestDateString()
+      // A teljesítési dátum a FIZETÉS (hozzáférés-nyitás) budapesti napja, nem a
+      // job futásáé: a 23:58-as fizetés éjféli számlája így sem csúszik át a
+      // következő napra, hónapra vagy évre, és egy kiesés utáni újrafuttatás sem
+      // viszi el a teljesítést. Olvasási hiba itt szándékosan dob (állapotírás
+      // előtt vagyunk, a job újrapróbálja).
+      const paidMoment = await (
+        deps.resolvePaidMoment ??
+        ((current: Order) => resolveOrderPaidMoment(deps.payload, current))
+      )(order)
+      let teljesitesDatum = issueDate
+      if (!paidMoment) {
+        orderLog.warn(
+          'a fizetés napja nem található (nincs a rendeléshez kötött accessGrants-sor) — a teljesítési dátum a kiállítás napja; hónapfordulónál kézi ellenőrzés javasolt',
+          { issueDate },
+        )
+      } else if (paidMoment.paidDate > issueDate) {
+        orderLog.warn(
+          'a fizetés napja későbbi a kiállítás napjánál (óraeltérés?) — a teljesítési dátum a kiállítás napja',
+          { paidDate: paidMoment.paidDate, issueDate },
+        )
+      } else {
+        teljesitesDatum = paidMoment.paidDate
+      }
       const xml = buildInvoiceXml({
         agentKey: config.agentKey as string,
         orderNumber: order.orderNumber,
         invoicePrefix: config.invoicePrefix,
         issueDate,
+        teljesitesDatum,
         buyer,
         items,
         vatMode: config.vatMode,
@@ -709,7 +775,7 @@ export async function issueInvoiceForOrder(
           // elveszik, a későbbi helyesbítő így is az eredeti dátumot ismétli
           // (B4/NAV-hónapszabály). Az adoptExisting szándékosan NEM írja felül:
           // ott egy KORÁBBI kísérlet dátuma az érvényes, amit ez az írás rögzített.
-          invoiceCompletionDate: issueDate,
+          invoiceCompletionDate: teljesitesDatum,
         })
 
         const postXml = deps.postXml ?? postInvoiceXml
@@ -732,11 +798,24 @@ export async function issueInvoiceForOrder(
           invoiceStatus: 'issued',
           invoiceNumber: result.szamlaszam,
           // A helyesbítő dátumszabályához (B4): az itt küldött teljesítési dátum rögzül.
-          invoiceCompletionDate: issueDate,
+          invoiceCompletionDate: teljesitesDatum,
           invoiceLastError: null,
           ...(trustedPdfUrl ? { invoicePdfUrl: trustedPdfUrl } : {}),
         })
-        orderLog.info('számla kiállítva', { invoiceNumber: result.szamlaszam, attempts })
+        orderLog.info('számla kiállítva', {
+          invoiceNumber: result.szamlaszam,
+          attempts,
+          teljesitesDatum,
+        })
+        if (result.notificationError) {
+          // 56: a bizonylat kiállt és a NAV-hoz is bejelentésre került, csak a
+          // vevő nem kapta meg az értesítő levelet. A hibaüzenet szövegét nem
+          // naplózzuk (a vevő e-mail-címét tartalmazhatja).
+          orderLog.error(
+            'RIASZTÁS: a számla kiállt, de a számlaértesítő e-mail NEM ment ki a vevőnek (56-os kód) — küldd ki kézzel a Számlázz.hu-fiókból',
+            { invoiceNumber: result.szamlaszam, agentErrorCode: result.notificationError.code },
+          )
+        }
         await stornoIfRefundedAfterIssue(result.szamlaszam)
         return { outcome: 'issued', invoiceNumber: result.szamlaszam }
       } catch (error) {

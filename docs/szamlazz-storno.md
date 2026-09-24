@@ -121,8 +121,12 @@ kiállítás az előző napra csúszott volna).
    - **stornónál** bizonytalan állapot (nem az első kísérlet, vagy 71/152-es
      duplikátum-jelzés) → `failed` + error-szintű riasztás, **új beküldés
      nélkül** (kézi ellenőrzés a Számlázz.hu-fiókban);
-   - siker → a bizonylat száma a rendelésre kerül, strukturált naplózással;
-   - retryable provider-hiba (timeout/hálózat/5xx/`szlahu_down`) → **dob**.
+   - siker → a bizonylat száma a rendelésre kerül, strukturált naplózással; az
+     56-os jelzés (a bizonylat kiállt, csak az értesítő e-mail nem ment ki) is
+     siker, `RIASZTÁS:`-sal a levél kézi újraküldéséhez;
+   - retryable provider-hiba (timeout/hálózat, HTTP 408/425/429/5xx,
+     `szlahu_down`, 1-es és 55-ös agent-kód, illetve bizonytalan kimenetű
+     válasz: értelmezhetetlen törzs, számlaszám nélküli siker vagy 56) → **dob**.
 4. A dobott, **újrapróbálható** hibát a refund-bekötés elkapja, és sorba
    állítja a megfelelő jobot az `order-maintenance` queue-ban:
    `storno-issue` (input: `orderId`), illetve `corrective-invoice-issue`
