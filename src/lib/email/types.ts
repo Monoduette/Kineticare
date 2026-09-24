@@ -58,6 +58,13 @@ export interface SendResult {
   id?: string
   /** Hiba esetén: érdemes-e újrapróbálni (retry-barát hibajelzés). */
   retryable?: boolean
+  /**
+   * Hiba esetén: a kézbesítés BIZONYTALAN, a levél célba érhetett. Ilyenkor a
+   * `retryable` mindig `false`: automatikus újraküldés kettőzhetné a levelet,
+   * mert a szolgáltató (SMTP) nem szűri az ismétlést. A hívó riaszt, és a
+   * kézi pótlás előtt ellenőrizni kell, megérkezett-e.
+   */
+  deliveryUncertain?: boolean
   error?: string
 }
 
@@ -72,10 +79,13 @@ export interface EmailTemplate {
 /** Küldési hiba retry-jelzéssel — a sendMail ebből állítja elő a SendResultot. */
 export class EmailSendError extends Error {
   readonly retryable: boolean
+  /** A levél célba érhetett (lásd `SendResult.deliveryUncertain`); ilyenkor `retryable` false. */
+  readonly deliveryUncertain: boolean
 
-  constructor(message: string, retryable: boolean) {
+  constructor(message: string, retryable: boolean, options?: { deliveryUncertain?: boolean }) {
     super(message)
     this.name = 'EmailSendError'
-    this.retryable = retryable
+    this.deliveryUncertain = options?.deliveryUncertain === true
+    this.retryable = this.deliveryUncertain ? false : retryable
   }
 }

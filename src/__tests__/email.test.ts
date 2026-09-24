@@ -82,6 +82,34 @@ describe('e-mail provider figyelmeztetése kulcs nélkül', () => {
     expect(warnings[0]).toContain('RESEND_API_KEY')
     expect(warnings[0]).toContain('"level":"warn"')
   })
+
+  it('élesben a noop NEM „elküldve”: RIASZTÁS szól, az ismétlés fojtott warn', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('RESEND_API_KEY', '')
+    vi.stubEnv('SMTP_HOST', '')
+    const lines: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      lines.push(String(line))
+    })
+
+    const { resetAlertThrottle } = await import('../lib/alert-throttle')
+    resetAlertThrottle()
+    const { sendMail: freshSendMail } = await import('../lib/email/provider')
+    const message = { subject: 'T', html: '<p>x</p>', text: 'x' }
+    const first = await freshSendMail({ to: 'egy@example.com', ...message })
+    await freshSendMail({ to: 'ketto@example.com', ...message })
+    vi.unstubAllEnvs()
+
+    // A hívó a `provider: 'noop'` alapján dönt (order-paid, elállás).
+    expect(first).toMatchObject({ ok: true, provider: 'noop' })
+    expect(lines.some((line) => line.includes('e-mail elküldve'))).toBe(false)
+    const alerts = lines.filter((line) => line.includes('"level":"error"'))
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toContain('RIASZTÁS')
+    expect(alerts[0]).toContain('RESEND_API_KEY')
+    expect(lines.filter((line) => line.includes('e-mail NEM ment ki'))).toHaveLength(1)
+  })
 })
 
 describe('maskEmail / parseFromAddress', () => {

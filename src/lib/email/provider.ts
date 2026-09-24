@@ -1,4 +1,6 @@
 import { formatFromAddress, maskEmail, parseFromAddress } from './mask'
+import { shouldEmitThrottledAlert } from '../alert-throttle'
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../contact-email'
 import { logger } from '../logger'
 import { sendViaResend } from './resend'
 import { sendViaSmtp } from './smtp'
@@ -15,8 +17,12 @@ import {
  *
  * - RESEND_API_KEY beállítva → Resend HTTP API.
  * - Egyébként SMTP_HOST beállítva → SMTP (SMTP_PORT, SMTP_USER, SMTP_PASS).
- * - Egyik sincs → noop-provider: figyelmeztető napló, a küldés sikeresként
- *   tűnik el (dev/CI sosem crashel e-mail-konfig nélkül).
+ * - Egyik sincs → noop-provider: a küldés sikeresként (`provider: 'noop'`)
+ *   tűnik el, így dev/CI sosem crashel e-mail-konfig nélkül. ÉLESBEN
+ *   (`NODE_ENV=production`) ez elveszett levelet jelent, ezért ott
+ *   `RIASZTÁS:` a napló, és az „e-mail elküldve” sor NEM íródik ki: a
+ *   hívónak a `provider: 'noop'` alapján kell eldöntenie, mit mond a
+ *   látogatónak (lásd order-paid, withdrawal).
  *
  * A sendMail SOSEM dob hibát: a hiba strukturált SendResultként tér vissza
  * (retryable jelzéssel), a címzett maszkolva kerül a logba.
@@ -74,14 +80,44 @@ function getProvider(): ResolvedEmailProvider {
     cachedProvider = resolveEmailProvider(process.env)
     if (cachedProvider.name === 'noop' && !noopWarned) {
       noopWarned = true
-      logger.warn(
-        'e-mail provider nincs beállítva (RESEND_API_KEY / SMTP_HOST hiányzik) — noop-provider aktív, az e-mailek nem mennek ki',
-      )
-    } else {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn(
+          'e-mail provider nincs beállítva (RESEND_API_KEY / SMTP_HOST hiányzik) — noop-provider aktív, az e-mailek nem mennek ki',
+        )
+      }
+    } else if (cachedProvider.name !== 'noop') {
       logger.info('e-mail provider kiválasztva', { provider: cachedProvider.name })
     }
   }
   return cachedProvider
+}
+
+/** A fojtott éles noop-riasztás kulcsa (src/lib/alert-throttle.ts). */
+const NOOP_PRODUCTION_ALERT_KEY = 'email:noop-provider-production'
+
+/**
+ * A noop-küldés naplója. Élesben ez nem „elküldve”, hanem elveszett levél:
+ * `RIASZTÁS:` (fojtva, hogy minden levél ne ismételje; a fojtott ismétlés
+ * warn-szinten marad meg), fejlesztésben csak debug.
+ */
+function logNoopSend(logContext: Record<string, unknown>): void {
+  if (process.env.NODE_ENV !== 'production') {
+    logger.debug('noop e-mail provider — küldés szimulálva', logContext)
+    return
+  }
+  if (shouldEmitThrottledAlert(NOOP_PRODUCTION_ALERT_KEY)) {
+    logger.error(
+      'RIASZTÁS: élesben nincs e-mail-szolgáltató beállítva (RESEND_API_KEY / SMTP_HOST hiányzik), ' +
+        'a levelek NEM mennek ki (vásárlás-visszaigazolás, aktiváló link, jelszó-visszaállítás, ' +
+        'elállási elismervény). Állítsd be a RESEND_API_KEY-t a Railway-szolgáltatáson.',
+      logContext,
+    )
+  } else {
+    logger.warn(
+      'e-mail NEM ment ki: élesben nincs e-mail-szolgáltató (a riasztás fojtva, lásd a korábbi RIASZTÁS-sort)',
+      logContext,
+    )
+  }
 }
 
 /**
@@ -109,7 +145,10 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
     subject: input.subject,
     html: input.html,
     text: input.text,
-    ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+    // K14: válaszcím nélkül a hivatalos ügyfélszolgálati cím a Reply-To, így a
+    // levél láblécének „Válaszolj erre a levélre” mondata igaz (a feladó
+    // lehet noreply cím, a kézbesíthetőségi beállítás miatt az marad).
+    replyTo: input.replyTo ?? KAPCSOLATI_EMAIL_TARTALEK,
     ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     ...(input.attachments && input.attachments.length > 0
       ? { attachments: input.attachments }
@@ -154,18 +193,27 @@ export async function sendMail(input: SendMailInput): Promise<SendResult> {
         message,
       )
     } else {
-      logger.debug('noop e-mail provider — küldés szimulálva', logContext)
+      logNoopSend(logContext)
+      return { ok: true, provider: provider.name }
     }
     logger.info('e-mail elküldve', logContext)
     return { ok: true, provider: provider.name, ...(id ? { id } : {}) }
   } catch (error) {
     const retryable = error instanceof EmailSendError ? error.retryable : true
+    const deliveryUncertain = error instanceof EmailSendError && error.deliveryUncertain
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.warn('e-mail küldés sikertelen', {
       ...logContext,
       retryable,
+      ...(deliveryUncertain ? { deliveryUncertain } : {}),
       errorKind: error instanceof EmailSendError ? 'email-send-error' : 'unexpected-error',
     })
-    return { ok: false, provider: provider.name, retryable, error: errorMessage }
+    return {
+      ok: false,
+      provider: provider.name,
+      retryable,
+      ...(deliveryUncertain ? { deliveryUncertain } : {}),
+      error: errorMessage,
+    }
   }
 }

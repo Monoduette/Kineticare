@@ -35,7 +35,7 @@ import { formatHungarianPhone, type SellerIdentity } from './order-legal'
  * szöveg változik, a teszt addig bukik, amíg a változat nem lép, és az új
  * ujjlenyomat nem kerül a tesztbe.
  */
-export const ORDER_CONFIRMATION_TEMPLATE_VERSION = '2026-09-24.2'
+export const ORDER_CONFIRMATION_TEMPLATE_VERSION = '2026-09-24.3'
 
 /**
  * A pénztár két jelölőnégyzetének SZÓ SZERINTI szövege
@@ -170,6 +170,7 @@ export function hatarozottNevelo(szo: string): 'a' | 'az' {
  */
 function legalParagraphs(input: {
   withdrawalWaiver?: OrderConfirmationWaiver | null
+  withdrawalUrl?: string | null
   seller?: SellerIdentity | null
   terms?: OrderConfirmationTerms | null
   supportEmail?: string | null
@@ -194,6 +195,24 @@ function legalParagraphs(input: {
         `${when} két nyilatkozatot tettél. Az első: „${WAIVER_START_STATEMENT}” ` +
         `A második: „${WAIVER_LOSS_STATEMENT}” Ezzel a levéllel mindkét nyilatkozatodat ` +
         'visszaigazoljuk. A hozzáférést a kérésednek megfelelően azonnal megnyitottuk.',
+    })
+  }
+
+  /**
+   * Az elállási funkció linkje (45/2014. Korm. rendelet 22. § (1b)): a
+   * felirat a rendelet szövege, a webcím kiírva és kattinthatóan, mint az
+   * ÁSZF-é. A jog fennállásáról a levél nem nyilatkozik (az az ÁSZF és a
+   * vevő nyilatkozatainak dolga), csak az utat adja meg.
+   */
+  const withdrawalUrl = input.withdrawalUrl?.trim()
+  if (withdrawalUrl) {
+    const elotag =
+      'ha élni szeretnél az elállási jogoddal, a nyilatkozatot online, ezen az oldalon is ' +
+      'megteheted: '
+    push({
+      label: 'Elállás a szerződéstől',
+      body: `${elotag}${withdrawalUrl}`,
+      bodyHtml: `${escapeHtml(elotag)}${inlineLinkHtml(withdrawalUrl)}`,
     })
   }
 
@@ -281,6 +300,12 @@ export function orderConfirmationEmail(input: {
    * történt meg.
    */
   withdrawalWaiver?: OrderConfirmationWaiver | null
+  /**
+   * Az elállási funkció abszolút webcíme, előtöltött rendelésszámmal
+   * (src/lib/withdrawal/client.ts `withdrawalHref`). Hiányában a bekezdés
+   * kimarad.
+   */
+  withdrawalUrl?: string | null
   /** A szolgáltató adatai az ÁSZF-ből (lásd order-legal.ts). */
   seller?: SellerIdentity | null
   /** Az ÁSZF melléklete és címe. */
@@ -389,6 +414,7 @@ export function orderConfirmationEmail(input: {
 
   const legal = legalParagraphs({
     withdrawalWaiver: input.withdrawalWaiver,
+    withdrawalUrl: input.withdrawalUrl,
     seller: input.seller,
     terms: input.terms,
     supportEmail: input.supportEmail,

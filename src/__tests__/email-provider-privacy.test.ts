@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../lib/contact-email'
 import { appointmentStaffEmail } from '../lib/email/templates/appointment'
 import { contactStaffEmail } from '../lib/email/templates/auth'
 
@@ -62,15 +63,19 @@ describe('provider logger: a teljes tárgy és a tartalom egyik ágon sem kerül
           expect(transport.resend.mock.calls[0][2]).toEqual({
             to: ['staff@example.test'],
             ...template,
+            replyTo: KAPCSOLATI_EMAIL_TARTALEK,
           })
         }
         if (provider === 'smtp')
           expect(transport.smtp.mock.calls[0][1]).toEqual({
             to: ['staff@example.test'],
             ...template,
+            replyTo: KAPCSOLATI_EMAIL_TARTALEK,
           })
         const output = lines.join('\n')
-        expect(output).toContain('e-mail elküldve')
+        // A noop nem küld: fejlesztésben „szimulálva”, sosem „elküldve”
+        // (élesben RIASZTÁS, lásd email.test.ts).
+        expect(output).toContain(provider === 'noop' ? 'küldés szimulálva' : 'e-mail elküldve')
         expect(output).not.toContain(template.subject)
         for (const marker of markers) expect(output).not.toContain(marker)
         expect(output).not.toContain('"subject"')
@@ -149,5 +154,28 @@ describe('provider: melléklet átadása napló-szivárgás nélkül', () => {
     const { sendMail } = await import('../lib/email/provider')
     await sendMail({ to: 'vevo@example.test', ...templates[0], attachments: [] })
     expect(transport.resend.mock.calls[0][2]).not.toHaveProperty('attachments')
+  })
+})
+
+/**
+ * K14: a lábléc („Válaszolj erre a levélre…”) csak akkor igaz, ha a válasz a
+ * hivatalos címre megy. A hívó által kért válaszcím (pl. a stáb-értesítőben a
+ * beküldő címe) elsőbbséget élvez.
+ */
+describe('provider: a válaszcím alapból a hivatalos ügyfélszolgálati cím (K14)', () => {
+  it.each([
+    ['nincs megadva', undefined, KAPCSOLATI_EMAIL_TARTALEK],
+    ['a hívó megadta', 'latogato@example.test', 'latogato@example.test'],
+  ] as const)('%s', async (_eset, replyTo, expected) => {
+    vi.stubEnv('RESEND_API_KEY', 'DUMMY-NOT-A-REAL-KEY')
+    const { sendMail } = await import('../lib/email/provider')
+    await sendMail({
+      to: 'vevo@example.test',
+      subject: 't',
+      html: '<p>t</p>',
+      text: 't',
+      ...(replyTo ? { replyTo } : {}),
+    })
+    expect(transport.resend.mock.calls[0][2]).toMatchObject({ replyTo: expected })
   })
 })

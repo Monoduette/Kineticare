@@ -14,6 +14,7 @@ import { courseTitle } from '../../lib/courses'
 import { ctaLabel, ctaProgressLabel } from '../../lib/cta-vocabulary'
 import { formatPriceHuf } from '../../lib/format-price'
 import { isTrustedInvoicePdfUrl } from '../../lib/szamlazz/invoice-url'
+import { WITHDRAWAL_LINK_LABEL, withdrawalHref } from '../../lib/withdrawal/client'
 import type { Order, User } from '../../payload-types'
 
 /**
@@ -262,6 +263,11 @@ export function AccountView({ accessByProductId, user, orders }: AccountViewProp
                       </span>
                     ) : order.status === 'paid' ? (
                       <span className="kc-account__order-invoice-pending">A számla feldolgozás alatt</span>
+                    ) : null}
+                    {/* Elállási funkció a fizetett rendelésnél, előtöltött
+                        rendelésszámmal (45/2014. Korm. rendelet 22. § (1b)). */}
+                    {order.status === 'paid' && order.orderNumber ? (
+                      <Link href={withdrawalHref(order.orderNumber)}>{WITHDRAWAL_LINK_LABEL}</Link>
                     ) : null}
                   </div>
                 </li>

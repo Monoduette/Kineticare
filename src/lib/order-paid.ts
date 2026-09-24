@@ -15,6 +15,7 @@ import { kapcsolatiEmailPayloadbol } from './contact-email-server'
 import { sendMail, type SendResult } from './email'
 import { maskEmail, maskEmailsInText } from './email/mask'
 import { isUsableReplyToAddress } from './email/reply-to'
+import { realSleep, sendWithRetry } from './email/retry'
 import {
   orderConfirmationEmail,
   ORDER_CONFIRMATION_TEMPLATE_VERSION,
@@ -31,6 +32,7 @@ import { logger as rootLogger, type Logger } from './logger'
 import { buildPasswordResetUrl } from './password-reset-url'
 import { signInHref } from './return-url'
 import { postAuthLibraryOrPlayerHref, productIdsFromOrderItems } from './courses'
+import { withdrawalHref } from './withdrawal/client'
 
 /**
  * Friss paid-átmenet mellékhatásai: invoice-issue job + visszaigazoló levél.
@@ -41,7 +43,11 @@ import { postAuthLibraryOrPlayerHref, productIdsFromOrderItems } from './courses
  * 29. § (1) m) szerinti elállási kivétel csak akkor él, ha kiment. Ezért:
  * - átmeneti hibánál (hálózat, 429, 5xx) a küldést újrapróbáljuk, ugyanazzal
  *   az idempotencia-kulccsal, így a vevő akkor sem kap két levelet, ha egy
- *   időtúllépett kérés valójában célba ért;
+ *   időtúllépett kérés valójában célba ért (src/lib/email/retry.ts);
+ * - BIZONYTALAN kézbesítésnél (SMTP: a levél tartalma után szakadt meg a
+ *   kapcsolat, `deliveryUncertain`) NINCS automatikus újraküldés, mert az SMTP
+ *   nem szűri az ismétlést: RIASZTÁS kéri az egyeztetést, és a műveletnapló
+ *   rögzíti a bizonytalan küldést;
  * - ha végül nem megy ki, `error`-szintű RIASZTÁS jelzi (a rendelés
  *   azonosítójával), hogy a stáb kézzel pótolhassa;
  * - ha a szolgáltató a mellékletes levelet VÉGLEG elutasítja (pl. a
@@ -66,6 +72,12 @@ import { postAuthLibraryOrPlayerHref, productIdsFromOrderItems } from './courses
 
 /** A műveletnapló-bejegyzés kódja a visszaigazoló levél elküldéséről. */
 export const ORDER_CONFIRMATION_AUDIT_ACTION = 'order-confirmation-email'
+
+/**
+ * A műveletnapló-bejegyzés kódja a BIZONYTALAN kézbesítésű visszaigazolóról
+ * (a levél célba érhetett, de a szolgáltató átvételét nem igazolta).
+ */
+export const ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION = 'order-confirmation-email-uncertain'
 
 /**
  * Várakozás az újrapróbák előtt: az első kísérlet után 2, a második után 6
@@ -595,6 +607,8 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
       invoiceNote: isSzamlazzEnabled(),
       ...(account ? { account } : {}),
       withdrawalWaiver: { given: waiverGiven, at: waiverAt },
+      // Az elállási funkció linkje (22. § (1b)); webcím nélkül nincs mire mutatni.
+      withdrawalUrl: serverUrl ? `${serverUrl}${withdrawalHref(orderNumber)}` : null,
       seller,
       terms: { url: termsUrl, attachment },
       supportEmail,
@@ -603,7 +617,7 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
 
     // K14: a válaszcím a kapcsolati cím, nem az ÁSZF-ben álló cég-e-mail.
     const replyTo = isUsableReplyToAddress(supportEmail) ? supportEmail : undefined
-    const message: ConfirmationMailInput = {
+    const message: ConfirmationMailInput & { idempotencyKey: string } = {
       to: recipient,
       ...template,
       ...(replyTo ? { replyTo } : {}),
@@ -611,23 +625,47 @@ export async function onOrderPaid(deps: OnOrderPaidDeps): Promise<void> {
     }
 
     const send = deps.send ?? sendMail
-    const sleep =
-      deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
-    let attempts = 0
-    let result: SendResult
-    for (;;) {
-      attempts += 1
-      result = await send(message)
-      const lastAttempt = attempts > CONFIRMATION_RETRY_DELAYS_MS.length
-      if (result.ok || result.retryable === false || lastAttempt) {
-        break
-      }
-      log.warn('visszaigazoló e-mail küldése sikertelen, újrapróbálom', {
-        attempt: attempts,
-        retryable: result.retryable,
-        error: maskedError(result.error),
+    const sent = await sendWithRetry(send, message, {
+      delaysMs: CONFIRMATION_RETRY_DELAYS_MS,
+      sleep: deps.sleep ?? realSleep,
+      onRetry: ({ attempt, result: failed }) => {
+        log.warn('visszaigazoló e-mail küldése sikertelen, újrapróbálom', {
+          attempt,
+          retryable: failed.retryable,
+          error: maskedError(failed.error),
+        })
+      },
+    })
+    let attempts = sent.attempts
+    let result: SendResult = sent.result
+
+    if (!result.ok && result.deliveryUncertain === true) {
+      // A levél célba érhetett: sem újrapróba, sem melléklet nélküli pótlevél
+      // (az is második levél lenne). A stáb egyeztet, mielőtt kézzel pótol.
+      log.error(
+        'RIASZTÁS: a kötelező visszaigazoló e-mail kézbesítése BIZONYTALAN: az SMTP-kapcsolat a ' +
+          'levél tartalmának átadása után megszakadt, a szerver átvehette. Automatikus ' +
+          'újraküldés nincs, mert kettőzné a levelet. Nézd meg az SMTP-szolgáltató naplójában ' +
+          '(vagy kérdezd meg a vevőt), megérkezett-e; ha nem, küldd el kézzel a visszaigazolást ' +
+          '(45/2014. Korm. rendelet 18. §).',
+        { attempts, error: maskedError(result.error) },
+      )
+      await writeAuditLog({
+        store: deps.auditStore ?? auditLogStore(deps.payload),
+        action: ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION,
+        entityType: 'orders',
+        entityId: deps.order.id,
+        after: {
+          orderNumber,
+          attemptedAt: new Date().toISOString(),
+          recipient,
+          provider: result.provider,
+          attempts,
+          templateVersion: ORDER_CONFIRMATION_TEMPLATE_VERSION,
+          error: maskedError(result.error) ?? null,
+        },
       })
-      await sleep(CONFIRMATION_RETRY_DELAYS_MS[attempts - 1])
+      return
     }
 
     // Végleges elutasítás mellékletes levélnél: a hiba oka lehet maga a

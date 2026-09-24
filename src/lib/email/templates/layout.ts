@@ -1,3 +1,4 @@
+import { KAPCSOLATI_EMAIL_TARTALEK } from '../../contact-email'
 import type { EmailTemplate } from '../types'
 
 /**
@@ -6,6 +7,21 @@ import type { EmailTemplate } from '../types'
  */
 
 const BRAND_NAME = 'Kineticare'
+
+/**
+ * Az alapértelmezett lábléc, ha a sablon nem ad sajátot (`footer`). A K14
+ * tulajdonosi döntés szerint minden vevői levél megnevezi a hivatalos
+ * ügyfélszolgálati és panaszcímet, és a levél megválaszolható: a
+ * provider-réteg ugyanezt a címet teszi a Reply-To fejlécbe, ha a hívó nem
+ * adott mást (src/lib/email/provider.ts). GOV.UK: „include … contact details
+ * for your service if the user might need to contact you”
+ * (https://www.gov.uk/service-manual/design/sending-emails-and-text-messages);
+ * Postmark: „Avoid a noreply@ address if you can”
+ * (https://postmarkapp.com/guides/transactional-email-best-practices).
+ */
+export const DEFAULT_FOOTER_TEXT =
+  'Ez egy automatikus üzenet a Kineticare rendszerétől. Kérdésed vagy panaszod van? Válaszolj ' +
+  `erre a levélre, vagy írj az ${KAPCSOLATI_EMAIL_TARTALEK} címre.`
 
 /** A weboldal tokenjei (tokens.css) — egy forrásból, hogy ne csússzanak szét. */
 const SZIN = {
@@ -291,7 +307,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
                 ${
                   input.footer
                     ? `${escapeHtml(input.footer.reason)}<br />${escapeHtml(input.footer.replyNote)}`
-                    : `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`
+                    : escapeHtml(DEFAULT_FOOTER_TEXT)
                 }
               </td>
             </tr>
@@ -349,10 +365,7 @@ export function renderLayout(input: LayoutInput): Pick<EmailTemplate, 'html' | '
   if (input.footer) {
     textLines.push('', input.footer.reason, input.footer.replyNote)
   } else {
-    textLines.push(
-      '',
-      `Ez egy automatikus üzenet a(z) ${BRAND_NAME} rendszerétől, erre a címre ne válaszolj.`,
-    )
+    textLines.push('', DEFAULT_FOOTER_TEXT)
   }
 
   return { html, text: textLines.join('\n') }

@@ -13,7 +13,15 @@ import { EmailSendError, type MailMessage } from './types'
  * multipart/mixed burokban.
  *
  * Retry-szabály: az SMTP 4xx válaszkódok átmenetiek (újrapróbálható), az 5xx
- * végleges; a hálózati hibák/timeout újrapróbálhatók.
+ * végleges; a hálózati hibák/timeout újrapróbálhatók, AMÍG a levél tartalma
+ * nem indult el. A DATA-blokk elküldése után a megszakadt kapcsolat vagy az
+ * elmaradt válasz BIZONYTALAN kézbesítés (`deliveryUncertain`, nem
+ * újrapróbálható): a szerver a lezáró pont után már átvehette a levelet, csak
+ * a „250” válasza veszett el, így az újraküldés kettőzné a levelet (RFC 1047,
+ * „Duplicate messages and SMTP”; RFC 5321 4.1.1.4: a lezáró pont utáni „250”
+ * jelzi az átvételt). Az SMTP-nek nincs a Resend idempotencia-kulcsához
+ * hasonló ismétlésszűrője. Ha a szerver a tartalomra kifejezett 4xx-szel
+ * felel, a levelet NEM vette át, az újrapróbálható marad.
  */
 
 export interface SmtpConfig {
@@ -253,13 +261,26 @@ class SmtpSession {
         cleanup()
         reject(new EmailSendError('SMTP időtúllépés válaszra várva', true))
       }
+      // A szerver válasz nélkül is bonthatja a kapcsolatot (FIN, hiba-esemény
+      // nélkül). Lezárt socketen az időtúllépés sem fut le, ezért e nélkül a
+      // várakozás soha nem érne véget.
+      const onClose = () => {
+        cleanup()
+        reject(new EmailSendError('az SMTP-kapcsolat válasz nélkül lezárult', true))
+      }
       const cleanup = () => {
         this.socket.off('data', onData)
         this.socket.off('error', onError)
         this.socket.off('timeout', onTimeout)
+        this.socket.off('close', onClose)
+      }
+      if (this.socket.destroyed) {
+        reject(new EmailSendError('az SMTP-kapcsolat válasz nélkül lezárult', true))
+        return
       }
       this.socket.on('data', onData)
       this.socket.once('error', onError)
+      this.socket.once('close', onClose)
       this.socket.setTimeout(SMTP_TIMEOUT_MS, onTimeout)
       // Lehet, hogy a válasz már a bufferben van (pl. TLS-újrakötés után).
       const ready = this.tryParseReply()
@@ -331,10 +352,22 @@ class SmtpSession {
     }
     await this.command('DATA', [354])
     const data = `${dotStuff(buildMessage(config, message))}\r\n.\r\n`
-    await new Promise<void>((resolve, reject) => {
-      this.socket.write(data, (error) => (error ? reject(error) : resolve()))
-    })
-    const reply = await this.readReply()
+    let reply: { code: number; lines: string[] }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.socket.write(data, (error) => (error ? reject(error) : resolve()))
+      })
+      reply = await this.readReply()
+    } catch (error) {
+      // A tartalom (a lezáró ponttal együtt) már úton lehetett: a szerver
+      // átvehette, csak a válasza nem ért ide. Lásd a fájl fejlécét.
+      throw new EmailSendError(
+        'SMTP: a levél tartalmának átadása után megszakadt a kapcsolat, a kézbesítés ' +
+          `bizonytalan (${error instanceof Error ? error.message : String(error)})`,
+        false,
+        { deliveryUncertain: true },
+      )
+    }
     if (reply.code !== 250) {
       throw new SmtpProtocolError(reply.code, reply.lines.join(' | ').slice(0, 200))
     }
