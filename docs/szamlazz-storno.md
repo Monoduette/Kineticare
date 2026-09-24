@@ -75,7 +75,7 @@ két eltéréssel:
 | `<fejlec><helyesbitettSzamlaszam>` | az EREDETI számla száma (`order.invoiceNumber`)                                                                                                                                                                                                                        |
 | Tételek                            | EGY korrekciós tétel a visszatérített összegre, **negatív** `nettoEgysegar` / `nettoErtek` / `afaErtek` / `bruttoErtek` értékkel                                                                                                                                       |
 | `<fejlec><teljesitesDatum>`        | az EREDETI számla teljesítési dátuma (`order.invoiceCompletionDate`)                                                                                                                                                                                                   |
-| `<fejlec><rendelesSzam>`           | **a helyesbítő saját, bizonylat-egyedi kulcsa** (= a `szamlaKulsoAzon` értéke), NEM az eredeti rendelésszám                                                                                                                                                            |
+| `<fejlec><rendelesSzam>`           | **a helyesbítő saját, rövid rendelésszáma:** `<rendelésszám>-HELYESBITO-<refund-sorszám>`, NEM az eredeti rendelésszám (a hosszú egyedi kulcs csak a `szamlaKulsoAzon`-ban megy)                                                                                       |
 | `<beallitasok><szamlaKulsoAzon>`   | `<a számla egyedi kulcsa>-HELYESBITO-<refund-sorszám>` (a számla egyedi kulcsa: `<rendelésszám>-<rendelés-id>-<létrehozás unix mp>`, `kulso-azon.ts`)                                                                                                                  |
 | Áfakulcs                           | az EREDETI számla kulcsa: a beküldés előtt a Számlázz.hu számlaadat-lekérdezése (`xmlszamlaxml`) olvassa ki; ha nem olvasható, vegyes, vagy eltér a `SZAMLAZZ_AFAKULCS`-tól, illetve az eredeti már sztornózott, a helyesbítő **nem megy ki** (`failed` + `RIASZTÁS:`) |
 
@@ -90,8 +90,13 @@ alól", tehát a fiókbeli rendelésszám-ismétlés-tiltás (71/152) helyesbít
 vonatkozik: egy ismételt helyesbítő-kérést a Számlázz.hu újra kiállítana. A
 duplikátum ellen kizárólag a beküldés előtti, bizonylat-egyedi kulcsú
 lekérdezés és a `corrective:<orderId>:<seq>` advisory-zár véd. A `rendelesSzam`
-mezőbe a helyesbítő saját kulcsa megy, hogy a fiókban a számlától külön sorként
-legyen kereshető. Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
+mezőbe a rövid `<rendelésszám>-HELYESBITO-<seq>` megy, hogy a fiókban a számlától
+külön sorként, a rendelésszámmal kereshető legyen (a hosszú egyedi kulcs csak a
+`szamlaKulsoAzon`-ban utazik). A záron belüli Számlázz.hu-hívások közös, 45 s-os
+időkeretben futnak (`lock-budget.ts`): a beküldés csak akkor indul, ha a teljes
+timeoutja belefér, különben újrapróbálható hiba, beküldés nélkül. Így a zár
+tranzakcióját a Postgres 60 s-os tétlenségi korlátja nem öli le beküldés
+közben. Validálás: `docs/szamlazz-megfeleles.md`, **T7 (b)**.
 
 **Dátumszabály (NAV).** A helyesbítő teljesítési dátumának naptári hónapja nem
 térhet el az eredeti számláétól, ezért a kiállításkor küldött teljesítési
@@ -122,7 +127,9 @@ kiállítás az előző napra csúszott volna).
      érvénytelen összeg → `failed` + error-szintű `RIASZTÁS:` (nem dob: emberi
      pótlás kell);
    - helyesbítőnél nem igazolható áfakulcs (lásd fent) → `failed` +
-     `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál dob;
+     `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál csak
+     figyelmeztetés és újrapróbálható dobás, a státusz marad (kézi kiállítás
+     ilyenkor TILOS, a rendszer újrapróbálja);
    - a beküldés előtti lekérdezés olyan bizonylatot talál, amelynek bruttója
      nem a helyesbítendő összeg (negatívan) → `failed` + `RIASZTÁS:`, átvétel
      és beküldés nélkül;
@@ -182,7 +189,8 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
 - **Beküldés előtti lekérdezés (számla és helyesbítő):** MINDEN beküldés előtt
   lekérdezés fut a `szamlaKulsoAzon`-ra (`queryInvoiceByKulsoAzon`,
   `src/lib/szamlazz/pdf.ts`, `action-szamla_agent_pdf`); korábbi beküldés után
-  a PR #304-es, rendelésszám-alapú régi kulcson is. Találat esetén a meglévő
+  a PR #304-es, rendelésszám-alapú régi kulcson is (helyesbítőnél akkor, ha a
+  rendelésen BÁRMELY sorszámú helyesbítő beküldése megtörtént). Találat esetén a meglévő
   bizonylat száma kerül a rendelésre, új beküldés nélkül — de csak ha a
   válasz `szamlabrutto`-ja egyezik (számlánál a rendelés végösszegével,
   helyesbítőnél a negatív helyesbített összeggel), és a régi kulcson talált
@@ -246,7 +254,7 @@ Az `orders` collection (`src/plugins/ecommerce.ts`) mezői — mind a rendszer
 | `SZAMLAZZ_AGENT_KEY` hiányzik                     | `disabled` no-op — a refund ettől teljes                                                                                                                                                                                                                |
 | Nincs `invoiceNumber` a rendelésen                | `failed` + error-szintű `RIASZTÁS:` + `failed` státusz (emberi pótlás)                                                                                                                                                                                  |
 | Hiányos vevő-számlázási adat (helyesbítő)         | `failed` + `RIASZTÁS:`                                                                                                                                                                                                                                  |
-| Nem igazolható áfakulcs (helyesbítő)              | `failed` + `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál dob                                                                                                                                                                                  |
+| Nem igazolható áfakulcs (helyesbítő)              | `failed` + `RIASZTÁS:`, beküldés nélkül; átmeneti olvasási hibánál figyelmeztetés és újrapróbálható dobás, a státusz marad                                                                                                                              |
 | Nem egyeztethető lekérdezés-találat (helyesbítő)  | `failed` + `RIASZTÁS:`, átvétel és beküldés nélkül                                                                                                                                                                                                      |
 | Agent-elutasítás (`<sikeres>false</sikeres>`)     | `failed` + error-szintű `RIASZTÁS:` a hibakóddal, nem retryable (a hivatalos kódok közül csak az `1` — karbantartás — és az `55` retryable)                                                                                                             |
 | Duplikátum-jelzés (71/152) — **helyesbítő**       | NEM hiba: lekérdezés a `szamlaKulsoAzon`-ra, és a meglévő bizonylat átvétele. Sikertelen lekérdezésnél `failed` + `RIASZTÁS:`, **fűzött** hibaüzenettel                                                                                                 |

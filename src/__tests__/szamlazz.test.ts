@@ -1,5 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { InvoiceDataResult } from '../lib/szamlazz/invoice-data'
+import type { SzamlazzClientConfig } from '../lib/szamlazz/types'
+
+// A számlaadat-lekérdezés (régi kulcson talált számla egyeztetése) a
+// modul-határon mockolt (új fetch-es kódhoz nincs injektálási paraméter).
+// Alapból hangosan bukik: ahol nem szabad futnia, ott nem is fut.
+const invoiceData = vi.hoisted(() => {
+  const unexpected = async (): Promise<InvoiceDataResult> => {
+    throw new Error('TESZT-HIBA: ezen az ágon nem futhat számlaadat-lekérdezés')
+  }
+  return {
+    unexpected,
+    query:
+      vi.fn<(szamlaszam: string, config?: SzamlazzClientConfig) => Promise<InvoiceDataResult>>(
+        unexpected,
+      ),
+  }
+})
+vi.mock('../lib/szamlazz/invoice-data', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/szamlazz/invoice-data')>()),
+  queryInvoiceData: invoiceData.query,
+}))
+beforeEach(() => {
+  invoiceData.query.mockReset()
+  invoiceData.query.mockImplementation(invoiceData.unexpected)
+})
+
 import { resetAlertThrottle } from '../lib/alert-throttle'
 import {
   getSzamlazzConfig,
@@ -2722,6 +2749,10 @@ describe('issueInvoiceForOrder — a lekérdezés nem vesz át idegen bizonylato
     )
     const lookups: string[] = []
     const dataQueries: string[] = []
+    invoiceData.query.mockImplementation(async (szamlaszam) => {
+      dataQueries.push(szamlaszam)
+      return { szamlaszam, vatKeys: ['27'], sztornozott: false, vevoNev: '  teszt  ANNA ' }
+    })
     const result = await issueInvoiceForOrder({
       payload,
       orderId: 101,
@@ -2730,10 +2761,6 @@ describe('issueInvoiceForOrder — a lekérdezés nem vesz át idegen bizonylato
       queryByKulsoAzon: async (kulsoAzon) => {
         lookups.push(kulsoAzon)
         return kulsoAzon === ORDER_NUMBER ? ownInvoice('KIN-2026-REGI') : null
-      },
-      queryInvoiceData: async (szamlaszam) => {
-        dataQueries.push(szamlaszam)
-        return { szamlaszam, vatKeys: ['27'], sztornozott: false, vevoNev: '  teszt  ANNA ' }
       },
       postXml: forbiddenPost,
     })
@@ -2755,6 +2782,11 @@ describe('issueInvoiceForOrder — a lekérdezés nem vesz át idegen bizonylato
         createOrder({ invoiceStatus: 'pending', invoiceAttempts: 1 }),
       )
       const { logger, logged } = captureLogs()
+      invoiceData.query.mockImplementation(async (szamlaszam) => ({
+        szamlaszam,
+        vatKeys: ['27'],
+        ...data,
+      }))
       const result = await issueInvoiceForOrder({
         payload,
         orderId: 101,
@@ -2763,7 +2795,6 @@ describe('issueInvoiceForOrder — a lekérdezés nem vesz át idegen bizonylato
         issueDate: '2026-08-04',
         queryByKulsoAzon: async (kulsoAzon) =>
           kulsoAzon === ORDER_NUMBER ? ownInvoice('IDEGEN-REGI') : null,
-        queryInvoiceData: async (szamlaszam) => ({ szamlaszam, vatKeys: ['27'], ...data }),
         postXml: forbiddenPost,
       })
 
@@ -3023,5 +3054,55 @@ describe('issueInvoiceForOrder — a lekérdezések gyakorisági féke (a-szamla
     expect(alerts[0]?.message).toMatch(
       /^RIASZTÁS: a számla előtti bizonylat-lekérdezés 24 alkalommal/,
     )
+  })
+})
+
+/**
+ * rev1 (breaker): a zár-tranzakció a védett szakasz alatt tétlen, és a
+ * Postgres 60 s után leöli (idle_in_transaction_session_timeout). Ha ez egy
+ * beküldés közben történik, egy második futó a zár nélkül dupla számlát
+ * küldhet be. A beküldés ezért csak akkor indul, ha a teljes timeoutja a zár
+ * 45 s-os közös időkeretébe fér (lock-budget.ts).
+ */
+describe('issueInvoiceForOrder — a zár alatti hívások közös időkerete', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('35 s-os adatbázis-akadás után a lekérdezés a maradék keretet kapja, a beküldés NEM indul, a hiba újrapróbálható', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-24T10:00:00Z'))
+    const { payload, order } = createMockPayload(createOrder({ invoiceStatus: 'pending' }))
+    const lookupTimeouts: number[] = []
+    let posts = 0
+    await expect(
+      issueInvoiceForOrder({
+        payload,
+        orderId: 101,
+        config: ENABLED_CONFIG,
+        issueDate: '2026-09-24',
+        // A fizetés napjának olvasása a záron belül 35 s-ig áll (halott
+        // pool-kapcsolat, CLAUDE.md 7. tanulság).
+        resolvePaidMoment: async () => {
+          vi.setSystemTime(Date.now() + 35_000)
+          return null
+        },
+        queryByKulsoAzon: async (_kulsoAzon, config) => {
+          lookupTimeouts.push(config.timeoutMs)
+          vi.setSystemTime(Date.now() + 1_000)
+          return null
+        },
+        postXml: async () => {
+          posts += 1
+          return { szamlaszam: 'KIN-2026-KESO' }
+        },
+      }),
+    ).rejects.toMatchObject({ retryable: true, kind: 'timeout' })
+
+    expect(lookupTimeouts).toEqual([10_000])
+    expect(posts).toBe(0)
+    expect(order?.invoiceAttempts ?? 0).toBe(0)
+    expect(order?.invoiceStatus).toBe('pending')
+    expect(order?.invoiceLastError).toContain('időkeret')
   })
 })

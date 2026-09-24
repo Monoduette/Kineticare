@@ -10,9 +10,10 @@ import {
   postInvoiceXml,
   type SzamlazzParsedSuccess,
 } from './client'
-import { queryInvoiceData, type InvoiceDataResult } from './invoice-data'
+import { queryInvoiceData } from './invoice-data'
 import { isTrustedInvoicePdfUrl } from './invoice-url'
 import { invoiceKulsoAzon, invoiceLookupKeys } from './kulso-azon'
+import { createLockBudget } from './lock-budget'
 import { queryInvoiceByKulsoAzon, type InvoiceLookupResult } from './pdf'
 import { writeOrderInvoicingState } from './order-state'
 import { resolveOrderPaidMoment, type OrderPaidMoment } from './paid-date'
@@ -96,8 +97,9 @@ import type { IssueStornoForOrderDeps } from './storno'
  * - HELYESBÍTŐ (módosító) számla: ugyanez a művelet, `corrective` megadásával —
  *   ilyenkor <helyesbitoszamla>true</helyesbitoszamla>, a
  *   <helyesbitettSzamlaszam> az eredeti számla száma, a tételek negatív
- *   korrekciót hordoznak, a külső azonosító ÉS a <rendelesSzam> pedig a
- *   helyesbítő saját kulsoAzon-ja (lásd corrective.ts — részleges
+ *   korrekciót hordoznak, a külső azonosító a helyesbítő saját, egyedi
+ *   kulsoAzon-ja, a <rendelesSzam> pedig a rövid
+ *   `<rendelésszám>-HELYESBITO-<seq>` (lásd corrective.ts — részleges
  *   visszatérítés bizonylata).
  */
 
@@ -131,14 +133,20 @@ export interface CorrectiveInvoiceRef {
   /** Az eredeti (helyesbítendő) számla száma — <helyesbitettSzamlaszam>. */
   originalInvoiceNumber: string
   /**
-   * A helyesbítő saját, globálisan egyedi azonosítója (kulso-azon.ts). KÉT
-   * helyre kerül: <szamlaKulsoAzon> (visszakeresési kulcs) ÉS <rendelesSzam>.
-   * A helyesbítő a hivatalos rendelésszám-oldal szerint kivétel a
-   * rendelésszám-ismétlés-tiltás alól, tehát a 71/152 itt NEM véd: a
-   * duplikátum ellen a beküldés előtti lekérdezés és az advisory-zár véd. A
-   * saját rendelésszám a fiókban a számlától külön kereshetővé teszi.
+   * A helyesbítő saját, globálisan egyedi azonosítója (kulso-azon.ts): a
+   * <szamlaKulsoAzon> (visszakeresési kulcs). A helyesbítő a hivatalos
+   * rendelésszám-oldal szerint kivétel a rendelésszám-ismétlés-tiltás alól,
+   * tehát a 71/152 itt NEM véd: a duplikátum ellen a beküldés előtti
+   * lekérdezés és az advisory-zár véd.
    */
   kulsoAzon: string
+  /**
+   * A helyesbítő <rendelesSzam>-ja. A kiállító a rövid
+   * `<rendelésszám>-HELYESBITO-<seq>` alakot adja: a fiókban a számlától
+   * külön sorként, a rendelésszámmal kereshető, és nem ütközik a NAV-export
+   * mezőhossz-korlátjába. Elhagyva a kulsoAzon megy ki.
+   */
+  rendelesSzam?: string
 }
 
 export interface BuildInvoiceXmlInput {
@@ -370,9 +378,9 @@ export function buildInvoiceXml(input: BuildInvoiceXmlInput): string {
   // A SZÁMLA <rendelesSzam>-ja a puszta rendelésszám: a fiókban bekapcsolt
   // rendelésszám-ismétlés-tiltás (71/152) erre épül. A helyesbítő a hivatalos
   // rendelésszám-oldal szerint KIVÉTEL a tiltás alól, tehát ott a 71/152 nem
-  // véd; a helyesbítő a saját, bizonylat-egyedi kulcsát kapja rendelésszámként
-  // is, hogy a fiókban a számla mellett külön sorként legyen kereshető.
-  const rendelesSzam = corrective ? kulsoAzon : input.orderNumber
+  // véd; a helyesbítő saját, rövid rendelésszámot kap, hogy a fiókban a számla
+  // mellett külön sorként legyen kereshető.
+  const rendelesSzam = corrective ? (corrective.rendelesSzam ?? kulsoAzon) : input.orderNumber
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd">
@@ -741,17 +749,6 @@ export interface IssueInvoiceForOrderDeps {
     kulsoAzon: string,
     config: SzamlazzClientConfig,
   ) => Promise<InvoiceLookupResult | null>
-  /**
-   * Injektálható számlaadat-lekérdező (teszteléshez); alapból a valódi
-   * queryInvoiceData. Csak akkor fut, ha a bizonylat a RÉGI (rendelésszám-
-   * alapú) külső azonosítón került elő: ilyenkor a vevőnév és a
-   * sztornózottság is egyeztetendő, mert a régi kulcs egy korábbi, törölt
-   * rendelés idegen bizonylatát is megtalálhatja.
-   */
-  queryInvoiceData?: (
-    szamlaszam: string,
-    config: SzamlazzClientConfig,
-  ) => Promise<InvoiceDataResult>
   /** A kelt-dátum felülírása (teszteléshez); alapból a mai dátum. */
   issueDate?: string
   /**
@@ -809,8 +806,10 @@ export interface IssueInvoiceForOrderDeps {
  *
  * A paid/issue szakasz `invoice:<orderId>` advisory-zár alatt fut (W7):
  * a paid-átmenet jobja és a poll resweep ne POST-oljon egyszerre. A
- * Számlázz.hu HTTP a záron belül van (a refund mintája). Barion-hívás NINCS
- * ebben a zárban. Mockolt Payload (nincs drizzle) nem-productionben a zár
+ * Számlázz.hu HTTP a záron belül van (a refund mintája), a hívások közös
+ * időkerettel (lock-budget.ts): a beküldés csak akkor indul, ha a teljes
+ * timeoutja a zár-tranzakció tétlenségi korlátja előtt lezárul. Barion-hívás
+ * NINCS ebben a zárban. Mockolt Payload (nincs drizzle) nem-productionben a zár
  * nélkül futtatja a `fn`-t.
  */
 export async function issueInvoiceForOrder(
@@ -831,6 +830,8 @@ export async function issueInvoiceForOrder(
     deps.payload,
     `invoice:${deps.orderId}`,
     async () => {
+      // A zár alatti Számlázz.hu-hívások közös időkerete a zár megszerzésétől.
+      const budget = createLockBudget(config)
       const order = (await deps.payload.findByID({
         collection: 'orders',
         id: deps.orderId,
@@ -1004,7 +1005,6 @@ export async function issueInvoiceForOrder(
        */
       let attempts = previousAttempts
       const lookup = deps.queryByKulsoAzon ?? queryInvoiceByKulsoAzon
-      const readInvoiceData = deps.queryInvoiceData ?? queryInvoiceData
       const rereadOrder = async (): Promise<Order | null> => {
         return (await deps.payload.findByID({
           collection: 'orders',
@@ -1022,7 +1022,7 @@ export async function issueInvoiceForOrder(
       /** A bizonylat keresése a kulcsokon, sorrendben; az első találat dönt. */
       const findExisting = async (): Promise<LookupHit | null> => {
         for (const [index, key] of lookupKeys.entries()) {
-          const found = await lookup(key, config)
+          const found = await lookup(key, budget.forQuery())
           if (found) {
             return { found, key, legacy: index > 0 }
           }
@@ -1050,7 +1050,7 @@ export async function issueInvoiceForOrder(
         if (!hit.legacy) {
           return null
         }
-        const data = await readInvoiceData(hit.found.szamlaszam, config)
+        const data = await queryInvoiceData(hit.found.szamlaszam, budget.forQuery())
         if (data.szamlaszam !== hit.found.szamlaszam) {
           return `a számlaadat-lekérdezés más bizonylatot adott vissza (${data.szamlaszam})`
         }
@@ -1389,6 +1389,9 @@ export async function issueInvoiceForOrder(
           return { outcome: 'skipped', reason: 'a rendelés státusza nem paid' }
         }
 
+        // A beküldés csak teljes timeouttal, a zár időkeretén belül indulhat
+        // (lock-budget.ts); különben újrapróbálható hiba, kísérlet-növelés NÉLKÜL.
+        const postConfig = budget.forPost()
         attempts = previousAttempts + 1
         // H4: a sikeres lekérdezés lezárta a lekérdezési hibasorozatot, az
         // előtag kikerül (az üzenet a beküldés eredményéig marad).
@@ -1405,7 +1408,7 @@ export async function issueInvoiceForOrder(
         })
 
         const postXml = deps.postXml ?? postInvoiceXml
-        const result = await postXml(xml, config)
+        const result = await postXml(xml, postConfig)
         // A vevői fiók URL-jét CSAK allowlist után mentjük — a link a vásárló
         // fiók-oldalán kattintható. Nem megfelelő URL: nem mentjük (a számla maga
         // ettől még kiállt), és riasztunk, mert ilyet a Számlázz.hu nem küldhet.

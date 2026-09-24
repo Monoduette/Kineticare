@@ -26,11 +26,14 @@ import type { Order } from '../../payload-types'
  * küldte külső azonosítóként, tehát élesben létezhet olyan bizonylat, amely
  * a RÉGI alakon kereshető vissza. A lekérdezők ezért a `*LookupKeys`
  * segédekkel dolgoznak: az új alak mindig, a régi alak CSAK akkor, ha a
- * rendelésen már volt beküldés (`invoiceAttempts > 0`, illetve a helyesbítő
- * seq-kulcsolt számlálója) — egy még sosem beküldött rendelésnél a régi
- * kulcson talált bizonylat biztosan idegen volna. Az átvétel a kulcstól
- * függetlenül a bruttó végösszeg egyezéséhez kötött (invoice.ts,
- * corrective.ts).
+ * rendelésen már volt beküldés (számlánál `invoiceAttempts > 0`,
+ * helyesbítőnél BÁRMELY sorszámú helyesbítő beküldése vagy kiállítása, mert
+ * a kísérlet-számláló sorszámhoz kötött) — egy még sosem beküldött
+ * rendelésnél a régi kulcson talált bizonylat biztosan idegen volna. Az
+ * átvétel a kulcstól függetlenül a bruttó végösszeg egyezéséhez kötött, a régi
+ * kulcson talált bizonylatnál a számlaadat-lekérdezés is egyeztet (invoice.ts,
+ * corrective.ts). A helyesbítő `<rendelesSzam>`-ja a rövid régi alak marad
+ * (corrective.ts).
  */
 
 export const STORNO_KULSO_AZON_SUFFIX = '-STORNO'
