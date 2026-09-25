@@ -142,11 +142,11 @@ describe.skipIf(!hasDb)('AAM-keret jelöltjei (valódi PostgreSQL)', () => {
   })
 
   it('a később kiállított számla (korábbi rendelés, tárgyévi teljesítés) és a tárgyév utolsó napjáé is a keretbe számít, az előző évi nem', async () => {
-    const aamFind = payloadAamFind(payload, { overrideAccess: true })
-    const find: AamFindFn = (args) =>
-      aamFind({ ...args, where: { and: [args.where, { customer: { equals: userId } }] } })
+    const sources = payloadAamFind(payload, { overrideAccess: true })
+    const orders: AamFindFn = (args) =>
+      sources.orders({ ...args, where: { and: [args.where, { customer: { equals: userId } }] } })
 
-    const status = await queryAamStatus(find, NOW)
+    const status = await queryAamStatus({ ...sources, orders }, NOW)
 
     expect(status.year).toBe(2026)
     expect(status.netHuf).toBe(21_500)

@@ -7,9 +7,11 @@ import {
   payloadAamFind,
   queryAamStatus,
   type AamFindFn,
+  type AamIntentFindFn,
   type AamOrderInput,
 } from '../../lib/alerts/aam'
 import { logger } from '../../lib/logger'
+import { createMemoryPayload } from './where-eval'
 
 /**
  * PR #305, Devin 🔴: az AAM-keretből csak az a visszatérítés vonható le,
@@ -174,6 +176,151 @@ describe('queryAamStatus: a levonáshoz szükséges mezők a lekérdezésből is
   })
 })
 
+/**
+ * PR #305, Codex P1 (aam.ts): két kiállt helyesbítőnél a rendelésen tárolt
+ * pár csak a legutóbbit mutatja. A korábbi helyesbítőt a sorszámára szóló
+ * `committed` visszatérítési szándék igazolja (a kézi lezárás csak a kiállt
+ * helyesbítő nyugtájával ír `committed`-et, lásd corrective-evidence.ts),
+ * ugyanúgy, mint a Figyelmet igényel hiányzó-helyesbítő számolásában. A
+ * lekérdezés a Payload `select`-szerződését követi: csak a kért mezők jönnek
+ * vissza, így a hiányzó `id` vagy `refundSequence` is buktatja a tesztet.
+ */
+describe('queryAamStatus: minden kiállt helyesbítő levonódik, nem csak a legutóbbi', () => {
+  const NOW = Date.parse('2026-09-24T08:00:00Z')
+
+  function selectHonoringPayload(collections: Parameters<typeof createMemoryPayload>[0]) {
+    const memory = createMemoryPayload(collections)
+    const find = async (
+      args: Parameters<typeof memory.payload.find>[0] & { select?: Record<string, unknown> },
+    ) => {
+      const result = await memory.payload.find(args)
+      const select = args.select
+      return select
+        ? {
+            ...result,
+            docs: result.docs.map((doc) =>
+              Object.fromEntries(Object.entries(doc).filter(([field]) => select[field] === true)),
+            ),
+          }
+        : result
+    }
+    return { payload: { ...memory.payload, find }, findCalls: memory.findCalls }
+  }
+
+  const order = (fields: Record<string, unknown>) => ({
+    id: 1,
+    createdAt: '2026-03-01T10:00:00.000Z',
+    ...BASE,
+    refunds: TWO_PARTIALS,
+    ...fields,
+  })
+  const intent = (id: number, orderId: number, refundSequence: number, state: string) => ({
+    id,
+    order: orderId,
+    refundSequence,
+    state,
+  })
+
+  it.each<[string, Record<string, unknown>, Record<string, unknown>[], number]>([
+    [
+      'két kiállt helyesbítő sorrendben: a pár a 2.-at, a lezárt szándék az 1.-t igazolja → 10 000 + 20 000 levonva',
+      {
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceNumber: 'E-KIN-2026-42',
+      },
+      [intent(1, 1, 1, 'committed'), intent(2, 1, 2, 'committed')],
+      70_000,
+    ],
+    [
+      'sorrenden kívül: az 1. újrapróbálása a 2. után állt ki, a pár a 2.-nél maradt, az 1.-t csak a szándéka igazolja',
+      {
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceNumber: 'E-KIN-2026-42',
+      },
+      [intent(1, 1, 1, 'committed')],
+      70_000,
+    ],
+    [
+      'egy kiállt és egy sikertelen: a 2. szándéka nem lezárt, ezért a 20 000 Ft a keretben marad',
+      {
+        correctiveInvoiceStatus: 'failed',
+        correctiveInvoiceSeq: 1,
+        correctiveInvoiceNumber: 'E-KIN-2026-41',
+      },
+      [intent(1, 1, 1, 'committed'), intent(2, 1, 2, 'manual_review')],
+      90_000,
+    ],
+    [
+      'egy másik rendelés lezárt szándéka nem igazolja ennek a rendelésnek a sorszámát',
+      {
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceNumber: 'E-KIN-2026-42',
+      },
+      [intent(1, 99, 1, 'committed')],
+      80_000,
+    ],
+    [
+      'stornó mellett a lezárt szándékok sem számítanak: a rendelés 0',
+      {
+        stornoStatus: 'storned',
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceNumber: 'E-KIN-2026-42',
+      },
+      [intent(1, 1, 1, 'committed')],
+      0,
+    ],
+  ])('%s', async (_name, fields, intents, expected) => {
+    const { payload } = selectHonoringPayload({
+      orders: [order(fields)],
+      'refund-intents': intents,
+    })
+    const status = await queryAamStatus(
+      payloadAamFind(payload as never, { overrideAccess: true }),
+      NOW,
+    )
+    expect(status.netHuf).toBe(expected)
+  })
+
+  it('a szándékokat egy lekérdezés hozza, és csak azokra a rendelésekre, amelyeket a pár nem igazol teljesen', async () => {
+    const unproven = [11, 12, 13].map((id) =>
+      order({
+        id,
+        correctiveInvoiceStatus: 'issued',
+        correctiveInvoiceSeq: 2,
+        correctiveInvoiceNumber: `E-KIN-2026-${String(id)}`,
+      }),
+    )
+    // Egyetlen részrefund, amelyet a pár igazol: ehhez nem kell szándék.
+    const proven = order({
+      id: 14,
+      refunds: [TWO_PARTIALS[0]],
+      correctiveInvoiceStatus: 'issued',
+      correctiveInvoiceSeq: 1,
+      correctiveInvoiceNumber: 'E-KIN-2026-14',
+    })
+    const { payload, findCalls } = selectHonoringPayload({
+      orders: [...unproven, proven],
+      'refund-intents': [11, 12, 13].map((id) => intent(id, id, 1, 'committed')),
+    })
+
+    const status = await queryAamStatus(
+      payloadAamFind(payload as never, { overrideAccess: true }),
+      NOW,
+    )
+
+    expect(status.netHuf).toBe(3 * 70_000 + 90_000)
+    const intentCalls = findCalls.filter((call) => call.collection === 'refund-intents')
+    expect(intentCalls).toHaveLength(1)
+    expect(intentCalls[0]?.where).toEqual({
+      and: [{ order: { in: [11, 12, 13] } }, { state: { equals: 'committed' } }],
+    })
+  })
+})
+
 describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lapozási korlát)', () => {
   const NOW = Date.parse('2026-09-24T08:00:00Z')
   const fullPage = (): AamOrderInput[] =>
@@ -182,6 +329,11 @@ describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lap
       invoiceCompletionDate: '2026-03-01',
       totalHufSnapshot: 1,
     }))
+
+  // Visszatérítés nélküli rendeléseknél a szándék-lekérdezésnek nem szabad futnia.
+  const noIntentLookup: AamIntentFindFn = async () => {
+    throw new Error('ehhez a rendeléshez nem kell visszatérítési szándék')
+  }
 
   afterEach(() => {
     vi.restoreAllMocks()
@@ -195,7 +347,9 @@ describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lap
       return { docs: fullPage(), hasNextPage: true }
     }
 
-    await expect(queryAamStatus(find, NOW)).rejects.toBeInstanceOf(AamIncompleteError)
+    await expect(
+      queryAamStatus({ orders: find, committedIntents: noIntentLookup }, NOW),
+    ).rejects.toBeInstanceOf(AamIncompleteError)
     expect(calls).toBe(40)
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringMatching(/^RIASZTÁS: az alanyi adómentes keret/),
@@ -207,7 +361,7 @@ describe('queryAamStatus: részösszegből nem lesz éves összeg (Codex P1, lap
     const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
     const find: AamFindFn = async ({ page }) => ({ docs: fullPage(), hasNextPage: page < 40 })
 
-    const status = await queryAamStatus(find, NOW)
+    const status = await queryAamStatus({ orders: find, committedIntents: noIntentLookup }, NOW)
     expect(status.netHuf).toBe(20_000)
     expect(errorLog).not.toHaveBeenCalled()
   })

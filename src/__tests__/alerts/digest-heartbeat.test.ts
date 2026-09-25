@@ -8,6 +8,7 @@ import {
   MAX_DIGEST_ATTEMPTS_PER_DAY,
   runDailyDigestIfDue,
   type DigestDeps,
+  type DigestState,
 } from '../../lib/alerts/digest'
 import {
   HEARTBEAT_TIMEOUT_MS,
@@ -89,10 +90,11 @@ function digestHarness(options: {
 }) {
   const mails: SendMailInput[] = []
   const entries: Recorded[] = []
-  const { payload } = createMemoryPayload({
+  const memory = createMemoryPayload({
     orders: options.orders ?? [],
     'refund-intents': [],
     'webhook-events': [],
+    'audit-logs': [],
   })
   const sendMail = vi.fn(
     options.send ??
@@ -102,17 +104,19 @@ function digestHarness(options: {
       }),
   )
   const state = createDigestState()
-  const deps = (nowMs: number): DigestDeps => ({
-    payload: payload as never,
+  // Az OWNER_ALERT_EMAILS a futások között változhat (napközbeni beállítás).
+  const settings = { recipients: options.recipients ?? ['tulajdonos@example.com'] }
+  const deps = (nowMs: number, processState: DigestState = state): DigestDeps => ({
+    payload: memory.payload as never,
     sendMail,
-    recipients: () => options.recipients ?? ['tulajdonos@example.com'],
+    recipients: () => settings.recipients,
     logger: recordingLogger(entries),
     nowMs,
     serverUrl: 'https://kineticare.hu',
     ...(options.vatMode !== undefined ? { vatMode: options.vatMode } : {}),
-    state,
+    state: processState,
   })
-  return { mails, entries, sendMail, state, deps }
+  return { mails, entries, sendMail, state, deps, memory, settings }
 }
 
 describe('napi összesítő — időzítés', () => {
@@ -174,6 +178,12 @@ describe('napi összesítő — küldés', () => {
     expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
     const text = h.mails[0]?.text ?? ''
     expect(text).toContain('- 1 sikertelen számla, stornó vagy helyesbítő')
+    // Devin (PR #305): a 14 napos ablakot a levél kimondja, és a teljes listára
+    // (havi egyeztetés, runbook 08) mutat, a szöveges és a HTML-részben is.
+    const ablak =
+      'A 14 napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (docs/uzemeltetes/08-havi-egyeztetes.md).'
+    expect(text).toContain(ablak)
+    expect(h.mails[0]?.html).toContain(ablak)
     const hrefs = [...text.matchAll(/Lista: (\S+)/g)].map((match) => match[1] ?? '')
     expect(hrefs.flatMap((href) => orderIdsOpenedByHref(href, [order]))).toEqual([21])
   })
@@ -203,6 +213,8 @@ describe('napi összesítő — küldés', () => {
     }
     expect(send).toHaveBeenCalledTimes(MAX_DIGEST_ATTEMPTS_PER_DAY)
     expect(outcomes).toEqual(['hiba', 'hiba', 'hiba', 'nem-esedekes', 'nem-esedekes'])
+    // Sikertelen küldés után nincs napi nyom: egy újraindult folyamat még próbálhat.
+    expect(h.memory.createCalls).toHaveLength(0)
   })
 
   it('nem újrapróbálható hibánál (pl. Resend 409: ma már ment) aznapra feladja', async () => {
@@ -218,12 +230,102 @@ describe('napi összesítő — küldés', () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('címzett nélkül nem küld, figyelmeztet', async () => {
-    const h = digestHarness({ orders: openOrders(MORNING), recipients: [] })
-    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('nincs-cimzett')
-    expect(
-      h.entries.some((entry) => entry.level === 'warn' && entry.msg.includes('OWNER_ALERT_EMAILS')),
-    ).toBe(true)
+  it('Devin (PR #305): címzett nélkül a nap nem zárul le, és a később beállított címzett még aznap megkapja a levelet', async () => {
+    // 07:00 Budapest (05:00 UTC), nyitott teendőkkel, üres OWNER_ALERT_EMAILS.
+    const seven = Date.parse('2026-09-24T05:00:00Z')
+    const h = digestHarness({ orders: openOrders(seven), recipients: [] })
+    const outcomes: string[] = []
+    for (let minute = 0; minute <= 60; minute += 5) {
+      outcomes.push(await runDailyDigestIfDue(h.deps(seven + minute * 60_000)))
+    }
+    expect(new Set(outcomes)).toEqual(new Set(['nincs-cimzett']))
+    // Címzett nélkül nincs lekérdezés, és a hiányról naponta egy warn szól.
+    expect(h.memory.countCalls).toHaveLength(0)
+    expect(h.memory.findCalls).toHaveLength(0)
+    const warns = h.entries.filter(
+      (entry) => entry.level === 'warn' && entry.msg.includes('OWNER_ALERT_EMAILS'),
+    )
+    expect(warns).toHaveLength(1)
+
+    // 08:05: a tulajdonos beállította a címzettet.
+    h.settings.recipients = ['tulajdonos@example.com']
+    expect(await runDailyDigestIfDue(h.deps(seven + 65 * 60_000))).toBe('elkuldve')
+    expect(h.mails).toHaveLength(1)
+    expect(h.mails[0]?.idempotencyKey).toBe('digest-2026-09-24')
+  })
+
+  it('a hiányzó címzettről másnap újra szól', async () => {
+    const h = digestHarness({ recipients: [] })
+    await runDailyDigestIfDue(h.deps(MORNING))
+    await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))
+    await runDailyDigestIfDue(h.deps(MORNING + 24 * 60 * 60_000))
+    const warns = h.entries.filter(
+      (entry) => entry.level === 'warn' && entry.msg.includes('OWNER_ALERT_EMAILS'),
+    )
+    expect(warns).toHaveLength(2)
+  })
+
+  it('Codex P2 (PR #305): három lekérdezési hiba nem fogyasztja el a küldési keretet; a helyreállás után aznap kimegy a levél', async () => {
+    const h = digestHarness({ orders: openOrders(MORNING) })
+    const count = h.memory.payload.count
+    const database = { down: true }
+    h.memory.payload.count = async (args) => {
+      if (database.down) {
+        throw new Error('adatbázis nem érhető el')
+      }
+      return count(args)
+    }
+
+    const throwsAt: number[] = []
+    const sentAt: number[] = []
+    for (let minute = 0; minute <= 120; minute += 5) {
+      // Az adatbázis a harmadik hiba után, 07:45-kor áll helyre.
+      database.down = minute < 35
+      try {
+        if ((await runDailyDigestIfDue(h.deps(MORNING + minute * 60_000))) === 'elkuldve') {
+          sentAt.push(minute)
+        }
+      } catch {
+        throwsAt.push(minute)
+      }
+    }
+
+    // A hibák között növekvő várakozás (10, 20, majd 40 perc), nem 5 percenkénti
+    // lekérdezés és riasztás; a keret a valódi küldésé marad.
+    expect(throwsAt).toEqual([0, 10, 30])
+    expect(sentAt).toEqual([70])
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+  })
+
+  it('Codex P2 (PR #305): újraindulás után a friss folyamat a napi nyom miatt nem küld még egy összesítőt', async () => {
+    const h = digestHarness({ orders: openOrders(MORNING) })
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    const countsBeforeRestart = h.memory.countCalls.length
+
+    // Deploy 07:40-kor: új folyamat, üres folyamaton belüli állapottal.
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 30 * 60_000, createDigestState()))).toBe(
+      'mar-elkuldve',
+    )
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+    // A nyom miatt a friss folyamat újra sem számol.
+    expect(h.memory.countCalls).toHaveLength(countsBeforeRestart)
+    expect(h.memory.createCalls).toEqual([
+      expect.objectContaining({
+        collection: 'audit-logs',
+        overrideAccess: true,
+        data: expect.objectContaining({
+          action: 'daily-digest-sent',
+          entityType: 'daily-digest',
+          entityId: '2026-09-24',
+        }),
+      }),
+    ])
+    // A nyomba címzett (személyes adat) nem kerül.
+    expect(JSON.stringify(h.memory.createCalls)).not.toContain('@')
+
+    // Másnap a nyom nem gátol.
+    const nextMorning = MORNING + 24 * 60 * 60_000
+    expect(await runDailyDigestIfDue(h.deps(nextMorning, createDigestState()))).toBe('elkuldve')
   })
 
   it('a 70%-os AAM-keret AAM áfakulcsnál önmagában is levelet küld; hiányzó vagy 27%-os kulcsnál az AAM-sor kimarad', async () => {
@@ -348,7 +450,8 @@ describe('order-poll utáni őrfeladatok', () => {
     const entries: Recorded[] = []
     const fetchFn = vi.fn(async (): Promise<Response> => new Response('OK', { status: 200 }))
     const payload = {
-      find: async () => ({ docs: [], hasNextPage: false }),
+      find: async () => ({ docs: [], hasNextPage: false, totalDocs: 0 }),
+      create: vi.fn(),
       count: async () => {
         throw new Error('adatbázis nem érhető el')
       },

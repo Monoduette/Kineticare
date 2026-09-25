@@ -13,7 +13,8 @@
  * MIT SZÁMOLUNK: a tárgyév (Budapest szerinti naptári év, a számla
  * teljesítési dátuma szerint) kiállított számláinak összege, mínusz a
  * stornózott számlák teljes összege, mínusz azok a visszatérítések, amelyek
- * SAJÁT helyesbítő számlája igazoltan kiállt. Csak az a csökkentés számít,
+ * SAJÁT helyesbítő számlája igazoltan kiállt (visszatérítésenként, lásd
+ * `src/lib/alerts/corrective-evidence.ts`). Csak az a csökkentés számít,
  * amelyhez bizonylat is készült (Áfa tv. 153/B. § (1) a): az adóalap
  * csökkentéséhez az érvénytelenítő vagy módosító számla kell). Kétség esetén
  * a keret-használatot túlbecsüljük, sosem alá. Ez BECSLÉS és csak a
@@ -25,6 +26,11 @@ import type { Payload, Where } from 'payload'
 
 import { budapestDateString } from '../date/budapest'
 import { logger } from '../logger'
+import {
+  COMMITTED_INTENT_SELECT,
+  committedSequencesByOrder,
+  correctiveRefunds,
+} from './corrective-evidence'
 import { emitAlert } from './emit'
 
 /** Ellenőrzött értékhatárok évenként (Áfa tv. 188. § (2), 378. § (1)). */
@@ -49,11 +55,13 @@ export interface AamStatus {
 }
 
 export interface AamOrderInput {
+  /** A rendelés azonosítója: a lezárt visszatérítési szándékok ehhez kötődnek. */
+  readonly id?: number | string
   readonly totalHufSnapshot?: number | null
   readonly invoiceStatus?: string | null
   readonly invoiceCompletionDate?: string | null
   readonly stornoStatus?: string | null
-  /** Tájékoztató: a levonást NEM befolyásolja (lásd `evidencedCorrectiveRefund`). */
+  /** Tájékoztató: a levonást NEM befolyásolja (lásd `evidencedCorrectiveRefunds`). */
   readonly correctiveInvoiceStatus?: string | null
   /** A LEGUTÓBB kiállított helyesbítő refund-sorszáma (1-alapú, a `refunds` indexe + 1). */
   readonly correctiveInvoiceSeq?: number | null
@@ -80,76 +88,65 @@ export function aamLimitForYear(year: number): { limitHuf: number; verified: boo
   return { limitHuf: AAM_LIMIT_BY_YEAR[fallbackYear] ?? 20_000_000, verified: false }
 }
 
+const NO_SEQUENCES: ReadonlySet<number> = new Set()
+
 /**
- * Az a visszatérítés-összeg, amelynek a SAJÁT helyesbítő számlája a rendelés
- * adatai szerint igazoltan kiállt (0, ha ilyen nincs).
+ * Azoknak a visszatérítéseknek az összege, amelyek SAJÁT helyesbítő számlája
+ * a bizonyítékok szerint kiállt (0, ha ilyen nincs).
  *
- * A BIZONYÍTÉK a tárolt (`correctiveInvoiceSeq`, `correctiveInvoiceNumber`)
- * pár, a pillanatnyi `correctiveInvoiceStatus` NEM számít:
- *  - a pár a `refunds[seq - 1]` bejegyzés helyesbítőjéhez tartozik (a
- *    corrective-invoice-issue job és a refund-guard is így olvassa);
- *  - src/lib/szamlazz/corrective.ts a számot és a sorszámot KIZÁRÓLAG a
- *    sikeres kiállítás ágain írja, egy mentésben, és csak
- *    `refundSeq >= recordedSeq` mellett; a függő és a sikertelen ág csak az
- *    állapotot és a kísérlet-számlálót írja, a párt sosem törli. A mezők
- *    rendszer-írásúak (a mezőszintű `create`/`update` tiltott), kézzel sem
- *    írhatók. Ugyanezt a párt használja a helyesbítő-kiállítás
- *    „already-issued” rövidzára is (szám + pontos sorszám-egyezés, állapot
- *    nélkül);
- *  - a státusz ezért egy KÉSŐBBI sorszám függő vagy sikertelen helyesbítőjét
- *    is jelentheti (azonos sorszám újrapróbálása a rövidzár miatt el sem jut
- *    az állapot-írásig), a korábbi, már kiállt bizonylatot viszont nem
- *    vonja vissza. Ha a levonást a státuszhoz kötnénk, egy későbbi hiba
- *    visszaírná a keretbe a már igazolt csökkentést;
- *  - a pár mindig csak EGY bejegyzést igazol: a kiállítás nem feltétlenül
- *    sorrendi (egy korábbi sorszám újrapróbálása a későbbi után is lefuthat,
- *    ilyenkor a pár a későbbié marad), tehát a többi bejegyzés bizonylatát a
- *    rendelés nem igazolja;
- *  - a bejegyzésenkénti `refund-invoice-done` nyugta (audit-logs) csak az
- *    intent-kezelt visszatérítéseknél létezik, a régieknél nincs, ezért a
- *    keret-becslés nem építhet rá.
- * A többi visszatérítés a keretben marad: az AAM adóhatár, a túlbecslés a
- * biztonságos irány. Helyesbítőt a részleges és a rendelést lezáró, nem első
- * teljes bejegyzés kap (refund-order.ts: „részrefund és záró rész:
- * helyesbítő”); az első, teljes visszatérítés stornót kap, azt a
- * `stornoStatus` kezeli.
+ * A bizonyíték visszatérítésenként ugyanaz, mint a Figyelmet igényel
+ * hiányzó-helyesbítő számolásáé (`correctiveRefunds`,
+ * src/lib/alerts/corrective-evidence.ts): a tárolt (`correctiveInvoiceSeq`,
+ * `correctiveInvoiceNumber`) pár a saját sorszámát igazolja, a
+ * `committedSequences` minden sorszámot, amelyhez `committed` visszatérítési
+ * szándék tartozik. A pillanatnyi `correctiveInvoiceStatus` NEM számít: egy
+ * későbbi függő vagy sikertelen helyesbítő nem írja vissza a keretbe a már
+ * igazolt csökkentést.
+ *
+ * PR #305, Codex P1: két kiállt helyesbítőnél a pár csak a legutóbbit
+ * mutatja, a korábbit a lezárt szándéka igazolja. Ha csak a párt néznénk, a
+ * korábbi, dokumentált visszatérítés visszakerülne a keretbe, és a
+ * keret-használat túl magas lenne (hamis 70/90/100%-os figyelmeztetés).
+ *
+ * A bizonyíték nélküli visszatérítés a keretben marad: az AAM adóhatár, a
+ * túlbecslés a biztonságos irány (Áfa tv. 153/B. § (1) a): az adóalap
+ * csökkentéséhez a módosító számla kell). A régi, szándék nélküli
+ * visszatérítések közül ezért csak a pár sorszáma vonódik le.
  */
-function evidencedCorrectiveRefund(order: AamOrderInput): number {
-  const number = order.correctiveInvoiceNumber
-  if (typeof number !== 'string' || number.trim() === '') {
-    return 0
-  }
-  const seq = order.correctiveInvoiceSeq
-  if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) {
-    return 0
-  }
-  if (!Array.isArray(order.refunds) || seq > order.refunds.length) {
-    return 0
-  }
-  const entry: unknown = order.refunds[seq - 1]
-  if (typeof entry !== 'object' || entry === null) {
-    return 0
-  }
-  const record = entry as { type?: unknown; amountHuf?: unknown }
-  const correctedByCorrective = record.type === 'partial' || (record.type === 'full' && seq > 1)
-  return correctedByCorrective ? finiteAmount(record.amountHuf) : 0
+function evidencedCorrectiveRefunds(
+  order: AamOrderInput,
+  committedSequences: ReadonlySet<number>,
+): number {
+  return correctiveRefunds(order, committedSequences)
+    .filter((refund) => refund.evidenced)
+    .reduce((sum, refund) => sum + finiteAmount(refund.entry.amountHuf), 0)
 }
 
-/** A rendelés nettó hozzájárulása a tárgyév keretéhez (0, ha nem az évé). */
-export function aamContribution(order: AamOrderInput, year: number): number {
-  if (order.invoiceStatus !== 'issued') {
-    return 0
+/** Kiállított, tárgyévi, nem stornózott számla: ez számít a keretbe. */
+function countsForYear(order: AamOrderInput, year: number): boolean {
+  if (order.invoiceStatus !== 'issued' || order.stornoStatus === 'storned') {
+    return false
   }
   const completion =
     typeof order.invoiceCompletionDate === 'string' ? order.invoiceCompletionDate : ''
-  if (!completion.startsWith(`${String(year)}-`)) {
-    return 0
-  }
-  if (order.stornoStatus === 'storned') {
+  return completion.startsWith(`${String(year)}-`)
+}
+
+/**
+ * A rendelés nettó hozzájárulása a tárgyév keretéhez (0, ha nem az évé).
+ * A `committedSequences` a rendelés `committed` visszatérítési szándékainak
+ * sorszámai (hiányában csak a tárolt pár igazol).
+ */
+export function aamContribution(
+  order: AamOrderInput,
+  year: number,
+  committedSequences: ReadonlySet<number> = NO_SEQUENCES,
+): number {
+  if (!countsForYear(order, year)) {
     return 0
   }
   const gross = finiteAmount(order.totalHufSnapshot)
-  return Math.max(0, gross - evidencedCorrectiveRefund(order))
+  return Math.max(0, gross - evidencedCorrectiveRefunds(order, committedSequences))
 }
 
 function levelFor(ratio: number): AamLevel {
@@ -159,8 +156,26 @@ function levelFor(ratio: number): AamLevel {
   return 'rendben'
 }
 
-export function computeAamStatus(orders: readonly AamOrderInput[], year: number): AamStatus {
-  const netHuf = orders.reduce((sum, order) => sum + aamContribution(order, year), 0)
+/**
+ * A tárgyév keret-állapota. A `committedByOrder` rendelés-azonosítónként
+ * (szövegként) a `committed` szándékok sorszámai.
+ */
+export function computeAamStatus(
+  orders: readonly AamOrderInput[],
+  year: number,
+  committedByOrder: ReadonlyMap<string, ReadonlySet<number>> = new Map(),
+): AamStatus {
+  const netHuf = orders.reduce(
+    (sum, order) =>
+      sum +
+      aamContribution(
+        order,
+        year,
+        (order.id === undefined ? undefined : committedByOrder.get(String(order.id))) ??
+          NO_SEQUENCES,
+      ),
+    0,
+  )
   const { limitHuf, verified } = aamLimitForYear(year)
   const ratio = limitHuf > 0 ? netHuf / limitHuf : 0
   return { year, netHuf, limitHuf, limitVerified: verified, ratio, level: levelFor(ratio) }
@@ -171,15 +186,30 @@ export function budapestYear(nowMs: number): number {
   return Number(budapestDateString(new Date(nowMs)).slice(0, 4))
 }
 
-/** A lekérdezéshez szükséges `find` (rendszer- vagy tulajdonosi jogosultsággal). */
+/** A rendelések lapozott lekérdezése (rendszer- vagy tulajdonosi jogosultsággal). */
 export type AamFindFn = (args: {
   where: Where
   page: number
   limit: number
 }) => Promise<{ docs: readonly AamOrderInput[]; hasNextPage?: boolean | null }>
 
+/** A lezárt visszatérítési szándékok lapozott lekérdezése (ugyanazzal a jogosultsággal). */
+export type AamIntentFindFn = (args: {
+  where: Where
+  page: number
+  limit: number
+}) => Promise<{ docs: readonly unknown[]; hasNextPage?: boolean | null }>
+
+/** A keret-számítás forrásai: a rendelések és a helyesbítőt igazoló lezárt szándékok. */
+export interface AamSources {
+  readonly orders: AamFindFn
+  readonly committedIntents: AamIntentFindFn
+}
+
 const AAM_PAGE_SIZE = 500
 const AAM_MAX_PAGES = 40
+/** Ennyi rendelés-azonosító megy egy szándék-lekérdezés `in` feltételébe. */
+const AAM_INTENT_ORDER_CHUNK = 200
 
 /** A riasztás kódja, ha a tárgyév rendelései nem olvashatók be teljesen. */
 export const AAM_INCOMPLETE_ALERT_CODE = 'aam-keret-nem-teljes'
@@ -227,7 +257,7 @@ export class AamIncompleteError extends Error {
  * dobást látható hibaként kezelik (a napi összesítőnél a poll-watch
  * riasztása, a Figyelmet igényel blokkban a betöltési hiba szövege).
  */
-export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<AamStatus> {
+export async function queryAamStatus(sources: AamSources, nowMs: number): Promise<AamStatus> {
   const year = budapestYear(nowMs)
   const where: Where = {
     and: [
@@ -240,7 +270,7 @@ export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<Aa
   let complete = false
   let pagesRead = 0
   for (let page = 1; page <= AAM_MAX_PAGES; page += 1) {
-    const result = await find({ where, page, limit: AAM_PAGE_SIZE })
+    const result = await sources.orders({ where, page, limit: AAM_PAGE_SIZE })
     pagesRead = page
     orders.push(...result.docs)
     if (result.docs.length < AAM_PAGE_SIZE || result.hasNextPage === false) {
@@ -257,14 +287,70 @@ export async function queryAamStatus(find: AamFindFn, nowMs: number): Promise<Aa
     )
     throw new AamIncompleteError(pagesRead, orders.length)
   }
-  return computeAamStatus(orders, year)
+  const committedByOrder = await committedSequencesForOrders(sources.committedIntents, orders, year)
+  return computeAamStatus(orders, year, committedByOrder)
+}
+
+/**
+ * A lezárt (`committed`) visszatérítési szándékok sorszámai azokra a
+ * rendelésekre, amelyeknél a tárolt pár nem igazol minden helyesbítőt
+ * igénylő visszatérítést. Egy lekérdezés legfeljebb `AAM_INTENT_ORDER_CHUNK`
+ * rendelésre szól (rendelésenkénti lekérdezés nincs); a többi rendeléshez nem
+ * kell szándék, mert a párja mindent igazol, vagy nem is számít a keretbe.
+ *
+ * Ha egy részlet lapozása a korlátnál megállna, a már beolvasott szándékok
+ * akkor is igaz bizonyítékok; a hiányzók visszatérítése a keretben marad
+ * (túlbecslés, a biztonságos irány), és warn-sor jelzi.
+ */
+async function committedSequencesForOrders(
+  find: AamIntentFindFn,
+  orders: readonly AamOrderInput[],
+  year: number,
+): Promise<Map<string, Set<number>>> {
+  const ids: (number | string)[] = []
+  for (const order of orders) {
+    if (
+      order.id !== undefined &&
+      countsForYear(order, year) &&
+      correctiveRefunds(order, NO_SEQUENCES).some((refund) => !refund.evidenced)
+    ) {
+      ids.push(order.id)
+    }
+  }
+  const intents: unknown[] = []
+  for (let start = 0; start < ids.length; start += AAM_INTENT_ORDER_CHUNK) {
+    const where: Where = {
+      and: [
+        { order: { in: ids.slice(start, start + AAM_INTENT_ORDER_CHUNK) } },
+        { state: { equals: 'committed' } },
+      ],
+    }
+    let complete = false
+    for (let page = 1; page <= AAM_MAX_PAGES; page += 1) {
+      const result = await find({ where, page, limit: AAM_PAGE_SIZE })
+      intents.push(...result.docs)
+      if (result.docs.length < AAM_PAGE_SIZE || result.hasNextPage === false) {
+        complete = true
+        break
+      }
+    }
+    if (!complete) {
+      logger.warn(
+        'alanyi adómentes keret: a lezárt visszatérítések nem olvashatók be teljesen, a hiányzók a keretben maradnak',
+        { module: 'alerts/aam', year },
+      )
+    }
+  }
+  return committedSequencesByOrder(intents)
 }
 
 /**
  * A `find`-hez kért mezők: a helyesbítős levonáshoz a `refunds`, a helyesbítő
- * sorszáma és száma kell (lásd `evidencedCorrectiveRefund`).
+ * sorszáma és száma, a lezárt szándékokhoz az azonosító kell (lásd
+ * `evidencedCorrectiveRefunds`).
  */
 export const AAM_ORDER_SELECT = {
+  id: true,
   totalHufSnapshot: true,
   invoiceStatus: true,
   invoiceCompletionDate: true,
@@ -274,28 +360,47 @@ export const AAM_ORDER_SELECT = {
   refunds: true,
 } as const
 
-/** A Payload Local API-ra épülő `find` (a hívó dönti el a jogosultságot). */
+/**
+ * A Payload Local API-ra épülő források (a hívó dönti el a jogosultságot:
+ * rendszer-futásnál `overrideAccess`, a Figyelmet igényel blokkban a
+ * tulajdonos saját jogai).
+ */
 export function payloadAamFind(
   payload: Pick<Payload, 'find'>,
   access: { overrideAccess: true } | { overrideAccess: false; user: unknown },
-): AamFindFn {
-  return async ({ where, page, limit }) => {
-    const result = await payload.find({
-      collection: 'orders',
-      where,
-      page,
-      limit,
-      depth: 0,
-      // Az id a holtversenyt dönti el: nem egyedi rendezési kulcs mellett a
-      // Postgres oldalanként más sorrendet adhat, és egy sor kimaradhatna.
-      sort: ['createdAt', 'id'],
-      select: AAM_ORDER_SELECT,
-      ...access,
-    } as unknown as Parameters<Payload['find']>[0])
-    return {
-      docs: result.docs as unknown as readonly AamOrderInput[],
-      hasNextPage: result.hasNextPage,
-    }
+): AamSources {
+  return {
+    orders: async ({ where, page, limit }) => {
+      const result = await payload.find({
+        collection: 'orders',
+        where,
+        page,
+        limit,
+        depth: 0,
+        // Az id a holtversenyt dönti el: nem egyedi rendezési kulcs mellett a
+        // Postgres oldalanként más sorrendet adhat, és egy sor kimaradhatna.
+        sort: ['createdAt', 'id'],
+        select: AAM_ORDER_SELECT,
+        ...access,
+      } as unknown as Parameters<Payload['find']>[0])
+      return {
+        docs: result.docs as unknown as readonly AamOrderInput[],
+        hasNextPage: result.hasNextPage,
+      }
+    },
+    committedIntents: async ({ where, page, limit }) => {
+      const result = await payload.find({
+        collection: 'refund-intents',
+        where,
+        page,
+        limit,
+        depth: 0,
+        sort: 'id',
+        select: COMMITTED_INTENT_SELECT,
+        ...access,
+      } as unknown as Parameters<Payload['find']>[0])
+      return { docs: result.docs as readonly unknown[], hasNextPage: result.hasNextPage }
+    },
   }
 }
 

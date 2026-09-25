@@ -31,6 +31,12 @@ import type { Payload, Where } from 'payload'
 
 import { MAX_WEBHOOK_ATTEMPTS } from '../idempotency'
 import { REFUND_INTENT_UNRESOLVED_STATES } from '../refund/refund-intent'
+import {
+  asRecord,
+  COMMITTED_INTENT_SELECT,
+  committedSequencesByOrder,
+  correctiveRefunds,
+} from './corrective-evidence'
 
 const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * MINUTE_MS
@@ -46,6 +52,8 @@ export const PENDING_PAYMENT_ALERT_AFTER_MS = DAY_MS
 export const REFUND_INTENT_STUCK_AFTER_MS = 15 * MINUTE_MS
 /** A kézzel rendezhető kategóriák visszatekintési ablaka (napokban). */
 export const ATTENTION_LOOKBACK_DAYS = 14
+/** A havi egyeztetés runbookja: az ablaknál régebbi sikertelen bizonylatokat is listázza. */
+export const MONTHLY_RECONCILIATION_RUNBOOK_PATH = 'docs/uzemeltetes/08-havi-egyeztetes.md'
 
 /**
  * Nem lezárt visszatérítési szándékok (a refund-intents `state` értékei): a
@@ -186,7 +194,15 @@ export function attentionDefinitions(
         ],
       },
       label: 'sikertelen számla, stornó vagy helyesbítő',
-      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Állítsd ki kézzel a Számlázz.hu-ban. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik.`,
+      // Az ablak szándékos (a kézzel rendezett ügyet a rendszer nem látja, lásd
+      // a fájl fejlécét), ezért a szöveg kimondja, mit NEM mutat ez a lista, és
+      // hol van a teljes: NN/g, Visibility of System Status: „Only by knowing
+      // what the current system status is can you change it”
+      // (https://www.nngroup.com/articles/visibility-system-status/); GOV.UK
+      // Design System, Notification banner: „tell the user about something they
+      // need to know about” (https://design-system.service.gov.uk/components/notification-banner/).
+      // A havi runbook (08) sikertelen-bizonylat listájának nincs ablaka.
+      teendo: `Az utolsó ${ATTENTION_LOOKBACK_DAYS} napban a rendszer nem tudta kiállítani a bizonylatot. Állítsd ki kézzel a Számlázz.hu-ban. Ha a rendelésen több visszatérítés volt, egy korábbi helyesbítő akkor is hiányozhat, ha a legutóbbi kiállítottnak látszik. A ${ATTENTION_LOOKBACK_DAYS} napnál régebbi hibák itt nem jelennek meg, ezeket a havi egyeztetés sorolja fel (${MONTHLY_RECONCILIATION_RUNBOOK_PATH}).`,
     },
     {
       key: 'visszateritesElakadt',
@@ -286,18 +302,6 @@ async function findAll(
   throw new AttentionIncompleteError(collection)
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-/** Relációs mező azonosítója (depth: 0 → szám vagy szöveg; populálva → `{ id }`). */
-function relationKey(value: unknown): string | null {
-  const id = asRecord(value)?.id ?? value
-  return typeof id === 'number' || (typeof id === 'string' && id !== '') ? String(id) : null
-}
-
 /** A hiányzó helyesbítő eldöntéséhez kért rendelésmezők. */
 export const CORRECTIVE_EVIDENCE_ORDER_SELECT = {
   id: true,
@@ -311,24 +315,10 @@ export const CORRECTIVE_EVIDENCE_ORDER_SELECT = {
  * Egy rendelés azon visszatérítés-sorszámai (1-alapú, a `refunds` indexe + 1),
  * amelyeknek helyesbítő kellene, de a kiállításának nincs tartós bizonyítéka.
  *
- * MI KELL HELYESBÍTŐT: a részleges bejegyzés, és a rendelést lezáró, nem első
- * teljes bejegyzés (refund-order.ts; az első, teljes visszatérítés stornót
- * kap, azt a `stornoStatus` kezeli). Ugyanez a szabály az AAM-becslésé
- * (src/lib/alerts/aam.ts, `evidencedCorrectiveRefund`).
- *
- * BIZONYÍTÉK sorszámonként, a pillanatnyi `correctiveInvoiceStatus` NÉLKÜL
- * (az a legutóbbi kísérletet mutatja: egy későbbi sorszám sikeres
- * helyesbítője `issued`-ra írja, a korábbi, sikertelen bizonylat hiánya
- * ettől még megmarad):
- *  - a tárolt (`correctiveInvoiceSeq`, `correctiveInvoiceNumber`) pár, amely
- *    KIZÁRÓLAG a `refunds[seq - 1]` bejegyzést igazolja (az aam.ts szabálya:
- *    a pár a sikeres kiállítás ágain íródik, egy mentésben, és sosem törlődik);
- *  - az adott sorszámú, `committed` visszatérítési szándék. A kézi lezárás
- *    (refund-recovery.ts) csak akkor ír `committed`-et, ha a
- *    `refund-invoice-done` nyugta száma egyezik a rendelésen akkor tárolt, a
- *    SAJÁT sorszámára szóló párral; ez a nyugta változtathatatlan. Az
- *    automatikus lezárás soha ki nem fizetett, számla nélküli rendelésen fut,
- *    ott helyesbítő nem is lehet.
+ * Hogy mi kell helyesbítőt, és mi igazolja sorszámonként a kiállítását (a
+ * tárolt pár vagy a lezárt szándék, a pillanatnyi `correctiveInvoiceStatus`
+ * nélkül), az `src/lib/alerts/corrective-evidence.ts` dönti el; ugyanezt a
+ * szabályt használja az AAM-becslés (src/lib/alerts/aam.ts).
  *
  * TÜRELMI IDŐ: a még futó kiállítást nem jelezzük. Egy bizonyíték nélküli
  * bejegyzés akkor számít, ha a visszatérítése `INVOICE_MISSING_AFTER_MS`-nél
@@ -340,39 +330,18 @@ export function missingCorrectiveSequences(
   committedSequences: ReadonlySet<number>,
   nowMs: number,
 ): number[] {
-  if (!Array.isArray(order.refunds)) {
-    return []
-  }
-  const number = order.correctiveInvoiceNumber
-  const seq = order.correctiveInvoiceSeq
-  const pairSeq =
-    typeof number === 'string' &&
-    number.trim() !== '' &&
-    typeof seq === 'number' &&
-    Number.isSafeInteger(seq) &&
-    seq >= 1
-      ? seq
-      : null
   const lastAttemptFailed = order.correctiveInvoiceStatus === 'failed'
   const graceLimit = nowMs - INVOICE_MISSING_AFTER_MS
-  const missing: number[] = []
-  order.refunds.forEach((entry: unknown, index: number) => {
-    const record = asRecord(entry)
-    if (record === null) {
-      return
-    }
-    const sequence = index + 1
-    const needsCorrective = record.type === 'partial' || (record.type === 'full' && sequence > 1)
-    if (!needsCorrective || sequence === pairSeq || committedSequences.has(sequence)) {
-      return
-    }
-    const refundedAtMs =
-      typeof record.refundedAt === 'string' ? Date.parse(record.refundedAt) : Number.NaN
-    if (lastAttemptFailed || Number.isNaN(refundedAtMs) || refundedAtMs < graceLimit) {
-      missing.push(sequence)
-    }
-  })
-  return missing
+  return correctiveRefunds(order, committedSequences)
+    .filter(({ evidenced, entry }) => {
+      if (evidenced) {
+        return false
+      }
+      const refundedAtMs =
+        typeof entry.refundedAt === 'string' ? Date.parse(entry.refundedAt) : Number.NaN
+      return lastAttemptFailed || Number.isNaN(refundedAtMs) || refundedAtMs < graceLimit
+    })
+    .map(({ sequence }) => sequence)
 }
 
 /**
@@ -423,20 +392,9 @@ export async function missingCorrectiveOrderIds(
         { state: { equals: 'committed' } },
       ],
     },
-    { order: true, refundSequence: true },
+    COMMITTED_INTENT_SELECT,
   )
-  const committedByOrder = new Map<string, Set<number>>()
-  for (const doc of intents) {
-    const intent = asRecord(doc)
-    const orderKey = relationKey(intent?.order)
-    const sequence = intent?.refundSequence
-    if (orderKey === null || typeof sequence !== 'number') {
-      continue
-    }
-    const sequences = committedByOrder.get(orderKey) ?? new Set<number>()
-    sequences.add(sequence)
-    committedByOrder.set(orderKey, sequences)
-  }
+  const committedByOrder = committedSequencesByOrder(intents)
   return [...unproven.entries()]
     .filter(
       ([key, item]) =>
