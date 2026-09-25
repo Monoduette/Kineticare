@@ -1467,6 +1467,211 @@ describe.skipIf(!hasDb)('kurzus ár-őrök valódi mentési úton (DB)', () => {
     expect((await mainRow(id))._status).toBe('published')
   }, 120_000)
 
+  /** A párhuzamos ár-mentések versenyében az egyes kérések jelölője (`req.context`). */
+  const RACE_CONTEXT_KEY = 'arOrVerseny'
+
+  /** Egy mentés vagy verzió-visszaállítás kimenete, ahogy a `save` adja. */
+  async function validationOutcome(run: Promise<unknown>): Promise<'OK' | ErrorEntry[]> {
+    try {
+      await run
+      return 'OK'
+    } catch (error) {
+      const errors = (error as { data?: { errors?: ErrorEntry[] } }).data?.errors
+      if (!Array.isArray(errors)) throw error
+      return errors.map(({ path, message }) => ({ path, message }))
+    }
+  }
+
+  /**
+   * PR #305 (Codex P2, discussion_r4100959710): két egymást átfedő mentés
+   * ugyanazon a kurzuson. Az első (a tulajdonos 200 000 Ft-os közzététele) már
+   * validált, és a fő sor írása előtt áll; a második ekkor indul. Ha a második
+   * az ár-őr mércéjét (productReference) az első commitja előtt olvasná, a még
+   * látható 79 500 Ft-hoz mérne, átengedné a 70 000 Ft-ot (79 500 felénél
+   * több), és az első után írva a legutóbb közzétett 200 000 Ft-ról 65%-os
+   * csökkenést élesítene megerősítés nélkül. A fő sor zárja
+   * (productUpdateLocksRow) a validálás előtt, a kérés tranzakciójában
+   * fogja meg a második kérést, így az a már commitolt 200 000 Ft-hoz mér.
+   *
+   * A második kérést a fő sor írásánál is visszatartjuk az első commitjáig:
+   * zár nélkül így áll elő a Codex sorrendje (a második commitol később).
+   * Zárral a második odáig el sem jut. Minden sor egy írási út, amelyen az
+   * ár-őr fut: a tulajdonos mentése, a visszavont kurzus újbóli közzététele
+   * (a mérce ott a napló pillanatképe), a tulajdonos verzió-visszaállítása
+   * (külön Payload-művelet, restoreVersion.js) és a munkatárs közzététele (az
+   * ő ár-értéke a zár előtt olvasott, legutóbbi verzióból jön).
+   *
+   * Nem fedi: ha a tulajdonos az árat a duplájánál kevésbé emeli (például
+   * 150 000 Ft-ra), a munkatárs párhuzamos közzététele a zár előtt olvasott
+   * 79 500 Ft-ot visszaírja (mérve). Ott a mérce friss, az érték elavult; az
+   * ár-őr szabálya (a felénél nagyobb csökkenés) ezt nem tiltja.
+   */
+  it.each<{
+    path: string
+    setup: (id: number) => Promise<void>
+    initialPrice?: number
+    second: (id: number, context: Record<string, unknown>) => Promise<'OK' | ErrorEntry[]>
+    message: string
+  }>([
+    {
+      path: 'a tulajdonos mentése',
+      setup: async () => undefined,
+      second: (id, context) =>
+        validationOutcome(
+          payload.update({
+            collection: 'products',
+            id,
+            data: { priceInHUF: 70_000, _status: 'published' },
+            overrideAccess: false,
+            user: asUser(owner),
+            context,
+          }),
+        ),
+      message: priceDropMessage('rendes', 70_000, 200_000),
+    },
+    {
+      path: 'a visszavont kurzus újbóli közzététele',
+      setup: async (id) => {
+        expect(await save(id, owner, { _status: 'draft' }, { unpublishAllLocales: true })).toBe(
+          'OK',
+        )
+      },
+      second: (id, context) =>
+        validationOutcome(
+          payload.update({
+            collection: 'products',
+            id,
+            data: { priceInHUF: 70_000, _status: 'published' },
+            overrideAccess: false,
+            user: asUser(owner),
+            context,
+          }),
+        ),
+      message: priceDropMessage('rendes', 70_000, 200_000),
+    },
+    {
+      path: 'a tulajdonos verzió-visszaállítása',
+      initialPrice: 70_000,
+      setup: async (id) => {
+        expect(await save(id, owner, { priceInHUF: 79_500, _status: 'published' })).toBe('OK')
+      },
+      second: async (id, context) =>
+        validationOutcome(
+          payload.restoreVersion({
+            collection: 'products',
+            id: (await publishedVersionId(id)) as never,
+            draft: false,
+            overrideAccess: false,
+            user: asUser(owner),
+            context,
+          }),
+        ),
+      message: priceDropMessage('rendes', 70_000, 200_000),
+    },
+    {
+      path: 'a munkatárs közzététele',
+      setup: async () => undefined,
+      second: (id, context) =>
+        validationOutcome(
+          payload.update({
+            collection: 'products',
+            id,
+            data: { _status: 'published' },
+            overrideAccess: false,
+            user: asUser(staff),
+            context,
+          }),
+        ),
+      message: OWNER_ONLY_CHANGE_MESSAGE,
+    },
+  ])(
+    'PR #305 (Codex P2): párhuzamos 200 000 Ft-os közzététel mellett $path a commitolt 200 000 Ft-hoz mér',
+    async ({ path, setup, initialPrice, second, message }) => {
+      const pg = await import('pg')
+      const observer = new pg.default.Client({ connectionString: process.env.DATABASE_URI })
+      await observer.connect()
+      const adapter = payload.db as unknown as SqlAdapter
+      const updateOne = payload.db.updateOne
+      let releaseFirst: () => void = () => undefined
+      const firstMayWrite = new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+      let reportFirstPid: (pid: number) => void = () => undefined
+      const firstPid = new Promise<number>((resolve) => {
+        reportFirstPid = resolve
+      })
+      let firstHeld = false
+      let secondAtWrite = false
+      let first: Promise<'OK' | ErrorEntry[]> | undefined
+      let secondOutcome: Promise<'OK' | ErrorEntry[] | string> | undefined
+      const spy = vi.spyOn(payload.db, 'updateOne').mockImplementation(async (args) => {
+        const role = args.collection === 'products' ? args.req?.context?.[RACE_CONTEXT_KEY] : null
+        if (role === 'elso' && !firstHeld) {
+          firstHeld = true
+          const session = adapter.sessions[String(await args.req?.transactionID)]
+          const { rows } = await adapter.execute({
+            db: session?.db,
+            sql: sql`SELECT pg_backend_pid() AS pid`,
+          })
+          reportFirstPid(Number(rows[0]?.pid))
+          await firstMayWrite
+        } else if (role === 'masodik') {
+          secondAtWrite = true
+          await first?.catch(() => undefined)
+        }
+        return updateOne.call(payload.db, args)
+      })
+      try {
+        const id = await createPublished(`codex-p2 ${path}`, {
+          priceInHUF: initialPrice ?? 79_500,
+        })
+        await setup(id)
+
+        first = validationOutcome(
+          payload.update({
+            collection: 'products',
+            id,
+            data: { priceInHUF: 200_000, _status: 'published' },
+            overrideAccess: false,
+            user: asUser(owner),
+            context: { [RACE_CONTEXT_KEY]: 'elso' },
+          }),
+        )
+        const holderPid = await Promise.race([
+          firstPid,
+          first.then((outcome) => {
+            throw new Error(`Az első mentés a fő sor írása előtt véget ért: ${String(outcome)}`)
+          }),
+        ])
+        let secondSettled = false
+        secondOutcome = second(id, { [RACE_CONTEXT_KEY]: 'masodik' }).then(
+          (outcome) => outcome,
+          (error: unknown) => String(error),
+        )
+        void secondOutcome.then(() => {
+          secondSettled = true
+        })
+        await untilWaitersBehind(observer, holderPid, 1, () => secondAtWrite || secondSettled)
+        releaseFirst()
+
+        expect(await first).toBe('OK')
+        expect(await secondOutcome).toContainEqual({ path: 'priceInHUF', message })
+        const row = await mainRow(id)
+        expect({ _status: row._status, priceInHUF: row.priceInHUF }).toEqual({
+          _status: 'published',
+          priceInHUF: 200_000,
+        })
+      } finally {
+        releaseFirst()
+        await first?.catch(() => undefined)
+        await secondOutcome
+        spy.mockRestore()
+        await observer.end()
+      }
+    },
+    120_000,
+  )
+
   /**
    * PR #305 rev3 (breaker BRK-L1): a mentés sorzárja nem ütközhet a kurzusra
    * hivatkozó sor beszúrásának idegenkulcs-zárjával (`FOR KEY SHARE`). Itt egy
