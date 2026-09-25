@@ -396,10 +396,12 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   // nem várunk (a várakozás a pool 30 s-os statement_timeoutjába futna, és
   // hamis riasztást adna, miközben a másik példány küld): foglalt zárnál ez a
   // kör kimarad, a következő futás a nyomot látva már nem küld. A zár
-  // tranzakciója a küldés alatt tétlen; a Resend-hívás időkorlátja 10 s, jóval
-  // a 60 s-os idle_in_transaction_session_timeout alatt. (Ismert rés: egy 60 s-nál
-  // hosszabb, többlépéses SMTP-küldés alatt a Postgres bonthatja a zár
-  // kapcsolatát, és egy közben induló példány küldhet még egyet.)
+  // session-szintű, tranzakció nélkül: a hosszú SMTP-küldést az
+  // idle_in_transaction_session_timeout nem szakítja meg, és a zár
+  // kapcsolatának hibája csak figyelmeztetés, nem uncaughtException.
+  // (Ismert rés: ha a zár kapcsolata a küldés közben mégis megszakad, pl.
+  // Postgres-újraindulás, a Postgres elengedi a zárat, és egy közben induló
+  // példány a nyom beírása előtt küldhet még egyet.)
   // Ha a zár a küldés UTÁN hibázik, a küldés eredménye itt marad meg.
   const attempt: { result?: SendResult } = {}
   let locked: DigestLockResult<boolean> = { acquired: false }
@@ -455,7 +457,9 @@ export async function runDailyDigestIfDue(deps: DigestDeps): Promise<DigestOutco
   const sent: SendResult = attempt.result ?? { ok: false, provider: 'noop', retryable: true }
   if (sent.ok) {
     state.done = true
-    log.info('napi összesítő: levél elküldve', { teendo: total })
+    if (sent.provider !== 'noop') {
+      log.info('napi összesítő: levél elküldve', { teendo: total })
+    }
     return 'elkuldve'
   }
   if (sent.retryable !== true) {

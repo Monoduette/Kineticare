@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resetAlertThrottle, shouldEmitThrottledAlert } from '../../lib/alert-throttle'
@@ -88,7 +90,7 @@ function digestHarness(options: {
   send?: (input: SendMailInput) => Promise<SendResult>
   recipients?: readonly string[]
   vatMode?: string
-  /** A Payload `db`-je (a drizzle-zárhoz); nélküle a zár teszt/mock módban kimarad. */
+  /** A Payload `db`-je (a zár `pg` poolja); nélküle a zár teszt/mock módban kimarad. */
   db?: unknown
 }) {
   const mails: SendMailInput[] = []
@@ -121,6 +123,36 @@ function digestHarness(options: {
     state: processState,
   })
   return { mails, entries, sendMail, state, deps, memory, settings }
+}
+
+/**
+ * A `pg` pool határa a napi zárhoz: kivett kliens (valódi EventEmitter), a
+ * zár- és feloldó-lekérdezés kötött válasza, és a `release` hívásainak
+ * rögzítése (hibával hívva a pool eldobja a kapcsolatot).
+ */
+function fakeLockPool(options: {
+  tryLock?: () => Promise<unknown>
+  unlock?: () => Promise<unknown>
+  release?: (error?: Error) => void
+}) {
+  const released: Array<Error | undefined> = []
+  const client = Object.assign(new EventEmitter(), {
+    query: async (text: string): Promise<unknown> => {
+      if (text.includes('pg_try_advisory_lock(')) {
+        return options.tryLock ? options.tryLock() : { rows: [{ locked: true }] }
+      }
+      if (text.includes('pg_advisory_unlock(')) {
+        return options.unlock ? options.unlock() : { rows: [{ unlocked: true }] }
+      }
+      throw new Error(`váratlan lekérdezés a zár kapcsolatán: ${text}`)
+    },
+    release: (error?: Error): void => {
+      released.push(error)
+      options.release?.(error)
+    },
+  })
+  const connect = vi.fn(async () => client)
+  return { pool: { connect }, released, connect }
 }
 
 describe('napi összesítő — időzítés', () => {
@@ -344,6 +376,8 @@ describe('napi összesítő — küldés', () => {
     expect(h.entries.some((entry) => entry.level === 'warn' && entry.msg.includes('noop'))).toBe(
       true,
     )
+    // A napló ne mondja, hogy kiment a levél, ha semmi nem ment ki.
+    expect(h.entries.some((entry) => entry.msg.includes('levél elküldve'))).toBe(false)
 
     // 08:00: az üzemeltető beállítja az SMTP-t, a deploy új folyamatot indít.
     provider.name = 'smtp'
@@ -359,10 +393,10 @@ describe('napi összesítő — küldés', () => {
   })
 
   it('ha a zár a küldés előtt hibázik, nincs küldés, a hiba a hívóé, és a következő próba a lekérdezési hiba várakozása után jön', async () => {
-    const transaction = vi.fn(async (): Promise<never> => {
+    const connect = vi.fn(async (): Promise<never> => {
       throw new Error('a zár kapcsolata nem jött létre')
     })
-    const h = digestHarness({ orders: openOrders(MORNING), db: { drizzle: { transaction } } })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { pool: { connect } } })
 
     await expect(runDailyDigestIfDue(h.deps(MORNING))).rejects.toThrow('a zár kapcsolata')
     expect(h.sendMail).not.toHaveBeenCalled()
@@ -370,19 +404,63 @@ describe('napi összesítő — küldés', () => {
     // A várakozás alatt nincs újabb lekérdezés és zár-próba (se riasztás).
     const waitMs = assemblyRetryDelayMs(1)
     expect(await runDailyDigestIfDue(h.deps(MORNING + waitMs - 60_000))).toBe('nem-esedekes')
-    expect(transaction).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenCalledTimes(1)
     await expect(runDailyDigestIfDue(h.deps(MORNING + waitMs))).rejects.toThrow()
-    expect(transaction).toHaveBeenCalledTimes(2)
+    expect(connect).toHaveBeenCalledTimes(2)
   })
 
-  it('ha a zár a küldés UTÁN hibázik, a kiment levél eredménye marad: nincs hamis riasztás és második levél', async () => {
-    const transaction = vi.fn(
-      async (run: (tx: { execute: () => Promise<unknown> }) => Promise<unknown>) => {
-        await run({ execute: async () => ({ rows: [{ locked: true }] }) })
-        throw new Error('a zár tranzakciójának lezárása megszakadt')
+  it('breaker (PR #305): értelmezhetetlen zár-válasznál (pl. sorok tömbje a {rows} helyett) nem küld, dob, a kapcsolatot eldobja, és a lekérdezési hiba várakozása jön', async () => {
+    // Ha ezt „foglalt”-nak vennénk, minden futás csendben `folyamatban` lenne:
+    // aznap nem menne levél, és riasztás sem.
+    const lock = fakeLockPool({ tryLock: async () => [{ locked: true }] })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { pool: lock.pool } })
+
+    await expect(runDailyDigestIfDue(h.deps(MORNING))).rejects.toThrow('nem értelmezhető')
+    expect(h.sendMail).not.toHaveBeenCalled()
+    // Lehet, hogy a zárat mégis megkapta: a session nem mehet vissza a poolba.
+    expect(lock.released).toEqual([expect.any(Error)])
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
+    expect(lock.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('productionben pool nélkül a zár nem hagyható ki: nincs küldés, a hiba a hívóé', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    try {
+      const h = digestHarness({ orders: openOrders(MORNING), db: {} })
+      await expect(runDailyDigestIfDue(h.deps(MORNING))).rejects.toThrow('Az adatbázis-zár')
+      expect(h.sendMail).not.toHaveBeenCalled()
+      expect(h.memory.createCalls).toHaveLength(0)
+      expect(
+        h.entries.some((entry) => entry.level === 'error' && entry.msg.startsWith('RIASZTÁS')),
+      ).toBe(true)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('ha a zár elengedése a küldés után nem sikerül, a levél eredménye marad, és a zárat tartó kapcsolat nem kerül vissza a poolba', async () => {
+    const lock = fakeLockPool({
+      unlock: async () => {
+        throw new Error('a kapcsolat megszakadt')
       },
-    )
-    const h = digestHarness({ orders: openOrders(MORNING), db: { drizzle: { transaction } } })
+    })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { pool: lock.pool } })
+
+    expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+    // Hibával elengedve a pool bontja a sessiont, és vele a Postgres a zárat.
+    expect(lock.released).toEqual([expect.any(Error)])
+    expect(await runDailyDigestIfDue(h.deps(MORNING + 5 * 60_000))).toBe('nem-esedekes')
+    expect(h.sendMail).toHaveBeenCalledTimes(1)
+  })
+
+  it('ha a zár lezárása a küldés UTÁN dob, a kiment levél eredménye marad: nincs hamis riasztás és második levél', async () => {
+    const lock = fakeLockPool({
+      release: () => {
+        throw new Error('Release called on client which has already been released to the pool.')
+      },
+    })
+    const h = digestHarness({ orders: openOrders(MORNING), db: { pool: lock.pool } })
 
     expect(await runDailyDigestIfDue(h.deps(MORNING))).toBe('elkuldve')
     expect(h.sendMail).toHaveBeenCalledTimes(1)

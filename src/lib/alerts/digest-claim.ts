@@ -18,14 +18,15 @@
  * ATOMITÁS: az `audit-logs`-on nincs egyedi megszorítás, ezért a „nézd meg,
  * küldd el, írd be” lépést a hívó (`runDailyDigestIfDue`) napi kulcsú
  * Postgres advisory-zár alatt futtatja (`withDigestTryLock`). A zárra NEM
- * várunk: a küldés (SMTP-n lépésenként 15 s) a zár alatt fut, és a várakozó
- * `pg_advisory_xact_lock` a pool 30 s-os statement_timeoutjába futna, ami
- * hamis „a reggeli levél elmarad” riasztást adna (PR #305, breaker). Ha a zár
- * foglalt, egy másik példány épp küld; a hívó ilyenkor csendben kihagyja a
- * kört, és a következő futás a napi nyomot látva már nem küld.
+ * várunk: a küldés (SMTP-n lépésenként 15 s) a zár alatt fut, és egy várakozó
+ * zár a pool 30 s-os statement_timeoutjába futna, ami hamis „a reggeli levél
+ * elmarad” riasztást adna (PR #305, breaker). Ha a zár foglalt, egy másik
+ * példány épp küld; a hívó ilyenkor csendben kihagyja a kört, és a következő
+ * futás a napi nyomot látva már nem küld. A zár session-szintű, tranzakció
+ * nélkül, hogy a hosszú küldés alatt se az idle-in-transaction időkorlát, se
+ * egy megszakadt kapcsolat ne bántsa a folyamatot (lásd `withDigestTryLock`).
  */
 
-import { sql, type SQL } from '@payloadcms/db-postgres/drizzle'
 import type { Payload } from 'payload'
 
 import { auditLogStore, writeAuditLog } from '../audit'
@@ -85,40 +86,76 @@ export async function recordDigestSent(
   })
 }
 
-/** A zár-tranzakció minimális, szerkezeti felülete (a drizzle-példányból). */
-interface TryLockTransaction {
-  execute(query: SQL): Promise<unknown>
+/**
+ * A zár saját, poolból kivett kapcsolatának minimális, szerkezeti felülete
+ * (a `pg` `PoolClient`-je).
+ */
+interface DigestLockClient {
+  query(text: string, values: readonly unknown[]): Promise<unknown>
+  on(event: 'error', listener: (error: Error) => void): unknown
+  removeListener(event: 'error', listener: (error: Error) => void): unknown
+  /** Hibával hívva a pool eldobja a kapcsolatot (a session vége minden zárat elenged). */
+  release(error?: Error): void
 }
 
-interface TryLockDrizzle {
-  transaction<T>(run: (tx: TryLockTransaction) => Promise<T>): Promise<T>
+interface DigestLockPool {
+  connect(): Promise<DigestLockClient>
 }
 
-/** A Payload postgres-adapterének drizzle-példánya, ha van (vö. advisory-lock.ts). */
-function resolveDrizzle(payload: Partial<Pick<Payload, 'db'>>): TryLockDrizzle | null {
-  const db = payload.db as unknown as { drizzle?: unknown } | undefined
-  const candidate = db?.drizzle
+/** A Payload postgres-adapterének `pg` poolja, ha van (vö. payload.config.ts). */
+function resolvePool(payload: Partial<Pick<Payload, 'db'>>): DigestLockPool | null {
+  const db = payload.db as unknown as { pool?: unknown } | undefined
+  const candidate = db?.pool
   if (
     typeof candidate === 'object' &&
     candidate !== null &&
-    typeof (candidate as { transaction?: unknown }).transaction === 'function'
+    typeof (candidate as { connect?: unknown }).connect === 'function'
   ) {
-    return candidate as TryLockDrizzle
+    return candidate as DigestLockPool
   }
   return null
 }
 
-/** A `pg_try_advisory_xact_lock` válasza; értelmezhetetlen válasznál dob (fail-closed). */
-function lockAcquired(result: unknown): boolean {
+/** Egy logikai oszlop az első sorból; értelmezhetetlen válasznál dob (fail-closed). */
+function booleanColumn(result: unknown, column: string): boolean {
   const rows =
     typeof result === 'object' && result !== null ? (result as { rows?: unknown }).rows : undefined
   const row: unknown = Array.isArray(rows) ? rows[0] : undefined
-  const locked =
-    typeof row === 'object' && row !== null ? (row as { locked?: unknown }).locked : undefined
-  if (typeof locked !== 'boolean') {
+  const value =
+    typeof row === 'object' && row !== null ? (row as Record<string, unknown>)[column] : undefined
+  if (typeof value !== 'boolean') {
     throw new Error('a napi összesítő zárának válasza nem értelmezhető')
   }
-  return locked
+  return value
+}
+
+// A kulcs kötött paraméterként megy át ($1), string-összefűzés nincs.
+const TRY_LOCK_SQL = 'select pg_try_advisory_lock(hashtextextended($1::text, 0)) as locked'
+const UNLOCK_SQL = 'select pg_advisory_unlock(hashtextextended($1::text, 0)) as unlocked'
+
+/**
+ * A session-szintű zár elengedése. Csak akkor ad `true`-t, ha a Postgres
+ * visszaigazolta; minden más esetben a hívó eldobja a kapcsolatot, mert egy
+ * zárat tartó session a poolba visszakerülve aznapra minden összesítőt
+ * `folyamatban`-ra állítana.
+ */
+async function unlockDigestLock(
+  client: DigestLockClient,
+  lockKey: string,
+  log: Logger,
+): Promise<boolean> {
+  try {
+    if (booleanColumn(await client.query(UNLOCK_SQL, [lockKey]), 'unlocked')) {
+      return true
+    }
+    log.warn('napi összesítő: a zár elengedésekor a kapcsolat nem tartotta a zárat', { lockKey })
+  } catch (error) {
+    log.warn('napi összesítő: a zár elengedése nem sikerült, a kapcsolatot eldobjuk', {
+      lockKey,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  return false
 }
 
 export type DigestLockResult<T> =
@@ -129,11 +166,20 @@ export type DigestLockResult<T> =
  * nélkül. A kulcs ugyanúgy képződik, mint a `withAdvisoryLock`-nál
  * (`hashtextextended(kulcs, 0)`), így a két zárfajta ugyanazt a zárat látja.
  *
+ * SESSION-SZINTŰ zár egy saját, poolból kivett kapcsolaton, TRANZAKCIÓ
+ * NÉLKÜL (PR #305, breaker). A `fn` (a levélküldés) SMTP-n percekig is
+ * tarthat; egy nyitott zár-tranzakciót a pool 60 s-os
+ * `idle_in_transaction_session_timeout`-ja közben megölne. Tranzakció nélkül
+ * ez az időkorlát nem vonatkozik a kapcsolatra. Ha a kapcsolat mégis
+ * megszakad (Postgres-újraindulás, hálózat), a kivett kliens `error`
+ * eseményét itt kezeljük: kezelő nélkül a Node `uncaughtException`-ként
+ * vinné el a szerverfolyamatot (CLAUDE.md 7. tanulság). A megszakadt session
+ * zárját a Postgres magától elengedi, a kapcsolatot a pool eldobja.
+ *
  * Ha a zár foglalt, a `fn` nem fut, és `{ acquired: false }` a válasz. Ha a
- * drizzle-példány nem oldható fel, a `withAdvisoryLock` szabálya érvényes:
- * productionben dob, teszt/mock környezetben figyelmeztetéssel zár nélkül fut.
- * A `fn` nem a zár tranzakciójában fut (a Payload-írás saját kapcsolatot
- * használ), a zár-tranzakció a futása alatt tétlen.
+ * pool nem oldható fel, a `withAdvisoryLock` szabálya érvényes: productionben
+ * dob, teszt/mock környezetben figyelmeztetéssel zár nélkül fut. A `fn` nem a
+ * zár kapcsolatán fut (a Payload-írás saját kapcsolatot használ).
  */
 export async function withDigestTryLock<T>(
   payload: Partial<Pick<Payload, 'db'>>,
@@ -141,31 +187,52 @@ export async function withDigestTryLock<T>(
   fn: () => Promise<T>,
   log: Logger,
 ): Promise<DigestLockResult<T>> {
-  const drizzle = resolveDrizzle(payload)
-  if (!drizzle) {
+  const pool = resolvePool(payload)
+  if (!pool) {
     if (process.env.NODE_ENV === 'production') {
       log.error(
-        'RIASZTÁS: a napi összesítő zárja nem szerezhető meg (nincs drizzle-példány), a levél zár nélkül nem mehet ki',
+        'RIASZTÁS: a napi összesítő zárja nem szerezhető meg (nincs adatbázis-pool), a levél zár nélkül nem mehet ki',
         { lockKey },
       )
       throw new Error(`Az adatbázis-zár nem szerezhető meg (${lockKey}).`)
     }
-    log.warn(
-      'napi összesítő: advisory-zár kihagyva, a Payload-példányon nincs drizzle (teszt/mock)',
-      {
-        lockKey,
-      },
-    )
+    log.warn('napi összesítő: advisory-zár kihagyva, a Payload-példányon nincs pool (teszt/mock)', {
+      lockKey,
+    })
     return { acquired: true, value: await fn() }
   }
-  return drizzle.transaction(async (tx) => {
-    // A kulcs kötött paraméterként megy át ($1), string-összefűzés nincs.
-    const result = await tx.execute(
-      sql`select pg_try_advisory_xact_lock(hashtextextended(${lockKey}::text, 0)) as locked`,
+
+  const client = await pool.connect()
+  const connection: { error?: Error } = {}
+  const onError = (error: Error): void => {
+    connection.error ??= error
+    log.warn(
+      'napi összesítő: a zár kapcsolata megszakadt; a Postgres a zárat a kapcsolattal együtt elengedte',
+      { lockKey, error: error.message },
     )
-    if (!lockAcquired(result)) {
+  }
+  client.on('error', onError)
+  // Csak ép, zárat már nem tartó kapcsolat mehet vissza a poolba.
+  let reusable = false
+  try {
+    if (!booleanColumn(await client.query(TRY_LOCK_SQL, [lockKey]), 'locked')) {
+      reusable = true
       return { acquired: false }
     }
-    return { acquired: true, value: await fn() }
-  })
+    try {
+      return { acquired: true, value: await fn() }
+    } finally {
+      reusable = connection.error === undefined && (await unlockDigestLock(client, lockKey, log))
+    }
+  } finally {
+    if (reusable && connection.error === undefined) {
+      client.removeListener('error', onError)
+      client.release()
+    } else {
+      // Az eldobott kapcsolat késői hibáit is ez a kezelő nyeli el.
+      client.release(
+        connection.error ?? new Error('a napi összesítő zár-kapcsolata nem tehető vissza a poolba'),
+      )
+    }
+  }
 }

@@ -3,8 +3,17 @@ import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { BasePayload, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { createDigestState, runDailyDigestIfDue, type DigestOutcome } from '../../lib/alerts/digest'
-import { DIGEST_ENTITY_TYPE, DIGEST_SENT_ACTION } from '../../lib/alerts/digest-claim'
+import {
+  createDigestState,
+  isDigestDue,
+  runDailyDigestIfDue,
+  type DigestOutcome,
+} from '../../lib/alerts/digest'
+import {
+  DIGEST_ENTITY_TYPE,
+  DIGEST_SENT_ACTION,
+  recordDigestSent,
+} from '../../lib/alerts/digest-claim'
 import type { SendMailInput } from '../../lib/email'
 import type { SendResult } from '../../lib/email/types'
 import type { Logger } from '../../lib/logger'
@@ -51,6 +60,9 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
   // A foglalt zár esetéhez külön nap, hogy az előző eset nyoma ne hasson rá.
   const BUSY_NOW = Date.parse('2031-05-18T05:10:00Z')
   const BUSY_DAY = '2031-05-18'
+  // A zár alatti újraolvasás és a megszakadt zár-kapcsolat esetének saját napja.
+  const RACE_DAY = '2031-05-19'
+  const DROP_DAY = '2031-05-20'
   let payload: Payload
   let releaseBootstrap: (() => void) | undefined
   let userId: number | undefined
@@ -60,7 +72,7 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
   async function deleteDayClaims(): Promise<void> {
     await adapter().pool.query(
       'DELETE FROM audit_logs WHERE action = $1 AND entity_type = $2 AND entity_id = ANY($3)',
-      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, [DAY, BUSY_DAY]],
+      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, [DAY, BUSY_DAY, RACE_DAY, DROP_DAY]],
     )
   }
 
@@ -197,5 +209,121 @@ describe.skipIf(!hasDb)('napi összesítő napi nyoma (valódi PostgreSQL)', () 
     // a következő futás ugyanabban a folyamatban pótolja.
     expect(await run()).toBe('elkuldve')
     expect(sent).toHaveLength(1)
+  }, 30_000)
+
+  it('breaker (PR #305): zár alatti újraolvasás: ha egy másik példány a lekérdezés közben küldött és beírta a nyomot, ez a futás nem küld', async () => {
+    // A másik példány a külső nyom-ellenőrzés UTÁN, de a zár megszerzése ELŐTT
+    // küld és ír nyomot (itt: az első számolás közben), majd elengedi a zárat.
+    const sent: SendMailInput[] = []
+    const state = createDigestState()
+    let injected = false
+    const racing = new Proxy(payload, {
+      get(target, prop) {
+        if (prop === 'count') {
+          return async (args: Parameters<Payload['count']>[0]) => {
+            if (!injected) {
+              injected = true
+              await recordDigestSent(payload, RACE_DAY, { teendo: 1, provider: 'smtp' })
+            }
+            return target.count(args)
+          }
+        }
+        const value: unknown = Reflect.get(target, prop, target)
+        return typeof value === 'function'
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value
+      },
+    })
+    const nowMs = Date.parse(`${RACE_DAY}T05:10:00Z`)
+    const outcome = await runDailyDigestIfDue({
+      payload: racing,
+      sendMail: smtpLikeSend(sent),
+      recipients: () => ['tulajdonos@example.test'],
+      logger: silentLogger,
+      nowMs,
+      serverUrl: 'https://kineticare.hu',
+      state,
+    })
+    expect(injected).toBe(true)
+    expect(sent).toHaveLength(0)
+    expect(outcome).toBe('mar-elkuldve')
+    // Aznapra lezárva: a következő poll már nem is számol.
+    expect(isDigestDue(nowMs + 5 * 60_000, state)).toBe(false)
+  })
+
+  it('breaker (PR #305): ha a zár kapcsolatát a küldés közben bontják, a folyamat nem kap uncaughtException-t, a levél és a nyom megmarad, a zár felszabadul', async () => {
+    const lockKey = `alerts:daily-digest:${DROP_DAY}`
+    const uncaught: unknown[] = []
+    const onUncaught = (error: unknown): void => {
+      uncaught.push(error)
+    }
+    process.on('uncaughtException', onUncaught)
+    const sent: SendMailInput[] = []
+    let holderState: string | undefined
+    let terminated = false
+    try {
+      const outcome = await runDailyDigestIfDue({
+        payload,
+        // Lassú SMTP-küldés, közben a Postgres bontja a zár kapcsolatát (mint a
+        // 60 s-os idle_in_transaction_session_timeout, egy Postgres-újraindulás
+        // vagy a hálózat elvágása).
+        sendMail: async (input: SendMailInput): Promise<SendResult> => {
+          sent.push(input)
+          const holder = await adapter().pool.query<{ pid: number; state: string }>(
+            `SELECT l.pid, a.state
+               FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+              WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1
+                AND l.classid::bigint = ((hashtextextended($1::text, 0) >> 32) & 4294967295)
+                AND l.objid::bigint = (hashtextextended($1::text, 0) & 4294967295)`,
+            [lockKey],
+          )
+          holderState = holder.rows[0]?.state
+          const pid = holder.rows[0]?.pid
+          if (pid !== undefined) {
+            const killed = await adapter().pool.query<{ ok: boolean }>(
+              'SELECT pg_terminate_backend($1) AS ok',
+              [pid],
+            )
+            terminated = killed.rows[0]?.ok === true
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          return { ok: true, provider: 'smtp' }
+        },
+        recipients: () => ['tulajdonos@example.test'],
+        logger: silentLogger,
+        nowMs: Date.parse(`${DROP_DAY}T05:10:00Z`),
+        serverUrl: 'https://kineticare.hu',
+        state: createDigestState(),
+      })
+      await new Promise((resolve) => setTimeout(resolve, 300))
+
+      expect(terminated).toBe(true)
+      // A zár kapcsolata a küldés alatt nincs tranzakcióban, így az
+      // idle_in_transaction_session_timeout nem vonatkozik rá.
+      expect(holderState).toBe('idle')
+      expect(uncaught).toEqual([])
+      expect(outcome).toBe('elkuldve')
+      expect(sent).toHaveLength(1)
+    } finally {
+      process.off('uncaughtException', onUncaught)
+    }
+
+    const claims = await adapter().pool.query(
+      'SELECT id FROM audit_logs WHERE action = $1 AND entity_type = $2 AND entity_id = $3',
+      [DIGEST_SENT_ACTION, DIGEST_ENTITY_TYPE, DROP_DAY],
+    )
+    expect(claims.rows).toHaveLength(1)
+    // A bontott session zárja felszabadult: egy másik kapcsolat megkapja.
+    const probe = await adapter().pool.connect()
+    try {
+      const free = await probe.query<{ locked: boolean }>(
+        'SELECT pg_try_advisory_lock(hashtextextended($1::text, 0)) AS locked',
+        [lockKey],
+      )
+      expect(free.rows[0]?.locked).toBe(true)
+      await probe.query('SELECT pg_advisory_unlock(hashtextextended($1::text, 0))', [lockKey])
+    } finally {
+      probe.release()
+    }
   }, 30_000)
 })
