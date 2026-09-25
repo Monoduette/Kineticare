@@ -22,6 +22,15 @@
  * A korlát folyamatonként érvényes, mert a pool is az. A sorban állás felső
  * határa `CHECKOUT_LOCK_SLOT_WAIT_MS`: ennél tovább egy vevő sem várhat
  * válasz nélkül, ilyenkor a hívó 503-at ad („próbáld újra").
+ *
+ * A pool azóta kifejezetten 20 kapcsolatos (src/payload.config.ts `pool.max`,
+ * w1-barion-platform). A „(pool.max − 2) / 4” ökölszabály így 4 helyet is
+ * engedne, a korlát mégis a kisebb, biztonságos 2 marad: ugyanebből a poolból
+ * él a Barion-callback is, amely csúcson kérésenként 4 kapcsolatot fog
+ * (session-zár + rendelés-zár + ügyfél-zár + lekérdezés), és a számla-job is
+ * 2–3-at. Két nyitott pénztár (8) mellett két egyidejű callback (8) és egy
+ * számla-job (3) még elfér a 20-ban; négy pénztár (16) mellett már egyetlen
+ * callback is kimerítené a poolt, és a fizetések visszaigazolása állna.
  */
 
 export const CHECKOUT_LOCK_MAX_CONCURRENT = 2
