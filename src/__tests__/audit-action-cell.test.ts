@@ -62,7 +62,10 @@ describe('auditActionLabel', () => {
     const { RECEIPTS } = await import('../lib/refund/recovery-receipts')
     const { MEDIA_RECOVERY_ACTION } = await import('../lib/media-recovery-provenance')
     const { LEGACY_PURCHASE_AUDIT_ACTION } = await import('../lib/customer-import/execute')
-    const { ORDER_CONFIRMATION_AUDIT_ACTION } = await import('../lib/order-paid')
+    const { ORDER_CONFIRMATION_AUDIT_ACTION, ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION } =
+      await import('../lib/order-paid')
+    const { WITHDRAWAL_RECEIPT_AUDIT_ACTION, WITHDRAWAL_REQUEST_AUDIT_ACTION } =
+      await import('../lib/withdrawal/service')
     const { AUTOMATIC_REFUND_BLOCKED_ACTION } = await import('../lib/refund/automatic-block')
     const { REFUND_ATTEMPT_AUDIT_ACTIONS } = await import('../lib/refund/attempt-audit')
     const { REFUND_NOTICE_AUDIT_ACTION } = await import('../lib/refund/refund-notice')
@@ -75,6 +78,9 @@ describe('auditActionLabel', () => {
       MEDIA_RECOVERY_ACTION,
       LEGACY_PURCHASE_AUDIT_ACTION,
       ORDER_CONFIRMATION_AUDIT_ACTION,
+      ORDER_CONFIRMATION_UNCERTAIN_AUDIT_ACTION,
+      WITHDRAWAL_REQUEST_AUDIT_ACTION,
+      WITHDRAWAL_RECEIPT_AUDIT_ACTION,
       AUTOMATIC_REFUND_BLOCKED_ACTION,
       'order-refund',
       'order-partial-refund',
@@ -96,6 +102,8 @@ describe('auditEntityLabel', () => {
     expect(auditEntityLabel('products')).toBe('Kurzus')
     expect(auditEntityLabel('orders')).toBe('Rendelés')
     expect(auditEntityLabel('refund-intents')).toBe('Visszatérítési szándék')
+    // Rendelés nélküli elállási nyilatkozat (src/lib/withdrawal/service.ts).
+    expect(auditEntityLabel('withdrawal')).toBe('Elállás')
     expect(auditEntityLabel('ismeretlen')).toBe('ismeretlen')
     expect(auditEntityLabel(undefined)).toBe(AUDIT_EMPTY_LABEL)
   })
