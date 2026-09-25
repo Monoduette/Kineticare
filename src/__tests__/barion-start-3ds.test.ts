@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 
+import { getTranslation, initI18n } from '@payloadcms/translations'
 import type { Payload } from 'payload'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,6 +17,7 @@ import {
 import { CHECKOUT_START_REJECTED } from '../lib/checkout/form-submission'
 import { CheckoutError, paymentWindowToMs, startCheckout } from '../lib/checkout/start-checkout'
 import type { Logger } from '../lib/logger'
+import configPromise from '../payload.config'
 import type { Order, Product, User } from '../payload-types'
 
 /**
@@ -610,18 +612,19 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
     expect(runbookLine).toMatch(/Deploy/)
   })
 
-  it.each<[string[], string]>([
-    [['', 'ModelValidationError'], 'ModelValidationError'],
-    [['', '  '], 'http-400'],
+  it.each<[string[], number, string]>([
+    [['', 'ModelValidationError'], 400, 'ModelValidationError'],
+    [['', '  '], 400, 'http-400'],
+    [['', '  '], 422, 'http-422'],
   ])(
-    'üres Barion-hibakód (%j): a levél a következő nem üres kódot, ennek híján a HTTP-státuszt nevezi meg (%s)',
-    async (codes, expectedKind) => {
+    'üres Barion-hibakód (%j, HTTP %i): a levél a következő nem üres kódot, ennek híján a HTTP-státuszt nevezi meg (%s)',
+    async (codes, httpStatus, expectedKind) => {
       fetchMock.mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             Errors: codes.map((code) => ({ ErrorCode: code, Title: 'x', Description: 'x' })),
           }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } },
+          { status: httpStatus, headers: { 'Content-Type': 'application/json' } },
         ),
       )
       const { payload } = checkoutPayload()
@@ -641,30 +644,84 @@ describe('startCheckout → Payment/Start: a 3DS-adatok és az OrderNumber a kim
 
 /**
  * A runbook 11 vészkapcsoló-teendője az ügyeletes egyetlen fogódzója, amikor a
- * Barion minden fizetésindítást elutasít. A sorban megadott értéket a VALÓDI
- * body-építőn futtatjuk végig: a `0`, az `off` vagy az idézőjeles `"false"`
- * a szigorú értelmezés miatt nem kapcsol ki (`barionSend3dsEnabled`), és egy
- * ilyen elírás az eladást továbbra is állva hagyná. A sor a részletekért egy
+ * Barion minden fizetésindítást elutasít. Minden értéket, amelyet a runbook
+ * beállíttat (a riasztáskód sora, az élesítési próba hibaága) vagy
+ * kikapcsolóként megnevez (a szakasz értéklistája), a VALÓDI body-építőn
+ * futtatunk végig: a `0`, az `off` vagy az idézőjeles `"false"` a szigorú
+ * értelmezés miatt nem kapcsol ki (`barionSend3dsEnabled`), és egy ilyen
+ * elírás az eladást továbbra is állva hagyná. A sor a részletekért egy
  * szakaszra mutat, annak is léteznie kell.
+ *
+ * A próba lépései közül a 0. (a merge előtti `false` törlése) és a Deploy
+ * Alt nélküli megnyomása csak szövegben él, azokat emberi átnézés védi.
  */
 describe('runbook 11, 3DS-vészkapcsoló: a teendő és az élesítési próba a kóddal egyezik', () => {
-  it('a riasztáskód sorában megadott érték kikapcsolja a négy 3DS-blokkot, és a sor által hivatkozott szakasz létezik', () => {
-    const row = runbookRow('a-barion-elutasitotta-a-fizetesinditast') ?? ''
-    const value = /`BARION_SEND_3DS` változót `([^`]+)` értékkel/.exec(row)?.[1]
-    expect(value, 'a sor nem nevez meg beállítandó értéket').toBeDefined()
-    process.env.BARION_SEND_3DS = value ?? ''
+  const ALERT_CODE = 'a-barion-elutasitotta-a-fizetesinditast'
 
-    const request = buildPaymentStartRequest({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+  /** „A 3DS-vészkapcsoló” szakasz, a következő `## ` címsorig (a runbookba más szakasz is kerül). */
+  function killSwitchSection(): string {
+    const start = RUNBOOK.indexOf('\n## A 3DS-vészkapcsoló')
+    expect(start, 'a runbookban nincs „A 3DS-vészkapcsoló” szakasz').toBeGreaterThan(-1)
+    const section = RUNBOOK.slice(start + 1)
+    const next = section.indexOf('\n## ')
+    return next === -1 ? section : section.slice(0, next)
+  }
 
-    expect(request).not.toHaveProperty('BillingAddress')
-    expect(request).not.toHaveProperty('PurchaseInformation')
-    expect(request).not.toHaveProperty('PayerAccountInformation')
-    expect(request).not.toHaveProperty('ChallengePreference')
-    const section = /„([^”]+)” szakasz/.exec(row)?.[1]
-    expect(section, 'a sor nem nevez meg szakaszt').toBeDefined()
+  /** Az élesítési próba `step`. lépése, a következő lépés sorszámáig. */
+  function procedureStep(step: number): string {
+    const section = killSwitchSection()
+    const procedureStart = section.indexOf('**Élesítési próba**')
+    expect(procedureStart, 'a szakaszban nincs „Élesítési próba”').toBeGreaterThan(-1)
+    const procedure = section.slice(procedureStart)
+    const start = procedure.indexOf(`\n${step}. `)
+    expect(start, `az élesítési próbának nincs ${step}. lépése`).toBeGreaterThan(-1)
+    const end = procedure.indexOf(`\n${step + 1}. `, start)
+    return procedure.slice(start, end === -1 ? undefined : end)
+  }
+
+  /** A „`X` értékkel” alakú utasítások értékei: a runbook így mondja meg, mit kell beállítani. */
+  function valuesToSet(text: string): string[] {
+    return [...text.matchAll(/`([^`]+)`\s+értékkel/g)].map((match) => match[1] ?? '')
+  }
+
+  it('a riasztáskód sorában és a vészkapcsoló szakaszában (a próba hibaágában is) beállíttatott minden érték és a kikapcsoló listaelem kikapcsolja a négy 3DS-blokkot', () => {
+    const rowValues = valuesToSet(runbookRow(ALERT_CODE) ?? '')
+    const section = killSwitchSection()
+    const sectionValues = valuesToSet(section)
+    const offBullet = /^- \*\*`([^`]+)`[^\n]*:\*\* a négy adatblokk kimarad/m.exec(section)?.[1]
+    expect(rowValues, 'a sor nem nevez meg beállítandó értéket').not.toEqual([])
     expect(
-      RUNBOOK.split('\n').some((line) => line.startsWith(`## ${String(section)}`)),
-      `a runbookban nincs „${String(section)}” szakasz`,
+      valuesToSet(procedureStep(2)),
+      'a próba hibaága nem nevez meg visszaállítandó értéket',
+    ).not.toEqual([])
+    expect(offBullet, 'a szakasz értéklistájában nincs kikapcsoló érték').toBeDefined()
+
+    for (const value of [...rowValues, ...sectionValues, String(offBullet)]) {
+      process.env.BARION_SEND_3DS = value
+      const request = buildPaymentStartRequest({ ...baseParams, threeDs: guestThreeDs }, testConfig)
+      for (const block of [
+        'BillingAddress',
+        'PurchaseInformation',
+        'PayerAccountInformation',
+        'ChallengePreference',
+      ]) {
+        expect(request, `a(z) ${JSON.stringify(value)} érték nem kapcsol ki`).not.toHaveProperty(
+          block,
+        )
+      }
+    }
+  })
+
+  it('a riasztáskód sora által hivatkozott szakasz pontosan ezzel a címmel létezik', () => {
+    const section = /„([^”]+)” szakasz/.exec(runbookRow(ALERT_CODE) ?? '')?.[1]
+    expect(section, 'a sor nem nevez meg szakaszt').toBeDefined()
+    const headings = RUNBOOK.split('\n').filter((line) => line.startsWith('## '))
+    expect(
+      headings.some(
+        (heading) =>
+          heading === `## ${String(section)}` || heading.startsWith(`## ${String(section)} (`),
+      ),
+      `a runbookban nincs „${String(section)}” című szakasz`,
     ).toBe(true)
   })
 
@@ -674,15 +731,52 @@ describe('runbook 11, 3DS-vészkapcsoló: a teendő és az élesítési próba a
    * checkout-start.test.ts „nyitott Barion-fizetés: … második Start nincs”
    * esete rögzíti), a Barion-oldal mégis megnyílik: a próba sikeresnek
    * látszana, pedig a 3DS-adatokat hordozó Start ki sem ment. A fizetés a
-   * Start fizetési ablakáig nyitott, ezért a próba előfeltétele ugyanennyi
-   * percet nevez meg; ha az ablak változik, a runbooknak is követnie kell.
+   * Start fizetési ablakáig nyitott, ezért a próba 1. lépésének előfeltétele
+   * ugyanennyi percet nevez meg; ha az ablak változik, a runbooknak is
+   * követnie kell. Csak az 1. lépés számít: egy későbbi szakasz percei nem
+   * pótolják az előfeltételt.
    */
-  it('az élesítési próba előfeltétele a Start fizetési ablakával egyező időt nevez meg', () => {
+  it('az élesítési próba 1. lépésének előfeltétele a Start fizetési ablakával egyező időt nevez meg', () => {
     const minutes = paymentWindowToMs() / 60_000
-    const section = RUNBOOK.slice(RUNBOOK.indexOf('\n## A 3DS-vészkapcsoló'))
-    const procedure = section.slice(section.indexOf('**Élesítési próba**'))
 
-    expect(procedure.startsWith('**Élesítési próba**')).toBe(true)
-    expect(procedure).toMatch(new RegExp(`\\b${minutes} perc`))
+    expect(procedureStep(1)).toMatch(new RegExp(`\\b${minutes} perc`))
+  })
+
+  /**
+   * A folytatott fizetés hamis sikerét a 2. lépés sikerfeltétele szűri ki:
+   * mindkét próbához új, fizetésre váró rendelés kell a próba idejéből. A
+   * feliratokat a valódi admin adja: a rendelések menüje (csoport →
+   * gyűjtemény), a státusz felirata és a létrehozás oszlopa, a Payload saját
+   * fordítójával, ahogy a lista is (@payloadcms/ui buildColumnState: a
+   * `createdAt` az `admin.hidden` ellenére oszlop, a felirata
+   * `t('general:createdAt')`). Mindkét oszlop alapból látszik a listán.
+   */
+  it('az élesítési próba sikerfeltétele az admin valódi feliratával kér új, fizetésre váró rendelést', async () => {
+    const config = await configPromise
+    const i18n = await initI18n({ config: config.i18n, context: 'client', language: 'hu' })
+    const orders = config.collections.find((collection) => collection.slug === 'orders')
+    const status = orders?.flattenedFields.find((field) => field.name === 'status')
+    const pending =
+      status?.type === 'select'
+        ? status.options.find(
+            (option) => typeof option === 'object' && option.value === 'payment_pending',
+          )
+        : undefined
+    const createdAt = orders?.flattenedFields.find((field) => field.name === 'createdAt')
+    const pendingLabel =
+      typeof pending === 'object' && typeof pending.label === 'string' ? pending.label : undefined
+    const createdAtLabel =
+      createdAt !== undefined && 'label' in createdAt && createdAt.label
+        ? getTranslation(createdAt.label, i18n)
+        : undefined
+    expect(pendingLabel, 'a payment_pending státusznak nincs felirata').toBeDefined()
+    expect(createdAtLabel, 'a createdAt mezőnek nincs felirata').toBeDefined()
+    expect(orders?.admin.defaultColumns).toEqual(expect.arrayContaining(['status', 'createdAt']))
+
+    const step2 = procedureStep(2).replace(/\s+/g, ' ')
+
+    expect(step2).toContain(`${String(orders?.admin.group)} → ${String(orders?.labels.plural)}`)
+    expect(step2).toContain(`új, „${String(pendingLabel)}” állapotú rendelés`)
+    expect(step2).toContain(`(${String(createdAtLabel)} oszlop)`)
   })
 })

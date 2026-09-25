@@ -642,64 +642,104 @@ describe('startCheckout — szerver-oldali ár-kikényszerítés', () => {
   /**
    * a-cms-2: a Barion kártyás minimuma 10 Ft (docs.barion.com Troubleshooting:
    * „HUF: 10 HUF or more"). Friss beírás ilyen árat már nem menthet (a plugin
-   * `validatePriceInHUF`-ja a MIN_PRICE_HUF alatti új értéket elutasítja); az
-   * ág a validátor előtt mentett, azóta változatlan publikált árakért és a
-   * validációt kihagyó főrekord-írásokért van. Ilyen áron a rendelés nem jöhet
-   * létre, és a tulajdonos RIASZTÁS-t kap (termékenként fojtva).
+   * `validatePriceInHUF`-ja és `validatePromoPriceHuf`-ja a MIN_PRICE_HUF
+   * alatti új értéket elutasítja); az ág a validátorok előtt mentett, azóta
+   * változatlan publikált árakért és a validációt kihagyó főrekord-írásokért
+   * van. Ilyen áron a rendelés nem jöhet létre, és a tulajdonos RIASZTÁS-t kap
+   * (termékenként fojtva).
+   *
+   * A fizetendő ár élő akcióban az akciós ár (`coursePriceHuf`), és az akciós
+   * ár validátora a #283 és a #305 között 1 Ft-ot is elfogadott. Egy ilyen
+   * örökölt akció a riasztást akkor is kiváltja, ha a rendes ár rendben van,
+   * ezért a runbook-sornak az akciós ár mezőjét is meg kell neveznie: a rendes
+   * „Ár (Ft)” javítása itt semmin nem segítene.
    */
-  it('10 Ft alatti ár → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a valódi admin-menübe, a kurzus címére és a közzététel gombjához visz)', async () => {
-    const product = { ...publishedProduct, priceInHUF: 5 } as unknown as Product
-    const { payload, calls } = createMockPayload({ product })
-    const { log, errors } = captureLogger()
+  it.each<[string, Partial<Product>, Array<'priceInHUF' | 'promoPriceHuf' | 'promoEnabled'>]>([
+    ['a rendes ár 10 Ft alatt', { priceInHUF: 5 }, ['priceInHUF']],
+    [
+      'élő akcióban az akciós ár 10 Ft alatt, a rendes ár rendben',
+      {
+        priceInHUF: 19990,
+        promoEnabled: true,
+        promoStart: null,
+        promoEnd: '2099-12-31T00:00:00.000Z',
+        promoPriceHuf: 5,
+      },
+      ['promoPriceHuf', 'promoEnabled'],
+    ],
+  ])(
+    '%s → 400, rendelés és Start NÉLKÜL, RIASZTÁS (termékenként fojtva; a levél megnevezi a terméket, a runbook-sor a kiváltó ármezőhöz, a valódi admin-menübe, a kurzus címére és a közzététel gombjához visz)',
+    async (_case, priceFields, fieldsToFix) => {
+      const product = { ...publishedProduct, ...priceFields } as unknown as Product
+      const { payload, calls } = createMockPayload({ product })
+      const { log, errors } = captureLogger()
 
-    const first = await checkoutErrorFrom(
-      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
-    )
-    const second = await checkoutErrorFrom(
-      startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
-    )
+      const first = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
+      const second = await checkoutErrorFrom(
+        startCheckout({ payload, user: mockUser, input: happyInput, logger: log }),
+      )
 
-    for (const error of [first, second]) {
-      expect(error.status).toBe(400)
-      expect(error.message).toBe('A termékhez nem tartozik érvényes ár, így nem vásárolható meg.')
-    }
-    expect(calls.create).toHaveLength(0)
-    expect(fetchMock).not.toHaveBeenCalled()
-    const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS:'))
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0]?.context).toMatchObject({ productId: 42, serverPriceHuf: 5, minimumHuf: 10 })
+      for (const error of [first, second]) {
+        expect(error.status).toBe(400)
+        expect(error.message).toBe('A termékhez nem tartozik érvényes ár, így nem vásárolható meg.')
+      }
+      expect(calls.create).toHaveLength(0)
+      expect(fetchMock).not.toHaveBeenCalled()
+      const alerts = errors.filter((entry) => entry.message.startsWith('RIASZTÁS:'))
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]?.context).toMatchObject({ productId: 42, serverPriceHuf: 5, minimumHuf: 10 })
 
-    // W1A-2: a levél csak a SAFE_ALERT_FIELDS mezőit mutatja; a productId nincs
-    // köztük, a `source` igen.
-    const mail = ownerAlertMail(alerts[0] ?? { message: '', context: {} })
-    expect(mail.text).toContain('source: product-42')
-    expect(mail.alertCode).toBe('a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem')
+      // W1A-2: a levél csak a SAFE_ALERT_FIELDS mezőit mutatja; a productId nincs
+      // köztük, a `source` igen.
+      const mail = ownerAlertMail(alerts[0] ?? { message: '', context: {} })
+      expect(mail.text).toContain('source: product-42')
+      expect(mail.alertCode).toBe('a-kurzus-ara-a-barion-10-ft-os-minimuma-alatt-van-igy-nem')
 
-    // A riasztáskódnak saját sora van a runbook táblázatában, és a sor azzal a
-    // menüvel nevezi a helyet, amit a tulajdonos az admin oldalsávjában lát
-    // (csoport → gyűjtemény; WCAG 2.2 SC 3.2.4). A lista az azonosítóra nem
-    // keres (listSearchableFields), ezért a `product-<szám>` a kurzus admin-címén
-    // át vezet a kurzushoz.
-    const runbookLine = runbookRow(mail.alertCode)
-    expect(runbookLine, 'a runbook táblázatában nincs sor ehhez a riasztáskódhoz').toBeDefined()
-    const config = await configPromise
-    const products = config.collections.find((collection) => collection.slug === 'products')
-    expect(runbookLine?.replaceAll('**', '')).toContain(
-      `${String(products?.admin.group)} → ${String(products?.labels.plural)}`,
-    )
-    expect(runbookLine).toContain(
-      `${config.routes.admin}/collections/${String(products?.slug)}/<szám>`,
-    )
-    // A kurzusok automatikus mentése csak piszkozatot ír (versions.drafts.autosave),
-    // a pénztár viszont a fő sort olvassa (lásd a piszkozat-regresszió blokkot):
-    // közzététel nélkül az átírt ár nem hat, a riasztás tovább jön (valódi
-    // Payload 3.88 + Postgres mellett mérve). A sor ezért a közzététel gombját is
-    // megnevezi, betűre úgy, ahogy az admin mutatja: a Payload saját fordítója a
-    // config i18n-jével, ahogy az admin kérésenként (next/dist/utilities/initReq.js)
-    // is hívja.
-    const { t } = await initI18n({ config: config.i18n, context: 'client', language: 'hu' })
-    expect(runbookLine).toContain(`„${t('version:publishChanges')}”`)
-  })
+      // A riasztáskódnak saját sora van a runbook táblázatában, és a sor azzal a
+      // menüvel nevezi a helyet, amit a tulajdonos az admin oldalsávjában lát
+      // (csoport → gyűjtemény; WCAG 2.2 SC 3.2.4). A lista az azonosítóra nem
+      // keres (listSearchableFields), ezért a `product-<szám>` a kurzus admin-címén
+      // át vezet a kurzushoz.
+      const runbookLine = runbookRow(mail.alertCode)
+      expect(runbookLine, 'a runbook táblázatában nincs sor ehhez a riasztáskódhoz').toBeDefined()
+      const config = await configPromise
+      const products = config.collections.find((collection) => collection.slug === 'products')
+      expect(runbookLine?.replaceAll('**', '')).toContain(
+        `${String(products?.admin.group)} → ${String(products?.labels.plural)}`,
+      )
+      expect(runbookLine).toContain(
+        `${config.routes.admin}/collections/${String(products?.slug)}/<szám>`,
+      )
+      // A sor javító mondata (amelyik a riasztás minimumát kimondja) azt a
+      // mezőt nevezi meg, amelyik a riasztást kiváltja, azzal a felirattal, amit
+      // a kurzus szerkesztője mutat. A lista oszlopára utaló későbbi említés nem
+      // teendő, ezért nem számít.
+      const fixSentence = new RegExp(
+        `[^.]*legalább ${String(alerts[0]?.context.minimumHuf)} Ft[^.]*\\.`,
+      ).exec(runbookLine ?? '')?.[0]
+      expect(fixSentence, 'a sor nem mondja ki, legalább mennyi legyen az ár').toBeDefined()
+      for (const name of fieldsToFix) {
+        const field = products?.flattenedFields.find((candidate) => candidate.name === name)
+        const label =
+          field !== undefined && 'label' in field && typeof field.label === 'string'
+            ? field.label
+            : undefined
+        expect(label, `a(z) ${name} mezőnek nincs szöveges felirata`).toBeDefined()
+        expect(fixSentence).toContain(`„${String(label)}”`)
+      }
+      // A kurzusok automatikus mentése csak piszkozatot ír (versions.drafts.autosave),
+      // a pénztár viszont a fő sort olvassa (lásd a piszkozat-regresszió blokkot):
+      // közzététel nélkül az átírt ár nem hat, a riasztás tovább jön (valódi
+      // Payload 3.88 + Postgres mellett mérve). A sor ezért a közzététel gombját is
+      // megnevezi, betűre úgy, ahogy az admin mutatja: a Payload saját fordítója a
+      // config i18n-jével, ahogy az admin kérésenként (next/dist/utilities/initReq.js)
+      // is hívja.
+      const { t } = await initI18n({ config: config.i18n, context: 'client', language: 'hu' })
+      expect(runbookLine).toContain(`„${t('version:publishChanges')}”`)
+    },
+  )
 
   it('pontosan 10 Ft-os ár még vásárolható (a Barion minimuma „10 HUF or more")', async () => {
     fetchMock.mockResolvedValueOnce(barionStartSuccess())
